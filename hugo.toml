@@ -1,0 +1,51 @@
+publishDir = "docs"
+canonifyurls = true
+
+baseURL = "https://mekann2904.com/"
+languageCode = "jp"
+title = "Mekann's blog"
+theme = "github-style"
+pygmentsCodeFences = true
+pygmentsUseClasses = true
+
+[params]
+  author = "Mekann"
+#  description = "In solitude, where we are least alone."
+  github = "Mekann2904"
+  twitter = "Mekann2904"
+#  lastmod = true
+  userStatusEmoji = "😀"
+  favicon = "/images/github.png"
+  avatar = "/images/avatar.jpg"
+  headerIcon = "/images/github-mark-white.png"
+  location = "Japan"
+  enableGitalk = true
+
+#  [params.gitalk]
+#    clientID = "Your client ID"
+#    clientSecret = "Your client secret"
+#    repo = "repo"
+#    owner = "MeiK2333"
+#    admin = "MeiK2333"
+#    id = "location.pathname"
+#    labels = "gitalk"
+#    perPage = 15
+#    pagerDirection = "last"
+#    createIssueManually = true
+#    distractionFreeMode = false
+
+#  [[params.links]]
+#    title = "Link"
+#    href = "https://github.com/meik2333"
+#  [[params.links]]
+#    title = "Link2"
+#    href = "https://meik2333.com"
+#    icon = "https://meik2333.com/images/avatar.png"
+
+[frontmatter]
+  lastmod = ["lastmod", ":fileModTime", ":default"]
+
+#[services]
+#  [services.googleAnalytics]
+#    ID = "UA-123456-789"
+
