@@ -1,8 +1,6 @@
 publishDir = "public"
 canonifyurls = true
-#canonifyurls = false
 baseURL = "https://mekann2904.github.io/mekann/"
-
 languageCode = "jp"
 title = "Mekann's blog"
 theme = "github-style"
@@ -11,71 +9,37 @@ pygmentsUseClasses = true
 
 [params]
   author = "Mekann"
-#  description = "In solitude, where we are least alone."
   github = "Mekann2904"
   twitter = "Mekann2904"
-#  lastmod = true
   userStatusEmoji = "😀"
   favicon = "/images/github.png"
   avatar = "/images/avatar.jpg"
   headerIcon = "/images/github-mark-white.png"
   location = "Japan"
   enableGitalk = true
-
-#  [params.gitalk]
-#    clientID = "Your client ID"
-#    clientSecret = "Your client secret"
-#    repo = "repo"
-#    owner = "MeiK2333"
-#    admin = "MeiK2333"
-#    id = "location.pathname"
-#    labels = "gitalk"
-#    perPage = 15
-#    pagerDirection = "last"
-#    createIssueManually = true
-#    distractionFreeMode = false
-
-#  [[params.links]]
-#    title = "Link"
-#    href = "https://github.com/meik2333"
-#  [[params.links]]
-#    title = "Link2"
-#    href = "https://meik2333.com"
-#    icon = "https://meik2333.com/images/avatar.png"
+  enableSearch = true
 
 [frontmatter]
   lastmod = ["lastmod", ":fileModTime", ":default"]
 
-#[services]
-#  [services.googleAnalytics]
-#    ID = "UA-123456-789"
-
 [outputs]
-  home = ["HTML"]  # RSS出力を停止する
-
-
-[params]
-  enableSearch = true
-
-[outputs]
-  home = ["html", "json"]
+  home = ["html", "json"]  # RSSを停止し、JSON出力を追加
 
 [outputFormats.json]
   mediaType = "application/json"
   baseName = "index"
   isPlainText = false
 
-enableGitalk = true
+[params.gitalk]
+  clientID = "Your client ID"
+  clientSecret = "Your client secret"
+  repo = "repo"
+  owner = "Your Github username"
+  admin = "Your Github username"
+  id = "location.pathname"
+  labels = "gitalk"
+  perPage = 30
+  pagerDirection = "last"
+  createIssueManually = true
+  distractionFreeMode = false
 
-  [params.gitalk]
-    clientID = "Your client ID"
-    clientSecret = "Your client secret"
-    repo = "repo"
-    owner = "Your Github username"
-    admin = "Your Github username"
-    id = "location.pathname"
-    labels = "gitalk"
-    perPage = 30
-    pagerDirection = "last"
-    createIssueManually = true
-    distractionFreeMode = false
