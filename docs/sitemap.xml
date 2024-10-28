@@ -2,26 +2,20 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>http://localhost:1313/</loc>
+    <loc>http://localhost:1313/mekann/</loc>
     <lastmod>2024-10-28T17:11:44+09:00</lastmod>
   </url><url>
-    <loc>http://localhost:1313/post/</loc>
+    <loc>http://localhost:1313/mekann/post/</loc>
     <lastmod>2024-10-28T17:11:44+09:00</lastmod>
   </url><url>
-    <loc>http://localhost:1313/post/title_of_the_post/</loc>
-    <lastmod>2024-10-28T17:11:44+09:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/posts/</loc>
+    <loc>http://localhost:1313/mekann/posts/</loc>
     <lastmod>2024-10-28T16:55:11+09:00</lastmod>
   </url><url>
-    <loc>http://localhost:1313/posts/test/</loc>
-    <lastmod>2024-10-28T16:55:11+09:00</lastmod>
-  </url><url>
-    <loc>http://localhost:1313/readme/</loc>
+    <loc>http://localhost:1313/mekann/readme/</loc>
     <lastmod>2024-10-28T17:11:36+09:00</lastmod>
   </url><url>
-    <loc>http://localhost:1313/categories/</loc>
+    <loc>http://localhost:1313/mekann/categories/</loc>
   </url><url>
-    <loc>http://localhost:1313/tags/</loc>
+    <loc>http://localhost:1313/mekann/tags/</loc>
   </url>
 </urlset>

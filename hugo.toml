@@ -1,6 +1,6 @@
 publishDir = "docs"
-#canonifyurls = true
-canonifyurls = false
+canonifyurls = true
+#canonifyurls = false
 
 baseURL = "https://mekann2904.github.io/mekann/"
 languageCode = "jp"
