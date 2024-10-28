@@ -53,3 +53,29 @@ pygmentsUseClasses = true
 [outputs]
   home = ["HTML"]  # RSS出力を停止する
 
+
+[params]
+  enableSearch = true
+
+[outputs]
+  home = ["html", "json"]
+
+[outputFormats.json]
+  mediaType = "application/json"
+  baseName = "index"
+  isPlainText = false
+
+enableGitalk = true
+
+  [params.gitalk]
+    clientID = "Your client ID"
+    clientSecret = "Your client secret"
+    repo = "repo"
+    owner = "Your Github username"
+    admin = "Your Github username"
+    id = "location.pathname"
+    labels = "gitalk"
+    perPage = 30
+    pagerDirection = "last"
+    createIssueManually = true
+    distractionFreeMode = false
