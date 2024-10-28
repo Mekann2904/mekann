@@ -1,4 +1,4 @@
-publishDir = "docs"
+publishDir = "public"
 canonifyurls = true
 #canonifyurls = false
 baseURL = "https://mekann2904.github.io/mekann/"

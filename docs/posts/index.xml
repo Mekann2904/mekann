@@ -1,1 +1,19 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Posts on Mekann's blog</title><link>https://mekann2904.github.io/mekann/posts/</link><description>Recent content in Posts on Mekann's blog</description><generator>Hugo</generator><language>jp</language><lastBuildDate/><atom:link href="https://mekann2904.github.io/mekann/posts/index.xml" rel="self" type="application/rss+xml"/></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Posts on Mekann&#39;s blog</title>
+    <link>http://localhost:1313/mekann/posts/</link>
+    <description>Recent content in Posts on Mekann&#39;s blog</description>
+    <generator>Hugo</generator>
+    <language>jp</language>
+    <lastBuildDate>Mon, 28 Oct 2024 16:55:11 +0900</lastBuildDate>
+    <atom:link href="http://localhost:1313/mekann/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Test</title>
+      <link>http://localhost:1313/mekann/posts/test/</link>
+      <pubDate>Mon, 28 Oct 2024 16:53:52 +0900</pubDate>
+      <guid>http://localhost:1313/mekann/posts/test/</guid>
+      <description>&lt;p&gt;aaa&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>
