@@ -33,14 +33,14 @@ pygmentsUseClasses = true
   isPlainText = false
 
 [params.gitalk]
-  clientID = "Your client ID"
-  clientSecret = "Your client secret"
-  repo = "repo"
-  owner = "Your Github username"
-  admin = "Your Github username"
+  clientID = "$GITALK_CLIENT_ID"
+  clientSecret = "$GITALK_CLIENT_SECRET"
+  repo = "mekann"
+  owner = "Mekann2904"
+  admin = "Mekann2904"
   id = "location.pathname"
   labels = "gitalk"
-  perPage = 30
+  perPage = 10
   pagerDirection = "last"
   createIssueManually = true
   distractionFreeMode = false

@@ -211,11 +211,11 @@
 <script src='https://mekann2904.github.io/mekann/js/gitalk.min.js'></script>
 <script>
   const gitalk = new Gitalk({
-    clientID: 'Your client ID',
-    clientSecret: 'Your client secret',
-    repo: 'repo',
-    owner: 'Your Github username',
-    admin: ['Your Github username'],
+    clientID: '$GITALK_CLIENT_ID',
+    clientSecret: '$GITALK_CLIENT_SECRET',
+    repo: 'mekann',
+    owner: 'Mekann2904',
+    admin: ['Mekann2904'],
     id: eval("location.pathname"), 
     distractionFreeMode: false 
   });

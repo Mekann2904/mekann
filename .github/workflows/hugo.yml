@@ -52,6 +52,8 @@ jobs:
         env:
           HUGO_CACHEDIR: ${{ runner.temp }}/hugo_cache
           HUGO_ENVIRONMENT: production
+	  GITALK_CLIENT_ID: ${{ secrets.GITALK_CLIENT_ID }}
+	  GITALK_CLIENT_SECRET: ${{ secrets.GITALK_CLIENT_SECRET }}  # 環境変数で渡す
         run: |
           hugo \
             --minify \
