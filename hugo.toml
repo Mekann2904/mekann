@@ -1,7 +1,7 @@
 publishDir = "docs"
 canonifyurls = true
 #canonifyurls = false
-baseURL = "https://github.com/Mekann2904/mekann"
+baseURL = "https://mekann2904.github.io/mekann/"
 
 languageCode = "jp"
 title = "Mekann's blog"
