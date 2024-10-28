@@ -206,6 +206,24 @@
 <link rel="stylesheet" href='https://mekann2904.github.io/mekann/css/toc.css' />
 
   
+<div id="gitalk-container" class="gitalk-container"></div>
+<link rel="stylesheet" href='https://mekann2904.github.io/mekann/css/gitalk.css'>
+<script src='https://mekann2904.github.io/mekann/js/gitalk.min.js'></script>
+<script>
+  const gitalk = new Gitalk({
+    clientID: 'Your client ID',
+    clientSecret: 'Your client secret',
+    repo: 'repo',
+    owner: 'Your Github username',
+    admin: ['Your Github username'],
+    id: eval("location.pathname"), 
+    distractionFreeMode: false 
+  });
+  (function() {
+    gitalk.render('gitalk-container');
+  })();
+</script>
+
 </div>
 
   <div class="footer container-xl width-full p-responsive">
