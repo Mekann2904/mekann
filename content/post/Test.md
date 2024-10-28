@@ -4,4 +4,4 @@ draft = false
 title = 'Test'
 +++
 
-公開でた！
+公開できたはず！
