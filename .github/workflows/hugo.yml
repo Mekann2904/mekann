@@ -45,6 +45,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Clear cache
+        run: sudo rm -rf ${{ runner.temp }}/hugo_cache
+
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
