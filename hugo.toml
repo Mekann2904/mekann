@@ -6,6 +6,8 @@ title = "Mekann's blog"
 theme = "github-style"
 pygmentsCodeFences = true
 pygmentsUseClasses = true
+enableGitalk = true
+enableSearch = true
 
 [params]
   author = "Mekann"
@@ -16,8 +18,8 @@ pygmentsUseClasses = true
   avatar = "/images/avatar.jpg"
   headerIcon = "/images/github-mark-white.png"
   location = "Japan"
-  enableGitalk = true
-  enableSearch = true
+#  enableGitalk = true
+#  enableSearch = true
 
 [frontmatter]
   lastmod = ["lastmod", ":fileModTime", ":default"]
