@@ -15,13 +15,12 @@ permissions:
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Allow only one concurrent deployment
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
-# Default to bash
+# Default shell setting
 defaults:
   run:
     shell: bash
@@ -37,27 +36,36 @@ jobs:
         run: |
           wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
           && sudo dpkg -i ${{ runner.temp }}/hugo.deb
+
       - name: Install Dart Sass
         run: sudo snap install dart-sass
-      - name: Checkout
+
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
-      - name: Install Node.js dependencies
-        run: "[[ -f package-lock.json || -f npm-shrinkwrap.json ]] && npm ci || true"
+
+      - name: Install Node.js dependencies (if needed)
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci
+          else
+            echo "No Node.js dependencies to install."
+          fi
+
       - name: Build with Hugo
         env:
           HUGO_CACHEDIR: ${{ runner.temp }}/hugo_cache
           HUGO_ENVIRONMENT: production
-	  GITALK_CLIENT_ID: ${{ secrets.GITALK_CLIENT_ID }}
-	  GITALK_CLIENT_SECRET: ${{ secrets.GITALK_CLIENT_SECRET }}  # 環境変数で渡す
+          GITALK_CLIENT_ID: ${{ secrets.GITALK_CLIENT_ID }}
+          GITALK_CLIENT_SECRET: ${{ secrets.GITALK_CLIENT_SECRET }}
         run: |
-          hugo \
-            --minify \
-            --baseURL "${{ steps.pages.outputs.base_url }}/"
+          hugo --minify --baseURL "${{ steps.pages.outputs.base_url }}/"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -74,3 +82,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
