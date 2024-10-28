@@ -1,5 +1,6 @@
 publishDir = "docs"
-canonifyurls = true
+#canonifyurls = true
+canonifyurls = false
 
 baseURL = "https://mekann2904.github.io/mekann/"
 languageCode = "jp"
@@ -48,4 +49,7 @@ pygmentsUseClasses = true
 #[services]
 #  [services.googleAnalytics]
 #    ID = "UA-123456-789"
+
+[outputs]
+  home = ["HTML"]  # RSS出力を停止する
 
