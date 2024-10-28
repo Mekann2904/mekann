@@ -1,0 +1,17 @@
+<script>
+  const gitalk = new Gitalk({
+    clientID: "{{ getenv `GITALK_CLIENT_ID` }}",
+    clientSecret: "{{ getenv `GITALK_CLIENT_SECRET` }}",
+    repo: "{{ .Site.Params.gitalk.repo }}",
+    owner: "{{ .Site.Params.gitalk.owner }}",
+    admin: {{ .Site.Params.gitalk.admin }},
+    id: location.pathname,
+    labels: {{ .Site.Params.gitalk.labels }},
+    perPage: {{ .Site.Params.gitalk.perPage }},
+    pagerDirection: "{{ .Site.Params.gitalk.pagerDirection }}",
+    createIssueManually: {{ .Site.Params.gitalk.createIssueManually }},
+    distractionFreeMode: {{ .Site.Params.gitalk.distractionFreeMode }},
+  });
+  gitalk.render('gitalk-container');
+</script>
+
