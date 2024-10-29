@@ -151,7 +151,7 @@
                 </path>
               </svg>
               Posts
-              <span class="Counter">3</span>
+              <span class="Counter">4</span>
             </a>
           </nav>
           <div class="profile-color-modes js-promo-color-modes-banner-profile isInitialToggle">
@@ -423,7 +423,7 @@
         </path>
       </svg>
       Posts
-      <span class="Counter ">3</span>
+      <span class="Counter ">4</span>
     </a>
   </nav>
 </div>
@@ -469,6 +469,86 @@
           Popular posts
         </h2>
         <ol class="d-flex flex-wrap list-style-none gutter-condensed mb-4 js-pinned-items-reorder-list">
+          
+          <li class="col-12 col-md-6 col-lg-6 mb-3 d-flex flex-content-stretch">
+            <div
+              class="Box pinned-item-list-item d-flex p-3 width-full js-pinned-item-list-item public source reorderable sortable-button-item">
+              <div class="pinned-item-list-item-content">
+                <div class="d-flex width-full flex-items-center position-relative">
+                  <svg class="octicon octicon-repo mr-2 text-gray flex-shrink-0" viewBox="0 0 16 16" version="1.1"
+                    width="16" height="16">
+                    <path fill-rule="evenodd"
+                      d="M2 2.5A2.5 2.5 0 014.5 0h8.75a.75.75 0 01.75.75v12.5a.75.75 0 01-.75.75h-2.5a.75.75 0 110-1.5h1.75v-2h-8a1 1 0 00-.714 1.7.75.75 0 01-1.072 1.05A2.495 2.495 0 012 11.5v-9zm10.5-1V9h-8c-.356 0-.694.074-1 .208V2.5a1 1 0 011-1h8zM5 12.25v3.25a.25.25 0 00.4.2l1.45-1.087a.25.25 0 01.3 0L8.6 15.7a.25.25 0 00.4-.2v-3.25a.25.25 0 00-.25-.25h-3.5a.25.25 0 00-.25.25z">
+                    </path>
+                  </svg>
+                  <a class="text-bold flex-auto min-width-0" href="https://mekann2904.github.io/mekann/post/2024/10/29/3/">
+                    <span class="repo" title="データ移行のためのより優れた拡張可能なシステムの構築">データ移行のためのより優れた拡張可能なシステムの構築</span>
+                  </a>
+                </div>
+
+
+                <div name="summary" class="pinned-item-desc text-gray text-small d-block mt-2 mb-3">
+                  <p><a href="https://yorickpeterse.com/articles/building-a-better-and-scalable-system-for-data-migrations/">Building a better and scalable system for data migrations</a></p>
+<h1 id="データ移行のためのより優れた拡張可能なシステムの構築">データ移行のためのより優れた拡張可能なシステムの構築</h1>
+<p>2024年10月24日</p>
+<p>最近、新しいRustのWebフレームワーク「rwf」に興味を持ち、特にデータベース移行の方法に注目した。だが、このフレームワークは他の多くのフレームワーク同様、移行が大規模になると対応が困難になる。GitLabの例を通じて、規模拡大での移行の課題を説明し、それを解決するための具体的な手法を提案する。</p>
+<h2 id="提案する改善案">提案する改善案</h2>
+<ol>
+<li>
+<p><strong>移行をプログラミング関数として記述する</strong>
+SQLスニペットではなく、RubyやRustなどのプログラミング言語で実装することで、柔軟性を確保する。</p>
+</li>
+<li>
+<p><strong>VCSリビジョンに基づく移行の実行</strong>
+コードの状態に依存しない移行を実現し、テストや保守性を向上させる。これにより、アプリケーションロジックの重複も防げる。</p>
+</li>
+<li>
+<p><strong>事前・事後移行の分離</strong>
+GitLabの事例のように、事前移行で後方互換性を保ち、事後移行で不要な要素を削除する。</p>
+</li>
+<li>
+<p><strong>大規模データの移行</strong>
+並列処理とバックグラウンドジョブを使い、負荷分散を行う。これにより、移行が長時間に及ぶ場合でも運用を継続できる。</p>
+</li>
+<li>
+<p><strong>移行テストの容易化</strong>
+初期状態からの移行を再現するテストを導入し、移行が正しく動作することを確認できるようにする。</p>
+</li>
+</ol>
+<h2 id="gitlabの実例">GitLabの実例</h2>
+<p>GitLabでは、最初はRuby on Railsの移行フレームワークを使っていたが、データベースのサイズが大きくなるにつれて従来の方法では非効率になった。特に、カラムのリネームや大規模なデータ移行は、伝統的なRailsのアプローチでは数週間かかることもあった。そのため、以下の解決策が取られた。</p>
+<ul>
+<li><strong>事前移行と事後移行の分割</strong>：事前移行では互換性のある変更のみを行い、事後移行で不要なデータを削除する。</li>
+<li><strong>バックグラウンドジョブの使用</strong>：Sidekiqを使って長時間かかる移行をバックグラウンドで実行する。</li>
+<li><strong>アプリケーションロジックからの独立</strong>：移行のたびに必要なコードをスナップショットとして保持し、他のアプリケーションロジックから分離する。</li>
+</ul>
+<h2 id="現行の移行システムが抱える問題">現行の移行システムが抱える問題</h2>
+<ol>
+<li><strong>タイムレスでない</strong>：移行がアプリケーションの最新の状態に依存するため、途中でロジックが変わると移行が失敗する可能性がある。</li>
+<li><strong>スケールしない</strong>：小規模な移行には対応できるが、大規模なシステムには不十分。</li>
+<li><strong>プロジェクト間で異なる要件</strong>：小さなSQLiteを使うアプリと、10TiBのデータを持つSaaSでは移行の要件が大きく異なる。</li>
+</ol>
+<h2 id="どうやってより良いシステムを構築するか">どうやってより良いシステムを構築するか</h2>
+<ul>
+<li><strong>移行を関数として実装</strong>：SQLファイルに頼らず、プログラム言語で記述し、双方向の移行を実現する。</li>
+<li><strong>VCSリビジョンで移行を管理</strong>：各移行が特定のリビジョンに対応することで、タイムレスな移行を保証する。</li>
+<li><strong>事前・事後移行の適用</strong>：GitLabの手法を参考に、後方互換性を保ちながら、必要な変更を段階的に適用する。</li>
+<li><strong>大規模データ移行の支援</strong>：負荷を分散し、バックグラウンドでジョブを実行する仕組みを提供する。</li>
+<li><strong>移行テストを容易にする</strong>：テスト用のプリミティブを提供し、移行が正しく動作するかを検証できるようにする。</li>
+</ul>
+<h2 id="結論">結論</h2>
+<p>この提案は、移行システムをより効果的かつスケーラブルにするための一案だ。特に、VCSリビジョンに基づく移行は注目に値し、今後自分がWebフレームワークを開発する際に、このアイデアを試してみたいと考えている。</p>
+<hr>
+<p>この話の流れが面白い
+<a href="https://about.gitlab.com/blog/2017/02/01/gitlab-dot-com-database-incident/">GitLab.com database incident</a></p>
+                </div>
+
+                <p class="mb-0 f6 text-gray">
+                  
+                </p>
+              </div>
+            </div>
+          </li>
           
           <li class="col-12 col-md-6 col-lg-6 mb-3 d-flex flex-content-stretch">
             <div
@@ -579,6 +659,12 @@
 
     
     <div class="mt-4 position-relative" id="contributions" data='[
+{
+  "title": "%e3%83%87%e3%83%bc%e3%82%bf%e7%a7%bb%e8%a1%8c%e3%81%ae%e3%81%9f%e3%82%81%e3%81%ae%e3%82%88%e3%82%8a%e5%84%aa%e3%82%8c%e3%81%9f%e6%8b%a1%e5%bc%b5%e5%8f%af%e8%83%bd%e3%81%aa%e3%82%b7%e3%82%b9%e3%83%86%e3%83%a0%e3%81%ae%e6%a7%8b%e7%af%89",
+  "link": "https://mekann2904.github.io/mekann/post/2024/10/29/3/",
+  "publishDate": "2024-10-29%2017:24:49"
+},
+
 {
   "title": "Open%20Source%20AI%20Definition%20%28OSAID%29%e3%81%ab%e9%96%a2%e3%81%99%e3%82%8b%e8%ad%b0%e8%ab%96",
   "link": "https://mekann2904.github.io/mekann/post/2024/10/29/2/",
