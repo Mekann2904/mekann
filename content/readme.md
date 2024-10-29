@@ -1,4 +1,5 @@
-ただの大学生
-最近、obsidianでメモを取るのが楽しくなっている
-[obsidian](https://obsidian.md)はここからダウロードできるので試してみてね
+obsidianでメモを取るのが楽しい
+[obsidian](https://obsidian.md)はここからダウロードできる
+
+読んだ記事などを置いておく場所
 
