@@ -6,7 +6,7 @@
     <description>Recent content in Posts on Mekann&#39;s blog</description>
     <generator>Hugo</generator>
     <language>jp</language>
-    <lastBuildDate>Fri, 01 Nov 2024 14:35:07 +0900</lastBuildDate>
+    <lastBuildDate>Fri, 01 Nov 2024 14:55:04 +0900</lastBuildDate>
     <atom:link href="https://mekann2904.github.io/mekann/post/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>データ移行のためのより優れた拡張可能なシステムの構築</title>
@@ -35,6 +35,13 @@
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       <guid>https://mekann2904.github.io/mekann/post/2024/10/31/1/</guid>
       <description>&lt;p&gt;&lt;a href=&#34;https://d3js.org/d3-force&#34;&gt;d3-force | D3 by Observable&lt;/a&gt;&lt;/p&gt;&#xA;&lt;p&gt;obsidianのグラフビューみたいなのを作るときに使えそう&amp;hellip;&#xA;将来的にこれを使えるようになりたい&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Monkeys will never type Shakespeare, study finds</title>
+      <link>https://mekann2904.github.io/mekann/post/2024/11/01/2/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      <guid>https://mekann2904.github.io/mekann/post/2024/11/01/2/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;https://www.bbc.com/news/articles/c748kmvwyv9o&#34;&gt;Monkeys will never type Shakespeare, study finds&lt;/a&gt;&lt;/p&gt;&#xA;&lt;p&gt;くだらないけど面白い学者みたいなもの&amp;hellip;&lt;/p&gt;</description>
     </item>
   </channel>
 </rss>
