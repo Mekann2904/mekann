@@ -6,7 +6,7 @@
     <description>Recent content in Posts on Mekann&#39;s blog</description>
     <generator>Hugo</generator>
     <language>jp</language>
-    <lastBuildDate>Thu, 31 Oct 2024 22:10:27 +0900</lastBuildDate>
+    <lastBuildDate>Fri, 01 Nov 2024 14:15:52 +0900</lastBuildDate>
     <atom:link href="https://mekann2904.github.io/mekann/post/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>データ移行のためのより優れた拡張可能なシステムの構築</title>
@@ -35,6 +35,13 @@
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       <guid>https://mekann2904.github.io/mekann/post/2024/10/31/1/</guid>
       <description>&lt;p&gt;&lt;a href=&#34;https://d3js.org/d3-force&#34;&gt;d3-force | D3 by Observable&lt;/a&gt;&lt;/p&gt;&#xA;&lt;p&gt;obsidianのグラフビューみたいなのを作るときに使えそう&amp;hellip;&#xA;将来的にこれを使えるようになりたい&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Test</title>
+      <link>https://mekann2904.github.io/mekann/post/2024/11/01/1/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      <guid>https://mekann2904.github.io/mekann/post/2024/11/01/1/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;https://openai.com/index/introducing-chatgpt-search/&#34;&gt;Introducing ChatGPT search | OpenAI&lt;/a&gt;&lt;/p&gt;&#xA;&lt;p&gt;OpenAIからこんなメールが来た&#xA;![[ChatGPT search-20241101141150711.webp]]&lt;/p&gt;&#xA;&lt;p&gt;ChatGPT searchが使えるようになったので早速試してみることに&amp;hellip;&#xA;![[ChatGPT search-20241101140708696.webp]]&lt;/p&gt;&#xA;&lt;p&gt;何個か適当に調べてみたが、それなりに使える気がするが、&lt;/p&gt;&#xA;&lt;p&gt;まあ、心理学者がChatGPTを使う事によって、アイデンティティを失うと警告していたが、ディストピア - 華氏451度と共通するものを感じるし積極的に使うかどうかは面白いところではあるし、議論するべき話題だと思う&lt;/p&gt;&#xA;&lt;p&gt;Hacker Newsのコメントも非常に興味深い&#xA;&lt;a href=&#34;https://news.ycombinator.com/item?id=42008569&#34;&gt;ChatGPT Search | Hacker News&lt;/a&gt;&lt;/p&gt;</description>
     </item>
   </channel>
 </rss>
