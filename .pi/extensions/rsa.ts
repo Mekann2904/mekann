@@ -7,9 +7,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
 import { spawn } from "node:child_process";
-import { formatDuration, toErrorMessage } from "../lib";
-
-type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel } from "../lib";
 type TraceMode = "off" | "summary" | "verbose";
 
 interface RSAConfig {
@@ -875,23 +873,6 @@ function normalizeTraceMode(
   }
 
   return { ok: false, error: "traceMode must be one of: off, summary, verbose." };
-}
-
-function toBoundedInteger(
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-  field: string,
-): { ok: true; value: number } | { ok: false; error: string } {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved) || !Number.isInteger(resolved)) {
-    return { ok: false, error: `${field} must be an integer.` };
-  }
-  if (resolved < min || resolved > max) {
-    return { ok: false, error: `${field} must be in [${min}, ${max}].` };
-  }
-  return { ok: true, value: resolved };
 }
 
 function parseCommandArgs(args: string | undefined): ParsedCommandArgs {

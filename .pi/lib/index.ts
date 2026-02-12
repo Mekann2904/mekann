@@ -47,3 +47,14 @@ export {
   formatClockTime,
   normalizeForSingleLine,
 } from "./format-utils.js";
+
+// Agent types (Layer 1)
+export {
+  type ThinkingLevel,
+  type RunOutcomeCode,
+  type RunOutcomeSignal,
+  DEFAULT_AGENT_TIMEOUT_MS,
+} from "./agent-types.js";
+
+// Agent utilities (Layer 1)
+export { createRunId, computeLiveWindow } from "./agent-utils.js";

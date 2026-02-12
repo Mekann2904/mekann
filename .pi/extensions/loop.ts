@@ -11,9 +11,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
-import { formatDuration, toErrorMessage } from "../lib";
-
-type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId } from "../lib";
 type LoopStatus = "continue" | "done" | "unknown";
 type LoopGoalStatus = "met" | "not_met" | "unknown";
 
@@ -2383,21 +2381,6 @@ function appendJsonl(path: string, value: unknown) {
   });
 }
 
-function createRunId(): string {
-  const now = new Date();
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-    "-",
-    String(now.getHours()).padStart(2, "0"),
-    String(now.getMinutes()).padStart(2, "0"),
-    String(now.getSeconds()).padStart(2, "0"),
-  ].join("");
-  const suffix = randomBytes(3).toString("hex");
-  return `${stamp}-${suffix}`;
-}
-
 function normalizeRefSpec(value: string): string {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) return "";
@@ -2444,23 +2427,6 @@ function toPreview(value: string, maxChars: number): string {
 function normalizeOptionalText(value: unknown): string | undefined {
   const text = typeof value === "string" ? value.trim() : "";
   return text ? text : undefined;
-}
-
-function toBoundedInteger(
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-  field: string,
-): { ok: true; value: number } | { ok: false; error: string } {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved) || !Number.isInteger(resolved)) {
-    return { ok: false, error: `${field} must be an integer.` };
-  }
-  if (resolved < min || resolved > max) {
-    return { ok: false, error: `${field} must be in [${min}, ${max}].` };
-  }
-  return { ok: true, value: resolved };
 }
 
 function throwIfAborted(signal: AbortSignal | undefined) {

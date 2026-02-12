@@ -6,7 +6,6 @@
 import { getMarkdownTheme, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
-import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
@@ -57,21 +56,15 @@ import {
   toErrorMessage,
   LIVE_TAIL_LIMIT,
   LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
+  createRunId,
+  computeLiveWindow,
+  ThinkingLevel,
+  RunOutcomeCode,
+  RunOutcomeSignal,
+  DEFAULT_AGENT_TIMEOUT_MS,
 } from "../lib";
 
 type AgentEnabledState = "enabled" | "disabled";
-type RunOutcomeCode =
-  | "SUCCESS"
-  | "PARTIAL_SUCCESS"
-  | "RETRYABLE_FAILURE"
-  | "NONRETRYABLE_FAILURE"
-  | "CANCELLED"
-  | "TIMEOUT";
-
-interface RunOutcomeSignal {
-  outcomeCode: RunOutcomeCode;
-  retryRecommended: boolean;
-}
 
 interface SubagentDefinition {
   id: string;
@@ -118,7 +111,6 @@ interface PrintCommandResult {
 
 const MAX_RUNS_TO_KEEP = 100;
 const SUBAGENT_DEFAULTS_VERSION = 2;
-const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;
 const STABLE_SUBAGENT_RUNTIME = true;
@@ -203,13 +195,6 @@ function getLiveStatusGlyph(status: LiveItemStatus): string {
   if (status === "failed") return "!!";
   if (status === "running") return ">>";
   return "..";
-}
-
-function computeLiveWindow(cursor: number, total: number, maxRows: number): { start: number; end: number } {
-  if (total <= maxRows) return { start: 0, end: total };
-  const clampedCursor = Math.max(0, Math.min(total - 1, cursor));
-  const start = Math.max(0, Math.min(total - maxRows, clampedCursor - (maxRows - 1)));
-  return { start, end: Math.min(total, start + maxRows) };
 }
 
 function isEnterInput(rawInput: string): boolean {
@@ -1454,20 +1439,6 @@ function toAgentId(input: string): string {
     .slice(0, 48);
 }
 
-function createRunId(): string {
-  const now = new Date();
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-    "-",
-    String(now.getHours()).padStart(2, "0"),
-    String(now.getMinutes()).padStart(2, "0"),
-    String(now.getSeconds()).padStart(2, "0"),
-  ].join("");
-  return `${stamp}-${randomBytes(3).toString("hex")}`;
-}
-
 function formatAgentList(storage: SubagentStorage): string {
   if (storage.agents.length === 0) {
     return "No subagents found.";
@@ -2272,7 +2243,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
         try {
-          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_TIMEOUT_MS);
+          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: "Subagent Run (detailed live view)",
             items: [{ id: agent.id, name: agent.name }],
@@ -2578,7 +2549,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
         try {
-          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_TIMEOUT_MS);
+          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: `Subagent Run Parallel (detailed live view: ${activeAgents.length} agents)`,
             items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
