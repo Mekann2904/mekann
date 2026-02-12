@@ -371,6 +371,6 @@ v0.1.0からの変更点:
 ## 🔗 リンク
 
 - [GitHub Repository](https://github.com/Mekann2904/mekann)
-- [pi Documentation](https://github.com/mariozechner/pi-coding-agent)
+- [pi Documentation](https://github.com/badlogic/pi-mono)
 - [変更履歴](CHANGELOG.md)
 - [ロードマップ](docs/05-meta/03-roadmap.md)
