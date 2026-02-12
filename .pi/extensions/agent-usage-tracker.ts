@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { ensureDir, toFiniteNumber } from "../lib";
 
 type FeatureType = "tool" | "agent_run";
 type EventStatus = "ok" | "error";
@@ -130,12 +131,6 @@ let runtime: RuntimeState | undefined;
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-function ensureDir(path: string): void {
-  if (!existsSync(path)) {
-    mkdirSync(path, { recursive: true });
-  }
 }
 
 function getStorageFile(cwd: string): string {
@@ -432,12 +427,6 @@ function appendEvent(state: UsageTrackerState, event: Omit<UsageEventRecord, "id
   if (state.events.length > MAX_EVENT_HISTORY) {
     state.events.splice(0, state.events.length - MAX_EVENT_HISTORY);
   }
-}
-
-function toFiniteNumber(value: unknown): number | undefined {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return undefined;
-  return n;
 }
 
 function pickNumber(raw: Record<string, unknown>, keys: string[]): number | undefined {

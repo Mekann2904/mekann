@@ -8,6 +8,7 @@ import { truncateToWidth } from "@mariozechner/pi-tui";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { toFiniteNumberWithDefault } from "../lib";
 
 const SESSIONS_ROOT = join(homedir(), ".pi/agent/sessions");
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -69,20 +70,15 @@ function getOrCreateToolStats(map: Map<string, ToolStats>, toolName: string): To
   return stats;
 }
 
-function toFiniteNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  return 0;
-}
-
 function toTotalUsageTokens(usage: any): number {
   if (!usage) return 0;
-  const nativeTotal = toFiniteNumber(usage.totalTokens);
+  const nativeTotal = toFiniteNumberWithDefault(usage.totalTokens);
   if (nativeTotal > 0) return nativeTotal;
   return (
-    toFiniteNumber(usage.input) +
-    toFiniteNumber(usage.output) +
-    toFiniteNumber(usage.cacheRead) +
-    toFiniteNumber(usage.cacheWrite)
+    toFiniteNumberWithDefault(usage.input) +
+    toFiniteNumberWithDefault(usage.output) +
+    toFiniteNumberWithDefault(usage.cacheRead) +
+    toFiniteNumberWithDefault(usage.cacheWrite)
   );
 }
 
@@ -356,11 +352,11 @@ function collectWeeklySnapshot(scopeDir: string | undefined): WeeklySnapshot {
         const usage = message.usage;
         const usageTokens = toTotalUsageTokens(usage);
         totalUsageTokens += usageTokens;
-        usageBreakdown.input += toFiniteNumber(usage?.input);
-        usageBreakdown.output += toFiniteNumber(usage?.output);
-        usageBreakdown.cacheRead += toFiniteNumber(usage?.cacheRead);
-        usageBreakdown.cacheWrite += toFiniteNumber(usage?.cacheWrite);
-        totalCost += toFiniteNumber(usage?.cost?.total);
+        usageBreakdown.input += toFiniteNumberWithDefault(usage?.input);
+        usageBreakdown.output += toFiniteNumberWithDefault(usage?.output);
+        usageBreakdown.cacheRead += toFiniteNumberWithDefault(usage?.cacheRead);
+        usageBreakdown.cacheWrite += toFiniteNumberWithDefault(usage?.cacheWrite);
+        totalCost += toFiniteNumberWithDefault(usage?.cost?.total);
 
         const provider = String(message.provider || "unknown");
         const model = String(message.model || "unknown");

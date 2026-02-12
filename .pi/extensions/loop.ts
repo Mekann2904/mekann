@@ -11,6 +11,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
+import { formatDuration, toErrorMessage } from "../lib";
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 type LoopStatus = "continue" | "done" | "unknown";
@@ -2462,19 +2463,8 @@ function toBoundedInteger(
   return { ok: true, value: resolved };
 }
 
-function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "0ms";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
 function throwIfAborted(signal: AbortSignal | undefined) {
   if (signal?.aborted) {
     throw new Error("loop aborted");
   }
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }

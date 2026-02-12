@@ -39,6 +39,25 @@ import { runWithConcurrencyLimit } from "../lib/concurrency";
 import {
   getSubagentExecutionRules,
 } from "../lib/execution-rules";
+import {
+  ensureDir,
+  formatDurationMs,
+  toTailLines,
+  appendTail,
+  countOccurrences,
+  estimateLineCount,
+  looksLikeMarkdown,
+  renderPreviewWithMarkdown,
+  formatBytes,
+  formatClockTime,
+  extractStatusCodeFromMessage,
+  classifyPressureError,
+  isCancelledErrorMessage,
+  isTimeoutErrorMessage,
+  toErrorMessage,
+  LIVE_TAIL_LIMIT,
+  LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
+} from "../lib";
 
 type AgentEnabledState = "enabled" | "disabled";
 type RunOutcomeCode =
@@ -100,10 +119,8 @@ interface PrintCommandResult {
 const MAX_RUNS_TO_KEEP = 100;
 const SUBAGENT_DEFAULTS_VERSION = 2;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
-const LIVE_TAIL_LIMIT = 40_000;
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;
-const LIVE_MARKDOWN_PREVIEW_MIN_WIDTH = 24;
 const STABLE_SUBAGENT_RUNTIME = true;
 const ADAPTIVE_PARALLEL_MAX_PENALTY = STABLE_SUBAGENT_RUNTIME ? 0 : 3;
 const ADAPTIVE_PARALLEL_DECAY_MS = 8 * 60 * 1000;
@@ -179,107 +196,6 @@ interface SubagentLiveMonitorController {
   ) => void;
   close: () => void;
   wait: () => Promise<void>;
-}
-
-function appendTail(current: string, chunk: string, maxLength = LIVE_TAIL_LIMIT): string {
-  if (!chunk) return current;
-  const next = `${current}${chunk}`;
-  if (next.length <= maxLength) return next;
-  return next.slice(next.length - maxLength);
-}
-
-function countOccurrences(input: string, target: string): number {
-  if (!input || !target) return 0;
-  let count = 0;
-  let index = 0;
-  while (index < input.length) {
-    const found = input.indexOf(target, index);
-    if (found < 0) break;
-    count += 1;
-    index = found + target.length;
-  }
-  return count;
-}
-
-function formatBytes(value: number): string {
-  const bytes = Math.max(0, Math.trunc(value));
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-function formatClockTime(value?: number): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  const ss = String(date.getSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
-}
-
-function estimateLineCount(bytes: number, newlineCount: number, endsWithNewline: boolean): number {
-  if (bytes <= 0) return 0;
-  return newlineCount + (endsWithNewline ? 0 : 1);
-}
-
-function looksLikeMarkdown(input: string): boolean {
-  const text = input.trim();
-  if (!text) return false;
-  if (/^#{1,6}\s+/m.test(text)) return true;
-  if (/^\s*[-*+]\s+/m.test(text)) return true;
-  if (/^\s*\d+\.\s+/m.test(text)) return true;
-  if (/```/.test(text)) return true;
-  if (/\[[^\]]+\]\([^)]+\)/.test(text)) return true;
-  if (/^\s*>\s+/m.test(text)) return true;
-  if (/^\s*\|.+\|\s*$/m.test(text)) return true;
-  if (/\*\*[^*]+\*\*/.test(text)) return true;
-  if (/`[^`]+`/.test(text)) return true;
-  return false;
-}
-
-function renderPreviewWithMarkdown(
-  text: string,
-  width: number,
-  maxLines: number,
-): { lines: string[]; renderedAsMarkdown: boolean } {
-  if (!text.trim()) {
-    return { lines: [], renderedAsMarkdown: false };
-  }
-
-  if (!looksLikeMarkdown(text)) {
-    return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
-  }
-
-  try {
-    const markdown = new Markdown(text, 0, 0, getMarkdownTheme());
-    const rendered = markdown.render(Math.max(LIVE_MARKDOWN_PREVIEW_MIN_WIDTH, width));
-    if (rendered.length === 0) {
-      return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
-    }
-    if (rendered.length <= maxLines) {
-      return { lines: rendered, renderedAsMarkdown: true };
-    }
-    return { lines: rendered.slice(rendered.length - maxLines), renderedAsMarkdown: true };
-  } catch {
-    return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
-  }
-}
-
-function toTailLines(tail: string, limit: number): string[] {
-  const lines = tail
-    .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter(Boolean);
-  if (lines.length <= limit) return lines;
-  return lines.slice(lines.length - limit);
-}
-
-function formatDurationMs(item: SubagentLiveItem): string {
-  if (!item.startedAtMs) return "-";
-  const endMs = item.finishedAtMs ?? Date.now();
-  const durationMs = Math.max(0, endMs - item.startedAtMs);
-  const seconds = durationMs / 1000;
-  return `${seconds.toFixed(1)}s`;
 }
 
 function getLiveStatusGlyph(status: LiveItemStatus): string {
@@ -717,46 +633,6 @@ function buildFailureSummary(message: string): string {
 
 function buildRateLimitKey(provider: string, model: string): string {
   return `${provider.toLowerCase()}::${model.toLowerCase()}`;
-}
-
-function extractStatusCodeFromMessage(error: unknown): number | undefined {
-  const message = toErrorMessage(error);
-  const codeMatch = message.match(/\b(429|5\d{2})\b/);
-  if (!codeMatch) return undefined;
-  const code = Number(codeMatch[1]);
-  return Number.isFinite(code) ? code : undefined;
-}
-
-function classifyPressureError(error: unknown): "rate_limit" | "timeout" | "capacity" | "other" {
-  const message = toErrorMessage(error).toLowerCase();
-  if (message.includes("runtime limit reached") || message.includes("capacity")) return "capacity";
-  if (message.includes("timed out") || message.includes("timeout")) return "timeout";
-  const statusCode = extractStatusCodeFromMessage(error);
-  if (statusCode === 429 || message.includes("rate limit") || message.includes("too many requests")) {
-    return "rate_limit";
-  }
-  return "other";
-}
-
-function isCancelledErrorMessage(error: unknown): boolean {
-  const message = toErrorMessage(error).toLowerCase();
-  return (
-    message.includes("aborted") ||
-    message.includes("cancelled") ||
-    message.includes("canceled") ||
-    message.includes("中断") ||
-    message.includes("キャンセル")
-  );
-}
-
-function isTimeoutErrorMessage(error: unknown): boolean {
-  const message = toErrorMessage(error).toLowerCase();
-  return (
-    message.includes("timed out") ||
-    message.includes("timeout") ||
-    message.includes("time out") ||
-    message.includes("時間切れ")
-  );
 }
 
 function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal {
@@ -1295,12 +1171,6 @@ function getPaths(cwd: string): SubagentPaths {
     runsDir: join(baseDir, "runs"),
     storageFile: join(baseDir, "storage.json"),
   };
-}
-
-function ensureDir(path: string): void {
-  if (!existsSync(path)) {
-    mkdirSync(path, { recursive: true });
-  }
 }
 
 function ensurePaths(cwd: string): SubagentPaths {
@@ -3082,9 +2952,4 @@ Only skip fan-out when the task is truly trivial (single obvious step).
       systemPrompt: `${event.systemPrompt}${proactivePrompt}`,
     };
   });
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }

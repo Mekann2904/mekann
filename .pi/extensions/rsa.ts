@@ -7,6 +7,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
 import { spawn } from "node:child_process";
+import { formatDuration, toErrorMessage } from "../lib";
 
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 type TraceMode = "off" | "summary" | "verbose";
@@ -1480,12 +1481,6 @@ function toPreview(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars)}...`;
 }
 
-function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "0ms";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
 function formatTimeoutLabel(timeoutMs: number): string {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return "disabled";
   return `${timeoutMs}ms`;
@@ -1495,9 +1490,4 @@ function throwIfAborted(signal: AbortSignal | undefined) {
   if (signal?.aborted) {
     throw new Error("RSA aborted");
   }
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }
