@@ -1882,8 +1882,6 @@ interface ParsedTeamMarkdown {
   filePath: string;
 }
 
-const DEFINITIONS_DIR_NAME = "teams";
-
 function getTeamDefinitionsDir(cwd: string): string {
   return join(cwd, ".pi", "agent-teams", "definitions");
 }

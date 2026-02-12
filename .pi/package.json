@@ -1,7 +1,0 @@
-{
-  "name": "pi-mekann-extensions",
-  "dependencies": {
-    "@sinclair/typebox": "^0.32.0",
-    "@mariozechner/pi-ai": "latest"
-  }
-}

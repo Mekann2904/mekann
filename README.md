@@ -143,7 +143,6 @@ mekann/
 │   ├── BASH_COMMAND_UNBLOCK_SUMMARY.md    # bashコマンドブロック解除サマリー
 │   ├── PLAN_MODE_FIX_SUMMARY.md          # プランモード修正サマリー
 │   ├── PLAN_MODE_RESTRICTIONS_REMOVED.md # プランモード制限解除記録
-│   ├── package.json         # 拡張機能依存関係
 │   ├── test-bash.ts        # テストファイル
 │   └── test.sh              # テストスクリプト
 ├── docs/                    # ドキュメント
@@ -195,7 +194,7 @@ mekann/
 
 ## 🔧 前提条件
 
-- **Node.js v20以上** - piの要件
+- **Node.js v20.18.1以上** - piと依存関係の実行要件
 - **ターミナル実行環境**
 - **fzf** - fzf拡張機能で使用
 - **kitty (オプション)** - kitty-status-integration拡張機能で使用

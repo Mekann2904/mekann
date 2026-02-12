@@ -19,7 +19,7 @@ related: [./02-installation.md, ./03-first-steps.md]
 
 ```bash
 # Node.jsの確認
-node --version  # v20以上が必要
+node --version  # v20.18.1以上が必要
 
 # piの確認
 pi --version

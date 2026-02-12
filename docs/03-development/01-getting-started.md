@@ -17,7 +17,7 @@ related: [./03-api-reference.md, ../01-getting-started/02-installation.md]
 
 ### 前提条件
 
-- Node.js v20以上
+- Node.js v20.18.1以上
 - TypeScript
 - piがインストールされていること
 
