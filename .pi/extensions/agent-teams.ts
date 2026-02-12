@@ -1904,13 +1904,19 @@ function getGlobalTeamDefinitionsDir(): string {
   return join(getAgentBaseDirFromEnv(), "agent-teams", "definitions");
 }
 
+function getBundledTeamDefinitionsDir(): string | undefined {
+  // 拡張機能ファイルの隣接ディレクトリに同梱された定義を優先候補に含める。
+  // これにより git package 経由の global install でも定義を見つけられる。
+  if (typeof __dirname !== "string" || !__dirname) return undefined;
+  return join(__dirname, "..", "agent-teams", "definitions");
+}
+
 function getCandidateTeamDefinitionsDirs(cwd: string): string[] {
   const localDir = getTeamDefinitionsDir(cwd);
   const globalDir = getGlobalTeamDefinitionsDir();
-  if (localDir === globalDir) {
-    return [localDir];
-  }
-  return [localDir, globalDir];
+  const bundledDir = getBundledTeamDefinitionsDir();
+  const candidates = [localDir, globalDir, bundledDir].filter((dir): dir is string => Boolean(dir));
+  return Array.from(new Set(candidates));
 }
 
 /**
