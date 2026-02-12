@@ -7,7 +7,7 @@ tags: [overview, mekann]
 related: [docs/README.md, docs/01-getting-started/01-quick-start.md]
 ---
 
-# mekann
+# mekann（ベータ版）
 
 piコーディングエージェント用の拡張機能コレクション。エージェントオーケストレーション、インタラクティブツール、自律タスク実行、推論スケーリング機能を提供します。
 
