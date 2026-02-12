@@ -1,0 +1,52 @@
+.pi/agent-loop
+.pi/node_modules/
+node_modules
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Misc
+.turbo
+
+# Agent teams runtime data (exclude from version control, keep definitions)
+.pi/agent-teams/runs/
+.pi/agent-teams/storage.json
+
+# Agent subagents runtime data (exclude from version control, keep definitions)
+.pi/subagents/runs/
+.pi/subagents/storage.json
+
+# Analytics data
+.pi/analytics/
+
+# Plans runtime data
+.pi/plans/storage.json

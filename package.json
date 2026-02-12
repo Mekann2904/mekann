@@ -1,0 +1,10 @@
+{
+  "name": "pi-mekann-extensions",
+  "dependencies": {
+    "@mariozechner/pi-ai": "latest",
+    "@sinclair/typebox": "^0.32.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

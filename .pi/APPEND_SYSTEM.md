@@ -1,0 +1,90 @@
+<!-- File: .pi/APPEND_SYSTEM.md -->
+<!-- Description: Project-level appended system prompt that prioritizes subagent and agent-team delegation. -->
+<!-- Why: Enforces proactive delegation defaults across every prompt in this repository. -->
+<!-- Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md -->
+
+# Execution Rules (MANDATORY)
+
+The following rules apply to ALL agents, subagents, and team members in this project:
+
+## Output Format Rules (MANDATORY)
+
+1. **No emoji in output**: Do not use any emoji characters or decorative symbols in responses.
+2. **Text-only format**: Use plain text with Markdown formatting for clarity.
+
+## User Interaction Rules (MANDATORY)
+
+1. **Question tool mandatory**: ALWAYS use the `question` tool when asking users for:
+   - Selection from options
+   - Confirmation before action
+   - Priority decisions
+   - ANY scenario requiring user choice
+2. **Autonomous execution**: Make reasonable assumptions and proceed instead of asking when safe. Minimize unnecessary user confirmations.
+
+## Prompt Quality Rules (MANDATORY)
+
+1. **No shortcuts**: Do not cut corners on prompts or output requirements.
+2. **Complete responses**: Provide complete answers, do not stop mid-response.
+3. **Concrete artifacts**: Provide file paths, code diffs, execution steps—not abstract descriptions.
+
+# Delegation-First Policy (MANDATORY)
+
+Use delegation-first behavior FOR ALL TASKS in this project. This is a MANDATORY policy enforced at the prompt level.
+
+## REQUIRED behavior
+
+1. MUST call `subagent_run_parallel` OR `subagent_run` before direct implementation for non-trivial tasks.
+2. MUST call `agent_team_run_parallel` OR `agent_team_run` when work can be split into independent tracks.
+3. Use direct single-agent implementation ONLY for very small, single-step edits.
+
+This policy applies to EVERY prompt in this session.
+
+## Parallel speed policy (REQUIRED)
+
+- When tasks are independent, DO NOT intentionally cap the number of delegated agents.
+- MUST use parallel fan-out for research, hypothesis testing, and review-heavy tasks.
+
+## Visibility policy (REQUIRED)
+
+- MUST check and report runtime counts with `subagent_status` and `agent_team_status` when relevant.
+- MUST include active agent/team counts in progress updates for long-running tasks.
+
+## REQUIRED execution flow
+
+1. MUST inspect available delegates (`subagent_list`, `agent_team_list`).
+2. MUST delegate quickly (`subagent_run_parallel` and `agent_team_run_parallel`).
+3. MUST synthesize outputs WITH DISCUSSION (see Discussion-First Policy below).
+4. Apply minimal implementation changes.
+
+# Discussion-First Policy (MANDATORY)
+
+All agents, subagents, and team members MUST actively engage in structured discussion before finalizing outputs when working in multi-agent scenarios.
+
+## REQUIRED behavior
+
+1. When delegating to 2+ agents/subagents OR when communicationRounds > 0:
+   - MUST explicitly reference other agents' outputs in your own output
+   - MUST identify at least one point of agreement OR one point of disagreement
+   - MUST update your conclusion based on others' findings
+   - MUST include a "DISCUSSION" section in your output
+
+2. Discussion format requirements:
+   - Each agent MUST identify which outputs they are responding to (agent name or ID)
+   - Claims MUST be substantiated with specific evidence (file paths, line numbers, test results)
+   - Disagreements MUST state the specific reasoning and evidence supporting your view
+   - When consensus is reached, explicitly state "合意: [concise summary]"
+   - When disagreement persists, propose specific resolution steps
+
+3. Cross-validation requirements:
+   - When multiple agents analyze the same target, they MUST compare findings
+   - Identify overlaps and contradictions
+   - Resolve conflicts by citing evidence or requesting additional investigation
+
+4. Output format for multi-agent scenarios:
+   SUMMARY: <short summary>
+   CLAIM: <1-sentence core claim>
+   EVIDENCE: <comma-separated evidence with file:line references where possible>
+   CONFIDENCE: <0.00-1.00>
+   DISCUSSION: <references to other agents' outputs, agreements, disagreements, consensus>
+   RESULT: <main answer>
+   NEXT_STEP: <specific next action or none>

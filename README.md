@@ -1,1 +1,377 @@
+---
+title: mekann - pi拡張機能コレクション
+category: meta
+audience: new-user, developer
+last_updated: 2026-02-12
+tags: [overview, mekann]
+related: [docs/README.md, docs/01-getting-started/01-quick-start.md]
+---
+
 # mekann
+
+piコーディングエージェント用の拡張機能コレクション。エージェントオーケストレーション、インタラクティブツール、自律タスク実行、推論スケーリング機能を提供します。
+
+## 🚀 クイックスタート
+
+```bash
+# piのインストール
+npm install -g @mariozechner/pi-coding-agent
+
+# fzfのインストール（必要な場合）
+# macOSの場合:
+brew install fzf
+# Linuxの場合:
+sudo apt install fzf  # またはディストリビューションに合わせて
+# 詳しくは https://github.com/junegunn/fzf#installation を参照
+
+# mekannをインストール（グローバル）
+pi install https://github.com/Mekann2904/mekann
+
+# プロジェクトローカルに入れる場合
+pi install -l https://github.com/Mekann2904/mekann
+
+# 詳細なインストール手順はこちら
+→ [インストールガイド](docs/01-getting-started/02-installation.md)
+```
+
+### ワンライナー導入
+
+```bash
+pi install https://github.com/Mekann2904/mekann
+```
+
+### 管理コマンド
+
+```bash
+# インストール済み一覧
+pi list
+
+# 更新
+pi update
+
+# 削除
+pi remove https://github.com/Mekann2904/mekann
+```
+
+## 📖 あなたは誰ですか？
+
+| 役割 | スタート | 目的 |
+|------|---------|------|
+| **🟢 新規ユーザー** | [Getting Started](docs/01-getting-started/) | 5分で始めるインストールと基本操作 |
+| **📖 日常ユーザー** | [User Guide](docs/02-user-guide/) | 拡張機能の詳細な使い方 |
+| **🔧 開発者** | [Developer Guide](docs/03-development/) | 拡張機能開発とAPIリファレンス |
+
+## ✨ 拡張機能一覧
+
+### コア拡張機能
+
+| 拡張機能 | ファイル | 説明 | ドキュメント |
+|---------|---------|------|------------|
+| **question** | `question.ts` | インタラクティブUIでユーザー選択 | [→](docs/02-user-guide/02-question.md) |
+| **rsa_solve** | `rsa.ts` | 推論スケーリングとタスク分割 | [→](docs/02-user-guide/03-rsa-solve.md) |
+| **loop_run** | `loop.ts` | 自律ループ実行 | [→](docs/02-user-guide/04-loop-run.md) |
+| **fzf** | `fzf.ts` | Fuzzy finder統合 | [→](docs/02-user-guide/05-fzf.md) |
+| **abbr** | `abbr.ts` | 略語管理 | [→](docs/02-user-guide/06-abbr.md) |
+
+### オーケストレーション
+
+| 拡張機能 | ファイル | 説明 | ドキュメント |
+|---------|---------|------|------------|
+| **plan_*** | `plan.ts` | 計画管理とタスク追跡 | [→](docs/02-user-guide/07-plan.md) |
+| **subagent_*** | `subagents.ts` | サブエージェントの作成・実行 | [→](docs/02-user-guide/08-subagents.md) |
+| **agent_team_*** | `agent-teams.ts` | エージェントチームの作成・実行 | [→](docs/02-user-guide/09-agent-teams.md) |
+| **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
+
+### ユーティリティ
+
+| 拡張機能 | ファイル | 説明 | ドキュメント |
+|---------|---------|------|------------|
+| **usage-tracker** | `usage-tracker.ts` | LLM使用状況の追跡 | [→](docs/02-user-guide/11-utilities.md) |
+| **agent-usage-tracker** | `agent-usage-tracker.ts` | 拡張機能の使用統計 | [→](docs/02-user-guide/11-utilities.md) |
+| **context-dashboard** | `context-usage-dashboard.ts` | コンテキスト使用量ダッシュボード | [→](docs/02-user-guide/11-utilities.md) |
+| **agent-idle-indicator** | `agent-idle-indicator.ts` | エージェント実行状態の表示 | [→](docs/02-user-guide/11-utilities.md) |
+| **kitty-status-integration** | `kitty-status-integration.ts` | kittyターミナル連携 | [→](docs/02-user-guide/11-utilities.md) |
+
+### 共有ライブラリ
+
+| ライブラリ | ファイル | 説明 |
+|-----------|---------|------|
+| **agent-runtime** | `agent-runtime.ts` | ランタイム負荷制御と実行カウンタ共有（内部使用） |
+| **concurrency** | `lib/concurrency.ts` | 並列実行制限付きワーカープール（AbortSignal対応） |
+| **plan-mode-shared** | `lib/plan-mode-shared.ts` | プランモードの共有機能と定数 |
+| **retry-with-backoff** | `lib/retry-with-backoff.ts` | LLM失敗時の指数バックオフ付き再試行処理 |
+| **storage-lock** | `lib/storage-lock.ts` | ファイルロックとアトミック書き込みヘルパー |
+
+## 📁 プロジェクト構造
+
+```
+mekann/
+├── .pi/
+│   ├── extensions/          # 拡張機能の実装
+│   │   ├── question.ts      # インタラクティブUI
+│   │   ├── rsa.ts           # 推論スケーリング
+│   │   ├── loop.ts          # 自律ループ実行
+│   │   ├── fzf.ts           # Fuzzy finder統合
+│   │   ├── abbr.ts          # 略語管理
+│   │   ├── plan.ts          # 計画管理
+│   │   ├── subagents.ts     # サブエージェント
+│   │   ├── agent-teams.ts   # エージェントチーム
+│   │   ├── ul-dual-mode.ts  # デュアルモード
+│   │   ├── agent-runtime.ts # ランタイム制御（カウンタ共有）
+│   │   ├── usage-tracker.ts # LLM使用状況追跡
+│   │   ├── agent-usage-tracker.ts
+│   │   ├── context-usage-dashboard.ts
+│   │   ├── agent-idle-indicator.ts
+│   │   ├── kitty-status-integration.ts  # kitty統合
+│   ├── lib/                 # 共有ライブラリ
+│   │   ├── concurrency.ts          # 並列実行制限付きワーカープール
+│   │   ├── plan-mode-shared.ts     # プランモードの共有機能
+│   │   ├── retry-with-backoff.ts   # リトライ処理ヘルパー
+│   │   └── storage-lock.ts        # ファイルロックとアトミック書き込み
+│   ├── agent-teams/         # エージェントチームの履歴
+│   │   ├── runs/            # 実行履歴
+│   │   ├── storage.json     # チーム定義（実行時データ）
+│   │   └── definitions/     # チーム定義Markdown（新規）
+│   ├── subagents/           # サブエージェントの履歴
+│   │   ├── runs/            # 実行履歴
+│   │   └── storage.json     # エージェント定義
+│   ├── agent-loop/          # エージェントループの履歴（JSONL）
+│   ├── plans/               # プランの履歴
+│   ├── analytics/           # アナリティクスデータ
+│   │   └── agent-usage-stats.json
+│   ├── APPEND_SYSTEM.md     # プロジェクトレベルシステムプロンプト
+│   ├── BASH_COMMAND_UNBLOCK_SUMMARY.md    # bashコマンドブロック解除サマリー
+│   ├── PLAN_MODE_FIX_SUMMARY.md          # プランモード修正サマリー
+│   ├── PLAN_MODE_RESTRICTIONS_REMOVED.md # プランモード制限解除記録
+│   ├── package.json         # 拡張機能依存関係
+│   ├── test-bash.ts        # テストファイル
+│   └── test.sh              # テストスクリプト
+├── docs/                    # ドキュメント
+│   ├── 01-getting-started/  # インストールと初回使用
+│   │   ├── README.md
+│   │   ├── 01-quick-start.md
+│   │   ├── 02-installation.md
+│   │   └── 03-first-steps.md
+│   ├── 02-user-guide/       # ユーザーガイド
+│   │   ├── README.md
+│   │   ├── 01-extensions.md
+│   │   ├── 02-question.md
+│   │   └── 03-rsa-solve.md
+│   ├── 03-development/      # 開発者ガイド
+│   │   ├── README.md
+│   │   └── 01-getting-started.md
+│   ├── 04-reference/        # リファレンス
+│   │   ├── README.md
+│   │   ├── 01-configuration.md
+│   │   ├── 02-data-storage.md
+│   │   └── 03-troubleshooting.md
+│   ├── 05-meta/             # メタ情報
+│   │   ├── README.md
+│   │   ├── 01-changelog.md
+│   │   ├── 02-documentation-policy.md
+│   │   ├── 03-roadmap.md
+│   │   ├── 04-development-workflow.md
+│   │   └── 99-archive/
+│   ├── _template.md         # ドキュメントテンプレート
+│   └── README.md
+├── scripts/                 # スクリプト
+│   └── test-kitty-extension.sh
+├── CHANGELOG.md             # 変更履歴
+└── README.md                # このファイル
+```
+
+> **注**: 詳細な拡張機能ドキュメントは現在順次作成中です。すべての拡張機能の概要については [拡張機能ガイド](docs/02-user-guide/01-extensions.md) を参照してください。
+
+## 📚 ドキュメント
+
+すべてのドキュメントは [docs/](docs/) にあります。
+
+- [ドキュメントホーム](docs/README.md)
+- [Getting Started](docs/01-getting-started/) - インストールと初回使用
+- [User Guide](docs/02-user-guide/) - 拡張機能の詳細ガイド
+- [Developer Guide](docs/03-development/) - 拡張機能開発とAPI
+- [Reference](docs/04-reference/) - 設定とトラブルシューティング
+- [Meta](docs/05-meta/) - 変更履歴、ロードマップ、ドキュメントポリシー
+
+## 🔧 前提条件
+
+- **Node.js v20以上** - piの要件
+- **ターミナル実行環境**
+- **fzf** - fzf拡張機能で使用
+- **kitty (オプション)** - kitty-status-integration拡張機能で使用
+
+詳しくは [インストールガイド](docs/01-getting-started/02-installation.md) を参照してください。
+
+## 🔑 主要機能
+
+### 利用可能なコマンド
+
+| カテゴリ | コマンド | 説明 |
+|---------|---------|------|
+| **UI** | `question` | インタラクティブな質問UI |
+| **推論** | `rsa_solve` | 推論スケーリング |
+| **ループ** | `loop_run` | 自律ループ実行 |
+| **検索** | `fzf` | ファジーファインダー |
+| **略語** | `abbr` | 略語の管理 |
+| **計画** | `plan_create` | プランの作成 |
+| | `plan_show` | プランの詳細表示 |
+| | `plan_add_step` | プランへのステップ追加 |
+| | `plan_update_step` | ステップの状態更新 |
+| | `plan_update_status` | プランの状態更新 |
+| | `plan_list` | プラン一覧の表示 |
+| | `plan_delete` | プランの削除 |
+| | `plan_ready_steps` | 実行可能なステップの表示 |
+| **サブエージェント** | `subagent_create` | サブエージェントの定義作成 |
+| | `subagent_run` | サブエージェントの実行 |
+| | `subagent_run_parallel` | サブエージェントの並列実行 |
+| | `subagent_configure` | サブエージェント設定更新 |
+| | `subagent_list` | 定義済みエージェント一覧 |
+| | `subagent_status` | 実行中のエージェント状態 |
+| | `subagent_runs` | 実行履歴の表示 |
+| **エージェントチーム** | `agent_team_create` | エージェントチームの定義作成 |
+| | `agent_team_run` | エージェントチームの実行 |
+| | `agent_team_run_parallel` | エージェントチームの並列実行 |
+| | `agent_team_configure` | チーム設定更新 |
+| | `agent_team_list` | 定義済みチーム一覧 |
+| | `agent_team_status` | 実行中のチーム状態 |
+| | `agent_team_runs` | 実行履歴の表示 |
+| **UL Dual-Orchestration** | `ulmode` | UL Dual-Orchestrationモードの切り替え |
+| **ユーティリティ** | `agent_usage_stats` | 拡張機能使用統計 |
+| | `context-usage` | コンテキスト使用量表示 |
+
+## 🛡️ Runtime Load Guard
+
+2026-02-11 以降、`subagent_run` / `subagent_run_parallel` / `agent_team_run` / `agent_team_run_parallel` には実行上限ガードが実装されています。
+
+### デフォルト上限
+
+| 項目 | デフォルト（Stable Profile） | 説明 |
+|------|-----------------------------|------|
+| 総同時実行（LLM数） | 4 | 同時に実行可能なLLMの最大数 |
+| 総同時実行（request数） | 2 | 同時に実行可能なリクエストの最大数 |
+| サブエージェント並列数 | 2 | 1リクエスト内のサブエージェント並列数 |
+| チーム並列数 | 1 | 1リクエスト内のチーム並列数 |
+| チーム内メンバー並列数 | 3 | 1チーム内のメンバー並列数 |
+
+> **注**: このプロジェクトではStable Profileが有効になっています。環境変数で個別の上限値を上書きできます。
+
+### 上限の確認
+
+`subagent_status` と `agent_team_status` で、現在値と上限値を確認できます。
+
+### 上限の調整
+
+環境変数で上限を調整できます（Stable Profileのデフォルト値から上書きされます）。
+
+```bash
+PI_AGENT_MAX_TOTAL_LLM=4
+PI_AGENT_MAX_TOTAL_REQUESTS=2
+PI_AGENT_MAX_PARALLEL_SUBAGENTS=2
+PI_AGENT_MAX_PARALLEL_TEAMS=1
+PI_AGENT_MAX_PARALLEL_TEAMMATES=3
+PI_AGENT_CAPACITY_WAIT_MS=30000      # 待機時間（デフォルト30秒）
+PI_AGENT_CAPACITY_POLL_MS=250        # ポーリング間隔（デフォルト250ms）
+```
+
+### 上限到達時の動作
+
+上限到達時は即失敗ではなく、一定時間まで順番待ちします（待機後も空かなければ失敗）。
+
+## 🤝 貢献
+
+貢献を歓迎します！開発ガイドは [Developer Guide](docs/03-development/) を参照してください。
+
+### Delegation-First Policy
+
+このプロジェクトでは、タスク実行において**Delegation-First（委任優先）ポリシー**を推奨しています。
+
+**重要**: `.pi/APPEND_SYSTEM.md` では参照されていますが、ツールレベルでの強制は無効化されています（2026-02-11以降）。このポリシーは**ガイドライン**として機能します。
+
+推奨されるアプローチ:
+- 非自明なタスクは `subagent_run` または `subagent_run_parallel` を使用して委任する
+- 独立したタスクトラックは `agent_team_run` または `agent_team_run_parallel` で並列実行する
+- 単一エージェントによる直接実行は、小さな単一ステップの編集に限定する
+
+詳細は [`.pi/APPEND_SYSTEM.md`](.pi/APPEND_SYSTEM.md) を参照してください。
+
+### Plan Mode
+
+Plan Mode（計画モード）は現在、制限なしで使用可能です。ツールレベルでのブロック機能は無効化されています。
+
+### 定義済みサブエージェント
+
+| エージェント | 説明 |
+|------------|------|
+| **researcher** | コードとドキュメントの調査専門家。広範な発見と事実収集に最適 |
+| **architect** | 設計重視のヘルパー。分解、制約、移行計画の作成 |
+| **implementer** | スコープ内のコーディングタスクと修正の実装ヘルパー |
+| **reviewer** | リスクチェック、テスト、品質フィードバックの読み取り専用レビュー担当者 |
+| **tester** | 再現可能なチェックと最小限のテスト計画に焦点を当てた検証ヘルパー |
+
+### 定義済みエージェントチーム
+
+| チーム名 | 説明 |
+|---------|------|
+| **core-delivery-team** | ほとんどのコーディングタスクに対応するバランスのとれたチーム（研究、実装、レビュー、設計、テスト、リスク） |
+| **bug-war-room** | 競合する仮説、決定論的再現、最終的なコンセンサスを含む根本原因タスクフォース |
+| **code-excellence-review-team** | 可読性、エレガンス、保守性、長期的な運用性のための包括的なコードレビューチーム |
+| **design-discovery-team** | 創造的な作業を行う前に必ず実施する設計発見タスクフォース。要件収集、トレードオフ評価、設計策定・検証を行い、実装前の完全な設計仕様を確立 |
+| **docs-enablement-team** | README、運用手順、例、簡潔な変更サマリーのドキュメントチーム |
+| **file-organizer-team** | ファイル・フォルダの整理に特化したタスクフォース。現状分析、重複検出、整理計画策定、実行・検証を行い、デジタルワークスペースを整頓 |
+| **rapid-swarm-team** | 多数の並列ワーカーを持つスピード重視チーム。独立したスライスを攻撃的に展開する場合に使用 |
+| **refactor-migration-team** | 影響分析、移行計画、実装戦略、互換性チェックのためのリファクタ重視チーム |
+| **security-hardening-team** | 脅威分析、認証チェック、依存関係リスク監査、パッチレビューのためのセキュリティ重視チーム |
+
+> **現在、9つの定義済みチームが提供されています。**
+
+## 🔍 プロジェクトの特徴
+
+### 完全な拡張機能セット
+
+- **インタラクティブUI**: question, fzfによる対話的選択
+- **推論スケーリング**: rsa_solveによる反復的集約と品質向上
+- **自律実行**: loop_runによるタスクループ
+- **並列委任**: subagents, agent-teamsによるタスク分散
+- **可視化**: context-dashboard, agent-idle-indicatorによる状態監視
+- **ランタイム制御**: agent-runtimeによるカウンタ共有、concurrency.tsによる並列実行制限、storage-lock.tsによる同時実行保護
+
+### 開発者向け
+
+- TypeScriptで書かれた拡張機能の実例
+- pi SDKのイベント、ツール、UIコンポーネントの活用
+- 再読み込み可能な拡張機能（`/reload` コマンド）
+- セッション永続化と状態管理のパターン
+
+### トラッキング・分析
+
+- LLM使用量の追跡（トークン、コスト）
+- 拡張機能ごとの使用統計
+- エージェント実行履歴のログ記録
+- コンテキスト使用量の可視化
+
+## 📄 ライセンス
+
+MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照してください
+
+## Version
+
+**v0.2.0** (2026-02-12)
+
+v0.1.0からの変更点:
+- エージェントチーム定義のMarkdown外部化
+- design-discovery-team、file-organizer-teamの追加
+- plugin-dev.tsのドキュメント削除
+- Runtime Load Guardのstable profileデフォルト値調整
+
+---
+
+**v0.1.0** (2026-02-11)
+
+初期リリース - pi拡張機能コレクション
+
+## 🔗 リンク
+
+- [GitHub Repository](https://github.com/Mekann2904/mekann)
+- [pi Documentation](https://github.com/mariozechner/pi-coding-agent)
+- [変更履歴](CHANGELOG.md)
+- [ロードマップ](docs/05-meta/03-roadmap.md)
