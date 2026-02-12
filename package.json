@@ -1,10 +1,31 @@
 {
   "name": "pi-mekann-extensions",
+  "version": "0.2.1",
+  "description": "mekann extensions package for pi",
   "dependencies": {
     "@mariozechner/pi-ai": "latest",
     "@sinclair/typebox": "^0.32.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
+  },
+  "pi": {
+    "extensions": [
+      "./.pi/extensions/abbr.ts",
+      "./.pi/extensions/agent-idle-indicator.ts",
+      "./.pi/extensions/agent-runtime.ts",
+      "./.pi/extensions/agent-teams.ts",
+      "./.pi/extensions/agent-usage-tracker.ts",
+      "./.pi/extensions/context-usage-dashboard.ts",
+      "./.pi/extensions/fzf.ts",
+      "./.pi/extensions/kitty-status-integration.ts",
+      "./.pi/extensions/loop.ts",
+      "./.pi/extensions/plan.ts",
+      "./.pi/extensions/question.ts",
+      "./.pi/extensions/rsa.ts",
+      "./.pi/extensions/subagents.ts",
+      "./.pi/extensions/ul-dual-mode.ts",
+      "./.pi/extensions/usage-tracker.ts"
+    ]
   }
 }
