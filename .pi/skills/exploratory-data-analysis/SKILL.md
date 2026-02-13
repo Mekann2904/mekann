@@ -5,7 +5,7 @@ license: MIT
 metadata:
   skill-version: "1.0.0"
   created: "2026-02-13"
-  author: "Mekann"
+  skill-author: "Mekann"
   categories: chemistry,bioinformatics,microscopy,spectroscopy,proteomics,metabolomics,general-scientific
   file-formats: "200+"
   reference: "https://github.com/K-Dense-AI/claude-scientific-skills"
