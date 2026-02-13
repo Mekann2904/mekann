@@ -111,3 +111,54 @@ export {
 
 // Runtime error builders (Layer 1)
 export { resolveEffectiveTimeoutMs } from "./runtime-error-builders.js";
+
+// Storage base utilities (Layer 2)
+export {
+  type HasId,
+  type BaseRunRecord,
+  type BaseStoragePaths,
+  type BaseStorage,
+  createPathsFactory,
+  createEnsurePaths,
+  pruneRunArtifacts,
+  mergeEntitiesById,
+  mergeRunsById,
+  resolveCurrentId,
+  resolveDefaultsVersion,
+  createStorageLoader,
+  createStorageSaver,
+  toId,
+  mergeSubagentStorageWithDisk,
+  mergeTeamStorageWithDisk,
+} from "./storage-base.js";
+
+// Live monitor base utilities (Layer 2)
+export {
+  type LiveItemStatus,
+  type LiveStreamView,
+  type LiveViewMode,
+  type BaseLiveItem,
+  type BaseLiveMonitorController,
+  type CreateLiveItemInput,
+  type LiveMonitorFactoryOptions,
+  type LiveViewHeaderData,
+  type HandleInputResult,
+  createBaseLiveItem,
+  appendStreamChunk,
+  getStreamTail,
+  getStreamBytes,
+  getStreamLineCount,
+  renderLiveViewHeader,
+  renderListKeyboardHints,
+  renderDetailKeyboardHints,
+  renderListWindow,
+  renderBaseListItemLine,
+  renderSelectedItemSummary,
+  renderDetailHeader,
+  renderStreamOutput,
+  handleListModeInput,
+  handleDetailModeInput,
+  applyInputResult,
+  LIVE_PREVIEW_LINE_LIMIT,
+  LIVE_LIST_WINDOW_SIZE,
+} from "./live-monitor-base.js";

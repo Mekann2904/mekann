@@ -1,11 +1,20 @@
 /**
  * Subagent storage module.
  * Handles persistence for subagent definitions and run records.
+ *
+ * Refactored to use common storage utilities from lib/storage-base.ts
+ * to eliminate DRY violations with agent-teams/storage.ts.
  */
 
-import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
-import { basename, join } from "node:path";
-import { ensureDir } from "../../lib/fs-utils.js";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  createPathsFactory,
+  createEnsurePaths,
+  pruneRunArtifacts,
+  mergeSubagentStorageWithDisk as mergeStorageWithDiskCommon,
+  type BaseStoragePaths,
+} from "../../lib/storage-base.js";
 import { atomicWriteTextFile, withFileLock } from "../../lib/storage-lock.js";
 
 // Re-export types for convenience
@@ -43,37 +52,16 @@ export interface SubagentStorage {
   defaultsVersion?: number;
 }
 
-export interface SubagentPaths {
-  baseDir: string;
-  runsDir: string;
-  storageFile: string;
-}
+export interface SubagentPaths extends BaseStoragePaths {}
 
 // Constants
 export const MAX_RUNS_TO_KEEP = 100;
 export const SUBAGENT_DEFAULTS_VERSION = 2;
 
-/**
- * Get storage paths for subagent data.
- */
-export function getPaths(cwd: string): SubagentPaths {
-  const baseDir = join(cwd, ".pi", "subagents");
-  return {
-    baseDir,
-    runsDir: join(baseDir, "runs"),
-    storageFile: join(baseDir, "storage.json"),
-  };
-}
-
-/**
- * Ensure storage directories exist.
- */
-export function ensurePaths(cwd: string): SubagentPaths {
-  const paths = getPaths(cwd);
-  ensureDir(paths.baseDir);
-  ensureDir(paths.runsDir);
-  return paths;
-}
+// Use common path factory
+const getBasePaths = createPathsFactory("subagents");
+export const getPaths = getBasePaths as (cwd: string) => SubagentPaths;
+export const ensurePaths = createEnsurePaths(getPaths);
 
 /**
  * Create default subagent definitions.
@@ -135,6 +123,7 @@ export function createDefaultAgents(nowIso: string): SubagentDefinition[] {
 
 /**
  * Merge existing subagent with default values.
+ * Note: Kept locally because this is subagent-specific merge logic.
  */
 function mergeDefaultSubagent(
   existing: SubagentDefinition,
@@ -156,6 +145,7 @@ function mergeDefaultSubagent(
 
 /**
  * Ensure storage has default agents.
+ * Note: Kept locally because default agent logic is subagent-specific.
  */
 function ensureDefaults(storage: SubagentStorage, nowIso: string): SubagentStorage {
   const defaults = createDefaultAgents(nowIso);
@@ -191,118 +181,24 @@ function ensureDefaults(storage: SubagentStorage, nowIso: string): SubagentStora
 }
 
 /**
- * Prune old run artifacts from disk.
- */
-function pruneSubagentRunArtifacts(paths: SubagentPaths, runs: SubagentRunRecord[]): void {
-  let files: string[] = [];
-  try {
-    files = readdirSync(paths.runsDir);
-  } catch {
-    return;
-  }
-
-  const keep = new Set(
-    runs
-      .map((run) => basename(run.outputFile || ""))
-      .filter((name) => name.endsWith(".json")),
-  );
-  if (runs.length > 0 && keep.size === 0) {
-    return;
-  }
-
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    if (keep.has(file)) continue;
-    try {
-      unlinkSync(join(paths.runsDir, file));
-    } catch {
-      // noop
-    }
-  }
-}
-
-/**
  * Merge storage with disk state (for concurrent access).
+ * Uses common utility from lib/storage-base.ts.
  */
 function mergeSubagentStorageWithDisk(
   storageFile: string,
   next: SubagentStorage,
 ): SubagentStorage {
-  let disk: Partial<SubagentStorage> = {};
-  try {
-    if (existsSync(storageFile)) {
-      disk = JSON.parse(readFileSync(storageFile, "utf-8")) as Partial<SubagentStorage>;
-    }
-  } catch {
-    disk = {};
-  }
-
-  const diskAgents = Array.isArray(disk.agents) ? disk.agents : [];
-  const nextAgents = Array.isArray(next.agents) ? next.agents : [];
-  const agentById = new Map<string, SubagentDefinition>();
-  for (const agent of diskAgents) {
-    if (!agent || typeof agent !== "object") continue;
-    if (typeof (agent as { id?: unknown }).id !== "string") continue;
-    const id = (agent as { id: string }).id.trim();
-    if (!id) continue;
-    agentById.set(agent.id, agent);
-  }
-  for (const agent of nextAgents) {
-    if (!agent || typeof agent !== "object") continue;
-    if (typeof (agent as { id?: unknown }).id !== "string") continue;
-    const id = (agent as { id: string }).id.trim();
-    if (!id) continue;
-    agentById.set(agent.id, agent);
-  }
-  const mergedAgents = Array.from(agentById.values());
-
-  const diskRuns = Array.isArray(disk.runs) ? disk.runs : [];
-  const nextRuns = Array.isArray(next.runs) ? next.runs : [];
-  const runById = new Map<string, SubagentRunRecord>();
-  for (const run of diskRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  for (const run of nextRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  const mergedRuns = Array.from(runById.values())
-    .sort((left, right) => {
-      const leftKey = left.finishedAt || left.startedAt || "";
-      const rightKey = right.finishedAt || right.startedAt || "";
-      return leftKey.localeCompare(rightKey);
-    })
-    .slice(-MAX_RUNS_TO_KEEP);
-
-  const candidateCurrent =
-    typeof next.currentAgentId === "string" && next.currentAgentId.trim()
-      ? next.currentAgentId
-      : typeof disk.currentAgentId === "string" && disk.currentAgentId.trim()
-        ? disk.currentAgentId
-        : undefined;
-  const currentAgentId =
-    candidateCurrent && mergedAgents.some((agent) => agent.id === candidateCurrent)
-      ? candidateCurrent
-      : mergedAgents[0]?.id;
-
-  const diskDefaults =
-    typeof disk.defaultsVersion === "number" && Number.isFinite(disk.defaultsVersion)
-      ? Math.trunc(disk.defaultsVersion)
-      : 0;
-
-  return {
-    agents: mergedAgents,
-    runs: mergedRuns,
-    currentAgentId,
-    defaultsVersion: Math.max(SUBAGENT_DEFAULTS_VERSION, diskDefaults),
-  };
+  return mergeStorageWithDiskCommon(
+    storageFile,
+    {
+      agents: next.agents,
+      runs: next.runs,
+      currentAgentId: next.currentAgentId,
+      defaultsVersion: next.defaultsVersion,
+    },
+    SUBAGENT_DEFAULTS_VERSION,
+    MAX_RUNS_TO_KEEP,
+  ) as SubagentStorage;
 }
 
 /**
@@ -355,6 +251,6 @@ export function saveStorage(cwd: string, storage: SubagentStorage): void {
   withFileLock(paths.storageFile, () => {
     const merged = mergeSubagentStorageWithDisk(paths.storageFile, normalized);
     atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
-    pruneSubagentRunArtifacts(paths, merged.runs);
+    pruneRunArtifacts(paths, merged.runs);
   });
 }
