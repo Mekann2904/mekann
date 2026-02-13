@@ -7,7 +7,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
 import { spawn } from "node:child_process";
-import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel } from "../lib";
+import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, GRACEFUL_SHUTDOWN_DELAY_MS } from "../lib";
 type TraceMode = "off" | "summary" | "verbose";
 
 interface RSAConfig {
@@ -1009,7 +1009,7 @@ async function callModelViaPi(
 
     const onAbort = () => {
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
+      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
       finish(() => reject(new Error("RSA aborted")));
     };
 
@@ -1019,7 +1019,7 @@ async function callModelViaPi(
       ? setTimeout(() => {
           timedOut = true;
           killSafely("SIGTERM");
-          setTimeout(() => killSafely("SIGKILL"), 500);
+          setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
         }, timeoutMs)
       : undefined;
 

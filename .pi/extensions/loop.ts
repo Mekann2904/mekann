@@ -11,7 +11,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
-import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId } from "../lib";
+import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, GRACEFUL_SHUTDOWN_DELAY_MS } from "../lib";
 type LoopStatus = "continue" | "done" | "unknown";
 type LoopGoalStatus = "met" | "not_met" | "unknown";
 
@@ -1897,14 +1897,14 @@ async function callModelViaPi(
 
     const onAbort = () => {
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
+      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
       finish(() => rejectPromise(new Error("loop aborted")));
     };
 
     const timeout = setTimeout(() => {
       timedOut = true;
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
+      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
     }, timeoutMs);
 
     const cleanup = () => {
@@ -2032,7 +2032,7 @@ async function runVerificationCommand(input: {
 
     const onAbort = () => {
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
+      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
       finish({
         passed: false,
         timedOut: false,
@@ -2044,7 +2044,7 @@ async function runVerificationCommand(input: {
     const timeout = setTimeout(() => {
       timedOut = true;
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
+      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
     }, input.timeoutMs);
 
     const cleanup = () => {

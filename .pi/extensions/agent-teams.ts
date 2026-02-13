@@ -64,6 +64,7 @@ import {
   RunOutcomeCode,
   RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
+  GRACEFUL_SHUTDOWN_DELAY_MS,
 } from "../lib";
 
 type TeamEnabledState = "enabled" | "disabled";
@@ -2729,7 +2730,7 @@ async function runPiPrintMode(input: {
       if (forceKillTimer) {
         clearTimeout(forceKillTimer);
       }
-      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), 500);
+      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
       finish(() => rejectPromise(new Error("agent team run aborted")));
     };
 
@@ -2741,7 +2742,7 @@ async function runPiPrintMode(input: {
           if (forceKillTimer) {
             clearTimeout(forceKillTimer);
           }
-          forceKillTimer = setTimeout(() => killSafely("SIGKILL"), 500);
+          forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
         }, input.timeoutMs)
       : undefined;
 
