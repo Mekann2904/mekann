@@ -30,6 +30,9 @@ import {
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
 import {
+  createAdaptivePenaltyController,
+} from "../lib/adaptive-penalty.js";
+import {
   getRateLimitGateSnapshot,
   isRetryableError,
   retryWithBackoff,
@@ -66,6 +69,18 @@ import {
   DEFAULT_AGENT_TIMEOUT_MS,
   GRACEFUL_SHUTDOWN_DELAY_MS,
   computeModelTimeoutMs,
+  getLiveStatusGlyph,
+  isEnterInput,
+  finalizeLiveLines,
+  type LiveStatus,
+  hasIntentOnlyContent,
+  validateTeamMemberOutput,
+  trimForError,
+  buildRateLimitKey,
+  buildTraceTaskId,
+  normalizeTimeoutMs,
+  createRetrySchema,
+  toConcurrencyLimit,
 } from "../lib";
 
 type TeamEnabledState = "enabled" | "disabled";
@@ -202,12 +217,13 @@ const STABLE_AGENT_TEAM_MAX_RATE_LIMIT_RETRIES = 6;
 const STABLE_AGENT_TEAM_MAX_RATE_LIMIT_WAIT_MS = 90_000;
 
 const runtimeState = getSharedRuntimeState().teams;
-const adaptiveParallelState = {
-  penalty: 0,
-  updatedAtMs: Date.now(),
-};
+const adaptivePenalty = createAdaptivePenaltyController({
+  isStable: STABLE_AGENT_TEAM_RUNTIME,
+  maxPenalty: ADAPTIVE_PARALLEL_MAX_PENALTY,
+  decayMs: ADAPTIVE_PARALLEL_DECAY_MS,
+});
 
-type TeamLiveStatus = "pending" | "running" | "completed" | "failed";
+type TeamLiveStatus = LiveStatus;
 type TeamLivePhase = "queued" | "initial" | "communication" | "judge" | "finished";
 type LiveStreamView = "stdout" | "stderr";
 type LiveViewMode = "list" | "detail" | "discussion";
@@ -282,37 +298,6 @@ function pushLiveEvent(item: TeamLiveItem, rawEvent: string): void {
 function toEventTailLines(events: string[], limit: number): string[] {
   if (events.length <= limit) return [...events];
   return events.slice(events.length - limit);
-}
-
-function getLiveStatusGlyph(status: TeamLiveStatus): string {
-  if (status === "completed") return "OK";
-  if (status === "failed") return "!!";
-  if (status === "running") return ">>";
-  return "..";
-}
-
-function isEnterInput(rawInput: string): boolean {
-  return (
-    matchesKey(rawInput, Key.enter) ||
-    rawInput === "\r" ||
-    rawInput === "\n" ||
-    rawInput === "\r\n" ||
-    rawInput === "enter"
-  );
-}
-
-function finalizeLiveLines(lines: string[], height?: number): string[] {
-  if (!height || height <= 0) {
-    return lines;
-  }
-  if (lines.length > height) {
-    return lines.slice(0, height);
-  }
-  const padded = [...lines];
-  while (padded.length < height) {
-    padded.push("");
-  }
-  return padded;
 }
 
 function toTeamLiveItemKey(teamId: string, memberId: string): string {
@@ -869,12 +854,6 @@ function createAgentTeamLiveMonitor(
   };
 }
 
-function trimForError(message: string, maxLength = 600): string {
-  const normalized = message.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength)}...`;
-}
-
 function isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean {
   if (isRetryableError(error, statusCode)) {
     return true;
@@ -1028,98 +1007,6 @@ function resolveTeamParallelRunOutcome(
       };
 }
 
-function buildTraceTaskId(traceId: string | undefined, delegateId: string, sequence: number): string {
-  const safeTrace = (traceId || "trace-unknown").trim();
-  const safeDelegate = (delegateId || "delegate-unknown").trim();
-  return `${safeTrace}:${safeDelegate}:${Math.max(0, Math.trunc(sequence))}`;
-}
-
-function decayAdaptivePenalty(nowMs = Date.now()): void {
-  if (STABLE_AGENT_TEAM_RUNTIME) return;
-  const elapsed = Math.max(0, nowMs - adaptiveParallelState.updatedAtMs);
-  if (adaptiveParallelState.penalty <= 0 || elapsed < ADAPTIVE_PARALLEL_DECAY_MS) return;
-  const steps = Math.floor(elapsed / ADAPTIVE_PARALLEL_DECAY_MS);
-  if (steps <= 0) return;
-  adaptiveParallelState.penalty = Math.max(0, adaptiveParallelState.penalty - steps);
-  adaptiveParallelState.updatedAtMs = nowMs;
-}
-
-function raiseAdaptivePenalty(reason: "rate_limit" | "timeout" | "capacity"): void {
-  if (STABLE_AGENT_TEAM_RUNTIME) {
-    void reason;
-    return;
-  }
-  decayAdaptivePenalty();
-  adaptiveParallelState.penalty = Math.min(
-    ADAPTIVE_PARALLEL_MAX_PENALTY,
-    adaptiveParallelState.penalty + 1,
-  );
-  adaptiveParallelState.updatedAtMs = Date.now();
-  void reason;
-}
-
-function lowerAdaptivePenalty(): void {
-  if (STABLE_AGENT_TEAM_RUNTIME) return;
-  decayAdaptivePenalty();
-  if (adaptiveParallelState.penalty <= 0) return;
-  adaptiveParallelState.penalty = Math.max(0, adaptiveParallelState.penalty - 1);
-  adaptiveParallelState.updatedAtMs = Date.now();
-}
-
-function getAdaptivePenalty(): number {
-  if (STABLE_AGENT_TEAM_RUNTIME) return 0;
-  decayAdaptivePenalty();
-  return adaptiveParallelState.penalty;
-}
-
-function applyAdaptiveParallelLimit(baseLimit: number): number {
-  if (STABLE_AGENT_TEAM_RUNTIME) return Math.max(1, Math.trunc(baseLimit));
-  const penalty = getAdaptivePenalty();
-  if (penalty <= 0) return baseLimit;
-  const divisor = penalty + 1;
-  return Math.max(1, Math.floor(baseLimit / divisor));
-}
-
-function hasIntentOnlyContent(output: string): boolean {
-  const compact = output.replace(/\s+/g, " ").trim();
-  if (!compact) return false;
-  const lower = compact.toLowerCase();
-  const enIntentOnly =
-    (lower.startsWith("i'll ") || lower.startsWith("i will ") || lower.startsWith("let me ")) &&
-    /(analy|review|investig|start|check|examin|look)/.test(lower);
-  const jaIntentOnly =
-    /(確認|調査|分析|レビュー|検討|開始).{0,20}(します|します。|していきます|しますね|します。)/.test(compact);
-  return enIntentOnly || jaIntentOnly;
-}
-
-function validateTeamMemberOutput(output: string): { ok: boolean; reason?: string } {
-  const trimmed = output.trim();
-  if (!trimmed) {
-    return { ok: false, reason: "empty output" };
-  }
-
-  const minChars = 80;
-  if (trimmed.length < minChars) {
-    return { ok: false, reason: `too short (${trimmed.length} chars)` };
-  }
-
-  const requiredLabels = ["SUMMARY:", "CLAIM:", "EVIDENCE:", "CONFIDENCE:", "RESULT:", "NEXT_STEP:"];
-  const missingLabels = requiredLabels.filter((label) => !new RegExp(`^\\s*${label}`, "im").test(trimmed));
-  if (missingLabels.length > 0) {
-    return { ok: false, reason: `missing labels: ${missingLabels.join(", ")}` };
-  }
-
-  const nonEmptyLines = trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (nonEmptyLines.length <= 4 && hasIntentOnlyContent(trimmed)) {
-    return { ok: false, reason: "intent-only output" };
-  }
-
-  return { ok: true };
-}
-
 interface TeamNormalizedOutput {
   ok: boolean;
   output: string;
@@ -1127,6 +1014,10 @@ interface TeamNormalizedOutput {
   reason?: string;
 }
 
+/**
+ * Pick a candidate text for a field from unstructured output.
+ * Note: Kept locally because the field format is team-member-specific.
+ */
 function pickTeamFieldCandidate(text: string, maxLength: number): string {
   const lines = text
     .split(/\r?\n/)
@@ -1145,6 +1036,14 @@ function pickTeamFieldCandidate(text: string, maxLength: number): string {
   return compact.length <= maxLength ? compact : `${compact.slice(0, maxLength)}...`;
 }
 
+/**
+ * Normalize team member output to required format.
+ * Note: Kept locally (not in lib) because:
+ * - Uses team-member-specific SUMMARY/CLAIM/EVIDENCE/CONFIDENCE/RESULT/NEXT_STEP format
+ * - Has team-member-specific fallback messages (Japanese)
+ * - Uses pickTeamFieldCandidate which is team-member-specific
+ * Subagent output has different requirements (only SUMMARY/RESULT/NEXT_STEP).
+ */
 function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -1190,16 +1089,12 @@ function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput {
   };
 }
 
-function normalizeTimeoutMs(value: unknown, fallback: number): number {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return 0;
-  return Math.max(1, Math.trunc(resolved));
-}
-
 /**
  * Resolve effective timeout with model-specific adjustment.
  * Priority: user-specified > model-specific > default
+ *
+ * Note: Kept locally (not in lib) because it may be extended with team-specific
+ * timeout adjustments in the future. Currently identical to subagents version.
  */
 function resolveEffectiveTimeoutMs(
   userTimeoutMs: unknown,
@@ -1214,7 +1109,7 @@ function resolveEffectiveTimeoutMs(
 
   // Priority 2: Model-specific timeout
   if (modelId && modelId !== "(session-default)") {
-    return computeModelTimeoutMs(modelId, { defaultTimeoutMs: fallback });
+    return computeModelTimeoutMs(modelId);
   }
 
   // Priority 3: Default
@@ -1262,10 +1157,6 @@ function shouldRetryFailedMemberResult(result: TeamMemberResult, retryRound: num
 function shouldPreferAnchorMember(member: TeamMember): boolean {
   const source = `${member.id} ${member.role}`.toLowerCase();
   return /consensus|synthesizer|reviewer|lead|judge/.test(source);
-}
-
-function buildRateLimitKey(provider: string, model: string): string {
-  return `${provider.toLowerCase()}::${model.toLowerCase()}`;
 }
 
 function createCommunicationLinksMap(members: TeamMember[]): Map<string, string[]> {
@@ -1396,18 +1287,8 @@ function detectPartnerReferences(
   };
 }
 
-function createRetrySchema() {
-  return Type.Optional(
-    Type.Object({
-      maxRetries: Type.Optional(Type.Number({ description: "Max retry count (ignored in stable profile)" })),
-      initialDelayMs: Type.Optional(Type.Number({ description: "Initial backoff delay in ms (ignored in stable profile)" })),
-      maxDelayMs: Type.Optional(Type.Number({ description: "Max backoff delay in ms (ignored in stable profile)" })),
-      multiplier: Type.Optional(Type.Number({ description: "Backoff multiplier (ignored in stable profile)" })),
-      jitter: Type.Optional(Type.String({ description: "Jitter mode: full | partial | none (ignored in stable profile)" })),
-    }),
-  );
-}
-
+// Note: toRetryOverrides is kept locally because it checks STABLE_AGENT_TEAM_RUNTIME
+// which is specific to this module. The lib version does not have this check.
 function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
   // Stable profile: ignore per-call retry tuning to avoid unpredictable fan-out.
   if (STABLE_AGENT_TEAM_RUNTIME) return undefined;
@@ -1424,13 +1305,6 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
     multiplier: typeof raw.multiplier === "number" ? raw.multiplier : undefined,
     jitter,
   };
-}
-
-function toConcurrencyLimit(value: unknown, fallback: number): number {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return fallback;
-  return Math.max(1, Math.trunc(resolved));
 }
 
 interface TeamParallelCapacityCandidate {
@@ -4098,10 +3972,10 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               ),
             )
           : 1;
-      const adaptivePenaltyBefore = getAdaptivePenalty();
+      const adaptivePenaltyBefore = adaptivePenalty.get();
       const effectiveMemberParallelism =
         strategy === "parallel"
-          ? applyAdaptiveParallelLimit(baselineMemberParallelism)
+          ? adaptivePenalty.applyLimit(baselineMemberParallelism)
           : 1;
       const capacityResolution = await resolveTeamParallelCapacity({
         requestedTeamParallelism: 1,
@@ -4113,7 +3987,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         signal,
       });
       if (!capacityResolution.allowed) {
-        raiseAdaptivePenalty("capacity");
+        adaptivePenalty.raise("capacity");
         const capacityOutcome: RunOutcomeSignal = capacityResolution.aborted
           ? { outcomeCode: "CANCELLED", retryRecommended: false }
           : capacityResolution.timedOut
@@ -4144,7 +4018,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             appliedMemberParallelism: capacityResolution.appliedMemberParallelism,
             parallelismReduced: capacityResolution.reduced,
             adaptivePenaltyBefore,
-            adaptivePenaltyAfter: getAdaptivePenalty(),
+            adaptivePenaltyAfter: adaptivePenalty.get(),
             requestedMemberCount: activeMembers.length,
             failedMemberRetryRounds,
             queuedAhead: queueWait.queuedAhead,
@@ -4157,7 +4031,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         };
       }
       if (!capacityResolution.reservation) {
-        raiseAdaptivePenalty("capacity");
+        adaptivePenalty.raise("capacity");
         return {
           content: [
             {
@@ -4288,12 +4162,12 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             return classifyPressureError(result.error || "") !== "other";
           }).length;
           if (pressureFailures > 0) {
-            raiseAdaptivePenalty("rate_limit");
+            adaptivePenalty.raise("rate_limit");
           } else {
-            lowerAdaptivePenalty();
+            adaptivePenalty.lower();
           }
           const teamOutcome = resolveTeamMemberAggregateOutcome(memberResults);
-          const adaptivePenaltyAfter = getAdaptivePenalty();
+          const adaptivePenaltyAfter = adaptivePenalty.get();
 
           return {
             content: [
@@ -4348,9 +4222,9 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           const errorMessage = toErrorMessage(error);
           const pressure = classifyPressureError(errorMessage);
           if (pressure !== "other") {
-            raiseAdaptivePenalty(pressure);
+            adaptivePenalty.raise(pressure);
           }
-          const adaptivePenaltyAfter = getAdaptivePenalty();
+          const adaptivePenaltyAfter = adaptivePenalty.get();
           liveMonitor?.appendBroadcastEvent(`team run failed: ${normalizeForSingleLine(errorMessage, 200)}`);
           for (const member of activeMembers) {
             liveMonitor?.markFinished(
@@ -4546,8 +4420,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           Math.max(1, snapshot.limits.maxTotalActiveRequests),
         ),
       );
-      const adaptivePenaltyBefore = getAdaptivePenalty();
-      const effectiveTeamParallelism = applyAdaptiveParallelLimit(baselineTeamParallelism);
+      const adaptivePenaltyBefore = adaptivePenalty.get();
+      const effectiveTeamParallelism = adaptivePenalty.applyLimit(baselineTeamParallelism);
       const configuredMemberParallelLimit = toConcurrencyLimit(
         snapshot.limits.maxParallelTeammatesPerTeam,
         1,
@@ -4573,7 +4447,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           : 1;
       const effectiveMemberParallelism =
         strategy === "parallel"
-          ? applyAdaptiveParallelLimit(baselineMemberParallelism)
+          ? adaptivePenalty.applyLimit(baselineMemberParallelism)
           : 1;
       const capacityResolution = await resolveTeamParallelCapacity({
         requestedTeamParallelism: effectiveTeamParallelism,
@@ -4588,7 +4462,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         signal,
       });
       if (!capacityResolution.allowed) {
-        raiseAdaptivePenalty("capacity");
+        adaptivePenalty.raise("capacity");
         const capacityOutcome: RunOutcomeSignal = capacityResolution.aborted
           ? { outcomeCode: "CANCELLED", retryRecommended: false }
           : capacityResolution.timedOut
@@ -4623,7 +4497,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             appliedMemberParallelism: capacityResolution.appliedMemberParallelism,
             parallelismReduced: capacityResolution.reduced,
             adaptivePenaltyBefore,
-            adaptivePenaltyAfter: getAdaptivePenalty(),
+            adaptivePenaltyAfter: adaptivePenalty.get(),
             requestedTeamCount: enabledTeams.length,
             failedMemberRetryRounds,
             queuedAhead: queueWait.queuedAhead,
@@ -4636,7 +4510,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         };
       }
       if (!capacityResolution.reservation) {
-        raiseAdaptivePenalty("capacity");
+        adaptivePenalty.raise("capacity");
         return {
           content: [
             {
@@ -4905,12 +4779,12 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           return count + memberPressure + teamPressure;
         }, 0);
         if (pressureFailures > 0) {
-          raiseAdaptivePenalty("rate_limit");
+          adaptivePenalty.raise("rate_limit");
         } else {
-          lowerAdaptivePenalty();
+          adaptivePenalty.lower();
         }
         const parallelOutcome = resolveTeamParallelRunOutcome(results);
-        const adaptivePenaltyAfter = getAdaptivePenalty();
+        const adaptivePenaltyAfter = adaptivePenalty.get();
 
         const lines: string[] = [];
         lines.push(`Parallel agent team run completed (${results.length} teams, ${totalTeammates} teammates).`);
@@ -5028,7 +4902,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             type: "text" as const,
             text: formatRuntimeStatusLine({
               storedRuns: storage.runs.length,
-              adaptivePenalty: getAdaptivePenalty(),
+              adaptivePenalty: adaptivePenalty.get(),
               adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
             }),
           },
@@ -5051,7 +4925,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           activeOrchestrations: snapshot.activeOrchestrations,
           queuedOrchestrations: snapshot.queuedOrchestrations,
           queuedTools: snapshot.queuedTools,
-          adaptiveParallelPenalty: getAdaptivePenalty(),
+          adaptiveParallelPenalty: adaptivePenalty.get(),
         },
       };
     },
@@ -5106,7 +4980,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           customType: "agent-team-status",
           content: formatRuntimeStatusLine({
             storedRuns: storage.runs.length,
-            adaptivePenalty: getAdaptivePenalty(),
+            adaptivePenalty: adaptivePenalty.get(),
             adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
           }),
           display: true,

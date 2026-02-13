@@ -29,6 +29,9 @@ import {
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
 import {
+  createAdaptivePenaltyController,
+} from "../lib/adaptive-penalty.js";
+import {
   getRateLimitGateSnapshot,
   isRetryableError,
   retryWithBackoff,
@@ -64,6 +67,19 @@ import {
   DEFAULT_AGENT_TIMEOUT_MS,
   GRACEFUL_SHUTDOWN_DELAY_MS,
   computeModelTimeoutMs,
+  getLiveStatusGlyph,
+  isEnterInput,
+  finalizeLiveLines,
+  type LiveStatus,
+  hasIntentOnlyContent,
+  hasNonEmptyResultSection,
+  validateSubagentOutput,
+  trimForError,
+  buildRateLimitKey,
+  buildTraceTaskId,
+  normalizeTimeoutMs,
+  createRetrySchema,
+  toConcurrencyLimit,
 } from "../lib";
 
 type AgentEnabledState = "enabled" | "disabled";
@@ -127,10 +143,11 @@ const DEFAULT_DIRECT_WRITE_CONFIRM_WINDOW_MS = 60_000;
 
 const runtimeState = getSharedRuntimeState().subagents;
 
-const adaptiveParallelState = {
-  penalty: 0,
-  updatedAtMs: Date.now(),
-};
+const adaptivePenalty = createAdaptivePenaltyController({
+  isStable: STABLE_SUBAGENT_RUNTIME,
+  maxPenalty: ADAPTIVE_PARALLEL_MAX_PENALTY,
+  decayMs: ADAPTIVE_PARALLEL_DECAY_MS,
+});
 
 function resolveDirectWriteConfirmWindowMs(): number {
   const raw = Number(process.env.PI_DIRECT_WRITE_CONFIRM_WINDOW_MS ?? DEFAULT_DIRECT_WRITE_CONFIRM_WINDOW_MS);
@@ -156,7 +173,7 @@ const DELEGATION_TOOL_NAMES = new Set([
 const ENFORCE_DELEGATION_FIRST = String(process.env.PI_ENFORCE_DELEGATION_FIRST ?? "1") === "1";
 const DIRECT_WRITE_CONFIRM_WINDOW_MS = resolveDirectWriteConfirmWindowMs();
 
-type LiveItemStatus = "pending" | "running" | "completed" | "failed";
+type LiveItemStatus = LiveStatus;
 type LiveStreamView = "stdout" | "stderr";
 type LiveViewMode = "list" | "detail";
 
@@ -190,37 +207,6 @@ interface SubagentLiveMonitorController {
   ) => void;
   close: () => void;
   wait: () => Promise<void>;
-}
-
-function getLiveStatusGlyph(status: LiveItemStatus): string {
-  if (status === "completed") return "OK";
-  if (status === "failed") return "!!";
-  if (status === "running") return ">>";
-  return "..";
-}
-
-function isEnterInput(rawInput: string): boolean {
-  return (
-    matchesKey(rawInput, Key.enter) ||
-    rawInput === "\r" ||
-    rawInput === "\n" ||
-    rawInput === "\r\n" ||
-    rawInput === "enter"
-  );
-}
-
-function finalizeLiveLines(lines: string[], height?: number): string[] {
-  if (!height || height <= 0) {
-    return lines;
-  }
-  if (lines.length > height) {
-    return lines.slice(0, height);
-  }
-  const padded = [...lines];
-  while (padded.length < height) {
-    padded.push("");
-  }
-  return padded;
 }
 
 function renderSubagentLiveView(input: {
@@ -591,12 +577,6 @@ function createSubagentLiveMonitor(
   };
 }
 
-function trimForError(message: string, maxLength = 600): string {
-  const normalized = message.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength)}...`;
-}
-
 function isRetryableSubagentError(error: unknown, statusCode?: number): boolean {
   if (isRetryableError(error, statusCode)) {
     return true;
@@ -616,10 +596,6 @@ function buildFailureSummary(message: string): string {
   if (lowered.includes("timed out") || lowered.includes("timeout")) return "(failed: timeout)";
   if (lowered.includes("rate limit") || lowered.includes("429")) return "(failed: rate limit)";
   return "(failed)";
-}
-
-function buildRateLimitKey(provider: string, model: string): string {
-  return `${provider.toLowerCase()}::${model.toLowerCase()}`;
 }
 
 function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal {
@@ -683,118 +659,6 @@ function resolveSubagentParallelOutcome(results: Array<{ runRecord: SubagentRunR
       };
 }
 
-function buildTraceTaskId(traceId: string | undefined, delegateId: string, sequence: number): string {
-  const safeTrace = (traceId || "trace-unknown").trim();
-  const safeDelegate = (delegateId || "delegate-unknown").trim();
-  return `${safeTrace}:${safeDelegate}:${Math.max(0, Math.trunc(sequence))}`;
-}
-
-function decayAdaptivePenalty(nowMs = Date.now()): void {
-  if (STABLE_SUBAGENT_RUNTIME) return;
-  const elapsed = Math.max(0, nowMs - adaptiveParallelState.updatedAtMs);
-  if (adaptiveParallelState.penalty <= 0 || elapsed < ADAPTIVE_PARALLEL_DECAY_MS) return;
-  const steps = Math.floor(elapsed / ADAPTIVE_PARALLEL_DECAY_MS);
-  if (steps <= 0) return;
-  adaptiveParallelState.penalty = Math.max(0, adaptiveParallelState.penalty - steps);
-  adaptiveParallelState.updatedAtMs = nowMs;
-}
-
-function raiseAdaptivePenalty(reason: "rate_limit" | "timeout" | "capacity"): void {
-  if (STABLE_SUBAGENT_RUNTIME) {
-    void reason;
-    return;
-  }
-  decayAdaptivePenalty();
-  adaptiveParallelState.penalty = Math.min(
-    ADAPTIVE_PARALLEL_MAX_PENALTY,
-    adaptiveParallelState.penalty + 1,
-  );
-  adaptiveParallelState.updatedAtMs = Date.now();
-  void reason;
-}
-
-function lowerAdaptivePenalty(): void {
-  if (STABLE_SUBAGENT_RUNTIME) return;
-  decayAdaptivePenalty();
-  if (adaptiveParallelState.penalty <= 0) return;
-  adaptiveParallelState.penalty = Math.max(0, adaptiveParallelState.penalty - 1);
-  adaptiveParallelState.updatedAtMs = Date.now();
-}
-
-function getAdaptivePenalty(): number {
-  if (STABLE_SUBAGENT_RUNTIME) return 0;
-  decayAdaptivePenalty();
-  return adaptiveParallelState.penalty;
-}
-
-function applyAdaptiveParallelLimit(baseLimit: number): number {
-  if (STABLE_SUBAGENT_RUNTIME) return Math.max(1, Math.trunc(baseLimit));
-  const penalty = getAdaptivePenalty();
-  if (penalty <= 0) return baseLimit;
-  const divisor = penalty + 1;
-  return Math.max(1, Math.floor(baseLimit / divisor));
-}
-
-function hasIntentOnlyContent(output: string): boolean {
-  const compact = output.replace(/\s+/g, " ").trim();
-  if (!compact) return false;
-  const lower = compact.toLowerCase();
-  const enIntentOnly =
-    (lower.startsWith("i'll ") || lower.startsWith("i will ") || lower.startsWith("let me ")) &&
-    /(analy|review|investig|start|check|examin|look)/.test(lower);
-  const jaIntentOnly =
-    /(確認|調査|分析|レビュー|検討|開始).{0,20}(します|します。|していきます|しますね|します。)/.test(compact);
-  return enIntentOnly || jaIntentOnly;
-}
-
-function hasNonEmptyResultSection(output: string): boolean {
-  const lines = output.split(/\r?\n/);
-  const resultIndex = lines.findIndex((line) => /^\s*RESULT\s*:/i.test(line));
-  if (resultIndex < 0) return false;
-
-  const sameLineContent = lines[resultIndex].replace(/^\s*RESULT\s*:/i, "").trim();
-  if (sameLineContent.length > 0) return true;
-
-  for (let index = resultIndex + 1; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (/^\s*[A-Z_]+\s*:/.test(line)) break;
-    if (line.trim().length > 0) return true;
-  }
-
-  return false;
-}
-
-function validateSubagentOutput(output: string): { ok: boolean; reason?: string } {
-  const trimmed = output.trim();
-  if (!trimmed) {
-    return { ok: false, reason: "empty output" };
-  }
-
-  const minChars = 48;
-  if (trimmed.length < minChars) {
-    return { ok: false, reason: `too short (${trimmed.length} chars)` };
-  }
-
-  const requiredLabels = ["SUMMARY:", "RESULT:", "NEXT_STEP:"];
-  const missingLabels = requiredLabels.filter((label) => !new RegExp(`^\\s*${label}`, "im").test(trimmed));
-  if (missingLabels.length > 0) {
-    return { ok: false, reason: `missing labels: ${missingLabels.join(", ")}` };
-  }
-  if (!hasNonEmptyResultSection(trimmed)) {
-    return { ok: false, reason: "empty RESULT section" };
-  }
-
-  const nonEmptyLines = trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (nonEmptyLines.length <= 3 && hasIntentOnlyContent(trimmed)) {
-    return { ok: false, reason: "intent-only output" };
-  }
-
-  return { ok: true };
-}
-
 interface SubagentNormalizedOutput {
   ok: boolean;
   output: string;
@@ -802,6 +666,10 @@ interface SubagentNormalizedOutput {
   reason?: string;
 }
 
+/**
+ * Pick a candidate text for SUMMARY field from unstructured output.
+ * Note: Kept locally because the summary format is subagent-specific.
+ */
 function pickSubagentSummaryCandidate(text: string): string {
   const lines = text
     .split(/\r?\n/)
@@ -820,6 +688,14 @@ function pickSubagentSummaryCandidate(text: string): string {
   return compact.length <= 90 ? compact : `${compact.slice(0, 90)}...`;
 }
 
+/**
+ * Normalize subagent output to required format.
+ * Note: Kept locally (not in lib) because:
+ * - Uses subagent-specific SUMMARY/RESULT/NEXT_STEP format
+ * - Has subagent-specific fallback messages (Japanese)
+ * - Uses pickSubagentSummaryCandidate which is subagent-specific
+ * Team member output has different requirements (CLAIM/EVIDENCE/CONFIDENCE).
+ */
 function normalizeSubagentOutput(output: string): SubagentNormalizedOutput {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -861,16 +737,12 @@ function normalizeSubagentOutput(output: string): SubagentNormalizedOutput {
   };
 }
 
-function normalizeTimeoutMs(value: unknown, fallback: number): number {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return 0;
-  return Math.max(1, Math.trunc(resolved));
-}
-
 /**
  * Resolve effective timeout with model-specific adjustment.
  * Priority: user-specified > model-specific > default
+ *
+ * Note: Kept locally (not in lib) because it may be extended with subagent-specific
+ * timeout adjustments in the future. Currently identical to agent-teams version.
  */
 function resolveEffectiveTimeoutMs(
   userTimeoutMs: unknown,
@@ -885,25 +757,15 @@ function resolveEffectiveTimeoutMs(
 
   // Priority 2: Model-specific timeout
   if (modelId && modelId !== "(session-default)") {
-    return computeModelTimeoutMs(modelId, { defaultTimeoutMs: fallback });
+    return computeModelTimeoutMs(modelId);
   }
 
   // Priority 3: Default
   return fallback;
 }
 
-function createRetrySchema() {
-  return Type.Optional(
-    Type.Object({
-      maxRetries: Type.Optional(Type.Number({ description: "Max retry count (ignored in stable profile)" })),
-      initialDelayMs: Type.Optional(Type.Number({ description: "Initial backoff delay in ms (ignored in stable profile)" })),
-      maxDelayMs: Type.Optional(Type.Number({ description: "Max backoff delay in ms (ignored in stable profile)" })),
-      multiplier: Type.Optional(Type.Number({ description: "Backoff multiplier (ignored in stable profile)" })),
-      jitter: Type.Optional(Type.String({ description: "Jitter mode: full | partial | none (ignored in stable profile)" })),
-    }),
-  );
-}
-
+// Note: toRetryOverrides is kept locally because it checks STABLE_SUBAGENT_RUNTIME
+// which is specific to this module. The lib version does not have this check.
 function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
   // Stable profile: reject ad-hoc retry tuning to keep behavior deterministic.
   if (STABLE_SUBAGENT_RUNTIME) return undefined;
@@ -920,13 +782,6 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
     multiplier: typeof raw.multiplier === "number" ? raw.multiplier : undefined,
     jitter,
   };
-}
-
-function toConcurrencyLimit(value: unknown, fallback: number): number {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return fallback;
-  return Math.max(1, Math.trunc(resolved));
 }
 
 interface SubagentParallelCapacityResolution {
@@ -2231,7 +2086,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           signal,
         });
         if (!capacityCheck.allowed || !capacityCheck.reservation) {
-          raiseAdaptivePenalty("capacity");
+          adaptivePenalty.raise("capacity");
           const capacityOutcome: RunOutcomeSignal = capacityCheck.aborted
             ? { outcomeCode: "CANCELLED", retryRecommended: false }
             : capacityCheck.timedOut
@@ -2255,7 +2110,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               waitedMs: capacityCheck.waitedMs,
               timedOut: capacityCheck.timedOut,
               aborted: capacityCheck.aborted,
-              adaptiveParallelPenalty: getAdaptivePenalty(),
+              adaptiveParallelPenalty: adaptivePenalty.get(),
               queuedAhead: queueWait.queuedAhead,
               queuePosition: queueWait.queuePosition,
               queueWaitedMs: queueWait.waitedMs,
@@ -2323,7 +2178,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             if (result.runRecord.status === "failed") {
               const pressureError = classifyPressureError(result.runRecord.error || "");
               if (pressureError !== "other") {
-                raiseAdaptivePenalty(pressureError);
+                adaptivePenalty.raise(pressureError);
               }
               const failureOutcome = resolveSubagentFailureOutcome(
                 result.runRecord.error || result.runRecord.summary,
@@ -2335,7 +2190,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                   run: result.runRecord,
                   traceId: queueWait.orchestrationId,
                   taskId: buildTraceTaskId(queueWait.orchestrationId, result.runRecord.agentId, 0),
-                  adaptiveParallelPenalty: getAdaptivePenalty(),
+                  adaptiveParallelPenalty: adaptivePenalty.get(),
                   queuedAhead: queueWait.queuedAhead,
                   queuePosition: queueWait.queuePosition,
                   queueWaitedMs: queueWait.waitedMs,
@@ -2345,7 +2200,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               };
             }
 
-            lowerAdaptivePenalty();
+            adaptivePenalty.lower();
 
             return {
               content: [
@@ -2371,7 +2226,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                 traceId: queueWait.orchestrationId,
                 taskId: buildTraceTaskId(queueWait.orchestrationId, agent.id, 0),
                 output: result.output,
-                adaptiveParallelPenalty: getAdaptivePenalty(),
+                adaptiveParallelPenalty: adaptivePenalty.get(),
                 queuedAhead: queueWait.queuedAhead,
                 queuePosition: queueWait.queuePosition,
                 queueWaitedMs: queueWait.waitedMs,
@@ -2496,8 +2351,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             Math.max(1, snapshot.limits.maxTotalActiveLlm),
           ),
         );
-        const adaptivePenaltyBefore = getAdaptivePenalty();
-        const effectiveParallelism = applyAdaptiveParallelLimit(baselineParallelism);
+        const adaptivePenaltyBefore = adaptivePenalty.get();
+        const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
         const parallelCapacity = await resolveSubagentParallelCapacity({
           requestedParallelism: effectiveParallelism,
           additionalRequests: 1,
@@ -2506,7 +2361,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           signal,
         });
         if (!parallelCapacity.allowed) {
-          raiseAdaptivePenalty("capacity");
+          adaptivePenalty.raise("capacity");
           const capacityOutcome: RunOutcomeSignal = parallelCapacity.aborted
             ? { outcomeCode: "CANCELLED", retryRecommended: false }
             : parallelCapacity.timedOut
@@ -2537,7 +2392,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               appliedParallelism: parallelCapacity.appliedParallelism,
               parallelismReduced: parallelCapacity.reduced,
               adaptivePenaltyBefore,
-              adaptivePenaltyAfter: getAdaptivePenalty(),
+              adaptivePenaltyAfter: adaptivePenalty.get(),
               requestedSubagentCount: activeAgents.length,
               queuedAhead: queueWait.queuedAhead,
               queuePosition: queueWait.queuePosition,
@@ -2549,7 +2404,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           };
         }
         if (!parallelCapacity.reservation) {
-          raiseAdaptivePenalty("capacity");
+          adaptivePenalty.raise("capacity");
           return {
             content: [
               {
@@ -2643,12 +2498,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               return pressure !== "other";
             }).length;
             if (pressureFailures > 0) {
-              raiseAdaptivePenalty("rate_limit");
+              adaptivePenalty.raise("rate_limit");
             } else {
-              lowerAdaptivePenalty();
+              adaptivePenalty.lower();
             }
             const parallelOutcome = resolveSubagentParallelOutcome(results);
-            const adaptivePenaltyAfter = getAdaptivePenalty();
+            const adaptivePenaltyAfter = adaptivePenalty.get();
             const lines: string[] = [];
             lines.push(`Parallel subagent run completed (${results.length} agents).`);
             lines.push(
@@ -2746,7 +2601,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             type: "text" as const,
             text: formatRuntimeStatusLine({
               storedRuns: storage.runs.length,
-              adaptivePenalty: getAdaptivePenalty(),
+              adaptivePenalty: adaptivePenalty.get(),
               adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
             }),
           },
@@ -2769,7 +2624,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           activeOrchestrations: snapshot.activeOrchestrations,
           queuedOrchestrations: snapshot.queuedOrchestrations,
           queuedTools: snapshot.queuedTools,
-          adaptiveParallelPenalty: getAdaptivePenalty(),
+          adaptiveParallelPenalty: adaptivePenalty.get(),
           storedRunRecords: storage.runs.length,
         },
       };
@@ -2825,7 +2680,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           customType: "subagent-status",
           content: formatRuntimeStatusLine({
             storedRuns: storage.runs.length,
-            adaptivePenalty: getAdaptivePenalty(),
+            adaptivePenalty: adaptivePenalty.get(),
             adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
           }),
           display: true,

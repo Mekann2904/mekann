@@ -119,15 +119,6 @@ function detectRateLimitFromAgentEnd(event: any): boolean {
   return RATE_LIMIT_SIGNAL.test(raw);
 }
 
-function countToolResults(event: any): number {
-  const messages = Array.isArray(event?.messages) ? event.messages : [];
-  return messages.filter((entry: any) => {
-    if (entry?.type !== "message") return false;
-    const role = String(entry?.message?.role || "").toLowerCase();
-    return role === "toolresult";
-  }).length;
-}
-
 function notifyRateLimitPause(ctx: any, message: string): void {
   const nowMs = Date.now();
   if (nowMs - state.lastRateLimitNotifyAtMs < UL_RATE_LIMIT_NOTIFY_INTERVAL_MS) {
@@ -585,7 +576,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
   // 1リクエスト終了時の処理（セッション永続モードなら状態を維持）
   pi.on("agent_end", async (event, ctx) => {
-    const toolCount = countToolResults(event);
     const rateLimited = detectRateLimitFromAgentEnd(event);
 
     if (state.activeUlMode && rateLimited) {
@@ -626,25 +616,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
     if (!state.activeUlMode) {
       resetState();
-      refreshStatus(ctx);
-      return;
-    }
-
-    if (UL_REQUIRE_BOTH_ORCHESTRATIONS && toolCount === 0) {
-      state.rateLimitCooldownUntilMs = Date.now() + UL_RATE_LIMIT_COOLDOWN_MS;
-      state.pendingUlMode = false;
-      state.pendingGoalLoopMode = false;
-      state.activeUlMode = false;
-      state.activeGoalLoopMode = false;
-      state.usedSubagentRun = false;
-      state.usedAgentTeamRun = false;
-      state.completedRecommendedSubagentPhase = false;
-      state.completedRecommendedTeamPhase = false;
-      state.completedRecommendedReviewerPhase = false;
-      notifyRateLimitPause(
-        ctx,
-        "ULモードでツール実行が0件のため、一時的に通常モードへフォールバックします。",
-      );
       refreshStatus(ctx);
       return;
     }

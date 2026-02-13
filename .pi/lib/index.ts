@@ -71,3 +71,40 @@ export {
   computeProgressiveTimeoutMs,
   type ComputeModelTimeoutOptions,
 } from "./model-timeouts.js";
+
+// Adaptive penalty controller (Layer 1)
+export {
+  createAdaptivePenaltyController,
+  type AdaptivePenaltyState,
+  type AdaptivePenaltyOptions,
+  type AdaptivePenaltyController,
+} from "./adaptive-penalty.js";
+
+// Live view utilities (Layer 1)
+export {
+  getLiveStatusGlyph,
+  isEnterInput,
+  finalizeLiveLines,
+  type LiveStatus,
+} from "./live-view-utils.js";
+
+// Output validation utilities (Layer 1)
+export {
+  hasIntentOnlyContent,
+  hasNonEmptyResultSection,
+  validateSubagentOutput,
+  validateTeamMemberOutput,
+  type SubagentValidationOptions,
+  type TeamMemberValidationOptions,
+} from "./output-validation.js";
+
+// Runtime utilities (Layer 1)
+export {
+  trimForError,
+  buildRateLimitKey,
+  buildTraceTaskId,
+  normalizeTimeoutMs,
+  createRetrySchema,
+  toRetryOverrides,
+  toConcurrencyLimit,
+} from "./runtime-utils.js";
