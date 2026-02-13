@@ -6,10 +6,9 @@
 import { getMarkdownTheme, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
-import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
 import {
   formatRuntimeStatusLine,
   getRuntimeSnapshot,
@@ -41,6 +40,12 @@ import { runWithConcurrencyLimit } from "../lib/concurrency";
 import {
   getSubagentExecutionRules,
 } from "../lib/execution-rules";
+import {
+  buildRuntimeLimitError,
+  buildRuntimeQueueWaitError,
+  startReservationHeartbeat,
+  refreshRuntimeStatus as sharedRefreshRuntimeStatus,
+} from "./shared/runtime-helpers";
 import {
   ensureDir,
   formatDurationMs,
@@ -80,55 +85,28 @@ import {
   normalizeTimeoutMs,
   createRetrySchema,
   toConcurrencyLimit,
+  resolveEffectiveTimeoutMs,
 } from "../lib";
-
-type AgentEnabledState = "enabled" | "disabled";
-
-interface SubagentDefinition {
-  id: string;
-  name: string;
-  description: string;
-  systemPrompt: string;
-  provider?: string;
-  model?: string;
-  enabled: AgentEnabledState;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface SubagentRunRecord {
-  runId: string;
-  agentId: string;
-  task: string;
-  summary: string;
-  status: "completed" | "failed";
-  startedAt: string;
-  finishedAt: string;
-  latencyMs: number;
-  outputFile: string;
-  error?: string;
-}
-
-interface SubagentStorage {
-  agents: SubagentDefinition[];
-  runs: SubagentRunRecord[];
-  currentAgentId?: string;
-  defaultsVersion?: number;
-}
-
-interface SubagentPaths {
-  baseDir: string;
-  runsDir: string;
-  storageFile: string;
-}
+import {
+  type SubagentDefinition,
+  type SubagentRunRecord,
+  type SubagentStorage,
+  type SubagentPaths,
+  type AgentEnabledState,
+  MAX_RUNS_TO_KEEP,
+  SUBAGENT_DEFAULTS_VERSION,
+  getPaths,
+  ensurePaths,
+  createDefaultAgents,
+  loadStorage,
+  saveStorage,
+} from "./subagents/storage";
 
 interface PrintCommandResult {
   output: string;
   latencyMs: number;
 }
 
-const MAX_RUNS_TO_KEEP = 100;
-const SUBAGENT_DEFAULTS_VERSION = 2;
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;
 const STABLE_SUBAGENT_RUNTIME = true;
@@ -737,33 +715,6 @@ function normalizeSubagentOutput(output: string): SubagentNormalizedOutput {
   };
 }
 
-/**
- * Resolve effective timeout with model-specific adjustment.
- * Priority: user-specified > model-specific > default
- *
- * Note: Kept locally (not in lib) because it may be extended with subagent-specific
- * timeout adjustments in the future. Currently identical to agent-teams version.
- */
-function resolveEffectiveTimeoutMs(
-  userTimeoutMs: unknown,
-  modelId: string | undefined,
-  fallback: number,
-): number {
-  // Priority 1: User-specified timeout (if > 0)
-  const userNormalized = normalizeTimeoutMs(userTimeoutMs, 0);
-  if (userNormalized > 0) {
-    return userNormalized;
-  }
-
-  // Priority 2: Model-specific timeout
-  if (modelId && modelId !== "(session-default)") {
-    return computeModelTimeoutMs(modelId);
-  }
-
-  // Priority 3: Default
-  return fallback;
-}
-
 // Note: toRetryOverrides is kept locally because it checks STABLE_SUBAGENT_RUNTIME
 // which is specific to this module. The lib version does not have this check.
 function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
@@ -875,99 +826,17 @@ async function resolveSubagentParallelCapacity(input: {
   };
 }
 
-function buildRuntimeLimitError(
-  toolName: string,
-  reasons: string[],
-  options?: {
-    waitedMs?: number;
-    timedOut?: boolean;
-  },
-): string {
-  const snapshot = getRuntimeSnapshot();
-  const waitLine =
-    options?.waitedMs === undefined
-      ? undefined
-      : `待機時間: ${options.waitedMs}ms${options.timedOut ? " (timeout)" : ""}`;
-  return [
-    `${toolName} blocked: runtime limit reached.`,
-    ...reasons.map((reason) => `- ${reason}`),
-    `現在: requests=${snapshot.totalActiveRequests}, llm=${snapshot.totalActiveLlm}`,
-    `上限: requests=${snapshot.limits.maxTotalActiveRequests}, llm=${snapshot.limits.maxTotalActiveLlm}`,
-    waitLine,
-    "ヒント: 対象数を減らすか、実行中ジョブの完了を待って再実行してください。",
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join("\n");
-}
-
-function buildRuntimeQueueWaitError(
-  toolName: string,
-  queueWait: {
-    waitedMs: number;
-    attempts: number;
-    timedOut: boolean;
-    aborted: boolean;
-    queuePosition: number;
-    queuedAhead: number;
-  },
-): string {
-  const snapshot = getRuntimeSnapshot();
-  const mode = queueWait.aborted ? "aborted" : queueWait.timedOut ? "timeout" : "blocked";
-  const queuedPreview = snapshot.queuedTools.length > 0 ? snapshot.queuedTools.join(", ") : "-";
-  return [
-    `${toolName} blocked: orchestration queue ${mode}.`,
-    `- queued_ahead: ${queueWait.queuedAhead}`,
-    `- queue_position: ${queueWait.queuePosition}`,
-    `- waited_ms: ${queueWait.waitedMs}`,
-    `- attempts: ${queueWait.attempts}`,
-    `現在: active_orchestrations=${snapshot.activeOrchestrations}, queued=${snapshot.queuedOrchestrations}`,
-    `上限: max_concurrent_orchestrations=${snapshot.limits.maxConcurrentOrchestrations}`,
-    `待機中ツール: ${queuedPreview}`,
-    "ヒント: 同時に走らせる run を減らすか、先行ジョブ完了後に再実行してください。",
-  ].join("\n");
-}
-
+// Wrapper for shared refreshRuntimeStatus with subagent-specific parameters
 function refreshRuntimeStatus(ctx: any): void {
-  if (!ctx?.hasUI || !ctx?.ui) return;
   const snapshot = getRuntimeSnapshot();
-
-  if (
-    snapshot.totalActiveRequests <= 0 &&
-    snapshot.totalActiveLlm <= 0 &&
-    snapshot.activeOrchestrations <= 0 &&
-    snapshot.queuedOrchestrations <= 0
-  ) {
-    ctx.ui.setStatus?.("subagent-runtime", undefined);
-    return;
-  }
-
-  ctx.ui.setStatus?.(
+  sharedRefreshRuntimeStatus(
+    ctx,
     "subagent-runtime",
-    [
-      `LLM実行中:${snapshot.totalActiveLlm}`,
-      `(Sub:${snapshot.subagentActiveAgents}/Team:${snapshot.teamActiveAgents})`,
-      `Req:${snapshot.totalActiveRequests}`,
-      `Queue:${snapshot.activeOrchestrations}/${snapshot.limits.maxConcurrentOrchestrations}+${snapshot.queuedOrchestrations}`,
-    ].join(" "),
+    "Sub",
+    snapshot.subagentActiveAgents,
+    "Team",
+    snapshot.teamActiveAgents,
   );
-}
-
-function startReservationHeartbeat(
-  reservation: RuntimeCapacityReservationLease,
-): () => void {
-  // 期限切れによるゾンビ予約を防ぐため、実行中は定期的にTTLを延長する。
-  const intervalMs = 5_000;
-  const timer = setInterval(() => {
-    try {
-      reservation.heartbeat();
-    } catch {
-      // noop
-    }
-  }, intervalMs);
-  timer.unref?.();
-  return () => {
-    clearInterval(timer);
-  };
 }
 
 function markDelegationUsed(): void {
@@ -1028,285 +897,6 @@ function isWriteLikeToolCall(event: any): boolean {
   }
 
   return false;
-}
-
-function getPaths(cwd: string): SubagentPaths {
-  const baseDir = join(cwd, ".pi", "subagents");
-  return {
-    baseDir,
-    runsDir: join(baseDir, "runs"),
-    storageFile: join(baseDir, "storage.json"),
-  };
-}
-
-function ensurePaths(cwd: string): SubagentPaths {
-  const paths = getPaths(cwd);
-  ensureDir(paths.baseDir);
-  ensureDir(paths.runsDir);
-  return paths;
-}
-
-function createDefaultAgents(nowIso: string): SubagentDefinition[] {
-  return [
-    {
-      id: "researcher",
-      name: "Researcher",
-      description: "Fast code and docs investigator. Great for broad discovery and fact collection.",
-      systemPrompt:
-        "You are the Researcher subagent. Collect concrete facts quickly. Use short bullet points. Include file paths and exact findings. Avoid implementation changes.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "architect",
-      name: "Architect",
-      description: "Design-focused helper for decomposition, constraints, and migration plans.",
-      systemPrompt:
-        "You are the Architect subagent. Propose minimal, modular designs. Prefer explicit trade-offs and short execution plans.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "implementer",
-      name: "Implementer",
-      description: "Implementation helper for scoped coding tasks and fixes.",
-      systemPrompt:
-        "You are the Implementer subagent. Deliver precise, minimal code-focused output. Mention assumptions. Keep scope tight.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "reviewer",
-      name: "Reviewer",
-      description: "Read-only reviewer for risk checks, tests, and quality feedback.",
-      systemPrompt:
-        "You are the Reviewer subagent. Do not propose broad rewrites. Highlight critical issues first, then warnings, then optional improvements.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "tester",
-      name: "Tester",
-      description: "Validation helper focused on reproducible checks and minimal test plans.",
-      systemPrompt:
-        "You are the Tester subagent. Propose deterministic validation steps first. Prefer quick, high-signal checks and explicit expected outcomes.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-  ];
-}
-
-function loadStorage(cwd: string): SubagentStorage {
-  const paths = ensurePaths(cwd);
-  const nowIso = new Date().toISOString();
-
-  const fallback: SubagentStorage = {
-    agents: createDefaultAgents(nowIso),
-    runs: [],
-    currentAgentId: "researcher",
-    defaultsVersion: SUBAGENT_DEFAULTS_VERSION,
-  };
-
-  if (!existsSync(paths.storageFile)) {
-    saveStorage(cwd, fallback);
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(readFileSync(paths.storageFile, "utf-8")) as Partial<SubagentStorage>;
-    const storage: SubagentStorage = {
-      agents: Array.isArray(parsed.agents) ? parsed.agents : [],
-      runs: Array.isArray(parsed.runs) ? parsed.runs : [],
-      currentAgentId: typeof parsed.currentAgentId === "string" ? parsed.currentAgentId : undefined,
-      defaultsVersion:
-        typeof parsed.defaultsVersion === "number" && Number.isFinite(parsed.defaultsVersion)
-          ? Math.trunc(parsed.defaultsVersion)
-          : 0,
-    };
-    return ensureDefaults(storage, nowIso);
-  } catch {
-    saveStorage(cwd, fallback);
-    return fallback;
-  }
-}
-
-function saveStorage(cwd: string, storage: SubagentStorage): void {
-  const paths = ensurePaths(cwd);
-  const normalized: SubagentStorage = {
-    ...storage,
-    runs: storage.runs.slice(-MAX_RUNS_TO_KEEP),
-    defaultsVersion: SUBAGENT_DEFAULTS_VERSION,
-  };
-  withFileLock(paths.storageFile, () => {
-    const merged = mergeSubagentStorageWithDisk(paths.storageFile, normalized);
-    atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
-    pruneSubagentRunArtifacts(paths, merged.runs);
-  });
-}
-
-function ensureDefaults(storage: SubagentStorage, nowIso: string): SubagentStorage {
-  const defaults = createDefaultAgents(nowIso);
-  const defaultIds = new Set(defaults.map((agent) => agent.id));
-  const existingById = new Map(storage.agents.map((agent) => [agent.id, agent]));
-  const mergedAgents: SubagentDefinition[] = [];
-
-  // Keep built-in definitions synchronized so prompt updates actually apply.
-  for (const defaultAgent of defaults) {
-    const existing = existingById.get(defaultAgent.id);
-    if (!existing) {
-      mergedAgents.push(defaultAgent);
-      continue;
-    }
-    mergedAgents.push(mergeDefaultSubagent(existing, defaultAgent));
-  }
-
-  // Preserve user-defined agents as-is.
-  for (const agent of storage.agents) {
-    if (!defaultIds.has(agent.id)) {
-      mergedAgents.push(agent);
-    }
-  }
-
-  storage.agents = mergedAgents;
-  storage.defaultsVersion = SUBAGENT_DEFAULTS_VERSION;
-
-  if (!storage.currentAgentId || !storage.agents.some((agent) => agent.id === storage.currentAgentId)) {
-    storage.currentAgentId = defaults[0]?.id;
-  }
-
-  return storage;
-}
-
-function mergeDefaultSubagent(
-  existing: SubagentDefinition,
-  fallback: SubagentDefinition,
-): SubagentDefinition {
-  const hasDrift =
-    existing.name !== fallback.name ||
-    existing.description !== fallback.description ||
-    existing.systemPrompt !== fallback.systemPrompt;
-  return {
-    ...fallback,
-    enabled: existing.enabled,
-    provider: existing.provider,
-    model: existing.model,
-    createdAt: existing.createdAt || fallback.createdAt,
-    updatedAt: hasDrift ? new Date().toISOString() : existing.updatedAt || fallback.updatedAt,
-  };
-}
-
-function pruneSubagentRunArtifacts(paths: SubagentPaths, runs: SubagentRunRecord[]): void {
-  let files: string[] = [];
-  try {
-    files = readdirSync(paths.runsDir);
-  } catch {
-    return;
-  }
-
-  const keep = new Set(
-    runs
-      .map((run) => basename(run.outputFile || ""))
-      .filter((name) => name.endsWith(".json")),
-  );
-  if (runs.length > 0 && keep.size === 0) {
-    return;
-  }
-
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    if (keep.has(file)) continue;
-    try {
-      unlinkSync(join(paths.runsDir, file));
-    } catch {
-      // noop
-    }
-  }
-}
-
-function mergeSubagentStorageWithDisk(
-  storageFile: string,
-  next: SubagentStorage,
-): SubagentStorage {
-  let disk: Partial<SubagentStorage> = {};
-  try {
-    if (existsSync(storageFile)) {
-      disk = JSON.parse(readFileSync(storageFile, "utf-8")) as Partial<SubagentStorage>;
-    }
-  } catch {
-    disk = {};
-  }
-
-  const diskAgents = Array.isArray(disk.agents) ? disk.agents : [];
-  const nextAgents = Array.isArray(next.agents) ? next.agents : [];
-  const agentById = new Map<string, SubagentDefinition>();
-  for (const agent of diskAgents) {
-    if (!agent || typeof agent !== "object") continue;
-    if (typeof (agent as { id?: unknown }).id !== "string") continue;
-    const id = (agent as { id: string }).id.trim();
-    if (!id) continue;
-    agentById.set(agent.id, agent);
-  }
-  for (const agent of nextAgents) {
-    if (!agent || typeof agent !== "object") continue;
-    if (typeof (agent as { id?: unknown }).id !== "string") continue;
-    const id = (agent as { id: string }).id.trim();
-    if (!id) continue;
-    agentById.set(agent.id, agent);
-  }
-  const mergedAgents = Array.from(agentById.values());
-
-  const diskRuns = Array.isArray(disk.runs) ? disk.runs : [];
-  const nextRuns = Array.isArray(next.runs) ? next.runs : [];
-  const runById = new Map<string, SubagentRunRecord>();
-  for (const run of diskRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  for (const run of nextRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  const mergedRuns = Array.from(runById.values())
-    .sort((left, right) => {
-      const leftKey = left.finishedAt || left.startedAt || "";
-      const rightKey = right.finishedAt || right.startedAt || "";
-      return leftKey.localeCompare(rightKey);
-    })
-    .slice(-MAX_RUNS_TO_KEEP);
-
-  const candidateCurrent =
-    typeof next.currentAgentId === "string" && next.currentAgentId.trim()
-      ? next.currentAgentId
-      : typeof disk.currentAgentId === "string" && disk.currentAgentId.trim()
-        ? disk.currentAgentId
-        : undefined;
-  const currentAgentId =
-    candidateCurrent && mergedAgents.some((agent) => agent.id === candidateCurrent)
-      ? candidateCurrent
-      : mergedAgents[0]?.id;
-
-  const diskDefaults =
-    typeof disk.defaultsVersion === "number" && Number.isFinite(disk.defaultsVersion)
-      ? Math.trunc(disk.defaultsVersion)
-      : 0;
-
-  return {
-    agents: mergedAgents,
-    runs: mergedRuns,
-    currentAgentId,
-    defaultsVersion: Math.max(SUBAGENT_DEFAULTS_VERSION, diskDefaults),
-  };
 }
 
 function toAgentId(input: string): string {

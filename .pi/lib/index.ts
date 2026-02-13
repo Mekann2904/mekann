@@ -108,3 +108,6 @@ export {
   toRetryOverrides,
   toConcurrencyLimit,
 } from "./runtime-utils.js";
+
+// Runtime error builders (Layer 1)
+export { resolveEffectiveTimeoutMs } from "./runtime-error-builders.js";

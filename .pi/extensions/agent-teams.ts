@@ -7,11 +7,10 @@ import { getMarkdownTheme, parseFrontmatter, type ExtensionAPI } from "@mariozec
 import { Type } from "@mariozechner/pi-ai";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
-import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
 import {
   formatRuntimeStatusLine,
   getRuntimeSnapshot,
@@ -42,6 +41,12 @@ import { runWithConcurrencyLimit } from "../lib/concurrency";
 import {
   getTeamMemberExecutionRules,
 } from "../lib/execution-rules";
+import {
+  buildRuntimeLimitError,
+  buildRuntimeQueueWaitError,
+  startReservationHeartbeat,
+  refreshRuntimeStatus as sharedRefreshRuntimeStatus,
+} from "./shared/runtime-helpers";
 import {
   ensureDir,
   formatDurationMs,
@@ -81,111 +86,67 @@ import {
   normalizeTimeoutMs,
   createRetrySchema,
   toConcurrencyLimit,
+  resolveEffectiveTimeoutMs,
 } from "../lib";
+import {
+  type TeamEnabledState,
+  type TeamStrategy,
+  type TeamMember,
+  type TeamDefinition,
+  type TeamMemberResult,
+  type TeamJudgeVerdict,
+  type TeamFinalJudge,
+  type TeamCommunicationAuditEntry,
+  type TeamRunRecord,
+  type TeamStorage,
+  type TeamPaths,
+  MAX_RUNS_TO_KEEP,
+  TEAM_DEFAULTS_VERSION,
+  getPaths,
+  ensurePaths,
+  toId,
+  loadStorage,
+  saveStorage,
+} from "./agent-teams/storage";
 
-type TeamEnabledState = "enabled" | "disabled";
-type TeamStrategy = "parallel" | "sequential";
+// Re-export types for external use
+export type {
+  TeamEnabledState,
+  TeamStrategy,
+  TeamMember,
+  TeamDefinition,
+  TeamMemberResult,
+  TeamJudgeVerdict,
+  TeamFinalJudge,
+  TeamCommunicationAuditEntry,
+  TeamRunRecord,
+  TeamStorage,
+  TeamPaths,
+};
 
-interface TeamMember {
-  id: string;
-  role: string;
-  description: string;
-  provider?: string;
-  model?: string;
-  enabled: boolean;
-}
-
-interface TeamDefinition {
+// Team frontmatter types for markdown parsing
+interface TeamFrontmatter {
   id: string;
   name: string;
   description: string;
-  enabled: TeamEnabledState;
-  members: TeamMember[];
-  createdAt: string;
-  updatedAt: string;
+  enabled: "enabled" | "disabled";
+  strategy?: "parallel" | "sequential";
+  members: TeamMemberFrontmatter[];
 }
 
-interface TeamMemberResult {
-  memberId: string;
+interface TeamMemberFrontmatter {
+  id: string;
   role: string;
-  summary: string;
-  output: string;
-  status: "completed" | "failed";
-  latencyMs: number;
-  error?: string;
-  diagnostics?: {
-    confidence: number;
-    evidenceCount: number;
-    contradictionSignals: number;
-    conflictSignals: number;
-  };
+  description: string;
+  enabled?: boolean;
+  provider?: string;
+  model?: string;
 }
 
-type TeamJudgeVerdict = "trusted" | "partial" | "untrusted";
-
-interface TeamFinalJudge {
-  verdict: TeamJudgeVerdict;
-  confidence: number;
-  reason: string;
-  nextStep: string;
-  uIntra: number;
-  uInter: number;
-  uSys: number;
-  collapseSignals: string[];
-  rawOutput: string;
-}
-
-interface TeamCommunicationAuditEntry {
-  round: number;
-  memberId: string;
-  role: string;
-  partnerIds: string[];
-  referencedPartners: string[];
-  missingPartners: string[];
-  contextPreview: string;
-  partnerSnapshots: string[];
-  resultStatus: "completed" | "failed";
-}
-
-interface TeamRunRecord {
-  runId: string;
-  teamId: string;
-  strategy: TeamStrategy;
-  task: string;
-  communicationRounds?: number;
-  failedMemberRetryRounds?: number;
-  failedMemberRetryApplied?: number;
-  recoveredMembers?: string[];
-  communicationLinks?: Record<string, string[]>;
-  summary: string;
-  status: "completed" | "failed";
-  startedAt: string;
-  finishedAt: string;
-  memberCount: number;
-  outputFile: string;
-  finalJudge?: {
-    verdict: TeamJudgeVerdict;
-    confidence: number;
-    reason: string;
-    nextStep: string;
-    uIntra: number;
-    uInter: number;
-    uSys: number;
-    collapseSignals: string[];
-  };
-}
-
-interface TeamStorage {
-  teams: TeamDefinition[];
-  runs: TeamRunRecord[];
-  currentTeamId?: string;
-  defaultsVersion?: number;
-}
-
-interface TeamPaths {
-  baseDir: string;
-  runsDir: string;
-  storageFile: string;
+interface ParsedTeamMarkdown {
+  frontmatter: TeamFrontmatter;
+  content: string;
+  filePath: string;
 }
 
 interface PrintCommandResult {
@@ -193,8 +154,6 @@ interface PrintCommandResult {
   latencyMs: number;
 }
 
-const MAX_RUNS_TO_KEEP = 100;
-const TEAM_DEFAULTS_VERSION = 3;
 const LIVE_PREVIEW_LINE_LIMIT = 120;
 const LIVE_LIST_WINDOW_SIZE = 22;
 const LIVE_EVENT_TAIL_LIMIT = 240;
@@ -1089,33 +1048,6 @@ function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput {
   };
 }
 
-/**
- * Resolve effective timeout with model-specific adjustment.
- * Priority: user-specified > model-specific > default
- *
- * Note: Kept locally (not in lib) because it may be extended with team-specific
- * timeout adjustments in the future. Currently identical to subagents version.
- */
-function resolveEffectiveTimeoutMs(
-  userTimeoutMs: unknown,
-  modelId: string | undefined,
-  fallback: number,
-): number {
-  // Priority 1: User-specified timeout (if > 0)
-  const userNormalized = normalizeTimeoutMs(userTimeoutMs, 0);
-  if (userNormalized > 0) {
-    return userNormalized;
-  }
-
-  // Priority 2: Model-specific timeout
-  if (modelId && modelId !== "(session-default)") {
-    return computeModelTimeoutMs(modelId);
-  }
-
-  // Priority 3: Default
-  return fallback;
-}
-
 function normalizeCommunicationRounds(value: unknown, fallback = DEFAULT_COMMUNICATION_ROUNDS): number {
   if (STABLE_AGENT_TEAM_RUNTIME) return DEFAULT_COMMUNICATION_ROUNDS;
   const resolved = value === undefined ? fallback : Number(value);
@@ -1469,140 +1401,22 @@ async function resolveTeamParallelCapacity(input: {
   };
 }
 
-function buildRuntimeLimitError(
-  toolName: string,
-  reasons: string[],
-  options?: {
-    waitedMs?: number;
-    timedOut?: boolean;
-  },
-): string {
-  const snapshot = getRuntimeSnapshot();
-  const waitLine =
-    options?.waitedMs === undefined
-      ? undefined
-      : `待機時間: ${options.waitedMs}ms${options.timedOut ? " (timeout)" : ""}`;
-  return [
-    `${toolName} blocked: runtime limit reached.`,
-    ...reasons.map((reason) => `- ${reason}`),
-    `現在: requests=${snapshot.totalActiveRequests}, llm=${snapshot.totalActiveLlm}`,
-    `上限: requests=${snapshot.limits.maxTotalActiveRequests}, llm=${snapshot.limits.maxTotalActiveLlm}`,
-    waitLine,
-    "ヒント: 対象数を減らすか、実行中ジョブの完了を待って再実行してください。",
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join("\n");
-}
-
-function buildRuntimeQueueWaitError(
-  toolName: string,
-  queueWait: {
-    waitedMs: number;
-    attempts: number;
-    timedOut: boolean;
-    aborted: boolean;
-    queuePosition: number;
-    queuedAhead: number;
-  },
-): string {
-  const snapshot = getRuntimeSnapshot();
-  const mode = queueWait.aborted ? "aborted" : queueWait.timedOut ? "timeout" : "blocked";
-  const queuedPreview = snapshot.queuedTools.length > 0 ? snapshot.queuedTools.join(", ") : "-";
-  return [
-    `${toolName} blocked: orchestration queue ${mode}.`,
-    `- queued_ahead: ${queueWait.queuedAhead}`,
-    `- queue_position: ${queueWait.queuePosition}`,
-    `- waited_ms: ${queueWait.waitedMs}`,
-    `- attempts: ${queueWait.attempts}`,
-    `現在: active_orchestrations=${snapshot.activeOrchestrations}, queued=${snapshot.queuedOrchestrations}`,
-    `上限: max_concurrent_orchestrations=${snapshot.limits.maxConcurrentOrchestrations}`,
-    `待機中ツール: ${queuedPreview}`,
-    "ヒント: 同時に走らせる run を減らすか、先行ジョブ完了後に再実行してください。",
-  ].join("\n");
-}
-
+// Wrapper for shared refreshRuntimeStatus with team-specific parameters
 function refreshRuntimeStatus(ctx: any): void {
-  if (!ctx?.hasUI || !ctx?.ui) return;
   const snapshot = getRuntimeSnapshot();
-
-  if (
-    snapshot.totalActiveRequests <= 0 &&
-    snapshot.totalActiveLlm <= 0 &&
-    snapshot.activeOrchestrations <= 0 &&
-    snapshot.queuedOrchestrations <= 0
-  ) {
-    ctx.ui.setStatus?.("agent-team-runtime", undefined);
-    return;
-  }
-
-  ctx.ui.setStatus?.(
+  sharedRefreshRuntimeStatus(
+    ctx,
     "agent-team-runtime",
-    [
-      `LLM実行中:${snapshot.totalActiveLlm}`,
-      `(Team:${snapshot.teamActiveAgents}/Sub:${snapshot.subagentActiveAgents})`,
-      `Req:${snapshot.totalActiveRequests}`,
-      `Queue:${snapshot.activeOrchestrations}/${snapshot.limits.maxConcurrentOrchestrations}+${snapshot.queuedOrchestrations}`,
-    ].join(" "),
+    "Team",
+    snapshot.teamActiveAgents,
+    "Sub",
+    snapshot.subagentActiveAgents,
   );
-}
-
-function startReservationHeartbeat(
-  reservation: RuntimeCapacityReservationLease,
-): () => void {
-  // 長時間実行中に予約TTLが切れないよう、定期heartbeatで延命する。
-  const intervalMs = 5_000;
-  const timer = setInterval(() => {
-    try {
-      reservation.heartbeat();
-    } catch {
-      // noop
-    }
-  }, intervalMs);
-  timer.unref?.();
-  return () => {
-    clearInterval(timer);
-  };
-}
-
-function getPaths(cwd: string): TeamPaths {
-  const baseDir = join(cwd, ".pi", "agent-teams");
-  return {
-    baseDir,
-    runsDir: join(baseDir, "runs"),
-    storageFile: join(baseDir, "storage.json"),
-  };
-}
-
-function ensurePaths(cwd: string): TeamPaths {
-  const paths = getPaths(cwd);
-  ensureDir(paths.baseDir);
-  ensureDir(paths.runsDir);
-  return paths;
-}
-
-function toId(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\-\s_]/g, "")
-    .replace(/[\s_]+/g, "-")
-    .replace(/\-+/g, "-")
-    .replace(/^\-+|\-+$/g, "")
-    .slice(0, 48);
 }
 
 // ============================================================================
 // Markdown-based team definitions loader
 // ============================================================================
-
-interface TeamFrontmatter {
-  id: string;
-  name: string;
-  description: string;
-  enabled: "enabled" | "disabled";
-  strategy?: "parallel" | "sequential";
-  members: TeamMemberFrontmatter[];
-}
 
 interface TeamMemberFrontmatter {
   id: string;
@@ -2089,162 +1903,6 @@ function mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinition): T
     members: mergedMembersWithExtras,
     createdAt: existing.createdAt || fallback.createdAt,
     updatedAt: hasDrift ? new Date().toISOString() : existing.updatedAt || fallback.updatedAt,
-  };
-}
-
-function loadStorage(cwd: string): TeamStorage {
-  const paths = ensurePaths(cwd);
-  const nowIso = new Date().toISOString();
-  const fallback: TeamStorage = {
-    teams: createDefaultTeams(nowIso),
-    runs: [],
-    currentTeamId: "core-delivery-team",
-    defaultsVersion: TEAM_DEFAULTS_VERSION,
-  };
-
-  if (!existsSync(paths.storageFile)) {
-    saveStorage(cwd, fallback);
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(readFileSync(paths.storageFile, "utf-8")) as Partial<TeamStorage>;
-    const storage: TeamStorage = {
-      teams: Array.isArray(parsed.teams) ? parsed.teams : [],
-      runs: Array.isArray(parsed.runs) ? parsed.runs : [],
-      currentTeamId: typeof parsed.currentTeamId === "string" ? parsed.currentTeamId : undefined,
-      defaultsVersion:
-        typeof parsed.defaultsVersion === "number" && Number.isFinite(parsed.defaultsVersion)
-          ? Math.trunc(parsed.defaultsVersion)
-          : 0,
-    };
-    return ensureDefaults(storage, nowIso);
-  } catch {
-    saveStorage(cwd, fallback);
-    return fallback;
-  }
-}
-
-function saveStorage(cwd: string, storage: TeamStorage): void {
-  const paths = ensurePaths(cwd);
-  const normalized: TeamStorage = {
-    ...storage,
-    runs: storage.runs.slice(-MAX_RUNS_TO_KEEP),
-    defaultsVersion: TEAM_DEFAULTS_VERSION,
-  };
-  withFileLock(paths.storageFile, () => {
-    const merged = mergeTeamStorageWithDisk(paths.storageFile, normalized);
-    atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
-    pruneTeamRunArtifacts(paths, merged.runs);
-  });
-}
-
-function pruneTeamRunArtifacts(paths: TeamPaths, runs: TeamRunRecord[]): void {
-  let files: string[] = [];
-  try {
-    files = readdirSync(paths.runsDir);
-  } catch {
-    return;
-  }
-
-  const keep = new Set(
-    runs
-      .map((run) => basename(run.outputFile || ""))
-      .filter((name) => name.endsWith(".json")),
-  );
-  if (runs.length > 0 && keep.size === 0) {
-    return;
-  }
-
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    if (keep.has(file)) continue;
-    try {
-      unlinkSync(join(paths.runsDir, file));
-    } catch {
-      // noop
-    }
-  }
-}
-
-function mergeTeamStorageWithDisk(
-  storageFile: string,
-  next: TeamStorage,
-): TeamStorage {
-  let disk: Partial<TeamStorage> = {};
-  try {
-    if (existsSync(storageFile)) {
-      disk = JSON.parse(readFileSync(storageFile, "utf-8")) as Partial<TeamStorage>;
-    }
-  } catch {
-    disk = {};
-  }
-
-  const diskTeams = Array.isArray(disk.teams) ? disk.teams : [];
-  const nextTeams = Array.isArray(next.teams) ? next.teams : [];
-  const teamById = new Map<string, TeamDefinition>();
-  for (const team of diskTeams) {
-    if (!team || typeof team !== "object") continue;
-    if (typeof (team as { id?: unknown }).id !== "string") continue;
-    const id = (team as { id: string }).id.trim();
-    if (!id) continue;
-    teamById.set(team.id, team);
-  }
-  for (const team of nextTeams) {
-    if (!team || typeof team !== "object") continue;
-    if (typeof (team as { id?: unknown }).id !== "string") continue;
-    const id = (team as { id: string }).id.trim();
-    if (!id) continue;
-    teamById.set(team.id, team);
-  }
-  const mergedTeams = Array.from(teamById.values());
-
-  const diskRuns = Array.isArray(disk.runs) ? disk.runs : [];
-  const nextRuns = Array.isArray(next.runs) ? next.runs : [];
-  const runById = new Map<string, TeamRunRecord>();
-  for (const run of diskRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  for (const run of nextRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  const mergedRuns = Array.from(runById.values())
-    .sort((left, right) => {
-      const leftKey = left.finishedAt || left.startedAt || "";
-      const rightKey = right.finishedAt || right.startedAt || "";
-      return leftKey.localeCompare(rightKey);
-    })
-    .slice(-MAX_RUNS_TO_KEEP);
-
-  const candidateCurrent =
-    typeof next.currentTeamId === "string" && next.currentTeamId.trim()
-      ? next.currentTeamId
-      : typeof disk.currentTeamId === "string" && disk.currentTeamId.trim()
-        ? disk.currentTeamId
-        : undefined;
-  const currentTeamId =
-    candidateCurrent && mergedTeams.some((team) => team.id === candidateCurrent)
-      ? candidateCurrent
-      : mergedTeams[0]?.id;
-
-  const diskDefaults =
-    typeof disk.defaultsVersion === "number" && Number.isFinite(disk.defaultsVersion)
-      ? Math.trunc(disk.defaultsVersion)
-      : 0;
-
-  return {
-    teams: mergedTeams,
-    runs: mergedRuns,
-    currentTeamId,
-    defaultsVersion: Math.max(TEAM_DEFAULTS_VERSION, diskDefaults),
   };
 }
 
