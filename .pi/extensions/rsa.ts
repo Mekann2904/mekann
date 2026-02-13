@@ -6,8 +6,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
-import { spawn } from "node:child_process";
-import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, GRACEFUL_SHUTDOWN_DELAY_MS } from "../lib";
+import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel } from "../lib";
+import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 type TraceMode = "off" | "summary" | "verbose";
 
 interface RSAConfig {
@@ -971,104 +971,17 @@ async function callModelViaPi(
   signal: AbortSignal | undefined,
   onChunk?: (chunk: string) => void,
 ): Promise<string> {
-  const args = ["-p", "--no-extensions", "--provider", model.provider, "--model", model.id];
-
-  if (model.thinkingLevel) {
-    args.push("--thinking", model.thinkingLevel);
-  }
-
-  args.push(prompt);
-
-  return await new Promise<string>((resolve, reject) => {
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let settled = false;
-
-    const child = spawn("pi", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
-
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        try {
-          child.kill(sig);
-        } catch {
-          // noop
-        }
-      }
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      finish(() => reject(new Error("RSA aborted")));
-    };
-
-    // timeoutMs <= 0 means "no per-call timeout". User cancellation still aborts the process.
-    const timeoutEnabled = timeoutMs > 0;
-    const timeout = timeoutEnabled
-      ? setTimeout(() => {
-          timedOut = true;
-          killSafely("SIGTERM");
-          setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-        }, timeoutMs)
-      : undefined;
-
-    const cleanup = () => {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      signal?.removeEventListener("abort", onAbort);
-    };
-
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
-      onChunk?.(text);
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
-    });
-
-    child.on("error", (error) => {
-      finish(() => reject(error));
-    });
-
-    child.on("close", (code) => {
-      finish(() => {
-        if (timedOut) {
-          reject(new Error(`pi -p timed out after ${timeoutMs}ms`));
-          return;
-        }
-
-        if (code !== 0) {
-          const err = stderr.trim() || `exit code ${code}`;
-          reject(new Error(`pi -p failed: ${err}`));
-          return;
-        }
-
-        const output = stdout.trim();
-        if (!output) {
-          reject(new Error("pi -p returned empty output."));
-          return;
-        }
-
-        resolve(output);
-      });
-    });
+  return sharedCallModelViaPi({
+    model: {
+      provider: model.provider,
+      id: model.id,
+      thinkingLevel: model.thinkingLevel,
+    },
+    prompt,
+    timeoutMs,
+    signal,
+    onChunk,
+    entityLabel: "RSA",
   });
 }
 

@@ -11,7 +11,8 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
-import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, GRACEFUL_SHUTDOWN_DELAY_MS, computeModelTimeoutMs } from "../lib";
+import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, computeModelTimeoutMs } from "../lib";
+import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 type LoopStatus = "continue" | "done" | "unknown";
 type LoopGoalStatus = "met" | "not_met" | "unknown";
 
@@ -1866,93 +1867,16 @@ async function callModelViaPi(
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<string> {
-  const args = ["-p", "--no-extensions", "--provider", model.provider, "--model", model.id];
-  if (model.thinkingLevel) {
-    args.push("--thinking", model.thinkingLevel);
-  }
-  args.push(prompt);
-
-  return await new Promise<string>((resolvePromise, rejectPromise) => {
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let settled = false;
-
-    const child = spawn("pi", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
-
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        try {
-          child.kill(sig);
-        } catch {
-          // noop
-        }
-      }
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      finish(() => rejectPromise(new Error("loop aborted")));
-    };
-
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-    }, timeoutMs);
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", onAbort);
-    };
-
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
-    });
-
-    child.on("error", (error) => {
-      finish(() => rejectPromise(error));
-    });
-
-    child.on("close", (code) => {
-      finish(() => {
-        if (timedOut) {
-          rejectPromise(new Error(`pi -p timed out after ${timeoutMs}ms`));
-          return;
-        }
-        if (code !== 0) {
-          const message = stderr.trim() || `exit code ${code}`;
-          rejectPromise(new Error(`pi -p failed: ${message}`));
-          return;
-        }
-
-        const output = stdout.trim();
-        if (!output) {
-          rejectPromise(new Error("pi -p returned empty output"));
-          return;
-        }
-        resolvePromise(output);
-      });
-    });
+  return sharedCallModelViaPi({
+    model: {
+      provider: model.provider,
+      id: model.id,
+      thinkingLevel: model.thinkingLevel,
+    },
+    prompt,
+    timeoutMs,
+    signal,
+    entityLabel: "loop",
   });
 }
 

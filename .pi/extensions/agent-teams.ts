@@ -10,7 +10,6 @@ import { randomBytes } from "node:crypto";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { spawn } from "node:child_process";
 import {
   formatRuntimeStatusLine,
   getRuntimeSnapshot,
@@ -48,6 +47,10 @@ import {
   refreshRuntimeStatus as sharedRefreshRuntimeStatus,
 } from "./shared/runtime-helpers";
 import {
+  runPiPrintMode as sharedRunPiPrintMode,
+  type PrintExecutorOptions,
+} from "./shared/pi-print-executor";
+import {
   ensureDir,
   formatDurationMs,
   normalizeForSingleLine,
@@ -72,7 +75,6 @@ import {
   RunOutcomeCode,
   RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
-  GRACEFUL_SHUTDOWN_DELAY_MS,
   computeModelTimeoutMs,
   getLiveStatusGlyph,
   isEnterInput,
@@ -2237,131 +2239,9 @@ async function runPiPrintMode(input: {
   onStdoutChunk?: (chunk: string) => void;
   onStderrChunk?: (chunk: string) => void;
 }): Promise<PrintCommandResult> {
-  if (input.signal?.aborted) {
-    throw new Error("agent team run aborted");
-  }
-
-  const args = ["-p", "--no-extensions"];
-
-  if (input.provider) {
-    args.push("--provider", input.provider);
-  }
-  if (input.model) {
-    args.push("--model", input.model);
-  }
-
-  args.push(input.prompt);
-
-  return await new Promise<PrintCommandResult>((resolvePromise, rejectPromise) => {
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let settled = false;
-    let forceKillTimer: NodeJS.Timeout | undefined;
-    const startedAt = Date.now();
-
-    const child = spawn("pi", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
-
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        try {
-          child.kill(sig);
-        } catch {
-          // noop
-        }
-      }
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      finish(() => rejectPromise(new Error("agent team run aborted")));
-    };
-
-    const timeoutEnabled = input.timeoutMs > 0;
-    const timeout = timeoutEnabled
-      ? setTimeout(() => {
-          timedOut = true;
-          killSafely("SIGTERM");
-          if (forceKillTimer) {
-            clearTimeout(forceKillTimer);
-          }
-          forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-        }, input.timeoutMs)
-      : undefined;
-
-    const cleanup = () => {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      input.signal?.removeEventListener("abort", onAbort);
-    };
-
-    input.signal?.addEventListener("abort", onAbort, { once: true });
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
-      input.onStdoutChunk?.(text);
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
-      input.onStderrChunk?.(text);
-    });
-
-    child.on("error", (error) => {
-      finish(() => rejectPromise(error));
-    });
-
-    child.on("close", (code) => {
-      finish(() => {
-        if (timedOut) {
-          rejectPromise(new Error(`agent team run timed out after ${input.timeoutMs}ms`));
-          return;
-        }
-
-        if (code !== 0) {
-          rejectPromise(new Error(stderr.trim() || `agent team run exited with code ${code}`));
-          return;
-        }
-
-        const output = stdout.trim();
-        if (!output) {
-          const stderrMessage = trimForError(stderr);
-          rejectPromise(
-            new Error(
-              stderrMessage
-                ? `agent team member returned empty output; stderr=${stderrMessage}`
-                : "agent team member returned empty output",
-            ),
-          );
-          return;
-        }
-
-        resolvePromise({
-          output,
-          latencyMs: Date.now() - startedAt,
-        });
-      });
-    });
+  return sharedRunPiPrintMode({
+    ...input,
+    entityLabel: "agent team member",
   });
 }
 
