@@ -63,6 +63,7 @@ import {
   RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
   GRACEFUL_SHUTDOWN_DELAY_MS,
+  computeModelTimeoutMs,
 } from "../lib";
 
 type AgentEnabledState = "enabled" | "disabled";
@@ -865,6 +866,30 @@ function normalizeTimeoutMs(value: unknown, fallback: number): number {
   if (!Number.isFinite(resolved)) return fallback;
   if (resolved <= 0) return 0;
   return Math.max(1, Math.trunc(resolved));
+}
+
+/**
+ * Resolve effective timeout with model-specific adjustment.
+ * Priority: user-specified > model-specific > default
+ */
+function resolveEffectiveTimeoutMs(
+  userTimeoutMs: unknown,
+  modelId: string | undefined,
+  fallback: number,
+): number {
+  // Priority 1: User-specified timeout (if > 0)
+  const userNormalized = normalizeTimeoutMs(userTimeoutMs, 0);
+  if (userNormalized > 0) {
+    return userNormalized;
+  }
+
+  // Priority 2: Model-specific timeout
+  if (modelId && modelId !== "(session-default)") {
+    return computeModelTimeoutMs(modelId, { defaultTimeoutMs: fallback });
+  }
+
+  // Priority 3: Default
+  return fallback;
 }
 
 function createRetrySchema() {

@@ -11,7 +11,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
-import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, GRACEFUL_SHUTDOWN_DELAY_MS } from "../lib";
+import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, GRACEFUL_SHUTDOWN_DELAY_MS, computeModelTimeoutMs } from "../lib";
 type LoopStatus = "continue" | "done" | "unknown";
 type LoopGoalStatus = "met" | "not_met" | "unknown";
 
@@ -617,7 +617,12 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     let iterationSummary = "";
 
     try {
-      output = await callModelViaPi(input.model, prompt, input.config.timeoutMs, input.signal);
+      // Compute model-specific timeout with thinking level adjustment
+      const effectiveTimeoutMs = computeModelTimeoutMs(input.model.id, {
+        userTimeoutMs: input.config.timeoutMs,
+        thinkingLevel: input.model.thinkingLevel,
+      });
+      output = await callModelViaPi(input.model, prompt, effectiveTimeoutMs, input.signal);
       latencyMs = Date.now() - started;
       finalOutput = output;
 

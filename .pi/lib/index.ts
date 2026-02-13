@@ -61,3 +61,13 @@ export { GRACEFUL_SHUTDOWN_DELAY_MS } from "./process-utils.js";
 
 // Agent utilities (Layer 1)
 export { createRunId, computeLiveWindow } from "./agent-utils.js";
+
+// Model timeout utilities (Layer 1)
+export {
+  MODEL_TIMEOUT_BASE_MS,
+  THINKING_LEVEL_MULTIPLIERS,
+  getModelBaseTimeoutMs,
+  computeModelTimeoutMs,
+  computeProgressiveTimeoutMs,
+  type ComputeModelTimeoutOptions,
+} from "./model-timeouts.js";
