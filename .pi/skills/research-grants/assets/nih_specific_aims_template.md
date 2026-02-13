@@ -1,166 +1,165 @@
-# NIH Specific Aims Page Template
+# NIH Specific Aims Page テンプレート
 
-**CRITICAL**: Exactly 1 page, 0.5-inch margins, 11-point font minimum
-
----
-
-## Opening Paragraph: The Hook (3-5 sentences)
-
-[Establish the importance of your research area with compelling statistics or biological significance]
-
-**Template:**
-[Disease/Problem] affects [number] people annually and [consequence - mortality, morbidity, cost]. Despite [current treatments/knowledge], [major limitation or gap]. [Why this limitation matters for patients/science]. [Opportunity or need for new approaches].
-
-**Example:**
-Type 2 diabetes (T2D) affects 37 million Americans and costs $327 billion annually in healthcare expenditures. Despite available therapies, fewer than 50% of patients achieve glycemic control, and complications including cardiovascular disease, neuropathy, and kidney failure remain common. Existing treatments primarily target insulin resistance and β-cell function, yet fail to address the underlying molecular heterogeneity driving variable therapeutic responses. Identifying molecular subtypes of T2D and their corresponding treatment vulnerabilities represents a critical unmet need for precision medicine approaches.
+**重要**: 厳密に1ページ、マージン0.5インチ、フォント11ポイント以上
 
 ---
 
-## Second Paragraph: Gap and Rationale (4-6 sentences)
+## 開始段落: フック（3-5文）
 
-[Define what's known, what's unknown, and why the gap matters]
+[研究分野の重要性を、説得力のある統計データや生物学的意義で確立する]
 
-**Template:**
-Prior studies have established [current knowledge - 1-2 sentences]. However, [what remains unknown - the gap]. [Why current approaches are insufficient]. [Critical barrier to progress]. Understanding [the gap] is essential because [impact of filling the gap].
+**テンプレート:**
+[疾患/問題]は年間[人数]人に影響し、[帰結 - 死亡率、罹患率、コスト]。[現在の治療/知識]にもかかわらず、[主要な限界またはギャップ]。[この限界が患者/科学にとって重要な理由]。[新しいアプローチの機会または必要性]。
 
-**Example:**
-Prior studies have identified numerous genetic and environmental risk factors for T2D, and recent work has revealed metabolic heterogeneity among patients. However, molecular classification schemes have relied primarily on clinical phenotypes (age at onset, BMI, insulin levels) rather than underlying pathophysiology, limiting their therapeutic utility. Current approaches cannot predict which patients will respond to specific therapies, leading to inefficient trial-and-error treatment selection. Understanding the molecular drivers of T2D heterogeneity and their relationships to drug responses is essential for developing predictive biomarkers and targeted treatment strategies.
-
----
-
-## Third Paragraph: Goal, Objective, Hypothesis, Rationale (5-7 sentences)
-
-**Long-term goal**: [Overarching research program direction]
-
-**Objective**: The objective of this application is to [specific goal of THIS grant - what you will accomplish].
-
-**Central hypothesis**: [Testable prediction that unifies your aims]. 
-
-This hypothesis is based on [rationale]: our preliminary data showing [key finding 1], [key finding 2], and [key finding 3] (Figures 1-2, Table 1). [Why this evidence supports the hypothesis].
-
-**Example:**
-Our long-term goal is to develop precision medicine approaches for type 2 diabetes based on molecular disease subtypes. The objective of this application is to define the molecular basis of T2D heterogeneity and identify subtype-specific therapeutic vulnerabilities. Our central hypothesis is that T2D comprises distinct molecular subtypes driven by different combinations of β-cell dysfunction, insulin resistance, and inflammation, and that these subtypes respond differentially to existing therapies. This hypothesis is based on our preliminary multi-omics profiling of 500 T2D patients revealing five distinct clusters with different genetic architectures, metabolic signatures, and clinical trajectories (Fig. 1). Retrospective analysis showed these subtypes had dramatically different responses to metformin and GLP-1 agonists (Fig. 2), and functional studies in islets confirmed subtype-specific mechanisms (Fig. 3). These findings suggest a molecular classification could guide treatment selection.
+**例:**
+2型糖尿病（T2D）は3,700万人の米国人に影響し、医療費として年間3,270億ドルの費用がかかっている。利用可能な治療法があるにもかかわらず、患者の50%未満しか血糖コントロールを達成できず、心血管疾患、神経障害、腎不全を含む合併症が一般的であり続けている。既存の治療法は主にインスリン抵抗性とβ細胞機能を標的としているが、様々な治療反応を駆動する根本的な分子不均一性に対処できていない。T2Dの分子サブタイプとそれに対応する治療脆弱性を特定することは、Precision Medicine（精密医療）アプローチにとって重要な未充足ニーズである。
 
 ---
 
-## Specific Aim 1: [Action Verb - What You Will Do]
+## 第2段落: ギャップと根拠（4-6文）
 
-[Brief rationale: why this aim is important, background context - 1-2 sentences]
+[既知のこと、未知のこと、ギャップが重要な理由を定義する]
 
-**Working hypothesis**: [Testable prediction for this aim]
+**テンプレート:**
+先行研究は[現在の知識 - 1-2文]を確立している。しかし、[未知のまま残っていること - ギャップ]。[現在のアプローチが不十分な理由]。[進歩への重要な障壁]。[ギャップ]を理解することは、[ギャップを埋めることの影響]のため不可欠である。
 
-**Approach**: We will (1) [first set of experiments/methods], (2) [second set], and (3) [third set]. [Key model systems, sample sizes, or technical approaches]. 
-
-**Expected outcomes**: We expect to [specific predictions], which will [how this advances knowledge or enables subsequent aims].
-
-**Example:**
-
-## Specific Aim 1: Define molecular subtypes of T2D through integrated multi-omics analysis
-
-Current clinical classification of T2D lacks molecular granularity. Our preliminary clustering analysis identified 5 subtypes, but requires validation and mechanistic characterization.
-
-**Working hypothesis**: T2D comprises at least five molecular subtypes with distinct genomic, transcriptomic, proteomic, and metabolomic signatures.
-
-**Approach**: We will (1) perform multi-omics profiling (genome, transcriptome, proteome, metabolome) on 2,000 T2D patients from three independent cohorts, (2) apply unsupervised clustering and machine learning to identify robust subtypes, and (3) validate subtypes in 1,000 independent patients. We will develop a streamlined classification algorithm using the minimal set of biomarkers sufficient for subtype assignment.
-
-**Expected outcomes**: We will define 5-7 molecular T2D subtypes, characterize their multi-omics signatures, and develop a clinically deployable classifier. This foundation will enable investigation of subtype-specific mechanisms (Aim 2) and treatment responses (Aim 3).
+**例:**
+先行研究はT2Dの多数の遺伝的および環境的リスク因子を特定し、最近の研究は患者間の代謝的不均一性を明らかにしている。しかし、分子分類スキームは主に基礎的な病態生理学ではなく臨床的表現型（発症年齢、BMI、インスリン値）に依存しており、その治療的有用性を制限している。現在のアプローチでは、どの患者が特定の治療法に反応するかを予測できず、非効率的な試行錯誤による治療選択につながっている。T2D不均一性の分子ドライバーと薬物反応との関係を理解することは、予測バイオマーカーと標的治療戦略の開発に不可欠である。
 
 ---
 
-## Specific Aim 2: [Action Verb - What You Will Do]
+## 第3段落: 目標、目的、仮説、根拠（5-7文）
 
-[Brief rationale and background - 1-2 sentences]
+**長期目標**: [包括的な研究プログラムの方向性]
 
-**Working hypothesis**: [Testable prediction]
+**目的**: 本申請の目的は、[本助成金の具体的目標 - 達成すること]である。
 
-**Approach**: [Detailed methods - 3-5 sentences outlining key experiments, models, techniques, and sample sizes]
+**中心的仮説**: [Specific Aimsを統一する検証可能な予測]。
 
-**Expected outcomes**: [Specific predictions and impact]
+この仮説は[根拠]に基づいている: [主要な所見1]、[主要な所見2]、[主要な所見3]を示す予備データ（図1-2、表1）。[この証拠が仮説を支持する理由]。
 
-**Example:**
-
-## Specific Aim 2: Elucidate pathophysiological mechanisms underlying each molecular subtype
-
-Molecular subtypes likely reflect distinct disease mechanisms, but causal pathways remain unknown.
-
-**Working hypothesis**: Each T2D subtype is driven by a distinct combination of β-cell dysfunction, hepatic insulin resistance, adipose tissue inflammation, and incretin deficiency.
-
-**Approach**: Using patient-derived iPSCs, primary adipocytes, and liver organoids from each subtype, we will (1) assess β-cell function (insulin secretion dynamics, ER stress, apoptosis), (2) measure insulin signaling in hepatocytes and adipocytes using phosphoproteomics and glucose uptake assays, (3) profile immune cell infiltration and inflammatory cytokines in adipose tissue, and (4) measure GLP-1 secretion and receptor expression. We will perform integrative analysis relating cellular phenotypes to clinical outcomes in n=100 patients per subtype.
-
-**Expected outcomes**: We will define the primary pathophysiological defects in each subtype and identify targetable vulnerabilities. This mechanistic understanding will inform selection of appropriate therapies in Aim 3.
+**例:**
+我々の長期目標は、分子疾患サブタイプに基づいて2型糖尿病のPrecision Medicineアプローチを開発することである。本申請の目的は、T2D不均一性の分子的基盤を定義し、サブタイプ特異的治療脆弱性を特定することである。我々の中心的仮説は、T2Dがβ細胞機能不全、インスリン抵抗性、炎症の異なる組み合わせによって駆動される異なる分子サブタイプで構成され、これらのサブタイプが既存の治療法に異なる反応を示すということである。この仮説は、500人のT2D患者の予備的多オミクスプロファイリングに基づいており、異なる遺伝的アーキテクチャ、代謝シグネチャ、臨床経過を持つ5つの異なるクラスターを明らかにした（図1）。回顧的分析は、これらのサブタイプがメトホルミンとGLP-1アゴニストに対して劇的に異なる反応を示したことを明らかにし（図2）、島の機能研究はサブタイプ特異的メカニズムを確認した（図3）。これらの所見は、分子分類が治療選択をガイドできることを示唆している。
 
 ---
 
-## Specific Aim 3: [Action Verb - What You Will Do]
+## Specific Aim 1: [動作動詞 - 行うこと]
 
-[Brief rationale - 1-2 sentences]
+[簡潔な根拠: このaimが重要な理由、背景文脈 - 1-2文]
 
-**Working hypothesis**: [Testable prediction]
+**作業仮説**: [このaimの検証可能な予測]
 
-**Approach**: [Methods - 3-5 sentences]
+**アプローチ**: (1) [実験/方法の最初のセット]、(2) [2番目のセット]、(3) [3番目のセット]を行う。[主要なモデルシステム、サンプルサイズ、または技術的アプローチ]。
 
-**Expected outcomes**: [Predictions and impact]
+**期待される成果**: [具体的な予測]を期待し、これは[知識をどのように進歩させるか、または後続のaimsを可能にするか]。
 
-**Example:**
+**例:**
 
-## Specific Aim 3: Determine subtype-specific responses to existing T2D therapies
+## Specific Aim 1: 統合多オミクス分析を通じてT2Dの分子サブタイプを定義する
 
-Current treatment algorithms do not account for molecular heterogeneity, leading to suboptimal outcomes.
+現在のT2Dの臨床的分類は分子粒度を欠いている。我々の予備クラスタリング分析は5つのサブタイプを特定したが、検証とメカニズム的特性評価が必要である。
 
-**Working hypothesis**: T2D subtypes exhibit differential responses to metformin, GLP-1 agonists, SGLT2 inhibitors, and insulin, based on their underlying pathophysiology.
+**作業仮説**: T2Dは、異なるゲノム、トランスクリプトーム、プロテオーム、メタボロームシグネチャを持つ少なくとも5つの分子サブタイプで構成される。
 
-**Approach**: We will (1) conduct retrospective analysis of treatment responses in 5,000 patients with known subtypes from electronic health records, (2) validate findings in a prospective observational cohort (n=500, 18-month follow-up), and (3) test predicted drug sensitivities in patient-derived cell models and humanized mice (n=15 per subtype per drug). Primary outcomes are HbA1c reduction, with secondary outcomes including weight, hypoglycemia, and cardiovascular risk markers.
+**アプローチ**: (1) 3つの独立したコホートから2,000人のT2D患者について多オミクスプロファイリング（ゲノム、トランスクリプトーム、プロテオーム、メタボローム）を実行し、(2) 堅牢なサブタイプを特定するために教師なしクラスタリングと機械学習を適用し、(3) 1,000人の独立した患者でサブタイプを検証する。サブタイプ割り当てに十分な最小限のバイオマーカーセットを使用して、合理化された分類アルゴリズムを開発する。
 
-**Expected outcomes**: We will identify optimal first-line therapies for each subtype and develop a treatment algorithm. Retrospective data suggest subtype-guided therapy could improve HbA1c control by 0.8-1.2% compared to standard care. Results will inform an investigator-initiated clinical trial (resources available through our Clinical Research Center).
-
----
-
-## Closing Paragraph: Impact and Significance (3-5 sentences)
-
-[Summarize expected outcomes, how it advances the field, and positive impact]
-
-**Template:**
-The proposed research is significant because [why it matters]. Results will [specific advances - knowledge, tools, treatments]. We expect findings will [broader impact on field or health]. This work will [transformative potential or next steps].
-
-**Example:**
-The proposed research is significant because it will establish a molecular taxonomy of type 2 diabetes and identify subtype-specific treatment strategies, addressing a critical barrier to precision medicine in this prevalent disease. Results will provide mechanistic insights into T2D heterogeneity, immediately applicable biomarkers for patient stratification, and evidence-based treatment algorithms. We expect findings will enable personalized therapeutic approaches that substantially improve glycemic control and reduce complications for the 37 million Americans with T2D. This work will establish new paradigms for precision medicine in complex metabolic diseases and provide the foundation for a prospective subtype-guided treatment trial that could transform clinical practice.
+**期待される成果**: 5-7の分子T2Dサブタイプを定義し、それらの多オミクスシグネチャを特性評価し、臨床的に展開可能な分類器を開発する。この基盤は、サブタイプ特異的メカニズムの調査（Aim 2）と治療反応（Aim 3）を可能にする。
 
 ---
 
-## Formatting Checklist
+## Specific Aim 2: [動作動詞 - 行うこと]
 
-- [ ] Exactly 1 page (not 1.1, not 0.9)
-- [ ] 0.5-inch margins (all sides)
-- [ ] 11-point Arial/Helvetica or equivalent
-- [ ] Readable line spacing
-- [ ] Aim statements are bold or underlined
-- [ ] Gene names italicized (*TP53*)
-- [ ] Figures (if included) are legible
-- [ ] All abbreviations defined at first use
+[簡潔な根拠と背景 - 1-2文]
 
-## Content Checklist
+**作業仮説**: [検証可能な予測]
 
-- [ ] Opens with compelling importance statement
-- [ ] Includes epidemiological data or significance metrics
-- [ ] Clearly defines the gap in knowledge
-- [ ] States long-term goal
-- [ ] States specific objective of THIS application
-- [ ] Presents testable central hypothesis (or research questions)
-- [ ] Mentions preliminary data supporting feasibility
-- [ ] Includes 2-4 specific aims
-- [ ] Each aim has: rationale, hypothesis, approach, expected outcomes
-- [ ] Aims are testable and achievable
-- [ ] Aims are independent but synergistic
-- [ ] Expected outcomes are specific
-- [ ] Closes with impact statement
-- [ ] Passes the "skim test" (aim statements tell the story)
+**アプローチ**: [詳細な方法 - 主要な実験、モデル、技術、サンプルサイズを概説する3-5文]
 
-## Tips for Success
+**期待される成果**: [具体的な予測と影響]
 
-1. **Write 10+ drafts** - This page is too important to rush
-2. **Get extensive feedback** - From colleagues, mentors, people outside your field
-3. **Read it aloud** - Check for flow and clarity
-4. **Study funded examples** - Look at successful aims pages in your field
-5. **Test on non-experts** - Can someone in a different field understand the importance?
-6. **Check every word** - Every sentence must earn its place on this precious page
+**例:**
 
+## Specific Aim 2: 各分子サブタイプの基礎となる病態生理学的メカニズムを解明する
+
+分子サブタイプは異なる疾患メカニズムを反映している可能性があるが、因果経路は未知のままである。
+
+**作業仮説**: 各T2Dサブタイプは、β細胞機能不全、肝インスリン抵抗性、脂肪組織炎症、インクレチン欠乏の異なる組み合わせによって駆動されている。
+
+**アプローチ**: 各サブタイプからの患者由来iPSC、初代脂肪細胞、肝オルガノイドを使用して、(1) β細胞機能を評価し（インスリン分泌動態、ERストレス、アポトーシス）、(2) ホスホプロテオミクスとグルコース取り込みアッセイを使用して肝細胞と脂肪細胞のインスリンシグナリングを測定し、(3) 脂肪組織の免疫細胞浸潤と炎症性サイトカインをプロファイリングし、(4) GLP-1分泌と受容体発現を測定する。サブタイプあたりn=100人の患者で細胞表現型を臨床転帰に関連付ける統合分析を実行する。
+
+**期待される成果**: 各サブタイプの主要な病態生理学的欠陥を定義し、標的可能な脆弱性を特定する。このメカニズムの理解は、Aim 3での適切な治療法の選択に情報を提供する。
+
+---
+
+## Specific Aim 3: [動作動詞 - 行うこと]
+
+[簡潔な根拠 - 1-2文]
+
+**作業仮説**: [検証可能な予測]
+
+**アプローチ**: [方法 - 3-5文]
+
+**期待される成果**: [予測と影響]
+
+**例:**
+
+## Specific Aim 3: 既存のT2D治療法に対するサブタイプ特異的反応を決定する
+
+現在の治療アルゴリズムは分子不均一性を考慮しておらず、最適でない転帰につながっている。
+
+**作業仮説**: T2Dサブタイプは、その基礎となる病態生理学に基づいて、メトホルミン、GLP-1アゴニスト、SGLT2阻害薬、インスリンに対して異なる反応を示す。
+
+**アプローチ**: (1) 電子健康記録からサブタイプが既知の5,000人の患者の治療反応の回顧的分析を実施し、(2) 前向き観察コホートで所見を検証し（n=500、18ヶ月フォローアップ）、(3) 患者由来細胞モデルとヒト化マウスで予測された薬物感受性をテストする（サブタイプおよび薬物あたりn=15）。主要アウトカムはHbA1c低下であり、副次アウトカムには体重、低血糖、心血管リスクマーカーが含まれる。
+
+**期待される成果**: 各サブタイプの最適な第一選択治療法を特定し、治療アルゴリズムを開発する。回顧的データは、サブタイプガイド治療が標準治療と比較してHbA1cコントロールを0.8-1.2%改善できることを示唆している。結果は、治験者主導治験に情報を提供する（臨床研究センターを通じてリソースが利用可能）。
+
+---
+
+## 結び段落: 影響と意義（3-5文）
+
+[期待される成果、分野をどのように進歩させるか、肯定的な影響を要約する]
+
+**テンプレート:**
+提案された研究は重要である。なぜなら[重要な理由]。結果は[具体的な進歩 - 知識、ツール、治療法]をもたらす。所見は[分野または健康へのより広い影響]と期待される。この作業は[変革の可能性または次のステップ]。
+
+**例:**
+提案された研究は重要である。なぜなら、この普及している疾患におけるPrecision Medicineへの重要な障壁に対処し、2型糖尿病の分子分類法を確立し、サブタイプ特異的治療戦略を特定するからである。結果は、T2D不均一性へのメカニズム的洞察、患者層別化のための即座に適用可能なバイオマーカー、エビデンスに基づく治療アルゴリズムを提供する。所見は、3,700万人のT2Dの米国人のために血糖コントロールを大幅に改善し、合併症を減少させる、パーソナライズされた治療アプローチを可能にすると期待される。この作業は、複雑な代謝疾患におけるPrecision Medicineの新しいパラダイムを確立し、臨床診療を変革する可能性のある前向きサブタイプガイド治療治験の基盤を提供する。
+
+---
+
+## フォーマットチェックリスト
+
+- [ ] 厳密に1ページ（1.1でも0.9でもない）
+- [ ] マージン0.5インチ（すべての辺）
+- [ ] 11ポイントArial/Helveticaまたは同等
+- [ ] 読みやすい行間隔
+- [ ] Aim記述は太字または下線
+- [ ] 遺伝子名はイタリック体（*TP53*）
+- [ ] 図（含む場合）は読みやすい
+- [ ] すべての略語は初使用時に定義
+
+## 内容チェックリスト
+
+- [ ] 説得力のある重要性声明で開始
+- [ ] 疫学データまたは重要性指標を含む
+- [ ] 知識のギャップを明確に定義
+- [ ] 長期目標を記載
+- [ ] 本申請の具体的目標を記載
+- [ ] 検証可能な中心的仮説（または研究質問）を提示
+- [ ] 実現可能性を支持する予備データに言及
+- [ ] 2-4のSpecific Aimsを含む
+- [ ] 各aimに以下を含む: 根拠、仮説、アプローチ、期待される成果
+- [ ] Aimsは検証可能で達成可能
+- [ ] Aimsは独立しているが相乗的
+- [ ] 期待される成果は具体的
+- [ ] 影響声明で締めくくる
+- [ ] 「斜め読みテスト」に合格（aim記述がストーリーを語る）
+
+## 成功へのヒント
+
+1. **10以上のドラフトを書く** - このページは急ぐにはあまりに重要
+2. **広範なフィードバックを得る** - 同僚、メンター、異なる分野の人から
+3. **声に出して読む** - 流れと明確さをチェック
+4. **資金提供された例を研究する** - あなたの分野の成功したaimsページを見る
+5. **非専門家でテストする** - 異なる分野の人が重要性を理解できるか？
+6. **すべての言葉をチェックする** - すべての文章がこの貴重なページに値するか

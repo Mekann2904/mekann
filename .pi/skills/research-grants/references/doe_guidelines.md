@@ -1,576 +1,576 @@
-# DOE (Department of Energy) Grant Writing Guidelines
+# DOE (Department of Energy) 研究助成金申請ガイドライン
 
-## Agency Overview
+## 機関概要
 
-**Mission**: Ensure America's security and prosperity by addressing energy, environmental, and nuclear challenges through transformative science and technology solutions
-
-**Annual Budget**: ~$50 billion (includes national laboratories, energy programs, nuclear security)
+**ミッション**: 変革的な科学技術ソリューションを通じて、エネルギー、環境、原子力の課題に取り組み、米国の安全と繁栄を確保する
+
+**年間予算**: 約500億ドル（国立研究所、エネルギープログラム、核安全保障を含む）
 
-**Website**: https://www.energy.gov
+**ウェブサイト**: https://www.energy.gov
 
-**Key Characteristics**:
-- Focus on energy, climate, environmental, computational, and physical sciences
-- Operates 17 national laboratories (largest science infrastructure in US)
-- Strong emphasis on industry partnerships and commercialization
-- Basic science through applied research and development
-- Cost sharing often required
-- National security and energy security priorities
+**主な特徴**:
+- エネルギー、気候、環境、計算科学、物理科学に重点
+- 17の国立研究所を運営（米国最大の科学インフラ）
+- 産業界とのパートナーシップと商業化を重視
+- 基礎科学から応用研究・開発まで
+- コストシェア（Cost Sharing、費用負担）が часто 必要
+- 国家安全保障とエネルギー安全保障の優先事項
 
-## Major DOE Offices and Programs
+## 主要なDOE局とプログラム
 
-### Office of Science (SC)
+### Office of Science (SC、科学局)
 
-**Budget**: ~$8 billion (largest supporter of physical sciences research in US)
+**予算**: 約80億ドル（米国の物理科学研究の最大の支援者）
 
-**Mission**: Deliver scientific discoveries and major scientific tools to transform our understanding of nature and advance energy, economic, and national security
+**ミッション**: 科学的発見と主要な科学ツールを提供し、自然界の理解を変革し、エネルギー、経済、国家安全保障を向上させる
 
-**Program Offices**:
+**プログラム局**:
 
-1. **Advanced Scientific Computing Research (ASCR)**
-   - High-performance computing
-   - Applied mathematics
-   - Computational sciences
-   - Exascale computing
+1. **Advanced Scientific Computing Research (ASCR、先端科学計算研究)**
+   - 高性能計算（High-Performance Computing）
+   - 応用数学
+   - 計算科学
+   - エクサスケールコンピューティング（Exascale Computing）
 
-2. **Basic Energy Sciences (BES)**
-   - Materials science and engineering
-   - Chemical sciences
-   - Condensed matter and materials physics
-   - User facilities (light sources, neutron sources)
+2. **Basic Energy Sciences (BES、基礎エネルギー科学)**
+   - 材料科学と工学
+   - 化学科学
+   - 凝縮系物理と材料物理学
+   - ユーザー施設（放射光施設、中性子源）
 
-3. **Biological and Environmental Research (BER)**
-   - Biological systems science
-   - Climate and environmental sciences
-   - Environmental molecular sciences laboratory
+3. **Biological and Environmental Research (BER、生物環境研究)**
+   - 生物システム科学
+   - 気候・環境科学
+   - 環境分子科学研究所
 
-4. **Fusion Energy Sciences (FES)**
-   - Plasma physics
-   - Fusion energy development
-   - ITER collaboration
+4. **Fusion Energy Sciences (FES、核融合エネルギー科学)**
+   - プラズマ物理学
+   - 核融合エネルギー開発
+   - ITER（国際熱核融合実験炉）協力
 
-5. **High Energy Physics (HEP)**
-   - Particle physics
-   - Accelerator science
-   - Quantum information science
+5. **High Energy Physics (HEP、高エネルギー物理学)**
+   - 素粒子物理学
+   - 加速器科学
+   - 量子情報科学
 
-6. **Nuclear Physics (NP)**
-   - Nuclear structure and dynamics
-   - Relativistic heavy ions
-   - Fundamental symmetries
+6. **Nuclear Physics (NP、原子核物理学)**
+   - 原子核構造とダイナミクス
+   - 相対論的重イオン
+   - 基本対称性
 
-**Funding Mechanisms**:
-- **Early Career Research Program**: $750K over 5 years for early career scientists
-- **Funding Opportunity Announcements (FOAs)**: Program-specific solicitations
-- **Laboratory Directed Research and Development (LDRD)**: For national lab staff
+**資金調達メカニズム**:
+- **Early Career Research Program（若手研究者プログラム）**: 若手科学者向けに5年間で75万ドル
+- **Funding Opportunity Announcements (FOAs、資金提供機会発表)**: プログラム固有の公募
+- **Laboratory Directed Research and Development (LDRD)**: 国立研究所職員向け
 
-### ARPA-E (Advanced Research Projects Agency-Energy)
+### ARPA-E (Advanced Research Projects Agency-Energy、先端研究プロジェクト庁-エネルギー)
 
-**Mission**: Advance high-potential, high-impact energy technologies that are too early for private-sector investment
+**ミッション**: 民間投資には時期尚早とされる高ポテンシャル・高インパクトのエネルギー技術を推進する
 
-**Characteristics**:
-- High-risk, high-reward transformative energy technologies
-- Requires cost sharing (typically 20% for universities, more for industry)
-- Emphasis on pathway to commercialization
-- Strong project management and milestones
-- Budget: ~$500M annually
+**特徴**:
+- ハイリスク・ハイリターンの変革的エネルギー技術
+- コストシェアが必須（大学は通常20%、産業界はそれ以上）
+- 商業化への道筋を重視
+- 強力なプロジェクト管理とマイルストーン
+- 予算: 年間約5億ドル
 
-**Program Types**:
-- **Focused Programs**: Specific technology areas (announced via FOAs)
-- **OPEN**: General solicitation across all energy technologies
-- **SCALEUP**: Bridging from lab to market
+**プログラムタイプ**:
+- **Focused Programs（重点プログラム）**: 特定技術分野（FOAで発表）
+- **OPEN**: 全エネルギー技術分野の一般公募
+- **SCALEUP**: 実験室から市場への橋渡し
 
-**Typical Funding**:
-- $1-10M per project
-- 1-3 years duration
-- Technology transition focus
-
-### Office of Energy Efficiency and Renewable Energy (EERE)
-
-**Mission**: Accelerate development and deployment of clean energy technologies
-
-**Program Areas**:
-- **Solar Energy Technologies Office (SETO)**
-- **Wind Energy Technologies Office (WETO)**
-- **Water Power Technologies Office (WPTO)**
-- **Geothermal Technologies Office (GTO)**
-- **Building Technologies Office (BTO)**
-- **Advanced Manufacturing Office (AMO)**
-- **Vehicle Technologies Office (VTO)**
-- **Bioenergy Technologies Office (BETO)**
-- **Hydrogen and Fuel Cell Technologies Office (HFTO)**
-
-**Funding Mechanisms**:
-- FOAs for specific technology areas
-- Small Business Innovation Research (SBIR)
-- Technology Commercialization Fund (TCF)
-
-### Office of Fossil Energy and Carbon Management (FECM)
-
-**Focus**: Carbon capture, utilization, and storage; hydrogen; critical minerals
-
-### Office of Nuclear Energy (NE)
-
-**Focus**: Advanced reactor technologies, nuclear fuel cycle, university programs
-
-## DOE Proposal Structure
-
-DOE proposal requirements vary significantly by program office and FOA. **Always read the specific FOA carefully.**
-
-### Common Elements
-
-#### Project Narrative (varies, typically 10-20 pages)
-
-**Typical Structure**:
-
-1. **Executive Summary / Abstract** (1 page)
-   - Project objectives and technical approach
-   - Expected outcomes and impact
-   - Team qualifications
-   - Alignment with DOE mission
-
-2. **Background and Motivation** (2-3 pages)
-   - Current state of technology or knowledge
-   - Problem or opportunity
-   - Why DOE investment is needed
-   - Alignment with program goals
-
-3. **Technical Approach and Innovation** (5-10 pages)
-   - Detailed technical plan
-   - Methodology and approach
-   - Innovation and novelty
-   - Risk assessment and mitigation
-   - Go/no-go decision points
-   - Performance metrics
-
-4. **Impact and Energy Relevance** (1-2 pages)
-   - Expected technical outcomes
-   - Energy impact (cost, efficiency, emissions)
-   - Pathway to deployment or commercialization
-   - Economic benefits
-   - Timeline to market (for applied programs)
-
-5. **Management Plan** (1-2 pages)
-   - Team organization and roles
-   - Timeline and milestones
-   - Risk management
-   - Communication and reporting
-
-6. **Qualifications and Resources** (1-2 pages)
-   - Team expertise and experience
-   - Relevant prior work
-   - Facilities and equipment
-   - National lab or industry partners
-
-#### Budget and Budget Justification
-
-**Federal Cost Share**:
-- Specify DOE funding requested by year
-- Break down by category (labor, equipment, travel, etc.)
-- Detailed justification for each item
-
-**Cost Share** (often required):
-- Specify source (cash vs. in-kind)
-- Document commitment (letters from sponsors)
-- Typical requirements:
-  - Universities: 20% (ARPA-E)
-  - Industry: 50% or more
-  - National labs: Varies
-
-**Budget Categories**:
-- Labor (personnel with hours/rates)
-- Fringe benefits
-- Travel
-- Equipment and capital items
-- Materials and supplies
-- Other direct costs
-- Subawards/subcontracts
-- Indirect costs (F&A)
-
-#### Biographical Sketches
-
-**Format**: Often DOE-specific or NSF-style
-- Professional preparation
-- Appointments
-- Relevant publications (5-10 most relevant)
-- Synergistic activities
-- Collaborators
-
-#### Work Breakdown Structure (WBS)
-
-**Often Required**: Detailed breakdown of tasks, milestones, and deliverables
-- Task structure aligned with budget
-- Quarterly or annual milestones
-- Deliverables for each task
-- Responsible parties
-
-#### Letters of Commitment
-
-**Required for**:
-- Cost share partners
-- Collaborating institutions
-- National laboratory partnerships
-- Industry partners
-- Access to facilities or resources
-
-**Must Include**:
-- Specific commitment (funding, personnel, equipment)
-- Signed by authorized representative
-- On institutional letterhead
-
-#### Facilities and Equipment
-
-**Describe**:
-- Available facilities relevant to project
-- Major equipment accessible
-- Computational resources
-- Unique capabilities
-
-#### Data Management Plan (DMP)
-
-**Increasingly Required**:
-- Types of data to be generated
-- Standards and formats
-- Access and sharing policies
-- Long-term preservation
-- Compliance with DOE policies
-
-## Review Criteria
-
-### Office of Science (SC) General Criteria
-
-Proposals typically evaluated on:
-
-1. **Scientific and/or Technical Merit** (35-40%)
-   - Importance and relevance of research
-   - Appropriateness of proposed method or approach
-   - Scientific or technical innovation
-   - Clarity of objectives and expected outcomes
-
-2. **Appropriateness of Proposed Method or Approach** (25-30%)
-   - Technical feasibility
-   - Likelihood of success
-   - Adequacy of project design
-   - Rigor of technical approach
-
-3. **Competency of Personnel and Adequacy of Facilities** (20-25%)
-   - Qualifications of PI and team
-   - Track record in relevant areas
-   - Access to necessary facilities and equipment
-   - Institutional support
-
-4. **Reasonableness and Appropriateness of Budget** (10-15%)
-   - Budget aligned with proposed work
-   - Appropriate allocation of resources
-   - Cost effectiveness
-
-5. **Relevance to DOE Mission and Program Goals** (10-15%)
-   - Alignment with program priorities
-   - Contribution to DOE mission
-   - Potential impact on energy/environment
-
-### ARPA-E Review Criteria
-
-**ARPA-E uses concept paper → full application process**
-
-**Concept Paper Review** (typically 3-5 pages):
-- Technical innovation and impact
-- Potential for transformative advance
-- Relevance to energy applications
-- Feasibility (team, approach)
-
-**Full Application Review** (if invited):
-
-1. **Impact** (40%)
-   - Potential to dramatically improve energy technology
-   - Energy and economic impact
-   - Transformative vs. incremental
-   - Pathway to market adoption
-
-2. **Innovation/Technical Merit** (30%)
-   - Novel approach or technology
-   - Technical rigor and feasibility
-   - Likelihood of meeting targets
-   - Risk and risk mitigation
-
-3. **Qualifications** (20%)
-   - Team expertise and experience
-   - Resources and capabilities
-   - Management plan
-   - Track record
-
-4. **Workplan** (10%)
-   - Clear milestones and go/no-go points
-   - Realistic timeline
-   - Appropriate budget
-   - Risk management
-
-### Technology-to-Market (T2M) Evaluation (ARPA-E)
-
-**Critical Component**: Path to commercialization
-
-**Assessed**:
-- Market opportunity and size
-- Competitive landscape
-- Barriers to adoption
-- Go-to-market strategy
-- Partnership and commercialization plan
-- Economic viability
-
-**Common Mistakes**:
-- Underestimating time to market
-- Ignoring competing technologies
-- Unrealistic cost projections
-- No clear adoption pathway
-
-## DOE-Specific Considerations
-
-### National Laboratory Collaboration
-
-**Benefits**:
-- Access to unique facilities and expertise
-- Leveraging world-class capabilities
-- Credibility and track record
-
-**Mechanisms**:
-- **Subcontract**: Lab is subcontractor to university/company
-- **Cooperative Research and Development Agreement (CRADA)**: Partnership with industry
-- **User Facility Proposal**: Access to major DOE user facilities
-- **Strategic Partnership Project (SPP)**: Formal collaboration
-
-**Process**:
-- Identify appropriate lab partner early
-- Contact lab scientist to discuss collaboration
-- Develop work scope and budget together
-- Obtain lab approval (can take 2-3 months)
-- Include letter of commitment
-
-**Major National Labs**:
-- Argonne (ANL), Brookhaven (BNL), Lawrence Berkeley (LBNL)
-- Oak Ridge (ORNL), Pacific Northwest (PNNL), SLAC
-- Sandia (SNL), Los Alamos (LANL), Lawrence Livermore (LLNL)
-- National Renewable Energy Lab (NREL), Idaho (INL), Fermilab
-
-### User Facilities
-
-**DOE operates 28 major user facilities** open to researchers
-
-**Types**:
-- **Light Sources**: X-ray and neutron scattering (APS, NSLS-II, ALS, etc.)
-- **Nanoscale Science Centers**: Fabrication and characterization
-- **High-Performance Computing**: Supercomputing centers (OLCF, NERSC, ALCF)
-- **Genomic Science**: JGI, EMSL
-- **Accelerators and Detectors**: Particle and nuclear physics facilities
-
-**Access**:
-- Submit user proposal (separate from research proposal)
-- Peer-reviewed allocation of beam time or computing hours
-- No cost for non-proprietary research
-- Can include user facility access in grant proposals
-
-### Cost Sharing Requirements
-
-**Varies by Program**:
-- **Office of Science**: Generally not required (except specific FOAs)
-- **ARPA-E**: Required (typically 20% universities, 50%+ industry)
-- **EERE**: Often required (varies by program)
-- **FECM**: Often required
-
-**Types**:
-- **Cash**: Direct contribution of funds
-- **In-kind**: Personnel time, equipment use, materials
-- **Third-party**: Contribution from collaborator or sponsor
-
-**Requirements**:
-- Must be documented and verifiable
-- Cannot be used for other federal awards
-- Must be from non-federal sources (generally)
-- Need letters of commitment
-
-### Technology Readiness Levels (TRLs)
-
-**DOE uses TRL scale 1-9** for technology development programs
-
-**TRL Definitions**:
-- **TRL 1-3**: Basic research (idea → proof of concept)
-- **TRL 4-6**: Development (component → system prototype)
-- **TRL 7-9**: Demonstration and deployment (prototype → commercial)
-
-**Funding by TRL**:
-- **Office of Science**: TRL 1-3 (basic research)
-- **ARPA-E**: TRL 2-5 (proof of concept → prototype)
-- **EERE**: TRL 4-8 (development → demonstration)
-
-**Specify in Proposal**:
-- Current TRL of technology
-- Target TRL at project end
-- Path from current to target
-
-### Intellectual Property and Data Rights
-
-**Standard Terms**:
-- Awardee generally retains IP rights
-- Government retains license for government purposes
-- Must report inventions to DOE
-- May have data sharing requirements
-
-**Industry Partners**:
-- Negotiate IP and data rights in advance
-- Protected CRADA information (5 years)
-- Background IP vs. foreground IP
-
-### Teaming and Partnerships
-
-**Encouraged for**:
-- University-national lab partnerships
-- University-industry partnerships
-- Multi-institutional teams
-- International collaborations (with approval)
-
-**Teaming Partner Lists**: ARPA-E and other programs often provide teaming lists or events
-
-## Submission Process
-
-### Finding Opportunities
-
-**Sources**:
+**典型的な資金提供**:
+- プロジェクトあたり100万〜1,000万ドル
+- 期間1〜3年
+- 技術移転に重点
+
+### Office of Energy Efficiency and Renewable Energy (EERE、エネルギー効率・再生可能エネルギー局)
+
+**ミッション**: クリーンエネルギー技術の開発と展開を加速する
+
+**プログラム分野**:
+- **Solar Energy Technologies Office (SETO、太陽光エネルギー技術局)**
+- **Wind Energy Technologies Office (WETO、風力エネルギー技術局)**
+- **Water Power Technologies Office (WPTO、水力エネルギー技術局)**
+- **Geothermal Technologies Office (GTO、地熱技術局)**
+- **Building Technologies Office (BTO、建築技術局)**
+- **Advanced Manufacturing Office (AMO、先端製造局)**
+- **Vehicle Technologies Office (VTO、車両技術局)**
+- **Bioenergy Technologies Office (BETO、バイオエネルギー技術局)**
+- **Hydrogen and Fuel Cell Technologies Office (HFTO、水素・燃料電池技術局)**
+
+**資金調達メカニズム**:
+- 特定技術分野のFOA
+- Small Business Innovation Research (SBIR、中小企業革新研究)
+- Technology Commercialization Fund (TCF、技術商業化基金)
+
+### Office of Fossil Energy and Carbon Management (FECM、化石エネルギー・炭素管理局)
+
+**重点分野**: 炭素回収・利用・貯留（CCUS）、水素、重要鉱物
+
+### Office of Nuclear Energy (NE、原子力エネルギー局)
+
+**重点分野**: 先進原子炉技術、核燃料サイクル、大学プログラム
+
+## DOE提案書構成
+
+DOE提案書の要件はプログラム局とFOAによって大きく異なります。**必ず特定のFOAを注意深く読んでください。**
+
+### 共通要素
+
+#### プロジェクトナラティブ（Project Narrative、 varying、通常10〜20ページ）
+
+**標準構成**:
+
+1. **エグゼクティブサマリー / 要旨（Executive Summary / Abstract）**（1ページ）
+   - プロジェクト目的と技術的アプローチ
+   - 期待される成果とインパクト
+   - チームの資格
+   - DOEミッションとの整合性
+
+2. **背景と動機（Background and Motivation）**（2〜3ページ）
+   - 技術または知識の現状
+   - 問題または機会
+   - DOE投資が必要な理由
+   - プログラム目標との整合性
+
+3. **技術的アプローチとイノベーション（Technical Approach and Innovation）**（5〜10ページ）
+   - 詳細な技術計画
+   - 方法論とアプローチ
+   - イノベーションと新規性
+   - リスク評価と緩和策
+   - Go/No-Go（実施/中止）判断ポイント
+   - パフォーマンス指標
+
+4. **インパクトとエネルギー関連性（Impact and Energy Relevance）**（1〜2ページ）
+   - 期待される技術的成果
+   - エネルギーへの影響（コスト、効率、排出量）
+   - 展開または商業化への道筋
+   - 経済的利益
+   - 市場投入までのタイムライン（応用プログラムの場合）
+
+5. **管理計画（Management Plan）**（1〜2ページ）
+   - チーム編成と役割
+   - タイムラインとマイルストーン
+   - リスク管理
+   - コミュニケーションと報告
+
+6. **資格とリソース（Qualifications and Resources）**（1〜2ページ）
+   - チームの専門知識と経験
+   - 関連する過去の研究
+   - 施設と機器
+   - 国立研究所または産業界パートナー
+
+#### 予算と予算正当化（Budget and Budget Justification）
+
+**連邦政府費用負担分（Federal Cost Share）**:
+- 年度ごとのDOE資金要求を明記
+- カテゴリ別内訳（人件費、機器、旅費など）
+- 各項目の詳細な正当化
+
+**コストシェア（Cost Share）**（多くの場合必須）:
+- 財源を明記（現金 vs 現物）
+- コミットメントの文書化（スポンサーからの書簡）
+- 一般的な要件:
+  - 大学: 20%（ARPA-E）
+  - 産業界: 50%以上
+  - 国立研究所: 異なる
+
+**予算カテゴリ**:
+- 人件費（Labor、職員の時間/レート）
+- 福利厚生（Fringe Benefits）
+- 旅費（Travel）
+- 機器・資本品（Equipment and Capital Items）
+- 材料・消耗品（Materials and Supplies）
+- その他直接経費（Other Direct Costs）
+- 下請負・サブ契約（Subawards/Subcontracts）
+- 間接費（Indirect Costs、F&A）
+
+#### 経歴要約（Biographical Sketches）
+
+**形式**: DOE固有またはNSFスタイルが多い
+- 専門的教育・訓練
+- 職歴・地位
+- 関連出版物（最も関連性の高い5〜10編）
+- 相乗的活動（Synergistic Activities）
+- 共同研究者
+
+#### ワークブレイクダウン構造（WBS、Work Breakdown Structure）
+
+**多くの場合必須**: タスク、マイルストーン、成果物の詳細な内訳
+- 予算に対応したタスク構造
+- 四半期または年次マイルストーン
+- 各タスクの成果物
+- 担当者
+
+#### コミットメント書簡（Letters of Commitment）
+
+**以下の場合に必須**:
+- コストシェアパートナー
+- 協力機関
+- 国立研究所パートナーシップ
+- 産業界パートナー
+- 施設またはリソースへのアクセス
+
+**含める必要があるもの**:
+- 具体的なコミットメント（資金、職員、機器）
+- 権限ある代表者の署名
+- 機関のレターヘッド
+
+#### 施設と機器（Facilities and Equipment）
+
+**記述内容**:
+- プロジェクトに関連する利用可能な施設
+- アクセス可能な主要機器
+- 計算リソース
+- 独自の能力
+
+#### データ管理計画（DMP、Data Management Plan）
+
+**ますます必須となっている**:
+- 生成されるデータの種類
+- 標準と形式
+- アクセスと共有ポリシー
+- 長期保存
+- DOEポリシーへの準拠
+
+## 審査基準
+
+### Office of Science (SC) 一般基準
+
+提案書は通常以下について評価されます:
+
+1. **科学的・技術的メリット（Scientific and/or Technical Merit）**（35〜40%）
+   - 研究の重要性と関連性
+   - 提案手法の適切性
+   - 科学的または技術的イノベーション
+   - 目的と期待される成果の明確さ
+
+2. **提案手法の適切性（Appropriateness of Proposed Method or Approach）**（25〜30%）
+   - 技術的実現可能性
+   - 成功の可能性
+   - プロジェクト設計の妥当性
+   - 技術的アプローチの厳密さ
+
+3. **職員の能力と施設の適切性（Competency of Personnel and Adequacy of Facilities）**（20〜25%）
+   - PI（研究代表者）とチームの資格
+   - 関連分野での実績
+   - 必要な施設・機器へのアクセス
+   - 機関の支援
+
+4. **予算の妥当性と適切性（Reasonableness and Appropriateness of Budget）**（10〜15%）
+   - 提案作業に対応した予算
+   - 適切な資源配分
+   - 費用対効果
+
+5. **DOEミッションとプログラム目標への関連性（Relevance to DOE Mission and Program Goals）**（10〜15%）
+   - プログラム優先事項との整合性
+   - DOEミッションへの貢献
+   - エネルギー・環境への潜在的影響
+
+### ARPA-E 審査基準
+
+**ARPA-Eはコンセプトペーパー（Concept Paper）→本申請（Full Application）のプロセスを使用**
+
+**コンセプトペーパー審査**（通常3〜5ページ）:
+- 技術的イノベーションとインパクト
+- 変革的進歩の可能性
+- エネルギー応用への関連性
+- 実現可能性（チーム、アプローチ）
+
+**本申請審査**（招待された場合）:
+
+1. **インパクト（Impact）**（40%）
+   - エネルギー技術を劇的に向上させる可能性
+   - エネルギーおよび経済的インパクト
+   - 変革的 vs 漸進的
+   - 市場採用への道筋
+
+2. **イノベーション・技術的メリット（Innovation/Technical Merit）**（30%）
+   - 新規アプローチまたは技術
+   - 技術的厳密さと実現可能性
+   - 目標達成の可能性
+   - リスクとリスク緩和
+
+3. **資格（Qualifications）**（20%）
+   - チームの専門知識と経験
+   - リソースと能力
+   - 管理計画
+   - 実績
+
+4. **作業計画（Workplan）**（10%）
+   - 明確なマイルストーンとGo/No-Goポイント
+   - 現実的なタイムライン
+   - 適切な予算
+   - リスク管理
+
+### Technology-to-Market (T2M) 評価（ARPA-E）
+
+**重要要素**: 商業化への道筋
+
+**評価項目**:
+- 市場機会と規模
+- 競争環境
+- 採用への障壁
+- Go-to-Market（市場投入）戦略
+- パートナーシップと商業化計画
+- 経済的実現可能性
+
+**よくある間違い**:
+- 市場投入までの時間を過小評価
+- 競合技術を無視
+- 非現実的なコスト予測
+- 明確な採用経路がない
+
+## DOE特有の考慮事項
+
+### 国立研究所との協力
+
+**メリット**:
+- 独自の施設と専門知識へのアクセス
+- 世界クラスの能力の活用
+- 信頼性と実績
+
+**メカニズム**:
+- **下請負（Subcontract）**: 研究所が大学/企業の下請負業者
+- **Cooperative Research and Development Agreement (CRADA)**: 産業界とのパートナーシップ
+- **User Facility Proposal（ユーザー施設提案）**: 主要なDOEユーザー施設へのアクセス
+- **Strategic Partnership Project (SPP)**: 正式な協力
+
+**プロセス**:
+- 早い段階で適切な研究所パートナーを特定
+- 研究所の科学者に連絡して協力を議論
+- 作業範囲と予算を共同で開発
+- 研究所の承認を取得（2〜3ヶ月かかる場合あり）
+- コミットメント書簡を含める
+
+**主要国立研究所**:
+- Argonne (ANL)、Brookhaven (BNL)、Lawrence Berkeley (LBNL)
+- Oak Ridge (ORNL)、Pacific Northwest (PNNL)、SLAC
+- Sandia (SNL)、Los Alamos (LANL)、Lawrence Livermore (LLNL)
+- National Renewable Energy Lab (NREL)、Idaho (INL)、Fermilab
+
+### ユーザー施設
+
+**DOEは28の主要ユーザー施設を運営**、研究者に開放
+
+**種類**:
+- **放射光施設（Light Sources）**: X線・中性子散乱（APS、NSLS-II、ALSなど）
+- **ナノスケール科学センター**: 製造と特性評価
+- **高性能計算**: スーパーコンピューティングセンター（OLCF、NERSC、ALCF）
+- **ゲノム科学**: JGI、EMSL
+- **加速器と検出器**: 素粒子・原子核物理学施設
+
+**アクセス方法**:
+- ユーザー提案を提出（研究提案とは別）
+- ビームタイムまたは計算時間のピアレビューによる配分
+- 非独自研究には費用なし
+- 研究助成金提案にユーザー施設アクセスを含めることが可能
+
+### コストシェア要件
+
+**プログラムによる**:
+- **Office of Science**: 通常は不要（特定のFOAを除く）
+- **ARPA-E**: 必須（大学は通常20%、産業界は50%以上）
+- **EERE**: しばしば必須（プログラムによる）
+- **FECM**: しばしば必須
+
+**種類**:
+- **現金（Cash）**: 資金の直接拠出
+- **現物（In-kind）**: 職員の時間、機器使用、材料
+- **第三者（Third-party）**: 協力者またはスポンサーからの貢献
+
+**要件**:
+- 文書化され検証可能であること
+- 他の連邦賞には使用できない
+- 一般的に連邦以外の財源から（例外あり）
+- コミットメント書簡が必要
+
+### テクノロジー準備レベル（TRLs、Technology Readiness Levels）
+
+**DOEはTRLスケール1〜9を使用**して技術開発プログラムを評価
+
+**TRL定義**:
+- **TRL 1-3**: 基礎研究（アイデア → 概念実証）
+- **TRL 4-6**: 開発（コンポーネント → システムプロトタイプ）
+- **TRL 7-9**: 実証と展開（プロトタイプ → 商業化）
+
+**TRL別資金提供**:
+- **Office of Science**: TRL 1-3（基礎研究）
+- **ARPA-E**: TRL 2-5（概念実証 → プロトタイプ）
+- **EERE**: TRL 4-8（開発 → 実証）
+
+**提案書で明記**:
+- 技術の現在のTRL
+- プロジェクト終了時の目標TRL
+- 現在から目標への道筋
+
+### 知的財産とデータ権
+
+**標準条件**:
+- 受賞者は通常IP権を保持
+- 政府は政府目的のためにライセンスを保持
+- 発明をDOEに報告する必要
+- データ共有要件がある場合あり
+
+**産業界パートナー**:
+- 事前にIPとデータ権を交渉
+- 保護されたCRADA情報（5年間）
+- バックグラウンドIP vs フォアグラウンドIP
+
+### チーム編成とパートナーシップ
+
+**以下の場合に推奨**:
+- 大学-国立研究所パートナーシップ
+- 大学-産業界パートナーシップ
+- 多機関チーム
+- 国際共同研究（承認必要）
+
+**チームパートナーリスト**: ARPA-Eや他のプログラムはしばしばチームパートナーリストやイベントを提供
+
+## 提出プロセス
+
+### 機会の探し方
+
+**情報源**:
 - **EERE Exchange**: https://eere-exchange.energy.gov
 - **ARPA-E OPEN**: https://arpa-e.energy.gov
 - **Office of Science FOAs**: https://science.osti.gov/grants/Funding-Opportunities
-- **Grants.gov**: Federal grants database
-- **FedConnect**: Subscribe to FOA announcements
+- **Grants.gov**: 連邦助成金データベース
+- **FedConnect**: FOA発表の購読
 
-### Application Systems
+## 申請システム
 
-**Varies by Office**:
-- **EERE Exchange**: EERE programs
+**局による**:
+- **EERE Exchange**: EEREプログラム
 - **PAMS (Portfolio Analysis and Management System)**: Office of Science
-- **ARPA-E OPEN**: ARPA-E submissions
-- **Grants.gov**: Some programs
+- **ARPA-E OPEN**: ARPA-E提出
+- **Grants.gov**: 一部プログラム
 
-**Registration Required** (can take 2-4 weeks):
+**登録が必要**（2〜4週間かかる場合あり）:
 - SAM.gov (System for Award Management)
 - Grants.gov
-- DOE program-specific systems
+- DOEプログラム固有のシステム
 
-### Proposal Development Timeline
+### 提案書開発タイムライン
 
-**Recommended Timeline**:
-- **3-6 months before deadline**: Identify FOA, assemble team, contact lab partners
-- **2-3 months**: Develop technical approach, secure commitments
-- **1-2 months**: Draft proposal, prepare budget
-- **2-4 weeks**: Internal review, revisions
-- **1 week**: Final preparation, institutional approvals
-- **48 hours early**: Submit (don't wait for deadline)
+**推奨タイムライン**:
+- **締切3〜6ヶ月前**: FOAを特定、チームを編成、研究所パートナーに連絡
+- **2〜3ヶ月前**: 技術的アプローチを開発、コミットメントを確保
+- **1〜2ヶ月前**: 提案書を起草、予算を準備
+- **2〜4週間前**: 内部レビュー、改訂
+- **1週間前**: 最終準備、機関承認
+- **48時間前**: 提出（締切を待たない）
 
-### Required Registrations
+### 必要な登録
 
-**Before First Submission**:
-1. **SAM.gov**: System for Award Management (2-3 weeks)
-2. **Grants.gov**: Account and authorization (1 week)
-3. **FedConnect**: Optional, for notifications
-4. **PAMS/EERE Exchange**: Program-specific (immediate)
+**初回提出前に**:
+1. **SAM.gov**: System for Award Management（2〜3週間）
+2. **Grants.gov**: アカウントと認証（1週間）
+3. **FedConnect**: オプション、通知用
+4. **PAMS/EERE Exchange**: プログラム固有（即時）
 
-**Institutional Requirements**:
+**機関要件**:
 - Authorized Organizational Representative (AOR)
-- Institutional approvals
-- Cost accounting systems
+- 機関承認
+- 原価計算システム
 
-## Review and Award Process
+## 審査と授与プロセス
 
-### Timeline
+### タイムライン
 
-**Varies by Program**:
-- **Office of Science**: 3-6 months
-- **ARPA-E**: 4-6 months (after full application invitation)
-- **EERE**: 3-6 months
+**プログラムによる**:
+- **Office of Science**: 3〜6ヶ月
+- **ARPA-E**: 4〜6ヶ月（本申請招待後）
+- **EERE**: 3〜6ヶ月
 
-**Steps**:
-1. Administrative compliance check
-2. Peer review (external reviewers)
-3. Program manager evaluation
-4. Selection for award negotiation
-5. Budget negotiation
-6. Award issuance
+**ステップ**:
+1. 行政コンプライアンスチェック
+2. ピアレビュー（外部レビュアー）
+3. プログラムマネージャー評価
+4. 授与交渉のための選定
+5. 予算交渉
+6. 授与発行
 
-### Reviewer Feedback
+### レビュアーフィードバック
 
-**Provided**:
-- Reviewer comments (often anonymized)
-- Strengths and weaknesses
-- Scores by criterion
+**提供される**:
+- レビュアーコメント（多くの場合匿名化）
+- 強みと弱み
+- 基準別スコア
 
-**Not Always Provided**: Some programs provide limited feedback
+**常に提供されるとは限らない**: 一部プログラムは限られたフィードバックのみ提供
 
-### Success Rates
+### 成功率
 
-**Varies Widely**:
-- **Office of Science Early Career**: ~10-15%
-- **ARPA-E OPEN**: ~2-5% (concept papers → awards)
-- **EERE FOAs**: 10-30% (depends on program)
-- **Office of Science FOAs**: 20-40% (varies)
+**大きく異なる**:
+- **Office of Science Early Career**: 約10〜15%
+- **ARPA-E OPEN**: 約2〜5%（コンセプトペーパー → 授与）
+- **EERE FOAs**: 10〜30%（プログラムによる）
+- **Office of Science FOAs**: 20〜40%（異なる）
 
-## Writing Tips for Competitive DOE Proposals
+## 競争力のあるDOE提案書を書くためのヒント
 
-### Do's
+### やるべきこと
 
-✅ **Align with DOE mission** - Energy, environment, or national security relevance
-✅ **Emphasize impact** - How will this advance energy technology or science?
-✅ **Quantify outcomes** - Energy savings, efficiency gains, cost reductions
-✅ **Show pathway to deployment** - For applied programs, how will technology reach market?
-✅ **Leverage DOE capabilities** - National labs, user facilities, unique resources
-✅ **Include strong management plan** - Milestones, go/no-go, risk mitigation
-✅ **Demonstrate team qualifications** - Track record in relevant area
-✅ **Be specific about innovation** - What's new and why it matters
-✅ **Address technology readiness** - Current TRL and path forward
-✅ **Secure cost share commitments** - If required, get letters early
+✅ **DOEミッションとの整合性** - エネルギー、環境、または国家安全保障との関連性
+✅ **インパクトを強調** - これがどのようにエネルギー技術や科学を進歩させるか
+✅ **成果を定量化** - エネルギー節約、効率向上、コスト削減
+✅ **展開への道筋を示す** - 応用プログラムの場合、技術が市場にどう到達するか
+✅ **DOE能力を活用** - 国立研究所、ユーザー施設、独自のリソース
+✅ **強力な管理計画を含める** - マイルストーン、Go/No-Go、リスク緩和
+✅ **チームの資格を実証** - 関連分野での実績
+✅ **イノベーションを具体的に** - 何が新しく、なぜ重要か
+✅ **技術準備度に言及** - 現在のTRLと前進の道筋
+✅ **コストシェアコミットメントを確保** - 必須の場合、早めに書簡を取得
 
-### Don'ts
+### やってはいけないこと
 
-❌ **Don't ignore FOA requirements** - Each FOA is different, read carefully
-❌ **Don't underestimate timeline** - Allow time for registrations and approvals
-❌ **Don't forget cost share** - If required, must be documented
-❌ **Don't overlook lab partnerships** - Can strengthen proposal significantly
-❌ **Don't be vague about impact** - Need quantitative energy/economic metrics
-❌ **Don't ignore commercialization** - For applied programs, market path is critical
-❌ **Don't submit without institutional approval** - Need AOR sign-off
-❌ **Don't wait for deadline** - Systems crash, submit 48 hours early
-❌ **Don't propose basic science to ARPA-E** - Or applied research to Office of Science
-❌ **Don't forget TRL discussion** - Important for technology programs
+❌ **FOA要件を無視しない** - 各FOAは異なる、注意深く読む
+❌ **タイムラインを過小評価しない** - 登録と承認の時間を考慮
+❌ **コストシェアを忘れない** - 必須の場合、文書化が必要
+❌ **研究所パートナーシップを見落とさない** - 提案書を大幅に強化できる
+❌ **インパクトを曖昧にしない** - 定量的なエネルギー/経済指標が必要
+❌ **商業化を無視しない** - 応用プログラムの場合、市場への道が重要
+❌ **機関承認なしで提出しない** - AORの署名が必要
+❌ **締切を待たない** - システムはダウンする、48時間前に提出
+❌ **ARPA-Eに基礎科学を提案しない** - またはOffice of Scienceに応用研究を
+❌ **TRL議論を忘れない** - 技術プログラムにとって重要
 
-### Common Mistakes
+### よくある間違い
 
-1. **Wrong Program**: Proposing to inappropriate office or program
-2. **Insufficient Energy Relevance**: Not clearly tied to DOE mission
-3. **Weak Commercialization Plan**: For ARPA-E and EERE, lack of market strategy
-4. **Unrealistic Milestones**: Overly optimistic timelines
-5. **Poor Budget Justification**: Budget doesn't align with technical plan
-6. **Missing Cost Share**: If required, not documented properly
-7. **Weak Team**: Insufficient expertise or track record
-8. **Ignoring Competing Technologies**: Not addressing competitive landscape
+1. **間違ったプログラム**: 不適切な局またはプログラムに提案
+2. **不十分なエネルギー関連性**: DOEミッションとの明確な結びつきがない
+3. **弱い商業化計画**: ARPA-EとEEREの場合、市場戦略の欠如
+4. **非現実的なマイルストーン**: 楽観的すぎるタイムライン
+5. **不適切な予算正当化**: 予算が技術計画と整合していない
+6. **コストシェアの欠如**: 必須の場合、適切に文書化されていない
+7. **弱いチーム**: 不十分な専門知識または実績
+8. **競合技術を無視**: 競争環境に対処していない
 
-## Recent DOE Priorities (2024-2025)
+## 最近のDOE優先事項（2024-2025年）
 
-### Key Focus Areas
+### 重点分野
 
-- **Clean Energy Transition**: Renewable energy, storage, grid modernization
-- **Carbon Management**: Carbon capture, utilization, storage, removal
-- **Critical Materials**: Supply chain security, recycling, substitutes
-- **Advanced Manufacturing**: Energy-efficient processes, sustainable materials
-- **Quantum Information Science**: Computing, sensing, communications
-- **Fusion Energy**: Accelerating fusion development
-- **Hydrogen Economy**: Production, storage, utilization
-- **Nuclear Energy**: Advanced reactors, microreactors, fuel cycle
-- **Climate Adaptation**: Climate modeling, resilience, impacts
-- **Energy Equity**: Environmental justice, workforce development
+- **クリーンエネルギー移行**: 再生可能エネルギー、貯蔵、グリッド近代化
+- **炭素管理**: 炭素回収・利用・貯留（CCUS）、除去
+- **重要材料**: サプライチェーンセキュリティ、リサイクル、代替品
+- **先進製造**: エネルギー効率的なプロセス、持続可能な材料
+- **量子情報科学**: 計算、センシング、通信
+- **核融合エネルギー**: 核融合開発の加速
+- **水素経済**: 製造、貯蔵、利用
+- **原子力エネルギー**: 先進原子炉、マイクロリアクター、燃料サイクル
+- **気候適応**: 気候モデリング、レジリエンス、影響
+- **エネルギー公平性**: 環境正義、労働力開発
 
-### Major Initiatives
+### 主要イニシアチブ
 
-- **Energy Earthshots**: Ambitious R&D goals (Hydrogen Shot, Long Duration Storage, Carbon Negative, etc.)
-- **Bipartisan Infrastructure Law**: $62B for DOE programs
-- **Inflation Reduction Act**: Clean energy tax credits and programs
-- **CHIPS and Science Act**: Microelectronics, quantum, clean energy manufacturing
+- **Energy Earthshots**: 野心的なR&D目標（Hydrogen Shot、Long Duration Storage、Carbon Negativeなど）
+- **Bipartisan Infrastructure Law**: DOEプログラムに620億ドル
+- **Inflation Reduction Act**: クリーンエネルギー税制控除とプログラム
+- **CHIPS and Science Act**: マイクロエレクトロニクス、量子、クリーンエネルギー製造
 
-## Resources
+## リソース
 
 - **DOE Office of Science**: https://science.osti.gov
 - **ARPA-E**: https://arpa-e.energy.gov
@@ -582,5 +582,4 @@ Proposals typically evaluated on:
 
 ---
 
-**Key Takeaway**: DOE proposals require strong alignment with energy and national security missions, clear pathway to impact (especially for applied programs), and often benefit from partnerships with national laboratories or industry. Cost sharing, technology readiness levels, and commercialization strategies are critical considerations for competitive proposals.
-
+**重要ポイント**: DOE提案書はエネルギーと国家安全保障ミッションとの強い整合性、インパクトへの明確な道筋（特に応用プログラムの場合）、そして多くの場合国立研究所や産業界とのパートナーシップから恩恵を受けます。コストシェア、テクノロジー準備レベル、商業化戦略は競争力のある提案書にとって重要な考慮事項です。

@@ -1,92 +1,91 @@
-# NSF Project Summary Template
+# NSF プロジェクトサマリーテンプレート
 
-**IMPORTANT**: NSF requires three labeled sections in the project summary (max 1 page):
-1. Overview
-2. Intellectual Merit  
-3. Broader Impacts
-
----
-
-## Overview
-
-[Write a paragraph suitable for public dissemination that explains:
-- The research question or problem
-- The approach or methods
-- Expected outcomes
-- Significance
-
-This should be accessible to a broad audience including non-scientists. Avoid jargon.]
-
-**Example:**
-This project investigates how coastal wetlands respond to rising sea levels and increased storm intensity caused by climate change. Using a combination of field observations, remote sensing, and computer modeling across 20 sites along the Atlantic coast, we will determine whether wetlands can migrate inland fast enough to keep pace with sea level rise. Results will inform coastal management policies and help predict the fate of critical ecosystems that protect shorelines and support fisheries. This work will train 5 graduate students and 10 undergraduates, with priority recruitment from underrepresented groups through partnerships with minority-serving institutions.
+**重要**：NSFはプロジェクトサマリーに3つのラベル付きセクションを要求します（最大1ページ）：
+1. Overview（概要）
+2. Intellectual Merit（インテレクチュアル・メリット）
+3. Broader Impacts（ブロード・インパクト）
 
 ---
 
-## Intellectual Merit
+## Overview（概要）
 
-[Address the question: What is the potential for the proposed activity to advance knowledge?
+[一般公開に適した段落を書き、以下を説明：
+- 研究質問または問題
+- アプローチまたは方法
+- 期待される成果
+- 意義
 
-Include:
-- Why the research is important scientifically
-- What knowledge gap it addresses
-- What will be learned
-- Novel aspects of the approach
-- How it advances the field]
+これは科学者以外を含む広い聴衆にアクセス可能であるべきです。専門用語を避けてください。]
 
-**Example:**
-This research addresses a critical gap in understanding coastal wetland resilience under accelerating climate change. Current models of wetland migration fail to account for biological constraints on vegetation establishment and feedbacks between sediment dynamics and plant growth. We will develop the first integrated model coupling hydrological, ecological, and geomorphological processes across multiple spatial scales. Our novel approach combines high-resolution LiDAR elevation data with experimental manipulations of sediment and salinity to parameterize vegetation response functions. Expected outcomes include quantitative predictions of wetland migration rates under different sea level rise scenarios, identification of landscape features that facilitate or impede migration, and new theory on ecosystem tipping points. This work will transform our ability to predict and manage coastal ecosystem responses to climate change.
-
----
-
-## Broader Impacts
-
-[Address the question: What is the potential for the proposed activity to benefit society?
-
-Must address at least one of NSF's five broader impacts areas with specific, measurable activities:
-1. Advance discovery while promoting teaching, training, and learning
-2. Broaden participation of underrepresented groups
-3. Enhance infrastructure for research and education  
-4. Broadly disseminate to enhance scientific understanding
-5. Benefit society
-
-Be SPECIFIC with concrete activities, timelines, and assessment plans.]
-
-**Example:**
-This project will generate significant broader impacts through three integrated activities:
-
-**1. Education and Training**: We will train 5 PhD students and 10 undergraduates in interdisciplinary coastal science, emphasizing field methods, remote sensing, and quantitative modeling. Undergraduates will participate through summer research internships (10 weeks, $5,000 stipends) with mentorship from graduate students. We will recruit 50% of undergraduates from groups underrepresented in STEM through partnerships with 4 historically Black colleges and universities (HBCUs). Students will present results at the Annual Biogeographical Research Conference and co-author peer-reviewed publications.
-
-**2. Stakeholder Engagement and Policy Impact**: We will partner with 5 state coastal management agencies and The Nature Conservancy to translate research findings into management tools. Annual workshops will bring together 30 coastal managers, conservation practitioners, and researchers to co-develop decision-support frameworks. Results will inform state sea level rise adaptation plans, wetland restoration prioritization, and land acquisition strategies affecting 500,000 acres of coastal habitat.
-
-**3. Public Science Communication**: We will create a publicly accessible web-based visualization tool showing projected wetland changes under different climate scenarios for the entire Atlantic coast. The tool will be promoted through social media, state agency websites, and science museums, with expected reach of 50,000 users. We will also develop bilingual (English/Spanish) educational materials for K-12 teachers, piloted in 10 schools serving predominantly underrepresented students.
-
-Impact will be assessed through pre/post surveys of student participants, tracking of research participants into STEM careers, documentation of policy adoptions by management agencies, and analytics on public engagement platform usage.
+**例：**
+本研究プロジェクトは、気候変動による海面上昇と嵐の強度の増加が沿岸湿地にどのような影響を与えるかを調査します。大西洋岸に沿った20の地点で、野外観測、リモートセンシング、コンピュータモデリングを組み合わせ、湿地が海面上昇に追いついて内陸へ移動できるかどうかを判断します。結果は沿岸管理政策に情報を提供し、海岸線を保護し漁業を支える重要な生態系の運命を予測するのに役立ちます。この研究は5人の大学院生と10人の学部生をトレーニングし、マイノリティサービング機関とのパートナーシップを通じて過小評価されているグループからの優先的な募集を行います。
 
 ---
 
-## Formatting Requirements
+## Intellectual Merit（インテレクチュアル・メリット）
 
-- **Page Limit**: 1 page maximum
-- **Margins**: 1 inch all sides
-- **Font**: 11-point or larger (Times Roman, Arial, Palatino, Computer Modern)
-- **Section Headers**: Must use exactly these three labels:
+[質問に対処：提案活動が知識を進展させるポテンシャルはどの程度か？
+
+含める：
+- 研究が科学的に重要な理由
+- どの知識ギャップに対処するか
+- 何が学ばれるか
+- アプローチの斬新な側面
+- 分野をどのように進展させるか]
+
+**例：**
+本研究は、加速する気候変動下での沿岸湿地の回復力を理解する上で重要なギャップに対処します。現在の湿地移動モデルは、植生確立の生物学的制約と、堆積物ダイナミクスと植物成長の間のフィードバックを考慮していません。複数の空間スケールで水文、生態、地形プロセスを結合する最初の統合モデルを開発します。私たちの斬新なアプローチは、高解像度LiDAR標高データと堆積物・塩分の実験操作を組み合わせて、植生応答関数をパラメータ化します。期待される成果には、異なる海面上昇シナリオ下での湿地移動速度の定量的予測、移動を促進または妨げる景観特徴の特定、生態系ティッピングポイントに関する新理論が含まれます。この研究は、気候変動に対する沿岸生態系の応答を予測・管理する能力を変革します。
+
+---
+
+## Broader Impacts（ブロード・インパクト）
+
+[質問に対処：提案活動が社会に利益をもたらすポテンシャルはどの程度か？
+
+NSFの5つのブロード・インパクト領域の少なくとも1つに、具体的で測定可能な活動で対処する必要があります：
+1. 発見を推進し、教育、トレーニング、学習を促進する
+2. 過小評価されているグループの参加を拡大する
+3. 研究と教育のためのインフラを強化する
+4. 科学的理解を高めるために広く普及させる
+5. 社会に利益をもたらす
+
+具体的な活動、タイムライン、評価計画で明確にしてください。]
+
+**例：**
+本プロジェクトは3つの統合活動を通じて重要なブロード・インパクトを生成します：
+
+**1. 教育とトレーニング**：5人の博士課程学生と10人の学部生を学際的沿岸科学でトレーニングし、野外手法、リモートセンシング、定量的モデリングを強調します。学部生は夏季研究インターンシップ（10週間、$5,000奨学金）を通じて参加し、大学院生からのメンタリングを受けます。学部生の50%を4つの歴史的黒人大学（HBCU）とのパートナーシップを通じてSTEMで過小評価されているグループから募集します。学生は年次生物地理学会議で結果を発表し、査読付き出版物の共著者となります。
+
+**2. ステークホルダー関与と政策影響**：5つの州沿岸管理機関とThe Nature Conservancyと提携し、研究結果を管理ツールに変換します。年次ワークショップは30人の沿岸管理者、保全実践者、研究者を集め、意思決定支援フレームワークを共同開発します。結果は州の海面上昇適応計画、湿地修復優先順位、50万エーカーの沿岸生息地に影響を与える土地取得戦略に情報を提供します。
+
+**3. 一般科学コミュニケーション**：大西洋岸全体について異なる気候シナリオ下での予測湿地変化を示す一般公開ウェブベース可視化ツールを作成します。ツールはソーシャルメディア、州機関ウェブサイト、科学博物館を通じて推進され、50,000人のユーザーへの到達を期待します。また、主に過小評価されている学生にサービスを提供する10校でパイロット実施されるバイリンガル（英語/スペイン語）K-12教師向け教育教材を開発します。
+
+影響は学生参加者の事前/事後調査、STEMキャリアへの研究参加者の追跡、管理機関による政策採用の文書化、一般関与プラットフォーム使用の分析を通じて評価されます。
+
+---
+
+## フォーマット要件
+
+- **ページ制限**：最大1ページ
+- **マージン**：すべての辺1インチ
+- **フォント**：11ポイント以上（Times Roman、Arial、Palatino、Computer Modern）
+- **セクションヘッダー**：正確に以下の3つのラベルを使用：
   - Overview
   - Intellectual Merit
   - Broader Impacts
-- **Public Accessibility**: Overview section suitable for general public
+- **一般アクセシビリティ**：概要セクションは一般市民に適していること
 
-## Common Mistakes to Avoid
+## 避けるべき一般的な間違い
 
-❌ **Don't** omit any of the three required section headings
-❌ **Don't** make broader impacts vague ("will train students")
-❌ **Don't** use jargon in the Overview
-❌ **Don't** exceed 1 page
-❌ **Don't** forget to mention preliminary data or team qualifications
-❌ **Don't** make broader impacts an afterthought (they're equally important)
+❌ **してはいけない**：3つの必須セクションヘッダーのいずれかを省略する
+❌ **してはいけない**：ブロード・インパクトを曖昧にする（「学生をトレーニングする」）
+❌ **してはいけない**：概要で専門用語を使用する
+❌ **してはいけない**：1ページを超える
+❌ **してはいけない**：予備データまたはチームの資格について言及するのを忘れる
+❌ **してはいけない**：ブロード・インパクトを後回しにする（同等に重要です）
 
-✅ **Do** make all three sections substantive
-✅ **Do** be specific about broader impacts activities
-✅ **Do** write Overview for broad audience
-✅ **Do** convey enthusiasm and significance
-✅ **Do** proofread carefully (this is the first thing reviewers see)
-
+✅ **すべき**：3つのセクションすべてを実質的にする
+✅ **すべき**：ブロード・インパクト活動について具体的にする
+✅ **すべき**：概要を広い聴衆向けに書く
+✅ **すべき**：熱意と意義を伝える
+✅ **すべき**：注意深く校正する（これは査読者が最初に見るものです）

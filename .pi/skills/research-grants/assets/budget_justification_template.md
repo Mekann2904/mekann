@@ -1,453 +1,452 @@
-# Budget Justification Template
+# 予算妥当性説明書テンプレート
 
-## Overview
+## 概要
 
-A budget justification provides detailed explanation for each budget line item, demonstrating that costs are necessary, reasonable, and directly related to the proposed research. The justification should be detailed enough for reviewers to understand and assess cost reasonableness.
+予算妥当性説明書（Budget Justification）は、各予算項目の詳細な説明を提供し、費用が提案された研究に必要で、合理的で、直接関連していることを示すものです。審査員が費用の妥当性を理解し評価できるよう、十分に詳細である必要があります。
 
-**Key Principles**:
-- Justify EVERY line item in terms of the research plan
-- Explain calculations clearly
-- Show that costs are necessary for the proposed work
-- Demonstrate cost-effectiveness where possible
-- Follow agency-specific formats and requirements
-
----
-
-## Personnel (Salaries and Wages)
-
-### Senior Personnel
-
-**Principal Investigator: [Name, Title]**
-
-**Effort**: [X] calendar months ([Y]% FTE) per year
-
-**Justification**: 
-The PI will provide overall scientific leadership, supervise all research activities, mentor graduate students and postdocs, analyze data, prepare manuscripts, and report to the funding agency. The PI will be responsible for [specific activities related to aims]. [X] months of effort is necessary given the scope of the project and the PI's other commitments ([describe other activities briefly]).
-
-**Calculation**: 
-- Year 1: [Annual salary] × [% effort] × [inflation factor if applicable] = $[amount]
-- Years 2-5: [include escalation if applicable]
-
-**Example**:
-*Principal Investigator: Dr. Jane Smith, Associate Professor of Biology*
-
-*Effort*: 2.5 calendar months (21% FTE) per year
-
-*Justification*: Dr. Smith will provide overall project leadership including: (1) supervising all experimental work and data analysis for Aims 1-3, (2) weekly mentoring meetings with 3 graduate students and 2 postdocs, (3) coordinating with collaborators at partner institutions, (4) analyzing multi-omics datasets and interpreting results, (5) preparing manuscripts and presenting at conferences, and (6) managing budget and reporting to NIH. 2.5 months effort is necessary for a project of this scope involving multiple aims, techniques, and personnel. Dr. Smith's remaining effort supports teaching (3 months), other research projects (4 months), and administrative duties (2.5 months).
-
-*Calculation*: 
-- Year 1: $120,000 × 0.2083 = $25,000
-- Years 2-5: 3% annual increase
+**主要原則**:
+- すべての項目を研究計画の観点から正当化する
+- 計算を明確に説明する
+- 費用が提案された作業に必要であることを示す
+- 可能な限り費用対効果を示す
+- 機関固有の形式と要件に従う
 
 ---
 
-**Co-Investigator: [Name, Title]**
+## 人件費（給与と賃金）
 
-**Effort**: [X] calendar months ([Y]% FTE) per year
+### 上級研究員
 
-**Justification**:
-Dr. [Name] will be responsible for [specific aspects of project related to their expertise]. This includes [specific activities for which aims]. Co-I effort is essential because [expertise/resources they provide that PI lacks].
+**Principal Investigator（PI、研究代表者）: [氏名、職位]**
 
-**Example**:
-*Co-Investigator: Dr. Robert Johnson, Professor of Bioinformatics*
+**従事率**: 年間[X]暦月（[Y]% FTE）
 
-*Effort*: 1 calendar month (8.3% FTE) per year
+**妥当性説明**: 
+PIは全体的な科学的リーダーシップを提供し、すべての研究活動を監督し、大学院生とポスドクを指導し、データを分析し、原稿を準備し、資金提供機関に報告する。PIは[aimsに関連する具体的活動]に責任を負う。プロジェクトの範囲とPIの他のコミットメント（[他の活動を簡潔に説明]）を考慮すると、[X]月の従事率が必要である。
 
-*Justification*: Dr. Johnson will lead the computational analysis for Aim 1, including multi-omics data integration, machine learning-based subtype classification, and biomarker identification. His expertise in unsupervised clustering methods and experience with similar T2D datasets is essential for this aim. Specific responsibilities include: (1) developing analysis pipelines, (2) training graduate student in bioinformatics methods, (3) interpreting computational results, and (4) co-authoring manuscripts. 
+**計算**: 
+- 年1: [年間給与] × [従事率%] × [該当する場合はインフレ率] = $[金額]
+- 年2-5: [該当する場合は昇給を含める]
 
-*Calculation*: Year 1: $150,000 × 0.0833 = $12,500
+**例**:
+*Principal Investigator: Jane Smith博士、生物学准教授*
 
----
+*従事率*: 年間2.5暦月（21% FTE）
 
-### Postdoctoral Scholars
+*妥当性説明*: Smith博士は以下を含む全体的なプロジェクトリーダーシップを提供する: (1) Aims 1-3のすべての実験作業とデータ分析の監督、(2) 3人の大学院生と2人のポスドクとの週次指導会議、(3) パートナー機関の共同研究者との調整、(4) 多オミクスデータセットの分析と結果の解釈、(5) 原稿の準備と学会での発表、(6) 予算管理とNIHへの報告。複数のaims、技術、人員を含むこの規模のプロジェクトには2.5月の従事率が必要である。Smith博士の残りの従事率は教育（3月）、他の研究プロジェクト（4月）、管理業務（2.5月）に充てられる。
 
-**Postdoctoral Researcher (1.0 FTE)**
-
-**Justification**:
-One full-time postdoctoral researcher is essential to conduct [which experiments/aims]. The postdoc will be responsible for [specific technical activities], data analysis, and mentoring graduate students. Specific duties include: [list 4-6 key responsibilities tied to specific aims]. We will recruit a candidate with expertise in [required skills/background].
-
-**Calculation**:
-- Year 1: NIH NRSA stipend level Year 0-2 ($54,840) + fringe benefits (26%) = $69,099
-- Years 2-3: Adjusted for postdoc experience level
-- Years 4-5: Senior postdoc rate
-
-**Example**:
-*Postdoctoral Researcher (1.0 FTE)*
-
-*Justification*: One full-time postdoc is essential to execute the cellular and molecular experiments in Aims 2-3. The postdoc will: (1) generate and characterize patient-derived iPSC lines, (2) differentiate iPSCs into β-cells, hepatocytes, and adipocytes, (3) perform functional assays (insulin secretion, glucose uptake, cytokine profiling), (4) conduct proteomics sample preparation and analysis, (5) integrate cellular data with clinical outcomes, and (6) mentor graduate students in cell culture techniques. We will recruit a candidate with expertise in stem cell biology and diabetes research. The postdoc will have opportunity for career development through institutional K99/R00 preparation programs.
-
-*Calculation*:
-- Year 1: $54,840 (NIH Year 0) + $14,258 (26% fringe) = $69,098
-- Year 2: $56,784 (NIH Year 1) + $14,764 = $71,548
-- Year 3: $59,292 (NIH Year 2) + $15,416 = $74,708
+*計算*: 
+- 年1: $120,000 × 0.2083 = $25,000
+- 年2-5: 年3%増
 
 ---
 
-### Graduate Students
+**Co-Investigator（共同研究者）: [氏名、職位]**
 
-**Graduate Research Assistants ([Number] students)**
+**従事率**: 年間[X]暦月（[Y]% FTE）
 
-**Justification**:
-[Number] graduate students are required to [specific roles and aims]. Each student will focus on [division of labor among students]. This project provides excellent training opportunities in [techniques/approaches], preparing students for careers in [field]. Students will be recruited from our [department/program] with preference for candidates from underrepresented groups through our partnerships with [specific programs].
+**妥当性説明**:
+[氏名]博士は[彼らの専門分野に関連するプロジェクトの具体的側面]に責任を負う。これには[どのaimsの具体的活動]が含まれる。Co-Iの従事率は、[PIが欠いている専門知識/リソース]のために不可欠である。
 
-**Calculation**:
-- Stipend: $[amount]/student/year (following university RA rates)
-- Tuition: $[amount]/student/year  
-- Total per student: $[amount]
-- Number of students: [N]
-- Total: $[amount] per year
+**例**:
+*Co-Investigator: Robert Johnson博士、バイオインフォマティクス教授*
 
-**Example**:
-*Graduate Research Assistants (3 students)*
+*従事率*: 年間1暦月（8.3% FTE）
 
-*Justification*: Three PhD students are required to execute the experimental work across all three aims:
-- Student 1 will lead Aim 1 work on multi-omics profiling and subtype classification
-- Student 2 will conduct Aim 2 mechanistic studies using patient-derived cells  
-- Student 3 will perform Aim 3 treatment response analyses in cell models and humanized mice
+*妥当性説明*: Johnson博士はAim 1の計算分析を主導し、多オミクスデータ統合、機械学習ベースのサブタイプ分類、バイオマーカー特定を含む。教師なしクラスタリング手法の専門知識と類似のT2Dデータセットでの経験は、このaimに不可欠である。具体的責任には以下が含まれる: (1) 分析パイプラインの開発、(2) 大学院生へのバイオインフォマティクス手法のトレーニング、(3) 計算結果の解釈、(4) 原稿の共著。
 
-This project provides excellent interdisciplinary training in genomics, cell biology, and translational diabetes research. Students will present annually at the American Diabetes Association and co-author peer-reviewed publications. We will recruit students from our Biological Sciences PhD program, with priority recruitment from underrepresented groups through our IMSD program (NIH R25).
-
-*Calculation*:
-- Stipend: $32,000/student/year (12 months at university RA rate)
-- Tuition and fees: $18,000/student/year
-- Total per student: $50,000/year
-- 3 students × 5 years = $750,000 total
-(Note: In modular budget, include under Personnel narrative; in detailed budget, may be split between Personnel and Other)
+*計算*: 年1: $150,000 × 0.0833 = $12,500
 
 ---
 
-### Research Staff
+### ポスドク研究員
 
-**Research Technician ([Title], [% FTE])**
+**ポスドク研究員（1.0 FTE）**
 
-**Justification**:
-A [full/part]-time research technician is necessary to [specific technical support]. The technician will [specific duties], allowing the PI and postdoc to focus on [higher-level activities]. Essential responsibilities include: [list key duties related to aims].
+**妥当性説明**:
+1人のフルタイムポスドク研究員は[どの実験/aims]を実施するために不可欠である。ポスドクは[具体的な技術活動]、データ分析、大学院生の指導に責任を負う。具体的職務には以下が含まれる: [特定のaimsに関連した4-6の主要な責任をリスト]。[必要なスキル/背景]の専門知識を持つ候補者を募集する。
 
-**Calculation**:
-- Annual salary: $[amount] for [% FTE]
-- Fringe benefits ([%]): $[amount]
-- Total: $[amount]/year
+**計算**:
+- 年1: NIH NRSA助成金水準 Year 0-2（$54,840）+ 福利厚生費（26%）= $69,099
+- 年2-3: ポスドク経験年数に合わせて調整
+- 年4-5: シニアポスドク rate
 
-**Example**:
-*Research Technician (1.0 FTE)*
+**例**:
+*ポスドク研究員（1.0 FTE）*
 
-*Justification*: A full-time research technician is necessary to provide technical support for high-throughput assays and maintain cell lines and mouse colonies. Specific responsibilities include: (1) maintaining iPSC, hepatocyte, and adipocyte cultures (>50 patient-derived lines), (2) performing routine insulin secretion, glucose uptake, and ELISA assays, (3) managing humanized mouse colony and performing metabolic phenotyping, (4) preparing samples for omics analysis, and (5) maintaining laboratory equipment and ordering supplies. The technician will enable the postdoc and graduate students to focus on experimental design, data analysis, and manuscript preparation.
+*妥当性説明*: 1人のフルタイムポスドクはAims 2-3の細胞・分子実験を実行するために不可欠である。ポスドクは以下を行う: (1) 患者由来iPSC株の生成と特性評価、(2) iPSCをβ細胞、肝細胞、脂肪細胞に分化、(3) 機能アッセイの実行（インスリン分泌、グルコース取り込み、サイトカインプロファイリング）、(4) プロテオミクスサンプル調製と分析、(5) 細胞データと臨床転帰の統合、(6) 細胞培養技術における大学院生の指導。幹細胞生物学と糖尿病研究の専門知識を持つ候補者を募集する。ポスドクは機関のK99/R00準備プログラムを通じてキャリア開発の機会を持つ。
 
-*Calculation*:
-- Year 1: $45,000 (base salary) + $11,700 (26% fringe) = $56,700
-- Years 2-5: 3% annual increase
-
----
-
-## Fringe Benefits
-
-**Rate**: [X]% for [category of personnel]
-
-**Justification**:
-Fringe benefit rates are based on our institution's federally negotiated rates. Rates differ by personnel category:
-- Faculty: [X]%
-- Postdocs: [X]%  
-- Graduate students: [X]% (if applicable)
-- Staff: [X]%
-
-Rates include [what's covered: health insurance, retirement, life insurance, etc.].
-
-**Total Fringe**: $[amount] per year
+*計算*:
+- 年1: $54,840（NIH Year 0）+ $14,258（26%福利厚生費）= $69,098
+- 年2: $56,784（NIH Year 1）+ $14,764 = $71,548
+- 年3: $59,292（NIH Year 2）+ $15,416 = $74,708
 
 ---
 
-## Equipment ($5,000 or more per unit)
+### 大学院生
 
-**[Equipment Item Name and Model]**
+**大学院研究アシスタント（[人数]人）**
 
-**Cost**: $[amount]
+**妥当性説明**:
+[人数]人の大学院生が[具体的な役割とaims]に必要である。各学生は[学生間の役割分担]に集中する。このプロジェクトは[技術/アプローチ]における優れたトレーニング機会を提供し、[分野]のキャリアに学生を準備させる。学生は[学部/プログラム]から募集し、[具体的なプログラム]とのパートナーシップを通じて過小代表グループの候補者を優先する。
 
-**Justification**:
-This equipment is essential for [which aims/experiments]. We currently do not have access to [this capability] at our institution. The [equipment] will be used to [specific applications in the project]. [Estimated usage: hours/week or % time on this project]. This equipment will support [how many students/researchers] and will remain useful for future projects in [area].
+**計算**:
+- スティペンド: $[金額]/学生/年（大学のRA rateに従う）
+- 学費: $[金額]/学生/年
+- 学生あたり合計: $[金額]
+- 学生数: [N]
+- 合計: $[金額]/年
 
-**Example**:
-*BD FACSAria III Cell Sorter with 4-laser configuration*
+**例**:
+*大学院研究アシスタント（3人）*
 
-*Cost*: $425,000
+*妥当性説明*: 3人の博士課程学生が3つのaimsすべてにわたる実験作業を実行するために必要である:
+- 学生1は多オミクスプロファイリングとサブタイプ分類に関するAim 1作業を主導
+- 学生2は患者由来細胞を用いたAim 2メカニズム研究を実施
+- 学生3は細胞モデルとヒト化マウスでのAim 3治療反応分析を実行
 
-*Justification*: A high-speed cell sorter is essential for Aim 2 experiments requiring isolation of specific cell populations from patient-derived heterogeneous cultures (β-cells, hepatocytes, adipocytes) for downstream proteomics and functional analysis. Our current institutional sorter has a 6-month wait time and lacks the 4-laser capability needed for our 8-color panel. This sorter will be used 15 hours/week for this project and will support 3 graduate students and 1 postdoc. The equipment will be housed in the Department of Biology core facility and will be available to 15 other laboratories after this project, ensuring long-term institutional value. Equipment cost includes installation, training, and 5-year service contract.
+このプロジェクトはゲノミクス、細胞生物学、トランスレーショナル糖尿病研究における優れた学際的トレーニングを提供する。学生はAmerican Diabetes Associationで年次発表し、査読付き出版物を共著する。生物科学博士プログラムから学生を募集し、IMSDプログラム（NIH R25）を通じて過小代表グループからの優先的募集を行う。
 
----
-
-## Travel
-
-### Domestic Travel
-
-**Purpose**: [Conference/meeting/collaboration]
-
-**Justification**:
-Travel is requested for [purpose: presenting results, collaboration, training]. The PI and/or [personnel] will attend [specific conferences/meetings] annually to disseminate findings and network with the research community. These meetings are essential for [specific benefits: feedback, collaborations, recruiting, staying current].
-
-**Calculation**:
-- [Conference name]: $[airfare] + $[hotel, X nights] + $[meals/incidentals] + $[registration] = $[total]
-- Number of trips/year: [N]
-- Total domestic travel: $[amount]/year
-
-**Example**:
-*Domestic Travel*
-
-*Justification*: Annual travel for the PI, postdoc, and 2 graduate students to present research findings and network with the diabetes research community. 
-
-Trips include:
-1. American Diabetes Association Scientific Sessions (annual, June): Premier venue for diabetes research dissemination. PI and 2 trainees will present posters/talks, attend workshops, and meet with collaborators. ($2,500/person × 3 people = $7,500)
-
-2. Endocrine Society Annual Meeting (alternate years): Important for reaching clinical endocrinology audience. PI will present translational findings. ($2,200)
-
-3. Cold Spring Harbor Metabolism & Disease Conference (Year 3): Specialized meeting for in-depth scientific exchange. Postdoc will present mechanistic findings. ($1,800)
-
-*Total*: $9,700/year (Years 1-2, 4-5); $11,500/year (Year 3)
-
-### Foreign Travel
-
-**Purpose**: [International conference/collaboration]
-
-**Justification**:
-[If requesting foreign travel, provide strong justification for why international meeting is necessary]
-
-**Example**:
-*Foreign Travel*
-
-*Justification*: PI will attend the International Diabetes Federation Congress (every 2 years, Years 2 and 4) to present findings to international clinical and research audience. This is the largest global diabetes meeting and essential for international collaborations and dissemination. Our data on molecular subtypes has direct relevance for diverse patient populations globally.
-
-*Cost*: $4,500/trip (airfare $1,500, hotel 4 nights $1,200, meals $800, registration $1,000)
-*Total*: $4,500 (Years 2, 4)
+*計算*:
+- スティペンド: $32,000/学生/年（大学RA rateで12月）
+- 学費と手数料: $18,000/学生/年
+- 学生あたり合計: $50,000/年
+- 3学生 × 5年 = $750,000合計
+（注: モジュラー予算では人件費の記述に含める; 詳細予算では人件費とその他に分割可能）
 
 ---
 
-## Materials and Supplies
+### 研究スタッフ
 
-### [Category]
+**研究技術員（[職位]、[% FTE]）**
 
-**Justification**:
-[Description of supplies needed and why]
+**妥当性説明**:
+[フル/パート]タイムの研究技術員は[具体的な技術サポート]のために必要である。技術員は[具体的職務]を行い、PIとポスドクが[より高レベルの活動]に集中できるようにする。主要な責任には以下が含まれる: [aimsに関連する主要な職務をリスト]。
 
-**Calculation**:
-[Itemize major categories with estimated costs]
+**計算**:
+- 年間給与: $[金額]（[% FTE]で）
+- 福利厚生費（[%]）: $[金額]
+- 合計: $[金額]/年
 
-**Total**: $[amount]/year
+**例**:
+*研究技術員（1.0 FTE）*
 
-**Example**:
-*Laboratory Supplies and Reagents*
+*妥当性説明*: フルタイムの研究技術員はハイスループットアッセイの技術サポートと細胞株およびマウスコロニーの維持のために必要である。具体的責任には以下が含まれる: (1) iPSC、肝細胞、脂肪細胞培養の維持（>50患者由来株）、(2) ルーチンのインスリン分泌、グルコース取り込み、ELISAアッセイの実行、(3) ヒト化マウスコロニーの管理と代謝表現型評価、(4) オミクス分析用サンプルの調製、(5) 実験室機器の維持と消耗品の発注。技術員はポスドクと大学院生が実験デザイン、データ分析、原稿準備に集中できるようにする。
 
-*Justification*: Supplies are required for cell culture, molecular biology, and metabolic assays across all three aims.
+*計算*:
+- 年1: $45,000（基本給）+ $11,700（26%福利厚生費）= $56,700
+- 年2-5: 年3%増
 
-*Breakdown*:
-- Cell culture reagents (media, growth factors, serum): $15,000/year
-  - Maintaining >50 patient-derived iPSC, hepatocyte, and adipocyte lines
-  - Differentiation protocols requiring specialized media
+---
+
+## 福利厚生費（Fringe Benefits）
+
+**率**: [職員カテゴリー]に対して[X]%
+
+**妥当性説明**:
+福利厚生費率は、当機関の連邦政府と協定したrateに基づいている。職員カテゴリーによって率が異なる:
+- 教員: [X]%
+- ポスドク: [X]%
+- 大学院生: [X]%（該当する場合）
+- スタッフ: [X]%
+
+率には[含まれるもの: 健康保険、退職金、生命保険など]が含まれる。
+
+**福利厚生費合計**: $[金額]/年
+
+---
+
+## 機器設備（$5,000以上/単位）
+
+**[機器名とモデル]**
+
+**費用**: $[金額]
+
+**妥当性説明**:
+この機器は[どのaims/実験]に不可欠である。当機関では現在[この能力]にアクセスできない。この[機器]は[プロジェクト内の具体的な用途]に使用される。[推定使用量: 時間/週または本プロジェクトでの%時間]。この機器は[何人の学生/研究者]をサポートし、[分野]の将来のプロジェクトにも有用であり続ける。
+
+**例**:
+*4レーザー構成のBD FACSAria III Cell Sorter*
+
+*費用*: $425,000
+
+*妥当性説明*: 高速Cell Sorterは、下流のプロテオミクスと機能分析のために患者由来の不均質培養（β細胞、肝細胞、脂肪細胞）から特定の細胞集団を単離する必要があるAim 2実験に不可欠である。現在の機関のSorterは6ヶ月の待機時間があり、8カラーパネルに必要な4レーザー能力を欠いている。このSorterは本プロジェクトで週15時間使用され、3人の大学院生と1人のポスドクをサポートする。機器は生物学部コア施設に設置され、本プロジェクト後も他の15研究室が利用可能で、長期的な機関的価値を確保する。機器費用には設置、トレーニング、5年間のサービス契約が含まれる。
+
+---
+
+## 旅費
+
+### 国内旅費
+
+**目的**: [学会/会議/共同研究]
+
+**妥当性説明**:
+旅費は[目的: 結果の発表、共同研究、トレーニング]のために申請する。PIおよび/または[職員]は、所見を普及し研究コミュニティとネットワークを構築するために[具体的な学会/会議]に年次参加する。これらの会議は[具体的な利益: フィードバック、共同研究、採用、最新情報の把握]に不可欠である。
+
+**計算**:
+- [学会名]: $[航空運賃] + $[ホテル、X泊] + $[食事/諸経費] + $[登録料] = $[合計]
+- 年間旅行回数: [N]
+- 国内旅費合計: $[金額]/年
+
+**例**:
+*国内旅費*
+
+*妥当性説明*: PI、ポスドク、2人の大学院生が研究結果を発表し糖尿病研究コミュニティとネットワークを構築するための年次旅行。
+
+旅行には以下が含まれる:
+1. American Diabetes Association Scientific Sessions（年次、6月）: 糖尿病研究普及の最高の場。PIと2人のトレーニーがポスター/口頭発表を行い、ワークショップに参加し、共同研究者と会う。（$2,500/人 × 3人 = $7,500）
+
+2. Endocrine Society Annual Meeting（隔年）: 臨床内分泌学の聴衆にリーチするために重要。PIがトランスレーショナルな所見を発表。（$2,200）
+
+3. Cold Spring Harbor Metabolism & Disease Conference（3年目）: 詳細な科学的交流のための専門会議。ポスドクがメカニズム的所見を発表。（$1,800）
+
+*合計*: $9,700/年（年1-2、4-5）; $11,500/年（3年目）
+
+### 海外旅費
+
+**目的**: [国際学会/共同研究]
+
+**妥当性説明**:
+[海外旅費を申請する場合、国際会議が必要な理由について強力な妥当性を提供する]
+
+**例**:
+*海外旅費*
+
+*妥当性説明*: PIはInternational Diabetes Federation Congress（2年ごと、2年目と4年目）に参加し、国際的な臨床および研究聴衆に所見を発表する。これは世界最大の糖尿病会議であり、国際的共同研究と普及に不可欠である。分子サブタイプに関する我々のデータは、世界中の多様な患者集団に直接関連性がある。
+
+*費用*: $4,500/旅行（航空運賃$1,500、ホテル4泊$1,200、食事$800、登録料$1,000）
+*合計*: $4,500（2、4年目）
+
+---
+
+## 物品・消耗品費
+
+### [カテゴリー]
+
+**妥当性説明**:
+[必要な消耗品とその理由の説明]
+
+**計算**:
+[主要なカテゴリーを推定費用で項目別に示す]
+
+**合計**: $[金額]/年
+
+**例**:
+*実験室消耗品と試薬*
+
+*妥当性説明*: 消耗品は3つのaimsすべてにわたる細胞培養、分子生物学、代謝アッセイに必要である。
+
+*内訳*:
+- 細胞培養試薬（培地、成長因子、血清）: $15,000/年
+  - >50患者由来iPSC、肝細胞、脂肪細胞株の維持
+  - 特殊培地を必要とする分化プロトコル
   
-- Molecular biology supplies (RNA extraction, qPCR, Western blotting): $12,000/year
-  - Processing samples from cell assays and mouse tissues
-  - Validation experiments for omics findings
+- 分子生物学消耗品（RNA抽出、qPCR、Western blotting）: $12,000/年
+  - 細胞アッセイとマウス組織からのサンプル処理
+  - オミクス所見の検証実験
 
-- Metabolomics and proteomics sample prep: $18,000/year
-  - Sample processing for Aim 1 multi-omics profiling (n=2,000 patients)
-  - Sample preparation for mass spectrometry (Aims 1-2)
+- メタボロミクスとプロテオミクスサンプル調製: $18,000/年
+  - Aim 1多オミクスプロファイリングのサンプル処理（n=2,000患者）
+  - 質量分析用サンプル調製（Aims 1-2）
 
-- Mouse metabolic phenotyping supplies: $10,000/year
-  - Glucose tolerance tests, insulin tolerance tests
-  - Blood collection and plasma analysis
-  - Tissue harvest and processing
+- マウス代謝表現型評価消耗品: $10,000/年
+  - グルコース耐性試験、インスリン耐性試験
+  - 採血と血漿分析
+  - 組織収穫と処理
 
-- Immunoassays and ELISAs: $8,000/year  
-  - Insulin, c-peptide, GLP-1, cytokine measurements
-  - ~500 assays/year across aims
+- イムノアッセイとELISA: $8,000/年
+  - インスリン、Cペプチド、GLP-1、サイトカイン測定
+  - aims全体で〜500アッセイ/年
 
-- General lab supplies (pipette tips, tubes, glassware): $7,000/year
+- 一般実験室消耗品（ピペットチップ、チューブ、ガラス器具）: $7,000/年
 
-*Total*: $70,000/year
-
----
-
-## Participant/Trainee Support Costs
-
-(For undergraduate researchers, workshop participants, etc.)
-
-**Stipends**: $[amount]
-
-**Justification**:
-[Number] undergraduate researchers will participate in summer research for 10 weeks annually. Stipends of $[amount] per student provide support for [what stipend covers].
-
-**Travel**: $[amount]
-
-**Justification**:
-Travel support for undergraduates to present research at [conference].
-
-**Subsistence**: $[amount] (if applicable)
-
-**Other**: $[amount]
-
-**Total**: $[amount]/year
-
-**Example**:
-*Undergraduate Summer Research Program*
-
-*Stipends*: 10 undergraduates × $5,000 = $50,000/year
-
-*Justification*: Ten undergraduates will participate in 10-week summer research experiences, working with graduate students on specific sub-projects. Students will be recruited from partner HBCUs (50% of participants) and our institution's McNair Scholars program. Stipends ($5,000 per student for 10 weeks) provide support during full-time research commitment.
-
-*Travel*: 10 students × $1,500 = $15,000/year
-
-*Justification*: Support for undergraduates to present research at the Annual Biomedical Research Conference for Minority Students (ABRCMS). This is a critical professional development opportunity, particularly for students from underrepresented groups.
-
-*Total Participant Support*: $65,000/year
-
-(Note: Participant support costs are not subject to indirect costs)
+*合計*: $70,000/年
 
 ---
 
-## Other Direct Costs
+## 参加者/トレーニーサポート費用
 
-### Publication Costs
+（学部生研究員、ワークショップ参加者など）
 
-**Cost**: $[amount]/year
+**スティペンド**: $[金額]
 
-**Justification**:
-We anticipate publishing [N] peer-reviewed articles over the 5-year project period in open-access journals to ensure broad dissemination. Average open-access fees are approximately $[amount] per article. Funds will cover article processing charges for publications resulting from this work.
+**妥当性説明**:
+[人数]人の学部生研究員が年間10週間の夏季研究に参加する。$[金額]/学生のスティペンドは[スティペンドがカバーするもの]のサポートを提供する。
 
-**Example**:
-*Publication Costs*: $12,000/year
+**旅費**: $[金額]
 
-*Justification*: We anticipate 2 publications per year (10 total over 5 years) in high-impact open-access journals. Average article processing charges are $3,000-$4,000 (e.g., Nature Communications, Cell Reports, Diabetes). We budget $6,000/year to ensure broad, immediate dissemination of findings as required by NIH public access policy. Additional publications in traditional subscription journals will not require fees.
+**妥当性説明**:
+学部生が[学会]で研究を発表するための旅費サポート。
 
-### Consultant Services
+**生活費**: $[金額]（該当する場合）
 
-**[Consultant Name/Role]**: $[amount]
+**その他**: $[金額]
 
-**Justification**:
-Dr. [Name] will serve as consultant for [specific expertise needed]. [He/She] will [specific consulting activities], requiring approximately [X] days per year at a rate of $[amount]/day. This expertise is essential for [why you can't do this yourself] and will ensure [benefit to project].
+**合計**: $[金額]/年
 
-**Example**:
-*Statistical Consultant*: $15,000/year
+**例**:
+*学部生夏季研究プログラム*
 
-*Justification*: Dr. Sarah Chen, Professor of Biostatistics at Johns Hopkins, will provide statistical consulting for machine learning-based subtype classification (Aim 1) and clinical outcome analysis (Aim 3). She will advise on study design, sample size calculations, analysis approaches, and interpretation of complex multi-omics datasets. Her expertise in diabetes clinical trials and unsupervised clustering is essential for rigorous analysis. Services will require approximately 10 days/year at $1,500/day (standard consulting rate). Dr. Chen has agreed to this arrangement (see letter of commitment).
+*スティペンド*: 10人の学部生 × $5,000 = $50,000/年
 
-### Other
+*妥当性説明*: 10人の学部生が10週間の夏季研究体験に参加し、大学院生と共に具体的なサブプロジェクトに取り組む。学生はパートナーHBCU（参加者の50%）と当機関のMcNair Scholarsプログラムから募集する。スティペンド（10週間で学生あたり$5,000）はフルタイム研究コミットメント中のサポートを提供する。
 
-List any other direct costs (subawards, animal costs, computing time, etc.)
+*旅費*: 10学生 × $1,500 = $15,000/年
 
----
+*妥当性説明*: 学部生がAnnual Biomedical Research Conference for Minority Students（ABRCMS）で研究を発表するためのサポート。これは、特に過小代表グループの学生にとって重要な専門的開発機会である。
 
-## Consortium/Contractual Costs
+*参加者サポート合計*: $65,000/年
 
-(For collaborating institutions)
-
-**[Institution Name] Subaward**
-
-**Total costs**: $[amount] per year
-
-**Justification**:
-[Collaborating institution] will perform [specific work related to which aims]. Dr. [PI name at institution] will lead these efforts. This collaboration is essential because [why this expertise/resource is needed and not available at your institution].
-
-**Work to be performed**:
-- [Task 1]
-- [Task 2]
-- [Task 3]
-
-Detailed budget and justification from [institution] are included as a subaward/consortium application.
-
-**Example**:
-*University of California San Diego Subaward*
-
-*Total costs*: $100,000/year
-
-*Justification*: UCSD will perform all mass spectrometry-based metabolomics and proteomics analyses for Aims 1-2. Dr. Michael Williams, Director of the UCSD Metabolomics Core, will lead these efforts. This collaboration is essential because our institution lacks the specialized mass spectrometry platforms (Orbitrap Fusion, QTOF) and expertise required for these analyses. UCSD has extensive experience with T2D metabolomics and proteomics, having processed >5,000 clinical samples.
-
-*Work to be performed*:
-- Sample processing and metabolite/protein extraction (Years 1-3)
-- LC-MS/MS analysis on Orbitrap Fusion and QTOF platforms
-- Data processing, quality control, and statistical analysis
-- Quarterly meetings to discuss results and plan analyses
-
-*Budget includes*: Personnel (50% technician, 10% Dr. Williams), supplies, and instrument time. Detailed subaward budget attached.
-
-*Note*: Consortium F&A limited to 8% of total costs per NIH policy.
+（注: 参加者サポート費用は間接費の対象外）
 
 ---
 
-## Indirect Costs (Facilities & Administrative)
+## その他直接経費
 
-**Rate**: [X]% of Modified Total Direct Costs (MTDC)
+### 出版費用
 
-**MTDC Excludes**: Equipment, capital expenditures, charges for patient care, participant support costs, rental costs of off-site facilities, scholarships and fellowships, and the portion of each subaward in excess of $25,000.
+**費用**: $[金額]/年
 
-**Justification**:
-Indirect cost rate is based on our institution's federally negotiated rate agreement with [DHHS/agency], effective [dates]. This rate covers institutional costs for facilities (building depreciation, operations, maintenance) and administration (sponsored projects office, accounting, library, etc.) that support research.
+**妥当性説明**:
+5年間のプロジェクト期間中に[N]本の査読付き記事をオープンアクセスジャーナルで出版し、広範な普及を確保することを予定している。平均オープンアクセス費用は約$[金額]/記事である。本作業から生じる出版物の記事加工費をカバーする資金が必要である。
 
-**Example**:
-*Facilities & Administrative Costs*: 57% of MTDC (on-campus rate)
+**例**:
+*出版費用*: $12,000/年
 
-*Justification*: Our institution's federally negotiated F&A rate with DHHS is 57% for on-campus research, effective July 1, 2023 - June 30, 2027. This rate covers facilities costs (building depreciation, utilities, operations and maintenance) and administrative costs (sponsored projects administration, accounting, library, general administration). 
+*妥当性説明*: 5年間で10本（年2本）の高インパクトオープンアクセスジャーナルでの出版を予定している。平均記事加工料は$3,000-$4,000（例: Nature Communications、Cell Reports、Diabetes）。NIH公共アクセスポリシーで要求される広範かつ即時の所見の普及を確保するため$6,000/年を予算化する。従来の購読ジャーナルでの追加出版物は費用を必要としない。
 
-*Calculation example (Year 1)*:
-- Total direct costs: $550,000
-- Less: Equipment ($425,000), participant support ($65,000), consortium F&A ($8,000)
-- MTDC base: $52,000
-- Indirect costs: $52,000 × 0.57 = $29,640
+### コンサルタントサービス
+
+**[コンサルタント名/役割]**: $[金額]
+
+**妥当性説明**:
+[氏名]博士は[必要な具体的専門知識]のコンサルタントとして務める。[彼/彼女]は[具体的コンサルティング活動]を行い、$[金額]/日のrateで年間約[X]日を必要とする。この専門知識は[自分でこれを行えない理由]に不可欠であり、[プロジェクトへの利益]を確保する。
+
+**例**:
+*統計コンサルタント*: $15,000/年
+
+*妥当性説明*: ジョンズホプキンス大学の生物統計学教授Sarah Chen博士は、機械学習ベースのサブタイプ分類（Aim 1）と臨床アウトカム分析（Aim 3）の統計コンサルティングを提供する。研究デザイン、サンプルサイズ計算、分析アプローチ、複雑な多オミクスデータセットの解釈について助言する。糖尿病臨床試験と教師なしクラスタリングの専門知識は、厳密な分析に不可欠である。サービスは標準コンサルティングrateで$1,500/日で年間約10日を必要とする。Chen博士はこの取り決めに同意している（コミットメントレターを参照）。
+
+### その他
+
+その他の直接経費をリストする（サブアワード、動物費用、計算機時間など）
 
 ---
 
-## Summary Budget Table
+## コンソーシアム/契約費用
 
-| Category | Year 1 | Year 2 | Year 3 | Year 4 | Year 5 | Total |
+（共同機関向け）
+
+**[機関名] サブアワード**
+
+**総費用**: $[金額]/年
+
+**妥当性説明**:
+[共同機関]が[どのaimsに関連する具体的作業]を実行する。[機関のPI名]博士がこれらの取り組みを主導する。この共同研究は、[この専門知識/リソースが必要であり、当機関で利用できない理由]のため不可欠である。
+
+**実行される作業**:
+- [タスク1]
+- [タスク2]
+- [タスク3]
+
+[機関]からの詳細な予算と妥当性説明はサブアワード/コンソーシアム申請として添付されている。
+
+**例**:
+*カリフォルニア大学サンディエゴ校 サブアワード*
+
+*総費用*: $100,000/年
+
+*妥当性説明*: UCSDはAims 1-2のすべての質量分析ベースのメタボロミクスとプロテオミクス分析を実行する。UCSD Metabolomics Core所長Michael Williams博士がこれらの取り組みを主導する。この共同研究は、当機関がこれらの分析に必要な専門の質量分析プラットフォーム（Orbitrap Fusion、QTOF）と専門知識を欠いているため不可欠である。UCSDは5,000以上の臨床サンプルを処理したT2Dメタボロミクスとプロテオミクスの豊富な経験を持っている。
+
+*実行される作業*:
+- サンプル処理と代謝物/タンパク質抽出（年1-3）
+- Orbitrap FusionとQTOFプラットフォームでのLC-MS/MS分析
+- データ処理、品質管理、統計分析
+- 結果を議論し分析を計画するための四半期会議
+
+*予算には以下が含まれる*: 人件費（技術員50%、Williams博士10%）、消耗品、機器使用時間。詳細なサブアワード予算添付。
+
+*注*: コンソーシアムF&AはNIHポリシーにより総費用の8%に制限される。
+
+---
+
+## 間接費（Facilities & Administrative Costs）
+
+**率**: Modified Total Direct Costs（MTDC）の[X]%
+
+**MTDC除外項目**: 機器設備、資本支出、患者ケア費用、参加者サポート費用、オフサイト施設の賃借料、奨学金とフェローシップ、各サブアワードの$25,000を超える部分
+
+**妥当性説明**:
+間接費率は、当機関の[DHHS/機関]との連邦政府協定rate agreementに基づいている。[期間]有効。この率は、研究をサポートする施設（建物減価償却、運用、維持）と管理（スポンサー付きプロジェクトオフィス、会計、図書館など）の機関費用をカバーする。
+
+**例**:
+*Facilities & Administrative Costs*: MTDCの57%（オンキャンパスrate）
+
+*妥当性説明*: 当機関のDHHSとの連邦政府協定F&A rateは、オンキャンパス研究について57%であり、2023年7月1日〜2027年6月30日有効。この率は施設費用（建物減価償却、光熱費、運用・維持）と管理費用（スポンサー付きプロジェクト管理、会計、図書館、一般管理）をカバーする。
+
+*計算例（年1）*:
+- 直接費合計: $550,000
+- 控除: 機器設備（$425,000）、参加者サポート（$65,000）、コンソーシアムF&A（$8,000）
+- MTDCベース: $52,000
+- 間接費: $52,000 × 0.57 = $29,640
+
+---
+
+## 予算サマリー表
+
+| カテゴリー | 年1 | 年2 | 年3 | 年4 | 年5 | 合計 |
 |----------|--------|--------|--------|--------|--------|-------|
-| Personnel | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
-| Fringe Benefits | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
-| Equipment | $XXX | $0 | $0 | $0 | $0 | $XXX |
-| Travel | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
-| Materials & Supplies | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
-| Other Direct Costs | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
-| Participant Support | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
-| Consortium/Subawards | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
-| **Total Direct Costs** | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
-| Indirect Costs (F&A) | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
-| **TOTAL COSTS** | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| 人件費 | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| 福利厚生費 | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| 機器設備 | $XXX | $0 | $0 | $0 | $0 | $XXX |
+| 旅費 | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| 物品・消耗品費 | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| その他直接経費 | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| 参加者サポート | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| コンソーシアム/サブアワード | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| **直接費合計** | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| 間接費（F&A） | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
+| **総費用** | $XXX | $XXX | $XXX | $XXX | $XXX | $XXX |
 
 ---
 
-## Tips for Strong Budget Justifications
+## 強力な予算妥当性説明のためのヒント
 
-✅ **Do**:
-- Tie every cost directly to specific aims and activities
-- Provide detailed calculations showing your work
-- Explain why the amount is necessary and reasonable
-- Use institutional or national standards for rates
-- Show cost-effectiveness where possible
-- Include escalation (inflation) for out-years
-- Be specific about equipment models, conference names, etc.
+✅ **推奨**:
+- すべての費用を具体的なaimsと活動に直接結びつける
+- 計算過程を示す詳細な計算を提供する
+- 金額が必要で合理的である理由を説明する
+- rateに機関または国の基準を使用する
+- 可能な場合は費用対効果を示す
+- 後年度のエスカレーション（インフレ）を含める
+- 機器モデル、学会名などについて具体的にする
 
-❌ **Don't**:
-- Use vague language ("miscellaneous supplies")
-- Forget to justify every line item
-- Over-budget for contingency
-- Include costs unrelated to the proposed work
-- Underestimate costs (creates problems if funded)
-- Forget agency-specific cost limitations (salary caps, F&A exclusions)
+❌ **非推奨**:
+- 曖昧な言葉を使用する（「雑費」など）
+- すべての項目の妥当性説明を忘れる
+- 当面の予備費として過大に予算計上する
+- 提案された作業と無関係な費用を含める
+- 費用を過小評価する（資金提供された場合に問題が生じる）
+- 機関固有の費用制限（給与上限、F&A除外）を忘れる
 
-## Agency-Specific Notes
+## 機関別注意事項
 
 **NIH**: 
-- Salary cap applies (~$221,900 for 2024)
-- Modular budgets (≤$250K direct) require less detail
-- Participant support costs excluded from F&A
+- 給与上限が適用される（2024年は〜$221,900）
+- モジュラー予算（直接費≤$250K）は詳細度が低くてよい
+- 参加者サポート費用はF&Aから除外
 
 **NSF**:
-- No salary cap
-- Generally 2 summer months maximum for 9-month faculty
-- Cost sharing not required (except specific programs)
+- 給与上限なし
+- 一般的に9ヶ月勤務教員は最大2ヶ月（夏季）
+- コストシェアリングは不要（特定プログラムを除く）
 
 **DOE**:
-- Often requires detailed budgets by quarter
-- May require cost sharing
-- Equipment often requires special justification
+- 四半期ごとの詳細予算を要求することが多い
+- コストシェアリングが必要な場合がある
+- 機器には特別な妥当性説明が必要なことが多い
 
 **DARPA**:
-- Detailed costs by phase and task
-- Often requires supporting cost data
-- May need rates approved (DCAA audit for industry)
-
+- フェーズとタスクごとの詳細な費用
+- 補足費用データを要求することが多い
+- rateの承認が必要な場合がある（産業界はDCAA監査）

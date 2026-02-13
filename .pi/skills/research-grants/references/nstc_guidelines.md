@@ -1,206 +1,206 @@
-# Taiwan NSTC (National Science and Technology Council) Proposal Guidelines
+# 台湾 NSTC (国家科学及技術委員会) 提案ガイドライン
 
-> ⚠️ **IMPORTANT DISCLAIMER**: This guide is based on publicly available information and general academic writing principles. **Always consult the official NSTC website and your specific program's solicitation for the most accurate and up-to-date requirements.** Requirements may vary by field, program type, and year.
+> ⚠️ **重要な免責事項**: 本ガイドは公開情報と一般的な学術執筆原則に基づいています。**常に最新かつ正確な要件について、公式NSTCウェブサイトおよび特定のプログラムの募集要項を確認してください。** 要件は分野、プログラムタイプ、年度によって異なる場合があります。
 
-## Overview
+## 概要
 
-**Official Name**: 國家科學及技術委員會 (National Science and Technology Council, NSTC)  
-**Former Name**: 科技部 (Ministry of Science and Technology, MOST)  
-**Official Website**: https://www.nstc.gov.tw/
+**正式名称**: 國家科學及技術委員會 (National Science and Technology Council, NSTC)  
+**旧名称**: 科技部 (Ministry of Science and Technology, MOST)  
+**公式ウェブサイト**: https://www.nstc.gov.tw/
 
-**Mission**: Advance Taiwan's scientific and technological development through research funding, with emphasis on scientific breakthrough, industrial application, and societal impact.
-
----
-
-## CM03: Research Proposal Content (研究計畫內容)
-
-CM03 is the core technical document of your NSTC proposal. It is officially titled "Contents of Grant Proposal" (計畫書本文).
-
-### Official Format Requirements
-
-Based on official NSTC documentation:
-
-**Paper Size**: A4 (29.7 cm × 21 cm)
-
-**Font**:
-- Chinese: PMingLiU (新細明體) or BiauKai (標楷體)
-- English: Times New Roman or Arial
-- Size: 12-point minimum
-
-**Spacing**: Single space for English; no extra spacing between lines for Chinese
-
-**Page Limits** (varies by field and program type):
-- **Humanities**: Individual 1-year: 30 pages; Multi-year: 45 pages
-- **Engineering**: Individual 1-year: 20 pages; Multi-year: 25 pages
-- **Natural Sciences**: Individual: 30 pages; Integrated: 45 pages
-- **Life Sciences**: Individual: 25 pages
-- **⚠️ CRITICAL**: Page limits include references and figures. Exceeding limits may result in automatic rejection.
-
-**File Format**: PDF recommended for submission
+**ミッション**: 科学的突破、産業応用、社会的影響を重視し、台湾の科学技術発展を研究資金を通じて推進する。
 
 ---
 
-## Required Content Sections
+## CM03: 研究計画内容 (研究計畫內容)
 
-Based on official CM03 templates, the proposal must include:
+CM03はNSTC提案の核心技術文書です。正式名称は「計画書本文」(Contents of Grant Proposal) です。
 
-### 1. Abstract (摘要)
+### 公式フォーマット要件
 
-**Requirements**:
-- **Chinese abstract**: Maximum 500 characters
-- **English abstract**: Maximum 500 words
-- **Keywords**: 3-5 keywords in both languages
+公式NSTCドキュメントに基づく:
 
-**Content**:
-- Research background and problem statement
-- Research objectives
-- Key methods and approaches
-- Expected outcomes and impact
+**用紙サイズ**: A4 (29.7 cm × 21 cm)
 
-### 2. Research Background and Objectives (研究計畫之背景及目的)
+**フォント**:
+- 中国語: PMingLiU (新細明體) または BiauKai (標楷體)
+- 英語: Times New Roman または Arial
+- サイズ: 12ポイント以上
 
-**Required Elements**:
-- Problem statement and significance
-- Research originality and innovation
-- Expected impact
-- Review of domestic and international related research
-- Important references with critical evaluation
-- **For continuing projects**: Progress from previous year
+**行間**: 英語はシングルスペース、中国語は行間を空けない
 
-### 3. Research Methods, Steps, and Timeline (研究方法、進行步驟及執行進度)
+**ページ制限** (分野とプログラムタイプにより異なる):
+- **人文学**: 個人1年: 30ページ、複数年: 45ページ
+- **工学**: 個人1年: 20ページ、複数年: 25ページ
+- **自然科学**: 個人: 30ページ、統合: 45ページ
+- **生命科学**: 個人: 25ページ
+- **⚠️ 重要**: ページ制限には参考文献と図表が含まれます。制限超過は自動却下の原因となります。
 
-**Required Elements**:
-- Research principles and methodology
-- Justification for chosen methods
-- Innovative aspects of the approach
-- Anticipated problems and solutions
-- Equipment and instrumentation needs
-- **For international travel**: Justification and expected benefits
-- **Timeline**: Year-by-year breakdown of activities
-
-### 4. Expected Outcomes (預期完成之工作項目及成果)
-
-**Required Elements**:
-- Expected research tasks (by year)
-- Personnel training plans
-- Expected outputs:
-  - Journal articles (specify target journals)
-  - Conference papers
-  - Patents
-  - Technology transfer
-  - Other deliverables
+**ファイル形式**: 提出はPDF推奨
 
 ---
 
-## 114年度 (2025) Application Requirements
+## 必須セクション
 
-Based on official announcements:
+公式CM03テンプレートに基づき、提案には以下を含める必要があります:
 
-**Application Method**: Fully online through NSTC Academic Research Service Network (學術研發服務網)
+### 1. 概要 (摘要)
 
-**Project Start Date**: Most projects begin August 1, 2025 (114年8月1日)
+**要件**:
+- **中国語概要**: 最大500文字
+- **英語概要**: 最大500単語
+- **キーワード**: 両言語で3〜5語
 
-**Academic Ethics Requirement**:
-- First-time applicants and first-time participants must complete **at least 6 hours** of academic ethics training within 3 years before submission
-- Must provide certification
+**内容**:
+- 研究背景と問題提起
+- 研究目的
+- 主要な手法とアプローチ
+- 期待される成果と影響
 
-**Thesis Disclosure**:
-- If proposal content involves student theses supervised by the PI, it must be clearly disclosed or cited
-- Already published work (including student theses) should not be hidden as new research content
+### 2. 研究背景と目的 (研究計畫之背景及目的)
 
----
+**必須要素**:
+- 問題提起と重要性
+- 研究の独自性と革新性
+- 期待される影響
+- 国内および国際的な関連研究のレビュー
+- 重要な参考文献と批判的評価
+- **継続プロジェクトの場合**: 前年度の進捗
 
-## Budget Categories (經費編列)
+### 3. 研究方法、手順、タイムライン (研究方法、進行步驟及執行進度)
 
-Based on official guidelines:
+**必須要素**:
+- 研究原則と方法論
+- 選択手法の正当化
+- アプローチの革新的側面
+- 予想される問題と解決策
+- 機器・設備の必要性
+- **海外出張の場合**: 正当化と期待される効果
+- **タイムライン**: 年度別活動計画
 
-**Personnel (人事費)**:
-- Postdoctoral researchers
-- Research assistants
-- Part-time staff
-- **Note**: PI salary typically not allowed
+### 4. 期待される成果 (預期完成之工作項目及成果)
 
-**Equipment (設備費)**:
-- Items exceeding NT$10,000 with service life > 2 years
-- Items exceeding NT$200,000 may require price appraisal
-
-**Consumables (耗材費)**:
-- Lab supplies, reagents, software licenses
-
-**Travel (差旅費)**:
-- Domestic and international conferences
-- Research collaborations
-
-**Other (其他費用)**:
-- Publication fees, data collection, outsourcing
-
----
-
-## Review Criteria
-
-**Note**: Specific scoring weights are not publicly disclosed by NSTC. The following are general evaluation dimensions based on academic practice:
-
-1. **Innovation (創新性)**: Novelty of concept and approach
-2. **Feasibility (可行性)**: Methodology soundness and preliminary data
-3. **PI Capability (主持人研究能力)**: Track record and expertise
-4. **Value (價值)**: Academic contribution and societal/industrial impact
+**必須要素**:
+- 期待される研究タスク（年度別）
+- 人材育成計画
+- 期待されるアウトプット:
+  - ジャーナル論文（ターゲットジャーナルを指定）
+  - 会議論文
+  - 特許
+  - 技術移転
+  - その他成果物
 
 ---
 
-## Official Resources
+## 114年度 (2025) 申請要件
 
-**NSTC Website**: https://www.nstc.gov.tw/
+公式発表に基づく:
 
-**Application System**: Access through "學術研發服務網" (Academic Research Service Network)
+**申請方法**: NSTC学術研究サービスネットワーク (學術研發服務網) を通じた完全オンライン
 
-**Help Desk**:
-- Computer/System Issues: 0800-212-058 or (02)2737-7592
-- Regulation Questions: (02)2737-7440, 7568, 7847, 7980, 8010
+**プロジェクト開始日**: 大部分のプロジェクトは2025年8月1日開始 (114年8月1日)
 
-**Important**: Always download the latest application forms and guidelines from the official NSTC website under "專題研究計畫專區" (Research Project Area).
+**学術倫理要件**:
+- 初回申請者と初回参加者は、申請前3年以内に**最低6時間**の学術倫理研修を完了する必要がある
+- 認定証の提出が必須
 
-### LaTeX Templates
+**論文開示**:
+- 提案内容がPIが指導する学生の論文に関わる場合、明確に開示または引用する必要がある
+- 既発表の研究（学生の論文を含む）を新規研究内容として隠してはならない
 
-For those who prefer LaTeX for proposal writing, there are excellent community-contributed templates available:
+---
 
-#### Official CTAN Package (Recommended)
+## 予算カテゴリ (經費編列)
 
-**nstc-proposal** - Professional LaTeX classes for NSTC proposals:
+公式ガイドラインに基づく:
+
+**人件費 (人事費)**:
+- ポストドクター研究員
+- リサーチアシスタント
+- パートタイム職員
+- **注**: PI給与は通常認められない
+
+**設備費 (設備費)**:
+- NT$10,000を超え、耐用年数2年以上の物品
+- NT$200,000を超える物品は価格鑑定が必要な場合がある
+
+**消耗品費 (耗材費)**:
+- 実験用品、試薬、ソフトウェアライセンス
+
+**旅費 (差旅費)**:
+- 国内および国際会議
+- 研究協力
+
+**その他 (其他費用)**:
+- 出版費、データ収集、外部委託
+
+---
+
+## 審査基準
+
+**注**: 具体的な配点はNSTCにより公開されていません。以下は学術慣行に基づく一般的な評価軸です:
+
+1. **革新性 (創新性)**: 概念とアプローチの新規性
+2. **実現可能性 (可行性)**: 方法論の健全性と予備データ
+3. **PI能力 (主持人研究能力)**: 実績と専門性
+4. **価値 (價值)**: 学術的貢献と社会的・産業的影響
+
+---
+
+## 公式リソース
+
+**NSTCウェブサイト**: https://www.nstc.gov.tw/
+
+**申請システム**: 「學術研發服務網」 (学術研究サービスネットワーク) からアクセス
+
+**ヘルプデスク**:
+- コンピュータ/システム問題: 0800-212-058 または (02)2737-7592
+- 規則に関する質問: (02)2737-7440, 7568, 7847, 7980, 8010
+
+**重要**: 常に「專題研究計畫專區」 (研究プロジェクトエリア) から最新の申請フォームとガイドラインをダウンロードしてください。
+
+### LaTeXテンプレート
+
+提案執筆にLaTeXを使用する場合、優れたコミュニティ提供テンプレートが利用可能です:
+
+#### 公式CTANパッケージ (推奨)
+
+**nstc-proposal** - NSTC提案用のプロフェッショナルLaTeXクラス:
 - **GitHub**: https://github.com/L-TChen/nstc-proposal
-- **CTAN**: Available via `tlmgr install nstc-proposal`
-- **Supports**: Both CM03 and CM302 (bibliography format)
-- **Features**:
-  - Compatible with pdfLaTeX and XeTeX
-  - Bilingual support (Chinese/English)
-  - Pre-defined section commands (`\ProposalBackground`, `\ProposalMethod`, `\ProposalPlan`, `\ProposalIntegration`)
-  - Multiple font options (standard, Libertine, KaiTi)
-  - Proper formatting for NSTC requirements
+- **CTAN**: `tlmgr install nstc-proposal` で利用可能
+- **対応**: CM03とCM302（書誌形式）の両方
+- **機能**:
+  - pdfLaTeXとXeTeXに対応
+  - 二言語サポート（中国語/英語）
+  - 事前定義セクションコマンド（`\ProposalBackground`, `\ProposalMethod`, `\ProposalPlan`, `\ProposalIntegration`）
+  - 複数フォントオプション（標準、Libertine、KaiTi）
+  - NSTC要件に適したフォーマット
 
-**Installation**:
+**インストール**:
 ```bash
-# Via TeX package manager (easiest)
+# TeXパッケージマネージャー経由（最も簡単）
 tlmgr install nstc-proposal
 
-# Or manual installation from GitHub
+# またはGitHubから手動インストール
 git clone https://github.com/L-TChen/nstc-proposal.git
 cd nstc-proposal
 latex nstc-proposal.ins
 ```
 
-**Basic Usage Example**:
+**基本的な使用例**:
 ```latex
 \documentclass{nstc-cm03}
 \usepackage{microtype}
 
 \begin{document}
 \ProposalBackground
-% Your content here
+% ここに内容を記述
 
 \ProposalMethod
-% Your content here
+% ここに内容を記述
 
 \ProposalPlan
-% Your content here
+% ここに内容を記述
 
 \nocite{*}
 \bibliographystyle{plain}
@@ -208,526 +208,526 @@ latex nstc-proposal.ins
 \end{document}
 ```
 
-#### Alternative Templates
+#### 代替テンプレート
 
-**Engineering Division Template**:
+**工学部門テンプレート**:
 - GitHub: https://github.com/mcps5601/NSTC-proposal-LaTeX
-- Provides CM03 format specifically for Engineering Division (工程司)
-- **Note**: Format requirements may differ by division
+- 工学部門 (工程司) 向けのCM03形式を提供
+- **注**: 部門によって形式要件が異なる場合があります
 
-**Overleaf Templates**:
+**Overleafテンプレート**:
 
-1. **audachang's CM03 Template** (Recommended for Overleaf users):
+1. **audachangのCM03テンプレート** (Overleafユーザーに推奨):
    - GitHub: https://github.com/audachang/taiwan-nstc-cm03-template
-   - Overleaf: Direct import from GitHub
-   - **Features**:
-     - Includes official CM03.doc file for reference
-     - Uses XeCJK with BiauKai (標楷體) font for Traditional Chinese
-     - Organized structure with separate section files (`background.tex`, `methods.tex`, `expected_outcomes.tex`)
-     - **Important**: Must use XeLaTeX or LuaLaTeX compiler
-   - Based on Chen Wen-sheng's template
+   - Overleaf: GitHubから直接インポート
+   - **機能**:
+     - 参考用の公式CM03.docファイルを含む
+     - 繁体字中国語用にXeCJKとBiauKai (標楷體) フォントを使用
+     - セクションファイルを分離した整理された構造（`background.tex`, `methods.tex`, `expected_outcomes.tex`）
+     - **重要**: XeLaTeXまたはLuaLaTeXコンパイラを使用する必要がある
+   - Chen Wen-shengのテンプレートに基づく
 
-2. **Other Overleaf Templates**:
-   - Search for "國科會研究計畫內容: CM03" on Overleaf
-   - Various community-contributed templates available
+2. **その他のOverleafテンプレート**:
+   - Overleafで「國科會研究計畫內容: CM03」を検索
+   - 様々なコミュニティ提供テンプレートが利用可能
 
-> ⚠️ **Important**: These are community-contributed templates. Always verify that the format complies with the latest official NSTC requirements for your specific field and program type. The `nstc-proposal` CTAN package is regularly maintained and is the most reliable option.
-
----
-
-## Practical Insights from Reviewers
-
-> 📚 **Source**: This section is based on "國科會計畫撰寫經驗分享" by Prof. Huang You-Ping (黃有評), President of National Penghu University of Science and Technology. These insights reflect the **reviewer's perspective** and are particularly relevant for Engineering Division proposals.
-
-> ⚠️ **Important**: Scoring thresholds and specific criteria may vary by division (Humanities, Engineering, Natural Sciences, Life Sciences, etc.). Always check with your specific field's requirements.
-
-### Understanding the Scoring System
-
-Based on Engineering Division (工程司) - Automation/Control field experience:
-
-**Scoring Thresholds**:
-- **92+ points (Top 5%)**: Outstanding research level - eligible for Distinguished Research Award (傑出研究獎)
-- **88+ points (Top 15%)**: Required threshold if applying for a second concurrent project
-- **81+ points (Top 54-55%)**: **Passing threshold** - proposals scoring 81 or above are recommended for approval
-- **80 points or below**: Not recommended for approval
-
-**Key Insight**: The difference between "passing" (81) and "excellent" (88+) often lies in the strength of preliminary data, clarity of innovation, and demonstrated feasibility.
+> ⚠️ **重要**: これらはコミュニティ提供のテンプレートです。フォーマットが特定の分野とプログラムタイプの最新の公式NSTC要件に準拠していることを常に確認してください。`nstc-proposal` CTANパッケージは定期的にメンテナンスされており、最も信頼性の高いオプションです。
 
 ---
 
-### Section-by-Section Writing Strategies
+## レビュアーからの実践的洞察
 
-#### Abstract (摘要)
+> 📚 **出典**: このセクションは、国立澎湖科技大学学長の黃有評教授による「國科會計畫撰寫經驗分享」に基づいています。これらの洞察は**レビュアーの視点**を反映しており、工学部門の提案に特に関連があります。
 
-**Reviewer Expectations**:
-- Must demonstrate **innovation** and **problem-solving strategy** immediately
-- Should capture attention in the first reading
-- Clearly state what makes this proposal different from existing work
+> ⚠️ **重要**: 配点の閾値と特定の基準は部門（人文学、工学、自然科学、生命科学など）によって異なる場合があります。常に特定の分野の要件を確認してください。
 
-**Critical Question**: Does the abstract make the reviewer want to read more?
+### スコアリングシステムの理解
 
-#### Research Background and Motivation (研究背景及目的)
+工学部門 (工程司) - オートメーション/制御分野の経験に基づく:
 
-**What Reviewers Look For**:
-- **Clear problem definition**: Is the core problem well-defined?
-- **Reasonable design and objectives**: Are the goals achievable and well-justified?
-- **Logical flow**: Does the background naturally lead to your research objectives?
+**スコアリングの閾値**:
+- **92点以上 (上位5%)**: 傑出した研究レベル - 傑出研究賞 (傑出研究獎) の対象
+- **88点以上 (上位15%)**: 2つ目の並行プロジェクトを申請する場合の必要閾値
+- **81点以上 (上位54-55%)**: **通過閾値** - 81点以上の提案が承認推薦される
+- **80点以下**: 承認推薦なし
 
-**Common Weakness**: Vague problem statements that don't clearly identify what gap you're filling.
-
-#### Literature Review (文獻探討)
-
-**Quality Over Quantity**:
-- Select **highly relevant** literature, not just many papers
-- **Critical synthesis**: Don't just list papers - analyze strengths, weaknesses, and gaps
-- **Recency matters**: Include publications from the **last 2-3 years** to show awareness of current state-of-the-art
-- **Strategic positioning**: Use literature review to guide readers toward your research objectives
-
-**Reviewer's Perspective**: A well-curated 20-paper review with critical analysis is far superior to a 50-paper list without synthesis.
-
-#### Research Methods and Implementation (研究方法、進行步驟及執行進度)
-
-**Feasibility is Critical**:
-- **Avoid over-idealization**: Proposals that are too ambitious without clear mitigation strategies often fail
-- **Logical progression**: Each step should follow naturally from the previous one
-- **Comparison with existing methods**: Clearly show how your approach differs and why it's better
-- **Contingency planning**: Address potential problems and provide alternative approaches
-
-**Red Flags for Reviewers**:
-- Methods that are too difficult without demonstrated capability
-- Lack of logical connection between steps
-- No discussion of potential challenges
-- Missing preliminary data for novel approaches
-
-#### Expected Outcomes (預期完成之工作項目及成果)
-
-**Be Specific and Quantifiable**:
-- ✅ **Good**: "Improve system efficiency by 15% compared to baseline method X"
-- ❌ **Weak**: "Improve system efficiency"
-
-**Include Multiple Dimensions**:
-- **Academic value**: Target journals and expected number of publications
-- **Economic benefits**: Potential industrial applications
-- **Talent cultivation**: Number and level of students to be trained
+**重要な洞察**: 「通過」(81) と「優秀」(88+) の違いは、予備データの強さ、革新性の明確さ、実現可能性の実証にあることが多い。
 
 ---
 
-### Budget Preparation Tips
+### セクション別執筆戦略
 
-**Alignment with Research Plan**:
-- Every budget item should directly support a specific research activity
-- Personnel costs should reflect actual time commitment
-- Equipment justification should explain why existing facilities are insufficient
+#### 概要 (摘要)
 
-**International Conference Travel**:
-- Typical budget: NT$70,000 - 100,000
-- **Must justify**: Explain your track record of international conference participation and contributions
-- Show how conference attendance benefits the research
+**レビュアーの期待**:
+- **革新性**と**問題解決戦略**を即座に示す必要がある
+- 最初の読みで注目を集める必要がある
+- 既存の研究と何が違うのかを明確に述べる
 
-**Reviewer's Check**: Does the budget match the proposed activities? Are there unexplained large expenses?
+**重要な質問**: 概要はレビュアーに「もっと読みたい」と思わせるか？
 
----
+#### 研究背景と動機 (研究背景及目的)
 
-### Strategic Career Advice
+**レビュアーが探すもの**:
+- **明確な問題定義**: 核心的な問題は明確に定義されているか？
+- **合理的な設計と目的**: 目標は達成可能で適切に正当化されているか？
+- **論理的流れ**: 背景は自然に研究目的につながっているか？
 
-**For New Faculty**:
-1. **Always apply**: New investigators have certain advantages - don't miss the opportunity
-2. **Build foundation**: Use undergraduate research projects (大專學生研究計畫) to develop preliminary data
-3. **Self-assessment**: Use the review criteria checklist to evaluate your proposal before submission
+**一般的な弱点**: どのようなギャップを埋めるのかを明確に特定しない、曖昧な問題提起。
 
-**Building Academic Visibility**:
-- Join professional societies (e.g., IEEE, CAA)
-- Serve as reviewer for journals and conferences
-- Take on roles as Associate Editor (AE) or board member
-- **Why it matters**: Reviewers are more likely to recognize and trust researchers who are active in the community
+#### 文献レビュー (文獻探討)
 
----
+**量より質**:
+- 多くの論文ではなく、**高度に関連する**文献を選択
+- **批判的統合**: 論文をリストするだけでなく、長所、短所、ギャップを分析
+- **新規性が重要**: **過去2〜3年**の出版物を含め、最新の最先端技術への認識を示す
+- **戦略的ポジショニング**: 文献レビューを使って読者を研究目的へと導く
 
-### Preparation and Mindset
+**レビュアーの視点**: 批判的分析を含む厳選された20論文のレビューは、統合なしの50論文のリストよりはるかに優れている。
 
-**Timeline**:
-- **Start early**: Successful proposals require multiple revisions
-- **Iterate**: Don't wait until the deadline to start writing
-- **Seek feedback**: Have colleagues review your draft
+#### 研究方法と実装 (研究方法、進行步驟及執行進度)
 
-**Handling Rejection**:
-- **Learn from feedback**: Carefully review all reviewer comments
-- **Revise and resubmit**: Address criticisms in next submission
-- **Consider alternatives**: If fundamental issues exist, consider different program types or focus areas
+**実現可能性が重要**:
+- **過度な理想化を避ける**: 明確な緩和戦略なしに野心的すぎる提案は失敗することが多い
+- **論理的進行**: 各ステップは前のステップから自然に続く必要がある
+- **既存手法との比較**: アプローチがどう異なり、なぜ優れているかを明確に示す
+- **コンティンジェンシー計画**: 潜在的な問題に対処し、代替アプローチを提供
 
-**Professional Presentation**:
-- **Figures and tables**: Must be clear, numbered, and properly labeled
-- **Formatting**: Professional layout demonstrates attention to detail
-- **Proofreading**: Typos and formatting errors suggest carelessness
+**レビュアーへの危険信号**:
+- 実証された能力なしに難しすぎる手法
+- ステップ間の論理的つながりの欠如
+- 潜在的な課題の議論なし
+- 新規アプローチに予備データがない
 
----
+#### 期待される成果 (預期完成之工作項目及成果)
 
-### Self-Assessment Checklist
+**具体的かつ定量化可能に**:
+- ✅ **良い**: 「ベースライン手法Xと比較してシステム効率を15%向上させる」
+- ❌ **弱い**: 「システム効率を向上させる」
 
-Before submitting, ask yourself:
-
-**Innovation**:
-- [ ] Is my approach genuinely novel or just incremental?
-- [ ] Have I clearly explained what's new compared to existing work?
-- [ ] Do I have evidence (preliminary data) that my innovation is feasible?
-
-**Feasibility**:
-- [ ] Are my methods well-described and logical?
-- [ ] Do I have the necessary expertise and resources?
-- [ ] Have I addressed potential problems?
-- [ ] Is my timeline realistic?
-
-**Impact**:
-- [ ] Are my expected outcomes specific and measurable?
-- [ ] Have I explained both academic and practical value?
-- [ ] Does my proposal align with national priorities or industrial needs?
-
-**Presentation**:
-- [ ] Are all figures clear and properly labeled?
-- [ ] Is the writing clear and free of errors?
-- [ ] Does the budget align with proposed activities?
-- [ ] Have I included all required sections?
+**複数の次元を含める**:
+- **学術的価値**: ターゲットジャーナルと期待される発表数
+- **経済的利益**: 潜在的な産業応用
+- **人材育成**: 訓練する学生の数とレベル
 
 ---
 
-## Advanced Writing Strategies from Government Reviewers
+### 予算作成のヒント
 
-> 📚 **Sources**: This section integrates insights from two comprehensive guides:
-> 1. "如何提升政府科技發展計畫書撰寫品質" by **Prof. Guo Yao-Huang (郭耀煌教授)**
-> 2. "如何提升政府科技發展計畫書撰寫品質" by **President Wei Yao-Hui (魏耀揮校長)**, Mackay Medical College
+**研究計画との整合性**:
+- すべての予算項目は特定の研究活動を直接サポートする必要がある
+- 人件費は実際の時間コミットメントを反映する必要がある
+- 設備の正当化は、既存施設がなぜ不十分かを説明する必要がある
+
+**国際会議出張**:
+- 一般的な予算: NT$70,000 - 100,000
+- **正当化が必要**: 国際会議参加と貢献の実績を説明
+- 会議出席が研究にどう利益をもたらすかを示す
+
+**レビュアーのチェック**: 予算は提案された活動と一致しているか？ 説明のない巨額の費用はないか？
+
+---
+
+### 戦略的なキャリアアドバイス
+
+**新任教員へ**:
+1. **常に申請する**: 新規研究者には一定の利点がある - 機会を逃さない
+2. **基盤を構築する**: 学部生研究プロジェクト (大專學生研究計畫) を使用して予備データを開発
+3. **自己評価**: 申請前にレビュー基準チェックリストを使用して提案を評価
+
+**学界的可視性の構築**:
+- 専門学会に参加（IEEE、CAAなど）
+- ジャーナルと会議のレビュアーを務める
+- アソシエイトエディタ（AE）または理事会メンバーの役割を引き受ける
+- **なぜ重要か**: レビュアーは、コミュニティで活発な研究者を認識し信頼する可能性が高い
+
+---
+
+### 準備とマインドセット
+
+**タイムライン**:
+- **早く始める**: 成功した提案には複数の改訂が必要
+- **繰り返す**: 締め切りまで待ってから書き始めない
+- **フィードバックを求める**: 同僚にドラフトをレビューしてもらう
+
+**却下への対処**:
+- **フィードバックから学ぶ**: すべてのレビュアーコメントを注意深くレビュー
+- **改訂して再提出**: 次回の提出で批判に対処
+- **代替案を検討**: 根本的な問題がある場合、異なるプログラムタイプまたは重点分野を検討
+
+**プロフェッショナルなプレゼンテーション**:
+- **図表**: 明確で、番号が振られ、適切にラベル付けされている必要がある
+- **フォーマット**: プロフェッショナルなレイアウトは細部への注意を示す
+- **校正**: 誤字とフォーマットエラーは不注意を示唆する
+
+---
+
+### 自己評価チェックリスト
+
+申請前に自問する:
+
+**革新性**:
+- [ ] アプローチは真に新規か、それとも漸進的か？
+- [ ] 既存の研究と比較して何が新しいかを明確に説明したか？
+- [ ] 革新が実現可能であるという証拠（予備データ）があるか？
+
+**実現可能性**:
+- [ ] 方法はよく説明され、論理的か？
+- [ ] 必要な専門知識とリソースがあるか？
+- [ ] 潜在的な問題に対処したか？
+- [ ] タイムラインは現実的か？
+
+**影響**:
+- [ ] 期待される成果は具体的かつ測定可能か？
+- [ ] 学術的価値と実用的価値の両方を説明したか？
+- [ ] 提案は国の優先事項または産業ニーズと整合しているか？
+
+**プレゼンテーション**:
+- [ ] すべての図は明確で適切にラベル付けされているか？
+- [ ] 文章は明確でエラーがないか？
+- [ ] 予算は提案された活動と整合しているか？
+- [ ] すべての必須セクションを含めたか？
+
+---
+
+## 政府レビュアーからの高度な執筆戦略
+
+> 📚 **出典**: このセクションは2つの包括的ガイドからの洞察を統合しています:
+> 1. **郭耀煌教授**による「如何提升政府科技發展計畫書撰寫品質」
+> 2. 馬偕医学院**魏耀揮校長**による「如何提升政府科技發展計畫書撰寫品質」
 >
-> These guides are based on extensive experience reviewing government science and technology proposals (including NSTC and other ministry programs).
+> これらのガイドは、政府科学技術提案（NSTCおよびその他の省庁プログラムを含む）のレビューの豊富な経験に基づいています。
 
-### The Closed-Loop Logic Framework
+### クローズドループ論理フレームワーク
 
-**Core Principle**: A high-quality proposal must demonstrate complete logical coherence from problem to performance.
+**核心原則**: 高品質な提案は、問題から成果まで完全な論理的一貫性を示す必要がある。
 
-**The Loop**:
+**ループ**:
 ```
-Problem Discovery → Goal Definition → Strategy Formulation → 
-Concrete Measures → Execution Plan → Performance Indicators (KPI)
+問題発見 → 目標定義 → 戦略策定 → 
+具体的措置 → 実行計画 → 成果指標 (KPI)
 ```
 
-**Critical Requirement**: Every element must connect logically. 
+**重要要件**: すべての要素が論理的に接続されている必要がある。
 
-**Example of Broken Logic**:
-- ❌ **Goal**: Improve industrial technology
-- ❌ **Strategy**: Provide student scholarships
-- **Problem**: The strategy doesn't directly support the goal
+**論理が破綻した例**:
+- ❌ **目標**: 産業技術を向上させる
+- ❌ **戦略**: 学生に奨学金を提供する
+- **問題**: 戦略が目標を直接サポートしていない
 
-**Example of Closed Logic**:
-- ✅ **Goal**: Improve industrial technology
-- ✅ **Strategy**: Develop advanced manufacturing process
-- ✅ **Measures**: Establish testing facility, train engineers
-- ✅ **KPI**: Achieve 15% efficiency improvement, train 20 engineers
+**クローズド論理の例**:
+- ✅ **目標**: 産業技術を向上させる
+- ✅ **戦略**: 先進製造プロセスを開発する
+- ✅ **措置**: 試験施設を設立し、エンジニアを訓練する
+- ✅ **KPI**: 15%の効率向上を達成し、20人のエンジニアを訓練する
 
 ---
 
-### SMART Principle for Proposal Planning
+### 提案計画のSMART原則
 
-Before writing, ensure your proposal meets **SMART** criteria:
+執筆前に、提案が**SMART**基準を満たしていることを確認:
 
-| Criterion | Meaning | Application |
+| 基準 | 意味 | 適用 |
 |-----------|---------|-------------|
-| **S**pecific | Concrete goals | Define exact technical metrics (e.g., "improve accuracy to 95%") |
-| **M**easurable | Quantifiable KPIs | Use numbers, percentages, counts |
-| **A**chievable | Realistic scope | Match available resources, personnel, equipment, budget |
-| **R**ealistic | Scientific basis | Grounded in data and logical reasoning |
-| **T**imely | Clear timeline | Specific milestones with dates |
+| **S**pecific (具体的) | 具体的な目標 | 正確な技術的メトリクスを定義（例：「精度を95%に向上させる」） |
+| **M**easurable (測定可能) | 定量化可能なKPI | 数値、パーセンテージ、カウントを使用 |
+| **A**chievable (達成可能) | 現実的な範囲 | 利用可能なリソース、人員、設備、予算に整合 |
+| **R**ealistic (現実的) | 科学的根拠 | データと論理的推論に基づく |
+| **T**imely (適時性) | 明確なタイムライン | 日付付きの具体的なマイルストーン |
 
 ---
 
-### Four Dimensions of Review Criteria
+### レビュー基準の4つの次元
 
-Reviewers evaluate proposals across four key dimensions:
+レビュアーは4つの重要な次元で提案を評価する:
 
-#### 1. **Necessity (需求性)**
-- Does it align with national science and technology policies?
-- Is there urgent need for this research?
-- Why must this problem be solved **now**?
-- Why is **your institution** the right one to do this?
+#### 1. **必要性 (需求性)**
+- 国の科学技術政策と整合しているか？
+- この研究に緊急の必要性があるか？
+- なぜこの問題を**今**解決する必要があるのか？
+- なぜ**あなたの機関**が適切なのか？
 
-**Weak Proposal**: Generic problem statement without urgency  
-**Strong Proposal**: Cites specific policy documents, demonstrates time-sensitive need
+**弱い提案**: 緊急性のない一般的な問題提起
+**強い提案**: 特定の政策文書を引用し、時間に敏感な必要性を実証
 
-#### 2. **Feasibility (可行性)**
-- Are the goals achievable within the proposed timeline?
-- Is the team qualified (track record, expertise)?
-- Are the methods sound and well-justified?
-- Is the management plan realistic?
+#### 2. **実現可能性 (可行性)**
+- 目標は提案されたタイムライン内で達成可能か？
+- チームは適格か（実績、専門性）？
+- 方法は健全で適切に正当化されているか？
+- 管理計画は現実的か？
 
-**Red Flag**: Overly ambitious goals without preliminary data or risk mitigation
+**危険信号**: 予備データまたはリスク緩和なしに野心的すぎる目標
 
-#### 3. **Appropriateness (適當性)**
-- Does the budget match the work scope?
-- Are personnel allocations reasonable?
-- Is existing equipment utilized effectively?
-- Are expensive items properly justified?
+#### 3. **適切性 (適當性)**
+- 予算は作業範囲と一致しているか？
+- 人員配置は合理的か？
+- 既存設備は効果的に活用されているか？
+- 高額品目は適切に正当化されているか？
 
-**Reviewer's Question**: Why do you need this expensive equipment when similar facilities exist?
+**レビュアーの質問**: 類似の施設が存在するのに、なぜこの高価な設備が必要なのか？
 
-#### 4. **Impact and Benefits (效益與影響)**
-- Beyond academic output, what are the societal effects?
-- Economic benefits or industrial applications?
-- Environmental, health, or national security impacts?
-- Long-term sustainability?
+#### 4. **影響と利益 (效益與影響)**
+- 学術的アウトプットを超えて、社会的影響は何か？
+- 経済的利益または産業応用は？
+- 環境、健康、または国家安全保障への影響は？
+- 長期的持続可能性は？
 
-**Key Insight**: Reviewers increasingly value **societal impact** over pure academic metrics.
+**重要な洞察**: レビュアーは純粋な学術的メトリクスよりも**社会的影響**をますます重視している。
 
 ---
 
-### Performance Indicators (KPI): The Three Levels
+### 成果指標 (KPI): 3つのレベル
 
-Understanding the difference between input, output, and outcome is critical:
+インプット、アウトプット、アウトカムの違いを理解することは重要:
 
-| Level | Type | Examples | Reviewer Value |
+| レベル | タイプ | 例 | レビュアー価値 |
 |-------|------|----------|----------------|
-| **Input** | Resources invested | Personnel, budget, equipment | Basic requirement |
-| **Output** | Direct products | Papers, patents, conferences | Minimum expectation |
-| **Outcome** | Real-world impact | Industry adoption, health improvement, policy influence | **High value** |
+| **インプット** | 投入リソース | 人員、予算、設備 | 基本要件 |
+| **アウトプット** | 直接的成果物 | 論文、特許、会議 | 最低限の期待 |
+| **アウトカム** | 実世界への影響 | 産業導入、健康改善、政策影響 | **高価値** |
 
-**Example Comparison**:
-- ❌ **Weak KPI**: "Publish 3 papers" (output only)
-- ✅ **Strong KPI**: "Publish 3 papers in Q1 journals AND transfer technology to 2 companies, generating NT$5M in licensing revenue" (output + outcome)
+**比較例**:
+- ❌ **弱いKPI**: 「論文3本を発表」（アウトプットのみ）
+- ✅ **強いKPI**: 「Q1ジャーナルに論文3本を発表、かつ2社に技術移転し、NT$500万のライセンス収入を生成」（アウトプット + アウトカム）
 
-**KPI Best Practices**:
-- **Relevance**: Directly tied to project goals
-- **Ease**: Simple to measure and verify
-- **Credibility**: Based on realistic projections
-- **Cost-efficiency**: Achievable within budget
+**KPIベストプラクティス**:
+- **関連性**: プロジェクト目標に直接結びついている
+- **容易性**: 測定と検証が簡単
+- **信頼性**: 現実的な予測に基づく
+- **費用効率**: 予算内で達成可能
 
-**Progressive Targets**: Show year-by-year progress, not just final goals
-- Year 1: 30% completion
-- Year 2: 70% completion  
-- Year 3: 100% completion + sustainability plan
+**段階的目標**: 最終目標だけでなく、年ごとの進捗を示す
+- 1年目: 30%完了
+- 2年目: 70%完了
+- 3年目: 100%完了 + 持続可能性計画
 
 ---
 
-### Practical Analysis Tools
+### 実践的分析ツール
 
-#### SWOT Analysis
+#### SWOT分析
 
-Use SWOT to position your proposal strategically:
+SWOTを使用して提案を戦略的にポジショニング:
 
-| Strengths | Weaknesses |
+| 強み (Strengths) | 弱み (Weaknesses) |
 |-----------|------------|
-| Your unique expertise | Resource limitations |
-| Existing facilities | Lack of certain skills |
-| Strong track record | Time constraints |
+| あなたのユニークな専門性 | リソースの制限 |
+| 既存施設 | 特定のスキルの欠如 |
+| 強力な実績 | 時間の制約 |
 
-| Opportunities | Threats |
+| 機会 (Opportunities) | 脅威 (Threats) |
 |---------------|---------|
-| Policy alignment | Competing teams |
-| Industry partnerships | Technology changes |
-| Emerging trends | Funding cuts |
+| 政策整合 | 競合チーム |
+| 産業パートナーシップ | 技術変化 |
+| 新興トレンド | 資金削減 |
 
-**Critical**: Don't just list SWOT - **provide response strategies** for Weaknesses and Threats.
+**重要**: SWOTをリストするだけでなく、弱みと脅威に対する**対応戦略**を提供する。
 
-**Example**:
-- **Weakness**: Lack of high-performance computing cluster
-- **Response**: Partner with National Center for High-performance Computing (國網中心)
+**例**:
+- **弱み**: ハイパフォーマンスコンピューティングクラスタの欠如
+- **対応**: 国立ハイパフォーマンスコンピューティングセンター (國網中心) と提携
 
-#### Fishbone Diagram (魚骨圖)
+#### フィッシュボーン図 (魚骨圖)
 
-Use fishbone diagrams to demonstrate deep problem understanding:
+フィッシュボーン図を使用して深い問題理解を示す:
 
 ```
-                    Main Problem
+                    主問題
                          ↑
         ┌───────┬────────┼────────┬───────┐
-    Factor 1  Factor 2  Factor 3  Factor 4
+    要因1    要因2      要因3      要因4
         │         │         │         │
-    Sub-causes Sub-causes Sub-causes Sub-causes
+    副原因    副原因      副原因    副原因
 ```
 
-**Purpose**: Show reviewers you've thoroughly analyzed root causes, not just symptoms.
+**目的**: 症状だけでなく根本原因を徹底的に分析したことをレビュアーに示す。
 
-#### Gantt Chart
+#### ガントチャート
 
-For complex multi-year projects, include Gantt charts to show:
-- Task dependencies
-- Resource allocation over time
-- Milestones and deliverables
-- Risk management checkpoints
+複雑な複数年プロジェクトの場合、ガントチャートを含めて以下を示す:
+- タスクの依存関係
+- 時間経過に伴うリソース配分
+- マイルストーンと成果物
+- リスク管理チェックポイント
 
-**Professional Presentation**: Use visual tools to demonstrate project management capability.
-
----
-
-### Budget Preparation: Critical Details
-
-#### Necessity and Reasonableness
-
-**The Two Questions Every Budget Item Must Answer**:
-1. **Why is this necessary?** (Link to specific research activity)
-2. **How was this calculated?** (Show detailed breakdown)
-
-**Example - Equipment Justification**:
-- ❌ **Weak**: "High-performance workstation: NT$150,000"
-- ✅ **Strong**: "High-performance workstation (Intel Xeon 32-core, 128GB RAM, RTX 4090 GPU) for deep learning model training: NT$150,000. Current lab computers (8GB RAM) cannot handle the 50GB dataset required for Aim 2. Estimated training time reduction from 2 weeks to 2 days."
-
-#### Budget Category Separation
-
-**Critical Rule**: Strictly separate "recurrent" (經常門) and "capital" (資本門) expenses.
-
-**Recurrent (經常門)**:
-- Personnel salaries
-- Travel expenses
-- Consumables
-- Publication fees
-
-**Capital (資本門)**:
-- Equipment ≥ NT$10,000 with lifespan ≥ 2 years
-- Items ≥ NT$200,000 may require price comparison
-
-**Forbidden**: Using science and technology funds for general administrative work
-
-#### Outsourcing (委辦費用)
-
-If including outsourcing costs:
-- Specify exact scope of work
-- Explain why in-house execution is not feasible
-- Describe selection and oversight procedures
-- Provide cost breakdown
-
-#### International Conference Travel
-
-**Typical Range**: NT$70,000 - 100,000
-
-**Required Justification**:
-- Your track record of international presentations
-- Specific conference name and dates (if known)
-- How attendance benefits the research (networking, collaboration, dissemination)
-- Why this conference is important for your field
+**プロフェッショナルなプレゼンテーション**: ビジュアルツールを使用してプロジェクト管理能力を示す。
 
 ---
 
-### Common Review Comments to Avoid
+### 予算作成: 重要な詳細
 
-Based on actual reviewer feedback from government proposals:
+#### 必要性と妥当性
 
-#### 1. **Vague Objectives**
-- ❌ "Promote development of..."
-- ❌ "Research on..."
-- ✅ "Develop algorithm achieving 95% accuracy on benchmark X"
+**すべての予算項目が答える必要がある2つの質問**:
+1. **なぜこれが必要か？**（特定の研究活動へのリンク）
+2. **これはどのように計算されたか？**（詳細な内訳を示す）
 
-#### 2. **Redundancy and Overlap**
-- **Problem**: Multiple agencies funding similar work
-- **Solution**: Clearly differentiate from existing programs; coordinate with other ministries before submission
+**例 - 設備の正当化**:
+- ❌ **弱い**: 「ハイパフォーマンスワークステーション: NT$150,000」
+- ✅ **強い**: 「ディープラーニングモデル訓練用ハイパフォーマンスワークステーション（Intel Xeon 32コア、128GB RAM、RTX 4090 GPU）: NT$150,000。現在の研究室のコンピュータ（8GB RAM）は目的2に必要な50GBデータセットを処理できない。訓練時間を2週間から2日に短縮すると推定。」
 
-#### 3. **Lack of Continuity Explanation**
-- **For continuing projects**: Must explain relationship between previous results and new proposal
-- Show how you're building on (not repeating) past work
+#### 予算カテゴリの分離
 
-#### 4. **Technology Push Without Market Pull**
-- **Problem**: Developing technology without considering industry needs or market readiness
-- **Solution**: Include industry partner letters, market analysis, or user needs assessment
+**重要ルール**: 「経常的支出」(經常門) と「資本的支出」(資本門) を厳密に分離。
 
-#### 5. **Ignoring Negative Impacts**
-- **Common oversight**: Privacy concerns, environmental impact, ethical issues
-- **Solution**: Include risk assessment and mitigation strategies
+**経常的支出 (經常門)**:
+- 人件費
+- 旅費
+- 消耗品
+- 出版費
 
-#### 6. **Excessive Administrative Overhead**
-- **Problem**: Too many project management offices (PMO) or coordinators
-- **Solution**: Justify administrative structure based on project complexity
+**資本的支出 (資本門)**:
+- 耐用年数2年以上のNT$10,000以上の設備
+- NT$200,000以上の品目は価格比較が必要な場合がある
 
-#### 7. **Missing Customer Definition**
-- **Question**: Who will use your research results?
-- **Answer**: Clearly define your target users/beneficiaries
+**禁止**: 科学技術資金を一般的な管理業務に使用すること
 
----
+#### 外部委託 (委辦費用)
 
-### Writing for the Reviewer
+外部委託費用を含める場合:
+- 作業の正確な範囲を特定
+- 社内実行が不可能な理由を説明
+- 選定と監督手順を記述
+- 費用内訳を提供
 
-**Remember**: You're writing for busy reviewers, not for yourself.
+#### 国際会議出張
 
-**Best Practices**:
-1. **Use visual aids**: Replace dense text with figures, tables, flowcharts
-2. **Data-driven**: Support claims with specific numbers and citations
-3. **Objective correctness**: Verify all data and calculations
-4. **Logical flow**: Each section should naturally lead to the next
-5. **Professional polish**: Clean formatting, no typos, consistent terminology
+**一般的範囲**: NT$70,000 - 100,000
 
-**Critical Question**: After reading your abstract, does the reviewer **want** to read more?
+**必要な正当化**:
+- 国際発表の実績
+- 特定の会議名と日付（わかっている場合）
+- 出席が研究にどう利益をもたらすか（ネットワーキ、協力、普及）
+- なぜこの会議が分野にとって重要か
 
 ---
 
-### Policy Alignment
+### 避けるべき一般的なレビューコメント
 
-**Essential**: Connect your research to national priorities.
+政府提案からの実際のレビュアーフィードバックに基づく:
 
-**How to Demonstrate Alignment**:
-- Cite specific government policy documents (e.g., "六大核心戰略產業")
-- Reference national development plans
-- Show how your research addresses societal needs
-- Link to ministry-specific priorities
+#### 1. **曖昧な目的**
+- ❌ 「...の発展を促進する」
+- ❌ 「...に関する研究」
+- ✅ 「ベンチマークXで95%の精度を達成するアルゴリズムを開発する」
 
-**Example**:
-"This research directly supports Taiwan's '5+2 Innovative Industries' initiative, specifically the biomedical sector, by developing..."
+#### 2. **重複と重なり**
+- **問題**: 複数の機関が類似の作業に資金提供
+- **解決策**: 既存のプログラムと明確に差別化、提出前に他省庁と調整
 
----
+#### 3. **継続性の説明の欠如**
+- **継続プロジェクトの場合**: 前回の結果と新しい提案の関係を説明する必要がある
+- 過去の作業を繰り返すのではなく、構築していることを示す
 
-### Exit Strategy (For Multi-Year Projects)
+#### 4. **市場需要のない技術プッシュ**
+- **問題**: 産業ニーズや市場準備を考慮せずに技術を開発
+- **解決策**: 産業パートナーの手紙、市場分析、またはユーザーニーズ評価を含める
 
-**Requirement**: Long-term projects must include sustainability plans.
+#### 5. **負の影響の無視**
+- **一般的な見落とし**: プライバシー懸念、環境影響、倫理的問題
+- **解決策**: リスク評価と緩和戦略を含める
 
-**Key Questions**:
-- What happens when funding ends?
-- How will results be maintained or transferred?
-- What are the success/failure criteria for early termination?
+#### 6. **過度な管理オーバーヘッド**
+- **問題**: プロジェクト管理オフィス（PMO）やコーディネーターが多すぎる
+- **解決策**: プロジェクトの複雑さに基づいて管理構造を正当化
 
-**Components**:
-- Technology transfer plan
-- Industry partnership agreements
-- Follow-on funding strategy
-- Publication and dissemination plan
-
----
-
-### Evaluation Mechanisms
-
-**For public service projects**: Include feedback and assessment systems.
-
-**Components**:
-- User satisfaction surveys
-- Performance metrics tracking
-- Regular review milestones
-- Adjustment mechanisms based on feedback
+#### 7. **顧客定義の欠如**
+- **質問**: 誰があなたの研究成果を使用するのか？
+- **回答**: ターゲットユーザー/受益者を明確に定義
 
 ---
 
-## Common Mistakes to Avoid
+### レビュアー向けの執筆
 
-1. **Exceeding page limits** → Automatic rejection
-2. **Missing required sections** → Incomplete application
-3. **Incorrect font or formatting** → Non-compliance
-4. **Lack of preliminary data** (for applicable programs) → Reduced competitiveness
-5. **Vague methodology** → Feasibility concerns
-6. **No connection to Taiwan context** → Lower impact score
+**覚えておく**: 自分のためではなく、忙しいレビュアー向けに書いている。
 
----
+**ベストプラクティス**:
+1. **ビジュアルエイドを使用**: 密度の高いテキストを図、表、フローチャートに置き換える
+2. **データ駆動**: 主張を具体的な数字と引用でサポート
+3. **客観的正確性**: すべてのデータと計算を検証
+4. **論理的流れ**: 各セクションは自然に次につながる必要がある
+5. **プロフェッショナルな仕上げ**: クリーンなフォーマット、誤字なし、一貫した用語
 
-## Final Checklist
-
-Before submission:
-
-- [ ] Check specific program solicitation for field-specific requirements
-- [ ] Verify page limit for your field and program type
-- [ ] Complete academic ethics training (if required)
-- [ ] Prepare both Chinese and English abstracts
-- [ ] Include all required forms (CM01, CM02, CM03, etc.)
-- [ ] Verify all formatting requirements
-- [ ] Proofread for errors
-- [ ] Submit through official online system before deadline
+**重要な質問**: 概要を読んだ後、レビュアーは「もっと読みたい」と**思うか**？
 
 ---
 
-## Disclaimer
+### 政策整合
 
-**This guide is for reference only.** Official requirements may change annually and vary by program. **Always consult**:
-1. The latest official NSTC announcements (徵求公告)
-2. Your specific program's application guidelines
-3. Your institution's research office
-4. Senior colleagues in your field
+**不可欠**: 研究を国の優先事項に接続する。
 
-For the most authoritative information, visit: **https://www.nstc.gov.tw/**
+**整合性を示す方法**:
+- 特定の政府政策文書を引用（例：「六大核心戦略産業」）
+- 国家発展計画を参照
+- 研究が社会的ニーズにどう取り組むかを示す
+- 省庁固有の優先事項にリンク
+
+**例**:
+「本研究は台湾の『5+2イノベーション産業』イニシアチブ、特にバイオメディカルセクターを、...を開発することで直接サポートします」
+
+---
+
+### イグジット戦略（複数年プロジェクト向け）
+
+**要件**: 長期プロジェクトには持続可能性計画を含める必要がある。
+
+**重要な質問**:
+- 資金が終了したらどうなるか？
+- 結果はどのように維持または移転されるか？
+- 早期終了の成功/失敗基準は何か？
+
+**構成要素**:
+- 技術移転計画
+- 産業パートナーシップ契約
+- 追加資金戦略
+- 出版と普及計画
+
+---
+
+### 評価メカニズム
+
+**公共サービスプロジェクト向け**: フィードバックと評価システムを含める。
+
+**構成要素**:
+- ユーザー満足度調査
+- パフォーマンスメトリクス追跡
+- 定期的なレビューマイルストーン
+- フィードバックに基づく調整メカニズム
+
+---
+
+## 避けるべき一般的な間違い
+
+1. **ページ制限超過** → 自動却下
+2. **必須セクションの欠落** → 不完全な申請
+3. **誤ったフォントまたはフォーマット** → 非準拠
+4. **予備データの欠落**（該当プログラムの場合）→ 競争力低下
+5. **曖昧な方法論** → 実現可能性の懸念
+6. **台湾の文脈との接続なし** → 影響スコア低下
+
+---
+
+## 最終チェックリスト
+
+提出前に:
+
+- [ ] 分野固有の要件について特定のプログラム募集要項を確認
+- [ ] 分野とプログラムタイプのページ制限を検証
+- [ ] 学術倫理研修を完了（必要な場合）
+- [ ] 中国語と英語の両方の概要を準備
+- [ ] すべての必要なフォームを含める（CM01、CM02、CM03など）
+- [ ] すべてのフォーマット要件を検証
+- [ ] エラーを校正
+- [ ] 締め切り前に公式オンラインシステムを通じて提出
+
+---
+
+## 免責事項
+
+**本ガイドは参照用です。** 公式要件は年ごとに変更され、プログラムによって異なる場合があります。**常に以下を確認してください**:
+1. 最新の公式NSTC発表 (徵求公告)
+2. 特定のプログラムの申請ガイドライン
+3. 所属機関の研究事務室
+4. 分野の先輩同僚
+
+最も権威ある情報については、以下を訪問: **https://www.nstc.gov.tw/**

@@ -1,696 +1,696 @@
-# NIH (National Institutes of Health) Grant Writing Guidelines
-
-## Agency Overview
-
-**Mission**: To seek fundamental knowledge about the nature and behavior of living systems and to apply that knowledge to enhance health, lengthen life, and reduce illness and disability
-
-**Annual Budget**: ~$47 billion (largest biomedical research funder globally)
-
-**Website**: https://www.nih.gov
-
-**Key Characteristics**:
-- 27 Institutes and Centers (ICs), each with specific research focus
-- Supports biomedical and behavioral research
-- Strong emphasis on rigor, reproducibility, and translation
-- Clinical trials and human subjects research
-- Patient-oriented and population health research
-
-## NIH Institutes and Centers (Major ICs)
-
-- **NCI** - National Cancer Institute
-- **NHLBI** - National Heart, Lung, and Blood Institute
-- **NIDDK** - National Institute of Diabetes and Digestive and Kidney Diseases
-- **NIAID** - National Institute of Allergy and Infectious Diseases
-- **NIGMS** - National Institute of General Medical Sciences
-- **NINDS** - National Institute of Neurological Disorders and Stroke
-- **NIMH** - National Institute of Mental Health
-- **NICHD** - National Institute of Child Health and Human Development
-- **NEI** - National Eye Institute
-- **NIEHS** - National Institute of Environmental Health Sciences
-- **NIA** - National Institute on Aging
-- **NIAAA** - National Institute on Alcohol Abuse and Alcoholism
-- **NIDA** - National Institute on Drug Abuse
-- **NHGRI** - National Human Genome Research Institute
-- **NCCIH** - National Center for Complementary and Integrative Health
-
-**Plus**: NIBIB, NIDCD, NIDCR, NINR, FIC, NLM, and others
-
-## Core Review Criteria
-
-NIH proposals are evaluated using **scored criteria** (1-9 scale, 1 = exceptional, 9 = poor) and **additional review considerations** (not scored but discussed).
-
-### Scored Criteria (Overall Impact Score)
-
-#### 1. Significance
-
-**Definition**: Does the project address an important problem or critical barrier to progress?
-
-**Key Questions**:
-- Will the project improve scientific knowledge, technical capability, or clinical practice?
-- How will successful completion move the field forward?
-- Does it address important scientific question or health need?
-- Is there a clear rationale based on literature or preliminary data?
-
-**What Reviewers Look For**:
-- Clear statement of the problem and its importance
-- Evidence that solving this problem will advance the field
-- Strong conceptual framework
-- Potential for broad impact (not just narrow niche)
-- Alignment with NIH and Institute mission
-
-**Writing Strategy**:
-- Open with compelling statement of health burden or knowledge gap
-- Cite epidemiological data, morbidity/mortality statistics
-- Show that current approaches are insufficient
-- Demonstrate how your work will make a difference
-- Connect to clinical or translational outcomes when possible
-
-#### 2. Investigator(s)
-
-**Definition**: Are the investigators appropriately trained and well-suited to carry out this work?
-
-**Key Questions**:
-- Do they have appropriate expertise and track record?
-- Is the proposed leadership approach appropriate for the project?
-- Do they have prior experience in the research area?
-- For Early Stage Investigators (ESI), is appropriate mentoring/support available?
-
-**What Reviewers Look For**:
-- Publications in the relevant area
-- Preliminary data demonstrating capability
-- Productivity and consistency
-- Appropriate team composition
-- For new investigators: strong mentorship and institutional support
-- Career trajectory aligned with proposed work
-
-**Writing Strategy**:
-- Highlight most relevant publications (not total number)
-- Show progression and focus in research program
-- Demonstrate that you have necessary skills
-- If new area, show collaborations or training
-- For multi-PI, clearly define complementary roles
-- Show stability and institutional commitment
-
-#### 3. Innovation
-
-**Definition**: Does the application challenge existing paradigms or develop new methodologies, technologies, or interventions?
-
-**Key Questions**:
-- Does the project employ novel concepts, approaches, or methodologies?
-- Are the aims original and innovative?
-- Does it challenge existing paradigms or address an innovative hypothesis?
-- Does it refine, improve, or develop new instrumentation or methods?
-
-**What Reviewers Look For**:
-- Departure from standard approaches
-- Novel application of methods to new problems
-- Development of new technologies or tools
-- Paradigm-shifting concepts
-- Creative experimental design
-- NOT just new to you, but new to the field
-
-**Writing Strategy**:
-- Explicitly state what is innovative
-- Contrast with existing approaches and limitations
-- Explain why innovation is necessary
-- Provide preliminary data supporting feasibility
-- Balance novelty with achievability
-- Avoid over-claiming (incremental work ≠ transformative)
-
-#### 4. Approach
-
-**Definition**: Are the overall strategy, methodology, and analyses well-reasoned, appropriate, and rigorous?
-
-**Key Questions**:
-- Are the research design and methods appropriate for the proposed aims?
-- Are potential problems, alternative strategies, and benchmarks for success presented?
-- Is the timeline reasonable and is there adequate statistical power?
-- Are the data management and analysis plans appropriate?
-- Is rigor and transparency evident in the experimental design?
-
-**What Reviewers Look For**:
-- Detailed, specific methodology
-- Appropriate experimental design (controls, replicates, randomization, blinding)
-- Statistical justification (power calculations, sample size)
-- Potential pitfalls identified with alternatives
-- Feasibility demonstrated with preliminary data
-- Logical flow from aims through methods to expected outcomes
-- Rigor and reproducibility measures
-
-**Writing Strategy**:
-- Provide sufficient detail to judge feasibility
-- Use subheadings for organization
-- Include flowcharts or diagrams
-- Address authentication of key biological resources
-- Discuss biological variables (sex, age, etc.)
-- Identify potential problems proactively
-- Provide contingency plans
-- Show that timeline is realistic
-- Include preliminary data throughout
-
-#### 5. Environment
-
-**Definition**: Will the scientific environment contribute to the probability of success?
-
-**Key Questions**:
-- Do the proposed studies benefit from unique features of the scientific environment?
-- Are the institutional support, equipment, and resources available?
-- Are collaborative arrangements and contributions from colleagues appropriate?
-- Is the environment conducive to the proposed research?
-
-**What Reviewers Look For**:
-- Access to necessary facilities (core facilities, equipment, patient populations)
-- Institutional commitment and support
-- Collaborative networks
-- Track record of institutional productivity
-- Training environment (for training grants)
-- Sufficient space and resources
-
-**Writing Strategy**:
-- Highlight unique institutional resources
-- Describe relevant core facilities with capabilities
-- Show institutional investment in your research area
-- Include letters documenting access to resources
-- Describe collaborative environment
-- For clinical research, show access to patient populations
-
-### Additional Review Considerations (Not Scored)
-
-These factors are discussed but do not contribute to the numerical score:
-
-#### Protection of Human Subjects
-- IRB approval status and process
-- Risks to subjects justified by potential benefits
-- Protections against risks adequate
-- Informed consent process appropriate
-- Data and safety monitoring plan (for trials)
-- Inclusion of women, minorities, and children (see below)
-
-#### Inclusion of Women, Minorities, and Children
-- Adequate plan for inclusion of all groups
-- Justification if any group excluded
-- Statistical power adequate to detect differences
-- Outreach and recruitment plans appropriate
-
-#### Vertebrate Animals
-- IACUC approval status
-- Proposed procedures appropriate and humane
-- Minimization of discomfort, distress, pain
-- Euthanasia method appropriate
-- Justification of species and numbers
-
-#### Biohazards
-- Appropriate safeguards and containment
-- Training and expertise adequate
-
-#### Resubmission (A1 applications)
-- Are concerns from previous review adequately addressed?
-- Has the application been substantially improved?
-
-#### Budget and Period of Support
-- Is budget reasonable for proposed work?
-- Is timeline appropriate?
-
-#### Resource Sharing Plans
-- Data sharing plan adequate
-- Model organism sharing plan (if applicable)
-- Genomic data sharing plan (if applicable)
-
-## Proposal Structure and Page Limits
-
-### Specific Aims (1 page)
-
-**Most important page of the entire application.** Reviewers often make initial impressions based on this page alone.
-
-**Structure** (see detailed template in `specific_aims_guide.md`):
-
-**Opening Paragraph** (3-5 sentences):
-- Long-term goal of your research program
-- Health burden or knowledge gap
-- Critical need that motivates the work
-
-**Objective and Central Hypothesis** (1 paragraph):
-- Objective of THIS grant
-- Central hypothesis or research question
-- Rationale (brief mention of preliminary data)
-
-**Specific Aims** (2-4 aims):
-- Each aim: 1 paragraph (half page max)
-- Aim statement (1-2 sentences, starts with action verb)
-- Working hypothesis or research question
-- Rationale (why this aim, what preliminary data supports it)
-- Approach summary (brief methods)
-- Expected outcomes and interpretation
-
-**Payoff Paragraph** (closing):
-- Expected outcomes of the overall project
-- How findings will advance the field
-- Positive impact on health (if relevant)
-- Next steps or future directions
-
-**Critical Rules**:
-- Exactly 1 page (0.5-inch margins, 11-point Arial or similar)
-- Must stand alone (reviewers read this first)
-- Clear, specific aims that are testable
-- Aims should be independent but synergistic
-- Avoid jargon (panel members may not be in your subfield)
-- Every sentence must earn its place
-
-### Research Strategy (12 pages for R01)
-
-**Section A: Significance** (typically 2-3 pages)
-
-**Purpose**: Convince reviewers the problem is important and worth solving
-
-**Content**:
-- State the problem and its importance (health burden, knowledge gap)
-- Review current state of knowledge (focused literature review)
-- Identify limitations of current approaches
-- Explain conceptual advance your work will provide
-- Describe potential impact on the field or health outcomes
-- Explain alignment with NIH mission and Institute priorities
-
-**Writing Tips**:
-- Start broad (importance of the problem) then narrow (specific gap)
-- Use epidemiological data (prevalence, mortality, costs)
-- Cite key literature systematically
-- Identify the specific barrier or gap your work addresses
-- End with how your work will advance the field
-
-**Section B: Innovation** (typically 1-2 pages)
-
-**Purpose**: Articulate what is novel and transformative
-
-**Content**:
-- Describe innovative elements of the proposed research
-- Explain novel concepts, approaches, or methodologies
-- Contrast with existing approaches and their limitations
-- Explain why innovation is necessary (not just different)
-- Demonstrate that innovation is achievable (preliminary data)
-
-**Writing Tips**:
-- Be explicit about what is innovative (don't assume it's obvious)
-- Distinguish incremental from transformative advances
-- Provide evidence that novel approach can work
-- Don't confuse "new to me" with "new to the field"
-- Avoid over-claiming
-
-**Section C: Approach** (typically 8-10 pages)
-
-**Purpose**: Provide detailed research plan demonstrating feasibility
-
-**Organization** (for each Specific Aim):
-
-**Aim [Number]: [Aim Title]**
-
-**Rationale and Preliminary Data**:
-- Why this aim is important
-- Preliminary results supporting feasibility
-- Key figures and data
-
-**Research Design**:
-- Overall experimental design
-- Subject/sample populations and numbers
-- Randomization, blinding, controls
-- Timeline for this aim
-
-**Methods** (organized by sub-aim or experiment):
-- Detailed procedures and protocols
-- Materials, reagents, equipment
-- Data collection procedures
-- Biological variables considered
-
-**Data Analysis**:
-- Statistical approaches
-- Sample size justification and power calculations
-- How results will be interpreted
-
-**Expected Outcomes**:
-- What you expect to find
-- How results will be interpreted
-- Alternative outcomes and what they would mean
-
-**Potential Pitfalls and Alternative Approaches**:
-- What could go wrong (be proactive)
-- Contingency plans
-- Alternative strategies if initial approach doesn't work
-
-**Timeline**: 
-- Sequence of activities for this aim
-- Estimated completion time
-
-**Writing Tips**:
-- Use consistent organization across aims
-- Include subheadings for clarity
-- Integrate preliminary data throughout (not just at beginning)
-- Provide figures, flowcharts, and tables
-- Address rigor and reproducibility explicitly
-- Justify choice of methods and approaches
-- Be specific about numbers, timelines, and analysis
-- Show that you've thought through the research process
-
-**Rigor and Reproducibility** (addressed throughout Approach):
-
-NIH requires explicit discussion of:
-- **Scientific rigor in experimental design**: Controls, replicates, blinding, randomization
-- **Authentication of key biological resources**: Cell lines, antibodies, organisms
-- **Consideration of biological variables**: Sex, age, strain, etc.
-- **Statistical power**: Adequate sample sizes
-- **Transparency**: Data management, protocols, reporting
-
-### Bibliography (no page limit)
-
-- Include all references cited
-- Use consistent format (PubMed citations preferred)
-- Include DOI or PMID when available
-
-### Protection of Human Subjects or Vertebrate Animals (varies)
-
-**Human Subjects Section**:
-- Risks to subjects
-- Protection against risks
-- Potential benefits
-- Importance of knowledge to be gained
-- Inclusion of women and minorities
-- Inclusion of children
-- Data and safety monitoring
-
-**Vertebrate Animals Section**:
-- Justification of species and numbers
-- Minimization of pain and distress
-- Euthanasia method
-
-## Key NIH Application Types
-
-### R01 - Research Project Grant
-
-**Description**: Standard NIH grant mechanism for established investigators
-
-**Characteristics**:
-- **Budget**: Modular (up to $250K direct costs/year) or detailed budget
-- **Duration**: Typically 3-5 years
-- **Eligibility**: Any eligible institution
-- **Preliminary data**: Usually required (shows feasibility)
-- **Page limits**: 12 pages Research Strategy
-
-**Typical Timeline**:
-- Prepare: 2-6 months
-- Review: ~9 months from submission
-- Earliest start: 9-12 months after submission
-
-**Success Rate**: ~20% overall (varies by Institute)
-
-**When to Apply**: When you have preliminary data and clear research direction
-
-### R21 - Exploratory/Developmental Research Grant
-
-**Description**: Encourages new exploratory and developmental research
-
-**Characteristics**:
-- **Budget**: Up to $275K total (direct costs) over 2 years
-- **Duration**: Maximum 2 years
-- **Preliminary data**: Not required (though can strengthen)
-- **Page limits**: 6 pages Research Strategy
-- **No-cost extensions**: Not allowed
-
-**Purpose**:
-- Pilot or feasibility studies
-- Testing new methods or technologies
-- Secondary analysis of existing data
-- Exploratory clinical studies
-
-**When to Apply**: When you need pilot data before R01, or for high-risk ideas
-
-### R03 - Small Grant Program
-
-**Description**: Small-scale research projects
-
-**Characteristics**:
-- **Budget**: Up to $50K/year direct costs (up to $100K total)
-- **Duration**: Maximum 2 years
-- **Page limits**: 6 pages Research Strategy
-
-**Purpose**: Limited scope projects, pilot studies, secondary data analysis
-
-### K Awards - Career Development Awards
-
-**Purpose**: Support career development of researchers
-
-**Major K Award Types**:
-
-**K99/R00 - Pathway to Independence**:
-- Two phases: K99 (mentored, 1-2 years) → R00 (independent, up to 3 years)
-- For postdocs transitioning to independence
-- Provides protected time and research support
-- Competitive (~15% funded)
-
-**K08 - Mentored Clinical Scientist Award**:
-- For clinicians (MD, DO, DDS, etc.)
-- 3-5 years protected time for research training
-- Requires mentoring team
-- Up to $100K direct costs/year
-
-**K23 - Mentored Patient-Oriented Research Career Development Award**:
-- For patient-oriented research
-- Similar structure to K08
-
-**All K Awards Require**:
-- Career development plan
-- Research plan (6-12 pages)
-- Mentoring plan and letters from mentors
-- Training plan
-- Institutional commitment (75% protected time typically)
-
-### Other Common Mechanisms
-
-**R15 (AREA)**: For primarily undergraduate institutions
-
-**P01**: Multi-project program project grants (large collaborative)
-
-**U01**: Cooperative agreement (NIH involvement in conduct)
-
-**R34**: Clinical trial planning grant
-
-**DP1/DP2**: NIH Director's Pioneer/New Innovator Awards (special)
-
-## Budget Preparation
-
-### Modular Budgets (R01s up to $250K direct/year)
-
-**Characteristics**:
-- Requested in $25K increments (modules)
-- Maximum 10 modules ($250K) per year
-- Detailed budget not required
-- Budget justification: Narrative (Personnel, Consortium, Other)
-- Years 2-5: Brief justification if >$125K or increase >25%
-
-**Personnel Justification**:
-- List all personnel with roles, effort (% calendar months)
-- Typical: PI (2-3 months = 16-25%), postdoc (12 months), grad student, tech
-- Justify effort for each person
-- Note: Salary cap applies (~$221,900 for 2024)
-
-**Consortium/Contractual Costs**:
-- F&A typically limited to 8% of total costs for subcontracts
-
-**Other Costs**:
-- Describe significant equipment, animals, patient costs, etc.
-
-### Detailed Budgets (>$250K direct/year)
-
-**Required Sections**:
-- Personnel (with individual salary details)
-- Equipment (≥$5,000 per item)
-- Travel (domestic and foreign)
-- Participant/Trainee Support Costs
-- Other Direct Costs (materials, supplies, publications, consultants)
-- Consortium/Contractual Costs (with detailed sub-budgets)
-- Total Direct Costs
-- Indirect Costs (F&A)
-
-**Budget Justification**:
-- Detailed narrative for each category
-- Justify need for each item/person
-- Explain calculations
-
-### NIH Salary Cap
-
-**Annual Update**: NIH sets maximum salary for grants
-- 2024 Level: ~$221,900 (Executive Level II)
-- Applies to all personnel
-- Fringe benefits calculated on capped salary
-
-### Allowable Costs
-
-**Generally Allowed**:
-- Salaries and wages
-- Fringe benefits
-- Equipment
-- Supplies (consumables <$5,000)
-- Travel (domestic and international)
-- Consultant services
-- Consortium/subaward costs
-- Animal purchase and care
-- Patient care costs (clinical trials)
-- Alterations and renovations (with prior approval)
-- Publication costs
-
-**Generally Not Allowed** (without special justification):
-- Office equipment (computers, printers, furniture)
-- Administrative costs
-- Tuition (except for K awards and training grants)
-
-## Application Submission
-
-### Deadlines
-
-**Standard Dates** (most programs):
-- February 5
-- June 5
-- October 5
-
-**AIDS-Related Research**:
-- January 7
-- May 7
-- September 7
-
-**K Awards and Fellowship**: Different dates, typically 3 times/year
-
-**Submission Time**: 5:00 PM local time of applicant organization
-
-### Submission Systems
-
-**eRA Commons**: Required for NIH submission
-- Create account through institution
-- Assign roles (PI, authorized organizational representative)
-
-**ASSIST (Application Submission System & Interface for Submission Tracking)**:
-- NIH's electronic submission system
-- Create application, upload documents, submit
-
-**Grants.gov**: Alternative submission route (not recommended)
-
-### Just-in-Time Information
-
-**After initial review** (if in fundable range), NIH requests:
-- Other Support (updated)
-- IRB/IACUC approval (or documentation that approval will be obtained)
-- Vertebrate Animals/Human Subjects training certifications
-
-**Timing**: Usually 6-9 months after submission
-
-## Review Process
-
-### Timeline
-
-**Total Time**: ~9 months from submission to funding decision
-
-**Stages**:
-1. **Submission**: Deadline (Month 0)
-2. **Referral**: Assignment to IC and study section (Month 1)
-3. **Review**: Study section meeting (Months 3-4)
-4. **Council**: Advisory council review (Months 6-7)
-5. **Funding Decision**: Program officer and IC (Months 7-9)
-
-### Study Sections
-
-**Types**:
-- **Standing Study Sections**: Permanent panels meeting 3x/year
-- **Special Emphasis Panels (SEPs)**: Ad hoc panels for specific RFAs or topics
-- **Scientific Review Groups (SRGs)**: Chartered study sections
-
-**Process**:
-- 3 assigned reviewers per application (prepare written critiques)
-- ~15-25 applications discussed per study section
-- ~50-100 applications assigned to each study section
-
-**Participants**:
-- Scientific Review Officer (SRO): NIH staff, manages process
-- Reviewers: External scientists with expertise
-- Grants management specialist
-- Program officer (sometimes attends, doesn't vote)
-
-### Scoring
-
-**Preliminary Scoring** (before meeting):
-- All panel members score 1-9 (1 = exceptional, 9 = poor)
-- Applications in lower half typically "triaged" (not discussed)
-- Top ~50% discussed at meeting
-
-**Discussion** (at study section meeting):
-- Assigned reviewers present their assessments
-- Panel discusses strengths and weaknesses
-- Open discussion among all panel members
-- Questions about rigor, innovation, feasibility
-
-**Final Scoring** (after discussion):
-- All panel members score 1-9
-- Scores averaged and multiplied by 10
-- **Final Impact Score**: 10-90 (lower is better)
-  - 10-20: Exceptional
-  - 21-30: Outstanding
-  - 31-40: Excellent (often fundable)
-  - 41-50: Very good (may be fundable)
-  - 51+: Less competitive
-
-**Individual Criterion Scores**: Also scored 1-9
-- Significance
-- Investigator(s)
-- Innovation
-- Approach
-- Environment
-
-### Percentile Ranking
-
-**After all study sections meet**, applications are percentile-ranked within IC
-- Based on Impact Score relative to other applications reviewed by same IC
-- Percentile typically more important than Impact Score for funding decisions
-- Lower percentile = better (1st percentile = top 1%)
-
-**Example**: Impact Score of 35 might be:
-- 15th percentile at NIGMS (likely funded)
-- 40th percentile at NCI (likely not funded)
-- Depends on competitiveness of IC and available funding
-
-### Summary Statement
-
-**Received**: ~30 days after study section meeting
-
-**Contents**:
-- Overall Impact/Priority Score and Percentile
-- Individual criterion scores
-- Resume and Summary of Discussion
-- Detailed critiques from 3 assigned reviewers
-- Additional comments from other panel members
-- Human Subjects, Animals, Biohazards reviews
-
-**Interpreting**:
-- Focus on consistent themes across reviewers
-- Identify major vs. minor criticisms
-- Note what reviewers found strong
-- Use for resubmission planning
-
-## Resubmission (A1 Applications)
-
-### NIH Resubmission Policy
-
-**One Resubmission Allowed**: Can resubmit once (A1) after initial review (A0)
-- After A1 review, cannot resubmit again
-- Must submit new application if A1 not funded
-
-**No Limits on New Applications**: Can submit completely new application anytime
-
-### Introduction to Resubmission (1 page)
-
-**Required Section**: Separate 1-page introduction responding to previous review
-
-**Structure**:
-- **Header**: "INTRODUCTION TO RESUBMISSION"
-- **Summary of Criticisms**: Brief overview of major criticisms
-- **Response to Criticisms**: Point-by-point response with page references
-- **Use bullet points** for clarity
-
-**Example Format**:
+# NIH (National Institutes of Health) 助成金申請ガイドライン
+
+## 機関概要
+
+**ミッション**: 生命システムの性質と挙動に関する基礎的知識を求め、その知識を応用して健康を増進し、寿命を延ばし、病気と障害を減らす
+
+**年間予算**: 約470億ドル（世界最大の生物医学研究資金提供者）
+
+**ウェブサイト**: https://www.nih.gov
+
+**主な特徴**:
+- 27の研究所・センター（ICs）、それぞれが特定の研究焦点を持つ
+- 生物医学・行動研究を支援
+- 厳密性、再現性、翻訳への強い強調
+- 臨床試験とヒト対象研究
+- 患者志向および集団健康研究
+
+## NIH研究所・センター（主要ICs）
+
+- **NCI** - 国立がん研究所（National Cancer Institute）
+- **NHLBI** - 国立心臓・肺・血液研究所（National Heart, Lung, and Blood Institute）
+- **NIDDK** - 国立糖尿病・消化器・腎臓病研究所（National Institute of Diabetes and Digestive and Kidney Diseases）
+- **NIAID** - 国立アレルギー・感染症研究所（National Institute of Allergy and Infectious Diseases）
+- **NIGMS** - 国立総合医学科学研究所（National Institute of General Medical Sciences）
+- **NINDS** - 国立神経障害・脳卒中研究所（National Institute of Neurological Disorders and Stroke）
+- **NIMH** - 国立精神衛生研究所（National Institute of Mental Health）
+- **NICHD** - 国立小児健康・人間発達研究所（National Institute of Child Health and Human Development）
+- **NEI** - 国立眼科研究所（National Eye Institute）
+- **NIEHS** - 国立環境健康科学研究所（National Institute of Environmental Health Sciences）
+- **NIA** - 国立加齢研究所（National Institute on Aging）
+- **NIAAA** - 国立アルコール乱用・中毒研究所（National Institute on Alcohol Abuse and Alcoholism）
+- **NIDA** - 国立薬物乱用研究所（National Institute on Drug Abuse）
+- **NHGRI** - 国立ヒトゲノム研究所（National Human Genome Research Institute）
+- **NCCIH** - 国立補完・統合衛生センター（National Center for Complementary and Integrative Health）
+
+**その他**: NIBIB、NIDCD、NIDCR、NINR、FIC、NLMなど
+
+## 核心的審査基準
+
+NIH提案は**スコアリング基準**（1-9スケール、1 = 例外、9 = 不良）と**追加審査考慮事項**（スコアリングなし、議論のみ）を使用して評価される。
+
+### スコアリング基準（総合影響スコア、Overall Impact Score）
+
+#### 1. Significance（重要性）
+
+**定義**: プロジェクトは重要な問題や進歩への重要な障壁に対処しているか？
+
+**重要な質問**:
+- プロジェクトは科学的知識、技術的能力、または診療を向上させるか？
+- 成功した完了は分野をどのように前進させるか？
+- 重要な科学的問題や健康ニーズに対処しているか？
+- 文献または予備データに基づく明確な根拠があるか？
+
+**査読者が探すもの**:
+- 問題とその重要性の明確な記述
+- この問題を解決することが分野を前進させるという証拠
+- 強力な概念フレームワーク
+- 広範な影響の可能性（単なるニッチではない）
+- NIHおよび研究所ミッションとの整合性
+
+**執筆戦略**:
+- 健康負担または知識のギャップの説得力のある記述から始める
+- 疫学的データ、罹患率/死亡率統計を引用
+- 現在のアプローチが不十分であることを示す
+- あなたの作業がどのように違いをもたらすかを示す
+- 可能な場合は臨床または翻訳的成果に接続
+
+#### 2. Investigator(s)（研究者）
+
+**定義**: 研究者は適切にトレーニングされ、この作業を行うのに適しているか？
+
+**重要な質問**:
+- 適切な専門知識と実績を持っているか？
+- 提案されたリーダーシップアプローチはプロジェクトに適しているか？
+- 研究分野での以前の経験があるか？
+- 早期段階研究者（ESI）の場合、適切なメンタリング/サポートが利用可能か？
+
+**査読者が探すもの**:
+- 関連分野での出版物
+- 能力を示す予備データ
+- 生産性と一貫性
+- 適切なチーム構成
+- 新規研究者の場合: 強力なメンターシップと機関サポート
+- 提案された作業と整合するキャリア軌道
+
+**執筆戦略**:
+- 最も関連性の高い出版物を強調（総数ではない）
+- 研究プログラムでの進歩と焦点を示す
+- 必要なスキルを持っていることを示す
+- 新分野の場合、共同研究またはトレーニングを示す
+- マルチPIの場合、相補的な役割を明確に定義
+- 安定性と機関コミットメントを示す
+
+#### 3. Innovation（革新性）
+
+**定義**: 申請は既存のパラダイムに挑戦するか、新しい方法論、技術、または介入を開発しているか？
+
+**重要な質問**:
+- プロジェクトは新しい概念、アプローチ、または方法論を採用しているか？
+- 目的は独創的で革新的か？
+- 既存のパラダイムに挑戦するか、革新的な仮説に対処しているか？
+- 新しい機器または方法を洗練、改善、または開発しているか？
+
+**査読者が探すもの**:
+- 標準アプローチからの逸脱
+- 新しい問題への方法の新規応用
+- 新しい技術またはツールの開発
+- パラダイムシフトの概念
+- 創造的な実験デザイン
+- 単に自分にとって新しいだけでなく、分野にとって新しい
+
+**執筆戦略**:
+- 何が革新的かを明示的に述べる
+- 既存のアプローチとその限界と対比
+- なぜ革新が必要かを説明
+- 実現可能性を支持する予備データを提供
+- 新規性と達成可能性のバランス
+- 過剰な主張を避ける（漸進的な作業 ≠ 変革的）
+
+#### 4. Approach（アプローチ）
+
+**定義**: 全体的な戦略、方法論、分析は適切に推論され、適切で、厳密か？
+
+**重要な質問**:
+- 研究デザインと方法は提案された目的に適しているか？
+- 潜在的な問題、代替戦略、成功のベンチマークが提示されているか？
+- タイムラインは合理的で、適切な統計的パワーがあるか？
+- データ管理と分析計画は適切か？
+- 実験デザインに厳密性と透明性が evident か？
+
+**査読者が探すもの**:
+- 詳細で具体的な方法論
+- 適切な実験デザイン（対照、反復、ランダム化、ブラインド化）
+- 統計的正当化（パワー計算、サンプルサイズ）
+- 代替案を含む潜在的な落とし穴の特定
+- 予備データによる実現可能性の実証
+- 目的から方法を通じて期待される成果への論理的な流れ
+- 厳密性と再現性の措置
+
+**執筆戦略**:
+- 実現可能性を判断するのに十分な詳細を提供
+- 組織のためにサブ見出しを使用
+- フローチャートまたは図を含める
+- 主要な生物学的リソースの認証に対処
+- 生物学的変数（性別、年齢など）を議論
+- 潜在的な問題を積極的に特定
+- コンティンジェンシープランを提供
+- タイムラインが現実的であることを示す
+- 全体に予備データを含める
+
+#### 5. Environment（環境）
+
+**定義**: 科学的環境は成功の確率に貢献するか？
+
+**重要な質問**:
+- 提案された研究は、科学的環境のユニークな特徴から利益を得るか？
+- 機関のサポート、機器、リソースは利用可能か？
+- 共同 arrangements と同僚からの貢献は適切か？
+- 環境は提案された研究に適しているか？
+
+**査読者が探すもの**:
+- 必要な施設へのアクセス（コア施設、機器、患者集団）
+- 機関のコミットメントとサポート
+- 共同ネットワーク
+- 機関の生産性の実績
+- トレーニング環境（トレーニング助成金用）
+- 十分なスペースとリソース
+
+**執筆戦略**:
+- ユニークな機関リソースを強調
+- 能力を持つ関連コア施設を記述
+- 研究分野への機関の投資を示す
+- リソースへのアクセスを文書化するレターを含める
+- 共同環境を記述
+- 臨床研究の場合、患者集団へのアクセスを示す
+
+### 追加審査考慮事項（Additional Review Considerations）（スコアリングなし）
+
+これらの要因は議論されるが、数値スコアには貢献しない:
+
+#### ヒト対象の保護（Protection of Human Subjects）
+- IRB承認ステータスとプロセス
+- 対象へのリスクは潜在的な利益によって正当化される
+- リスクに対する保護は適切
+- インフォームドコンセントプロセスは適切
+- データおよび安全性モニタリング計画（試験用）
+- 女性、マイノリティ、子供の包含（以下を参照）
+
+#### 女性、マイノリティ、子供の包含（Inclusion of Women, Minorities, and Children）
+- すべてのグループの包含のための適切な計画
+- いずれかのグループが除外される場合の正当化
+- 差異を検出するための適切な統計的パワー
+- アウトリーチとリクルートメント計画は適切
+
+#### 脊椎動物（Vertebrate Animals）
+- IACUC承認ステータス
+- 提案された手順は適切で人道的
+- 不快感、苦痛、痛みの最小化
+- 安楽死方法は適切
+- 種と数の正当化
+
+#### 生物学的危険（Biohazards）
+- 適切な安全措置と封じ込め
+- トレーニングと専門知識は適切
+
+#### 再提出（A1申請）
+- 以前の審査からの懸念は適切に対処されているか？
+- 申請は実質的に改善されているか？
+
+#### 予算と支援期間（Budget and Period of Support）
+- 予算は提案された作業に対して合理的か？
+- タイムラインは適切か？
+
+#### リソース共有計画（Resource Sharing Plans）
+- データ共有計画は適切
+- モデル生物共有計画（該当する場合）
+- ゲノムデータ共有計画（該当する場合）
+
+## 提案構造とページ制限
+
+### Specific Aims（特定目的）（1ページ）
+
+**申請全体で最も重要なページ。** 査読者はしばしばこのページのみに基づいて最初の印象を形成する。
+
+**構造**（`specific_aims_guide.md`の詳細テンプレートを参照）:
+
+**冒頭段落**（3-5文）:
+- 研究プログラムの長期目標
+- 健康負担または知識のギャップ
+- 作業を動機付ける重要なニーズ
+
+**目的と中心仮説**（1段落）:
+- この助成金の目的
+- 中心仮説または研究質問
+- 根拠（予備データの簡単な言及）
+
+**Specific Aims**（2-4つの目的）:
+- 各目的: 1段落（最大半ページ）
+- 目的記述（1-2文、動詞で始まる）
+- 作業仮説または研究質問
+- 根拠（なぜこの目的か、どのような予備データがサポートするか）
+- アプローチサマリー（簡単な方法）
+- 期待される成果と解釈
+
+**ペイオフ段落**（結び）:
+- プロジェクト全体の期待される成果
+- 発見が分野をどのように前進させるか
+- 健康へのプラスの影響（該当する場合）
+- 次のステップまたは将来の方向性
+
+**重要なルール**:
+- 正確に1ページ（0.5インチの余白、11ポイントArialまたは類似）
+- 単独で成立する必要がある（査読者はこれを最初に読む）
+- 明確で、テスト可能な具体的な目的
+- 目的は独立しているが相乗的であるべき
+- 専門用語を避ける（パネルメンバーはあなたのサブフィールドにいないかもしれない）
+- すべての文はその場所を稼がなければならない
+
+### 研究戦略（Research Strategy）（R01では12ページ）
+
+**セクションA: Significance（重要性）**（通常2-3ページ）
+
+**目的**: 査読者に問題が重要であり、解決する価値があると納得させる
+
+**内容**:
+- 問題とその重要性を述べる（健康負担、知識のギャップ）
+- 知識の現状をレビュー（焦点を絞った文献レビュー）
+- 現在のアプローチの限界を特定
+- あなたの作業が提供する概念的進歩を説明
+- 分野または健康成果への潜在的影響を記述
+- NIHミッションおよび研究所優先事項との整合性を説明
+
+**執筆のヒント**:
+- 広く始める（問題の重要性）、狭める（特定のギャップ）
+- 疫学的データを使用（有病率、死亡率、コスト）
+- 主要な文献を体系的に引用
+- あなたの作業が対処する特定の障壁またはギャップを特定
+- あなたの作業が分野をどのように前進させるかで終わる
+
+**セクションB: Innovation（革新性）**（通常1-2ページ）
+
+**目的**: 何が新規で変革的であるかを明確に述べる
+
+**内容**:
+- 提案された研究の革新的な要素を記述
+- 新しい概念、アプローチ、または方法論を説明
+- 既存のアプローチとその限界と対比
+- なぜ革新が必要かを説明（単に異なるだけでなく）
+- 革新が達成可能であることを示す（予備データ）
+
+**執筆のヒント**:
+- 何が革新的かを明示的にする（自明ではないと仮定しない）
+- 漸進的進歩と変革的進歩を区別
+- 新しいアプローチが機能するという証拠を提供
+- 「自分にとって新しい」と「分野にとって新しい」を混同しない
+- 過剰な主張を避ける
+
+**セクションC: Approach（アプローチ）**（通常8-10ページ）
+
+**目的**: 実現可能性を示す詳細な研究計画を提供
+
+**組織**（各Specific Aimについて）:
+
+**Aim [番号]: [Aimタイトル]**
+
+**根拠と予備データ**:
+- なぜこの目的が重要か
+- 実現可能性をサポートする予備結果
+- 主要な図とデータ
+
+**研究デザイン**:
+- 全体的な実験デザイン
+- 対象/サンプル集団と数
+- ランダム化、ブラインド化、対照
+- この目的のタイムライン
+
+**方法**（サブ目的または実験ごとに組織）:
+- 詳細な手順とプロトコル
+- 資材、試薬、機器
+- データ収集手順
+- 考慮された生物学的変数
+
+**データ分析**:
+- 統計的アプローチ
+- サンプルサイズの正当化とパワー計算
+- 結果がどのように解釈されるか
+
+**期待される成果**:
+- 何を見つけることを期待するか
+- 結果がどのように解釈されるか
+- 代替的な成果とそれらが何を意味するか
+
+**潜在的な落とし穴と代替アプローチ**:
+- 何がうまくいかない可能性があるか（積極的に）
+- コンティンジェンシープラン
+- 最初のアプローチが機能しない場合の代替戦略
+
+**タイムライン**:
+- この目的の活動の順序
+- 推定完了時間
+
+**執筆のヒント**:
+- 目的間で一貫した組織を使用
+- 明確さのためにサブ見出しを使用
+- 全体に予備データを統合（最初だけでなく）
+- 図、フローチャート、表を含める
+- 厳密性と再現性に明示的に対処
+- 方法とアプローチの選択を正当化
+- 数、タイムライン、分析について具体的に
+- 研究プロセスを考え抜いていることを示す
+
+**厳密性と再現性（Rigor and Reproducibility）**（アプローチ全体で対処）:
+
+NIHは以下の明示的な議論を必要とする:
+- **実験デザインの科学的厳密性**: 対照、反復、ブラインド化、ランダム化
+- **主要な生物学的リソースの認証**: 細胞株、抗体、生物
+- **生物学的変数の考慮**: 性別、年齢、系統など
+- **統計的パワー**: 適切なサンプルサイズ
+- **透明性**: データ管理、プロトコル、報告
+
+### 参考文献（Bibliography）（ページ制限なし）
+
+- 引用されたすべての参照を含める
+- 一貫した形式を使用（PubMed引用が推奨）
+- 利用可能な場合はDOIまたはPMIDを含める
+
+### ヒト対象の保護または脊椎動物（Protection of Human Subjects or Vertebrate Animals）（異なる）
+
+**ヒト対象セクション**:
+- 対象へのリスク
+- リスクに対する保護
+- 潜在的利益
+- 得られる知識の重要性
+- 女性とマイノリティの包含
+- 子供の包含
+- データと安全性のモニタリング
+
+**脊椎動物セクション**:
+- 種と数の正当化
+- 痛みと苦痛の最小化
+- 安楽死方法
+
+## 主要なNIH申請タイプ
+
+### R01 - 研究プロジェクト助成金（Research Project Grant）
+
+**説明**: 確立された研究者のための標準的なNIH助成金メカニズム
+
+**特徴**:
+- **予算**: モジュラー（直接費用年間最大25万ドル）または詳細予算
+- **期間**: 通常3-5年
+- **適格性**: 適格な機関であれば誰でも
+- **予備データ**: 通常必要（実現可能性を示す）
+- **ページ制限**: 研究戦略12ページ
+
+**一般的なタイムライン**:
+- 準備: 2-6ヶ月
+- 審査: 提出から約9ヶ月
+- 最早開始: 提出後9-12ヶ月
+
+**成功率**: 全体で約20%（研究所によって異なる）
+
+**いつ申請するか**: 予備データと明確な研究方向性がある場合
+
+### R21 - 探索/開発研究助成金（Exploratory/Developmental Research Grant）
+
+**説明**: 新しい探索的研究と開発研究を奨励
+
+**特徴**:
+- **予算**: 2年間で合計最大27.5万ドル（直接費用）
+- **期間**: 最大2年
+- **予備データ**: 必須ではない（ただし強化できる）
+- **ページ制限**: 研究戦略6ページ
+- **無償延長**: 認められない
+
+**目的**:
+- パイロットまたはフィージビリティ研究
+- 新しい方法または技術のテスト
+- 既存データの二次分析
+- 探索的臨床研究
+
+**いつ申請するか**: R01の前にパイロットデータが必要な場合、または高リスクのアイデアの場合
+
+### R03 - スモールグラントプログラム（Small Grant Program）
+
+**説明**: 小規模研究プロジェクト
+
+**特徴**:
+- **予算**: 直接費用年間最大5万ドル（合計最大10万ドル）
+- **期間**: 最大2年
+- **ページ制限**: 研究戦略6ページ
+
+**目的**: 限定されたスコープのプロジェクト、パイロット研究、二次データ分析
+
+### Kアワード - キャリア開発賞（Career Development Awards）
+
+**目的**: 研究者のキャリア開発を支援
+
+**主要なKアワードタイプ**:
+
+**K99/R00 - 独立への道（Pathway to Independence）**:
+- 2つのフェーズ: K99（メンター付き、1-2年）→ R00（独立、最大3年）
+- ポストドクターから独立への移行用
+- 保護された時間と研究サポートを提供
+- 競争的（約15%が資金提供）
+
+**K08 - メンター付き臨床科学者賞（Mentored Clinical Scientist Award）**:
+- 臨床医（MD、DO、DDSなど）用
+- 研究トレーニングのための3-5年間の保護された時間
+- メンタリングチームが必要
+- 直接費用年間最大10万ドル
+
+**K23 - メンター付き患者志向研究キャリア開発賞（Mentored Patient-Oriented Research Career Development Award）**:
+- 患者志向研究用
+- K08と同様の構造
+
+**すべてのKアワードに必要**:
+- キャリア開発計画
+- 研究計画（6-12ページ）
+- メンタリング計画とメンターからのレター
+- トレーニング計画
+- 機関コミットメント（通常75%の保護された時間）
+
+### その他の一般的なメカニズム
+
+**R15 (AREA)**: 主に学部機関用
+
+**P01**: マルチプロジェクトプログラムプロジェクト助成金（大規模共同）
+
+**U01**: 協力協定（NIHが実施に関与）
+
+**R34**: 臨床試験計画助成金
+
+**DP1/DP2**: NIHディレクターのパイオニア/ニューイノベーター賞（特別）
+
+## 予算作成
+
+### モジュラー予算（Modular Budgets）（年間直接費用25万ドルまでのR01）
+
+**特徴**:
+- 25,000ドルの増分（モジュール）で要求
+- 年間最大10モジュール（25万ドル）
+- 詳細予算不要
+- 予算正当化: ナラティブ（人員、コンソーシアム、その他）
+- 2-5年目: 12.5万ドル超または25%超増加の場合、簡単な正当化
+
+**人員正当化**:
+- 役割、努力（%カレンダー月）を含むすべての人員をリスト
+- 一般的: PI（2-3ヶ月 = 16-25%）、ポストドクター（12ヶ月）、大学院生、技術者
+- 各人の努力を正当化
+- 注: 給与キャップが適用される（2024年で約221,900ドル）
+
+**コンソーシアム/契約費用**:
+- F&Aは通常、下請けの総費用の8%に制限される
+
+**その他の費用**:
+- 重要な機器、動物、患者費用などを記述
+
+### 詳細予算（Detailed Budgets）（年間直接費用25万ドル超）
+
+**必要なセクション**:
+- 人員（個別の給与詳細）
+- 機器（アイテムあたり5,000ドル以上）
+- 旅行（国内および海外）
+- 参加者/トレーニング支援費用
+- その他の直接費用（資材、消耗品、出版物、コンサルタント）
+- コンソーシアム/契約費用（詳細なサブ予算）
+- 総直接費用
+- 間接費用（F&A）
+
+**予算正当化**:
+- 各カテゴリーの詳細なナラティブ
+- 各アイテム/人の必要性を正当化
+- 計算を説明
+
+### NIH給与キャップ（NIH Salary Cap）
+
+**年次更新**: NIHは助成金の最大給与を設定
+- 2024年レベル: 約221,900ドル（Executive Level II）
+- すべての人員に適用
+- 福利厚生はキャップされた給与で計算
+
+### 認められる費用
+
+**一般的に認められる**:
+- 給与と賃金
+- 福利厚生
+- 機器
+- 消耗品（5,000ドル未満）
+- 旅行（国内および国際）
+- コンサルタントサービス
+- コンソーシアム/サブアワード費用
+- 動物購入と飼育
+- 患者ケア費用（臨床試験）
+- 改造と改修（事前承認あり）
+- 出版費用
+
+**一般的に認められない**（特別な正当化なしで）:
+- 事務機器（コンピュータ、プリンター、家具）
+- 管理費用
+- 授業料（Kアワードとトレーニング助成金を除く）
+
+## 申請提出
+
+### 期限
+
+**標準日**（ほとんどのプログラム）:
+- 2月5日
+- 6月5日
+- 10月5日
+
+**AIDS関連研究**:
+- 1月7日
+- 5月7日
+- 9月7日
+
+**Kアワードとフェローシップ**: 異なる日付、通常年3回
+
+**提出時間**: 申請機関の現地時間午後5:00
+
+### 提出システム
+
+**eRA Commons**: NIH提出に必須
+- 機関を通じてアカウントを作成
+- 役割を割り当て（PI、認定機関代表者）
+
+**ASSIST（Application Submission System & Interface for Submission Tracking）**:
+- NIHの電子提出システム
+- 申請を作成、ドキュメントをアップロード、提出
+
+**Grants.gov**: 代替提出ルート（推奨されない）
+
+### ジャストインタイム情報（Just-in-Time Information）
+
+**最初の審査後**（資金提供可能範囲内の場合）、NIHは以下を要求:
+- その他の支援（Other Support）（更新）
+- IRB/IACUC承認（または承認が取得されることの文書化）
+- 脊椎動物/ヒト対象トレーニング認定
+
+**タイミング**: 通常、提出後6-9ヶ月
+
+## 審査プロセス
+
+### タイムライン
+
+**総時間**: 提出から資金決定まで約9ヶ月
+
+**段階**:
+1. **提出**: 期限（0ヶ月目）
+2. **照会**: ICとスタディセクションへの割り当て（1ヶ月目）
+3. **審査**: スタディセクション会議（3-4ヶ月目）
+4. **カウンシル**: 諮問委員会審査（6-7ヶ月目）
+5. **資金決定**: プログラムオフィサーとIC（7-9ヶ月目）
+
+### スタディセクション（Study Sections）
+
+**タイプ**:
+- **常設スタディセクション**: 年3回会議する恒久的パネル
+- **特別重点パネル（Special Emphasis Panels、SEPs）**: 特定のRFAまたはトピックのためのアドホックパネル
+- **科学審査グループ（Scientific Review Groups、SRGs）**: 認可されたスタディセクション
+
+**プロセス**:
+- 申請あたり3人の担当査読者（書面批評を準備）
+- スタディセクションで約15-25件の申請が議論
+- 各スタディセクションに約50-100件の申請が割り当て
+
+**参加者**:
+- 科学審査オフィサー（Scientific Review Officer、SRO）: NIHスタッフ、プロセスを管理
+- 査読者: 専門知識を持つ外部科学者
+- 助成金管理専門官
+- プログラムオフィサー（時に出席、投票しない）
+
+### スコアリング
+
+**予備スコアリング**（会議前）:
+- すべてのパネルメンバーが1-9でスコア（1 = 例外、9 = 不良）
+- 下半分の申請は通常「トリアージ」（議論されない）
+- 上位約50%が会議で議論
+
+**議論**（スタディセクション会議で）:
+- 担当査読者が評価を提示
+- パネルが強みと弱みを議論
+- すべてのパネルメンバーによる公開議論
+- 厳密性、革新性、実現可能性についての質問
+
+**最終スコアリング**（議論後）:
+- すべてのパネルメンバーが1-9でスコア
+- スコアを平均し、10を乗算
+- **最終影響スコア（Final Impact Score）**: 10-90（低いほど良い）
+  - 10-20: 例外
+  - 21-30: 傑出
+  - 31-40: 優秀（しばしば資金提供可能）
+  - 41-50: 非常に良い（資金提供可能な場合がある）
+  - 51+: 競争力が低い
+
+**個別基準スコア（Individual Criterion Scores）**: 1-9でスコア
+- Significance（重要性）
+- Investigator(s)（研究者）
+- Innovation（革新性）
+- Approach（アプローチ）
+- Environment（環境）
+
+### パーセンタイルランキング
+
+**すべてのスタディセクションが会議した後**、申請はIC内でパーセンタイルランクされる
+- 同じICで審査された他の申請との相対的な影響スコアに基づく
+- 資金決定にはパーセンタイルが影響スコアよりも重要な場合が多い
+- 低いパーセンタイル = 良い（1パーセンタイル = トップ1%）
+
+**例**: 影響スコア35は以下の可能性:
+- NIGMSで15パーセンタイル（資金提供の可能性高い）
+- NCIで40パーセンタイル（資金提供の可能性低い）
+- ICの競争力と利用可能な資金に依存
+
+### サマリーステートメント（Summary Statement）
+
+**受領**: スタディセクション会議後約30日
+
+**内容**:
+- 総合影響/優先スコアとパーセンタイル
+- 個別基準スコア
+- レジュメと議論の要約
+- 3人の担当査読者からの詳細な批評
+- 他のパネルメンバーからの追加コメント
+- ヒト対象、動物、生物学的危険審査
+
+**解釈**:
+- 査読者間で一貫したテーマに焦点
+- 主要対次要の批判を特定
+- 査読者が強いと判断したものを記録
+- 再提出計画に使用
+
+## 再提出（A1申請）
+
+### NIH再提出ポリシー
+
+**1回の再提出が許可**: 最初の審査（A0）後に1回（A1）再提出可能
+- A1審査後、再提出不可
+- A1が資金提供されない場合、新規申請を提出する必要がある
+
+**新規申請に制限なし**: いつでも完全に新しい申請を提出可能
+
+### 再提出への導入（Introduction to Resubmission）（1ページ）
+
+**必須セクション**: 以前の審査に対応する別の1ページの導入
+
+**構造**:
+- **ヘッダー**: "INTRODUCTION TO RESUBMISSION"
+- **批判の要約**: 主要な批判の簡単な概要
+- **批判への対応**: ページ参照を含むポイントバイポイントの対応
+- **明確さのために箇条書きを使用**
+
+**例の形式**:
 ```
 INTRODUCTION TO RESUBMISSION
 
@@ -702,150 +702,150 @@ The previous review raised the following concerns:
 We have addressed these concerns as follows:
 
 1. Preliminary data for Aim 2 (Response, p. 8-9; Research Strategy, p. 18-20)
-   • Generated pilot data showing [specific result]
-   • Optimized protocol achieving [specific outcome]
-   • New Figure 3 demonstrates feasibility
+   - Generated pilot data showing [specific result]
+   - Optimized protocol achieving [specific outcome]
+   - New Figure 3 demonstrates feasibility
 
 2. Statistical power for Aim 3 (Research Strategy, p. 24-25)
-   • Increased sample size from n=15 to n=25 per group
-   • Updated power calculations show >90% power
-   • Budget adjusted accordingly
+   - Increased sample size from n=15 to n=25 per group
+   - Updated power calculations show >90% power
+   - Budget adjusted accordingly
 
 3. Quality control procedures (Research Strategy, p. 12, 19, 26)
-   • Added detailed QC protocols for each method
-   • Implemented validation criteria and acceptance thresholds
-   • Described authentication of key reagents
+   - Added detailed QC protocols for each method
+   - Implemented validation criteria and acceptance thresholds
+   - Described authentication of key reagents
 ```
 
-**Tips**:
-- Be respectful and professional (avoid defensiveness)
-- Address every major criticism explicitly
-- Indicate where changes are in revised application
-- Show substantial revision, not minor tweaks
-- Acknowledge valid criticisms and explain how addressed
-- If disagree with criticism, explain politely with evidence
+**ヒント**:
+- 尊敬と専門的である（防御的にならない）
+- すべての主要な批判に明示的に対処
+- 改訂申請で変更点がどこにあるかを示す
+- 実質的な改訂を示す、小さな調整ではない
+- 有効な批判を認め、どのように対処したかを説明
+- 批判に同意しない場合、証拠で丁寧に説明
 
-### Resubmission Strategy
+### 再提出戦略
 
-**Decision Tree**:
+**決定ツリー**:
 
-**Impact Score ≤40 (Percentile ≤20)**: Strong application, likely competitive
-- Address specific criticisms
-- Strengthen weak areas
-- Add preliminary data if criticized
-- Consider minor scope adjustments
+**影響スコア ≤40（パーセンタイル ≤20）**: 強い申請、競争力が高い可能性
+- 特定の批判に対処
+- 弱い領域を強化
+- 批判された場合、予備データを追加
+- 小さなスコープ調整を検討
 
-**Impact Score 41-50 (Percentile 21-40)**: Moderate application, needs improvement
-- Substantial revision needed
-- May need new preliminary data
-- Consider revising aims if criticized
-- Strengthen innovation or significance
-- May want to wait for new data before resubmitting
+**影響スコア 41-50（パーセンタイル 21-40）**: 中程度の申請、改善が必要
+- 実質的な改訂が必要
+- 新しい予備データが必要な場合がある
+- 批判された場合、目的の改訂を検討
+- 革新性または重要性を強化
+- 再提出前に新しいデータを収集するために待つことを検討
 
-**Impact Score ≥51 (Percentile ≥41)**: Weak application, major revision needed
-- Consider whether resubmission is worthwhile
-- May be better to develop new application
-- If resubmitting: major restructuring likely needed
-- Gather substantial new preliminary data
-- Consider changing scope or aims
+**影響スコア ≥51（パーセンタイル ≥41）**: 弱い申請、大規模な改訂が必要
+- 再提出が価値があるかどうか検討
+- 新しい申請を開発した方が良い場合がある
+- 再提出する場合: 大規模な再構築が必要な可能性
+- 実質的な新しい予備データを収集
+- スコープまたは目的の変更を検討
 
-**Common Resubmission Improvements**:
-1. **Add preliminary data**: Especially for Aim 2 or 3 if criticized
-2. **Clarify methods**: Provide more detail, address technical concerns
-3. **Increase rigor**: Better controls, larger n, statistical justification
-4. **Revise specific aims**: If fundamentally flawed
-5. **Add collaborators**: If expertise questioned
-6. **Strengthen significance**: Better literature review, clearer impact
-7. **Refocus innovation**: Clarify what's novel and why it matters
+**一般的な再提出改善**:
+1. **予備データを追加**: 特に批判されたAim 2または3用
+2. **方法を明確化**: より詳細を提供、技術的懸念に対処
+3. **厳密性を増加**: より良い対照、より大きなn、統計的正当化
+4. **Specific Aimsを改訂**: 基本的に欠陥がある場合
+5. **共同研究者を追加**: 専門知識が疑問視された場合
+6. **重要性を強化**: より良い文献レビュー、より明確な影響
+7. **革新性を再焦点**: 何が新規で、なぜ重要かを明確化
 
-**Timing**:
-- Can resubmit at any of the next 3 deadlines (36 months after initial submission)
-- Use time wisely to generate new data
-- Don't rush resubmission with minor changes
+**タイミング**:
+- 次の3つの期限のいずれかで再提出可能（最初の提出後36ヶ月以内）
+- 時間を賢く使って新しいデータを生成
+- 小さな変更で再提出を急がない
 
-## NIH Funding Trends and Priorities (2024-2025)
+## NIH資金動向と優先事項（2024-2025）
 
-### Current Priorities
+### 現在の優先事項
 
-- **Health Disparities and Health Equity**: Addressing disparities in disease burden
-- **Alzheimer's Disease and Dementia**: Prevention, treatment, care
-- **Substance Use and Mental Health**: Opioid crisis, addiction, mental health
-- **Infectious Diseases**: Pandemic preparedness, antimicrobial resistance, vaccines
-- **Cancer**: Cancer Moonshot initiatives
-- **BRAIN Initiative**: Understanding the brain
-- **All of Us Research Program**: Precision medicine
-- **Climate Change and Health**: Environmental impacts on health
-- **Artificial Intelligence**: AI for biomedical research and healthcare
+- **健康格差と健康公平性**: 疾病負担の格差への対処
+- **アルツハイマー病と認知症**: 予防、治療、ケア
+- **物質使用と精神衛生**: オピオイド危機、中毒、精神衛生
+- **感染症**: パンデミック準備、抗菌薬耐性、ワクチン
+- **がん**: がんムーンショットイニシアチブ
+- **BRAINイニシアチブ**: 脳の理解
+- **All of Us研究プログラム**: 精密医療
+- **気候変動と健康**: 環境が健康に与える影響
+- **人工知能**: 生物医学研究と医療のためのAI
 
-### Success Rates by Career Stage
+### キャリア段階別成功率
 
-**Overall**: ~20% (varies by IC and mechanism)
+**全体**: 約20%（ICとメカニズムによって異なる）
 
-**Established Investigators**: ~23%
+**確立された研究者**: 約23%
 
-**Early Stage Investigators (ESI)**: ~27% (higher due to ESI policy)
-- ESI: Within 10 years of final degree, no prior R01-equivalent
+**早期段階研究者（Early Stage Investigators、ESI）**: 約27%（ESIポリシーにより高い）
+- ESI: 最終学位から10年以内、以前のR01相当なし
 
-**New Investigators**: ~24%
-- New: No prior R01-equivalent (regardless of time since degree)
+**新規研究者（New Investigators）**: 約24%
+- 新規: 以前のR01相当なし（学位からの時間に関係なく）
 
-**Multiple PI**: ~18% (slightly lower than single PI)
+**マルチPI**: 約18%（単一PIよりわずかに低い）
 
-### Paylines
+### ペイライン
 
-**Varies by IC**: Each Institute sets own funding priorities
+**ICによって異なる**: 各研究所は独自の資金提供優先事項を設定
 
-**Example Paylines (FY2023)**:
-- NIGMS: ~23rd percentile
-- NCI: ~12th percentile (highly competitive)
-- NHLBI: ~11th percentile
-- NIAID: ~15th percentile
-- NIMH: ~12th percentile
+**例のペイライン（FY2023）**:
+- NIGMS: 約23パーセンタイル
+- NCI: 約12パーセンタイル（非常に競争的）
+- NHLBI: 約11パーセンタイル
+- NIAID: 約15パーセンタイル
+- NIMH: 約12パーセンタイル
 
-**ESI Boost**: Most ICs fund ESIs at higher percentile than established investigators
+**ESIブースト**: ほとんどのICは、確立された研究者よりも高いパーセンタイルでESIを資金提供
 
-**Check IC Websites**: Paylines and funding policies updated annually
+**ICウェブサイトを確認**: ペイラインと資金ポリシーは年次更新
 
-## Tips for Competitive NIH Applications
+## 競争力のあるNIH申請のためのヒント
 
-### Do's
+### やるべきこと
 
-✅ **Start with Specific Aims page** - Most important page, revise extensively
-✅ **Include substantial preliminary data** - Demonstrate feasibility (esp. for R01)
-✅ **Be explicit about innovation** - Don't assume reviewers will recognize it
-✅ **Address rigor and reproducibility** - Controls, power, authentication, variables
-✅ **Provide detailed methods** - Enough detail to assess feasibility
-✅ **Identify pitfalls proactively** - Show you've thought through challenges
-✅ **Use figures and diagrams** - Clarify complex ideas, show preliminary data
-✅ **Connect to health** - NIH mission is health-related
-✅ **Write clearly** - Panel members may not be in your exact subfield
-✅ **Get external review** - Mock review from colleagues and mentors
+- **Specific Aimsページから始める** - 最も重要なページ、広範に改訂
+- **実質的な予備データを含める** - 実現可能性を示す（特にR01用）
+- **革新性について明示的にする** - 査読者が認識すると仮定しない
+- **厳密性と再現性に対処する** - 対照、パワー、認証、変数
+- **詳細な方法を提供する** - 実現可能性を評価するのに十分な詳細
+- **落とし穴を積極的に特定する** - 課題を考え抜いていることを示す
+- **図とダイアグラムを使用する** - 複雑なアイデアを明確化、予備データを示す
+- **健康に接続する** - NIHミッションは健康関連
+- **明確に書く** - パネルメンバーはあなたの正確なサブフィールドにいないかもしれない
+- **外部審査を得る** - 同僚とメンターからのモック審査
 
-### Don'ts
+### やってはいけないこと
 
-❌ **Don't exceed page limits** - Automatic rejection
-❌ **Don't be vague about methods** - "Standard protocols" is insufficient
-❌ **Don't ignore sample size** - Power calculations required
-❌ **Don't overpromise** - Be realistic about what's achievable
-❌ **Don't forget human subjects/animals sections** - Common mistake
-❌ **Don't submit without preliminary data** - For R01, this rarely succeeds
-❌ **Don't assume reviewers know your work** - Provide context
-❌ **Don't ignore sex as biological variable** - NIH policy requires consideration
-❌ **Don't submit at deadline** - Technical issues happen frequently
-❌ **Don't resubmit without substantial changes** - Minor revisions rarely succeed
+- **ページ制限を超えない** - 自動拒否
+- **方法について曖昧にしない** - 「標準プロトコル」は不十分
+- **サンプルサイズを無視しない** - パワー計算が必要
+- **過剰な約束をしない** - 達成可能なことについて現実的に
+- **ヒト対象/動物セクションを忘れない** - 一般的な間違い
+- **予備データなしで提出しない** - R01の場合、これは成功しない
+- **査読者があなたの仕事を知っていると仮定しない** - 文脈を提供
+- **生物学的変数としての性別を無視しない** - NIHポリシーは考慮を必要とする
+- **期限に提出しない** - 技術的な問題が頻繁に発生
+- **実質的な変更なしで再提出しない** - 小さな改訂は成功しない
 
-## NIH Resources
+## NIHリソース
 
-- **NIH Homepage**: https://www.nih.gov
-- **NIH RePORTER (funded grants)**: https://reporter.nih.gov
-- **Grants & Funding**: https://grants.nih.gov
+- **NIHホームページ**: https://www.nih.gov
+- **NIH RePORTER（資金提供助成金）**: https://reporter.nih.gov
+- **助成金と資金**: https://grants.nih.gov
 - **eRA Commons**: https://commons.era.nih.gov
 - **ASSIST**: https://public.era.nih.gov/assist
-- **Application Forms and Instructions**: https://grants.nih.gov/grants/how-to-apply-application-guide.html
-- **NIH Data Sharing Policy**: https://sharing.nih.gov
-- **Rigor and Reproducibility**: https://grants.nih.gov/reproducibility/index.htm
+- **申請フォームと説明**: https://grants.nih.gov/grants/how-to-apply-application-guide.html
+- **NIHデータ共有ポリシー**: https://sharing.nih.gov
+- **厳密性と再現性**: https://grants.nih.gov/reproducibility/index.htm
 
 ---
 
-**Key Takeaway**: NIH applications succeed through clear articulation of an important health-related problem, preliminary data demonstrating feasibility, detailed rigorous approach, and innovative methods. The Specific Aims page is the most critical component—invest time in crafting a compelling narrative that immediately conveys significance and feasibility.
+**重要なポイント**: NIH申請は、重要な健康関連問題の明確な記述、実現可能性を示す予備データ、詳細で厳密なアプローチ、および革新的な方法によって成功する。Specific Aimsページは最も重要なコンポーネントである—重要性と実現可能性を即座に伝える説得力のあるナラティブを作成するために時間を投資する。
 

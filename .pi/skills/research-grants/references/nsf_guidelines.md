@@ -1,570 +1,570 @@
-# NSF (National Science Foundation) Grant Writing Guidelines
-
-## Agency Overview
-
-**Mission**: To promote the progress of science; to advance the national health, prosperity, and welfare; to secure the national defense
-
-**Annual Budget**: ~$9-10 billion
-
-**Website**: https://www.nsf.gov
-
-**Key Characteristics**:
-- Supports all fields of fundamental science and engineering (except medical sciences)
-- Emphasis on education and workforce development
-- Strong commitment to diversity, equity, and inclusion
-- Promotes open science and data sharing
-- Collaborative research across institutions encouraged
-
-## NSF Directorates
-
-1. **BIO** - Biological Sciences
-2. **CISE** - Computer and Information Science and Engineering
-3. **EHR** - Education and Human Resources
-4. **ENG** - Engineering
-5. **GEO** - Geosciences
-6. **MPS** - Mathematical and Physical Sciences
-7. **SBE** - Social, Behavioral, and Economic Sciences
-8. **TIP** - Technology, Innovation, and Partnerships (formerly EDA)
-9. **OPP** - Office of Polar Programs
-10. **OISE** - Office of International Science and Engineering
-
-## Core Review Criteria
-
-NSF uses two equally weighted criteria for all proposals:
-
-### Intellectual Merit
-
-**Definition**: The potential to advance knowledge
-
-**Evaluation Questions**:
-- How important is the proposed activity to advancing knowledge and understanding within its own field or across different fields?
-- How well-qualified is the proposer (individual or team) to conduct the project?
-- To what extent does the proposed activity suggest and explore creative, original, or potentially transformative concepts?
-- How well-conceived and organized is the proposed activity?
-- Is there sufficient access to resources?
-
-**Writing Strategy**:
-- Lead with the research question and its importance
-- Demonstrate deep knowledge of the field
-- Articulate the knowledge gap clearly
-- Present innovative approach to address the gap
-- Show preliminary results or proof-of-concept
-- Demonstrate team qualifications
-- Present feasible, well-organized plan
+# NSF (National Science Foundation) 助成金申請ガイドライン
+
+## 機関概要
+
+**ミッション**: 科学の進歩を促進し、国民の健康、繁栄、福祉を向上させ、国防を確保する
+
+**年間予算**: 約90-100億ドル
+
+**ウェブサイト**: https://www.nsf.gov
+
+**主な特徴**:
+- 基礎科学と工学の全分野を支援（医学を除く）
+- 教育と人材育成を重視
+- 多様性、公平性、包摂性への強いコミットメント
+- オープンサイエンスとデータ共有の推進
+- 機関横断的な共同研究の奨励
+
+## NSF ディレクター室
+
+1. **BIO** - 生物科学（Biological Sciences）
+2. **CISE** - 計算機・情報科学・工学（Computer and Information Science and Engineering）
+3. **EHR** - 教育・人材資源（Education and Human Resources）
+4. **ENG** - 工学（Engineering）
+5. **GEO** - 地球科学（Geosciences）
+6. **MPS** - 数理・物理科学（Mathematical and Physical Sciences）
+7. **SBE** - 社会・行動・経済科学（Social, Behavioral, and Economic Sciences）
+8. **TIP** - 技術・イノベーション・パートナーシップ（Technology, Innovation, and Partnerships、旧EDA）
+9. **OPP** - 極地プログラム室（Office of Polar Programs）
+10. **OISE** - 国際科学・工学室（Office of International Science and Engineering）
+
+## 核心的審査基準
+
+NSFはすべての提案に対して2つの同等に重み付けされた基準を使用する:
+
+### Intellectual Merit（知的メリット）
+
+**定義**: 知識を前進させる可能性
+
+**評価質問**:
+- 提案された活動は、その分野内または異なる分野間での知識と理解の向上にどの程度重要か？
+- 提案者（個人またはチーム）はプロジェクトを実施するために適切な資格を持っているか？
+- 提案された活動は、創造的、独創的、または潜在的に変革的な概念を提案・探求しているか？
+- 提案された活動はどの程度適切に構想・組織化されているか？
+- リソースへの十分なアクセスはあるか？
+
+**執筆戦略**:
+- 研究課題とその重要性から始める
+- 分野の深い知識を示す
+- 知識のギャップを明確に articulation する
+- ギャップに対処する革新的なアプローチを提示
+- 予備結果または概念実証を示す
+- チームの資格を示す
+- 実現可能で適切に組織化された計画を提示
 
-### Broader Impacts
+### Broader Impacts（広範な影響）
 
-**Definition**: The potential to benefit society and contribute to the achievement of specific, desired societal outcomes
-
-**Evaluation Questions**:
-- What is the potential for the proposed activity to:
-  - Benefit society or advance desired societal outcomes?
-  - Broaden participation of underrepresented groups?
-  - Enhance infrastructure for research and education?
-  - Enhance scientific and technological understanding?
-  - Foster partnerships between academia, industry, and others?
-
-**Critical Point**: Broader Impacts are NOT an afterthought. They carry equal weight with Intellectual Merit and must be substantive, specific, and measurable.
-
-**Five Pillars of Broader Impacts** (address at least one substantively):
-
-1. **Advance discovery and understanding while promoting teaching, training, and learning**
-   - Integrate research into courses
-   - Develop new curriculum materials
-   - Train undergraduate, graduate, and postdoctoral researchers
-   - Provide research experiences for students
-   - Create educational resources (videos, software, databases)
-   - Offer workshops or training programs
-
-   *Example*: "We will develop a 10-module online course on computational genomics, incorporating data from this project, to be offered to 500+ students annually across 15 partner institutions. Course materials will be open-access and include Jupyter notebooks for hands-on analysis."
-
-2. **Broaden participation of underrepresented groups (in STEM)**
-   - Partner with minority-serving institutions (HBCUs, HSIs, TCUs)
-   - Recruit students from underrepresented groups
-   - Provide mentoring and support programs
-   - Address systemic barriers to participation
-   - Create inclusive research environments
-   - Engage underrepresented communities in research
-
-   *Example*: "We will establish a summer research program for 8 undergraduates annually from 4 partner HBCUs, providing stipends, housing, and year-round mentoring. Program will include professional development workshops and pathways to graduate school."
-
-3. **Enhance infrastructure for research and education**
-   - Develop shared instrumentation or facilities
-   - Create cyberinfrastructure, software, or databases
-   - Build collaborative networks
-   - Establish living stock centers or repositories
-   - Develop standards or protocols
-   - Create open-source tools
-
-   *Example*: "We will develop and maintain an open-source software platform for analyzing spatial transcriptomics data, with comprehensive documentation, tutorials, and user support forum. Software will be deposited on GitHub and indexed in bio.tools."
-
-4. **Disseminate to enhance scientific and technological understanding**
-   - Public outreach and science communication
-   - Engagement with K-12 students and teachers
-   - Museum exhibits or science festivals
-   - Media engagement (podcasts, videos, articles)
-   - Policy briefs for decision-makers
-   - Community science projects
-
-   *Example*: "We will partner with the City Science Museum to create a hands-on exhibit on AI and climate modeling, reaching 50,000+ annual visitors. Exhibit will include interactive simulations and bilingual materials. We will also host quarterly 'Science Saturdays' for local K-12 students."
-
-5. **Benefit society**
-   - Economic development and competitiveness
-   - Health and quality of life improvements
-   - Environmental sustainability
-   - National security
-   - Societal well-being
-   - Workforce development
-
-   *Example*: "Our drought prediction models will be integrated into USDA's decision support system, benefiting 15,000+ farmers in the Southwest. We will work with extension agents to provide training and accessible interfaces for non-technical users."
-
-**Common Broader Impacts Mistakes**:
-- ❌ Vague statements: "We will train graduate students" (everyone does this)
-- ❌ No plan: Aspirational goals without concrete activities
-- ❌ No metrics: No way to assess success
-- ❌ Tacked on: Not integrated with research plan
-- ❌ Unrealistic: Grand claims without resources or expertise
-- ✅ Specific and measurable: Clear activities, timelines, and assessment
-
-## Proposal Sections and Page Limits
-
-### Project Summary (1 page)
-
-**Required Structure** (NSF mandates three labeled sections):
-
-**Overview** (first paragraph):
-- Research question and approach in accessible language
-- Suitable for public dissemination
-
-**Intellectual Merit**:
-- Potential to advance knowledge
-- Innovative aspects
-- Qualifications of team
-
-**Broader Impacts**:
-- Societal benefits and specific activities
-- How success will be measured
-
-**Formatting**: Must use section headings exactly as shown above
-
-### Project Description (15 pages for most programs)
-
-**No required structure, but typical organization**:
-
-1. **Introduction / Background** (1-2 pages)
-   - Research question and significance
-   - Current state of knowledge
-   - Knowledge gaps
-   - Preliminary results (if applicable)
-
-2. **Research Objectives** (0.5-1 page)
-   - Specific, measurable goals
-   - Hypotheses or research questions
-
-3. **Research Plan / Methodology** (8-10 pages)
-   - Detailed approach for each objective
-   - Methods and techniques
-   - Timeline and milestones
-   - Expected outcomes
-   - Potential challenges and alternatives
-
-4. **Broader Impacts** (1-2 pages)
-   - Can be integrated throughout OR separate section
-   - Specific activities and timelines
-   - Assessment and evaluation plan
-
-5. **Results from Prior NSF Support** (if applicable, up to 5 pages)
-   - Required if PI or co-PI has had NSF award in past 5 years
-   - Intellectual merit of prior work
-   - Broader impacts of prior work
-   - Publications and products
-
-**Formatting Requirements**:
-- Font: 11-point or larger (Times Roman, Arial, Palatino, Computer Modern)
-- Margins: 1 inch all sides
-- Line spacing: No more than 6 lines per inch
-- Page size: 8.5 x 11 inches
-- No smaller fonts in figures (must be legible)
-
-### References Cited (no page limit)
-
-- Each reference must include:
-  - Names of all authors
-  - Article and journal title
-  - Volume, page numbers, year
-  - DOI if available
-- Use consistent format (doesn't have to match specific style)
-- Sufficient information for reviewers to locate references
-
-### Biographical Sketch (3 pages max per person)
-
-**Required NSF Format** (as of 2023 PAPPG):
-
-**Section A: Professional Preparation**
-- Undergraduate, graduate, postdoctoral institutions
-- Majors and degrees with years
-
-**Section B: Appointments and Positions**
-- Last 5 positions, current first
+**定義**: 社会に利益をもたらし、特定の望ましい社会的成果の達成に貢献する可能性
+
+**評価質問**:
+- 提案された活動が以下の可能性はどの程度か:
+  - 社会に利益をもたらす、または望ましい社会的成果を進める？
+  - 過小代表グループの参加を拡大する？
+  - 研究と教育のためのインフラを強化する？
+  - 科学と技術の理解を深める？
+  - 学界、産業、その他の間のパートナーシップを促進する？
+
+**重要ポイント**: Broader Impactsは事後的な考慮事項ではない。Intellectual Meritと同等の重みを持ち、実質的、具体的、測定可能でなければならない。
+
+**Broader Impactsの5つの柱**（少なくとも1つを実質的に取り上げる）:
+
+1. **発見と理解を進めながら、教育、トレーニング、学習を促進する**
+   - 研究をコースに統合
+   - 新しいカリキュラム教材の開発
+   - 学部生、大学院生、ポストドクター研究員のトレーニング
+   - 学生への研究経験の提供
+   - 教育リソース（ビデオ、ソフトウェア、データベース）の作成
+   - ワークショップやトレーニングプログラムの提供
+
+   *例*: 「本プロジェクトのデータを組み込んだ計算ゲノミクスの10モジュールオンラインコースを開発し、15のパートナー機関で年間500人以上の学生に提供する。コース教材はオープンアクセスで、実践的分析のためのJupyterノートブックを含む。」
+
+2. **過小代表グループ（STEM）の参加を拡大する**
+   - マイノリティサービス機関（HBCU、HSI、TCU）とのパートナーシップ
+   - 過小代表グループからの学生の採用
+   - メンタリングとサポートプログラムの提供
+   - 参加への制度的障壁への対処
+   - 包摂的な研究環境の作成
+   - 過小代表コミュニティの研究への関与
+
+   *例*: 「4つのパートナーHBCUから年間8人の学部生のための夏季研究プログラムを設立し、奨学金、住宅、通年のメンタリングを提供する。プログラムには専門能力開発ワークショップと大学院への進路を含む。」
+
+3. **研究と教育のためのインフラを強化する**
+   - 共有機器や施設の開発
+   - サイバーインフラ、ソフトウェア、またはデータベースの作成
+   - 協力ネットワークの構築
+   - リビングストックセンターまたはリポジトリの設立
+   - 標準またはプロトコルの開発
+   - オープンソースツールの作成
+
+   *例*: 「空間トランスクリプトミクスデータ分析のためのオープンソースソフトウェアプラットフォームを開発・維持し、包括的なドキュメント、チュートリアル、ユーザーサポートフォーラムを含む。ソフトウェアはGitHubにデポジットされ、bio.toolsにインデックスされる。」
+
+4. **科学と技術の理解を深めるために普及する**
+   - 公衆アウトリーチと科学コミュニケーション
+   - K-12学生と教師との関わり
+   - 博物館展示や科学フェスティバル
+   - メディア関与（ポッドキャスト、ビデオ、記事）
+   - 意思決定者のための政策簡報
+   - コミュニティサイエンスプロジェクト
+
+   *例*: 「市立科学博物館とパートナーシップを組み、AIと気候モデリングに関する実践的な展示を作成し、年間5万人以上の来館者にリーチする。展示にはインタラクティブなシミュレーションとバイリンガル教材を含む。また、地元のK-12学生のための四半期ごとの『サイエンス・サタデー』を主催する。」
+
+5. **社会に利益をもたらす**
+   - 経済開発と競争力
+   - 健康と生活の質の向上
+   - 環境の持続可能性
+   - 国家安全保障
+   - 社会的福祉
+   - 人材育成
+
+   *例*: 「干ばつ予測モデルはUSDAの意思決定サポートシステムに統合され、南西部の15,000人以上の農家に利益をもたらす。エクステンションエージェントと協力して、非技術ユーザーのためのトレーニングとアクセス可能なインターフェースを提供する。」
+
+**Broader Impactsの一般的な間違い**:
+- 曖昧な記述: 「大学院生をトレーニングする」（誰もがこれを行う）
+- 計画なし: 具体的な活動なしの野心的な目標
+- メトリクスなし: 成功を評価する方法がない
+- 付け足し: 研究計画と統合されていない
+- 非現実的: リソースや専門知識なしの壮大な主張
+- 具体的で測定可能: 明確な活動、タイムライン、評価
+
+## 提案セクションとページ制限
+
+### プロジェクトサマリー（Project Summary）（1ページ）
+
+**必須構造**（NSFは3つのラベル付きセクションを義務付け）:
+
+**概要**（Overview）（最初の段落）:
+- アクセス可能な言語での研究課題とアプローチ
+- 公開に適した内容
+
+**Intellectual Merit（知的メリット）**:
+- 知識を前進させる可能性
+- 革新的な側面
+- チームの資格
+
+**Broader Impacts（広範な影響）**:
+- 社会的利益と具体的活動
+- 成功の測定方法
+
+**フォーマット**: 上記のセクションヘッダーを正確に使用する必要がある
+
+### プロジェクト記述（Project Description）（ほとんどのプログラムで15ページ）
+
+**必須構造はないが、一般的な構成**:
+
+1. **導入 / 背景**（1-2ページ）
+   - 研究課題と重要性
+   - 知識の現状
+   - 知識のギャップ
+   - 予備結果（該当する場合）
+
+2. **研究目的**（0.5-1ページ）
+   - 具体的、測定可能な目標
+   - 仮説または研究質問
+
+3. **研究計画 / 方法論**（8-10ページ）
+   - 各目的の詳細なアプローチ
+   - 方法と技術
+   - タイムラインとマイルストーン
+   - 期待される成果
+   - 潜在的な課題と代替案
+
+4. **Broader Impacts**（1-2ページ）
+   - 全体に統合または別セクション
+   - 具体的な活動とタイムライン
+   - 評価計画
+
+5. **過去のNSF支援の成果**（Results from Prior NSF Support）（該当する場合、最大5ページ）
+   - PIまたはco-PIが過去5年間にNSF助成を受けている場合に必須
+   - 過去の作業の知的メリット
+   - 過去の作業の広範な影響
+   - 出版物と成果物
+
+**フォーマット要件**:
+- フォント: 11ポイント以上（Times Roman、Arial、Palatino、Computer Modern）
+- 余白: すべての辺に1インチ
+- 行間: 1インチあたり6行以下
+- ページサイズ: 8.5 x 11インチ
+- 図内の小さいフォントなし（読み可能でなければならない）
+
+### 引用文献（References Cited）（ページ制限なし）
+
+- 各引用には以下を含める:
+  - 全著者の名前
+  - 記事とジャーナルタイトル
+  - 巻、ページ番号、年
+  - 利用可能な場合はDOI
+- 一貫した形式を使用（特定のスタイルに一致する必要はない）
+- 査読者が引用を見つけるのに十分な情報
+
+### 経歴概要（Biographical Sketch）（1人あたり最大3ページ）
+
+**必須NSF形式**（2023年PAPPG時点）:
+
+**セクションA: 専門的準備（Professional Preparation）**
+- 学部、大学院、ポストドクター機関
+- 専攻と学位、年
+
+**セクションB: 任用と地位（Appointments and Positions）**
+- 過去5つの地位、現在を最初に
 
-**Section C: Products** (up to 5 most relevant to proposal)
-- Publications, datasets, software, patents, etc.
-- Can include products in preparation
+**セクションC: 成果物（Products）**（提案に最も関連するもの最大5つ）
+- 出版物、データセット、ソフトウェア、特許など
+- 準備中の成果物を含めることができる
 
-**Section D: Synergistic Activities** (up to 5)
-- Service, teaching, mentoring, outreach
-- Demonstrates broader engagement beyond research
+**セクションD: 相乗的活動（Synergistic Activities）**（最大5つ）
+- サービス、教育、メンタリング、アウトリーチ
+- 研究以外のより広範な関与を示す
 
-### Current and Pending Support (no page limit)
+### 現在および保留中の支援（Current and Pending Support）（ページ制限なし）
 
-- All current and pending support for PI and co-PIs
-- Include project/proposal title, source, award amount, dates
-- Describe overlap with proposed project (if any)
-- Must be updated until award/decline
-
-### Facilities, Equipment, and Other Resources (no page limit)
-
-- Describe available facilities (labs, computational, libraries)
-- Major equipment accessible to project
-- Other resources (personnel, core facilities, partnerships)
-- Demonstrate institutional commitment
+- PIとco-PIのすべての現在および保留中の支援
+- プロジェクト/提案タイトル、ソース、助成金額、日付を含める
+- 提案プロジェクトとの重複を記述（ある場合）
+- 受賞/辞退まで更新が必要
+
+### 施設、機器、その他のリソース（Facilities, Equipment, and Other Resources）（ページ制限なし）
+
+- 利用可能な施設（ラボ、計算機、図書館）を記述
+- プロジェクトにアクセス可能な主要機器
+- その他のリソース（人員、コア施設、パートナーシップ）
+- 機関のコミットメントを示す
 
-### Data Management and Sharing Plan (2 pages max)
+### データ管理・共有計画（Data Management and Sharing Plan）（最大2ページ）
 
-**Required for all proposals** (as of 2023 PAPPG)
+**すべての提案に必須**（2023年PAPPG時点）
 
-**Must address**:
-1. **Types of data**: What data will be generated?
-2. **Standards**: Formats, metadata, standards for data and metadata
-3. **Access**: How and when will data be shared?
-4. **Reuse**: Who can access and under what conditions?
-5. **Repository**: Where will data be archived long-term?
-6. **Protection**: Privacy, confidentiality, intellectual property considerations
+**対応すべき事項**:
+1. **データの種類**: どのようなデータが生成されるか？
+2. **標準**: データとメタデータの形式、メタデータ、標準
+3. **アクセス**: データはどのように、いつ共有されるか？
+4. **再利用**: 誰がどのような条件でアクセスできるか？
+5. **リポジトリ**: データは長期的にどこにアーカイブされるか？
+6. **保護**: プライバシー、機密性、知的財産の考慮事項
 
-**NSF Expectations**:
-- Data should be made publicly available in a timely manner
-- Use discipline-specific repositories when available
-- Justify any restrictions on data sharing
-- Plan for data preservation beyond project period
+**NSFの期待**:
+- データは適切な時期に公開されるべき
+- 分野固有のリポジトリが利用可能な場合は使用
+- データ共有の制限がある場合は正当化
+- プロジェクト期間後のデータ保存の計画
 
-### Postdoctoral Researcher Mentoring Plan (1 page max)
+### ポストドクター研究員メンタリング計画（Postdoctoral Researcher Mentoring Plan）（最大1ページ）
 
-**Required if funding postdocs**
+**ポストドクターに資金提供する場合に必須**
 
-**Must address**:
-- Career development objectives
-- Mentoring activities (research, teaching, professional skills)
-- Metrics for success
-- Mentoring plan should be specific, not generic
+**対応すべき事項**:
+- キャリア開発目標
+- メンタリング活動（研究、教育、専門的スキル）
+- 成功のメトリクス
+- メンタリング計画は具体的で、一般的であってはならない
 
-## Special NSF Proposal Types
+## 特別なNSF提案タイプ
 
-### CAREER (Faculty Early Career Development Program)
+### CAREER（教員早期キャリア開発プログラム）
 
-**Eligibility**: Tenure-track (or equivalent) faculty who have not yet received tenure, within 6 years of PhD (or equivalent)
+**適格性**: テニュアトラック（または同等）の教員で、まだテニュアを受けておらず、PhD（または同等）取得から6年以内
 
-**Requirements**:
-- Integration of research and education
-- Demonstrate potential for leadership
-- Department chair letter required
-- 5-year project plan
-- Typical budget: $400,000-$500,000
+**要件**:
+- 研究と教育の統合
+- リーダーシップの可能性を示す
+- 学科長のレターが必要
+- 5年間のプロジェクト計画
+- 一般的な予算: 400,000〜500,000ドル
 
-**Key Elements**:
-- Ambitious research plan
-- Innovative educational component
-- Strong integration (not just parallel tracks)
-- Path to independence and leadership
-- Institutional commitment
+**重要な要素**:
+- 野心的な研究計画
+- 革新的な教育コンポーネント
+- 強い統合（単なる並行トラックではない）
+- 独立とリーダーシップへの道
+- 機関のコミットメント
 
-**Review Criteria**: Same two criteria (Intellectual Merit, Broader Impacts) but with emphasis on:
-- Integration of research and education
-- Innovative educational component
-- Potential for leadership in field
+**審査基準**: 同じ2つの基準（Intellectual Merit、Broader Impacts）だが、以下を強調:
+- 研究と教育の統合
+- 革新的な教育コンポーネント
+- 分野でのリーダーシップの可能性
 
-**Common CAREER Mistakes**:
-- Education component feels tacked on
-- Overly ambitious research plan
-- Weak integration between research and education
-- Generic mentoring or teaching plans
-- Insufficient preliminary data
+**CAREERの一般的な間違い**:
+- 教育コンポーネントが付け足されたように感じる
+- 過度に野心的な研究計画
+- 研究と教育の統合が弱い
+- 一般的なメンタリングまたは教育計画
+- 不十分な予備データ
 
-### Collaborative Research
+### 共同研究（Collaborative Research）
 
-**Structure**: Multiple proposals submitted separately from different institutions, reviewed as a single project
+**構造**: 異なる機関から別々に提出される複数の提案が、単一のプロジェクトとして審査
 
-**Requirements**:
-- Lead institution designated
-- All proposals must have identical titles (except institution name)
-- Project descriptions should be substantially similar
-- Clear division of labor
-- Coordination plan
+**要件**:
+- リード機関の指定
+- すべての提案は同一のタイトルを持つ必要がある（機関名を除く）
+- プロジェクト記述は実質的に類似している必要がある
+- 明確な役割分担
+- 調整計画
 
-**Budget**: Each institution submits own budget for their portion
+**予算**: 各機関が自分の部分の予算を別々に提出
 
-**Review**: Reviewed together as single integrated project
+**審査**: 単一の統合プロジェクトとして一緒に審査
 
-**Benefits**: Brings together complementary expertise and resources
+**利点**: 相補的な専門知識とリソースを集結
 
-### RAPID (Rapid Response Research)
+### RAPID（Rapid Response Research、迅速対応研究）
 
-**Purpose**: Support time-sensitive research opportunities
+**目的**: 時間感応性の高い研究機会を支援
 
-**Examples**: 
-- Natural disasters
-- Disease outbreaks
-- Unique astronomical events
-- Rare opportunities for data collection
+**例**:
+- 自然災害
+- 疫病発生
+- 独特の天文イベント
+- データ収集の稀な機会
 
-**Requirements**:
-- Urgent need justification
-- Up to $200,000
-- Up to 1 year duration
-- Simplified review process (program officer discretion)
-- No preliminary data required
+**要件**:
+- 緊急の必要性の正当化
+- 最大200,000ドル
+- 最大1年間
+- 簡素化された審査プロセス（プログラムオフィサーの裁量）
+- 予備データ不要
 
-**Submission**: Contact program officer first, then submit proposal
+**提出**: 最初にプログラムオフィサーに連絡し、その後提案を提出
 
-### EAGER (Early-concept Grants for Exploratory Research)
+### EAGER（Early-concept Grants for Exploratory Research、早期概念探索研究助成金）
 
-**Purpose**: Support exploratory work on untested, but potentially transformative, ideas
+**目的**: テストされていないが、潜在的に変革的なアイデアの探索的作業を支援
 
-**Requirements**:
-- High-risk, high-reward research
-- Radically different approaches
-- Up to $300,000
-- Up to 2 years
-- Program officer approval required before submission
-- No panel review (program officer decision)
+**要件**:
+- 高リスク、高リターン研究
+- 急進的に異なるアプローチ
+- 最大300,000ドル
+- 最大2年間
+- 提出前にプログラムオフィサーの承認が必要
+- パネル審査なし（プログラムオフィサーの決定）
 
-**Key**: Must be truly exploratory and high-risk, not incremental
+**キー**: 真に探索的で高リスクでなければならない、漸進的ではない
 
-## Budget Considerations
+## 予算の考慮事項
 
-### Allowable Costs
+### 認められる費用
 
-**Personnel**:
-- Senior personnel: Up to 2 months (summer salary) for 9-month faculty
-- Postdoctoral scholars: Full salary and benefits
-- Graduate students: Stipend (tuition typically covered under fringe/indirect)
-- Undergraduate students: Hourly or stipend
-- Technical and administrative staff
+**人員**:
+- シニア人員: 9ヶ月制教員の場合、最大2ヶ月（夏期給与）
+- ポストドクター研究員: 全給与と福利厚生
+- 大学院生: 奨学金（授業料は通常fringe/indirectの下でカバー）
+- 学部生: 時間給または奨学金
+- 技術および事務職員
 
-**Fringe Benefits**: Follow institutional rates
+**福利厚生（Fringe Benefits）**: 機関のレートに従う
 
-**Equipment**: Items ≥$5,000 per unit
-- Must be justified
-- Shared equipment requires letters from collaborators
+**機器**: ユニットあたり5,000ドル以上
+- 正当化が必要
+- 共有機器は共同研究者からのレターが必要
 
-**Travel**:
-- Domestic and international scientific meetings
-- Collaboration and fieldwork
-- Justification required
+**旅行**:
+- 国内および国際科学会議
+- 共同研究とフィールドワーク
+- 正当化が必要
 
-**Participant Support Costs**: For workshops, training, conferences
-- Stipends, travel, subsistence for participants
-- Not subject to indirect costs
+**参加者支援費用（Participant Support Costs）**: ワークショップ、トレーニング、会議用
+- 参加者への奨学金、旅行、滞在費
+- 間接費の対象外
 
-**Other Direct Costs**:
-- Publication costs
-- Consulting services
-- Computer services
-- Materials and supplies
-- Subawards to collaborating institutions
+**その他の直接費用**:
+- 出版費用
+- コンサルティングサービス
+- コンピュータサービス
+- 資材と消耗品
+- 協力機関へのサブアワード
 
-**Indirect Costs (F&A)**: Institutional negotiated rate applies to modified total direct costs (MTDC)
-- MTDC excludes: equipment, participant support, subawards >$25K
+**間接費（F&A）**: 修正総直接費用（MTDC）に機関交渉レートを適用
+- MTDCは除外: 機器、参加者支援、25,000ドル超のサブアワード
 
-### Cost Sharing
+### コストシェアリング（Cost Sharing）
 
-**NSF Policy**: Cost sharing is not required and should not be voluntary
+**NSFポリシー**: コストシェアリングは必須ではなく、自発的であるべきではない
 
-**Exceptions**: Some programs require cost sharing (check program solicitation)
+**例外**: 一部のプログラムはコストシェアリングを必要とする（プログラム公募要項を確認）
 
-**When Included**: Must be documented, verifiable, auditable, and necessary for project
+**含める場合**: ドキュメント化、検証可能、監査可能、プロジェクトに必要でなければならない
 
-## Submission and Review Process
+## 提出と審査プロセス
 
-### Submission Deadlines
+### 提出期限
 
-**Varies by program**:
-- Some programs have specific deadlines (e.g., twice per year)
-- Some programs accept proposals anytime (check with program officer)
-- CAREER: July deadline (directorate-specific)
+**プログラムによって異なる**:
+- 一部のプログラムには特定の期限がある（例: 年2回）
+- 一部のプログラムはいつでも提案を受け入れる（プログラムオフィサーに確認）
+- CAREER: 7月の期限（ディレクター室固有）
 
-**Submission Windows**: NSF deadlines are typically 5 PM submitter's local time
+**提出ウィンドウ**: NSFの期限は通常、提出者の現地時間の午後5時
 
-### Submission Portal
+### 提出ポータル
 
-**Research.gov** or **Grants.gov**: NSF accepts both
+**Research.gov** または **Grants.gov**: NSFは両方を受け入れる
 
-**Process**:
-1. Institutional authorization required
-2. Upload all required documents
-3. Verify PDF compilation
-4. Submit (aim for 48 hours early)
-5. Receive confirmation and proposal number
+**プロセス**:
+1. 機関の承認が必要
+2. すべての必要書類をアップロード
+3. PDFコンパイルを確認
+4. 提出（48時間前を目指す）
+5. 確認と提案番号の受領
 
-### Review Process
+### 審査プロセス
 
-**Timeline**: Typically 6 months from submission to decision
+**タイムライン**: 通常、提出から決定まで6ヶ月
 
-**Steps**:
-1. **Administrative Review**: NSF checks compliance (1-2 weeks)
-2. **Program Officer Assignment**: Assigned to appropriate program (1-2 weeks)
-3. **Reviewer Selection**: Panel and/or ad hoc reviewers identified (2-4 weeks)
-4. **Review**: Reviewers assess proposals (4-8 weeks)
-5. **Panel Discussion**: Panel meets (virtual or in-person) to discuss proposals (1 week)
-6. **Program Officer Recommendation**: Based on reviews and panel discussion (2-4 weeks)
-7. **Division/Directorate Approval**: Final decision (2-4 weeks)
+**ステップ**:
+1. **行政審査**: NSFがコンプライアンスをチェック（1-2週間）
+2. **プログラムオフィサー割り当て**: 適切なプログラムに割り当て（1-2週間）
+3. **査読者選定**: パネルおよび/またはアドホック査読者を特定（2-4週間）
+4. **審査**: 査読者が提案を評価（4-8週間）
+5. **パネル議論**: パネルが（バーチャルまたは対面で）会議を開き、提案を議論（1週間）
+6. **プログラムオフィサー推薦**: 審査とパネル議論に基づく（2-4週間）
+7. **部門/ディレクター室承認**: 最終決定（2-4週間）
 
-**Review Formats**:
-- **Panel Review**: 10-20 proposals discussed at panel meeting
-- **Ad hoc Review**: External reviewers submit written reviews
-- **Hybrid**: Combination of panel and ad hoc reviews
+**審査形式**:
+- **パネル審査**: 10-20の提案がパネル会議で議論
+- **アドホック審査**: 外部査読者が書面審査を提出
+- **ハイブリッド**: パネルとアドホック審査の組み合わせ
 
-**Number of Reviewers**: Typically 3-5 reviewers per proposal
+**査読者数**: 通常、提案あたり3-5人の査読者
 
-### Review Outcomes
+### 審査結果
 
-**Possible Decisions**:
-- **Funded**: Congratulations! Award forthcoming
-- **Declined**: Not recommended for funding
-- **Returned Without Review**: Non-compliant with requirements
+**可能な決定**:
+- **資金提供（Funded）**: おめでとう！助成金がまもなく
+- **辞退（Declined）**: 資金提供が推奨されない
+- **審査なしで返却（Returned Without Review）**: 要件に準拠していない
 
-**Feedback**: Panel summary and individual reviews provided regardless of outcome
+**フィードバック**: 結果にかかわらず、パネルサマリーと個別審査が提供される
 
-**Success Rates**: Vary by program, typically 15-30%
+**成功率**: プログラムによって異なる、通常15-30%
 
-## Communicating with Program Officers
+## プログラムオフィサーとのコミュニケーション
 
-### When to Contact
+### 連絡するタイミング
 
-**Appropriate**:
-- Before submission: Discuss fit with program, feasibility of idea
-- After reviews: Discuss feedback, resubmission strategy
-- During project: Report significant changes, request no-cost extensions
+**適切**:
+- 提出前: プログラムとの適合性、アイデアの実現可能性を議論
+- 審査後: フィードバック、再提出戦略を議論
+- プロジェクト中: 重要な変更を報告、無償延長を要求
 
-**How to Contact**:
-- Email program officer (contact info in program solicitation)
-- Request 15-30 minute phone call
-- Prepare concise summary of research idea (1 page)
+### 連絡方法**:
+- プログラムオフィサーにメール（プログラム公募要項の連絡先情報）
+- 15-30分の電話会議を要求
+- 研究アイデアの簡潔なサマリーを準備（1ページ）
 
-### What to Ask
+### 何を聞くか
 
-**Good Questions**:
-- Is my research appropriate for this program?
-- Are there upcoming solicitations or special initiatives?
-- What are key areas of emphasis for the program?
-- Is the scope and budget appropriate?
-- After reviews: What are key issues to address in resubmission?
+**良い質問**:
+- 私の研究はこのプログラムに適していますか？
+- 今後の公募や特別イニシアチブはありますか？
+- プログラムの重点分野は何ですか？
+- スコープと予算は適切ですか？
+- 審査後: 再提出で対処すべき重要な問題は何ですか？
 
-**Avoid**:
-- Asking for guarantee of funding
-- Arguing with review outcome
-- Inappropriate requests for information about reviewers
+**避ける**:
+- 資金提供の保証を求める
+- 審査結果に異議を唱える
+- 査読者に関する情報の不適切な要求
 
-## Resubmission Strategy
+## 再提出戦略
 
-### NSF Resubmission Policies
+### NSF再提出ポリシー
 
-**No Formal Resubmission Category**: NSF treats resubmissions as new proposals
+**正式な再提出カテゴリーなし**: NSFは再提出を新規提案として扱う
 
-**Can Resubmit**:
-- To same program (after addressing reviews)
-- To different program (if better fit)
-- After substantial revision
+**再提出可能**:
+- 同じプログラムへ（審査に対応した後）
+- 異なるプログラムへ（より適合する場合）
+- 実質的な改訂後
 
-**No Introduction Section**: Unlike NIH, NSF doesn't have formal resubmission response
+**導入セクションなし**: NIHとは異なり、NSFには正式な再提出対応セクションがない
 
-**Strategy**:
-- Carefully review panel summary and individual reviews
-- Address all major criticisms
-- Strengthen weak areas (prelim data, broader impacts, methods)
-- Consider discussing with program officer
-- May want to wait for next funding cycle to gather more data
+**戦略**:
+- パネルサマリーと個別審査を注意深く確認
+- すべての主要な批判に対処
+- 弱い領域を強化（予備データ、広範な影響、方法）
+- プログラムオフィサーとの議論を検討
+- より多くのデータを収集するために次の資金提供サイクルまで待つことを検討
 
-**Tracking**: Proposals reviewed previously may be assigned same reviewers (sometimes)
+**追跡**: 以前に審査された提案は同じ査読者に割り当てられる場合がある（時々）
 
-## Recent NSF Policy Updates
+## 最近のNSFポリシー更新
 
-### 2023-2024 Changes
+### 2023-2024年の変更
 
-1. **Data Management and Sharing Plan**: Now required for all proposals (2 pages max)
-2. **Biographical Sketch Format**: Updated to include "Products" instead of "Publications"
-3. **Open Science**: Increased emphasis on open-access publications and data
-4. **Plan for Dissemination**: Some programs require explicit dissemination plans
-5. **Mentoring Plans**: Enhanced requirements for postdoc mentoring plans
+1. **データ管理・共有計画**: すべての提案に必須（最大2ページ）
+2. **経歴概要形式**: 「出版物」の代わりに「成果物」を含むように更新
+3. **オープンサイエンス**: オープンアクセス出版物とデータへの強調の増加
+4. **普及計画**: 一部のプログラムは明示的な普及計画を必要とする
+5. **メンタリング計画**: ポストドクターメンタリング計画の要件の強化
 
-### NSF Priorities (2024-2025)
+### NSF優先事項（2024-2025）
 
-- **Climate and Clean Energy**: Climate change mitigation and adaptation
-- **Quantum Information Science**: Quantum computing, sensing, networking
-- **AI and Machine Learning**: Trustworthy AI, AI for science
-- **Biotechnology**: Synthetic biology, bioengineering
-- **Microelectronics**: Semiconductor research and workforce
-- **STEM Education**: Broadening participation, innovative pedagogy
-- **Convergence Accelerators**: Use-inspired research with pathway to impact
+- **気候とクリーンエネルギー**: 気候変動の緩和と適応
+- **量子情報科学**: 量子コンピューティング、センシング、ネットワーキング
+- **AIと機械学習**: 信頼できるAI、科学のためのAI
+- **バイオテクノロジー**: 合成生物学、バイオエンジニアリング
+- **マイクロエレクトロニクス**: 半導体研究と人材
+- **STEM教育**: 参加の拡大、革新的な教育法
+- **コンボリジェンスアクセラレーター**: 影響への道を持つ使用主導研究
 
-## NSF Big Ideas and Special Initiatives
+## NSFビッグアイデアと特別イニシアチブ
 
-### NSF "Big Ideas"
+### NSF「ビッグアイデア」
 
-1. **Harnessing the Data Revolution (HDR)**
-2. **The Future of Work at the Human-Technology Frontier**
-3. **Navigating the New Arctic**
-4. **Windows on the Universe**
-5. **The Quantum Leap**
-6. **Understanding the Rules of Life**
-7. **Mid-scale Research Infrastructure**
+1. **データ革命の活用（Harnessing the Data Revolution、HDR）**
+2. **人間と技術のフロンティアにおける仕事の未来（The Future of Work at the Human-Technology Frontier）**
+3. **新しい北極のナビゲーション（Navigating the New Arctic）**
+4. **宇宙への窓（Windows on the Universe）**
+5. **量子飛躍（The Quantum Leap）**
+6. **生命のルールの理解（Understanding the Rules of Life）**
+7. **中規模研究インフラ（Mid-scale Research Infrastructure）**
 
-### Major NSF Initiatives
+### 主要なNSFイニシアチブ
 
-- **National AI Research Institutes**: $20M over 5 years per institute
-- **Science and Technology Centers (STCs)**: Large-scale collaborative centers
-- **Engineering Research Centers (ERCs)**: Engineering innovation ecosystems
-- **Materials Research Science and Engineering Centers (MRSECs)**: Materials research
-- **NSF Graduate Research Fellowship Program (GRFP)**: Student fellowships
+- **国立AI研究研究所**: 各研究所に5年間で2,000万ドル
+- **科学技術センター（Science and Technology Centers、STCs）**: 大規模な共同センター
+- **工学研究センター（Engineering Research Centers、ERCs）**: 工学イノベーションエコシステム
+- **材料研究科学工学センター（Materials Research Science and Engineering Centers、MRSECs）**: 材料研究
+- **NSF大学院研究フェローシッププログラム（NSF Graduate Research Fellowship Program、GRFP）**: 学生フェローシップ
 
-## Tips for Competitive NSF Proposals
+## 競争力のあるNSF提案のためのヒント
 
-### Do's
+### やるべきこと
 
-✅ **Start with specific aims/objectives** - Crystal clear research goals
-✅ **Make broader impacts substantive** - Specific activities, not platitudes
-✅ **Use figures effectively** - Conceptual diagrams, preliminary data, timelines
-✅ **Be realistic about scope** - Achievable within 3-5 years
-✅ **Address both review criteria explicitly** - Don't make reviewers search
-✅ **Get external feedback** - Mock review before submission
-✅ **Follow formatting requirements exactly** - Auto-rejection for non-compliance
-✅ **Explain jargon and acronyms** - Panel members may not be in your subfield
-✅ **Integrate research and education** - Show natural connections
-✅ **Demonstrate team qualifications** - Track record in proposed area
+- **具体的な目的/目標から始める** - 明確な研究目標
+- **広範な影響を実質的にする** - 具体的な活動、抽象的な概念ではなく
+- **図を効果的に使用する** - 概念図、予備データ、タイムライン
+- **スコープについて現実的になる** - 3-5年で達成可能
+- **両方の審査基準に明示的に対処する** - 査読者に探させない
+- **外部フィードバックを得る** - 提出前にモック審査
+- **フォーマット要件に正確に従う** - 非準拠は自動拒否
+- **専門用語と頭字語を説明する** - パネルメンバーはあなたのサブフィールドにいないかもしれない
+- **研究と教育を統合する** - 自然なつながりを示す
+- **チームの資格を示す** - 提案分野での実績
 
-### Don'ts
+### やってはいけないこと
 
-❌ **Don't exceed page limits** - Automatic return without review
-❌ **Don't use smaller fonts in figures** - Must be legible
-❌ **Don't make broader impacts generic** - "Train students" is not enough
-❌ **Don't ignore prior NSF support** - Must report if you've had NSF funding
-❌ **Don't be overly ambitious** - Reviewers will see through unrealistic plans
-❌ **Don't skip data management plan** - Required for all proposals
-❌ **Don't forget biosketches for all personnel** - Common mistake
-❌ **Don't submit at deadline** - Technical issues happen
-❌ **Don't ignore program solicitation** - Requirements vary by program
-❌ **Don't assume reviewers know your work** - Provide context
+- **ページ制限を超えない** - 審査なしで自動返却
+- **図内で小さいフォントを使用しない** - 読み可能でなければならない
+- **広範な影響を一般的にしない** - 「学生をトレーニングする」だけでは不十分
+- **過去のNSF支援を無視しない** - NSF資金提供がある場合は報告が必要
+- **過度に野心的にならない** - 査読者は非現実的な計画を見抜く
+- **データ管理計画をスキップしない** - すべての提案に必須
+- **すべての人員のバイオスケッチを忘れない** - 一般的な間違い
+- **期限に提出しない** - 技術的な問題が発生する
+- **プログラム公募要項を無視しない** - 要件はプログラムによって異なる
+- **査読者があなたの仕事を知っていると仮定しない** - 文脈を提供
 
-## Resources and Links
+## リソースとリンク
 
-- **NSF Homepage**: https://www.nsf.gov
-- **Award Search**: https://www.nsf.gov/awardsearch/
-- **Proposal & Award Policies & Procedures Guide (PAPPG)**: https://www.nsf.gov/publications/pub_summ.jsp?ods_key=pappg
+- **NSFホームページ**: https://www.nsf.gov
+- **助成金検索（Award Search）**: https://www.nsf.gov/awardsearch/
+- **提案・助成金ポリシー・手順ガイド（Proposal & Award Policies & Procedures Guide、PAPPG）**: https://www.nsf.gov/publications/pub_summ.jsp?ods_key=pappg
 - **FastLane**: https://www.fastlane.nsf.gov/
 - **Research.gov**: https://www.research.gov/
-- **Broader Impacts Resources**: https://www.nsf.gov/od/oia/special/broaderimpacts/
-- **NSF Funding Statistics**: https://www.nsf.gov/statistics/
+- **Broader Impactsリソース**: https://www.nsf.gov/od/oia/special/broaderimpacts/
+- **NSF資金統計**: https://www.nsf.gov/statistics/
 
 ---
 
-**Key Takeaway**: NSF values both scientific excellence (Intellectual Merit) and societal benefit (Broader Impacts) equally. Successful proposals demonstrate innovative, feasible research that advances knowledge while contributing to education, diversity, infrastructure, or societal well-being in specific, measurable ways.
+**重要なポイント**: NSFは科学的卓越性（Intellectual Merit）と社会的利益（Broader Impacts）を同等に重視する。成功した提案は、知識を前進させながら、具体的で測定可能な方法で教育、多様性、インフラ、または社会的福祉に貢献する、革新的で実現可能な研究を示す。
 

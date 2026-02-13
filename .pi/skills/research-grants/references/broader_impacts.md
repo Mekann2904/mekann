@@ -1,392 +1,415 @@
-# Broader Impacts: Strategies and Best Practices
+# Broader Impacts（ブロード・インパクト）：戦略とベストプラクティス
 
-## Overview
+## 概要
 
-**Broader Impacts** are one of two review criteria for NSF proposals, carrying equal weight with Intellectual Merit. Despite this, broader impacts are often treated as an afterthought—a critical mistake that costs otherwise strong proposals their funding.
+**Broader Impacts（ブロード・インパクト）**はNSF提案の2つの審査基準の1つであり、Intellectual Merit（インテレクチュアル・メリット）と同等の重みを持ちます。それにもかかわらず、ブロード・インパクトはしばしば後回しに扱われます—これは、本来であれば強力な提案の資金獲得を妨げる重大な間違いです。
 
-**NSF Definition**: "The potential to benefit society and contribute to the achievement of specific, desired societal outcomes"
+**NSF定義**：「社会に利益をもたらし、特定の望ましい社会的成果の達成に貢献するポテンシャル」
 
-**Key Principle**: Broader impacts must be **specific, measurable, and integrated** with your research plan—not vague aspirations tacked onto the end.
+**重要原則**：ブロード・インパクトは、最後に付け加えられた曖昧な願望ではなく、研究計画と**統合され、具体的で、測定可能**である必要があります。
 
-## The Five Pillars of Broader Impacts
+## ブロード・インパクトの5つの柱
 
-NSF evaluates broader impacts across five main areas. **You don't need to address all five**, but you should address at least one substantively with concrete activities, timelines, and assessment plans.
+NSFはブロード・インパクトを5つの主要領域で評価します。**5つすべてに対処する必要はありません**が、少なくとも1つに具体的な活動、タイムライン、評価計画を持って実質的に対処すべきです。
 
-### 1. Advance Discovery While Promoting Teaching, Training, and Learning
+### 1. 発見を推進し、教育、トレーニング、学習を促進する
 
-**What This Means**: Integrate research and education to inspire the next generation of scientists and enhance scientific literacy.
+**意味**：次世代の科学者を育成し、科学的リテラシーを高めるために研究と教育を統合する。
 
-**Effective Strategies**:
+**効果的な戦略**：
 
-**Curriculum Development**:
-- Create new courses incorporating research findings
-- Develop course modules or laboratory exercises
-- Design online learning materials (MOOCs, videos, interactive tools)
-- Contribute to textbooks or educational resources
+**カリキュラム開発**：
+- 研究成果を取り入れた新しいコースを作成
+- コースモジュールまたは実習演習を開発
+- オンライン学習教材をデザイン（MOOC、ビデオ、インタラクティブツール）
+- 教科書や教育リソースに貢献
 
-*Example*: "We will develop a 10-week computational biology module for undergraduate education, incorporating real datasets from this project. The module will include Jupyter notebooks with guided analysis, video tutorials, and assessment tools. Materials will be piloted at our institution (reaching 50 students annually) and made freely available through CourseSource for national adoption."
+*例*：「本プロジェクトの実データセットを取り入れた計算生物学モジュール（10週間）を学部教育用に開発します。モジュールには、ガイド付き分析のJupyterノートブック、ビデオチュートリアル、評価ツールが含まれます。教材は本機関でパイロット実施（年間50人の学生）し、CourseSourceを通じて全国展開のために無償公開します。」
 
-**Student Training**:
-- Undergraduate research experiences
-- Graduate student mentoring
-- Postdoctoral training
-- High school intern programs
-- Research experiences for teachers (RET)
+**学生トレーニング**：
+- 学部研究体験
+- 大学院生メンタリング
+- ポストドクトレーニング
+- 高校生インターンプログラム
+- 教員向け研究体験（RET）
 
-*Example*: "The project will support 3 PhD students and 6 undergraduate researchers over 5 years. Undergraduates will participate through our existing summer research program (10 weeks, $5,000 stipends) and will present findings at the annual undergraduate research symposium and regional conferences."
+*例*：「本プロジェクトは5年間で3人の博士課程学生と6人の学部研究員を支援します。学部生は既存の夏季研究プログラム（10週間、$5,000奨学金）を通じて参加し、年次学部研究シンポジウムおよび地域会議で研究成果を発表します。」
 
-**Pedagogical Innovation**:
-- Problem-based learning modules
-- Active learning strategies
-- Research-intensive courses
-- Service learning projects
-- Maker spaces or hands-on workshops
+**教授法の革新**：
+- 問題ベース学習モジュール
+- アクティブラーニング戦略
+- 研究集約型コース
+- サービスラーニングプロジェクト
+- メーカースペースまたは実践ワークショップ
 
-*Example*: "We will transform our introductory physics course (250 students/year) by implementing studio-style physics instruction based on results from this research. The new curriculum will include 3D visualization tools for electromagnetic fields, inquiry-based problem sets, and peer instruction protocols."
+*例*：「本研究の成果に基づき、入門物理学コース（年間250人）をスタジオ形式の物理学教育に変革します。新カリキュラムには、電磁場の3D可視化ツール、探究ベースの問題セット、ピアインストラクションプロトコルが含まれます。」
 
-**Professional Development**:
-- Workshops for faculty or teachers
-- Training programs for early-career researchers
-- Mentoring programs
-- Career development resources
+**専門能力開発**：
+- 教員または教師向けワークショップ
+- 若手研究者向けトレーニングプログラム
+- メンタリングプログラム
+- キャリア開発リソース
 
-*Example*: "We will host annual 3-day workshops for 25 community college faculty, providing training in genome editing techniques. Participants will receive hands-on experience with CRISPR methods developed in this project, complete teaching modules for their courses, and ongoing support through a virtual learning community."
+*例*：「コミュニティカレッジ教員25名を対象に3日間のワークショップを年次開催し、ゲノム編集技術のトレーニングを提供します。参加者は本プロジェクトで開発されたCRISPR手法の実践経験、コース用完全教育モジュール、仮想学習コミュニティを通じた継続サポートを受けます。」
 
-### 2. Broaden Participation of Underrepresented Groups
+### 2. 過小評価されているグループの参加を拡大する
 
-**What This Means**: Increase participation of groups underrepresented in STEM, including women, racial/ethnic minorities, persons with disabilities, and those from economically disadvantaged backgrounds.
+**意味**：女性、人種的/民族的マイノリティ、障害者、経済的に不利な立場の人々など、STEMで過小評価されているグループの参加を増やす。
 
-**Effective Strategies**:
+**効果的な戦略**：
 
-**Partnerships with Minority-Serving Institutions**:
-- Collaborate with HBCUs (Historically Black Colleges and Universities)
-- Partner with HSIs (Hispanic-Serving Institutions)
-- Work with TCUs (Tribal Colleges and Universities)
-- Engage with community colleges
+**マイノリティサービング機関とのパートナーシップ**：
+- HBCU（歴史的黒人大学）と協力
+- HSI（ヒスパニックサービング機関）と提携
+- TCU（部族大学）と連携
+- コミュニティカレッジと関与
 
-*Example*: "We will establish formal research partnerships with 4 regional HBCUs (North Carolina A&T, Howard University, Morehouse College, and Spelman College). Each summer, 2 students from partner institutions will participate in 10-week research internships, including stipends ($6,000), housing, travel to field sites, and participation in our weekly research seminar series. A faculty liaison from each partner institution will co-mentor students and facilitate year-round engagement."
+*例*：「地域の4つのHBCU（ノースカロライナA&T、ハワード大学、モアハウス大学、スペルマン大学）と正式な研究パートナーシップを確立します。各夏、パートナー機関から2人の学生が10週間の研究インターンシップに参加し、奨学金（$6,000）、宿泊費、フィールドサイトへの旅費、週次研究セミナーシリーズへの参加が含まれます。各パートナー機関の教員連絡員が学生を共同メンターし、通年の関与を促進します。」
 
-**Recruitment and Retention**:
-- Targeted recruitment at conferences (SACNAS, ABRCMS, NSBE, SWE)
-- Scholarship programs for underrepresented students
-- Bridge programs for community college transfers
-- Retention support (mentoring, peer networks, professional development)
+**募集と定着**：
+- 会議でのターゲット募集（SACNAS、ABRCMS、NSBE、SWE）
+- 過小評価されている学生のための奨学金プログラム
+- コミュニティカレッジ編入のためのブリッジプログラム
+- 定着サポート（メンタリング、ピアネットワーク、専門能力開発）
 
-*Example*: "We will recruit 50% of summer undergraduate researchers from groups underrepresented in computer science through partnerships with SACNAS and the National Society of Black Engineers. Participants will receive mentoring from graduate students with similar backgrounds, attend professional development workshops, and join our diversity-in-computing learning community that provides year-round support and networking."
+*例*：「SACNASおよび全米黒人エンジニア協会とのパートナーシップを通じて、夏季学部研究員の50%をコンピュータサイエンスで過小評価されているグループから募集します。参加者は類似の背景を持つ大学院生からのメンタリング、専門能力開発ワークショップ、通年サポートとネットワーキングを提供するダイバーシティ・イン・コンピューティング・ラーニングコミュニティに参加します。」
 
-**Culturally Relevant Engagement**:
-- Research addressing community-identified needs
-- Community-based participatory research
-- Engagement with indigenous communities
-- Bilingual materials and outreach
+**文化的に関連性のある関与**：
+- コミュニティが特定したニーズに対応する研究
+- コミュニティベース参加型研究
+- 先住民コミュニティとの関与
+- 二言語教材とアウトリーチ
 
-*Example*: "In partnership with the Navajo Nation, we will conduct participatory research on water quality in reservation communities. Community members will co-design the research questions, participate in data collection, and contribute indigenous knowledge about local hydrology. Results will be shared through community presentations in both English and Navajo, and will inform tribal water management policies."
+*例*：「ナバホ・ネイションとのパートナーシップで、保留地コミュニティの水質に関する参加型研究を実施します。コミュニティメンバーは研究質問を共同設計し、データ収集に参加し、地域の水文に関する先住民の知識を貢献します。結果は英語とナバホ語の両方でコミュニティプレゼンテーションを通じて共有し、部族の水管理政策に情報を提供します。」
 
-**Addressing Systemic Barriers**:
-- Flexible schedules for non-traditional students
-- Childcare support for participants
-- Accessible facilities and materials
-- Financial support (stipends, travel, equipment)
-- Mentoring networks and affinity groups
+**システミックバリアへの対処**：
+- 非伝統的学生のための柔軟なスケジュール
+- 参加者のための育児サポート
+- アクセシブルな施設と教材
+- 財政サポート（奨学金、旅費、機器）
+- メンタリングネットワークと親和グループ
 
-*Example*: "To support participation of students from low-income backgrounds, we will provide laptop computers, software licenses, and internet hotspots to all research participants. We will also offer flexible work schedules, remote participation options, and supplemental funding for students with childcare or eldercare responsibilities."
+*例*：「低所得層の学生の参加を支援するため、すべての研究参加者にラップトップコンピュータ、ソフトウェアライセンス、インターネットホットスポットを提供します。また、柔軟な勤務スケジュール、リモート参加オプション、育児または介護責任を持つ学生への追加資金も提供します。」
 
-### 3. Enhance Infrastructure for Research and Education
+### 3. 研究と教育のためのインフラを強化する
 
-**What This Means**: Build facilities, tools, databases, or networks that enable future research and education across the broader community.
+**意味**：より広いコミュニティ全体の将来の研究と教育を可能にする施設、ツール、データベース、またはネットワークを構築する。
 
-**Effective Strategies**:
+**効果的な戦略**：
 
-**Shared Research Infrastructure**:
-- Multi-user instrumentation
-- Core facilities
-- Field stations or observatories
-- Computational resources
-- Cyberinfrastructure
-
-*Example*: "We will establish a regional Cryo-Electron Microscopy facility serving 15 institutions in the Southwest. The facility will provide training and access to state-of-the-art imaging capabilities currently unavailable in the region. We will operate a user program with subsidized rates for academic users and offer annual training workshops for 50 researchers."
+**共有研究インフラ**：
+- マルチユーザー機器
+- コア施設
+- フィールドステーションまたは観測所
+- 計算リソース
+- サイバーインフラ
+
+*例*：「南西部の15機関にサービスを提供する地域クライオ電子顕微鏡施設を設立します。この施設は、地域で現在利用できない最先端のイメージング能力へのトレーニングとアクセスを提供します。学術ユーザー向けの助成料金でユーザープログラムを運営し、50人の研究者向けの年次トレーニングワークショップを提供します。」
 
-**Data and Software Resources**:
-- Open-access databases
-- Software tools and platforms
-- Analysis pipelines
-- Standardized protocols
-- Data repositories
-
-*Example*: "We will develop and maintain EcoDataHub, an open-source platform for ecological time-series analysis. The platform will include automated data cleaning, standardized analysis workflows, interactive visualization tools, and cloud computing integration. Software will be documented, version-controlled on GitHub, and supported through user forums and quarterly webinars. We expect 1,000+ users within 3 years based on community surveys."
+**データとソフトウェアリソース**：
+- オープンアクセスデータベース
+- ソフトウェアツールとプラットフォーム
+- 分析パイプライン
+- 標準化プロトコル
+- データリポジトリ
+
+*例*：「生態学的時系列分析のためのオープンソースプラットフォームEcoDataHubを開発・維持します。このプラットフォームには、自動データクリーニング、標準化分析ワークフロー、インタラクティブ可視化ツール、クラウドコンピューティング統合が含まれます。ソフトウェアはドキュメント化され、GitHubでバージョン管理され、ユーザーフォーラムと四半期ウェビナーを通じてサポートされます。コミュニティ調査に基づき、3年以内に1,000人以上のユーザーを期待しています。」
 
-**Biological or Physical Resources**:
-- Living stock centers (model organisms, cell lines)
-- Specimen collections
-- Reagent repositories
-- Seed banks or tissue collections
-
-*Example*: "We will establish a publicly accessible repository of 500 sequenced bacterial strains isolated from extreme environments. Each strain will include full genome sequence, phenotypic characterization, and growth protocols. Materials will be available through the ATCC with metadata deposited in NCBI BioProject."
+**生物学的または物理的リソース**：
+- 生株センター（モデル生物、細胞株）
+- 標本コレクション
+- 試薬リポジトリ
+- 種子バンクまたは組織コレクション
+
+*例*：「極限環境から単離された500株の配列決定された細菌株の公開アクセスリポジトリを設立します。各株には完全なゲノム配列、表現型特性評価、生育プロトコルが含まれます。材料はATCCを通じて利用可能で、メタデータはNCBI BioProjectに寄託されます。」
 
-**Standards and Protocols**:
-- Community standards
-- Best practices guides
-- Benchmarking datasets
-- Quality control metrics
-- Interoperability frameworks
-
-*Example*: "Working with 20 international laboratories, we will develop and validate standardized protocols for single-cell RNA sequencing analysis. The resulting guidelines will address batch effects, quality control, normalization methods, and statistical best practices. Protocols will be published in peer-reviewed literature and deposited in protocols.io."
-
-### 4. Broadly Disseminate to Enhance Scientific and Technological Understanding
+**標準とプロトコル**：
+- コミュニティ標準
+- ベストプラクティスガイド
+- ベンチマークデータセット
+- 品質管理メトリクス
+- 相互運用性フレームワーク
+
+*例*：「20の国際研究所と協力し、シングルセルRNAシーケンス分析の標準化プロトコルを開発・検証します。結果のガイドラインは、バッチ効果、品質管理、正規化方法、統計ベストプラクティスに対処します。プロトコルは査読付き文献で発表され、protocols.ioに寄託されます。」
+
+### 4. 科学的・技術的理解を高めるために広く普及させる
 
-**What This Means**: Communicate research to broader audiences including the public, K-12 students, policymakers, and stakeholders to enhance scientific literacy and informed decision-making.
+**意味**：科学的リテラシーと情報に基づく意思決定を高めるために、一般市民、K-12学生、政策立案者、ステークホルダーを含むより広い聴衆に研究を伝える。
 
-**Effective Strategies**:
+**効果的な戦略**：
 
-**K-12 Education Outreach**:
-- School visits and science demonstrations
-- After-school programs
-- Science fairs and competitions
-- Teacher professional development
-- Classroom resources and lesson plans
+**K-12教育アウトリーチ**：
+- 学校訪問と科学デモンストレーション
+- 放課後プログラム
+- 科学フェアとコンテスト
+- 教師専門能力開発
+- 教室リソースとレッスンプラン
 
-*Example*: "We will partner with 10 local middle schools (serving 75% students from low-income families) to deliver hands-on robotics workshops. Each school will receive robot kits, and we will train teachers to lead a 12-week after-school robotics club. Students will apply concepts from this research (sensor fusion, autonomous navigation) to design robots for real-world challenges. The program will reach 200 students annually."
+*例*：「地元の10の中学校（生徒の75%が低所得家庭）と提携し、実践ロボティクスワークショップを提供します。各校はロボットキットを受け取り、12週間の放課後ロボティクスクラブを主導する教師をトレーニングします。生徒は本研究（センサーフュージョン、自律ナビゲーション）の概念を応用して現実世界の課題に取り組むロボットを設計します。このプログラムは年間200人の生徒に到達します。」
 
-**Public Engagement**:
-- Museum partnerships and exhibits
-- Science cafés and public lectures
-- Science festivals
-- Citizen science projects
-- Community workshops
+**一般市民関与**：
+- 博物館パートナーシップと展示
+- サイエンスカフェと公開講座
+- 科学祭
+- シチズンサイエンスプロジェクト
+- コミュニティワークショップ
 
-*Example*: "We will collaborate with the Museum of Science and Industry to create a permanent interactive exhibit on climate modeling. The exhibit will allow visitors to manipulate climate variables and observe predicted outcomes using simplified versions of our models. We anticipate 500,000 annual visitors. We will also host quarterly 'Climate Science Saturday' public lectures reaching 2,000 community members annually."
+*例*：「科学産業博物館と協力し、気候モデリングの恒久的インタラクティブ展示を作成します。展示は訪問者が気候変数を操作し、モデルの簡略版を使用して予測結果を観察できるようにします。年間50万人の訪問者を期待しています。また、年間2,000人のコミュニティメンバーに到達する四半期『気候科学土曜日』公開講座も主催します。」
 
-**Media and Communications**:
-- Blog posts and articles
-- Podcasts or videos
-- Social media engagement
-- Press releases for major findings
-- Popular science writing
+**メディアとコミュニケーション**：
+- ブログ投稿と記事
+- ポッドキャストまたはビデオ
+- ソーシャルメディア関与
+- 主要発見のプレスリリース
+- 一般向け科学執筆
 
-*Example*: "We will produce a 6-episode podcast series exploring the intersection of artificial intelligence and creativity, featuring interviews with artists, musicians, and computer scientists. Episodes will be freely available on major platforms, with transcripts and educational materials on our website. Based on our existing podcast (15,000 downloads/episode), we expect to reach 100,000+ listeners."
+*例*：「人工知能と創造性の交差点を探る6エピソードのポッドキャストシリーズを制作し、アーティスト、ミュージシャン、コンピュータ科学者へのインタビューを特集します。エピソードは主要プラットフォームで無償利用可能で、ウェブサイトにトランスクリプトと教育資料があります。既存のポッドキャスト（エピソードあたり15,000ダウンロード）に基づき、10万人以上のリスナーに到達することを期待しています。」
 
-**Policy Engagement**:
-- Science policy fellowships
-- Congressional briefings
-- White papers for decision-makers
-- Stakeholder workshops
-- Regulatory science contributions
+**政策関与**：
+- 科学政策フェローシップ
+- 議会ブリーフィング
+- 意思決定者向け白書
+- ステークホルダーワークショップ
+- 規制科学への貢献
 
-*Example*: "We will organize annual workshops bringing together researchers, water utilities, environmental regulators, and community advocates to discuss implications of our research for drinking water policy. Findings will be synthesized into policy briefs distributed to state and federal agencies. PI will participate in the AAAS Science and Technology Policy Fellowship to engage directly with EPA rulemaking."
+*例*：「研究者、水道事業者、環境規制当局、コミュニティ擁護者を集める年次ワークショップを組織し、飲料水政策に対する本研究の意味合いについて議論します。発見は州および連邦機関に配布される政策簡報にまとめられます。PIはAAAS科学技術政策フェローシップに参加し、EPAの規則策定に直接関与します。」
 
-**Citizen Science**:
-- Community-based data collection
-- Participatory research design
-- Volunteer monitoring programs
-- Crowdsourcing platforms
+**シチズンサイエンス**：
+- コミュニティベースのデータ収集
+- 参加型研究デザイン
+- ボランティアモニタリングプログラム
+- クラウドソーシングプラットフォーム
 
-*Example*: "We will launch a citizen science program enlisting 500 volunteers across the Midwest to monitor pollinator populations using our smartphone app. Participants will receive training materials, identification guides, and regular feedback on their observations. Data will contribute directly to our research while building public understanding of pollinator ecology. Results will be visualized on an interactive public dashboard."
+*例*：「中西部全体で500人のボランティアを募集し、スマートフォンアプリを使用して送粉者個体数をモニターするシチズンサイエンスプログラムを開始します。参加者はトレーニング教材、同定ガイド、観察に関する定期的フィードバックを受け取ります。データは本研究に直接貢献しながら、送粉者生態学の一般理解を構築します。結果はインタラクティブな公開ダッシュボードで可視化されます。」
 
-### 5. Benefit Society
+### 5. 社会に利益をもたらす
 
-**What This Means**: Apply research to address societal needs, improve quality of life, strengthen national security, or enhance economic competitiveness.
+**意味**：研究を応用して社会的ニーズに対処し、生活の質を向上させ、国家安全保障を強化し、または経済競争力を高める。
 
-**Effective Strategies**:
+**効果的な戦略**：
 
-**Health and Well-Being**:
-- Clinical applications
-- Public health improvements
-- Healthcare accessibility
-- Mental health resources
-- Environmental health
+**健康と福祉**：
+- 臨床応用
+- 公衆衛生改善
+- 医療アクセシビリティ
+- メンタルヘルスリソース
+- 環境衛生
 
-*Example*: "Our diagnostic tool will reduce costs of malaria diagnosis from $10 to $0.50 per test, enabling deployment in resource-limited settings. We will partner with PATH and Médecins Sans Frontières to conduct field trials in 3 African countries and develop manufacturing partnerships for at-scale production. We project this technology could reach 10 million patients annually within 5 years."
+*例*：「診断ツールはマラリア診断コストを1検査$10から$0.50に削減し、資源が限られた環境での展開を可能にします。PATHと国境なき医師団と提携し、3カ国でフィールド試験を実施し、大規模生産のための製造パートナーシップを開発します。5年以内に年間1,000万人の患者に到達できると予測しています。」
 
-**Economic Development**:
-- Technology commercialization
-- Job creation
-- Industry partnerships
-- Workforce development
-- Startup formation
+**経済開発**：
+- 技術商業化
+- 雇用創出
+- 産業パートナーシップ
+- 労働力開発
+- スタートアップ形成
 
-*Example*: "We will establish an industry partnership program with 5 regional manufacturing companies to transfer our advanced materials synthesis methods. Through quarterly technical workshops and on-site consultations, we will help companies integrate these processes into production lines, potentially creating 50-100 high-skill jobs over 5 years. Two graduate students will complete internships at partner companies."
+*例*：「5つの地域製造会社と産業パートナーシッププログラムを確立し、先進材料合成手法を移転します。四半期技術ワークショップと現場コンサルティングを通じて、企業がこれらのプロセスを生産ラインに統合するのを支援し、5年間で50-100の高スキル雇用を創出する可能性があります。2人の大学院生がパートナー企業でインターンシップを完了します。」
 
-**Environmental Sustainability**:
-- Climate change mitigation or adaptation
-- Conservation and biodiversity
-- Pollution reduction
-- Sustainable agriculture
-- Renewable energy
+**環境持続可能性**：
+- 気候変動緩和または適応
+- 保全と生物多様性
+- 汚染削減
+- 持続可能な農業
+- 再生可能エネルギー
 
-*Example*: "Our soil carbon sequestration practices will be implemented on 1,000 acres of working farmland in partnership with 15 Iowa farmers. We will provide training, monitoring support, and carbon credit market access. If successful, practices could sequester 100,000 tons of CO2 equivalent annually if adopted across 10% of Midwest cropland, while increasing farmer income by $50-100/acre through carbon credits."
+*例*：「土壌炭素隔離手法を15人のアイオワ農家と提携して1,000エーカーの作業農地で実施します。トレーニング、モニタリングサポート、炭素クレジット市場アクセスを提供します。成功すれば、中西部農地の10%で採用されれば年間10万トンのCO2相当を隔離し、炭素クレジットを通じて農家収入をエーカーあたり$50-100増加させることができます。」
 
-**National and Homeland Security**:
-- Defense applications
-- Cybersecurity
-- Critical infrastructure protection
-- Emergency response
-- Intelligence capabilities
+**国家・国土安全保障**：
+- 防衛応用
+- サイバーセキュリティ
+- 重要インフラ保護
+- 緊急対応
+- 情報能力
 
-*Example*: "We will work with the Department of Homeland Security to adapt our threat detection algorithms for transportation security screening. Technology will be piloted at 3 major airports, with the goal of reducing false-positive rates by 40% while maintaining security effectiveness, decreasing passenger wait times and improving screening efficiency."
+*例*：「国土安全保障省と協力し、脅威検出アルゴリズムを輸送セキュリティスクリーニングに適応させます。技術は3つの主要空港でパイロット実施され、セキュリティ有効性を維持しながら偽陽性率を40%削減し、乗客の待ち時間を短縮しスクリーニング効率を向上させることを目指します。」
 
-**Social and Cultural Benefits**:
-- Preservation of cultural heritage
-- Accessibility and inclusion
-- Social justice
-- Arts and humanities
-- Quality of life improvements
+**社会的・文化的利益**：
+- 文化遺産の保存
+- アクセシビリティと包摂
+- 社会正義
+- 芸術と人文
+- 生活の質向上
 
-*Example*: "Our 3D scanning and virtual reality platform will be used to digitally preserve 20 culturally significant sites threatened by climate change and development. Virtual reconstructions will be made freely available to descendant communities, schools, and the public through a web-based interface and VR experiences. We will partner with indigenous groups to ensure culturally appropriate representation."
+*例*：「3Dスキャンと仮想現実プラットフォームを使用し、気候変動と開発によって脅かされている20の文化的に重要な場所をデジタル保存します。仮想再構築は、子孫コミュニティ、学校、一般市民にウェブベースのインターフェースとVR体験を通じて無償提供されます。文化的に適切な表現を確保するために先住民グループと提携します。」
 
-## Best Practices for Broader Impacts
+## ブロード・インパクトのベストプラクティス
 
-### Be Specific and Concrete
+### 具体的で明確にする
 
-**Vague** ❌:
-"This research will train the next generation of scientists."
+**曖昧** ❌：
+「本研究は次世代の科学者をトレーニングする。」
 
-**Specific** ✅:
-"This project will support 3 PhD students, 2 postdocs, and 12 undergraduate researchers over 5 years. Undergraduates will be recruited through our partnership with the Louis Stokes Alliance for Minority Participation, with a goal of 50% participation from underrepresented groups. Students will receive training in advanced microscopy, data analysis, and scientific communication, and will present their research at the annual Emerging Researchers National Conference."
+**具体的** ✅：
+「本プロジェクトは5年間で3人の博士課程学生、2人のポストドク、12人の学部研究員を支援します。学部生はLouis Stokes Alliance for Minority Participationとのパートナーシップを通じて募集され、過小評価グループからの参加率50%を目標とします。学生は先進顕微鏡法、データ分析、科学コミュニケーションのトレーニングを受け、年次Emerging Researchers National Conferenceで研究を発表します。」
 
-### Include Timelines and Milestones
+### タイムラインとマイルストーンを含める
 
-**Vague** ❌:
-"We will develop educational materials."
+**曖昧** ❌：
+「教育教材を開発する。」
 
-**Specific** ✅:
-"Year 1: Develop draft curriculum modules and pilot with 50 students
-Year 2: Revise based on assessment data and expand to 150 students across 3 institutions
-Years 3-5: National dissemination through CourseSource, workshops at 2 professional conferences, and online repository. Target: Adoption by 20 institutions reaching 1,000 students annually by Year 5."
+**具体的** ✅：
+「1年目：ドラフトカリキュラムモジュールを開発し、50人の学生でパイロット実施
+2年目：評価データに基づいて改訂し、3機関で150人の学生に拡大
+3-5年目：CourseSource、2つの専門会議でのワークショップ、オンラインリポジトリを通じて全国普及。目標：5年目までに20機関で採用、年間1,000人の学生に到達。」
 
-### Measure and Assess Impact
+### 影響を測定・評価する
 
-**Include**:
-- Quantitative metrics (number of participants, downloads, users)
-- Qualitative assessment (surveys, interviews, focus groups)
-- Learning outcomes or behavioral changes
-- Longitudinal tracking
-- Comparison to baseline or control groups
+**含める**：
+- 定量的メトリクス（参加者数、ダウンロード数、ユーザー数）
+- 定性評価（調査、インタビュー、フォーカスグループ）
+- 学習成果または行動変化
+- 縦断的追跡
+- ベースラインまたは対照群との比較
 
-**Example**:
-"We will assess program effectiveness through: (1) Pre/post surveys measuring science self-efficacy using validated instruments, (2) Tracking participant persistence in STEM majors through institutional records, (3) Focus groups with participants and teachers, (4) Analysis of student work products. We expect to see a 30% increase in science self-efficacy scores and 90% retention in STEM majors among participants compared to 65% institutional baseline."
+**例**：
+「プログラム効果を以下で評価します：(1) 検証済みツールを使用した科学自己効力感の事前/事後調査、(2) 機関記録を通じた参加者のSTEM専攻持続性の追跡、(3) 参加者と教師とのフォーカスグループ、(4) 学生作品の分析。参加者の科学自己効力感スコアを30%増加させ、STEM専攻定着率を機関ベースライン65%に対し90%にすることを期待しています。」
 
-### Leverage Existing Infrastructure
+### 既存のインフラを活用する
 
-**Don't reinvent the wheel**—build on existing programs and partnerships:
-- Institutional programs (REU sites, AGEP, LSAMP, etc.)
-- Community partnerships already established
-- Shared facilities or resources
-- Professional societies and organizations
+**車輪を再発明しない**—既存のプログラムとパートナーシップを構築：
+- 機関プログラム（REUサイト、AGEP、LSAMPなど）
+- 既に確立されたコミュニティパートナーシップ
+- 共有施設またはリソース
+- 専門学会と組織
 
-**Example**:
-"We will integrate with our institution's existing NSF REU site in Materials Science, adding 2 additional positions focused on our research area. This leverages established recruitment pipelines with 15 partner institutions, professional development programming, and assessment infrastructure while expanding opportunities for undergraduate researchers."
+**例**：
+「機関の既存のNSF REUサイト（材料科学）に統合し、研究領域に焦点を当てた2つの追加ポジションを加えます。これにより、15のパートナー機関との確立された募集パイプライン、専門能力開発プログラム、評価インフラを活用しながら、学部研究員の機会を拡大します。」
 
-### Demonstrate Institutional Commitment
+### 機関のコミットメントを実証する
 
-**Show that broader impacts will continue beyond grant period**:
-- Institutional cost-sharing or support
-- Integration into ongoing programs
-- Sustainability plan
-- Letters of commitment from partners
+**ブロード・インパクトが助成期間を超えて継続することを示す**：
+- 機関のコストシェアリングまたはサポート
+- 継続プログラムへの統合
+- 持続可能性計画
+- パートナーからのコミットメントレター
 
-**Example**:
-"The university has committed $50,000 annually in cost-share to sustain the high school outreach program beyond the grant period. The program will be integrated into our Center for STEM Education, ensuring administrative support, space, and continuity. Our partner school districts have committed teacher time and classroom access (see letters of commitment in supplementary documents)."
+**例**：
+「大学は助成期間を超えて高校アウトリーチプログラムを維持するために年間$50,000のコストシェアをコミットしています。プログラムはSTEM教育センターに統合され、管理サポート、スペース、継続性を確保します。パートナー学区は教員時間と教室アクセスをコミットしています（補足ドキュメントのコミットメントレターを参照）。」
 
-### Align with Research Plan
+### 研究計画と整合させる
 
-**Integration examples**:
-- Students work on research questions from the proposal
-- Educational materials use data generated by the research
-- Outreach communicates research findings
-- Community needs inform research questions
+**統合例**：
+- 学生は提案からの研究質問に取り組む
+- 教育教材は研究で生成されたデータを使用
+- アウトリーチは研究発見を伝える
+- コミュニティニーズが研究質問を情報提供
 
-**Poor Integration** ❌:
-Research on quantum computing + Unrelated marine biology outreach for middle schoolers
+**不十分な統合** ❌：
+量子コンピューティングの研究 + 無関係な海洋生物学の中学生アウトリーチ
 
-**Good Integration** ✅:
-Research on quantum computing + Develop quantum computing curriculum modules + Summer program where students program quantum simulators + Public lectures on quantum technologies
+**良好な統合** ✅：
+量子コンピューティングの研究 + 量子コンピューティングカリキュラムモジュールを開発 + 学生が量子シミュレータをプログラムする夏季プログラム + 量子技術に関する公開講座
 
-## Common Broader Impacts Mistakes
+## 一般的なブロード・インパクトの間違い
 
-### Mistake 1: Generic and Vague Statements
+### 間違い1：一般的で曖昧な記述
 
-❌ "This project will train graduate students and postdocs."
-❌ "Results will be broadly disseminated through publications and conferences."
-❌ "We will engage in outreach activities."
+❌ 「本プロジェクトは大学院生とポストドクをトレーニングする。」
+❌ 「結果は出版物と会議を通じて広く普及される。」
+❌ 「アウトリーチ活動に従事する。」
 
-These are baseline expectations, not broader impacts.
+これらはブロード・インパクトではなく、ベースラインの期待です。
 
-### Mistake 2: No Plan or Timeline
+### 間違い2：計画またはタイムラインなし
 
-❌ "We hope to develop educational materials that could be used nationally."
+❌ 「全国で使用できる教育教材を開発したい。」
 
-✅ "Year 1: Develop and pilot 5 teaching modules. Year 2: Assess effectiveness and refine. Year 3: Publish in Journal of Chemical Education. Years 4-5: Disseminate through workshops at 3 national conferences and online repository. Target: Adoption by 30 institutions by Year 5."
+✅ 「1年目：5つの教育モジュールを開発・パイロット。2年目：効果を評価・改良。3年目：Journal of Chemical Educationに発表。4-5年目：3つの全国会議でのワークショップとオンラインリポジトリを通じて普及。目標：5年目までに30機関で採用。」
 
-### Mistake 3: No Assessment
+### 間違い3：評価なし
 
-❌ "We will run a summer camp for underrepresented students."
+❌ 「過小評価されている学生のための夏季キャンプを実施する。」
 
-✅ "We will run a 4-week summer camp for 30 students (60% from underrepresented groups). We will assess impact through pre/post content knowledge tests, science identity surveys, and tracking of STEM course enrollment. We expect 80% of participants to enroll in advanced science courses the following year."
+✅ 「過小評価グループから60%の30人の学生のための4週間夏季キャンプを実施します。事前/事後コンテンツ知識テスト、科学アイデンティティ調査、STEMコース登録の追跡を通じて影響を評価します。参加者の80%が翌年上級科学コースに登録することを期待しています。」
 
-### Mistake 4: Unrealistic Scope
+### 間違い4：非現実的な範囲
 
-❌ "We will establish a national network of 100 schools, develop a comprehensive K-12 curriculum, create a museum exhibit, launch a nationwide citizen science program, and commercialize our technology" (with no budget or personnel allocated).
+❌ 「100校の全国ネットワークを確立し、包括的K-12カリキュラムを開発し、博物館展示を作成し、全国シチズンサイエンスプログラムを開始し、技術を商業化する」（予算または人員の配分なし）。
 
-Be realistic about what you can accomplish with the resources and time available.
+利用可能なリソースと時間で達成可能なことに現実的であってください。
 
-### Mistake 5: Poor Integration
+### 間違い5：不十分な統合
 
-❌ Research on plant genomics + Unrelated robotics outreach
+❌ 植物ゲノミクスの研究 + 無関係なロボティクスアウトリーチ
 
-✅ Research on plant genomics + Develop plant biology curriculum + Engage community gardens in phenotyping citizen science
+✅ 植物ゲノミクスの研究 + 植物生物学カリキュラムを開発 + コミュニティガーデンを表現型研究
 
-### Mistake 6: Treating as Afterthought
+### 間違い2：計画またはタイムラインなし
 
-❌ Half-page generic statement at end of proposal with no budget allocation
+❌ 「全国で使用できる教育教材を開発したい。」
 
-✅ Integrated throughout proposal, dedicated personnel (0.5 month PI time, 10% grad student, summer coordinator), allocated budget ($15K/year), detailed plan, and assessment strategy
+✅ 「1年目：5つの教育モジュールを開発・パイロット実施。2年目：有効性を評価し改良。3年目：Journal of Chemical Educationで発表。4-5年目：3つの全国会議でのワークショップとオンラインリポジトリを通じて普及。目標：5年目までに30機関で採用。」
 
-### Mistake 7: No Track Record
+### 間違い3：評価なし
 
-If proposing extensive broader impacts activities but have no history of such work, reviewers will be skeptical.
+❌ 「過小評価されている学生のための夏季キャンプを実施する。」
 
-✅ Show preliminary efforts, leverage existing programs, include collaborators with relevant expertise, cite successful prior broader impacts work
+✅ 「過小評価グループから60%の30人の学生を対象に4週間の夏季キャンプを実施します。事前/事後コンテンツ知識テスト、科学アイデンティティ調査、STEMコース登録追跡を通じて影響を評価します。参加者の80%が翌年上級科学コースに登録することを期待しています。」
 
-## Budgeting for Broader Impacts
+### 間違い4：非現実的な範囲
 
-**NSF expects resources allocated to broader impacts activities.**
+❌ 「100校の全国ネットワークを確立し、包括的K-12カリキュラムを開発し、博物館展示を作成し、全国シチズンサイエンスプログラムを開始し、技術を商業化する」（予算または人員の配分なし）
 
-**Typical Budget Items**:
-- **Personnel**: Program coordinator, graduate students, undergraduate assistants
-- **Participant support**: Stipends, travel, housing for students/teachers
-- **Materials and supplies**: Educational materials, outreach equipment, workshop supplies
-- **Travel**: Conference presentations of broader impacts work, site visits to partners
-- **Subawards**: Payments to partnering institutions or organizations
-- **Evaluation**: External evaluator for assessment
+利用可能なリソースと時間で達成可能なことについて現実的であってください。
 
-**Example Budget**:
-- Summer program coordinator (2 months/year): $15,000/year
-- Undergraduate stipends (10 students × $5,000): $50,000/year
-- Materials and supplies for workshops: $5,000/year
-- Travel for recruitment and partner meetings: $3,000/year
-- External evaluator: $8,000/year
-- **Total: $81,000/year (16% of $500K budget)**
+### 間違い5：不十分な統合
 
-## Resources for Broader Impacts
+❌ 植物ゲノミクスの研究 + 無関係なロボティクスアウトリーチ
 
-### NSF Resources
+✅ 植物ゲノミクスの研究 + 植物生物学カリキュラムを開発 + コミュニティガーデンを表現型シチズンサイエンスに参加させる
+
+### 間違い6：後回しとして扱う
+
+❌ 予算配分のない提案最後の半ページの一般的記述
+
+✅ 提案全体に統合、専任人員（PI 0.5ヶ月、大学院生10%、夏季コーディネーター）、配分予算（$15K/年）、詳細計画、評価戦略
+
+### 間違い7：実績なし
+
+広範なブロード・インパクト活動を提案するが、そのような作業の履歴がない場合、査読者は懐疑的になります。
+
+✅ 予備的努力を示し、既存プログラムを活用し、関連専門知識を持つ共同者を含め、成功した過去のブロード・インパクト作業を引用
+
+## ブロード・インパクトの予算作成
+
+**NSFはブロード・インパクト活動にリソースが配分されることを期待しています。**
+
+**典型的な予算項目**：
+- **人件費**：プログラムコーディネーター、大学院生、学部アシスタント
+- **参加者支援**：学生/教師の奨学金、旅費、宿泊費
+- **物品と消耗品**：教育教材、アウトリーチ機器、ワークショップ用品
+- **旅費**：ブロード・インパクト作業の会議発表、パートナー訪問
+- **サブアワード**：協力機関または組織への支払い
+- **評価**：評価用外部評価者
+
+**例予算**：
+- 夏季プログラムコーディネーター（2ヶ月/年）：$15,000/年
+- 学部奨学金（10人 × $5,000）：$50,000/年
+- ワークショップ用品：$5,000/年
+- 募集とパートナー会議の旅費：$3,000/年
+- 外部評価者：$8,000/年
+- **合計：$81,000/年（$500K予算の16%）**
+
+## ブロード・インパクトのリソース
+
+### NSFリソース
 - **NSF Broader Impacts Website**: https://www.nsf.gov/od/oia/special/broaderimpacts/
 - **BI Examples Repository**: https://www.cmu.edu/uro/resources for undergraduate research/best practices/broader-impacts.html
-- **Broader Impacts Toolkit**: Many universities provide institutional resources
+- **Broader Impacts Toolkit**: 多くの大学が機関リソースを提供
 
-### Assessment Tools
-- **STEM-OP (STEM Outreach Program)**: Survey instruments for outreach assessment
-- **STELAR Network**: Resources for informal STEM education
-- **Evaluation frameworks**: Logic models, theory of change
+### 評価ツール
+- **STEM-OP (STEM Outreach Program)**: アウトリーチ評価用調査ツール
+- **STELAR Network**: 非公式STEM教育のリソース
+- **評価フレームワーク**: ロジックモデル、変革理論
 
-### Partner Organizations
-- **SACNAS**: Society for Advancement of Chicanos/Hispanics and Native Americans in Science
-- **ABRCMS**: Annual Biomedical Research Conference for Minority Students
-- **NSBE, SWE, AISES**: Professional societies for underrepresented groups
-- **Science museums and centers**: Partner for public engagement
-- **School districts and community organizations**: For K-12 outreach
+### パートナー組織
+- **SACNAS**: Chicano/HispanicおよびNative American科学者の進歩協会
+- **ABRCMS**: マイノリティ学生のための年次生物医学研究会議
+- **NSBE, SWE, AISES**: 過小評価グループのための専門学会
+- **科学博物館・センター**: 一般市民関与のパートナー
+- **学区とコミュニティ組織**: K-12アウトリーチ用
 
 ---
 
-**Key Takeaway**: Effective broader impacts are specific, measurable, assessed, integrated with the research plan, and demonstrate institutional commitment. They should be planned with the same rigor as the research itself, with dedicated resources, timelines, milestones, and evaluation strategies. Generic statements about "training students" or "disseminating results" are insufficient—NSF expects concrete plans that demonstrably benefit society.
-
+**重要ポイント**：効果的なブロード・インパクトは、具体的で、測定可能で、評価され、研究計画と統合され、機関のコミットメントを実証します。研究自体と同じ厳密さで計画し、専任リソース、タイムライン、マイルストーン、評価戦略を持つべきです。「学生のトレーニング」や「結果の普及」に関する一般的な記述では不十分です—NSFは社会に明確に利益をもたらす具体的な計画を期待しています。
