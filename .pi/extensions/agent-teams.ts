@@ -195,7 +195,8 @@ interface PrintCommandResult {
 
 const LIVE_PREVIEW_LINE_LIMIT = 120;
 const LIVE_LIST_WINDOW_SIZE = 22;
-const LIVE_EVENT_TAIL_LIMIT = 240;
+// イベント配列サイズ（環境変数で上書き可能、デフォルトは120に削減）
+const LIVE_EVENT_TAIL_LIMIT = Math.max(60, Number(process.env.PI_LIVE_EVENT_TAIL_LIMIT) || 120);
 const LIVE_EVENT_INLINE_LINE_LIMIT = 8;
 const LIVE_EVENT_DETAIL_LINE_LIMIT = 28;
 // Communication constants moved to ./agent-teams/communication.ts
