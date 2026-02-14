@@ -106,8 +106,8 @@ function getSkillSearchPaths(cwd: string, agentDir?: string): string[] {
   const resolvedAgentDir = agentDir ?? getDefaultAgentDir();
   const paths: string[] = [];
 
-  // Project-local skills
-  paths.push(join(cwd, CONFIG_DIR_NAME, "skills"));
+  // Project-local skills (in .pi/lib/skills, not .pi/skills to avoid Pi auto-loading)
+  paths.push(join(cwd, CONFIG_DIR_NAME, "lib", "skills"));
 
   // Global skills
   paths.push(join(resolvedAgentDir, "skills"));

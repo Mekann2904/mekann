@@ -49,10 +49,10 @@ interface SkillUsage {
 const CWD = process.cwd();
 
 /**
- * Load all available skills from .pi/skills/
+ * Load all available skills from .pi/lib/skills/
  */
 function loadAvailableSkills(): Map<string, SkillInfo> {
-  const skillsDir = join(CWD, ".pi", "skills");
+  const skillsDir = join(CWD, ".pi", "lib", "skills");
   const skills = new Map<string, SkillInfo>();
   
   if (!existsSync(skillsDir)) {
