@@ -83,6 +83,23 @@ function refreshStatus(ctx: any): void {
   ctx.ui.setStatus?.("ul-dual-mode", `UL mode | subagent:${subagent} team:${team} reviewer:${reviewer} loop:${loop}`);
 }
 
+// スロットリング用の状態
+let lastRefreshStatusMs = 0;
+const REFRESH_STATUS_THROTTLE_MS = 300;  // 300ms間隔でスロットリング
+
+/**
+ * スロットリング付きのrefreshStatus。
+ * 短時間での連続呼び出しを防ぎ、UI更新のオーバーヘッドを削減する。
+ */
+function refreshStatusThrottled(ctx: any): void {
+  const now = Date.now();
+  if (now - lastRefreshStatusMs < REFRESH_STATUS_THROTTLE_MS) {
+    return;  // スロットリング
+  }
+  lastRefreshStatusMs = now;
+  refreshStatus(ctx);
+}
+
 
 function extractTextWithoutUlPrefix(text: string): string {
   return text.replace(UL_PREFIX, "").trimStart();
@@ -412,7 +429,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     }
 
     if (changed) {
-      refreshStatus(ctx);
+      refreshStatusThrottled(ctx);  // 高頻度イベントではスロットリング
     }
   });
 
