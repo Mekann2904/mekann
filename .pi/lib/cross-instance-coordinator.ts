@@ -47,6 +47,7 @@ export interface CoordinatorConfig {
 export interface CoordinatorState {
   myInstanceId: string;
   mySessionId: string;
+  myStartedAt: string;
   config: CoordinatorConfig;
   heartbeatTimer?: ReturnType<typeof setInterval>;
 }
@@ -147,7 +148,7 @@ export function registerInstance(
 
   ensureDirs();
 
-  const config = { ...DEFAULT_CONFIG, ...configOverrides, ...loadConfig(), ...configOverrides };
+  const config = { ...DEFAULT_CONFIG, ...loadConfig(), ...configOverrides };
   const instanceId = generateInstanceId(sessionId);
   const now = new Date().toISOString();
 
@@ -177,6 +178,7 @@ export function registerInstance(
   state = {
     myInstanceId: instanceId,
     mySessionId: sessionId,
+    myStartedAt: now,
     config,
     heartbeatTimer,
   };
@@ -220,13 +222,13 @@ export function updateHeartbeat(): void {
     info.lastHeartbeat = new Date().toISOString();
     writeFileSync(lockFile, JSON.stringify(info, null, 2));
   } catch {
-    // If lock file is gone, recreate it
+    // If lock file is gone, recreate it preserving original startedAt
     ensureDirs();
     const info: InstanceInfo = {
       instanceId: state.myInstanceId,
       pid,
       sessionId: state.mySessionId,
-      startedAt: new Date().toISOString(),
+      startedAt: state.myStartedAt,
       lastHeartbeat: new Date().toISOString(),
       cwd: process.cwd(),
       activeModels: [],
@@ -575,11 +577,10 @@ function matchesModelPattern(pattern: string, model: string): boolean {
   if (model.startsWith(pattern)) return true;
   if (pattern.startsWith(model)) return true;
 
-  // Glob-style match
-  const regex = new RegExp(
-    "^" + pattern.replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
-    "i"
-  );
+  // Glob-style match with proper regex escaping
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const regexPattern = escaped.replace(/\\\*/g, ".*").replace(/\\\?/g, ".");
+  const regex = new RegExp("^" + regexPattern + "$", "i");
   return regex.test(model);
 }
 

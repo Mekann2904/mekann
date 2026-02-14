@@ -313,11 +313,12 @@ let cachedLimits: ProviderLimitsConfig | null = null;
 // ============================================================================
 
 function matchesPattern(model: string, pattern: string): boolean {
-  // Convert glob pattern to regex
-  const regex = new RegExp(
-    "^" + pattern.replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
-    "i"
-  );
+  // Convert glob pattern to regex with proper escaping
+  // First escape all regex special characters
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  // Then convert glob wildcards to regex
+  const regexPattern = escaped.replace(/\\\*/g, ".*").replace(/\\\?/g, ".");
+  const regex = new RegExp("^" + regexPattern + "$", "i");
   return regex.test(model);
 }
 

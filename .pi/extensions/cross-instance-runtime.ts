@@ -33,7 +33,6 @@ import {
   getLearnedLimit,
   resetLearnedLimit,
   formatAdaptiveSummary,
-  configureRecovery,
 } from "../lib/adaptive-rate-controller";
 import { getRuntimeSnapshot, notifyRuntimeCapacityChanged } from "./agent-runtime";
 
@@ -251,7 +250,8 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
 
       const resolved = resolveLimits(provider, model, tier);
       const learned = getLearnedLimit(provider, model);
-      const instanceCount = status.registered ? getActiveInstanceCount() : 1;
+      const coordinatorStatus = getCoordinatorStatus();
+      const instanceCount = coordinatorStatus.registered ? getActiveInstanceCount() : 1;
       const effectiveLimit = getEffectiveLimit(provider, model, resolved.concurrency);
       const modelInstanceLimit = getModelParallelLimit(provider, model, effectiveLimit);
 
@@ -362,6 +362,9 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
     } else if (!error) {
       recordSuccess(ctx.model.provider, ctx.model.id);
     }
+
+    // Clear active model when tool completes
+    clearActiveModel(ctx.model.provider, ctx.model.id);
   });
 
   // Log initialization

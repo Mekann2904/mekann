@@ -17,7 +17,6 @@ import {
 } from "../lib/provider-limits";
 import {
   getEffectiveLimit,
-  isCoordinatorInitialized as isAdaptiveInitialized,
 } from "../lib/adaptive-rate-controller";
 
 export interface AgentRuntimeLimits {
