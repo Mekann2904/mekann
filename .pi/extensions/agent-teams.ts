@@ -241,22 +241,77 @@ interface TeamLiveItem {
   discussionEndsWithNewline: boolean;
 }
 
-interface AgentTeamLiveMonitorController {
+// ISP-compliant interfaces: split by responsibility
+// Clients can depend only on the interfaces they actually use.
+
+/**
+ * Lifecycle operations for marking team member execution states.
+ * Used by code that only needs to track start/finish transitions.
+ */
+interface TeamMonitorLifecycle {
   markStarted: (itemKey: string) => void;
-  markPhase: (itemKey: string, phase: TeamLivePhase, round?: number) => void;
-  appendEvent: (itemKey: string, event: string) => void;
-  appendBroadcastEvent: (event: string) => void;
-  appendChunk: (itemKey: string, stream: LiveStreamView, chunk: string) => void;
-  appendDiscussion: (itemKey: string, discussion: string) => void;
   markFinished: (
     itemKey: string,
     status: "completed" | "failed",
     summary: string,
     error?: string,
   ) => void;
+}
+
+/**
+ * Phase tracking operations for team member execution phases.
+ * Used by code that only needs to manage phase transitions.
+ */
+interface TeamMonitorPhase {
+  markPhase: (itemKey: string, phase: TeamLivePhase, round?: number) => void;
+}
+
+/**
+ * Event logging operations for tracking execution events.
+ * Used by code that only needs to record events.
+ */
+interface TeamMonitorEvents {
+  appendEvent: (itemKey: string, event: string) => void;
+  appendBroadcastEvent: (event: string) => void;
+}
+
+/**
+ * Stream output operations for appending stdout/stderr chunks.
+ * Used by code that only needs to handle output streaming.
+ */
+interface TeamMonitorStream {
+  appendChunk: (itemKey: string, stream: LiveStreamView, chunk: string) => void;
+}
+
+/**
+ * Discussion tracking operations for multi-agent communication.
+ * Used by code that only needs to track discussion content.
+ */
+interface TeamMonitorDiscussion {
+  appendDiscussion: (itemKey: string, discussion: string) => void;
+}
+
+/**
+ * Resource cleanup and termination operations.
+ * Used by code that only needs to manage monitor lifecycle.
+ */
+interface TeamMonitorResource {
   close: () => void;
   wait: () => Promise<void>;
 }
+
+/**
+ * Full monitor controller combining all capabilities.
+ * Extends partial interfaces to maintain backward compatibility.
+ * Clients should use narrower interfaces when possible.
+ */
+interface AgentTeamLiveMonitorController
+  extends TeamMonitorLifecycle,
+    TeamMonitorPhase,
+    TeamMonitorEvents,
+    TeamMonitorStream,
+    TeamMonitorDiscussion,
+    TeamMonitorResource {}
 
 function formatLivePhase(phase: TeamLivePhase, round?: number): string {
   if (phase === "communication") return round ? `comm#${round}` : "comm";

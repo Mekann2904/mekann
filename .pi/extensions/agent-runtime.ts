@@ -57,6 +57,59 @@ type GlobalScopeWithRuntime = typeof globalThis & {
   __PI_SHARED_AGENT_RUNTIME_STATE__?: AgentRuntimeState;
 };
 
+/**
+ * RuntimeStateProvider - DIP準拠のための抽象インターフェース
+ * グローバル状態へのアクセスを抽象化し、テスト時のモック化を可能にする
+ */
+export interface RuntimeStateProvider {
+  getState(): AgentRuntimeState;
+  resetState(): void;
+}
+
+/**
+ * GlobalRuntimeStateProvider - デフォルト実装
+ * globalThisを使用してプロセス全体で状態を共有する
+ */
+class GlobalRuntimeStateProvider implements RuntimeStateProvider {
+  private readonly globalScope: GlobalScopeWithRuntime;
+
+  constructor() {
+    this.globalScope = globalThis as GlobalScopeWithRuntime;
+  }
+
+  getState(): AgentRuntimeState {
+    if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+      this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
+    }
+    ensureReservationSweeper();
+    const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
+    enforceRuntimeLimitConsistency(runtime);
+    return runtime;
+  }
+
+  resetState(): void {
+    this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = undefined;
+  }
+}
+
+/** プロバイダーのデフォルトインスタンス（シングルトン） */
+let runtimeStateProvider: RuntimeStateProvider = new GlobalRuntimeStateProvider();
+
+/**
+ * ランタイム状態プロバイダーを設定する（テスト用）
+ * 本番コードでは使用せず、テストでのモック注入のみに使用すること
+ */
+export function setRuntimeStateProvider(provider: RuntimeStateProvider): void {
+  runtimeStateProvider = provider;
+}
+
+/**
+ * 現在のランタイム状態プロバイダーを取得する（テスト用）
+ */
+export function getRuntimeStateProvider(): RuntimeStateProvider {
+  return runtimeStateProvider;
+}
+
 export interface AgentRuntimeSnapshot {
   subagentActiveRequests: number;
   subagentActiveAgents: number;
@@ -395,15 +448,12 @@ function enforceRuntimeLimitConsistency(runtime: AgentRuntimeState): void {
   notifyRuntimeCapacityChanged();
 }
 
+/**
+ * 共有ランタイム状態を取得する
+ * DIP準拠: 実際の状態アクセスはRuntimeStateProviderを経由する
+ */
 export function getSharedRuntimeState(): AgentRuntimeState {
-  const globalScope = globalThis as GlobalScopeWithRuntime;
-  if (!globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-    globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-  }
-  ensureReservationSweeper();
-  const runtime = ensureRuntimeStateShape(globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
-  enforceRuntimeLimitConsistency(runtime);
-  return runtime;
+  return runtimeStateProvider.getState();
 }
 
 function cleanupExpiredReservations(runtime: AgentRuntimeState, nowMs = Date.now()): number {

@@ -200,18 +200,49 @@ interface SubagentLiveItem {
   stderrEndsWithNewline: boolean;
 }
 
-interface SubagentLiveMonitorController {
+// ISP-compliant interfaces: split by responsibility
+// Clients can depend only on the interfaces they actually use.
+
+/**
+ * Lifecycle operations for marking agent execution states.
+ * Used by code that only needs to track start/finish transitions.
+ */
+interface SubagentMonitorLifecycle {
   markStarted: (agentId: string) => void;
-  appendChunk: (agentId: string, stream: LiveStreamView, chunk: string) => void;
   markFinished: (
     agentId: string,
     status: "completed" | "failed",
     summary: string,
     error?: string,
   ) => void;
+}
+
+/**
+ * Stream output operations for appending stdout/stderr chunks.
+ * Used by code that only needs to handle output streaming.
+ */
+interface SubagentMonitorStream {
+  appendChunk: (agentId: string, stream: LiveStreamView, chunk: string) => void;
+}
+
+/**
+ * Resource cleanup and termination operations.
+ * Used by code that only needs to manage monitor lifecycle.
+ */
+interface SubagentMonitorResource {
   close: () => void;
   wait: () => Promise<void>;
 }
+
+/**
+ * Full monitor controller combining all capabilities.
+ * Extends partial interfaces to maintain backward compatibility.
+ * Clients should use narrower interfaces when possible.
+ */
+interface SubagentLiveMonitorController
+  extends SubagentMonitorLifecycle,
+    SubagentMonitorStream,
+    SubagentMonitorResource {}
 
 function renderSubagentLiveView(input: {
   title: string;

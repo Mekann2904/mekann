@@ -17,6 +17,83 @@ import { type RunOutcomeCode, type RunOutcomeSignal } from "./agent-types.js";
 import { type EntityType, type EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "./agent-common.js";
 
 // ============================================================================
+// Retryable Error Patterns (OCP-Compliant Configuration)
+// ============================================================================
+
+/**
+ * Default retryable error patterns.
+ * These patterns are checked against error messages to determine retryability.
+ */
+const DEFAULT_RETRYABLE_PATTERNS: string[] = [
+  "rate limit",
+  "too many requests",
+  "temporarily unavailable",
+  "service unavailable",
+  "try again",
+  "overloaded",
+  "capacity exceeded",
+];
+
+/**
+ * Cache for parsed retryable patterns from environment variable.
+ */
+let cachedRetryablePatterns: string[] | undefined;
+
+/**
+ * Get the list of retryable error patterns.
+ * Patterns can be extended via PI_RETRYABLE_ERROR_PATTERNS environment variable
+ * (comma-separated list of additional patterns).
+ *
+ * @returns Array of retryable patterns to check against error messages
+ */
+export function getRetryablePatterns(): string[] {
+  if (cachedRetryablePatterns !== undefined) {
+    return cachedRetryablePatterns;
+  }
+
+  const envPatterns = process.env.PI_RETRYABLE_ERROR_PATTERNS;
+  if (!envPatterns || envPatterns.trim() === "") {
+    cachedRetryablePatterns = [...DEFAULT_RETRYABLE_PATTERNS];
+    return cachedRetryablePatterns;
+  }
+
+  const additionalPatterns = envPatterns
+    .split(",")
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => p.length > 0);
+
+  cachedRetryablePatterns = [...DEFAULT_RETRYABLE_PATTERNS, ...additionalPatterns];
+  return cachedRetryablePatterns;
+}
+
+/**
+ * Reset the cached retryable patterns (primarily for testing).
+ * Forces next call to getRetryablePatterns() to re-parse environment variable.
+ */
+export function resetRetryablePatternsCache(): void {
+  cachedRetryablePatterns = undefined;
+}
+
+/**
+ * Add custom retryable patterns at runtime.
+ * Useful for dynamic configuration without environment variable restart.
+ *
+ * @param patterns - Additional patterns to add to the retryable list
+ */
+export function addRetryablePatterns(patterns: string[]): void {
+  const normalizedPatterns = patterns
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => p.length > 0);
+
+  const currentPatterns = cachedRetryablePatterns || DEFAULT_RETRYABLE_PATTERNS;
+  const newPatterns = normalizedPatterns.filter((p) => !currentPatterns.includes(p));
+
+  if (newPatterns.length > 0) {
+    cachedRetryablePatterns = [...currentPatterns, ...newPatterns];
+  }
+}
+
+// ============================================================================
 // Retryable Error Detection
 // ============================================================================
 
@@ -51,17 +128,8 @@ export function isRetryableEntityError(
     return true;
   }
 
-  // Check for common retryable patterns
-  const retryablePatterns = [
-    "rate limit",
-    "too many requests",
-    "temporarily unavailable",
-    "service unavailable",
-    "try again",
-    "overloaded",
-    "capacity exceeded",
-  ];
-
+  // Check for configured retryable patterns (OCP-compliant: patterns are now configurable)
+  const retryablePatterns = getRetryablePatterns();
   return retryablePatterns.some((pattern) => message.includes(pattern));
 }
 
