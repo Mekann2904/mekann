@@ -1,5 +1,22 @@
 # 変更履歴
 
+## [v0.3.1] - 2026-02-15
+
+### 変更
+- **ULモード: 適応型委任モードへ刷新**
+  - 固定3フェーズ (subagent_run_parallel → agent_team_run → reviewer) を廃止
+  - フェーズ数はLLMの裁量に変更（最小1、上限なし）
+  - 完了前の `reviewer` 実行を必須化（品質保証）
+  - タスク規模に応じた推奨パターンを提示:
+    - 小規模: `subagent_run` または直接実行
+    - 中規模: `subagent_run_parallel(subagentIds: researcher, architect, implementer)`
+    - 大規模: `agent_team_run(teamId: core-delivery-team)`
+
+### ドキュメント
+- docs/02-user-guide/10-ul-dual-mode.md: 適応型モードの説明に更新
+
+---
+
 ## [v0.3.0] - 2026-02-15
 
 ### 追加

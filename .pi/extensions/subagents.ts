@@ -1590,7 +1590,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       task: Type.String({ description: "Task for the delegated subagent" }),
       subagentId: Type.Optional(Type.String({ description: "Target subagent id. Defaults to current subagent" })),
       extraContext: Type.Optional(Type.String({ description: "Optional supplemental context" })),
-      timeoutMs: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 600000). Use 0 to disable timeout." })),
+      timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -1840,7 +1840,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       task: Type.String({ description: "Task delegated to all selected subagents" }),
       subagentIds: Type.Optional(Type.Array(Type.String({ description: "Subagent id list" }))),
       extraContext: Type.Optional(Type.String({ description: "Optional shared context" })),
-      timeoutMs: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 600000). Use 0 to disable timeout." })),
+      timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {

@@ -161,9 +161,11 @@ interface ParsedVerificationCommand {
 
 const STABLE_LOOP_PROFILE = true;
 
+// アイドルタイムアウト方式（pi-print-executor.ts）を使用
+// タイムアウトは「無応答時間」を意味し、LLMが応答し続けている限り継続
 const DEFAULT_CONFIG: LoopConfig = {
   maxIterations: STABLE_LOOP_PROFILE ? 4 : 6,
-  timeoutMs: STABLE_LOOP_PROFILE ? 120_000 : 300_000,
+  timeoutMs: STABLE_LOOP_PROFILE ? 60_000 : 120_000,  // 1分 / 2分のアイドルタイムアウト
   requireCitation: true,
   verificationTimeoutMs: STABLE_LOOP_PROFILE ? 60_000 : 120_000,
 };

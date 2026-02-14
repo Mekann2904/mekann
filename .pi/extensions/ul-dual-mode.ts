@@ -1,14 +1,14 @@
 // File: .pi/extensions/ul-dual-mode.ts
-// Description: Adds an "ul" prefix mode and session-wide persistent UL mode that enforces a stable orchestration sequence.
-// Why: Makes the recommended 3-phase execution path explicit and verifiable in each UL turn.
+// Description: Adds an "ul" prefix mode and session-wide persistent UL mode with adaptive delegation.
+// Why: Enables efficient, high-quality execution with flexible phase count and mandatory reviewer quality gate.
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, docs/extensions.md
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 const UL_PREFIX = /^\s*ul(?:\s+|$)/i;
 const STABLE_UL_PROFILE = true;
-const UL_REQUIRE_BOTH_ORCHESTRATIONS = true;
-const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;
+const UL_REQUIRE_BOTH_ORCHESTRATIONS = false;  // 固定フェーズ解除: LLMの裁量で1〜Nフェーズ
+const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;  // reviewer必須
 const UL_AUTO_ENABLE_FOR_CLEAR_GOAL = process.env.PI_UL_AUTO_CLEAR_GOAL !== "0";
 const UL_RATE_LIMIT_COOLDOWN_MS = STABLE_UL_PROFILE ? 120_000 : 90_000;
 const UL_RATE_LIMIT_AUTO_DISABLE_THRESHOLD = STABLE_UL_PROFILE ? 1 : 3;
@@ -158,25 +158,12 @@ function looksLikeClearGoalTask(text: string): boolean {
 
 function getMissingRequirements(): string[] {
   const missing: string[] = [];
-  if (!UL_REQUIRE_BOTH_ORCHESTRATIONS) {
-    if (!state.usedSubagentRun) missing.push("subagent_run / subagent_run_parallel");
-    if (!state.usedAgentTeamRun) missing.push("agent_team_run / agent_team_run_parallel");
-    return missing;
+
+  // reviewer必須のみチェック（フェーズ数はLLM裁量）
+  if (UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL && !state.completedRecommendedReviewerPhase) {
+    missing.push(`subagent_run (subagentId: ${RECOMMENDED_REVIEWER_ID}) - 完了前の品質レビュー`);
   }
 
-  if (!state.completedRecommendedSubagentPhase) {
-    missing.push(
-      `Phase 1: subagent_run_parallel (subagentIds: ${RECOMMENDED_SUBAGENT_IDS.join(", ")})`,
-    );
-  }
-  if (!state.completedRecommendedTeamPhase) {
-    missing.push(
-      `Phase 2: agent_team_run (teamId: ${RECOMMENDED_CORE_TEAM_ID}, strategy: parallel)`,
-    );
-  }
-  if (UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL && !state.completedRecommendedReviewerPhase) {
-    missing.push(`Phase 3: subagent_run (subagentId: ${RECOMMENDED_REVIEWER_ID})`);
-  }
   return missing;
 }
 
@@ -270,29 +257,18 @@ function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
         "- 完了条件が明確な場合は loop_run を使い、`goal` を明示する。",
       ];
 
-  if (!UL_REQUIRE_BOTH_ORCHESTRATIONS) {
-    return [
-      "[UL_MODE_RECOMMENDED]",
-      "安定優先で必要なオーケストレーションのみ実行すること。",
-      "- サブエージェントを使う場合は subagent_run_parallel を第一候補にする。",
-      "- subagentIds を明示し、2個以上（推奨 2-4）を選ぶ。",
-      "- 1人で十分な場合のみ subagent_run を使う。",
-      "- 必要性が明確な場合だけ agent_team_run を使う。",
-      "- agent_team の parallel variants は明示的に必要な時だけ使うこと。",
-      ...loopHints,
-      "",
-      "タスク:",
-      task,
-    ].join("\n");
-  }
-
   return [
-    "[UL_MODE_MANDATORY]",
-    "安定優先で以下を実行すること:",
-    `1) subagent_run_parallel（subagentIds: ${RECOMMENDED_SUBAGENT_IDS.join(", ")}）`,
-    `2) agent_team_run（teamId: ${RECOMMENDED_CORE_TEAM_ID}, strategy: parallel）`,
-    `3) subagent_run（subagentId: ${RECOMMENDED_REVIEWER_ID}）`,
-    "上記3フェーズを試すまで、通常の回答を完了しないこと。",
+    "[UL_MODE_ADAPTIVE]",
+    "委任優先で効率的に実行すること。",
+    "",
+    "実行ルール:",
+    "- subagent_run_parallel / agent_team_run / agent_team_run_parallel 等を必要に応じて使用する。",
+    "- フェーズ数はLLMの裁量（最小1、上限なし）。タスク規模に合わせて最適化する。",
+    "- 完了と判断する前に必ず subagent_run(subagentId: reviewer) を実行し、品質を確認すること。",
+    "- 1人で十分な小規模タスクは subagent_run で済ませる。",
+    "- 複数視点が必要な場合は subagent_run_parallel(subagentIds: researcher, architect, implementer) を使用。",
+    "- 多角的な実装が必要な場合は agent_team_run(teamId: core-delivery-team) を使用。",
+    "",
     ...loopHints,
     "",
     "タスク:",
@@ -302,34 +278,17 @@ function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
 
 function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
   const mode = sessionWide
-    ? "UL Dual-Orchestration Mode (SESSION-WIDE - Active for all prompts)"
-    : "UL Dual-Orchestration Mode (Single turn - triggered by 'ul' prefix)";
-  const dualRequirement = UL_REQUIRE_BOTH_ORCHESTRATIONS
-    ? "You MUST execute the recommended stable sequence:"
-    : "Use orchestration only when needed. If you use subagents, strongly prefer parallel fan-out with 2+ specialists.";
-  const completionRule = UL_REQUIRE_BOTH_ORCHESTRATIONS
-    ? "- Do not finish the turn until all required sequence phases have executed."
-    : "- Do not force both orchestration types in one turn.";
-  const failureRule = UL_REQUIRE_BOTH_ORCHESTRATIONS
-    ? "- If one phase fails, still continue with the remaining phases and report all outcomes."
-    : "- If one side fails or hits 429, continue in stable mode without forcing another fan-out.";
-  const callOrderRule = UL_REQUIRE_BOTH_ORCHESTRATIONS
-    ? `Mandatory call order (default): \`subagent_run_parallel\` (${RECOMMENDED_SUBAGENT_IDS.join(", ")}) -> \`agent_team_run\` (teamId: ${RECOMMENDED_CORE_TEAM_ID}, strategy: parallel) -> \`subagent_run\` (subagentId: ${RECOMMENDED_REVIEWER_ID}).`
-    : "Preferred order: when subagents are needed, call `subagent_run_parallel` first with explicit `subagentIds` (minimum 2, recommended 2-4).";
-  const editRule = UL_REQUIRE_BOTH_ORCHESTRATIONS
-    ? "Run the full recommended sequence before direct code edits."
-    : "Direct edits are allowed when orchestration is not needed.";
-  const firstStepRule = UL_REQUIRE_BOTH_ORCHESTRATIONS
-    ? "The first actionable step MUST be a tool call, not prose planning."
-    : "You may start with concise reasoning and call tools only when required.";
+    ? "UL Adaptive Mode (SESSION-WIDE - Active for all prompts)"
+    : "UL Adaptive Mode (Single turn - triggered by 'ul' prefix)";
+
   const subagentParallelRule =
-    "- For subagent usage, strongly prefer `subagent_run_parallel` with explicit `subagentIds` (minimum 2). Use `subagent_run` only for true single-specialist tasks.";
+    "- For subagent usage, prefer `subagent_run_parallel` with explicit `subagentIds` (minimum 2 for complex tasks). Use `subagent_run` for simple single-specialist tasks.";
   const loopRule = goalLoopMode
     ? "- Clear completion criteria detected: call `loop_run` early and set `goal` (plus verification settings when available)."
     : "- If explicit completion criteria exist, use `loop_run` with `goal` (and `verifyCommand` when available).";
   const teamParallelRule = goalLoopMode
     ? "- For decomposable work, prefer `agent_team_run_parallel` with explicit `teamIds`, `communicationRounds: 1`, and `failedMemberRetryRounds: 1`."
-    : "- For agent-team usage, use parallel variants only when explicitly necessary.";
+    : "- For agent-team usage, use parallel variants when explicitly necessary.";
   const completionLoopRule = goalLoopMode
     ? `
 Completion-loop rule (clear deterministic completion criteria detected):
@@ -346,24 +305,28 @@ Completion-loop rule (clear deterministic completion criteria detected):
 ---
 ## ${mode}
 
-This ${sessionWide ? "session is in" : "turn is in"} UL Dual-Orchestration Mode.
-${dualRequirement}
+This ${sessionWide ? "session is in" : "turn is in"} UL Adaptive Mode.
 
-1) Phase 1: \`subagent_run_parallel\` with explicit \`subagentIds\` including \`${RECOMMENDED_SUBAGENT_IDS.join("`, `")}\`.
+Execution policy (delegation-first, efficient, high quality):
+- Use subagent_run_parallel, agent_team_run, etc. as needed.
+- Phase count is at LLM's discretion (minimum 1, no maximum).
+- YOU MUST call \`subagent_run(subagentId: "${RECOMMENDED_REVIEWER_ID}")\` before marking the task complete.
 
-2) Phase 2: \`agent_team_run\` with \`teamId: "${RECOMMENDED_CORE_TEAM_ID}"\` and \`strategy: "parallel"\`.
+Recommended patterns:
+1. Simple tasks: single \`subagent_run\` or direct execution
+2. Multi-perspective tasks: \`subagent_run_parallel(subagentIds: researcher, architect, implementer)\`
+3. Complex implementation: \`agent_team_run(teamId: ${RECOMMENDED_CORE_TEAM_ID}, strategy: parallel)\`
 
-3) Phase 3: \`subagent_run\` with \`subagentId: "${RECOMMENDED_REVIEWER_ID}"\` as final guardrail.
+Quality gate (REQUIRED):
+- Before finishing, always run: \`subagent_run(subagentId: "${RECOMMENDED_REVIEWER_ID}")\`
+- The reviewer will validate quality, completeness, and potential issues.
 
-Execution rule:
+Execution rules:
 - ${subagentParallelRule}
-- ${firstStepRule}
-- ${callOrderRule}
 - ${loopRule}
 - ${teamParallelRule}
-- ${editRule}
-${completionRule}
-${failureRule}
+- Direct edits are allowed for trivial changes.
+- Do not finish until reviewer has been called.
 - If repeated 429 happens, immediately fallback to normal mode for stability.
 ${completionLoopRule}
 ---`;
@@ -462,9 +425,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     state.pendingGoalLoopMode = looksLikeClearGoalTask(transformed);
     if (ctx?.hasUI && ctx?.ui) {
       const modeHint = state.pendingGoalLoopMode ? " + loop完了条件モード" : "";
-      const notifyText = UL_REQUIRE_BOTH_ORCHESTRATIONS
-        ? `ULモード: 推奨3フェーズ（subagents → team → reviewer）を実行します${modeHint}。`
-        : `ULモード: 安定優先で必要なオーケストレーションのみ実行します${modeHint}。`;
+      const notifyText = `ULモード: 委任優先で効率的に実行します（完了前にreviewer必須）${modeHint}。`;
       ctx.ui.notify(notifyText, "info");
     }
 
@@ -538,30 +499,9 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       changed = true;
     }
 
+    // reviewer検出（フェーズ数に関わらず常にチェック）
     if (
-      UL_REQUIRE_BOTH_ORCHESTRATIONS &&
-      !state.completedRecommendedSubagentPhase &&
-      isRecommendedSubagentParallelCall(event)
-    ) {
-      state.completedRecommendedSubagentPhase = true;
-      changed = true;
-    }
-
-    if (
-      UL_REQUIRE_BOTH_ORCHESTRATIONS &&
-      state.completedRecommendedSubagentPhase &&
-      !state.completedRecommendedTeamPhase &&
-      isRecommendedCoreTeamCall(event)
-    ) {
-      state.completedRecommendedTeamPhase = true;
-      changed = true;
-    }
-
-    if (
-      UL_REQUIRE_BOTH_ORCHESTRATIONS &&
       UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL &&
-      state.completedRecommendedSubagentPhase &&
-      state.completedRecommendedTeamPhase &&
       !state.completedRecommendedReviewerPhase &&
       isRecommendedReviewerCall(event)
     ) {
@@ -621,8 +561,8 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     }
 
     const missing = getMissingRequirements();
-    if (!UL_REQUIRE_BOTH_ORCHESTRATIONS || missing.length === 0) {
-      // セッション永続モードなら次のターンも有効
+    if (missing.length === 0) {
+      // reviewerが実行された（または必須でない）
       if (state.persistentUlMode) {
         state.activeUlMode = true;
         state.activeGoalLoopMode = false;
@@ -639,7 +579,8 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       return;
     }
 
-    if (UL_REQUIRE_BOTH_ORCHESTRATIONS && ctx?.hasUI && ctx?.ui) {
+    // reviewer未実行の警告
+    if (ctx?.hasUI && ctx?.ui) {
       ctx.ui.notify(`ULモード未達: ${missing.join(" と ")} が未実行です。`, "warning");
     }
 

@@ -7,7 +7,10 @@ import { normalizeTimeoutMs, computeModelTimeoutMs } from "./index.js";
 
 /**
  * Resolve effective timeout with model-specific adjustment.
- * Priority: user-specified > model-specific > default
+ * Priority: max(user-specified, model-specific) > default
+ *
+ * This ensures that slow models (e.g., GLM-5) always get sufficient timeout,
+ * even if the caller specifies a shorter timeout intended for faster models.
  *
  * @param userTimeoutMs - User-specified timeout (unknown type for safety)
  * @param modelId - Model ID for model-specific timeout lookup
@@ -19,17 +22,30 @@ export function resolveEffectiveTimeoutMs(
   modelId: string | undefined,
   fallback: number,
 ): number {
-  // Priority 1: User-specified timeout (if > 0)
+  // Get model-specific timeout if available
+  const modelSpecificMs =
+    modelId && modelId !== "(session-default)"
+      ? computeModelTimeoutMs(modelId)
+      : 0;
+
+  // User-specified timeout
   const userNormalized = normalizeTimeoutMs(userTimeoutMs, 0);
+
+  // If both are available, use the maximum to ensure slow models get enough time
+  if (userNormalized > 0 && modelSpecificMs > 0) {
+    return Math.max(userNormalized, modelSpecificMs);
+  }
+
+  // If only user-specified, use it
   if (userNormalized > 0) {
     return userNormalized;
   }
 
-  // Priority 2: Model-specific timeout
-  if (modelId && modelId !== "(session-default)") {
-    return computeModelTimeoutMs(modelId);
+  // If only model-specific, use it
+  if (modelSpecificMs > 0) {
+    return modelSpecificMs;
   }
 
-  // Priority 3: Default
+  // Default fallback
   return fallback;
 }
