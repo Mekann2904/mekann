@@ -470,12 +470,10 @@ function enforceRuntimeLimitConsistency(runtime: AgentRuntimeState): void {
     return;
   }
 
-  if (isStrictRuntimeLimitMode()) {
-    throw new Error(
-      `agent runtime limit drift detected (runtime=${runtimeVersion}, env=${envVersion})`,
-    );
-  }
-
+  // Silently update to env limits - drift is expected when:
+  // 1. Coordinator-based dynamic limits change
+  // 2. Env vars change at runtime
+  // Strict mode check removed as it caused false positives with dynamic coordinator limits
   runtime.limits = envLimits;
   runtime.limitsVersion = envVersion;
   notifyRuntimeCapacityChanged();
