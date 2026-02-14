@@ -167,9 +167,51 @@ interface SubagentRunRecord {
 | `name` | string | ✅ | - | 表示名 |
 | `description` | string | ✅ | - | このサブエージェントを使用する時期 |
 | `systemPrompt` | string | ✅ | - | このサブエージェントのコア命令プロンプト |
+| `skills` | string[] | ❌ | [] | 割り当てるスキルIDの配列 |
 | `provider` | string | ❌ | - | プロバイダの上書き |
 | `model` | string | ❌ | - | モデルの上書き |
 | `setCurrent` | boolean | ❌ | false | デフォルトサブエージェントに設定 |
+
+#### skills パラメータ
+
+`skills` パラメータを使用すると、サブエージェントに特定のスキルを割り当てることができます。スキルを割り当てられたサブエージェントは、実行時にスキルの詳細情報（SKILL.mdの内容）をプロンプト内で参照できます。
+
+```typescript
+subagent_create({
+  name: "Data Analyst",
+  description: "統計解析と可視化を行うエージェント",
+  systemPrompt: "You are a data analysis expert...",
+  skills: ["research-statistics", "research-visualization"]
+})
+```
+
+##### スキル継承機能
+
+親エージェントから子エージェントへのスキル継承をサポートしています：
+
+- **親のスキルは自動継承**: 親エージェントが持つスキルは、明示的に指定しなくても子エージェントに継承されます
+- **プロジェクトローカル優先**: プロジェクトローカルスキルがグローバルスキルをオーバーライドします
+- **明示的割り当て**: `skills` パラメータで明示的に指定されたスキルが追加されます
+
+##### スキルの確認
+
+割り当てられたスキルは `skill_status` ツールで確認できます：
+
+```typescript
+skill_status()
+```
+
+##### 利用可能なスキル一覧
+
+詳細は [スキルガイド](.pi/docs/skill-guide.md) を参照してください。主なカテゴリ：
+
+| カテゴリ | 例 |
+|---------|---|
+| 研究・分析 | research-statistics, research-visualization, exploratory-data-analysis |
+| 機械学習 | research-ml-classical, research-ml-deep, research-ml-reinforcement |
+| コード解析 | code-metrics, code-search, lint-analyzer |
+| セキュリティ | sast-analyzer, secret-detector, vuln-scanner |
+| 操作 | git-workflow |
 
 ### subagent_configure
 

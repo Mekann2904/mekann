@@ -91,6 +91,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **context-dashboard** | `context-usage-dashboard.ts` | コンテキスト使用量ダッシュボード | [→](docs/02-user-guide/11-utilities.md) |
 | **agent-idle-indicator** | `agent-idle-indicator.ts` | エージェント実行状態の表示 | [→](docs/02-user-guide/11-utilities.md) |
 | **kitty-status-integration** | `kitty-status-integration.ts` | kittyターミナル連携 | [→](docs/02-user-guide/11-utilities.md) |
+| **skill-inspector** | `skill-inspector.ts` | スキル割り当て状況の表示 | [→](docs/02-user-guide/11-utilities.md) |
 
 ### 共有ライブラリ
 
@@ -101,13 +102,26 @@ pi remove https://github.com/Mekann2904/mekann
 | **plan-mode-shared** | `lib/plan-mode-shared.ts` | プランモードの共有機能と定数 |
 | **retry-with-backoff** | `lib/retry-with-backoff.ts` | LLM失敗時の指数バックオフ付き再試行処理 |
 | **storage-lock** | `lib/storage-lock.ts` | ファイルロックとアトミック書き込みヘルパー |
-| **skill-registry** | `lib/skill-registry.ts` | スキル検出・解決・フォーマット（現在未統合） |
+| **skill-registry** | `lib/skill-registry.ts` | スキル検出・解決・フォーマット |
+| **agent-types** | `lib/agent-types.ts` | エージェント関連型定義 |
+| **agent-utils** | `lib/agent-utils.ts` | エージェントユーティリティ |
+| **error-utils** | `lib/error-utils.ts` | エラーハンドリングユーティリティ |
+| **format-utils** | `lib/format-utils.ts` | フォーマットユーティリティ |
+| **fs-utils** | `lib/fs-utils.ts` | ファイルシステムユーティリティ |
+| **live-monitor-base** | `lib/live-monitor-base.ts` | ライブモニターベース |
+| **live-view-utils** | `lib/live-view-utils.ts` | ライブビューユーティリティ |
+| **model-timeouts** | `lib/model-timeouts.ts` | モデルタイムアウト設定 |
+| **output-validation** | `lib/output-validation.ts` | 出力バリデーション |
+| **runtime-utils** | `lib/runtime-utils.ts` | ランタイムユーティリティ |
+| **storage-base** | `lib/storage-base.ts` | ストレージベース |
+| **tui-utils** | `lib/tui-utils.ts` | TUIユーティリティ |
+| **validation-utils** | `lib/validation-utils.ts` | バリデーションユーティリティ |
 
 ## スキル管理システム
 
 このプロジェクトには、サブエージェントやチームメンバーに割り当て可能なスキル管理システムが含まれています。
 
-### 利用可能なスキル（14個）
+### 利用可能なスキル（27個）
 
 | カテゴリ | スキル | 説明 |
 |---------|--------|------|
@@ -125,6 +139,19 @@ pi remove https://github.com/Mekann2904/mekann
 | **ML** | research-ml-classical | 古典的MLアルゴリズム |
 | | research-ml-deep | PyTorch深層学習 |
 | | research-ml-reinforcement | 強化学習 |
+| **コード解析** | code-metrics | コードメトリクス計測 |
+| | code-search | コード検索・パターンマッチング |
+| | code-transform | コード変換・リファクタリング |
+| | dependency-mapper | 依存関係マッピング |
+| | diff-analyzer | 差分解析 |
+| | lint-analyzer | Lint解析・品質チェック |
+| | log-analyzer | ログ解析 |
+| **ドキュメント** | doc-generator | ドキュメント自動生成 |
+| **セキュリティ** | sast-analyzer | 静的アプリケーションセキュリティテスト |
+| | secret-detector | シークレット検出 |
+| | vuln-scanner | 脆弱性スキャン |
+| **ユーティリティ** | skill-creator | スキル作成支援 |
+| **操作** | git-workflow | Git操作・ブランチ管理 |
 
 ### スキル運用方針
 
@@ -155,6 +182,7 @@ mekann/
 │   │   ├── context-usage-dashboard.ts
 │   │   ├── agent-idle-indicator.ts
 │   │   ├── kitty-status-integration.ts  # kitty統合
+│   │   ├── skill-inspector.ts           # スキル割り当て表示
 │   ├── lib/                 # 共有ライブラリ
 │   │   ├── concurrency.ts          # 並列実行制限付きワーカープール
 │   │   ├── plan-mode-shared.ts     # プランモードの共有機能
@@ -269,6 +297,7 @@ mekann/
 | **UL Dual-Orchestration** | `ulmode` | UL Dual-Orchestrationモードの切り替え |
 | **ユーティリティ** | `agent_usage_stats` | 拡張機能使用統計 |
 | | `context-usage` | コンテキスト使用量表示 |
+| | `skill_status` | スキル割り当て状況表示 |
 
 ## 🛡️ Runtime Load Guard
 
@@ -349,11 +378,14 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 | **design-discovery-team** | 創造的な作業を行う前に必ず実施する設計発見タスクフォース。要件収集、トレードオフ評価、設計策定・検証を行い、実装前の完全な設計仕様を確立 |
 | **docs-enablement-team** | README、運用手順、例、簡潔な変更サマリーのドキュメントチーム |
 | **file-organizer-team** | ファイル・フォルダの整理に特化したタスクフォース。現状分析、重複検出、整理計画策定、実行・検証を行い、デジタルワークスペースを整頓 |
+| **mermaid-diagram-team** | コード視覚化タスクフォース。シーケンス図、フローチャート等のMermaid図を厳密なコード整合性で作成・検証 |
 | **rapid-swarm-team** | 多数の並列ワーカーを持つスピード重視チーム。独立したスライスを攻撃的に展開する場合に使用 |
 | **refactor-migration-team** | 影響分析、移行計画、実装戦略、互換性チェックのためのリファクタ重視チーム |
+| **research-team** | データ分析・科学研究プロジェクトを効率的に遂行する専門チーム。研究計画から成果発表まで一貫したワークフローを提供 |
 | **security-hardening-team** | 脅威分析、認証チェック、依存関係リスク監査、パッチレビューのためのセキュリティ重視チーム |
+| **template-team** | 新規チーム作成用テンプレート |
 
-> **現在、9つの定義済みチームが提供されています。**
+> **現在、12の定義済みチームが提供されています。**
 
 ## 🔍 プロジェクトの特徴
 
@@ -385,6 +417,12 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照してください
 
 ## Version
+
+**v0.2.1** (2026-02-14)
+
+v0.2.0からの変更点:
+- skill-inspector拡張機能の追加（skill_statusツール、/skill-statusコマンド）
+- mermaid-diagram-team、research-teamの追加
 
 **v0.2.0** (2026-02-12)
 
