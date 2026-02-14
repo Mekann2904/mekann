@@ -4,6 +4,10 @@
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import {
+  getMyParallelLimit,
+  isCoordinatorInitialized,
+} from "../lib/cross-instance-coordinator";
 
 export interface AgentRuntimeLimits {
   maxTotalActiveLlm: number;
@@ -283,16 +287,35 @@ async function waitForRuntimeCapacityEvent(
 }
 
 function createRuntimeLimits(): AgentRuntimeLimits {
+  // Cross-instance coordination: if coordinator is initialized, use dynamic parallel limit
+  // Priority: env var > coordinator > default
+  let effectiveParallelSubagents = resolveLimitFromEnv(
+    "PI_AGENT_MAX_PARALLEL_SUBAGENTS",
+    DEFAULT_MAX_PARALLEL_SUBAGENTS_PER_RUN,
+  );
+
+  // Only override with coordinator if env var is NOT set and coordinator is ready
+  if (!process.env.PI_AGENT_MAX_PARALLEL_SUBAGENTS && isCoordinatorInitialized()) {
+    effectiveParallelSubagents = getMyParallelLimit();
+  }
+
+  let effectiveTotalLlm = resolveLimitFromEnv(
+    "PI_AGENT_MAX_TOTAL_LLM",
+    DEFAULT_MAX_TOTAL_ACTIVE_LLM,
+  );
+
+  // Also adjust total LLM based on coordinator if env var is not set
+  if (!process.env.PI_AGENT_MAX_TOTAL_LLM && isCoordinatorInitialized()) {
+    effectiveTotalLlm = getMyParallelLimit();
+  }
+
   return {
-    maxTotalActiveLlm: resolveLimitFromEnv("PI_AGENT_MAX_TOTAL_LLM", DEFAULT_MAX_TOTAL_ACTIVE_LLM),
+    maxTotalActiveLlm: effectiveTotalLlm,
     maxTotalActiveRequests: resolveLimitFromEnv(
       "PI_AGENT_MAX_TOTAL_REQUESTS",
       DEFAULT_MAX_TOTAL_ACTIVE_REQUESTS,
     ),
-    maxParallelSubagentsPerRun: resolveLimitFromEnv(
-      "PI_AGENT_MAX_PARALLEL_SUBAGENTS",
-      DEFAULT_MAX_PARALLEL_SUBAGENTS_PER_RUN,
-    ),
+    maxParallelSubagentsPerRun: effectiveParallelSubagents,
     maxParallelTeamsPerRun: resolveLimitFromEnv(
       "PI_AGENT_MAX_PARALLEL_TEAMS",
       DEFAULT_MAX_PARALLEL_TEAMS_PER_RUN,

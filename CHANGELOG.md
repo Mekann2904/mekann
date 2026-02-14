@@ -1,5 +1,31 @@
 # 変更履歴
 
+## [v0.2.2] - 2026-02-15
+
+### 追加
+- **クロスインスタンスコーディネーター**
+  - `lib/cross-instance-coordinator.ts`: 複数piインスタンス間の並列数を自動調整
+  - `cross-instance-runtime.ts` 拡張機能: ライフサイクル管理とステータス表示
+  - `/pi-instances` コマンド: アクティブなpiインスタンス一覧と並列配分を表示
+  - `pi_instance_status` ツール: プログラムからステータス取得
+
+### 動作
+- pi起動時に `~/.pi/runtime/instances/` にロックファイル作成
+- 15秒ごとにハートビート更新
+- 60秒以上更新がないインスタンスは自動削除
+- 並列数 = floor(PI_TOTAL_MAX_LLM / アクティブインスタンス数)
+
+### 環境変数
+- `PI_TOTAL_MAX_LLM`: 全インスタンス合計の最大並列LLM呼び出し（デフォルト: 6）
+- `PI_HEARTBEAT_INTERVAL_MS`: ハートビート間隔（デフォルト: 15000）
+- `PI_HEARTBEAT_TIMEOUT_MS`: タイムアウト（デフォルト: 60000）
+
+### 変更
+- `agent-runtime.ts`: コーディネーターが初期化されている場合、動的に並列制限を適用
+- README.md: cross-instance-runtime をオーケストレーションセクションに追加
+
+---
+
 ## [v0.2.1] - 2026-02-14
 
 ### 追加

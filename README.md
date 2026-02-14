@@ -81,6 +81,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **subagent_*** | `subagents.ts` | サブエージェントの作成・実行 | [→](docs/02-user-guide/08-subagents.md) |
 | **agent_team_*** | `agent-teams.ts` | エージェントチームの作成・実行 | [→](docs/02-user-guide/09-agent-teams.md) |
 | **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
+| **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数調整 | 新規 |
 
 ### ユーティリティ
 
