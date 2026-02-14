@@ -159,10 +159,39 @@ function mergeTeamStorageWithDisk(
   ) as TeamStorage;
 }
 
+// ============================================================================
+// Storage Cache (in-memory for performance)
+// ============================================================================
+
+const storageCache = new Map<string, { storage: TeamStorage; timestamp: number }>();
+const STORAGE_CACHE_TTL_MS = 30_000; // 30秒
+
 /**
- * Load team storage from disk.
+ * キャッシュを無効化する（team_create/configure等の変更時）
+ */
+export function invalidateStorageCache(cwd: string): void {
+  storageCache.delete(cwd);
+}
+
+/**
+ * Load team storage from disk with in-memory caching.
  */
 export function loadStorage(cwd: string): TeamStorage {
+  // キャッシュチェック
+  const cached = storageCache.get(cwd);
+  if (cached && Date.now() - cached.timestamp < STORAGE_CACHE_TTL_MS) {
+    return cached.storage;
+  }
+
+  const storage = loadStorageFromDisk(cwd);
+  storageCache.set(cwd, { storage, timestamp: Date.now() });
+  return storage;
+}
+
+/**
+ * Load team storage from disk (actual I/O).
+ */
+function loadStorageFromDisk(cwd: string): TeamStorage {
   const paths = ensurePaths(cwd);
 
   if (!existsSync(paths.storageFile)) {
@@ -215,4 +244,6 @@ export function saveStorage(cwd: string, storage: TeamStorage): void {
     atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
     pruneRunArtifacts(paths, merged.runs);
   });
+  // キャッシュを更新
+  storageCache.set(cwd, { storage: normalized, timestamp: Date.now() });
 }
