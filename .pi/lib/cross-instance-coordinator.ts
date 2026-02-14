@@ -21,6 +21,12 @@ import { pid } from "node:process";
 // Types
 // ============================================================================
 
+export interface ActiveModelInfo {
+  provider: string;
+  model: string;
+  since: string;
+}
+
 export interface InstanceInfo {
   instanceId: string;
   pid: number;
@@ -28,6 +34,8 @@ export interface InstanceInfo {
   startedAt: string;
   lastHeartbeat: string;
   cwd: string;
+  /** Currently active models (updated on each heartbeat) */
+  activeModels: ActiveModelInfo[];
 }
 
 export interface CoordinatorConfig {
@@ -150,6 +158,7 @@ export function registerInstance(
     startedAt: now,
     lastHeartbeat: now,
     cwd,
+    activeModels: [],
   };
 
   // Write initial lock file
@@ -220,6 +229,7 @@ export function updateHeartbeat(): void {
       startedAt: new Date().toISOString(),
       lastHeartbeat: new Date().toISOString(),
       cwd: process.cwd(),
+      activeModels: [],
     };
     const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
     writeFileSync(lockFile, JSON.stringify(info, null, 2));
@@ -414,4 +424,200 @@ export function getEnvOverrides(): Partial<CoordinatorConfig> {
   }
 
   return overrides;
+}
+
+// ============================================================================
+// Model-Specific Instance Tracking
+// ============================================================================
+
+/**
+ * Update the active model for this instance.
+ * Call this when starting to use a specific model.
+ */
+export function setActiveModel(provider: string, model: string): void {
+  if (!state) return;
+
+  try {
+    const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
+    const content = readFileSync(lockFile, "utf-8");
+    const info = JSON.parse(content) as InstanceInfo;
+
+    const now = new Date().toISOString();
+    const normalizedProvider = provider.toLowerCase();
+    const normalizedModel = model.toLowerCase();
+
+    // Check if already active
+    const existing = info.activeModels.find(
+      (m) => m.provider === normalizedProvider && m.model === normalizedModel
+    );
+
+    if (!existing) {
+      info.activeModels.push({
+        provider: normalizedProvider,
+        model: normalizedModel,
+        since: now,
+      });
+    }
+
+    info.lastHeartbeat = now;
+    writeFileSync(lockFile, JSON.stringify(info, null, 2));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Clear an active model for this instance.
+ * Call this when done using a specific model.
+ */
+export function clearActiveModel(provider: string, model: string): void {
+  if (!state) return;
+
+  try {
+    const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
+    const content = readFileSync(lockFile, "utf-8");
+    const info = JSON.parse(content) as InstanceInfo;
+
+    const normalizedProvider = provider.toLowerCase();
+    const normalizedModel = model.toLowerCase();
+
+    info.activeModels = info.activeModels.filter(
+      (m) => !(m.provider === normalizedProvider && m.model === normalizedModel)
+    );
+
+    info.lastHeartbeat = new Date().toISOString();
+    writeFileSync(lockFile, JSON.stringify(info, null, 2));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Clear all active models for this instance.
+ */
+export function clearAllActiveModels(): void {
+  if (!state) return;
+
+  try {
+    const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
+    const content = readFileSync(lockFile, "utf-8");
+    const info = JSON.parse(content) as InstanceInfo;
+
+    info.activeModels = [];
+    info.lastHeartbeat = new Date().toISOString();
+    writeFileSync(lockFile, JSON.stringify(info, null, 2));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Get count of active instances using a specific model.
+ *
+ * @param provider - Provider name
+ * @param model - Model name (or pattern)
+ * @returns Number of instances using this model
+ */
+export function getActiveInstancesForModel(
+  provider: string,
+  model: string
+): number {
+  if (!state) {
+    return 1;
+  }
+
+  const instances = getActiveInstances();
+  const normalizedProvider = provider.toLowerCase();
+  const normalizedModel = model.toLowerCase();
+
+  let count = 0;
+  for (const inst of instances) {
+    const hasModel = inst.activeModels.some(
+      (m) =>
+        m.provider === normalizedProvider &&
+        (m.model === normalizedModel ||
+         matchesModelPattern(normalizedModel, m.model))
+    );
+    if (hasModel) {
+      count++;
+    }
+  }
+
+  return Math.max(1, count);
+}
+
+/**
+ * Get the effective parallel limit for a specific model.
+ * This accounts for other instances using the same model.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @param baseLimit - The base concurrency limit for this model
+ * @returns The effective limit for this instance
+ */
+export function getModelParallelLimit(
+  provider: string,
+  model: string,
+  baseLimit: number
+): number {
+  const activeCount = getActiveInstancesForModel(provider, model);
+  return Math.max(1, Math.floor(baseLimit / activeCount));
+}
+
+/**
+ * Simple pattern matching for model names.
+ */
+function matchesModelPattern(pattern: string, model: string): boolean {
+  // Exact match
+  if (pattern === model) return true;
+
+  // Prefix match (e.g., "claude-sonnet-4" matches "claude-sonnet-4-20250514")
+  if (model.startsWith(pattern)) return true;
+  if (pattern.startsWith(model)) return true;
+
+  // Glob-style match
+  const regex = new RegExp(
+    "^" + pattern.replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
+    "i"
+  );
+  return regex.test(model);
+}
+
+/**
+ * Get a summary of model usage across instances.
+ */
+export function getModelUsageSummary(): {
+  models: Array<{
+    provider: string;
+    model: string;
+    instanceCount: number;
+  }>;
+  instances: InstanceInfo[];
+} {
+  const instances = getActiveInstances();
+  const modelMap = new Map<string, { provider: string; model: string; count: number }>();
+
+  for (const inst of instances) {
+    for (const active of inst.activeModels) {
+      const key = `${active.provider}:${active.model}`;
+      const existing = modelMap.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        modelMap.set(key, {
+          provider: active.provider,
+          model: active.model,
+          count: 1,
+        });
+      }
+    }
+  }
+
+  const models = Array.from(modelMap.values()).map((m) => ({
+    provider: m.provider,
+    model: m.model,
+    instanceCount: m.count,
+  }));
+
+  return { models, instances };
 }

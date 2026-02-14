@@ -7,7 +7,18 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   getMyParallelLimit,
   isCoordinatorInitialized,
+  getModelParallelLimit,
+  getActiveInstancesForModel,
 } from "../lib/cross-instance-coordinator";
+import {
+  getConcurrencyLimit,
+  resolveLimits,
+  detectTier,
+} from "../lib/provider-limits";
+import {
+  getEffectiveLimit,
+  isCoordinatorInitialized as isAdaptiveInitialized,
+} from "../lib/adaptive-rate-controller";
 
 export interface AgentRuntimeLimits {
   maxTotalActiveLlm: number;
@@ -1064,6 +1075,85 @@ export function resetRuntimeTransientState(): void {
   runtime.queue.pending = [];
   runtime.reservations.active = [];
   notifyRuntimeCapacityChanged();
+}
+
+// ============================================================================
+// Model-Aware Rate Limiting
+// ============================================================================
+
+/**
+ * Get the effective parallelism limit for a specific model.
+ * This combines:
+ * 1. Provider/model preset limits
+ * 2. Learned limits (from 429 errors)
+ * 3. Cross-instance distribution
+ *
+ * @param provider - Provider name (e.g., "anthropic")
+ * @param model - Model name (e.g., "claude-sonnet-4-20250514")
+ * @returns The effective concurrency limit for this instance
+ */
+export function getModelAwareParallelLimit(provider: string, model: string): number {
+  // Get preset limit for this model
+  const tier = detectTier(provider, model);
+  const presetLimit = getConcurrencyLimit(provider, model, tier);
+
+  // Apply adaptive learning (429-based adjustments)
+  const adaptiveLimit = getEffectiveLimit(provider, model, presetLimit);
+
+  // Distribute across instances using the same model
+  if (isCoordinatorInitialized()) {
+    return getModelParallelLimit(provider, model, adaptiveLimit);
+  }
+
+  return adaptiveLimit;
+}
+
+/**
+ * Check if we should allow a parallel operation for a specific model.
+ * This is a convenience function that combines limit checking.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @param currentActive - Current number of active operations
+ * @returns Whether the operation should be allowed
+ */
+export function shouldAllowParallelForModel(
+  provider: string,
+  model: string,
+  currentActive: number
+): boolean {
+  const limit = getModelAwareParallelLimit(provider, model);
+  return currentActive < limit;
+}
+
+/**
+ * Get a summary of current limits for debugging.
+ */
+export function getLimitsSummary(provider?: string, model?: string): string {
+  const lines: string[] = [];
+  const snapshot = getRuntimeSnapshot();
+
+  lines.push("Runtime Limits:");
+  lines.push(`  maxTotalActiveLlm: ${snapshot.limits.maxTotalActiveLlm}`);
+  lines.push(`  maxParallelSubagentsPerRun: ${snapshot.limits.maxParallelSubagentsPerRun}`);
+  lines.push(`  maxParallelTeamsPerRun: ${snapshot.limits.maxParallelTeamsPerRun}`);
+
+  if (provider && model) {
+    const modelLimit = getModelAwareParallelLimit(provider, model);
+    const instances = isCoordinatorInitialized() ? getActiveInstancesForModel(provider, model) : 1;
+    lines.push("");
+    lines.push(`Model-Specific (${provider}/${model}):`);
+    lines.push(`  effective_limit: ${modelLimit}`);
+    lines.push(`  instances_using: ${instances}`);
+  }
+
+  lines.push("");
+  lines.push("Current State:");
+  lines.push(`  activeSubagentAgents: ${snapshot.subagentActiveAgents}`);
+  lines.push(`  activeTeamRuns: ${snapshot.teamActiveRuns}`);
+  lines.push(`  activeReservations: ${snapshot.activeReservations}`);
+
+  return lines.join("\n");
 }
 
 export default function registerAgentRuntimeExtension(_pi: ExtensionAPI) {

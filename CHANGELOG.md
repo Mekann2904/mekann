@@ -1,5 +1,45 @@
 # 変更履歴
 
+## [v0.3.0] - 2026-02-15
+
+### 追加
+- **プロバイダー/モデル別レート制限システム**
+  - `lib/provider-limits.ts`: プロバイダー/モデル別のレート制限定義
+    - Anthropic (Claude 4.x, 3.5, 3系)
+    - OpenAI (GPT-4o, GPT-4, o1系)
+    - Google (Gemini 2.5, 2.0, 1.5系)
+    - Mistral, Groq, Cerebras, xAI
+    - ティア別制限 (pro, max, plus, free等)
+  - `lib/adaptive-rate-controller.ts`: 適応学習システム
+    - 429エラー検知 → 制限を30%削減
+    - 成功継続 → 5分後に10%ずつ回復
+    - プロバイダー/モデル単位で独立管理
+  - `cross-instance-coordinator.ts` 拡張: モデル使用追跡
+    - 各インスタンスのアクティブモデルを記録
+    - 同一モデル使用インスタンス数で配分
+  - 新ツール: `pi_model_limits` - モデル別制限確認
+  - 新コマンド: `/pi-limits` - 制限一覧表示
+
+### アルゴリズム
+```
+有効並列数 = floor(
+  (プリセット制限 × 学習済み調整) /
+  同一モデル使用中のインスタンス数
+)
+```
+
+### 環境変数
+- `PI_PROVIDER_TIER`: プロバイダー全体のティア
+- `PI_{PROVIDER}_TIER`: プロバイダー固有のティア (例: PI_ANTHROPIC_TIER)
+
+### 変更
+- `agent-runtime.ts`: モデル別制限を考慮するヘルパー関数追加
+  - `getModelAwareParallelLimit()`: モデル固有の並列制限取得
+  - `shouldAllowParallelForModel()`: 並列実行可否判定
+  - `getLimitsSummary()`: 制限サマリー取得
+
+---
+
 ## [v0.2.2] - 2026-02-15
 
 ### 追加
