@@ -7,6 +7,16 @@ export interface ConcurrencyRunOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Result wrapper for tracking success/failure of individual workers.
+ * Used internally to ensure all workers complete before throwing errors.
+ */
+interface WorkerResult<TResult> {
+  index: number;
+  result?: TResult;
+  error?: unknown;
+}
+
 function toPositiveLimit(limit: number, itemCount: number): number {
   const safeLimit = Number.isFinite(limit) ? Math.trunc(limit) : 1;
   return Math.max(1, Math.min(itemCount, safeLimit));
@@ -27,10 +37,11 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
   if (items.length === 0) return [];
 
   const normalizedLimit = toPositiveLimit(limit, items.length);
-  const results: TResult[] = new Array(items.length);
+  const results: WorkerResult<TResult>[] = new Array(items.length);
   let cursor = 0;
+  let firstError: unknown;
 
-  const runWorker = async () => {
+  const runWorker = async (): Promise<void> => {
     while (true) {
       ensureNotAborted(options.signal);
       const currentIndex = cursor;
@@ -38,17 +49,40 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
       if (currentIndex >= items.length) {
         return;
       }
-      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+
+      try {
+        const result = await worker(items[currentIndex], currentIndex);
+        results[currentIndex] = { index: currentIndex, result };
+      } catch (error) {
+        // Capture the first error but continue processing to avoid dangling workers
+        if (firstError === undefined) {
+          firstError = error;
+        }
+        results[currentIndex] = { index: currentIndex, error };
+      }
+
       ensureNotAborted(options.signal);
     }
   };
 
+  // Run all workers and wait for completion
   await Promise.all(
-    Array.from({ length: normalizedLimit }, async () => {
-      await runWorker();
-    }),
+    Array.from({ length: normalizedLimit }, () => runWorker()),
   );
 
   ensureNotAborted(options.signal);
-  return results;
+
+  // If any worker failed, throw the first error encountered
+  if (firstError !== undefined) {
+    throw firstError;
+  }
+
+  // Unwrap results, filtering out any undefined (should not happen at this point)
+  return results.map((item) => {
+    if (item?.error) {
+      // This should have been caught above, but handle defensively
+      throw item.error;
+    }
+    return item!.result as TResult;
+  });
 }

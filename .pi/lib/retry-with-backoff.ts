@@ -74,6 +74,7 @@ const DEFAULT_MAX_RATE_LIMIT_RETRIES = 0;
 const DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS = 2_000;
 const MAX_RATE_LIMIT_GATE_DELAY_MS = 120_000;
 const RATE_LIMIT_GATE_TTL_MS = 10 * 60 * 1000;
+const MAX_RATE_LIMIT_ENTRIES = 64; // Prevent unbounded memory growth
 const GLOBAL_RATE_LIMIT_GATE_KEY = "__global_rate_limit__";
 const sharedRateLimitState: SharedRateLimitState = {
   entries: new Map<string, SharedRateLimitStateEntry>(),
@@ -198,8 +199,21 @@ function getSharedRateLimitState(): SharedRateLimitState {
 
 function pruneRateLimitState(nowMs = Date.now()): void {
   const state = getSharedRateLimitState();
+
+  // First pass: remove expired entries based on TTL
   for (const [key, entry] of state.entries.entries()) {
     if (nowMs - entry.updatedAtMs > RATE_LIMIT_GATE_TTL_MS && entry.untilMs <= nowMs) {
+      state.entries.delete(key);
+    }
+  }
+
+  // Second pass: enforce max entries limit to prevent unbounded memory growth
+  // Remove oldest entries (by updatedAtMs) when over limit
+  if (state.entries.size > MAX_RATE_LIMIT_ENTRIES) {
+    const entries = Array.from(state.entries.entries())
+      .sort((a, b) => a[1].updatedAtMs - b[1].updatedAtMs);
+    const toRemove = entries.slice(0, state.entries.size - MAX_RATE_LIMIT_ENTRIES);
+    for (const [key] of toRemove) {
       state.entries.delete(key);
     }
   }

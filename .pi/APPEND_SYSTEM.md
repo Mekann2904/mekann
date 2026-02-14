@@ -7,6 +7,29 @@
 
 The following rules apply to ALL agents, subagents, and team members in this project:
 
+# Git Workflow Skill Auto-Load (MANDATORY)
+
+## REQUIRED behavior
+
+1. When the task involves ANY git-related operation, you MUST read and follow the git-workflow skill BEFORE taking action.
+2. Load command:
+   ```
+   read tool with path: /Users/mekann/github/pi-plugin/mekann/.pi/skills/git-workflow/SKILL.md
+   ```
+3. The skill MUST be loaded BEFORE planning or executing ANY git-related operation.
+
+## Detection patterns (MANDATORY load trigger)
+
+Load the git-workflow skill IMMEDIATELY when user mentions or task involves:
+- Keywords: "git", "commit", "branch", "push", "pull", "merge", "rebase", "stash", "checkout", "reset"
+- Japanese: "コミット", "ブランチ", "プッシュ", "マージ", "リベース", "コンフリクト"
+- Actions: version control, code history, commit message, conflict resolution, branch management
+- File operations in git context: staging changes, reverting files, cherry-picking
+
+## Violation handling
+
+If you attempt any git command without first loading the git-workflow skill, STOP and load it immediately.
+
 ## Output Format Rules (MANDATORY)
 
 1. **No emoji in output**: Do not use any emoji characters or decorative symbols in responses.

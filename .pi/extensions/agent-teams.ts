@@ -2025,7 +2025,7 @@ async function runPiPrintMode(input: {
   prompt: string;
   timeoutMs: number;
   signal?: AbortSignal;
-  onStdoutChunk?: (chunk: string) => void;
+  onTextDelta?: (delta: string) => void;
   onStderrChunk?: (chunk: string) => void;
 }): Promise<PrintCommandResult> {
   return sharedRunPiPrintMode({
@@ -2084,7 +2084,7 @@ async function runMember(input: {
   onStart?: (member: TeamMember) => void;
   onEnd?: (member: TeamMember) => void;
   onEvent?: (member: TeamMember, event: string) => void;
-  onStdoutChunk?: (member: TeamMember, chunk: string) => void;
+  onTextDelta?: (member: TeamMember, delta: string) => void;
   onStderrChunk?: (member: TeamMember, chunk: string) => void;
 }): Promise<TeamMemberResult> {
   const prompt = buildTeamMemberPrompt({
@@ -2142,7 +2142,7 @@ async function runMember(input: {
             prompt,
             timeoutMs: input.timeoutMs,
             signal: input.signal,
-            onStdoutChunk: (chunk) => input.onStdoutChunk?.(input.member, chunk),
+            onTextDelta: (delta) => input.onTextDelta?.(input.member, delta),
             onStderrChunk: emitStderrChunk,
           });
           const normalized = normalizeTeamMemberOutput(result.output);
@@ -2354,7 +2354,7 @@ async function runTeamTask(input: {
   signal?: AbortSignal;
   onMemberStart?: (member: TeamMember) => void;
   onMemberEnd?: (member: TeamMember) => void;
-  onMemberStdoutChunk?: (member: TeamMember, chunk: string) => void;
+  onMemberTextDelta?: (member: TeamMember, delta: string) => void;
   onMemberStderrChunk?: (member: TeamMember, chunk: string) => void;
   onMemberResult?: (member: TeamMember, result: TeamMemberResult) => void;
   onMemberPhase?: (member: TeamMember, phase: TeamLivePhase, round?: number) => void;
@@ -2445,7 +2445,7 @@ async function runTeamTask(input: {
           onStart: input.onMemberStart,
           onEnd: input.onMemberEnd,
           onEvent: input.onMemberEvent,
-          onStdoutChunk: input.onMemberStdoutChunk,
+          onTextDelta: input.onMemberTextDelta,
           onStderrChunk: input.onMemberStderrChunk,
         });
         emitResultEvent(member, "initial", result);
@@ -2479,7 +2479,7 @@ async function runTeamTask(input: {
         onStart: input.onMemberStart,
         onEnd: input.onMemberEnd,
         onEvent: input.onMemberEvent,
-        onStdoutChunk: input.onMemberStdoutChunk,
+        onTextDelta: input.onMemberTextDelta,
         onStderrChunk: input.onMemberStderrChunk,
       });
       memberResults.push(result);
@@ -2590,7 +2590,7 @@ async function runTeamTask(input: {
             onStart: input.onMemberStart,
             onEnd: input.onMemberEnd,
             onEvent: input.onMemberEvent,
-            onStdoutChunk: input.onMemberStdoutChunk,
+            onTextDelta: input.onMemberTextDelta,
             onStderrChunk: input.onMemberStderrChunk,
           });
           emitResultEvent(member, `communication#${round}`, result);
@@ -2688,7 +2688,7 @@ async function runTeamTask(input: {
           onStart: input.onMemberStart,
           onEnd: input.onMemberEnd,
           onEvent: input.onMemberEvent,
-          onStdoutChunk: input.onMemberStdoutChunk,
+          onTextDelta: input.onMemberTextDelta,
           onStderrChunk: input.onMemberStderrChunk,
         });
         roundResults.push(result);
@@ -2831,7 +2831,7 @@ async function runTeamTask(input: {
         onStart: input.onMemberStart,
         onEnd: input.onMemberEnd,
         onEvent: input.onMemberEvent,
-        onStdoutChunk: input.onMemberStdoutChunk,
+        onTextDelta: input.onMemberTextDelta,
         onStderrChunk: input.onMemberStderrChunk,
       });
       emitResultEvent(member, `failed-retry#${retryRound}`, result);
@@ -3426,8 +3426,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             signal,
             onMemberStart,
             onMemberEnd,
-            onMemberStdoutChunk: (member, chunk) => {
-              liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stdout", chunk);
+            onMemberTextDelta: (member, delta) => {
+              liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stdout", delta);
             },
             onMemberStderrChunk: (member, chunk) => {
               liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stderr", chunk);
@@ -3943,8 +3943,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
                   liveMonitor?.appendEvent(toTeamLiveItemKey(team.id, member.id), "member process exited");
                   onRuntimeMemberEnd();
                 },
-                onMemberStdoutChunk: (member, chunk) => {
-                  liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stdout", chunk);
+                onMemberTextDelta: (member, delta) => {
+                  liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stdout", delta);
                 },
                 onMemberStderrChunk: (member, chunk) => {
                   liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stderr", chunk);

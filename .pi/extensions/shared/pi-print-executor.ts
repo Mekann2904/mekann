@@ -1,11 +1,19 @@
 /**
  * Shared pi print mode executor.
  * Used by both subagents.ts and agent-teams.ts for consistent process execution.
+ *
+ * Uses pi --mode json for streaming output:
+ * - Receives text_delta events in real-time, allowing accurate idle timeout detection.
+ * - Supports models with long thinking times (e.g., GLM-5).
+ * - Only times out when the process becomes unresponsive (no output for the timeout period).
  */
 
-import { spawn, type SpawnOptions } from "node:child_process";
+import { spawn } from "node:child_process";
 
 const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
+
+/** Default idle timeout for subagent execution (5 minutes) */
+const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
 
 export interface PrintExecutorOptions {
   /** Entity type label for error messages (e.g., "subagent", "agent team member") */
@@ -16,14 +24,18 @@ export interface PrintExecutorOptions {
   model?: string;
   /** Prompt to send to pi */
   prompt: string;
-  /** Timeout in milliseconds (0 = disabled) */
+  /** Idle timeout in milliseconds - resets on each output chunk (0 = disabled, default: 300000) */
   timeoutMs: number;
   /** Optional abort signal for cancellation */
   signal?: AbortSignal;
-  /** Optional callback for stdout chunks */
+  /** Optional callback for stdout chunks (raw JSON lines) */
   onStdoutChunk?: (chunk: string) => void;
   /** Optional callback for stderr chunks */
   onStderrChunk?: (chunk: string) => void;
+  /** Optional callback for text delta events (for preview display) */
+  onTextDelta?: (delta: string) => void;
+  /** Optional callback for thinking delta events (for preview display) */
+  onThinkingDelta?: (delta: string) => void;
 }
 
 export interface PrintCommandResult {
@@ -42,8 +54,92 @@ function trimForError(text: string, maxLength = 200): string {
 }
 
 /**
- * Execute pi in print mode and return the result.
- * Handles timeout, abort, and process lifecycle.
+ * Parse JSON stream lines and extract text content.
+ * Handles both complete JSON objects and partial lines.
+ */
+function parseJsonStreamLine(line: string): { type: string; textDelta?: string; thinkingDelta?: string; isEnd?: boolean } | null {
+  if (!line.startsWith("{")) return null;
+
+  try {
+    const obj = JSON.parse(line);
+
+    // Check for agent_end (completion)
+    if (obj.type === "agent_end") {
+      return { type: "agent_end", isEnd: true };
+    }
+
+    // Check for message_end (turn completion)
+    if (obj.type === "message_end") {
+      return { type: "message_end", isEnd: true };
+    }
+
+    // Extract text_delta from message_update
+    if (obj.type === "message_update" && obj.assistantMessageEvent?.type === "text_delta") {
+      return { type: "text_delta", textDelta: obj.assistantMessageEvent.delta };
+    }
+
+    // Extract thinking_delta from message_update
+    if (obj.type === "message_update" && obj.assistantMessageEvent?.type === "thinking_delta") {
+      return { type: "thinking_delta", thinkingDelta: obj.assistantMessageEvent.delta };
+    }
+
+    return { type: obj.type || "unknown" };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract final text from agent_end message.
+ */
+function extractFinalText(line: string): { text: string | null; thinking: string | null } {
+  try {
+    const obj = JSON.parse(line);
+    if (obj.type === "agent_end" && obj.messages) {
+      const lastMessage = obj.messages[obj.messages.length - 1];
+      if (lastMessage?.role === "assistant" && Array.isArray(lastMessage.content)) {
+        const textBlock = lastMessage.content.find((b: { type: string }) => b.type === "text");
+        const thinkingBlock = lastMessage.content.find((b: { type: string }) => b.type === "thinking");
+        return {
+          text: textBlock?.text || null,
+          thinking: thinkingBlock?.thinking || null,
+        };
+      }
+    }
+    return { text: null, thinking: null };
+  } catch {
+    return { text: null, thinking: null };
+  }
+}
+
+/**
+ * Format thinking block with indentation for distinct display.
+ */
+function formatThinkingBlock(thinking: string): string {
+  if (!thinking?.trim()) return "";
+  const lines = thinking.split("\n");
+  const formatted = lines.map((line) => `  ${line}`).join("\n");
+  return `[Thinking]\n${formatted}`;
+}
+
+/**
+ * Combine text and thinking content with proper formatting.
+ */
+function combineTextAndThinking(text: string, thinking: string): string {
+  const parts: string[] = [];
+  if (thinking?.trim()) {
+    parts.push(formatThinkingBlock(thinking));
+  }
+  if (text?.trim()) {
+    if (parts.length > 0) parts.push("");
+    parts.push(text.trim());
+  }
+  return parts.join("\n");
+}
+
+/**
+ * Execute pi in JSON mode and return the result.
+ * Uses idle timeout strategy: timer resets on each output, allowing long tasks to continue.
  */
 export async function runPiPrintMode(
   input: PrintExecutorOptions,
@@ -54,7 +150,8 @@ export async function runPiPrintMode(
     throw new Error(`${entityLabel} run aborted`);
   }
 
-  const args = ["-p", "--no-extensions"];
+  // Use JSON mode for streaming output
+  const args = ["--mode", "json", "-p", "--no-extensions"];
 
   if (input.provider) {
     args.push("--provider", input.provider);
@@ -69,10 +166,16 @@ export async function runPiPrintMode(
   return await new Promise<PrintCommandResult>((resolvePromise, rejectPromise) => {
     let stdout = "";
     let stderr = "";
+    let textContent = "";
+    let thinkingContent = "";
+    let finalText = "";
+    let finalThinking = "";
     let timedOut = false;
     let settled = false;
     let forceKillTimer: NodeJS.Timeout | undefined;
+    let idleTimeout: NodeJS.Timeout | undefined;
     const startedAt = Date.now();
+    const idleTimeoutMs = input.timeoutMs > 0 ? input.timeoutMs : DEFAULT_IDLE_TIMEOUT_MS;
 
     const child = spawn("pi", args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -96,6 +199,20 @@ export async function runPiPrintMode(
       }
     };
 
+    const resetIdleTimeout = () => {
+      if (idleTimeout) {
+        clearTimeout(idleTimeout);
+      }
+      idleTimeout = setTimeout(() => {
+        timedOut = true;
+        killSafely("SIGTERM");
+        if (forceKillTimer) {
+          clearTimeout(forceKillTimer);
+        }
+        forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+      }, idleTimeoutMs);
+    };
+
     const onAbort = () => {
       killSafely("SIGTERM");
       if (forceKillTimer) {
@@ -105,21 +222,14 @@ export async function runPiPrintMode(
       finish(() => rejectPromise(new Error(`${entityLabel} run aborted`)));
     };
 
-    const timeoutEnabled = input.timeoutMs > 0;
-    const timeout = timeoutEnabled
-      ? setTimeout(() => {
-          timedOut = true;
-          killSafely("SIGTERM");
-          if (forceKillTimer) {
-            clearTimeout(forceKillTimer);
-          }
-          forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-        }, input.timeoutMs)
-      : undefined;
+    const timeoutEnabled = input.timeoutMs !== 0;
+    if (timeoutEnabled) {
+      resetIdleTimeout();
+    }
 
     const cleanup = () => {
-      if (timeout) {
-        clearTimeout(timeout);
+      if (idleTimeout) {
+        clearTimeout(idleTimeout);
       }
       if (forceKillTimer) {
         clearTimeout(forceKillTimer);
@@ -129,16 +239,59 @@ export async function runPiPrintMode(
 
     input.signal?.addEventListener("abort", onAbort, { once: true });
 
+    // Buffer for incomplete JSON lines
+    let lineBuffer = "";
+
     child.stdout.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
       stdout += text;
       input.onStdoutChunk?.(text);
+
+      // Reset idle timeout on any output
+      if (timeoutEnabled) {
+        resetIdleTimeout();
+      }
+
+      // Process complete lines
+      lineBuffer += text;
+      const lines = lineBuffer.split("\n");
+      lineBuffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        const parsed = parseJsonStreamLine(trimmed);
+        if (parsed?.type === "text_delta" && parsed.textDelta) {
+          textContent += parsed.textDelta;
+          input.onTextDelta?.(parsed.textDelta);
+        }
+
+        if (parsed?.type === "thinking_delta" && parsed.thinkingDelta) {
+          thinkingContent += parsed.thinkingDelta;
+          // Don't show thinking in preview - only in final output
+        }
+
+        // Try to extract final text from agent_end
+        if (parsed?.isEnd) {
+          const extracted = extractFinalText(trimmed);
+          if (extracted.text) {
+            finalText = extracted.text;
+          }
+          if (extracted.thinking) {
+            finalThinking = extracted.thinking;
+          }
+        }
+      }
     });
 
     child.stderr.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
       stderr += text;
       input.onStderrChunk?.(text);
+      if (timeoutEnabled) {
+        resetIdleTimeout();
+      }
     });
 
     child.on("error", (error) => {
@@ -148,7 +301,7 @@ export async function runPiPrintMode(
     child.on("close", (code) => {
       finish(() => {
         if (timedOut) {
-          rejectPromise(new Error(`${entityLabel} timed out after ${input.timeoutMs}ms`));
+          rejectPromise(new Error(`${entityLabel} idle timeout after ${idleTimeoutMs}ms of no output`));
           return;
         }
 
@@ -157,7 +310,11 @@ export async function runPiPrintMode(
           return;
         }
 
-        const output = stdout.trim();
+        // Prefer final text/thinking from agent_end, fallback to collected deltas
+        const outputText = finalText || textContent;
+        const outputThinking = finalThinking || thinkingContent;
+        const output = combineTextAndThinking(outputText, outputThinking);
+
         if (!output) {
           const stderrMessage = trimForError(stderr);
           rejectPromise(
@@ -201,24 +358,32 @@ export interface CallModelViaPiOptions {
   timeoutMs: number;
   /** Optional abort signal for cancellation */
   signal?: AbortSignal;
-  /** Optional callback for stdout chunks (streaming) */
+  /** Optional callback for stdout chunks (raw JSON lines) */
   onChunk?: (chunk: string) => void;
+  /** Optional callback for text delta events (for preview display) */
+  onTextDelta?: (delta: string) => void;
   /** Entity label for error messages (default: "RSA") */
   entityLabel?: string;
 }
 
 /**
- * Call model via pi -p for loop and RSA modules.
- * Supports thinking level and optional streaming via onChunk callback.
+ * Call model via pi --mode json for loop and RSA modules.
+ * Uses idle timeout strategy with streaming support.
  */
 export async function callModelViaPi(options: CallModelViaPiOptions): Promise<string> {
-  const { model, prompt, timeoutMs, signal, onChunk, entityLabel = "RSA" } = options;
+  const { model, prompt, timeoutMs, signal, onChunk, onTextDelta, entityLabel = "RSA" } = options;
 
   if (signal?.aborted) {
     throw new Error(`${entityLabel} aborted`);
   }
 
-  const args = ["-p", "--no-extensions", "--provider", model.provider, "--model", model.id];
+  const args = [
+    "--mode", "json",
+    "-p",
+    "--no-extensions",
+    "--provider", model.provider,
+    "--model", model.id,
+  ];
 
   if (model.thinkingLevel) {
     args.push("--thinking", model.thinkingLevel);
@@ -229,8 +394,15 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
   return await new Promise<string>((resolvePromise, rejectPromise) => {
     let stdout = "";
     let stderr = "";
+    let textContent = "";
+    let thinkingContent = "";
+    let finalText = "";
+    let finalThinking = "";
     let timedOut = false;
     let settled = false;
+    let forceKillTimer: NodeJS.Timeout | undefined;
+    let idleTimeout: NodeJS.Timeout | undefined;
+    const idleTimeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_IDLE_TIMEOUT_MS;
 
     const child = spawn("pi", args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -254,40 +426,94 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
       }
     };
 
+    const resetIdleTimeout = () => {
+      if (idleTimeout) {
+        clearTimeout(idleTimeout);
+      }
+      idleTimeout = setTimeout(() => {
+        timedOut = true;
+        killSafely("SIGTERM");
+        if (forceKillTimer) {
+          clearTimeout(forceKillTimer);
+        }
+        forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+      }, idleTimeoutMs);
+    };
+
     const onAbort = () => {
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
+      }
+      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
       finish(() => rejectPromise(new Error(`${entityLabel} aborted`)));
     };
 
-    // timeoutMs <= 0 means "no per-call timeout". User cancellation still aborts the process.
-    const timeoutEnabled = timeoutMs > 0;
-    const timeout = timeoutEnabled
-      ? setTimeout(() => {
-          timedOut = true;
-          killSafely("SIGTERM");
-          setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-        }, timeoutMs)
-      : undefined;
+    const timeoutEnabled = timeoutMs !== 0;
+    if (timeoutEnabled) {
+      resetIdleTimeout();
+    }
 
     const cleanup = () => {
-      if (timeout) {
-        clearTimeout(timeout);
+      if (idleTimeout) {
+        clearTimeout(idleTimeout);
+      }
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
       }
       signal?.removeEventListener("abort", onAbort);
     };
 
     signal?.addEventListener("abort", onAbort, { once: true });
 
+    let lineBuffer = "";
+
     child.stdout.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
       stdout += text;
       onChunk?.(text);
+
+      if (timeoutEnabled) {
+        resetIdleTimeout();
+      }
+
+      lineBuffer += text;
+      const lines = lineBuffer.split("\n");
+      lineBuffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        const parsed = parseJsonStreamLine(trimmed);
+        if (parsed?.type === "text_delta" && parsed.textDelta) {
+          textContent += parsed.textDelta;
+          onTextDelta?.(parsed.textDelta);
+        }
+
+        if (parsed?.type === "thinking_delta" && parsed.thinkingDelta) {
+          thinkingContent += parsed.thinkingDelta;
+          // Don't show thinking in preview - only in final output
+        }
+
+        if (parsed?.isEnd) {
+          const extracted = extractFinalText(trimmed);
+          if (extracted.text) {
+            finalText = extracted.text;
+          }
+          if (extracted.thinking) {
+            finalThinking = extracted.thinking;
+          }
+        }
+      }
     });
 
     child.stderr.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
       stderr += text;
+      if (timeoutEnabled) {
+        resetIdleTimeout();
+      }
     });
 
     child.on("error", (error) => {
@@ -297,19 +523,23 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
     child.on("close", (code) => {
       finish(() => {
         if (timedOut) {
-          rejectPromise(new Error(`pi -p timed out after ${timeoutMs}ms`));
+          rejectPromise(new Error(`pi --mode json idle timeout after ${idleTimeoutMs}ms of no output`));
           return;
         }
 
         if (code !== 0) {
           const message = stderr.trim() || `exit code ${code}`;
-          rejectPromise(new Error(`pi -p failed: ${message}`));
+          rejectPromise(new Error(`pi --mode json failed: ${message}`));
           return;
         }
 
-        const output = stdout.trim();
+        // Prefer final text/thinking from agent_end, fallback to collected deltas
+        const outputText = finalText || textContent;
+        const outputThinking = finalThinking || thinkingContent;
+        const output = combineTextAndThinking(outputText, outputThinking);
+
         if (!output) {
-          rejectPromise(new Error("pi -p returned empty output"));
+          rejectPromise(new Error("pi --mode json returned empty output"));
           return;
         }
 

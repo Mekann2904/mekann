@@ -1118,7 +1118,7 @@ async function runPiPrintMode(input: {
   prompt: string;
   timeoutMs: number;
   signal?: AbortSignal;
-  onStdoutChunk?: (chunk: string) => void;
+  onTextDelta?: (delta: string) => void;
   onStderrChunk?: (chunk: string) => void;
 }): Promise<PrintCommandResult> {
   return sharedRunPiPrintMode({
@@ -1174,7 +1174,7 @@ async function runSubagentTask(input: {
   signal?: AbortSignal;
   onStart?: () => void;
   onEnd?: () => void;
-  onStdoutChunk?: (chunk: string) => void;
+  onTextDelta?: (delta: string) => void;
   onStderrChunk?: (chunk: string) => void;
 }): Promise<{ runRecord: SubagentRunRecord; output: string; prompt: string }> {
   const runId = createRunId();
@@ -1235,7 +1235,7 @@ async function runSubagentTask(input: {
             prompt,
             timeoutMs: input.timeoutMs,
             signal: input.signal,
-            onStdoutChunk: input.onStdoutChunk,
+            onTextDelta: input.onTextDelta,
             onStderrChunk: emitStderrChunk,
           });
           const normalized = normalizeSubagentOutput(result.output);
@@ -1343,7 +1343,7 @@ async function runSubagentTask(input: {
               prompt: recoveryPrompt,
               timeoutMs: recoveryTimeoutMs,
               signal: input.signal,
-              onStdoutChunk: input.onStdoutChunk,
+              onTextDelta: input.onTextDelta,
               onStderrChunk: emitStderrChunk,
             });
             const recoveryNormalized = normalizeSubagentOutput(recoveryResult.output);
@@ -1590,7 +1590,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       task: Type.String({ description: "Task for the delegated subagent" }),
       subagentId: Type.Optional(Type.String({ description: "Target subagent id. Defaults to current subagent" })),
       extraContext: Type.Optional(Type.String({ description: "Optional supplemental context" })),
-      timeoutMs: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 600000). Use 0 to disable timeout." })),
+      timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -1735,8 +1735,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                 notifyRuntimeCapacityChanged();
                 refreshRuntimeStatus(ctx);
               },
-              onStdoutChunk: (chunk) => {
-                liveMonitor?.appendChunk(agent.id, "stdout", chunk);
+              onTextDelta: (delta) => {
+                liveMonitor?.appendChunk(agent.id, "stdout", delta);
               },
               onStderrChunk: (chunk) => {
                 liveMonitor?.appendChunk(agent.id, "stderr", chunk);
@@ -1840,7 +1840,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       task: Type.String({ description: "Task delegated to all selected subagents" }),
       subagentIds: Type.Optional(Type.Array(Type.String({ description: "Subagent id list" }))),
       extraContext: Type.Optional(Type.String({ description: "Optional shared context" })),
-      timeoutMs: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 600000). Use 0 to disable timeout." })),
+      timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -2045,8 +2045,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                     notifyRuntimeCapacityChanged();
                     refreshRuntimeStatus(ctx);
                   },
-                  onStdoutChunk: (chunk) => {
-                    liveMonitor?.appendChunk(agent.id, "stdout", chunk);
+                  onTextDelta: (delta) => {
+                    liveMonitor?.appendChunk(agent.id, "stdout", delta);
                   },
                   onStderrChunk: (chunk) => {
                     liveMonitor?.appendChunk(agent.id, "stderr", chunk);
@@ -2301,9 +2301,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     const storage = loadStorage(ctx.cwd);
     saveStorage(ctx.cwd, storage);
+    // Reset delegation state for new session to prevent cross-session contamination
     delegationState.delegatedThisRequest = false;
     delegationState.directWriteConfirmedThisRequest = false;
     delegationState.pendingDirectWriteConfirmUntilMs = 0;
+    delegationState.sessionDelegationCalls = 0;
     resetRuntimeTransientState();
     refreshRuntimeStatus(ctx);
     ctx.ui.notify("Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel)", "info");

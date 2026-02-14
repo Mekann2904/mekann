@@ -2,8 +2,8 @@
 title: UL Dual Mode
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-11
-tags: [ul-dual-mode, orchestration, enforcement]
+last_updated: 2026-02-15
+tags: [ul-dual-mode, orchestration, adaptive]
 related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./09-agent-teams.md]
 ---
 
@@ -13,14 +13,14 @@ related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./09-agent-teams.
 
 ## 概要
 
-`ul-dual-mode` 拡張機能は、サブエージェントとエージェントチームのデュアルオーケストレーションを強制的に有効化します。`ul` プレフィックスまたは `ulmode` コマンドで有効化することで、1リクエスト内で両方のオーケストレーションを必ず実行するようになります。
+`ul-dual-mode` 拡張機能は、サブエージェントとエージェントチームを使った**委任優先・効率的な実行**を提供します。LLMの裁量でフェーズ数を決定し、完了前に必ず `reviewer` による品質チェックを行います。
 
 ### 主な特徴
 
-- **デュアル強制**: サブエージェントとエージェントチームの両方を必ず実行
-- **プレフィックストリガー**: `ul ` で始めるプロンプトをULモードに変換
-- **セッション永続化**: セッション全体でULモードを維持可能
-- **ステータス表示**: 実行状況をリアルタイムで表示
+- **適応型実行**: フェーズ数はLLMの裁量（最小1、上限なし）
+- **委任優先**: subagent_run_parallel / agent_team_run 等を積極的に活用
+- **品質保証**: 完了前に必ず reviewer サブエージェントによる品質レビュー
+- **柔軟なパターン**: タスク規模に応じて最適な実行パターンを選択
 
 ## 使用方法
 
@@ -50,18 +50,26 @@ ul help
 
 ## 動作
 
-ULモードが有効な場合、以下のオーケストレーションが同時に実行されます：
+ULモードが有効な場合、以下のポリシーで実行されます：
 
-1. **Subagents**: `subagent_run` または `subagent_run_parallel` による並列委任
-2. **Agent Teams**: `agent_team_run` または `agent_team_run_parallel` による並列チーム実行
+### 実行ポリシー
+
+1. **委任優先**: subagent_run_parallel / agent_team_run 等を必要に応じて使用
+2. **フェーズ数はLLM裁量**: 最小1フェーズ、上限なし（タスク規模に合わせて最適化）
+3. **品質保証**: 完了前に必ず `subagent_run(subagentId: reviewer)` を実行
+
+### 推奨パターン
+
+| タスク規模 | 推奨パターン |
+|-----------|-------------|
+| 小規模 | `subagent_run` または直接実行 |
+| 中規模 | `subagent_run_parallel(subagentIds: researcher, architect, implementer)` |
+| 大規模 | `agent_team_run(teamId: core-delivery-team, strategy: parallel)` |
 
 ### 実行ルール
 
-- 基本的に並列バリアント（`_parallel`）を優先
-- 最初の実行可能なステップはツールコール（プローズ計画ではなく）
-- デフォルトの実行順序: `subagent_run_parallel` → `agent_team_run_parallel`
-- 両方のオーケストレーションを実行するまでターンを完了しない
-- 一方が失敗しても、他方は実行して両方の結果を報告
+- 完了と判断する前に必ず reviewer を実行
+- 完了条件が明確な場合は `loop_run` を使用
 
 ### 入力変換
 
@@ -74,11 +82,14 @@ ul このコードの品質を向上させてください
 
 **変換後:**
 ```
-[UL_MODE_MANDATORY]
-必ず以下を実行すること:
-1) subagent_run_parallel
-2) agent_team_run_parallel
-この2つを実行するまで、通常の回答を完了しないこと。
+[UL_MODE_ADAPTIVE]
+委任優先で効率的に実行すること。
+
+実行ルール:
+- subagent_run_parallel / agent_team_run 等を必要に応じて使用する。
+- フェーズ数はLLMの裁量（最小1、上限なし）。タスク規模に合わせて最適化する。
+- 完了と判断する前に必ず subagent_run(subagentId: reviewer) を実行し、品質を確認すること。
+...
 
 タスク:
 このコードの品質を向上させてください
@@ -189,59 +200,22 @@ ULモードが有効な場合、以下がシステムプロンプトに追加さ
 
 ```
 ---
-## UL Dual-Orchestration Mode (SESSION-WIDE - Active for all prompts)
+## UL Adaptive Mode
 
-This session is in UL Dual-Orchestration Mode.
-You MUST execute BOTH orchestration types:
+Execution policy (delegation-first, efficient, high quality):
+- Use subagent_run_parallel, agent_team_run, etc. as needed.
+- Phase count is at LLM's discretion (minimum 1, no maximum).
+- YOU MUST call `subagent_run(subagentId: "reviewer")` before marking the task complete.
 
-1) Subagents: call one of
-- `subagent_run`
-- `subagent_run_parallel`
+Recommended patterns:
+1. Simple tasks: single `subagent_run` or direct execution
+2. Multi-perspective tasks: `subagent_run_parallel(subagentIds: researcher, architect, implementer)`
+3. Complex implementation: `agent_team_run(teamId: core-delivery-team, strategy: parallel)`
 
-2) Agent teams: call one of
-- `agent_team_run`
-- `agent_team_run_parallel`
-
-Execution rule:
-- Prefer parallel variants first when tasks are independent.
-- The first actionable step MUST be a tool call, not prose planning.
-- Mandatory call order (default): `subagent_run_parallel` then `agent_team_run_parallel`.
-- If parallel variants fail, fallback to `subagent_run` and `agent_team_run` in same turn.
-- Run both orchestration types before direct code edits.
-- Do not finish turn until both orchestration calls have executed.
-- If one side fails, still run other side and report both outcomes.
+Quality gate (REQUIRED):
+- Before finishing, always run: `subagent_run(subagentId: "reviewer")`
 ---
 ```
-
-### 1ターン限定モードの場合
-
-プレフィックスでの有効化時は以下になります：
-
-```
-## UL Dual-Orchestration Mode (Single turn - triggered by 'ul' prefix)
-```
-
-## Rate Limit Cooldown
-
-ULモードでは、レート制限検知時に自動的なクールダウンが適用されます。
-
-### クールダウン仕様
-
-| 設定 | 値 | 説明 |
-|------|-----|------|
-| `UL_RATE_LIMIT_COOLDOWN_MS` | 120,000 | クールダウン時間（ミリ秒） |
-| Stableプロファイル | 120秒 | クールダウン適用時間 |
-
-### 動作
-
-- レート制限エラーが検出されると、120秒間のクールダウンが自動適用されます
-- 連続するレート制限エラーを検出し、カウントします
-- クールダウン期間中は、リクエストが抑制されます
-
-### 検出とカウント
-
-- 連続するレート制限エラーの発生を追跡
-- エラー回数に基づいて適応的な動作が可能
 
 ## CLEAR_GOAL_SIGNAL
 
@@ -285,29 +259,25 @@ ul buildが成功するように設定を修正してください
 
 ### いつULモードを使うべきか
 
-- **複雑なタスク**: 複数の視点が必要な場合
-- **品質重視**: 多角的なレビューが必要な場合
-- **調査タスク**: 広範な発見と深掘りが両方必要な場合
+- **効率的な実行が必要な場合**: タスク規模に応じて最適なツールを選択
+- **品質保証が必要な場合**: 完了前のreviewerチェックで品質を担保
+- **複雑なタスク**: 複数の視点や多角的な実装が必要な場合
 
-### いつULモードを使わないべきか
+### 推奨パターンの選び方
 
-- **小さな編集**: 1ステップの修正やコメント追加
-- **緊急の修正**: 速度が最優先で、並列実行のオーバーヘッドを避けたい場合
-- **単純な質問**: 事実確認のみの場合
-
-### 実行順序の最適化
-
-デフォルトでは `subagent_run_parallel` → `agent_team_run_parallel` ですが、タスクに応じて最適な順序を選択できます：
-
-- 研究優先: 先にサブエージェントで情報収集
-- 統合優先: 先にエージェントチームで多角的な分析
+| タスク | 推奨パターン |
+|-------|-------------|
+| バグ修正 | `subagent_run(researcher)` → 直接修正 → `reviewer` |
+| 機能追加 | `subagent_run_parallel(researcher, architect, implementer)` → `reviewer` |
+| リファクタリング | `agent_team_run(core-delivery-team)` → `reviewer` |
+| ドキュメント作成 | `subagent_run(implementer)` → `reviewer` |
 
 ### セッション全体モード vs 1ターンモード
 
 | モード | 有効化方法 | 範囲 | 主な用途 |
 |------|----------|------|----------|
-| セッション全体 | `/ulmode` または `--ul` | セッション中の全リクエスト | 複雑なタスクに集中するセッション |
-| 1ターン限定 | `ul ` プレフィックス | 現在のリクエストのみ | たまにULモードが必要な場合 |
+| セッション全体 | `/ulmode` または `--ul` | セッション中の全リクエスト | 継続的な開発作業 |
+| 1ターン限定 | `ul ` プレフィックス | 現在のリクエストのみ | 特定タスクでのみULモードが必要な場合 |
 
 ## トラブルシューティング
 
@@ -342,9 +312,9 @@ ULモードは2つのオーケストレーションを並列で実行するた�
 
 ## 制限事項
 
-- **ブロッキング無効**: 現在の実装では、ULモード要件が満たされなくてもブロックしません（警告のみ表示）
-- **ツール制限なし**: 以前の実装ではサブエージェント/エージェントチーム以外のツール使用を制限していましたが、現在は制限されません
-- **エラー時の継続**: 片方が失敗しても、他方は実行を継続します
+- **ブロッキング無効**: 現在の実装では、要件が満たされなくてもブロックしません（警告のみ表示）
+- **reviewer必須警告**: reviewerが実行されなかった場合、警告が表示されます
+- **エラー時の継続**: 一部のツールが失敗しても、他のツールは実行を継続します
 
 ## 関連トピック
 

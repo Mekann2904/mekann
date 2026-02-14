@@ -161,9 +161,11 @@ interface ParsedVerificationCommand {
 
 const STABLE_LOOP_PROFILE = true;
 
+// アイドルタイムアウト方式（pi-print-executor.ts）を使用
+// タイムアウトは「無応答時間」を意味し、LLMが応答し続けている限り継続
 const DEFAULT_CONFIG: LoopConfig = {
   maxIterations: STABLE_LOOP_PROFILE ? 4 : 6,
-  timeoutMs: STABLE_LOOP_PROFILE ? 120_000 : 300_000,
+  timeoutMs: STABLE_LOOP_PROFILE ? 60_000 : 120_000,  // 1分 / 2分のアイドルタイムアウト
   requireCitation: true,
   verificationTimeoutMs: STABLE_LOOP_PROFILE ? 60_000 : 120_000,
 };
@@ -190,6 +192,7 @@ const LOOP_RESULT_BLOCK_TAG = "RESULT";
 const DEFAULT_VERIFICATION_POLICY_MODE: VerificationPolicyMode = "done_only";
 const DEFAULT_VERIFICATION_POLICY_EVERY_N = 2;
 const VERIFICATION_ALLOWLIST_ENV = "PI_LOOP_VERIFY_ALLOWLIST";
+const VERIFICATION_ALLOWLIST_ADDITIONAL_ENV = "PI_LOOP_VERIFY_ALLOWLIST_ADDITIONAL";
 const VERIFICATION_POLICY_ENV = "PI_LOOP_VERIFY_POLICY";
 const VERIFICATION_POLICY_EVERY_N_ENV = "PI_LOOP_VERIFY_EVERY_N";
 const DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES: string[][] = [
@@ -224,7 +227,7 @@ const LOOP_HELP = [
   "  - References are injected as [R1], [R2], ... and the model is asked to cite them inline.",
   "  - Use --goal for explicit completion criteria. Use --verify with a deterministic check command.",
   "  - Default timeout is 120000ms per iteration in stable profile. Use --timeout to increase.",
-  "  - Verification is allowlist-based by default. Override prefixes via PI_LOOP_VERIFY_ALLOWLIST.",
+  "  - Verification is allowlist-based by default. Add custom prefixes via PI_LOOP_VERIFY_ALLOWLIST_ADDITIONAL.",
   "  - Iteration timeouts are recorded and retried. Repeated failures stop the run safely.",
   "  - Logs are written to .pi/agent-loop/<run-id>.jsonl.",
   "  - A summary is saved to .pi/agent-loop/latest-summary.json.",
@@ -2075,17 +2078,34 @@ function parseVerificationCommand(command: string): ParsedVerificationCommand {
 }
 
 function resolveVerificationAllowlistPrefixes(): string[][] {
-  const raw = String(process.env[VERIFICATION_ALLOWLIST_ENV] || "").trim();
-  const source = raw
-    ? raw.split(",").map((item) => item.trim())
-    : DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES.map((item) => item.join(" "));
+  // Always start with the default allowlist for security
+  const basePrefixes = DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES.map((item) => [...item]);
 
-  const prefixes = source
+  // Check for deprecated override environment variable (warn but still process for backwards compat)
+  const rawOverride = String(process.env[VERIFICATION_ALLOWLIST_ENV] || "").trim();
+  if (rawOverride) {
+    console.warn(
+      `[loop] Warning: ${VERIFICATION_ALLOWLIST_ENV} is deprecated. ` +
+      `Use ${VERIFICATION_ALLOWLIST_ADDITIONAL_ENV} to add prefixes instead of overriding. ` +
+      `Override will be ignored for security reasons.`
+    );
+  }
+
+  // Only allow additional prefixes via the new environment variable
+  const rawAdditional = String(process.env[VERIFICATION_ALLOWLIST_ADDITIONAL_ENV] || "").trim();
+  if (!rawAdditional) {
+    return basePrefixes;
+  }
+
+  const additionalPrefixes = rawAdditional
+    .split(",")
+    .map((item) => item.trim())
     .map((entry) => tokenizeArgs(entry))
     .map((tokens) => tokens.map((token) => token.trim()).filter(Boolean))
     .filter((tokens) => tokens.length > 0);
 
-  return prefixes.length > 0 ? prefixes : DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES;
+  // Merge base prefixes with additional prefixes (additional are appended)
+  return [...basePrefixes, ...additionalPrefixes];
 }
 
 function isVerificationCommandAllowed(

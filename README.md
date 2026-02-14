@@ -81,6 +81,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **subagent_*** | `subagents.ts` | サブエージェントの作成・実行 | [→](docs/02-user-guide/08-subagents.md) |
 | **agent_team_*** | `agent-teams.ts` | エージェントチームの作成・実行 | [→](docs/02-user-guide/09-agent-teams.md) |
 | **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
+| **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | 新規 |
 
 ### ユーティリティ
 
@@ -104,6 +105,9 @@ pi remove https://github.com/Mekann2904/mekann
 | **storage-lock** | `lib/storage-lock.ts` | ファイルロックとアトミック書き込みヘルパー |
 | **skill-registry** | `lib/skill-registry.ts` | スキル検出・解決・フォーマット |
 | **agent-types** | `lib/agent-types.ts` | エージェント関連型定義 |
+| **cross-instance-coordinator** | `lib/cross-instance-coordinator.ts` | 複数piインスタンス間の協調制御（新規） |
+| **provider-limits** | `lib/provider-limits.ts` | プロバイダー/モデル別レート制限定義（新規） |
+| **adaptive-rate-controller** | `lib/adaptive-rate-controller.ts` | 429エラーからの適応学習（新規） |
 | **agent-utils** | `lib/agent-utils.ts` | エージェントユーティリティ |
 | **error-utils** | `lib/error-utils.ts` | エラーハンドリングユーティリティ |
 | **format-utils** | `lib/format-utils.ts` | フォーマットユーティリティ |
@@ -417,6 +421,14 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照してください
 
 ## Version
+
+**v0.3.1** (2026-02-15)
+
+v0.3.0からの変更点:
+- ULモード: 適応型委任モードへ刷新
+  - フェーズ数はLLMの裁量（最小1、上限なし）
+  - 完了前のreviewer実行を必須化
+  - タスク規模に応じた推奨パターンを提示
 
 **v0.2.1** (2026-02-14)
 

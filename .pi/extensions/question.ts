@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Text, truncateToWidth } from "@mariozechner/pi-tui";
+import { Text, truncateToWidth, CURSOR_MARKER } from "@mariozechner/pi-tui";
 import { Type } from "@mariozechner/pi-ai";
 import { matchesKey, Key } from "@mariozechner/pi-tui";
 
@@ -80,6 +80,8 @@ async function askSingleQuestion(
 	}, (state, width, theme) => {
 		const lines: string[] = [];
 		const add = (s: string) => lines.push(truncateToWidth(s, width));
+		// カーソル行用（CURSOR_MARKERを含むのでtruncateToWidthしない）
+		const addCursorLine = (s: string) => lines.push(s);
 
 		// ヘッダー
 		add(theme.fg("accent", "─".repeat(width)));
@@ -92,9 +94,33 @@ async function askSingleQuestion(
 		if (state.customMode) {
 			// カスタム入力モード
 			add(theme.fg("accent", " ✎ 自由記述:"));
-			add(" " + state.customInput + theme.fg("dim", "█"));
+			// 複数行対応：入力を行に分割して表示
+			const inputLines = state.customInput.split("\n");
+			let charCount = 0;
+			for (let i = 0; i < inputLines.length; i++) {
+				const line = inputLines[i];
+				// カーソルがこの行にあるかチェック
+				if (state.customCursor >= charCount && state.customCursor <= charCount + line.length) {
+					// カーソル位置に応じて表示
+					const cursorPosInLine = state.customCursor - charCount;
+					const beforeCursor = line.slice(0, cursorPosInLine);
+					const cursorChar = cursorPosInLine < line.length ? line[cursorPosInLine] : " ";
+					const afterCursor = line.slice(cursorPosInLine + 1);
+					// カーソル位置の文字を反転表示（CURSOR_MARKERでIME位置を設定）
+					// truncateToWidthを使わない（CURSOR_MARKERがゼロ幅なため）
+					const cursorDisplay = CURSOR_MARKER + "\x1b[7m" + cursorChar + "\x1b[0m";
+					addCursorLine(" " + beforeCursor + cursorDisplay + afterCursor);
+				} else {
+					add(" " + line);
+				}
+				charCount += line.length + 1; // +1 for \n
+			}
+			// カーソルが最後にある場合
+			if (state.customCursor === state.customInput.length && !state.customInput.endsWith("\n")) {
+				// 既に上で処理済み
+			}
 			lines.push("");
-			add(theme.fg("dim", " 回答を入力 • Enterで確定 • Escで戻る"));
+			add(theme.fg("dim", " Enter確定 • Shift+Enter改行 • Esc戻る • ←→移動 • ↑↓行移動 • Home/End先頭/末尾 • Del削除"));
 		} else {
 			// 選択肢モード
 			for (let i = 0; i < displayOptions.length; i++) {
@@ -134,15 +160,60 @@ async function askSingleQuestion(
 		return lines;
 	});
 
-	return ctx.ui.custom<Answer | null>((tui, theme, _kb, done) => ({
+	return ctx.ui.custom<Answer | null>((tui, theme, _kb, done) => {
+		// ブラケットペーストモードのバッファ
+		let pasteBuffer = "";
+		let isInPaste = false;
+
+		return {
 		render: (w) => renderer.render(w, theme),
 		invalidate: () => renderer.invalidate(),
 		handleInput: (data) => {
 			const state = renderer.getState();
 
+			// ブラケットペーストモードの処理
+			if (data.includes("\x1b[200~")) {
+				isInPaste = true;
+				pasteBuffer = "";
+				data = data.replace("\x1b[200~", "");
+			}
+			if (isInPaste) {
+				pasteBuffer += data;
+				const endIndex = pasteBuffer.indexOf("\x1b[201~");
+				if (endIndex !== -1) {
+					const pasteContent = pasteBuffer.substring(0, endIndex);
+					if (pasteContent.length > 0 && state.customMode) {
+						// ペースト内容を挿入
+						const cleanText = pasteContent.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+						const before = state.customInput.slice(0, state.customCursor);
+						const after = state.customInput.slice(state.customCursor);
+						renderer.setState({ 
+							customInput: before + cleanText + after,
+							customCursor: state.customCursor + cleanText.length
+						});
+						tui.requestRender();
+					}
+					isInPaste = false;
+					pasteBuffer = "";
+					return;
+				}
+				return;
+			}
+
 			if (state.customMode) {
 				// カスタム入力モード
-				if (matchesKey(data, Key.enter)) {
+				// Shift+Enter → 改行、Enter → 確定（piの標準動作と同じ）
+				if (matchesKey(data, Key.shift("enter"))) {
+					// Shift+Enter で改行を入力（複数行対応）
+					const before = state.customInput.slice(0, state.customCursor);
+					const after = state.customInput.slice(state.customCursor);
+					renderer.setState({ 
+						customInput: before + "\n" + after,
+						customCursor: state.customCursor + 1
+					});
+					tui.requestRender();
+				} else if (matchesKey(data, Key.enter)) {
+					// Enterで確定
 					if (state.customInput.trim()) {
 						done([state.customInput.trim()]);
 					}
@@ -151,11 +222,112 @@ async function askSingleQuestion(
 					renderer.setState({ customMode: false });
 					tui.requestRender();
 				} else if (matchesKey(data, Key.backspace)) {
-					renderer.setState({ customInput: state.customInput.slice(0, -1) });
+					// カーソル位置で削除
+					if (state.customCursor > 0) {
+						const before = state.customInput.slice(0, state.customCursor - 1);
+						const after = state.customInput.slice(state.customCursor);
+						renderer.setState({ 
+							customInput: before + after,
+							customCursor: state.customCursor - 1
+						});
+						tui.requestRender();
+					}
+				} else if (matchesKey(data, Key.left)) {
+					// カーソルを左に移動
+					if (state.customCursor > 0) {
+						renderer.setState({ customCursor: state.customCursor - 1 });
+						tui.requestRender();
+					}
+				} else if (matchesKey(data, Key.right)) {
+					// カーソルを右に移動
+					if (state.customCursor < state.customInput.length) {
+						renderer.setState({ customCursor: state.customCursor + 1 });
+						tui.requestRender();
+					}
+				} else if (matchesKey(data, Key.up)) {
+					// 上の行に移動（複数行対応）
+					const lines = state.customInput.split("\n");
+					let charCount = 0;
+					let currentLineIndex = 0;
+					let currentCol = 0;
+					
+					// 現在のカーソル位置の行と列を特定
+					for (let i = 0; i < lines.length; i++) {
+						if (state.customCursor <= charCount + lines[i].length) {
+							currentLineIndex = i;
+							currentCol = state.customCursor - charCount;
+							break;
+						}
+						charCount += lines[i].length + 1;
+					}
+					
+					// 上の行に移動
+					if (currentLineIndex > 0) {
+						const prevLineLength = lines[currentLineIndex - 1].length;
+						const newCol = Math.min(currentCol, prevLineLength);
+						const newCursor = charCount - lines[currentLineIndex - 1].length - 1 + newCol;
+						renderer.setState({ customCursor: Math.max(0, newCursor) });
+						tui.requestRender();
+					}
+				} else if (matchesKey(data, Key.down)) {
+					// 下の行に移動（複数行対応）
+					const lines = state.customInput.split("\n");
+					let charCount = 0;
+					let currentLineIndex = 0;
+					let currentCol = 0;
+					
+					// 現在のカーソル位置の行と列を特定
+					for (let i = 0; i < lines.length; i++) {
+						if (state.customCursor <= charCount + lines[i].length) {
+							currentLineIndex = i;
+							currentCol = state.customCursor - charCount;
+							break;
+						}
+						charCount += lines[i].length + 1;
+					}
+					
+					// 下の行に移動
+					if (currentLineIndex < lines.length - 1) {
+						const nextLineLength = lines[currentLineIndex + 1].length;
+						const newCol = Math.min(currentCol, nextLineLength);
+						const newCursor = charCount + lines[currentLineIndex].length + 1 + newCol;
+						renderer.setState({ customCursor: Math.min(state.customInput.length, newCursor) });
+						tui.requestRender();
+					}
+				} else if (matchesKey(data, Key.home)) {
+					// カーソルを先頭に移動
+					renderer.setState({ customCursor: 0 });
 					tui.requestRender();
-				} else if (data.length === 1 && data.charCodeAt(0) >= 32) {
-					renderer.setState({ customInput: state.customInput + data });
+				} else if (matchesKey(data, Key.end)) {
+					// カーソルを末尾に移動
+					renderer.setState({ customCursor: state.customInput.length });
 					tui.requestRender();
+				} else if (matchesKey(data, Key.delete)) {
+					// Deleteキー: カーソル位置の次の文字を削除
+					if (state.customCursor < state.customInput.length) {
+						const before = state.customInput.slice(0, state.customCursor);
+						const after = state.customInput.slice(state.customCursor + 1);
+						renderer.setState({ 
+							customInput: before + after
+						});
+						tui.requestRender();
+					}
+				} else {
+					// 通常の文字入力（日本語などのマルチバイト対応）
+					// 制御文字でない場合は全て入力として受け付ける
+					const charCode = data.charCodeAt(0);
+					const isPrintable = charCode >= 32 || data.length > 1;
+					
+					if (isPrintable && !data.startsWith('\x1b')) {
+						// カーソル位置に文字を挿入
+						const before = state.customInput.slice(0, state.customCursor);
+						const after = state.customInput.slice(state.customCursor);
+						renderer.setState({ 
+							customInput: before + data + after,
+							customCursor: state.customCursor + data.length
+						});
+						tui.requestRender();
+					}
 				}
 			} else {
 				// 選択肢モード
@@ -180,7 +352,11 @@ async function askSingleQuestion(
 					const isOtherOption = state.cursor === displayOptions.length - 1 && allowCustom;
 					
 					if (isOtherOption) {
-						renderer.setState({ customMode: true });
+						renderer.setState({ 
+							customMode: true,
+							customInput: "",
+							customCursor: 0
+						});
 						tui.requestRender();
 					} else if (allowMultiple) {
 						if (state.selected.size > 0) {
@@ -199,7 +375,8 @@ async function askSingleQuestion(
 				}
 			}
 		}
-	}));
+	}
+	});
 }
 
 // ============================================

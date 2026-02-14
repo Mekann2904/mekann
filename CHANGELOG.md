@@ -1,5 +1,88 @@
 # 変更履歴
 
+## [v0.3.1] - 2026-02-15
+
+### 変更
+- **ULモード: 適応型委任モードへ刷新**
+  - 固定3フェーズ (subagent_run_parallel → agent_team_run → reviewer) を廃止
+  - フェーズ数はLLMの裁量に変更（最小1、上限なし）
+  - 完了前の `reviewer` 実行を必須化（品質保証）
+  - タスク規模に応じた推奨パターンを提示:
+    - 小規模: `subagent_run` または直接実行
+    - 中規模: `subagent_run_parallel(subagentIds: researcher, architect, implementer)`
+    - 大規模: `agent_team_run(teamId: core-delivery-team)`
+
+### ドキュメント
+- docs/02-user-guide/10-ul-dual-mode.md: 適応型モードの説明に更新
+
+---
+
+## [v0.3.0] - 2026-02-15
+
+### 追加
+- **プロバイダー/モデル別レート制限システム**
+  - `lib/provider-limits.ts`: プロバイダー/モデル別のレート制限定義
+    - Anthropic (Claude 4.x, 3.5, 3系)
+    - OpenAI (GPT-4o, GPT-4, o1系)
+    - Google (Gemini 2.5, 2.0, 1.5系)
+    - Mistral, Groq, Cerebras, xAI
+    - ティア別制限 (pro, max, plus, free等)
+  - `lib/adaptive-rate-controller.ts`: 適応学習システム
+    - 429エラー検知 → 制限を30%削減
+    - 成功継続 → 5分後に10%ずつ回復
+    - プロバイダー/モデル単位で独立管理
+  - `cross-instance-coordinator.ts` 拡張: モデル使用追跡
+    - 各インスタンスのアクティブモデルを記録
+    - 同一モデル使用インスタンス数で配分
+  - 新ツール: `pi_model_limits` - モデル別制限確認
+  - 新コマンド: `/pi-limits` - 制限一覧表示
+
+### アルゴリズム
+```
+有効並列数 = floor(
+  (プリセット制限 × 学習済み調整) /
+  同一モデル使用中のインスタンス数
+)
+```
+
+### 環境変数
+- `PI_PROVIDER_TIER`: プロバイダー全体のティア
+- `PI_{PROVIDER}_TIER`: プロバイダー固有のティア (例: PI_ANTHROPIC_TIER)
+
+### 変更
+- `agent-runtime.ts`: モデル別制限を考慮するヘルパー関数追加
+  - `getModelAwareParallelLimit()`: モデル固有の並列制限取得
+  - `shouldAllowParallelForModel()`: 並列実行可否判定
+  - `getLimitsSummary()`: 制限サマリー取得
+
+---
+
+## [v0.2.2] - 2026-02-15
+
+### 追加
+- **クロスインスタンスコーディネーター**
+  - `lib/cross-instance-coordinator.ts`: 複数piインスタンス間の並列数を自動調整
+  - `cross-instance-runtime.ts` 拡張機能: ライフサイクル管理とステータス表示
+  - `/pi-instances` コマンド: アクティブなpiインスタンス一覧と並列配分を表示
+  - `pi_instance_status` ツール: プログラムからステータス取得
+
+### 動作
+- pi起動時に `~/.pi/runtime/instances/` にロックファイル作成
+- 15秒ごとにハートビート更新
+- 60秒以上更新がないインスタンスは自動削除
+- 並列数 = floor(PI_TOTAL_MAX_LLM / アクティブインスタンス数)
+
+### 環境変数
+- `PI_TOTAL_MAX_LLM`: 全インスタンス合計の最大並列LLM呼び出し（デフォルト: 6）
+- `PI_HEARTBEAT_INTERVAL_MS`: ハートビート間隔（デフォルト: 15000）
+- `PI_HEARTBEAT_TIMEOUT_MS`: タイムアウト（デフォルト: 60000）
+
+### 変更
+- `agent-runtime.ts`: コーディネーターが初期化されている場合、動的に並列制限を適用
+- README.md: cross-instance-runtime をオーケストレーションセクションに追加
+
+---
+
 ## [v0.2.1] - 2026-02-14
 
 ### 追加

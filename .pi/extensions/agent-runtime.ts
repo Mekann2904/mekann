@@ -4,6 +4,20 @@
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import {
+  getMyParallelLimit,
+  isCoordinatorInitialized,
+  getModelParallelLimit,
+  getActiveInstancesForModel,
+} from "../lib/cross-instance-coordinator";
+import {
+  getConcurrencyLimit,
+  resolveLimits,
+  detectTier,
+} from "../lib/provider-limits";
+import {
+  getEffectiveLimit,
+} from "../lib/adaptive-rate-controller";
 
 export interface AgentRuntimeLimits {
   maxTotalActiveLlm: number;
@@ -210,13 +224,13 @@ export interface RuntimeOrchestrationWaitResult {
   lease?: RuntimeOrchestrationLease;
 }
 
-const STABLE_AGENT_RUNTIME_PROFILE = true;
-const DEFAULT_MAX_TOTAL_ACTIVE_LLM = STABLE_AGENT_RUNTIME_PROFILE ? 4 : 6;
-const DEFAULT_MAX_TOTAL_ACTIVE_REQUESTS = STABLE_AGENT_RUNTIME_PROFILE ? 2 : 4;
-const DEFAULT_MAX_PARALLEL_SUBAGENTS_PER_RUN = STABLE_AGENT_RUNTIME_PROFILE ? 2 : 3;
-const DEFAULT_MAX_PARALLEL_TEAMS_PER_RUN = STABLE_AGENT_RUNTIME_PROFILE ? 1 : 2;
-const DEFAULT_MAX_PARALLEL_TEAMMATES_PER_TEAM = STABLE_AGENT_RUNTIME_PROFILE ? 3 : 4;
-const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 1;
+const STABLE_AGENT_RUNTIME_PROFILE = false;
+const DEFAULT_MAX_TOTAL_ACTIVE_LLM = STABLE_AGENT_RUNTIME_PROFILE ? 4 : 8;
+const DEFAULT_MAX_TOTAL_ACTIVE_REQUESTS = STABLE_AGENT_RUNTIME_PROFILE ? 2 : 6;
+const DEFAULT_MAX_PARALLEL_SUBAGENTS_PER_RUN = STABLE_AGENT_RUNTIME_PROFILE ? 2 : 4;
+const DEFAULT_MAX_PARALLEL_TEAMS_PER_RUN = STABLE_AGENT_RUNTIME_PROFILE ? 1 : 3;
+const DEFAULT_MAX_PARALLEL_TEAMMATES_PER_TEAM = STABLE_AGENT_RUNTIME_PROFILE ? 3 : 6;
+const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 2;
 const DEFAULT_CAPACITY_WAIT_MS = STABLE_AGENT_RUNTIME_PROFILE ? 12_000 : 30_000;
 const DEFAULT_CAPACITY_POLL_MS = 250;
 const DEFAULT_RESERVATION_TTL_MS = STABLE_AGENT_RUNTIME_PROFILE ? 45_000 : 60_000;
@@ -283,16 +297,35 @@ async function waitForRuntimeCapacityEvent(
 }
 
 function createRuntimeLimits(): AgentRuntimeLimits {
+  // Cross-instance coordination: if coordinator is initialized, use dynamic parallel limit
+  // Priority: env var > coordinator > default
+  let effectiveParallelSubagents = resolveLimitFromEnv(
+    "PI_AGENT_MAX_PARALLEL_SUBAGENTS",
+    DEFAULT_MAX_PARALLEL_SUBAGENTS_PER_RUN,
+  );
+
+  // Only override with coordinator if env var is NOT set and coordinator is ready
+  if (!process.env.PI_AGENT_MAX_PARALLEL_SUBAGENTS && isCoordinatorInitialized()) {
+    effectiveParallelSubagents = getMyParallelLimit();
+  }
+
+  let effectiveTotalLlm = resolveLimitFromEnv(
+    "PI_AGENT_MAX_TOTAL_LLM",
+    DEFAULT_MAX_TOTAL_ACTIVE_LLM,
+  );
+
+  // Also adjust total LLM based on coordinator if env var is not set
+  if (!process.env.PI_AGENT_MAX_TOTAL_LLM && isCoordinatorInitialized()) {
+    effectiveTotalLlm = getMyParallelLimit();
+  }
+
   return {
-    maxTotalActiveLlm: resolveLimitFromEnv("PI_AGENT_MAX_TOTAL_LLM", DEFAULT_MAX_TOTAL_ACTIVE_LLM),
+    maxTotalActiveLlm: effectiveTotalLlm,
     maxTotalActiveRequests: resolveLimitFromEnv(
       "PI_AGENT_MAX_TOTAL_REQUESTS",
       DEFAULT_MAX_TOTAL_ACTIVE_REQUESTS,
     ),
-    maxParallelSubagentsPerRun: resolveLimitFromEnv(
-      "PI_AGENT_MAX_PARALLEL_SUBAGENTS",
-      DEFAULT_MAX_PARALLEL_SUBAGENTS_PER_RUN,
-    ),
+    maxParallelSubagentsPerRun: effectiveParallelSubagents,
     maxParallelTeamsPerRun: resolveLimitFromEnv(
       "PI_AGENT_MAX_PARALLEL_TEAMS",
       DEFAULT_MAX_PARALLEL_TEAMS_PER_RUN,
@@ -437,12 +470,10 @@ function enforceRuntimeLimitConsistency(runtime: AgentRuntimeState): void {
     return;
   }
 
-  if (isStrictRuntimeLimitMode()) {
-    throw new Error(
-      `agent runtime limit drift detected (runtime=${runtimeVersion}, env=${envVersion})`,
-    );
-  }
-
+  // Silently update to env limits - drift is expected when:
+  // 1. Coordinator-based dynamic limits change
+  // 2. Env vars change at runtime
+  // Strict mode check removed as it caused false positives with dynamic coordinator limits
   runtime.limits = envLimits;
   runtime.limitsVersion = envVersion;
   notifyRuntimeCapacityChanged();
@@ -1041,6 +1072,85 @@ export function resetRuntimeTransientState(): void {
   runtime.queue.pending = [];
   runtime.reservations.active = [];
   notifyRuntimeCapacityChanged();
+}
+
+// ============================================================================
+// Model-Aware Rate Limiting
+// ============================================================================
+
+/**
+ * Get the effective parallelism limit for a specific model.
+ * This combines:
+ * 1. Provider/model preset limits
+ * 2. Learned limits (from 429 errors)
+ * 3. Cross-instance distribution
+ *
+ * @param provider - Provider name (e.g., "anthropic")
+ * @param model - Model name (e.g., "claude-sonnet-4-20250514")
+ * @returns The effective concurrency limit for this instance
+ */
+export function getModelAwareParallelLimit(provider: string, model: string): number {
+  // Get preset limit for this model
+  const tier = detectTier(provider, model);
+  const presetLimit = getConcurrencyLimit(provider, model, tier);
+
+  // Apply adaptive learning (429-based adjustments)
+  const adaptiveLimit = getEffectiveLimit(provider, model, presetLimit);
+
+  // Distribute across instances using the same model
+  if (isCoordinatorInitialized()) {
+    return getModelParallelLimit(provider, model, adaptiveLimit);
+  }
+
+  return adaptiveLimit;
+}
+
+/**
+ * Check if we should allow a parallel operation for a specific model.
+ * This is a convenience function that combines limit checking.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @param currentActive - Current number of active operations
+ * @returns Whether the operation should be allowed
+ */
+export function shouldAllowParallelForModel(
+  provider: string,
+  model: string,
+  currentActive: number
+): boolean {
+  const limit = getModelAwareParallelLimit(provider, model);
+  return currentActive < limit;
+}
+
+/**
+ * Get a summary of current limits for debugging.
+ */
+export function getLimitsSummary(provider?: string, model?: string): string {
+  const lines: string[] = [];
+  const snapshot = getRuntimeSnapshot();
+
+  lines.push("Runtime Limits:");
+  lines.push(`  maxTotalActiveLlm: ${snapshot.limits.maxTotalActiveLlm}`);
+  lines.push(`  maxParallelSubagentsPerRun: ${snapshot.limits.maxParallelSubagentsPerRun}`);
+  lines.push(`  maxParallelTeamsPerRun: ${snapshot.limits.maxParallelTeamsPerRun}`);
+
+  if (provider && model) {
+    const modelLimit = getModelAwareParallelLimit(provider, model);
+    const instances = isCoordinatorInitialized() ? getActiveInstancesForModel(provider, model) : 1;
+    lines.push("");
+    lines.push(`Model-Specific (${provider}/${model}):`);
+    lines.push(`  effective_limit: ${modelLimit}`);
+    lines.push(`  instances_using: ${instances}`);
+  }
+
+  lines.push("");
+  lines.push("Current State:");
+  lines.push(`  activeSubagentAgents: ${snapshot.subagentActiveAgents}`);
+  lines.push(`  activeTeamRuns: ${snapshot.teamActiveRuns}`);
+  lines.push(`  activeReservations: ${snapshot.activeReservations}`);
+
+  return lines.join("\n");
 }
 
 export default function registerAgentRuntimeExtension(_pi: ExtensionAPI) {

@@ -1,3 +1,16 @@
+diff --git a/node_modules/@mariozechner/pi-ai/dist/providers/anthropic.js b/node_modules/@mariozechner/pi-ai/dist/providers/anthropic.js
+index 1954cc9..4fb4d01 100644
+--- a/node_modules/@mariozechner/pi-ai/dist/providers/anthropic.js
++++ b/node_modules/@mariozechner/pi-ai/dist/providers/anthropic.js
+@@ -662,6 +662,8 @@ function mapStopReason(reason) {
+             return "stop"; // We don't supply stop sequences, so this should never happen
+         case "sensitive": // Content flagged by safety filters (not yet in SDK types)
+             return "error";
++        case "abort":
++            return "aborted";
+         default:
+             // Handle unknown stop reasons gracefully (API may add new values)
+             throw new Error(`Unhandled stop reason: ${reason}`);
 diff --git a/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js b/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js
 index 3b57cd2..44a73e6 100644
 --- a/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js
