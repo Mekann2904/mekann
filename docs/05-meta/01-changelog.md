@@ -2,7 +2,7 @@
 title: 変更履歴
 category: meta
 audience: new-user, daily-user, developer, contributor
-last_updated: 2026-02-11
+last_updated: 2026-02-14
 tags: [changelog]
 related: [../../CHANGELOG.md]
 ---
@@ -15,28 +15,49 @@ pi拡張機能コレクションの詳細な変更履歴です。
 
 > **注**: ルートの [CHANGELOG.md](../../CHANGELOG.md) は簡潔版です。ここには詳細な変更記録が含まれています。
 
-## [未公開] - 2026-02-11
+## [v0.2.1] - 2026-02-14
 
 ### 追加
-- **Deepwikiスタイルのドキュメント構造**: ユーザー、開発者、貢献者別のナビゲーションパス
-- **読者別パス**: 新規ユーザー、日常ユーザー、開発者、貢献者向けのエントリーポイント
-- **パンくずリスト**: 各ページに現在位置を表示
-- **関連トピック**: 各ページ末尾に関連ドキュメントへのリンク
-- **メタデータ標準**: YAMLフロントマター形式の標準化
+- **skill-inspector拡張機能**
+  - `skill_status` ツール: 現在のスキル割り当て状況を表示
+  - `/skill-status` コマンド: スキル情報のクイックアクセス
+
+- **新しいエージェントチーム**
+  - `mermaid-diagram-team`: コード視覚化タスクフォース（シーケンス図、フローチャート等）
+  - `research-team`: データ分析・科学研究プロジェクト専用チーム
+
+### ドキュメント
+- README.mdのチーム一覧に design-discovery-team, file-organizer-team, mermaid-diagram-team, research-team を追加
+- README.mdのスキル数を正確な27個に更新
+- docs/02-user-guide/09-agent-teams.md に mermaid-diagram-team, research-team の詳細を追加
+- docs/02-user-guide/08-subagents.md に skills パラメータの説明を追加
+
+---
+
+## [v0.2.0] - 2026-02-12
+
+### 追加
+- **エージェントチームプロンプトの Markdown 外部化**
+  - チーム定義を `.pi/agent-teams/definitions/` 以下の Markdown ファイルで管理
+  - YAML frontmatter を使用した型安全な定義フォーマット
+  - チームテンプレート (`template-team.md`) の追加
+  - 新しいチーム追加ワークフローの文書化
 
 ### 変更
-- **README.md**: ポータル化（500行以内に短縮）
-- **docs/README.md**: リッチなナビゲーションを追加
-- **ドキュメント構造**: 3レベルの階層構造に再編
+- `agent-teams.ts` に Markdown ローダー関数を追加
+- `parseFrontmatter` を `@mariozechner/pi-coding-agent` からインポート
+- `createDefaultTeams()` を Markdown ファイルからの読み込みに置換
+- ハードコードされたチーム定義を `getHardcodedDefaultTeams()` としてフォールバック化
+- `TEAM_DEFAULTS_VERSION` を 2 -> 3 に更新
 
-### ドキュメントの移動
-- インストールガイド → `docs/01-getting-started/02-installation.md`
-- クイックスタート → `docs/01-getting-started/01-quick-start.md`
-- 初回ステップ → `docs/01-getting-started/03-first-steps.md`
-- 拡張機能一覧 → `docs/02-user-guide/01-extensions.md`
-- question詳細 → `docs/02-user-guide/02-question.md`
-- rsa_solve詳細 → `docs/02-user-guide/03-rsa-solve.md`
-- 開発者ガイド → `docs/03-development/01-getting-started.md`
+### 改善
+- 長いプロンプトの記述性向上（Markdown 形式）
+- 新しいチーム追加の障壁低減（1ファイル追加のみ）
+- チーム定義のバージョン管理（Git での差分表示が容易）
+
+### ドキュメント
+- `docs/agent-teams-reference.md` に「新しいチームを追加する」セクションを追加
+- `README.md` のプロジェクト構造を更新
 
 ---
 

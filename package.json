@@ -26,6 +26,7 @@
       "./.pi/extensions/plan.ts",
       "./.pi/extensions/question.ts",
       "./.pi/extensions/rsa.ts",
+      "./.pi/extensions/skill-inspector.ts",
       "./.pi/extensions/subagents.ts",
       "./.pi/extensions/ul-dual-mode.ts",
       "./.pi/extensions/usage-tracker.ts"

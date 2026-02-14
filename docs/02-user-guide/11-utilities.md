@@ -2,7 +2,7 @@
 title: ユーティリティ
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-11
+last_updated: 2026-02-14
 tags: [utilities, monitoring, analytics, status]
 related: [../README.md, ./01-extensions.md]
 ---
@@ -413,6 +413,201 @@ allow_remote_control yes
 - `tool_call` / `tool_result` - ツール実行
 - `session_shutdown` - セッション終了
 - `model_select` - モデル変更
+
+## skill-inspector - スキル割り当て状況
+
+### 概要
+
+スキルの割り当て状況を表示・分析するツールです。どのスキルが利用可能で、どのチームやメンバーに割り当てられているかを確認できます。
+
+### 使用方法
+
+```bash
+# 全スキルの概要
+/skill-status
+
+# チーム一覧とスキル割り当て
+/skill-status teams
+
+# 特定チームの詳細
+/skill-status team <teamId>
+
+# 特定スキルの詳細
+/skill-status skill <skillName>
+```
+
+### 使用可能なツール
+
+| ツール | 説明 |
+|--------|------|
+| `skill_status` | スキル割り当て状況の表示と分析 |
+
+### ツールパラメータ
+
+| パラメータ | 型 | 説明 | 必須 | デフォルト |
+|-----------|----|------|------|----------|
+| `view` | string | 表示ビュー種類 | ✅ | - |
+| `teamId` | string | team ビュー時のチームID | ❌ | - |
+| `skillName` | string | skill ビュー時のスキル名 | ❌ | - |
+
+### viewパラメータの値
+
+| 値 | 説明 |
+|----|------|
+| `overview` | 全スキルの一覧と割り当て状況 |
+| `teams` | 全チームのスキル割り当て一覧 |
+| `team` | 特定チームの詳細（teamId必須） |
+| `skill` | 特定スキルの詳細（skillName必須） |
+
+### 出力例
+
+#### overview（デフォルト）
+
+```
+SKILLS ASSIGNMENT OVERVIEW
+======================================================================
+
+Total Skills: 5
+Assigned to Teams: 2
+Assigned to Members: 3
+
+ALL SKILLS
+----------------------------------------------------------------------
+
+[git-workflow]
+  Status: [TEAM + MEMBER]
+  Desc: Git操作・ブランチ管理スキル。コミット作成、ブランチ操作、マージ、リベース...
+  Members: architect, reviewer
+
+[code-review]
+  Status: [MEMBER ONLY]
+  Desc: コードレビュー専用スキル。品質チェック、ベストプラクティス検証...
+  Members: reviewer
+
+[documentation]
+  Status: [TEAM ONLY]
+  Desc: ドキュメント作成スキル。README、APIドキュメント、ガイド作成...
+
+[testing]
+  Status: [UNASSIGNED]
+  Desc: テスト作成・実行スキル。ユニットテスト、統合テスト...
+```
+
+#### teams
+
+```
+TEAMS SKILLS OVERVIEW
+======================================================================
+
+Teams with skills: 2
+Teams without skills: 1
+
+TEAMS WITH SKILL ASSIGNMENTS
+----------------------------------------------------------------------
+
+development-team [ACTIVE]
+  ID: dev-team
+  Team Common: documentation, testing
+  Members with skills (2/3):
+    architect: git-workflow, system-design
+    reviewer: code-review, git-workflow
+
+review-team [ACTIVE]
+  ID: review-team
+  Team Common: code-review
+  Members with skills (1/2):
+    reviewer: code-review, quality-check
+
+TEAMS WITHOUT SKILLS
+----------------------------------------------------------------------
+  deploy-team (2 members)
+```
+
+#### team（特定チーム詳細）
+
+```
+TEAM: development-team
+======================================================================
+
+ID: dev-team
+Status: ACTIVE
+Team Common Skills: documentation, testing
+
+MEMBER SKILLS
+----------------------------------------------------------------------
+
+architect
+  [T] documentation
+  [M] git-workflow
+  [M] system-design
+
+reviewer
+  [T+M] documentation
+  [T] testing
+  [M] code-review
+  [M] git-workflow
+
+developer
+  [T] documentation
+  [T] testing
+```
+
+#### skill（特定スキル詳細）
+
+```
+SKILL: git-workflow
+======================================================================
+
+Location: .pi/lib/skills/git-workflow/SKILL.md
+
+Description:
+  Git操作・ブランチ管理スキル。コミット作成、ブランチ操作、マージ、
+  リベース、コンフリクト解決、履歴分析を支援。チーム開発での
+  バージョン管理ワークフローを効率化。
+
+Assignments:
+  Team Common: development-team, release-team
+  Members (3):
+    dev-team/architect
+    dev-team/reviewer
+    release-team/release-manager
+```
+
+### 割り当てステータスの記号
+
+| ステータス | 説明 |
+|-----------|------|
+| `[TEAM + MEMBER]` | チーム共通かつメンバー個別にも割り当て |
+| `[TEAM ONLY]` | チーム共通のみ |
+| `[MEMBER ONLY]` | メンバー個別のみ |
+| `[UNASSIGNED]` | 未割り当て |
+
+### メンバースキルの記号
+
+| 記号 | 説明 |
+|------|------|
+| `[T]` | チーム共通スキル |
+| `[M]` | メンバー固有スキル |
+| `[T+M]` | チーム共通とメンバー固有の両方 |
+
+### 主な機能
+
+- **スキル一覧表示**: 利用可能な全スキルと割り当て状況
+- **チーム別分析**: 各チームのスキル構成を確認
+- **メンバー別分析**: メンバーごとのスキル割り当て
+- **未割り当て検出**: 使用されていないスキルの特定
+
+### データソース
+
+- **スキル定義**: `.pi/lib/skills/*/SKILL.md`
+- **チーム定義**: `.pi/agent-teams/definitions/*.md` または `*.json`
+
+### 活用シナリオ
+
+1. **スキル整理**: どのスキルが実際に使用されているか確認
+2. **チーム設計**: チーム間でのスキル重複や不足を分析
+3. **メンバー設定**: 各メンバーに適切なスキルが割り当てられているか確認
+4. **メンテナンス**: 未使用スキルの特定と削除検討
 
 ## agent-idle-indicator - エージェント停止中インジケーター
 

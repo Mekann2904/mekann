@@ -2,7 +2,7 @@
 title: ユーザーガイド
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-11
+last_updated: 2026-02-14
 tags: [user-guide, overview]
 related: [../README.md, ./01-extensions.md]
 ---
@@ -47,7 +47,8 @@ pi拡張機能コレクションのユーザーガイドです。
 | **agent-usage-tracker** | 拡張機能の使用統計 | [→](./11-utilities.md) |
 | **context-dashboard** | コンテキスト使用量ダッシュボード | [→](./11-utilities.md) |
 | **agent-idle-indicator** | エージェント実行状態の表示 | [→](./11-utilities.md) |
-| **kitty-integration** | kittyターミナル連携 | [→](./11-utilities.md) |
+| **kitty-status-integration** | kittyターミナル連携 | [→](./11-utilities.md) |
+| **skill-inspector** | スキル割り当て状況の表示 | [→](./11-utilities.md) |
 
 ## クイックスタート
 
