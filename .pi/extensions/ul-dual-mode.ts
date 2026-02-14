@@ -10,14 +10,9 @@ const STABLE_UL_PROFILE = true;
 const UL_REQUIRE_BOTH_ORCHESTRATIONS = false;  // 固定フェーズ解除: LLMの裁量で1〜Nフェーズ
 const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;  // reviewer必須
 const UL_AUTO_ENABLE_FOR_CLEAR_GOAL = process.env.PI_UL_AUTO_CLEAR_GOAL !== "0";
-const UL_RATE_LIMIT_COOLDOWN_MS = STABLE_UL_PROFILE ? 120_000 : 90_000;
-const UL_RATE_LIMIT_AUTO_DISABLE_THRESHOLD = STABLE_UL_PROFILE ? 1 : 3;
-const UL_RATE_LIMIT_NOTIFY_INTERVAL_MS = 15_000;
 const RECOMMENDED_SUBAGENT_IDS = ["researcher", "architect", "implementer"] as const;
 const RECOMMENDED_CORE_TEAM_ID = "core-delivery-team";
 const RECOMMENDED_REVIEWER_ID = "reviewer";
-const RATE_LIMIT_SIGNAL =
-  /(rate\s*limit|too many requests|quota exceeded|status\s*=?\s*429|error\s*:?\s*429)/i;
 const CLEAR_GOAL_SIGNAL =
   /(達成条件|完了条件|成功条件|受け入れ条件|until|done when|all tests pass|tests pass|lint pass|build succeeds?|exit code 0|エラー0|テスト.*通る|lint.*通る|build.*成功)/i;
 
@@ -42,9 +37,6 @@ const state = {
   completedRecommendedSubagentPhase: false,
   completedRecommendedTeamPhase: false,
   completedRecommendedReviewerPhase: false,
-  rateLimitCooldownUntilMs: 0,
-  consecutiveRateLimitEnds: 0,
-  lastRateLimitNotifyAtMs: 0,
 };
 
 function persistState(pi: ExtensionAPI): void {
@@ -61,73 +53,6 @@ function resetState(): void {
   state.completedRecommendedSubagentPhase = false;
   state.completedRecommendedTeamPhase = false;
   state.completedRecommendedReviewerPhase = false;
-}
-
-function isRateLimitCooldownActive(nowMs = Date.now()): boolean {
-  return nowMs < state.rateLimitCooldownUntilMs;
-}
-
-function clearRateLimitTracking(): void {
-  state.rateLimitCooldownUntilMs = 0;
-  state.consecutiveRateLimitEnds = 0;
-}
-
-function flattenToText(input: unknown): string {
-  if (typeof input === "string") return input;
-  if (Array.isArray(input)) return input.map((item) => flattenToText(item)).join(" ");
-  if (!input || typeof input !== "object") return "";
-
-  const value = input as Record<string, unknown>;
-  const preferredKeys = ["text", "content", "error", "message", "reason"];
-  const collected: string[] = [];
-
-  for (const key of preferredKeys) {
-    if (key in value) {
-      collected.push(flattenToText(value[key]));
-    }
-  }
-
-  if (collected.join(" ").trim()) {
-    return collected.join(" ");
-  }
-
-  return Object.values(value).map((entry) => flattenToText(entry)).join(" ");
-}
-
-function collectRuntimeMessageText(event: any): string {
-  const messages = Array.isArray(event?.messages) ? event.messages : [];
-  const chunks: string[] = [];
-
-  // Rate-limit detection must ignore user text to avoid false positives
-  // when users simply mention "429" in their prompt.
-  for (const entry of messages) {
-    if (entry?.type !== "message") continue;
-    const role = String(entry?.message?.role || "").toLowerCase();
-    if (role !== "assistant" && role !== "toolresult") continue;
-    const text = flattenToText(entry?.message);
-    if (text.trim()) {
-      chunks.push(text);
-    }
-  }
-
-  return chunks.join("\n");
-}
-
-function detectRateLimitFromAgentEnd(event: any): boolean {
-  const raw = collectRuntimeMessageText(event);
-  if (!raw) return false;
-  return RATE_LIMIT_SIGNAL.test(raw);
-}
-
-function notifyRateLimitPause(ctx: any, message: string): void {
-  const nowMs = Date.now();
-  if (nowMs - state.lastRateLimitNotifyAtMs < UL_RATE_LIMIT_NOTIFY_INTERVAL_MS) {
-    return;
-  }
-  state.lastRateLimitNotifyAtMs = nowMs;
-  if (ctx?.hasUI && ctx?.ui) {
-    ctx.ui.notify(message, "warning");
-  }
 }
 
 function refreshStatus(ctx: any): void {
@@ -327,7 +252,6 @@ Execution rules:
 - ${teamParallelRule}
 - Direct edits are allowed for trivial changes.
 - Do not finish until reviewer has been called.
-- If repeated 429 happens, immediately fallback to normal mode for stability.
 ${completionLoopRule}
 ---`;
 }
@@ -382,7 +306,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
       const shouldAutoEnable =
         UL_AUTO_ENABLE_FOR_CLEAR_GOAL &&
-        !isRateLimitCooldownActive() &&
         looksLikeClearGoalTask(rawText);
 
       if (!shouldAutoEnable) {
@@ -408,19 +331,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       return { action: "handled" as const };
     }
 
-    if (isRateLimitCooldownActive()) {
-      state.pendingUlMode = false;
-      state.pendingGoalLoopMode = false;
-      notifyRateLimitPause(
-        ctx,
-        "ULモードはレート制限中のため一時停止しています。通常モードで実行します。",
-      );
-      return {
-        action: "transform" as const,
-        text: transformed,
-      };
-    }
-
     state.pendingUlMode = true;
     state.pendingGoalLoopMode = looksLikeClearGoalTask(transformed);
     if (ctx?.hasUI && ctx?.ui) {
@@ -437,24 +347,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
   // エージェント開始前に、ULモードの強制ポリシーを注入する（1ターン限定またはセッション全体）
   pi.on("before_agent_start", async (event, ctx) => {
-    if (isRateLimitCooldownActive()) {
-      state.pendingUlMode = false;
-      state.pendingGoalLoopMode = false;
-      state.activeUlMode = false;
-      state.activeGoalLoopMode = false;
-      state.usedSubagentRun = false;
-      state.usedAgentTeamRun = false;
-      state.completedRecommendedSubagentPhase = false;
-      state.completedRecommendedTeamPhase = false;
-      state.completedRecommendedReviewerPhase = false;
-      notifyRateLimitPause(
-        ctx,
-        "ULモードはレート制限クールダウン中です。通常モードで続行します。",
-      );
-      refreshStatus(ctx);
-      return;
-    }
-
     state.activeUlMode = state.pendingUlMode || state.persistentUlMode;
     state.activeGoalLoopMode = state.activeUlMode && state.pendingGoalLoopMode;
     state.pendingUlMode = false;
@@ -516,44 +408,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
   // 1リクエスト終了時の処理（セッション永続モードなら状態を維持）
   pi.on("agent_end", async (event, ctx) => {
-    const rateLimited = detectRateLimitFromAgentEnd(event);
-
-    if (state.activeUlMode && rateLimited) {
-      state.consecutiveRateLimitEnds += 1;
-      state.rateLimitCooldownUntilMs = Date.now() + UL_RATE_LIMIT_COOLDOWN_MS;
-      state.pendingUlMode = false;
-      state.pendingGoalLoopMode = false;
-      state.activeUlMode = false;
-      state.activeGoalLoopMode = false;
-      state.usedSubagentRun = false;
-      state.usedAgentTeamRun = false;
-      state.completedRecommendedSubagentPhase = false;
-      state.completedRecommendedTeamPhase = false;
-      state.completedRecommendedReviewerPhase = false;
-
-      if (
-        state.persistentUlMode &&
-        state.consecutiveRateLimitEnds >= UL_RATE_LIMIT_AUTO_DISABLE_THRESHOLD
-      ) {
-        state.persistentUlMode = false;
-        persistState(pi);
-        notifyRateLimitPause(
-          ctx,
-          "ULモードを自動OFFにしました（連続429）。/ulmode で再有効化できます。",
-        );
-      } else {
-        notifyRateLimitPause(
-          ctx,
-          `429検出のためULモードを${Math.round(UL_RATE_LIMIT_COOLDOWN_MS / 1000)}秒停止します。`,
-        );
-      }
-
-      refreshStatus(ctx);
-      return;
-    }
-
-    clearRateLimitTracking();
-
     if (!state.activeUlMode) {
       resetState();
       refreshStatus(ctx);
@@ -603,8 +457,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
   // セッション開始時: フラグと保存状態から復元
   pi.on("session_start", async (_event, ctx) => {
     resetState();
-    clearRateLimitTracking();
-    state.lastRateLimitNotifyAtMs = 0;
 
     // CLIフラグから復元
     if (pi.getFlag("ul") === true) {
