@@ -286,7 +286,8 @@ export function resolveRetryWithBackoffConfig(
   overrides?: RetryWithBackoffOverrides,
 ): RetryWithBackoffConfig {
   // Stable profile: keep retry behavior deterministic across the system.
-  if (STABLE_RETRY_PROFILE) {
+  // Allow overrides even with STABLE_RETRY_PROFILE for explicit caller control.
+  if (STABLE_RETRY_PROFILE && !overrides) {
     return { ...DEFAULT_RETRY_WITH_BACKOFF_CONFIG };
   }
 

@@ -85,7 +85,6 @@ import {
   trimForError,
   buildRateLimitKey,
   buildTraceTaskId,
-  normalizeTimeoutMs,
   createRetrySchema,
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
@@ -3670,7 +3669,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
       try {
-        const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
+        const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
         const liveMonitor = createAgentTeamLiveMonitor(ctx, {
           title: `Agent Team Run (detailed live view: ${team.id})`,
           items: activeMembers.map((member) => ({
@@ -4022,7 +4021,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         params.failedMemberRetryRounds,
         DEFAULT_FAILED_MEMBER_RETRY_ROUNDS,
       );
-      const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
+      const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
       const snapshot = getRuntimeSnapshot();
       const configuredTeamParallelLimit = toConcurrencyLimit(snapshot.limits.maxParallelTeamsPerRun, 1);
       const baselineTeamParallelism = Math.max(

@@ -84,7 +84,6 @@ import {
   trimForError,
   buildRateLimitKey,
   buildTraceTaskId,
-  normalizeTimeoutMs,
   createRetrySchema,
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
@@ -1672,7 +1671,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
         try {
-          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
+          const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: "Subagent Run (detailed live view)",
             items: [{ id: agent.id, name: agent.name }],
@@ -1978,7 +1977,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
         try {
-          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
+          const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: `Subagent Run Parallel (detailed live view: ${activeAgents.length} agents)`,
             items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
