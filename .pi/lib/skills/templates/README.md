@@ -2,10 +2,18 @@
 
 スキルテンプレートシステムを使用して、一貫性のあるスキルを迅速に作成する。
 
+**注意:** スキルは `.pi/lib/skills/` に配置してください。`.pi/skills/` はPiの自動読み込みを避けるため空にしておきます。
+
+## ドキュメント
+
+- [アーキテクチャ設計書](../../docs/skill-management-architecture.md): 技術仕様とシステム構成
+- [スキルガイド](../../docs/skill-guide.md): 各スキルの詳細と使い方
+- [運用ガイド](../../docs/skill-operations.md): 手順とトラブルシューティング
+
 ## クイックスタート
 
 ```bash
-cd .pi/skills/templates
+cd .pi/lib/skills/templates
 
 # 基本スキル作成
 ./create-skill.sh my-skill "スキルの説明"
@@ -26,7 +34,7 @@ cd .pi/skills/templates
 ## ディレクトリ構造
 
 ```
-.pi/skills/{スキル名}/
+.pi/lib/skills/{スキル名}/
 ├── SKILL.md                    # 必須: メイン指示
 ├── scripts/                    # 任意: ヘルパースクリプト
 │   └── {スキル名}.py
@@ -52,15 +60,15 @@ cd .pi/skills/templates
 
 ```bash
 # 1. ディレクトリ作成
-mkdir -p .pi/skills/my-skill/{scripts,references,assets}
+mkdir -p .pi/lib/skills/my-skill/{scripts,references,assets}
 
 # 2. テンプレートをコピー
-cp .pi/skills/templates/SKILL-TEMPLATE.md .pi/skills/my-skill/SKILL.md
+cp .pi/lib/skills/templates/SKILL-TEMPLATE.md .pi/lib/skills/my-skill/SKILL.md
 
 # 3. 必要に応じて追加
-cp .pi/skills/templates/REFERENCE-TEMPLATE.md .pi/skills/my-skill/references/my-skill-reference.md
-cp .pi/skills/templates/ASSET-TEMPLATE.md .pi/skills/my-skill/assets/my-skill-template.md
-cp .pi/skills/templates/SCRIPT-TEMPLATE.py .pi/skills/my-skill/scripts/my-skill.py
+cp .pi/lib/skills/templates/REFERENCE-TEMPLATE.md .pi/lib/skills/my-skill/references/my-skill-reference.md
+cp .pi/lib/skills/templates/ASSET-TEMPLATE.md .pi/lib/skills/my-skill/assets/my-skill-template.md
+cp .pi/lib/skills/templates/SCRIPT-TEMPLATE.py .pi/lib/skills/my-skill/scripts/my-skill.py
 
 # 4. プレースホルダーを置換
 # {skill-name} -> my-skill
@@ -218,14 +226,14 @@ Piは自動的にスキルを検証:
 ### 最小構成スキル
 
 ```
-.pi/skills/hello-world/
+.pi/lib/skills/hello-world/
 └── SKILL.md
 ```
 
 ### 完全構成スキル
 
 ```
-.pi/skills/data-analysis/
+.pi/lib/skills/data-analysis/
 ├── SKILL.md
 ├── scripts/
 │   └── data-analysis.py
@@ -240,5 +248,8 @@ Piは自動的にスキルを検証:
 
 ## 関連項目
 
+- [アーキテクチャ設計書](../../docs/skill-management-architecture.md)
+- [スキルガイド](../../docs/skill-guide.md)
+- [運用ガイド](../../docs/skill-operations.md)
 - [piスキルドキュメント](https://github.com/badlogic/pi-skills)
 - [Agent Skills仕様](https://agentskills.io/specification)
