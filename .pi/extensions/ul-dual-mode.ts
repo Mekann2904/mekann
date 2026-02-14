@@ -172,87 +172,44 @@ function isRecommendedReviewerCall(event: any): boolean {
 }
 
 function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
-  const loopHints = goalLoopMode
-    ? [
-        "- 明確な達成条件を検知したため、このターンで loop_run を優先する。",
-        "- loop_run に `goal` を渡し、可能なら `verifyCommand` と `verificationTimeoutMs` を設定する。",
-        "- 完了判定は loop_run の `completed=yes` を基準にする。",
-      ]
-    : [
-        "- 完了条件が明確な場合は loop_run を使い、`goal` を明示する。",
-      ];
-
-  return [
-    "[UL_MODE_ADAPTIVE]",
-    "委任優先で効率的に実行すること。",
-    "",
-    "実行ルール:",
-    "- subagent_run_parallel / agent_team_run / agent_team_run_parallel 等を必要に応じて使用する。",
-    "- フェーズ数はLLMの裁量（最小1、上限なし）。タスク規模に合わせて最適化する。",
-    "- 完了と判断する前に必ず subagent_run(subagentId: reviewer) を実行し、品質を確認すること。",
-    "- 1人で十分な小規模タスクは subagent_run で済ませる。",
-    "- 複数視点が必要な場合は subagent_run_parallel(subagentIds: researcher, architect, implementer) を使用。",
-    "- 多角的な実装が必要な場合は agent_team_run(teamId: core-delivery-team) を使用。",
-    "",
-    ...loopHints,
-    "",
-    "タスク:",
-    task,
-  ].join("\n");
+  // 簡素化: 詳細なポリシーはgetUlPolicy()で一元管理
+  const goalHint = goalLoopMode
+    ? "\n[GOAL_LOOP] 明確な達成条件を検知。loop_runを優先。"
+    : "";
+  return `[UL_MODE] 委任優先で実行。${goalHint}\n\nタスク:\n${task}`;
 }
 
 function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
-  const mode = sessionWide
-    ? "UL Adaptive Mode (SESSION-WIDE - Active for all prompts)"
-    : "UL Adaptive Mode (Single turn - triggered by 'ul' prefix)";
-
-  const subagentParallelRule =
-    "- For subagent usage, prefer `subagent_run_parallel` with explicit `subagentIds` (minimum 2 for complex tasks). Use `subagent_run` for simple single-specialist tasks.";
-  const loopRule = goalLoopMode
-    ? "- Clear completion criteria detected: call `loop_run` early and set `goal` (plus verification settings when available)."
-    : "- If explicit completion criteria exist, use `loop_run` with `goal` (and `verifyCommand` when available).";
-  const teamParallelRule = goalLoopMode
-    ? "- For decomposable work, prefer `agent_team_run_parallel` with explicit `teamIds`, `communicationRounds: 1`, and `failedMemberRetryRounds: 1`."
-    : "- For agent-team usage, use parallel variants when explicitly necessary.";
-  const completionLoopRule = goalLoopMode
+  const mode = sessionWide ? "UL SESSION" : "UL";
+  const scope = sessionWide ? "session is in" : "turn is in";
+  
+  const loopSection = goalLoopMode
     ? `
-Completion-loop rule (clear deterministic completion criteria detected):
-- Call \`loop_run\` early in this turn.
-- Set \`goal\` to the user-defined completion criteria.
-- When objective checks exist (tests/build/lint), set \`verifyCommand\` and \`verificationTimeoutMs\`.
-- Keep \`maxIterations\` bounded (typically 4-8) and avoid unbounded fan-out.
-- Consider the task complete only after loop_run reports completed=yes.
-- If loop_run stops by max_iterations/stagnation, do one focused orchestration pass and rerun loop_run once.
-`
-    : "";
+Loop rule (clear completion criteria detected):
+- Call loop_run early with goal. Set verifyCommand if tests/build/lint apply.
+- Max iterations: 4-8. Rerun once if stagnation.`
+    : "- Use loop_run with goal if explicit completion criteria exist.";
 
   return `
 ---
-## ${mode}
+## ${mode} (delegation-first)
 
-This ${sessionWide ? "session is in" : "turn is in"} UL Adaptive Mode.
+This ${scope} UL Adaptive Mode.
 
-Execution policy (delegation-first, efficient, high quality):
-- Use subagent_run_parallel, agent_team_run, etc. as needed.
-- Phase count is at LLM's discretion (minimum 1, no maximum).
-- YOU MUST call \`subagent_run(subagentId: "${RECOMMENDED_REVIEWER_ID}")\` before marking the task complete.
+Execution:
+- Use subagent_run_parallel / agent_team_run as needed.
+- Phase count: LLM discretion (1-N, optimize for task scale).
+- YOU MUST: subagent_run(subagentId: "reviewer") before marking complete.
 
-Recommended patterns:
-1. Simple tasks: single \`subagent_run\` or direct execution
-2. Multi-perspective tasks: \`subagent_run_parallel(subagentIds: researcher, architect, implementer)\`
-3. Complex implementation: \`agent_team_run(teamId: ${RECOMMENDED_CORE_TEAM_ID}, strategy: parallel)\`
+Patterns:
+1. Simple: single subagent_run or direct execution
+2. Multi-perspective: subagent_run_parallel(subagentIds: researcher, architect, implementer)
+3. Complex: agent_team_run(teamId: core-delivery-team, strategy: parallel)
 
-Quality gate (REQUIRED):
-- Before finishing, always run: \`subagent_run(subagentId: "${RECOMMENDED_REVIEWER_ID}")\`
-- The reviewer will validate quality, completeness, and potential issues.
-
-Execution rules:
-- ${subagentParallelRule}
-- ${loopRule}
-- ${teamParallelRule}
-- Direct edits are allowed for trivial changes.
+Rules:
+- ${loopSection}
+- Direct edits allowed for trivial changes.
 - Do not finish until reviewer has been called.
-${completionLoopRule}
 ---`;
 }
 
