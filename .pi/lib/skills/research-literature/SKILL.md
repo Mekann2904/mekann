@@ -1,8 +1,8 @@
 ---
 name: research-literature
 description: 統合文献検索・管理システム。PubMed、arXiv、bioRxiv、Semantic Scholarなど複数の学術データベースの検索、BibTeX引用管理、Perplexity AIによる最新研究情報の取得、系統的文献レビューの実施を統合。APA、Nature、Vancouverなど複数の引用スタイルに対応し、検証済み引用を含むプロフェッショナルな文書を生成する。
-allowed-tools: [Read, Write, Edit, Bash]
-license: MIT license
+allowed-tools: Read Write Edit Bash
+license: MIT
 metadata:
   skill-author: "Mekann"
   reference: "https://github.com/K-Dense-AI/claude-scientific-skills"

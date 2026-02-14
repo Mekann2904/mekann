@@ -1,8 +1,8 @@
 ---
 name: research-writing
 description: 深い研究と執筆ツールの中核スキル。科学的論文を完全な段落で執筆します（箇条書きは使用しません）。research-lookupを使用した要点付きのセクションアウトラインを作成し、その後流れるような散文に変換する2段階プロセスを使用。IMRAD構造、引用（APA/AMA/Vancouver）、図表、報告ガイドライン（CONSORT/STROBE/PRISMA）に対応。研究論文やジャーナル投稿向け。
-allowed-tools: [Read, Write, Edit, Bash]
-license: MIT license
+allowed-tools: Read Write Edit Bash
+license: MIT
 metadata:
   skill-author: "Mekann"
   reference: "https://github.com/K-Dense-AI/claude-scientific-skills"

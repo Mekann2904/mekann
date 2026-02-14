@@ -1,8 +1,8 @@
 ---
 name: research-data-analysis
 description: 200以上の科学ファイル形式に対応した包括的EDA実行とデータ処理。科学データファイルの構造、内容、品質、特性を理解するために使用。大規模データ（Dask/Vaex）、高速処理（Polars）、形式変換（Markitdown）を統合。自動的にファイル形式を検出し、形式固有の分析、データ品質評価、統計サマリー、可視化推奨、ダウンストリーム分析提案を含む詳細なマークダウンレポートを生成する。
-allowed-tools: [Read, Write, Edit, Bash]
-license: MIT license
+allowed-tools: Read Write Edit Bash
+license: MIT
 metadata:
   skill-author: "Mekann"
   reference: "https://github.com/K-Dense-AI/claude-scientific-skills"
