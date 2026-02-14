@@ -23,6 +23,19 @@ This guide provides detailed documentation for all available skills in the proje
 | [research-time-series](#research-time-series) | Analysis | Time series classification/forecasting |
 | [research-visualization](#research-visualization) | Visualization | Publication-quality figures |
 | [research-writing](#research-writing) | Writing | Academic paper writing |
+| code-metrics | Code Analysis | Code metrics measurement |
+| code-search | Code Analysis | Code search and pattern matching |
+| code-transform | Code Analysis | Code transformation and refactoring |
+| dependency-mapper | Code Analysis | Dependency relationship mapping |
+| diff-analyzer | Code Analysis | Diff analysis |
+| lint-analyzer | Code Analysis | Lint analysis and quality checks |
+| log-analyzer | Code Analysis | Log analysis |
+| doc-generator | Documentation | Automatic documentation generation |
+| sast-analyzer | Security | Static application security testing |
+| secret-detector | Security | Secret detection |
+| vuln-scanner | Security | Vulnerability scanning |
+| skill-creator | Utility | Skill creation support |
+| git-workflow | Operations | Git operations and branch management |
 
 ---
 
@@ -627,5 +640,5 @@ Member B: research-critical, research-writing
 
 ---
 
-*This guide covers all 14 available skills (13 research-* skills plus exploratory-data-analysis).*
+*This guide covers all 27 available skills (13 research-* skills, exploratory-data-analysis, 12 code/utility skills, and git-workflow).*
 *For operational procedures, see `.pi/docs/skill-management-architecture.md`.*

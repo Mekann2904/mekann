@@ -21,6 +21,7 @@ piには作業状況の監視・分析・可視化を行うためのユーティ
 | **agent-usage-tracker** | 拡張機能の使用統計、エラー率、コンテキスト占有率の分析 |
 | **context-usage-dashboard** | 現在のコンテキスト使用状況と直近7日間の分析ダッシュボード |
 | **agent-idle-indicator** | エージェント実行状況の視覚的インジケーター |
+| **skill-inspector** | スキル割り当て状況の表示と分析 |
 
 ## usage-tracker - LLM使用状況
 

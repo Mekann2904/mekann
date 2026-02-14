@@ -95,14 +95,13 @@ mkdir -p "$SKILL_DIR"/{scripts,references,assets}
 
 # テンプレートからSKILL.mdを作成
 SKILL_MD="$SKILL_DIR/SKILL.md"
+AUTHOR_NAME=$(git config user.name 2>/dev/null || echo "開発者")
 sed -e "s/skill-template/$SKILL_NAME/g" \
     -e "s/{スキル名}/${SKILL_NAME//-/ }/g" \
     -e "s/特定タスク用の新しいスキル。/$DESCRIPTION/g" \
+    -e "s/{作成日}/$(date +%Y-%m-%d)/g" \
+    -e "s/{作成者名}/$AUTHOR_NAME/g" \
     "$SCRIPT_DIR/SKILL-TEMPLATE.md" > "$SKILL_MD"
-
-# メタデータでfrontmatterを更新
-sed -i.bak "s/^metadata:$/metadata:\n  skill-version: \"1.0.0\"\n  created: \"$(date +%Y-%m-%d)\"/" "$SKILL_MD"
-rm -f "${SKILL_MD}.bak"
 
 # --with-allフラグに基づいてテンプレートファイルを作成
 if [ "$WITH_ALL" = true ]; then

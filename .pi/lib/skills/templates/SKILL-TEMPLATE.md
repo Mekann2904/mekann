@@ -3,8 +3,9 @@ name: skill-template
 description: スキル作成用テンプレート。このテンプレートをコピーして新しいスキルを作成する。SKILL.mdのfrontmatterと本文の構造を定義し、scripts/, references/, assets/の標準的なディレクトリ構成を提供する。
 license: MIT
 metadata:
-  template-version: "1.0.0"
-  created-by: pi-skill-system
+  skill-version: "1.0.0"
+  created: "{作成日}"
+  author: "{作成者名}"
 ---
 
 # {スキル名}

@@ -1,5 +1,24 @@
 # 変更履歴
 
+## [v0.2.1] - 2026-02-14
+
+### 追加
+- **skill-inspector拡張機能**
+  - `skill_status` ツール: 現在のスキル割り当て状況を表示
+  - `/skill-status` コマンド: スキル情報のクイックアクセス
+
+- **新しいエージェントチーム**
+  - `mermaid-diagram-team`: コード視覚化タスクフォース（シーケンス図、フローチャート等）
+  - `research-team`: データ分析・科学研究プロジェクト専用チーム
+
+### ドキュメント
+- README.mdのチーム一覧に design-discovery-team, file-organizer-team, mermaid-diagram-team, research-team を追加
+- README.mdのスキル数を正確な27個に更新
+- docs/02-user-guide/09-agent-teams.md に mermaid-diagram-team, research-team の詳細を追加
+- docs/02-user-guide/08-subagents.md に skills パラメータの説明を追加
+
+---
+
 ## [v0.2.0] - 2026-02-12
 
 ### 追加

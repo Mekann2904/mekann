@@ -72,7 +72,12 @@ related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./10-ul-dual-mode
 ├── docs-enablement-team.md
 ├── rapid-swarm-team.md
 ├── refactor-migration-team.md
-└── code-excellence-review-team.md
+├── code-excellence-review-team.md
+├── design-discovery-team.md
+├── file-organizer-team.md
+├── mermaid-diagram-team.md
+├── research-team.md
+└── template-team.md
 ```
 
 ### 新規チーム追加ワークフロー
@@ -200,6 +205,17 @@ README、運用ランブック、例示、簡潔な変更サマリーのため�
 | `diagram-author` | Diagram Author | 解析結果に基づきMermaid記法でシーケンス図、フローチャート等を作成。可読性と正確性のバランスを取る |
 | `syntax-validator` | Syntax Validator | mermaid-cliによるstdin/stdoutパイプライン検証で構文正確性を確認。エラーを特定・修正 |
 | `consistency-verifier` | Consistency Verifier | Mermaid図と元のコードの厳密な一致を検証。欠落、過剰、歪曲がないことを保証 |
+
+### research-team
+
+データ分析・科学研究プロジェクトを効率的に遂行する専門チーム。研究計画から成果発表まで一貫したワークフローを提供。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `research-planner` | Research Planner | 研究計画の策定、目的設定、スコープ定義、リソース配分を担当。研究全体の方向性を管理 |
+| `data-analyst` | Data Analyst | データ収集、前処理、統計解析、可視化を実行。research-statistics、research-visualizationスキルを活用 |
+| `literature-reviewer` | Literature Reviewer | 文献検索、関連研究の調査、引用管理を担当。research-literatureスキルを活用 |
+| `result-synthesizer` | Result Synthesizer | 分析結果を統合し、結論を導出。研究報告書の執筆を担当。research-writingスキルを活用 |
 
 ## パラメータ/オプション
 
@@ -477,6 +493,7 @@ Agent Team / Subagent runtime
 | 設計発見と要件分析 | `design-discovery-team` |
 | ファイル・フォルダ整理 | `file-organizer-team` |
 | コード視覚化・Mermaid図作成 | `mermaid-diagram-team` |
+| データ分析・科学研究 | `research-team` |
 
 ### 並列 vs 逐次
 
@@ -531,5 +548,6 @@ Agent Team / Subagent runtime
 
 | バージョン | 日付 | 変更内容 |
 |----------|------|---------|
+| v0.2.1 | 2026-02-14 | mermaid-diagram-team、research-teamの追加、スキル数27個に更新 |
 | v0.2.0 | 2026-02-12 | Markdown外部化によるチーム定義の導入、definitions/ディレクトリ追加 |
 | v0.1.0 | 2026-02-11 | 初期リリース |
