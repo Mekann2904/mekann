@@ -18,6 +18,24 @@ const ST = "\x07";
 // プラットフォーム検出
 const isMacOS = process.platform === "darwin";
 
+// 通知設定の型定義
+interface NotificationOptions {
+  enabled: boolean;             // 通知全体の有効/無効
+  soundEnabled: boolean;        // サウンドの有効/無効
+  notifyCenterEnabled: boolean; // 通知センターの有効/無効
+  successSound: string;         // 成功時のサウンドパス
+  errorSound: string;           // エラー時のサウンドパス
+}
+
+// デフォルト設定
+const notifyOptions: NotificationOptions = {
+  enabled: true,
+  soundEnabled: true,
+  notifyCenterEnabled: true,
+  successSound: "/System/Library/Sounds/Tink.aiff",
+  errorSound: "/System/Library/Sounds/Basso.aiff",
+};
+
 // kittyかどうかを判定
 function isKitty(): boolean {
   return !!process.env.KITTY_WINDOW_ID;
@@ -47,15 +65,22 @@ function notifyMacOS(text: string, title = "pi"): void {
       detached: true
     });
     child.unref();
-    
-    // 別途システムサウンドを非同期で再生（Tink音）
-    spawn("afplay", ["/System/Library/Sounds/Tink.aiff"], {
+  } catch (error) {
+    // 通知送信エラーは無視
+    console.error("Notification error:", error);
+  }
+}
+
+// サウンドを再生（macOSのみ）
+function playSound(soundPath: string): void {
+  if (!isMacOS) return;
+  try {
+    spawn("afplay", [soundPath], {
       detached: true,
       stdio: "ignore"
     }).unref();
   } catch (error) {
-    // 通知送信エラーは無視
-    console.error("Notification error:", error);
+    console.error("Sound playback error:", error);
   }
 }
 
@@ -65,14 +90,24 @@ function notifyKitty(text: string, duration = 0): void {
   process.stdout.write(`${OSC}99;i=1:d=${duration}:${text}${ST}`);
 }
 
-// 通知を表示（プラットフォーム別）
-function notify(text: string, duration = 0, title = "pi"): void {
+// 通知を表示（プラットフォーム別、設定対応版）
+function notify(text: string, duration = 0, title = "pi", isError = false): void {
   if (!isKitty()) return;
+  if (!notifyOptions.enabled) return;
 
-  if (isMacOS) {
-    notifyMacOS(text, title);
-  } else {
-    notifyKitty(text, duration);
+  // 通知センター通知
+  if (notifyOptions.notifyCenterEnabled) {
+    if (isMacOS) {
+      notifyMacOS(text, title);
+    } else {
+      notifyKitty(text, duration);
+    }
+  }
+
+  // サウンド再生
+  if (notifyOptions.soundEnabled) {
+    const soundPath = isError ? notifyOptions.errorSound : notifyOptions.successSound;
+    playSound(soundPath);
   }
 }
 
@@ -140,13 +175,26 @@ export default function (pi: ExtensionAPI) {
 
     const cwd = ctx.cwd.split("/").pop() || ctx.cwd;
 
-    // 完了通知
-    notify(`✓ Done: ${toolCount} tool(s) in ${cwd}`);
+    // エラー判定: toolResultにisErrorがあるか確認
+    const hasError = event.messages.some(
+      m => m.type === "message" && 
+           m.message.role === "toolResult" && 
+           m.message.isError === true
+    );
+
+    // 完了通知（エラー時は異なるサウンド）
+    const statusText = hasError 
+      ? `✗ Error in ${cwd}` 
+      : `✓ Done: ${toolCount} tool(s) in ${cwd}`;
+    notify(statusText, 0, "pi", hasError);
 
     // タイトルを復元
     setWindow(`pi: ${cwd}`);
 
-    ctx.ui.notify(`Completed turn ${turnCount} (${toolCount} tools)`, "success");
+    ctx.ui.notify(
+      `Completed turn ${turnCount} (${toolCount} tools)`, 
+      hasError ? "error" : "success"
+    );
   });
 
   // ターン開始時
@@ -172,6 +220,11 @@ export default function (pi: ExtensionAPI) {
     currentTool = event.toolName;
     const cwd = ctx.cwd.split("/").pop() || ctx.cwd;
     setWindow(`pi: ${cwd} [Running: ${event.toolName}]`);
+
+    // question ツールの場合は通知
+    if (event.toolName === "question") {
+      notify("Waiting for your response", 0, "pi: Question");
+    }
   });
 
   // ツール実行結果時
@@ -261,9 +314,44 @@ export default function (pi: ExtensionAPI) {
         `  Working dir: ${cwd}`,
         `  Turn count: ${turnCount}`,
         `  Status: ${toolInfo}`,
+        `  Notifications: ${notifyOptions.enabled ? "on" : "off"}`,
+        `  Sound: ${notifyOptions.soundEnabled ? "on" : "off"}`,
       ].join("\n");
 
       ctx.ui.notify(status, "info");
+    },
+  });
+
+  // カスタムコマンド: /kitty-notify-config
+  pi.registerCommand("kitty-notify-config", {
+    description: "Configure kitty notification settings (on|off|sound on|sound off)",
+    handler: async (args, ctx) => {
+      if (!isKitty()) {
+        ctx.ui.notify("Not running in kitty terminal", "error");
+        return;
+      }
+
+      const arg = args?.trim().toLowerCase();
+
+      if (arg === "off") {
+        notifyOptions.enabled = false;
+        ctx.ui.notify("Notifications disabled", "info");
+      } else if (arg === "on") {
+        notifyOptions.enabled = true;
+        ctx.ui.notify("Notifications enabled", "info");
+      } else if (arg === "sound off") {
+        notifyOptions.soundEnabled = false;
+        ctx.ui.notify("Sound disabled", "info");
+      } else if (arg === "sound on") {
+        notifyOptions.soundEnabled = true;
+        ctx.ui.notify("Sound enabled", "info");
+      } else {
+        ctx.ui.notify(
+          `Usage: /kitty-notify-config [on|off|sound on|sound off]\n` +
+          `Current: enabled=${notifyOptions.enabled}, sound=${notifyOptions.soundEnabled}`,
+          "info"
+        );
+      }
     },
   });
 }
