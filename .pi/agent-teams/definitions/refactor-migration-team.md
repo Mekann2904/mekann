@@ -4,11 +4,15 @@ name: Refactor & Migration Team
 description: リファクタリングと移行に特化したタスクフォース。影響分析、移行計画、実装戦略、互換性チェックを実施し、安全な変更を確立した上で最終的な実行計画を策定する。Phase 1で影響範囲特定、Phase 2で移行計画策定、Phase 3で安全な実装設計を行い、三人で協調してリスクを最小化する。
 enabled: enabled
 strategy: parallel
+skills:
+  - diff-analyzer         # チーム共通: 差分分析
 members:
   - id: impact-analyst
     role: Impact Analyst
     description: Phase 1の影響範囲特定を担当。影響を受けるモジュール、依存関係、リスク集中領域をマッピングする。変更の影響範囲を特定し、リスクが高い部分を洗い出す。
     enabled: true
+    skills:
+      - dependency-mapper # 依存関係可視化・影響範囲特定
   - id: migration-planner
     role: Migration Planner
     description: Phase 2の移行計画策定を担当。段階的なロールアウトを設計し、チェックポイント、フォールバックポイント、ロールアウト順序を定義する。安全かつ順序よく移行を進めるための計画を作成する。
@@ -17,6 +21,8 @@ members:
     role: Refactor Implementer
     description: Phase 3の安全な実装設計を担当。振る舞いを保持しつつ、最小限で安全なコード変更を提案する。既存の機能に影響を与えず、保守性を向上させる変更を行う。
     enabled: true
+    skills:
+      - code-transform    # ASTベースコード変換
 ---
 
 # Refactor & Migration Team

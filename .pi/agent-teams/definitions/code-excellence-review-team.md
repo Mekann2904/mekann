@@ -4,19 +4,27 @@ name: Code Excellence Review Team
 description: 包括的なコードレビュータスクフォース。可読性、エレガンス、保守性、長期的な運用可能性を評価し、競合する改善案を検証した上で最終的な合意形成を行う。Phase 1 で可読性レビュー、Phase 2 でアーキテクチャレビュー、Phase 3 で統合と優先付けを行い、三人で協調してコード品質を向上させる。
 enabled: enabled
 strategy: parallel
+skills:
+  - lint-analyzer         # チーム共通: Lint結果解析
 members:
   - id: readability-reviewer
     role: Readability Reviewer
     description: Phase 1の可読性レビューを担当。命名の明確さ、フローの可読性、認知的負荷をチェックし、変数名・関数名の適切性、コードの流れの追いやすさを評価する。
     enabled: true
+    skills:
+      - doc-generator     # APIドキュメント生成
   - id: architecture-reviewer
     role: Architecture Reviewer
     description: Phase 2のアーキテクチャレビューを担当。境界、レイヤリング、結合度、モジュール責任をレビューし、コンポーネント間の境界適切性、層の分離、結合の疎さを確認する。
     enabled: true
+    skills:
+      - code-metrics      # 複雑度・結合度分析
   - id: review-synthesizer
     role: Review Synthesizer
     description: Phase 3の統合レビューと合意形成を担当。収集されたレビュー結果を統合し、critical/should/niceの優先度に分類して最終的な改善アクションを確定する。
     enabled: true
+    skills:
+      - code-metrics      # 複雑度・結合度分析
 ---
 
 # Code Excellence Review Team
