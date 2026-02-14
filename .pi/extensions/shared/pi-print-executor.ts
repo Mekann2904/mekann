@@ -28,10 +28,14 @@ export interface PrintExecutorOptions {
   timeoutMs: number;
   /** Optional abort signal for cancellation */
   signal?: AbortSignal;
-  /** Optional callback for stdout chunks */
+  /** Optional callback for stdout chunks (raw JSON lines) */
   onStdoutChunk?: (chunk: string) => void;
   /** Optional callback for stderr chunks */
   onStderrChunk?: (chunk: string) => void;
+  /** Optional callback for text delta events (for preview display) */
+  onTextDelta?: (delta: string) => void;
+  /** Optional callback for thinking delta events (for preview display) */
+  onThinkingDelta?: (delta: string) => void;
 }
 
 export interface PrintCommandResult {
@@ -53,27 +57,32 @@ function trimForError(text: string, maxLength = 200): string {
  * Parse JSON stream lines and extract text content.
  * Handles both complete JSON objects and partial lines.
  */
-function parseJsonStreamLine(line: string): { type: string; textDelta?: string; isEnd?: boolean } | null {
+function parseJsonStreamLine(line: string): { type: string; textDelta?: string; thinkingDelta?: string; isEnd?: boolean } | null {
   if (!line.startsWith("{")) return null;
-  
+
   try {
     const obj = JSON.parse(line);
-    
+
     // Check for agent_end (completion)
     if (obj.type === "agent_end") {
       return { type: "agent_end", isEnd: true };
     }
-    
+
     // Check for message_end (turn completion)
     if (obj.type === "message_end") {
       return { type: "message_end", isEnd: true };
     }
-    
+
     // Extract text_delta from message_update
     if (obj.type === "message_update" && obj.assistantMessageEvent?.type === "text_delta") {
       return { type: "text_delta", textDelta: obj.assistantMessageEvent.delta };
     }
-    
+
+    // Extract thinking_delta from message_update
+    if (obj.type === "message_update" && obj.assistantMessageEvent?.type === "thinking_delta") {
+      return { type: "thinking_delta", thinkingDelta: obj.assistantMessageEvent.delta };
+    }
+
     return { type: obj.type || "unknown" };
   } catch {
     return null;
@@ -83,20 +92,49 @@ function parseJsonStreamLine(line: string): { type: string; textDelta?: string; 
 /**
  * Extract final text from agent_end message.
  */
-function extractFinalText(line: string): string | null {
+function extractFinalText(line: string): { text: string | null; thinking: string | null } {
   try {
     const obj = JSON.parse(line);
     if (obj.type === "agent_end" && obj.messages) {
       const lastMessage = obj.messages[obj.messages.length - 1];
       if (lastMessage?.role === "assistant" && Array.isArray(lastMessage.content)) {
         const textBlock = lastMessage.content.find((b: { type: string }) => b.type === "text");
-        return textBlock?.text || null;
+        const thinkingBlock = lastMessage.content.find((b: { type: string }) => b.type === "thinking");
+        return {
+          text: textBlock?.text || null,
+          thinking: thinkingBlock?.thinking || null,
+        };
       }
     }
-    return null;
+    return { text: null, thinking: null };
   } catch {
-    return null;
+    return { text: null, thinking: null };
   }
+}
+
+/**
+ * Format thinking block with indentation for distinct display.
+ */
+function formatThinkingBlock(thinking: string): string {
+  if (!thinking?.trim()) return "";
+  const lines = thinking.split("\n");
+  const formatted = lines.map((line) => `  ${line}`).join("\n");
+  return `[Thinking]\n${formatted}`;
+}
+
+/**
+ * Combine text and thinking content with proper formatting.
+ */
+function combineTextAndThinking(text: string, thinking: string): string {
+  const parts: string[] = [];
+  if (thinking?.trim()) {
+    parts.push(formatThinkingBlock(thinking));
+  }
+  if (text?.trim()) {
+    if (parts.length > 0) parts.push("");
+    parts.push(text.trim());
+  }
+  return parts.join("\n");
 }
 
 /**
@@ -129,7 +167,9 @@ export async function runPiPrintMode(
     let stdout = "";
     let stderr = "";
     let textContent = "";
+    let thinkingContent = "";
     let finalText = "";
+    let finalThinking = "";
     let timedOut = false;
     let settled = false;
     let forceKillTimer: NodeJS.Timeout | undefined;
@@ -224,13 +264,22 @@ export async function runPiPrintMode(
         const parsed = parseJsonStreamLine(trimmed);
         if (parsed?.type === "text_delta" && parsed.textDelta) {
           textContent += parsed.textDelta;
+          input.onTextDelta?.(parsed.textDelta);
         }
-        
+
+        if (parsed?.type === "thinking_delta" && parsed.thinkingDelta) {
+          thinkingContent += parsed.thinkingDelta;
+          // Don't show thinking in preview - only in final output
+        }
+
         // Try to extract final text from agent_end
         if (parsed?.isEnd) {
           const extracted = extractFinalText(trimmed);
-          if (extracted) {
-            finalText = extracted;
+          if (extracted.text) {
+            finalText = extracted.text;
+          }
+          if (extracted.thinking) {
+            finalThinking = extracted.thinking;
           }
         }
       }
@@ -261,8 +310,11 @@ export async function runPiPrintMode(
           return;
         }
 
-        // Prefer final text from agent_end, fallback to collected deltas
-        const output = finalText || textContent;
+        // Prefer final text/thinking from agent_end, fallback to collected deltas
+        const outputText = finalText || textContent;
+        const outputThinking = finalThinking || thinkingContent;
+        const output = combineTextAndThinking(outputText, outputThinking);
+
         if (!output) {
           const stderrMessage = trimForError(stderr);
           rejectPromise(
@@ -306,8 +358,10 @@ export interface CallModelViaPiOptions {
   timeoutMs: number;
   /** Optional abort signal for cancellation */
   signal?: AbortSignal;
-  /** Optional callback for stdout chunks (streaming) */
+  /** Optional callback for stdout chunks (raw JSON lines) */
   onChunk?: (chunk: string) => void;
+  /** Optional callback for text delta events (for preview display) */
+  onTextDelta?: (delta: string) => void;
   /** Entity label for error messages (default: "RSA") */
   entityLabel?: string;
 }
@@ -317,7 +371,7 @@ export interface CallModelViaPiOptions {
  * Uses idle timeout strategy with streaming support.
  */
 export async function callModelViaPi(options: CallModelViaPiOptions): Promise<string> {
-  const { model, prompt, timeoutMs, signal, onChunk, entityLabel = "RSA" } = options;
+  const { model, prompt, timeoutMs, signal, onChunk, onTextDelta, entityLabel = "RSA" } = options;
 
   if (signal?.aborted) {
     throw new Error(`${entityLabel} aborted`);
@@ -341,7 +395,9 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
     let stdout = "";
     let stderr = "";
     let textContent = "";
+    let thinkingContent = "";
     let finalText = "";
+    let finalThinking = "";
     let timedOut = false;
     let settled = false;
     let forceKillTimer: NodeJS.Timeout | undefined;
@@ -432,12 +488,21 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
         const parsed = parseJsonStreamLine(trimmed);
         if (parsed?.type === "text_delta" && parsed.textDelta) {
           textContent += parsed.textDelta;
+          onTextDelta?.(parsed.textDelta);
+        }
+
+        if (parsed?.type === "thinking_delta" && parsed.thinkingDelta) {
+          thinkingContent += parsed.thinkingDelta;
+          // Don't show thinking in preview - only in final output
         }
 
         if (parsed?.isEnd) {
           const extracted = extractFinalText(trimmed);
-          if (extracted) {
-            finalText = extracted;
+          if (extracted.text) {
+            finalText = extracted.text;
+          }
+          if (extracted.thinking) {
+            finalThinking = extracted.thinking;
           }
         }
       }
@@ -468,7 +533,11 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
           return;
         }
 
-        const output = finalText || textContent;
+        // Prefer final text/thinking from agent_end, fallback to collected deltas
+        const outputText = finalText || textContent;
+        const outputThinking = finalThinking || thinkingContent;
+        const output = combineTextAndThinking(outputText, outputThinking);
+
         if (!output) {
           rejectPromise(new Error("pi --mode json returned empty output"));
           return;

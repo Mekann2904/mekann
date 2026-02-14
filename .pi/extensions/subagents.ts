@@ -1118,7 +1118,7 @@ async function runPiPrintMode(input: {
   prompt: string;
   timeoutMs: number;
   signal?: AbortSignal;
-  onStdoutChunk?: (chunk: string) => void;
+  onTextDelta?: (delta: string) => void;
   onStderrChunk?: (chunk: string) => void;
 }): Promise<PrintCommandResult> {
   return sharedRunPiPrintMode({
@@ -1174,7 +1174,7 @@ async function runSubagentTask(input: {
   signal?: AbortSignal;
   onStart?: () => void;
   onEnd?: () => void;
-  onStdoutChunk?: (chunk: string) => void;
+  onTextDelta?: (delta: string) => void;
   onStderrChunk?: (chunk: string) => void;
 }): Promise<{ runRecord: SubagentRunRecord; output: string; prompt: string }> {
   const runId = createRunId();
@@ -1235,7 +1235,7 @@ async function runSubagentTask(input: {
             prompt,
             timeoutMs: input.timeoutMs,
             signal: input.signal,
-            onStdoutChunk: input.onStdoutChunk,
+            onTextDelta: input.onTextDelta,
             onStderrChunk: emitStderrChunk,
           });
           const normalized = normalizeSubagentOutput(result.output);
@@ -1343,7 +1343,7 @@ async function runSubagentTask(input: {
               prompt: recoveryPrompt,
               timeoutMs: recoveryTimeoutMs,
               signal: input.signal,
-              onStdoutChunk: input.onStdoutChunk,
+              onTextDelta: input.onTextDelta,
               onStderrChunk: emitStderrChunk,
             });
             const recoveryNormalized = normalizeSubagentOutput(recoveryResult.output);
@@ -1735,8 +1735,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                 notifyRuntimeCapacityChanged();
                 refreshRuntimeStatus(ctx);
               },
-              onStdoutChunk: (chunk) => {
-                liveMonitor?.appendChunk(agent.id, "stdout", chunk);
+              onTextDelta: (delta) => {
+                liveMonitor?.appendChunk(agent.id, "stdout", delta);
               },
               onStderrChunk: (chunk) => {
                 liveMonitor?.appendChunk(agent.id, "stderr", chunk);
@@ -2045,8 +2045,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                     notifyRuntimeCapacityChanged();
                     refreshRuntimeStatus(ctx);
                   },
-                  onStdoutChunk: (chunk) => {
-                    liveMonitor?.appendChunk(agent.id, "stdout", chunk);
+                  onTextDelta: (delta) => {
+                    liveMonitor?.appendChunk(agent.id, "stdout", delta);
                   },
                   onStderrChunk: (chunk) => {
                     liveMonitor?.appendChunk(agent.id, "stderr", chunk);
