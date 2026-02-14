@@ -2169,6 +2169,47 @@ function buildFallbackJudge(input: {
   };
 }
 
+/**
+ * Merge skill arrays following inheritance rules.
+ * - Empty array [] is treated as unspecified (ignored)
+ * - Non-empty arrays are merged with deduplication
+ */
+function mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined {
+  const hasBase = Array.isArray(base) && base.length > 0;
+  const hasOverride = Array.isArray(override) && override.length > 0;
+
+  if (!hasBase && !hasOverride) return undefined;
+  if (!hasBase) return override;
+  if (!hasOverride) return base;
+
+  const merged = [...base];
+  for (const skill of override) {
+    if (!merged.includes(skill)) {
+      merged.push(skill);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Resolve effective skills for a team member.
+ * Inheritance: teamSkills (common) -> memberSkills (individual)
+ */
+function resolveEffectiveTeamMemberSkills(
+  team: TeamDefinition,
+  member: TeamMember,
+): string[] | undefined {
+  return mergeSkillArrays(team.skills, member.skills);
+}
+
+/**
+ * Format skill list for prompt inclusion (Japanese).
+ */
+function formatTeamMemberSkillsSection(skills: string[] | undefined): string | null {
+  if (!skills || skills.length === 0) return null;
+  return skills.map((skill) => `- ${skill}`).join("\n");
+}
+
 function buildTeamMemberPrompt(input: {
   team: TeamDefinition;
   member: TeamMember;
@@ -2187,6 +2228,16 @@ function buildTeamMemberPrompt(input: {
   lines.push(`あなたの役割: ${input.member.role} (${input.member.id})`);
   lines.push(`役割目標: ${input.member.description}`);
   lines.push(`現在フェーズ: ${phaseLabel}`);
+
+  // Resolve and include skills (team common + member individual)
+  const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member);
+  const skillsSection = formatTeamMemberSkillsSection(effectiveSkills);
+  if (skillsSection) {
+    lines.push("");
+    lines.push("割り当てスキル:");
+    lines.push(skillsSection);
+  }
+
   lines.push("");
   lines.push("リードからのタスク:");
   lines.push(input.task);

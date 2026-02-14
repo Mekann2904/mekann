@@ -4,61 +4,95 @@ name: Research Team
 description: データ分析・科学研究プロジェクトを効率的に遂行する専門チーム。研究計画から成果発表まで一貫したワークフローを提供し、成果物の品質と再現性を保証する。Phase 1で計画・設計、Phase 2でデータ準備、Phase 3で分析実行、Phase 4で統合・報告を行う。
 enabled: enabled
 strategy: parallel
+skills:
+  - research-critical        # チーム共通: 批判的思考・科学的評価
 members:
   # Core 9 (Permanent)
   - id: pi-pm
     role: Principal Investigator / Project Manager
     description: 研究全体の方向性を決定し、Research Plan/Analysis Plan/Decision Logを管理する。全成果物の最終承認権限を持ち、リソース配分と優先順位を決定する。
     enabled: true
+    skills:
+      - research-hypothesis  # 仮説生成・検証
   - id: acquisition
     role: Data Acquisition Specialist
     description: データ取得手順書を作成し、rawデータを収集・カタログ化する。データソースの信頼性評価と取得プロセスの文書化を担当。
     enabled: true
+    skills:
+      - exploratory-data-analysis  # データ形式・構造の理解
   - id: steward
     role: Data Steward
     description: cleanデータの作成、データ辞書の策定、品質レポートの発行を担当。データ整合性とメタデータ管理の責任を持つ。
     enabled: true
+    skills:
+      - research-data-analysis     # データ処理・品質評価
   - id: eda-analyst
     role: EDA Analyst
     description: 探索的データ分析を実施し、EDAレポートと仮説リストを生成する。データの特性把握と分析方向性の示唆を提供。
     enabled: true
+    skills:
+      - exploratory-data-analysis  # 包括的EDA
+      - research-data-analysis     # データ処理
+      - research-visualization     # 可視化
   - id: statistician
     role: Statistician
     description: 統計解析ノートを作成し、主要な統計表と検定結果を管理する。分析手法の妥当性と結果の解釈を担保。
     enabled: true
+    skills:
+      - research-statistics        # 統計分析
+      - research-time-series       # 時系列分析
   - id: ml-engineer
     role: ML Engineer
     description: 学習パイプラインを構築し、モデル比較表を作成する。予測モデリングの実装と評価を担当。
     enabled: true
+    skills:
+      - research-ml-classical      # クラシックML
+      - research-ml-reinforcement  # 強化学習
   - id: dl-specialist
     role: Deep Learning Specialist
     description: DL実験ログを管理し、再現可能な実験ノートを作成する。深層学習モデルの設計・学習・評価を担当。
     enabled: true
+    skills:
+      - research-ml-deep           # ディープラーニング
   - id: bayes-optimization
     role: Bayesian/Optimization Specialist
     description: 不確実性つき結論を導出し、パレートフロントを特定する。ベイズ推論と最適化手法の適用を担当。
     enabled: true
+    skills:
+      - research-statistics        # ベイズ統計
+      - research-simulation        # シミュレーション・最適化
   - id: viz-xai-lead
     role: Visualization & XAI Lead
     description: Figure一式と再生成スクリプトを管理し、モデル解釈可能性を担保する。可視化と説明可能性の技術的品質を確保。
     enabled: true
+    skills:
+      - research-visualization     # 可視化
   # Optional 4
   - id: scientific-writer
     role: Scientific Writer
     description: IMRAD形式の原稿を作成し、研究ストーリーを構築する。学術的表現と論理構成の品質を担保。
     enabled: false
+    skills:
+      - research-writing           # 学術論文執筆
   - id: literature
     role: Literature Review Specialist
     description: 関連研究マップを作成し、研究の位置づけを明確化する。文献レビューと知識ギャップの特定を担当。
     enabled: false
+    skills:
+      - research-literature        # 文献検索・管理
   - id: peer-review-qa
     role: Peer Review / QA Specialist
     description: チェックリストに基づく査読を実施し、品質保証レポートを発行する。方法論と結果の妥当性を検証。
     enabled: false
+    skills:
+      - research-critical          # 批判的評価（チーム共通と重複）
   - id: slides-poster
     role: Presentation Specialist
     description: スライドまたはポスターを作成し、研究成果を効果的に伝達する。視覚的コミュニケーションを最適化。
     enabled: false
+    skills:
+      - research-presentation      # スライド・ポスター作成
+      - research-visualization     # 可視化
 ---
 
 # Research Team

@@ -28,6 +28,7 @@ export interface SubagentDefinition {
   provider?: string;
   model?: string;
   enabled: AgentEnabledState;
+  skills?: string[];
   createdAt: string;
   updatedAt: string;
 }

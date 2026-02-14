@@ -162,3 +162,20 @@ export {
   LIVE_PREVIEW_LINE_LIMIT,
   LIVE_LIST_WINDOW_SIZE,
 } from "./live-monitor-base.js";
+
+// Skill registry utilities (Layer 2)
+export {
+  type SkillDefinition,
+  type SkillReference,
+  type ResolvedSkill,
+  type ResolveSkillsOptions,
+  type ResolveSkillsResult,
+  type SkillMergeConfig,
+  resolveSkills,
+  mergeSkills,
+  mergeSkillArrays,
+  formatSkillsForPrompt,
+  formatSkillsWithContent,
+  loadSkillsForAgent,
+  validateSkillReferences,
+} from "./skill-registry.js";

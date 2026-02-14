@@ -960,11 +960,53 @@ function extractSummary(output: string): string {
   return first.length > 120 ? `${first.slice(0, 120)}...` : first;
 }
 
+/**
+ * Merge skill arrays following inheritance rules.
+ * - Empty array [] is treated as unspecified (ignored)
+ * - Non-empty arrays are merged with deduplication
+ */
+function mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined {
+  const hasBase = Array.isArray(base) && base.length > 0;
+  const hasOverride = Array.isArray(override) && override.length > 0;
+
+  if (!hasBase && !hasOverride) return undefined;
+  if (!hasBase) return override;
+  if (!hasOverride) return base;
+
+  const merged = [...base];
+  for (const skill of override) {
+    if (!merged.includes(skill)) {
+      merged.push(skill);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Resolve effective skills for a subagent.
+ * Inheritance: parentSkills (if any) -> agent.skills
+ */
+function resolveEffectiveSkills(
+  agent: SubagentDefinition,
+  parentSkills?: string[],
+): string[] | undefined {
+  return mergeSkillArrays(parentSkills, agent.skills);
+}
+
+/**
+ * Format skill list for prompt inclusion.
+ */
+function formatSkillsSection(skills: string[] | undefined): string | null {
+  if (!skills || skills.length === 0) return null;
+  return skills.map((skill) => `- ${skill}`).join("\n");
+}
+
 function buildSubagentPrompt(input: {
   agent: SubagentDefinition;
   task: string;
   extraContext?: string;
   enforcePlanMode?: boolean;
+  parentSkills?: string[];
 }): string {
   const lines: string[] = [];
   lines.push(`You are running as delegated subagent: ${input.agent.name} (${input.agent.id}).`);
@@ -972,6 +1014,16 @@ function buildSubagentPrompt(input: {
   lines.push("");
   lines.push("Subagent operating instructions:");
   lines.push(input.agent.systemPrompt);
+
+  // Resolve and include skills
+  const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills);
+  const skillsSection = formatSkillsSection(effectiveSkills);
+  if (skillsSection) {
+    lines.push("");
+    lines.push("Assigned skills:");
+    lines.push(skillsSection);
+  }
+
   lines.push("");
   lines.push("Task from lead agent:");
   lines.push(input.task);
@@ -1063,6 +1115,7 @@ async function runSubagentTask(input: {
   retryOverrides?: RetryWithBackoffOverrides;
   modelProvider?: string;
   modelId?: string;
+  parentSkills?: string[];
   signal?: AbortSignal;
   onStart?: () => void;
   onEnd?: () => void;
@@ -1083,6 +1136,7 @@ async function runSubagentTask(input: {
     task: input.task,
     extraContext: input.extraContext,
     enforcePlanMode: planModeActive,
+    parentSkills: input.parentSkills,
   });
   const resolvedProvider = input.agent.provider ?? input.modelProvider ?? "(session-default)";
   const resolvedModel = input.agent.model ?? input.modelId ?? "(session-default)";

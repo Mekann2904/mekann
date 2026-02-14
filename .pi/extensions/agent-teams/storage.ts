@@ -30,6 +30,7 @@ export interface TeamMember {
   provider?: string;
   model?: string;
   enabled: boolean;
+  skills?: string[];
 }
 
 export interface TeamDefinition {
@@ -38,6 +39,7 @@ export interface TeamDefinition {
   description: string;
   enabled: TeamEnabledState;
   members: TeamMember[];
+  skills?: string[];
   createdAt: string;
   updatedAt: string;
 }
