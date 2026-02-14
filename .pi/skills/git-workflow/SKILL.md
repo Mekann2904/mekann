@@ -1,0 +1,394 @@
+---
+name: git-workflow
+description: Git操作・ブランチ管理スキル。コミット作成、ブランチ操作、マージ、リベース、コンフリクト解決、履歴分析を支援。チーム開発でのバージョン管理ワークフローを効率化。
+license: MIT
+metadata:
+  skill-version: "1.0.0"
+  created-by: pi-skill-system
+  based-on: oh-my-zsh git plugin
+---
+
+# Git Workflow
+
+Git操作とブランチ管理を支援するスキル。日常的なコミット作業から、複雑なマージ・リベース、履歴分析まで対応する。
+
+**主な機能:**
+- ブランチ作成・切り替え・削除
+- コミット作成とメッセージ規約
+- マージ・リベース・コンフリクト解決
+- 履歴分析とログ確認
+- リモート操作（fetch, pull, push）
+- Stashによる一時保存
+
+## 必須ルール: ユーザ確認（CRITICAL）
+
+**git操作を実行する前に、必ず`question`ツールを使用してユーザの許可を取得すること。**
+
+### 確認が必要な操作
+
+以下の操作を実行する前に必ず確認:
+- `git add` - ステージング
+- `git commit` - コミット作成
+- `git push` - リモートへのプッシュ
+- `git reset` - コミットの取り消し
+- `git rebase` - リベース
+- `git merge` - マージ
+- `git branch -d/-D` - ブランチ削除
+- `git clean` - 未追跡ファイル削除
+- `git checkout` - ファイル/ブランチ切り替え（破壊的変更の場合）
+
+### 読み取り専用操作（確認不要）
+
+以下は確認なしで実行可能:
+- `git status` - ステータス確認
+- `git log` - ログ確認
+- `git diff` - 差分確認
+- `git branch` - ブランチ一覧（削除以外）
+- `git show` - コミット内容確認
+- `git remote -v` - リモート確認
+
+### questionツールの使用方法
+
+```typescript
+// 確認ダイアログの例
+question({
+  questions: [{
+    question: "以下の変更をコミットしますか？",
+    header: "Git Commit",
+    options: [
+      { label: "Yes", description: "コミットを実行" },
+      { label: "No", description: "キャンセル" }
+    ]
+  }]
+})
+```
+
+```typescript
+// ブランチ削除の確認例
+question({
+  questions: [{
+    question: "feature/old-branchを削除しますか？",
+    header: "Branch Delete",
+    options: [
+      { label: "Delete", description: "ブランチを削除" },
+      { label: "Cancel", description: "キャンセル" }
+    ]
+  }]
+})
+```
+
+### ワークフロー
+
+1. **変更内容を確認**: `git status`, `git diff` で確認
+2. **ユーザに質問**: `question`ツールで実行可否を確認
+3. **許可された場合のみ実行**: git操作を実行
+4. **結果を報告**: 実行結果をユーザに通知
+
+**重要**: このルールは必須（MANDATORY）です。例外なく遵守すること。
+
+## 使用タイミング
+
+以下の場合に使用:
+- コミットを作成・修正する場合
+- ブランチを作成・切り替え・削除する場合
+- マージやリベースを行う場合
+- コンフリクトを解決する場合
+- コミット履歴を確認・分析する場合
+
+**特に以下の場合に推奨:**
+- Conventional Commitsに準拠したコミット作成
+- インタラクティブリベースでの履歴整理
+- 複数ブランチ間のマージ作業
+
+## ワークフロー
+
+### ステップ1: ステータス確認
+
+```bash
+# 現在の状態
+git status
+
+# 短縮形式
+git status -s
+
+# ブランチ情報付き
+git status -sb
+```
+
+### ステップ2: 変更のステージング
+
+```bash
+# 全ての変更をステージング
+git add .
+
+# 特定ファイル
+git add path/to/file
+
+# インタラクティブ
+git add -p
+```
+
+### ステップ3: コミット作成
+
+```bash
+# メッセージ付きコミット
+git commit -m "feat: add user authentication"
+
+# 詳細なメッセージ
+git commit -m "feat: add user authentication" -m "- Add login/logout endpoints
+- Implement JWT validation
+- Add password hashing"
+
+# 前回のコミットを修正
+git commit --amend
+```
+
+### ステップ4: プッシュ
+
+```bash
+# 通常のプッシュ
+git push origin feature/new-feature
+
+# 強制プッシュ（注意して使用）
+git push --force-with-lease origin feature/new-feature
+```
+
+## リファレンス
+
+- [references/aliases.md](references/aliases.md) - oh-my-zsh準拠のエイリアス一覧
+- [references/commit-message-guide.md](references/commit-message-guide.md) - コミットメッセージガイドライン（詳細）
+
+## 使用例
+
+### 例1: 機能ブランチでの作業
+
+```bash
+# 新規ブランチ作成
+git checkout -b feature/new-feature
+
+# 変更をステージング＆コミット
+git add .
+git commit -m "feat: add new feature"
+
+# リモートにプッシュ
+git push -u origin feature/new-feature
+```
+
+### 例2: インタラクティブリベース
+
+```bash
+# 直近3コミットを整理
+git rebase -i HEAD~3
+
+# コンフリクト解決後
+git rebase --continue
+
+# 強制プッシュ
+git push --force-with-lease origin feature/new-feature
+```
+
+### 例3: コンフリクト解決
+
+```bash
+# コンフリクト箇所を確認
+git diff --name-only --diff-filter=U
+
+# 特定ファイルを現在のブランチ版で解決
+git checkout --ours path/to/file
+
+# 解決後にコミット
+git add .
+git commit
+```
+
+## トラブルシューティング
+
+### よくある問題
+
+| 問題 | 解決策 |
+|------|--------|
+| 直前のコミットを取り消したい | `git reset --soft HEAD~1`（変更保持）または `git reset --hard HEAD~1`（変更破棄） |
+| 特定ファイルを過去に戻したい | `git checkout <commit-hash> -- path/to/file` |
+| 未追跡ファイルを削除したい | `git clean -fd`（まず `-n` でドライラン） |
+| リベースを中止したい | `git rebase --abort` |
+| マージを中止したい | `git merge --abort` |
+
+## ベストプラクティス
+
+1. **コミットメッセージ規約**: Conventional Commitsに準拠する
+2. **頻繁にコミット**: 小さな論理単位でコミットする
+3. **プッシュ前に確認**: `git status` と `git diff --staged` で変更を確認
+4. **強制プッシュは慎重**: `--force` ではなく `--force-with-lease` を使用
+5. **ブランチ名を明確**: `feature/`, `fix/`, `docs/` などのプレフィックスを使用
+
+## コミットメッセージ規約（CRITICAL）
+
+### 基本方針
+
+- **絵文字は使用しない**
+- **日本語で詳細に書く**
+- **Body（本文）を必ず書く**
+
+### フォーマット
+
+```
+<Type>[(scope)]: #<Issue Number> <Title>
+
+<Body>
+
+<Footer>
+```
+
+**構成:**
+
+| 要素 | 必須度 | 説明 |
+|------|--------|------|
+| Type | 必須 | コミットの種別 |
+| (scope) | 任意 | 影響範囲（api, ui, db等） |
+| Issue Number | 強く推奨 | 紐づくIssue番号 |
+| Title | 必須 | 変更内容の要約（50文字以内） |
+| Body | **必須** | 詳細な説明（What, Why, How） |
+| Footer | 任意 | 参照情報、レビュー者等 |
+
+### Type一覧
+
+| Type | 説明 |
+|------|------|
+| `feat` | ユーザー向けの機能追加・変更 |
+| `fix` | ユーザー向けの不具合修正 |
+| `docs` | ドキュメント更新 |
+| `style` | フォーマット・スタイル修正 |
+| `refactor` | リファクタリング |
+| `test` | テストコード追加・修正 |
+| `chore` | プロダクション影響のない修正 |
+| `perf` | パフォーマンス改善 |
+| `ci` | CI設定の変更 |
+
+### タイトルのルール
+
+- **現在形で書く**: 「◯◯した」ではなく「◯◯する」
+- **50文字以内**: ツール互換性のため
+- **具体的に**: 「機能追加」「バグ修正」等の曖昧な表現は避ける
+- **絵文字禁止**: 絵文字は使用しない
+
+### Bodyのルール（重要）
+
+**Bodyは必ず書く。以下の内容を含める:**
+
+1. **What（何を）**: どのような変更をしたか
+2. **Why（なぜ）**: なぜこの変更が必要だったか
+3. **How（どう）**: どのように実装したか（重要な場合）
+4. **テスト方法**: どうテストしたか
+5. **影響範囲**: 他に影響する部分はあるか
+
+**Bodyの書き方:**
+- 72文字で折り返す
+- 空行で段落を分ける
+- 箇条書きを使ってもよい
+
+### 良いコミットメッセージ例
+
+```
+feat(auth): #123 ユーザー認証にJWTを導入する
+
+## 背景
+現在のセッション認証は複数サーバー間で共有できないため、
+スケールアウト時に問題が発生していた。
+また、モバイルアプリとの連携でもセッション管理が複雑になっていた。
+
+## 変更内容
+- Passport.jsによるJWT認証を実装
+- アクセストークン（15分）とリフレッシュトークン（7日）の二層構造
+- トークン無効化用のブラックリストをRedisに実装
+- 既存のセッション認証コードを削除
+
+## テスト方法
+1. ユーザー登録: POST /api/auth/register
+2. ログイン: POST /api/auth/login
+3. トークン確認: GET /api/auth/me (Authorization: Bearer <token>)
+4. トークン更新: POST /api/auth/refresh
+5. ログアウト: POST /api/auth/logout
+
+## 影響範囲
+- 既存ユーザーは再ログインが必要
+- モバイルアプリ側の対応が必要（別PR #125）
+
+reviewed-by: 田中さん
+related-pr: #125
+```
+
+```
+fix(api): #89 決済処理のタイムアウトエラーを修正する
+
+## 問題
+本番環境で、処理に30秒以上かかる決済リクエストが
+タイムアウトエラー（504）になっていた。
+カスタマーサポートに多数の問い合わせが来ていた。
+
+## 原因
+API Gatewayのタイムアウト設定が30秒になっていた。
+決済代行のAPIが混雑時に25〜40秒かかる場合があった。
+
+## 対策
+- API Gatewayのタイムアウトを60秒に延長
+- 決済API呼び出し前にタイムアウト警告ログを出力
+- フロントエンドのローディング表示を60秒に延長
+
+## テスト方法
+- 負荷テストツールで40秒のレスポンスを模擬
+- 本番環境と同じ設定のステージングで確認
+
+## デプロイ先
+dev-60（dev-59はDB不整合のため使用不可）
+本番反映は来週のリリース予定
+
+resolves: #89
+```
+
+### 悪いコミットメッセージ例
+
+```
+feat: 機能追加
+```
+→ 何を追加したか不明、Bodyがない
+
+```
+fix: バグ修正
+```
+→ どのバグをどう修正したか不明
+
+```
+feat: ✨ #123 ログイン機能を実装する
+```
+→ 絵文字を使用している
+
+```
+chore: いろいろ修正
+```
+→ 具体性がない、Bodyがない
+
+### テンプレート
+
+```
+<Type>[(scope)]: #<Issue Number> <Title>
+
+## 背景
+<なぜこの変更が必要か>
+
+## 変更内容
+<具体的な変更点>
+
+## テスト方法
+<どうテストしたか>
+
+## 影響範囲
+<他に影響する部分>
+
+<Footer>
+```
+
+**詳細ガイド**: [references/commit-message-guide.md](references/commit-message-guide.md)
+
+---
+
+*このスキルはoh-my-zsh git pluginをベースに作成されました。*

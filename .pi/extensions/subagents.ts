@@ -6,11 +6,8 @@
 import { getMarkdownTheme, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
-import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { spawn } from "node:child_process";
-import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
 import {
   formatRuntimeStatusLine,
   getRuntimeSnapshot,
@@ -30,6 +27,9 @@ import {
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
 import {
+  createAdaptivePenaltyController,
+} from "../lib/adaptive-penalty.js";
+import {
   getRateLimitGateSnapshot,
   isRetryableError,
   retryWithBackoff,
@@ -39,71 +39,78 @@ import { runWithConcurrencyLimit } from "../lib/concurrency";
 import {
   getSubagentExecutionRules,
 } from "../lib/execution-rules";
-
-type AgentEnabledState = "enabled" | "disabled";
-type RunOutcomeCode =
-  | "SUCCESS"
-  | "PARTIAL_SUCCESS"
-  | "RETRYABLE_FAILURE"
-  | "NONRETRYABLE_FAILURE"
-  | "CANCELLED"
-  | "TIMEOUT";
-
-interface RunOutcomeSignal {
-  outcomeCode: RunOutcomeCode;
-  retryRecommended: boolean;
-}
-
-interface SubagentDefinition {
-  id: string;
-  name: string;
-  description: string;
-  systemPrompt: string;
-  provider?: string;
-  model?: string;
-  enabled: AgentEnabledState;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface SubagentRunRecord {
-  runId: string;
-  agentId: string;
-  task: string;
-  summary: string;
-  status: "completed" | "failed";
-  startedAt: string;
-  finishedAt: string;
-  latencyMs: number;
-  outputFile: string;
-  error?: string;
-}
-
-interface SubagentStorage {
-  agents: SubagentDefinition[];
-  runs: SubagentRunRecord[];
-  currentAgentId?: string;
-  defaultsVersion?: number;
-}
-
-interface SubagentPaths {
-  baseDir: string;
-  runsDir: string;
-  storageFile: string;
-}
+import {
+  buildRuntimeLimitError,
+  buildRuntimeQueueWaitError,
+  startReservationHeartbeat,
+  refreshRuntimeStatus as sharedRefreshRuntimeStatus,
+} from "./shared/runtime-helpers";
+import {
+  runPiPrintMode as sharedRunPiPrintMode,
+  type PrintExecutorOptions,
+} from "./shared/pi-print-executor";
+import {
+  ensureDir,
+  formatDurationMs,
+  toTailLines,
+  appendTail,
+  countOccurrences,
+  estimateLineCount,
+  looksLikeMarkdown,
+  renderPreviewWithMarkdown,
+  formatBytes,
+  formatClockTime,
+  extractStatusCodeFromMessage,
+  classifyPressureError,
+  isCancelledErrorMessage,
+  isTimeoutErrorMessage,
+  toErrorMessage,
+  LIVE_TAIL_LIMIT,
+  LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
+  createRunId,
+  computeLiveWindow,
+  ThinkingLevel,
+  RunOutcomeCode,
+  RunOutcomeSignal,
+  DEFAULT_AGENT_TIMEOUT_MS,
+  computeModelTimeoutMs,
+  getLiveStatusGlyph,
+  isEnterInput,
+  finalizeLiveLines,
+  type LiveStatus,
+  hasIntentOnlyContent,
+  hasNonEmptyResultSection,
+  validateSubagentOutput,
+  trimForError,
+  buildRateLimitKey,
+  buildTraceTaskId,
+  normalizeTimeoutMs,
+  createRetrySchema,
+  toConcurrencyLimit,
+  resolveEffectiveTimeoutMs,
+} from "../lib";
+import {
+  type SubagentDefinition,
+  type SubagentRunRecord,
+  type SubagentStorage,
+  type SubagentPaths,
+  type AgentEnabledState,
+  MAX_RUNS_TO_KEEP,
+  SUBAGENT_DEFAULTS_VERSION,
+  getPaths,
+  ensurePaths,
+  createDefaultAgents,
+  loadStorage,
+  saveStorage,
+} from "./subagents/storage";
 
 interface PrintCommandResult {
   output: string;
   latencyMs: number;
 }
 
-const MAX_RUNS_TO_KEEP = 100;
-const SUBAGENT_DEFAULTS_VERSION = 2;
-const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
-const LIVE_TAIL_LIMIT = 40_000;
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;
-const LIVE_MARKDOWN_PREVIEW_MIN_WIDTH = 24;
 const STABLE_SUBAGENT_RUNTIME = true;
 const ADAPTIVE_PARALLEL_MAX_PENALTY = STABLE_SUBAGENT_RUNTIME ? 0 : 3;
 const ADAPTIVE_PARALLEL_DECAY_MS = 8 * 60 * 1000;
@@ -116,10 +123,11 @@ const DEFAULT_DIRECT_WRITE_CONFIRM_WINDOW_MS = 60_000;
 
 const runtimeState = getSharedRuntimeState().subagents;
 
-const adaptiveParallelState = {
-  penalty: 0,
-  updatedAtMs: Date.now(),
-};
+const adaptivePenalty = createAdaptivePenaltyController({
+  isStable: STABLE_SUBAGENT_RUNTIME,
+  maxPenalty: ADAPTIVE_PARALLEL_MAX_PENALTY,
+  decayMs: ADAPTIVE_PARALLEL_DECAY_MS,
+});
 
 function resolveDirectWriteConfirmWindowMs(): number {
   const raw = Number(process.env.PI_DIRECT_WRITE_CONFIRM_WINDOW_MS ?? DEFAULT_DIRECT_WRITE_CONFIRM_WINDOW_MS);
@@ -145,7 +153,7 @@ const DELEGATION_TOOL_NAMES = new Set([
 const ENFORCE_DELEGATION_FIRST = String(process.env.PI_ENFORCE_DELEGATION_FIRST ?? "1") === "1";
 const DIRECT_WRITE_CONFIRM_WINDOW_MS = resolveDirectWriteConfirmWindowMs();
 
-type LiveItemStatus = "pending" | "running" | "completed" | "failed";
+type LiveItemStatus = LiveStatus;
 type LiveStreamView = "stdout" | "stderr";
 type LiveViewMode = "list" | "detail";
 
@@ -179,145 +187,6 @@ interface SubagentLiveMonitorController {
   ) => void;
   close: () => void;
   wait: () => Promise<void>;
-}
-
-function appendTail(current: string, chunk: string, maxLength = LIVE_TAIL_LIMIT): string {
-  if (!chunk) return current;
-  const next = `${current}${chunk}`;
-  if (next.length <= maxLength) return next;
-  return next.slice(next.length - maxLength);
-}
-
-function countOccurrences(input: string, target: string): number {
-  if (!input || !target) return 0;
-  let count = 0;
-  let index = 0;
-  while (index < input.length) {
-    const found = input.indexOf(target, index);
-    if (found < 0) break;
-    count += 1;
-    index = found + target.length;
-  }
-  return count;
-}
-
-function formatBytes(value: number): string {
-  const bytes = Math.max(0, Math.trunc(value));
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-function formatClockTime(value?: number): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  const ss = String(date.getSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
-}
-
-function estimateLineCount(bytes: number, newlineCount: number, endsWithNewline: boolean): number {
-  if (bytes <= 0) return 0;
-  return newlineCount + (endsWithNewline ? 0 : 1);
-}
-
-function looksLikeMarkdown(input: string): boolean {
-  const text = input.trim();
-  if (!text) return false;
-  if (/^#{1,6}\s+/m.test(text)) return true;
-  if (/^\s*[-*+]\s+/m.test(text)) return true;
-  if (/^\s*\d+\.\s+/m.test(text)) return true;
-  if (/```/.test(text)) return true;
-  if (/\[[^\]]+\]\([^)]+\)/.test(text)) return true;
-  if (/^\s*>\s+/m.test(text)) return true;
-  if (/^\s*\|.+\|\s*$/m.test(text)) return true;
-  if (/\*\*[^*]+\*\*/.test(text)) return true;
-  if (/`[^`]+`/.test(text)) return true;
-  return false;
-}
-
-function renderPreviewWithMarkdown(
-  text: string,
-  width: number,
-  maxLines: number,
-): { lines: string[]; renderedAsMarkdown: boolean } {
-  if (!text.trim()) {
-    return { lines: [], renderedAsMarkdown: false };
-  }
-
-  if (!looksLikeMarkdown(text)) {
-    return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
-  }
-
-  try {
-    const markdown = new Markdown(text, 0, 0, getMarkdownTheme());
-    const rendered = markdown.render(Math.max(LIVE_MARKDOWN_PREVIEW_MIN_WIDTH, width));
-    if (rendered.length === 0) {
-      return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
-    }
-    if (rendered.length <= maxLines) {
-      return { lines: rendered, renderedAsMarkdown: true };
-    }
-    return { lines: rendered.slice(rendered.length - maxLines), renderedAsMarkdown: true };
-  } catch {
-    return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
-  }
-}
-
-function toTailLines(tail: string, limit: number): string[] {
-  const lines = tail
-    .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter(Boolean);
-  if (lines.length <= limit) return lines;
-  return lines.slice(lines.length - limit);
-}
-
-function formatDurationMs(item: SubagentLiveItem): string {
-  if (!item.startedAtMs) return "-";
-  const endMs = item.finishedAtMs ?? Date.now();
-  const durationMs = Math.max(0, endMs - item.startedAtMs);
-  const seconds = durationMs / 1000;
-  return `${seconds.toFixed(1)}s`;
-}
-
-function getLiveStatusGlyph(status: LiveItemStatus): string {
-  if (status === "completed") return "OK";
-  if (status === "failed") return "!!";
-  if (status === "running") return ">>";
-  return "..";
-}
-
-function computeLiveWindow(cursor: number, total: number, maxRows: number): { start: number; end: number } {
-  if (total <= maxRows) return { start: 0, end: total };
-  const clampedCursor = Math.max(0, Math.min(total - 1, cursor));
-  const start = Math.max(0, Math.min(total - maxRows, clampedCursor - (maxRows - 1)));
-  return { start, end: Math.min(total, start + maxRows) };
-}
-
-function isEnterInput(rawInput: string): boolean {
-  return (
-    matchesKey(rawInput, Key.enter) ||
-    rawInput === "\r" ||
-    rawInput === "\n" ||
-    rawInput === "\r\n" ||
-    rawInput === "enter"
-  );
-}
-
-function finalizeLiveLines(lines: string[], height?: number): string[] {
-  if (!height || height <= 0) {
-    return lines;
-  }
-  if (lines.length > height) {
-    return lines.slice(0, height);
-  }
-  const padded = [...lines];
-  while (padded.length < height) {
-    padded.push("");
-  }
-  return padded;
 }
 
 function renderSubagentLiveView(input: {
@@ -688,12 +557,6 @@ function createSubagentLiveMonitor(
   };
 }
 
-function trimForError(message: string, maxLength = 600): string {
-  const normalized = message.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength)}...`;
-}
-
 function isRetryableSubagentError(error: unknown, statusCode?: number): boolean {
   if (isRetryableError(error, statusCode)) {
     return true;
@@ -713,50 +576,6 @@ function buildFailureSummary(message: string): string {
   if (lowered.includes("timed out") || lowered.includes("timeout")) return "(failed: timeout)";
   if (lowered.includes("rate limit") || lowered.includes("429")) return "(failed: rate limit)";
   return "(failed)";
-}
-
-function buildRateLimitKey(provider: string, model: string): string {
-  return `${provider.toLowerCase()}::${model.toLowerCase()}`;
-}
-
-function extractStatusCodeFromMessage(error: unknown): number | undefined {
-  const message = toErrorMessage(error);
-  const codeMatch = message.match(/\b(429|5\d{2})\b/);
-  if (!codeMatch) return undefined;
-  const code = Number(codeMatch[1]);
-  return Number.isFinite(code) ? code : undefined;
-}
-
-function classifyPressureError(error: unknown): "rate_limit" | "timeout" | "capacity" | "other" {
-  const message = toErrorMessage(error).toLowerCase();
-  if (message.includes("runtime limit reached") || message.includes("capacity")) return "capacity";
-  if (message.includes("timed out") || message.includes("timeout")) return "timeout";
-  const statusCode = extractStatusCodeFromMessage(error);
-  if (statusCode === 429 || message.includes("rate limit") || message.includes("too many requests")) {
-    return "rate_limit";
-  }
-  return "other";
-}
-
-function isCancelledErrorMessage(error: unknown): boolean {
-  const message = toErrorMessage(error).toLowerCase();
-  return (
-    message.includes("aborted") ||
-    message.includes("cancelled") ||
-    message.includes("canceled") ||
-    message.includes("中断") ||
-    message.includes("キャンセル")
-  );
-}
-
-function isTimeoutErrorMessage(error: unknown): boolean {
-  const message = toErrorMessage(error).toLowerCase();
-  return (
-    message.includes("timed out") ||
-    message.includes("timeout") ||
-    message.includes("time out") ||
-    message.includes("時間切れ")
-  );
 }
 
 function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal {
@@ -820,118 +639,6 @@ function resolveSubagentParallelOutcome(results: Array<{ runRecord: SubagentRunR
       };
 }
 
-function buildTraceTaskId(traceId: string | undefined, delegateId: string, sequence: number): string {
-  const safeTrace = (traceId || "trace-unknown").trim();
-  const safeDelegate = (delegateId || "delegate-unknown").trim();
-  return `${safeTrace}:${safeDelegate}:${Math.max(0, Math.trunc(sequence))}`;
-}
-
-function decayAdaptivePenalty(nowMs = Date.now()): void {
-  if (STABLE_SUBAGENT_RUNTIME) return;
-  const elapsed = Math.max(0, nowMs - adaptiveParallelState.updatedAtMs);
-  if (adaptiveParallelState.penalty <= 0 || elapsed < ADAPTIVE_PARALLEL_DECAY_MS) return;
-  const steps = Math.floor(elapsed / ADAPTIVE_PARALLEL_DECAY_MS);
-  if (steps <= 0) return;
-  adaptiveParallelState.penalty = Math.max(0, adaptiveParallelState.penalty - steps);
-  adaptiveParallelState.updatedAtMs = nowMs;
-}
-
-function raiseAdaptivePenalty(reason: "rate_limit" | "timeout" | "capacity"): void {
-  if (STABLE_SUBAGENT_RUNTIME) {
-    void reason;
-    return;
-  }
-  decayAdaptivePenalty();
-  adaptiveParallelState.penalty = Math.min(
-    ADAPTIVE_PARALLEL_MAX_PENALTY,
-    adaptiveParallelState.penalty + 1,
-  );
-  adaptiveParallelState.updatedAtMs = Date.now();
-  void reason;
-}
-
-function lowerAdaptivePenalty(): void {
-  if (STABLE_SUBAGENT_RUNTIME) return;
-  decayAdaptivePenalty();
-  if (adaptiveParallelState.penalty <= 0) return;
-  adaptiveParallelState.penalty = Math.max(0, adaptiveParallelState.penalty - 1);
-  adaptiveParallelState.updatedAtMs = Date.now();
-}
-
-function getAdaptivePenalty(): number {
-  if (STABLE_SUBAGENT_RUNTIME) return 0;
-  decayAdaptivePenalty();
-  return adaptiveParallelState.penalty;
-}
-
-function applyAdaptiveParallelLimit(baseLimit: number): number {
-  if (STABLE_SUBAGENT_RUNTIME) return Math.max(1, Math.trunc(baseLimit));
-  const penalty = getAdaptivePenalty();
-  if (penalty <= 0) return baseLimit;
-  const divisor = penalty + 1;
-  return Math.max(1, Math.floor(baseLimit / divisor));
-}
-
-function hasIntentOnlyContent(output: string): boolean {
-  const compact = output.replace(/\s+/g, " ").trim();
-  if (!compact) return false;
-  const lower = compact.toLowerCase();
-  const enIntentOnly =
-    (lower.startsWith("i'll ") || lower.startsWith("i will ") || lower.startsWith("let me ")) &&
-    /(analy|review|investig|start|check|examin|look)/.test(lower);
-  const jaIntentOnly =
-    /(確認|調査|分析|レビュー|検討|開始).{0,20}(します|します。|していきます|しますね|します。)/.test(compact);
-  return enIntentOnly || jaIntentOnly;
-}
-
-function hasNonEmptyResultSection(output: string): boolean {
-  const lines = output.split(/\r?\n/);
-  const resultIndex = lines.findIndex((line) => /^\s*RESULT\s*:/i.test(line));
-  if (resultIndex < 0) return false;
-
-  const sameLineContent = lines[resultIndex].replace(/^\s*RESULT\s*:/i, "").trim();
-  if (sameLineContent.length > 0) return true;
-
-  for (let index = resultIndex + 1; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (/^\s*[A-Z_]+\s*:/.test(line)) break;
-    if (line.trim().length > 0) return true;
-  }
-
-  return false;
-}
-
-function validateSubagentOutput(output: string): { ok: boolean; reason?: string } {
-  const trimmed = output.trim();
-  if (!trimmed) {
-    return { ok: false, reason: "empty output" };
-  }
-
-  const minChars = 48;
-  if (trimmed.length < minChars) {
-    return { ok: false, reason: `too short (${trimmed.length} chars)` };
-  }
-
-  const requiredLabels = ["SUMMARY:", "RESULT:", "NEXT_STEP:"];
-  const missingLabels = requiredLabels.filter((label) => !new RegExp(`^\\s*${label}`, "im").test(trimmed));
-  if (missingLabels.length > 0) {
-    return { ok: false, reason: `missing labels: ${missingLabels.join(", ")}` };
-  }
-  if (!hasNonEmptyResultSection(trimmed)) {
-    return { ok: false, reason: "empty RESULT section" };
-  }
-
-  const nonEmptyLines = trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (nonEmptyLines.length <= 3 && hasIntentOnlyContent(trimmed)) {
-    return { ok: false, reason: "intent-only output" };
-  }
-
-  return { ok: true };
-}
-
 interface SubagentNormalizedOutput {
   ok: boolean;
   output: string;
@@ -939,6 +646,10 @@ interface SubagentNormalizedOutput {
   reason?: string;
 }
 
+/**
+ * Pick a candidate text for SUMMARY field from unstructured output.
+ * Note: Kept locally because the summary format is subagent-specific.
+ */
 function pickSubagentSummaryCandidate(text: string): string {
   const lines = text
     .split(/\r?\n/)
@@ -957,6 +668,14 @@ function pickSubagentSummaryCandidate(text: string): string {
   return compact.length <= 90 ? compact : `${compact.slice(0, 90)}...`;
 }
 
+/**
+ * Normalize subagent output to required format.
+ * Note: Kept locally (not in lib) because:
+ * - Uses subagent-specific SUMMARY/RESULT/NEXT_STEP format
+ * - Has subagent-specific fallback messages (Japanese)
+ * - Uses pickSubagentSummaryCandidate which is subagent-specific
+ * Team member output has different requirements (CLAIM/EVIDENCE/CONFIDENCE).
+ */
 function normalizeSubagentOutput(output: string): SubagentNormalizedOutput {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -998,25 +717,8 @@ function normalizeSubagentOutput(output: string): SubagentNormalizedOutput {
   };
 }
 
-function normalizeTimeoutMs(value: unknown, fallback: number): number {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return 0;
-  return Math.max(1, Math.trunc(resolved));
-}
-
-function createRetrySchema() {
-  return Type.Optional(
-    Type.Object({
-      maxRetries: Type.Optional(Type.Number({ description: "Max retry count (ignored in stable profile)" })),
-      initialDelayMs: Type.Optional(Type.Number({ description: "Initial backoff delay in ms (ignored in stable profile)" })),
-      maxDelayMs: Type.Optional(Type.Number({ description: "Max backoff delay in ms (ignored in stable profile)" })),
-      multiplier: Type.Optional(Type.Number({ description: "Backoff multiplier (ignored in stable profile)" })),
-      jitter: Type.Optional(Type.String({ description: "Jitter mode: full | partial | none (ignored in stable profile)" })),
-    }),
-  );
-}
-
+// Note: toRetryOverrides is kept locally because it checks STABLE_SUBAGENT_RUNTIME
+// which is specific to this module. The lib version does not have this check.
 function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
   // Stable profile: reject ad-hoc retry tuning to keep behavior deterministic.
   if (STABLE_SUBAGENT_RUNTIME) return undefined;
@@ -1033,13 +735,6 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
     multiplier: typeof raw.multiplier === "number" ? raw.multiplier : undefined,
     jitter,
   };
-}
-
-function toConcurrencyLimit(value: unknown, fallback: number): number {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return fallback;
-  return Math.max(1, Math.trunc(resolved));
 }
 
 interface SubagentParallelCapacityResolution {
@@ -1133,99 +828,17 @@ async function resolveSubagentParallelCapacity(input: {
   };
 }
 
-function buildRuntimeLimitError(
-  toolName: string,
-  reasons: string[],
-  options?: {
-    waitedMs?: number;
-    timedOut?: boolean;
-  },
-): string {
-  const snapshot = getRuntimeSnapshot();
-  const waitLine =
-    options?.waitedMs === undefined
-      ? undefined
-      : `待機時間: ${options.waitedMs}ms${options.timedOut ? " (timeout)" : ""}`;
-  return [
-    `${toolName} blocked: runtime limit reached.`,
-    ...reasons.map((reason) => `- ${reason}`),
-    `現在: requests=${snapshot.totalActiveRequests}, llm=${snapshot.totalActiveLlm}`,
-    `上限: requests=${snapshot.limits.maxTotalActiveRequests}, llm=${snapshot.limits.maxTotalActiveLlm}`,
-    waitLine,
-    "ヒント: 対象数を減らすか、実行中ジョブの完了を待って再実行してください。",
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join("\n");
-}
-
-function buildRuntimeQueueWaitError(
-  toolName: string,
-  queueWait: {
-    waitedMs: number;
-    attempts: number;
-    timedOut: boolean;
-    aborted: boolean;
-    queuePosition: number;
-    queuedAhead: number;
-  },
-): string {
-  const snapshot = getRuntimeSnapshot();
-  const mode = queueWait.aborted ? "aborted" : queueWait.timedOut ? "timeout" : "blocked";
-  const queuedPreview = snapshot.queuedTools.length > 0 ? snapshot.queuedTools.join(", ") : "-";
-  return [
-    `${toolName} blocked: orchestration queue ${mode}.`,
-    `- queued_ahead: ${queueWait.queuedAhead}`,
-    `- queue_position: ${queueWait.queuePosition}`,
-    `- waited_ms: ${queueWait.waitedMs}`,
-    `- attempts: ${queueWait.attempts}`,
-    `現在: active_orchestrations=${snapshot.activeOrchestrations}, queued=${snapshot.queuedOrchestrations}`,
-    `上限: max_concurrent_orchestrations=${snapshot.limits.maxConcurrentOrchestrations}`,
-    `待機中ツール: ${queuedPreview}`,
-    "ヒント: 同時に走らせる run を減らすか、先行ジョブ完了後に再実行してください。",
-  ].join("\n");
-}
-
+// Wrapper for shared refreshRuntimeStatus with subagent-specific parameters
 function refreshRuntimeStatus(ctx: any): void {
-  if (!ctx?.hasUI || !ctx?.ui) return;
   const snapshot = getRuntimeSnapshot();
-
-  if (
-    snapshot.totalActiveRequests <= 0 &&
-    snapshot.totalActiveLlm <= 0 &&
-    snapshot.activeOrchestrations <= 0 &&
-    snapshot.queuedOrchestrations <= 0
-  ) {
-    ctx.ui.setStatus?.("subagent-runtime", undefined);
-    return;
-  }
-
-  ctx.ui.setStatus?.(
+  sharedRefreshRuntimeStatus(
+    ctx,
     "subagent-runtime",
-    [
-      `LLM実行中:${snapshot.totalActiveLlm}`,
-      `(Sub:${snapshot.subagentActiveAgents}/Team:${snapshot.teamActiveAgents})`,
-      `Req:${snapshot.totalActiveRequests}`,
-      `Queue:${snapshot.activeOrchestrations}/${snapshot.limits.maxConcurrentOrchestrations}+${snapshot.queuedOrchestrations}`,
-    ].join(" "),
+    "Sub",
+    snapshot.subagentActiveAgents,
+    "Team",
+    snapshot.teamActiveAgents,
   );
-}
-
-function startReservationHeartbeat(
-  reservation: RuntimeCapacityReservationLease,
-): () => void {
-  // 期限切れによるゾンビ予約を防ぐため、実行中は定期的にTTLを延長する。
-  const intervalMs = 5_000;
-  const timer = setInterval(() => {
-    try {
-      reservation.heartbeat();
-    } catch {
-      // noop
-    }
-  }, intervalMs);
-  timer.unref?.();
-  return () => {
-    clearInterval(timer);
-  };
 }
 
 function markDelegationUsed(): void {
@@ -1288,291 +901,6 @@ function isWriteLikeToolCall(event: any): boolean {
   return false;
 }
 
-function getPaths(cwd: string): SubagentPaths {
-  const baseDir = join(cwd, ".pi", "subagents");
-  return {
-    baseDir,
-    runsDir: join(baseDir, "runs"),
-    storageFile: join(baseDir, "storage.json"),
-  };
-}
-
-function ensureDir(path: string): void {
-  if (!existsSync(path)) {
-    mkdirSync(path, { recursive: true });
-  }
-}
-
-function ensurePaths(cwd: string): SubagentPaths {
-  const paths = getPaths(cwd);
-  ensureDir(paths.baseDir);
-  ensureDir(paths.runsDir);
-  return paths;
-}
-
-function createDefaultAgents(nowIso: string): SubagentDefinition[] {
-  return [
-    {
-      id: "researcher",
-      name: "Researcher",
-      description: "Fast code and docs investigator. Great for broad discovery and fact collection.",
-      systemPrompt:
-        "You are the Researcher subagent. Collect concrete facts quickly. Use short bullet points. Include file paths and exact findings. Avoid implementation changes.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "architect",
-      name: "Architect",
-      description: "Design-focused helper for decomposition, constraints, and migration plans.",
-      systemPrompt:
-        "You are the Architect subagent. Propose minimal, modular designs. Prefer explicit trade-offs and short execution plans.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "implementer",
-      name: "Implementer",
-      description: "Implementation helper for scoped coding tasks and fixes.",
-      systemPrompt:
-        "You are the Implementer subagent. Deliver precise, minimal code-focused output. Mention assumptions. Keep scope tight.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "reviewer",
-      name: "Reviewer",
-      description: "Read-only reviewer for risk checks, tests, and quality feedback.",
-      systemPrompt:
-        "You are the Reviewer subagent. Do not propose broad rewrites. Highlight critical issues first, then warnings, then optional improvements.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "tester",
-      name: "Tester",
-      description: "Validation helper focused on reproducible checks and minimal test plans.",
-      systemPrompt:
-        "You are the Tester subagent. Propose deterministic validation steps first. Prefer quick, high-signal checks and explicit expected outcomes.",
-      enabled: "enabled",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    },
-  ];
-}
-
-function loadStorage(cwd: string): SubagentStorage {
-  const paths = ensurePaths(cwd);
-  const nowIso = new Date().toISOString();
-
-  const fallback: SubagentStorage = {
-    agents: createDefaultAgents(nowIso),
-    runs: [],
-    currentAgentId: "researcher",
-    defaultsVersion: SUBAGENT_DEFAULTS_VERSION,
-  };
-
-  if (!existsSync(paths.storageFile)) {
-    saveStorage(cwd, fallback);
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(readFileSync(paths.storageFile, "utf-8")) as Partial<SubagentStorage>;
-    const storage: SubagentStorage = {
-      agents: Array.isArray(parsed.agents) ? parsed.agents : [],
-      runs: Array.isArray(parsed.runs) ? parsed.runs : [],
-      currentAgentId: typeof parsed.currentAgentId === "string" ? parsed.currentAgentId : undefined,
-      defaultsVersion:
-        typeof parsed.defaultsVersion === "number" && Number.isFinite(parsed.defaultsVersion)
-          ? Math.trunc(parsed.defaultsVersion)
-          : 0,
-    };
-    return ensureDefaults(storage, nowIso);
-  } catch {
-    saveStorage(cwd, fallback);
-    return fallback;
-  }
-}
-
-function saveStorage(cwd: string, storage: SubagentStorage): void {
-  const paths = ensurePaths(cwd);
-  const normalized: SubagentStorage = {
-    ...storage,
-    runs: storage.runs.slice(-MAX_RUNS_TO_KEEP),
-    defaultsVersion: SUBAGENT_DEFAULTS_VERSION,
-  };
-  withFileLock(paths.storageFile, () => {
-    const merged = mergeSubagentStorageWithDisk(paths.storageFile, normalized);
-    atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
-    pruneSubagentRunArtifacts(paths, merged.runs);
-  });
-}
-
-function ensureDefaults(storage: SubagentStorage, nowIso: string): SubagentStorage {
-  const defaults = createDefaultAgents(nowIso);
-  const defaultIds = new Set(defaults.map((agent) => agent.id));
-  const existingById = new Map(storage.agents.map((agent) => [agent.id, agent]));
-  const mergedAgents: SubagentDefinition[] = [];
-
-  // Keep built-in definitions synchronized so prompt updates actually apply.
-  for (const defaultAgent of defaults) {
-    const existing = existingById.get(defaultAgent.id);
-    if (!existing) {
-      mergedAgents.push(defaultAgent);
-      continue;
-    }
-    mergedAgents.push(mergeDefaultSubagent(existing, defaultAgent));
-  }
-
-  // Preserve user-defined agents as-is.
-  for (const agent of storage.agents) {
-    if (!defaultIds.has(agent.id)) {
-      mergedAgents.push(agent);
-    }
-  }
-
-  storage.agents = mergedAgents;
-  storage.defaultsVersion = SUBAGENT_DEFAULTS_VERSION;
-
-  if (!storage.currentAgentId || !storage.agents.some((agent) => agent.id === storage.currentAgentId)) {
-    storage.currentAgentId = defaults[0]?.id;
-  }
-
-  return storage;
-}
-
-function mergeDefaultSubagent(
-  existing: SubagentDefinition,
-  fallback: SubagentDefinition,
-): SubagentDefinition {
-  const hasDrift =
-    existing.name !== fallback.name ||
-    existing.description !== fallback.description ||
-    existing.systemPrompt !== fallback.systemPrompt;
-  return {
-    ...fallback,
-    enabled: existing.enabled,
-    provider: existing.provider,
-    model: existing.model,
-    createdAt: existing.createdAt || fallback.createdAt,
-    updatedAt: hasDrift ? new Date().toISOString() : existing.updatedAt || fallback.updatedAt,
-  };
-}
-
-function pruneSubagentRunArtifacts(paths: SubagentPaths, runs: SubagentRunRecord[]): void {
-  let files: string[] = [];
-  try {
-    files = readdirSync(paths.runsDir);
-  } catch {
-    return;
-  }
-
-  const keep = new Set(
-    runs
-      .map((run) => basename(run.outputFile || ""))
-      .filter((name) => name.endsWith(".json")),
-  );
-  if (runs.length > 0 && keep.size === 0) {
-    return;
-  }
-
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    if (keep.has(file)) continue;
-    try {
-      unlinkSync(join(paths.runsDir, file));
-    } catch {
-      // noop
-    }
-  }
-}
-
-function mergeSubagentStorageWithDisk(
-  storageFile: string,
-  next: SubagentStorage,
-): SubagentStorage {
-  let disk: Partial<SubagentStorage> = {};
-  try {
-    if (existsSync(storageFile)) {
-      disk = JSON.parse(readFileSync(storageFile, "utf-8")) as Partial<SubagentStorage>;
-    }
-  } catch {
-    disk = {};
-  }
-
-  const diskAgents = Array.isArray(disk.agents) ? disk.agents : [];
-  const nextAgents = Array.isArray(next.agents) ? next.agents : [];
-  const agentById = new Map<string, SubagentDefinition>();
-  for (const agent of diskAgents) {
-    if (!agent || typeof agent !== "object") continue;
-    if (typeof (agent as { id?: unknown }).id !== "string") continue;
-    const id = (agent as { id: string }).id.trim();
-    if (!id) continue;
-    agentById.set(agent.id, agent);
-  }
-  for (const agent of nextAgents) {
-    if (!agent || typeof agent !== "object") continue;
-    if (typeof (agent as { id?: unknown }).id !== "string") continue;
-    const id = (agent as { id: string }).id.trim();
-    if (!id) continue;
-    agentById.set(agent.id, agent);
-  }
-  const mergedAgents = Array.from(agentById.values());
-
-  const diskRuns = Array.isArray(disk.runs) ? disk.runs : [];
-  const nextRuns = Array.isArray(next.runs) ? next.runs : [];
-  const runById = new Map<string, SubagentRunRecord>();
-  for (const run of diskRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  for (const run of nextRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  const mergedRuns = Array.from(runById.values())
-    .sort((left, right) => {
-      const leftKey = left.finishedAt || left.startedAt || "";
-      const rightKey = right.finishedAt || right.startedAt || "";
-      return leftKey.localeCompare(rightKey);
-    })
-    .slice(-MAX_RUNS_TO_KEEP);
-
-  const candidateCurrent =
-    typeof next.currentAgentId === "string" && next.currentAgentId.trim()
-      ? next.currentAgentId
-      : typeof disk.currentAgentId === "string" && disk.currentAgentId.trim()
-        ? disk.currentAgentId
-        : undefined;
-  const currentAgentId =
-    candidateCurrent && mergedAgents.some((agent) => agent.id === candidateCurrent)
-      ? candidateCurrent
-      : mergedAgents[0]?.id;
-
-  const diskDefaults =
-    typeof disk.defaultsVersion === "number" && Number.isFinite(disk.defaultsVersion)
-      ? Math.trunc(disk.defaultsVersion)
-      : 0;
-
-  return {
-    agents: mergedAgents,
-    runs: mergedRuns,
-    currentAgentId,
-    defaultsVersion: Math.max(SUBAGENT_DEFAULTS_VERSION, diskDefaults),
-  };
-}
-
 function toAgentId(input: string): string {
   return input
     .toLowerCase()
@@ -1582,20 +910,6 @@ function toAgentId(input: string): string {
     .replace(/\-+/g, "-")
     .replace(/^\-+|\-+$/g, "")
     .slice(0, 48);
-}
-
-function createRunId(): string {
-  const now = new Date();
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-    "-",
-    String(now.getHours()).padStart(2, "0"),
-    String(now.getMinutes()).padStart(2, "0"),
-    String(now.getSeconds()).padStart(2, "0"),
-  ].join("");
-  return `${stamp}-${randomBytes(3).toString("hex")}`;
 }
 
 function formatAgentList(storage: SubagentStorage): string {
@@ -1646,11 +960,53 @@ function extractSummary(output: string): string {
   return first.length > 120 ? `${first.slice(0, 120)}...` : first;
 }
 
+/**
+ * Merge skill arrays following inheritance rules.
+ * - Empty array [] is treated as unspecified (ignored)
+ * - Non-empty arrays are merged with deduplication
+ */
+function mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined {
+  const hasBase = Array.isArray(base) && base.length > 0;
+  const hasOverride = Array.isArray(override) && override.length > 0;
+
+  if (!hasBase && !hasOverride) return undefined;
+  if (!hasBase) return override;
+  if (!hasOverride) return base;
+
+  const merged = [...base];
+  for (const skill of override) {
+    if (!merged.includes(skill)) {
+      merged.push(skill);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Resolve effective skills for a subagent.
+ * Inheritance: parentSkills (if any) -> agent.skills
+ */
+function resolveEffectiveSkills(
+  agent: SubagentDefinition,
+  parentSkills?: string[],
+): string[] | undefined {
+  return mergeSkillArrays(parentSkills, agent.skills);
+}
+
+/**
+ * Format skill list for prompt inclusion.
+ */
+function formatSkillsSection(skills: string[] | undefined): string | null {
+  if (!skills || skills.length === 0) return null;
+  return skills.map((skill) => `- ${skill}`).join("\n");
+}
+
 function buildSubagentPrompt(input: {
   agent: SubagentDefinition;
   task: string;
   extraContext?: string;
   enforcePlanMode?: boolean;
+  parentSkills?: string[];
 }): string {
   const lines: string[] = [];
   lines.push(`You are running as delegated subagent: ${input.agent.name} (${input.agent.id}).`);
@@ -1658,6 +1014,16 @@ function buildSubagentPrompt(input: {
   lines.push("");
   lines.push("Subagent operating instructions:");
   lines.push(input.agent.systemPrompt);
+
+  // Resolve and include skills
+  const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills);
+  const skillsSection = formatSkillsSection(effectiveSkills);
+  if (skillsSection) {
+    lines.push("");
+    lines.push("Assigned skills:");
+    lines.push(skillsSection);
+  }
+
   lines.push("");
   lines.push("Task from lead agent:");
   lines.push(input.task);
@@ -1700,132 +1066,9 @@ async function runPiPrintMode(input: {
   onStdoutChunk?: (chunk: string) => void;
   onStderrChunk?: (chunk: string) => void;
 }): Promise<PrintCommandResult> {
-  if (input.signal?.aborted) {
-    throw new Error("subagent run aborted");
-  }
-
-  const args = ["-p", "--no-extensions"];
-
-  if (input.provider) {
-    args.push("--provider", input.provider);
-  }
-
-  if (input.model) {
-    args.push("--model", input.model);
-  }
-
-  args.push(input.prompt);
-
-  return await new Promise<PrintCommandResult>((resolvePromise, rejectPromise) => {
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let settled = false;
-    let forceKillTimer: NodeJS.Timeout | undefined;
-    const startedAt = Date.now();
-
-    const child = spawn("pi", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
-
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        try {
-          child.kill(sig);
-        } catch {
-          // noop
-        }
-      }
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), 500);
-      finish(() => rejectPromise(new Error("subagent run aborted")));
-    };
-
-    const timeoutEnabled = input.timeoutMs > 0;
-    const timeout = timeoutEnabled
-      ? setTimeout(() => {
-          timedOut = true;
-          killSafely("SIGTERM");
-          if (forceKillTimer) {
-            clearTimeout(forceKillTimer);
-          }
-          forceKillTimer = setTimeout(() => killSafely("SIGKILL"), 500);
-        }, input.timeoutMs)
-      : undefined;
-
-    const cleanup = () => {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      input.signal?.removeEventListener("abort", onAbort);
-    };
-
-    input.signal?.addEventListener("abort", onAbort, { once: true });
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
-      input.onStdoutChunk?.(text);
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
-      input.onStderrChunk?.(text);
-    });
-
-    child.on("error", (error) => {
-      finish(() => rejectPromise(error));
-    });
-
-    child.on("close", (code) => {
-      finish(() => {
-        if (timedOut) {
-          rejectPromise(new Error(`subagent timed out after ${input.timeoutMs}ms`));
-          return;
-        }
-
-        if (code !== 0) {
-          rejectPromise(new Error(stderr.trim() || `subagent exited with code ${code}`));
-          return;
-        }
-
-        const output = stdout.trim();
-        if (!output) {
-          const stderrMessage = trimForError(stderr);
-          rejectPromise(
-            new Error(
-              stderrMessage
-                ? `subagent returned empty output; stderr=${stderrMessage}`
-                : "subagent returned empty output",
-            ),
-          );
-          return;
-        }
-
-        resolvePromise({
-          output,
-          latencyMs: Date.now() - startedAt,
-        });
-      });
-    });
+  return sharedRunPiPrintMode({
+    ...input,
+    entityLabel: "subagent",
   });
 }
 
@@ -1872,6 +1115,7 @@ async function runSubagentTask(input: {
   retryOverrides?: RetryWithBackoffOverrides;
   modelProvider?: string;
   modelId?: string;
+  parentSkills?: string[];
   signal?: AbortSignal;
   onStart?: () => void;
   onEnd?: () => void;
@@ -1892,6 +1136,7 @@ async function runSubagentTask(input: {
     task: input.task,
     extraContext: input.extraContext,
     enforcePlanMode: planModeActive,
+    parentSkills: input.parentSkills,
   });
   const resolvedProvider = input.agent.provider ?? input.modelProvider ?? "(session-default)";
   const resolvedModel = input.agent.model ?? input.modelId ?? "(session-default)";
@@ -2364,7 +1609,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           signal,
         });
         if (!capacityCheck.allowed || !capacityCheck.reservation) {
-          raiseAdaptivePenalty("capacity");
+          adaptivePenalty.raise("capacity");
           const capacityOutcome: RunOutcomeSignal = capacityCheck.aborted
             ? { outcomeCode: "CANCELLED", retryRecommended: false }
             : capacityCheck.timedOut
@@ -2388,7 +1633,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               waitedMs: capacityCheck.waitedMs,
               timedOut: capacityCheck.timedOut,
               aborted: capacityCheck.aborted,
-              adaptiveParallelPenalty: getAdaptivePenalty(),
+              adaptiveParallelPenalty: adaptivePenalty.get(),
               queuedAhead: queueWait.queuedAhead,
               queuePosition: queueWait.queuePosition,
               queueWaitedMs: queueWait.waitedMs,
@@ -2402,7 +1647,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
         try {
-          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_TIMEOUT_MS);
+          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: "Subagent Run (detailed live view)",
             items: [{ id: agent.id, name: agent.name }],
@@ -2456,7 +1701,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             if (result.runRecord.status === "failed") {
               const pressureError = classifyPressureError(result.runRecord.error || "");
               if (pressureError !== "other") {
-                raiseAdaptivePenalty(pressureError);
+                adaptivePenalty.raise(pressureError);
               }
               const failureOutcome = resolveSubagentFailureOutcome(
                 result.runRecord.error || result.runRecord.summary,
@@ -2468,7 +1713,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                   run: result.runRecord,
                   traceId: queueWait.orchestrationId,
                   taskId: buildTraceTaskId(queueWait.orchestrationId, result.runRecord.agentId, 0),
-                  adaptiveParallelPenalty: getAdaptivePenalty(),
+                  adaptiveParallelPenalty: adaptivePenalty.get(),
                   queuedAhead: queueWait.queuedAhead,
                   queuePosition: queueWait.queuePosition,
                   queueWaitedMs: queueWait.waitedMs,
@@ -2478,7 +1723,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               };
             }
 
-            lowerAdaptivePenalty();
+            adaptivePenalty.lower();
 
             return {
               content: [
@@ -2504,7 +1749,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                 traceId: queueWait.orchestrationId,
                 taskId: buildTraceTaskId(queueWait.orchestrationId, agent.id, 0),
                 output: result.output,
-                adaptiveParallelPenalty: getAdaptivePenalty(),
+                adaptiveParallelPenalty: adaptivePenalty.get(),
                 queuedAhead: queueWait.queuedAhead,
                 queuePosition: queueWait.queuePosition,
                 queueWaitedMs: queueWait.waitedMs,
@@ -2629,8 +1874,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             Math.max(1, snapshot.limits.maxTotalActiveLlm),
           ),
         );
-        const adaptivePenaltyBefore = getAdaptivePenalty();
-        const effectiveParallelism = applyAdaptiveParallelLimit(baselineParallelism);
+        const adaptivePenaltyBefore = adaptivePenalty.get();
+        const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
         const parallelCapacity = await resolveSubagentParallelCapacity({
           requestedParallelism: effectiveParallelism,
           additionalRequests: 1,
@@ -2639,7 +1884,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           signal,
         });
         if (!parallelCapacity.allowed) {
-          raiseAdaptivePenalty("capacity");
+          adaptivePenalty.raise("capacity");
           const capacityOutcome: RunOutcomeSignal = parallelCapacity.aborted
             ? { outcomeCode: "CANCELLED", retryRecommended: false }
             : parallelCapacity.timedOut
@@ -2670,7 +1915,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               appliedParallelism: parallelCapacity.appliedParallelism,
               parallelismReduced: parallelCapacity.reduced,
               adaptivePenaltyBefore,
-              adaptivePenaltyAfter: getAdaptivePenalty(),
+              adaptivePenaltyAfter: adaptivePenalty.get(),
               requestedSubagentCount: activeAgents.length,
               queuedAhead: queueWait.queuedAhead,
               queuePosition: queueWait.queuePosition,
@@ -2682,7 +1927,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           };
         }
         if (!parallelCapacity.reservation) {
-          raiseAdaptivePenalty("capacity");
+          adaptivePenalty.raise("capacity");
           return {
             content: [
               {
@@ -2708,7 +1953,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
         try {
-          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_TIMEOUT_MS);
+          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: `Subagent Run Parallel (detailed live view: ${activeAgents.length} agents)`,
             items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
@@ -2776,12 +2021,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               return pressure !== "other";
             }).length;
             if (pressureFailures > 0) {
-              raiseAdaptivePenalty("rate_limit");
+              adaptivePenalty.raise("rate_limit");
             } else {
-              lowerAdaptivePenalty();
+              adaptivePenalty.lower();
             }
             const parallelOutcome = resolveSubagentParallelOutcome(results);
-            const adaptivePenaltyAfter = getAdaptivePenalty();
+            const adaptivePenaltyAfter = adaptivePenalty.get();
             const lines: string[] = [];
             lines.push(`Parallel subagent run completed (${results.length} agents).`);
             lines.push(
@@ -2879,7 +2124,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             type: "text" as const,
             text: formatRuntimeStatusLine({
               storedRuns: storage.runs.length,
-              adaptivePenalty: getAdaptivePenalty(),
+              adaptivePenalty: adaptivePenalty.get(),
               adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
             }),
           },
@@ -2902,7 +2147,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           activeOrchestrations: snapshot.activeOrchestrations,
           queuedOrchestrations: snapshot.queuedOrchestrations,
           queuedTools: snapshot.queuedTools,
-          adaptiveParallelPenalty: getAdaptivePenalty(),
+          adaptiveParallelPenalty: adaptivePenalty.get(),
           storedRunRecords: storage.runs.length,
         },
       };
@@ -2958,7 +2203,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           customType: "subagent-status",
           content: formatRuntimeStatusLine({
             storedRuns: storage.runs.length,
-            adaptivePenalty: getAdaptivePenalty(),
+            adaptivePenalty: adaptivePenalty.get(),
             adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
           }),
           display: true,
@@ -3082,9 +2327,4 @@ Only skip fan-out when the task is truly trivial (single obvious step).
       systemPrompt: `${event.systemPrompt}${proactivePrompt}`,
     };
   });
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }

@@ -11,8 +11,8 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
-
-type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, computeModelTimeoutMs } from "../lib";
+import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 type LoopStatus = "continue" | "done" | "unknown";
 type LoopGoalStatus = "met" | "not_met" | "unknown";
 
@@ -618,7 +618,12 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     let iterationSummary = "";
 
     try {
-      output = await callModelViaPi(input.model, prompt, input.config.timeoutMs, input.signal);
+      // Compute model-specific timeout with thinking level adjustment
+      const effectiveTimeoutMs = computeModelTimeoutMs(input.model.id, {
+        userTimeoutMs: input.config.timeoutMs,
+        thinkingLevel: input.model.thinkingLevel,
+      });
+      output = await callModelViaPi(input.model, prompt, effectiveTimeoutMs, input.signal);
       latencyMs = Date.now() - started;
       finalOutput = output;
 
@@ -1862,93 +1867,16 @@ async function callModelViaPi(
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<string> {
-  const args = ["-p", "--no-extensions", "--provider", model.provider, "--model", model.id];
-  if (model.thinkingLevel) {
-    args.push("--thinking", model.thinkingLevel);
-  }
-  args.push(prompt);
-
-  return await new Promise<string>((resolvePromise, rejectPromise) => {
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let settled = false;
-
-    const child = spawn("pi", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
-
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        try {
-          child.kill(sig);
-        } catch {
-          // noop
-        }
-      }
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
-      finish(() => rejectPromise(new Error("loop aborted")));
-    };
-
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
-    }, timeoutMs);
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", onAbort);
-    };
-
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
-    });
-
-    child.on("error", (error) => {
-      finish(() => rejectPromise(error));
-    });
-
-    child.on("close", (code) => {
-      finish(() => {
-        if (timedOut) {
-          rejectPromise(new Error(`pi -p timed out after ${timeoutMs}ms`));
-          return;
-        }
-        if (code !== 0) {
-          const message = stderr.trim() || `exit code ${code}`;
-          rejectPromise(new Error(`pi -p failed: ${message}`));
-          return;
-        }
-
-        const output = stdout.trim();
-        if (!output) {
-          rejectPromise(new Error("pi -p returned empty output"));
-          return;
-        }
-        resolvePromise(output);
-      });
-    });
+  return sharedCallModelViaPi({
+    model: {
+      provider: model.provider,
+      id: model.id,
+      thinkingLevel: model.thinkingLevel,
+    },
+    prompt,
+    timeoutMs,
+    signal,
+    entityLabel: "loop",
   });
 }
 
@@ -2033,7 +1961,7 @@ async function runVerificationCommand(input: {
 
     const onAbort = () => {
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
+      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
       finish({
         passed: false,
         timedOut: false,
@@ -2045,7 +1973,7 @@ async function runVerificationCommand(input: {
     const timeout = setTimeout(() => {
       timedOut = true;
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
+      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
     }, input.timeoutMs);
 
     const cleanup = () => {
@@ -2382,21 +2310,6 @@ function appendJsonl(path: string, value: unknown) {
   });
 }
 
-function createRunId(): string {
-  const now = new Date();
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-    "-",
-    String(now.getHours()).padStart(2, "0"),
-    String(now.getMinutes()).padStart(2, "0"),
-    String(now.getSeconds()).padStart(2, "0"),
-  ].join("");
-  const suffix = randomBytes(3).toString("hex");
-  return `${stamp}-${suffix}`;
-}
-
 function normalizeRefSpec(value: string): string {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) return "";
@@ -2445,36 +2358,8 @@ function normalizeOptionalText(value: unknown): string | undefined {
   return text ? text : undefined;
 }
 
-function toBoundedInteger(
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-  field: string,
-): { ok: true; value: number } | { ok: false; error: string } {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved) || !Number.isInteger(resolved)) {
-    return { ok: false, error: `${field} must be an integer.` };
-  }
-  if (resolved < min || resolved > max) {
-    return { ok: false, error: `${field} must be in [${min}, ${max}].` };
-  }
-  return { ok: true, value: resolved };
-}
-
-function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "0ms";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
 function throwIfAborted(signal: AbortSignal | undefined) {
   if (signal?.aborted) {
     throw new Error("loop aborted");
   }
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }

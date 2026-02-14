@@ -4,6 +4,8 @@ name: Core Delivery Team
 description: 汎用的なコーディングタスクに対応するバランス型デリバリーフォース。調査、実装、レビューを一連のフローで行い、決定論的な成果物を確立した上で最終的な合意形成を行う。Phase 1で徹底調査、Phase 2で実装設計、Phase 3で品質レビューを行い、三者で協調して高品質な成果物を迅速に提供する。
 enabled: enabled
 strategy: parallel
+skills:
+  - code-search           # チーム共通: 高速コード検索
 members:
   - id: research
     role: Researcher
@@ -13,10 +15,14 @@ members:
     role: Implementer
     description: Phase 2の実装設計を担当。最小限の実装手順を提案し、エッジケースや境界条件を考慮したチェックを行う。既存コードとの整合性を保ちながら、エレガントで安全かつ保守性の高い実装を設計する。
     enabled: true
+    skills:
+      - git-workflow      # Git操作・ブランチ管理
   - id: review
     role: Reviewer
     description: Phase 3の品質レビューを担当。提案されたアプローチに対して品質チェックとリスク評価を実施。潜在的なバグ、パフォーマンス問題、セキュリティ上の懸念、メンテナンス性の観点から包括的なレビューを行い、改善点を特定する。
     enabled: true
+    skills:
+      - git-workflow      # Git操作・ブランチ管理
 ---
 
 # Core Delivery Team

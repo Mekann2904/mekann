@@ -7,11 +7,9 @@ import { getMarkdownTheme, parseFrontmatter, type ExtensionAPI } from "@mariozec
 import { Type } from "@mariozechner/pi-ai";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { spawn } from "node:child_process";
-import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
 import {
   formatRuntimeStatusLine,
   getRuntimeSnapshot,
@@ -30,6 +28,9 @@ import {
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
 import {
+  createAdaptivePenaltyController,
+} from "../lib/adaptive-penalty.js";
+import {
   getRateLimitGateSnapshot,
   isRetryableError,
   retryWithBackoff,
@@ -39,122 +40,115 @@ import { runWithConcurrencyLimit } from "../lib/concurrency";
 import {
   getTeamMemberExecutionRules,
 } from "../lib/execution-rules";
+import {
+  buildRuntimeLimitError,
+  buildRuntimeQueueWaitError,
+  startReservationHeartbeat,
+  refreshRuntimeStatus as sharedRefreshRuntimeStatus,
+} from "./shared/runtime-helpers";
+import {
+  runPiPrintMode as sharedRunPiPrintMode,
+  type PrintExecutorOptions,
+} from "./shared/pi-print-executor";
+import {
+  ensureDir,
+  formatDurationMs,
+  normalizeForSingleLine,
+  toTailLines,
+  appendTail,
+  countOccurrences,
+  estimateLineCount,
+  looksLikeMarkdown,
+  renderPreviewWithMarkdown,
+  extractStatusCodeFromMessage,
+  classifyPressureError,
+  isCancelledErrorMessage,
+  isTimeoutErrorMessage,
+  toErrorMessage,
+  LIVE_TAIL_LIMIT,
+  LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
+  formatBytes,
+  formatClockTime,
+  createRunId,
+  computeLiveWindow,
+  ThinkingLevel,
+  RunOutcomeCode,
+  RunOutcomeSignal,
+  DEFAULT_AGENT_TIMEOUT_MS,
+  computeModelTimeoutMs,
+  getLiveStatusGlyph,
+  isEnterInput,
+  finalizeLiveLines,
+  type LiveStatus,
+  hasIntentOnlyContent,
+  validateTeamMemberOutput,
+  trimForError,
+  buildRateLimitKey,
+  buildTraceTaskId,
+  normalizeTimeoutMs,
+  createRetrySchema,
+  toConcurrencyLimit,
+  resolveEffectiveTimeoutMs,
+} from "../lib";
+import {
+  type TeamEnabledState,
+  type TeamStrategy,
+  type TeamMember,
+  type TeamDefinition,
+  type TeamMemberResult,
+  type TeamJudgeVerdict,
+  type TeamFinalJudge,
+  type TeamCommunicationAuditEntry,
+  type TeamRunRecord,
+  type TeamStorage,
+  type TeamPaths,
+  MAX_RUNS_TO_KEEP,
+  TEAM_DEFAULTS_VERSION,
+  getPaths,
+  ensurePaths,
+  toId,
+  loadStorage,
+  saveStorage,
+} from "./agent-teams/storage";
 
-type TeamEnabledState = "enabled" | "disabled";
-type TeamStrategy = "parallel" | "sequential";
-type RunOutcomeCode =
-  | "SUCCESS"
-  | "PARTIAL_SUCCESS"
-  | "RETRYABLE_FAILURE"
-  | "NONRETRYABLE_FAILURE"
-  | "CANCELLED"
-  | "TIMEOUT";
+// Re-export types for external use
+export type {
+  TeamEnabledState,
+  TeamStrategy,
+  TeamMember,
+  TeamDefinition,
+  TeamMemberResult,
+  TeamJudgeVerdict,
+  TeamFinalJudge,
+  TeamCommunicationAuditEntry,
+  TeamRunRecord,
+  TeamStorage,
+  TeamPaths,
+};
 
-interface RunOutcomeSignal {
-  outcomeCode: RunOutcomeCode;
-  retryRecommended: boolean;
-}
-
-interface TeamMember {
-  id: string;
-  role: string;
-  description: string;
-  provider?: string;
-  model?: string;
-  enabled: boolean;
-}
-
-interface TeamDefinition {
+// Team frontmatter types for markdown parsing
+interface TeamFrontmatter {
   id: string;
   name: string;
   description: string;
-  enabled: TeamEnabledState;
-  members: TeamMember[];
-  createdAt: string;
-  updatedAt: string;
+  enabled: "enabled" | "disabled";
+  strategy?: "parallel" | "sequential";
+  members: TeamMemberFrontmatter[];
 }
 
-interface TeamMemberResult {
-  memberId: string;
+interface TeamMemberFrontmatter {
+  id: string;
   role: string;
-  summary: string;
-  output: string;
-  status: "completed" | "failed";
-  latencyMs: number;
-  error?: string;
-  diagnostics?: {
-    confidence: number;
-    evidenceCount: number;
-    contradictionSignals: number;
-    conflictSignals: number;
-  };
+  description: string;
+  enabled?: boolean;
+  provider?: string;
+  model?: string;
 }
 
-type TeamJudgeVerdict = "trusted" | "partial" | "untrusted";
-
-interface TeamFinalJudge {
-  verdict: TeamJudgeVerdict;
-  confidence: number;
-  reason: string;
-  nextStep: string;
-  uIntra: number;
-  uInter: number;
-  uSys: number;
-  collapseSignals: string[];
-  rawOutput: string;
-}
-
-interface TeamCommunicationAuditEntry {
-  round: number;
-  memberId: string;
-  role: string;
-  partnerIds: string[];
-  referencedPartners: string[];
-  missingPartners: string[];
-  contextPreview: string;
-  partnerSnapshots: string[];
-  resultStatus: "completed" | "failed";
-}
-
-interface TeamRunRecord {
-  runId: string;
-  teamId: string;
-  strategy: TeamStrategy;
-  task: string;
-  communicationRounds?: number;
-  failedMemberRetryRounds?: number;
-  failedMemberRetryApplied?: number;
-  recoveredMembers?: string[];
-  communicationLinks?: Record<string, string[]>;
-  summary: string;
-  status: "completed" | "failed";
-  startedAt: string;
-  finishedAt: string;
-  memberCount: number;
-  outputFile: string;
-  finalJudge?: {
-    verdict: TeamJudgeVerdict;
-    confidence: number;
-    reason: string;
-    nextStep: string;
-    uIntra: number;
-    uInter: number;
-    uSys: number;
-    collapseSignals: string[];
-  };
-}
-
-interface TeamStorage {
-  teams: TeamDefinition[];
-  runs: TeamRunRecord[];
-  currentTeamId?: string;
-  defaultsVersion?: number;
-}
-
-interface TeamPaths {
-  baseDir: string;
-  runsDir: string;
-  storageFile: string;
+interface ParsedTeamMarkdown {
+  frontmatter: TeamFrontmatter;
+  content: string;
+  filePath: string;
 }
 
 interface PrintCommandResult {
@@ -162,13 +156,8 @@ interface PrintCommandResult {
   latencyMs: number;
 }
 
-const MAX_RUNS_TO_KEEP = 100;
-const TEAM_DEFAULTS_VERSION = 3;
-const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
-const LIVE_TAIL_LIMIT = 40_000;
 const LIVE_PREVIEW_LINE_LIMIT = 120;
 const LIVE_LIST_WINDOW_SIZE = 22;
-const LIVE_MARKDOWN_PREVIEW_MIN_WIDTH = 24;
 const LIVE_EVENT_TAIL_LIMIT = 240;
 const LIVE_EVENT_INLINE_LINE_LIMIT = 8;
 const LIVE_EVENT_DETAIL_LINE_LIMIT = 28;
@@ -189,12 +178,13 @@ const STABLE_AGENT_TEAM_MAX_RATE_LIMIT_RETRIES = 6;
 const STABLE_AGENT_TEAM_MAX_RATE_LIMIT_WAIT_MS = 90_000;
 
 const runtimeState = getSharedRuntimeState().teams;
-const adaptiveParallelState = {
-  penalty: 0,
-  updatedAtMs: Date.now(),
-};
+const adaptivePenalty = createAdaptivePenaltyController({
+  isStable: STABLE_AGENT_TEAM_RUNTIME,
+  maxPenalty: ADAPTIVE_PARALLEL_MAX_PENALTY,
+  decayMs: ADAPTIVE_PARALLEL_DECAY_MS,
+});
 
-type TeamLiveStatus = "pending" | "running" | "completed" | "failed";
+type TeamLiveStatus = LiveStatus;
 type TeamLivePhase = "queued" | "initial" | "communication" | "judge" | "finished";
 type LiveStreamView = "stdout" | "stderr";
 type LiveViewMode = "list" | "detail" | "discussion";
@@ -245,115 +235,6 @@ interface AgentTeamLiveMonitorController {
   wait: () => Promise<void>;
 }
 
-function appendTail(current: string, chunk: string, maxLength = LIVE_TAIL_LIMIT): string {
-  if (!chunk) return current;
-  const next = `${current}${chunk}`;
-  if (next.length <= maxLength) return next;
-  return next.slice(next.length - maxLength);
-}
-
-function countOccurrences(input: string, target: string): number {
-  if (!input || !target) return 0;
-  let count = 0;
-  let index = 0;
-  while (index < input.length) {
-    const found = input.indexOf(target, index);
-    if (found < 0) break;
-    count += 1;
-    index = found + target.length;
-  }
-  return count;
-}
-
-function formatBytes(value: number): string {
-  const bytes = Math.max(0, Math.trunc(value));
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-function formatClockTime(value?: number): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  const ss = String(date.getSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
-}
-
-function estimateLineCount(bytes: number, newlineCount: number, endsWithNewline: boolean): number {
-  if (bytes <= 0) return 0;
-  return newlineCount + (endsWithNewline ? 0 : 1);
-}
-
-function looksLikeMarkdown(input: string): boolean {
-  const text = input.trim();
-  if (!text) return false;
-  if (/^#{1,6}\s+/m.test(text)) return true;
-  if (/^\s*[-*+]\s+/m.test(text)) return true;
-  if (/^\s*\d+\.\s+/m.test(text)) return true;
-  if (/```/.test(text)) return true;
-  if (/\[[^\]]+\]\([^)]+\)/.test(text)) return true;
-  if (/^\s*>\s+/m.test(text)) return true;
-  if (/^\s*\|.+\|\s*$/m.test(text)) return true;
-  if (/\*\*[^*]+\*\*/.test(text)) return true;
-  if (/`[^`]+`/.test(text)) return true;
-  return false;
-}
-
-function renderPreviewWithMarkdown(
-  text: string,
-  width: number,
-  maxLines: number,
-): { lines: string[]; renderedAsMarkdown: boolean } {
-  if (!text.trim()) {
-    return { lines: [], renderedAsMarkdown: false };
-  }
-
-  if (!looksLikeMarkdown(text)) {
-    return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
-  }
-
-  try {
-    const markdown = new Markdown(text, 0, 0, getMarkdownTheme());
-    const rendered = markdown.render(Math.max(LIVE_MARKDOWN_PREVIEW_MIN_WIDTH, width));
-    if (rendered.length === 0) {
-      return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
-    }
-    if (rendered.length <= maxLines) {
-      return { lines: rendered, renderedAsMarkdown: true };
-    }
-    return { lines: rendered.slice(rendered.length - maxLines), renderedAsMarkdown: true };
-  } catch {
-    return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
-  }
-}
-
-function toTailLines(tail: string, limit: number): string[] {
-  const lines = tail
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\s+$/g, ""));
-  if (lines.length > 0 && lines[lines.length - 1] === "") {
-    lines.pop();
-  }
-  if (lines.length <= limit) return lines;
-  return lines.slice(lines.length - limit);
-}
-
-function formatDurationMs(item: TeamLiveItem): string {
-  if (!item.startedAtMs) return "-";
-  const endMs = item.finishedAtMs ?? Date.now();
-  const durationMs = Math.max(0, endMs - item.startedAtMs);
-  return `${(durationMs / 1000).toFixed(1)}s`;
-}
-
-function normalizeForSingleLine(input: string, maxLength = 160): string {
-  const normalized = input.replace(/\s+/g, " ").trim();
-  if (!normalized) return "-";
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength)}...`;
-}
-
 function formatLivePhase(phase: TeamLivePhase, round?: number): string {
   if (phase === "communication") return round ? `comm#${round}` : "comm";
   if (phase === "initial") return "initial";
@@ -378,44 +259,6 @@ function pushLiveEvent(item: TeamLiveItem, rawEvent: string): void {
 function toEventTailLines(events: string[], limit: number): string[] {
   if (events.length <= limit) return [...events];
   return events.slice(events.length - limit);
-}
-
-function getLiveStatusGlyph(status: TeamLiveStatus): string {
-  if (status === "completed") return "OK";
-  if (status === "failed") return "!!";
-  if (status === "running") return ">>";
-  return "..";
-}
-
-function computeLiveWindow(cursor: number, total: number, maxRows: number): { start: number; end: number } {
-  if (total <= maxRows) return { start: 0, end: total };
-  const clampedCursor = Math.max(0, Math.min(total - 1, cursor));
-  const start = Math.max(0, Math.min(total - maxRows, clampedCursor - (maxRows - 1)));
-  return { start, end: Math.min(total, start + maxRows) };
-}
-
-function isEnterInput(rawInput: string): boolean {
-  return (
-    matchesKey(rawInput, Key.enter) ||
-    rawInput === "\r" ||
-    rawInput === "\n" ||
-    rawInput === "\r\n" ||
-    rawInput === "enter"
-  );
-}
-
-function finalizeLiveLines(lines: string[], height?: number): string[] {
-  if (!height || height <= 0) {
-    return lines;
-  }
-  if (lines.length > height) {
-    return lines.slice(0, height);
-  }
-  const padded = [...lines];
-  while (padded.length < height) {
-    padded.push("");
-  }
-  return padded;
 }
 
 function toTeamLiveItemKey(teamId: string, memberId: string): string {
@@ -972,12 +815,6 @@ function createAgentTeamLiveMonitor(
   };
 }
 
-function trimForError(message: string, maxLength = 600): string {
-  const normalized = message.replace(/\s+/g, " ").trim();
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength)}...`;
-}
-
 function isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean {
   if (isRetryableError(error, statusCode)) {
     return true;
@@ -989,45 +826,7 @@ function isRetryableTeamMemberError(error: unknown, statusCode?: number): boolea
   );
 }
 
-function extractStatusCodeFromMessage(error: unknown): number | undefined {
-  const message = toErrorMessage(error);
-  const codeMatch = message.match(/\b(429|5\d{2})\b/);
-  if (!codeMatch) return undefined;
-  const code = Number(codeMatch[1]);
-  return Number.isFinite(code) ? code : undefined;
-}
 
-function classifyPressureError(error: unknown): "rate_limit" | "timeout" | "capacity" | "other" {
-  const message = toErrorMessage(error).toLowerCase();
-  if (message.includes("runtime limit reached") || message.includes("capacity")) return "capacity";
-  if (message.includes("timed out") || message.includes("timeout")) return "timeout";
-  const statusCode = extractStatusCodeFromMessage(error);
-  if (statusCode === 429 || message.includes("rate limit") || message.includes("too many requests")) {
-    return "rate_limit";
-  }
-  return "other";
-}
-
-function isCancelledErrorMessage(error: unknown): boolean {
-  const message = toErrorMessage(error).toLowerCase();
-  return (
-    message.includes("aborted") ||
-    message.includes("cancelled") ||
-    message.includes("canceled") ||
-    message.includes("中断") ||
-    message.includes("キャンセル")
-  );
-}
-
-function isTimeoutErrorMessage(error: unknown): boolean {
-  const message = toErrorMessage(error).toLowerCase();
-  return (
-    message.includes("timed out") ||
-    message.includes("timeout") ||
-    message.includes("time out") ||
-    message.includes("時間切れ")
-  );
-}
 
 function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
   if (isCancelledErrorMessage(error)) {
@@ -1169,98 +968,6 @@ function resolveTeamParallelRunOutcome(
       };
 }
 
-function buildTraceTaskId(traceId: string | undefined, delegateId: string, sequence: number): string {
-  const safeTrace = (traceId || "trace-unknown").trim();
-  const safeDelegate = (delegateId || "delegate-unknown").trim();
-  return `${safeTrace}:${safeDelegate}:${Math.max(0, Math.trunc(sequence))}`;
-}
-
-function decayAdaptivePenalty(nowMs = Date.now()): void {
-  if (STABLE_AGENT_TEAM_RUNTIME) return;
-  const elapsed = Math.max(0, nowMs - adaptiveParallelState.updatedAtMs);
-  if (adaptiveParallelState.penalty <= 0 || elapsed < ADAPTIVE_PARALLEL_DECAY_MS) return;
-  const steps = Math.floor(elapsed / ADAPTIVE_PARALLEL_DECAY_MS);
-  if (steps <= 0) return;
-  adaptiveParallelState.penalty = Math.max(0, adaptiveParallelState.penalty - steps);
-  adaptiveParallelState.updatedAtMs = nowMs;
-}
-
-function raiseAdaptivePenalty(reason: "rate_limit" | "timeout" | "capacity"): void {
-  if (STABLE_AGENT_TEAM_RUNTIME) {
-    void reason;
-    return;
-  }
-  decayAdaptivePenalty();
-  adaptiveParallelState.penalty = Math.min(
-    ADAPTIVE_PARALLEL_MAX_PENALTY,
-    adaptiveParallelState.penalty + 1,
-  );
-  adaptiveParallelState.updatedAtMs = Date.now();
-  void reason;
-}
-
-function lowerAdaptivePenalty(): void {
-  if (STABLE_AGENT_TEAM_RUNTIME) return;
-  decayAdaptivePenalty();
-  if (adaptiveParallelState.penalty <= 0) return;
-  adaptiveParallelState.penalty = Math.max(0, adaptiveParallelState.penalty - 1);
-  adaptiveParallelState.updatedAtMs = Date.now();
-}
-
-function getAdaptivePenalty(): number {
-  if (STABLE_AGENT_TEAM_RUNTIME) return 0;
-  decayAdaptivePenalty();
-  return adaptiveParallelState.penalty;
-}
-
-function applyAdaptiveParallelLimit(baseLimit: number): number {
-  if (STABLE_AGENT_TEAM_RUNTIME) return Math.max(1, Math.trunc(baseLimit));
-  const penalty = getAdaptivePenalty();
-  if (penalty <= 0) return baseLimit;
-  const divisor = penalty + 1;
-  return Math.max(1, Math.floor(baseLimit / divisor));
-}
-
-function hasIntentOnlyContent(output: string): boolean {
-  const compact = output.replace(/\s+/g, " ").trim();
-  if (!compact) return false;
-  const lower = compact.toLowerCase();
-  const enIntentOnly =
-    (lower.startsWith("i'll ") || lower.startsWith("i will ") || lower.startsWith("let me ")) &&
-    /(analy|review|investig|start|check|examin|look)/.test(lower);
-  const jaIntentOnly =
-    /(確認|調査|分析|レビュー|検討|開始).{0,20}(します|します。|していきます|しますね|します。)/.test(compact);
-  return enIntentOnly || jaIntentOnly;
-}
-
-function validateTeamMemberOutput(output: string): { ok: boolean; reason?: string } {
-  const trimmed = output.trim();
-  if (!trimmed) {
-    return { ok: false, reason: "empty output" };
-  }
-
-  const minChars = 80;
-  if (trimmed.length < minChars) {
-    return { ok: false, reason: `too short (${trimmed.length} chars)` };
-  }
-
-  const requiredLabels = ["SUMMARY:", "CLAIM:", "EVIDENCE:", "CONFIDENCE:", "RESULT:", "NEXT_STEP:"];
-  const missingLabels = requiredLabels.filter((label) => !new RegExp(`^\\s*${label}`, "im").test(trimmed));
-  if (missingLabels.length > 0) {
-    return { ok: false, reason: `missing labels: ${missingLabels.join(", ")}` };
-  }
-
-  const nonEmptyLines = trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (nonEmptyLines.length <= 4 && hasIntentOnlyContent(trimmed)) {
-    return { ok: false, reason: "intent-only output" };
-  }
-
-  return { ok: true };
-}
-
 interface TeamNormalizedOutput {
   ok: boolean;
   output: string;
@@ -1268,6 +975,10 @@ interface TeamNormalizedOutput {
   reason?: string;
 }
 
+/**
+ * Pick a candidate text for a field from unstructured output.
+ * Note: Kept locally because the field format is team-member-specific.
+ */
 function pickTeamFieldCandidate(text: string, maxLength: number): string {
   const lines = text
     .split(/\r?\n/)
@@ -1286,6 +997,14 @@ function pickTeamFieldCandidate(text: string, maxLength: number): string {
   return compact.length <= maxLength ? compact : `${compact.slice(0, maxLength)}...`;
 }
 
+/**
+ * Normalize team member output to required format.
+ * Note: Kept locally (not in lib) because:
+ * - Uses team-member-specific SUMMARY/CLAIM/EVIDENCE/CONFIDENCE/RESULT/NEXT_STEP format
+ * - Has team-member-specific fallback messages (Japanese)
+ * - Uses pickTeamFieldCandidate which is team-member-specific
+ * Subagent output has different requirements (only SUMMARY/RESULT/NEXT_STEP).
+ */
 function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -1331,13 +1050,6 @@ function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput {
   };
 }
 
-function normalizeTimeoutMs(value: unknown, fallback: number): number {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return 0;
-  return Math.max(1, Math.trunc(resolved));
-}
-
 function normalizeCommunicationRounds(value: unknown, fallback = DEFAULT_COMMUNICATION_ROUNDS): number {
   if (STABLE_AGENT_TEAM_RUNTIME) return DEFAULT_COMMUNICATION_ROUNDS;
   const resolved = value === undefined ? fallback : Number(value);
@@ -1379,10 +1091,6 @@ function shouldRetryFailedMemberResult(result: TeamMemberResult, retryRound: num
 function shouldPreferAnchorMember(member: TeamMember): boolean {
   const source = `${member.id} ${member.role}`.toLowerCase();
   return /consensus|synthesizer|reviewer|lead|judge/.test(source);
-}
-
-function buildRateLimitKey(provider: string, model: string): string {
-  return `${provider.toLowerCase()}::${model.toLowerCase()}`;
 }
 
 function createCommunicationLinksMap(members: TeamMember[]): Map<string, string[]> {
@@ -1513,18 +1221,8 @@ function detectPartnerReferences(
   };
 }
 
-function createRetrySchema() {
-  return Type.Optional(
-    Type.Object({
-      maxRetries: Type.Optional(Type.Number({ description: "Max retry count (ignored in stable profile)" })),
-      initialDelayMs: Type.Optional(Type.Number({ description: "Initial backoff delay in ms (ignored in stable profile)" })),
-      maxDelayMs: Type.Optional(Type.Number({ description: "Max backoff delay in ms (ignored in stable profile)" })),
-      multiplier: Type.Optional(Type.Number({ description: "Backoff multiplier (ignored in stable profile)" })),
-      jitter: Type.Optional(Type.String({ description: "Jitter mode: full | partial | none (ignored in stable profile)" })),
-    }),
-  );
-}
-
+// Note: toRetryOverrides is kept locally because it checks STABLE_AGENT_TEAM_RUNTIME
+// which is specific to this module. The lib version does not have this check.
 function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
   // Stable profile: ignore per-call retry tuning to avoid unpredictable fan-out.
   if (STABLE_AGENT_TEAM_RUNTIME) return undefined;
@@ -1541,13 +1239,6 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
     multiplier: typeof raw.multiplier === "number" ? raw.multiplier : undefined,
     jitter,
   };
-}
-
-function toConcurrencyLimit(value: unknown, fallback: number): number {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return fallback;
-  return Math.max(1, Math.trunc(resolved));
 }
 
 interface TeamParallelCapacityCandidate {
@@ -1712,160 +1403,22 @@ async function resolveTeamParallelCapacity(input: {
   };
 }
 
-function buildRuntimeLimitError(
-  toolName: string,
-  reasons: string[],
-  options?: {
-    waitedMs?: number;
-    timedOut?: boolean;
-  },
-): string {
-  const snapshot = getRuntimeSnapshot();
-  const waitLine =
-    options?.waitedMs === undefined
-      ? undefined
-      : `待機時間: ${options.waitedMs}ms${options.timedOut ? " (timeout)" : ""}`;
-  return [
-    `${toolName} blocked: runtime limit reached.`,
-    ...reasons.map((reason) => `- ${reason}`),
-    `現在: requests=${snapshot.totalActiveRequests}, llm=${snapshot.totalActiveLlm}`,
-    `上限: requests=${snapshot.limits.maxTotalActiveRequests}, llm=${snapshot.limits.maxTotalActiveLlm}`,
-    waitLine,
-    "ヒント: 対象数を減らすか、実行中ジョブの完了を待って再実行してください。",
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join("\n");
-}
-
-function buildRuntimeQueueWaitError(
-  toolName: string,
-  queueWait: {
-    waitedMs: number;
-    attempts: number;
-    timedOut: boolean;
-    aborted: boolean;
-    queuePosition: number;
-    queuedAhead: number;
-  },
-): string {
-  const snapshot = getRuntimeSnapshot();
-  const mode = queueWait.aborted ? "aborted" : queueWait.timedOut ? "timeout" : "blocked";
-  const queuedPreview = snapshot.queuedTools.length > 0 ? snapshot.queuedTools.join(", ") : "-";
-  return [
-    `${toolName} blocked: orchestration queue ${mode}.`,
-    `- queued_ahead: ${queueWait.queuedAhead}`,
-    `- queue_position: ${queueWait.queuePosition}`,
-    `- waited_ms: ${queueWait.waitedMs}`,
-    `- attempts: ${queueWait.attempts}`,
-    `現在: active_orchestrations=${snapshot.activeOrchestrations}, queued=${snapshot.queuedOrchestrations}`,
-    `上限: max_concurrent_orchestrations=${snapshot.limits.maxConcurrentOrchestrations}`,
-    `待機中ツール: ${queuedPreview}`,
-    "ヒント: 同時に走らせる run を減らすか、先行ジョブ完了後に再実行してください。",
-  ].join("\n");
-}
-
+// Wrapper for shared refreshRuntimeStatus with team-specific parameters
 function refreshRuntimeStatus(ctx: any): void {
-  if (!ctx?.hasUI || !ctx?.ui) return;
   const snapshot = getRuntimeSnapshot();
-
-  if (
-    snapshot.totalActiveRequests <= 0 &&
-    snapshot.totalActiveLlm <= 0 &&
-    snapshot.activeOrchestrations <= 0 &&
-    snapshot.queuedOrchestrations <= 0
-  ) {
-    ctx.ui.setStatus?.("agent-team-runtime", undefined);
-    return;
-  }
-
-  ctx.ui.setStatus?.(
+  sharedRefreshRuntimeStatus(
+    ctx,
     "agent-team-runtime",
-    [
-      `LLM実行中:${snapshot.totalActiveLlm}`,
-      `(Team:${snapshot.teamActiveAgents}/Sub:${snapshot.subagentActiveAgents})`,
-      `Req:${snapshot.totalActiveRequests}`,
-      `Queue:${snapshot.activeOrchestrations}/${snapshot.limits.maxConcurrentOrchestrations}+${snapshot.queuedOrchestrations}`,
-    ].join(" "),
+    "Team",
+    snapshot.teamActiveAgents,
+    "Sub",
+    snapshot.subagentActiveAgents,
   );
-}
-
-function startReservationHeartbeat(
-  reservation: RuntimeCapacityReservationLease,
-): () => void {
-  // 長時間実行中に予約TTLが切れないよう、定期heartbeatで延命する。
-  const intervalMs = 5_000;
-  const timer = setInterval(() => {
-    try {
-      reservation.heartbeat();
-    } catch {
-      // noop
-    }
-  }, intervalMs);
-  timer.unref?.();
-  return () => {
-    clearInterval(timer);
-  };
-}
-
-function getPaths(cwd: string): TeamPaths {
-  const baseDir = join(cwd, ".pi", "agent-teams");
-  return {
-    baseDir,
-    runsDir: join(baseDir, "runs"),
-    storageFile: join(baseDir, "storage.json"),
-  };
-}
-
-function ensureDir(path: string): void {
-  if (!existsSync(path)) {
-    mkdirSync(path, { recursive: true });
-  }
-}
-
-function ensurePaths(cwd: string): TeamPaths {
-  const paths = getPaths(cwd);
-  ensureDir(paths.baseDir);
-  ensureDir(paths.runsDir);
-  return paths;
-}
-
-function toId(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\-\s_]/g, "")
-    .replace(/[\s_]+/g, "-")
-    .replace(/\-+/g, "-")
-    .replace(/^\-+|\-+$/g, "")
-    .slice(0, 48);
-}
-
-function createRunId(): string {
-  const now = new Date();
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-    "-",
-    String(now.getHours()).padStart(2, "0"),
-    String(now.getMinutes()).padStart(2, "0"),
-    String(now.getSeconds()).padStart(2, "0"),
-  ].join("");
-  return `${stamp}-${randomBytes(3).toString("hex")}`;
 }
 
 // ============================================================================
 // Markdown-based team definitions loader
 // ============================================================================
-
-interface TeamFrontmatter {
-  id: string;
-  name: string;
-  description: string;
-  enabled: "enabled" | "disabled";
-  strategy?: "parallel" | "sequential";
-  members: TeamMemberFrontmatter[];
-}
 
 interface TeamMemberFrontmatter {
   id: string;
@@ -2355,162 +1908,6 @@ function mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinition): T
   };
 }
 
-function loadStorage(cwd: string): TeamStorage {
-  const paths = ensurePaths(cwd);
-  const nowIso = new Date().toISOString();
-  const fallback: TeamStorage = {
-    teams: createDefaultTeams(nowIso),
-    runs: [],
-    currentTeamId: "core-delivery-team",
-    defaultsVersion: TEAM_DEFAULTS_VERSION,
-  };
-
-  if (!existsSync(paths.storageFile)) {
-    saveStorage(cwd, fallback);
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(readFileSync(paths.storageFile, "utf-8")) as Partial<TeamStorage>;
-    const storage: TeamStorage = {
-      teams: Array.isArray(parsed.teams) ? parsed.teams : [],
-      runs: Array.isArray(parsed.runs) ? parsed.runs : [],
-      currentTeamId: typeof parsed.currentTeamId === "string" ? parsed.currentTeamId : undefined,
-      defaultsVersion:
-        typeof parsed.defaultsVersion === "number" && Number.isFinite(parsed.defaultsVersion)
-          ? Math.trunc(parsed.defaultsVersion)
-          : 0,
-    };
-    return ensureDefaults(storage, nowIso);
-  } catch {
-    saveStorage(cwd, fallback);
-    return fallback;
-  }
-}
-
-function saveStorage(cwd: string, storage: TeamStorage): void {
-  const paths = ensurePaths(cwd);
-  const normalized: TeamStorage = {
-    ...storage,
-    runs: storage.runs.slice(-MAX_RUNS_TO_KEEP),
-    defaultsVersion: TEAM_DEFAULTS_VERSION,
-  };
-  withFileLock(paths.storageFile, () => {
-    const merged = mergeTeamStorageWithDisk(paths.storageFile, normalized);
-    atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
-    pruneTeamRunArtifacts(paths, merged.runs);
-  });
-}
-
-function pruneTeamRunArtifacts(paths: TeamPaths, runs: TeamRunRecord[]): void {
-  let files: string[] = [];
-  try {
-    files = readdirSync(paths.runsDir);
-  } catch {
-    return;
-  }
-
-  const keep = new Set(
-    runs
-      .map((run) => basename(run.outputFile || ""))
-      .filter((name) => name.endsWith(".json")),
-  );
-  if (runs.length > 0 && keep.size === 0) {
-    return;
-  }
-
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    if (keep.has(file)) continue;
-    try {
-      unlinkSync(join(paths.runsDir, file));
-    } catch {
-      // noop
-    }
-  }
-}
-
-function mergeTeamStorageWithDisk(
-  storageFile: string,
-  next: TeamStorage,
-): TeamStorage {
-  let disk: Partial<TeamStorage> = {};
-  try {
-    if (existsSync(storageFile)) {
-      disk = JSON.parse(readFileSync(storageFile, "utf-8")) as Partial<TeamStorage>;
-    }
-  } catch {
-    disk = {};
-  }
-
-  const diskTeams = Array.isArray(disk.teams) ? disk.teams : [];
-  const nextTeams = Array.isArray(next.teams) ? next.teams : [];
-  const teamById = new Map<string, TeamDefinition>();
-  for (const team of diskTeams) {
-    if (!team || typeof team !== "object") continue;
-    if (typeof (team as { id?: unknown }).id !== "string") continue;
-    const id = (team as { id: string }).id.trim();
-    if (!id) continue;
-    teamById.set(team.id, team);
-  }
-  for (const team of nextTeams) {
-    if (!team || typeof team !== "object") continue;
-    if (typeof (team as { id?: unknown }).id !== "string") continue;
-    const id = (team as { id: string }).id.trim();
-    if (!id) continue;
-    teamById.set(team.id, team);
-  }
-  const mergedTeams = Array.from(teamById.values());
-
-  const diskRuns = Array.isArray(disk.runs) ? disk.runs : [];
-  const nextRuns = Array.isArray(next.runs) ? next.runs : [];
-  const runById = new Map<string, TeamRunRecord>();
-  for (const run of diskRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  for (const run of nextRuns) {
-    if (!run || typeof run !== "object") continue;
-    if (typeof (run as { runId?: unknown }).runId !== "string") continue;
-    const runId = (run as { runId: string }).runId.trim();
-    if (!runId) continue;
-    runById.set(run.runId, run);
-  }
-  const mergedRuns = Array.from(runById.values())
-    .sort((left, right) => {
-      const leftKey = left.finishedAt || left.startedAt || "";
-      const rightKey = right.finishedAt || right.startedAt || "";
-      return leftKey.localeCompare(rightKey);
-    })
-    .slice(-MAX_RUNS_TO_KEEP);
-
-  const candidateCurrent =
-    typeof next.currentTeamId === "string" && next.currentTeamId.trim()
-      ? next.currentTeamId
-      : typeof disk.currentTeamId === "string" && disk.currentTeamId.trim()
-        ? disk.currentTeamId
-        : undefined;
-  const currentTeamId =
-    candidateCurrent && mergedTeams.some((team) => team.id === candidateCurrent)
-      ? candidateCurrent
-      : mergedTeams[0]?.id;
-
-  const diskDefaults =
-    typeof disk.defaultsVersion === "number" && Number.isFinite(disk.defaultsVersion)
-      ? Math.trunc(disk.defaultsVersion)
-      : 0;
-
-  return {
-    teams: mergedTeams,
-    runs: mergedRuns,
-    currentTeamId,
-    defaultsVersion: Math.max(TEAM_DEFAULTS_VERSION, diskDefaults),
-  };
-}
-
 function formatTeamList(storage: TeamStorage): string {
   if (storage.teams.length === 0) {
     return "No teams found.";
@@ -2772,6 +2169,47 @@ function buildFallbackJudge(input: {
   };
 }
 
+/**
+ * Merge skill arrays following inheritance rules.
+ * - Empty array [] is treated as unspecified (ignored)
+ * - Non-empty arrays are merged with deduplication
+ */
+function mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined {
+  const hasBase = Array.isArray(base) && base.length > 0;
+  const hasOverride = Array.isArray(override) && override.length > 0;
+
+  if (!hasBase && !hasOverride) return undefined;
+  if (!hasBase) return override;
+  if (!hasOverride) return base;
+
+  const merged = [...base];
+  for (const skill of override) {
+    if (!merged.includes(skill)) {
+      merged.push(skill);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Resolve effective skills for a team member.
+ * Inheritance: teamSkills (common) -> memberSkills (individual)
+ */
+function resolveEffectiveTeamMemberSkills(
+  team: TeamDefinition,
+  member: TeamMember,
+): string[] | undefined {
+  return mergeSkillArrays(team.skills, member.skills);
+}
+
+/**
+ * Format skill list for prompt inclusion (Japanese).
+ */
+function formatTeamMemberSkillsSection(skills: string[] | undefined): string | null {
+  if (!skills || skills.length === 0) return null;
+  return skills.map((skill) => `- ${skill}`).join("\n");
+}
+
 function buildTeamMemberPrompt(input: {
   team: TeamDefinition;
   member: TeamMember;
@@ -2790,6 +2228,16 @@ function buildTeamMemberPrompt(input: {
   lines.push(`あなたの役割: ${input.member.role} (${input.member.id})`);
   lines.push(`役割目標: ${input.member.description}`);
   lines.push(`現在フェーズ: ${phaseLabel}`);
+
+  // Resolve and include skills (team common + member individual)
+  const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member);
+  const skillsSection = formatTeamMemberSkillsSection(effectiveSkills);
+  if (skillsSection) {
+    lines.push("");
+    lines.push("割り当てスキル:");
+    lines.push(skillsSection);
+  }
+
   lines.push("");
   lines.push("リードからのタスク:");
   lines.push(input.task);
@@ -2842,131 +2290,9 @@ async function runPiPrintMode(input: {
   onStdoutChunk?: (chunk: string) => void;
   onStderrChunk?: (chunk: string) => void;
 }): Promise<PrintCommandResult> {
-  if (input.signal?.aborted) {
-    throw new Error("agent team run aborted");
-  }
-
-  const args = ["-p", "--no-extensions"];
-
-  if (input.provider) {
-    args.push("--provider", input.provider);
-  }
-  if (input.model) {
-    args.push("--model", input.model);
-  }
-
-  args.push(input.prompt);
-
-  return await new Promise<PrintCommandResult>((resolvePromise, rejectPromise) => {
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let settled = false;
-    let forceKillTimer: NodeJS.Timeout | undefined;
-    const startedAt = Date.now();
-
-    const child = spawn("pi", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
-
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        try {
-          child.kill(sig);
-        } catch {
-          // noop
-        }
-      }
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), 500);
-      finish(() => rejectPromise(new Error("agent team run aborted")));
-    };
-
-    const timeoutEnabled = input.timeoutMs > 0;
-    const timeout = timeoutEnabled
-      ? setTimeout(() => {
-          timedOut = true;
-          killSafely("SIGTERM");
-          if (forceKillTimer) {
-            clearTimeout(forceKillTimer);
-          }
-          forceKillTimer = setTimeout(() => killSafely("SIGKILL"), 500);
-        }, input.timeoutMs)
-      : undefined;
-
-    const cleanup = () => {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-      }
-      input.signal?.removeEventListener("abort", onAbort);
-    };
-
-    input.signal?.addEventListener("abort", onAbort, { once: true });
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
-      input.onStdoutChunk?.(text);
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
-      input.onStderrChunk?.(text);
-    });
-
-    child.on("error", (error) => {
-      finish(() => rejectPromise(error));
-    });
-
-    child.on("close", (code) => {
-      finish(() => {
-        if (timedOut) {
-          rejectPromise(new Error(`agent team run timed out after ${input.timeoutMs}ms`));
-          return;
-        }
-
-        if (code !== 0) {
-          rejectPromise(new Error(stderr.trim() || `agent team run exited with code ${code}`));
-          return;
-        }
-
-        const output = stdout.trim();
-        if (!output) {
-          const stderrMessage = trimForError(stderr);
-          rejectPromise(
-            new Error(
-              stderrMessage
-                ? `agent team member returned empty output; stderr=${stderrMessage}`
-                : "agent team member returned empty output",
-            ),
-          );
-          return;
-        }
-
-        resolvePromise({
-          output,
-          latencyMs: Date.now() - startedAt,
-        });
-      });
-    });
+  return sharedRunPiPrintMode({
+    ...input,
+    entityLabel: "agent team member",
   });
 }
 
@@ -4235,10 +3561,10 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               ),
             )
           : 1;
-      const adaptivePenaltyBefore = getAdaptivePenalty();
+      const adaptivePenaltyBefore = adaptivePenalty.get();
       const effectiveMemberParallelism =
         strategy === "parallel"
-          ? applyAdaptiveParallelLimit(baselineMemberParallelism)
+          ? adaptivePenalty.applyLimit(baselineMemberParallelism)
           : 1;
       const capacityResolution = await resolveTeamParallelCapacity({
         requestedTeamParallelism: 1,
@@ -4250,7 +3576,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         signal,
       });
       if (!capacityResolution.allowed) {
-        raiseAdaptivePenalty("capacity");
+        adaptivePenalty.raise("capacity");
         const capacityOutcome: RunOutcomeSignal = capacityResolution.aborted
           ? { outcomeCode: "CANCELLED", retryRecommended: false }
           : capacityResolution.timedOut
@@ -4281,7 +3607,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             appliedMemberParallelism: capacityResolution.appliedMemberParallelism,
             parallelismReduced: capacityResolution.reduced,
             adaptivePenaltyBefore,
-            adaptivePenaltyAfter: getAdaptivePenalty(),
+            adaptivePenaltyAfter: adaptivePenalty.get(),
             requestedMemberCount: activeMembers.length,
             failedMemberRetryRounds,
             queuedAhead: queueWait.queuedAhead,
@@ -4294,7 +3620,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         };
       }
       if (!capacityResolution.reservation) {
-        raiseAdaptivePenalty("capacity");
+        adaptivePenalty.raise("capacity");
         return {
           content: [
             {
@@ -4320,7 +3646,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
       try {
-        const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_TIMEOUT_MS);
+        const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
         const liveMonitor = createAgentTeamLiveMonitor(ctx, {
           title: `Agent Team Run (detailed live view: ${team.id})`,
           items: activeMembers.map((member) => ({
@@ -4425,12 +3751,12 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             return classifyPressureError(result.error || "") !== "other";
           }).length;
           if (pressureFailures > 0) {
-            raiseAdaptivePenalty("rate_limit");
+            adaptivePenalty.raise("rate_limit");
           } else {
-            lowerAdaptivePenalty();
+            adaptivePenalty.lower();
           }
           const teamOutcome = resolveTeamMemberAggregateOutcome(memberResults);
-          const adaptivePenaltyAfter = getAdaptivePenalty();
+          const adaptivePenaltyAfter = adaptivePenalty.get();
 
           return {
             content: [
@@ -4485,9 +3811,9 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           const errorMessage = toErrorMessage(error);
           const pressure = classifyPressureError(errorMessage);
           if (pressure !== "other") {
-            raiseAdaptivePenalty(pressure);
+            adaptivePenalty.raise(pressure);
           }
-          const adaptivePenaltyAfter = getAdaptivePenalty();
+          const adaptivePenaltyAfter = adaptivePenalty.get();
           liveMonitor?.appendBroadcastEvent(`team run failed: ${normalizeForSingleLine(errorMessage, 200)}`);
           for (const member of activeMembers) {
             liveMonitor?.markFinished(
@@ -4672,7 +3998,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         params.failedMemberRetryRounds,
         DEFAULT_FAILED_MEMBER_RETRY_ROUNDS,
       );
-      const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_TIMEOUT_MS);
+      const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
       const snapshot = getRuntimeSnapshot();
       const configuredTeamParallelLimit = toConcurrencyLimit(snapshot.limits.maxParallelTeamsPerRun, 1);
       const baselineTeamParallelism = Math.max(
@@ -4683,8 +4009,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           Math.max(1, snapshot.limits.maxTotalActiveRequests),
         ),
       );
-      const adaptivePenaltyBefore = getAdaptivePenalty();
-      const effectiveTeamParallelism = applyAdaptiveParallelLimit(baselineTeamParallelism);
+      const adaptivePenaltyBefore = adaptivePenalty.get();
+      const effectiveTeamParallelism = adaptivePenalty.applyLimit(baselineTeamParallelism);
       const configuredMemberParallelLimit = toConcurrencyLimit(
         snapshot.limits.maxParallelTeammatesPerTeam,
         1,
@@ -4710,7 +4036,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           : 1;
       const effectiveMemberParallelism =
         strategy === "parallel"
-          ? applyAdaptiveParallelLimit(baselineMemberParallelism)
+          ? adaptivePenalty.applyLimit(baselineMemberParallelism)
           : 1;
       const capacityResolution = await resolveTeamParallelCapacity({
         requestedTeamParallelism: effectiveTeamParallelism,
@@ -4725,7 +4051,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         signal,
       });
       if (!capacityResolution.allowed) {
-        raiseAdaptivePenalty("capacity");
+        adaptivePenalty.raise("capacity");
         const capacityOutcome: RunOutcomeSignal = capacityResolution.aborted
           ? { outcomeCode: "CANCELLED", retryRecommended: false }
           : capacityResolution.timedOut
@@ -4760,7 +4086,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             appliedMemberParallelism: capacityResolution.appliedMemberParallelism,
             parallelismReduced: capacityResolution.reduced,
             adaptivePenaltyBefore,
-            adaptivePenaltyAfter: getAdaptivePenalty(),
+            adaptivePenaltyAfter: adaptivePenalty.get(),
             requestedTeamCount: enabledTeams.length,
             failedMemberRetryRounds,
             queuedAhead: queueWait.queuedAhead,
@@ -4773,7 +4099,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         };
       }
       if (!capacityResolution.reservation) {
-        raiseAdaptivePenalty("capacity");
+        adaptivePenalty.raise("capacity");
         return {
           content: [
             {
@@ -5042,12 +4368,12 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           return count + memberPressure + teamPressure;
         }, 0);
         if (pressureFailures > 0) {
-          raiseAdaptivePenalty("rate_limit");
+          adaptivePenalty.raise("rate_limit");
         } else {
-          lowerAdaptivePenalty();
+          adaptivePenalty.lower();
         }
         const parallelOutcome = resolveTeamParallelRunOutcome(results);
-        const adaptivePenaltyAfter = getAdaptivePenalty();
+        const adaptivePenaltyAfter = adaptivePenalty.get();
 
         const lines: string[] = [];
         lines.push(`Parallel agent team run completed (${results.length} teams, ${totalTeammates} teammates).`);
@@ -5165,7 +4491,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             type: "text" as const,
             text: formatRuntimeStatusLine({
               storedRuns: storage.runs.length,
-              adaptivePenalty: getAdaptivePenalty(),
+              adaptivePenalty: adaptivePenalty.get(),
               adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
             }),
           },
@@ -5188,7 +4514,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           activeOrchestrations: snapshot.activeOrchestrations,
           queuedOrchestrations: snapshot.queuedOrchestrations,
           queuedTools: snapshot.queuedTools,
-          adaptiveParallelPenalty: getAdaptivePenalty(),
+          adaptiveParallelPenalty: adaptivePenalty.get(),
         },
       };
     },
@@ -5243,7 +4569,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           customType: "agent-team-status",
           content: formatRuntimeStatusLine({
             storedRuns: storage.runs.length,
-            adaptivePenalty: getAdaptivePenalty(),
+            adaptivePenalty: adaptivePenalty.get(),
             adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
           }),
           display: true,
@@ -5335,9 +4661,4 @@ ${PLAN_MODE_WARNING}`;
       systemPrompt: `${event.systemPrompt}${finalPrompt}`,
     };
   });
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }

@@ -6,9 +6,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
-import { spawn } from "node:child_process";
-
-type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel } from "../lib";
+import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 type TraceMode = "off" | "summary" | "verbose";
 
 interface RSAConfig {
@@ -876,23 +875,6 @@ function normalizeTraceMode(
   return { ok: false, error: "traceMode must be one of: off, summary, verbose." };
 }
 
-function toBoundedInteger(
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-  field: string,
-): { ok: true; value: number } | { ok: false; error: string } {
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved) || !Number.isInteger(resolved)) {
-    return { ok: false, error: `${field} must be an integer.` };
-  }
-  if (resolved < min || resolved > max) {
-    return { ok: false, error: `${field} must be in [${min}, ${max}].` };
-  }
-  return { ok: true, value: resolved };
-}
-
 function parseCommandArgs(args: string | undefined): ParsedCommandArgs {
   const raw = (args ?? "").trim();
   if (!raw || /^(-h|--help|help)$/i.test(raw)) {
@@ -989,104 +971,17 @@ async function callModelViaPi(
   signal: AbortSignal | undefined,
   onChunk?: (chunk: string) => void,
 ): Promise<string> {
-  const args = ["-p", "--no-extensions", "--provider", model.provider, "--model", model.id];
-
-  if (model.thinkingLevel) {
-    args.push("--thinking", model.thinkingLevel);
-  }
-
-  args.push(prompt);
-
-  return await new Promise<string>((resolve, reject) => {
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let settled = false;
-
-    const child = spawn("pi", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      fn();
-    };
-
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (!child.killed) {
-        try {
-          child.kill(sig);
-        } catch {
-          // noop
-        }
-      }
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), 500);
-      finish(() => reject(new Error("RSA aborted")));
-    };
-
-    // timeoutMs <= 0 means "no per-call timeout". User cancellation still aborts the process.
-    const timeoutEnabled = timeoutMs > 0;
-    const timeout = timeoutEnabled
-      ? setTimeout(() => {
-          timedOut = true;
-          killSafely("SIGTERM");
-          setTimeout(() => killSafely("SIGKILL"), 500);
-        }, timeoutMs)
-      : undefined;
-
-    const cleanup = () => {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      signal?.removeEventListener("abort", onAbort);
-    };
-
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
-      onChunk?.(text);
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
-    });
-
-    child.on("error", (error) => {
-      finish(() => reject(error));
-    });
-
-    child.on("close", (code) => {
-      finish(() => {
-        if (timedOut) {
-          reject(new Error(`pi -p timed out after ${timeoutMs}ms`));
-          return;
-        }
-
-        if (code !== 0) {
-          const err = stderr.trim() || `exit code ${code}`;
-          reject(new Error(`pi -p failed: ${err}`));
-          return;
-        }
-
-        const output = stdout.trim();
-        if (!output) {
-          reject(new Error("pi -p returned empty output."));
-          return;
-        }
-
-        resolve(output);
-      });
-    });
+  return sharedCallModelViaPi({
+    model: {
+      provider: model.provider,
+      id: model.id,
+      thinkingLevel: model.thinkingLevel,
+    },
+    prompt,
+    timeoutMs,
+    signal,
+    onChunk,
+    entityLabel: "RSA",
   });
 }
 
@@ -1480,12 +1375,6 @@ function toPreview(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars)}...`;
 }
 
-function formatDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "0ms";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
 function formatTimeoutLabel(timeoutMs: number): string {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return "disabled";
   return `${timeoutMs}ms`;
@@ -1495,9 +1384,4 @@ function throwIfAborted(signal: AbortSignal | undefined) {
   if (signal?.aborted) {
     throw new Error("RSA aborted");
   }
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }

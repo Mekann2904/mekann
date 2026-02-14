@@ -190,6 +190,17 @@ README、運用ランブック、例示、簡潔な変更サマリーのため�
 | `organization-designer` | Organization Designer | ファイルタイプ、目的、日付に基づいて論理的なグループ化を決定し、新しいフォルダ構造を提案 |
 | `cleanup-executor` | Cleanup Executor | 承認された計画を実行し、フォルダを作成してファイルを移動・名前変更し、すべての操作をログに記録 |
 
+### mermaid-diagram-team
+
+コード視覚化タスクフォース。シーケンス図、フローチャート等のMermaid図を厳密なコード整合性で作成・検証する。開発者とLLMの双方が理解できる視覚化を実現。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `code-analyzer` | Code Analyzer | 対象コードの構造、制御フロー、データフロー、インターフェースを詳細に分析し、図解に必要な情報を抽出 |
+| `diagram-author` | Diagram Author | 解析結果に基づきMermaid記法でシーケンス図、フローチャート等を作成。可読性と正確性のバランスを取る |
+| `syntax-validator` | Syntax Validator | mermaid-cliによるstdin/stdoutパイプライン検証で構文正確性を確認。エラーを特定・修正 |
+| `consistency-verifier` | Consistency Verifier | Mermaid図と元のコードの厳密な一致を検証。欠落、過剰、歪曲がないことを保証 |
+
 ## パラメータ/オプション
 
 ### agent_team_create
@@ -465,6 +476,7 @@ Agent Team / Subagent runtime
 | 包括的なコードレビュー | `code-excellence-review-team` |
 | 設計発見と要件分析 | `design-discovery-team` |
 | ファイル・フォルダ整理 | `file-organizer-team` |
+| コード視覚化・Mermaid図作成 | `mermaid-diagram-team` |
 
 ### 並列 vs 逐次
 

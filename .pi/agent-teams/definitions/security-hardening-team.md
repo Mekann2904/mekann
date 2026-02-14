@@ -4,6 +4,9 @@ name: Security Hardening Team
 description: セキュリティに特化したタスクフォース。脅威分析、認証・認可チェック、依存関係リスク監査、パッチレビューを実施し、包括的なセキュリティを確立した上で最終的な修正計画を策定する。Phase 1で攻撃面マッピング、Phase 2で認証・認可監査、Phase 3で修正レビューを行い、三人で協調して脆弱性を排除する。
 enabled: enabled
 strategy: parallel
+skills:
+  - vuln-scanner          # チーム共通: 脆弱性スキャン
+  - secret-detector       # チーム共通: 機密情報検出
 members:
   - id: threat-modeler
     role: Threat Modeler
@@ -13,10 +16,14 @@ members:
     role: Auth Auditor
     description: Phase 2の認証・認可監査を担当。認証、認可、セッション境界の監査を行い、回避リスクを特定する。認証バイパス、権限昇格、セッションハイジャックの可能性を検査する。
     enabled: true
+    skills:
+      - sast-analyzer     # 静的セキュリティテスト分析
   - id: security-reviewer
     role: Security Fix Reviewer
     description: Phase 3の修正レビューを担当。提案された修正措置について網羅性とリグレッションの観点からレビューを行う。修正が完全で、新たな脆弱性を生み出していないかを確認する。
     enabled: true
+    skills:
+      - sast-analyzer     # 静的セキュリティテスト分析
 ---
 
 # Security Hardening Team
