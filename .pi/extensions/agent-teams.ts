@@ -168,14 +168,38 @@ const COMMUNICATION_CONTEXT_FIELD_LIMIT = 180;
 const COMMUNICATION_CONTEXT_OTHER_LIMIT = 4;
 const DEFAULT_FAILED_MEMBER_RETRY_ROUNDS = 0;
 const MAX_FAILED_MEMBER_RETRY_ROUNDS = 2;
-const STABLE_AGENT_TEAM_RUNTIME = true;
-const ADAPTIVE_PARALLEL_MAX_PENALTY = STABLE_AGENT_TEAM_RUNTIME ? 0 : 3;
-const ADAPTIVE_PARALLEL_DECAY_MS = 8 * 60 * 1000;
-const STABLE_AGENT_TEAM_MAX_RETRIES = 4;
-const STABLE_AGENT_TEAM_INITIAL_DELAY_MS = 1_000;
-const STABLE_AGENT_TEAM_MAX_DELAY_MS = 30_000;
-const STABLE_AGENT_TEAM_MAX_RATE_LIMIT_RETRIES = 6;
-const STABLE_AGENT_TEAM_MAX_RATE_LIMIT_WAIT_MS = 90_000;
+
+// Use unified stable runtime constants from lib/agent-common.ts
+import {
+  STABLE_RUNTIME_PROFILE,
+  ADAPTIVE_PARALLEL_MAX_PENALTY as SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,
+  ADAPTIVE_PARALLEL_DECAY_MS as SHARED_ADAPTIVE_PARALLEL_DECAY_MS,
+  STABLE_MAX_RETRIES,
+  STABLE_INITIAL_DELAY_MS,
+  STABLE_MAX_DELAY_MS,
+  STABLE_MAX_RATE_LIMIT_RETRIES,
+  STABLE_MAX_RATE_LIMIT_WAIT_MS,
+  TEAM_MEMBER_CONFIG,
+  buildFailureSummary as sharedBuildFailureSummary,
+} from "../lib/agent-common.js";
+
+import {
+  isRetryableTeamMemberError as sharedIsRetryableTeamMemberError,
+  resolveTeamFailureOutcome as sharedResolveTeamFailureOutcome,
+  resolveTeamMemberAggregateOutcome as sharedResolveTeamMemberAggregateOutcome,
+  trimErrorMessage as sharedTrimErrorMessage,
+  buildDiagnosticContext as sharedBuildDiagnosticContext,
+} from "../lib/agent-errors.js";
+
+// Local aliases for backward compatibility
+const STABLE_AGENT_TEAM_RUNTIME = STABLE_RUNTIME_PROFILE;
+const ADAPTIVE_PARALLEL_MAX_PENALTY = SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY;
+const ADAPTIVE_PARALLEL_DECAY_MS = SHARED_ADAPTIVE_PARALLEL_DECAY_MS;
+const STABLE_AGENT_TEAM_MAX_RETRIES = STABLE_MAX_RETRIES;
+const STABLE_AGENT_TEAM_INITIAL_DELAY_MS = STABLE_INITIAL_DELAY_MS;
+const STABLE_AGENT_TEAM_MAX_DELAY_MS = STABLE_MAX_DELAY_MS;
+const STABLE_AGENT_TEAM_MAX_RATE_LIMIT_RETRIES = STABLE_MAX_RATE_LIMIT_RETRIES;
+const STABLE_AGENT_TEAM_MAX_RATE_LIMIT_WAIT_MS = STABLE_MAX_RATE_LIMIT_WAIT_MS;
 
 const runtimeState = getSharedRuntimeState().teams;
 const adaptivePenalty = createAdaptivePenaltyController({
