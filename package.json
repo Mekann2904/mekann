@@ -10,7 +10,11 @@
     "@sinclair/typebox": "^0.32.0"
   },
   "devDependencies": {
+    "patch-package": "^8.0.0",
     "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "postinstall": "patch-package"
   },
   "pi": {
     "extensions": [
@@ -26,6 +30,7 @@
       "./.pi/extensions/plan.ts",
       "./.pi/extensions/question.ts",
       "./.pi/extensions/rsa.ts",
+      "./.pi/extensions/skill-inspector.ts",
       "./.pi/extensions/subagents.ts",
       "./.pi/extensions/ul-dual-mode.ts",
       "./.pi/extensions/usage-tracker.ts"

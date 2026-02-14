@@ -1,8 +1,8 @@
 ---
 name: research-statistics
 description: 統合統計分析システム。頻度論的統計（検定選択、回帰分析、時系列）、ベイズ推論（MCMC、階層モデル）、生存分析（Cox、RSF）、APA形式報告を統合。データに適した手法の選択、仮定チェック、効果量計算、不確実性の定量化まで、学術研究に必要な統計分析を包括的にサポート。
-allowed-tools: [Read, Write, Edit, Bash]
-license: MIT license
+allowed-tools: Read Write Edit Bash
+license: MIT
 metadata:
   skill-author: "Mekann"
   reference: "https://github.com/K-Dense-AI/claude-scientific-skills"

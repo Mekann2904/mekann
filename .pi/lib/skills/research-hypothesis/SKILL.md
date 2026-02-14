@@ -1,8 +1,8 @@
 ---
 name: research-hypothesis
 description: 体系的な仮説生成・検証システム。科学的観察からの仮説定式化、LLM駆動の自動仮説テスト（Hypogenic）、創造的研究アイデア生成を統合。科学的方法に基づく構造化された仮説構築、予測の生成、検証実験の設計をサポート。観察から実験可能な仮説への変換プロセスを全面的に支援。
-allowed-tools: [Read, Write, Edit, Bash]
-license: MIT license
+allowed-tools: Read Write Edit Bash
+license: MIT
 metadata:
   skill-author: "Mekann"
   reference: "https://github.com/K-Dense-AI/claude-scientific-skills"

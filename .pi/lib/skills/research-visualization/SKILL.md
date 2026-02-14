@@ -1,8 +1,8 @@
 ---
 name: research-visualization
 description: 統合可視化システム。静的プロット（matplotlib/seaborn）、インタラクティブ可視化（plotly）、出版品質フィギュア（Nature/Science/Cell対応）を統合。マルチパネルレイアウト、統計注釈、カラーブラインドセーフパレット、ジャーナル固有のフォーマットに対応。探索的データ可視化から論文投稿用図まで包括的にサポート。
-allowed-tools: [Read, Write, Edit, Bash]
-license: MIT license
+allowed-tools: Read Write Edit Bash
+license: MIT
 metadata:
   skill-author: "Mekann"
   reference: "https://github.com/K-Dense-AI/claude-scientific-skills"

@@ -84,7 +84,6 @@ import {
   trimForError,
   buildRateLimitKey,
   buildTraceTaskId,
-  normalizeTimeoutMs,
   createRetrySchema,
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
@@ -111,14 +110,39 @@ interface PrintCommandResult {
 
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;
-const STABLE_SUBAGENT_RUNTIME = true;
-const ADAPTIVE_PARALLEL_MAX_PENALTY = STABLE_SUBAGENT_RUNTIME ? 0 : 3;
-const ADAPTIVE_PARALLEL_DECAY_MS = 8 * 60 * 1000;
-const STABLE_SUBAGENT_MAX_RETRIES = 4;
-const STABLE_SUBAGENT_INITIAL_DELAY_MS = 1_000;
-const STABLE_SUBAGENT_MAX_DELAY_MS = 30_000;
-const STABLE_SUBAGENT_MAX_RATE_LIMIT_RETRIES = 6;
-const STABLE_SUBAGENT_MAX_RATE_LIMIT_WAIT_MS = 90_000;
+
+// Use unified stable runtime constants from lib/agent-common.ts
+import {
+  STABLE_RUNTIME_PROFILE,
+  ADAPTIVE_PARALLEL_MAX_PENALTY as SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,
+  ADAPTIVE_PARALLEL_DECAY_MS as SHARED_ADAPTIVE_PARALLEL_DECAY_MS,
+  STABLE_MAX_RETRIES,
+  STABLE_INITIAL_DELAY_MS,
+  STABLE_MAX_DELAY_MS,
+  STABLE_MAX_RATE_LIMIT_RETRIES,
+  STABLE_MAX_RATE_LIMIT_WAIT_MS,
+  SUBAGENT_CONFIG,
+  buildFailureSummary as sharedBuildFailureSummary,
+} from "../lib/agent-common.js";
+
+import {
+  isRetryableSubagentError as sharedIsRetryableSubagentError,
+  resolveSubagentFailureOutcome as sharedResolveSubagentFailureOutcome,
+  resolveSubagentParallelOutcome as sharedResolveSubagentParallelOutcome,
+  trimErrorMessage as sharedTrimErrorMessage,
+  buildDiagnosticContext as sharedBuildDiagnosticContext,
+} from "../lib/agent-errors.js";
+
+// Local aliases for backward compatibility
+const STABLE_SUBAGENT_RUNTIME = STABLE_RUNTIME_PROFILE;
+const ADAPTIVE_PARALLEL_MAX_PENALTY = SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY;
+const ADAPTIVE_PARALLEL_DECAY_MS = SHARED_ADAPTIVE_PARALLEL_DECAY_MS;
+const STABLE_SUBAGENT_MAX_RETRIES = STABLE_MAX_RETRIES;
+const STABLE_SUBAGENT_INITIAL_DELAY_MS = STABLE_INITIAL_DELAY_MS;
+const STABLE_SUBAGENT_MAX_DELAY_MS = STABLE_MAX_DELAY_MS;
+const STABLE_SUBAGENT_MAX_RATE_LIMIT_RETRIES = STABLE_MAX_RATE_LIMIT_RETRIES;
+const STABLE_SUBAGENT_MAX_RATE_LIMIT_WAIT_MS = STABLE_MAX_RATE_LIMIT_WAIT_MS;
+
 const DEFAULT_DIRECT_WRITE_CONFIRM_WINDOW_MS = 60_000;
 
 const runtimeState = getSharedRuntimeState().subagents;
@@ -176,18 +200,49 @@ interface SubagentLiveItem {
   stderrEndsWithNewline: boolean;
 }
 
-interface SubagentLiveMonitorController {
+// ISP-compliant interfaces: split by responsibility
+// Clients can depend only on the interfaces they actually use.
+
+/**
+ * Lifecycle operations for marking agent execution states.
+ * Used by code that only needs to track start/finish transitions.
+ */
+interface SubagentMonitorLifecycle {
   markStarted: (agentId: string) => void;
-  appendChunk: (agentId: string, stream: LiveStreamView, chunk: string) => void;
   markFinished: (
     agentId: string,
     status: "completed" | "failed",
     summary: string,
     error?: string,
   ) => void;
+}
+
+/**
+ * Stream output operations for appending stdout/stderr chunks.
+ * Used by code that only needs to handle output streaming.
+ */
+interface SubagentMonitorStream {
+  appendChunk: (agentId: string, stream: LiveStreamView, chunk: string) => void;
+}
+
+/**
+ * Resource cleanup and termination operations.
+ * Used by code that only needs to manage monitor lifecycle.
+ */
+interface SubagentMonitorResource {
   close: () => void;
   wait: () => Promise<void>;
 }
+
+/**
+ * Full monitor controller combining all capabilities.
+ * Extends partial interfaces to maintain backward compatibility.
+ * Clients should use narrower interfaces when possible.
+ */
+interface SubagentLiveMonitorController
+  extends SubagentMonitorLifecycle,
+    SubagentMonitorStream,
+    SubagentMonitorResource {}
 
 function renderSubagentLiveView(input: {
   title: string;
@@ -1647,7 +1702,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
         try {
-          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
+          const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: "Subagent Run (detailed live view)",
             items: [{ id: agent.id, name: agent.name }],
@@ -1953,7 +2008,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
         try {
-          const timeoutMs = normalizeTimeoutMs(params.timeoutMs, DEFAULT_AGENT_TIMEOUT_MS);
+          const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: `Subagent Run Parallel (detailed live view: ${activeAgents.length} agents)`,
             items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),

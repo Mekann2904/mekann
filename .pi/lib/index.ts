@@ -112,6 +112,48 @@ export {
 // Runtime error builders (Layer 1)
 export { resolveEffectiveTimeoutMs } from "./runtime-error-builders.js";
 
+// Agent common utilities (Layer 1)
+export {
+  STABLE_RUNTIME_PROFILE,
+  ADAPTIVE_PARALLEL_MAX_PENALTY,
+  ADAPTIVE_PARALLEL_DECAY_MS,
+  STABLE_MAX_RETRIES,
+  STABLE_INITIAL_DELAY_MS,
+  STABLE_MAX_DELAY_MS,
+  STABLE_MAX_RATE_LIMIT_RETRIES,
+  STABLE_MAX_RATE_LIMIT_WAIT_MS,
+  type EntityType,
+  type EntityConfig,
+  SUBAGENT_CONFIG,
+  TEAM_MEMBER_CONFIG,
+  type NormalizedEntityOutput,
+  type PickFieldCandidateOptions,
+  pickFieldCandidate,
+  pickSummaryCandidate,
+  pickClaimCandidate,
+  type NormalizeEntityOutputOptions,
+  normalizeEntityOutput,
+  isEmptyOutputFailureMessage,
+  buildFailureSummary,
+  resolveTimeoutWithEnv,
+} from "./agent-common.js";
+
+// Agent error utilities (Layer 1)
+export {
+  isRetryableEntityError,
+  isRetryableSubagentError,
+  isRetryableTeamMemberError,
+  resolveFailureOutcome,
+  resolveSubagentFailureOutcome,
+  resolveTeamFailureOutcome,
+  type EntityResultItem,
+  resolveAggregateOutcome,
+  resolveSubagentParallelOutcome,
+  resolveTeamMemberAggregateOutcome,
+  trimErrorMessage,
+  buildDiagnosticContext,
+} from "./agent-errors.js";
+
 // Storage base utilities (Layer 2)
 export {
   type HasId,

@@ -11,7 +11,7 @@ related: [docs/README.md, docs/01-getting-started/01-quick-start.md]
 
 piコーディングエージェント用の拡張機能コレクション。エージェントオーケストレーション、インタラクティブツール、自律タスク実行、推論スケーリング機能を提供します。
 
-## 🚀 クイックスタート
+## クイックスタート
 
 ```bash
 # piのインストール
@@ -53,15 +53,15 @@ pi update
 pi remove https://github.com/Mekann2904/mekann
 ```
 
-## 📖 あなたは誰ですか？
+## あなたは誰ですか？
 
 | 役割 | スタート | 目的 |
 |------|---------|------|
-| **🟢 新規ユーザー** | [Getting Started](docs/01-getting-started/) | 5分で始めるインストールと基本操作 |
-| **📖 日常ユーザー** | [User Guide](docs/02-user-guide/) | 拡張機能の詳細な使い方 |
-| **🔧 開発者** | [Developer Guide](docs/03-development/) | 拡張機能開発とAPIリファレンス |
+| **新規ユーザー** | [Getting Started](docs/01-getting-started/) | 5分で始めるインストールと基本操作 |
+| **日常ユーザー** | [User Guide](docs/02-user-guide/) | 拡張機能の詳細な使い方 |
+| **開発者** | [Developer Guide](docs/03-development/) | 拡張機能開発とAPIリファレンス |
 
-## ✨ 拡張機能一覧
+## 拡張機能一覧
 
 ### コア拡張機能
 
@@ -161,7 +161,7 @@ pi remove https://github.com/Mekann2904/mekann
 
 詳細は [`.pi/docs/skill-guide.md`](.pi/docs/skill-guide.md) を参照してください。
 
-## 📁 プロジェクト構造
+## プロジェクト構造
 
 ```
 mekann/
@@ -241,7 +241,7 @@ mekann/
 
 > **注**: 詳細な拡張機能ドキュメントは現在順次作成中です。すべての拡張機能の概要については [拡張機能ガイド](docs/02-user-guide/01-extensions.md) を参照してください。
 
-## 📚 ドキュメント
+## ドキュメント
 
 すべてのドキュメントは [docs/](docs/) にあります。
 
@@ -252,7 +252,7 @@ mekann/
 - [Reference](docs/04-reference/) - 設定とトラブルシューティング
 - [Meta](docs/05-meta/) - 変更履歴、ロードマップ、ドキュメントポリシー
 
-## 🔧 前提条件
+## 前提条件
 
 - **Node.js v20.18.1以上** - piと依存関係の実行要件
 - **ターミナル実行環境**
@@ -261,7 +261,7 @@ mekann/
 
 詳しくは [インストールガイド](docs/01-getting-started/02-installation.md) を参照してください。
 
-## 🔑 主要機能
+## 主要機能
 
 ### 利用可能なコマンド
 
@@ -299,7 +299,7 @@ mekann/
 | | `context-usage` | コンテキスト使用量表示 |
 | | `skill_status` | スキル割り当て状況表示 |
 
-## 🛡️ Runtime Load Guard
+## Runtime Load Guard
 
 2026-02-11 以降、`subagent_run` / `subagent_run_parallel` / `agent_team_run` / `agent_team_run_parallel` には実行上限ガードが実装されています。
 
@@ -337,7 +337,7 @@ PI_AGENT_CAPACITY_POLL_MS=250        # ポーリング間隔（デフォルト25
 
 上限到達時は即失敗ではなく、一定時間まで順番待ちします（待機後も空かなければ失敗）。
 
-## 🤝 貢献
+## 貢献
 
 貢献を歓迎します！開発ガイドは [Developer Guide](docs/03-development/) を参照してください。
 
@@ -387,7 +387,7 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 
 > **現在、12の定義済みチームが提供されています。**
 
-## 🔍 プロジェクトの特徴
+## プロジェクトの特徴
 
 ### 完全な拡張機能セット
 
@@ -412,7 +412,7 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 - エージェント実行履歴のログ記録
 - コンテキスト使用量の可視化
 
-## 📄 ライセンス
+## ライセンス
 
 MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照してください
 
@@ -438,7 +438,7 @@ v0.1.0からの変更点:
 
 初期リリース - pi拡張機能コレクション
 
-## 🔗 リンク
+## リンク
 
 - [GitHub Repository](https://github.com/Mekann2904/mekann)
 - [pi Documentation](https://github.com/badlogic/pi-mono)
