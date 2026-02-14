@@ -244,7 +244,20 @@ function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
   return `[UL_MODE] 委任優先で実行。${goalHint}\n\nタスク:\n${task}`;
 }
 
+// ポリシーキャッシュ（4通りの組み合わせのみ）
+const ulPolicyCache = new Map<string, string>();
+
 function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
+  const key = `${sessionWide}:${goalLoopMode}`;
+  const cached = ulPolicyCache.get(key);
+  if (cached) return cached;
+  
+  const policy = buildUlPolicyString(sessionWide, goalLoopMode);
+  ulPolicyCache.set(key, policy);
+  return policy;
+}
+
+function buildUlPolicyString(sessionWide: boolean, goalLoopMode: boolean): string {
   const mode = sessionWide ? "UL SESSION" : "UL";
   const scope = sessionWide ? "session is in" : "turn is in";
   
