@@ -231,6 +231,7 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
     let stderr = "";
     let timedOut = false;
     let settled = false;
+    let forceKillTimer: NodeJS.Timeout | undefined;
 
     const child = spawn("pi", args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -256,7 +257,10 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
 
     const onAbort = () => {
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
+      }
+      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
       finish(() => rejectPromise(new Error(`${entityLabel} aborted`)));
     };
 
@@ -266,13 +270,19 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
       ? setTimeout(() => {
           timedOut = true;
           killSafely("SIGTERM");
-          setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+          if (forceKillTimer) {
+            clearTimeout(forceKillTimer);
+          }
+          forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
         }, timeoutMs)
       : undefined;
 
     const cleanup = () => {
       if (timeout) {
         clearTimeout(timeout);
+      }
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
       }
       signal?.removeEventListener("abort", onAbort);
     };

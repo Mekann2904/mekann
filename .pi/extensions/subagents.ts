@@ -2301,9 +2301,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     const storage = loadStorage(ctx.cwd);
     saveStorage(ctx.cwd, storage);
+    // Reset delegation state for new session to prevent cross-session contamination
     delegationState.delegatedThisRequest = false;
     delegationState.directWriteConfirmedThisRequest = false;
     delegationState.pendingDirectWriteConfirmUntilMs = 0;
+    delegationState.sessionDelegationCalls = 0;
     resetRuntimeTransientState();
     refreshRuntimeStatus(ctx);
     ctx.ui.notify("Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel)", "info");

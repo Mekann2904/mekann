@@ -25,29 +25,41 @@ const DEFAULT_LOCK_OPTIONS: Required<FileLockOptions> = {
   staleMs: 30_000,
 };
 
-function sleepSync(ms: number): void {
-  if (ms <= 0) return;
-  if (
-    typeof SharedArrayBuffer === "undefined" ||
-    typeof Atomics === "undefined" ||
-    typeof Atomics.wait !== "function"
-  ) {
-    const waitUntil = Date.now() + ms;
-    while (Date.now() < waitUntil) {
-      // Busy-wait fallback for runtimes without Atomics.wait.
-    }
-    return;
+/**
+ * Check if efficient synchronous sleep is available.
+ * SharedArrayBuffer + Atomics.wait is required for non-blocking sleep.
+ */
+function hasEfficientSyncSleep(): boolean {
+  return (
+    typeof SharedArrayBuffer !== "undefined" &&
+    typeof Atomics !== "undefined" &&
+    typeof Atomics.wait === "function"
+  );
+}
+
+/**
+ * Synchronous sleep using Atomics.wait on SharedArrayBuffer.
+ * Returns true if sleep was successful, false if efficient sleep is unavailable.
+ * WARNING: Never uses busy-wait to avoid CPU spin.
+ */
+function sleepSync(ms: number): boolean {
+  if (ms <= 0) return true;
+
+  if (!hasEfficientSyncSleep()) {
+    // Do NOT busy-wait. Return false to indicate sleep was not performed.
+    // Caller should handle this case (e.g., retry immediately or fail).
+    return false;
   }
 
   try {
     const sab = new SharedArrayBuffer(4);
     const view = new Int32Array(sab);
     Atomics.wait(view, 0, 0, ms);
+    return true;
   } catch {
-    const waitUntil = Date.now() + ms;
-    while (Date.now() < waitUntil) {
-      // Busy-wait fallback when SharedArrayBuffer creation fails.
-    }
+    // SharedArrayBuffer creation failed (e.g., security restrictions)
+    // Do NOT busy-wait. Return false.
+    return false;
   }
 }
 
@@ -108,12 +120,38 @@ export function withFileLock<T>(
   const staleMs = Math.max(1_000, Math.trunc(config.staleMs));
   const startedAtMs = Date.now();
   let acquired = false;
+  const canSleep = hasEfficientSyncSleep();
 
   while (!acquired && Date.now() - startedAtMs <= maxWaitMs) {
     acquired = tryAcquireLock(lockFile);
     if (acquired) break;
     clearStaleLock(lockFile, staleMs);
-    sleepSync(pollMs);
+
+    // If efficient sleep is unavailable, exit early to avoid CPU spin.
+    // This provides a graceful degradation path for environments without SharedArrayBuffer.
+    if (!canSleep) {
+      // Check if we've exceeded max wait time or should fail fast
+      const elapsedMs = Date.now() - startedAtMs;
+      if (elapsedMs >= maxWaitMs) {
+        break;
+      }
+      // Allow one immediate retry without sleep, then fail fast
+      // to prevent tight spin loops in constrained environments.
+      if (elapsedMs > 100) {
+        console.warn(
+          `[storage-lock] SharedArrayBuffer unavailable, failing fast after ${elapsedMs}ms to avoid CPU spin`
+        );
+        break;
+      }
+      // Immediate retry for the first ~100ms as a grace period
+      continue;
+    }
+
+    const sleepOk = sleepSync(pollMs);
+    if (!sleepOk) {
+      // Sleep failed unexpectedly, break to avoid potential spin
+      break;
+    }
   }
 
   if (!acquired) {
