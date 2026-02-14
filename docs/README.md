@@ -2,7 +2,7 @@
 title: ドキュメント
 category: meta
 audience: new-user, daily-user, developer, contributor
-last_updated: 2026-02-12
+last_updated: 2026-02-14
 tags: [documentation, index]
 related: []
 ---
@@ -52,9 +52,11 @@ pi拡張機能コレクションのドキュメントへようこそ。
 ### 追加ドキュメント
 
 | トピック | 説明 |
+|---------|------|
 | [ユーティリティ](./02-user-guide/11-utilities.md) | kitty統合などのユーティリティ |
 | [pi拡張機能リファレンス](./04-reference/04-pi-extensions.md) | pi公式拡張機能ドキュメント |
 | [開発ワークフロー](./05-meta/04-development-workflow.md) | AIエージェントによるドキュメント管理 |
+| [パッチ管理](./patches/README.md) | patch-packageによる依存パッケージ修正 |
 
 ## 最近更新されたドキュメント
 

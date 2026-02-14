@@ -1,0 +1,26 @@
+diff --git a/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js b/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js
+index 3b57cd2..44a73e6 100644
+--- a/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js
++++ b/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js
+@@ -663,6 +663,8 @@ function mapStopReason(reason) {
+             return "toolUse";
+         case "content_filter":
+             return "error";
++        case "abort":
++            return "aborted";
+         default: {
+             const _exhaustive = reason;
+             throw new Error(`Unhandled stop reason: ${_exhaustive}`);
+diff --git a/node_modules/@mariozechner/pi-ai/dist/providers/openai-responses-shared.js b/node_modules/@mariozechner/pi-ai/dist/providers/openai-responses-shared.js
+index e2c148c..9dfa5cf 100644
+--- a/node_modules/@mariozechner/pi-ai/dist/providers/openai-responses-shared.js
++++ b/node_modules/@mariozechner/pi-ai/dist/providers/openai-responses-shared.js
+@@ -414,6 +414,8 @@ function mapStopReason(status) {
+         case "failed":
+         case "cancelled":
+             return "error";
++        case "abort":
++            return "aborted";
+         // These two are wonky ...
+         case "in_progress":
+         case "queued":
