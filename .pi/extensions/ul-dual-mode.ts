@@ -8,8 +8,19 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 const UL_PREFIX = /^\s*ul(?:\s+|$)/i;
 const STABLE_UL_PROFILE = true;
 const UL_REQUIRE_BOTH_ORCHESTRATIONS = false;  // 固定フェーズ解除: LLMの裁量で1〜Nフェーズ
-const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;  // reviewer必須
-const UL_AUTO_ENABLE_FOR_CLEAR_GOAL = process.env.PI_UL_AUTO_CLEAR_GOAL !== "0";
+const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;  // reviewer必須（環境変数で上書き可）
+const UL_SKIP_REVIEWER_FOR_TRIVIAL = process.env.PI_UL_SKIP_REVIEWER_FOR_TRIVIAL !== "0";
+const UL_REVIEWER_MIN_TASK_LENGTH = 200;  // この文字数未満は小規模タスク扱い
+const UL_TRIVIAL_PATTERNS = [
+  /^read\s+/i,           // 読み取り系
+  /^show\s+/i,           // 表示系
+  /^list\s+/i,           // 一覧系
+  /^what\s+is/i,         // 質問系
+  /^explain\s+/i,        // 説明系
+  /^\?/,                 // 疑問符開始
+  /^search\s+/i,         // 検索系
+  /^find\s+/i,           // 検索系
+];
 const RECOMMENDED_SUBAGENT_IDS = ["researcher", "architect", "implementer"] as const;
 const RECOMMENDED_CORE_TEAM_ID = "core-delivery-team";
 const RECOMMENDED_REVIEWER_ID = "reviewer";
@@ -37,6 +48,7 @@ const state = {
   completedRecommendedSubagentPhase: false,
   completedRecommendedTeamPhase: false,
   completedRecommendedReviewerPhase: false,
+  currentTask: "",  // 現在のタスク（reviewer要否判定用）
 };
 
 function persistState(pi: ExtensionAPI): void {
@@ -53,6 +65,7 @@ function resetState(): void {
   state.completedRecommendedSubagentPhase = false;
   state.completedRecommendedTeamPhase = false;
   state.completedRecommendedReviewerPhase = false;
+  state.currentTask = "";
 }
 
 function refreshStatus(ctx: any): void {
@@ -81,11 +94,46 @@ function looksLikeClearGoalTask(text: string): boolean {
   return CLEAR_GOAL_SIGNAL.test(normalized);
 }
 
+/**
+ * 小規模タスク（trivial task）かどうかを判定する。
+ * 小規模タスクではreviewerをスキップ可能にする。
+ */
+function isTrivialTask(task: string): boolean {
+  const normalized = String(task || "").trim();
+  if (!normalized) return true;
+  
+  // 文字数が少ない場合は小規模
+  if (normalized.length < UL_REVIEWER_MIN_TASK_LENGTH) {
+    return true;
+  }
+  
+  // 特定パターンに一致する場合は小規模
+  if (UL_TRIVIAL_PATTERNS.some(p => p.test(normalized))) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * reviewerが必要かどうかを判定する。
+ * 環境変数PI_UL_SKIP_REVIEWER_FOR_TRIVIAL=1の場合、小規模タスクではスキップ。
+ */
+function shouldRequireReviewer(task: string): boolean {
+  if (!UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL) {
+    return false;
+  }
+  if (!UL_SKIP_REVIEWER_FOR_TRIVIAL) {
+    return true;  // 常にreviewer必須
+  }
+  return !isTrivialTask(task);
+}
+
 function getMissingRequirements(): string[] {
   const missing: string[] = [];
 
-  // reviewer必須のみチェック（フェーズ数はLLM裁量）
-  if (UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL && !state.completedRecommendedReviewerPhase) {
+  // reviewer必須チェック（小規模タスクは条件付きでスキップ可能）
+  if (shouldRequireReviewer(state.currentTask) && !state.completedRecommendedReviewerPhase) {
     missing.push(`subagent_run (subagentId: ${RECOMMENDED_REVIEWER_ID}) - 完了前の品質レビュー`);
   }
 
@@ -262,7 +310,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       state.pendingGoalLoopMode = false;
 
       const shouldAutoEnable =
-        UL_AUTO_ENABLE_FOR_CLEAR_GOAL &&
         looksLikeClearGoalTask(rawText);
 
       if (!shouldAutoEnable) {
@@ -271,6 +318,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
       state.pendingUlMode = true;
       state.pendingGoalLoopMode = true;
+      state.currentTask = rawText;  // 自動有効化の場合もタスクを保存
 
       if (ctx?.hasUI && ctx?.ui) {
         ctx.ui.notify("UL自動モード: 明確な達成条件を検知したため、UL+loop方針を適用します。", "info");
@@ -290,9 +338,13 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
     state.pendingUlMode = true;
     state.pendingGoalLoopMode = looksLikeClearGoalTask(transformed);
+    state.currentTask = transformed;  // タスクを保存（reviewer要否判定用）
+    
+    // 小規模タスクの場合は通知を変更
+    const reviewerHint = shouldRequireReviewer(transformed) ? "（完了前にreviewer必須）" : "（小規模タスク）";
     if (ctx?.hasUI && ctx?.ui) {
       const modeHint = state.pendingGoalLoopMode ? " + loop完了条件モード" : "";
-      const notifyText = `ULモード: 委任優先で効率的に実行します（完了前にreviewer必須）${modeHint}。`;
+      const notifyText = `ULモード: 委任優先で効率的に実行します${reviewerHint}${modeHint}。`;
       ctx.ui.notify(notifyText, "info");
     }
 
@@ -312,7 +364,8 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     state.usedAgentTeamRun = false;
     state.completedRecommendedSubagentPhase = false;
     state.completedRecommendedTeamPhase = false;
-    state.completedRecommendedReviewerPhase = false;
+    // 小規模タスクの場合はreviewer不要としてマーク
+    state.completedRecommendedReviewerPhase = !shouldRequireReviewer(state.currentTask);
     refreshStatus(ctx);
 
     if (!state.activeUlMode) {

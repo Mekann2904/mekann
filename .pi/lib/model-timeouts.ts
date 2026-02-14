@@ -6,25 +6,26 @@
 /**
  * Timeout values for different models (in milliseconds).
  * Slower models need longer timeouts to avoid premature termination.
+ * Optimized for UL mode execution efficiency.
  */
 export const MODEL_TIMEOUT_BASE_MS: Record<string, number> = {
   // Slow models - extended timeout due to frequent timeouts
-  "glm-5": 600_000,      // 10 minutes
-  "glm-4": 480_000,      // 8 minutes
+  "glm-5": 600_000,      // 10 minutes (unchanged)
+  "glm-4": 480_000,      // 8 minutes (unchanged)
 
   // Standard models
   "claude-3-5-sonnet": 300_000,
-  "claude-3-5-haiku": 180_000,
+  "claude-3-5-haiku": 120_000,   // 3min → 2min (fast model)
   "gpt-4": 300_000,
   "gpt-4o": 300_000,
   "gpt-4-turbo": 300_000,
 
-  // Fast models
-  "gpt-3.5-turbo": 180_000,
-  "gpt-4o-mini": 180_000,
+  // Fast models - reduced timeout
+  "gpt-3.5-turbo": 120_000,      // 3min → 2min
+  "gpt-4o-mini": 120_000,        // 3min → 2min
 
   // Default timeout for unknown models
-  "default": 300_000,    // 5 minutes
+  "default": 240_000,    // 5min → 4min
 } as const;
 
 /**
