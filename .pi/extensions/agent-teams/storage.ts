@@ -72,6 +72,16 @@ export interface TeamFinalJudge {
   rawOutput: string;
 }
 
+/**
+ * Claim reference structure for tracking cross-member references.
+ * Used in structured communication mode (PI_COMMUNICATION_ID_MODE="structured").
+ */
+export interface ClaimReference {
+  claimId: string;
+  memberId: string;
+  stance: "agree" | "disagree" | "neutral";
+}
+
 export interface TeamCommunicationAuditEntry {
   round: number;
   memberId: string;
@@ -82,6 +92,10 @@ export interface TeamCommunicationAuditEntry {
   contextPreview: string;
   partnerSnapshots: string[];
   resultStatus: "completed" | "failed";
+  // Phase 2: Structured communication fields (optional for backward compatibility)
+  claimId?: string;
+  evidenceId?: string;
+  claimReferences?: ClaimReference[];
 }
 
 export interface TeamRunRecord {
@@ -123,7 +137,7 @@ export interface TeamPaths extends BaseStoragePaths {}
 
 // Constants
 export const MAX_RUNS_TO_KEEP = 100;
-export const TEAM_DEFAULTS_VERSION = 2;
+export const TEAM_DEFAULTS_VERSION = 3;
 
 // Use common path factory
 const getBasePaths = createPathsFactory("agent-teams");

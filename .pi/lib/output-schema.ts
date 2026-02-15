@@ -160,6 +160,54 @@ const TEAM_MEMBER_OUTPUT_SCHEMA: OutputSchema = {
 // ============================================================================
 
 /**
+ * Communication ID mode for structured output processing.
+ * - "legacy" (default): No structured claim/evidence IDs
+ * - "structured": Enable claim and evidence ID tracking
+ */
+export type CommunicationIdMode = "legacy" | "structured";
+
+/**
+ * Cache for communication ID mode.
+ */
+let cachedCommunicationIdMode: CommunicationIdMode | undefined;
+
+/**
+ * Get the current communication ID mode.
+ * Reads from PI_COMMUNICATION_ID_MODE environment variable.
+ *
+ * @returns Current communication ID mode
+ */
+export function getCommunicationIdMode(): CommunicationIdMode {
+  if (cachedCommunicationIdMode !== undefined) {
+    return cachedCommunicationIdMode;
+  }
+
+  const envMode = process.env.PI_COMMUNICATION_ID_MODE?.toLowerCase();
+  if (envMode === "structured") {
+    cachedCommunicationIdMode = "structured";
+  } else {
+    // Default: legacy mode for backward compatibility
+    cachedCommunicationIdMode = "legacy";
+  }
+
+  return cachedCommunicationIdMode;
+}
+
+/**
+ * Reset the cached communication ID mode (primarily for testing).
+ */
+export function resetCommunicationIdModeCache(): void {
+  cachedCommunicationIdMode = undefined;
+}
+
+/**
+ * Set communication ID mode at runtime (primarily for testing).
+ */
+export function setCommunicationIdMode(mode: CommunicationIdMode): void {
+  cachedCommunicationIdMode = mode;
+}
+
+/**
  * Cache for schema validation mode.
  */
 let cachedMode: SchemaValidationMode | undefined;

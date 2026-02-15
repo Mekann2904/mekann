@@ -18,6 +18,34 @@ export function clampConfidence(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+// ============================================================================
+// ID Generation Utilities (Phase 2: Structured Communication)
+// ============================================================================
+
+/**
+ * Generate a unique claim ID for structured communication tracking.
+ * Format: claim-<timestamp>-<random>
+ *
+ * @returns Unique claim identifier
+ */
+export function generateClaimId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 8);
+  return `claim-${timestamp}-${random}`;
+}
+
+/**
+ * Generate a unique evidence ID for structured communication tracking.
+ * Format: evidence-<timestamp>-<random>
+ *
+ * @returns Unique evidence identifier
+ */
+export function generateEvidenceId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 8);
+  return `evidence-${timestamp}-${random}`;
+}
+
 /**
  * Parse a unit interval value from a string.
  * Handles both decimal (0.5) and percentage (50%) formats.

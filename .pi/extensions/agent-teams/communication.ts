@@ -214,6 +214,109 @@ export function sanitizeCommunicationSnippet(value: string, fallback: string): s
   return compact;
 }
 
+// ============================================================================
+// Structured Communication IDs (V2)
+// ============================================================================
+
+import {
+  getCommunicationIdMode,
+  type CommunicationIdMode,
+} from "../../lib/output-schema";
+
+/**
+ * Claim reference detected in structured communication.
+ */
+export interface ClaimReference {
+  claimId: string;
+  memberId: string;
+  stance: "agree" | "disagree" | "neutral";
+}
+
+/**
+ * Result of detecting partner references with structured ID tracking.
+ */
+export interface PartnerReferenceResultV2 {
+  /** Partners whose claims were referenced */
+  referencedPartners: string[];
+  /** Partners whose claims were NOT referenced */
+  missingPartners: string[];
+  /** Detailed claim references detected */
+  claimReferences: ClaimReference[];
+  /** Reference quality score (0-1) */
+  referenceQuality: number;
+}
+
+/**
+ * Pattern for detecting claim ID references in output.
+ * Matches: [memberId:claimIndex], claimId=memberId:0, etc.
+ */
+const CLAIM_ID_PATTERN = /\[([a-z0-9_-]+:\d+)\]|claimId[=:\s]+([a-z0-9_-]+:\d+)/gi;
+
+/**
+ * Detect partner references with optional structured ID tracking (V2).
+ * Falls back to string matching for backward compatibility.
+ *
+ * @param output - Member output text to analyze
+ * @param partnerIds - List of expected partner IDs
+ * @param memberById - Map of member ID to member definition
+ * @param mode - Communication ID mode (defaults to current setting)
+ * @returns Object with referenced and missing partner lists, plus structured references
+ */
+export function detectPartnerReferencesV2(
+  output: string,
+  partnerIds: string[],
+  memberById: Map<string, TeamMember>,
+  mode: CommunicationIdMode = getCommunicationIdMode(),
+): PartnerReferenceResultV2 {
+  const lowered = output.toLowerCase();
+  const referencedPartners = new Set<string>();
+  const claimReferences: ClaimReference[] = [];
+
+  // Step 1: Detect ID-based references in structured mode
+  if (mode === "structured") {
+    let match: RegExpExecArray | null;
+    const pattern = new RegExp(CLAIM_ID_PATTERN.source, "gi");
+    while ((match = pattern.exec(output)) !== null) {
+      const id = (match[1] || match[2]).toLowerCase();
+      const [memberId] = id.split(":");
+      if (partnerIds.includes(memberId)) {
+        referencedPartners.add(memberId);
+        claimReferences.push({
+          claimId: id,
+          memberId,
+          stance: "neutral",
+        });
+      }
+    }
+  }
+
+  // Step 2: Fallback to string matching for legacy support
+  for (const partnerId of partnerIds) {
+    if (referencedPartners.has(partnerId)) continue;
+
+    const partner = memberById.get(partnerId);
+    const role = partner?.role?.toLowerCase() ?? "";
+    const idMatched = lowered.includes(partnerId.toLowerCase());
+    const roleMatched = role.length > 0 && lowered.includes(role);
+
+    if (idMatched || roleMatched) {
+      referencedPartners.add(partnerId);
+    }
+  }
+
+  // Step 3: Calculate reference quality
+  const referenceQuality = partnerIds.length > 0
+    ? referencedPartners.size / partnerIds.length
+    : 0;
+
+  return {
+    referencedPartners: Array.from(referencedPartners),
+    missingPartners: partnerIds.filter((id) => !referencedPartners.has(id)),
+    claimReferences,
+    referenceQuality,
+  };
+}
+
 /**
  * Extract a named field from structured output text.
  * Looks for patterns like "FIELD_NAME: value" at the start of lines.

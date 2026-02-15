@@ -143,6 +143,8 @@ import {
   extractField,
   buildCommunicationContext,
   detectPartnerReferences,
+  detectPartnerReferencesV2,
+  type PartnerReferenceResultV2,
 } from "./agent-teams/communication";
 
 // Re-export judge types for external use
@@ -2660,7 +2662,7 @@ async function runTeamTask(input: {
             onStderrChunk: input.onMemberStderrChunk,
           });
           emitResultEvent(member, `communication#${round}`, result);
-          const communicationReference = detectPartnerReferences(result.output, partnerIds, memberById);
+          const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
           communicationAudit.push({
             round,
             memberId: member.id,
@@ -2671,6 +2673,9 @@ async function runTeamTask(input: {
             contextPreview: normalizeForSingleLine(communicationContext, 200),
             partnerSnapshots,
             resultStatus: result.status,
+            claimReferences: communicationReference.claimReferences.length > 0
+              ? communicationReference.claimReferences
+              : undefined,
           });
           input.onMemberEvent?.(
             member,
@@ -2759,7 +2764,7 @@ async function runTeamTask(input: {
         });
         roundResults.push(result);
         emitResultEvent(member, `communication#${round}`, result);
-        const communicationReference = detectPartnerReferences(result.output, partnerIds, memberById);
+        const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
         communicationAudit.push({
           round,
           memberId: member.id,
@@ -2770,6 +2775,9 @@ async function runTeamTask(input: {
           contextPreview: normalizeForSingleLine(communicationContext, 200),
           partnerSnapshots,
           resultStatus: result.status,
+          claimReferences: communicationReference.claimReferences.length > 0
+            ? communicationReference.claimReferences
+            : undefined,
         });
         input.onMemberEvent?.(
           member,
@@ -2901,7 +2909,7 @@ async function runTeamTask(input: {
         onStderrChunk: input.onMemberStderrChunk,
       });
       emitResultEvent(member, `failed-retry#${retryRound}`, result);
-      const communicationReference = detectPartnerReferences(result.output, partnerIds, memberById);
+      const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
       communicationAudit.push({
         round: retryPhaseRound,
         memberId: member.id,
@@ -2912,6 +2920,9 @@ async function runTeamTask(input: {
         contextPreview: normalizeForSingleLine(communicationContext, 200),
         partnerSnapshots,
         resultStatus: result.status,
+        claimReferences: communicationReference.claimReferences.length > 0
+          ? communicationReference.claimReferences
+          : undefined,
       });
       input.onMemberEvent?.(
         member,
