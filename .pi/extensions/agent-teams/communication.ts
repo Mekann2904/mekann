@@ -6,6 +6,11 @@
 import { normalizeForSingleLine } from "../../lib";
 import { analyzeDiscussionStance } from "../../lib/text-parsing";
 import {
+  classifyFailureType,
+  shouldRetryByClassification,
+  type FailureClassification,
+} from "../../lib/agent-errors";
+import {
   getCommunicationIdMode,
   getStanceClassificationMode,
   type CommunicationIdMode,
@@ -107,11 +112,12 @@ export function normalizeFailedMemberRetryRounds(
 
 /**
  * Determine if a failed member result should be retried.
+ * Uses unified failure classification from agent-errors.ts.
  * Rate-limit and capacity errors are excluded (handled by backoff in runMember).
  *
  * @param result - The team member result to evaluate
  * @param retryRound - Current retry round number
- * @param classifyPressureError - Function to classify pressure errors
+ * @param classifyPressureError - Function to classify pressure errors (for backward compatibility)
  * @returns Whether retry should be attempted
  */
 export function shouldRetryFailedMemberResult(
@@ -121,22 +127,12 @@ export function shouldRetryFailedMemberResult(
 ): boolean {
   if (result.status !== "failed") return false;
 
-  const error = (result.error || "").toLowerCase();
+  const error = result.error || "";
   if (!error) return false;
-  const pressureClass = classifyPressureError(error);
-  // 429/capacity errors are already retried in runMember backoff, skip additional rounds.
-  if (pressureClass === "rate_limit" || pressureClass === "capacity") return false;
-  if (pressureClass === "timeout") return true;
-  if (retryRound >= 2) return true;
 
-  return (
-    error.includes("empty output") ||
-    error.includes("low-substance") ||
-    error.includes("timeout") ||
-    error.includes("timed out") ||
-    error.includes("temporarily unavailable") ||
-    error.includes("try again")
-  );
+  // Use unified failure classification (P2: 修復リトライ標準化)
+  const classification = classifyFailureType(error);
+  return shouldRetryByClassification(classification, retryRound);
 }
 
 /**

@@ -514,3 +514,95 @@ export function buildDiagnosticContext(context: {
 
   return parts.join(" ");
 }
+
+// ============================================================================
+// Failure Classification & Retry Policy Standardization (P2)
+// ============================================================================
+
+/**
+ * Standardized failure classification types for retry decision making.
+ * Each classification maps to a specific retry policy.
+ */
+export type FailureClassification =
+  | "rate_limit"   // HTTP 429 - backoffで処理
+  | "capacity"     // リソース枯渇 - backoffで処理
+  | "timeout"      // 実行タイムアウト - リトライ可
+  | "quality"      // 空出力/低品質 - リトライ可
+  | "transient"    // 一時的エラー - リトライ可
+  | "permanent";   // 恒久的エラー - リトライ不可
+
+/**
+ * Retry policy configuration for each failure classification.
+ * Defines whether retry is allowed and maximum retry rounds.
+ */
+export const RETRY_POLICY: Record<FailureClassification, {
+  retryable: boolean;
+  maxRounds?: number;
+}> = {
+  rate_limit:  { retryable: false },
+  capacity:    { retryable: false },
+  timeout:     { retryable: true, maxRounds: 2 },
+  quality:     { retryable: true, maxRounds: 2 },
+  transient:   { retryable: true, maxRounds: 2 },
+  permanent:   { retryable: false },
+};
+
+/**
+ * Classify a failure into a standardized category for retry decision making.
+ * Uses error message pattern matching and HTTP status code to determine classification.
+ *
+ * @param error - The error to classify
+ * @param statusCode - Optional HTTP status code for context
+ * @returns The failure classification category
+ */
+export function classifyFailureType(
+  error: unknown,
+  statusCode?: number,
+): FailureClassification {
+  const message = toErrorMessage(error).toLowerCase();
+
+  // Rate limit (429)
+  if (statusCode === 429 || /rate.?limit|too many requests/.test(message)) {
+    return "rate_limit";
+  }
+
+  // Capacity
+  if (/capacity.?exceeded|overloaded|resource.?unavailable/.test(message)) {
+    return "capacity";
+  }
+
+  // Timeout
+  if (/timeout|timed.?out/.test(message)) {
+    return "timeout";
+  }
+
+  // Quality issues
+  if (/empty.?output|low-substance|intent.?only/.test(message)) {
+    return "quality";
+  }
+
+  // Transient
+  if (/temporarily.?unavailable|try.?again|service.?unavailable/.test(message)) {
+    return "transient";
+  }
+
+  return "permanent";
+}
+
+/**
+ * Determine whether a retry should be attempted based on failure classification.
+ * Checks the retry policy and current round against max rounds limit.
+ *
+ * @param classification - The failure classification
+ * @param currentRound - Current retry round (0-indexed)
+ * @returns True if retry should be attempted, false otherwise
+ */
+export function shouldRetryByClassification(
+  classification: FailureClassification,
+  currentRound: number,
+): boolean {
+  const policy = RETRY_POLICY[classification];
+  if (!policy.retryable) return false;
+  if (policy.maxRounds === undefined) return true;
+  return currentRound < policy.maxRounds;
+}
