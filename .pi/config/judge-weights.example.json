@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0-custom",
+  "description": "Custom judge weights for uncertainty calculation. Copy to judge-weights.json and modify as needed.",
+  "intraWeights": {
+    "failedRatio": 0.38,
+    "lowConfidence": 0.26,
+    "noEvidence": 0.20,
+    "contradiction": 0.16
+  },
+  "interWeights": {
+    "conflictRatio": 0.42,
+    "confidenceSpread": 0.28,
+    "failedRatio": 0.20,
+    "noEvidence": 0.10
+  },
+  "sysWeights": {
+    "uIntra": 0.45,
+    "uInter": 0.35,
+    "failedRatio": 0.20
+  },
+  "collapseThresholds": {
+    "uIntra": 0.55,
+    "uInter": 0.55,
+    "uSys": 0.60,
+    "failedRatio": 0.30,
+    "noEvidenceRatio": 0.50
+  }
+}

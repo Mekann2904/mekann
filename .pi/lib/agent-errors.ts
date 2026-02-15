@@ -4,6 +4,9 @@
  * subagent and team member execution.
  *
  * Layer: 1 (depends on Layer 0: error-utils, agent-types)
+ *
+ * Enhanced with extended error classification (P1-5 improvement).
+ * New error types: SCHEMA_VIOLATION, LOW_SUBSTANCE, EMPTY_OUTPUT
  */
 
 import {
@@ -15,6 +18,124 @@ import {
 } from "./error-utils.js";
 import { type RunOutcomeCode, type RunOutcomeSignal } from "./agent-types.js";
 import { type EntityType, type EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "./agent-common.js";
+
+// ============================================================================
+// Extended Error Classification (P1-5)
+// ============================================================================
+
+/**
+ * Extended error classification codes.
+ * Extends the base RunOutcomeCode with semantic error types.
+ */
+export type ExtendedOutcomeCode =
+  | RunOutcomeCode
+  | "SCHEMA_VIOLATION"
+  | "LOW_SUBSTANCE"
+  | "EMPTY_OUTPUT"
+  | "PARSE_ERROR";
+
+/**
+ * Extended outcome signal with semantic error classification.
+ * Uses Omit to avoid type conflict with RunOutcomeSignal.outcomeCode.
+ */
+export interface ExtendedOutcomeSignal extends Omit<RunOutcomeSignal, 'outcomeCode'> {
+  outcomeCode: ExtendedOutcomeCode;
+  semanticError?: string;
+  schemaViolations?: string[];
+  /** Entity IDs that failed (for aggregate outcomes) */
+  failedEntityIds?: string[];
+}
+
+/**
+ * Classify semantic error from output content.
+ * Used for extended error classification beyond infrastructure errors.
+ *
+ * @param output - Output content to analyze
+ * @param error - Error message if available
+ * @returns Extended error code if semantic error detected, undefined otherwise
+ */
+export function classifySemanticError(
+  output?: string,
+  error?: unknown,
+): { code: ExtendedOutcomeCode | null; details?: string[] } {
+  const errorMessage = error ? toErrorMessage(error).toLowerCase() : "";
+  const outputLower = output?.toLowerCase() || "";
+
+  // Schema violation detection
+  if (
+    errorMessage.includes("schema violation") ||
+    errorMessage.includes("missing labels") ||
+    errorMessage.includes("invalid format") ||
+    errorMessage.includes("validation failed") ||
+    outputLower.includes("schema violation")
+  ) {
+    return { code: "SCHEMA_VIOLATION", details: ["output_format_mismatch"] };
+  }
+
+  // Low substance detection (intent-only output)
+  if (
+    errorMessage.includes("intent-only") ||
+    errorMessage.includes("low-substance") ||
+    errorMessage.includes("insufficient content")
+  ) {
+    return { code: "LOW_SUBSTANCE", details: ["intent_only_output"] };
+  }
+
+  // Empty output detection
+  if (
+    errorMessage.includes("empty output") ||
+    errorMessage.includes("empty result") ||
+    (!output || output.trim().length === 0)
+  ) {
+    return { code: "EMPTY_OUTPUT", details: ["no_content"] };
+  }
+
+  // Parse error detection
+  if (
+    errorMessage.includes("parse error") ||
+    errorMessage.includes("json parse") ||
+    errorMessage.includes("syntax error") ||
+    errorMessage.includes("unexpected token")
+  ) {
+    return { code: "PARSE_ERROR", details: ["parsing_failed"] };
+  }
+
+  return { code: null };
+}
+
+/**
+ * Resolve extended outcome signal with semantic error classification.
+ *
+ * @param error - The error that occurred
+ * @param output - Output content if available
+ * @param config - Entity configuration (optional)
+ * @returns Extended outcome signal with semantic classification
+ */
+export function resolveExtendedFailureOutcome(
+  error: unknown,
+  output?: string,
+  config?: EntityConfig,
+): ExtendedOutcomeSignal {
+  // First check for semantic errors
+  const semantic = classifySemanticError(output, error);
+  if (semantic.code) {
+    // SCHEMA_VIOLATION and LOW_SUBSTANCE are retryable with different prompts
+    const retryable = semantic.code === "SCHEMA_VIOLATION" || semantic.code === "LOW_SUBSTANCE";
+    return {
+      outcomeCode: semantic.code,
+      retryRecommended: retryable,
+      semanticError: semantic.code,
+      schemaViolations: semantic.details,
+    };
+  }
+
+  // Fall back to standard failure resolution
+  const baseResult = resolveFailureOutcome(error, config);
+  return {
+    outcomeCode: baseResult.outcomeCode,
+    retryRecommended: baseResult.retryRecommended,
+  };
+}
 
 // ============================================================================
 // Retryable Error Patterns (OCP-Compliant Configuration)
