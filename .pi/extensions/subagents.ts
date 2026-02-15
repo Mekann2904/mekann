@@ -50,6 +50,11 @@ import {
   type PrintExecutorOptions,
 } from "./shared/pi-print-executor";
 import {
+  postSubagentVerificationHook,
+  formatVerificationResult,
+  type VerificationHookResult,
+} from "./shared/verification-hooks.js";
+import {
   ensureDir,
   formatDurationMs,
   toTailLines,
@@ -106,6 +111,62 @@ import {
 interface PrintCommandResult {
   output: string;
   latencyMs: number;
+}
+
+/**
+ * Extract confidence value from subagent output.
+ * Parses CONFIDENCE field, defaults to 0.5 if not found or invalid.
+ */
+function extractConfidenceFromOutput(output: string): number {
+  const match = output.match(/CONFIDENCE:\s*([0-9.]+)/i);
+  if (match) {
+    const parsed = parseFloat(match[1]);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+      return parsed;
+    }
+  }
+  return 0.5;
+}
+
+/**
+ * Run verification for a completed subagent task.
+ * Returns the verification result or undefined if verification is disabled/failed.
+ */
+async function runSubagentVerification(
+  output: string,
+  agentId: string,
+  task: string,
+  options: {
+    provider?: string;
+    model?: string;
+    signal?: AbortSignal;
+  }
+): Promise<VerificationHookResult | undefined> {
+  const confidence = extractConfidenceFromOutput(output);
+  const verificationTimeoutMs = 60000; // Shorter timeout for focused verification task
+
+  try {
+    return await postSubagentVerificationHook(
+      output,
+      confidence,
+      { agentId, task },
+      async (verificationAgentId, prompt) => {
+        const result = await sharedRunPiPrintMode({
+          provider: options.provider,
+          model: options.model,
+          prompt,
+          timeoutMs: verificationTimeoutMs,
+          signal: options.signal,
+          entityLabel: "verification-agent",
+        });
+        return result.output;
+      }
+    );
+  } catch (error) {
+    // Verification failures should not break the main flow
+    console.warn(`[Verification] Error during verification: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
 }
 
 const LIVE_PREVIEW_LINE_LIMIT = 36;
@@ -1780,19 +1841,39 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
             adaptivePenalty.lower();
 
+            // Run verification hook for completed subagent output
+            const verificationResult = await runSubagentVerification(
+              result.output,
+              agent.id,
+              params.task,
+              {
+                provider: ctx.model?.provider,
+                model: ctx.model?.id,
+                signal,
+              }
+            );
+
+            // Build output with verification info if available
+            const outputLines = [
+              `Subagent run completed: ${result.runRecord.runId}`,
+              `Subagent: ${agent.id} (${agent.name})`,
+              `Summary: ${result.runRecord.summary}`,
+              `Latency: ${result.runRecord.latencyMs}ms`,
+              `Output file: ${result.runRecord.outputFile}`,
+            ];
+            if (verificationResult?.triggered && verificationResult.result) {
+              outputLines.push(`Verification: ${verificationResult.result.finalVerdict} (confidence: ${verificationResult.result.confidence.toFixed(2)})`);
+              if (verificationResult.result.warnings.length > 0) {
+                outputLines.push(`Verification warnings: ${verificationResult.result.warnings.join("; ")}`);
+              }
+            }
+            outputLines.push("", result.output);
+
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: [
-                    `Subagent run completed: ${result.runRecord.runId}`,
-                    `Subagent: ${agent.id} (${agent.name})`,
-                    `Summary: ${result.runRecord.summary}`,
-                    `Latency: ${result.runRecord.latencyMs}ms`,
-                    `Output file: ${result.runRecord.outputFile}`,
-                    "",
-                    result.output,
-                  ].join("\n"),
+                  text: outputLines.join("\n"),
                 },
               ],
               details: {
@@ -1810,6 +1891,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                 queueWaitedMs: queueWait.waitedMs,
                 outcomeCode: "SUCCESS" as RunOutcomeCode,
                 retryRecommended: false,
+                verification: verificationResult?.result,
               },
             };
           } finally {
@@ -2114,6 +2196,36 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                 lines.push(`FAILED: ${result.runRecord.error}`);
               } else {
                 lines.push(result.output);
+              }
+            }
+
+            // 検証フック: 各完了したサブエージェントの結果を検証
+            const completedResults = results.filter((r) => r.runRecord.status === "completed");
+            if (completedResults.length > 0) {
+              lines.push("");
+              lines.push("### Verification Results");
+              for (const result of completedResults) {
+                try {
+                  const verificationResult = await runSubagentVerification(
+                    result.output,
+                    result.runRecord.agentId,
+                    params.task,
+                    { provider: ctx.model?.provider, model: ctx.model?.id, signal }
+                  );
+                  if (verificationResult) {
+                    const verdict = verificationResult.result?.finalVerdict || "unknown";
+                    const confidence = verificationResult.result?.confidence ?? 0;
+                    lines.push(`- ${result.runRecord.agentId}: verdict=${verdict}, confidence=${confidence.toFixed(2)}`);
+                    if (verificationResult.result?.warnings?.length) {
+                      for (const w of verificationResult.result.warnings) {
+                        lines.push(`  - Warning: ${w}`);
+                      }
+                    }
+                  }
+                } catch (verificationError) {
+                  // 検証エラーは処理全体を失敗させない
+                  lines.push(`- ${result.runRecord.agentId}: verification error (${verificationError})`);
+                }
               }
             }
 
