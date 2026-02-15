@@ -107,6 +107,85 @@ export const WORKING_MEMORY_GUIDELINES = [
 ].join("\n");
 
 /**
+ * 終了チェックルール
+ * 論文「Large Language Model Reasoning Failures」のP0推奨事項
+ */
+export const TERMINATION_CHECK_RULES = [
+  "",
+  "【終了チェック】",
+  "",
+  "タスク完了を宣言する前に以下を確認してください:",
+  "",
+  "1. 完了基準の明示:",
+  "   - 元のタスク要求に対して、何が達成され何が未達成かを明示してください",
+  "   - 「部分的完了」の場合は、何が残っているかを明記してください",
+  "",
+  "2. 完了確信度の評価:",
+  "   - TASK_COMPLETION_CONFIDENCE: <0.0-1.0> を出力してください",
+  "   - 0.8未満の場合は、何が不確かかを明記してください",
+  "",
+  "3. 残存リスクの特定:",
+  "   - 完了後も残る潜在的な問題をリストアップしてください",
+  "   - 推奨される追確認事項があれば明記してください",
+  "",
+].join("\n");
+
+/**
+ * 構成推論サポートルール
+ * 論文「Large Language Model Reasoning Failures」のP1推奨事項
+ */
+export const COMPOSITIONAL_INFERENCE_RULES = [
+  "",
+  "【構成推論サポート】",
+  "",
+  "複数の知識ソースを統合する際は以下を実践してください:",
+  "",
+  "1. 複数知識統合チェック:",
+  "   - 異なるソースからの情報が矛盾していないか確認してください",
+  "   - 統合に伴う情報の損失や歪みがないか検証してください",
+  "   - 「KNOWLEDGE_SOURCES: [source1, source2, ...]」として使用したソースを明示してください",
+  "",
+  "2. マルチホップ推論の検証:",
+  "   - 推論の各ステップで前提が正しいことを確認してください",
+  "   - 中間結論が論理的に導出されていることを検証してください",
+  "   - 「INFERENCE_STEPS: [step1 -> step2 -> conclusion]」として推論経路を明示してください",
+  "",
+  "3. 知識の信頼性評価:",
+  "   - 古い情報と新しい情報の矛盾がないか確認してください",
+  "   - 公式ドキュメントと実装の不一致がないか確認してください",
+  "   - 想定と事実を区別して記述してください",
+  "",
+].join("\n");
+
+/**
+ * 異議申し立てルール
+ * 論文「Large Language Model Reasoning Failures」のP0推奨事項（Challenger agents用）
+ */
+export const CHALLENGE_RULES = [
+  "",
+  "【異議申し立てガイドライン】",
+  "",
+  "他のエージェントの出力に対して異議を唱える際は以下を実践してください:",
+  "",
+  "1. 具体的な欠陥の指摘:",
+  "   - 「CHALLENGED_CLAIM: <具体的な主張>」を明示",
+  "   - 「FLAW: <特定した欠陥>」として何が問題かを記述",
+  "",
+  "2. 証拠の欠落指摘:",
+  "   - 「EVIDENCE_GAP: <欠けている証拠>」として何が不足しているかを明記",
+  "   - 主張を支持するのに十分な証拠があるか評価",
+  "",
+  "3. 代替解釈の提示:",
+  "   - 「ALTERNATIVE: <代替解釈>」として別の可能性を提示",
+  "   - 隠れた前提や仮定があれば指摘",
+  "",
+  "4. 重要度の評価:",
+  "   - 「SEVERITY: critical/moderate/minor」として影響度を評価",
+  "   - criticalの場合は即座に対応が必要",
+  "",
+].join("\n");
+
+/**
  * チームメンバー固有の実行ルール
  */
 export const TEAM_MEMBER_SPECIFIC_RULES = [
@@ -231,13 +310,16 @@ export interface BuildExecutionRulesOptions {
   includeCognitiveBiasCountermeasures?: boolean;
   includeSelfVerification?: boolean;
   includeWorkingMemoryGuidelines?: boolean;
+  includeTerminationCheck?: boolean;
+  includeCompositionalInference?: boolean;
+  includeChallengeRules?: boolean;
 }
 
 // 実行ルールのキャッシュ（オプション組み合わせに対する結果を保持）
 const executionRulesCache = new Map<string, string>();
 
 export function buildExecutionRulesSection(options: BuildExecutionRulesOptions = {}): string {
-  // キャッシュキーを生成
+  // キャッシュキーを生成（新しいオプションを含む）
   const cacheKey = [
     options.forSubagent ? "sub" : "",
     options.forTeam ? "team" : "",
@@ -247,6 +329,9 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     options.includeCognitiveBiasCountermeasures ? "bias" : "",
     options.includeSelfVerification ? "verify" : "",
     options.includeWorkingMemoryGuidelines ? "memory" : "",
+    options.includeTerminationCheck ? "term" : "",
+    options.includeCompositionalInference ? "comp" : "",
+    options.includeChallengeRules ? "chal" : "",
   ].filter(Boolean).join(":");
 
   const cached = executionRulesCache.get(cacheKey);
@@ -293,6 +378,21 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     lines.push(WORKING_MEMORY_GUIDELINES.trim());
   }
 
+  // 終了チェックルール
+  if (options.includeTerminationCheck) {
+    lines.push(TERMINATION_CHECK_RULES.trim());
+  }
+
+  // 構成推論サポートルール
+  if (options.includeCompositionalInference) {
+    lines.push(COMPOSITIONAL_INFERENCE_RULES.trim());
+  }
+
+  // 異議申し立てルール
+  if (options.includeChallengeRules) {
+    lines.push(CHALLENGE_RULES.trim());
+  }
+
   // ガイドラインを含める場合
   if (options.includeGuidelines) {
     lines.push(AUTONOMY_GUIDELINES.trim());
@@ -334,6 +434,7 @@ const teamMemberRulesCache = new Map<string, string>();
 /**
  * チームメンバー用の実行ルールを取得
  * デフォルトで認知バイアス対策と自己検証ルールを含める
+ * 論文「Large Language Model Reasoning Failures」のP0/P1推奨事項を含む
  */
 export function getTeamMemberExecutionRules(
   phase: "initial" | "communication" = "initial",
@@ -351,7 +452,56 @@ export function getTeamMemberExecutionRules(
     includeCognitiveBiasCountermeasures: true,
     includeSelfVerification: true,
     includeWorkingMemoryGuidelines: true,
+    includeTerminationCheck: true,      // P0: タスク完了確認
+    includeCompositionalInference: true, // P1: 構成推論サポート
   });
   teamMemberRulesCache.set(key, rules);
+  return rules;
+}
+
+// Challenger用ルールのキャッシュ
+const challengerRulesCache = new Map<string, string>();
+
+/**
+ * Challengerサブエージェント用の実行ルールを取得
+ * 論文「Large Language Model Reasoning Failures」のP0推奨事項
+ */
+export function getChallengerExecutionRules(includeGuidelines = false): string {
+  const key = String(includeGuidelines);
+  const cached = challengerRulesCache.get(key);
+  if (cached) return cached;
+  
+  const rules = buildExecutionRulesSection({
+    forSubagent: true,
+    includeGuidelines,
+    includeCognitiveBiasCountermeasures: true,
+    includeSelfVerification: true,
+    includeChallengeRules: true,  // P0: 異議申し立てガイドライン
+    includeWorkingMemoryGuidelines: includeGuidelines,
+  });
+  challengerRulesCache.set(key, rules);
+  return rules;
+}
+
+// Inspector用ルールのキャッシュ
+const inspectorRulesCache = new Map<string, string>();
+
+/**
+ * Inspectorサブエージェント用の実行ルールを取得
+ * 論文「Large Language Model Reasoning Failures」のP0推奨事項
+ */
+export function getInspectorExecutionRules(includeGuidelines = false): string {
+  const key = String(includeGuidelines);
+  const cached = inspectorRulesCache.get(key);
+  if (cached) return cached;
+  
+  const rules = buildExecutionRulesSection({
+    forSubagent: true,
+    includeGuidelines,
+    includeCognitiveBiasCountermeasures: true,
+    includeSelfVerification: true,
+    includeWorkingMemoryGuidelines: includeGuidelines,
+  });
+  inspectorRulesCache.set(key, rules);
   return rules;
 }

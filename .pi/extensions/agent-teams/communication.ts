@@ -450,3 +450,196 @@ export function extractDiscussionSection(output: string): string {
 
   return discussionLines.join("\n");
 }
+
+// ============================================================================
+// Termination Check (P0 from arXiv:2602.06176)
+// ============================================================================
+
+/**
+ * Termination check result.
+ * Verifies that the task has been completed before ending execution.
+ * Based on arXiv:2602.06176 recommendations for completion verification.
+ */
+export interface TerminationCheckResult {
+  canTerminate: boolean;
+  completionScore: number;  // 0-1
+  missingElements: string[];
+  suspiciousPatterns: string[];
+  recommendation: "proceed" | "extend" | "challenge";
+}
+
+/**
+ * Check if task execution can be safely terminated.
+ * Based on arXiv:2602.06176 recommendations for completion verification.
+ *
+ * @param task - Original task description
+ * @param results - Team member results to evaluate
+ * @param minCompletionScore - Minimum score required for termination (default 0.7)
+ * @returns Termination check result
+ */
+export function checkTermination(
+  task: string,
+  results: TeamMemberResult[],
+  minCompletionScore = 0.7,
+): TerminationCheckResult {
+  const missingElements: string[] = [];
+  const suspiciousPatterns: string[] = [];
+
+  // Check 1: All results have SUMMARY field
+  const missingSummaries = results.filter(
+    (r) => !extractField(r.output, "SUMMARY") && r.status === "completed"
+  );
+  if (missingSummaries.length > 0) {
+    missingElements.push(`${missingSummaries.length} members missing SUMMARY field`);
+  }
+
+  // Check 2: All results have RESULT field
+  const missingResults = results.filter(
+    (r) => !extractField(r.output, "RESULT") && r.status === "completed"
+  );
+  if (missingResults.length > 0) {
+    missingElements.push(`${missingResults.length} members missing RESULT field`);
+  }
+
+  // Check 3: Evidence presence
+  const noEvidenceCount = results.filter(
+    (r) => (r.diagnostics?.evidenceCount ?? 0) === 0 && r.status === "completed"
+  ).length;
+  if (noEvidenceCount > 0) {
+    suspiciousPatterns.push(`${noEvidenceCount} members provided no evidence`);
+  }
+
+  // Check 4: Confidence alignment
+  const highConfidenceNoEvidence = results.filter(
+    (r) => (r.diagnostics?.confidence ?? 0) > 0.8 && (r.diagnostics?.evidenceCount ?? 0) < 2
+  );
+  if (highConfidenceNoEvidence.length > 0) {
+    suspiciousPatterns.push(
+      `${highConfidenceNoEvidence.length} members have high confidence but minimal evidence`
+    );
+  }
+
+  // Check 5: Failed members
+  const failedCount = results.filter((r) => r.status === "failed").length;
+  if (failedCount > 0) {
+    missingElements.push(`${failedCount} members failed to complete`);
+  }
+
+  // Calculate completion score
+  const totalChecks = 5;
+  const passedChecks = totalChecks - (missingElements.length + suspiciousPatterns.length) / 2;
+  const completionScore = Math.max(0, Math.min(1, passedChecks / totalChecks));
+
+  // Determine recommendation
+  let recommendation: TerminationCheckResult["recommendation"];
+  if (completionScore >= minCompletionScore && suspiciousPatterns.length === 0) {
+    recommendation = "proceed";
+  } else if (suspiciousPatterns.length > 2 || completionScore < 0.5) {
+    recommendation = "challenge";
+  } else {
+    recommendation = "extend";
+  }
+
+  return {
+    canTerminate: completionScore >= minCompletionScore && suspiciousPatterns.length === 0,
+    completionScore,
+    missingElements,
+    suspiciousPatterns,
+    recommendation,
+  };
+}
+
+// ============================================================================
+// Belief Tracking (P0 from arXiv:2602.06176)
+// ============================================================================
+
+/**
+ * Belief tracking structure for monitoring agent positions across rounds.
+ * Based on arXiv:2602.06176 recommendations for multi-agent robustness.
+ */
+export interface AgentBelief {
+  memberId: string;
+  claimId: string;
+  claimText: string;
+  confidence: number;
+  evidenceRefs: string[];
+  round: number;
+  timestamp: string;
+}
+
+/**
+ * Detected contradiction between agent beliefs.
+ */
+export interface BeliefContradiction {
+  belief1: AgentBelief;
+  belief2: AgentBelief;
+  contradictionType: "direct" | "implicit" | "assumption_conflict";
+  severity: "low" | "medium" | "high";
+  description: string;
+}
+
+// Belief state cache for tracking across rounds
+const beliefStateCache = new Map<string, AgentBelief[]>();
+
+/**
+ * Update belief state for a member based on their output.
+ *
+ * @param memberId - Member ID
+ * @param output - Member output text
+ * @param round - Current communication round
+ * @returns Updated belief list for the member
+ */
+export function updateBeliefState(
+  memberId: string,
+  output: string,
+  round: number,
+): AgentBelief[] {
+  const claim = extractField(output, "CLAIM") || "";
+  const evidence = extractField(output, "EVIDENCE") || "";
+  const confidenceStr = extractField(output, "CONFIDENCE") || "0.5";
+  const confidence = parseFloat(confidenceStr) || 0.5;
+
+  const state: AgentBelief = {
+    memberId,
+    claimId: `${memberId}:${round}:${Date.now()}`,
+    claimText: claim,
+    confidence,
+    evidenceRefs: evidence.split(/[;,]/).map((s) => s.trim()).filter(Boolean),
+    round,
+    timestamp: new Date().toISOString(),
+  };
+
+  const existing = beliefStateCache.get(memberId) || [];
+  beliefStateCache.set(memberId, [...existing, state]);
+
+  return beliefStateCache.get(memberId) || [];
+}
+
+/**
+ * Get belief summary for communication context.
+ *
+ * @param memberIds - Member IDs to include in summary
+ * @returns Formatted belief summary string
+ */
+export function getBeliefSummary(memberIds: string[]): string {
+  const lines: string[] = ["【信念追跡 - 他エージェントの立場】"];
+
+  for (const id of memberIds) {
+    const states = beliefStateCache.get(id) || [];
+    const latest = states[states.length - 1];
+    if (latest) {
+      lines.push(
+        `- ${id}: [確信度=${latest.confidence.toFixed(2)}] ${latest.claimText.slice(0, 50)}...`
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Clear belief state cache (call at start of new team execution).
+ */
+export function clearBeliefStateCache(): void {
+  beliefStateCache.clear();
+}
