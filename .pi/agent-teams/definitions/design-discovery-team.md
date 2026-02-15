@@ -2,7 +2,7 @@
 id: design-discovery-team
 name: Design Discovery Team
 description: 創造的な作業を行う前に必ず実施する設計発見タスクフォース。機能の作成、コンポーネントの構築、機能追加、動作の変更などを行う前に、ユーザーの意図、要件、設計を検討する。Phase 1で要件収集とアイデア精緻化、Phase 2でトレードオフ評価と代替案提示、Phase 3で設計策定と検証を行い、四人で協調して実装前の設計を完成させる。
-enabled: enabled
+enabled: disabled
 strategy: parallel
 members:
   - id: requirements-analyst

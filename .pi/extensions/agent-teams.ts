@@ -1743,9 +1743,9 @@ function getHardcodedDefaultTeams(nowIso: string): TeamDefinition[] {
  * Load team definitions from Markdown files if available,
  * otherwise fallback to hardcoded defaults.
  */
-function createDefaultTeams(nowIso: string): TeamDefinition[] {
-  const cwd = process.cwd();
-  const markdownTeams = loadTeamDefinitionsFromMarkdown(cwd, nowIso);
+function createDefaultTeams(nowIso: string, cwd?: string): TeamDefinition[] {
+  const effectiveCwd = cwd || process.cwd();
+  const markdownTeams = loadTeamDefinitionsFromMarkdown(effectiveCwd, nowIso);
 
   // If Markdown teams are loaded, return them
   if (markdownTeams.length > 0) {
@@ -1757,8 +1757,9 @@ function createDefaultTeams(nowIso: string): TeamDefinition[] {
   return getHardcodedDefaultTeams(nowIso);
 }
 
-function ensureDefaults(storage: TeamStorage, nowIso: string): TeamStorage {
-  const defaults = createDefaultTeams(nowIso);
+function ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage {
+  const effectiveCwd = cwd || process.cwd();
+  const defaults = createDefaultTeams(nowIso, effectiveCwd);
   const defaultIds = new Set(defaults.map((team) => team.id));
   const deprecatedDefaultIds = new Set(["investigation-team"]);
   const existingById = new Map(storage.teams.map((team) => [team.id, team]));
@@ -3012,7 +3013,9 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
     description: "List configured agent teams and teammates.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      const storage = loadStorage(ctx.cwd);
+      const nowIso = new Date().toISOString();
+      let storage = loadStorage(ctx.cwd);
+      storage = ensureDefaults(storage, nowIso, ctx.cwd);
       saveStorage(ctx.cwd, storage);
 
       return {

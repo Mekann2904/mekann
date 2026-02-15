@@ -2,7 +2,7 @@
 id: mermaid-diagram-team
 name: Mermaid Diagram Team
 description: コード視覚化タスクフォース。シーケンス図、フローチャート等のMermaid図を厳密なコード整合性で作成・検証する。Phase 1でコード解析、Phase 2で図式作成、Phase 3で構文検証、Phase 4で整合性確認を行い、四者で協調して正確な図解を提供する。開発者とLLMの双方が理解できる視覚化を実現。
-enabled: enabled
+enabled: disabled
 strategy: parallel
 members:
   - id: code-analyzer
