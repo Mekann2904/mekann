@@ -23,6 +23,90 @@ export const SUBAGENT_SPECIFIC_RULES = [
 ] as const;
 
 /**
+ * 認知バイアス対策ルール
+ * 論文「Large Language Model Reasoning Failures」の知見に基づく
+ */
+export const COGNITIVE_BIAS_COUNTERMEASURES = [
+  "",
+  "【認知バイアス対策】",
+  "",
+  "以下のバイアスを意識し、積極的に対策してください:",
+  "",
+  "1. 確認バイアス (Confirmation Bias):",
+  "   - 自分の仮説を否定する証拠を最低1つ探してください",
+  "   - 「COUNTER_EVIDENCE: <自分の結論と矛盾する証拠>」を検討してください",
+  "",
+  "2. アンカリング効果 (Anchoring Bias):",
+  "   - 最初の結論に固執せず、新たな証拠で結論を更新してください",
+  "   - 更新前と更新後の結論を対比して説明してください",
+  "",
+  "3. フレーミング効果 (Framing Effect):",
+  "   - 問題を少なくとも2つの異なる視点から捉え直してください",
+  "   - 論理的に等価だが表現が異なる説明で結論が変わらないか確認してください",
+  "",
+  "4. Reversal Curse対策:",
+  "   - 「AならばB」という結論について、「BならばA」も成立するか検証してください",
+  "   - 因果関係と相関関係を区別してください",
+  "",
+  "5. 追従バイアス (Sycophancy Bias):",
+  "   - ユーザーの前提が誤っている可能性を積極的に指摘してください",
+  "   - ユーザーの期待に反する結論でも証拠に基づき提示してください",
+  "",
+].join("\n");
+
+/**
+ * 自己検証ルール
+ * 論文「Large Language Model Reasoning Failures」の知見に基づく
+ */
+export const SELF_VERIFICATION_RULES = [
+  "",
+  "【自己検証チェックリスト】",
+  "",
+  "結論を出力する前に以下を確認してください:",
+  "",
+  "1. 自己矛盾チェック:",
+  "   - CLAIMとRESULTが論理的に整合しているか",
+  "   - 複数の主張間に矛盾がないか",
+  "",
+  "2. 証拠の過不足評価:",
+  "   - EVIDENCEに挙げた証拠がCLAIMを過不足なくサポートしているか",
+  "   - 重要な証拠が欠落していないか",
+  "",
+  "3. 境界条件の明示:",
+  "   - 自分の主張が成り立たない境界条件がある場合は明示してください",
+  "   - 前提条件の変化に対する感度を評価してください",
+  "",
+  "4. 代替解釈の考慮:",
+  "   - 自分が採用しなかった代替仮説とその理由を明示してください",
+  "   - 確信度が0.8以上の場合は、なぜそう確信するのか根拠を追加してください",
+  "",
+].join("\n");
+
+/**
+ * 作業記憶管理ルール
+ * 論文「Large Language Model Reasoning Failures」の知見に基づく
+ */
+export const WORKING_MEMORY_GUIDELINES = [
+  "",
+  "【作業記憶管理】",
+  "",
+  "複雑なタスクでは以下を実践してください:",
+  "",
+  "1. 状態要約の維持:",
+  "   - これまでの発見事項を3-5項目に要約して維持する",
+  "   - 「CARRIED_FORWARD: <引き継ぐ重要事項>」として明示",
+  "",
+  "2. プロアクティブ干渉の回避:",
+  "   - 新しい情報を得るたびに、要約を更新するかどうか検討する",
+  "   - 古い仮定が新しい証拠と矛盾していないか定期的に確認する",
+  "",
+  "3. 段階的な推論:",
+  "   - 複雑な推論は複数ステップに分解する",
+  "   - 各ステップの中間結論を明示する",
+  "",
+].join("\n");
+
+/**
  * チームメンバー固有の実行ルール
  */
 export const TEAM_MEMBER_SPECIFIC_RULES = [
@@ -144,6 +228,9 @@ export interface BuildExecutionRulesOptions {
   phase?: "initial" | "communication";
   includeGuidelines?: boolean;
   includeDiscussionRules?: boolean;
+  includeCognitiveBiasCountermeasures?: boolean;
+  includeSelfVerification?: boolean;
+  includeWorkingMemoryGuidelines?: boolean;
 }
 
 // 実行ルールのキャッシュ（オプション組み合わせに対する結果を保持）
@@ -157,6 +244,9 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     options.phase || "initial",
     options.includeGuidelines ? "guide" : "",
     options.includeDiscussionRules ? "discuss" : "",
+    options.includeCognitiveBiasCountermeasures ? "bias" : "",
+    options.includeSelfVerification ? "verify" : "",
+    options.includeWorkingMemoryGuidelines ? "memory" : "",
   ].filter(Boolean).join(":");
 
   const cached = executionRulesCache.get(cacheKey);
@@ -188,6 +278,21 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     lines.push(...DISCUSSION_RULES);
   }
 
+  // 認知バイアス対策ルール
+  if (options.includeCognitiveBiasCountermeasures) {
+    lines.push(COGNITIVE_BIAS_COUNTERMEASURES.trim());
+  }
+
+  // 自己検証ルール
+  if (options.includeSelfVerification) {
+    lines.push(SELF_VERIFICATION_RULES.trim());
+  }
+
+  // 作業記憶管理ルール
+  if (options.includeWorkingMemoryGuidelines) {
+    lines.push(WORKING_MEMORY_GUIDELINES.trim());
+  }
+
   // ガイドラインを含める場合
   if (options.includeGuidelines) {
     lines.push(AUTONOMY_GUIDELINES.trim());
@@ -200,11 +305,12 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
   return result;
 }
 
-// サブエージェント用ルールのキャッシュ（2パターンのみ）
+// サブエージェント用ルールのキャッシュ（複数パターン）
 const subagentRulesCache = new Map<string, string>();
 
 /**
  * サブエージェント用の実行ルールを取得
+ * デフォルトで認知バイアス対策と自己検証ルールを含める
  */
 export function getSubagentExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
@@ -214,16 +320,20 @@ export function getSubagentExecutionRules(includeGuidelines = false): string {
   const rules = buildExecutionRulesSection({
     forSubagent: true,
     includeGuidelines,
+    includeCognitiveBiasCountermeasures: true,
+    includeSelfVerification: true,
+    includeWorkingMemoryGuidelines: includeGuidelines,
   });
   subagentRulesCache.set(key, rules);
   return rules;
 }
 
-// チームメンバー用ルールのキャッシュ（4パターンのみ）
+// チームメンバー用ルールのキャッシュ（複数パターン）
 const teamMemberRulesCache = new Map<string, string>();
 
 /**
  * チームメンバー用の実行ルールを取得
+ * デフォルトで認知バイアス対策と自己検証ルールを含める
  */
 export function getTeamMemberExecutionRules(
   phase: "initial" | "communication" = "initial",
@@ -238,6 +348,9 @@ export function getTeamMemberExecutionRules(
     phase,
     includeGuidelines,
     includeDiscussionRules: true, // マルチエージェント実行では常に議論ルールを含める
+    includeCognitiveBiasCountermeasures: true,
+    includeSelfVerification: true,
+    includeWorkingMemoryGuidelines: true,
   });
   teamMemberRulesCache.set(key, rules);
   return rules;
