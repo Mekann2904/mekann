@@ -75,11 +75,38 @@ export interface TeamFinalJudge {
 /**
  * Claim reference structure for tracking cross-member references.
  * Used in structured communication mode (PI_COMMUNICATION_ID_MODE="structured").
+ *
+ * Phase 2 (P0-2): Added "partial" stance and confidence field.
+ * Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
  */
 export interface ClaimReference {
   claimId: string;
   memberId: string;
-  stance: "agree" | "disagree" | "neutral";
+  stance: "agree" | "disagree" | "neutral" | "partial";
+  confidence?: number;
+}
+
+/**
+ * Discussion analysis structure for structured communication context.
+ * Tracks references between team members and stance distribution.
+ * Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
+ */
+export interface DiscussionAnalysis {
+  references: DiscussionReference[];
+  consensusMarker?: string;
+  stanceDistribution: { agree: number; disagree: number; neutral: number; partial: number };
+}
+
+/**
+ * Individual discussion reference tracking member-to-member stances.
+ * Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
+ */
+export interface DiscussionReference {
+  targetMemberId: string;
+  targetClaimId?: string;
+  stance: "agree" | "disagree" | "neutral" | "partial";
+  excerpt: string;
+  confidence: number;
 }
 
 export interface TeamCommunicationAuditEntry {

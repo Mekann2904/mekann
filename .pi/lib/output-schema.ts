@@ -207,6 +207,59 @@ export function setCommunicationIdMode(mode: CommunicationIdMode): void {
   cachedCommunicationIdMode = mode;
 }
 
+// ============================================================================
+// Stance Classification Mode (P0-2: Structured Communication Context)
+// ============================================================================
+
+/**
+ * Stance classification mode for discussion analysis.
+ * - "disabled" (default): No stance classification, backward compatible
+ * - "heuristic": Use regex-based pattern matching for stance detection
+ * - "structured": Full structured analysis with confidence scores
+ */
+export type StanceClassificationMode = "disabled" | "heuristic" | "structured";
+
+/**
+ * Cache for stance classification mode.
+ */
+let cachedStanceClassificationMode: StanceClassificationMode | undefined;
+
+/**
+ * Get the current stance classification mode.
+ * Reads from PI_STANCE_CLASSIFICATION_MODE environment variable.
+ *
+ * @returns Current stance classification mode (defaults to "disabled")
+ */
+export function getStanceClassificationMode(): StanceClassificationMode {
+  if (cachedStanceClassificationMode !== undefined) {
+    return cachedStanceClassificationMode;
+  }
+
+  const mode = process.env.PI_STANCE_CLASSIFICATION_MODE || "disabled";
+  if (["disabled", "heuristic", "structured"].includes(mode)) {
+    cachedStanceClassificationMode = mode as StanceClassificationMode;
+  } else {
+    // Default: disabled for backward compatibility
+    cachedStanceClassificationMode = "disabled";
+  }
+
+  return cachedStanceClassificationMode;
+}
+
+/**
+ * Reset the cached stance classification mode (primarily for testing).
+ */
+export function resetStanceClassificationModeCache(): void {
+  cachedStanceClassificationMode = undefined;
+}
+
+/**
+ * Set stance classification mode at runtime (primarily for testing).
+ */
+export function setStanceClassificationMode(mode: StanceClassificationMode): void {
+  cachedStanceClassificationMode = mode;
+}
+
 /**
  * Cache for schema validation mode.
  */

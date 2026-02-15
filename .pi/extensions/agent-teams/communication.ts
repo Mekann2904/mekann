@@ -4,10 +4,16 @@
 // Related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts
 
 import { normalizeForSingleLine } from "../../lib";
-import type { TeamMember, TeamMemberResult, TeamDefinition } from "./storage";
+import { analyzeDiscussionStance } from "../../lib/text-parsing";
+import {
+  getCommunicationIdMode,
+  getStanceClassificationMode,
+  type CommunicationIdMode,
+} from "../../lib/output-schema";
+import type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference } from "./storage";
 
 // Re-export types needed by communication consumers
-export type { TeamMember, TeamMemberResult, TeamDefinition };
+export type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference };
 
 // ============================================================================
 // Communication Constants
@@ -218,20 +224,6 @@ export function sanitizeCommunicationSnippet(value: string, fallback: string): s
 // Structured Communication IDs (V2)
 // ============================================================================
 
-import {
-  getCommunicationIdMode,
-  type CommunicationIdMode,
-} from "../../lib/output-schema";
-
-/**
- * Claim reference detected in structured communication.
- */
-export interface ClaimReference {
-  claimId: string;
-  memberId: string;
-  stance: "agree" | "disagree" | "neutral";
-}
-
 /**
  * Result of detecting partner references with structured ID tracking.
  */
@@ -271,6 +263,7 @@ export function detectPartnerReferencesV2(
   const lowered = output.toLowerCase();
   const referencedPartners = new Set<string>();
   const claimReferences: ClaimReference[] = [];
+  const stanceMode = getStanceClassificationMode();
 
   // Step 1: Detect ID-based references in structured mode
   if (mode === "structured") {
@@ -281,10 +274,15 @@ export function detectPartnerReferencesV2(
       const [memberId] = id.split(":");
       if (partnerIds.includes(memberId)) {
         referencedPartners.add(memberId);
+        // P0-2: Stance estimation when enabled
+        const stanceResult = stanceMode !== "disabled"
+          ? analyzeDiscussionStance(output, memberId)
+          : { stance: "neutral" as const, confidence: 0, evidence: [] };
         claimReferences.push({
           claimId: id,
           memberId,
-          stance: "neutral",
+          stance: stanceResult.stance,
+          confidence: stanceResult.confidence,
         });
       }
     }

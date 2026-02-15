@@ -130,3 +130,164 @@ export function countKeywordSignals(output: string, keywords: string[]): number 
   }
   return count;
 }
+
+// ============================================================================
+// Discussion Analysis Utilities (P0-2: Structured Communication Context)
+// ============================================================================
+
+/**
+ * Stance type for discussion analysis.
+ * Matches StanceClassificationMode behavior in output-schema.ts.
+ */
+export type DiscussionStance = "agree" | "disagree" | "neutral" | "partial";
+
+/**
+ * Result of discussion stance analysis.
+ */
+export interface DiscussionStanceResult {
+  stance: DiscussionStance;
+  confidence: number;
+  evidence: string[];
+}
+
+/**
+ * Regex patterns for detecting stance in discussion text.
+ * Supports both Japanese and English expressions.
+ */
+export const STANCE_PATTERNS: Record<DiscussionStance, RegExp[]> = {
+  agree: [
+    /同意|賛成|支持|正しい|的確|妥当|合意/,
+    /\b(agree|support|correct|valid|consensus)\b/i,
+  ],
+  disagree: [
+    /反対|不同意|懸念|問題|誤り|不適切|矛盾/,
+    /\b(disagree|oppose|concern|issue|wrong|incorrect)\b/i,
+  ],
+  partial: [
+    /部分的|一部|条件付き|ただし|一方|側面/,
+    /\b(partial|conditionally|however)\b/i,
+  ],
+  neutral: [
+    /参考|確認|注記|留意/,
+    /\b(note|reference|observe)\b/i,
+  ],
+};
+
+/**
+ * Analyze the discussion stance relative to a target member.
+ *
+ * @param text - Discussion text to analyze
+ * @param targetMemberId - Member ID to find context around
+ * @returns Stance analysis result with confidence and evidence
+ */
+export function analyzeDiscussionStance(
+  text: string,
+  targetMemberId: string
+): DiscussionStanceResult {
+  // Default result for empty or missing text
+  if (!text || text.trim().length === 0) {
+    return {
+      stance: "neutral",
+      confidence: 0.0,
+      evidence: [],
+    };
+  }
+
+  // Extract context around targetMemberId (approx. 100 chars before and after)
+  const contextWindow = 100;
+  const memberIdLower = targetMemberId.toLowerCase();
+  const textLower = text.toLowerCase();
+  const memberIndex = textLower.indexOf(memberIdLower);
+
+  // If member ID not found, analyze full text
+  const analysisText = memberIndex === -1
+    ? text
+    : text.slice(
+        Math.max(0, memberIndex - contextWindow),
+        Math.min(text.length, memberIndex + memberIdLower.length + contextWindow)
+      );
+
+  // Count matches for each stance
+  const matchCounts: Record<DiscussionStance, number> = {
+    agree: 0,
+    disagree: 0,
+    partial: 0,
+    neutral: 0,
+  };
+
+  const matchEvidence: Record<DiscussionStance, string[]> = {
+    agree: [],
+    disagree: [],
+    partial: [],
+    neutral: [],
+  };
+
+  // Check each stance pattern
+  for (const [stance, patterns] of Object.entries(STANCE_PATTERNS) as [DiscussionStance, RegExp[]][]) {
+    for (const pattern of patterns) {
+      // Use exec loop instead of matchAll for broader compatibility
+      const regex = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(analysisText)) !== null) {
+        if (match[0]) {
+          matchCounts[stance]++;
+          matchEvidence[stance].push(match[0]);
+        }
+      }
+    }
+  }
+
+  // Determine the dominant stance
+  let maxCount = 0;
+  let dominantStance: DiscussionStance = "neutral";
+
+  for (const [stance, count] of Object.entries(matchCounts) as [DiscussionStance, number][]) {
+    if (count > maxCount) {
+      maxCount = count;
+      dominantStance = stance;
+    }
+  }
+
+  // Calculate total patterns checked
+  const totalPatterns = Object.values(STANCE_PATTERNS).reduce(
+    (sum, patterns) => sum + patterns.length,
+    0
+  );
+
+  // Confidence = match count / total patterns, clamped to [0, 1]
+  const confidence = totalPatterns > 0
+    ? clampConfidence(maxCount / totalPatterns)
+    : 0.0;
+
+  // Deduplicate evidence
+  const uniqueEvidence = Array.from(new Set(matchEvidence[dominantStance]));
+
+  return {
+    stance: dominantStance,
+    confidence,
+    evidence: uniqueEvidence,
+  };
+}
+
+/**
+ * Extract consensus marker from discussion text.
+ * Looks for lines starting with "合意:" (Japanese) or "Consensus:" (English).
+ *
+ * @param text - Discussion text to search
+ * @returns Extracted consensus text, or undefined if not found
+ */
+export function extractConsensusMarker(text: string): string | undefined {
+  // Japanese pattern: "合意:" or "合意："
+  const jaMatch = text.match(/合意\s*[:：]\s*(.+)/);
+  if (jaMatch?.[1]) {
+    return jaMatch[1].trim();
+  }
+
+  // English pattern: "Consensus:" (case-insensitive)
+  const enMatch = text.match(/consensus\s*:\s*(.+)/i);
+  if (enMatch?.[1]) {
+    return enMatch[1].trim();
+  }
+
+  return undefined;
+}
