@@ -146,7 +146,22 @@ export interface BuildExecutionRulesOptions {
   includeDiscussionRules?: boolean;
 }
 
+// 実行ルールのキャッシュ（オプション組み合わせに対する結果を保持）
+const executionRulesCache = new Map<string, string>();
+
 export function buildExecutionRulesSection(options: BuildExecutionRulesOptions = {}): string {
+  // キャッシュキーを生成
+  const cacheKey = [
+    options.forSubagent ? "sub" : "",
+    options.forTeam ? "team" : "",
+    options.phase || "initial",
+    options.includeGuidelines ? "guide" : "",
+    options.includeDiscussionRules ? "discuss" : "",
+  ].filter(Boolean).join(":");
+
+  const cached = executionRulesCache.get(cacheKey);
+  if (cached) return cached;
+
   const lines: string[] = [];
 
   lines.push("実行ルール:");
@@ -180,18 +195,32 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     lines.push(QUESTION_TOOL_GUIDELINES.trim());
   }
 
-  return lines.join("\n");
+  const result = lines.join("\n");
+  executionRulesCache.set(cacheKey, result);
+  return result;
 }
+
+// サブエージェント用ルールのキャッシュ（2パターンのみ）
+const subagentRulesCache = new Map<string, string>();
 
 /**
  * サブエージェント用の実行ルールを取得
  */
 export function getSubagentExecutionRules(includeGuidelines = false): string {
-  return buildExecutionRulesSection({
+  const key = String(includeGuidelines);
+  const cached = subagentRulesCache.get(key);
+  if (cached) return cached;
+  
+  const rules = buildExecutionRulesSection({
     forSubagent: true,
     includeGuidelines,
   });
+  subagentRulesCache.set(key, rules);
+  return rules;
 }
+
+// チームメンバー用ルールのキャッシュ（4パターンのみ）
+const teamMemberRulesCache = new Map<string, string>();
 
 /**
  * チームメンバー用の実行ルールを取得
@@ -200,10 +229,16 @@ export function getTeamMemberExecutionRules(
   phase: "initial" | "communication" = "initial",
   includeGuidelines = false
 ): string {
-  return buildExecutionRulesSection({
+  const key = `${phase}:${includeGuidelines}`;
+  const cached = teamMemberRulesCache.get(key);
+  if (cached) return cached;
+  
+  const rules = buildExecutionRulesSection({
     forTeam: true,
     phase,
     includeGuidelines,
     includeDiscussionRules: true, // マルチエージェント実行では常に議論ルールを含める
   });
+  teamMemberRulesCache.set(key, rules);
+  return rules;
 }

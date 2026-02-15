@@ -2,7 +2,7 @@
 id: code-excellence-review-team
 name: Code Excellence Review Team
 description: 包括的なコードレビュータスクフォース。可読性、エレガンス、保守性、長期的な運用可能性を評価し、競合する改善案を検証した上で最終的な合意形成を行う。Phase 1 で可読性レビュー、Phase 2 でアーキテクチャレビュー、Phase 3 で統合と優先付けを行い、三人で協調してコード品質を向上させる。
-enabled: enabled
+enabled: disabled
 strategy: parallel
 skills:
   - lint-analyzer         # チーム共通: Lint結果解析
@@ -210,6 +210,9 @@ members:
   - 具体的な修正案
   - 修正の優先度
   - 代替案（あれば）
+- **DISCUSSION**:
+  - 他メンバーのoutputを参照し、同意点/不同意点を記述
+  - 合意形成時は「合意: [要約]」を明記（必須）
 
 ### Architecture Reviewer (architecture-reviewer)
 
@@ -256,6 +259,9 @@ members:
   - 各モジュールの責任定義
   - 単一責任の原則の遵守状況
   - 改善提案
+- **DISCUSSION**:
+  - 他メンバーのoutputを参照し、同意点/不同意点を記述
+  - 合意形成時は「合意: [要約]」を明記（必須）
 
 ### Review Synthesizer (review-synthesizer)
 
@@ -302,6 +308,9 @@ members:
   - 即座に対応すべき項目
   - 次のスプリントで対応すべき項目
   - 技術的負債として追跡すべき項目
+- **DISCUSSION**:
+  - 他メンバーのoutputを参照し、同意点/不同意点を記述
+  - 合意形成時は「合意: [要約]」を明記（必須）
 
 ## 警告信号 - プロセスの遵守を促す
 

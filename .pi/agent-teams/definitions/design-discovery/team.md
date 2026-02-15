@@ -2,7 +2,7 @@
 id: design-discovery-team
 name: Design Discovery Team
 description: 創造的な作業を行う前に必ず実施する設計発見タスクフォース。機能の作成、コンポーネントの構築、機能追加、動作の変更などを行う前に、ユーザーの意図、要件、設計を検討する。Phase 1で要件収集とアイデア精緻化、Phase 2でトレードオフ評価と代替案提示、Phase 3で設計策定と検証を行い、四人で協調して実装前の設計を完成させる。
-enabled: enabled
+enabled: disabled
 strategy: parallel
 members:
   - id: requirements-analyst
@@ -215,6 +215,9 @@ members:
   - 除外した機能と理由
   - 今スプリントで実装する機能
   - 将来の拡張候補（バックログ用）
+- **DISCUSSION**:
+  - 他メンバーのoutputを参照し、同意点/不同意点を記述
+  - 合意形成時は「合意: [要約]」を明記（必須）
 
 ### Trade-off Evaluator (trade-off-evaluator)
 
@@ -265,6 +268,9 @@ members:
   - ユーザーの懸念事項への回答
   - 追加質問への対応
   - 決定後の次のステップ
+- **DISCUSSION**:
+  - 他メンバーのoutputを参照し、同意点/不同意点を記述
+  - 合意形成時は「合意: [要約]」を明記（必須）
 
 ### Solution Designer (solution-designer)
 
@@ -389,9 +395,9 @@ Solution Designerが提示した各セクションの内容を検証し、現時
 
 **これらを見たら:** STOP。前のフェーズに戻れ。
 
-## よくある言い託
+## よくある言い訳
 
-| 言い託 | 現実 |
+| 言い訳 | 現実 |
 |--------|------|
 | 「質問は省略できる」 | 質問なき理解は推測。推測は誤りを生む。 |
 | 「代替案は一つで十分」 | 一つの視点は盲点を生む。複数視点で最適解を。 |

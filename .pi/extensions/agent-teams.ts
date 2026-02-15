@@ -170,6 +170,7 @@ interface TeamFrontmatter {
   description: string;
   enabled: "enabled" | "disabled";
   strategy?: "parallel" | "sequential";
+  skills?: string[];
   members: TeamMemberFrontmatter[];
 }
 
@@ -180,6 +181,7 @@ interface TeamMemberFrontmatter {
   enabled?: boolean;
   provider?: string;
   model?: string;
+  skills?: string[];
 }
 
 interface ParsedTeamMarkdown {
@@ -195,7 +197,8 @@ interface PrintCommandResult {
 
 const LIVE_PREVIEW_LINE_LIMIT = 120;
 const LIVE_LIST_WINDOW_SIZE = 22;
-const LIVE_EVENT_TAIL_LIMIT = 240;
+// イベント配列サイズ（環境変数で上書き可能、デフォルトは120に削減）
+const LIVE_EVENT_TAIL_LIMIT = Math.max(60, Number(process.env.PI_LIVE_EVENT_TAIL_LIMIT) || 120);
 const LIVE_EVENT_INLINE_LINE_LIMIT = 8;
 const LIVE_EVENT_DETAIL_LINE_LIMIT = 28;
 // Communication constants moved to ./agent-teams/communication.ts
@@ -1373,6 +1376,7 @@ interface TeamMemberFrontmatter {
   enabled?: boolean;
   provider?: string;
   model?: string;
+  skills?: string[];
 }
 
 interface ParsedTeamMarkdown {
@@ -1474,6 +1478,7 @@ function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): Tea
       provider: m.provider,
       model: m.model,
       enabled: m.enabled ?? true,
+      skills: m.skills,
     }));
 
     teams.push({
@@ -1481,6 +1486,7 @@ function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): Tea
       name: frontmatter.name,
       description: frontmatter.description,
       enabled: frontmatter.enabled,
+      skills: frontmatter.skills,
       members,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -1742,9 +1748,9 @@ function getHardcodedDefaultTeams(nowIso: string): TeamDefinition[] {
  * Load team definitions from Markdown files if available,
  * otherwise fallback to hardcoded defaults.
  */
-function createDefaultTeams(nowIso: string): TeamDefinition[] {
-  const cwd = process.cwd();
-  const markdownTeams = loadTeamDefinitionsFromMarkdown(cwd, nowIso);
+function createDefaultTeams(nowIso: string, cwd?: string): TeamDefinition[] {
+  const effectiveCwd = cwd || process.cwd();
+  const markdownTeams = loadTeamDefinitionsFromMarkdown(effectiveCwd, nowIso);
 
   // If Markdown teams are loaded, return them
   if (markdownTeams.length > 0) {
@@ -1756,8 +1762,9 @@ function createDefaultTeams(nowIso: string): TeamDefinition[] {
   return getHardcodedDefaultTeams(nowIso);
 }
 
-function ensureDefaults(storage: TeamStorage, nowIso: string): TeamStorage {
-  const defaults = createDefaultTeams(nowIso);
+function ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage {
+  const effectiveCwd = cwd || process.cwd();
+  const defaults = createDefaultTeams(nowIso, effectiveCwd);
   const defaultIds = new Set(defaults.map((team) => team.id));
   const deprecatedDefaultIds = new Set(["investigation-team"]);
   const existingById = new Map(storage.teams.map((team) => [team.id, team]));
@@ -1948,6 +1955,65 @@ function formatTeamMemberSkillsSection(skills: string[] | undefined): string | n
   return skills.map((skill) => `- ${skill}`).join("\n");
 }
 
+/**
+ * Skill search paths in priority order.
+ * - .pi/lib/skills/: Team-specific skills (only loaded when explicitly assigned)
+ * - .pi/skills/: Global skills (available to all agents)
+ */
+const TEAM_SKILL_PATHS = [
+  join(process.cwd(), ".pi", "lib", "skills"),
+  join(process.cwd(), ".pi", "skills"),
+];
+
+/**
+ * Load skill content from SKILL.md file.
+ * Searches in team-specific path first, then global path.
+ * Returns null if skill not found.
+ */
+function loadSkillContent(skillName: string): string | null {
+  for (const basePath of TEAM_SKILL_PATHS) {
+    const skillPath = join(basePath, skillName, "SKILL.md");
+    if (existsSync(skillPath)) {
+      try {
+        const content = readFileSync(skillPath, "utf-8");
+        // Extract content after frontmatter
+        const frontmatterMatch = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+        return frontmatterMatch ? frontmatterMatch[1].trim() : content.trim();
+      } catch {
+        // Continue to next path on error
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Build skills section with content for prompt inclusion.
+ * Only includes skills that are explicitly assigned to the team/member.
+ * Falls back to skill names only if content cannot be loaded.
+ */
+function buildSkillsSectionWithContent(skills: string[] | undefined): string | null {
+  if (!skills || skills.length === 0) return null;
+
+  const lines: string[] = [];
+
+  for (const skill of skills) {
+    const content = loadSkillContent(skill);
+    if (content) {
+      lines.push(`## ${skill}`);
+      lines.push(content);
+      lines.push("");
+    } else {
+      // Fallback: skill name only
+      lines.push(`## ${skill}`);
+      lines.push("(スキル内容を読み込めませんでした)");
+      lines.push("");
+    }
+  }
+
+  return lines.length > 0 ? lines.join("\n").trim() : null;
+}
+
 function buildTeamMemberPrompt(input: {
   team: TeamDefinition;
   member: TeamMember;
@@ -1969,7 +2035,7 @@ function buildTeamMemberPrompt(input: {
 
   // Resolve and include skills (team common + member individual)
   const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member);
-  const skillsSection = formatTeamMemberSkillsSection(effectiveSkills);
+  const skillsSection = buildSkillsSectionWithContent(effectiveSkills);
   if (skillsSection) {
     lines.push("");
     lines.push("割り当てスキル:");
@@ -3011,7 +3077,9 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
     description: "List configured agent teams and teammates.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      const storage = loadStorage(ctx.cwd);
+      const nowIso = new Date().toISOString();
+      let storage = loadStorage(ctx.cwd);
+      storage = ensureDefaults(storage, nowIso, ctx.cwd);
       saveStorage(ctx.cwd, storage);
 
       return {

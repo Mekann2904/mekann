@@ -2,7 +2,7 @@
 id: bug-war-room
 name: Bug War Room
 description: バグの根本原因調査タスクフォース。競合する仮説を検証し、決定論的な再現手順を確立した上で、最終的な合意形成を行う。Phase 1 で根本原因調査、Phase 2 でパターン分析、Phase 3 で仮説と検証、Phase 4 で実装と修正を行い、三人で協調して原因特定を行う。
-enabled: enabled
+enabled: disabled
 strategy: parallel
 skills:
   - log-analyzer          # チーム共通: ログ解析・エラー抽出
@@ -33,7 +33,8 @@ members:
 
 **鉄の掟:**
 ```
-根本原因調査なしに修正は許されない
+理解なき修正をしない
+証拠なき仮定を許可しない
 ```
 
 ## Team Strategy
@@ -93,10 +94,6 @@ members:
 
 
 5. **データフローの追跡**
-
-   **エラーがコールスタックの深い場所にある場合:**
-
-   このディレクトリの `root-cause-tracing.md` を参照して、完全な逆方向追跡技術を参照。
 
    **簡易版:**
    - 悪い値はどこで発生するか？
@@ -231,6 +228,7 @@ members:
   - テストした内容
   - 結果（成功/失敗）
   - 新しい発見
+- DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>
 
 ### Reproduction Specialist (reproduction)
 
@@ -273,6 +271,7 @@ members:
   - 環境依存の問題
   - タイミング依存の問題
   - 設定関連の問題
+- DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>
 
 ### Consensus Analyst (consensus)
 
@@ -311,6 +310,7 @@ members:
   - 実装した修正の詳細
   - 検証結果
   - 追加の推奨事項（監視、ログ、ドキュメントなど）
+- DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>
 
 ## 警告信号 - プロセスの遵守を促す
 

@@ -70,13 +70,41 @@ export function formatClockTime(value?: number): string {
 /**
  * Normalizes text for single-line display.
  * Collapses whitespace and truncates if necessary.
+ * Uses LRU cache for repeated calls with same input.
  * @param input - Input text
  * @param maxLength - Maximum length (default: 160)
  * @returns Normalized single-line text
  */
+
+// LRUキャッシュ（最大256エントリ）
+const normalizeCache = new Map<string, string>();
+const NORMALIZE_CACHE_MAX_SIZE = 256;
+
 export function normalizeForSingleLine(input: string, maxLength = 160): string {
+  // キャッシュキーを生成
+  const cacheKey = `${maxLength}:${input}`;
+  const cached = normalizeCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  // 正規化処理
   const normalized = input.replace(/\s+/g, " ").trim();
-  if (!normalized) return "-";
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength)}...`;
+  let result: string;
+  if (!normalized) {
+    result = "-";
+  } else if (normalized.length <= maxLength) {
+    result = normalized;
+  } else {
+    result = `${normalized.slice(0, maxLength)}...`;
+  }
+
+  // LRUエビクション
+  if (normalizeCache.size >= NORMALIZE_CACHE_MAX_SIZE) {
+    // 最初のエントリを削除（Mapは挿入順序を保持）
+    const firstKey = normalizeCache.keys().next().value;
+    if (firstKey !== undefined) {
+      normalizeCache.delete(firstKey);
+    }
+  }
+  normalizeCache.set(cacheKey, result);
+  return result;
 }

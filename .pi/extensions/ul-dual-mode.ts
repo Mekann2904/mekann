@@ -8,8 +8,19 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 const UL_PREFIX = /^\s*ul(?:\s+|$)/i;
 const STABLE_UL_PROFILE = true;
 const UL_REQUIRE_BOTH_ORCHESTRATIONS = false;  // 固定フェーズ解除: LLMの裁量で1〜Nフェーズ
-const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;  // reviewer必須
-const UL_AUTO_ENABLE_FOR_CLEAR_GOAL = process.env.PI_UL_AUTO_CLEAR_GOAL !== "0";
+const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;  // reviewer必須（環境変数で上書き可）
+const UL_SKIP_REVIEWER_FOR_TRIVIAL = process.env.PI_UL_SKIP_REVIEWER_FOR_TRIVIAL !== "0";
+const UL_REVIEWER_MIN_TASK_LENGTH = 200;  // この文字数未満は小規模タスク扱い
+const UL_TRIVIAL_PATTERNS = [
+  /^read\s+/i,           // 読み取り系
+  /^show\s+/i,           // 表示系
+  /^list\s+/i,           // 一覧系
+  /^what\s+is/i,         // 質問系
+  /^explain\s+/i,        // 説明系
+  /^\?/,                 // 疑問符開始
+  /^search\s+/i,         // 検索系
+  /^find\s+/i,           // 検索系
+];
 const RECOMMENDED_SUBAGENT_IDS = ["researcher", "architect", "implementer"] as const;
 const RECOMMENDED_CORE_TEAM_ID = "core-delivery-team";
 const RECOMMENDED_REVIEWER_ID = "reviewer";
@@ -37,6 +48,7 @@ const state = {
   completedRecommendedSubagentPhase: false,
   completedRecommendedTeamPhase: false,
   completedRecommendedReviewerPhase: false,
+  currentTask: "",  // 現在のタスク（reviewer要否判定用）
 };
 
 function persistState(pi: ExtensionAPI): void {
@@ -53,6 +65,7 @@ function resetState(): void {
   state.completedRecommendedSubagentPhase = false;
   state.completedRecommendedTeamPhase = false;
   state.completedRecommendedReviewerPhase = false;
+  state.currentTask = "";
 }
 
 function refreshStatus(ctx: any): void {
@@ -70,6 +83,23 @@ function refreshStatus(ctx: any): void {
   ctx.ui.setStatus?.("ul-dual-mode", `UL mode | subagent:${subagent} team:${team} reviewer:${reviewer} loop:${loop}`);
 }
 
+// スロットリング用の状態
+let lastRefreshStatusMs = 0;
+const REFRESH_STATUS_THROTTLE_MS = 300;  // 300ms間隔でスロットリング
+
+/**
+ * スロットリング付きのrefreshStatus。
+ * 短時間での連続呼び出しを防ぎ、UI更新のオーバーヘッドを削減する。
+ */
+function refreshStatusThrottled(ctx: any): void {
+  const now = Date.now();
+  if (now - lastRefreshStatusMs < REFRESH_STATUS_THROTTLE_MS) {
+    return;  // スロットリング
+  }
+  lastRefreshStatusMs = now;
+  refreshStatus(ctx);
+}
+
 
 function extractTextWithoutUlPrefix(text: string): string {
   return text.replace(UL_PREFIX, "").trimStart();
@@ -81,11 +111,46 @@ function looksLikeClearGoalTask(text: string): boolean {
   return CLEAR_GOAL_SIGNAL.test(normalized);
 }
 
+/**
+ * 小規模タスク（trivial task）かどうかを判定する。
+ * 小規模タスクではreviewerをスキップ可能にする。
+ */
+function isTrivialTask(task: string): boolean {
+  const normalized = String(task || "").trim();
+  if (!normalized) return true;
+  
+  // 文字数が少ない場合は小規模
+  if (normalized.length < UL_REVIEWER_MIN_TASK_LENGTH) {
+    return true;
+  }
+  
+  // 特定パターンに一致する場合は小規模
+  if (UL_TRIVIAL_PATTERNS.some(p => p.test(normalized))) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * reviewerが必要かどうかを判定する。
+ * 環境変数PI_UL_SKIP_REVIEWER_FOR_TRIVIAL=1の場合、小規模タスクではスキップ。
+ */
+function shouldRequireReviewer(task: string): boolean {
+  if (!UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL) {
+    return false;
+  }
+  if (!UL_SKIP_REVIEWER_FOR_TRIVIAL) {
+    return true;  // 常にreviewer必須
+  }
+  return !isTrivialTask(task);
+}
+
 function getMissingRequirements(): string[] {
   const missing: string[] = [];
 
-  // reviewer必須のみチェック（フェーズ数はLLM裁量）
-  if (UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL && !state.completedRecommendedReviewerPhase) {
+  // reviewer必須チェック（小規模タスクは条件付きでスキップ可能）
+  if (shouldRequireReviewer(state.currentTask) && !state.completedRecommendedReviewerPhase) {
     missing.push(`subagent_run (subagentId: ${RECOMMENDED_REVIEWER_ID}) - 完了前の品質レビュー`);
   }
 
@@ -172,87 +237,57 @@ function isRecommendedReviewerCall(event: any): boolean {
 }
 
 function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
-  const loopHints = goalLoopMode
-    ? [
-        "- 明確な達成条件を検知したため、このターンで loop_run を優先する。",
-        "- loop_run に `goal` を渡し、可能なら `verifyCommand` と `verificationTimeoutMs` を設定する。",
-        "- 完了判定は loop_run の `completed=yes` を基準にする。",
-      ]
-    : [
-        "- 完了条件が明確な場合は loop_run を使い、`goal` を明示する。",
-      ];
-
-  return [
-    "[UL_MODE_ADAPTIVE]",
-    "委任優先で効率的に実行すること。",
-    "",
-    "実行ルール:",
-    "- subagent_run_parallel / agent_team_run / agent_team_run_parallel 等を必要に応じて使用する。",
-    "- フェーズ数はLLMの裁量（最小1、上限なし）。タスク規模に合わせて最適化する。",
-    "- 完了と判断する前に必ず subagent_run(subagentId: reviewer) を実行し、品質を確認すること。",
-    "- 1人で十分な小規模タスクは subagent_run で済ませる。",
-    "- 複数視点が必要な場合は subagent_run_parallel(subagentIds: researcher, architect, implementer) を使用。",
-    "- 多角的な実装が必要な場合は agent_team_run(teamId: core-delivery-team) を使用。",
-    "",
-    ...loopHints,
-    "",
-    "タスク:",
-    task,
-  ].join("\n");
+  // 簡素化: 詳細なポリシーはgetUlPolicy()で一元管理
+  const goalHint = goalLoopMode
+    ? "\n[GOAL_LOOP] 明確な達成条件を検知。loop_runを優先。"
+    : "";
+  return `[UL_MODE] 委任優先で実行。${goalHint}\n\nタスク:\n${task}`;
 }
 
-function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
-  const mode = sessionWide
-    ? "UL Adaptive Mode (SESSION-WIDE - Active for all prompts)"
-    : "UL Adaptive Mode (Single turn - triggered by 'ul' prefix)";
+// ポリシーキャッシュ（4通りの組み合わせのみ）
+const ulPolicyCache = new Map<string, string>();
 
-  const subagentParallelRule =
-    "- For subagent usage, prefer `subagent_run_parallel` with explicit `subagentIds` (minimum 2 for complex tasks). Use `subagent_run` for simple single-specialist tasks.";
-  const loopRule = goalLoopMode
-    ? "- Clear completion criteria detected: call `loop_run` early and set `goal` (plus verification settings when available)."
-    : "- If explicit completion criteria exist, use `loop_run` with `goal` (and `verifyCommand` when available).";
-  const teamParallelRule = goalLoopMode
-    ? "- For decomposable work, prefer `agent_team_run_parallel` with explicit `teamIds`, `communicationRounds: 1`, and `failedMemberRetryRounds: 1`."
-    : "- For agent-team usage, use parallel variants when explicitly necessary.";
-  const completionLoopRule = goalLoopMode
+function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
+  const key = `${sessionWide}:${goalLoopMode}`;
+  const cached = ulPolicyCache.get(key);
+  if (cached) return cached;
+  
+  const policy = buildUlPolicyString(sessionWide, goalLoopMode);
+  ulPolicyCache.set(key, policy);
+  return policy;
+}
+
+function buildUlPolicyString(sessionWide: boolean, goalLoopMode: boolean): string {
+  const mode = sessionWide ? "UL SESSION" : "UL";
+  const scope = sessionWide ? "session is in" : "turn is in";
+  
+  const loopSection = goalLoopMode
     ? `
-Completion-loop rule (clear deterministic completion criteria detected):
-- Call \`loop_run\` early in this turn.
-- Set \`goal\` to the user-defined completion criteria.
-- When objective checks exist (tests/build/lint), set \`verifyCommand\` and \`verificationTimeoutMs\`.
-- Keep \`maxIterations\` bounded (typically 4-8) and avoid unbounded fan-out.
-- Consider the task complete only after loop_run reports completed=yes.
-- If loop_run stops by max_iterations/stagnation, do one focused orchestration pass and rerun loop_run once.
-`
-    : "";
+Loop rule (clear completion criteria detected):
+- Call loop_run early with goal. Set verifyCommand if tests/build/lint apply.
+- Max iterations: 4-8. Rerun once if stagnation.`
+    : "- Use loop_run with goal if explicit completion criteria exist.";
 
   return `
 ---
-## ${mode}
+## ${mode} (delegation-first)
 
-This ${sessionWide ? "session is in" : "turn is in"} UL Adaptive Mode.
+This ${scope} UL Adaptive Mode.
 
-Execution policy (delegation-first, efficient, high quality):
-- Use subagent_run_parallel, agent_team_run, etc. as needed.
-- Phase count is at LLM's discretion (minimum 1, no maximum).
-- YOU MUST call \`subagent_run(subagentId: "${RECOMMENDED_REVIEWER_ID}")\` before marking the task complete.
+Execution:
+- Use subagent_run_parallel / agent_team_run as needed.
+- Phase count: LLM discretion (1-N, optimize for task scale).
+- YOU MUST: subagent_run(subagentId: "reviewer") before marking complete.
 
-Recommended patterns:
-1. Simple tasks: single \`subagent_run\` or direct execution
-2. Multi-perspective tasks: \`subagent_run_parallel(subagentIds: researcher, architect, implementer)\`
-3. Complex implementation: \`agent_team_run(teamId: ${RECOMMENDED_CORE_TEAM_ID}, strategy: parallel)\`
+Patterns:
+1. Simple: single subagent_run or direct execution
+2. Multi-perspective: subagent_run_parallel(subagentIds: researcher, architect, implementer)
+3. Complex: agent_team_run(teamId: core-delivery-team, strategy: parallel)
 
-Quality gate (REQUIRED):
-- Before finishing, always run: \`subagent_run(subagentId: "${RECOMMENDED_REVIEWER_ID}")\`
-- The reviewer will validate quality, completeness, and potential issues.
-
-Execution rules:
-- ${subagentParallelRule}
-- ${loopRule}
-- ${teamParallelRule}
-- Direct edits are allowed for trivial changes.
+Rules:
+- ${loopSection}
+- Direct edits allowed for trivial changes.
 - Do not finish until reviewer has been called.
-${completionLoopRule}
 ---`;
 }
 
@@ -305,7 +340,6 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       state.pendingGoalLoopMode = false;
 
       const shouldAutoEnable =
-        UL_AUTO_ENABLE_FOR_CLEAR_GOAL &&
         looksLikeClearGoalTask(rawText);
 
       if (!shouldAutoEnable) {
@@ -314,6 +348,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
       state.pendingUlMode = true;
       state.pendingGoalLoopMode = true;
+      state.currentTask = rawText;  // 自動有効化の場合もタスクを保存
 
       if (ctx?.hasUI && ctx?.ui) {
         ctx.ui.notify("UL自動モード: 明確な達成条件を検知したため、UL+loop方針を適用します。", "info");
@@ -333,9 +368,13 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
     state.pendingUlMode = true;
     state.pendingGoalLoopMode = looksLikeClearGoalTask(transformed);
+    state.currentTask = transformed;  // タスクを保存（reviewer要否判定用）
+    
+    // 小規模タスクの場合は通知を変更
+    const reviewerHint = shouldRequireReviewer(transformed) ? "（完了前にreviewer必須）" : "（小規模タスク）";
     if (ctx?.hasUI && ctx?.ui) {
       const modeHint = state.pendingGoalLoopMode ? " + loop完了条件モード" : "";
-      const notifyText = `ULモード: 委任優先で効率的に実行します（完了前にreviewer必須）${modeHint}。`;
+      const notifyText = `ULモード: 委任優先で効率的に実行します${reviewerHint}${modeHint}。`;
       ctx.ui.notify(notifyText, "info");
     }
 
@@ -355,7 +394,8 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     state.usedAgentTeamRun = false;
     state.completedRecommendedSubagentPhase = false;
     state.completedRecommendedTeamPhase = false;
-    state.completedRecommendedReviewerPhase = false;
+    // 小規模タスクの場合はreviewer不要としてマーク
+    state.completedRecommendedReviewerPhase = !shouldRequireReviewer(state.currentTask);
     refreshStatus(ctx);
 
     if (!state.activeUlMode) {
@@ -402,7 +442,7 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     }
 
     if (changed) {
-      refreshStatus(ctx);
+      refreshStatusThrottled(ctx);  // 高頻度イベントではスロットリング
     }
   });
 

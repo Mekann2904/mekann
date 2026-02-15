@@ -2,7 +2,7 @@
 id: docs-enablement-team
 name: Docs Enablement Team
 description: ドキュメント作成タスクフォース。README、運用手順書、サンプルコード、変更サマリーを網羅的に作成・更新し、読者の理解を促進する情報を確立した上で最終的な品質保証を行う。Phase 1でオンボーディングフロー整備、Phase 2で運用手順文書化、Phase 3で品質チェックを行い、三人で協調してドキュメント品質を向上させる。
-enabled: enabled
+enabled: disabled
 strategy: parallel
 members:
   - id: readme-owner

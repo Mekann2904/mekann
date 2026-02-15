@@ -2,7 +2,7 @@
 id: refactor-migration-team
 name: Refactor & Migration Team
 description: リファクタリングと移行に特化したタスクフォース。影響分析、移行計画、実装戦略、互換性チェックを実施し、安全な変更を確立した上で最終的な実行計画を策定する。Phase 1で影響範囲特定、Phase 2で移行計画策定、Phase 3で安全な実装設計を行い、三人で協調してリスクを最小化する。
-enabled: enabled
+enabled: disabled
 strategy: parallel
 skills:
   - diff-analyzer         # チーム共通: 差分分析

@@ -43,24 +43,27 @@ export const ADAPTIVE_PARALLEL_DECAY_MS = 8 * 60 * 1000; // 8 minutes
 
 /**
  * Maximum retry attempts for stable runtime profile.
+ * Reduced from 4 to 2 for faster failure detection and recovery.
  */
-export const STABLE_MAX_RETRIES = 4;
+export const STABLE_MAX_RETRIES = 2;
 
 /**
  * Initial delay for retry backoff in milliseconds.
+ * Reduced from 1000ms for faster initial retry.
  */
-export const STABLE_INITIAL_DELAY_MS = 1_000;
+export const STABLE_INITIAL_DELAY_MS = 800;
 
 /**
  * Maximum delay for retry backoff in milliseconds.
+ * Reduced from 30000ms (30s) to 10000ms (10s) for faster recovery.
  */
-export const STABLE_MAX_DELAY_MS = 30_000;
+export const STABLE_MAX_DELAY_MS = 10_000;
 
 /**
  * Maximum retry attempts specifically for rate limit errors.
- * Higher than normal retries to handle provider rate limits gracefully.
+ * Reduced from 6 to 4 for faster fallback.
  */
-export const STABLE_MAX_RATE_LIMIT_RETRIES = 6;
+export const STABLE_MAX_RATE_LIMIT_RETRIES = 4;
 
 /**
  * Maximum wait time for rate limit gate in milliseconds.
