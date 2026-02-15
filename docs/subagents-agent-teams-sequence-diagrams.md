@@ -290,20 +290,40 @@ sequenceDiagram
 | `capacityWaitMs` | 30000 | 12000 | キャパシティ待機タイムアウト |
 | `reservationTtlMs` | 60000 | 45000 | 予約TTL |
 
+### Feature Flags (v2.0.0+)
+
+| 環境変数 | 値 | デフォルト | 説明 |
+|---------|---|-----------|------|
+| `PI_OUTPUT_SCHEMA_MODE` | legacy/dual/strict | **strict** | 出力検証モード |
+| `PI_ADAPTIVE_PENALTY_MODE` | legacy/enhanced | **enhanced** | ペナルティ制御モード |
+| `PI_JUDGE_WEIGHTS_PATH` | ファイルパス | (なし) | Judge重み設定ファイル |
+
 ### Adaptive Penalty
 
 ```
 adaptivePenalty.raise(reason):
+  # Legacy mode: linear decay
   - penalty = min(maxPenalty, penalty + 1)
-  - reason: "rate_limit" | "timeout" | "capacity"
+  
+  # Enhanced mode (default since v2.0.0): exponential decay + reason weights
+  - decayMultiplier = 0.5 (exponential)
+  - reasonWeights = { rate_limit: 2.0, capacity: 1.5, timeout: 1.0, schema_violation: 0.5 }
+  - effectiveStep = reasonWeights[reason] || 1.0
+  - penalty = min(maxPenalty, penalty + effectiveStep)
 
 adaptivePenalty.lower():
+  # Legacy mode
   - penalty = max(0, penalty - 1)
+  
+  # Enhanced mode
+  - penalty = penalty * decayMultiplier
 
 adaptivePenalty.applyLimit(baseLimit):
   - IF penalty <= 0: RETURN baseLimit
   - RETURN max(1, floor(baseLimit / (penalty + 1)))
 ```
+
+**Feature Flag**: `PI_ADAPTIVE_PENALTY_MODE` (default: `enhanced`)
 
 ---
 
@@ -458,12 +478,99 @@ sequenceDiagram
 | `runtime_queue_timeout` | TIMEOUT | true | キュータイムアウト |
 | `runtime_queue_aborted` | CANCELLED | false | ユーザーキャンセル |
 
+### 拡張エラー分類 (v2.0.0+)
+
+| ExtendedOutcomeCode | 説明 | retryRecommended | 判定条件 |
+|---------------------|------|-----------------|----------|
+| `SCHEMA_VIOLATION` | 出力形式がスキーマに違反 | true | 必須フィールド欠落、CONFIDENCE範囲外 |
+| `LOW_SUBSTANCE` | 意図のみで実質的成果物がない | true | RESULTが空または意図のみ |
+| `EMPTY_OUTPUT` | 出力が空 | true | テキストなし |
+| `PARSE_ERROR` | JSON/構造化パース失敗 | true | 構文エラー |
+
+```typescript
+// セマンティックエラー分類
+classifySemanticError(output, error): { code, details? }
+  - SCHEMA_VIOLATION: スキーマ検証失敗
+  - LOW_SUBSTANCE: 実質的成果物なし
+  - EMPTY_OUTPUT: 空出力
+  - PARSE_ERROR: パース失敗
+```
+
 ### Final Judge判定
 
 | 条件 | 信号 | 説明 |
 |------|------|------|
 | `uSys >= 0.6` | high_system_uncertainty | システム全体の不確実性が高い |
 | `failedRatio >= 0.3` | teammate_failures | チームメンバーの失敗率が高い |
+
+### Judge重み設定 (v2.0.0+)
+
+```typescript
+// デフォルト重み設定 (DEFAULT_JUDGE_WEIGHTS)
+{
+  intraWeights: {
+    failedRatio: 0.38,      // 失敗率の重み
+    lowConfidence: 0.26,    // 低信頼度の重み
+    noEvidence: 0.20,       // 証拠なしの重み
+    contradiction: 0.16     // 矛盾の重み
+  },
+  interWeights: {
+    conflictRatio: 0.42,    // コンフリクト率
+    confidenceSpread: 0.28, // 信頼度ばらつき
+    failedRatio: 0.20,
+    noEvidence: 0.10
+  },
+  sysWeights: {
+    uIntra: 0.45,           // メンバー内不確実性
+    uInter: 0.35,           // メンバー間不確実性
+    failedRatio: 0.20
+  }
+}
+```
+
+**カスタム重み設定**: `PI_JUDGE_WEIGHTS_PATH` 環境変数でJSONファイルを指定可能
+
+### Judge説明可能性 (v2.0.0+)
+
+```typescript
+computeProxyUncertaintyWithExplainability():
+  - explanation.intraFactors: [内要因の詳細リスト]
+  - explanation.interFactors: [間要因の詳細リスト]
+  - explanation.sysFactors: [システム要因の詳細リスト]
+  - explanation.breakdown: { uIntra, uInter, uSys の内訳 }
+
+formatJudgeExplanation(explanation):
+  // 人間可読な説明を生成
+  "uIntra計算: failedRatio(0.38)*0.12 + lowConfidence(0.26)*0.08 + ..."
+```
+
+### スキーマ検証 (v2.0.0+)
+
+```typescript
+// 出力スキーマ検証モード
+PI_OUTPUT_SCHEMA_MODE:
+  - "legacy": 正規表現ベース検証（非推奨）
+  - "dual": 正規表現 + スキーマ検証（差分ログ出力）
+  - "strict": スキーマ検証のみ（デフォルト）
+
+// スキーマ定義
+SCHEMAS.subagent:
+  - SUMMARY: required, min 10 chars
+  - RESULT: required, min 20 chars
+  - CONFIDENCE: optional, 0.00-1.00
+  - CLAIM: optional
+  - EVIDENCE: optional
+  - DISCUSSION: optional
+  - NEXT_STEP: optional
+
+SCHEMAS.teamMember:
+  - SUMMARY: required, min 10 chars
+  - CLAIM: required
+  - EVIDENCE: required
+  - CONFIDENCE: required, 0.00-1.00
+  - DISCUSSION: required
+  - RESULT: required, min 20 chars
+```
 
 ---
 
@@ -598,8 +705,25 @@ collapseSignals: [<検出された問題のリスト>]
 - [Pi README](/.pi/../README.md)
 - [Extensions](/docs/extensions.md)
 - [Skills](/docs/skills.md)
+- [Orchestration Migration Guide v2.0](/.pi/docs/orchestration-migration-v2.md)
 - [Agent Runtime](/.pi/extensions/agent-runtime.ts)
 - [Subagents Extension](/.pi/extensions/subagents.ts)
 - [Agent Teams Extension](/.pi/extensions/agent-teams.ts)
 - [Communication Module](/.pi/extensions/agent-teams/communication.ts)
 - [Judge Module](/.pi/extensions/agent-teams/judge.ts)
+- [Output Schema](/.pi/lib/output-schema.ts)
+- [Adaptive Penalty](/.pi/lib/adaptive-penalty.ts)
+- [Agent Errors](/.pi/lib/agent-errors.ts)
+- [Text Parsing Utils](/.pi/lib/text-parsing.ts)
+
+---
+
+## v2.0.0 変更履歴
+
+| 日付 | 変更内容 |
+|------|---------|
+| 2026-02-15 | P0-1: JSON Schema契約実装、デフォルトstrict移行 |
+| 2026-02-15 | P0-3: Judge説明可能性・重み設定外部化 |
+| 2026-02-15 | P1-4: Enhanced Adaptive Penalty（指数減衰・理由別重み） |
+| 2026-02-15 | P1-5: 拡張エラー分類（SCHEMA_VIOLATION等） |
+| 2026-02-15 | 共通ユーティリティ抽出（text-parsing.ts） |

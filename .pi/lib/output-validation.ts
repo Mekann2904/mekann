@@ -1,7 +1,25 @@
 /**
  * Output validation utilities for subagent and team member outputs.
  * Provides consistent validation for structured output format compliance.
+ *
+ * Enhanced with schema validation support (P0-1 improvement).
+ * Feature Flag: PI_OUTPUT_SCHEMA_MODE
+ * - "legacy" (default): Use regex-based validation only
+ * - "dual": Run both regex and schema validation, log differences
+ * - "strict": Use schema validation only
+ *
+ * Related: output-schema.ts
  */
+
+import {
+  type SchemaValidationMode,
+  type SchemaValidationResult,
+  type SchemaViolation,
+  getSchemaValidationMode,
+  validateSubagentOutputWithSchema,
+  validateTeamMemberOutputWithSchema,
+  recordSchemaViolation,
+} from "./output-schema.js";
 
 /**
  * Check if output contains only intent statements without actual content.
@@ -150,4 +168,180 @@ export function validateTeamMemberOutput(
   }
 
   return { ok: true };
+}
+
+// ============================================================================
+// Enhanced Validation with Schema Support (P0-1)
+// ============================================================================
+
+/**
+ * Extended validation result with schema information.
+ */
+export interface ExtendedValidationResult {
+  ok: boolean;
+  reason?: string;
+  mode: SchemaValidationMode;
+  legacyOk: boolean;
+  legacyReason?: string;
+  schemaOk?: boolean;
+  schemaReason?: string;
+  schemaViolations?: SchemaViolation[];
+  fallbackUsed: boolean;
+}
+
+/**
+ * Validate subagent output with enhanced schema support.
+ * Respects PI_OUTPUT_SCHEMA_MODE feature flag.
+ *
+ * @param output - Output text to validate
+ * @param options - Validation options (optional)
+ * @returns Extended validation result with schema details
+ */
+export function validateSubagentOutputEnhanced(
+  output: string,
+  options?: Partial<SubagentValidationOptions>,
+): ExtendedValidationResult {
+  const mode = getSchemaValidationMode();
+  const trimmed = output.trim();
+
+  // Legacy validation (reuse existing function for DRY compliance)
+  const legacyResult = validateSubagentOutput(trimmed, options);
+
+  // Schema validation (run in dual or strict mode)
+  let schemaResult: SchemaValidationResult | undefined;
+  if (mode === "dual" || mode === "strict") {
+    schemaResult = validateSubagentOutputWithSchema(trimmed, mode);
+
+    // Record violations for analytics
+    for (const violation of schemaResult.violations) {
+      recordSchemaViolation(violation);
+    }
+  }
+
+  // Determine final result based on mode
+  if (mode === "legacy") {
+    return {
+      ok: legacyResult.ok,
+      reason: legacyResult.reason,
+      mode,
+      legacyOk: legacyResult.ok,
+      legacyReason: legacyResult.reason,
+      fallbackUsed: false,
+    };
+  }
+
+  if (mode === "strict") {
+    return {
+      ok: schemaResult!.ok,
+      reason: schemaResult!.reason,
+      mode,
+      legacyOk: legacyResult.ok,
+      legacyReason: legacyResult.reason,
+      schemaOk: schemaResult!.ok,
+      schemaReason: schemaResult!.reason,
+      schemaViolations: schemaResult!.violations,
+      fallbackUsed: false,
+    };
+  }
+
+  // Dual mode: use legacy for pass/fail, but report schema differences
+  const hasDifference = schemaResult && legacyResult.ok !== schemaResult.ok;
+  if (hasDifference) {
+    // Log the difference for debugging (in production, this would go to a logger)
+    // Note: Using console.warn is intentional for development visibility
+    // TODO: Replace with proper logging when logger module is available
+    console.warn(
+      `[output-validation] Validation difference detected: legacy=${legacyResult.ok}, schema=${schemaResult!.ok}`,
+    );
+  }
+
+  return {
+    ok: legacyResult.ok,
+    reason: legacyResult.reason,
+    mode,
+    legacyOk: legacyResult.ok,
+    legacyReason: legacyResult.reason,
+    schemaOk: schemaResult?.ok,
+    schemaReason: schemaResult?.reason,
+    schemaViolations: schemaResult?.violations,
+    fallbackUsed: false,
+  };
+}
+
+/**
+ * Validate team member output with enhanced schema support.
+ * Respects PI_OUTPUT_SCHEMA_MODE feature flag.
+ *
+ * @param output - Output text to validate
+ * @param options - Validation options (optional)
+ * @returns Extended validation result with schema details
+ */
+export function validateTeamMemberOutputEnhanced(
+  output: string,
+  options?: Partial<TeamMemberValidationOptions>,
+): ExtendedValidationResult {
+  const mode = getSchemaValidationMode();
+  const trimmed = output.trim();
+
+  // Legacy validation (reuse existing function for DRY compliance)
+  const legacyResult = validateTeamMemberOutput(trimmed, options);
+
+  // Schema validation (run in dual or strict mode)
+  let schemaResult: SchemaValidationResult | undefined;
+  if (mode === "dual" || mode === "strict") {
+    schemaResult = validateTeamMemberOutputWithSchema(trimmed, mode);
+
+    // Record violations for analytics
+    for (const violation of schemaResult.violations) {
+      recordSchemaViolation(violation);
+    }
+  }
+
+  // Determine final result based on mode
+  if (mode === "legacy") {
+    return {
+      ok: legacyResult.ok,
+      reason: legacyResult.reason,
+      mode,
+      legacyOk: legacyResult.ok,
+      legacyReason: legacyResult.reason,
+      fallbackUsed: false,
+    };
+  }
+
+  if (mode === "strict") {
+    return {
+      ok: schemaResult!.ok,
+      reason: schemaResult!.reason,
+      mode,
+      legacyOk: legacyResult.ok,
+      legacyReason: legacyResult.reason,
+      schemaOk: schemaResult!.ok,
+      schemaReason: schemaResult!.reason,
+      schemaViolations: schemaResult!.violations,
+      fallbackUsed: false,
+    };
+  }
+
+  // Dual mode: use legacy for pass/fail, but report schema differences
+  const hasDifference = schemaResult && legacyResult.ok !== schemaResult.ok;
+  if (hasDifference) {
+    // Note: Using console.warn is intentional for development visibility
+    // TODO: Replace with proper logging when logger module is available
+    console.warn(
+      `[output-validation] Validation difference detected: legacy=${legacyResult.ok}, schema=${schemaResult!.ok}`,
+    );
+  }
+
+  return {
+    ok: legacyResult.ok,
+    reason: legacyResult.reason,
+    mode,
+    legacyOk: legacyResult.ok,
+    legacyReason: legacyResult.reason,
+    schemaOk: schemaResult?.ok,
+    schemaReason: schemaResult?.reason,
+    schemaViolations: schemaResult?.violations,
+    fallbackUsed: false,
+  };
 }

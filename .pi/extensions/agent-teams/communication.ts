@@ -4,10 +4,21 @@
 // Related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts
 
 import { normalizeForSingleLine } from "../../lib";
-import type { TeamMember, TeamMemberResult, TeamDefinition } from "./storage";
+import { analyzeDiscussionStance } from "../../lib/text-parsing";
+import {
+  classifyFailureType,
+  shouldRetryByClassification,
+  type FailureClassification,
+} from "../../lib/agent-errors";
+import {
+  getCommunicationIdMode,
+  getStanceClassificationMode,
+  type CommunicationIdMode,
+} from "../../lib/output-schema";
+import type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference } from "./storage";
 
 // Re-export types needed by communication consumers
-export type { TeamMember, TeamMemberResult, TeamDefinition };
+export type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference };
 
 // ============================================================================
 // Communication Constants
@@ -101,11 +112,12 @@ export function normalizeFailedMemberRetryRounds(
 
 /**
  * Determine if a failed member result should be retried.
+ * Uses unified failure classification from agent-errors.ts.
  * Rate-limit and capacity errors are excluded (handled by backoff in runMember).
  *
  * @param result - The team member result to evaluate
  * @param retryRound - Current retry round number
- * @param classifyPressureError - Function to classify pressure errors
+ * @param classifyPressureError - Function to classify pressure errors (for backward compatibility)
  * @returns Whether retry should be attempted
  */
 export function shouldRetryFailedMemberResult(
@@ -115,22 +127,12 @@ export function shouldRetryFailedMemberResult(
 ): boolean {
   if (result.status !== "failed") return false;
 
-  const error = (result.error || "").toLowerCase();
+  const error = result.error || "";
   if (!error) return false;
-  const pressureClass = classifyPressureError(error);
-  // 429/capacity errors are already retried in runMember backoff, skip additional rounds.
-  if (pressureClass === "rate_limit" || pressureClass === "capacity") return false;
-  if (pressureClass === "timeout") return true;
-  if (retryRound >= 2) return true;
 
-  return (
-    error.includes("empty output") ||
-    error.includes("low-substance") ||
-    error.includes("timeout") ||
-    error.includes("timed out") ||
-    error.includes("temporarily unavailable") ||
-    error.includes("try again")
-  );
+  // Use unified failure classification (P2: 修復リトライ標準化)
+  const classification = classifyFailureType(error);
+  return shouldRetryByClassification(classification, retryRound);
 }
 
 /**
@@ -212,6 +214,101 @@ export function sanitizeCommunicationSnippet(value: string, fallback: string): s
     return "(instruction-like text removed)";
   }
   return compact;
+}
+
+// ============================================================================
+// Structured Communication IDs (V2)
+// ============================================================================
+
+/**
+ * Result of detecting partner references with structured ID tracking.
+ */
+export interface PartnerReferenceResultV2 {
+  /** Partners whose claims were referenced */
+  referencedPartners: string[];
+  /** Partners whose claims were NOT referenced */
+  missingPartners: string[];
+  /** Detailed claim references detected */
+  claimReferences: ClaimReference[];
+  /** Reference quality score (0-1) */
+  referenceQuality: number;
+}
+
+/**
+ * Pattern for detecting claim ID references in output.
+ * Matches: [memberId:claimIndex], claimId=memberId:0, etc.
+ */
+const CLAIM_ID_PATTERN = /\[([a-z0-9_-]+:\d+)\]|claimId[=:\s]+([a-z0-9_-]+:\d+)/gi;
+
+/**
+ * Detect partner references with optional structured ID tracking (V2).
+ * Falls back to string matching for backward compatibility.
+ *
+ * @param output - Member output text to analyze
+ * @param partnerIds - List of expected partner IDs
+ * @param memberById - Map of member ID to member definition
+ * @param mode - Communication ID mode (defaults to current setting)
+ * @returns Object with referenced and missing partner lists, plus structured references
+ */
+export function detectPartnerReferencesV2(
+  output: string,
+  partnerIds: string[],
+  memberById: Map<string, TeamMember>,
+  mode: CommunicationIdMode = getCommunicationIdMode(),
+): PartnerReferenceResultV2 {
+  const lowered = output.toLowerCase();
+  const referencedPartners = new Set<string>();
+  const claimReferences: ClaimReference[] = [];
+  const stanceMode = getStanceClassificationMode();
+
+  // Step 1: Detect ID-based references in structured mode
+  if (mode === "structured") {
+    let match: RegExpExecArray | null;
+    const pattern = new RegExp(CLAIM_ID_PATTERN.source, "gi");
+    while ((match = pattern.exec(output)) !== null) {
+      const id = (match[1] || match[2]).toLowerCase();
+      const [memberId] = id.split(":");
+      if (partnerIds.includes(memberId)) {
+        referencedPartners.add(memberId);
+        // P0-2: Stance estimation when enabled
+        const stanceResult = stanceMode !== "disabled"
+          ? analyzeDiscussionStance(output, memberId)
+          : { stance: "neutral" as const, confidence: 0, evidence: [] };
+        claimReferences.push({
+          claimId: id,
+          memberId,
+          stance: stanceResult.stance,
+          confidence: stanceResult.confidence,
+        });
+      }
+    }
+  }
+
+  // Step 2: Fallback to string matching for legacy support
+  for (const partnerId of partnerIds) {
+    if (referencedPartners.has(partnerId)) continue;
+
+    const partner = memberById.get(partnerId);
+    const role = partner?.role?.toLowerCase() ?? "";
+    const idMatched = lowered.includes(partnerId.toLowerCase());
+    const roleMatched = role.length > 0 && lowered.includes(role);
+
+    if (idMatched || roleMatched) {
+      referencedPartners.add(partnerId);
+    }
+  }
+
+  // Step 3: Calculate reference quality
+  const referenceQuality = partnerIds.length > 0
+    ? referencedPartners.size / partnerIds.length
+    : 0;
+
+  return {
+    referencedPartners: Array.from(referencedPartners),
+    missingPartners: partnerIds.filter((id) => !referencedPartners.has(id)),
+    claimReferences,
+    referenceQuality,
+  };
 }
 
 /**

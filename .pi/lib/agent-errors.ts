@@ -4,6 +4,9 @@
  * subagent and team member execution.
  *
  * Layer: 1 (depends on Layer 0: error-utils, agent-types)
+ *
+ * Enhanced with extended error classification (P1-5 improvement).
+ * New error types: SCHEMA_VIOLATION, LOW_SUBSTANCE, EMPTY_OUTPUT
  */
 
 import {
@@ -15,6 +18,124 @@ import {
 } from "./error-utils.js";
 import { type RunOutcomeCode, type RunOutcomeSignal } from "./agent-types.js";
 import { type EntityType, type EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "./agent-common.js";
+
+// ============================================================================
+// Extended Error Classification (P1-5)
+// ============================================================================
+
+/**
+ * Extended error classification codes.
+ * Extends the base RunOutcomeCode with semantic error types.
+ */
+export type ExtendedOutcomeCode =
+  | RunOutcomeCode
+  | "SCHEMA_VIOLATION"
+  | "LOW_SUBSTANCE"
+  | "EMPTY_OUTPUT"
+  | "PARSE_ERROR";
+
+/**
+ * Extended outcome signal with semantic error classification.
+ * Uses Omit to avoid type conflict with RunOutcomeSignal.outcomeCode.
+ */
+export interface ExtendedOutcomeSignal extends Omit<RunOutcomeSignal, 'outcomeCode'> {
+  outcomeCode: ExtendedOutcomeCode;
+  semanticError?: string;
+  schemaViolations?: string[];
+  /** Entity IDs that failed (for aggregate outcomes) */
+  failedEntityIds?: string[];
+}
+
+/**
+ * Classify semantic error from output content.
+ * Used for extended error classification beyond infrastructure errors.
+ *
+ * @param output - Output content to analyze
+ * @param error - Error message if available
+ * @returns Extended error code if semantic error detected, undefined otherwise
+ */
+export function classifySemanticError(
+  output?: string,
+  error?: unknown,
+): { code: ExtendedOutcomeCode | null; details?: string[] } {
+  const errorMessage = error ? toErrorMessage(error).toLowerCase() : "";
+  const outputLower = output?.toLowerCase() || "";
+
+  // Schema violation detection
+  if (
+    errorMessage.includes("schema violation") ||
+    errorMessage.includes("missing labels") ||
+    errorMessage.includes("invalid format") ||
+    errorMessage.includes("validation failed") ||
+    outputLower.includes("schema violation")
+  ) {
+    return { code: "SCHEMA_VIOLATION", details: ["output_format_mismatch"] };
+  }
+
+  // Low substance detection (intent-only output)
+  if (
+    errorMessage.includes("intent-only") ||
+    errorMessage.includes("low-substance") ||
+    errorMessage.includes("insufficient content")
+  ) {
+    return { code: "LOW_SUBSTANCE", details: ["intent_only_output"] };
+  }
+
+  // Empty output detection
+  if (
+    errorMessage.includes("empty output") ||
+    errorMessage.includes("empty result") ||
+    (!output || output.trim().length === 0)
+  ) {
+    return { code: "EMPTY_OUTPUT", details: ["no_content"] };
+  }
+
+  // Parse error detection
+  if (
+    errorMessage.includes("parse error") ||
+    errorMessage.includes("json parse") ||
+    errorMessage.includes("syntax error") ||
+    errorMessage.includes("unexpected token")
+  ) {
+    return { code: "PARSE_ERROR", details: ["parsing_failed"] };
+  }
+
+  return { code: null };
+}
+
+/**
+ * Resolve extended outcome signal with semantic error classification.
+ *
+ * @param error - The error that occurred
+ * @param output - Output content if available
+ * @param config - Entity configuration (optional)
+ * @returns Extended outcome signal with semantic classification
+ */
+export function resolveExtendedFailureOutcome(
+  error: unknown,
+  output?: string,
+  config?: EntityConfig,
+): ExtendedOutcomeSignal {
+  // First check for semantic errors
+  const semantic = classifySemanticError(output, error);
+  if (semantic.code) {
+    // SCHEMA_VIOLATION and LOW_SUBSTANCE are retryable with different prompts
+    const retryable = semantic.code === "SCHEMA_VIOLATION" || semantic.code === "LOW_SUBSTANCE";
+    return {
+      outcomeCode: semantic.code,
+      retryRecommended: retryable,
+      semanticError: semantic.code,
+      schemaViolations: semantic.details,
+    };
+  }
+
+  // Fall back to standard failure resolution
+  const baseResult = resolveFailureOutcome(error, config);
+  return {
+    outcomeCode: baseResult.outcomeCode,
+    retryRecommended: baseResult.retryRecommended,
+  };
+}
 
 // ============================================================================
 // Retryable Error Patterns (OCP-Compliant Configuration)
@@ -392,4 +513,96 @@ export function buildDiagnosticContext(context: {
   if (context.gateHits !== undefined) parts.push(`gate_hits=${context.gateHits}`);
 
   return parts.join(" ");
+}
+
+// ============================================================================
+// Failure Classification & Retry Policy Standardization (P2)
+// ============================================================================
+
+/**
+ * Standardized failure classification types for retry decision making.
+ * Each classification maps to a specific retry policy.
+ */
+export type FailureClassification =
+  | "rate_limit"   // HTTP 429 - backoffで処理
+  | "capacity"     // リソース枯渇 - backoffで処理
+  | "timeout"      // 実行タイムアウト - リトライ可
+  | "quality"      // 空出力/低品質 - リトライ可
+  | "transient"    // 一時的エラー - リトライ可
+  | "permanent";   // 恒久的エラー - リトライ不可
+
+/**
+ * Retry policy configuration for each failure classification.
+ * Defines whether retry is allowed and maximum retry rounds.
+ */
+export const RETRY_POLICY: Record<FailureClassification, {
+  retryable: boolean;
+  maxRounds?: number;
+}> = {
+  rate_limit:  { retryable: false },
+  capacity:    { retryable: false },
+  timeout:     { retryable: true, maxRounds: 2 },
+  quality:     { retryable: true, maxRounds: 2 },
+  transient:   { retryable: true, maxRounds: 2 },
+  permanent:   { retryable: false },
+};
+
+/**
+ * Classify a failure into a standardized category for retry decision making.
+ * Uses error message pattern matching and HTTP status code to determine classification.
+ *
+ * @param error - The error to classify
+ * @param statusCode - Optional HTTP status code for context
+ * @returns The failure classification category
+ */
+export function classifyFailureType(
+  error: unknown,
+  statusCode?: number,
+): FailureClassification {
+  const message = toErrorMessage(error).toLowerCase();
+
+  // Rate limit (429)
+  if (statusCode === 429 || /rate.?limit|too many requests/.test(message)) {
+    return "rate_limit";
+  }
+
+  // Capacity
+  if (/capacity.?exceeded|overloaded|resource.?unavailable/.test(message)) {
+    return "capacity";
+  }
+
+  // Timeout
+  if (/timeout|timed.?out/.test(message)) {
+    return "timeout";
+  }
+
+  // Quality issues
+  if (/empty.?output|low-substance|intent.?only/.test(message)) {
+    return "quality";
+  }
+
+  // Transient
+  if (/temporarily.?unavailable|try.?again|service.?unavailable/.test(message)) {
+    return "transient";
+  }
+
+  return "permanent";
+}
+
+/**
+ * Determine whether a retry should be attempted based on failure classification.
+ * Checks the retry policy and current round against max rounds limit.
+ *
+ * @param classification - The failure classification
+ * @param currentRound - Current retry round (0-indexed)
+ * @returns True if retry should be attempted, false otherwise
+ */
+export function shouldRetryByClassification(
+  classification: FailureClassification,
+  currentRound: number,
+): boolean {
+  const policy = RETRY_POLICY[classification];
+  if (!policy.retryable) return false;
+  if (policy.maxRounds === undefined) return true;
+  return currentRound < policy.maxRounds;
 }

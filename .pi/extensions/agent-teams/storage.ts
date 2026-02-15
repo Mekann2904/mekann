@@ -72,6 +72,43 @@ export interface TeamFinalJudge {
   rawOutput: string;
 }
 
+/**
+ * Claim reference structure for tracking cross-member references.
+ * Used in structured communication mode (PI_COMMUNICATION_ID_MODE="structured").
+ *
+ * Phase 2 (P0-2): Added "partial" stance and confidence field.
+ * Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
+ */
+export interface ClaimReference {
+  claimId: string;
+  memberId: string;
+  stance: "agree" | "disagree" | "neutral" | "partial";
+  confidence?: number;
+}
+
+/**
+ * Discussion analysis structure for structured communication context.
+ * Tracks references between team members and stance distribution.
+ * Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
+ */
+export interface DiscussionAnalysis {
+  references: DiscussionReference[];
+  consensusMarker?: string;
+  stanceDistribution: { agree: number; disagree: number; neutral: number; partial: number };
+}
+
+/**
+ * Individual discussion reference tracking member-to-member stances.
+ * Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
+ */
+export interface DiscussionReference {
+  targetMemberId: string;
+  targetClaimId?: string;
+  stance: "agree" | "disagree" | "neutral" | "partial";
+  excerpt: string;
+  confidence: number;
+}
+
 export interface TeamCommunicationAuditEntry {
   round: number;
   memberId: string;
@@ -82,6 +119,10 @@ export interface TeamCommunicationAuditEntry {
   contextPreview: string;
   partnerSnapshots: string[];
   resultStatus: "completed" | "failed";
+  // Phase 2: Structured communication fields (optional for backward compatibility)
+  claimId?: string;
+  evidenceId?: string;
+  claimReferences?: ClaimReference[];
 }
 
 export interface TeamRunRecord {
@@ -123,7 +164,7 @@ export interface TeamPaths extends BaseStoragePaths {}
 
 // Constants
 export const MAX_RUNS_TO_KEEP = 100;
-export const TEAM_DEFAULTS_VERSION = 2;
+export const TEAM_DEFAULTS_VERSION = 3;
 
 // Use common path factory
 const getBasePaths = createPathsFactory("agent-teams");
