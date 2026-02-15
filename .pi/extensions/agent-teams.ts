@@ -1491,30 +1491,7 @@ function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): Tea
   return teams;
 }
 
-// チーム定義キャッシュ（セッション内有効、TTL付き）
-const teamDefinitionsCache = new Map<string, { teams: TeamDefinition[]; timestamp: number }>();
-const TEAM_DEFINITIONS_CACHE_TTL_MS = 60_000; // 60秒
-
-/**
- * チーム定義キャッシュを無効化する
- */
-function invalidateTeamDefinitionsCache(cwd: string): void {
-  teamDefinitionsCache.delete(cwd);
-}
-
 function loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): TeamDefinition[] {
-  // キャッシュチェック
-  const cached = teamDefinitionsCache.get(cwd);
-  if (cached && Date.now() - cached.timestamp < TEAM_DEFINITIONS_CACHE_TTL_MS) {
-    return cached.teams;
-  }
-
-  const teams = loadTeamDefinitionsFromMarkdownUncached(cwd, nowIso);
-  teamDefinitionsCache.set(cwd, { teams, timestamp: Date.now() });
-  return teams;
-}
-
-function loadTeamDefinitionsFromMarkdownUncached(cwd: string, nowIso: string): TeamDefinition[] {
   const candidates = getCandidateTeamDefinitionsDirs(cwd);
   const missingDirs: string[] = [];
 

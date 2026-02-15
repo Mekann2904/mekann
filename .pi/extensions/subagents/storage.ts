@@ -202,39 +202,10 @@ function mergeSubagentStorageWithDisk(
   ) as SubagentStorage;
 }
 
-// ============================================================================
-// Storage Cache (in-memory for performance)
-// ============================================================================
-
-const storageCache = new Map<string, { storage: SubagentStorage; timestamp: number }>();
-const STORAGE_CACHE_TTL_MS = 30_000; // 30秒
-
 /**
- * キャッシュを無効化する（subagent_create/configure等の変更時）
- */
-export function invalidateStorageCache(cwd: string): void {
-  storageCache.delete(cwd);
-}
-
-/**
- * Load subagent storage from disk with in-memory caching.
+ * Load subagent storage from disk.
  */
 export function loadStorage(cwd: string): SubagentStorage {
-  // キャッシュチェック
-  const cached = storageCache.get(cwd);
-  if (cached && Date.now() - cached.timestamp < STORAGE_CACHE_TTL_MS) {
-    return cached.storage;
-  }
-
-  const storage = loadStorageFromDisk(cwd);
-  storageCache.set(cwd, { storage, timestamp: Date.now() });
-  return storage;
-}
-
-/**
- * Load subagent storage from disk (actual I/O).
- */
-function loadStorageFromDisk(cwd: string): SubagentStorage {
   const paths = ensurePaths(cwd);
   const nowIso = new Date().toISOString();
 
@@ -283,6 +254,4 @@ export function saveStorage(cwd: string, storage: SubagentStorage): void {
     atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
     pruneRunArtifacts(paths, merged.runs);
   });
-  // キャッシュを更新
-  storageCache.set(cwd, { storage: normalized, timestamp: Date.now() });
 }
