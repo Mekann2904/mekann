@@ -1955,6 +1955,65 @@ function formatTeamMemberSkillsSection(skills: string[] | undefined): string | n
   return skills.map((skill) => `- ${skill}`).join("\n");
 }
 
+/**
+ * Skill search paths in priority order.
+ * - .pi/lib/skills/: Team-specific skills (only loaded when explicitly assigned)
+ * - .pi/skills/: Global skills (available to all agents)
+ */
+const TEAM_SKILL_PATHS = [
+  join(process.cwd(), ".pi", "lib", "skills"),
+  join(process.cwd(), ".pi", "skills"),
+];
+
+/**
+ * Load skill content from SKILL.md file.
+ * Searches in team-specific path first, then global path.
+ * Returns null if skill not found.
+ */
+function loadSkillContent(skillName: string): string | null {
+  for (const basePath of TEAM_SKILL_PATHS) {
+    const skillPath = join(basePath, skillName, "SKILL.md");
+    if (existsSync(skillPath)) {
+      try {
+        const content = readFileSync(skillPath, "utf-8");
+        // Extract content after frontmatter
+        const frontmatterMatch = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+        return frontmatterMatch ? frontmatterMatch[1].trim() : content.trim();
+      } catch {
+        // Continue to next path on error
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Build skills section with content for prompt inclusion.
+ * Only includes skills that are explicitly assigned to the team/member.
+ * Falls back to skill names only if content cannot be loaded.
+ */
+function buildSkillsSectionWithContent(skills: string[] | undefined): string | null {
+  if (!skills || skills.length === 0) return null;
+
+  const lines: string[] = [];
+
+  for (const skill of skills) {
+    const content = loadSkillContent(skill);
+    if (content) {
+      lines.push(`## ${skill}`);
+      lines.push(content);
+      lines.push("");
+    } else {
+      // Fallback: skill name only
+      lines.push(`## ${skill}`);
+      lines.push("(スキル内容を読み込めませんでした)");
+      lines.push("");
+    }
+  }
+
+  return lines.length > 0 ? lines.join("\n").trim() : null;
+}
+
 function buildTeamMemberPrompt(input: {
   team: TeamDefinition;
   member: TeamMember;
@@ -1976,7 +2035,7 @@ function buildTeamMemberPrompt(input: {
 
   // Resolve and include skills (team common + member individual)
   const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member);
-  const skillsSection = formatTeamMemberSkillsSection(effectiveSkills);
+  const skillsSection = buildSkillsSectionWithContent(effectiveSkills);
   if (skillsSection) {
     lines.push("");
     lines.push("割り当てスキル:");
