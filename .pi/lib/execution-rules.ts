@@ -186,6 +186,75 @@ export const CHALLENGE_RULES = [
 ].join("\n");
 
 /**
+ * 検査ルール
+ * 論文「Large Language Model Reasoning Failures」のP0推奨事項（Inspector agents用）
+ */
+export const INSPECTION_RULES = [
+  "",
+  "【検査ガイドライン】",
+  "",
+  "他のエージェントの出力を監視する際は以下を確認してください:",
+  "",
+  "1. CLAIM-RESULT整合性:",
+  "   - CLAIMとRESULTが論理的に整合しているか",
+  "   - 結論が前提から導出されているか",
+  "   - 「SUSPICION: <不整合の内容>」として報告",
+  "",
+  "2. 証拠-信頼度ミスマッチ:",
+  "   - EVIDENCEがCLAIMを十分にサポートしているか",
+  "   - CONFIDENCEがEVIDENCEの強さと比例しているか",
+  "   - 過信（高いCONFIDENCE + 弱いEVIDENCE）がないか",
+  "",
+  "3. 代替解釈の欠如:",
+  "   - 高信頼度の結論に代替解釈が考慮されているか",
+  "   - 反証する証拠が探索されているか",
+  "   - 確認バイアスの兆候がないか",
+  "",
+  "4. 因果関係の逆転:",
+  "   - 「AならばB」が「BならばA」と誤用されていないか",
+  "   - 相関関係が因果関係として扱われていないか",
+  "",
+  "5. 信頼度評価:",
+  "   - 「SUSPICION_LEVEL: low/medium/high」として総合評価",
+  "   - highの場合は即座にChallenger起動を推奨",
+  "",
+].join("\n");
+
+/**
+ * 検証ワークフロールール
+ * 論文「Large Language Model Reasoning Failures」のP0推奨事項
+ */
+export const VERIFICATION_WORKFLOW_RULES = [
+  "",
+  "【検証ワークフロー】",
+  "",
+  "タスク完了前に以下の検証を検討:",
+  "",
+  "1. 自己検証チェック:",
+  "   - CLAIMとRESULTの論理的整合性",
+  "   - EVIDENCEがCLAIMを十分にサポートしているか",
+  "   - CONFIDENCEがEVIDENCEの強さと比例しているか",
+  "",
+  "2. Inspector起動条件:",
+  "   - 低信頼度出力（CONFIDENCE < 0.7）",
+  "   - 高リスクタスク（削除、本番変更、セキュリティ関連）",
+  "   - CLAIM-RESULT不一致の兆候",
+  "   - 過信の兆候（短いEVIDENCEで高いCONFIDENCE）",
+  "",
+  "3. Challenger起動条件:",
+  "   - Inspectorがmedium以上のsuspicionを検出",
+  "   - 明示的な検証リクエスト時",
+  "   - チーム実行後の合意形成前",
+  "",
+  "4. 検証結果への対応:",
+  "   - pass: そのまま採用",
+  "   - pass-with-warnings: 警告を記録して採用",
+  "   - needs-review: 人間のレビューを推奨",
+  "   - fail/block: 再実行または追加調査",
+  "",
+].join("\n");
+
+/**
  * チームメンバー固有の実行ルール
  */
 export const TEAM_MEMBER_SPECIFIC_RULES = [
@@ -313,6 +382,8 @@ export interface BuildExecutionRulesOptions {
   includeTerminationCheck?: boolean;
   includeCompositionalInference?: boolean;
   includeChallengeRules?: boolean;
+  includeInspectionRules?: boolean;
+  includeVerificationWorkflow?: boolean;
 }
 
 // 実行ルールのキャッシュ（オプション組み合わせに対する結果を保持）
@@ -332,6 +403,8 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     options.includeTerminationCheck ? "term" : "",
     options.includeCompositionalInference ? "comp" : "",
     options.includeChallengeRules ? "chal" : "",
+    options.includeInspectionRules ? "insp" : "",
+    options.includeVerificationWorkflow ? "vwf" : "",
   ].filter(Boolean).join(":");
 
   const cached = executionRulesCache.get(cacheKey);
@@ -391,6 +464,16 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
   // 異議申し立てルール
   if (options.includeChallengeRules) {
     lines.push(CHALLENGE_RULES.trim());
+  }
+
+  // 検査ルール（Inspector用）
+  if (options.includeInspectionRules) {
+    lines.push(INSPECTION_RULES.trim());
+  }
+
+  // 検証ワークフロールール
+  if (options.includeVerificationWorkflow) {
+    lines.push(VERIFICATION_WORKFLOW_RULES.trim());
   }
 
   // ガイドラインを含める場合
@@ -500,8 +583,38 @@ export function getInspectorExecutionRules(includeGuidelines = false): string {
     includeGuidelines,
     includeCognitiveBiasCountermeasures: true,
     includeSelfVerification: true,
+    includeInspectionRules: true,  // P0: 検査ガイドライン
     includeWorkingMemoryGuidelines: includeGuidelines,
   });
   inspectorRulesCache.set(key, rules);
+  return rules;
+}
+
+// 検証ワークフロー用ルールのキャッシュ
+const verificationWorkflowRulesCache = new Map<string, string>();
+
+/**
+ * 検証ワークフロー用の実行ルールを取得
+ * 論文「Large Language Model Reasoning Failures」のP0推奨事項
+ */
+export function getVerificationWorkflowExecutionRules(
+  phase: "inspector" | "challenger" | "both" = "both",
+  includeGuidelines = false
+): string {
+  const key = `${phase}:${includeGuidelines}`;
+  const cached = verificationWorkflowRulesCache.get(key);
+  if (cached) return cached;
+  
+  const rules = buildExecutionRulesSection({
+    forSubagent: true,
+    includeGuidelines,
+    includeCognitiveBiasCountermeasures: true,
+    includeSelfVerification: true,
+    includeInspectionRules: phase === "inspector" || phase === "both",
+    includeChallengeRules: phase === "challenger" || phase === "both",
+    includeVerificationWorkflow: true,
+    includeWorkingMemoryGuidelines: includeGuidelines,
+  });
+  verificationWorkflowRulesCache.set(key, rules);
   return rules;
 }

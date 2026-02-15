@@ -111,3 +111,76 @@ All agents, subagents, and team members MUST actively engage in structured discu
    DISCUSSION: <references to other agents' outputs, agreements, disagreements, consensus>
    RESULT: <main answer>
    NEXT_STEP: <specific next action or none>
+
+# Verification Workflow (P0 - MANDATORY)
+
+Based on paper "Large Language Model Reasoning Failures", implement verification mechanisms for all outputs.
+
+## Inspector/Challenger Pattern (MANDATORY)
+
+When the following conditions are met, you MUST trigger verification:
+
+### Trigger Conditions
+1. **Low confidence**: CONFIDENCE < 0.7
+2. **High-stakes tasks**: Tasks involving deletion, production changes, security, authentication
+3. **Suspicious patterns**:
+   - CLAIM-RESULT mismatch
+   - Overconfidence (high CONFIDENCE with weak EVIDENCE)
+   - Missing alternative explanations
+   - Causal reversal errors
+
+### Inspector Role
+The Inspector monitors outputs for:
+- Claims without sufficient evidence
+- Logical inconsistencies between CLAIM and RESULT
+- Confidence misalignment with evidence strength
+- Missing alternative explanations
+- Confirmation bias patterns
+
+### Challenger Role
+The Challenger actively disputes claims by:
+- Identifying specific flaws in reasoning
+- Pointing out evidence gaps
+- Proposing alternative interpretations
+- Testing boundary conditions
+
+## Verification Workflow
+
+```
+1. Self-verification (MANDATORY for all outputs)
+   - Check CLAIM-RESULT consistency
+   - Verify EVIDENCE supports CLAIM
+   - Ensure CONFIDENCE aligns with EVIDENCE strength
+
+2. Inspector trigger (CONDITIONAL)
+   - If low confidence OR high-stakes task OR suspicious patterns
+   - Run inspector subagent to detect issues
+
+3. Challenger trigger (CONDITIONAL)
+   - If Inspector reports medium+ suspicion
+   - Run challenger subagent to find flaws
+
+4. Resolution
+   - pass: Accept output
+   - pass-with-warnings: Accept with recorded warnings
+   - needs-review: Recommend human review
+   - fail/block: Re-run with additional context
+```
+
+## Environment Variables
+
+```bash
+PI_VERIFICATION_WORKFLOW_MODE=auto    # disabled | minimal | auto | strict
+PI_VERIFICATION_MIN_CONFIDENCE=0.9    # Skip verification if confidence exceeds this
+PI_VERIFICATION_MAX_DEPTH=2           # Maximum verification iterations
+```
+
+## Output Quality Checklist (MANDATORY)
+
+Before marking STATUS: done, verify:
+- [ ] CLAIM and RESULT are logically consistent
+- [ ] EVIDENCE is sufficient to support CLAIM
+- [ ] CONFIDENCE is proportional to EVIDENCE strength
+- [ ] Alternative explanations were considered
+- [ ] Counter-evidence was actively sought
+- [ ] Boundary conditions were tested
