@@ -15,7 +15,7 @@ import {
   type VerificationResult,
   type InspectorOutput,
   type ChallengerOutput,
-} from "../lib/verification-workflow.js";
+} from "../../lib/verification-workflow.js";
 
 /**
  * 検証フック設定
