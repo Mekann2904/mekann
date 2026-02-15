@@ -178,10 +178,11 @@ Multiple teams, one per phase
 ## Implementation Checklist
 
 - [x] Create phase-separated team definitions
-- [ ] Update APPEND_SYSTEM.md to recommend phase-separated execution
-- [ ] Create helper function for sequential phase execution
 - [x] Update existing teams to phase-separated versions
+- [ ] Create helper function for sequential phase execution
 - [ ] Document in team creation guide
+
+Note: APPEND_SYSTEM.mdの更新タスクは削除（既に対応済み）。
 
 ## Created Phase-Separated Teams
 
@@ -225,6 +226,17 @@ const phase3 = await agent_team_run({
   task: `${task}\n\nPhase 1 Results:\n${phase1.output}\n\nPhase 2 Implementation:\n${phase2.output}`
 });
 ```
+
+## Exception: research-team
+
+`research-team`はフェーズ分割されていません。理由は以下の通り:
+
+1. **専門性重視の設計**: 9人の永続メンバーがそれぞれ固有の専門分野（PI/PM, Acquisition, Steward, EDA, Statistician, ML Engineer, DL Specialist, Bayes/Optimization, Viz/XAI）を持つ
+2. **ワークフロー全体の一体性**: 研究プロジェクトは各フェーズ間で密接な連携が必要であり、成果物の受け渡し仕様（Artifact Contracts）が明確に定義されている
+3. **内部フェーズ管理**: チーム自体が内部で4フェーズ（計画・設計、データ準備、分析実行、統合・報告）を順次実行する設計
+4. **メンバー固定性**: 他のチームと異なり、メンバーが動的に追加・削除されるのではなく、固定的な専門役割として定義されている
+
+このチームは`strategy: parallel`を使用しますが、各メンバーが担当フェーズに応じて順次作業を行うため、フェーズ衝突の問題は発生しません。
 
 ## Future Enhancements
 

@@ -170,6 +170,7 @@ interface TeamFrontmatter {
   description: string;
   enabled: "enabled" | "disabled";
   strategy?: "parallel" | "sequential";
+  skills?: string[];
   members: TeamMemberFrontmatter[];
 }
 
@@ -180,6 +181,7 @@ interface TeamMemberFrontmatter {
   enabled?: boolean;
   provider?: string;
   model?: string;
+  skills?: string[];
 }
 
 interface ParsedTeamMarkdown {
@@ -1374,6 +1376,7 @@ interface TeamMemberFrontmatter {
   enabled?: boolean;
   provider?: string;
   model?: string;
+  skills?: string[];
 }
 
 interface ParsedTeamMarkdown {
@@ -1475,6 +1478,7 @@ function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): Tea
       provider: m.provider,
       model: m.model,
       enabled: m.enabled ?? true,
+      skills: m.skills,
     }));
 
     teams.push({
@@ -1482,6 +1486,7 @@ function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): Tea
       name: frontmatter.name,
       description: frontmatter.description,
       enabled: frontmatter.enabled,
+      skills: frontmatter.skills,
       members,
       createdAt: nowIso,
       updatedAt: nowIso,

@@ -3,6 +3,7 @@ id: template-team-guide
 name: Phase-Separated Team Template Guide
 description: フェーズ分割パターンのチーム作成ガイド。template-p1, template-p2, template-p3をコピーして新しいチームセットを作成する手順を説明。
 enabled: disabled
+members: []
 ---
 
 # Phase-Separated Team Template Guide
