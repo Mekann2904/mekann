@@ -37,6 +37,7 @@ import {
   type RetryWithBackoffOverrides,
 } from "../lib/retry-with-backoff";
 import { runWithConcurrencyLimit } from "../lib/concurrency";
+import { createChildAbortController } from "../lib/abort-utils";
 import {
   getTeamMemberExecutionRules,
 } from "../lib/execution-rules";
@@ -2567,28 +2568,34 @@ async function runTeamTask(input: {
       activeMembers,
       memberParallelLimit,
       async (member) => {
-        input.onMemberPhase?.(member, "initial");
-        input.onMemberEvent?.(member, "initial phase: dispatching run");
-        const result = await runMember({
-          team: input.team,
-          member,
-          task: input.task,
-          sharedContext: input.sharedContext,
-          phase: "initial",
-          timeoutMs: input.timeoutMs,
-          cwd: input.cwd,
-          retryOverrides: input.retryOverrides,
-          fallbackProvider: input.fallbackProvider,
-          fallbackModel: input.fallbackModel,
-          signal: input.signal,
-          onStart: input.onMemberStart,
-          onEnd: input.onMemberEnd,
-          onEvent: input.onMemberEvent,
-          onTextDelta: input.onMemberTextDelta,
-          onStderrChunk: input.onMemberStderrChunk,
-        });
-        emitResultEvent(member, "initial", result);
-        return result;
+        // Create child AbortController to prevent MaxListenersExceededWarning
+        const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
+        try {
+          input.onMemberPhase?.(member, "initial");
+          input.onMemberEvent?.(member, "initial phase: dispatching run");
+          const result = await runMember({
+            team: input.team,
+            member,
+            task: input.task,
+            sharedContext: input.sharedContext,
+            phase: "initial",
+            timeoutMs: input.timeoutMs,
+            cwd: input.cwd,
+            retryOverrides: input.retryOverrides,
+            fallbackProvider: input.fallbackProvider,
+            fallbackModel: input.fallbackModel,
+            signal: childController.signal,
+            onStart: input.onMemberStart,
+            onEnd: input.onMemberEnd,
+            onEvent: input.onMemberEvent,
+            onTextDelta: input.onMemberTextDelta,
+            onStderrChunk: input.onMemberStderrChunk,
+          });
+          emitResultEvent(member, "initial", result);
+          return result;
+        } finally {
+          cleanupAbort();
+        }
       },
       { signal: input.signal },
     );
@@ -2684,77 +2691,83 @@ async function runTeamTask(input: {
         communicationMembers,
         memberParallelLimit,
         async (member) => {
-          const partnerIds = communicationLinks.get(member.id) ?? [];
-          const partnerSnapshots = partnerIds.map((partnerId) => {
-            const partnerResult = previousResults.find((result) => result.memberId === partnerId);
-            const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
-            return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
-          });
-          input.onMemberPhase?.(member, "communication", round);
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
-          );
-          const communicationContext = buildCommunicationContext({
-            team: input.team,
-            member,
-            round,
-            partnerIds,
-            contextMap,
-          });
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: context_build=done size=${communicationContext.length}chars`,
-          );
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
-          );
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
-          );
+          // Create child AbortController to prevent MaxListenersExceededWarning
+          const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
+          try {
+            const partnerIds = communicationLinks.get(member.id) ?? [];
+            const partnerSnapshots = partnerIds.map((partnerId) => {
+              const partnerResult = previousResults.find((result) => result.memberId === partnerId);
+              const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
+              return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
+            });
+            input.onMemberPhase?.(member, "communication", round);
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
+            );
+            const communicationContext = buildCommunicationContext({
+              team: input.team,
+              member,
+              round,
+              partnerIds,
+              contextMap,
+            });
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: context_build=done size=${communicationContext.length}chars`,
+            );
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
+            );
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
+            );
 
-          const result = await runMember({
-            team: input.team,
-            member,
-            task: input.task,
-            sharedContext: input.sharedContext,
-            phase: "communication",
-            communicationContext,
-            timeoutMs: input.timeoutMs,
-            cwd: input.cwd,
-            retryOverrides: input.retryOverrides,
-            fallbackProvider: input.fallbackProvider,
-            fallbackModel: input.fallbackModel,
-            signal: input.signal,
-            onStart: input.onMemberStart,
-            onEnd: input.onMemberEnd,
-            onEvent: input.onMemberEvent,
-            onTextDelta: input.onMemberTextDelta,
-            onStderrChunk: input.onMemberStderrChunk,
-          });
-          emitResultEvent(member, `communication#${round}`, result);
-          const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
-          communicationAudit.push({
-            round,
-            memberId: member.id,
-            role: member.role,
-            partnerIds: [...partnerIds],
-            referencedPartners: communicationReference.referencedPartners,
-            missingPartners: communicationReference.missingPartners,
-            contextPreview: normalizeForSingleLine(communicationContext, 200),
-            partnerSnapshots,
-            resultStatus: result.status,
-            claimReferences: communicationReference.claimReferences.length > 0
-              ? communicationReference.claimReferences
-              : undefined,
-          });
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
-          );
-          return result;
+            const result = await runMember({
+              team: input.team,
+              member,
+              task: input.task,
+              sharedContext: input.sharedContext,
+              phase: "communication",
+              communicationContext,
+              timeoutMs: input.timeoutMs,
+              cwd: input.cwd,
+              retryOverrides: input.retryOverrides,
+              fallbackProvider: input.fallbackProvider,
+              fallbackModel: input.fallbackModel,
+              signal: childController.signal,
+              onStart: input.onMemberStart,
+              onEnd: input.onMemberEnd,
+              onEvent: input.onMemberEvent,
+              onTextDelta: input.onMemberTextDelta,
+              onStderrChunk: input.onMemberStderrChunk,
+            });
+            emitResultEvent(member, `communication#${round}`, result);
+            const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
+            communicationAudit.push({
+              round,
+              memberId: member.id,
+              role: member.role,
+              partnerIds: [...partnerIds],
+              referencedPartners: communicationReference.referencedPartners,
+              missingPartners: communicationReference.missingPartners,
+              contextPreview: normalizeForSingleLine(communicationContext, 200),
+              partnerSnapshots,
+              resultStatus: result.status,
+              claimReferences: communicationReference.claimReferences.length > 0
+                ? communicationReference.claimReferences
+                : undefined,
+            });
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
+            );
+            return result;
+          } finally {
+            cleanupAbort();
+          }
         },
         { signal: input.signal },
       );
@@ -2934,76 +2947,82 @@ async function runTeamTask(input: {
     const contextMap = buildPrecomputedContextMap(previousResults);
 
     const runRetryMember = async (member: TeamMember): Promise<TeamMemberResult> => {
-      const partnerIds = communicationLinks.get(member.id) ?? [];
-      const partnerSnapshots = partnerIds.map((partnerId) => {
-        const partnerResult = previousResults.find((result) => result.memberId === partnerId);
-        const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
-        return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
-      });
-      input.onMemberPhase?.(member, "communication", retryPhaseRound);
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
-      );
-      const communicationContext = buildCommunicationContext({
-        team: input.team,
-        member,
-        round: retryPhaseRound,
-        partnerIds,
-        contextMap,
-      });
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: context_build=done size=${communicationContext.length}chars`,
-      );
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
-      );
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
-      );
-      const result = await runMember({
-        team: input.team,
-        member,
-        task: input.task,
-        sharedContext: input.sharedContext,
-        phase: "communication",
-        communicationContext,
-        timeoutMs: input.timeoutMs,
-        cwd: input.cwd,
-        retryOverrides: input.retryOverrides,
-        fallbackProvider: input.fallbackProvider,
-        fallbackModel: input.fallbackModel,
-        signal: input.signal,
-        onStart: input.onMemberStart,
-        onEnd: input.onMemberEnd,
-        onEvent: input.onMemberEvent,
-        onTextDelta: input.onMemberTextDelta,
-        onStderrChunk: input.onMemberStderrChunk,
-      });
-      emitResultEvent(member, `failed-retry#${retryRound}`, result);
-      const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
-      communicationAudit.push({
-        round: retryPhaseRound,
-        memberId: member.id,
-        role: member.role,
-        partnerIds: [...partnerIds],
-        referencedPartners: communicationReference.referencedPartners,
-        missingPartners: communicationReference.missingPartners,
-        contextPreview: normalizeForSingleLine(communicationContext, 200),
-        partnerSnapshots,
-        resultStatus: result.status,
-        claimReferences: communicationReference.claimReferences.length > 0
-          ? communicationReference.claimReferences
-          : undefined,
-      });
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
-      );
-      return result;
+      // Create child AbortController to prevent MaxListenersExceededWarning
+      const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
+      try {
+        const partnerIds = communicationLinks.get(member.id) ?? [];
+        const partnerSnapshots = partnerIds.map((partnerId) => {
+          const partnerResult = previousResults.find((result) => result.memberId === partnerId);
+          const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
+          return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
+        });
+        input.onMemberPhase?.(member, "communication", retryPhaseRound);
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
+        );
+        const communicationContext = buildCommunicationContext({
+          team: input.team,
+          member,
+          round: retryPhaseRound,
+          partnerIds,
+          contextMap,
+        });
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: context_build=done size=${communicationContext.length}chars`,
+        );
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
+        );
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
+        );
+        const result = await runMember({
+          team: input.team,
+          member,
+          task: input.task,
+          sharedContext: input.sharedContext,
+          phase: "communication",
+          communicationContext,
+          timeoutMs: input.timeoutMs,
+          cwd: input.cwd,
+          retryOverrides: input.retryOverrides,
+          fallbackProvider: input.fallbackProvider,
+          fallbackModel: input.fallbackModel,
+          signal: childController.signal,
+          onStart: input.onMemberStart,
+          onEnd: input.onMemberEnd,
+          onEvent: input.onMemberEvent,
+          onTextDelta: input.onMemberTextDelta,
+          onStderrChunk: input.onMemberStderrChunk,
+        });
+        emitResultEvent(member, `failed-retry#${retryRound}`, result);
+        const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
+        communicationAudit.push({
+          round: retryPhaseRound,
+          memberId: member.id,
+          role: member.role,
+          partnerIds: [...partnerIds],
+          referencedPartners: communicationReference.referencedPartners,
+          missingPartners: communicationReference.missingPartners,
+          contextPreview: normalizeForSingleLine(communicationContext, 200),
+          partnerSnapshots,
+          resultStatus: result.status,
+          claimReferences: communicationReference.claimReferences.length > 0
+            ? communicationReference.claimReferences
+            : undefined,
+        });
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
+        );
+        return result;
+      } finally {
+        cleanupAbort();
+      }
     };
 
     let retriedResults: TeamMemberResult[] = [];
@@ -4189,41 +4208,44 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           enabledTeams,
           appliedTeamParallelism,
           async (team) => {
-            const enabledMemberCount = team.members.filter((member) => member.enabled).length;
-            const communicationLinks = createCommunicationLinksMap(
-              team.members.filter((member) => member.enabled),
-            );
-            const teamMemberParallelLimit =
-              strategy === "parallel"
-                ? Math.max(
-                    1,
-                    Math.min(appliedMemberParallelism, enabledMemberCount, appliedLlmBudgetPerTeam),
-                  )
-                : 1;
-
-            runtimeState.activeTeamRuns += 1;
-            notifyRuntimeCapacityChanged();
-            refreshRuntimeStatus(ctx);
-            liveMonitor?.appendBroadcastEvent(
-              `team ${team.id}: start strategy=${strategy} teammate_parallel=${teamMemberParallelLimit}`,
-            );
-
+            // Create child AbortController to prevent MaxListenersExceededWarning
+            const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(signal);
             try {
-              const { runRecord, memberResults, communicationAudit } = await runTeamTask({
-                team,
-                task: params.task,
-                strategy,
-                memberParallelLimit: teamMemberParallelLimit,
-                communicationRounds,
-                failedMemberRetryRounds,
-                communicationLinks,
-                sharedContext: params.sharedContext,
-                timeoutMs,
-                cwd: ctx.cwd,
-                retryOverrides,
-                fallbackProvider: ctx.model?.provider,
-                fallbackModel: ctx.model?.id,
-                signal,
+              const enabledMemberCount = team.members.filter((member) => member.enabled).length;
+              const communicationLinks = createCommunicationLinksMap(
+                team.members.filter((member) => member.enabled),
+              );
+              const teamMemberParallelLimit =
+                strategy === "parallel"
+                  ? Math.max(
+                      1,
+                      Math.min(appliedMemberParallelism, enabledMemberCount, appliedLlmBudgetPerTeam),
+                    )
+                  : 1;
+
+              runtimeState.activeTeamRuns += 1;
+              notifyRuntimeCapacityChanged();
+              refreshRuntimeStatus(ctx);
+              liveMonitor?.appendBroadcastEvent(
+                `team ${team.id}: start strategy=${strategy} teammate_parallel=${teamMemberParallelLimit}`,
+              );
+
+              try {
+                const { runRecord, memberResults, communicationAudit } = await runTeamTask({
+                  team,
+                  task: params.task,
+                  strategy,
+                  memberParallelLimit: teamMemberParallelLimit,
+                  communicationRounds,
+                  failedMemberRetryRounds,
+                  communicationLinks,
+                  sharedContext: params.sharedContext,
+                  timeoutMs,
+                  cwd: ctx.cwd,
+                  retryOverrides,
+                  fallbackProvider: ctx.model?.provider,
+                  fallbackModel: ctx.model?.id,
+                  signal: childController.signal,
                 onMemberStart: (member) => {
                   onRuntimeMemberStart();
                   const key = toTeamLiveItemKey(team.id, member.id);
@@ -4359,6 +4381,9 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               runtimeState.activeTeamRuns = Math.max(0, runtimeState.activeTeamRuns - 1);
               notifyRuntimeCapacityChanged();
               refreshRuntimeStatus(ctx);
+            }
+            } finally {
+              cleanupAbort();
             }
           },
           { signal },

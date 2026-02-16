@@ -35,6 +35,7 @@ import {
   type RetryWithBackoffOverrides,
 } from "../lib/retry-with-backoff";
 import { runWithConcurrencyLimit } from "../lib/concurrency";
+import { createChildAbortController } from "../lib/abort-utils";
 import {
   getSubagentExecutionRules,
 } from "../lib/execution-rules";
@@ -2315,16 +2316,19 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               activeAgents,
               appliedParallelism,
               async (agent) => {
-                const result = await runSubagentTask({
-                  agent,
-                  task: params.task,
-                  extraContext: params.extraContext,
-                  timeoutMs,
-                  cwd: ctx.cwd,
-                  retryOverrides,
-                  modelProvider: ctx.model?.provider,
-                  modelId: ctx.model?.id,
-                  signal,
+                // Create child AbortController to prevent MaxListenersExceededWarning
+                const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(signal);
+                try {
+                  const result = await runSubagentTask({
+                    agent,
+                    task: params.task,
+                    extraContext: params.extraContext,
+                    timeoutMs,
+                    cwd: ctx.cwd,
+                    retryOverrides,
+                    modelProvider: ctx.model?.provider,
+                    modelId: ctx.model?.id,
+                    signal: childController.signal,
                   onStart: () => {
                     liveMonitor?.markStarted(agent.id);
                     runtimeState.activeAgents += 1;
@@ -2351,6 +2355,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                   result.runRecord.error,
                 );
                 return result;
+                } finally {
+                  cleanupAbort();
+                }
               },
               { signal },
             );
