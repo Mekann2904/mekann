@@ -157,6 +157,7 @@ function loadAuthConfig(): AuthConfig {
 
 /**
  * Save auth configuration to auth.json with secure permissions.
+ * Merges with existing configuration to preserve other providers.
  */
 export function saveAuthConfig(auth: AuthConfig): void {
   const dir = join(homedir(), ".pi", "agent");
@@ -171,8 +172,12 @@ export function saveAuthConfig(auth: AuthConfig): void {
     throw new Error("Security: auth.json is a symbolic link, refusing to write");
   }
   
+  // Load existing config and merge
+  const existing = loadAuthConfig();
+  const merged = { ...existing, ...auth };
+  
   // Write file
-  writeFileSync(AUTH_FILE_PATH, JSON.stringify(auth, null, 2), {
+  writeFileSync(AUTH_FILE_PATH, JSON.stringify(merged, null, 2), {
     mode: 0o600,
   });
   
