@@ -959,19 +959,12 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
       return;
     }
 
-    // テキストコンテンツを抽出
-    const resultText = event.content
-      .filter((c): c is { type: "text"; text: string } => c.type === "text")
-      .map(c => c.text)
-      .join("\n");
-
-    // 失敗した場合は反省を推奨
-    if (event.isError || 
-        resultText.toLowerCase().includes("エラー") || 
-        resultText.toLowerCase().includes("失敗")) {
-      // コンテキストが利用可能な場合のみメッセージを送信
+    // event.isErrorがtrueの場合のみ通知（文字列ベースの推測は削除）
+    // 根本原因: 文字列からの推測は本質的に不確実で誤検出の原因となる
+    // 解決策: ToolResultEvent.isError（ツール実行の正確な成否）のみを信頼
+    if (event.isError) {
       if (ctx?.ui?.notify) {
-        ctx.ui.notify("[Step Reflection] ツール実行エラーを検出。tool_reflectionで確認してください。", "info");
+        ctx.ui.notify(`[Step Reflection] ツール "${event.toolName}" の実行に失敗しました。tool_reflectionで確認してください。`, "warning");
       }
     }
   });
