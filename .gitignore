@@ -54,3 +54,6 @@ coverage/
 
 # Dynamic skills (generated at runtime)
 .pi/skills/dynamic/
+
+# Dynamic tools runtime data
+.pi/tools/
