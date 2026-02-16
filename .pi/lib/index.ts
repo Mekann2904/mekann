@@ -250,3 +250,134 @@ export {
   formatRobustnessReport,
   getRobustnessTestRules,
 } from "./robustness-testing.js";
+
+// Run Index utilities (Layer 2)
+// ALMA-inspired memory indexing for run history
+export {
+  type IndexedRun,
+  type TaskType,
+  type RunIndex,
+  type SearchOptions,
+  type SearchResult,
+  RUN_INDEX_VERSION,
+  extractKeywords,
+  classifyTaskType,
+  extractFiles,
+  indexSubagentRun,
+  indexTeamRun,
+  buildRunIndex,
+  getRunIndexPath,
+  loadRunIndex,
+  saveRunIndex,
+  getOrBuildRunIndex,
+  searchRuns,
+  findSimilarRuns,
+  getRunsByType,
+  getSuccessfulPatterns,
+} from "./run-index.js";
+
+// Pattern Extraction utilities (Layer 2)
+// Extract reusable patterns from run history
+export {
+  type ExtractedPattern,
+  type PatternExample,
+  type PatternStorage,
+  type RunData,
+  PATTERN_STORAGE_VERSION,
+  extractPatternFromRun,
+  getPatternStoragePath,
+  loadPatternStorage,
+  savePatternStorage,
+  addRunToPatterns,
+  extractAllPatterns,
+  getPatternsForTaskType,
+  getTopSuccessPatterns,
+  getFailurePatternsToAvoid,
+  findRelevantPatterns,
+} from "./pattern-extraction.js";
+
+// Semantic Memory utilities (Layer 2)
+// OpenAI Embeddings-based semantic search for run history
+export {
+  type RunEmbedding,
+  type SemanticMemoryStorage,
+  type SemanticSearchResult,
+  SEMANTIC_MEMORY_VERSION,
+  EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS,
+  getSemanticMemoryPath,
+  loadSemanticMemory,
+  saveSemanticMemory,
+  buildSemanticMemoryIndex,
+  addRunToSemanticMemory,
+  semanticSearch,
+  findSimilarRunsById,
+  isSemanticMemoryAvailable,
+  getSemanticMemoryStats,
+  clearSemanticMemory,
+} from "./semantic-memory.js";
+
+// Embeddings Module (Layer 2)
+// Unified embedding provider interface
+export {
+  // Types
+  type EmbeddingProvider,
+  type ProviderCapabilities,
+  type ProviderConfig,
+  type EmbeddingModuleConfig,
+  type EmbeddingResult,
+  type ProviderStatus,
+  type VectorSearchResult,
+  // Registry
+  EmbeddingProviderRegistry,
+  embeddingRegistry,
+  getEmbeddingProvider,
+  generateEmbedding,
+  generateEmbeddingsBatch,
+  // Utilities
+  cosineSimilarity,
+  euclideanDistance,
+  normalizeVector,
+  findNearestNeighbors,
+  isValidEmbedding,
+  // Providers
+  OpenAIEmbeddingProvider,
+  openAIEmbeddingProvider,
+  getOpenAIKey,
+  setOpenAIKey,
+  removeOpenAIKey,
+  // Initialization
+  initializeEmbeddingModule,
+} from "./embeddings/index.js";
+
+// Semantic Repetition Detection utilities (Layer 2)
+// Based on "Agentic Search in the Wild" paper (arXiv:2601.17617v2)
+export {
+  type SemanticRepetitionResult,
+  type SemanticRepetitionOptions,
+  type TrajectorySummary,
+  DEFAULT_REPETITION_THRESHOLD,
+  DEFAULT_MAX_TEXT_LENGTH,
+  detectSemanticRepetition,
+  detectSemanticRepetitionFromEmbeddings,
+  TrajectoryTracker,
+  isSemanticRepetitionAvailable,
+  getRecommendedAction,
+} from "./semantic-repetition.js";
+
+// Intent-Aware Limits utilities (Layer 2)
+// Based on "Agentic Search in the Wild" paper (arXiv:2601.17617v2)
+export {
+  type TaskIntent,
+  type IntentBudget,
+  type IntentClassificationInput,
+  type IntentClassificationResult,
+  INTENT_BUDGETS,
+  classifyIntent,
+  getIntentBudget,
+  applyIntentLimits,
+  getEffectiveRepetitionThreshold,
+  isIntentClassificationAvailable,
+  getAllIntentBudgets,
+  summarizeIntentClassification,
+} from "./intent-aware-limits.js";

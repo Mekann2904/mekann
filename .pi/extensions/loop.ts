@@ -10,9 +10,20 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "n
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { lookup as dnsLookup } from "node:dns/promises";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
 import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, computeModelTimeoutMs } from "../lib";
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
+import {
+  detectSemanticRepetition,
+  type SemanticRepetitionResult,
+} from "../lib/semantic-repetition";
+import {
+  classifyIntent,
+  getIntentBudget,
+  type TaskIntent,
+  type IntentClassificationResult,
+} from "../lib/intent-aware-limits";
 type LoopStatus = "continue" | "done" | "unknown";
 type LoopGoalStatus = "met" | "not_met" | "unknown";
 
@@ -21,6 +32,10 @@ interface LoopConfig {
   timeoutMs: number;
   requireCitation: boolean;
   verificationTimeoutMs: number;
+  /** Enable semantic-based stagnation detection (requires OPENAI_API_KEY) */
+  enableSemanticStagnation?: boolean;
+  /** Semantic similarity threshold for repetition detection (0-1, default: 0.85) */
+  semanticRepetitionThreshold?: number;
 }
 
 interface LoopReference {
@@ -66,6 +81,17 @@ interface LoopRunSummary {
   logFile: string;
   summaryFile: string;
   finalPreview: string;
+  /** Intent classification result (if semantic stagnation enabled) */
+  intentClassification?: {
+    intent: TaskIntent;
+    confidence: number;
+  };
+  /** Semantic stagnation detection summary */
+  semanticStagnation?: {
+    detected: boolean;
+    averageSimilarity: number;
+    method: "embedding" | "exact" | "unavailable";
+  };
 }
 
 interface LoopRunOutput {
@@ -168,6 +194,8 @@ const DEFAULT_CONFIG: LoopConfig = {
   timeoutMs: STABLE_LOOP_PROFILE ? 60_000 : 120_000,  // 1分 / 2分のアイドルタイムアウト
   requireCitation: true,
   verificationTimeoutMs: STABLE_LOOP_PROFILE ? 60_000 : 120_000,
+  enableSemanticStagnation: false,  // Opt-in feature
+  semanticRepetitionThreshold: 0.85,
 };
 
 const LIMITS = {
@@ -185,6 +213,8 @@ const LIMITS = {
   maxValidationFeedbackCharsPerItem: 180,
   stableRepeatThreshold: 1,
   maxConsecutiveFailures: 2,
+  minSemanticRepetitionThreshold: 0.7,
+  maxSemanticRepetitionThreshold: 0.95,
 };
 
 const LOOP_JSON_BLOCK_TAG = "LOOP_JSON";
@@ -291,6 +321,18 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
           description: "Optional file containing one reference spec per line",
         }),
       ),
+      enableSemanticStagnation: Type.Optional(
+        Type.Boolean({
+          description: "Enable semantic-based stagnation detection using embeddings (requires OPENAI_API_KEY). Based on 'Agentic Search in the Wild' paper findings.",
+        }),
+      ),
+      semanticRepetitionThreshold: Type.Optional(
+        Type.Number({
+          description: "Semantic similarity threshold for repetition detection (0.7-0.95, default: 0.85). Higher values require closer match.",
+          minimum: LIMITS.minSemanticRepetitionThreshold,
+          maximum: LIMITS.maxSemanticRepetitionThreshold,
+        }),
+      ),
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
@@ -314,6 +356,8 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
         timeoutMs: params.timeoutMs,
         verificationTimeoutMs: params.verificationTimeoutMs,
         requireCitation: params.requireCitation,
+        enableSemanticStagnation: params.enableSemanticStagnation,
+        semanticRepetitionThreshold: params.semanticRepetitionThreshold,
       });
 
       if (!normalized.ok) {
@@ -582,6 +626,23 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
   let validationFeedback: string[] = [];
   const verificationPolicy = resolveVerificationPolicy();
 
+  // Intent classification for intent-aware resource allocation
+  let intentClassification: IntentClassificationResult | undefined;
+  if (input.config.enableSemanticStagnation) {
+    intentClassification = classifyIntent({
+      task: input.task,
+      goal: input.goal,
+      referenceCount: input.references.length,
+    });
+  }
+
+  // Track semantic stagnation statistics
+  const semanticStagnationStats = {
+    detected: false,
+    method: "exact" as "embedding" | "exact" | "unavailable",
+    similarities: [] as number[],
+  };
+
   for (let iteration = 1; iteration <= input.config.maxIterations; iteration++) {
     throwIfAborted(input.signal);
 
@@ -749,12 +810,35 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     if (callFailed) {
       repeatedCount = 0;
     } else {
-      const normalizedCurrent = normalizeLoopOutput(output);
-      const normalizedPrev = normalizeLoopOutput(previousOutput);
-      if (normalizedPrev && normalizedCurrent === normalizedPrev) {
-        repeatedCount += 1;
+      // Check for stagnation using semantic or exact matching
+      if (input.config.enableSemanticStagnation) {
+        // Semantic-based detection (requires embedding provider configured via /embedding)
+        const semanticThreshold = toBoundedInteger(
+          input.config.semanticRepetitionThreshold ?? 0.85,
+          LIMITS.minSemanticRepetitionThreshold,
+          LIMITS.maxSemanticRepetitionThreshold
+        );
+        const semanticResult = await detectSemanticRepetition(output, previousOutput, {
+          threshold: semanticThreshold,
+          useEmbedding: true,
+        });
+        if (semanticResult.isRepeated) {
+          repeatedCount += 1;
+        } else {
+          repeatedCount = 0;
+        }
+        // Track semantic detection stats
+        semanticStagnationStats.method = semanticResult.method;
+        semanticStagnationStats.similarities.push(semanticResult.similarity);
       } else {
-        repeatedCount = 0;
+        // Original exact matching
+        const normalizedCurrent = normalizeLoopOutput(output);
+        const normalizedPrev = normalizeLoopOutput(previousOutput);
+        if (normalizedPrev && normalizedCurrent === normalizedPrev) {
+          repeatedCount += 1;
+        } else {
+          repeatedCount = 0;
+        }
       }
     }
 
@@ -773,8 +857,26 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     // In deterministic-goal mode, keep iterating until maxIterations
     // even when output text repeats, because verification may still fail.
     const deterministicGoalMode = Boolean(input.goal || input.verificationCommand);
-    if (!deterministicGoalMode && repeatedCount >= LIMITS.stableRepeatThreshold) {
+    
+    // Apply intent-aware repetition tolerance if semantic stagnation is enabled
+    // Paper insight: Different intents have different expected repetition rates
+    // - Declarative: Higher tolerance (0.6) - repetition is expected in fact-finding
+    // - Procedural: Medium tolerance (0.4) - sequential tasks may have valid repetition
+    // - Reasoning: Low tolerance (0.3) - repetition likely indicates stuck reasoning
+    let effectiveRepeatThreshold = LIMITS.stableRepeatThreshold;
+    if (input.config.enableSemanticStagnation && intentClassification) {
+      const budget = getIntentBudget(intentClassification.intent);
+      // Higher tolerance allows more repetitions before stopping
+      // Formula: base * (2 + tolerance) to create meaningful differentiation
+      // - declarative (0.6): 1 * 2.6 = 3
+      // - procedural (0.4): 1 * 2.4 = 2  
+      // - reasoning (0.3): 1 * 2.3 = 2
+      effectiveRepeatThreshold = Math.max(1, Math.round(LIMITS.stableRepeatThreshold * (2 + budget.repetitionTolerance)));
+    }
+    
+    if (!deterministicGoalMode && repeatedCount >= effectiveRepeatThreshold) {
       stopReason = "stagnation";
+      semanticStagnationStats.detected = true;
       break;
     }
 
@@ -784,6 +886,12 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
 
   const finishedAt = new Date().toISOString();
   const lastIteration = iterations[iterations.length - 1];
+  
+  // Calculate average similarity for semantic stagnation
+  const averageSimilarity = semanticStagnationStats.similarities.length > 0
+    ? semanticStagnationStats.similarities.reduce((a, b) => a + b, 0) / semanticStagnationStats.similarities.length
+    : 0;
+
   const summary: LoopRunSummary = {
     runId,
     startedAt,
@@ -804,6 +912,17 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     logFile,
     summaryFile,
     finalPreview: toPreview(extractLoopResultBody(finalOutput), 220),
+    // Intent classification (if semantic stagnation enabled)
+    intentClassification: intentClassification ? {
+      intent: intentClassification.intent,
+      confidence: intentClassification.confidence,
+    } : undefined,
+    // Semantic stagnation summary (if enabled)
+    semanticStagnation: input.config.enableSemanticStagnation ? {
+      detected: semanticStagnationStats.detected,
+      averageSimilarity,
+      method: semanticStagnationStats.method,
+    } : undefined,
   };
 
   const summaryPayload = {
@@ -894,6 +1013,23 @@ function normalizeLoopConfig(
       ? DEFAULT_CONFIG.requireCitation
       : Boolean(overrides.requireCitation);
 
+  const enableSemanticStagnation =
+    overrides.enableSemanticStagnation === undefined
+      ? DEFAULT_CONFIG.enableSemanticStagnation
+      : Boolean(overrides.enableSemanticStagnation);
+
+  const semanticRepetitionThreshold = toBoundedInteger(
+    overrides.semanticRepetitionThreshold,
+    DEFAULT_CONFIG.semanticRepetitionThreshold,
+    LIMITS.minSemanticRepetitionThreshold,
+    LIMITS.maxSemanticRepetitionThreshold,
+    "semanticRepetitionThreshold",
+  );
+  // semanticRepetitionThreshold uses default on error (not critical)
+  const thresholdValue = semanticRepetitionThreshold.ok
+    ? semanticRepetitionThreshold.value
+    : DEFAULT_CONFIG.semanticRepetitionThreshold;
+
   return {
     ok: true,
     config: {
@@ -901,6 +1037,8 @@ function normalizeLoopConfig(
       timeoutMs: timeoutMs.value,
       requireCitation,
       verificationTimeoutMs: verificationTimeoutMs.value,
+      enableSemanticStagnation,
+      semanticRepetitionThreshold: thresholdValue,
     },
   };
 }
@@ -1280,7 +1418,174 @@ async function loadSingleReference(
   };
 }
 
+// ============================================================================
+// SSRF Protection
+// ============================================================================
+
+/**
+ * List of blocked hostname patterns for SSRF protection.
+ * Blocks localhost, local domains, and internal domains.
+ */
+const BLOCKED_HOSTNAME_PATTERNS = [
+  /^localhost$/i,
+  /\.local$/i,
+  /\.internal$/i,
+  /\.localhost$/i,
+  /^127\./,
+  /^0\.0\.0\.0$/,
+  /^::1$/,
+  /^::$/,
+];
+
+/**
+ * Check if a hostname matches blocked patterns.
+ */
+function isBlockedHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().trim();
+  for (const pattern of BLOCKED_HOSTNAME_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if an IP address is private or reserved.
+ * Blocks:
+ * - 10.0.0.0/8 (Private network)
+ * - 172.16.0.0/12 (Private network)
+ * - 192.168.0.0/16 (Private network)
+ * - 127.0.0.0/8 (Loopback)
+ * - 169.254.0.0/16 (Link-local)
+ * - 0.0.0.0/8 (Current network)
+ * - 224.0.0.0/4 (Multicast)
+ * - 240.0.0.0/4 (Reserved)
+ * - ::1 (IPv6 loopback)
+ * - fe80::/10 (IPv6 link-local)
+ * - fc00::/7 (IPv6 unique local)
+ */
+function isPrivateOrReservedIP(ip: string): boolean {
+  // Handle IPv6 addresses
+  const normalizedIP = ip.toLowerCase();
+
+  // IPv6 loopback
+  if (normalizedIP === "::1" || normalizedIP === "::") {
+    return true;
+  }
+
+  // IPv6 link-local (fe80::/10)
+  if (normalizedIP.startsWith("fe80:")) {
+    return true;
+  }
+
+  // IPv6 unique local (fc00::/7)
+  if (normalizedIP.startsWith("fc") || normalizedIP.startsWith("fd")) {
+    return true;
+  }
+
+  // IPv4-mapped IPv6 addresses (::ffff:192.168.1.1)
+  const ipv4Mapped = normalizedIP.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (ipv4Mapped) {
+    return isPrivateIPv4(ipv4Mapped[1]);
+  }
+
+  // Parse IPv4 address
+  const parts = ip.split(".");
+  if (parts.length !== 4) {
+    // Not a valid IPv4, could be IPv6 or invalid
+    return false;
+  }
+
+  return isPrivateIPv4(ip);
+}
+
+/**
+ * Check if an IPv4 address is private or reserved.
+ */
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split(".").map((p) => parseInt(p, 10));
+  if (parts.length !== 4 || parts.some(isNaN)) {
+    return false;
+  }
+
+  const [a, b] = parts;
+
+  // 10.0.0.0/8
+  if (a === 10) return true;
+
+  // 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
+  if (a === 172 && b >= 16 && b <= 31) return true;
+
+  // 192.168.0.0/16
+  if (a === 192 && b === 168) return true;
+
+  // 127.0.0.0/8 (Loopback)
+  if (a === 127) return true;
+
+  // 169.254.0.0/16 (Link-local)
+  if (a === 169 && b === 254) return true;
+
+  // 0.0.0.0/8 (Current network)
+  if (a === 0) return true;
+
+  // 224.0.0.0/4 (Multicast)
+  if (a >= 224 && a <= 239) return true;
+
+  // 240.0.0.0/4 (Reserved for future use)
+  if (a >= 240) return true;
+
+  return false;
+}
+
+/**
+ * Validate URL for SSRF protection.
+ * Throws an error if the URL points to a blocked resource.
+ */
+async function validateUrlForSsrf(urlString: string): Promise<void> {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(urlString);
+  } catch {
+    throw new Error(`Invalid URL: ${urlString}`);
+  }
+
+  // Only allow http and https protocols
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    throw new Error(`URL protocol not allowed: ${parsedUrl.protocol}`);
+  }
+
+  const hostname = parsedUrl.hostname;
+
+  // Check blocked hostname patterns
+  if (isBlockedHostname(hostname)) {
+    throw new Error(`Access to hostname blocked (SSRF protection): ${hostname}`);
+  }
+
+  // Resolve DNS and check IP
+  try {
+    const dnsResult = await dnsLookup(hostname);
+    const resolvedIP = dnsResult.address;
+
+    if (isPrivateOrReservedIP(resolvedIP)) {
+      throw new Error(
+        `Access to private/reserved IP blocked (SSRF protection): ${hostname} resolves to ${resolvedIP}`
+      );
+    }
+  } catch (error) {
+    // If it's our SSRF error, re-throw it
+    if (error instanceof Error && error.message.includes("SSRF protection")) {
+      throw error;
+    }
+    // DNS resolution failed - this could be a security issue or just a bad domain
+    // We'll let it through and let the fetch fail naturally
+  }
+}
+
 async function fetchTextFromUrl(url: string, signal?: AbortSignal): Promise<string> {
+  // SSRF protection: validate URL before fetching
+  await validateUrlForSsrf(url);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20_000);
   const relayAbort = () => controller.abort();
