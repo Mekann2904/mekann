@@ -37,6 +37,7 @@ import {
   type RetryWithBackoffOverrides,
 } from "../lib/retry-with-backoff";
 import { runWithConcurrencyLimit } from "../lib/concurrency";
+import { createChildAbortController } from "../lib/abort-utils";
 import {
   getTeamMemberExecutionRules,
 } from "../lib/execution-rules";
@@ -50,11 +51,6 @@ import {
   runPiPrintMode as sharedRunPiPrintMode,
   type PrintExecutorOptions,
 } from "./shared/pi-print-executor";
-import {
-  postTeamVerificationHook,
-  formatVerificationResult,
-  type VerificationHookResult,
-} from "./shared/verification-hooks.js";
 import {
   ensureDir,
   formatDurationMs,
@@ -85,7 +81,6 @@ import {
   isEnterInput,
   finalizeLiveLines,
   type LiveStatus,
-  hasIntentOnlyContent,
   validateTeamMemberOutput,
   trimForError,
   buildRateLimitKey,
@@ -94,6 +89,11 @@ import {
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
 } from "../lib";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+import { getCostEstimator, type ExecutionHistoryEntry, CostEstimator } from "../lib/cost-estimator";
+
+const logger = getLogger();
 import {
   type TeamEnabledState,
   type TeamStrategy,
@@ -113,6 +113,7 @@ import {
   toId,
   loadStorage,
   saveStorage,
+  saveStorageWithPatterns,
 } from "./agent-teams/storage";
 
 // Import judge module (extracted for SRP compliance)
@@ -147,6 +148,7 @@ import {
   sanitizeCommunicationSnippet,
   extractField,
   buildCommunicationContext,
+  buildPrecomputedContextMap,
   detectPartnerReferences,
   detectPartnerReferencesV2,
   type PartnerReferenceResultV2,
@@ -209,65 +211,6 @@ const LIVE_EVENT_TAIL_LIMIT = Math.max(60, Number(process.env.PI_LIVE_EVENT_TAIL
 const LIVE_EVENT_INLINE_LINE_LIMIT = 8;
 const LIVE_EVENT_DETAIL_LINE_LIMIT = 28;
 // Communication constants moved to ./agent-teams/communication.ts
-
-/**
- * Extract confidence value from team member output.
- * Parses CONFIDENCE field, defaults to 0.5 if not found or invalid.
- */
-function extractConfidenceFromOutput(output: string): number {
-  const match = output.match(/CONFIDENCE:\s*([0-9.]+)/i);
-  if (match) {
-    const parsed = parseFloat(match[1]);
-    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
-      return parsed;
-    }
-  }
-  return 0.5;
-}
-
-/**
- * Run verification for a completed team task.
- * Returns the verification result or undefined if verification is disabled/failed.
- */
-async function runTeamVerification(
-  aggregatedOutput: string,
-  confidence: number,
-  context: {
-    teamId: string;
-    task: string;
-    memberOutputs: Array<{ agentId: string; output: string }>;
-  },
-  options: {
-    provider?: string;
-    model?: string;
-    signal?: AbortSignal;
-  }
-): Promise<VerificationHookResult | undefined> {
-  const verificationTimeoutMs = 60000; // Shorter timeout for focused verification task
-
-  try {
-    return await postTeamVerificationHook(
-      aggregatedOutput,
-      confidence,
-      context,
-      async (verificationAgentId, prompt) => {
-        const result = await sharedRunPiPrintMode({
-          provider: options.provider,
-          model: options.model,
-          prompt,
-          timeoutMs: verificationTimeoutMs,
-          signal: options.signal,
-          entityLabel: "verification-agent",
-        });
-        return result.output;
-      }
-    );
-  } catch (error) {
-    // Verification failures should not break the main flow
-    console.warn(`[Verification] Error during team verification: ${error instanceof Error ? error.message : String(error)}`);
-    return undefined;
-  }
-}
 
 // Use unified stable runtime constants from lib/agent-common.ts
 import {
@@ -1197,19 +1140,14 @@ function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput {
 
   const summary = pickTeamFieldCandidate(trimmed, 100);
   const claim = pickTeamFieldCandidate(trimmed, 120);
-  const evidence = "generated-from-raw-output";
-  const confidence = hasIntentOnlyContent(trimmed) ? "0.40" : "0.55";
-  const nextStep = hasIntentOnlyContent(trimmed)
-    ? "対象ファイルを確認し、根拠付きで結論を更新する。"
-    : "none";
+  const evidence = "not-provided";
   const structured = [
     `SUMMARY: ${summary}`,
     `CLAIM: ${claim}`,
     `EVIDENCE: ${evidence}`,
-    `CONFIDENCE: ${confidence}`,
     "RESULT:",
     trimmed,
-    `NEXT_STEP: ${nextStep}`,
+    "NEXT_STEP: none",
   ].join("\n");
   const structuredQuality = validateTeamMemberOutput(structured);
   if (structuredQuality.ok) {
@@ -2138,7 +2076,6 @@ function buildTeamMemberPrompt(input: {
   lines.push("SUMMARY: <日本語の短い要約>");
   lines.push("CLAIM: <日本語で1文の中核主張>");
   lines.push("EVIDENCE: <根拠をカンマ区切り。可能なら file:line>");
-  lines.push("CONFIDENCE: <0.00-1.00>");
   if (phase === "communication") {
     lines.push("DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>");
   } else {
@@ -2560,28 +2497,34 @@ async function runTeamTask(input: {
       activeMembers,
       memberParallelLimit,
       async (member) => {
-        input.onMemberPhase?.(member, "initial");
-        input.onMemberEvent?.(member, "initial phase: dispatching run");
-        const result = await runMember({
-          team: input.team,
-          member,
-          task: input.task,
-          sharedContext: input.sharedContext,
-          phase: "initial",
-          timeoutMs: input.timeoutMs,
-          cwd: input.cwd,
-          retryOverrides: input.retryOverrides,
-          fallbackProvider: input.fallbackProvider,
-          fallbackModel: input.fallbackModel,
-          signal: input.signal,
-          onStart: input.onMemberStart,
-          onEnd: input.onMemberEnd,
-          onEvent: input.onMemberEvent,
-          onTextDelta: input.onMemberTextDelta,
-          onStderrChunk: input.onMemberStderrChunk,
-        });
-        emitResultEvent(member, "initial", result);
-        return result;
+        // Create child AbortController to prevent MaxListenersExceededWarning
+        const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
+        try {
+          input.onMemberPhase?.(member, "initial");
+          input.onMemberEvent?.(member, "initial phase: dispatching run");
+          const result = await runMember({
+            team: input.team,
+            member,
+            task: input.task,
+            sharedContext: input.sharedContext,
+            phase: "initial",
+            timeoutMs: input.timeoutMs,
+            cwd: input.cwd,
+            retryOverrides: input.retryOverrides,
+            fallbackProvider: input.fallbackProvider,
+            fallbackModel: input.fallbackModel,
+            signal: childController.signal,
+            onStart: input.onMemberStart,
+            onEnd: input.onMemberEnd,
+            onEvent: input.onMemberEvent,
+            onTextDelta: input.onMemberTextDelta,
+            onStderrChunk: input.onMemberStderrChunk,
+          });
+          emitResultEvent(member, "initial", result);
+          return result;
+        } finally {
+          cleanupAbort();
+        }
       },
       { signal: input.signal },
     );
@@ -2663,6 +2606,8 @@ async function runTeamTask(input: {
       break;
     }
 
+    const contextMap = buildPrecomputedContextMap(previousResults);
+
     if (input.strategy === "parallel") {
       const memberParallelLimit = toConcurrencyLimit(
         input.memberParallelLimit,
@@ -2675,77 +2620,83 @@ async function runTeamTask(input: {
         communicationMembers,
         memberParallelLimit,
         async (member) => {
-          const partnerIds = communicationLinks.get(member.id) ?? [];
-          const partnerSnapshots = partnerIds.map((partnerId) => {
-            const partnerResult = previousResults.find((result) => result.memberId === partnerId);
-            const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
-            return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
-          });
-          input.onMemberPhase?.(member, "communication", round);
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
-          );
-          const communicationContext = buildCommunicationContext({
-            team: input.team,
-            member,
-            round,
-            partnerIds,
-            results: previousResults,
-          });
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: context_build=done size=${communicationContext.length}chars`,
-          );
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
-          );
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
-          );
+          // Create child AbortController to prevent MaxListenersExceededWarning
+          const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
+          try {
+            const partnerIds = communicationLinks.get(member.id) ?? [];
+            const partnerSnapshots = partnerIds.map((partnerId) => {
+              const partnerResult = previousResults.find((result) => result.memberId === partnerId);
+              const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
+              return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
+            });
+            input.onMemberPhase?.(member, "communication", round);
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
+            );
+            const communicationContext = buildCommunicationContext({
+              team: input.team,
+              member,
+              round,
+              partnerIds,
+              contextMap,
+            });
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: context_build=done size=${communicationContext.length}chars`,
+            );
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
+            );
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
+            );
 
-          const result = await runMember({
-            team: input.team,
-            member,
-            task: input.task,
-            sharedContext: input.sharedContext,
-            phase: "communication",
-            communicationContext,
-            timeoutMs: input.timeoutMs,
-            cwd: input.cwd,
-            retryOverrides: input.retryOverrides,
-            fallbackProvider: input.fallbackProvider,
-            fallbackModel: input.fallbackModel,
-            signal: input.signal,
-            onStart: input.onMemberStart,
-            onEnd: input.onMemberEnd,
-            onEvent: input.onMemberEvent,
-            onTextDelta: input.onMemberTextDelta,
-            onStderrChunk: input.onMemberStderrChunk,
-          });
-          emitResultEvent(member, `communication#${round}`, result);
-          const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
-          communicationAudit.push({
-            round,
-            memberId: member.id,
-            role: member.role,
-            partnerIds: [...partnerIds],
-            referencedPartners: communicationReference.referencedPartners,
-            missingPartners: communicationReference.missingPartners,
-            contextPreview: normalizeForSingleLine(communicationContext, 200),
-            partnerSnapshots,
-            resultStatus: result.status,
-            claimReferences: communicationReference.claimReferences.length > 0
-              ? communicationReference.claimReferences
-              : undefined,
-          });
-          input.onMemberEvent?.(
-            member,
-            `communication round ${round}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
-          );
-          return result;
+            const result = await runMember({
+              team: input.team,
+              member,
+              task: input.task,
+              sharedContext: input.sharedContext,
+              phase: "communication",
+              communicationContext,
+              timeoutMs: input.timeoutMs,
+              cwd: input.cwd,
+              retryOverrides: input.retryOverrides,
+              fallbackProvider: input.fallbackProvider,
+              fallbackModel: input.fallbackModel,
+              signal: childController.signal,
+              onStart: input.onMemberStart,
+              onEnd: input.onMemberEnd,
+              onEvent: input.onMemberEvent,
+              onTextDelta: input.onMemberTextDelta,
+              onStderrChunk: input.onMemberStderrChunk,
+            });
+            emitResultEvent(member, `communication#${round}`, result);
+            const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
+            communicationAudit.push({
+              round,
+              memberId: member.id,
+              role: member.role,
+              partnerIds: [...partnerIds],
+              referencedPartners: communicationReference.referencedPartners,
+              missingPartners: communicationReference.missingPartners,
+              contextPreview: normalizeForSingleLine(communicationContext, 200),
+              partnerSnapshots,
+              resultStatus: result.status,
+              claimReferences: communicationReference.claimReferences.length > 0
+                ? communicationReference.claimReferences
+                : undefined,
+            });
+            input.onMemberEvent?.(
+              member,
+              `communication round ${round}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
+            );
+            return result;
+          } finally {
+            cleanupAbort();
+          }
         },
         { signal: input.signal },
       );
@@ -2793,7 +2744,7 @@ async function runTeamTask(input: {
           member,
           round,
           partnerIds,
-          results: previousResults,
+          contextMap,
         });
         input.onMemberEvent?.(
           member,
@@ -2922,77 +2873,85 @@ async function runTeamTask(input: {
       `failed-member retry round ${retryRound}/${failedMemberRetryRounds} start: targets=${retryTargetMembers.map((member) => member.id).join(",")}`,
     );
 
+    const contextMap = buildPrecomputedContextMap(previousResults);
+
     const runRetryMember = async (member: TeamMember): Promise<TeamMemberResult> => {
-      const partnerIds = communicationLinks.get(member.id) ?? [];
-      const partnerSnapshots = partnerIds.map((partnerId) => {
-        const partnerResult = previousResults.find((result) => result.memberId === partnerId);
-        const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
-        return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
-      });
-      input.onMemberPhase?.(member, "communication", retryPhaseRound);
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
-      );
-      const communicationContext = buildCommunicationContext({
-        team: input.team,
-        member,
-        round: retryPhaseRound,
-        partnerIds,
-        results: previousResults,
-      });
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: context_build=done size=${communicationContext.length}chars`,
-      );
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
-      );
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
-      );
-      const result = await runMember({
-        team: input.team,
-        member,
-        task: input.task,
-        sharedContext: input.sharedContext,
-        phase: "communication",
-        communicationContext,
-        timeoutMs: input.timeoutMs,
-        cwd: input.cwd,
-        retryOverrides: input.retryOverrides,
-        fallbackProvider: input.fallbackProvider,
-        fallbackModel: input.fallbackModel,
-        signal: input.signal,
-        onStart: input.onMemberStart,
-        onEnd: input.onMemberEnd,
-        onEvent: input.onMemberEvent,
-        onTextDelta: input.onMemberTextDelta,
-        onStderrChunk: input.onMemberStderrChunk,
-      });
-      emitResultEvent(member, `failed-retry#${retryRound}`, result);
-      const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
-      communicationAudit.push({
-        round: retryPhaseRound,
-        memberId: member.id,
-        role: member.role,
-        partnerIds: [...partnerIds],
-        referencedPartners: communicationReference.referencedPartners,
-        missingPartners: communicationReference.missingPartners,
-        contextPreview: normalizeForSingleLine(communicationContext, 200),
-        partnerSnapshots,
-        resultStatus: result.status,
-        claimReferences: communicationReference.claimReferences.length > 0
-          ? communicationReference.claimReferences
-          : undefined,
-      });
-      input.onMemberEvent?.(
-        member,
-        `failed-member retry round ${retryRound}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
-      );
-      return result;
+      // Create child AbortController to prevent MaxListenersExceededWarning
+      const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
+      try {
+        const partnerIds = communicationLinks.get(member.id) ?? [];
+        const partnerSnapshots = partnerIds.map((partnerId) => {
+          const partnerResult = previousResults.find((result) => result.memberId === partnerId);
+          const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
+          return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
+        });
+        input.onMemberPhase?.(member, "communication", retryPhaseRound);
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
+        );
+        const communicationContext = buildCommunicationContext({
+          team: input.team,
+          member,
+          round: retryPhaseRound,
+          partnerIds,
+          contextMap,
+        });
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: context_build=done size=${communicationContext.length}chars`,
+        );
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
+        );
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
+        );
+        const result = await runMember({
+          team: input.team,
+          member,
+          task: input.task,
+          sharedContext: input.sharedContext,
+          phase: "communication",
+          communicationContext,
+          timeoutMs: input.timeoutMs,
+          cwd: input.cwd,
+          retryOverrides: input.retryOverrides,
+          fallbackProvider: input.fallbackProvider,
+          fallbackModel: input.fallbackModel,
+          signal: childController.signal,
+          onStart: input.onMemberStart,
+          onEnd: input.onMemberEnd,
+          onEvent: input.onMemberEvent,
+          onTextDelta: input.onMemberTextDelta,
+          onStderrChunk: input.onMemberStderrChunk,
+        });
+        emitResultEvent(member, `failed-retry#${retryRound}`, result);
+        const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
+        communicationAudit.push({
+          round: retryPhaseRound,
+          memberId: member.id,
+          role: member.role,
+          partnerIds: [...partnerIds],
+          referencedPartners: communicationReference.referencedPartners,
+          missingPartners: communicationReference.missingPartners,
+          contextPreview: normalizeForSingleLine(communicationContext, 200),
+          partnerSnapshots,
+          resultStatus: result.status,
+          claimReferences: communicationReference.claimReferences.length > 0
+            ? communicationReference.claimReferences
+            : undefined,
+        });
+        input.onMemberEvent?.(
+          member,
+          `failed-member retry round ${retryRound}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
+        );
+        return result;
+      } finally {
+        cleanupAbort();
+      }
     };
 
     let retriedResults: TeamMemberResult[] = [];
@@ -3117,6 +3076,24 @@ async function runTeamTask(input: {
     uSys: finalJudge.uSys,
     collapseSignals: finalJudge.collapseSignals,
   };
+
+  // Record team execution for cost estimation learning
+  const totalLatencyMs = memberResults.reduce((sum, r) => sum + r.latencyMs, 0);
+  const executionEntry: ExecutionHistoryEntry = {
+    source: "agent_team_run",
+    provider: input.fallbackProvider ?? "(session-default)",
+    model: input.fallbackModel ?? "(session-default)",
+    taskDescription: input.task,
+    actualDurationMs: totalLatencyMs,
+    actualTokens: 0, // Token count not available from print mode
+    success: failed.length === 0,
+    timestamp: Date.now(),
+  };
+  try {
+    getCostEstimator().recordExecution(executionEntry);
+  } catch {
+    // Ignore errors in cost estimation recording
+  }
 
   writeFileSync(
     outputFile,
@@ -3365,6 +3342,18 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         };
       }
 
+      // Logger: start team operation tracking
+      const teamOperationId = logger.startOperation("team_run" as OperationType, team.id, {
+        task: params.task,
+        params: {
+          teamId: team.id,
+          strategy: params.strategy,
+          sharedContext: params.sharedContext,
+          communicationRounds: params.communicationRounds,
+          timeoutMs: params.timeoutMs,
+        },
+      });
+
       const queueSnapshot = getRuntimeSnapshot();
       const queueWait = await waitForRuntimeOrchestrationTurn({
         toolName: "agent_team_run",
@@ -3514,6 +3503,28 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
 
       try {
         const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+
+        // Get cost estimate and adjust for team size and communication rounds
+        const baseEstimate = getCostEstimator().estimate(
+          "agent_team_run",
+          ctx.model?.provider,
+          ctx.model?.id,
+          params.task
+        );
+        const teamSize = activeMembers.length;
+        const adjustedTokens = Math.round(baseEstimate.estimatedTokens * teamSize);
+        const adjustedDurationMs = Math.round(baseEstimate.estimatedDurationMs * (1 + communicationRounds * 0.3));
+
+        // Debug logging for cost estimation
+        if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
+          console.log(
+            `[CostEstimation] agent_team_run: team=${team.id} ` +
+            `base=(${baseEstimate.estimatedDurationMs}ms, ${baseEstimate.estimatedTokens}t) ` +
+            `adjusted=(${adjustedDurationMs}ms, ${adjustedTokens}t) ` +
+            `teamSize=${teamSize} rounds=${communicationRounds} method=${baseEstimate.method}`
+          );
+        }
+
         const liveMonitor = createAgentTeamLiveMonitor(ctx, {
           title: `Agent Team Run (detailed live view: ${team.id})`,
           items: activeMembers.map((member) => ({
@@ -3610,7 +3621,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           });
 
           storage.runs.push(runRecord);
-          saveStorage(ctx.cwd, storage);
+          // Use saveStorageWithPatterns for automatic pattern extraction
+          await saveStorageWithPatterns(ctx.cwd, storage);
 
           pi.appendEntry("agent-team-run", runRecord);
           const pressureFailures = memberResults.filter((result) => {
@@ -3625,43 +3637,26 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           const teamOutcome = resolveTeamMemberAggregateOutcome(memberResults);
           const adaptivePenaltyAfter = adaptivePenalty.get();
 
-          // Run verification hook for completed team output
           const aggregatedOutput = buildTeamResultText({
             run: runRecord,
             team,
             memberResults,
             communicationAudit,
           });
-          const avgConfidence = memberResults.length > 0
-            ? memberResults.reduce((sum, r) => sum + extractConfidenceFromOutput(r.output), 0) / memberResults.length
-            : 0.5;
-          const verificationResult = await runTeamVerification(
-            aggregatedOutput,
-            avgConfidence,
-            {
-              teamId: team.id,
-              task: params.task,
-              memberOutputs: memberResults.map(r => ({ agentId: r.memberId, output: r.output })),
-            },
-            {
-              provider: ctx.model?.provider,
-              model: ctx.model?.id,
-              signal,
-            }
-          );
 
-          // Build output with verification info if available
-          const outputLines = [aggregatedOutput];
-          if (verificationResult?.triggered && verificationResult.result) {
-            outputLines.push("");
-            outputLines.push(formatVerificationResult(verificationResult));
-          }
-
+          logger.endOperation({
+            status: teamOutcome.outcomeCode === "SUCCESS" ? "success" : "partial",
+            tokensUsed: 0,
+            outputLength: aggregatedOutput.length,
+            outputFile: runRecord.outputFile,
+            childOperations: memberResults.length,
+            toolCalls: 0,
+          });
           return {
             content: [
               {
                 type: "text" as const,
-                text: outputLines.join("\n"),
+                text: aggregatedOutput,
               },
             ],
             details: {
@@ -3699,7 +3694,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               failedMemberIds: teamOutcome.failedMemberIds,
               outcomeCode: teamOutcome.outcomeCode,
               retryRecommended: teamOutcome.retryRecommended,
-              verification: verificationResult?.result,
             },
           };
         } catch (error) {
@@ -3723,6 +3717,18 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             error: errorMessage,
           });
           const failureOutcome = resolveTeamFailureOutcome(errorMessage);
+          logger.endOperation({
+            status: "failure",
+            tokensUsed: 0,
+            outputLength: 0,
+            childOperations: 0,
+            toolCalls: 0,
+            error: {
+              type: "team_error",
+              message: errorMessage,
+              stack: "",
+            },
+          });
           return {
             content: [
               {
@@ -3849,6 +3855,18 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           },
         };
       }
+
+      // Logger: start parallel team operation tracking
+      const parallelTeamOperationId = logger.startOperation("team_run" as OperationType, enabledTeams.map(t => t.id).join(","), {
+        task: params.task,
+        params: {
+          teamIds: enabledTeams.map(t => t.id),
+          strategy: params.strategy,
+          sharedContext: params.sharedContext,
+          communicationRounds: params.communicationRounds,
+          timeoutMs: params.timeoutMs,
+        },
+      });
 
       const queueSnapshot = getRuntimeSnapshot();
       const queueWait = await waitForRuntimeOrchestrationTurn({
@@ -4062,6 +4080,30 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           refreshRuntimeStatus(ctx);
         };
 
+        // Get cost estimate for parallel team execution
+        const baseEstimate = getCostEstimator().estimate(
+          "agent_team_run_parallel",
+          ctx.model?.provider,
+          ctx.model?.id,
+          params.task
+        );
+        const totalMembers = enabledTeams.reduce(
+          (sum, team) => sum + team.members.filter((m) => m.enabled).length,
+          0
+        );
+        const adjustedTokens = Math.round(baseEstimate.estimatedTokens * totalMembers);
+        const adjustedDurationMs = Math.round(baseEstimate.estimatedDurationMs * (1 + communicationRounds * 0.3));
+
+        // Debug logging for cost estimation
+        if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
+          console.log(
+            `[CostEstimation] agent_team_run_parallel: ` +
+            `base=(${baseEstimate.estimatedDurationMs}ms, ${baseEstimate.estimatedTokens}t) ` +
+            `adjusted=(${adjustedDurationMs}ms, ${adjustedTokens}t) ` +
+            `teams=${enabledTeams.length} totalMembers=${totalMembers} rounds=${communicationRounds} method=${baseEstimate.method}`
+          );
+        }
+
         try {
         // 予約は admission 制御のみ。開始後は active カウンタで実行中負荷を表現する。
         capacityReservation.consume();
@@ -4069,41 +4111,44 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           enabledTeams,
           appliedTeamParallelism,
           async (team) => {
-            const enabledMemberCount = team.members.filter((member) => member.enabled).length;
-            const communicationLinks = createCommunicationLinksMap(
-              team.members.filter((member) => member.enabled),
-            );
-            const teamMemberParallelLimit =
-              strategy === "parallel"
-                ? Math.max(
-                    1,
-                    Math.min(appliedMemberParallelism, enabledMemberCount, appliedLlmBudgetPerTeam),
-                  )
-                : 1;
-
-            runtimeState.activeTeamRuns += 1;
-            notifyRuntimeCapacityChanged();
-            refreshRuntimeStatus(ctx);
-            liveMonitor?.appendBroadcastEvent(
-              `team ${team.id}: start strategy=${strategy} teammate_parallel=${teamMemberParallelLimit}`,
-            );
-
+            // Create child AbortController to prevent MaxListenersExceededWarning
+            const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(signal);
             try {
-              const { runRecord, memberResults, communicationAudit } = await runTeamTask({
-                team,
-                task: params.task,
-                strategy,
-                memberParallelLimit: teamMemberParallelLimit,
-                communicationRounds,
-                failedMemberRetryRounds,
-                communicationLinks,
-                sharedContext: params.sharedContext,
-                timeoutMs,
-                cwd: ctx.cwd,
-                retryOverrides,
-                fallbackProvider: ctx.model?.provider,
-                fallbackModel: ctx.model?.id,
-                signal,
+              const enabledMemberCount = team.members.filter((member) => member.enabled).length;
+              const communicationLinks = createCommunicationLinksMap(
+                team.members.filter((member) => member.enabled),
+              );
+              const teamMemberParallelLimit =
+                strategy === "parallel"
+                  ? Math.max(
+                      1,
+                      Math.min(appliedMemberParallelism, enabledMemberCount, appliedLlmBudgetPerTeam),
+                    )
+                  : 1;
+
+              runtimeState.activeTeamRuns += 1;
+              notifyRuntimeCapacityChanged();
+              refreshRuntimeStatus(ctx);
+              liveMonitor?.appendBroadcastEvent(
+                `team ${team.id}: start strategy=${strategy} teammate_parallel=${teamMemberParallelLimit}`,
+              );
+
+              try {
+                const { runRecord, memberResults, communicationAudit } = await runTeamTask({
+                  team,
+                  task: params.task,
+                  strategy,
+                  memberParallelLimit: teamMemberParallelLimit,
+                  communicationRounds,
+                  failedMemberRetryRounds,
+                  communicationLinks,
+                  sharedContext: params.sharedContext,
+                  timeoutMs,
+                  cwd: ctx.cwd,
+                  retryOverrides,
+                  fallbackProvider: ctx.model?.provider,
+                  fallbackModel: ctx.model?.id,
+                  signal: childController.signal,
                 onMemberStart: (member) => {
                   onRuntimeMemberStart();
                   const key = toTeamLiveItemKey(team.id, member.id);
@@ -4240,6 +4285,9 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               notifyRuntimeCapacityChanged();
               refreshRuntimeStatus(ctx);
             }
+            } finally {
+              cleanupAbort();
+            }
           },
           { signal },
         );
@@ -4272,36 +4320,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         const parallelOutcome = resolveTeamParallelRunOutcome(results);
         const adaptivePenaltyAfter = adaptivePenalty.get();
 
-        // Run verification hooks for completed team outputs
-        const teamVerificationResults: Array<{ teamId: string; result?: VerificationHookResult }> = [];
-        for (const result of results) {
-          if (result.runRecord.status !== "completed") continue;
-          const teamOutput = buildTeamResultText({
-            run: result.runRecord,
-            team: result.team,
-            memberResults: result.memberResults,
-            communicationAudit: result.communicationAudit,
-          });
-          const avgConfidence = result.memberResults.length > 0
-            ? result.memberResults.reduce((sum, r) => sum + extractConfidenceFromOutput(r.output), 0) / result.memberResults.length
-            : 0.5;
-          const verificationResult = await runTeamVerification(
-            teamOutput,
-            avgConfidence,
-            {
-              teamId: result.team.id,
-              task: params.task,
-              memberOutputs: result.memberResults.map(r => ({ agentId: r.memberId, output: r.output })),
-            },
-            {
-              provider: ctx.model?.provider,
-              model: ctx.model?.id,
-              signal,
-            }
-          );
-          teamVerificationResults.push({ teamId: result.team.id, result: verificationResult });
-        }
-
         const lines: string[] = [];
         lines.push(`Parallel agent team run completed (${results.length} teams, ${totalTeammates} teammates).`);
         lines.push(
@@ -4325,18 +4343,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           lines.push(`- ${result.team.id} [${state}] ${result.runRecord.summary} (${result.runRecord.outputFile})`);
         }
 
-        // Add verification summaries if any teams were verified
-        const verificationSummaries = teamVerificationResults.filter(v => v.result?.triggered);
-        if (verificationSummaries.length > 0) {
-          lines.push("");
-          lines.push("Verification results:");
-          for (const v of verificationSummaries) {
-            if (v.result?.result) {
-              lines.push(`- ${v.teamId}: ${v.result.result.finalVerdict} (confidence: ${v.result.result.confidence.toFixed(2)})`);
-            }
-          }
-        }
-
         lines.push("");
         lines.push("Detailed outputs:");
         for (const result of results) {
@@ -4350,14 +4356,15 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               communicationAudit: result.communicationAudit,
             }),
           );
-          // Append verification details for this team
-          const teamVerification = teamVerificationResults.find(v => v.teamId === result.team.id);
-          if (teamVerification?.result?.triggered) {
-            lines.push("");
-            lines.push(formatVerificationResult(teamVerification.result));
-          }
         }
 
+        logger.endOperation({
+          status: parallelOutcome.outcomeCode === "SUCCESS" ? "success" : "partial",
+          tokensUsed: 0,
+          outputLength: lines.join("\n").length,
+          childOperations: results.length,
+          toolCalls: 0,
+        });
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
           details: {
@@ -4404,10 +4411,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             failedMemberIdsByTeam: parallelOutcome.failedMemberIdsByTeam,
             outcomeCode: parallelOutcome.outcomeCode,
             retryRecommended: parallelOutcome.retryRecommended,
-            teamVerifications: teamVerificationResults.map(v => ({
-              teamId: v.teamId,
-              result: v.result?.result,
-            })),
           },
         };
         } finally {

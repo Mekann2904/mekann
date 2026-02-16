@@ -9,6 +9,11 @@ import {
   isCoordinatorInitialized,
   getModelParallelLimit,
   getActiveInstancesForModel,
+  getStealingStats,
+  isIdle,
+  findStealCandidate,
+  safeStealWork,
+  enhancedHeartbeat,
 } from "../lib/cross-instance-coordinator";
 import {
   getConcurrencyLimit,
@@ -17,7 +22,35 @@ import {
 } from "../lib/provider-limits";
 import {
   getEffectiveLimit,
+  getSchedulerAwareLimit,
 } from "../lib/adaptive-rate-controller";
+import {
+  TaskPriority,
+  PriorityTaskQueue,
+  inferPriority,
+  comparePriority,
+  formatPriorityQueueStats,
+  type PriorityTaskMetadata,
+  type PriorityQueueEntry,
+} from "../lib/priority-scheduler";
+import {
+  getScheduler,
+  createTaskId,
+  type ScheduledTask,
+  type TaskResult,
+  type TaskSource,
+} from "../lib/task-scheduler";
+import {
+  getParallelismAdjuster,
+  getParallelism as getDynamicParallelism,
+} from "../lib/dynamic-parallelism";
+import {
+  broadcastQueueState,
+  getWorkStealingSummary,
+} from "../lib/cross-instance-coordinator";
+
+// Feature flag for scheduler-based capacity management
+const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
 
 export interface AgentRuntimeLimits {
   maxTotalActiveLlm: number;
@@ -30,10 +63,16 @@ export interface AgentRuntimeLimits {
   capacityPollMs: number;
 }
 
-interface RuntimeQueueEntry {
-  id: string;
-  toolName: string;
-  enqueuedAtMs: number;
+interface RuntimeQueueEntry extends PriorityTaskMetadata {
+  // Inherits from PriorityTaskMetadata:
+  // - id: string
+  // - toolName: string
+  // - priority: TaskPriority
+  // - estimatedDurationMs?: number
+  // - estimatedRounds?: number
+  // - deadlineMs?: number
+  // - enqueuedAtMs: number
+  // - source?: "user-interactive" | "background" | "scheduled" | "retry"
 }
 
 interface RuntimeCapacityReservationRecord {
@@ -59,6 +98,14 @@ interface AgentRuntimeState {
   queue: {
     activeOrchestrations: number;
     pending: RuntimeQueueEntry[];
+    /** Priority queue statistics (updated on enqueue/dequeue) */
+    priorityStats?: {
+      critical: number;
+      high: number;
+      normal: number;
+      low: number;
+      background: number;
+    };
   };
   reservations: {
     active: RuntimeCapacityReservationRecord[];
@@ -139,6 +186,14 @@ export interface AgentRuntimeSnapshot {
   totalActiveLlm: number;
   limits: AgentRuntimeLimits;
   limitsVersion: string;
+  /** Priority queue statistics */
+  priorityStats?: {
+    critical: number;
+    high: number;
+    normal: number;
+    low: number;
+    background: number;
+  };
 }
 
 export interface RuntimeStatusLineOptions {
@@ -202,6 +257,16 @@ export interface RuntimeCapacityReserveResult extends RuntimeCapacityCheck {
 
 export interface RuntimeOrchestrationWaitInput {
   toolName: string;
+  /** Optional priority override. If not specified, inferred from toolName. */
+  priority?: TaskPriority;
+  /** Estimated duration in milliseconds (for SRT optimization). */
+  estimatedDurationMs?: number;
+  /** Estimated rounds from agent-estimation skill. */
+  estimatedRounds?: number;
+  /** Deadline timestamp in milliseconds. */
+  deadlineMs?: number;
+  /** Source context for priority inference. */
+  source?: PriorityTaskMetadata["source"];
   maxWaitMs?: number;
   pollIntervalMs?: number;
   signal?: AbortSignal;
@@ -224,15 +289,15 @@ export interface RuntimeOrchestrationWaitResult {
   lease?: RuntimeOrchestrationLease;
 }
 
-const STABLE_AGENT_RUNTIME_PROFILE = false;
+const STABLE_AGENT_RUNTIME_PROFILE = process.env.STABLE_RUNTIME_PROFILE === "true";
 const DEFAULT_MAX_TOTAL_ACTIVE_LLM = STABLE_AGENT_RUNTIME_PROFILE ? 4 : 8;
 const DEFAULT_MAX_TOTAL_ACTIVE_REQUESTS = STABLE_AGENT_RUNTIME_PROFILE ? 2 : 6;
 const DEFAULT_MAX_PARALLEL_SUBAGENTS_PER_RUN = STABLE_AGENT_RUNTIME_PROFILE ? 2 : 4;
 const DEFAULT_MAX_PARALLEL_TEAMS_PER_RUN = STABLE_AGENT_RUNTIME_PROFILE ? 1 : 3;
 const DEFAULT_MAX_PARALLEL_TEAMMATES_PER_TEAM = STABLE_AGENT_RUNTIME_PROFILE ? 3 : 6;
-const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 2;
+const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 4;
 const DEFAULT_CAPACITY_WAIT_MS = STABLE_AGENT_RUNTIME_PROFILE ? 12_000 : 30_000;
-const DEFAULT_CAPACITY_POLL_MS = 250;
+const DEFAULT_CAPACITY_POLL_MS = 100;
 const DEFAULT_RESERVATION_TTL_MS = STABLE_AGENT_RUNTIME_PROFILE ? 45_000 : 60_000;
 const DEFAULT_RESERVATION_SWEEP_MS = 5_000;
 const MIN_RESERVATION_TTL_MS = 2_000;
@@ -553,7 +618,17 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
 
   const activeOrchestrations = Math.max(0, runtime.queue.activeOrchestrations);
   const queuedOrchestrations = Math.max(0, runtime.queue.pending.length);
-  const queuedTools = runtime.queue.pending.slice(0, 16).map((entry) => entry.toolName);
+
+  // Include priority in queued tools display
+  const queuedTools = runtime.queue.pending.slice(0, 16).map(
+    (entry) => `${entry.toolName}:${entry.priority ?? "normal"}`
+  );
+
+  // Calculate priority stats
+  const priorityStats = { critical: 0, high: 0, normal: 0, low: 0, background: 0 };
+  for (const entry of runtime.queue.pending) {
+    priorityStats[entry.priority ?? "normal"]++;
+  }
 
   return {
     subagentActiveRequests,
@@ -569,6 +644,7 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
     totalActiveRequests: subagentActiveRequests + teamActiveRuns,
     totalActiveLlm: subagentActiveAgents + teamActiveAgents,
     limitsVersion: runtime.limitsVersion,
+    priorityStats,
     limits: {
       maxTotalActiveLlm: runtime.limits.maxTotalActiveLlm,
       maxTotalActiveRequests: runtime.limits.maxTotalActiveRequests,
@@ -604,6 +680,13 @@ export function formatRuntimeStatusLine(options: RuntimeStatusLineOptions = {}):
   if (snapshot.queuedTools.length > 0) {
     lines.push(`  - queued_tools: ${snapshot.queuedTools.join(", ")}`);
   }
+  // Priority statistics
+  if (snapshot.priorityStats) {
+    const ps = snapshot.priorityStats;
+    lines.push(
+      `  - priority_breakdown: critical=${ps.critical}, high=${ps.high}, normal=${ps.normal}, low=${ps.low}, background=${ps.background}`
+    );
+  }
   if (typeof options.adaptivePenalty === "number" && typeof options.adaptivePenaltyMax === "number") {
     const adaptivePenalty = Math.max(0, Math.trunc(options.adaptivePenalty));
     const adaptivePenaltyMax = Math.max(0, Math.trunc(options.adaptivePenaltyMax));
@@ -635,9 +718,68 @@ function removeQueuedEntry(runtime: AgentRuntimeState, entryId: string): number 
   const index = runtime.queue.pending.findIndex((entry) => entry.id === entryId);
   if (index >= 0) {
     runtime.queue.pending.splice(index, 1);
+    updatePriorityStats(runtime);
     notifyRuntimeCapacityChanged();
   }
   return index;
+}
+
+/**
+ * Sort queue entries by priority (higher priority first).
+ */
+function sortQueueByPriority(runtime: AgentRuntimeState): void {
+  runtime.queue.pending.sort((a, b) => {
+    // Convert to PriorityQueueEntry format for comparison
+    const entryA: PriorityQueueEntry = {
+      ...a,
+      virtualStartTime: 0,
+      virtualFinishTime: 0,
+      skipCount: 0,
+    };
+    const entryB: PriorityQueueEntry = {
+      ...b,
+      virtualStartTime: 0,
+      virtualFinishTime: 0,
+      skipCount: 0,
+    };
+    return comparePriority(entryA, entryB);
+  });
+}
+
+/**
+ * Update priority statistics for monitoring.
+ */
+function updatePriorityStats(runtime: AgentRuntimeState): void {
+  const stats = { critical: 0, high: 0, normal: 0, low: 0, background: 0 };
+  for (const entry of runtime.queue.pending) {
+    stats[entry.priority ?? "normal"]++;
+  }
+  runtime.queue.priorityStats = stats;
+}
+
+/**
+ * Promote entries that have been waiting too long (starvation prevention).
+ */
+function promoteStarvingEntries(runtime: AgentRuntimeState, nowMs: number): void {
+  const STARVATION_THRESHOLD_MS = 60_000; // 1 minute
+  const priorityOrder: TaskPriority[] = ["background", "low", "normal", "high", "critical"];
+  let promoted = false;
+
+  for (const entry of runtime.queue.pending) {
+    const waitMs = nowMs - entry.enqueuedAtMs;
+    if (waitMs > STARVATION_THRESHOLD_MS) {
+      const currentIndex = priorityOrder.indexOf(entry.priority ?? "normal");
+      if (currentIndex < priorityOrder.length - 1) {
+        entry.priority = priorityOrder[currentIndex + 1];
+        promoted = true;
+      }
+    }
+  }
+
+  if (promoted) {
+    sortQueueByPriority(runtime);
+    updatePriorityStats(runtime);
+  }
 }
 
 function createCapacityCheck(snapshot: AgentRuntimeSnapshot, input: RuntimeCapacityCheckInput): RuntimeCapacityCheck {
@@ -863,9 +1005,101 @@ export async function reserveRuntimeCapacity(
   }
 }
 
+/**
+ * Scheduler-based capacity wait (optional path).
+ * Uses the new task scheduler for rate-limited execution.
+ * Integrates with the actual runtime capacity check mechanism.
+ */
+async function schedulerBasedWait(
+  input: RuntimeCapacityWaitInput,
+): Promise<RuntimeCapacityWaitResult> {
+  const snapshot = getRuntimeSnapshot();
+  const maxWaitMs = normalizePositiveInt(input.maxWaitMs, snapshot.limits.capacityWaitMs, 3_600_000);
+  const startedAt = Date.now();
+  let attempts = 0;
+
+  try {
+    // Create a scheduled task that performs actual capacity wait
+    const task: ScheduledTask<RuntimeCapacityCheck> = {
+      id: createTaskId("capacity-wait"),
+      source: "subagent_run", // Default source
+      provider: "default",
+      model: "default",
+      priority: "normal",
+      costEstimate: {
+        estimatedTokens: 0,
+        estimatedDurationMs: 1000, // Estimate 1s for capacity wait
+      },
+      execute: async () => {
+        // Perform actual capacity check within scheduler context
+        // This respects both scheduler rate limits and runtime capacity
+        let check = checkRuntimeCapacity(input);
+        attempts++;
+
+        // If not allowed, wait with backoff until capacity is available
+        while (!check.allowed) {
+          const elapsedMs = Date.now() - startedAt;
+          if (elapsedMs >= maxWaitMs) {
+            break; // Will return timedOut result
+          }
+
+          const remainingMs = maxWaitMs - elapsedMs;
+          const waitMs = Math.min(100, remainingMs); // Poll every 100ms
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, waitMs);
+            input.signal?.addEventListener("abort", () => {
+              clearTimeout(timer);
+              resolve();
+            }, { once: true });
+          });
+
+          if (input.signal?.aborted) {
+            break;
+          }
+
+          check = checkRuntimeCapacity(input);
+          attempts++;
+        }
+
+        return check;
+      },
+      signal: input.signal,
+      deadlineMs: startedAt + maxWaitMs,
+    };
+
+    const scheduler = getScheduler();
+    const result = await scheduler.submit(task);
+
+    // Use the capacity check result from execute(), or fallback
+    const check = result.result ?? checkRuntimeCapacity(input);
+
+    return {
+      ...check,
+      waitedMs: result.waitedMs,
+      attempts,
+      timedOut: result.timedOut || (Date.now() - startedAt >= maxWaitMs && !check.allowed),
+    };
+  } catch (error) {
+    // Fallback to existing logic on scheduler error (graceful degradation)
+    const check = checkRuntimeCapacity(input);
+    return {
+      ...check,
+      waitedMs: Date.now() - startedAt,
+      attempts: Math.max(1, attempts),
+      timedOut: false,
+    };
+  }
+}
+
 export async function waitForRuntimeCapacity(
   input: RuntimeCapacityWaitInput,
 ): Promise<RuntimeCapacityWaitResult> {
+  // Scheduler-based path (optional, disabled by default for backward compatibility)
+  if (USE_SCHEDULER) {
+    return schedulerBasedWait(input);
+  }
+
+  // Existing logic (unchanged)
   const snapshot = getRuntimeSnapshot();
   const maxWaitMs = normalizePositiveInt(input.maxWaitMs, snapshot.limits.capacityWaitMs, 3_600_000);
   const pollIntervalMs = normalizePositiveInt(
@@ -929,20 +1163,40 @@ export async function waitForRuntimeOrchestrationTurn(
   const runtime = getSharedRuntimeState();
   const entryId = createRuntimeQueueEntryId();
   const enqueuedAtMs = Date.now();
-  runtime.queue.pending.push({
+
+  // Infer or use provided priority
+  const priority = input.priority ?? inferPriority(input.toolName, {
+    isInteractive: input.source === "user-interactive",
+    isBackground: input.source === "background",
+    isRetry: input.source === "retry",
+  });
+
+  // Create queue entry with priority metadata
+  const entry: RuntimeQueueEntry = {
     id: entryId,
     toolName: String(input.toolName || "unknown"),
+    priority,
     enqueuedAtMs,
-  });
+    estimatedDurationMs: input.estimatedDurationMs,
+    estimatedRounds: input.estimatedRounds,
+    deadlineMs: input.deadlineMs,
+    source: input.source,
+  };
+
+  runtime.queue.pending.push(entry);
+
+  // Sort by priority (higher priority first)
+  sortQueueByPriority(runtime);
+  updatePriorityStats(runtime);
   notifyRuntimeCapacityChanged();
 
-  const queuedAhead = Math.max(0, runtime.queue.pending.length - 1);
+  const queuedAhead = Math.max(0, runtime.queue.pending.findIndex((e) => e.id === entryId));
   let attempts = 0;
 
   while (true) {
     attempts += 1;
     const waitedMs = Date.now() - enqueuedAtMs;
-    const index = runtime.queue.pending.findIndex((entry) => entry.id === entryId);
+    const index = runtime.queue.pending.findIndex((e) => e.id === entryId);
 
     if (index < 0) {
       return {
@@ -958,13 +1212,16 @@ export async function waitForRuntimeOrchestrationTurn(
     }
 
     const queuePosition = index + 1;
+
+    // Check if this task is at the front of the priority queue
     const canStart =
-      queuePosition === 1 &&
+      index === 0 &&
       runtime.queue.activeOrchestrations < runtime.limits.maxConcurrentOrchestrations;
 
     if (canStart) {
       removeQueuedEntry(runtime, entryId);
       runtime.queue.activeOrchestrations += 1;
+      updatePriorityStats(runtime);
       notifyRuntimeCapacityChanged();
       let released = false;
       const lease: RuntimeOrchestrationLease = {
@@ -991,6 +1248,9 @@ export async function waitForRuntimeOrchestrationTurn(
         lease,
       };
     }
+
+    // Starvation prevention: promote long-waiting tasks
+    promoteStarvingEntries(runtime, enqueuedAtMs);
 
     if (input.signal?.aborted) {
       removeQueuedEntry(runtime, entryId);
@@ -1082,8 +1342,9 @@ export function resetRuntimeTransientState(): void {
  * Get the effective parallelism limit for a specific model.
  * This combines:
  * 1. Provider/model preset limits
- * 2. Learned limits (from 429 errors)
- * 3. Cross-instance distribution
+ * 2. Learned limits (from 429 errors) + predictive throttling
+ * 3. Dynamic parallelism adjuster
+ * 4. Cross-instance distribution
  *
  * @param provider - Provider name (e.g., "anthropic")
  * @param model - Model name (e.g., "claude-sonnet-4-20250514")
@@ -1094,15 +1355,21 @@ export function getModelAwareParallelLimit(provider: string, model: string): num
   const tier = detectTier(provider, model);
   const presetLimit = getConcurrencyLimit(provider, model, tier);
 
-  // Apply adaptive learning (429-based adjustments)
-  const adaptiveLimit = getEffectiveLimit(provider, model, presetLimit);
+  // Apply scheduler-aware limit (includes adaptive learning + predictive throttling)
+  const schedulerLimit = getSchedulerAwareLimit(provider, model, presetLimit);
+
+  // Apply dynamic parallelism adjuster
+  const dynamicLimit = getDynamicParallelism(provider, model);
+
+  // Take the minimum of scheduler limit and dynamic limit
+  let effectiveLimit = Math.min(schedulerLimit, dynamicLimit);
 
   // Distribute across instances using the same model
   if (isCoordinatorInitialized()) {
-    return getModelParallelLimit(provider, model, adaptiveLimit);
+    effectiveLimit = getModelParallelLimit(provider, model, effectiveLimit);
   }
 
-  return adaptiveLimit;
+  return effectiveLimit;
 }
 
 /**
@@ -1138,9 +1405,11 @@ export function getLimitsSummary(provider?: string, model?: string): string {
   if (provider && model) {
     const modelLimit = getModelAwareParallelLimit(provider, model);
     const instances = isCoordinatorInitialized() ? getActiveInstancesForModel(provider, model) : 1;
+    const dynamicLimit = getDynamicParallelism(provider, model);
     lines.push("");
     lines.push(`Model-Specific (${provider}/${model}):`);
     lines.push(`  effective_limit: ${modelLimit}`);
+    lines.push(`  dynamic_limit: ${dynamicLimit}`);
     lines.push(`  instances_using: ${instances}`);
   }
 
@@ -1150,10 +1419,265 @@ export function getLimitsSummary(provider?: string, model?: string): string {
   lines.push(`  activeTeamRuns: ${snapshot.teamActiveRuns}`);
   lines.push(`  activeReservations: ${snapshot.activeReservations}`);
 
+  // Work stealing summary
+  if (isCoordinatorInitialized()) {
+    const stealingSummary = getWorkStealingSummary();
+    lines.push("");
+    lines.push("Work Stealing:");
+    lines.push(`  remote_instances: ${stealingSummary.remoteInstances}`);
+    lines.push(`  total_pending_tasks: ${stealingSummary.totalPendingTasks}`);
+    lines.push(`  stealable_tasks: ${stealingSummary.stealableTasks}`);
+    lines.push(`  idle_instances: ${stealingSummary.idleInstances}`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Broadcast current queue state for work stealing coordination.
+ */
+export function broadcastCurrentQueueState(): void {
+  const snapshot = getRuntimeSnapshot();
+
+  broadcastQueueState({
+    pendingTaskCount: snapshot.queuedOrchestrations,
+    activeOrchestrations: snapshot.activeOrchestrations,
+    stealableEntries: snapshot.queuedTools.slice(0, 10).map((tool) => ({
+      id: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      toolName: tool.split(":")[0],
+      priority: tool.split(":")[1] ?? "normal",
+      instanceId: "self",
+      enqueuedAt: new Date().toISOString(),
+    })),
+  });
+}
+
+// ============================================================================
+// Checkpoint Manager Integration
+// ============================================================================
+
+/**
+ * Feature flags for advanced features.
+ */
+export const ENABLE_PREEMPTION = process.env.PI_ENABLE_PREEMPTION !== "false";
+export const ENABLE_WORK_STEALING = process.env.PI_ENABLE_WORK_STEALING !== "false";
+export const ENABLE_CHECKPOINTS = process.env.PI_ENABLE_CHECKPOINTS !== "false";
+export const ENABLE_METRICS = process.env.PI_ENABLE_METRICS !== "false";
+
+/**
+ * Lazy-loaded checkpoint manager instance.
+ */
+let _checkpointManager: ReturnType<typeof import("../lib/checkpoint-manager").getCheckpointManager> | null = null;
+
+/**
+ * Get checkpoint manager instance (lazy initialization).
+ */
+export function getCheckpointManagerInstance(): ReturnType<typeof import("../lib/checkpoint-manager").getCheckpointManager> | null {
+  if (!ENABLE_CHECKPOINTS) return null;
+
+  if (!_checkpointManager) {
+    const { getCheckpointManager, initCheckpointManager, getCheckpointConfigFromEnv } =
+      require("../lib/checkpoint-manager") as typeof import("../lib/checkpoint-manager");
+
+    const envConfig = getCheckpointConfigFromEnv();
+    initCheckpointManager(envConfig);
+    _checkpointManager = getCheckpointManager();
+  }
+
+  return _checkpointManager;
+}
+
+/**
+ * Lazy-loaded metrics collector instance.
+ */
+let _metricsCollector: ReturnType<typeof import("../lib/metrics-collector").getMetricsCollector> | null = null;
+
+/**
+ * Get metrics collector instance (lazy initialization).
+ */
+export function getMetricsCollectorInstance(): ReturnType<typeof import("../lib/metrics-collector").getMetricsCollector> | null {
+  if (!ENABLE_METRICS) return null;
+
+  if (!_metricsCollector) {
+    const { getMetricsCollector, initMetricsCollector, getMetricsConfigFromEnv } =
+      require("../lib/metrics-collector") as typeof import("../lib/metrics-collector");
+
+    const envConfig = getMetricsConfigFromEnv();
+    initMetricsCollector(envConfig);
+    _metricsCollector = getMetricsCollector();
+  }
+
+  return _metricsCollector;
+}
+
+/**
+ * Record task completion in metrics.
+ */
+export function recordTaskCompletion(
+  task: { id: string; source: string; provider: string; model: string; priority: string },
+  result: { waitedMs: number; executionMs: number; success: boolean }
+): void {
+  const collector = getMetricsCollectorInstance();
+  if (collector) {
+    collector.recordTaskCompletion(task, result);
+  }
+}
+
+/**
+ * Record preemption event in metrics.
+ */
+export function recordPreemptionEvent(taskId: string, reason: string): void {
+  const collector = getMetricsCollectorInstance();
+  if (collector) {
+    collector.recordPreemption(taskId, reason);
+  }
+}
+
+/**
+ * Record work steal event in metrics.
+ */
+export function recordWorkStealEvent(sourceInstance: string, taskId: string): void {
+  const collector = getMetricsCollectorInstance();
+  if (collector) {
+    collector.recordWorkSteal(sourceInstance, taskId);
+  }
+}
+
+/**
+ * Get current scheduler metrics.
+ */
+export function getSchedulerMetrics(): import("../lib/metrics-collector").SchedulerMetrics | null {
+  const collector = getMetricsCollectorInstance();
+  if (collector) {
+    return collector.getMetrics();
+  }
+  return null;
+}
+
+/**
+ * Get checkpoint statistics.
+ */
+export function getCheckpointStats(): import("../lib/checkpoint-manager").CheckpointStats | null {
+  const manager = getCheckpointManagerInstance();
+  if (manager) {
+    return manager.getStats();
+  }
+  return null;
+}
+
+/**
+ * Attempt work stealing if enabled and idle.
+ */
+export async function attemptWorkStealing(): Promise<import("../lib/cross-instance-coordinator").StealableQueueEntry | null> {
+  if (!ENABLE_WORK_STEALING) return null;
+
+  // Only steal if we're idle
+  if (!isIdle()) return null;
+
+  const entry = await safeStealWork();
+
+  if (entry) {
+    recordWorkStealEvent(entry.instanceId, entry.id);
+  }
+
+  return entry;
+}
+
+/**
+ * Get comprehensive runtime status for monitoring.
+ */
+export function getComprehensiveRuntimeStatus(): {
+  runtime: AgentRuntimeSnapshot;
+  metrics: import("../lib/metrics-collector").SchedulerMetrics | null;
+  checkpoints: import("../lib/checkpoint-manager").CheckpointStats | null;
+  stealing: import("../lib/cross-instance-coordinator").StealingStats | null;
+  features: {
+    preemption: boolean;
+    workStealing: boolean;
+    checkpoints: boolean;
+    metrics: boolean;
+  };
+} {
+  return {
+    runtime: getRuntimeSnapshot(),
+    metrics: getSchedulerMetrics(),
+    checkpoints: getCheckpointStats(),
+    stealing: isCoordinatorInitialized() ? getStealingStats() : null,
+    features: {
+      preemption: ENABLE_PREEMPTION,
+      workStealing: ENABLE_WORK_STEALING,
+      checkpoints: ENABLE_CHECKPOINTS,
+      metrics: ENABLE_METRICS,
+    },
+  };
+}
+
+/**
+ * Format comprehensive runtime status for display.
+ */
+export function formatComprehensiveRuntimeStatus(): string {
+  const status = getComprehensiveRuntimeStatus();
+  const lines: string[] = [];
+
+  lines.push("Runtime Status:");
+  lines.push(`  Active LLM: ${status.runtime.totalActiveLlm}`);
+  lines.push(`  Active Requests: ${status.runtime.totalActiveRequests}`);
+  lines.push(`  Queue: active=${status.runtime.activeOrchestrations}, queued=${status.runtime.queuedOrchestrations}`);
+
+  lines.push("");
+  lines.push("Feature Flags:");
+  lines.push(`  Preemption: ${status.features.preemption ? "enabled" : "disabled"}`);
+  lines.push(`  Work Stealing: ${status.features.workStealing ? "enabled" : "disabled"}`);
+  lines.push(`  Checkpoints: ${status.features.checkpoints ? "enabled" : "disabled"}`);
+  lines.push(`  Metrics: ${status.features.metrics ? "enabled" : "disabled"}`);
+
+  if (status.metrics) {
+    lines.push("");
+    lines.push("Metrics:");
+    lines.push(`  Queue Depth: ${status.metrics.queueDepth}`);
+    lines.push(`  Avg Wait: ${status.metrics.avgWaitMs}ms`);
+    lines.push(`  P99 Wait: ${status.metrics.p99WaitMs}ms`);
+    lines.push(`  Throughput: ${status.metrics.tasksCompletedPerMin}/min`);
+    lines.push(`  Preemptions: ${status.metrics.preemptCount}`);
+    lines.push(`  Steals: ${status.metrics.stealCount}`);
+  }
+
+  if (status.checkpoints) {
+    lines.push("");
+    lines.push("Checkpoints:");
+    lines.push(`  Total: ${status.checkpoints.totalCount}`);
+    lines.push(`  Expired: ${status.checkpoints.expiredCount}`);
+    lines.push(`  Size: ${Math.round(status.checkpoints.totalSizeBytes / 1024)}KB`);
+  }
+
+  if (status.stealing) {
+    lines.push("");
+    lines.push("Work Stealing Stats:");
+    lines.push(`  Attempts: ${status.stealing.totalAttempts}`);
+    lines.push(`  Success: ${status.stealing.successfulSteals}`);
+    lines.push(`  Success Rate: ${Math.round(status.stealing.successRate * 100)}%`);
+  }
+
   return lines.join("\n");
 }
 
 export default function registerAgentRuntimeExtension(_pi: ExtensionAPI) {
   getSharedRuntimeState();
   ensureReservationSweeper();
+
+  // Initialize dynamic parallelism adjuster
+  getParallelismAdjuster();
+
+  // Initialize checkpoint manager (if enabled)
+  if (ENABLE_CHECKPOINTS) {
+    getCheckpointManagerInstance();
+  }
+
+  // Initialize metrics collector (if enabled)
+  if (ENABLE_METRICS) {
+    const collector = getMetricsCollectorInstance();
+    if (collector) {
+      collector.startCollection();
+    }
+  }
 }

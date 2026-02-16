@@ -15,6 +15,10 @@ import {
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+
+const logger = getLogger();
 
 interface FileStats {
 	mtimeMs: number;
@@ -283,11 +287,17 @@ export default function (pi: ExtensionAPI) {
 	pi.registerCommand("usage", {
 		description: "Show LLM usage stats",
 		handler: async (_args, ctx) => {
-			let usage = collectData();
-			let heatmapWeeks = 12;
-			
-			await ctx.ui.custom<void>((tui, theme, _kb, done) => ({
-					render: (w) => {
+			const operationId = logger.startOperation("direct" as OperationType, "usage_command", {
+				task: "LLM使用量統計の表示",
+				params: {},
+			});
+
+			try {
+				let usage = collectData();
+				let heatmapWeeks = 12;
+
+				await ctx.ui.custom<void>((tui, theme, _kb, done) => ({
+						render: (w) => {
 					const lines: string[] = [];
 					const add = (s: string) => lines.push(s);
 					const { byDate, byDateModel } = usage;
@@ -333,7 +343,16 @@ export default function (pi: ExtensionAPI) {
 				},
 				invalidate: () => {},
 				handleInput: (input) => {
-					if (input === "q" || input === "escape") done();
+					if (input === "q" || input === "escape") {
+						logger.endOperation({
+							status: "success",
+							tokensUsed: 0,
+							outputLength: 0,
+							childOperations: 0,
+							toolCalls: 0,
+						});
+						done();
+					}
 					if (input === "1") {
 						heatmapWeeks = 1;
 						tui.requestRender();
@@ -348,6 +367,20 @@ export default function (pi: ExtensionAPI) {
 					}
 				},
 			}));
+			} catch (error) {
+				logger.endOperation({
+					status: "failure",
+					tokensUsed: 0,
+					outputLength: 0,
+					childOperations: 0,
+					toolCalls: 0,
+					error: {
+						type: error instanceof Error ? error.constructor.name : "UnknownError",
+						message: error instanceof Error ? error.message : String(error),
+						stack: error instanceof Error ? error.stack || "" : "",
+					},
+				});
+			}
 		},
 	});
 }

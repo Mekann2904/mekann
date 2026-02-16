@@ -16,6 +16,9 @@ import {
   type BaseStoragePaths,
 } from "../../lib/storage-base.js";
 import { atomicWriteTextFile, withFileLock } from "../../lib/storage-lock.js";
+import { getLogger } from "../../lib/comprehensive-logger.js";
+
+const logger = getLogger();
 
 // Re-export types for convenience
 export type AgentEnabledState = "enabled" | "disabled";
@@ -44,6 +47,9 @@ export interface SubagentRunRecord {
   latencyMs: number;
   outputFile: string;
   error?: string;
+  // 相関IDフィールド（後方互換性のためオプション）
+  correlationId?: string;
+  parentEventId?: string;
 }
 
 export interface SubagentStorage {
@@ -285,7 +291,63 @@ export function saveStorage(cwd: string, storage: SubagentStorage): void {
   };
   withFileLock(paths.storageFile, () => {
     const merged = mergeSubagentStorageWithDisk(paths.storageFile, normalized);
-    atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
+    const content = JSON.stringify(merged, null, 2);
+    atomicWriteTextFile(paths.storageFile, content);
+    
+    // 状態変更をログ記録
+    logger.logStateChange({
+      entityType: 'storage',
+      entityPath: paths.storageFile,
+      changeType: existsSync(paths.storageFile) ? 'update' : 'create',
+      afterContent: content,
+    });
+    
     pruneRunArtifacts(paths, merged.runs);
   });
+}
+
+/**
+ * Save storage and extract patterns from recent runs.
+ * Integrates with ALMA memory system for automatic learning.
+ */
+export async function saveStorageWithPatterns(
+  cwd: string,
+  storage: SubagentStorage,
+): Promise<void> {
+  saveStorage(cwd, storage);
+
+  // Extract patterns from new runs (async, non-blocking)
+  const { addRunToPatterns } = await import("../../lib/pattern-extraction.js");
+  const { addRunToSemanticMemory, isSemanticMemoryAvailable } = await import(
+    "../../lib/semantic-memory.js"
+  );
+  const { indexSubagentRun } = await import("../../lib/run-index.js");
+
+  // Get the most recent run(s) that haven't been indexed yet
+  const recentRuns = storage.runs.slice(-5);
+
+  for (const run of recentRuns) {
+    try {
+      // Add to pattern extraction
+      addRunToPatterns(cwd, {
+        runId: run.runId,
+        agentId: run.agentId,
+        task: run.task,
+        summary: run.summary,
+        status: run.status,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt,
+        error: run.error,
+      });
+
+      // Add to semantic memory if available
+      if (isSemanticMemoryAvailable()) {
+        const indexedRun = indexSubagentRun(run);
+        await addRunToSemanticMemory(cwd, indexedRun);
+      }
+    } catch (error) {
+      // Don't fail the save if pattern extraction fails
+      console.error("Error extracting patterns from run:", error);
+    }
+  }
 }

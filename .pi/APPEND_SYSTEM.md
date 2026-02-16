@@ -3,6 +3,90 @@
 <!-- Why: Enforces proactive delegation defaults across every prompt in this repository. -->
 <!-- Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md -->
 
+# Quick Reference (READ FIRST)
+
+| Need | Go To |
+|------|-------|
+| **Navigation** | `.pi/INDEX.md` - Repository structure map |
+| **Task-to-Source** | `.pi/NAVIGATION.md` - Find right source for task |
+| **Git operations** | Load `skills/git-workflow/SKILL.md` FIRST |
+| **Delegate task** | Use `subagent_run` or `agent_team_run` |
+| **Code review** | Load `skills/code-review/SKILL.md` |
+| **Architecture** | Load `skills/clean-architecture/SKILL.md` |
+
+**Core Rules**: No emoji | Use question tool for user choices | Delegate non-trivial tasks
+
+---
+
+# Protected Files (DO NOT DELETE)
+
+These files are **system-critical** and must NOT be deleted, renamed, or moved by any agent, subagent, or team:
+
+| File | Purpose | Auto-loaded |
+|------|---------|-------------|
+| `.pi/APPEND_SYSTEM.md` | Project-level system prompt (this file) | YES (pi core) |
+| `.pi/INDEX.md` | Repository structure map | Referenced in Quick Reference |
+| `.pi/NAVIGATION.md` | Task-to-source navigation guide | Referenced in Quick Reference |
+
+**Deletion Protection Rule**: Any task that involves file cleanup, organization, or deletion MUST preserve these files. Agents MUST check this list before proposing any file operations.
+
+---
+
+# Document Template (MANDATORY)
+
+When creating new documentation files, MUST use the template:
+
+```
+docs/_template.md
+```
+
+## Required Frontmatter
+
+```yaml
+---
+title: ページタイトル
+category: getting-started | user-guide | development | reference | meta
+audience: new-user | daily-user | developer | contributor
+last_updated: YYYY-MM-DD
+tags: []
+related: []
+---
+```
+
+## Exceptions (Template NOT Required)
+
+The following file types are exempt from template requirements:
+
+| Type | Pattern | Reason |
+|------|---------|--------|
+| System files | `AGENTS.md`, `APPEND_SYSTEM.md`, `INDEX.md`, `NAVIGATION.md`, `SYSTEM.md` | pi core files |
+| Skill definitions | `*/SKILL.md` | Skill standard format |
+| Team definitions | `*/team.md`, `*/TEAM.md` | Team definition format |
+| Templates | `_template.md`, `*-template.md` | Templates themselves |
+| References | `references/*.md` | Reference materials |
+| Run logs | `runs/*.md`, `*.SUMMARY.md` | Auto-generated |
+| Changelog | `CHANGELOG.md` | Changelog format |
+
+**Template Rule**: Before creating any `.md` file not in the exceptions list, read `docs/_template.md` and apply its structure.
+
+## Japanese Language Rule (MANDATORY)
+
+All documentation MUST be written in Japanese (日本語). This applies to:
+
+- Title and headings
+- Body content
+- Code comments within documentation
+- Frontmatter values (title, description, etc.)
+
+**Exceptions (English allowed)**:
+- Code examples (variable names, function names, API endpoints)
+- Command names and CLI options
+- File paths and URLs
+- Technical terms without standard Japanese translation
+- Frontmatter technical fields (category, audience, tags)
+
+**Before writing documentation**: Ensure all prose content is in Japanese.
+
 # Execution Rules (MANDATORY)
 
 The following rules apply to ALL agents, subagents, and team members in this project:
@@ -53,6 +137,74 @@ If you attempt any git command without first loading the git-workflow skill, STO
 # Delegation-First Policy (MANDATORY)
 
 Use delegation-first behavior FOR ALL TASKS in this project. This is a MANDATORY policy enforced at the prompt level.
+
+## Why Delegation Matters (READ THIS FIRST)
+
+### The Problem: Single-Agent Overconfidence
+
+LLM agents suffer from systematic cognitive biases that degrade output quality:
+
+1. **Planning Fallacy**: Agents underestimate task complexity and overestimate their ability to handle it alone. "I can do this quickly" is almost always wrong for non-trivial tasks.
+
+2. **Cognitive Load Saturation**: A single agent juggling requirements, design, implementation, testing, and review WILL miss things. Context window limits are real. Details get dropped.
+
+3. **Single-Perspective Blindness**: One agent = one mental model. Alternative approaches, edge cases, and potential failures remain invisible without external perspective.
+
+4. **No Self-Correction Without Feedback**: An agent working alone has no mechanism to catch its own errors. Code review exists for humans for the same reason—fresh eyes catch what tired eyes miss.
+
+5. **Sequential Bottleneck**: One agent doing everything sequentially is SLOWER than parallel delegation. While researcher investigates, architect can design. While implementer codes, reviewer can prepare.
+
+### The Solution: Orchestrated Multi-Agent Delegation
+
+Delegation is not bureaucracy—it is quality assurance and speed optimization combined:
+
+1. **Cognitive Load Distribution**: Each specialist handles ONE concern. Researcher gathers context. Architect designs. Implementer codes. Reviewer validates. No context switching overhead.
+
+2. **Parallel Execution**: Independent tracks run simultaneously. 4 parallel agents in 1 minute > 1 agent for 4 minutes. Speed AND quality.
+
+3. **Cross-Validation**: Multiple perspectives catch more errors. Disagreements surface hidden assumptions. Consensus is stronger than individual judgment.
+
+4. **Forced Pause Points**: Review stages prevent premature completion. "Done" means "reviewed and approved", not "I finished typing".
+
+5. **Scalable Complexity Handling**: Simple tasks need one specialist. Complex tasks need orchestrated teams. Match tool to task scale.
+
+### The Enforcement Mechanism
+
+This project implements a **soft guardrail** to prevent reflexive direct editing:
+
+```
+write/edit tool call
+       ↓
+First attempt → BLOCKED + message
+       ↓
+┌─────────────────────────────────────────────────┐
+│ Option A: Run delegation tool (subagent_run,    │
+│           agent_team_run) → PASSES immediately  │
+│                                                 │
+│ Option B: Re-run same write/edit within 60s     │
+│           → PASSES (confirmed intent)           │
+│                                                 │
+│ Option C: Wait >60s → BLOCKED again             │
+└─────────────────────────────────────────────────┘
+```
+
+**This is not a restriction—it is a thinking prompt.** The 60-second window exists so you can choose direct editing IF you have consciously decided it is appropriate. The default assumption is that delegation should happen first.
+
+### When Direct Editing IS Appropriate
+
+- Trivial typo fixes (1-2 character changes)
+- Documentation-only updates (already exempted)
+- Emergency hotfixes where speed is critical
+- You have ALREADY delegated analysis and now implement the agreed solution
+
+### When Direct Editing IS NOT Appropriate
+
+- Any task involving architectural decisions
+- Code that will affect multiple files or modules
+- Security-sensitive changes (authentication, authorization, crypto)
+- Database schema changes
+- API contract modifications
+- Anything a human would want code-reviewed
 
 ## REQUIRED behavior
 

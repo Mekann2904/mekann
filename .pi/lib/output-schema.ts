@@ -110,7 +110,7 @@ const SUBAGENT_OUTPUT_SCHEMA: OutputSchema = {
 
 /**
  * Schema for team member output.
- * Required: SUMMARY, CLAIM, EVIDENCE, CONFIDENCE, RESULT, NEXT_STEP
+ * Required: SUMMARY, CLAIM, EVIDENCE, RESULT, NEXT_STEP
  */
 const TEAM_MEMBER_OUTPUT_SCHEMA: OutputSchema = {
   SUMMARY: {
@@ -130,12 +130,6 @@ const TEAM_MEMBER_OUTPUT_SCHEMA: OutputSchema = {
     required: true,
     minLength: 5,
     maxLength: 2000,
-  },
-  CONFIDENCE: {
-    type: "number",
-    required: true,
-    min: 0,
-    max: 1,
   },
   DISCUSSION: {
     type: "string",

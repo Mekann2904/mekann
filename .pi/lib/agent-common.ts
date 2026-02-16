@@ -6,7 +6,6 @@
  * Layer: 1 (depends on Layer 0: error-utils, validation-utils, format-utils)
  */
 
-import { hasIntentOnlyContent } from "./output-validation.js";
 import { toFiniteNumberWithDefault } from "./validation-utils.js";
 
 // ============================================================================
@@ -286,7 +285,6 @@ export function normalizeEntityOutput(
 
   // Attempt to restructure output
   const summary = pickSummary(trimmed);
-  const hasIntentOnly = hasIntentOnlyContent(trimmed);
 
   const lines: string[] = [
     `SUMMARY: ${summary}`,
@@ -295,11 +293,8 @@ export function normalizeEntityOutput(
   // Add additional fields for team member format
   if (includeConfidence) {
     const claim = pickClaimCandidate(trimmed);
-    const evidence = "generated-from-raw-output";
-    const confidence = hasIntentOnly ? "0.40" : "0.55";
     lines.push(`CLAIM: ${claim}`);
-    lines.push(`EVIDENCE: ${evidence}`);
-    lines.push(`CONFIDENCE: ${confidence}`);
+    lines.push("EVIDENCE: not-provided");
   }
 
   // Add custom fields if provided
@@ -312,10 +307,7 @@ export function normalizeEntityOutput(
   lines.push(trimmed);
 
   // Add NEXT_STEP
-  const nextStep = hasIntentOnly
-    ? "対象ファイルを確認し、具体的な差分を列挙する。"
-    : "none";
-  lines.push(`NEXT_STEP: ${nextStep}`);
+  lines.push("NEXT_STEP: none");
 
   const structured = lines.join("\n");
 

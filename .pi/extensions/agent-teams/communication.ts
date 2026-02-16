@@ -20,6 +20,37 @@ import type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference } fro
 // Re-export types needed by communication consumers
 export type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference };
 
+/**
+ * Precomputed context for a team member to avoid redundant parsing.
+ */
+export interface PrecomputedMemberContext {
+  memberId: string;
+  role: string;
+  status: string;
+  summary: string;
+  claim: string;
+}
+
+/**
+ * Build a map of precomputed member contexts.
+ * Extracts and sanitizes fields once per round.
+ */
+export function buildPrecomputedContextMap(results: TeamMemberResult[]): Map<string, PrecomputedMemberContext> {
+  const map = new Map<string, PrecomputedMemberContext>();
+  for (const result of results) {
+    const summary = sanitizeCommunicationSnippet(result.summary || "", "(no summary)");
+    const claim = sanitizeCommunicationSnippet(extractField(result.output, "CLAIM") || "", "(no claim)");
+    map.set(result.memberId, {
+      memberId: result.memberId,
+      role: result.role,
+      status: result.status,
+      summary,
+      claim,
+    });
+  }
+  return map;
+}
+
 // ============================================================================
 // Communication Constants
 // ============================================================================
@@ -337,38 +368,34 @@ export function buildCommunicationContext(input: {
   member: TeamMember;
   round: number;
   partnerIds: string[];
-  results: TeamMemberResult[];
+  contextMap: Map<string, PrecomputedMemberContext>;
 }): string {
-  if (input.partnerIds.length === 0 || input.results.length === 0) {
+  if (input.partnerIds.length === 0 || input.contextMap.size === 0) {
     return "連携相手は未設定です。必要であれば全体要約を参照して連携ポイントを補ってください。";
   }
 
   const memberById = new Map(input.team.members.map((member) => [member.id, member]));
-  const resultById = new Map(input.results.map((result) => [result.memberId, result]));
   const lines: string[] = [];
   lines.push(`コミュニケーションラウンド: ${input.round}`);
   lines.push("連携相手と要約:");
 
   for (const partnerId of input.partnerIds) {
     const partner = memberById.get(partnerId);
-    const result = resultById.get(partnerId);
-    const summary = sanitizeCommunicationSnippet(result?.summary || "", "(no summary)");
-    const claim = result
-      ? sanitizeCommunicationSnippet(extractField(result.output, "CLAIM") || "", "(no claim)")
-      : "(no claim)";
-    const status = result?.status || "unknown";
+    const context = input.contextMap.get(partnerId);
+    const summary = context?.summary || "(no summary)";
+    const claim = context?.claim || "(no claim)";
+    const status = context?.status || "unknown";
     lines.push(
       `- ${partnerId} (${partner?.role || "role-unknown"}) status=${status} summary=${summary} claim=${claim}`,
     );
   }
 
   const mentioned = new Set([input.member.id, ...input.partnerIds]);
-  const others = input.results
-    .filter((result) => !mentioned.has(result.memberId))
+  const others = Array.from(input.contextMap.values())
+    .filter((context) => !mentioned.has(context.memberId))
     .slice(0, COMMUNICATION_CONTEXT_OTHER_LIMIT)
-    .map((result) => {
-      const summary = sanitizeCommunicationSnippet(result.summary, "(no summary)");
-      return `${result.memberId}:${summary}`;
+    .map((context) => {
+      return `${context.memberId}:${context.summary}`;
     });
   if (others.length > 0) {
     lines.push("他メンバー要約:");

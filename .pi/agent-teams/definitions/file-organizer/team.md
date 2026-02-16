@@ -39,7 +39,58 @@ members:
 削除前に必ず確認を取る
 ```
 
-## Team Strategy
+---
+
+## Protected Files (DO NOT DELETE)
+
+以下のファイルはシステム必須ファイルであり、いかなる状況でも削除・リネーム・移動してはならない:
+
+| ファイル | 用途 | 理由 |
+|---------|------|------|
+| `.pi/APPEND_SYSTEM.md` | プロジェクトレベルシステムプロンプト | pi本体が自動読み込み |
+| `.pi/INDEX.md` | リポジトリ構造マップ | Quick Referenceで参照 |
+| `.pi/NAVIGATION.md` | タスク→ソースナビゲーション | Quick Referenceで参照 |
+
+**削除保護ルール**: ファイル整理タスク実行前に、必ずこのリストを確認すること。これらのファイルが整理対象に含まれている場合は、除外してから作業を続行すること。
+
+---
+
+## Document Template Rule (MANDATORY)
+
+新規ドキュメント作成時は `docs/_template.md` を使用すること。
+
+**テンプレート必須のファイル**:
+- `docs/` ディレクトリ内の新規mdファイル
+- プロジェクトルートのガイド文書
+
+**テンプレート不要なファイル**:
+- システムファイル（AGENTS.md, APPEND_SYSTEM.md等）
+- スキル定義（SKILL.md）
+- チーム定義（team.md, TEAM.md）
+- テンプレート自体（_template.md）
+- 参照資料（references/*.md）
+- 自動生成ファイル（runs/*.md）
+
+---
+
+## Japanese Language Rule (MANDATORY)
+
+すべてのドキュメントは日本語で記述すること。
+
+**日本語必須**:
+- タイトル・見出し
+- 本文
+- ドキュメント内のコードコメント
+- Frontmatterの値（title, description等）
+
+**英語許可**:
+- コード例（変数名、関数名、APIエンドポイント）
+- コマンド名・CLIオプション
+- ファイルパス・URL
+- 日本語訳が定着していない技術用語
+- Frontmatterの技術フィールド（category, audience, tags）
+
+---
 
 - **Structure Analyzer**: Phase 1（現状構造分析）を担当。フォルダ構造、ファイルタイプ、サイズ分布、問題特定
 - **Duplicate Finder**: Phase 1（重複ファイル検出）を担当。重複特定、保持推奨、削除前確認
@@ -516,3 +567,45 @@ members:
 5. 受け入れ可能なリスクレベルを合意
 
 **しかし:** 整理を避けてはならない。無秩序なファイル管理は生産性を低下させる。
+
+---
+
+## デバッグ情報
+
+### 記録されるイベント
+
+このチームの実行時に記録されるイベント：
+
+| イベント種別 | 説明 | 記録タイミング |
+|-------------|------|---------------|
+| session_start | セッション開始 | pi起動時 |
+| task_start | タスク開始 | ユーザー依頼受付時 |
+| operation_start | 操作開始 | チーム実行開始時 |
+| operation_end | 操作終了 | チーム実行完了時 |
+| task_end | タスク終了 | タスク完了時 |
+
+### ログ確認方法
+
+```bash
+# 今日のログを確認
+cat .pi/logs/events-$(date +%Y-%m-%d).jsonl | jq .
+
+# 特定の操作を検索
+cat .pi/logs/events-*.jsonl | jq 'select(.eventType == "operation_start")'
+
+# エラーを検索
+cat .pi/logs/events-*.jsonl | jq 'select(.data.status == "failure")'
+```
+
+### トラブルシューティング
+
+| 症状 | 考えられる原因 | 確認方法 | 解決策 |
+|------|---------------|---------|--------|
+| 実行が停止する | タイムアウト | ログのdurationMsを確認 | タイムアウト設定を増やす |
+| 結果が期待と異なる | 入力パラメータの問題 | paramsを確認 | 入力を修正して再実行 |
+| エラーが発生する | リソース不足 | エラーメッセージを確認 | 設定を調整 |
+
+### 関連ファイル
+
+- 実装: `.pi/extensions/agent-teams.ts`
+- ログ: `.pi/logs/events-YYYY-MM-DD.jsonl`

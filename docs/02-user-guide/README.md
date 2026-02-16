@@ -50,6 +50,13 @@ pi拡張機能コレクションのユーザーガイドです。
 | **kitty-status-integration** | kittyターミナル連携 | [→](./11-utilities.md) |
 | **skill-inspector** | スキル割り当て状況の表示 | [→](./11-utilities.md) |
 
+## システム管理
+
+| 拡張機能 | 説明 | ドキュメント |
+|---------|------|------|
+| **cross-instance-runtime** | クロスインスタンス協調・レート制限 | [→](./12-cross-instance-runtime.md) |
+| **search-tools** | 高速検索ツール群 | [→](./13-search-tools.md) |
+
 ## クイックスタート
 
 まだpi拡張機能コレクションをインストールしていない場合は、[Getting Started](../01-getting-started/)を参照してください。

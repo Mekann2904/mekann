@@ -90,7 +90,6 @@ export {
 
 // Output validation utilities (Layer 1)
 export {
-  hasIntentOnlyContent,
   hasNonEmptyResultSection,
   validateSubagentOutput,
   validateTeamMemberOutput,
@@ -222,31 +221,249 @@ export {
   validateSkillReferences,
 } from "./skill-registry.js";
 
-// Robustness/Perturbation testing utilities (Layer 2)
-// 論文「Large Language Model Reasoning Failures」のP1推奨事項
+// Run Index utilities (Layer 2)
+// ALMA-inspired memory indexing for run history
 export {
-  type PerturbationType,
-  type BoundaryType,
-  type PerturbationTestResult,
-  type BoundaryTestResult,
-  type ConsistencyTestResult,
-  type RobustnessTestReport,
-  type RobustnessTestConfig,
-  DEFAULT_ROBUSTNESS_CONFIG,
-  applySynonymReplacement,
-  applyWordReorder,
-  applyNoiseInjection,
-  applyTypoSimulation,
-  applyParaphrase,
-  generateBoundaryInput,
-  calculateOutputDeviation,
-  calculateConsistencyScore,
-  extractStabilityPatterns,
-  runPerturbationTest,
-  runBoundaryTest,
-  runConsistencyTest,
-  runRobustnessTest,
-  resolveRobustnessConfig,
-  formatRobustnessReport,
-  getRobustnessTestRules,
-} from "./robustness-testing.js";
+  type IndexedRun,
+  type TaskType,
+  type RunIndex,
+  type SearchOptions,
+  type SearchResult,
+  RUN_INDEX_VERSION,
+  extractKeywords,
+  classifyTaskType,
+  extractFiles,
+  indexSubagentRun,
+  indexTeamRun,
+  buildRunIndex,
+  getRunIndexPath,
+  loadRunIndex,
+  saveRunIndex,
+  getOrBuildRunIndex,
+  searchRuns,
+  findSimilarRuns,
+  getRunsByType,
+  getSuccessfulPatterns,
+} from "./run-index.js";
+
+// Pattern Extraction utilities (Layer 2)
+// Extract reusable patterns from run history
+export {
+  type ExtractedPattern,
+  type PatternExample,
+  type PatternStorage,
+  type RunData,
+  PATTERN_STORAGE_VERSION,
+  extractPatternFromRun,
+  getPatternStoragePath,
+  loadPatternStorage,
+  savePatternStorage,
+  addRunToPatterns,
+  extractAllPatterns,
+  getPatternsForTaskType,
+  getTopSuccessPatterns,
+  getFailurePatternsToAvoid,
+  findRelevantPatterns,
+} from "./pattern-extraction.js";
+
+// Semantic Memory utilities (Layer 2)
+// OpenAI Embeddings-based semantic search for run history
+export {
+  type RunEmbedding,
+  type SemanticMemoryStorage,
+  type SemanticSearchResult,
+  SEMANTIC_MEMORY_VERSION,
+  EMBEDDING_MODEL,
+  EMBEDDING_DIMENSIONS,
+  getSemanticMemoryPath,
+  loadSemanticMemory,
+  saveSemanticMemory,
+  buildSemanticMemoryIndex,
+  addRunToSemanticMemory,
+  semanticSearch,
+  findSimilarRunsById,
+  isSemanticMemoryAvailable,
+  getSemanticMemoryStats,
+  clearSemanticMemory,
+} from "./semantic-memory.js";
+
+// Embeddings Module (Layer 2)
+// Unified embedding provider interface
+export {
+  // Types
+  type EmbeddingProvider,
+  type ProviderCapabilities,
+  type ProviderConfig,
+  type EmbeddingModuleConfig,
+  type EmbeddingResult,
+  type ProviderStatus,
+  type VectorSearchResult,
+  // Registry
+  EmbeddingProviderRegistry,
+  embeddingRegistry,
+  getEmbeddingProvider,
+  generateEmbedding,
+  generateEmbeddingsBatch,
+  // Utilities
+  cosineSimilarity,
+  euclideanDistance,
+  normalizeVector,
+  findNearestNeighbors,
+  isValidEmbedding,
+  // Providers
+  OpenAIEmbeddingProvider,
+  openAIEmbeddingProvider,
+  getOpenAIKey,
+  // Initialization
+  initializeEmbeddingModule,
+} from "./embeddings/index.js";
+
+// Semantic Repetition Detection utilities (Layer 2)
+// Based on "Agentic Search in the Wild" paper (arXiv:2601.17617v2)
+export {
+  type SemanticRepetitionResult,
+  type SemanticRepetitionOptions,
+  type TrajectorySummary,
+  DEFAULT_REPETITION_THRESHOLD,
+  DEFAULT_MAX_TEXT_LENGTH,
+  detectSemanticRepetition,
+  detectSemanticRepetitionFromEmbeddings,
+  TrajectoryTracker,
+  isSemanticRepetitionAvailable,
+  getRecommendedAction,
+} from "./semantic-repetition.js";
+
+// Intent-Aware Limits utilities (Layer 2)
+// Based on "Agentic Search in the Wild" paper (arXiv:2601.17617v2)
+export {
+  type TaskIntent,
+  type IntentBudget,
+  type IntentClassificationInput,
+  type IntentClassificationResult,
+  INTENT_BUDGETS,
+  classifyIntent,
+  getIntentBudget,
+  applyIntentLimits,
+  getEffectiveRepetitionThreshold,
+  isIntentClassificationAvailable,
+  getAllIntentBudgets,
+  summarizeIntentClassification,
+} from "./intent-aware-limits.js";
+
+// Dynamic Parallelism utilities (Layer 2)
+// Per-provider/model parallelism management
+export {
+  type ParallelismConfig,
+  type ProviderHealth,
+  type DynamicAdjusterConfig,
+  type ErrorEvent,
+  DynamicParallelismAdjuster,
+  getParallelismAdjuster,
+  createParallelismAdjuster,
+  resetParallelismAdjuster,
+  getParallelism,
+  adjustForError,
+  attemptRecovery,
+  formatDynamicParallelismSummary,
+} from "./dynamic-parallelism.js";
+
+// Checkpoint Manager utilities (Layer 2)
+// Task state persistence for preemption and resumption
+export {
+  type Checkpoint,
+  type CheckpointSaveResult,
+  type PreemptionResult,
+  type CheckpointManagerConfig,
+  type CheckpointStats,
+  type CheckpointSource,
+  type CheckpointPriority,
+  initCheckpointManager,
+  getCheckpointManager,
+  resetCheckpointManager,
+  isCheckpointManagerInitialized,
+  getCheckpointDir,
+  getCheckpointConfigFromEnv,
+} from "./checkpoint-manager.js";
+
+// Metrics Collector utilities (Layer 2)
+// Scheduler metrics collection and aggregation
+export {
+  type SchedulerMetrics,
+  type TaskCompletionEvent,
+  type PreemptionEvent,
+  type WorkStealEvent,
+  type MetricsSummary,
+  type MetricsCollectorConfig,
+  type StealingStats,
+  initMetricsCollector,
+  getMetricsCollector,
+  resetMetricsCollector,
+  isMetricsCollectorInitialized,
+  recordStealingAttempt,
+  getMetricsConfigFromEnv,
+} from "./metrics-collector.js";
+
+// Task Scheduler utilities (Layer 3)
+// Priority-based task scheduling with preemption
+export {
+  type TaskSource,
+  type TaskCostEstimate,
+  type ScheduledTask,
+  type TaskResult,
+  type QueueStats,
+  type SchedulerConfig,
+  type HybridSchedulerConfig,
+  createTaskId,
+  getScheduler,
+  createScheduler,
+  resetScheduler,
+  PREEMPTION_MATRIX,
+  shouldPreempt,
+  preemptTask,
+  resumeFromCheckpoint,
+} from "./task-scheduler.js";
+
+// Cross-Instance Coordinator utilities (Layer 3)
+// Work stealing and distributed coordination
+export {
+  type ActiveModelInfo,
+  type InstanceInfo,
+  type CoordinatorConfig,
+  type CoordinatorState,
+  type StealableQueueEntry,
+  type BroadcastQueueState,
+  registerInstance,
+  unregisterInstance,
+  updateHeartbeat,
+  cleanupDeadInstances,
+  getActiveInstanceCount,
+  getActiveInstances,
+  getMyParallelLimit,
+  getDynamicParallelLimit,
+  shouldAttemptWorkStealing,
+  getWorkStealingCandidates,
+  updateWorkloadInfo,
+  getCoordinatorStatus,
+  isCoordinatorInitialized,
+  getTotalMaxLlm,
+  getEnvOverrides,
+  setActiveModel,
+  clearActiveModel,
+  clearAllActiveModels,
+  getActiveInstancesForModel,
+  getModelParallelLimit,
+  getModelUsageSummary,
+  broadcastQueueState,
+  getRemoteQueueStates,
+  checkRemoteCapacity,
+  stealWork,
+  getWorkStealingSummary,
+  cleanupQueueStates,
+  isIdle,
+  findStealCandidate,
+  safeStealWork,
+  getStealingStats,
+  resetStealingStats,
+  cleanupExpiredLocks,
+  enhancedHeartbeat,
+} from "./cross-instance-coordinator.js";

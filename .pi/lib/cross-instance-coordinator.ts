@@ -36,6 +36,12 @@ export interface InstanceInfo {
   cwd: string;
   /** Currently active models (updated on each heartbeat) */
   activeModels: ActiveModelInfo[];
+  /** Work-stealing support: current pending task count */
+  pendingTaskCount?: number;
+  /** Work-stealing support: average task latency in milliseconds */
+  avgLatencyMs?: number;
+  /** Work-stealing support: timestamp of last task completion */
+  lastTaskCompletedAt?: string;
 }
 
 export interface CoordinatorConfig {
@@ -339,7 +345,164 @@ export function getMyParallelLimit(): number {
   }
 
   const activeCount = getActiveInstanceCount();
-  return Math.max(1, Math.floor(state.config.totalMaxLlm / activeCount));
+  const baseLimit = Math.max(1, Math.floor(state.config.totalMaxLlm / activeCount));
+
+  return baseLimit;
+}
+
+/**
+ * Get dynamic parallel limit based on workload distribution.
+ *
+ * This implements a simple load-balancing strategy:
+ * - Instances with higher workload get fewer slots
+ * - Instances with lower workload get more slots
+ * - Total slots never exceed totalMaxLlm
+ *
+ * @param myPendingTasks - Current pending task count for this instance
+ * @returns Adjusted parallel limit for this instance
+ */
+export function getDynamicParallelLimit(myPendingTasks: number = 0): number {
+  if (!state) {
+    return 1;
+  }
+
+  const instances = getActiveInstances();
+  const activeCount = instances.length;
+
+  if (activeCount === 0) {
+    return state.config.totalMaxLlm;
+  }
+
+  // Calculate total pending tasks across all instances
+  let totalPending = 0;
+  const pendingByInstance: Map<string, number> = new Map();
+
+  for (const inst of instances) {
+    const pending = inst.pendingTaskCount ?? 0;
+    totalPending += pending;
+    pendingByInstance.set(inst.instanceId, pending);
+  }
+
+  // If no one has pending tasks, use base distribution
+  if (totalPending === 0) {
+    return Math.max(1, Math.floor(state.config.totalMaxLlm / activeCount));
+  }
+
+  // Calculate this instance's share based on inverse workload
+  const myPending = pendingByInstance.get(state.myInstanceId) ?? myPendingTasks;
+
+  // Inverse proportion: instances with fewer tasks get more slots
+  const totalInverseWorkload = instances.reduce((sum, inst) => {
+    const pending = inst.pendingTaskCount ?? 0;
+    // Add 1 to avoid division by zero and smooth distribution
+    return sum + 1 / (pending + 1);
+  }, 0);
+
+  const myInverseWorkload = 1 / (myPending + 1);
+  const myShare = myInverseWorkload / totalInverseWorkload;
+
+  // Calculate slot allocation
+  const allocatedSlots = Math.round(state.config.totalMaxLlm * myShare);
+
+  // Ensure minimum of 1 slot
+  return Math.max(1, Math.min(allocatedSlots, state.config.totalMaxLlm));
+}
+
+/**
+ * Check if this instance should attempt work stealing.
+ *
+ * @returns True if this instance is idle and there are busy instances
+ */
+export function shouldAttemptWorkStealing(): boolean {
+  if (!state) {
+    return false;
+  }
+
+  const myInstanceId = state.myInstanceId;
+  const instances = getActiveInstances();
+  const myInfo = instances.find((i) => i.instanceId === myInstanceId);
+
+  // I'm idle (no pending tasks)
+  const imIdle = (myInfo?.pendingTaskCount ?? 0) === 0;
+
+  // There are busy instances
+  const hasBusyInstance = instances.some(
+    (i) => i.instanceId !== myInstanceId && (i.pendingTaskCount ?? 0) > 2
+  );
+
+  return imIdle && hasBusyInstance;
+}
+
+/**
+ * Get candidate instances for work stealing (busiest instances).
+ *
+ * @param topN - Number of candidates to return
+ * @returns List of instance IDs sorted by workload (descending)
+ */
+export function getWorkStealingCandidates(topN: number = 3): string[] {
+  if (!state) {
+    return [];
+  }
+
+  const instances = getActiveInstances();
+
+  // Filter out self and sort by pending tasks (descending)
+  return instances
+    .filter((i) => i.instanceId !== state!.myInstanceId)
+    .filter((i) => (i.pendingTaskCount ?? 0) > 0)
+    .sort((a, b) => (b.pendingTaskCount ?? 0) - (a.pendingTaskCount ?? 0))
+    .slice(0, topN)
+    .map((i) => i.instanceId);
+}
+
+/**
+ * Update workload info for this instance in heartbeat.
+ *
+ * @param pendingTaskCount - Current pending task count
+ * @param avgLatencyMs - Average task latency
+ */
+export function updateWorkloadInfo(pendingTaskCount: number, avgLatencyMs?: number): void {
+  if (!state) {
+    return;
+  }
+
+  const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
+
+  try {
+    const existing: InstanceInfo = {
+      instanceId: state.myInstanceId,
+      pid,
+      sessionId: state.mySessionId,
+      startedAt: state.myStartedAt,
+      lastHeartbeat: new Date().toISOString(),
+      cwd: process.cwd(),
+      activeModels: [], // Will be preserved if file exists
+      pendingTaskCount,
+      avgLatencyMs,
+      lastTaskCompletedAt: avgLatencyMs ? new Date().toISOString() : undefined,
+    };
+
+    // Preserve existing data
+    if (existsSync(lockFile)) {
+      try {
+        const content = readFileSync(lockFile, "utf-8");
+        const parsed = JSON.parse(content) as InstanceInfo;
+        existing.activeModels = parsed.activeModels ?? [];
+        if (!avgLatencyMs && parsed.avgLatencyMs) {
+          existing.avgLatencyMs = parsed.avgLatencyMs;
+        }
+        if (!existing.lastTaskCompletedAt && parsed.lastTaskCompletedAt) {
+          existing.lastTaskCompletedAt = parsed.lastTaskCompletedAt;
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+
+    writeFileSync(lockFile, JSON.stringify(existing, null, 2), "utf-8");
+  } catch {
+    // Ignore write errors in heartbeat
+  }
 }
 
 /**
@@ -621,4 +784,581 @@ export function getModelUsageSummary(): {
   }));
 
   return { models, instances };
+}
+
+// ============================================================================
+// Work Stealing Support
+// ============================================================================
+
+/**
+ * Queue entry for work stealing.
+ * Represents a task that can potentially be stolen by another instance.
+ */
+export interface StealableQueueEntry {
+  id: string;
+  toolName: string;
+  priority: string;
+  instanceId: string;
+  enqueuedAt: string;
+  estimatedDurationMs?: number;
+  estimatedRounds?: number;
+}
+
+/**
+ * Queue state broadcast format.
+ */
+export interface BroadcastQueueState {
+  instanceId: string;
+  timestamp: string;
+  pendingTaskCount: number;
+  avgLatencyMs?: number;
+  activeOrchestrations: number;
+  stealableEntries: StealableQueueEntry[];
+}
+
+const QUEUE_STATE_DIR = join(COORDINATOR_DIR, "queue-states");
+
+/**
+ * Ensure queue state directory exists.
+ */
+function ensureQueueStateDir(): void {
+  if (!existsSync(QUEUE_STATE_DIR)) {
+    mkdirSync(QUEUE_STATE_DIR, { recursive: true });
+  }
+}
+
+/**
+ * Broadcast this instance's queue state to other instances.
+ * Other instances can read this to determine if work stealing is possible.
+ *
+ * @param pendingTaskCount - Number of pending tasks in queue
+ * @param activeOrchestrations - Number of active orchestrations
+ * @param stealableEntries - Entries that can be stolen (optional)
+ * @param avgLatencyMs - Average task latency (optional)
+ */
+export function broadcastQueueState(options: {
+  pendingTaskCount: number;
+  activeOrchestrations: number;
+  stealableEntries?: StealableQueueEntry[];
+  avgLatencyMs?: number;
+}): void {
+  if (!state) return;
+
+  ensureQueueStateDir();
+
+  const queueState: BroadcastQueueState = {
+    instanceId: state.myInstanceId,
+    timestamp: new Date().toISOString(),
+    pendingTaskCount: options.pendingTaskCount,
+    activeOrchestrations: options.activeOrchestrations,
+    stealableEntries: options.stealableEntries ?? [],
+    avgLatencyMs: options.avgLatencyMs,
+  };
+
+  const stateFile = join(QUEUE_STATE_DIR, `${state.myInstanceId}.json`);
+  try {
+    writeFileSync(stateFile, JSON.stringify(queueState, null, 2));
+  } catch {
+    // Ignore write errors
+  }
+}
+
+/**
+ * Get queue states from all active instances.
+ *
+ * @returns Array of queue states
+ */
+export function getRemoteQueueStates(): BroadcastQueueState[] {
+  if (!state) return [];
+
+  ensureQueueStateDir();
+  const nowMs = Date.now();
+  const files = readdirSync(QUEUE_STATE_DIR).filter((f) => f.endsWith(".json"));
+  const states: BroadcastQueueState[] = [];
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(QUEUE_STATE_DIR, file), "utf-8");
+      const parsed = JSON.parse(content) as BroadcastQueueState;
+
+      // Skip if too old (more than 2x heartbeat interval)
+      const timestamp = new Date(parsed.timestamp).getTime();
+      if (nowMs - timestamp > DEFAULT_CONFIG.heartbeatIntervalMs * 2) {
+        continue;
+      }
+
+      // Skip self
+      if (parsed.instanceId === state.myInstanceId) {
+        continue;
+      }
+
+      states.push(parsed);
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  return states;
+}
+
+/**
+ * Check if any remote instance has capacity for more work.
+ * This is useful for determining if we should slow down our own task submission.
+ *
+ * @returns True if remote instances have capacity
+ */
+export function checkRemoteCapacity(): boolean {
+  const remoteStates = getRemoteQueueStates();
+
+  if (remoteStates.length === 0) {
+    // No remote instances, we have all capacity
+    return true;
+  }
+
+  // Check if any remote instance is idle (no pending tasks and low active)
+  for (const remoteState of remoteStates) {
+    const isIdle =
+      remoteState.pendingTaskCount === 0 &&
+      remoteState.activeOrchestrations < 2;
+
+    if (isIdle) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Attempt to steal work from another instance.
+ * Returns a stealable entry if available.
+ *
+ * Note: This is a cooperative mechanism. The stealing instance must have
+ * the actual task data to execute it. This function identifies candidates.
+ *
+ * @returns A stealable queue entry or null
+ */
+export function stealWork(): StealableQueueEntry | null {
+  const remoteStates = getRemoteQueueStates();
+
+  if (remoteStates.length === 0) {
+    return null;
+  }
+
+  // Find instances with excess work (pending > 2 and not overloaded)
+  const candidates: Array<{ state: BroadcastQueueState; entry: StealableQueueEntry }> = [];
+
+  for (const remoteState of remoteStates) {
+    if (remoteState.pendingTaskCount <= 2) {
+      continue;
+    }
+
+    if (remoteState.stealableEntries.length === 0) {
+      continue;
+    }
+
+    // Take the highest priority entry (first in sorted list)
+    const entry = remoteState.stealableEntries[0];
+    candidates.push({ state: remoteState, entry });
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  // Sort by priority and pick the best
+  const priorityOrder = ["critical", "high", "normal", "low", "background"];
+  candidates.sort((a, b) => {
+    const priorityA = priorityOrder.indexOf(a.entry.priority);
+    const priorityB = priorityOrder.indexOf(b.entry.priority);
+    return priorityA - priorityB; // Lower index = higher priority
+  });
+
+  return candidates[0].entry;
+}
+
+/**
+ * Get work stealing summary for monitoring.
+ *
+ * @returns Summary of work stealing opportunities
+ */
+export function getWorkStealingSummary(): {
+  remoteInstances: number;
+  totalPendingTasks: number;
+  stealableTasks: number;
+  idleInstances: number;
+  busyInstances: number;
+} {
+  const remoteStates = getRemoteQueueStates();
+
+  let totalPending = 0;
+  let stealable = 0;
+  let idle = 0;
+  let busy = 0;
+
+  for (const remoteState of remoteStates) {
+    totalPending += remoteState.pendingTaskCount;
+    stealable += remoteState.stealableEntries.length;
+
+    if (remoteState.pendingTaskCount === 0 && remoteState.activeOrchestrations < 2) {
+      idle++;
+    } else if (remoteState.pendingTaskCount > 2) {
+      busy++;
+    }
+  }
+
+  return {
+    remoteInstances: remoteStates.length,
+    totalPendingTasks: totalPending,
+    stealableTasks: stealable,
+    idleInstances: idle,
+    busyInstances: busy,
+  };
+}
+
+/**
+ * Clean up old queue state files.
+ * Called periodically during heartbeat.
+ */
+export function cleanupQueueStates(): void {
+  if (!state) return;
+
+  ensureQueueStateDir();
+  const nowMs = Date.now();
+  const maxAge = DEFAULT_CONFIG.heartbeatTimeoutMs;
+  const files = readdirSync(QUEUE_STATE_DIR).filter((f) => f.endsWith(".json"));
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(QUEUE_STATE_DIR, file), "utf-8");
+      const parsed = JSON.parse(content) as BroadcastQueueState;
+      const timestamp = new Date(parsed.timestamp).getTime();
+
+      if (nowMs - timestamp > maxAge) {
+        unlinkSync(join(QUEUE_STATE_DIR, file));
+      }
+    } catch {
+      // Remove corrupted files
+      try {
+        unlinkSync(join(QUEUE_STATE_DIR, file));
+      } catch {
+        // Ignore
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Enhanced Work Stealing with Distributed Lock
+// ============================================================================
+
+/**
+ * Distributed lock for safe work stealing.
+ */
+interface DistributedLock {
+  lockId: string;
+  acquiredAt: number;
+  expiresAt: number;
+  resource: string;
+}
+
+const LOCK_DIR = join(COORDINATOR_DIR, "locks");
+const LOCK_TIMEOUT_MS = 30_000; // 30 seconds
+
+/**
+ * Ensure lock directory exists.
+ */
+function ensureLockDir(): void {
+  if (!existsSync(LOCK_DIR)) {
+    mkdirSync(LOCK_DIR, { recursive: true });
+  }
+}
+
+/**
+ * Try to acquire a distributed lock.
+ *
+ * @param resource - Resource to lock (e.g., "steal:instance-id")
+ * @param ttlMs - Lock TTL in milliseconds
+ * @returns Lock object if acquired, null otherwise
+ */
+function tryAcquireLock(resource: string, ttlMs: number = LOCK_TIMEOUT_MS): DistributedLock | null {
+  if (!state) return null;
+
+  ensureLockDir();
+
+  const lockId = `${state.myInstanceId}-${Date.now().toString(36)}`;
+  const lockFile = join(LOCK_DIR, `${resource.replace(/[:/]/g, "_")}.lock`);
+  const nowMs = Date.now();
+
+  // Check existing lock
+  if (existsSync(lockFile)) {
+    try {
+      const content = readFileSync(lockFile, "utf-8");
+      const existing = JSON.parse(content) as DistributedLock;
+
+      // Check if lock is expired
+      if (nowMs < existing.expiresAt) {
+        return null; // Lock is still valid
+      }
+    } catch {
+      // Corrupted lock, proceed to acquire
+    }
+  }
+
+  // Acquire lock
+  const lock: DistributedLock = {
+    lockId,
+    acquiredAt: nowMs,
+    expiresAt: nowMs + ttlMs,
+    resource,
+  };
+
+  try {
+    writeFileSync(lockFile, JSON.stringify(lock, null, 2));
+    return lock;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Release a distributed lock.
+ *
+ * @param lock - Lock to release
+ */
+function releaseLock(lock: DistributedLock): void {
+  const lockFile = join(LOCK_DIR, `${lock.resource.replace(/[:/]/g, "_")}.lock`);
+
+  try {
+    const content = readFileSync(lockFile, "utf-8");
+    const existing = JSON.parse(content) as DistributedLock;
+
+    // Only release if we own the lock
+    if (existing.lockId === lock.lockId) {
+      unlinkSync(lockFile);
+    }
+  } catch {
+    // Ignore errors
+  }
+}
+
+/**
+ * Stealing statistics (public interface).
+ */
+export interface StealingStats {
+  totalAttempts: number;
+  successfulSteals: number;
+  failedAttempts: number;
+  successRate: number;
+  avgLatencyMs: number;
+  lastStealAt: number | null;
+}
+
+/**
+ * Stealing statistics tracking (internal).
+ */
+interface StealingStatsInternal {
+  totalAttempts: number;
+  successfulSteals: number;
+  failedAttempts: number;
+  lastAttemptAt: number | null;
+  lastSuccessAt: number | null;
+  avgLatencyMs: number;
+  latencySamples: number[];
+}
+
+let stealingStats: StealingStatsInternal = {
+  totalAttempts: 0,
+  successfulSteals: 0,
+  failedAttempts: 0,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  avgLatencyMs: 0,
+  latencySamples: [],
+};
+
+/**
+ * Check if this instance is idle (no pending tasks).
+ *
+ * @returns True if this instance is idle
+ */
+export function isIdle(): boolean {
+  if (!state) return true;
+
+  const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
+
+  try {
+    const content = readFileSync(lockFile, "utf-8");
+    const info = JSON.parse(content) as InstanceInfo;
+
+    // Idle if no pending tasks and no active models
+    return (info.pendingTaskCount ?? 0) === 0 && info.activeModels.length === 0;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Find the best candidate instance to steal work from.
+ *
+ * @returns Instance info with most work, or null if no candidates
+ */
+export function findStealCandidate(): InstanceInfo | null {
+  if (!state) return null;
+
+  const instances = getActiveInstances();
+
+  // Filter to instances with excess work
+  const candidates = instances.filter((inst) => {
+    // Skip self
+    if (inst.instanceId === state!.myInstanceId) return false;
+
+    // Must have pending tasks
+    if ((inst.pendingTaskCount ?? 0) <= 2) return false;
+
+    // Must be alive
+    const nowMs = Date.now();
+    const lastHeartbeat = new Date(inst.lastHeartbeat).getTime();
+    if (nowMs - lastHeartbeat > DEFAULT_CONFIG.heartbeatTimeoutMs) return false;
+
+    return true;
+  });
+
+  if (candidates.length === 0) return null;
+
+  // Sort by pending task count (descending)
+  candidates.sort((a, b) => (b.pendingTaskCount ?? 0) - (a.pendingTaskCount ?? 0));
+
+  return candidates[0];
+}
+
+/**
+ * Safely steal work from another instance using distributed lock.
+ *
+ * @returns Stolen queue entry, or null if nothing was stolen
+ */
+export async function safeStealWork(): Promise<StealableQueueEntry | null> {
+  if (!state) return null;
+
+  // Check if work stealing is enabled
+  if (process.env.PI_ENABLE_WORK_STEALING === "false") {
+    return null;
+  }
+
+  // Find candidate
+  const candidate = findStealCandidate();
+  if (!candidate) return null;
+
+  // Acquire lock for stealing from this instance
+  const lockResource = `steal:${candidate.instanceId}`;
+  const lock = tryAcquireLock(lockResource);
+
+  if (!lock) {
+    // Another instance is already stealing from this candidate
+    stealingStats.totalAttempts++;
+    stealingStats.failedAttempts++;
+    stealingStats.lastAttemptAt = Date.now();
+    return null;
+  }
+
+  const startTime = Date.now();
+
+  try {
+    stealingStats.totalAttempts++;
+    stealingStats.lastAttemptAt = startTime;
+
+    // Get the stealable entry
+    const entry = stealWork();
+
+    if (entry) {
+      stealingStats.successfulSteals++;
+      stealingStats.lastSuccessAt = Date.now();
+
+      const latency = Date.now() - startTime;
+      stealingStats.latencySamples.push(latency);
+      if (stealingStats.latencySamples.length > 100) {
+        stealingStats.latencySamples.shift();
+      }
+      stealingStats.avgLatencyMs = stealingStats.latencySamples.reduce((a, b) => a + b, 0) /
+        stealingStats.latencySamples.length;
+    } else {
+      stealingStats.failedAttempts++;
+    }
+
+    return entry;
+  } finally {
+    releaseLock(lock);
+  }
+}
+
+/**
+ * Get work stealing statistics.
+ *
+ * @returns Stealing statistics
+ */
+export function getStealingStats(): StealingStats {
+  return {
+    totalAttempts: stealingStats.totalAttempts,
+    successfulSteals: stealingStats.successfulSteals,
+    failedAttempts: stealingStats.failedAttempts,
+    successRate: stealingStats.totalAttempts > 0
+      ? stealingStats.successfulSteals / stealingStats.totalAttempts
+      : 0,
+    avgLatencyMs: stealingStats.avgLatencyMs,
+    lastStealAt: stealingStats.lastSuccessAt,
+  };
+}
+
+/**
+ * Reset stealing statistics (for testing).
+ */
+export function resetStealingStats(): void {
+  stealingStats = {
+    totalAttempts: 0,
+    successfulSteals: 0,
+    failedAttempts: 0,
+    lastAttemptAt: null,
+    lastSuccessAt: null,
+    avgLatencyMs: 0,
+    latencySamples: [],
+  };
+}
+
+/**
+ * Clean up expired locks.
+ * Called periodically during heartbeat.
+ */
+export function cleanupExpiredLocks(): void {
+  ensureLockDir();
+
+  const nowMs = Date.now();
+  const files = readdirSync(LOCK_DIR).filter((f) => f.endsWith(".lock"));
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(LOCK_DIR, file), "utf-8");
+      const lock = JSON.parse(content) as DistributedLock;
+
+      if (nowMs >= lock.expiresAt) {
+        unlinkSync(join(LOCK_DIR, file));
+      }
+    } catch {
+      // Remove corrupted lock files
+      try {
+        unlinkSync(join(LOCK_DIR, file));
+      } catch {
+        // Ignore
+      }
+    }
+  }
+}
+
+/**
+ * Enhanced heartbeat that includes cleanup of locks and queue states.
+ */
+export function enhancedHeartbeat(): void {
+  updateHeartbeat();
+  cleanupDeadInstances();
+  cleanupQueueStates();
+  cleanupExpiredLocks();
 }

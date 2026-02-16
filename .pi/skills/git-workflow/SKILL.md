@@ -13,6 +13,7 @@ metadata:
 Git操作とブランチ管理を支援するスキル。日常的なコミット作業から、複雑なマージ・リベース、履歴分析まで対応する。
 
 **主な機能:**
+- **選択的ステージング**: 自分が編集したファイルのみをadd（安易な`git add .`は禁止）
 - ブランチ作成・切り替え・削除
 - コミット作成とメッセージ規約
 - マージ・リベース・コンフリクト解決
@@ -45,14 +46,25 @@ Git操作とブランチ管理を支援するスキル。日常的なコミッ�
 
 ---
 
-## 必須ルール: ユーザ確認（CRITICAL）
+## 必須ルール: ユーザ確認（CRITICAL・絶対省略禁止）
 
 **git操作を実行する前に、必ず`question`ツールを使用してユーザの許可を取得すること。**
 
-### 確認が必要な操作
+### 絶対ルール
 
-以下の操作を実行する前に必ず確認:
-- `git add` - ステージング
+```
+読み取り専用操作以外のgitコマンドを実行する場合、
+必ず事前にquestionツールでユーザー確認を行う。
+例外なし。省略なし。簡略化なし。
+```
+
+**違反時の対応**: もし確認なしにgit操作を実行してしまった場合、即座に停止し、
+ユーザーに謝罪してから確認をやり直すこと。
+
+### 確認が必要な操作（省略厳禁）
+
+以下の操作を実行する前に**必ず**確認:
+- `git add` - ステージング（ファイル指定内容を含めて確認）
 - `git commit` - コミット作成
 - `git push` - リモートへのプッシュ
 - `git reset` - コミットの取り消し
@@ -61,10 +73,12 @@ Git操作とブランチ管理を支援するスキル。日常的なコミッ�
 - `git branch -d/-D` - ブランチ削除
 - `git clean` - 未追跡ファイル削除
 - `git checkout` - ファイル/ブランチ切り替え（破壊的変更の場合）
+- `git stash` - 一時保存（pop/drop含む）
+- `git cherry-pick` - チェリーピック
 
 ### 読み取り専用操作（確認不要）
 
-以下は確認なしで実行可能:
+以下**のみ**確認なしで実行可能:
 - `git status` - ステータス確認
 - `git log` - ログ確認
 - `git diff` - 差分確認
@@ -72,13 +86,27 @@ Git操作とブランチ管理を支援するスキル。日常的なコミッ�
 - `git show` - コミット内容確認
 - `git remote -v` - リモート確認
 
-### questionツールの使用方法
+### questionツールの使用方法（必須）
 
 ```typescript
-// 確認ダイアログの例
+// ステージングの確認例（ファイル一覧を含めること）
 question({
   questions: [{
-    question: "以下の変更をコミットしますか？",
+    question: "以下のファイルをステージングしますか？\n- src/auth.ts\n- tests/auth.test.ts",
+    header: "Git Add",
+    options: [
+      { label: "Yes", description: "ステージングを実行" },
+      { label: "No", description: "キャンセル" }
+    ]
+  }]
+})
+```
+
+```typescript
+// コミットの確認例（コミットメッセージを含めること）
+question({
+  questions: [{
+    question: "以下の内容でコミットしますか？\n\nメッセージ:\nfeat: ユーザー認証を追加する\n\nステージング済みファイル:\n- src/auth.ts\n- tests/auth.test.ts",
     header: "Git Commit",
     options: [
       { label: "Yes", description: "コミットを実行" },
@@ -89,25 +117,95 @@ question({
 ```
 
 ```typescript
-// ブランチ削除の確認例
+// プッシュの確認例
 question({
   questions: [{
-    question: "feature/old-branchを削除しますか？",
-    header: "Branch Delete",
+    question: "origin/feature/new-feature にプッシュしますか？\n\nコミット: abc1234 feat: ユーザー認証を追加する",
+    header: "Git Push",
     options: [
-      { label: "Delete", description: "ブランチを削除" },
-      { label: "Cancel", description: "キャンセル" }
+      { label: "Yes", description: "プッシュを実行" },
+      { label: "No", description: "キャンセル" }
     ]
   }]
 })
 ```
 
-### ワークフロー
+### ワークフロー（厳守）
 
 1. **変更内容を確認**: `git status`, `git diff` で確認
-2. **ユーザに質問**: `question`ツールで実行可否を確認
+2. **ユーザに質問**: `question`ツールで実行可否を確認（省略厳禁）
 3. **許可された場合のみ実行**: git操作を実行
 4. **結果を報告**: 実行結果をユーザに通知
+
+### よくある違反パターン（禁止）
+
+- 「小さな変更だから」と確認を省略する
+- 「ユーザーが期待しているはず」と勝手に判断する
+- 「前回と同じだから」と確認を省略する
+- 「面倒だから」と確認を省略する
+- テキストで「よろしいですか？」と聞く（questionツールを使わない）
+
+**重要**: このルールは必須（MANDATORY）です。例外なく遵守すること。面倒でも必ず実行すること。
+
+## 必須ルール: 選択的ステージング（CRITICAL）
+
+**`git add .`や`git add -A`を安易に使用せず、自分が編集したファイルのみをステージングすること。**
+
+### 禁止パターン
+
+以下のコマンドは**原則として使用禁止**（例外あり）:
+
+```bash
+# 禁止: カレントディレクトリ以下の全ファイルをステージング
+git add .
+
+# 禁止: ワーキングツリー全体をステージング
+git add -A
+git add --all
+
+# 禁止: 全ファイルをステージング（削除含む）
+git add -u
+```
+
+### 推奨パターン
+
+```bash
+# 推奨: 特定ファイルを明示的に指定
+git add path/to/file.ts
+git add src/components/Button.tsx src/hooks/useAuth.ts
+
+# 推奨: パッチモードで変更箇所を選択
+git add -p
+
+# 推奨: 複数ファイルを個別に確認しながら追加
+git add -i
+```
+
+### 例外: add allが許可されるケース
+
+以下の場合のみ`git add .`の使用を許可:
+
+1. **新規ファイルのみ**: `git status`で新規ファイルのみが表示され、既存ファイルの変更がない場合
+2. **単一機能の隔離された変更**: 1つの機能に集中した変更で、関係ないファイルが混入していないことが確認済みの場合
+3. **ユーザーの明示的な指示**: ユーザーが「全て追加して」と明確に指示した場合
+
+### 手順（必須）
+
+1. **現状確認**: `git status`で全ての変更を確認
+2. **差分確認**: `git diff`で変更内容を確認
+3. **選択的ステージング**: 自分が編集したファイルのみを`git add <path>`で追加
+4. **ステージング確認**: `git diff --staged`でステージング内容を確認
+5. **コミット実行**: 内容に問題がなければコミット
+
+### チェックリスト
+
+ステージング前に以下を確認:
+
+- [ ] 他人が編集した可能性のあるファイルが含まれていないか
+- [ ] デバッグ用の一時コードが含まれていないか
+- [ ] 機密情報（.env、credentials等）が含まれていないか
+- [ ] 関係ないフォーマット修正が混入していないか
+- [ ] ビルド成果物やキャッシュが含まれていないか
 
 **重要**: このルールは必須（MANDATORY）です。例外なく遵守すること。
 
@@ -142,15 +240,21 @@ git status -sb
 
 ### ステップ2: 変更のステージング
 
-```bash
-# 全ての変更をステージング
-git add .
+**重要**: `git add .`や`git add -A`は安易に使用せず、自分が編集したファイルのみをステージングすること。
 
-# 特定ファイル
+```bash
+# 推奨: 特定ファイルを明示的に指定
 git add path/to/file
 
-# インタラクティブ
+# 推奨: パッチモードで変更箇所を選択
 git add -p
+
+# 推奨: インタラクティブモード
+git add -i
+
+# 注意: 以下は原則として使用禁止
+# git add .     # カレントディレクトリ以下の全ファイル
+# git add -A    # ワーキングツリー全体
 ```
 
 ### ステップ3: コミット作成
@@ -191,9 +295,18 @@ git push --force-with-lease origin feature/new-feature
 # 新規ブランチ作成
 git checkout -b feature/new-feature
 
-# 変更をステージング＆コミット
-git add .
-git commit -m "feat: add new feature"
+# 変更を確認
+git status
+
+# 自分が編集したファイルのみステージング（git add .は使用禁止）
+git add src/feature/new-feature.ts
+git add tests/feature/new-feature.test.ts
+
+# ステージング内容を確認
+git diff --staged
+
+# コミット
+git commit -m "feat: 新機能を追加する"
 
 # リモートにプッシュ
 git push -u origin feature/new-feature
@@ -221,8 +334,10 @@ git diff --name-only --diff-filter=U
 # 特定ファイルを現在のブランチ版で解決
 git checkout --ours path/to/file
 
-# 解決後にコミット
-git add .
+# 解決したファイルのみをステージング（git add .は使用禁止）
+git add path/to/file
+
+# コミット
 git commit
 ```
 
@@ -240,11 +355,12 @@ git commit
 
 ## ベストプラクティス
 
-1. **コミットメッセージ規約**: Conventional Commitsに準拠する
-2. **頻繁にコミット**: 小さな論理単位でコミットする
-3. **プッシュ前に確認**: `git status` と `git diff --staged` で変更を確認
-4. **強制プッシュは慎重**: `--force` ではなく `--force-with-lease` を使用
-5. **ブランチ名を明確**: `feature/`, `fix/`, `docs/` などのプレフィックスを使用
+1. **選択的ステージング**: `git add .`を安易に使わず、自分が編集したファイルのみを明示的に指定する
+2. **コミットメッセージ規約**: Conventional Commitsに準拠する
+3. **頻繁にコミット**: 小さな論理単位でコミットする
+4. **プッシュ前に確認**: `git status` と `git diff --staged` で変更を確認
+5. **強制プッシュは慎重**: `--force` ではなく `--force-with-lease` を使用
+6. **ブランチ名を明確**: `feature/`, `fix/`, `docs/` などのプレフィックスを使用
 
 ## コミットメッセージ規約（CRITICAL）
 
@@ -428,3 +544,45 @@ chore: いろいろ修正
 ---
 
 *このスキルはoh-my-zsh git pluginをベースに作成されました。*
+
+---
+
+## デバッグ情報
+
+### 記録されるイベント
+
+このスキルの実行時に記録されるイベント：
+
+| イベント種別 | 説明 | 記録タイミング |
+|-------------|------|---------------|
+| session_start | セッション開始 | pi起動時 |
+| task_start | タスク開始 | ユーザー依頼受付時 |
+| operation_start | 操作開始 | スキル実行開始時 |
+| operation_end | 操作終了 | スキル実行完了時 |
+| task_end | タスク終了 | タスク完了時 |
+
+### ログ確認方法
+
+```bash
+# 今日のログを確認
+cat .pi/logs/events-$(date +%Y-%m-%d).jsonl | jq .
+
+# 特定の操作を検索
+cat .pi/logs/events-*.jsonl | jq 'select(.eventType == "operation_start")'
+
+# エラーを検索
+cat .pi/logs/events-*.jsonl | jq 'select(.data.status == "failure")'
+```
+
+### トラブルシューティング
+
+| 症状 | 考えられる原因 | 確認方法 | 解決策 |
+|------|---------------|---------|--------|
+| 実行が停止する | タイムアウト | ログのdurationMsを確認 | タイムアウト設定を増やす |
+| 結果が期待と異なる | 入力パラメータの問題 | paramsを確認 | 入力を修正して再実行 |
+| エラーが発生する | リソース不足 | エラーメッセージを確認 | 設定を調整 |
+
+### 関連ファイル
+
+- 実装: `.pi/extensions/git-workflow.ts`
+- ログ: `.pi/logs/events-YYYY-MM-DD.jsonl`

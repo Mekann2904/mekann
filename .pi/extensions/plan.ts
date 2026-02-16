@@ -7,6 +7,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+
+const logger = getLogger();
 
 // Import shared plan mode constants and utilities
 import {
@@ -373,10 +377,23 @@ export default function (pi: ExtensionAPI) {
 			description: Type.Optional(Type.String({ description: "Description of the plan" })),
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			const _operationId = logger.startOperation("plan_create" as OperationType, params.name, {
+				task: params.name,
+				params: { name: params.name, description: params.description },
+			});
+
 			const storage = loadStorage();
 			const plan = createPlan(params.name, params.description);
 			storage.plans.push(plan);
 			saveStorage(storage);
+
+			logger.endOperation({
+				status: "success",
+				tokensUsed: 0,
+				outputLength: 0,
+				childOperations: 0,
+				toolCalls: 0,
+			});
 
 			return {
 				content: [{ type: "text", text: `Plan created:\n\n${formatPlanSummary(plan)}` }],
@@ -438,6 +455,11 @@ export default function (pi: ExtensionAPI) {
 			dependencies: Type.Optional(Type.Array(Type.String({ description: "Step IDs this step depends on" }))),
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			const _operationId = logger.startOperation("plan_add_step" as OperationType, params.title, {
+				task: `Add step: ${params.title}`,
+				params: { planId: params.planId, title: params.title },
+			});
+
 			const storage = loadStorage();
 			const plan = findPlanById(storage, params.planId);
 
@@ -450,6 +472,14 @@ export default function (pi: ExtensionAPI) {
 
 			const step = addStepToPlan(plan, params.title, params.description, params.dependencies);
 			saveStorage(storage);
+
+			logger.endOperation({
+				status: "success",
+				tokensUsed: 0,
+				outputLength: 0,
+				childOperations: 0,
+				toolCalls: 0,
+			});
 
 			return {
 				content: [{ type: "text", text: `Step added to plan "${plan.name}":\n\n• ${step.title}${step.description ? `\n  ${step.description}` : ""}` }],
@@ -469,6 +499,11 @@ export default function (pi: ExtensionAPI) {
 			status: Type.String({ description: "New status: pending, in_progress, completed, or blocked" }),
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			const _operationId = logger.startOperation("plan_update_step" as OperationType, params.stepId, {
+				task: `Update step: ${params.stepId}`,
+				params: { planId: params.planId, stepId: params.stepId, status: params.status },
+			});
+
 			const storage = loadStorage();
 			const plan = findPlanById(storage, params.planId);
 
@@ -498,6 +533,14 @@ export default function (pi: ExtensionAPI) {
 
 			saveStorage(storage);
 			const step = findStepById(plan, params.stepId);
+
+			logger.endOperation({
+				status: "success",
+				tokensUsed: 0,
+				outputLength: 0,
+				childOperations: 0,
+				toolCalls: 0,
+			});
 
 			return {
 				content: [{ type: "text", text: `Step status updated:\n\n• ${step?.title} → ${params.status}` }],
@@ -558,6 +601,11 @@ export default function (pi: ExtensionAPI) {
 			planId: Type.String({ description: "ID of the plan to delete" }),
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			const _operationId = logger.startOperation("plan_delete" as OperationType, params.planId, {
+				task: `Delete plan: ${params.planId}`,
+				params: { planId: params.planId },
+			});
+
 			const storage = loadStorage();
 			const initialCount = storage.plans.length;
 			storage.plans = storage.plans.filter(p => p.id !== params.planId);
@@ -570,6 +618,15 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			saveStorage(storage);
+
+			logger.endOperation({
+				status: "success",
+				tokensUsed: 0,
+				outputLength: 0,
+				childOperations: 0,
+				toolCalls: 0,
+			});
+
 			return {
 				content: [{ type: "text", text: `Plan deleted: ${params.planId}` }],
 				details: { deletedPlanId: params.planId }
@@ -587,6 +644,11 @@ export default function (pi: ExtensionAPI) {
 			status: Type.String({ description: "New status: draft, active, completed, or cancelled" }),
 		}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			const _operationId = logger.startOperation("plan_update_status" as OperationType, params.planId, {
+				task: `Update status: ${params.planId}`,
+				params: { planId: params.planId, status: params.status },
+			});
+
 			const storage = loadStorage();
 			const plan = findPlanById(storage, params.planId);
 
@@ -608,6 +670,14 @@ export default function (pi: ExtensionAPI) {
 			plan.status = params.status as Plan["status"];
 			plan.updatedAt = new Date().toISOString();
 			saveStorage(storage);
+
+			logger.endOperation({
+				status: "success",
+				tokensUsed: 0,
+				outputLength: 0,
+				childOperations: 0,
+				toolCalls: 0,
+			});
 
 			return {
 				content: [{ type: "text", text: `Plan "${plan.name}" status updated to: ${params.status}` }],

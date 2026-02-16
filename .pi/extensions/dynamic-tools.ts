@@ -9,10 +9,11 @@
  * - delete_dynamic_tool: ツール削除
  * - tool_reflection: 実行後の反省とツール生成判定
  *
- * 技術的制約:
- * - TypeScript + Node.js標準モジュールのみ
- * - 同一プロセス内でフル権限実行（サンドボックスなし）
+ * セキュリティ:
+ * - VMコンテキストで実行（require, process は除外）
+ * - 外部モジュールアクセス・環境変数アクセス禁止
  * - allowlist-based検証パターン
+ * - 詳細は lib/dynamic-tools/safety.ts 参照
  *
  * 統合モジュール:
  * - lib/dynamic-tools: ツール登録・管理・安全性解析
@@ -21,25 +22,23 @@
  */
 
 import type { ExtensionAPI, ToolResultEvent } from "@mariozechner/pi-coding-agent";
+import { Type } from "@mariozechner/pi-ai";
 import {
   getRegistry,
   analyzeCodeSafety,
   quickSafetyCheck,
   assessCodeQuality,
   recordExecutionMetrics,
-  recordQualityScore,
   type DynamicToolDefinition,
   type ToolExecutionResult,
-  type SafetyAnalysisResult,
-  type QualityAssessment,
 } from "../lib/dynamic-tools/index.js";
-import {
-  isHighStakesTask,
-  shouldTriggerVerification,
-  type VerificationContext,
-} from "../lib/verification-workflow.js";
+import { isHighStakesTask } from "../lib/verification-workflow.js";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+
+const logger = getLogger();
 
 // ============================================================================
 // Types
@@ -191,21 +190,36 @@ ${tool.code}
 
 /**
  * コードを実行
- * 注意: この実装は同一プロセス内で実行
+ * セキュリティ: VMコンテキストからrequire, processを削除し
+ * 外部モジュールアクセスとプロセス操作を制限
+ *
+ * 利用可能なグローバルオブジェクト:
+ * - console, Buffer, setTimeout, setInterval, clearTimeout, clearInterval
+ * - 標準オブジェクト: Promise, JSON, Object, Array, String, Number, Boolean, Date, Math
+ * - エラークラス: Error, TypeError, RangeError, SyntaxError
+ * - URL関連: URL, URLSearchParams
+ *
+ * 利用不可（セキュリティ制約）:
+ * - require: 外部モジュールアクセス禁止
+ * - process: 環境変数・プロセス情報アクセス禁止
+ * - global, globalThis: グローバルスコープ汚染禁止
+ * - __dirname, __filename: ファイルシステムパス漏洩禁止
  */
 async function executeCode(code: string): Promise<ToolExecutionResult> {
   try {
     // vmモジュールを使用してコードを実行
     const vm = await import("node:vm");
     const context = vm.createContext({
+      // ログ出力のみ許可
       console,
-      require,
-      process,
+      // データ操作
       Buffer,
+      // タイマー（リソース制限あり）
       setTimeout,
       setInterval,
       clearTimeout,
       clearInterval,
+      // 標準オブジェクト
       Promise,
       JSON,
       Object,
@@ -221,6 +235,8 @@ async function executeCode(code: string): Promise<ToolExecutionResult> {
       SyntaxError,
       URL,
       URLSearchParams,
+      // 注意: require, process は意図的に除外
+      // 外部モジュールアクセス・環境変数アクセスを禁止
     });
 
     const script = new vm.Script(code, {
@@ -248,16 +264,38 @@ async function executeCode(code: string): Promise<ToolExecutionResult> {
 async function handleCreateTool(
   input: CreateToolInput
 ): Promise<string> {
-  const registry = getRegistry();
+  const operationId = logger.startOperation("direct" as OperationType, `create_tool:${input.name}`, {
+    task: `動的ツール生成: ${input.name}`,
+    params: { name: input.name, description: input.description },
+  });
 
-  // 名前の検証
-  if (!input.name || input.name.trim().length === 0) {
-    return "エラー: ツール名は必須です";
-  }
+  try {
+    const registry = getRegistry();
 
-  if (!/^[a-z][a-z0-9_-]*$/i.test(input.name)) {
-    return "エラー: ツール名は英字で始まり、英数字、アンダースコア、ハイフンのみ使用可能です";
-  }
+    // 名前の検証
+    if (!input.name || input.name.trim().length === 0) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "validation_error", message: "ツール名は必須です", stack: "" },
+      });
+      return "エラー: ツール名は必須です";
+    }
+
+    if (!/^[a-z][a-z0-9_-]*$/i.test(input.name)) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "validation_error", message: "ツール名の形式が不正です", stack: "" },
+      });
+      return "エラー: ツール名は英字で始まり、英数字、アンダースコア、ハイフンのみ使用可能です";
+    }
 
   // 高リスク操作の検出（コード内容をチェック）
   const codeDescription = `${input.name}: ${input.description}`;
@@ -338,6 +376,14 @@ async function handleCreateTool(
   });
 
   if (!result.success) {
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: { type: "registration_error", message: result.error || "Unknown error", stack: "" },
+    });
     return `エラー: ${result.error}`;
   }
 
@@ -347,7 +393,7 @@ async function handleCreateTool(
     ? `\n警告:\n${warnings.map(w => `- ${w}`).join("\n")}`
     : "";
 
-  return `
+  const output = `
 ツール「${input.name}」を作成しました。
 
 ツールID: ${result.toolId}
@@ -371,6 +417,32 @@ run_dynamic_tool({ tool_id: "${result.toolId}", parameters: { /* ... */ } })
 \`\`\`
 ${warningText}
 `;
+
+  logger.endOperation({
+    status: "success",
+    tokensUsed: 0,
+    outputLength: output.length,
+    childOperations: 0,
+    toolCalls: 0,
+  });
+
+  return output;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: {
+        type: error instanceof Error ? error.constructor.name : "UnknownError",
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack || "" : "",
+      },
+    });
+    return `エラー: ${errorMessage}`;
+  }
 }
 
 /**
@@ -379,78 +451,110 @@ ${warningText}
 async function handleRunDynamicTool(
   input: RunDynamicToolInput
 ): Promise<string> {
-  const registry = getRegistry();
-
-  // ツールを検索
-  let tool: DynamicToolDefinition | undefined;
-  
-  if (input.tool_id) {
-    tool = registry.getById(input.tool_id);
-  } else if (input.tool_name) {
-    tool = registry.findByName(input.tool_name);
-  }
-
-  if (!tool) {
-    return `エラー: ツールが見つかりません (${input.tool_id || input.tool_name})`;
-  }
-
-  // 必須パラメータのチェック
-  const requiredParams = tool.parameters.filter(p => p.required).map(p => p.name);
-  const missingParams = requiredParams.filter(
-    p => !(p in input.parameters)
-  );
-
-  if (missingParams.length > 0) {
-    return `エラー: 必須パラメータが不足しています: ${missingParams.join(", ")}`;
-  }
-
-  // ツールを実行
-  const timeoutMs = input.timeout_ms || 30000;
-  const result = await executeDynamicTool(tool, input.parameters, timeoutMs);
-
-  // 使用を記録
-  registry.recordUsage(tool.id);
-  recordExecutionMetrics(tool.id, {
-    executionTimeMs: result.executionTimeMs,
-    success: result.success,
-    errorType: result.error ? "execution_error" : undefined,
-    errorMessage: result.error,
-    inputParameters: input.parameters,
+  const targetName = input.tool_id || input.tool_name || "unknown";
+  const operationId = logger.startOperation("direct" as OperationType, `run_dynamic_tool:${targetName}`, {
+    task: `動的ツール実行: ${targetName}`,
+    params: { tool_id: input.tool_id, tool_name: input.tool_name, parameters: input.parameters },
   });
 
-  // 監査ログに記録
-  writeAuditLog({
-    timestamp: new Date().toISOString(),
-    action: "run_dynamic_tool",
-    toolId: tool.id,
-    toolName: tool.name,
-    success: result.success,
-    details: {
+  try {
+    const registry = getRegistry();
+
+    // ツールを検索
+    let tool: DynamicToolDefinition | undefined;
+
+    if (input.tool_id) {
+      tool = registry.getById(input.tool_id);
+    } else if (input.tool_name) {
+      tool = registry.findByName(input.tool_name);
+    }
+
+    if (!tool) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "not_found_error", message: "ツールが見つかりません", stack: "" },
+      });
+      return `エラー: ツールが見つかりません (${input.tool_id || input.tool_name})`;
+    }
+
+    // 必須パラメータのチェック
+    const requiredParams = tool.parameters.filter(p => p.required).map(p => p.name);
+    const missingParams = requiredParams.filter(
+      p => !(p in input.parameters)
+    );
+
+    if (missingParams.length > 0) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "validation_error", message: `必須パラメータが不足: ${missingParams.join(", ")}`, stack: "" },
+      });
+      return `エラー: 必須パラメータが不足しています: ${missingParams.join(", ")}`;
+    }
+
+    // ツールを実行
+    const timeoutMs = input.timeout_ms || 30000;
+    const result = await executeDynamicTool(tool, input.parameters, timeoutMs);
+
+    // 使用を記録
+    registry.recordUsage(tool.id);
+    recordExecutionMetrics(tool.id, {
       executionTimeMs: result.executionTimeMs,
-      parameters: input.parameters,
-    },
-    error: result.error,
-  });
+      success: result.success,
+      errorType: result.error ? "execution_error" : undefined,
+      errorMessage: result.error,
+      inputParameters: input.parameters,
+    });
 
-  // 結果をフォーマット
-  if (!result.success) {
-    return `
+    // 監査ログに記録
+    writeAuditLog({
+      timestamp: new Date().toISOString(),
+      action: "run_dynamic_tool",
+      toolId: tool.id,
+      toolName: tool.name,
+      success: result.success,
+      details: {
+        executionTimeMs: result.executionTimeMs,
+        parameters: input.parameters,
+      },
+      error: result.error,
+    });
+
+    // 結果をフォーマット
+    if (!result.success) {
+      const errorOutput = `
 ツール「${tool.name}」の実行に失敗しました。
 
 実行時間: ${result.executionTimeMs}ms
 エラー: ${result.error}
 `;
-  }
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: errorOutput.length,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "execution_error", message: result.error || "Unknown error", stack: "" },
+      });
+      return errorOutput;
+    }
 
-  // 結果を整形
-  let resultText = "";
-  if (typeof result.result === "string") {
-    resultText = result.result;
-  } else if (result.result !== undefined) {
-    resultText = JSON.stringify(result.result, null, 2);
-  }
+    // 結果を整形
+    let resultText = "";
+    if (typeof result.result === "string") {
+      resultText = result.result;
+    } else if (result.result !== undefined) {
+      resultText = JSON.stringify(result.result, null, 2);
+    }
 
-  return `
+    const output = `
 ツール「${tool.name}」の実行が完了しました。
 
 実行時間: ${result.executionTimeMs}ms
@@ -458,6 +562,32 @@ async function handleRunDynamicTool(
 結果:
 ${resultText}
 `;
+
+    logger.endOperation({
+      status: "success",
+      tokensUsed: 0,
+      outputLength: output.length,
+      childOperations: 0,
+      toolCalls: 0,
+    });
+
+    return output;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: {
+        type: error instanceof Error ? error.constructor.name : "UnknownError",
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack || "" : "",
+      },
+    });
+    return `エラー: ${errorMessage}`;
+  }
 }
 
 /**
@@ -512,46 +642,102 @@ async function handleListDynamicTools(
 async function handleDeleteDynamicTool(
   input: DeleteDynamicToolInput
 ): Promise<string> {
-  const registry = getRegistry();
-
-  if (!input.confirm) {
-    return `エラー: 削除を確認するには confirm: true を指定してください`;
-  }
-
-  // ツールを検索
-  let tool: DynamicToolDefinition | undefined;
-  
-  if (input.tool_id) {
-    tool = registry.getById(input.tool_id);
-  } else if (input.tool_name) {
-    tool = registry.findByName(input.tool_name);
-  }
-
-  if (!tool) {
-    return `エラー: ツールが見つかりません (${input.tool_id || input.tool_name})`;
-  }
-
-  const toolName = tool.name;
-  const toolId = tool.id;
-
-  // ツールを削除
-  const result = registry.delete(toolId);
-
-  // 監査ログに記録
-  writeAuditLog({
-    timestamp: new Date().toISOString(),
-    action: "delete_dynamic_tool",
-    toolId: toolId,
-    toolName: toolName,
-    success: result.success,
-    error: result.error,
+  const targetName = input.tool_id || input.tool_name || "unknown";
+  const operationId = logger.startOperation("direct" as OperationType, `delete_dynamic_tool:${targetName}`, {
+    task: `動的ツール削除: ${targetName}`,
+    params: { tool_id: input.tool_id, tool_name: input.tool_name, confirm: input.confirm },
   });
 
-  if (!result.success) {
-    return `エラー: ${result.error}`;
-  }
+  try {
+    const registry = getRegistry();
 
-  return `ツール「${toolName}」(${toolId})を削除しました。`;
+    if (!input.confirm) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "validation_error", message: "削除確認が必要です", stack: "" },
+      });
+      return `エラー: 削除を確認するには confirm: true を指定してください`;
+    }
+
+    // ツールを検索
+    let tool: DynamicToolDefinition | undefined;
+
+    if (input.tool_id) {
+      tool = registry.getById(input.tool_id);
+    } else if (input.tool_name) {
+      tool = registry.findByName(input.tool_name);
+    }
+
+    if (!tool) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "not_found_error", message: "ツールが見つかりません", stack: "" },
+      });
+      return `エラー: ツールが見つかりません (${input.tool_id || input.tool_name})`;
+    }
+
+    const toolName = tool.name;
+    const toolId = tool.id;
+
+    // ツールを削除
+    const result = registry.delete(toolId);
+
+    // 監査ログに記録
+    writeAuditLog({
+      timestamp: new Date().toISOString(),
+      action: "delete_dynamic_tool",
+      toolId: toolId,
+      toolName: toolName,
+      success: result.success,
+      error: result.error,
+    });
+
+    if (!result.success) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "delete_error", message: result.error || "Unknown error", stack: "" },
+      });
+      return `エラー: ${result.error}`;
+    }
+
+    const output = `ツール「${toolName}」(${toolId})を削除しました。`;
+    logger.endOperation({
+      status: "success",
+      tokensUsed: 0,
+      outputLength: output.length,
+      childOperations: 0,
+      toolCalls: 0,
+    });
+
+    return output;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: {
+        type: error instanceof Error ? error.constructor.name : "UnknownError",
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack || "" : "",
+      },
+    });
+    return `エラー: ${errorMessage}`;
+  }
 }
 
 /**
@@ -626,7 +812,7 @@ async function handleToolReflection(
 }
 
 // ============================================================================
-// Extension Registration
+// Extension Registration (TypeBox形式)
 // ============================================================================
 
 export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
@@ -634,55 +820,38 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "create_tool",
     description: "動的ツールを生成します。TypeScriptコードを指定して新しいツールを作成します。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "ツール名（英字で始まり、英数字、アンダースコア、ハイフンのみ使用可能）",
-        },
-        description: {
-          type: "string",
-          description: "ツールの説明",
-        },
-        code: {
-          type: "string",
-          description: "ツールのTypeScript/JavaScriptコード。execute(params)関数をエクスポートする必要があります。",
-        },
-        parameters: {
-          type: "object",
-          description: "パラメータの定義",
-          additionalProperties: {
-            type: "object",
-            properties: {
-              type: {
-                type: "string",
-                enum: ["string", "number", "boolean", "object", "array"],
-              },
-              description: { type: "string" },
-              default: {},
-              enum: {
-                type: "array",
-                items: { type: "string" },
-              },
-              required: { type: "boolean" },
-            },
-          },
-        },
-        tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "ツールのタグ（カテゴリ分類用）",
-        },
-        generated_from: {
-          type: "string",
-          description: "ツールの生成元（タスク説明など）",
-        },
-      },
-      required: ["name", "description", "code"],
-    },
-    handler: async (input: CreateToolInput) => {
-      return await handleCreateTool(input);
+    parameters: Type.Object({
+      name: Type.String({ description: "ツール名（英字で始まり、英数字、アンダースコア、ハイフンのみ使用可能）" }),
+      description: Type.String({ description: "ツールの説明" }),
+      code: Type.String({ description: "ツールのTypeScript/JavaScriptコード。execute(params)関数をエクスポートする必要があります。" }),
+      parameters: Type.Optional(Type.Record(
+        Type.String(),
+        Type.Object({
+          type: Type.Union([
+            Type.Literal("string"),
+            Type.Literal("number"),
+            Type.Literal("boolean"),
+            Type.Literal("object"),
+            Type.Literal("array"),
+          ]),
+          description: Type.String(),
+          default: Type.Optional(Type.Any()),
+          enum: Type.Optional(Type.Array(Type.String())),
+          minimum: Type.Optional(Type.Number()),
+          maximum: Type.Optional(Type.Number()),
+          required: Type.Optional(Type.Boolean()),
+        })
+      )),
+      tags: Type.Optional(Type.Array(Type.String(), { description: "ツールのタグ（カテゴリ分類用）" })),
+      generated_from: Type.Optional(Type.String({ description: "ツールの生成元（タスク説明など）" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const result = await handleCreateTool(params as CreateToolInput);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
@@ -690,33 +859,28 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "run_dynamic_tool",
     description: "登録済みの動的ツールを実行します。tool_idまたはtool_nameでツールを指定します。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        tool_id: {
-          type: "string",
-          description: "ツールID",
-        },
-        tool_name: {
-          type: "string",
-          description: "ツール名（tool_idの代わりに使用可能）",
-        },
-        parameters: {
-          type: "object",
-          description: "ツールに渡すパラメータ",
-        },
-        timeout_ms: {
-          type: "number",
-          description: "タイムアウト時間（ミリ秒、デフォルト: 30000）",
-        },
-      },
-      required: ["parameters"],
-    },
-    handler: async (input: RunDynamicToolInput) => {
+    parameters: Type.Object({
+      tool_id: Type.Optional(Type.String({ description: "ツールID" })),
+      tool_name: Type.Optional(Type.String({ description: "ツール名（tool_idの代わりに使用可能）" })),
+      parameters: Type.Record(Type.String(), Type.Any(), { description: "ツールに渡すパラメータ" }),
+      timeout_ms: Type.Optional(Type.Number({ description: "タイムアウト時間（ミリ秒、デフォルト: 30000）" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const input = params as RunDynamicToolInput;
+      
       if (!input.tool_id && !input.tool_name) {
-        return "エラー: tool_idまたはtool_nameを指定してください";
+        return {
+          content: [{ type: "text", text: "エラー: tool_idまたはtool_nameを指定してください" }],
+          details: {},
+        };
       }
-      return await handleRunDynamicTool(input);
+      
+      const result = await handleRunDynamicTool(input);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
@@ -724,30 +888,19 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "list_dynamic_tools",
     description: "登録済みの動的ツール一覧を表示します。フィルタリングオプションを利用可能です。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "名前でフィルタ（部分一致）",
-        },
-        tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "タグでフィルタ",
-        },
-        min_safety_score: {
-          type: "number",
-          description: "安全性スコアの最小値（0.0-1.0）",
-        },
-        limit: {
-          type: "number",
-          description: "最大表示件数（デフォルト: 20）",
-        },
-      },
-    },
-    handler: async (input: ListDynamicToolsInput) => {
-      return await handleListDynamicTools(input);
+    parameters: Type.Object({
+      name: Type.Optional(Type.String({ description: "名前でフィルタ（部分一致）" })),
+      tags: Type.Optional(Type.Array(Type.String(), { description: "タグでフィルタ" })),
+      min_safety_score: Type.Optional(Type.Number({ description: "安全性スコアの最小値（0.0-1.0）" })),
+      limit: Type.Optional(Type.Number({ description: "最大表示件数（デフォルト: 20）" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const result = await handleListDynamicTools(params as ListDynamicToolsInput);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
@@ -755,28 +908,27 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "delete_dynamic_tool",
     description: "登録済みの動的ツールを削除します。confirm: true で削除を確定します。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        tool_id: {
-          type: "string",
-          description: "ツールID",
-        },
-        tool_name: {
-          type: "string",
-          description: "ツール名（tool_idの代わりに使用可能）",
-        },
-        confirm: {
-          type: "boolean",
-          description: "削除の確認（trueで削除実行）",
-        },
-      },
-    },
-    handler: async (input: DeleteDynamicToolInput) => {
+    parameters: Type.Object({
+      tool_id: Type.Optional(Type.String({ description: "ツールID" })),
+      tool_name: Type.Optional(Type.String({ description: "ツール名（tool_idの代わりに使用可能）" })),
+      confirm: Type.Optional(Type.Boolean({ description: "削除の確認（trueで削除実行）" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const input = params as DeleteDynamicToolInput;
+      
       if (!input.tool_id && !input.tool_name) {
-        return "エラー: tool_idまたはtool_nameを指定してください";
+        return {
+          content: [{ type: "text", text: "エラー: tool_idまたはtool_nameを指定してください" }],
+          details: {},
+        };
       }
-      return await handleDeleteDynamicTool(input);
+      
+      const result = await handleDeleteDynamicTool(input);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
@@ -784,26 +936,18 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "tool_reflection",
     description: "タスク実行後に反省を行い、ツール生成が推奨されるかを判定します。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        task_description: {
-          type: "string",
-          description: "実行中のタスクの説明",
-        },
-        last_tool_result: {
-          type: "string",
-          description: "直前のツール実行結果",
-        },
-        failed_attempts: {
-          type: "number",
-          description: "失敗した試行回数",
-        },
-      },
-      required: ["task_description", "last_tool_result"],
-    },
-    handler: async (input: ToolReflectionInput) => {
-      return await handleToolReflection(input);
+    parameters: Type.Object({
+      task_description: Type.String({ description: "実行中のタスクの説明" }),
+      last_tool_result: Type.String({ description: "直前のツール実行結果" }),
+      failed_attempts: Type.Optional(Type.Number({ description: "失敗した試行回数" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const result = await handleToolReflection(params as ToolReflectionInput);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
@@ -815,19 +959,12 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
       return;
     }
 
-    // テキストコンテンツを抽出
-    const resultText = event.content
-      .filter((c): c is { type: "text"; text: string } => c.type === "text")
-      .map(c => c.text)
-      .join("\n");
-
-    // 失敗した場合は反省を推奨
-    if (event.isError || 
-        resultText.toLowerCase().includes("エラー") || 
-        resultText.toLowerCase().includes("失敗")) {
-      // コンテキストが利用可能な場合のみメッセージを送信
+    // event.isErrorがtrueの場合のみ通知（文字列ベースの推測は削除）
+    // 根本原因: 文字列からの推測は本質的に不確実で誤検出の原因となる
+    // 解決策: ToolResultEvent.isError（ツール実行の正確な成否）のみを信頼
+    if (event.isError) {
       if (ctx?.ui?.notify) {
-        ctx.ui.notify("[Step Reflection] ツール実行エラーを検出。tool_reflectionで確認してください。", "info");
+        ctx.ui.notify(`[Step Reflection] ツール "${event.toolName}" の実行に失敗しました。tool_reflectionで確認してください。`, "warning");
       }
     }
   });

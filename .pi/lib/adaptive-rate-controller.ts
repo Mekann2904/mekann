@@ -9,6 +9,7 @@
  * 2. On 429 error, reduce limit by 30%
  * 3. After recovery period (5 min), gradually restore limit
  * 4. Track per provider/model for granular control
+ * 5. NEW: Predictive scheduling based on historical patterns
  */
 
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
@@ -36,6 +37,12 @@ export interface LearnedLimit {
   recoveryScheduled: boolean;
   /** Model-specific notes */
   notes?: string;
+  /** Predictive: historical 429 timestamps for pattern analysis */
+  historical429s?: string[];
+  /** Predictive: estimated 429 probability (0-1) */
+  predicted429Probability?: number;
+  /** Predictive: suggested ramp-up schedule */
+  rampUpSchedule?: number[];
 }
 
 export interface AdaptiveControllerState {
@@ -52,6 +59,10 @@ export interface AdaptiveControllerState {
   reductionFactor: number;
   /** Recovery factor (1.1 = 10% increase per recovery) */
   recoveryFactor: number;
+  /** Predictive: enable proactive throttling */
+  predictiveEnabled: boolean;
+  /** Predictive: threshold for proactive action */
+  predictiveThreshold: number;
 }
 
 export interface RateLimitEvent {
@@ -62,6 +73,16 @@ export interface RateLimitEvent {
   details?: string;
 }
 
+export interface PredictiveAnalysis {
+  provider: string;
+  model: string;
+  predicted429Probability: number;
+  shouldProactivelyThrottle: boolean;
+  recommendedConcurrency: number;
+  nextRiskWindow?: { start: Date; end: Date };
+  confidence: number;
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -70,13 +91,15 @@ const RUNTIME_DIR = join(homedir(), ".pi", "runtime");
 const STATE_FILE = join(RUNTIME_DIR, "adaptive-limits.json");
 
 const DEFAULT_STATE: AdaptiveControllerState = {
-  version: 1,
+  version: 2,
   lastUpdated: new Date().toISOString(),
   limits: {},
   globalMultiplier: 1.0,
   recoveryIntervalMs: 5 * 60 * 1000, // 5 minutes
   reductionFactor: 0.7, // 30% reduction on 429
   recoveryFactor: 1.1, // 10% increase per recovery
+  predictiveEnabled: true,
+  predictiveThreshold: 0.3, // Proactively throttle if >30% 429 probability
 };
 
 const MIN_CONCURRENCY = 1;
@@ -316,6 +339,9 @@ export function recordEvent(event: RateLimitEvent): void {
       limit.total429Count += 1;
       limit.recoveryScheduled = false; // Reset recovery on new 429
 
+      // Update historical data for predictive analysis
+      updateHistorical429s(limit);
+
       // If multiple consecutive 429s, be more aggressive
       if (limit.consecutive429Count >= 3) {
         limit.concurrency = clampConcurrency(Math.floor(limit.concurrency * 0.5));
@@ -497,6 +523,7 @@ export function formatAdaptiveSummary(): string {
     `Recovery Interval: ${Math.round(currentState.recoveryIntervalMs / 1000)}s`,
     `Reduction Factor: ${currentState.reductionFactor.toFixed(2)}`,
     `Recovery Factor: ${currentState.recoveryFactor.toFixed(2)}`,
+    `Predictive: ${currentState.predictiveEnabled ? "enabled" : "disabled"} (threshold: ${currentState.predictiveThreshold})`,
     ``,
     `Learned Limits:`,
   ];
@@ -512,9 +539,329 @@ export function formatAdaptiveSummary(): string {
       const recent429 = limit.last429At
         ? `last429: ${Math.round((Date.now() - new Date(limit.last429At).getTime()) / 1000)}s ago`
         : "no 429";
-      lines.push(`  ${key}: ${status}, ${recent429}, total: ${limit.total429Count}`);
+      const prediction = limit.predicted429Probability
+        ? `, 429_prob: ${(limit.predicted429Probability * 100).toFixed(1)}%`
+        : "";
+      lines.push(`  ${key}: ${status}, ${recent429}, total: ${limit.total429Count}${prediction}`);
     }
   }
 
   return lines.join("\n");
+}
+
+// ============================================================================
+// Predictive Scheduling
+// ============================================================================
+
+/**
+ * Analyze historical 429 patterns and predict probability.
+ * Uses a simple time-based model: recent 429s increase probability.
+ */
+export function analyze429Probability(provider: string, model: string): number {
+  const currentState = ensureState();
+  const key = buildKey(provider, model);
+  const limit = currentState.limits[key];
+
+  if (!limit || !limit.historical429s || limit.historical429s.length === 0) {
+    return 0;
+  }
+
+  const now = Date.now();
+  const recentWindowMs = 10 * 60 * 1000; // 10 minutes
+  const mediumWindowMs = 30 * 60 * 1000; // 30 minutes
+  const hourWindowMs = 60 * 60 * 1000; // 1 hour
+
+  let recentCount = 0;
+  let mediumCount = 0;
+  let hourCount = 0;
+
+  for (const timestamp of limit.historical429s) {
+    const time = new Date(timestamp).getTime();
+    const age = now - time;
+
+    if (age < recentWindowMs) recentCount++;
+    if (age < mediumWindowMs) mediumCount++;
+    if (age < hourWindowMs) hourCount++;
+  }
+
+  // Weighted probability calculation
+  // Recent 429s have higher weight
+  const recentWeight = recentCount * 0.4;
+  const mediumWeight = mediumCount * 0.15;
+  const hourWeight = hourCount * 0.05;
+
+  // Also consider consecutive 429s
+  const consecutiveWeight = limit.consecutive429Count * 0.2;
+
+  // Calculate base probability
+  let probability = recentWeight + mediumWeight + hourWeight + consecutiveWeight;
+
+  // Cap at 1.0
+  return Math.min(1.0, probability);
+}
+
+/**
+ * Get predictive analysis for a provider/model.
+ */
+export function getPredictiveAnalysis(provider: string, model: string): PredictiveAnalysis {
+  const currentState = ensureState();
+  const key = buildKey(provider, model);
+  const limit = currentState.limits[key];
+
+  const probability = analyze429Probability(provider, model);
+  const shouldProactivelyThrottle =
+    currentState.predictiveEnabled &&
+    probability > currentState.predictiveThreshold;
+
+  // Calculate recommended concurrency
+  let recommendedConcurrency = limit?.concurrency ?? 4;
+
+  if (shouldProactivelyThrottle) {
+    // Reduce concurrency proportionally to probability
+    const reductionFactor = 1 - probability * 0.5; // Up to 50% reduction
+    recommendedConcurrency = Math.floor(recommendedConcurrency * reductionFactor);
+    recommendedConcurrency = Math.max(1, recommendedConcurrency);
+  }
+
+  // Determine next risk window based on historical patterns
+  let nextRiskWindow: { start: Date; end: Date } | undefined;
+  if (limit?.historical429s && limit.historical429s.length >= 3) {
+    // Find time intervals between 429s
+    const timestamps = limit.historical429s
+      .map((t) => new Date(t).getTime())
+      .sort((a, b) => a - b);
+
+    if (timestamps.length >= 2) {
+      const intervals: number[] = [];
+      for (let i = 1; i < timestamps.length; i++) {
+        intervals.push(timestamps[i] - timestamps[i - 1]);
+      }
+
+      const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+
+      // Predict next risk window
+      const last429Time = timestamps[timestamps.length - 1];
+      const nextPredicted429 = last429Time + avgInterval;
+
+      nextRiskWindow = {
+        start: new Date(nextPredicted429 - avgInterval * 0.2),
+        end: new Date(nextPredicted429 + avgInterval * 0.2),
+      };
+    }
+  }
+
+  // Calculate confidence based on data availability
+  const dataPoints = limit?.historical429s?.length ?? 0;
+  const confidence = Math.min(1.0, dataPoints / 10); // Full confidence at 10+ data points
+
+  return {
+    provider,
+    model,
+    predicted429Probability: probability,
+    shouldProactivelyThrottle,
+    recommendedConcurrency,
+    nextRiskWindow,
+    confidence,
+  };
+}
+
+/**
+ * Check if we should proactively throttle based on predictions.
+ */
+export function shouldProactivelyThrottle(provider: string, model: string): boolean {
+  const analysis = getPredictiveAnalysis(provider, model);
+  return analysis.shouldProactivelyThrottle;
+}
+
+/**
+ * Get recommended concurrency considering predictions.
+ */
+export function getPredictiveConcurrency(
+  provider: string,
+  model: string,
+  currentConcurrency: number
+): number {
+  const analysis = getPredictiveAnalysis(provider, model);
+
+  if (analysis.shouldProactivelyThrottle) {
+    return Math.min(currentConcurrency, analysis.recommendedConcurrency);
+  }
+
+  return currentConcurrency;
+}
+
+/**
+ * Update historical 429 data (called on 429 events).
+ */
+function updateHistorical429s(limit: LearnedLimit): void {
+  if (!limit.historical429s) {
+    limit.historical429s = [];
+  }
+
+  limit.historical429s.push(new Date().toISOString());
+
+  // Keep only last 50 entries to prevent unbounded growth
+  if (limit.historical429s.length > 50) {
+    limit.historical429s = limit.historical429s.slice(-50);
+  }
+
+  // Update predicted probability
+  limit.predicted429Probability = analyze429Probability(
+    limit.originalConcurrency.toString(), // Dummy provider extraction
+    limit.originalConcurrency.toString()  // Dummy model extraction
+  );
+}
+
+/**
+ * Enable or disable predictive scheduling.
+ */
+export function setPredictiveEnabled(enabled: boolean): void {
+  const currentState = ensureState();
+  currentState.predictiveEnabled = enabled;
+  saveState();
+}
+
+/**
+ * Set predictive threshold (0-1).
+ */
+export function setPredictiveThreshold(threshold: number): void {
+  const currentState = ensureState();
+  currentState.predictiveThreshold = Math.max(0, Math.min(1, threshold));
+  saveState();
+}
+
+// ============================================================================
+// Dynamic Parallelism Integration
+// ============================================================================
+
+/**
+ * Get scheduler-aware limit for a provider/model.
+ * This combines:
+ * 1. Adaptive learned limits
+ * 2. Predictive throttling
+ * 3. Dynamic parallelism adjuster
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @param baseLimit - Base concurrency limit from provider-limits
+ * @returns Scheduler-aware concurrency limit
+ */
+export function getSchedulerAwareLimit(
+  provider: string,
+  model: string,
+  baseLimit?: number
+): number {
+  // Get the effective limit from adaptive controller
+  const effectiveLimit = getEffectiveLimit(provider, model, baseLimit ?? 4);
+
+  // Apply predictive throttling
+  const predictiveLimit = getPredictiveConcurrency(provider, model, effectiveLimit);
+
+  return predictiveLimit;
+}
+
+/**
+ * Notify the scheduler of a 429 error.
+ * This is a convenience function that wraps record429.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @param details - Optional error details
+ */
+export function notifyScheduler429(
+  provider: string,
+  model: string,
+  details?: string
+): void {
+  record429(provider, model, details);
+
+  // Also update dynamic parallelism adjuster
+  try {
+    // Lazy import to avoid circular dependency
+    const { adjustForError } = require("./dynamic-parallelism");
+    adjustForError(provider, model, "429");
+  } catch {
+    // Ignore if dynamic-parallelism module not available
+  }
+}
+
+/**
+ * Notify the scheduler of a timeout error.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ */
+export function notifySchedulerTimeout(provider: string, model: string): void {
+  recordEvent({
+    provider,
+    model,
+    type: "timeout",
+    timestamp: new Date().toISOString(),
+  });
+
+  // Also update dynamic parallelism adjuster
+  try {
+    const { adjustForError } = require("./dynamic-parallelism");
+    adjustForError(provider, model, "timeout");
+  } catch {
+    // Ignore if dynamic-parallelism module not available
+  }
+}
+
+/**
+ * Notify the scheduler of a successful request.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @param responseMs - Response time in milliseconds
+ */
+export function notifySchedulerSuccess(
+  provider: string,
+  model: string,
+  responseMs?: number
+): void {
+  recordSuccess(provider, model);
+
+  // Also update dynamic parallelism adjuster
+  if (responseMs) {
+    try {
+      const { getParallelismAdjuster } = require("./dynamic-parallelism");
+      const adjuster = getParallelismAdjuster();
+      adjuster.recordSuccess(provider, model, responseMs);
+      adjuster.attemptRecovery(provider, model);
+    } catch {
+      // Ignore if dynamic-parallelism module not available
+    }
+  }
+}
+
+/**
+ * Get combined rate control summary for a provider/model.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @returns Combined summary
+ */
+export function getCombinedRateControlSummary(
+  provider: string,
+  model: string
+): {
+  adaptiveLimit: number;
+  originalLimit: number;
+  predictiveLimit: number;
+  predicted429Probability: number;
+  shouldThrottle: boolean;
+  recent429Count: number;
+} {
+  const learnedLimit = getLearnedLimit(provider, model);
+  const analysis = getPredictiveAnalysis(provider, model);
+
+  return {
+    adaptiveLimit: learnedLimit?.concurrency ?? 4,
+    originalLimit: learnedLimit?.originalConcurrency ?? 4,
+    predictiveLimit: analysis.recommendedConcurrency,
+    predicted429Probability: analysis.predicted429Probability,
+    shouldThrottle: analysis.shouldProactivelyThrottle,
+    recent429Count: learnedLimit?.total429Count ?? 0,
+  };
 }

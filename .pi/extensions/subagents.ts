@@ -22,7 +22,6 @@ import {
 
 // Import shared plan mode utilities
 import {
-	isBashCommandAllowed,
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
@@ -36,6 +35,7 @@ import {
   type RetryWithBackoffOverrides,
 } from "../lib/retry-with-backoff";
 import { runWithConcurrencyLimit } from "../lib/concurrency";
+import { createChildAbortController } from "../lib/abort-utils";
 import {
   getSubagentExecutionRules,
 } from "../lib/execution-rules";
@@ -49,11 +49,6 @@ import {
   runPiPrintMode as sharedRunPiPrintMode,
   type PrintExecutorOptions,
 } from "./shared/pi-print-executor";
-import {
-  postSubagentVerificationHook,
-  formatVerificationResult,
-  type VerificationHookResult,
-} from "./shared/verification-hooks.js";
 import {
   ensureDir,
   formatDurationMs,
@@ -83,7 +78,6 @@ import {
   isEnterInput,
   finalizeLiveLines,
   type LiveStatus,
-  hasIntentOnlyContent,
   hasNonEmptyResultSection,
   validateSubagentOutput,
   trimForError,
@@ -93,6 +87,11 @@ import {
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
 } from "../lib";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estimator";
+
+const logger = getLogger();
 import {
   type SubagentDefinition,
   type SubagentRunRecord,
@@ -106,67 +105,12 @@ import {
   createDefaultAgents,
   loadStorage,
   saveStorage,
+  saveStorageWithPatterns,
 } from "./subagents/storage";
 
 interface PrintCommandResult {
   output: string;
   latencyMs: number;
-}
-
-/**
- * Extract confidence value from subagent output.
- * Parses CONFIDENCE field, defaults to 0.5 if not found or invalid.
- */
-function extractConfidenceFromOutput(output: string): number {
-  const match = output.match(/CONFIDENCE:\s*([0-9.]+)/i);
-  if (match) {
-    const parsed = parseFloat(match[1]);
-    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
-      return parsed;
-    }
-  }
-  return 0.5;
-}
-
-/**
- * Run verification for a completed subagent task.
- * Returns the verification result or undefined if verification is disabled/failed.
- */
-async function runSubagentVerification(
-  output: string,
-  agentId: string,
-  task: string,
-  options: {
-    provider?: string;
-    model?: string;
-    signal?: AbortSignal;
-  }
-): Promise<VerificationHookResult | undefined> {
-  const confidence = extractConfidenceFromOutput(output);
-  const verificationTimeoutMs = 60000; // Shorter timeout for focused verification task
-
-  try {
-    return await postSubagentVerificationHook(
-      output,
-      confidence,
-      { agentId, task },
-      async (verificationAgentId, prompt) => {
-        const result = await sharedRunPiPrintMode({
-          provider: options.provider,
-          model: options.model,
-          prompt,
-          timeoutMs: verificationTimeoutMs,
-          signal: options.signal,
-          entityLabel: "verification-agent",
-        });
-        return result.output;
-      }
-    );
-  } catch (error) {
-    // Verification failures should not break the main flow
-    console.warn(`[Verification] Error during verification: ${error instanceof Error ? error.message : String(error)}`);
-    return undefined;
-  }
 }
 
 const LIVE_PREVIEW_LINE_LIMIT = 36;
@@ -804,16 +748,13 @@ function normalizeSubagentOutput(output: string): SubagentNormalizedOutput {
   }
 
   const summary = pickSubagentSummaryCandidate(trimmed);
-  const nextStep = hasIntentOnlyContent(trimmed)
-    ? "対象ファイルを確認し、具体的な差分を列挙する。"
-    : "none";
   const structured = [
     `SUMMARY: ${summary}`,
     "",
     "RESULT:",
     trimmed,
     "",
-    `NEXT_STEP: ${nextStep}`,
+    "NEXT_STEP: none",
   ].join("\n");
   const structuredQuality = validateSubagentOutput(structured);
   if (structuredQuality.ok) {
@@ -998,6 +939,96 @@ function isDocumentationPath(pathValue: string): boolean {
   );
 }
 
+/**
+ * Delegation-first用のbash書き込みチェック。
+ * plan-mode用のisBashCommandAllowedとは異なり、実際にファイルを変更するコマンドのみを検出する。
+ * 検索・読み取り系コマンドは全て通す（grep, cat, ls, find等）。
+ * 誤検出を防ぐため、引用符内の文字は無視する簡易パーサーを使用。
+ */
+function isWriteLikeBashCommand(command: string): boolean {
+  const trimmed = command.trim();
+  if (!trimmed) return false;
+
+  // 引用符内を除外したコマンド部分を抽出
+  const commandWithoutQuotes = removeQuotedStrings(trimmed);
+
+  // 1. リダイレクト書き込み: >, >> (引用符外のみ)
+  if (/[^>]>[^>]|>>/.test(commandWithoutQuotes)) {
+    return true;
+  }
+
+  // 2. teeコマンド（パイプライン内の書き込み）
+  if (/\btee\b/.test(commandWithoutQuotes)) {
+    return true;
+  }
+
+  // 3. ファイル操作コマンド
+  const firstWord = trimmed.split(/\s+/)[0];
+  const fileWriteCommands = new Set([
+    "rm", "rmdir", "mv", "cp", "touch", "mkdir", "chmod", "chown",
+    "ln", "truncate", "dd", "shred",
+  ]);
+  if (fileWriteCommands.has(firstWord)) {
+    return true;
+  }
+
+  // 4. パッケージマネージャ（インストール/アンインストール）
+  const packageManagers = new Set([
+    "npm", "yarn", "pnpm", "pip", "pip3", "poetry", "cargo", "composer",
+    "apt", "apt-get", "yum", "dnf", "brew", "pacman",
+  ]);
+  if (packageManagers.has(firstWord)) {
+    return true;
+  }
+
+  // 5. Git書き込みコマンド
+  if (firstWord === "git") {
+    const gitWriteSubcommands = new Set([
+      "add", "commit", "push", "pull", "fetch", "merge",
+      "rebase", "reset", "checkout", "cherry-pick", "revert",
+      "stash", "apply", "am", "rm", "mv",
+    ]);
+    const secondWord = trimmed.split(/\s+/)[1];
+    if (secondWord && gitWriteSubcommands.has(secondWord)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 引用符（', "）で囲まれた部分を除外する。
+ * 検索パターン内の文字が誤検出されるのを防ぐ。
+ */
+function removeQuotedStrings(input: string): string {
+  // シングルクォートとダブルクォート内を空文字に置換
+  // バッククォートはコマンド置換なので残す
+  let result = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    const prevChar = i > 0 ? input[i - 1] : "";
+
+    if (char === "'" && prevChar !== "\\" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (char === '"' && prevChar !== "\\" && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote) {
+      result += char;
+    }
+  }
+
+  return result;
+}
+
 function isWriteLikeToolCall(event: any): boolean {
   const toolName = String(event?.toolName || "").toLowerCase();
   if (toolName === "edit" || toolName === "write") {
@@ -1011,7 +1042,8 @@ function isWriteLikeToolCall(event: any): boolean {
 
   if (toolName === "bash") {
     const command = (event?.input as any)?.command;
-    return typeof command === "string" && !isBashCommandAllowed(command);
+    // Delegation-first用の軽量チェックを使用（plan-mode用のisBashCommandAllowedは過剰に厳しい）
+    return typeof command === "string" && isWriteLikeBashCommand(command);
   }
 
   return false;
@@ -1164,7 +1196,6 @@ function buildSubagentPrompt(input: {
   lines.push("SUMMARY: <short summary>");
   lines.push("CLAIM: <1-sentence core claim (optional, for research/analysis tasks)>");
   lines.push("EVIDENCE: <comma-separated evidence with file:line references where possible (optional)>");
-  lines.push("CONFIDENCE: <0.00-1.00 (optional, for research/analysis tasks)>");
   lines.push("DISCUSSION: <when working with other agents: references to their outputs, agreements/disagreements, consensus (optional)>");
   lines.push("RESULT:");
   lines.push("<main answer>");
@@ -1362,6 +1393,23 @@ async function runSubagentTask(input: {
         outputFile,
       };
 
+      // Record execution for cost estimation learning
+      const executionEntry: ExecutionHistoryEntry = {
+        source: "subagent_run",
+        provider: resolvedProvider,
+        model: resolvedModel,
+        taskDescription: input.task,
+        actualDurationMs: commandResult.latencyMs,
+        actualTokens: 0, // Token count not available from print mode
+        success: true,
+        timestamp: Date.now(),
+      };
+      try {
+        getCostEstimator().recordExecution(executionEntry);
+      } catch {
+        // Ignore errors in cost estimation recording
+      }
+
       writeFileSync(
         outputFile,
         JSON.stringify(
@@ -1487,6 +1535,23 @@ async function runSubagentTask(input: {
         outputFile,
         error: message,
       };
+
+      // Record failed execution for cost estimation learning
+      const executionEntry: ExecutionHistoryEntry = {
+        source: "subagent_run",
+        provider: resolvedProvider,
+        model: resolvedModel,
+        taskDescription: input.task,
+        actualDurationMs: Date.now() - startedAtMs,
+        actualTokens: 0,
+        success: false,
+        timestamp: Date.now(),
+      };
+      try {
+        getCostEstimator().recordExecution(executionEntry);
+      } catch {
+        // Ignore errors in cost estimation recording
+      }
 
       writeFileSync(
         outputFile,
@@ -1682,6 +1747,16 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         };
       }
 
+      // Logger: start operation tracking
+      const operationId = logger.startOperation("subagent_run" as OperationType, agent.id, {
+        task: params.task,
+        params: {
+          subagentId: agent.id,
+          extraContext: params.extraContext,
+          timeoutMs: params.timeoutMs,
+        },
+      });
+
       const queueSnapshot = getRuntimeSnapshot();
       const queueWait = await waitForRuntimeOrchestrationTurn({
         toolName: "subagent_run",
@@ -1764,6 +1839,24 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
         try {
           const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+
+          // Get cost estimate for subagent execution
+          const costEstimate = getCostEstimator().estimate(
+            "subagent_run",
+            ctx.model?.provider,
+            ctx.model?.id,
+            params.task
+          );
+
+          // Debug logging for cost estimation
+          if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
+            console.log(
+              `[CostEstimation] subagent_run: agent=${agent.id} ` +
+              `estimated=(${costEstimate.estimatedDurationMs}ms, ${costEstimate.estimatedTokens}t) ` +
+              `confidence=${costEstimate.confidence.toFixed(2)} method=${costEstimate.method}`
+            );
+          }
+
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: "Subagent Run (detailed live view)",
             items: [{ id: agent.id, name: agent.name }],
@@ -1811,7 +1904,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             );
 
             storage.runs.push(result.runRecord);
-            saveStorage(ctx.cwd, storage);
+            // Use saveStorageWithPatterns for automatic pattern extraction
+            await saveStorageWithPatterns(ctx.cwd, storage);
             pi.appendEntry("subagent-run", result.runRecord);
 
             if (result.runRecord.status === "failed") {
@@ -1822,6 +1916,19 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               const failureOutcome = resolveSubagentFailureOutcome(
                 result.runRecord.error || result.runRecord.summary,
               );
+              logger.endOperation({
+                status: "failure",
+                tokensUsed: 0,
+                outputLength: result.output?.length ?? 0,
+                outputFile: result.runRecord.outputFile,
+                childOperations: 0,
+                toolCalls: 0,
+                error: {
+                  type: "subagent_error",
+                  message: result.runRecord.error ?? "Unknown error",
+                  stack: "",
+                },
+              });
               return {
                 content: [{ type: "text" as const, text: `subagent_run failed: ${result.runRecord.error}` }],
                 details: {
@@ -1841,34 +1948,24 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
             adaptivePenalty.lower();
 
-            // Run verification hook for completed subagent output
-            const verificationResult = await runSubagentVerification(
-              result.output,
-              agent.id,
-              params.task,
-              {
-                provider: ctx.model?.provider,
-                model: ctx.model?.id,
-                signal,
-              }
-            );
-
-            // Build output with verification info if available
             const outputLines = [
               `Subagent run completed: ${result.runRecord.runId}`,
               `Subagent: ${agent.id} (${agent.name})`,
               `Summary: ${result.runRecord.summary}`,
               `Latency: ${result.runRecord.latencyMs}ms`,
               `Output file: ${result.runRecord.outputFile}`,
+              "",
+              result.output,
             ];
-            if (verificationResult?.triggered && verificationResult.result) {
-              outputLines.push(`Verification: ${verificationResult.result.finalVerdict} (confidence: ${verificationResult.result.confidence.toFixed(2)})`);
-              if (verificationResult.result.warnings.length > 0) {
-                outputLines.push(`Verification warnings: ${verificationResult.result.warnings.join("; ")}`);
-              }
-            }
-            outputLines.push("", result.output);
 
+            logger.endOperation({
+              status: "success",
+              tokensUsed: 0,
+              outputLength: result.output?.length ?? 0,
+              outputFile: result.runRecord.outputFile,
+              childOperations: 0,
+              toolCalls: 0,
+            });
             return {
               content: [
                 {
@@ -1891,7 +1988,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                 queueWaitedMs: queueWait.waitedMs,
                 outcomeCode: "SUCCESS" as RunOutcomeCode,
                 retryRecommended: false,
-                verification: verificationResult?.result,
               },
             };
           } finally {
@@ -1967,6 +2063,16 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           },
         };
       }
+
+      // Logger: start parallel operation tracking
+      const parallelOperationId = logger.startOperation("subagent_run_parallel" as OperationType, activeAgents.map(a => a.id).join(","), {
+        task: params.task,
+        params: {
+          subagentIds: activeAgents.map(a => a.id),
+          extraContext: params.extraContext,
+          timeoutMs: params.timeoutMs,
+        },
+      });
 
       const queueSnapshot = getRuntimeSnapshot();
       const queueWait = await waitForRuntimeOrchestrationTurn({
@@ -2091,6 +2197,25 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
         try {
           const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+
+          // Get cost estimate for parallel subagent execution
+          const costEstimate = getCostEstimator().estimate(
+            "subagent_run_parallel",
+            ctx.model?.provider,
+            ctx.model?.id,
+            params.task
+          );
+
+          // Debug logging for cost estimation
+          if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
+            console.log(
+              `[CostEstimation] subagent_run_parallel: ` +
+              `estimated=(${costEstimate.estimatedDurationMs}ms, ${costEstimate.estimatedTokens}t) ` +
+              `agents=${activeAgents.length} appliedParallelism=${appliedParallelism} ` +
+              `confidence=${costEstimate.confidence.toFixed(2)} method=${costEstimate.method}`
+            );
+          }
+
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: `Subagent Run Parallel (detailed live view: ${activeAgents.length} agents)`,
             items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
@@ -2106,16 +2231,19 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               activeAgents,
               appliedParallelism,
               async (agent) => {
-                const result = await runSubagentTask({
-                  agent,
-                  task: params.task,
-                  extraContext: params.extraContext,
-                  timeoutMs,
-                  cwd: ctx.cwd,
-                  retryOverrides,
-                  modelProvider: ctx.model?.provider,
-                  modelId: ctx.model?.id,
-                  signal,
+                // Create child AbortController to prevent MaxListenersExceededWarning
+                const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(signal);
+                try {
+                  const result = await runSubagentTask({
+                    agent,
+                    task: params.task,
+                    extraContext: params.extraContext,
+                    timeoutMs,
+                    cwd: ctx.cwd,
+                    retryOverrides,
+                    modelProvider: ctx.model?.provider,
+                    modelId: ctx.model?.id,
+                    signal: childController.signal,
                   onStart: () => {
                     liveMonitor?.markStarted(agent.id);
                     runtimeState.activeAgents += 1;
@@ -2142,6 +2270,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                   result.runRecord.error,
                 );
                 return result;
+                } finally {
+                  cleanupAbort();
+                }
               },
               { signal },
             );
@@ -2150,7 +2281,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               storage.runs.push(result.runRecord);
               pi.appendEntry("subagent-run", result.runRecord);
             }
-            saveStorage(ctx.cwd, storage);
+            // Use saveStorageWithPatterns for automatic pattern extraction
+            await saveStorageWithPatterns(ctx.cwd, storage);
 
             const failed = results.filter((result) => result.runRecord.status === "failed");
             const pressureFailures = failed.filter((result) => {
@@ -2199,36 +2331,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               }
             }
 
-            // 検証フック: 各完了したサブエージェントの結果を検証
-            const completedResults = results.filter((r) => r.runRecord.status === "completed");
-            if (completedResults.length > 0) {
-              lines.push("");
-              lines.push("### Verification Results");
-              for (const result of completedResults) {
-                try {
-                  const verificationResult = await runSubagentVerification(
-                    result.output,
-                    result.runRecord.agentId,
-                    params.task,
-                    { provider: ctx.model?.provider, model: ctx.model?.id, signal }
-                  );
-                  if (verificationResult) {
-                    const verdict = verificationResult.result?.finalVerdict || "unknown";
-                    const confidence = verificationResult.result?.confidence ?? 0;
-                    lines.push(`- ${result.runRecord.agentId}: verdict=${verdict}, confidence=${confidence.toFixed(2)}`);
-                    if (verificationResult.result?.warnings?.length) {
-                      for (const w of verificationResult.result.warnings) {
-                        lines.push(`  - Warning: ${w}`);
-                      }
-                    }
-                  }
-                } catch (verificationError) {
-                  // 検証エラーは処理全体を失敗させない
-                  lines.push(`- ${result.runRecord.agentId}: verification error (${verificationError})`);
-                }
-              }
-            }
-
+            logger.endOperation({
+              status: parallelOutcome.outcomeCode === "SUCCESS" ? "success" : "partial",
+              tokensUsed: 0,
+              outputLength: lines.join("\n").length,
+              childOperations: results.length,
+              toolCalls: 0,
+            });
             return {
               content: [{ type: "text" as const, text: lines.join("\n") }],
               details: {
@@ -2475,21 +2584,55 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
     const proactivePrompt = `
 ---
-## Proactive Multi-Agent Execution Policy
+## Proactive Multi-Agent Execution Policy (MANDATORY)
 
-For non-trivial tasks, actively orchestrate multiple agent teams and use subagents as focused follow-ups.
+### WHY This Policy Exists
 
-Default workflow:
-- Decompose the request into 2-4 parallel tracks.
-- Prefer \`agent_team_run_parallel\` with explicit \`teamIds\`.
-- Use \`strategy: "parallel"\`, \`communicationRounds: 1\`, \`failedMemberRetryRounds: 1\` as the baseline.
-- If conflicts remain after the first pass, run one additional focused team round.
-- When subagents are needed, strongly prefer \`subagent_run_parallel\` with explicit \`subagentIds\`.
-- Use at least 2 subagents when calling \`subagent_run_parallel\` (recommended: 2-4).
-- If only one specialist is needed, use \`subagent_run\` instead of a one-agent parallel call.
+You are subject to cognitive biases that degrade your output:
 
-Do not avoid orchestration just because direct execution is possible.
-Only skip fan-out when the task is truly trivial (single obvious step).
+1. **Planning Fallacy**: You underestimate task complexity. "I can do this quickly" is usually wrong.
+2. **Cognitive Load Saturation**: Juggling requirements, design, implementation, and review means dropping details.
+3. **Single-Perspective Blindness**: One agent = one mental model. You cannot see what you cannot see.
+4. **No Self-Correction**: Working alone, you have no feedback loop to catch your own errors.
+5. **Sequential Bottleneck**: One agent doing everything is SLOWER than parallel delegation.
+
+Delegation is not bureaucracy. It is quality assurance AND speed optimization combined.
+
+### The Enforcement Mechanism
+
+Direct write/edit calls are blocked ONCE. This is a thinking prompt, not a restriction.
+
+After the block:
+- Run \`subagent_run\` or \`agent_team_run\` -> passes immediately (recommended)
+- Re-run same write/edit within 60s -> passes (confirmed intent)
+
+Use the 60-second window ONLY when you have consciously decided direct editing is appropriate.
+
+### When Direct Editing IS Appropriate
+
+- Trivial typo fixes (1-2 characters)
+- You ALREADY delegated analysis and now implement the agreed solution
+- Emergency hotfixes where speed is critical
+
+### When Direct Editing IS NOT Appropriate
+
+- Architectural decisions
+- Multi-file or multi-module changes
+- Security-sensitive code (auth, crypto, permissions)
+- Database schema or API contract changes
+- Anything a human would want code-reviewed
+
+### REQUIRED Execution Workflow
+
+1. Decompose request into 2-4 parallel tracks.
+2. Prefer \`agent_team_run_parallel\` with explicit \`teamIds\`.
+3. Use \`strategy: "parallel"\`, \`communicationRounds: 1\`, \`failedMemberRetryRounds: 1\` as baseline.
+4. If conflicts remain, run one additional focused team round.
+5. For subagents: \`subagent_run_parallel\` with 2-4 explicit \`subagentIds\`.
+6. If only one specialist is needed, use \`subagent_run\`.
+
+Do NOT skip orchestration because direct execution "seems faster". It is not.
+Only skip when the task is truly trivial (single obvious step, no architectural impact).
 ---`;
 
     return {

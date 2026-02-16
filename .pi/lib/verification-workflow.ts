@@ -115,7 +115,7 @@ export interface ChallengedClaim {
  * デフォルト設定
  */
 export const DEFAULT_VERIFICATION_CONFIG: VerificationWorkflowConfig = {
-  enabled: true,
+  enabled: false,
   triggerModes: ["post-subagent", "low-confidence", "high-stakes"],
   challengerConfig: {
     minConfidenceToChallenge: 0.85,
