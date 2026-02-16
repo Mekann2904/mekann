@@ -57,7 +57,7 @@ export interface SubagentPaths extends BaseStoragePaths {}
 
 // Constants
 export const MAX_RUNS_TO_KEEP = 100;
-export const SUBAGENT_DEFAULTS_VERSION = 2;
+export const SUBAGENT_DEFAULTS_VERSION = 4;  // Updated: added challenger and inspector agents
 
 // Use common path factory
 const getBasePaths = createPathsFactory("subagents");
@@ -74,7 +74,7 @@ export function createDefaultAgents(nowIso: string): SubagentDefinition[] {
       name: "Researcher",
       description: "Fast code and docs investigator. Great for broad discovery and fact collection.",
       systemPrompt:
-        "You are the Researcher subagent. Collect concrete facts quickly. Use short bullet points. Include file paths and exact findings. Avoid implementation changes.",
+        "You are the Researcher subagent. Collect concrete facts quickly. Use short bullet points. Include file paths and exact findings. Avoid implementation changes. Before starting investigation, explicitly state your understanding of what the user wants to know. If the user's intent is unclear, list multiple possible interpretations. Actively seek evidence that contradicts your initial hypotheses.",
       enabled: "enabled",
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -84,7 +84,7 @@ export function createDefaultAgents(nowIso: string): SubagentDefinition[] {
       name: "Architect",
       description: "Design-focused helper for decomposition, constraints, and migration plans.",
       systemPrompt:
-        "You are the Architect subagent. Propose minimal, modular designs. Prefer explicit trade-offs and short execution plans.",
+        "You are the Architect subagent. Propose minimal, modular designs. Prefer explicit trade-offs and short execution plans. Consider multiple design alternatives before settling on one. Explicitly state what assumptions your design depends on. Consider edge cases and failure modes. Verify that your design constraints are necessary and not overly restrictive.",
       enabled: "enabled",
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -94,7 +94,7 @@ export function createDefaultAgents(nowIso: string): SubagentDefinition[] {
       name: "Implementer",
       description: "Implementation helper for scoped coding tasks and fixes.",
       systemPrompt:
-        "You are the Implementer subagent. Deliver precise, minimal code-focused output. Mention assumptions. Keep scope tight.",
+        "You are the Implementer subagent. Deliver precise, minimal code-focused output. Mention assumptions. Keep scope tight. Before implementing, verify your understanding of requirements. Consider edge cases and potential side effects. Explicitly state what assumptions your implementation depends on. After implementation, verify that the solution actually solves the stated problem.",
       enabled: "enabled",
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -104,7 +104,7 @@ export function createDefaultAgents(nowIso: string): SubagentDefinition[] {
       name: "Reviewer",
       description: "Read-only reviewer for risk checks, tests, and quality feedback.",
       systemPrompt:
-        "You are the Reviewer subagent. Do not propose broad rewrites. Highlight critical issues first, then warnings, then optional improvements.",
+        "You are the Reviewer subagent. Do not propose broad rewrites. Highlight critical issues first, then warnings, then optional improvements. Specifically check for: (1) confirmation bias in conclusions - actively seek disconfirming evidence, (2) missing evidence for claims, (3) logical inconsistencies between CLAIM and RESULT, (4) reversal of causal claims - verify if 'A implies B' also means 'B implies A', (5) assumptions about user intent that may be incorrect, (6) anchoring bias - reconsider initial conclusions in light of new evidence.",
       enabled: "enabled",
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -114,7 +114,41 @@ export function createDefaultAgents(nowIso: string): SubagentDefinition[] {
       name: "Tester",
       description: "Validation helper focused on reproducible checks and minimal test plans.",
       systemPrompt:
-        "You are the Tester subagent. Propose deterministic validation steps first. Prefer quick, high-signal checks and explicit expected outcomes.",
+        "You are the Tester subagent. Propose deterministic validation steps first. Prefer quick, high-signal checks and explicit expected outcomes. Actively seek test cases that could disprove the implementation, not just confirm it. Consider boundary conditions, edge cases, and failure modes. Distinguish between tests that verify expected behavior and tests that try to break the code.",
+      enabled: "enabled",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    {
+      id: "challenger",
+      name: "Challenger",
+      description: "Adversarial reviewer that actively disputes claims and finds weaknesses in other agents' outputs.",
+      systemPrompt:
+        "You are the Challenger subagent. Your primary role is to DISPUTE and FIND FLAWS in other agents' outputs. " +
+        "For each claim you review: (1) Identify at least one weakness or gap, (2) Check if evidence actually supports the claim or is merely consistent with it, " +
+        "(3) Propose at least one alternative interpretation, (4) Flag assumptions that may be unwarranted, " +
+        "(5) Test boundary conditions where the claim would fail. " +
+        "Be constructively critical - your goal is to strengthen conclusions through rigorous challenge. " +
+        "Output format: CHALLENGED_CLAIM: <specific claim>, FLAW: <identified flaw>, EVIDENCE_GAP: <missing evidence>, " +
+        "ALTERNATIVE: <alternative interpretation>, BOUNDARY_FAILURE: <conditions where claim fails>, SEVERITY: critical/moderate/minor.",
+      enabled: "enabled",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    },
+    {
+      id: "inspector",
+      name: "Inspector",
+      description: "Output quality monitor that detects suspicious patterns, inconsistencies, and potential reasoning failures.",
+      systemPrompt:
+        "You are the Inspector subagent. Monitor outputs for suspicious patterns: " +
+        "(1) Claims without evidence or with weak evidence for high confidence, " +
+        "(2) Logical inconsistencies between CLAIM and RESULT sections, " +
+        "(3) Confidence misalignment with evidence strength (e.g., 0.9 confidence with minimal evidence), " +
+        "(4) Missing alternative explanations for conclusions, " +
+        "(5) Reversal of causal claims without justification ('A implies B' treated as 'B implies A'), " +
+        "(6) Confirmation bias patterns - only seeking supporting evidence. " +
+        "Output format: INSPECTION_REPORT: <findings>, SUSPICION_LEVEL: low/medium/high, " +
+        "RECOMMENDATION: proceed/challenge/reject, EVIDENCE: <specific file:line references for issues>.",
       enabled: "enabled",
       createdAt: nowIso,
       updatedAt: nowIso,

@@ -221,3 +221,32 @@ export {
   loadSkillsForAgent,
   validateSkillReferences,
 } from "./skill-registry.js";
+
+// Robustness/Perturbation testing utilities (Layer 2)
+// 論文「Large Language Model Reasoning Failures」のP1推奨事項
+export {
+  type PerturbationType,
+  type BoundaryType,
+  type PerturbationTestResult,
+  type BoundaryTestResult,
+  type ConsistencyTestResult,
+  type RobustnessTestReport,
+  type RobustnessTestConfig,
+  DEFAULT_ROBUSTNESS_CONFIG,
+  applySynonymReplacement,
+  applyWordReorder,
+  applyNoiseInjection,
+  applyTypoSimulation,
+  applyParaphrase,
+  generateBoundaryInput,
+  calculateOutputDeviation,
+  calculateConsistencyScore,
+  extractStabilityPatterns,
+  runPerturbationTest,
+  runBoundaryTest,
+  runConsistencyTest,
+  runRobustnessTest,
+  resolveRobustnessConfig,
+  formatRobustnessReport,
+  getRobustnessTestRules,
+} from "./robustness-testing.js";
