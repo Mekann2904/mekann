@@ -2,6 +2,7 @@
 name: harness-engineering
 description: ハーネスエンジニアリングスキル。AIエージェントの品質と信頼性を高めるための手法論。Ralph Wiggum Loop（自己レビュー）、Golden Principles（機械的ルール）、Progressive Disclosure（段階的情報開示）、Mechanical Enforcement（不変条件強制）、Garbage Collection（技術的負債解消）を統合し、継続的な品質改善を実現。
 license: MIT
+tags: [quality, reliability, best-practices]
 metadata:
   skill-version: "1.0.0"
   created-by: pi-skill-system

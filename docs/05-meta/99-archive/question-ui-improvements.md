@@ -1,3 +1,12 @@
+---
+title: Question UI改善履歴
+category: meta
+audience: [contributor]
+last_updated: 2026-02-17
+tags: [archive]
+related: []
+---
+
 # Question UI Improvements
 
 ## Summary

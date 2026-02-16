@@ -2,6 +2,7 @@
 name: search-tools
 description: 検索ツール（file_candidates, code_search, sym_index, sym_find）の効果的な使用方法を支援するスキル。エージェントが適切なツールを選択し、パフォーマンスと精度を最適化するためのベストプラクティスを提供。
 license: MIT
+tags: [search, tools, performance]
 metadata:
   skill-version: "1.0.0"
   created-by: pi-skill-system

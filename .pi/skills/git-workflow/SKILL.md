@@ -2,6 +2,7 @@
 name: git-workflow
 description: Git操作・ブランチ管理スキル。コミット作成、ブランチ操作、マージ、リベース、コンフリクト解決、履歴分析を支援。チーム開発でのバージョン管理ワークフローを効率化。
 license: MIT
+tags: [git, version-control, branching]
 metadata:
   skill-version: "1.0.0"
   created-by: pi-skill-system

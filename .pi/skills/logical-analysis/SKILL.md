@@ -2,6 +2,7 @@
 name: logical-analysis
 description: 論理的テキスト分析スキル。構造・概念・論証の3軸分析フレームワークに基づき、学術論文、技術文書、仕様書、契約書、ビジネス文書など幅広いテキストを体系的に分析。論理的整合性、概念的明確性、論証の妥当性を評価。
 license: MIT
+tags: [analysis, logic, reasoning]
 metadata:
   skill-version: "1.0.0"
   created-by: pi-skill-system

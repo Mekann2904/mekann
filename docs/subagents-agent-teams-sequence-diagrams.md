@@ -1,3 +1,12 @@
+---
+title: Subagents と Agent Teams のシーケンス図
+category: development
+audience: [developer]
+last_updated: 2026-02-17
+tags: [subagents, agent-teams, sequence-diagram, architecture]
+related: [../02-user-guide/08-subagents.md, ../02-user-guide/09-agent-teams.md]
+---
+
 # Subagents と Agent Teams のシーケンス図
 
 このドキュメントは、pi coding agentのsubagentsとagent teamsを組み合わせた場合の実行フローを詳細に示すMermaidシーケンス図集です。
@@ -167,7 +176,7 @@ sequenceDiagram
     CS->>M1: コミュニケーションコンテキスト更新
     CS->>M2: コミュニケーションコンテキスト更新
     CS->>M3: コミュニケーションコンテキスト更新
-    
+
     M1->>TA: 更新されたDISCUSSION (合意: ...明記)
     M2->>TA: 更新されたDISCUSSION (合意: ...明記)
     M3->>TA: 更新されたDISCUSSION (合意: ...明記)
@@ -183,10 +192,10 @@ createCommunicationLinksMap(members):
   1. 隣接メンバーとリンク（循環）
      - member[i] -> member[i-1]
      - member[i] -> member[i+1]
-  
+
   2. アンカーメンバーとリンク（双方向）
      - consensus, synthesizer, reviewer, lead, judge
-  
+
   3. 最大パートナー数: 3 (MAX_COMMUNICATION_PARTNERS)
 ```
 
@@ -228,7 +237,7 @@ sequenceDiagram
 
     Note over LA,RM: キャパシティ管理開始
     LA->>RM: waitForRuntimeOrchestrationTurn()
-    
+
     alt キャパシティ空きあり
         RM->>RM: tryReserveRuntimeCapacity()
         RM->>RM: runtimeCount < maxParallelSubagentsPerRun
@@ -304,7 +313,7 @@ sequenceDiagram
 adaptivePenalty.raise(reason):
   # Legacy mode: linear decay
   - penalty = min(maxPenalty, penalty + 1)
-  
+
   # Enhanced mode (default since v2.0.0): exponential decay + reason weights
   - decayMultiplier = 0.5 (exponential)
   - reasonWeights = { rate_limit: 2.0, capacity: 1.5, timeout: 1.0, schema_violation: 0.5 }
@@ -314,7 +323,7 @@ adaptivePenalty.raise(reason):
 adaptivePenalty.lower():
   # Legacy mode
   - penalty = max(0, penalty - 1)
-  
+
   # Enhanced mode
   - penalty = penalty * decayMultiplier
 
@@ -344,7 +353,7 @@ sequenceDiagram
 
     Note over PA,SA: スキル継承開始
     PA->>PA: parentSkills確認
-    
+
     alt 親からスキル継承あり
         PA->>SA: parentSkills渡し
         SA->>SA: 継承スキル受信
@@ -377,7 +386,7 @@ sequenceDiagram
     SK->>SK: スキルセクション生成
     SK-->>SA: formattedSkillsSection返却
     SA->>SA: プロンプトにスキルセクション挿入
-    
+
     Note over SA,SA: スキル適用完了
     SA->>SA: スキル指示に従い実行
 ```
@@ -435,9 +444,9 @@ sequenceDiagram
     participant EH as Error Handler
 
     Note over LA,EH: エラーハンドリング詳細検証
-    
+
     LA->>RM: waitForRuntimeOrchestrationTurn()
-    
+
     alt キャパシティ不足エラー
         RM->>RM: tryReserveRuntimeCapacity()
         RM->>RM: runtimeCount >= maxParallelSubagentsPerRun
@@ -591,13 +600,13 @@ sequenceDiagram
     participant SA4 as Subagent 4
 
     Note over LA,SA4: 並列実行制約検証
-    
+
     LA->>RM: subagent_run_parallel(subagentIds: [1,2,3,4])
     RM->>RM: getRuntimeSnapshot()
     RM->>RM: maxParallelSubagentsPerRun = 3
     RM->>RM: requestedCount = 4
     RM->>RM: allowedCount = min(4, 3) = 3
-    
+
     alt 制約内実行
         RM->>RM: tryReserveRuntimeCapacity(3)
         RM-->>LA: キャパシティ予約 (3スロット)
@@ -618,7 +627,7 @@ sequenceDiagram
         LA->>SA4: runSubagentTask()
         SA4-->>LA: 結果4
     end
-    
+
     LA->>LA: 全結果統合
     LA-->>LA: 並列実行完了
 ```

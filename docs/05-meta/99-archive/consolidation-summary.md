@@ -1,3 +1,12 @@
+---
+title: ドキュメント統合サマリー
+category: meta
+audience: [contributor]
+last_updated: 2026-02-17
+tags: [archive]
+related: []
+---
+
 # Documentation Consolidation Summary - Executed 2026-02-11
 
 ## Overview
@@ -43,12 +52,12 @@ Total: 26 active documentation files
 ## Verification
 
 All links verified:
-- ✅ docs/README.md
-- ✅ docs/02-user-guide/README.md
-- ✅ docs/03-development/README.md
-- ✅ docs/04-reference/README.md
-- ✅ docs/05-meta/README.md
-- ✅ README.md (root)
+- docs/README.md
+- docs/02-user-guide/README.md
+- docs/03-development/README.md
+- docs/04-reference/README.md
+- docs/05-meta/README.md
+- README.md (root)
 
 ## Status
 

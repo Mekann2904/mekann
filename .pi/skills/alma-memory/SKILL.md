@@ -1,8 +1,11 @@
 ---
 name: alma-memory
 description: ALMA（Automated meta-Learning of Memory designs for Agentic systems）に基づくメモリ設計スキル。実行履歴からのパターン抽出、セマンティック検索、継続的学習を支援。
-tags: [memory, meta-learning, alma, semantic-search, pattern-extraction]
-version: 1.0.0
+license: MIT
+tags: [memory, semantic-search, alma]
+metadata:
+  skill-version: "1.0.0"
+  created-by: pi-skill-system
 ---
 
 # ALMA Memory Skill
