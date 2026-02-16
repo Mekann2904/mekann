@@ -544,3 +544,45 @@ chore: いろいろ修正
 ---
 
 *このスキルはoh-my-zsh git pluginをベースに作成されました。*
+
+---
+
+## デバッグ情報
+
+### 記録されるイベント
+
+このスキルの実行時に記録されるイベント：
+
+| イベント種別 | 説明 | 記録タイミング |
+|-------------|------|---------------|
+| session_start | セッション開始 | pi起動時 |
+| task_start | タスク開始 | ユーザー依頼受付時 |
+| operation_start | 操作開始 | スキル実行開始時 |
+| operation_end | 操作終了 | スキル実行完了時 |
+| task_end | タスク終了 | タスク完了時 |
+
+### ログ確認方法
+
+```bash
+# 今日のログを確認
+cat .pi/logs/events-$(date +%Y-%m-%d).jsonl | jq .
+
+# 特定の操作を検索
+cat .pi/logs/events-*.jsonl | jq 'select(.eventType == "operation_start")'
+
+# エラーを検索
+cat .pi/logs/events-*.jsonl | jq 'select(.data.status == "failure")'
+```
+
+### トラブルシューティング
+
+| 症状 | 考えられる原因 | 確認方法 | 解決策 |
+|------|---------------|---------|--------|
+| 実行が停止する | タイムアウト | ログのdurationMsを確認 | タイムアウト設定を増やす |
+| 結果が期待と異なる | 入力パラメータの問題 | paramsを確認 | 入力を修正して再実行 |
+| エラーが発生する | リソース不足 | エラーメッセージを確認 | 設定を調整 |
+
+### 関連ファイル
+
+- 実装: `.pi/extensions/git-workflow.ts`
+- ログ: `.pi/logs/events-YYYY-MM-DD.jsonl`
