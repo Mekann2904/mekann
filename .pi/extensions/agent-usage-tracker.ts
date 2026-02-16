@@ -15,6 +15,10 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { ensureDir, toFiniteNumber } from "../lib";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+
+const logger = getLogger();
 
 type FeatureType = "tool" | "agent_run";
 type EventStatus = "ok" | "error";
@@ -957,57 +961,114 @@ export default function registerAgentUsageTracker(pi: ExtensionAPI) {
       exportPath: Type.Optional(Type.String({ description: "Optional relative export path" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const currentRuntime = ensureRuntime(ctx);
       const action = (params.action ?? "summary") as "summary" | "recent" | "reset" | "export";
+      const operationId = logger.startOperation("direct" as OperationType, `agent_usage_stats:${action}`, {
+        task: `エージェント使用量統計: ${action}`,
+        params: { action, limit: params.limit, exportPath: params.exportPath },
+      });
 
-      if (action === "reset") {
-        currentRuntime.state = createEmptyState();
-        currentRuntime.pendingTools.clear();
-        currentRuntime.activeAgentRun = undefined;
-        saveState(currentRuntime);
-        return {
-          content: [{ type: "text" as const, text: "Agent usage stats reset." }],
-          details: { ok: true, action },
-        };
-      }
+      try {
+        const currentRuntime = ensureRuntime(ctx);
 
-      if (action === "export") {
-        const exportPath = exportState(currentRuntime, params.exportPath);
-        return {
-          content: [{ type: "text" as const, text: `Exported: ${exportPath}` }],
-          details: { ok: true, action, exportPath },
-        };
-      }
+        if (action === "reset") {
+          currentRuntime.state = createEmptyState();
+          currentRuntime.pendingTools.clear();
+          currentRuntime.activeAgentRun = undefined;
+          saveState(currentRuntime);
+          const output = "Agent usage stats reset.";
+          logger.endOperation({
+            status: "success",
+            tokensUsed: 0,
+            outputLength: output.length,
+            childOperations: 0,
+            toolCalls: 0,
+          });
+          return {
+            content: [{ type: "text" as const, text: output }],
+            details: { ok: true, action },
+          };
+        }
 
-      if (action === "recent") {
+        if (action === "export") {
+          const exportPath = exportState(currentRuntime, params.exportPath);
+          const output = `Exported: ${exportPath}`;
+          logger.endOperation({
+            status: "success",
+            tokensUsed: 0,
+            outputLength: output.length,
+            outputFile: exportPath,
+            childOperations: 0,
+            toolCalls: 0,
+          });
+          return {
+            content: [{ type: "text" as const, text: output }],
+            details: { ok: true, action, exportPath },
+          };
+        }
+
+        if (action === "recent") {
+          const limit = parsePositiveInt(
+            params.limit === undefined ? undefined : String(params.limit),
+            DEFAULT_RECENT_LIMIT,
+          );
+          const report = buildRecentReport(currentRuntime.state, limit);
+          logger.endOperation({
+            status: "success",
+            tokensUsed: 0,
+            outputLength: report.length,
+            childOperations: 0,
+            toolCalls: 0,
+          });
+          return {
+            content: [{ type: "text" as const, text: report }],
+            details: {
+              action,
+              limit,
+              events: currentRuntime.state.events.slice(-limit),
+            },
+          };
+        }
+
         const limit = parsePositiveInt(
           params.limit === undefined ? undefined : String(params.limit),
-          DEFAULT_RECENT_LIMIT,
+          DEFAULT_TOP_LIMIT,
         );
+        const report = buildSummaryReport(currentRuntime.state, currentRuntime.catalog, limit);
+        logger.endOperation({
+          status: "success",
+          tokensUsed: 0,
+          outputLength: report.length,
+          childOperations: 0,
+          toolCalls: 0,
+        });
         return {
-          content: [{ type: "text" as const, text: buildRecentReport(currentRuntime.state, limit) }],
+          content: [{ type: "text" as const, text: report }],
           details: {
             action,
             limit,
-            events: currentRuntime.state.events.slice(-limit),
+            totals: currentRuntime.state.totals,
+            features: currentRuntime.state.features,
           },
         };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.endOperation({
+          status: "failure",
+          tokensUsed: 0,
+          outputLength: 0,
+          childOperations: 0,
+          toolCalls: 0,
+          error: {
+            type: error instanceof Error ? error.constructor.name : "UnknownError",
+            message: errorMessage,
+            stack: error instanceof Error ? error.stack || "" : "",
+          },
+        });
+        return {
+          content: [{ type: "text" as const, text: `エラー: ${errorMessage}` }],
+          details: { ok: false, error: errorMessage },
+        };
       }
-
-      const limit = parsePositiveInt(
-        params.limit === undefined ? undefined : String(params.limit),
-        DEFAULT_TOP_LIMIT,
-      );
-      const report = buildSummaryReport(currentRuntime.state, currentRuntime.catalog, limit);
-      return {
-        content: [{ type: "text" as const, text: report }],
-        details: {
-          action,
-          limit,
-          totals: currentRuntime.state.totals,
-          features: currentRuntime.state.features,
-        },
-      };
     },
   });
 }

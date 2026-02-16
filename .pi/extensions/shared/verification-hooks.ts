@@ -16,6 +16,10 @@ import {
   type InspectorOutput,
   type ChallengerOutput,
 } from "../../lib/verification-workflow.js";
+import { getLogger } from "../../lib/comprehensive-logger.js";
+import type { OperationType } from "../../lib/comprehensive-logger-types.js";
+
+const logger = getLogger();
 
 /**
  * 検証フック設定
@@ -84,6 +88,11 @@ export async function postSubagentVerificationHook(
     return { triggered: false };
   }
 
+  const _operationId = logger.startOperation("post_subagent_verification" as OperationType, context.agentId, {
+    task: context.task,
+    params: { agentId: context.agentId, confidence },
+  });
+
   const verificationContext: VerificationContext = {
     task: context.task,
     triggerMode: "post-subagent",
@@ -93,6 +102,13 @@ export async function postSubagentVerificationHook(
   const { trigger, reason } = shouldTriggerVerification(output, confidence, verificationContext);
   
   if (!trigger) {
+    logger.endOperation({
+      status: "success",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+    });
     return { triggered: false };
   }
 
@@ -138,6 +154,14 @@ export async function postSubagentVerificationHook(
       verificationContext
     );
 
+    logger.endOperation({
+      status: result.finalVerdict === "pass" ? "success" : result.finalVerdict === "fail" ? "failure" : "partial",
+      tokensUsed: 0,
+      outputLength: output.length,
+      childOperations: (inspectorRun ? 1 : 0) + (challengerRun ? 1 : 0),
+      toolCalls: 0,
+    });
+
     return {
       triggered: true,
       result,
@@ -146,6 +170,18 @@ export async function postSubagentVerificationHook(
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: {
+        type: "verification_error",
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack || "" : "",
+      },
+    });
     return {
       triggered: true,
       error: `Verification failed: ${errorMessage}`,
@@ -175,6 +211,11 @@ export async function postTeamVerificationHook(
     return { triggered: false };
   }
 
+  const _operationId = logger.startOperation("post_team_verification" as OperationType, context.teamId, {
+    task: context.task,
+    params: { teamId: context.teamId, confidence, memberCount: context.memberOutputs.length },
+  });
+
   const verificationContext: VerificationContext = {
     task: context.task,
     triggerMode: "post-team",
@@ -188,6 +229,13 @@ export async function postTeamVerificationHook(
     config.mode === "strict";
 
   if (!shouldVerify) {
+    logger.endOperation({
+      status: "success",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+    });
     return { triggered: false };
   }
 
@@ -236,6 +284,14 @@ export async function postTeamVerificationHook(
       verificationContext
     );
 
+    logger.endOperation({
+      status: result.finalVerdict === "pass" ? "success" : result.finalVerdict === "fail" ? "failure" : "partial",
+      tokensUsed: 0,
+      outputLength: aggregatedOutput.length,
+      childOperations: (inspectorRun ? 1 : 0) + (challengerRun ? 1 : 0),
+      toolCalls: 0,
+    });
+
     return {
       triggered: true,
       result,
@@ -244,6 +300,18 @@ export async function postTeamVerificationHook(
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: {
+        type: "verification_error",
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack || "" : "",
+      },
+    });
     return {
       triggered: true,
       error: `Verification failed: ${errorMessage}`,

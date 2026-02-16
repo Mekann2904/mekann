@@ -13,6 +13,10 @@ import { randomBytes } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
 import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, computeModelTimeoutMs } from "../lib";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+
+const logger = getLogger();
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 import {
   detectSemanticRepetition,
@@ -379,6 +383,17 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
       const thinkingLevel = (pi.getThinkingLevel() || "off") as ThinkingLevel;
       const indicator = startLoopActivityIndicator(ctx, normalized.config.maxIterations);
 
+      const _operationId = logger.startOperation("loop_run" as OperationType, task.slice(0, 60), {
+        task: params.task,
+        params: {
+          maxIterations: normalized.config.maxIterations,
+          timeoutMs: normalized.config.timeoutMs,
+          goal: params.goal,
+          verificationCommand: params.verifyCommand,
+          referenceCount: loadedReferences.references.length,
+        },
+      });
+
       try {
         const goal = normalizeOptionalText(params.goal);
         const verificationCommand = normalizeOptionalText(params.verifyCommand);
@@ -406,6 +421,14 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
         lastRunSummary = run.summary;
         pi.appendEntry("loop-last-run", run.summary);
 
+        logger.endOperation({
+          status: run.summary.completed ? "success" : "partial",
+          tokensUsed: 0,
+          outputLength: run.finalOutput.length,
+          childOperations: run.iterations.length,
+          toolCalls: 0,
+        });
+
         const text = formatLoopResultText(run.summary, run.finalOutput, loadedReferences.warnings);
         return {
           content: [{ type: "text" as const, text }],
@@ -423,6 +446,18 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
         };
       } catch (error) {
         const message = toErrorMessage(error);
+        logger.endOperation({
+          status: "failure",
+          tokensUsed: 0,
+          outputLength: 0,
+          childOperations: 0,
+          toolCalls: 0,
+          error: {
+            type: "loop_error",
+            message,
+            stack: error instanceof Error ? error.stack || "" : "",
+          },
+        });
         return {
           content: [{ type: "text" as const, text: `loop_run failed: ${message}` }],
           details: { error: message },

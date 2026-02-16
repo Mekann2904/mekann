@@ -22,7 +22,6 @@ import {
 
 // Import shared plan mode utilities
 import {
-	isBashCommandAllowed,
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
@@ -93,6 +92,10 @@ import {
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
 } from "../lib";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+
+const logger = getLogger();
 import {
   type SubagentDefinition,
   type SubagentRunRecord,
@@ -999,6 +1002,96 @@ function isDocumentationPath(pathValue: string): boolean {
   );
 }
 
+/**
+ * Delegation-first用のbash書き込みチェック。
+ * plan-mode用のisBashCommandAllowedとは異なり、実際にファイルを変更するコマンドのみを検出する。
+ * 検索・読み取り系コマンドは全て通す（grep, cat, ls, find等）。
+ * 誤検出を防ぐため、引用符内の文字は無視する簡易パーサーを使用。
+ */
+function isWriteLikeBashCommand(command: string): boolean {
+  const trimmed = command.trim();
+  if (!trimmed) return false;
+
+  // 引用符内を除外したコマンド部分を抽出
+  const commandWithoutQuotes = removeQuotedStrings(trimmed);
+
+  // 1. リダイレクト書き込み: >, >> (引用符外のみ)
+  if (/[^>]>[^>]|>>/.test(commandWithoutQuotes)) {
+    return true;
+  }
+
+  // 2. teeコマンド（パイプライン内の書き込み）
+  if (/\btee\b/.test(commandWithoutQuotes)) {
+    return true;
+  }
+
+  // 3. ファイル操作コマンド
+  const firstWord = trimmed.split(/\s+/)[0];
+  const fileWriteCommands = new Set([
+    "rm", "rmdir", "mv", "cp", "touch", "mkdir", "chmod", "chown",
+    "ln", "truncate", "dd", "shred",
+  ]);
+  if (fileWriteCommands.has(firstWord)) {
+    return true;
+  }
+
+  // 4. パッケージマネージャ（インストール/アンインストール）
+  const packageManagers = new Set([
+    "npm", "yarn", "pnpm", "pip", "pip3", "poetry", "cargo", "composer",
+    "apt", "apt-get", "yum", "dnf", "brew", "pacman",
+  ]);
+  if (packageManagers.has(firstWord)) {
+    return true;
+  }
+
+  // 5. Git書き込みコマンド
+  if (firstWord === "git") {
+    const gitWriteSubcommands = new Set([
+      "add", "commit", "push", "pull", "fetch", "merge",
+      "rebase", "reset", "checkout", "cherry-pick", "revert",
+      "stash", "apply", "am", "rm", "mv",
+    ]);
+    const secondWord = trimmed.split(/\s+/)[1];
+    if (secondWord && gitWriteSubcommands.has(secondWord)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 引用符（', "）で囲まれた部分を除外する。
+ * 検索パターン内の文字が誤検出されるのを防ぐ。
+ */
+function removeQuotedStrings(input: string): string {
+  // シングルクォートとダブルクォート内を空文字に置換
+  // バッククォートはコマンド置換なので残す
+  let result = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    const prevChar = i > 0 ? input[i - 1] : "";
+
+    if (char === "'" && prevChar !== "\\" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (char === '"' && prevChar !== "\\" && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote) {
+      result += char;
+    }
+  }
+
+  return result;
+}
+
 function isWriteLikeToolCall(event: any): boolean {
   const toolName = String(event?.toolName || "").toLowerCase();
   if (toolName === "edit" || toolName === "write") {
@@ -1012,7 +1105,8 @@ function isWriteLikeToolCall(event: any): boolean {
 
   if (toolName === "bash") {
     const command = (event?.input as any)?.command;
-    return typeof command === "string" && !isBashCommandAllowed(command);
+    // Delegation-first用の軽量チェックを使用（plan-mode用のisBashCommandAllowedは過剰に厳しい）
+    return typeof command === "string" && isWriteLikeBashCommand(command);
   }
 
   return false;
@@ -1683,6 +1777,16 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         };
       }
 
+      // Logger: start operation tracking
+      const operationId = logger.startOperation("subagent_run" as OperationType, agent.id, {
+        task: params.task,
+        params: {
+          subagentId: agent.id,
+          extraContext: params.extraContext,
+          timeoutMs: params.timeoutMs,
+        },
+      });
+
       const queueSnapshot = getRuntimeSnapshot();
       const queueWait = await waitForRuntimeOrchestrationTurn({
         toolName: "subagent_run",
@@ -1824,6 +1928,19 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               const failureOutcome = resolveSubagentFailureOutcome(
                 result.runRecord.error || result.runRecord.summary,
               );
+              logger.endOperation({
+                status: "failure",
+                tokensUsed: 0,
+                outputLength: result.output?.length ?? 0,
+                outputFile: result.runRecord.outputFile,
+                childOperations: 0,
+                toolCalls: 0,
+                error: {
+                  type: "subagent_error",
+                  message: result.runRecord.error ?? "Unknown error",
+                  stack: "",
+                },
+              });
               return {
                 content: [{ type: "text" as const, text: `subagent_run failed: ${result.runRecord.error}` }],
                 details: {
@@ -1871,6 +1988,14 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             }
             outputLines.push("", result.output);
 
+            logger.endOperation({
+              status: "success",
+              tokensUsed: 0,
+              outputLength: result.output?.length ?? 0,
+              outputFile: result.runRecord.outputFile,
+              childOperations: 0,
+              toolCalls: 0,
+            });
             return {
               content: [
                 {
@@ -1969,6 +2094,16 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           },
         };
       }
+
+      // Logger: start parallel operation tracking
+      const parallelOperationId = logger.startOperation("subagent_run_parallel" as OperationType, activeAgents.map(a => a.id).join(","), {
+        task: params.task,
+        params: {
+          subagentIds: activeAgents.map(a => a.id),
+          extraContext: params.extraContext,
+          timeoutMs: params.timeoutMs,
+        },
+      });
 
       const queueSnapshot = getRuntimeSnapshot();
       const queueWait = await waitForRuntimeOrchestrationTurn({
@@ -2232,6 +2367,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               }
             }
 
+            logger.endOperation({
+              status: parallelOutcome.outcomeCode === "SUCCESS" ? "success" : "partial",
+              tokensUsed: 0,
+              outputLength: lines.join("\n").length,
+              childOperations: results.length,
+              toolCalls: 0,
+            });
             return {
               content: [{ type: "text" as const, text: lines.join("\n") }],
               details: {
@@ -2478,21 +2620,55 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
     const proactivePrompt = `
 ---
-## Proactive Multi-Agent Execution Policy
+## Proactive Multi-Agent Execution Policy (MANDATORY)
 
-For non-trivial tasks, actively orchestrate multiple agent teams and use subagents as focused follow-ups.
+### WHY This Policy Exists
 
-Default workflow:
-- Decompose the request into 2-4 parallel tracks.
-- Prefer \`agent_team_run_parallel\` with explicit \`teamIds\`.
-- Use \`strategy: "parallel"\`, \`communicationRounds: 1\`, \`failedMemberRetryRounds: 1\` as the baseline.
-- If conflicts remain after the first pass, run one additional focused team round.
-- When subagents are needed, strongly prefer \`subagent_run_parallel\` with explicit \`subagentIds\`.
-- Use at least 2 subagents when calling \`subagent_run_parallel\` (recommended: 2-4).
-- If only one specialist is needed, use \`subagent_run\` instead of a one-agent parallel call.
+You are subject to cognitive biases that degrade your output:
 
-Do not avoid orchestration just because direct execution is possible.
-Only skip fan-out when the task is truly trivial (single obvious step).
+1. **Planning Fallacy**: You underestimate task complexity. "I can do this quickly" is usually wrong.
+2. **Cognitive Load Saturation**: Juggling requirements, design, implementation, and review means dropping details.
+3. **Single-Perspective Blindness**: One agent = one mental model. You cannot see what you cannot see.
+4. **No Self-Correction**: Working alone, you have no feedback loop to catch your own errors.
+5. **Sequential Bottleneck**: One agent doing everything is SLOWER than parallel delegation.
+
+Delegation is not bureaucracy. It is quality assurance AND speed optimization combined.
+
+### The Enforcement Mechanism
+
+Direct write/edit calls are blocked ONCE. This is a thinking prompt, not a restriction.
+
+After the block:
+- Run \`subagent_run\` or \`agent_team_run\` -> passes immediately (recommended)
+- Re-run same write/edit within 60s -> passes (confirmed intent)
+
+Use the 60-second window ONLY when you have consciously decided direct editing is appropriate.
+
+### When Direct Editing IS Appropriate
+
+- Trivial typo fixes (1-2 characters)
+- You ALREADY delegated analysis and now implement the agreed solution
+- Emergency hotfixes where speed is critical
+
+### When Direct Editing IS NOT Appropriate
+
+- Architectural decisions
+- Multi-file or multi-module changes
+- Security-sensitive code (auth, crypto, permissions)
+- Database schema or API contract changes
+- Anything a human would want code-reviewed
+
+### REQUIRED Execution Workflow
+
+1. Decompose request into 2-4 parallel tracks.
+2. Prefer \`agent_team_run_parallel\` with explicit \`teamIds\`.
+3. Use \`strategy: "parallel"\`, \`communicationRounds: 1\`, \`failedMemberRetryRounds: 1\` as baseline.
+4. If conflicts remain, run one additional focused team round.
+5. For subagents: \`subagent_run_parallel\` with 2-4 explicit \`subagentIds\`.
+6. If only one specialist is needed, use \`subagent_run\`.
+
+Do NOT skip orchestration because direct execution "seems faster". It is not.
+Only skip when the task is truly trivial (single obvious step, no architectural impact).
 ---`;
 
     return {

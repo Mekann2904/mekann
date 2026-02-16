@@ -94,6 +94,10 @@ import {
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
 } from "../lib";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+
+const logger = getLogger();
 import {
   type TeamEnabledState,
   type TeamStrategy,
@@ -3366,6 +3370,18 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         };
       }
 
+      // Logger: start team operation tracking
+      const teamOperationId = logger.startOperation("team_run" as OperationType, team.id, {
+        task: params.task,
+        params: {
+          teamId: team.id,
+          strategy: params.strategy,
+          sharedContext: params.sharedContext,
+          communicationRounds: params.communicationRounds,
+          timeoutMs: params.timeoutMs,
+        },
+      });
+
       const queueSnapshot = getRuntimeSnapshot();
       const queueWait = await waitForRuntimeOrchestrationTurn({
         toolName: "agent_team_run",
@@ -3659,6 +3675,14 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             outputLines.push(formatVerificationResult(verificationResult));
           }
 
+          logger.endOperation({
+            status: teamOutcome.outcomeCode === "SUCCESS" ? "success" : "partial",
+            tokensUsed: 0,
+            outputLength: outputLines.join("\n").length,
+            outputFile: runRecord.outputFile,
+            childOperations: memberResults.length,
+            toolCalls: 0,
+          });
           return {
             content: [
               {
@@ -3725,6 +3749,18 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             error: errorMessage,
           });
           const failureOutcome = resolveTeamFailureOutcome(errorMessage);
+          logger.endOperation({
+            status: "failure",
+            tokensUsed: 0,
+            outputLength: 0,
+            childOperations: 0,
+            toolCalls: 0,
+            error: {
+              type: "team_error",
+              message: errorMessage,
+              stack: "",
+            },
+          });
           return {
             content: [
               {
@@ -3851,6 +3887,18 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           },
         };
       }
+
+      // Logger: start parallel team operation tracking
+      const parallelTeamOperationId = logger.startOperation("team_run" as OperationType, enabledTeams.map(t => t.id).join(","), {
+        task: params.task,
+        params: {
+          teamIds: enabledTeams.map(t => t.id),
+          strategy: params.strategy,
+          sharedContext: params.sharedContext,
+          communicationRounds: params.communicationRounds,
+          timeoutMs: params.timeoutMs,
+        },
+      });
 
       const queueSnapshot = getRuntimeSnapshot();
       const queueWait = await waitForRuntimeOrchestrationTurn({
@@ -4360,6 +4408,13 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           }
         }
 
+        logger.endOperation({
+          status: parallelOutcome.outcomeCode === "SUCCESS" ? "success" : "partial",
+          tokensUsed: 0,
+          outputLength: lines.join("\n").length,
+          childOperations: results.length,
+          toolCalls: 0,
+        });
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
           details: {

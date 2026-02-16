@@ -16,6 +16,9 @@ import {
   type BaseStoragePaths,
 } from "../../lib/storage-base.js";
 import { atomicWriteTextFile, withFileLock } from "../../lib/storage-lock.js";
+import { getLogger } from "../../lib/comprehensive-logger.js";
+
+const logger = getLogger();
 
 // Re-export types for convenience
 export type AgentEnabledState = "enabled" | "disabled";
@@ -44,6 +47,9 @@ export interface SubagentRunRecord {
   latencyMs: number;
   outputFile: string;
   error?: string;
+  // 相関IDフィールド（後方互換性のためオプション）
+  correlationId?: string;
+  parentEventId?: string;
 }
 
 export interface SubagentStorage {
@@ -285,7 +291,17 @@ export function saveStorage(cwd: string, storage: SubagentStorage): void {
   };
   withFileLock(paths.storageFile, () => {
     const merged = mergeSubagentStorageWithDisk(paths.storageFile, normalized);
-    atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
+    const content = JSON.stringify(merged, null, 2);
+    atomicWriteTextFile(paths.storageFile, content);
+    
+    // 状態変更をログ記録
+    logger.logStateChange({
+      entityType: 'storage',
+      entityPath: paths.storageFile,
+      changeType: existsSync(paths.storageFile) ? 'update' : 'create',
+      afterContent: content,
+    });
+    
     pruneRunArtifacts(paths, merged.runs);
   });
 }

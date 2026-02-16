@@ -17,6 +17,9 @@ import {
   type BaseStoragePaths,
 } from "../../lib/storage-base.js";
 import { atomicWriteTextFile, withFileLock } from "../../lib/storage-lock.js";
+import { getLogger } from "../../lib/comprehensive-logger.js";
+
+const logger = getLogger();
 
 // Re-export types
 export type TeamEnabledState = "enabled" | "disabled";
@@ -151,6 +154,9 @@ export interface TeamRunRecord {
     uSys: number;
     collapseSignals: string[];
   };
+  // 相関IDフィールド（後方互換性のためオプション）
+  correlationId?: string;
+  parentEventId?: string;
 }
 
 export interface TeamStorage {
@@ -253,7 +259,17 @@ export function saveStorage(cwd: string, storage: TeamStorage): void {
   };
   withFileLock(paths.storageFile, () => {
     const merged = mergeTeamStorageWithDisk(paths.storageFile, normalized);
-    atomicWriteTextFile(paths.storageFile, JSON.stringify(merged, null, 2));
+    const content = JSON.stringify(merged, null, 2);
+    atomicWriteTextFile(paths.storageFile, content);
+    
+    // 状態変更をログ記録
+    logger.logStateChange({
+      entityType: 'storage',
+      entityPath: paths.storageFile,
+      changeType: existsSync(paths.storageFile) ? 'update' : 'create',
+      afterContent: content,
+    });
+    
     pruneRunArtifacts(paths, merged.runs);
   });
 }

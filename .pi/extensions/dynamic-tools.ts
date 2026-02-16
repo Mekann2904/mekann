@@ -35,6 +35,10 @@ import {
 import { isHighStakesTask } from "../lib/verification-workflow.js";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
+
+const logger = getLogger();
 
 // ============================================================================
 // Types
@@ -260,16 +264,38 @@ async function executeCode(code: string): Promise<ToolExecutionResult> {
 async function handleCreateTool(
   input: CreateToolInput
 ): Promise<string> {
-  const registry = getRegistry();
+  const operationId = logger.startOperation("direct" as OperationType, `create_tool:${input.name}`, {
+    task: `動的ツール生成: ${input.name}`,
+    params: { name: input.name, description: input.description },
+  });
 
-  // 名前の検証
-  if (!input.name || input.name.trim().length === 0) {
-    return "エラー: ツール名は必須です";
-  }
+  try {
+    const registry = getRegistry();
 
-  if (!/^[a-z][a-z0-9_-]*$/i.test(input.name)) {
-    return "エラー: ツール名は英字で始まり、英数字、アンダースコア、ハイフンのみ使用可能です";
-  }
+    // 名前の検証
+    if (!input.name || input.name.trim().length === 0) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "validation_error", message: "ツール名は必須です", stack: "" },
+      });
+      return "エラー: ツール名は必須です";
+    }
+
+    if (!/^[a-z][a-z0-9_-]*$/i.test(input.name)) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "validation_error", message: "ツール名の形式が不正です", stack: "" },
+      });
+      return "エラー: ツール名は英字で始まり、英数字、アンダースコア、ハイフンのみ使用可能です";
+    }
 
   // 高リスク操作の検出（コード内容をチェック）
   const codeDescription = `${input.name}: ${input.description}`;
@@ -350,6 +376,14 @@ async function handleCreateTool(
   });
 
   if (!result.success) {
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: { type: "registration_error", message: result.error || "Unknown error", stack: "" },
+    });
     return `エラー: ${result.error}`;
   }
 
@@ -359,7 +393,7 @@ async function handleCreateTool(
     ? `\n警告:\n${warnings.map(w => `- ${w}`).join("\n")}`
     : "";
 
-  return `
+  const output = `
 ツール「${input.name}」を作成しました。
 
 ツールID: ${result.toolId}
@@ -383,6 +417,32 @@ run_dynamic_tool({ tool_id: "${result.toolId}", parameters: { /* ... */ } })
 \`\`\`
 ${warningText}
 `;
+
+  logger.endOperation({
+    status: "success",
+    tokensUsed: 0,
+    outputLength: output.length,
+    childOperations: 0,
+    toolCalls: 0,
+  });
+
+  return output;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: {
+        type: error instanceof Error ? error.constructor.name : "UnknownError",
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack || "" : "",
+      },
+    });
+    return `エラー: ${errorMessage}`;
+  }
 }
 
 /**
@@ -391,78 +451,110 @@ ${warningText}
 async function handleRunDynamicTool(
   input: RunDynamicToolInput
 ): Promise<string> {
-  const registry = getRegistry();
-
-  // ツールを検索
-  let tool: DynamicToolDefinition | undefined;
-  
-  if (input.tool_id) {
-    tool = registry.getById(input.tool_id);
-  } else if (input.tool_name) {
-    tool = registry.findByName(input.tool_name);
-  }
-
-  if (!tool) {
-    return `エラー: ツールが見つかりません (${input.tool_id || input.tool_name})`;
-  }
-
-  // 必須パラメータのチェック
-  const requiredParams = tool.parameters.filter(p => p.required).map(p => p.name);
-  const missingParams = requiredParams.filter(
-    p => !(p in input.parameters)
-  );
-
-  if (missingParams.length > 0) {
-    return `エラー: 必須パラメータが不足しています: ${missingParams.join(", ")}`;
-  }
-
-  // ツールを実行
-  const timeoutMs = input.timeout_ms || 30000;
-  const result = await executeDynamicTool(tool, input.parameters, timeoutMs);
-
-  // 使用を記録
-  registry.recordUsage(tool.id);
-  recordExecutionMetrics(tool.id, {
-    executionTimeMs: result.executionTimeMs,
-    success: result.success,
-    errorType: result.error ? "execution_error" : undefined,
-    errorMessage: result.error,
-    inputParameters: input.parameters,
+  const targetName = input.tool_id || input.tool_name || "unknown";
+  const operationId = logger.startOperation("direct" as OperationType, `run_dynamic_tool:${targetName}`, {
+    task: `動的ツール実行: ${targetName}`,
+    params: { tool_id: input.tool_id, tool_name: input.tool_name, parameters: input.parameters },
   });
 
-  // 監査ログに記録
-  writeAuditLog({
-    timestamp: new Date().toISOString(),
-    action: "run_dynamic_tool",
-    toolId: tool.id,
-    toolName: tool.name,
-    success: result.success,
-    details: {
+  try {
+    const registry = getRegistry();
+
+    // ツールを検索
+    let tool: DynamicToolDefinition | undefined;
+
+    if (input.tool_id) {
+      tool = registry.getById(input.tool_id);
+    } else if (input.tool_name) {
+      tool = registry.findByName(input.tool_name);
+    }
+
+    if (!tool) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "not_found_error", message: "ツールが見つかりません", stack: "" },
+      });
+      return `エラー: ツールが見つかりません (${input.tool_id || input.tool_name})`;
+    }
+
+    // 必須パラメータのチェック
+    const requiredParams = tool.parameters.filter(p => p.required).map(p => p.name);
+    const missingParams = requiredParams.filter(
+      p => !(p in input.parameters)
+    );
+
+    if (missingParams.length > 0) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "validation_error", message: `必須パラメータが不足: ${missingParams.join(", ")}`, stack: "" },
+      });
+      return `エラー: 必須パラメータが不足しています: ${missingParams.join(", ")}`;
+    }
+
+    // ツールを実行
+    const timeoutMs = input.timeout_ms || 30000;
+    const result = await executeDynamicTool(tool, input.parameters, timeoutMs);
+
+    // 使用を記録
+    registry.recordUsage(tool.id);
+    recordExecutionMetrics(tool.id, {
       executionTimeMs: result.executionTimeMs,
-      parameters: input.parameters,
-    },
-    error: result.error,
-  });
+      success: result.success,
+      errorType: result.error ? "execution_error" : undefined,
+      errorMessage: result.error,
+      inputParameters: input.parameters,
+    });
 
-  // 結果をフォーマット
-  if (!result.success) {
-    return `
+    // 監査ログに記録
+    writeAuditLog({
+      timestamp: new Date().toISOString(),
+      action: "run_dynamic_tool",
+      toolId: tool.id,
+      toolName: tool.name,
+      success: result.success,
+      details: {
+        executionTimeMs: result.executionTimeMs,
+        parameters: input.parameters,
+      },
+      error: result.error,
+    });
+
+    // 結果をフォーマット
+    if (!result.success) {
+      const errorOutput = `
 ツール「${tool.name}」の実行に失敗しました。
 
 実行時間: ${result.executionTimeMs}ms
 エラー: ${result.error}
 `;
-  }
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: errorOutput.length,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "execution_error", message: result.error || "Unknown error", stack: "" },
+      });
+      return errorOutput;
+    }
 
-  // 結果を整形
-  let resultText = "";
-  if (typeof result.result === "string") {
-    resultText = result.result;
-  } else if (result.result !== undefined) {
-    resultText = JSON.stringify(result.result, null, 2);
-  }
+    // 結果を整形
+    let resultText = "";
+    if (typeof result.result === "string") {
+      resultText = result.result;
+    } else if (result.result !== undefined) {
+      resultText = JSON.stringify(result.result, null, 2);
+    }
 
-  return `
+    const output = `
 ツール「${tool.name}」の実行が完了しました。
 
 実行時間: ${result.executionTimeMs}ms
@@ -470,6 +562,32 @@ async function handleRunDynamicTool(
 結果:
 ${resultText}
 `;
+
+    logger.endOperation({
+      status: "success",
+      tokensUsed: 0,
+      outputLength: output.length,
+      childOperations: 0,
+      toolCalls: 0,
+    });
+
+    return output;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: {
+        type: error instanceof Error ? error.constructor.name : "UnknownError",
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack || "" : "",
+      },
+    });
+    return `エラー: ${errorMessage}`;
+  }
 }
 
 /**
@@ -524,46 +642,102 @@ async function handleListDynamicTools(
 async function handleDeleteDynamicTool(
   input: DeleteDynamicToolInput
 ): Promise<string> {
-  const registry = getRegistry();
-
-  if (!input.confirm) {
-    return `エラー: 削除を確認するには confirm: true を指定してください`;
-  }
-
-  // ツールを検索
-  let tool: DynamicToolDefinition | undefined;
-  
-  if (input.tool_id) {
-    tool = registry.getById(input.tool_id);
-  } else if (input.tool_name) {
-    tool = registry.findByName(input.tool_name);
-  }
-
-  if (!tool) {
-    return `エラー: ツールが見つかりません (${input.tool_id || input.tool_name})`;
-  }
-
-  const toolName = tool.name;
-  const toolId = tool.id;
-
-  // ツールを削除
-  const result = registry.delete(toolId);
-
-  // 監査ログに記録
-  writeAuditLog({
-    timestamp: new Date().toISOString(),
-    action: "delete_dynamic_tool",
-    toolId: toolId,
-    toolName: toolName,
-    success: result.success,
-    error: result.error,
+  const targetName = input.tool_id || input.tool_name || "unknown";
+  const operationId = logger.startOperation("direct" as OperationType, `delete_dynamic_tool:${targetName}`, {
+    task: `動的ツール削除: ${targetName}`,
+    params: { tool_id: input.tool_id, tool_name: input.tool_name, confirm: input.confirm },
   });
 
-  if (!result.success) {
-    return `エラー: ${result.error}`;
-  }
+  try {
+    const registry = getRegistry();
 
-  return `ツール「${toolName}」(${toolId})を削除しました。`;
+    if (!input.confirm) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "validation_error", message: "削除確認が必要です", stack: "" },
+      });
+      return `エラー: 削除を確認するには confirm: true を指定してください`;
+    }
+
+    // ツールを検索
+    let tool: DynamicToolDefinition | undefined;
+
+    if (input.tool_id) {
+      tool = registry.getById(input.tool_id);
+    } else if (input.tool_name) {
+      tool = registry.findByName(input.tool_name);
+    }
+
+    if (!tool) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "not_found_error", message: "ツールが見つかりません", stack: "" },
+      });
+      return `エラー: ツールが見つかりません (${input.tool_id || input.tool_name})`;
+    }
+
+    const toolName = tool.name;
+    const toolId = tool.id;
+
+    // ツールを削除
+    const result = registry.delete(toolId);
+
+    // 監査ログに記録
+    writeAuditLog({
+      timestamp: new Date().toISOString(),
+      action: "delete_dynamic_tool",
+      toolId: toolId,
+      toolName: toolName,
+      success: result.success,
+      error: result.error,
+    });
+
+    if (!result.success) {
+      logger.endOperation({
+        status: "failure",
+        tokensUsed: 0,
+        outputLength: 0,
+        childOperations: 0,
+        toolCalls: 0,
+        error: { type: "delete_error", message: result.error || "Unknown error", stack: "" },
+      });
+      return `エラー: ${result.error}`;
+    }
+
+    const output = `ツール「${toolName}」(${toolId})を削除しました。`;
+    logger.endOperation({
+      status: "success",
+      tokensUsed: 0,
+      outputLength: output.length,
+      childOperations: 0,
+      toolCalls: 0,
+    });
+
+    return output;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.endOperation({
+      status: "failure",
+      tokensUsed: 0,
+      outputLength: 0,
+      childOperations: 0,
+      toolCalls: 0,
+      error: {
+        type: error instanceof Error ? error.constructor.name : "UnknownError",
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack || "" : "",
+      },
+    });
+    return `エラー: ${errorMessage}`;
+  }
 }
 
 /**
