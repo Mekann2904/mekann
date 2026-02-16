@@ -25,6 +25,146 @@ related: [../README.md, ./01-extensions.md, ./03-rsa-solve.md]
 
 ---
 
+## 実行フロー
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant Pi as pi
+    participant Loop as loop.ts
+    participant Model as LLM Model
+    participant Verify as 検証コマンド
+    participant Log as ログファイル
+
+    User->>Pi: loop_run(task, maxIterations, goal, verifyCommand)
+    Pi->>Loop: ツール呼び出し
+    
+    Loop->>Loop: normalizeLoopConfig()
+    Note over Loop: 設定正規化<br/>maxIterations=4<br/>timeoutMs=60000
+    
+    Loop->>Loop: loadReferences()
+    Note over Loop: 参照文献読み込み<br/>R1, R2, ... にID割り当て
+    
+    Loop->>Log: run_start ログ書き込み
+    
+    loop 反復処理 (1 to maxIterations)
+        Loop->>Loop: buildIterationPrompt()
+        Note over Loop: プロンプト構築<br/>- タスク<br/>- 前回出力<br/>- 検証フィードバック
+        
+        Loop->>Model: callModelViaPi(prompt)
+        
+        alt タイムアウト
+            Model-->>Loop: Error: Timeout
+            Loop->>Loop: consecutiveFailures++
+        else 成功
+            Model-->>Loop: output
+            Loop->>Loop: consecutiveFailures = 0
+        end
+        
+        Loop->>Loop: parseLoopContract(output)
+        Note over Loop: LOOP_JSONブロック解析<br/>- status: continue/done<br/>- goal_status: met/not_met<br/>- citations: [R1, R2]
+        
+        opt verifyCommand指定
+            alt 検証ポリシー条件満たす
+                Loop->>Verify: 検証コマンド実行
+                Verify-->>Loop: passed/failed, exitCode
+            end
+        end
+        
+        Loop->>Loop: validateIteration()
+        Note over Loop: 検証エラー収集<br/>- 引用チェック<br/>- 目標達成チェック
+        
+        Loop->>Log: iteration ログ書き込み
+        
+        alt status=done AND 検証エラーなし
+            Note over Loop: ループ完了<br/>stopReason=model_done
+        else consecutiveFailures >= 2
+            Note over Loop: 連続エラーで停止<br/>stopReason=iteration_error
+        else 停滞検出
+            Note over Loop: 出力が変化なし<br/>stopReason=stagnation
+        end
+        
+        Loop->>Loop: 前回出力更新<br/>検証フィードバック更新
+    end
+    
+    Loop->>Loop: サマリ生成
+    Note over Loop: - completed<br/>- stopReason<br/>- iterationCount<br/>- lastGoalStatus
+    
+    Loop->>Log: run_done ログ書き込み
+    Loop->>Log: summary.json 保存
+    
+    Loop-->>Pi: summary, finalOutput, iterations
+    Pi-->>User: ループ実行結果
+```
+
+### 検証ポリシー判定フロー
+
+```mermaid
+flowchart TD
+    Start[検証コマンド指定?] --> |No| Skip[検証スキップ]
+    Start --> |Yes| Policy{検証ポリシー}
+    
+    Policy --> |always| Always[毎回実行]
+    Policy --> |done_only| DoneCheck{status=done?}
+    Policy --> |every_n| NCheck{iteration % N == 0?}
+    
+    DoneCheck --> |Yes| Run[検証実行]
+    DoneCheck --> |No| Skip
+    NCheck --> |Yes| Run
+    NCheck --> |No| Skip
+    
+    Run --> Allowlist{許可リスト確認}
+    Allowlist --> |OK| Exec[コマンド実行]
+    Allowlist --> |NG| Error[エラー: 許可されていないコマンド]
+    
+    Exec --> Result{結果}
+    Result --> |passed| Success[検証成功]
+    Result --> |failed| Fail[検証失敗<br/>フィードバック生成]
+    Result --> |timeout| Timeout[タイムアウト]
+    
+    Success --> Next[次の反復へ]
+    Fail --> Feedback[検証フィードバック追加]
+    Timeout --> Feedback
+    Feedback --> Next
+    
+    style Start fill:#e1f5fe
+    style Run fill:#fff3cd
+    style Success fill:#d4edda
+    style Fail fill:#f8d7da
+    style Error fill:#f8d7da
+```
+
+### 終了条件判定フロー
+
+```mermaid
+flowchart TD
+    Iteration[反復完了] --> Check1{status=done<br/>AND<br/>検証エラーなし?}
+    
+    Check1 --> |Yes| Done1[完了: model_done]
+    Check1 --> |No| Check2{consecutiveFailures<br/>>= 2?}
+    
+    Check2 --> |Yes| Done2[停止: iteration_error]
+    Check2 --> |No| Check3{停滞検出?}
+    
+    Check3 --> |Yes| Done3[停止: stagnation]
+    Check3 --> |No| Check4{iteration<br/>>= maxIterations?}
+    
+    Check4 --> |Yes| Done4[停止: max_iterations]
+    Check4 --> |No| Continue[次の反復へ]
+    
+    Check3 --> |判定ロジック| StagnationCheck[出力比較]
+    StagnationCheck --> |semantic有効| Embed[埋め込み類似度<br/>threshold >= 0.85]
+    StagnationCheck --> |semantic無効| Exact[完全一致]
+    
+    style Done1 fill:#d4edda
+    style Done2 fill:#f8d7da
+    style Done3 fill:#fff3cd
+    style Done4 fill:#fff3cd
+    style Continue fill:#e1f5fe
+```
+
+---
+
 ## 使用方法
 
 ### ツールとしての実行

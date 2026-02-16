@@ -23,6 +23,105 @@ related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./10-ul-dual-mode
 - **不確実性指標**: 内部不一致（uIntra）、部間不一致（uInter）、システム不確実性（uSys）を計算
 - **プリセットチーム**: コードレビュー、セキュリティ、調査など様々な用途のチームがプリセット
 
+## 実行フロー
+
+### agent_team_run 実行フロー
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant Pi as pi
+    participant Teams as agent-teams.ts
+    participant Member as チームメンバー
+    participant Judge as Final Judge
+    participant Storage as storage.json
+
+    User->>Pi: agent_team_run(teamId, task)
+    Pi->>Teams: ツール呼び出し
+    
+    Teams->>Storage: チーム定義読み込み
+    Storage-->>Teams: TeamDefinition
+    
+    Note over Teams: ランタイム容量確保<br/>maxParallelTeammatesPerTeam=3
+    
+    alt 並列実行 (strategy=parallel)
+        par 並列実行
+            Teams->>Member1: buildMemberPrompt()
+            Teams->>Member2: buildMemberPrompt()
+            Teams->>Member3: buildMemberPrompt()
+        end
+        Member1-->>Teams: output1
+        Member2-->>Teams: output2
+        Member3-->>Teams: output3
+    else 逐次実行 (strategy=sequential)
+        Teams->>Member1: buildMemberPrompt()
+        Member1-->>Teams: output1
+        Teams->>Member2: buildMemberPrompt()
+        Member2-->>Teams: output2
+    end
+    
+    opt communicationRounds > 0
+        Note over Teams: コミュニケーションラウンド<br/>他メンバー出力を参照
+        Teams->>Teams: buildCommunicationContext()
+        Teams->>Member: 再実行（他者参照付き）
+        Member-->>Teams: updatedOutput
+    end
+    
+    opt 失敗メンバーあり
+        Note over Teams: failedMemberRetryRounds<br/>失敗メンバーのみリトライ
+        Teams->>Member: リトライ
+        Member-->>Teams: retryOutput
+    end
+    
+    Teams->>Teams: normalizeTeamMemberOutput()
+    Note over Teams: SUMMARY/CLAIM/EVIDENCE/<br/>CONFIDENCE/RESULT/NEXT_STEP
+    
+    Teams->>Judge: runFinalJudge(memberOutputs)
+    Note over Judge: 不確実性計算<br/>- uIntra: 内部不確実性<br/>- uInter: メンバー間不一致<br/>- uSys: システム不確実性
+    
+    Judge-->>Teams: verdict (trusted/partial/untrusted)
+    
+    Teams->>Storage: 実行記録保存
+    Note over Storage: .pi/agent-teams/runs/<br/>runId.json
+    
+    Teams-->>Pi: runRecord, memberResults, judge
+    Pi-->>User: 実行結果
+```
+
+### コミュニケーションラウンド詳細
+
+```mermaid
+sequenceDiagram
+    participant Teams as agent-teams.ts
+    participant M1 as Member1 (research)
+    participant M2 as Member2 (build)
+    participant M3 as Member3 (review)
+
+    Note over Teams: 初回実行完了
+    M1-->>Teams: output1
+    M2-->>Teams: output2
+    M3-->>Teams: output3
+    
+    Note over Teams: communicationRounds=1 開始
+    
+    Teams->>Teams: createCommunicationLinksMap()
+    Note over Teams: リンク構築<br/>research -> build, review<br/>build -> research
+    
+    Teams->>Teams: buildPrecomputedContextMap()
+    
+    Teams->>M1: コンテキスト注入<br/>（build, reviewの要約）
+    Teams->>M2: コンテキスト注入<br/>（researchの要約）
+    Teams->>M3: コンテキスト注入<br/>（research, buildの要約）
+    
+    M1-->>Teams: updatedOutput1
+    M2-->>Teams: updatedOutput2
+    M3-->>Teams: updatedOutput3
+    
+    Note over Teams: DISCUSSIONセクション解析<br/>他者参照検出
+```
+
+---
+
 ## 使用方法
 
 ### 基本的な使い方

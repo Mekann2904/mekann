@@ -25,6 +25,148 @@ related: [../README.md, ./01-extensions.md, ./09-agent-teams.md]
 
 ---
 
+## 実行フロー
+
+### subagent_run シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User as ユーザー
+    participant Pi as pi (LLM)
+    participant Ext as subagents.ts
+    participant Runtime as ランタイム管理
+    participant Agent as サブエージェント
+
+    User->>Pi: subagent_run(task, subagentId?)
+    Pi->>Ext: ツール呼び出し
+
+    rect rgb(240, 248, 255)
+        Note over Ext: バリデーションフェーズ
+        Ext->>Ext: loadStorage()
+        Ext->>Ext: pickAgent(subagentId)
+
+        alt エージェント不在
+            Ext-->>Pi: エラー: no available subagent
+            Pi-->>User: エラー応答
+        end
+
+        alt エージェント無効
+            Ext-->>Pi: エラー: subagent is disabled
+            Pi-->>User: エラー応答
+        end
+    end
+
+    rect rgb(255, 248, 240)
+        Note over Ext,Runtime: キューイングフェーズ
+        Ext->>Runtime: waitForRuntimeOrchestrationTurn()
+
+        alt キュータイムアウト/中止
+            Runtime-->>Ext: キュー待機失敗
+            Ext-->>Pi: エラー: runtime_queue_timeout
+            Pi-->>User: エラー応答
+        end
+    end
+
+    rect rgb(240, 255, 240)
+        Note over Ext,Runtime: 容量確保フェーズ
+        Ext->>Runtime: reserveRuntimeCapacity()
+
+        alt 容量制限超過
+            Runtime-->>Ext: 容量確保失敗
+            Ext-->>Pi: エラー: runtime_limit_reached
+            Pi-->>User: エラー応答
+        end
+
+        Runtime-->>Ext: 容量予約完了
+    end
+
+    rect rgb(248, 240, 255)
+        Note over Ext,Agent: 実行フェーズ
+        Ext->>Agent: runSubagentTask(agent, task)
+        Agent->>Agent: プロンプト構築
+        Agent->>Pi: LLM呼び出し
+        Pi-->>Agent: 生成結果
+
+        alt 実行失敗
+            Agent->>Agent: リトライ判定
+            alt リトライ可能
+                Agent->>Agent: バックオフ待機
+                Agent->>Pi: LLM再呼び出し
+            else リトライ不可
+                Agent-->>Ext: 失敗結果
+            end
+        end
+
+        Agent-->>Ext: 実行結果
+    end
+
+    Ext->>Ext: saveStorageWithPatterns()
+    Ext-->>Pi: 成功結果
+    Pi-->>User: 結果返却
+
+    Note over User,Agent: 出力形式: SUMMARY / RESULT / NEXT_STEP
+```
+
+### subagent_run_parallel シーケンス図
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User as ユーザー
+    participant Pi as pi (LLM)
+    participant Ext as subagents.ts
+    participant Runtime as ランタイム管理
+    participant A1 as サブエージェント1
+    participant A2 as サブエージェント2
+    participant A3 as サブエージェントN
+
+    User->>Pi: subagent_run_parallel(task, subagentIds?)
+    Pi->>Ext: ツール呼び出し
+
+    Ext->>Ext: 全エージェント選択/フィルタ
+
+    alt エージェントID不明
+        Ext-->>Pi: エラー: unknown ids
+        Pi-->>User: エラー応答
+    end
+
+    alt 有効エージェントなし
+        Ext-->>Pi: エラー: no enabled subagents
+        Pi-->>User: エラー応答
+    end
+
+    Ext->>Runtime: waitForRuntimeOrchestrationTurn()
+    Ext->>Runtime: reserveRuntimeCapacity()
+
+    alt 容量制限超過
+        Runtime-->>Ext: 容量確保失敗
+        Ext-->>Pi: エラー: runtime_limit_reached
+        Pi-->>User: エラー応答
+    end
+
+    par 並列実行
+        Ext->>A1: runSubagentTask(task)
+        A1->>A1: 実行
+        A1-->>Ext: 結果1
+    and
+        Ext->>A2: runSubagentTask(task)
+        A2->>A2: 実行
+        A2-->>Ext: 結果2
+    and
+        Ext->>A3: runSubagentTask(task)
+        A3->>A3: 実行
+        A3-->>Ext: 結果3
+    end
+
+    Ext->>Ext: 結果統合
+    Ext->>Ext: saveStorageWithPatterns()
+    Ext-->>Pi: 統合結果
+    Pi-->>User: 結果返却
+```
+
+---
+
 ## 使用可能なツール
 
 | ツール | 説明 |
@@ -48,6 +190,86 @@ related: [../README.md, ./01-extensions.md, ./09-agent-teams.md]
 | **implementer** | Implementer | スコープ内のコーディングタスクと修正の実装ヘルパー |
 | **reviewer** | Reviewer | リスクチェック、テスト、品質フィードバックの読み取り専用レビュー担当者 |
 | **tester** | Tester | 検証ヘルパー。再現可能なチェックと最小のテスト計画に焦点 |
+
+---
+
+## 実行フロー
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant Pi as pi
+    participant Subagent as subagents.ts
+    participant Agent as サブエージェント
+    participant Storage as storage.json
+
+    User->>Pi: subagent_run(task, subagentId)
+    Pi->>Subagent: ツール呼び出し
+    
+    Subagent->>Storage: エージェント定義読み込み
+    Storage-->>Subagent: SubagentDefinition
+    
+    Note over Subagent: プランモード確認<br/>委譲-firstチェック
+    
+    Subagent->>Subagent: buildSubagentPrompt()
+    Note over Subagent: プロンプト構築<br/>- 役割説明<br/>- スキル注入<br/>- 実行ルール
+    
+    Subagent->>Agent: runPiPrintMode(prompt)
+    Agent-->>Subagent: output, latencyMs
+    
+    alt 出力が空の場合
+        Subagent->>Subagent: 救済リラン（1回）
+        Subagent->>Agent: 再実行
+        Agent-->>Subagent: output
+    end
+    
+    Subagent->>Subagent: normalizeSubagentOutput()
+    Note over Subagent: SUMMARY/RESULT/NEXT_STEP<br/>形式に正規化
+    
+    alt エラー発生（リトライ可能）
+        Subagent->>Subagent: retryWithBackoff()
+        Note over Subagent: 指数バックオフ<br/>maxRetries=4<br/>maxDelay=30s
+        Subagent->>Agent: 再実行
+        Agent-->>Subagent: output
+    end
+    
+    Subagent->>Storage: 実行記録保存
+    Note over Storage: .pi/subagents/runs/<br/>runId.json
+    
+    Subagent-->>Pi: runRecord, output
+    Pi-->>User: 実行結果
+```
+
+### エラーハンドリングフロー
+
+```mermaid
+sequenceDiagram
+    participant Subagent as subagents.ts
+    participant Retry as retryWithBackoff
+    participant Agent as サブエージェント
+
+    Subagent->>Agent: 実行
+    
+    alt レート制限エラー (429)
+        Agent-->>Retry: Error: 429 Too Many Requests
+        Retry->>Retry: 待機（指数バックオフ）
+        Note over Retry: maxRateLimitRetries=6<br/>maxRateLimitWaitMs=90000
+        Retry->>Agent: 再実行
+    else タイムアウト
+        Agent-->>Retry: Error: Timeout
+        Retry->>Retry: 待機
+        Retry->>Agent: 再実行
+    else 空出力
+        Agent-->>Retry: Error: empty output
+        Note over Subagent: 救済リラン<br/>（強調プロンプト追加）
+        Subagent->>Agent: 再実行
+    else その他のエラー
+        Agent-->>Subagent: Error
+        Note over Subagent: 連続失敗回数インクリメント<br/>maxConsecutiveFailures=2
+    end
+    
+    Agent-->>Subagent: 成功/失敗結果
+```
 
 ---
 
