@@ -50,3 +50,4 @@ coverage/
 
 # Plans runtime data
 .pi/plans/storage.json
+.pi/logs/

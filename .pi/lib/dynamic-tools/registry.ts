@@ -343,8 +343,11 @@ export async function registerDynamicTool(
   const toolId = generateToolId(request.name, request.code);
   const now = new Date().toISOString();
 
-  // 信頼度スコアの計算
-  const confidenceScore = safetyResult?.score ?? 0.5;
+  // 信頼度スコアの計算（安全性と品質の最小値）
+  const safetyScore = safetyResult?.score ?? 0.5;
+  const qualityResult = assessCodeQuality(request.code);
+  const qualityScore = qualityResult.score;
+  const confidenceScore = Math.min(safetyScore, qualityScore);
 
   // ツール定義作成
   const tool: DynamicToolDefinition = {
@@ -399,12 +402,12 @@ function validateToolName(name: string): { valid: boolean; error?: string } {
     return { valid: false, error: "ツール名は64文字以内で指定してください" };
   }
 
-  // 小文字、数字、アンダースコアのみ許可
-  const validNamePattern = /^[a-z][a-z0-9_]*$/;
+  // 小文字、数字、アンダースコア、ハイフンを許可
+  const validNamePattern = /^[a-z][a-z0-9_-]*$/;
   if (!validNamePattern.test(name)) {
     return {
       valid: false,
-      error: "ツール名は小文字の英字で始まり、小文字・数字・アンダースコアのみ使用可能です",
+      error: "ツール名は小文字の英字で始まり、小文字・数字・アンダースコア・ハイフンのみ使用可能です",
     };
   }
 
