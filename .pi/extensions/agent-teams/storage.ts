@@ -257,3 +257,49 @@ export function saveStorage(cwd: string, storage: TeamStorage): void {
     pruneRunArtifacts(paths, merged.runs);
   });
 }
+
+/**
+ * Save storage and extract patterns from recent team runs.
+ * Integrates with ALMA memory system for automatic learning.
+ */
+export async function saveStorageWithPatterns(
+  cwd: string,
+  storage: TeamStorage,
+): Promise<void> {
+  saveStorage(cwd, storage);
+
+  // Extract patterns from new runs (async, non-blocking)
+  const { addRunToPatterns } = await import("../../lib/pattern-extraction.js");
+  const { addRunToSemanticMemory, isSemanticMemoryAvailable } = await import(
+    "../../lib/semantic-memory.js"
+  );
+  const { indexTeamRun } = await import("../../lib/run-index.js");
+
+  // Get the most recent run(s) that haven't been indexed yet
+  const recentRuns = storage.runs.slice(-5);
+
+  for (const run of recentRuns) {
+    try {
+      // Add to pattern extraction
+      addRunToPatterns(cwd, {
+        runId: run.runId,
+        teamId: run.teamId,
+        task: run.task,
+        summary: run.summary,
+        status: run.status,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt,
+        error: run.error,
+      });
+
+      // Add to semantic memory if available
+      if (isSemanticMemoryAvailable()) {
+        const indexedRun = indexTeamRun(run);
+        await addRunToSemanticMemory(cwd, indexedRun);
+      }
+    } catch (error) {
+      // Don't fail the save if pattern extraction fails
+      console.error("Error extracting patterns from team run:", error);
+    }
+  }
+}

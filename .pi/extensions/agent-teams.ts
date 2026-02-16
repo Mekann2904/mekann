@@ -113,6 +113,7 @@ import {
   toId,
   loadStorage,
   saveStorage,
+  saveStorageWithPatterns,
 } from "./agent-teams/storage";
 
 // Import judge module (extracted for SRP compliance)
@@ -3610,7 +3611,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           });
 
           storage.runs.push(runRecord);
-          saveStorage(ctx.cwd, storage);
+          // Use saveStorageWithPatterns for automatic pattern extraction
+          await saveStorageWithPatterns(ctx.cwd, storage);
 
           pi.appendEntry("agent-team-run", runRecord);
           const pressureFailures = memberResults.filter((result) => {

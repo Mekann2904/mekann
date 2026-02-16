@@ -106,6 +106,7 @@ import {
   createDefaultAgents,
   loadStorage,
   saveStorage,
+  saveStorageWithPatterns,
 } from "./subagents/storage";
 
 interface PrintCommandResult {
@@ -1811,7 +1812,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             );
 
             storage.runs.push(result.runRecord);
-            saveStorage(ctx.cwd, storage);
+            // Use saveStorageWithPatterns for automatic pattern extraction
+            await saveStorageWithPatterns(ctx.cwd, storage);
             pi.appendEntry("subagent-run", result.runRecord);
 
             if (result.runRecord.status === "failed") {
@@ -2150,7 +2152,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               storage.runs.push(result.runRecord);
               pi.appendEntry("subagent-run", result.runRecord);
             }
-            saveStorage(ctx.cwd, storage);
+            // Use saveStorageWithPatterns for automatic pattern extraction
+            await saveStorageWithPatterns(ctx.cwd, storage);
 
             const failed = results.filter((result) => result.runRecord.status === "failed");
             const pressureFailures = failed.filter((result) => {

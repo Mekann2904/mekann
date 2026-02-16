@@ -57,3 +57,38 @@ coverage/
 
 # Dynamic tools runtime data
 .pi/tools/
+
+# ============================================================================
+# Memory & Embeddings (may contain sensitive task data)
+# ============================================================================
+
+# Semantic memory index (embeddings, may contain task summaries)
+.pi/memory/
+
+# Run index (task history with keywords)
+# Note: run-index.json is kept for search, but may contain sensitive data
+# Uncomment if needed:
+# .pi/memory/run-index.json
+
+# Pattern extraction (success/failure patterns from tasks)
+# Note: patterns.json is kept for learning, but may contain sensitive data
+# Uncomment if needed:
+# .pi/memory/patterns.json
+
+# Temporary files
+*.tmp
+*.tmp-*
+*.lock
+*.bak
+
+# ============================================================================
+# Auth & Credentials (NEVER commit these)
+# ============================================================================
+
+# Local auth files (should be in ~/.pi/agent/, but just in case)
+**/auth.json
+**/credentials.json
+**/.credentials
+**/*-key.pem
+**/*.pem
+!**/public-key.pem
