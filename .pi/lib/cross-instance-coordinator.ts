@@ -36,6 +36,12 @@ export interface InstanceInfo {
   cwd: string;
   /** Currently active models (updated on each heartbeat) */
   activeModels: ActiveModelInfo[];
+  /** Work-stealing support: current pending task count */
+  pendingTaskCount?: number;
+  /** Work-stealing support: average task latency in milliseconds */
+  avgLatencyMs?: number;
+  /** Work-stealing support: timestamp of last task completion */
+  lastTaskCompletedAt?: string;
 }
 
 export interface CoordinatorConfig {
@@ -339,7 +345,163 @@ export function getMyParallelLimit(): number {
   }
 
   const activeCount = getActiveInstanceCount();
-  return Math.max(1, Math.floor(state.config.totalMaxLlm / activeCount));
+  const baseLimit = Math.max(1, Math.floor(state.config.totalMaxLlm / activeCount));
+
+  return baseLimit;
+}
+
+/**
+ * Get dynamic parallel limit based on workload distribution.
+ *
+ * This implements a simple load-balancing strategy:
+ * - Instances with higher workload get fewer slots
+ * - Instances with lower workload get more slots
+ * - Total slots never exceed totalMaxLlm
+ *
+ * @param myPendingTasks - Current pending task count for this instance
+ * @returns Adjusted parallel limit for this instance
+ */
+export function getDynamicParallelLimit(myPendingTasks: number = 0): number {
+  if (!state) {
+    return 1;
+  }
+
+  const instances = getActiveInstances();
+  const activeCount = instances.length;
+
+  if (activeCount === 0) {
+    return state.config.totalMaxLlm;
+  }
+
+  // Calculate total pending tasks across all instances
+  let totalPending = 0;
+  const pendingByInstance: Map<string, number> = new Map();
+
+  for (const inst of instances) {
+    const pending = inst.pendingTaskCount ?? 0;
+    totalPending += pending;
+    pendingByInstance.set(inst.instanceId, pending);
+  }
+
+  // If no one has pending tasks, use base distribution
+  if (totalPending === 0) {
+    return Math.max(1, Math.floor(state.config.totalMaxLlm / activeCount));
+  }
+
+  // Calculate this instance's share based on inverse workload
+  const myPending = pendingByInstance.get(state.myInstanceId) ?? myPendingTasks;
+
+  // Inverse proportion: instances with fewer tasks get more slots
+  const totalInverseWorkload = instances.reduce((sum, inst) => {
+    const pending = inst.pendingTaskCount ?? 0;
+    // Add 1 to avoid division by zero and smooth distribution
+    return sum + 1 / (pending + 1);
+  }, 0);
+
+  const myInverseWorkload = 1 / (myPending + 1);
+  const myShare = myInverseWorkload / totalInverseWorkload;
+
+  // Calculate slot allocation
+  const allocatedSlots = Math.round(state.config.totalMaxLlm * myShare);
+
+  // Ensure minimum of 1 slot
+  return Math.max(1, Math.min(allocatedSlots, state.config.totalMaxLlm));
+}
+
+/**
+ * Check if this instance should attempt work stealing.
+ *
+ * @returns True if this instance is idle and there are busy instances
+ */
+export function shouldAttemptWorkStealing(): boolean {
+  if (!state) {
+    return false;
+  }
+
+  const instances = getActiveInstances();
+  const myInfo = instances.find((i) => i.instanceId === state.myInstanceId);
+
+  // I'm idle (no pending tasks)
+  const imIdle = (myInfo?.pendingTaskCount ?? 0) === 0;
+
+  // There are busy instances
+  const hasBusyInstance = instances.some(
+    (i) => i.instanceId !== state!.myInstanceId && (i.pendingTaskCount ?? 0) > 2
+  );
+
+  return imIdle && hasBusyInstance;
+}
+
+/**
+ * Get candidate instances for work stealing (busiest instances).
+ *
+ * @param topN - Number of candidates to return
+ * @returns List of instance IDs sorted by workload (descending)
+ */
+export function getWorkStealingCandidates(topN: number = 3): string[] {
+  if (!state) {
+    return [];
+  }
+
+  const instances = getActiveInstances();
+
+  // Filter out self and sort by pending tasks (descending)
+  return instances
+    .filter((i) => i.instanceId !== state!.myInstanceId)
+    .filter((i) => (i.pendingTaskCount ?? 0) > 0)
+    .sort((a, b) => (b.pendingTaskCount ?? 0) - (a.pendingTaskCount ?? 0))
+    .slice(0, topN)
+    .map((i) => i.instanceId);
+}
+
+/**
+ * Update workload info for this instance in heartbeat.
+ *
+ * @param pendingTaskCount - Current pending task count
+ * @param avgLatencyMs - Average task latency
+ */
+export function updateWorkloadInfo(pendingTaskCount: number, avgLatencyMs?: number): void {
+  if (!state) {
+    return;
+  }
+
+  const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
+
+  try {
+    const existing: InstanceInfo = {
+      instanceId: state.myInstanceId,
+      pid,
+      sessionId: state.mySessionId,
+      startedAt: state.myStartedAt,
+      lastHeartbeat: new Date().toISOString(),
+      cwd: process.cwd(),
+      activeModels: [], // Will be preserved if file exists
+      pendingTaskCount,
+      avgLatencyMs,
+      lastTaskCompletedAt: avgLatencyMs ? new Date().toISOString() : undefined,
+    };
+
+    // Preserve existing data
+    if (existsSync(lockFile)) {
+      try {
+        const content = readFileSync(lockFile, "utf-8");
+        const parsed = JSON.parse(content) as InstanceInfo;
+        existing.activeModels = parsed.activeModels ?? [];
+        if (!avgLatencyMs && parsed.avgLatencyMs) {
+          existing.avgLatencyMs = parsed.avgLatencyMs;
+        }
+        if (!existing.lastTaskCompletedAt && parsed.lastTaskCompletedAt) {
+          existing.lastTaskCompletedAt = parsed.lastTaskCompletedAt;
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+
+    writeFileSync(lockFile, JSON.stringify(existing, null, 2), "utf-8");
+  } catch {
+    // Ignore write errors in heartbeat
+  }
 }
 
 /**
