@@ -21,23 +21,17 @@
  */
 
 import type { ExtensionAPI, ToolResultEvent } from "@mariozechner/pi-coding-agent";
+import { Type } from "@mariozechner/pi-ai";
 import {
   getRegistry,
   analyzeCodeSafety,
   quickSafetyCheck,
   assessCodeQuality,
   recordExecutionMetrics,
-  recordQualityScore,
   type DynamicToolDefinition,
   type ToolExecutionResult,
-  type SafetyAnalysisResult,
-  type QualityAssessment,
 } from "../lib/dynamic-tools/index.js";
-import {
-  isHighStakesTask,
-  shouldTriggerVerification,
-  type VerificationContext,
-} from "../lib/verification-workflow.js";
+import { isHighStakesTask } from "../lib/verification-workflow.js";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -626,7 +620,7 @@ async function handleToolReflection(
 }
 
 // ============================================================================
-// Extension Registration
+// Extension Registration (TypeBox形式)
 // ============================================================================
 
 export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
@@ -634,55 +628,38 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "create_tool",
     description: "動的ツールを生成します。TypeScriptコードを指定して新しいツールを作成します。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "ツール名（英字で始まり、英数字、アンダースコア、ハイフンのみ使用可能）",
-        },
-        description: {
-          type: "string",
-          description: "ツールの説明",
-        },
-        code: {
-          type: "string",
-          description: "ツールのTypeScript/JavaScriptコード。execute(params)関数をエクスポートする必要があります。",
-        },
-        parameters: {
-          type: "object",
-          description: "パラメータの定義",
-          additionalProperties: {
-            type: "object",
-            properties: {
-              type: {
-                type: "string",
-                enum: ["string", "number", "boolean", "object", "array"],
-              },
-              description: { type: "string" },
-              default: {},
-              enum: {
-                type: "array",
-                items: { type: "string" },
-              },
-              required: { type: "boolean" },
-            },
-          },
-        },
-        tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "ツールのタグ（カテゴリ分類用）",
-        },
-        generated_from: {
-          type: "string",
-          description: "ツールの生成元（タスク説明など）",
-        },
-      },
-      required: ["name", "description", "code"],
-    },
-    handler: async (input: CreateToolInput) => {
-      return await handleCreateTool(input);
+    parameters: Type.Object({
+      name: Type.String({ description: "ツール名（英字で始まり、英数字、アンダースコア、ハイフンのみ使用可能）" }),
+      description: Type.String({ description: "ツールの説明" }),
+      code: Type.String({ description: "ツールのTypeScript/JavaScriptコード。execute(params)関数をエクスポートする必要があります。" }),
+      parameters: Type.Optional(Type.Record(
+        Type.String(),
+        Type.Object({
+          type: Type.Union([
+            Type.Literal("string"),
+            Type.Literal("number"),
+            Type.Literal("boolean"),
+            Type.Literal("object"),
+            Type.Literal("array"),
+          ]),
+          description: Type.String(),
+          default: Type.Optional(Type.Any()),
+          enum: Type.Optional(Type.Array(Type.String())),
+          minimum: Type.Optional(Type.Number()),
+          maximum: Type.Optional(Type.Number()),
+          required: Type.Optional(Type.Boolean()),
+        })
+      )),
+      tags: Type.Optional(Type.Array(Type.String(), { description: "ツールのタグ（カテゴリ分類用）" })),
+      generated_from: Type.Optional(Type.String({ description: "ツールの生成元（タスク説明など）" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const result = await handleCreateTool(params as CreateToolInput);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
@@ -690,33 +667,28 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "run_dynamic_tool",
     description: "登録済みの動的ツールを実行します。tool_idまたはtool_nameでツールを指定します。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        tool_id: {
-          type: "string",
-          description: "ツールID",
-        },
-        tool_name: {
-          type: "string",
-          description: "ツール名（tool_idの代わりに使用可能）",
-        },
-        parameters: {
-          type: "object",
-          description: "ツールに渡すパラメータ",
-        },
-        timeout_ms: {
-          type: "number",
-          description: "タイムアウト時間（ミリ秒、デフォルト: 30000）",
-        },
-      },
-      required: ["parameters"],
-    },
-    handler: async (input: RunDynamicToolInput) => {
+    parameters: Type.Object({
+      tool_id: Type.Optional(Type.String({ description: "ツールID" })),
+      tool_name: Type.Optional(Type.String({ description: "ツール名（tool_idの代わりに使用可能）" })),
+      parameters: Type.Record(Type.String(), Type.Any(), { description: "ツールに渡すパラメータ" }),
+      timeout_ms: Type.Optional(Type.Number({ description: "タイムアウト時間（ミリ秒、デフォルト: 30000）" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const input = params as RunDynamicToolInput;
+      
       if (!input.tool_id && !input.tool_name) {
-        return "エラー: tool_idまたはtool_nameを指定してください";
+        return {
+          content: [{ type: "text", text: "エラー: tool_idまたはtool_nameを指定してください" }],
+          details: {},
+        };
       }
-      return await handleRunDynamicTool(input);
+      
+      const result = await handleRunDynamicTool(input);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
@@ -724,30 +696,19 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "list_dynamic_tools",
     description: "登録済みの動的ツール一覧を表示します。フィルタリングオプションを利用可能です。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "名前でフィルタ（部分一致）",
-        },
-        tags: {
-          type: "array",
-          items: { type: "string" },
-          description: "タグでフィルタ",
-        },
-        min_safety_score: {
-          type: "number",
-          description: "安全性スコアの最小値（0.0-1.0）",
-        },
-        limit: {
-          type: "number",
-          description: "最大表示件数（デフォルト: 20）",
-        },
-      },
-    },
-    handler: async (input: ListDynamicToolsInput) => {
-      return await handleListDynamicTools(input);
+    parameters: Type.Object({
+      name: Type.Optional(Type.String({ description: "名前でフィルタ（部分一致）" })),
+      tags: Type.Optional(Type.Array(Type.String(), { description: "タグでフィルタ" })),
+      min_safety_score: Type.Optional(Type.Number({ description: "安全性スコアの最小値（0.0-1.0）" })),
+      limit: Type.Optional(Type.Number({ description: "最大表示件数（デフォルト: 20）" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const result = await handleListDynamicTools(params as ListDynamicToolsInput);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
@@ -755,28 +716,27 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "delete_dynamic_tool",
     description: "登録済みの動的ツールを削除します。confirm: true で削除を確定します。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        tool_id: {
-          type: "string",
-          description: "ツールID",
-        },
-        tool_name: {
-          type: "string",
-          description: "ツール名（tool_idの代わりに使用可能）",
-        },
-        confirm: {
-          type: "boolean",
-          description: "削除の確認（trueで削除実行）",
-        },
-      },
-    },
-    handler: async (input: DeleteDynamicToolInput) => {
+    parameters: Type.Object({
+      tool_id: Type.Optional(Type.String({ description: "ツールID" })),
+      tool_name: Type.Optional(Type.String({ description: "ツール名（tool_idの代わりに使用可能）" })),
+      confirm: Type.Optional(Type.Boolean({ description: "削除の確認（trueで削除実行）" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const input = params as DeleteDynamicToolInput;
+      
       if (!input.tool_id && !input.tool_name) {
-        return "エラー: tool_idまたはtool_nameを指定してください";
+        return {
+          content: [{ type: "text", text: "エラー: tool_idまたはtool_nameを指定してください" }],
+          details: {},
+        };
       }
-      return await handleDeleteDynamicTool(input);
+      
+      const result = await handleDeleteDynamicTool(input);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
@@ -784,26 +744,18 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "tool_reflection",
     description: "タスク実行後に反省を行い、ツール生成が推奨されるかを判定します。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        task_description: {
-          type: "string",
-          description: "実行中のタスクの説明",
-        },
-        last_tool_result: {
-          type: "string",
-          description: "直前のツール実行結果",
-        },
-        failed_attempts: {
-          type: "number",
-          description: "失敗した試行回数",
-        },
-      },
-      required: ["task_description", "last_tool_result"],
-    },
-    handler: async (input: ToolReflectionInput) => {
-      return await handleToolReflection(input);
+    parameters: Type.Object({
+      task_description: Type.String({ description: "実行中のタスクの説明" }),
+      last_tool_result: Type.String({ description: "直前のツール実行結果" }),
+      failed_attempts: Type.Optional(Type.Number({ description: "失敗した試行回数" })),
+    }),
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const result = await handleToolReflection(params as ToolReflectionInput);
+      return {
+        content: [{ type: "text", text: result }],
+        details: {},
+      };
     },
   });
 
