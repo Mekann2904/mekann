@@ -69,7 +69,23 @@ The following file types are exempt from template requirements:
 
 **Template Rule**: Before creating any `.md` file not in the exceptions list, read `docs/_template.md` and apply its structure.
 
----
+## Japanese Language Rule (MANDATORY)
+
+All documentation MUST be written in Japanese (日本語). This applies to:
+
+- Title and headings
+- Body content
+- Code comments within documentation
+- Frontmatter values (title, description, etc.)
+
+**Exceptions (English allowed)**:
+- Code examples (variable names, function names, API endpoints)
+- Command names and CLI options
+- File paths and URLs
+- Technical terms without standard Japanese translation
+- Frontmatter technical fields (category, audience, tags)
+
+**Before writing documentation**: Ensure all prose content is in Japanese.
 
 # Execution Rules (MANDATORY)
 

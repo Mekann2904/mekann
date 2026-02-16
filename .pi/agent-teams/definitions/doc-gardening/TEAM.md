@@ -72,6 +72,25 @@ members:
 
 ---
 
+## Japanese Language Rule (MANDATORY)
+
+すべてのドキュメントは日本語で記述すること。
+
+**日本語必須**:
+- タイトル・見出し
+- 本文
+- ドキュメント内のコードコメント
+- Frontmatterの値（title, description等）
+
+**英語許可**:
+- コード例（変数名、関数名、APIエンドポイント）
+- コマンド名・CLIオプション
+- ファイルパス・URL
+- 日本語訳が定着していない技術用語
+- Frontmatterの技術フィールド（category, audience, tags）
+
+---
+
 ## 目次
 
 1. [分析プロセス](#分析プロセス)

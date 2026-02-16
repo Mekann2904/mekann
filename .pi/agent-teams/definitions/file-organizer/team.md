@@ -73,6 +73,25 @@ members:
 
 ---
 
+## Japanese Language Rule (MANDATORY)
+
+すべてのドキュメントは日本語で記述すること。
+
+**日本語必須**:
+- タイトル・見出し
+- 本文
+- ドキュメント内のコードコメント
+- Frontmatterの値（title, description等）
+
+**英語許可**:
+- コード例（変数名、関数名、APIエンドポイント）
+- コマンド名・CLIオプション
+- ファイルパス・URL
+- 日本語訳が定着していない技術用語
+- Frontmatterの技術フィールド（category, audience, tags）
+
+---
+
 - **Structure Analyzer**: Phase 1（現状構造分析）を担当。フォルダ構造、ファイルタイプ、サイズ分布、問題特定
 - **Duplicate Finder**: Phase 1（重複ファイル検出）を担当。重複特定、保持推奨、削除前確認
 - **Organization Designer**: Phase 2（整理計画策定）を担当。論理グループ化、フォルダ構造提案、命名規則
