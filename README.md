@@ -125,7 +125,6 @@ pi remove https://github.com/Mekann2904/mekann
 | **validation-utils** | `lib/validation-utils.ts` | バリデーションユーティリティ |
 | **comprehensive-logger** | `lib/comprehensive-logger.ts` | 包括的ログ収集（構造化ログ、ストリーミング、設定可能な出力） |
 | **verification-workflow** | `lib/verification-workflow.ts` | Inspector/Challenger検証メカニズム（LLM出力品質検証） |
-| **robustness-testing** | `lib/robustness-testing.ts` | 堅牢性・摂動テスト（出力の安定性評価） |
 | **context-engineering** | `lib/context-engineering.ts` | コンテキストエンジニアリング（プロンプト最適化） |
 | **execution-rules** | `lib/execution-rules.ts` | 実行ルール（タスク実行時の制約管理） |
 | **semantic-memory** | `lib/semantic-memory.ts` | セマンティックメモリ（意味ベースの記憶管理） |

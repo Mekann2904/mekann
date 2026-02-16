@@ -97,7 +97,6 @@ mekann/
 | skill-registry | `lib/skill-registry.ts` | Skill detection/resolution |
 | comprehensive-logger | `lib/comprehensive-logger.ts` | Comprehensive logging |
 | verification-workflow | `lib/verification-workflow.ts` | Inspector/Challenger verification |
-| robustness-testing | `lib/robustness-testing.ts` | Perturbation testing |
 | context-engineering | `lib/context-engineering.ts` | Context engineering utilities |
 | execution-rules | `lib/execution-rules.ts` | Execution rule definitions |
 | semantic-memory | `lib/semantic-memory.ts` | Semantic memory storage |
