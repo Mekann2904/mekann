@@ -57,11 +57,6 @@ export {
   OpenAIEmbeddingProvider,
   openAIEmbeddingProvider,
   getOpenAIKey,
-  setOpenAIKey,
-  removeOpenAIKey,
-  saveAuthConfig,
-  maskApiKey,
-  isValidOpenAIKeyFormat,
 } from "./providers/openai.js";
 
 // ============================================================================

@@ -344,8 +344,6 @@ export {
   OpenAIEmbeddingProvider,
   openAIEmbeddingProvider,
   getOpenAIKey,
-  setOpenAIKey,
-  removeOpenAIKey,
   // Initialization
   initializeEmbeddingModule,
 } from "./embeddings/index.js";
