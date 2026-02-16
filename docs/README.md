@@ -39,6 +39,8 @@ pi拡張機能コレクションのドキュメントへようこそ。
 | [agent-teams](./02-user-guide/09-agent-teams.md) | エージェントチーム | ✅ 完了 |
 | [ul-dual-mode](./02-user-guide/10-ul-dual-mode.md) | デュアルモード | ✅ 完了 |
 | [ユーティリティ](./02-user-guide/11-utilities.md) | kitty統合などのユーティリティ | ✅ 完了 |
+| [cross-instance-runtime](./02-user-guide/12-cross-instance-runtime.md) | クロスインスタンス協調・レート制限 | ✅ 完了 |
+| [search-tools](./02-user-guide/13-search-tools.md) | 高速検索ツール群 | ✅ 完了 |
 
 ### 開発者ガイド
 

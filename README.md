@@ -93,6 +93,9 @@ pi remove https://github.com/Mekann2904/mekann
 | **agent-idle-indicator** | `agent-idle-indicator.ts` | エージェント実行状態の表示 | [→](docs/02-user-guide/11-utilities.md) |
 | **kitty-status-integration** | `kitty-status-integration.ts` | kittyターミナル連携 | [→](docs/02-user-guide/11-utilities.md) |
 | **skill-inspector** | `skill-inspector.ts` | スキル割り当て状況の表示 | [→](docs/02-user-guide/11-utilities.md) |
+| **search** | `extensions/search/` | 高速コード検索（file_candidates, code_search, sym_index, sym_find） | 新規 |
+| **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | 新規 |
+| **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | 新規 |
 
 ### 共有ライブラリ
 
@@ -120,12 +123,25 @@ pi remove https://github.com/Mekann2904/mekann
 | **storage-base** | `lib/storage-base.ts` | ストレージベース |
 | **tui-utils** | `lib/tui-utils.ts` | TUIユーティリティ |
 | **validation-utils** | `lib/validation-utils.ts` | バリデーションユーティリティ |
+| **comprehensive-logger** | `lib/comprehensive-logger.ts` | 包括的ログ収集（構造化ログ、ストリーミング、設定可能な出力） |
+| **verification-workflow** | `lib/verification-workflow.ts` | Inspector/Challenger検証メカニズム（LLM出力品質検証） |
+| **robustness-testing** | `lib/robustness-testing.ts` | 堅牢性・摂動テスト（出力の安定性評価） |
+| **context-engineering** | `lib/context-engineering.ts` | コンテキストエンジニアリング（プロンプト最適化） |
+| **execution-rules** | `lib/execution-rules.ts` | 実行ルール（タスク実行時の制約管理） |
+| **semantic-memory** | `lib/semantic-memory.ts` | セマンティックメモリ（意味ベースの記憶管理） |
+| **semantic-repetition** | `lib/semantic-repetition.ts` | セマンティック反復検出（重複内容の特定） |
+| **intent-aware-limits** | `lib/intent-aware-limits.ts` | 意図別予算制限（タスク種別のリソース制御） |
+| **run-index** | `lib/run-index.ts` | 実行インデックス管理（エージェント実行履歴の検索） |
+| **pattern-extraction** | `lib/pattern-extraction.ts` | パターン抽出（実行履歴からの知識抽出） |
+| **output-schema** | `lib/output-schema.ts` | 出力スキーマ（構造化出力の定義と検証） |
+| **text-parsing** | `lib/text-parsing.ts` | テキスト解析（構造化テキスト処理） |
+| **embeddings** | `lib/embeddings/` | エンベディングモジュール（ベクトル埋め込み生成） |
 
 ## スキル管理システム
 
 このプロジェクトには、サブエージェントやチームメンバーに割り当て可能なスキル管理システムが含まれています。
 
-### 利用可能なスキル（29個）
+### 利用可能なスキル（35個）
 
 | カテゴリ | スキル | 説明 |
 |---------|--------|------|
@@ -159,6 +175,11 @@ pi remove https://github.com/Mekann2904/mekann
 | **分析** | logical-analysis | 論理的テキスト分析（学術・技術・ビジネス文書） |
 | | clean-architecture | アーキテクチャ設計・レビュー |
 | | code-review | コードレビュー |
+| **エージェント** | agent-estimation | AIエージェント作業工数見積もり（ツール呼び出しラウンドベース） |
+| | alma-memory | ALMAベースのメモリ設計（セマンティック検索、継続的学習） |
+| | harness-engineering | ハーネスエンジニアリング（品質向上の手法論） |
+| **検索** | search-tools | 高速コード検索ツール（file_candidates, code_search, sym_index, sym_find） |
+| **動的ツール** | dynamic-tools | タスク実行中の動的ツール生成・実行・管理 |
 
 ### スキル運用方針
 
@@ -302,6 +323,17 @@ mekann/
 | | `agent_team_status` | 実行中のチーム状態 |
 | | `agent_team_runs` | 実行履歴の表示 |
 | **UL Dual-Orchestration** | `ulmode` | UL Dual-Orchestrationモードの切り替え |
+| **検索** | `file_candidates` | ファイル候補検索（あいまい検索） |
+| | `code_search` | コード内容の全文検索 |
+| | `sym_index` | シンボルインデックス構築 |
+| | `sym_find` | シンボル定義・参照検索 |
+| **動的ツール** | `create_tool` | 動的ツール生成 |
+| | `run_dynamic_tool` | 動的ツール実行 |
+| | `list_dynamic_tools` | 動的ツール一覧表示 |
+| | `delete_dynamic_tool` | 動的ツール削除 |
+| | `tool_reflection` | 実行後の反省とツール生成判定 |
+| **クロスインスタンス** | `pi_instance_status` | 複数piインスタンスの状態確認 |
+| | `pi_model_limits` | プロバイダー/モデル別レート制限確認 |
 | **ユーティリティ** | `agent_usage_stats` | 拡張機能使用統計 |
 | | `context-usage` | コンテキスト使用量表示 |
 | | `skill_status` | スキル割り当て状況表示 |
@@ -390,10 +422,13 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 | **refactor-migration-team** | 影響分析、移行計画、実装戦略、互換性チェックのためのリファクタ重視チーム |
 | **research-team** | データ分析・科学研究プロジェクトを効率的に遂行する専門チーム。研究計画から成果発表まで一貫したワークフローを提供 |
 | **security-hardening-team** | 脅威分析、認証チェック、依存関係リスク監査、パッチレビューのためのセキュリティ重視チーム |
-| **template-team** | 新規チーム作成用テンプレート |
 | **logical-analysis-team** | 論理的テキスト分析専門チーム。学術論文、技術文書、仕様書、契約書など幅広いテキストを対象に、構造・概念・論証の3軸で体系的に分析 |
+| **doc-gardening-team** | ドキュメントガーデニングチーム。既存ドキュメントの整理、更新、整合性確認を行い、ドキュメントの健全性を維持 |
+| **garbage-collection-team** | 技術的負債解消チーム。未使用コード、古い依存関係、廃止予定機能の特定と削除を実施 |
+| **skill-creation-team** | スキル作成支援チーム。新規スキルの設計、実装、テスト、ドキュメント作成を一貫してサポート |
+| **verification-phase-team** | 検証フェーズ専門チーム。Inspector/Challengerパターンによる出力品質検証と信頼性評価を実施 |
 
-> **現在、12の定義済みチームが提供されています。**
+> **現在、16の定義済みチームが提供されています。**
 
 ## プロジェクトの特徴
 
