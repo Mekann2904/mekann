@@ -145,6 +145,38 @@ const DEFAULT_CONFIG: SchedulerConfig = {
 const PRIORITY_ORDER: TaskPriority[] = ["background", "low", "normal", "high", "critical"];
 
 // ============================================================================
+// Hybrid Scheduling Constants
+// ============================================================================
+
+/**
+ * Configuration for hybrid scheduling algorithm.
+ * Combines priority, SJF (Shortest Job First), and fair queueing.
+ */
+export interface HybridSchedulerConfig {
+  /** Weight for priority component (0.0 - 1.0) */
+  priorityWeight: number;
+  /** Weight for SJF component (0.0 - 1.0) */
+  sjfWeight: number;
+  /** Weight for fair queue component (0.0 - 1.0) */
+  fairQueueWeight: number;
+  /** Maximum duration for normalization (ms) */
+  maxDurationForNormalization: number;
+  /** Starvation penalty per skip */
+  starvationPenaltyPerSkip: number;
+  /** Maximum starvation penalty */
+  maxStarvationPenalty: number;
+}
+
+const DEFAULT_HYBRID_CONFIG: HybridSchedulerConfig = {
+  priorityWeight: 0.5,
+  sjfWeight: 0.3,
+  fairQueueWeight: 0.2,
+  maxDurationForNormalization: 120_000, // 2 minutes
+  starvationPenaltyPerSkip: 0.02,
+  maxStarvationPenalty: 0.3,
+};
+
+// ============================================================================
 // Utilities
 // ============================================================================
 
@@ -167,6 +199,134 @@ import { PRIORITY_VALUES } from "./priority-scheduler";
  */
 function priorityToValue(priority: TaskPriority): number {
   return PRIORITY_VALUES[priority];
+}
+
+// ============================================================================
+// Hybrid Scheduling Score Functions
+// ============================================================================
+
+/**
+ * Compute SJF (Shortest Job First) score.
+ * Normalized to [0, 1] where higher score = shorter job.
+ * Edge case: maxDuration = 0 returns 1.0 (shortest possible).
+ */
+function computeSJFScore(
+  estimatedDurationMs: number,
+  maxDurationMs: number
+): number {
+  const safeMax = Math.max(1, maxDurationMs);
+  const normalized = Math.max(0, Math.min(safeMax, estimatedDurationMs));
+  // Invert: shorter = higher score
+  return 1 - (normalized / safeMax);
+}
+
+/**
+ * Compute Fair Queue score based on Virtual Finish Time (VFT).
+ * Tasks with higher wait time and fewer tokens get higher scores.
+ * VFT = arrivalTime + (tokens / weight), where weight is based on priority.
+ */
+function computeFairQueueScore(
+  enqueuedAtMs: number,
+  estimatedTokens: number,
+  priority: TaskPriority,
+  currentTimeMs: number,
+  maxTokens: number
+): number {
+  // Weight based on priority (higher priority = higher weight = lower VFT)
+  const priorityVal = priorityToValue(priority);
+  const weight = Math.max(0.1, priorityVal); // Avoid division by zero
+
+  // Virtual Finish Time calculation
+  const arrivalTime = enqueuedAtMs;
+  const normalizedTokens = Math.max(1, Math.min(estimatedTokens, maxTokens));
+  const vft = arrivalTime + (normalizedTokens / weight);
+
+  // Lower VFT = higher score (should be scheduled first)
+  // Normalize based on wait time
+  const waitTime = Math.max(0, currentTimeMs - enqueuedAtMs);
+  const waitBonus = waitTime > 30_000 ? 0.2 : 0; // Bonus for waiting > 30s
+
+  // Score: lower VFT is better, add wait bonus
+  const safeMaxTokens = Math.max(1, maxTokens);
+  const vftNormalized = vft / (currentTimeMs + safeMaxTokens / weight);
+  return Math.min(1, (1 - vftNormalized) + waitBonus);
+}
+
+/**
+ * Compute hybrid scheduling score combining all factors.
+ * finalScore = (priority * 0.5) + (SJF * 0.3) + (FairQueue * 0.2) - starvationPenalty
+ */
+function computeHybridScore(
+  entry: TaskQueueEntry,
+  config: HybridSchedulerConfig,
+  currentTimeMs: number
+): number {
+  const task = entry.task;
+  const priority = priorityToValue(task.priority);
+
+  // Normalize priority to [0, 1]
+  const priorityNormalized = priority / 4; // Assuming max priority value is 4 (critical)
+
+  // SJF score
+  const sjfScore = computeSJFScore(
+    task.costEstimate.estimatedDurationMs,
+    config.maxDurationForNormalization
+  );
+
+  // Fair queue score
+  const fairQueueScore = computeFairQueueScore(
+    entry.enqueuedAtMs,
+    task.costEstimate.estimatedTokens,
+    task.priority,
+    currentTimeMs,
+    100_000 // Max tokens for normalization
+  );
+
+  // Starvation penalty
+  const starvationPenalty = Math.min(
+    config.maxStarvationPenalty,
+    entry.skipCount * config.starvationPenaltyPerSkip
+  );
+
+  // Combined score
+  const finalScore =
+    (priorityNormalized * config.priorityWeight) +
+    (sjfScore * config.sjfWeight) +
+    (fairQueueScore * config.fairQueueWeight) -
+    starvationPenalty;
+
+  // Debug logging (controlled by environment variable)
+  if (process.env.PI_DEBUG_HYBRID_SCHEDULING === "1") {
+    console.log(
+      `[HybridScheduling] ${task.id}: priority=${priorityNormalized.toFixed(2)} ` +
+      `sjf=${sjfScore.toFixed(2)} fair=${fairQueueScore.toFixed(2)} ` +
+      `penalty=${starvationPenalty.toFixed(2)} final=${finalScore.toFixed(2)}`
+    );
+  }
+
+  return finalScore;
+}
+
+/**
+ * Compare two task entries using hybrid scheduling score.
+ * Higher score = should be scheduled first.
+ */
+function compareHybridEntries(
+  a: TaskQueueEntry,
+  b: TaskQueueEntry,
+  config: HybridSchedulerConfig = DEFAULT_HYBRID_CONFIG
+): number {
+  const currentTimeMs = Date.now();
+  const scoreA = computeHybridScore(a, config, currentTimeMs);
+  const scoreB = computeHybridScore(b, config, currentTimeMs);
+
+  // Higher score should come first (descending order)
+  if (Math.abs(scoreA - scoreB) > 0.001) {
+    return scoreB - scoreA;
+  }
+
+  // Tiebreaker: FIFO
+  return a.enqueuedAtMs - b.enqueuedAtMs;
 }
 
 /**

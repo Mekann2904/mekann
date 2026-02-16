@@ -96,6 +96,7 @@ import {
 } from "../lib";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
+import { getCostEstimator, type ExecutionHistoryEntry, CostEstimator } from "../lib/cost-estimator";
 
 const logger = getLogger();
 import {
@@ -152,6 +153,7 @@ import {
   sanitizeCommunicationSnippet,
   extractField,
   buildCommunicationContext,
+  buildPrecomputedContextMap,
   detectPartnerReferences,
   detectPartnerReferencesV2,
   type PartnerReferenceResultV2,
@@ -2668,6 +2670,8 @@ async function runTeamTask(input: {
       break;
     }
 
+    const contextMap = buildPrecomputedContextMap(previousResults);
+
     if (input.strategy === "parallel") {
       const memberParallelLimit = toConcurrencyLimit(
         input.memberParallelLimit,
@@ -2696,7 +2700,7 @@ async function runTeamTask(input: {
             member,
             round,
             partnerIds,
-            results: previousResults,
+            contextMap,
           });
           input.onMemberEvent?.(
             member,
@@ -2798,7 +2802,7 @@ async function runTeamTask(input: {
           member,
           round,
           partnerIds,
-          results: previousResults,
+          contextMap,
         });
         input.onMemberEvent?.(
           member,
@@ -2927,6 +2931,8 @@ async function runTeamTask(input: {
       `failed-member retry round ${retryRound}/${failedMemberRetryRounds} start: targets=${retryTargetMembers.map((member) => member.id).join(",")}`,
     );
 
+    const contextMap = buildPrecomputedContextMap(previousResults);
+
     const runRetryMember = async (member: TeamMember): Promise<TeamMemberResult> => {
       const partnerIds = communicationLinks.get(member.id) ?? [];
       const partnerSnapshots = partnerIds.map((partnerId) => {
@@ -2944,7 +2950,7 @@ async function runTeamTask(input: {
         member,
         round: retryPhaseRound,
         partnerIds,
-        results: previousResults,
+        contextMap,
       });
       input.onMemberEvent?.(
         member,
@@ -3122,6 +3128,24 @@ async function runTeamTask(input: {
     uSys: finalJudge.uSys,
     collapseSignals: finalJudge.collapseSignals,
   };
+
+  // Record team execution for cost estimation learning
+  const totalLatencyMs = memberResults.reduce((sum, r) => sum + r.latencyMs, 0);
+  const executionEntry: ExecutionHistoryEntry = {
+    source: "agent_team_run",
+    provider: input.fallbackProvider ?? "(session-default)",
+    model: input.fallbackModel ?? "(session-default)",
+    taskDescription: input.task,
+    actualDurationMs: totalLatencyMs,
+    actualTokens: 0, // Token count not available from print mode
+    success: failed.length === 0,
+    timestamp: Date.now(),
+  };
+  try {
+    getCostEstimator().recordExecution(executionEntry);
+  } catch {
+    // Ignore errors in cost estimation recording
+  }
 
   writeFileSync(
     outputFile,
@@ -3531,6 +3555,28 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
 
       try {
         const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+
+        // Get cost estimate and adjust for team size and communication rounds
+        const baseEstimate = getCostEstimator().estimate(
+          "agent_team_run",
+          ctx.model?.provider,
+          ctx.model?.id,
+          params.task
+        );
+        const teamSize = activeMembers.length;
+        const adjustedTokens = Math.round(baseEstimate.estimatedTokens * teamSize);
+        const adjustedDurationMs = Math.round(baseEstimate.estimatedDurationMs * (1 + communicationRounds * 0.3));
+
+        // Debug logging for cost estimation
+        if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
+          console.log(
+            `[CostEstimation] agent_team_run: team=${team.id} ` +
+            `base=(${baseEstimate.estimatedDurationMs}ms, ${baseEstimate.estimatedTokens}t) ` +
+            `adjusted=(${adjustedDurationMs}ms, ${adjustedTokens}t) ` +
+            `teamSize=${teamSize} rounds=${communicationRounds} method=${baseEstimate.method}`
+          );
+        }
+
         const liveMonitor = createAgentTeamLiveMonitor(ctx, {
           title: `Agent Team Run (detailed live view: ${team.id})`,
           items: activeMembers.map((member) => ({
@@ -4112,6 +4158,30 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           refreshRuntimeStatus(ctx);
         };
 
+        // Get cost estimate for parallel team execution
+        const baseEstimate = getCostEstimator().estimate(
+          "agent_team_run_parallel",
+          ctx.model?.provider,
+          ctx.model?.id,
+          params.task
+        );
+        const totalMembers = enabledTeams.reduce(
+          (sum, team) => sum + team.members.filter((m) => m.enabled).length,
+          0
+        );
+        const adjustedTokens = Math.round(baseEstimate.estimatedTokens * totalMembers);
+        const adjustedDurationMs = Math.round(baseEstimate.estimatedDurationMs * (1 + communicationRounds * 0.3));
+
+        // Debug logging for cost estimation
+        if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
+          console.log(
+            `[CostEstimation] agent_team_run_parallel: ` +
+            `base=(${baseEstimate.estimatedDurationMs}ms, ${baseEstimate.estimatedTokens}t) ` +
+            `adjusted=(${adjustedDurationMs}ms, ${adjustedTokens}t) ` +
+            `teams=${enabledTeams.length} totalMembers=${totalMembers} rounds=${communicationRounds} method=${baseEstimate.method}`
+          );
+        }
+
         try {
         // 予約は admission 制御のみ。開始後は active カウンタで実行中負荷を表現する。
         capacityReservation.consume();
@@ -4324,32 +4394,43 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
 
         // Run verification hooks for completed team outputs
         const teamVerificationResults: Array<{ teamId: string; result?: VerificationHookResult }> = [];
-        for (const result of results) {
-          if (result.runRecord.status !== "completed") continue;
-          const teamOutput = buildTeamResultText({
-            run: result.runRecord,
-            team: result.team,
-            memberResults: result.memberResults,
-            communicationAudit: result.communicationAudit,
-          });
-          const avgConfidence = result.memberResults.length > 0
-            ? result.memberResults.reduce((sum, r) => sum + extractConfidenceFromOutput(r.output), 0) / result.memberResults.length
-            : 0.5;
-          const verificationResult = await runTeamVerification(
-            teamOutput,
-            avgConfidence,
-            {
-              teamId: result.team.id,
-              task: params.task,
-              memberOutputs: result.memberResults.map(r => ({ agentId: r.memberId, output: r.output })),
-            },
-            {
-              provider: ctx.model?.provider,
-              model: ctx.model?.id,
-              signal,
-            }
-          );
-          teamVerificationResults.push({ teamId: result.team.id, result: verificationResult });
+        const verificationPromises = results.map(async (result) => {
+          if (result.runRecord.status !== "completed") return null;
+
+          try {
+            const teamOutput = buildTeamResultText({
+              run: result.runRecord,
+              team: result.team,
+              memberResults: result.memberResults,
+              communicationAudit: result.communicationAudit,
+            });
+            const avgConfidence = result.memberResults.length > 0
+              ? result.memberResults.reduce((sum, r) => sum + extractConfidenceFromOutput(r.output), 0) / result.memberResults.length
+              : 0.5;
+            const verificationResult = await runTeamVerification(
+              teamOutput,
+              avgConfidence,
+              {
+                teamId: result.team.id,
+                task: params.task,
+                memberOutputs: result.memberResults.map(r => ({ agentId: r.memberId, output: r.output })),
+              },
+              {
+                provider: ctx.model?.provider,
+                model: ctx.model?.id,
+                signal,
+              }
+            );
+            return { teamId: result.team.id, result: verificationResult };
+          } catch (error) {
+            console.warn(`[agent-teams] Verification error for team ${result.team.id}:`, error);
+            return { teamId: result.team.id, result: undefined };
+          }
+        });
+
+        const resolvedVerifications = await Promise.all(verificationPromises);
+        for (const v of resolvedVerifications) {
+          if (v) teamVerificationResults.push(v);
         }
 
         const lines: string[] = [];

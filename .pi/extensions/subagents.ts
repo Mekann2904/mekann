@@ -94,6 +94,7 @@ import {
 } from "../lib";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
+import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estimator";
 
 const logger = getLogger();
 import {
@@ -1457,6 +1458,23 @@ async function runSubagentTask(input: {
         outputFile,
       };
 
+      // Record execution for cost estimation learning
+      const executionEntry: ExecutionHistoryEntry = {
+        source: "subagent_run",
+        provider: resolvedProvider,
+        model: resolvedModel,
+        taskDescription: input.task,
+        actualDurationMs: commandResult.latencyMs,
+        actualTokens: 0, // Token count not available from print mode
+        success: true,
+        timestamp: Date.now(),
+      };
+      try {
+        getCostEstimator().recordExecution(executionEntry);
+      } catch {
+        // Ignore errors in cost estimation recording
+      }
+
       writeFileSync(
         outputFile,
         JSON.stringify(
@@ -1582,6 +1600,23 @@ async function runSubagentTask(input: {
         outputFile,
         error: message,
       };
+
+      // Record failed execution for cost estimation learning
+      const executionEntry: ExecutionHistoryEntry = {
+        source: "subagent_run",
+        provider: resolvedProvider,
+        model: resolvedModel,
+        taskDescription: input.task,
+        actualDurationMs: Date.now() - startedAtMs,
+        actualTokens: 0,
+        success: false,
+        timestamp: Date.now(),
+      };
+      try {
+        getCostEstimator().recordExecution(executionEntry);
+      } catch {
+        // Ignore errors in cost estimation recording
+      }
 
       writeFileSync(
         outputFile,
@@ -1869,6 +1904,24 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
         try {
           const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+
+          // Get cost estimate for subagent execution
+          const costEstimate = getCostEstimator().estimate(
+            "subagent_run",
+            ctx.model?.provider,
+            ctx.model?.id,
+            params.task
+          );
+
+          // Debug logging for cost estimation
+          if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
+            console.log(
+              `[CostEstimation] subagent_run: agent=${agent.id} ` +
+              `estimated=(${costEstimate.estimatedDurationMs}ms, ${costEstimate.estimatedTokens}t) ` +
+              `confidence=${costEstimate.confidence.toFixed(2)} method=${costEstimate.method}`
+            );
+          }
+
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: "Subagent Run (detailed live view)",
             items: [{ id: agent.id, name: agent.name }],
@@ -2228,6 +2281,25 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
         try {
           const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+
+          // Get cost estimate for parallel subagent execution
+          const costEstimate = getCostEstimator().estimate(
+            "subagent_run_parallel",
+            ctx.model?.provider,
+            ctx.model?.id,
+            params.task
+          );
+
+          // Debug logging for cost estimation
+          if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
+            console.log(
+              `[CostEstimation] subagent_run_parallel: ` +
+              `estimated=(${costEstimate.estimatedDurationMs}ms, ${costEstimate.estimatedTokens}t) ` +
+              `agents=${activeAgents.length} appliedParallelism=${appliedParallelism} ` +
+              `confidence=${costEstimate.confidence.toFixed(2)} method=${costEstimate.method}`
+            );
+          }
+
           const liveMonitor = createSubagentLiveMonitor(ctx, {
             title: `Subagent Run Parallel (detailed live view: ${activeAgents.length} agents)`,
             items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
@@ -2342,7 +2414,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             if (completedResults.length > 0) {
               lines.push("");
               lines.push("### Verification Results");
-              for (const result of completedResults) {
+              
+              const verificationPromises = completedResults.map(async (result) => {
                 try {
                   const verificationResult = await runSubagentVerification(
                     result.output,
@@ -2350,20 +2423,27 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
                     params.task,
                     { provider: ctx.model?.provider, model: ctx.model?.id, signal }
                   );
+                  
+                  const outputLines: string[] = [];
                   if (verificationResult) {
                     const verdict = verificationResult.result?.finalVerdict || "unknown";
                     const confidence = verificationResult.result?.confidence ?? 0;
-                    lines.push(`- ${result.runRecord.agentId}: verdict=${verdict}, confidence=${confidence.toFixed(2)}`);
+                    outputLines.push(`- ${result.runRecord.agentId}: verdict=${verdict}, confidence=${confidence.toFixed(2)}`);
                     if (verificationResult.result?.warnings?.length) {
                       for (const w of verificationResult.result.warnings) {
-                        lines.push(`  - Warning: ${w}`);
+                        outputLines.push(`  - Warning: ${w}`);
                       }
                     }
                   }
+                  return outputLines;
                 } catch (verificationError) {
-                  // 検証エラーは処理全体を失敗させない
-                  lines.push(`- ${result.runRecord.agentId}: verification error (${verificationError})`);
+                  return [`- ${result.runRecord.agentId}: verification error (${verificationError})`];
                 }
+              });
+
+              const verificationOutputs = await Promise.all(verificationPromises);
+              for (const outputLines of verificationOutputs) {
+                lines.push(...outputLines);
               }
             }
 
