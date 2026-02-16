@@ -32,6 +32,45 @@ These files are **system-critical** and must NOT be deleted, renamed, or moved b
 
 ---
 
+# Document Template (MANDATORY)
+
+When creating new documentation files, MUST use the template:
+
+```
+docs/_template.md
+```
+
+## Required Frontmatter
+
+```yaml
+---
+title: ページタイトル
+category: getting-started | user-guide | development | reference | meta
+audience: new-user | daily-user | developer | contributor
+last_updated: YYYY-MM-DD
+tags: []
+related: []
+---
+```
+
+## Exceptions (Template NOT Required)
+
+The following file types are exempt from template requirements:
+
+| Type | Pattern | Reason |
+|------|---------|--------|
+| System files | `AGENTS.md`, `APPEND_SYSTEM.md`, `INDEX.md`, `NAVIGATION.md`, `SYSTEM.md` | pi core files |
+| Skill definitions | `*/SKILL.md` | Skill standard format |
+| Team definitions | `*/team.md`, `*/TEAM.md` | Team definition format |
+| Templates | `_template.md`, `*-template.md` | Templates themselves |
+| References | `references/*.md` | Reference materials |
+| Run logs | `runs/*.md`, `*.SUMMARY.md` | Auto-generated |
+| Changelog | `CHANGELOG.md` | Changelog format |
+
+**Template Rule**: Before creating any `.md` file not in the exceptions list, read `docs/_template.md` and apply its structure.
+
+---
+
 # Execution Rules (MANDATORY)
 
 The following rules apply to ALL agents, subagents, and team members in this project:

@@ -54,6 +54,24 @@ members:
 
 ---
 
+## Document Template Rule (MANDATORY)
+
+新規ドキュメント作成時は `docs/_template.md` を使用すること。
+
+**テンプレート必須のファイル**:
+- `docs/` ディレクトリ内の新規mdファイル
+- プロジェクトルートのガイド文書
+
+**テンプレート不要なファイル**:
+- システムファイル（AGENTS.md, APPEND_SYSTEM.md等）
+- スキル定義（SKILL.md）
+- チーム定義（team.md, TEAM.md）
+- テンプレート自体（_template.md）
+- 参照資料（references/*.md）
+- 自動生成ファイル（runs/*.md）
+
+---
+
 ## 目次
 
 1. [分析プロセス](#分析プロセス)

@@ -55,6 +55,24 @@ members:
 
 ---
 
+## Document Template Rule (MANDATORY)
+
+新規ドキュメント作成時は `docs/_template.md` を使用すること。
+
+**テンプレート必須のファイル**:
+- `docs/` ディレクトリ内の新規mdファイル
+- プロジェクトルートのガイド文書
+
+**テンプレート不要なファイル**:
+- システムファイル（AGENTS.md, APPEND_SYSTEM.md等）
+- スキル定義（SKILL.md）
+- チーム定義（team.md, TEAM.md）
+- テンプレート自体（_template.md）
+- 参照資料（references/*.md）
+- 自動生成ファイル（runs/*.md）
+
+---
+
 - **Structure Analyzer**: Phase 1（現状構造分析）を担当。フォルダ構造、ファイルタイプ、サイズ分布、問題特定
 - **Duplicate Finder**: Phase 1（重複ファイル検出）を担当。重複特定、保持推奨、削除前確認
 - **Organization Designer**: Phase 2（整理計画策定）を担当。論理グループ化、フォルダ構造提案、命名規則
