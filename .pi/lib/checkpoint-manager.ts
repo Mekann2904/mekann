@@ -1,0 +1,644 @@
+// File: .pi/lib/checkpoint-manager.ts
+// Description: Checkpoint management for long-running tasks with TTL-based cleanup.
+// Why: Enables task state persistence and recovery for preemption and resumption.
+// Related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
+
+import { homedir } from "node:os";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/**
+ * Source type for checkpointed tasks.
+ * Must match TaskSource from task-scheduler.ts.
+ */
+export type CheckpointSource =
+  | "subagent_run"
+  | "subagent_run_parallel"
+  | "agent_team_run"
+  | "agent_team_run_parallel";
+
+/**
+ * Task priority for checkpoint ordering.
+ */
+export type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background";
+
+/**
+ * Checkpoint state for a long-running task.
+ */
+export interface Checkpoint {
+  /** Unique checkpoint identifier */
+  id: string;
+  /** Associated task identifier */
+  taskId: string;
+  /** Source tool that created this task */
+  source: CheckpointSource;
+  /** Provider name (e.g., "anthropic") */
+  provider: string;
+  /** Model name (e.g., "claude-sonnet-4") */
+  model: string;
+  /** Task priority level */
+  priority: CheckpointPriority;
+  /** Task-specific state (serialized as JSON) */
+  state: unknown;
+  /** Progress indicator (0.0 = start, 1.0 = complete) */
+  progress: number;
+  /** Checkpoint creation timestamp (ms since epoch) */
+  createdAt: number;
+  /** Time-to-live in milliseconds */
+  ttlMs: number;
+  /** Optional metadata for debugging */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Result of checkpoint save operation.
+ */
+export interface CheckpointSaveResult {
+  success: boolean;
+  checkpointId: string;
+  path: string;
+  error?: string;
+}
+
+/**
+ * Result of preemption operation.
+ */
+export interface PreemptionResult {
+  success: boolean;
+  checkpointId?: string;
+  error?: string;
+  resumedFromCheckpoint?: boolean;
+}
+
+/**
+ * Checkpoint manager configuration.
+ */
+export interface CheckpointManagerConfig {
+  /** Directory for storing checkpoint files */
+  checkpointDir: string;
+  /** Default TTL for checkpoints (ms) */
+  defaultTtlMs: number;
+  /** Maximum number of checkpoints to retain */
+  maxCheckpoints: number;
+  /** Interval for automatic cleanup (ms) */
+  cleanupIntervalMs: number;
+}
+
+/**
+ * Checkpoint statistics.
+ */
+export interface CheckpointStats {
+  totalCount: number;
+  totalSizeBytes: number;
+  oldestCreatedAt: number | null;
+  newestCreatedAt: number | null;
+  bySource: Record<CheckpointSource, number>;
+  byPriority: Record<CheckpointPriority, number>;
+  expiredCount: number;
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const DEFAULT_CONFIG: CheckpointManagerConfig = {
+  checkpointDir: ".pi/checkpoints",
+  defaultTtlMs: 86_400_000, // 24 hours
+  maxCheckpoints: 100,
+  cleanupIntervalMs: 3_600_000, // 1 hour
+};
+
+const CHECKPOINT_FILE_EXTENSION = ".checkpoint.json";
+
+// ============================================================================
+// State
+// ============================================================================
+
+let managerState: {
+  config: CheckpointManagerConfig;
+  checkpointDir: string;
+  cleanupTimer?: ReturnType<typeof setInterval>;
+  initialized: boolean;
+} | null = null;
+
+// ============================================================================
+// Utilities
+// ============================================================================
+
+/**
+ * Resolve checkpoint directory path.
+ * Supports both relative and absolute paths.
+ */
+function resolveCheckpointDir(baseDir: string): string {
+  if (baseDir.startsWith("/") || baseDir.startsWith("~")) {
+    return baseDir.replace("~", homedir());
+  }
+  // Relative to project root
+  return join(process.cwd(), baseDir);
+}
+
+/**
+ * Ensure checkpoint directory exists.
+ */
+function ensureCheckpointDir(dir: string): void {
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+/**
+ * Generate a unique checkpoint ID.
+ */
+function generateCheckpointId(taskId: string): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 6);
+  return `cp-${taskId.slice(0, 16)}-${timestamp}-${random}`;
+}
+
+/**
+ * Get checkpoint file path from checkpoint ID.
+ */
+function getCheckpointPath(dir: string, checkpointId: string): string {
+  return join(dir, `${checkpointId}${CHECKPOINT_FILE_EXTENSION}`);
+}
+
+/**
+ * Parse checkpoint file.
+ */
+function parseCheckpointFile(filePath: string): Checkpoint | null {
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(content) as Checkpoint;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if checkpoint is expired.
+ */
+function isCheckpointExpired(checkpoint: Checkpoint, nowMs: number): boolean {
+  const expiresAt = checkpoint.createdAt + checkpoint.ttlMs;
+  return nowMs > expiresAt;
+}
+
+/**
+ * Get checkpoint file size in bytes.
+ */
+function getFileSizeBytes(filePath: string): number {
+  try {
+    const stats = require("fs").statSync(filePath);
+    return stats.size ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+// ============================================================================
+// Checkpoint Manager Implementation
+// ============================================================================
+
+/**
+ * Initialize the checkpoint manager.
+ * Must be called before using other checkpoint operations.
+ */
+export function initCheckpointManager(
+  configOverrides?: Partial<CheckpointManagerConfig>
+): void {
+  if (managerState?.initialized) {
+    return;
+  }
+
+  const config = { ...DEFAULT_CONFIG, ...configOverrides };
+  const checkpointDir = resolveCheckpointDir(config.checkpointDir);
+
+  ensureCheckpointDir(checkpointDir);
+
+  // Start cleanup timer
+  const cleanupTimer = setInterval(() => {
+    cleanupExpiredCheckpoints().catch(() => {
+      // Ignore cleanup errors
+    });
+  }, config.cleanupIntervalMs);
+  cleanupTimer.unref();
+
+  managerState = {
+    config,
+    checkpointDir,
+    cleanupTimer,
+    initialized: true,
+  };
+}
+
+/**
+ * Get checkpoint manager instance (initializes if needed).
+ */
+export function getCheckpointManager(): {
+  save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
+  load: (taskId: string) => Promise<Checkpoint | null>;
+  delete: (taskId: string) => Promise<boolean>;
+  listExpired: () => Promise<Checkpoint[]>;
+  cleanup: () => Promise<number>;
+  getStats: () => CheckpointStats;
+} {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+
+  return {
+    save: saveCheckpoint,
+    load: loadCheckpoint,
+    delete: deleteCheckpoint,
+    listExpired: listExpiredCheckpoints,
+    cleanup: cleanupExpiredCheckpoints,
+    getStats: getCheckpointStats,
+  };
+}
+
+/**
+ * Save a checkpoint to disk.
+ * Operation is idempotent - saving the same taskId overwrites the previous checkpoint.
+ */
+async function saveCheckpoint(
+  checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }
+): Promise<CheckpointSaveResult> {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+
+  const dir = managerState!.checkpointDir;
+  const nowMs = Date.now();
+
+  const fullCheckpoint: Checkpoint = {
+    id: checkpoint.id ?? generateCheckpointId(checkpoint.taskId),
+    taskId: checkpoint.taskId,
+    source: checkpoint.source,
+    provider: checkpoint.provider,
+    model: checkpoint.model,
+    priority: checkpoint.priority,
+    state: checkpoint.state,
+    progress: Math.max(0, Math.min(1, checkpoint.progress)),
+    createdAt: nowMs,
+    ttlMs: checkpoint.ttlMs ?? managerState!.config.defaultTtlMs,
+    metadata: checkpoint.metadata,
+  };
+
+  const filePath = getCheckpointPath(dir, fullCheckpoint.id);
+
+  try {
+    // Ensure directory exists before write
+    ensureCheckpointDir(dir);
+
+    // Write checkpoint file
+    writeFileSync(filePath, JSON.stringify(fullCheckpoint, null, 2), "utf-8");
+
+    // Enforce max checkpoints limit
+    await enforceMaxCheckpoints();
+
+    return {
+      success: true,
+      checkpointId: fullCheckpoint.id,
+      path: filePath,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      checkpointId: fullCheckpoint.id,
+      path: filePath,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Load a checkpoint by task ID.
+ * Returns the most recent checkpoint for the given task.
+ */
+async function loadCheckpoint(taskId: string): Promise<Checkpoint | null> {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+
+  const dir = managerState!.checkpointDir;
+
+  if (!existsSync(dir)) {
+    return null;
+  }
+
+  const files = readdirSync(dir).filter((f) => f.endsWith(CHECKPOINT_FILE_EXTENSION));
+  const candidates: Checkpoint[] = [];
+
+  for (const file of files) {
+    const checkpoint = parseCheckpointFile(join(dir, file));
+    if (checkpoint && checkpoint.taskId === taskId) {
+      candidates.push(checkpoint);
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  // Return the most recent checkpoint
+  candidates.sort((a, b) => b.createdAt - a.createdAt);
+  return candidates[0];
+}
+
+/**
+ * Delete a checkpoint by task ID.
+ * Removes all checkpoints associated with the task.
+ */
+async function deleteCheckpoint(taskId: string): Promise<boolean> {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+
+  const dir = managerState!.checkpointDir;
+
+  if (!existsSync(dir)) {
+    return false;
+  }
+
+  const files = readdirSync(dir).filter((f) => f.endsWith(CHECKPOINT_FILE_EXTENSION));
+  let deleted = false;
+
+  for (const file of files) {
+    const checkpoint = parseCheckpointFile(join(dir, file));
+    if (checkpoint && checkpoint.taskId === taskId) {
+      try {
+        unlinkSync(join(dir, file));
+        deleted = true;
+      } catch {
+        // Ignore deletion errors
+      }
+    }
+  }
+
+  return deleted;
+}
+
+/**
+ * List all expired checkpoints.
+ */
+async function listExpiredCheckpoints(): Promise<Checkpoint[]> {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+
+  const dir = managerState!.checkpointDir;
+
+  if (!existsSync(dir)) {
+    return [];
+  }
+
+  const nowMs = Date.now();
+  const files = readdirSync(dir).filter((f) => f.endsWith(CHECKPOINT_FILE_EXTENSION));
+  const expired: Checkpoint[] = [];
+
+  for (const file of files) {
+    const checkpoint = parseCheckpointFile(join(dir, file));
+    if (checkpoint && isCheckpointExpired(checkpoint, nowMs)) {
+      expired.push(checkpoint);
+    }
+  }
+
+  return expired;
+}
+
+/**
+ * Clean up expired checkpoints.
+ * Returns the number of checkpoints deleted.
+ */
+async function cleanupExpiredCheckpoints(): Promise<number> {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+
+  const dir = managerState!.checkpointDir;
+
+  if (!existsSync(dir)) {
+    return 0;
+  }
+
+  const expired = await listExpiredCheckpoints();
+  let deletedCount = 0;
+
+  for (const checkpoint of expired) {
+    try {
+      const filePath = getCheckpointPath(dir, checkpoint.id);
+      if (existsSync(filePath)) {
+        unlinkSync(filePath);
+        deletedCount++;
+      }
+    } catch {
+      // Ignore deletion errors
+    }
+  }
+
+  return deletedCount;
+}
+
+/**
+ * Enforce maximum checkpoint limit.
+ * Removes oldest checkpoints if limit is exceeded.
+ */
+async function enforceMaxCheckpoints(): Promise<void> {
+  if (!managerState?.initialized) {
+    return;
+  }
+
+  const dir = managerState!.checkpointDir;
+  const maxCheckpoints = managerState!.config.maxCheckpoints;
+
+  if (!existsSync(dir)) {
+    return;
+  }
+
+  const files = readdirSync(dir).filter((f) => f.endsWith(CHECKPOINT_FILE_EXTENSION));
+
+  if (files.length <= maxCheckpoints) {
+    return;
+  }
+
+  // Load all checkpoints and sort by creation time
+  const checkpoints: { checkpoint: Checkpoint; file: string }[] = [];
+
+  for (const file of files) {
+    const checkpoint = parseCheckpointFile(join(dir, file));
+    if (checkpoint) {
+      checkpoints.push({ checkpoint, file });
+    }
+  }
+
+  checkpoints.sort((a, b) => b.checkpoint.createdAt - a.checkpoint.createdAt);
+
+  // Remove oldest checkpoints
+  const toRemove = checkpoints.slice(maxCheckpoints);
+
+  for (const { file } of toRemove) {
+    try {
+      unlinkSync(join(dir, file));
+    } catch {
+      // Ignore deletion errors
+    }
+  }
+}
+
+/**
+ * Get checkpoint statistics.
+ */
+function getCheckpointStats(): CheckpointStats {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+
+  const dir = managerState!.checkpointDir;
+  const nowMs = Date.now();
+
+  const stats: CheckpointStats = {
+    totalCount: 0,
+    totalSizeBytes: 0,
+    oldestCreatedAt: null,
+    newestCreatedAt: null,
+    bySource: {
+      subagent_run: 0,
+      subagent_run_parallel: 0,
+      agent_team_run: 0,
+      agent_team_run_parallel: 0,
+    },
+    byPriority: {
+      critical: 0,
+      high: 0,
+      normal: 0,
+      low: 0,
+      background: 0,
+    },
+    expiredCount: 0,
+  };
+
+  if (!existsSync(dir)) {
+    return stats;
+  }
+
+  const files = readdirSync(dir).filter((f) => f.endsWith(CHECKPOINT_FILE_EXTENSION));
+
+  for (const file of files) {
+    const filePath = join(dir, file);
+    const checkpoint = parseCheckpointFile(filePath);
+
+    if (!checkpoint) {
+      continue;
+    }
+
+    stats.totalCount++;
+    stats.totalSizeBytes += getFileSizeBytes(filePath);
+
+    if (stats.oldestCreatedAt === null || checkpoint.createdAt < stats.oldestCreatedAt) {
+      stats.oldestCreatedAt = checkpoint.createdAt;
+    }
+
+    if (stats.newestCreatedAt === null || checkpoint.createdAt > stats.newestCreatedAt) {
+      stats.newestCreatedAt = checkpoint.createdAt;
+    }
+
+    // Count by source
+    if (checkpoint.source in stats.bySource) {
+      stats.bySource[checkpoint.source]++;
+    }
+
+    // Count by priority
+    if (checkpoint.priority in stats.byPriority) {
+      stats.byPriority[checkpoint.priority]++;
+    }
+
+    // Count expired
+    if (isCheckpointExpired(checkpoint, nowMs)) {
+      stats.expiredCount++;
+    }
+  }
+
+  return stats;
+}
+
+/**
+ * Reset checkpoint manager state (for testing).
+ */
+export function resetCheckpointManager(): void {
+  if (managerState?.cleanupTimer) {
+    clearInterval(managerState.cleanupTimer);
+  }
+  managerState = null;
+}
+
+/**
+ * Check if checkpoint manager is initialized.
+ */
+export function isCheckpointManagerInitialized(): boolean {
+  return managerState?.initialized ?? false;
+}
+
+/**
+ * Get checkpoint directory path.
+ */
+export function getCheckpointDir(): string {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+  return managerState!.checkpointDir;
+}
+
+// ============================================================================
+// Environment Variable Configuration
+// ============================================================================
+
+/**
+ * Get checkpoint manager config from environment variables.
+ */
+export function getCheckpointConfigFromEnv(): Partial<CheckpointManagerConfig> {
+  const config: Partial<CheckpointManagerConfig> = {};
+
+  const checkpointDir = process.env.PI_CHECKPOINT_DIR;
+  if (checkpointDir) {
+    config.checkpointDir = checkpointDir;
+  }
+
+  const defaultTtlMs = process.env.PI_CHECKPOINT_TTL_MS;
+  if (defaultTtlMs) {
+    const parsed = parseInt(defaultTtlMs, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      config.defaultTtlMs = parsed;
+    }
+  }
+
+  const maxCheckpoints = process.env.PI_MAX_CHECKPOINTS;
+  if (maxCheckpoints) {
+    const parsed = parseInt(maxCheckpoints, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      config.maxCheckpoints = parsed;
+    }
+  }
+
+  const cleanupIntervalMs = process.env.PI_CHECKPOINT_CLEANUP_MS;
+  if (cleanupIntervalMs) {
+    const parsed = parseInt(cleanupIntervalMs, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      config.cleanupIntervalMs = parsed;
+    }
+  }
+
+  return config;
+}
+
+// Auto-initialize with environment config if not already initialized
+const state = managerState;
+if (!state?.initialized) {
+  const envConfig = getCheckpointConfigFromEnv();
+  if (Object.keys(envConfig).length > 0) {
+    initCheckpointManager(envConfig);
+  }
+}

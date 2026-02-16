@@ -396,3 +396,104 @@ export {
   attemptRecovery,
   formatDynamicParallelismSummary,
 } from "./dynamic-parallelism.js";
+
+// Checkpoint Manager utilities (Layer 2)
+// Task state persistence for preemption and resumption
+export {
+  type Checkpoint,
+  type CheckpointSaveResult,
+  type PreemptionResult,
+  type CheckpointManagerConfig,
+  type CheckpointStats,
+  type CheckpointSource,
+  type CheckpointPriority,
+  initCheckpointManager,
+  getCheckpointManager,
+  resetCheckpointManager,
+  isCheckpointManagerInitialized,
+  getCheckpointDir,
+  getCheckpointConfigFromEnv,
+} from "./checkpoint-manager.js";
+
+// Metrics Collector utilities (Layer 2)
+// Scheduler metrics collection and aggregation
+export {
+  type SchedulerMetrics,
+  type TaskCompletionEvent,
+  type PreemptionEvent,
+  type WorkStealEvent,
+  type MetricsSummary,
+  type MetricsCollectorConfig,
+  type StealingStats,
+  initMetricsCollector,
+  getMetricsCollector,
+  resetMetricsCollector,
+  isMetricsCollectorInitialized,
+  recordStealingAttempt,
+  getMetricsConfigFromEnv,
+} from "./metrics-collector.js";
+
+// Task Scheduler utilities (Layer 3)
+// Priority-based task scheduling with preemption
+export {
+  type TaskSource,
+  type TaskCostEstimate,
+  type ScheduledTask,
+  type TaskResult,
+  type QueueStats,
+  type SchedulerConfig,
+  type HybridSchedulerConfig,
+  createTaskId,
+  getScheduler,
+  createScheduler,
+  resetScheduler,
+  PREEMPTION_MATRIX,
+  shouldPreempt,
+  preemptTask,
+  resumeFromCheckpoint,
+} from "./task-scheduler.js";
+
+// Cross-Instance Coordinator utilities (Layer 3)
+// Work stealing and distributed coordination
+export {
+  type ActiveModelInfo,
+  type InstanceInfo,
+  type CoordinatorConfig,
+  type CoordinatorState,
+  type StealableQueueEntry,
+  type BroadcastQueueState,
+  registerInstance,
+  unregisterInstance,
+  updateHeartbeat,
+  cleanupDeadInstances,
+  getActiveInstanceCount,
+  getActiveInstances,
+  getMyParallelLimit,
+  getDynamicParallelLimit,
+  shouldAttemptWorkStealing,
+  getWorkStealingCandidates,
+  updateWorkloadInfo,
+  getCoordinatorStatus,
+  isCoordinatorInitialized,
+  getTotalMaxLlm,
+  getEnvOverrides,
+  setActiveModel,
+  clearActiveModel,
+  clearAllActiveModels,
+  getActiveInstancesForModel,
+  getModelParallelLimit,
+  getModelUsageSummary,
+  broadcastQueueState,
+  getRemoteQueueStates,
+  checkRemoteCapacity,
+  stealWork,
+  getWorkStealingSummary,
+  cleanupQueueStates,
+  isIdle,
+  findStealCandidate,
+  safeStealWork,
+  getStealingStats,
+  resetStealingStats,
+  cleanupExpiredLocks,
+  enhancedHeartbeat,
+} from "./cross-instance-coordinator.js";

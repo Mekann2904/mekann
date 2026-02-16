@@ -1,9 +1,178 @@
 // File: .pi/lib/task-scheduler.ts
-// Description: Priority-based task scheduler with event-driven execution.
+// Description: Priority-based task scheduler with event-driven execution and preemption support.
 // Why: Enables efficient task scheduling with provider/model-specific queue management.
-// Related: .pi/lib/token-bucket.ts, .pi/extensions/agent-runtime.ts, .pi/lib/priority-scheduler.ts
+// Related: .pi/lib/token-bucket.ts, .pi/extensions/agent-runtime.ts, .pi/lib/priority-scheduler.ts, .pi/lib/checkpoint-manager.ts
 
 import { TaskPriority, PriorityTaskQueue, comparePriority, type PriorityQueueEntry } from "./priority-scheduler";
+import {
+  getCheckpointManager,
+  type Checkpoint,
+  type PreemptionResult,
+  type CheckpointSource,
+  type CheckpointPriority,
+} from "./checkpoint-manager";
+
+// ============================================================================
+// Preemption Support
+// ============================================================================
+
+/**
+ * Preemption matrix defining which priorities can preempt others.
+ * critical tasks can preempt high/normal/low/background
+ * high tasks can preempt normal/low/background
+ * Others cannot preempt.
+ */
+export const PREEMPTION_MATRIX: Record<TaskPriority, TaskPriority[]> = {
+  critical: ["high", "normal", "low", "background"],
+  high: ["normal", "low", "background"],
+  normal: [],
+  low: [],
+  background: [],
+};
+
+/**
+ * Check if an incoming task should preempt a running task.
+ *
+ * @param runningTask - Currently executing task
+ * @param incomingTask - New task arriving in queue
+ * @returns True if incoming task should preempt running task
+ */
+export function shouldPreempt(
+  runningTask: ScheduledTask,
+  incomingTask: ScheduledTask
+): boolean {
+  // Preemption must be enabled via environment variable
+  if (process.env.PI_ENABLE_PREEMPTION === "false") {
+    return false;
+  }
+
+  // Tasks with same priority don't preempt each other
+  if (runningTask.priority === incomingTask.priority) {
+    return false;
+  }
+
+  // Check preemption matrix
+  const preemptablePriorities = PREEMPTION_MATRIX[incomingTask.priority];
+  if (!preemptablePriorities || preemptablePriorities.length === 0) {
+    return false;
+  }
+
+  return preemptablePriorities.includes(runningTask.priority);
+}
+
+/**
+ * Preempt a running task, saving its state to a checkpoint.
+ *
+ * @param taskId - ID of task to preempt
+ * @param reason - Reason for preemption
+ * @param checkpointManager - Checkpoint manager instance
+ * @param state - Optional task state to save
+ * @param progress - Task progress (0.0-1.0)
+ * @returns Preemption result with checkpoint ID
+ */
+export async function preemptTask(
+  taskId: string,
+  reason: string,
+  state?: unknown,
+  progress?: number
+): Promise<PreemptionResult> {
+  const scheduler = getScheduler();
+  const entry = scheduler.getActiveExecution(taskId);
+
+  if (!entry) {
+    return {
+      success: false,
+      error: `Task ${taskId} not found in active executions`,
+    };
+  }
+
+  const task = entry.task;
+
+  // Abort the task via its signal if available
+  if (task.signal && !task.signal.aborted) {
+    // Note: The AbortController must be external, we can't abort from here
+    // This is a signal that the task should check and save state
+  }
+
+  // Save checkpoint
+  const checkpointManager = getCheckpointManager();
+  const checkpointId = `cp-${taskId}-${Date.now().toString(36)}`;
+
+  const saveResult = await checkpointManager.save({
+    id: checkpointId,
+    taskId: task.id,
+    source: task.source as CheckpointSource,
+    provider: task.provider,
+    model: task.model,
+    priority: task.priority as CheckpointPriority,
+    state: state ?? { reason, preemptedAt: Date.now() },
+    progress: progress ?? 0.5,
+    ttlMs: 86_400_000, // 24 hours
+    metadata: { preemptReason: reason },
+  });
+
+  if (!saveResult.success) {
+    return {
+      success: false,
+      error: `Failed to save checkpoint: ${saveResult.error}`,
+    };
+  }
+
+  // Remove from active executions (task is responsible for cleanup on abort)
+  scheduler.removeActiveExecution(taskId);
+
+  return {
+    success: true,
+    checkpointId: saveResult.checkpointId,
+  };
+}
+
+/**
+ * Resume a task from a checkpoint.
+ *
+ * @param checkpointId - ID of checkpoint to resume from
+ * @param execute - Function to execute the resumed task
+ * @returns Task result from resumed execution
+ */
+export async function resumeFromCheckpoint<TResult = unknown>(
+  checkpointId: string,
+  execute: (checkpoint: Checkpoint) => Promise<TResult>
+): Promise<TaskResult<TResult>> {
+  const checkpointManager = getCheckpointManager();
+
+  // Load checkpoint (need to find by checkpoint ID)
+  // Note: load() takes taskId, so we need to find the checkpoint differently
+  // For now, we'll need to implement a separate loadById function or search
+
+  // This is a placeholder - full implementation would need checkpoint ID lookup
+  const startTime = Date.now();
+
+  try {
+    // Placeholder: In real implementation, load checkpoint by ID
+    // const checkpoint = await checkpointManager.loadById(checkpointId);
+
+    // For now, return a result indicating resumption is not fully implemented
+    return {
+      taskId: checkpointId,
+      success: false,
+      error: "Checkpoint resumption requires checkpoint ID lookup implementation",
+      waitedMs: 0,
+      executionMs: Date.now() - startTime,
+      timedOut: false,
+      aborted: false,
+    };
+  } catch (error) {
+    return {
+      taskId: checkpointId,
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      waitedMs: 0,
+      executionMs: Date.now() - startTime,
+      timedOut: false,
+      aborted: false,
+    };
+  }
+}
 
 // ============================================================================
 // Types
@@ -712,6 +881,118 @@ class TaskSchedulerImpl {
       this.eventTarget.addEventListener("task-completed", onEvent, { once: true });
       signal?.addEventListener("abort", onAbort, { once: true });
     });
+  }
+
+  // ============================================================================
+  // Preemption Support Methods
+  // ============================================================================
+
+  /**
+   * Get an active execution entry by task ID.
+   */
+  getActiveExecution(taskId: string): TaskQueueEntry | null {
+    return this.activeExecutions.get(taskId) ?? null;
+  }
+
+  /**
+   * Remove an active execution entry.
+   */
+  removeActiveExecution(taskId: string): boolean {
+    return this.activeExecutions.delete(taskId);
+  }
+
+  /**
+   * Get all active executions.
+   */
+  getAllActiveExecutions(): Map<string, TaskQueueEntry> {
+    return new Map(this.activeExecutions);
+  }
+
+  /**
+   * Check if preemption is possible for an incoming task.
+   * Returns the task to preempt, or null if no preemption is needed.
+   */
+  checkPreemptionNeeded(incomingTask: ScheduledTask): ScheduledTask | null {
+    if (process.env.PI_ENABLE_PREEMPTION === "false") {
+      return null;
+    }
+
+    // Find lowest priority running task that can be preempted
+    let lowestPriorityTask: ScheduledTask | null = null;
+    let lowestPriorityValue = Infinity;
+
+    for (const [, entry] of this.activeExecutions) {
+      const runningTask = entry.task;
+
+      if (shouldPreempt(runningTask, incomingTask)) {
+        const priorityValue = priorityToValue(runningTask.priority);
+        if (priorityValue < lowestPriorityValue) {
+          lowestPriorityValue = priorityValue;
+          lowestPriorityTask = runningTask;
+        }
+      }
+    }
+
+    return lowestPriorityTask;
+  }
+
+  /**
+   * Attempt to preempt a running task for an incoming higher priority task.
+   * Returns true if preemption was initiated successfully.
+   */
+  async attemptPreemption(
+    incomingTask: ScheduledTask,
+    checkpointState?: unknown,
+    checkpointProgress?: number
+  ): Promise<{ preempted: boolean; checkpointId?: string; error?: string }> {
+    const targetTask = this.checkPreemptionNeeded(incomingTask);
+
+    if (!targetTask) {
+      return { preempted: false };
+    }
+
+    try {
+      const result = await preemptTask(
+        targetTask.id,
+        `Preempted by ${incomingTask.priority} priority task: ${incomingTask.id}`,
+        checkpointState,
+        checkpointProgress
+      );
+
+      if (result.success) {
+        // Notify listeners of preemption
+        this.eventTarget.dispatchEvent(new CustomEvent("task-preempted", {
+          detail: { taskId: targetTask.id, checkpointId: result.checkpointId },
+        }));
+      }
+
+      return {
+        preempted: result.success,
+        checkpointId: result.checkpointId,
+        error: result.error,
+      };
+    } catch (error) {
+      return {
+        preempted: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Subscribe to preemption events.
+   */
+  onPreemption(callback: (taskId: string, checkpointId: string) => void): () => void {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<{ taskId: string; checkpointId: string }>;
+      callback(customEvent.detail.taskId, customEvent.detail.checkpointId);
+    };
+
+    this.eventTarget.addEventListener("task-preempted", handler);
+
+    return () => {
+      this.eventTarget.removeEventListener("task-preempted", handler);
+    };
   }
 }
 

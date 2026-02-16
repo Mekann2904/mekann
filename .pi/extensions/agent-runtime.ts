@@ -9,6 +9,11 @@ import {
   isCoordinatorInitialized,
   getModelParallelLimit,
   getActiveInstancesForModel,
+  getStealingStats,
+  isIdle,
+  findStealCandidate,
+  safeStealWork,
+  enhancedHeartbeat,
 } from "../lib/cross-instance-coordinator";
 import {
   getConcurrencyLimit,
@@ -1447,10 +1452,232 @@ export function broadcastCurrentQueueState(): void {
   });
 }
 
+// ============================================================================
+// Checkpoint Manager Integration
+// ============================================================================
+
+/**
+ * Feature flags for advanced features.
+ */
+export const ENABLE_PREEMPTION = process.env.PI_ENABLE_PREEMPTION !== "false";
+export const ENABLE_WORK_STEALING = process.env.PI_ENABLE_WORK_STEALING !== "false";
+export const ENABLE_CHECKPOINTS = process.env.PI_ENABLE_CHECKPOINTS !== "false";
+export const ENABLE_METRICS = process.env.PI_ENABLE_METRICS !== "false";
+
+/**
+ * Lazy-loaded checkpoint manager instance.
+ */
+let _checkpointManager: ReturnType<typeof import("../lib/checkpoint-manager").getCheckpointManager> | null = null;
+
+/**
+ * Get checkpoint manager instance (lazy initialization).
+ */
+export function getCheckpointManagerInstance(): ReturnType<typeof import("../lib/checkpoint-manager").getCheckpointManager> | null {
+  if (!ENABLE_CHECKPOINTS) return null;
+
+  if (!_checkpointManager) {
+    const { getCheckpointManager, initCheckpointManager, getCheckpointConfigFromEnv } =
+      require("../lib/checkpoint-manager") as typeof import("../lib/checkpoint-manager");
+
+    const envConfig = getCheckpointConfigFromEnv();
+    initCheckpointManager(envConfig);
+    _checkpointManager = getCheckpointManager();
+  }
+
+  return _checkpointManager;
+}
+
+/**
+ * Lazy-loaded metrics collector instance.
+ */
+let _metricsCollector: ReturnType<typeof import("../lib/metrics-collector").getMetricsCollector> | null = null;
+
+/**
+ * Get metrics collector instance (lazy initialization).
+ */
+export function getMetricsCollectorInstance(): ReturnType<typeof import("../lib/metrics-collector").getMetricsCollector> | null {
+  if (!ENABLE_METRICS) return null;
+
+  if (!_metricsCollector) {
+    const { getMetricsCollector, initMetricsCollector, getMetricsConfigFromEnv } =
+      require("../lib/metrics-collector") as typeof import("../lib/metrics-collector");
+
+    const envConfig = getMetricsConfigFromEnv();
+    initMetricsCollector(envConfig);
+    _metricsCollector = getMetricsCollector();
+  }
+
+  return _metricsCollector;
+}
+
+/**
+ * Record task completion in metrics.
+ */
+export function recordTaskCompletion(
+  task: { id: string; source: string; provider: string; model: string; priority: string },
+  result: { waitedMs: number; executionMs: number; success: boolean }
+): void {
+  const collector = getMetricsCollectorInstance();
+  if (collector) {
+    collector.recordTaskCompletion(task, result);
+  }
+}
+
+/**
+ * Record preemption event in metrics.
+ */
+export function recordPreemptionEvent(taskId: string, reason: string): void {
+  const collector = getMetricsCollectorInstance();
+  if (collector) {
+    collector.recordPreemption(taskId, reason);
+  }
+}
+
+/**
+ * Record work steal event in metrics.
+ */
+export function recordWorkStealEvent(sourceInstance: string, taskId: string): void {
+  const collector = getMetricsCollectorInstance();
+  if (collector) {
+    collector.recordWorkSteal(sourceInstance, taskId);
+  }
+}
+
+/**
+ * Get current scheduler metrics.
+ */
+export function getSchedulerMetrics(): import("../lib/metrics-collector").SchedulerMetrics | null {
+  const collector = getMetricsCollectorInstance();
+  if (collector) {
+    return collector.getMetrics();
+  }
+  return null;
+}
+
+/**
+ * Get checkpoint statistics.
+ */
+export function getCheckpointStats(): import("../lib/checkpoint-manager").CheckpointStats | null {
+  const manager = getCheckpointManagerInstance();
+  if (manager) {
+    return manager.getStats();
+  }
+  return null;
+}
+
+/**
+ * Attempt work stealing if enabled and idle.
+ */
+export async function attemptWorkStealing(): Promise<import("../lib/cross-instance-coordinator").StealableQueueEntry | null> {
+  if (!ENABLE_WORK_STEALING) return null;
+
+  // Only steal if we're idle
+  if (!isIdle()) return null;
+
+  const entry = await safeStealWork();
+
+  if (entry) {
+    recordWorkStealEvent(entry.instanceId, entry.id);
+  }
+
+  return entry;
+}
+
+/**
+ * Get comprehensive runtime status for monitoring.
+ */
+export function getComprehensiveRuntimeStatus(): {
+  runtime: AgentRuntimeSnapshot;
+  metrics: import("../lib/metrics-collector").SchedulerMetrics | null;
+  checkpoints: import("../lib/checkpoint-manager").CheckpointStats | null;
+  stealing: import("../lib/cross-instance-coordinator").StealingStats | null;
+  features: {
+    preemption: boolean;
+    workStealing: boolean;
+    checkpoints: boolean;
+    metrics: boolean;
+  };
+} {
+  return {
+    runtime: getRuntimeSnapshot(),
+    metrics: getSchedulerMetrics(),
+    checkpoints: getCheckpointStats(),
+    stealing: isCoordinatorInitialized() ? getStealingStats() : null,
+    features: {
+      preemption: ENABLE_PREEMPTION,
+      workStealing: ENABLE_WORK_STEALING,
+      checkpoints: ENABLE_CHECKPOINTS,
+      metrics: ENABLE_METRICS,
+    },
+  };
+}
+
+/**
+ * Format comprehensive runtime status for display.
+ */
+export function formatComprehensiveRuntimeStatus(): string {
+  const status = getComprehensiveRuntimeStatus();
+  const lines: string[] = [];
+
+  lines.push("Runtime Status:");
+  lines.push(`  Active LLM: ${status.runtime.totalActiveLlm}`);
+  lines.push(`  Active Requests: ${status.runtime.totalActiveRequests}`);
+  lines.push(`  Queue: active=${status.runtime.activeOrchestrations}, queued=${status.runtime.queuedOrchestrations}`);
+
+  lines.push("");
+  lines.push("Feature Flags:");
+  lines.push(`  Preemption: ${status.features.preemption ? "enabled" : "disabled"}`);
+  lines.push(`  Work Stealing: ${status.features.workStealing ? "enabled" : "disabled"}`);
+  lines.push(`  Checkpoints: ${status.features.checkpoints ? "enabled" : "disabled"}`);
+  lines.push(`  Metrics: ${status.features.metrics ? "enabled" : "disabled"}`);
+
+  if (status.metrics) {
+    lines.push("");
+    lines.push("Metrics:");
+    lines.push(`  Queue Depth: ${status.metrics.queueDepth}`);
+    lines.push(`  Avg Wait: ${status.metrics.avgWaitMs}ms`);
+    lines.push(`  P99 Wait: ${status.metrics.p99WaitMs}ms`);
+    lines.push(`  Throughput: ${status.metrics.tasksCompletedPerMin}/min`);
+    lines.push(`  Preemptions: ${status.metrics.preemptCount}`);
+    lines.push(`  Steals: ${status.metrics.stealCount}`);
+  }
+
+  if (status.checkpoints) {
+    lines.push("");
+    lines.push("Checkpoints:");
+    lines.push(`  Total: ${status.checkpoints.totalCount}`);
+    lines.push(`  Expired: ${status.checkpoints.expiredCount}`);
+    lines.push(`  Size: ${Math.round(status.checkpoints.totalSizeBytes / 1024)}KB`);
+  }
+
+  if (status.stealing) {
+    lines.push("");
+    lines.push("Work Stealing Stats:");
+    lines.push(`  Attempts: ${status.stealing.totalAttempts}`);
+    lines.push(`  Success: ${status.stealing.successfulSteals}`);
+    lines.push(`  Success Rate: ${Math.round(status.stealing.successRate * 100)}%`);
+  }
+
+  return lines.join("\n");
+}
+
 export default function registerAgentRuntimeExtension(_pi: ExtensionAPI) {
   getSharedRuntimeState();
   ensureReservationSweeper();
 
   // Initialize dynamic parallelism adjuster
   getParallelismAdjuster();
+
+  // Initialize checkpoint manager (if enabled)
+  if (ENABLE_CHECKPOINTS) {
+    getCheckpointManagerInstance();
+  }
+
+  // Initialize metrics collector (if enabled)
+  if (ENABLE_METRICS) {
+    const collector = getMetricsCollectorInstance();
+    if (collector) {
+      collector.startCollection();
+    }
+  }
 }
