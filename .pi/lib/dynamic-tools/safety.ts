@@ -306,16 +306,20 @@ export function analyzeCodeSafety(
   const lines = code.split("\n");
 
   // 危険パターンをチェック
-  for (const pattern of DANGEROUS_PATTERNS) {
-    const matches = Array.from(code.matchAll(pattern.pattern));
+  for (const patternInfo of DANGEROUS_PATTERNS) {
+    // 正規表現にgフラグがない場合は追加
+    const regex = patternInfo.pattern.flags.includes('g') 
+      ? patternInfo.pattern 
+      : new RegExp(patternInfo.pattern.source, patternInfo.pattern.flags + 'g');
+    const matches = Array.from(code.matchAll(regex));
     
     for (const match of matches) {
       const lineNum = findLineNumber(lines, match.index ?? 0);
       const snippet = lines[lineNum - 1]?.trim() ?? "";
 
       // 許可リストにある場合はスキップ
-      const operationKey = `${pattern.type}:${snippet.slice(0, 50)}`;
-      if (allowlist.includes(pattern.type) || allowlist.includes(operationKey)) {
+      const operationKey = `${patternInfo.type}:${snippet.slice(0, 50)}`;
+      if (allowlist.includes(patternInfo.type) || allowlist.includes(operationKey)) {
         allowedOperations.push(snippet.slice(0, 100));
         continue;
       }
@@ -324,21 +328,25 @@ export function analyzeCodeSafety(
       blockedOperations.push(snippet.slice(0, 100));
 
       issues.push({
-        severity: pattern.severity,
-        type: pattern.type,
-        description: pattern.description,
+        severity: patternInfo.severity,
+        type: patternInfo.type,
+        description: patternInfo.description,
         location: {
           line: lineNum,
           snippet,
         },
-        suggestion: pattern.suggestion,
+        suggestion: patternInfo.suggestion,
       });
     }
   }
 
   // 安全なパターンの使用を記録
   for (const pattern of SAFE_PATTERNS) {
-    const matches = Array.from(code.matchAll(pattern));
+    // 正規表現にgフラグがない場合は追加
+    const regex = pattern.flags.includes('g') 
+      ? pattern 
+      : new RegExp(pattern.source, pattern.flags + 'g');
+    const matches = Array.from(code.matchAll(regex));
     for (const match of matches) {
       const lineNum = findLineNumber(lines, match.index ?? 0);
       const snippet = lines[lineNum - 1]?.trim() ?? "";

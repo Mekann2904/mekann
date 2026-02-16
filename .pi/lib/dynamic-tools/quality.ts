@@ -358,7 +358,11 @@ export function assessCodeQuality(code: string): QualityAssessment {
 
   // パターンをチェック
   for (const pattern of QUALITY_PATTERNS) {
-    const matches = Array.from(code.matchAll(new RegExp(pattern.pattern.source, pattern.pattern.flags)));
+    // 正規表現にgフラグがない場合は追加
+    const flags = pattern.pattern.flags.includes('g') 
+      ? pattern.pattern.flags 
+      : pattern.pattern.flags + 'g';
+    const matches = Array.from(code.matchAll(new RegExp(pattern.pattern.source, flags)));
     
     for (const match of matches) {
       const lineNum = findLineNumber(lines, match.index ?? 0);
