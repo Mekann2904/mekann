@@ -3,6 +3,21 @@
 <!-- Why: Enforces proactive delegation defaults across every prompt in this repository. -->
 <!-- Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md -->
 
+# Quick Reference (READ FIRST)
+
+| Need | Go To |
+|------|-------|
+| **Navigation** | `.pi/INDEX.md` - Repository structure map |
+| **Task-to-Source** | `.pi/NAVIGATION.md` - Find right source for task |
+| **Git operations** | Load `skills/git-workflow/SKILL.md` FIRST |
+| **Delegate task** | Use `subagent_run` or `agent_team_run` |
+| **Code review** | Load `skills/code-review/SKILL.md` |
+| **Architecture** | Load `skills/clean-architecture/SKILL.md` |
+
+**Core Rules**: No emoji | Use question tool for user choices | Delegate non-trivial tasks
+
+---
+
 # Execution Rules (MANDATORY)
 
 The following rules apply to ALL agents, subagents, and team members in this project:
