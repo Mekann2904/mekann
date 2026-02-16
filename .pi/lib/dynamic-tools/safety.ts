@@ -178,6 +178,36 @@ const DANGEROUS_PATTERNS: DangerousPattern[] = [
     suggestion: "必要な環境変数のみを明示的にアクセスしてください",
   },
 
+  // VMコンテキストで利用不可なグローバル
+  {
+    pattern: /\brequire\s*\(/,
+    type: "eval-usage",
+    severity: "critical",
+    description: "require()はVMコンテキストで使用できません",
+    suggestion: "外部モジュールは動的ツールで使用できません",
+  },
+  {
+    pattern: /\bprocess\b/,
+    type: "environment-access",
+    severity: "high",
+    description: "processオブジェクトはVMコンテキストで使用できません",
+    suggestion: "環境変数やプロセス情報へのアクセスは禁止されています",
+  },
+  {
+    pattern: /\bglobal(?:This)?\b/,
+    type: "eval-usage",
+    severity: "high",
+    description: "global/globalThisはVMコンテキストで使用できません",
+    suggestion: "グローバルスコープへのアクセスは禁止されています",
+  },
+  {
+    pattern: /__dirname|__filename/,
+    type: "environment-access",
+    severity: "medium",
+    description: "__dirname/__filenameはVMコンテキストで使用できません",
+    suggestion: "ファイルシステムパスへのアクセスは禁止されています",
+  },
+
   // 機密データ
   {
     pattern: /password|secret|api[_-]?key|token|credential|private[_-]?key/i,

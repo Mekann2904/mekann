@@ -51,3 +51,6 @@ coverage/
 # Plans runtime data
 .pi/plans/storage.json
 .pi/logs/
+
+# Dynamic skills (generated at runtime)
+.pi/skills/dynamic/

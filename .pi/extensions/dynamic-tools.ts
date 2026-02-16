@@ -9,10 +9,11 @@
  * - delete_dynamic_tool: ツール削除
  * - tool_reflection: 実行後の反省とツール生成判定
  *
- * 技術的制約:
- * - TypeScript + Node.js標準モジュールのみ
- * - 同一プロセス内でフル権限実行（サンドボックスなし）
+ * セキュリティ:
+ * - VMコンテキストで実行（require, process は除外）
+ * - 外部モジュールアクセス・環境変数アクセス禁止
  * - allowlist-based検証パターン
+ * - 詳細は lib/dynamic-tools/safety.ts 参照
  *
  * 統合モジュール:
  * - lib/dynamic-tools: ツール登録・管理・安全性解析
@@ -185,21 +186,36 @@ ${tool.code}
 
 /**
  * コードを実行
- * 注意: この実装は同一プロセス内で実行
+ * セキュリティ: VMコンテキストからrequire, processを削除し
+ * 外部モジュールアクセスとプロセス操作を制限
+ *
+ * 利用可能なグローバルオブジェクト:
+ * - console, Buffer, setTimeout, setInterval, clearTimeout, clearInterval
+ * - 標準オブジェクト: Promise, JSON, Object, Array, String, Number, Boolean, Date, Math
+ * - エラークラス: Error, TypeError, RangeError, SyntaxError
+ * - URL関連: URL, URLSearchParams
+ *
+ * 利用不可（セキュリティ制約）:
+ * - require: 外部モジュールアクセス禁止
+ * - process: 環境変数・プロセス情報アクセス禁止
+ * - global, globalThis: グローバルスコープ汚染禁止
+ * - __dirname, __filename: ファイルシステムパス漏洩禁止
  */
 async function executeCode(code: string): Promise<ToolExecutionResult> {
   try {
     // vmモジュールを使用してコードを実行
     const vm = await import("node:vm");
     const context = vm.createContext({
+      // ログ出力のみ許可
       console,
-      require,
-      process,
+      // データ操作
       Buffer,
+      // タイマー（リソース制限あり）
       setTimeout,
       setInterval,
       clearTimeout,
       clearInterval,
+      // 標準オブジェクト
       Promise,
       JSON,
       Object,
@@ -215,6 +231,8 @@ async function executeCode(code: string): Promise<ToolExecutionResult> {
       SyntaxError,
       URL,
       URLSearchParams,
+      // 注意: require, process は意図的に除外
+      // 外部モジュールアクセス・環境変数アクセスを禁止
     });
 
     const script = new vm.Script(code, {
