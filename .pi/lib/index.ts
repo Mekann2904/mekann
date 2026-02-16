@@ -379,3 +379,20 @@ export {
   getAllIntentBudgets,
   summarizeIntentClassification,
 } from "./intent-aware-limits.js";
+
+// Dynamic Parallelism utilities (Layer 2)
+// Per-provider/model parallelism management
+export {
+  type ParallelismConfig,
+  type ProviderHealth,
+  type DynamicAdjusterConfig,
+  type ErrorEvent,
+  DynamicParallelismAdjuster,
+  getParallelismAdjuster,
+  createParallelismAdjuster,
+  resetParallelismAdjuster,
+  getParallelism,
+  adjustForError,
+  attemptRecovery,
+  formatDynamicParallelismSummary,
+} from "./dynamic-parallelism.js";

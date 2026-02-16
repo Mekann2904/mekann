@@ -17,6 +17,7 @@ import {
 } from "../lib/provider-limits";
 import {
   getEffectiveLimit,
+  getSchedulerAwareLimit,
 } from "../lib/adaptive-rate-controller";
 import {
   TaskPriority,
@@ -34,6 +35,14 @@ import {
   type TaskResult,
   type TaskSource,
 } from "../lib/task-scheduler";
+import {
+  getParallelismAdjuster,
+  getParallelism as getDynamicParallelism,
+} from "../lib/dynamic-parallelism";
+import {
+  broadcastQueueState,
+  getWorkStealingSummary,
+} from "../lib/cross-instance-coordinator";
 
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
@@ -1328,8 +1337,9 @@ export function resetRuntimeTransientState(): void {
  * Get the effective parallelism limit for a specific model.
  * This combines:
  * 1. Provider/model preset limits
- * 2. Learned limits (from 429 errors)
- * 3. Cross-instance distribution
+ * 2. Learned limits (from 429 errors) + predictive throttling
+ * 3. Dynamic parallelism adjuster
+ * 4. Cross-instance distribution
  *
  * @param provider - Provider name (e.g., "anthropic")
  * @param model - Model name (e.g., "claude-sonnet-4-20250514")
@@ -1340,15 +1350,21 @@ export function getModelAwareParallelLimit(provider: string, model: string): num
   const tier = detectTier(provider, model);
   const presetLimit = getConcurrencyLimit(provider, model, tier);
 
-  // Apply adaptive learning (429-based adjustments)
-  const adaptiveLimit = getEffectiveLimit(provider, model, presetLimit);
+  // Apply scheduler-aware limit (includes adaptive learning + predictive throttling)
+  const schedulerLimit = getSchedulerAwareLimit(provider, model, presetLimit);
+
+  // Apply dynamic parallelism adjuster
+  const dynamicLimit = getDynamicParallelism(provider, model);
+
+  // Take the minimum of scheduler limit and dynamic limit
+  let effectiveLimit = Math.min(schedulerLimit, dynamicLimit);
 
   // Distribute across instances using the same model
   if (isCoordinatorInitialized()) {
-    return getModelParallelLimit(provider, model, adaptiveLimit);
+    effectiveLimit = getModelParallelLimit(provider, model, effectiveLimit);
   }
 
-  return adaptiveLimit;
+  return effectiveLimit;
 }
 
 /**
@@ -1384,9 +1400,11 @@ export function getLimitsSummary(provider?: string, model?: string): string {
   if (provider && model) {
     const modelLimit = getModelAwareParallelLimit(provider, model);
     const instances = isCoordinatorInitialized() ? getActiveInstancesForModel(provider, model) : 1;
+    const dynamicLimit = getDynamicParallelism(provider, model);
     lines.push("");
     lines.push(`Model-Specific (${provider}/${model}):`);
     lines.push(`  effective_limit: ${modelLimit}`);
+    lines.push(`  dynamic_limit: ${dynamicLimit}`);
     lines.push(`  instances_using: ${instances}`);
   }
 
@@ -1396,10 +1414,43 @@ export function getLimitsSummary(provider?: string, model?: string): string {
   lines.push(`  activeTeamRuns: ${snapshot.teamActiveRuns}`);
   lines.push(`  activeReservations: ${snapshot.activeReservations}`);
 
+  // Work stealing summary
+  if (isCoordinatorInitialized()) {
+    const stealingSummary = getWorkStealingSummary();
+    lines.push("");
+    lines.push("Work Stealing:");
+    lines.push(`  remote_instances: ${stealingSummary.remoteInstances}`);
+    lines.push(`  total_pending_tasks: ${stealingSummary.totalPendingTasks}`);
+    lines.push(`  stealable_tasks: ${stealingSummary.stealableTasks}`);
+    lines.push(`  idle_instances: ${stealingSummary.idleInstances}`);
+  }
+
   return lines.join("\n");
+}
+
+/**
+ * Broadcast current queue state for work stealing coordination.
+ */
+export function broadcastCurrentQueueState(): void {
+  const snapshot = getRuntimeSnapshot();
+
+  broadcastQueueState({
+    pendingTaskCount: snapshot.queuedOrchestrations,
+    activeOrchestrations: snapshot.activeOrchestrations,
+    stealableEntries: snapshot.queuedTools.slice(0, 10).map((tool) => ({
+      id: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      toolName: tool.split(":")[0],
+      priority: tool.split(":")[1] ?? "normal",
+      instanceId: "self",
+      enqueuedAt: new Date().toISOString(),
+    })),
+  });
 }
 
 export default function registerAgentRuntimeExtension(_pi: ExtensionAPI) {
   getSharedRuntimeState();
   ensureReservationSweeper();
+
+  // Initialize dynamic parallelism adjuster
+  getParallelismAdjuster();
 }
