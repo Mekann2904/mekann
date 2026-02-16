@@ -4,6 +4,8 @@ import {
   comparePriority,
   PriorityTaskQueue,
   type PriorityQueueEntry,
+  inferTaskType,
+  estimateRounds,
 } from "./lib/priority-scheduler.js";
 
 import {
@@ -76,6 +78,43 @@ function testPriorityScheduler(): void {
     q.enqueue({ id: "crit", toolName: "q", priority: "critical", enqueuedAtMs: Date.now() });
     q.enqueue({ id: "norm", toolName: "r", priority: "normal", enqueuedAtMs: Date.now() });
     return q.dequeue()?.priority === "critical" && q.dequeue()?.priority === "normal" && q.dequeue()?.priority === "low";
+  });
+}
+
+function testRoundEstimation(): void {
+  section("Phase 1b: Round Estimation (SRT)");
+  
+  test("inferTaskType classifies question", () => inferTaskType("question") === "question");
+  test("inferTaskType classifies subagent_run", () => inferTaskType("subagent_run") === "subagent_single");
+  test("inferTaskType classifies subagent_run_parallel", () => inferTaskType("subagent_run_parallel") === "subagent_parallel");
+  test("inferTaskType classifies agent_team_run", () => inferTaskType("agent_team_run") === "agent_team");
+  
+  test("estimateRounds for simple read", () => {
+    const est = estimateRounds({ toolName: "read" });
+    return est.estimatedRounds === 1 && est.taskType === "read";
+  });
+  
+  test("estimateRounds for subagent_single", () => {
+    const est = estimateRounds({ toolName: "subagent_run" });
+    return est.estimatedRounds >= 5 && est.taskType === "subagent_single";
+  });
+  
+  test("estimateRounds scales with agentCount", () => {
+    const single = estimateRounds({ toolName: "subagent_run_parallel", agentCount: 1 });
+    const multi = estimateRounds({ toolName: "subagent_run_parallel", agentCount: 3 });
+    return multi.estimatedRounds > single.estimatedRounds;
+  });
+  
+  test("estimateRounds adds penalty for retry", () => {
+    const normal = estimateRounds({ toolName: "edit" });
+    const retry = estimateRounds({ toolName: "edit", isRetry: true });
+    return retry.estimatedRounds > normal.estimatedRounds;
+  });
+  
+  test("comparePriority uses estimatedRounds for SRT", () => {
+    const short: PriorityQueueEntry = { id: "short", toolName: "read", priority: "normal", enqueuedAtMs: Date.now(), virtualStartTime: 0, virtualFinishTime: 0, skipCount: 0, estimatedRounds: 1 };
+    const long: PriorityQueueEntry = { id: "long", toolName: "agent_team_run", priority: "normal", enqueuedAtMs: Date.now(), virtualStartTime: 0, virtualFinishTime: 0, skipCount: 0, estimatedRounds: 15 };
+    return comparePriority(short, long) < 0; // short should come first
   });
 }
 
@@ -236,6 +275,7 @@ function testUnifiedLimitResolver(): void {
 function main(): void {
   console.log("Task Scheduling Optimization Tests\n");
   testPriorityScheduler();
+  testRoundEstimation();
   testDependencyGraph();
   testWorkStealing();
   testPredictiveRateControl();

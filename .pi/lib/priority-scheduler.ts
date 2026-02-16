@@ -70,6 +70,144 @@ export interface PriorityQueueEntry extends PriorityTaskMetadata {
   lastConsideredMs?: number;
 }
 
+// ============================================================================
+// Round Estimation (SRT Optimization)
+// ============================================================================
+
+/**
+ * Task type classification for round estimation.
+ */
+export type TaskType =
+  | "read"      // Information retrieval
+  | "bash"      // Command execution
+  | "edit"      // Single file modification
+  | "write"     // File creation
+  | "subagent_single"   // Single agent delegation
+  | "subagent_parallel" // Parallel agent delegation
+  | "agent_team"        // Team execution
+  | "question"  // User interaction
+  | "unknown";  // Unclassifiable
+
+/**
+ * Task complexity level.
+ */
+export type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "exploratory";
+
+/**
+ * Context for round estimation.
+ */
+export interface EstimationContext {
+  toolName: string;
+  taskDescription?: string;
+  agentCount?: number;
+  isRetry?: boolean;
+  hasUnknownFramework?: boolean;
+}
+
+/**
+ * Result of round estimation.
+ */
+export interface RoundEstimation {
+  estimatedRounds: number;
+  taskType: TaskType;
+  complexity: TaskComplexity;
+  confidence: number; // 0.0 - 1.0
+}
+
+/**
+ * Infer task type from tool name.
+ */
+export function inferTaskType(toolName: string): TaskType {
+  const lower = toolName.toLowerCase();
+  if (lower === "question") return "question";
+  if (lower === "read") return "read";
+  if (lower === "bash") return "bash";
+  if (lower === "edit") return "edit";
+  if (lower === "write") return "write";
+  if (lower.includes("subagent_run_parallel")) return "subagent_parallel";
+  if (lower.includes("subagent_run")) return "subagent_single";
+  if (lower.includes("agent_team")) return "agent_team";
+  return "unknown";
+}
+
+/**
+ * Estimate the number of tool call rounds for a task.
+ * Based on agent-estimation skill methodology.
+ *
+ * Round estimation table:
+ * - read/bash: 1 round (simple queries)
+ * - edit/write: 2 rounds (code generation + verification)
+ * - question: 1 round (user interaction)
+ * - subagent_single: 5 rounds (delegation overhead)
+ * - subagent_parallel: 3 + N*2 rounds (coordination)
+ * - agent_team: 8 + N*3 rounds (team coordination)
+ *
+ * @param context - Estimation context
+ * @returns Round estimation result
+ */
+export function estimateRounds(context: EstimationContext): RoundEstimation {
+  const taskType = inferTaskType(context.toolName);
+  
+  // Base rounds by task type
+  const baseRoundsMap: Record<TaskType, number> = {
+    "read": 1,
+    "bash": 1,
+    "edit": 2,
+    "write": 2,
+    "question": 1,
+    "subagent_single": 5,
+    "subagent_parallel": 3 + (context.agentCount ?? 1) * 2,
+    "agent_team": 8 + (context.agentCount ?? 1) * 3,
+    "unknown": 5,
+  };
+  
+  let rounds = baseRoundsMap[taskType];
+  let complexity: TaskComplexity = "moderate";
+  let confidence = 0.7;
+  
+  // Adjust for retry (add 2 rounds for debugging)
+  if (context.isRetry) {
+    rounds += 2;
+    complexity = "complex";
+    confidence *= 0.8;
+  }
+  
+  // Adjust for unknown framework (add exploration rounds)
+  if (context.hasUnknownFramework) {
+    rounds = Math.round(rounds * 1.3);
+    complexity = "exploratory";
+    confidence *= 0.6;
+  }
+  
+  // Infer complexity from task description
+  if (context.taskDescription) {
+    const desc = context.taskDescription.toLowerCase();
+    if (desc.includes("simple") || desc.includes("trivial") || desc.includes("quick")) {
+      rounds = Math.max(1, Math.round(rounds * 0.7));
+      complexity = "simple";
+      confidence = Math.min(1.0, confidence + 0.1);
+    } else if (desc.includes("complex") || desc.includes("difficult") || desc.includes("investigate")) {
+      rounds = Math.round(rounds * 1.5);
+      complexity = "complex";
+      confidence *= 0.8;
+    } else if (desc.includes("explore") || desc.includes("research") || desc.includes("unknown")) {
+      rounds = Math.round(rounds * 1.8);
+      complexity = "exploratory";
+      confidence *= 0.5;
+    }
+  }
+  
+  // Clamp to reasonable bounds
+  rounds = Math.max(1, Math.min(50, rounds));
+  
+  return {
+    estimatedRounds: rounds,
+    taskType,
+    complexity,
+    confidence,
+  };
+}
+
 /**
  * Infer task priority from tool name and context.
  *
@@ -196,12 +334,25 @@ export function comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): n
     return enqueueDiff;
   }
 
-  // 5. Estimated duration (shorter first, for SRT optimization)
+  // 5. Estimated rounds (SRT optimization, rounds-based) - NEW
+  // Prioritize tasks with fewer estimated rounds
+  if (a.estimatedRounds !== undefined && b.estimatedRounds !== undefined) {
+    const roundsDiff = a.estimatedRounds - b.estimatedRounds;
+    if (roundsDiff !== 0) {
+      return roundsDiff;
+    }
+  } else if (a.estimatedRounds !== undefined) {
+    return -1; // a has estimation, prioritize it
+  } else if (b.estimatedRounds !== undefined) {
+    return 1; // b has estimation, prioritize it
+  }
+
+  // 6. Estimated duration (fallback to ms-based SRT)
   if (a.estimatedDurationMs !== undefined && b.estimatedDurationMs !== undefined) {
     return a.estimatedDurationMs - b.estimatedDurationMs;
   }
 
-  // 6. Final tiebreaker by ID for stability
+  // 7. Final tiebreaker by ID for stability
   return a.id.localeCompare(b.id);
 }
 
