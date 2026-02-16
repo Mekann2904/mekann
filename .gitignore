@@ -48,6 +48,9 @@ coverage/
 # Analytics data
 .pi/analytics/
 
+# Scheduler metrics (runtime data)
+.pi/metrics/
+
 # Plans runtime data
 .pi/plans/storage.json
 .pi/logs/
