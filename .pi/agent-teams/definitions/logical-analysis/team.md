@@ -5,7 +5,7 @@ description: 論理的テキスト分析専門チーム。学術論文、技術�
 enabled: disabled
 strategy: parallel
 skills:
-  - logical-analysis    # チーム共通: 論理的分析フレームワーク
+  - logical-analysis
 members:
   - id: structure-analyst
     role: Structure Analyst
