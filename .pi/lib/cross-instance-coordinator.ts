@@ -418,15 +418,16 @@ export function shouldAttemptWorkStealing(): boolean {
     return false;
   }
 
+  const myInstanceId = state.myInstanceId;
   const instances = getActiveInstances();
-  const myInfo = instances.find((i) => i.instanceId === state.myInstanceId);
+  const myInfo = instances.find((i) => i.instanceId === myInstanceId);
 
   // I'm idle (no pending tasks)
   const imIdle = (myInfo?.pendingTaskCount ?? 0) === 0;
 
   // There are busy instances
   const hasBusyInstance = instances.some(
-    (i) => i.instanceId !== state!.myInstanceId && (i.pendingTaskCount ?? 0) > 2
+    (i) => i.instanceId !== myInstanceId && (i.pendingTaskCount ?? 0) > 2
   );
 
   return imIdle && hasBusyInstance;
@@ -783,4 +784,266 @@ export function getModelUsageSummary(): {
   }));
 
   return { models, instances };
+}
+
+// ============================================================================
+// Work Stealing Support
+// ============================================================================
+
+/**
+ * Queue entry for work stealing.
+ * Represents a task that can potentially be stolen by another instance.
+ */
+export interface StealableQueueEntry {
+  id: string;
+  toolName: string;
+  priority: string;
+  instanceId: string;
+  enqueuedAt: string;
+  estimatedDurationMs?: number;
+  estimatedRounds?: number;
+}
+
+/**
+ * Queue state broadcast format.
+ */
+export interface BroadcastQueueState {
+  instanceId: string;
+  timestamp: string;
+  pendingTaskCount: number;
+  avgLatencyMs?: number;
+  activeOrchestrations: number;
+  stealableEntries: StealableQueueEntry[];
+}
+
+const QUEUE_STATE_DIR = join(COORDINATOR_DIR, "queue-states");
+
+/**
+ * Ensure queue state directory exists.
+ */
+function ensureQueueStateDir(): void {
+  if (!existsSync(QUEUE_STATE_DIR)) {
+    mkdirSync(QUEUE_STATE_DIR, { recursive: true });
+  }
+}
+
+/**
+ * Broadcast this instance's queue state to other instances.
+ * Other instances can read this to determine if work stealing is possible.
+ *
+ * @param pendingTaskCount - Number of pending tasks in queue
+ * @param activeOrchestrations - Number of active orchestrations
+ * @param stealableEntries - Entries that can be stolen (optional)
+ * @param avgLatencyMs - Average task latency (optional)
+ */
+export function broadcastQueueState(options: {
+  pendingTaskCount: number;
+  activeOrchestrations: number;
+  stealableEntries?: StealableQueueEntry[];
+  avgLatencyMs?: number;
+}): void {
+  if (!state) return;
+
+  ensureQueueStateDir();
+
+  const queueState: BroadcastQueueState = {
+    instanceId: state.myInstanceId,
+    timestamp: new Date().toISOString(),
+    pendingTaskCount: options.pendingTaskCount,
+    activeOrchestrations: options.activeOrchestrations,
+    stealableEntries: options.stealableEntries ?? [],
+    avgLatencyMs: options.avgLatencyMs,
+  };
+
+  const stateFile = join(QUEUE_STATE_DIR, `${state.myInstanceId}.json`);
+  try {
+    writeFileSync(stateFile, JSON.stringify(queueState, null, 2));
+  } catch {
+    // Ignore write errors
+  }
+}
+
+/**
+ * Get queue states from all active instances.
+ *
+ * @returns Array of queue states
+ */
+export function getRemoteQueueStates(): BroadcastQueueState[] {
+  if (!state) return [];
+
+  ensureQueueStateDir();
+  const nowMs = Date.now();
+  const files = readdirSync(QUEUE_STATE_DIR).filter((f) => f.endsWith(".json"));
+  const states: BroadcastQueueState[] = [];
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(QUEUE_STATE_DIR, file), "utf-8");
+      const parsed = JSON.parse(content) as BroadcastQueueState;
+
+      // Skip if too old (more than 2x heartbeat interval)
+      const timestamp = new Date(parsed.timestamp).getTime();
+      if (nowMs - timestamp > DEFAULT_CONFIG.heartbeatIntervalMs * 2) {
+        continue;
+      }
+
+      // Skip self
+      if (parsed.instanceId === state.myInstanceId) {
+        continue;
+      }
+
+      states.push(parsed);
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  return states;
+}
+
+/**
+ * Check if any remote instance has capacity for more work.
+ * This is useful for determining if we should slow down our own task submission.
+ *
+ * @returns True if remote instances have capacity
+ */
+export function checkRemoteCapacity(): boolean {
+  const remoteStates = getRemoteQueueStates();
+
+  if (remoteStates.length === 0) {
+    // No remote instances, we have all capacity
+    return true;
+  }
+
+  // Check if any remote instance is idle (no pending tasks and low active)
+  for (const remoteState of remoteStates) {
+    const isIdle =
+      remoteState.pendingTaskCount === 0 &&
+      remoteState.activeOrchestrations < 2;
+
+    if (isIdle) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Attempt to steal work from another instance.
+ * Returns a stealable entry if available.
+ *
+ * Note: This is a cooperative mechanism. The stealing instance must have
+ * the actual task data to execute it. This function identifies candidates.
+ *
+ * @returns A stealable queue entry or null
+ */
+export function stealWork(): StealableQueueEntry | null {
+  const remoteStates = getRemoteQueueStates();
+
+  if (remoteStates.length === 0) {
+    return null;
+  }
+
+  // Find instances with excess work (pending > 2 and not overloaded)
+  const candidates: Array<{ state: BroadcastQueueState; entry: StealableQueueEntry }> = [];
+
+  for (const remoteState of remoteStates) {
+    if (remoteState.pendingTaskCount <= 2) {
+      continue;
+    }
+
+    if (remoteState.stealableEntries.length === 0) {
+      continue;
+    }
+
+    // Take the highest priority entry (first in sorted list)
+    const entry = remoteState.stealableEntries[0];
+    candidates.push({ state: remoteState, entry });
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  // Sort by priority and pick the best
+  const priorityOrder = ["critical", "high", "normal", "low", "background"];
+  candidates.sort((a, b) => {
+    const priorityA = priorityOrder.indexOf(a.entry.priority);
+    const priorityB = priorityOrder.indexOf(b.entry.priority);
+    return priorityA - priorityB; // Lower index = higher priority
+  });
+
+  return candidates[0].entry;
+}
+
+/**
+ * Get work stealing summary for monitoring.
+ *
+ * @returns Summary of work stealing opportunities
+ */
+export function getWorkStealingSummary(): {
+  remoteInstances: number;
+  totalPendingTasks: number;
+  stealableTasks: number;
+  idleInstances: number;
+  busyInstances: number;
+} {
+  const remoteStates = getRemoteQueueStates();
+
+  let totalPending = 0;
+  let stealable = 0;
+  let idle = 0;
+  let busy = 0;
+
+  for (const remoteState of remoteStates) {
+    totalPending += remoteState.pendingTaskCount;
+    stealable += remoteState.stealableEntries.length;
+
+    if (remoteState.pendingTaskCount === 0 && remoteState.activeOrchestrations < 2) {
+      idle++;
+    } else if (remoteState.pendingTaskCount > 2) {
+      busy++;
+    }
+  }
+
+  return {
+    remoteInstances: remoteStates.length,
+    totalPendingTasks: totalPending,
+    stealableTasks: stealable,
+    idleInstances: idle,
+    busyInstances: busy,
+  };
+}
+
+/**
+ * Clean up old queue state files.
+ * Called periodically during heartbeat.
+ */
+export function cleanupQueueStates(): void {
+  if (!state) return;
+
+  ensureQueueStateDir();
+  const nowMs = Date.now();
+  const maxAge = DEFAULT_CONFIG.heartbeatTimeoutMs;
+  const files = readdirSync(QUEUE_STATE_DIR).filter((f) => f.endsWith(".json"));
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(QUEUE_STATE_DIR, file), "utf-8");
+      const parsed = JSON.parse(content) as BroadcastQueueState;
+      const timestamp = new Date(parsed.timestamp).getTime();
+
+      if (nowMs - timestamp > maxAge) {
+        unlinkSync(join(QUEUE_STATE_DIR, file));
+      }
+    } catch {
+      // Remove corrupted files
+      try {
+        unlinkSync(join(QUEUE_STATE_DIR, file));
+      } catch {
+        // Ignore
+      }
+    }
+  }
 }

@@ -729,3 +729,139 @@ export function setPredictiveThreshold(threshold: number): void {
   currentState.predictiveThreshold = Math.max(0, Math.min(1, threshold));
   saveState();
 }
+
+// ============================================================================
+// Dynamic Parallelism Integration
+// ============================================================================
+
+/**
+ * Get scheduler-aware limit for a provider/model.
+ * This combines:
+ * 1. Adaptive learned limits
+ * 2. Predictive throttling
+ * 3. Dynamic parallelism adjuster
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @param baseLimit - Base concurrency limit from provider-limits
+ * @returns Scheduler-aware concurrency limit
+ */
+export function getSchedulerAwareLimit(
+  provider: string,
+  model: string,
+  baseLimit?: number
+): number {
+  // Get the effective limit from adaptive controller
+  const effectiveLimit = getEffectiveLimit(provider, model, baseLimit ?? 4);
+
+  // Apply predictive throttling
+  const predictiveLimit = getPredictiveConcurrency(provider, model, effectiveLimit);
+
+  return predictiveLimit;
+}
+
+/**
+ * Notify the scheduler of a 429 error.
+ * This is a convenience function that wraps record429.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @param details - Optional error details
+ */
+export function notifyScheduler429(
+  provider: string,
+  model: string,
+  details?: string
+): void {
+  record429(provider, model, details);
+
+  // Also update dynamic parallelism adjuster
+  try {
+    // Lazy import to avoid circular dependency
+    const { adjustForError } = require("./dynamic-parallelism");
+    adjustForError(provider, model, "429");
+  } catch {
+    // Ignore if dynamic-parallelism module not available
+  }
+}
+
+/**
+ * Notify the scheduler of a timeout error.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ */
+export function notifySchedulerTimeout(provider: string, model: string): void {
+  recordEvent({
+    provider,
+    model,
+    type: "timeout",
+    timestamp: new Date().toISOString(),
+  });
+
+  // Also update dynamic parallelism adjuster
+  try {
+    const { adjustForError } = require("./dynamic-parallelism");
+    adjustForError(provider, model, "timeout");
+  } catch {
+    // Ignore if dynamic-parallelism module not available
+  }
+}
+
+/**
+ * Notify the scheduler of a successful request.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @param responseMs - Response time in milliseconds
+ */
+export function notifySchedulerSuccess(
+  provider: string,
+  model: string,
+  responseMs?: number
+): void {
+  recordSuccess(provider, model);
+
+  // Also update dynamic parallelism adjuster
+  if (responseMs) {
+    try {
+      const { getParallelismAdjuster } = require("./dynamic-parallelism");
+      const adjuster = getParallelismAdjuster();
+      adjuster.recordSuccess(provider, model, responseMs);
+      adjuster.attemptRecovery(provider, model);
+    } catch {
+      // Ignore if dynamic-parallelism module not available
+    }
+  }
+}
+
+/**
+ * Get combined rate control summary for a provider/model.
+ *
+ * @param provider - Provider name
+ * @param model - Model name
+ * @returns Combined summary
+ */
+export function getCombinedRateControlSummary(
+  provider: string,
+  model: string
+): {
+  adaptiveLimit: number;
+  originalLimit: number;
+  predictiveLimit: number;
+  predicted429Probability: number;
+  shouldThrottle: boolean;
+  recent429Count: number;
+} {
+  const learnedLimit = getLearnedLimit(provider, model);
+  const analysis = getPredictiveAnalysis(provider, model);
+
+  return {
+    adaptiveLimit: learnedLimit?.concurrency ?? 4,
+    originalLimit: learnedLimit?.originalConcurrency ?? 4,
+    predictiveLimit: analysis.recommendedConcurrency,
+    predicted429Probability: analysis.predicted429Probability,
+    shouldThrottle: analysis.shouldProactivelyThrottle,
+    recent429Count: learnedLimit?.total429Count ?? 0,
+  };
+}
