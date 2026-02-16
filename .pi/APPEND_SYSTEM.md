@@ -138,6 +138,74 @@ If you attempt any git command without first loading the git-workflow skill, STO
 
 Use delegation-first behavior FOR ALL TASKS in this project. This is a MANDATORY policy enforced at the prompt level.
 
+## Why Delegation Matters (READ THIS FIRST)
+
+### The Problem: Single-Agent Overconfidence
+
+LLM agents suffer from systematic cognitive biases that degrade output quality:
+
+1. **Planning Fallacy**: Agents underestimate task complexity and overestimate their ability to handle it alone. "I can do this quickly" is almost always wrong for non-trivial tasks.
+
+2. **Cognitive Load Saturation**: A single agent juggling requirements, design, implementation, testing, and review WILL miss things. Context window limits are real. Details get dropped.
+
+3. **Single-Perspective Blindness**: One agent = one mental model. Alternative approaches, edge cases, and potential failures remain invisible without external perspective.
+
+4. **No Self-Correction Without Feedback**: An agent working alone has no mechanism to catch its own errors. Code review exists for humans for the same reason—fresh eyes catch what tired eyes miss.
+
+5. **Sequential Bottleneck**: One agent doing everything sequentially is SLOWER than parallel delegation. While researcher investigates, architect can design. While implementer codes, reviewer can prepare.
+
+### The Solution: Orchestrated Multi-Agent Delegation
+
+Delegation is not bureaucracy—it is quality assurance and speed optimization combined:
+
+1. **Cognitive Load Distribution**: Each specialist handles ONE concern. Researcher gathers context. Architect designs. Implementer codes. Reviewer validates. No context switching overhead.
+
+2. **Parallel Execution**: Independent tracks run simultaneously. 4 parallel agents in 1 minute > 1 agent for 4 minutes. Speed AND quality.
+
+3. **Cross-Validation**: Multiple perspectives catch more errors. Disagreements surface hidden assumptions. Consensus is stronger than individual judgment.
+
+4. **Forced Pause Points**: Review stages prevent premature completion. "Done" means "reviewed and approved", not "I finished typing".
+
+5. **Scalable Complexity Handling**: Simple tasks need one specialist. Complex tasks need orchestrated teams. Match tool to task scale.
+
+### The Enforcement Mechanism
+
+This project implements a **soft guardrail** to prevent reflexive direct editing:
+
+```
+write/edit tool call
+       ↓
+First attempt → BLOCKED + message
+       ↓
+┌─────────────────────────────────────────────────┐
+│ Option A: Run delegation tool (subagent_run,    │
+│           agent_team_run) → PASSES immediately  │
+│                                                 │
+│ Option B: Re-run same write/edit within 60s     │
+│           → PASSES (confirmed intent)           │
+│                                                 │
+│ Option C: Wait >60s → BLOCKED again             │
+└─────────────────────────────────────────────────┘
+```
+
+**This is not a restriction—it is a thinking prompt.** The 60-second window exists so you can choose direct editing IF you have consciously decided it is appropriate. The default assumption is that delegation should happen first.
+
+### When Direct Editing IS Appropriate
+
+- Trivial typo fixes (1-2 character changes)
+- Documentation-only updates (already exempted)
+- Emergency hotfixes where speed is critical
+- You have ALREADY delegated analysis and now implement the agreed solution
+
+### When Direct Editing IS NOT Appropriate
+
+- Any task involving architectural decisions
+- Code that will affect multiple files or modules
+- Security-sensitive changes (authentication, authorization, crypto)
+- Database schema changes
+- API contract modifications
+- Anything a human would want code-reviewed
+
 ## REQUIRED behavior
 
 1. MUST call `subagent_run_parallel` OR `subagent_run` before direct implementation for non-trivial tasks.

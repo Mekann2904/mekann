@@ -22,24 +22,6 @@ import {
 } from "./output-schema.js";
 
 /**
- * Check if output contains only intent statements without actual content.
- * Detects both English and Japanese intent-only patterns.
- * @param output - Output text to check
- * @returns True if output is intent-only (no actual content)
- */
-export function hasIntentOnlyContent(output: string): boolean {
-  const compact = output.replace(/\s+/g, " ").trim();
-  if (!compact) return false;
-  const lower = compact.toLowerCase();
-  const enIntentOnly =
-    (lower.startsWith("i'll ") || lower.startsWith("i will ") || lower.startsWith("let me ")) &&
-    /(analy|review|investig|start|check|examin|look)/.test(lower);
-  const jaIntentOnly =
-    /(確認|調査|分析|レビュー|検討|開始).{0,20}(します|します。|していきます|しますね|します。)/.test(compact);
-  return enIntentOnly || jaIntentOnly;
-}
-
-/**
  * Check if output has non-empty RESULT section.
  * @param output - Output text to check
  * @returns True if RESULT section has content
@@ -106,14 +88,6 @@ export function validateSubagentOutput(
     return { ok: false, reason: "empty RESULT section" };
   }
 
-  const nonEmptyLines = trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (nonEmptyLines.length <= 3 && hasIntentOnlyContent(trimmed)) {
-    return { ok: false, reason: "intent-only output" };
-  }
-
   return { ok: true };
 }
 
@@ -127,7 +101,7 @@ export interface TeamMemberValidationOptions {
 
 const TEAM_MEMBER_DEFAULT_OPTIONS: TeamMemberValidationOptions = {
   minChars: 80,
-  requiredLabels: ["SUMMARY:", "CLAIM:", "EVIDENCE:", "CONFIDENCE:", "RESULT:", "NEXT_STEP:"],
+  requiredLabels: ["SUMMARY:", "CLAIM:", "EVIDENCE:", "RESULT:", "NEXT_STEP:"],
 };
 
 /**
@@ -157,14 +131,6 @@ export function validateTeamMemberOutput(
   );
   if (missingLabels.length > 0) {
     return { ok: false, reason: `missing labels: ${missingLabels.join(", ")}` };
-  }
-
-  const nonEmptyLines = trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (nonEmptyLines.length <= 4 && hasIntentOnlyContent(trimmed)) {
-    return { ok: false, reason: "intent-only output" };
   }
 
   return { ok: true };

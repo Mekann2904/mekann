@@ -52,11 +52,6 @@ import {
   type PrintExecutorOptions,
 } from "./shared/pi-print-executor";
 import {
-  postTeamVerificationHook,
-  formatVerificationResult,
-  type VerificationHookResult,
-} from "./shared/verification-hooks.js";
-import {
   ensureDir,
   formatDurationMs,
   normalizeForSingleLine,
@@ -86,7 +81,6 @@ import {
   isEnterInput,
   finalizeLiveLines,
   type LiveStatus,
-  hasIntentOnlyContent,
   validateTeamMemberOutput,
   trimForError,
   buildRateLimitKey,
@@ -217,65 +211,6 @@ const LIVE_EVENT_TAIL_LIMIT = Math.max(60, Number(process.env.PI_LIVE_EVENT_TAIL
 const LIVE_EVENT_INLINE_LINE_LIMIT = 8;
 const LIVE_EVENT_DETAIL_LINE_LIMIT = 28;
 // Communication constants moved to ./agent-teams/communication.ts
-
-/**
- * Extract confidence value from team member output.
- * Parses CONFIDENCE field, defaults to 0.5 if not found or invalid.
- */
-function extractConfidenceFromOutput(output: string): number {
-  const match = output.match(/CONFIDENCE:\s*([0-9.]+)/i);
-  if (match) {
-    const parsed = parseFloat(match[1]);
-    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1) {
-      return parsed;
-    }
-  }
-  return 0.5;
-}
-
-/**
- * Run verification for a completed team task.
- * Returns the verification result or undefined if verification is disabled/failed.
- */
-async function runTeamVerification(
-  aggregatedOutput: string,
-  confidence: number,
-  context: {
-    teamId: string;
-    task: string;
-    memberOutputs: Array<{ agentId: string; output: string }>;
-  },
-  options: {
-    provider?: string;
-    model?: string;
-    signal?: AbortSignal;
-  }
-): Promise<VerificationHookResult | undefined> {
-  const verificationTimeoutMs = 60000; // Shorter timeout for focused verification task
-
-  try {
-    return await postTeamVerificationHook(
-      aggregatedOutput,
-      confidence,
-      context,
-      async (verificationAgentId, prompt) => {
-        const result = await sharedRunPiPrintMode({
-          provider: options.provider,
-          model: options.model,
-          prompt,
-          timeoutMs: verificationTimeoutMs,
-          signal: options.signal,
-          entityLabel: "verification-agent",
-        });
-        return result.output;
-      }
-    );
-  } catch (error) {
-    // Verification failures should not break the main flow
-    console.warn(`[Verification] Error during team verification: ${error instanceof Error ? error.message : String(error)}`);
-    return undefined;
-  }
-}
 
 // Use unified stable runtime constants from lib/agent-common.ts
 import {
@@ -1205,19 +1140,14 @@ function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput {
 
   const summary = pickTeamFieldCandidate(trimmed, 100);
   const claim = pickTeamFieldCandidate(trimmed, 120);
-  const evidence = "generated-from-raw-output";
-  const confidence = hasIntentOnlyContent(trimmed) ? "0.40" : "0.55";
-  const nextStep = hasIntentOnlyContent(trimmed)
-    ? "対象ファイルを確認し、根拠付きで結論を更新する。"
-    : "none";
+  const evidence = "not-provided";
   const structured = [
     `SUMMARY: ${summary}`,
     `CLAIM: ${claim}`,
     `EVIDENCE: ${evidence}`,
-    `CONFIDENCE: ${confidence}`,
     "RESULT:",
     trimmed,
-    `NEXT_STEP: ${nextStep}`,
+    "NEXT_STEP: none",
   ].join("\n");
   const structuredQuality = validateTeamMemberOutput(structured);
   if (structuredQuality.ok) {
@@ -2146,7 +2076,6 @@ function buildTeamMemberPrompt(input: {
   lines.push("SUMMARY: <日本語の短い要約>");
   lines.push("CLAIM: <日本語で1文の中核主張>");
   lines.push("EVIDENCE: <根拠をカンマ区切り。可能なら file:line>");
-  lines.push("CONFIDENCE: <0.00-1.00>");
   if (phase === "communication") {
     lines.push("DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>");
   } else {
@@ -3708,42 +3637,17 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           const teamOutcome = resolveTeamMemberAggregateOutcome(memberResults);
           const adaptivePenaltyAfter = adaptivePenalty.get();
 
-          // Run verification hook for completed team output
           const aggregatedOutput = buildTeamResultText({
             run: runRecord,
             team,
             memberResults,
             communicationAudit,
           });
-          const avgConfidence = memberResults.length > 0
-            ? memberResults.reduce((sum, r) => sum + extractConfidenceFromOutput(r.output), 0) / memberResults.length
-            : 0.5;
-          const verificationResult = await runTeamVerification(
-            aggregatedOutput,
-            avgConfidence,
-            {
-              teamId: team.id,
-              task: params.task,
-              memberOutputs: memberResults.map(r => ({ agentId: r.memberId, output: r.output })),
-            },
-            {
-              provider: ctx.model?.provider,
-              model: ctx.model?.id,
-              signal,
-            }
-          );
-
-          // Build output with verification info if available
-          const outputLines = [aggregatedOutput];
-          if (verificationResult?.triggered && verificationResult.result) {
-            outputLines.push("");
-            outputLines.push(formatVerificationResult(verificationResult));
-          }
 
           logger.endOperation({
             status: teamOutcome.outcomeCode === "SUCCESS" ? "success" : "partial",
             tokensUsed: 0,
-            outputLength: outputLines.join("\n").length,
+            outputLength: aggregatedOutput.length,
             outputFile: runRecord.outputFile,
             childOperations: memberResults.length,
             toolCalls: 0,
@@ -3752,7 +3656,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             content: [
               {
                 type: "text" as const,
-                text: outputLines.join("\n"),
+                text: aggregatedOutput,
               },
             ],
             details: {
@@ -3790,7 +3694,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               failedMemberIds: teamOutcome.failedMemberIds,
               outcomeCode: teamOutcome.outcomeCode,
               retryRecommended: teamOutcome.retryRecommended,
-              verification: verificationResult?.result,
             },
           };
         } catch (error) {
@@ -4417,47 +4320,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         const parallelOutcome = resolveTeamParallelRunOutcome(results);
         const adaptivePenaltyAfter = adaptivePenalty.get();
 
-        // Run verification hooks for completed team outputs
-        const teamVerificationResults: Array<{ teamId: string; result?: VerificationHookResult }> = [];
-        const verificationPromises = results.map(async (result) => {
-          if (result.runRecord.status !== "completed") return null;
-
-          try {
-            const teamOutput = buildTeamResultText({
-              run: result.runRecord,
-              team: result.team,
-              memberResults: result.memberResults,
-              communicationAudit: result.communicationAudit,
-            });
-            const avgConfidence = result.memberResults.length > 0
-              ? result.memberResults.reduce((sum, r) => sum + extractConfidenceFromOutput(r.output), 0) / result.memberResults.length
-              : 0.5;
-            const verificationResult = await runTeamVerification(
-              teamOutput,
-              avgConfidence,
-              {
-                teamId: result.team.id,
-                task: params.task,
-                memberOutputs: result.memberResults.map(r => ({ agentId: r.memberId, output: r.output })),
-              },
-              {
-                provider: ctx.model?.provider,
-                model: ctx.model?.id,
-                signal,
-              }
-            );
-            return { teamId: result.team.id, result: verificationResult };
-          } catch (error) {
-            console.warn(`[agent-teams] Verification error for team ${result.team.id}:`, error);
-            return { teamId: result.team.id, result: undefined };
-          }
-        });
-
-        const resolvedVerifications = await Promise.all(verificationPromises);
-        for (const v of resolvedVerifications) {
-          if (v) teamVerificationResults.push(v);
-        }
-
         const lines: string[] = [];
         lines.push(`Parallel agent team run completed (${results.length} teams, ${totalTeammates} teammates).`);
         lines.push(
@@ -4481,18 +4343,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           lines.push(`- ${result.team.id} [${state}] ${result.runRecord.summary} (${result.runRecord.outputFile})`);
         }
 
-        // Add verification summaries if any teams were verified
-        const verificationSummaries = teamVerificationResults.filter(v => v.result?.triggered);
-        if (verificationSummaries.length > 0) {
-          lines.push("");
-          lines.push("Verification results:");
-          for (const v of verificationSummaries) {
-            if (v.result?.result) {
-              lines.push(`- ${v.teamId}: ${v.result.result.finalVerdict} (confidence: ${v.result.result.confidence.toFixed(2)})`);
-            }
-          }
-        }
-
         lines.push("");
         lines.push("Detailed outputs:");
         for (const result of results) {
@@ -4506,12 +4356,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               communicationAudit: result.communicationAudit,
             }),
           );
-          // Append verification details for this team
-          const teamVerification = teamVerificationResults.find(v => v.teamId === result.team.id);
-          if (teamVerification?.result?.triggered) {
-            lines.push("");
-            lines.push(formatVerificationResult(teamVerification.result));
-          }
         }
 
         logger.endOperation({
@@ -4567,10 +4411,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             failedMemberIdsByTeam: parallelOutcome.failedMemberIdsByTeam,
             outcomeCode: parallelOutcome.outcomeCode,
             retryRecommended: parallelOutcome.retryRecommended,
-            teamVerifications: teamVerificationResults.map(v => ({
-              teamId: v.teamId,
-              result: v.result?.result,
-            })),
           },
         };
         } finally {

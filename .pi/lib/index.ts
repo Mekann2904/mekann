@@ -90,7 +90,6 @@ export {
 
 // Output validation utilities (Layer 1)
 export {
-  hasIntentOnlyContent,
   hasNonEmptyResultSection,
   validateSubagentOutput,
   validateTeamMemberOutput,
