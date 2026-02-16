@@ -18,6 +18,20 @@
 
 ---
 
+# Protected Files (DO NOT DELETE)
+
+These files are **system-critical** and must NOT be deleted, renamed, or moved by any agent, subagent, or team:
+
+| File | Purpose | Auto-loaded |
+|------|---------|-------------|
+| `.pi/APPEND_SYSTEM.md` | Project-level system prompt (this file) | YES (pi core) |
+| `.pi/INDEX.md` | Repository structure map | Referenced in Quick Reference |
+| `.pi/NAVIGATION.md` | Task-to-source navigation guide | Referenced in Quick Reference |
+
+**Deletion Protection Rule**: Any task that involves file cleanup, organization, or deletion MUST preserve these files. Agents MUST check this list before proposing any file operations.
+
+---
+
 # Execution Rules (MANDATORY)
 
 The following rules apply to ALL agents, subagents, and team members in this project:
