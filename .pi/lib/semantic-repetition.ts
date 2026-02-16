@@ -133,7 +133,12 @@ export async function detectSemanticRepetition(
   // Embedding-based check
   const provider = await getEmbeddingProvider();
   if (!provider) {
-    throw new Error("No embedding provider available. Configure with /embedding command.");
+    // プロバイダーがない場合は処理をスキップ
+    return {
+      isRepeated: false,
+      similarity: 0,
+      method: "unavailable",
+    };
   }
 
   const [currentEmb, previousEmb] = await Promise.all([
@@ -142,7 +147,12 @@ export async function detectSemanticRepetition(
   ]);
 
   if (!currentEmb || !previousEmb) {
-    throw new Error("Failed to generate embeddings for semantic repetition detection.");
+    // エンベディング生成に失敗した場合は処理をスキップ
+    return {
+      isRepeated: false,
+      similarity: 0,
+      method: "unavailable",
+    };
   }
 
   const similarity = cosineSimilarity(currentEmb, previousEmb);
