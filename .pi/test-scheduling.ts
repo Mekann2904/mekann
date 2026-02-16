@@ -27,6 +27,13 @@ import {
   formatAdaptiveSummary,
 } from "./lib/adaptive-rate-controller.js";
 
+import {
+  resolveUnifiedLimits,
+  getUnifiedEnvConfig,
+  formatUnifiedLimitsResult,
+  getAllLimitsSummary,
+} from "./lib/unified-limit-resolver.js";
+
 let testsPassed = 0;
 let testsFailed = 0;
 
@@ -164,6 +171,68 @@ function testIntegration(): void {
   });
 }
 
+function testUnifiedLimitResolver(): void {
+  section("Phase 5: Unified Limit Resolver");
+  
+  test("getUnifiedEnvConfig returns valid config", () => {
+    const config = getUnifiedEnvConfig();
+    return config.maxTotalLlm >= 1 && config.maxTotalRequests >= 1;
+  });
+
+  test("resolveUnifiedLimits returns valid result", () => {
+    const result = resolveUnifiedLimits({
+      provider: "anthropic",
+      model: "claude-sonnet-4-20250514",
+    });
+    return result.effectiveConcurrency >= 1 && result.breakdown.preset.concurrency >= 1;
+  });
+
+  test("breakdown has all layers", () => {
+    const result = resolveUnifiedLimits({
+      provider: "openai",
+      model: "gpt-4o",
+    });
+    const b = result.breakdown;
+    return b.preset.concurrency > 0 && 
+           b.adaptive.multiplier > 0 && 
+           b.crossInstance.activeInstances >= 1 &&
+           b.runtime.maxActive > 0;
+  });
+
+  test("limitingFactor is one of valid values", () => {
+    const result = resolveUnifiedLimits({
+      provider: "anthropic",
+      model: "claude-3-5-sonnet-20241022",
+    });
+    const validFactors = ["preset", "adaptive", "cross_instance", "runtime", "env_override"];
+    return validFactors.includes(result.limitingFactor);
+  });
+
+  test("formatUnifiedLimitsResult works", () => {
+    const result = resolveUnifiedLimits({
+      provider: "anthropic",
+      model: "claude-sonnet-4-20250514",
+    });
+    const formatted = formatUnifiedLimitsResult(result);
+    return formatted.includes("Effective:") && formatted.includes("Breakdown:");
+  });
+
+  test("getAllLimitsSummary works", () => {
+    const summary = getAllLimitsSummary();
+    return summary.includes("Unified Limit Resolver") && summary.includes("Environment Config");
+  });
+
+  test("result includes metadata", () => {
+    const result = resolveUnifiedLimits({
+      provider: "anthropic",
+      model: "claude-sonnet-4-20250514",
+    });
+    return result.metadata.provider === "anthropic" && 
+           result.metadata.model === "claude-sonnet-4-20250514" &&
+           typeof result.metadata.resolvedAt === "string";
+  });
+}
+
 function main(): void {
   console.log("Task Scheduling Optimization Tests\n");
   testPriorityScheduler();
@@ -171,6 +240,7 @@ function main(): void {
   testWorkStealing();
   testPredictiveRateControl();
   testIntegration();
+  testUnifiedLimitResolver();
   console.log("\n" + "=".repeat(50));
   console.log("Results: " + testsPassed + " passed, " + testsFailed + " failed");
   if (testsFailed > 0) process.exit(1);
