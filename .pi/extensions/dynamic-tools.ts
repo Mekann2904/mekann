@@ -21,8 +21,14 @@
  * - lib/agent-common: 共通設定と正規化関数
  */
 
-import type { ExtensionAPI, ToolResultEvent } from "@mariozechner/pi-coding-agent";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+
 import { Type } from "@mariozechner/pi-ai";
+import type { ExtensionAPI, ToolResultEvent } from "@mariozechner/pi-coding-agent";
+
+import { getLogger } from "../lib/comprehensive-logger";
+import type { OperationType } from "../lib/comprehensive-logger-types";
 import {
   getRegistry,
   analyzeCodeSafety,
@@ -33,10 +39,6 @@ import {
   type ToolExecutionResult,
 } from "../lib/dynamic-tools/index.js";
 import { isHighStakesTask } from "../lib/verification-workflow.js";
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { getLogger } from "../lib/comprehensive-logger";
-import type { OperationType } from "../lib/comprehensive-logger-types";
 
 const logger = getLogger();
 

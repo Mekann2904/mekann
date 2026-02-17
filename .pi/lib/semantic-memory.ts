@@ -8,9 +8,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { atomicWriteTextFile } from "./storage-lock.js";
-import { ensureDir } from "./fs-utils.js";
-import { type IndexedRun, type RunIndex, getOrBuildRunIndex } from "./run-index.js";
+
 import {
   generateEmbedding as embeddingsGenerateEmbedding,
   generateEmbeddingsBatch as embeddingsGenerateEmbeddingsBatch,
@@ -18,6 +16,9 @@ import {
   getEmbeddingProvider,
   type EmbeddingProvider,
 } from "./embeddings/index.js";
+import { ensureDir } from "./fs-utils.js";
+import { type IndexedRun, type RunIndex, getOrBuildRunIndex } from "./run-index.js";
+import { atomicWriteTextFile } from "./storage-lock.js";
 
 // ============================================================================
 // Types

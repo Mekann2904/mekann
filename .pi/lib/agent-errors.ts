@@ -9,6 +9,8 @@
  * New error types: SCHEMA_VIOLATION, LOW_SUBSTANCE, EMPTY_OUTPUT
  */
 
+import { type EntityType, type EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "./agent-common.js";
+import { type RunOutcomeCode, type RunOutcomeSignal } from "./agent-types.js";
 import {
   classifyPressureError,
   extractStatusCodeFromMessage,
@@ -16,8 +18,6 @@ import {
   isTimeoutErrorMessage,
   toErrorMessage,
 } from "./error-utils.js";
-import { type RunOutcomeCode, type RunOutcomeSignal } from "./agent-types.js";
-import { type EntityType, type EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "./agent-common.js";
 
 // ============================================================================
 // Extended Error Classification (P1-5)

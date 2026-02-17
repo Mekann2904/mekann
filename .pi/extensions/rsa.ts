@@ -3,10 +3,12 @@
 // Why: Enables test-time scaling with iterative aggregation without changing model weights.
 // Related: README.md, .pi/extensions/question.ts, .pi/extensions/plugin-dev.ts
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+
 import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel } from "../lib";
+
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 type TraceMode = "off" | "summary" | "verbose";
 

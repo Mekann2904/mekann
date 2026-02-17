@@ -4,12 +4,13 @@
  * fzf (fuzzy finder) を使用したインタラクティブな選択・検索機能
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
 import { spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
+
+import { StringEnum } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 
 // ============================================
 // 型定義

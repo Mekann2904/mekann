@@ -4,6 +4,11 @@
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import {
+  getEffectiveLimit,
+  getSchedulerAwareLimit,
+} from "../lib/adaptive-rate-controller";
 import {
   getMyParallelLimit,
   isCoordinatorInitialized,
@@ -16,14 +21,13 @@ import {
   enhancedHeartbeat,
 } from "../lib/cross-instance-coordinator";
 import {
-  getConcurrencyLimit,
-  resolveLimits,
-  detectTier,
-} from "../lib/provider-limits";
+  broadcastQueueState,
+  getWorkStealingSummary,
+} from "../lib/cross-instance-coordinator";
 import {
-  getEffectiveLimit,
-  getSchedulerAwareLimit,
-} from "../lib/adaptive-rate-controller";
+  getParallelismAdjuster,
+  getParallelism as getDynamicParallelism,
+} from "../lib/dynamic-parallelism";
 import {
   TaskPriority,
   PriorityTaskQueue,
@@ -34,20 +38,17 @@ import {
   type PriorityQueueEntry,
 } from "../lib/priority-scheduler";
 import {
+  getConcurrencyLimit,
+  resolveLimits,
+  detectTier,
+} from "../lib/provider-limits";
+import {
   getScheduler,
   createTaskId,
   type ScheduledTask,
   type TaskResult,
   type TaskSource,
 } from "../lib/task-scheduler";
-import {
-  getParallelismAdjuster,
-  getParallelism as getDynamicParallelism,
-} from "../lib/dynamic-parallelism";
-import {
-  broadcastQueueState,
-  getWorkStealingSummary,
-} from "../lib/cross-instance-coordinator";
 
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";

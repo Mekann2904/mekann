@@ -4,7 +4,6 @@
  * Optimized with per-file caching
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
 	existsSync,
 	mkdirSync,
@@ -13,8 +12,11 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { join, dirname } from "node:path";
+
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 

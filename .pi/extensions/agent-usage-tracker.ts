@@ -3,8 +3,6 @@
 // Why: Gives a detailed and persistent analytics view of which extension features are used and how reliable they are.
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/usage-tracker.ts
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@mariozechner/pi-ai";
 import { randomBytes } from "node:crypto";
 import {
   existsSync,
@@ -14,6 +12,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+
+import { Type } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import { ensureDir, toFiniteNumber } from "../lib";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
