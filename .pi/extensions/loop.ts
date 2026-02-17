@@ -13,14 +13,12 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
-import {
-  formatDuration,
-  toErrorMessage,
-  toBoundedInteger,
-  ThinkingLevel,
-  createRunId,
-  computeModelTimeoutMs,
-} from "../lib/index.js";
+import { formatDuration } from "../lib/format-utils.js";
+import { toErrorMessage } from "../lib/error-utils.js";
+import { toBoundedInteger } from "../lib/validation-utils.js";
+import { ThinkingLevel } from "../lib/agent-types.js";
+import { createRunId } from "../lib/agent-utils.js";
+import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 

@@ -11,44 +11,46 @@ import { getMarkdownTheme, isToolCallEventType, type ExtensionAPI, type ToolCall
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 
+import { ensureDir } from "../lib/fs-utils.js";
 import {
-  ensureDir,
   formatDurationMs,
+  formatBytes,
+  formatClockTime,
+} from "../lib/format-utils.js";
+import {
+  getLiveStatusGlyph,
+  isEnterInput,
+  finalizeLiveLines,
+  type LiveStatus,
+} from "../lib/live-view-utils.js";
+import {
   toTailLines,
+  looksLikeMarkdown,
   appendTail,
   countOccurrences,
   estimateLineCount,
-  looksLikeMarkdown,
   renderPreviewWithMarkdown,
-  formatBytes,
-  formatClockTime,
+  LIVE_TAIL_LIMIT,
+  LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
+} from "../lib/tui-utils.js";
+import {
   extractStatusCodeFromMessage,
   classifyPressureError,
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
   toErrorMessage,
-  LIVE_TAIL_LIMIT,
-  LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
-  createRunId,
-  computeLiveWindow,
+} from "../lib/error-utils.js";
+import { createRunId, computeLiveWindow } from "../lib/agent-utils.js";
+import {
   ThinkingLevel,
   RunOutcomeCode,
   RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
-  computeModelTimeoutMs,
-  getLiveStatusGlyph,
-  isEnterInput,
-  finalizeLiveLines,
-  type LiveStatus,
-  hasNonEmptyResultSection,
-  validateSubagentOutput,
-  trimForError,
-  buildRateLimitKey,
-  buildTraceTaskId,
-  createRetrySchema,
-  toConcurrencyLimit,
-  resolveEffectiveTimeoutMs,
-} from "../lib/index.js";
+} from "../lib/agent-types.js";
+import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
+import { hasNonEmptyResultSection, validateSubagentOutput } from "../lib/output-validation.js";
+import { trimForError, buildRateLimitKey, buildTraceTaskId, createRetrySchema, toConcurrencyLimit } from "../lib/runtime-utils.js";
+import { resolveEffectiveTimeoutMs } from "../lib/runtime-error-builders.js";
 import { createChildAbortController } from "../lib/abort-utils";
 import {
   createAdaptivePenaltyController,

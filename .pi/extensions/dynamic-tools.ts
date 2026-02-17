@@ -31,13 +31,19 @@ import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 import {
   getRegistry,
+} from "../lib/dynamic-tools/registry.js";
+import {
   analyzeCodeSafety,
   quickSafetyCheck,
+} from "../lib/dynamic-tools/safety.js";
+import {
   assessCodeQuality,
   recordExecutionMetrics,
-  type DynamicToolDefinition,
-  type ToolExecutionResult,
-} from "../lib/dynamic-tools/index.js";
+} from "../lib/dynamic-tools/quality.js";
+import type {
+  DynamicToolDefinition,
+  ToolExecutionResult,
+} from "../lib/dynamic-tools/types.js";
 import { isHighStakesTask } from "../lib/verification-workflow.js";
 
 const logger = getLogger();
@@ -192,11 +198,11 @@ ${tool.code}
 
 /**
  * コードを実行
- * セキュリティ: VMコンテキストからrequire, processを削除し
- * 外部モジュールアクセスとプロセス操作を制限
+ * セキュリティ: VMコンテキストからrequire, process, タイマーを削除し
+ * 外部モジュールアクセス、プロセス操作、サンドボックスエスケープを制限
  *
  * 利用可能なグローバルオブジェクト:
- * - console, Buffer, setTimeout, setInterval, clearTimeout, clearInterval
+ * - console, Buffer
  * - 標準オブジェクト: Promise, JSON, Object, Array, String, Number, Boolean, Date, Math
  * - エラークラス: Error, TypeError, RangeError, SyntaxError
  * - URL関連: URL, URLSearchParams
@@ -206,6 +212,7 @@ ${tool.code}
  * - process: 環境変数・プロセス情報アクセス禁止
  * - global, globalThis: グローバルスコープ汚染禁止
  * - __dirname, __filename: ファイルシステムパス漏洩禁止
+ * - setTimeout, setInterval, clearTimeout, clearInterval: サンドボックスエスケープ防止
  */
 async function executeCode(code: string): Promise<ToolExecutionResult> {
   try {
@@ -216,11 +223,6 @@ async function executeCode(code: string): Promise<ToolExecutionResult> {
       console,
       // データ操作
       Buffer,
-      // タイマー（リソース制限あり）
-      setTimeout,
-      setInterval,
-      clearTimeout,
-      clearInterval,
       // 標準オブジェクト
       Promise,
       JSON,
@@ -239,6 +241,9 @@ async function executeCode(code: string): Promise<ToolExecutionResult> {
       URLSearchParams,
       // 注意: require, process は意図的に除外
       // 外部モジュールアクセス・環境変数アクセスを禁止
+      // 注意: setTimeout, setInterval 等は意図的に除外
+      // タイマーのコールバックがVMコンテキスト外で実行され
+      // サンドボックスエスケープのリスクがあるため
     });
 
     const script = new vm.Script(code, {
