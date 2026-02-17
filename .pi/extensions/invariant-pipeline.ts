@@ -397,25 +397,22 @@ function generateQuintSpec(spec: ParsedSpec, moduleName?: string): GenerationOut
   // Operations
   for (const op of spec.operations) {
     quint += `\n  // ${op.description || op.name}\n`;
-    quint += `  ${op.name}() {\n`;
-    quint += `    all {\n`;
+    quint += `  action ${op.name} = all {\n`;
+    // Add preconditions as guard conditions (not comments)
     if (op.preconditions && op.preconditions.length > 0) {
-      quint += `      // Preconditions\n`;
       for (const pre of op.preconditions) {
-        quint += `      ${pre},\n`;
+        quint += `    ${pre},  // guard: precondition\n`;
       }
     }
     if (op.postconditions && op.postconditions.length > 0) {
-      quint += `      // Postconditions\n`;
       for (const post of op.postconditions) {
-        quint += `      ${post},\n`;
+        quint += `    ${post},\n`;
       }
     } else {
       warnings.push(`Operation "${op.name}" has no postconditions - generating trivially true transition`);
-      quint += `      // SKIPPED: No postconditions defined for ${op.name}\n`;
-      quint += `      true\n`;
+      quint += `    // SKIPPED: No postconditions defined for ${op.name}\n`;
+      quint += `    true\n`;
     }
-    quint += `    }\n`;
     quint += `  }\n`;
   }
 
@@ -616,6 +613,67 @@ function translateToModelAccess(condition: string, states: SpecState[]): string 
 }
 
 /**
+ * Translate precondition to Rust expression for guard checks
+ * Converts natural language/math notation to Rust boolean expressions
+ * Uses model.field access pattern for state variables
+ */
+function translatePreconditionToRust(precondition: string, states: SpecState[], prefix: string = "model"): string {
+  let result = translateConditionToRust(precondition);
+  // Sort by name length (longest first) to avoid partial replacements
+  const sortedStates = [...states].sort((a, b) => b.name.length - a.name.length);
+  for (const state of sortedStates) {
+    const regex = new RegExp(`\\b${state.name}\\b`, "g");
+    result = result.replace(regex, `${prefix}.${state.name}`);
+  }
+  return result;
+}
+
+/**
+ * Translate postcondition to state transition code for operation tests
+ * Returns Rust code that modifies model state
+ */
+function translatePostconditionToOperationCode(postcondition: string, states: SpecState[]): string {
+  // Pattern: variable = expression (assignment form)
+  const assignMatch = postcondition.match(/^(\w+)\s*=\s*(.+)$/);
+  if (assignMatch) {
+    const [, varName, expression] = assignMatch;
+    const isStateVar = states.some(s => s.name === varName);
+    if (isStateVar) {
+      let translatedExpr = translateConditionToRust(expression);
+      // Replace state variable references with model.field
+      const sortedStates = [...states].sort((a, b) => b.name.length - a.name.length);
+      for (const state of sortedStates) {
+        const regex = new RegExp(`\\b${state.name}\\b`, "g");
+        translatedExpr = translatedExpr.replace(regex, `model.${state.name}`);
+      }
+      // Convert == back to = for assignment
+      translatedExpr = translatedExpr.replace(/==/g, "=");
+      return `model.${varName} = ${translatedExpr};`;
+    }
+  }
+
+  // Pattern: variable' = expression (primed variable form - TLA+ style)
+  const primedMatch = postcondition.match(/^(\w+)'\s*=\s*(.+)$/);
+  if (primedMatch) {
+    const [, varName, expression] = primedMatch;
+    const isStateVar = states.some(s => s.name === varName);
+    if (isStateVar) {
+      let translatedExpr = translateConditionToRust(expression);
+      const sortedStates = [...states].sort((a, b) => b.name.length - a.name.length);
+      for (const state of sortedStates) {
+        const regex = new RegExp(`\\b${state.name}\\b`, "g");
+        translatedExpr = translatedExpr.replace(regex, `model.${state.name}`);
+      }
+      translatedExpr = translatedExpr.replace(/==/g, "=");
+      return `model.${varName} = ${translatedExpr};`;
+    }
+  }
+
+  // Unable to translate - return as comment
+  return `// TODO: Manual implementation for: ${postcondition}`;
+}
+
+/**
  * Translate postcondition to state transition code
  * Handles patterns like:
  * - "count = count + 1" -> "new_state.count = self.count + 1"
@@ -763,9 +821,70 @@ function generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?
     tests += `        ${params}\n`;
     tests += `    ) {\n`;
     tests += `        // Test that ${op.name} maintains all invariants\n`;
-    warnings.push(`Operation "${op.name}" test is incomplete - requires manual implementation`);
-    tests += `        // SKIPPED: Test for ${op.name} requires manual implementation\n`;
-    tests += `        prop_assert!(true); // Placeholder\n`;
+
+    // Create model struct instance
+    tests += `        let mut model = ${name}Test {\n`;
+    for (const s of spec.states) {
+      tests += `            ${s.name},\n`;
+    }
+    tests += `        };\n\n`;
+
+    // Check preconditions
+    if (op.preconditions && op.preconditions.length > 0) {
+      tests += `        // Check preconditions\n`;
+      const preconditionChecks = op.preconditions.map(pre => {
+        return translatePreconditionToRust(pre, spec.states, "model");
+      });
+      tests += `        let preconditions_met = ${preconditionChecks.join(" && ")};\n\n`;
+      tests += `        if preconditions_met {\n`;
+
+      // Execute operation (apply postconditions)
+      if (op.postconditions && op.postconditions.length > 0) {
+        tests += `            // Execute operation: apply postconditions\n`;
+        for (const post of op.postconditions) {
+          const transitionCode = translatePostconditionToOperationCode(post, spec.states);
+          tests += `            ${transitionCode}\n`;
+        }
+      } else {
+        warnings.push(`Operation "${op.name}" has no postconditions - state remains unchanged`);
+        tests += `            // No postconditions defined - state unchanged\n`;
+      }
+
+      // Check all invariants after operation
+      tests += `\n`;
+      tests += `            // Check invariants after operation\n`;
+      for (const inv of spec.invariants) {
+        const translatedCondition = translatePreconditionToRust(inv.condition, spec.states, "model");
+        tests += `            prop_assert!(${translatedCondition},\n`;
+        tests += `                "Invariant ${inv.name} violated after ${op.name}: ${inv.condition.replace(/"/g, '\\"')}");\n`;
+      }
+      tests += `        }\n`;
+    } else {
+      // No preconditions - operation is always valid
+      warnings.push(`Operation "${op.name}" has no preconditions - assuming always valid`);
+
+      // Execute operation (apply postconditions)
+      if (op.postconditions && op.postconditions.length > 0) {
+        tests += `        // Execute operation: apply postconditions\n`;
+        for (const post of op.postconditions) {
+          const transitionCode = translatePostconditionToOperationCode(post, spec.states);
+          tests += `        ${transitionCode}\n`;
+        }
+      } else {
+        warnings.push(`Operation "${op.name}" has no postconditions - state remains unchanged`);
+        tests += `        // No postconditions defined - state unchanged\n`;
+      }
+
+      // Check all invariants after operation
+      tests += `\n`;
+      tests += `        // Check invariants after operation\n`;
+      for (const inv of spec.invariants) {
+        const translatedCondition = translatePreconditionToRust(inv.condition, spec.states, "model");
+        tests += `        prop_assert!(${translatedCondition},\n`;
+        tests += `            "Invariant ${inv.name} violated after ${op.name}: ${inv.condition.replace(/"/g, '\\"')}");\n`;
+      }
+    }
+
     tests += `    }\n`;
     tests += `}\n\n`;
   }
@@ -877,18 +996,28 @@ function generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: num
   mbt += `// Note: This MBT driver requires the 'rand' crate.\n`;
   mbt += `// Add to Cargo.toml: rand = "0.8"\n\n`;
 
-  // Generate action generator function
+  // Generate valid actions function based on preconditions
   if (spec.operations.length > 0) {
-    mbt += `/// Generate a random action for ${name}\n`;
-    mbt += `fn generate_action() -> ${name}Action {\n`;
-    mbt += `    use rand::Rng;\n`;
-    mbt += `    let mut rng = rand::thread_rng();\n`;
-    mbt += `    match rng.gen_range(0..${spec.operations.length}) {\n`;
+    mbt += `/// Generate list of valid actions based on model state and preconditions\n`;
+    mbt += `fn generate_valid_actions(model: &${name}Model) -> Vec<${name}Action> {\n`;
+    mbt += `    let mut actions = Vec::new();\n\n`;
 
-    for (let i = 0; i < spec.operations.length; i++) {
-      const op = spec.operations[i];
+    for (const op of spec.operations) {
+      mbt += `    // Check precondition for ${capitalize(op.name)}\n`;
+      if (op.preconditions && op.preconditions.length > 0) {
+        const preconditionChecks = op.preconditions.map(pre => {
+          return translatePreconditionToRust(pre, spec.states, "model");
+        });
+        mbt += `    if ${preconditionChecks.join(" && ")} {\n`;
+      } else {
+        // No preconditions - always valid
+        warnings.push(`Operation "${op.name}" has no preconditions - assuming always valid in MBT`);
+        mbt += `    // No preconditions - always valid\n`;
+        mbt += `    {\n`;
+      }
+
+      // Add action to list
       if (op.parameters && op.parameters.length > 0) {
-        // Generate random values for parameters
         const paramInits = op.parameters.map(p => {
           const rustType = mapTypeToRust(p.type);
           if (rustType === "i64" || rustType === "i32") {
@@ -899,23 +1028,22 @@ function generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: num
             return `Default::default()`;
           }
         }).join(", ");
-        mbt += `        ${i} => ${name}Action::${capitalize(op.name)} { ${op.parameters!.map((p, idx) =>
-          `${p.name}: ${paramInits.split(", ")[idx]}`).join(", ")} },\n`;
+        mbt += `        actions.push(${name}Action::${capitalize(op.name)} { ${op.parameters!.map((p, idx) =>
+          `${p.name}: ${paramInits.split(", ")[idx]}`).join(", ")} });\n`;
       } else {
-        mbt += `        ${i} => ${name}Action::${capitalize(op.name)},\n`;
+        mbt += `        actions.push(${name}Action::${capitalize(op.name)});\n`;
       }
+      mbt += `    }\n\n`;
     }
 
-    // Default case (should never happen with proper range)
-    const defaultOp = spec.operations[0];
-    if (defaultOp.parameters && defaultOp.parameters.length > 0) {
-      mbt += `        _ => ${name}Action::${capitalize(defaultOp.name)} { ${defaultOp.parameters.map(p =>
-        `${p.name}: Default::default()`).join(", ")} },\n`;
-    } else {
-      mbt += `        _ => ${name}Action::${capitalize(defaultOp.name)},\n`;
-    }
+    mbt += `    actions\n`;
+    mbt += `}\n\n`;
 
-    mbt += `    }\n`;
+    mbt += `/// Generate a random valid action based on model state\n`;
+    mbt += `fn generate_action(model: &${name}Model) -> Option<${name}Action> {\n`;
+    mbt += `    use rand::seq::SliceRandom;\n`;
+    mbt += `    let valid_actions = generate_valid_actions(model);\n`;
+    mbt += `    valid_actions.choose(&mut rand::thread_rng()).copied()\n`;
     mbt += `}\n\n`;
   }
 
@@ -926,10 +1054,18 @@ function generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: num
   mbt += `    for step in 0..max_steps {\n`;
 
   if (spec.operations.length > 0) {
-    mbt += `        let action = generate_action();\n`;
-    mbt += `        model = model.apply_action(&action);\n`;
-    mbt += `        model.check_invariants()?;\n`;
-    mbt += `        println!("Step {}: action={:?}, state={:?}", step, action, model);\n`;
+    mbt += `        // Generate a valid action based on current model state\n`;
+    mbt += `        match generate_action(&model) {\n`;
+    mbt += `            Some(action) => {\n`;
+    mbt += `                model = model.apply_action(&action);\n`;
+    mbt += `                model.check_invariants()?;\n`;
+    mbt += `                println!("Step {}: action={:?}, state={:?}", step, action, model);\n`;
+    mbt += `            }\n`;
+    mbt += `            None => {\n`;
+    mbt += `                // No valid actions available - skip this step\n`;
+    mbt += `                println!("Step {}: no valid actions available, state={:?}", step, model);\n`;
+    mbt += `            }\n`;
+    mbt += `        }\n`;
   } else {
     mbt += `        // No operations defined - nothing to test\n`;
     mbt += `        println!("Step {}: {:?}", step, model);\n`;
