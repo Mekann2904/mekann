@@ -16,6 +16,7 @@ import {
   type CommunicationIdMode,
 } from "../../lib/output-schema";
 import type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference } from "./storage";
+import { extractDiscussionSection } from "./judge";
 
 // Re-export types needed by communication consumers
 export type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference };
@@ -449,34 +450,8 @@ export function detectPartnerReferences(
   };
 }
 
-/**
- * Extract the DISCUSSION section from team member output.
- * The DISCUSSION section appears between the DISCUSSION label and the next major label.
- *
- * @param output - Member output text
- * @returns Extracted discussion content or empty string
- */
-export function extractDiscussionSection(output: string): string {
-  const discussionPattern = /^DISCUSSION\s*:\s*$/im;
-  const lines = output.split(/\r?\n/);
-  const startIndex = lines.findIndex((line) => discussionPattern.test(line));
-
-  if (startIndex === -1) {
-    return "";
-  }
-
-  const discussionLines: string[] = [];
-  for (let i = startIndex + 1; i < lines.length; i++) {
-    const line = lines[i];
-    // Stop at next major label (SUMMARY, CLAIM, EVIDENCE, etc.)
-    if (/^(SUMMARY|CLAIM|EVIDENCE|CONFIDENCE|RESULT|NEXT_STEP)\s*:/i.test(line)) {
-      break;
-    }
-    discussionLines.push(line);
-  }
-
-  return discussionLines.join("\n");
-}
+// Re-export extractDiscussionSection from judge.ts for backward compatibility
+export { extractDiscussionSection };
 
 // ============================================================================
 // Termination Check (P0 from arXiv:2602.06176)

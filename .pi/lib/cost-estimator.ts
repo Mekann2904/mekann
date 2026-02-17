@@ -116,7 +116,7 @@ const DEFAULT_CONFIG: CostEstimatorConfig = {
  * Cost estimator with support for default estimates and historical learning.
  * Designed for future extension with ML-based heuristics.
  */
-class CostEstimator {
+export class CostEstimator {
   private readonly config: CostEstimatorConfig;
   private readonly history: Map<TaskSource, ExecutionHistoryEntry[]> = new Map();
   private readonly statsCache: Map<TaskSource, SourceStatistics> = new Map();

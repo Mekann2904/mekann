@@ -9,15 +9,15 @@ import {
 	buildCallGraph,
 	saveCallGraphIndex,
 	readCallGraphIndex,
-} from "../.pi/lib/call-graph/builder.js";
+} from "../.pi/extensions/search/call-graph/builder.js";
 import {
 	findCallers,
 	findCallees,
 	findNodesByName,
 	findCallPath,
 	getNodeStats,
-} from "../.pi/lib/call-graph/query.js";
-import type { CallGraphIndex } from "../.pi/lib/call-graph/types.js";
+} from "../.pi/extensions/search/call-graph/query.js";
+import type { CallGraphIndex } from "../.pi/extensions/search/call-graph/types.js";
 import { join } from "node:path";
 
 // Test data: a simple call graph

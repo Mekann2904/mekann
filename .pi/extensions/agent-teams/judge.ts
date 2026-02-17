@@ -32,7 +32,7 @@ export type {
 };
 
 // Re-export utilities that were previously defined here
-export { clampConfidence, parseUnitInterval, extractField };
+export { clampConfidence, parseUnitInterval, extractField, countKeywordSignals };
 
 // ============================================================================
 // Judge Weight Configuration (P0-3)
