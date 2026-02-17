@@ -305,7 +305,7 @@ export async function semanticIndex(
 				indexed: 0,
 				files: 0,
 				outputPath: "",
-				error: "No embedding provider available. Install @huggingface/transformers or configure OpenAI API key.",
+				error: "No embedding provider available. Configure OpenAI API key.",
 			};
 		}
 

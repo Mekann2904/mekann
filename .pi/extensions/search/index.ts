@@ -480,7 +480,7 @@ export default function (pi: ExtensionAPI) {
 			name: "semantic_index",
 			label: "Semantic Index",
 			description:
-				"Generate a semantic index of code files using vector embeddings. Enables semantic code search with natural language queries. Requires embedding provider (OpenAI API key or @huggingface/transformers).",
+				"Generate a semantic index of code files using vector embeddings. Enables semantic code search with natural language queries. Requires OpenAI API key.",
 			parameters: Type.Object({
 				path: Type.Optional(
 					Type.String({ description: "Target path for indexing (default: project root)" })
