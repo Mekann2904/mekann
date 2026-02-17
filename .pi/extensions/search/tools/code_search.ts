@@ -16,7 +16,12 @@ import {
 	parseRgOutput,
 	summarizeResults,
 	createCodeSearchError,
+	createSimpleHints,
 } from "../utils/output.js";
+import { SearchToolError, isSearchToolError, getErrorMessage, parameterError } from "../utils/errors.js";
+import { DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_EXCLUDES } from "../utils/constants.js";
+import { getSearchCache, getCacheKey } from "../utils/cache.js";
+import { getSearchHistory, extractQuery } from "../utils/history.js";
 
 // ============================================
 // Native Fallback Implementation
@@ -33,13 +38,14 @@ async function nativeCodeSearch(
 	const { join, relative } = await import("node:path");
 
 	const results: CodeSearchMatch[] = [];
-	const limit = input.limit ?? 50;
+	const limit = input.limit ?? DEFAULT_CODE_SEARCH_LIMIT;
+	const ignoreCase = input.ignoreCase ?? DEFAULT_IGNORE_CASE;
 	const summary = new Map<string, number>();
 
 	// Build regex pattern
 	let pattern: RegExp;
 	try {
-		const flags = input.ignoreCase !== false ? "gi" : "g";
+		const flags = ignoreCase ? "gi" : "g";
 		if (input.literal) {
 			const escaped = input.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 			pattern = new RegExp(escaped, flags);
@@ -89,6 +95,24 @@ async function nativeCodeSearch(
 		}
 	}
 
+	/**
+	 * Check if a name matches any exclusion pattern.
+	 * Supports both exact matches and glob-style patterns (e.g., *.min.js).
+	 */
+	function shouldExclude(name: string, patterns: readonly string[]): boolean {
+		for (const pattern of patterns) {
+			if (pattern.startsWith("*.")) {
+				// Glob pattern: check extension match
+				const ext = pattern.slice(1); // *.min.js -> .min.js
+				if (name.endsWith(ext)) return true;
+			} else {
+				// Exact match
+				if (name === pattern) return true;
+			}
+		}
+		return false;
+	}
+
 	async function scanDir(dirPath: string): Promise<void> {
 		try {
 			const entries = await readdir(dirPath, { withFileTypes: true });
@@ -96,8 +120,9 @@ async function nativeCodeSearch(
 			for (const entry of entries) {
 				if (results.length >= limit * 2) break;
 
-				// Skip hidden and common exclusions
-				if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+				// Skip hidden files and DEFAULT_EXCLUDES patterns
+				if (entry.name.startsWith(".")) continue;
+				if (shouldExclude(entry.name, DEFAULT_EXCLUDES)) continue;
 
 				const fullPath = join(dirPath, entry.name);
 
@@ -142,7 +167,7 @@ async function useRgCommand(
 	cwd: string
 ): Promise<CodeSearchOutput> {
 	const args = buildRgArgs(input);
-	const limit = input.limit ?? 50;
+	const limit = input.limit ?? DEFAULT_CODE_SEARCH_LIMIT;
 
 	const result = await execute("rg", args, { cwd });
 
@@ -163,6 +188,17 @@ async function useRgCommand(
 }
 
 // ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Extract file paths from results for history recording.
+ */
+function extractResultPaths(results: CodeSearchMatch[]): string[] {
+	return results.map((r) => r.file).filter(Boolean);
+}
+
+// ============================================
 // Main Entry Point
 // ============================================
 
@@ -174,26 +210,85 @@ export async function codeSearch(
 	cwd: string
 ): Promise<CodeSearchOutput> {
 	if (!input.pattern || input.pattern.length === 0) {
-		return createCodeSearchError("pattern is required");
+		throw parameterError("pattern", "Search pattern is required", "Provide a search pattern");
 	}
 
+	const cache = getSearchCache();
+	const history = getSearchHistory();
+	const TOOL_NAME = "code_search";
+	const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for code search
+	const params = input as unknown as Record<string, unknown>;
+
+	// 1. Generate cache key
+	const cacheKey = getCacheKey(TOOL_NAME, { ...input, cwd });
+
+	// 2. Check cache
+	const cached = cache.getCached<CodeSearchOutput>(cacheKey);
+	if (cached) {
+		// Record to history even on cache hit
+		history.addHistoryEntry({
+			tool: TOOL_NAME,
+			params,
+			query: extractQuery(TOOL_NAME, params),
+			results: extractResultPaths(cached.results),
+		});
+		return cached;
+	}
+
+	// 3. Execute search
+	let result: CodeSearchOutput;
 	try {
 		const availability = await checkToolAvailability();
 
 		if (availability.rg) {
-			return await useRgCommand({ ...input, cwd }, cwd);
+			result = await useRgCommand({ ...input, cwd }, cwd);
 		} else {
-			return await nativeCodeSearch(input, cwd);
+			result = await nativeCodeSearch(input, cwd);
 		}
 	} catch (error) {
+		// Wrap error in SearchToolError if not already
+		const toolError = isSearchToolError(error)
+			? error
+			: new SearchToolError(
+					getErrorMessage(error),
+					"execution",
+					"Try simplifying the search pattern or using literal mode"
+				);
+
 		// Fallback to native on error
 		try {
-			return await nativeCodeSearch(input, cwd);
+			result = await nativeCodeSearch(input, cwd);
 		} catch (nativeError) {
-			const message = nativeError instanceof Error ? nativeError.message : String(nativeError);
-			return createCodeSearchError(message);
+			return createCodeSearchError(toolError.format());
 		}
 	}
+
+	// 4. Generate hints
+	const hints = createSimpleHints(
+		TOOL_NAME,
+		result.results.length,
+		result.truncated,
+		extractQuery(TOOL_NAME, params)
+	);
+
+	// 5. Record to history
+	history.addHistoryEntry({
+		tool: TOOL_NAME,
+		params,
+		query: extractQuery(TOOL_NAME, params),
+		results: extractResultPaths(result.results).slice(0, 10),
+	});
+
+	// 6. Save to cache
+	cache.setCache(cacheKey, { ...result, hints } as CodeSearchOutput, CACHE_TTL);
+
+	// 7. Return with hints in details
+	return {
+		...result,
+		details: {
+			hints,
+		},
+	} as CodeSearchOutput;
 }
 
 /**

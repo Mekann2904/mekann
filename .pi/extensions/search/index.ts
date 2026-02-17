@@ -9,6 +9,11 @@
  * - code_search: Code pattern search (rg wrapper)
  * - sym_index: Symbol index generation (ctags wrapper)
  * - sym_find: Symbol definition search
+ * - call_graph_index: Call graph generation (ripgrep-based)
+ * - find_callers: Find functions that call a symbol
+ * - find_callees: Find functions called by a symbol
+ * - semantic_index: Generate vector embeddings for code files
+ * - semantic_search: Semantic code search with natural language queries
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -18,6 +23,16 @@ import { fileCandidates } from "./tools/file_candidates.js";
 import { codeSearch } from "./tools/code_search.js";
 import { symIndex } from "./tools/sym_index.js";
 import { symFind } from "./tools/sym_find.js";
+import {
+	callGraphIndex,
+	findCallersTool,
+	findCalleesTool,
+	formatCallGraphIndex,
+	formatCallers,
+	formatCallees,
+} from "./tools/call_graph.js";
+import { semanticIndex } from "./tools/semantic_index.js";
+import { semanticSearch, formatSemanticSearch } from "./tools/semantic_search.js";
 import { checkToolAvailability } from "./utils/cli.js";
 import {
 	formatFileCandidates,
@@ -279,6 +294,306 @@ export default function (pi: ExtensionAPI) {
 							{
 								type: "text" as const,
 								text: formatSymbols(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, total: 0, truncated: false, results: [] },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: call_graph_index
+		// ============================================
+		pi.registerTool({
+			name: "call_graph_index",
+			label: "Call Graph Index",
+			description:
+				"Generate a call graph index showing function call relationships. Uses ctags and ripgrep for analysis.",
+			parameters: Type.Object({
+				path: Type.Optional(
+					Type.String({ description: "Target path for indexing (default: project root)" })
+				),
+				force: Type.Optional(
+					Type.Boolean({ description: "Force regeneration of index" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				try {
+					const result = await callGraphIndex(
+						{
+							path: params.path,
+							force: params.force,
+							cwd,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatCallGraphIndex(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, nodeCount: 0, edgeCount: 0, outputPath: "" },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: find_callers
+		// ============================================
+		pi.registerTool({
+			name: "find_callers",
+			label: "Find Callers",
+			description:
+				"Find all functions that call the specified symbol. Supports depth-based traversal to find indirect callers.",
+			parameters: Type.Object({
+				symbolName: Type.String({ description: "Symbol name to find callers for" }),
+				depth: Type.Optional(
+					Type.Number({ description: "Recursion depth (default: 1, direct callers only)" })
+				),
+				limit: Type.Optional(
+					Type.Number({ description: "Maximum results (default: 50)" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				if (!params.symbolName || params.symbolName.length === 0) {
+					return {
+						content: [{ type: "text" as const, text: "Error: symbolName is required" }],
+						details: { error: "symbolName is required", symbolName: "", total: 0, truncated: false, results: [] },
+					};
+				}
+
+				try {
+					const result = await findCallersTool(
+						{
+							symbolName: params.symbolName,
+							depth: params.depth,
+							limit: params.limit,
+							cwd,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatCallers(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, symbolName: params.symbolName, total: 0, truncated: false, results: [] },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: find_callees
+		// ============================================
+		pi.registerTool({
+			name: "find_callees",
+			label: "Find Callees",
+			description:
+				"Find all functions called by the specified symbol. Supports depth-based traversal to find indirect callees.",
+			parameters: Type.Object({
+				symbolName: Type.String({ description: "Symbol name to find callees for" }),
+				depth: Type.Optional(
+					Type.Number({ description: "Recursion depth (default: 1, direct callees only)" })
+				),
+				limit: Type.Optional(
+					Type.Number({ description: "Maximum results (default: 50)" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				if (!params.symbolName || params.symbolName.length === 0) {
+					return {
+						content: [{ type: "text" as const, text: "Error: symbolName is required" }],
+						details: { error: "symbolName is required", symbolName: "", total: 0, truncated: false, results: [] },
+					};
+				}
+
+				try {
+					const result = await findCalleesTool(
+						{
+							symbolName: params.symbolName,
+							depth: params.depth,
+							limit: params.limit,
+							cwd,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatCallees(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, symbolName: params.symbolName, total: 0, truncated: false, results: [] },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: semantic_index
+		// ============================================
+		pi.registerTool({
+			name: "semantic_index",
+			label: "Semantic Index",
+			description:
+				"Generate a semantic index of code files using vector embeddings. Enables semantic code search with natural language queries. Requires embedding provider (OpenAI API key or @huggingface/transformers).",
+			parameters: Type.Object({
+				path: Type.Optional(
+					Type.String({ description: "Target path for indexing (default: project root)" })
+				),
+				force: Type.Optional(
+					Type.Boolean({ description: "Force regeneration of index" })
+				),
+				chunkSize: Type.Optional(
+					Type.Number({ description: "Chunk size in characters (default: 500)" })
+				),
+				chunkOverlap: Type.Optional(
+					Type.Number({ description: "Overlap between chunks (default: 50)" })
+				),
+				extensions: Type.Optional(
+					Type.Array(Type.String(), {
+						description: "File extensions to include (default: ts,tsx,js,jsx,py,go,rs)",
+					})
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				try {
+					const result = await semanticIndex(
+						{
+							path: params.path,
+							force: params.force,
+							chunkSize: params.chunkSize,
+							chunkOverlap: params.chunkOverlap,
+							extensions: params.extensions,
+							cwd,
+						},
+						cwd
+					);
+
+					const hasError = !!result.error;
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: hasError
+									? `Error: ${result.error}`
+									: `Indexed ${result.indexed} chunks from ${result.files} files to ${result.outputPath}`,
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, indexed: 0, files: 0, outputPath: "" },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: semantic_search
+		// ============================================
+		pi.registerTool({
+			name: "semantic_search",
+			label: "Semantic Search",
+			description:
+				"Search code using natural language queries with semantic understanding. Requires a pre-built semantic index (run semantic_index first). Returns code chunks ranked by similarity.",
+			parameters: Type.Object({
+				query: Type.String({ description: "Natural language search query" }),
+				topK: Type.Optional(
+					Type.Number({ description: "Maximum results (default: 10)" })
+				),
+				threshold: Type.Optional(
+					Type.Number({ description: "Minimum similarity threshold 0-1 (default: 0.5)" })
+				),
+				language: Type.Optional(
+					Type.String({ description: "Filter by programming language" })
+				),
+				kind: Type.Optional(
+					Type.Array(Type.String(), {
+						description: "Filter by symbol kind (function, class, variable, chunk)",
+					})
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				if (!params.query || params.query.trim().length === 0) {
+					return {
+						content: [{ type: "text" as const, text: "Error: query is required" }],
+						details: { error: "query is required", total: 0, truncated: false, results: [] },
+					};
+				}
+
+				try {
+					const result = await semanticSearch(
+						{
+							query: params.query,
+							topK: params.topK,
+							threshold: params.threshold,
+							language: params.language,
+							kind: params.kind as ("function" | "class" | "variable" | "chunk")[] | undefined,
+							cwd,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatSemanticSearch(result),
 							},
 						],
 						details: result,

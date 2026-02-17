@@ -6,7 +6,29 @@
 
 import { execute, buildFdArgs, checkToolAvailability } from "../utils/cli.js";
 import type { FileCandidatesInput, FileCandidatesOutput, FileCandidate } from "../types.js";
-import { truncateResults, parseFdOutput, createErrorResponse, relativePath } from "../utils/output.js";
+import { truncateResults, parseFdOutput, createErrorResponse, relativePath, createSimpleHints } from "../utils/output.js";
+import { SearchToolError, isSearchToolError, getErrorMessage } from "../utils/errors.js";
+import { DEFAULT_LIMIT, DEFAULT_EXCLUDES } from "../utils/constants.js";
+import { getSearchCache, getCacheKey } from "../utils/cache.js";
+import { getSearchHistory, extractQuery } from "../utils/history.js";
+
+/**
+ * Check if a name should be excluded based on exclude patterns.
+ * Supports both exact matches and glob patterns (e.g., *.min.js).
+ */
+function shouldExclude(name: string, excludes: readonly string[]): boolean {
+	for (const exc of excludes) {
+		if (exc.startsWith("*.")) {
+			// Glob pattern: match extension
+			const ext = exc.slice(1); // *.min.js -> .min.js
+			if (name.endsWith(ext)) return true;
+		} else {
+			// Exact or substring match
+			if (name === exc || name.includes(exc)) return true;
+		}
+	}
+	return false;
+}
 
 // ============================================
 // Native Fallback Implementation
@@ -23,8 +45,11 @@ async function nativeFileCandidates(
 	const { join } = await import("node:path");
 
 	const results: FileCandidate[] = [];
-	const limit = input.limit ?? 100;
+	const limit = input.limit ?? DEFAULT_LIMIT;
 	const maxDepth = input.maxDepth;
+
+	// Apply DEFAULT_EXCLUDES if not explicitly provided
+	const excludes = input.exclude ?? [...DEFAULT_EXCLUDES];
 
 	async function scan(dirPath: string, depth: number): Promise<void> {
 		if (results.length >= limit * 2) return; // Collect more than needed for filtering
@@ -39,11 +64,9 @@ async function nativeFileCandidates(
 				// Skip hidden files
 				if (entry.name.startsWith(".")) continue;
 
-				// Skip excluded patterns
-				if (input.exclude) {
-					if (input.exclude.some((exc) => entry.name === exc || entry.name.includes(exc))) {
-						continue;
-					}
+				// Skip excluded patterns using shouldExclude helper
+				if (shouldExclude(entry.name, excludes)) {
+					continue;
 				}
 
 				const fullPath = join(dirPath, entry.name);
@@ -104,7 +127,7 @@ async function useFdCommand(
 	cwd: string
 ): Promise<FileCandidatesOutput> {
 	const args = buildFdArgs(input);
-	const limit = input.limit ?? 100;
+	const limit = input.limit ?? DEFAULT_LIMIT;
 
 	// Use input.cwd as search directory, fallback to cwd parameter
 	const searchDir = input.cwd || cwd;
@@ -120,6 +143,17 @@ async function useFdCommand(
 }
 
 // ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Extract file paths from results for history recording.
+ */
+function extractResultPaths(results: FileCandidate[]): string[] {
+	return results.map((r) => r.path).filter(Boolean);
+}
+
+// ============================================
 // Main Entry Point
 // ============================================
 
@@ -130,23 +164,82 @@ export async function fileCandidates(
 	input: FileCandidatesInput,
 	cwd: string
 ): Promise<FileCandidatesOutput> {
+	const cache = getSearchCache();
+	const history = getSearchHistory();
+	const TOOL_NAME = "file_candidates";
+	const CACHE_TTL = 10 * 60 * 1000; // 10 minutes for file enumeration
+	const params = input as unknown as Record<string, unknown>;
+
+	// 1. Generate cache key
+	const cacheKey = getCacheKey(TOOL_NAME, { ...input, cwd });
+
+	// 2. Check cache
+	const cached = cache.getCached<FileCandidatesOutput>(cacheKey);
+	if (cached) {
+		// Record to history even on cache hit
+		history.addHistoryEntry({
+			tool: TOOL_NAME,
+			params,
+			query: extractQuery(TOOL_NAME, params),
+			results: extractResultPaths(cached.results),
+		});
+		return cached;
+	}
+
+	// 3. Execute search
+	let result: FileCandidatesOutput;
 	try {
 		const availability = await checkToolAvailability();
 
 		if (availability.fd) {
-			return await useFdCommand({ ...input, cwd }, cwd);
+			result = await useFdCommand({ ...input, cwd }, cwd);
 		} else {
-			return await nativeFileCandidates(input, cwd);
+			result = await nativeFileCandidates(input, cwd);
 		}
 	} catch (error) {
+		// Wrap error in SearchToolError if not already
+		const toolError = isSearchToolError(error)
+			? error
+			: new SearchToolError(
+					getErrorMessage(error),
+					"execution",
+					"Try using a different search pattern or reducing the scope"
+				);
+
 		// Fallback to native on error
 		try {
-			return await nativeFileCandidates(input, cwd);
+			result = await nativeFileCandidates(input, cwd);
 		} catch (nativeError) {
-			const message = nativeError instanceof Error ? nativeError.message : String(nativeError);
-			return createErrorResponse<FileCandidate>(message);
+			return createErrorResponse<FileCandidate>(toolError.format());
 		}
 	}
+
+	// 4. Generate hints
+	const hints = createSimpleHints(
+		TOOL_NAME,
+		result.results.length,
+		result.truncated,
+		extractQuery(TOOL_NAME, params)
+	);
+
+	// 5. Record to history
+	history.addHistoryEntry({
+		tool: TOOL_NAME,
+		params,
+		query: extractQuery(TOOL_NAME, params),
+		results: extractResultPaths(result.results).slice(0, 10),
+	});
+
+	// 6. Save to cache
+	cache.setCache(cacheKey, { ...result, hints } as FileCandidatesOutput, CACHE_TTL);
+
+	// 7. Return with hints in details
+	return {
+		...result,
+		details: {
+			hints,
+		},
+	} as FileCandidatesOutput;
 }
 
 /**

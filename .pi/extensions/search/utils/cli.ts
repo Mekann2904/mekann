@@ -6,10 +6,12 @@
  * - Abort signal support
  * - Output size limits
  * - Consistent error handling
+ * - Default exclusion patterns
  */
 
 import { spawn } from "node:child_process";
 import type { CliOptions, CliResult, CliError, ToolAvailability, ToolVersion } from "../types";
+import { DEFAULT_EXCLUDES, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE } from "./constants.js";
 
 // Default timeout: 30 seconds
 const DEFAULT_TIMEOUT = 30_000;
@@ -235,6 +237,7 @@ export async function checkToolAvailability(force = false): Promise<ToolAvailabi
 
 /**
  * Build fd command arguments from input options.
+ * Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
  */
 export function buildFdArgs(input: import("../types").FileCandidatesInput): string[] {
   const args: string[] = [];
@@ -256,11 +259,11 @@ export function buildFdArgs(input: import("../types").FileCandidatesInput): stri
     }
   }
 
-  // Exclusions
-  if (input.exclude && input.exclude.length > 0) {
-    for (const exc of input.exclude) {
-      args.push("--exclude", exc);
-    }
+  // Exclusions: Apply DEFAULT_EXCLUDES when not explicitly specified
+  // User can pass empty array `exclude: []` to disable default excludes
+  const excludes = input.exclude ?? [...DEFAULT_EXCLUDES];
+  for (const exc of excludes) {
+    args.push("--exclude", exc);
   }
 
   // Depth
@@ -269,11 +272,8 @@ export function buildFdArgs(input: import("../types").FileCandidatesInput): stri
   }
 
   // Limit (fd has --max-results)
-  const limit = input.limit ?? 100;
+  const limit = input.limit ?? DEFAULT_LIMIT;
   args.push("--max-results", String(limit));
-
-  // Always exclude .git
-  args.push("--exclude", ".git");
 
   // Pattern is positional - search path is provided via execute cwd option
   // Do NOT add path as positional argument to avoid conflict with cwd option
@@ -283,12 +283,15 @@ export function buildFdArgs(input: import("../types").FileCandidatesInput): stri
 
 /**
  * Build ripgrep command arguments from input options.
+ * Uses default values from constants when not specified.
+ * Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
  */
 export function buildRgArgs(input: import("../types").CodeSearchInput): string[] {
   const args: string[] = ["--json"];
 
-  // Case sensitivity
-  if (input.ignoreCase) {
+  // Case sensitivity (default: true from DEFAULT_IGNORE_CASE)
+  const ignoreCase = input.ignoreCase ?? DEFAULT_IGNORE_CASE;
+  if (ignoreCase) {
     args.push("--ignore-case");
   }
 
@@ -305,6 +308,14 @@ export function buildRgArgs(input: import("../types").CodeSearchInput): string[]
   // Context
   if (input.context !== undefined && input.context > 0) {
     args.push("--context", String(input.context));
+  }
+
+  // Exclusions: Apply DEFAULT_EXCLUDES when not explicitly specified
+  // User can pass empty array `exclude: []` to disable default excludes
+  // ripgrep uses --glob '!pattern' format for exclusions
+  const excludes = input.exclude ?? [...DEFAULT_EXCLUDES];
+  for (const exc of excludes) {
+    args.push("--glob", `!${exc}`);
   }
 
   // Pattern (required)

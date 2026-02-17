@@ -5,6 +5,7 @@
  * - Result truncation with metadata
  * - Text summarization
  * - Error formatting
+ * - Enhanced output with agent hints and statistics
  */
 
 import type {
@@ -17,6 +18,8 @@ import type {
   RgMatch,
   RgOutput,
 } from "../types";
+import type { SearchMetrics } from "./metrics.js";
+import { DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT } from "./constants.js";
 
 // ============================================
 // Result Truncation
@@ -416,4 +419,387 @@ export function relativePath(absolute: string, cwd: string): string {
     return rel.startsWith("/") ? rel.slice(1) : rel;
   }
   return absolute;
+}
+
+// ============================================
+// Enhanced Output Types
+// ============================================
+
+/**
+ * Suggested next action for the agent.
+ * Helps guide the agent towards more effective searches.
+ */
+export type SuggestedNextAction =
+  | "refine_pattern"      // Pattern too broad, narrow it down
+  | "expand_scope"        // Pattern too narrow, broaden search
+  | "try_different_tool"  // Current tool not optimal
+  | "increase_limit"      // Results truncated, may need more
+  | "regenerate_index";   // Index may be stale
+
+/**
+ * Agent hints for search results.
+ * Provides guidance on how to interpret and use the results.
+ */
+export interface SearchHints {
+  /**
+   * Confidence in the results (0.0-1.0).
+   * Lower values indicate uncertain or incomplete results.
+   */
+  confidence: number;
+
+  /**
+   * Suggested next action if results are unsatisfactory.
+   */
+  suggestedNextAction?: SuggestedNextAction;
+
+  /**
+   * Alternative tools that might be more effective.
+   */
+  alternativeTools?: string[];
+
+  /**
+   * Related queries that might be useful.
+   */
+  relatedQueries?: string[];
+}
+
+/**
+ * Statistics about the search operation.
+ */
+export interface SearchStats {
+  /**
+   * Number of files searched or enumerated.
+   */
+  filesSearched: number;
+
+  /**
+   * Execution time in milliseconds.
+   */
+  durationMs: number;
+
+  /**
+   * Index hit rate if index was used.
+   */
+  indexHitRate?: number;
+}
+
+/**
+ * Enhanced output with agent hints and statistics.
+ * Wraps the standard SearchResponse with additional metadata.
+ */
+export interface EnhancedOutput<T> {
+  /**
+   * Search results.
+   */
+  results: T[];
+
+  /**
+   * Total number of results before truncation.
+   */
+  total: number;
+
+  /**
+   * Whether results were truncated due to limit.
+   */
+  truncated: boolean;
+
+  /**
+   * Error message if operation failed.
+   */
+  error?: string;
+
+  /**
+   * Agent hints for result interpretation.
+   */
+  hints: SearchHints;
+
+  /**
+   * Search operation statistics.
+   */
+  stats: SearchStats;
+}
+
+// ============================================
+// Enhanced Output Factories
+// ============================================
+
+/**
+ * Create an enhanced output from a basic search response.
+ */
+export function enhanceOutput<T>(
+  response: SearchResponse<T>,
+  metrics: SearchMetrics,
+  hints?: Partial<SearchHints>
+): EnhancedOutput<T> {
+  const defaultHints: SearchHints = {
+    confidence: calculateConfidence(response, metrics),
+    ...hints,
+  };
+
+  return {
+    results: response.results,
+    total: response.total,
+    truncated: response.truncated,
+    error: response.error,
+    hints: defaultHints,
+    stats: {
+      filesSearched: metrics.filesSearched,
+      durationMs: metrics.durationMs,
+      indexHitRate: metrics.indexHitRate,
+    },
+  };
+}
+
+/**
+ * Calculate confidence score based on results and metrics.
+ */
+function calculateConfidence<T>(
+  response: SearchResponse<T>,
+  metrics: SearchMetrics
+): number {
+  // No results = low confidence
+  if (response.total === 0) {
+    return 0.1;
+  }
+
+  // Error = very low confidence
+  if (response.error) {
+    return 0.0;
+  }
+
+  // Few results = moderate confidence
+  if (response.total < 5) {
+    return 0.6;
+  }
+
+  // Many results with truncation = high confidence but may need refinement
+  if (response.truncated) {
+    return 0.8;
+  }
+
+  // Good number of results without truncation
+  return 0.9;
+}
+
+/**
+ * Determine suggested next action based on results.
+ */
+export function suggestNextAction<T>(
+  response: SearchResponse<T>,
+  pattern?: string
+): SuggestedNextAction | undefined {
+  // No results - try expanding scope
+  if (response.total === 0) {
+    return "expand_scope";
+  }
+
+  // Too many results truncated - suggest refinement
+  if (response.truncated && response.total > DEFAULT_LIMIT * 2) {
+    return "refine_pattern";
+  }
+
+  // Moderate truncation - might need more results
+  if (response.truncated) {
+    return "increase_limit";
+  }
+
+  return undefined;
+}
+
+/**
+ * Create hints based on search results.
+ */
+export function createHints<T>(
+  response: SearchResponse<T>,
+  metrics: SearchMetrics,
+  toolName: string
+): SearchHints {
+  const confidence = calculateConfidence(response, metrics);
+  const suggestedNextAction = suggestNextAction(response);
+
+  const hints: SearchHints = {
+    confidence,
+    suggestedNextAction,
+  };
+
+  // Suggest alternative tools based on context
+  if (response.total === 0 || confidence < 0.5) {
+    hints.alternativeTools = getAlternativeTools(toolName);
+  }
+
+  return hints;
+}
+
+/**
+ * Get alternative tools for a given tool.
+ */
+function getAlternativeTools(toolName: string): string[] {
+  const alternatives: Record<string, string[]> = {
+    file_candidates: ["code_search", "sym_find"],
+    code_search: ["file_candidates", "sym_find"],
+    sym_find: ["code_search", "file_candidates"],
+    sym_index: [],
+  };
+
+  return alternatives[toolName] ?? [];
+}
+
+// ============================================
+// Simple Hints Factory (Lightweight Version)
+// ============================================
+
+/**
+ * Calculate confidence from simple parameters.
+ * Used when full SearchResponse/Metrics are not available.
+ */
+export function calculateSimpleConfidence(count: number, truncated: boolean): number {
+  if (count === 0) return 0.1;
+  if (count > 50 || truncated) return 0.9;
+  return Math.min(0.5 + count * 0.01, 0.85);
+}
+
+/**
+ * Create hints from simple parameters.
+ * Lightweight version for quick hint generation without full metrics.
+ *
+ * @param toolName - Name of the search tool
+ * @param resultCount - Number of results returned
+ * @param truncated - Whether results were truncated
+ * @param queryPattern - The search pattern used
+ */
+export function createSimpleHints(
+  toolName: string,
+  resultCount: number,
+  truncated: boolean,
+  queryPattern?: string
+): SearchHints {
+  const confidence = calculateSimpleConfidence(resultCount, truncated);
+
+  const hints: SearchHints = {
+    confidence,
+  };
+
+  if (resultCount === 0) {
+    hints.suggestedNextAction = "refine_pattern";
+    hints.alternativeTools = getAlternativeTools(toolName);
+  } else if (truncated) {
+    hints.suggestedNextAction = "increase_limit";
+  }
+
+  // Could add related queries based on queryPattern in future
+  if (queryPattern && resultCount === 0) {
+    hints.relatedQueries = generateRelatedQueries(queryPattern);
+  }
+
+  return hints;
+}
+
+/**
+ * Generate related query suggestions based on the original query.
+ */
+function generateRelatedQueries(query: string): string[] {
+  const related: string[] = [];
+
+  // Try removing common prefixes
+  if (query.includes("*")) {
+    related.push(query.replace(/\*/g, ""));
+  }
+
+  // Try adding common suffixes
+  if (!query.includes(".")) {
+    related.push(`${query}.ts`);
+    related.push(`${query}.js`);
+  }
+
+  // Try camelCase conversion
+  if (query.includes("-") || query.includes("_")) {
+    const camelCased = query
+      .replace(/[-_](.)/g, (_, c) => c.toUpperCase())
+      .replace(/[-_]/g, "");
+    related.push(camelCased);
+  }
+
+  return related.slice(0, 3);
+}
+
+// ============================================
+// Enhanced Output Formatting
+// ============================================
+
+/**
+ * Format enhanced output for display.
+ */
+export function formatEnhancedOutput<T>(
+  output: EnhancedOutput<T>,
+  formatResult: (result: T) => string
+): string {
+  const lines: string[] = [];
+
+  // Header with count and status
+  const status = output.error
+    ? "Error"
+    : output.truncated
+      ? "Truncated"
+      : "Complete";
+  lines.push(`Results: ${output.total} (${status})`);
+  lines.push("");
+
+  // Error if present
+  if (output.error) {
+    lines.push(`Error: ${output.error}`);
+    lines.push("");
+  }
+
+  // Results
+  for (const result of output.results) {
+    lines.push(formatResult(result));
+  }
+
+  // Truncation notice
+  if (output.truncated) {
+    lines.push("");
+    lines.push(`... and ${output.total - output.results.length} more results`);
+  }
+
+  // Hints
+  if (output.hints.confidence < 0.7 || output.hints.suggestedNextAction) {
+    lines.push("");
+    lines.push("--- Hints ---");
+    lines.push(`Confidence: ${(output.hints.confidence * 100).toFixed(0)}%`);
+
+    if (output.hints.suggestedNextAction) {
+      lines.push(`Suggestion: ${formatSuggestedAction(output.hints.suggestedNextAction)}`);
+    }
+
+    if (output.hints.alternativeTools && output.hints.alternativeTools.length > 0) {
+      lines.push(`Alternative tools: ${output.hints.alternativeTools.join(", ")}`);
+    }
+  }
+
+  // Stats
+  lines.push("");
+  lines.push("--- Statistics ---");
+  lines.push(`Duration: ${output.stats.durationMs.toFixed(0)}ms`);
+  lines.push(`Files searched: ${output.stats.filesSearched}`);
+
+  if (output.stats.indexHitRate !== undefined) {
+    lines.push(`Index hit rate: ${(output.stats.indexHitRate * 100).toFixed(1)}%`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Format suggested action for display.
+ */
+function formatSuggestedAction(action: SuggestedNextAction): string {
+  const descriptions: Record<SuggestedNextAction, string> = {
+    refine_pattern: "Narrow down the search pattern for more specific results",
+    expand_scope: "Broaden the search pattern or remove filters",
+    try_different_tool: "Try using a different search tool",
+    increase_limit: "Increase the result limit to see more matches",
+    regenerate_index: "The symbol index may be outdated, run sym_index",
+  };
+
+  return descriptions[action] ?? action;
 }
