@@ -31,7 +31,7 @@ import {
   getRpmLimit,
   type ResolvedModelLimits,
 } from "./provider-limits.js";
-import { getRuntimeSnapshot } from "../extensions/agent-runtime.js";
+import type { IRuntimeSnapshot, RuntimeSnapshotProvider } from "./interfaces/runtime-snapshot.js";
 
 // ============================================================================
 // Types
@@ -136,6 +136,41 @@ export interface UnifiedEnvConfig {
   adaptiveEnabled: boolean;
   /** 予測スケジューリングの有効/無効 */
   predictiveEnabled: boolean;
+}
+
+// ============================================================================
+// Dependency Injection (DIP Compliance)
+// ============================================================================
+
+/**
+ * Runtime snapshot provider for dependency injection.
+ * Allows extensions layer to inject concrete implementation.
+ */
+let _getRuntimeSnapshot: RuntimeSnapshotProvider | null = null;
+
+/**
+ * Set the runtime snapshot provider function.
+ * Called by extensions/agent-runtime.ts during initialization.
+ */
+export function setRuntimeSnapshotProvider(fn: RuntimeSnapshotProvider): void {
+  _getRuntimeSnapshot = fn;
+}
+
+/**
+ * Get runtime snapshot with fallback to default values.
+ * Internal function used by resolveUnifiedLimits.
+ */
+function getRuntimeSnapshot(): IRuntimeSnapshot {
+  if (!_getRuntimeSnapshot) {
+    // Fallback: return default values when not initialized
+    return {
+      totalActiveLlm: 0,
+      totalActiveRequests: 0,
+      subagentActiveCount: 0,
+      teamActiveCount: 0,
+    };
+  }
+  return _getRuntimeSnapshot();
 }
 
 // ============================================================================

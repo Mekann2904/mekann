@@ -39,6 +39,7 @@
       "./.pi/extensions/agent-usage-tracker.ts",
       "./.pi/extensions/context-usage-dashboard.ts",
       "./.pi/extensions/fzf.ts",
+      "./.pi/extensions/invariant-pipeline.ts",
       "./.pi/extensions/kitty-status-integration.ts",
       "./.pi/extensions/loop.ts",
       "./.pi/extensions/plan.ts",

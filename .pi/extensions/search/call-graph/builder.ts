@@ -16,10 +16,10 @@ import type {
 	FunctionDefinition,
 	DetectedCall,
 } from "./types.js";
-import { execute } from "../../extensions/search/utils/cli.js";
-import { readSymbolIndex } from "../../extensions/search/tools/sym_index.js";
-import type { SymbolIndexEntry } from "../../extensions/search/types.js";
-import { DEFAULT_EXCLUDES } from "../../extensions/search/utils/constants.js";
+import { execute } from "../utils/cli.js";
+import { readSymbolIndex } from "../tools/sym_index.js";
+import type { SymbolIndexEntry } from "../types.js";
+import { DEFAULT_EXCLUDES } from "../utils/constants.js";
 
 // ============================================
 // Constants
@@ -562,7 +562,7 @@ export async function isCallGraphIndexStale(cwd: string): Promise<boolean> {
 	if (!index) return true;
 
 	// Check if symbol index is newer
-	const symIndexMeta = await import("../../extensions/search/tools/sym_index.js")
+	const symIndexMeta = await import("../tools/sym_index.js")
 		.then((m) => m.getIndexMetadata(cwd))
 		.catch(() => null);
 

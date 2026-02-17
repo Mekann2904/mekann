@@ -168,28 +168,6 @@ Delegation is not bureaucracy—it is quality assurance and speed optimization c
 
 5. **Scalable Complexity Handling**: Simple tasks need one specialist. Complex tasks need orchestrated teams. Match tool to task scale.
 
-### The Enforcement Mechanism
-
-This project implements a **soft guardrail** to prevent reflexive direct editing:
-
-```
-write/edit tool call
-       ↓
-First attempt → BLOCKED + message
-       ↓
-┌─────────────────────────────────────────────────┐
-│ Option A: Run delegation tool (subagent_run,    │
-│           agent_team_run) → PASSES immediately  │
-│                                                 │
-│ Option B: Re-run same write/edit within 60s     │
-│           → PASSES (confirmed intent)           │
-│                                                 │
-│ Option C: Wait >60s → BLOCKED again             │
-└─────────────────────────────────────────────────┘
-```
-
-**This is not a restriction—it is a thinking prompt.** The 60-second window exists so you can choose direct editing IF you have consciously decided it is appropriate. The default assumption is that delegation should happen first.
-
 ### When Direct Editing IS Appropriate
 
 - Trivial typo fixes (1-2 character changes)

@@ -12,14 +12,14 @@ import type {
 	FindCallersOutput,
 	FindCalleesOutput,
 	CallGraphIndex,
-} from "../../../lib/call-graph/types.js";
+} from "../call-graph/types.js";
 import {
 	buildCallGraph,
 	saveCallGraphIndex,
 	readCallGraphIndex,
 	isCallGraphIndexStale,
-} from "../../../lib/call-graph/builder.js";
-import { findCallers, findCallees } from "../../../lib/call-graph/query.js";
+} from "../call-graph/builder.js";
+import { findCallers, findCallees } from "../call-graph/query.js";
 import { symIndex, readSymbolIndex } from "./sym_index.js";
 
 // ============================================

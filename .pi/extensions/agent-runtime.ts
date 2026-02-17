@@ -49,6 +49,9 @@ import {
   type TaskResult,
   type TaskSource,
 } from "../lib/task-scheduler";
+import {
+  setRuntimeSnapshotProvider,
+} from "../lib/unified-limit-resolver";
 
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
@@ -1681,4 +1684,16 @@ export default function registerAgentRuntimeExtension(_pi: ExtensionAPI) {
       collector.startCollection();
     }
   }
+
+  // DIP Compliance: Inject runtime snapshot provider into unified-limit-resolver
+  // This allows lib layer to depend on abstraction, not concrete implementation
+  setRuntimeSnapshotProvider(() => {
+    const snapshot = getRuntimeSnapshot();
+    return {
+      totalActiveLlm: snapshot.totalActiveLlm,
+      totalActiveRequests: snapshot.totalActiveRequests,
+      subagentActiveCount: snapshot.subagentActiveAgents,
+      teamActiveCount: snapshot.teamActiveRuns,
+    };
+  });
 }
