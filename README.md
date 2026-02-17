@@ -95,6 +95,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **skill-inspector** | `skill-inspector.ts` | スキル割り当て状況の表示 | [→](docs/02-user-guide/11-utilities.md) |
 | **search** | `extensions/search/` | 高速コード検索（file_candidates, code_search, sym_index, sym_find） | 新規 |
 | **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | 新規 |
+| **invariant-pipeline** | `invariant-pipeline.ts` | 形式仕様からインバリアント、テストコード自動生成（generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver） | [→](docs/02-user-guide/12-invariant-pipeline.md) |
 | **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | 新規 |
 
 ### 共有ライブラリ
@@ -179,6 +180,7 @@ pi remove https://github.com/Mekann2904/mekann
 | | harness-engineering | ハーネスエンジニアリング（品質向上の手法論） |
 | **検索** | search-tools | 高速コード検索ツール（file_candidates, code_search, sym_index, sym_find） |
 | **動的ツール** | dynamic-tools | タスク実行中の動的ツール生成・実行・管理 |
+| **形式手法** | invariant-generation | 形式仕様からインバリアント、テストコード自動生成（Quint、Rustマクロ、プロパティテスト、MBT） |
 
 ### スキル運用方針
 
