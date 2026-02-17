@@ -316,7 +316,6 @@ function resolveExtensionForTool(toolName: string, catalog: FeatureCatalog): str
   if (toolName.startsWith("plan_")) return "plan";
   if (toolName === "loop_run") return "loop";
   if (toolName === "question") return "question";
-  if (toolName === "fzf") return "fzf";
   if (toolName === "abbr") return "abbr";
   if (BUILT_IN_TOOLS.has(toolName)) return "core";
   return "unknown";
