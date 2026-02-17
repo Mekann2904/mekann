@@ -3,7 +3,8 @@
  * Shared by subagents.ts and agent-teams.ts for consistent behavior.
  */
 
-import { normalizeTimeoutMs, computeModelTimeoutMs } from "./index.js";
+import { normalizeTimeoutMs } from "./runtime-utils.js";
+import { computeModelTimeoutMs } from "./model-timeouts.js";
 
 /**
  * Resolve effective timeout with model-specific adjustment.

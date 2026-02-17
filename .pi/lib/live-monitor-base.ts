@@ -6,19 +6,10 @@
 
 import { matchesKey, Key, truncateToWidth } from "@mariozechner/pi-tui";
 
-import {
-  formatDurationMs,
-  formatBytes,
-  formatClockTime,
-  computeLiveWindow,
-  getLiveStatusGlyph,
-  isEnterInput,
-  finalizeLiveLines,
-  appendTail,
-  countOccurrences,
-  estimateLineCount,
-  renderPreviewWithMarkdown,
-} from "./index.js";
+import { formatDurationMs, formatBytes, formatClockTime } from "./format-utils.js";
+import { computeLiveWindow } from "./agent-utils.js";
+import { getLiveStatusGlyph, isEnterInput, finalizeLiveLines } from "./live-view-utils.js";
+import { appendTail, countOccurrences, estimateLineCount, renderPreviewWithMarkdown } from "./tui-utils.js";
 
 // ============================================================================
 // Core Types

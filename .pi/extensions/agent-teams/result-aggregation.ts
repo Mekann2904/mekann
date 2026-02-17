@@ -9,9 +9,11 @@ import {
   classifyPressureError,
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
+} from "../../lib/error-utils.js";
+import {
   type RunOutcomeCode,
   type RunOutcomeSignal,
-} from "../../lib";
+} from "../../lib/agent-types.js";
 
 import type { TeamMemberResult, TeamRunRecord, TeamDefinition, TeamCommunicationAuditEntry } from "./storage";
 

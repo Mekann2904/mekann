@@ -3,7 +3,7 @@
 // Why: Extracted from agent-teams.ts to improve maintainability and SRP compliance.
 // Related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts
 
-import { normalizeForSingleLine } from "../../lib";
+import { normalizeForSingleLine } from "../../lib/format-utils.js";
 import { analyzeDiscussionStance } from "../../lib/text-parsing";
 import {
   classifyFailureType,

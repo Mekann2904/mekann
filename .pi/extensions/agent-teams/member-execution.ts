@@ -10,10 +10,16 @@ import type { TeamDefinition, TeamMember, TeamMemberResult } from "./storage";
 
 import {
   normalizeForSingleLine,
+} from "../../lib/format-utils.js";
+import {
   toErrorMessage,
+} from "../../lib/error-utils.js";
+import {
   type ThinkingLevel,
+} from "../../lib/agent-types.js";
+import {
   validateTeamMemberOutput,
-} from "../../lib";
+} from "../../lib/output-validation.js";
 import { SchemaValidationError } from "../../lib/errors.js";
 import {
   isPlanModeActive,

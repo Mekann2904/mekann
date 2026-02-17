@@ -51,7 +51,7 @@ import {
   createRetrySchema,
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
-} from "../lib";
+} from "../lib/index.js";
 import { createChildAbortController } from "../lib/abort-utils";
 import {
   createAdaptivePenaltyController,

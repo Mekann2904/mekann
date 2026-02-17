@@ -13,7 +13,14 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
-import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, computeModelTimeoutMs } from "../lib";
+import {
+  formatDuration,
+  toErrorMessage,
+  toBoundedInteger,
+  ThinkingLevel,
+  createRunId,
+  computeModelTimeoutMs,
+} from "../lib/index.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 

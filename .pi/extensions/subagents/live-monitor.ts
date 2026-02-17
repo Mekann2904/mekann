@@ -7,20 +7,28 @@ import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 import {
   formatDurationMs,
-  toTailLines,
+  formatBytes,
+  formatClockTime,
+} from "../../lib/format-utils.js";
+import {
   appendTail,
   countOccurrences,
   estimateLineCount,
-  looksLikeMarkdown,
   renderPreviewWithMarkdown,
-  formatBytes,
-  formatClockTime,
+} from "../../lib/tui-utils.js";
+import {
+  toTailLines,
+  looksLikeMarkdown,
+} from "../../lib/live-view-utils.js";
+import {
   computeLiveWindow,
+} from "../../lib/agent-utils.js";
+import {
   getLiveStatusGlyph,
   isEnterInput,
   finalizeLiveLines,
   type LiveStatus,
-} from "../../lib";
+} from "../../lib/live-view-utils.js";
 
 // Import types from lib/subagent-types.ts
 import {

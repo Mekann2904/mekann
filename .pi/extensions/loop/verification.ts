@@ -5,7 +5,8 @@
 
 import { spawn } from "node:child_process";
 
-import { formatDuration, toErrorMessage } from "../../lib";
+import { formatDuration } from "../../lib/format-utils.js";
+import { toErrorMessage } from "../../lib/error-utils.js";
 
 // ============================================================================
 // Constants

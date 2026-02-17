@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
-import { toErrorMessage } from "../../lib";
+import { toErrorMessage } from "../../lib/error-utils.js";
 import { validateUrlForSsrf } from "./ssrf-protection";
 
 // ============================================================================

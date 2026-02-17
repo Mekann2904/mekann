@@ -3,7 +3,7 @@
 // Why: Handles building iteration prompts and parsing the machine-readable contract.
 // Related: .pi/extensions/loop.ts
 
-import { ThinkingLevel } from "../../lib";
+import { ThinkingLevel } from "../../lib/agent-types.js";
 import type { LoopReference } from "./reference-loader";
 
 // ============================================================================

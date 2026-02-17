@@ -8,10 +8,11 @@
  * Related: extensions/subagents.ts, extensions/subagents/storage.ts
  */
 
-import type { LiveStatus, LiveStreamView, LiveViewMode } from "./index.js";
+import type { LiveStatus, LiveStreamView, LiveViewMode } from "./live-monitor-base.js";
+import type { LiveStatus as LiveStatusBase } from "./live-view-utils.js";
 
-// Re-export base types for convenience
-export type { LiveStreamView, LiveViewMode } from "./index.js";
+// Use LiveStatus from live-view-utils.ts for the canonical definition
+export type { LiveStreamView, LiveViewMode } from "./live-monitor-base.js";
 
 // ============================================================================
 // Subagent Live Monitor Types
