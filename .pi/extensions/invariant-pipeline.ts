@@ -14,10 +14,11 @@
  * - invariant-generation-team: マルチエージェント生成
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@mariozechner/pi-ai";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
+
+import { Type } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // ============================================================================
 // Types
@@ -102,12 +103,16 @@ function parseSpecMarkdown(content: string): ParsedSpec {
     states: [],
     operations: [],
     invariants: [],
+    constants: [],
   };
 
   let currentSection = "";
-  let currentItem: any = null;
+  let currentState: SpecState | null = null;
+  let currentOperation: SpecOperation | null = null;
+  let currentConstant: { name: string; type: string; value?: unknown } | null = null;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
 
     // Title
@@ -116,58 +121,179 @@ function parseSpecMarkdown(content: string): ParsedSpec {
       continue;
     }
 
-    // Sections
+    // Sections (##)
     if (trimmed.startsWith("## ")) {
+      // Save pending items before changing section
+      if (currentConstant) {
+        spec.constants!.push(currentConstant);
+        currentConstant = null;
+      }
+      if (currentState) {
+        spec.states.push(currentState);
+        currentState = null;
+      }
+      if (currentOperation) {
+        spec.operations.push(currentOperation);
+        currentOperation = null;
+      }
       currentSection = trimmed.substring(3).toLowerCase();
       continue;
     }
 
-    // State variables
-    if (currentSection.includes("状態") || currentSection.includes("state")) {
-      const match = trimmed.match(/^[-*]\s+(\w+)\s*:\s*(\w+)(?:\s*（初期値\s+(.+)）)?(?:\s*\(initial:\s*(.+)\))?/);
-      if (match) {
-        spec.states.push({
-          name: match[1],
-          type: match[2],
-          initialValue: match[3] || match[4],
-        });
-      } else {
-        // Simple format: - variable_name: Type
-        const simpleMatch = trimmed.match(/^[-*]\s+(\w+)\s*:\s*(.+)$/);
-        if (simpleMatch) {
-          spec.states.push({
-            name: simpleMatch[1],
-            type: simpleMatch[2].trim(),
-          });
+    // Constants section (## 定数 / ## Constants)
+    if (currentSection.includes("定数") || currentSection.includes("constants")) {
+      // ### name: type format
+      const headerMatch = trimmed.match(/^###\s+(\w+)\s*:\s*(.+)$/);
+      if (headerMatch) {
+        // Save previous constant if exists
+        if (currentConstant) {
+          spec.constants!.push(currentConstant);
         }
+        currentConstant = { name: headerMatch[1], type: headerMatch[2].trim() };
+        continue;
+      }
+      // - 値: value / - value: value
+      const valueMatch = trimmed.match(/^[-*]\s+(?:値|value)\s*:\s*(.+)$/);
+      if (valueMatch && currentConstant) {
+        currentConstant.value = parseConstantValue(valueMatch[1].trim(), currentConstant.type);
+        continue;
       }
     }
 
-    // Operations
+    // State variables section (## 状態 / ## State)
+    if (currentSection.includes("状態") || currentSection.includes("state")) {
+      // ### name: type format
+      const headerMatch = trimmed.match(/^###\s+(\w+)\s*:\s*(.+)$/);
+      if (headerMatch) {
+        // Save previous state if exists
+        if (currentState) {
+          spec.states.push(currentState);
+        }
+        currentState = { name: headerMatch[1], type: headerMatch[2].trim(), constraints: [] };
+        continue;
+      }
+      // - 初期値: value / - initial: value
+      const initialMatch = trimmed.match(/^[-*]\s+(?:初期値|初期値|initial)\s*:\s*(.+)$/);
+      if (initialMatch && currentState) {
+        currentState.initialValue = parseConstantValue(initialMatch[1].trim(), currentState.type);
+        continue;
+      }
+      // - 制約: condition / - constraint: condition
+      const constraintMatch = trimmed.match(/^[-*]\s+(?:制約|constraint)\s*:\s*(.+)$/);
+      if (constraintMatch && currentState) {
+        currentState.constraints!.push(constraintMatch[1].trim());
+        continue;
+      }
+      // Legacy format: - variable_name: Type (初期値: value)
+      const legacyMatch = trimmed.match(/^[-*]\s+(\w+)\s*:\s*(\w+)(?:\s*（初期値\s+(.+)）)?(?:\s*\(initial:\s*(.+)\))?/);
+      if (legacyMatch) {
+        if (currentState) {
+          spec.states.push(currentState);
+        }
+        currentState = {
+          name: legacyMatch[1],
+          type: legacyMatch[2],
+          initialValue: legacyMatch[3] || legacyMatch[4],
+          constraints: [],
+        };
+        continue;
+      }
+      // Simple legacy format: - variable_name: Type
+      const simpleMatch = trimmed.match(/^[-*]\s+(\w+)\s*:\s*(.+)$/);
+      if (simpleMatch && !trimmed.includes("初期値") && !trimmed.includes("制約")) {
+        if (currentState) {
+          spec.states.push(currentState);
+        }
+        currentState = { name: simpleMatch[1], type: simpleMatch[2].trim(), constraints: [] };
+        continue;
+      }
+    }
+
+    // Operations section (## 操作 / ## Operations)
     if (currentSection.includes("操作") || currentSection.includes("operation")) {
-      const match = trimmed.match(/^[-*]\s+(\w+)\s*\(([^)]*)\)\s*:\s*(.+)$/);
-      if (match) {
-        spec.operations.push({
-          name: match[1],
-          parameters: match[2] ? match[2].split(",").map(p => {
+      // ### name() format
+      const headerMatch = trimmed.match(/^###\s+(\w+)\s*\(([^)]*)\)\s*:\s*(.*)$/);
+      if (headerMatch) {
+        // Save previous operation if exists
+        if (currentOperation) {
+          spec.operations.push(currentOperation);
+        }
+        currentOperation = {
+          name: headerMatch[1],
+          parameters: headerMatch[2] ? headerMatch[2].split(",").filter(p => p.trim()).map(p => {
             const [name, type] = p.trim().split(":").map(s => s.trim());
             return { name, type: type || "any" };
           }) : [],
-          description: match[3],
-        });
-      } else {
-        // Simple format: - operation_name()
-        const simpleMatch = trimmed.match(/^[-*]\s+(\w+)\s*\(\s*\)/);
-        if (simpleMatch) {
-          spec.operations.push({
-            name: simpleMatch[1],
-            parameters: [],
-          });
+          description: headerMatch[3] || undefined,
+          preconditions: [],
+          postconditions: [],
+        };
+        continue;
+      }
+      // Simple ### name() format (no description)
+      const simpleHeaderMatch = trimmed.match(/^###\s+(\w+)\s*\(([^)]*)\)\s*$/);
+      if (simpleHeaderMatch) {
+        if (currentOperation) {
+          spec.operations.push(currentOperation);
         }
+        currentOperation = {
+          name: simpleHeaderMatch[1],
+          parameters: simpleHeaderMatch[2] ? simpleHeaderMatch[2].split(",").filter(p => p.trim()).map(p => {
+            const [name, type] = p.trim().split(":").map(s => s.trim());
+            return { name, type: type || "any" };
+          }) : [],
+          preconditions: [],
+          postconditions: [],
+        };
+        continue;
+      }
+      // - 事前条件: condition / - precondition: condition
+      const preMatch = trimmed.match(/^[-*]\s+(?:事前条件|precondition)\s*:\s*(.+)$/);
+      if (preMatch && currentOperation) {
+        currentOperation.preconditions!.push(preMatch[1].trim());
+        continue;
+      }
+      // - 効果: condition / - effect: condition / - postcondition: condition
+      const postMatch = trimmed.match(/^[-*]\s+(?:効果|effect|postcondition)\s*:\s*(.+)$/);
+      if (postMatch && currentOperation) {
+        currentOperation.postconditions!.push(postMatch[1].trim());
+        continue;
+      }
+      // Legacy format: - name(params): description
+      const legacyMatch = trimmed.match(/^[-*]\s+(\w+)\s*\(([^)]*)\)\s*:\s*(.+)$/);
+      if (legacyMatch) {
+        if (currentOperation) {
+          spec.operations.push(currentOperation);
+        }
+        currentOperation = {
+          name: legacyMatch[1],
+          parameters: legacyMatch[2] ? legacyMatch[2].split(",").filter(p => p.trim()).map(p => {
+            const [name, type] = p.trim().split(":").map(s => s.trim());
+            return { name, type: type || "any" };
+          }) : [],
+          description: legacyMatch[3],
+          preconditions: [],
+          postconditions: [],
+        };
+        continue;
+      }
+      // Simple legacy format: - operation_name()
+      const simpleLegacyMatch = trimmed.match(/^[-*]\s+(\w+)\s*\(\s*\)/);
+      if (simpleLegacyMatch) {
+        if (currentOperation) {
+          spec.operations.push(currentOperation);
+        }
+        currentOperation = {
+          name: simpleLegacyMatch[1],
+          parameters: [],
+          preconditions: [],
+          postconditions: [],
+        };
+        continue;
       }
     }
 
-    // Invariants
+    // Invariants section (## インバリアント / ## Invariants)
     if (currentSection.includes("インバリアント") || currentSection.includes("invariant")) {
       const match = trimmed.match(/^[-*]\s+(.+)$/);
       if (match && !trimmed.startsWith("```")) {
@@ -179,7 +305,47 @@ function parseSpecMarkdown(content: string): ParsedSpec {
     }
   }
 
+  // Don't forget to save the last items
+  if (currentConstant) {
+    spec.constants!.push(currentConstant);
+  }
+  if (currentState) {
+    spec.states.push(currentState);
+  }
+  if (currentOperation) {
+    spec.operations.push(currentOperation);
+  }
+
   return spec;
+}
+
+/**
+ * Parse constant value based on type
+ */
+function parseConstantValue(valueStr: string, type: string): unknown {
+  const trimmed = valueStr.trim();
+
+  // Integer types
+  if (type === "int" || type === "integer" || type === "整数" || type === "i64" || type === "i32") {
+    const num = parseInt(trimmed, 10);
+    return isNaN(num) ? trimmed : num;
+  }
+
+  // Float types
+  if (type === "float" || type === "double" || type === "f64" || type === "f32") {
+    const num = parseFloat(trimmed);
+    return isNaN(num) ? trimmed : num;
+  }
+
+  // Boolean types
+  if (type === "bool" || type === "boolean" || type === "真偽") {
+    if (trimmed.toLowerCase() === "true" || trimmed === "真" || trimmed === "1") return true;
+    if (trimmed.toLowerCase() === "false" || trimmed === "偽" || trimmed === "0") return false;
+    return trimmed;
+  }
+
+  // Default: keep as string
+  return trimmed;
 }
 
 // ============================================================================
