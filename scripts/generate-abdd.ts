@@ -5,9 +5,11 @@
  * TypeScriptソースファイルからAPIドキュメントとMermaid図を自動生成する
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, mkdtempSync, rmSync } from 'fs';
 import { join, relative, dirname, basename } from 'path';
+import { execSync } from 'child_process';
 import * as ts from 'typescript';
+import * as os from 'os';
 
 // ============================================================================
 // Types
@@ -96,6 +98,14 @@ async function main() {
   const libFiles = collectTypeScriptFiles(LIB_DIR);
   for (const file of libFiles) {
     processFile(file, LIB_DIR, join(ABDD_DIR, '.pi/lib'));
+  }
+
+  // Mermaid図を検証
+  const errors = validateAllMermaidDiagrams();
+
+  if (errors.length > 0) {
+    console.log('\n⚠️  Mermaid errors detected. Please fix the generation logic.');
+    process.exit(1);
   }
 
   console.log('\n=== Done ===');
@@ -509,6 +519,53 @@ type ${t.name} = ${t.definition}
 // Mermaid Generation
 // ============================================================================
 
+function sanitizeMermaidType(type: string): string {
+  // 型をMermaidクラス図で表示可能な形式に短縮
+  let sanitized = type
+    .replace(/import\("[^"]+"\)\./g, '')
+    .replace(/\s+/g, '')
+    // 長い型を短縮
+    .substring(0, 20);
+
+  // 特殊文字を削除し、英数字とアンダースコアのみ残す
+  sanitized = sanitized.replace(/[^a-zA-Z0-9_]/g, '_');
+
+  // 連続するアンダースコアを1つに
+  sanitized = sanitized.replace(/_+/g, '_');
+
+  // 先頭と末尾のアンダースコアを削除
+  sanitized = sanitized.replace(/^_+|_+$/g, '');
+
+  // 先頭が数字の場合はアンダースコアを追加
+  if (/^[0-9]/.test(sanitized)) {
+    sanitized = 'T' + sanitized;
+  }
+
+  return sanitized || 'any';
+}
+
+function sanitizeMermaidIdentifier(name: string): string {
+  let sanitized = name.replace(/[^a-zA-Z0-9_]/g, '_');
+  // 連続するアンダースコアを1つに
+  sanitized = sanitized.replace(/_+/g, '_');
+  // 先頭と末尾のアンダースコアを削除
+  sanitized = sanitized.replace(/^_+|_+$/g, '');
+  // 先頭が数字の場合はプレフィックスを追加
+  if (/^[0-9]/.test(sanitized)) {
+    sanitized = 'N' + sanitized;
+  }
+  // 空の場合はプレースホルダー
+  sanitized = sanitized || 'Unknown';
+
+  // Mermaid予約語を回避
+  const reservedWords = ['loop', 'alt', 'opt', 'par', 'and', 'or', 'end', 'else', 'note', 'participant', 'actor', 'activate', 'deactivate'];
+  if (reservedWords.includes(sanitized.toLowerCase())) {
+    sanitized = 'M' + sanitized;
+  }
+
+  return sanitized;
+}
+
 function generateMermaidSection(info: FileInfo): string {
   let section = `## 図解
 
@@ -522,26 +579,30 @@ function generateMermaidSection(info: FileInfo): string {
 classDiagram
 `;
     for (const cls of info.classes) {
-      section += `  class ${cls.name} {\n`;
+      const clsName = sanitizeMermaidIdentifier(cls.name);
+      section += `  class ${clsName} {\n`;
       for (const p of cls.properties.slice(0, 5)) {
         const vis = p.visibility === 'private' ? '-' : p.visibility === 'protected' ? '#' : '+';
-        section += `    ${vis}${p.name}: ${p.type.replace(/[^a-zA-Z0-9_<>\[\]]/g, '')}\n`;
+        const typeName = sanitizeMermaidType(p.type);
+        section += `    ${vis}${sanitizeMermaidIdentifier(p.name)}: ${typeName}\n`;
       }
       for (const m of cls.methods.slice(0, 5)) {
         const vis = m.visibility === 'private' ? '-' : m.visibility === 'protected' ? '#' : '+';
-        section += `    ${vis}${m.name.replace(/\([^)]*\)/, '()')}\n`;
+        section += `    ${vis}${sanitizeMermaidIdentifier(m.name)}()\n`;
       }
       section += `  }\n`;
       if (cls.extends) {
-        section += `  ${cls.extends} <|-- ${cls.name}\n`;
+        section += `  ${sanitizeMermaidIdentifier(cls.extends)} <|-- ${clsName}\n`;
       }
     }
 
     for (const intf of info.interfaces) {
-      section += `  class ${intf.name} {\n`;
+      const intfName = sanitizeMermaidIdentifier(intf.name);
+      section += `  class ${intfName} {\n`;
       section += `    <<interface>>\n`;
       for (const p of intf.properties.slice(0, 5)) {
-        section += `    +${p.name}: ${p.type.replace(/[^a-zA-Z0-9_<>\[\]]/g, '')}\n`;
+        const typeName = sanitizeMermaidType(p.type);
+        section += `    +${sanitizeMermaidIdentifier(p.name)}: ${typeName}\n`;
       }
       section += `  }\n`;
     }
@@ -567,8 +628,10 @@ flowchart LR
       if (localImports.length > 0) {
         section += `  subgraph local[ローカルモジュール]\n`;
         for (const imp of localImports.slice(0, 5)) {
-          const name = basename(imp.source);
-          section += `    ${name.replace(/[^a-zA-Z0-9]/g, '_')}["${name}"]\n`;
+          // .js拡張子を削除
+          let name = basename(imp.source).replace(/\.js$/, '');
+          const nodeId = sanitizeMermaidIdentifier(name);
+          section += `    ${nodeId}["${name}"]\n`;
         }
         section += `  end\n`;
         section += `  main --> local\n`;
@@ -601,12 +664,13 @@ flowchart TD
 `;
       for (let i = 0; i < Math.min(exportedFns.length, 6); i++) {
         const fn = exportedFns[i];
-        section += `  ${fn.name.replace(/[^a-zA-Z0-9]/g, '_')}["${fn.name}()"]\n`;
+        const fnId = sanitizeMermaidIdentifier(fn.name);
+        section += `  ${fnId}["${fn.name}()"]\n`;
       }
       // シンプルな順序関係
       for (let i = 0; i < Math.min(exportedFns.length - 1, 5); i++) {
-        const from = exportedFns[i].name.replace(/[^a-zA-Z0-9]/g, '_');
-        const to = exportedFns[i + 1].name.replace(/[^a-zA-Z0-9]/g, '_');
+        const from = sanitizeMermaidIdentifier(exportedFns[i].name);
+        const to = sanitizeMermaidIdentifier(exportedFns[i + 1].name);
         section += `  ${from} -.-> ${to}\n`;
       }
       section += `\`\`\`\n\n`;
@@ -629,7 +693,8 @@ sequenceDiagram
 
     // メインモジュール
     const moduleName = basename(info.relativePath, '.ts');
-    section += `  participant ${moduleName.replace(/[^a-zA-Z0-9]/g, '_')} as "${moduleName}"\n`;
+    const modId = sanitizeMermaidIdentifier(moduleName);
+    section += `  participant ${modId} as "${moduleName}"\n`;
 
     // 外部依存（一意なパッケージのみ）
     const uniqueExternalDeps = [...new Set(
@@ -638,17 +703,22 @@ sequenceDiagram
         .map(i => i.source.split('/')[0])
     )].slice(0, 3);
 
+    const externalDepIds: string[] = [];
     for (const dep of uniqueExternalDeps) {
-      const depName = dep.replace(/[^a-zA-Z0-9]/g, '_');
+      const depId = sanitizeMermaidIdentifier(dep);
       const escapedDep = dep.replace(/"/g, "'");
-      section += `  participant ${depName} as "${escapedDep}"\n`;
+      section += `  participant ${depId} as "${escapedDep}"\n`;
+      externalDepIds.push(depId);
     }
 
     // ローカル依存
     const localDeps = info.imports.filter(i => i.source.startsWith('.')).slice(0, 2);
+    const localDepIds: string[] = [];
     for (const dep of localDeps) {
-      const depName = basename(dep.source).replace(/[^a-zA-Z0-9]/g, '_');
-      section += `  participant ${depName} as "${basename(dep.source)}"\n`;
+      const depName = basename(dep.source).replace(/\.js$/, '');
+      const depId = sanitizeMermaidIdentifier(depName);
+      section += `  participant ${depId} as "${depName}"\n`;
+      localDepIds.push(depId);
     }
 
     section += `\n`;
@@ -656,9 +726,6 @@ sequenceDiagram
     // メインフロー
     const mainFn = exportedFunctions[0];
     if (mainFn) {
-      const fnId = mainFn.name.replace(/[^a-zA-Z0-9]/g, '_');
-      const modId = moduleName.replace(/[^a-zA-Z0-9]/g, '_');
-
       // 呼び出し元→メイン関数
       section += `  Caller->>${modId}: ${mainFn.name}()\n`;
 
@@ -669,31 +736,30 @@ sequenceDiagram
       }
 
       // 外部依存への呼び出し
-      if (uniqueExternalDeps.length > 0) {
-        const firstDepName = uniqueExternalDeps[0].replace(/[^a-zA-Z0-9]/g, '_');
-        section += `  ${modId}->>${firstDepName}: API呼び出し\n`;
-        section += `  ${firstDepName}-->>${modId}: レスポンス\n`;
+      if (externalDepIds.length > 0) {
+        const firstDepId = externalDepIds[0];
+        section += `  ${modId}->>${firstDepId}: API呼び出し\n`;
+        section += `  ${firstDepId}-->>${modId}: レスポンス\n`;
       }
 
       // ローカル依存への呼び出し
-      if (localDeps.length > 0) {
-        const localName = basename(localDeps[0].source).replace(/[^a-zA-Z0-9]/g, '_');
-        section += `  ${modId}->>${localName}: 内部関数呼び出し\n`;
-        section += `  ${localName}-->>${modId}: 結果\n`;
+      if (localDepIds.length > 0) {
+        const localId = localDepIds[0];
+        section += `  ${modId}->>${localId}: 内部関数呼び出し\n`;
+        section += `  ${localId}-->>${modId}: 結果\n`;
       }
 
       // 戻り
       if (mainFn.isAsync) {
         section += `  deactivate ${modId}\n`;
       }
-      section += `  ${modId}-->>Caller: ${mainFn.returnType || 'Result'}\n`;
+      const mainReturnType = sanitizeMermaidType(mainFn.returnType || 'Result');
+      section += `  ${modId}-->>Caller: ${mainReturnType}\n`;
     }
 
     // 2つ目のエクスポート関数がある場合
     if (exportedFunctions.length > 1) {
       const secondFn = exportedFunctions[1];
-      const fnId = secondFn.name.replace(/[^a-zA-Z0-9]/g, '_');
-      const modId = moduleName.replace(/[^a-zA-Z0-9]/g, '_');
 
       section += `\n`;
       section += `  Caller->>${modId}: ${secondFn.name}()\n`;
@@ -702,7 +768,8 @@ sequenceDiagram
         section += `  activate ${modId}\n`;
       }
 
-      section += `  ${modId}-->>Caller: ${secondFn.returnType || 'Result'}\n`;
+      const secondReturnType = sanitizeMermaidType(secondFn.returnType || 'Result');
+      section += `  ${modId}-->>Caller: ${secondReturnType}\n`;
 
       if (secondFn.isAsync) {
         section += `  deactivate ${modId}\n`;
@@ -713,6 +780,216 @@ sequenceDiagram
   }
 
   return section;
+}
+
+// ============================================================================
+// Mermaid Validation
+// ============================================================================
+
+interface MermaidError {
+  file: string;
+  line: number;
+  diagram: string;
+  error: string;
+}
+
+function validateAllMermaidDiagrams(): MermaidError[] {
+  const errors: MermaidError[] = [];
+  const mdFiles = collectMarkdownFiles(ABDD_DIR);
+
+  console.log('\n=== Validating Mermaid diagrams ===\n');
+
+  let totalDiagrams = 0;
+  let validDiagrams = 0;
+
+  for (const file of mdFiles) {
+    const content = readFileSync(file, 'utf-8');
+    const mermaidBlocks = extractMermaidBlocks(content);
+
+    for (let i = 0; i < mermaidBlocks.length; i++) {
+      totalDiagrams++;
+      const block = mermaidBlocks[i];
+      const validation = validateMermaid(block.code);
+
+      if (!validation.valid) {
+        errors.push({
+          file: relative(ROOT_DIR, file),
+          line: block.line,
+          diagram: block.code.substring(0, 100) + '...',
+          error: validation.error || 'Unknown error',
+        });
+        console.log(`  ❌ ${relative(ROOT_DIR, file)}:${block.line} - ${validation.error}`);
+      } else {
+        validDiagrams++;
+      }
+    }
+  }
+
+  console.log(`\n📊 Results: ${validDiagrams}/${totalDiagrams} diagrams valid`);
+
+  if (errors.length > 0) {
+    console.log(`\n❌ ${errors.length} errors found:\n`);
+    for (const err of errors) {
+      console.log(`  ${err.file}:${err.line}`);
+      console.log(`    ${err.error}\n`);
+    }
+  } else {
+    console.log('\n✅ All Mermaid diagrams are valid!\n');
+  }
+
+  return errors;
+}
+
+function collectMarkdownFiles(dir: string): string[] {
+  const files: string[] = [];
+
+  function walk(path: string) {
+    const entries = readdirSync(path);
+    for (const entry of entries) {
+      const fullPath = join(path, entry);
+      const stat = statSync(fullPath);
+      if (stat.isDirectory()) {
+        walk(fullPath);
+      } else if (stat.isFile() && entry.endsWith('.md')) {
+        files.push(fullPath);
+      }
+    }
+  }
+
+  walk(dir);
+  return files;
+}
+
+function extractMermaidBlocks(content: string): { code: string; line: number }[] {
+  const blocks: { code: string; line: number }[] = [];
+  const lines = content.split('\n');
+
+  let inMermaid = false;
+  let currentBlock: string[] = [];
+  let startLine = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.trim() === '```mermaid') {
+      inMermaid = true;
+      startLine = i + 1;
+      currentBlock = [];
+    } else if (inMermaid && line.trim() === '```') {
+      inMermaid = false;
+      if (currentBlock.length > 0) {
+        blocks.push({
+          code: currentBlock.join('\n'),
+          line: startLine,
+        });
+      }
+    } else if (inMermaid) {
+      currentBlock.push(line);
+    }
+  }
+
+  return blocks;
+}
+
+function validateMermaid(code: string): { valid: boolean; error?: string } {
+  // mmdcがインストールされているかチェック
+  try {
+    execSync('which mmdc', { stdio: 'pipe' });
+  } catch {
+    // mmdcがない場合は簡易チェック
+    return validateMermaidSimple(code);
+  }
+
+  // 一時ファイルに書き出してmmdcで検証
+  const tmpDir = mkdtempSync(join(os.tmpdir(), 'mermaid-'));
+  const tmpFile = join(tmpDir, 'diagram.mmd');
+  const tmpOutput = join(tmpDir, 'output.svg');
+
+  try {
+    writeFileSync(tmpFile, code, 'utf-8');
+
+    // mmdcで検証（SVGを出力して成功するか確認）
+    execSync(`mmdc -i "${tmpFile}" -o "${tmpOutput}" -b transparent`, {
+      timeout: 15000,
+      stdio: 'pipe',
+    });
+
+    return { valid: true };
+  } catch (error) {
+    let errorMsg = 'Parse error';
+
+    if (error instanceof Error) {
+      // stdout/stderrからエラーメッセージを抽出
+      const anyError = error as any;
+      if (anyError.stderr) {
+        errorMsg = anyError.stderr.toString();
+      } else if (anyError.stdout) {
+        errorMsg = anyError.stdout.toString();
+      } else {
+        errorMsg = error.message;
+      }
+    }
+
+    // エラーメッセージを簡潔に
+    const lines = errorMsg.split('\n');
+    let cleanError = lines.find((l: string) =>
+      l.includes('Error') || l.includes('error') || l.includes('Parse')
+    ) || lines[0] || 'Parse error';
+    cleanError = cleanError.substring(0, 150).trim();
+
+    // 一般的なエラーだけを表示
+    if (cleanError.includes('Command failed') || cleanError.length < 5) {
+      cleanError = 'Parse error';
+    }
+
+    return { valid: false, error: cleanError };
+  } finally {
+    // 一時ファイルを削除
+    try {
+      rmSync(tmpDir, { recursive: true });
+    } catch {
+      // 無視
+    }
+  }
+}
+
+function validateMermaidSimple(code: string): { valid: boolean; error?: string } {
+  // 簡易的な構文チェック（mmdcがない場合）
+
+  // 空のブロック
+  if (!code.trim()) {
+    return { valid: false, error: 'Empty diagram' };
+  }
+
+  // 図の種類を判定
+  const firstLine = code.split('\n')[0].trim();
+
+  const validTypes = ['flowchart', 'graph', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram', 'gantt', 'pie', 'mindmap', 'timeline', 'quadrantChart', 'requirementDiagram', 'gitGraph'];
+
+  // 図の種類が正しいかチェック
+  const hasValidType = validTypes.some(type => firstLine.startsWith(type));
+
+  if (!hasValidType) {
+    return { valid: false, error: `Invalid diagram type: ${firstLine}` };
+  }
+
+  // 基本的な構文エラーチェック
+  const lines = code.split('\n');
+
+  // 未閉じの引用符チェック
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const doubleQuotes = (line.match(/"/g) || []).length;
+    if (doubleQuotes % 2 !== 0) {
+      // エスケープされた引用符を考慮
+      const escapedQuotes = (line.match(/\\"/g) || []).length;
+      if ((doubleQuotes - escapedQuotes) % 2 !== 0) {
+        return { valid: false, error: `Unmatched quotes on line ${i + 1}` };
+      }
+    }
+  }
+
+  return { valid: true };
 }
 
 // ============================================================================
