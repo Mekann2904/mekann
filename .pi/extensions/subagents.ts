@@ -3,52 +3,14 @@
 // Why: Enables proactive task delegation to focused helper agents as a default workflow.
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/question.ts, README.md
 
-import { getMarkdownTheme, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@mariozechner/pi-ai";
-import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import {
-  formatRuntimeStatusLine,
-  getRuntimeSnapshot,
-  getSharedRuntimeState,
-  notifyRuntimeCapacityChanged,
-  resetRuntimeTransientState,
-  reserveRuntimeCapacity,
-  tryReserveRuntimeCapacity,
-  type RuntimeCapacityReservationLease,
-  waitForRuntimeOrchestrationTurn,
-} from "./agent-runtime";
 
-// Import shared plan mode utilities
-import {
-	isPlanModeActive,
-	PLAN_MODE_WARNING,
-} from "../lib/plan-mode-shared";
-import {
-  createAdaptivePenaltyController,
-} from "../lib/adaptive-penalty.js";
-import {
-  getRateLimitGateSnapshot,
-  isRetryableError,
-  retryWithBackoff,
-  type RetryWithBackoffOverrides,
-} from "../lib/retry-with-backoff";
-import { runWithConcurrencyLimit } from "../lib/concurrency";
-import { createChildAbortController } from "../lib/abort-utils";
-import {
-  getSubagentExecutionRules,
-} from "../lib/execution-rules";
-import {
-  buildRuntimeLimitError,
-  buildRuntimeQueueWaitError,
-  startReservationHeartbeat,
-  refreshRuntimeStatus as sharedRefreshRuntimeStatus,
-} from "./shared/runtime-helpers";
-import {
-  runPiPrintMode as sharedRunPiPrintMode,
-  type PrintExecutorOptions,
-} from "./shared/pi-print-executor";
+import { Type } from "@mariozechner/pi-ai";
+import { getMarkdownTheme, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+
+
 import {
   ensureDir,
   formatDurationMs,
@@ -87,8 +49,71 @@ import {
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
 } from "../lib";
+import { createChildAbortController } from "../lib/abort-utils";
+import {
+  createAdaptivePenaltyController,
+} from "../lib/adaptive-penalty.js";
+import {
+  STABLE_RUNTIME_PROFILE,
+  ADAPTIVE_PARALLEL_MAX_PENALTY as SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,
+  ADAPTIVE_PARALLEL_DECAY_MS as SHARED_ADAPTIVE_PARALLEL_DECAY_MS,
+  STABLE_MAX_RETRIES,
+  STABLE_INITIAL_DELAY_MS,
+  STABLE_MAX_DELAY_MS,
+  STABLE_MAX_RATE_LIMIT_RETRIES,
+  STABLE_MAX_RATE_LIMIT_WAIT_MS,
+  SUBAGENT_CONFIG,
+  buildFailureSummary as sharedBuildFailureSummary,
+} from "../lib/agent-common.js";
+import {
+  isRetryableSubagentError as sharedIsRetryableSubagentError,
+  resolveSubagentFailureOutcome as sharedResolveSubagentFailureOutcome,
+  resolveSubagentParallelOutcome as sharedResolveSubagentParallelOutcome,
+  trimErrorMessage as sharedTrimErrorMessage,
+  buildDiagnosticContext as sharedBuildDiagnosticContext,
+} from "../lib/agent-errors.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
+import { runWithConcurrencyLimit } from "../lib/concurrency";
+import {
+  getSubagentExecutionRules,
+} from "../lib/execution-rules";
+import {
+	isPlanModeActive,
+	PLAN_MODE_WARNING,
+} from "../lib/plan-mode-shared";
+import {
+  formatRuntimeStatusLine,
+  getRuntimeSnapshot,
+  getSharedRuntimeState,
+  notifyRuntimeCapacityChanged,
+  resetRuntimeTransientState,
+  reserveRuntimeCapacity,
+  tryReserveRuntimeCapacity,
+  type RuntimeCapacityReservationLease,
+  waitForRuntimeOrchestrationTurn,
+} from "./agent-runtime";
+
+// Import shared plan mode utilities
+import {
+  getRateLimitGateSnapshot,
+  isRetryableError,
+  retryWithBackoff,
+  type RetryWithBackoffOverrides,
+} from "../lib/retry-with-backoff";
+
+import {
+  runPiPrintMode as sharedRunPiPrintMode,
+  type PrintExecutorOptions,
+} from "./shared/pi-print-executor";
+import {
+  buildRuntimeLimitError,
+  buildRuntimeQueueWaitError,
+  startReservationHeartbeat,
+  refreshRuntimeStatus as sharedRefreshRuntimeStatus,
+} from "./shared/runtime-helpers";
+
+import { SchemaValidationError } from "../lib/errors.js";
 import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estimator";
 
 const logger = getLogger();
@@ -108,35 +133,22 @@ import {
   saveStorageWithPatterns,
 } from "./subagents/storage";
 
-interface PrintCommandResult {
-  output: string;
-  latencyMs: number;
-}
+// Import types from lib/subagent-types.ts
+import {
+  type SubagentLiveItem,
+  type SubagentMonitorLifecycle,
+  type SubagentMonitorStream,
+  type SubagentMonitorResource,
+  type SubagentLiveMonitorController,
+  type PrintCommandResult,
+  type LiveStreamView,
+  type LiveViewMode,
+} from "../lib/subagent-types.js";
 
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;
 
 // Use unified stable runtime constants from lib/agent-common.ts
-import {
-  STABLE_RUNTIME_PROFILE,
-  ADAPTIVE_PARALLEL_MAX_PENALTY as SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,
-  ADAPTIVE_PARALLEL_DECAY_MS as SHARED_ADAPTIVE_PARALLEL_DECAY_MS,
-  STABLE_MAX_RETRIES,
-  STABLE_INITIAL_DELAY_MS,
-  STABLE_MAX_DELAY_MS,
-  STABLE_MAX_RATE_LIMIT_RETRIES,
-  STABLE_MAX_RATE_LIMIT_WAIT_MS,
-  SUBAGENT_CONFIG,
-  buildFailureSummary as sharedBuildFailureSummary,
-} from "../lib/agent-common.js";
-
-import {
-  isRetryableSubagentError as sharedIsRetryableSubagentError,
-  resolveSubagentFailureOutcome as sharedResolveSubagentFailureOutcome,
-  resolveSubagentParallelOutcome as sharedResolveSubagentParallelOutcome,
-  trimErrorMessage as sharedTrimErrorMessage,
-  buildDiagnosticContext as sharedBuildDiagnosticContext,
-} from "../lib/agent-errors.js";
 
 // Local aliases for backward compatibility
 const STABLE_SUBAGENT_RUNTIME = STABLE_RUNTIME_PROFILE;
@@ -182,72 +194,8 @@ const DELEGATION_TOOL_NAMES = new Set([
 const ENFORCE_DELEGATION_FIRST = String(process.env.PI_ENFORCE_DELEGATION_FIRST ?? "1") === "1";
 const DIRECT_WRITE_CONFIRM_WINDOW_MS = resolveDirectWriteConfirmWindowMs();
 
-type LiveItemStatus = LiveStatus;
-type LiveStreamView = "stdout" | "stderr";
-type LiveViewMode = "list" | "detail";
-
-interface SubagentLiveItem {
-  id: string;
-  name: string;
-  status: LiveItemStatus;
-  startedAtMs?: number;
-  finishedAtMs?: number;
-  lastChunkAtMs?: number;
-  summary?: string;
-  error?: string;
-  stdoutTail: string;
-  stderrTail: string;
-  stdoutBytes: number;
-  stderrBytes: number;
-  stdoutNewlineCount: number;
-  stderrNewlineCount: number;
-  stdoutEndsWithNewline: boolean;
-  stderrEndsWithNewline: boolean;
-}
-
-// ISP-compliant interfaces: split by responsibility
-// Clients can depend only on the interfaces they actually use.
-
-/**
- * Lifecycle operations for marking agent execution states.
- * Used by code that only needs to track start/finish transitions.
- */
-interface SubagentMonitorLifecycle {
-  markStarted: (agentId: string) => void;
-  markFinished: (
-    agentId: string,
-    status: "completed" | "failed",
-    summary: string,
-    error?: string,
-  ) => void;
-}
-
-/**
- * Stream output operations for appending stdout/stderr chunks.
- * Used by code that only needs to handle output streaming.
- */
-interface SubagentMonitorStream {
-  appendChunk: (agentId: string, stream: LiveStreamView, chunk: string) => void;
-}
-
-/**
- * Resource cleanup and termination operations.
- * Used by code that only needs to manage monitor lifecycle.
- */
-interface SubagentMonitorResource {
-  close: () => void;
-  wait: () => Promise<void>;
-}
-
-/**
- * Full monitor controller combining all capabilities.
- * Extends partial interfaces to maintain backward compatibility.
- * Clients should use narrower interfaces when possible.
- */
-interface SubagentLiveMonitorController
-  extends SubagentMonitorLifecycle,
-    SubagentMonitorStream,
-    SubagentMonitorResource {}
+// Note: SubagentLiveItem and monitor interfaces are imported from lib/subagent-types.ts
+// LiveStreamView and LiveViewMode are re-exported from lib/subagent-types.ts (originally from lib/index.ts)
 
 function renderSubagentLiveView(input: {
   title: string;
@@ -1332,7 +1280,10 @@ async function runSubagentTask(input: {
           });
           const normalized = normalizeSubagentOutput(result.output);
           if (!normalized.ok) {
-            throw new Error(`subagent low-substance output: ${normalized.reason}`);
+            throw new SchemaValidationError(`subagent low-substance output: ${normalized.reason}`, {
+              violations: [normalized.reason ?? "unknown"],
+              field: "output",
+            });
           }
           if (normalized.degraded) {
             emitStderrChunk(

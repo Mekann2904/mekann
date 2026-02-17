@@ -13,17 +13,22 @@
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.0",
+    "eslint-plugin-import": "^2.32.0",
     "patch-package": "^8.0.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   },
   "scripts": {
     "postinstall": "patch-package",
-    "test": "tsc --noEmit --project tsconfig-check.json && echo 'TypeScript compilation passed'",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "typecheck": "tsc --noEmit --project tsconfig-check.json",
     "lint": "eslint .pi/extensions/*.ts .pi/lib/*.ts --max-warnings=0 --no-ignore",
     "lint:fix": "eslint .pi/extensions/*.ts .pi/lib/*.ts --fix --no-ignore",
-    "typecheck": "tsc --noEmit --project tsconfig-check.json",
-    "ci": "npm run typecheck && npm run lint && npm test"
+    "ci": "npm run typecheck && npm run lint && npm run test"
   },
   "pi": {
     "extensions": [
