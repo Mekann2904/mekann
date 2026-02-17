@@ -160,8 +160,6 @@ const STABLE_SUBAGENT_MAX_DELAY_MS = STABLE_MAX_DELAY_MS;
 const STABLE_SUBAGENT_MAX_RATE_LIMIT_RETRIES = STABLE_MAX_RATE_LIMIT_RETRIES;
 const STABLE_SUBAGENT_MAX_RATE_LIMIT_WAIT_MS = STABLE_MAX_RATE_LIMIT_WAIT_MS;
 
-const DEFAULT_DIRECT_WRITE_CONFIRM_WINDOW_MS = 60_000;
-
 const runtimeState = getSharedRuntimeState().subagents;
 
 const adaptivePenalty = createAdaptivePenaltyController({
@@ -169,30 +167,6 @@ const adaptivePenalty = createAdaptivePenaltyController({
   maxPenalty: ADAPTIVE_PARALLEL_MAX_PENALTY,
   decayMs: ADAPTIVE_PARALLEL_DECAY_MS,
 });
-
-function resolveDirectWriteConfirmWindowMs(): number {
-  const raw = Number(process.env.PI_DIRECT_WRITE_CONFIRM_WINDOW_MS ?? DEFAULT_DIRECT_WRITE_CONFIRM_WINDOW_MS);
-  if (!Number.isFinite(raw) || raw <= 0) {
-    return DEFAULT_DIRECT_WRITE_CONFIRM_WINDOW_MS;
-  }
-  return Math.max(5_000, Math.min(300_000, Math.trunc(raw)));
-}
-
-const delegationState = {
-  delegatedThisRequest: false,
-  directWriteConfirmedThisRequest: false,
-  pendingDirectWriteConfirmUntilMs: 0,
-  sessionDelegationCalls: 0,
-};
-
-const DELEGATION_TOOL_NAMES = new Set([
-  "subagent_run",
-  "subagent_run_parallel",
-  "agent_team_run",
-  "agent_team_run_parallel",
-]);
-const ENFORCE_DELEGATION_FIRST = String(process.env.PI_ENFORCE_DELEGATION_FIRST ?? "1") === "1";
-const DIRECT_WRITE_CONFIRM_WINDOW_MS = resolveDirectWriteConfirmWindowMs();
 
 // Note: SubagentLiveItem and monitor interfaces are imported from lib/subagent-types.ts
 // LiveStreamView and LiveViewMode are re-exported from lib/subagent-types.ts (originally from lib/index.ts)
@@ -844,157 +818,6 @@ function refreshRuntimeStatus(ctx: any): void {
     "Team",
     snapshot.teamActiveAgents,
   );
-}
-
-function markDelegationUsed(): void {
-  delegationState.delegatedThisRequest = true;
-  delegationState.directWriteConfirmedThisRequest = false;
-  delegationState.pendingDirectWriteConfirmUntilMs = 0;
-  delegationState.sessionDelegationCalls += 1;
-}
-
-function resolveToolInputPath(input: unknown): string {
-  if (!input || typeof input !== "object") return "";
-  const record = input as Record<string, unknown>;
-  const candidates = [
-    record.path,
-    record.file,
-    record.filePath,
-    record.file_path,
-    record.pathname,
-    record.targetPath,
-    record.target_path,
-    record.to,
-  ];
-  for (const value of candidates) {
-    if (typeof value !== "string") continue;
-    const normalized = value.trim().replace(/^@+/, "");
-    if (normalized) return normalized;
-  }
-  return "";
-}
-
-function isDocumentationPath(pathValue: string): boolean {
-  const normalized = pathValue.trim().replace(/\\/g, "/").toLowerCase();
-  if (!normalized) return false;
-  if (normalized.endsWith(".md") || normalized.endsWith(".mdx")) return true;
-  if (normalized.endsWith("readme") || normalized.endsWith("readme.md")) return true;
-  return (
-    normalized.startsWith("docs/") ||
-    normalized.includes("/docs/") ||
-    normalized.startsWith(".pi/docs/") ||
-    normalized.includes("/.pi/docs/")
-  );
-}
-
-/**
- * Delegation-first用のbash書き込みチェック。
- * plan-mode用のisBashCommandAllowedとは異なり、実際にファイルを変更するコマンドのみを検出する。
- * 検索・読み取り系コマンドは全て通す（grep, cat, ls, find等）。
- * 誤検出を防ぐため、引用符内の文字は無視する簡易パーサーを使用。
- */
-function isWriteLikeBashCommand(command: string): boolean {
-  const trimmed = command.trim();
-  if (!trimmed) return false;
-
-  // 引用符内を除外したコマンド部分を抽出
-  const commandWithoutQuotes = removeQuotedStrings(trimmed);
-
-  // 1. リダイレクト書き込み: >, >> (引用符外のみ)
-  if (/[^>]>[^>]|>>/.test(commandWithoutQuotes)) {
-    return true;
-  }
-
-  // 2. teeコマンド（パイプライン内の書き込み）
-  if (/\btee\b/.test(commandWithoutQuotes)) {
-    return true;
-  }
-
-  // 3. ファイル操作コマンド
-  const firstWord = trimmed.split(/\s+/)[0];
-  const fileWriteCommands = new Set([
-    "rm", "rmdir", "mv", "cp", "touch", "mkdir", "chmod", "chown",
-    "ln", "truncate", "dd", "shred",
-  ]);
-  if (fileWriteCommands.has(firstWord)) {
-    return true;
-  }
-
-  // 4. パッケージマネージャ（インストール/アンインストール）
-  const packageManagers = new Set([
-    "npm", "yarn", "pnpm", "pip", "pip3", "poetry", "cargo", "composer",
-    "apt", "apt-get", "yum", "dnf", "brew", "pacman",
-  ]);
-  if (packageManagers.has(firstWord)) {
-    return true;
-  }
-
-  // 5. Git書き込みコマンド
-  if (firstWord === "git") {
-    const gitWriteSubcommands = new Set([
-      "add", "commit", "push", "pull", "fetch", "merge",
-      "rebase", "reset", "checkout", "cherry-pick", "revert",
-      "stash", "apply", "am", "rm", "mv",
-    ]);
-    const secondWord = trimmed.split(/\s+/)[1];
-    if (secondWord && gitWriteSubcommands.has(secondWord)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * 引用符（', "）で囲まれた部分を除外する。
- * 検索パターン内の文字が誤検出されるのを防ぐ。
- */
-function removeQuotedStrings(input: string): string {
-  // シングルクォートとダブルクォート内を空文字に置換
-  // バッククォートはコマンド置換なので残す
-  let result = "";
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-
-  for (let i = 0; i < input.length; i++) {
-    const char = input[i];
-    const prevChar = i > 0 ? input[i - 1] : "";
-
-    if (char === "'" && prevChar !== "\\" && !inDoubleQuote) {
-      inSingleQuote = !inSingleQuote;
-      continue;
-    }
-    if (char === '"' && prevChar !== "\\" && !inSingleQuote) {
-      inDoubleQuote = !inDoubleQuote;
-      continue;
-    }
-
-    if (!inSingleQuote && !inDoubleQuote) {
-      result += char;
-    }
-  }
-
-  return result;
-}
-
-function isWriteLikeToolCall(event: ToolCallEvent): boolean {
-  const toolName = String(event?.toolName || "").toLowerCase();
-  if (toolName === "edit" || toolName === "write") {
-    const targetPath = resolveToolInputPath(event?.input);
-    if (targetPath && isDocumentationPath(targetPath)) {
-      // ドキュメント更新では委譲強制より編集体験を優先する。
-      return false;
-    }
-    return true;
-  }
-
-  if (toolName === "bash" && isToolCallEventType("bash", event)) {
-    const command = event.input.command;
-    // Delegation-first用の軽量チェックを使用（plan-mode用のisBashCommandAllowedは過剰に厳しい）
-    return typeof command === "string" && isWriteLikeBashCommand(command);
-  }
-
-  return false;
 }
 
 function toAgentId(input: string): string {
@@ -2473,62 +2296,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     const storage = loadStorage(ctx.cwd);
     saveStorage(ctx.cwd, storage);
-    // Reset delegation state for new session to prevent cross-session contamination
-    delegationState.delegatedThisRequest = false;
-    delegationState.directWriteConfirmedThisRequest = false;
-    delegationState.pendingDirectWriteConfirmUntilMs = 0;
-    delegationState.sessionDelegationCalls = 0;
     resetRuntimeTransientState();
     refreshRuntimeStatus(ctx);
     ctx.ui.notify("Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel)", "info");
   });
 
-  // 委譲前の直接編集を抑止して、委譲ファーストを強制する。
-  pi.on("tool_call", async (event, _ctx) => {
-    if (!ENFORCE_DELEGATION_FIRST) {
-      return;
-    }
-
-    const toolName = String(event.toolName || "").toLowerCase();
-    if (DELEGATION_TOOL_NAMES.has(toolName)) {
-      markDelegationUsed();
-      return;
-    }
-
-    if (!isWriteLikeToolCall(event)) {
-      return;
-    }
-
-    if (delegationState.delegatedThisRequest || delegationState.directWriteConfirmedThisRequest) {
-      return;
-    }
-
-    const nowMs = Date.now();
-    if (delegationState.pendingDirectWriteConfirmUntilMs > nowMs) {
-      // 2回目の同意入力として扱い、このリクエストでは直接編集を許可する。
-      delegationState.directWriteConfirmedThisRequest = true;
-      delegationState.pendingDirectWriteConfirmUntilMs = 0;
-      return;
-    }
-
-    const expiresInSec = Math.max(1, Math.ceil(DIRECT_WRITE_CONFIRM_WINDOW_MS / 1000));
-    delegationState.pendingDirectWriteConfirmUntilMs = nowMs + DIRECT_WRITE_CONFIRM_WINDOW_MS;
-    return {
-      block: true,
-      reason: [
-        "Delegation-first confirmation required before direct edits.",
-        `Re-run the same write/edit command within ${expiresInSec}s to confirm direct editing for this request.`,
-        "Or run subagent_run_parallel / agent_team_run_parallel first.",
-        "Set PI_ENFORCE_DELEGATION_FIRST=0 to disable policy.",
-      ].join(" "),
-    };
-  });
-
   // デフォルトでマルチエージェント委譲を積極化する。
   pi.on("before_agent_start", async (event, _ctx) => {
-    delegationState.delegatedThisRequest = false;
-    delegationState.directWriteConfirmedThisRequest = false;
-    delegationState.pendingDirectWriteConfirmUntilMs = 0;
     if (String(process.env.PI_SUBAGENT_PROACTIVE_PROMPT || "1") !== "1") {
       return;
     }
@@ -2548,16 +2322,6 @@ You are subject to cognitive biases that degrade your output:
 5. **Sequential Bottleneck**: One agent doing everything is SLOWER than parallel delegation.
 
 Delegation is not bureaucracy. It is quality assurance AND speed optimization combined.
-
-### The Enforcement Mechanism
-
-Direct write/edit calls are blocked ONCE. This is a thinking prompt, not a restriction.
-
-After the block:
-- Run \`subagent_run\` or \`agent_team_run\` -> passes immediately (recommended)
-- Re-run same write/edit within 60s -> passes (confirmed intent)
-
-Use the 60-second window ONLY when you have consciously decided direct editing is appropriate.
 
 ### When Direct Editing IS Appropriate
 
