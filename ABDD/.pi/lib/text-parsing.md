@@ -1,101 +1,215 @@
 ---
-title: Text Parsing
-category: reference
+title: text-parsing
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [parsing, text, structured-output]
-related: [judge, output-schema, output-validation]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Text Parsing
-
-構造化出力処理用の共有テキストパースユーティリティ。
+# text-parsing
 
 ## 概要
 
-モジュール間の循環依存を避けるために抽出されたユーティリティ。
+`text-parsing` モジュールのAPIリファレンス。
 
-## Number Utilities
+## エクスポート一覧
 
-### clampConfidence()
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `clampConfidence` | Clamp a confidence value to the valid range [0, 1] |
+| 関数 | `generateClaimId` | Generate a unique claim ID for structured communic |
+| 関数 | `generateEvidenceId` | Generate a unique evidence ID for structured commu |
+| 関数 | `parseUnitInterval` | Parse a unit interval value from a string. |
+| 関数 | `extractField` | Extract a named field from structured output text. |
+| 関数 | `extractMultilineField` | Extract multiple lines for a named field. |
+| 関数 | `countKeywordSignals` | Count how many keywords appear in the output text. |
+| 関数 | `analyzeDiscussionStance` | Analyze the discussion stance relative to a target |
+| 関数 | `extractConsensusMarker` | Extract consensus marker from discussion text. |
+| インターフェース | `DiscussionStanceResult` | Result of discussion stance analysis. |
+| 型 | `DiscussionStance` | Stance type for discussion analysis. |
 
-信頼度値を有効範囲 [0, 1] にクランプ。無効な値はデフォルト0.5（中立）。
+## 図解
 
-```typescript
-function clampConfidence(value: number): number
+### クラス図
+
+```mermaid
+classDiagram
+  class DiscussionStanceResult {
+    <<interface>>
+    +stance: DiscussionStance
+    +confidence: number
+    +evidence: string[]
+  }
 ```
 
-### parseUnitInterval()
+### 関数フロー
 
-文字列から単位区間値をパース。小数（0.5）とパーセント（50%）形式の両方を処理。
-
-```typescript
-function parseUnitInterval(raw: string | undefined): number | undefined
+```mermaid
+flowchart TD
+  clampConfidence["clampConfidence()"]
+  generateClaimId["generateClaimId()"]
+  generateEvidenceId["generateEvidenceId()"]
+  parseUnitInterval["parseUnitInterval()"]
+  extractField["extractField()"]
+  extractMultilineField["extractMultilineField()"]
+  clampConfidence -.-> generateClaimId
+  generateClaimId -.-> generateEvidenceId
+  generateEvidenceId -.-> parseUnitInterval
+  parseUnitInterval -.-> extractField
+  extractField -.-> extractMultilineField
 ```
 
-## ID Generation Utilities
+## 関数
 
-### generateClaimId()
-
-構造化コミュニケーション追跡用の一意なクレームIDを生成。
-
-フォーマット: `claim-<timestamp>-<random>`
+### clampConfidence
 
 ```typescript
-function generateClaimId(): string
+clampConfidence(value: number): number
 ```
 
-### generateEvidenceId()
+Clamp a confidence value to the valid range [0, 1].
+Invalid values default to 0.5 (neutral).
 
-構造化コミュニケーション追跡用の一意な証拠IDを生成。
+**パラメータ**
 
-フォーマット: `evidence-<timestamp>-<random>`
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `number` | はい |
+
+**戻り値**: `number`
+
+### generateClaimId
 
 ```typescript
-function generateEvidenceId(): string
+generateClaimId(): string
 ```
 
-## Text Extraction Utilities
+Generate a unique claim ID for structured communication tracking.
+Format: claim-<timestamp>-<random>
 
-### extractField()
+**戻り値**: `string`
 
-構造化出力テキストから名前付きフィールドを抽出。大文字小文字を区別しない "FIELD_NAME: value" パターンにマッチ。
+### generateEvidenceId
 
 ```typescript
-function extractField(output: string, name: string): string | undefined
+generateEvidenceId(): string
 ```
 
-### extractMultilineField()
+Generate a unique evidence ID for structured communication tracking.
+Format: evidence-<timestamp>-<random>
 
-名前付きフィールドの複数行を抽出。フィールドラベルから次のメジャーラベルまでのコンテンツを返す。
+**戻り値**: `string`
+
+### parseUnitInterval
 
 ```typescript
-function extractMultilineField(output: string, name: string): string
+parseUnitInterval(raw: string | undefined): number | undefined
 ```
 
-## Text Analysis Utilities
+Parse a unit interval value from a string.
+Handles both decimal (0.5) and percentage (50%) formats.
+Returns undefined for invalid or empty input.
 
-### countKeywordSignals()
+**パラメータ**
 
-出力テキスト内にキーワードがいくつ出現するかをカウント。メンバー出力のシグナル検出に使用。
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| raw | `string | undefined` | はい |
+
+**戻り値**: `number | undefined`
+
+### extractField
 
 ```typescript
-function countKeywordSignals(output: string, keywords: string[]): number
+extractField(output: string, name: string): string | undefined
 ```
 
-## Discussion Analysis Utilities
+Extract a named field from structured output text.
+Matches patterns like "FIELD_NAME: value" (case-insensitive).
 
-### DiscussionStance
+**パラメータ**
 
-ディスカッション分析用のスタンスタイプ。output-schema.tsのStanceClassificationModeの動作に一致。
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+| name | `string` | はい |
+
+**戻り値**: `string | undefined`
+
+### extractMultilineField
 
 ```typescript
-type DiscussionStance = "agree" | "disagree" | "neutral" | "partial";
+extractMultilineField(output: string, name: string): string
 ```
+
+Extract multiple lines for a named field.
+Returns content from the field label until the next major label.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+| name | `string` | はい |
+
+**戻り値**: `string`
+
+### countKeywordSignals
+
+```typescript
+countKeywordSignals(output: string, keywords: string[]): number
+```
+
+Count how many keywords appear in the output text.
+Used for signal detection in member outputs.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+| keywords | `string[]` | はい |
+
+**戻り値**: `number`
+
+### analyzeDiscussionStance
+
+```typescript
+analyzeDiscussionStance(text: string, targetMemberId: string): DiscussionStanceResult
+```
+
+Analyze the discussion stance relative to a target member.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+| targetMemberId | `string` | はい |
+
+**戻り値**: `DiscussionStanceResult`
+
+### extractConsensusMarker
+
+```typescript
+extractConsensusMarker(text: string): string | undefined
+```
+
+Extract consensus marker from discussion text.
+Looks for lines starting with "合意:" (Japanese) or "Consensus:" (English).
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `string | undefined`
+
+## インターフェース
 
 ### DiscussionStanceResult
-
-ディスカッションスタンス分析の結果。
 
 ```typescript
 interface DiscussionStanceResult {
@@ -105,65 +219,18 @@ interface DiscussionStanceResult {
 }
 ```
 
-### STANCE_PATTERNS
+Result of discussion stance analysis.
 
-ディスカッションテキストのスタンス検出用正規表現パターン。日本語と英語の表現をサポート。
+## 型定義
 
-```typescript
-const STANCE_PATTERNS: Record<DiscussionStance, RegExp[]>
-```
-
-### analyzeDiscussionStance()
-
-ターゲットメンバーに対するディスカッションスタンスを分析。
+### DiscussionStance
 
 ```typescript
-function analyzeDiscussionStance(
-  text: string,
-  targetMemberId: string
-): DiscussionStanceResult
+type DiscussionStance = "agree" | "disagree" | "neutral" | "partial"
 ```
 
-**パラメータ:**
-- `text` - 分析するディスカッションテキスト
-- `targetMemberId` - コンテキストを探すメンバーID
+Stance type for discussion analysis.
+Matches StanceClassificationMode behavior in output-schema.ts.
 
-**戻り値:** スタンス分析結果（信頼度と証拠付き）
-
-### extractConsensusMarker()
-
-ディスカッションテキストからコンセンサスマーカーを抽出。"合意:" または "Consensus:" で始まる行を探す。
-
-```typescript
-function extractConsensusMarker(text: string): string | undefined
-```
-
-## 使用例
-
-```typescript
-// 信頼度のクランプ
-const confidence = clampConfidence(1.5); // 1.0
-
-// フィールドの抽出
-const output = "CLAIM: Test\nCONFIDENCE: 0.85\nRESULT: Done";
-const claim = extractField(output, "CLAIM"); // "Test"
-
-// ディスカッションスタンスの分析
-const result = analyzeDiscussionStance(
-  "agent-1の意見に同意します。正しい分析だと思います。",
-  "agent-1"
-);
-// { stance: "agree", confidence: 0.X, evidence: ["同意", "正しい"] }
-
-// コンセンサスの抽出
-const consensus = extractConsensusMarker(
-  "議論の結果:\n合意: API設計を採用する"
-);
-// "API設計を採用する"
-```
-
-## 関連ファイル
-
-- `.pi/lib/judge.ts` - ジャッジ機能
-- `.pi/lib/output-schema.ts` - 出力スキーマ
-- `.pi/lib/output-validation.ts` - 出力バリデーション
+---
+*自動生成: 2026-02-17T21:48:27.776Z*

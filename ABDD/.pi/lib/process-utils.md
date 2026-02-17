@@ -1,34 +1,24 @@
 ---
-title: Process Utils
-category: reference
+title: process-utils
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [process, shutdown, utilities]
+last_updated: 2026-02-17
+tags: [auto-generated]
 related: []
 ---
 
-# Process Utils
+# process-utils
 
-グレースフルシャットダウン処理用のプロセスユーティリティ。プロセス終了タイムアウト用の共有定数を提供する。
+## 概要
 
-## 定数
+`process-utils` モジュールのAPIリファレンス。
 
-### GRACEFUL_SHUTDOWN_DELAY_MS
+## エクスポート一覧
 
-プロセスを強制終了する前のグレースフルシャットダウン遅延。SIGTERM送信後、この時間待機してからSIGKILLを送信する。
+| 種別 | 名前 | 説明 |
+|------|------|------|
 
-```typescript
-export const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
-```
+## 図解
 
-## 使用例
-
-```typescript
-import { GRACEFUL_SHUTDOWN_DELAY_MS } from "./process-utils.js";
-
-// プロセス停止処理
-process.kill(childPid, "SIGTERM");
-setTimeout(() => {
-  process.kill(childPid, "SIGKILL");
-}, GRACEFUL_SHUTDOWN_DELAY_MS);
-```
+---
+*自動生成: 2026-02-17T21:48:27.741Z*

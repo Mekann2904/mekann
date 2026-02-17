@@ -1,114 +1,409 @@
 ---
 title: invariant-pipeline
-category: reference
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [extension, invariant, quint, rust, proptest, mbt, formal-specification]
-related: [invariant-generation-skill]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
 # invariant-pipeline
 
-> パンくず: [Home](../../README.md) > [Extensions](./) > invariant-pipeline
-
 ## 概要
 
-spec.mdからQuint形式仕様、Rustインバリアントマクロ、プロパティベーステスト、モデルベーステストを自動生成する拡張機能。
+`invariant-pipeline` モジュールのAPIリファレンス。
 
-## ツール
+## インポート
 
-### generate_from_spec
+```typescript
+import { readFileSync, writeFileSync, existsSync... } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { Type } from '@mariozechner/pi-ai';
+import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+```
 
-spec.mdからQuint形式仕様、Rustインバリアントマクロ、プロパティベーステスト、モデルベーステストドライバーを一括生成する。
+## エクスポート一覧
 
-**説明**: spec.mdからQuint形式仕様、Rustインバリアントマクロ、プロパティベーステスト、モデルベーステストドライバーを一括生成
+| 種別 | 名前 | 説明 |
+|------|------|------|
 
-**パラメータ**:
+## 図解
 
-| 名前 | 型 | 必須 | 説明 |
-|------|------|------|------|
-| `spec_path` | string | はい | spec.mdファイルへのパス |
-| `output_dir` | string | いいえ | 出力ディレクトリ（デフォルト: spec_pathと同じディレクトリ） |
-| `module_name` | string | いいえ | Quintモジュール名（デフォルト: specのタイトル） |
-| `struct_name` | string | いいえ | Rust構造体名（デフォルト: specのタイトル） |
-| `test_count` | number | いいえ | プロパティテストのテスト数（デフォルト: 256） |
-| `max_steps` | number | いいえ | MBTの最大ステップ数（デフォルト: 100） |
+### クラス図
 
-**戻り値**:
-- 成功状態
-- specタイトル
-- 状態数、操作数、インバリアント数
-- 生成されたファイル（quint, macros, tests, mbt）
-- 警告、エラー
-- 実行時間
+```mermaid
+classDiagram
+  class SpecState {
+    <<interface>>
+    +name: string
+    +type: string
+    +initialValue: unknown
+    +constraints: string[]
+  }
+  class SpecOperation {
+    <<interface>>
+    +name: string
+    +parameters: namestringtypestring[]
+    +preconditions: string[]
+    +postconditions: string[]
+    +description: string
+  }
+  class SpecInvariant {
+    <<interface>>
+    +name: string
+    +condition: string
+    +description: string
+  }
+  class ParsedSpec {
+    <<interface>>
+    +title: string
+    +description: string
+    +states: SpecState[]
+    +operations: SpecOperation[]
+    +invariants: SpecInvariant[]
+  }
+  class GenerationOutput {
+    <<interface>>
+    +content: string
+    +warnings: string[]
+    +errors: string[]
+  }
+  class GenerationResult {
+    <<interface>>
+    +success: boolean
+    +outputs: quintpathstringcontentstringmacrospathstringcontentstringtestspathstringcontentstringmbtpathstringcontentstring
+    +errors: string[]
+    +warnings: string[]
+  }
+  class VerifyQuintInput {
+    <<interface>>
+    +quint_path: string
+    +check_invariants: boolean
+    +check_liveness: boolean
+  }
+  class GenerateMacrosInput {
+    <<interface>>
+    +spec_path: string
+    +output_path: string
+    +struct_name: string
+  }
+  class GenerateTestsInput {
+    <<interface>>
+    +spec_path: string
+    +output_path: string
+    +struct_name: string
+    +test_count: number
+  }
+  class GenerateMBTInput {
+    <<interface>>
+    +spec_path: string
+    +output_path: string
+    +struct_name: string
+    +max_steps: number
+  }
+  class TransitionResult {
+    <<interface>>
+    +code: string
+    +warning: string
+  }
+```
 
-### verify_quint_spec
+### 依存関係図
 
-Quint形式仕様を検証する（構文チェック、インバリアントチェック）。
+```mermaid
+flowchart LR
+  subgraph this[invariant-pipeline]
+    main[Main Module]
+  end
+  subgraph external[外部ライブラリ]
+    _mariozechner[@mariozechner]
+    _mariozechner[@mariozechner]
+  end
+  main --> external
+```
 
-**説明**: Quint形式仕様を検証（構文チェック、インバリアントチェック）
+## 関数
 
-**パラメータ**:
+### parseSpecMarkdown
 
-| 名前 | 型 | 必須 | 説明 |
-|------|------|------|------|
-| `quint_path` | string | はい | Quintファイルへのパス |
-| `check_invariants` | boolean | いいえ | インバリアントをチェック |
+```typescript
+parseSpecMarkdown(content: string): ParsedSpec
+```
 
-**戻り値**:
-- 成功状態
-- エラー、警告
-- インバリアント存在フラグ
+**パラメータ**
 
-### generate_invariant_macros
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| content | `string` | はい |
 
-spec.mdからRustインバリアントマクロを生成する。
+**戻り値**: `ParsedSpec`
 
-**説明**: spec.mdからRustインバリアントマクロを生成
+### parseConstantValue
 
-**パラメータ**:
+```typescript
+parseConstantValue(valueStr: string, type: string): unknown
+```
 
-| 名前 | 型 | 必須 | 説明 |
-|------|------|------|------|
-| `spec_path` | string | はい | spec.mdファイルへのパス |
-| `output_path` | string | いいえ | 出力ファイルパス |
-| `struct_name` | string | いいえ | Rust構造体名 |
+Parse constant value based on type
 
-### generate_property_tests
+**パラメータ**
 
-spec.mdからproptestベースのプロパティテストを生成する。
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| valueStr | `string` | はい |
+| type | `string` | はい |
 
-**説明**: spec.mdからproptestベースのプロパティテストを生成
+**戻り値**: `unknown`
 
-**パラメータ**:
+### generateQuintSpec
 
-| 名前 | 型 | 必須 | 説明 |
-|------|------|------|------|
-| `spec_path` | string | はい | spec.mdファイルへのパス |
-| `output_path` | string | いいえ | 出力ファイルパス |
-| `struct_name` | string | いいえ | テスト対象構造体名 |
-| `test_count` | number | いいえ | プロパティテストのテスト数（デフォルト: 256） |
+```typescript
+generateQuintSpec(spec: ParsedSpec, moduleName?: string): GenerationOutput
+```
 
-### generate_mbt_driver
+**パラメータ**
 
-spec.mdからモデルベーステストドライバーを生成する。
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| spec | `ParsedSpec` | はい |
+| moduleName | `string` | いいえ |
 
-**説明**: spec.mdからモデルベーステストドライバーを生成
+**戻り値**: `GenerationOutput`
 
-**パラメータ**:
+### mapTypeToQuint
 
-| 名前 | 型 | 必須 | 説明 |
-|------|------|------|------|
-| `spec_path` | string | はい | spec.mdファイルへのパス |
-| `output_path` | string | いいえ | 出力ファイルパス |
-| `struct_name` | string | いいえ | モデル構造体名 |
-| `max_steps` | number | いいえ | MBTの最大ステップ数（デフォルト: 100） |
+```typescript
+mapTypeToQuint(type: string): string
+```
 
-## 型定義
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| type | `string` | はい |
+
+**戻り値**: `string`
+
+### getDefaultValue
+
+```typescript
+getDefaultValue(type: string): unknown
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| type | `string` | はい |
+
+**戻り値**: `unknown`
+
+### formatValue
+
+```typescript
+formatValue(value: unknown, type: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+| type | `string` | はい |
+
+**戻り値**: `string`
+
+### generateRustMacros
+
+```typescript
+generateRustMacros(spec: ParsedSpec, structName?: string): GenerationOutput
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| spec | `ParsedSpec` | はい |
+| structName | `string` | いいえ |
+
+**戻り値**: `GenerationOutput`
+
+### mapTypeToRust
+
+```typescript
+mapTypeToRust(type: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| type | `string` | はい |
+
+**戻り値**: `string`
+
+### translateConditionToRust
+
+```typescript
+translateConditionToRust(condition: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| condition | `string` | はい |
+
+**戻り値**: `string`
+
+### translateToModelAccess
+
+```typescript
+translateToModelAccess(condition: string, states: SpecState[]): string
+```
+
+Translate condition to use model.field access for state variables
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| condition | `string` | はい |
+| states | `SpecState[]` | はい |
+
+**戻り値**: `string`
+
+### translatePreconditionToRust
+
+```typescript
+translatePreconditionToRust(precondition: string, states: SpecState[], prefix: string): string
+```
+
+Translate precondition to Rust expression for guard checks
+Converts natural language/math notation to Rust boolean expressions
+Uses model.field access pattern for state variables
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| precondition | `string` | はい |
+| states | `SpecState[]` | はい |
+| prefix | `string` | はい |
+
+**戻り値**: `string`
+
+### translatePostconditionToOperationCode
+
+```typescript
+translatePostconditionToOperationCode(postcondition: string, states: SpecState[]): string
+```
+
+Translate postcondition to state transition code for operation tests
+Returns Rust code that modifies model state
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| postcondition | `string` | はい |
+| states | `SpecState[]` | はい |
+
+**戻り値**: `string`
+
+### translatePostconditionToTransition
+
+```typescript
+translatePostconditionToTransition(postcondition: string, states: SpecState[]): TransitionResult
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| postcondition | `string` | はい |
+| states | `SpecState[]` | はい |
+
+**戻り値**: `TransitionResult`
+
+### generatePropertyTests
+
+```typescript
+generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?: number): GenerationOutput
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| spec | `ParsedSpec` | はい |
+| structName | `string` | いいえ |
+| testCount | `number` | いいえ |
+
+**戻り値**: `GenerationOutput`
+
+### generateMBTDriver
+
+```typescript
+generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: number): GenerationOutput
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| spec | `ParsedSpec` | はい |
+| structName | `string` | いいえ |
+| maxSteps | `number` | いいえ |
+
+**戻り値**: `GenerationOutput`
+
+### capitalize
+
+```typescript
+capitalize(s: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| s | `string` | はい |
+
+**戻り値**: `string`
+
+### formatRustValue
+
+```typescript
+formatRustValue(value: unknown, type: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+| type | `string` | はい |
+
+**戻り値**: `string`
+
+### getRustDefault
+
+```typescript
+getRustDefault(type: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| type | `string` | はい |
+
+**戻り値**: `string`
+
+## インターフェース
 
 ### SpecState
-
-状態変数の定義。
 
 ```typescript
 interface SpecState {
@@ -120,8 +415,6 @@ interface SpecState {
 ```
 
 ### SpecOperation
-
-操作の定義。
 
 ```typescript
 interface SpecOperation {
@@ -135,8 +428,6 @@ interface SpecOperation {
 
 ### SpecInvariant
 
-インバリアントの定義。
-
 ```typescript
 interface SpecInvariant {
   name: string;
@@ -146,8 +437,6 @@ interface SpecInvariant {
 ```
 
 ### ParsedSpec
-
-パースされた仕様。
 
 ```typescript
 interface ParsedSpec {
@@ -162,8 +451,6 @@ interface ParsedSpec {
 
 ### GenerationOutput
 
-生成出力。
-
 ```typescript
 interface GenerationOutput {
   content: string;
@@ -173,8 +460,6 @@ interface GenerationOutput {
 ```
 
 ### GenerationResult
-
-生成結果。
 
 ```typescript
 interface GenerationResult {
@@ -190,157 +475,61 @@ interface GenerationResult {
 }
 ```
 
-## 主な関数
-
-### parseSpecMarkdown
-
-spec.mdファイルをパースする。
+### VerifyQuintInput
 
 ```typescript
-function parseSpecMarkdown(content: string): ParsedSpec
+interface VerifyQuintInput {
+  quint_path: string;
+  check_invariants?: boolean;
+  check_liveness?: boolean;
+}
 ```
 
-**パース対象セクション**:
-- タイトル（# タイトル）
-- 定数（## 定数 / ## Constants）
-- 状態（## 状態 / ## State）
-- 操作（## 操作 / ## Operations）
-- インバリアント（## インバリアント / ## Invariants）
-
-### generateQuintSpec
-
-Quint形式仕様を生成する。
+### GenerateMacrosInput
 
 ```typescript
-function generateQuintSpec(spec: ParsedSpec, moduleName?: string): GenerationOutput
+interface GenerateMacrosInput {
+  spec_path: string;
+  output_path?: string;
+  struct_name?: string;
+}
 ```
 
-**生成内容**:
-- 定数定義
-- 状態変数定義
-- 初期状態（init）
-- 操作（action）
-- インバリアント
-
-### generateRustMacros
-
-Rustインバリアントマクロを生成する。
+### GenerateTestsInput
 
 ```typescript
-function generateRustMacros(spec: ParsedSpec, structName?: string): GenerationOutput
+interface GenerateTestsInput {
+  spec_path: string;
+  output_path?: string;
+  struct_name?: string;
+  test_count?: number;
+}
 ```
 
-**生成内容**:
-- InvariantViolationエラー型
-- define_*_invariants!マクロ
-- check_invariants()メソッド
-
-### generatePropertyTests
-
-プロパティベーステストを生成する。
+### GenerateMBTInput
 
 ```typescript
-function generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?: number): GenerationOutput
+interface GenerateMBTInput {
+  spec_path: string;
+  output_path?: string;
+  struct_name?: string;
+  max_steps?: number;
+}
 ```
 
-**生成内容**:
-- 各状態変数のストラテジー（arb_*）
-- テスト用構造体
-- インバリアントテスト
-- 操作テスト（事前条件チェック→実行→インバリアントチェック）
-
-### generateMBTDriver
-
-モデルベーステストドライバーを生成する。
+### TransitionResult
 
 ```typescript
-function generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: number): GenerationOutput
+interface TransitionResult {
+  code: string;
+  warning?: string;
+}
 ```
 
-**生成内容**:
-- Action列挙型
-- Model構造体
-- initial_state()
-- apply_action()
-- check_invariants()
-- generate_valid_actions()
-- run_mbt()
-
-## 型マッピング
-
-### Quint型マッピング
-
-| 仕様型 | Quint型 |
-|--------|---------|
-| int, integer, 整数 | int |
-| bool, boolean, 真偽 | bool |
-| str, string, 文字列 | str |
-| Set, 集合 | Set |
-| List, リスト | List |
-| Map, マップ | Map |
-
-### Rust型マッピング
-
-| 仕様型 | Rust型 |
-|--------|--------|
-| int, integer, 整数 | i64 |
-| bool, boolean, 真偽 | bool |
-| str, string, 文字列 | String |
-| List, リスト | Vec |
-| Map, マップ | HashMap |
-| Set, 集合 | HashSet |
-
-## 条件変換
-
-### translateConditionToRust
-
-自然言語/数学記法からRustブール式への変換。
-
-```typescript
-function translateConditionToRust(condition: string): string
-```
-
-**変換ルール**:
-- `=` → `==`
-- `and` → `&&`
-- `or` → `||`
-- `not` → `!`
-
-### translatePreconditionToRust
-
-事前条件をRust式に変換（model.fieldアクセスパターンを使用）。
-
-```typescript
-function translatePreconditionToRust(precondition: string, states: SpecState[], prefix: string = "model"): string
-```
-
-### translatePostconditionToTransition
-
-事後条件を状態遷移コードに変換。
-
-```typescript
-function translatePostconditionToTransition(postcondition: string, states: SpecState[]): TransitionResult
-```
-
-**パターン**:
-- `variable = expression` → `new_state.variable = expression`
-- `variable' = expression` (TLA+スタイル) → `new_state.variable = expression`
-
-## 依存関係
-
-- `node:fs`: ファイル操作
-- `node:path`: パス操作
-- `@mariozechner/pi-ai`: Type
-- `@mariozechner/pi-coding-agent`: ExtensionAPI
-
-## 統合
-
-- **invariant-generationスキル**: 形式仕様生成の専門知識
-- **invariant-generation-team**: マルチエージェント生成
+Translate postcondition to state transition code
+Handles patterns like:
+- "count = count + 1" -> "new_state.count = self.count + 1"
+- "count == old_count + 1" -> "new_state.count = self.count + 1"
 
 ---
-
-## 関連トピック
-
-- [invariant-generationスキル](../skills/invariant-generation/SKILL.md) - インバリアント生成スキル
-- [extensions](../../docs/extensions.md) - 拡張機能一覧
+*自動生成: 2026-02-17T21:48:27.528Z*

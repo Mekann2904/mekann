@@ -1,105 +1,186 @@
 ---
-title: Team Types
-category: reference
+title: team-types
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [team, types, live-monitoring, orchestration]
-related: [live-monitor-base, subagent-types]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Team Types
+# team-types
 
-チームオーケストレーション関連の型定義。
+## 概要
 
-## Types
+`team-types` モジュールのAPIリファレンス。
 
-### TeamLivePhase
-
-オーケストレーション中のチーム実行フェーズ。
+## インポート
 
 ```typescript
-type TeamLivePhase =
-  | "queued"
-  | "initial"
-  | "communication"
-  | "judge"
-  | "finished";
+import { LiveStreamView } from './live-monitor-base.js';
+import { LiveStatus } from './live-view-utils.js';
 ```
 
-### TeamLiveViewMode
+## エクスポート一覧
 
-チームライブモニタリングインターフェースのビューモード。
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| インターフェース | `TeamLiveItem` | Live item tracking for team member execution. |
+| インターフェース | `TeamMonitorLifecycle` | Lifecycle operations for marking team member execu |
+| インターフェース | `TeamMonitorPhase` | Phase tracking operations for team member executio |
+| インターフェース | `TeamMonitorEvents` | Event logging operations for tracking execution ev |
+| インターフェース | `TeamMonitorStream` | Stream output operations for appending stdout/stde |
+| インターフェース | `TeamMonitorDiscussion` | Discussion tracking operations for multi-agent com |
+| インターフェース | `TeamMonitorResource` | Resource cleanup and termination operations. |
+| インターフェース | `AgentTeamLiveMonitorController` | Full monitor controller combining all capabilities |
+| インターフェース | `TeamNormalizedOutput` | Normalized output structure for team member execut |
+| インターフェース | `TeamParallelCapacityCandidate` | Candidate for parallel capacity allocation. |
+| インターフェース | `TeamParallelCapacityResolution` | Resolution result for team parallel capacity. |
+| インターフェース | `TeamFrontmatter` | Team frontmatter structure for markdown team defin |
+| インターフェース | `TeamMemberFrontmatter` | Team member frontmatter for markdown parsing. |
+| インターフェース | `ParsedTeamMarkdown` | Parsed team markdown file structure. |
+| 型 | `TeamLivePhase` | Team execution phase during orchestration. |
+| 型 | `TeamLiveViewMode` | View mode for team live monitoring interface. |
 
-```typescript
-type TeamLiveViewMode = "list" | "detail" | "discussion";
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class TeamLiveItem {
+    <<interface>>
+    +key: string
+    +label: string
+    +partners: string[]
+    +status: LiveStatus
+    +phase: TeamLivePhase
+  }
+  class TeamMonitorLifecycle {
+    <<interface>>
+    +markStarted: itemKeystring>void
+    +markFinished: itemKeystringstatuscompletedfailedsummarystringerrorstring>void
+  }
+  class TeamMonitorPhase {
+    <<interface>>
+    +markPhase: itemKeystringphaseTeamLivePhaseroundnumber>void
+  }
+  class TeamMonitorEvents {
+    <<interface>>
+    +appendEvent: itemKeystringeventstring>void
+    +appendBroadcastEvent: eventstring>void
+  }
+  class TeamMonitorStream {
+    <<interface>>
+    +appendChunk: itemKeystringstreamLiveStreamViewchunkstring>void
+  }
+  class TeamMonitorDiscussion {
+    <<interface>>
+    +appendDiscussion: itemKeystringdiscussionstring>void
+  }
+  class TeamMonitorResource {
+    <<interface>>
+    +close: >void
+    +wait: >Promise<void>
+  }
+  class AgentTeamLiveMonitorController {
+    <<interface>>
+  }
+  class TeamNormalizedOutput {
+    <<interface>>
+    +summary: string
+    +output: string
+    +evidenceCount: number
+    +hasDiscussion: boolean
+  }
+  class TeamParallelCapacityCandidate {
+    <<interface>>
+    +teamId: string
+    +parallelism: number
+  }
+  class TeamParallelCapacityResolution {
+    <<interface>>
+    +teamId: string
+    +approvedParallelism: number
+    +approved: boolean
+    +reason: string
+  }
+  class TeamFrontmatter {
+    <<interface>>
+    +id: string
+    +name: string
+    +description: string
+    +enabled: enableddisabled
+    +strategy: parallelsequential
+  }
+  class TeamMemberFrontmatter {
+    <<interface>>
+    +id: string
+    +role: string
+    +description: string
+    +enabled: boolean
+    +provider: string
+  }
+  class ParsedTeamMarkdown {
+    <<interface>>
+    +frontmatter: TeamFrontmatter
+    +content: string
+    +filePath: string
+  }
 ```
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[team-types]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    live_monitor_base_js[live-monitor-base.js]
+    live_view_utils_js[live-view-utils.js]
+  end
+  main --> local
+```
+
+## インターフェース
 
 ### TeamLiveItem
 
-チームメンバー実行のライブアイテム追跡。TUIレンダリング用のリアルタイム状態を保持。
-
 ```typescript
 interface TeamLiveItem {
-  /** ユニークキー: teamId/memberId */
   key: string;
-  /** 表示ラベル */
   label: string;
-  /** コミュニケーションパートナー（メンバーID） */
   partners: string[];
-  /** 現在の実行ステータス */
   status: LiveStatus;
-  /** 現在の実行フェーズ */
   phase: TeamLivePhase;
-  /** コミュニケーションラウンド番号（communicationフェーズ時） */
   phaseRound?: number;
-  /** 実行開始タイムスタンプ */
   startedAtMs?: number;
-  /** 実行終了タイムスタンプ */
   finishedAtMs?: number;
-  /** 最後の出力チャンクタイムスタンプ */
   lastChunkAtMs?: number;
-  /** 最後のイベントタイムスタンプ */
   lastEventAtMs?: number;
-  /** 最後のイベント説明 */
   lastEvent?: string;
-  /** 実行サマリー */
   summary?: string;
-  /** 失敗時のエラーメッセージ */
   error?: string;
-  /** 最近のstdout行 */
   stdoutTail: string;
-  /** 最近のstderr行 */
   stderrTail: string;
-  /** stdout合計バイト数 */
   stdoutBytes: number;
-  /** stderr合計バイト数 */
   stderrBytes: number;
-  /** stdout改行数 */
   stdoutNewlineCount: number;
-  /** stderr改行数 */
   stderrNewlineCount: number;
-  /** stdoutが改行で終わるか */
   stdoutEndsWithNewline: boolean;
-  /** stderrが改行で終わるか */
   stderrEndsWithNewline: boolean;
-  /** イベントログエントリ */
   events: string[];
-  /** ディスカッションコンテンツテール */
   discussionTail: string;
-  /** ディスカッションバイト数 */
   discussionBytes: number;
-  /** ディスカッション改行数 */
   discussionNewlineCount: number;
-  /** ディスカッションが改行で終わるか */
   discussionEndsWithNewline: boolean;
 }
 ```
 
-## Interfaces (ISP-Compliant)
+Live item tracking for team member execution.
+Maintains real-time state for TUI rendering.
 
 ### TeamMonitorLifecycle
-
-チームメンバー実行状態のマーキング用ライフサイクル操作。
 
 ```typescript
 interface TeamMonitorLifecycle {
@@ -113,9 +194,10 @@ interface TeamMonitorLifecycle {
 }
 ```
 
-### TeamMonitorPhase
+Lifecycle operations for marking team member execution states.
+Used by code that only needs to track start/finish transitions.
 
-チームメンバー実行フェーズのフェーズ追跡操作。
+### TeamMonitorPhase
 
 ```typescript
 interface TeamMonitorPhase {
@@ -123,9 +205,10 @@ interface TeamMonitorPhase {
 }
 ```
 
-### TeamMonitorEvents
+Phase tracking operations for team member execution phases.
+Used by code that only needs to manage phase transitions.
 
-実行イベント追跡用のイベントロギング操作。
+### TeamMonitorEvents
 
 ```typescript
 interface TeamMonitorEvents {
@@ -134,9 +217,10 @@ interface TeamMonitorEvents {
 }
 ```
 
-### TeamMonitorStream
+Event logging operations for tracking execution events.
+Used by code that only needs to record events.
 
-stdout/stderrチャンク追加用ストリーム出力操作。
+### TeamMonitorStream
 
 ```typescript
 interface TeamMonitorStream {
@@ -144,9 +228,10 @@ interface TeamMonitorStream {
 }
 ```
 
-### TeamMonitorDiscussion
+Stream output operations for appending stdout/stderr chunks.
+Used by code that only needs to handle output streaming.
 
-マルチエージェントコミュニケーション用のディスカッション追跡操作。
+### TeamMonitorDiscussion
 
 ```typescript
 interface TeamMonitorDiscussion {
@@ -154,9 +239,10 @@ interface TeamMonitorDiscussion {
 }
 ```
 
-### TeamMonitorResource
+Discussion tracking operations for multi-agent communication.
+Used by code that only needs to track discussion content.
 
-リソースクリーンアップと終了操作。
+### TeamMonitorResource
 
 ```typescript
 interface TeamMonitorResource {
@@ -165,74 +251,61 @@ interface TeamMonitorResource {
 }
 ```
 
+Resource cleanup and termination operations.
+Used by code that only needs to manage monitor lifecycle.
+
 ### AgentTeamLiveMonitorController
 
-全機能を統合したモニターコントローラー。
-
 ```typescript
-interface AgentTeamLiveMonitorController
-  extends TeamMonitorLifecycle,
-    TeamMonitorPhase,
-    TeamMonitorEvents,
-    TeamMonitorStream,
-    TeamMonitorDiscussion,
-    TeamMonitorResource {}
+interface AgentTeamLiveMonitorController {
+}
 ```
 
-## Parallel Execution Types
+Full monitor controller combining all capabilities.
+Extends partial interfaces to maintain backward compatibility.
+Clients should use narrower interfaces when possible.
 
 ### TeamNormalizedOutput
 
-チームメンバー実行の正規化された出力構造。
-
 ```typescript
 interface TeamNormalizedOutput {
-  /** 抽出されたサマリー */
   summary: string;
-  /** 完全な出力コンテンツ */
   output: string;
-  /** 出力からの証拠数 */
   evidenceCount: number;
-  /** ディスカッションセクションを含むか */
   hasDiscussion: boolean;
 }
 ```
 
-### TeamParallelCapacityCandidate
+Normalized output structure for team member execution.
+Used for parsing and validating member outputs.
 
-並列容量割り当ての候補。
+### TeamParallelCapacityCandidate
 
 ```typescript
 interface TeamParallelCapacityCandidate {
-  /** チームID */
   teamId: string;
-  /** 要求された並列数 */
   parallelism: number;
 }
 ```
 
-### TeamParallelCapacityResolution
+Candidate for parallel capacity allocation.
+Used in team parallel execution planning.
 
-チーム並列容量の解決結果。
+### TeamParallelCapacityResolution
 
 ```typescript
 interface TeamParallelCapacityResolution {
-  /** チームID */
   teamId: string;
-  /** 承認された並列数 */
   approvedParallelism: number;
-  /** リクエストが承認されたか */
   approved: boolean;
-  /** 却下理由（承認されなかった場合） */
   reason?: string;
 }
 ```
 
-## Frontmatter Types
+Resolution result for team parallel capacity.
+Determines actual parallelism after capacity negotiation.
 
 ### TeamFrontmatter
-
-Markdownチーム定義用のチームフロントマター構造。
 
 ```typescript
 interface TeamFrontmatter {
@@ -246,9 +319,10 @@ interface TeamFrontmatter {
 }
 ```
 
-### TeamMemberFrontmatter
+Team frontmatter structure for markdown team definitions.
+Used when parsing team definition files.
 
-Markdownパース用のチームメンバーフロントマター。
+### TeamMemberFrontmatter
 
 ```typescript
 interface TeamMemberFrontmatter {
@@ -262,9 +336,9 @@ interface TeamMemberFrontmatter {
 }
 ```
 
-### ParsedTeamMarkdown
+Team member frontmatter for markdown parsing.
 
-パースされたチームMarkdownファイル構造。
+### ParsedTeamMarkdown
 
 ```typescript
 interface ParsedTeamMarkdown {
@@ -274,12 +348,31 @@ interface ParsedTeamMarkdown {
 }
 ```
 
-## Re-exports
+Parsed team markdown file structure.
 
-- `LiveStreamView` from `./live-monitor-base.js`
+## 型定義
 
-## 関連ファイル
+### TeamLivePhase
 
-- `.pi/extensions/agent-teams.ts` - エージェントチーム拡張
-- `.pi/extensions/agent-teams/storage.ts` - チームストレージ
-- `.pi/lib/live-monitor-base.ts` - ライブモニタリング基底
+```typescript
+type TeamLivePhase = | "queued"
+  | "initial"
+  | "communication"
+  | "judge"
+  | "finished"
+```
+
+Team execution phase during orchestration.
+Tracks the current stage of team member execution.
+
+### TeamLiveViewMode
+
+```typescript
+type TeamLiveViewMode = "list" | "detail" | "discussion"
+```
+
+View mode for team live monitoring interface.
+Extends base LiveViewMode with "discussion" mode.
+
+---
+*自動生成: 2026-02-17T21:48:27.775Z*

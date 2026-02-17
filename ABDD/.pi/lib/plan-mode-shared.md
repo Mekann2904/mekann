@@ -1,21 +1,157 @@
 ---
-title: Plan Mode Shared
-category: reference
+title: plan-mode-shared
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [plan-mode, shared, constants, utilities]
-related: [subagents, agent-teams, plan]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Plan Mode Shared
+# plan-mode-shared
 
-プランモード全体で共有される定数とユーティリティ。一貫したプランモード動作を保証し、重複/矛盾する定義を防ぐ。
+## 概要
 
-## 型定義
+`plan-mode-shared` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `isBashCommandAllowed` | Check if a bash command is allowed in plan mode. |
+| 関数 | `isPlanModeActive` | Check if plan mode is active. |
+| 関数 | `calculateChecksum` | Calculate checksum for plan mode state validation. |
+| 関数 | `validatePlanModeState` | Validate plan mode state checksum. |
+| 関数 | `createPlanModeState` | Create a new plan mode state with checksum. |
+| インターフェース | `PlanModeState` | - |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class PlanModeState {
+    <<interface>>
+    +enabled: boolean
+    +timestamp: number
+    +checksum: string
+  }
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  isBashCommandAllowed["isBashCommandAllowed()"]
+  isPlanModeActive["isPlanModeActive()"]
+  calculateChecksum["calculateChecksum()"]
+  validatePlanModeState["validatePlanModeState()"]
+  createPlanModeState["createPlanModeState()"]
+  isBashCommandAllowed -.-> isPlanModeActive
+  isPlanModeActive -.-> calculateChecksum
+  calculateChecksum -.-> validatePlanModeState
+  validatePlanModeState -.-> createPlanModeState
+```
+
+## 関数
+
+### isBashCommandAllowed
+
+```typescript
+isBashCommandAllowed(command: string): boolean
+```
+
+Check if a bash command is allowed in plan mode.
+
+This function implements a multi-layered check to prevent write operations:
+1. Check for output redirections (> >> 2> &>)
+2. Check for pipelines with write commands
+3. Check for subshells and command substitution
+4. Check for explicit shell invocation (bash -c, sh -c)
+5. Check first word against write command list
+6. Verify first word is in read-only allowlist
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| command | `string` | はい |
+
+**戻り値**: `boolean`
+
+### isPlanModeActive
+
+```typescript
+isPlanModeActive(): boolean
+```
+
+Check if plan mode is active.
+
+Requires both:
+1) PI_PLAN_MODE="1" environment flag
+2) A valid persisted state file with enabled=true
+
+**戻り値**: `boolean`
+
+### calculateChecksum
+
+```typescript
+calculateChecksum(state: Omit<PlanModeState, 'checksum'>): string
+```
+
+Calculate checksum for plan mode state validation.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| state | `Omit<PlanModeState, 'checksum'>` | はい |
+
+**戻り値**: `string`
+
+### validatePlanModeState
+
+```typescript
+validatePlanModeState(state: PlanModeState): boolean
+```
+
+Validate plan mode state checksum.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| state | `PlanModeState` | はい |
+
+**戻り値**: `boolean`
+
+### createPlanModeState
+
+```typescript
+createPlanModeState(enabled: boolean): PlanModeState
+```
+
+Create a new plan mode state with checksum.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| enabled | `boolean` | はい |
+
+**戻り値**: `PlanModeState`
+
+## インターフェース
 
 ### PlanModeState
-
-プランモードの状態を表すインターフェース。
 
 ```typescript
 interface PlanModeState {
@@ -25,140 +161,5 @@ interface PlanModeState {
 }
 ```
 
-## 定数
-
-### READ_ONLY_COMMANDS
-
-プランモードで使用可能な読み取り専用コマンドのセット。
-
-```typescript
-export const READ_ONLY_COMMANDS = new Set([
-  "grep", "cat", "head", "tail", "less", "more", "ls",
-  "find", "du", "df", "wc", "file", "stat", "tree",
-  "cd", "pwd", "env", "which", "date", "uptime",
-  "awk", "jq",
-]);
-```
-
-### DESTRUCTIVE_COMMANDS
-
-即座にブロックすべき破壊的コマンドのセット。
-
-```typescript
-export const DESTRUCTIVE_COMMANDS = new Set([
-  "rm", "rmdir", "mv", "cp", "touch", "mkdir", "chmod", "chown",
-  "ln", "truncate", "dd", "shred", "sudo", "su", "kill", "pkill", "killall",
-]);
-```
-
-### SHELL_COMMANDS
-
-シェル起動コマンドのセット（バイパス防止のため全てブロック）。
-
-```typescript
-export const SHELL_COMMANDS = new Set([
-  "bash", "sh", "zsh", "fish", "ksh", "dash",
-]);
-```
-
-### GIT_READONLY_SUBCOMMANDS
-
-Git読み取り専用サブコマンドのセット（明示的な許可リスト）。
-
-```typescript
-export const GIT_READONLY_SUBCOMMANDS = new Set([
-  "status", "log", "diff", "show", "branch", "remote",
-  "ls-files", "ls-tree", "rev-parse", "grep",
-  "blame", "reflog", "tag", "head", "describe",
-  "config",
-]);
-```
-
-### GIT_WRITE_SUBCOMMANDS
-
-Git書き込みサブコマンドのセット（明示的なブロックリスト）。
-
-```typescript
-export const GIT_WRITE_SUBCOMMANDS = new Set([
-  "add", "commit", "push", "pull", "fetch", "merge",
-  "rebase", "reset", "checkout", "cherry-pick", "revert",
-  "init", "clone", "stash", "apply", "am", "rm", "mv",
-]);
-```
-
-### WRITE_BASH_COMMANDS
-
-パッケージマネージャーコマンドのセット（複雑すぎるため全てブロック）。
-
-```typescript
-export const WRITE_BASH_COMMANDS = new Set([
-  "npm", "yarn", "pnpm", "pip", "pip3", "poetry", "cargo", "composer",
-  "apt", "apt-get", "yum", "dnf", "brew", "pacman",
-]);
-```
-
-### PLAN_MODE_POLICY
-
-プランモードのポリシーテキスト。
-
-```typescript
-export const PLAN_MODE_POLICY: string;
-```
-
-### PLAN_MODE_WARNING
-
-サブエージェント/チームプロンプト用の簡易プランモード警告。
-
-```typescript
-export const PLAN_MODE_WARNING: string;
-```
-
-## 関数
-
-### isBashCommandAllowed
-
-Bashコマンドがプランモードで許可されているかを確認する。
-
-複層的なチェックを実装:
-1. 出力リダイレクトのチェック
-2. 書き込みコマンドを含むパイプラインのチェック
-3. サブシェルとコマンド置換のチェック
-4. 明示的なシェル起動のチェック
-5. 最初の単語を書き込みコマンドリストと照合
-6. 最初の単語が読み取り専用許可リストにあるか確認
-
-```typescript
-function isBashCommandAllowed(command: string): boolean
-```
-
-### isPlanModeActive
-
-プランモードがアクティブかどうかを確認する。
-
-```typescript
-function isPlanModeActive(): boolean
-```
-
-### calculateChecksum
-
-プランモード状態の検証用チェックサムを計算する。
-
-```typescript
-function calculateChecksum(state: Omit<PlanModeState, 'checksum'>): string
-```
-
-### validatePlanModeState
-
-プランモード状態のチェックサムを検証する。
-
-```typescript
-function validatePlanModeState(state: PlanModeState): boolean
-```
-
-### createPlanModeState
-
-チェックサム付きの新しいプランモード状態を作成する。
-
-```typescript
-function createPlanModeState(enabled: boolean): PlanModeState
-```
+---
+*自動生成: 2026-02-17T21:48:27.738Z*

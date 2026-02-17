@@ -2,268 +2,349 @@
 title: agent-teams
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [auto-generated, extensions]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
 # agent-teams
 
 ## 概要
 
-マルチメンバーのエージェントチームオーケストレーションツールを提供する。専門化されたチームメイトロール間での並列コラボレーションを可能にする。
+`agent-teams` モジュールのAPIリファレンス。
 
-## エクスポート
-
-### インターフェース
-
-#### TeamDefinition
+## インポート
 
 ```typescript
-interface TeamDefinition {
-  id: string;
-  name: string;
-  description: string;
-  enabled: TeamEnabledState;
-  members: TeamMember[];
-  createdAt: string;
-  updatedAt: string;
-}
+import { randomBytes } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync... } from 'node:fs';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
+import { Type } from '@mariozechner/pi-ai';
+// ... and 38 more imports
 ```
 
-チーム定義。
+## エクスポート一覧
 
-#### TeamMember
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `registerAgentTeamsExtension` | - |
+
+## 図解
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[agent-teams]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    fs_utils_js[fs-utils.js]
+    format_utils_js[format-utils.js]
+    live_view_utils_js[live-view-utils.js]
+    tui_utils_js[tui-utils.js]
+    error_utils_js[error-utils.js]
+  end
+  main --> local
+  subgraph external[外部ライブラリ]
+    _mariozechner[@mariozechner]
+    _mariozechner[@mariozechner]
+    _mariozechner[@mariozechner]
+  end
+  main --> external
+```
+
+## 関数
+
+### shouldRetryFailedMemberResult
 
 ```typescript
-interface TeamMember {
-  id: string;
-  role: string;
-  description: string;
+shouldRetryFailedMemberResult(result: TeamMemberResult, retryRound: number): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| result | `TeamMemberResult` | はい |
+| retryRound | `number` | はい |
+
+**戻り値**: `boolean`
+
+### toRetryOverrides
+
+```typescript
+toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+
+**戻り値**: `RetryWithBackoffOverrides | undefined`
+
+### refreshRuntimeStatus
+
+```typescript
+refreshRuntimeStatus(ctx: any): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| ctx | `any` | はい |
+
+**戻り値**: `void`
+
+### formatTeamList
+
+```typescript
+formatTeamList(storage: TeamStorage): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| storage | `TeamStorage` | はい |
+
+**戻り値**: `string`
+
+### formatRecentRuns
+
+```typescript
+formatRecentRuns(storage: TeamStorage, limit: any): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| storage | `TeamStorage` | はい |
+| limit | `any` | はい |
+
+**戻り値**: `string`
+
+### runPiPrintMode
+
+```typescript
+async runPiPrintMode(input: {
   provider?: string;
   model?: string;
-  enabled: boolean;
-}
+  prompt: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  onTextDelta?: (delta: string) => void;
+  onStderrChunk?: (chunk: string) => void;
+}): Promise<PrintCommandResult>
 ```
 
-チームメンバー定義。
+Run pi-print mode for team member execution.
 
-#### TeamMemberResult
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `{
+  provider?: string;
+  model?: string;
+  prompt: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  onTextDelta?: (delta: string) => void;
+  onStderrChunk?: (chunk: string) => void;
+}` | はい |
+
+**戻り値**: `Promise<PrintCommandResult>`
+
+### pickTeam
 
 ```typescript
-interface TeamMemberResult {
-  memberId: string;
-  role: string;
-  summary: string;
-  output: string;
-  status: "completed" | "failed";
-  latencyMs: number;
-  error?: string;
-  diagnostics?: {
-    confidence: number;
-    evidenceCount: number;
-    contradictionSignals: number;
-    conflictSignals: number;
-  };
-}
+pickTeam(storage: TeamStorage, requestedId?: string): TeamDefinition | undefined
 ```
 
-メンバー実行結果。
+**パラメータ**
 
-#### TeamRunRecord
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| storage | `TeamStorage` | はい |
+| requestedId | `string` | いいえ |
+
+**戻り値**: `TeamDefinition | undefined`
+
+### pickDefaultParallelTeams
 
 ```typescript
-interface TeamRunRecord {
-  runId: string;
-  teamId: string;
-  strategy: TeamStrategy;
+pickDefaultParallelTeams(storage: TeamStorage): TeamDefinition[]
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| storage | `TeamStorage` | はい |
+
+**戻り値**: `TeamDefinition[]`
+
+### runTeamTask
+
+```typescript
+async runTeamTask(input: {
+  team: TeamDefinition;
   task: string;
+  strategy: TeamStrategy;
+  memberParallelLimit?: number;
   communicationRounds: number;
   failedMemberRetryRounds?: number;
-  failedMemberRetryApplied?: number;
-  recoveredMembers?: string[];
-  communicationLinks?: Record<string, string[]>;
-  summary: string;
-  status: "completed" | "failed";
-  startedAt: string;
-  finishedAt: string;
-  memberCount: number;
-  outputFile: string;
-  finalJudge?: TeamJudgeVerdict;
-}
+  communicationLinks?: Map<string, string[]>;
+  sharedContext?: string;
+  timeoutMs: number;
+  cwd: string;
+  retryOverrides?: RetryWithBackoffOverrides;
+  fallbackProvider?: string;
+  fallbackModel?: string;
+  signal?: AbortSignal;
+  onMemberStart?: (member: TeamMember) => void;
+  onMemberEnd?: (member: TeamMember) => void;
+  onMemberTextDelta?: (member: TeamMember, delta: string) => void;
+  onMemberStderrChunk?: (member: TeamMember, chunk: string) => void;
+  onMemberResult?: (member: TeamMember, result: TeamMemberResult) => void;
+  onMemberPhase?: (member: TeamMember, phase: TeamLivePhase, round?: number) => void;
+  onMemberEvent?: (member: TeamMember, event: string) => void;
+  onTeamEvent?: (event: string) => void;
+}): Promise<{ runRecord: TeamRunRecord; memberResults: TeamMemberResult[]; communicationAudit: TeamCommunicationAuditEntry[] }>
 ```
 
-チーム実行レコード。
+**パラメータ**
 
-#### TeamJudgeVerdict
-
-```typescript
-interface TeamJudgeVerdict {
-  verdict: "accept" | "reject" | "uncertain";
-  confidence: number;
-  reason: string;
-  nextStep: string;
-  uIntra: number;
-  uInter: number;
-  uSys: number;
-  collapseSignals: string[];
-}
-```
-
-最終判定結果。
-
-### 型エイリアス
-
-#### TeamEnabledState
-
-```typescript
-type TeamEnabledState = "enabled" | "disabled"
-```
-
-#### TeamStrategy
-
-```typescript
-type TeamStrategy = "parallel" | "sequential"
-```
-
-### 関数（再エクスポート）
-
-#### parseTeamMarkdownFile
-
-```typescript
-export function parseTeamMarkdownFile(content: string, filename: string): ParsedTeamMarkdown | null
-```
-
-チーム定義Markdownファイルをパースする。
-
-#### loadTeamDefinitionsFromDir
-
-```typescript
-export function loadTeamDefinitionsFromDir(teamsDir: string): TeamDefinition[]
-```
-
-ディレクトリからチーム定義を読み込む。
-
-#### runMember
-
-```typescript
-export async function runMember(input: {...}): Promise<TeamMemberResult>
-```
-
-チームメンバーを実行する。
-
-#### resolveTeamParallelCapacity
-
-```typescript
-export function resolveTeamParallelCapacity(
-  candidates: TeamParallelCapacityCandidate[],
-  snapshot: AgentRuntimeSnapshot
-): TeamParallelCapacityResolution
-```
-
-チームの並列キャパシティを解決する。
-
-## 登録ツール
-
-### agent_team_list
-
-設定されたエージェントチームとチームメイトの一覧を表示。
-
-### agent_team_create
-
-カスタムエージェントチームを作成。
-
-```typescript
-parameters: {
-  id?: string;
-  name: string;
-  description: string;
-  members: Array<{
-    id: string;
-    role: string;
-    description: string;
-    provider?: string;
-    model?: string;
-    enabled?: boolean;
-  }>;
-  setCurrent?: boolean;
-}
-```
-
-### agent_team_configure
-
-チームの設定を更新（有効/無効、デフォルト設定）。
-
-### agent_team_run
-
-指定されたチームでタスクを実行。
-
-```typescript
-parameters: {
-  teamId?: string;
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `{
+  team: TeamDefinition;
   task: string;
-  strategy?: TeamStrategy;
+  strategy: TeamStrategy;
   memberParallelLimit?: number;
-  communicationRounds?: number;
+  communicationRounds: number;
   failedMemberRetryRounds?: number;
-  timeoutMs?: number;
-}
-```
+  communicationLinks?: Map<string, string[]>;
+  sharedContext?: string;
+  timeoutMs: number;
+  cwd: string;
+  retryOverrides?: RetryWithBackoffOverrides;
+  fallbackProvider?: string;
+  fallbackModel?: string;
+  signal?: AbortSignal;
+  onMemberStart?: (member: TeamMember) => void;
+  onMemberEnd?: (member: TeamMember) => void;
+  onMemberTextDelta?: (member: TeamMember, delta: string) => void;
+  onMemberStderrChunk?: (member: TeamMember, chunk: string) => void;
+  onMemberResult?: (member: TeamMember, result: TeamMemberResult) => void;
+  onMemberPhase?: (member: TeamMember, phase: TeamLivePhase, round?: number) => void;
+  onMemberEvent?: (member: TeamMember, event: string) => void;
+  onTeamEvent?: (event: string) => void;
+}` | はい |
 
-### agent_team_run_parallel
+**戻り値**: `Promise<{ runRecord: TeamRunRecord; memberResults: TeamMemberResult[]; communicationAudit: TeamCommunicationAuditEntry[] }>`
 
-複数のチームを並列で実行。
-
-### agent_team_status
-
-アクティブなチーム実行のステータスを表示。
-
-### agent_team_judge
-
-チーム結果に対する最終判定を実行。
-
-## 使用例
+### emitResultEvent
 
 ```typescript
-// チーム一覧
-agent_team_list()
-
-// チーム作成
-agent_team_create({
-  name: "code-review-team",
-  description: "コードレビュー専門チーム",
-  members: [
-    { id: "architect", role: "アーキテクト", description: "設計観点" },
-    { id: "security", role: "セキュリティ", description: "セキュリティ観点" }
-  ]
-})
-
-// チーム実行
-agent_team_run({
-  teamId: "code-review-team",
-  task: "このPRをレビューしてください",
-  strategy: "parallel"
-})
+emitResultEvent(member: TeamMember, phaseLabel: string, result: TeamMemberResult): void
 ```
 
-## 通信ラウンド
+**パラメータ**
 
-チームメンバー間での通信ラウンドをサポート:
-- 各メンバーは他のメンバーの出力を参照可能
-- CLAIM/DISCUSSION/RESULT形式での出力解析
-- 参照不足の検出
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| member | `TeamMember` | はい |
+| phaseLabel | `string` | はい |
+| result | `TeamMemberResult` | はい |
 
-## 最終判定 (Final Judge)
+**戻り値**: `void`
 
-- proxyベースの不確実性評価
-- uIntra（メンバー内不確実性）
-- uInter（メンバー間不確実性）
-- uSys（システム不確実性）
+### runRetryMember
 
-## 関連
+```typescript
+async runRetryMember(member: TeamMember): Promise<TeamMemberResult>
+```
 
-- `.pi/extensions/subagents.ts`
-- `.pi/extensions/plan.ts`
-- `.pi/extensions/agent-runtime.ts`
-- `.pi/extensions/agent-teams/storage.ts`
-- `.pi/extensions/agent-teams/judge.ts`
-- `.pi/extensions/agent-teams/communication.ts`
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| member | `TeamMember` | はい |
+
+**戻り値**: `Promise<TeamMemberResult>`
+
+### registerAgentTeamsExtension
+
+```typescript
+registerAgentTeamsExtension(pi: ExtensionAPI): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| pi | `ExtensionAPI` | はい |
+
+**戻り値**: `void`
+
+### onMemberStart
+
+```typescript
+onMemberStart(member: TeamMember): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| member | `TeamMember` | はい |
+
+**戻り値**: `void`
+
+### onMemberEnd
+
+```typescript
+onMemberEnd(member: TeamMember): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| member | `TeamMember` | はい |
+
+**戻り値**: `void`
+
+### onRuntimeMemberStart
+
+```typescript
+onRuntimeMemberStart(): void
+```
+
+**戻り値**: `void`
+
+### onRuntimeMemberEnd
+
+```typescript
+onRuntimeMemberEnd(): void
+```
+
+**戻り値**: `void`
+
+## 型定義
+
+### LiveViewMode
+
+```typescript
+type LiveViewMode = TeamLiveViewMode
+```
+
+---
+*自動生成: 2026-02-17T21:48:27.489Z*

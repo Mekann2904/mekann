@@ -1,145 +1,253 @@
 ---
-title: Semantic Repetition
-category: reference
+title: semantic-repetition
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [semantic, repetition, detection, stagnation]
-related: [semantic-memory, embeddings]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Semantic Repetition Detection
+# semantic-repetition
 
-連続する出力間のセマンティック類似度を検出し、停滞を特定するモジュール。「Agentic Search in the Wild」論文（arXiv:2601.17617v2）の発見に基づく:
+## 概要
 
-- 軌跡の32.15%が繰り返しパターンを示す
-- 繰り返しは停滞を示し、早期停止の機会を知らせる
+`semantic-repetition` モジュールのAPIリファレンス。
 
-## 型定義
-
-### SemanticRepetitionResult
-
-セマンティック繰り返し検出の結果。
+## インポート
 
 ```typescript
-interface SemanticRepetitionResult {
-  isRepeated: boolean;        // セマンティック繰り返しが検出されたか
-  similarity: number;         // 類似度スコア (0.0-1.0)
-  method: "embedding" | "exact" | "unavailable";  // 使用された検出方法
-}
+import { generateEmbedding, cosineSimilarity, getEmbeddingProvider } from './embeddings/index.js';
 ```
 
-### SemanticRepetitionOptions
+## エクスポート一覧
 
-セマンティック繰り返し検出のオプション。
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `detectSemanticRepetition` | Detect semantic repetition between two outputs. |
+| 関数 | `detectSemanticRepetitionFromEmbeddings` | Synchronous version using pre-computed embeddings. |
+| 関数 | `isSemanticRepetitionAvailable` | Check if semantic repetition detection is availabl |
+| 関数 | `getRecommendedAction` | Get recommended action based on repetition score. |
+| クラス | `TrajectoryTracker` | Simple trajectory tracker for monitoring session p |
+| インターフェース | `SemanticRepetitionResult` | Result of semantic repetition detection. |
+| インターフェース | `SemanticRepetitionOptions` | Options for semantic repetition detection. |
+| インターフェース | `TrajectorySummary` | Session trajectory summary for monitoring. |
 
-```typescript
-interface SemanticRepetitionOptions {
-  threshold?: number;         // 繰り返しと見なす類似度閾値（デフォルト: 0.85）
-  useEmbedding?: boolean;     // エンベディングベースの検出を使用するか
-  maxTextLength?: number;     // 比較するテキストの最大長（デフォルト: 2000）
-}
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class TrajectoryTracker {
+    -steps: Array<outputstringsimilaritynumberisRepeatedboolean>
+    -maxSteps: number
+    +recordStep
+    +getSummary
+    +reset
+  }
+  class SemanticRepetitionResult {
+    <<interface>>
+    +isRepeated: boolean
+    +similarity: number
+    +method: embeddingexactunavailable
+  }
+  class SemanticRepetitionOptions {
+    <<interface>>
+    +threshold: number
+    +useEmbedding: boolean
+    +maxTextLength: number
+  }
+  class TrajectorySummary {
+    <<interface>>
+    +totalSteps: number
+    +repetitionCount: number
+    +averageSimilarity: number
+    +similarityTrend: increasingdecreasingstable
+    +isStuck: boolean
+  }
 ```
 
-### TrajectorySummary
+### 依存関係図
 
-監視用のセッショントレジェクトリサマリー。
-
-```typescript
-interface TrajectorySummary {
-  totalSteps: number;             // 分析された総ステップ数
-  repetitionCount: number;        // 繰り返し検出回数
-  averageSimilarity: number;      // ステップ間の平均類似度
-  similarityTrend: "increasing" | "decreasing" | "stable";  // 類似度のトレンド
-  isStuck: boolean;               // セッションがスタックしているか
-}
+```mermaid
+flowchart LR
+  subgraph this[semantic-repetition]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    index_js[index.js]
+  end
+  main --> local
 ```
 
-## 定数
+### 関数フロー
 
-### DEFAULT_REPETITION_THRESHOLD
-
-セマンティック繰り返し検出のデフォルト閾値。論文の発見に基づく: 高い類似度での繰り返しは停滞を示す。
-
-```typescript
-export const DEFAULT_REPETITION_THRESHOLD = 0.85;
-```
-
-### DEFAULT_MAX_TEXT_LENGTH
-
-エンベディング比較用の最大テキスト長。OpenAIエンベディングAPIにはトークン制限があるため、リクエストを管理可能に保つ。
-
-```typescript
-export const DEFAULT_MAX_TEXT_LENGTH = 2000;
-```
-
-### DEFAULT_MAX_TRAJECTORY_STEPS
-
-トレジェクトリトラッカーに保持するデフォルトの最大ステップ数。境界のないメモリ蓄積を防ぐ。
-
-```typescript
-export const DEFAULT_MAX_TRAJECTORY_STEPS = 100;
+```mermaid
+flowchart TD
+  detectSemanticRepetition["detectSemanticRepetition()"]
+  detectSemanticRepetitionFromEmbeddings["detectSemanticRepetitionFromEmbeddings()"]
+  isSemanticRepetitionAvailable["isSemanticRepetitionAvailable()"]
+  getRecommendedAction["getRecommendedAction()"]
+  detectSemanticRepetition -.-> detectSemanticRepetitionFromEmbeddings
+  detectSemanticRepetitionFromEmbeddings -.-> isSemanticRepetitionAvailable
+  isSemanticRepetitionAvailable -.-> getRecommendedAction
 ```
 
 ## 関数
 
 ### detectSemanticRepetition
 
-2つの出力間のセマンティック繰り返しを検出する。
-
-この関数は以下のいずれかを使用して連続する出力を比較する:
-1. エンベディングベースのコサイン類似度（OPENAI_API_KEYが利用可能な場合）
-2. 完全文字列一致（フォールバック）
-
 ```typescript
-async function detectSemanticRepetition(
-  current: string,
-  previous: string,
-  options?: SemanticRepetitionOptions
-): Promise<SemanticRepetitionResult>
+async detectSemanticRepetition(current: string, previous: string, options: SemanticRepetitionOptions): Promise<SemanticRepetitionResult>
 ```
+
+Detect semantic repetition between two outputs.
+
+This function compares consecutive outputs using either:
+1. Embedding-based cosine similarity (if OPENAI_API_KEY available)
+2. Exact string match (fallback)
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| current | `string` | はい |
+| previous | `string` | はい |
+| options | `SemanticRepetitionOptions` | はい |
+
+**戻り値**: `Promise<SemanticRepetitionResult>`
 
 ### detectSemanticRepetitionFromEmbeddings
 
-事前計算されたエンベディングを使用する同期バージョン。エンベディングが既に利用可能な場合に使用する。
+```typescript
+detectSemanticRepetitionFromEmbeddings(currentEmbedding: number[], previousEmbedding: number[], threshold: number): SemanticRepetitionResult
+```
+
+Synchronous version using pre-computed embeddings.
+Use when embeddings are already available.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| currentEmbedding | `number[]` | はい |
+| previousEmbedding | `number[]` | はい |
+| threshold | `number` | はい |
+
+**戻り値**: `SemanticRepetitionResult`
+
+### normalizeText
 
 ```typescript
-function detectSemanticRepetitionFromEmbeddings(
-  currentEmbedding: number[],
-  previousEmbedding: number[],
-  threshold?: number
-): SemanticRepetitionResult
+normalizeText(text: string, maxLength: number): string
 ```
+
+Normalize text for comparison.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+| maxLength | `number` | はい |
+
+**戻り値**: `string`
 
 ### isSemanticRepetitionAvailable
 
-セマンティック繰り返し検出が利用可能かどうかを確認する。embeddingsモジュールのプロバイダーレジストリを使用する。
-
 ```typescript
-async function isSemanticRepetitionAvailable(): Promise<boolean>
+async isSemanticRepetitionAvailable(): Promise<boolean>
 ```
+
+Check if semantic repetition detection is available.
+Uses the embeddings module's provider registry.
+
+**戻り値**: `Promise<boolean>`
 
 ### getRecommendedAction
 
-繰り返しスコアに基づいて推奨アクションを取得する。論文の発見に基づく: 高い繰り返しは停滞を示す。
-
 ```typescript
-function getRecommendedAction(
-  repetitionCount: number,
-  totalSteps: number,
-  isStuck: boolean
-): "continue" | "pivot" | "early_stop"
+getRecommendedAction(repetitionCount: number, totalSteps: number, isStuck: boolean): "continue" | "pivot" | "early_stop"
 ```
+
+Get recommended action based on repetition score.
+Based on paper findings: high repetition indicates stagnation.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| repetitionCount | `number` | はい |
+| totalSteps | `number` | はい |
+| isStuck | `boolean` | はい |
+
+**戻り値**: `"continue" | "pivot" | "early_stop"`
 
 ## クラス
 
 ### TrajectoryTracker
 
-セッション進行を監視するためのシンプルなトレジェクトリトラッカー。DoSを防ぐためのメモリ境界を実装する。
+Simple trajectory tracker for monitoring session progress.
+Implements memory bounds to prevent DoS via unbounded accumulation.
 
-#### メソッド
+**プロパティ**
 
-- `constructor(maxSteps?: number)` - 最大ステップ数を指定してトラッカーを作成
-- `async recordStep(output: string, options?: SemanticRepetitionOptions): Promise<SemanticRepetitionResult>` - 新しいステップを記録し、繰り返しをチェック
-- `getSummary(): TrajectorySummary` - トレジェクトリサマリーを取得
-- `get stepCount(): number` - ステップ数を取得
-- `reset(): void` - トラッカーをリセット
+| 名前 | 型 | 可視性 |
+|------|-----|--------|
+| steps | `Array<{
+    output: string;
+    similarity?: number;
+    isRepeated: boolean;
+  }>` | private |
+| maxSteps | `number` | private |
+
+**メソッド**
+
+| 名前 | シグネチャ |
+|------|------------|
+| recordStep | `recordStep(output, options): Promise<SemanticRepetitionResult>` |
+| getSummary | `getSummary(): TrajectorySummary` |
+| reset | `reset(): void` |
+
+## インターフェース
+
+### SemanticRepetitionResult
+
+```typescript
+interface SemanticRepetitionResult {
+  isRepeated: boolean;
+  similarity: number;
+  method: "embedding" | "exact" | "unavailable";
+}
+```
+
+Result of semantic repetition detection.
+
+### SemanticRepetitionOptions
+
+```typescript
+interface SemanticRepetitionOptions {
+  threshold?: number;
+  useEmbedding?: boolean;
+  maxTextLength?: number;
+}
+```
+
+Options for semantic repetition detection.
+
+### TrajectorySummary
+
+```typescript
+interface TrajectorySummary {
+  totalSteps: number;
+  repetitionCount: number;
+  averageSimilarity: number;
+  similarityTrend: "increasing" | "decreasing" | "stable";
+  isStuck: boolean;
+}
+```
+
+Session trajectory summary for monitoring.
+
+---
+*自動生成: 2026-02-17T21:48:27.756Z*

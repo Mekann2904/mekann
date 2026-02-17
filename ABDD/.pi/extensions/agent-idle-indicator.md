@@ -2,86 +2,86 @@
 title: agent-idle-indicator
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [auto-generated, extensions]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
 # agent-idle-indicator
 
 ## 概要
 
-エージェントが実行中でない場合に視覚的なインジケーターを表示する拡張機能。ターミナルタイトルとフッターでアイドル状態を通知する。
+`agent-idle-indicator` モジュールのAPIリファレンス。
 
-## エクスポート
-
-### 関数
-
-#### default (エントリーポイント)
+## インポート
 
 ```typescript
-export default function (pi: ExtensionAPI): void
+import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 ```
 
-拡張機能のエントリーポイント。エージェント開始/終了イベントを監視し、アイドル状態を視覚化する。
+## エクスポート一覧
 
-## 機能
+| 種別 | 名前 | 説明 |
+|------|------|------|
 
-### ターミナルタイトル表示
+## 図解
 
-- アイドル時: `[🔴]` （赤丸）をタイトルに表示
-- 実行中: `[🟢]` （緑丸）をタイトルに表示
+### 依存関係図
 
-### フッターステータス
-
-- アイドル時: 赤色の「停止中」テキストを表示
-
-## 使用例
-
-```typescript
-// 拡張機能として自動的に読み込まれる
-// ユーザーは特別な操作不要
-
-// ターミナルタイトルの例:
-// アイドル: [🔴] pi - my-project
-// 実行中:   [🟢] pi - my-project
+```mermaid
+flowchart LR
+  subgraph this[agent-idle-indicator]
+    main[Main Module]
+  end
+  subgraph external[外部ライブラリ]
+    _mariozechner[@mariozechner]
+  end
+  main --> external
 ```
 
-## イベントハンドラ
-
-| イベント | 動作 |
-|---------|------|
-| agent_start | アイドルインジケーターをクリア |
-| agent_end | アイドルインジケーターを表示 |
-| session_start | 初期状態でアイドルなら表示 |
-| session_shutdown | 元のタイトルを復元 |
-
-## 内部関数
+## 関数
 
 ### showIdleIndicator
 
 ```typescript
-function showIdleIndicator(ctx: ExtensionAPI["context"]): void
+showIdleIndicator(ctx: ExtensionAPI["context"]): void
 ```
 
-ターミナルタイトルに赤丸を設定し、フッターに「停止中」を表示。
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| ctx | `ExtensionAPI["context"]` | はい |
+
+**戻り値**: `void`
 
 ### clearIdleIndicator
 
 ```typescript
-function clearIdleIndicator(ctx: ExtensionAPI["context"]): void
+clearIdleIndicator(ctx: ExtensionAPI["context"]): void
 ```
 
-ターミナルタイトルに緑丸を設定し、フッターのステータスをクリア。
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| ctx | `ExtensionAPI["context"]` | はい |
+
+**戻り値**: `void`
 
 ### restoreOriginal
 
 ```typescript
-function restoreOriginal(ctx: ExtensionAPI["context"]): void
+restoreOriginal(ctx: ExtensionAPI["context"]): void
 ```
 
-セッション終了時に元のタイトルを復元。
+**パラメータ**
 
-## 関連
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| ctx | `ExtensionAPI["context"]` | はい |
 
-- `.pi/extensions/agent-runtime.ts`
-- `.pi/extensions/agent-usage-tracker.ts`
+**戻り値**: `void`
+
+---
+*自動生成: 2026-02-17T21:48:27.416Z*

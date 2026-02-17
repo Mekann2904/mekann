@@ -1,54 +1,257 @@
 ---
-title: Priority Scheduler
-category: reference
+title: priority-scheduler
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [priority, scheduler, queue, wfq]
-related: [subagents, agent-teams, agent-runtime]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Priority Scheduler
+# priority-scheduler
 
-優先度ベースのタスクスケジューリングユーティリティ。サブエージェントとエージェントチームの優先度対応スケジューリングを可能にする。
+## 概要
 
-## 型定義
+`priority-scheduler` モジュールのAPIリファレンス。
 
-### TaskPriority
+## エクスポート一覧
 
-タスクの優先度レベル。
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `inferTaskType` | Infer task type from tool name. |
+| 関数 | `estimateRounds` | Estimate the number of tool call rounds for a task |
+| 関数 | `inferPriority` | Infer task priority from tool name and context. |
+| 関数 | `comparePriority` | Compare two tasks for priority ordering. |
+| 関数 | `formatPriorityQueueStats` | Create a formatted status string for priority queu |
+| クラス | `PriorityTaskQueue` | Priority queue with WFQ-style scheduling. |
+| インターフェース | `PriorityTaskMetadata` | Task metadata for priority scheduling. |
+| インターフェース | `PriorityQueueEntry` | Priority queue entry with scheduling metadata. |
+| インターフェース | `EstimationContext` | Context for round estimation. |
+| インターフェース | `RoundEstimation` | Result of round estimation. |
+| 型 | `TaskPriority` | Task priority levels for scheduling. |
+| 型 | `TaskType` | Task type classification for round estimation. |
+| 型 | `TaskComplexity` | Task complexity level. |
 
-```typescript
-type TaskPriority = "critical" | "high" | "normal" | "low" | "background";
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class PriorityTaskQueue {
+    -entries: PriorityQueueEntry[]
+    -virtualTime: number
+    -maxSkipCount: number
+    -starvationThresholdMs: number
+    +enqueue
+    +dequeue
+    +peek
+    +remove
+    +getAll
+  }
+  class PriorityTaskMetadata {
+    <<interface>>
+    +id: string
+    +toolName: string
+    +priority: TaskPriority
+    +estimatedDurationMs: number
+    +estimatedRounds: number
+  }
+  class PriorityQueueEntry {
+    <<interface>>
+    +virtualStartTime: number
+    +virtualFinishTime: number
+    +skipCount: number
+    +lastConsideredMs: number
+  }
+  class EstimationContext {
+    <<interface>>
+    +toolName: string
+    +taskDescription: string
+    +agentCount: number
+    +isRetry: boolean
+    +hasUnknownFramework: boolean
+  }
+  class RoundEstimation {
+    <<interface>>
+    +estimatedRounds: number
+    +taskType: TaskType
+    +complexity: TaskComplexity
+    +confidence: number
+  }
 ```
 
-### TaskType
+### 関数フロー
 
-タスクタイプの分類。
-
-```typescript
-type TaskType =
-  | "read"      // 情報取得
-  | "bash"      // コマンド実行
-  | "edit"      // 単一ファイル変更
-  | "write"     // ファイル作成
-  | "subagent_single"   // 単一エージェント委任
-  | "subagent_parallel" // 並列エージェント委任
-  | "agent_team"        // チーム実行
-  | "question"  // ユーザー対話
-  | "unknown";  // 分類不可
+```mermaid
+flowchart TD
+  inferTaskType["inferTaskType()"]
+  estimateRounds["estimateRounds()"]
+  inferPriority["inferPriority()"]
+  comparePriority["comparePriority()"]
+  formatPriorityQueueStats["formatPriorityQueueStats()"]
+  inferTaskType -.-> estimateRounds
+  estimateRounds -.-> inferPriority
+  inferPriority -.-> comparePriority
+  comparePriority -.-> formatPriorityQueueStats
 ```
 
-### TaskComplexity
+## 関数
 
-タスクの複雑さレベル。
+### inferTaskType
 
 ```typescript
-type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "exploratory";
+inferTaskType(toolName: string): TaskType
 ```
+
+Infer task type from tool name.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| toolName | `string` | はい |
+
+**戻り値**: `TaskType`
+
+### estimateRounds
+
+```typescript
+estimateRounds(context: EstimationContext): RoundEstimation
+```
+
+Estimate the number of tool call rounds for a task.
+Based on agent-estimation skill methodology.
+
+Round estimation table:
+- read/bash: 1 round (simple queries)
+- edit/write: 2 rounds (code generation + verification)
+- question: 1 round (user interaction)
+- subagent_single: 5 rounds (delegation overhead)
+- subagent_parallel: 3 + N*2 rounds (coordination)
+- agent_team: 8 + N*3 rounds (team coordination)
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| context | `EstimationContext` | はい |
+
+**戻り値**: `RoundEstimation`
+
+### inferPriority
+
+```typescript
+inferPriority(toolName: string, context?: {
+    isInteractive?: boolean;
+    isRetry?: boolean;
+    isBackground?: boolean;
+    agentCount?: number;
+  }): TaskPriority
+```
+
+Infer task priority from tool name and context.
+
+Priority inference rules:
+- question: critical (user is waiting for response)
+- subagent_run_parallel with multiple agents: high
+- subagent_run: high
+- read/bash/edit: normal
+- Retries: low
+- Background tasks: background
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| toolName | `string` | はい |
+| context | `{
+    isInteractive?: boolean;
+    isRetry?: boolean;
+    isBackground?: boolean;
+    agentCount?: number;
+  }` | いいえ |
+
+**戻り値**: `TaskPriority`
+
+### comparePriority
+
+```typescript
+comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number
+```
+
+Compare two tasks for priority ordering.
+Returns negative if a should come before b, positive if b before a.
+
+Comparison order:
+1. Priority value (higher first)
+2. Deadline (earlier first, if both have deadlines)
+3. Enqueue time (earlier first, FIFO within same priority)
+4. Estimated duration (shorter first, for SRT optimization)
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| a | `PriorityQueueEntry` | はい |
+| b | `PriorityQueueEntry` | はい |
+
+**戻り値**: `number`
+
+### formatPriorityQueueStats
+
+```typescript
+formatPriorityQueueStats(stats: ReturnType<PriorityTaskQueue["getStats"]>): string
+```
+
+Create a formatted status string for priority queue stats.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| stats | `ReturnType<PriorityTaskQueue["getStats"]>` | はい |
+
+**戻り値**: `string`
+
+## クラス
+
+### PriorityTaskQueue
+
+Priority queue with WFQ-style scheduling.
+
+**プロパティ**
+
+| 名前 | 型 | 可視性 |
+|------|-----|--------|
+| entries | `PriorityQueueEntry[]` | private |
+| virtualTime | `number` | private |
+| maxSkipCount | `number` | private |
+| starvationThresholdMs | `number` | private |
+
+**メソッド**
+
+| 名前 | シグネチャ |
+|------|------------|
+| enqueue | `enqueue(metadata): PriorityQueueEntry` |
+| dequeue | `dequeue(): PriorityQueueEntry | undefined` |
+| peek | `peek(): PriorityQueueEntry | undefined` |
+| remove | `remove(id): PriorityQueueEntry | undefined` |
+| getAll | `getAll(): PriorityQueueEntry[]` |
+| getByPriority | `getByPriority(priority): PriorityQueueEntry[]` |
+| getStats | `getStats(): {
+    total: number;
+    byPriority: Record<TaskPriority, number>;
+    avgWaitMs: number;
+    maxWaitMs: number;
+    starvingCount: number;
+  }` |
+| promoteStarvingTasks | `promoteStarvingTasks(): number` |
+| sort | `sort(): void` |
+| getQueueVirtualTime | `getQueueVirtualTime(): number` |
+
+## インターフェース
 
 ### PriorityTaskMetadata
-
-優先度スケジューリング用のタスクメタデータ。
 
 ```typescript
 interface PriorityTaskMetadata {
@@ -63,12 +266,12 @@ interface PriorityTaskMetadata {
 }
 ```
 
+Task metadata for priority scheduling.
+
 ### PriorityQueueEntry
 
-スケジューリングメタデータを持つ優先度キューエントリ。
-
 ```typescript
-interface PriorityQueueEntry extends PriorityTaskMetadata {
+interface PriorityQueueEntry {
   virtualStartTime: number;
   virtualFinishTime: number;
   skipCount: number;
@@ -76,9 +279,9 @@ interface PriorityQueueEntry extends PriorityTaskMetadata {
 }
 ```
 
-### EstimationContext
+Priority queue entry with scheduling metadata.
 
-ラウンド推定のコンテキスト。
+### EstimationContext
 
 ```typescript
 interface EstimationContext {
@@ -90,114 +293,56 @@ interface EstimationContext {
 }
 ```
 
-### RoundEstimation
+Context for round estimation.
 
-ラウンド推定の結果。
+### RoundEstimation
 
 ```typescript
 interface RoundEstimation {
   estimatedRounds: number;
   taskType: TaskType;
   complexity: TaskComplexity;
-  confidence: number; // 0.0 - 1.0
+  confidence: number;
 }
 ```
 
-## 定数
+Result of round estimation.
 
-### PRIORITY_WEIGHTS
+## 型定義
 
-Weighted Fair Queuing (WFQ) 用の優先度ウェイト。高い値 = より多くのスケジューリングウェイト = より頻繁な実行。
-
-```typescript
-export const PRIORITY_WEIGHTS: Record<TaskPriority, number> = {
-  critical: 100,
-  high: 50,
-  normal: 25,
-  low: 10,
-  background: 5,
-};
-```
-
-### PRIORITY_VALUES
-
-比較用の優先度数値。高い値 = 高い優先度 = 先にスケジュール。
+### TaskPriority
 
 ```typescript
-export const PRIORITY_VALUES: Record<TaskPriority, number> = {
-  critical: 4,
-  high: 3,
-  normal: 2,
-  low: 1,
-  background: 0,
-};
+type TaskPriority = "critical" | "high" | "normal" | "low" | "background"
 ```
 
-## 関数
+Task priority levels for scheduling.
+Higher priority tasks are scheduled before lower priority tasks.
+"background" is the lowest priority for non-urgent tasks.
 
-### inferTaskType
-
-ツール名からタスクタイプを推論する。
+### TaskType
 
 ```typescript
-function inferTaskType(toolName: string): TaskType
+type TaskType = | "read"      // Information retrieval
+  | "bash"      // Command execution
+  | "edit"      // Single file modification
+  | "write"     // File creation
+  | "subagent_single"   // Single agent delegation
+  | "subagent_parallel" // Parallel agent delegation
+  | "agent_team"        // Team execution
+  | "question"  // User interaction
+  | "unknown"
 ```
 
-### estimateRounds
+Task type classification for round estimation.
 
-タスクのツール呼び出しラウンド数を推定する。agent-estimationスキルの方法論に基づく。
+### TaskComplexity
 
 ```typescript
-function estimateRounds(context: EstimationContext): RoundEstimation
+type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "exploratory"
 ```
 
-### inferPriority
+Task complexity level.
 
-ツール名とコンテキストからタスクの優先度を推論する。
-
-```typescript
-function inferPriority(
-  toolName: string,
-  context?: {
-    isInteractive?: boolean;
-    isRetry?: boolean;
-    isBackground?: boolean;
-    agentCount?: number;
-  }
-): TaskPriority
-```
-
-### comparePriority
-
-2つのタスクを優先度順序で比較する。aがbより先に来る場合は負、bが先に来る場合は正を返す。
-
-```typescript
-function comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number
-```
-
-### formatPriorityQueueStats
-
-優先度キュー統計のフォーマット済みステータス文字列を作成する。
-
-```typescript
-function formatPriorityQueueStats(stats: ReturnType<PriorityTaskQueue["getStats"]>): string
-```
-
-## クラス
-
-### PriorityTaskQueue
-
-WFQスタイルのスケジューリングを持つ優先度キュー。
-
-#### メソッド
-
-- `enqueue(metadata: PriorityTaskMetadata): PriorityQueueEntry` - タスクをキューに追加
-- `dequeue(): PriorityQueueEntry | undefined` - 最高優先度のタスクを取り出す
-- `peek(): PriorityQueueEntry | undefined` - 最高優先度のタスクを覗き見
-- `remove(id: string): PriorityQueueEntry | undefined` - 特定のタスクをIDで削除
-- `get length(): number` - 現在のキューサイズ
-- `get isEmpty(): boolean` - キューが空かどうか
-- `getAll(): PriorityQueueEntry[]` - 全エントリを取得
-- `getByPriority(priority: TaskPriority): PriorityQueueEntry[]` - 優先度別にエントリを取得
-- `getStats()` - キュー統計を取得
-- `promoteStarvingTasks(): number` - 飢餓状態のタスクを昇格
+---
+*自動生成: 2026-02-17T21:48:27.741Z*

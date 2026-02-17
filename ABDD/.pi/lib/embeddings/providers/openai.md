@@ -1,0 +1,164 @@
+---
+title: openai
+category: api-reference
+audience: developer
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
+---
+
+# openai
+
+## 概要
+
+`openai` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { execSync } from 'node:child_process';
+import { EmbeddingProvider, ProviderCapabilities } from '../types.js';
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `getOpenAIKey` | Get OpenAI API key from auth.json or environment v |
+| クラス | `OpenAIEmbeddingProvider` | - |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class OpenAIEmbeddingProvider {
+    +id: any
+    +name: any
+    +model: any
+    +capabilities: ProviderCapabilities
+    +isAvailable
+    +generateEmbedding
+    +generateEmbeddingsBatch
+  }
+  class AuthConfig {
+    <<interface>>
+  }
+  class OpenAIEmbeddingResponse {
+    <<interface>>
+    +data: Array<embeddingnumber[]indexnumberobjectstring>
+    +model: string
+    +object: string
+    +usage: prompt_tokensnumbertotal_tokensnumber
+  }
+```
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[openai]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    types_js[types.js]
+  end
+  main --> local
+```
+
+## 関数
+
+### resolveKeyValue
+
+```typescript
+resolveKeyValue(key: string): string | null
+```
+
+Resolve a key value that may be a literal, env var reference, or shell command.
+This follows pi's official key resolution method.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| key | `string` | はい |
+
+**戻り値**: `string | null`
+
+### loadAuthConfig
+
+```typescript
+loadAuthConfig(): AuthConfig
+```
+
+Load auth configuration from auth.json.
+
+**戻り値**: `AuthConfig`
+
+### getOpenAIKey
+
+```typescript
+getOpenAIKey(): string | null
+```
+
+Get OpenAI API key from auth.json or environment variable.
+Resolution order (pi's official method):
+1. auth.json entry
+2. OPENAI_API_KEY environment variable
+
+**戻り値**: `string | null`
+
+## クラス
+
+### OpenAIEmbeddingProvider
+
+**プロパティ**
+
+| 名前 | 型 | 可視性 |
+|------|-----|--------|
+| id | `any` | public |
+| name | `any` | public |
+| model | `any` | public |
+| capabilities | `ProviderCapabilities` | public |
+
+**メソッド**
+
+| 名前 | シグネチャ |
+|------|------------|
+| isAvailable | `isAvailable(): Promise<boolean>` |
+| generateEmbedding | `generateEmbedding(text): Promise<number[] | null>` |
+| generateEmbeddingsBatch | `generateEmbeddingsBatch(texts): Promise<(number[] | null)[]>` |
+
+## インターフェース
+
+### AuthConfig
+
+```typescript
+interface AuthConfig {
+}
+```
+
+### OpenAIEmbeddingResponse
+
+```typescript
+interface OpenAIEmbeddingResponse {
+  data: Array<{
+    embedding: number[];
+    index: number;
+    object: string;
+  }>;
+  model: string;
+  object: string;
+  usage: {
+    prompt_tokens: number;
+    total_tokens: number;
+  };
+}
+```
+
+---
+*自動生成: 2026-02-17T21:48:27.704Z*

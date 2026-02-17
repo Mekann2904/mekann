@@ -1,21 +1,379 @@
 ---
-title: Verification Workflow
-category: reference
+title: verification-workflow
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [verification, inspector, challenger, reasoning]
+last_updated: 2026-02-17
+tags: [auto-generated]
 related: []
 ---
 
-# Verification Workflow
+# verification-workflow
 
-論文「Large Language Model Reasoning Failures」のP0推奨事項に基づくInspector/Challengerエージェントによる自動検証メカニズム。
+## 概要
 
-## Types
+`verification-workflow` モジュールのAPIリファレンス。
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `shouldTriggerVerification` | 検証が必要かどうかを判断 |
+| 関数 | `isHighStakesTask` | 高リスクタスクかどうかを判定 |
+| 関数 | `resolveVerificationConfig` | 検証設定を解決 |
+| 関数 | `buildInspectorPrompt` | Inspectorプロンプトを生成 |
+| 関数 | `buildChallengerPrompt` | Challengerプロンプトを生成 |
+| 関数 | `synthesizeVerificationResult` | 検証結果を統合 |
+| 関数 | `getVerificationWorkflowRules` | 検証ワークフロー実行ルールを取得 |
+| インターフェース | `VerificationWorkflowConfig` | 検証ワークフロー設定 |
+| インターフェース | `ChallengerConfig` | - |
+| インターフェース | `InspectorConfig` | - |
+| インターフェース | `VerificationResult` | 検証結果 |
+| インターフェース | `InspectorOutput` | - |
+| インターフェース | `DetectedPattern` | - |
+| インターフェース | `ChallengerOutput` | - |
+| インターフェース | `ChallengedClaim` | - |
+| インターフェース | `VerificationContext` | - |
+| 型 | `VerificationTriggerMode` | - |
+| 型 | `FallbackBehavior` | - |
+| 型 | `ChallengeCategory` | - |
+| 型 | `SuspicionThreshold` | - |
+| 型 | `InspectionPattern` | - |
+| 型 | `VerificationVerdict` | - |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class VerificationWorkflowConfig {
+    <<interface>>
+    +enabled: boolean
+    +triggerModes: VerificationTriggerMode[]
+    +challengerConfig: ChallengerConfig
+    +inspectorConfig: InspectorConfig
+    +fallbackBehavior: FallbackBehavior
+  }
+  class ChallengerConfig {
+    <<interface>>
+    +minConfidenceToChallenge: number
+    +requiredFlaws: number
+    +enabledCategories: ChallengeCategory[]
+  }
+  class InspectorConfig {
+    <<interface>>
+    +suspicionThreshold: SuspicionThreshold
+    +requiredPatterns: InspectionPattern[]
+    +autoTriggerOnCollapseSignals: boolean
+  }
+  class VerificationResult {
+    <<interface>>
+    +triggered: boolean
+    +triggerReason: string
+    +inspectorOutput: InspectorOutput
+    +challengerOutput: ChallengerOutput
+    +finalVerdict: VerificationVerdict
+  }
+  class InspectorOutput {
+    <<interface>>
+    +suspicionLevel: SuspicionThreshold
+    +detectedPatterns: DetectedPattern[]
+    +summary: string
+    +recommendation: string
+  }
+  class DetectedPattern {
+    <<interface>>
+    +pattern: InspectionPattern
+    +location: string
+    +severity: lowmediumhigh
+    +description: string
+  }
+  class ChallengerOutput {
+    <<interface>>
+    +challengedClaims: ChallengedClaim[]
+    +overallSeverity: minormoderatecritical
+    +summary: string
+    +suggestedRevisions: string[]
+  }
+  class ChallengedClaim {
+    <<interface>>
+    +claim: string
+    +flaw: string
+    +evidenceGap: string
+    +alternative: string
+    +boundaryFailure: string
+  }
+  class VerificationContext {
+    <<interface>>
+    +task: string
+    +triggerMode: postsubagentpostteamexplicitlowconfidencehighstakes
+    +agentId: string
+    +teamId: string
+    +previousVerifications: number
+  }
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  shouldTriggerVerification["shouldTriggerVerification()"]
+  isHighStakesTask["isHighStakesTask()"]
+  resolveVerificationConfig["resolveVerificationConfig()"]
+  buildInspectorPrompt["buildInspectorPrompt()"]
+  buildChallengerPrompt["buildChallengerPrompt()"]
+  synthesizeVerificationResult["synthesizeVerificationResult()"]
+  shouldTriggerVerification -.-> isHighStakesTask
+  isHighStakesTask -.-> resolveVerificationConfig
+  resolveVerificationConfig -.-> buildInspectorPrompt
+  buildInspectorPrompt -.-> buildChallengerPrompt
+  buildChallengerPrompt -.-> synthesizeVerificationResult
+```
+
+## 関数
+
+### shouldTriggerVerification
+
+```typescript
+shouldTriggerVerification(output: string, confidence: number, context: VerificationContext): { trigger: boolean; reason: string }
+```
+
+検証が必要かどうかを判断
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+| confidence | `number` | はい |
+| context | `VerificationContext` | はい |
+
+**戻り値**: `{ trigger: boolean; reason: string }`
+
+### checkOutputPatterns
+
+```typescript
+checkOutputPatterns(output: string, config: VerificationWorkflowConfig): { trigger: boolean; reason: string }
+```
+
+出力パターンをチェック
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+| config | `VerificationWorkflowConfig` | はい |
+
+**戻り値**: `{ trigger: boolean; reason: string }`
+
+### detectClaimResultMismatch
+
+```typescript
+detectClaimResultMismatch(output: string): { detected: boolean; reason: string }
+```
+
+CLAIM-RESULT不一致を検出
+単純な単語重複ではなく、意味的な構造を分析
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+
+**戻り値**: `{ detected: boolean; reason: string }`
+
+### extractKeyTerms
+
+```typescript
+extractKeyTerms(text: string): string[]
+```
+
+テキストから重要な用語を抽出（簡易版）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `string[]`
+
+### detectOverconfidence
+
+```typescript
+detectOverconfidence(output: string): { detected: boolean; reason: string }
+```
+
+過信を検出
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+
+**戻り値**: `{ detected: boolean; reason: string }`
+
+### detectMissingAlternatives
+
+```typescript
+detectMissingAlternatives(output: string): { detected: boolean; reason: string }
+```
+
+代替解釈の欠如を検出
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+
+**戻り値**: `{ detected: boolean; reason: string }`
+
+### detectConfirmationBias
+
+```typescript
+detectConfirmationBias(output: string): { detected: boolean; reason: string }
+```
+
+確認バイアスパターンを検出
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+
+**戻り値**: `{ detected: boolean; reason: string }`
+
+### isHighStakesTask
+
+```typescript
+isHighStakesTask(task: string): boolean
+```
+
+高リスクタスクかどうかを判定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+
+**戻り値**: `boolean`
+
+### resolveVerificationConfig
+
+```typescript
+resolveVerificationConfig(): VerificationWorkflowConfig
+```
+
+検証設定を解決
+
+**戻り値**: `VerificationWorkflowConfig`
+
+### buildInspectorPrompt
+
+```typescript
+buildInspectorPrompt(targetOutput: string, context: VerificationContext): string
+```
+
+Inspectorプロンプトを生成
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| targetOutput | `string` | はい |
+| context | `VerificationContext` | はい |
+
+**戻り値**: `string`
+
+### buildChallengerPrompt
+
+```typescript
+buildChallengerPrompt(targetOutput: string, context: VerificationContext): string
+```
+
+Challengerプロンプトを生成
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| targetOutput | `string` | はい |
+| context | `VerificationContext` | はい |
+
+**戻り値**: `string`
+
+### synthesizeVerificationResult
+
+```typescript
+synthesizeVerificationResult(originalOutput: string, originalConfidence: number, inspectorOutput: InspectorOutput | undefined, challengerOutput: ChallengerOutput | undefined, context: VerificationContext): VerificationResult
+```
+
+検証結果を統合
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| originalOutput | `string` | はい |
+| originalConfidence | `number` | はい |
+| inspectorOutput | `InspectorOutput | undefined` | はい |
+| challengerOutput | `ChallengerOutput | undefined` | はい |
+| context | `VerificationContext` | はい |
+
+**戻り値**: `VerificationResult`
+
+### formatPatternName
+
+```typescript
+formatPatternName(pattern: InspectionPattern): string
+```
+
+パターン名をフォーマット
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| pattern | `InspectionPattern` | はい |
+
+**戻り値**: `string`
+
+### formatCategoryName
+
+```typescript
+formatCategoryName(category: ChallengeCategory): string
+```
+
+カテゴリ名をフォーマット
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| category | `ChallengeCategory` | はい |
+
+**戻り値**: `string`
+
+### getVerificationWorkflowRules
+
+```typescript
+getVerificationWorkflowRules(): string
+```
+
+検証ワークフロー実行ルールを取得
+execution-rules.tsで使用
+
+**戻り値**: `string`
+
+## インターフェース
 
 ### VerificationWorkflowConfig
-
-検証ワークフロー設定。
 
 ```typescript
 interface VerificationWorkflowConfig {
@@ -29,33 +387,9 @@ interface VerificationWorkflowConfig {
 }
 ```
 
-### VerificationTriggerMode
-
-検証トリガーモード。
-
-```typescript
-type VerificationTriggerMode =
-  | "post-subagent"     // サブエージェント実行後
-  | "post-team"         // チーム実行後
-  | "low-confidence"    // 低信頼度時
-  | "explicit"          // 明示的な要求時
-  | "high-stakes";      // 高リスクタスク時
-```
-
-### FallbackBehavior
-
-フォールバック動作。
-
-```typescript
-type FallbackBehavior =
-  | "warn"              // 警告のみ
-  | "block"             // ブロックして再実行
-  | "auto-reject";      // 自動拒否
-```
+検証ワークフロー設定
 
 ### ChallengerConfig
-
-Challenger設定。
 
 ```typescript
 interface ChallengerConfig {
@@ -65,23 +399,7 @@ interface ChallengerConfig {
 }
 ```
 
-### ChallengeCategory
-
-チャレンジカテゴリ。
-
-```typescript
-type ChallengeCategory =
-  | "evidence-gap"      // 証拠の欠落
-  | "logical-flaw"      // 論理的欠陥
-  | "assumption"        // 隠れた仮定
-  | "alternative"       // 代替解釈の未考慮
-  | "boundary"          // 境界条件の未考慮
-  | "causal-reversal";  // 因果関係の逆転
-```
-
 ### InspectorConfig
-
-Inspector設定。
 
 ```typescript
 interface InspectorConfig {
@@ -91,24 +409,7 @@ interface InspectorConfig {
 }
 ```
 
-### InspectionPattern
-
-検査パターン。
-
-```typescript
-type InspectionPattern =
-  | "claim-result-mismatch"    // CLAIMとRESULTの不一致
-  | "evidence-confidence-gap"  // 証拠と信頼度のミスマッチ
-  | "missing-alternatives"     // 代替解釈の欠如
-  | "causal-reversal"          // 因果の逆転
-  | "confirmation-bias"        // 確認バイアスの兆候
-  | "overconfidence"           // 過信
-  | "incomplete-reasoning";    // 不完全な推論
-```
-
 ### VerificationResult
-
-検証結果。
 
 ```typescript
 interface VerificationResult {
@@ -123,22 +424,9 @@ interface VerificationResult {
 }
 ```
 
-### VerificationVerdict
-
-検証判定。
-
-```typescript
-type VerificationVerdict =
-  | "pass"              // 検証通過
-  | "pass-with-warnings" // 警告付き通過
-  | "needs-review"      // 人間のレビューが必要
-  | "fail"              // 検証失敗
-  | "blocked";          // ブロック（再実行必要）
-```
+検証結果
 
 ### InspectorOutput
-
-Inspector出力。
 
 ```typescript
 interface InspectorOutput {
@@ -149,9 +437,18 @@ interface InspectorOutput {
 }
 ```
 
-### ChallengerOutput
+### DetectedPattern
 
-Challenger出力。
+```typescript
+interface DetectedPattern {
+  pattern: InspectionPattern;
+  location: string;
+  severity: "low" | "medium" | "high";
+  description: string;
+}
+```
+
+### ChallengerOutput
 
 ```typescript
 interface ChallengerOutput {
@@ -162,9 +459,20 @@ interface ChallengerOutput {
 }
 ```
 
-### VerificationContext
+### ChallengedClaim
 
-検証コンテキスト。
+```typescript
+interface ChallengedClaim {
+  claim: string;
+  flaw: string;
+  evidenceGap: string;
+  alternative: string;
+  boundaryFailure?: string;
+  severity: "minor" | "moderate" | "critical";
+}
+```
+
+### VerificationContext
 
 ```typescript
 interface VerificationContext {
@@ -176,157 +484,64 @@ interface VerificationContext {
 }
 ```
 
-## Constants
+## 型定義
 
-### DEFAULT_VERIFICATION_CONFIG
-
-デフォルト設定。
+### VerificationTriggerMode
 
 ```typescript
-const DEFAULT_VERIFICATION_CONFIG: VerificationWorkflowConfig = {
-  enabled: false,
-  triggerModes: ["post-subagent", "low-confidence", "high-stakes"],
-  challengerConfig: {
-    minConfidenceToChallenge: 0.85,
-    requiredFlaws: 1,
-    enabledCategories: ["evidence-gap", "logical-flaw", "assumption", "alternative", "boundary", "causal-reversal"],
-  },
-  inspectorConfig: {
-    suspicionThreshold: "medium",
-    requiredPatterns: ["claim-result-mismatch", "evidence-confidence-gap", "missing-alternatives", "causal-reversal", "confirmation-bias", "overconfidence"],
-    autoTriggerOnCollapseSignals: true,
-  },
-  fallbackBehavior: "warn",
-  maxVerificationDepth: 2,
-  minConfidenceToSkipVerification: 0.9,
-};
+type VerificationTriggerMode = | "post-subagent"     // サブエージェント実行後
+  | "post-team"         // チーム実行後
+  | "low-confidence"    // 低信頼度時
+  | "explicit"          // 明示的な要求時
+  | "high-stakes"
 ```
 
-### HIGH_STAKES_PATTERNS
-
-高リスクタスク検出用の正規表現パターン配列（70+パターン）。
-
-カテゴリ:
-1. 削除・破壊的操作
-2. 本番環境・リリース
-3. セキュリティ・認証
-4. データベース操作
-5. API契約変更
-6. 認可・アクセス制御
-7. インフラ・デプロイ
-8. 機密データ・コスト
-9. 不可逆操作・危険フラグ
-
-## Main Functions
-
-### shouldTriggerVerification()
-
-検証が必要かどうかを判断。
+### FallbackBehavior
 
 ```typescript
-function shouldTriggerVerification(
-  output: string,
-  confidence: number,
-  context: VerificationContext
-): { trigger: boolean; reason: string }
+type FallbackBehavior = | "warn"              // 警告のみ
+  | "block"             // ブロックして再実行
+  | "auto-reject"
 ```
 
-### isHighStakesTask()
-
-高リスクタスクかどうかを判定。
+### ChallengeCategory
 
 ```typescript
-function isHighStakesTask(task: string): boolean
+type ChallengeCategory = | "evidence-gap"      // 証拠の欠落
+  | "logical-flaw"      // 論理的欠陥
+  | "assumption"        // 隠れた仮定
+  | "alternative"       // 代替解釈の未考慮
+  | "boundary"          // 境界条件の未考慮
+  | "causal-reversal"
 ```
 
-### resolveVerificationConfig()
-
-検証設定を解決。環境変数から設定を読み込む。
+### SuspicionThreshold
 
 ```typescript
-function resolveVerificationConfig(): VerificationWorkflowConfig
+type SuspicionThreshold = "low" | "medium" | "high"
 ```
 
-### buildInspectorPrompt()
-
-Inspectorプロンプトを生成。
+### InspectionPattern
 
 ```typescript
-function buildInspectorPrompt(
-  targetOutput: string,
-  context: VerificationContext
-): string
+type InspectionPattern = | "claim-result-mismatch"    // CLAIMとRESULTの不一致
+  | "evidence-confidence-gap"  // 証拠と信頼度のミスマッチ
+  | "missing-alternatives"     // 代替解釈の欠如
+  | "causal-reversal"          // 因果の逆転
+  | "confirmation-bias"        // 確認バイアスの兆候
+  | "overconfidence"           // 過信（証拠に対して高すぎる信頼度）
+  | "incomplete-reasoning"
 ```
 
-### buildChallengerPrompt()
-
-Challengerプロンプトを生成。
+### VerificationVerdict
 
 ```typescript
-function buildChallengerPrompt(
-  targetOutput: string,
-  context: VerificationContext
-): string
+type VerificationVerdict = | "pass"              // 検証通過
+  | "pass-with-warnings" // 警告付き通過
+  | "needs-review"      // 人間のレビューが必要
+  | "fail"              // 検証失敗
+  | "blocked"
 ```
 
-### synthesizeVerificationResult()
-
-検証結果を統合。
-
-```typescript
-function synthesizeVerificationResult(
-  originalOutput: string,
-  originalConfidence: number,
-  inspectorOutput: InspectorOutput | undefined,
-  challengerOutput: ChallengerOutput | undefined,
-  context: VerificationContext
-): VerificationResult
-```
-
-### getVerificationWorkflowRules()
-
-検証ワークフロー実行ルールを取得。execution-rules.tsで使用。
-
-```typescript
-function getVerificationWorkflowRules(): string
-```
-
-## Environment Variables
-
-| 変数名 | 説明 | 値 |
-|--------|------|-----|
-| PI_VERIFICATION_WORKFLOW_MODE | ワークフローモード | disabled, minimal, auto, strict |
-| PI_VERIFICATION_MIN_CONFIDENCE | 検証スキップの信頼度閾値 | 0.0 - 1.0 |
-| PI_VERIFICATION_MAX_DEPTH | 最大検証深度 | 1 - 5 |
-
-## 使用例
-
-```typescript
-// 検証が必要かチェック
-const result = shouldTriggerVerification(
-  "CLAIM: Test\nCONFIDENCE: 0.5\nRESULT: Result",
-  0.5,
-  { task: "Analyze code", triggerMode: "post-subagent" }
-);
-
-if (result.trigger) {
-  // Inspectorを起動
-  const inspectorPrompt = buildInspectorPrompt(output, context);
-  
-  // Challengerを起動
-  const challengerPrompt = buildChallengerPrompt(output, context);
-  
-  // 結果を統合
-  const finalResult = synthesizeVerificationResult(
-    output,
-    confidence,
-    inspectorOutput,
-    challengerOutput,
-    context
-  );
-}
-```
-
-## 関連ファイル
-
-- `.pi/lib/verification-workflow.test.ts` - テストファイル
+---
+*自動生成: 2026-02-17T21:48:27.787Z*

@@ -1,63 +1,70 @@
 ---
-title: Runtime Error Builders
-category: reference
+title: runtime-error-builders
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [runtime, error, timeout, utilities]
-related: [runtime-utils, subagents, agent-teams]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Runtime Error Builders
+# runtime-error-builders
 
-ランタイムエラーとタイムアウトユーティリティ。サブエージェントとエージェントチームの一貫した動作のために共有される。
+## 概要
+
+`runtime-error-builders` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+import { normalizeTimeoutMs } from './runtime-utils.js';
+import { computeModelTimeoutMs } from './model-timeouts.js';
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `resolveEffectiveTimeoutMs` | Resolve effective timeout with model-specific adju |
+
+## 図解
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[runtime-error-builders]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    runtime_utils_js[runtime-utils.js]
+    model_timeouts_js[model-timeouts.js]
+  end
+  main --> local
+```
 
 ## 関数
 
 ### resolveEffectiveTimeoutMs
 
-モデル固有の調整を含めて有効なタイムアウトを解決する。
-
-優先度: max(ユーザー指定, モデル固有) > デフォルト
-
-これにより、低速なモデル（例: GLM-5）は、呼び出しが高速なモデル用の短いタイムアウトを指定した場合でも、常に十分なタイムアウトを得ることが保証される。
-
 ```typescript
-function resolveEffectiveTimeoutMs(
-  userTimeoutMs: unknown,
-  modelId: string | undefined,
-  fallback: number,
-): number
+resolveEffectiveTimeoutMs(userTimeoutMs: unknown, modelId: string | undefined, fallback: number): number
 ```
 
-#### パラメータ
+Resolve effective timeout with model-specific adjustment.
+Priority: max(user-specified, model-specific) > default
 
-- `userTimeoutMs`: ユーザー指定のタイムアウト（安全性のためにunknown型）
-- `modelId`: モデル固有のタイムアウトルックアップ用のモデルID
-- `fallback`: デフォルトのフォールバックタイムアウト（ミリ秒）
+This ensures that slow models (e.g., GLM-5) always get sufficient timeout,
+even if the caller specifies a shorter timeout intended for faster models.
 
-#### 戻り値
+**パラメータ**
 
-解決されたタイムアウト（ミリ秒）
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| userTimeoutMs | `unknown` | はい |
+| modelId | `string | undefined` | はい |
+| fallback | `number` | はい |
 
-## 使用例
+**戻り値**: `number`
 
-```typescript
-import { resolveEffectiveTimeoutMs } from "./runtime-error-builders.js";
-
-// ユーザーがタイムアウトを指定
-const timeout1 = resolveEffectiveTimeoutMs(60000, "gpt-4o", 120000);
-// => 60000 (ユーザー指定が優先)
-
-// ユーザーが短いタイムアウトを指定したが、モデルは遅い
-const timeout2 = resolveEffectiveTimeoutMs(30000, "glm-5", 120000);
-// => max(30000, モデル固有タイムアウト) - モデル固有が大きければそれを使用
-
-// タイムアウト未指定
-const timeout3 = resolveEffectiveTimeoutMs(undefined, "gpt-4o", 120000);
-// => モデル固有タイムアウトまたは120000
-```
-
-## 依存関係
-
-- `runtime-utils.ts`: `normalizeTimeoutMs`
-- `model-timeouts.ts`: `computeModelTimeoutMs`
+---
+*自動生成: 2026-02-17T21:48:27.751Z*

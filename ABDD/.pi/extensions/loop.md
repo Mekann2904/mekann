@@ -1,95 +1,588 @@
 ---
-title: Loop Extension
-category: reference
+title: loop
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [extension, loop, autonomous, iteration, verification]
+last_updated: 2026-02-17
+tags: [auto-generated]
 related: []
 ---
 
-# Loop Extension
-
-> パンくず: [Home](../README.md) > [Extensions](./) > Loop Extension
+# loop
 
 ## 概要
 
-Loop拡張機能は、自律的な反復実行ランナーを提供します。参照資料に基づいた実行、引用チェック、再現可能な実行ログを特徴とします。
+`loop` モジュールのAPIリファレンス。
 
-## 機能
+## インポート
 
-- 自律的なタスク反復実行
-- 参照資料の注入と引用チェック
-- 検証コマンドによる目標達成確認
-- セマンティック停滞検出（実験的）
-- JSONL形式の実行ログ
+```typescript
+import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { dnsLookup } from 'node:dns/promises';
+import { appendFileSync, existsSync, mkdirSync... } from 'node:fs';
+import { basename, isAbsolute, join... } from 'node:path';
+// ... and 19 more imports
+```
 
----
+## エクスポート一覧
 
-## 型定義
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `registerLoopExtension` | - |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class LoopConfig {
+    <<interface>>
+    +maxIterations: number
+    +timeoutMs: number
+    +requireCitation: boolean
+    +verificationTimeoutMs: number
+    +enableSemanticStagnation: boolean
+  }
+  class LoopIterationResult {
+    <<interface>>
+    +iteration: number
+    +latencyMs: number
+    +status: LoopStatus
+    +goalStatus: LoopGoalStatus
+    +goalEvidence: string
+  }
+  class LoopRunSummary {
+    <<interface>>
+    +runId: string
+    +startedAt: string
+    +finishedAt: string
+    +task: string
+    +completed: boolean
+  }
+  class LoopRunOutput {
+    <<interface>>
+    +summary: LoopRunSummary
+    +finalOutput: string
+    +iterations: LoopIterationResult[]
+  }
+  class LoopRunInput {
+    <<interface>>
+    +task: string
+    +goal: string
+    +verificationCommand: string
+    +config: LoopConfig
+    +references: LoopReference[]
+  }
+  class LoopProgress {
+    <<interface>>
+    +type: run_startiteration_startiteration_donerun_done
+    +iteration: number
+    +maxIterations: number
+    +status: LoopStatus
+    +latencyMs: number
+  }
+  class ParsedLoopCommand {
+    <<interface>>
+    +mode: helpstatusrun
+    +task: string
+    +goal: string
+    +verifyCommand: string
+    +refs: string[]
+  }
+  class LoopActivityIndicator {
+    <<interface>>
+    +updateFromProgress: progressLoopProgress>void
+    +stop: >void
+  }
+  class ParsedLoopContract {
+    <<interface>>
+    +status: LoopStatus
+    +goalStatus: LoopGoalStatus
+    +goalEvidence: string
+    +citations: string[]
+    +summary: string
+  }
+  class VerificationPolicyConfig {
+    <<interface>>
+    +mode: VerificationPolicyMode
+    +everyN: number
+  }
+  class ParsedVerificationCommand {
+    <<interface>>
+    +executable: string
+    +args: string[]
+    +error: string
+  }
+```
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[loop]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    format_utils_js[format-utils.js]
+    error_utils_js[error-utils.js]
+    validation_utils_js[validation-utils.js]
+    agent_types_js[agent-types.js]
+    agent_utils_js[agent-utils.js]
+  end
+  main --> local
+  subgraph external[外部ライブラリ]
+    _mariozechner[@mariozechner]
+    _mariozechner[@mariozechner]
+    _mariozechner[@mariozechner]
+  end
+  main --> external
+```
+
+## 関数
+
+### registerLoopExtension
+
+```typescript
+registerLoopExtension(pi: ExtensionAPI): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| pi | `ExtensionAPI` | はい |
+
+**戻り値**: `void`
+
+### runLoop
+
+```typescript
+async runLoop(input: LoopRunInput): Promise<LoopRunOutput>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `LoopRunInput` | はい |
+
+**戻り値**: `Promise<LoopRunOutput>`
+
+### normalizeLoopConfig
+
+```typescript
+normalizeLoopConfig(overrides: Partial<LoopConfig>): { ok: true; config: LoopConfig } | { ok: false; error: string }
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| overrides | `Partial<LoopConfig>` | はい |
+
+**戻り値**: `{ ok: true; config: LoopConfig } | { ok: false; error: string }`
+
+### parseLoopCommand
+
+```typescript
+parseLoopCommand(args: string | undefined): ParsedLoopCommand
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| args | `string | undefined` | はい |
+
+**戻り値**: `ParsedLoopCommand`
+
+### withArgError
+
+```typescript
+withArgError(error: string): ParsedLoopCommand
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| error | `string` | はい |
+
+**戻り値**: `ParsedLoopCommand`
+
+### tokenizeArgs
+
+```typescript
+tokenizeArgs(input: string): string[]
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `string` | はい |
+
+**戻り値**: `string[]`
+
+### callModelViaPi
+
+```typescript
+async callModelViaPi(model: { provider: string; id: string; thinkingLevel: ThinkingLevel }, prompt: string, timeoutMs: number, signal?: AbortSignal): Promise<string>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| model | `{ provider: string; id: string; thinkingLevel: ThinkingLevel }` | はい |
+| prompt | `string` | はい |
+| timeoutMs | `number` | はい |
+| signal | `AbortSignal` | いいえ |
+
+**戻り値**: `Promise<string>`
+
+### startLoopActivityIndicator
+
+```typescript
+startLoopActivityIndicator(ctx: any, maxIterations: number): LoopActivityIndicator
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| ctx | `any` | はい |
+| maxIterations | `number` | はい |
+
+**戻り値**: `LoopActivityIndicator`
+
+### render
+
+```typescript
+render(): void
+```
+
+**戻り値**: `void`
+
+### formatLoopProgress
+
+```typescript
+formatLoopProgress(progress: LoopProgress): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| progress | `LoopProgress` | はい |
+
+**戻り値**: `string`
+
+### formatLoopResultText
+
+```typescript
+formatLoopResultText(summary: LoopRunSummary, finalOutput: string, warnings: string[]): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| summary | `LoopRunSummary` | はい |
+| finalOutput | `string` | はい |
+| warnings | `string[]` | はい |
+
+**戻り値**: `string`
+
+### formatLoopSummary
+
+```typescript
+formatLoopSummary(summary: LoopRunSummary): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| summary | `LoopRunSummary` | はい |
+
+**戻り値**: `string`
+
+### readLatestSummary
+
+```typescript
+readLatestSummary(cwd: string): LoopRunSummary | null
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+
+**戻り値**: `LoopRunSummary | null`
+
+### writeLatestSummarySnapshot
+
+```typescript
+writeLatestSummarySnapshot(path: string, payload: string): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| path | `string` | はい |
+| payload | `string` | はい |
+
+**戻り値**: `void`
+
+### appendJsonl
+
+```typescript
+appendJsonl(path: string, value: unknown): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| path | `string` | はい |
+| value | `unknown` | はい |
+
+**戻り値**: `void`
+
+### normalizeRefSpec
+
+```typescript
+normalizeRefSpec(value: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `string` | はい |
+
+**戻り値**: `string`
+
+### resolvePath
+
+```typescript
+resolvePath(cwd: string, pathLike: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+| pathLike | `string` | はい |
+
+**戻り値**: `string`
+
+### looksLikeUrl
+
+```typescript
+looksLikeUrl(value: string): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `string` | はい |
+
+**戻り値**: `boolean`
+
+### looksLikeHtml
+
+```typescript
+looksLikeHtml(value: string): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `string` | はい |
+
+**戻り値**: `boolean`
+
+### htmlToText
+
+```typescript
+htmlToText(value: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `string` | はい |
+
+**戻り値**: `string`
+
+### truncateText
+
+```typescript
+truncateText(value: string, maxChars: number): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `string` | はい |
+| maxChars | `number` | はい |
+
+**戻り値**: `string`
+
+### toPreview
+
+```typescript
+toPreview(value: string, maxChars: number): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `string` | はい |
+| maxChars | `number` | はい |
+
+**戻り値**: `string`
+
+### normalizeOptionalText
+
+```typescript
+normalizeOptionalText(value: unknown): string | undefined
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+
+**戻り値**: `string | undefined`
+
+### throwIfAborted
+
+```typescript
+throwIfAborted(signal: AbortSignal | undefined): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| signal | `AbortSignal | undefined` | はい |
+
+**戻り値**: `void`
+
+## インターフェース
 
 ### LoopConfig
 
-ループ実行の設定。
-
 ```typescript
 interface LoopConfig {
-  maxIterations: number;                              // 最大反復回数
-  timeoutMs: number;                                  // 反復タイムアウト（ミリ秒）
-  requireCitation: boolean;                           // 引用必須フラグ
-  verificationTimeoutMs: number;                      // 検証タイムアウト
-  enableSemanticStagnation?: boolean;                 // セマンティック停滞検出
-  semanticRepetitionThreshold?: number;               // 類似度閾値（0-1）
+  maxIterations: number;
+  timeoutMs: number;
+  requireCitation: boolean;
+  verificationTimeoutMs: number;
+  enableSemanticStagnation?: boolean;
+  semanticRepetitionThreshold?: number;
 }
 ```
 
 ### LoopIterationResult
 
-反復実行の結果。
-
 ```typescript
 interface LoopIterationResult {
-  iteration: number;              // 反復番号
-  latencyMs: number;              // レイテンシ（ミリ秒）
-  status: LoopStatus;             // ステータス
-  goalStatus: LoopGoalStatus;     // 目標ステータス
-  goalEvidence: string;           // 目標達成の証拠
-  verification?: LoopVerificationResult;  // 検証結果
-  citations: string[];            // 引用リスト
-  validationErrors: string[];     // 検証エラー
-  output: string;                 // 出力
+  iteration: number;
+  latencyMs: number;
+  status: LoopStatus;
+  goalStatus: LoopGoalStatus;
+  goalEvidence: string;
+  verification?: LoopVerificationResult;
+  citations: string[];
+  validationErrors: string[];
+  output: string;
 }
 ```
 
 ### LoopRunSummary
 
-実行サマリー。
-
 ```typescript
 interface LoopRunSummary {
-  runId: string;                  // 実行ID
-  startedAt: string;              // 開始時刻
-  finishedAt: string;             // 終了時刻
-  task: string;                   // タスク
-  completed: boolean;             // 完了フラグ
-  stopReason: StopReason;         // 停止理由
-  iterationCount: number;         // 反復回数
-  maxIterations: number;          // 最大反復回数
-  referenceCount: number;         // 参照数
-  goal?: string;                  // 目標
-  verificationCommand?: string;   // 検証コマンド
-  model: ModelInfo;               // モデル情報
-  config: LoopConfig;             // 設定
-  logFile: string;                // ログファイルパス
-  summaryFile: string;            // サマリーファイルパス
-  finalPreview: string;           // 最終出力プレビュー
-  intentClassification?: IntentClassification;  // インテント分類
-  semanticStagnation?: SemanticStagnation;      // セマンティック停滞情報
+  runId: string;
+  startedAt: string;
+  finishedAt: string;
+  task: string;
+  completed: boolean;
+  stopReason: "model_done" | "max_iterations" | "stagnation" | "iteration_error";
+  iterationCount: number;
+  maxIterations: number;
+  referenceCount: number;
+  goal?: string;
+  verificationCommand?: string;
+  verificationTimeoutMs?: number;
+  lastGoalStatus?: LoopGoalStatus;
+  lastVerificationPassed?: boolean;
+  model: {
+    provider: string;
+    id: string;
+    thinkingLevel: ThinkingLevel;
+  };
+  config: LoopConfig;
+  logFile: string;
+  summaryFile: string;
+  finalPreview: string;
+  intentClassification?: {
+    intent: TaskIntent;
+    confidence: number;
+  };
+  semanticStagnation?: {
+    detected: boolean;
+    averageSimilarity: number;
+    method: "embedding" | "exact" | "unavailable";
+  };
+}
+```
+
+### LoopRunOutput
+
+```typescript
+interface LoopRunOutput {
+  summary: LoopRunSummary;
+  finalOutput: string;
+  iterations: LoopIterationResult[];
+}
+```
+
+### LoopRunInput
+
+```typescript
+interface LoopRunInput {
+  task: string;
+  goal?: string;
+  verificationCommand?: string;
+  config: LoopConfig;
+  references: LoopReference[];
+  model: {
+    provider: string;
+    id: string;
+    thinkingLevel: ThinkingLevel;
+  };
+  cwd: string;
+  signal?: AbortSignal;
+  onProgress?: (progress: LoopProgress) => void;
 }
 ```
 
 ### LoopProgress
-
-進捗情報。
 
 ```typescript
 interface LoopProgress {
@@ -106,171 +599,71 @@ interface LoopProgress {
 }
 ```
 
-### LoopReference
-
-参照情報。
+### ParsedLoopCommand
 
 ```typescript
-interface LoopReference {
-  id: string;           // 参照ID (R1, R2, ...)
-  source: string;       // ソース（ファイルパス/URL/テキスト）
-  title: string;        // タイトル
-  content: string;      // コンテンツ
+interface ParsedLoopCommand {
+  mode: "help" | "status" | "run";
+  task: string;
+  goal?: string;
+  verifyCommand?: string;
+  refs: string[];
+  refsFile?: string;
+  configOverrides: Partial<LoopConfig>;
+  error?: string;
 }
 ```
 
----
-
-## 主要関数
-
-### runLoop(input: LoopRunInput): Promise<LoopRunOutput>
-
-メインのループ実行関数。
+### LoopActivityIndicator
 
 ```typescript
-async function runLoop(input: LoopRunInput): Promise<LoopRunOutput>
+interface LoopActivityIndicator {
+  updateFromProgress: (progress: LoopProgress) => void;
+  stop: () => void;
+}
 ```
 
-**パラメータ**:
-- `input`: ループ実行入力パラメータ
-
-**戻り値**: サマリー、最終出力、反復結果を含む出力
-
-### normalizeLoopConfig(overrides): NormalizedConfig
-
-設定を正規化します。
+### ParsedLoopContract
 
 ```typescript
-function normalizeLoopConfig(
-  overrides: Partial<LoopConfig>,
-): { ok: true; config: LoopConfig } | { ok: false; error: string }
+interface ParsedLoopContract {
+  status: LoopStatus;
+  goalStatus: LoopGoalStatus;
+  goalEvidence: string;
+  citations: string[];
+  summary: string;
+  nextActions: string[];
+  parseErrors: string[];
+  usedStructuredBlock: boolean;
+}
 ```
 
-### parseLoopCommand(args: string): ParsedLoopCommand
-
-コマンドライン引数をパースします。
+### VerificationPolicyConfig
 
 ```typescript
-function parseLoopCommand(args: string | undefined): ParsedLoopCommand
+interface VerificationPolicyConfig {
+  mode: VerificationPolicyMode;
+  everyN: number;
+}
 ```
 
-### loadReferences(input, signal): Promise<LoadedReferences>
-
-参照資料を読み込みます。
+### ParsedVerificationCommand
 
 ```typescript
-async function loadReferences(
-  input: { refs: string[]; refsFile?: string; cwd: string },
-  signal?: AbortSignal
-): Promise<{ references: LoopReference[]; warnings: string[] }>
+interface ParsedVerificationCommand {
+  executable: string;
+  args: string[];
+  error?: string;
+}
+```
+
+## 型定義
+
+### VerificationPolicyMode
+
+```typescript
+type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-
-## ツール
-
-### loop_run
-
-自律的な反復ループを実行します。
-
-**パラメータ**:
-| 名前 | 型 | 必須 | 説明 |
-|-----|-----|-----|------|
-| task | string | はい | 実行するタスク |
-| maxIterations | number | いいえ | 最大反復回数 |
-| timeoutMs | number | いいえ | タイムアウト（ミリ秒） |
-| verificationTimeoutMs | number | いいえ | 検証タイムアウト |
-| requireCitation | boolean | いいえ | 引用必須 |
-| goal | string | いいえ | 完了基準 |
-| verifyCommand | string | いいえ | 検証コマンド |
-| references | string[] | いいえ | 参照リスト |
-| refsFile | string | いいえ | 参照ファイル |
-| enableSemanticStagnation | boolean | いいえ | セマンティック停滞検出 |
-| semanticRepetitionThreshold | number | いいえ | 類似度閾値 |
-
----
-
-## コマンド
-
-### /loop run
-
-ループを実行します。
-
-```
-/loop run [--max <n>] [--timeout <ms>] [--goal <text>] [--verify <command>] [--ref <path|url|text>] <task>
-```
-
-**オプション**:
-- `--max, -n`: 最大反復回数
-- `--timeout`: 反復タイムアウト（ミリ秒）
-- `--verify-timeout`: 検証タイムアウト
-- `--goal`: 明示的な完了基準
-- `--verify`: 検証コマンド
-- `--ref`: 参照資料
-- `--refs-file`: 参照ファイル
-- `--require-citation`: 引用を必須にする
-- `--no-require-citation`: 引用を必須にしない
-
-### /loop status
-
-最新の実行サマリーを表示します。
-
-```
-/loop status
-```
-
-### /loop help
-
-ヘルプを表示します。
-
-```
-/loop help
-```
-
----
-
-## 使用例
-
-```
-# 基本的なループ実行
-/loop run --max 8 Implement the parser and make all tests pass.
-
-# 目標と検証コマンド付き
-/loop run --goal "all tests pass" --verify "npm test" Implement parser updates.
-
-# 参照資料付き
-/loop run --ref ./docs/paper-notes.md --ref https://example.com/api.md Write a summary with citations.
-
-# セマンティック停滞検出有効
-/loop run --enable-semantic-stagnation Analyze the codebase patterns.
-```
-
----
-
-## 制限値
-
-| パラメータ | 最小値 | 最大値 | デフォルト |
-|-----------|-------|-------|----------|
-| maxIterations | 1 | 16/48 | 4/6 |
-| timeoutMs | 10,000 | 600,000 | 60,000/120,000 |
-| verificationTimeoutMs | 1,000 | 120,000 | 60,000/120,000 |
-| maxReferences | - | 24 | - |
-| maxReferenceCharsPerItem | - | 8,000 | - |
-| maxReferenceCharsTotal | - | 30,000 | - |
-
----
-
-## ファイル出力
-
-ループ実行は以下のファイルを生成します:
-
-- `.pi/agent-loop/<run-id>.jsonl` - 実行ログ
-- `.pi/agent-loop/<run-id>.summary.json` - サマリー
-- `.pi/agent-loop/latest-summary.json` - 最新サマリーのスナップショット
-
----
-
-## 関連トピック
-
-- [Plan Extension](./plan.md) - プラン管理機能
-- [Question Extension](./question.md) - ユーザー質問機能
+*自動生成: 2026-02-17T21:48:27.549Z*

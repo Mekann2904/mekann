@@ -1,144 +1,191 @@
 ---
-title: Runtime Utils
-category: reference
+title: runtime-utils
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [runtime, utilities, timeout, retry, error]
-related: [retry-with-backoff, subagents, agent-teams]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Runtime Utils
+# runtime-utils
 
-サブエージェントとエージェントチーム実行用のランタイムユーティリティ。タイムアウト処理、リトライスキーマ、エラーフォーマットユーティリティを提供する。
+## 概要
+
+`runtime-utils` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+import { Type } from '@mariozechner/pi-ai';
+import { RetryWithBackoffOverrides } from './retry-with-backoff.js';
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `trimForError` | Trim message for error display, normalizing whites |
+| 関数 | `buildRateLimitKey` | Build rate limit key from provider and model. |
+| 関数 | `buildTraceTaskId` | Build trace task ID for debugging and logging. |
+| 関数 | `normalizeTimeoutMs` | Normalize timeout value in milliseconds. |
+| 関数 | `createRetrySchema` | Create retry schema for tool input validation. |
+| 関数 | `toRetryOverrides` | Convert retry input value to RetryWithBackoffOverr |
+| 関数 | `toConcurrencyLimit` | Convert concurrency limit input to number. |
+
+## 図解
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[runtime-utils]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    retry_with_backoff_js[retry-with-backoff.js]
+  end
+  main --> local
+  subgraph external[外部ライブラリ]
+    _mariozechner[@mariozechner]
+  end
+  main --> external
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  trimForError["trimForError()"]
+  buildRateLimitKey["buildRateLimitKey()"]
+  buildTraceTaskId["buildTraceTaskId()"]
+  normalizeTimeoutMs["normalizeTimeoutMs()"]
+  createRetrySchema["createRetrySchema()"]
+  toRetryOverrides["toRetryOverrides()"]
+  trimForError -.-> buildRateLimitKey
+  buildRateLimitKey -.-> buildTraceTaskId
+  buildTraceTaskId -.-> normalizeTimeoutMs
+  normalizeTimeoutMs -.-> createRetrySchema
+  createRetrySchema -.-> toRetryOverrides
+```
 
 ## 関数
 
 ### trimForError
 
-エラー表示用にメッセージをトリムし、空白を正規化する。
-
 ```typescript
-function trimForError(message: string, maxLength = 600): string
+trimForError(message: string, maxLength: any): string
 ```
 
-#### パラメータ
+Trim message for error display, normalizing whitespace.
 
-- `message`: トリムするメッセージ
-- `maxLength`: 最大長（デフォルト: 600）
+**パラメータ**
 
-#### 戻り値
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| message | `string` | はい |
+| maxLength | `any` | はい |
 
-トリムされたメッセージ
+**戻り値**: `string`
 
 ### buildRateLimitKey
 
-プロバイダーとモデルからレート制限キーを構築する。
-
 ```typescript
-function buildRateLimitKey(provider: string, model: string): string
+buildRateLimitKey(provider: string, model: string): string
 ```
 
-#### 戻り値
+Build rate limit key from provider and model.
 
-正規化されたレート制限キー（例: `anthropic::claude-sonnet-4-20250514`）
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `string` | はい |
+| model | `string` | はい |
+
+**戻り値**: `string`
 
 ### buildTraceTaskId
 
-デバッグとロギング用のトレースタスクIDを構築する。
-
 ```typescript
-function buildTraceTaskId(
-  traceId: string | undefined,
-  delegateId: string,
-  sequence: number,
-): string
+buildTraceTaskId(traceId: string | undefined, delegateId: string, sequence: number): string
 ```
 
-#### 戻り値
+Build trace task ID for debugging and logging.
 
-フォーマットされたトレースタスクID（例: `trace-123:delegate-456:1`）
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| traceId | `string | undefined` | はい |
+| delegateId | `string` | はい |
+| sequence | `number` | はい |
+
+**戻り値**: `string`
 
 ### normalizeTimeoutMs
 
-タイムアウト値（ミリ秒）を正規化する。
-
 ```typescript
-function normalizeTimeoutMs(value: unknown, fallback: number): number
+normalizeTimeoutMs(value: unknown, fallback: number): number
 ```
 
-#### パラメータ
+Normalize timeout value in milliseconds.
 
-- `value`: タイムアウト値（unknown型）
-- `fallback`: 無効な場合のフォールバック値
+**パラメータ**
 
-#### 戻り値
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+| fallback | `number` | はい |
 
-正規化されたタイムアウト（ミリ秒）
+**戻り値**: `number`
 
 ### createRetrySchema
 
-ツール入力検証用のリトライスキーマを作成する。
-
 ```typescript
-function createRetrySchema()
+createRetrySchema(): void
 ```
 
-#### 戻り値
+Create retry schema for tool input validation.
 
-リトライオプション用のTypeBoxスキーマ
+**戻り値**: `void`
 
 ### toRetryOverrides
 
-リトライ入力値をRetryWithBackoffOverridesに変換する。
-
-注意: これは「不安定」バージョンであり、STABLE_*_RUNTIMEをチェックしない。拡張機能（subagents.ts, agent-teams.ts）には、安定モードでundefinedを返す独自のローカルバージョンがある。拡張機能からこの関数を使用する場合、呼び出し元で安定モードチェックを処理する必要がある。
-
 ```typescript
-function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
+toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
 ```
+
+Convert retry input value to RetryWithBackoffOverrides.
+
+Note: This is the "unstable" version that does NOT check STABLE_*_RUNTIME.
+Extensions (subagents.ts, agent-teams.ts) have their own local versions that
+return undefined in stable mode. If you want to use this function from extensions,
+you must handle stable mode check in the caller.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+
+**戻り値**: `RetryWithBackoffOverrides | undefined`
 
 ### toConcurrencyLimit
 
-同時実行制限入力を数値に変換する。
-
 ```typescript
-function toConcurrencyLimit(value: unknown, fallback: number): number
+toConcurrencyLimit(value: unknown, fallback: number): number
 ```
 
-#### パラメータ
+Convert concurrency limit input to number.
 
-- `value`: 生の同時実行制限値
-- `fallback`: 無効な場合のフォールバック値
+**パラメータ**
 
-#### 戻り値
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+| fallback | `number` | はい |
 
-正規化された同時実行制限
+**戻り値**: `number`
 
-## 使用例
-
-```typescript
-import {
-  trimForError,
-  buildRateLimitKey,
-  buildTraceTaskId,
-  normalizeTimeoutMs,
-  toConcurrencyLimit,
-} from "./runtime-utils.js";
-
-// エラーメッセージのトリム
-const shortError = trimForError(longErrorMessage, 200);
-
-// レート制限キーの構築
-const key = buildRateLimitKey("anthropic", "claude-sonnet-4-20250514");
-// => "anthropic::claude-sonnet-4-20250514"
-
-// トレースIDの構築
-const traceId = buildTraceTaskId("trace-123", "delegate-456", 1);
-// => "trace-123:delegate-456:1"
-
-// タイムアウトの正規化
-const timeout = normalizeTimeoutMs(userInput, 120000);
-
-// 同時実行制限の正規化
-const concurrency = toConcurrencyLimit(userInput, 5);
-```
+---
+*自動生成: 2026-02-17T21:48:27.752Z*

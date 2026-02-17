@@ -1,36 +1,376 @@
 ---
-title: Semantic Memory
-category: reference
+title: semantic-memory
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [semantic, memory, embedding, search, vector]
-related: [run-index, embeddings, pattern-extraction]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Semantic Memory
+# semantic-memory
 
-エンベディングプロバイダーを使用して実行履歴のセマンティック検索を提供するモジュール。ベクトル類似度による「類似タスクの検索」機能を可能にする。
+## 概要
 
-このモジュールは実際のエンベディング生成にembeddings/サブモジュールを使用する。
+`semantic-memory` モジュールのAPIリファレンス。
 
-## 型定義
+## インポート
+
+```typescript
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { embeddingsGenerateEmbedding, embeddingsGenerateEmbeddingsBatch, cosineSimilarity... } from './embeddings/index.js';
+import { ensureDir } from './fs-utils.js';
+import { IndexedRun, RunIndex, getOrBuildRunIndex } from './run-index.js';
+// ... and 1 more imports
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `generateEmbedding` | Generate embedding for text using the configured p |
+| 関数 | `generateEmbeddingsBatch` | Generate embeddings for multiple texts in batch. |
+| 関数 | `isSemanticMemoryAvailable` | Check if semantic memory is available (any provide |
+| 関数 | `findNearestNeighbors` | Find the k nearest neighbors to a query vector. |
+| 関数 | `getSemanticMemoryPath` | Get the path to the semantic memory storage file. |
+| 関数 | `loadSemanticMemory` | Load semantic memory storage from disk. |
+| 関数 | `saveSemanticMemory` | Save semantic memory storage to disk. |
+| 関数 | `buildSemanticMemoryIndex` | Build semantic memory index from run index. |
+| 関数 | `addRunToSemanticMemory` | Add a single run to semantic memory. |
+| 関数 | `semanticSearch` | Search for similar runs using semantic similarity. |
+| 関数 | `findSimilarRunsById` | Find runs similar to a given run ID. |
+| 関数 | `getSemanticMemoryStats` | Get semantic memory statistics. |
+| 関数 | `clearSemanticMemory` | Clear semantic memory index. |
+| インターフェース | `RunEmbedding` | Vector embedding for a run. |
+| インターフェース | `SemanticMemoryStorage` | Semantic memory storage. |
+| インターフェース | `SemanticSearchResult` | Semantic search result. |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class RunEmbedding {
+    <<interface>>
+    +runId: string
+    +embedding: number[]
+    +text: string
+    +timestamp: string
+  }
+  class SemanticMemoryStorage {
+    <<interface>>
+    +version: number
+    +lastUpdated: string
+    +embeddings: RunEmbedding[]
+    +model: string
+    +dimensions: number
+  }
+  class SemanticSearchResult {
+    <<interface>>
+    +run: IndexedRun
+    +similarity: number
+    +embedding: RunEmbedding
+  }
+```
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[semantic-memory]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    index_js[index.js]
+    fs_utils_js[fs-utils.js]
+    run_index_js[run-index.js]
+    storage_lock_js[storage-lock.js]
+  end
+  main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  generateEmbedding["generateEmbedding()"]
+  generateEmbeddingsBatch["generateEmbeddingsBatch()"]
+  isSemanticMemoryAvailable["isSemanticMemoryAvailable()"]
+  findNearestNeighbors["findNearestNeighbors()"]
+  getSemanticMemoryPath["getSemanticMemoryPath()"]
+  loadSemanticMemory["loadSemanticMemory()"]
+  generateEmbedding -.-> generateEmbeddingsBatch
+  generateEmbeddingsBatch -.-> isSemanticMemoryAvailable
+  isSemanticMemoryAvailable -.-> findNearestNeighbors
+  findNearestNeighbors -.-> getSemanticMemoryPath
+  getSemanticMemoryPath -.-> loadSemanticMemory
+```
+
+## 関数
+
+### generateEmbedding
+
+```typescript
+async generateEmbedding(text: string): Promise<number[] | null>
+```
+
+Generate embedding for text using the configured provider.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `Promise<number[] | null>`
+
+### generateEmbeddingsBatch
+
+```typescript
+async generateEmbeddingsBatch(texts: string[]): Promise<(number[] | null)[]>
+```
+
+Generate embeddings for multiple texts in batch.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| texts | `string[]` | はい |
+
+**戻り値**: `Promise<(number[] | null)[]>`
+
+### isSemanticMemoryAvailable
+
+```typescript
+isSemanticMemoryAvailable(): boolean
+```
+
+Check if semantic memory is available (any provider configured).
+
+**戻り値**: `boolean`
+
+### findNearestNeighbors
+
+```typescript
+findNearestNeighbors(queryVector: number[], embeddings: RunEmbedding[], k: number): Array<{ embedding: RunEmbedding; similarity: number }>
+```
+
+Find the k nearest neighbors to a query vector.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| queryVector | `number[]` | はい |
+| embeddings | `RunEmbedding[]` | はい |
+| k | `number` | はい |
+
+**戻り値**: `Array<{ embedding: RunEmbedding; similarity: number }>`
+
+### getSemanticMemoryPath
+
+```typescript
+getSemanticMemoryPath(cwd: string): string
+```
+
+Get the path to the semantic memory storage file.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+
+**戻り値**: `string`
+
+### loadSemanticMemory
+
+```typescript
+loadSemanticMemory(cwd: string): SemanticMemoryStorage
+```
+
+Load semantic memory storage from disk.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+
+**戻り値**: `SemanticMemoryStorage`
+
+### saveSemanticMemory
+
+```typescript
+saveSemanticMemory(cwd: string, storage: SemanticMemoryStorage): void
+```
+
+Save semantic memory storage to disk.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+| storage | `SemanticMemoryStorage` | はい |
+
+**戻り値**: `void`
+
+### buildEmbeddingText
+
+```typescript
+buildEmbeddingText(run: IndexedRun): string
+```
+
+Build text to embed from a run.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| run | `IndexedRun` | はい |
+
+**戻り値**: `string`
+
+### buildSemanticMemoryIndex
+
+```typescript
+async buildSemanticMemoryIndex(cwd: string, batchSize: number): Promise<SemanticMemoryStorage>
+```
+
+Build semantic memory index from run index.
+Generates embeddings for all runs.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+| batchSize | `number` | はい |
+
+**戻り値**: `Promise<SemanticMemoryStorage>`
+
+### addRunToSemanticMemory
+
+```typescript
+async addRunToSemanticMemory(cwd: string, run: IndexedRun): Promise<void>
+```
+
+Add a single run to semantic memory.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+| run | `IndexedRun` | はい |
+
+**戻り値**: `Promise<void>`
+
+### semanticSearch
+
+```typescript
+async semanticSearch(cwd: string, query: string, options: {
+    limit?: number;
+    status?: "completed" | "failed";
+    minSimilarity?: number;
+  }): Promise<SemanticSearchResult[]>
+```
+
+Search for similar runs using semantic similarity.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+| query | `string` | はい |
+| options | `{
+    limit?: number;
+    status?: "completed" | "failed";
+    minSimilarity?: number;
+  }` | はい |
+
+**戻り値**: `Promise<SemanticSearchResult[]>`
+
+### findSimilarRunsById
+
+```typescript
+findSimilarRunsById(cwd: string, runId: string, limit: number): SemanticSearchResult[]
+```
+
+Find runs similar to a given run ID.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+| runId | `string` | はい |
+| limit | `number` | はい |
+
+**戻り値**: `SemanticSearchResult[]`
+
+### getSemanticMemoryStats
+
+```typescript
+getSemanticMemoryStats(cwd: string): {
+  totalEmbeddings: number;
+  lastUpdated: string;
+  model: string;
+  isAvailable: boolean;
+}
+```
+
+Get semantic memory statistics.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+
+**戻り値**: `{
+  totalEmbeddings: number;
+  lastUpdated: string;
+  model: string;
+  isAvailable: boolean;
+}`
+
+### clearSemanticMemory
+
+```typescript
+clearSemanticMemory(cwd: string): void
+```
+
+Clear semantic memory index.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+
+**戻り値**: `void`
+
+## インターフェース
 
 ### RunEmbedding
-
-実行のベクトルエンベディング。
 
 ```typescript
 interface RunEmbedding {
   runId: string;
   embedding: number[];
-  text: string;       // エンベディングされたテキスト
+  text: string;
   timestamp: string;
 }
 ```
 
-### SemanticMemoryStorage
+Vector embedding for a run.
 
-セマンティックメモリストレージ。
+### SemanticMemoryStorage
 
 ```typescript
 interface SemanticMemoryStorage {
@@ -42,9 +382,9 @@ interface SemanticMemoryStorage {
 }
 ```
 
-### SemanticSearchResult
+Semantic memory storage.
 
-セマンティック検索結果。
+### SemanticSearchResult
 
 ```typescript
 interface SemanticSearchResult {
@@ -54,157 +394,7 @@ interface SemanticSearchResult {
 }
 ```
 
-## 定数
+Semantic search result.
 
-### SEMANTIC_MEMORY_VERSION
-
-```typescript
-export const SEMANTIC_MEMORY_VERSION = 1;
-```
-
-### EMBEDDING_MODEL
-
-```typescript
-export const EMBEDDING_MODEL = "text-embedding-3-small";
-```
-
-### EMBEDDING_DIMENSIONS
-
-```typescript
-export const EMBEDDING_DIMENSIONS = 1536;
-```
-
-## 関数
-
-### generateEmbedding (非推奨)
-
-設定されたプロバイダーを使用してテキストのエンベディングを生成する。
-
-```typescript
-async function generateEmbedding(text: string): Promise<number[] | null>
-```
-
-### generateEmbeddingsBatch (非推奨)
-
-複数のテキストのエンベディングをバッチで生成する。
-
-```typescript
-async function generateEmbeddingsBatch(
-  texts: string[]
-): Promise<(number[] | null)[]>
-```
-
-### isSemanticMemoryAvailable
-
-セマンティックメモリが利用可能かどうかを確認する（プロバイダーが設定されているか）。
-
-```typescript
-function isSemanticMemoryAvailable(): boolean
-```
-
-### findNearestNeighbors
-
-クエリベクトルに最も近いk個の近傍を見つける。
-
-```typescript
-function findNearestNeighbors(
-  queryVector: number[],
-  embeddings: RunEmbedding[],
-  k: number = 5
-): Array<{ embedding: RunEmbedding; similarity: number }>
-```
-
-### getSemanticMemoryPath
-
-セマンティックメモリストレージファイルのパスを取得する。
-
-```typescript
-function getSemanticMemoryPath(cwd: string): string
-```
-
-### loadSemanticMemory
-
-ディスクからセマンティックメモリストレージを読み込む。
-
-```typescript
-function loadSemanticMemory(cwd: string): SemanticMemoryStorage
-```
-
-### saveSemanticMemory
-
-セマンティックメモリストレージをディスクに保存する。
-
-```typescript
-function saveSemanticMemory(cwd: string, storage: SemanticMemoryStorage): void
-```
-
-### buildSemanticMemoryIndex
-
-実行インデックスからセマンティックメモリインデックスを構築する。全実行のエンベディングを生成する。
-
-```typescript
-async function buildSemanticMemoryIndex(
-  cwd: string,
-  batchSize: number = 20
-): Promise<SemanticMemoryStorage>
-```
-
-### addRunToSemanticMemory
-
-単一の実行をセマンティックメモリに追加する。
-
-```typescript
-async function addRunToSemanticMemory(
-  cwd: string,
-  run: IndexedRun
-): Promise<void>
-```
-
-### semanticSearch
-
-セマンティック類似度を使用して類似実行を検索する。
-
-```typescript
-async function semanticSearch(
-  cwd: string,
-  query: string,
-  options?: {
-    limit?: number;
-    status?: "completed" | "failed";
-    minSimilarity?: number;
-  }
-): Promise<SemanticSearchResult[]>
-```
-
-### findSimilarRunsById
-
-指定された実行IDに類似する実行を検索する。
-
-```typescript
-function findSimilarRunsById(
-  cwd: string,
-  runId: string,
-  limit: number = 5
-): SemanticSearchResult[]
-```
-
-### getSemanticMemoryStats
-
-セマンティックメモリの統計を取得する。
-
-```typescript
-function getSemanticMemoryStats(cwd: string): {
-  totalEmbeddings: number;
-  lastUpdated: string;
-  model: string;
-  isAvailable: boolean;
-}
-```
-
-### clearSemanticMemory
-
-セマンティックメモリインデックスをクリアする。
-
-```typescript
-function clearSemanticMemory(cwd: string): void
-```
+---
+*自動生成: 2026-02-17T21:48:27.754Z*

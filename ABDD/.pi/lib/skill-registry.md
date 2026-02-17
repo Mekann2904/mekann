@@ -1,27 +1,368 @@
 ---
-title: Skill Registry
-category: reference
+title: skill-registry
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [skill, registry, loading, resolution, merging]
-related: [subagents, agent-teams]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Skill Registry
+# skill-registry
 
-サブエージェントとエージェントチームのスキル読み込み、解決、マージを処理するモジュール。
+## 概要
 
-主な機能:
-- pi-coreスキルシステムからスキルを読み込み
-- 名前またはIDでスキルを解決
-- 継承ルールでスキルをマージ（親->子、チーム共通 + メンバー個別）
-- プロンプト注入用にスキルコンテンツをフォーマット
+`skill-registry` モジュールのAPIリファレンス。
 
-## 型定義
+## インポート
+
+```typescript
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `resolveSkills` | Resolve multiple skills by reference |
+| 関数 | `mergeSkills` | Merge skills according to inheritance rules |
+| 関数 | `mergeSkillArrays` | Merge skill arrays handling the inheritance patter |
+| 関数 | `formatSkillsForPrompt` | Format resolved skills for prompt injection |
+| 関数 | `formatSkillsWithContent` | Format resolved skills with full content for immed |
+| 関数 | `loadSkillsForAgent` | Load and resolve skills for a subagent or team mem |
+| 関数 | `validateSkillReferences` | Validate skill references without loading content |
+| インターフェース | `SkillDefinition` | Skill definition matching pi-core Skill interface |
+| インターフェース | `ResolvedSkill` | Resolved skill with content loaded |
+| インターフェース | `ResolveSkillsOptions` | Skill resolution options |
+| インターフェース | `SkillMergeConfig` | Skill merge configuration for inheritance |
+| インターフェース | `ResolveSkillsResult` | Result of skill resolution |
+| 型 | `SkillReference` | Skill reference - can be a skill name or path |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class SkillDefinition {
+    <<interface>>
+    +name: string
+    +description: string
+    +filePath: string
+    +baseDir: string
+    +source: string
+  }
+  class ResolvedSkill {
+    <<interface>>
+    +content: string
+  }
+  class ResolveSkillsOptions {
+    <<interface>>
+    +cwd: string
+    +agentDir: string
+    +skillPaths: string[]
+  }
+  class SkillMergeConfig {
+    <<interface>>
+    +parentSkills: SkillReference[]
+    +childSkills: SkillReference[]
+    +strategy: replacemerge
+  }
+  class ResolveSkillsResult {
+    <<interface>>
+    +skills: ResolvedSkill[]
+    +errors: string[]
+    +warnings: string[]
+  }
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  resolveSkills["resolveSkills()"]
+  mergeSkills["mergeSkills()"]
+  mergeSkillArrays["mergeSkillArrays()"]
+  formatSkillsForPrompt["formatSkillsForPrompt()"]
+  formatSkillsWithContent["formatSkillsWithContent()"]
+  loadSkillsForAgent["loadSkillsForAgent()"]
+  resolveSkills -.-> mergeSkills
+  mergeSkills -.-> mergeSkillArrays
+  mergeSkillArrays -.-> formatSkillsForPrompt
+  formatSkillsForPrompt -.-> formatSkillsWithContent
+  formatSkillsWithContent -.-> loadSkillsForAgent
+```
+
+## 関数
+
+### getDefaultAgentDir
+
+```typescript
+getDefaultAgentDir(): string
+```
+
+Get the default agent directory (~/.pi/agent)
+
+**戻り値**: `string`
+
+### getSkillSearchPaths
+
+```typescript
+getSkillSearchPaths(cwd: string, agentDir?: string): string[]
+```
+
+Get candidate skill directories to search
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+| agentDir | `string` | いいえ |
+
+**戻り値**: `string[]`
+
+### parseSkillFrontmatter
+
+```typescript
+parseSkillFrontmatter(content: string): {
+  frontmatter: Record<string, unknown>;
+  body: string;
+}
+```
+
+Parse YAML frontmatter from skill content
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| content | `string` | はい |
+
+**戻り値**: `{
+  frontmatter: Record<string, unknown>;
+  body: string;
+}`
+
+### loadSkillFromFile
+
+```typescript
+loadSkillFromFile(filePath: string, source: string): { skill: SkillDefinition | null; error?: string }
+```
+
+Load a single skill from its SKILL.md file
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| filePath | `string` | はい |
+| source | `string` | はい |
+
+**戻り値**: `{ skill: SkillDefinition | null; error?: string }`
+
+### discoverSkillsFromDir
+
+```typescript
+discoverSkillsFromDir(skillsDir: string, source: string): { skills: SkillDefinition[]; errors: string[] }
+```
+
+Discover skills from a directory
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| skillsDir | `string` | はい |
+| source | `string` | はい |
+
+**戻り値**: `{ skills: SkillDefinition[]; errors: string[] }`
+
+### buildSkillIndex
+
+```typescript
+buildSkillIndex(cwd: string, agentDir?: string, additionalPaths?: string[]): Map<string, SkillDefinition>
+```
+
+Build a skill index for fast lookup
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+| agentDir | `string` | いいえ |
+| additionalPaths | `string[]` | いいえ |
+
+**戻り値**: `Map<string, SkillDefinition>`
+
+### resolveSkillContent
+
+```typescript
+resolveSkillContent(skill: SkillDefinition): {
+  content: string;
+  error?: string;
+}
+```
+
+Resolve skill content from file
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| skill | `SkillDefinition` | はい |
+
+**戻り値**: `{
+  content: string;
+  error?: string;
+}`
+
+### resolveSkills
+
+```typescript
+resolveSkills(references: SkillReference[], options: ResolveSkillsOptions): ResolveSkillsResult
+```
+
+Resolve multiple skills by reference
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| references | `SkillReference[]` | はい |
+| options | `ResolveSkillsOptions` | はい |
+
+**戻り値**: `ResolveSkillsResult`
+
+### mergeSkills
+
+```typescript
+mergeSkills(config: SkillMergeConfig, options: ResolveSkillsOptions): ResolveSkillsResult
+```
+
+Merge skills according to inheritance rules
+
+Rules:
+- Empty array [] is ignored (treated as "not specified")
+- Parent skills are inherited by default
+- Child skills are merged with parent skills
+- "replace" strategy ignores parent skills
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| config | `SkillMergeConfig` | はい |
+| options | `ResolveSkillsOptions` | はい |
+
+**戻り値**: `ResolveSkillsResult`
+
+### mergeSkillArrays
+
+```typescript
+mergeSkillArrays(parentSkills: SkillReference[] | undefined, childSkills: SkillReference[] | undefined): SkillReference[]
+```
+
+Merge skill arrays handling the inheritance pattern
+Used by subagents and agent teams
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| parentSkills | `SkillReference[] | undefined` | はい |
+| childSkills | `SkillReference[] | undefined` | はい |
+
+**戻り値**: `SkillReference[]`
+
+### formatSkillsForPrompt
+
+```typescript
+formatSkillsForPrompt(skills: ResolvedSkill[]): string
+```
+
+Format resolved skills for prompt injection
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| skills | `ResolvedSkill[]` | はい |
+
+**戻り値**: `string`
+
+### formatSkillsWithContent
+
+```typescript
+formatSkillsWithContent(skills: ResolvedSkill[]): string
+```
+
+Format resolved skills with full content for immediate use
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| skills | `ResolvedSkill[]` | はい |
+
+**戻り値**: `string`
+
+### escapeXml
+
+```typescript
+escapeXml(str: string): string
+```
+
+Escape special characters for XML
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| str | `string` | はい |
+
+**戻り値**: `string`
+
+### loadSkillsForAgent
+
+```typescript
+loadSkillsForAgent(skillReferences: SkillReference[] | undefined, parentSkillReferences: SkillReference[] | undefined, cwd: string): { promptSection: string; skills: ResolvedSkill[]; errors: string[] }
+```
+
+Load and resolve skills for a subagent or team member
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| skillReferences | `SkillReference[] | undefined` | はい |
+| parentSkillReferences | `SkillReference[] | undefined` | はい |
+| cwd | `string` | はい |
+
+**戻り値**: `{ promptSection: string; skills: ResolvedSkill[]; errors: string[] }`
+
+### validateSkillReferences
+
+```typescript
+validateSkillReferences(references: SkillReference[], cwd: string): { valid: string[]; invalid: string[] }
+```
+
+Validate skill references without loading content
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| references | `SkillReference[]` | はい |
+| cwd | `string` | はい |
+
+**戻り値**: `{ valid: string[]; invalid: string[] }`
+
+## インターフェース
 
 ### SkillDefinition
-
-pi-core Skillインターフェースに一致するスキル定義。
 
 ```typescript
 interface SkillDefinition {
@@ -34,51 +375,43 @@ interface SkillDefinition {
 }
 ```
 
-### SkillReference
-
-スキル参照 - スキル名またはパス。
-
-```typescript
-type SkillReference = string;
-```
+Skill definition matching pi-core Skill interface
 
 ### ResolvedSkill
 
-コンテンツが読み込まれた解決済みスキル。
-
 ```typescript
-interface ResolvedSkill extends SkillDefinition {
+interface ResolvedSkill {
   content: string;
 }
 ```
 
-### ResolveSkillsOptions
+Resolved skill with content loaded
 
-スキル解決オプション。
+### ResolveSkillsOptions
 
 ```typescript
 interface ResolveSkillsOptions {
-  cwd: string;                          // 相対パス解決用の作業ディレクトリ
-  agentDir?: string;                    // グローバルスキル用のエージェントディレクトリ（デフォルト: ~/.pi/agent）
-  skillPaths?: string[];                // 検索する追加のスキルパス
+  cwd: string;
+  agentDir?: string;
+  skillPaths?: string[];
 }
 ```
+
+Skill resolution options
 
 ### SkillMergeConfig
 
-継承用のスキルマージ設定。
-
 ```typescript
 interface SkillMergeConfig {
-  parentSkills?: SkillReference[];      // 親スキル（チーム/サブエージェントレベルから継承）
-  childSkills?: SkillReference[];       // 子スキル（メンバー固有）
-  strategy?: "replace" | "merge";       // 戦略: "replace"は親を無視、"merge"は両方を結合
+  parentSkills?: SkillReference[];
+  childSkills?: SkillReference[];
+  strategy?: "replace" | "merge";
 }
 ```
 
-### ResolveSkillsResult
+Skill merge configuration for inheritance
 
-スキル解決の結果。
+### ResolveSkillsResult
 
 ```typescript
 interface ResolveSkillsResult {
@@ -88,103 +421,17 @@ interface ResolveSkillsResult {
 }
 ```
 
-## 関数
+Result of skill resolution
 
-### resolveSkills
+## 型定義
 
-参照によって複数のスキルを解決する。
-
-```typescript
-function resolveSkills(
-  references: SkillReference[],
-  options: ResolveSkillsOptions,
-): ResolveSkillsResult
-```
-
-### mergeSkills
-
-継承ルールに従ってスキルをマージする。
-
-ルール:
-- 空の配列 [] は無視される（「指定なし」として扱われる）
-- 親スキルはデフォルトで継承される
-- 子スキルは親スキルとマージされる
-- "replace"戦略は親スキルを無視する
+### SkillReference
 
 ```typescript
-function mergeSkills(
-  config: SkillMergeConfig,
-  options: ResolveSkillsOptions,
-): ResolveSkillsResult
+type SkillReference = string
 ```
 
-### mergeSkillArrays
+Skill reference - can be a skill name or path
 
-継承パターンを処理してスキル配列をマージする。サブエージェントとエージェントチームで使用される。
-
-```typescript
-function mergeSkillArrays(
-  parentSkills: SkillReference[] | undefined,
-  childSkills: SkillReference[] | undefined,
-): SkillReference[]
-```
-
-### formatSkillsForPrompt
-
-プロンプト注入用に解決済みスキルをフォーマットする。
-
-```typescript
-function formatSkillsForPrompt(skills: ResolvedSkill[]): string
-```
-
-### formatSkillsWithContent
-
-即座に使用するためにフルコンテンツ付きで解決済みスキルをフォーマットする。
-
-```typescript
-function formatSkillsWithContent(skills: ResolvedSkill[]): string
-```
-
-### loadSkillsForAgent
-
-サブエージェントまたはチームメンバーのスキルを読み込んで解決する。
-
-```typescript
-function loadSkillsForAgent(
-  skillReferences: SkillReference[] | undefined,
-  parentSkillReferences: SkillReference[] | undefined,
-  cwd: string,
-): { promptSection: string; skills: ResolvedSkill[]; errors: string[] }
-```
-
-### validateSkillReferences
-
-コンテンツを読み込まずにスキル参照を検証する。
-
-```typescript
-function validateSkillReferences(
-  references: SkillReference[],
-  cwd: string,
-): { valid: string[]; invalid: string[] }
-```
-
-## スキル検索パス
-
-スキルは以下の順序で検索される:
-
-1. プロジェクトローカルスキル: `<cwd>/.pi/lib/skills/`
-2. グローバルスキル: `~/.pi/agent/skills/`
-
-## スキルファイル形式
-
-スキルは `SKILL.md` ファイルにYAMLフロントマター付きで定義される:
-
-```markdown
 ---
-name: skill-name
-description: Skill description
-disable-model-invocation: false
----
-
-Skill content goes here...
-```
+*自動生成: 2026-02-17T21:48:27.759Z*

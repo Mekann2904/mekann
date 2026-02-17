@@ -1,47 +1,323 @@
 ---
-title: Provider Limits
-category: reference
+title: provider-limits
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [provider, limits, rate-limit, concurrency]
+last_updated: 2026-02-17
+tags: [auto-generated]
 related: []
 ---
 
-# Provider Limits Registry
+# provider-limits
 
-各プロバイダー/モデルのレート制限と同時実行制限を定義する。公式ドキュメントとコミュニティの知識に基づく。
+## 概要
 
-## 型定義
+`provider-limits` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+import { readFileSync, existsSync, writeFileSync... } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `getLimitsConfig` | Get the effective limits configuration (builtin +  |
+| 関数 | `reloadLimits` | Reload limits from disk. |
+| 関数 | `resolveLimits` | Resolve limits for a specific provider/model/tier. |
+| 関数 | `getConcurrencyLimit` | Get concurrency limit for a provider/model. |
+| 関数 | `getRpmLimit` | Get RPM limit for a provider/model. |
+| 関数 | `listProviders` | List all known providers. |
+| 関数 | `listModels` | List all models for a provider. |
+| 関数 | `saveUserLimits` | Save user limits (for customization). |
+| 関数 | `getBuiltinLimits` | Get the builtin limits (for reference). |
+| 関数 | `detectTier` | Detect tier from environment or account info. |
+| 関数 | `formatLimitsSummary` | Build a human-readable summary of limits. |
+| インターフェース | `ModelLimits` | - |
+| インターフェース | `ModelTierLimits` | - |
+| インターフェース | `ProviderLimitsConfig` | - |
+| インターフェース | `ResolvedModelLimits` | - |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class ModelLimits {
+    <<interface>>
+    +rpm: number
+    +tpm: number
+    +concurrency: number
+    +description: string
+  }
+  class ModelTierLimits {
+    <<interface>>
+    +tiers: [tierstring]ModelLimits
+    +default: ModelLimits
+  }
+  class ProviderLimitsConfig {
+    <<interface>>
+    +version: number
+    +lastUpdated: string
+    +source: string
+    +providers: [providerstring]displayNamestringdocumentationstringmodels[patternstring]ModelTierLimits
+  }
+  class ResolvedModelLimits {
+    <<interface>>
+    +provider: string
+    +model: string
+    +tier: string
+    +rpm: number
+    +tpm: numberundefined
+  }
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  getLimitsConfig["getLimitsConfig()"]
+  reloadLimits["reloadLimits()"]
+  resolveLimits["resolveLimits()"]
+  getConcurrencyLimit["getConcurrencyLimit()"]
+  getRpmLimit["getRpmLimit()"]
+  listProviders["listProviders()"]
+  getLimitsConfig -.-> reloadLimits
+  reloadLimits -.-> resolveLimits
+  resolveLimits -.-> getConcurrencyLimit
+  getConcurrencyLimit -.-> getRpmLimit
+  getRpmLimit -.-> listProviders
+```
+
+## 関数
+
+### matchesPattern
+
+```typescript
+matchesPattern(model: string, pattern: string): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| model | `string` | はい |
+| pattern | `string` | はい |
+
+**戻り値**: `boolean`
+
+### loadUserLimits
+
+```typescript
+loadUserLimits(): ProviderLimitsConfig | null
+```
+
+**戻り値**: `ProviderLimitsConfig | null`
+
+### mergeLimits
+
+```typescript
+mergeLimits(builtin: ProviderLimitsConfig, user: ProviderLimitsConfig | null): ProviderLimitsConfig
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| builtin | `ProviderLimitsConfig` | はい |
+| user | `ProviderLimitsConfig | null` | はい |
+
+**戻り値**: `ProviderLimitsConfig`
+
+### getLimitsConfig
+
+```typescript
+getLimitsConfig(): ProviderLimitsConfig
+```
+
+Get the effective limits configuration (builtin + user overrides).
+
+**戻り値**: `ProviderLimitsConfig`
+
+### reloadLimits
+
+```typescript
+reloadLimits(): void
+```
+
+Reload limits from disk.
+
+**戻り値**: `void`
+
+### resolveLimits
+
+```typescript
+resolveLimits(provider: string, model: string, tier?: string): ResolvedModelLimits
+```
+
+Resolve limits for a specific provider/model/tier.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `string` | はい |
+| model | `string` | はい |
+| tier | `string` | いいえ |
+
+**戻り値**: `ResolvedModelLimits`
+
+### getConcurrencyLimit
+
+```typescript
+getConcurrencyLimit(provider: string, model: string, tier?: string): number
+```
+
+Get concurrency limit for a provider/model.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `string` | はい |
+| model | `string` | はい |
+| tier | `string` | いいえ |
+
+**戻り値**: `number`
+
+### getRpmLimit
+
+```typescript
+getRpmLimit(provider: string, model: string, tier?: string): number
+```
+
+Get RPM limit for a provider/model.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `string` | はい |
+| model | `string` | はい |
+| tier | `string` | いいえ |
+
+**戻り値**: `number`
+
+### listProviders
+
+```typescript
+listProviders(): string[]
+```
+
+List all known providers.
+
+**戻り値**: `string[]`
+
+### listModels
+
+```typescript
+listModels(provider: string): string[]
+```
+
+List all models for a provider.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `string` | はい |
+
+**戻り値**: `string[]`
+
+### saveUserLimits
+
+```typescript
+saveUserLimits(limits: ProviderLimitsConfig): void
+```
+
+Save user limits (for customization).
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| limits | `ProviderLimitsConfig` | はい |
+
+**戻り値**: `void`
+
+### getBuiltinLimits
+
+```typescript
+getBuiltinLimits(): ProviderLimitsConfig
+```
+
+Get the builtin limits (for reference).
+
+**戻り値**: `ProviderLimitsConfig`
+
+### detectTier
+
+```typescript
+detectTier(provider: string, _model: string): string | undefined
+```
+
+Detect tier from environment or account info.
+This is a placeholder - real detection would need API calls.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `string` | はい |
+| _model | `string` | はい |
+
+**戻り値**: `string | undefined`
+
+### formatLimitsSummary
+
+```typescript
+formatLimitsSummary(limits: ResolvedModelLimits): string
+```
+
+Build a human-readable summary of limits.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| limits | `ResolvedModelLimits` | はい |
+
+**戻り値**: `string`
+
+## インターフェース
 
 ### ModelLimits
 
-モデルの制限を表すインターフェース。
-
 ```typescript
 interface ModelLimits {
-  rpm: number;              // 1分あたりのリクエスト数
-  tpm?: number;             // 1分あたりのトークン数（オプション）
-  concurrency: number;      // 最大同時リクエスト数
-  description?: string;     // デバッグ用の説明
+  rpm: number;
+  tpm?: number;
+  concurrency: number;
+  description?: string;
 }
 ```
 
 ### ModelTierLimits
-
-モデルのティア別制限を表すインターフェース。
 
 ```typescript
 interface ModelTierLimits {
   tiers: {
     [tier: string]: ModelLimits;
   };
-  default?: ModelLimits;    // 不明なティアの場合のフォールバック
+  default?: ModelLimits;
 }
 ```
 
 ### ProviderLimitsConfig
-
-プロバイダー制限設定を表すインターフェース。
 
 ```typescript
 interface ProviderLimitsConfig {
@@ -62,8 +338,6 @@ interface ProviderLimitsConfig {
 
 ### ResolvedModelLimits
 
-解決済みモデル制限を表すインターフェース。
-
 ```typescript
 interface ResolvedModelLimits {
   provider: string;
@@ -76,111 +350,5 @@ interface ResolvedModelLimits {
 }
 ```
 
-## 関数
-
-### getLimitsConfig
-
-有効な制限設定（ビルトイン + ユーザーオーバーライド）を取得する。
-
-```typescript
-function getLimitsConfig(): ProviderLimitsConfig
-```
-
-### reloadLimits
-
-ディスクから制限を再読み込みする。
-
-```typescript
-function reloadLimits(): void
-```
-
-### resolveLimits
-
-特定のプロバイダー/モデル/ティアの制限を解決する。
-
-```typescript
-function resolveLimits(
-  provider: string,
-  model: string,
-  tier?: string
-): ResolvedModelLimits
-```
-
-### getConcurrencyLimit
-
-プロバイダー/モデルの同時実行制限を取得する。
-
-```typescript
-function getConcurrencyLimit(provider: string, model: string, tier?: string): number
-```
-
-### getRpmLimit
-
-プロバイダー/モデルのRPM制限を取得する。
-
-```typescript
-function getRpmLimit(provider: string, model: string, tier?: string): number
-```
-
-### listProviders
-
-既知の全プロバイダーをリストする。
-
-```typescript
-function listProviders(): string[]
-```
-
-### listModels
-
-プロバイダーの全モデルをリストする。
-
-```typescript
-function listModels(provider: string): string[]
-```
-
-### saveUserLimits
-
-ユーザー制限を保存する（カスタマイズ用）。
-
-```typescript
-function saveUserLimits(limits: ProviderLimitsConfig): void
-```
-
-### getBuiltinLimits
-
-ビルトイン制限を取得する（参照用）。
-
-```typescript
-function getBuiltinLimits(): ProviderLimitsConfig
-```
-
-### detectTier
-
-環境変数またはアカウント情報からティアを検出する。
-
-```typescript
-function detectTier(provider: string, model: string): string | undefined
-```
-
-### formatLimitsSummary
-
-制限の人間が読めるサマリーを作成する。
-
-```typescript
-function formatLimitsSummary(limits: ResolvedModelLimits): string
-```
-
-## サポートされるプロバイダー
-
-- **anthropic**: Claude 4.x, Claude 3.5, Claude 3 シリーズ
-- **openai**: GPT-4o, GPT-4-turbo, GPT-4, o1 シリーズ
-- **google**: Gemini 2.5, Gemini 2.0, Gemini 1.5 シリーズ
-- **mistral**: Mistral Large, Mistral Medium, Codestral
-- **groq**: Llama, Mixtral シリーズ
-- **cerebras**: 全モデル
-- **xai**: Grok シリーズ
-
-## 環境変数
-
-- `PI_PROVIDER_TIER`: 全プロバイダーのティアを設定
-- `PI_<PROVIDER>_TIER`: プロバイダー固有のティアを設定（例: `PI_ANTHROPIC_TIER`）
+---
+*自動生成: 2026-02-17T21:48:27.744Z*

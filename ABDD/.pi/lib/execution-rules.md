@@ -1,0 +1,190 @@
+---
+title: execution-rules
+category: api-reference
+audience: developer
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
+---
+
+# execution-rules
+
+## 概要
+
+`execution-rules` モジュールのAPIリファレンス。
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `buildExecutionRulesSection` | - |
+| 関数 | `getSubagentExecutionRules` | サブエージェント用の実行ルールを取得 |
+| 関数 | `getTeamMemberExecutionRules` | チームメンバー用の実行ルールを取得 |
+| 関数 | `getChallengerExecutionRules` | Challengerサブエージェント用の実行ルールを取得 |
+| 関数 | `getInspectorExecutionRules` | Inspectorサブエージェント用の実行ルールを取得 |
+| 関数 | `getVerificationWorkflowExecutionRules` | 検証ワークフロー用の実行ルールを取得 |
+| インターフェース | `BuildExecutionRulesOptions` | 実行ルールセクションを構築する |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class BuildExecutionRulesOptions {
+    <<interface>>
+    +forSubagent: boolean
+    +forTeam: boolean
+    +phase: initialcommunication
+    +includeGuidelines: boolean
+    +includeDiscussionRules: boolean
+  }
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  buildExecutionRulesSection["buildExecutionRulesSection()"]
+  getSubagentExecutionRules["getSubagentExecutionRules()"]
+  getTeamMemberExecutionRules["getTeamMemberExecutionRules()"]
+  getChallengerExecutionRules["getChallengerExecutionRules()"]
+  getInspectorExecutionRules["getInspectorExecutionRules()"]
+  getVerificationWorkflowExecutionRules["getVerificationWorkflowExecutionRules()"]
+  buildExecutionRulesSection -.-> getSubagentExecutionRules
+  getSubagentExecutionRules -.-> getTeamMemberExecutionRules
+  getTeamMemberExecutionRules -.-> getChallengerExecutionRules
+  getChallengerExecutionRules -.-> getInspectorExecutionRules
+  getInspectorExecutionRules -.-> getVerificationWorkflowExecutionRules
+```
+
+## 関数
+
+### buildExecutionRulesSection
+
+```typescript
+buildExecutionRulesSection(options: BuildExecutionRulesOptions): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| options | `BuildExecutionRulesOptions` | はい |
+
+**戻り値**: `string`
+
+### getSubagentExecutionRules
+
+```typescript
+getSubagentExecutionRules(includeGuidelines: any): string
+```
+
+サブエージェント用の実行ルールを取得
+デフォルトで認知バイアス対策と自己検証ルールを含める
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| includeGuidelines | `any` | はい |
+
+**戻り値**: `string`
+
+### getTeamMemberExecutionRules
+
+```typescript
+getTeamMemberExecutionRules(phase: "initial" | "communication", includeGuidelines: any): string
+```
+
+チームメンバー用の実行ルールを取得
+デフォルトで認知バイアス対策と自己検証ルールを含める
+論文「Large Language Model Reasoning Failures」のP0/P1推奨事項を含む
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| phase | `"initial" | "communication"` | はい |
+| includeGuidelines | `any` | はい |
+
+**戻り値**: `string`
+
+### getChallengerExecutionRules
+
+```typescript
+getChallengerExecutionRules(includeGuidelines: any): string
+```
+
+Challengerサブエージェント用の実行ルールを取得
+論文「Large Language Model Reasoning Failures」のP0推奨事項
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| includeGuidelines | `any` | はい |
+
+**戻り値**: `string`
+
+### getInspectorExecutionRules
+
+```typescript
+getInspectorExecutionRules(includeGuidelines: any): string
+```
+
+Inspectorサブエージェント用の実行ルールを取得
+論文「Large Language Model Reasoning Failures」のP0推奨事項
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| includeGuidelines | `any` | はい |
+
+**戻り値**: `string`
+
+### getVerificationWorkflowExecutionRules
+
+```typescript
+getVerificationWorkflowExecutionRules(phase: "inspector" | "challenger" | "both", includeGuidelines: any): string
+```
+
+検証ワークフロー用の実行ルールを取得
+論文「Large Language Model Reasoning Failures」のP0推奨事項
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| phase | `"inspector" | "challenger" | "both"` | はい |
+| includeGuidelines | `any` | はい |
+
+**戻り値**: `string`
+
+## インターフェース
+
+### BuildExecutionRulesOptions
+
+```typescript
+interface BuildExecutionRulesOptions {
+  forSubagent?: boolean;
+  forTeam?: boolean;
+  phase?: "initial" | "communication";
+  includeGuidelines?: boolean;
+  includeDiscussionRules?: boolean;
+  includeCognitiveBiasCountermeasures?: boolean;
+  includeSelfVerification?: boolean;
+  includeWorkingMemoryGuidelines?: boolean;
+  includeTerminationCheck?: boolean;
+  includeCompositionalInference?: boolean;
+  includeChallengeRules?: boolean;
+  includeInspectionRules?: boolean;
+  includeVerificationWorkflow?: boolean;
+}
+```
+
+実行ルールセクションを構築する
+
+---
+*自動生成: 2026-02-17T21:48:27.716Z*

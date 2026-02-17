@@ -1,343 +1,574 @@
 ---
-title: Task Scheduler
-category: reference
+title: task-scheduler
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [scheduling, priority, preemption, rate-limiting]
-related: [token-bucket, agent-runtime, priority-scheduler, checkpoint-manager]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Task Scheduler
-
-イベント駆動実行とプリエンプションサポートを備えた優先度ベースのタスクスケジューラ。
+# task-scheduler
 
 ## 概要
 
-プロバイダ/モデル固有のキューマネジメントによる効率的なタスクスケジューリングを可能にする。
+`task-scheduler` モジュールのAPIリファレンス。
 
-## Types
-
-### TaskSource
-
-スケジュールされたタスクのソース種別。
+## インポート
 
 ```typescript
-type TaskSource =
-  | "subagent_run"
-  | "subagent_run_parallel"
-  | "agent_team_run"
-  | "agent_team_run_parallel";
+import { getCheckpointManager, Checkpoint, PreemptionResult... } from './checkpoint-manager';
+import { TaskPriority, PriorityTaskQueue, comparePriority... } from './priority-scheduler';
+import { PRIORITY_VALUES } from './priority-scheduler';
 ```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `shouldPreempt` | Check if an incoming task should preempt a running |
+| 関数 | `preemptTask` | Preempt a running task, saving its state to a chec |
+| 関数 | `resumeFromCheckpoint` | Resume a task from a checkpoint. |
+| 関数 | `createTaskId` | Create a unique task ID. |
+| 関数 | `getScheduler` | Get the singleton scheduler instance. |
+| 関数 | `createScheduler` | Create a new scheduler with custom config. |
+| 関数 | `resetScheduler` | Reset the singleton scheduler (for testing). |
+| インターフェース | `TaskCostEstimate` | Cost estimate for a scheduled task. |
+| インターフェース | `ScheduledTask` | Scheduled task interface. |
+| インターフェース | `TaskResult` | Result of a scheduled task execution. |
+| インターフェース | `QueueStats` | Queue statistics for monitoring. |
+| インターフェース | `SchedulerConfig` | Scheduler configuration. |
+| インターフェース | `HybridSchedulerConfig` | Configuration for hybrid scheduling algorithm. |
+| 型 | `TaskSource` | Source type for scheduled tasks. |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class TaskSchedulerImpl {
+    -config: SchedulerConfig
+    -queues: Map<stringTaskQueueEntry[]>
+    -activeExecutions: Map<stringTaskQueueEntry>
+    -eventTarget: EventTarget
+    -taskIdCounter: any
+    +submit
+    +getStats
+    -getQueueKey
+    -sortQueue
+    -promoteStarvingTasks
+  }
+  class TaskCostEstimate {
+    <<interface>>
+    +estimatedTokens: number
+    +estimatedDurationMs: number
+  }
+  class ScheduledTask {
+    <<interface>>
+    +id: string
+    +source: TaskSource
+    +provider: string
+    +model: string
+    +priority: TaskPriority
+  }
+  class TaskResult {
+    <<interface>>
+    +taskId: string
+    +success: boolean
+    +result: TResult
+    +error: string
+    +waitedMs: number
+  }
+  class QueueStats {
+    <<interface>>
+    +totalQueued: number
+    +byPriority: Record<TaskPrioritynumber>
+    +byProvider: Record<stringnumber>
+    +avgWaitMs: number
+    +maxWaitMs: number
+  }
+  class TaskQueueEntry {
+    <<interface>>
+    +task: ScheduledTask<unknown>
+    +enqueuedAtMs: number
+    +startedAtMs: number
+    +completedAtMs: number
+    +skipCount: number
+  }
+  class SchedulerConfig {
+    <<interface>>
+    +maxConcurrentPerModel: number
+    +maxTotalConcurrent: number
+    +defaultTimeoutMs: number
+    +starvationThresholdMs: number
+    +maxSkipCount: number
+  }
+  class HybridSchedulerConfig {
+    <<interface>>
+    +priorityWeight: number
+    +sjfWeight: number
+    +fairQueueWeight: number
+    +maxDurationForNormalization: number
+    +starvationPenaltyPerSkip: number
+  }
+```
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[task-scheduler]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    checkpoint_manager[checkpoint-manager]
+    priority_scheduler[priority-scheduler]
+    priority_scheduler[priority-scheduler]
+  end
+  main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  shouldPreempt["shouldPreempt()"]
+  preemptTask["preemptTask()"]
+  resumeFromCheckpoint["resumeFromCheckpoint()"]
+  createTaskId["createTaskId()"]
+  getScheduler["getScheduler()"]
+  createScheduler["createScheduler()"]
+  shouldPreempt -.-> preemptTask
+  preemptTask -.-> resumeFromCheckpoint
+  resumeFromCheckpoint -.-> createTaskId
+  createTaskId -.-> getScheduler
+  getScheduler -.-> createScheduler
+```
+
+## 関数
+
+### shouldPreempt
+
+```typescript
+shouldPreempt(runningTask: ScheduledTask, incomingTask: ScheduledTask): boolean
+```
+
+Check if an incoming task should preempt a running task.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| runningTask | `ScheduledTask` | はい |
+| incomingTask | `ScheduledTask` | はい |
+
+**戻り値**: `boolean`
+
+### preemptTask
+
+```typescript
+async preemptTask(taskId: string, reason: string, state?: unknown, progress?: number): Promise<PreemptionResult>
+```
+
+Preempt a running task, saving its state to a checkpoint.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| taskId | `string` | はい |
+| reason | `string` | はい |
+| state | `unknown` | いいえ |
+| progress | `number` | いいえ |
+
+**戻り値**: `Promise<PreemptionResult>`
+
+### resumeFromCheckpoint
+
+```typescript
+async resumeFromCheckpoint(checkpointId: string, execute: (checkpoint: Checkpoint) => Promise<TResult>): Promise<TaskResult<TResult>>
+```
+
+Resume a task from a checkpoint.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| checkpointId | `string` | はい |
+| execute | `(checkpoint: Checkpoint) => Promise<TResult>` | はい |
+
+**戻り値**: `Promise<TaskResult<TResult>>`
+
+### createTaskId
+
+```typescript
+createTaskId(prefix: string): string
+```
+
+Create a unique task ID.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| prefix | `string` | はい |
+
+**戻り値**: `string`
+
+### priorityToValue
+
+```typescript
+priorityToValue(priority: TaskPriority): number
+```
+
+Get numeric priority value for comparison.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| priority | `TaskPriority` | はい |
+
+**戻り値**: `number`
+
+### computeSJFScore
+
+```typescript
+computeSJFScore(estimatedDurationMs: number, maxDurationMs: number): number
+```
+
+Compute SJF (Shortest Job First) score.
+Normalized to [0, 1] where higher score = shorter job.
+Edge case: maxDuration = 0 returns 1.0 (shortest possible).
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| estimatedDurationMs | `number` | はい |
+| maxDurationMs | `number` | はい |
+
+**戻り値**: `number`
+
+### computeFairQueueScore
+
+```typescript
+computeFairQueueScore(enqueuedAtMs: number, estimatedTokens: number, priority: TaskPriority, currentTimeMs: number, maxTokens: number): number
+```
+
+Compute Fair Queue score based on Virtual Finish Time (VFT).
+Tasks with higher wait time and fewer tokens get higher scores.
+VFT = arrivalTime + (tokens / weight), where weight is based on priority.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| enqueuedAtMs | `number` | はい |
+| estimatedTokens | `number` | はい |
+| priority | `TaskPriority` | はい |
+| currentTimeMs | `number` | はい |
+| maxTokens | `number` | はい |
+
+**戻り値**: `number`
+
+### computeHybridScore
+
+```typescript
+computeHybridScore(entry: TaskQueueEntry, config: HybridSchedulerConfig, currentTimeMs: number): number
+```
+
+Compute hybrid scheduling score combining all factors.
+finalScore = (priority * 0.5) + (SJF * 0.3) + (FairQueue * 0.2) - starvationPenalty
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| entry | `TaskQueueEntry` | はい |
+| config | `HybridSchedulerConfig` | はい |
+| currentTimeMs | `number` | はい |
+
+**戻り値**: `number`
+
+### compareHybridEntries
+
+```typescript
+compareHybridEntries(a: TaskQueueEntry, b: TaskQueueEntry, config: HybridSchedulerConfig): number
+```
+
+Compare two task entries using hybrid scheduling score.
+Higher score = should be scheduled first.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| a | `TaskQueueEntry` | はい |
+| b | `TaskQueueEntry` | はい |
+| config | `HybridSchedulerConfig` | はい |
+
+**戻り値**: `number`
+
+### compareTaskEntries
+
+```typescript
+compareTaskEntries(a: TaskQueueEntry, b: TaskQueueEntry): number
+```
+
+Compare two task entries for priority ordering.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| a | `TaskQueueEntry` | はい |
+| b | `TaskQueueEntry` | はい |
+
+**戻り値**: `number`
+
+### checkAndExecute
+
+```typescript
+async checkAndExecute(): void
+```
+
+**戻り値**: `void`
+
+### onEvent
+
+```typescript
+onEvent(): void
+```
+
+**戻り値**: `void`
+
+### onAbort
+
+```typescript
+onAbort(): void
+```
+
+**戻り値**: `void`
+
+### cleanup
+
+```typescript
+cleanup(): void
+```
+
+**戻り値**: `void`
+
+### handler
+
+```typescript
+handler(event: Event): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| event | `Event` | はい |
+
+**戻り値**: `void`
+
+### getScheduler
+
+```typescript
+getScheduler(): TaskSchedulerImpl
+```
+
+Get the singleton scheduler instance.
+
+**戻り値**: `TaskSchedulerImpl`
+
+### createScheduler
+
+```typescript
+createScheduler(config?: Partial<SchedulerConfig>): TaskSchedulerImpl
+```
+
+Create a new scheduler with custom config.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| config | `Partial<SchedulerConfig>` | いいえ |
+
+**戻り値**: `TaskSchedulerImpl`
+
+### resetScheduler
+
+```typescript
+resetScheduler(): void
+```
+
+Reset the singleton scheduler (for testing).
+
+**戻り値**: `void`
+
+## クラス
+
+### TaskSchedulerImpl
+
+Event-driven task scheduler with priority queue.
+
+**プロパティ**
+
+| 名前 | 型 | 可視性 |
+|------|-----|--------|
+| config | `SchedulerConfig` | private |
+| queues | `Map<string, TaskQueueEntry[]>` | private |
+| activeExecutions | `Map<string, TaskQueueEntry>` | private |
+| eventTarget | `EventTarget` | private |
+| taskIdCounter | `any` | private |
+
+**メソッド**
+
+| 名前 | シグネチャ |
+|------|------------|
+| submit | `submit(task): Promise<TaskResult<TResult>>` |
+| getStats | `getStats(): QueueStats` |
+| getQueueKey | `getQueueKey(provider, model): string` |
+| sortQueue | `sortQueue(queue): void` |
+| promoteStarvingTasks | `promoteStarvingTasks(queue): number` |
+| waitForExecution | `waitForExecution(entry, originalTask): Promise<TaskResult<TResult>>` |
+| removeFromQueue | `removeFromQueue(queueKey, entry): void` |
+| countActiveForModel | `countActiveForModel(provider, model): number` |
+| waitForEvent | `waitForEvent(timeoutMs, signal): Promise<"event" | "timeout" | "aborted">` |
+| getActiveExecution | `getActiveExecution(taskId): TaskQueueEntry | null` |
+| removeActiveExecution | `removeActiveExecution(taskId): boolean` |
+| getAllActiveExecutions | `getAllActiveExecutions(): Map<string, TaskQueueEntry>` |
+| checkPreemptionNeeded | `checkPreemptionNeeded(incomingTask): ScheduledTask | null` |
+| attemptPreemption | `attemptPreemption(incomingTask, checkpointState, checkpointProgress): Promise<{ preempted: boolean; checkpointId?: string; error?: string }>` |
+| onPreemption | `onPreemption(callback): () => void` |
+
+## インターフェース
 
 ### TaskCostEstimate
 
-スケジュールされたタスクのコスト見積もり。
-
 ```typescript
 interface TaskCostEstimate {
-  /** 推定トークン消費量 */
   estimatedTokens: number;
-  /** 推定実行時間（ミリ秒） */
   estimatedDurationMs: number;
 }
 ```
 
+Cost estimate for a scheduled task.
+
 ### ScheduledTask
 
-優先度とレートリミットを持つ実行タスクのインターフェース。
-
 ```typescript
-interface ScheduledTask<TResult = unknown> {
-  /** ユニークなタスクID */
+interface ScheduledTask {
   id: string;
-  /** このタスクを作成したソースツール */
   source: TaskSource;
-  /** プロバイダー名（例: "anthropic"） */
   provider: string;
-  /** モデル名（例: "claude-sonnet-4"） */
   model: string;
-  /** タスク優先度レベル */
   priority: TaskPriority;
-  /** レートリミット用のコスト見積もり */
   costEstimate: TaskCostEstimate;
-  /** タスク実行関数 */
   execute: () => Promise<TResult>;
-  /** キャンセル用のアボートシグナル（オプション） */
   signal?: AbortSignal;
-  /** デッドラインタイムスタンプ（ミリ秒）（オプション） */
   deadlineMs?: number;
 }
 ```
 
+Scheduled task interface.
+Represents a task to be executed with priority and rate limiting.
+
 ### TaskResult
 
-スケジュールされたタスクの実行結果。
-
 ```typescript
-interface TaskResult<TResult = unknown> {
-  /** タスクID */
+interface TaskResult {
   taskId: string;
-  /** タスクが正常に完了したか */
   success: boolean;
-  /** タスク結果（成功時） */
   result?: TResult;
-  /** エラーメッセージ（失敗時） */
   error?: string;
-  /** 実行前のキュー待機時間（ms） */
   waitedMs: number;
-  /** 実際の実行時間（ms） */
   executionMs: number;
-  /** タイムアウトしたか */
   timedOut: boolean;
-  /** アボートされたか */
   aborted: boolean;
 }
 ```
 
-### QueueStats
+Result of a scheduled task execution.
 
-監視用のキュー統計。
+### QueueStats
 
 ```typescript
 interface QueueStats {
-  /** キュー内のタスク総数 */
   totalQueued: number;
-  /** 優先度別のタスク数 */
   byPriority: Record<TaskPriority, number>;
-  /** プロバイダー別のタスク数 */
   byProvider: Record<string, number>;
-  /** 平均待機時間（ms） */
   avgWaitMs: number;
-  /** 最大待機時間（ms） */
   maxWaitMs: number;
-  /** スタベーションタスク数 */
   starvingCount: number;
-  /** アクティブな実行数 */
   activeExecutions: number;
 }
 ```
 
-### SchedulerConfig
+Queue statistics for monitoring.
 
-スケジューラ設定。
+### TaskQueueEntry
+
+```typescript
+interface TaskQueueEntry {
+  task: ScheduledTask<unknown>;
+  enqueuedAtMs: number;
+  startedAtMs?: number;
+  completedAtMs?: number;
+  skipCount: number;
+}
+```
+
+Internal task entry for the queue.
+Uses unknown type for task result to allow heterogeneous queue storage.
+
+### SchedulerConfig
 
 ```typescript
 interface SchedulerConfig {
-  /** モデルあたりの最大並行実行数 */
   maxConcurrentPerModel: number;
-  /** 全体の最大並行実行数 */
   maxTotalConcurrent: number;
-  /** タスクのデフォルトタイムアウト（ms） */
   defaultTimeoutMs: number;
-  /** スタベーション閾値（ms） */
   starvationThresholdMs: number;
-  /** 昇格前の最大スキップ回数 */
   maxSkipCount: number;
 }
 ```
 
-### HybridSchedulerConfig
+Scheduler configuration.
 
-ハイブリッドスケジューリングアルゴリズムの設定。
+### HybridSchedulerConfig
 
 ```typescript
 interface HybridSchedulerConfig {
-  /** 優先度コンポーネントの重み (0.0 - 1.0) */
   priorityWeight: number;
-  /** SJFコンポーネントの重み (0.0 - 1.0) */
   sjfWeight: number;
-  /** フェアキューコンポーネントの重み (0.0 - 1.0) */
   fairQueueWeight: number;
-  /** 正規化用の最大実行時間（ms） */
   maxDurationForNormalization: number;
-  /** スキップあたりのスタベーションペナルティ */
   starvationPenaltyPerSkip: number;
-  /** 最大スタベーションペナルティ */
   maxStarvationPenalty: number;
 }
 ```
 
-## Preemption Support
+Configuration for hybrid scheduling algorithm.
+Combines priority, SJF (Shortest Job First), and fair queueing.
 
-### PREEMPTION_MATRIX
+## 型定義
 
-どの優先度が他をプリエンプトできるかを定義するマトリックス。
-
-- `critical` は high/normal/low/background をプリエンプト可能
-- `high` は normal/low/background をプリエンプト可能
-- その他はプリエンプト不可
-
-### shouldPreempt()
+### TaskSource
 
 ```typescript
-function shouldPreempt(
-  runningTask: ScheduledTask,
-  incomingTask: ScheduledTask
-): boolean
+type TaskSource = | "subagent_run"
+  | "subagent_run_parallel"
+  | "agent_team_run"
+  | "agent_team_run_parallel"
 ```
 
-### preemptTask()
+Source type for scheduled tasks.
+Identifies which tool created this task.
 
-```typescript
-async function preemptTask(
-  taskId: string,
-  reason: string,
-  state?: unknown,
-  progress?: number
-): Promise<PreemptionResult>
-```
-
-### resumeFromCheckpoint()
-
-```typescript
-async function resumeFromCheckpoint<TResult = unknown>(
-  checkpointId: string,
-  execute: (checkpoint: Checkpoint) => Promise<TResult>
-): Promise<TaskResult<TResult>>
-```
-
-## TaskSchedulerImpl Class
-
-イベント駆動の優先度キュータスクスケジューラ。
-
-### Methods
-
-#### submit()
-
-タスクを実行用にサブミット。
-
-```typescript
-async submit<TResult>(task: ScheduledTask<TResult>): Promise<TaskResult<TResult>>
-```
-
-#### getStats()
-
-現在のキュー統計を取得。
-
-```typescript
-getStats(): QueueStats
-```
-
-#### getActiveExecution()
-
-アクティブな実行エントリをタスクIDで取得。
-
-```typescript
-getActiveExecution(taskId: string): TaskQueueEntry | null
-```
-
-#### removeActiveExecution()
-
-アクティブな実行エントリを削除。
-
-```typescript
-removeActiveExecution(taskId: string): boolean
-```
-
-#### getAllActiveExecutions()
-
-全アクティブ実行を取得。
-
-```typescript
-getAllActiveExecutions(): Map<string, TaskQueueEntry>
-```
-
-#### checkPreemptionNeeded()
-
-プリエンプションが必要かチェック。
-
-```typescript
-checkPreemptionNeeded(incomingTask: ScheduledTask): ScheduledTask | null
-```
-
-#### attemptPreemption()
-
-プリエンプションを試行。
-
-```typescript
-async attemptPreemption(
-  incomingTask: ScheduledTask,
-  checkpointState?: unknown,
-  checkpointProgress?: number
-): Promise<{ preempted: boolean; checkpointId?: string; error?: string }>
-```
-
-#### onPreemption()
-
-プリエンプションイベントを購読。
-
-```typescript
-onPreemption(callback: (taskId: string, checkpointId: string) => void): () => void
-```
-
-## Factory Functions
-
-### getScheduler()
-
-シングルトンスケジューラインスタンスを取得。
-
-```typescript
-function getScheduler(): TaskSchedulerImpl
-```
-
-### createScheduler()
-
-カスタム設定で新しいスケジューラを作成。
-
-```typescript
-function createScheduler(config?: Partial<SchedulerConfig>): TaskSchedulerImpl
-```
-
-### resetScheduler()
-
-シングルトンスケジューラをリセット（テスト用）。
-
-```typescript
-function resetScheduler(): void
-```
-
-### createTaskId()
-
-ユニークなタスクIDを作成。
-
-```typescript
-function createTaskId(prefix?: string): string
-```
-
-## Hybrid Scheduling
-
-ハイブリッドスケジューリングは以下を組み合わせ:
-- 優先度ベーススケジューリング
-- SJF (Shortest Job First)
-- フェアキューイング
-
-最終スコア = (priority * 0.5) + (SJF * 0.3) + (FairQueue * 0.2) - starvationPenalty
-
-## 使用例
-
-```typescript
-// タスクをサブミット
-const result = await getScheduler().submit({
-  id: createTaskId(),
-  source: "subagent_run",
-  provider: "anthropic",
-  model: "claude-sonnet-4",
-  priority: "high",
-  costEstimate: { estimatedTokens: 1000, estimatedDurationMs: 5000 },
-  execute: async () => {
-    // タスク実行
-    return "result";
-  },
-});
-
-// 統計を取得
-const stats = getScheduler().getStats();
-console.log(`Queued: ${stats.totalQueued}, Active: ${stats.activeExecutions}`);
-```
-
-## 関連ファイル
-
-- `.pi/lib/token-bucket.ts` - トークンバケットレートリミッター
-- `.pi/lib/checkpoint-manager.ts` - チェックポイントマネージャ
-- `.pi/lib/priority-scheduler.ts` - 優先度スケジューラ
-- `.pi/extensions/agent-runtime.ts` - エージェントランタイム
+---
+*自動生成: 2026-02-17T21:48:27.773Z*

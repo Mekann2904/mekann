@@ -1,80 +1,142 @@
 ---
-title: Subagent Types
-category: reference
+title: subagent-types
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [subagent, types, live-monitoring]
-related: [live-monitor-base, live-view-utils]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Subagent Types
+# subagent-types
 
-サブエージェント関連の型定義。サブエージェントライブモニタリングシステムと並列実行調整で使用される。
+## 概要
 
-## Types
+`subagent-types` モジュールのAPIリファレンス。
 
-### SubagentLiveViewMode
-
-ライブモニタリングインターフェースのビューモード。
+## インポート
 
 ```typescript
-type SubagentLiveViewMode = LiveViewMode;
+import { LiveStatus, LiveStreamView, LiveViewMode } from './live-monitor-base.js';
+import { LiveStatusBase } from './live-view-utils.js';
 ```
 
-### SubagentLiveStreamView
+## エクスポート一覧
 
-サブエージェント出力表示のストリームビュー選択。
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| インターフェース | `SubagentLiveItem` | Live item tracking for subagent execution. |
+| インターフェース | `SubagentMonitorLifecycle` | Lifecycle operations for marking agent execution s |
+| インターフェース | `SubagentMonitorStream` | Stream output operations for appending stdout/stde |
+| インターフェース | `SubagentMonitorResource` | Resource cleanup and termination operations. |
+| インターフェース | `SubagentLiveMonitorController` | Full monitor controller combining all capabilities |
+| インターフェース | `SubagentNormalizedOutput` | Normalized output structure for subagent execution |
+| インターフェース | `SubagentParallelCapacityResolution` | Resolution result for subagent parallel capacity. |
+| インターフェース | `DelegationState` | State tracking for delegation-first policy enforce |
+| インターフェース | `PrintCommandResult` | Print command execution result. |
+| 型 | `SubagentLiveViewMode` | View mode for subagent live monitoring interface. |
+| 型 | `SubagentLiveStreamView` | Stream view selection for subagent output display. |
 
-```typescript
-type SubagentLiveStreamView = LiveStreamView;
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class SubagentLiveItem {
+    <<interface>>
+    +id: string
+    +name: string
+    +status: LiveStatus
+    +startedAtMs: number
+    +finishedAtMs: number
+  }
+  class SubagentMonitorLifecycle {
+    <<interface>>
+    +markStarted: agentIdstring>void
+    +markFinished: agentIdstringstatuscompletedfailedsummarystringerrorstring>void
+  }
+  class SubagentMonitorStream {
+    <<interface>>
+    +appendChunk: agentIdstringstreamSubagentLiveStreamViewchunkstring>void
+  }
+  class SubagentMonitorResource {
+    <<interface>>
+    +close: >void
+    +wait: >Promise<void>
+  }
+  class SubagentLiveMonitorController {
+    <<interface>>
+  }
+  class SubagentNormalizedOutput {
+    <<interface>>
+    +summary: string
+    +output: string
+    +hasResult: boolean
+  }
+  class SubagentParallelCapacityResolution {
+    <<interface>>
+    +agentId: string
+    +approvedParallelism: number
+    +approved: boolean
+    +reason: string
+  }
+  class DelegationState {
+    <<interface>>
+    +delegatedThisRequest: boolean
+    +directWriteConfirmedThisRequest: boolean
+    +pendingDirectWriteConfirmUntilMs: number
+    +sessionDelegationCalls: number
+  }
+  class PrintCommandResult {
+    <<interface>>
+    +output: string
+    +latencyMs: number
+  }
 ```
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[subagent-types]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    live_monitor_base_js[live-monitor-base.js]
+    live_view_utils_js[live-view-utils.js]
+  end
+  main --> local
+```
+
+## インターフェース
 
 ### SubagentLiveItem
 
-サブエージェント実行のライブアイテム追跡。TUIレンダリング用のリアルタイム状態を保持。
-
 ```typescript
 interface SubagentLiveItem {
-  /** サブエージェントID */
   id: string;
-  /** サブエージェント名 */
   name: string;
-  /** 現在の実行ステータス */
   status: LiveStatus;
-  /** 実行開始タイムスタンプ */
   startedAtMs?: number;
-  /** 実行終了タイムスタンプ */
   finishedAtMs?: number;
-  /** 最後の出力チャンクタイムスタンプ */
   lastChunkAtMs?: number;
-  /** 実行サマリー */
   summary?: string;
-  /** 失敗時のエラーメッセージ */
   error?: string;
-  /** 最近のstdout行 */
   stdoutTail: string;
-  /** 最近のstderr行 */
   stderrTail: string;
-  /** stdout合計バイト数 */
   stdoutBytes: number;
-  /** stderr合計バイト数 */
   stderrBytes: number;
-  /** stdout改行数 */
   stdoutNewlineCount: number;
-  /** stderr改行数 */
   stderrNewlineCount: number;
-  /** stdoutが改行で終わるか */
   stdoutEndsWithNewline: boolean;
-  /** stderrが改行で終わるか */
   stderrEndsWithNewline: boolean;
 }
 ```
 
-## Interfaces (ISP-Compliant)
+Live item tracking for subagent execution.
+Maintains real-time state for TUI rendering.
 
 ### SubagentMonitorLifecycle
-
-エージェント実行状態のマーキング用ライフサイクル操作。開始/終了遷移の追跡のみが必要なコードで使用。
 
 ```typescript
 interface SubagentMonitorLifecycle {
@@ -88,9 +150,10 @@ interface SubagentMonitorLifecycle {
 }
 ```
 
-### SubagentMonitorStream
+Lifecycle operations for marking agent execution states.
+Used by code that only needs to track start/finish transitions.
 
-stdout/stderrチャンクの追加用ストリーム出力操作。
+### SubagentMonitorStream
 
 ```typescript
 interface SubagentMonitorStream {
@@ -98,9 +161,10 @@ interface SubagentMonitorStream {
 }
 ```
 
-### SubagentMonitorResource
+Stream output operations for appending stdout/stderr chunks.
+Used by code that only needs to handle output streaming.
 
-リソースクリーンアップと終了操作。
+### SubagentMonitorResource
 
 ```typescript
 interface SubagentMonitorResource {
@@ -109,93 +173,92 @@ interface SubagentMonitorResource {
 }
 ```
 
+Resource cleanup and termination operations.
+Used by code that only needs to manage monitor lifecycle.
+
 ### SubagentLiveMonitorController
 
-全機能を統合したモニターコントローラー。後方互換性のため部分インターフェースを拡張。
-
 ```typescript
-interface SubagentLiveMonitorController
-  extends SubagentMonitorLifecycle,
-    SubagentMonitorStream,
-    SubagentMonitorResource {}
+interface SubagentLiveMonitorController {
+}
 ```
 
-## Parallel Execution Types
+Full monitor controller combining all capabilities.
+Extends partial interfaces to maintain backward compatibility.
+Clients should use narrower interfaces when possible.
 
 ### SubagentNormalizedOutput
 
-サブエージェント実行の正規化された出力構造。
-
 ```typescript
 interface SubagentNormalizedOutput {
-  /** 抽出されたサマリー */
   summary: string;
-  /** 完全な出力コンテンツ */
   output: string;
-  /** 結果セクションを含むか */
   hasResult: boolean;
 }
 ```
 
-### SubagentParallelCapacityResolution
+Normalized output structure for subagent execution.
+Used for parsing and validating subagent outputs.
 
-サブエージェント並列容量の解決結果。容量ネゴシエーション後の実際の並列数を決定。
+### SubagentParallelCapacityResolution
 
 ```typescript
 interface SubagentParallelCapacityResolution {
-  /** サブエージェントID */
   agentId: string;
-  /** 承認された並列数 */
   approvedParallelism: number;
-  /** リクエストが承認されたか */
   approved: boolean;
-  /** 却下理由（承認されなかった場合） */
   reason?: string;
 }
 ```
 
-## Delegation State Types
+Resolution result for subagent parallel capacity.
+Determines actual parallelism after capacity negotiation.
 
 ### DelegationState
 
-Delegation-firstポリシー強制用の状態追跡。
-
 ```typescript
 interface DelegationState {
-  /** このリクエストでデリゲーションツールが呼ばれたか */
   delegatedThisRequest: boolean;
-  /** このリクエストで直接書き込みが確認されたか */
   directWriteConfirmedThisRequest: boolean;
-  /** 直接書き込み確認の有効期限タイムスタンプ */
   pendingDirectWriteConfirmUntilMs: number;
-  /** このセッションでのデリゲーション呼び出し総数 */
   sessionDelegationCalls: number;
 }
 ```
 
-### PrintCommandResult
+State tracking for delegation-first policy enforcement.
+Monitors whether delegation has occurred and direct write confirmations.
 
-printモード実行追跡用のコマンド実行結果。
+### PrintCommandResult
 
 ```typescript
 interface PrintCommandResult {
-  /** 出力コンテンツ */
   output: string;
-  /** 実行レイテンシ（ミリ秒） */
   latencyMs: number;
 }
 ```
 
-## Re-exports
+Print command execution result.
+Used for print mode execution tracking.
 
-以下の型を再エクスポート:
+## 型定義
 
-- `LiveStreamView` from `./live-monitor-base.js`
-- `LiveViewMode` from `./live-monitor-base.js`
+### SubagentLiveViewMode
 
-## 関連ファイル
+```typescript
+type SubagentLiveViewMode = LiveViewMode
+```
 
-- `.pi/extensions/subagents.ts` - サブエージェント拡張
-- `.pi/extensions/subagents/storage.ts` - サブエージェントストレージ
-- `.pi/lib/live-monitor-base.ts` - ライブモニタリング基底
-- `.pi/lib/live-view-utils.ts` - ライブビューユーティリティ
+View mode for subagent live monitoring interface.
+Alias for base LiveViewMode for semantic clarity.
+
+### SubagentLiveStreamView
+
+```typescript
+type SubagentLiveStreamView = LiveStreamView
+```
+
+Stream view selection for subagent output display.
+Alias for base LiveStreamView for semantic clarity.
+
+---
+*自動生成: 2026-02-17T21:48:27.766Z*

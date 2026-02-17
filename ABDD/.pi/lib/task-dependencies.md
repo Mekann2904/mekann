@@ -1,81 +1,214 @@
 ---
-title: Task Dependencies
-category: reference
+title: task-dependencies
+category: api-reference
 audience: developer
-last_updated: 2026-02-18
-tags: [dag, dependencies, scheduling]
-related: [priority-scheduler, agent-runtime]
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
 ---
 
-# Task Dependencies
-
-DAGベースのタスクスケジューリング用タスク依存グラフ。
+# task-dependencies
 
 ## 概要
 
-タスクが他のタスクの完了を待機できる、依存関係を考慮したスケジューリングを可能にする。
+`task-dependencies` モジュールのAPIリファレンス。
 
-## Types
+## エクスポート一覧
 
-### TaskDependencyStatus
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `formatDependencyGraphStats` | Format dependency graph stats for display. |
+| クラス | `TaskDependencyGraph` | Task dependency graph with cycle detection and top |
+| インターフェース | `TaskDependencyNode` | Task node in the dependency graph. |
+| インターフェース | `AddTaskOptions` | Options for adding a task to the graph. |
+| インターフェース | `CycleDetectionResult` | Result of cycle detection. |
+| 型 | `TaskDependencyStatus` | Task status in the dependency graph. |
 
-依存グラフ内のタスクステータス。
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class TaskDependencyGraph {
+    -nodes: Map<stringTaskDependencyNode>
+    -readyQueue: string[]
+    +addTask
+    +removeTask
+    +hasTask
+    +getTask
+    +getAllTasks
+  }
+  class TaskDependencyNode {
+    <<interface>>
+    +id: string
+    +name: string
+    +status: TaskDependencyStatus
+    +dependencies: Set<string>
+    +dependents: Set<string>
+  }
+  class AddTaskOptions {
+    <<interface>>
+    +name: string
+    +dependencies: string[]
+    +priority: criticalhighnormallow
+    +estimatedDurationMs: number
+  }
+  class CycleDetectionResult {
+    <<interface>>
+    +hasCycle: boolean
+    +cyclePath: string[]null
+  }
+```
+
+## 関数
+
+### dfs
 
 ```typescript
-type TaskDependencyStatus = "pending" | "ready" | "running" | "completed" | "failed" | "cancelled";
+dfs(nodeId: string): string[] | null
 ```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nodeId | `string` | はい |
+
+**戻り値**: `string[] | null`
+
+### visit
+
+```typescript
+visit(nodeId: string): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nodeId | `string` | はい |
+
+**戻り値**: `void`
+
+### getDepth
+
+```typescript
+getDepth(id: string): number
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| id | `string` | はい |
+
+**戻り値**: `number`
+
+### formatDependencyGraphStats
+
+```typescript
+formatDependencyGraphStats(stats: ReturnType<TaskDependencyGraph["getStats"]>): string
+```
+
+Format dependency graph stats for display.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| stats | `ReturnType<TaskDependencyGraph["getStats"]>` | はい |
+
+**戻り値**: `string`
+
+## クラス
+
+### TaskDependencyGraph
+
+Task dependency graph with cycle detection and topological sorting.
+
+**プロパティ**
+
+| 名前 | 型 | 可視性 |
+|------|-----|--------|
+| nodes | `Map<string, TaskDependencyNode>` | private |
+| readyQueue | `string[]` | private |
+
+**メソッド**
+
+| 名前 | シグネチャ |
+|------|------------|
+| addTask | `addTask(id, options): TaskDependencyNode` |
+| removeTask | `removeTask(id): boolean` |
+| hasTask | `hasTask(id): boolean` |
+| getTask | `getTask(id): TaskDependencyNode | undefined` |
+| getAllTasks | `getAllTasks(): TaskDependencyNode[]` |
+| isTaskReady | `isTaskReady(id): boolean` |
+| getReadyTasks | `getReadyTasks(): TaskDependencyNode[]` |
+| getReadyTaskIds | `getReadyTaskIds(): string[]` |
+| markRunning | `markRunning(id): void` |
+| markCompleted | `markCompleted(id): void` |
+| markFailed | `markFailed(id, error): void` |
+| markCancelled | `markCancelled(id): void` |
+| detectCycle | `detectCycle(): CycleDetectionResult` |
+| getTopologicalOrder | `getTopologicalOrder(): string[] | null` |
+| getStats | `getStats(): {
+    total: number;
+    byStatus: Record<TaskDependencyStatus, number>;
+    readyCount: number;
+    blockedCount: number;
+    completedCount: number;
+    failedCount: number;
+    maxDepth: number;
+  }` |
+| clear | `clear(): void` |
+| export | `export(): {
+    tasks: Array<{
+      id: string;
+      name?: string;
+      status: TaskDependencyStatus;
+      dependencies: string[];
+      priority?: string;
+    }>;
+  }` |
+| import | `import(data): void` |
+
+## インターフェース
 
 ### TaskDependencyNode
 
-依存グラフ内のタスクノード。
-
 ```typescript
 interface TaskDependencyNode {
-  /** ユニークなタスク識別子 */
   id: string;
-  /** 表示用のタスク名 */
   name?: string;
-  /** 現在のステータス */
   status: TaskDependencyStatus;
-  /** このタスクが実行可能になる前に完了すべきタスクIDのセット */
   dependencies: Set<string>;
-  /** このタスクに依存するタスクIDのセット */
   dependents: Set<string>;
-  /** タスク追加時のタイムスタンプ */
   addedAt: number;
-  /** タスク開始時のタイムスタンプ */
   startedAt?: number;
-  /** タスク完了時のタイムスタンプ */
   completedAt?: number;
-  /** タスク失敗時のエラー */
   error?: Error;
-  /** スケジューリング優先度 */
   priority?: "critical" | "high" | "normal" | "low";
-  /** 推定所要時間（ミリ秒） */
   estimatedDurationMs?: number;
 }
 ```
+
+Task node in the dependency graph.
 
 ### AddTaskOptions
 
-グラフへのタスク追加オプション。
-
 ```typescript
 interface AddTaskOptions {
-  /** 表示用タスク名 */
   name?: string;
-  /** 先に完了すべきタスクID */
   dependencies?: string[];
-  /** スケジューリング優先度 */
   priority?: "critical" | "high" | "normal" | "low";
-  /** 推定所要時間 */
   estimatedDurationMs?: number;
 }
 ```
 
-### CycleDetectionResult
+Options for adding a task to the graph.
 
-サイクル検出結果。
+### CycleDetectionResult
 
 ```typescript
 interface CycleDetectionResult {
@@ -84,226 +217,17 @@ interface CycleDetectionResult {
 }
 ```
 
-## TaskDependencyGraph Class
+Result of cycle detection.
 
-サイクル検出とトポロジカルソート機能を持つタスク依存グラフ。
+## 型定義
 
-### Constructor
-
-デフォルトコンストラクタ。
-
-### Methods
-
-#### addTask()
-
-タスクを依存グラフに追加。
+### TaskDependencyStatus
 
 ```typescript
-addTask(id: string, options?: AddTaskOptions): TaskDependencyNode
+type TaskDependencyStatus = "pending" | "ready" | "running" | "completed" | "failed" | "cancelled"
 ```
 
-**Throws:**
-- タスクが既に存在する場合
-- 依存タスクが存在しない場合
+Task status in the dependency graph.
 
-#### removeTask()
-
-タスクをグラフから削除。
-
-```typescript
-removeTask(id: string): boolean
-```
-
-**Throws:** 実行中のタスクは削除不可
-
-#### hasTask()
-
-タスクが存在するか確認。
-
-```typescript
-hasTask(id: string): boolean
-```
-
-#### getTask()
-
-IDによるタスク取得。
-
-```typescript
-getTask(id: string): TaskDependencyNode | undefined
-```
-
-#### getAllTasks()
-
-全タスクを取得。
-
-```typescript
-getAllTasks(): TaskDependencyNode[]
-```
-
-#### isTaskReady()
-
-タスクが実行可能か（全依存タスクが完了しているか）確認。
-
-```typescript
-isTaskReady(id: string): boolean
-```
-
-#### getReadyTasks()
-
-実行可能な全タスクを取得。
-
-```typescript
-getReadyTasks(): TaskDependencyNode[]
-```
-
-#### getReadyTaskIds()
-
-実行可能なタスクIDを取得。
-
-```typescript
-getReadyTaskIds(): string[]
-```
-
-#### markRunning()
-
-タスクを実行中としてマーク。
-
-```typescript
-markRunning(id: string): void
-```
-
-**Throws:** タスクが存在しない、またはready状態でない場合
-
-#### markCompleted()
-
-タスクを完了としてマーク。依存タスクのready状態を更新。
-
-```typescript
-markCompleted(id: string): void
-```
-
-#### markFailed()
-
-タスクを失敗としてマーク。依存タスクにも失敗を伝播。
-
-```typescript
-markFailed(id: string, error?: Error): void
-```
-
-#### markCancelled()
-
-タスクをキャンセルとしてマーク。依存タスクにもキャンセルを伝播。
-
-```typescript
-markCancelled(id: string): void
-```
-
-#### detectCycle()
-
-グラフ内のサイクルを検出。DFS with coloring (white/gray/black)を使用。
-
-```typescript
-detectCycle(): CycleDetectionResult
-```
-
-#### getTopologicalOrder()
-
-全タスクのトポロジカル順序を取得。サイクルがある場合はnullを返す。
-
-```typescript
-getTopologicalOrder(): string[] | null
-```
-
-#### getStats()
-
-グラフの統計情報を取得。
-
-```typescript
-getStats(): {
-  total: number;
-  byStatus: Record<TaskDependencyStatus, number>;
-  readyCount: number;
-  blockedCount: number;
-  completedCount: number;
-  failedCount: number;
-  maxDepth: number;
-}
-```
-
-#### clear()
-
-全タスクをクリア。
-
-```typescript
-clear(): void
-```
-
-#### export()
-
-シリアライズ用のオブジェクトとしてエクスポート。
-
-```typescript
-export(): {
-  tasks: Array<{
-    id: string;
-    name?: string;
-    status: TaskDependencyStatus;
-    dependencies: string[];
-    priority?: string;
-  }>;
-}
-```
-
-#### import()
-
-エクスポートデータからインポート。
-
-```typescript
-import(data: { tasks: Array<{ id: string; name?: string; dependencies?: string[]; priority?: string }> }): void
-```
-
-**Throws:** サイクルまたは欠損依存関係が検出された場合
-
-## Utility Functions
-
-### formatDependencyGraphStats()
-
-依存グラフ統計を表示用にフォーマット。
-
-```typescript
-function formatDependencyGraphStats(
-  stats: ReturnType<TaskDependencyGraph["getStats"]>
-): string
-```
-
-## 使用例
-
-```typescript
-const graph = new TaskDependencyGraph();
-
-// タスクを追加
-graph.addTask("task-a", { name: "Setup" });
-graph.addTask("task-b", { name: "Process", dependencies: ["task-a"] });
-graph.addTask("task-c", { name: "Cleanup", dependencies: ["task-b"] });
-
-// サイクルチェック
-const { hasCycle } = graph.detectCycle();
-
-// 実行ループ
-while (graph.getReadyTasks().length > 0) {
-  const task = graph.getReadyTasks()[0];
-  graph.markRunning(task.id);
-  
-  try {
-    await executeTask(task);
-    graph.markCompleted(task.id);
-  } catch (error) {
-    graph.markFailed(task.id, error);
-  }
-}
-```
-
-## 関連ファイル
-
-- `.pi/lib/priority-scheduler.ts` - 優先度スケジューラ
-- `.pi/extensions/agent-runtime.ts` - エージェントランタイム
+---
+*自動生成: 2026-02-17T21:48:27.769Z*
