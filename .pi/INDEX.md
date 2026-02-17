@@ -62,7 +62,6 @@ mekann/
 | Extension | File | Purpose |
 |-----------|------|---------|
 | question | `extensions/question.ts` | Interactive user selection UI |
-| rsa_solve | `extensions/rsa.ts` | Reasoning scaling, task decomposition |
 | loop_run | `extensions/loop.ts` | Autonomous task loop execution |
 | subagent_* | `extensions/subagents.ts` | Sub-agent creation/execution |
 | agent_team_* | `extensions/agent-teams.ts` | Team orchestration |
