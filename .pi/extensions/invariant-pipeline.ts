@@ -54,6 +54,12 @@ interface ParsedSpec {
   constants?: { name: string; type: string; value?: unknown }[];
 }
 
+interface GenerationOutput {
+  content: string;
+  warnings: string[];
+  errors: string[];
+}
+
 interface GenerationResult {
   success: boolean;
   outputs: {
@@ -352,7 +358,10 @@ function parseConstantValue(valueStr: string, type: string): unknown {
 // Quint Generator
 // ============================================================================
 
-function generateQuintSpec(spec: ParsedSpec, moduleName?: string): string {
+function generateQuintSpec(spec: ParsedSpec, moduleName?: string): GenerationOutput {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
   const name = moduleName || spec.title.replace(/[^a-zA-Z0-9]/g, "") || "Generated";
 
   let quint = `// Generated Quint specification from ${spec.title}\n`;
@@ -402,7 +411,8 @@ function generateQuintSpec(spec: ParsedSpec, moduleName?: string): string {
         quint += `      ${post},\n`;
       }
     } else {
-      quint += `      // TODO: Define state transition\n`;
+      warnings.push(`Operation "${op.name}" has no postconditions - generating trivially true transition`);
+      quint += `      // SKIPPED: No postconditions defined for ${op.name}\n`;
       quint += `      true\n`;
     }
     quint += `    }\n`;
@@ -422,7 +432,7 @@ function generateQuintSpec(spec: ParsedSpec, moduleName?: string): string {
 
   quint += `}\n`;
 
-  return quint;
+  return { content: quint, warnings, errors };
 }
 
 function mapTypeToQuint(type: string): string {
@@ -477,7 +487,10 @@ function formatValue(value: unknown, type: string): string {
 // Rust Macro Generator
 // ============================================================================
 
-function generateRustMacros(spec: ParsedSpec, structName?: string): string {
+function generateRustMacros(spec: ParsedSpec, structName?: string): GenerationOutput {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
   const name = structName || spec.title.replace(/[^a-zA-Z0-9]/g, "") || "Generated";
 
   let rust = `//! Generated invariant macros for ${spec.title}\n`;
@@ -541,7 +554,7 @@ function generateRustMacros(spec: ParsedSpec, structName?: string): string {
   rust += `// }\n`;
   rust += `// define_${name.toLowerCase()}_invariants!(${name});\n`;
 
-  return rust;
+  return { content: rust, warnings, errors };
 }
 
 function mapTypeToRust(type: string): string {
@@ -587,11 +600,100 @@ function translateConditionToRust(condition: string): string {
     .replace(/\bnot\b/g, "!");
 }
 
+/**
+ * Translate condition to use model.field access for state variables
+ */
+function translateToModelAccess(condition: string, states: SpecState[]): string {
+  let result = condition;
+  // Sort by name length (longest first) to avoid partial replacements
+  const sortedStates = [...states].sort((a, b) => b.name.length - a.name.length);
+  for (const state of sortedStates) {
+    // Replace word-boundary delimited state names with model.field
+    const regex = new RegExp(`\\b${state.name}\\b`, "g");
+    result = result.replace(regex, `model.${state.name}`);
+  }
+  return result;
+}
+
+/**
+ * Translate postcondition to state transition code
+ * Handles patterns like:
+ * - "count = count + 1" -> "new_state.count = self.count + 1"
+ * - "count == old_count + 1" -> "new_state.count = self.count + 1"
+ */
+interface TransitionResult {
+  code: string;
+  warning?: string;
+}
+
+function translatePostconditionToTransition(postcondition: string, states: SpecState[]): TransitionResult {
+  // Pattern: variable = expression (assignment form)
+  const assignMatch = postcondition.match(/^(\w+)\s*=\s*(.+)$/);
+  if (assignMatch) {
+    const [, varName, expression] = assignMatch;
+    // Check if varName is a state variable
+    const isStateVar = states.some(s => s.name === varName);
+    if (isStateVar) {
+      // Translate expression and use self.var for references
+      let translatedExpr = translateConditionToRust(expression);
+      // Replace state variable references with self.field
+      const sortedStates = [...states].sort((a, b) => b.name.length - a.name.length);
+      for (const state of sortedStates) {
+        const regex = new RegExp(`\\b${state.name}\\b`, "g");
+        translatedExpr = translatedExpr.replace(regex, `self.${state.name}`);
+      }
+      // Convert == back to = for assignment (since translateConditionToRust converts = to ==)
+      translatedExpr = translatedExpr.replace(/==/g, "=");
+      return { code: `new_state.${varName} = ${translatedExpr};` };
+    }
+  }
+
+  // Pattern: variable == expression (postcondition assertion form)
+  const assertMatch = postcondition.match(/^(\w+)\s*==\s*(.+)$/);
+  if (assertMatch) {
+    const [, varName, expression] = assertMatch;
+    const isStateVar = states.some(s => s.name === varName);
+    if (isStateVar) {
+      let translatedExpr = expression;
+      const sortedStates = [...states].sort((a, b) => b.name.length - a.name.length);
+      for (const state of sortedStates) {
+        const regex = new RegExp(`\\b${state.name}\\b`, "g");
+        translatedExpr = translatedExpr.replace(regex, `self.${state.name}`);
+      }
+      return { code: `new_state.${varName} = ${translatedExpr};` };
+    }
+  }
+
+  // Pattern: variable' == expression (primed variable form - TLA+ style)
+  const primedMatch = postcondition.match(/^(\w+)'\s*==\s*(.+)$/);
+  if (primedMatch) {
+    const [, varName, expression] = primedMatch;
+    const isStateVar = states.some(s => s.name === varName);
+    if (isStateVar) {
+      let translatedExpr = expression;
+      const sortedStates = [...states].sort((a, b) => b.name.length - a.name.length);
+      for (const state of sortedStates) {
+        const regex = new RegExp(`\\b${state.name}\\b`, "g");
+        translatedExpr = translatedExpr.replace(regex, `self.${state.name}`);
+      }
+      return { code: `new_state.${varName} = ${translatedExpr};` };
+    }
+  }
+
+  // Unable to translate - return as comment for manual implementation
+  return {
+    code: `// TODO: Manual implementation needed for: ${postcondition}`,
+    warning: `Postcondition "${postcondition}" could not be automatically translated - requires manual implementation`,
+  };
+}
+
 // ============================================================================
 // Property Test Generator
 // ============================================================================
 
-function generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?: number): string {
+function generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?: number): GenerationOutput {
+  const warnings: string[] = [];
+  const errors: string[] = [];
   const name = structName || spec.title.replace(/[^a-zA-Z0-9]/g, "") || "Generated";
 
   let tests = `//! Generated property-based tests for ${spec.title}\n`;
@@ -611,6 +713,14 @@ function generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?
     tests += `}\n\n`;
   }
 
+  // Generate struct for testing
+  tests += `/// Test struct for ${name}\n`;
+  tests += `struct ${name}Test {\n`;
+  for (const s of spec.states) {
+    tests += `    ${s.name}: ${mapTypeToRust(s.type)},\n`;
+  }
+  tests += `}\n\n`;
+
   // Generate tests for each invariant
   for (const inv of spec.invariants) {
     const testName = `test_${inv.name.toLowerCase()}`;
@@ -624,8 +734,20 @@ function generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?
     tests += `    ) {\n`;
     tests += `        // ${inv.description || inv.name}\n`;
     tests += `        // Condition: ${inv.condition}\n`;
-    tests += `        // TODO: Implement test body\n`;
-    tests += `        prop_assert!(true);\n`;
+
+    // Create model struct instance
+    tests += `        let model = ${name}Test {\n`;
+    for (const s of spec.states) {
+      tests += `            ${s.name},\n`;
+    }
+    tests += `        };\n`;
+
+    // Translate and assert the invariant condition
+    const translatedCondition = translateConditionToRust(inv.condition);
+    // Replace bare variable names with model.field access
+    const modelCondition = translateToModelAccess(translatedCondition, spec.states);
+    tests += `        prop_assert!(${modelCondition},\n`;
+    tests += `            "Invariant ${inv.name} violated: ${inv.condition.replace(/"/g, '\\"')}");\n`;
     tests += `    }\n`;
     tests += `}\n\n`;
   }
@@ -641,20 +763,24 @@ function generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?
     tests += `        ${params}\n`;
     tests += `    ) {\n`;
     tests += `        // Test that ${op.name} maintains all invariants\n`;
-    tests += `        // TODO: Create instance, call ${op.name}, check invariants\n`;
-    tests += `        prop_assert!(true);\n`;
+    warnings.push(`Operation "${op.name}" test is incomplete - requires manual implementation`);
+    tests += `        // SKIPPED: Test for ${op.name} requires manual implementation\n`;
+    tests += `        prop_assert!(true); // Placeholder\n`;
     tests += `    }\n`;
     tests += `}\n\n`;
   }
 
-  return tests;
+  return { content: tests, warnings, errors };
 }
 
 // ============================================================================
 // MBT Driver Generator
 // ============================================================================
 
-function generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: number): string {
+function generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: number): GenerationOutput {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
   const name = structName || spec.title.replace(/[^a-zA-Z0-9]/g, "") || "Generated";
 
   let mbt = `//! Generated model-based test driver for ${spec.title}\n`;
@@ -706,7 +832,21 @@ function generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: num
       ? `${capitalize(op.name)} { ${op.parameters!.map(p => p.name).join(", ")} }`
       : capitalize(op.name);
     mbt += `            ${name}Action::${pattern} => {\n`;
-    mbt += `                // TODO: Implement ${op.name} transition\n`;
+
+    // Generate state transitions from postconditions
+    if (op.postconditions && op.postconditions.length > 0) {
+      for (const post of op.postconditions) {
+        const transition = translatePostconditionToTransition(post, spec.states);
+        if (transition.warning) {
+          warnings.push(transition.warning);
+        }
+        mbt += `                ${transition.code}\n`;
+      }
+    } else {
+      warnings.push(`Operation "${op.name}" has no postconditions - state remains unchanged`);
+      mbt += `                // SKIPPED: No postconditions defined for ${op.name} - state unchanged\n`;
+    }
+
     mbt += `            }\n`;
   }
 
@@ -732,16 +872,69 @@ function generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: num
 
   // Test runner
   const maxStepsValue = maxSteps || 100;
+
+  // Add note about required dependency
+  mbt += `// Note: This MBT driver requires the 'rand' crate.\n`;
+  mbt += `// Add to Cargo.toml: rand = "0.8"\n\n`;
+
+  // Generate action generator function
+  if (spec.operations.length > 0) {
+    mbt += `/// Generate a random action for ${name}\n`;
+    mbt += `fn generate_action() -> ${name}Action {\n`;
+    mbt += `    use rand::Rng;\n`;
+    mbt += `    let mut rng = rand::thread_rng();\n`;
+    mbt += `    match rng.gen_range(0..${spec.operations.length}) {\n`;
+
+    for (let i = 0; i < spec.operations.length; i++) {
+      const op = spec.operations[i];
+      if (op.parameters && op.parameters.length > 0) {
+        // Generate random values for parameters
+        const paramInits = op.parameters.map(p => {
+          const rustType = mapTypeToRust(p.type);
+          if (rustType === "i64" || rustType === "i32") {
+            return `rand::thread_rng().gen_range(0..100)`;
+          } else if (rustType === "bool") {
+            return `rand::thread_rng().gen_bool(0.5)`;
+          } else {
+            return `Default::default()`;
+          }
+        }).join(", ");
+        mbt += `        ${i} => ${name}Action::${capitalize(op.name)} { ${op.parameters!.map((p, idx) =>
+          `${p.name}: ${paramInits.split(", ")[idx]}`).join(", ")} },\n`;
+      } else {
+        mbt += `        ${i} => ${name}Action::${capitalize(op.name)},\n`;
+      }
+    }
+
+    // Default case (should never happen with proper range)
+    const defaultOp = spec.operations[0];
+    if (defaultOp.parameters && defaultOp.parameters.length > 0) {
+      mbt += `        _ => ${name}Action::${capitalize(defaultOp.name)} { ${defaultOp.parameters.map(p =>
+        `${p.name}: Default::default()`).join(", ")} },\n`;
+    } else {
+      mbt += `        _ => ${name}Action::${capitalize(defaultOp.name)},\n`;
+    }
+
+    mbt += `    }\n`;
+    mbt += `}\n\n`;
+  }
+
   mbt += `/// Run model-based test\n`;
   mbt += `pub fn run_mbt(max_steps: usize) -> Result<(), String> {\n`;
   mbt += `    let mut model = ${name}Model::initial_state();\n`;
   mbt += `    // Default max_steps: ${maxStepsValue}\n\n`;
   mbt += `    for step in 0..max_steps {\n`;
-  mbt += `        // TODO: Generate random action\n`;
-  mbt += `        // let action = generate_action();\n`;
-  mbt += `        // model = model.apply_action(&action);\n`;
-  mbt += `        // model.check_invariants()?;\n`;
-  mbt += `        println!("Step {}: {:?}", step, model);\n`;
+
+  if (spec.operations.length > 0) {
+    mbt += `        let action = generate_action();\n`;
+    mbt += `        model = model.apply_action(&action);\n`;
+    mbt += `        model.check_invariants()?;\n`;
+    mbt += `        println!("Step {}: action={:?}, state={:?}", step, action, model);\n`;
+  } else {
+    mbt += `        // No operations defined - nothing to test\n`;
+    mbt += `        println!("Step {}: {:?}", step, model);\n`;
+  }
+
   mbt += `    }\n\n`;
   mbt += `    Ok(())\n`;
   mbt += `}\n\n`;
@@ -756,7 +949,7 @@ function generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: num
   mbt += `    }\n`;
   mbt += `}\n`;
 
-  return mbt;
+  return { content: mbt, warnings, errors };
 }
 
 function capitalize(s: string): string {
@@ -844,31 +1037,39 @@ export default (api: ExtensionAPI) => {
         };
 
         // Generate Quint spec
-        const quintContent = generateQuintSpec(spec, params.module_name);
+        const quintOutput = generateQuintSpec(spec, params.module_name);
         const quintPath = join(outputDir, `${spec.title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()}.qnt`);
-        writeFileSync(quintPath, quintContent);
-        result.outputs.quint = { path: quintPath, content: quintContent };
+        writeFileSync(quintPath, quintOutput.content);
+        result.outputs.quint = { path: quintPath, content: quintOutput.content };
+        result.warnings.push(...quintOutput.warnings);
+        result.errors.push(...quintOutput.errors);
 
         // Generate Rust macros
-        const macrosContent = generateRustMacros(spec, params.struct_name);
+        const macrosOutput = generateRustMacros(spec, params.struct_name);
         const macrosPath = join(outputDir, "invariants.rs");
-        writeFileSync(macrosPath, macrosContent);
-        result.outputs.macros = { path: macrosPath, content: macrosContent };
+        writeFileSync(macrosPath, macrosOutput.content);
+        result.outputs.macros = { path: macrosPath, content: macrosOutput.content };
+        result.warnings.push(...macrosOutput.warnings);
+        result.errors.push(...macrosOutput.errors);
 
         // Generate property tests
-        const testsContent = generatePropertyTests(spec, params.struct_name, params.test_count);
+        const testsOutput = generatePropertyTests(spec, params.struct_name, params.test_count);
         const testsPath = join(outputDir, "property_tests.rs");
-        writeFileSync(testsPath, testsContent);
-        result.outputs.tests = { path: testsPath, content: testsContent };
+        writeFileSync(testsPath, testsOutput.content);
+        result.outputs.tests = { path: testsPath, content: testsOutput.content };
+        result.warnings.push(...testsOutput.warnings);
+        result.errors.push(...testsOutput.errors);
 
         // Generate MBT driver
-        const mbtContent = generateMBTDriver(spec, params.struct_name, params.max_steps);
+        const mbtOutput = generateMBTDriver(spec, params.struct_name, params.max_steps);
         const mbtPath = join(outputDir, "mbt_driver.rs");
-        writeFileSync(mbtPath, mbtContent);
-        result.outputs.mbt = { path: mbtPath, content: mbtContent };
+        writeFileSync(mbtPath, mbtOutput.content);
+        result.outputs.mbt = { path: mbtPath, content: mbtOutput.content };
+        result.warnings.push(...mbtOutput.warnings);
+        result.errors.push(...mbtOutput.errors);
 
         const durationMs = Date.now() - startTime;
-        console.log(`[invariant-pipeline] Generation complete in ${durationMs}ms, outputs: ${Object.keys(result.outputs).join(", ")}`);
+        console.log(`[invariant-pipeline] Generation complete in ${durationMs}ms, outputs: ${Object.keys(result.outputs).join(", ")}, warnings: ${result.warnings.length}`);
 
         return {
           success: true,
@@ -877,6 +1078,8 @@ export default (api: ExtensionAPI) => {
           operations_count: spec.operations.length,
           invariants_count: spec.invariants.length,
           outputs: result.outputs,
+          warnings: result.warnings,
+          errors: result.errors,
           duration_ms: durationMs,
         };
       } catch (error) {
@@ -979,16 +1182,18 @@ export default (api: ExtensionAPI) => {
 
         const specContent = readFileSync(params.spec_path, "utf-8");
         const spec = parseSpecMarkdown(specContent);
-        const macrosContent = generateRustMacros(spec, params.struct_name);
+        const output = generateRustMacros(spec, params.struct_name);
 
         const outputPath = params.output_path || join(dirname(params.spec_path), "invariants.rs");
-        writeFileSync(outputPath, macrosContent);
+        writeFileSync(outputPath, output.content);
 
         return {
           success: true,
           path: outputPath,
-          content: macrosContent,
+          content: output.content,
           invariants_count: spec.invariants.length,
+          warnings: output.warnings,
+          errors: output.errors,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1021,17 +1226,19 @@ export default (api: ExtensionAPI) => {
 
         const specContent = readFileSync(params.spec_path, "utf-8");
         const spec = parseSpecMarkdown(specContent);
-        const testsContent = generatePropertyTests(spec, params.struct_name, params.test_count);
+        const output = generatePropertyTests(spec, params.struct_name, params.test_count);
 
         const outputPath = params.output_path || join(dirname(params.spec_path), "property_tests.rs");
-        writeFileSync(outputPath, testsContent);
+        writeFileSync(outputPath, output.content);
 
         return {
           success: true,
           path: outputPath,
-          content: testsContent,
+          content: output.content,
           tests_count: spec.invariants.length + spec.operations.length,
           configured_test_count: params.test_count,
+          warnings: output.warnings,
+          errors: output.errors,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1064,17 +1271,19 @@ export default (api: ExtensionAPI) => {
 
         const specContent = readFileSync(params.spec_path, "utf-8");
         const spec = parseSpecMarkdown(specContent);
-        const mbtContent = generateMBTDriver(spec, params.struct_name, params.max_steps);
+        const output = generateMBTDriver(spec, params.struct_name, params.max_steps);
 
         const outputPath = params.output_path || join(dirname(params.spec_path), "mbt_driver.rs");
-        writeFileSync(outputPath, mbtContent);
+        writeFileSync(outputPath, output.content);
 
         return {
           success: true,
           path: outputPath,
-          content: mbtContent,
+          content: output.content,
           actions_count: spec.operations.length,
           configured_max_steps: params.max_steps,
+          warnings: output.warnings,
+          errors: output.errors,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
