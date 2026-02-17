@@ -3,10 +3,13 @@
 // Why: Enables structured task planning with step-by-step execution
 // Related: README.md, .pi/extensions/loop.ts
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@mariozechner/pi-ai";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
+
+import { Type } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 
@@ -34,6 +37,14 @@ let planIdSequence = 0;
 // ============================================
 // Type Definitions
 // ============================================
+
+/**
+ * CustomMessage型かどうかを判定する型ガード関数
+ * CustomMessageは role: "custom" と customType プロパティを持つ
+ */
+function isCustomMessage(msg: AgentMessage): msg is AgentMessage & { customType: string } {
+  return "customType" in msg;
+}
 
 interface PlanStep {
 	id: string;
@@ -328,8 +339,7 @@ export default function (pi: ExtensionAPI) {
 		// If plan mode is disabled, filter out plan mode context messages
 		return {
 			messages: event.messages.filter((m) => {
-				const msg = m as any;
-				if (msg.customType === PLAN_MODE_CONTEXT_TYPE) return false;
+				if (isCustomMessage(m) && m.customType === PLAN_MODE_CONTEXT_TYPE) return false;
 				return true;
 			}),
 		};

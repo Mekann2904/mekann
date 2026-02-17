@@ -7,7 +7,7 @@ import { readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
-import { getMarkdownTheme, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { getMarkdownTheme, isToolCallEventType, type ExtensionAPI, type ToolCallEvent } from "@mariozechner/pi-coding-agent";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 
@@ -977,7 +977,7 @@ function removeQuotedStrings(input: string): string {
   return result;
 }
 
-function isWriteLikeToolCall(event: any): boolean {
+function isWriteLikeToolCall(event: ToolCallEvent): boolean {
   const toolName = String(event?.toolName || "").toLowerCase();
   if (toolName === "edit" || toolName === "write") {
     const targetPath = resolveToolInputPath(event?.input);
@@ -988,8 +988,8 @@ function isWriteLikeToolCall(event: any): boolean {
     return true;
   }
 
-  if (toolName === "bash") {
-    const command = (event?.input as any)?.command;
+  if (toolName === "bash" && isToolCallEventType("bash", event)) {
+    const command = event.input.command;
     // Delegation-first用の軽量チェックを使用（plan-mode用のisBashCommandAllowedは過剰に厳しい）
     return typeof command === "string" && isWriteLikeBashCommand(command);
   }

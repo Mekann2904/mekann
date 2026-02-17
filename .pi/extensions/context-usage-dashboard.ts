@@ -3,11 +3,20 @@
 // ツールごとの占有傾向と空き容量を可視化し、拡張機能の取捨選択を助けるために存在する。
 // Related: .pi/extensions/usage-tracker.ts, docs/extensions.md, README.md
 
-import type { ContextUsage, ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth } from "@mariozechner/pi-tui";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+
+import type {
+  BranchSummaryEntry,
+  CompactionEntry,
+  ContextUsage,
+  CustomMessageEntry,
+  ExtensionAPI,
+} from "@mariozechner/pi-coding-agent";
+import { truncateToWidth } from "@mariozechner/pi-tui";
+
+
 import { toFiniteNumberWithDefault } from "../lib";
 
 const SESSIONS_ROOT = join(homedir(), ".pi/agent/sessions");
@@ -269,15 +278,15 @@ function collectCurrentSnapshot(ctx: ExtensionAPI["context"]): CurrentSnapshot {
     }
 
     if (entry.type === "custom_message") {
-      otherTokens += estimateUnknownTokens((entry as any).content);
+      otherTokens += estimateUnknownTokens((entry as CustomMessageEntry).content);
       continue;
     }
     if (entry.type === "compaction") {
-      otherTokens += estimateUnknownTokens((entry as any).summary);
+      otherTokens += estimateUnknownTokens((entry as CompactionEntry).summary);
       continue;
     }
     if (entry.type === "branch_summary") {
-      otherTokens += estimateUnknownTokens((entry as any).summary);
+      otherTokens += estimateUnknownTokens((entry as BranchSummaryEntry).summary);
       continue;
     }
   }

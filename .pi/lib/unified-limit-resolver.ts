@@ -13,25 +13,25 @@
  * Layer 5: task-scheduler.ts (優先度ベーススケジューリング)
  */
 
-import {
-  resolveLimits,
-  getConcurrencyLimit,
-  getRpmLimit,
-  type ResolvedModelLimits,
-} from "./provider-limits.js";
 
 import {
   getEffectiveLimit,
   getPredictiveAnalysis,
   type PredictiveAnalysis,
 } from "./adaptive-rate-controller.js";
-
 import {
   getMyParallelLimit,
   getModelParallelLimit,
   getCoordinatorStatus,
   type InstanceInfo,
 } from "./cross-instance-coordinator.js";
+import {
+  resolveLimits,
+  getConcurrencyLimit,
+  getRpmLimit,
+  type ResolvedModelLimits,
+} from "./provider-limits.js";
+import { getRuntimeSnapshot } from "../extensions/agent-runtime.js";
 
 // ============================================================================
 // Types
@@ -76,7 +76,6 @@ export interface LimitBreakdown {
   crossInstance: {
     activeInstances: number;
     myShare: number;
-    modelUsers: number;
   };
   /** Layer 4: ランタイム制約 */
   runtime: {
@@ -265,8 +264,7 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
   // Layer 3: クロスインスタンス分散
   const coordinatorStatus = getCoordinatorStatus();
   const activeInstances = coordinatorStatus.activeInstanceCount || 1;
-  const modelUsers = 1; // TODO: 実際のモデル使用数を取得
-  
+
   let crossInstanceConcurrency = adaptiveConcurrency;
   if (activeInstances > 1) {
     crossInstanceConcurrency = getModelParallelLimit(provider, model, adaptiveConcurrency);
@@ -274,6 +272,8 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
   
   // Layer 4: ランタイム制約
   const runtimeMax = envConfig.maxTotalLlm;
+  const runtimeSnapshot = getRuntimeSnapshot();
+  const currentActive = runtimeSnapshot.totalActiveLlm;
   const runtimeConcurrency = Math.min(crossInstanceConcurrency, runtimeMax);
   
   // 最終的な制限を決定
@@ -316,12 +316,11 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
     crossInstance: {
       activeInstances,
       myShare: crossInstanceConcurrency,
-      modelUsers,
     },
     runtime: {
       maxActive: runtimeMax,
-      currentActive: 0, // TODO: 実際のアクティブ数を取得
-      available: runtimeMax,
+      currentActive,
+      available: Math.max(0, runtimeMax - currentActive),
     },
   };
   
