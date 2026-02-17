@@ -2,6 +2,7 @@
 name: code-review
 description: コードレビュースキル。エンジニアリングプラクティスに基づき、コードベースの健康状態を継続的に改善するためのレビュー観点、進め方、コメントの書き方を提供。
 license: MIT
+tags: [review, quality, best-practices]
 metadata:
   skill-version: "1.0.0"
   created-by: pi-skill-system

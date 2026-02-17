@@ -3,8 +3,8 @@
 // Why: Enables task state persistence and recovery for preemption and resumption.
 // Related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
 
-import { homedir } from "node:os";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 // ============================================================================

@@ -5,8 +5,12 @@
  */
 
 import type { SymFindInput, SymFindOutput, SymbolDefinition, SymbolIndexEntry } from "../types.js";
-import { truncateResults, createErrorResponse } from "../utils/output.js";
+import { truncateResults, createErrorResponse, createSimpleHints } from "../utils/output.js";
+import { SearchToolError, isSearchToolError, getErrorMessage, indexError } from "../utils/errors.js";
+import { DEFAULT_SYMBOL_LIMIT } from "../utils/constants.js";
 import { symIndex, readSymbolIndex } from "./sym_index.js";
+import { getSearchCache, getCacheKey } from "../utils/cache.js";
+import { getSearchHistory, extractQuery } from "../utils/history.js";
 
 // ============================================
 // Filtering
@@ -112,6 +116,17 @@ function sortSymbols(symbols: SymbolDefinition[], input: SymFindInput): void {
 }
 
 // ============================================
+// Helper Functions
+// ============================================
+
+/**
+ * Extract file paths from results for history recording.
+ */
+function extractResultPaths(results: SymbolDefinition[]): string[] {
+	return results.map((r) => r.file).filter(Boolean);
+}
+
+// ============================================
 // Main Entry Point
 // ============================================
 
@@ -122,21 +137,49 @@ export async function symFind(
 	input: SymFindInput,
 	cwd: string
 ): Promise<SymFindOutput> {
-	const limit = input.limit ?? 50;
+	const cache = getSearchCache();
+	const history = getSearchHistory();
+	const TOOL_NAME = "sym_find";
+	const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for symbol search
+	const limit = input.limit ?? DEFAULT_SYMBOL_LIMIT;
+	const params = input as unknown as Record<string, unknown>;
 
-	// Try to read existing index
+	// 1. Generate cache key
+	const cacheKey = getCacheKey(TOOL_NAME, { ...input, cwd });
+
+	// 2. Check cache
+	const cached = cache.getCached<SymFindOutput>(cacheKey);
+	if (cached) {
+		// Record to history even on cache hit
+		history.addHistoryEntry({
+			tool: TOOL_NAME,
+			params,
+			query: extractQuery(TOOL_NAME, params),
+			results: extractResultPaths(cached.results),
+		});
+		return cached;
+	}
+
+	// 3. Try to read existing index
 	let entries = await readSymbolIndex(cwd);
 
 	// If no index exists, try to generate one
 	if (!entries || entries.length === 0) {
-		const indexResult = await symIndex({ force: false, cwd }, cwd);
+		try {
+			const indexResult = await symIndex({ force: false, cwd }, cwd);
 
-		// Check for error
-		if (indexResult.error) {
-			return createErrorResponse<SymbolDefinition>(indexResult.error);
+			// Check for error
+			if (indexResult.error) {
+				throw indexError(indexResult.error, "Run sym_index to generate the symbol index");
+			}
+
+			entries = await readSymbolIndex(cwd);
+		} catch (error) {
+			const toolError = isSearchToolError(error)
+				? error
+				: indexError(getErrorMessage(error));
+			return createErrorResponse<SymbolDefinition>(toolError.format());
 		}
-
-		entries = await readSymbolIndex(cwd);
 	}
 
 	if (!entries || entries.length === 0) {
@@ -154,7 +197,34 @@ export async function symFind(
 	sortSymbols(filtered, input);
 
 	// Truncate to limit
-	return truncateResults(filtered, limit);
+	const result = truncateResults(filtered, limit);
+
+	// 4. Generate hints
+	const hints = createSimpleHints(
+		TOOL_NAME,
+		result.results.length,
+		result.truncated,
+		extractQuery(TOOL_NAME, params)
+	);
+
+	// 5. Record to history
+	history.addHistoryEntry({
+		tool: TOOL_NAME,
+		params,
+		query: extractQuery(TOOL_NAME, params),
+		results: extractResultPaths(result.results).slice(0, 10),
+	});
+
+	// 6. Save to cache
+	cache.setCache(cacheKey, { ...result, hints } as SymFindOutput, CACHE_TTL);
+
+	// 7. Return with hints in details
+	return {
+		...result,
+		details: {
+			hints,
+		},
+	} as SymFindOutput;
 }
 
 /**

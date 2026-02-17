@@ -6,8 +6,9 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { atomicWriteTextFile } from "./storage-lock.js";
+
 import { ensureDir } from "./fs-utils.js";
+import { atomicWriteTextFile } from "./storage-lock.js";
 
 // ============================================================================
 // Types

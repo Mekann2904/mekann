@@ -2,10 +2,20 @@
 name: search-tools
 description: 検索ツール（file_candidates, code_search, sym_index, sym_find）の効果的な使用方法を支援するスキル。エージェントが適切なツールを選択し、パフォーマンスと精度を最適化するためのベストプラクティスを提供。
 license: MIT
+tags: [search, tools, performance]
 metadata:
-  skill-version: "1.0.0"
+  skill-version: "2.0.0"
   created-by: pi-skill-system
   based-on: search-tools-test-suite
+  last-updated: 2026-02-17
+  improvements:
+    - "P0: SearchToolError統一エラーハンドリング"
+    - "P0: DEFAULT_EXCLUDES自動適用"
+    - "P0: パラメータデフォルト値統一"
+    - "P1: 結果キャッシュ（TTL対応）"
+    - "P1: 検索履歴記録"
+    - "P1: Agent Hints（信頼度・次アクション提案）"
+    - "P1: 検索統合ヘルパー（merge/rank/deduplicate）"
 ---
 
 # Search Tools Best Practices
@@ -18,6 +28,12 @@ metadata:
 - **エッジケース対応**: よくある失敗パターンと回避策
 - **統合ワークフロー**: 複数ツールを組み合わせた検索パターン
 
+**v2.0.0の新機能:**
+- **自動除外**: DEFAULT_EXCLUDESがデフォルトで適用（node_modules, .git, dist等）
+- **結果キャッシュ**: 同一検索の高速化（TTL: 5-10分）
+- **Agent Hints**: 結果の信頼度と次のアクション提案
+- **統一エラー処理**: SearchToolErrorによる分類されたエラーメッセージ
+
 ## 使用タイミング
 
 以下の場合にこのスキルを読み込む：
@@ -29,6 +45,83 @@ metadata:
 ---
 
 ## ツール選択ガイド（CRITICAL）
+
+## 新機能（v2.0.0）
+
+### 自動除外パターン（DEFAULT_EXCLUDES）
+
+検索ツールは以下のパターンをデフォルトで除外します：
+
+```typescript
+const DEFAULT_EXCLUDES = [
+  "node_modules", ".git", "dist", "build", "coverage",
+  ".next", ".nuxt", "vendor", "__pycache__", ".cache",
+  "*.min.js", "*.min.css", ".pi/search", ".pi/analytics"
+];
+```
+
+**無効化方法**: `exclude: []` を明示的に指定
+
+```typescript
+// デフォルト除外を無効化して全ファイルを検索
+file_candidates({
+  pattern: "*.ts",
+  exclude: []  // 空配列で無効化
+})
+```
+
+### 結果キャッシュ
+
+検索結果は自動的にキャッシュされます：
+
+| ツール | TTL | 理由 |
+|--------|-----|------|
+| file_candidates | 10分 | ファイル構成は比較的安定 |
+| code_search | 5分 | コード変更頻度を考慮 |
+| sym_find | 5分 | シンボル検索 |
+
+### Agent Hints
+
+各検索結果には `details.hints` が含まれます：
+
+```typescript
+{
+  results: [...],
+  truncated: false,
+  details: {
+    hints: {
+      confidence: 0.85,          // 0.0-1.0
+      suggestedNextAction: "refine_pattern",  // 結果が少ない場合
+      alternativeTools: ["sym_find"]          // 代替ツール提案
+    }
+  }
+}
+```
+
+**suggestedNextAction の値:**
+- `refine_pattern`: 結果が0件、パターンを修正
+- `expand_scope`: 検索範囲を広げる
+- `increase_limit`: 結果が切り捨てられている
+- `try_different_tool`: 別のツールを試す
+
+### 統一エラー処理（SearchToolError）
+
+エラーは以下のカテゴリに分類されます：
+
+| カテゴリ | 説明 | recovery hint |
+|----------|------|---------------|
+| `dependency` | fd/rg/ctags未インストール | インストールコマンドを提示 |
+| `parameter` | 不正なパラメータ | 正しいパラメータ例を提示 |
+| `execution` | 実行時エラー | 代替手段を提示 |
+| `timeout` | タイムアウト | パラメータ調整を提案 |
+| `index` | インデックス関連 | sym_index実行を提案 |
+| `filesystem` | ファイルシステムエラー | パス確認を提案 |
+
+### 検索履歴
+
+全ての検索クエリは履歴に記録され、関連クエリの推薦に使用されます。
+
+---
 
 ### 意思決定フローチャート
 

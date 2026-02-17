@@ -13,8 +13,8 @@
  */
 
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 // ============================================================================
 // Types
@@ -594,7 +594,7 @@ export function analyze429Probability(provider: string, model: string): number {
   const consecutiveWeight = limit.consecutive429Count * 0.2;
 
   // Calculate base probability
-  let probability = recentWeight + mediumWeight + hourWeight + consecutiveWeight;
+  const probability = recentWeight + mediumWeight + hourWeight + consecutiveWeight;
 
   // Cap at 1.0
   return Math.min(1.0, probability);

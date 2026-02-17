@@ -3,54 +3,17 @@
 // Why: Enables proactive parallel collaboration across specialized teammate roles.
 // Related: .pi/extensions/subagents.ts, .pi/extensions/plan.ts, README.md
 
-import { getMarkdownTheme, parseFrontmatter, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@mariozechner/pi-ai";
-import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import {
-  formatRuntimeStatusLine,
-  getRuntimeSnapshot,
-  getSharedRuntimeState,
-  notifyRuntimeCapacityChanged,
-  resetRuntimeTransientState,
-  reserveRuntimeCapacity,
-  tryReserveRuntimeCapacity,
-  type RuntimeCapacityReservationLease,
-  waitForRuntimeOrchestrationTurn,
-} from "./agent-runtime";
+
+import { Type } from "@mariozechner/pi-ai";
+import { getMarkdownTheme, parseFrontmatter, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+
 
 // Import shared plan mode utilities
-import {
-	isPlanModeActive,
-	PLAN_MODE_WARNING,
-} from "../lib/plan-mode-shared";
-import {
-  createAdaptivePenaltyController,
-} from "../lib/adaptive-penalty.js";
-import {
-  getRateLimitGateSnapshot,
-  isRetryableError,
-  retryWithBackoff,
-  type RetryWithBackoffOverrides,
-} from "../lib/retry-with-backoff";
-import { runWithConcurrencyLimit } from "../lib/concurrency";
-import { createChildAbortController } from "../lib/abort-utils";
-import {
-  getTeamMemberExecutionRules,
-} from "../lib/execution-rules";
-import {
-  buildRuntimeLimitError,
-  buildRuntimeQueueWaitError,
-  startReservationHeartbeat,
-  refreshRuntimeStatus as sharedRefreshRuntimeStatus,
-} from "./shared/runtime-helpers";
-import {
-  runPiPrintMode as sharedRunPiPrintMode,
-  type PrintExecutorOptions,
-} from "./shared/pi-print-executor";
 import {
   ensureDir,
   formatDurationMs,
@@ -89,6 +52,11 @@ import {
   toConcurrencyLimit,
   resolveEffectiveTimeoutMs,
 } from "../lib";
+import { createChildAbortController } from "../lib/abort-utils";
+import {
+  createAdaptivePenaltyController,
+} from "../lib/adaptive-penalty.js";
+import { SchemaValidationError, ValidationError } from "../lib/errors.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 import { getCostEstimator, type ExecutionHistoryEntry, CostEstimator } from "../lib/cost-estimator";
@@ -154,6 +122,33 @@ import {
   type PartnerReferenceResultV2,
 } from "./agent-teams/communication";
 
+// Import team types from lib (extracted for maintainability)
+// Note: Only types with matching structures are imported.
+// TeamNormalizedOutput, TeamParallelCapacityCandidate, TeamParallelCapacityResolution
+// have different implementations in this file (runtime-specific) vs lib (API-specific).
+import {
+  type TeamLivePhase,
+  type TeamLiveViewMode,
+  type TeamLiveItem,
+  type TeamMonitorLifecycle,
+  type TeamMonitorPhase,
+  type TeamMonitorEvents,
+  type TeamMonitorStream,
+  type TeamMonitorDiscussion,
+  type TeamMonitorResource,
+  type AgentTeamLiveMonitorController,
+  type TeamFrontmatter,
+  type TeamMemberFrontmatter,
+  type ParsedTeamMarkdown,
+  type LiveStreamView,
+} from "../lib/team-types.js";
+
+// Local alias for backward compatibility (TeamLiveViewMode = LiveViewMode with "discussion")
+type LiveViewMode = TeamLiveViewMode;
+
+// Import PrintCommandResult from subagent-types (shared type)
+import { type PrintCommandResult } from "../lib/subagent-types.js";
+
 // Re-export judge types for external use
 export type { TeamUncertaintyProxy } from "./agent-teams/judge";
 
@@ -172,37 +167,16 @@ export type {
   TeamPaths,
 };
 
-// Team frontmatter types for markdown parsing
-interface TeamFrontmatter {
-  id: string;
-  name: string;
-  description: string;
-  enabled: "enabled" | "disabled";
-  strategy?: "parallel" | "sequential";
-  skills?: string[];
-  members: TeamMemberFrontmatter[];
-}
-
-interface TeamMemberFrontmatter {
-  id: string;
-  role: string;
-  description: string;
-  enabled?: boolean;
-  provider?: string;
-  model?: string;
-  skills?: string[];
-}
-
-interface ParsedTeamMarkdown {
-  frontmatter: TeamFrontmatter;
-  content: string;
-  filePath: string;
-}
-
-interface PrintCommandResult {
-  output: string;
-  latencyMs: number;
-}
+// Re-export team types for external use (from lib/team-types.ts)
+export type {
+  TeamLivePhase,
+  TeamLiveViewMode,
+  TeamLiveItem,
+  AgentTeamLiveMonitorController,
+  TeamFrontmatter,
+  TeamMemberFrontmatter,
+  ParsedTeamMarkdown,
+};
 
 const LIVE_PREVIEW_LINE_LIMIT = 120;
 const LIVE_LIST_WINDOW_SIZE = 22;
@@ -225,7 +199,6 @@ import {
   TEAM_MEMBER_CONFIG,
   buildFailureSummary as sharedBuildFailureSummary,
 } from "../lib/agent-common.js";
-
 import {
   isRetryableTeamMemberError as sharedIsRetryableTeamMemberError,
   resolveTeamFailureOutcome as sharedResolveTeamFailureOutcome,
@@ -233,6 +206,42 @@ import {
   trimErrorMessage as sharedTrimErrorMessage,
   buildDiagnosticContext as sharedBuildDiagnosticContext,
 } from "../lib/agent-errors.js";
+import { runWithConcurrencyLimit } from "../lib/concurrency";
+import {
+  getTeamMemberExecutionRules,
+} from "../lib/execution-rules";
+import {
+	isPlanModeActive,
+	PLAN_MODE_WARNING,
+} from "../lib/plan-mode-shared";
+import {
+  getRateLimitGateSnapshot,
+  isRetryableError,
+  retryWithBackoff,
+  type RetryWithBackoffOverrides,
+} from "../lib/retry-with-backoff";
+
+import {
+  formatRuntimeStatusLine,
+  getRuntimeSnapshot,
+  getSharedRuntimeState,
+  notifyRuntimeCapacityChanged,
+  resetRuntimeTransientState,
+  reserveRuntimeCapacity,
+  tryReserveRuntimeCapacity,
+  type RuntimeCapacityReservationLease,
+  waitForRuntimeOrchestrationTurn,
+} from "./agent-runtime";
+import {
+  runPiPrintMode as sharedRunPiPrintMode,
+  type PrintExecutorOptions,
+} from "./shared/pi-print-executor";
+import {
+  buildRuntimeLimitError,
+  buildRuntimeQueueWaitError,
+  startReservationHeartbeat,
+  refreshRuntimeStatus as sharedRefreshRuntimeStatus,
+} from "./shared/runtime-helpers";
 
 // Local aliases for backward compatibility
 const STABLE_AGENT_TEAM_RUNTIME = STABLE_RUNTIME_PROFILE;
@@ -251,111 +260,8 @@ const adaptivePenalty = createAdaptivePenaltyController({
   decayMs: ADAPTIVE_PARALLEL_DECAY_MS,
 });
 
-type TeamLiveStatus = LiveStatus;
-type TeamLivePhase = "queued" | "initial" | "communication" | "judge" | "finished";
-type LiveStreamView = "stdout" | "stderr";
-type LiveViewMode = "list" | "detail" | "discussion";
-
-interface TeamLiveItem {
-  key: string;
-  label: string;
-  partners: string[];
-  status: TeamLiveStatus;
-  phase: TeamLivePhase;
-  phaseRound?: number;
-  startedAtMs?: number;
-  finishedAtMs?: number;
-  lastChunkAtMs?: number;
-  lastEventAtMs?: number;
-  lastEvent?: string;
-  summary?: string;
-  error?: string;
-  stdoutTail: string;
-  stderrTail: string;
-  stdoutBytes: number;
-  stderrBytes: number;
-  stdoutNewlineCount: number;
-  stderrNewlineCount: number;
-  stdoutEndsWithNewline: boolean;
-  stderrEndsWithNewline: boolean;
-  events: string[];
-  discussionTail: string;
-  discussionBytes: number;
-  discussionNewlineCount: number;
-  discussionEndsWithNewline: boolean;
-}
-
-// ISP-compliant interfaces: split by responsibility
-// Clients can depend only on the interfaces they actually use.
-
-/**
- * Lifecycle operations for marking team member execution states.
- * Used by code that only needs to track start/finish transitions.
- */
-interface TeamMonitorLifecycle {
-  markStarted: (itemKey: string) => void;
-  markFinished: (
-    itemKey: string,
-    status: "completed" | "failed",
-    summary: string,
-    error?: string,
-  ) => void;
-}
-
-/**
- * Phase tracking operations for team member execution phases.
- * Used by code that only needs to manage phase transitions.
- */
-interface TeamMonitorPhase {
-  markPhase: (itemKey: string, phase: TeamLivePhase, round?: number) => void;
-}
-
-/**
- * Event logging operations for tracking execution events.
- * Used by code that only needs to record events.
- */
-interface TeamMonitorEvents {
-  appendEvent: (itemKey: string, event: string) => void;
-  appendBroadcastEvent: (event: string) => void;
-}
-
-/**
- * Stream output operations for appending stdout/stderr chunks.
- * Used by code that only needs to handle output streaming.
- */
-interface TeamMonitorStream {
-  appendChunk: (itemKey: string, stream: LiveStreamView, chunk: string) => void;
-}
-
-/**
- * Discussion tracking operations for multi-agent communication.
- * Used by code that only needs to track discussion content.
- */
-interface TeamMonitorDiscussion {
-  appendDiscussion: (itemKey: string, discussion: string) => void;
-}
-
-/**
- * Resource cleanup and termination operations.
- * Used by code that only needs to manage monitor lifecycle.
- */
-interface TeamMonitorResource {
-  close: () => void;
-  wait: () => Promise<void>;
-}
-
-/**
- * Full monitor controller combining all capabilities.
- * Extends partial interfaces to maintain backward compatibility.
- * Clients should use narrower interfaces when possible.
- */
-interface AgentTeamLiveMonitorController
-  extends TeamMonitorLifecycle,
-    TeamMonitorPhase,
-    TeamMonitorEvents,
-    TeamMonitorStream,
-    TeamMonitorDiscussion,
-    TeamMonitorResource {}
+// Note: TeamLivePhase, TeamLiveItem, and monitor interfaces are imported from lib/team-types.ts
+// LiveStreamView and LiveViewMode are re-exported from lib/team-types.ts (originally from lib/index.ts)
 
 function formatLivePhase(phase: TeamLivePhase, round?: number): string {
   if (phase === "communication") return round ? `comm#${round}` : "comm";
@@ -1373,21 +1279,7 @@ function refreshRuntimeStatus(ctx: any): void {
 // Markdown-based team definitions loader
 // ============================================================================
 
-interface TeamMemberFrontmatter {
-  id: string;
-  role: string;
-  description: string;
-  enabled?: boolean;
-  provider?: string;
-  model?: string;
-  skills?: string[];
-}
-
-interface ParsedTeamMarkdown {
-  frontmatter: TeamFrontmatter;
-  content: string;
-  filePath: string;
-}
+// Note: TeamMemberFrontmatter and ParsedTeamMarkdown are imported from lib/team-types.ts
 
 function getTeamDefinitionsDir(cwd: string): string {
   return join(cwd, ".pi", "agent-teams", "definitions");
@@ -2216,7 +2108,10 @@ async function runMember(input: {
           });
           const normalized = normalizeTeamMemberOutput(result.output);
           if (!normalized.ok) {
-            throw new Error(`agent team member low-substance output: ${normalized.reason}`);
+            throw new SchemaValidationError(`agent team member low-substance output: ${normalized.reason}`, {
+              violations: [normalized.reason ?? "unknown"],
+              field: "output",
+            });
           }
           if (normalized.degraded) {
             input.onEvent?.(
@@ -2432,7 +2327,11 @@ async function runTeamTask(input: {
 }): Promise<{ runRecord: TeamRunRecord; memberResults: TeamMemberResult[]; communicationAudit: TeamCommunicationAuditEntry[] }> {
   const enabledMembers = input.team.members.filter((member) => member.enabled);
   if (enabledMembers.length === 0) {
-    throw new Error(`no enabled members in team (${input.team.id})`);
+    throw new ValidationError(`no enabled members in team (${input.team.id})`, {
+      field: "team.members",
+      expected: "at least one enabled member",
+      actual: "0 enabled members",
+    });
   }
   // Execute all enabled members. Runtime safety is handled by memberParallelLimit.
   const activeMembers = enabledMembers;

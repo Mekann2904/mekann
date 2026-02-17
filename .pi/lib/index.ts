@@ -13,6 +13,67 @@ export {
   type PressureErrorType,
 } from "./error-utils.js";
 
+// Unified error classes (Layer 0)
+export {
+  PiError,
+  RuntimeLimitError,
+  RuntimeQueueWaitError,
+  SchemaValidationError,
+  ValidationError,
+  TimeoutError,
+  CancelledError,
+  RateLimitError,
+  CapacityError,
+  ParsingError,
+  ExecutionError,
+  ConfigurationError,
+  StorageError,
+  isPiError,
+  hasErrorCode,
+  isRetryableError,
+  toPiError,
+  getErrorCode,
+  isRetryableErrorCode,
+  type PiErrorCode,
+  type ErrorSeverity,
+  type ErrorContext,
+} from "./errors.js";
+
+// Team types (Layer 1)
+export {
+  type TeamLivePhase,
+  type TeamLiveViewMode,
+  type TeamLiveItem,
+  type TeamMonitorLifecycle,
+  type TeamMonitorPhase,
+  type TeamMonitorEvents,
+  type TeamMonitorStream,
+  type TeamMonitorDiscussion,
+  type TeamMonitorResource,
+  type AgentTeamLiveMonitorController,
+  type TeamNormalizedOutput,
+  type TeamParallelCapacityCandidate,
+  type TeamParallelCapacityResolution,
+  type TeamFrontmatter,
+  type TeamMemberFrontmatter,
+  type ParsedTeamMarkdown,
+} from "./team-types.js";
+
+// Subagent types (Layer 1)
+export {
+  type SubagentLiveStreamView,
+  type SubagentLiveViewMode,
+  type SubagentLiveItem,
+  type SubagentMonitorLifecycle,
+  type SubagentMonitorStream,
+  type SubagentMonitorResource,
+  type SubagentLiveMonitorController,
+  type SubagentNormalizedOutput,
+  type SubagentParallelCapacityResolution,
+  type DelegationState,
+  type PrintCommandResult,
+} from "./subagent-types.js";
+
 // TUI utilities (Layer 0)
 export {
   appendTail,
@@ -467,3 +528,31 @@ export {
   cleanupExpiredLocks,
   enhancedHeartbeat,
 } from "./cross-instance-coordinator.js";
+
+// Structured Logger utilities (Layer 1)
+// Unified structured logging with JSON format
+export {
+  StructuredLogger,
+  ChildLogger,
+  type LogLevel,
+  type LogContext,
+  type StructuredLogEntry,
+  type StructuredLoggerOptions,
+  getMinLogLevel,
+  resetMinLogLevelCache,
+  formatTimestamp,
+  shouldLog,
+  formatError,
+  serializeLogEntry,
+  formatReadableEntry,
+  getDefaultLogger,
+  resetDefaultLogger,
+  createLogger,
+  getSubagentLogger,
+  getAgentTeamsLogger,
+  getStorageLogger,
+  logInfo,
+  logWarn,
+  logError,
+  logDebug,
+} from "./structured-logger.js";

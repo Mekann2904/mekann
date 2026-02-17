@@ -3,31 +3,34 @@
 // Why: Enables repeated model iterations with citation checks and reproducible run logs.
 // Related: README.md, .pi/extensions/rsa.ts, .pi/extensions/question.ts
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@mariozechner/pi-ai";
-import { Text } from "@mariozechner/pi-tui";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
-import { basename, isAbsolute, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
-import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { basename, isAbsolute, join, resolve } from "node:path";
+
+import { Type } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
+
 import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, computeModelTimeoutMs } from "../lib";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 
 const logger = getLogger();
-import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
-import {
-  detectSemanticRepetition,
-  type SemanticRepetitionResult,
-} from "../lib/semantic-repetition";
 import {
   classifyIntent,
   getIntentBudget,
   type TaskIntent,
   type IntentClassificationResult,
 } from "../lib/intent-aware-limits";
+import {
+  detectSemanticRepetition,
+  type SemanticRepetitionResult,
+} from "../lib/semantic-repetition";
+import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
+
+import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 type LoopStatus = "continue" | "done" | "unknown";
 type LoopGoalStatus = "met" | "not_met" | "unknown";
 

@@ -2,6 +2,7 @@
 name: clean-architecture
 description: アーキテクチャ設計・レビュースキル。コンポーネントの凝集度・結合度の原則に基づき、保守性の高い「ソフトな」システムを構築。開発フェーズに応じた原則の重み付けを支援。
 license: MIT
+tags: [architecture, design-principles, cohesion]
 metadata:
   skill-version: "1.0.0"
   created-by: pi-skill-system

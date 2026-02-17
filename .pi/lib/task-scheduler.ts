@@ -3,7 +3,6 @@
 // Why: Enables efficient task scheduling with provider/model-specific queue management.
 // Related: .pi/lib/token-bucket.ts, .pi/extensions/agent-runtime.ts, .pi/lib/priority-scheduler.ts, .pi/lib/checkpoint-manager.ts
 
-import { TaskPriority, PriorityTaskQueue, comparePriority, type PriorityQueueEntry } from "./priority-scheduler";
 import {
   getCheckpointManager,
   type Checkpoint,
@@ -11,6 +10,7 @@ import {
   type CheckpointSource,
   type CheckpointPriority,
 } from "./checkpoint-manager";
+import { TaskPriority, PriorityTaskQueue, comparePriority, type PriorityQueueEntry } from "./priority-scheduler";
 
 // ============================================================================
 // Preemption Support

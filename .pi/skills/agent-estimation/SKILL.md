@@ -2,6 +2,7 @@
 name: agent-estimation
 description: AIエージェントの作業工数を、人間の時間ではなくエージェント自身の操作単位（ツール呼び出しラウンド）で正確に見積もる。見積もり、スコープ設定、計画、タスク所要時間の評価時に使用。エージェントが人間の開発者のタイムラインにアンカーして過大評価する失敗を防ぐ。ラウンド数、リスク要因、最終的な実時間変換を含む構造化された内訳を出力。
 license: MIT
+tags: [estimation, planning, agent-metrics]
 metadata:
   skill-version: "1.0.0"
   created-by: pi-skill-system

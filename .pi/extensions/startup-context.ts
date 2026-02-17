@@ -10,9 +10,10 @@
  * how to utilize this context effectively.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   let isFirstPrompt = true;

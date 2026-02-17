@@ -1,7 +1,11 @@
 ---
 name: dynamic-tools
 description: 動的ツール生成・実行スキル。タスク実行中に必要なツールを動的に生成・実行・管理する。
-tags: dynamic, tools, code-generation, live-swe-agent
+license: MIT
+tags: [tools, dynamic-generation, runtime]
+metadata:
+  skill-version: "1.0.0"
+  created-by: pi-skill-system
 ---
 
 # 動的ツール生成・実行システム

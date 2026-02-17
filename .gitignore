@@ -78,6 +78,24 @@ coverage/
 # Uncomment if needed:
 # .pi/memory/patterns.json
 
+# ============================================================================
+# Search Indexes (generated at runtime, may be large)
+# ============================================================================
+
+# Symbol index (ctags output)
+.pi/search/symbols/
+.pi/search/symbols.jsonl
+
+# Call graph index
+.pi/search/call-graph/
+
+# Semantic search index (embeddings)
+.pi/search/semantic-index.jsonl
+.pi/search/semantic-meta.json
+
+# Index metadata
+.pi/search/index-meta.json
+
 # Temporary files
 *.tmp
 *.tmp-*

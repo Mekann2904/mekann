@@ -68,11 +68,18 @@ import { openAIEmbeddingProvider } from "./providers/openai.js";
 
 /**
  * Initialize the embedding module with default providers.
+ * Registers OpenAI provider.
  */
-export function initializeEmbeddingModule(): void {
-  // Register default providers
+export async function initializeEmbeddingModule(): Promise<void> {
   embeddingRegistry.register(openAIEmbeddingProvider);
 }
 
-// Auto-initialize on import
-initializeEmbeddingModule();
+/**
+ * Synchronous initialization for non-async contexts.
+ */
+export function initializeEmbeddingModuleSync(): void {
+  embeddingRegistry.register(openAIEmbeddingProvider);
+}
+
+// Auto-initialize on import (sync version for backward compatibility)
+initializeEmbeddingModuleSync();

@@ -5,9 +5,9 @@
  * opencode互換のシンプルで使いやすいインターフェース
  */
 
+import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth, CURSOR_MARKER } from "@mariozechner/pi-tui";
-import { Type } from "@mariozechner/pi-ai";
 import { matchesKey, Key } from "@mariozechner/pi-tui";
 
 // ============================================

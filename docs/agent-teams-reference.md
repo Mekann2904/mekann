@@ -1,5 +1,10 @@
 ---
-last_updated: 2026-02-12
+title: エージェントチーム完全リファレンス
+category: reference
+audience: [developer, daily-user]
+last_updated: 2026-02-17
+tags: [agent-teams, reference, orchestration]
+related: [../02-user-guide/09-agent-teams.md]
 ---
 
 # エージェントチーム完全リファレンス

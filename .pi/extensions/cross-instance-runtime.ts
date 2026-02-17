@@ -4,6 +4,18 @@
 // Related: .pi/lib/cross-instance-coordinator.ts, .pi/lib/provider-limits.ts, .pi/lib/adaptive-rate-controller.ts
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import {
+  initAdaptiveController,
+  shutdownAdaptiveController,
+  getEffectiveLimit,
+  record429,
+  recordSuccess,
+  isRateLimitError,
+  getLearnedLimit,
+  resetLearnedLimit,
+  formatAdaptiveSummary,
+} from "../lib/adaptive-rate-controller";
 import {
   registerInstance,
   unregisterInstance,
@@ -23,17 +35,7 @@ import {
   listProviders,
   detectTier,
 } from "../lib/provider-limits";
-import {
-  initAdaptiveController,
-  shutdownAdaptiveController,
-  getEffectiveLimit,
-  record429,
-  recordSuccess,
-  isRateLimitError,
-  getLearnedLimit,
-  resetLearnedLimit,
-  formatAdaptiveSummary,
-} from "../lib/adaptive-rate-controller";
+
 import { getRuntimeSnapshot, notifyRuntimeCapacityChanged } from "./agent-runtime";
 
 const Text = require("@mariozechner/pi-tui").Text;

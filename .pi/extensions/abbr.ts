@@ -15,13 +15,15 @@
  * it will be replaced with its expansion before being sent to the agent.
  */
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import { Text, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
+
 
 // Configuration file path (global)
 const CONFIG_DIR = path.join(os.homedir(), ".pi");
@@ -59,7 +61,7 @@ const AbbrParams = Type.Object({
 });
 
 // State
-let abbreviations: Map<string, Abbreviation> = new Map();
+const abbreviations: Map<string, Abbreviation> = new Map();
 let piInstance: ExtensionAPI | null = null;
 
 // Load abbreviations from config file

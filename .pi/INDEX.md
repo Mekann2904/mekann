@@ -14,6 +14,7 @@
 | Dynamic tools | `.pi/extensions/dynamic-tools.ts` | `docs/02-user-guide/01-extensions.md` |
 | Troubleshooting | `docs/04-reference/03-troubleshooting.md` | `CHANGELOG.md` |
 | Getting started | `docs/01-getting-started/01-quick-start.md` | `README.md` |
+| Code review | `docs/06-code-review-report/` | `.pi/skills/code-review/SKILL.md` |
 
 ## Repository Structure Map
 
@@ -51,7 +52,8 @@ mekann/
 │   ├── 02-user-guide/        <-- Extension guides
 │   ├── 03-development/       <-- Developer guide
 │   ├── 04-reference/         <-- Config, troubleshooting
-│   └── 05-meta/              <-- Changelog, roadmap
+│   ├── 05-meta/              <-- Changelog, roadmap
+│   └── 06-code-review-report/<-- Code review results (NEW)
 └── README.md                 <-- Project overview
 ```
 

@@ -8,8 +8,9 @@
  * Linuxの通知: kittyのネイティブ通知
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { spawn, execSync } from "child_process";
+
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // kitty用のエスケープシーケンス
 const OSC = "\x1b]";

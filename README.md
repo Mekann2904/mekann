@@ -2,7 +2,7 @@
 title: mekann - pi拡張機能コレクション
 category: meta
 audience: new-user, developer
-last_updated: 2026-02-14
+last_updated: 2026-02-17
 tags: [overview, mekann]
 related: [docs/README.md, docs/01-getting-started/01-quick-start.md]
 ---
@@ -95,6 +95,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **skill-inspector** | `skill-inspector.ts` | スキル割り当て状況の表示 | [→](docs/02-user-guide/11-utilities.md) |
 | **search** | `extensions/search/` | 高速コード検索（file_candidates, code_search, sym_index, sym_find） | 新規 |
 | **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | 新規 |
+| **invariant-pipeline** | `invariant-pipeline.ts` | 形式仕様からインバリアント、テストコード自動生成（generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver） | [→](docs/02-user-guide/12-invariant-pipeline.md) |
 | **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | 新規 |
 
 ### 共有ライブラリ
@@ -179,6 +180,7 @@ pi remove https://github.com/Mekann2904/mekann
 | | harness-engineering | ハーネスエンジニアリング（品質向上の手法論） |
 | **検索** | search-tools | 高速コード検索ツール（file_candidates, code_search, sym_index, sym_find） |
 | **動的ツール** | dynamic-tools | タスク実行中の動的ツール生成・実行・管理 |
+| **形式手法** | invariant-generation | 形式仕様からインバリアント、テストコード自動生成（Quint、Rustマクロ、プロパティテスト、MBT） |
 
 ### スキル運用方針
 
@@ -258,6 +260,12 @@ mekann/
 │   │   ├── 03-roadmap.md
 │   │   ├── 04-development-workflow.md
 │   │   └── 99-archive/
+│   ├── 06-code-review-report/ # コードレビューレポート
+│   │   ├── README.md
+│   │   ├── 01-summary.md
+│   │   ├── 02-architecture-diagram.md
+│   │   ├── 03-decision-flow.md
+│   │   └── 04-recommendations.md
 │   ├── _template.md         # ドキュメントテンプレート
 │   └── README.md
 ├── scripts/                 # スクリプト
@@ -278,6 +286,17 @@ mekann/
 - [Developer Guide](docs/03-development/) - 拡張機能開発とAPI
 - [Reference](docs/04-reference/) - 設定とトラブルシューティング
 - [Meta](docs/05-meta/) - 変更履歴、ロードマップ、ドキュメントポリシー
+- [コードレビューレポート](docs/06-code-review-report/) - アーキテクチャ分析、判断基準、改善推奨事項
+
+### コードレビューレポート
+
+プロジェクト全体のコードレビュー結果と改善推奨事項をまとめています。
+
+- [コードレビュー統合レポート](docs/06-code-review-report/README.md) - インデックス
+- [レビューサマリー](docs/06-code-review-report/01-summary.md) - 全体評価と品質スコア
+- [アーキテクチャ図](docs/06-code-review-report/02-architecture-diagram.md) - Mermaid図による可視化
+- [判断基準フロー](docs/06-code-review-report/03-decision-flow.md) - 開発時の意思決定基準
+- [改善推奨事項](docs/06-code-review-report/04-recommendations.md) - 優先度別改善項目
 
 ## 前提条件
 

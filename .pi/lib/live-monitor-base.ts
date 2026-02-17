@@ -5,6 +5,7 @@
  */
 
 import { matchesKey, Key, truncateToWidth } from "@mariozechner/pi-tui";
+
 import {
   formatDurationMs,
   formatBytes,
@@ -525,7 +526,7 @@ export function applyInputResult(
   shouldRender: boolean;
 } {
   let { cursor, mode, stream } = state;
-  let shouldClose = false;
+  const shouldClose = false;
   let shouldRender = false;
 
   if (!result.handled) {

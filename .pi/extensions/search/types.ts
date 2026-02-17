@@ -9,6 +9,23 @@
 // ============================================
 
 /**
+ * Agent hints for search results.
+ */
+export interface SearchHints {
+  confidence: number;
+  suggestedNextAction?: "refine_pattern" | "expand_scope" | "try_different_tool" | "increase_limit" | "regenerate_index";
+  alternativeTools?: string[];
+  relatedQueries?: string[];
+}
+
+/**
+ * Additional details in search response.
+ */
+export interface SearchDetails {
+  hints?: SearchHints;
+}
+
+/**
  * Base response structure for all search tools.
  * Includes pagination metadata for truncated results.
  */
@@ -17,6 +34,7 @@ export interface SearchResponse<T> {
   truncated: boolean;
   results: T[];
   error?: string;
+  details?: SearchDetails;
 }
 
 /**
@@ -76,6 +94,8 @@ export interface CodeSearchInput {
   context?: number;
   /** Result limit (default: 50) */
   limit?: number;
+  /** Exclusion patterns (e.g., ["node_modules", "dist"]). Empty array disables defaults. */
+  exclude?: string[];
   /** Working directory */
   cwd?: string;
 }
@@ -99,6 +119,7 @@ export interface CodeSearchOutput {
   summary: CodeSearchSummary[];
   results: CodeSearchMatch[];
   error?: string;
+  details?: SearchDetails;
 }
 
 // ============================================
@@ -263,3 +284,277 @@ export interface RgEnd {
 }
 
 export type RgOutput = RgMatch | RgBegin | RgEnd;
+
+// ============================================
+// Incremental Index Types
+// ============================================
+
+/**
+ * Manifest entry for tracking file changes.
+ * Used to detect which files need re-indexing.
+ */
+export interface ManifestEntry {
+  /**
+   * Content hash of the file (MD5 or similar).
+   */
+  hash: string;
+
+  /**
+   * Last modification time timestamp.
+   */
+  mtime: number;
+
+  /**
+   * Shard ID where this file's symbols are stored.
+   */
+  shardId: number;
+}
+
+/**
+ * Index manifest structure.
+ * Maps file paths to their manifest entries.
+ */
+export type IndexManifest = Record<string, ManifestEntry>;
+
+/**
+ * Index metadata structure.
+ * Contains global information about the index.
+ */
+export interface IndexMetadata {
+  /**
+   * Timestamp when the index was created.
+   */
+  createdAt: number;
+
+  /**
+   * Timestamp when the index was last updated.
+   */
+  updatedAt: number;
+
+  /**
+   * Source directory that was indexed.
+   */
+  sourceDir: string;
+
+  /**
+   * Total number of symbols in the index.
+   */
+  totalSymbols: number;
+
+  /**
+   * Total number of files indexed.
+   */
+  totalFiles: number;
+
+  /**
+   * Number of shards.
+   */
+  shardCount: number;
+
+  /**
+   * Version of the index format.
+   */
+  version: number;
+}
+
+/**
+ * Shard header structure.
+ * Each shard file starts with this header.
+ */
+export interface ShardHeader {
+  /**
+   * Shard ID (0-indexed).
+   */
+  id: number;
+
+  /**
+   * Number of entries in this shard.
+   */
+  entryCount: number;
+
+  /**
+   * Timestamp when this shard was created.
+   */
+  createdAt: number;
+
+  /**
+   * Timestamp when this shard was last updated.
+   */
+  updatedAt: number;
+}
+
+// ============================================
+// Semantic Index Types
+// ============================================
+
+/**
+ * Code embedding entry for semantic search.
+ * Represents a chunk of code with its vector embedding.
+ */
+export interface CodeEmbedding {
+  /** Unique identifier for this embedding */
+  id: string;
+
+  /** Relative file path */
+  file: string;
+
+  /** Starting line number */
+  line: number;
+
+  /** Code content */
+  code: string;
+
+  /** Vector embedding */
+  embedding: number[];
+
+  /** Metadata about the code chunk */
+  metadata: {
+    /** Programming language */
+    language: string;
+
+    /** Symbol name (if applicable) */
+    symbol?: string;
+
+    /** Kind of code chunk */
+    kind?: "function" | "class" | "variable" | "chunk";
+
+    /** Embedding dimensions */
+    dimensions: number;
+
+    /** Model used for embedding */
+    model: string;
+
+    /** Token count (approximate) */
+    tokens?: number;
+  };
+}
+
+/**
+ * Semantic index input parameters.
+ */
+export interface SemanticIndexInput {
+  /** Target path for indexing (default: project root) */
+  path?: string;
+
+  /** Force regeneration even if index exists */
+  force?: boolean;
+
+  /** Chunk size in characters (default: 500) */
+  chunkSize?: number;
+
+  /** Overlap between chunks in characters (default: 50) */
+  chunkOverlap?: number;
+
+  /** File extensions to include (default: ts,tsx,js,jsx,py,go,rs) */
+  extensions?: string[];
+
+  /** Working directory */
+  cwd?: string;
+}
+
+/**
+ * Semantic index output result.
+ */
+export interface SemanticIndexOutput {
+  /** Number of embeddings indexed */
+  indexed: number;
+
+  /** Number of files processed */
+  files: number;
+
+  /** Path to the generated index file */
+  outputPath: string;
+
+  /** Error message if indexing failed */
+  error?: string;
+}
+
+/**
+ * Semantic search input parameters.
+ */
+export interface SemanticSearchInput {
+  /** Search query (natural language or code snippet) */
+  query: string;
+
+  /** Maximum number of results (default: 10) */
+  topK?: number;
+
+  /** Minimum similarity threshold (default: 0.5) */
+  threshold?: number;
+
+  /** Filter by programming language */
+  language?: string;
+
+  /** Filter by symbol kind */
+  kind?: ("function" | "class" | "variable" | "chunk")[];
+
+  /** Working directory */
+  cwd?: string;
+}
+
+/**
+ * Semantic search result item.
+ */
+export interface SemanticSearchResult {
+  /** Relative file path */
+  file: string;
+
+  /** Starting line number */
+  line: number;
+
+  /** Code content */
+  code: string;
+
+  /** Similarity score (0-1) */
+  similarity: number;
+
+  /** Metadata about the code chunk */
+  metadata: CodeEmbedding["metadata"];
+}
+
+/**
+ * Semantic search output result.
+ */
+export interface SemanticSearchOutput {
+  /** Total number of matches */
+  total: number;
+
+  /** Whether results were truncated */
+  truncated: boolean;
+
+  /** Search results sorted by similarity */
+  results: SemanticSearchResult[];
+
+  /** Error message if search failed */
+  error?: string;
+}
+
+/**
+ * Semantic index metadata.
+ * Stored alongside the index for tracking.
+ */
+export interface SemanticIndexMetadata {
+  /** Timestamp when the index was created */
+  createdAt: number;
+
+  /** Timestamp when the index was last updated */
+  updatedAt: number;
+
+  /** Source directory that was indexed */
+  sourceDir: string;
+
+  /** Total number of embeddings */
+  totalEmbeddings: number;
+
+  /** Total number of files indexed */
+  totalFiles: number;
+
+  /** Embedding model used */
+  model: string;
+
+  /** Embedding dimensions */
+  dimensions: number;
+
+  /** Version of the index format */
+  version: number;
+}

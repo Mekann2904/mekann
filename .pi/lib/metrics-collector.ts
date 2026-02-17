@@ -3,8 +3,8 @@
 // Why: Enables observability of task scheduler performance for optimization.
 // Related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
 
-import { homedir } from "node:os";
 import { existsSync, mkdirSync, appendFileSync, readdirSync, readFileSync, unlinkSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 // ============================================================================
