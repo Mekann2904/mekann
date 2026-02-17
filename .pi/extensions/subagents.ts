@@ -32,7 +32,7 @@ import {
   renderPreviewWithMarkdown,
   LIVE_TAIL_LIMIT,
   LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
-} from "../lib/tui-utils.js";
+} from "../lib/tui/tui-utils.js";
 import {
   extractStatusCodeFromMessage,
   classifyPressureError,
@@ -149,7 +149,7 @@ import {
 
 // Import task-execution module (extracted for SRP compliance)
 import {
-  type SubagentNormalizedOutput,
+  type SubagentExecutionResult,
   normalizeSubagentOutput,
   buildSubagentPrompt,
   runSubagentTask,
@@ -212,7 +212,7 @@ export {
 } from "./subagents/parallel-execution";
 
 export {
-  type SubagentNormalizedOutput,
+  type SubagentExecutionResult,
   normalizeSubagentOutput,
   buildSubagentPrompt,
   runSubagentTask,
@@ -229,6 +229,10 @@ export {
 // resolveSubagentParallelCapacity -> ./subagents/parallel-execution.ts
 // normalizeSubagentOutput, buildSubagentPrompt, runSubagentTask -> ./subagents/task-execution.ts
 
+/**
+ * Refresh runtime status display in the UI with subagent-specific parameters.
+ * @see ./shared/runtime-helpers.ts:refreshRuntimeStatus for the underlying implementation.
+ */
 function refreshRuntimeStatus(ctx: any): void {
   const snapshot = getRuntimeSnapshot();
   sharedRefreshRuntimeStatus(

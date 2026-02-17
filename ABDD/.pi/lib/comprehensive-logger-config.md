@@ -38,7 +38,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    comprehensive_logger_types[comprehensive-logger-types]
+    comprehensive_logger_types["comprehensive-logger-types"]
   end
   main --> local
 ```
@@ -62,8 +62,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant comprehensive_logger_config as comprehensive-logger-config
-  participant comprehensive_logger_types as comprehensive-logger-types
+  participant comprehensive_logger_config as "comprehensive-logger-config"
+  participant comprehensive_logger_types as "comprehensive-logger-types"
 
   Caller->>comprehensive_logger_config: loadConfigFromEnv()
   comprehensive_logger_config->>comprehensive_logger_types: 内部関数呼び出し
@@ -136,4 +136,4 @@ resetConfig(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:16:16.614Z*
+*自動生成: 2026-02-17T22:24:18.898Z*

@@ -44,8 +44,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types[types]
-    constants_js[constants.js]
+    types["types"]
+    constants_js["constants.js"]
   end
   main --> local
 ```
@@ -73,9 +73,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant cli as cli
-  participant types as types
-  participant constants_js as constants.js
+  participant cli as "cli"
+  participant types as "types"
+  participant constants_js as "constants.js"
 
   Caller->>cli: execute()
   activate cli
@@ -238,4 +238,4 @@ Build ctags command arguments for JSON output.
 **戻り値**: `string[]`
 
 ---
-*自動生成: 2026-02-17T22:16:16.548Z*
+*自動生成: 2026-02-17T22:24:18.848Z*

@@ -42,9 +42,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    error_utils_js[error-utils.js]
-    agent_types_js[agent-types.js]
-    storage[storage]
+    error_utils_js["error-utils.js"]
+    agent_types_js["agent-types.js"]
+    storage["storage"]
   end
   main --> local
 ```
@@ -72,9 +72,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant result_aggregation as result-aggregation
-  participant error_utils_js as error-utils.js
-  participant agent_types_js as agent-types.js
+  participant result_aggregation as "result-aggregation"
+  participant error_utils_js as "error-utils.js"
+  participant agent_types_js as "agent-types.js"
 
   Caller->>result_aggregation: isRetryableTeamMemberError()
   result_aggregation->>error_utils_js: 内部関数呼び出し
@@ -203,4 +203,4 @@ extractSummary(output: string): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-17T22:16:16.393Z*
+*自動生成: 2026-02-17T22:24:18.739Z*

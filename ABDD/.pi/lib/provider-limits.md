@@ -99,7 +99,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant provider_limits as provider-limits
+  participant provider_limits as "provider-limits"
 
   Caller->>provider_limits: getLimitsConfig()
   provider_limits-->>Caller: ProviderLimitsConfig
@@ -366,4 +366,4 @@ interface ResolvedModelLimits {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.706Z*
+*自動生成: 2026-02-17T22:24:18.960Z*

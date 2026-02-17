@@ -40,17 +40,17 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js[fs-utils.js]
-    format_utils_js[format-utils.js]
-    live_view_utils_js[live-view-utils.js]
-    tui_utils_js[tui-utils.js]
-    error_utils_js[error-utils.js]
+    fs_utils_js["fs-utils.js"]
+    format_utils_js["format-utils.js"]
+    live_view_utils_js["live-view-utils.js"]
+    tui_utils_js["tui-utils.js"]
+    error_utils_js["error-utils.js"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -61,10 +61,10 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant subagents as subagents
-  participant _mariozechner as @mariozechner
-  participant fs_utils_js as fs-utils.js
-  participant format_utils_js as format-utils.js
+  participant subagents as "subagents"
+  participant _mariozechner as "@mariozechner"
+  participant fs_utils_js as "fs-utils.js"
+  participant format_utils_js as "format-utils.js"
 
   Caller->>subagents: registerSubagentExtension()
   subagents->>_mariozechner: API呼び出し
@@ -227,4 +227,4 @@ registerSubagentExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:16:16.591Z*
+*自動生成: 2026-02-17T22:24:18.878Z*

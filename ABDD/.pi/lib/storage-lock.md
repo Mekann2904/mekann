@@ -57,7 +57,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant storage_lock as storage-lock
+  participant storage_lock as "storage-lock"
 
   Caller->>storage_lock: withFileLock()
   storage_lock-->>Caller: T
@@ -185,4 +185,4 @@ interface FileLockOptions {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.722Z*
+*自動生成: 2026-02-17T22:24:18.973Z*

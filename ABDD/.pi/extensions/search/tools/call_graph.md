@@ -43,10 +43,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
-    builder_js[builder.js]
-    query_js[query.js]
-    sym_index_js[sym_index.js]
+    types_js["types.js"]
+    builder_js["builder.js"]
+    query_js["query.js"]
+    sym_index_js["sym_index.js"]
   end
   main --> local
 ```
@@ -74,9 +74,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant call_graph as call_graph
-  participant types_js as types.js
-  participant builder_js as builder.js
+  participant call_graph as "call_graph"
+  participant types_js as "types.js"
+  participant builder_js as "builder.js"
 
   Caller->>call_graph: callGraphIndex()
   activate call_graph
@@ -194,4 +194,4 @@ Format callees result for display.
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-17T22:16:16.526Z*
+*自動生成: 2026-02-17T22:24:18.833Z*

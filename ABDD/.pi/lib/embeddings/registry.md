@@ -56,7 +56,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
+    types_js["types.js"]
   end
   main --> local
 ```
@@ -78,8 +78,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant registry as registry
-  participant types_js as types.js
+  participant registry as "registry"
+  participant types_js as "types.js"
 
   Caller->>registry: getEmbeddingProvider()
   activate registry
@@ -186,4 +186,4 @@ async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise
 | saveConfig | `saveConfig(): void` |
 
 ---
-*自動生成: 2026-02-17T22:16:16.672Z*
+*自動生成: 2026-02-17T22:24:18.934Z*

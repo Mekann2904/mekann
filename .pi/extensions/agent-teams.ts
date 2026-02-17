@@ -36,7 +36,7 @@ import {
   renderPreviewWithMarkdown,
   LIVE_TAIL_LIMIT,
   LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
-} from "../lib/tui-utils.js";
+} from "../lib/tui/tui-utils.js";
 import {
   extractStatusCodeFromMessage,
   classifyPressureError,
@@ -389,7 +389,10 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
 
 // Note: mergeDefaultTeam is now imported from ./agent-teams/definition-loader
 
-// Wrapper for shared refreshRuntimeStatus with agent-team-specific parameters
+/**
+ * Refresh runtime status display in the UI with agent-team-specific parameters.
+ * @see ./shared/runtime-helpers.ts:refreshRuntimeStatus for the underlying implementation.
+ */
 function refreshRuntimeStatus(ctx: any): void {
   const snapshot = getRuntimeSnapshot();
   sharedRefreshRuntimeStatus(

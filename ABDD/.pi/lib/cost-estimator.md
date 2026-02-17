@@ -88,7 +88,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    task_scheduler[task-scheduler]
+    task_scheduler["task-scheduler"]
   end
   main --> local
 ```
@@ -110,8 +110,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant cost_estimator as cost-estimator
-  participant task_scheduler as task-scheduler
+  participant cost_estimator as "cost-estimator"
+  participant task_scheduler as "task-scheduler"
 
   Caller->>cost_estimator: getCostEstimator()
   cost_estimator->>task_scheduler: 内部関数呼び出し
@@ -258,4 +258,4 @@ type CostEstimationMethod = "default" | "historical" | "heuristic"
 Estimation method used for cost calculation.
 
 ---
-*自動生成: 2026-02-17T22:16:16.646Z*
+*自動生成: 2026-02-17T22:24:18.915Z*

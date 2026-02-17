@@ -116,8 +116,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -532,4 +532,4 @@ Handles patterns like:
 - "count == old_count + 1" -> "new_state.count = self.count + 1"
 
 ---
-*自動生成: 2026-02-17T22:16:16.471Z*
+*自動生成: 2026-02-17T22:24:18.795Z*

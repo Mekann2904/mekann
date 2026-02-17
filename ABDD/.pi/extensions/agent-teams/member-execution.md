@@ -61,11 +61,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    storage[storage]
-    format_utils_js[format-utils.js]
-    error_utils_js[error-utils.js]
-    agent_types_js[agent-types.js]
-    output_validation_js[output-validation.js]
+    storage["storage"]
+    format_utils_js["format-utils.js"]
+    error_utils_js["error-utils.js"]
+    agent_types_js["agent-types.js"]
+    output_validation_js["output-validation.js"]
   end
   main --> local
 ```
@@ -93,9 +93,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant member_execution as member-execution
-  participant storage as storage
-  participant format_utils_js as format-utils.js
+  participant member_execution as "member-execution"
+  participant storage as "storage"
+  participant format_utils_js as "format-utils.js"
 
   Caller->>member_execution: normalizeTeamMemberOutput()
   member_execution->>storage: 内部関数呼び出し
@@ -372,4 +372,4 @@ interface TeamNormalizedOutput {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.388Z*
+*自動生成: 2026-02-17T22:24:18.735Z*

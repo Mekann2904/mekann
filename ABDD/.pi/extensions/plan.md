@@ -66,15 +66,15 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    comprehensive_logger[comprehensive-logger]
-    comprehensive_logger_types[comprehensive-logger-types]
-    plan_mode_shared[plan-mode-shared]
+    comprehensive_logger["comprehensive-logger"]
+    comprehensive_logger_types["comprehensive-logger-types"]
+    plan_mode_shared["plan-mode-shared"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -345,4 +345,4 @@ interface PlanStorage {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.501Z*
+*自動生成: 2026-02-17T22:24:18.816Z*

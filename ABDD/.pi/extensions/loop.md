@@ -124,17 +124,17 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    format_utils_js[format-utils.js]
-    error_utils_js[error-utils.js]
-    validation_utils_js[validation-utils.js]
-    agent_types_js[agent-types.js]
-    agent_utils_js[agent-utils.js]
+    format_utils_js["format-utils.js"]
+    error_utils_js["error-utils.js"]
+    validation_utils_js["validation-utils.js"]
+    agent_types_js["agent-types.js"]
+    agent_utils_js["agent-utils.js"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -145,10 +145,10 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant loop as loop
-  participant _mariozechner as @mariozechner
-  participant format_utils_js as format-utils.js
-  participant error_utils_js as error-utils.js
+  participant loop as "loop"
+  participant _mariozechner as "@mariozechner"
+  participant format_utils_js as "format-utils.js"
+  participant error_utils_js as "error-utils.js"
 
   Caller->>loop: registerLoopExtension()
   loop->>_mariozechner: API呼び出し
@@ -685,4 +685,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.494Z*
+*自動生成: 2026-02-17T22:24:18.812Z*

@@ -43,8 +43,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    core_js[core.js]
-    types_js[types.js]
+    core_js["core.js"]
+    types_js["types.js"]
   end
   main --> local
 ```
@@ -72,9 +72,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant model_tracking as model-tracking
-  participant core_js as core.js
-  participant types_js as types.js
+  participant model_tracking as "model-tracking"
+  participant core_js as "core.js"
+  participant types_js as "types.js"
 
   Caller->>model_tracking: setActiveModel()
   model_tracking->>core_js: 内部関数呼び出し
@@ -211,4 +211,4 @@ Get a summary of model usage across instances.
 }`
 
 ---
-*自動生成: 2026-02-17T22:16:16.633Z*
+*自動生成: 2026-02-17T22:24:18.910Z*

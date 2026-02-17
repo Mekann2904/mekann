@@ -44,7 +44,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
+    types_js["types.js"]
   end
   main --> local
 ```
@@ -72,8 +72,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant audit as audit
-  participant types_js as types.js
+  participant audit as "audit"
+  participant types_js as "types.js"
 
   Caller->>audit: logAudit()
   activate audit
@@ -256,4 +256,4 @@ archiveOldLogs(daysToKeep: number, paths?: DynamicToolsPaths): { archived: numbe
 **戻り値**: `{ archived: number; error?: string }`
 
 ---
-*自動生成: 2026-02-17T22:16:16.652Z*
+*自動生成: 2026-02-17T22:24:18.920Z*

@@ -82,10 +82,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    index_js[index.js]
-    fs_utils_js[fs-utils.js]
-    run_index_js[run-index.js]
-    storage_lock_js[storage-lock.js]
+    index_js["index.js"]
+    fs_utils_js["fs-utils.js"]
+    run_index_js["run-index.js"]
+    storage_lock_js["storage-lock.js"]
   end
   main --> local
 ```
@@ -113,9 +113,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant semantic_memory as semantic-memory
-  participant index_js as index.js
-  participant fs_utils_js as fs-utils.js
+  participant semantic_memory as "semantic-memory"
+  participant index_js as "index.js"
+  participant fs_utils_js as "fs-utils.js"
 
   Caller->>semantic_memory: generateEmbedding()
   activate semantic_memory
@@ -421,4 +421,4 @@ interface SemanticSearchResult {
 Semantic search result.
 
 ---
-*自動生成: 2026-02-17T22:16:16.715Z*
+*自動生成: 2026-02-17T22:24:18.967Z*

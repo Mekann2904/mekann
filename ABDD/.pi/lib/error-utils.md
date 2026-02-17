@@ -135,4 +135,4 @@ type PressureErrorType = "rate_limit" | "timeout" | "capacity" | "other"
 Pressure error classification types.
 
 ---
-*自動生成: 2026-02-17T22:16:16.676Z*
+*自動生成: 2026-02-17T22:24:18.936Z*

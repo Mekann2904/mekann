@@ -40,11 +40,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
-    output_js[output.js]
-    errors_js[errors.js]
-    constants_js[constants.js]
-    sym_index_js[sym_index.js]
+    types_js["types.js"]
+    output_js["output.js"]
+    errors_js["errors.js"]
+    constants_js["constants.js"]
+    sym_index_js["sym_index.js"]
   end
   main --> local
 ```
@@ -55,9 +55,9 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant sym_find as sym_find
-  participant types_js as types.js
-  participant output_js as output.js
+  participant sym_find as "sym_find"
+  participant types_js as "types.js"
+  participant output_js as "output.js"
 
   Caller->>sym_find: symFind()
   activate sym_find
@@ -170,4 +170,4 @@ Find symbol definitions from index
 **戻り値**: `Promise<SymFindOutput>`
 
 ---
-*自動生成: 2026-02-17T22:16:16.534Z*
+*自動生成: 2026-02-17T22:24:18.839Z*

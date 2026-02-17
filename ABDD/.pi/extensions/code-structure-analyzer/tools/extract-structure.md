@@ -169,10 +169,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
-    typescript[typescript]
-    fs[fs]
-    path[path]
-    minimatch[minimatch]
+    typescript["typescript"]
+    fs["fs"]
+    path["path"]
+    minimatch["minimatch"]
   end
   main --> external
 ```
@@ -183,10 +183,10 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant extract_structure as extract-structure
-  participant typescript as typescript
-  participant fs as fs
-  participant path as path
+  participant extract_structure as "extract-structure"
+  participant typescript as "typescript"
+  participant fs as "fs"
+  participant path as "path"
 
   Caller->>extract_structure: extractCodeStructure()
   activate extract_structure
@@ -681,4 +681,4 @@ interface VisitorCallbacks {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.441Z*
+*自動生成: 2026-02-17T22:24:18.772Z*

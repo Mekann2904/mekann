@@ -359,4 +359,4 @@ Result type for operations that can fail.
 Provides a type-safe way to handle errors without exceptions.
 
 ---
-*自動生成: 2026-02-17T22:16:16.552Z*
+*自動生成: 2026-02-17T22:24:18.851Z*

@@ -40,8 +40,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
-    registry_js[registry.js]
+    types_js["types.js"]
+    registry_js["registry.js"]
   end
   main --> local
 ```
@@ -67,9 +67,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant reflection as reflection
-  participant types_js as types.js
-  participant registry_js as registry.js
+  participant reflection as "reflection"
+  participant types_js as "types.js"
+  participant registry_js as "registry.js"
 
   Caller->>reflection: detectRepetitivePattern()
   reflection->>types_js: 内部関数呼び出し
@@ -245,4 +245,4 @@ shouldTriggerReflection(context: Partial<ToolReflectionContext>): boolean
 **戻り値**: `boolean`
 
 ---
-*自動生成: 2026-02-17T22:16:16.660Z*
+*自動生成: 2026-02-17T22:24:18.924Z*

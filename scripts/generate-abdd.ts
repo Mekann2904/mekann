@@ -568,7 +568,7 @@ flowchart LR
         section += `  subgraph local[ローカルモジュール]\n`;
         for (const imp of localImports.slice(0, 5)) {
           const name = basename(imp.source);
-          section += `    ${name.replace(/[^a-zA-Z0-9]/g, '_')}[${name}]\n`;
+          section += `    ${name.replace(/[^a-zA-Z0-9]/g, '_')}["${name}"]\n`;
         }
         section += `  end\n`;
         section += `  main --> local\n`;
@@ -578,7 +578,9 @@ flowchart LR
         section += `  subgraph external[外部ライブラリ]\n`;
         for (const imp of externalImports.slice(0, 5)) {
           const name = imp.source.split('/')[0];
-          section += `    ${name.replace(/[^a-zA-Z0-9]/g, '_')}[${name}]\n`;
+          // ラベルをダブルクオートで囲み、特殊文字をエスケープ
+          const escapedName = name.replace(/"/g, "'");
+          section += `    ${name.replace(/[^a-zA-Z0-9]/g, '_')}["${escapedName}"]\n`;
         }
         section += `  end\n`;
         section += `  main --> external\n`;
@@ -627,7 +629,7 @@ sequenceDiagram
 
     // メインモジュール
     const moduleName = basename(info.relativePath, '.ts');
-    section += `  participant ${moduleName.replace(/[^a-zA-Z0-9]/g, '_')} as ${moduleName}\n`;
+    section += `  participant ${moduleName.replace(/[^a-zA-Z0-9]/g, '_')} as "${moduleName}"\n`;
 
     // 外部依存（一意なパッケージのみ）
     const uniqueExternalDeps = [...new Set(
@@ -638,14 +640,15 @@ sequenceDiagram
 
     for (const dep of uniqueExternalDeps) {
       const depName = dep.replace(/[^a-zA-Z0-9]/g, '_');
-      section += `  participant ${depName} as ${dep}\n`;
+      const escapedDep = dep.replace(/"/g, "'");
+      section += `  participant ${depName} as "${escapedDep}"\n`;
     }
 
     // ローカル依存
     const localDeps = info.imports.filter(i => i.source.startsWith('.')).slice(0, 2);
     for (const dep of localDeps) {
       const depName = basename(dep.source).replace(/[^a-zA-Z0-9]/g, '_');
-      section += `  participant ${depName} as ${basename(dep.source)}\n`;
+      section += `  participant ${depName} as "${basename(dep.source)}"\n`;
     }
 
     section += `\n`;

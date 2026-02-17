@@ -1,254 +1,42 @@
 /**
- * Shared library index.
- * Re-exports all common utilities for convenient importing.
+ * Shared library index (DEPRECATED - Use Focused Entry Points).
  *
- * Focused Entry Points (Clean Architecture):
- * For better tree-shaking and explicit dependencies, prefer these focused entry points:
+ * @deprecated This barrel export is deprecated. Import from focused entry points instead:
  *   - lib/agent.ts   - Agent-related types and utilities (subagents, teams)
  *   - lib/storage.ts - Storage-related utilities (run index, patterns, semantic memory)
+ *   - lib/core.ts    - Core utilities (errors, validation, formatting)
  *
- * This file maintains all existing exports for backward compatibility.
- * New code should import from focused entry points when possible.
+ * This file will be removed in a future version.
+ * See: docs/architecture.md for migration guide.
  *
  * Architecture Layers:
- *   Layer 0: Core utilities (error, validation, formatting, TUI)
- *   Layer 1: Agent utilities (types, timeouts, runtime, logging)
- *   Layer 2: Advanced utilities (embeddings, memory, scheduling)
- *   Layer 3: Coordination (cross-instance, task scheduling)
+ *   Layer 0: Core utilities (error, validation, formatting) -> lib/core.ts
+ *   Layer 1: Agent utilities (types, timeouts, runtime) -> lib/agent.ts
+ *   Layer 2: Advanced utilities (embeddings, memory) -> lib/storage.ts
+ *   Layer 3: Coordination (cross-instance, scheduling) -> lib/storage.ts
+ *
+ * Migration Example:
+ *   // Before (deprecated):
+ *   import { PiError, createRunId, loadRunIndex } from "./lib/index.js";
+ *
+ *   // After (recommended):
+ *   import { PiError } from "./lib/core.js";
+ *   import { createRunId } from "./lib/agent.js";
+ *   import { loadRunIndex } from "./lib/storage.js";
  */
 
-// Error handling utilities (Layer 0)
-export {
-  toErrorMessage,
-  extractStatusCodeFromMessage,
-  classifyPressureError,
-  isCancelledErrorMessage,
-  isTimeoutErrorMessage,
-  type PressureErrorType,
-} from "./error-utils.js";
+// Re-export from focused entry points for backward compatibility
+// New code should import directly from agent.ts, storage.ts, or core.ts
+export * from "./core.js";
+export * from "./agent.js";
+export * from "./storage.js";
 
-// Unified error classes (Layer 0)
-export {
-  PiError,
-  RuntimeLimitError,
-  RuntimeQueueWaitError,
-  SchemaValidationError,
-  ValidationError,
-  TimeoutError,
-  CancelledError,
-  RateLimitError,
-  CapacityError,
-  ParsingError,
-  ExecutionError,
-  ConfigurationError,
-  StorageError,
-  isPiError,
-  hasErrorCode,
-  isRetryableError,
-  toPiError,
-  getErrorCode,
-  isRetryableErrorCode,
-  type PiErrorCode,
-  type ErrorSeverity,
-  type ErrorContext,
-} from "./errors.js";
+// ============================================================================
+// Additional Layer 2/3 exports (not yet migrated to focused entry points)
+// These will be moved to storage.ts in a future refactoring phase.
+// ============================================================================
 
-// Team types (Layer 1)
-export {
-  type TeamLivePhase,
-  type TeamLiveViewMode,
-  type TeamLiveItem,
-  type TeamMonitorLifecycle,
-  type TeamMonitorPhase,
-  type TeamMonitorEvents,
-  type TeamMonitorStream,
-  type TeamMonitorDiscussion,
-  type TeamMonitorResource,
-  type AgentTeamLiveMonitorController,
-  type TeamNormalizedOutput,
-  type TeamParallelCapacityCandidate,
-  type TeamParallelCapacityResolution,
-  type TeamFrontmatter,
-  type TeamMemberFrontmatter,
-  type ParsedTeamMarkdown,
-} from "./team-types.js";
-
-// Subagent types (Layer 1)
-export {
-  type SubagentLiveStreamView,
-  type SubagentLiveViewMode,
-  type SubagentLiveItem,
-  type SubagentMonitorLifecycle,
-  type SubagentMonitorStream,
-  type SubagentMonitorResource,
-  type SubagentLiveMonitorController,
-  type SubagentNormalizedOutput,
-  type SubagentParallelCapacityResolution,
-  type DelegationState,
-  type PrintCommandResult,
-} from "./subagent-types.js";
-
-// TUI utilities (Layer 0)
-export {
-  appendTail,
-  toTailLines,
-  countOccurrences,
-  estimateLineCount,
-  looksLikeMarkdown,
-  renderPreviewWithMarkdown,
-  LIVE_TAIL_LIMIT,
-  LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
-  type MarkdownPreviewResult,
-} from "./tui-utils.js";
-
-// Validation utilities (Layer 0)
-export {
-  toFiniteNumber,
-  toFiniteNumberWithDefault,
-  toBoundedInteger,
-  clampInteger,
-  clampFloat,
-  type BoundedIntegerResult,
-} from "./validation-utils.js";
-
-// File system utilities (Layer 0)
-export { ensureDir } from "./fs-utils.js";
-
-// Formatting utilities (Layer 0)
-export {
-  formatDuration,
-  formatDurationMs,
-  formatBytes,
-  formatClockTime,
-  normalizeForSingleLine,
-} from "./format-utils.js";
-
-// Agent types (Layer 1)
-export {
-  type ThinkingLevel,
-  type RunOutcomeCode,
-  type RunOutcomeSignal,
-  DEFAULT_AGENT_TIMEOUT_MS,
-} from "./agent-types.js";
-
-// Process utilities (Layer 1)
-export { GRACEFUL_SHUTDOWN_DELAY_MS } from "./process-utils.js";
-
-// Agent utilities (Layer 1)
-export { createRunId, computeLiveWindow } from "./agent-utils.js";
-
-// Model timeout utilities (Layer 1)
-export {
-  MODEL_TIMEOUT_BASE_MS,
-  THINKING_LEVEL_MULTIPLIERS,
-  getModelBaseTimeoutMs,
-  computeModelTimeoutMs,
-  computeProgressiveTimeoutMs,
-  type ComputeModelTimeoutOptions,
-} from "./model-timeouts.js";
-
-// Adaptive penalty controller (Layer 1)
-export {
-  createAdaptivePenaltyController,
-  type AdaptivePenaltyState,
-  type AdaptivePenaltyOptions,
-  type AdaptivePenaltyController,
-} from "./adaptive-penalty.js";
-
-// Live view utilities (Layer 1)
-export {
-  getLiveStatusGlyph,
-  isEnterInput,
-  finalizeLiveLines,
-  type LiveStatus,
-} from "./live-view-utils.js";
-
-// Output validation utilities (Layer 1)
-export {
-  hasNonEmptyResultSection,
-  validateSubagentOutput,
-  validateTeamMemberOutput,
-  type SubagentValidationOptions,
-  type TeamMemberValidationOptions,
-} from "./output-validation.js";
-
-// Runtime utilities (Layer 1)
-export {
-  trimForError,
-  buildRateLimitKey,
-  buildTraceTaskId,
-  normalizeTimeoutMs,
-  createRetrySchema,
-  toRetryOverrides,
-  toConcurrencyLimit,
-} from "./runtime-utils.js";
-
-// Runtime error builders (Layer 1)
-export { resolveEffectiveTimeoutMs } from "./runtime-error-builders.js";
-
-// Agent common utilities (Layer 1)
-export {
-  STABLE_RUNTIME_PROFILE,
-  ADAPTIVE_PARALLEL_MAX_PENALTY,
-  ADAPTIVE_PARALLEL_DECAY_MS,
-  STABLE_MAX_RETRIES,
-  STABLE_INITIAL_DELAY_MS,
-  STABLE_MAX_DELAY_MS,
-  STABLE_MAX_RATE_LIMIT_RETRIES,
-  STABLE_MAX_RATE_LIMIT_WAIT_MS,
-  type EntityType,
-  type EntityConfig,
-  SUBAGENT_CONFIG,
-  TEAM_MEMBER_CONFIG,
-  type NormalizedEntityOutput,
-  type PickFieldCandidateOptions,
-  pickFieldCandidate,
-  pickSummaryCandidate,
-  pickClaimCandidate,
-  type NormalizeEntityOutputOptions,
-  normalizeEntityOutput,
-  isEmptyOutputFailureMessage,
-  buildFailureSummary,
-  resolveTimeoutWithEnv,
-} from "./agent-common.js";
-
-// Agent error utilities (Layer 1)
-export {
-  isRetryableEntityError,
-  isRetryableSubagentError,
-  isRetryableTeamMemberError,
-  resolveFailureOutcome,
-  resolveSubagentFailureOutcome,
-  resolveTeamFailureOutcome,
-  type EntityResultItem,
-  resolveAggregateOutcome,
-  resolveSubagentParallelOutcome,
-  resolveTeamMemberAggregateOutcome,
-  trimErrorMessage,
-  buildDiagnosticContext,
-} from "./agent-errors.js";
-
-// Storage base utilities (Layer 2)
-export {
-  type HasId,
-  type BaseRunRecord,
-  type BaseStoragePaths,
-  type BaseStorage,
-  createPathsFactory,
-  createEnsurePaths,
-  pruneRunArtifacts,
-  mergeEntitiesById,
-  mergeRunsById,
-  resolveCurrentId,
-  resolveDefaultsVersion,
-  createStorageLoader,
-  createStorageSaver,
-  toId,
-  mergeSubagentStorageWithDisk,
-  mergeTeamStorageWithDisk,
-} from "./storage-base.js";
-
-// Live monitor base utilities (Layer 2)
+// Live monitor base utilities (Layer 2 - TUI)
 export {
   type LiveItemStatus,
   type LiveStreamView,
@@ -277,7 +65,7 @@ export {
   applyInputResult,
   LIVE_PREVIEW_LINE_LIMIT,
   LIVE_LIST_WINDOW_SIZE,
-} from "./live-monitor-base.js";
+} from "./tui/live-monitor-base.js";
 
 // Skill registry utilities (Layer 2)
 export {
@@ -296,105 +84,7 @@ export {
   validateSkillReferences,
 } from "./skill-registry.js";
 
-// Run Index utilities (Layer 2)
-// ALMA-inspired memory indexing for run history
-export {
-  type IndexedRun,
-  type TaskType,
-  type RunIndex,
-  type SearchOptions,
-  type SearchResult,
-  RUN_INDEX_VERSION,
-  extractKeywords,
-  classifyTaskType,
-  extractFiles,
-  indexSubagentRun,
-  indexTeamRun,
-  buildRunIndex,
-  getRunIndexPath,
-  loadRunIndex,
-  saveRunIndex,
-  getOrBuildRunIndex,
-  searchRuns,
-  findSimilarRuns,
-  getRunsByType,
-  getSuccessfulPatterns,
-} from "./run-index.js";
-
-// Pattern Extraction utilities (Layer 2)
-// Extract reusable patterns from run history
-export {
-  type ExtractedPattern,
-  type PatternExample,
-  type PatternStorage,
-  type RunData,
-  PATTERN_STORAGE_VERSION,
-  extractPatternFromRun,
-  getPatternStoragePath,
-  loadPatternStorage,
-  savePatternStorage,
-  addRunToPatterns,
-  extractAllPatterns,
-  getPatternsForTaskType,
-  getTopSuccessPatterns,
-  getFailurePatternsToAvoid,
-  findRelevantPatterns,
-} from "./pattern-extraction.js";
-
-// Semantic Memory utilities (Layer 2)
-// OpenAI Embeddings-based semantic search for run history
-export {
-  type RunEmbedding,
-  type SemanticMemoryStorage,
-  type SemanticSearchResult,
-  SEMANTIC_MEMORY_VERSION,
-  EMBEDDING_MODEL,
-  EMBEDDING_DIMENSIONS,
-  getSemanticMemoryPath,
-  loadSemanticMemory,
-  saveSemanticMemory,
-  buildSemanticMemoryIndex,
-  addRunToSemanticMemory,
-  semanticSearch,
-  findSimilarRunsById,
-  isSemanticMemoryAvailable,
-  getSemanticMemoryStats,
-  clearSemanticMemory,
-} from "./semantic-memory.js";
-
-// Embeddings Module (Layer 2)
-// Unified embedding provider interface
-export {
-  // Types
-  type EmbeddingProvider,
-  type ProviderCapabilities,
-  type ProviderConfig,
-  type EmbeddingModuleConfig,
-  type EmbeddingResult,
-  type ProviderStatus,
-  type VectorSearchResult,
-  // Registry
-  EmbeddingProviderRegistry,
-  embeddingRegistry,
-  getEmbeddingProvider,
-  generateEmbedding,
-  generateEmbeddingsBatch,
-  // Utilities
-  cosineSimilarity,
-  euclideanDistance,
-  normalizeVector,
-  findNearestNeighbors,
-  isValidEmbedding,
-  // Providers
-  OpenAIEmbeddingProvider,
-  openAIEmbeddingProvider,
-  getOpenAIKey,
-  // Initialization
-  initializeEmbeddingModule,
-} from "./embeddings/index.js";
-
 // Semantic Repetition Detection utilities (Layer 2)
-// Based on "Agentic Search in the Wild" paper (arXiv:2601.17617v2)
 export {
   type SemanticRepetitionResult,
   type SemanticRepetitionOptions,
@@ -409,7 +99,6 @@ export {
 } from "./semantic-repetition.js";
 
 // Intent-Aware Limits utilities (Layer 2)
-// Based on "Agentic Search in the Wild" paper (arXiv:2601.17617v2)
 export {
   type TaskIntent,
   type IntentBudget,
@@ -426,7 +115,6 @@ export {
 } from "./intent-aware-limits.js";
 
 // Dynamic Parallelism utilities (Layer 2)
-// Per-provider/model parallelism management
 export {
   type ParallelismConfig,
   type ProviderHealth,
@@ -443,7 +131,6 @@ export {
 } from "./dynamic-parallelism.js";
 
 // Checkpoint Manager utilities (Layer 2)
-// Task state persistence for preemption and resumption
 export {
   type Checkpoint,
   type CheckpointSaveResult,
@@ -461,7 +148,6 @@ export {
 } from "./checkpoint-manager.js";
 
 // Metrics Collector utilities (Layer 2)
-// Scheduler metrics collection and aggregation
 export {
   type SchedulerMetrics,
   type TaskCompletionEvent,
@@ -479,7 +165,6 @@ export {
 } from "./metrics-collector.js";
 
 // Task Scheduler utilities (Layer 3)
-// Priority-based task scheduling with preemption
 export {
   type TaskSource,
   type TaskCostEstimate,
@@ -499,7 +184,6 @@ export {
 } from "./task-scheduler.js";
 
 // Cross-Instance Coordinator utilities (Layer 3)
-// Work stealing and distributed coordination
 export {
   type ActiveModelInfo,
   type InstanceInfo,
@@ -542,43 +226,3 @@ export {
   cleanupExpiredLocks,
   enhancedHeartbeat,
 } from "./cross-instance-coordinator.js";
-
-// Structured Logger utilities (Layer 1)
-// Unified structured logging with JSON format
-export {
-  StructuredLogger,
-  ChildLogger,
-  type LogLevel,
-  type LogContext,
-  type StructuredLogEntry,
-  type StructuredLoggerOptions,
-  getMinLogLevel,
-  resetMinLogLevelCache,
-  formatTimestamp,
-  shouldLog,
-  formatError,
-  serializeLogEntry,
-  formatReadableEntry,
-  getDefaultLogger,
-  resetDefaultLogger,
-  createLogger,
-  getSubagentLogger,
-  getAgentTeamsLogger,
-  getStorageLogger,
-  logInfo,
-  logWarn,
-  logError,
-  logDebug,
-} from "./structured-logger.js";
-
-// ============================================================================
-// Convenience Re-exports (Barrel Export Split - Phase 3)
-// ============================================================================
-
-// Re-export from categorized entry points for better tree-shaking
-// These allow consumers to import from specific domains:
-//   import { ... } from "./lib/agent.js";     // Agent/subagent/team utilities
-//   import { ... } from "./lib/storage.js";   // Storage/memory/embedding utilities
-
-export * from "./agent.js";
-export * from "./storage.js";

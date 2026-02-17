@@ -54,7 +54,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    extract_structure_js[extract-structure.js]
+    extract_structure_js["extract-structure.js"]
   end
   main --> local
 ```
@@ -240,4 +240,4 @@ interface MermaidDiagrams {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.445Z*
+*自動生成: 2026-02-17T22:24:18.775Z*

@@ -72,8 +72,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    format_utils_js[format-utils.js]
-    error_utils_js[error-utils.js]
+    format_utils_js["format-utils.js"]
+    error_utils_js["error-utils.js"]
   end
   main --> local
 ```
@@ -101,9 +101,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant verification as verification
-  participant format_utils_js as format-utils.js
-  participant error_utils_js as error-utils.js
+  participant verification as "verification"
+  participant format_utils_js as "format-utils.js"
+  participant error_utils_js as "error-utils.js"
 
   Caller->>verification: resolveVerificationPolicy()
   verification->>format_utils_js: 内部関数呼び出し
@@ -394,4 +394,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.488Z*
+*自動生成: 2026-02-17T22:24:18.806Z*

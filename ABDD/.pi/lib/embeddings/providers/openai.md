@@ -65,7 +65,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
+    types_js["types.js"]
   end
   main --> local
 ```
@@ -161,4 +161,4 @@ interface OpenAIEmbeddingResponse {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.671Z*
+*自動生成: 2026-02-17T22:24:18.932Z*

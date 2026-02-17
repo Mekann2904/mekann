@@ -40,11 +40,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    cli_js[cli.js]
-    types_js[types.js]
-    output_js[output.js]
-    errors_js[errors.js]
-    constants_js[constants.js]
+    cli_js["cli.js"]
+    types_js["types.js"]
+    output_js["output.js"]
+    errors_js["errors.js"]
+    constants_js["constants.js"]
   end
   main --> local
 ```
@@ -55,9 +55,9 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant file_candidates as file_candidates
-  participant cli_js as cli.js
-  participant types_js as types.js
+  participant file_candidates as "file_candidates"
+  participant cli_js as "cli.js"
+  participant types_js as "types.js"
 
   Caller->>file_candidates: fileCandidates()
   activate file_candidates
@@ -171,4 +171,4 @@ Enumerate file candidates with fd or fallback
 **戻り値**: `Promise<FileCandidatesOutput>`
 
 ---
-*自動生成: 2026-02-17T22:16:16.529Z*
+*自動生成: 2026-02-17T22:24:18.836Z*

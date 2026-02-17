@@ -84,10 +84,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    adaptive_rate_controller_js[adaptive-rate-controller.js]
-    cross_instance_coordinator_js[cross-instance-coordinator.js]
-    provider_limits_js[provider-limits.js]
-    runtime_snapshot_js[runtime-snapshot.js]
+    adaptive_rate_controller_js["adaptive-rate-controller.js"]
+    cross_instance_coordinator_js["cross-instance-coordinator.js"]
+    provider_limits_js["provider-limits.js"]
+    runtime_snapshot_js["runtime-snapshot.js"]
   end
   main --> local
 ```
@@ -113,9 +113,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant unified_limit_resolver as unified-limit-resolver
-  participant adaptive_rate_controller_js as adaptive-rate-controller.js
-  participant cross_instance_coordinator_js as cross-instance-coordinator.js
+  participant unified_limit_resolver as "unified-limit-resolver"
+  participant adaptive_rate_controller_js as "adaptive-rate-controller.js"
+  participant cross_instance_coordinator_js as "cross-instance-coordinator.js"
 
   Caller->>unified_limit_resolver: setRuntimeSnapshotProvider()
   unified_limit_resolver->>adaptive_rate_controller_js: 内部関数呼び出し
@@ -307,4 +307,4 @@ interface UnifiedEnvConfig {
 統合環境変数設定
 
 ---
-*自動生成: 2026-02-17T22:16:16.739Z*
+*自動生成: 2026-02-17T22:24:18.991Z*

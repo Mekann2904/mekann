@@ -66,7 +66,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    output_schema_js[output-schema.js]
+    output_schema_js["output-schema.js"]
   end
   main --> local
 ```
@@ -92,8 +92,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant output_validation as output-validation
-  participant output_schema_js as output-schema.js
+  participant output_validation as "output-validation"
+  participant output_schema_js as "output-schema.js"
 
   Caller->>output_validation: hasNonEmptyResultSection()
   output_validation->>output_schema_js: 内部関数呼び出し
@@ -236,4 +236,4 @@ interface ExtendedValidationResult {
 Extended validation result with schema information.
 
 ---
-*自動生成: 2026-02-17T22:16:16.696Z*
+*自動生成: 2026-02-17T22:24:18.952Z*

@@ -87,7 +87,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant cache as cache
+  participant cache as "cache"
 
   Caller->>cache: getCacheKey()
   cache-->>Caller: string
@@ -263,4 +263,4 @@ interface CacheStats {
 Cache statistics.
 
 ---
-*自動生成: 2026-02-17T22:16:16.546Z*
+*自動生成: 2026-02-17T22:24:18.846Z*

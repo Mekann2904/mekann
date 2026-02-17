@@ -104,11 +104,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    format_utils_js[format-utils.js]
-    text_parsing[text-parsing]
-    agent_errors[agent-errors]
-    output_schema[output-schema]
-    storage[storage]
+    format_utils_js["format-utils.js"]
+    text_parsing["text-parsing"]
+    agent_errors["agent-errors"]
+    output_schema["output-schema"]
+    storage["storage"]
   end
   main --> local
 ```
@@ -136,9 +136,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant communication as communication
-  participant format_utils_js as format-utils.js
-  participant text_parsing as text-parsing
+  participant communication as "communication"
+  participant format_utils_js as "format-utils.js"
+  participant text_parsing as "text-parsing"
 
   Caller->>communication: buildPrecomputedContextMap()
   communication->>format_utils_js: 内部関数呼び出し
@@ -522,4 +522,4 @@ interface BeliefContradiction {
 Detected contradiction between agent beliefs.
 
 ---
-*自動生成: 2026-02-17T22:16:16.366Z*
+*自動生成: 2026-02-17T22:24:18.713Z*

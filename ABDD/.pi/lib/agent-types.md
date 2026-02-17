@@ -74,4 +74,4 @@ Outcome codes for agent/subagent/team execution results.
 Used to classify the result of a run for retry logic and reporting.
 
 ---
-*自動生成: 2026-02-17T22:16:16.610Z*
+*自動生成: 2026-02-17T22:24:18.895Z*

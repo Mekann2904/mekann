@@ -59,7 +59,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    agent_runtime_js[agent-runtime.js]
+    agent_runtime_js["agent-runtime.js"]
   end
   main --> local
 ```
@@ -83,8 +83,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant runtime_helpers as runtime-helpers
-  participant agent_runtime_js as agent-runtime.js
+  participant runtime_helpers as "runtime-helpers"
+  participant agent_runtime_js as "agent-runtime.js"
 
   Caller->>runtime_helpers: buildRuntimeLimitError()
   runtime_helpers->>agent_runtime_js: 内部関数呼び出し
@@ -198,4 +198,4 @@ interface RuntimeQueueWaitInfo {
 Queue wait information for building queue wait error messages.
 
 ---
-*自動生成: 2026-02-17T22:16:16.567Z*
+*自動生成: 2026-02-17T22:24:18.862Z*

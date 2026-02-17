@@ -58,11 +58,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    file_candidates_js[file_candidates.js]
-    code_search_js[code_search.js]
-    sym_index_js[sym_index.js]
-    sym_find_js[sym_find.js]
-    cli_js[cli.js]
+    file_candidates_js["file_candidates.js"]
+    code_search_js["code_search.js"]
+    sym_index_js["sym_index.js"]
+    sym_find_js["sym_find.js"]
+    cli_js["cli.js"]
   end
   main --> local
 ```
@@ -73,9 +73,9 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant test_runner as test-runner
-  participant file_candidates_js as file_candidates.js
-  participant code_search_js as code_search.js
+  participant test_runner as "test-runner"
+  participant file_candidates_js as "file_candidates.js"
+  participant code_search_js as "code_search.js"
 
 ```
 
@@ -221,4 +221,4 @@ interface TestSuite {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.524Z*
+*自動生成: 2026-02-17T22:24:18.831Z*

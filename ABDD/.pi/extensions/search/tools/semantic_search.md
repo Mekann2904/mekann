@@ -40,9 +40,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
-    constants_js[constants.js]
-    utils_js[utils.js]
+    types_js["types.js"]
+    constants_js["constants.js"]
+    utils_js["utils.js"]
   end
   main --> local
 ```
@@ -62,9 +62,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant semantic_search as semantic_search
-  participant types_js as types.js
-  participant constants_js as constants.js
+  participant semantic_search as "semantic_search"
+  participant types_js as "types.js"
+  participant constants_js as "constants.js"
 
   Caller->>semantic_search: semanticSearch()
   activate semantic_search
@@ -163,4 +163,4 @@ Format semantic search results for display.
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-17T22:16:16.533Z*
+*自動生成: 2026-02-17T22:24:18.838Z*

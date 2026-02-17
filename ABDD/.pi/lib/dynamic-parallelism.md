@@ -103,7 +103,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    task_scheduler[task-scheduler]
+    task_scheduler["task-scheduler"]
   end
   main --> local
 ```
@@ -131,8 +131,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant dynamic_parallelism as dynamic-parallelism
-  participant task_scheduler as task-scheduler
+  participant dynamic_parallelism as "dynamic-parallelism"
+  participant task_scheduler as "task-scheduler"
 
   Caller->>dynamic_parallelism: getParallelismAdjuster()
   dynamic_parallelism->>task_scheduler: 内部関数呼び出し
@@ -379,4 +379,4 @@ interface ErrorEvent {
 Error event for tracking.
 
 ---
-*自動生成: 2026-02-17T22:16:16.649Z*
+*自動生成: 2026-02-17T22:24:18.918Z*

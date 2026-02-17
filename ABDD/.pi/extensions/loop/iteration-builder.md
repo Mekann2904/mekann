@@ -65,8 +65,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    agent_types_js[agent-types.js]
-    reference_loader[reference-loader]
+    agent_types_js["agent-types.js"]
+    reference_loader["reference-loader"]
   end
   main --> local
 ```
@@ -94,9 +94,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant iteration_builder as iteration-builder
-  participant agent_types_js as agent-types.js
-  participant reference_loader as reference-loader
+  participant iteration_builder as "iteration-builder"
+  participant agent_types_js as "agent-types.js"
+  participant reference_loader as "reference-loader"
 
   Caller->>iteration_builder: buildIterationPrompt()
   iteration_builder->>agent_types_js: 内部関数呼び出し
@@ -622,4 +622,4 @@ type LoopGoalStatus = "met" | "not_met" | "unknown"
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.478Z*
+*自動生成: 2026-02-17T22:24:18.801Z*

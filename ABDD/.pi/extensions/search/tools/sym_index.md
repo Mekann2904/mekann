@@ -53,10 +53,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    cli_js[cli.js]
-    constants_js[constants.js]
-    types_js[types.js]
-    errors_js[errors.js]
+    cli_js["cli.js"]
+    constants_js["constants.js"]
+    types_js["types.js"]
+    errors_js["errors.js"]
   end
   main --> local
 ```
@@ -78,9 +78,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant sym_index as sym_index
-  participant cli_js as cli.js
-  participant constants_js as constants.js
+  participant sym_index as "sym_index"
+  participant cli_js as "cli.js"
+  participant constants_js as "constants.js"
 
   Caller->>sym_index: symIndex()
   activate sym_index
@@ -648,4 +648,4 @@ interface LegacyIndexMeta {
 Legacy index metadata structure
 
 ---
-*自動生成: 2026-02-17T22:16:16.539Z*
+*自動生成: 2026-02-17T22:24:18.842Z*

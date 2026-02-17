@@ -59,8 +59,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    error_utils_js[error-utils.js]
-    ssrf_protection[ssrf-protection]
+    error_utils_js["error-utils.js"]
+    ssrf_protection["ssrf-protection"]
   end
   main --> local
 ```
@@ -80,9 +80,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant reference_loader as reference-loader
-  participant error_utils_js as error-utils.js
-  participant ssrf_protection as ssrf-protection
+  participant reference_loader as "reference-loader"
+  participant error_utils_js as "error-utils.js"
+  participant ssrf_protection as "ssrf-protection"
 
   Caller->>reference_loader: loadReferences()
   activate reference_loader
@@ -292,4 +292,4 @@ interface LoadedReferenceResult {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.481Z*
+*自動生成: 2026-02-17T22:24:18.803Z*

@@ -37,8 +37,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    registry_js[registry.js]
-    openai_js[openai.js]
+    registry_js["registry.js"]
+    openai_js["openai.js"]
   end
   main --> local
 ```
@@ -58,9 +58,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant index as index
-  participant registry_js as registry.js
-  participant openai_js as openai.js
+  participant index as "index"
+  participant registry_js as "registry.js"
+  participant openai_js as "openai.js"
 
   Caller->>index: initializeEmbeddingModule()
   activate index
@@ -98,4 +98,4 @@ Synchronous initialization for non-async contexts.
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:16:16.670Z*
+*自動生成: 2026-02-17T22:24:18.931Z*

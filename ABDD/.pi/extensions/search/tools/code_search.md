@@ -40,11 +40,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    cli_js[cli.js]
-    types_js[types.js]
-    output_js[output.js]
-    errors_js[errors.js]
-    constants_js[constants.js]
+    cli_js["cli.js"]
+    types_js["types.js"]
+    output_js["output.js"]
+    errors_js["errors.js"]
+    constants_js["constants.js"]
   end
   main --> local
 ```
@@ -55,9 +55,9 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant code_search as code_search
-  participant cli_js as cli.js
-  participant types_js as types.js
+  participant code_search as "code_search"
+  participant cli_js as "cli.js"
+  participant types_js as "types.js"
 
   Caller->>code_search: codeSearch()
   activate code_search
@@ -184,4 +184,4 @@ Code search with rg or fallback
 **戻り値**: `Promise<CodeSearchOutput>`
 
 ---
-*自動生成: 2026-02-17T22:16:16.528Z*
+*自動生成: 2026-02-17T22:24:18.834Z*

@@ -52,7 +52,7 @@ export type { RunOutcomeCode, RunOutcomeSignal };
 // Types
 // ============================================================================
 
-export interface SubagentNormalizedOutput {
+export interface SubagentExecutionResult {
   ok: boolean;
   output: string;
   degraded: boolean;
@@ -93,7 +93,7 @@ function pickSubagentSummaryCandidate(text: string): string {
  * - Uses pickSubagentSummaryCandidate which is subagent-specific
  * Team member output has different requirements (CLAIM/EVIDENCE/CONFIDENCE).
  */
-export function normalizeSubagentOutput(output: string): SubagentNormalizedOutput {
+export function normalizeSubagentOutput(output: string): SubagentExecutionResult {
   const trimmed = output.trim();
   if (!trimmed) {
     return { ok: false, output: "", degraded: false, reason: "empty output" };

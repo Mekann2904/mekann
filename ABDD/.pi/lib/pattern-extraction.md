@@ -88,9 +88,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js[fs-utils.js]
-    run_index_js[run-index.js]
-    storage_lock_js[storage-lock.js]
+    fs_utils_js["fs-utils.js"]
+    run_index_js["run-index.js"]
+    storage_lock_js["storage-lock.js"]
   end
   main --> local
 ```
@@ -118,9 +118,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant pattern_extraction as pattern-extraction
-  participant fs_utils_js as fs-utils.js
-  participant run_index_js as run-index.js
+  participant pattern_extraction as "pattern-extraction"
+  participant fs_utils_js as "fs-utils.js"
+  participant run_index_js as "run-index.js"
 
   Caller->>pattern_extraction: extractPatternFromRun()
   pattern_extraction->>fs_utils_js: 内部関数呼び出し
@@ -470,4 +470,4 @@ interface RunData {
 Run data for pattern extraction.
 
 ---
-*自動生成: 2026-02-17T22:16:16.699Z*
+*自動生成: 2026-02-17T22:24:18.954Z*

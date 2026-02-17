@@ -53,8 +53,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
-    constants_js[constants.js]
+    types_js["types.js"]
+    constants_js["constants.js"]
   end
   main --> local
 ```
@@ -65,9 +65,9 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant semantic_index as semantic_index
-  participant types_js as types.js
-  participant constants_js as constants.js
+  participant semantic_index as "semantic_index"
+  participant types_js as "types.js"
+  participant constants_js as "constants.js"
 
   Caller->>semantic_index: semanticIndex()
   activate semantic_index
@@ -327,4 +327,4 @@ interface CodeChunk {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.531Z*
+*自動生成: 2026-02-17T22:24:18.837Z*

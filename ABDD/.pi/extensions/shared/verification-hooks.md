@@ -64,9 +64,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    verification_workflow_js[verification-workflow.js]
-    comprehensive_logger_js[comprehensive-logger.js]
-    comprehensive_logger_types_js[comprehensive-logger-types.js]
+    verification_workflow_js["verification-workflow.js"]
+    comprehensive_logger_js["comprehensive-logger.js"]
+    comprehensive_logger_types_js["comprehensive-logger-types.js"]
   end
   main --> local
 ```
@@ -90,9 +90,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant verification_hooks as verification-hooks
-  participant verification_workflow_js as verification-workflow.js
-  participant comprehensive_logger_js as comprehensive-logger.js
+  participant verification_hooks as "verification-hooks"
+  participant verification_workflow_js as "verification-workflow.js"
+  participant comprehensive_logger_js as "comprehensive-logger.js"
 
   Caller->>verification_hooks: resolveVerificationHookConfig()
   verification_hooks->>verification_workflow_js: 内部関数呼び出し
@@ -284,4 +284,4 @@ interface VerificationHookResult {
 検証フックの結果
 
 ---
-*自動生成: 2026-02-17T22:16:16.570Z*
+*自動生成: 2026-02-17T22:24:18.864Z*

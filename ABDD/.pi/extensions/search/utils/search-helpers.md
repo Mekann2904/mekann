@@ -76,7 +76,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types[types]
+    types["types"]
   end
   main --> local
 ```
@@ -104,8 +104,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant search_helpers as search-helpers
-  participant types as types
+  participant search_helpers as "search-helpers"
+  participant types as "types"
 
   Caller->>search_helpers: fileCandidateToUnified()
   search_helpers->>types: 内部関数呼び出し
@@ -403,4 +403,4 @@ interface RankOptions {
 Options for ranking results.
 
 ---
-*自動生成: 2026-02-17T22:16:16.563Z*
+*自動生成: 2026-02-17T22:24:18.858Z*

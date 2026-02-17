@@ -66,8 +66,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    extract_structure_js[extract-structure.js]
-    generate_diagrams_js[generate-diagrams.js]
+    extract_structure_js["extract-structure.js"]
+    generate_diagrams_js["generate-diagrams.js"]
   end
   main --> local
 ```
@@ -269,4 +269,4 @@ interface LLMContext {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.448Z*
+*自動生成: 2026-02-17T22:24:18.777Z*

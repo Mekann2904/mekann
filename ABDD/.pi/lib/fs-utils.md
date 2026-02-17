@@ -35,7 +35,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
-    fs[fs]
+    fs["fs"]
   end
   main --> external
 ```
@@ -59,4 +59,4 @@ Ensures a directory exists, creating it recursively if necessary.
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:16:16.682Z*
+*自動生成: 2026-02-17T22:24:18.942Z*

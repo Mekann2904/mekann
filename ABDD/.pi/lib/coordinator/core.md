@@ -49,7 +49,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
+    types_js["types.js"]
   end
   main --> local
 ```
@@ -77,8 +77,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant core as core
-  participant types_js as types.js
+  participant core as "core"
+  participant types_js as "types.js"
 
   Caller->>core: registerInstance()
   core->>types_js: 内部関数呼び出し
@@ -254,4 +254,4 @@ PI_HEARTBEAT_TIMEOUT_MS: Time before instance is considered dead
 **戻り値**: `Partial<CoordinatorConfig>`
 
 ---
-*自動生成: 2026-02-17T22:16:16.628Z*
+*自動生成: 2026-02-17T22:24:18.908Z*

@@ -197,4 +197,4 @@ interface TokenBucketRateLimiter {
 Token bucket rate limiter interface.
 
 ---
-*自動生成: 2026-02-17T22:16:16.736Z*
+*自動生成: 2026-02-17T22:24:18.985Z*

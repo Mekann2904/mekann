@@ -95,7 +95,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    text_parsing_js[text-parsing.js]
+    text_parsing_js["text-parsing.js"]
   end
   main --> local
 ```
@@ -123,8 +123,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant output_schema as output-schema
-  participant text_parsing_js as text-parsing.js
+  participant output_schema as "output-schema"
+  participant text_parsing_js as "text-parsing.js"
 
   Caller->>output_schema: getCommunicationIdMode()
   output_schema->>text_parsing_js: 内部関数呼び出し
@@ -476,4 +476,4 @@ Stance classification mode for discussion analysis.
 - "structured": Full structured analysis with confidence scores
 
 ---
-*自動生成: 2026-02-17T22:16:16.695Z*
+*自動生成: 2026-02-17T22:24:18.950Z*

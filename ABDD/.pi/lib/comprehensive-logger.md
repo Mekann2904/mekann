@@ -60,16 +60,16 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    comprehensive_logger_config[comprehensive-logger-config]
-    comprehensive_logger_types[comprehensive-logger-types]
+    comprehensive_logger_config["comprehensive-logger-config"]
+    comprehensive_logger_types["comprehensive-logger-types"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    crypto[crypto]
-    crypto[crypto]
-    fs[fs]
-    fs[fs]
-    path[path]
+    crypto["crypto"]
+    crypto["crypto"]
+    fs["fs"]
+    fs["fs"]
+    path["path"]
   end
   main --> external
 ```
@@ -89,12 +89,12 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant comprehensive_logger as comprehensive-logger
-  participant crypto as crypto
-  participant fs as fs
-  participant path as path
-  participant comprehensive_logger_config as comprehensive-logger-config
-  participant comprehensive_logger_types as comprehensive-logger-types
+  participant comprehensive_logger as "comprehensive-logger"
+  participant crypto as "crypto"
+  participant fs as "fs"
+  participant path as "path"
+  participant comprehensive_logger_config as "comprehensive-logger-config"
+  participant comprehensive_logger_types as "comprehensive-logger-types"
 
   Caller->>comprehensive_logger: getLogger()
   comprehensive_logger->>crypto: API呼び出し
@@ -210,4 +210,4 @@ resetLogger(): void
 | getTotalTokens | `getTotalTokens(): number` |
 
 ---
-*自動生成: 2026-02-17T22:16:16.618Z*
+*自動生成: 2026-02-17T22:24:18.901Z*

@@ -67,7 +67,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant plan_mode_shared as plan-mode-shared
+  participant plan_mode_shared as "plan-mode-shared"
 
   Caller->>plan_mode_shared: isBashCommandAllowed()
   plan_mode_shared-->>Caller: boolean
@@ -177,4 +177,4 @@ interface PlanModeState {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.700Z*
+*自動生成: 2026-02-17T22:24:18.955Z*

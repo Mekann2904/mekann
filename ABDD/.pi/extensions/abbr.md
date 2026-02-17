@@ -71,10 +71,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
-    _sinclair[@sinclair]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
+    _sinclair["@sinclair"]
   end
   main --> external
 ```
@@ -216,4 +216,4 @@ interface AbbrDetails {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.329Z*
+*自動生成: 2026-02-17T22:24:18.681Z*

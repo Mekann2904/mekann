@@ -60,7 +60,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    agent_runtime[agent-runtime]
+    agent_runtime["agent-runtime"]
   end
   main --> local
 ```
@@ -82,8 +82,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant parallel_execution as parallel-execution
-  participant agent_runtime as agent-runtime
+  participant parallel_execution as "parallel-execution"
+  participant agent_runtime as "agent-runtime"
 
   Caller->>parallel_execution: buildMemberParallelCandidates()
   parallel_execution->>agent_runtime: 内部関数呼び出し
@@ -190,4 +190,4 @@ interface TeamParallelCapacityResolution {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.391Z*
+*自動生成: 2026-02-17T22:24:18.736Z*

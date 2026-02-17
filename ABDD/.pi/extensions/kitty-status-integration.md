@@ -49,8 +49,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
-    child_process[child_process]
-    _mariozechner[@mariozechner]
+    child_process["child_process"]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -177,4 +177,4 @@ interface NotificationOptions {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.473Z*
+*自動生成: 2026-02-17T22:24:18.797Z*

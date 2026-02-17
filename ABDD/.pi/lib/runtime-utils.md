@@ -42,11 +42,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    retry_with_backoff_js[retry-with-backoff.js]
+    retry_with_backoff_js["retry-with-backoff.js"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -74,9 +74,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant runtime_utils as runtime-utils
-  participant _mariozechner as @mariozechner
-  participant retry_with_backoff_js as retry-with-backoff.js
+  participant runtime_utils as "runtime-utils"
+  participant _mariozechner as "@mariozechner"
+  participant retry_with_backoff_js as "retry-with-backoff.js"
 
   Caller->>runtime_utils: trimForError()
   runtime_utils->>_mariozechner: API呼び出し
@@ -209,4 +209,4 @@ Convert concurrency limit input to number.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-17T22:16:16.712Z*
+*自動生成: 2026-02-17T22:24:18.966Z*

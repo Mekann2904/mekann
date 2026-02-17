@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { LiveStreamView } from './live-monitor-base.js';
+import { LiveStreamView } from './tui/live-monitor-base.js';
 import { LiveStatus } from './live-view-utils.js';
 ```
 
@@ -136,8 +136,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    live_monitor_base_js[live-monitor-base.js]
-    live_view_utils_js[live-view-utils.js]
+    live_monitor_base_js["live-monitor-base.js"]
+    live_view_utils_js["live-view-utils.js"]
   end
   main --> local
 ```
@@ -375,4 +375,4 @@ View mode for team live monitoring interface.
 Extends base LiveViewMode with "discussion" mode.
 
 ---
-*自動生成: 2026-02-17T22:16:16.732Z*
+*自動生成: 2026-02-17T22:24:18.982Z*

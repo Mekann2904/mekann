@@ -141,7 +141,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant types as types
+  participant types as "types"
 
   Caller->>types: setCoordinatorState()
   types-->>Caller: void
@@ -361,4 +361,4 @@ interface StealingStatsInternal {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.634Z*
+*自動生成: 2026-02-17T22:24:18.911Z*

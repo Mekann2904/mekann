@@ -64,11 +64,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    runtime_utils_js[runtime-utils.js]
-    error_utils_js[error-utils.js]
-    agent_utils_js[agent-utils.js]
-    agent_types_js[agent-types.js]
-    output_validation_js[output-validation.js]
+    runtime_utils_js["runtime-utils.js"]
+    error_utils_js["error-utils.js"]
+    agent_utils_js["agent-utils.js"]
+    agent_types_js["agent-types.js"]
+    output_validation_js["output-validation.js"]
   end
   main --> local
 ```
@@ -96,9 +96,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant task_execution as task-execution
-  participant runtime_utils_js as runtime-utils.js
-  participant error_utils_js as error-utils.js
+  participant task_execution as "task-execution"
+  participant runtime_utils_js as "runtime-utils.js"
+  participant error_utils_js as "error-utils.js"
 
   Caller->>task_execution: normalizeSubagentOutput()
   task_execution->>runtime_utils_js: 内部関数呼び出し
@@ -401,4 +401,4 @@ interface SubagentExecutionResult {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.584Z*
+*自動生成: 2026-02-17T22:24:18.874Z*

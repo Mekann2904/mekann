@@ -80,7 +80,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant pi_print_executor as pi-print-executor
+  participant pi_print_executor as "pi-print-executor"
 
   Caller->>pi_print_executor: runPiPrintMode()
   activate pi_print_executor
@@ -370,4 +370,4 @@ interface CallModelViaPiOptions {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.566Z*
+*自動生成: 2026-02-17T22:24:18.861Z*

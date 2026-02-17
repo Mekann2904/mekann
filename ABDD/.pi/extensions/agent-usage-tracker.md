@@ -106,15 +106,15 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js[fs-utils.js]
-    validation_utils_js[validation-utils.js]
-    comprehensive_logger[comprehensive-logger]
-    comprehensive_logger_types[comprehensive-logger-types]
+    fs_utils_js["fs-utils.js"]
+    validation_utils_js["validation-utils.js"]
+    comprehensive_logger["comprehensive-logger"]
+    comprehensive_logger_types["comprehensive-logger-types"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -792,4 +792,4 @@ type EventStatus = "ok" | "error"
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.432Z*
+*自動生成: 2026-02-17T22:24:18.765Z*

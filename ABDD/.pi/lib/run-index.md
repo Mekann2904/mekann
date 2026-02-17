@@ -91,8 +91,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js[fs-utils.js]
-    storage_lock_js[storage-lock.js]
+    fs_utils_js["fs-utils.js"]
+    storage_lock_js["storage-lock.js"]
   end
   main --> local
 ```
@@ -120,9 +120,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant run_index as run-index
-  participant fs_utils_js as fs-utils.js
-  participant storage_lock_js as storage-lock.js
+  participant run_index as "run-index"
+  participant fs_utils_js as "fs-utils.js"
+  participant storage_lock_js as "storage-lock.js"
 
   Caller->>run_index: extractKeywords()
   run_index->>fs_utils_js: 内部関数呼び出し
@@ -488,4 +488,4 @@ type TaskType = | "code-review"
 Task type classification.
 
 ---
-*自動生成: 2026-02-17T22:16:16.711Z*
+*自動生成: 2026-02-17T22:24:18.965Z*

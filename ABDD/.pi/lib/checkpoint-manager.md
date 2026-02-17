@@ -107,7 +107,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant checkpoint_manager as checkpoint-manager
+  participant checkpoint_manager as "checkpoint-manager"
 
   Caller->>checkpoint_manager: initCheckpointManager()
   checkpoint_manager-->>Caller: void
@@ -514,4 +514,4 @@ type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background"
 Task priority for checkpoint ordering.
 
 ---
-*自動生成: 2026-02-17T22:16:16.613Z*
+*自動生成: 2026-02-17T22:24:18.897Z*

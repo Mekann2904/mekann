@@ -116,7 +116,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant retry_with_backoff as retry-with-backoff
+  participant retry_with_backoff as "retry-with-backoff"
 
   Caller->>retry_with_backoff: getRateLimitGateSnapshot()
   retry_with_backoff-->>Caller: RateLimitGateSnapshot
@@ -592,4 +592,4 @@ type RetryWithBackoffOverrides = Partial<RetryWithBackoffConfig>
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.708Z*
+*自動生成: 2026-02-17T22:24:18.962Z*

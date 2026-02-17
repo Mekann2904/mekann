@@ -39,14 +39,14 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    adaptive_rate_controller[adaptive-rate-controller]
-    cross_instance_coordinator[cross-instance-coordinator]
-    provider_limits[provider-limits]
-    agent_runtime[agent-runtime]
+    adaptive_rate_controller["adaptive-rate-controller"]
+    cross_instance_coordinator["cross-instance-coordinator"]
+    provider_limits["provider-limits"]
+    agent_runtime["agent-runtime"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -68,4 +68,4 @@ registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:16:16.455Z*
+*自動生成: 2026-02-17T22:24:18.783Z*

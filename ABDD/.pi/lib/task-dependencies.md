@@ -230,4 +230,4 @@ type TaskDependencyStatus = "pending" | "ready" | "running" | "completed" | "fai
 Task status in the dependency graph.
 
 ---
-*自動生成: 2026-02-17T22:16:16.728Z*
+*自動生成: 2026-02-17T22:24:18.978Z*

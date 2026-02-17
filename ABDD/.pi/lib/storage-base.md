@@ -101,8 +101,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js[fs-utils.js]
-    storage_lock_js[storage-lock.js]
+    fs_utils_js["fs-utils.js"]
+    storage_lock_js["storage-lock.js"]
   end
   main --> local
 ```
@@ -130,9 +130,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant storage_base as storage-base
-  participant fs_utils_js as fs-utils.js
-  participant storage_lock_js as storage-lock.js
+  participant storage_base as "storage-base"
+  participant fs_utils_js as "fs-utils.js"
+  participant storage_lock_js as "storage-lock.js"
 
   Caller->>storage_base: createPathsFactory()
   storage_base->>fs_utils_js: 内部関数呼び出し
@@ -455,4 +455,4 @@ interface CreateStorageSaverOptions {
 Options for creating a storage saver.
 
 ---
-*自動生成: 2026-02-17T22:16:16.721Z*
+*自動生成: 2026-02-17T22:24:18.972Z*

@@ -50,7 +50,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    agent_runtime[agent-runtime]
+    agent_runtime["agent-runtime"]
   end
   main --> local
 ```
@@ -61,8 +61,8 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant parallel_execution as parallel-execution
-  participant agent_runtime as agent-runtime
+  participant parallel_execution as "parallel-execution"
+  participant agent_runtime as "agent-runtime"
 
   Caller->>parallel_execution: resolveSubagentParallelCapacity()
   activate parallel_execution
@@ -123,4 +123,4 @@ interface SubagentParallelCapacityResolution {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.580Z*
+*自動生成: 2026-02-17T22:24:18.870Z*

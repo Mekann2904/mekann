@@ -56,10 +56,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -70,8 +70,8 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant question as question
-  participant _mariozechner as @mariozechner
+  participant question as "question"
+  participant _mariozechner as "@mariozechner"
 
 ```
 
@@ -203,4 +203,4 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.508Z*
+*自動生成: 2026-02-17T22:24:18.819Z*

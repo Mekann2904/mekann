@@ -80,16 +80,16 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    comprehensive_logger[comprehensive-logger]
-    comprehensive_logger_types[comprehensive-logger-types]
-    registry_js[registry.js]
-    safety_js[safety.js]
-    quality_js[quality.js]
+    comprehensive_logger["comprehensive-logger"]
+    comprehensive_logger_types["comprehensive-logger-types"]
+    registry_js["registry.js"]
+    safety_js["safety.js"]
+    quality_js["quality.js"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -100,10 +100,10 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant dynamic_tools as dynamic-tools
-  participant _mariozechner as @mariozechner
-  participant comprehensive_logger as comprehensive-logger
-  participant comprehensive_logger_types as comprehensive-logger-types
+  participant dynamic_tools as "dynamic-tools"
+  participant _mariozechner as "@mariozechner"
+  participant comprehensive_logger as "comprehensive-logger"
+  participant comprehensive_logger_types as "comprehensive-logger-types"
 
   Caller->>dynamic_tools: registerDynamicToolsExtension()
   dynamic_tools->>_mariozechner: API呼び出し
@@ -363,4 +363,4 @@ interface ToolReflectionInput {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.460Z*
+*自動生成: 2026-02-17T22:24:18.788Z*

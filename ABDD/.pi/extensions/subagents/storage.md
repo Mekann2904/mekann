@@ -79,9 +79,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    storage_base_js[storage-base.js]
-    storage_lock_js[storage-lock.js]
-    comprehensive_logger_js[comprehensive-logger.js]
+    storage_base_js["storage-base.js"]
+    storage_lock_js["storage-lock.js"]
+    comprehensive_logger_js["comprehensive-logger.js"]
   end
   main --> local
 ```
@@ -105,9 +105,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant storage as storage
-  participant storage_base_js as storage-base.js
-  participant storage_lock_js as storage-lock.js
+  participant storage as "storage"
+  participant storage_base_js as "storage-base.js"
+  participant storage_lock_js as "storage-lock.js"
 
   Caller->>storage: createDefaultAgents()
   storage->>storage_base_js: 内部関数呼び出し
@@ -306,4 +306,4 @@ type AgentEnabledState = "enabled" | "disabled"
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.581Z*
+*自動生成: 2026-02-17T22:24:18.872Z*

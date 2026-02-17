@@ -53,8 +53,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    core_js[core.js]
-    types_js[types.js]
+    core_js["core.js"]
+    types_js["types.js"]
   end
   main --> local
 ```
@@ -82,9 +82,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant work_stealing as work-stealing
-  participant core_js as core.js
-  participant types_js as types.js
+  participant work_stealing as "work-stealing"
+  participant core_js as "core.js"
+  participant types_js as "types.js"
 
   Caller->>work_stealing: shouldAttemptWorkStealing()
   work_stealing->>core_js: 内部関数呼び出し
@@ -360,4 +360,4 @@ Enhanced heartbeat that includes cleanup of locks and queue states.
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:16:16.642Z*
+*自動生成: 2026-02-17T22:24:18.914Z*

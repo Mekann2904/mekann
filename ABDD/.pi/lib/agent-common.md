@@ -80,7 +80,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    validation_utils_js[validation-utils.js]
+    validation_utils_js["validation-utils.js"]
   end
   main --> local
 ```
@@ -108,8 +108,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant agent_common as agent-common
-  participant validation_utils_js as validation-utils.js
+  participant agent_common as "agent-common"
+  participant validation_utils_js as "validation-utils.js"
 
   Caller->>agent_common: pickFieldCandidate()
   agent_common->>validation_utils_js: 内部関数呼び出し
@@ -317,4 +317,4 @@ Entity type identifier for shared functions.
 Used to distinguish between subagent and team member contexts.
 
 ---
-*自動生成: 2026-02-17T22:16:16.607Z*
+*自動生成: 2026-02-17T22:24:18.892Z*

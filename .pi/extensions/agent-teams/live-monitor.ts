@@ -16,7 +16,7 @@ import {
   countOccurrences,
   estimateLineCount,
   renderPreviewWithMarkdown,
-} from "../../lib/tui-utils.js";
+} from "../../lib/tui/tui-utils.js";
 import {
   toTailLines,
   looksLikeMarkdown,

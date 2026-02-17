@@ -121,9 +121,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    checkpoint_manager[checkpoint-manager]
-    priority_scheduler[priority-scheduler]
-    priority_scheduler[priority-scheduler]
+    checkpoint_manager["checkpoint-manager"]
+    priority_scheduler["priority-scheduler"]
+    priority_scheduler["priority-scheduler"]
   end
   main --> local
 ```
@@ -151,9 +151,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant task_scheduler as task-scheduler
-  participant checkpoint_manager as checkpoint-manager
-  participant priority_scheduler as priority-scheduler
+  participant task_scheduler as "task-scheduler"
+  participant checkpoint_manager as "checkpoint-manager"
+  participant priority_scheduler as "priority-scheduler"
 
   Caller->>task_scheduler: shouldPreempt()
   task_scheduler->>checkpoint_manager: 内部関数呼び出し
@@ -592,4 +592,4 @@ Source type for scheduled tasks.
 Identifies which tool created this task.
 
 ---
-*自動生成: 2026-02-17T22:16:16.731Z*
+*自動生成: 2026-02-17T22:24:18.982Z*

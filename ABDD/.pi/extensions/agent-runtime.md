@@ -206,15 +206,15 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    adaptive_rate_controller[adaptive-rate-controller]
-    cross_instance_coordinator[cross-instance-coordinator]
-    cross_instance_coordinator[cross-instance-coordinator]
-    dynamic_parallelism[dynamic-parallelism]
-    priority_scheduler[priority-scheduler]
+    adaptive_rate_controller["adaptive-rate-controller"]
+    cross_instance_coordinator["cross-instance-coordinator"]
+    cross_instance_coordinator["cross-instance-coordinator"]
+    dynamic_parallelism["dynamic-parallelism"]
+    priority_scheduler["priority-scheduler"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    _mariozechner[@mariozechner]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -242,10 +242,10 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant agent_runtime as agent-runtime
-  participant _mariozechner as @mariozechner
-  participant adaptive_rate_controller as adaptive-rate-controller
-  participant cross_instance_coordinator as cross-instance-coordinator
+  participant agent_runtime as "agent-runtime"
+  participant _mariozechner as "@mariozechner"
+  participant adaptive_rate_controller as "adaptive-rate-controller"
+  participant cross_instance_coordinator as "cross-instance-coordinator"
 
   Caller->>agent_runtime: setRuntimeStateProvider()
   agent_runtime->>_mariozechner: API呼び出し
@@ -1325,4 +1325,4 @@ type GlobalScopeWithRuntime = typeof globalThis & {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.354Z*
+*自動生成: 2026-02-17T22:24:18.703Z*

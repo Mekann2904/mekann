@@ -44,7 +44,7 @@ classDiagram
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant concurrency as concurrency
+  participant concurrency as "concurrency"
 
   Caller->>concurrency: runWithConcurrencyLimit()
   activate concurrency
@@ -133,4 +133,4 @@ Result wrapper for tracking success/failure of individual workers.
 Used internally to ensure all workers complete before throwing errors.
 
 ---
-*自動生成: 2026-02-17T22:16:16.619Z*
+*自動生成: 2026-02-17T22:24:18.902Z*

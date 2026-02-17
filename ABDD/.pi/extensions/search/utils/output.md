@@ -89,9 +89,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types[types]
-    metrics_js[metrics.js]
-    constants_js[constants.js]
+    types["types"]
+    metrics_js["metrics.js"]
+    constants_js["constants.js"]
   end
   main --> local
 ```
@@ -119,9 +119,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant output as output
-  participant types as types
-  participant metrics_js as metrics.js
+  participant output as "output"
+  participant types as "types"
+  participant metrics_js as "metrics.js"
 
   Caller->>output: truncateResults()
   output->>types: 内部関数呼び出し
@@ -631,4 +631,4 @@ Suggested next action for the agent.
 Helps guide the agent towards more effective searches.
 
 ---
-*自動生成: 2026-02-17T22:16:16.560Z*
+*自動生成: 2026-02-17T22:24:18.856Z*

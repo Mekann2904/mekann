@@ -46,7 +46,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant ssrf_protection as ssrf-protection
+  participant ssrf_protection as "ssrf-protection"
 
   Caller->>ssrf_protection: isBlockedHostname()
   ssrf_protection-->>Caller: boolean
@@ -135,4 +135,4 @@ Throws an error if the URL points to a blocked resource.
 **戻り値**: `Promise<void>`
 
 ---
-*自動生成: 2026-02-17T22:16:16.482Z*
+*自動生成: 2026-02-17T22:24:18.804Z*

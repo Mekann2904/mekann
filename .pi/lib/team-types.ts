@@ -8,11 +8,11 @@
  * Related: extensions/agent-teams.ts, extensions/agent-teams/storage.ts
  */
 
-import type { LiveStreamView } from "./live-monitor-base.js";
+import type { LiveStreamView } from "./tui/live-monitor-base.js";
 import type { LiveStatus } from "./live-view-utils.js";
 
 // Re-export LiveStreamView for convenience
-export type { LiveStreamView } from "./live-monitor-base.js";
+export type { LiveStreamView } from "./tui/live-monitor-base.js";
 
 // ============================================================================
 // Team Live Monitor Types

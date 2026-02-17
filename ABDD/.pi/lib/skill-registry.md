@@ -100,7 +100,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant skill_registry as skill-registry
+  participant skill_registry as "skill-registry"
 
   Caller->>skill_registry: resolveSkills()
   skill_registry-->>Caller: ResolveSkillsResult
@@ -449,4 +449,4 @@ type SkillReference = string
 Skill reference - can be a skill name or path
 
 ---
-*自動生成: 2026-02-17T22:16:16.719Z*
+*自動生成: 2026-02-17T22:24:18.971Z*

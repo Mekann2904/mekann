@@ -138,7 +138,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant metrics_collector as metrics-collector
+  participant metrics_collector as "metrics-collector"
 
   Caller->>metrics_collector: initMetricsCollector()
   metrics_collector-->>Caller: void
@@ -670,4 +670,4 @@ interface CollectorState {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.692Z*
+*自動生成: 2026-02-17T22:24:18.948Z*

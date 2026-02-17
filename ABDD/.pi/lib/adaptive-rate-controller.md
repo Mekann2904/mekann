@@ -118,7 +118,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant adaptive_rate_controller as adaptive-rate-controller
+  participant adaptive_rate_controller as "adaptive-rate-controller"
 
   Caller->>adaptive_rate_controller: initAdaptiveController()
   adaptive_rate_controller-->>Caller: void
@@ -707,4 +707,4 @@ interface PredictiveAnalysis {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.605Z*
+*自動生成: 2026-02-17T22:24:18.891Z*

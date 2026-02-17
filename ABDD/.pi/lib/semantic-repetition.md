@@ -75,7 +75,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    index_js[index.js]
+    index_js["index.js"]
   end
   main --> local
 ```
@@ -99,8 +99,8 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant semantic_repetition as semantic-repetition
-  participant index_js as index.js
+  participant semantic_repetition as "semantic-repetition"
+  participant index_js as "index.js"
 
   Caller->>semantic_repetition: detectSemanticRepetition()
   activate semantic_repetition
@@ -271,4 +271,4 @@ interface TrajectorySummary {
 Session trajectory summary for monitoring.
 
 ---
-*自動生成: 2026-02-17T22:16:16.717Z*
+*自動生成: 2026-02-17T22:24:18.969Z*

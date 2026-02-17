@@ -247,4 +247,4 @@ type SafetyAnalysisIssueType = | "file-system-write"
 安全性問題の種類（解析用）
 
 ---
-*自動生成: 2026-02-17T22:16:16.667Z*
+*自動生成: 2026-02-17T22:24:18.929Z*

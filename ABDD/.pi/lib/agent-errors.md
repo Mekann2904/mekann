@@ -78,9 +78,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    agent_common_js[agent-common.js]
-    agent_types_js[agent-types.js]
-    error_utils_js[error-utils.js]
+    agent_common_js["agent-common.js"]
+    agent_types_js["agent-types.js"]
+    error_utils_js["error-utils.js"]
   end
   main --> local
 ```
@@ -108,9 +108,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant agent_errors as agent-errors
-  participant agent_common_js as agent-common.js
-  participant agent_types_js as agent-types.js
+  participant agent_errors as "agent-errors"
+  participant agent_common_js as "agent-common.js"
+  participant agent_types_js as "agent-types.js"
 
   Caller->>agent_errors: classifySemanticError()
   agent_errors->>agent_common_js: 内部関数呼び出し
@@ -505,4 +505,4 @@ Standardized failure classification types for retry decision making.
 Each classification maps to a specific retry policy.
 
 ---
-*自動生成: 2026-02-17T22:16:16.610Z*
+*自動生成: 2026-02-17T22:24:18.894Z*

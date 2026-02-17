@@ -43,11 +43,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js[types.js]
-    cli_js[cli.js]
-    sym_index_js[sym_index.js]
-    types_js[types.js]
-    constants_js[constants.js]
+    types_js["types.js"]
+    cli_js["cli.js"]
+    sym_index_js["sym_index.js"]
+    types_js["types.js"]
+    constants_js["constants.js"]
   end
   main --> local
 ```
@@ -71,9 +71,9 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant builder as builder
-  participant types_js as types.js
-  participant cli_js as cli.js
+  participant builder as "builder"
+  participant types_js as "types.js"
+  participant cli_js as "cli.js"
 
   Caller->>builder: buildCallGraph()
   activate builder
@@ -342,4 +342,4 @@ Simple check: compare with symbol index timestamp.
 **戻り値**: `Promise<boolean>`
 
 ---
-*自動生成: 2026-02-17T22:16:16.510Z*
+*自動生成: 2026-02-17T22:24:18.821Z*

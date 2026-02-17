@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { LiveStatus, LiveStreamView, LiveViewMode } from './live-monitor-base.js';
-import { LiveStatusBase } from './live-view-utils.js';
+import { LiveStreamView, LiveViewMode } from './tui/live-monitor-base.js';
+import { LiveStatus } from './live-view-utils.js';
 ```
 
 ## エクスポート一覧
@@ -102,8 +102,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    live_monitor_base_js[live-monitor-base.js]
-    live_view_utils_js[live-view-utils.js]
+    live_monitor_base_js["live-monitor-base.js"]
+    live_view_utils_js["live-view-utils.js"]
   end
   main --> local
 ```
@@ -261,4 +261,4 @@ Stream view selection for subagent output display.
 Alias for base LiveStreamView for semantic clarity.
 
 ---
-*自動生成: 2026-02-17T22:16:16.726Z*
+*自動生成: 2026-02-17T22:24:18.976Z*

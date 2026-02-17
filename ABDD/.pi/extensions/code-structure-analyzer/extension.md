@@ -65,14 +65,14 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    extract_structure_js[extract-structure.js]
-    generate_diagrams_js[generate-diagrams.js]
-    generate_doc_js[generate-doc.js]
+    extract_structure_js["extract-structure.js"]
+    generate_diagrams_js["generate-diagrams.js"]
+    generate_doc_js["generate-doc.js"]
   end
   main --> local
   subgraph external[外部ライブラリ]
-    fs[fs]
-    path[path]
+    fs["fs"]
+    path["path"]
   end
   main --> external
 ```
@@ -96,11 +96,11 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant extension as extension
-  participant fs as fs
-  participant path as path
-  participant extract_structure_js as extract-structure.js
-  participant generate_diagrams_js as generate-diagrams.js
+  participant extension as "extension"
+  participant fs as "fs"
+  participant path as "path"
+  participant extract_structure_js as "extract-structure.js"
+  participant generate_diagrams_js as "generate-diagrams.js"
 
   Caller->>extension: analyzeCodeStructure()
   activate extension
@@ -265,4 +265,4 @@ interface AnalysisResult {
 ```
 
 ---
-*自動生成: 2026-02-17T22:16:16.435Z*
+*自動生成: 2026-02-17T22:24:18.768Z*
