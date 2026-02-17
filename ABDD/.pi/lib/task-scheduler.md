@@ -145,6 +145,27 @@ flowchart TD
   getScheduler -.-> createScheduler
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant task_scheduler as task-scheduler
+  participant checkpoint_manager as checkpoint-manager
+  participant priority_scheduler as priority-scheduler
+
+  Caller->>task_scheduler: shouldPreempt()
+  task_scheduler->>checkpoint_manager: 内部関数呼び出し
+  checkpoint_manager-->>task_scheduler: 結果
+  task_scheduler-->>Caller: boolean
+
+  Caller->>task_scheduler: preemptTask()
+  activate task_scheduler
+  task_scheduler-->>Caller: Promise<PreemptionResult>
+  deactivate task_scheduler
+```
+
 ## 関数
 
 ### shouldPreempt
@@ -571,4 +592,4 @@ Source type for scheduled tasks.
 Identifies which tool created this task.
 
 ---
-*自動生成: 2026-02-17T21:48:27.773Z*
+*自動生成: 2026-02-17T21:54:59.842Z*

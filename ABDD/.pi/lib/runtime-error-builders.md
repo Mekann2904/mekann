@@ -67,4 +67,4 @@ even if the caller specifies a shorter timeout intended for faster models.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-17T21:48:27.751Z*
+*自動生成: 2026-02-17T21:54:59.825Z*

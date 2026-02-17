@@ -104,6 +104,24 @@ flowchart TD
   createCostEstimator -.-> resetCostEstimator
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant cost_estimator as cost-estimator
+  participant task_scheduler as task-scheduler
+
+  Caller->>cost_estimator: getCostEstimator()
+  cost_estimator->>task_scheduler: 内部関数呼び出し
+  task_scheduler-->>cost_estimator: 結果
+  cost_estimator-->>Caller: CostEstimator
+
+  Caller->>cost_estimator: createCostEstimator()
+  cost_estimator-->>Caller: CostEstimator
+```
+
 ## 関数
 
 ### getCostEstimator
@@ -240,4 +258,4 @@ type CostEstimationMethod = "default" | "historical" | "heuristic"
 Estimation method used for cost calculation.
 
 ---
-*自動生成: 2026-02-17T21:48:27.679Z*
+*自動生成: 2026-02-17T21:54:59.770Z*

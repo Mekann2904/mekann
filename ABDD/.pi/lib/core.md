@@ -1,5 +1,5 @@
 ---
-title: cross-instance-coordinator
+title: core
 category: api-reference
 audience: developer
 last_updated: 2026-02-17
@@ -7,11 +7,11 @@ tags: [auto-generated]
 related: []
 ---
 
-# cross-instance-coordinator
+# core
 
 ## 概要
 
-`cross-instance-coordinator` モジュールのAPIリファレンス。
+`core` モジュールのAPIリファレンス。
 
 ## エクスポート一覧
 
@@ -21,4 +21,4 @@ related: []
 ## 図解
 
 ---
-*自動生成: 2026-02-17T21:54:59.771Z*
+*自動生成: 2026-02-17T21:54:59.769Z*

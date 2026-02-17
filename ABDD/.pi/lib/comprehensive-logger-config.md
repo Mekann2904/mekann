@@ -56,6 +56,24 @@ flowchart TD
   getConfig -.-> resetConfig
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant comprehensive_logger_config as comprehensive-logger-config
+  participant comprehensive_logger_types as comprehensive-logger-types
+
+  Caller->>comprehensive_logger_config: loadConfigFromEnv()
+  comprehensive_logger_config->>comprehensive_logger_types: 内部関数呼び出し
+  comprehensive_logger_types-->>comprehensive_logger_config: 結果
+  comprehensive_logger_config-->>Caller: LoggerConfig
+
+  Caller->>comprehensive_logger_config: validateConfig()
+  comprehensive_logger_config-->>Caller: { valid: boolean; errors: string[] }
+```
+
 ## 関数
 
 ### parseEnvValue
@@ -118,4 +136,4 @@ resetConfig(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T21:48:27.652Z*
+*自動生成: 2026-02-17T21:54:59.753Z*

@@ -65,6 +65,30 @@ flowchart TD
   readCallGraphIndex -.-> isCallGraphIndexStale
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant builder as builder
+  participant types_js as types.js
+  participant cli_js as cli.js
+
+  Caller->>builder: buildCallGraph()
+  activate builder
+  Note over builder: 非同期処理開始
+  builder->>types_js: 内部関数呼び出し
+  types_js-->>builder: 結果
+  deactivate builder
+  builder-->>Caller: Promise<CallGraphIndex>
+
+  Caller->>builder: saveCallGraphIndex()
+  activate builder
+  builder-->>Caller: Promise<string>
+  deactivate builder
+```
+
 ## 関数
 
 ### getCallGraphDir
@@ -318,4 +342,4 @@ Simple check: compare with symbol index timestamp.
 **戻り値**: `Promise<boolean>`
 
 ---
-*自動生成: 2026-02-17T21:48:27.559Z*
+*自動生成: 2026-02-17T21:54:59.684Z*

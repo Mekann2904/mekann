@@ -124,6 +124,25 @@ flowchart TD
   mergeRunsById -.-> resolveCurrentId
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant storage_base as storage-base
+  participant fs_utils_js as fs-utils.js
+  participant storage_lock_js as storage-lock.js
+
+  Caller->>storage_base: createPathsFactory()
+  storage_base->>fs_utils_js: 内部関数呼び出し
+  fs_utils_js-->>storage_base: 結果
+  storage_base-->>Caller: void
+
+  Caller->>storage_base: createEnsurePaths()
+  storage_base-->>Caller: (cwd: string) => TPaths
+```
+
 ## 関数
 
 ### createPathsFactory
@@ -436,4 +455,4 @@ interface CreateStorageSaverOptions {
 Options for creating a storage saver.
 
 ---
-*自動生成: 2026-02-17T21:48:27.761Z*
+*自動生成: 2026-02-17T21:54:59.833Z*

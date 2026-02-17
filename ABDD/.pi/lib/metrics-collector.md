@@ -132,6 +132,32 @@ flowchart TD
   recordStealingAttempt -.-> getMetricsConfigFromEnv
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant metrics_collector as metrics-collector
+
+  Caller->>metrics_collector: initMetricsCollector()
+  metrics_collector-->>Caller: void
+
+  Caller->>metrics_collector: getMetricsCollector()
+  metrics_collector-->>Caller: {
+  recordTaskCompletion: (task: { id: string; source: string; provider: string; model: string; priority: string }, result: { waitedMs: number; executionMs: number; success: boolean }) => void;
+  recordPreemption: (taskId: string, reason: string) => void;
+  recordWorkSteal: (sourceInstance: string, taskId: string) => void;
+  recordRateLimitHit: () => void;
+  updateQueueStats: (queueDepth: number, activeTasks: number) => void;
+  getMetrics: () => SchedulerMetrics;
+  getSummary: (periodMs: number) => MetricsSummary;
+  getStealingStats: () => StealingStats;
+  startCollection: (intervalMs?: number) => void;
+  stopCollection: () => void;
+}
+```
+
 ## 関数
 
 ### resolveMetricsDir
@@ -644,4 +670,4 @@ interface CollectorState {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.730Z*
+*自動生成: 2026-02-17T21:54:59.807Z*

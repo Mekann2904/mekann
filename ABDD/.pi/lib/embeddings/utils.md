@@ -69,6 +69,24 @@ flowchart TD
   subtractVectors -.-> scaleVector
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant utils as utils
+  participant types_js as types.js
+
+  Caller->>utils: cosineSimilarity()
+  utils->>types_js: 内部関数呼び出し
+  types_js-->>utils: 結果
+  utils-->>Caller: number
+
+  Caller->>utils: euclideanDistance()
+  utils-->>Caller: number
+```
+
 ## 関数
 
 ### cosineSimilarity
@@ -290,4 +308,4 @@ Calculate dot product of two vectors.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-17T21:48:27.709Z*
+*自動生成: 2026-02-17T21:54:59.791Z*

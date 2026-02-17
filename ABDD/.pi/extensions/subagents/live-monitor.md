@@ -63,6 +63,28 @@ flowchart TD
   renderSubagentLiveView -.-> createSubagentLiveMonitor
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant live_monitor as live-monitor
+  participant _mariozechner as @mariozechner
+  participant format_utils_js as format-utils.js
+  participant tui_utils_js as tui-utils.js
+
+  Caller->>live_monitor: renderSubagentLiveView()
+  live_monitor->>_mariozechner: API呼び出し
+  _mariozechner-->>live_monitor: レスポンス
+  live_monitor->>format_utils_js: 内部関数呼び出し
+  format_utils_js-->>live_monitor: 結果
+  live_monitor-->>Caller: string[]
+
+  Caller->>live_monitor: createSubagentLiveMonitor()
+  live_monitor-->>Caller: SubagentLiveMonitorController | undefined
+```
+
 ## 関数
 
 ### renderSubagentLiveView
@@ -157,4 +179,4 @@ close(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T21:48:27.610Z*
+*自動生成: 2026-02-17T21:54:59.723Z*

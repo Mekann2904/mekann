@@ -112,6 +112,25 @@ flowchart TD
   addRunToPatterns -.-> extractAllPatterns
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant pattern_extraction as pattern-extraction
+  participant fs_utils_js as fs-utils.js
+  participant run_index_js as run-index.js
+
+  Caller->>pattern_extraction: extractPatternFromRun()
+  pattern_extraction->>fs_utils_js: 内部関数呼び出し
+  fs_utils_js-->>pattern_extraction: 結果
+  pattern_extraction-->>Caller: ExtractedPattern | null
+
+  Caller->>pattern_extraction: getPatternStoragePath()
+  pattern_extraction-->>Caller: string
+```
+
 ## 関数
 
 ### generatePatternId
@@ -451,4 +470,4 @@ interface RunData {
 Run data for pattern extraction.
 
 ---
-*自動生成: 2026-02-17T21:48:27.737Z*
+*自動生成: 2026-02-17T21:54:59.813Z*

@@ -71,6 +71,24 @@ flowchart TD
   getActiveInstanceCount -.-> getActiveInstances
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant core as core
+  participant types_js as types.js
+
+  Caller->>core: registerInstance()
+  core->>types_js: 内部関数呼び出し
+  types_js-->>core: 結果
+  core-->>Caller: void
+
+  Caller->>core: unregisterInstance()
+  core-->>Caller: void
+```
+
 ## 関数
 
 ### registerInstance
@@ -236,4 +254,4 @@ PI_HEARTBEAT_TIMEOUT_MS: Time before instance is considered dead
 **戻り値**: `Partial<CoordinatorConfig>`
 
 ---
-*自動生成: 2026-02-17T21:48:27.668Z*
+*自動生成: 2026-02-17T21:54:59.763Z*

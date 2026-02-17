@@ -94,6 +94,21 @@ flowchart TD
   formatSkillsWithContent -.-> loadSkillsForAgent
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant skill_registry as skill-registry
+
+  Caller->>skill_registry: resolveSkills()
+  skill_registry-->>Caller: ResolveSkillsResult
+
+  Caller->>skill_registry: mergeSkills()
+  skill_registry-->>Caller: ResolveSkillsResult
+```
+
 ## 関数
 
 ### getDefaultAgentDir
@@ -434,4 +449,4 @@ type SkillReference = string
 Skill reference - can be a skill name or path
 
 ---
-*自動生成: 2026-02-17T21:48:27.759Z*
+*自動生成: 2026-02-17T21:54:59.831Z*

@@ -113,6 +113,25 @@ flowchart TD
   parseRgOutput -.-> summarizeResults
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant output as output
+  participant types as types
+  participant metrics_js as metrics.js
+
+  Caller->>output: truncateResults()
+  output->>types: 内部関数呼び出し
+  types-->>output: 結果
+  output-->>Caller: SearchResponse<T>
+
+  Caller->>output: truncateHead()
+  output-->>Caller: SearchResponse<T>
+```
+
 ## 関数
 
 ### truncateResults
@@ -612,4 +631,4 @@ Suggested next action for the agent.
 Helps guide the agent towards more effective searches.
 
 ---
-*自動生成: 2026-02-17T21:48:27.591Z*
+*自動生成: 2026-02-17T21:54:59.708Z*

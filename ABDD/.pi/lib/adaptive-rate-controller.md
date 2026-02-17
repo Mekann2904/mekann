@@ -112,6 +112,21 @@ flowchart TD
   record429 -.-> recordSuccess
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant adaptive_rate_controller as adaptive-rate-controller
+
+  Caller->>adaptive_rate_controller: initAdaptiveController()
+  adaptive_rate_controller-->>Caller: void
+
+  Caller->>adaptive_rate_controller: shutdownAdaptiveController()
+  adaptive_rate_controller-->>Caller: void
+```
+
 ## 関数
 
 ### buildKey
@@ -692,4 +707,4 @@ interface PredictiveAnalysis {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.637Z*
+*自動生成: 2026-02-17T21:54:59.744Z*

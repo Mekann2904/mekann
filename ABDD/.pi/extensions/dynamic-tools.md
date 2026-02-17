@@ -94,6 +94,25 @@ flowchart LR
   main --> external
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant dynamic_tools as dynamic-tools
+  participant _mariozechner as @mariozechner
+  participant comprehensive_logger as comprehensive-logger
+  participant comprehensive_logger_types as comprehensive-logger-types
+
+  Caller->>dynamic_tools: registerDynamicToolsExtension()
+  dynamic_tools->>_mariozechner: API呼び出し
+  _mariozechner-->>dynamic_tools: レスポンス
+  dynamic_tools->>comprehensive_logger: 内部関数呼び出し
+  comprehensive_logger-->>dynamic_tools: 結果
+  dynamic_tools-->>Caller: void
+```
+
 ## 関数
 
 ### getAuditLogPath
@@ -344,4 +363,4 @@ interface ToolReflectionInput {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.516Z*
+*自動生成: 2026-02-17T21:54:59.647Z*

@@ -135,6 +135,21 @@ flowchart TD
   parseLockFile -.-> isInstanceAlive
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant types as types
+
+  Caller->>types: setCoordinatorState()
+  types-->>Caller: void
+
+  Caller->>types: setStealingStats()
+  types-->>Caller: void
+```
+
 ## 関数
 
 ### setCoordinatorState
@@ -346,4 +361,4 @@ interface StealingStatsInternal {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.672Z*
+*自動生成: 2026-02-17T21:54:59.766Z*

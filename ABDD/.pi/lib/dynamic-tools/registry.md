@@ -146,6 +146,25 @@ flowchart TD
   loadToolDefinition -.-> loadToolDefinitionByName
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant registry as registry
+  participant types_js as types.js
+  participant safety_js as safety.js
+
+  Caller->>registry: ensureDynamicToolsPaths()
+  registry->>types_js: 内部関数呼び出し
+  types_js-->>registry: 結果
+  registry-->>Caller: void
+
+  Caller->>registry: generateToolId()
+  registry-->>Caller: string
+```
+
 ## 関数
 
 ### ensureDynamicToolsPaths
@@ -573,4 +592,4 @@ interface RegisterToolResult {
 ツール登録結果（拡張機能互換）
 
 ---
-*自動生成: 2026-02-17T21:48:27.698Z*
+*自動生成: 2026-02-17T21:54:59.782Z*

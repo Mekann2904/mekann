@@ -102,6 +102,24 @@ flowchart TD
   isEmptyOutputFailureMessage -.-> buildFailureSummary
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant agent_common as agent-common
+  participant validation_utils_js as validation-utils.js
+
+  Caller->>agent_common: pickFieldCandidate()
+  agent_common->>validation_utils_js: 内部関数呼び出し
+  validation_utils_js-->>agent_common: 結果
+  agent_common-->>Caller: string
+
+  Caller->>agent_common: pickSummaryCandidate()
+  agent_common-->>Caller: string
+```
+
 ## 関数
 
 ### pickFieldCandidate
@@ -299,4 +317,4 @@ Entity type identifier for shared functions.
 Used to distinguish between subagent and team member contexts.
 
 ---
-*自動生成: 2026-02-17T21:48:27.639Z*
+*自動生成: 2026-02-17T21:54:59.746Z*

@@ -102,6 +102,25 @@ flowchart TD
   addRetryablePatterns -.-> isRetryableEntityError
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant agent_errors as agent-errors
+  participant agent_common_js as agent-common.js
+  participant agent_types_js as agent-types.js
+
+  Caller->>agent_errors: classifySemanticError()
+  agent_errors->>agent_common_js: 内部関数呼び出し
+  agent_common_js-->>agent_errors: 結果
+  agent_errors-->>Caller: { code: ExtendedOutcomeCode | null; details?: string[] }
+
+  Caller->>agent_errors: resolveExtendedFailureOutcome()
+  agent_errors-->>Caller: ExtendedOutcomeSignal
+```
+
 ## 関数
 
 ### classifySemanticError
@@ -486,4 +505,4 @@ Standardized failure classification types for retry decision making.
 Each classification maps to a specific retry policy.
 
 ---
-*自動生成: 2026-02-17T21:48:27.642Z*
+*自動生成: 2026-02-17T21:54:59.748Z*

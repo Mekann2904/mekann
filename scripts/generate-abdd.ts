@@ -612,6 +612,104 @@ flowchart TD
     }
   }
 
+  // シーケンス図（非同期処理やAPI呼び出しがある場合）
+  const asyncFunctions = info.functions.filter(f => f.isAsync);
+  const exportedFunctions = info.functions.filter(f => f.isExported);
+
+  if (asyncFunctions.length > 0 || (exportedFunctions.length >= 2 && info.imports.length > 0)) {
+    section += `### シーケンス図
+
+\`\`\`mermaid
+sequenceDiagram
+  autonumber
+`;
+    // 参加者を定義
+    section += `  participant Caller as 呼び出し元\n`;
+
+    // メインモジュール
+    const moduleName = basename(info.relativePath, '.ts');
+    section += `  participant ${moduleName.replace(/[^a-zA-Z0-9]/g, '_')} as ${moduleName}\n`;
+
+    // 外部依存（一意なパッケージのみ）
+    const uniqueExternalDeps = [...new Set(
+      info.imports
+        .filter(i => !i.source.startsWith('.') && !i.source.startsWith('node:'))
+        .map(i => i.source.split('/')[0])
+    )].slice(0, 3);
+
+    for (const dep of uniqueExternalDeps) {
+      const depName = dep.replace(/[^a-zA-Z0-9]/g, '_');
+      section += `  participant ${depName} as ${dep}\n`;
+    }
+
+    // ローカル依存
+    const localDeps = info.imports.filter(i => i.source.startsWith('.')).slice(0, 2);
+    for (const dep of localDeps) {
+      const depName = basename(dep.source).replace(/[^a-zA-Z0-9]/g, '_');
+      section += `  participant ${depName} as ${basename(dep.source)}\n`;
+    }
+
+    section += `\n`;
+
+    // メインフロー
+    const mainFn = exportedFunctions[0];
+    if (mainFn) {
+      const fnId = mainFn.name.replace(/[^a-zA-Z0-9]/g, '_');
+      const modId = moduleName.replace(/[^a-zA-Z0-9]/g, '_');
+
+      // 呼び出し元→メイン関数
+      section += `  Caller->>${modId}: ${mainFn.name}()\n`;
+
+      // 非同期の場合
+      if (mainFn.isAsync) {
+        section += `  activate ${modId}\n`;
+        section += `  Note over ${modId}: 非同期処理開始\n`;
+      }
+
+      // 外部依存への呼び出し
+      if (uniqueExternalDeps.length > 0) {
+        const firstDepName = uniqueExternalDeps[0].replace(/[^a-zA-Z0-9]/g, '_');
+        section += `  ${modId}->>${firstDepName}: API呼び出し\n`;
+        section += `  ${firstDepName}-->>${modId}: レスポンス\n`;
+      }
+
+      // ローカル依存への呼び出し
+      if (localDeps.length > 0) {
+        const localName = basename(localDeps[0].source).replace(/[^a-zA-Z0-9]/g, '_');
+        section += `  ${modId}->>${localName}: 内部関数呼び出し\n`;
+        section += `  ${localName}-->>${modId}: 結果\n`;
+      }
+
+      // 戻り
+      if (mainFn.isAsync) {
+        section += `  deactivate ${modId}\n`;
+      }
+      section += `  ${modId}-->>Caller: ${mainFn.returnType || 'Result'}\n`;
+    }
+
+    // 2つ目のエクスポート関数がある場合
+    if (exportedFunctions.length > 1) {
+      const secondFn = exportedFunctions[1];
+      const fnId = secondFn.name.replace(/[^a-zA-Z0-9]/g, '_');
+      const modId = moduleName.replace(/[^a-zA-Z0-9]/g, '_');
+
+      section += `\n`;
+      section += `  Caller->>${modId}: ${secondFn.name}()\n`;
+
+      if (secondFn.isAsync) {
+        section += `  activate ${modId}\n`;
+      }
+
+      section += `  ${modId}-->>Caller: ${secondFn.returnType || 'Result'}\n`;
+
+      if (secondFn.isAsync) {
+        section += `  deactivate ${modId}\n`;
+      }
+    }
+
+    section += `\`\`\`\n\n`;
+  }
+
   return section;
 }
 

@@ -90,6 +90,25 @@ flowchart TD
   resolveSubagentFailureOutcome -.-> mergeSkillArrays
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant task_execution as task-execution
+  participant runtime_utils_js as runtime-utils.js
+  participant error_utils_js as error-utils.js
+
+  Caller->>task_execution: normalizeSubagentOutput()
+  task_execution->>runtime_utils_js: 内部関数呼び出し
+  runtime_utils_js-->>task_execution: 結果
+  task_execution-->>Caller: SubagentExecutionResult
+
+  Caller->>task_execution: isRetryableSubagentError()
+  task_execution-->>Caller: boolean
+```
+
 ## 関数
 
 ### pickSubagentSummaryCandidate
@@ -382,4 +401,4 @@ interface SubagentExecutionResult {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.615Z*
+*自動生成: 2026-02-17T21:54:59.727Z*

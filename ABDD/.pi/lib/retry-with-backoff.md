@@ -110,6 +110,21 @@ flowchart TD
   computeBackoffDelayMs -.-> retryWithBackoff
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant retry_with_backoff as retry-with-backoff
+
+  Caller->>retry_with_backoff: getRateLimitGateSnapshot()
+  retry_with_backoff-->>Caller: RateLimitGateSnapshot
+
+  Caller->>retry_with_backoff: resolveRetryWithBackoffConfig()
+  retry_with_backoff-->>Caller: RetryWithBackoffConfig
+```
+
 ## 関数
 
 ### toFiniteNumber
@@ -577,4 +592,4 @@ type RetryWithBackoffOverrides = Partial<RetryWithBackoffConfig>
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.747Z*
+*自動生成: 2026-02-17T21:54:59.822Z*

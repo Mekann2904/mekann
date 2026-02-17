@@ -86,6 +86,24 @@ flowchart TD
   validateSubagentOutputEnhanced -.-> validateTeamMemberOutputEnhanced
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant output_validation as output-validation
+  participant output_schema_js as output-schema.js
+
+  Caller->>output_validation: hasNonEmptyResultSection()
+  output_validation->>output_schema_js: 内部関数呼び出し
+  output_schema_js-->>output_validation: 結果
+  output_validation-->>Caller: boolean
+
+  Caller->>output_validation: validateSubagentOutput()
+  output_validation-->>Caller: { ok: boolean; reason?: string }
+```
+
 ## 関数
 
 ### hasNonEmptyResultSection
@@ -218,4 +236,4 @@ interface ExtendedValidationResult {
 Extended validation result with schema information.
 
 ---
-*自動生成: 2026-02-17T21:48:27.735Z*
+*自動生成: 2026-02-17T21:54:59.811Z*

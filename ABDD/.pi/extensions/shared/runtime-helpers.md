@@ -77,6 +77,24 @@ flowchart TD
   startReservationHeartbeat -.-> refreshRuntimeStatus
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant runtime_helpers as runtime-helpers
+  participant agent_runtime_js as agent-runtime.js
+
+  Caller->>runtime_helpers: buildRuntimeLimitError()
+  runtime_helpers->>agent_runtime_js: 内部関数呼び出し
+  agent_runtime_js-->>runtime_helpers: 結果
+  runtime_helpers-->>Caller: string
+
+  Caller->>runtime_helpers: buildRuntimeQueueWaitError()
+  runtime_helpers-->>Caller: string
+```
+
 ## 関数
 
 ### buildRuntimeLimitError
@@ -180,4 +198,4 @@ interface RuntimeQueueWaitInfo {
 Queue wait information for building queue wait error messages.
 
 ---
-*自動生成: 2026-02-17T21:48:27.600Z*
+*自動生成: 2026-02-17T21:54:59.714Z*

@@ -93,6 +93,21 @@ flowchart TD
   getRpmLimit -.-> listProviders
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant provider_limits as provider-limits
+
+  Caller->>provider_limits: getLimitsConfig()
+  provider_limits-->>Caller: ProviderLimitsConfig
+
+  Caller->>provider_limits: reloadLimits()
+  provider_limits-->>Caller: void
+```
+
 ## 関数
 
 ### matchesPattern
@@ -351,4 +366,4 @@ interface ResolvedModelLimits {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.744Z*
+*自動生成: 2026-02-17T21:54:59.819Z*

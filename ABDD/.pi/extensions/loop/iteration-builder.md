@@ -88,6 +88,25 @@ flowchart TD
   buildIterationFailureOutput -.-> parseLoopContract
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant iteration_builder as iteration-builder
+  participant agent_types_js as agent-types.js
+  participant reference_loader as reference-loader
+
+  Caller->>iteration_builder: buildIterationPrompt()
+  iteration_builder->>agent_types_js: 内部関数呼び出し
+  agent_types_js-->>iteration_builder: 結果
+  iteration_builder-->>Caller: string
+
+  Caller->>iteration_builder: buildReferencePack()
+  iteration_builder-->>Caller: string
+```
+
 ## 関数
 
 ### buildIterationPrompt
@@ -603,4 +622,4 @@ type LoopGoalStatus = "met" | "not_met" | "unknown"
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.536Z*
+*自動生成: 2026-02-17T21:54:59.663Z*

@@ -653,4 +653,4 @@ type ScoredItem = ContextItem & { score: number; trimmed: boolean }
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.665Z*
+*自動生成: 2026-02-17T21:54:59.761Z*

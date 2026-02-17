@@ -66,6 +66,27 @@ flowchart TD
   formatAuditLogEntry -.-> generateAuditReport
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant audit as audit
+  participant types_js as types.js
+
+  Caller->>audit: logAudit()
+  activate audit
+  Note over audit: 非同期処理開始
+  audit->>types_js: 内部関数呼び出し
+  types_js-->>audit: 結果
+  deactivate audit
+  audit-->>Caller: Promise<AuditLogEntry>
+
+  Caller->>audit: readAuditLog()
+  audit-->>Caller: AuditLogEntry[]
+```
+
 ## 関数
 
 ### generateEntryId
@@ -235,4 +256,4 @@ archiveOldLogs(daysToKeep: number, paths?: DynamicToolsPaths): { archived: numbe
 **戻り値**: `{ archived: number; error?: string }`
 
 ---
-*自動生成: 2026-02-17T21:48:27.689Z*
+*自動生成: 2026-02-17T21:54:59.775Z*

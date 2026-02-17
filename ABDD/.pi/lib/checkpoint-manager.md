@@ -101,6 +101,28 @@ flowchart TD
   getCheckpointDir -.-> getCheckpointConfigFromEnv
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant checkpoint_manager as checkpoint-manager
+
+  Caller->>checkpoint_manager: initCheckpointManager()
+  checkpoint_manager-->>Caller: void
+
+  Caller->>checkpoint_manager: getCheckpointManager()
+  checkpoint_manager-->>Caller: {
+  save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
+  load: (taskId: string) => Promise<Checkpoint | null>;
+  delete: (taskId: string) => Promise<boolean>;
+  listExpired: () => Promise<Checkpoint[]>;
+  cleanup: () => Promise<number>;
+  getStats: () => CheckpointStats;
+}
+```
+
 ## 関数
 
 ### resolveCheckpointDir
@@ -492,4 +514,4 @@ type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background"
 Task priority for checkpoint ordering.
 
 ---
-*自動生成: 2026-02-17T21:48:27.647Z*
+*自動生成: 2026-02-17T21:54:59.752Z*

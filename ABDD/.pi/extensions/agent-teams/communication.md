@@ -130,6 +130,25 @@ flowchart TD
   shouldPreferAnchorMember -.-> createCommunicationLinksMap
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant communication as communication
+  participant format_utils_js as format-utils.js
+  participant text_parsing as text-parsing
+
+  Caller->>communication: buildPrecomputedContextMap()
+  communication->>format_utils_js: 内部関数呼び出し
+  format_utils_js-->>communication: 結果
+  communication-->>Caller: Map<string, PrecomputedMemberContext>
+
+  Caller->>communication: normalizeCommunicationRounds()
+  communication-->>Caller: number
+```
+
 ## 関数
 
 ### buildPrecomputedContextMap
@@ -503,4 +522,4 @@ interface BeliefContradiction {
 Detected contradiction between agent beliefs.
 
 ---
-*自動生成: 2026-02-17T21:48:27.441Z*
+*自動生成: 2026-02-17T21:54:59.587Z*

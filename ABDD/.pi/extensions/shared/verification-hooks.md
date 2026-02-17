@@ -84,6 +84,27 @@ flowchart TD
   postTeamVerificationHook -.-> formatVerificationResult
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant verification_hooks as verification-hooks
+  participant verification_workflow_js as verification-workflow.js
+  participant comprehensive_logger_js as comprehensive-logger.js
+
+  Caller->>verification_hooks: resolveVerificationHookConfig()
+  verification_hooks->>verification_workflow_js: 内部関数呼び出し
+  verification_workflow_js-->>verification_hooks: 結果
+  verification_hooks-->>Caller: VerificationHookConfig
+
+  Caller->>verification_hooks: postSubagentVerificationHook()
+  activate verification_hooks
+  verification_hooks-->>Caller: Promise<VerificationHookResult>
+  deactivate verification_hooks
+```
+
 ## 関数
 
 ### resolveVerificationHookConfig
@@ -263,4 +284,4 @@ interface VerificationHookResult {
 検証フックの結果
 
 ---
-*自動生成: 2026-02-17T21:48:27.602Z*
+*自動生成: 2026-02-17T21:54:59.716Z*

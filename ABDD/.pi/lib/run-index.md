@@ -114,6 +114,25 @@ flowchart TD
   indexTeamRun -.-> buildRunIndex
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant run_index as run-index
+  participant fs_utils_js as fs-utils.js
+  participant storage_lock_js as storage-lock.js
+
+  Caller->>run_index: extractKeywords()
+  run_index->>fs_utils_js: 内部関数呼び出し
+  fs_utils_js-->>run_index: 結果
+  run_index-->>Caller: string[]
+
+  Caller->>run_index: classifyTaskType()
+  run_index-->>Caller: TaskType
+```
+
 ## 関数
 
 ### extractKeywords
@@ -469,4 +488,4 @@ type TaskType = | "code-review"
 Task type classification.
 
 ---
-*自動生成: 2026-02-17T21:48:27.750Z*
+*自動生成: 2026-02-17T21:54:59.824Z*

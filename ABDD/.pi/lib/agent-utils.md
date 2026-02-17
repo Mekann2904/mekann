@@ -37,6 +37,21 @@ flowchart TD
   createRunId -.-> computeLiveWindow
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant agent_utils as agent-utils
+
+  Caller->>agent_utils: createRunId()
+  agent_utils-->>Caller: string
+
+  Caller->>agent_utils: computeLiveWindow()
+  agent_utils-->>Caller: { start: number; end: number }
+```
+
 ## 関数
 
 ### createRunId
@@ -70,4 +85,4 @@ Centers the cursor when possible, adjusts when near boundaries.
 **戻り値**: `{ start: number; end: number }`
 
 ---
-*自動生成: 2026-02-17T21:48:27.644Z*
+*自動生成: 2026-02-17T21:54:59.749Z*

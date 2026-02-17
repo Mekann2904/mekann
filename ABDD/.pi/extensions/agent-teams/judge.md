@@ -100,6 +100,25 @@ flowchart TD
   countEvidenceSignals -.-> analyzeMemberOutput
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant judge as judge
+  participant storage as storage
+  participant text_parsing_js as text-parsing.js
+
+  Caller->>judge: getJudgeWeights()
+  judge->>storage: 内部関数呼び出し
+  storage-->>judge: 結果
+  judge-->>Caller: JudgeWeightConfig
+
+  Caller->>judge: setJudgeWeights()
+  judge-->>Caller: void
+```
+
 ## 関数
 
 ### getJudgeWeights
@@ -394,4 +413,4 @@ Uncertainty proxy computed from member results.
 Used to assess overall team output quality and reliability.
 
 ---
-*自動生成: 2026-02-17T21:48:27.452Z*
+*自動生成: 2026-02-17T21:54:59.597Z*

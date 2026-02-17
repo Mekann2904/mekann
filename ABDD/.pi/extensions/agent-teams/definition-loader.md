@@ -73,6 +73,28 @@ flowchart TD
   mergeDefaultTeam -.-> ensureDefaults
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant definition_loader as definition-loader
+  participant _mariozechner as @mariozechner
+  participant storage as storage
+  participant storage as storage
+
+  Caller->>definition_loader: parseTeamMarkdownFile()
+  definition_loader->>_mariozechner: API呼び出し
+  _mariozechner-->>definition_loader: レスポンス
+  definition_loader->>storage: 内部関数呼び出し
+  storage-->>definition_loader: 結果
+  definition_loader-->>Caller: ParsedTeamMarkdown | null
+
+  Caller->>definition_loader: loadTeamDefinitionsFromDir()
+  definition_loader-->>Caller: TeamDefinition[]
+```
+
 ## 関数
 
 ### getTeamDefinitionsDir
@@ -253,4 +275,4 @@ ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage
 **戻り値**: `TeamStorage`
 
 ---
-*自動生成: 2026-02-17T21:48:27.446Z*
+*自動生成: 2026-02-17T21:54:59.591Z*

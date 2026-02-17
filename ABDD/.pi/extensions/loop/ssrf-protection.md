@@ -40,6 +40,21 @@ flowchart TD
   isPrivateOrReservedIP -.-> validateUrlForSsrf
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant ssrf_protection as ssrf-protection
+
+  Caller->>ssrf_protection: isBlockedHostname()
+  ssrf_protection-->>Caller: boolean
+
+  Caller->>ssrf_protection: isPrivateOrReservedIP()
+  ssrf_protection-->>Caller: boolean
+```
+
 ## 関数
 
 ### isBlockedHostname
@@ -120,4 +135,4 @@ Throws an error if the URL points to a blocked resource.
 **戻り値**: `Promise<void>`
 
 ---
-*自動生成: 2026-02-17T21:48:27.538Z*
+*自動生成: 2026-02-17T21:54:59.666Z*

@@ -93,6 +93,27 @@ flowchart TD
   isSemanticRepetitionAvailable -.-> getRecommendedAction
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant semantic_repetition as semantic-repetition
+  participant index_js as index.js
+
+  Caller->>semantic_repetition: detectSemanticRepetition()
+  activate semantic_repetition
+  Note over semantic_repetition: 非同期処理開始
+  semantic_repetition->>index_js: 内部関数呼び出し
+  index_js-->>semantic_repetition: 結果
+  deactivate semantic_repetition
+  semantic_repetition-->>Caller: Promise<SemanticRepetitionResult>
+
+  Caller->>semantic_repetition: detectSemanticRepetitionFromEmbeddings()
+  semantic_repetition-->>Caller: SemanticRepetitionResult
+```
+
 ## 関数
 
 ### detectSemanticRepetition
@@ -250,4 +271,4 @@ interface TrajectorySummary {
 Session trajectory summary for monitoring.
 
 ---
-*自動生成: 2026-02-17T21:48:27.756Z*
+*自動生成: 2026-02-17T21:54:59.829Z*

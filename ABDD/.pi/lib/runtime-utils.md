@@ -68,6 +68,27 @@ flowchart TD
   createRetrySchema -.-> toRetryOverrides
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant runtime_utils as runtime-utils
+  participant _mariozechner as @mariozechner
+  participant retry_with_backoff_js as retry-with-backoff.js
+
+  Caller->>runtime_utils: trimForError()
+  runtime_utils->>_mariozechner: API呼び出し
+  _mariozechner-->>runtime_utils: レスポンス
+  runtime_utils->>retry_with_backoff_js: 内部関数呼び出し
+  retry_with_backoff_js-->>runtime_utils: 結果
+  runtime_utils-->>Caller: string
+
+  Caller->>runtime_utils: buildRateLimitKey()
+  runtime_utils-->>Caller: string
+```
+
 ## 関数
 
 ### trimForError
@@ -188,4 +209,4 @@ Convert concurrency limit input to number.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-17T21:48:27.752Z*
+*自動生成: 2026-02-17T21:54:59.826Z*

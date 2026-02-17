@@ -81,6 +81,21 @@ flowchart TD
   getOrCompute -.-> getOrComputeSync
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant cache as cache
+
+  Caller->>cache: getCacheKey()
+  cache-->>Caller: string
+
+  Caller->>cache: getSearchCache()
+  cache-->>Caller: SearchResultCache
+```
+
 ## 関数
 
 ### getCacheKey
@@ -248,4 +263,4 @@ interface CacheStats {
 Cache statistics.
 
 ---
-*自動生成: 2026-02-17T21:48:27.578Z*
+*自動生成: 2026-02-17T21:54:59.698Z*

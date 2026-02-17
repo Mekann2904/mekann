@@ -83,6 +83,30 @@ flowchart TD
   getLogger -.-> resetLogger
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant comprehensive_logger as comprehensive-logger
+  participant crypto as crypto
+  participant fs as fs
+  participant path as path
+  participant comprehensive_logger_config as comprehensive-logger-config
+  participant comprehensive_logger_types as comprehensive-logger-types
+
+  Caller->>comprehensive_logger: getLogger()
+  comprehensive_logger->>crypto: API呼び出し
+  crypto-->>comprehensive_logger: レスポンス
+  comprehensive_logger->>comprehensive_logger_config: 内部関数呼び出し
+  comprehensive_logger_config-->>comprehensive_logger: 結果
+  comprehensive_logger-->>Caller: ComprehensiveLogger
+
+  Caller->>comprehensive_logger: resetLogger()
+  comprehensive_logger-->>Caller: void
+```
+
 ## 関数
 
 ### getTimestamp
@@ -186,4 +210,4 @@ resetLogger(): void
 | getTotalTokens | `getTotalTokens(): number` |
 
 ---
-*自動生成: 2026-02-17T21:48:27.655Z*
+*自動生成: 2026-02-17T21:54:59.756Z*

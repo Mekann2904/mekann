@@ -66,6 +66,25 @@ flowchart TD
   getModelParallelLimit -.-> getModelUsageSummary
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant model_tracking as model-tracking
+  participant core_js as core.js
+  participant types_js as types.js
+
+  Caller->>model_tracking: setActiveModel()
+  model_tracking->>core_js: 内部関数呼び出し
+  core_js-->>model_tracking: 結果
+  model_tracking-->>Caller: void
+
+  Caller->>model_tracking: clearActiveModel()
+  model_tracking-->>Caller: void
+```
+
 ## 関数
 
 ### matchesModelPattern
@@ -192,4 +211,4 @@ Get a summary of model usage across instances.
 }`
 
 ---
-*自動生成: 2026-02-17T21:48:27.671Z*
+*自動生成: 2026-02-17T21:54:59.765Z*

@@ -52,6 +52,28 @@ flowchart TD
   initializeEmbeddingModule -.-> initializeEmbeddingModuleSync
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant index as index
+  participant registry_js as registry.js
+  participant openai_js as openai.js
+
+  Caller->>index: initializeEmbeddingModule()
+  activate index
+  Note over index: 非同期処理開始
+  index->>registry_js: 内部関数呼び出し
+  registry_js-->>index: 結果
+  deactivate index
+  index-->>Caller: Promise<void>
+
+  Caller->>index: initializeEmbeddingModuleSync()
+  index-->>Caller: void
+```
+
 ## 関数
 
 ### initializeEmbeddingModule
@@ -76,4 +98,4 @@ Synchronous initialization for non-async contexts.
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T21:48:27.703Z*
+*自動生成: 2026-02-17T21:54:59.786Z*

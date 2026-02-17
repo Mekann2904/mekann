@@ -72,6 +72,29 @@ flowchart TD
   generateEmbedding -.-> generateEmbeddingsBatch
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant registry as registry
+  participant types_js as types.js
+
+  Caller->>registry: getEmbeddingProvider()
+  activate registry
+  Note over registry: 非同期処理開始
+  registry->>types_js: 内部関数呼び出し
+  types_js-->>registry: 結果
+  deactivate registry
+  registry-->>Caller: Promise<EmbeddingProvider | null>
+
+  Caller->>registry: generateEmbedding()
+  activate registry
+  registry-->>Caller: Promise<number[] | null>
+  deactivate registry
+```
+
 ## 関数
 
 ### getEmbeddingProvider
@@ -163,4 +186,4 @@ async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise
 | saveConfig | `saveConfig(): void` |
 
 ---
-*自動生成: 2026-02-17T21:48:27.706Z*
+*自動生成: 2026-02-17T21:54:59.788Z*

@@ -55,6 +55,25 @@ flowchart LR
   main --> external
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant agent_teams as agent-teams
+  participant _mariozechner as @mariozechner
+  participant fs_utils_js as fs-utils.js
+  participant format_utils_js as format-utils.js
+
+  Caller->>agent_teams: registerAgentTeamsExtension()
+  agent_teams->>_mariozechner: API呼び出し
+  _mariozechner-->>agent_teams: レスポンス
+  agent_teams->>fs_utils_js: 内部関数呼び出し
+  fs_utils_js-->>agent_teams: 結果
+  agent_teams-->>Caller: void
+```
+
 ## 関数
 
 ### shouldRetryFailedMemberResult
@@ -347,4 +366,4 @@ type LiveViewMode = TeamLiveViewMode
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.489Z*
+*自動生成: 2026-02-17T21:54:59.627Z*

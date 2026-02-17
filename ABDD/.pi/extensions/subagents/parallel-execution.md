@@ -55,6 +55,24 @@ flowchart LR
   main --> local
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant parallel_execution as parallel-execution
+  participant agent_runtime as agent-runtime
+
+  Caller->>parallel_execution: resolveSubagentParallelCapacity()
+  activate parallel_execution
+  Note over parallel_execution: 非同期処理開始
+  parallel_execution->>agent_runtime: 内部関数呼び出し
+  agent_runtime-->>parallel_execution: 結果
+  deactivate parallel_execution
+  parallel_execution-->>Caller: Promise<SubagentParallelCapacityResolution>
+```
+
 ## 関数
 
 ### resolveSubagentParallelCapacity
@@ -105,4 +123,4 @@ interface SubagentParallelCapacityResolution {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.611Z*
+*自動生成: 2026-02-17T21:54:59.723Z*

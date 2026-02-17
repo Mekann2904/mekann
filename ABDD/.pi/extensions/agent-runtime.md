@@ -236,6 +236,28 @@ flowchart TD
   getRuntimeSnapshot -.-> formatRuntimeStatusLine
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant agent_runtime as agent-runtime
+  participant _mariozechner as @mariozechner
+  participant adaptive_rate_controller as adaptive-rate-controller
+  participant cross_instance_coordinator as cross-instance-coordinator
+
+  Caller->>agent_runtime: setRuntimeStateProvider()
+  agent_runtime->>_mariozechner: API呼び出し
+  _mariozechner-->>agent_runtime: レスポンス
+  agent_runtime->>adaptive_rate_controller: 内部関数呼び出し
+  adaptive_rate_controller-->>agent_runtime: 結果
+  agent_runtime-->>Caller: void
+
+  Caller->>agent_runtime: getRuntimeStateProvider()
+  agent_runtime-->>Caller: RuntimeStateProvider
+```
+
 ## 関数
 
 ### setRuntimeStateProvider
@@ -1303,4 +1325,4 @@ type GlobalScopeWithRuntime = typeof globalThis & {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.434Z*
+*自動生成: 2026-02-17T21:54:59.577Z*

@@ -74,6 +74,26 @@ flowchart TD
   runPiPrintMode -.-> callModelViaPi
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant pi_print_executor as pi-print-executor
+
+  Caller->>pi_print_executor: runPiPrintMode()
+  activate pi_print_executor
+  Note over pi_print_executor: 非同期処理開始
+  deactivate pi_print_executor
+  pi_print_executor-->>Caller: Promise<PrintCommandResult>
+
+  Caller->>pi_print_executor: callModelViaPi()
+  activate pi_print_executor
+  pi_print_executor-->>Caller: Promise<string>
+  deactivate pi_print_executor
+```
+
 ## 関数
 
 ### trimForError
@@ -350,4 +370,4 @@ interface CallModelViaPiOptions {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.598Z*
+*自動生成: 2026-02-17T21:54:59.713Z*

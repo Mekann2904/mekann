@@ -141,6 +141,28 @@ flowchart TD
   getStreamLineCount -.-> renderLiveViewHeader
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant live_monitor_base as live-monitor-base
+  participant _mariozechner as @mariozechner
+  participant format_utils_js as format-utils.js
+  participant agent_utils_js as agent-utils.js
+
+  Caller->>live_monitor_base: createBaseLiveItem()
+  live_monitor_base->>_mariozechner: API呼び出し
+  _mariozechner-->>live_monitor_base: レスポンス
+  live_monitor_base->>format_utils_js: 内部関数呼び出し
+  format_utils_js-->>live_monitor_base: 結果
+  live_monitor_base-->>Caller: BaseLiveItem
+
+  Caller->>live_monitor_base: appendStreamChunk()
+  live_monitor_base-->>Caller: void
+```
+
 ## 関数
 
 ### createBaseLiveItem
@@ -681,4 +703,4 @@ type LiveViewMode = "list" | "detail"
 Live view mode options.
 
 ---
-*自動生成: 2026-02-17T21:48:27.725Z*
+*自動生成: 2026-02-17T21:54:59.803Z*

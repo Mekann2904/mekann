@@ -67,6 +67,18 @@ flowchart LR
   main --> local
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant test_runner as test-runner
+  participant file_candidates_js as file_candidates.js
+  participant code_search_js as code_search.js
+
+```
+
 ## 関数
 
 ### formatDuration
@@ -209,4 +221,4 @@ interface TestSuite {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.572Z*
+*自動生成: 2026-02-17T21:54:59.694Z*

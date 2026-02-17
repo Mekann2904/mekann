@@ -51,6 +51,21 @@ flowchart TD
   withFileLock -.-> atomicWriteTextFile
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant storage_lock as storage-lock
+
+  Caller->>storage_lock: withFileLock()
+  storage_lock-->>Caller: T
+
+  Caller->>storage_lock: atomicWriteTextFile()
+  storage_lock-->>Caller: void
+```
+
 ## 関数
 
 ### hasEfficientSyncSleep
@@ -170,4 +185,4 @@ interface FileLockOptions {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.762Z*
+*自動生成: 2026-02-17T21:54:59.834Z*

@@ -61,6 +61,21 @@ flowchart TD
   validatePlanModeState -.-> createPlanModeState
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant plan_mode_shared as plan-mode-shared
+
+  Caller->>plan_mode_shared: isBashCommandAllowed()
+  plan_mode_shared-->>Caller: boolean
+
+  Caller->>plan_mode_shared: isPlanModeActive()
+  plan_mode_shared-->>Caller: boolean
+```
+
 ## 関数
 
 ### isBashCommandAllowed
@@ -162,4 +177,4 @@ interface PlanModeState {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.738Z*
+*自動生成: 2026-02-17T21:54:59.814Z*

@@ -87,6 +87,25 @@ flowchart TD
   loadSkillContent -.-> buildSkillsSectionWithContent
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant member_execution as member-execution
+  participant storage as storage
+  participant format_utils_js as format-utils.js
+
+  Caller->>member_execution: normalizeTeamMemberOutput()
+  member_execution->>storage: 内部関数呼び出し
+  storage-->>member_execution: 結果
+  member_execution-->>Caller: TeamNormalizedOutput
+
+  Caller->>member_execution: mergeSkillArrays()
+  member_execution-->>Caller: string[] | undefined
+```
+
 ## 関数
 
 ### pickTeamFieldCandidate
@@ -353,4 +372,4 @@ interface TeamNormalizedOutput {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.461Z*
+*自動生成: 2026-02-17T21:54:59.606Z*

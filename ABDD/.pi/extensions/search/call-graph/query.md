@@ -74,6 +74,24 @@ flowchart TD
   findCallees -.-> findCallPath
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant query as query
+  participant types_js as types.js
+
+  Caller->>query: findNodesByName()
+  query->>types_js: 内部関数呼び出し
+  types_js-->>query: 結果
+  query-->>Caller: CallGraphNode[]
+
+  Caller->>query: findNodeById()
+  query-->>Caller: CallGraphNode | undefined
+```
+
 ## 関数
 
 ### findNodesByName
@@ -227,4 +245,4 @@ interface CallerSearchState {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.563Z*
+*自動生成: 2026-02-17T21:54:59.686Z*

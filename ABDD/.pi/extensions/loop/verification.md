@@ -95,6 +95,25 @@ flowchart TD
   resolveVerificationAllowlistPrefixes -.-> isVerificationCommandAllowed
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant verification as verification
+  participant format_utils_js as format-utils.js
+  participant error_utils_js as error-utils.js
+
+  Caller->>verification: resolveVerificationPolicy()
+  verification->>format_utils_js: 内部関数呼び出し
+  format_utils_js-->>verification: 結果
+  verification-->>Caller: VerificationPolicyConfig
+
+  Caller->>verification: shouldRunVerificationCommand()
+  verification-->>Caller: boolean
+```
+
 ## 関数
 
 ### resolveVerificationPolicy
@@ -375,4 +394,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.541Z*
+*自動生成: 2026-02-17T21:54:59.667Z*

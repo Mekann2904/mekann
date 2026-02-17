@@ -61,6 +61,25 @@ flowchart TD
   proposeToolFromTask -.-> shouldTriggerReflection
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant reflection as reflection
+  participant types_js as types.js
+  participant registry_js as registry.js
+
+  Caller->>reflection: detectRepetitivePattern()
+  reflection->>types_js: 内部関数呼び出し
+  types_js-->>reflection: 結果
+  reflection-->>Caller: { detected: boolean; pattern: string; occurrences: number } | null
+
+  Caller->>reflection: shouldCreateNewTool()
+  reflection-->>Caller: ToolReflectionResult
+```
+
 ## 関数
 
 ### detectRepetitivePattern
@@ -226,4 +245,4 @@ shouldTriggerReflection(context: Partial<ToolReflectionContext>): boolean
 **戻り値**: `boolean`
 
 ---
-*自動生成: 2026-02-17T21:48:27.694Z*
+*自動生成: 2026-02-17T21:54:59.779Z*

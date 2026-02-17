@@ -67,6 +67,30 @@ flowchart TD
   checkToolAvailability -.-> buildFdArgs
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant cli as cli
+  participant types as types
+  participant constants_js as constants.js
+
+  Caller->>cli: execute()
+  activate cli
+  Note over cli: 非同期処理開始
+  cli->>types: 内部関数呼び出し
+  types-->>cli: 結果
+  deactivate cli
+  cli-->>Caller: Promise<CliResult>
+
+  Caller->>cli: executeOrThrow()
+  activate cli
+  cli-->>Caller: Promise<string>
+  deactivate cli
+```
+
 ## 関数
 
 ### execute
@@ -214,4 +238,4 @@ Build ctags command arguments for JSON output.
 **戻り値**: `string[]`
 
 ---
-*自動生成: 2026-02-17T21:48:27.580Z*
+*自動生成: 2026-02-17T21:54:59.700Z*

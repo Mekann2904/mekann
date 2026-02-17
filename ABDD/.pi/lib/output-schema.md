@@ -117,6 +117,24 @@ flowchart TD
   resetStanceClassificationModeCache -.-> setStanceClassificationMode
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant output_schema as output-schema
+  participant text_parsing_js as text-parsing.js
+
+  Caller->>output_schema: getCommunicationIdMode()
+  output_schema->>text_parsing_js: 内部関数呼び出し
+  text_parsing_js-->>output_schema: 結果
+  output_schema-->>Caller: CommunicationIdMode
+
+  Caller->>output_schema: resetCommunicationIdModeCache()
+  output_schema-->>Caller: void
+```
+
 ## 関数
 
 ### getCommunicationIdMode
@@ -458,4 +476,4 @@ Stance classification mode for discussion analysis.
 - "structured": Full structured analysis with confidence scores
 
 ---
-*自動生成: 2026-02-17T21:48:27.733Z*
+*自動生成: 2026-02-17T21:54:59.810Z*

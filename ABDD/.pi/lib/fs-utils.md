@@ -59,4 +59,4 @@ Ensures a directory exists, creating it recursively if necessary.
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T21:48:27.718Z*
+*自動生成: 2026-02-17T21:54:59.798Z*

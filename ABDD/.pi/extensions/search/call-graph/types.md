@@ -344,4 +344,4 @@ type CallGraphNodeKind = "function" | "method" | "arrow" | "const"
 Kind of callable symbol
 
 ---
-*自動生成: 2026-02-17T21:48:27.564Z*
+*自動生成: 2026-02-17T21:54:59.687Z*

@@ -76,6 +76,25 @@ flowchart TD
   getRemoteQueueStates -.-> checkRemoteCapacity
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant work_stealing as work-stealing
+  participant core_js as core.js
+  participant types_js as types.js
+
+  Caller->>work_stealing: shouldAttemptWorkStealing()
+  work_stealing->>core_js: 内部関数呼び出し
+  core_js-->>work_stealing: 結果
+  work_stealing-->>Caller: boolean
+
+  Caller->>work_stealing: getWorkStealingCandidates()
+  work_stealing-->>Caller: string[]
+```
+
 ## 関数
 
 ### ensureQueueStateDir
@@ -341,4 +360,4 @@ Enhanced heartbeat that includes cleanup of locks and queue states.
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T21:48:27.676Z*
+*自動生成: 2026-02-17T21:54:59.769Z*

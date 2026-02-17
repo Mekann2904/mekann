@@ -107,6 +107,30 @@ flowchart TD
   getSemanticMemoryPath -.-> loadSemanticMemory
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant semantic_memory as semantic-memory
+  participant index_js as index.js
+  participant fs_utils_js as fs-utils.js
+
+  Caller->>semantic_memory: generateEmbedding()
+  activate semantic_memory
+  Note over semantic_memory: 非同期処理開始
+  semantic_memory->>index_js: 内部関数呼び出し
+  index_js-->>semantic_memory: 結果
+  deactivate semantic_memory
+  semantic_memory-->>Caller: Promise<number[] | null>
+
+  Caller->>semantic_memory: generateEmbeddingsBatch()
+  activate semantic_memory
+  semantic_memory-->>Caller: Promise<(number[] | null)[]>
+  deactivate semantic_memory
+```
+
 ## 関数
 
 ### generateEmbedding
@@ -397,4 +421,4 @@ interface SemanticSearchResult {
 Semantic search result.
 
 ---
-*自動生成: 2026-02-17T21:48:27.754Z*
+*自動生成: 2026-02-17T21:54:59.827Z*

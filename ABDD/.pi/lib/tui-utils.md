@@ -74,6 +74,24 @@ flowchart TD
   looksLikeMarkdown -.-> renderPreviewWithMarkdown
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant tui_utils as tui-utils
+  participant _mariozechner as @mariozechner
+
+  Caller->>tui_utils: appendTail()
+  tui_utils->>_mariozechner: API呼び出し
+  _mariozechner-->>tui_utils: レスポンス
+  tui_utils-->>Caller: string
+
+  Caller->>tui_utils: toTailLines()
+  tui_utils-->>Caller: string[]
+```
+
 ## 関数
 
 ### appendTail
@@ -197,4 +215,4 @@ interface MarkdownPreviewResult {
 Result type for markdown preview rendering.
 
 ---
-*自動生成: 2026-02-17T21:48:27.779Z*
+*自動生成: 2026-02-17T21:54:59.847Z*

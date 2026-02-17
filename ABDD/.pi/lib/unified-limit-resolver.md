@@ -107,6 +107,25 @@ flowchart TD
   formatUnifiedLimitsResult -.-> getAllLimitsSummary
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant unified_limit_resolver as unified-limit-resolver
+  participant adaptive_rate_controller_js as adaptive-rate-controller.js
+  participant cross_instance_coordinator_js as cross-instance-coordinator.js
+
+  Caller->>unified_limit_resolver: setRuntimeSnapshotProvider()
+  unified_limit_resolver->>adaptive_rate_controller_js: 内部関数呼び出し
+  adaptive_rate_controller_js-->>unified_limit_resolver: 結果
+  unified_limit_resolver-->>Caller: void
+
+  Caller->>unified_limit_resolver: getUnifiedEnvConfig()
+  unified_limit_resolver-->>Caller: UnifiedEnvConfig
+```
+
 ## 関数
 
 ### setRuntimeSnapshotProvider
@@ -288,4 +307,4 @@ interface UnifiedEnvConfig {
 統合環境変数設定
 
 ---
-*自動生成: 2026-02-17T21:48:27.781Z*
+*自動生成: 2026-02-17T21:54:59.849Z*

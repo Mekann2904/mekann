@@ -100,4 +100,4 @@ Common status type for live view items.
 Used by both subagent live items and team member live items.
 
 ---
-*自動生成: 2026-02-17T21:48:27.726Z*
+*自動生成: 2026-02-17T21:54:59.804Z*

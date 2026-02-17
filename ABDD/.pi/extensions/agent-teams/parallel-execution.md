@@ -76,6 +76,24 @@ flowchart TD
   buildTeamAndMemberParallelCandidates -.-> resolveTeamParallelCapacity
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant parallel_execution as parallel-execution
+  participant agent_runtime as agent-runtime
+
+  Caller->>parallel_execution: buildMemberParallelCandidates()
+  parallel_execution->>agent_runtime: 内部関数呼び出し
+  agent_runtime-->>parallel_execution: 結果
+  parallel_execution-->>Caller: TeamParallelCapacityCandidate[]
+
+  Caller->>parallel_execution: buildTeamAndMemberParallelCandidates()
+  parallel_execution-->>Caller: TeamParallelCapacityCandidate[]
+```
+
 ## 関数
 
 ### buildMemberParallelCandidates
@@ -172,4 +190,4 @@ interface TeamParallelCapacityResolution {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.463Z*
+*自動生成: 2026-02-17T21:54:59.608Z*

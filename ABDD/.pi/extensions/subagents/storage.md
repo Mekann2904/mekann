@@ -99,6 +99,25 @@ flowchart TD
   saveStorage -.-> saveStorageWithPatterns
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant storage as storage
+  participant storage_base_js as storage-base.js
+  participant storage_lock_js as storage-lock.js
+
+  Caller->>storage: createDefaultAgents()
+  storage->>storage_base_js: 内部関数呼び出し
+  storage_base_js-->>storage: 結果
+  storage-->>Caller: SubagentDefinition[]
+
+  Caller->>storage: loadStorage()
+  storage-->>Caller: SubagentStorage
+```
+
 ## 関数
 
 ### createDefaultAgents
@@ -287,4 +306,4 @@ type AgentEnabledState = "enabled" | "disabled"
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.613Z*
+*自動生成: 2026-02-17T21:54:59.725Z*

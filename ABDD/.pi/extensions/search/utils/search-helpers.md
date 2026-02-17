@@ -98,6 +98,24 @@ flowchart TD
   rankByRelevance -.-> deduplicateResults
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant search_helpers as search-helpers
+  participant types as types
+
+  Caller->>search_helpers: fileCandidateToUnified()
+  search_helpers->>types: 内部関数呼び出し
+  types-->>search_helpers: 結果
+  search_helpers-->>Caller: UnifiedSearchResult
+
+  Caller->>search_helpers: codeSearchMatchToUnified()
+  search_helpers-->>Caller: UnifiedSearchResult
+```
+
 ## 関数
 
 ### fileCandidateToUnified
@@ -385,4 +403,4 @@ interface RankOptions {
 Options for ranking results.
 
 ---
-*自動生成: 2026-02-17T21:48:27.594Z*
+*自動生成: 2026-02-17T21:54:59.710Z*

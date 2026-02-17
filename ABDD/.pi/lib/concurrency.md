@@ -38,6 +38,21 @@ classDiagram
   }
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant concurrency as concurrency
+
+  Caller->>concurrency: runWithConcurrencyLimit()
+  activate concurrency
+  Note over concurrency: 非同期処理開始
+  deactivate concurrency
+  concurrency-->>Caller: Promise<TResult[]>
+```
+
 ## 関数
 
 ### toPositiveLimit
@@ -118,4 +133,4 @@ Result wrapper for tracking success/failure of individual workers.
 Used internally to ensure all workers complete before throwing errors.
 
 ---
-*自動生成: 2026-02-17T21:48:27.657Z*
+*自動生成: 2026-02-17T21:54:59.757Z*

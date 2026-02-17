@@ -125,6 +125,24 @@ flowchart TD
   adjustForError -.-> attemptRecovery
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant dynamic_parallelism as dynamic-parallelism
+  participant task_scheduler as task-scheduler
+
+  Caller->>dynamic_parallelism: getParallelismAdjuster()
+  dynamic_parallelism->>task_scheduler: 内部関数呼び出し
+  task_scheduler-->>dynamic_parallelism: 結果
+  dynamic_parallelism-->>Caller: DynamicParallelismAdjuster
+
+  Caller->>dynamic_parallelism: createParallelismAdjuster()
+  dynamic_parallelism-->>Caller: DynamicParallelismAdjuster
+```
+
 ## 関数
 
 ### handler
@@ -361,4 +379,4 @@ interface ErrorEvent {
 Error event for tracking.
 
 ---
-*自動生成: 2026-02-17T21:48:27.685Z*
+*自動生成: 2026-02-17T21:54:59.773Z*

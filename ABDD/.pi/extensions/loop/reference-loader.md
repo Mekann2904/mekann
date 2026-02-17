@@ -74,6 +74,30 @@ flowchart TD
   loadReferences -.-> fetchTextFromUrl
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant reference_loader as reference-loader
+  participant error_utils_js as error-utils.js
+  participant ssrf_protection as ssrf-protection
+
+  Caller->>reference_loader: loadReferences()
+  activate reference_loader
+  Note over reference_loader: 非同期処理開始
+  reference_loader->>error_utils_js: 内部関数呼び出し
+  error_utils_js-->>reference_loader: 結果
+  deactivate reference_loader
+  reference_loader-->>Caller: Promise<LoadedReferenceResult>
+
+  Caller->>reference_loader: fetchTextFromUrl()
+  activate reference_loader
+  reference_loader-->>Caller: Promise<string>
+  deactivate reference_loader
+```
+
 ## 関数
 
 ### loadReferences
@@ -268,4 +292,4 @@ interface LoadedReferenceResult {
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.537Z*
+*自動生成: 2026-02-17T21:54:59.664Z*

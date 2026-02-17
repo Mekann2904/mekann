@@ -139,6 +139,25 @@ flowchart LR
   main --> external
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant loop as loop
+  participant _mariozechner as @mariozechner
+  participant format_utils_js as format-utils.js
+  participant error_utils_js as error-utils.js
+
+  Caller->>loop: registerLoopExtension()
+  loop->>_mariozechner: API呼び出し
+  _mariozechner-->>loop: レスポンス
+  loop->>format_utils_js: 内部関数呼び出し
+  format_utils_js-->>loop: 結果
+  loop-->>Caller: void
+```
+
 ## 関数
 
 ### registerLoopExtension
@@ -666,4 +685,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.549Z*
+*自動生成: 2026-02-17T21:54:59.675Z*

@@ -66,6 +66,25 @@ flowchart TD
   buildTeamResultText -.-> extractSummary
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant result_aggregation as result-aggregation
+  participant error_utils_js as error-utils.js
+  participant agent_types_js as agent-types.js
+
+  Caller->>result_aggregation: isRetryableTeamMemberError()
+  result_aggregation->>error_utils_js: 内部関数呼び出し
+  error_utils_js-->>result_aggregation: 結果
+  result_aggregation-->>Caller: boolean
+
+  Caller->>result_aggregation: resolveTeamFailureOutcome()
+  result_aggregation-->>Caller: RunOutcomeSignal
+```
+
 ## 関数
 
 ### isRetryableTeamMemberError
@@ -184,4 +203,4 @@ extractSummary(output: string): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-17T21:48:27.467Z*
+*自動生成: 2026-02-17T21:54:59.610Z*

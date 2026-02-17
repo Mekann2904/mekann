@@ -64,6 +64,17 @@ flowchart LR
   main --> external
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant question as question
+  participant _mariozechner as @mariozechner
+
+```
+
 ## 関数
 
 ### createRenderer
@@ -192,4 +203,4 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 ```
 
 ---
-*自動生成: 2026-02-17T21:48:27.557Z*
+*自動生成: 2026-02-17T21:54:59.682Z*
