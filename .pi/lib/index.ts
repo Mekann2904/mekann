@@ -1,6 +1,20 @@
 /**
  * Shared library index.
  * Re-exports all common utilities for convenient importing.
+ *
+ * Focused Entry Points (Clean Architecture):
+ * For better tree-shaking and explicit dependencies, prefer these focused entry points:
+ *   - lib/agent.ts   - Agent-related types and utilities (subagents, teams)
+ *   - lib/storage.ts - Storage-related utilities (run index, patterns, semantic memory)
+ *
+ * This file maintains all existing exports for backward compatibility.
+ * New code should import from focused entry points when possible.
+ *
+ * Architecture Layers:
+ *   Layer 0: Core utilities (error, validation, formatting, TUI)
+ *   Layer 1: Agent utilities (types, timeouts, runtime, logging)
+ *   Layer 2: Advanced utilities (embeddings, memory, scheduling)
+ *   Layer 3: Coordination (cross-instance, task scheduling)
  */
 
 // Error handling utilities (Layer 0)
@@ -556,3 +570,15 @@ export {
   logError,
   logDebug,
 } from "./structured-logger.js";
+
+// ============================================================================
+// Convenience Re-exports (Barrel Export Split - Phase 3)
+// ============================================================================
+
+// Re-export from categorized entry points for better tree-shaking
+// These allow consumers to import from specific domains:
+//   import { ... } from "./lib/agent.js";     // Agent/subagent/team utilities
+//   import { ... } from "./lib/storage.js";   // Storage/memory/embedding utilities
+
+export * from "./agent.js";
+export * from "./storage.js";
