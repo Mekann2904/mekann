@@ -315,7 +315,6 @@ function resolveExtensionForTool(toolName: string, catalog: FeatureCatalog): str
   if (toolName.startsWith("agent_team_")) return "agent-teams";
   if (toolName.startsWith("plan_")) return "plan";
   if (toolName === "loop_run") return "loop";
-  if (toolName === "rsa_solve") return "rsa";
   if (toolName === "question") return "question";
   if (toolName === "fzf") return "fzf";
   if (toolName === "abbr") return "abbr";
