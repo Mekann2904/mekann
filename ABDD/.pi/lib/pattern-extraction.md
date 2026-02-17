@@ -470,4 +470,4 @@ interface RunData {
 Run data for pattern extraction.
 
 ---
-*自動生成: 2026-02-17T21:54:59.813Z*
+*自動生成: 2026-02-17T22:16:16.699Z*

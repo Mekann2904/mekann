@@ -342,4 +342,4 @@ Simple check: compare with symbol index timestamp.
 **戻り値**: `Promise<boolean>`
 
 ---
-*自動生成: 2026-02-17T21:54:59.684Z*
+*自動生成: 2026-02-17T22:16:16.510Z*

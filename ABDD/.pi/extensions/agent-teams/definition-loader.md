@@ -275,4 +275,4 @@ ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage
 **戻り値**: `TeamStorage`
 
 ---
-*自動生成: 2026-02-17T21:54:59.591Z*
+*自動生成: 2026-02-17T22:16:16.370Z*

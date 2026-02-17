@@ -245,4 +245,4 @@ shouldTriggerReflection(context: Partial<ToolReflectionContext>): boolean
 **戻り値**: `boolean`
 
 ---
-*自動生成: 2026-02-17T21:54:59.779Z*
+*自動生成: 2026-02-17T22:16:16.660Z*

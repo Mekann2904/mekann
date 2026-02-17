@@ -82,6 +82,8 @@ sequenceDiagram
 refreshRuntimeStatus(ctx: any): void
 ```
 
+Refresh runtime status display in the UI with subagent-specific parameters.
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -225,4 +227,4 @@ registerSubagentExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T21:54:59.731Z*
+*自動生成: 2026-02-17T22:16:16.591Z*

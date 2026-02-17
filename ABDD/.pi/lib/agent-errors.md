@@ -505,4 +505,4 @@ Standardized failure classification types for retry decision making.
 Each classification maps to a specific retry policy.
 
 ---
-*自動生成: 2026-02-17T21:54:59.748Z*
+*自動生成: 2026-02-17T22:16:16.610Z*

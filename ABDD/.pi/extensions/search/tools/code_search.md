@@ -1,0 +1,187 @@
+---
+title: code_search
+category: api-reference
+audience: developer
+last_updated: 2026-02-17
+tags: [auto-generated]
+related: []
+---
+
+# code_search
+
+## 概要
+
+`code_search` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+import { execute, buildRgArgs, checkToolAvailability } from '../utils/cli.js';
+import { CodeSearchInput, CodeSearchOutput, CodeSearchMatch... } from '../types.js';
+import { truncateResults, parseRgOutput, summarizeResults... } from '../utils/output.js';
+import { SearchToolError, isSearchToolError, getErrorMessage... } from '../utils/errors.js';
+import { DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_EXCLUDES } from '../utils/constants.js';
+// ... and 2 more imports
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `codeSearch` | Code search with rg or fallback |
+
+## 図解
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[code_search]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    cli_js[cli.js]
+    types_js[types.js]
+    output_js[output.js]
+    errors_js[errors.js]
+    constants_js[constants.js]
+  end
+  main --> local
+```
+
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant code_search as code_search
+  participant cli_js as cli.js
+  participant types_js as types.js
+
+  Caller->>code_search: codeSearch()
+  activate code_search
+  Note over code_search: 非同期処理開始
+  code_search->>cli_js: 内部関数呼び出し
+  cli_js-->>code_search: 結果
+  deactivate code_search
+  code_search-->>Caller: Promise<CodeSearchOutput>
+```
+
+## 関数
+
+### nativeCodeSearch
+
+```typescript
+async nativeCodeSearch(input: CodeSearchInput, cwd: string): Promise<CodeSearchOutput>
+```
+
+Pure Node.js code search fallback
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `CodeSearchInput` | はい |
+| cwd | `string` | はい |
+
+**戻り値**: `Promise<CodeSearchOutput>`
+
+### searchFile
+
+```typescript
+async searchFile(filePath: string): Promise<void>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| filePath | `string` | はい |
+
+**戻り値**: `Promise<void>`
+
+### shouldExclude
+
+```typescript
+shouldExclude(name: string, patterns: readonly string[]): boolean
+```
+
+Check if a name matches any exclusion pattern.
+Supports both exact matches and glob-style patterns (e.g., *.min.js).
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| name | `string` | はい |
+| patterns | `readonly string[]` | はい |
+
+**戻り値**: `boolean`
+
+### scanDir
+
+```typescript
+async scanDir(dirPath: string): Promise<void>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| dirPath | `string` | はい |
+
+**戻り値**: `Promise<void>`
+
+### useRgCommand
+
+```typescript
+async useRgCommand(input: CodeSearchInput, cwd: string): Promise<CodeSearchOutput>
+```
+
+Use ripgrep command for code search
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `CodeSearchInput` | はい |
+| cwd | `string` | はい |
+
+**戻り値**: `Promise<CodeSearchOutput>`
+
+### extractResultPaths
+
+```typescript
+extractResultPaths(results: CodeSearchMatch[]): string[]
+```
+
+Extract file paths from results for history recording.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| results | `CodeSearchMatch[]` | はい |
+
+**戻り値**: `string[]`
+
+### codeSearch
+
+```typescript
+async codeSearch(input: CodeSearchInput, cwd: string): Promise<CodeSearchOutput>
+```
+
+Code search with rg or fallback
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `CodeSearchInput` | はい |
+| cwd | `string` | はい |
+
+**戻り値**: `Promise<CodeSearchOutput>`
+
+---
+*自動生成: 2026-02-17T22:16:16.528Z*

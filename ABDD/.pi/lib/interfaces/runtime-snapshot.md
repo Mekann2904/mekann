@@ -63,4 +63,4 @@ Provider function type for runtime snapshot.
 Used for dependency injection from agent-runtime.ts.
 
 ---
-*自動生成: 2026-02-17T21:54:59.801Z*
+*自動生成: 2026-02-17T22:16:16.685Z*

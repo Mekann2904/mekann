@@ -232,4 +232,4 @@ type TaskIntent = "declarative" | "procedural" | "reasoning"
 Task intent types from paper taxonomy.
 
 ---
-*自動生成: 2026-02-17T21:54:59.800Z*
+*自動生成: 2026-02-17T22:16:16.685Z*

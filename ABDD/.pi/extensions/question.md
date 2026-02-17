@@ -203,4 +203,4 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 ```
 
 ---
-*自動生成: 2026-02-17T21:54:59.682Z*
+*自動生成: 2026-02-17T22:16:16.508Z*

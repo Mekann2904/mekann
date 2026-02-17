@@ -85,4 +85,4 @@ Centers the cursor when possible, adjusts when near boundaries.
 **戻り値**: `{ start: number; end: number }`
 
 ---
-*自動生成: 2026-02-17T21:54:59.749Z*
+*自動生成: 2026-02-17T22:16:16.611Z*

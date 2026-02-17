@@ -236,4 +236,4 @@ interface ExtendedValidationResult {
 Extended validation result with schema information.
 
 ---
-*自動生成: 2026-02-17T21:54:59.811Z*
+*自動生成: 2026-02-17T22:16:16.696Z*

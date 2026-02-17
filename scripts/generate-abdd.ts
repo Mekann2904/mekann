@@ -88,7 +88,6 @@ async function main() {
   console.log('Processing extensions...');
   const extensionFiles = collectTypeScriptFiles(EXTENSIONS_DIR);
   for (const file of extensionFiles) {
-    if (file.includes('/tools/') || file.includes('code-structure-analyzer')) continue;
     processFile(file, EXTENSIONS_DIR, join(ABDD_DIR, '.pi/extensions'));
   }
 

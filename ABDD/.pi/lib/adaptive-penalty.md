@@ -402,4 +402,4 @@ type DecayStrategy = "linear" | "exponential" | "hybrid"
 Decay strategy options.
 
 ---
-*自動生成: 2026-02-17T21:54:59.740Z*
+*自動生成: 2026-02-17T22:16:16.601Z*

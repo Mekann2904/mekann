@@ -111,6 +111,8 @@ toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
 refreshRuntimeStatus(ctx: any): void
 ```
 
+Refresh runtime status display in the UI with agent-team-specific parameters.
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -366,4 +368,4 @@ type LiveViewMode = TeamLiveViewMode
 ```
 
 ---
-*自動生成: 2026-02-17T21:54:59.627Z*
+*自動生成: 2026-02-17T22:16:16.423Z*

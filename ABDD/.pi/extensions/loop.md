@@ -685,4 +685,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-17T21:54:59.675Z*
+*自動生成: 2026-02-17T22:16:16.494Z*

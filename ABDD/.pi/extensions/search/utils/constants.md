@@ -32,4 +32,4 @@ type DefaultExclude = (typeof DEFAULT_EXCLUDES)[number]
 Type for DEFAULT_EXCLUDES array items
 
 ---
-*自動生成: 2026-02-17T21:54:59.701Z*
+*自動生成: 2026-02-17T22:16:16.550Z*

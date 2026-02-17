@@ -133,4 +133,4 @@ Result wrapper for tracking success/failure of individual workers.
 Used internally to ensure all workers complete before throwing errors.
 
 ---
-*自動生成: 2026-02-17T21:54:59.757Z*
+*自動生成: 2026-02-17T22:16:16.619Z*

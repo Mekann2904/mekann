@@ -254,4 +254,4 @@ PI_HEARTBEAT_TIMEOUT_MS: Time before instance is considered dead
 **戻り値**: `Partial<CoordinatorConfig>`
 
 ---
-*自動生成: 2026-02-17T21:54:59.763Z*
+*自動生成: 2026-02-17T22:16:16.628Z*

@@ -449,4 +449,4 @@ type SkillReference = string
 Skill reference - can be a skill name or path
 
 ---
-*自動生成: 2026-02-17T21:54:59.831Z*
+*自動生成: 2026-02-17T22:16:16.719Z*

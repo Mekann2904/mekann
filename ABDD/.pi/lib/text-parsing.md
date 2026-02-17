@@ -233,4 +233,4 @@ Stance type for discussion analysis.
 Matches StanceClassificationMode behavior in output-schema.ts.
 
 ---
-*自動生成: 2026-02-17T21:54:59.845Z*
+*自動生成: 2026-02-17T22:16:16.734Z*
