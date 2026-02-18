@@ -87,9 +87,72 @@ All documentation MUST be written in Japanese (日本語). This applies to:
 
 **Before writing documentation**: Ensure all prose content is in Japanese.
 
+# JSDoc System Prompt (Default Source)
+
+The JSDoc generator (`scripts/add-jsdoc.ts`) MUST load its default system prompt from this file.
+
+If the section below is missing, the script may fallback to its built-in prompt, but this section is the source of truth.
+
+<!-- JSDOC_SYSTEM_PROMPT_START -->
+あなたはTypeScriptのJSDocコメント生成アシスタントです。日本語で簡潔かつ正確なJSDocを生成してください。
+必須タグは @summary / @param / @returns です。
+条件付きで @throws（例外を投げる場合）と @deprecated（非推奨の場合）を付与してください。
+イベント駆動の場合のみ @fires と @listens を付与してください。
+@summary は20字以内で、シーケンス図の矢印ラベルとしてそのまま使える具体的な文にしてください。
+出力はJSDocのみとし、コードブロックは使わないでください。
+<!-- JSDOC_SYSTEM_PROMPT_END -->
+
+<!-- ABDD_FILE_HEADER_PROMPT_START -->
+あなたはTypeScriptファイル用のABDDヘッダー生成アシスタントです。
+出力はコメントブロックのみ（/** ... */）にしてください。
+必須構造:
+- @abdd.meta
+- path, role, why, related, public_api, invariants, side_effects, failure_modes
+- @abdd.explain
+- overview, what_it_does, why_it_exists, scope(in/out)
+要件:
+- 日本語で簡潔に記述する
+- コードと矛盾する内容を書かない
+- 曖昧語（適切に処理する、必要に応じて 等）を避ける
+- related は2〜4件
+<!-- ABDD_FILE_HEADER_PROMPT_END -->
+
 # Execution Rules (MANDATORY)
 
 The following rules apply to ALL agents, subagents, and team members in this project:
+
+# JSDoc + ABDD Header Enforcement (MANDATORY)
+
+For every TypeScript change in this repository, documentation comments are NOT optional.
+
+## REQUIRED behavior
+
+1. When creating or editing any `.ts` / `.tsx` file under `.pi/extensions` or `.pi/lib`:
+   - MUST create or update JSDoc for changed public symbols.
+   - MUST create or update the ABDD structured file header comment.
+
+2. JSDoc generation/update:
+   - Use `scripts/add-jsdoc.ts` workflow (or equivalent behavior).
+   - Keep required tags aligned with current policy (`@summary`, `@param`, `@returns`, and conditional tags).
+
+3. ABDD header generation/update:
+   - Use `scripts/add-abdd-header.ts` workflow (or equivalent behavior).
+   - Header MUST include `@abdd.meta` and `@abdd.explain` sections.
+
+4. Completion gate for TypeScript edits:
+   - A task is NOT complete until both JSDoc and ABDD header updates are applied (or explicitly confirmed already compliant).
+
+## Trigger conditions
+
+This rule is automatically triggered when:
+- Adding new TypeScript files
+- Modifying function signatures
+- Modifying exported APIs
+- Refactoring module responsibility or behavior
+
+## Violation handling
+
+If code was changed without comment updates, STOP and fix comments first before finalizing.
 
 # Git Workflow Skill Auto-Load (MANDATORY)
 

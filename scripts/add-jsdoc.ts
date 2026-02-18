@@ -64,6 +64,14 @@ const BATCH_DELIMITER = '===JSDOC_ELEMENT_SEPARATOR===';
 const MIN_PARALLEL_LIMIT = 1;
 /** 並列度の最大値 */
 const MAX_PARALLEL_LIMIT = 20;
+/** APPEND_SYSTEM.md のパス */
+const APPEND_SYSTEM_PATH = join(__dirname, '..', '.pi', 'APPEND_SYSTEM.md');
+/** APPEND_SYSTEM.md 内のJSDocプロンプト開始マーカー */
+const JSDOC_SYSTEM_PROMPT_START = '<!-- JSDOC_SYSTEM_PROMPT_START -->';
+/** APPEND_SYSTEM.md 内のJSDocプロンプト終了マーカー */
+const JSDOC_SYSTEM_PROMPT_END = '<!-- JSDOC_SYSTEM_PROMPT_END -->';
+/** APPEND_SYSTEM.md が読めない場合のフォールバック */
+const JSDOC_SYSTEM_PROMPT_FALLBACK = 'あなたはTypeScriptのJSDocコメント生成アシスタントです。日本語で簡潔かつ正確なJSDocを生成してください。必須タグは@summary/@param/@returns。条件付きで@throws/@deprecated、イベント駆動では@fires/@listensを付与してください。コードブロック記法を使わず、生のJSDocのみを出力してください。';
 
 // ============================================================================
 // Types
@@ -173,6 +181,40 @@ interface CacheEntry {
 interface BatchResult {
   results: Map<string, string | null>;
   failedElements: string[];
+}
+
+// ============================================================================
+// System Prompt Loading
+// ============================================================================
+
+function loadJsDocSystemPromptFromAppendSystem(): string {
+  try {
+    if (!existsSync(APPEND_SYSTEM_PATH)) {
+      return JSDOC_SYSTEM_PROMPT_FALLBACK;
+    }
+
+    const content = readFileSync(APPEND_SYSTEM_PATH, 'utf-8');
+    const start = content.indexOf(JSDOC_SYSTEM_PROMPT_START);
+    const end = content.indexOf(JSDOC_SYSTEM_PROMPT_END);
+
+    if (start === -1 || end === -1 || end <= start) {
+      return JSDOC_SYSTEM_PROMPT_FALLBACK;
+    }
+
+    const bodyStart = start + JSDOC_SYSTEM_PROMPT_START.length;
+    const extracted = content.slice(bodyStart, end).trim();
+    return extracted || JSDOC_SYSTEM_PROMPT_FALLBACK;
+  } catch {
+    return JSDOC_SYSTEM_PROMPT_FALLBACK;
+  }
+}
+
+function getJsDocSystemPrompt(mode: 'single' | 'batch'): string {
+  const base = loadJsDocSystemPromptFromAppendSystem();
+  if (mode === 'batch') {
+    return `${base}\n区切り文字を正確に使用してください。`;
+  }
+  return base;
 }
 
 // ============================================================================
@@ -1078,7 +1120,7 @@ async function generateJsDocWithStreamSimple(
     messages: [
       { role: 'user', content: [{ type: 'text', text: prompt }] }
     ],
-    systemPrompt: 'あなたはTypeScriptのJSDocコメント生成アシスタントです。日本語で簡潔かつ正確なJSDocを生成してください。コードブロック記法を使わず、生のJSDocのみを出力してください。',
+    systemPrompt: getJsDocSystemPrompt('single'),
   };
 
   // streamSimpleでLLMを呼び出し（pi推奨の方法）
@@ -1111,7 +1153,14 @@ function buildPrompt(element: ElementInfo): string {
 ${element.context}
 \`\`\`
 
-要件: 日本語/要約50字以内/@param/@returns/出力はJSDocのみ`;
+要件:
+- 日本語で記述
+- 要約50字以内
+- @summary は20字以内（シーケンス図用）
+- 必須: @summary, @param, @returns
+- 条件付き: @throws（例外を投げる場合）, @deprecated（非推奨の場合）
+- イベント駆動のみ: @fires, @listens
+- 出力はJSDocのみ`;
 }
 
 /**
@@ -1146,7 +1195,13 @@ ${elementList}
 各要素のJSDocを以下の区切り文字で区切って出力:
 ${BATCH_DELIMITER}
 
-要件: 日本語/要約50字以内/@param/@returns`;
+要件:
+- 日本語で記述
+- 要約50字以内
+- @summary は20字以内（シーケンス図用）
+- 必須: @summary, @param, @returns
+- 条件付き: @throws（例外を投げる場合）, @deprecated（非推奨の場合）
+- イベント駆動のみ: @fires, @listens`;
 }
 
 /**
@@ -1177,7 +1232,7 @@ async function generateJsDocBatch(
       messages: [
         { role: 'user', content: [{ type: 'text', text: prompt }] }
       ],
-      systemPrompt: 'JSDoc生成アシスタント。日本語で簡潔なJSDocを生成。区切り文字を正確に使用。',
+      systemPrompt: getJsDocSystemPrompt('batch'),
     };
 
     const eventStream = streamSimple(model, context, { apiKey });
@@ -1245,7 +1300,7 @@ async function generateJsDocIndividual(
     messages: [
       { role: 'user', content: [{ type: 'text', text: prompt }] }
     ],
-    systemPrompt: 'JSDoc生成アシスタント。日本語で簡潔なJSDocを生成。出力はJSDocのみ。',
+    systemPrompt: getJsDocSystemPrompt('single'),
   };
 
   const eventStream = streamSimple(model, context, { apiKey });

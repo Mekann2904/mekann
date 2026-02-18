@@ -20,6 +20,7 @@ interface FunctionInfo {
   signature: string;
   line: number;
   jsDoc?: string;
+  summary?: string;  // @summaryタグから抽出（シーケンス図用）
   parameters: { name: string; type: string; optional: boolean }[];
   returnType: string;
   isAsync: boolean;
@@ -55,6 +56,31 @@ interface TypeInfo {
   isExported: boolean;
 }
 
+/**
+ * JSDocから@summaryタグを抽出
+ */
+function extractSummary(jsDoc: string | undefined): string | undefined {
+  if (!jsDoc) return undefined;
+  const match = jsDoc.match(/@summary\s+(.+)/);
+  return match ? match[1].trim() : undefined;
+}
+
+/**
+ * JSDocノードからテキスト全体を取得（@summary等のタグを含む）
+ */
+function getJsDocText(node: ts.Node, sourceFile: ts.SourceFile): string | undefined {
+  const jsDocs = ts.getJSDocCommentsAndTags(node);
+  if (jsDocs.length === 0) return undefined;
+  
+  // JSDoc全体をテキストとして取得
+  return jsDocs.map(j => {
+    if ('getText' in j && typeof j.getText === 'function') {
+      return j.getText(sourceFile);
+    }
+    return '';
+  }).join('\n');
+}
+
 // ユーザーフロー生成用の型
 interface ToolInfo {
   name: string;
@@ -70,7 +96,16 @@ interface CallNode {
   callee: string;
   isAsync: boolean;
   line: number;
-  importance: "critical" | "important" | "minor" | "noise";
+  /** 外部ファイルからインポートされた関数の場合、そのファイルパス */
+  importedFrom?: string;
+}
+
+/** クロスファイル追跡用のキャッシュ */
+interface CrossFileCache {
+  /** ファイルパス → FileInfo */
+  fileInfos: Map<string, FileInfo>;
+  /** 関数名 → { filePath, functionInfo } のマッピング（インポート解決用） */
+  functionLocations: Map<string, { filePath: string; info: FunctionInfo }>;
 }
 
 interface FileInfo {
@@ -172,6 +207,12 @@ async function main() {
 
 let globalOptions = { dryRun: false, verbose: false };
 
+// クロスファイル追跡用のグローバルキャッシュ
+const crossFileCache: CrossFileCache = {
+  fileInfos: new Map(),
+  functionLocations: new Map(),
+};
+
 // ============================================================================
 // File Processing
 // ============================================================================
@@ -256,13 +297,15 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
         optional: p.questionToken !== undefined,
       }));
       const returnType = node.type?.getText(sourceFile) || 'void';
-      const jsDoc = ts.getJSDocCommentsAndTags(node).map(j => (j as ts.JSDoc).comment).filter(Boolean).join('\n');
+      const jsDocComment = ts.getJSDocCommentsAndTags(node).map(j => (j as ts.JSDoc).comment).filter(Boolean).join('\n');
+      const jsDocText = getJsDocText(node, sourceFile);
 
       functions.push({
         name,
         signature: `${isAsync ? 'async ' : ''}${name}(${params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ')}): ${returnType}`,
         line,
-        jsDoc: jsDoc || undefined,
+        jsDoc: jsDocComment || undefined,
+        summary: extractSummary(jsDocText),
         parameters: params,
         returnType,
         isAsync,
@@ -286,11 +329,18 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
           optional: p.questionToken !== undefined,
         }));
         const returnType = func.type?.getText(sourceFile) || 'void';
+        // VariableStatementからJSDocを取得
+        const jsDocComment = varStmt
+          ? ts.getJSDocCommentsAndTags(varStmt).map(j => (j as ts.JSDoc).comment).filter(Boolean).join('\n')
+          : undefined;
+        const jsDocText = varStmt ? getJsDocText(varStmt, sourceFile) : undefined;
 
         functions.push({
           name,
           signature: `${isAsync ? 'async ' : ''}${name}(${params.map(p => `${p.name}${p.optional ? '?' : ''}: ${p.type}`).join(', ')}): ${returnType}`,
           line,
+          jsDoc: jsDocComment || undefined,
+          summary: extractSummary(jsDocText),
           parameters: params,
           returnType,
           isAsync,
@@ -389,24 +439,23 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
   // ツール登録を検出
   const tools = detectToolRegistrations(sourceFile);
 
-  // 関数内の呼び出しを抽出
-  const calls = extractAllCalls(sourceFile, functions);
+  // 関数内の呼び出しを抽出（インポートされた関数も含む）
+  const calls = extractAllCalls(sourceFile, functions, imports);
 
-  // 関数名のセットを作成
+  // 関数名のセットを作成（インポートされた関数も含む）
   const functionNames = new Set(functions.map(f => f.name));
-
-  // 関数情報をMapに変換
-  const allFunctionsMap = new Map<string, FunctionInfo>();
-  for (const fn of functions) {
-    allFunctionsMap.set(fn.name, fn);
+  for (const imp of imports) {
+    for (const name of imp.names) {
+      functionNames.add(name);
+    }
   }
 
   // 各ツールのexecute関数内の呼び出しを抽出
   for (const tool of tools) {
     if (tool.executeExpr) {
-      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeExpr, functionNames, allFunctionsMap);
+      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeExpr, functionNames);
     } else if (tool.executeMethodDecl) {
-      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeMethodDecl, functionNames, allFunctionsMap);
+      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeMethodDecl, functionNames);
     }
   }
 
@@ -527,14 +576,98 @@ function extractFunctionName(expr: ts.Expression): string | null {
 }
 
 /**
+ * インポートされた関数の定義ファイルを解決
+ * @param funcName - 関数名
+ * @param imports - インポート情報
+ * @param currentFilePath - 現在のファイルパス
+ * @returns 解決されたファイルパス（見つからない場合はundefined）
+ */
+function resolveImportedFunction(
+  funcName: string,
+  imports: { source: string; names: string[] }[],
+  currentFilePath: string
+): string | undefined {
+  // インポートから関数が含まれるソースを探す
+  for (const imp of imports) {
+    if (imp.names.includes(funcName)) {
+      // 相対パスを解決
+      if (imp.source.startsWith('.')) {
+        const currentDir = dirname(currentFilePath);
+        let resolvedPath = join(currentDir, imp.source);
+        // .ts拡張子を追加
+        if (!resolvedPath.endsWith('.ts')) {
+          resolvedPath += '.ts';
+        }
+        // ファイルが存在するか確認
+        if (existsSync(resolvedPath)) {
+          return resolvedPath;
+        }
+        // index.tsも試す
+        const indexPath = join(resolvedPath.replace('.ts', ''), 'index.ts');
+        if (existsSync(indexPath)) {
+          return indexPath;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 外部ファイルの関数情報を取得（キャッシュ付き）
+ */
+function getExternalFileInfo(
+  filePath: string
+): { functions: FunctionInfo[]; calls: Map<string, CallNode[]>; imports: { source: string; names: string[] }[] } | undefined {
+  // キャッシュを確認
+  const cached = crossFileCache.fileInfos.get(filePath);
+  if (cached) {
+    return { functions: cached.functions, calls: cached.calls, imports: cached.imports };
+  }
+
+  // ファイルを解析
+  if (!existsSync(filePath)) {
+    return undefined;
+  }
+
+  try {
+    // analyzeFileと同じ処理を行う（baseDirはdirnameを使用）
+    const baseDir = dirname(filePath);
+    const info = analyzeFile(filePath, baseDir);
+    
+    // キャッシュに保存
+    crossFileCache.fileInfos.set(filePath, info);
+    
+    return { functions: info.functions, calls: info.calls, imports: info.imports };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * すべての関数から呼び出しを抽出
+ * インポートされた関数も追跡対象に含む
  */
 function extractAllCalls(
   sourceFile: ts.SourceFile,
-  functions: FunctionInfo[]
+  functions: FunctionInfo[],
+  imports: { source: string; names: string[] }[]
 ): Map<string, CallNode[]> {
   const calls = new Map<string, CallNode[]>();
+  
+  // 同一ファイル内の関数名
   const functionNames = new Set(functions.map(f => f.name));
+  
+  // インポートされた関数名も追跡対象に追加
+  const importedNames = new Set<string>();
+  for (const imp of imports) {
+    for (const name of imp.names) {
+      importedNames.add(name);
+    }
+  }
+  
+  // 追跡対象の関数名（同一ファイル + インポート）
+  const trackableNames = new Set([...functionNames, ...importedNames]);
 
   // 関数宣言・矢印関数を探して呼び出しを抽出
   function visitFunction(node: ts.Node, funcName: string) {
@@ -545,12 +678,12 @@ function extractAllCalls(
       if (ts.isAwaitExpression(n)) {
         if (ts.isCallExpression(n.expression)) {
           const callee = extractCalleeName(n.expression.expression, sourceFile);
-          if (callee && functionNames.has(callee)) {
+          if (callee && trackableNames.has(callee)) {
             funcCalls.push({
               callee,
               isAsync: true,
               line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
-              importance: "minor", // 初期値、後で更新
+              importedFrom: importedNames.has(callee) ? callee : undefined,
             });
           }
         }
@@ -560,12 +693,12 @@ function extractAllCalls(
         // await式の内部でない場合
         if (!ts.isAwaitExpression(n.parent)) {
           const callee = extractCalleeName(n.expression, sourceFile);
-          if (callee && functionNames.has(callee)) {
+          if (callee && trackableNames.has(callee)) {
             funcCalls.push({
               callee,
               isAsync: false,
               line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
-              importance: "minor", // 初期値、後で更新
+              importedFrom: importedNames.has(callee) ? callee : undefined,
             });
           }
         }
@@ -606,8 +739,7 @@ function extractAllCalls(
 function extractCallsFromExecute(
   sourceFile: ts.SourceFile,
   executeExpr: ts.Expression | ts.MethodDeclaration,
-  functionNames: Set<string>,
-  allFunctions: Map<string, FunctionInfo>
+  functionNames: Set<string>
 ): CallNode[] {
   const funcCalls: CallNode[] = [];
 
@@ -626,12 +758,10 @@ function extractCallsFromExecute(
       if (ts.isCallExpression(n.expression)) {
         const callee = extractCalleeName(n.expression.expression, sourceFile);
         if (callee && functionNames.has(callee)) {
-          const calleeInfo = allFunctions.get(callee);
           funcCalls.push({
             callee,
             isAsync: true,
             line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
-            importance: determineCallImportance(callee, calleeInfo),
           });
         }
       }
@@ -641,12 +771,10 @@ function extractCallsFromExecute(
       if (!ts.isAwaitExpression(n.parent)) {
         const callee = extractCalleeName(n.expression, sourceFile);
         if (callee && functionNames.has(callee)) {
-          const calleeInfo = allFunctions.get(callee);
           funcCalls.push({
             callee,
             isAsync: false,
             line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
-            importance: determineCallImportance(callee, calleeInfo),
           });
         }
       }
@@ -671,104 +799,6 @@ function extractCalleeName(expr: ts.Expression | undefined, sourceFile: ts.Sourc
     return expr.name.text;
   }
   return null;
-}
-
-/**
- * 関数の重要度を判定
- * - critical: LLM呼び出し、主要なビジネスロジック
- * - important: 並列実行、結果統合、判定
- * - minor: データ取得、変換
- * - noise: UI更新、ログ、getter/setter
- */
-function determineCallImportance(
-  calleeName: string,
-  calleeInfo?: FunctionInfo
-): "critical" | "important" | "minor" | "noise" {
-  const nm = calleeName.toLowerCase();
-  const desc = (calleeInfo?.jsDoc || "").toLowerCase();
-  const params = calleeInfo?.parameters || [];
-  const returnType = calleeInfo?.returnType.toLowerCase() || "";
-
-  // noise: UI更新、フォーマット、getter/setter、型変換、データ取得
-  const noisePatterns = [
-    /^format/i, /^to[A-Z]/, /^get[A-Z]/, /^set[A-Z]/,
-    /^is[A-Z]/, /^has[A-Z]/, /^can[A-Z]/,
-    /^pick/i, /^select/i, /^find/i, /^fetch/i,
-    /^refresh/i, /^update/i, /^notify/i, /^emit/i,
-    /^log/i, /^trace/i, /^debug/i,
-    /status$/i, /display$/i, /view$/i, /ui$/i,
-    /^on[A-Z]/, /^build[A-Z].*error/i, /^create.*error/i,
-    /^ensure/i, /^validate$/i, /^normalize$/i, /^convert/i,
-    /^parse$/i, /^stringify/i, /^trim/i, /^slice/i,
-  ];
-  
-  for (const pattern of noisePatterns) {
-    if (pattern.test(calleeName)) {
-      return "noise";
-    }
-  }
-
-  // noise: パラメータがなく、戻り値が単純
-  if (params.length === 0 && (returnType.includes("void") || returnType.includes("string") || returnType.includes("boolean"))) {
-    if (!calleeInfo?.isAsync) {
-      return "noise";
-    }
-  }
-
-  // noise: 同期的なデータアクセス関数
-  if (!calleeInfo?.isAsync && params.length <= 2) {
-    const simpleReturnTypes = ["string", "number", "boolean", "undefined", "null"];
-    for (const t of simpleReturnTypes) {
-      if (returnType.includes(t) && !returnType.includes("|")) {
-        return "noise";
-      }
-    }
-  }
-
-  // critical: LLM呼び出し
-  if (nm.includes("llm") || nm.includes("pi") || nm.includes("print") ||
-      nm.includes("model") || nm.includes("provider") ||
-      desc.includes("llm") || desc.includes("model response") || desc.includes("api call")) {
-    return "critical";
-  }
-
-  // critical: メインの実行関数（run, executeの後に主要な処理が続く）
-  if ((nm.startsWith("run") || nm.startsWith("execute")) && calleeInfo?.isAsync) {
-    if (nm.includes("task") || nm.includes("team") || nm.includes("member") ||
-        nm.includes("agent") || nm.includes("member") || nm.includes("parallel")) {
-      return "critical";
-    }
-  }
-
-  // important: チーム・メンバー関連の処理（ただしデータ取得は除外）
-  if ((nm.includes("team") || nm.includes("member") || nm.includes("agent") ||
-      nm.includes("teammate")) && calleeInfo?.isAsync) {
-    return "important";
-  }
-
-  // important: 並列実行
-  if (nm.includes("parallel") || nm.includes("sequential") || nm.includes("concurrent")) {
-    return "important";
-  }
-
-  // important: 判定・統合
-  if (nm.includes("judge") || nm.includes("aggregate") || nm.includes("merge") ||
-      nm.includes("combine") || nm.includes("integrate") || nm.includes("resolve")) {
-    return "important";
-  }
-
-  // important: 結果・エラー処理（重大なもの）
-  if (nm.includes("result") || nm.includes("outcome") || nm.includes("complete")) {
-    return "important";
-  }
-
-  // minor: それ以外の非同期処理
-  if (calleeInfo?.isAsync) {
-    return "minor";
-  }
-
-  // noise: それ以外の同期処理
-  return "noise";
 }
 
 /**
@@ -819,6 +849,11 @@ function classifyFunction(name: string, info?: FunctionInfo): string {
  * JSDocの日本語コメントがあればそれを優先、なければ関数名をそのまま使用
  */
 function generateActionLabel(name: string, info?: FunctionInfo): string {
+  // @summaryタグがあれば優先使用（シーケンス図用に最適化された短い説明）
+  if (info?.summary) {
+    return info.summary;
+  }
+
   // JSDocの最初の行を使う（日本語が含まれている場合のみ）
   if (info?.jsDoc) {
     const firstLine = info.jsDoc.split("\n")[0].trim();
@@ -839,6 +874,8 @@ function generateUserSequence(
   tool: ToolInfo,
   allFunctions: Map<string, FunctionInfo>,
   calls: Map<string, CallNode[]>,
+  imports: { source: string; names: string[] }[],
+  currentFilePath: string,
   maxDepth: number = 4
 ): string {
   const participants = new Map<string, string>();
@@ -891,33 +928,47 @@ function generateUserSequence(
     }
   }
 
-  // CallNode配列から直接ステップを生成
+  // CallNode配列から直接ステップを生成（クロスファイル追跡対応）
   function traceCallNodes(
     callNodes: CallNode[],
     callerActor: string,
     currentDepth: number,
-    visited: Set<string>
+    visited: Set<string>,
+    currentFileImports: { source: string; names: string[] }[],
+    currentFilePath: string
   ) {
     if (currentDepth > maxDepth) return;
 
-    // 重要度でフィルタリングしてソート
-    const sortedCalls = callNodes
-      .filter(call => call.importance !== "noise")
-      .sort((a, b) => {
-        // critical > important > minor
-        const order = { critical: 0, important: 1, minor: 2, noise: 3 };
-        return order[a.importance] - order[b.importance];
-      });
-
-    // 表示するステップ数を制限（深さに応じて減らす）
-    const maxSteps = currentDepth === 1 ? 8 : currentDepth === 2 ? 4 : 2;
-    const displayCalls = sortedCalls.slice(0, maxSteps);
-
-    for (const call of displayCalls) {
+    for (const call of callNodes) {
       if (visited.has(call.callee)) continue;
       visited.add(call.callee);
 
-      const calleeInfo = allFunctions.get(call.callee);
+      // 同一ファイル内の関数か、インポートされた関数かを判定
+      let calleeInfo = allFunctions.get(call.callee);
+      let calleeCalls = calls.get(call.callee);
+      let calleeImports = currentFileImports;
+      let calleeFilePath = currentFilePath;
+
+      // インポートされた関数の場合、外部ファイルから情報を取得
+      if (!calleeInfo) {
+        const importedFilePath = resolveImportedFunction(call.callee, currentFileImports, currentFilePath);
+        if (importedFilePath) {
+          const externalInfo = getExternalFileInfo(importedFilePath);
+          if (externalInfo) {
+            // 外部ファイルの関数情報を一時的にallFunctionsに追加
+            for (const fn of externalInfo.functions) {
+              if (fn.name === call.callee) {
+                calleeInfo = fn;
+                break;
+              }
+            }
+            calleeCalls = externalInfo.calls.get(call.callee);
+            calleeImports = externalInfo.imports;
+            calleeFilePath = importedFilePath;
+          }
+        }
+      }
+
       const actor = classifyFunction(call.callee, calleeInfo);
 
       // 参加者を追加
@@ -936,17 +987,9 @@ function generateUserSequence(
         isAsync: call.isAsync,
       });
 
-      // 再帰的に追跡（criticalとimportantのみ）
-      if (call.importance === "critical" || call.importance === "important") {
-        const funcCalls = calls.get(call.callee);
-        if (funcCalls) {
-          // 重要度付きのCallNodeに変換して渡す
-          const callsWithImportance = funcCalls.map(fc => ({
-            ...fc,
-            importance: determineCallImportance(fc.callee, allFunctions.get(fc.callee)),
-          }));
-          traceCallNodes(callsWithImportance, actor, currentDepth + 1, visited);
-        }
+      // 再帰的に追跡
+      if (calleeCalls) {
+        traceCallNodes(calleeCalls, actor, currentDepth + 1, visited, calleeImports, calleeFilePath);
       }
     }
   }
@@ -963,7 +1006,7 @@ function generateUserSequence(
   // execute関数内の呼び出しから追跡開始
   if (tool.executeCalls && tool.executeCalls.length > 0) {
     // executeCallsから直接ステップを生成
-    traceCallNodes(tool.executeCalls, "System", 1, new Set());
+    traceCallNodes(tool.executeCalls, "System", 1, new Set(), imports, currentFilePath);
   } else if (tool.executeFunction) {
     // 従来の方法（名前付き関数の場合）
     traceCalls(tool.executeFunction, "System", 1, new Set());
@@ -977,19 +1020,14 @@ function generateUserSequence(
     isAsync: false,
   });
 
-  // 重要なステップ（critical/important）の数をカウント
-  const importantSteps = steps.filter(s => {
+  // User↔System 以外のステップ数をカウント
+  const nonBoundarySteps = steps.filter(s => {
     // User→SystemとSystem→User以外のステップ
     return !(s.from === "User" && s.to === "System") && !(s.from === "System" && s.to === "User");
   });
 
-  // 重要なステップがない場合は空文字を返す（シーケンス図を生成しない）
-  if (importantSteps.length === 0) {
-    return "";
-  }
-
-  // ステップが少ない場合（2以下）も詳細がなさすぎるのでスキップ
-  if (importantSteps.length <= 1) {
+  // 実ステップがない場合は空文字を返す（シーケンス図を生成しない）
+  if (nonBoundarySteps.length === 0) {
     return "";
   }
 
@@ -1025,7 +1063,7 @@ function generateUserSequence(
 /**
  * ユーザーフローセクションを生成
  */
-function generateUserFlowSection(info: FileInfo): string {
+function generateUserFlowSection(info: FileInfo, currentFilePath: string): string {
   if (info.tools.length === 0) return "";
 
   let section = `## ユーザーフロー
@@ -1041,17 +1079,30 @@ function generateUserFlowSection(info: FileInfo): string {
   }
 
   for (const tool of info.tools) {
-    const sequenceDiagram = generateUserSequence(tool, allFunctions, info.calls);
+    const sequenceDiagram = generateUserSequence(
+      tool, 
+      allFunctions, 
+      info.calls, 
+      info.imports,
+      currentFilePath,
+      4 // maxDepth
+    );
 
     section += `### ${tool.name}
 
 ${tool.description}
+`;
 
+    // シーケンス図がある場合のみmermaidブロックを追加
+    if (sequenceDiagram.trim()) {
+      section += `
 \`\`\`mermaid
 ${sequenceDiagram}
 \`\`\`
-
 `;
+    }
+
+    section += "\n";
   }
 
   return section;
@@ -1134,7 +1185,7 @@ related: []
   md += '\n';
 
   // ユーザーフロー（ツールがある場合）
-  md += generateUserFlowSection(info);
+  md += generateUserFlowSection(info, info.path);
 
   // Mermaid図
   md += generateMermaidSection(info);
