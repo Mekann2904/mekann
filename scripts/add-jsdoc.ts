@@ -22,7 +22,8 @@
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
-import { join, relative, dirname, homedir } from 'path';
+import { homedir } from 'os';
+import { join, relative, dirname } from 'path';
 import * as ts from 'typescript';
 import { fileURLToPath } from 'url';
 import { streamSimple, getModel, type Context } from '@mariozechner/pi-ai';
@@ -95,7 +96,7 @@ async function main() {
 
   // pi SDKを使用してLLM設定を初期化
   console.log('pi設定を読み込み中...');
-  const { authStorage, model, apiKey } = await initializePiSdk();
+  const { model, apiKey } = await initializePiSdk();
 
   if (!model) {
     console.error('利用可能なモデルが見つかりません');
