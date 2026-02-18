@@ -28,7 +28,7 @@ import { DEFAULT_LIMIT, DEFAULT_EXCLUDES } from '../utils/constants.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `fileCandidates` | Enumerate file candidates with fd or fallback |
+| 関数 | `fileCandidates` | fdまたはフォールバックでファイル候補を列挙 |
 
 ## 図解
 
@@ -159,7 +159,7 @@ Extract file paths from results for history recording.
 async fileCandidates(input: FileCandidatesInput, cwd: string): Promise<FileCandidatesOutput>
 ```
 
-Enumerate file candidates with fd or fallback
+fdまたはフォールバックでファイル候補を列挙
 
 **パラメータ**
 
@@ -171,4 +171,4 @@ Enumerate file candidates with fd or fallback
 **戻り値**: `Promise<FileCandidatesOutput>`
 
 ---
-*自動生成: 2026-02-18T00:15:35.566Z*
+*自動生成: 2026-02-18T06:37:19.669Z*

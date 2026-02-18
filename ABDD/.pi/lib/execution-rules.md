@@ -17,13 +17,13 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildExecutionRulesSection` | - |
+| 関数 | `buildExecutionRulesSection` | 実行ルールセクションを構築する |
 | 関数 | `getSubagentExecutionRules` | サブエージェント用の実行ルールを取得 |
-| 関数 | `getTeamMemberExecutionRules` | チームメンバー用の実行ルールを取得 |
-| 関数 | `getChallengerExecutionRules` | Challengerサブエージェント用の実行ルールを取得 |
+| 関数 | `getTeamMemberExecutionRules` | チームメンバー用の実行ルールを取得する |
+| 関数 | `getChallengerExecutionRules` | Challenger用実行ルールを取得 |
 | 関数 | `getInspectorExecutionRules` | Inspectorサブエージェント用の実行ルールを取得 |
 | 関数 | `getVerificationWorkflowExecutionRules` | 検証ワークフロー用の実行ルールを取得 |
-| インターフェース | `BuildExecutionRulesOptions` | 実行ルールセクションを構築する |
+| インターフェース | `BuildExecutionRulesOptions` | 実行ルールの構築オプション |
 
 ## 図解
 
@@ -66,6 +66,8 @@ flowchart TD
 buildExecutionRulesSection(options: BuildExecutionRulesOptions): string
 ```
 
+実行ルールセクションを構築する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -81,7 +83,6 @@ getSubagentExecutionRules(includeGuidelines: any): string
 ```
 
 サブエージェント用の実行ルールを取得
-デフォルトで認知バイアス対策と自己検証ルールを含める
 
 **パラメータ**
 
@@ -97,9 +98,7 @@ getSubagentExecutionRules(includeGuidelines: any): string
 getTeamMemberExecutionRules(phase: "initial" | "communication", includeGuidelines: any): string
 ```
 
-チームメンバー用の実行ルールを取得
-デフォルトで認知バイアス対策と自己検証ルールを含める
-論文「Large Language Model Reasoning Failures」のP0/P1推奨事項を含む
+チームメンバー用の実行ルールを取得する
 
 **パラメータ**
 
@@ -116,8 +115,7 @@ getTeamMemberExecutionRules(phase: "initial" | "communication", includeGuideline
 getChallengerExecutionRules(includeGuidelines: any): string
 ```
 
-Challengerサブエージェント用の実行ルールを取得
-論文「Large Language Model Reasoning Failures」のP0推奨事項
+Challenger用実行ルールを取得
 
 **パラメータ**
 
@@ -134,7 +132,6 @@ getInspectorExecutionRules(includeGuidelines: any): string
 ```
 
 Inspectorサブエージェント用の実行ルールを取得
-論文「Large Language Model Reasoning Failures」のP0推奨事項
 
 **パラメータ**
 
@@ -151,7 +148,6 @@ getVerificationWorkflowExecutionRules(phase: "inspector" | "challenger" | "both"
 ```
 
 検証ワークフロー用の実行ルールを取得
-論文「Large Language Model Reasoning Failures」のP0推奨事項
 
 **パラメータ**
 
@@ -184,7 +180,7 @@ interface BuildExecutionRulesOptions {
 }
 ```
 
-実行ルールセクションを構築する
+実行ルールの構築オプション
 
 ---
-*自動生成: 2026-02-18T00:15:35.722Z*
+*自動生成: 2026-02-18T06:37:19.897Z*

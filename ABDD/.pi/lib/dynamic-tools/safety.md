@@ -19,9 +19,9 @@ related: []
 |------|------|------|
 | 関数 | `analyzeCodeSafety` | コードの安全性を解析 |
 | 関数 | `quickSafetyCheck` | 高速な安全性チェック（詳細解析なし） |
-| 関数 | `checkAllowlistCompliance` | コードが許可リストに準拠しているかチェック |
+| 関数 | `checkAllowlistCompliance` | 許可リストへの準拠をチェック |
 | インターフェース | `SafetyAnalysisResult` | 安全性解析結果 |
-| インターフェース | `SafetyAnalysisIssue` | 安全性の問題（解析用） |
+| インターフェース | `SafetyAnalysisIssue` | 安全性解析で検出された問題の詳細 |
 | 型 | `SafetyAnalysisIssueType` | 安全性問題の種類（解析用） |
 
 ## 図解
@@ -140,7 +140,6 @@ quickSafetyCheck(code: string): {
 ```
 
 高速な安全性チェック（詳細解析なし）
-ツール実行前の簡易チェック用
 
 **パラメータ**
 
@@ -162,7 +161,7 @@ checkAllowlistCompliance(code: string, allowlist: string[]): {
 }
 ```
 
-コードが許可リストに準拠しているかチェック
+許可リストへの準拠をチェック
 
 **パラメータ**
 
@@ -209,7 +208,7 @@ interface SafetyAnalysisIssue {
 }
 ```
 
-安全性の問題（解析用）
+安全性解析で検出された問題の詳細
 
 ### DangerousPattern
 
@@ -247,4 +246,4 @@ type SafetyAnalysisIssueType = | "file-system-write"
 安全性問題の種類（解析用）
 
 ---
-*自動生成: 2026-02-18T00:15:35.700Z*
+*自動生成: 2026-02-18T06:37:19.867Z*

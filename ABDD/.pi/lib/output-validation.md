@@ -23,14 +23,14 @@ import { SchemaValidationMode, SchemaValidationResult, SchemaViolation... } from
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `hasNonEmptyResultSection` | Check if output has non-empty RESULT section. |
-| 関数 | `validateSubagentOutput` | Validate subagent output format and content. |
-| 関数 | `validateTeamMemberOutput` | Validate team member output format and content. |
-| 関数 | `validateSubagentOutputEnhanced` | Validate subagent output with enhanced schema supp |
-| 関数 | `validateTeamMemberOutputEnhanced` | Validate team member output with enhanced schema s |
-| インターフェース | `SubagentValidationOptions` | Validation options for subagent output. |
-| インターフェース | `TeamMemberValidationOptions` | Validation options for team member output. |
-| インターフェース | `ExtendedValidationResult` | Extended validation result with schema information |
+| 関数 | `hasNonEmptyResultSection` | RESULTセクションが空でないか確認する |
+| 関数 | `validateSubagentOutput` | サブエージェントの出力を検証する |
+| 関数 | `validateTeamMemberOutput` | チームメンバーの出力を検証します。 |
+| 関数 | `validateSubagentOutputEnhanced` | サブエージェント出力を検証 |
+| 関数 | `validateTeamMemberOutputEnhanced` | 拡張スキーマ対応でチームメンバー出力を検証 |
+| インターフェース | `SubagentValidationOptions` | サブエージェント出力の検証オプション。 |
+| インターフェース | `TeamMemberValidationOptions` | チームメンバー出力の検証オプション |
+| インターフェース | `ExtendedValidationResult` | スキーマ情報を含む拡張検証結果 |
 
 ## 図解
 
@@ -112,7 +112,7 @@ sequenceDiagram
 hasNonEmptyResultSection(output: string): boolean
 ```
 
-Check if output has non-empty RESULT section.
+RESULTセクションが空でないか確認する
 
 **パラメータ**
 
@@ -128,7 +128,7 @@ Check if output has non-empty RESULT section.
 validateSubagentOutput(output: string, options?: Partial<SubagentValidationOptions>): { ok: boolean; reason?: string }
 ```
 
-Validate subagent output format and content.
+サブエージェントの出力を検証する
 
 **パラメータ**
 
@@ -145,8 +145,7 @@ Validate subagent output format and content.
 validateTeamMemberOutput(output: string, options?: Partial<TeamMemberValidationOptions>): { ok: boolean; reason?: string }
 ```
 
-Validate team member output format and content.
-Team member output requires more labels and longer content than subagent.
+チームメンバーの出力を検証します。
 
 **パラメータ**
 
@@ -163,8 +162,7 @@ Team member output requires more labels and longer content than subagent.
 validateSubagentOutputEnhanced(output: string, options?: Partial<SubagentValidationOptions>): ExtendedValidationResult
 ```
 
-Validate subagent output with enhanced schema support.
-Respects PI_OUTPUT_SCHEMA_MODE feature flag.
+サブエージェント出力を検証
 
 **パラメータ**
 
@@ -181,8 +179,7 @@ Respects PI_OUTPUT_SCHEMA_MODE feature flag.
 validateTeamMemberOutputEnhanced(output: string, options?: Partial<TeamMemberValidationOptions>): ExtendedValidationResult
 ```
 
-Validate team member output with enhanced schema support.
-Respects PI_OUTPUT_SCHEMA_MODE feature flag.
+拡張スキーマ対応でチームメンバー出力を検証
 
 **パラメータ**
 
@@ -204,7 +201,7 @@ interface SubagentValidationOptions {
 }
 ```
 
-Validation options for subagent output.
+サブエージェント出力の検証オプション。
 
 ### TeamMemberValidationOptions
 
@@ -215,7 +212,7 @@ interface TeamMemberValidationOptions {
 }
 ```
 
-Validation options for team member output.
+チームメンバー出力の検証オプション
 
 ### ExtendedValidationResult
 
@@ -233,7 +230,7 @@ interface ExtendedValidationResult {
 }
 ```
 
-Extended validation result with schema information.
+スキーマ情報を含む拡張検証結果
 
 ---
-*自動生成: 2026-02-18T00:15:35.736Z*
+*自動生成: 2026-02-18T06:37:19.927Z*

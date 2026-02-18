@@ -27,24 +27,24 @@ import { getLogger } from '../../lib/comprehensive-logger.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `toId` | Convert string to ID format. |
-| 関数 | `loadStorage` | Load team storage from disk. |
-| 関数 | `saveStorage` | Save team storage to disk. |
-| 関数 | `saveStorageWithPatterns` | Save storage and extract patterns from recent team |
-| インターフェース | `TeamMember` | - |
-| インターフェース | `TeamDefinition` | - |
-| インターフェース | `TeamMemberResult` | - |
-| インターフェース | `TeamFinalJudge` | - |
-| インターフェース | `ClaimReference` | Claim reference structure for tracking cross-membe |
+| 関数 | `toId` | 文字列をID形式に変換する |
+| 関数 | `loadStorage` | ディスクからチームストレージを読み込む |
+| 関数 | `saveStorage` | チームストレージをディスクに保存する。 |
+| 関数 | `saveStorageWithPatterns` | ストレージを保存し、パターンを抽出 |
+| インターフェース | `TeamMember` | チームメンバーの定義情報を表す |
+| インターフェース | `TeamDefinition` | エージェントチームの定義 |
+| インターフェース | `TeamMemberResult` | チームメンバーの実行結果 |
+| インターフェース | `TeamFinalJudge` | チーム最終審査の結果を表します。 |
+| インターフェース | `ClaimReference` | メンバー間のClaim参照構造 |
 | インターフェース | `DiscussionAnalysis` | Discussion analysis structure for structured commu |
-| インターフェース | `DiscussionReference` | Individual discussion reference tracking member-to |
-| インターフェース | `TeamCommunicationAuditEntry` | - |
-| インターフェース | `TeamRunRecord` | - |
-| インターフェース | `TeamStorage` | - |
-| インターフェース | `TeamPaths` | - |
-| 型 | `TeamEnabledState` | - |
-| 型 | `TeamStrategy` | - |
-| 型 | `TeamJudgeVerdict` | - |
+| インターフェース | `DiscussionReference` | メンバー間のスタンス参照を追跡する |
+| インターフェース | `TeamCommunicationAuditEntry` | チーム内通信監査エントリ |
+| インターフェース | `TeamRunRecord` | チーム実行記録を表すインターフェース |
+| インターフェース | `TeamStorage` | チーム定義と実行記録のストレージ |
+| インターフェース | `TeamPaths` | チームストレージのパス定義（BaseStoragePathsを拡張） |
+| 型 | `TeamEnabledState` | チームの有効状態を表す型 |
+| 型 | `TeamStrategy` | チームの実行戦略を表す型 |
+| 型 | `TeamJudgeVerdict` | チーム審査の判定結果 |
 
 ## 図解
 
@@ -188,8 +188,7 @@ sequenceDiagram
 toId(input: string): string
 ```
 
-Convert string to ID format.
-Uses common utility from lib/storage-base.ts.
+文字列をID形式に変換する
 
 **パラメータ**
 
@@ -223,7 +222,7 @@ Uses common utility from lib/storage-base.ts.
 loadStorage(cwd: string): TeamStorage
 ```
 
-Load team storage from disk.
+ディスクからチームストレージを読み込む
 
 **パラメータ**
 
@@ -239,7 +238,7 @@ Load team storage from disk.
 saveStorage(cwd: string, storage: TeamStorage): void
 ```
 
-Save team storage to disk.
+チームストレージをディスクに保存する。
 
 **パラメータ**
 
@@ -256,8 +255,7 @@ Save team storage to disk.
 async saveStorageWithPatterns(cwd: string, storage: TeamStorage): Promise<void>
 ```
 
-Save storage and extract patterns from recent team runs.
-Integrates with ALMA memory system for automatic learning.
+ストレージを保存し、パターンを抽出
 
 **パラメータ**
 
@@ -284,6 +282,8 @@ interface TeamMember {
 }
 ```
 
+チームメンバーの定義情報を表す
+
 ### TeamDefinition
 
 ```typescript
@@ -298,6 +298,8 @@ interface TeamDefinition {
   updatedAt: string;
 }
 ```
+
+エージェントチームの定義
 
 ### TeamMemberResult
 
@@ -319,6 +321,8 @@ interface TeamMemberResult {
 }
 ```
 
+チームメンバーの実行結果
+
 ### TeamFinalJudge
 
 ```typescript
@@ -335,6 +339,8 @@ interface TeamFinalJudge {
 }
 ```
 
+チーム最終審査の結果を表します。
+
 ### ClaimReference
 
 ```typescript
@@ -346,11 +352,7 @@ interface ClaimReference {
 }
 ```
 
-Claim reference structure for tracking cross-member references.
-Used in structured communication mode (PI_COMMUNICATION_ID_MODE="structured").
-
-Phase 2 (P0-2): Added "partial" stance and confidence field.
-Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
+メンバー間のClaim参照構造
 
 ### DiscussionAnalysis
 
@@ -378,8 +380,7 @@ interface DiscussionReference {
 }
 ```
 
-Individual discussion reference tracking member-to-member stances.
-Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
+メンバー間のスタンス参照を追跡する
 
 ### TeamCommunicationAuditEntry
 
@@ -399,6 +400,8 @@ interface TeamCommunicationAuditEntry {
   claimReferences?: ClaimReference[];
 }
 ```
+
+チーム内通信監査エントリ
 
 ### TeamRunRecord
 
@@ -434,6 +437,8 @@ interface TeamRunRecord {
 }
 ```
 
+チーム実行記録を表すインターフェース
+
 ### TeamStorage
 
 ```typescript
@@ -445,12 +450,16 @@ interface TeamStorage {
 }
 ```
 
+チーム定義と実行記録のストレージ
+
 ### TeamPaths
 
 ```typescript
 interface TeamPaths {
 }
 ```
+
+チームストレージのパス定義（BaseStoragePathsを拡張）
 
 ## 型定義
 
@@ -460,11 +469,15 @@ interface TeamPaths {
 type TeamEnabledState = "enabled" | "disabled"
 ```
 
+チームの有効状態を表す型
+
 ### TeamStrategy
 
 ```typescript
 type TeamStrategy = "parallel" | "sequential"
 ```
+
+チームの実行戦略を表す型
 
 ### TeamJudgeVerdict
 
@@ -472,5 +485,7 @@ type TeamStrategy = "parallel" | "sequential"
 type TeamJudgeVerdict = "trusted" | "partial" | "untrusted"
 ```
 
+チーム審査の判定結果
+
 ---
-*自動生成: 2026-02-18T00:15:35.419Z*
+*自動生成: 2026-02-18T06:37:19.523Z*

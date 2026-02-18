@@ -25,21 +25,21 @@ import { minimatch } from 'minimatch';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `extractCodeStructure` | - |
-| インターフェース | `ExtractOptions` | - |
-| インターフェース | `FunctionInfo` | - |
-| インターフェース | `ParameterInfo` | - |
-| インターフェース | `ClassInfo` | - |
-| インターフェース | `MethodInfo` | - |
-| インターフェース | `PropertyInfo` | - |
-| インターフェース | `InterfaceInfo` | - |
-| インターフェース | `InterfacePropertyInfo` | - |
-| インターフェース | `InterfaceMethodInfo` | - |
-| インターフェース | `ImportInfo` | - |
-| インターフェース | `ExportInfo` | - |
-| インターフェース | `FileStructure` | - |
-| インターフェース | `StructureData` | - |
-| インターフェース | `DependencyGraph` | - |
+| 関数 | `extractCodeStructure` | コード構造を抽出する |
+| インターフェース | `ExtractOptions` | 構造抽出オプション |
+| インターフェース | `FunctionInfo` | 関数の構造情報を表すインターフェース |
+| インターフェース | `ParameterInfo` | 関数のパラメータ情報 |
+| インターフェース | `ClassInfo` | クラスの構造情報を表します。 |
+| インターフェース | `MethodInfo` | メソッドの構造情報 |
+| インターフェース | `PropertyInfo` | プロパティの情報を表すインターフェース |
+| インターフェース | `InterfaceInfo` | インターフェースの構造情報 |
+| インターフェース | `InterfacePropertyInfo` | インターフェースプロパティの情報 |
+| インターフェース | `InterfaceMethodInfo` | インターフェースメソッド情報 |
+| インターフェース | `ImportInfo` | インポート情報 |
+| インターフェース | `ExportInfo` | エクスポート情報 |
+| インターフェース | `FileStructure` | ファイル構造を表すインターフェース |
+| インターフェース | `StructureData` | コード構造解析データの全体像 |
+| インターフェース | `DependencyGraph` | 依存関係グラフ |
 
 ## 図解
 
@@ -204,6 +204,8 @@ sequenceDiagram
 ```typescript
 async extractCodeStructure(options: ExtractOptions): Promise<StructureData>
 ```
+
+コード構造を抽出する
 
 **パラメータ**
 
@@ -495,6 +497,8 @@ interface ExtractOptions {
 }
 ```
 
+構造抽出オプション
+
 ### FunctionInfo
 
 ```typescript
@@ -511,6 +515,8 @@ interface FunctionInfo {
 }
 ```
 
+関数の構造情報を表すインターフェース
+
 ### ParameterInfo
 
 ```typescript
@@ -521,6 +527,8 @@ interface ParameterInfo {
   defaultValue?: string;
 }
 ```
+
+関数のパラメータ情報
 
 ### ClassInfo
 
@@ -538,6 +546,8 @@ interface ClassInfo {
 }
 ```
 
+クラスの構造情報を表します。
+
 ### MethodInfo
 
 ```typescript
@@ -553,6 +563,8 @@ interface MethodInfo {
 }
 ```
 
+メソッドの構造情報
+
 ### PropertyInfo
 
 ```typescript
@@ -565,6 +577,8 @@ interface PropertyInfo {
   jsDoc?: string;
 }
 ```
+
+プロパティの情報を表すインターフェース
 
 ### InterfaceInfo
 
@@ -581,6 +595,8 @@ interface InterfaceInfo {
 }
 ```
 
+インターフェースの構造情報
+
 ### InterfacePropertyInfo
 
 ```typescript
@@ -593,6 +609,8 @@ interface InterfacePropertyInfo {
 }
 ```
 
+インターフェースプロパティの情報
+
 ### InterfaceMethodInfo
 
 ```typescript
@@ -603,6 +621,8 @@ interface InterfaceMethodInfo {
   returnType: string;
 }
 ```
+
+インターフェースメソッド情報
 
 ### ImportInfo
 
@@ -617,6 +637,8 @@ interface ImportInfo {
 }
 ```
 
+インポート情報
+
 ### ExportInfo
 
 ```typescript
@@ -628,6 +650,8 @@ interface ExportInfo {
   isDefault: boolean;
 }
 ```
+
+エクスポート情報
 
 ### FileStructure
 
@@ -642,6 +666,8 @@ interface FileStructure {
   exports: ExportInfo[];
 }
 ```
+
+ファイル構造を表すインターフェース
 
 ### StructureData
 
@@ -659,6 +685,8 @@ interface StructureData {
 }
 ```
 
+コード構造解析データの全体像
+
 ### DependencyGraph
 
 ```typescript
@@ -667,6 +695,8 @@ interface DependencyGraph {
   edges: { from: string; to: string; type: 'import' | 'export' }[];
 }
 ```
+
+依存関係グラフ
 
 ### VisitorCallbacks
 
@@ -681,4 +711,4 @@ interface VisitorCallbacks {
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.479Z*
+*自動生成: 2026-02-18T06:37:19.569Z*

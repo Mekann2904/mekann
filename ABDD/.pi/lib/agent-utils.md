@@ -23,8 +23,8 @@ import { randomBytes } from 'node:crypto';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `createRunId` | Creates a unique run ID with timestamp and random  |
-| 関数 | `computeLiveWindow` | Computes a sliding window for live list display. |
+| 関数 | `createRunId` | 一意な実行IDを生成します。 |
+| 関数 | `computeLiveWindow` | ライブリスト表示のスライディングウィンドウを計算 |
 
 ## 図解
 
@@ -60,8 +60,7 @@ sequenceDiagram
 createRunId(): string
 ```
 
-Creates a unique run ID with timestamp and random suffix.
-Format: YYYYMMDD-HHMMSS-xxxxxx (where xxxxxx is 6 hex chars)
+一意な実行IDを生成します。
 
 **戻り値**: `string`
 
@@ -71,8 +70,7 @@ Format: YYYYMMDD-HHMMSS-xxxxxx (where xxxxxx is 6 hex chars)
 computeLiveWindow(cursor: number, total: number, maxRows: number): { start: number; end: number }
 ```
 
-Computes a sliding window for live list display.
-Centers the cursor when possible, adjusts when near boundaries.
+ライブリスト表示のスライディングウィンドウを計算
 
 **パラメータ**
 
@@ -85,4 +83,4 @@ Centers the cursor when possible, adjusts when near boundaries.
 **戻り値**: `{ start: number; end: number }`
 
 ---
-*自動生成: 2026-02-18T00:15:35.650Z*
+*自動生成: 2026-02-18T06:37:19.784Z*

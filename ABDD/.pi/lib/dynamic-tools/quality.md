@@ -17,18 +17,18 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `assessCodeQuality` | コードの品質を評価 |
-| 関数 | `recordExecutionMetrics` | 実行メトリクスを記録 |
-| 関数 | `getUsageStatistics` | 使用統計を取得 |
+| 関数 | `assessCodeQuality` | コードの品質を評価する |
+| 関数 | `recordExecutionMetrics` | 実行メトリクスを記録する |
+| 関数 | `getUsageStatistics` | 指定ツールの使用統計を取得 |
 | 関数 | `getAllUsageStatistics` | 全ツールの使用統計を取得 |
-| 関数 | `resetUsageStatistics` | 使用統計をリセット（テスト用） |
-| 関数 | `recordQualityScore` | 品質スコアをトレンドに追加 |
+| 関数 | `resetUsageStatistics` | 使用統計をリセットする |
+| 関数 | `recordQualityScore` | 指定ツールの品質スコアを記録 |
 | 関数 | `analyzeQualityTrend` | 品質トレンドの傾向を分析 |
 | インターフェース | `QualityAssessment` | 品質評価結果 |
 | インターフェース | `CategoryScores` | カテゴリ別スコア |
-| インターフェース | `QualityIssue` | 品質問題 |
-| インターフェース | `ExecutionMetrics` | 実行メトリクス |
-| インターフェース | `ToolUsageStatistics` | ツール使用統計 |
+| インターフェース | `QualityIssue` | 品質問題を表すインターフェース |
+| インターフェース | `ExecutionMetrics` | 実行メトリクスを表すインターフェース |
+| インターフェース | `ToolUsageStatistics` | ツールの使用統計情報 |
 
 ## 図解
 
@@ -111,7 +111,7 @@ flowchart TD
 assessCodeQuality(code: string): QualityAssessment
 ```
 
-コードの品質を評価
+コードの品質を評価する
 
 **パラメータ**
 
@@ -194,7 +194,7 @@ calculateConfidence(code: string, issueCount: number): number
 recordExecutionMetrics(toolId: string, metrics: ExecutionMetrics): void
 ```
 
-実行メトリクスを記録
+実行メトリクスを記録する
 
 **パラメータ**
 
@@ -211,7 +211,7 @@ recordExecutionMetrics(toolId: string, metrics: ExecutionMetrics): void
 getUsageStatistics(toolId: string): ToolUsageStatistics | undefined
 ```
 
-使用統計を取得
+指定ツールの使用統計を取得
 
 **パラメータ**
 
@@ -237,7 +237,7 @@ getAllUsageStatistics(): ToolUsageStatistics[]
 resetUsageStatistics(): void
 ```
 
-使用統計をリセット（テスト用）
+使用統計をリセットする
 
 **戻り値**: `void`
 
@@ -247,7 +247,7 @@ resetUsageStatistics(): void
 recordQualityScore(toolId: string, score: number): void
 ```
 
-品質スコアをトレンドに追加
+指定ツールの品質スコアを記録
 
 **パラメータ**
 
@@ -328,7 +328,7 @@ interface QualityIssue {
 }
 ```
 
-品質問題
+品質問題を表すインターフェース
 
 ### ExecutionMetrics
 
@@ -344,7 +344,7 @@ interface ExecutionMetrics {
 }
 ```
 
-実行メトリクス
+実行メトリクスを表すインターフェース
 
 ### ToolUsageStatistics
 
@@ -365,7 +365,7 @@ interface ToolUsageStatistics {
 }
 ```
 
-ツール使用統計
+ツールの使用統計情報
 
 ### QualityPattern
 
@@ -383,4 +383,4 @@ interface QualityPattern {
 品質パターンの定義
 
 ---
-*自動生成: 2026-02-18T00:15:35.684Z*
+*自動生成: 2026-02-18T06:37:19.842Z*

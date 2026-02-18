@@ -27,8 +27,8 @@ import { EmbeddingProvider, ProviderCapabilities } from '../types.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getOpenAIKey` | Get OpenAI API key from auth.json or environment v |
-| クラス | `OpenAIEmbeddingProvider` | - |
+| 関数 | `getOpenAIKey` | OpenAI APIキーを取得する |
+| クラス | `OpenAIEmbeddingProvider` | OpenAI埋め込みプロバイダー |
 
 ## 図解
 
@@ -105,16 +105,15 @@ Load auth configuration from auth.json.
 getOpenAIKey(): string | null
 ```
 
-Get OpenAI API key from auth.json or environment variable.
-Resolution order (pi's official method):
-1. auth.json entry
-2. OPENAI_API_KEY environment variable
+OpenAI APIキーを取得する
 
 **戻り値**: `string | null`
 
 ## クラス
 
 ### OpenAIEmbeddingProvider
+
+OpenAI埋め込みプロバイダー
 
 **プロパティ**
 
@@ -161,4 +160,4 @@ interface OpenAIEmbeddingResponse {
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.706Z*
+*自動生成: 2026-02-18T06:37:19.872Z*

@@ -28,26 +28,26 @@ import { TeamMember, TeamMemberResult, TeamDefinition... } from './storage';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildPrecomputedContextMap` | Build a map of precomputed member contexts. |
-| 関数 | `normalizeCommunicationRounds` | Normalize and validate communication rounds parame |
-| 関数 | `normalizeFailedMemberRetryRounds` | Normalize and validate failed member retry rounds  |
-| 関数 | `shouldRetryFailedMemberResult` | Determine if a failed member result should be retr |
-| 関数 | `shouldPreferAnchorMember` | Determine if a member should be preferred as an an |
-| 関数 | `createCommunicationLinksMap` | Create a communication links map for team members. |
-| 関数 | `sanitizeCommunicationSnippet` | Sanitize a communication snippet for safe inclusio |
-| 関数 | `detectPartnerReferencesV2` | Detect partner references with optional structured |
-| 関数 | `extractField` | Extract a named field from structured output text. |
-| 関数 | `buildCommunicationContext` | Build communication context for a team member. |
-| 関数 | `detectPartnerReferences` | Detect which partners are referenced in member out |
+| 関数 | `buildPrecomputedContextMap` | 事前計算済みのメンバーごとのコンテキストを構築します。 |
+| 関数 | `normalizeCommunicationRounds` | 通信ラウンド数を正規化・検証する |
+| 関数 | `normalizeFailedMemberRetryRounds` | メンバーの再試行回数を正規化 |
+| 関数 | `shouldRetryFailedMemberResult` | 失敗したメンバー結果を再試行すべきか判定する |
+| 関数 | `shouldPreferAnchorMember` | メンバーをアンカーとして優先するか判定 |
+| 関数 | `createCommunicationLinksMap` | チームメンバーの通信リンクマップを作成する |
+| 関数 | `sanitizeCommunicationSnippet` | 通信スニペットをサニタイズする |
+| 関数 | `detectPartnerReferencesV2` | パートナーの参照を検出する（V2） |
+| 関数 | `extractField` | 構造化されたテキストから指定フィールドの値を抽出 |
+| 関数 | `buildCommunicationContext` | チームメンバー向けの通信コンテキストを作成する |
+| 関数 | `detectPartnerReferences` | メンバーの出力から参照されるパートナーを検出します。 |
 | 関数 | `checkTermination` | Check if task execution can be safely terminated. |
-| 関数 | `updateBeliefState` | Update belief state for a member based on their ou |
-| 関数 | `getBeliefSummary` | Get belief summary for communication context. |
-| 関数 | `clearBeliefStateCache` | Clear belief state cache (call at start of new tea |
-| インターフェース | `PrecomputedMemberContext` | Precomputed context for a team member to avoid red |
-| インターフェース | `PartnerReferenceResultV2` | Result of detecting partner references with struct |
-| インターフェース | `TerminationCheckResult` | Termination check result. |
-| インターフェース | `AgentBelief` | Belief tracking structure for monitoring agent pos |
-| インターフェース | `BeliefContradiction` | Detected contradiction between agent beliefs. |
+| 関数 | `updateBeliefState` | メンバーの出力に基づき信念状態を更新する |
+| 関数 | `getBeliefSummary` | 指定されたメンバーの信念サマリーを取得する |
+| 関数 | `clearBeliefStateCache` | 新しいチーム実行開始時に信念状態キャッシュをクリア |
+| インターフェース | `PrecomputedMemberContext` | メンバーの事前計算されたコンテキスト |
+| インターフェース | `PartnerReferenceResultV2` | 構造化ID追跡付きのパートナー参照検出結果 |
+| インターフェース | `TerminationCheckResult` | タスク終了チェックの結果を表します。 |
+| インターフェース | `AgentBelief` | エージェントの信念追跡構造 |
+| インターフェース | `BeliefContradiction` | エージェントの信念間で検出された矛盾 |
 
 ## 図解
 
@@ -157,8 +157,7 @@ sequenceDiagram
 buildPrecomputedContextMap(results: TeamMemberResult[]): Map<string, PrecomputedMemberContext>
 ```
 
-Build a map of precomputed member contexts.
-Extracts and sanitizes fields once per round.
+事前計算済みのメンバーごとのコンテキストを構築します。
 
 **パラメータ**
 
@@ -174,8 +173,7 @@ Extracts and sanitizes fields once per round.
 normalizeCommunicationRounds(value: unknown, fallback: any, isStableRuntime: any): number
 ```
 
-Normalize and validate communication rounds parameter.
-In stable runtime profile, always returns DEFAULT_COMMUNICATION_ROUNDS.
+通信ラウンド数を正規化・検証する
 
 **パラメータ**
 
@@ -193,8 +191,7 @@ In stable runtime profile, always returns DEFAULT_COMMUNICATION_ROUNDS.
 normalizeFailedMemberRetryRounds(value: unknown, fallback: any, isStableRuntime: any): number
 ```
 
-Normalize and validate failed member retry rounds parameter.
-In stable runtime profile, always returns DEFAULT_FAILED_MEMBER_RETRY_ROUNDS.
+メンバーの再試行回数を正規化
 
 **パラメータ**
 
@@ -212,9 +209,7 @@ In stable runtime profile, always returns DEFAULT_FAILED_MEMBER_RETRY_ROUNDS.
 shouldRetryFailedMemberResult(result: TeamMemberResult, retryRound: number, classifyPressureError: (error: unknown) => string): boolean
 ```
 
-Determine if a failed member result should be retried.
-Uses unified failure classification from agent-errors.ts.
-Rate-limit and capacity errors are excluded (handled by backoff in runMember).
+失敗したメンバー結果を再試行すべきか判定する
 
 **パラメータ**
 
@@ -232,8 +227,7 @@ Rate-limit and capacity errors are excluded (handled by backoff in runMember).
 shouldPreferAnchorMember(member: TeamMember): boolean
 ```
 
-Determine if a member should be preferred as an anchor in communication.
-Anchors are members with consensus, synthesizer, reviewer, lead, or judge roles.
+メンバーをアンカーとして優先するか判定
 
 **パラメータ**
 
@@ -249,11 +243,7 @@ Anchors are members with consensus, synthesizer, reviewer, lead, or judge roles.
 createCommunicationLinksMap(members: TeamMember[]): Map<string, string[]>
 ```
 
-Create a communication links map for team members.
-Each member gets a list of partners they should communicate with.
-Links are created based on:
-1. Adjacent members in the team (circular)
-2. Anchor members (consensus, synthesizer, reviewer, lead, judge)
+チームメンバーの通信リンクマップを作成する
 
 **パラメータ**
 
@@ -284,8 +274,7 @@ addLink(fromId: string, toId: string): void
 sanitizeCommunicationSnippet(value: string, fallback: string): string
 ```
 
-Sanitize a communication snippet for safe inclusion in prompts.
-Removes instruction-like text that could be exploited.
+通信スニペットをサニタイズする
 
 **パラメータ**
 
@@ -302,8 +291,7 @@ Removes instruction-like text that could be exploited.
 detectPartnerReferencesV2(output: string, partnerIds: string[], memberById: Map<string, TeamMember>, mode: CommunicationIdMode): PartnerReferenceResultV2
 ```
 
-Detect partner references with optional structured ID tracking (V2).
-Falls back to string matching for backward compatibility.
+パートナーの参照を検出する（V2）
 
 **パラメータ**
 
@@ -322,8 +310,7 @@ Falls back to string matching for backward compatibility.
 extractField(output: string, name: string): string | undefined
 ```
 
-Extract a named field from structured output text.
-Looks for patterns like "FIELD_NAME: value" at the start of lines.
+構造化されたテキストから指定フィールドの値を抽出
 
 **パラメータ**
 
@@ -346,8 +333,7 @@ buildCommunicationContext(input: {
 }): string
 ```
 
-Build communication context for a team member.
-Includes partner summaries, claims, and communication instructions.
+チームメンバー向けの通信コンテキストを作成する
 
 **パラメータ**
 
@@ -369,8 +355,7 @@ Includes partner summaries, claims, and communication instructions.
 detectPartnerReferences(output: string, partnerIds: string[], memberById: Map<string, TeamMember>): { referencedPartners: string[]; missingPartners: string[] }
 ```
 
-Detect which partners are referenced in member output.
-Checks for partner ID or role name mentions.
+メンバーの出力から参照されるパートナーを検出します。
 
 **パラメータ**
 
@@ -407,7 +392,7 @@ Based on arXiv:2602.06176 recommendations for completion verification.
 updateBeliefState(memberId: string, output: string, round: number): AgentBelief[]
 ```
 
-Update belief state for a member based on their output.
+メンバーの出力に基づき信念状態を更新する
 
 **パラメータ**
 
@@ -425,7 +410,7 @@ Update belief state for a member based on their output.
 getBeliefSummary(memberIds: string[]): string
 ```
 
-Get belief summary for communication context.
+指定されたメンバーの信念サマリーを取得する
 
 **パラメータ**
 
@@ -441,7 +426,7 @@ Get belief summary for communication context.
 clearBeliefStateCache(): void
 ```
 
-Clear belief state cache (call at start of new team execution).
+新しいチーム実行開始時に信念状態キャッシュをクリア
 
 **戻り値**: `void`
 
@@ -459,7 +444,7 @@ interface PrecomputedMemberContext {
 }
 ```
 
-Precomputed context for a team member to avoid redundant parsing.
+メンバーの事前計算されたコンテキスト
 
 ### PartnerReferenceResultV2
 
@@ -472,7 +457,7 @@ interface PartnerReferenceResultV2 {
 }
 ```
 
-Result of detecting partner references with structured ID tracking.
+構造化ID追跡付きのパートナー参照検出結果
 
 ### TerminationCheckResult
 
@@ -486,9 +471,7 @@ interface TerminationCheckResult {
 }
 ```
 
-Termination check result.
-Verifies that the task has been completed before ending execution.
-Based on arXiv:2602.06176 recommendations for completion verification.
+タスク終了チェックの結果を表します。
 
 ### AgentBelief
 
@@ -504,8 +487,7 @@ interface AgentBelief {
 }
 ```
 
-Belief tracking structure for monitoring agent positions across rounds.
-Based on arXiv:2602.06176 recommendations for multi-agent robustness.
+エージェントの信念追跡構造
 
 ### BeliefContradiction
 
@@ -519,7 +501,7 @@ interface BeliefContradiction {
 }
 ```
 
-Detected contradiction between agent beliefs.
+エージェントの信念間で検出された矛盾
 
 ---
-*自動生成: 2026-02-18T00:15:35.380Z*
+*自動生成: 2026-02-18T06:37:19.480Z*

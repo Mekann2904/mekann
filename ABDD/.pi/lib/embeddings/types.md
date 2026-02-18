@@ -17,13 +17,13 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `ProviderCapabilities` | エンベディングプロバイダーの能力 |
+| インターフェース | `ProviderCapabilities` | エンベディングプロバイダーの能力定義 |
 | インターフェース | `EmbeddingProvider` | エンベディングプロバイダーインターフェース |
-| インターフェース | `ProviderConfig` | プロバイダー設定 |
+| インターフェース | `ProviderConfig` | プロバイダー設定を定義します。 |
 | インターフェース | `EmbeddingModuleConfig` | エンベディングモジュール設定 |
 | インターフェース | `EmbeddingResult` | エンベディング生成結果 |
-| インターフェース | `ProviderStatus` | プロバイダー状態 |
-| インターフェース | `VectorSearchResult` | ベクトル検索結果 |
+| インターフェース | `ProviderStatus` | プロバイダーの状態 |
+| インターフェース | `VectorSearchResult` | ベクトル検索結果の型定義 |
 
 ## 図解
 
@@ -95,7 +95,7 @@ interface ProviderCapabilities {
 }
 ```
 
-エンベディングプロバイダーの能力
+エンベディングプロバイダーの能力定義
 
 ### EmbeddingProvider
 
@@ -124,7 +124,7 @@ interface ProviderConfig {
 }
 ```
 
-プロバイダー設定
+プロバイダー設定を定義します。
 
 ### EmbeddingModuleConfig
 
@@ -166,7 +166,7 @@ interface ProviderStatus {
 }
 ```
 
-プロバイダー状態
+プロバイダーの状態
 
 ### VectorSearchResult
 
@@ -177,7 +177,7 @@ interface VectorSearchResult {
 }
 ```
 
-ベクトル検索結果
+ベクトル検索結果の型定義
 
 ---
-*自動生成: 2026-02-18T00:15:35.711Z*
+*自動生成: 2026-02-18T06:37:19.879Z*

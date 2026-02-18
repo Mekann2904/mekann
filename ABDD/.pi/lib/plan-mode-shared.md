@@ -25,12 +25,12 @@ import { join } from 'node:path';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `isBashCommandAllowed` | Check if a bash command is allowed in plan mode. |
-| 関数 | `isPlanModeActive` | Check if plan mode is active. |
-| 関数 | `calculateChecksum` | Calculate checksum for plan mode state validation. |
-| 関数 | `validatePlanModeState` | Validate plan mode state checksum. |
-| 関数 | `createPlanModeState` | Create a new plan mode state with checksum. |
-| インターフェース | `PlanModeState` | - |
+| 関数 | `isBashCommandAllowed` | Bashコマンドが許可されているか判定 |
+| 関数 | `isPlanModeActive` | プランモードが有効か判定する |
+| 関数 | `calculateChecksum` | プランモード状態のチェックサムを計算する |
+| 関数 | `validatePlanModeState` | プランモードの状態チェックサムを検証する |
+| 関数 | `createPlanModeState` | チェックサム付きのプランモード状態を作成する |
+| インターフェース | `PlanModeState` | プランモードの状態を表すインターフェース |
 
 ## 図解
 
@@ -84,15 +84,7 @@ sequenceDiagram
 isBashCommandAllowed(command: string): boolean
 ```
 
-Check if a bash command is allowed in plan mode.
-
-This function implements a multi-layered check to prevent write operations:
-1. Check for output redirections (> >> 2> &>)
-2. Check for pipelines with write commands
-3. Check for subshells and command substitution
-4. Check for explicit shell invocation (bash -c, sh -c)
-5. Check first word against write command list
-6. Verify first word is in read-only allowlist
+Bashコマンドが許可されているか判定
 
 **パラメータ**
 
@@ -108,11 +100,7 @@ This function implements a multi-layered check to prevent write operations:
 isPlanModeActive(): boolean
 ```
 
-Check if plan mode is active.
-
-Requires both:
-1) PI_PLAN_MODE="1" environment flag
-2) A valid persisted state file with enabled=true
+プランモードが有効か判定する
 
 **戻り値**: `boolean`
 
@@ -122,7 +110,7 @@ Requires both:
 calculateChecksum(state: Omit<PlanModeState, 'checksum'>): string
 ```
 
-Calculate checksum for plan mode state validation.
+プランモード状態のチェックサムを計算する
 
 **パラメータ**
 
@@ -138,7 +126,7 @@ Calculate checksum for plan mode state validation.
 validatePlanModeState(state: PlanModeState): boolean
 ```
 
-Validate plan mode state checksum.
+プランモードの状態チェックサムを検証する
 
 **パラメータ**
 
@@ -154,7 +142,7 @@ Validate plan mode state checksum.
 createPlanModeState(enabled: boolean): PlanModeState
 ```
 
-Create a new plan mode state with checksum.
+チェックサム付きのプランモード状態を作成する
 
 **パラメータ**
 
@@ -176,5 +164,7 @@ interface PlanModeState {
 }
 ```
 
+プランモードの状態を表すインターフェース
+
 ---
-*自動生成: 2026-02-18T00:15:35.740Z*
+*自動生成: 2026-02-18T06:37:19.978Z*

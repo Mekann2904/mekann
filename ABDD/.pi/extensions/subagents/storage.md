@@ -27,15 +27,15 @@ import { getLogger } from '../../lib/comprehensive-logger.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `createDefaultAgents` | Create default subagent definitions. |
-| 関数 | `loadStorage` | Load subagent storage from disk. |
-| 関数 | `saveStorage` | Save subagent storage to disk. |
-| 関数 | `saveStorageWithPatterns` | Save storage and extract patterns from recent runs |
-| インターフェース | `SubagentDefinition` | - |
-| インターフェース | `SubagentRunRecord` | - |
-| インターフェース | `SubagentStorage` | - |
-| インターフェース | `SubagentPaths` | - |
-| 型 | `AgentEnabledState` | - |
+| 関数 | `createDefaultAgents` | デフォルトのサブエージェント定義を作成する |
+| 関数 | `loadStorage` | ディスクからサブエージェントのストレージを読み込む |
+| 関数 | `saveStorage` | サブエージェントのストレージをディスクに保存する |
+| 関数 | `saveStorageWithPatterns` | ストレージを保存し、実行パターンを抽出する |
+| インターフェース | `SubagentDefinition` | サブエージェントの定義情報を表すインターフェース |
+| インターフェース | `SubagentRunRecord` | サブエージェントの実行記録を表す |
+| インターフェース | `SubagentStorage` | サブエージェントのストレージ構造 |
+| インターフェース | `SubagentPaths` | サブエージェントのストレージパスを表すインターフェース |
+| 型 | `AgentEnabledState` | エージェントの有効/無効状態を表す |
 
 ## 図解
 
@@ -126,7 +126,7 @@ sequenceDiagram
 createDefaultAgents(nowIso: string): SubagentDefinition[]
 ```
 
-Create default subagent definitions.
+デフォルトのサブエージェント定義を作成する
 
 **パラメータ**
 
@@ -196,7 +196,7 @@ Uses common utility from lib/storage-base.ts.
 loadStorage(cwd: string): SubagentStorage
 ```
 
-Load subagent storage from disk.
+ディスクからサブエージェントのストレージを読み込む
 
 **パラメータ**
 
@@ -212,7 +212,7 @@ Load subagent storage from disk.
 saveStorage(cwd: string, storage: SubagentStorage): void
 ```
 
-Save subagent storage to disk.
+サブエージェントのストレージをディスクに保存する
 
 **パラメータ**
 
@@ -229,8 +229,7 @@ Save subagent storage to disk.
 async saveStorageWithPatterns(cwd: string, storage: SubagentStorage): Promise<void>
 ```
 
-Save storage and extract patterns from recent runs.
-Integrates with ALMA memory system for automatic learning.
+ストレージを保存し、実行パターンを抽出する
 
 **パラメータ**
 
@@ -260,6 +259,8 @@ interface SubagentDefinition {
 }
 ```
 
+サブエージェントの定義情報を表すインターフェース
+
 ### SubagentRunRecord
 
 ```typescript
@@ -279,6 +280,8 @@ interface SubagentRunRecord {
 }
 ```
 
+サブエージェントの実行記録を表す
+
 ### SubagentStorage
 
 ```typescript
@@ -290,12 +293,16 @@ interface SubagentStorage {
 }
 ```
 
+サブエージェントのストレージ構造
+
 ### SubagentPaths
 
 ```typescript
 interface SubagentPaths {
 }
 ```
+
+サブエージェントのストレージパスを表すインターフェース
 
 ## 型定義
 
@@ -305,5 +312,7 @@ interface SubagentPaths {
 type AgentEnabledState = "enabled" | "disabled"
 ```
 
+エージェントの有効/無効状態を表す
+
 ---
-*自動生成: 2026-02-18T00:15:35.617Z*
+*自動生成: 2026-02-18T06:37:19.749Z*

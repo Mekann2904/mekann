@@ -24,18 +24,18 @@ import { join } from 'node:path';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getRateLimitGateSnapshot` | - |
-| 関数 | `resolveRetryWithBackoffConfig` | - |
-| 関数 | `extractRetryStatusCode` | - |
-| 関数 | `isRetryableError` | - |
+| 関数 | `getRateLimitGateSnapshot` | 指定キーのレートリミット情報を取得する |
+| 関数 | `resolveRetryWithBackoffConfig` | バックオフ設定を解決する |
+| 関数 | `extractRetryStatusCode` | エラーからステータスコードを抽出 |
+| 関数 | `isRetryableError` | エラーがリトライ可能か判定する |
 | 関数 | `computeBackoffDelayMs` | - |
-| 関数 | `retryWithBackoff` | - |
-| インターフェース | `RetryWithBackoffConfig` | - |
-| インターフェース | `RetryAttemptContext` | - |
-| インターフェース | `RateLimitGateSnapshot` | - |
-| インターフェース | `RateLimitWaitContext` | - |
-| 型 | `RetryJitterMode` | - |
-| 型 | `RetryWithBackoffOverrides` | - |
+| 関数 | `retryWithBackoff` | 指数バックオフでオペレーションをリトライする |
+| インターフェース | `RetryWithBackoffConfig` | 指数バックオフとジッターを伴うリトライ設定 |
+| インターフェース | `RetryAttemptContext` | リトライ時のコンテキスト情報 |
+| インターフェース | `RateLimitGateSnapshot` | レート制限のスナップショット |
+| インターフェース | `RateLimitWaitContext` | レート制限待機コンテキスト |
+| 型 | `RetryJitterMode` | リトライ時のジッターモード |
+| 型 | `RetryWithBackoffOverrides` | RetryWithBackoffConfigの部分的オーバーライド設定 |
 
 ## 図解
 
@@ -285,6 +285,8 @@ pruneRateLimitState(nowMs: any): void
 getRateLimitGateSnapshot(key: string | undefined): RateLimitGateSnapshot
 ```
 
+指定キーのレートリミット情報を取得する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -328,6 +330,8 @@ registerRateLimitGateSuccess(key: string | undefined): void
 resolveRetryWithBackoffConfig(cwd?: string, overrides?: RetryWithBackoffOverrides): RetryWithBackoffConfig
 ```
 
+バックオフ設定を解決する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -343,6 +347,8 @@ resolveRetryWithBackoffConfig(cwd?: string, overrides?: RetryWithBackoffOverride
 extractRetryStatusCode(error: unknown): number | undefined
 ```
 
+エラーからステータスコードを抽出
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -356,6 +362,8 @@ extractRetryStatusCode(error: unknown): number | undefined
 ```typescript
 isRetryableError(error: unknown, statusCode?: number): boolean
 ```
+
+エラーがリトライ可能か判定する
 
 **パラメータ**
 
@@ -486,6 +494,8 @@ cleanup(): void
 async retryWithBackoff(operation: () => Promise<T>, options: RetryWithBackoffOptions): Promise<T>
 ```
 
+指数バックオフでオペレーションをリトライする
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -509,6 +519,8 @@ interface RetryWithBackoffConfig {
 }
 ```
 
+指数バックオフとジッターを伴うリトライ設定
+
 ### RetryAttemptContext
 
 ```typescript
@@ -520,6 +532,8 @@ interface RetryAttemptContext {
   error: unknown;
 }
 ```
+
+リトライ時のコンテキスト情報
 
 ### RetryWithBackoffOptions
 
@@ -566,6 +580,8 @@ interface RateLimitGateSnapshot {
 }
 ```
 
+レート制限のスナップショット
+
 ### RateLimitWaitContext
 
 ```typescript
@@ -577,6 +593,8 @@ interface RateLimitWaitContext {
 }
 ```
 
+レート制限待機コンテキスト
+
 ## 型定義
 
 ### RetryJitterMode
@@ -585,11 +603,15 @@ interface RateLimitWaitContext {
 type RetryJitterMode = "full" | "partial" | "none"
 ```
 
+リトライ時のジッターモード
+
 ### RetryWithBackoffOverrides
 
 ```typescript
 type RetryWithBackoffOverrides = Partial<RetryWithBackoffConfig>
 ```
 
+RetryWithBackoffConfigの部分的オーバーライド設定
+
 ---
-*自動生成: 2026-02-18T00:15:35.748Z*
+*自動生成: 2026-02-18T06:37:19.992Z*

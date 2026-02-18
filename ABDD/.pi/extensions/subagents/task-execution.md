@@ -28,18 +28,18 @@ import { createRunId } from '../../lib/agent-utils.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `normalizeSubagentOutput` | Normalize subagent output to required format. |
-| 関数 | `isRetryableSubagentError` | - |
-| 関数 | `isEmptyOutputFailureMessage` | - |
-| 関数 | `buildFailureSummary` | - |
-| 関数 | `resolveSubagentFailureOutcome` | - |
-| 関数 | `mergeSkillArrays` | Merge skill arrays following inheritance rules. |
-| 関数 | `resolveEffectiveSkills` | Resolve effective skills for a subagent. |
-| 関数 | `formatSkillsSection` | Format skill list for prompt inclusion. |
-| 関数 | `buildSubagentPrompt` | - |
-| 関数 | `runSubagentTask` | - |
-| 関数 | `extractSummary` | - |
-| インターフェース | `SubagentExecutionResult` | - |
+| 関数 | `normalizeSubagentOutput` | サブエージェントの出力を正規化する。 |
+| 関数 | `isRetryableSubagentError` | サブエージェントのエラーが再試行可能か判定する |
+| 関数 | `isEmptyOutputFailureMessage` | 空の出力失敗メッセージか判定 |
+| 関数 | `buildFailureSummary` | 失敗の要約を構築する |
+| 関数 | `resolveSubagentFailureOutcome` | サブエージェントの失敗結果を解決する |
+| 関数 | `mergeSkillArrays` | スキル配列を継承ルールに従ってマージする |
+| 関数 | `resolveEffectiveSkills` | サブエージェントの実効スキルを解決する |
+| 関数 | `formatSkillsSection` | スキル一覧をプロンプト用に整形 |
+| 関数 | `buildSubagentPrompt` | サブエージェント用のプロンプトを構築する |
+| 関数 | `runSubagentTask` | サブエージェントタスクを実行する |
+| 関数 | `extractSummary` | 出力文字列から要約を抽出する |
+| インターフェース | `SubagentExecutionResult` | サブエージェントの実行結果を表します。 |
 
 ## 図解
 
@@ -134,12 +134,7 @@ Note: Kept locally because the summary format is subagent-specific.
 normalizeSubagentOutput(output: string): SubagentExecutionResult
 ```
 
-Normalize subagent output to required format.
-Note: Kept locally (not in lib) because:
-- Uses subagent-specific SUMMARY/RESULT/NEXT_STEP format
-- Has subagent-specific fallback messages (Japanese)
-- Uses pickSubagentSummaryCandidate which is subagent-specific
-Team member output has different requirements (CLAIM/EVIDENCE/CONFIDENCE).
+サブエージェントの出力を正規化する。
 
 **パラメータ**
 
@@ -154,6 +149,8 @@ Team member output has different requirements (CLAIM/EVIDENCE/CONFIDENCE).
 ```typescript
 isRetryableSubagentError(error: unknown, statusCode?: number): boolean
 ```
+
+サブエージェントのエラーが再試行可能か判定する
 
 **パラメータ**
 
@@ -170,6 +167,8 @@ isRetryableSubagentError(error: unknown, statusCode?: number): boolean
 isEmptyOutputFailureMessage(message: string): boolean
 ```
 
+空の出力失敗メッセージか判定
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -183,6 +182,8 @@ isEmptyOutputFailureMessage(message: string): boolean
 ```typescript
 buildFailureSummary(message: string): string
 ```
+
+失敗の要約を構築する
 
 **パラメータ**
 
@@ -198,6 +199,8 @@ buildFailureSummary(message: string): string
 resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal
 ```
 
+サブエージェントの失敗結果を解決する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -212,9 +215,7 @@ resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal
 mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined
 ```
 
-Merge skill arrays following inheritance rules.
-- Empty array [] is treated as unspecified (ignored)
-- Non-empty arrays are merged with deduplication
+スキル配列を継承ルールに従ってマージする
 
 **パラメータ**
 
@@ -231,8 +232,7 @@ Merge skill arrays following inheritance rules.
 resolveEffectiveSkills(agent: SubagentDefinition, parentSkills?: string[]): string[] | undefined
 ```
 
-Resolve effective skills for a subagent.
-Inheritance: parentSkills (if any) -> agent.skills
+サブエージェントの実効スキルを解決する
 
 **パラメータ**
 
@@ -249,7 +249,7 @@ Inheritance: parentSkills (if any) -> agent.skills
 formatSkillsSection(skills: string[] | undefined): string | null
 ```
 
-Format skill list for prompt inclusion.
+スキル一覧をプロンプト用に整形
 
 **パラメータ**
 
@@ -270,6 +270,8 @@ buildSubagentPrompt(input: {
   parentSkills?: string[];
 }): string
 ```
+
+サブエージェント用のプロンプトを構築する
 
 **パラメータ**
 
@@ -336,6 +338,8 @@ async runSubagentTask(input: {
 }): Promise<{ runRecord: SubagentRunRecord; output: string; prompt: string }>
 ```
 
+サブエージェントタスクを実行する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -379,6 +383,8 @@ emitStderrChunk(chunk: string): void
 extractSummary(output: string): string
 ```
 
+出力文字列から要約を抽出する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -400,5 +406,7 @@ interface SubagentExecutionResult {
 }
 ```
 
+サブエージェントの実行結果を表します。
+
 ---
-*自動生成: 2026-02-18T00:15:35.620Z*
+*自動生成: 2026-02-18T06:37:19.753Z*

@@ -24,8 +24,8 @@ import { openAIEmbeddingProvider } from './providers/openai.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `initializeEmbeddingModule` | Initialize the embedding module with default provi |
-| 関数 | `initializeEmbeddingModuleSync` | Synchronous initialization for non-async contexts. |
+| 関数 | `initializeEmbeddingModule` | デフォルトプロバイダで埋め込みモジュールを初期化 |
+| 関数 | `initializeEmbeddingModuleSync` | 非同期コンテキスト用の同期初期化 |
 
 ## 図解
 
@@ -82,8 +82,7 @@ sequenceDiagram
 async initializeEmbeddingModule(): Promise<void>
 ```
 
-Initialize the embedding module with default providers.
-Registers OpenAI provider.
+デフォルトプロバイダで埋め込みモジュールを初期化
 
 **戻り値**: `Promise<void>`
 
@@ -93,9 +92,9 @@ Registers OpenAI provider.
 initializeEmbeddingModuleSync(): void
 ```
 
-Synchronous initialization for non-async contexts.
+非同期コンテキスト用の同期初期化
 
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T00:15:35.704Z*
+*自動生成: 2026-02-18T06:37:19.870Z*

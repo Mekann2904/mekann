@@ -15,15 +15,23 @@
  *   --limit N       処理する要素数の上限（デフォルト: 50）
  *   --file PATH     特定ファイルのみ処理
  *   --regenerate    既存のJSDocも含めて再生成（--all も可）
+ *   --batch-size N  バッチ処理の要素数（デフォルト: 5、0で無効）
+ *   --force         キャッシュを無視して強制再生成
+ *   --metrics       品質メトリクスをJSON出力
+ *   --no-cache      キャッシュを使用しない
  *
  * LLM設定:
  *   pi SDKのAuthStorageとstreamSimpleを使用して、
  *   piの設定から自動的にプロバイダー、モデル、APIキーを取得する。
+ *
+ * 環境変数:
+ *   JSDOC_MAX_PARALLEL  並列数の上書き（デフォルト: 10）
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync, rmSync } from 'fs';
 import { homedir } from 'os';
 import { join, relative, dirname } from 'path';
+import { createHash } from 'crypto';
 import * as ts from 'typescript';
 import { fileURLToPath } from 'url';
 import { streamSimple, getModel, type Context } from '@mariozechner/pi-ai';
@@ -39,6 +47,23 @@ import { getConcurrencyLimit } from '../.pi/lib/provider-limits';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// ============================================================================
+// 定数定義
+// ============================================================================
+
+/** キャッシュディレクトリ */
+const CACHE_DIR = join(homedir(), '.pi', 'cache', 'jsdoc');
+/** デフォルトバッチサイズ */
+const DEFAULT_BATCH_SIZE = 5;
+/** デフォルト並列数 */
+const DEFAULT_PARALLEL_LIMIT = 10;
+/** バッチ区切り文字（LLM出力パース用） */
+const BATCH_DELIMITER = '===JSDOC_ELEMENT_SEPARATOR===';
+/** 並列度の最小値 */
+const MIN_PARALLEL_LIMIT = 1;
+/** 並列度の最大値 */
+const MAX_PARALLEL_LIMIT = 20;
 
 // ============================================================================
 // Types
@@ -63,6 +88,7 @@ interface GenerationResult {
   element: ElementInfo;
   jsDoc: string | null;
   errorMessage?: string;
+  fromCache?: boolean;
 }
 
 interface Options {
@@ -73,6 +99,80 @@ interface Options {
   file?: string;
   /** 既存のJSDocも再生成する */
   regenerate: boolean;
+  /** バッチ処理の要素数（0で無効） */
+  batchSize: number;
+  /** キャッシュを無視して強制再生成 */
+  force: boolean;
+  /** キャッシュを使用しない */
+  noCache: boolean;
+  /** 品質メトリクスを出力 */
+  metrics: boolean;
+}
+
+// ============================================================================
+// 品質メトリクス型定義
+// ============================================================================
+
+interface QualityMetrics {
+  /** 処理されたファイル数 */
+  filesProcessed: number;
+  /** 処理された要素数 */
+  elementsProcessed: number;
+  /** 成功した要素数 */
+  elementsSucceeded: number;
+  /** キャッシュヒット数 */
+  cacheHits: number;
+  /** バッチ処理数 */
+  batchCalls: number;
+  /** 個別処理数（バッチフォールバック含む） */
+  individualCalls: number;
+  /** 平均JSDoc品質スコア（0-100） */
+  averageQualityScore: number;
+  /** @paramカバレッジ（%） */
+  paramCoverage: number;
+  /** @returnsカバレッジ（%） */
+  returnsCoverage: number;
+  /** 処理時間（ミリ秒） */
+  processingTimeMs: number;
+  /** エラー数 */
+  errorCount: number;
+}
+
+interface ElementQualityScore {
+  elementName: string;
+  elementType: string;
+  /** 品質スコア（0-100） */
+  score: number;
+  /** @paramの数 */
+  paramCount: number;
+  /** 期待される@param数 */
+  expectedParamCount: number;
+  /** @returnsの有無 */
+  hasReturns: boolean;
+  /** @returnsが期待されるか */
+  expectsReturns: boolean;
+}
+
+// ============================================================================
+// キャッシュ型定義
+// ============================================================================
+
+interface CacheEntry {
+  /** 要素の一意識別子 */
+  elementKey: string;
+  /** 生成されたJSDoc */
+  jsDoc: string;
+  /** ファイルハッシュ */
+  fileHash: string;
+  /** キャッシュ作成日時 */
+  createdAt: number;
+  /** モデルID */
+  modelId: string;
+}
+
+interface BatchResult {
+  results: Map<string, string | null>;
+  failedElements: string[];
 }
 
 // ============================================================================
@@ -226,10 +326,60 @@ async function main() {
   }
 }
 
+/**
+ * JSDoc生成の並列数を決定する
+ * 優先順位: 環境変数 > モデル設定 > デフォルト値
+ *
+ * @param model 使用するモデル
+ * @param taskCount タスク数
+ * @returns 並列数
+ */
 function resolveJSDocParallelLimit(model: Model, taskCount: number): number {
-  // 最大3並列で実行（モデルの制限を考慮）
-  const modelParallelLimit = model.maxParallelGenerations || 3;
-  return Math.min(modelParallelLimit, 3);
+  // 環境変数で上書き（最優先）
+  const envLimit = process.env.JSDOC_MAX_PARALLEL;
+  if (envLimit) {
+    const parsed = parseInt(envLimit, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      return Math.min(Math.max(parsed, MIN_PARALLEL_LIMIT), MAX_PARALLEL_LIMIT);
+    }
+  }
+
+  // モデルの設定値を取得
+  const modelParallelLimit = model.maxParallelGenerations || DEFAULT_PARALLEL_LIMIT;
+
+  // タスク数と上限を考慮
+  return Math.min(
+    Math.max(modelParallelLimit, DEFAULT_PARALLEL_LIMIT),
+    taskCount,
+    MAX_PARALLEL_LIMIT
+  );
+}
+
+/** 現在の並列数（429エラー時に動的調整用） */
+let currentParallelLimit: number | null = null;
+
+/**
+ * 現在の並列数を取得（429エラー時の動的調整を反映）
+ */
+function getCurrentParallelLimit(): number {
+  return currentParallelLimit ?? DEFAULT_PARALLEL_LIMIT;
+}
+
+/**
+ * 429エラー時に並列数を低下させる
+ */
+function reduceParallelLimit(): void {
+  const current = getCurrentParallelLimit();
+  const reduced = Math.max(MIN_PARALLEL_LIMIT, Math.floor(current / 2));
+  currentParallelLimit = reduced;
+  console.log(`    並列数を ${current} -> ${reduced} に低下しました`);
+}
+
+/**
+ * 並列数をリセット
+ */
+function resetParallelLimit(): void {
+  currentParallelLimit = null;
 }
 
 function isLikelyRateLimitError(message: string): boolean {
@@ -248,6 +398,10 @@ function parseArgs(args: string[]): Options {
     limit: 50,
     file: undefined,
     regenerate: false,
+    batchSize: DEFAULT_BATCH_SIZE,
+    force: false,
+    noCache: false,
+    metrics: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -272,10 +426,149 @@ function parseArgs(args: string[]): Options {
       case '--all':
         options.regenerate = true;
         break;
+      case '--batch-size':
+        options.batchSize = parseInt(args[++i], 10);
+        if (isNaN(options.batchSize)) options.batchSize = DEFAULT_BATCH_SIZE;
+        break;
+      case '--force':
+        options.force = true;
+        break;
+      case '--no-cache':
+        options.noCache = true;
+        break;
+      case '--metrics':
+        options.metrics = true;
+        break;
     }
   }
 
   return options;
+}
+
+// ============================================================================
+// Cache Management
+// ============================================================================
+
+/**
+ * キャッシュディレクトリを初期化する
+ */
+function initCacheDir(): void {
+  if (!existsSync(CACHE_DIR)) {
+    mkdirSync(CACHE_DIR, { recursive: true });
+  }
+}
+
+/**
+ * ファイル内容のSHA256ハッシュを計算する
+ */
+function calculateFileHash(filePath: string): string {
+  const content = readFileSync(filePath, 'utf-8');
+  return createHash('sha256').update(content).digest('hex');
+}
+
+/**
+ * 要素の一意キーを生成する
+ */
+function generateElementKey(element: ElementInfo): string {
+  // ファイルパス + 行番号 + 名前 で一意識別
+  const key = `${element.filePath}:${element.line}:${element.name}`;
+  return createHash('sha256').update(key).digest('hex').substring(0, 16);
+}
+
+/**
+ * キャッシュファイルのパスを取得する
+ */
+function getCachePath(elementKey: string): string {
+  return join(CACHE_DIR, `${elementKey}.json`);
+}
+
+/**
+ * キャッシュからエントリを読み込む
+ */
+function loadCacheEntry(elementKey: string): CacheEntry | null {
+  const cachePath = getCachePath(elementKey);
+  if (!existsSync(cachePath)) {
+    return null;
+  }
+
+  try {
+    const content = readFileSync(cachePath, 'utf-8');
+    return JSON.parse(content) as CacheEntry;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * キャッシュにエントリを保存する
+ */
+function saveCacheEntry(entry: CacheEntry): void {
+  initCacheDir();
+  const cachePath = getCachePath(entry.elementKey);
+  writeFileSync(cachePath, JSON.stringify(entry, null, 2), 'utf-8');
+}
+
+/**
+ * キャッシュ全体をクリアする
+ */
+function clearCache(): void {
+  if (existsSync(CACHE_DIR)) {
+    rmSync(CACHE_DIR, { recursive: true, force: true });
+  }
+}
+
+/**
+ * 要素のキャッシュをチェックし、有効ならJSDocを返す
+ */
+function checkCache(
+  element: ElementInfo,
+  modelId: string,
+  force: boolean,
+  noCache: boolean
+): string | null {
+  if (noCache || force) {
+    return null;
+  }
+
+  const elementKey = generateElementKey(element);
+  const entry = loadCacheEntry(elementKey);
+
+  if (!entry) {
+    return null;
+  }
+
+  // モデルが異なる場合は無効
+  if (entry.modelId !== modelId) {
+    return null;
+  }
+
+  // ファイルハッシュが異なる場合は無効
+  const currentHash = calculateFileHash(element.filePath);
+  if (entry.fileHash !== currentHash) {
+    return null;
+  }
+
+  return entry.jsDoc;
+}
+
+/**
+ * 要素のJSDocをキャッシュに保存する
+ */
+function cacheJsDoc(
+  element: ElementInfo,
+  jsDoc: string,
+  modelId: string
+): void {
+  const elementKey = generateElementKey(element);
+  const fileHash = calculateFileHash(element.filePath);
+
+  saveCacheEntry({
+    elementKey,
+    jsDoc,
+    fileHash,
+    createdAt: Date.now(),
+    modelId,
+  });
 }
 
 // ============================================================================

@@ -24,10 +24,10 @@ import { MermaidDiagrams } from './generate-diagrams.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `generateDocSections` | - |
-| インターフェース | `DocOptions` | - |
-| インターフェース | `DocSections` | - |
-| インターフェース | `LLMContext` | - |
+| 関数 | `generateDocSections` | 構造データからドキュメントセクションを生成する |
+| インターフェース | `DocOptions` | ドキュメント生成のオプション設定 |
+| インターフェース | `DocSections` | ドキュメントの各セクションを定義 |
+| インターフェース | `LLMContext` | LLM用のコンテキスト情報 |
 
 ## 図解
 
@@ -79,6 +79,8 @@ flowchart LR
 ```typescript
 generateDocSections(structure: StructureData, diagrams: MermaidDiagrams, options: DocOptions): DocSections
 ```
+
+構造データからドキュメントセクションを生成する
 
 **パラメータ**
 
@@ -242,6 +244,8 @@ interface DocOptions {
 }
 ```
 
+ドキュメント生成のオプション設定
+
 ### DocSections
 
 ```typescript
@@ -254,6 +258,8 @@ interface DocSections {
   llmContext?: LLMContext;
 }
 ```
+
+ドキュメントの各セクションを定義
 
 ### LLMContext
 
@@ -268,5 +274,7 @@ interface LLMContext {
 }
 ```
 
+LLM用のコンテキスト情報
+
 ---
-*自動生成: 2026-02-18T00:15:35.487Z*
+*自動生成: 2026-02-18T06:37:19.576Z*

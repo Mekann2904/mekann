@@ -23,11 +23,11 @@ import { reserveRuntimeCapacity, tryReserveRuntimeCapacity, RuntimeCapacityReser
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildMemberParallelCandidates` | - |
-| 関数 | `buildTeamAndMemberParallelCandidates` | - |
-| 関数 | `resolveTeamParallelCapacity` | - |
-| インターフェース | `TeamParallelCapacityCandidate` | - |
-| インターフェース | `TeamParallelCapacityResolution` | - |
+| 関数 | `buildMemberParallelCandidates` | メンバーの並列度に基づいて候補を生成する |
+| 関数 | `buildTeamAndMemberParallelCandidates` | チームとメンバーの並列実行候補を生成 |
+| 関数 | `resolveTeamParallelCapacity` | チームの並列容量を解決する |
+| インターフェース | `TeamParallelCapacityCandidate` | チーム並列実行容量の候補 |
+| インターフェース | `TeamParallelCapacityResolution` | チーム並列実行の解決結果を表すインターフェース |
 
 ## 図解
 
@@ -102,6 +102,8 @@ sequenceDiagram
 buildMemberParallelCandidates(memberParallelism: number): TeamParallelCapacityCandidate[]
 ```
 
+メンバーの並列度に基づいて候補を生成する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -115,6 +117,8 @@ buildMemberParallelCandidates(memberParallelism: number): TeamParallelCapacityCa
 ```typescript
 buildTeamAndMemberParallelCandidates(teamParallelism: number, memberParallelism: number): TeamParallelCapacityCandidate[]
 ```
+
+チームとメンバーの並列実行候補を生成
 
 **パラメータ**
 
@@ -138,6 +142,8 @@ async resolveTeamParallelCapacity(input: {
   signal?: AbortSignal;
 }): Promise<TeamParallelCapacityResolution>
 ```
+
+チームの並列容量を解決する
 
 **パラメータ**
 
@@ -168,6 +174,8 @@ interface TeamParallelCapacityCandidate {
 }
 ```
 
+チーム並列実行容量の候補
+
 ### TeamParallelCapacityResolution
 
 ```typescript
@@ -189,5 +197,7 @@ interface TeamParallelCapacityResolution {
 }
 ```
 
+チーム並列実行の解決結果を表すインターフェース
+
 ---
-*自動生成: 2026-02-18T00:15:35.410Z*
+*自動生成: 2026-02-18T06:37:19.516Z*

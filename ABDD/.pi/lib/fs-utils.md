@@ -23,7 +23,7 @@ import { existsSync, mkdirSync } from 'fs';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `ensureDir` | Ensures a directory exists, creating it recursivel |
+| 関数 | `ensureDir` | ディレクトリが存在することを保証します |
 
 ## 図解
 
@@ -48,7 +48,7 @@ flowchart LR
 ensureDir(path: string): void
 ```
 
-Ensures a directory exists, creating it recursively if necessary.
+ディレクトリが存在することを保証します
 
 **パラメータ**
 
@@ -59,4 +59,4 @@ Ensures a directory exists, creating it recursively if necessary.
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T00:15:35.724Z*
+*自動生成: 2026-02-18T06:37:19.900Z*

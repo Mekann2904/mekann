@@ -24,13 +24,13 @@ import { RetryWithBackoffOverrides } from './retry-with-backoff.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `trimForError` | Trim message for error display, normalizing whites |
-| 関数 | `buildRateLimitKey` | Build rate limit key from provider and model. |
-| 関数 | `buildTraceTaskId` | Build trace task ID for debugging and logging. |
-| 関数 | `normalizeTimeoutMs` | Normalize timeout value in milliseconds. |
-| 関数 | `createRetrySchema` | Create retry schema for tool input validation. |
-| 関数 | `toRetryOverrides` | Convert retry input value to RetryWithBackoffOverr |
-| 関数 | `toConcurrencyLimit` | Convert concurrency limit input to number. |
+| 関数 | `trimForError` | エラー表示用にメッセージを整形・短縮 |
+| 関数 | `buildRateLimitKey` | プロバイダとモデルからレート制限キーを生成 |
+| 関数 | `buildTraceTaskId` | トレースタスクIDを生成する |
+| 関数 | `normalizeTimeoutMs` | タイムアウト値（ミリ秒）を正規化します。 |
+| 関数 | `createRetrySchema` | リトライ設定のスキーマを作成する |
+| 関数 | `toRetryOverrides` | リトライ入力値をRetryWithBackoffOverridesに変換する。 |
+| 関数 | `toConcurrencyLimit` | 同時実行数の入力値を数値に変換する。 |
 
 ## 図解
 
@@ -97,7 +97,7 @@ sequenceDiagram
 trimForError(message: string, maxLength: any): string
 ```
 
-Trim message for error display, normalizing whitespace.
+エラー表示用にメッセージを整形・短縮
 
 **パラメータ**
 
@@ -114,7 +114,7 @@ Trim message for error display, normalizing whitespace.
 buildRateLimitKey(provider: string, model: string): string
 ```
 
-Build rate limit key from provider and model.
+プロバイダとモデルからレート制限キーを生成
 
 **パラメータ**
 
@@ -131,7 +131,7 @@ Build rate limit key from provider and model.
 buildTraceTaskId(traceId: string | undefined, delegateId: string, sequence: number): string
 ```
 
-Build trace task ID for debugging and logging.
+トレースタスクIDを生成する
 
 **パラメータ**
 
@@ -149,7 +149,7 @@ Build trace task ID for debugging and logging.
 normalizeTimeoutMs(value: unknown, fallback: number): number
 ```
 
-Normalize timeout value in milliseconds.
+タイムアウト値（ミリ秒）を正規化します。
 
 **パラメータ**
 
@@ -166,7 +166,7 @@ Normalize timeout value in milliseconds.
 createRetrySchema(): void
 ```
 
-Create retry schema for tool input validation.
+リトライ設定のスキーマを作成する
 
 **戻り値**: `void`
 
@@ -176,12 +176,7 @@ Create retry schema for tool input validation.
 toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
 ```
 
-Convert retry input value to RetryWithBackoffOverrides.
-
-Note: This is the "unstable" version that does NOT check STABLE_*_RUNTIME.
-Extensions (subagents.ts, agent-teams.ts) have their own local versions that
-return undefined in stable mode. If you want to use this function from extensions,
-you must handle stable mode check in the caller.
+リトライ入力値をRetryWithBackoffOverridesに変換する。
 
 **パラメータ**
 
@@ -197,7 +192,7 @@ you must handle stable mode check in the caller.
 toConcurrencyLimit(value: unknown, fallback: number): number
 ```
 
-Convert concurrency limit input to number.
+同時実行数の入力値を数値に変換する。
 
 **パラメータ**
 
@@ -209,4 +204,4 @@ Convert concurrency limit input to number.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-18T00:15:35.752Z*
+*自動生成: 2026-02-18T06:37:20.007Z*

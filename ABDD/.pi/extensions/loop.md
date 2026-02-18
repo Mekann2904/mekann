@@ -28,7 +28,7 @@ import { basename, isAbsolute, join... } from 'node:path';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerLoopExtension` | - |
+| 関数 | `registerLoopExtension` | 自動反復ループ実行ツールをExtensionAPIに登録 |
 
 ## 図解
 
@@ -165,6 +165,8 @@ sequenceDiagram
 ```typescript
 registerLoopExtension(pi: ExtensionAPI): void
 ```
+
+自動反復ループ実行ツールをExtensionAPIに登録
 
 **パラメータ**
 
@@ -685,4 +687,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.534Z*
+*自動生成: 2026-02-18T06:37:19.634Z*

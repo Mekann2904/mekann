@@ -17,22 +17,22 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `dependencyError` | Create a dependency error (external tool not avail |
-| 関数 | `parameterError` | Create a parameter validation error. |
-| 関数 | `executionError` | Create an execution error (command failed). |
-| 関数 | `timeoutError` | Create a timeout error. |
-| 関数 | `indexError` | Create an index-related error. |
-| 関数 | `filesystemError` | Create a filesystem error. |
-| 関数 | `isSearchToolError` | Check if an error is a SearchToolError. |
-| 関数 | `isErrorCategory` | Check if an error is of a specific category. |
-| 関数 | `getErrorMessage` | Get a user-friendly error message from any error t |
-| 関数 | `ok` | Create a successful result. |
-| 関数 | `err` | Create a failed result. |
+| 関数 | `dependencyError` | 依存関係エラーを作成する |
+| 関数 | `parameterError` | パラメータ検証エラーを作成する |
+| 関数 | `executionError` | コマンド実行エラーを作成する |
+| 関数 | `timeoutError` | タイムアウトエラーを作成する |
+| 関数 | `indexError` | インデックス関連のエラーを作成する |
+| 関数 | `filesystemError` | ファイルシステム操作のエラーを作成する |
+| 関数 | `isSearchToolError` | SearchToolErrorかどうかを判定する |
+| 関数 | `isErrorCategory` | エラーが特定のカテゴリか判定する |
+| 関数 | `getErrorMessage` | エラーメッセージを取得する |
+| 関数 | `ok` | 成功結果を作成する |
+| 関数 | `err` | 失敗を表す検索結果を作成する |
 | 関数 | `isOk` | Check if a result is successful. |
-| 関数 | `isErr` | Check if a result is a failure. |
-| クラス | `SearchToolError` | Base error class for search tools with categorizat |
-| 型 | `SearchErrorCategory` | Categories for search tool errors. |
-| 型 | `SearchResult` | Result type for operations that can fail. |
+| 関数 | `isErr` | 検索結果が失敗か判定する |
+| クラス | `SearchToolError` | 検索ツール用の基底エラークラス |
+| 型 | `SearchErrorCategory` | 検索ツールのエラー区分 |
+| 型 | `SearchResult` | 検索操作の結果を表す型 |
 
 ## 図解
 
@@ -75,7 +75,7 @@ flowchart TD
 dependencyError(tool: string, recovery?: string): SearchToolError
 ```
 
-Create a dependency error (external tool not available).
+依存関係エラーを作成する
 
 **パラメータ**
 
@@ -108,7 +108,7 @@ Get installation hint for common tools.
 parameterError(parameter: string, reason: string, recovery?: string): SearchToolError
 ```
 
-Create a parameter validation error.
+パラメータ検証エラーを作成する
 
 **パラメータ**
 
@@ -126,7 +126,7 @@ Create a parameter validation error.
 executionError(command: string, stderr: string, recovery?: string): SearchToolError
 ```
 
-Create an execution error (command failed).
+コマンド実行エラーを作成する
 
 **パラメータ**
 
@@ -144,7 +144,7 @@ Create an execution error (command failed).
 timeoutError(operation: string, timeoutMs: number, recovery?: string): SearchToolError
 ```
 
-Create a timeout error.
+タイムアウトエラーを作成する
 
 **パラメータ**
 
@@ -162,7 +162,7 @@ Create a timeout error.
 indexError(message: string, recovery?: string): SearchToolError
 ```
 
-Create an index-related error.
+インデックス関連のエラーを作成する
 
 **パラメータ**
 
@@ -179,7 +179,7 @@ Create an index-related error.
 filesystemError(operation: string, path: string, cause?: Error): SearchToolError
 ```
 
-Create a filesystem error.
+ファイルシステム操作のエラーを作成する
 
 **パラメータ**
 
@@ -197,7 +197,7 @@ Create a filesystem error.
 isSearchToolError(error: unknown): error is SearchToolError
 ```
 
-Check if an error is a SearchToolError.
+SearchToolErrorかどうかを判定する
 
 **パラメータ**
 
@@ -213,7 +213,7 @@ Check if an error is a SearchToolError.
 isErrorCategory(error: unknown, category: SearchErrorCategory): boolean
 ```
 
-Check if an error is of a specific category.
+エラーが特定のカテゴリか判定する
 
 **パラメータ**
 
@@ -230,7 +230,7 @@ Check if an error is of a specific category.
 getErrorMessage(error: unknown): string
 ```
 
-Get a user-friendly error message from any error type.
+エラーメッセージを取得する
 
 **パラメータ**
 
@@ -246,7 +246,7 @@ Get a user-friendly error message from any error type.
 ok(value: T): SearchResult<T>
 ```
 
-Create a successful result.
+成功結果を作成する
 
 **パラメータ**
 
@@ -262,7 +262,7 @@ Create a successful result.
 err(error: E): SearchResult<never, E>
 ```
 
-Create a failed result.
+失敗を表す検索結果を作成する
 
 **パラメータ**
 
@@ -294,7 +294,7 @@ Check if a result is successful.
 isErr(result: SearchResult<T, E>): result is { ok: false; error: E }
 ```
 
-Check if a result is a failure.
+検索結果が失敗か判定する
 
 **パラメータ**
 
@@ -308,7 +308,7 @@ Check if a result is a failure.
 
 ### SearchToolError
 
-Base error class for search tools with categorization and recovery hints.
+検索ツール用の基底エラークラス
 
 **継承**: `Error`
 
@@ -345,8 +345,7 @@ type SearchErrorCategory = | "dependency"   // External tool not available (rg, 
 	| "filesystem"
 ```
 
-Categories for search tool errors.
-Each category has different recovery strategies.
+検索ツールのエラー区分
 
 ### SearchResult
 
@@ -355,8 +354,7 @@ type SearchResult = | { ok: true; value: T }
 	| { ok: false; error: E }
 ```
 
-Result type for operations that can fail.
-Provides a type-safe way to handle errors without exceptions.
+検索操作の結果を表す型
 
 ---
-*自動生成: 2026-02-18T00:15:35.584Z*
+*自動生成: 2026-02-18T06:37:19.706Z*

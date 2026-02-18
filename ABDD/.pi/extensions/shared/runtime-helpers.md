@@ -23,12 +23,12 @@ import { getRuntimeSnapshot, RuntimeCapacityReservationLease } from '../agent-ru
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildRuntimeLimitError` | Build an error message for runtime limit reached c |
-| 関数 | `buildRuntimeQueueWaitError` | Build an error message for orchestration queue wai |
-| 関数 | `startReservationHeartbeat` | Start a heartbeat timer to keep a reservation aliv |
-| 関数 | `refreshRuntimeStatus` | Refresh runtime status display in the UI. |
-| インターフェース | `RuntimeLimitErrorOptions` | Options for building runtime limit error messages. |
-| インターフェース | `RuntimeQueueWaitInfo` | Queue wait information for building queue wait err |
+| 関数 | `buildRuntimeLimitError` | 実行時制限エラーメッセージを生成する |
+| 関数 | `buildRuntimeQueueWaitError` | オーケストレーションキュー待機のエラーメッセージを生成します。 |
+| 関数 | `startReservationHeartbeat` | 予約を維持するハートビートを開始する |
+| 関数 | `refreshRuntimeStatus` | ランタイムステータス表示を更新する |
+| インターフェース | `RuntimeLimitErrorOptions` | 実行制限エラーのオプション。 |
+| インターフェース | `RuntimeQueueWaitInfo` | キューエラーメッセージ構築用情報 |
 
 ## 図解
 
@@ -103,7 +103,7 @@ sequenceDiagram
 buildRuntimeLimitError(toolName: string, reasons: string[], options?: RuntimeLimitErrorOptions): string
 ```
 
-Build an error message for runtime limit reached conditions.
+実行時制限エラーメッセージを生成する
 
 **パラメータ**
 
@@ -121,7 +121,7 @@ Build an error message for runtime limit reached conditions.
 buildRuntimeQueueWaitError(toolName: string, queueWait: RuntimeQueueWaitInfo): string
 ```
 
-Build an error message for orchestration queue wait conditions.
+オーケストレーションキュー待機のエラーメッセージを生成します。
 
 **パラメータ**
 
@@ -138,7 +138,7 @@ Build an error message for orchestration queue wait conditions.
 startReservationHeartbeat(reservation: RuntimeCapacityReservationLease): () => void
 ```
 
-Start a heartbeat timer to keep a reservation alive during long-running operations.
+予約を維持するハートビートを開始する
 
 **パラメータ**
 
@@ -154,7 +154,7 @@ Start a heartbeat timer to keep a reservation alive during long-running operatio
 refreshRuntimeStatus(ctx: any, statusKey: "subagent-runtime" | "agent-team-runtime", primaryLabel: string, primaryActive: number, secondaryLabel: string, secondaryActive: number): void
 ```
 
-Refresh runtime status display in the UI.
+ランタイムステータス表示を更新する
 
 **パラメータ**
 
@@ -180,7 +180,7 @@ interface RuntimeLimitErrorOptions {
 }
 ```
 
-Options for building runtime limit error messages.
+実行制限エラーのオプション。
 
 ### RuntimeQueueWaitInfo
 
@@ -195,7 +195,7 @@ interface RuntimeQueueWaitInfo {
 }
 ```
 
-Queue wait information for building queue wait error messages.
+キューエラーメッセージ構築用情報
 
 ---
-*自動生成: 2026-02-18T00:15:35.604Z*
+*自動生成: 2026-02-18T06:37:19.727Z*

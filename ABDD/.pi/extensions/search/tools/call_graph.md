@@ -26,12 +26,12 @@ import { symIndex, readSymbolIndex } from './sym_index.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `callGraphIndex` | Generate or update call graph index. |
-| 関数 | `findCallersTool` | Find all functions that call the given symbol. |
-| 関数 | `findCalleesTool` | Find all functions called by the given symbol. |
-| 関数 | `formatCallGraphIndex` | Format call graph index result for display. |
-| 関数 | `formatCallers` | Format callers result for display. |
-| 関数 | `formatCallees` | Format callees result for display. |
+| 関数 | `callGraphIndex` | 呼び出しグラフのインデックスを生成または更新 |
+| 関数 | `findCallersTool` | 指定されたシンボルを呼び出す関数を検索します。 |
+| 関数 | `findCalleesTool` | 指定されたシンボルが呼び出す関数を検索 |
+| 関数 | `formatCallGraphIndex` | コールグラフのインデックス結果をフォーマット |
+| 関数 | `formatCallers` | 呼び出し元の検索結果を整形して文字列で返す |
+| 関数 | `formatCallees` | 呼び出し先の検索結果をフォーマットする |
 
 ## 図解
 
@@ -100,7 +100,7 @@ sequenceDiagram
 async callGraphIndex(input: CallGraphIndexInput, cwd: string): Promise<CallGraphIndexOutput>
 ```
 
-Generate or update call graph index.
+呼び出しグラフのインデックスを生成または更新
 
 **パラメータ**
 
@@ -117,7 +117,7 @@ Generate or update call graph index.
 async findCallersTool(input: FindCallersInput, cwd: string): Promise<FindCallersOutput>
 ```
 
-Find all functions that call the given symbol.
+指定されたシンボルを呼び出す関数を検索します。
 
 **パラメータ**
 
@@ -134,7 +134,7 @@ Find all functions that call the given symbol.
 async findCalleesTool(input: FindCalleesInput, cwd: string): Promise<FindCalleesOutput>
 ```
 
-Find all functions called by the given symbol.
+指定されたシンボルが呼び出す関数を検索
 
 **パラメータ**
 
@@ -151,7 +151,7 @@ Find all functions called by the given symbol.
 formatCallGraphIndex(result: CallGraphIndexOutput): string
 ```
 
-Format call graph index result for display.
+コールグラフのインデックス結果をフォーマット
 
 **パラメータ**
 
@@ -167,7 +167,7 @@ Format call graph index result for display.
 formatCallers(result: FindCallersOutput): string
 ```
 
-Format callers result for display.
+呼び出し元の検索結果を整形して文字列で返す
 
 **パラメータ**
 
@@ -183,7 +183,7 @@ Format callers result for display.
 formatCallees(result: FindCalleesOutput): string
 ```
 
-Format callees result for display.
+呼び出し先の検索結果をフォーマットする
 
 **パラメータ**
 
@@ -194,4 +194,4 @@ Format callees result for display.
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T00:15:35.563Z*
+*自動生成: 2026-02-18T06:37:19.665Z*

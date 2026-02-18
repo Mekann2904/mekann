@@ -27,7 +27,7 @@ import { INDEX_DIR_NAME, DEFAULT_EXCLUDES } from '../utils/constants.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `semanticIndex` | Generate semantic index for code files. |
+| 関数 | `semanticIndex` | セマンティックインデックスを生成する |
 
 ## 図解
 
@@ -257,7 +257,7 @@ async saveMetadata(metadata: SemanticIndexMetadata, cwd: string): Promise<void>
 async semanticIndex(input: SemanticIndexInput, cwd: string): Promise<SemanticIndexOutput>
 ```
 
-Generate semantic index for code files.
+セマンティックインデックスを生成する
 
 **パラメータ**
 
@@ -327,4 +327,4 @@ interface CodeChunk {
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.568Z*
+*自動生成: 2026-02-18T06:37:19.672Z*

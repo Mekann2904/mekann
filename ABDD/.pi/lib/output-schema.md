@@ -23,27 +23,27 @@ import { extractField, parseUnitInterval, clampConfidence } from './text-parsing
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getCommunicationIdMode` | Get the current communication ID mode. |
-| 関数 | `resetCommunicationIdModeCache` | Reset the cached communication ID mode (primarily  |
-| 関数 | `setCommunicationIdMode` | Set communication ID mode at runtime (primarily fo |
-| 関数 | `getStanceClassificationMode` | Get the current stance classification mode. |
-| 関数 | `resetStanceClassificationModeCache` | Reset the cached stance classification mode (prima |
-| 関数 | `setStanceClassificationMode` | Set stance classification mode at runtime (primari |
-| 関数 | `getSchemaValidationMode` | Get the current schema validation mode. |
-| 関数 | `resetSchemaValidationModeCache` | Reset the cached schema validation mode (primarily |
-| 関数 | `setSchemaValidationMode` | Set schema validation mode at runtime (primarily f |
-| 関数 | `parseStructuredOutput` | Parse structured output text into a structured obj |
-| 関数 | `validateSubagentOutputWithSchema` | Validate subagent output with schema. |
-| 関数 | `validateTeamMemberOutputWithSchema` | Validate team member output with schema. |
-| 関数 | `recordSchemaViolation` | Record a schema violation for analytics. |
-| 関数 | `getSchemaViolationStats` | Get schema violation statistics. |
-| 関数 | `resetSchemaViolationStats` | Reset schema violation statistics. |
-| インターフェース | `SchemaValidationResult` | Schema validation result. |
-| インターフェース | `SchemaViolation` | Individual schema violation. |
-| インターフェース | `ParsedStructuredOutput` | Parsed structured output. |
-| 型 | `SchemaValidationMode` | Validation mode for output schema checking. |
+| 関数 | `getCommunicationIdMode` | 現在のコミュニケーションIDモードを取得 |
+| 関数 | `resetCommunicationIdModeCache` | キャッシュされた通信IDモードをリセットする |
+| 関数 | `setCommunicationIdMode` | 通信IDモードを設定する |
+| 関数 | `getStanceClassificationMode` | 現在のスタンス分類モードを取得する。 |
+| 関数 | `resetStanceClassificationModeCache` | キャッシュされたスタンス分類モードをリセットする |
+| 関数 | `setStanceClassificationMode` | スタンス分類モードを設定する |
+| 関数 | `getSchemaValidationMode` | 現在のスキーマ検証モードを取得する |
+| 関数 | `resetSchemaValidationModeCache` | キャッシュされたスキーマ検証モードをリセットする。 |
+| 関数 | `setSchemaValidationMode` | 実行時にスキーマ検証モードを設定する（主にテスト用）。 |
+| 関数 | `parseStructuredOutput` | 構造化された出力テキストを解析する |
+| 関数 | `validateSubagentOutputWithSchema` | サブエージェントの出力をスキーマ検証する |
+| 関数 | `validateTeamMemberOutputWithSchema` | チームメンバー出力のスキーマ検証 |
+| 関数 | `recordSchemaViolation` | スキーマ違反を記録する |
+| 関数 | `getSchemaViolationStats` | スキーマ違反の統計情報を取得 |
+| 関数 | `resetSchemaViolationStats` | スキーマ違反の統計情報をリセットする。 |
+| インターフェース | `SchemaValidationResult` | スキーマ検証の結果を表します。 |
+| インターフェース | `SchemaViolation` | 個別のスキーマ違反 |
+| インターフェース | `ParsedStructuredOutput` | 構造化された出力データの解析結果 |
+| 型 | `SchemaValidationMode` | 出力スキーマ検証モード |
 | 型 | `CommunicationIdMode` | Communication ID mode for structured output proces |
-| 型 | `StanceClassificationMode` | Stance classification mode for discussion analysis |
+| 型 | `StanceClassificationMode` | 態度分類モード |
 
 ## 図解
 
@@ -143,8 +143,7 @@ sequenceDiagram
 getCommunicationIdMode(): CommunicationIdMode
 ```
 
-Get the current communication ID mode.
-Reads from PI_COMMUNICATION_ID_MODE environment variable.
+現在のコミュニケーションIDモードを取得
 
 **戻り値**: `CommunicationIdMode`
 
@@ -154,7 +153,7 @@ Reads from PI_COMMUNICATION_ID_MODE environment variable.
 resetCommunicationIdModeCache(): void
 ```
 
-Reset the cached communication ID mode (primarily for testing).
+キャッシュされた通信IDモードをリセットする
 
 **戻り値**: `void`
 
@@ -164,7 +163,7 @@ Reset the cached communication ID mode (primarily for testing).
 setCommunicationIdMode(mode: CommunicationIdMode): void
 ```
 
-Set communication ID mode at runtime (primarily for testing).
+通信IDモードを設定する
 
 **パラメータ**
 
@@ -180,8 +179,7 @@ Set communication ID mode at runtime (primarily for testing).
 getStanceClassificationMode(): StanceClassificationMode
 ```
 
-Get the current stance classification mode.
-Reads from PI_STANCE_CLASSIFICATION_MODE environment variable.
+現在のスタンス分類モードを取得する。
 
 **戻り値**: `StanceClassificationMode`
 
@@ -191,7 +189,7 @@ Reads from PI_STANCE_CLASSIFICATION_MODE environment variable.
 resetStanceClassificationModeCache(): void
 ```
 
-Reset the cached stance classification mode (primarily for testing).
+キャッシュされたスタンス分類モードをリセットする
 
 **戻り値**: `void`
 
@@ -201,7 +199,7 @@ Reset the cached stance classification mode (primarily for testing).
 setStanceClassificationMode(mode: StanceClassificationMode): void
 ```
 
-Set stance classification mode at runtime (primarily for testing).
+スタンス分類モードを設定する
 
 **パラメータ**
 
@@ -217,13 +215,7 @@ Set stance classification mode at runtime (primarily for testing).
 getSchemaValidationMode(): SchemaValidationMode
 ```
 
-Get the current schema validation mode.
-Reads from PI_OUTPUT_SCHEMA_MODE environment variable.
-
-MIGRATION COMPLETE: Default is now "strict" (v2.0.0+)
-- "legacy": Use regex-based validation only (deprecated)
-- "dual": Run both regex and schema validation, log differences
-- "strict": Use schema validation only (default)
+現在のスキーマ検証モードを取得する
 
 **戻り値**: `SchemaValidationMode`
 
@@ -233,7 +225,7 @@ MIGRATION COMPLETE: Default is now "strict" (v2.0.0+)
 resetSchemaValidationModeCache(): void
 ```
 
-Reset the cached schema validation mode (primarily for testing).
+キャッシュされたスキーマ検証モードをリセットする。
 
 **戻り値**: `void`
 
@@ -243,7 +235,7 @@ Reset the cached schema validation mode (primarily for testing).
 setSchemaValidationMode(mode: SchemaValidationMode): void
 ```
 
-Set schema validation mode at runtime (primarily for testing).
+実行時にスキーマ検証モードを設定する（主にテスト用）。
 
 **パラメータ**
 
@@ -259,7 +251,7 @@ Set schema validation mode at runtime (primarily for testing).
 parseStructuredOutput(output: string): ParsedStructuredOutput
 ```
 
-Parse structured output text into a structured object.
+構造化された出力テキストを解析する
 
 **パラメータ**
 
@@ -310,7 +302,7 @@ Validate parsed output against a schema.
 validateSubagentOutputWithSchema(output: string, mode: SchemaValidationMode): SchemaValidationResult
 ```
 
-Validate subagent output with schema.
+サブエージェントの出力をスキーマ検証する
 
 **パラメータ**
 
@@ -327,7 +319,7 @@ Validate subagent output with schema.
 validateTeamMemberOutputWithSchema(output: string, mode: SchemaValidationMode): SchemaValidationResult
 ```
 
-Validate team member output with schema.
+チームメンバー出力のスキーマ検証
 
 **パラメータ**
 
@@ -344,7 +336,7 @@ Validate team member output with schema.
 recordSchemaViolation(violation: SchemaViolation): void
 ```
 
-Record a schema violation for analytics.
+スキーマ違反を記録する
 
 **パラメータ**
 
@@ -360,7 +352,7 @@ Record a schema violation for analytics.
 getSchemaViolationStats(): Map<string, number>
 ```
 
-Get schema violation statistics.
+スキーマ違反の統計情報を取得
 
 **戻り値**: `Map<string, number>`
 
@@ -370,7 +362,7 @@ Get schema violation statistics.
 resetSchemaViolationStats(): void
 ```
 
-Reset schema violation statistics.
+スキーマ違反の統計情報をリセットする。
 
 **戻り値**: `void`
 
@@ -413,7 +405,7 @@ interface SchemaValidationResult {
 }
 ```
 
-Schema validation result.
+スキーマ検証の結果を表します。
 
 ### SchemaViolation
 
@@ -426,7 +418,7 @@ interface SchemaViolation {
 }
 ```
 
-Individual schema violation.
+個別のスキーマ違反
 
 ### ParsedStructuredOutput
 
@@ -442,7 +434,7 @@ interface ParsedStructuredOutput {
 }
 ```
 
-Parsed structured output.
+構造化された出力データの解析結果
 
 ## 型定義
 
@@ -452,7 +444,7 @@ Parsed structured output.
 type SchemaValidationMode = "legacy" | "dual" | "strict"
 ```
 
-Validation mode for output schema checking.
+出力スキーマ検証モード
 
 ### CommunicationIdMode
 
@@ -470,10 +462,7 @@ Communication ID mode for structured output processing.
 type StanceClassificationMode = "disabled" | "heuristic" | "structured"
 ```
 
-Stance classification mode for discussion analysis.
-- "disabled" (default): No stance classification, backward compatible
-- "heuristic": Use regex-based pattern matching for stance detection
-- "structured": Full structured analysis with confidence scores
+態度分類モード
 
 ---
-*自動生成: 2026-02-18T00:15:35.734Z*
+*自動生成: 2026-02-18T06:37:19.923Z*

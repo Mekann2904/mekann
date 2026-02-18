@@ -23,15 +23,15 @@ import { TaskSource } from './task-scheduler';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getCostEstimator` | Get the singleton cost estimator instance. |
-| 関数 | `createCostEstimator` | Create a new cost estimator with custom config. |
-| 関数 | `resetCostEstimator` | Reset the singleton estimator (for testing). |
-| クラス | `CostEstimator` | Cost estimator with support for default estimates  |
-| インターフェース | `CostEstimation` | Detailed cost estimation result with confidence an |
-| インターフェース | `ExecutionHistoryEntry` | Entry recording a completed execution for historic |
-| インターフェース | `SourceStatistics` | Statistics for a specific source type. |
-| インターフェース | `CostEstimatorConfig` | Configuration for cost estimator. |
-| 型 | `CostEstimationMethod` | Estimation method used for cost calculation. |
+| 関数 | `getCostEstimator` | コスト推定のシングルトンインスタンスを取得 |
+| 関数 | `createCostEstimator` | コスト推定器のインスタンスを作成 |
+| 関数 | `resetCostEstimator` | シングルトンのインスタンスをリセットする |
+| クラス | `CostEstimator` | コストを見積もるクラス。デフォルト値と履歴学習をサポート |
+| インターフェース | `CostEstimation` | コスト推定結果 |
+| インターフェース | `ExecutionHistoryEntry` | 履歴学習用の実行記録エントリ |
+| インターフェース | `SourceStatistics` | 特定のソースタイプの統計情報。 |
+| インターフェース | `CostEstimatorConfig` | コスト推定の設定 |
+| 型 | `CostEstimationMethod` | コスト計算の推定方法を表す型。 |
 
 ## 図解
 
@@ -130,7 +130,7 @@ sequenceDiagram
 getCostEstimator(): CostEstimator
 ```
 
-Get the singleton cost estimator instance.
+コスト推定のシングルトンインスタンスを取得
 
 **戻り値**: `CostEstimator`
 
@@ -140,8 +140,7 @@ Get the singleton cost estimator instance.
 createCostEstimator(config?: Partial<CostEstimatorConfig>): CostEstimator
 ```
 
-Create a new cost estimator with custom config.
-Useful for testing or isolated usage.
+コスト推定器のインスタンスを作成
 
 **パラメータ**
 
@@ -157,7 +156,7 @@ Useful for testing or isolated usage.
 resetCostEstimator(): void
 ```
 
-Reset the singleton estimator (for testing).
+シングルトンのインスタンスをリセットする
 
 **戻り値**: `void`
 
@@ -165,8 +164,7 @@ Reset the singleton estimator (for testing).
 
 ### CostEstimator
 
-Cost estimator with support for default estimates and historical learning.
-Designed for future extension with ML-based heuristics.
+コストを見積もるクラス。デフォルト値と履歴学習をサポート
 
 **プロパティ**
 
@@ -199,8 +197,7 @@ interface CostEstimation {
 }
 ```
 
-Detailed cost estimation result with confidence and method tracking.
-Used by CostEstimator for internal tracking and future learning.
+コスト推定結果
 
 ### ExecutionHistoryEntry
 
@@ -217,7 +214,7 @@ interface ExecutionHistoryEntry {
 }
 ```
 
-Entry recording a completed execution for historical learning.
+履歴学習用の実行記録エントリ
 
 ### SourceStatistics
 
@@ -233,7 +230,7 @@ interface SourceStatistics {
 }
 ```
 
-Statistics for a specific source type.
+特定のソースタイプの統計情報。
 
 ### CostEstimatorConfig
 
@@ -245,7 +242,7 @@ interface CostEstimatorConfig {
 }
 ```
 
-Configuration for cost estimator.
+コスト推定の設定
 
 ## 型定義
 
@@ -255,7 +252,7 @@ Configuration for cost estimator.
 type CostEstimationMethod = "default" | "historical" | "heuristic"
 ```
 
-Estimation method used for cost calculation.
+コスト計算の推定方法を表す型。
 
 ---
-*自動生成: 2026-02-18T00:15:35.668Z*
+*自動生成: 2026-02-18T06:37:19.812Z*

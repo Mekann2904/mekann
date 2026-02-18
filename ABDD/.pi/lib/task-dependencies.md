@@ -18,11 +18,11 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `formatDependencyGraphStats` | Format dependency graph stats for display. |
-| クラス | `TaskDependencyGraph` | Task dependency graph with cycle detection and top |
-| インターフェース | `TaskDependencyNode` | Task node in the dependency graph. |
-| インターフェース | `AddTaskOptions` | Options for adding a task to the graph. |
-| インターフェース | `CycleDetectionResult` | Result of cycle detection. |
-| 型 | `TaskDependencyStatus` | Task status in the dependency graph. |
+| クラス | `TaskDependencyGraph` | タスク依存関係グラフ |
+| インターフェース | `TaskDependencyNode` | 依存関係グラフ内のタスクノード |
+| インターフェース | `AddTaskOptions` | タスクをグラフに追加するためのオプション |
+| インターフェース | `CycleDetectionResult` | 循環検出の結果 |
+| 型 | `TaskDependencyStatus` | 依存関係グラフにおけるタスクの状態 |
 
 ## 図解
 
@@ -125,7 +125,7 @@ Format dependency graph stats for display.
 
 ### TaskDependencyGraph
 
-Task dependency graph with cycle detection and topological sorting.
+タスク依存関係グラフ
 
 **プロパティ**
 
@@ -193,7 +193,7 @@ interface TaskDependencyNode {
 }
 ```
 
-Task node in the dependency graph.
+依存関係グラフ内のタスクノード
 
 ### AddTaskOptions
 
@@ -206,7 +206,7 @@ interface AddTaskOptions {
 }
 ```
 
-Options for adding a task to the graph.
+タスクをグラフに追加するためのオプション
 
 ### CycleDetectionResult
 
@@ -217,7 +217,7 @@ interface CycleDetectionResult {
 }
 ```
 
-Result of cycle detection.
+循環検出の結果
 
 ## 型定義
 
@@ -227,7 +227,7 @@ Result of cycle detection.
 type TaskDependencyStatus = "pending" | "ready" | "running" | "completed" | "failed" | "cancelled"
 ```
 
-Task status in the dependency graph.
+依存関係グラフにおけるタスクの状態
 
 ---
-*自動生成: 2026-02-18T00:15:35.766Z*
+*自動生成: 2026-02-18T06:37:20.048Z*

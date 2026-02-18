@@ -28,8 +28,8 @@ import { OperationType } from '../../lib/comprehensive-logger-types.js';
 | 関数 | `resolveVerificationHookConfig` | 検証フック設定を解決 |
 | 関数 | `postSubagentVerificationHook` | サブエージェント実行後の検証フック |
 | 関数 | `postTeamVerificationHook` | チーム実行後の検証フック |
-| 関数 | `formatVerificationResult` | 検証結果をログ出力用にフォーマット |
-| インターフェース | `VerificationHookConfig` | 検証フック設定 |
+| 関数 | `formatVerificationResult` | 検証結果をフォーマットする |
+| インターフェース | `VerificationHookConfig` | 検証フックの設定オプション |
 | インターフェース | `VerificationHookResult` | 検証フックの結果 |
 
 ## 図解
@@ -127,7 +127,6 @@ async postSubagentVerificationHook(output: string, confidence: number, context: 
 ```
 
 サブエージェント実行後の検証フック
-subagents.tsから呼び出される
 
 **パラメータ**
 
@@ -154,7 +153,6 @@ async postTeamVerificationHook(aggregatedOutput: string, confidence: number, con
 ```
 
 チーム実行後の検証フック
-agent-teams.tsから呼び出される
 
 **パラメータ**
 
@@ -243,7 +241,7 @@ Challenger出力をパース
 formatVerificationResult(result: VerificationHookResult): string
 ```
 
-検証結果をログ出力用にフォーマット
+検証結果をフォーマットする
 
 **パラメータ**
 
@@ -267,7 +265,7 @@ interface VerificationHookConfig {
 }
 ```
 
-検証フック設定
+検証フックの設定オプション
 
 ### VerificationHookResult
 
@@ -284,4 +282,4 @@ interface VerificationHookResult {
 検証フックの結果
 
 ---
-*自動生成: 2026-02-18T00:15:35.606Z*
+*自動生成: 2026-02-18T06:37:19.730Z*

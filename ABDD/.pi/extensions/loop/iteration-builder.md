@@ -24,22 +24,22 @@ import { LoopReference } from './reference-loader';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildIterationPrompt` | - |
-| 関数 | `buildReferencePack` | - |
-| 関数 | `buildIterationFocus` | - |
-| 関数 | `buildLoopCommandPreview` | - |
-| 関数 | `buildIterationFailureOutput` | - |
-| 関数 | `parseLoopContract` | - |
-| 関数 | `extractLoopResultBody` | - |
-| 関数 | `validateIteration` | - |
-| 関数 | `normalizeValidationFeedback` | - |
-| 関数 | `buildDoneDeclarationFeedback` | - |
-| 関数 | `extractNextStepLine` | - |
-| 関数 | `extractSummaryLine` | - |
-| 関数 | `normalizeLoopOutput` | - |
-| インターフェース | `ParsedLoopContract` | - |
-| 型 | `LoopStatus` | - |
-| 型 | `LoopGoalStatus` | - |
+| 関数 | `buildIterationPrompt` | イテレーション用のプロンプトを構築する |
+| 関数 | `buildReferencePack` | 参照情報をパック形式の文字列に変換 |
+| 関数 | `buildIterationFocus` | 反復のフォーカス文字列を構築する |
+| 関数 | `buildLoopCommandPreview` | ループコマンドのプレビュー文字列を生成する |
+| 関数 | `buildIterationFailureOutput` | イテレーション失敗時の出力を生成する |
+| 関数 | `parseLoopContract` | LLM出力からループ契約を解析する |
+| 関数 | `extractLoopResultBody` | ループ結果の本文を抽出する |
+| 関数 | `validateIteration` | イテレーションの入力値を検証し、エラーを返す |
+| 関数 | `normalizeValidationFeedback` | バリデーションエラーを正規化・整形する |
+| 関数 | `buildDoneDeclarationFeedback` | 完了宣言のフィードバックを構築する |
+| 関数 | `extractNextStepLine` | 次のステップ行を抽出する |
+| 関数 | `extractSummaryLine` | 出力からサマリー行を抽出する |
+| 関数 | `normalizeLoopOutput` | ループ出力を正規化する |
+| インターフェース | `ParsedLoopContract` | ループ処理の契約解析結果を表すインターフェース |
+| 型 | `LoopStatus` | ループの状態を表す型 |
+| 型 | `LoopGoalStatus` | ループの目標達成状態を表す型 |
 
 ## 図解
 
@@ -124,6 +124,8 @@ buildIterationPrompt(input: {
 }): string
 ```
 
+イテレーション用のプロンプトを構築する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -147,6 +149,8 @@ buildIterationPrompt(input: {
 buildReferencePack(references: LoopReference[]): string
 ```
 
+参照情報をパック形式の文字列に変換
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -160,6 +164,8 @@ buildReferencePack(references: LoopReference[]): string
 ```typescript
 buildIterationFocus(task: string, previousOutput: string, validationFeedback: string[]): string
 ```
+
+反復のフォーカス文字列を構築する
 
 **パラメータ**
 
@@ -181,6 +187,8 @@ buildLoopCommandPreview(model: {
 }): string
 ```
 
+ループコマンドのプレビュー文字列を生成する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -199,6 +207,8 @@ buildLoopCommandPreview(model: {
 buildIterationFailureOutput(message: string): string
 ```
 
+イテレーション失敗時の出力を生成する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -212,6 +222,8 @@ buildIterationFailureOutput(message: string): string
 ```typescript
 parseLoopContract(output: string, hasGoal: boolean): ParsedLoopContract
 ```
+
+LLM出力からループ契約を解析する
 
 **パラメータ**
 
@@ -227,6 +239,8 @@ parseLoopContract(output: string, hasGoal: boolean): ParsedLoopContract
 ```typescript
 extractLoopResultBody(output: string): string
 ```
+
+ループ結果の本文を抽出する
 
 **パラメータ**
 
@@ -249,6 +263,8 @@ validateIteration(input: {
 }): string[]
 ```
 
+イテレーションの入力値を検証し、エラーを返す
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -270,6 +286,8 @@ validateIteration(input: {
 normalizeValidationFeedback(errors: string[]): string[]
 ```
 
+バリデーションエラーを正規化・整形する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -283,6 +301,8 @@ normalizeValidationFeedback(errors: string[]): string[]
 ```typescript
 buildDoneDeclarationFeedback(errors: string[]): string[]
 ```
+
+完了宣言のフィードバックを構築する
 
 **パラメータ**
 
@@ -398,6 +418,8 @@ extractCitations(output: string): string[]
 extractNextStepLine(output: string): string
 ```
 
+次のステップ行を抽出する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -411,6 +433,8 @@ extractNextStepLine(output: string): string
 ```typescript
 extractSummaryLine(output: string): string
 ```
+
+出力からサマリー行を抽出する
 
 **パラメータ**
 
@@ -582,6 +606,8 @@ toPreview(value: string, maxChars: number): string
 normalizeLoopOutput(value: string): string
 ```
 
+ループ出力を正規化する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -607,6 +633,8 @@ interface ParsedLoopContract {
 }
 ```
 
+ループ処理の契約解析結果を表すインターフェース
+
 ## 型定義
 
 ### LoopStatus
@@ -615,11 +643,15 @@ interface ParsedLoopContract {
 type LoopStatus = "continue" | "done" | "unknown"
 ```
 
+ループの状態を表す型
+
 ### LoopGoalStatus
 
 ```typescript
 type LoopGoalStatus = "met" | "not_met" | "unknown"
 ```
 
+ループの目標達成状態を表す型
+
 ---
-*自動生成: 2026-02-18T00:15:35.521Z*
+*自動生成: 2026-02-18T06:37:19.618Z*

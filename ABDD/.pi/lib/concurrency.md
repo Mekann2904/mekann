@@ -17,8 +17,8 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `runWithConcurrencyLimit` | - |
-| インターフェース | `ConcurrencyRunOptions` | - |
+| 関数 | `runWithConcurrencyLimit` | 指定した並列数でアイテムを処理する |
+| インターフェース | `ConcurrencyRunOptions` | /** |
 
 ## 図解
 
@@ -90,6 +90,8 @@ ensureNotAborted(signal?: AbortSignal): void
 async runWithConcurrencyLimit(items: TInput[], limit: number, worker: (item: TInput, index: number) => Promise<TResult>, options: ConcurrencyRunOptions): Promise<TResult[]>
 ```
 
+指定した並列数でアイテムを処理する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -119,6 +121,13 @@ interface ConcurrencyRunOptions {
 }
 ```
 
+/**
+* 並行実行のオプション設定
+*
+* 中止シグナルを指定して、実行中のタスクをキャンセル可能にする。
+*
+*
+
 ### WorkerResult
 
 ```typescript
@@ -133,4 +142,4 @@ Result wrapper for tracking success/failure of individual workers.
 Used internally to ensure all workers complete before throwing errors.
 
 ---
-*自動生成: 2026-02-18T00:15:35.659Z*
+*自動生成: 2026-02-18T06:37:19.798Z*

@@ -28,8 +28,8 @@ import { computeLiveWindow } from '../../lib/agent-utils.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `renderSubagentLiveView` | - |
-| 関数 | `createSubagentLiveMonitor` | - |
+| 関数 | `renderSubagentLiveView` | サブエージェントのライブビューを描画する |
+| 関数 | `createSubagentLiveMonitor` | サブエージェントのライブモニターを作成する |
 
 ## 図解
 
@@ -102,6 +102,8 @@ renderSubagentLiveView(input: {
 }): string[]
 ```
 
+サブエージェントのライブビューを描画する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -142,6 +144,8 @@ createSubagentLiveMonitor(ctx: any, input: {
   }): SubagentLiveMonitorController | undefined
 ```
 
+サブエージェントのライブモニターを作成する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -179,4 +183,4 @@ close(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T00:15:35.614Z*
+*自動生成: 2026-02-18T06:37:19.745Z*

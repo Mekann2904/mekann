@@ -28,7 +28,7 @@ import { symIndex, readSymbolIndex } from './sym_index.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `symFind` | Find symbol definitions from index |
+| 関数 | `symFind` | インデックスからシンボル定義を検索 |
 
 ## 図解
 
@@ -158,7 +158,7 @@ Extract file paths from results for history recording.
 async symFind(input: SymFindInput, cwd: string): Promise<SymFindOutput>
 ```
 
-Find symbol definitions from index
+インデックスからシンボル定義を検索
 
 **パラメータ**
 
@@ -170,4 +170,4 @@ Find symbol definitions from index
 **戻り値**: `Promise<SymFindOutput>`
 
 ---
-*自動生成: 2026-02-18T00:15:35.571Z*
+*自動生成: 2026-02-18T06:37:19.676Z*

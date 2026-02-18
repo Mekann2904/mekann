@@ -17,12 +17,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `toFiniteNumber` | Converts an unknown value to a finite number. |
-| 関数 | `toFiniteNumberWithDefault` | Converts an unknown value to a finite number with  |
-| 関数 | `toBoundedInteger` | Validates and bounds an integer value. |
-| 関数 | `clampInteger` | Clamps an integer value to the specified range. |
-| 関数 | `clampFloat` | Clamps a float value to the specified range. |
-| 型 | `BoundedIntegerResult` | Result type for bounded integer validation. |
+| 関数 | `toFiniteNumber` | 不明な値を有限の数値に変換する |
+| 関数 | `toFiniteNumberWithDefault` | 有限数またはデフォルト値を返す |
+| 関数 | `toBoundedInteger` | 整数値の検証と範囲制限を行う |
+| 関数 | `clampInteger` | 整数値を指定範囲内に制限する |
+| 関数 | `clampFloat` | 浮動小数点数を指定範囲内に制限する |
+| 型 | `BoundedIntegerResult` | 整数範囲検証の結果型 |
 
 ## 図解
 
@@ -49,8 +49,7 @@ flowchart TD
 toFiniteNumber(value: unknown): number | undefined
 ```
 
-Converts an unknown value to a finite number.
-Returns undefined if the value is not a valid finite number.
+不明な値を有限の数値に変換する
 
 **パラメータ**
 
@@ -66,7 +65,7 @@ Returns undefined if the value is not a valid finite number.
 toFiniteNumberWithDefault(value: unknown, fallback: any): number
 ```
 
-Converts an unknown value to a finite number with a default fallback.
+有限数またはデフォルト値を返す
 
 **パラメータ**
 
@@ -83,7 +82,7 @@ Converts an unknown value to a finite number with a default fallback.
 toBoundedInteger(value: unknown, fallback: number, min: number, max: number, field: string): BoundedIntegerResult
 ```
 
-Validates and bounds an integer value.
+整数値の検証と範囲制限を行う
 
 **パラメータ**
 
@@ -103,8 +102,7 @@ Validates and bounds an integer value.
 clampInteger(value: number, min: number, max: number): number
 ```
 
-Clamps an integer value to the specified range.
-Uses Math.trunc to ensure integer result.
+整数値を指定範囲内に制限する
 
 **パラメータ**
 
@@ -122,7 +120,7 @@ Uses Math.trunc to ensure integer result.
 clampFloat(value: number, min: number, max: number): number
 ```
 
-Clamps a float value to the specified range.
+浮動小数点数を指定範囲内に制限する
 
 **パラメータ**
 
@@ -143,7 +141,7 @@ type BoundedIntegerResult = | { ok: true; value: number }
   | { ok: false; error: string }
 ```
 
-Result type for bounded integer validation.
+整数範囲検証の結果型
 
 ---
-*自動生成: 2026-02-18T00:15:35.781Z*
+*自動生成: 2026-02-18T06:37:20.073Z*

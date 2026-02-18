@@ -17,10 +17,10 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getLiveStatusGlyph` | Get the glyph representation for a live status. |
-| 関数 | `isEnterInput` | Check if the raw input represents an Enter key pre |
-| 関数 | `finalizeLiveLines` | Finalize lines for display in a fixed-height view. |
-| 型 | `LiveStatus` | Common status type for live view items. |
+| 関数 | `getLiveStatusGlyph` | ステータスに対応するグリフを返す |
+| 関数 | `isEnterInput` | 入力がEnterキーか判定する |
+| 関数 | `finalizeLiveLines` | 固定高さの表示用に行を整形する |
+| 型 | `LiveStatus` | ライブビューのステータスを表す型 |
 
 ## 図解
 
@@ -43,7 +43,7 @@ flowchart TD
 getLiveStatusGlyph(status: LiveStatus): string
 ```
 
-Get the glyph representation for a live status.
+ステータスに対応するグリフを返す
 
 **パラメータ**
 
@@ -59,8 +59,7 @@ Get the glyph representation for a live status.
 isEnterInput(rawInput: string): boolean
 ```
 
-Check if the raw input represents an Enter key press.
-Handles multiple representations of Enter across different terminals.
+入力がEnterキーか判定する
 
 **パラメータ**
 
@@ -76,8 +75,7 @@ Handles multiple representations of Enter across different terminals.
 finalizeLiveLines(lines: string[], height?: number): string[]
 ```
 
-Finalize lines for display in a fixed-height view.
-Pads with empty strings if fewer lines than height, truncates if more.
+固定高さの表示用に行を整形する
 
 **パラメータ**
 
@@ -96,8 +94,7 @@ Pads with empty strings if fewer lines than height, truncates if more.
 type LiveStatus = "pending" | "running" | "completed" | "failed"
 ```
 
-Common status type for live view items.
-Used by both subagent live items and team member live items.
+ライブビューのステータスを表す型
 
 ---
-*自動生成: 2026-02-18T00:15:35.728Z*
+*自動生成: 2026-02-18T06:37:19.906Z*

@@ -25,12 +25,12 @@ import { TeamMemberResult, TeamRunRecord, TeamDefinition... } from './storage';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `isRetryableTeamMemberError` | - |
-| 関数 | `resolveTeamFailureOutcome` | - |
-| 関数 | `resolveTeamMemberAggregateOutcome` | - |
-| 関数 | `resolveTeamParallelRunOutcome` | - |
-| 関数 | `buildTeamResultText` | - |
-| 関数 | `extractSummary` | - |
+| 関数 | `isRetryableTeamMemberError` | チームメンバーのエラーが再試行可能か判定 |
+| 関数 | `resolveTeamFailureOutcome` | チームのエラー種別を判定し、実行結果シグナルを返す |
+| 関数 | `resolveTeamMemberAggregateOutcome` | チームメンバーの実行結果を集約して解決する |
+| 関数 | `resolveTeamParallelRunOutcome` | チームの並列実行結果を集計して解決する |
+| 関数 | `buildTeamResultText` | チームの実行結果をテキスト形式で構築します。 |
+| 関数 | `extractSummary` | 出力文字列からサマリーを抽出する |
 
 ## 図解
 
@@ -93,6 +93,8 @@ sequenceDiagram
 isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean
 ```
 
+チームメンバーのエラーが再試行可能か判定
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -107,6 +109,8 @@ isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean
 ```typescript
 resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal
 ```
+
+チームのエラー種別を判定し、実行結果シグナルを返す
 
 **パラメータ**
 
@@ -123,6 +127,8 @@ resolveTeamMemberAggregateOutcome(memberResults: TeamMemberResult[]): RunOutcome
   failedMemberIds: string[];
 }
 ```
+
+チームメンバーの実行結果を集約して解決する
 
 **パラメータ**
 
@@ -147,6 +153,8 @@ resolveTeamParallelRunOutcome(results: Array<{
   failedMemberIdsByTeam: Record<string, string[]>;
 }
 ```
+
+チームの並列実行結果を集計して解決する
 
 **パラメータ**
 
@@ -175,6 +183,8 @@ buildTeamResultText(input: {
 }): string
 ```
 
+チームの実行結果をテキスト形式で構築します。
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -194,6 +204,8 @@ buildTeamResultText(input: {
 extractSummary(output: string): string
 ```
 
+出力文字列からサマリーを抽出する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -203,4 +215,4 @@ extractSummary(output: string): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T00:15:35.414Z*
+*自動生成: 2026-02-18T06:37:19.519Z*

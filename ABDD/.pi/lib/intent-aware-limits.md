@@ -17,17 +17,17 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `classifyIntent` | Classify task intent based on content analysis. |
-| 関数 | `getIntentBudget` | Get budget for a specific intent. |
-| 関数 | `applyIntentLimits` | Apply intent-aware adjustments to base limits. |
-| 関数 | `getEffectiveRepetitionThreshold` | Calculate effective repetition threshold based on  |
-| 関数 | `isIntentClassificationAvailable` | Check if intent classification is available. |
-| 関数 | `getAllIntentBudgets` | Get all intent budgets. |
-| 関数 | `summarizeIntentClassification` | Summarize intent classification for logging. |
-| インターフェース | `IntentBudget` | Intent-aware budget configuration. |
-| インターフェース | `IntentClassificationInput` | Input for intent classification. |
-| インターフェース | `IntentClassificationResult` | Result of intent classification. |
-| 型 | `TaskIntent` | Task intent types from paper taxonomy. |
+| 関数 | `classifyIntent` | タスクの意図を分類する |
+| 関数 | `getIntentBudget` | 意図に応じた予算を取得する。 |
+| 関数 | `applyIntentLimits` | インテントに基づいて制限値を調整する |
+| 関数 | `getEffectiveRepetitionThreshold` | インテントに基づく反復しきい値を計算 |
+| 関数 | `isIntentClassificationAvailable` | インテント分類が利用可能か判定する |
+| 関数 | `getAllIntentBudgets` | 全てのインテント予算を取得する |
+| 関数 | `summarizeIntentClassification` | 意図分類結果の要約ログを生成 |
+| インターフェース | `IntentBudget` | インテント対応の予算設定。 |
+| インターフェース | `IntentClassificationInput` | 意図分類の入力データ |
+| インターフェース | `IntentClassificationResult` | 意図分類の結果を表します。 |
+| 型 | `TaskIntent` | タスクの意図タイプ |
 
 ## 図解
 
@@ -83,7 +83,7 @@ flowchart TD
 classifyIntent(input: IntentClassificationInput): IntentClassificationResult
 ```
 
-Classify task intent based on content analysis.
+タスクの意図を分類する
 
 **パラメータ**
 
@@ -99,7 +99,7 @@ Classify task intent based on content analysis.
 getIntentBudget(intent: TaskIntent): IntentBudget
 ```
 
-Get budget for a specific intent.
+意図に応じた予算を取得する。
 
 **パラメータ**
 
@@ -115,7 +115,7 @@ Get budget for a specific intent.
 applyIntentLimits(baseLimits: T, intent: TaskIntent): T
 ```
 
-Apply intent-aware adjustments to base limits.
+インテントに基づいて制限値を調整する
 
 **パラメータ**
 
@@ -132,7 +132,7 @@ Apply intent-aware adjustments to base limits.
 getEffectiveRepetitionThreshold(baseThreshold: number, intent: TaskIntent): number
 ```
 
-Calculate effective repetition threshold based on intent.
+インテントに基づく反復しきい値を計算
 
 **パラメータ**
 
@@ -149,7 +149,7 @@ Calculate effective repetition threshold based on intent.
 isIntentClassificationAvailable(): boolean
 ```
 
-Check if intent classification is available.
+インテント分類が利用可能か判定する
 
 **戻り値**: `boolean`
 
@@ -159,7 +159,7 @@ Check if intent classification is available.
 getAllIntentBudgets(): Record<TaskIntent, IntentBudget>
 ```
 
-Get all intent budgets.
+全てのインテント予算を取得する
 
 **戻り値**: `Record<TaskIntent, IntentBudget>`
 
@@ -169,7 +169,7 @@ Get all intent budgets.
 summarizeIntentClassification(result: IntentClassificationResult): string
 ```
 
-Summarize intent classification for logging.
+意図分類結果の要約ログを生成
 
 **パラメータ**
 
@@ -194,7 +194,7 @@ interface IntentBudget {
 }
 ```
 
-Intent-aware budget configuration.
+インテント対応の予算設定。
 
 ### IntentClassificationInput
 
@@ -206,7 +206,7 @@ interface IntentClassificationInput {
 }
 ```
 
-Input for intent classification.
+意図分類の入力データ
 
 ### IntentClassificationResult
 
@@ -219,7 +219,7 @@ interface IntentClassificationResult {
 }
 ```
 
-Result of intent classification.
+意図分類の結果を表します。
 
 ## 型定義
 
@@ -229,7 +229,7 @@ Result of intent classification.
 type TaskIntent = "declarative" | "procedural" | "reasoning"
 ```
 
-Task intent types from paper taxonomy.
+タスクの意図タイプ
 
 ---
-*自動生成: 2026-02-18T00:15:35.727Z*
+*自動生成: 2026-02-18T06:37:19.904Z*

@@ -17,29 +17,29 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `estimateTokens` | Estimate token count for text |
-| 関数 | `estimateContextItemTokens` | Estimate tokens for a context item |
-| 関数 | `optimizeContextWindow` | Manage context window with priority-based trimming |
-| 関数 | `detectSemanticBoundaries` | Detect semantic boundaries in text |
-| 関数 | `chunkText` | Chunk text based on semantic boundaries |
-| 関数 | `extractStateSummary` | Extract state summary from output text |
-| 関数 | `formatStateSummary` | Format state summary for inclusion in context |
-| 関数 | `createContextItem` | Create a context item from text content |
-| 関数 | `mergeContextItems` | Merge multiple context items intelligently |
-| 関数 | `calculateUtilization` | Calculate context window utilization |
-| インターフェース | `ContextItem` | Content item with metadata for context management |
-| インターフェース | `ContextWindowConfig` | Configuration for context window management |
-| インターフェース | `OptimizedContext` | Result of context window optimization |
-| インターフェース | `TrimmedItem` | Information about trimmed content |
-| インターフェース | `SemanticBoundary` | Semantic boundary for chunking |
-| インターフェース | `TextChunk` | Chunk result from text splitting |
-| インターフェース | `ChunkingConfig` | Configuration for chunking |
-| インターフェース | `StateSummary` | State summary for working memory |
-| インターフェース | `EvidenceSummary` | Summary of evidence collected |
-| インターフェース | `SummaryExtractionConfig` | Configuration for state summary extraction |
-| 型 | `ContextPriority` | Priority levels for context content |
-| 型 | `ContextCategory` | Categories for context content |
-| 型 | `BoundaryType` | Types of semantic boundaries |
+| 関数 | `estimateTokens` | テキストのトークン数を見積もる |
+| 関数 | `estimateContextItemTokens` | コンテキストアイテムのトークン数を推定 |
+| 関数 | `optimizeContextWindow` | コンテキストウィンドウを優先度に基づき最適化 |
+| 関数 | `detectSemanticBoundaries` | テキストから意味的な境界を検出する |
+| 関数 | `chunkText` | テキストを意味的境界に基づいて分割する |
+| 関数 | `extractStateSummary` | 出力テキストから状態サマリーを抽出する |
+| 関数 | `formatStateSummary` | コンテキスト用にステートサマリーを整形する |
+| 関数 | `createContextItem` | コンテキストアイテムを作成する |
+| 関数 | `mergeContextItems` | 複数のコンテキストアイテムを統合する |
+| 関数 | `calculateUtilization` | コンテキストウィンドウの利用率を計算する |
+| インターフェース | `ContextItem` | コンテキスト管理用のメタデータ付きアイテム |
+| インターフェース | `ContextWindowConfig` | コンテキストウィンドウ管理の設定 |
+| インターフェース | `OptimizedContext` | コンテキストウィンドウ最適化の結果 |
+| インターフェース | `TrimmedItem` | トリミングされたアイテムの情報 |
+| インターフェース | `SemanticBoundary` | チャンキングのための意味的境界 |
+| インターフェース | `TextChunk` | テキスト分割結果のチャンク |
+| インターフェース | `ChunkingConfig` | チャンキングの設定 |
+| インターフェース | `StateSummary` | ワーキングメモリの状態概要 |
+| インターフェース | `EvidenceSummary` | 収集されたエビデンスの要約 |
+| インターフェース | `SummaryExtractionConfig` | 状態要約抽出の設定 |
+| 型 | `ContextPriority` | コンテキストの優先度レベル |
+| 型 | `ContextCategory` | コンテンツのカテゴリ |
+| 型 | `BoundaryType` | 意味的な境界の種類を表す型 |
 
 ## 図解
 
@@ -152,8 +152,7 @@ flowchart TD
 estimateTokens(text: string): number
 ```
 
-Estimate token count for text
-This is a simple heuristic; for accuracy, use a proper tokenizer
+テキストのトークン数を見積もる
 
 **パラメータ**
 
@@ -169,7 +168,7 @@ This is a simple heuristic; for accuracy, use a proper tokenizer
 estimateContextItemTokens(item: ContextItem): number
 ```
 
-Estimate tokens for a context item
+コンテキストアイテムのトークン数を推定
 
 **パラメータ**
 
@@ -185,7 +184,7 @@ Estimate tokens for a context item
 optimizeContextWindow(items: ContextItem[], config: ContextWindowConfig): OptimizedContext
 ```
 
-Manage context window with priority-based trimming
+コンテキストウィンドウを優先度に基づき最適化
 
 **パラメータ**
 
@@ -236,7 +235,7 @@ Summarize a context item to preserve key information
 detectSemanticBoundaries(text: string): SemanticBoundary[]
 ```
 
-Detect semantic boundaries in text
+テキストから意味的な境界を検出する
 
 **パラメータ**
 
@@ -269,7 +268,7 @@ Detect semantic gaps where topic shifts occur
 chunkText(text: string, config: ChunkingConfig): TextChunk[]
 ```
 
-Chunk text based on semantic boundaries
+テキストを意味的境界に基づいて分割する
 
 **パラメータ**
 
@@ -340,7 +339,7 @@ Add overlap content between adjacent chunks
 extractStateSummary(text: string, previousSummary?: StateSummary, config: SummaryExtractionConfig): StateSummary
 ```
 
-Extract state summary from output text
+出力テキストから状態サマリーを抽出する
 
 **パラメータ**
 
@@ -358,7 +357,7 @@ Extract state summary from output text
 formatStateSummary(summary: StateSummary): string
 ```
 
-Format state summary for inclusion in context
+コンテキスト用にステートサマリーを整形する
 
 **パラメータ**
 
@@ -378,7 +377,7 @@ createContextItem(content: string, category: ContextCategory, priority: ContextP
   }): ContextItem
 ```
 
-Create a context item from text content
+コンテキストアイテムを作成する
 
 **パラメータ**
 
@@ -401,7 +400,7 @@ Create a context item from text content
 mergeContextItems(items: ContextItem[], strategy: "concat" | "summarize" | "priority-first"): ContextItem
 ```
 
-Merge multiple context items intelligently
+複数のコンテキストアイテムを統合する
 
 **パラメータ**
 
@@ -424,7 +423,7 @@ calculateUtilization(items: ContextItem[], maxTokens: number): {
 }
 ```
 
-Calculate context window utilization
+コンテキストウィンドウの利用率を計算する
 
 **パラメータ**
 
@@ -458,7 +457,7 @@ interface ContextItem {
 }
 ```
 
-Content item with metadata for context management
+コンテキスト管理用のメタデータ付きアイテム
 
 ### ContextWindowConfig
 
@@ -473,7 +472,7 @@ interface ContextWindowConfig {
 }
 ```
 
-Configuration for context window management
+コンテキストウィンドウ管理の設定
 
 ### OptimizedContext
 
@@ -489,7 +488,7 @@ interface OptimizedContext {
 }
 ```
 
-Result of context window optimization
+コンテキストウィンドウ最適化の結果
 
 ### TrimmedItem
 
@@ -502,7 +501,7 @@ interface TrimmedItem {
 }
 ```
 
-Information about trimmed content
+トリミングされたアイテムの情報
 
 ### SemanticBoundary
 
@@ -515,7 +514,7 @@ interface SemanticBoundary {
 }
 ```
 
-Semantic boundary for chunking
+チャンキングのための意味的境界
 
 ### TextChunk
 
@@ -536,7 +535,7 @@ interface TextChunk {
 }
 ```
 
-Chunk result from text splitting
+テキスト分割結果のチャンク
 
 ### ChunkingConfig
 
@@ -552,7 +551,7 @@ interface ChunkingConfig {
 }
 ```
 
-Configuration for chunking
+チャンキングの設定
 
 ### StateSummary
 
@@ -570,7 +569,7 @@ interface StateSummary {
 }
 ```
 
-State summary for working memory
+ワーキングメモリの状態概要
 
 ### EvidenceSummary
 
@@ -584,7 +583,7 @@ interface EvidenceSummary {
 }
 ```
 
-Summary of evidence collected
+収集されたエビデンスの要約
 
 ### SummaryExtractionConfig
 
@@ -600,7 +599,7 @@ interface SummaryExtractionConfig {
 }
 ```
 
-Configuration for state summary extraction
+状態要約抽出の設定
 
 ## 型定義
 
@@ -610,7 +609,7 @@ Configuration for state summary extraction
 type ContextPriority = "critical" | "high" | "medium" | "low" | "optional"
 ```
 
-Priority levels for context content
+コンテキストの優先度レベル
 
 ### ContextCategory
 
@@ -628,7 +627,7 @@ type ContextCategory = | "task-instruction"    // The main task/request
   | "error-context"
 ```
 
-Categories for context content
+コンテンツのカテゴリ
 
 ### BoundaryType
 
@@ -644,7 +643,7 @@ type BoundaryType = | "paragraph"      // Paragraph break
   | "semantic-gap"
 ```
 
-Types of semantic boundaries
+意味的な境界の種類を表す型
 
 ### ScoredItem
 
@@ -653,4 +652,4 @@ type ScoredItem = ContextItem & { score: number; trimmed: boolean }
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.665Z*
+*自動生成: 2026-02-18T06:37:19.808Z*

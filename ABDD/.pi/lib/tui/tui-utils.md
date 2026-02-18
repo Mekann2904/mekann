@@ -23,13 +23,13 @@ import { Markdown, getMarkdownTheme } from '@mariozechner/pi-tui';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `appendTail` | Appends a chunk to the current tail string, respec |
-| 関数 | `toTailLines` | Splits a tail string into lines, trims trailing wh |
-| 関数 | `countOccurrences` | Counts occurrences of a target string within an in |
-| 関数 | `estimateLineCount` | Estimates line count based on byte count and newli |
-| 関数 | `looksLikeMarkdown` | Checks if a string looks like Markdown content. |
-| 関数 | `renderPreviewWithMarkdown` | Renders text as Markdown if it looks like Markdown |
-| インターフェース | `MarkdownPreviewResult` | Result type for markdown preview rendering. |
+| 関数 | `appendTail` | 現在の末尾文字列にチャンクを追加し、最大長を制御する |
+| 関数 | `toTailLines` | 末尾の空白除去と行数制限を行う |
+| 関数 | `countOccurrences` | 文字列内の特定の文字列の出現回数を数える |
+| 関数 | `estimateLineCount` | バイト数と改行数に基づき行数を推定 |
+| 関数 | `looksLikeMarkdown` | Markdown形式の文字列か判定する |
+| 関数 | `renderPreviewWithMarkdown` | Markdown形式でプレビューを描画する |
+| インターフェース | `MarkdownPreviewResult` | マークダウンプレビューの結果を表します |
 
 ## 図解
 
@@ -100,8 +100,7 @@ sequenceDiagram
 appendTail(current: string, chunk: string, maxLength: any): string
 ```
 
-Appends a chunk to the current tail string, respecting the maximum length.
-If the result exceeds maxLength, the beginning is truncated.
+現在の末尾文字列にチャンクを追加し、最大長を制御する
 
 **パラメータ**
 
@@ -119,8 +118,7 @@ If the result exceeds maxLength, the beginning is truncated.
 toTailLines(tail: string, limit: number): string[]
 ```
 
-Splits a tail string into lines, trims trailing whitespace, and limits the number of lines.
-Empty lines at the end are removed before limiting.
+末尾の空白除去と行数制限を行う
 
 **パラメータ**
 
@@ -137,7 +135,7 @@ Empty lines at the end are removed before limiting.
 countOccurrences(input: string, target: string): number
 ```
 
-Counts occurrences of a target string within an input string.
+文字列内の特定の文字列の出現回数を数える
 
 **パラメータ**
 
@@ -154,7 +152,7 @@ Counts occurrences of a target string within an input string.
 estimateLineCount(bytes: number, newlineCount: number, endsWithNewline: boolean): number
 ```
 
-Estimates line count based on byte count and newline count.
+バイト数と改行数に基づき行数を推定
 
 **パラメータ**
 
@@ -172,8 +170,7 @@ Estimates line count based on byte count and newline count.
 looksLikeMarkdown(input: string): boolean
 ```
 
-Checks if a string looks like Markdown content.
-Detects common Markdown patterns: headers, lists, code blocks, links, etc.
+Markdown形式の文字列か判定する
 
 **パラメータ**
 
@@ -189,7 +186,7 @@ Detects common Markdown patterns: headers, lists, code blocks, links, etc.
 renderPreviewWithMarkdown(text: string, width: number, maxLines: number): MarkdownPreviewResult
 ```
 
-Renders text as Markdown if it looks like Markdown, otherwise returns plain lines.
+Markdown形式でプレビューを描画する
 
 **パラメータ**
 
@@ -212,7 +209,7 @@ interface MarkdownPreviewResult {
 }
 ```
 
-Result type for markdown preview rendering.
+マークダウンプレビューの結果を表します
 
 ---
-*自動生成: 2026-02-18T00:15:35.778Z*
+*自動生成: 2026-02-18T06:37:20.070Z*

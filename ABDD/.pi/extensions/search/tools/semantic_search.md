@@ -27,8 +27,8 @@ import { cosineSimilarity } from '../../../lib/embeddings/utils.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `semanticSearch` | Perform semantic search on code. |
-| 関数 | `formatSemanticSearch` | Format semantic search results for display. |
+| 関数 | `semanticSearch` | コードの意味検索を行う |
+| 関数 | `formatSemanticSearch` | セマンティック検索の結果を整形します。 |
 
 ## 図解
 
@@ -135,7 +135,7 @@ Find the k nearest neighbors to a query vector.
 async semanticSearch(input: SemanticSearchInput, cwd: string): Promise<SemanticSearchOutput>
 ```
 
-Perform semantic search on code.
+コードの意味検索を行う
 
 **パラメータ**
 
@@ -152,7 +152,7 @@ Perform semantic search on code.
 formatSemanticSearch(result: SemanticSearchOutput): string
 ```
 
-Format semantic search results for display.
+セマンティック検索の結果を整形します。
 
 **パラメータ**
 
@@ -163,4 +163,4 @@ Format semantic search results for display.
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T00:15:35.569Z*
+*自動生成: 2026-02-18T06:37:19.674Z*

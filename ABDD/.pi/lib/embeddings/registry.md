@@ -26,10 +26,10 @@ import { EmbeddingProvider, ProviderConfig, EmbeddingModuleConfig... } from './t
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getEmbeddingProvider` | デフォルトプロバイダーを取得 |
-| 関数 | `generateEmbedding` | エンベディングを生成（デフォルトプロバイダー使用） |
-| 関数 | `generateEmbeddingsBatch` | バッチエンベディングを生成（デフォルトプロバイダー使用） |
-| クラス | `EmbeddingProviderRegistry` | プロバイダーレジストリ |
+| 関数 | `getEmbeddingProvider` | デフォルトのエンベディングプロバイダーを取得 |
+| 関数 | `generateEmbedding` | エンベディングを生成する |
+| 関数 | `generateEmbeddingsBatch` | バッチでエンベディングを生成 |
+| クラス | `EmbeddingProviderRegistry` | 組み込みプロバイダーのレジストリクラス |
 
 ## 図解
 
@@ -103,7 +103,7 @@ sequenceDiagram
 async getEmbeddingProvider(config?: ProviderConfig): Promise<EmbeddingProvider | null>
 ```
 
-デフォルトプロバイダーを取得
+デフォルトのエンベディングプロバイダーを取得
 
 **パラメータ**
 
@@ -119,7 +119,7 @@ async getEmbeddingProvider(config?: ProviderConfig): Promise<EmbeddingProvider |
 async generateEmbedding(text: string, config?: ProviderConfig): Promise<number[] | null>
 ```
 
-エンベディングを生成（デフォルトプロバイダー使用）
+エンベディングを生成する
 
 **パラメータ**
 
@@ -136,7 +136,7 @@ async generateEmbedding(text: string, config?: ProviderConfig): Promise<number[]
 async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise<(number[] | null)[]>
 ```
 
-バッチエンベディングを生成（デフォルトプロバイダー使用）
+バッチでエンベディングを生成
 
 **パラメータ**
 
@@ -151,12 +151,7 @@ async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise
 
 ### EmbeddingProviderRegistry
 
-プロバイダーレジストリ
-
-責務:
-- プロバイダーの登録・検索
-- 設定に基づくプロバイダー選択
-- デフォルトプロバイダー管理
+組み込みプロバイダーのレジストリクラス
 
 **プロパティ**
 
@@ -186,4 +181,4 @@ async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise
 | saveConfig | `saveConfig(): void` |
 
 ---
-*自動生成: 2026-02-18T00:15:35.709Z*
+*自動生成: 2026-02-18T06:37:19.877Z*

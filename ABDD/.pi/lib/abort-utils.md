@@ -18,7 +18,7 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `createChildAbortController` | Creates a child AbortController that aborts when t |
-| 関数 | `createChildAbortControllers` | Creates multiple child AbortControllers from a sin |
+| 関数 | `createChildAbortControllers` | 親シグナルに連動する複数の子コントローラを作成 |
 
 ## 図解
 
@@ -72,8 +72,7 @@ cleanup(): void
 createChildAbortControllers(count: number, parentSignal?: AbortSignal): { controllers: AbortController[]; cleanup: () => void }
 ```
 
-Creates multiple child AbortControllers from a single parent signal.
-Useful for parallel execution where each worker needs its own signal.
+親シグナルに連動する複数の子コントローラを作成
 
 **パラメータ**
 
@@ -85,4 +84,4 @@ Useful for parallel execution where each worker needs its own signal.
 **戻り値**: `{ controllers: AbortController[]; cleanup: () => void }`
 
 ---
-*自動生成: 2026-02-18T00:15:35.636Z*
+*自動生成: 2026-02-18T06:37:19.769Z*

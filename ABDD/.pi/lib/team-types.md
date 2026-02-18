@@ -26,18 +26,18 @@ import { LiveStatus } from './live-view-utils.js';
 |------|------|------|
 | インターフェース | `TeamLiveItem` | Live item tracking for team member execution. |
 | インターフェース | `TeamMonitorLifecycle` | Lifecycle operations for marking team member execu |
-| インターフェース | `TeamMonitorPhase` | Phase tracking operations for team member executio |
-| インターフェース | `TeamMonitorEvents` | Event logging operations for tracking execution ev |
+| インターフェース | `TeamMonitorPhase` | チームメンバーの実行フェーズ操作 |
+| インターフェース | `TeamMonitorEvents` | 実行イベントを記録するための操作。イベントのログ記録のみを行うコードで使用されます。 |
 | インターフェース | `TeamMonitorStream` | Stream output operations for appending stdout/stde |
 | インターフェース | `TeamMonitorDiscussion` | Discussion tracking operations for multi-agent com |
-| インターフェース | `TeamMonitorResource` | Resource cleanup and termination operations. |
-| インターフェース | `AgentTeamLiveMonitorController` | Full monitor controller combining all capabilities |
-| インターフェース | `TeamNormalizedOutput` | Normalized output structure for team member execut |
+| インターフェース | `TeamMonitorResource` | リソースのクリーンアップと終了操作。 |
+| インターフェース | `AgentTeamLiveMonitorController` | エージェントチームのライブ監視を制御するインターフェース |
+| インターフェース | `TeamNormalizedOutput` | チームメンバー実行の正規化された出力構造。 |
 | インターフェース | `TeamParallelCapacityCandidate` | Candidate for parallel capacity allocation. |
-| インターフェース | `TeamParallelCapacityResolution` | Resolution result for team parallel capacity. |
-| インターフェース | `TeamFrontmatter` | Team frontmatter structure for markdown team defin |
-| インターフェース | `TeamMemberFrontmatter` | Team member frontmatter for markdown parsing. |
-| インターフェース | `ParsedTeamMarkdown` | Parsed team markdown file structure. |
+| インターフェース | `TeamParallelCapacityResolution` | チーム並列容量の解決結果 |
+| インターフェース | `TeamFrontmatter` | チーム定義のフロントマター構造 |
+| インターフェース | `TeamMemberFrontmatter` | チームメンバーのフロントマター |
+| インターフェース | `ParsedTeamMarkdown` | パースされたチームMarkdownファイル構造 |
 | 型 | `TeamLivePhase` | Team execution phase during orchestration. |
 | 型 | `TeamLiveViewMode` | View mode for team live monitoring interface. |
 
@@ -205,8 +205,7 @@ interface TeamMonitorPhase {
 }
 ```
 
-Phase tracking operations for team member execution phases.
-Used by code that only needs to manage phase transitions.
+チームメンバーの実行フェーズ操作
 
 ### TeamMonitorEvents
 
@@ -217,8 +216,7 @@ interface TeamMonitorEvents {
 }
 ```
 
-Event logging operations for tracking execution events.
-Used by code that only needs to record events.
+実行イベントを記録するための操作。イベントのログ記録のみを行うコードで使用されます。
 
 ### TeamMonitorStream
 
@@ -251,8 +249,7 @@ interface TeamMonitorResource {
 }
 ```
 
-Resource cleanup and termination operations.
-Used by code that only needs to manage monitor lifecycle.
+リソースのクリーンアップと終了操作。
 
 ### AgentTeamLiveMonitorController
 
@@ -261,9 +258,7 @@ interface AgentTeamLiveMonitorController {
 }
 ```
 
-Full monitor controller combining all capabilities.
-Extends partial interfaces to maintain backward compatibility.
-Clients should use narrower interfaces when possible.
+エージェントチームのライブ監視を制御するインターフェース
 
 ### TeamNormalizedOutput
 
@@ -276,8 +271,7 @@ interface TeamNormalizedOutput {
 }
 ```
 
-Normalized output structure for team member execution.
-Used for parsing and validating member outputs.
+チームメンバー実行の正規化された出力構造。
 
 ### TeamParallelCapacityCandidate
 
@@ -302,8 +296,7 @@ interface TeamParallelCapacityResolution {
 }
 ```
 
-Resolution result for team parallel capacity.
-Determines actual parallelism after capacity negotiation.
+チーム並列容量の解決結果
 
 ### TeamFrontmatter
 
@@ -319,8 +312,7 @@ interface TeamFrontmatter {
 }
 ```
 
-Team frontmatter structure for markdown team definitions.
-Used when parsing team definition files.
+チーム定義のフロントマター構造
 
 ### TeamMemberFrontmatter
 
@@ -336,7 +328,7 @@ interface TeamMemberFrontmatter {
 }
 ```
 
-Team member frontmatter for markdown parsing.
+チームメンバーのフロントマター
 
 ### ParsedTeamMarkdown
 
@@ -348,7 +340,7 @@ interface ParsedTeamMarkdown {
 }
 ```
 
-Parsed team markdown file structure.
+パースされたチームMarkdownファイル構造
 
 ## 型定義
 
@@ -375,4 +367,4 @@ View mode for team live monitoring interface.
 Extends base LiveViewMode with "discussion" mode.
 
 ---
-*自動生成: 2026-02-18T00:15:35.770Z*
+*自動生成: 2026-02-18T06:37:20.054Z*

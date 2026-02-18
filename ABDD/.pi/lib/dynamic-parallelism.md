@@ -23,18 +23,18 @@ import { QueueStats } from './task-scheduler';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getParallelismAdjuster` | Get the singleton adjuster instance. |
-| 関数 | `createParallelismAdjuster` | Create a new adjuster with custom config. |
-| 関数 | `resetParallelismAdjuster` | Reset the singleton adjuster (for testing). |
-| 関数 | `getParallelism` | Get parallelism for a provider/model (convenience  |
-| 関数 | `adjustForError` | Adjust parallelism for an error (convenience funct |
-| 関数 | `attemptRecovery` | Attempt recovery (convenience function). |
-| 関数 | `formatDynamicParallelismSummary` | Format a summary of the adjuster state. |
-| クラス | `DynamicParallelismAdjuster` | Manages dynamic parallelism adjustment for LLM pro |
-| インターフェース | `ParallelismConfig` | Configuration for parallelism adjustment. |
-| インターフェース | `ProviderHealth` | Health status for a provider/model combination. |
-| インターフェース | `DynamicAdjusterConfig` | Configuration for the adjuster. |
-| インターフェース | `ErrorEvent` | Error event for tracking. |
+| 関数 | `getParallelismAdjuster` | 並列度調整器のインスタンスを取得 |
+| 関数 | `createParallelismAdjuster` | カスタム設定で調整器を作成する |
+| 関数 | `resetParallelismAdjuster` | シングルトンの調整器をリセット（テスト用） |
+| 関数 | `getParallelism` | プロバイダーとモデルに基づいて並列度を取得 |
+| 関数 | `adjustForError` | エラー発生時に並列度を調整する |
+| 関数 | `attemptRecovery` | 復旧を試行する |
+| 関数 | `formatDynamicParallelismSummary` | 動的並列度の状態サマリーを整形する |
+| クラス | `DynamicParallelismAdjuster` | LLMプロバイダの並列度を動的に調整するクラス |
+| インターフェース | `ParallelismConfig` | 動的並列度の設定を表すインターフェース。 |
+| インターフェース | `ProviderHealth` | プロバイダ/モデルの正常性ステータス |
+| インターフェース | `DynamicAdjusterConfig` | 動的並列度調整の設定オプション |
+| インターフェース | `ErrorEvent` | エラー追跡用イベント |
 
 ## 図解
 
@@ -165,7 +165,7 @@ handler(e: Event): void
 getParallelismAdjuster(): DynamicParallelismAdjuster
 ```
 
-Get the singleton adjuster instance.
+並列度調整器のインスタンスを取得
 
 **戻り値**: `DynamicParallelismAdjuster`
 
@@ -175,7 +175,7 @@ Get the singleton adjuster instance.
 createParallelismAdjuster(config: Partial<DynamicAdjusterConfig>): DynamicParallelismAdjuster
 ```
 
-Create a new adjuster with custom config.
+カスタム設定で調整器を作成する
 
 **パラメータ**
 
@@ -191,7 +191,7 @@ Create a new adjuster with custom config.
 resetParallelismAdjuster(): void
 ```
 
-Reset the singleton adjuster (for testing).
+シングルトンの調整器をリセット（テスト用）
 
 **戻り値**: `void`
 
@@ -201,7 +201,7 @@ Reset the singleton adjuster (for testing).
 getParallelism(provider: string, model: string): number
 ```
 
-Get parallelism for a provider/model (convenience function).
+プロバイダーとモデルに基づいて並列度を取得
 
 **パラメータ**
 
@@ -218,7 +218,7 @@ Get parallelism for a provider/model (convenience function).
 adjustForError(provider: string, model: string, errorType: "429" | "timeout" | "error"): void
 ```
 
-Adjust parallelism for an error (convenience function).
+エラー発生時に並列度を調整する
 
 **パラメータ**
 
@@ -236,7 +236,7 @@ Adjust parallelism for an error (convenience function).
 attemptRecovery(provider: string, model: string): void
 ```
 
-Attempt recovery (convenience function).
+復旧を試行する
 
 **パラメータ**
 
@@ -253,7 +253,7 @@ Attempt recovery (convenience function).
 formatDynamicParallelismSummary(): string
 ```
 
-Format a summary of the adjuster state.
+動的並列度の状態サマリーを整形する
 
 **戻り値**: `string`
 
@@ -261,7 +261,7 @@ Format a summary of the adjuster state.
 
 ### DynamicParallelismAdjuster
 
-Manages dynamic parallelism adjustment for LLM providers.
+LLMプロバイダの並列度を動的に調整するクラス
 
 **プロパティ**
 
@@ -314,7 +314,7 @@ interface ParallelismConfig {
 }
 ```
 
-Configuration for parallelism adjustment.
+動的並列度の設定を表すインターフェース。
 
 ### ProviderHealth
 
@@ -328,7 +328,7 @@ interface ProviderHealth {
 }
 ```
 
-Health status for a provider/model combination.
+プロバイダ/モデルの正常性ステータス
 
 ### ProviderModelState
 
@@ -362,7 +362,7 @@ interface DynamicAdjusterConfig {
 }
 ```
 
-Configuration for the adjuster.
+動的並列度調整の設定オプション
 
 ### ErrorEvent
 
@@ -376,7 +376,7 @@ interface ErrorEvent {
 }
 ```
 
-Error event for tracking.
+エラー追跡用イベント
 
 ---
-*自動生成: 2026-02-18T00:15:35.679Z*
+*自動生成: 2026-02-18T06:37:19.826Z*

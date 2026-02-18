@@ -18,26 +18,26 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `shouldTriggerVerification` | 検証が必要かどうかを判断 |
-| 関数 | `isHighStakesTask` | 高リスクタスクかどうかを判定 |
+| 関数 | `isHighStakesTask` | 高リスクタスクか判定する |
 | 関数 | `resolveVerificationConfig` | 検証設定を解決 |
 | 関数 | `buildInspectorPrompt` | Inspectorプロンプトを生成 |
-| 関数 | `buildChallengerPrompt` | Challengerプロンプトを生成 |
+| 関数 | `buildChallengerPrompt` | Challengerプロンプトを生成する |
 | 関数 | `synthesizeVerificationResult` | 検証結果を統合 |
 | 関数 | `getVerificationWorkflowRules` | 検証ワークフロー実行ルールを取得 |
-| インターフェース | `VerificationWorkflowConfig` | 検証ワークフロー設定 |
-| インターフェース | `ChallengerConfig` | - |
-| インターフェース | `InspectorConfig` | - |
-| インターフェース | `VerificationResult` | 検証結果 |
-| インターフェース | `InspectorOutput` | - |
-| インターフェース | `DetectedPattern` | - |
-| インターフェース | `ChallengerOutput` | - |
-| インターフェース | `ChallengedClaim` | - |
-| インターフェース | `VerificationContext` | - |
-| 型 | `VerificationTriggerMode` | - |
+| インターフェース | `VerificationWorkflowConfig` | 検証ワークフローの設定 |
+| インターフェース | `ChallengerConfig` | チャレンジ動作の設定 |
+| インターフェース | `InspectorConfig` | 検証プロセスのインスペクタ設定 |
+| インターフェース | `VerificationResult` | 検証ワークフローの結果を表すインターフェース |
+| インターフェース | `InspectorOutput` | インスペクターの出力結果を表すインターフェース |
+| インターフェース | `DetectedPattern` | 検出されたパターン情報を表すインターフェース |
+| インターフェース | `ChallengerOutput` | 検証作業の出力結果を表すインターフェース |
+| インターフェース | `ChallengedClaim` | チャレンジ対象の主張を表すインターフェース |
+| インターフェース | `VerificationContext` | 検証のコンテキスト情報 |
+| 型 | `VerificationTriggerMode` | 検証トリガーのモードを表す型 |
 | 型 | `FallbackBehavior` | - |
-| 型 | `ChallengeCategory` | - |
-| 型 | `SuspicionThreshold` | - |
-| 型 | `InspectionPattern` | - |
+| 型 | `ChallengeCategory` | チャレンジのカテゴリ種別 |
+| 型 | `SuspicionThreshold` | 疑わしさの閾値レベル |
+| 型 | `InspectionPattern` | 検証パターンの種別を表す共用型。 |
 | 型 | `VerificationVerdict` | - |
 
 ## 図解
@@ -254,7 +254,7 @@ detectConfirmationBias(output: string): { detected: boolean; reason: string }
 isHighStakesTask(task: string): boolean
 ```
 
-高リスクタスクかどうかを判定
+高リスクタスクか判定する
 
 **パラメータ**
 
@@ -297,7 +297,7 @@ Inspectorプロンプトを生成
 buildChallengerPrompt(targetOutput: string, context: VerificationContext): string
 ```
 
-Challengerプロンプトを生成
+Challengerプロンプトを生成する
 
 **パラメータ**
 
@@ -367,7 +367,6 @@ getVerificationWorkflowRules(): string
 ```
 
 検証ワークフロー実行ルールを取得
-execution-rules.tsで使用
 
 **戻り値**: `string`
 
@@ -387,7 +386,7 @@ interface VerificationWorkflowConfig {
 }
 ```
 
-検証ワークフロー設定
+検証ワークフローの設定
 
 ### ChallengerConfig
 
@@ -399,6 +398,8 @@ interface ChallengerConfig {
 }
 ```
 
+チャレンジ動作の設定
+
 ### InspectorConfig
 
 ```typescript
@@ -408,6 +409,8 @@ interface InspectorConfig {
   autoTriggerOnCollapseSignals: boolean;
 }
 ```
+
+検証プロセスのインスペクタ設定
 
 ### VerificationResult
 
@@ -424,7 +427,7 @@ interface VerificationResult {
 }
 ```
 
-検証結果
+検証ワークフローの結果を表すインターフェース
 
 ### InspectorOutput
 
@@ -437,6 +440,8 @@ interface InspectorOutput {
 }
 ```
 
+インスペクターの出力結果を表すインターフェース
+
 ### DetectedPattern
 
 ```typescript
@@ -448,6 +453,8 @@ interface DetectedPattern {
 }
 ```
 
+検出されたパターン情報を表すインターフェース
+
 ### ChallengerOutput
 
 ```typescript
@@ -458,6 +465,8 @@ interface ChallengerOutput {
   suggestedRevisions: string[];
 }
 ```
+
+検証作業の出力結果を表すインターフェース
 
 ### ChallengedClaim
 
@@ -472,6 +481,8 @@ interface ChallengedClaim {
 }
 ```
 
+チャレンジ対象の主張を表すインターフェース
+
 ### VerificationContext
 
 ```typescript
@@ -484,6 +495,8 @@ interface VerificationContext {
 }
 ```
 
+検証のコンテキスト情報
+
 ## 型定義
 
 ### VerificationTriggerMode
@@ -495,6 +508,8 @@ type VerificationTriggerMode = | "post-subagent"     // サブエージェント
   | "explicit"          // 明示的な要求時
   | "high-stakes"
 ```
+
+検証トリガーのモードを表す型
 
 ### FallbackBehavior
 
@@ -515,11 +530,15 @@ type ChallengeCategory = | "evidence-gap"      // 証拠の欠落
   | "causal-reversal"
 ```
 
+チャレンジのカテゴリ種別
+
 ### SuspicionThreshold
 
 ```typescript
 type SuspicionThreshold = "low" | "medium" | "high"
 ```
+
+疑わしさの閾値レベル
 
 ### InspectionPattern
 
@@ -533,6 +552,8 @@ type InspectionPattern = | "claim-result-mismatch"    // CLAIMとRESULTの不一
   | "incomplete-reasoning"
 ```
 
+検証パターンの種別を表す共用型。
+
 ### VerificationVerdict
 
 ```typescript
@@ -544,4 +565,4 @@ type VerificationVerdict = | "pass"              // 検証通過
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.787Z*
+*自動生成: 2026-02-18T06:37:20.084Z*

@@ -17,10 +17,10 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getModelBaseTimeoutMs` | Get the base timeout for a model without thinking  |
-| 関数 | `computeModelTimeoutMs` | Compute the appropriate timeout for a model with a |
-| 関数 | `computeProgressiveTimeoutMs` | Compute a progressive timeout that increases with  |
-| インターフェース | `ComputeModelTimeoutOptions` | Options for computing model timeout. |
+| 関数 | `getModelBaseTimeoutMs` | モデルの基本タイムアウトを取得 |
+| 関数 | `computeModelTimeoutMs` | モデルの適切なタイムアウトを計算 |
+| 関数 | `computeProgressiveTimeoutMs` | 再試行回数に応じて増加するタイムアウトを計算 |
+| インターフェース | `ComputeModelTimeoutOptions` | モデルのタイムアウト計算オプション |
 
 ## 図解
 
@@ -54,7 +54,7 @@ flowchart TD
 getModelBaseTimeoutMs(modelId: string): number
 ```
 
-Get the base timeout for a model without thinking level adjustment.
+モデルの基本タイムアウトを取得
 
 **パラメータ**
 
@@ -70,8 +70,7 @@ Get the base timeout for a model without thinking level adjustment.
 computeModelTimeoutMs(modelId: string, options?: ComputeModelTimeoutOptions): number
 ```
 
-Compute the appropriate timeout for a model with all adjustments.
-Priority: user-specified > model-specific + thinking adjustment > default
+モデルの適切なタイムアウトを計算
 
 **パラメータ**
 
@@ -88,7 +87,7 @@ Priority: user-specified > model-specific + thinking adjustment > default
 computeProgressiveTimeoutMs(baseTimeoutMs: number, attempt: number): number
 ```
 
-Compute a progressive timeout that increases with retry attempts.
+再試行回数に応じて増加するタイムアウトを計算
 
 **パラメータ**
 
@@ -110,7 +109,7 @@ interface ComputeModelTimeoutOptions {
 }
 ```
 
-Options for computing model timeout.
+モデルのタイムアウト計算オプション
 
 ---
-*自動生成: 2026-02-18T00:15:35.732Z*
+*自動生成: 2026-02-18T06:37:19.915Z*

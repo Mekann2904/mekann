@@ -17,7 +17,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 型 | `DefaultExclude` | Type for DEFAULT_EXCLUDES array items |
+| 型 | `DefaultExclude` | DEFAULT_EXCLUDES配列の要素の型 |
 
 ## 図解
 
@@ -29,7 +29,7 @@ related: []
 type DefaultExclude = (typeof DEFAULT_EXCLUDES)[number]
 ```
 
-Type for DEFAULT_EXCLUDES array items
+DEFAULT_EXCLUDES配列の要素の型
 
 ---
-*自動生成: 2026-02-18T00:15:35.582Z*
+*自動生成: 2026-02-18T06:37:19.704Z*

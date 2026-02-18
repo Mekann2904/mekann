@@ -23,9 +23,9 @@ import { dnsLookup } from 'node:dns/promises';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `isBlockedHostname` | Check if a hostname matches blocked patterns. |
-| 関数 | `isPrivateOrReservedIP` | Check if an IP address is private or reserved. |
-| 関数 | `validateUrlForSsrf` | Validate URL for SSRF protection. |
+| 関数 | `isBlockedHostname` | ホスト名がブロック対象か判定する |
+| 関数 | `isPrivateOrReservedIP` | IPアドレスがプライベートまたは予約済みか判定 |
+| 関数 | `validateUrlForSsrf` | SSRF保護のためURLを検証する |
 
 ## 図解
 
@@ -63,7 +63,7 @@ sequenceDiagram
 isBlockedHostname(hostname: string): boolean
 ```
 
-Check if a hostname matches blocked patterns.
+ホスト名がブロック対象か判定する
 
 **パラメータ**
 
@@ -95,19 +95,7 @@ Check if an IPv4 address is private or reserved.
 isPrivateOrReservedIP(ip: string): boolean
 ```
 
-Check if an IP address is private or reserved.
-Blocks:
-- 10.0.0.0/8 (Private network)
-- 172.16.0.0/12 (Private network)
-- 192.168.0.0/16 (Private network)
-- 127.0.0.0/8 (Loopback)
-- 169.254.0.0/16 (Link-local)
-- 0.0.0.0/8 (Current network)
-- 224.0.0.0/4 (Multicast)
-- 240.0.0.0/4 (Reserved)
-- ::1 (IPv6 loopback)
-- fe80::/10 (IPv6 link-local)
-- fc00::/7 (IPv6 unique local)
+IPアドレスがプライベートまたは予約済みか判定
 
 **パラメータ**
 
@@ -123,8 +111,7 @@ Blocks:
 async validateUrlForSsrf(urlString: string): Promise<void>
 ```
 
-Validate URL for SSRF protection.
-Throws an error if the URL points to a blocked resource.
+SSRF保護のためURLを検証する
 
 **パラメータ**
 
@@ -135,4 +122,4 @@ Throws an error if the URL points to a blocked resource.
 **戻り値**: `Promise<void>`
 
 ---
-*自動生成: 2026-02-18T00:15:35.524Z*
+*自動生成: 2026-02-18T06:37:19.622Z*

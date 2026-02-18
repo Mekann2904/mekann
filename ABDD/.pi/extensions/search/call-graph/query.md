@@ -23,13 +23,13 @@ import { CallGraphIndex, CallGraphNode, CallGraphEdge... } from './types.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `findNodesByName` | Find node by name in the index. |
-| 関数 | `findNodeById` | Find node by ID. |
-| 関数 | `findNodesByFile` | Find nodes by file path. |
-| 関数 | `findCallers` | Find all functions that call the given symbol. |
-| 関数 | `findCallees` | Find all functions called by the given symbol. |
-| 関数 | `findCallPath` | Find call path between two symbols. |
-| 関数 | `getNodeStats` | Get statistics for a function in the call graph. |
+| 関数 | `findNodesByName` | 名前を指定してノードを検索する |
+| 関数 | `findNodeById` | IDに一致するノードを検索する。 |
+| 関数 | `findNodesByFile` | ファイルパスでノードを検索 |
+| 関数 | `findCallers` | 指定されたシンボルを呼び出す全ての関数を検索します。 |
+| 関数 | `findCallees` | 指定されたシンボルから呼ばれる関数を検索する |
+| 関数 | `findCallPath` | 2つのシンボル間の呼び出し経路を探索する |
+| 関数 | `getNodeStats` | 呼び出しグラフのノード統計情報を取得する |
 
 ## 図解
 
@@ -100,8 +100,7 @@ sequenceDiagram
 findNodesByName(index: CallGraphIndex, symbolName: string): CallGraphNode[]
 ```
 
-Find node by name in the index.
-Returns all nodes with matching name (may have multiple with same name in different files).
+名前を指定してノードを検索する
 
 **パラメータ**
 
@@ -118,7 +117,7 @@ Returns all nodes with matching name (may have multiple with same name in differ
 findNodeById(index: CallGraphIndex, nodeId: string): CallGraphNode | undefined
 ```
 
-Find node by ID.
+IDに一致するノードを検索する。
 
 **パラメータ**
 
@@ -135,7 +134,7 @@ Find node by ID.
 findNodesByFile(index: CallGraphIndex, filePath: string): CallGraphNode[]
 ```
 
-Find nodes by file path.
+ファイルパスでノードを検索
 
 **パラメータ**
 
@@ -152,7 +151,7 @@ Find nodes by file path.
 findCallers(index: CallGraphIndex, symbolName: string, depth: number, limit: number): CallChainResult[]
 ```
 
-Find all functions that call the given symbol.
+指定されたシンボルを呼び出す全ての関数を検索します。
 
 **パラメータ**
 
@@ -171,7 +170,7 @@ Find all functions that call the given symbol.
 findCallees(index: CallGraphIndex, symbolName: string, depth: number, limit: number): CallChainResult[]
 ```
 
-Find all functions called by the given symbol.
+指定されたシンボルから呼ばれる関数を検索する
 
 **パラメータ**
 
@@ -190,8 +189,7 @@ Find all functions called by the given symbol.
 findCallPath(index: CallGraphIndex, fromSymbol: string, toSymbol: string, maxDepth: number): CallGraphNode[] | null
 ```
 
-Find call path between two symbols.
-Uses BFS to find shortest path.
+2つのシンボル間の呼び出し経路を探索する
 
 **パラメータ**
 
@@ -216,7 +214,7 @@ getNodeStats(index: CallGraphIndex, symbolName: string): {
 }
 ```
 
-Get statistics for a function in the call graph.
+呼び出しグラフのノード統計情報を取得する
 
 **パラメータ**
 
@@ -245,4 +243,4 @@ interface CallerSearchState {
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.549Z*
+*自動生成: 2026-02-18T06:37:19.650Z*

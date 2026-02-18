@@ -25,28 +25,28 @@ import { classifyPressureError, extractStatusCodeFromMessage, isCancelledErrorMe
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `classifySemanticError` | Classify semantic error from output content. |
-| 関数 | `resolveExtendedFailureOutcome` | Resolve extended outcome signal with semantic erro |
-| 関数 | `getRetryablePatterns` | Get the list of retryable error patterns. |
-| 関数 | `resetRetryablePatternsCache` | Reset the cached retryable patterns (primarily for |
-| 関数 | `addRetryablePatterns` | Add custom retryable patterns at runtime. |
-| 関数 | `isRetryableEntityError` | Check if an error is retryable for entity executio |
-| 関数 | `isRetryableSubagentError` | Check if error is retryable for subagent context. |
-| 関数 | `isRetryableTeamMemberError` | Check if error is retryable for team member contex |
-| 関数 | `resolveFailureOutcome` | Resolve the outcome signal for a failed entity exe |
-| 関数 | `resolveSubagentFailureOutcome` | Resolve failure outcome for subagent context. |
-| 関数 | `resolveTeamFailureOutcome` | Resolve failure outcome for team member context. |
-| 関数 | `resolveAggregateOutcome` | Resolve aggregate outcome from multiple entity res |
+| 関数 | `classifySemanticError` | 出力内容から意味論的なエラーを分類する |
+| 関数 | `resolveExtendedFailureOutcome` | 拡張失敗結果を解決して分類する |
+| 関数 | `getRetryablePatterns` | リトライ可能なエラーパターンを取得 |
+| 関数 | `resetRetryablePatternsCache` | キャッシュされたリトライ可能パターンをリセット |
+| 関数 | `addRetryablePatterns` | 再試行パターンを実行時に追加する |
+| 関数 | `isRetryableEntityError` | エンティティ実行時のエラーが再試行可能か判定 |
+| 関数 | `isRetryableSubagentError` | サブエージェントのエラーが再試行可能か判定 |
+| 関数 | `isRetryableTeamMemberError` | チームメンバーのエラーがリトライ可能か判定 |
+| 関数 | `resolveFailureOutcome` | 失敗時の結果シグナルを解決する |
+| 関数 | `resolveSubagentFailureOutcome` | サブエージェントの失敗結果を解決する |
+| 関数 | `resolveTeamFailureOutcome` | チームメンバーの失敗結果を解決する |
+| 関数 | `resolveAggregateOutcome` | 複数の結果から集約された実行結果を解決する |
 | 関数 | `resolveSubagentParallelOutcome` | Resolve aggregate outcome for subagent parallel ex |
-| 関数 | `resolveTeamMemberAggregateOutcome` | Resolve aggregate outcome for team member executio |
-| 関数 | `trimErrorMessage` | Trim error message for display, ensuring it doesn' |
-| 関数 | `buildDiagnosticContext` | Build diagnostic context string for error messages |
-| 関数 | `classifyFailureType` | Classify a failure into a standardized category fo |
-| 関数 | `shouldRetryByClassification` | Determine whether a retry should be attempted base |
-| インターフェース | `ExtendedOutcomeSignal` | Extended outcome signal with semantic error classi |
-| インターフェース | `EntityResultItem` | Result item interface for aggregate outcome resolu |
-| 型 | `ExtendedOutcomeCode` | Extended error classification codes. |
-| 型 | `FailureClassification` | Standardized failure classification types for retr |
+| 関数 | `resolveTeamMemberAggregateOutcome` | チームメンバーの実行結果を集約する |
+| 関数 | `trimErrorMessage` | エラーメッセージを最大長に合わせて切り詰める |
+| 関数 | `buildDiagnosticContext` | 診断コンテキスト文字列を構築します |
+| 関数 | `classifyFailureType` | エラーをリトライ判定用の標準カテゴリに分類 |
+| 関数 | `shouldRetryByClassification` | 失敗分類に基づきリトライ可否を判定 |
+| インターフェース | `ExtendedOutcomeSignal` | 拡張された実行結果シグナル |
+| インターフェース | `EntityResultItem` | 集約結果解決用の結果項目インターフェース |
+| 型 | `ExtendedOutcomeCode` | 拡張エラー分類コード |
+| 型 | `FailureClassification` | リトライ判定用の標準化された失敗分類 |
 
 ## 図解
 
@@ -129,8 +129,7 @@ sequenceDiagram
 classifySemanticError(output?: string, error?: unknown): { code: ExtendedOutcomeCode | null; details?: string[] }
 ```
 
-Classify semantic error from output content.
-Used for extended error classification beyond infrastructure errors.
+出力内容から意味論的なエラーを分類する
 
 **パラメータ**
 
@@ -147,7 +146,7 @@ Used for extended error classification beyond infrastructure errors.
 resolveExtendedFailureOutcome(error: unknown, output?: string, config?: EntityConfig): ExtendedOutcomeSignal
 ```
 
-Resolve extended outcome signal with semantic error classification.
+拡張失敗結果を解決して分類する
 
 **パラメータ**
 
@@ -165,9 +164,7 @@ Resolve extended outcome signal with semantic error classification.
 getRetryablePatterns(): string[]
 ```
 
-Get the list of retryable error patterns.
-Patterns can be extended via PI_RETRYABLE_ERROR_PATTERNS environment variable
-(comma-separated list of additional patterns).
+リトライ可能なエラーパターンを取得
 
 **戻り値**: `string[]`
 
@@ -177,8 +174,7 @@ Patterns can be extended via PI_RETRYABLE_ERROR_PATTERNS environment variable
 resetRetryablePatternsCache(): void
 ```
 
-Reset the cached retryable patterns (primarily for testing).
-Forces next call to getRetryablePatterns() to re-parse environment variable.
+キャッシュされたリトライ可能パターンをリセット
 
 **戻り値**: `void`
 
@@ -188,8 +184,7 @@ Forces next call to getRetryablePatterns() to re-parse environment variable.
 addRetryablePatterns(patterns: string[]): void
 ```
 
-Add custom retryable patterns at runtime.
-Useful for dynamic configuration without environment variable restart.
+再試行パターンを実行時に追加する
 
 **パラメータ**
 
@@ -205,8 +200,7 @@ Useful for dynamic configuration without environment variable restart.
 isRetryableEntityError(error: unknown, statusCode: number | undefined, config: EntityConfig): boolean
 ```
 
-Check if an error is retryable for entity execution.
-Combines generic retryable error checks with entity-specific patterns.
+エンティティ実行時のエラーが再試行可能か判定
 
 **パラメータ**
 
@@ -224,8 +218,7 @@ Combines generic retryable error checks with entity-specific patterns.
 isRetryableSubagentError(error: unknown, statusCode?: number): boolean
 ```
 
-Check if error is retryable for subagent context.
-Convenience wrapper with subagent configuration.
+サブエージェントのエラーが再試行可能か判定
 
 **パラメータ**
 
@@ -242,8 +235,7 @@ Convenience wrapper with subagent configuration.
 isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean
 ```
 
-Check if error is retryable for team member context.
-Convenience wrapper with team member configuration.
+チームメンバーのエラーがリトライ可能か判定
 
 **パラメータ**
 
@@ -260,8 +252,7 @@ Convenience wrapper with team member configuration.
 resolveFailureOutcome(error: unknown, config?: EntityConfig): RunOutcomeSignal
 ```
 
-Resolve the outcome signal for a failed entity execution.
-Classifies the error and determines whether retry is recommended.
+失敗時の結果シグナルを解決する
 
 **パラメータ**
 
@@ -278,8 +269,7 @@ Classifies the error and determines whether retry is recommended.
 resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal
 ```
 
-Resolve failure outcome for subagent context.
-Convenience wrapper with subagent configuration.
+サブエージェントの失敗結果を解決する
 
 **パラメータ**
 
@@ -295,8 +285,7 @@ Convenience wrapper with subagent configuration.
 resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal
 ```
 
-Resolve failure outcome for team member context.
-Convenience wrapper with team member configuration.
+チームメンバーの失敗結果を解決する
 
 **パラメータ**
 
@@ -312,8 +301,7 @@ Convenience wrapper with team member configuration.
 resolveAggregateOutcome(results: T[], resolveEntityFailure: (error: unknown) => RunOutcomeSignal): RunOutcomeSignal & { failedEntityIds: string[] }
 ```
 
-Resolve aggregate outcome from multiple entity results.
-Used for parallel execution where some entities may succeed and others fail.
+複数の結果から集約された実行結果を解決する
 
 **パラメータ**
 
@@ -346,7 +334,7 @@ Resolve aggregate outcome for subagent parallel execution.
 resolveTeamMemberAggregateOutcome(memberResults: Array<{ status: "completed" | "failed"; error?: string; summary?: string; memberId: string }>): RunOutcomeSignal & { failedMemberIds: string[] }
 ```
 
-Resolve aggregate outcome for team member execution.
+チームメンバーの実行結果を集約する
 
 **パラメータ**
 
@@ -362,7 +350,7 @@ Resolve aggregate outcome for team member execution.
 trimErrorMessage(message: string, maxLength: any): string
 ```
 
-Trim error message for display, ensuring it doesn't exceed max length.
+エラーメッセージを最大長に合わせて切り詰める
 
 **パラメータ**
 
@@ -389,8 +377,7 @@ buildDiagnosticContext(context: {
 }): string
 ```
 
-Build diagnostic context string for error messages.
-Includes retry count, status codes, and rate limit information.
+診断コンテキスト文字列を構築します
 
 **パラメータ**
 
@@ -416,8 +403,7 @@ Includes retry count, status codes, and rate limit information.
 classifyFailureType(error: unknown, statusCode?: number): FailureClassification
 ```
 
-Classify a failure into a standardized category for retry decision making.
-Uses error message pattern matching and HTTP status code to determine classification.
+エラーをリトライ判定用の標準カテゴリに分類
 
 **パラメータ**
 
@@ -434,8 +420,7 @@ Uses error message pattern matching and HTTP status code to determine classifica
 shouldRetryByClassification(classification: FailureClassification, currentRound: number): boolean
 ```
 
-Determine whether a retry should be attempted based on failure classification.
-Checks the retry policy and current round against max rounds limit.
+失敗分類に基づきリトライ可否を判定
 
 **パラメータ**
 
@@ -459,8 +444,7 @@ interface ExtendedOutcomeSignal {
 }
 ```
 
-Extended outcome signal with semantic error classification.
-Uses Omit to avoid type conflict with RunOutcomeSignal.outcomeCode.
+拡張された実行結果シグナル
 
 ### EntityResultItem
 
@@ -473,7 +457,7 @@ interface EntityResultItem {
 }
 ```
 
-Result item interface for aggregate outcome resolution.
+集約結果解決用の結果項目インターフェース
 
 ## 型定義
 
@@ -487,8 +471,7 @@ type ExtendedOutcomeCode = | RunOutcomeCode
   | "PARSE_ERROR"
 ```
 
-Extended error classification codes.
-Extends the base RunOutcomeCode with semantic error types.
+拡張エラー分類コード
 
 ### FailureClassification
 
@@ -501,8 +484,7 @@ type FailureClassification = | "rate_limit"   // HTTP 429 - backoffで処理
   | "permanent"
 ```
 
-Standardized failure classification types for retry decision making.
-Each classification maps to a specific retry policy.
+リトライ判定用の標準化された失敗分類
 
 ---
-*自動生成: 2026-02-18T00:15:35.645Z*
+*自動生成: 2026-02-18T06:37:19.782Z*

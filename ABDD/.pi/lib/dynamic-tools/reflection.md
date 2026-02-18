@@ -24,11 +24,11 @@ import { loadAllToolDefinitions, recommendToolsForTask } from './registry.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `detectRepetitivePattern` | 繰り返し操作のパターンを検出 |
-| 関数 | `shouldCreateNewTool` | 新しいツールを作成すべきかどうかを判定 |
+| 関数 | `detectRepetitivePattern` | 繰り返し操作のパターンを検出する |
+| 関数 | `shouldCreateNewTool` | 新しいツール作成可否を判定 |
 | 関数 | `buildReflectionPrompt` | リフレクション用のプロンプトを生成 |
-| 関数 | `proposeToolFromTask` | タスクから自動的にツールを提案 |
-| 関数 | `shouldTriggerReflection` | リフレクションを実行すべきかどうかを判定 |
+| 関数 | `proposeToolFromTask` | タスクに基づきツールを提案 |
+| 関数 | `shouldTriggerReflection` | リフレクション実行の要否を判定 |
 
 ## 図解
 
@@ -88,7 +88,7 @@ sequenceDiagram
 detectRepetitivePattern(context: ToolReflectionContext): { detected: boolean; pattern: string; occurrences: number } | null
 ```
 
-繰り返し操作のパターンを検出
+繰り返し操作のパターンを検出する
 
 **パラメータ**
 
@@ -120,7 +120,7 @@ Bashコマンドパターンを抽出
 shouldCreateNewTool(context: ToolReflectionContext): ToolReflectionResult
 ```
 
-新しいツールを作成すべきかどうかを判定
+新しいツール作成可否を判定
 
 **パラメータ**
 
@@ -217,7 +217,7 @@ buildReflectionPrompt(context: ToolReflectionContext, reflectionResult: ToolRefl
 proposeToolFromTask(task: string, lastToolResult?: string): ToolReflectionResult["proposedTool"] | null
 ```
 
-タスクから自動的にツールを提案
+タスクに基づきツールを提案
 
 **パラメータ**
 
@@ -234,7 +234,7 @@ proposeToolFromTask(task: string, lastToolResult?: string): ToolReflectionResult
 shouldTriggerReflection(context: Partial<ToolReflectionContext>): boolean
 ```
 
-リフレクションを実行すべきかどうかを判定
+リフレクション実行の要否を判定
 
 **パラメータ**
 
@@ -245,4 +245,4 @@ shouldTriggerReflection(context: Partial<ToolReflectionContext>): boolean
 **戻り値**: `boolean`
 
 ---
-*自動生成: 2026-02-18T00:15:35.687Z*
+*自動生成: 2026-02-18T06:37:19.850Z*

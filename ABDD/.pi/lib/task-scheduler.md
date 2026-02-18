@@ -18,6 +18,7 @@ related: []
 ```typescript
 import { getCheckpointManager, Checkpoint, PreemptionResult... } from './checkpoint-manager';
 import { TaskPriority, PriorityTaskQueue, comparePriority... } from './priority-scheduler';
+import { getRuntimeConfig, RuntimeConfig } from './runtime-config.js';
 import { PRIORITY_VALUES } from './priority-scheduler';
 ```
 
@@ -25,20 +26,20 @@ import { PRIORITY_VALUES } from './priority-scheduler';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `shouldPreempt` | Check if an incoming task should preempt a running |
-| 関数 | `preemptTask` | Preempt a running task, saving its state to a chec |
-| 関数 | `resumeFromCheckpoint` | Resume a task from a checkpoint. |
-| 関数 | `createTaskId` | Create a unique task ID. |
-| 関数 | `getScheduler` | Get the singleton scheduler instance. |
+| 関数 | `shouldPreempt` | 実行中タスクを割り込むべきか判定する |
+| 関数 | `preemptTask` | 実行中のタスクを一時中断し、チェックポイントに保存する。 |
+| 関数 | `resumeFromCheckpoint` | チェックポイントからタスクを再開する |
+| 関数 | `createTaskId` | 一意なタスクIDを生成する |
+| 関数 | `getScheduler` | シングルトンのスケジューラインスタンスを取得する。 |
 | 関数 | `createScheduler` | Create a new scheduler with custom config. |
-| 関数 | `resetScheduler` | Reset the singleton scheduler (for testing). |
-| インターフェース | `TaskCostEstimate` | Cost estimate for a scheduled task. |
-| インターフェース | `ScheduledTask` | Scheduled task interface. |
-| インターフェース | `TaskResult` | Result of a scheduled task execution. |
-| インターフェース | `QueueStats` | Queue statistics for monitoring. |
-| インターフェース | `SchedulerConfig` | Scheduler configuration. |
-| インターフェース | `HybridSchedulerConfig` | Configuration for hybrid scheduling algorithm. |
-| 型 | `TaskSource` | Source type for scheduled tasks. |
+| 関数 | `resetScheduler` | シングルトンのスケジューラーをリセットする（テスト用）。 |
+| インターフェース | `TaskCostEstimate` | スケジュールされたタスクのコスト概算 |
+| インターフェース | `ScheduledTask` | 優先度とレート制限を持つスケジュールされたタスク |
+| インターフェース | `TaskResult` | タスク実行の結果 |
+| インターフェース | `QueueStats` | キューモニタリング用の統計情報 |
+| インターフェース | `SchedulerConfig` | スケジューラーの設定オプション。 |
+| インターフェース | `HybridSchedulerConfig` | ハイブリッドスケジューリングの設定 |
+| 型 | `TaskSource` | タスクの作成元を識別する種別 |
 
 ## 図解
 
@@ -123,6 +124,7 @@ flowchart LR
   subgraph local[ローカルモジュール]
     checkpoint_manager["checkpoint-manager"]
     priority_scheduler["priority-scheduler"]
+    runtime_config["runtime-config"]
     priority_scheduler["priority-scheduler"]
   end
   main --> local
@@ -174,7 +176,7 @@ sequenceDiagram
 shouldPreempt(runningTask: ScheduledTask, incomingTask: ScheduledTask): boolean
 ```
 
-Check if an incoming task should preempt a running task.
+実行中タスクを割り込むべきか判定する
 
 **パラメータ**
 
@@ -191,7 +193,7 @@ Check if an incoming task should preempt a running task.
 async preemptTask(taskId: string, reason: string, state?: unknown, progress?: number): Promise<PreemptionResult>
 ```
 
-Preempt a running task, saving its state to a checkpoint.
+実行中のタスクを一時中断し、チェックポイントに保存する。
 
 **パラメータ**
 
@@ -210,7 +212,7 @@ Preempt a running task, saving its state to a checkpoint.
 async resumeFromCheckpoint(checkpointId: string, execute: (checkpoint: Checkpoint) => Promise<TResult>): Promise<TaskResult<TResult>>
 ```
 
-Resume a task from a checkpoint.
+チェックポイントからタスクを再開する
 
 **パラメータ**
 
@@ -221,13 +223,23 @@ Resume a task from a checkpoint.
 
 **戻り値**: `Promise<TaskResult<TResult>>`
 
+### getDefaultSchedulerConfig
+
+```typescript
+getDefaultSchedulerConfig(): SchedulerConfig
+```
+
+Get default scheduler config from centralized RuntimeConfig.
+
+**戻り値**: `SchedulerConfig`
+
 ### createTaskId
 
 ```typescript
 createTaskId(prefix: string): string
 ```
 
-Create a unique task ID.
+一意なタスクIDを生成する
 
 **パラメータ**
 
@@ -401,7 +413,7 @@ handler(event: Event): void
 getScheduler(): TaskSchedulerImpl
 ```
 
-Get the singleton scheduler instance.
+シングルトンのスケジューラインスタンスを取得する。
 
 **戻り値**: `TaskSchedulerImpl`
 
@@ -427,7 +439,7 @@ Create a new scheduler with custom config.
 resetScheduler(): void
 ```
 
-Reset the singleton scheduler (for testing).
+シングルトンのスケジューラーをリセットする（テスト用）。
 
 **戻り値**: `void`
 
@@ -478,7 +490,7 @@ interface TaskCostEstimate {
 }
 ```
 
-Cost estimate for a scheduled task.
+スケジュールされたタスクのコスト概算
 
 ### ScheduledTask
 
@@ -496,8 +508,7 @@ interface ScheduledTask {
 }
 ```
 
-Scheduled task interface.
-Represents a task to be executed with priority and rate limiting.
+優先度とレート制限を持つスケジュールされたタスク
 
 ### TaskResult
 
@@ -514,7 +525,7 @@ interface TaskResult {
 }
 ```
 
-Result of a scheduled task execution.
+タスク実行の結果
 
 ### QueueStats
 
@@ -530,7 +541,7 @@ interface QueueStats {
 }
 ```
 
-Queue statistics for monitoring.
+キューモニタリング用の統計情報
 
 ### TaskQueueEntry
 
@@ -559,7 +570,7 @@ interface SchedulerConfig {
 }
 ```
 
-Scheduler configuration.
+スケジューラーの設定オプション。
 
 ### HybridSchedulerConfig
 
@@ -574,8 +585,7 @@ interface HybridSchedulerConfig {
 }
 ```
 
-Configuration for hybrid scheduling algorithm.
-Combines priority, SJF (Shortest Job First), and fair queueing.
+ハイブリッドスケジューリングの設定
 
 ## 型定義
 
@@ -588,8 +598,7 @@ type TaskSource = | "subagent_run"
   | "agent_team_run_parallel"
 ```
 
-Source type for scheduled tasks.
-Identifies which tool created this task.
+タスクの作成元を識別する種別
 
 ---
-*自動生成: 2026-02-18T00:15:35.770Z*
+*自動生成: 2026-02-18T06:37:20.053Z*

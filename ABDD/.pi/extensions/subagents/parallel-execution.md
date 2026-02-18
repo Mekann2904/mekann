@@ -23,8 +23,8 @@ import { reserveRuntimeCapacity, tryReserveRuntimeCapacity, RuntimeCapacityReser
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `resolveSubagentParallelCapacity` | - |
-| インターフェース | `SubagentParallelCapacityResolution` | - |
+| 関数 | `resolveSubagentParallelCapacity` | サブエージェントの並列実行容量を解決する |
+| インターフェース | `SubagentParallelCapacityResolution` | サブエージェントの並列実行容量解決結果 |
 
 ## 図解
 
@@ -87,6 +87,8 @@ async resolveSubagentParallelCapacity(input: {
 }): Promise<SubagentParallelCapacityResolution>
 ```
 
+サブエージェントの並列実行容量を解決する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -122,5 +124,7 @@ interface SubagentParallelCapacityResolution {
 }
 ```
 
+サブエージェントの並列実行容量解決結果
+
 ---
-*自動生成: 2026-02-18T00:15:35.615Z*
+*自動生成: 2026-02-18T06:37:19.746Z*

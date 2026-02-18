@@ -28,7 +28,7 @@ import { Type } from '@mariozechner/pi-ai';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerAgentTeamsExtension` | - |
+| 関数 | `registerAgentTeamsExtension` | エージェントチーム拡張を登録する |
 
 ## 図解
 
@@ -307,6 +307,8 @@ async runRetryMember(member: TeamMember): Promise<TeamMemberResult>
 registerAgentTeamsExtension(pi: ExtensionAPI): void
 ```
 
+エージェントチーム拡張を登録する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -368,4 +370,4 @@ type LiveViewMode = TeamLiveViewMode
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.450Z*
+*自動生成: 2026-02-18T06:37:19.548Z*

@@ -17,12 +17,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `toErrorMessage` | Converts an unknown error to a string message. |
-| 関数 | `extractStatusCodeFromMessage` | Extracts HTTP status code from an error message. |
-| 関数 | `classifyPressureError` | Classifies an error into pressure-related categori |
-| 関数 | `isCancelledErrorMessage` | Checks if an error message indicates cancellation. |
-| 関数 | `isTimeoutErrorMessage` | Checks if an error message indicates a timeout. |
-| 型 | `PressureErrorType` | Pressure error classification types. |
+| 関数 | `toErrorMessage` | 不明なエラーを文字列メッセージに変換します |
+| 関数 | `extractStatusCodeFromMessage` | エラーメッセージからHTTPステータスコードを抽出 |
+| 関数 | `classifyPressureError` | エラーを圧力関連のカテゴリに分類する |
+| 関数 | `isCancelledErrorMessage` | エラーがキャンセルを示すか判定する |
+| 関数 | `isTimeoutErrorMessage` | エラーがタイムアウトか判定する |
+| 型 | `PressureErrorType` | 圧力エラーの分類型 |
 
 ## 図解
 
@@ -49,7 +49,7 @@ flowchart TD
 toErrorMessage(error: unknown): string
 ```
 
-Converts an unknown error to a string message.
+不明なエラーを文字列メッセージに変換します
 
 **パラメータ**
 
@@ -65,8 +65,7 @@ Converts an unknown error to a string message.
 extractStatusCodeFromMessage(error: unknown): number | undefined
 ```
 
-Extracts HTTP status code from an error message.
-Looks for 429 or 5xx status codes in the message.
+エラーメッセージからHTTPステータスコードを抽出
 
 **パラメータ**
 
@@ -82,7 +81,7 @@ Looks for 429 or 5xx status codes in the message.
 classifyPressureError(error: unknown): PressureErrorType
 ```
 
-Classifies an error into pressure-related categories.
+エラーを圧力関連のカテゴリに分類する
 
 **パラメータ**
 
@@ -98,7 +97,7 @@ Classifies an error into pressure-related categories.
 isCancelledErrorMessage(error: unknown): boolean
 ```
 
-Checks if an error message indicates cancellation.
+エラーがキャンセルを示すか判定する
 
 **パラメータ**
 
@@ -114,7 +113,7 @@ Checks if an error message indicates cancellation.
 isTimeoutErrorMessage(error: unknown): boolean
 ```
 
-Checks if an error message indicates a timeout.
+エラーがタイムアウトか判定する
 
 **パラメータ**
 
@@ -132,7 +131,7 @@ Checks if an error message indicates a timeout.
 type PressureErrorType = "rate_limit" | "timeout" | "capacity" | "other"
 ```
 
-Pressure error classification types.
+圧力エラーの分類型
 
 ---
-*自動生成: 2026-02-18T00:15:35.716Z*
+*自動生成: 2026-02-18T06:37:19.883Z*

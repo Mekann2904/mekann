@@ -24,20 +24,20 @@ import { clampConfidence, parseUnitInterval, extractField... } from '../../lib/t
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getJudgeWeights` | Get the current judge weight configuration. |
-| 関数 | `setJudgeWeights` | Set custom judge weights at runtime (primarily for |
-| 関数 | `resetJudgeWeights` | Reset judge weights to defaults. |
-| 関数 | `extractDiscussionSection` | Extract the DISCUSSION section from structured out |
-| 関数 | `countEvidenceSignals` | Count evidence signals in the output. |
-| 関数 | `analyzeMemberOutput` | Analyze a team member's output for quality signals |
-| 関数 | `computeProxyUncertainty` | Compute uncertainty proxy from team member results |
-| 関数 | `computeProxyUncertaintyWithExplainability` | Compute uncertainty proxy with detailed explanatio |
-| 関数 | `formatJudgeExplanation` | Generate human-readable explanation of judge decis |
-| 関数 | `buildFallbackJudge` | Build a fallback judge verdict when no LLM-based j |
-| 関数 | `runFinalJudge` | Run the final judge process. |
-| インターフェース | `JudgeWeightConfig` | Configuration for uncertainty weight parameters. |
-| インターフェース | `JudgeExplanation` | Detailed explanation of judge decision factors. |
-| インターフェース | `TeamUncertaintyProxy` | Uncertainty proxy computed from member results. |
+| 関数 | `getJudgeWeights` | 現在の判定重み設定を取得する |
+| 関数 | `setJudgeWeights` | カスタムの判定重みを設定 |
+| 関数 | `resetJudgeWeights` | 判定の重みをデフォルトに戻す |
+| 関数 | `extractDiscussionSection` | 構造化出力からDISCUSSIONセクションを抽出 |
+| 関数 | `countEvidenceSignals` | 出力内の証拠シグナルの数をカウントする |
+| 関数 | `analyzeMemberOutput` | チームメンバーの出力を解析し、診断情報を返す |
+| 関数 | `computeProxyUncertainty` | チームの不確実性プロキシを計算する |
+| 関数 | `computeProxyUncertaintyWithExplainability` | 不確実性プロキシと説明を計算する |
+| 関数 | `formatJudgeExplanation` | 判定の決定理由を人間が読める形式で整形する |
+| 関数 | `buildFallbackJudge` | LLM判定がない場合の代替判定を生成する |
+| 関数 | `runFinalJudge` | 最終判定プロセスを実行します |
+| インターフェース | `JudgeWeightConfig` | 判定の重み付け設定 |
+| インターフェース | `JudgeExplanation` | 判定決定要因の詳細な説明 |
+| インターフェース | `TeamUncertaintyProxy` | メンバー結果から計算される不確実性プロキシ |
 
 ## 図解
 
@@ -127,11 +127,7 @@ sequenceDiagram
 getJudgeWeights(): JudgeWeightConfig
 ```
 
-Get the current judge weight configuration.
-Can be overridden via PI_JUDGE_WEIGHTS_PATH environment variable.
-
-MIGRATION COMPLETE: File-based configuration now supported (v2.0.0+)
-Set PI_JUDGE_WEIGHTS_PATH to a JSON file path to use custom weights.
+現在の判定重み設定を取得する
 
 **戻り値**: `JudgeWeightConfig`
 
@@ -141,7 +137,7 @@ Set PI_JUDGE_WEIGHTS_PATH to a JSON file path to use custom weights.
 setJudgeWeights(weights: JudgeWeightConfig): void
 ```
 
-Set custom judge weights at runtime (primarily for testing).
+カスタムの判定重みを設定
 
 **パラメータ**
 
@@ -157,7 +153,7 @@ Set custom judge weights at runtime (primarily for testing).
 resetJudgeWeights(): void
 ```
 
-Reset judge weights to defaults.
+判定の重みをデフォルトに戻す
 
 **戻り値**: `void`
 
@@ -167,8 +163,7 @@ Reset judge weights to defaults.
 extractDiscussionSection(output: string): string
 ```
 
-Extract the DISCUSSION section from structured output.
-Returns content between DISCUSSION: label and the next major label.
+構造化出力からDISCUSSIONセクションを抽出
 
 **パラメータ**
 
@@ -184,8 +179,7 @@ Returns content between DISCUSSION: label and the next major label.
 countEvidenceSignals(output: string): number
 ```
 
-Count evidence signals in the output.
-Looks for EVIDENCE field items and file:line references.
+出力内の証拠シグナルの数をカウントする
 
 **パラメータ**
 
@@ -201,8 +195,7 @@ Looks for EVIDENCE field items and file:line references.
 analyzeMemberOutput(output: string): TeamMemberResult["diagnostics"]
 ```
 
-Analyze a team member's output for quality signals.
-Returns diagnostic metrics for uncertainty calculation.
+チームメンバーの出力を解析し、診断情報を返す
 
 **パラメータ**
 
@@ -218,8 +211,7 @@ Returns diagnostic metrics for uncertainty calculation.
 computeProxyUncertainty(memberResults: TeamMemberResult[]): TeamUncertaintyProxy
 ```
 
-Compute uncertainty proxy from team member results.
-Calculates intra-member, inter-member, and system-level uncertainty.
+チームの不確実性プロキシを計算する
 
 **パラメータ**
 
@@ -235,8 +227,7 @@ Calculates intra-member, inter-member, and system-level uncertainty.
 computeProxyUncertaintyWithExplainability(memberResults: TeamMemberResult[], weights: JudgeWeightConfig): { proxy: TeamUncertaintyProxy; explanation: JudgeExplanation }
 ```
 
-Compute uncertainty proxy with detailed explanation.
-Enhanced version that provides factor-by-factor breakdown.
+不確実性プロキシと説明を計算する
 
 **パラメータ**
 
@@ -253,7 +244,7 @@ Enhanced version that provides factor-by-factor breakdown.
 formatJudgeExplanation(explanation: JudgeExplanation): string
 ```
 
-Generate human-readable explanation of judge decision.
+判定の決定理由を人間が読める形式で整形する
 
 **パラメータ**
 
@@ -273,8 +264,7 @@ buildFallbackJudge(input: {
 }): TeamFinalJudge
 ```
 
-Build a fallback judge verdict when no LLM-based judgment is available.
-Uses deterministic rules based on uncertainty proxy.
+LLM判定がない場合の代替判定を生成する
 
 **パラメータ**
 
@@ -302,8 +292,7 @@ async runFinalJudge(input: {
 }): Promise<TeamFinalJudge>
 ```
 
-Run the final judge process.
-In stable profile mode, this uses deterministic fallback logic without LLM calls.
+最終判定プロセスを実行します
 
 **パラメータ**
 
@@ -355,8 +344,7 @@ interface JudgeWeightConfig {
 }
 ```
 
-Configuration for uncertainty weight parameters.
-These weights determine how different factors contribute to uncertainty.
+判定の重み付け設定
 
 ### JudgeExplanation
 
@@ -396,7 +384,7 @@ interface JudgeExplanation {
 }
 ```
 
-Detailed explanation of judge decision factors.
+判定決定要因の詳細な説明
 
 ### TeamUncertaintyProxy
 
@@ -409,8 +397,7 @@ interface TeamUncertaintyProxy {
 }
 ```
 
-Uncertainty proxy computed from member results.
-Used to assess overall team output quality and reliability.
+メンバー結果から計算される不確実性プロキシ
 
 ---
-*自動生成: 2026-02-18T00:15:35.395Z*
+*自動生成: 2026-02-18T06:37:19.500Z*

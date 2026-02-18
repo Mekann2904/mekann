@@ -17,11 +17,11 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `formatDuration` | Formats a duration in milliseconds to a human-read |
-| 関数 | `formatDurationMs` | Formats duration from an item with start and optio |
-| 関数 | `formatBytes` | Formats a byte count to a human-readable string. |
-| 関数 | `formatClockTime` | Formats a timestamp to clock time (HH:MM:SS). |
-| 関数 | `normalizeForSingleLine` | - |
+| 関数 | `formatDuration` | ミリ秒を読みやすい文字列に変換 |
+| 関数 | `formatDurationMs` | ミリ秒単位の持続時間を文字列化 |
+| 関数 | `formatBytes` | バイト数を人間が読める形式に変換 |
+| 関数 | `formatClockTime` | タイムスタンプを時刻に変換 |
+| 関数 | `normalizeForSingleLine` | テキストを単一行用に正規化する |
 
 ## 図解
 
@@ -59,7 +59,7 @@ flowchart TD
 formatDuration(ms: number): string
 ```
 
-Formats a duration in milliseconds to a human-readable string.
+ミリ秒を読みやすい文字列に変換
 
 **パラメータ**
 
@@ -75,8 +75,7 @@ Formats a duration in milliseconds to a human-readable string.
 formatDurationMs(item: DurationItem): string
 ```
 
-Formats duration from an item with start and optional finish timestamps.
-If not finished, uses current time.
+ミリ秒単位の持続時間を文字列化
 
 **パラメータ**
 
@@ -92,7 +91,7 @@ If not finished, uses current time.
 formatBytes(value: number): string
 ```
 
-Formats a byte count to a human-readable string.
+バイト数を人間が読める形式に変換
 
 **パラメータ**
 
@@ -108,7 +107,7 @@ Formats a byte count to a human-readable string.
 formatClockTime(value?: number): string
 ```
 
-Formats a timestamp to clock time (HH:MM:SS).
+タイムスタンプを時刻に変換
 
 **パラメータ**
 
@@ -123,6 +122,8 @@ Formats a timestamp to clock time (HH:MM:SS).
 ```typescript
 normalizeForSingleLine(input: string, maxLength: any): string
 ```
+
+テキストを単一行用に正規化する
 
 **パラメータ**
 
@@ -147,4 +148,4 @@ interface DurationItem {
 Item with start and finish timestamps for duration calculation.
 
 ---
-*自動生成: 2026-02-18T00:15:35.724Z*
+*自動生成: 2026-02-18T06:37:19.900Z*

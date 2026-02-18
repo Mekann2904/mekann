@@ -17,15 +17,15 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getCacheKey` | Generate a cache key from tool name and parameters |
-| 関数 | `getSearchCache` | Get the global cache instance. |
-| 関数 | `resetSearchCache` | Reset the global cache instance (for testing). |
-| 関数 | `getOrCompute` | Get or compute a cached result. |
-| 関数 | `getOrComputeSync` | Sync version of getOrCompute. |
-| クラス | `SearchResultCache` | Type-safe cache store with TTL support. |
-| インターフェース | `CacheEntry` | A single cache entry with metadata. |
-| インターフェース | `CacheConfig` | Cache configuration. |
-| インターフェース | `CacheStats` | Cache statistics. |
+| 関数 | `getCacheKey` | キャッシュキーを生成する |
+| 関数 | `getSearchCache` | グローバルキャッシュインスタンスを取得する。 |
+| 関数 | `resetSearchCache` | グローバルキャッシュをリセットする |
+| 関数 | `getOrCompute` | キャッシュを取得または計算して返す |
+| 関数 | `getOrComputeSync` | getOrComputeの同期バージョン |
+| クラス | `SearchResultCache` | 検索結果をキャッシュするクラス |
+| インターフェース | `CacheEntry` | メタデータを持つ単一のキャッシュエントリ |
+| インターフェース | `CacheConfig` | キャッシュ設定 |
+| インターフェース | `CacheStats` | キャッシュの統計情報。 |
 
 ## 図解
 
@@ -104,8 +104,7 @@ sequenceDiagram
 getCacheKey(tool: string, params: Record<string, unknown>): string
 ```
 
-Generate a cache key from tool name and parameters.
-Creates a deterministic string representation.
+キャッシュキーを生成する
 
 **パラメータ**
 
@@ -138,7 +137,7 @@ Sort object keys recursively for consistent serialization.
 getSearchCache(): SearchResultCache
 ```
 
-Get the global cache instance.
+グローバルキャッシュインスタンスを取得する。
 
 **戻り値**: `SearchResultCache`
 
@@ -148,7 +147,7 @@ Get the global cache instance.
 resetSearchCache(): void
 ```
 
-Reset the global cache instance (for testing).
+グローバルキャッシュをリセットする
 
 **戻り値**: `void`
 
@@ -158,8 +157,7 @@ Reset the global cache instance (for testing).
 async getOrCompute(tool: string, params: Record<string, unknown>, factory: () => Promise<T>, ttl?: number): Promise<T>
 ```
 
-Get or compute a cached result.
-If the result is not cached, calls the factory function and caches the result.
+キャッシュを取得または計算して返す
 
 **パラメータ**
 
@@ -178,7 +176,7 @@ If the result is not cached, calls the factory function and caches the result.
 getOrComputeSync(tool: string, params: Record<string, unknown>, factory: () => T, ttl?: number): T
 ```
 
-Sync version of getOrCompute.
+getOrComputeの同期バージョン
 
 **パラメータ**
 
@@ -195,7 +193,7 @@ Sync version of getOrCompute.
 
 ### SearchResultCache
 
-Type-safe cache store with TTL support.
+検索結果をキャッシュするクラス
 
 **プロパティ**
 
@@ -235,7 +233,7 @@ interface CacheEntry {
 }
 ```
 
-A single cache entry with metadata.
+メタデータを持つ単一のキャッシュエントリ
 
 ### CacheConfig
 
@@ -247,7 +245,7 @@ interface CacheConfig {
 }
 ```
 
-Cache configuration.
+キャッシュ設定
 
 ### CacheStats
 
@@ -260,7 +258,7 @@ interface CacheStats {
 }
 ```
 
-Cache statistics.
+キャッシュの統計情報。
 
 ---
-*自動生成: 2026-02-18T00:15:35.579Z*
+*自動生成: 2026-02-18T06:37:19.699Z*

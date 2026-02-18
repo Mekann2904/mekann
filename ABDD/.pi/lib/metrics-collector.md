@@ -25,19 +25,19 @@ import { join } from 'node:path';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `initMetricsCollector` | Initialize the metrics collector. |
-| 関数 | `getMetricsCollector` | Get metrics collector instance (initializes if nee |
-| 関数 | `resetMetricsCollector` | Reset metrics collector state (for testing). |
-| 関数 | `isMetricsCollectorInitialized` | Check if metrics collector is initialized. |
-| 関数 | `recordStealingAttempt` | Record a stealing attempt (for statistics). |
-| 関数 | `getMetricsConfigFromEnv` | Get metrics collector config from environment vari |
-| インターフェース | `SchedulerMetrics` | Scheduler metrics snapshot. |
-| インターフェース | `TaskCompletionEvent` | Task completion event for metrics. |
-| インターフェース | `PreemptionEvent` | Preemption event for metrics. |
-| インターフェース | `WorkStealEvent` | Work steal event for metrics. |
-| インターフェース | `MetricsSummary` | Metrics summary over a time period. |
-| インターフェース | `MetricsCollectorConfig` | Metrics collector configuration. |
-| インターフェース | `StealingStats` | Stealing statistics for work stealing coordination |
+| 関数 | `initMetricsCollector` | メトリクスコレクタを初期化する |
+| 関数 | `getMetricsCollector` | メトリクス収集インスタンスを取得（必要なら初期化） |
+| 関数 | `resetMetricsCollector` | メトリクス収集器の状態をリセットする（テスト用）。 |
+| 関数 | `isMetricsCollectorInitialized` | メトリクスコレクターが初期化済みか確認 |
+| 関数 | `recordStealingAttempt` | 盗用試行を記録する |
+| 関数 | `getMetricsConfigFromEnv` | 環境変数からメトリクス設定を取得 |
+| インターフェース | `SchedulerMetrics` | スケジューラーのメトリクス |
+| インターフェース | `TaskCompletionEvent` | メトリクス用タスク完了イベント |
+| インターフェース | `PreemptionEvent` | プリエンプションイベント |
+| インターフェース | `WorkStealEvent` | ワークスティールイベント |
+| インターフェース | `MetricsSummary` | 指定期間のメトリクス集計結果を表します。 |
+| インターフェース | `MetricsCollectorConfig` | メトリクス収集の設定 |
+| インターフェース | `StealingStats` | ワークスティーリングの統計情報 |
 
 ## 図解
 
@@ -264,7 +264,7 @@ Rotate log files if needed.
 initMetricsCollector(configOverrides?: Partial<MetricsCollectorConfig>): void
 ```
 
-Initialize the metrics collector.
+メトリクスコレクタを初期化する
 
 **パラメータ**
 
@@ -291,7 +291,7 @@ getMetricsCollector(): {
 }
 ```
 
-Get metrics collector instance (initializes if needed).
+メトリクス収集インスタンスを取得（必要なら初期化）
 
 **戻り値**: `{
   recordTaskCompletion: (task: { id: string; source: string; provider: string; model: string; priority: string }, result: { waitedMs: number; executionMs: number; success: boolean }) => void;
@@ -462,7 +462,7 @@ Collect and log current metrics.
 resetMetricsCollector(): void
 ```
 
-Reset metrics collector state (for testing).
+メトリクス収集器の状態をリセットする（テスト用）。
 
 **戻り値**: `void`
 
@@ -472,7 +472,7 @@ Reset metrics collector state (for testing).
 isMetricsCollectorInitialized(): boolean
 ```
 
-Check if metrics collector is initialized.
+メトリクスコレクターが初期化済みか確認
 
 **戻り値**: `boolean`
 
@@ -482,7 +482,7 @@ Check if metrics collector is initialized.
 recordStealingAttempt(success: boolean, latencyMs?: number): void
 ```
 
-Record a stealing attempt (for statistics).
+盗用試行を記録する
 
 **パラメータ**
 
@@ -499,7 +499,7 @@ Record a stealing attempt (for statistics).
 getMetricsConfigFromEnv(): Partial<MetricsCollectorConfig>
 ```
 
-Get metrics collector config from environment variables.
+環境変数からメトリクス設定を取得
 
 **戻り値**: `Partial<MetricsCollectorConfig>`
 
@@ -522,7 +522,7 @@ interface SchedulerMetrics {
 }
 ```
 
-Scheduler metrics snapshot.
+スケジューラーのメトリクス
 
 ### TaskCompletionEvent
 
@@ -540,7 +540,7 @@ interface TaskCompletionEvent {
 }
 ```
 
-Task completion event for metrics.
+メトリクス用タスク完了イベント
 
 ### PreemptionEvent
 
@@ -552,7 +552,7 @@ interface PreemptionEvent {
 }
 ```
 
-Preemption event for metrics.
+プリエンプションイベント
 
 ### WorkStealEvent
 
@@ -564,7 +564,7 @@ interface WorkStealEvent {
 }
 ```
 
-Work steal event for metrics.
+ワークスティールイベント
 
 ### MetricsSummary
 
@@ -588,7 +588,7 @@ interface MetricsSummary {
 }
 ```
 
-Metrics summary over a time period.
+指定期間のメトリクス集計結果を表します。
 
 ### MetricsCollectorConfig
 
@@ -602,7 +602,7 @@ interface MetricsCollectorConfig {
 }
 ```
 
-Metrics collector configuration.
+メトリクス収集の設定
 
 ### StealingStats
 
@@ -617,7 +617,7 @@ interface StealingStats {
 }
 ```
 
-Stealing statistics for work stealing coordination.
+ワークスティーリングの統計情報
 
 ### MetricsWindowState
 
@@ -659,4 +659,4 @@ interface CollectorState {
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.731Z*
+*自動生成: 2026-02-18T06:37:19.912Z*

@@ -28,7 +28,7 @@ import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerAgentUsageTracker` | - |
+| 関数 | `registerAgentUsageTracker` | エージェントの使用状況追跡を登録 |
 
 ## 図解
 
@@ -648,6 +648,8 @@ recordAgentEnd(ctx: ExtensionAPI["context"]): void
 registerAgentUsageTracker(pi: ExtensionAPI): void
 ```
 
+エージェントの使用状況追跡を登録
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -792,4 +794,4 @@ type EventStatus = "ok" | "error"
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.457Z*
+*自動生成: 2026-02-18T06:37:19.557Z*

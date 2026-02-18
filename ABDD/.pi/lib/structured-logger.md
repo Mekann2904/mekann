@@ -17,28 +17,28 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getMinLogLevel` | 環境変数から最小ログレベルを取得する |
+| 関数 | `getMinLogLevel` | 最小ログレベルを取得する |
 | 関数 | `resetMinLogLevelCache` | キャッシュされた最小ログレベルをリセット（テスト用） |
-| 関数 | `formatTimestamp` | ISO8601形式のタイムスタンプを生成する |
-| 関数 | `shouldLog` | ログレベルが最小レベル以上かどうかを判定する |
+| 関数 | `formatTimestamp` | 日付をISO8601形式の文字列に変換する |
+| 関数 | `shouldLog` | 指定されたログレベルが出力対象か判定する |
 | 関数 | `formatError` | エラーオブジェクトを構造化された形式に変換する |
 | 関数 | `serializeLogEntry` | ログエントリをJSON文字列に変換する |
 | 関数 | `formatReadableEntry` | ログエントリを読み取り可能な形式でフォーマットする |
 | 関数 | `getDefaultLogger` | デフォルトロガーを取得する |
-| 関数 | `resetDefaultLogger` | デフォルトロガーをリセット（テスト用） |
-| 関数 | `createLogger` | 指定されたコンテキストでロガーを作成する |
-| 関数 | `getSubagentLogger` | subagentsコンテキストのロガーを取得 |
+| 関数 | `resetDefaultLogger` | デフォルトロガーをリセットする |
+| 関数 | `createLogger` | 指定されたコンテキストでロガーを作成 |
+| 関数 | `getSubagentLogger` | subagentsコンテキストのロガーを取得する |
 | 関数 | `getAgentTeamsLogger` | agent-teamsコンテキストのロガーを取得 |
 | 関数 | `getStorageLogger` | storageコンテキストのロガーを取得 |
-| 関数 | `logInfo` | クイックINFOログ |
+| 関数 | `logInfo` | INFOレベルのログを出力 |
 | 関数 | `logWarn` | クイックWARNログ |
 | 関数 | `logError` | クイックERRORログ |
-| 関数 | `logDebug` | クイックDEBUGログ |
+| 関数 | `logDebug` | DEBUGレベルのログを出力 |
 | クラス | `StructuredLogger` | 構造化ロガークラス |
 | クラス | `ChildLogger` | 子ロガー - 操作名が固定されたロガー |
-| インターフェース | `StructuredLogEntry` | 構造化ログエントリのインターフェース |
+| インターフェース | `StructuredLogEntry` | 構造化ログエントリ |
 | インターフェース | `StructuredLoggerOptions` | ロガー設定オプション |
-| 型 | `LogLevel` | ログレベル定義 |
+| 型 | `LogLevel` | ログレベルの種別を定義 |
 | 型 | `LogContext` | ログコンテキスト定義 |
 
 ## 図解
@@ -109,7 +109,7 @@ flowchart TD
 getMinLogLevel(): LogLevel
 ```
 
-環境変数から最小ログレベルを取得する
+最小ログレベルを取得する
 
 **戻り値**: `LogLevel`
 
@@ -129,7 +129,7 @@ resetMinLogLevelCache(): void
 formatTimestamp(date: Date): string
 ```
 
-ISO8601形式のタイムスタンプを生成する
+日付をISO8601形式の文字列に変換する
 
 **パラメータ**
 
@@ -145,7 +145,7 @@ ISO8601形式のタイムスタンプを生成する
 shouldLog(level: LogLevel, minLevel: LogLevel): boolean
 ```
 
-ログレベルが最小レベル以上かどうかを判定する
+指定されたログレベルが出力対象か判定する
 
 **パラメータ**
 
@@ -220,7 +220,7 @@ getDefaultLogger(): StructuredLogger
 resetDefaultLogger(): void
 ```
 
-デフォルトロガーをリセット（テスト用）
+デフォルトロガーをリセットする
 
 **戻り値**: `void`
 
@@ -230,7 +230,7 @@ resetDefaultLogger(): void
 createLogger(context: LogContext | string, options?: Omit<StructuredLoggerOptions, "context">): StructuredLogger
 ```
 
-指定されたコンテキストでロガーを作成する
+指定されたコンテキストでロガーを作成
 
 **パラメータ**
 
@@ -247,7 +247,7 @@ createLogger(context: LogContext | string, options?: Omit<StructuredLoggerOption
 getSubagentLogger(): StructuredLogger
 ```
 
-subagentsコンテキストのロガーを取得
+subagentsコンテキストのロガーを取得する
 
 **戻り値**: `StructuredLogger`
 
@@ -277,7 +277,7 @@ storageコンテキストのロガーを取得
 logInfo(context: LogContext | string, operation: string, message: string, metadata?: Record<string, unknown>): void
 ```
 
-クイックINFOログ
+INFOレベルのログを出力
 
 **パラメータ**
 
@@ -335,7 +335,7 @@ logError(context: LogContext | string, operation: string, message: string, error
 logDebug(context: LogContext | string, operation: string, message: string, metadata?: Record<string, unknown>): void
 ```
 
-クイックDEBUGログ
+DEBUGレベルのログを出力
 
 **パラメータ**
 
@@ -416,7 +416,7 @@ interface StructuredLogEntry {
 }
 ```
 
-構造化ログエントリのインターフェース
+構造化ログエントリ
 
 ### StructuredLoggerOptions
 
@@ -441,7 +441,7 @@ interface StructuredLoggerOptions {
 type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
 ```
 
-ログレベル定義
+ログレベルの種別を定義
 
 ### LogContext
 
@@ -461,7 +461,6 @@ type LogContext = | "subagents"
 ```
 
 ログコンテキスト定義
-モジュールやコンポーネントを識別するために使用
 
 ---
-*自動生成: 2026-02-18T00:15:35.763Z*
+*自動生成: 2026-02-18T06:37:20.043Z*

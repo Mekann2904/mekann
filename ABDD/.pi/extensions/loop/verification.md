@@ -25,17 +25,17 @@ import { toErrorMessage } from '../../lib/error-utils.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `resolveVerificationPolicy` | - |
-| 関数 | `shouldRunVerificationCommand` | - |
-| 関数 | `runVerificationCommand` | - |
-| 関数 | `parseVerificationCommand` | - |
-| 関数 | `resolveVerificationAllowlistPrefixes` | - |
-| 関数 | `isVerificationCommandAllowed` | - |
-| 関数 | `buildVerificationValidationFeedback` | - |
-| インターフェース | `LoopVerificationResult` | - |
-| インターフェース | `ParsedVerificationCommand` | - |
-| インターフェース | `VerificationPolicyConfig` | - |
-| 型 | `VerificationPolicyMode` | - |
+| 関数 | `resolveVerificationPolicy` | 環境変数から検証ポリシーを解決する |
+| 関数 | `shouldRunVerificationCommand` | 検証コマンドを実行すべきか判定する |
+| 関数 | `runVerificationCommand` | 検証コマンドを実行する |
+| 関数 | `parseVerificationCommand` | 検証コマンドをパースする |
+| 関数 | `resolveVerificationAllowlistPrefixes` | 検証許可リストのプレフィックスを解決する |
+| 関数 | `isVerificationCommandAllowed` | 検証コマンドが許可リストに含まれるか判定 |
+| 関数 | `buildVerificationValidationFeedback` | 検証結果からフィードバックメッセージを生成する |
+| インターフェース | `LoopVerificationResult` | ループ検証結果を表すインターフェース |
+| インターフェース | `ParsedVerificationCommand` | 検証コマンドの解析結果 |
+| インターフェース | `VerificationPolicyConfig` | 検証ポリシーの設定 |
+| 型 | `VerificationPolicyMode` | 検証ポリシーのモード |
 
 ## 図解
 
@@ -122,6 +122,8 @@ sequenceDiagram
 resolveVerificationPolicy(): VerificationPolicyConfig
 ```
 
+環境変数から検証ポリシーを解決する
+
 **戻り値**: `VerificationPolicyConfig`
 
 ### shouldRunVerificationCommand
@@ -134,6 +136,8 @@ shouldRunVerificationCommand(input: {
   policy: VerificationPolicyConfig;
 }): boolean
 ```
+
+検証コマンドを実行すべきか判定する
 
 **パラメータ**
 
@@ -158,6 +162,8 @@ async runVerificationCommand(input: {
   signal?: AbortSignal;
 }): Promise<LoopVerificationResult>
 ```
+
+検証コマンドを実行する
 
 **パラメータ**
 
@@ -232,6 +238,8 @@ cleanup(): void
 parseVerificationCommand(command: string): ParsedVerificationCommand
 ```
 
+検証コマンドをパースする
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -260,6 +268,8 @@ tokenizeArgs(input: string): string[]
 resolveVerificationAllowlistPrefixes(): string[][]
 ```
 
+検証許可リストのプレフィックスを解決する
+
 **戻り値**: `string[][]`
 
 ### isVerificationCommandAllowed
@@ -267,6 +277,8 @@ resolveVerificationAllowlistPrefixes(): string[][]
 ```typescript
 isVerificationCommandAllowed(command: ParsedVerificationCommand, allowlistPrefixes: string[][]): boolean
 ```
+
+検証コマンドが許可リストに含まれるか判定
 
 **パラメータ**
 
@@ -326,6 +338,8 @@ redactSensitiveText(value: string): string
 buildVerificationValidationFeedback(result: LoopVerificationResult): string[]
 ```
 
+検証結果からフィードバックメッセージを生成する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -366,6 +380,8 @@ interface LoopVerificationResult {
 }
 ```
 
+ループ検証結果を表すインターフェース
+
 ### ParsedVerificationCommand
 
 ```typescript
@@ -376,6 +392,8 @@ interface ParsedVerificationCommand {
 }
 ```
 
+検証コマンドの解析結果
+
 ### VerificationPolicyConfig
 
 ```typescript
@@ -385,6 +403,8 @@ interface VerificationPolicyConfig {
 }
 ```
 
+検証ポリシーの設定
+
 ## 型定義
 
 ### VerificationPolicyMode
@@ -393,5 +413,7 @@ interface VerificationPolicyConfig {
 type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
+検証ポリシーのモード
+
 ---
-*自動生成: 2026-02-18T00:15:35.526Z*
+*自動生成: 2026-02-18T06:37:19.625Z*

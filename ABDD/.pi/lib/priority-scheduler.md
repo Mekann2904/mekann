@@ -17,19 +17,19 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `inferTaskType` | Infer task type from tool name. |
-| 関数 | `estimateRounds` | Estimate the number of tool call rounds for a task |
-| 関数 | `inferPriority` | Infer task priority from tool name and context. |
-| 関数 | `comparePriority` | Compare two tasks for priority ordering. |
-| 関数 | `formatPriorityQueueStats` | Create a formatted status string for priority queu |
-| クラス | `PriorityTaskQueue` | Priority queue with WFQ-style scheduling. |
-| インターフェース | `PriorityTaskMetadata` | Task metadata for priority scheduling. |
-| インターフェース | `PriorityQueueEntry` | Priority queue entry with scheduling metadata. |
-| インターフェース | `EstimationContext` | Context for round estimation. |
-| インターフェース | `RoundEstimation` | Result of round estimation. |
-| 型 | `TaskPriority` | Task priority levels for scheduling. |
-| 型 | `TaskType` | Task type classification for round estimation. |
-| 型 | `TaskComplexity` | Task complexity level. |
+| 関数 | `inferTaskType` | ツール名からタスク種別を推測 |
+| 関数 | `estimateRounds` | タスクの種類に基づいて推定ラウンド数を計算する |
+| 関数 | `inferPriority` | ツール名とコンテキストからタスク優先度を推論する |
+| 関数 | `comparePriority` | 優先度を比較して順序を決定する |
+| 関数 | `formatPriorityQueueStats` | 優先度キューの統計情報をフォーマットする |
+| クラス | `PriorityTaskQueue` | WFQ方式のタスク優先度キュー |
+| インターフェース | `PriorityTaskMetadata` | 優先度スケジューリング用のタスクメタデータ |
+| インターフェース | `PriorityQueueEntry` | WFQスケジューリング用の優先度キューエントリ |
+| インターフェース | `EstimationContext` | ラウンド推定のコンテキスト情報 |
+| インターフェース | `RoundEstimation` | ラウンド推定の結果 |
+| 型 | `TaskPriority` | タスクスケジューリングの優先度レベル |
+| 型 | `TaskType` | タスクの種類を表す型 |
+| 型 | `TaskComplexity` | タスクの複雑度を表す型 |
 
 ## 図解
 
@@ -103,7 +103,7 @@ flowchart TD
 inferTaskType(toolName: string): TaskType
 ```
 
-Infer task type from tool name.
+ツール名からタスク種別を推測
 
 **パラメータ**
 
@@ -119,16 +119,7 @@ Infer task type from tool name.
 estimateRounds(context: EstimationContext): RoundEstimation
 ```
 
-Estimate the number of tool call rounds for a task.
-Based on agent-estimation skill methodology.
-
-Round estimation table:
-- read/bash: 1 round (simple queries)
-- edit/write: 2 rounds (code generation + verification)
-- question: 1 round (user interaction)
-- subagent_single: 5 rounds (delegation overhead)
-- subagent_parallel: 3 + N*2 rounds (coordination)
-- agent_team: 8 + N*3 rounds (team coordination)
+タスクの種類に基づいて推定ラウンド数を計算する
 
 **パラメータ**
 
@@ -149,15 +140,7 @@ inferPriority(toolName: string, context?: {
   }): TaskPriority
 ```
 
-Infer task priority from tool name and context.
-
-Priority inference rules:
-- question: critical (user is waiting for response)
-- subagent_run_parallel with multiple agents: high
-- subagent_run: high
-- read/bash/edit: normal
-- Retries: low
-- Background tasks: background
+ツール名とコンテキストからタスク優先度を推論する
 
 **パラメータ**
 
@@ -179,14 +162,7 @@ Priority inference rules:
 comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number
 ```
 
-Compare two tasks for priority ordering.
-Returns negative if a should come before b, positive if b before a.
-
-Comparison order:
-1. Priority value (higher first)
-2. Deadline (earlier first, if both have deadlines)
-3. Enqueue time (earlier first, FIFO within same priority)
-4. Estimated duration (shorter first, for SRT optimization)
+優先度を比較して順序を決定する
 
 **パラメータ**
 
@@ -203,7 +179,7 @@ Comparison order:
 formatPriorityQueueStats(stats: ReturnType<PriorityTaskQueue["getStats"]>): string
 ```
 
-Create a formatted status string for priority queue stats.
+優先度キューの統計情報をフォーマットする
 
 **パラメータ**
 
@@ -217,7 +193,7 @@ Create a formatted status string for priority queue stats.
 
 ### PriorityTaskQueue
 
-Priority queue with WFQ-style scheduling.
+WFQ方式のタスク優先度キュー
 
 **プロパティ**
 
@@ -266,7 +242,7 @@ interface PriorityTaskMetadata {
 }
 ```
 
-Task metadata for priority scheduling.
+優先度スケジューリング用のタスクメタデータ
 
 ### PriorityQueueEntry
 
@@ -279,7 +255,7 @@ interface PriorityQueueEntry {
 }
 ```
 
-Priority queue entry with scheduling metadata.
+WFQスケジューリング用の優先度キューエントリ
 
 ### EstimationContext
 
@@ -293,7 +269,7 @@ interface EstimationContext {
 }
 ```
 
-Context for round estimation.
+ラウンド推定のコンテキスト情報
 
 ### RoundEstimation
 
@@ -306,7 +282,7 @@ interface RoundEstimation {
 }
 ```
 
-Result of round estimation.
+ラウンド推定の結果
 
 ## 型定義
 
@@ -316,9 +292,7 @@ Result of round estimation.
 type TaskPriority = "critical" | "high" | "normal" | "low" | "background"
 ```
 
-Task priority levels for scheduling.
-Higher priority tasks are scheduled before lower priority tasks.
-"background" is the lowest priority for non-urgent tasks.
+タスクスケジューリングの優先度レベル
 
 ### TaskType
 
@@ -334,7 +308,7 @@ type TaskType = | "read"      // Information retrieval
   | "unknown"
 ```
 
-Task type classification for round estimation.
+タスクの種類を表す型
 
 ### TaskComplexity
 
@@ -342,7 +316,7 @@ Task type classification for round estimation.
 type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "exploratory"
 ```
 
-Task complexity level.
+タスクの複雑度を表す型
 
 ---
-*自動生成: 2026-02-18T00:15:35.742Z*
+*自動生成: 2026-02-18T06:37:19.983Z*

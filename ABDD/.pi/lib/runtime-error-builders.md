@@ -24,7 +24,7 @@ import { computeModelTimeoutMs } from './model-timeouts.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `resolveEffectiveTimeoutMs` | Resolve effective timeout with model-specific adju |
+| 関数 | `resolveEffectiveTimeoutMs` | 有効なタイムアウト時間を解決する |
 
 ## 図解
 
@@ -50,11 +50,7 @@ flowchart LR
 resolveEffectiveTimeoutMs(userTimeoutMs: unknown, modelId: string | undefined, fallback: number): number
 ```
 
-Resolve effective timeout with model-specific adjustment.
-Priority: max(user-specified, model-specific) > default
-
-This ensures that slow models (e.g., GLM-5) always get sufficient timeout,
-even if the caller specifies a shorter timeout intended for faster models.
+有効なタイムアウト時間を解決する
 
 **パラメータ**
 
@@ -67,4 +63,4 @@ even if the caller specifies a shorter timeout intended for faster models.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-18T00:15:35.751Z*
+*自動生成: 2026-02-18T06:37:20.004Z*

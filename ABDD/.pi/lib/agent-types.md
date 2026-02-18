@@ -17,9 +17,9 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `RunOutcomeSignal` | Signal returned from agent/subagent/team execution |
-| 型 | `ThinkingLevel` | Thinking level for model reasoning. |
-| 型 | `RunOutcomeCode` | Outcome codes for agent/subagent/team execution re |
+| インターフェース | `RunOutcomeSignal` | 実行結果を表すシグナル |
+| 型 | `ThinkingLevel` | モデルの推論レベルを表す型。 |
+| 型 | `RunOutcomeCode` | エージェントの実行結果コード |
 
 ## 図解
 
@@ -45,8 +45,7 @@ interface RunOutcomeSignal {
 }
 ```
 
-Signal returned from agent/subagent/team execution.
-Encapsulates the outcome code and whether a retry is recommended.
+実行結果を表すシグナル
 
 ## 型定義
 
@@ -56,8 +55,7 @@ Encapsulates the outcome code and whether a retry is recommended.
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
 ```
 
-Thinking level for model reasoning.
-Controls the depth of thinking/reasoning output from the model.
+モデルの推論レベルを表す型。
 
 ### RunOutcomeCode
 
@@ -70,8 +68,7 @@ type RunOutcomeCode = | "SUCCESS"
   | "TIMEOUT"
 ```
 
-Outcome codes for agent/subagent/team execution results.
-Used to classify the result of a run for retry logic and reporting.
+エージェントの実行結果コード
 
 ---
-*自動生成: 2026-02-18T00:15:35.648Z*
+*自動生成: 2026-02-18T06:37:19.783Z*

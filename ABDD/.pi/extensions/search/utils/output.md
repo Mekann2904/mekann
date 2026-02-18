@@ -25,32 +25,32 @@ import { DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT } from '
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `truncateResults` | Truncate results to limit and compute metadata. |
+| 関数 | `truncateResults` | 検索結果を制限し、メタデータを含める |
 | 関数 | `truncateHead` | Truncate from head (keep last N items). |
-| 関数 | `parseFdOutput` | Parse fd output into FileCandidate array. |
-| 関数 | `formatFileCandidates` | Format file candidates for display. |
-| 関数 | `parseRgOutput` | Parse ripgrep JSON output into structured matches. |
-| 関数 | `summarizeResults` | Convert summary map to array and sort by count. |
-| 関数 | `formatCodeSearch` | Format code search results for display. |
-| 関数 | `parseCtagsOutput` | Parse ctags JSON output into SymbolDefinition arra |
-| 関数 | `parseCtagsTraditional` | Parse traditional ctags format as fallback. |
-| 関数 | `formatSymbols` | Format symbol search results for display. |
-| 関数 | `createErrorResponse` | Create a standardized error response. |
-| 関数 | `createCodeSearchError` | Create a standardized error response for code sear |
-| 関数 | `formatError` | Format error for display. |
-| 関数 | `escapeText` | Escape special characters for display. |
-| 関数 | `truncateText` | Truncate text with ellipsis. |
-| 関数 | `relativePath` | Get relative path from absolute path. |
-| 関数 | `enhanceOutput` | Create an enhanced output from a basic search resp |
-| 関数 | `suggestNextAction` | Determine suggested next action based on results. |
-| 関数 | `createHints` | Create hints based on search results. |
-| 関数 | `calculateSimpleConfidence` | Calculate confidence from simple parameters. |
-| 関数 | `createSimpleHints` | Create hints from simple parameters. |
-| 関数 | `formatEnhancedOutput` | Format enhanced output for display. |
-| インターフェース | `SearchHints` | Agent hints for search results. |
-| インターフェース | `SearchStats` | Statistics about the search operation. |
-| インターフェース | `EnhancedOutput` | Enhanced output with agent hints and statistics. |
-| 型 | `SuggestedNextAction` | Suggested next action for the agent. |
+| 関数 | `parseFdOutput` | fdの出力をFileCandidate配列に変換 |
+| 関数 | `formatFileCandidates` | ファイル候補を整形する |
+| 関数 | `parseRgOutput` | ripgrepのJSON出力を解析します。 |
+| 関数 | `summarizeResults` | サマリーマップを配列に変換し、カウント順にソートする |
+| 関数 | `formatCodeSearch` | コード検索結果を表示用に整形する |
+| 関数 | `parseCtagsOutput` | ctagsのJSON出力をパースする |
+| 関数 | `parseCtagsTraditional` | 従来のctags形式を解析します。 |
+| 関数 | `formatSymbols` | シンボルの検索結果をフォーマットする |
+| 関数 | `createErrorResponse` | 標準化されたエラーレスポンスを作成する |
+| 関数 | `createCodeSearchError` | コード検索のエラーレスポンスを作成する |
+| 関数 | `formatError` | エラーを整形して表示用文字列を返す |
+| 関数 | `escapeText` | 特殊文字をエスケープする |
+| 関数 | `truncateText` | テキストを省略記号付きで切り詰める。 |
+| 関数 | `relativePath` | 絶対パスから相対パスを計算する |
+| 関数 | `enhanceOutput` | 検索レスポンスから拡張出力を生成する |
+| 関数 | `suggestNextAction` | 検索結果に基づき推奨される次のアクションを決定します。 |
+| 関数 | `createHints` | 検索結果からヒントを生成する |
+| 関数 | `calculateSimpleConfidence` | シンプルな信頼度を計算する |
+| 関数 | `createSimpleHints` | シンプルなパラメータからヒントを作成 |
+| 関数 | `formatEnhancedOutput` | 拡張出力を表示用にフォーマットします。 |
+| インターフェース | `SearchHints` | 検索結果のヒント情報 |
+| インターフェース | `SearchStats` | 検索操作に関する統計情報。 |
+| インターフェース | `EnhancedOutput` | エージェントのヒントや統計情報を含む拡張出力 |
+| 型 | `SuggestedNextAction` | エージェント向けの推奨次回アクション |
 
 ## 図解
 
@@ -140,7 +140,7 @@ sequenceDiagram
 truncateResults(results: T[], limit: number): SearchResponse<T>
 ```
 
-Truncate results to limit and compute metadata.
+検索結果を制限し、メタデータを含める
 
 **パラメータ**
 
@@ -175,7 +175,7 @@ Useful for keeping most recent/relevant results.
 parseFdOutput(stdout: string, type: "file" | "dir"): FileCandidate[]
 ```
 
-Parse fd output into FileCandidate array.
+fdの出力をFileCandidate配列に変換
 
 **パラメータ**
 
@@ -192,7 +192,7 @@ Parse fd output into FileCandidate array.
 formatFileCandidates(output: SearchResponse<FileCandidate>): string
 ```
 
-Format file candidates for display.
+ファイル候補を整形する
 
 **パラメータ**
 
@@ -208,7 +208,7 @@ Format file candidates for display.
 parseRgOutput(stdout: string, contextLines: number): { matches: CodeSearchMatch[]; summary: Map<string, number> }
 ```
 
-Parse ripgrep JSON output into structured matches.
+ripgrepのJSON出力を解析します。
 
 **パラメータ**
 
@@ -225,7 +225,7 @@ Parse ripgrep JSON output into structured matches.
 summarizeResults(summary: Map<string, number>): CodeSearchSummary[]
 ```
 
-Convert summary map to array and sort by count.
+サマリーマップを配列に変換し、カウント順にソートする
 
 **パラメータ**
 
@@ -241,7 +241,7 @@ Convert summary map to array and sort by count.
 formatCodeSearch(output: CodeSearchOutput): string
 ```
 
-Format code search results for display.
+コード検索結果を表示用に整形する
 
 **パラメータ**
 
@@ -257,7 +257,7 @@ Format code search results for display.
 parseCtagsOutput(stdout: string): SymbolDefinition[]
 ```
 
-Parse ctags JSON output into SymbolDefinition array.
+ctagsのJSON出力をパースする
 
 **パラメータ**
 
@@ -273,7 +273,7 @@ Parse ctags JSON output into SymbolDefinition array.
 parseCtagsTraditional(stdout: string): SymbolDefinition[]
 ```
 
-Parse traditional ctags format as fallback.
+従来のctags形式を解析します。
 
 **パラメータ**
 
@@ -289,7 +289,7 @@ Parse traditional ctags format as fallback.
 formatSymbols(output: SearchResponse<SymbolDefinition>): string
 ```
 
-Format symbol search results for display.
+シンボルの検索結果をフォーマットする
 
 **パラメータ**
 
@@ -305,7 +305,7 @@ Format symbol search results for display.
 createErrorResponse(error: string): SearchResponse<T>
 ```
 
-Create a standardized error response.
+標準化されたエラーレスポンスを作成する
 
 **パラメータ**
 
@@ -321,7 +321,7 @@ Create a standardized error response.
 createCodeSearchError(error: string): CodeSearchOutput
 ```
 
-Create a standardized error response for code search.
+コード検索のエラーレスポンスを作成する
 
 **パラメータ**
 
@@ -337,7 +337,7 @@ Create a standardized error response for code search.
 formatError(tool: string, error: unknown): string
 ```
 
-Format error for display.
+エラーを整形して表示用文字列を返す
 
 **パラメータ**
 
@@ -354,7 +354,7 @@ Format error for display.
 escapeText(text: string): string
 ```
 
-Escape special characters for display.
+特殊文字をエスケープする
 
 **パラメータ**
 
@@ -370,7 +370,7 @@ Escape special characters for display.
 truncateText(text: string, maxLength: number): string
 ```
 
-Truncate text with ellipsis.
+テキストを省略記号付きで切り詰める。
 
 **パラメータ**
 
@@ -387,7 +387,7 @@ Truncate text with ellipsis.
 relativePath(absolute: string, cwd: string): string
 ```
 
-Get relative path from absolute path.
+絶対パスから相対パスを計算する
 
 **パラメータ**
 
@@ -404,7 +404,7 @@ Get relative path from absolute path.
 enhanceOutput(response: SearchResponse<T>, metrics: SearchMetrics, hints?: Partial<SearchHints>): EnhancedOutput<T>
 ```
 
-Create an enhanced output from a basic search response.
+検索レスポンスから拡張出力を生成する
 
 **パラメータ**
 
@@ -439,7 +439,7 @@ Calculate confidence score based on results and metrics.
 suggestNextAction(response: SearchResponse<T>, pattern?: string): SuggestedNextAction | undefined
 ```
 
-Determine suggested next action based on results.
+検索結果に基づき推奨される次のアクションを決定します。
 
 **パラメータ**
 
@@ -456,7 +456,7 @@ Determine suggested next action based on results.
 createHints(response: SearchResponse<T>, metrics: SearchMetrics, toolName: string): SearchHints
 ```
 
-Create hints based on search results.
+検索結果からヒントを生成する
 
 **パラメータ**
 
@@ -490,8 +490,7 @@ Get alternative tools for a given tool.
 calculateSimpleConfidence(count: number, truncated: boolean): number
 ```
 
-Calculate confidence from simple parameters.
-Used when full SearchResponse/Metrics are not available.
+シンプルな信頼度を計算する
 
 **パラメータ**
 
@@ -508,8 +507,7 @@ Used when full SearchResponse/Metrics are not available.
 createSimpleHints(toolName: string, resultCount: number, truncated: boolean, queryPattern?: string): SearchHints
 ```
 
-Create hints from simple parameters.
-Lightweight version for quick hint generation without full metrics.
+シンプルなパラメータからヒントを作成
 
 **パラメータ**
 
@@ -544,7 +542,7 @@ Generate related query suggestions based on the original query.
 formatEnhancedOutput(output: EnhancedOutput<T>, formatResult: (result: T) => string): string
 ```
 
-Format enhanced output for display.
+拡張出力を表示用にフォーマットします。
 
 **パラメータ**
 
@@ -584,8 +582,7 @@ interface SearchHints {
 }
 ```
 
-Agent hints for search results.
-Provides guidance on how to interpret and use the results.
+検索結果のヒント情報
 
 ### SearchStats
 
@@ -597,7 +594,7 @@ interface SearchStats {
 }
 ```
 
-Statistics about the search operation.
+検索操作に関する統計情報。
 
 ### EnhancedOutput
 
@@ -612,8 +609,7 @@ interface EnhancedOutput {
 }
 ```
 
-Enhanced output with agent hints and statistics.
-Wraps the standard SearchResponse with additional metadata.
+エージェントのヒントや統計情報を含む拡張出力
 
 ## 型定義
 
@@ -627,8 +623,7 @@ type SuggestedNextAction = | "refine_pattern"      // Pattern too broad, narrow 
   | "regenerate_index"
 ```
 
-Suggested next action for the agent.
-Helps guide the agent towards more effective searches.
+エージェント向けの推奨次回アクション
 
 ---
-*自動生成: 2026-02-18T00:15:35.593Z*
+*自動生成: 2026-02-18T06:37:19.717Z*

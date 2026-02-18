@@ -26,10 +26,10 @@ import { validateUrlForSsrf } from './ssrf-protection';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `loadReferences` | - |
-| 関数 | `fetchTextFromUrl` | - |
-| インターフェース | `LoopReference` | - |
-| インターフェース | `LoadedReferenceResult` | - |
+| 関数 | `loadReferences` | 参照情報を読み込む |
+| 関数 | `fetchTextFromUrl` | 指定されたURLからテキストを取得する |
+| インターフェース | `LoopReference` | ループ参照データの構造を定義します。 |
+| インターフェース | `LoadedReferenceResult` | 参照読み込みの結果 |
 
 ## 図解
 
@@ -106,6 +106,8 @@ sequenceDiagram
 async loadReferences(input: { refs: string[]; refsFile?: string; cwd: string }, signal?: AbortSignal): Promise<LoadedReferenceResult>
 ```
 
+参照情報を読み込む
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -120,6 +122,10 @@ async loadReferences(input: { refs: string[]; refsFile?: string; cwd: string }, 
 ```typescript
 async loadSingleReference(spec: string, cwd: string, signal?: AbortSignal): Promise<{ source: string; title: string; content: string }>
 ```
+
+指定されたURLからテキストを取得する
+
+SSRF対策としてURLの検証を行い、20秒のタイムアウトを設定してフェッチを行う。
 
 **パラメータ**
 
@@ -136,6 +142,8 @@ async loadSingleReference(spec: string, cwd: string, signal?: AbortSignal): Prom
 ```typescript
 async fetchTextFromUrl(url: string, signal?: AbortSignal): Promise<string>
 ```
+
+指定されたURLからテキストを取得する
 
 **パラメータ**
 
@@ -282,6 +290,8 @@ interface LoopReference {
 }
 ```
 
+ループ参照データの構造を定義します。
+
 ### LoadedReferenceResult
 
 ```typescript
@@ -291,5 +301,7 @@ interface LoadedReferenceResult {
 }
 ```
 
+参照読み込みの結果
+
 ---
-*自動生成: 2026-02-18T00:15:35.523Z*
+*自動生成: 2026-02-18T06:37:19.621Z*

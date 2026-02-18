@@ -28,9 +28,9 @@ import { computeLiveWindow } from '../../lib/agent-utils.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `toTeamLiveItemKey` | - |
-| 関数 | `renderAgentTeamLiveView` | - |
-| 関数 | `createAgentTeamLiveMonitor` | - |
+| 関数 | `toTeamLiveItemKey` | チームIDとメンバーIDから一意のキーを生成する |
+| 関数 | `renderAgentTeamLiveView` | エージェントチームのライブビューを描画する |
+| 関数 | `createAgentTeamLiveMonitor` | エージェントチームのライブモニターを作成する |
 
 ## 図解
 
@@ -141,6 +141,8 @@ toEventTailLines(events: string[], limit: number): string[]
 toTeamLiveItemKey(teamId: string, memberId: string): string
 ```
 
+チームIDとメンバーIDから一意のキーを生成する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -165,6 +167,8 @@ renderAgentTeamLiveView(input: {
   theme: any;
 }): string[]
 ```
+
+エージェントチームのライブビューを描画する
 
 **パラメータ**
 
@@ -207,6 +211,8 @@ createAgentTeamLiveMonitor(ctx: any, input: {
   }): AgentTeamLiveMonitorController | undefined
 ```
 
+エージェントチームのライブモニターを作成する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -244,4 +250,4 @@ close(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T00:15:35.402Z*
+*自動生成: 2026-02-18T06:37:19.507Z*

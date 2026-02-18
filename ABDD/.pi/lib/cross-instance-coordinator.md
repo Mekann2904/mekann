@@ -20,53 +20,54 @@ import { existsSync, mkdirSync, readdirSync... } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pid } from 'node:process';
+import { getRuntimeConfig, RuntimeConfig } from './runtime-config.js';
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerInstance` | Register this pi instance and start heartbeat. |
-| 関数 | `unregisterInstance` | Unregister this pi instance. |
-| 関数 | `updateHeartbeat` | Update heartbeat for this instance. |
-| 関数 | `cleanupDeadInstances` | Remove dead instance lock files. |
-| 関数 | `getActiveInstanceCount` | Get count of active pi instances. |
-| 関数 | `getActiveInstances` | Get list of active instances. |
-| 関数 | `getMyParallelLimit` | Get parallelism limit for this instance. |
-| 関数 | `getDynamicParallelLimit` | Get dynamic parallel limit based on workload distr |
-| 関数 | `shouldAttemptWorkStealing` | Check if this instance should attempt work stealin |
-| 関数 | `getWorkStealingCandidates` | Get candidate instances for work stealing (busiest |
-| 関数 | `updateWorkloadInfo` | Update workload info for this instance in heartbea |
-| 関数 | `getCoordinatorStatus` | Get detailed status for debugging. |
-| 関数 | `isCoordinatorInitialized` | Check if coordinator is initialized. |
-| 関数 | `getTotalMaxLlm` | Get total max LLM from config. |
-| 関数 | `getEnvOverrides` | Environment variable overrides. |
-| 関数 | `setActiveModel` | Update the active model for this instance. |
-| 関数 | `clearActiveModel` | Clear an active model for this instance. |
-| 関数 | `clearAllActiveModels` | Clear all active models for this instance. |
-| 関数 | `getActiveInstancesForModel` | Get count of active instances using a specific mod |
-| 関数 | `getModelParallelLimit` | Get the effective parallel limit for a specific mo |
-| 関数 | `getModelUsageSummary` | Get a summary of model usage across instances. |
-| 関数 | `broadcastQueueState` | Broadcast this instance's queue state to other ins |
-| 関数 | `getRemoteQueueStates` | Get queue states from all active instances. |
-| 関数 | `checkRemoteCapacity` | Check if any remote instance has capacity for more |
-| 関数 | `stealWork` | Attempt to steal work from another instance. |
-| 関数 | `getWorkStealingSummary` | Get work stealing summary for monitoring. |
-| 関数 | `cleanupQueueStates` | Clean up old queue state files. |
-| 関数 | `isIdle` | Check if this instance is idle (no pending tasks). |
-| 関数 | `findStealCandidate` | Find the best candidate instance to steal work fro |
-| 関数 | `safeStealWork` | Safely steal work from another instance using dist |
-| 関数 | `getStealingStats` | Get work stealing statistics. |
-| 関数 | `resetStealingStats` | Reset stealing statistics (for testing). |
-| 関数 | `cleanupExpiredLocks` | Clean up expired locks. |
-| 関数 | `enhancedHeartbeat` | Enhanced heartbeat that includes cleanup of locks  |
-| インターフェース | `ActiveModelInfo` | - |
-| インターフェース | `InstanceInfo` | - |
-| インターフェース | `CoordinatorConfig` | - |
-| インターフェース | `CoordinatorState` | - |
-| インターフェース | `StealableQueueEntry` | Queue entry for work stealing. |
-| インターフェース | `BroadcastQueueState` | Queue state broadcast format. |
-| インターフェース | `StealingStats` | Stealing statistics (public interface). |
+| 関数 | `registerInstance` | インスタンスを登録してハートビートを開始 |
+| 関数 | `unregisterInstance` | このPIインスタンスの登録を解除する |
+| 関数 | `updateHeartbeat` | このインスタンスのハートビートを更新する |
+| 関数 | `cleanupDeadInstances` | 無効なインスタンスをクリーンアップする |
+| 関数 | `getActiveInstanceCount` | アクティブなインスタンス数を取得 |
+| 関数 | `getActiveInstances` | アクティブなインスタンス情報を取得する |
+| 関数 | `getMyParallelLimit` | このインスタンスの並列処理制限を取得する |
+| 関数 | `getDynamicParallelLimit` | 保留タスク数に基づき動的に並列数を制限する。 |
+| 関数 | `shouldAttemptWorkStealing` | ワークスチーリングを試みるべきか判定 |
+| 関数 | `getWorkStealingCandidates` | ワークスチーリングの候補インスタンスを取得 |
+| 関数 | `updateWorkloadInfo` | ワークロード情報を更新する |
+| 関数 | `getCoordinatorStatus` | コーディネーターの詳細ステータスを取得する |
+| 関数 | `isCoordinatorInitialized` | コーディネータが初期化済みか確認 |
+| 関数 | `getTotalMaxLlm` | 合計最大LLM数を取得 |
+| 関数 | `getEnvOverrides` | 環境変数による設定上書きを取得 |
+| 関数 | `setActiveModel` | アクティブなモデルを更新します |
+| 関数 | `clearActiveModel` | このインスタンスのアクティブなモデルを解除する。 |
+| 関数 | `clearAllActiveModels` | 全てのアクティブなモデルをクリアする。 |
+| 関数 | `getActiveInstancesForModel` | モデルを使用するアクティブなインスタンス数を取得 |
+| 関数 | `getModelParallelLimit` | モデルごとの実行並列数の上限を取得 |
+| 関数 | `getModelUsageSummary` | モデル使用状況の概要を取得 |
+| 関数 | `broadcastQueueState` | キューステータスを他のインスタンスにブロードキャスト |
+| 関数 | `getRemoteQueueStates` | 全アクティブインスタンスのキューステートを取得 |
+| 関数 | `checkRemoteCapacity` | リモートインスタンスの余裕を確認 |
+| 関数 | `stealWork` | 他のインスタンスからタスクを奪う |
+| 関数 | `getWorkStealingSummary` | ワークスチーリングの概要を取得 |
+| 関数 | `cleanupQueueStates` | 古いキューステートファイルをクリーンアップする。 |
+| 関数 | `isIdle` | インスタンスがアイドル状態か確認する |
+| 関数 | `findStealCandidate` | 仕事を奪う最適なインスタンスを探す |
+| 関数 | `safeStealWork` | 他インスタンスからワークを安全にスチール |
+| 関数 | `getStealingStats` | ワークスティーリングの統計情報を取得する。 |
+| 関数 | `resetStealingStats` | 盗み統計をリセットする。 |
+| 関数 | `cleanupExpiredLocks` | 期限切れのロックを削除する。 |
+| 関数 | `enhancedHeartbeat` | 強化されたハートビート処理 |
+| インターフェース | `ActiveModelInfo` | アクティブなモデル情報を表すインターフェース |
+| インターフェース | `InstanceInfo` | インスタンスの情報を表す |
+| インターフェース | `CoordinatorConfig` | クロスインスタンスコーディネーターの設定 |
+| インターフェース | `CoordinatorInternalState` | コーディネーターの内部状態 |
+| インターフェース | `StealableQueueEntry` | ワークスティーリング用のキューエントリ |
+| インターフェース | `BroadcastQueueState` | キュー状態のブロードキャスト形式 |
+| インターフェース | `StealingStats` | スチール統計情報（公開インターフェース） |
 
 ## 図解
 
@@ -94,7 +95,7 @@ classDiagram
     +heartbeatIntervalMs: number
     +heartbeatTimeoutMs: number
   }
-  class CoordinatorState {
+  class CoordinatorInternalState {
     <<interface>>
     +myInstanceId: string
     +mySessionId: string
@@ -143,6 +144,19 @@ classDiagram
   }
 ```
 
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[cross-instance-coordinator]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    runtime_config["runtime-config"]
+  end
+  main --> local
+```
+
 ### 関数フロー
 
 ```mermaid
@@ -167,8 +181,11 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant cross_instance_coordinator as "cross-instance-coordinator"
+  participant runtime_config as "runtime-config"
 
   Caller->>cross_instance_coordinator: registerInstance()
+  cross_instance_coordinator->>runtime_config: 内部関数呼び出し
+  runtime_config-->>cross_instance_coordinator: 結果
   cross_instance_coordinator-->>Caller: void
 
   Caller->>cross_instance_coordinator: unregisterInstance()
@@ -176,6 +193,17 @@ sequenceDiagram
 ```
 
 ## 関数
+
+### getDefaultConfig
+
+```typescript
+getDefaultConfig(): CoordinatorConfig
+```
+
+Get default config from centralized RuntimeConfig.
+This ensures consistency with other layers.
+
+**戻り値**: `CoordinatorConfig`
 
 ### ensureDirs
 
@@ -243,8 +271,7 @@ loadConfig(): CoordinatorConfig
 registerInstance(sessionId: string, cwd: string, configOverrides?: Partial<CoordinatorConfig>): void
 ```
 
-Register this pi instance and start heartbeat.
-Must be called once at startup.
+インスタンスを登録してハートビートを開始
 
 **パラメータ**
 
@@ -262,8 +289,7 @@ Must be called once at startup.
 unregisterInstance(): void
 ```
 
-Unregister this pi instance.
-Should be called on graceful shutdown.
+このPIインスタンスの登録を解除する
 
 **戻り値**: `void`
 
@@ -273,7 +299,7 @@ Should be called on graceful shutdown.
 updateHeartbeat(): void
 ```
 
-Update heartbeat for this instance.
+このインスタンスのハートビートを更新する
 
 **戻り値**: `void`
 
@@ -283,8 +309,7 @@ Update heartbeat for this instance.
 cleanupDeadInstances(): void
 ```
 
-Remove dead instance lock files.
-Called periodically during heartbeat.
+無効なインスタンスをクリーンアップする
 
 **戻り値**: `void`
 
@@ -294,7 +319,7 @@ Called periodically during heartbeat.
 getActiveInstanceCount(): number
 ```
 
-Get count of active pi instances.
+アクティブなインスタンス数を取得
 
 **戻り値**: `number`
 
@@ -304,7 +329,7 @@ Get count of active pi instances.
 getActiveInstances(): InstanceInfo[]
 ```
 
-Get list of active instances.
+アクティブなインスタンス情報を取得する
 
 **戻り値**: `InstanceInfo[]`
 
@@ -314,9 +339,7 @@ Get list of active instances.
 getMyParallelLimit(): number
 ```
 
-Get parallelism limit for this instance.
-
-Formula: floor(totalMaxLlm / activeInstanceCount)
+このインスタンスの並列処理制限を取得する
 
 **戻り値**: `number`
 
@@ -326,12 +349,7 @@ Formula: floor(totalMaxLlm / activeInstanceCount)
 getDynamicParallelLimit(myPendingTasks: number): number
 ```
 
-Get dynamic parallel limit based on workload distribution.
-
-This implements a simple load-balancing strategy:
-- Instances with higher workload get fewer slots
-- Instances with lower workload get more slots
-- Total slots never exceed totalMaxLlm
+保留タスク数に基づき動的に並列数を制限する。
 
 **パラメータ**
 
@@ -347,7 +365,7 @@ This implements a simple load-balancing strategy:
 shouldAttemptWorkStealing(): boolean
 ```
 
-Check if this instance should attempt work stealing.
+ワークスチーリングを試みるべきか判定
 
 **戻り値**: `boolean`
 
@@ -357,7 +375,7 @@ Check if this instance should attempt work stealing.
 getWorkStealingCandidates(topN: number): string[]
 ```
 
-Get candidate instances for work stealing (busiest instances).
+ワークスチーリングの候補インスタンスを取得
 
 **パラメータ**
 
@@ -373,7 +391,7 @@ Get candidate instances for work stealing (busiest instances).
 updateWorkloadInfo(pendingTaskCount: number, avgLatencyMs?: number): void
 ```
 
-Update workload info for this instance in heartbeat.
+ワークロード情報を更新する
 
 **パラメータ**
 
@@ -397,7 +415,7 @@ getCoordinatorStatus(): {
 }
 ```
 
-Get detailed status for debugging.
+コーディネーターの詳細ステータスを取得する
 
 **戻り値**: `{
   registered: boolean;
@@ -414,7 +432,7 @@ Get detailed status for debugging.
 isCoordinatorInitialized(): boolean
 ```
 
-Check if coordinator is initialized.
+コーディネータが初期化済みか確認
 
 **戻り値**: `boolean`
 
@@ -424,7 +442,7 @@ Check if coordinator is initialized.
 getTotalMaxLlm(): number
 ```
 
-Get total max LLM from config.
+合計最大LLM数を取得
 
 **戻り値**: `number`
 
@@ -434,11 +452,7 @@ Get total max LLM from config.
 getEnvOverrides(): Partial<CoordinatorConfig>
 ```
 
-Environment variable overrides.
-
-PI_TOTAL_MAX_LLM: Total max parallel LLM calls across all instances
-PI_HEARTBEAT_INTERVAL_MS: Heartbeat interval in milliseconds
-PI_HEARTBEAT_TIMEOUT_MS: Time before instance is considered dead
+環境変数による設定上書きを取得
 
 **戻り値**: `Partial<CoordinatorConfig>`
 
@@ -448,8 +462,7 @@ PI_HEARTBEAT_TIMEOUT_MS: Time before instance is considered dead
 setActiveModel(provider: string, model: string): void
 ```
 
-Update the active model for this instance.
-Call this when starting to use a specific model.
+アクティブなモデルを更新します
 
 **パラメータ**
 
@@ -466,8 +479,7 @@ Call this when starting to use a specific model.
 clearActiveModel(provider: string, model: string): void
 ```
 
-Clear an active model for this instance.
-Call this when done using a specific model.
+このインスタンスのアクティブなモデルを解除する。
 
 **パラメータ**
 
@@ -484,7 +496,7 @@ Call this when done using a specific model.
 clearAllActiveModels(): void
 ```
 
-Clear all active models for this instance.
+全てのアクティブなモデルをクリアする。
 
 **戻り値**: `void`
 
@@ -494,7 +506,7 @@ Clear all active models for this instance.
 getActiveInstancesForModel(provider: string, model: string): number
 ```
 
-Get count of active instances using a specific model.
+モデルを使用するアクティブなインスタンス数を取得
 
 **パラメータ**
 
@@ -511,8 +523,7 @@ Get count of active instances using a specific model.
 getModelParallelLimit(provider: string, model: string, baseLimit: number): number
 ```
 
-Get the effective parallel limit for a specific model.
-This accounts for other instances using the same model.
+モデルごとの実行並列数の上限を取得
 
 **パラメータ**
 
@@ -554,7 +565,7 @@ getModelUsageSummary(): {
 }
 ```
 
-Get a summary of model usage across instances.
+モデル使用状況の概要を取得
 
 **戻り値**: `{
   models: Array<{
@@ -586,8 +597,7 @@ broadcastQueueState(options: {
 }): void
 ```
 
-Broadcast this instance's queue state to other instances.
-Other instances can read this to determine if work stealing is possible.
+キューステータスを他のインスタンスにブロードキャスト
 
 **パラメータ**
 
@@ -608,7 +618,7 @@ Other instances can read this to determine if work stealing is possible.
 getRemoteQueueStates(): BroadcastQueueState[]
 ```
 
-Get queue states from all active instances.
+全アクティブインスタンスのキューステートを取得
 
 **戻り値**: `BroadcastQueueState[]`
 
@@ -618,8 +628,7 @@ Get queue states from all active instances.
 checkRemoteCapacity(): boolean
 ```
 
-Check if any remote instance has capacity for more work.
-This is useful for determining if we should slow down our own task submission.
+リモートインスタンスの余裕を確認
 
 **戻り値**: `boolean`
 
@@ -629,11 +638,7 @@ This is useful for determining if we should slow down our own task submission.
 stealWork(): StealableQueueEntry | null
 ```
 
-Attempt to steal work from another instance.
-Returns a stealable entry if available.
-
-Note: This is a cooperative mechanism. The stealing instance must have
-the actual task data to execute it. This function identifies candidates.
+他のインスタンスからタスクを奪う
 
 **戻り値**: `StealableQueueEntry | null`
 
@@ -649,7 +654,7 @@ getWorkStealingSummary(): {
 }
 ```
 
-Get work stealing summary for monitoring.
+ワークスチーリングの概要を取得
 
 **戻り値**: `{
   remoteInstances: number;
@@ -665,8 +670,7 @@ Get work stealing summary for monitoring.
 cleanupQueueStates(): void
 ```
 
-Clean up old queue state files.
-Called periodically during heartbeat.
+古いキューステートファイルをクリーンアップする。
 
 **戻り値**: `void`
 
@@ -719,7 +723,7 @@ Release a distributed lock.
 isIdle(): boolean
 ```
 
-Check if this instance is idle (no pending tasks).
+インスタンスがアイドル状態か確認する
 
 **戻り値**: `boolean`
 
@@ -729,7 +733,7 @@ Check if this instance is idle (no pending tasks).
 findStealCandidate(): InstanceInfo | null
 ```
 
-Find the best candidate instance to steal work from.
+仕事を奪う最適なインスタンスを探す
 
 **戻り値**: `InstanceInfo | null`
 
@@ -739,7 +743,7 @@ Find the best candidate instance to steal work from.
 async safeStealWork(): Promise<StealableQueueEntry | null>
 ```
 
-Safely steal work from another instance using distributed lock.
+他インスタンスからワークを安全にスチール
 
 **戻り値**: `Promise<StealableQueueEntry | null>`
 
@@ -749,7 +753,7 @@ Safely steal work from another instance using distributed lock.
 getStealingStats(): StealingStats
 ```
 
-Get work stealing statistics.
+ワークスティーリングの統計情報を取得する。
 
 **戻り値**: `StealingStats`
 
@@ -759,7 +763,7 @@ Get work stealing statistics.
 resetStealingStats(): void
 ```
 
-Reset stealing statistics (for testing).
+盗み統計をリセットする。
 
 **戻り値**: `void`
 
@@ -769,8 +773,7 @@ Reset stealing statistics (for testing).
 cleanupExpiredLocks(): void
 ```
 
-Clean up expired locks.
-Called periodically during heartbeat.
+期限切れのロックを削除する。
 
 **戻り値**: `void`
 
@@ -780,7 +783,7 @@ Called periodically during heartbeat.
 enhancedHeartbeat(): void
 ```
 
-Enhanced heartbeat that includes cleanup of locks and queue states.
+強化されたハートビート処理
 
 **戻り値**: `void`
 
@@ -795,6 +798,8 @@ interface ActiveModelInfo {
   since: string;
 }
 ```
+
+アクティブなモデル情報を表すインターフェース
 
 ### InstanceInfo
 
@@ -813,6 +818,8 @@ interface InstanceInfo {
 }
 ```
 
+インスタンスの情報を表す
+
 ### CoordinatorConfig
 
 ```typescript
@@ -823,10 +830,12 @@ interface CoordinatorConfig {
 }
 ```
 
-### CoordinatorState
+クロスインスタンスコーディネーターの設定
+
+### CoordinatorInternalState
 
 ```typescript
-interface CoordinatorState {
+interface CoordinatorInternalState {
   myInstanceId: string;
   mySessionId: string;
   myStartedAt: string;
@@ -834,6 +843,8 @@ interface CoordinatorState {
   heartbeatTimer?: ReturnType<typeof setInterval>;
 }
 ```
+
+コーディネーターの内部状態
 
 ### StealableQueueEntry
 
@@ -849,8 +860,7 @@ interface StealableQueueEntry {
 }
 ```
 
-Queue entry for work stealing.
-Represents a task that can potentially be stolen by another instance.
+ワークスティーリング用のキューエントリ
 
 ### BroadcastQueueState
 
@@ -865,7 +875,7 @@ interface BroadcastQueueState {
 }
 ```
 
-Queue state broadcast format.
+キュー状態のブロードキャスト形式
 
 ### DistributedLock
 
@@ -893,7 +903,7 @@ interface StealingStats {
 }
 ```
 
-Stealing statistics (public interface).
+スチール統計情報（公開インターフェース）
 
 ### StealingStatsInternal
 
@@ -912,4 +922,4 @@ interface StealingStatsInternal {
 Stealing statistics tracking (internal).
 
 ---
-*自動生成: 2026-02-18T00:15:35.675Z*
+*自動生成: 2026-02-18T06:37:19.822Z*

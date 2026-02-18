@@ -25,14 +25,14 @@ import { DEFAULT_EXCLUDES, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT... } from '.
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `execute` | Execute a command and return structured result. |
-| 関数 | `executeOrThrow` | Execute a command and throw on non-zero exit. |
-| 関数 | `isAvailable` | Check if a command is available in PATH. |
-| 関数 | `getVersion` | Get version info for a command. |
-| 関数 | `checkToolAvailability` | - |
-| 関数 | `buildFdArgs` | Build fd command arguments from input options. |
-| 関数 | `buildRgArgs` | Build ripgrep command arguments from input options |
-| 関数 | `buildCtagsArgs` | Build ctags command arguments for JSON output. |
+| 関数 | `execute` | コマンドを実行し、構造化された結果を返す |
+| 関数 | `executeOrThrow` | コマンドを実行し、失敗時に例外を投げる |
+| 関数 | `isAvailable` | コマンドがPATHにあるかチェックする |
+| 関数 | `getVersion` | 指定したコマンドのバージョン情報を取得する |
+| 関数 | `checkToolAvailability` | ツールの利用可能性を確認する |
+| 関数 | `buildFdArgs` | 入力オプションからfdコマンドの引数を生成 |
+| 関数 | `buildRgArgs` | 入力オプションからripgrepコマンドの引数を構築 |
+| 関数 | `buildCtagsArgs` | JSON出力用のctagsコマンド引数を生成する |
 
 ## 図解
 
@@ -99,7 +99,7 @@ sequenceDiagram
 async execute(command: string, args: string[], options: CliOptions): Promise<CliResult>
 ```
 
-Execute a command and return structured result.
+コマンドを実行し、構造化された結果を返す
 
 **パラメータ**
 
@@ -125,7 +125,7 @@ abortHandler(): void
 async executeOrThrow(command: string, args: string[], options: CliOptions): Promise<string>
 ```
 
-Execute a command and throw on non-zero exit.
+コマンドを実行し、失敗時に例外を投げる
 
 **パラメータ**
 
@@ -143,8 +143,7 @@ Execute a command and throw on non-zero exit.
 async isAvailable(command: string): Promise<boolean>
 ```
 
-Check if a command is available in PATH.
-Works on both Unix (which) and Windows (where).
+コマンドがPATHにあるかチェックする
 
 **パラメータ**
 
@@ -160,7 +159,7 @@ Works on both Unix (which) and Windows (where).
 async getVersion(command: string, versionFlag: any): Promise<ToolVersion | null>
 ```
 
-Get version info for a command.
+指定したコマンドのバージョン情報を取得する
 
 **パラメータ**
 
@@ -177,6 +176,8 @@ Get version info for a command.
 async checkToolAvailability(force: any): Promise<ToolAvailability>
 ```
 
+ツールの利用可能性を確認する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -191,8 +192,7 @@ async checkToolAvailability(force: any): Promise<ToolAvailability>
 buildFdArgs(input: import("../types").FileCandidatesInput): string[]
 ```
 
-Build fd command arguments from input options.
-Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
+入力オプションからfdコマンドの引数を生成
 
 **パラメータ**
 
@@ -208,9 +208,7 @@ Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
 buildRgArgs(input: import("../types").CodeSearchInput): string[]
 ```
 
-Build ripgrep command arguments from input options.
-Uses default values from constants when not specified.
-Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
+入力オプションからripgrepコマンドの引数を構築
 
 **パラメータ**
 
@@ -226,7 +224,7 @@ Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
 buildCtagsArgs(targetPath: string, cwd: string): string[]
 ```
 
-Build ctags command arguments for JSON output.
+JSON出力用のctagsコマンド引数を生成する
 
 **パラメータ**
 
@@ -238,4 +236,4 @@ Build ctags command arguments for JSON output.
 **戻り値**: `string[]`
 
 ---
-*自動生成: 2026-02-18T00:15:35.581Z*
+*自動生成: 2026-02-18T06:37:19.702Z*

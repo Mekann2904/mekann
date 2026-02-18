@@ -26,11 +26,11 @@ import { AuditLogEntry, AuditAction, DynamicToolsPaths... } from './types.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `logAudit` | 監査ログにエントリを追加 |
-| 関数 | `readAuditLog` | 監査ログを読み込み |
+| 関数 | `logAudit` | 監査ログを非同期で記録する |
+| 関数 | `readAuditLog` | 監査ログを読み込む |
 | 関数 | `getToolHistory` | ツールの操作履歴を取得 |
-| 関数 | `getAuditStatistics` | 指定期間内の統計を取得 |
-| 関数 | `formatAuditLogEntry` | 監査ログをフォーマットして表示用文字列を生成 |
+| 関数 | `getAuditStatistics` | 指定期間内の監査統計を取得 |
+| 関数 | `formatAuditLogEntry` | 監査ログエントリをフォーマットする |
 | 関数 | `generateAuditReport` | 監査ログレポートを生成 |
 | 関数 | `archiveOldLogs` | 古いログをアーカイブ |
 
@@ -113,7 +113,7 @@ async logAudit(entry: {
   }, paths?: DynamicToolsPaths): Promise<AuditLogEntry>
 ```
 
-監査ログにエントリを追加
+監査ログを非同期で記録する
 
 **パラメータ**
 
@@ -143,7 +143,7 @@ readAuditLog(options?: {
   }, paths?: DynamicToolsPaths): AuditLogEntry[]
 ```
 
-監査ログを読み込み
+監査ログを読み込む
 
 **パラメータ**
 
@@ -188,7 +188,7 @@ getAuditStatistics(since: Date, paths?: DynamicToolsPaths): {
 }
 ```
 
-指定期間内の統計を取得
+指定期間内の監査統計を取得
 
 **パラメータ**
 
@@ -211,7 +211,7 @@ getAuditStatistics(since: Date, paths?: DynamicToolsPaths): {
 formatAuditLogEntry(entry: AuditLogEntry): string
 ```
 
-監査ログをフォーマットして表示用文字列を生成
+監査ログエントリをフォーマットする
 
 **パラメータ**
 
@@ -256,4 +256,4 @@ archiveOldLogs(daysToKeep: number, paths?: DynamicToolsPaths): { archived: numbe
 **戻り値**: `{ archived: number; error?: string }`
 
 ---
-*自動生成: 2026-02-18T00:15:35.681Z*
+*自動生成: 2026-02-18T06:37:19.835Z*

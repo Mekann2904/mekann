@@ -17,18 +17,18 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getAdaptivePenaltyMode` | Get the current adaptive penalty mode. |
-| 関数 | `resetAdaptivePenaltyModeCache` | Reset the cached mode (primarily for testing). |
-| 関数 | `createAdaptivePenaltyController` | - |
-| 関数 | `createEnhancedPenaltyController` | Create an enhanced adaptive penalty controller. |
-| 関数 | `createAutoPenaltyController` | Create the appropriate penalty controller based on |
-| インターフェース | `AdaptivePenaltyState` | - |
-| インターフェース | `AdaptivePenaltyOptions` | - |
-| インターフェース | `EnhancedPenaltyOptions` | Enhanced penalty options with exponential decay an |
+| 関数 | `getAdaptivePenaltyMode` | 現在のアダプティブペナルティモードを取得 |
+| 関数 | `resetAdaptivePenaltyModeCache` | キャッシュモードをリセットする |
+| 関数 | `createAdaptivePenaltyController` | アダプティブペナルティコントローラを作成する |
+| 関数 | `createEnhancedPenaltyController` | 拡張アダプティブペナルティコントローラーを作成 |
+| 関数 | `createAutoPenaltyController` | フラグに基づいて適切なペナルティコントローラを作成する |
+| インターフェース | `AdaptivePenaltyState` | 適応的ペナルティの状態を表すインターフェース |
+| インターフェース | `AdaptivePenaltyOptions` | 適応的ペナルティの設定オプション |
+| インターフェース | `EnhancedPenaltyOptions` | 拡張ペナルティオプション。 |
 | インターフェース | `AdaptivePenaltyController` | - |
-| インターフェース | `EnhancedPenaltyController` | Enhanced penalty controller with additional capabi |
-| 型 | `PenaltyReason` | Reason types for penalty adjustment. |
-| 型 | `DecayStrategy` | Decay strategy options. |
+| インターフェース | `EnhancedPenaltyController` | 拡張ペナルティコントローラ |
+| 型 | `PenaltyReason` | ペナルティ調整の理由種別 |
+| 型 | `DecayStrategy` | 減衰戦略の種類 ("linear" | "exponential" | "hybrid") |
 
 ## 図解
 
@@ -95,12 +95,7 @@ flowchart TD
 getAdaptivePenaltyMode(): "legacy" | "enhanced"
 ```
 
-Get the current adaptive penalty mode.
-Reads from PI_ADAPTIVE_PENALTY_MODE environment variable.
-
-MIGRATION COMPLETE: Default is now "enhanced" (v2.0.0+)
-- "legacy": Use linear decay (+1/-1 steps) (deprecated)
-- "enhanced": Use exponential decay and reason-based weights (default)
+現在のアダプティブペナルティモードを取得
 
 **戻り値**: `"legacy" | "enhanced"`
 
@@ -110,7 +105,7 @@ MIGRATION COMPLETE: Default is now "enhanced" (v2.0.0+)
 resetAdaptivePenaltyModeCache(): void
 ```
 
-Reset the cached mode (primarily for testing).
+キャッシュモードをリセットする
 
 **戻り値**: `void`
 
@@ -119,6 +114,8 @@ Reset the cached mode (primarily for testing).
 ```typescript
 createAdaptivePenaltyController(options: AdaptivePenaltyOptions): AdaptivePenaltyController
 ```
+
+アダプティブペナルティコントローラを作成する
 
 **パラメータ**
 
@@ -192,8 +189,7 @@ applyLimit(baseLimit: number): number
 createEnhancedPenaltyController(options: EnhancedPenaltyOptions): EnhancedPenaltyController
 ```
 
-Create an enhanced adaptive penalty controller.
-Supports exponential decay and reason-based weights.
+拡張アダプティブペナルティコントローラーを作成
 
 **パラメータ**
 
@@ -311,8 +307,7 @@ getDecayStrategy(): DecayStrategy
 createAutoPenaltyController(options: AdaptivePenaltyOptions | EnhancedPenaltyOptions): AdaptivePenaltyController | EnhancedPenaltyController
 ```
 
-Create the appropriate penalty controller based on feature flag.
-This is the recommended factory function for production use.
+フラグに基づいて適切なペナルティコントローラを作成する
 
 **パラメータ**
 
@@ -335,6 +330,8 @@ interface AdaptivePenaltyState {
 }
 ```
 
+適応的ペナルティの状態を表すインターフェース
+
 ### AdaptivePenaltyOptions
 
 ```typescript
@@ -344,6 +341,8 @@ interface AdaptivePenaltyOptions {
   decayMs: number;
 }
 ```
+
+適応的ペナルティの設定オプション
 
 ### EnhancedPenaltyOptions
 
@@ -356,7 +355,7 @@ interface EnhancedPenaltyOptions {
 }
 ```
 
-Enhanced penalty options with exponential decay and reason weights.
+拡張ペナルティオプション。
 
 ### AdaptivePenaltyController
 
@@ -381,7 +380,7 @@ interface EnhancedPenaltyController {
 }
 ```
 
-Enhanced penalty controller with additional capabilities.
+拡張ペナルティコントローラ
 
 ## 型定義
 
@@ -391,7 +390,7 @@ Enhanced penalty controller with additional capabilities.
 type PenaltyReason = "rate_limit" | "timeout" | "capacity" | "schema_violation"
 ```
 
-Reason types for penalty adjustment.
+ペナルティ調整の理由種別
 
 ### DecayStrategy
 
@@ -399,7 +398,7 @@ Reason types for penalty adjustment.
 type DecayStrategy = "linear" | "exponential" | "hybrid"
 ```
 
-Decay strategy options.
+減衰戦略の種類 ("linear" | "exponential" | "hybrid")
 
 ---
-*自動生成: 2026-02-18T00:15:35.637Z*
+*自動生成: 2026-02-18T06:37:19.772Z*

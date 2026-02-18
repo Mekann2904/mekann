@@ -23,10 +23,10 @@ import { LoggerConfig } from './comprehensive-logger-types';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `loadConfigFromEnv` | - |
-| 関数 | `validateConfig` | - |
-| 関数 | `getConfig` | - |
-| 関数 | `resetConfig` | - |
+| 関数 | `loadConfigFromEnv` | 環境変数から設定を読み込む |
+| 関数 | `validateConfig` | ロガー設定を検証する |
+| 関数 | `getConfig` | ロガーの設定を取得する |
+| 関数 | `resetConfig` | 設定をリセットする |
 
 ## 図解
 
@@ -97,6 +97,8 @@ parseEnvValue(value: string, type: string): unknown
 loadConfigFromEnv(baseConfig: LoggerConfig): LoggerConfig
 ```
 
+環境変数から設定を読み込む
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -110,6 +112,8 @@ loadConfigFromEnv(baseConfig: LoggerConfig): LoggerConfig
 ```typescript
 validateConfig(config: LoggerConfig): { valid: boolean; errors: string[] }
 ```
+
+ロガー設定を検証する
 
 **パラメータ**
 
@@ -125,6 +129,8 @@ validateConfig(config: LoggerConfig): { valid: boolean; errors: string[] }
 getConfig(): LoggerConfig
 ```
 
+ロガーの設定を取得する
+
 **戻り値**: `LoggerConfig`
 
 ### resetConfig
@@ -133,7 +139,9 @@ getConfig(): LoggerConfig
 resetConfig(): void
 ```
 
+設定をリセットする
+
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T00:15:35.654Z*
+*自動生成: 2026-02-18T06:37:19.790Z*

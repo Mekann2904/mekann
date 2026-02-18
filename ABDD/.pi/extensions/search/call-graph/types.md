@@ -17,21 +17,21 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `CallGraphNode` | Call Graph Node - Represents a function/method def |
-| インターフェース | `CallSite` | Call site location |
-| インターフェース | `CallGraphEdge` | Call Graph Edge - Represents a function call relat |
-| インターフェース | `CallGraphMetadata` | Metadata about the call graph index |
-| インターフェース | `CallGraphIndex` | Complete Call Graph Index |
-| インターフェース | `CallGraphIndexInput` | Input for call_graph_index tool |
-| インターフェース | `CallGraphIndexOutput` | Output for call_graph_index tool |
-| インターフェース | `FindCallersInput` | Input for find_callers tool |
-| インターフェース | `FindCalleesInput` | Input for find_callees tool |
-| インターフェース | `CallChainResult` | Caller/Callee result with chain information |
-| インターフェース | `FindCallersOutput` | Output for find_callers/find_callees tools |
-| インターフェース | `FindCalleesOutput` | - |
-| インターフェース | `FunctionDefinition` | Intermediate structure for building call graph |
-| インターフェース | `DetectedCall` | Detected function call within source code |
-| 型 | `CallGraphNodeKind` | Kind of callable symbol |
+| インターフェース | `CallGraphNode` | コールグラフのノード |
+| インターフェース | `CallSite` | 呼び出し箇所の位置情報 |
+| インターフェース | `CallGraphEdge` | コールグラフのエッジを表す |
+| インターフェース | `CallGraphMetadata` | コールグラフインデックスのメタデータ |
+| インターフェース | `CallGraphIndex` | 呼び出しグラフの完全なインデックス |
+| インターフェース | `CallGraphIndexInput` | call_graph_indexツールの入力 |
+| インターフェース | `CallGraphIndexOutput` | call_graph_indexツールの出力 |
+| インターフェース | `FindCallersInput` | find_callersツールの入力 |
+| インターフェース | `FindCalleesInput` | find_calleesツールの入力 |
+| インターフェース | `CallChainResult` | 呼び出しチェーンの結果情報 |
+| インターフェース | `FindCallersOutput` | find_callersツールの出力形式 |
+| インターフェース | `FindCalleesOutput` | 呼び出し先ツールの出力形式 |
+| インターフェース | `FunctionDefinition` | コールグラフ構築用の中間構造 |
+| インターフェース | `DetectedCall` | ソースコード内で検出された関数呼び出し |
+| 型 | `CallGraphNodeKind` | 呼び出し可能なシンボルの種類 |
 
 ## 図解
 
@@ -158,7 +158,7 @@ interface CallGraphNode {
 }
 ```
 
-Call Graph Node - Represents a function/method definition
+コールグラフのノード
 
 ### CallSite
 
@@ -170,7 +170,7 @@ interface CallSite {
 }
 ```
 
-Call site location
+呼び出し箇所の位置情報
 
 ### CallGraphEdge
 
@@ -183,7 +183,7 @@ interface CallGraphEdge {
 }
 ```
 
-Call Graph Edge - Represents a function call relationship
+コールグラフのエッジを表す
 
 ### CallGraphMetadata
 
@@ -198,7 +198,7 @@ interface CallGraphMetadata {
 }
 ```
 
-Metadata about the call graph index
+コールグラフインデックスのメタデータ
 
 ### CallGraphIndex
 
@@ -210,7 +210,7 @@ interface CallGraphIndex {
 }
 ```
 
-Complete Call Graph Index
+呼び出しグラフの完全なインデックス
 
 ### CallGraphIndexInput
 
@@ -222,7 +222,7 @@ interface CallGraphIndexInput {
 }
 ```
 
-Input for call_graph_index tool
+call_graph_indexツールの入力
 
 ### CallGraphIndexOutput
 
@@ -235,7 +235,7 @@ interface CallGraphIndexOutput {
 }
 ```
 
-Output for call_graph_index tool
+call_graph_indexツールの出力
 
 ### FindCallersInput
 
@@ -248,7 +248,7 @@ interface FindCallersInput {
 }
 ```
 
-Input for find_callers tool
+find_callersツールの入力
 
 ### FindCalleesInput
 
@@ -261,7 +261,7 @@ interface FindCalleesInput {
 }
 ```
 
-Input for find_callees tool
+find_calleesツールの入力
 
 ### CallChainResult
 
@@ -274,7 +274,7 @@ interface CallChainResult {
 }
 ```
 
-Caller/Callee result with chain information
+呼び出しチェーンの結果情報
 
 ### FindCallersOutput
 
@@ -288,7 +288,7 @@ interface FindCallersOutput {
 }
 ```
 
-Output for find_callers/find_callees tools
+find_callersツールの出力形式
 
 ### FindCalleesOutput
 
@@ -301,6 +301,8 @@ interface FindCalleesOutput {
   error?: string;
 }
 ```
+
+呼び出し先ツールの出力形式
 
 ### FunctionDefinition
 
@@ -317,7 +319,7 @@ interface FunctionDefinition {
 }
 ```
 
-Intermediate structure for building call graph
+コールグラフ構築用の中間構造
 
 ### DetectedCall
 
@@ -331,7 +333,7 @@ interface DetectedCall {
 }
 ```
 
-Detected function call within source code
+ソースコード内で検出された関数呼び出し
 
 ## 型定義
 
@@ -341,7 +343,7 @@ Detected function call within source code
 type CallGraphNodeKind = "function" | "method" | "arrow" | "const"
 ```
 
-Kind of callable symbol
+呼び出し可能なシンボルの種類
 
 ---
-*自動生成: 2026-02-18T00:15:35.551Z*
+*自動生成: 2026-02-18T06:37:19.653Z*

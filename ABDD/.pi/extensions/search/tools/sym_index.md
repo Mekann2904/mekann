@@ -28,9 +28,9 @@ import { INDEX_DIR_NAME, SYMBOL_INDEX_FILE, INDEX_META_FILE... } from '../utils/
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `symIndex` | Generate symbol index using ctags. |
-| 関数 | `readSymbolIndex` | Read and parse existing symbol index. |
-| 関数 | `getIndexMetadata` | Get index metadata. |
+| 関数 | `symIndex` | ctagsを使用してシンボルインデックスを生成 |
+| 関数 | `readSymbolIndex` | シンボルインデックスを読み込みパースする |
+| 関数 | `getIndexMetadata` | インデックスのメタデータを取得する |
 
 ## 図解
 
@@ -589,8 +589,7 @@ Write entries to sharded files.
 async symIndex(input: SymIndexInput, cwd: string): Promise<SymIndexOutput>
 ```
 
-Generate symbol index using ctags.
-Supports both full and incremental indexing.
+ctagsを使用してシンボルインデックスを生成
 
 **パラメータ**
 
@@ -607,8 +606,7 @@ Supports both full and incremental indexing.
 async readSymbolIndex(cwd: string): Promise<SymbolIndexEntry[] | null>
 ```
 
-Read and parse existing symbol index.
-Supports both legacy and sharded formats.
+シンボルインデックスを読み込みパースする
 
 **パラメータ**
 
@@ -624,7 +622,7 @@ Supports both legacy and sharded formats.
 async getIndexMetadata(cwd: string): Promise<IndexMetadata | null>
 ```
 
-Get index metadata.
+インデックスのメタデータを取得する
 
 **パラメータ**
 
@@ -648,4 +646,4 @@ interface LegacyIndexMeta {
 Legacy index metadata structure
 
 ---
-*自動生成: 2026-02-18T00:15:35.575Z*
+*自動生成: 2026-02-18T06:37:19.684Z*

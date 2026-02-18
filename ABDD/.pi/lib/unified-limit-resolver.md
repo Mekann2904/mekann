@@ -19,6 +19,7 @@ related: []
 import { getEffectiveLimit, getPredictiveAnalysis, PredictiveAnalysis } from './adaptive-rate-controller.js';
 import { getMyParallelLimit, getModelParallelLimit, getCoordinatorStatus... } from './cross-instance-coordinator.js';
 import { resolveLimits, getConcurrencyLimit, getRpmLimit... } from './provider-limits.js';
+import { getRuntimeConfig, validateConfigConsistency, RuntimeConfig } from './runtime-config.js';
 import { IRuntimeSnapshot, RuntimeSnapshotProvider } from './interfaces/runtime-snapshot.js';
 ```
 
@@ -26,15 +27,17 @@ import { IRuntimeSnapshot, RuntimeSnapshotProvider } from './interfaces/runtime-
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `setRuntimeSnapshotProvider` | Set the runtime snapshot provider function. |
-| 関数 | `getUnifiedEnvConfig` | 統合環境変数設定を取得 |
-| 関数 | `resolveUnifiedLimits` | 統合制限解決のメイン関数 |
-| 関数 | `formatUnifiedLimitsResult` | 制限解決結果をフォーマット |
+| 関数 | `setRuntimeSnapshotProvider` | ランタイムスナップショットプロバイダを設定する。 |
+| 関数 | `isSnapshotProviderInitialized` | ランタイムスナップショットプロバイダーが初期化済みか確認 |
+| 関数 | `getInitializationState` | 初期化状態を取得する（診断用）。 |
+| 関数 | `getUnifiedEnvConfig` | 統合環境設定を取得 |
+| 関数 | `resolveUnifiedLimits` | 統合制限を解決する |
+| 関数 | `formatUnifiedLimitsResult` | 制限解決結果を文字列としてフォーマットする |
 | 関数 | `getAllLimitsSummary` | 全プロバイダーの制限サマリーを取得 |
 | インターフェース | `UnifiedLimitInput` | 制限解決の入力パラメータ |
 | インターフェース | `LimitBreakdown` | 各レイヤーの制限内訳 |
 | インターフェース | `UnifiedLimitResult` | 制限解決の結果 |
-| インターフェース | `UnifiedEnvConfig` | 統合環境変数設定 |
+| 型 | `UnifiedEnvConfig` | 下位互換用エイリアス。 |
 
 ## 図解
 
@@ -66,14 +69,6 @@ classDiagram
     +breakdown: LimitBreakdown
     +limitingFactor: preset_adaptive
   }
-  class UnifiedEnvConfig {
-    <<interface>>
-    +maxTotalLlm: number
-    +maxTotalRequests: number
-    +maxSubagentParallel: number
-    +maxTeamParallel: number
-    +maxTeammateParallel: number
-  }
 ```
 
 ### 依存関係図
@@ -87,6 +82,7 @@ flowchart LR
     adaptive_rate_controller["adaptive-rate-controller"]
     cross_instance_coordinator["cross-instance-coordinator"]
     provider_limits["provider-limits"]
+    runtime_config["runtime-config"]
     runtime_snapshot["runtime-snapshot"]
   end
   main --> local
@@ -97,14 +93,16 @@ flowchart LR
 ```mermaid
 flowchart TD
   setRuntimeSnapshotProvider["setRuntimeSnapshotProvider()"]
+  isSnapshotProviderInitialized["isSnapshotProviderInitialized()"]
+  getInitializationState["getInitializationState()"]
   getUnifiedEnvConfig["getUnifiedEnvConfig()"]
   resolveUnifiedLimits["resolveUnifiedLimits()"]
   formatUnifiedLimitsResult["formatUnifiedLimitsResult()"]
-  getAllLimitsSummary["getAllLimitsSummary()"]
-  setRuntimeSnapshotProvider -.-> getUnifiedEnvConfig
+  setRuntimeSnapshotProvider -.-> isSnapshotProviderInitialized
+  isSnapshotProviderInitialized -.-> getInitializationState
+  getInitializationState -.-> getUnifiedEnvConfig
   getUnifiedEnvConfig -.-> resolveUnifiedLimits
   resolveUnifiedLimits -.-> formatUnifiedLimitsResult
-  formatUnifiedLimitsResult -.-> getAllLimitsSummary
 ```
 
 ### シーケンス図
@@ -122,8 +120,8 @@ sequenceDiagram
   adaptive_rate_controller-->>unified_limit_resolver: 結果
   unified_limit_resolver-->>Caller: void
 
-  Caller->>unified_limit_resolver: getUnifiedEnvConfig()
-  unified_limit_resolver-->>Caller: UnifiedEnvConfig
+  Caller->>unified_limit_resolver: isSnapshotProviderInitialized()
+  unified_limit_resolver-->>Caller: boolean
 ```
 
 ## 関数
@@ -134,8 +132,7 @@ sequenceDiagram
 setRuntimeSnapshotProvider(fn: RuntimeSnapshotProvider): void
 ```
 
-Set the runtime snapshot provider function.
-Called by extensions/agent-runtime.ts during initialization.
+ランタイムスナップショットプロバイダを設定する。
 
 **パラメータ**
 
@@ -144,6 +141,26 @@ Called by extensions/agent-runtime.ts during initialization.
 | fn | `RuntimeSnapshotProvider` | はい |
 
 **戻り値**: `void`
+
+### isSnapshotProviderInitialized
+
+```typescript
+isSnapshotProviderInitialized(): boolean
+```
+
+ランタイムスナップショットプロバイダーが初期化済みか確認
+
+**戻り値**: `boolean`
+
+### getInitializationState
+
+```typescript
+getInitializationState(): typeof _initializationState
+```
+
+初期化状態を取得する（診断用）。
+
+**戻り値**: `typeof _initializationState`
 
 ### getRuntimeSnapshot
 
@@ -154,6 +171,9 @@ getRuntimeSnapshot(): IRuntimeSnapshot
 Get runtime snapshot with fallback to default values.
 Internal function used by resolveUnifiedLimits.
 
+If the snapshot provider is not initialized, logs a warning once
+and returns default values (all zeros).
+
 **戻り値**: `IRuntimeSnapshot`
 
 ### getUnifiedEnvConfig
@@ -162,12 +182,7 @@ Internal function used by resolveUnifiedLimits.
 getUnifiedEnvConfig(): UnifiedEnvConfig
 ```
 
-統合環境変数設定を取得
-
-優先順位:
-1. PI_LIMIT_* (新しい統一形式)
-2. PI_AGENT_* (従来形式 - 後方互換性)
-3. デフォルト値
+統合環境設定を取得
 
 **戻り値**: `UnifiedEnvConfig`
 
@@ -177,14 +192,7 @@ getUnifiedEnvConfig(): UnifiedEnvConfig
 resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResult
 ```
 
-統合制限解決のメイン関数
-
-制限計算チェーン:
-1. プリセット制限を取得 (provider-limits)
-2. 適応的調整を適用 (adaptive-rate-controller)
-3. クロスインスタンス分散を適用 (cross-instance-coordinator)
-4. ランタイム制約を適用 (環境変数 + 現在のアクティブ数)
-5. 予測分析を追加 (オプション)
+統合制限を解決する
 
 **パラメータ**
 
@@ -200,7 +208,7 @@ resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResult
 formatUnifiedLimitsResult(result: UnifiedLimitResult): string
 ```
 
-制限解決結果をフォーマット
+制限解決結果を文字列としてフォーマットする
 
 **パラメータ**
 
@@ -289,22 +297,15 @@ interface UnifiedLimitResult {
 
 制限解決の結果
 
+## 型定義
+
 ### UnifiedEnvConfig
 
 ```typescript
-interface UnifiedEnvConfig {
-  maxTotalLlm: number;
-  maxTotalRequests: number;
-  maxSubagentParallel: number;
-  maxTeamParallel: number;
-  maxTeammateParallel: number;
-  maxOrchestrationParallel: number;
-  adaptiveEnabled: boolean;
-  predictiveEnabled: boolean;
-}
+type UnifiedEnvConfig = RuntimeConfig
 ```
 
-統合環境変数設定
+下位互換用エイリアス。
 
 ---
-*自動生成: 2026-02-18T00:15:35.781Z*
+*自動生成: 2026-02-18T06:37:20.072Z*

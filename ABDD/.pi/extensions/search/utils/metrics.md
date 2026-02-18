@@ -17,16 +17,16 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `aggregateMetrics` | Aggregate multiple metrics into a summary. |
-| 関数 | `formatMetrics` | Format metrics for display. |
-| 関数 | `formatDuration` | Format duration in human-readable form. |
-| 関数 | `classifySpeed` | Classify operation speed based on duration. |
-| クラス | `MetricsCollector` | Simple metrics collector for timing operations. |
-| インターフェース | `SearchMetrics` | Performance metrics for search operations. |
-| インターフェース | `ExtendedSearchMetrics` | Extended metrics with additional details. |
-| インターフェース | `AggregatedMetrics` | Aggregated metrics across multiple operations. |
-| インターフェース | `ToolMetricsSummary` | Metrics summary for a single tool. |
-| インターフェース | `PerformanceThresholds` | Performance thresholds for search operations. |
+| 関数 | `aggregateMetrics` | メトリクスを集計してサマリーを生成する |
+| 関数 | `formatMetrics` | 検索メトリクスを表示用にフォーマットする |
+| 関数 | `formatDuration` | ミリ秒を読みやすい時間文字列に変換 |
+| 関数 | `classifySpeed` | 実行時間に基づいて速度を分類する |
+| クラス | `MetricsCollector` | 操作の時間計測用メトリクスコレクタ |
+| インターフェース | `SearchMetrics` | 検索操作のパフォーマンス指標。 |
+| インターフェース | `ExtendedSearchMetrics` | 拡張検索メトリクス |
+| インターフェース | `AggregatedMetrics` | 複数操作の集計メトリクス |
+| インターフェース | `ToolMetricsSummary` | 単一ツールのメトリクス概要 |
+| インターフェース | `PerformanceThresholds` | 検索操作のパフォーマンスしきい値 |
 
 ## 図解
 
@@ -102,7 +102,7 @@ flowchart TD
 aggregateMetrics(metrics: SearchMetrics[]): AggregatedMetrics
 ```
 
-Aggregate multiple metrics into a summary.
+メトリクスを集計してサマリーを生成する
 
 **パラメータ**
 
@@ -118,7 +118,7 @@ Aggregate multiple metrics into a summary.
 formatMetrics(metrics: SearchMetrics): string
 ```
 
-Format metrics for display.
+検索メトリクスを表示用にフォーマットする
 
 **パラメータ**
 
@@ -134,7 +134,7 @@ Format metrics for display.
 formatDuration(ms: number): string
 ```
 
-Format duration in human-readable form.
+ミリ秒を読みやすい時間文字列に変換
 
 **パラメータ**
 
@@ -150,7 +150,7 @@ Format duration in human-readable form.
 classifySpeed(durationMs: number, thresholds: PerformanceThresholds): "fast" | "normal" | "slow" | "very-slow"
 ```
 
-Classify operation speed based on duration.
+実行時間に基づいて速度を分類する
 
 **パラメータ**
 
@@ -165,7 +165,7 @@ Classify operation speed based on duration.
 
 ### MetricsCollector
 
-Simple metrics collector for timing operations.
+操作の時間計測用メトリクスコレクタ
 
 **プロパティ**
 
@@ -198,7 +198,7 @@ interface SearchMetrics {
 }
 ```
 
-Performance metrics for search operations.
+検索操作のパフォーマンス指標。
 
 ### ExtendedSearchMetrics
 
@@ -213,7 +213,7 @@ interface ExtendedSearchMetrics {
 }
 ```
 
-Extended metrics with additional details.
+拡張検索メトリクス
 
 ### AggregatedMetrics
 
@@ -230,7 +230,7 @@ interface AggregatedMetrics {
 }
 ```
 
-Aggregated metrics across multiple operations.
+複数操作の集計メトリクス
 
 ### ToolMetricsSummary
 
@@ -242,7 +242,7 @@ interface ToolMetricsSummary {
 }
 ```
 
-Metrics summary for a single tool.
+単一ツールのメトリクス概要
 
 ### PerformanceThresholds
 
@@ -254,8 +254,7 @@ interface PerformanceThresholds {
 }
 ```
 
-Performance thresholds for search operations.
-Used to identify slow operations.
+検索操作のパフォーマンスしきい値
 
 ---
-*自動生成: 2026-02-18T00:15:35.589Z*
+*自動生成: 2026-02-18T06:37:19.712Z*

@@ -26,24 +26,24 @@ import { atomicWriteTextFile, withFileLock } from './storage-lock.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `createPathsFactory` | Create a paths factory for a given subdirectory. |
-| 関数 | `createEnsurePaths` | Create an ensurePaths function that creates direct |
-| 関数 | `pruneRunArtifacts` | Prune old run artifacts from disk. |
-| 関数 | `mergeEntitiesById` | Merge two arrays of entities by ID, preferring the |
-| 関数 | `mergeRunsById` | Merge two arrays of run records by runId, preferri |
-| 関数 | `resolveCurrentId` | Resolve the current ID, ensuring it exists in the  |
+| 関数 | `createPathsFactory` | サブディレクトリ用のパスファクトリを作成 |
+| 関数 | `createEnsurePaths` | ディレクトリを作成する関数を生成する |
+| 関数 | `pruneRunArtifacts` | 古い実行アーティファクトを削除する |
+| 関数 | `mergeEntitiesById` | IDを基にエンティティ配列をマージする。 |
+| 関数 | `mergeRunsById` | runIdで配列を結合・ソートし上限を適用 |
+| 関数 | `resolveCurrentId` | 現在のIDを解決し、定義内に存在するか確認 |
 | 関数 | `resolveDefaultsVersion` | Extract defaults version from disk storage. |
-| 関数 | `createStorageLoader` | Create a storage loader function. |
-| 関数 | `createStorageSaver` | Create a storage saver function. |
+| 関数 | `createStorageLoader` | ストレージローダー関数を作成する。 |
+| 関数 | `createStorageSaver` | ストレージ保存用関数を作成する |
 | 関数 | `toId` | Convert string to ID format (lowercase, hyphen-sep |
-| 関数 | `mergeSubagentStorageWithDisk` | Merge subagent storage with disk state. |
-| 関数 | `mergeTeamStorageWithDisk` | Merge team storage with disk state. |
-| インターフェース | `HasId` | Base interface for entities that have an ID. |
-| インターフェース | `BaseRunRecord` | Base interface for run records. |
-| インターフェース | `BaseStoragePaths` | Base interface for storage paths. |
-| インターフェース | `BaseStorage` | Base interface for storage with definitions and ru |
-| インターフェース | `CreateStorageLoaderOptions` | Options for creating a storage loader. |
-| インターフェース | `CreateStorageSaverOptions` | Options for creating a storage saver. |
+| 関数 | `mergeSubagentStorageWithDisk` | サブエージェントストレージとディスク状態をマージ |
+| 関数 | `mergeTeamStorageWithDisk` | チームストレージとディスクの状態をマージする。 |
+| インターフェース | `HasId` | IDを持つエンティティの基底インターフェース |
+| インターフェース | `BaseRunRecord` | 実行記録の基本インターフェース。runIdを一意識別子とする。 |
+| インターフェース | `BaseStoragePaths` | ストレージの基本パスを定義するインターフェース |
+| インターフェース | `BaseStorage` | 定義と実行を含むストレージの基底インターフェース |
+| インターフェース | `CreateStorageLoaderOptions` | ストレージローダー作成用のオプション |
+| インターフェース | `CreateStorageSaverOptions` | ストレージ保存機能の作成オプション。 |
 
 ## 図解
 
@@ -151,7 +151,7 @@ sequenceDiagram
 createPathsFactory(subdir: string): void
 ```
 
-Create a paths factory for a given subdirectory.
+サブディレクトリ用のパスファクトリを作成
 
 **パラメータ**
 
@@ -167,7 +167,7 @@ Create a paths factory for a given subdirectory.
 createEnsurePaths(getPaths: (cwd: string) => TPaths): (cwd: string) => TPaths
 ```
 
-Create an ensurePaths function that creates directories.
+ディレクトリを作成する関数を生成する
 
 **パラメータ**
 
@@ -183,8 +183,7 @@ Create an ensurePaths function that creates directories.
 pruneRunArtifacts(paths: BaseStoragePaths, runs: TRun[]): void
 ```
 
-Prune old run artifacts from disk.
-Generic version that works with any run record type.
+古い実行アーティファクトを削除する
 
 **パラメータ**
 
@@ -201,7 +200,7 @@ Generic version that works with any run record type.
 mergeEntitiesById(disk: TEntity[], next: TEntity[]): TEntity[]
 ```
 
-Merge two arrays of entities by ID, preferring the second array for duplicates.
+IDを基にエンティティ配列をマージする。
 
 **パラメータ**
 
@@ -218,8 +217,7 @@ Merge two arrays of entities by ID, preferring the second array for duplicates.
 mergeRunsById(disk: TRun[], next: TRun[], maxRuns: number): TRun[]
 ```
 
-Merge two arrays of run records by runId, preferring the second array for duplicates.
-Also sorts by finishedAt/startedAt and limits to maxRuns.
+runIdで配列を結合・ソートし上限を適用
 
 **パラメータ**
 
@@ -237,7 +235,7 @@ Also sorts by finishedAt/startedAt and limits to maxRuns.
 resolveCurrentId(nextId: string | undefined, diskId: string | undefined, definitions: TEntity[]): string | undefined
 ```
 
-Resolve the current ID, ensuring it exists in the merged definitions.
+現在のIDを解決し、定義内に存在するか確認
 
 **パラメータ**
 
@@ -272,7 +270,7 @@ Extract defaults version from disk storage.
 createStorageLoader(options: CreateStorageLoaderOptions<TStorage, TPaths>): (cwd: string) => TStorage
 ```
 
-Create a storage loader function.
+ストレージローダー関数を作成する。
 
 **パラメータ**
 
@@ -288,7 +286,7 @@ Create a storage loader function.
 createStorageSaver(options: CreateStorageSaverOptions<TStorage, TPaths>): (cwd: string, storage: TStorage) => void
 ```
 
-Create a storage saver function.
+ストレージ保存用関数を作成する
 
 **パラメータ**
 
@@ -325,8 +323,7 @@ mergeSubagentStorageWithDisk(storageFile: string, next: {
   }, defaultsVersion: number, maxRuns: number): typeof next
 ```
 
-Merge subagent storage with disk state.
-Note: This is exported for direct use by subagents/storage.ts during migration.
+サブエージェントストレージとディスク状態をマージ
 
 **パラメータ**
 
@@ -355,8 +352,7 @@ mergeTeamStorageWithDisk(storageFile: string, next: {
   }, defaultsVersion: number, maxRuns: number): typeof next
 ```
 
-Merge team storage with disk state.
-Note: This is exported for direct use by agent-teams/storage.ts during migration.
+チームストレージとディスクの状態をマージする。
 
 **パラメータ**
 
@@ -384,7 +380,7 @@ interface HasId {
 }
 ```
 
-Base interface for entities that have an ID.
+IDを持つエンティティの基底インターフェース
 
 ### BaseRunRecord
 
@@ -399,8 +395,7 @@ interface BaseRunRecord {
 }
 ```
 
-Base interface for run records.
-Note: Uses runId as the unique identifier (not id).
+実行記録の基本インターフェース。runIdを一意識別子とする。
 
 ### BaseStoragePaths
 
@@ -412,7 +407,7 @@ interface BaseStoragePaths {
 }
 ```
 
-Base interface for storage paths.
+ストレージの基本パスを定義するインターフェース
 
 ### BaseStorage
 
@@ -425,7 +420,7 @@ interface BaseStorage {
 }
 ```
 
-Base interface for storage with definitions and runs.
+定義と実行を含むストレージの基底インターフェース
 
 ### CreateStorageLoaderOptions
 
@@ -439,7 +434,7 @@ interface CreateStorageLoaderOptions {
 }
 ```
 
-Options for creating a storage loader.
+ストレージローダー作成用のオプション
 
 ### CreateStorageSaverOptions
 
@@ -452,7 +447,7 @@ interface CreateStorageSaverOptions {
 }
 ```
 
-Options for creating a storage saver.
+ストレージ保存機能の作成オプション。
 
 ---
-*自動生成: 2026-02-18T00:15:35.759Z*
+*自動生成: 2026-02-18T06:37:20.037Z*

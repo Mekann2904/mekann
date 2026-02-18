@@ -17,17 +17,17 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `clampConfidence` | Clamp a confidence value to the valid range [0, 1] |
+| 関数 | `clampConfidence` | 信頼度を0から1の範囲に丸める |
 | 関数 | `generateClaimId` | Generate a unique claim ID for structured communic |
-| 関数 | `generateEvidenceId` | Generate a unique evidence ID for structured commu |
-| 関数 | `parseUnitInterval` | Parse a unit interval value from a string. |
+| 関数 | `generateEvidenceId` | 構造化された通信追跡用の証拠IDを生成する |
+| 関数 | `parseUnitInterval` | 文字列から単位区間の値をパースする。 |
 | 関数 | `extractField` | Extract a named field from structured output text. |
-| 関数 | `extractMultilineField` | Extract multiple lines for a named field. |
-| 関数 | `countKeywordSignals` | Count how many keywords appear in the output text. |
-| 関数 | `analyzeDiscussionStance` | Analyze the discussion stance relative to a target |
-| 関数 | `extractConsensusMarker` | Extract consensus marker from discussion text. |
-| インターフェース | `DiscussionStanceResult` | Result of discussion stance analysis. |
-| 型 | `DiscussionStance` | Stance type for discussion analysis. |
+| 関数 | `extractMultilineField` | 指定されたフィールドの複数行を抽出する。 |
+| 関数 | `countKeywordSignals` | 出力テキストに含まれるキーワードの数をカウントする |
+| 関数 | `analyzeDiscussionStance` | 対象メンバーに関する議論のスタンスを分析する |
+| 関数 | `extractConsensusMarker` | テキストから合意マーカーを抽出する |
+| インターフェース | `DiscussionStanceResult` | ディスカッションのスタンス分析結果 |
+| 型 | `DiscussionStance` | ディスカッションの立場を表す型 |
 
 ## 図解
 
@@ -68,8 +68,7 @@ flowchart TD
 clampConfidence(value: number): number
 ```
 
-Clamp a confidence value to the valid range [0, 1].
-Invalid values default to 0.5 (neutral).
+信頼度を0から1の範囲に丸める
 
 **パラメータ**
 
@@ -96,8 +95,7 @@ Format: claim-<timestamp>-<random>
 generateEvidenceId(): string
 ```
 
-Generate a unique evidence ID for structured communication tracking.
-Format: evidence-<timestamp>-<random>
+構造化された通信追跡用の証拠IDを生成する
 
 **戻り値**: `string`
 
@@ -107,9 +105,7 @@ Format: evidence-<timestamp>-<random>
 parseUnitInterval(raw: string | undefined): number | undefined
 ```
 
-Parse a unit interval value from a string.
-Handles both decimal (0.5) and percentage (50%) formats.
-Returns undefined for invalid or empty input.
+文字列から単位区間の値をパースする。
 
 **パラメータ**
 
@@ -143,8 +139,7 @@ Matches patterns like "FIELD_NAME: value" (case-insensitive).
 extractMultilineField(output: string, name: string): string
 ```
 
-Extract multiple lines for a named field.
-Returns content from the field label until the next major label.
+指定されたフィールドの複数行を抽出する。
 
 **パラメータ**
 
@@ -161,8 +156,7 @@ Returns content from the field label until the next major label.
 countKeywordSignals(output: string, keywords: string[]): number
 ```
 
-Count how many keywords appear in the output text.
-Used for signal detection in member outputs.
+出力テキストに含まれるキーワードの数をカウントする
 
 **パラメータ**
 
@@ -179,7 +173,7 @@ Used for signal detection in member outputs.
 analyzeDiscussionStance(text: string, targetMemberId: string): DiscussionStanceResult
 ```
 
-Analyze the discussion stance relative to a target member.
+対象メンバーに関する議論のスタンスを分析する
 
 **パラメータ**
 
@@ -196,8 +190,7 @@ Analyze the discussion stance relative to a target member.
 extractConsensusMarker(text: string): string | undefined
 ```
 
-Extract consensus marker from discussion text.
-Looks for lines starting with "合意:" (Japanese) or "Consensus:" (English).
+テキストから合意マーカーを抽出する
 
 **パラメータ**
 
@@ -219,7 +212,7 @@ interface DiscussionStanceResult {
 }
 ```
 
-Result of discussion stance analysis.
+ディスカッションのスタンス分析結果
 
 ## 型定義
 
@@ -229,8 +222,7 @@ Result of discussion stance analysis.
 type DiscussionStance = "agree" | "disagree" | "neutral" | "partial"
 ```
 
-Stance type for discussion analysis.
-Matches StanceClassificationMode behavior in output-schema.ts.
+ディスカッションの立場を表す型
 
 ---
-*自動生成: 2026-02-18T00:15:35.772Z*
+*自動生成: 2026-02-18T06:37:20.058Z*

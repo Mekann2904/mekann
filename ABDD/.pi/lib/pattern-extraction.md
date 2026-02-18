@@ -27,20 +27,20 @@ import { atomicWriteTextFile } from './storage-lock.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `extractPatternFromRun` | Extract pattern from a single run. |
-| 関数 | `getPatternStoragePath` | Get the path to the pattern storage file. |
-| 関数 | `loadPatternStorage` | Load pattern storage from disk. |
-| 関数 | `savePatternStorage` | Save pattern storage to disk. |
-| 関数 | `addRunToPatterns` | Add a run to pattern storage. |
-| 関数 | `extractAllPatterns` | Extract patterns from all runs in storage. |
-| 関数 | `getPatternsForTaskType` | Get patterns for a specific task type. |
+| 関数 | `extractPatternFromRun` | 単一の実行データからパターンを抽出する |
+| 関数 | `getPatternStoragePath` | パターンストレージのパスを取得 |
+| 関数 | `loadPatternStorage` | パターンストレージをディスクから読み込む |
+| 関数 | `savePatternStorage` | パターンストレージを保存する |
+| 関数 | `addRunToPatterns` | パターンストレージに実行データを追加する |
+| 関数 | `extractAllPatterns` | すべてのパターンを抽出する |
+| 関数 | `getPatternsForTaskType` | 指定されたタスクタイプのパターンを取得する |
 | 関数 | `getTopSuccessPatterns` | Get top success patterns. |
-| 関数 | `getFailurePatternsToAvoid` | Get failure patterns to avoid. |
-| 関数 | `findRelevantPatterns` | Find patterns relevant to a task description. |
-| インターフェース | `ExtractedPattern` | Extracted pattern from run history. |
-| インターフェース | `PatternExample` | Example of a pattern in action. |
-| インターフェース | `PatternStorage` | Pattern storage structure. |
-| インターフェース | `RunData` | Run data for pattern extraction. |
+| 関数 | `getFailurePatternsToAvoid` | 避けるべき失敗パターンを取得する。 |
+| 関数 | `findRelevantPatterns` | タスク説明に関連するパターンを検索する。 |
+| インターフェース | `ExtractedPattern` | 実行履歴から抽出されたパターン。 |
+| インターフェース | `PatternExample` | パターンの実行例 |
+| インターフェース | `PatternStorage` | パターン情報のストレージ構造 |
+| インターフェース | `RunData` | パターン抽出用の実行データ |
 
 ## 図解
 
@@ -206,7 +206,7 @@ Improved logic to avoid false positives from resolved errors.
 extractPatternFromRun(run: RunData): ExtractedPattern | null
 ```
 
-Extract pattern from a single run.
+単一の実行データからパターンを抽出する
 
 **パラメータ**
 
@@ -256,7 +256,7 @@ Check if two patterns are similar enough to merge.
 getPatternStoragePath(cwd: string): string
 ```
 
-Get the path to the pattern storage file.
+パターンストレージのパスを取得
 
 **パラメータ**
 
@@ -272,7 +272,7 @@ Get the path to the pattern storage file.
 loadPatternStorage(cwd: string): PatternStorage
 ```
 
-Load pattern storage from disk.
+パターンストレージをディスクから読み込む
 
 **パラメータ**
 
@@ -288,7 +288,7 @@ Load pattern storage from disk.
 savePatternStorage(cwd: string, storage: PatternStorage): void
 ```
 
-Save pattern storage to disk.
+パターンストレージを保存する
 
 **パラメータ**
 
@@ -305,8 +305,7 @@ Save pattern storage to disk.
 addRunToPatterns(cwd: string, run: RunData): void
 ```
 
-Add a run to pattern storage.
-Extracts pattern and merges with existing if similar.
+パターンストレージに実行データを追加する
 
 **パラメータ**
 
@@ -323,7 +322,7 @@ Extracts pattern and merges with existing if similar.
 extractAllPatterns(cwd: string): PatternStorage
 ```
 
-Extract patterns from all runs in storage.
+すべてのパターンを抽出する
 
 **パラメータ**
 
@@ -339,7 +338,7 @@ Extract patterns from all runs in storage.
 getPatternsForTaskType(cwd: string, taskType: TaskType, patternType?: "success" | "failure" | "approach"): ExtractedPattern[]
 ```
 
-Get patterns for a specific task type.
+指定されたタスクタイプのパターンを取得する
 
 **パラメータ**
 
@@ -374,7 +373,7 @@ Get top success patterns.
 getFailurePatternsToAvoid(cwd: string, taskType?: TaskType): ExtractedPattern[]
 ```
 
-Get failure patterns to avoid.
+避けるべき失敗パターンを取得する。
 
 **パラメータ**
 
@@ -391,7 +390,7 @@ Get failure patterns to avoid.
 findRelevantPatterns(cwd: string, taskDescription: string, limit: number): ExtractedPattern[]
 ```
 
-Find patterns relevant to a task description.
+タスク説明に関連するパターンを検索する。
 
 **パラメータ**
 
@@ -423,7 +422,7 @@ interface ExtractedPattern {
 }
 ```
 
-Extracted pattern from run history.
+実行履歴から抽出されたパターン。
 
 ### PatternExample
 
@@ -436,7 +435,7 @@ interface PatternExample {
 }
 ```
 
-Example of a pattern in action.
+パターンの実行例
 
 ### PatternStorage
 
@@ -449,7 +448,7 @@ interface PatternStorage {
 }
 ```
 
-Pattern storage structure.
+パターン情報のストレージ構造
 
 ### RunData
 
@@ -467,7 +466,7 @@ interface RunData {
 }
 ```
 
-Run data for pattern extraction.
+パターン抽出用の実行データ
 
 ---
-*自動生成: 2026-02-18T00:15:35.739Z*
+*自動生成: 2026-02-18T06:37:19.976Z*

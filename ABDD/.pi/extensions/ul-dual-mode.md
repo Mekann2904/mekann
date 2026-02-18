@@ -23,7 +23,7 @@ import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerUlDualModeExtension` | - |
+| 関数 | `registerUlDualModeExtension` | ULデュアルモード拡張機能を登録する |
 
 ## 図解
 
@@ -314,6 +314,8 @@ buildUlPolicyString(sessionWide: boolean, goalLoopMode: boolean): string
 registerUlDualModeExtension(pi: ExtensionAPI): void
 ```
 
+ULデュアルモード拡張機能を登録する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -323,4 +325,4 @@ registerUlDualModeExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T00:15:35.630Z*
+*自動生成: 2026-02-18T06:37:19.764Z*

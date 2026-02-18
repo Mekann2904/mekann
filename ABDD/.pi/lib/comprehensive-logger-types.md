@@ -17,31 +17,31 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `BaseEvent` | - |
-| インターフェース | `SessionStartEvent` | - |
-| インターフェース | `SessionEndEvent` | - |
-| インターフェース | `TaskStartEvent` | - |
-| インターフェース | `TaskEndEvent` | - |
-| インターフェース | `OperationStartEvent` | - |
-| インターフェース | `OperationEndEvent` | - |
-| インターフェース | `ToolCallEvent` | - |
-| インターフェース | `ToolResultEvent` | - |
-| インターフェース | `ToolErrorEvent` | - |
-| インターフェース | `LLMRequestEvent` | - |
-| インターフェース | `LLMResponseEvent` | - |
-| インターフェース | `LLMErrorEvent` | - |
-| インターフェース | `UserInputEvent` | - |
-| インターフェース | `UserFeedbackEvent` | - |
-| インターフェース | `ConfigLoadEvent` | - |
-| インターフェース | `StateChangeEvent` | - |
-| インターフェース | `MetricsSnapshotEvent` | - |
-| インターフェース | `LoggerConfig` | - |
-| 型 | `EventType` | 包括的ログ収集システム - 型定義 |
-| 型 | `ComponentType` | - |
-| 型 | `ToolType` | - |
-| 型 | `Status` | - |
-| 型 | `OperationType` | - |
-| 型 | `LogEvent` | - |
+| インターフェース | `BaseEvent` | 全てのイベントの基本構造を定義するインターフェース |
+| インターフェース | `SessionStartEvent` | セッション開始イベントのデータ構造。 |
+| インターフェース | `SessionEndEvent` | セッション終了イベント |
+| インターフェース | `TaskStartEvent` | タスク開始イベント |
+| インターフェース | `TaskEndEvent` | タスク終了イベント |
+| インターフェース | `OperationStartEvent` | 操作開始イベント |
+| インターフェース | `OperationEndEvent` | オペレーション終了イベント |
+| インターフェース | `ToolCallEvent` | ツール呼び出しイベント |
+| インターフェース | `ToolResultEvent` | ツール実行結果を表すイベント |
+| インターフェース | `ToolErrorEvent` | ツール実行時のエラーイベントを表します。 |
+| インターフェース | `LLMRequestEvent` | LLMリクエストイベント |
+| インターフェース | `LLMResponseEvent` | LLMの応答イベント |
+| インターフェース | `LLMErrorEvent` | LLMエラー発生時のイベント情報 |
+| インターフェース | `UserInputEvent` | ユーザー入力イベント |
+| インターフェース | `UserFeedbackEvent` | ユーザーフィードバックイベント |
+| インターフェース | `ConfigLoadEvent` | 設定読み込みイベント |
+| インターフェース | `StateChangeEvent` | 状態変化イベントを表すインターフェース |
+| インターフェース | `MetricsSnapshotEvent` | メトリクススナップショットイベントを表します |
+| インターフェース | `LoggerConfig` | ロガーの動作設定を定義します |
+| 型 | `EventType` | 包括的ログ収集システムで発生するイベントの種類 |
+| 型 | `ComponentType` | コンポーネントの種類を表す型定義 |
+| 型 | `ToolType` | ツールの種類を表す型定義 |
+| 型 | `Status` | ステータスの種類を表すユニオン型 |
+| 型 | `OperationType` | 操作の種類を表す文字列リテラル型 |
+| 型 | `LogEvent` | すべてのログイベントの共用体型 |
 
 ## 図解
 
@@ -174,6 +174,8 @@ interface BaseEvent {
 }
 ```
 
+全てのイベントの基本構造を定義するインターフェース
+
 ### SessionStartEvent
 
 ```typescript
@@ -191,6 +193,8 @@ interface SessionStartEvent {
 }
 ```
 
+セッション開始イベントのデータ構造。
+
 ### SessionEndEvent
 
 ```typescript
@@ -205,6 +209,8 @@ interface SessionEndEvent {
   };
 }
 ```
+
+セッション終了イベント
 
 ### TaskStartEvent
 
@@ -224,6 +230,8 @@ interface TaskStartEvent {
 }
 ```
 
+タスク開始イベント
+
 ### TaskEndEvent
 
 ```typescript
@@ -234,6 +242,15 @@ interface TaskEndEvent {
     status: Status;
     operationsCount: number;
     toolsCount: number;
+/**
+     * 操作の種類を表す型
+     *
+     * エージェントの実行モードを区別するための文字列リテラル型。
+     * サブエージェント実行、チーム実行、ループ実行、直接実行のいずれかを指定する。
+     *
+     * @example
+     * const operationType: OperationType = 'subagent_run';
+     */
     tokensUsed: number;
     filesCreated: string[];
     filesModified: string[];
@@ -244,10 +261,16 @@ interface TaskEndEvent {
       eventId: string;
       message: string;
       type: string;
+/**
+     * /**
+     * * 操作終
+     */
     }>;
   };
 }
 ```
+
+タスク終了イベント
 
 ### OperationStartEvent
 
@@ -260,6 +283,14 @@ interface OperationStartEvent {
     input: {
       task: string;
       params: Record<string, unknown>;
+/**
+     * /**
+     * * ツール呼び出しイベントを表すインターフェース
+     * *
+     * * ツールの実行に関する詳細情報を含むイベントデータ。
+     * * ツール名、タイプ、パラメータ、呼び出し元情報、環境情報を保持する。
+     * *
+     */
     };
     strategy?: string;
     retryConfig?: {
@@ -270,6 +301,8 @@ interface OperationStartEvent {
 }
 ```
 
+操作開始イベント
+
 ### OperationEndEvent
 
 ```typescript
@@ -279,6 +312,25 @@ interface OperationEndEvent {
     durationMs: number;
     status: Status;
     tokensUsed: number;
+/**
+     * /**
+     * * LLMリクエストイベントの構造を定義するインターフェース
+     * *
+     * * LLMへのリクエストに関する情報を記録するイベント型。
+     * * プロバイダ、モデル、プロンプト情報、トークン設定などを含む。
+     * *
+     * * @property eventType - イベント種別（'llm_request'で固定）
+     * * @property data.provider - LLMプロバイダー名
+     * * @property data.model - 使用するモデル名
+     * * @property data.systemPromptLength - システムプロンプトの文字数
+     * * @property data.systemPromptHash - システムプロンプトのハッシュ値
+     * * @property data.userMessageCount - ユーザーメッセージの数
+     * * @property data.userMessageLength - ユーザーメッセージの総文字数
+     * * @property data.temperature - 生成の温度パラメータ（オプション）
+     * * @property data.maxTokens - 最大トークン数（オプション）
+     * * @property data.contextWindowUsed - 使用したコンテキストウィンドウサイズ
+     * * @property data
+     */
     outputLength: number;
     outputFile?: string;
     childOperations: number;
@@ -291,6 +343,8 @@ interface OperationEndEvent {
   };
 }
 ```
+
+オペレーション終了イベント
 
 ### ToolCallEvent
 
@@ -314,6 +368,8 @@ interface ToolCallEvent {
 }
 ```
 
+ツール呼び出しイベント
+
 ### ToolResultEvent
 
 ```typescript
@@ -333,6 +389,8 @@ interface ToolResultEvent {
 }
 ```
 
+ツール実行結果を表すイベント
+
 ### ToolErrorEvent
 
 ```typescript
@@ -346,11 +404,28 @@ interface ToolErrorEvent {
     recoveryAttempted: boolean;
     recoveryMethod?: string;
     recoverySuccessful?: boolean;
+/**
+     * /**
+     * * ロガーの動作設定を定義するインターフェース
+     * *
+     * * ログ出力先、バッファリング、ローテーション、保持期間などの設定を管理します。
+     * *
+     * * @property logDir - ログファイルを保存するディレクトリパス
+     * * @property enabled - ログ出力の有効/無効フラグ
+     * * @property bufferSize - バッファサイズ（バイト単位）
+     * * @property flushIntervalMs - バッファフラッシュ間隔（ミリ秒）
+     * * @property maxFileSizeMB - ログファイルの最大サイズ（メガバイト）
+     * * @property retentionDays - ログファイルの保持期間（日数）
+     * * @property environment - 実行環境（development/production/test）
+     * * @property minLogLevel - 出力する最小ログレベル（
+     */
     params: Record<string, unknown>;
     partialOutput?: string;
   };
 }
 ```
+
+ツール実行時のエラーイベントを表します。
 
 ### LLMRequestEvent
 
@@ -371,6 +446,8 @@ interface LLMRequestEvent {
   };
 }
 ```
+
+LLMリクエストイベント
 
 ### LLMResponseEvent
 
@@ -394,6 +471,8 @@ interface LLMResponseEvent {
 }
 ```
 
+LLMの応答イベント
+
 ### LLMErrorEvent
 
 ```typescript
@@ -409,6 +488,8 @@ interface LLMErrorEvent {
   };
 }
 ```
+
+LLMエラー発生時のイベント情報
 
 ### UserInputEvent
 
@@ -426,6 +507,8 @@ interface UserInputEvent {
 }
 ```
 
+ユーザー入力イベント
+
 ### UserFeedbackEvent
 
 ```typescript
@@ -438,6 +521,8 @@ interface UserFeedbackEvent {
   };
 }
 ```
+
+ユーザーフィードバックイベント
 
 ### ConfigLoadEvent
 
@@ -453,6 +538,8 @@ interface ConfigLoadEvent {
   };
 }
 ```
+
+設定読み込みイベント
 
 ### StateChangeEvent
 
@@ -474,6 +561,8 @@ interface StateChangeEvent {
 }
 ```
 
+状態変化イベントを表すインターフェース
+
 ### MetricsSnapshotEvent
 
 ```typescript
@@ -494,6 +583,8 @@ interface MetricsSnapshotEvent {
 }
 ```
 
+メトリクススナップショットイベントを表します
+
 ### LoggerConfig
 
 ```typescript
@@ -508,6 +599,8 @@ interface LoggerConfig {
   minLogLevel: 'debug' | 'info' | 'warn' | 'error';
 }
 ```
+
+ロガーの動作設定を定義します
 
 ## 型定義
 
@@ -537,10 +630,7 @@ type EventType = | 'session_start'
   | 'metrics_snapshot'
 ```
 
-包括的ログ収集システム - 型定義
-
-ファイル: .pi/lib/comprehensive-logger-types.ts
-目的: 全イベントの型定義
+包括的ログ収集システムで発生するイベントの種類
 
 ### ComponentType
 
@@ -548,11 +638,15 @@ type EventType = | 'session_start'
 type ComponentType = 'extension' | 'subagent' | 'team' | 'skill' | 'tool'
 ```
 
+コンポーネントの種類を表す型定義
+
 ### ToolType
 
 ```typescript
 type ToolType = 'builtin' | 'extension' | 'dynamic'
 ```
+
+ツールの種類を表す型定義
 
 ### Status
 
@@ -560,11 +654,15 @@ type ToolType = 'builtin' | 'extension' | 'dynamic'
 type Status = 'pending' | 'running' | 'success' | 'failure' | 'timeout' | 'partial' | 'cancelled'
 ```
 
+ステータスの種類を表すユニオン型
+
 ### OperationType
 
 ```typescript
 type OperationType = 'subagent_run' | 'team_run' | 'loop_run' | 'direct'
 ```
+
+操作の種類を表す文字列リテラル型
 
 ### LogEvent
 
@@ -588,5 +686,7 @@ type LogEvent = | SessionStartEvent
   | MetricsSnapshotEvent
 ```
 
+すべてのログイベントの共用体型
+
 ---
-*自動生成: 2026-02-18T00:15:35.656Z*
+*自動生成: 2026-02-18T06:37:19.792Z*

@@ -25,7 +25,7 @@ import { ExtensionAPI, ExtensionContext, Theme } from '@mariozechner/pi-coding-a
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `Abbreviation` | - |
+| インターフェース | `Abbreviation` | 略語を表すインターフェース |
 
 ## 図解
 
@@ -165,6 +165,11 @@ reconstructState(ctx: ExtensionContext): void
 
 ### AbbrListComponent
 
+略語一覧を表示するUIコンポーネント
+
+指定された幅に基づいて文字列の配列を生成します。
+キャッシュが利用可能で、幅が変更されていない場合はキャッシュされた行を返します。
+
 **プロパティ**
 
 | 名前 | 型 | 可視性 |
@@ -196,6 +201,8 @@ interface Abbreviation {
 }
 ```
 
+略語を表すインターフェース
+
 ### AbbrState
 
 ```typescript
@@ -216,4 +223,4 @@ interface AbbrDetails {
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.344Z*
+*自動生成: 2026-02-18T06:37:19.438Z*

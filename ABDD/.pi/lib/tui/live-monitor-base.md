@@ -27,31 +27,31 @@ import { appendTail, countOccurrences, estimateLineCount... } from './tui-utils.
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `createBaseLiveItem` | Create a base live item with default values. |
-| 関数 | `appendStreamChunk` | Append a chunk to the appropriate stream tail. |
-| 関数 | `getStreamTail` | Get the appropriate stream tail based on view mode |
-| 関数 | `getStreamBytes` | Get stream bytes count. |
+| 関数 | `createBaseLiveItem` | デフォルト値を持つベースライブアイテムを作成する |
+| 関数 | `appendStreamChunk` | 適切なストリームにチャンクを追加する |
+| 関数 | `getStreamTail` | ビューモードとストリームに基づいて末尾を取得 |
+| 関数 | `getStreamBytes` | ストリームのバイト数を取得 |
 | 関数 | `getStreamLineCount` | Get estimated stream line count. |
-| 関数 | `renderLiveViewHeader` | Render common header lines for live views. |
-| 関数 | `renderListKeyboardHints` | Render list item keyboard hints. |
-| 関数 | `renderDetailKeyboardHints` | Render detail item keyboard hints. |
-| 関数 | `renderListWindow` | Render list window with pagination. |
-| 関数 | `renderBaseListItemLine` | Render a single list item line (base format). |
+| 関数 | `renderLiveViewHeader` | ライブビューの共通ヘッダーを描画する |
+| 関数 | `renderListKeyboardHints` | キーボード操作のヒントを描画する |
+| 関数 | `renderDetailKeyboardHints` | 詳細画面のキーボード操作ヒントを描画する |
+| 関数 | `renderListWindow` | リストウィンドウをページネーション付きで描画する |
+| 関数 | `renderBaseListItemLine` | 単一のリストアイテム行を描画する |
 | 関数 | `renderSelectedItemSummary` | Render selected item summary. |
-| 関数 | `renderDetailHeader` | Render detail header for selected item. |
-| 関数 | `renderStreamOutput` | Render stream output section. |
-| 関数 | `handleListModeInput` | Handle common keyboard input for list mode. |
+| 関数 | `renderDetailHeader` | 選択アイテムの詳細ヘッダーを描画する |
+| 関数 | `renderStreamOutput` | ストリーム出力セクションを描画する |
+| 関数 | `handleListModeInput` | リストモードでのキーボード入力を処理する。 |
 | 関数 | `handleDetailModeInput` | Handle common keyboard input for detail mode. |
-| 関数 | `applyInputResult` | Apply input result to state. |
-| インターフェース | `BaseLiveItem` | Base interface for live monitor items with stream  |
-| インターフェース | `BaseLiveMonitorController` | Base interface for live monitor controller. |
-| インターフェース | `CreateLiveItemInput` | Input for creating a live item. |
+| 関数 | `applyInputResult` | 入力結果を状態に適用する |
+| インターフェース | `BaseLiveItem` | ライブモニターのアイテムの基底インターフェース |
+| インターフェース | `BaseLiveMonitorController` | ライブモニタコントローラの基底インターフェース |
+| インターフェース | `CreateLiveItemInput` | ライブアイテム作成用の入力 |
 | インターフェース | `LiveMonitorFactoryOptions` | Options for createLiveMonitorFactory. |
-| インターフェース | `LiveViewHeaderData` | Common header data for live views. |
-| インターフェース | `HandleInputResult` | Result of handling input. |
-| 型 | `LiveItemStatus` | Live item status. |
-| 型 | `LiveStreamView` | Live stream view options. |
-| 型 | `LiveViewMode` | Live view mode options. |
+| インターフェース | `LiveViewHeaderData` | ライブビューの共通ヘッダーデータ |
+| インターフェース | `HandleInputResult` | 入力処理の結果を表します。 |
+| 型 | `LiveItemStatus` | ライブアイテムの状態。 |
+| 型 | `LiveStreamView` | ライブストリームの表示オプション |
+| 型 | `LiveViewMode` | ライブビューのモードオプション。 |
 
 ## 図解
 
@@ -171,7 +171,7 @@ sequenceDiagram
 createBaseLiveItem(input: CreateLiveItemInput): BaseLiveItem
 ```
 
-Create a base live item with default values.
+デフォルト値を持つベースライブアイテムを作成する
 
 **パラメータ**
 
@@ -187,7 +187,7 @@ Create a base live item with default values.
 appendStreamChunk(item: BaseLiveItem, stream: LiveStreamView, chunk: string): void
 ```
 
-Append a chunk to the appropriate stream tail.
+適切なストリームにチャンクを追加する
 
 **パラメータ**
 
@@ -205,8 +205,7 @@ Append a chunk to the appropriate stream tail.
 getStreamTail(item: BaseLiveItem, stream: LiveStreamView, autoSwitchOnFailure: boolean): string
 ```
 
-Get the appropriate stream tail based on view mode and stream.
-Auto-switches to stderr for failed items with no stdout.
+ビューモードとストリームに基づいて末尾を取得
 
 **パラメータ**
 
@@ -224,7 +223,7 @@ Auto-switches to stderr for failed items with no stdout.
 getStreamBytes(item: BaseLiveItem, stream: LiveStreamView): number
 ```
 
-Get stream bytes count.
+ストリームのバイト数を取得
 
 **パラメータ**
 
@@ -258,7 +257,7 @@ Get estimated stream line count.
 renderLiveViewHeader(data: LiveViewHeaderData, width: number, theme: any): string[]
 ```
 
-Render common header lines for live views.
+ライブビューの共通ヘッダーを描画する
 
 **パラメータ**
 
@@ -290,7 +289,7 @@ add(line: any): void
 renderListKeyboardHints(width: number, theme: any): string[]
 ```
 
-Render list item keyboard hints.
+キーボード操作のヒントを描画する
 
 **パラメータ**
 
@@ -321,7 +320,7 @@ add(line: any): void
 renderDetailKeyboardHints(width: number, theme: any, extraKeys?: string): string[]
 ```
 
-Render detail item keyboard hints.
+詳細画面のキーボード操作ヒントを描画する
 
 **パラメータ**
 
@@ -353,7 +352,7 @@ add(line: any): void
 renderListWindow(items: T[], cursor: number, windowSize: number, renderItem: (item: T, index: number, isSelected: boolean) => string, width: number, theme: any): string[]
 ```
 
-Render list window with pagination.
+リストウィンドウをページネーション付きで描画する
 
 **パラメータ**
 
@@ -388,7 +387,7 @@ add(line: any): void
 renderBaseListItemLine(item: BaseLiveItem & { name?: string }, index: number, isSelected: boolean, width: number, theme: any, extraMeta?: string): string
 ```
 
-Render a single list item line (base format).
+単一のリストアイテム行を描画する
 
 **パラメータ**
 
@@ -447,7 +446,7 @@ add(line: any): void
 renderDetailHeader(item: T, cursor: number, total: number, getItemId: (item: T) => string, getItemName: (item: T) => string | undefined, width: number, theme: any): string[]
 ```
 
-Render detail header for selected item.
+選択アイテムの詳細ヘッダーを描画する
 
 **パラメータ**
 
@@ -483,7 +482,7 @@ add(line: any): void
 renderStreamOutput(item: BaseLiveItem, stream: LiveStreamView, width: number, height: number, currentLines: number, theme: any, itemId: string): string[]
 ```
 
-Render stream output section.
+ストリーム出力セクションを描画する
 
 **パラメータ**
 
@@ -519,7 +518,7 @@ add(line: any): void
 handleListModeInput(rawInput: string): HandleInputResult
 ```
 
-Handle common keyboard input for list mode.
+リストモードでのキーボード入力を処理する。
 
 **パラメータ**
 
@@ -562,7 +561,7 @@ applyInputResult(result: HandleInputResult, state: {
 }
 ```
 
-Apply input result to state.
+入力結果を状態に適用する
 
 **パラメータ**
 
@@ -608,7 +607,7 @@ interface BaseLiveItem {
 }
 ```
 
-Base interface for live monitor items with stream data.
+ライブモニターのアイテムの基底インターフェース
 
 ### BaseLiveMonitorController
 
@@ -622,7 +621,7 @@ interface BaseLiveMonitorController {
 }
 ```
 
-Base interface for live monitor controller.
+ライブモニタコントローラの基底インターフェース
 
 ### CreateLiveItemInput
 
@@ -633,7 +632,7 @@ interface CreateLiveItemInput {
 }
 ```
 
-Input for creating a live item.
+ライブアイテム作成用の入力
 
 ### LiveMonitorFactoryOptions
 
@@ -661,7 +660,7 @@ interface LiveViewHeaderData {
 }
 ```
 
-Common header data for live views.
+ライブビューの共通ヘッダーデータ
 
 ### HandleInputResult
 
@@ -674,7 +673,7 @@ interface HandleInputResult {
 }
 ```
 
-Result of handling input.
+入力処理の結果を表します。
 
 ## 型定義
 
@@ -684,7 +683,7 @@ Result of handling input.
 type LiveItemStatus = "pending" | "running" | "completed" | "failed"
 ```
 
-Live item status.
+ライブアイテムの状態。
 
 ### LiveStreamView
 
@@ -692,7 +691,7 @@ Live item status.
 type LiveStreamView = "stdout" | "stderr"
 ```
 
-Live stream view options.
+ライブストリームの表示オプション
 
 ### LiveViewMode
 
@@ -700,7 +699,7 @@ Live stream view options.
 type LiveViewMode = "list" | "detail"
 ```
 
-Live view mode options.
+ライブビューのモードオプション。
 
 ---
-*自動生成: 2026-02-18T00:15:35.777Z*
+*自動生成: 2026-02-18T06:37:20.068Z*

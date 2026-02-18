@@ -23,9 +23,9 @@ import { StructureData, ClassInfo, FunctionInfo... } from './extract-structure.j
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `generateMermaidDiagrams` | - |
-| インターフェース | `DiagramOptions` | - |
-| インターフェース | `MermaidDiagrams` | - |
+| 関数 | `generateMermaidDiagrams` | 構造データからMermaid図を生成する |
+| インターフェース | `DiagramOptions` | 図生成の設定オプション |
+| インターフェース | `MermaidDiagrams` | Mermaid図の出力結果 |
 
 ## 図解
 
@@ -66,6 +66,8 @@ flowchart LR
 ```typescript
 generateMermaidDiagrams(structure: StructureData, options: DiagramOptions): MermaidDiagrams
 ```
+
+構造データからMermaid図を生成する
 
 **パラメータ**
 
@@ -229,6 +231,8 @@ interface DiagramOptions {
 }
 ```
 
+図生成の設定オプション
+
 ### MermaidDiagrams
 
 ```typescript
@@ -239,5 +243,7 @@ interface MermaidDiagrams {
 }
 ```
 
+Mermaid図の出力結果
+
 ---
-*自動生成: 2026-02-18T00:15:35.484Z*
+*自動生成: 2026-02-18T06:37:19.572Z*

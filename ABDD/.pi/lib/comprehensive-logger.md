@@ -28,9 +28,9 @@ import { join, dirname } from 'path';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getLogger` | - |
-| 関数 | `resetLogger` | - |
-| クラス | `ComprehensiveLogger` | - |
+| 関数 | `getLogger` | Loggerのシングルトンインスタンスを取得 |
+| 関数 | `resetLogger` | グローバルロガーをリセットする。 |
+| クラス | `ComprehensiveLogger` | 包括的なログ管理クラス |
 
 ## 図解
 
@@ -145,6 +145,8 @@ hashString(str: string): string
 getLogger(): ComprehensiveLogger
 ```
 
+Loggerのシングルトンインスタンスを取得
+
 **戻り値**: `ComprehensiveLogger`
 
 ### resetLogger
@@ -153,11 +155,15 @@ getLogger(): ComprehensiveLogger
 resetLogger(): void
 ```
 
+グローバルロガーをリセットする。
+
 **戻り値**: `void`
 
 ## クラス
 
 ### ComprehensiveLogger
+
+包括的なログ管理クラス
 
 **プロパティ**
 
@@ -195,6 +201,12 @@ resetLogger(): void
 | logToolResult | `logToolResult(toolName, result): void` |
 | logToolError | `logToolError(toolName, error): void` |
 | logLLMRequest | `logLLMRequest(data): string` |
+| getSessionId | `getSessionId(): string` |
+| getCurrentTaskId | `getCurrentTaskId(): string | undefined` |
+| getCurrentOperationId | `getCurrentOperationId(): string | undefined` |
+| getEventCount | `getEventCount(): number` |
+| getErrorCount | `getErrorCount(): number` |
+| getTotalTokens | `getTotalTokens(): number` |
 | logLLMResponse | `logLLMResponse(data): void` |
 | logStateChange | `logStateChange(data): void` |
 | logMetricsSnapshot | `logMetricsSnapshot(data): void` |
@@ -210,4 +222,4 @@ resetLogger(): void
 | getTotalTokens | `getTotalTokens(): number` |
 
 ---
-*自動生成: 2026-02-18T00:15:35.658Z*
+*自動生成: 2026-02-18T06:37:19.796Z*

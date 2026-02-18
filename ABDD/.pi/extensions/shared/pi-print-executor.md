@@ -23,12 +23,12 @@ import { spawn } from 'node:child_process';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `runPiPrintMode` | Execute pi in JSON mode and return the result. |
-| 関数 | `callModelViaPi` | Call model via pi --mode json for loop and RSA mod |
-| インターフェース | `PrintExecutorOptions` | - |
-| インターフェース | `PrintCommandResult` | - |
-| インターフェース | `CallModelOptions` | - |
-| インターフェース | `CallModelViaPiOptions` | - |
+| 関数 | `runPiPrintMode` | Piプリントモードを実行します |
+| 関数 | `callModelViaPi` | piを介してモデルを呼び出す |
+| インターフェース | `PrintExecutorOptions` | プリント実行のオプション |
+| インターフェース | `PrintCommandResult` | 印刷コマンドの実行結果 |
+| インターフェース | `CallModelOptions` | モデル呼び出しのオプション |
+| インターフェース | `CallModelViaPiOptions` | pi経由でモデルを呼び出すためのオプション |
 
 ## 図解
 
@@ -185,8 +185,7 @@ Combine text and thinking content with proper formatting.
 async runPiPrintMode(input: PrintExecutorOptions): Promise<PrintCommandResult>
 ```
 
-Execute pi in JSON mode and return the result.
-Uses idle timeout strategy: timer resets on each output, allowing long tasks to continue.
+Piプリントモードを実行します
 
 **パラメータ**
 
@@ -254,8 +253,7 @@ cleanup(): void
 async callModelViaPi(options: CallModelViaPiOptions): Promise<string>
 ```
 
-Call model via pi --mode json for loop and RSA modules.
-Uses idle timeout strategy with streaming support.
+piを介してモデルを呼び出す
 
 **パラメータ**
 
@@ -336,6 +334,8 @@ interface PrintExecutorOptions {
 }
 ```
 
+プリント実行のオプション
+
 ### PrintCommandResult
 
 ```typescript
@@ -344,6 +344,8 @@ interface PrintCommandResult {
   latencyMs: number;
 }
 ```
+
+印刷コマンドの実行結果
 
 ### CallModelOptions
 
@@ -354,6 +356,8 @@ interface CallModelOptions {
   thinkingLevel?: string;
 }
 ```
+
+モデル呼び出しのオプション
 
 ### CallModelViaPiOptions
 
@@ -369,5 +373,7 @@ interface CallModelViaPiOptions {
 }
 ```
 
+pi経由でモデルを呼び出すためのオプション
+
 ---
-*自動生成: 2026-02-18T00:15:35.602Z*
+*自動生成: 2026-02-18T06:37:19.725Z*

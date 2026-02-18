@@ -24,16 +24,16 @@ import { LiveStatus } from './live-view-utils.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `SubagentLiveItem` | Live item tracking for subagent execution. |
+| インターフェース | `SubagentLiveItem` | サブエージェントの実行状態を管理するライブアイテム |
 | インターフェース | `SubagentMonitorLifecycle` | Lifecycle operations for marking agent execution s |
-| インターフェース | `SubagentMonitorStream` | Stream output operations for appending stdout/stde |
+| インターフェース | `SubagentMonitorStream` | 標準出力/標準エラー出力のチャンク追加操作 |
 | インターフェース | `SubagentMonitorResource` | Resource cleanup and termination operations. |
 | インターフェース | `SubagentLiveMonitorController` | Full monitor controller combining all capabilities |
-| インターフェース | `SubagentNormalizedOutput` | Normalized output structure for subagent execution |
-| インターフェース | `SubagentParallelCapacityResolution` | Resolution result for subagent parallel capacity. |
-| インターフェース | `DelegationState` | State tracking for delegation-first policy enforce |
-| インターフェース | `PrintCommandResult` | Print command execution result. |
-| 型 | `SubagentLiveViewMode` | View mode for subagent live monitoring interface. |
+| インターフェース | `SubagentNormalizedOutput` | サブエージェントの出力正規化構造 |
+| インターフェース | `SubagentParallelCapacityResolution` | サブエージェントの並列容量解決結果 |
+| インターフェース | `DelegationState` | 委譲優先ポリシーの状態追跡 |
+| インターフェース | `PrintCommandResult` | コマンド実行結果 |
+| 型 | `SubagentLiveViewMode` | サブエージェントのライブ監視ビューの表示モード |
 | 型 | `SubagentLiveStreamView` | Stream view selection for subagent output display. |
 
 ## 図解
@@ -133,8 +133,7 @@ interface SubagentLiveItem {
 }
 ```
 
-Live item tracking for subagent execution.
-Maintains real-time state for TUI rendering.
+サブエージェントの実行状態を管理するライブアイテム
 
 ### SubagentMonitorLifecycle
 
@@ -161,8 +160,7 @@ interface SubagentMonitorStream {
 }
 ```
 
-Stream output operations for appending stdout/stderr chunks.
-Used by code that only needs to handle output streaming.
+標準出力/標準エラー出力のチャンク追加操作
 
 ### SubagentMonitorResource
 
@@ -197,8 +195,7 @@ interface SubagentNormalizedOutput {
 }
 ```
 
-Normalized output structure for subagent execution.
-Used for parsing and validating subagent outputs.
+サブエージェントの出力正規化構造
 
 ### SubagentParallelCapacityResolution
 
@@ -211,8 +208,7 @@ interface SubagentParallelCapacityResolution {
 }
 ```
 
-Resolution result for subagent parallel capacity.
-Determines actual parallelism after capacity negotiation.
+サブエージェントの並列容量解決結果
 
 ### DelegationState
 
@@ -225,8 +221,7 @@ interface DelegationState {
 }
 ```
 
-State tracking for delegation-first policy enforcement.
-Monitors whether delegation has occurred and direct write confirmations.
+委譲優先ポリシーの状態追跡
 
 ### PrintCommandResult
 
@@ -237,8 +232,7 @@ interface PrintCommandResult {
 }
 ```
 
-Print command execution result.
-Used for print mode execution tracking.
+コマンド実行結果
 
 ## 型定義
 
@@ -248,8 +242,7 @@ Used for print mode execution tracking.
 type SubagentLiveViewMode = LiveViewMode
 ```
 
-View mode for subagent live monitoring interface.
-Alias for base LiveViewMode for semantic clarity.
+サブエージェントのライブ監視ビューの表示モード
 
 ### SubagentLiveStreamView
 
@@ -261,4 +254,4 @@ Stream view selection for subagent output display.
 Alias for base LiveStreamView for semantic clarity.
 
 ---
-*自動生成: 2026-02-18T00:15:35.763Z*
+*自動生成: 2026-02-18T06:37:20.044Z*

@@ -23,21 +23,21 @@ import { CodeSearchMatch, SymbolDefinition, FileCandidate } from '../types';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `fileCandidateToUnified` | Convert FileCandidate to UnifiedSearchResult. |
-| 関数 | `codeSearchMatchToUnified` | Convert CodeSearchMatch to UnifiedSearchResult. |
-| 関数 | `symbolDefinitionToUnified` | Convert SymbolDefinition to UnifiedSearchResult. |
-| 関数 | `mergeSearchResults` | Merge multiple UnifiedSearchResult arrays. |
-| 関数 | `rankByRelevance` | Rank results by relevance to the query. |
-| 関数 | `deduplicateResults` | Remove duplicate results based on file:line. |
-| 関数 | `integrateSearchResults` | Process results from multiple tools into a unified |
+| 関数 | `fileCandidateToUnified` | FileCandidateをUnifiedSearchResultに変換する。 |
+| 関数 | `codeSearchMatchToUnified` | CodeSearchMatchをUnifiedSearchResultに変換する |
+| 関数 | `symbolDefinitionToUnified` | SymbolDefinitionをUnifiedSearchResultに変換 |
+| 関数 | `mergeSearchResults` | 複数の検索結果をマージする |
+| 関数 | `rankByRelevance` | クエリに関連性で検索結果をランク付けする |
+| 関数 | `deduplicateResults` | 重複を削除しスコアが高い結果を保持 |
+| 関数 | `integrateSearchResults` | 検索結果を統合してソート済みリストを返す |
 | 関数 | `groupByFile` | Group results by file. |
-| 関数 | `filterByType` | Filter results by type. |
-| 関数 | `filterByFilePattern` | Filter results by file pattern. |
-| 関数 | `formatUnifiedResult` | Format unified result for display. |
-| 関数 | `formatUnifiedResults` | Format multiple unified results for display. |
-| インターフェース | `UnifiedSearchResult` | Unified search result format across all tools. |
-| インターフェース | `MergeOptions` | Options for merging results. |
-| インターフェース | `RankOptions` | Options for ranking results. |
+| 関数 | `filterByType` | 検索結果をタイプで絞り込む |
+| 関数 | `filterByFilePattern` | ファイルパスのパターンで結果をフィルタする。 |
+| 関数 | `formatUnifiedResult` | 検索結果を表示用にフォーマットします。 |
+| 関数 | `formatUnifiedResults` | 統合検索結果をフォーマットします |
+| インターフェース | `UnifiedSearchResult` | 全ツール共通の検索結果形式 |
+| インターフェース | `MergeOptions` | 結果をマージするためのオプション |
+| インターフェース | `RankOptions` | 検索結果のランク付けオプション |
 
 ## 図解
 
@@ -124,7 +124,7 @@ sequenceDiagram
 fileCandidateToUnified(candidate: FileCandidate, source: string): UnifiedSearchResult
 ```
 
-Convert FileCandidate to UnifiedSearchResult.
+FileCandidateをUnifiedSearchResultに変換する。
 
 **パラメータ**
 
@@ -141,7 +141,7 @@ Convert FileCandidate to UnifiedSearchResult.
 codeSearchMatchToUnified(match: CodeSearchMatch, source: string): UnifiedSearchResult
 ```
 
-Convert CodeSearchMatch to UnifiedSearchResult.
+CodeSearchMatchをUnifiedSearchResultに変換する
 
 **パラメータ**
 
@@ -158,7 +158,7 @@ Convert CodeSearchMatch to UnifiedSearchResult.
 symbolDefinitionToUnified(symbol: SymbolDefinition, source: string): UnifiedSearchResult
 ```
 
-Convert SymbolDefinition to UnifiedSearchResult.
+SymbolDefinitionをUnifiedSearchResultに変換
 
 **パラメータ**
 
@@ -175,8 +175,7 @@ Convert SymbolDefinition to UnifiedSearchResult.
 mergeSearchResults(resultArrays: UnifiedSearchResult[][], options: Partial<MergeOptions>): UnifiedSearchResult[]
 ```
 
-Merge multiple UnifiedSearchResult arrays.
-Deduplicates by file:line combination and combines sources.
+複数の検索結果をマージする
 
 **パラメータ**
 
@@ -210,7 +209,7 @@ Uses file + line + column for uniqueness.
 rankByRelevance(results: UnifiedSearchResult[], query: string): UnifiedSearchResult[]
 ```
 
-Rank results by relevance to the query.
+クエリに関連性で検索結果をランク付けする
 
 **パラメータ**
 
@@ -245,8 +244,7 @@ Calculate relevance score for a result.
 deduplicateResults(results: UnifiedSearchResult[]): UnifiedSearchResult[]
 ```
 
-Remove duplicate results based on file:line.
-Keeps the result with the highest score.
+重複を削除しスコアが高い結果を保持
 
 **パラメータ**
 
@@ -262,7 +260,7 @@ Keeps the result with the highest score.
 integrateSearchResults(fileCandidates: FileCandidate[], codeMatches: CodeSearchMatch[], symbols: SymbolDefinition[], query: string, options: Partial<MergeOptions>): UnifiedSearchResult[]
 ```
 
-Process results from multiple tools into a unified, ranked list.
+検索結果を統合してソート済みリストを返す
 
 **パラメータ**
 
@@ -298,7 +296,7 @@ Group results by file.
 filterByType(results: UnifiedSearchResult[], type: "file" | "match" | "symbol"): UnifiedSearchResult[]
 ```
 
-Filter results by type.
+検索結果をタイプで絞り込む
 
 **パラメータ**
 
@@ -315,7 +313,7 @@ Filter results by type.
 filterByFilePattern(results: UnifiedSearchResult[], pattern: string): UnifiedSearchResult[]
 ```
 
-Filter results by file pattern.
+ファイルパスのパターンで結果をフィルタする。
 
 **パラメータ**
 
@@ -332,7 +330,7 @@ Filter results by file pattern.
 formatUnifiedResult(result: UnifiedSearchResult): string
 ```
 
-Format unified result for display.
+検索結果を表示用にフォーマットします。
 
 **パラメータ**
 
@@ -348,7 +346,7 @@ Format unified result for display.
 formatUnifiedResults(results: UnifiedSearchResult[]): string
 ```
 
-Format multiple unified results for display.
+統合検索結果をフォーマットします
 
 **パラメータ**
 
@@ -375,7 +373,7 @@ interface UnifiedSearchResult {
 }
 ```
 
-Unified search result format across all tools.
+全ツール共通の検索結果形式
 
 ### MergeOptions
 
@@ -387,7 +385,7 @@ interface MergeOptions {
 }
 ```
 
-Options for merging results.
+結果をマージするためのオプション
 
 ### RankOptions
 
@@ -400,7 +398,7 @@ interface RankOptions {
 }
 ```
 
-Options for ranking results.
+検索結果のランク付けオプション
 
 ---
-*自動生成: 2026-02-18T00:15:35.599Z*
+*自動生成: 2026-02-18T06:37:19.720Z*

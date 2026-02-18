@@ -25,21 +25,21 @@ import { join } from 'node:path';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getLimitsConfig` | Get the effective limits configuration (builtin +  |
-| 関数 | `reloadLimits` | Reload limits from disk. |
-| 関数 | `resolveLimits` | Resolve limits for a specific provider/model/tier. |
-| 関数 | `getConcurrencyLimit` | Get concurrency limit for a provider/model. |
-| 関数 | `getRpmLimit` | Get RPM limit for a provider/model. |
-| 関数 | `listProviders` | List all known providers. |
-| 関数 | `listModels` | List all models for a provider. |
-| 関数 | `saveUserLimits` | Save user limits (for customization). |
-| 関数 | `getBuiltinLimits` | Get the builtin limits (for reference). |
-| 関数 | `detectTier` | Detect tier from environment or account info. |
-| 関数 | `formatLimitsSummary` | Build a human-readable summary of limits. |
-| インターフェース | `ModelLimits` | - |
-| インターフェース | `ModelTierLimits` | - |
-| インターフェース | `ProviderLimitsConfig` | - |
-| インターフェース | `ResolvedModelLimits` | - |
+| 関数 | `getLimitsConfig` | 有効な制限設定を取得する（標準＋ユーザー設定）。 |
+| 関数 | `reloadLimits` | ディスクから制限設定を再読み込みする |
+| 関数 | `resolveLimits` | 指定したプロバイダ/モデル/ティアの制限を解決する |
+| 関数 | `getConcurrencyLimit` | プロバイダーとモデルの並列処理数上限を取得 |
+| 関数 | `getRpmLimit` | プロバイダー/モデルのRPM制限を取得 |
+| 関数 | `listProviders` | 既知のすべてのプロバイダー一覧を取得 |
+| 関数 | `listModels` | 指定プロバイダーのモデル一覧を取得 |
+| 関数 | `saveUserLimits` | ユーザー制限を保存する |
+| 関数 | `getBuiltinLimits` | 組み込みの制限設定を取得する（参照用） |
+| 関数 | `detectTier` | 環境変数からティアを検出します。 |
+| 関数 | `formatLimitsSummary` | 制限情報を読みやすい文字列でフォーマットする |
+| インターフェース | `ModelLimits` | モデルごとのAPIレート制限を定義 |
+| インターフェース | `ModelTierLimits` | モデルティア別の制限設定 |
+| インターフェース | `ProviderLimitsConfig` | プロバイダー制限設定を表すインターフェース |
+| インターフェース | `ResolvedModelLimits` | 解決されたモデル制限 |
 
 ## 図解
 
@@ -154,7 +154,7 @@ mergeLimits(builtin: ProviderLimitsConfig, user: ProviderLimitsConfig | null): P
 getLimitsConfig(): ProviderLimitsConfig
 ```
 
-Get the effective limits configuration (builtin + user overrides).
+有効な制限設定を取得する（標準＋ユーザー設定）。
 
 **戻り値**: `ProviderLimitsConfig`
 
@@ -164,7 +164,7 @@ Get the effective limits configuration (builtin + user overrides).
 reloadLimits(): void
 ```
 
-Reload limits from disk.
+ディスクから制限設定を再読み込みする
 
 **戻り値**: `void`
 
@@ -174,7 +174,7 @@ Reload limits from disk.
 resolveLimits(provider: string, model: string, tier?: string): ResolvedModelLimits
 ```
 
-Resolve limits for a specific provider/model/tier.
+指定したプロバイダ/モデル/ティアの制限を解決する
 
 **パラメータ**
 
@@ -192,7 +192,7 @@ Resolve limits for a specific provider/model/tier.
 getConcurrencyLimit(provider: string, model: string, tier?: string): number
 ```
 
-Get concurrency limit for a provider/model.
+プロバイダーとモデルの並列処理数上限を取得
 
 **パラメータ**
 
@@ -210,7 +210,7 @@ Get concurrency limit for a provider/model.
 getRpmLimit(provider: string, model: string, tier?: string): number
 ```
 
-Get RPM limit for a provider/model.
+プロバイダー/モデルのRPM制限を取得
 
 **パラメータ**
 
@@ -228,7 +228,7 @@ Get RPM limit for a provider/model.
 listProviders(): string[]
 ```
 
-List all known providers.
+既知のすべてのプロバイダー一覧を取得
 
 **戻り値**: `string[]`
 
@@ -238,7 +238,7 @@ List all known providers.
 listModels(provider: string): string[]
 ```
 
-List all models for a provider.
+指定プロバイダーのモデル一覧を取得
 
 **パラメータ**
 
@@ -254,7 +254,7 @@ List all models for a provider.
 saveUserLimits(limits: ProviderLimitsConfig): void
 ```
 
-Save user limits (for customization).
+ユーザー制限を保存する
 
 **パラメータ**
 
@@ -270,7 +270,7 @@ Save user limits (for customization).
 getBuiltinLimits(): ProviderLimitsConfig
 ```
 
-Get the builtin limits (for reference).
+組み込みの制限設定を取得する（参照用）
 
 **戻り値**: `ProviderLimitsConfig`
 
@@ -280,8 +280,7 @@ Get the builtin limits (for reference).
 detectTier(provider: string, _model: string): string | undefined
 ```
 
-Detect tier from environment or account info.
-This is a placeholder - real detection would need API calls.
+環境変数からティアを検出します。
 
 **パラメータ**
 
@@ -298,7 +297,7 @@ This is a placeholder - real detection would need API calls.
 formatLimitsSummary(limits: ResolvedModelLimits): string
 ```
 
-Build a human-readable summary of limits.
+制限情報を読みやすい文字列でフォーマットする
 
 **パラメータ**
 
@@ -321,6 +320,8 @@ interface ModelLimits {
 }
 ```
 
+モデルごとのAPIレート制限を定義
+
 ### ModelTierLimits
 
 ```typescript
@@ -331,6 +332,8 @@ interface ModelTierLimits {
   default?: ModelLimits;
 }
 ```
+
+モデルティア別の制限設定
 
 ### ProviderLimitsConfig
 
@@ -351,6 +354,8 @@ interface ProviderLimitsConfig {
 }
 ```
 
+プロバイダー制限設定を表すインターフェース
+
 ### ResolvedModelLimits
 
 ```typescript
@@ -365,5 +370,7 @@ interface ResolvedModelLimits {
 }
 ```
 
+解決されたモデル制限
+
 ---
-*自動生成: 2026-02-18T00:15:35.745Z*
+*自動生成: 2026-02-18T06:37:19.988Z*

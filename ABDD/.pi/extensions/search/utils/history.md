@@ -17,14 +17,14 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getSearchHistory` | Get the global history instance. |
-| 関数 | `resetSearchHistory` | Reset the global history instance (for testing). |
-| 関数 | `extractQuery` | Extract the primary query string from tool paramet |
-| 関数 | `createHistoryEntry` | Create a history entry from tool execution. |
-| クラス | `SearchHistory` | In-memory search history store. |
-| インターフェース | `SearchHistoryEntry` | Entry in the search history. |
-| インターフェース | `HistoryConfig` | Configuration for history management. |
-| インターフェース | `QuerySuggestion` | Query with metadata for suggestions. |
+| 関数 | `getSearchHistory` | グローバル検索履歴を取得する。 |
+| 関数 | `resetSearchHistory` | グローバル履歴インスタンスをリセット |
+| 関数 | `extractQuery` | ツールのパラメータからクエリ文字列を抽出する |
+| 関数 | `createHistoryEntry` | ツール実行から履歴エントリを作成する |
+| クラス | `SearchHistory` | 検索履歴を管理するクラス |
+| インターフェース | `SearchHistoryEntry` | 検索履歴のエントリ。 |
+| インターフェース | `HistoryConfig` | 履歴管理の設定。 |
+| インターフェース | `QuerySuggestion` | サジェッション用のクエリとメタデータ |
 
 ## 図解
 
@@ -84,7 +84,7 @@ flowchart TD
 getSearchHistory(): SearchHistory
 ```
 
-Get the global history instance.
+グローバル検索履歴を取得する。
 
 **戻り値**: `SearchHistory`
 
@@ -94,7 +94,7 @@ Get the global history instance.
 resetSearchHistory(): void
 ```
 
-Reset the global history instance (for testing).
+グローバル履歴インスタンスをリセット
 
 **戻り値**: `void`
 
@@ -104,7 +104,7 @@ Reset the global history instance (for testing).
 extractQuery(tool: string, params: Record<string, unknown>): string
 ```
 
-Extract the primary query string from tool parameters.
+ツールのパラメータからクエリ文字列を抽出する
 
 **パラメータ**
 
@@ -121,7 +121,7 @@ Extract the primary query string from tool parameters.
 createHistoryEntry(tool: string, params: Record<string, unknown>, results: string[]): Omit<SearchHistoryEntry, "timestamp" | "accepted">
 ```
 
-Create a history entry from tool execution.
+ツール実行から履歴エントリを作成する
 
 **パラメータ**
 
@@ -137,8 +137,7 @@ Create a history entry from tool execution.
 
 ### SearchHistory
 
-In-memory search history store.
-Designed for easy extension to persistent storage.
+検索履歴を管理するクラス
 
 **プロパティ**
 
@@ -175,7 +174,7 @@ interface SearchHistoryEntry {
 }
 ```
 
-Entry in the search history.
+検索履歴のエントリ。
 
 ### HistoryConfig
 
@@ -186,7 +185,7 @@ interface HistoryConfig {
 }
 ```
 
-Configuration for history management.
+履歴管理の設定。
 
 ### QuerySuggestion
 
@@ -199,7 +198,7 @@ interface QuerySuggestion {
 }
 ```
 
-Query with metadata for suggestions.
+サジェッション用のクエリとメタデータ
 
 ---
-*自動生成: 2026-02-18T00:15:35.587Z*
+*自動生成: 2026-02-18T06:37:19.709Z*

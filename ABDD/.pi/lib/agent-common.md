@@ -23,17 +23,17 @@ import { toFiniteNumberWithDefault } from './validation-utils.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `pickFieldCandidate` | Pick a candidate text for a structured field from  |
-| 関数 | `pickSummaryCandidate` | Pick candidate text for SUMMARY field. |
+| 関数 | `pickFieldCandidate` | テキストから候補となるフィールドを抽出する |
+| 関数 | `pickSummaryCandidate` | SUMMARYフィールドの候補テキストを選択する |
 | 関数 | `pickClaimCandidate` | Pick candidate text for CLAIM field. |
-| 関数 | `normalizeEntityOutput` | Normalize entity output to required structured for |
-| 関数 | `isEmptyOutputFailureMessage` | Check if error message indicates empty output fail |
-| 関数 | `buildFailureSummary` | Build a human-readable failure summary from error  |
-| 関数 | `resolveTimeoutWithEnv` | Resolve timeout with environment variable override |
-| インターフェース | `EntityConfig` | Configuration for entity-specific behavior. |
-| インターフェース | `NormalizedEntityOutput` | Result of normalizing entity output to required fo |
-| インターフェース | `PickFieldCandidateOptions` | Options for pickFieldCandidate function. |
-| インターフェース | `NormalizeEntityOutputOptions` | Options for normalizeEntityOutput function. |
+| 関数 | `normalizeEntityOutput` | エンティティ出力を正規化 |
+| 関数 | `isEmptyOutputFailureMessage` | 出力が空であることを示すエラーメッセージか判定する |
+| 関数 | `buildFailureSummary` | エラーの要約を作成する |
+| 関数 | `resolveTimeoutWithEnv` | 環境変数で上書き可能なタイムアウトを解決 |
+| インターフェース | `EntityConfig` | エンティティ固有の挙動を設定します。 |
+| インターフェース | `NormalizedEntityOutput` | エンティティ出力を正規化した結果 |
+| インターフェース | `PickFieldCandidateOptions` | pickFieldCandidate関数のオプション |
+| インターフェース | `NormalizeEntityOutputOptions` | normalizeEntityOutput関数のオプション |
 | 型 | `EntityType` | Entity type identifier for shared functions. |
 
 ## 図解
@@ -128,15 +128,7 @@ sequenceDiagram
 pickFieldCandidate(text: string, options: PickFieldCandidateOptions): string
 ```
 
-Pick a candidate text for a structured field from unstructured output.
-Used to extract SUMMARY, CLAIM, or other field values when output
-doesn't conform to expected format.
-
-Algorithm:
-1. Split text into non-empty lines
-2. Find first line that doesn't start with excluded labels
-3. Clean markdown formatting and extra whitespace
-4. Truncate to maxLength with ellipsis if needed
+テキストから候補となるフィールドを抽出する
 
 **パラメータ**
 
@@ -153,8 +145,7 @@ Algorithm:
 pickSummaryCandidate(text: string): string
 ```
 
-Pick candidate text for SUMMARY field.
-Convenience wrapper with subagent-specific defaults.
+SUMMARYフィールドの候補テキストを選択する
 
 **パラメータ**
 
@@ -187,9 +178,7 @@ Convenience wrapper with team-member-specific defaults.
 normalizeEntityOutput(output: string, options: NormalizeEntityOutputOptions): NormalizedEntityOutput
 ```
 
-Normalize entity output to required structured format.
-When output doesn't conform to expected format, attempts to restructure
-it while preserving the original content.
+エンティティ出力を正規化
 
 **パラメータ**
 
@@ -206,7 +195,7 @@ it while preserving the original content.
 isEmptyOutputFailureMessage(message: string, config: EntityConfig): boolean
 ```
 
-Check if error message indicates empty output failure.
+出力が空であることを示すエラーメッセージか判定する
 
 **パラメータ**
 
@@ -223,7 +212,7 @@ Check if error message indicates empty output failure.
 buildFailureSummary(message: string): string
 ```
 
-Build a human-readable failure summary from error message.
+エラーの要約を作成する
 
 **パラメータ**
 
@@ -239,7 +228,7 @@ Build a human-readable failure summary from error message.
 resolveTimeoutWithEnv(defaultMs: number, envKey: string): number
 ```
 
-Resolve timeout with environment variable override support.
+環境変数で上書き可能なタイムアウトを解決
 
 **パラメータ**
 
@@ -263,7 +252,7 @@ interface EntityConfig {
 }
 ```
 
-Configuration for entity-specific behavior.
+エンティティ固有の挙動を設定します。
 
 ### NormalizedEntityOutput
 
@@ -276,7 +265,7 @@ interface NormalizedEntityOutput {
 }
 ```
 
-Result of normalizing entity output to required format.
+エンティティ出力を正規化した結果
 
 ### PickFieldCandidateOptions
 
@@ -288,7 +277,7 @@ interface PickFieldCandidateOptions {
 }
 ```
 
-Options for pickFieldCandidate function.
+pickFieldCandidate関数のオプション
 
 ### NormalizeEntityOutputOptions
 
@@ -303,7 +292,7 @@ interface NormalizeEntityOutputOptions {
 }
 ```
 
-Options for normalizeEntityOutput function.
+normalizeEntityOutput関数のオプション
 
 ## 型定義
 
@@ -317,4 +306,4 @@ Entity type identifier for shared functions.
 Used to distinguish between subagent and team member contexts.
 
 ---
-*自動生成: 2026-02-18T00:15:35.642Z*
+*自動生成: 2026-02-18T06:37:19.778Z*

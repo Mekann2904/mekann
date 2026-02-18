@@ -28,7 +28,7 @@ import { getLogger } from '../lib/comprehensive-logger';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerDynamicToolsExtension` | - |
+| 関数 | `registerDynamicToolsExtension` | 動的ツールの拡張機能を登録します。 |
 
 ## 図解
 
@@ -289,6 +289,8 @@ tool_reflection: 実行後の反省とツール生成判定
 registerDynamicToolsExtension(pi: ExtensionAPI): void
 ```
 
+動的ツールの拡張機能を登録します。
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -363,4 +365,4 @@ interface ToolReflectionInput {
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.504Z*
+*自動生成: 2026-02-18T06:37:19.596Z*

@@ -27,12 +27,12 @@ import { join, relative, basename } from 'path';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `analyzeCodeStructure` | コード構造を解析し、ドキュメント生成に必要なデータを抽出 |
-| 関数 | `extractStructure` | 構造データのみを抽出（軽量版） |
-| 関数 | `generateDiagrams` | Mermaid図のみを生成（構造データから） |
-| 関数 | `generateMarkdown` | ドキュメントをMarkdown形式で出力 |
-| インターフェース | `AnalyzeOptions` | - |
-| インターフェース | `AnalysisResult` | - |
+| 関数 | `analyzeCodeStructure` | コード構造を解析し、データを抽出 |
+| 関数 | `extractStructure` | 構造データを抽出する |
+| 関数 | `generateDiagrams` | Mermaid図を生成する |
+| 関数 | `generateMarkdown` | 解析結果をMarkdown形式で生成 |
+| インターフェース | `AnalyzeOptions` | コード構造解析のオプション |
+| インターフェース | `AnalysisResult` | コード構造解析の結果を表します。 |
 
 ## 図解
 
@@ -131,7 +131,7 @@ async analyzeCodeStructure(params: {
 }): Promise<AnalysisResult>
 ```
 
-コード構造を解析し、ドキュメント生成に必要なデータを抽出
+コード構造を解析し、データを抽出
 
 **パラメータ**
 
@@ -155,7 +155,7 @@ async extractStructure(params: {
 }): Promise<StructureData>
 ```
 
-構造データのみを抽出（軽量版）
+構造データを抽出する
 
 **パラメータ**
 
@@ -177,7 +177,7 @@ async generateDiagrams(params: {
 }): Promise<MermaidDiagrams>
 ```
 
-Mermaid図のみを生成（構造データから）
+Mermaid図を生成する
 
 **パラメータ**
 
@@ -199,7 +199,7 @@ async generateMarkdown(params: {
 }): Promise<string>
 ```
 
-ドキュメントをMarkdown形式で出力
+解析結果をMarkdown形式で生成
 
 **パラメータ**
 
@@ -243,6 +243,8 @@ interface AnalyzeOptions {
 }
 ```
 
+コード構造解析のオプション
+
 ### AnalysisResult
 
 ```typescript
@@ -264,5 +266,7 @@ interface AnalysisResult {
 }
 ```
 
+コード構造解析の結果を表します。
+
 ---
-*自動生成: 2026-02-18T00:15:35.468Z*
+*自動生成: 2026-02-18T06:37:19.560Z*

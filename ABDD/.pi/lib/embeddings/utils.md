@@ -23,19 +23,19 @@ import { VectorSearchResult } from './types.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `cosineSimilarity` | Calculate cosine similarity between two vectors. |
+| 関数 | `cosineSimilarity` | 2つのベクトル間のコサイン類似度を計算 |
 | 関数 | `euclideanDistance` | Calculate Euclidean distance between two vectors. |
-| 関数 | `normalizeVector` | Normalize a vector to unit length. |
-| 関数 | `addVectors` | Add two vectors element-wise. |
-| 関数 | `subtractVectors` | Subtract two vectors element-wise. |
-| 関数 | `scaleVector` | Scale a vector by a scalar. |
-| 関数 | `meanVector` | Calculate the mean of multiple vectors. |
-| 関数 | `findNearestNeighbors` | Find the k nearest neighbors to a query vector. |
-| 関数 | `findBySimilarityThreshold` | Find items above a similarity threshold. |
-| 関数 | `isValidEmbedding` | Check if a value is a valid embedding vector. |
+| 関数 | `normalizeVector` | ベクトルを正規化する |
+| 関数 | `addVectors` | 2つのベクトルの要素ごとの和を計算する |
+| 関数 | `subtractVectors` | 2つのベクトルの要素ごとの差を計算する |
+| 関数 | `scaleVector` | ベクトルをスカラー倍する |
+| 関数 | `meanVector` | 複数のベクトルの平均を計算する |
+| 関数 | `findNearestNeighbors` | クエリベクトルに類似した上位k件を検索します。 |
+| 関数 | `findBySimilarityThreshold` | 類似度の閾値を超えるアイテムを検索 |
+| 関数 | `isValidEmbedding` | 値が有効な埋め込みベクトルか判定 |
 | 関数 | `zeroVector` | Create a zero vector of specified dimensions. |
-| 関数 | `vectorNorm` | Calculate the norm (magnitude) of a vector. |
-| 関数 | `dotProduct` | Calculate dot product of two vectors. |
+| 関数 | `vectorNorm` | ベクトルのノルム（大きさ）を計算します。 |
+| 関数 | `dotProduct` | 2つのベクトルの内積を計算する。 |
 
 ## 図解
 
@@ -95,7 +95,7 @@ sequenceDiagram
 cosineSimilarity(a: number[], b: number[]): number
 ```
 
-Calculate cosine similarity between two vectors.
+2つのベクトル間のコサイン類似度を計算
 
 **パラメータ**
 
@@ -129,7 +129,7 @@ Calculate Euclidean distance between two vectors.
 normalizeVector(vector: number[]): number[]
 ```
 
-Normalize a vector to unit length.
+ベクトルを正規化する
 
 **パラメータ**
 
@@ -145,7 +145,7 @@ Normalize a vector to unit length.
 addVectors(a: number[], b: number[]): number[]
 ```
 
-Add two vectors element-wise.
+2つのベクトルの要素ごとの和を計算する
 
 **パラメータ**
 
@@ -162,7 +162,7 @@ Add two vectors element-wise.
 subtractVectors(a: number[], b: number[]): number[]
 ```
 
-Subtract two vectors element-wise.
+2つのベクトルの要素ごとの差を計算する
 
 **パラメータ**
 
@@ -179,7 +179,7 @@ Subtract two vectors element-wise.
 scaleVector(vector: number[], scalar: number): number[]
 ```
 
-Scale a vector by a scalar.
+ベクトルをスカラー倍する
 
 **パラメータ**
 
@@ -196,7 +196,7 @@ Scale a vector by a scalar.
 meanVector(vectors: number[][]): number[] | null
 ```
 
-Calculate the mean of multiple vectors.
+複数のベクトルの平均を計算する
 
 **パラメータ**
 
@@ -212,7 +212,7 @@ Calculate the mean of multiple vectors.
 findNearestNeighbors(queryVector: number[], items: T[], k: number): VectorSearchResult<T>[]
 ```
 
-Find the k nearest neighbors to a query vector.
+クエリベクトルに類似した上位k件を検索します。
 
 **パラメータ**
 
@@ -230,7 +230,7 @@ Find the k nearest neighbors to a query vector.
 findBySimilarityThreshold(queryVector: number[], items: T[], threshold: number): VectorSearchResult<T>[]
 ```
 
-Find items above a similarity threshold.
+類似度の閾値を超えるアイテムを検索
 
 **パラメータ**
 
@@ -248,7 +248,7 @@ Find items above a similarity threshold.
 isValidEmbedding(value: unknown): value is number[]
 ```
 
-Check if a value is a valid embedding vector.
+値が有効な埋め込みベクトルか判定
 
 **パラメータ**
 
@@ -280,7 +280,7 @@ Create a zero vector of specified dimensions.
 vectorNorm(vector: number[]): number
 ```
 
-Calculate the norm (magnitude) of a vector.
+ベクトルのノルム（大きさ）を計算します。
 
 **パラメータ**
 
@@ -296,7 +296,7 @@ Calculate the norm (magnitude) of a vector.
 dotProduct(a: number[], b: number[]): number
 ```
 
-Calculate dot product of two vectors.
+2つのベクトルの内積を計算する。
 
 **パラメータ**
 
@@ -308,4 +308,4 @@ Calculate dot product of two vectors.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-18T00:15:35.714Z*
+*自動生成: 2026-02-18T06:37:19.882Z*

@@ -28,10 +28,10 @@ import { readSymbolIndex } from '../tools/sym_index.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildCallGraph` | Build call graph for a project. |
-| 関数 | `saveCallGraphIndex` | Save call graph index to file. |
-| 関数 | `readCallGraphIndex` | Read call graph index from file. |
-| 関数 | `isCallGraphIndexStale` | Check if call graph index is stale. |
+| 関数 | `buildCallGraph` | プロジェクトのコールグラフを構築する |
+| 関数 | `saveCallGraphIndex` | コールグラフのインデックスをファイルに保存します。 |
+| 関数 | `readCallGraphIndex` | コールグラフのインデックスを読み込む |
+| 関数 | `isCallGraphIndexStale` | コールグラフインデックスが古いか確認 |
 
 ## 図解
 
@@ -280,7 +280,7 @@ Calculate confidence score for a call relationship.
 async buildCallGraph(path: string, cwd: string): Promise<CallGraphIndex>
 ```
 
-Build call graph for a project.
+プロジェクトのコールグラフを構築する
 
 **パラメータ**
 
@@ -297,7 +297,7 @@ Build call graph for a project.
 async saveCallGraphIndex(index: CallGraphIndex, cwd: string): Promise<string>
 ```
 
-Save call graph index to file.
+コールグラフのインデックスをファイルに保存します。
 
 **パラメータ**
 
@@ -314,7 +314,7 @@ Save call graph index to file.
 async readCallGraphIndex(cwd: string): Promise<CallGraphIndex | null>
 ```
 
-Read call graph index from file.
+コールグラフのインデックスを読み込む
 
 **パラメータ**
 
@@ -330,8 +330,7 @@ Read call graph index from file.
 async isCallGraphIndexStale(cwd: string): Promise<boolean>
 ```
 
-Check if call graph index is stale.
-Simple check: compare with symbol index timestamp.
+コールグラフインデックスが古いか確認
 
 **パラメータ**
 
@@ -342,4 +341,4 @@ Simple check: compare with symbol index timestamp.
 **戻り値**: `Promise<boolean>`
 
 ---
-*自動生成: 2026-02-18T00:15:35.545Z*
+*自動生成: 2026-02-18T06:37:19.645Z*

@@ -26,25 +26,25 @@ import { atomicWriteTextFile } from './storage-lock.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `extractKeywords` | Extract keywords from text using simple heuristics |
-| 関数 | `classifyTaskType` | Classify task type based on keywords. |
-| 関数 | `extractFiles` | Extract file paths from text. |
-| 関数 | `indexSubagentRun` | Build an indexed run from a subagent run record. |
-| 関数 | `indexTeamRun` | Build an indexed run from a team run record. |
+| 関数 | `extractKeywords` | テキストからキーワードを抽出します。 |
+| 関数 | `classifyTaskType` | キーワードに基づいてタスクの種類を分類する |
+| 関数 | `extractFiles` | テキストからファイルパスを抽出する |
+| 関数 | `indexSubagentRun` | サブエージェントの実行記録からインデックスを作成 |
+| 関数 | `indexTeamRun` | チーム実行レコードからインデックスを作成 |
 | 関数 | `buildRunIndex` | Build the complete run index from storage files. |
-| 関数 | `getRunIndexPath` | Get the path to the run index file. |
-| 関数 | `loadRunIndex` | Load the run index from disk. |
-| 関数 | `saveRunIndex` | Save the run index to disk. |
-| 関数 | `getOrBuildRunIndex` | Get or build the run index. |
-| 関数 | `searchRuns` | Search for runs matching a query. |
-| 関数 | `findSimilarRuns` | Find similar past runs based on task description. |
-| 関数 | `getRunsByType` | Get runs by task type. |
-| 関数 | `getSuccessfulPatterns` | Get successful patterns for a given task type. |
-| インターフェース | `IndexedRun` | Indexed run record with extracted keywords and tag |
-| インターフェース | `RunIndex` | Run index structure. |
-| インターフェース | `SearchOptions` | Search options for querying the index. |
-| インターフェース | `SearchResult` | Search result with relevance score. |
-| 型 | `TaskType` | Task type classification. |
+| 関数 | `getRunIndexPath` | ランインデックスのファイルパスを取得する |
+| 関数 | `loadRunIndex` | ディスクから実行インデックスを読み込む |
+| 関数 | `saveRunIndex` | 実行インデックスを保存する |
+| 関数 | `getOrBuildRunIndex` | 実行インデックスを取得または構築 |
+| 関数 | `searchRuns` | クエリに一致する実行を検索します。 |
+| 関数 | `findSimilarRuns` | タスク説明に基づき類似の過去の実行を検索 |
+| 関数 | `getRunsByType` | タスクタイプに対応する実行を取得する |
+| 関数 | `getSuccessfulPatterns` | 指定したタスクタイプの成功したパターンを取得 |
+| インターフェース | `IndexedRun` | 抽出されたキーワードとタグを持つインデックス化された実行レコード |
+| インターフェース | `RunIndex` | 実行インデックスの構造。 |
+| インターフェース | `SearchOptions` | インデックス検索のオプション |
+| インターフェース | `SearchResult` | 検索結果と関連性スコア |
+| 型 | `TaskType` | タスクの種類を表す型 |
 
 ## 図解
 
@@ -141,7 +141,7 @@ sequenceDiagram
 extractKeywords(text: string): string[]
 ```
 
-Extract keywords from text using simple heuristics.
+テキストからキーワードを抽出します。
 
 **パラメータ**
 
@@ -157,7 +157,7 @@ Extract keywords from text using simple heuristics.
 classifyTaskType(task: string, summary: string): TaskType
 ```
 
-Classify task type based on keywords.
+キーワードに基づいてタスクの種類を分類する
 
 **パラメータ**
 
@@ -174,7 +174,7 @@ Classify task type based on keywords.
 extractFiles(text: string): string[]
 ```
 
-Extract file paths from text.
+テキストからファイルパスを抽出する
 
 **パラメータ**
 
@@ -198,7 +198,7 @@ indexSubagentRun(run: {
   }): IndexedRun
 ```
 
-Build an indexed run from a subagent run record.
+サブエージェントの実行記録からインデックスを作成
 
 **パラメータ**
 
@@ -230,7 +230,7 @@ indexTeamRun(run: {
   }): IndexedRun
 ```
 
-Build an indexed run from a team run record.
+チーム実行レコードからインデックスを作成
 
 **パラメータ**
 
@@ -270,7 +270,7 @@ Build the complete run index from storage files.
 getRunIndexPath(cwd: string): string
 ```
 
-Get the path to the run index file.
+ランインデックスのファイルパスを取得する
 
 **パラメータ**
 
@@ -286,7 +286,7 @@ Get the path to the run index file.
 loadRunIndex(cwd: string): RunIndex | null
 ```
 
-Load the run index from disk.
+ディスクから実行インデックスを読み込む
 
 **パラメータ**
 
@@ -302,7 +302,7 @@ Load the run index from disk.
 saveRunIndex(cwd: string, index: RunIndex): void
 ```
 
-Save the run index to disk.
+実行インデックスを保存する
 
 **パラメータ**
 
@@ -319,8 +319,7 @@ Save the run index to disk.
 getOrBuildRunIndex(cwd: string, maxAgeMs: number): RunIndex
 ```
 
-Get or build the run index.
-Returns cached index if available and recent, otherwise rebuilds.
+実行インデックスを取得または構築
 
 **パラメータ**
 
@@ -337,7 +336,7 @@ Returns cached index if available and recent, otherwise rebuilds.
 searchRuns(index: RunIndex, query: string, options: SearchOptions): SearchResult[]
 ```
 
-Search for runs matching a query.
+クエリに一致する実行を検索します。
 
 **パラメータ**
 
@@ -355,7 +354,7 @@ Search for runs matching a query.
 findSimilarRuns(index: RunIndex, task: string, limit: number): SearchResult[]
 ```
 
-Find similar past runs based on task description.
+タスク説明に基づき類似の過去の実行を検索
 
 **パラメータ**
 
@@ -373,7 +372,7 @@ Find similar past runs based on task description.
 getRunsByType(index: RunIndex, taskType: TaskType): IndexedRun[]
 ```
 
-Get runs by task type.
+タスクタイプに対応する実行を取得する
 
 **パラメータ**
 
@@ -390,7 +389,7 @@ Get runs by task type.
 getSuccessfulPatterns(index: RunIndex, taskType: TaskType, limit: number): IndexedRun[]
 ```
 
-Get successful patterns for a given task type.
+指定したタスクタイプの成功したパターンを取得
 
 **パラメータ**
 
@@ -424,7 +423,7 @@ interface IndexedRun {
 }
 ```
 
-Indexed run record with extracted keywords and tags.
+抽出されたキーワードとタグを持つインデックス化された実行レコード
 
 ### RunIndex
 
@@ -438,7 +437,7 @@ interface RunIndex {
 }
 ```
 
-Run index structure.
+実行インデックスの構造。
 
 ### SearchOptions
 
@@ -451,7 +450,7 @@ interface SearchOptions {
 }
 ```
 
-Search options for querying the index.
+インデックス検索のオプション
 
 ### SearchResult
 
@@ -463,7 +462,7 @@ interface SearchResult {
 }
 ```
 
-Search result with relevance score.
+検索結果と関連性スコア
 
 ## 型定義
 
@@ -485,7 +484,7 @@ type TaskType = | "code-review"
   | "unknown"
 ```
 
-Task type classification.
+タスクの種類を表す型
 
 ---
-*自動生成: 2026-02-18T00:15:35.750Z*
+*自動生成: 2026-02-18T06:37:19.996Z*

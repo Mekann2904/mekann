@@ -28,7 +28,7 @@ import { DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_EXCLUDES } from
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `codeSearch` | Code search with rg or fallback |
+| 関数 | `codeSearch` | rgを使用したコード検索 |
 
 ## 図解
 
@@ -172,7 +172,7 @@ Extract file paths from results for history recording.
 async codeSearch(input: CodeSearchInput, cwd: string): Promise<CodeSearchOutput>
 ```
 
-Code search with rg or fallback
+rgを使用したコード検索
 
 **パラメータ**
 
@@ -184,4 +184,4 @@ Code search with rg or fallback
 **戻り値**: `Promise<CodeSearchOutput>`
 
 ---
-*自動生成: 2026-02-18T00:15:35.565Z*
+*自動生成: 2026-02-18T06:37:19.667Z*

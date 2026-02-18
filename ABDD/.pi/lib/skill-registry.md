@@ -25,19 +25,19 @@ import { dirname, join } from 'node:path';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `resolveSkills` | Resolve multiple skills by reference |
-| 関数 | `mergeSkills` | Merge skills according to inheritance rules |
-| 関数 | `mergeSkillArrays` | Merge skill arrays handling the inheritance patter |
-| 関数 | `formatSkillsForPrompt` | Format resolved skills for prompt injection |
-| 関数 | `formatSkillsWithContent` | Format resolved skills with full content for immed |
-| 関数 | `loadSkillsForAgent` | Load and resolve skills for a subagent or team mem |
-| 関数 | `validateSkillReferences` | Validate skill references without loading content |
-| インターフェース | `SkillDefinition` | Skill definition matching pi-core Skill interface |
-| インターフェース | `ResolvedSkill` | Resolved skill with content loaded |
-| インターフェース | `ResolveSkillsOptions` | Skill resolution options |
-| インターフェース | `SkillMergeConfig` | Skill merge configuration for inheritance |
-| インターフェース | `ResolveSkillsResult` | Result of skill resolution |
-| 型 | `SkillReference` | Skill reference - can be a skill name or path |
+| 関数 | `resolveSkills` | 複数のスキルを参照から解決する |
+| 関数 | `mergeSkills` | 継承ルールに従ってスキルをマージする |
+| 関数 | `mergeSkillArrays` | スキル配列をマージする |
+| 関数 | `formatSkillsForPrompt` | 解決済みスキルをプロンプト用に整形する |
+| 関数 | `formatSkillsWithContent` | 解決済みスキルをフルコンテンツ付きでフォーマットする |
+| 関数 | `loadSkillsForAgent` | サブエージェント用のスキルを読み込み解決する |
+| 関数 | `validateSkillReferences` | スキル参照を検証 |
+| インターフェース | `SkillDefinition` | pi-coreのSkillインターフェースに対応する定義 |
+| インターフェース | `ResolvedSkill` | コンテンツが読み込まれた解決済みスキル |
+| インターフェース | `ResolveSkillsOptions` | スキル解決のオプション |
+| インターフェース | `SkillMergeConfig` | スキル継承のマージ設定 |
+| インターフェース | `ResolveSkillsResult` | スキル解決の結果 |
+| 型 | `SkillReference` | スキル名またはパスを表す文字列 |
 
 ## 図解
 
@@ -240,7 +240,7 @@ Resolve skill content from file
 resolveSkills(references: SkillReference[], options: ResolveSkillsOptions): ResolveSkillsResult
 ```
 
-Resolve multiple skills by reference
+複数のスキルを参照から解決する
 
 **パラメータ**
 
@@ -257,13 +257,7 @@ Resolve multiple skills by reference
 mergeSkills(config: SkillMergeConfig, options: ResolveSkillsOptions): ResolveSkillsResult
 ```
 
-Merge skills according to inheritance rules
-
-Rules:
-- Empty array [] is ignored (treated as "not specified")
-- Parent skills are inherited by default
-- Child skills are merged with parent skills
-- "replace" strategy ignores parent skills
+継承ルールに従ってスキルをマージする
 
 **パラメータ**
 
@@ -280,8 +274,7 @@ Rules:
 mergeSkillArrays(parentSkills: SkillReference[] | undefined, childSkills: SkillReference[] | undefined): SkillReference[]
 ```
 
-Merge skill arrays handling the inheritance pattern
-Used by subagents and agent teams
+スキル配列をマージする
 
 **パラメータ**
 
@@ -298,7 +291,7 @@ Used by subagents and agent teams
 formatSkillsForPrompt(skills: ResolvedSkill[]): string
 ```
 
-Format resolved skills for prompt injection
+解決済みスキルをプロンプト用に整形する
 
 **パラメータ**
 
@@ -314,7 +307,7 @@ Format resolved skills for prompt injection
 formatSkillsWithContent(skills: ResolvedSkill[]): string
 ```
 
-Format resolved skills with full content for immediate use
+解決済みスキルをフルコンテンツ付きでフォーマットする
 
 **パラメータ**
 
@@ -346,7 +339,7 @@ Escape special characters for XML
 loadSkillsForAgent(skillReferences: SkillReference[] | undefined, parentSkillReferences: SkillReference[] | undefined, cwd: string): { promptSection: string; skills: ResolvedSkill[]; errors: string[] }
 ```
 
-Load and resolve skills for a subagent or team member
+サブエージェント用のスキルを読み込み解決する
 
 **パラメータ**
 
@@ -364,7 +357,7 @@ Load and resolve skills for a subagent or team member
 validateSkillReferences(references: SkillReference[], cwd: string): { valid: string[]; invalid: string[] }
 ```
 
-Validate skill references without loading content
+スキル参照を検証
 
 **パラメータ**
 
@@ -390,7 +383,7 @@ interface SkillDefinition {
 }
 ```
 
-Skill definition matching pi-core Skill interface
+pi-coreのSkillインターフェースに対応する定義
 
 ### ResolvedSkill
 
@@ -400,7 +393,7 @@ interface ResolvedSkill {
 }
 ```
 
-Resolved skill with content loaded
+コンテンツが読み込まれた解決済みスキル
 
 ### ResolveSkillsOptions
 
@@ -412,7 +405,7 @@ interface ResolveSkillsOptions {
 }
 ```
 
-Skill resolution options
+スキル解決のオプション
 
 ### SkillMergeConfig
 
@@ -424,7 +417,7 @@ interface SkillMergeConfig {
 }
 ```
 
-Skill merge configuration for inheritance
+スキル継承のマージ設定
 
 ### ResolveSkillsResult
 
@@ -436,7 +429,7 @@ interface ResolveSkillsResult {
 }
 ```
 
-Result of skill resolution
+スキル解決の結果
 
 ## 型定義
 
@@ -446,7 +439,7 @@ Result of skill resolution
 type SkillReference = string
 ```
 
-Skill reference - can be a skill name or path
+スキル名またはパスを表す文字列
 
 ---
-*自動生成: 2026-02-18T00:15:35.757Z*
+*自動生成: 2026-02-18T06:37:20.025Z*

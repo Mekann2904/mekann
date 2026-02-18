@@ -28,15 +28,15 @@ import { toErrorMessage } from '../../lib/error-utils.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `normalizeTeamMemberOutput` | Normalize team member output to required format. |
-| 関数 | `mergeSkillArrays` | Merge skill arrays following inheritance rules. |
-| 関数 | `resolveEffectiveTeamMemberSkills` | Resolve effective skills for a team member. |
-| 関数 | `formatTeamMemberSkillsSection` | Format skill list for prompt inclusion (Japanese). |
-| 関数 | `loadSkillContent` | Load skill content from SKILL.md file. |
-| 関数 | `buildSkillsSectionWithContent` | Build skills section with content for prompt inclu |
-| 関数 | `buildTeamMemberPrompt` | - |
-| 関数 | `runMember` | - |
-| インターフェース | `TeamNormalizedOutput` | - |
+| 関数 | `normalizeTeamMemberOutput` | チームメンバーの出力を正規化します。 |
+| 関数 | `mergeSkillArrays` | スキル配列を継承ルールに従ってマージする。 |
+| 関数 | `resolveEffectiveTeamMemberSkills` | チームメンバーの有効なスキルを解決する。 |
+| 関数 | `formatTeamMemberSkillsSection` | スキルリストをプロンプト用に整形 |
+| 関数 | `loadSkillContent` | スキルの内容をSKILL.mdから読み込む |
+| 関数 | `buildSkillsSectionWithContent` | スキルセクションの文字列を構築する |
+| 関数 | `buildTeamMemberPrompt` | チームメンバー用のプロンプトを構築する |
+| 関数 | `runMember` | チームメンバーのタスクを実行する |
+| インターフェース | `TeamNormalizedOutput` | チームメンバー実行結果の正規化出力 |
 
 ## 図解
 
@@ -132,12 +132,7 @@ Note: Kept locally because the field format is team-member-specific.
 normalizeTeamMemberOutput(output: string): TeamNormalizedOutput
 ```
 
-Normalize team member output to required format.
-Note: Kept locally (not in lib) because:
-- Uses team-member-specific SUMMARY/CLAIM/EVIDENCE/CONFIDENCE/RESULT/NEXT_STEP format
-- Has team-member-specific fallback messages (Japanese)
-- Uses pickTeamFieldCandidate which is team-member-specific
-Subagent output has different requirements (only SUMMARY/RESULT/NEXT_STEP).
+チームメンバーの出力を正規化します。
 
 **パラメータ**
 
@@ -153,9 +148,7 @@ Subagent output has different requirements (only SUMMARY/RESULT/NEXT_STEP).
 mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined
 ```
 
-Merge skill arrays following inheritance rules.
-- Empty array [] is treated as unspecified (ignored)
-- Non-empty arrays are merged with deduplication
+スキル配列を継承ルールに従ってマージする。
 
 **パラメータ**
 
@@ -172,8 +165,7 @@ Merge skill arrays following inheritance rules.
 resolveEffectiveTeamMemberSkills(team: TeamDefinition, member: TeamMember): string[] | undefined
 ```
 
-Resolve effective skills for a team member.
-Inheritance: teamSkills (common) -> memberSkills (individual)
+チームメンバーの有効なスキルを解決する。
 
 **パラメータ**
 
@@ -190,7 +182,7 @@ Inheritance: teamSkills (common) -> memberSkills (individual)
 formatTeamMemberSkillsSection(skills: string[] | undefined): string | null
 ```
 
-Format skill list for prompt inclusion (Japanese).
+スキルリストをプロンプト用に整形
 
 **パラメータ**
 
@@ -206,9 +198,7 @@ Format skill list for prompt inclusion (Japanese).
 loadSkillContent(skillName: string): string | null
 ```
 
-Load skill content from SKILL.md file.
-Searches in team-specific path first, then global path.
-Returns null if skill not found.
+スキルの内容をSKILL.mdから読み込む
 
 **パラメータ**
 
@@ -224,9 +214,7 @@ Returns null if skill not found.
 buildSkillsSectionWithContent(skills: string[] | undefined): string | null
 ```
 
-Build skills section with content for prompt inclusion.
-Only includes skills that are explicitly assigned to the team/member.
-Falls back to skill names only if content cannot be loaded.
+スキルセクションの文字列を構築する
 
 **パラメータ**
 
@@ -248,6 +236,8 @@ buildTeamMemberPrompt(input: {
   communicationContext?: string;
 }): string
 ```
+
+チームメンバー用のプロンプトを構築する
 
 **パラメータ**
 
@@ -318,6 +308,8 @@ async runMember(input: {
 }): Promise<TeamMemberResult>
 ```
 
+チームメンバーのタスクを実行する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -371,5 +363,7 @@ interface TeamNormalizedOutput {
 }
 ```
 
+チームメンバー実行結果の正規化出力
+
 ---
-*自動生成: 2026-02-18T00:15:35.407Z*
+*自動生成: 2026-02-18T06:37:19.513Z*

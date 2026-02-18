@@ -28,12 +28,12 @@ import { TeamDefinition, TeamMember, TeamStorage } from './storage';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `parseTeamMarkdownFile` | Parse a team markdown file with YAML frontmatter. |
-| 関数 | `loadTeamDefinitionsFromDir` | Load team definitions from markdown files. |
-| 関数 | `loadTeamDefinitionsFromMarkdown` | - |
-| 関数 | `createDefaultTeams` | Load team definitions from Markdown files if avail |
-| 関数 | `mergeDefaultTeam` | - |
-| 関数 | `ensureDefaults` | - |
+| 関数 | `parseTeamMarkdownFile` | YAMLフロントマター付きチームMarkdownを解析 |
+| 関数 | `loadTeamDefinitionsFromDir` | ディレクトリからチーム定義を読み込む |
+| 関数 | `loadTeamDefinitionsFromMarkdown` | Markdownからチーム定義を読み込む |
+| 関数 | `createDefaultTeams` | デフォルトのチーム定義を作成する |
+| 関数 | `mergeDefaultTeam` | 既存とデフォルトのチーム定義をマージする |
+| 関数 | `ensureDefaults` | デフォルトチーム設定を適用・統合する |
 
 ## 図解
 
@@ -155,7 +155,7 @@ getCandidateTeamDefinitionsDirs(cwd: string): string[]
 parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | null
 ```
 
-Parse a team markdown file with YAML frontmatter.
+YAMLフロントマター付きチームMarkdownを解析
 
 **パラメータ**
 
@@ -171,7 +171,7 @@ Parse a team markdown file with YAML frontmatter.
 loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): TeamDefinition[]
 ```
 
-Load team definitions from markdown files.
+ディレクトリからチーム定義を読み込む
 
 **パラメータ**
 
@@ -187,6 +187,8 @@ Load team definitions from markdown files.
 ```typescript
 loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): TeamDefinition[]
 ```
+
+Markdownからチーム定義を読み込む
 
 **パラメータ**
 
@@ -231,8 +233,7 @@ getHardcodedDefaultTeams(nowIso: string): TeamDefinition[]
 createDefaultTeams(nowIso: string, cwd?: string): TeamDefinition[]
 ```
 
-Load team definitions from Markdown files if available,
-otherwise fallback to hardcoded defaults.
+デフォルトのチーム定義を作成する
 
 **パラメータ**
 
@@ -249,6 +250,8 @@ otherwise fallback to hardcoded defaults.
 mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinition): TeamDefinition
 ```
 
+既存とデフォルトのチーム定義をマージする
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -264,6 +267,8 @@ mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinition): TeamDefini
 ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage
 ```
 
+デフォルトチーム設定を適用・統合する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -275,4 +280,4 @@ ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage
 **戻り値**: `TeamStorage`
 
 ---
-*自動生成: 2026-02-18T00:15:35.387Z*
+*自動生成: 2026-02-18T06:37:19.489Z*

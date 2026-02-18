@@ -27,7 +27,7 @@ import { getRuntimeSnapshot, notifyRuntimeCapacityChanged } from './agent-runtim
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerCrossInstanceRuntimeExtension` | - |
+| 関数 | `registerCrossInstanceRuntimeExtension` | クロスインスタンスランタイム拡張を登録する |
 
 ## 図解
 
@@ -59,6 +59,8 @@ flowchart LR
 registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 ```
 
+クロスインスタンスランタイム拡張を登録する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -68,4 +70,4 @@ registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T00:15:35.497Z*
+*自動生成: 2026-02-18T06:37:19.587Z*

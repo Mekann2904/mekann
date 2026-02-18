@@ -54,4 +54,4 @@ type GhAgentArgs = Static<typeof GhAgentParams>
 ```
 
 ---
-*自動生成: 2026-02-18T00:15:35.505Z*
+*自動生成: 2026-02-18T06:37:19.598Z*

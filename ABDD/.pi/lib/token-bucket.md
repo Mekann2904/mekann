@@ -17,12 +17,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getTokenBucketRateLimiter` | Get the singleton rate limiter instance. |
-| 関数 | `createTokenBucketRateLimiter` | Create a new rate limiter (for testing). |
-| 関数 | `resetTokenBucketRateLimiter` | Reset the singleton rate limiter (for testing). |
-| インターフェース | `RateLimitConfig` | Rate limit configuration for a provider/model. |
-| インターフェース | `RateLimiterStats` | Rate limiter statistics. |
-| インターフェース | `TokenBucketRateLimiter` | Token bucket rate limiter interface. |
+| 関数 | `getTokenBucketRateLimiter` | シングルトンのレートリミッターを取得する。 |
+| 関数 | `createTokenBucketRateLimiter` | 新しいレート制限インスタンスを作成（テスト用） |
+| 関数 | `resetTokenBucketRateLimiter` | シングルトンのレートリミッターをリセット |
+| インターフェース | `RateLimitConfig` | レート制限の設定 |
+| インターフェース | `RateLimiterStats` | レートリミッターの統計情報 |
+| インターフェース | `TokenBucketRateLimiter` | トークンバケット方式のレート制限インターフェース |
 
 ## 図解
 
@@ -84,7 +84,7 @@ flowchart TD
 getTokenBucketRateLimiter(): TokenBucketRateLimiterImpl
 ```
 
-Get the singleton rate limiter instance.
+シングルトンのレートリミッターを取得する。
 
 **戻り値**: `TokenBucketRateLimiterImpl`
 
@@ -94,7 +94,7 @@ Get the singleton rate limiter instance.
 createTokenBucketRateLimiter(): TokenBucketRateLimiterImpl
 ```
 
-Create a new rate limiter (for testing).
+新しいレート制限インスタンスを作成（テスト用）
 
 **戻り値**: `TokenBucketRateLimiterImpl`
 
@@ -104,7 +104,7 @@ Create a new rate limiter (for testing).
 resetTokenBucketRateLimiter(): void
 ```
 
-Reset the singleton rate limiter (for testing).
+シングルトンのレートリミッターをリセット
 
 **戻り値**: `void`
 
@@ -167,7 +167,7 @@ interface RateLimitConfig {
 }
 ```
 
-Rate limit configuration for a provider/model.
+レート制限の設定
 
 ### RateLimiterStats
 
@@ -180,7 +180,7 @@ interface RateLimiterStats {
 }
 ```
 
-Rate limiter statistics.
+レートリミッターの統計情報
 
 ### TokenBucketRateLimiter
 
@@ -194,7 +194,7 @@ interface TokenBucketRateLimiter {
 }
 ```
 
-Token bucket rate limiter interface.
+トークンバケット方式のレート制限インターフェース
 
 ---
-*自動生成: 2026-02-18T00:15:35.774Z*
+*自動生成: 2026-02-18T06:37:20.062Z*

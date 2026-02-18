@@ -532,4 +532,4 @@ Handles patterns like:
 - "count == old_count + 1" -> "new_state.count = self.count + 1"
 
 ---
-*自動生成: 2026-02-18T00:15:35.514Z*
+*自動生成: 2026-02-18T06:37:19.608Z*

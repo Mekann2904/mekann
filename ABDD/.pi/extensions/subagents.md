@@ -28,7 +28,7 @@ import { Key, Markdown, matchesKey... } from '@mariozechner/pi-tui';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerSubagentExtension` | - |
+| 関数 | `registerSubagentExtension` | サブエージェント拡張を登録する |
 
 ## 図解
 
@@ -218,6 +218,8 @@ pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition[]
 registerSubagentExtension(pi: ExtensionAPI): void
 ```
 
+サブエージェント拡張を登録する
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -227,4 +229,4 @@ registerSubagentExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T00:15:35.626Z*
+*自動生成: 2026-02-18T06:37:19.761Z*

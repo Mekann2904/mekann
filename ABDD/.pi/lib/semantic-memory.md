@@ -28,22 +28,22 @@ import { IndexedRun, RunIndex, getOrBuildRunIndex } from './run-index.js';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `generateEmbedding` | Generate embedding for text using the configured p |
-| 関数 | `generateEmbeddingsBatch` | Generate embeddings for multiple texts in batch. |
-| 関数 | `isSemanticMemoryAvailable` | Check if semantic memory is available (any provide |
+| 関数 | `generateEmbedding` | テキストの埋め込みベクトルを生成する（非推奨） |
+| 関数 | `generateEmbeddingsBatch` | 複数テキストのベクトルを一括生成 |
+| 関数 | `isSemanticMemoryAvailable` | セマンティックメモリが利用可能か確認 |
 | 関数 | `findNearestNeighbors` | Find the k nearest neighbors to a query vector. |
-| 関数 | `getSemanticMemoryPath` | Get the path to the semantic memory storage file. |
-| 関数 | `loadSemanticMemory` | Load semantic memory storage from disk. |
-| 関数 | `saveSemanticMemory` | Save semantic memory storage to disk. |
-| 関数 | `buildSemanticMemoryIndex` | Build semantic memory index from run index. |
-| 関数 | `addRunToSemanticMemory` | Add a single run to semantic memory. |
-| 関数 | `semanticSearch` | Search for similar runs using semantic similarity. |
-| 関数 | `findSimilarRunsById` | Find runs similar to a given run ID. |
-| 関数 | `getSemanticMemoryStats` | Get semantic memory statistics. |
-| 関数 | `clearSemanticMemory` | Clear semantic memory index. |
-| インターフェース | `RunEmbedding` | Vector embedding for a run. |
-| インターフェース | `SemanticMemoryStorage` | Semantic memory storage. |
-| インターフェース | `SemanticSearchResult` | Semantic search result. |
+| 関数 | `getSemanticMemoryPath` | セマンティックメモリのストレージファイルパスを取得 |
+| 関数 | `loadSemanticMemory` | ディスクからセマンティックメモリを読み込む |
+| 関数 | `saveSemanticMemory` | セマンティックメモリをディスクに保存する |
+| 関数 | `buildSemanticMemoryIndex` | ランインデックスからセマンティックメモリを構築 |
+| 関数 | `addRunToSemanticMemory` | 実行履歴をセマンティックメモリに追加 |
+| 関数 | `semanticSearch` | 類似した実行をセマンティック検索します。 |
+| 関数 | `findSimilarRunsById` | 指定された実行IDに類似した実行を検索する。 |
+| 関数 | `getSemanticMemoryStats` | セマンティックメモリの統計情報を取得する |
+| 関数 | `clearSemanticMemory` | セマンティックメモリをクリアする。 |
+| インターフェース | `RunEmbedding` | 実行のベクトル埋め込み |
+| インターフェース | `SemanticMemoryStorage` | セマンティックメモリストレージ。 |
+| インターフェース | `SemanticSearchResult` | セマンティック検索の結果 |
 
 ## 図解
 
@@ -139,7 +139,7 @@ sequenceDiagram
 async generateEmbedding(text: string): Promise<number[] | null>
 ```
 
-Generate embedding for text using the configured provider.
+テキストの埋め込みベクトルを生成する（非推奨）
 
 **パラメータ**
 
@@ -155,7 +155,7 @@ Generate embedding for text using the configured provider.
 async generateEmbeddingsBatch(texts: string[]): Promise<(number[] | null)[]>
 ```
 
-Generate embeddings for multiple texts in batch.
+複数テキストのベクトルを一括生成
 
 **パラメータ**
 
@@ -171,7 +171,7 @@ Generate embeddings for multiple texts in batch.
 isSemanticMemoryAvailable(): boolean
 ```
 
-Check if semantic memory is available (any provider configured).
+セマンティックメモリが利用可能か確認
 
 **戻り値**: `boolean`
 
@@ -199,7 +199,7 @@ Find the k nearest neighbors to a query vector.
 getSemanticMemoryPath(cwd: string): string
 ```
 
-Get the path to the semantic memory storage file.
+セマンティックメモリのストレージファイルパスを取得
 
 **パラメータ**
 
@@ -215,7 +215,7 @@ Get the path to the semantic memory storage file.
 loadSemanticMemory(cwd: string): SemanticMemoryStorage
 ```
 
-Load semantic memory storage from disk.
+ディスクからセマンティックメモリを読み込む
 
 **パラメータ**
 
@@ -231,7 +231,7 @@ Load semantic memory storage from disk.
 saveSemanticMemory(cwd: string, storage: SemanticMemoryStorage): void
 ```
 
-Save semantic memory storage to disk.
+セマンティックメモリをディスクに保存する
 
 **パラメータ**
 
@@ -264,8 +264,7 @@ Build text to embed from a run.
 async buildSemanticMemoryIndex(cwd: string, batchSize: number): Promise<SemanticMemoryStorage>
 ```
 
-Build semantic memory index from run index.
-Generates embeddings for all runs.
+ランインデックスからセマンティックメモリを構築
 
 **パラメータ**
 
@@ -282,7 +281,7 @@ Generates embeddings for all runs.
 async addRunToSemanticMemory(cwd: string, run: IndexedRun): Promise<void>
 ```
 
-Add a single run to semantic memory.
+実行履歴をセマンティックメモリに追加
 
 **パラメータ**
 
@@ -303,7 +302,7 @@ async semanticSearch(cwd: string, query: string, options: {
   }): Promise<SemanticSearchResult[]>
 ```
 
-Search for similar runs using semantic similarity.
+類似した実行をセマンティック検索します。
 
 **パラメータ**
 
@@ -325,7 +324,7 @@ Search for similar runs using semantic similarity.
 findSimilarRunsById(cwd: string, runId: string, limit: number): SemanticSearchResult[]
 ```
 
-Find runs similar to a given run ID.
+指定された実行IDに類似した実行を検索する。
 
 **パラメータ**
 
@@ -348,7 +347,7 @@ getSemanticMemoryStats(cwd: string): {
 }
 ```
 
-Get semantic memory statistics.
+セマンティックメモリの統計情報を取得する
 
 **パラメータ**
 
@@ -369,7 +368,7 @@ Get semantic memory statistics.
 clearSemanticMemory(cwd: string): void
 ```
 
-Clear semantic memory index.
+セマンティックメモリをクリアする。
 
 **パラメータ**
 
@@ -392,7 +391,7 @@ interface RunEmbedding {
 }
 ```
 
-Vector embedding for a run.
+実行のベクトル埋め込み
 
 ### SemanticMemoryStorage
 
@@ -406,7 +405,7 @@ interface SemanticMemoryStorage {
 }
 ```
 
-Semantic memory storage.
+セマンティックメモリストレージ。
 
 ### SemanticSearchResult
 
@@ -418,7 +417,7 @@ interface SemanticSearchResult {
 }
 ```
 
-Semantic search result.
+セマンティック検索の結果
 
 ---
-*自動生成: 2026-02-18T00:15:35.753Z*
+*自動生成: 2026-02-18T06:37:20.019Z*

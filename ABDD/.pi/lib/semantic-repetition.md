@@ -23,14 +23,14 @@ import { generateEmbedding, cosineSimilarity, getEmbeddingProvider } from './emb
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `detectSemanticRepetition` | Detect semantic repetition between two outputs. |
-| 関数 | `detectSemanticRepetitionFromEmbeddings` | Synchronous version using pre-computed embeddings. |
-| 関数 | `isSemanticRepetitionAvailable` | Check if semantic repetition detection is availabl |
-| 関数 | `getRecommendedAction` | Get recommended action based on repetition score. |
-| クラス | `TrajectoryTracker` | Simple trajectory tracker for monitoring session p |
-| インターフェース | `SemanticRepetitionResult` | Result of semantic repetition detection. |
-| インターフェース | `SemanticRepetitionOptions` | Options for semantic repetition detection. |
-| インターフェース | `TrajectorySummary` | Session trajectory summary for monitoring. |
+| 関数 | `detectSemanticRepetition` | 出力の意味的な重複を検出する |
+| 関数 | `detectSemanticRepetitionFromEmbeddings` | 事前計算された埋め込み込みを使用して検出 |
+| 関数 | `isSemanticRepetitionAvailable` | 意味的反復検出が利用可能か確認 |
+| 関数 | `getRecommendedAction` | 繰り返し状況に基づく推奨アクションを取得 |
+| クラス | `TrajectoryTracker` | セッションの進行状況を追跡するクラス |
+| インターフェース | `SemanticRepetitionResult` | 意味的な重複検出の結果 |
+| インターフェース | `SemanticRepetitionOptions` | 意味的繰り返し検出のオプション |
+| インターフェース | `TrajectorySummary` | セッション軌跡のサマリー監視用インターフェース |
 
 ## 図解
 
@@ -122,11 +122,7 @@ sequenceDiagram
 async detectSemanticRepetition(current: string, previous: string, options: SemanticRepetitionOptions): Promise<SemanticRepetitionResult>
 ```
 
-Detect semantic repetition between two outputs.
-
-This function compares consecutive outputs using either:
-1. Embedding-based cosine similarity (if OPENAI_API_KEY available)
-2. Exact string match (fallback)
+出力の意味的な重複を検出する
 
 **パラメータ**
 
@@ -144,8 +140,7 @@ This function compares consecutive outputs using either:
 detectSemanticRepetitionFromEmbeddings(currentEmbedding: number[], previousEmbedding: number[], threshold: number): SemanticRepetitionResult
 ```
 
-Synchronous version using pre-computed embeddings.
-Use when embeddings are already available.
+事前計算された埋め込み込みを使用して検出
 
 **パラメータ**
 
@@ -180,8 +175,7 @@ Normalize text for comparison.
 async isSemanticRepetitionAvailable(): Promise<boolean>
 ```
 
-Check if semantic repetition detection is available.
-Uses the embeddings module's provider registry.
+意味的反復検出が利用可能か確認
 
 **戻り値**: `Promise<boolean>`
 
@@ -191,8 +185,7 @@ Uses the embeddings module's provider registry.
 getRecommendedAction(repetitionCount: number, totalSteps: number, isStuck: boolean): "continue" | "pivot" | "early_stop"
 ```
 
-Get recommended action based on repetition score.
-Based on paper findings: high repetition indicates stagnation.
+繰り返し状況に基づく推奨アクションを取得
 
 **パラメータ**
 
@@ -208,8 +201,7 @@ Based on paper findings: high repetition indicates stagnation.
 
 ### TrajectoryTracker
 
-Simple trajectory tracker for monitoring session progress.
-Implements memory bounds to prevent DoS via unbounded accumulation.
+セッションの進行状況を追跡するクラス
 
 **プロパティ**
 
@@ -242,7 +234,7 @@ interface SemanticRepetitionResult {
 }
 ```
 
-Result of semantic repetition detection.
+意味的な重複検出の結果
 
 ### SemanticRepetitionOptions
 
@@ -254,7 +246,7 @@ interface SemanticRepetitionOptions {
 }
 ```
 
-Options for semantic repetition detection.
+意味的繰り返し検出のオプション
 
 ### TrajectorySummary
 
@@ -268,7 +260,7 @@ interface TrajectorySummary {
 }
 ```
 
-Session trajectory summary for monitoring.
+セッション軌跡のサマリー監視用インターフェース
 
 ---
-*自動生成: 2026-02-18T00:15:35.755Z*
+*自動生成: 2026-02-18T06:37:20.021Z*
