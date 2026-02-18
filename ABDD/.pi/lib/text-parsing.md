@@ -225,4 +225,4 @@ type DiscussionStance = "agree" | "disagree" | "neutral" | "partial"
 ディスカッションの立場を表す型
 
 ---
-*自動生成: 2026-02-18T07:17:30.506Z*
+*自動生成: 2026-02-18T07:48:45.339Z*

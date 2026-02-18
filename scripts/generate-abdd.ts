@@ -79,12 +79,32 @@ const EXTENSIONS_DIR = join(ROOT_DIR, '.pi/extensions');
 const LIB_DIR = join(ROOT_DIR, '.pi/lib');
 const ABDD_DIR = join(ROOT_DIR, 'ABDD');
 
+/**
+ * コマンドライン引数をパースする
+ */
+function parseArgs(args: string[]): { dryRun: boolean; verbose: boolean } {
+  return {
+    dryRun: args.includes('--dry-run'),
+    verbose: args.includes('--verbose') || args.includes('-v'),
+  };
+}
+
 async function main() {
+  const args = process.argv.slice(2);
+  const options = parseArgs(args);
+  globalOptions = options;
+
   console.log('=== ABDD Documentation Generator ===\n');
 
+  if (options.dryRun) {
+    console.log('ドライランモード: ファイルは書き込まれません\n');
+  }
+
   // ABDDディレクトリを作成
-  mkdirIfNotExists(join(ABDD_DIR, '.pi/extensions'));
-  mkdirIfNotExists(join(ABDD_DIR, '.pi/lib'));
+  if (!options.dryRun) {
+    mkdirIfNotExists(join(ABDD_DIR, '.pi/extensions'));
+    mkdirIfNotExists(join(ABDD_DIR, '.pi/lib'));
+  }
 
   // Extensions ファイルを処理
   console.log('Processing extensions...');
@@ -100,16 +120,26 @@ async function main() {
     processFile(file, LIB_DIR, join(ABDD_DIR, '.pi/lib'));
   }
 
-  // Mermaid図を検証
-  const errors = validateAllMermaidDiagrams();
+  // Mermaid図を検証（dryRunの場合はスキップ）
+  if (options.dryRun) {
+    console.log('\nドライランのため、Mermaid検証をスキップします');
+  } else {
+    const errors = validateAllMermaidDiagrams();
 
-  if (errors.length > 0) {
-    console.log('\n⚠️  Mermaid errors detected. Please fix the generation logic.');
-    process.exit(1);
+    if (errors.length > 0) {
+      console.log('\n⚠️  Mermaid errors detected. Please fix the generation logic.');
+      process.exit(1);
+    }
   }
 
   console.log('\n=== Done ===');
 }
+
+// ============================================================================
+// Global Options
+// ============================================================================
+
+let globalOptions = { dryRun: false, verbose: false };
 
 // ============================================================================
 // File Processing
@@ -120,13 +150,27 @@ function processFile(filePath: string, baseDir: string, outputDir: string) {
   const outputName = relativePath.replace(/\.ts$/, '.md');
   const outputPath = join(outputDir, outputName);
 
-  console.log(`  ${relativePath}`);
+  if (globalOptions.verbose) {
+    console.log(`  [解析中] ${relativePath}`);
+  } else {
+    console.log(`  ${relativePath}`);
+  }
 
   // TypeScriptファイルを解析
   const info = analyzeFile(filePath, baseDir);
 
   // Markdown を生成
   const markdown = generateMarkdown(info);
+
+  if (globalOptions.dryRun) {
+    if (globalOptions.verbose) {
+      console.log(`    [ドライラン] ${outputPath} に書き込む予定（スキップ）`);
+      console.log(`    --- 生成内容（先頭50行）---`);
+      console.log(markdown.split('\n').slice(0, 50).join('\n'));
+      console.log(`    ---`);
+    }
+    return;
+  }
 
   // 出力ディレクトリを作成
   mkdirIfNotExists(dirname(outputPath));

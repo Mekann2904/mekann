@@ -1383,4 +1383,4 @@ type GlobalScopeWithRuntime = typeof globalThis & {
 ```
 
 ---
-*自動生成: 2026-02-18T07:17:30.085Z*
+*自動生成: 2026-02-18T07:48:44.074Z*

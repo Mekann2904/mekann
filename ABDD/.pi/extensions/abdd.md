@@ -1,5 +1,5 @@
 ---
-title: startup-context
+title: abdd
 category: api-reference
 audience: developer
 last_updated: 2026-02-18
@@ -7,17 +7,17 @@ tags: [auto-generated]
 related: []
 ---
 
-# startup-context
+# abdd
 
 ## 概要
 
-`startup-context` モジュールのAPIリファレンス。
+`abdd` モジュールのAPIリファレンス。
 
 ## インポート
 
 ```typescript
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { Type } from '@sinclair/typebox';
 import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 ```
 
@@ -32,14 +32,15 @@ import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 
 ```mermaid
 flowchart LR
-  subgraph this[startup-context]
+  subgraph this[abdd]
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
+    _sinclair["@sinclair"]
     _mariozechner["@mariozechner"]
   end
   main --> external
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.730Z*
+*自動生成: 2026-02-18T07:48:43.931Z*

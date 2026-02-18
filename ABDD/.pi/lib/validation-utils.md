@@ -144,4 +144,4 @@ type BoundedIntegerResult = | { ok: true; value: number }
 整数範囲検証の結果型
 
 ---
-*自動生成: 2026-02-18T07:17:30.516Z*
+*自動生成: 2026-02-18T07:48:45.393Z*

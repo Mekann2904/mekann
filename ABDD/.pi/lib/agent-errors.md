@@ -486,4 +486,4 @@ type FailureClassification = | "rate_limit"   // HTTP 429 - backoffで処理
 リトライ判定用の標準化された失敗分類
 
 ---
-*自動生成: 2026-02-18T07:17:30.386Z*
+*自動生成: 2026-02-18T07:48:44.813Z*

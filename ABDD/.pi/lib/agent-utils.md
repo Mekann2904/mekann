@@ -83,4 +83,4 @@ computeLiveWindow(cursor: number, total: number, maxRows: number): { start: numb
 **戻り値**: `{ start: number; end: number }`
 
 ---
-*自動生成: 2026-02-18T07:17:30.387Z*
+*自動生成: 2026-02-18T07:48:44.817Z*

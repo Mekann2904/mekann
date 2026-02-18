@@ -465,4 +465,4 @@ type StanceClassificationMode = "disabled" | "heuristic" | "structured"
 態度分類モード
 
 ---
-*自動生成: 2026-02-18T07:17:30.461Z*
+*自動生成: 2026-02-18T07:48:45.024Z*

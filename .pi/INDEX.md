@@ -71,6 +71,9 @@ mekann/
 | Extension | File | Purpose |
 |-----------|------|---------|
 | question | `extensions/question.ts` | Interactive user selection UI |
+| abdd_generate | `extensions/abdd.ts` | ABDD as-built documentation generation |
+| abdd_jsdoc | `extensions/abdd.ts` | JSDoc auto-generation with LLM |
+| abdd_review | `extensions/abdd.ts` | Intent vs implementation gap analysis |
 | loop_run | `extensions/loop.ts` | Autonomous task loop execution |
 | subagent_* | `extensions/subagents.ts` | Sub-agent creation/execution |
 | agent_team_* | `extensions/agent-teams.ts` | Team orchestration |
@@ -132,8 +135,11 @@ mekann/
 
 | Command | Purpose |
 |---------|---------|
-| `npx tsx scripts/generate-abdd.ts` | Generate as-built documentation |
-| `npx tsx scripts/add-jsdoc.ts --dry-run` | Preview JSDoc additions |
+| `pi abdd_generate` | Generate as-built documentation (via extension) |
+| `pi abdd_jsdoc --dry-run` | Preview JSDoc additions (via extension) |
+| `pi abdd_review` | Gap analysis checklist (via extension) |
+| `npx tsx scripts/generate-abdd.ts` | Generate as-built documentation (CLI) |
+| `npx tsx scripts/add-jsdoc.ts --dry-run` | Preview JSDoc additions (CLI) |
 | `npx tsx scripts/add-jsdoc.ts --check` | Check JSDoc coverage (CI) |
 
 ## Rules Summary

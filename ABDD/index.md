@@ -11,6 +11,96 @@ related: [philosophy.md, spec.md]
 
 > As-Built Driven Documentation Index
 
+## はじめに
+
+ABDD（As-Built Driven Development）は、コードベースとドキュメントの乖離を防ぐための開発手法。「意図」と「実態」を継続的に比較し、不一致を早期に発見・解消することで、コードの品質と保守性を高める。
+
+**何のために使うのか:**
+- コード変更時にドキュメントが陳腐化する問題を防ぐ
+- 設計意図と実装の不一致を検出する
+- アーキテクチャの健全性を維持する
+- 新規メンバーのオンボーディングを支援する
+
+**前提条件:**
+
+| ツール | 用途 | インストールコマンド |
+|--------|------|----------------------|
+| Node.js 18+ | TypeScript実行 | `nvm install 18` |
+| mmdc（任意） | Mermaid図の厳密検証 | `npm install -g @mermaid-js/mermaid-cli` |
+
+**3ステップで始める:** 詳細は [クイックスタートガイド](../docs/01-getting-started/abdd-quick-start.md) を参照。
+
+```bash
+# 1. 実態ドキュメント生成
+npx tsx scripts/generate-abdd.ts
+
+# 2. JSDoc確認（ドライラン）
+npx tsx scripts/add-jsdoc.ts --dry-run
+
+# 3. 乖離確認
+# - piエージェント内: abdd_reviewツールを使用
+# - コマンドライン: 手動でphilosophy.mdと実態ドキュメントを比較
+```
+
+mmdcが未インストールの場合でも、簡易検証モードで動作可能。
+
+---
+
+## piツールでABDDを使用する
+
+ABDD拡張機能を使用すると、コマンドライン操作なしでABDDワークフローを実行できます。
+
+### 実態ドキュメント生成
+
+```typescript
+abdd_generate
+```
+
+### JSDoc生成
+
+```typescript
+// ドライラン
+abdd_jsdoc({ dryRun: true })
+
+// 実行
+abdd_jsdoc()
+
+// CI用チェック
+abdd_jsdoc({ check: true })
+```
+
+### 乖離レビュー
+
+```typescript
+// チェックリストを表示
+abdd_review()
+
+// 詳細を表示
+abdd_review({ showDetails: true })
+```
+
+---
+
+## クイックスタート（コマンドライン）
+
+3ステップでABDDを体験:
+
+```bash
+# 1. 実態ドキュメントを生成
+npx tsx scripts/generate-abdd.ts
+
+# 2. 意図と実態を比較
+cat philosophy.md          # 意図を確認
+ls ABDD/.pi/extensions/    # 実態を確認
+
+# 3. JSDocで品質向上（任意）
+npx tsx scripts/add-jsdoc.ts --dry-run
+```
+
+詳細は[クイックスタートガイド](../docs/01-getting-started/abdd-quick-start.md)を参照。
+
+---
+
 ## 概要
 
 ABDD（As-Built Driven Development）は、コードから自動生成される実態記述と、人間が定義する意図記述を比較し、乖離を可視化・解消する開発手法。
@@ -180,6 +270,54 @@ npx tsx scripts/add-jsdoc.ts --verbose
 
 # 品質メトリクス
 npx tsx scripts/add-jsdoc.ts --metrics
+```
+
+### 拡張機能ツール（エージェント内使用）
+
+piエージェント内からは、以下のツールを使用できます：
+
+| ツール名 | 機能 | 主な用途 |
+|----------|------|----------|
+| `abdd_generate` | 実態ドキュメント生成 | コード変更後のドキュメント更新 |
+| `abdd_jsdoc` | JSDoc自動生成 | JSDocの追加・更新・チェック |
+| `abdd_review` | 乖離確認チェックリスト | レビュー時の確認・記録作成 |
+
+#### abdd_generate
+
+```json
+{
+  "name": "abdd_generate",
+  "params": {
+    "dryRun": false,
+    "verbose": true
+  }
+}
+```
+
+#### abdd_jsdoc
+
+```json
+{
+  "name": "abdd_jsdoc",
+  "params": {
+    "dryRun": true,
+    "check": false,
+    "limit": 50
+  }
+}
+```
+
+#### abdd_review
+
+```json
+{
+  "name": "abdd_review",
+  "params": {
+    "showChecklist": true,
+    "createRecord": true,
+    "date": "2026-02-18"
+  }
+}
 ```
 
 ---

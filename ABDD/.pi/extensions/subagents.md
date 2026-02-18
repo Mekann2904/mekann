@@ -227,4 +227,4 @@ registerSubagentExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T07:17:30.365Z*
+*自動生成: 2026-02-18T07:48:44.762Z*
