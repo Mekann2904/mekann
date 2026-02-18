@@ -1,3 +1,32 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/abort-utils.ts
+ * role: AbortSignal階層管理ユーティリティ
+ * why: 複数の非同期処理が同一AbortSignalを共有する際のMaxListenersExceededWarningを防止
+ * related: .pi/lib/concurrency.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+ * public_api: createChildAbortController, createChildAbortControllers
+ * invariants:
+ *   - 親シグナルがabort済みの場合、子コントローラは即座にabortされる
+ *   - cleanup呼び出し後は親シグナルへのイベントリスナーが削除される
+ * side_effects: 親シグナルへabortイベントリスナーを追加する
+ * failure_modes:
+ *   - cleanup未呼び出しによるリスナー蓄積
+ *   - parentSignal(undefined)時はリスナー登録されず独立動作
+ * @abdd.explain
+ * overview: AbortControllerの階層構造を作成し、親の中断を子へ伝播させるユーティリティ
+ * what_it_does:
+ *   - 親AbortSignalに連動する子AbortControllerを生成
+ *   - 各子コントローラは独自のシグナルを持ち、親へのリスナー蓄積を回避
+ *   - 親abort時に子へ伝播、cleanupでリスナー削除
+ *   - 複数の子コントローラを一括生成する関数を提供
+ * why_it_exists:
+ *   - 複数非同期処理が同一AbortSignalを使用するとリスナー過多警告が発生
+ *   - 子コントローラパターンでリスナーを分散させ警告を回避
+ * scope:
+ *   in: AbortSignal(省略可)、生成するコントローラ数
+ *   out: 子AbortController配列、cleanup関数
+ */
+
 // File: .pi/lib/abort-utils.ts
 // Description: AbortController utilities for managing abort signal hierarchy.
 // Why: Prevents MaxListenersExceededWarning when multiple async operations share the same AbortSignal.

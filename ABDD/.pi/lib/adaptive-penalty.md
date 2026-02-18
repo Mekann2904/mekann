@@ -76,15 +76,27 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  getAdaptivePenaltyMode["getAdaptivePenaltyMode()"]
-  resetAdaptivePenaltyModeCache["resetAdaptivePenaltyModeCache()"]
   createAdaptivePenaltyController["createAdaptivePenaltyController()"]
-  createEnhancedPenaltyController["createEnhancedPenaltyController()"]
   createAutoPenaltyController["createAutoPenaltyController()"]
-  getAdaptivePenaltyMode -.-> resetAdaptivePenaltyModeCache
-  resetAdaptivePenaltyModeCache -.-> createAdaptivePenaltyController
-  createAdaptivePenaltyController -.-> createEnhancedPenaltyController
-  createEnhancedPenaltyController -.-> createAutoPenaltyController
+  createEnhancedPenaltyController["createEnhancedPenaltyController()"]
+  decay["decay()"]
+  get["get()"]
+  getAdaptivePenaltyMode["getAdaptivePenaltyMode()"]
+  raiseWithReason["raiseWithReason()"]
+  recordReason["recordReason()"]
+  resetAdaptivePenaltyModeCache["resetAdaptivePenaltyModeCache()"]
+  createAdaptivePenaltyController --> decay
+  createAdaptivePenaltyController --> get
+  createAutoPenaltyController --> createAdaptivePenaltyController
+  createAutoPenaltyController --> createEnhancedPenaltyController
+  createAutoPenaltyController --> getAdaptivePenaltyMode
+  createEnhancedPenaltyController --> decay
+  createEnhancedPenaltyController --> get
+  createEnhancedPenaltyController --> raiseWithReason
+  createEnhancedPenaltyController --> recordReason
+  get --> decay
+  raiseWithReason --> decay
+  raiseWithReason --> recordReason
 ```
 
 ## 関数
@@ -401,4 +413,4 @@ type DecayStrategy = "linear" | "exponential" | "hybrid"
 減衰戦略の種類 ("linear" | "exponential" | "hybrid")
 
 ---
-*自動生成: 2026-02-18T07:48:44.781Z*
+*自動生成: 2026-02-18T14:31:30.946Z*

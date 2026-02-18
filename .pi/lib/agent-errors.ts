@@ -1,4 +1,32 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/agent-errors.ts
+ * role: エージェント実行時のエラー分類・解決ユーティリティ
+ * why: サブエージェント・チームメンバー実行における統一的なエラー分類と結果解決を提供するため
+ * related: agent-common.ts, agent-types.ts, error-utils.ts
+ * public_api: ExtendedOutcomeCode, ExtendedOutcomeSignal, classifySemanticError, resolveExtendedFailureOutcome
+ * invariants:
+ *   - classifySemanticErrorは入力が空またはエラーなしの場合nullを返す
+ *   - ExtendedOutcomeCodeはRunOutcomeCodeをベースに5種類の拡張コードを追加
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes:
+ *   - エラーメッセージのパターンマッチング漏れによる誤分類
+ *   - 不正な入力による予期せぬ分類結果
+ * @abdd.explain
+ * overview: エージェント実行時のエラーを統一的に分類・解決するLayer 1ユーティリティ
+ * what_it_does:
+ *   - 拡張エラー分類コード（SCHEMA_VIOLATION, LOW_SUBSTANCE, EMPTY_OUTPUT, PARSE_ERROR）の定義
+ *   - 出力内容とエラーメッセージからの意味論的エラー分類
+ *   - 失敗結果の解決とExtendedOutcomeSignalの生成
+ * why_it_exists:
+ *   - サブエージェントとチームメンバーで共通するエラー処理を一元管理するため
+ *   - P1-5改善による詳細なエラー分類を可能にするため
+ * scope:
+ *   in: エラーオブジェクト、出力文字列、エンティティ設定
+ *   out: ExtendedOutcomeSignal、分類されたエラーコード
+ */
+
+/**
  * Shared agent error handling utilities.
  * Provides unified error classification and outcome resolution for
  * subagent and team member execution.

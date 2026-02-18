@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { EntityType, EntityConfig, SUBAGENT_CONFIG... } from './agent-common.js';
-import { RunOutcomeCode, RunOutcomeSignal } from './agent-types.js';
-import { classifyPressureError, extractStatusCodeFromMessage, isCancelledErrorMessage... } from './error-utils.js';
+// from './agent-common.js': EntityType, EntityConfig, SUBAGENT_CONFIG, ...
+// from './agent-types.js': RunOutcomeCode, RunOutcomeSignal
+// from './error-utils.js': classifyPressureError, extractStatusCodeFromMessage, isCancelledErrorMessage, ...
 ```
 
 ## エクスポート一覧
@@ -89,17 +89,35 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  classifySemanticError["classifySemanticError()"]
-  resolveExtendedFailureOutcome["resolveExtendedFailureOutcome()"]
-  getRetryablePatterns["getRetryablePatterns()"]
-  resetRetryablePatternsCache["resetRetryablePatternsCache()"]
   addRetryablePatterns["addRetryablePatterns()"]
+  buildDiagnosticContext["buildDiagnosticContext()"]
+  classifyFailureType["classifyFailureType()"]
+  classifySemanticError["classifySemanticError()"]
+  getRetryablePatterns["getRetryablePatterns()"]
   isRetryableEntityError["isRetryableEntityError()"]
-  classifySemanticError -.-> resolveExtendedFailureOutcome
-  resolveExtendedFailureOutcome -.-> getRetryablePatterns
-  getRetryablePatterns -.-> resetRetryablePatternsCache
-  resetRetryablePatternsCache -.-> addRetryablePatterns
-  addRetryablePatterns -.-> isRetryableEntityError
+  isRetryableSubagentError["isRetryableSubagentError()"]
+  isRetryableTeamMemberError["isRetryableTeamMemberError()"]
+  resetRetryablePatternsCache["resetRetryablePatternsCache()"]
+  resolveAggregateOutcome["resolveAggregateOutcome()"]
+  resolveExtendedFailureOutcome["resolveExtendedFailureOutcome()"]
+  resolveFailureOutcome["resolveFailureOutcome()"]
+  resolveSubagentFailureOutcome["resolveSubagentFailureOutcome()"]
+  resolveSubagentParallelOutcome["resolveSubagentParallelOutcome()"]
+  resolveTeamFailureOutcome["resolveTeamFailureOutcome()"]
+  resolveTeamMemberAggregateOutcome["resolveTeamMemberAggregateOutcome()"]
+  shouldRetryByClassification["shouldRetryByClassification()"]
+  trimErrorMessage["trimErrorMessage()"]
+  buildDiagnosticContext --> trimErrorMessage
+  isRetryableEntityError --> getRetryablePatterns
+  isRetryableSubagentError --> isRetryableEntityError
+  isRetryableTeamMemberError --> isRetryableEntityError
+  resolveExtendedFailureOutcome --> classifySemanticError
+  resolveExtendedFailureOutcome --> resolveFailureOutcome
+  resolveFailureOutcome --> isRetryableEntityError
+  resolveSubagentFailureOutcome --> resolveFailureOutcome
+  resolveSubagentParallelOutcome --> resolveAggregateOutcome
+  resolveTeamFailureOutcome --> resolveFailureOutcome
+  resolveTeamMemberAggregateOutcome --> resolveAggregateOutcome
 ```
 
 ### シーケンス図
@@ -486,4 +504,4 @@ type FailureClassification = | "rate_limit"   // HTTP 429 - backoffで処理
 リトライ判定用の標準化された失敗分類
 
 ---
-*自動生成: 2026-02-18T07:48:44.813Z*
+*自動生成: 2026-02-18T14:31:30.951Z*

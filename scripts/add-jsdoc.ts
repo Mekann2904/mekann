@@ -12,7 +12,7 @@
  *   --dry-run       変更を適用せず、生成内容のみ表示
  *   --check         JSDocがない要素の数のみ表示（CI用）
  *   --verbose       詳細ログを出力
- *   --limit N       処理する要素数の上限（デフォルト: 50）
+ *   --limit N       処理する要素数の上限（0で無制限、デフォルト: 0）
  *   --file PATH     特定ファイルのみ処理
  *   --regenerate    既存のJSDocも含めて再生成（--all も可）
  *   --batch-size N  バッチ処理の要素数（デフォルト: 5、0で無効）
@@ -64,8 +64,6 @@ const BATCH_DELIMITER = '===JSDOC_ELEMENT_SEPARATOR===';
 const MIN_PARALLEL_LIMIT = 1;
 /** 並列度の最大値 */
 const MAX_PARALLEL_LIMIT = 20;
-/** LLM呼び出しのデフォルトタイムアウト（ミリ秒） */
-const DEFAULT_LLM_TIMEOUT_MS = 60000; // 60秒
 /** APPEND_SYSTEM.md のパス */
 const APPEND_SYSTEM_PATH = join(__dirname, '..', '.pi', 'APPEND_SYSTEM.md');
 /** APPEND_SYSTEM.md 内のJSDocプロンプト開始マーカー */
@@ -280,8 +278,8 @@ async function main() {
   }
 
   // 上限を適用
-  const elementsToProcess = allElements.slice(0, options.limit);
-  if (elementsToProcess.length < allElements.length) {
+  const elementsToProcess = options.limit > 0 ? allElements.slice(0, options.limit) : allElements;
+  if (options.limit > 0 && elementsToProcess.length < allElements.length) {
     console.log(`上限により ${elementsToProcess.length}/${allElements.length} 件を処理します\n`);
   }
 
@@ -662,7 +660,7 @@ function parseArgs(args: string[]): Options {
     dryRun: false,
     check: false,
     verbose: false,
-    limit: 50,
+    limit: 0, // 0 = 無制限
     file: undefined,
     regenerate: false,
     batchSize: DEFAULT_BATCH_SIZE,
@@ -684,7 +682,7 @@ function parseArgs(args: string[]): Options {
         options.verbose = true;
         break;
       case '--limit':
-        options.limit = parseInt(args[++i], 10) || 50;
+        options.limit = parseInt(args[++i], 10) || 0;
         break;
       case '--file':
         options.file = args[++i];
@@ -1353,25 +1351,15 @@ async function generateJsDocWithStreamSimple(
 
   let response = '';
 
-  // タイムアウト付きでasync iteratorでイベントを収集
-  const timeoutMs = DEFAULT_LLM_TIMEOUT_MS;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`LLM timeout after ${timeoutMs}ms`)), timeoutMs);
-  });
-
-  const streamPromise = (async () => {
-    for await (const event of eventStream) {
-      if (event.type === 'text_delta') {
-        response += event.delta;
-      }
-      if (event.type === 'error') {
-        throw new Error(`LLM error: ${JSON.stringify(event)}`);
-      }
+  // async iteratorでイベントを収集（タイムアウトなし）
+  for await (const event of eventStream) {
+    if (event.type === 'text_delta') {
+      response += event.delta;
     }
-    return response;
-  })();
-
-  await Promise.race([streamPromise, timeoutPromise]);
+    if (event.type === 'error') {
+      throw new Error(`LLM error: ${JSON.stringify(event)}`);
+    }
+  }
 
   return extractJsDocFromResponse(response);
 }
@@ -1473,25 +1461,15 @@ async function generateJsDocBatch(
     const eventStream = streamSimple(model, context, { apiKey });
     let response = '';
 
-    // バッチは要素数に応じてタイムアウトを延長（最大180秒）
-    const batchTimeoutMs = Math.min(DEFAULT_LLM_TIMEOUT_MS * elements.length, 180000);
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error(`LLM batch timeout after ${batchTimeoutMs}ms`)), batchTimeoutMs);
-    });
-
-    const streamPromise = (async () => {
-      for await (const event of eventStream) {
-        if (event.type === 'text_delta') {
-          response += event.delta;
-        }
-        if (event.type === 'error') {
-          throw new Error(`LLM error: ${JSON.stringify(event)}`);
-        }
+    // async iteratorでイベントを収集（タイムアウトなし）
+    for await (const event of eventStream) {
+      if (event.type === 'text_delta') {
+        response += event.delta;
       }
-      return response;
-    })();
-
-    await Promise.race([streamPromise, timeoutPromise]);
+      if (event.type === 'error') {
+        throw new Error(`LLM error: ${JSON.stringify(event)}`);
+      }
+    }
 
     // 区切り文字で分割して各JSDocを抽出
     const parts = response.split(BATCH_DELIMITER);
@@ -1554,25 +1532,15 @@ async function generateJsDocIndividual(
 
   let response = '';
 
-  // タイムアウト付きでasync iteratorでイベントを収集
-  const timeoutMs = DEFAULT_LLM_TIMEOUT_MS;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`LLM timeout after ${timeoutMs}ms`)), timeoutMs);
-  });
-
-  const streamPromise = (async () => {
-    for await (const event of eventStream) {
-      if (event.type === 'text_delta') {
-        response += event.delta;
-      }
-      if (event.type === 'error') {
-        throw new Error(`LLM error: ${JSON.stringify(event)}`);
-      }
+  // async iteratorでイベントを収集（タイムアウトなし）
+  for await (const event of eventStream) {
+    if (event.type === 'text_delta') {
+      response += event.delta;
     }
-    return response;
-  })();
-
-  await Promise.race([streamPromise, timeoutPromise]);
+    if (event.type === 'error') {
+      throw new Error(`LLM error: ${JSON.stringify(event)}`);
+    }
+  }
 
   return extractJsDocFromResponse(response);
 }

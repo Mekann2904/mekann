@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/execution-rules.ts
+ * role: エージェント実行時の振る舞いルール定数定義モジュール
+ * why: LLMの推論品質を安定させるため、認知バイアス対策・自己検証・作業記憶管理のルールを一元管理する
+ * related: agent-config.ts, prompt-builder.ts, system-prompt.ts, cognitive-bias-utils.ts
+ * public_api: COMMON_EXECUTION_RULES, SUBAGENT_SPECIFIC_RULES, COGNITIVE_BIAS_COUNTERMEASURES, SELF_VERIFICATION_RULES, WORKING_MEMORY_GUIDELINES, TERMINATION_CHECK_RULES
+ * invariants: 全定数はas constで不変、文字列配列または結合済み文字列として定義される
+ * side_effects: なし（純粋な定数定義のみ）
+ * failure_modes: なし（実行時ロジックを含まない）
+ * @abdd.explain
+ * overview: LLMエージェントの推論品質向上を目的とした実行ルール定数群。論文「Large Language Model Reasoning Failures」の知見に基づく対策を含む。
+ * what_it_does:
+ *   - 全エージェント共通の基本実行ルール（絵文字禁止、questionツール必須、自走推奨）を定義
+ *   - サブエージェント向けの固有ルール（ファイルパス明示、仮定最小化）を定義
+ *   - 確認バイアス・アンカリング・フレーミング・追従バイアス等の5種の認知バイアス対策を提供
+ *   - 自己検証・作業記憶管理・終了チェックの各ガイドラインを提供
+ * why_it_exists:
+ *   - LLMに特有の推論失敗（認知バイアス、自己矛盾、 premature termination）を軽減するため
+ *   - 複数エージェント間で一貫した振る舞いルールを適用するため
+ *   - 論文ベースの実証された対策をコード化して再利用可能にするため
+ * scope:
+ *   in: なし（外部入力に依存しない静的定数）
+ *   out: 他モジュールからimportされてプロンプト構築等に使用される文字列定数
+ */
+
+/**
  * 共通実行ルール
  * 全てのエージェントおよびサブエージェントに適用される実行ルール
  */

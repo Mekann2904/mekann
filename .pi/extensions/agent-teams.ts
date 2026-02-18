@@ -1,3 +1,41 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams.ts
+ * role: 複数メンバー構成のエージェントチームオーケストレーション拡張機能
+ * why: 特化ロールを持つ複数エージェントの並列協調実行による問題解決を可能にするため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/plan.ts, .pi/extensions/agent-teams/storage.ts, .pi/extensions/agent-teams/judge.ts
+ * public_api: ExtensionAPI経由でチームオーケストレーションツールを登録
+ * invariants:
+ *   - チームメンバー定義は各メンバーが一意のロールを持つ
+ *   - 通信ラウンド数は正規化され上限([MAX_COMMUNICATION_ROUNDS])を超えない
+ *   - キープする実行履歴数は[MAX_RUNS_TO_KEEP]に制限される
+ * side_effects:
+ *   - ファイルシステムへのチーム定義・実行記録の永続化
+ *   - 子プロセスでのLLM API呼び出し
+ *   - AbortController経由でのプロセス制御
+ * failure_modes:
+ *   - タイムアウト超過による実行中断([isTimeoutErrorMessage])
+ *   - APIレート制限・負荷エラー([classifyPressureError])
+ *   - ユーザーキャンセル([isCancelledErrorMessage])
+ *   - 出力バリデーション失敗([validateTeamMemberOutput])
+ * @abdd.explain
+ * overview: 複数の専門ロールを持つエージェントチームを編成し、並列実行・相互通信・最終判定を行うオーケストレーション基盤
+ * what_it_does:
+ *   - チーム定義の読み込み・保存・管理
+ *   - チームメンバーへの並列タスク分散実行
+ *   - メンバー間のコミュニケーションラウンド調整
+ *   - 失敗メンバーの再試行制御([shouldRetryFailedMemberResultBase])
+ *   - Judgeによる最終判定と不確実性評価([runFinalJudge])
+ *   - 実行履歴とコスト推定の管理
+ * why_it_exists:
+ *   - 単一エージェントでは困難な複雑なタスクを専門ロール分担で解決するため
+ *   - 並列実行による処理効率向上
+ *   - メンバー間通信による情報共有と協調の実現
+ * scope:
+ *   in: チーム定義、タスク指示、設定パラメータ(タイムアウト、通信ラウンド数等)
+ *   out: チーム実行結果、Judge判定、実行履歴、コスト推定値
+ */
+
 // File: .pi/extensions/agent-teams.ts
 // Description: Adds multi-member agent team orchestration tools for pi.
 // Why: Enables proactive parallel collaboration across specialized teammate roles.
@@ -495,6 +533,13 @@ function pickDefaultParallelTeams(storage: TeamStorage): TeamDefinition[] {
 
 // Note: runMember is now imported from ./agent-teams/member-execution
 
+/**
+ * @summary チームでタスクを実行
+ * 
+ * チームメンバーを並列または順次で実行し、コミュニケーションラウンドを処理する。
+ * @param input - チーム定義、タスク、戦略、コールバック等を含む入力オブジェクト
+ * @returns 実行記録、メンバー結果、コミュニケーション監査
+ */
 async function runTeamTask(input: {
   team: TeamDefinition;
   task: string;
@@ -974,6 +1019,13 @@ async function runTeamTask(input: {
 
     const contextMap = buildPrecomputedContextMap(previousResults);
 
+    /**
+     * @summary メンバーの再試行を実行
+     * 
+     * コミュニケーションパートナーの結果を参照しながらメンバーを実行する。
+     * @param member - 実行するチームメンバー
+     * @returns メンバーの実行結果
+     */
     const runRetryMember = async (member: TeamMember): Promise<TeamMemberResult> => {
       // Create child AbortController to prevent MaxListenersExceededWarning
       const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
@@ -1230,7 +1282,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "agent_team_list",
     label: "Agent Team List",
-    description: "List configured agent teams and teammates.",
+    description: "設定済みのエージェントチームとメンバー一覧を表示する。",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const nowIso = new Date().toISOString();
@@ -1252,7 +1304,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "agent_team_create",
     label: "Agent Team Create",
-    description: "Create a custom agent team with independent teammate roles.",
+    description: "独立したメンバーロールを持つカスタムエージェントチームを作成する。",
     parameters: Type.Object({
       id: Type.Optional(Type.String({ description: "Team id (lowercase-hyphen). Optional." })),
       name: Type.String({ description: "Team display name" }),
@@ -1329,7 +1381,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "agent_team_configure",
     label: "Agent Team Configure",
-    description: "Enable or disable teams and set current default team.",
+    description: "チームの有効化/無効化、デフォルトチームの設定を行う。",
     parameters: Type.Object({
       teamId: Type.String({ description: "Target team id" }),
       enabled: Type.Optional(Type.Boolean({ description: "Enable or disable this team" })),
@@ -1390,7 +1442,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
     name: "agent_team_run",
     label: "Agent Team Run",
     description:
-      "Run one team for a task with multiple teammate agents. Use agent_team_run_parallel when multiple teams can run concurrently.",
+      "複数のメンバーエージェントでタスクを実行する。複数チームを並列実行できる場合はagent_team_run_parallelを使用。",
     parameters: Type.Object({
       task: Type.String({ description: "Task for the team" }),
       teamId: Type.Optional(Type.String({ description: "Target team id (default current team)" })),
@@ -1901,7 +1953,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
     name: "agent_team_run_parallel",
     label: "Agent Team Run Parallel",
     description:
-      "Run selected teams in parallel. If teamIds are omitted, only the current enabled team runs (conservative default).",
+      "選択したチームを並列実行する。teamIdsを省略した場合、現在の有効なチームのみを実行（保守的デフォルト）。",
     parameters: Type.Object({
       task: Type.String({ description: "Task delegated to all selected teams" }),
       teamIds: Type.Optional(Type.Array(Type.String({ description: "Team id list" }))),
@@ -2536,7 +2588,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "agent_team_status",
     label: "Agent Team Status",
-    description: "Show active team run count and active teammate agent count.",
+    description: "アクティブなチーム実行数とメンバーエージェント数を表示する。",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const storage = loadStorage(ctx.cwd);
@@ -2580,7 +2632,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "agent_team_runs",
     label: "Agent Team Runs",
-    description: "Show recent agent team run history.",
+    description: "最近のエージェントチーム実行履歴を表示する。",
     parameters: Type.Object({
       limit: Type.Optional(Type.Number({ description: "Number of runs to return", minimum: 1, maximum: 50 })),
     }),

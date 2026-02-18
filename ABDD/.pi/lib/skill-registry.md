@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:os': homedir
+// from 'node:path': dirname, join
 ```
 
 ## エクスポート一覧
@@ -81,17 +81,35 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  resolveSkills["resolveSkills()"]
-  mergeSkills["mergeSkills()"]
-  mergeSkillArrays["mergeSkillArrays()"]
+  buildSkillIndex["buildSkillIndex()"]
+  discoverSkillsFromDir["discoverSkillsFromDir()"]
+  escapeXml["escapeXml()"]
   formatSkillsForPrompt["formatSkillsForPrompt()"]
   formatSkillsWithContent["formatSkillsWithContent()"]
+  getDefaultAgentDir["getDefaultAgentDir()"]
+  getSkillSearchPaths["getSkillSearchPaths()"]
+  loadSkillFromFile["loadSkillFromFile()"]
   loadSkillsForAgent["loadSkillsForAgent()"]
-  resolveSkills -.-> mergeSkills
-  mergeSkills -.-> mergeSkillArrays
-  mergeSkillArrays -.-> formatSkillsForPrompt
-  formatSkillsForPrompt -.-> formatSkillsWithContent
-  formatSkillsWithContent -.-> loadSkillsForAgent
+  mergeSkillArrays["mergeSkillArrays()"]
+  mergeSkills["mergeSkills()"]
+  parseSkillFrontmatter["parseSkillFrontmatter()"]
+  resolveSkillContent["resolveSkillContent()"]
+  resolveSkills["resolveSkills()"]
+  validateSkillReferences["validateSkillReferences()"]
+  buildSkillIndex --> discoverSkillsFromDir
+  buildSkillIndex --> getSkillSearchPaths
+  discoverSkillsFromDir --> loadSkillFromFile
+  formatSkillsForPrompt --> escapeXml
+  formatSkillsWithContent --> escapeXml
+  getSkillSearchPaths --> getDefaultAgentDir
+  loadSkillFromFile --> parseSkillFrontmatter
+  loadSkillsForAgent --> formatSkillsForPrompt
+  loadSkillsForAgent --> mergeSkillArrays
+  loadSkillsForAgent --> resolveSkills
+  mergeSkills --> resolveSkills
+  resolveSkills --> buildSkillIndex
+  resolveSkills --> resolveSkillContent
+  validateSkillReferences --> buildSkillIndex
 ```
 
 ### シーケンス図
@@ -442,4 +460,4 @@ type SkillReference = string
 スキル名またはパスを表す文字列
 
 ---
-*自動生成: 2026-02-18T07:48:45.259Z*
+*自動生成: 2026-02-18T14:31:31.026Z*

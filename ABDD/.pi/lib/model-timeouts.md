@@ -39,11 +39,10 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  getModelBaseTimeoutMs["getModelBaseTimeoutMs()"]
   computeModelTimeoutMs["computeModelTimeoutMs()"]
   computeProgressiveTimeoutMs["computeProgressiveTimeoutMs()"]
-  getModelBaseTimeoutMs -.-> computeModelTimeoutMs
-  computeModelTimeoutMs -.-> computeProgressiveTimeoutMs
+  getModelBaseTimeoutMs["getModelBaseTimeoutMs()"]
+  computeModelTimeoutMs --> getModelBaseTimeoutMs
 ```
 
 ## 関数
@@ -112,4 +111,4 @@ interface ComputeModelTimeoutOptions {
 モデルのタイムアウト計算オプション
 
 ---
-*自動生成: 2026-02-18T07:48:45.015Z*
+*自動生成: 2026-02-18T14:31:30.998Z*

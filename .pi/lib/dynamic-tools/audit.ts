@@ -1,4 +1,37 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/audit.ts
+ * role: 動的ツール生成システムの監査ログ記録・参照モジュール
+ * why: 全操作を追跡可能にし、セキュリティインシデント調査やデバッグを可能にするため
+ * related: types.js, manager.ts, registry.ts, cli.ts
+ * public_api: logAudit, readAuditLog
+ * invariants:
+ *   - ログエントリは一意のIDを持つ
+ *   - タイムスタンプはISO 8601形式
+ *   - ログファイルはJSONL形式で追記のみ
+ * side_effects:
+ *   - 監査ログファイルへの追記書き込み
+ *   - ログディレクトリの自動作成
+ *   - 標準エラー出力へのエラー出力
+ * failure_modes:
+ *   - ファイル書き込み権限不足でログ記録失敗（処理は継続）
+ *   - 不正なJSONL行は読み込み時にスキップ
+ *   - ログファイル不在時は空配列を返却
+ * @abdd.explain
+ * overview: 動的ツール生成システムにおける全操作の監査証跡をJSONL形式で永続化する
+ * what_it_does:
+ *   - ツール作成/更新/削除/有効化/無効化操作を監査ログとして記録
+ *   - ツールID、アクション種別、実行者、時刻、成否をエントリに含む
+ *   - ツールID/アクション種別/開始日時によるログフィルタリング機能を提供
+ * why_it_exists:
+ *   - セキュリティ監査のため全操作の証跡を保持
+ *   - 障害発生時の原因追跡と再現を可能にする
+ * scope:
+ *   in: AuditAction型のアクション種別、tools/toolId/toolName/actor/details/success/errorMessage
+ *   out: JSONL形式の監査ログファイル、フィルタ済みAuditLogEntry配列
+ */
+
+/**
  * 動的ツール生成システム - 監査ログ
  * 全操作をJSONL形式で記録
  */

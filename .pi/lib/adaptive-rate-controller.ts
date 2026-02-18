@@ -1,4 +1,39 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/adaptive-rate-controller.ts
+ * role: 429エラーから学習し、プロバイダー/モデル別の同時実行制限を動的に調整する適応的レート制御マネージャー
+ * why: 静的なレート制限プリセットだけでは対応できない動的なAPI利用制限に対処し、429エラーの発生を最小限に抑えつつスループットを最適化するため
+ * related: provider-limits.ts, cross-instance-coordinator.ts, runtime-config.ts
+ * public_api: LearnedLimit, AdaptiveControllerState, RateLimitEvent
+ * invariants:
+ *   - concurrency は元の制限値(originalConcurrency)を超えない
+ *   - reductionFactor は0.7で固定（429発生時に30%削減）
+ *   - recoveryFactor は1.1で固定（回復ごとに10%増加）
+ *   - recoveryIntervalMs は5分間で回復処理を実行
+ * side_effects:
+ *   - ファイルシステムへの状態読み書き（学習データの永続化）
+ *   - 内部タイマーによる回復スケジューリング
+ * failure_modes:
+ *   - 状態ファイルの読み書き失敗時はデフォルト値で動作
+ *   - 連続429エラー発生時は制限を段階的に削減
+ * @abdd.explain
+ * overview: APIプロバイダーからの429エラーを学習し、プロバイダー/モデル単位で同時実行制限を動的に調整する。予測的スロットリング機能により、履歴パターンに基づく先制制御も行う。
+ * what_it_does:
+ *   - 429エラー検知時に該当プロバイダー/モデルの同時実行制限を30%削減
+ *   - 5分間の回復期間後に制限を段階的に元の値へ復元
+ *   - プロバイダー:モデル単位で学習状態を管理
+ *   - 過去の429エラー履歴から将来のリスクを予測し、先制的にスロットリング
+ *   - 学習状態をファイルへ永続化し、プロセス再起動後も維持
+ * why_it_exists:
+ *   - 静的なプリセット制限では実際のAPIレート制限に追従できない
+ *   - 手動調整では複数プロバイダー/モデルの個別最適化が困難
+ *   - クロスインスタンス間での制限調整が必要
+ * scope:
+ *   in: プロバイダー名、モデル名、イベントタイプ（429/success/timeout/error）
+ *   out: 調整後の同時実行制限値、予測的スロットリング推奨値
+ */
+
+/**
  * Adaptive Rate Controller
  *
  * Learns from rate limit errors (429) and adjusts concurrency limits dynamically.

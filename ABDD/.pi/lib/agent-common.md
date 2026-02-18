@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { toFiniteNumberWithDefault } from './validation-utils.js';
+// from './validation-utils.js': toFiniteNumberWithDefault
 ```
 
 ## エクスポート一覧
@@ -89,17 +89,16 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  buildFailureSummary["buildFailureSummary()"]
+  isEmptyOutputFailureMessage["isEmptyOutputFailureMessage()"]
+  normalizeEntityOutput["normalizeEntityOutput()"]
+  pickClaimCandidate["pickClaimCandidate()"]
   pickFieldCandidate["pickFieldCandidate()"]
   pickSummaryCandidate["pickSummaryCandidate()"]
-  pickClaimCandidate["pickClaimCandidate()"]
-  normalizeEntityOutput["normalizeEntityOutput()"]
-  isEmptyOutputFailureMessage["isEmptyOutputFailureMessage()"]
-  buildFailureSummary["buildFailureSummary()"]
-  pickFieldCandidate -.-> pickSummaryCandidate
-  pickSummaryCandidate -.-> pickClaimCandidate
-  pickClaimCandidate -.-> normalizeEntityOutput
-  normalizeEntityOutput -.-> isEmptyOutputFailureMessage
-  isEmptyOutputFailureMessage -.-> buildFailureSummary
+  resolveTimeoutWithEnv["resolveTimeoutWithEnv()"]
+  normalizeEntityOutput --> pickClaimCandidate
+  pickClaimCandidate --> pickFieldCandidate
+  pickSummaryCandidate --> pickFieldCandidate
 ```
 
 ### シーケンス図
@@ -306,4 +305,4 @@ Entity type identifier for shared functions.
 Used to distinguish between subagent and team member contexts.
 
 ---
-*自動生成: 2026-02-18T07:48:44.792Z*
+*自動生成: 2026-02-18T14:31:30.950Z*

@@ -16,16 +16,65 @@ related: []
 ## インポート
 
 ```typescript
-import { Type } from '@mariozechner/pi-ai';
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
-import { Text, truncateToWidth, CURSOR_MARKER } from '@mariozechner/pi-tui';
-import { matchesKey, Key } from '@mariozechner/pi-tui';
+// from '@mariozechner/pi-ai': Type
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from '@mariozechner/pi-tui': Text, truncateToWidth, CURSOR_MARKER
+// from '@mariozechner/pi-tui': matchesKey, Key
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+
+## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+### question
+
+**必須使用**: ユーザーに選択肢から選ばせたり、確認を求める場合は必ずこのツールを使ってください。単一選択、複数選択、自由記述に対応。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Executor as "Executor"
+
+  User->>System: **必須使用**: ユーザーに選択肢から選ばせたり、確認を求める場合は必ずこのツールを使ってください。単一選択、複...
+  System->>Unresolved: new Array(questions.length).fill (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  System->>Internal: askSingleQuestion
+  Internal->>Internal: createRenderer
+  Internal->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Executor: truncateToWidth
+  Internal->>Internal: add
+  Internal->>Unresolved: '─'.repeat (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: state.customInput.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: line.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: addCursorLine
+  Internal->>Unresolved: state.customInput.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: state.selected.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: pasteBuffer.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: pasteBuffer.substring (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: pasteContent.replace(/\r\n/g, '\n').replace (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: matchesKey
+  Internal->>Unresolved: Key.shift (node_modules/@mariozechner/pi-tui/dist/keys.d.ts)
+  Internal->>Unresolved: state.customInput.trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: newSelected.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: state.selected.forEach (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  System->>Internal: showConfirmationScreen
+  Internal->>Unresolved: /^[1-9]$/.test (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: parseInt
+  System->>Unresolved: questions.map((q, i) => `'${q.question}'='${answers[i]!.join(', ')}'`).join (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: questions.map (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
 
 ## 図解
 
@@ -203,4 +252,4 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.559Z*
+*自動生成: 2026-02-18T14:31:30.794Z*

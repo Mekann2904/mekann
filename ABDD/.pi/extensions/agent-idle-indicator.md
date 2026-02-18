@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
 
 ## エクスポート一覧
@@ -84,4 +84,4 @@ restoreOriginal(ctx: ExtensionAPI["context"]): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T07:48:43.944Z*
+*自動生成: 2026-02-18T14:31:30.405Z*

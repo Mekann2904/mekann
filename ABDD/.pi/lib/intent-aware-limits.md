@@ -58,23 +58,6 @@ classDiagram
   }
 ```
 
-### 関数フロー
-
-```mermaid
-flowchart TD
-  classifyIntent["classifyIntent()"]
-  getIntentBudget["getIntentBudget()"]
-  applyIntentLimits["applyIntentLimits()"]
-  getEffectiveRepetitionThreshold["getEffectiveRepetitionThreshold()"]
-  isIntentClassificationAvailable["isIntentClassificationAvailable()"]
-  getAllIntentBudgets["getAllIntentBudgets()"]
-  classifyIntent -.-> getIntentBudget
-  getIntentBudget -.-> applyIntentLimits
-  applyIntentLimits -.-> getEffectiveRepetitionThreshold
-  getEffectiveRepetitionThreshold -.-> isIntentClassificationAvailable
-  isIntentClassificationAvailable -.-> getAllIntentBudgets
-```
-
 ## 関数
 
 ### classifyIntent
@@ -232,4 +215,4 @@ type TaskIntent = "declarative" | "procedural" | "reasoning"
 タスクの意図タイプ
 
 ---
-*自動生成: 2026-02-18T07:48:44.995Z*
+*自動生成: 2026-02-18T14:31:30.994Z*

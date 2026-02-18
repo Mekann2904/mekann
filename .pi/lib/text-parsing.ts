@@ -1,4 +1,35 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/text-parsing.ts
+ * role: 構造化出力テキスト処理用の共通ユーティリティモジュール
+ * why: 判定・検証モジュール間の循環依存を回避するため、テキスト解析機能を独立させた
+ * related: judge.ts, output-schema.ts, output-validation.ts
+ * public_api: clampConfidence, generateClaimId, generateEvidenceId, parseUnitInterval, extractField, extractMultilineField
+ * invariants:
+ *   - clampConfidenceは常に[0, 1]の数値を返す
+ *   - generateClaimId/evidenceIdは一意のID文字列を生成する
+ *   - parseUnitIntervalはパーセント形式を自動的に0-1スケールに変換する
+ * side_effects:
+ *   - generateClaimId/evidenceIdでDate.now()とMath.random()を使用
+ * failure_modes:
+ *   - 非数値入力に対してclampConfidenceは0.5を返す
+ *   - extractField/extractMultilineFieldは該当なし時undefined/空文字を返す
+ * @abdd.explain
+ * overview: 構造化出力のテキスト解析・数値パース・ID生成を行う低レベルユーティリティ集
+ * what_it_does:
+ *   - 信頼度値のクランプ（0-1範囲への正規化）
+ *   - 構造化通信追跡用の一意ID生成（claim/evidenceプレフィックス付き）
+ *   - 単位区間文字列のパース（小数・パーセント形式対応）
+ *   - 構造化テキストからのフィールド抽出（単行・複数行）
+ * why_it_exists:
+ *   - judge/output-validation間の循環依存を解消するため共通機能を分離
+ *   - テキスト解析ロジックの重複実装を防止
+ * scope:
+ *   in: 生テキスト、数値、フィールド名
+ *   out: クランプ済み数値、一意ID文字列、パース済み数値、抽出フィールド値
+ */
+
+/**
  * Shared text parsing utilities for structured output processing.
  * Extracted to avoid circular dependencies between modules.
  *

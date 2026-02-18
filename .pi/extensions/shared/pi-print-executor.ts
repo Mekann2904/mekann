@@ -1,4 +1,41 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/shared/pi-print-executor.ts
+ * role: piコマンド実行プロセスの共通エグゼキューター
+ * why: subagents.tsとagent-teams.tsで一貫したプロセス実行を提供し、ストリーミング出力とアイドルタイムアウト検出を標準化するため
+ * related: subagents.ts, agent-teams.ts, pi（CLIコマンド）
+ * public_api: PrintExecutorOptions, PrintCommandResult, executePiPrintMode（関数 exported）
+ * invariants:
+ *   - デフォルトアイドルタイムアウトは300000ms（5分）
+ *   - JSONストリーム行のみをパース対象とする（{で始まる行）
+ *   - グレースフルシャットダウン遅延は2000ms固定
+ * side_effects:
+ *   - 子プロセス（pi --mode json）の起動と終了
+ *   - AbortSignalによるプロセスキャンセル時の強制終了
+ *   - コールバック経由での外部状態更新（onStdoutChunk, onStderrChunk, onTextDelta, onThinkingDelta）
+ * failure_modes:
+ *   - プロセス起動失敗（piコマンド不在、権限エラー）
+ *   - アイドルタイムアウト超過（指定時間内に出力なし）
+ *   - AbortSignalによるキャンセル
+ *   - JSONパース失敗（不正なストリーム行）
+ * @abdd.explain
+ * overview: pi CLIを--mode jsonで実行し、ストリーミングJSON出力をリアルタイム処理する共通モジュール
+ * what_it_does:
+ *   - pi子プロセスのspawnとライフサイクル管理
+ *   - JSONストリーム行のパース（text_delta, thinking_delta, agent_end, message_endを抽出）
+ *   - 出力チャンクごとにアイドルタイムアウトをリセット
+ *   - AbortSignal監視とプロセスキャンセル処理
+ *   - エラーメッセージの200文字トリム処理
+ * why_it_exists:
+ *   - GLM-5等の長時間思考モデルに対応するため、固定タイムアウトではなくアイドルベースのタイムアウトを実現
+ *   - subagents.tsとagent-teams.tsでのプロセス実行ロジックの重複を排除
+ *   - リアルタイムでのテキスト/思考プレビュー表示を可能にする
+ * scope:
+ *   in: PrintExecutorOptions（プロンプト、タイムアウト、AbortSignal、各種コールバック）
+ *   out: PrintCommandResult（生成テキスト、実行時間）、またはエラー時は例外送出
+ */
+
+/**
  * Shared pi print mode executor.
  * Used by both subagents.ts and agent-teams.ts for consistent process execution.
  *

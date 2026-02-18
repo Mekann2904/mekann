@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/comprehensive-logger-config.ts
+ * role: ログ収集システムの設定管理と環境変数ベースの設定上書き、および設定バリデーション
+ * why: ログシステムの動作を環境変数で制御可能にし、設定値の正当性を保証するため
+ * related: comprehensive-logger-types.ts, comprehensive-logger.ts, .env
+ * public_api: DEFAULT_CONFIG, loadConfigFromEnv, validateConfig
+ * invariants: DEFAULT_CONFIGは常に有効なデフォルト値を持つ、validateConfigは必ず{valid, errors}構造を返す
+ * side_effects: loadConfigFromEnvがprocess.envを読み取る
+ * failure_modes: 環境変数の数値変換でNaNが発生する可能性、不正な環境変数値による設定不整合
+ * @abdd.explain
+ * overview: 包括的ログ収集システムの設定を管理するモジュール
+ * what_it_does:
+ *   - デフォルト設定(DEFAULT_CONFIG)の定義とエクスポート
+ *   - 環境変数(PI_LOG_*)からの設定読み込みと型変換
+ *   - 設定値の妥当性検証(最小値、列挙値のチェック)
+ * why_it_exists:
+ *   - ログシステムの動作をデプロイ環境ごとに設定可能にするため
+ *   - 設定ミスによるログシステムの誤動作を防ぐため
+ * scope:
+ *   in: LoggerConfig型の設定オブジェクト、環境変数(process.env)
+ *   out: 検証済みのLoggerConfig、バリデーション結果
+ */
+
+/**
  * 包括的ログ収集システム - 設定管理
  * 
  * ファイル: .pi/lib/comprehensive-logger-config.ts

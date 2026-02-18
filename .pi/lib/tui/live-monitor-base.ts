@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/tui/live-monitor-base.ts
+ * role: ライブモニター実装の基底モジュール。共通パターンと型定義を提供し、DRY違反を回避する。
+ * why: subagentsやagent-teams等の類似ライブモニター実装間でのコード重複を排除するため。
+ * related: live-view-utils.js, agent-utils.js, tui-utils.ts, format-utils.js
+ * public_api: LiveItemStatus, LiveStreamView, LiveViewMode, BaseLiveItem, BaseLiveMonitorController, CreateLiveItemInput, LiveMonitorFactoryOptions, createBaseLiveItem
+ * invariants: 新規アイテムの初期ステータスは"pending"、stdoutTail/stderrTailは空文字列、バイト数は0で初期化される
+ * side_effects: なし（純粋な型定義とファクトリ関数のみ）
+ * failure_modes: createBaseLiveItemに不正なinputを渡した場合、プロパティアクセスでTypeErrorが発生する可能性がある
+ * @abdd.explain
+ * overview: TUIライブモニター用の基底型定義とファクトリ関数を提供するユーティリティモジュール。
+ * what_it_does:
+ *   - ライブアイテムの状態型の定義
+ *   - ライブストリーム表示オプション（stdout/stderr）の型定義
+ *   - ライブビューモード（list/detail）の型定義
+ *   - BaseLiveItemインターフェースの定義（ID、ステータス、タイムスタンプ、出力テール、バイト数等）
+ *   - BaseLiveMonitorControllerインターフェースの定義（markStarted、appendChunk、markFinished、close、wait）
+ *   - デフォルト値を持つベースライブアイテム生成関数の提供
+ * why_it_exists:
+ *   - 複数のライブモニター実装（subagents、agent-teams等）で共通する型定義とパターンを一箇所に集約
+ *   - 新しいライブモニター実装の追加を容易にする
+ * scope:
+ *   in: ライブモニター対象のアイテムID、名前、ストリームチャンク、ステータス変更指示
+ *   out: 型定義、初期化済みアイテムオブジェクト、コントローラインターフェース
+ */
+
+/**
  * Generic live monitor base module.
  * Provides common patterns for live monitoring views (subagents, agent-teams, etc.).
  * Eliminates DRY violations between similar live monitor implementations.

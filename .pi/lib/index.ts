@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/index.ts
+ * role: バレルエクスポート（後方互換性維持用の統合エントリポイント）
+ * why: 既存コードのimportパスを維持しつつ、将来的な廃止に向けた移行期間を提供する
+ * related: lib/core.ts, lib/agent.ts, lib/storage.ts, lib/tui/live-monitor-base.ts
+ * public_api: core.ts, agent.ts, storage.ts, live-monitor-base.ts, skill-registry.ts, semantic-repetition.ts, intent-aware-limits.ts の全エクスポート
+ * invariants: core.ts, agent.ts, storage.ts から全てのエクスポートを再エクスポートすること
+ * side_effects: なし（純粋な再エクスポートのみ）
+ * failure_modes: 推奨エントリポイントへの移行が完了した後の削除時、古いimportパスを使用するコードでのコンパイルエラー
+ * @abdd.explain
+ * overview: 非推奨のバレルエクスポートファイル。3つのフォーカスドエントリポイントと追加のLayer 2/3ユーティリティを集約して再エクスポートする。
+ * what_it_does:
+ *   - core.ts（Layer 0: エラー、バリデーション、フォーマット）、agent.ts（Layer 1: エージェント型/ユーティリティ）、storage.ts（Layer 2/3: 埋め込み、メモリ、スケジューリング）からの再エクスポート
+ *   - tui/live-monitor-base.ts（TUIライブモニター）、skill-registry.ts（スキル管理）、semantic-repetition.ts（意味的繰り返し検出）、intent-aware-limits.ts（インテント分類）からの再エクスポート
+ *   - 新規コードは各フォーカスドエントリポイントから直接インポートすべきことを示す非推奨警告の提供
+ * why_it_exists:
+ *   - 既存のimportパス（from "./lib/index.js"）を使用するコードの後方互換性維持
+ *   - 段階的な移行期間の提供（core/agent/storageへの分割後も旧パスを動作させる）
+ * scope:
+ *   in: なし（再エクスポートのみ）
+ *   out: 統合された全モジュールの公開API
+ */
+
+/**
  * Shared library index (DEPRECATED - Use Focused Entry Points).
  *
  * @deprecated This barrel export is deprecated. Import from focused entry points instead:

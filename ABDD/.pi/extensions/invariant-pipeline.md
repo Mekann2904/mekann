@@ -16,16 +16,39 @@ related: []
 ## インポート
 
 ```typescript
-import { readFileSync, writeFileSync, existsSync... } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { Type } from '@mariozechner/pi-ai';
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+// from 'node:fs': readFileSync, writeFileSync, existsSync, ...
+// from 'node:path': join, dirname
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+
+## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+### generate_from_spec
+
+spec.mdからQuint形式仕様、TypeScriptバリデーション関数、fast-checkプロパティテスト、TypeScriptモデルベーステストドライバーを一括生成
+
+### verify_quint_spec
+
+Quint形式仕様を検証（構文チェック、インバリアントチェック）
+
+### generate_invariant_macros
+
+spec.mdからTypeScriptインバリアントバリデーション関数を生成
+
+### generate_property_tests
+
+spec.mdからfast-checkベースのプロパティテストを生成
+
+### generate_mbt_driver
+
+spec.mdからTypeScriptベースのモデルベーステストドライバーを生成
 
 ## 図解
 
@@ -101,11 +124,6 @@ classDiagram
     +struct_name: string
     +max_steps: number
   }
-  class TransitionResult {
-    <<interface>>
-    +code: string
-    +warning: string
-  }
 ```
 
 ### 依存関係図
@@ -116,7 +134,6 @@ flowchart LR
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
-    _mariozechner["@mariozechner"]
     _mariozechner["@mariozechner"]
   end
   main --> external
@@ -213,11 +230,14 @@ formatValue(value: unknown, type: string): string
 
 **戻り値**: `string`
 
-### generateRustMacros
+### generateTsValidators
 
 ```typescript
-generateRustMacros(spec: ParsedSpec, structName?: string): GenerationOutput
+generateTsValidators(spec: ParsedSpec, structName?: string): GenerationOutput
 ```
+
+spec.mdからTypeScriptバリデーション関数を生成する
+Rustマクロの代わりに、クラスベースのバリデーションを提供
 
 **パラメータ**
 
@@ -228,11 +248,13 @@ generateRustMacros(spec: ParsedSpec, structName?: string): GenerationOutput
 
 **戻り値**: `GenerationOutput`
 
-### mapTypeToRust
+### mapTypeToTypeScript
 
 ```typescript
-mapTypeToRust(type: string): string
+mapTypeToTypeScript(type: string): string
 ```
+
+型をTypeScriptの型にマッピングする
 
 **パラメータ**
 
@@ -242,95 +264,48 @@ mapTypeToRust(type: string): string
 
 **戻り値**: `string`
 
-### translateConditionToRust
+### getTypeScriptDefaultValue
 
 ```typescript
-translateConditionToRust(condition: string): string
+getTypeScriptDefaultValue(type: string): string
 ```
+
+TypeScriptのデフォルト値を取得
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| type | `string` | はい |
+
+**戻り値**: `string`
+
+### translateConditionToTypeScript
+
+```typescript
+translateConditionToTypeScript(condition: string, states: SpecState[]): string
+```
+
+条件式をTypeScriptの式に変換する
+obj.field形式でモデルのフィールドにアクセスする
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | condition | `string` | はい |
-
-**戻り値**: `string`
-
-### translateToModelAccess
-
-```typescript
-translateToModelAccess(condition: string, states: SpecState[]): string
-```
-
-Translate condition to use model.field access for state variables
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| condition | `string` | はい |
 | states | `SpecState[]` | はい |
 
 **戻り値**: `string`
-
-### translatePreconditionToRust
-
-```typescript
-translatePreconditionToRust(precondition: string, states: SpecState[], prefix: string): string
-```
-
-Translate precondition to Rust expression for guard checks
-Converts natural language/math notation to Rust boolean expressions
-Uses model.field access pattern for state variables
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| precondition | `string` | はい |
-| states | `SpecState[]` | はい |
-| prefix | `string` | はい |
-
-**戻り値**: `string`
-
-### translatePostconditionToOperationCode
-
-```typescript
-translatePostconditionToOperationCode(postcondition: string, states: SpecState[]): string
-```
-
-Translate postcondition to state transition code for operation tests
-Returns Rust code that modifies model state
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| postcondition | `string` | はい |
-| states | `SpecState[]` | はい |
-
-**戻り値**: `string`
-
-### translatePostconditionToTransition
-
-```typescript
-translatePostconditionToTransition(postcondition: string, states: SpecState[]): TransitionResult
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| postcondition | `string` | はい |
-| states | `SpecState[]` | はい |
-
-**戻り値**: `TransitionResult`
 
 ### generatePropertyTests
 
 ```typescript
 generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?: number): GenerationOutput
 ```
+
+spec.mdからfast-checkベースのプロパティテストを生成する
+Rustのproptestの代わりに、TypeScriptのfast-checkを使用
 
 **パラメータ**
 
@@ -342,11 +317,47 @@ generatePropertyTests(spec: ParsedSpec, structName?: string, testCount?: number)
 
 **戻り値**: `GenerationOutput`
 
+### getFastCheckArbitrary
+
+```typescript
+getFastCheckArbitrary(type: string): string
+```
+
+TypeScript型に対応するfast-checkアービトラリーを取得
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| type | `string` | はい |
+
+**戻り値**: `string`
+
+### translatePostconditionToTypeScript
+
+```typescript
+translatePostconditionToTypeScript(postcondition: string, states: SpecState[]): { code: string; warning?: string }
+```
+
+事後条件をTypeScriptの状態遷移コードに変換
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| postcondition | `string` | はい |
+| states | `SpecState[]` | はい |
+
+**戻り値**: `{ code: string; warning?: string }`
+
 ### generateMBTDriver
 
 ```typescript
 generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: number): GenerationOutput
 ```
+
+spec.mdからTypeScriptベースのモデルベーステストドライバーを生成する
+ランダム実行と決定的ステップ実行の両方をサポート
 
 **パラメータ**
 
@@ -358,25 +369,63 @@ generateMBTDriver(spec: ParsedSpec, structName?: string, maxSteps?: number): Gen
 
 **戻り値**: `GenerationOutput`
 
-### capitalize
+### translatePostconditionToMBT
 
 ```typescript
-capitalize(s: string): string
+translatePostconditionToMBT(postcondition: string, states: SpecState[]): { code: string; warning?: string }
 ```
+
+事後条件をMBT用のTypeScriptコードに変換
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| s | `string` | はい |
+| postcondition | `string` | はい |
+| states | `SpecState[]` | はい |
+
+**戻り値**: `{ code: string; warning?: string }`
+
+### translateConditionToTypeScriptForMBT
+
+```typescript
+translateConditionToTypeScriptForMBT(condition: string, states: SpecState[]): string
+```
+
+条件式をMBT用のTypeScript式に変換（this.field形式）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| condition | `string` | はい |
+| states | `SpecState[]` | はい |
 
 **戻り値**: `string`
 
-### formatRustValue
+### translateConditionToTypeScriptBase
 
 ```typescript
-formatRustValue(value: unknown, type: string): string
+translateConditionToTypeScriptBase(condition: string): string
 ```
+
+条件式の基本変換（型マッピングなし）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| condition | `string` | はい |
+
+**戻り値**: `string`
+
+### formatTypeScriptValue
+
+```typescript
+formatTypeScriptValue(value: unknown, type: string): string
+```
+
+TypeScriptの値をフォーマット
 
 **パラメータ**
 
@@ -387,11 +436,13 @@ formatRustValue(value: unknown, type: string): string
 
 **戻り値**: `string`
 
-### getRustDefault
+### getTypeScriptDefaultLiteral
 
 ```typescript
-getRustDefault(type: string): string
+getTypeScriptDefaultLiteral(type: string): string
 ```
+
+TypeScriptのデフォルト値リテラルを取得
 
 **パラメータ**
 
@@ -517,19 +568,5 @@ interface GenerateMBTInput {
 }
 ```
 
-### TransitionResult
-
-```typescript
-interface TransitionResult {
-  code: string;
-  warning?: string;
-}
-```
-
-Translate postcondition to state transition code
-Handles patterns like:
-- "count = count + 1" -> "new_state.count = self.count + 1"
-- "count == old_count + 1" -> "new_state.count = self.count + 1"
-
 ---
-*自動生成: 2026-02-18T07:48:44.495Z*
+*自動生成: 2026-02-18T14:31:30.735Z*

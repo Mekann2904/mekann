@@ -1,4 +1,36 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/semantic_search.ts
+ * role: 意味的コード検索ツール。ベクトル類似度を用いてクエリに一致するコードを検索する
+ * why: キーワード検索では発見困難な、意図や機能に基づくコード検索を実現するため
+ * related: ../types.js, ../utils/constants.js, ../../../lib/embeddings/utils.js, ./semantic_index.ts
+ * public_api: semanticSearch(input, cwd): Promise<SemanticSearchOutput>
+ * invariants:
+ *   - クエリが空または空白のみの場合、total=0, results=[], error="Query is required"を返す
+ *   - インデックスが存在しない場合、total=0, results=[]を返す
+ *   - 類似度はthreshold以上の結果のみ返す
+ *   - 結果は類似度降順でソート済み
+ * side_effects:
+ *   - ファイルシステムからsemantic-index.jsonlを読み込む（読み取り専用）
+ * failure_modes:
+ *   - インデックスファイルが存在しない場合に空の結果を返す
+ *   - インデックスファイルのJSONパースに失敗した場合に例外をスローする可能性がある
+ * @abdd.explain
+ * overview: 事前構築済みのセマンティックインデックスを使用し、ベクトル類似度によるコード検索を実行する
+ * what_it_does:
+ *   - ディスクからJSONL形式のセマンティックインデックスを読み込む
+ *   - クエリベクトルとインデックス内エンベディング間のコサイン類似度を計算する
+ *   - 類似度threshold以上の結果を類似度降順でtopK件返す
+ *   - language/kindによるフィルタリングパラメータを受け取る（入力定義に基づく）
+ * why_it_exists:
+ *   - 関数名や変数名を正確に知らなくても、機能や意図に基づいてコードを発見できるようにする
+ *   - semantic_index.tsで構築されたインデックスを活用して高速な意味検索を提供する
+ * scope:
+ *   in: クエリ文字列、topK（デフォルト10）、threshold（デフォルト0.5）、language、kind、作業ディレクトリパス
+ *   out: 検索結果配列（各結果はコードスニペット、ファイルパス、類似度スコアを含む）、総件数、truncatedフラグ、エラーメッセージ
+ */
+
+/**
  * Semantic Search Tool
  *
  * Performs semantic code search using vector similarity.

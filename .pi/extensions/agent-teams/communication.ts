@@ -1,3 +1,29 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams/communication.ts
+ * role: エージェントチームの通信ラウンド制御とメンバー間コンテキスト共有
+ * why: 通信ロジックをagent-teams.tsから分離し、SRP準拠と保守性を向上させるため
+ * related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/agent-errors.ts, .pi/lib/text-parsing.ts
+ * public_api: buildPrecomputedContextMap, normalizeCommunicationRounds, DEFAULT_COMMUNICATION_ROUNDS, MAX_COMMUNICATION_ROUNDS, MAX_COMMUNICATION_PARTNERS, PrecomputedMemberContext
+ * invariants: 通信ラウンド数は0以上MAX_COMMUNICATION_ROUNDS以下、メンバーIDは一意、コンテキストフィールド長はCOMMUNICATION_CONTEXT_FIELD_LIMIT以下
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes: 不正なラウンド数入力時にフォールバック値使用、サニタイズ失敗時にプレースホルダー使用
+ * @abdd.explain
+ * overview: エージェントチームオーケストレーションにおけるメンバー間通信の定数定義とユーティリティ関数を提供する
+ * what_it_does:
+ *   - チームメンバーの事前計算済みコンテキスト（role, status, summary, claim）をマップ形式で構築
+ *   - 通信ラウンド数の正規化と検証（安定版ランタイム時は固定値を返却）
+ *   - 通信関連定数（最大ラウンド数、最大パートナー数、フィールド制限）の定義
+ *   - 指示インジェクション検出パターンの定義
+ * why_it_exists:
+ *   - 通信ロジックの関心の分離によりagent-teams.tsの複雑性を低減
+ *   - メンバー間コンテキスト共有の再利用可能なインターフェース提供
+ *   - 通信パラメータの一元管理による設定ミス防止
+ * scope:
+ *   in: TeamMemberResult配列、通信ラウンド数設定値、安定版ランタイムフラグ
+ *   out: PrecomputedMemberContextのマップ、正規化済み通信ラウンド数、型定義の再エクスポート
+ */
+
 // File: .pi/extensions/agent-teams/communication.ts
 // Description: Communication round logic for agent team orchestration.
 // Why: Extracted from agent-teams.ts to improve maintainability and SRP compliance.

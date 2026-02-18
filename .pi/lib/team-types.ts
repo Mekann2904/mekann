@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/team-types.ts
+ * role: チームオーケストレーション用型定義モジュール
+ * why: agent-teams.tsから型定義を分離し、保守性と再利用性を向上させるため
+ * related: extensions/agent-teams.ts, extensions/agent-teams/storage.ts, tui/live-monitor-base.ts, live-view-utils.ts
+ * public_api: TeamLivePhase, TeamLiveViewMode, TeamLiveItem, TeamMonitorLifecycle, LiveStreamView(再エクスポート)
+ * invariants: TeamLiveItem.keyは"teamId/memberId"形式、TeamLivePhaseは5つの定義済みフェーズのみ、TeamMonitorLifecycle実装は開始/終了状態遷移を管理
+ * side_effects: なし（純粋な型定義ファイル）
+ * failure_modes: なし（型定義のため実行時エラーは発生しない）
+ * @abdd.explain
+ * overview: チーム実行のライブモニタリングと並列実行調整に使用される型定義を集約したモジュール
+ * what_it_does:
+ *   - チームメンバーの実行フェーズ型(TeamLivePhase)を定義: queued/initial/communication/judge/finished
+ *   - チームモニタリングの表示モード型(TeamLiveViewMode)を定義: list/detail/discussion
+ *   - チームメンバー実行状態を追跡するインターフェース(TeamLiveItem)を定義
+ *   - ライフサイクル操作のみを必要とするクライアント向けのISP準拠インターフェース(TeamMonitorLifecycle)を定義
+ *   - LiveStreamView型の再エクスポートを提供
+ * why_it_exists:
+ *   - agent-teams.tsから型定義を抽出してモジュール分割による保守性向上
+ *   - チームライブモニタリングシステムと並列実行調整で共有する型を一元管理
+ * scope:
+ *   in: LiveStreamView, LiveStatusの型参照
+ *   out: 実行時ロジック、状態管理実装、TUI描画処理
+ */
+
+/**
  * Team orchestration type definitions.
  * Extracted from agent-teams.ts for maintainability.
  *

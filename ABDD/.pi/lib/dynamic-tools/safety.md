@@ -61,10 +61,12 @@ classDiagram
 ```mermaid
 flowchart TD
   analyzeCodeSafety["analyzeCodeSafety()"]
-  quickSafetyCheck["quickSafetyCheck()"]
   checkAllowlistCompliance["checkAllowlistCompliance()"]
-  analyzeCodeSafety -.-> quickSafetyCheck
-  quickSafetyCheck -.-> checkAllowlistCompliance
+  findLineNumber["findLineNumber()"]
+  getSeverityPenalty["getSeverityPenalty()"]
+  quickSafetyCheck["quickSafetyCheck()"]
+  analyzeCodeSafety --> findLineNumber
+  analyzeCodeSafety --> getSeverityPenalty
 ```
 
 ## 関数
@@ -243,4 +245,4 @@ type SafetyAnalysisIssueType = | "file-system-write"
 安全性問題の種類（解析用）
 
 ---
-*自動生成: 2026-02-18T07:48:44.947Z*
+*自動生成: 2026-02-18T14:31:30.984Z*

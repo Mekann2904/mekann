@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { join, dirname, relative } from 'node:path';
-import { mkdir, writeFile, readFile... } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
-import { execute, buildCtagsArgs, checkToolAvailability } from '../utils/cli.js';
-import { INDEX_DIR_NAME, SYMBOL_INDEX_FILE, INDEX_META_FILE... } from '../utils/constants.js';
+// from 'node:path': join, dirname, relative
+// from 'node:fs/promises': mkdir, writeFile, readFile, ...
+// from 'node:crypto': createHash
+// from '../utils/cli.js': execute, buildCtagsArgs, checkToolAvailability
+// from '../utils/constants.js': INDEX_DIR_NAME, SYMBOL_INDEX_FILE, INDEX_META_FILE, ...
 // ... and 2 more imports
 ```
 
@@ -65,11 +65,58 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  symIndex["symIndex()"]
-  readSymbolIndex["readSymbolIndex()"]
+  detectChangedFiles["detectChangedFiles()"]
+  fileExists["fileExists()"]
   getIndexMetadata["getIndexMetadata()"]
-  symIndex -.-> readSymbolIndex
-  readSymbolIndex -.-> getIndexMetadata
+  getLegacyIndexPath["getLegacyIndexPath()"]
+  getLegacyMetaPath["getLegacyMetaPath()"]
+  getMetaPath["getMetaPath()"]
+  getShardDir["getShardDir()"]
+  getShardPath["getShardPath()"]
+  getSourceFiles["getSourceFiles()"]
+  incrementalUpdate["incrementalUpdate()"]
+  isIndexStale["isIndexStale()"]
+  readAllShards["readAllShards()"]
+  readLegacyIndex["readLegacyIndex()"]
+  readLegacyMeta["readLegacyMeta()"]
+  readMeta["readMeta()"]
+  readSymbolIndex["readSymbolIndex()"]
+  symIndex["symIndex()"]
+  updateManifest["updateManifest()"]
+  useCtagsCommand["useCtagsCommand()"]
+  useCtagsForFiles["useCtagsForFiles()"]
+  writeLegacyIndex["writeLegacyIndex()"]
+  writeLegacyMeta["writeLegacyMeta()"]
+  writeMeta["writeMeta()"]
+  writeShardedIndex["writeShardedIndex()"]
+  getIndexMetadata --> getMetaPath
+  getIndexMetadata --> readMeta
+  incrementalUpdate --> detectChangedFiles
+  incrementalUpdate --> getSourceFiles
+  incrementalUpdate --> useCtagsForFiles
+  isIndexStale --> readLegacyIndex
+  isIndexStale --> readLegacyMeta
+  readSymbolIndex --> fileExists
+  readSymbolIndex --> getLegacyIndexPath
+  readSymbolIndex --> getShardDir
+  readSymbolIndex --> readAllShards
+  readSymbolIndex --> readLegacyIndex
+  symIndex --> fileExists
+  symIndex --> getLegacyIndexPath
+  symIndex --> getLegacyMetaPath
+  symIndex --> getMetaPath
+  symIndex --> getSourceFiles
+  symIndex --> incrementalUpdate
+  symIndex --> isIndexStale
+  symIndex --> readLegacyIndex
+  symIndex --> updateManifest
+  symIndex --> useCtagsCommand
+  symIndex --> writeLegacyIndex
+  symIndex --> writeLegacyMeta
+  symIndex --> writeMeta
+  symIndex --> writeShardedIndex
+  writeShardedIndex --> getShardDir
+  writeShardedIndex --> getShardPath
 ```
 
 ### シーケンス図
@@ -646,4 +693,4 @@ interface LegacyIndexMeta {
 Legacy index metadata structure
 
 ---
-*自動生成: 2026-02-18T07:48:44.623Z*
+*自動生成: 2026-02-18T14:31:30.864Z*

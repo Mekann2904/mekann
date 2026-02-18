@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { extractField, parseUnitInterval, clampConfidence } from './text-parsing.js';
+// from './text-parsing.js': extractField, parseUnitInterval, clampConfidence
 ```
 
 ## エクスポート一覧
@@ -105,16 +105,29 @@ flowchart LR
 ```mermaid
 flowchart TD
   getCommunicationIdMode["getCommunicationIdMode()"]
-  resetCommunicationIdModeCache["resetCommunicationIdModeCache()"]
-  setCommunicationIdMode["setCommunicationIdMode()"]
+  getSchemaValidationMode["getSchemaValidationMode()"]
+  getSchemaViolationStats["getSchemaViolationStats()"]
   getStanceClassificationMode["getStanceClassificationMode()"]
+  parseStructuredOutput["parseStructuredOutput()"]
+  recordSchemaViolation["recordSchemaViolation()"]
+  resetCommunicationIdModeCache["resetCommunicationIdModeCache()"]
+  resetSchemaValidationModeCache["resetSchemaValidationModeCache()"]
+  resetSchemaViolationStats["resetSchemaViolationStats()"]
   resetStanceClassificationModeCache["resetStanceClassificationModeCache()"]
+  setCommunicationIdMode["setCommunicationIdMode()"]
+  setSchemaValidationMode["setSchemaValidationMode()"]
   setStanceClassificationMode["setStanceClassificationMode()"]
-  getCommunicationIdMode -.-> resetCommunicationIdModeCache
-  resetCommunicationIdModeCache -.-> setCommunicationIdMode
-  setCommunicationIdMode -.-> getStanceClassificationMode
-  getStanceClassificationMode -.-> resetStanceClassificationModeCache
-  resetStanceClassificationModeCache -.-> setStanceClassificationMode
+  validateAgainstSchema["validateAgainstSchema()"]
+  validateField["validateField()"]
+  validateSubagentOutputWithSchema["validateSubagentOutputWithSchema()"]
+  validateTeamMemberOutputWithSchema["validateTeamMemberOutputWithSchema()"]
+  validateAgainstSchema --> validateField
+  validateSubagentOutputWithSchema --> getSchemaValidationMode
+  validateSubagentOutputWithSchema --> parseStructuredOutput
+  validateSubagentOutputWithSchema --> validateAgainstSchema
+  validateTeamMemberOutputWithSchema --> getSchemaValidationMode
+  validateTeamMemberOutputWithSchema --> parseStructuredOutput
+  validateTeamMemberOutputWithSchema --> validateAgainstSchema
 ```
 
 ### シーケンス図
@@ -465,4 +478,4 @@ type StanceClassificationMode = "disabled" | "heuristic" | "structured"
 態度分類モード
 
 ---
-*自動生成: 2026-02-18T07:48:45.024Z*
+*自動生成: 2026-02-18T14:31:30.999Z*

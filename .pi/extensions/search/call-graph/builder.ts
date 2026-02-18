@@ -1,4 +1,37 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/call-graph/builder.ts
+ * role: コールグラフ構築モジュール
+ * why: ripgrepとctagsシンボルインデックスを用いて関数呼び出し関係を解析し、コールグラフインデックスを生成するため
+ * related: ./types.js, ../utils/cli.js, ../tools/sym_index.js, ../utils/constants.js
+ * public_api: getCallGraphDir, getCallGraphIndexPath, fileExists, mapKind
+ * invariants:
+ *   - COMMON_NAMESは一般的すぎて信頼度が低い関数名のセットを保持する
+ *   - CONFIDENCE_EXACT_MATCH = 0.8, CONFIDENCE_SAME_FILE = 1.0, CONFIDENCE_COMMON_NAME = 0.5
+ *   - INDEX_VERSION = 1
+ * side_effects:
+ *   - execute経由でripgrep等の外部CLIを実行する可能性がある
+ *   - readFile, writeFile, mkdir, accessによるファイルシステム操作
+ * failure_modes:
+ *   - ctagsシンボルインデックスが存在しない場合、呼び出し検出が不完全になる
+ *   - COMMON_NAMESに含まれる関数名は常に低信頼度スコアになる
+ *   - ファイルシステムアクセス権限がない場合、fileExists等が失敗する
+ * @abdd.explain
+ * overview: ripgrepとctagsベースのPhase 1正規表現呼び出し検出によるコールグラフ構築
+ * what_it_does:
+ *   - 関数定義をctagsシンボルインデックスから抽出する
+ *   - 正規表現で関数呼び出しを検出し信頼度スコアを付与する
+ *   - コールグラフのノードとエッジを生成する
+ *   - 構築したコールグラフを.pi/search/call-graph/index.jsonに保存する
+ * why_it_exists:
+ *   - コードベース内の関数呼び出し関係を静的解析で把握するため
+ *   - 影響範囲調査やリファクタリング支援のための依存関係データを提供するため
+ * scope:
+ *   in: SymbolIndexEntry配列、ソースコードファイルパス、現在の作業ディレクトリ(cwd)
+ *   out: CallGraphIndex（nodes, edges, metadataを含むJSON）、CallGraphNodeKindへのマッピング
+ */
+
+/**
  * Call Graph Builder
  *
  * Builds call graph using ripgrep and ctags symbol index.

@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/tui/tui-utils.ts
+ * role: TUI共通ユーティリティ関数群
+ * why: agent-teams.tsとsubagents.ts間の重複実装を統合するため
+ * related: agent-teams.ts, subagents.ts, @mariozechner/pi-tui
+ * public_api: LIVE_TAIL_LIMIT, LIVE_MARKDOWN_PREVIEW_MIN_WIDTH, appendTail, toTailLines, countOccurrences, estimateLineCount, looksLikeMarkdown, MarkdownPreviewResult
+ * invariants: appendTailはmaxLength超過時のみ先頭を切り捨てる、toTailLinesは末尾の空行を常に削除する
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes: 引数にnull/undefined渡過時の TypeError（TypeScript型チェックで防止）
+ * @abdd.explain
+ * overview: Terminal User Interface用の文字列処理・マークダウン判定ユーティリティ。Layer 0として他libモジュールへの依存を持たない。
+ * what_it_does:
+ *   - 末尾文字列の追記と最大長制御（appendTail）
+ *   - 行配列変換と末尾空行削除・行数制限
+ *   - 文字列出現回数カウント（countOccurrences）
+ *   - バイト数・改行数に基づく行数推定
+ *   - マークダウン構文判定（looksLikeMarkdown）
+ * why_it_exists:
+ *   - 複数拡張機能での同一処理の重複実装を解消
+ *   - TUI表示用の文字列操作ロジックを一元管理
+ * scope:
+ *   in: 文字列処理、マークダウン判定、行数計算
+ *   out: 非同期処理、ファイルI/O、外部API呼び出し
+ */
+
+/**
  * TUI (Terminal User Interface) utilities shared across extensions.
  * Consolidates duplicate implementations from:
  * - agent-teams.ts

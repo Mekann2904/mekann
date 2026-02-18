@@ -1,3 +1,37 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/cost-estimator.ts
+ * role: タスク実行のコスト（所要時間・トークン消費量）推定エンジン
+ * why: スケジューラーが実行順序とリソース配分を決定するための精度の高い推定値を提供し、履歴学習により推定精度を向上させる
+ * related: .pi/lib/task-scheduler.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+ * public_api: CostEstimation, CostEstimationMethod, ExecutionHistoryEntry, SourceStatistics, CostEstimatorConfig
+ * invariants:
+ *   - confidence は 0.0 から 1.0 の範囲
+ *   - estimatedDurationMs と estimatedTokens は非負の数値
+ *   - successRate は 0.0 から 1.0 の範囲
+ * side_effects:
+ *   - 履歴データの永続化ストレージへの読み書き（実行記録追加時）
+ *   - 統計情報のキャッシュ更新
+ * failure_modes:
+ *   - 履歴データ不足時はデフォルト推定値にフォールバック
+ *   - 不正な入力ソースタイプに対しては例外をスロー
+ *   - 永続化ストレージ障害時は履歴機能を無効化して動作継続
+ * @abdd.explain
+ * overview: タスクの実行時間とトークン消費量を推定し、履歴データに基づく学習で推定精度を向上させるコンポーネント
+ * what_it_does:
+ *   - TaskSource ごとに実行時間とトークン消費量を推定
+ *   - 過去の実行履歴を記録し、ソース別統計（平均・最小・最大・成功率）を算出
+ *   - 履歴データが閾値以上の場合は履歴ベース、不足時はデフォルト値を使用
+ *   - 信頼度（confidence）を算出し、推定手法（method）を明示
+ * why_it_exists:
+ *   - スケジューラーがタスク実行順序を最適化するためにコスト予測が必要
+ *   - ユーザーへの進捗表示やリソース制限管理に推定値を活用
+ *   - 履歴学習により、特定環境での実際の挙動に適応した推定を実現
+ * scope:
+ *   in: TaskSource（subagent_run, subagent_run_parallel, team_run, team_run_parallel）, プロバイダ/モデル情報, タスク説明（省略可）, 実行結果（履歴記録用）
+ *   out: CostEstimation（推定時間・トークン・信頼度・手法）, SourceStatistics（ソース別統計）
+ */
+
 // File: .pi/lib/cost-estimator.ts
 // Description: Cost estimation for task scheduling with historical learning support.
 // Why: Enables accurate scheduling decisions based on estimated duration and token consumption.

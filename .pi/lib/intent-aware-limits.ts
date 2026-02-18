@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/intent-aware-limits.ts
+ * role: タスク意図に基づくリソース予算の分類・提供モジュール
+ * why: "Agentic Search in the Wild"論文の知見に基づき、意図別に最適化された予算設定を提供し、無駄な反復や過剰なリソース消費を防ぐため
+ * related: search-controller.ts, task-executor.ts, budget-manager.ts
+ * public_api: TaskIntent, IntentBudget, IntentClassificationInput, IntentClassificationResult, INTENT_BUDGETS
+ * invariants: INTENT_BUDGETSの各エントリはTaskIntent型のキーに対応、repetitionToleranceは0-1の範囲、maxIterationsは正の整数
+ * side_effects: なし（純粋な型定義と定数のエクスポートのみ）
+ * failure_modes: 意図分類の信頼度が低い場合に不適切な予算が選択される可能性
+ * @abdd.explain
+ * overview: タスクの意図（declarative/procedural/reasoning）を分類し、各意図に最適化されたリソース予算プロファイルを提供する
+ * what_it_does:
+ *   - TaskIntent型として3種類の意図（宣言的/手順的/推論的）を定義
+ *   - 意図別の予算設定（最大反復数、タイムアウト係数、並列度係数、反復許容度）を提供
+ *   - IntentClassificationInput/Result型で分類入出力の構造を定義
+ *   - 論文の統計データに基づき、declarativeは短縮・高許容、reasoningは長時間・低許容の予算を設定
+ * why_it_exists:
+ *   - 意図別に検索パターンが大きく異なる（declarative: 88.64%が早期収束、reasoning: 意味ドリフト大）ため、一律の予算は非効率
+ *   - declarativeタスクでの過剰な反復を抑制し、reasoningタスクには十分なリソースを確保する必要がある
+ * scope:
+ *   in: タスク説明文、目標基準、参照リソース数（分類用入力）
+ *   out: 意図分類結果、推奨予算プロファイル（最大反復数6-12、タイムアウト係数1.0-2.0、並列度係数0.8-1.2、反復許容度0.3-0.6）
+ */
+
+/**
  * Intent-Aware Limits Module.
  * Adapts resource allocation based on task intent classification.
  * Based on findings from "Agentic Search in the Wild" paper (arXiv:2601.17617v2):

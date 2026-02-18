@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { join, dirname } from 'node:path';
-import { mkdir, writeFile, readFile... } from 'node:fs/promises';
-import { CallGraphIndex, CallGraphNode, CallGraphEdge... } from './types.js';
-import { execute } from '../utils/cli.js';
-import { readSymbolIndex } from '../tools/sym_index.js';
+// from 'node:path': join, dirname
+// from 'node:fs/promises': mkdir, writeFile, readFile, ...
+// from './types.js': CallGraphIndex, CallGraphNode, CallGraphEdge, ...
+// from '../utils/cli.js': execute
+// from '../tools/sym_index.js': readSymbolIndex
 // ... and 2 more imports
 ```
 
@@ -57,12 +57,27 @@ flowchart LR
 ```mermaid
 flowchart TD
   buildCallGraph["buildCallGraph()"]
-  saveCallGraphIndex["saveCallGraphIndex()"]
-  readCallGraphIndex["readCallGraphIndex()"]
+  calculateConfidence["calculateConfidence()"]
+  fileExists["fileExists()"]
+  findCallsInFile["findCallsInFile()"]
+  generateNodeId["generateNodeId()"]
+  getCallGraphDir["getCallGraphDir()"]
+  getCallGraphIndexPath["getCallGraphIndexPath()"]
+  getFunctionDefinitions["getFunctionDefinitions()"]
   isCallGraphIndexStale["isCallGraphIndexStale()"]
-  buildCallGraph -.-> saveCallGraphIndex
-  saveCallGraphIndex -.-> readCallGraphIndex
-  readCallGraphIndex -.-> isCallGraphIndexStale
+  mapKind["mapKind()"]
+  readCallGraphIndex["readCallGraphIndex()"]
+  saveCallGraphIndex["saveCallGraphIndex()"]
+  buildCallGraph --> calculateConfidence
+  buildCallGraph --> findCallsInFile
+  buildCallGraph --> generateNodeId
+  buildCallGraph --> getFunctionDefinitions
+  getCallGraphIndexPath --> getCallGraphDir
+  getFunctionDefinitions --> mapKind
+  isCallGraphIndexStale --> readCallGraphIndex
+  readCallGraphIndex --> fileExists
+  readCallGraphIndex --> getCallGraphIndexPath
+  saveCallGraphIndex --> getCallGraphIndexPath
 ```
 
 ### シーケンス図
@@ -341,4 +356,4 @@ async isCallGraphIndexStale(cwd: string): Promise<boolean>
 **戻り値**: `Promise<boolean>`
 
 ---
-*自動生成: 2026-02-18T07:48:44.564Z*
+*自動生成: 2026-02-18T14:31:30.798Z*

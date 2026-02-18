@@ -1,4 +1,37 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/runtime-config.ts
+ * role: ランタイム設定の中央集権管理とプロファイルプリセット提供
+ * why: 複数レイヤー間での設定不整合（drift）を防ぎ、一貫した動作制限を保証するため
+ * related: lib/unified-limit-resolver.ts, extensions/agent-runtime.ts, provider-limits, adaptive-rate-controller
+ * public_api: RuntimeConfig, RuntimeProfile, createRuntimeConfig
+ * invariants:
+ *   - profileは"stable"または"default"のいずれか
+ *   - totalMaxLlm >= 1
+ *   - heartbeatTimeoutMs > heartbeatIntervalMs
+ *   - 0 < reductionFactor < 1
+ *   - recoveryFactor > 1
+ * side_effects:
+ *   - なし（純粋な設定定義とファクトリ関数のみ）
+ * failure_modes:
+ *   - 不正なprofile値を渡した場合: デフォルト(default)プロファイルを返却
+ *   - プロパティ未設定での使用: 呼び出し元でランタイムエラー
+ * @abdd.explain
+ * overview: 全レイヤー共通のランタイム設定を一元管理し、プロファイルベースのプリセットを提供する
+ * what_it_does:
+ *   - RuntimeConfig型による設定スキーマ定義（LLM制限、並列数、ハートビート、レート制御など）
+ *   - stable(信頼性重視/低並列)とdefault(バランス型)の2プロファイルプリセット定義
+ *   - プロファイル選択による設定オブジェクト生成機能の提供
+ * why_it_exists:
+ *   - provider-limits、adaptive-rate-controller、cross-instance-coordinator、agent-runtime、task-scheduler間の設定同期
+ *   - 環境や用途に応じた設定プリセットの切り替え
+ *   - 設定値の単一ソース・オブ・トゥルース確立
+ * scope:
+ *   in: RuntimeProfile型のプロファイル名（"stable" | "default"）
+ *   out: 完全なRuntimeConfigオブジェクト、型定義
+ */
+
+/**
  * Runtime Configuration
  *
  * Centralized runtime configuration for all layers.

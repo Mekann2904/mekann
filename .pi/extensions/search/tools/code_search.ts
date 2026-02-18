@@ -1,4 +1,39 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/code_search.ts
+ * role: ripgrepベースのコード検索ツール実装。rgが利用不可能な場合はNode.jsネイティブ実装にフォールバック
+ * why: 高速なコード検索機能を提供し、ripgrep未導入環境でも検索を可能にするため
+ * related: ../utils/cli.js, ../types.js, ../utils/output.js, ../utils/cache.js
+ * public_api: nativeCodeSearch関数（内部フォールバック用）、コード検索実行機能
+ * invariants:
+ *   - 入力パターンが正規表現として不正な場合はエラー結果を返す
+ *   - 結果件数はlimit * 2を上限として切り捨てる
+ *   - 読み取り不可能なファイルはサイレントにスキップする
+ * side_effects:
+ *   - ファイルシステムからのファイル読み込み
+ *   - キャッシュへの読み書き（getSearchCache経由）
+ *   - 検索履歴への記録（getSearchHistory経由）
+ * failure_modes:
+ *   - 不正な正規表現パターン指定時はcreateCodeSearchErrorを返却
+ *   - ディレクトリ読み取り権限がない場合は当該ディレクトリをスキップ
+ *   - ripgrep実行失敗時はネイティブ実装へフォールバック
+ * @abdd.explain
+ * overview: ripgrepを優先使用し、利用不可時にNode.jsネイティブ実装でコード検索を行うツール
+ * what_it_does:
+ *   - 正規表現またはリテラルパターンでソースコードを検索
+ *   - 大文字小文字無視、除外パターン、コンテキスト行数を指定可能
+ *   - 検索結果をファイル単位で集計しサマリーを生成
+ *   - 結果をキャッシュし重複検索を高速化
+ * why_it_exists:
+ *   - 開発者がコードベース内の関数、変数、パターンを素早く見つけるため
+ *   - 外部ツール依存を最小限に抑え、環境差異を吸収するため
+ *   - 検索結果の構造化と要約でAIによるコード理解を支援するため
+ * scope:
+ *   in: 検索パターン（正規表現/リテラル）、対象ディレクトリ、オプション（limit, ignoreCase, context, excludes）
+ *   out: CodeSearchOutput（マッチ結果配列、サマリー、ヒント、エラー情報）
+ */
+
+/**
  * code_search Tool
  *
  * Fast code search using ripgrep (rg) with JSON output and fallback support

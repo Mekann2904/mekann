@@ -16,9 +16,10 @@ related: []
 ## インポート
 
 ```typescript
-import { readFileSync, readdirSync, statSync } from 'fs';
-import { join, relative, extname } from 'path';
-import { minimatch } from 'minimatch';
+// from 'typescript': ts
+// from 'fs': readFileSync, readdirSync, statSync
+// from 'path': join, relative, extname
+// from 'minimatch': minimatch
 ```
 
 ## エクスポート一覧
@@ -175,6 +176,63 @@ flowchart LR
     minimatch["minimatch"]
   end
   main --> external
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  analyzeFile["analyzeFile()"]
+  buildDependencyGraph["buildDependencyGraph()"]
+  buildFunctionSignature["buildFunctionSignature()"]
+  collectTypeScriptFiles["collectTypeScriptFiles()"]
+  extractClass["extractClass()"]
+  extractCodeStructure["extractCodeStructure()"]
+  extractExport["extractExport()"]
+  extractFunction["extractFunction()"]
+  extractFunctionFromExpression["extractFunctionFromExpression()"]
+  extractImport["extractImport()"]
+  extractInterface["extractInterface()"]
+  extractJsDoc["extractJsDoc()"]
+  extractMethod["extractMethod()"]
+  extractParameters["extractParameters()"]
+  extractProperty["extractProperty()"]
+  extractVisibility["extractVisibility()"]
+  resolveImportPath["resolveImportPath()"]
+  visitNode["visitNode()"]
+  walk["walk()"]
+  analyzeFile --> visitNode
+  buildDependencyGraph --> resolveImportPath
+  collectTypeScriptFiles --> walk
+  extractClass --> extractJsDoc
+  extractClass --> extractMethod
+  extractClass --> extractProperty
+  extractCodeStructure --> analyzeFile
+  extractCodeStructure --> buildDependencyGraph
+  extractCodeStructure --> collectTypeScriptFiles
+  extractFunction --> buildFunctionSignature
+  extractFunction --> extractJsDoc
+  extractFunction --> extractParameters
+  extractFunctionFromExpression --> buildFunctionSignature
+  extractFunctionFromExpression --> extractJsDoc
+  extractFunctionFromExpression --> extractParameters
+  extractInterface --> buildFunctionSignature
+  extractInterface --> extractJsDoc
+  extractInterface --> extractParameters
+  extractMethod --> buildFunctionSignature
+  extractMethod --> extractJsDoc
+  extractMethod --> extractParameters
+  extractMethod --> extractVisibility
+  extractProperty --> extractJsDoc
+  extractProperty --> extractVisibility
+  visitNode --> extractClass
+  visitNode --> extractExport
+  visitNode --> extractFunction
+  visitNode --> extractFunctionFromExpression
+  visitNode --> extractImport
+  visitNode --> extractInterface
+  visitNode --> visitNode
+  walk --> walk
 ```
 
 ### シーケンス図
@@ -711,4 +769,4 @@ interface VisitorCallbacks {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.426Z*
+*自動生成: 2026-02-18T14:31:30.653Z*

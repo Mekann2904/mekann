@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { LoggerConfig } from './comprehensive-logger-types';
+// from './comprehensive-logger-types': LoggerConfig
 ```
 
 ## エクスポート一覧
@@ -47,13 +47,14 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  loadConfigFromEnv["loadConfigFromEnv()"]
-  validateConfig["validateConfig()"]
   getConfig["getConfig()"]
+  loadConfigFromEnv["loadConfigFromEnv()"]
+  parseEnvValue["parseEnvValue()"]
   resetConfig["resetConfig()"]
-  loadConfigFromEnv -.-> validateConfig
-  validateConfig -.-> getConfig
-  getConfig -.-> resetConfig
+  validateConfig["validateConfig()"]
+  getConfig --> loadConfigFromEnv
+  getConfig --> validateConfig
+  loadConfigFromEnv --> parseEnvValue
 ```
 
 ### シーケンス図
@@ -144,4 +145,4 @@ resetConfig(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T07:48:44.831Z*
+*自動生成: 2026-02-18T14:31:30.956Z*

@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/errors.ts
+ * role: pi-plugin全体で使用する共通エラークラスとエラーコード型定義
+ * why: 全拡張機能で統一されたエラー形式を提供し、エラーの分類・処理・デバッグを標準化するため
+ * related: lib/agent-errors.ts, lib/runtime.ts, lib/validator.ts, index.ts
+ * public_api: PiErrorCode, PiError, RuntimeLimitError, SchemaValidationError
+ * invariants: PiError.codeは常にPiErrorCodeの値, PiError.retryableはデフォルトfalse, PiError.timestampはインスタンス生成時刻
+ * side_effects: なし（純粋なクラス定義）
+ * failure_modes: 不正なエラーコード文字列を渡した場合TypeScriptが型エラーを検出
+ * @abdd.explain
+ * overview: pi-pluginのエラーハンドリング基盤。標準化されたエラーコードと、構造化されたエラー情報を持つ基底クラスを提供する。
+ * what_it_does:
+ *   - PiErrorCode型で10種類の標準エラーコードを定義
+ *   - PiError基底クラスでcode/retryable/cause/timestampプロパティを提供
+ *   - is()メソッドでエラーコード照合
+ *   - toJSON()メソッドでエラー情報のシリアライズ
+ *   - RuntimeLimitError, SchemaValidationError等の派生クラス定義
+ * why_it_exists:
+ *   - Errorオブジェクトをそのまま使うとコード分類・再試行可否判定が困難
+ *   - 拡張機能間で一貫したエラー形式を保証する必要がある
+ *   - ログ解析・監視でのエラー集計を容易にする
+ * scope:
+ *   in: エラーメッセージ文字列、エラーコード、オプション(再試行可否/原因エラー)
+ *   out: 構造化されたエラーオブジェクト、JSONシリアライズ結果
+ */
+
+/**
  * pi-pluginの共通エラークラス
  * 全拡張機能で統一されたエラーハンドリングを提供する。
  *

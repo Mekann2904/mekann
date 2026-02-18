@@ -1,3 +1,34 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams/member-execution.ts
+ * role: チームメンバー実行結果の正規化と出力処理を担当するモジュール
+ * why: エージェントチーム機能から実行ロジックを分離し、保守性を向上させるため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/output-validation.ts, .pi/lib/errors.ts
+ * public_api: TeamNormalizedOutput, normalizeTeamMemberOutput
+ * invariants:
+ *   - normalizeTeamMemberOutputは空文字列入力時、ok=falseで返却する
+ *   - 出力文字列は必ずtrim済みの状態で返却される
+ *   - 正規化失敗時はok=falseとなりoutputは空文字列
+ * side_effects:
+ *   - なし（純粋関数として動作）
+ * failure_modes:
+ *   - 入力が空文字列の場合: ok=false, reason="empty output"
+ *   - 正規化試行後もバリデーション不通過の場合: ok=false, reasonに失敗理由を格納
+ * @abdd.explain
+ * overview: エージェントチームのメンバー実行結果を正規化し、構造化された出力形式へ変換する
+ * what_it_does:
+ *   - チームメンバーの出力テキストを受け取り、バリデーションを実行する
+ *   - バリデーション不通過時はSUMMARY/CLAIM/EVIDENCE/RESULT/NEXT_STEP形式へ構造化を試行する
+ *   - 構造化成功時はdegraded=trueで正規化済み出力を返す
+ *   - 構造化失敗時はok=falseで失敗理由を返す
+ * why_it_exists:
+ *   - メインのagent-teams.tsから実行ロジックを分離し責務を明確化する
+ *   - チームメンバー固有のフィールド抽出ロジック（pickTeamFieldCandidate）を局所化する
+ * scope:
+ *   in: 任意の文字列出力（チームメンバーの実行結果）
+ *   out: TeamNormalizedOutputオブジェクト（正規化結果と成否情報）
+ */
+
 // File: .pi/extensions/agent-teams/member-execution.ts
 // Description: Team member execution logic for agent teams.
 // Why: Separates member execution logic from main agent-teams.ts for maintainability.

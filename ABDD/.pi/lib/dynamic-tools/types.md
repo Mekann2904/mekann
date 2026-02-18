@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { join } from 'node:path';
+// from 'node:path': join
 ```
 
 ## エクスポート一覧
@@ -594,4 +594,4 @@ type AuditAction = | "tool.create"       // ツール作成
 監査ログに記録される操作の種類を表す文字列リテラル型。
 
 ---
-*自動生成: 2026-02-18T07:48:44.950Z*
+*自動生成: 2026-02-18T14:31:30.985Z*

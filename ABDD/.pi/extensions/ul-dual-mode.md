@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
 
 ## エクスポート一覧
@@ -38,6 +38,47 @@ flowchart LR
     _mariozechner["@mariozechner"]
   end
   main --> external
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  buildUlPolicyString["buildUlPolicyString()"]
+  buildUlTransformedInput["buildUlTransformedInput()"]
+  extractTextWithoutUlPrefix["extractTextWithoutUlPrefix()"]
+  getMissingRequirements["getMissingRequirements()"]
+  getUlPolicy["getUlPolicy()"]
+  isRecommendedReviewerCall["isRecommendedReviewerCall()"]
+  isTrivialTask["isTrivialTask()"]
+  looksLikeClearGoalTask["looksLikeClearGoalTask()"]
+  normalizeId["normalizeId()"]
+  parseToolInput["parseToolInput()"]
+  persistState["persistState()"]
+  refreshStatus["refreshStatus()"]
+  refreshStatusThrottled["refreshStatusThrottled()"]
+  registerUlDualModeExtension["registerUlDualModeExtension()"]
+  resetState["resetState()"]
+  shouldRequireReviewer["shouldRequireReviewer()"]
+  toObjectLike["toObjectLike()"]
+  getMissingRequirements --> shouldRequireReviewer
+  getUlPolicy --> buildUlPolicyString
+  isRecommendedReviewerCall --> normalizeId
+  isRecommendedReviewerCall --> parseToolInput
+  parseToolInput --> toObjectLike
+  refreshStatusThrottled --> refreshStatus
+  registerUlDualModeExtension --> buildUlTransformedInput
+  registerUlDualModeExtension --> extractTextWithoutUlPrefix
+  registerUlDualModeExtension --> getMissingRequirements
+  registerUlDualModeExtension --> getUlPolicy
+  registerUlDualModeExtension --> isRecommendedReviewerCall
+  registerUlDualModeExtension --> looksLikeClearGoalTask
+  registerUlDualModeExtension --> persistState
+  registerUlDualModeExtension --> refreshStatus
+  registerUlDualModeExtension --> refreshStatusThrottled
+  registerUlDualModeExtension --> resetState
+  registerUlDualModeExtension --> shouldRequireReviewer
+  shouldRequireReviewer --> isTrivialTask
 ```
 
 ## 関数
@@ -325,4 +366,4 @@ ULデュアルモード拡張機能を登録する
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T07:48:44.766Z*
+*自動生成: 2026-02-18T14:31:30.939Z*

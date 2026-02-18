@@ -1,3 +1,37 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/plan.ts
+ * role: プラン管理機能拡張モジュール（作成、管理、実行）
+ * why: pi-coding-agentで構造化されたタスクプランニングとステップバイステップ実行を可能にするため
+ * related: README.md, .pi/extensions/loop.ts, .pi/lib/plan-mode-shared.ts, .pi/lib/comprehensive-logger.ts
+ * public_api: なし（ExtensionAPI経由で登録される内部エクスポート）
+ * invariants:
+ *   - PLAN_DIRは必ず存在する（ensurePlanDirが保証）
+ *   - プランIDは一意（タイムスタンプ + シーケンス番号で生成）
+ *   - ストレージ読み込み失敗時は空のプランリストを返す
+ * side_effects:
+ *   - .pi/plans/storage.jsonへのファイル読み書き
+ *   - .pi/plansディレクトリの作成（存在しない場合）
+ *   - planIdSequenceのインクリメント
+ * failure_modes:
+ *   - JSONパースエラー時は空ストレージを返す（データ損失の可能性）
+ *   - ファイル書き込み権限なしの場合は例外発生
+ * @abdd.explain
+ * overview: pi-coding-agent用のプラン管理拡張機能。タスクプランの作成、ステップ管理、実行状態追跡を提供する。
+ * what_it_does:
+ *   - プランの作成、更新、削除、取得
+ *   - プランステップの状態管理（pending/in_progress/completed/blocked）
+ *   - プランの永続化（JSONファイルストレージ）
+ *   - plan-mode-sharedモジュールとの連携による実行ポリシー管理
+ * why_it_exists:
+ *   - 複雑なタスクをステップ単位で管理・追跡するため
+ *   - プラン実行状態をセッション間で永続化するため
+ *   - 他の拡張機能（loop等）と連携したタスク自動化のため
+ * scope:
+ *   in: プラン名、説明文、ステップ定義、ステータス更新
+ *   out: Plan/PlanStepオブジェクト、ストレージファイル操作
+ */
+
 // File: .pi/extensions/plan.ts
 // Description: Adds plan management functionality for pi - create, manage, and execute task plans
 // Why: Enables structured task planning with step-by-step execution

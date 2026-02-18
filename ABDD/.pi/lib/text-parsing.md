@@ -47,17 +47,17 @@ classDiagram
 
 ```mermaid
 flowchart TD
+  analyzeDiscussionStance["analyzeDiscussionStance()"]
   clampConfidence["clampConfidence()"]
+  countKeywordSignals["countKeywordSignals()"]
+  extractConsensusMarker["extractConsensusMarker()"]
+  extractField["extractField()"]
+  extractMultilineField["extractMultilineField()"]
   generateClaimId["generateClaimId()"]
   generateEvidenceId["generateEvidenceId()"]
   parseUnitInterval["parseUnitInterval()"]
-  extractField["extractField()"]
-  extractMultilineField["extractMultilineField()"]
-  clampConfidence -.-> generateClaimId
-  generateClaimId -.-> generateEvidenceId
-  generateEvidenceId -.-> parseUnitInterval
-  parseUnitInterval -.-> extractField
-  extractField -.-> extractMultilineField
+  analyzeDiscussionStance --> clampConfidence
+  parseUnitInterval --> clampConfidence
 ```
 
 ## 関数
@@ -225,4 +225,4 @@ type DiscussionStance = "agree" | "disagree" | "neutral" | "partial"
 ディスカッションの立場を表す型
 
 ---
-*自動生成: 2026-02-18T07:48:45.339Z*
+*自動生成: 2026-02-18T14:31:31.040Z*

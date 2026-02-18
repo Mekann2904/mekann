@@ -1,4 +1,37 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/call_graph.ts
+ * role: 呼び出しグラフ操作のツール関数エクスポート層
+ * why: 呼び出しグラフのインデックス生成・検索機能への統一インターフェースを提供する
+ * related: ../call-graph/builder.js, ../call-graph/query.js, ./sym_index.js, ../call-graph/types.js
+ * public_api: callGraphIndex, findCallersTool, findCalleesTool
+ * invariants:
+ *   - callGraphIndexは呼び出しグラフ構築前にシンボルインデックスの存在を保証する
+ *   - シンボルインデックスが空の場合はnodeCount=0, edgeCount=0のエラー結果を返す
+ *   - 既存インデックスが有効かつforce=falseの場合は再構築をスキップする
+ * side_effects:
+ *   - ファイルシステムへのインデックス書き込み
+ *   - シンボルインデックスの自動生成
+ * failure_modes:
+ *   - ctags未動作またはソースファイル不在によりシンボルインデックスが空
+ *   - インデックス読み書き時のファイルシステムエラー
+ *   - symbolName未指定による検索エラー
+ * @abdd.explain
+ * overview: 呼び出しグラフのインデックス構築・クエリ実行を提供するツールモジュール
+ * what_it_does:
+ *   - callGraphIndex: シンボルインデックス依存確認後、呼び出しグラフを構築・キャッシュ・保存
+ *   - findCallersTool: 指定シンボルを呼び出す関数一覧を返却
+ *   - findCalleesTool: 指定シンボルが呼び出す関数一覧を返却
+ * why_it_exists:
+ *   - builder/queryモジュールの低レベルAPIを高レベルツールとして統合
+ *   - インデックス鮮度判定とキャッシュ再利用ロジックの集約
+ *   - 検索拡張機能からの呼び出しグラフ機能利用の簡素化
+ * scope:
+ *   in: CallGraphIndexInput, FindCallersInput, FindCalleesInput, cwd文字列
+ *   out: CallGraphIndexOutput, FindCallersOutput, FindCalleesOutput
+ */
+
+/**
  * Call Graph Tools
  *
  * Tools for call graph index generation and querying.

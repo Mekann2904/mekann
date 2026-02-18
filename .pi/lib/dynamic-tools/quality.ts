@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/quality.ts
+ * role: 動的ツールの品質評価・メトリクス収集用型定義モジュール
+ * why: 生成されたツールのコード品質を定量的に評価し、継続的改善のためのデータ構造を提供する
+ * related: dynamic-tools/executor.ts, dynamic-tools/registry.ts, dynamic-tools/builder.ts
+ * public_api: QualityAssessment, CategoryScores, QualityIssue, ExecutionMetrics, ToolUsageStatistics
+ * invariants: スコア値は0.0-1.0の範囲、重大度は"high"|"medium"|"low"のいずれか、categoryはCategoryScoresのキーと一致
+ * side_effects: なし（型定義のみのモジュール）
+ * failure_modes: なし（実行時ロジックを含まない）
+ * @abdd.explain
+ * overview: 生成ツールの品質評価結果、カテゴリ別スコア、品質問題、実行メトリクス、使用統計を表す型定義
+ * what_it_does:
+ *   - QualityAssessment: 総合品質スコア、カテゴリ別スコア、問題リスト、改善提案、信頼度を管理
+ *   - CategoryScores: 可読性、エラーハンドリング、ドキュメント、テスタビリティ、パフォーマンス、セキュリティの6軸評価
+ *   - QualityIssue: カテゴリ・重大度・説明・位置情報・改善提案を持つ問題定義
+ *   - ExecutionMetrics: 実行時間、メモリ使用量、成功/失敗、エラー情報を記録
+ *   - ToolUsageStatistics: ツール別の使用回数、成功率、実行時間統計を管理
+ * why_it_exists:
+ *   - 生成ツールの品質を客観的な数値で評価し、改善ポイントを特定するため
+ *   - 実行時パフォーマンスとエラー傾向を追跡し、信頼性向上に寄与するため
+ *   - 品質評価の統一フォーマットを提供し、ツール間での比較を可能にするため
+ * scope:
+ *   in: 生成された動的ツールのコード、実行結果、使用履歴
+ *   out: 品質評価結果、品質問題レポート、実行メトリクス、統計情報
+ */
+
+/**
  * 品質メトリクス収集モジュール
  * 生成されたツールの品質を評価し、継続的な改善を支援
  */

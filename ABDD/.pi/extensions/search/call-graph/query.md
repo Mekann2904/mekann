@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { CallGraphIndex, CallGraphNode, CallGraphEdge... } from './types.js';
+// from './types.js': CallGraphIndex, CallGraphNode, CallGraphEdge, ...
 ```
 
 ## エクスポート一覧
@@ -61,17 +61,20 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  findNodesByName["findNodesByName()"]
+  findCallPath["findCallPath()"]
+  findCallees["findCallees()"]
+  findCallers["findCallers()"]
   findNodeById["findNodeById()"]
   findNodesByFile["findNodesByFile()"]
-  findCallers["findCallers()"]
-  findCallees["findCallees()"]
-  findCallPath["findCallPath()"]
-  findNodesByName -.-> findNodeById
-  findNodeById -.-> findNodesByFile
-  findNodesByFile -.-> findCallers
-  findCallers -.-> findCallees
-  findCallees -.-> findCallPath
+  findNodesByName["findNodesByName()"]
+  getNodeStats["getNodeStats()"]
+  findCallPath --> findNodeById
+  findCallPath --> findNodesByName
+  findCallees --> findNodesByName
+  findCallers --> findNodeById
+  getNodeStats --> findCallees
+  getNodeStats --> findCallers
+  getNodeStats --> findNodesByName
 ```
 
 ### シーケンス図
@@ -243,4 +246,4 @@ interface CallerSearchState {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.572Z*
+*自動生成: 2026-02-18T14:31:30.802Z*

@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { TeamDefinition, TeamFinalJudge, TeamMemberResult... } from './storage';
-import { clampConfidence, parseUnitInterval, extractField... } from '../../lib/text-parsing.js';
+// from './storage': TeamDefinition, TeamFinalJudge, TeamMemberResult, ...
+// from '../../lib/text-parsing.js': clampConfidence, parseUnitInterval, extractField, ...
 ```
 
 ## エクスポート一覧
@@ -87,17 +87,21 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  getJudgeWeights["getJudgeWeights()"]
-  setJudgeWeights["setJudgeWeights()"]
-  resetJudgeWeights["resetJudgeWeights()"]
-  extractDiscussionSection["extractDiscussionSection()"]
-  countEvidenceSignals["countEvidenceSignals()"]
   analyzeMemberOutput["analyzeMemberOutput()"]
-  getJudgeWeights -.-> setJudgeWeights
-  setJudgeWeights -.-> resetJudgeWeights
-  resetJudgeWeights -.-> extractDiscussionSection
-  extractDiscussionSection -.-> countEvidenceSignals
-  countEvidenceSignals -.-> analyzeMemberOutput
+  buildFallbackJudge["buildFallbackJudge()"]
+  computeProxyUncertainty["computeProxyUncertainty()"]
+  computeProxyUncertaintyWithExplainability["computeProxyUncertaintyWithExplainability()"]
+  countEvidenceSignals["countEvidenceSignals()"]
+  extractDiscussionSection["extractDiscussionSection()"]
+  formatJudgeExplanation["formatJudgeExplanation()"]
+  getJudgeWeights["getJudgeWeights()"]
+  resetJudgeWeights["resetJudgeWeights()"]
+  runFinalJudge["runFinalJudge()"]
+  setJudgeWeights["setJudgeWeights()"]
+  analyzeMemberOutput --> countEvidenceSignals
+  buildFallbackJudge --> computeProxyUncertainty
+  computeProxyUncertaintyWithExplainability --> getJudgeWeights
+  runFinalJudge --> buildFallbackJudge
 ```
 
 ### シーケンス図
@@ -398,4 +402,4 @@ interface TeamUncertaintyProxy {
 メンバー結果から計算される不確実性プロキシ
 
 ---
-*自動生成: 2026-02-18T07:48:44.170Z*
+*自動生成: 2026-02-18T14:31:30.460Z*

@@ -1,3 +1,28 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/retry-with-backoff.ts
+ * role: 指数バックオフとジッターを伴うリトライ処理の共通ユーティリティ
+ * why: LLM APIの429/5xxエラーに対する復旧ポリシーを一元管理し、サブエージェントとエージェントチームで再利用するため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json
+ * public_api: RetryJitterMode, RetryWithBackoffConfig, RetryWithBackoffOverrides, RetryAttemptContext, RateLimitGateSnapshot, RateLimitWaitContext
+ * invariants: maxDelayMsを超える遅延時間は返さない、負のリトライ回数は無効
+ * side_effects: sharedRateLimitStateによるグローバルなレート制限状態の更新、onRetry/onRateLimitWaitコールバックの実行
+ * failure_modes: 全リトライ失敗時は最後のエラーをスロー、AbortSignal中止時は即座に中断
+ * @abdd.explain
+ * overview: 一時的なLLM API障害（429/5xx）からの復旧のため、指数バックオフとジッターを組み込んだリトライ機構を提供する
+ * what_it_does:
+ *   - 指数バックオフによる遅延時間の計算（multiplier倍で増加、maxDelayMsで上限設定）
+ *   - full/partial/noneの3種類のジッターモードによる遅延時間のランダム化
+ *   - プロセス間で共有されるレート制限状態の管理（最大64エントリ、TTL 10分）
+ *   - リトライ試行時のコンテキスト情報をコールバックで通知
+ * why_it_exists:
+ *   - サブエージェントとエージェントチームで同一のリトライポリシーを適用するため
+ *   - 429レート制限と5xxサーバーエラーに対する統一的な復旧戦略を提供するため
+ * scope:
+ *   in: 非同期処理で発生する一時的なエラー、HTTPステータスコード（429/5xx）、AbortSignal
+ *   out: リトライ成功時の結果、レート制限待機時間のスナップショット
+ */
+
 // File: .pi/lib/retry-with-backoff.ts
 // Description: Shared retry helpers with exponential backoff and jitter for transient LLM failures.
 // Why: Keeps 429/5xx recovery policy in one place for subagents and agent teams.

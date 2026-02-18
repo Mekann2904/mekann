@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/shared/runtime-helpers.ts
+ * role: ランタイム共通ヘルパーユーティリティ
+ * why: subagents.tsとagent-teams.tsで一貫したランタイムエラーメッセージと予約管理を提供するため
+ * related: subagents.ts, agent-teams.ts, agent-runtime.ts, extensions-context.ts
+ * public_api: buildRuntimeLimitError, buildRuntimeQueueWaitError, startReservationHeartbeat, RuntimeLimitErrorOptions, RuntimeQueueWaitInfo
+ * invariants: ハートビート間隔は5000ms固定、エラーメッセージは現在値と上限値の両方を含む
+ * side_effects: startReservationHeartbeatはsetIntervalを生成しタイマーを登録する、getRuntimeSnapshotを通じてランタイム状態を参照する
+ * failure_modes: reservation.heartbeat()の失敗は無視される、存在しないreservation渡しでハートビート呼び出し失敗
+ * @abdd.explain
+ * overview: エージェントランタイムの制限・キューエラー通知と予約維持を行う共有ユーティリティ
+ * what_it_does:
+ *   - ランタイム制限到達時のエラーメッセージを構築する
+ *   - オーケストレーションキュー待機時のエラーメッセージを構築する
+ *   - 予約リースのTTLを定期的に延長するハートビートを開始・停止する
+ * why_it_exists:
+ *   - 複数のエージェント種別で同一フォーマットのエラーメッセージを使い回すため
+ *   - ゾンビ予約による容量リークを防ぐため自動的にTTLを延長する仕組みが必要
+ * scope:
+ *   in: ツール名、制限理由、待機情報、予約リース
+ *   out: フォーマット済みエラーメッセージ文字列、ハートビート停止関数
+ */
+
+/**
  * Shared runtime helper utilities.
  * Used by both subagents.ts and agent-teams.ts for consistent runtime behavior.
  */

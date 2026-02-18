@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/errors.ts
+ * role: 検索拡張機能向けのエラー型定義およびエラークラスの提供
+ * why: 検索ツール全体で統一的なエラーハンドリングとユーザーへの回復ヒント提供を実現するため
+ * related: .pi/extensions/search/tools/rg.ts, .pi/extensions/search/tools/fd.ts, .pi/extensions/search/indexer.ts, .pi/extensions/search/commands.ts
+ * public_api: SearchErrorCategory, SearchToolError, dependencyError
+ * invariants: SearchToolErrorのcategoryは必ずSearchErrorCategoryのいずれかの値を持つ、nameプロパティは常に"SearchToolError"
+ * side_effects: なし（純粋な型定義とクラス定義）
+ * failure_modes: なし（このモジュール自体は実行時エラーを発生させない）
+ * @abdd.explain
+ * overview: 検索ツールで発生するエラーを6つのカテゴリに分類し、回復ヒント付きで扱うためのエラー定義モジュール
+ * what_it_does:
+ *   - SearchErrorCategory型で6種類のエラーカテゴリ（dependency, parameter, execution, timeout, index, filesystem）を定義
+ *   - SearchToolErrorクラスでカテゴリ・回復ヒント・原因エラーを保持するカスタムエラーを提供
+ *   - format()でユーザー向け表示用のエラーメッセージを生成
+ *   - toJSON()でシリアライズ可能なオブジェクトへ変換
+ *   - dependencyError()で依存関係エラーのファクトリー関数を提供
+ * why_it_exists:
+ *   - 検索ツール（rg, fd, ctags等）で発生する多様なエラーを統一的に分類・処理するため
+ *   - エラー発生時にユーザーへ具体的な回復方法を提示するため
+ *   - プログラムによるエラーハンドリングをカテゴリベースで可能にするため
+ * scope:
+ *   in: なし
+ *   out: SearchToolErrorインスタンス、SearchErrorCategory型、dependencyError関数
+ */
+
+/**
  * Search Extension Error Types
  *
  * Categorized error types with recovery hints for better error handling

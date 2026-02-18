@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, mkdirSync, readdirSync... } from 'node:fs';
-import { join, relative, extname } from 'node:path';
-import { createHash } from 'node:crypto';
-import { SemanticIndexInput, SemanticIndexOutput, SemanticIndexMetadata... } from '../types.js';
-import { INDEX_DIR_NAME, DEFAULT_EXCLUDES } from '../utils/constants.js';
+// from 'node:fs': existsSync, mkdirSync, readdirSync, ...
+// from 'node:path': join, relative, extname
+// from 'node:crypto': createHash
+// from '../types.js': SemanticIndexInput, SemanticIndexOutput, SemanticIndexMetadata, ...
+// from '../utils/constants.js': INDEX_DIR_NAME, DEFAULT_EXCLUDES
 ```
 
 ## エクスポート一覧
@@ -57,6 +57,44 @@ flowchart LR
     constants["constants"]
   end
   main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  getIndexDir["_getIndexDir()"]
+  getIndexPath["_getIndexPath()"]
+  getMetaPath["_getMetaPath()"]
+  buildChunkText["buildChunkText()"]
+  chunkCode["chunkCode()"]
+  collectFiles["collectFiles()"]
+  detectLanguage["detectLanguage()"]
+  getIndexDir["getIndexDir()"]
+  getIndexPath["getIndexPath()"]
+  getMetaPath["getMetaPath()"]
+  saveIndex["saveIndex()"]
+  saveMetadata["saveMetadata()"]
+  semanticIndex["semanticIndex()"]
+  walk["walk()"]
+  getIndexPath --> getIndexDir
+  getMetaPath --> getIndexDir
+  chunkCode --> detectLanguage
+  collectFiles --> walk
+  getIndexDir --> getIndexDir
+  getIndexPath --> getIndexPath
+  getMetaPath --> getMetaPath
+  saveIndex --> getIndexDir
+  saveIndex --> getIndexPath
+  saveMetadata --> getMetaPath
+  semanticIndex --> buildChunkText
+  semanticIndex --> chunkCode
+  semanticIndex --> collectFiles
+  semanticIndex --> getIndexPath
+  semanticIndex --> getMetaPath
+  semanticIndex --> saveIndex
+  semanticIndex --> saveMetadata
+  walk --> walk
 ```
 
 ### シーケンス図
@@ -327,4 +365,4 @@ interface CodeChunk {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.613Z*
+*自動生成: 2026-02-18T14:31:30.861Z*

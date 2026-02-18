@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { spawn } from 'node:child_process';
-import { CliOptions, CliResult, CliError... } from '../types';
-import { DEFAULT_EXCLUDES, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT... } from './constants.js';
+// from 'node:child_process': spawn
+// from '../types': CliOptions, CliResult, CliError, ...
+// from './constants.js': DEFAULT_EXCLUDES, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, ...
 ```
 
 ## エクスポート一覧
@@ -54,17 +54,19 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  buildCtagsArgs["buildCtagsArgs()"]
+  buildFdArgs["buildFdArgs()"]
+  buildRgArgs["buildRgArgs()"]
+  checkToolAvailability["checkToolAvailability()"]
   execute["execute()"]
   executeOrThrow["executeOrThrow()"]
-  isAvailable["isAvailable()"]
   getVersion["getVersion()"]
-  checkToolAvailability["checkToolAvailability()"]
-  buildFdArgs["buildFdArgs()"]
-  execute -.-> executeOrThrow
-  executeOrThrow -.-> isAvailable
-  isAvailable -.-> getVersion
-  getVersion -.-> checkToolAvailability
-  checkToolAvailability -.-> buildFdArgs
+  isAvailable["isAvailable()"]
+  checkToolAvailability --> execute
+  checkToolAvailability --> isAvailable
+  executeOrThrow --> execute
+  getVersion --> execute
+  isAvailable --> execute
 ```
 
 ### シーケンス図
@@ -236,4 +238,4 @@ JSON出力用のctagsコマンド引数を生成する
 **戻り値**: `string[]`
 
 ---
-*自動生成: 2026-02-18T07:48:44.648Z*
+*自動生成: 2026-02-18T14:31:30.867Z*

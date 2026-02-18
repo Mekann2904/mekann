@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { TeamDefinition, TeamMember, TeamMemberResult } from './storage';
-import { normalizeForSingleLine } from '../../lib/format-utils.js';
-import { toErrorMessage } from '../../lib/error-utils.js';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
+// from './storage': TeamDefinition, TeamMember, TeamMemberResult
+// from '../../lib/format-utils.js': normalizeForSingleLine
+// from '../../lib/error-utils.js': toErrorMessage
 // ... and 6 more imports
 ```
 
@@ -74,17 +74,27 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  normalizeTeamMemberOutput["normalizeTeamMemberOutput()"]
-  mergeSkillArrays["mergeSkillArrays()"]
-  resolveEffectiveTeamMemberSkills["resolveEffectiveTeamMemberSkills()"]
+  buildSkillsSectionWithContent["buildSkillsSectionWithContent()"]
+  buildTeamMemberPrompt["buildTeamMemberPrompt()"]
+  extractSummary["extractSummary()"]
   formatTeamMemberSkillsSection["formatTeamMemberSkillsSection()"]
   loadSkillContent["loadSkillContent()"]
-  buildSkillsSectionWithContent["buildSkillsSectionWithContent()"]
-  normalizeTeamMemberOutput -.-> mergeSkillArrays
-  mergeSkillArrays -.-> resolveEffectiveTeamMemberSkills
-  resolveEffectiveTeamMemberSkills -.-> formatTeamMemberSkillsSection
-  formatTeamMemberSkillsSection -.-> loadSkillContent
-  loadSkillContent -.-> buildSkillsSectionWithContent
+  mergeSkillArrays["mergeSkillArrays()"]
+  normalizeTeamMemberOutput["normalizeTeamMemberOutput()"]
+  pickTeamFieldCandidate["pickTeamFieldCandidate()"]
+  resolveEffectiveTeamMemberSkills["resolveEffectiveTeamMemberSkills()"]
+  runMember["runMember()"]
+  runPiPrintMode["runPiPrintMode()"]
+  buildSkillsSectionWithContent --> loadSkillContent
+  buildTeamMemberPrompt --> buildSkillsSectionWithContent
+  buildTeamMemberPrompt --> resolveEffectiveTeamMemberSkills
+  normalizeTeamMemberOutput --> pickTeamFieldCandidate
+  resolveEffectiveTeamMemberSkills --> mergeSkillArrays
+  runMember --> buildTeamMemberPrompt
+  runMember --> extractSummary
+  runMember --> normalizeTeamMemberOutput
+  runMember --> runPiPrintMode
+  runPiPrintMode --> runPiPrintMode
 ```
 
 ### シーケンス図
@@ -358,4 +368,4 @@ interface TeamNormalizedOutput {
 チームメンバー実行結果の正規化出力
 
 ---
-*自動生成: 2026-02-18T07:48:44.321Z*
+*自動生成: 2026-02-18T14:31:30.476Z*

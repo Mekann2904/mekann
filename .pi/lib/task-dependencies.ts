@@ -1,3 +1,34 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/task-dependencies.ts
+ * role: タスク依存関係グラフの管理とDAGベースのタスクスケジューリング基盤
+ * why: タスク間の依存関係を解決し、依存タスク完了後にのみ後続タスクを実行可能にするため
+ * related: .pi/lib/priority-scheduler.ts, .pi/extensions/agent-runtime.ts
+ * public_api: TaskDependencyStatus, TaskDependencyNode, AddTaskOptions, CycleDetectionResult, TaskDependencyGraph
+ * invariants:
+ *   - 同一IDのタスクは重複して追加できない
+ *   - 依存先タスクは追加時に既に存在している必要がある
+ *   - 依存関係はDAG（非循環有向グラフ）を形成する
+ * side_effects: なし（純粋なデータ構造操作のみ）
+ * failure_modes:
+ *   - 重複タスクID追加時にErrorをthrow
+ *   - 存在しない依存先タスク指定時にErrorをthrow
+ * @abdd.explain
+ * overview: タスクの依存関係をDAG構造で管理し、依存解決済みタスクをreadyQueueで追跡するグラフ実装
+ * what_it_does:
+ *   - タスクノードの追加と依存関係の双方向リンク構築
+ *   - タスク状態の管理
+ *   - 依存関係充足判定とready状態への遷移
+ *   - readyQueueへの子準備タスクのエンキュー
+ * why_it_exists:
+ *   - 依存タスク完了前の後続タスク実行を防止する
+ *   - スケジューラーが実行可能タスクを特定できるようにする
+ *   - 循環依存の検出を可能にする
+ * scope:
+ *   in: タスクID、依存関係配列、優先度、推定実行時間
+ *   out: タスクノード状態、readyQueue、依存関係グラフ構造
+ */
+
 // File: .pi/lib/task-dependencies.ts
 // Description: Task dependency graph for DAG-based task scheduling.
 // Why: Enables dependency-aware scheduling where tasks can wait for other tasks to complete.

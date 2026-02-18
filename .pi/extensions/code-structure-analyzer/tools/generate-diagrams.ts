@@ -1,4 +1,34 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/code-structure-analyzer/tools/generate-diagrams.ts
+ * role: Mermaid図生成器（構造データからflowchart/classDiagram/sequenceDiagramを出力）
+ * why: コード構造を視覚化し、依存関係・クラス構造・呼び出しフローを把握可能にするため
+ * related: extract-structure.ts, diagram-renderer.ts, structure-analyzer.ts
+ * public_api: generateMermaidDiagrams, DiagramOptions, MermaidDiagrams
+ * invariants:
+ *   - options.typesに指定された図種別のみを生成
+ *   - 出力は常に有効なMermaid構文
+ *   - 未知の図種別は無視される
+ * side_effects: なし（純粋関数）
+ * failure_modes:
+ *   - structure.filesが空の場合、空のノードを持つ図を生成
+ *   - 無効な文字を含むパス/ラベルはsanitizeLabelでエスケープ処理
+ * @abdd.explain
+ * overview: StructureDataを入力とし、Mermaid記法の図文字列を生成するモジュール
+ * what_it_does:
+ *   - flowchart形式でファイル依存関係図を生成（ディレクトリ別サブグラフ付き）
+ *   - classDiagram形式でクラス構造図を生成
+ *   - sequenceDiagram形式で呼び出しフロー図を生成
+ *   - ノードIDの一意性を保証し、ラベルをサニタイズ
+ * why_it_exists:
+ *   - コードベースの構造を視覚的に理解しやすくするため
+ *   - ドキュメント生成やレビューでの構造説明を支援するため
+ * scope:
+ *   in: StructureData（files, classes, functions, imports）, DiagramOptions（types配列, includePositions）
+ *   out: MermaidDiagrams（flowchart/classDiagram/sequenceDiagramの各Mermaid文字列）
+ */
+
+/**
  * Mermaid Diagram Generator
  *
  * 構造データからMermaid図を生成

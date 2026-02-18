@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { extractCodeStructure, ExtractOptions, StructureData } from './tools/extract-structure.js';
-import { generateMermaidDiagrams, DiagramOptions, MermaidDiagrams } from './tools/generate-diagrams.js';
-import { generateDocSections, DocOptions, DocSections } from './tools/generate-doc.js';
-import { readFileSync, writeFileSync, existsSync... } from 'fs';
-import { join, relative, basename } from 'path';
+// from './tools/extract-structure.js': extractCodeStructure, ExtractOptions, StructureData
+// from './tools/generate-diagrams.js': generateMermaidDiagrams, DiagramOptions, MermaidDiagrams
+// from './tools/generate-doc.js': generateDocSections, DocOptions, DocSections
+// from 'fs': readFileSync, writeFileSync, existsSync, ...
+// from 'path': join, relative, basename
 ```
 
 ## エクスポート一覧
@@ -82,12 +82,11 @@ flowchart LR
 ```mermaid
 flowchart TD
   analyzeCodeStructure["analyzeCodeStructure()"]
+  computeHash["computeHash()"]
   extractStructure["extractStructure()"]
   generateDiagrams["generateDiagrams()"]
   generateMarkdown["generateMarkdown()"]
-  analyzeCodeStructure -.-> extractStructure
-  extractStructure -.-> generateDiagrams
-  generateDiagrams -.-> generateMarkdown
+  analyzeCodeStructure --> computeHash
 ```
 
 ### シーケンス図
@@ -265,4 +264,4 @@ interface AnalysisResult {
 コード構造解析の結果を表します。
 
 ---
-*自動生成: 2026-02-18T07:48:44.412Z*
+*自動生成: 2026-02-18T14:31:30.637Z*

@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { randomBytes } from 'node:crypto';
-import { closeSync, openSync, renameSync... } from 'node:fs';
+// from 'node:crypto': randomBytes
+// from 'node:fs': closeSync, openSync, renameSync, ...
 ```
 
 ## エクスポート一覧
@@ -46,9 +46,19 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  withFileLock["withFileLock()"]
   atomicWriteTextFile["atomicWriteTextFile()"]
-  withFileLock -.-> atomicWriteTextFile
+  clearStaleLock["clearStaleLock()"]
+  hasEfficientSyncSleep["hasEfficientSyncSleep()"]
+  isNodeErrno["isNodeErrno()"]
+  sleepSync["sleepSync()"]
+  tryAcquireLock["tryAcquireLock()"]
+  withFileLock["withFileLock()"]
+  sleepSync --> hasEfficientSyncSleep
+  tryAcquireLock --> isNodeErrno
+  withFileLock --> clearStaleLock
+  withFileLock --> hasEfficientSyncSleep
+  withFileLock --> sleepSync
+  withFileLock --> tryAcquireLock
 ```
 
 ### シーケンス図
@@ -191,4 +201,4 @@ interface FileLockOptions {
 ファイルロックのオプション設定
 
 ---
-*自動生成: 2026-02-18T07:48:45.275Z*
+*自動生成: 2026-02-18T14:31:31.030Z*

@@ -1,4 +1,38 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/embeddings/providers/openai.ts
+ * role: OpenAI埋め込みプロバイダーの実装モジュール
+ * why: OpenAI APIを使用したテキスト埋め込みベクトル生成を標準化されたインターフェースで提供するため
+ * related: ../types.js, ~/.pi/agent/auth.json, openai-api, ../index.ts
+ * public_api: OpenAIEmbeddingProvider, getOpenAIKey
+ * invariants:
+ *   - DEFAULT_MODELは常に"text-embedding-3-small"
+ *   - DEFAULT_DIMENSIONSは常に1536
+ *   - APIキーはauth.jsonを優先し、次に環境変数を参照する
+ *   - resolveKeyValueは"!"始まりをシェルコマンド、大文字_区切りを環境変数、それ以外をリテラルとして扱う
+ * side_effects:
+ *   - auth.jsonファイルの読み込み（ファイルシステムアクセス）
+ *   - シェルコマンド実行（"!"プレフィックス付きキーの場合）
+ *   - OpenAI APIへのHTTPリクエスト
+ * failure_modes:
+ *   - auth.jsonが存在しない、またはパース失敗時は空オブジェクトを返す
+ *   - シェルコマンド実行失敗時はnullを返す
+ *   - APIキーが全ソースで見つからない場合はnullを返す
+ * @abdd.explain
+ * overview: OpenAI text-embedding-3-smallモデルを使用した埋め込みプロバイダーの実装。pi公式認証方式に準拠したAPIキー解決機能を含む。
+ * what_it_does:
+ *   - OpenAI APIキーの解決（auth.json、環境変数、シェルコマンドの3方式をサポート）
+ *   - EmbeddingProviderインターフェースの実装提供
+ *   - text-embedding-3-smallモデルでの1536次元埋め込みベクトル生成
+ * why_it_exists:
+ *   - OpenAI埋め込み機能を他プロバイダーと統一されたインターフェースで利用可能にするため
+ *   - piエコシステムの標準認証方式（auth.json）との統合のため
+ * scope:
+ *   in: テキスト文字列、認証設定（auth.jsonまたは環境変数）
+ *   out: OpenAIEmbeddingProviderインスタンス、埋め込みベクトル配列
+ */
+
+/**
  * OpenAI Embedding Provider.
  * Implements embedding generation using OpenAI's text-embedding-3-small model.
  * 

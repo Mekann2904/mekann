@@ -1,3 +1,37 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/loop/reference-loader.ts
+ * role: ループ拡張機能向けの参照読み込みユーティリティ。ファイル、URL、インラインテキストからの参照を読み込み正規化する
+ * why: 複数の参照ソースを統一的に扱い、文字数制限と参照数制限を強制するため
+ * related: .pi/extensions/loop.ts, .pi/extensions/loop/ssrf-protection.ts, .pi/lib/error-utils.js
+ * public_api: loadReferences, LoopReference, LoadedReferenceResult
+ * invariants:
+ *   - 参照IDは R1, R2, ... の形式で連番割り当て
+ *   - 参照数は最大24件、総文字数は最大30,000文字
+ *   - 個別参照は最大8,000文字
+ * side_effects:
+ *   - ファイルシステムからの読み込み（refsFile, ローカルパス参照）
+ *   - URLへのHTTPリクエスト（SSRF検証経由）
+ * failure_modes:
+ *   - refsFileが存在しない、または読み込み権限がない場合に警告を追加して継続
+ *   - 参照内容が空の場合、警告を追加してスキップ
+ *   - AbortSignalで処理が中断された場合、エラーをスロー
+ * @abdd.explain
+ * overview: ループ処理で使用する参照データをファイル、URL、インラインテキストから読み込む
+ * what_it_does:
+ *   - refs配列とrefsFileから参照指定を収集し正規化
+ *   - 各参照を順次読み込み、安定ID（R1, R2...）を割り当て
+ *   - 文字数制限と参照数制限を強制し、超過分は警告を追加して切り捨て
+ *   - 空行と#で始まるコメント行を除外
+ * why_it_exists:
+ *   - 複数ソースの参照を統一的なインターフェースで扱うため
+ *   - 参照データのサイズを制御し、処理の安定性を保証するため
+ *   - SSRF攻撃を防ぎながら安全にURLをフェッチするため
+ * scope:
+ *   in: refs（参照指定文字列配列）、refsFile（参照ファイルパス、省略可）、cwd（作業ディレクトリ）、signal（AbortSignal、省略可）
+ *   out: LoadedReferenceResult（読み込まれた参照配列と警告配列）
+ */
+
 // File: .pi/extensions/loop/reference-loader.ts
 // Description: Reference loading utilities for loop extension.
 // Why: Handles loading references from files, URLs, and inline text.

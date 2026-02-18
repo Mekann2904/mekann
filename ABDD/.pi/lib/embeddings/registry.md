@@ -16,10 +16,10 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync, writeFileSync... } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
-import { EmbeddingProvider, ProviderConfig, EmbeddingModuleConfig... } from './types.js';
+// from 'node:fs': existsSync, readFileSync, writeFileSync, ...
+// from 'node:path': join
+// from 'node:os': homedir
+// from './types.js': EmbeddingProvider, ProviderConfig, EmbeddingModuleConfig, ...
 ```
 
 ## エクスポート一覧
@@ -65,11 +65,13 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  getEmbeddingProvider["getEmbeddingProvider()"]
   generateEmbedding["generateEmbedding()"]
   generateEmbeddingsBatch["generateEmbeddingsBatch()"]
-  getEmbeddingProvider -.-> generateEmbedding
-  generateEmbedding -.-> generateEmbeddingsBatch
+  getEmbeddingProvider["getEmbeddingProvider()"]
+  generateEmbedding --> generateEmbedding
+  generateEmbedding --> getEmbeddingProvider
+  generateEmbeddingsBatch --> generateEmbeddingsBatch
+  generateEmbeddingsBatch --> getEmbeddingProvider
 ```
 
 ### シーケンス図
@@ -181,4 +183,4 @@ async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise
 | saveConfig | `saveConfig(): void` |
 
 ---
-*自動生成: 2026-02-18T07:48:44.958Z*
+*自動生成: 2026-02-18T14:31:30.987Z*

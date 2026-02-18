@@ -1,4 +1,40 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/kitty-status-integration.ts
+ * role: kittyターミナル向けの作業状態通知・ウィンドウタイトル制御エクステンション
+ * why: piの長時間タスクの進捗をOS通知とタイトル変更でユーザーにフィードバックするため
+ * related: ExtensionAPI, child_process, @mariozechner/pi-coding-agent
+ * public_api: なし（エクステンションとしてpi本体に統合される内部モジュール）
+ * invariants:
+ *   - KITTY_WINDOW_ID環境変数が未設定の場合は全機能がno-op
+ *   - サウンド再生はmacOS限定で動作
+ *   - spawnはdetached + unrefで非同期実行され親プロセスをブロックしない
+ * side_effects:
+ *   - stdoutへのOSCエスケープシーケンス出力（タイトル設定、kittyネイティブ通知）
+ *   - osascriptによるmacOS通知センターへの通知送信
+ *   - afplayによるサウンドファイル再生
+ * failure_modes:
+ *   - osascript実行失敗時はエラーログ出力して処理継続
+ *   - afplay実行失敗時はエラーログ出力して処理継続
+ *   - kitty以外のターミナルでは全機能が無効化される
+ * @abdd.explain
+ * overview: kittyターミナルのshell integration機能を活用し、piエージェントの作業状態をOSレベルの通知とウィンドウタイトルで可視化する
+ * what_it_does:
+ *   - 環境変数KITTY_WINDOW_IDの有無でkittyターミナルを判定
+ *   - OSCエスケープシーケンスでウィンドウタイトル/タブ名を動的変更
+ *   - macOSではosascript経由で通知センターに通知、他プラットフォームではkittyネイティブ通知を使用
+ *   - macOSでのみafplayコマンドでサウンド再生（成功時Tink、エラー時Basso）
+ *   - 通知有無、サウンド有無、通知センター有無をNotificationOptionsで制御
+ * why_it_exists:
+ *   - 長時間実行されるコーディングタスクの完了をユーザーに即座に知らせるため
+ *   - ターミナルウィンドウのタイトルで現在のpiの状態を常時表示するため
+ *   - kitty以外の環境では透過的に無効化し互換性問題を回避するため
+ * scope:
+ *   in: piエージェントからの状態変更イベント、NotificationOptionsによる設定
+ *   out: ターミナル画面への表示変更、OS通知、サウンド再生
+ */
+
+/**
  * Kitty Status Integration Extension
  *
  * kittyのshell integrationを活用して、piの作業状態を反映します。

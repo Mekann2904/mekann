@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/registry.ts
+ * role: 動的ツールの登録・管理・永続化を行うレジストリモジュール
+ * why: 動的に生成されるツールの定義を一元管理し、ファイルシステムへの永続化と検索機能を提供するため
+ * related: types.js, safety.js, quality.js, audit.js
+ * public_api: DynamicToolRegistry, ToolParameterProperty, ToolParameterSchema, ToolExecutionResult, ToolSearchOptions, RegisterToolOptions, RegisterToolResult
+ * invariants: ツールIDはSHAベースのハッシュで一意に生成される、ツール定義は永続化ディレクトリにJSON形式で保存される
+ * side_effects: ファイルシステムへの読み書き（tools/ai-generated/ディレクトリ）、監査ログの記録
+ * failure_modes: ディスク容量不足による書き込み失敗、不正なツールコードによる登録拒否、並行アクセス時のファイル競合
+ * @abdd.explain
+ * overview: 動的ツール生成システムの中核となるレジストリ。ツールの登録・検索・削除・永続化を担当し、OOP APIと関数ベースAPIの両方を提供する
+ * what_it_does:
+ *   - ツール定義の登録とバリデーション（安全性チェック、品質評価）
+ *   - ツールの検索と一覧取得（名前、タグ、セーフティスコアによるフィルタリング）
+ *   - ツール定義のファイルシステムへの永続化（JSON形式）
+ *   - 監査ログへの操作記録
+ * why_it_exists:
+ *   - 動的に生成されたツールを再利用可能な形で管理する必要がある
+ *   - ツールの安全性と品質を登録時に保証する必要がある
+ *   - 拡張機能との互換性を持つ統一されたAPIを提供する必要がある
+ * scope:
+ *   in: ツール登録リクエスト、検索オプション、ツール定義コード
+ *   out: 登録結果、ツール一覧、実行結果、検索結果
+ */
+
+/**
  * 動的ツール生成システム - レジストリ
  * ツールの登録・管理・永続化を担当
  *

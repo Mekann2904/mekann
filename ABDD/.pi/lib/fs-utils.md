@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, mkdirSync } from 'fs';
+// from 'fs': existsSync, mkdirSync
 ```
 
 ## エクスポート一覧
@@ -59,4 +59,4 @@ ensureDir(path: string): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T07:48:44.986Z*
+*自動生成: 2026-02-18T14:31:30.993Z*

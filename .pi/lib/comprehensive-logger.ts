@@ -1,4 +1,39 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/comprehensive-logger.ts
+ * role: 包括的ログ収集システムのロガー実装クラス
+ * why: 全操作を機械的に記録し、セッション/タスク/ツール呼び出し/LLM応答等のイベントを時系列で追跡可能にするため
+ * related: comprehensive-logger-config.ts, comprehensive-logger-types.ts
+ * public_api: ComprehensiveLogger
+ * invariants:
+ *   - enabled=falseの場合はログ出力を行わない
+ *   - 各イベントは一意のIDを持つ
+ *   - セッションIDはインスタンス生成時にUUIDで固定される
+ * side_effects:
+ *   - ファイルシステムへのログファイル追記
+ *   - ログディレクトリの自動作成
+ *   - タイマーによる定期フラッシュ実行
+ * failure_modes:
+ *   - ログディレクトリ作成失敗時は書き込み不可
+ *   - flush失敗時はコンソールにエラー出力（ログは消失）
+ *   - ファイル書き込み失敗時はバッファに蓄積され続ける可能性
+ * @abdd.explain
+ * overview: セッション単位で全操作を記録するロガークラス。バッファリングと定期フラッシュによる非同期書き込みを行う。
+ * what_it_does:
+ *   - セッション/タスク/オペレーション/ツール呼び出し/LLM応答の各イベントを記録
+ *   - イベントバッファを定期的にファイルへフラッシュ
+ *   - マイクロ秒精度のタイムスタンプ生成
+ *   - アクティブなタスクとオペレーションの状態管理
+ * why_it_exists:
+ *   - デバッグと監査のための詳細な操作ログを残すため
+ *   - パフォーマンス測定とメトリクス収集を自動化するため
+ *   - トークン使用量とエラー発生の追跡を行うため
+ * scope:
+ *   in: LoggerConfig（設定オプション）, 各種イベントデータ
+ *   out: ログファイルへのJSONイベント書き込み, セッションID返却
+ */
+
+/**
  * 包括的ログ収集システム - ロガー実装
  * 
  * ファイル: .pi/lib/comprehensive-logger.ts

@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { ToolReflectionResult, ToolReflectionContext, DynamicToolMode... } from './types.js';
-import { loadAllToolDefinitions, recommendToolsForTask } from './registry.js';
+// from './types.js': ToolReflectionResult, ToolReflectionContext, DynamicToolMode, ...
+// from './registry.js': loadAllToolDefinitions, recommendToolsForTask
 ```
 
 ## エクスポート一覧
@@ -50,15 +50,24 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  detectRepetitivePattern["detectRepetitivePattern()"]
-  shouldCreateNewTool["shouldCreateNewTool()"]
   buildReflectionPrompt["buildReflectionPrompt()"]
+  detectComplexChain["detectComplexChain()"]
+  detectRepetitivePattern["detectRepetitivePattern()"]
+  extractBashPatterns["extractBashPatterns()"]
+  extractCodeFromResult["extractCodeFromResult()"]
+  generateToolNameFromPattern["generateToolNameFromPattern()"]
+  generateToolNameFromTask["generateToolNameFromTask()"]
   proposeToolFromTask["proposeToolFromTask()"]
+  shouldCreateNewTool["shouldCreateNewTool()"]
   shouldTriggerReflection["shouldTriggerReflection()"]
-  detectRepetitivePattern -.-> shouldCreateNewTool
-  shouldCreateNewTool -.-> buildReflectionPrompt
-  buildReflectionPrompt -.-> proposeToolFromTask
-  proposeToolFromTask -.-> shouldTriggerReflection
+  detectRepetitivePattern --> extractBashPatterns
+  proposeToolFromTask --> extractBashPatterns
+  proposeToolFromTask --> generateToolNameFromPattern
+  shouldCreateNewTool --> detectComplexChain
+  shouldCreateNewTool --> detectRepetitivePattern
+  shouldCreateNewTool --> extractCodeFromResult
+  shouldCreateNewTool --> generateToolNameFromPattern
+  shouldCreateNewTool --> generateToolNameFromTask
 ```
 
 ### シーケンス図
@@ -245,4 +254,4 @@ shouldTriggerReflection(context: Partial<ToolReflectionContext>): boolean
 **戻り値**: `boolean`
 
 ---
-*自動生成: 2026-02-18T07:48:44.936Z*
+*自動生成: 2026-02-18T14:31:30.981Z*

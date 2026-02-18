@@ -1,4 +1,38 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/semantic_index.ts
+ * role: セマンティックインデックス生成ツール。コードファイルのベクトル埋め込みを生成してインデックスに保存する
+ * why: コードの意味ベース検索を可能にし、キーワード検索では見つけにくい関連コードを発見できるようにするため
+ * related: types.js, utils/constants.js, embeddings, vector_store
+ * public_api: デフォルトエクスポート（SemanticIndexInputを受け取りSemanticIndexOutputを返すツール関数）
+ * invariants:
+ *   - インデックスファイルはJSONL形式で保存される
+ *   - チャンクIDはファイルパスと行番号から一意に生成される
+ *   - 同一ファイルの再インデックス時はハッシュで変更を検出する
+ * side_effects:
+ *   - .pi/semantic-index/ディレクトリへのファイル読み書き
+ *   - ソースファイルの読み込み
+ *   - 埋め込みプロバイダーへのAPI呼び出し
+ * failure_modes:
+ *   - 対象ディレクトリが存在しない場合はエラー
+ *   - 埋め込みプロバイダーが全て失敗した場合はインデックス生成に失敗する
+ *   - 読み取り権限のないファイルはスキップされる
+ * @abdd.explain
+ * overview: 指定されたパス配下のコードファイルを収集し、チャンク分割してベクトル埋め込みを生成、セマンティックインデックスとして保存するツール
+ * what_it_does:
+ *   - ディレクトリを再帰的に走査し、指定拡張子のファイルを収集する
+ *   - コードを行ベースでチャンク分割する（デフォルト500行、オーバーラップ50行）
+ *   - 各チャンクのベクトル埋め込みを生成する
+ *   - インデックスとメタデータをJSONL/JSONファイルとして永続化する
+ * why_it_exists:
+ *   - コードの意味的類似性に基づく検索機能を提供するため
+ *   - 大規模コードベースでの関連コード発見を効率化するため
+ * scope:
+ *   in: 対象ルートパス、対象拡張子リスト、除外パターン、forceフラグ、チャンクサイズ設定
+ *   out: インデックスされたチャンク数、生成されたインデックスファイルパス、処理されたファイル一覧
+ */
+
+/**
  * Semantic Index Tool
  *
  * Generates vector embeddings for code files and stores them in a semantic index.

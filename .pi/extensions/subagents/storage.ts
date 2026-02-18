@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/subagents/storage.ts
+ * role: サブエージェントの定義情報と実行記録の永続化を管理するストレージモジュール
+ * why: サブエージェントの設定および実行履歴をディスク上で一元管理し、再利用・追跡を可能にするため
+ * related: lib/storage-base.ts, lib/storage-lock.ts, lib/comprehensive-logger.ts, agent-teams/storage.ts
+ * public_api: SubagentDefinition, SubagentRunRecord, SubagentStorage, AgentEnabledState
+ * invariants: createdAt/updatedAtはISO 8601形式、runId/agentIdは空文字不可、latencyMsは非負整数
+ * side_effects: ファイルシステムへの読み書き、ファイルロックの取得と解放
+ * failure_modes: ディスク容量不足、パーミッション不足による書き込み失敗、ロック取得タイムアウト、JSONパースエラー
+ * @abdd.explain
+ * overview: サブエージェントの定義と実行記録をJSONファイルとして永続化するストレージ層
+ * what_it_does:
+ *   - SubagentDefinition型に基づくサブエージェント定義の保存・読み込み
+ *   - SubagentRunRecord型に基づく実行履歴の記録・取得
+ *   - lib/storage-base.tsの共通ユーティリティを用いたパス管理とストレージ操作
+ *   - atomicWriteTextFileによるアトミックなファイル書き込み
+ * why_it_exists:
+ *   - agent-teams/storage.tsとのDRY違反を解消し、共通ストレージ基盤を再利用するため
+ *   - サブエージェント固有のデータ構造と操作を分離して管理するため
+ * scope:
+ *   in: サブエージェント定義の作成・更新・削除、実行記録の追加、ストレージのマージ操作
+ *   out: 他エージェントチームのストレージ、外部API通信、UI描画
+ */
+
+/**
  * Subagent storage module.
  * Handles persistence for subagent definitions and run records.
  *

@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { Markdown, getMarkdownTheme } from '@mariozechner/pi-tui';
+// from '@mariozechner/pi-tui': Markdown, getMarkdownTheme
 ```
 
 ## エクスポート一覧
@@ -62,16 +62,13 @@ flowchart LR
 ```mermaid
 flowchart TD
   appendTail["appendTail()"]
-  toTailLines["toTailLines()"]
   countOccurrences["countOccurrences()"]
   estimateLineCount["estimateLineCount()"]
   looksLikeMarkdown["looksLikeMarkdown()"]
   renderPreviewWithMarkdown["renderPreviewWithMarkdown()"]
-  appendTail -.-> toTailLines
-  toTailLines -.-> countOccurrences
-  countOccurrences -.-> estimateLineCount
-  estimateLineCount -.-> looksLikeMarkdown
-  looksLikeMarkdown -.-> renderPreviewWithMarkdown
+  toTailLines["toTailLines()"]
+  renderPreviewWithMarkdown --> looksLikeMarkdown
+  renderPreviewWithMarkdown --> toTailLines
 ```
 
 ### シーケンス図
@@ -212,4 +209,4 @@ interface MarkdownPreviewResult {
 マークダウンプレビューの結果を表します
 
 ---
-*自動生成: 2026-02-18T07:48:45.376Z*
+*自動生成: 2026-02-18T14:31:31.045Z*

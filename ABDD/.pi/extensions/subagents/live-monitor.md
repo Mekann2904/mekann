@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { Key, matchesKey, truncateToWidth } from '@mariozechner/pi-tui';
-import { formatDurationMs, formatBytes, formatClockTime } from '../../lib/format-utils.js';
-import { appendTail, countOccurrences, estimateLineCount... } from '../../lib/tui/tui-utils.js';
-import { toTailLines, looksLikeMarkdown } from '../../lib/live-view-utils.js';
-import { computeLiveWindow } from '../../lib/agent-utils.js';
+// from '@mariozechner/pi-tui': Key, matchesKey, truncateToWidth
+// from '../../lib/format-utils.js': formatDurationMs, formatBytes, formatClockTime
+// from '../../lib/tui/tui-utils.js': appendTail, countOccurrences, estimateLineCount, ...
+// from '../../lib/live-view-utils.js': toTailLines, looksLikeMarkdown
+// from '../../lib/agent-utils.js': computeLiveWindow
 // ... and 2 more imports
 ```
 
@@ -58,9 +58,18 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  renderSubagentLiveView["renderSubagentLiveView()"]
+  add["add()"]
+  clearRenderTimer["clearRenderTimer()"]
+  close["close()"]
   createSubagentLiveMonitor["createSubagentLiveMonitor()"]
-  renderSubagentLiveView -.-> createSubagentLiveMonitor
+  queueRender["queueRender()"]
+  renderSubagentLiveView["renderSubagentLiveView()"]
+  close --> clearRenderTimer
+  createSubagentLiveMonitor --> clearRenderTimer
+  createSubagentLiveMonitor --> close
+  createSubagentLiveMonitor --> queueRender
+  createSubagentLiveMonitor --> renderSubagentLiveView
+  renderSubagentLiveView --> add
 ```
 
 ### シーケンス図
@@ -181,4 +190,4 @@ close(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T07:48:44.734Z*
+*自動生成: 2026-02-18T14:31:30.898Z*

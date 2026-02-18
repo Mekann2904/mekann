@@ -1,4 +1,36 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/question.ts
+ * role: PIエージェント用インタラクティブ質問UI拡張モジュール
+ * why: エージェントがユーザーに選択肢または自由記述で回答を求める際の統一インターフェースを提供するため
+ * related: @mariozechner/pi-coding-agent, @mariozechner/pi-tui, @mariozechner/pi-ai
+ * public_api: askSingleQuestion関数, QuestionInfo型, QuestionOption型, Answer型
+ * invariants:
+ *   - options未指定時は空配列として扱う
+ *   - custom:true(デフォルト)の場合、「その他」オプションが末尾に自動追加される
+ *   - multiple:true時のみ複数選択が可能
+ * side_effects:
+ *   - 標準入力のキーイベントを監視・消費する
+ *   - 端末画面に質問UIを描画する
+ * failure_modes:
+ *   - ユーザーがキャンセル操作を行った場合nullを返す
+ *   - 端末幅が狭い場合truncateToWidthにより表示が切り詰められる
+ * @abdd.explain
+ * overview: opencode互換の質問インターフェースを持つPIエージェント拡張。単一選択・複数選択・自由記述の3つの回答モードをサポートする。
+ * what_it_does:
+ *   - ヘッダーと質問文、選択肢を含むTUIを描画する
+ *   - カーソル移動と選択状態の管理を行う
+ *   - 自由記述モードでの複数行テキスト入力を処理する
+ *   - IME入力位置をCURSOR_MARKERで制御する
+ * why_it_exists:
+ *   - エージェントとユーザー間の双方向コミュニケーションを実現するため
+ *   - opencodeとの互換性により既存ワークフローを維持するため
+ * scope:
+ *   in: QuestionInfoオブジェクト(質問文、ヘッダー、選択肢、multiple/customフラグ), ExtensionAPIのコンテキスト
+ *   out: 選択されたラベルの配列(Answer), またはキャンセル時はnull
+ */
+
+/**
  * Question Tool Extension for PI Coding Agent
  *
  * PIエージェントがユーザーに質問するためのインタラクティブUI

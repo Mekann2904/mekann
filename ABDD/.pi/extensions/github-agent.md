@@ -16,10 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
-import { Type, Static } from '@sinclair/typebox';
+// from 'node:path': path
+// from 'node:child_process': execFile
+// from 'node:util': promisify
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from '@sinclair/typebox': Type, Static
 // ... and 1 more imports
 ```
 
@@ -27,6 +28,31 @@ import { Type, Static } from '@sinclair/typebox';
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+
+## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+### gh_agent
+
+GitHub repository exploration tool. Supports info, tree, read, and search commands.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Judge as "Judge"
+  participant Unresolved as "Unresolved"
+
+  User->>System: GitHub repository exploration tool. Supports info, tree, ...
+  System->>Judge: resolve
+  System->>Unresolved: cmdArgs.push (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: output.trim (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
 
 ## 図解
 
@@ -54,4 +80,4 @@ type GhAgentArgs = Static<typeof GhAgentParams>
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.480Z*
+*自動生成: 2026-02-18T14:31:30.718Z*

@@ -1,4 +1,39 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/usage-tracker.ts
+ * role: LLM使用量・コスト追跡エージェント拡張
+ * why: セッションごとのLLMコストを可視化し、モデル別・日別の使用傾向を把握するため
+ * related: comprehensive-logger.ts, comprehensive-logger-types.ts, ExtensionAPI
+ * public_api: collectData(), parseUsageFile()
+ * invariants:
+ *   - キャッシュファイルは ~/.pi/extensions/usage-cache.json に配置される
+ *   - セッションデータは ~/.pi/agent/sessions/ 以下から読み込まれる
+ *   - ファイル解析は末尾1000行に制限される
+ * side_effects:
+ *   - キャッシュディレクトリの作成
+ *   - キャッシュファイルの読み書き
+ *   - セッションディレクトリの走査
+ * failure_modes:
+ *   - キャッシュディレクトリ/ファイルの権限エラー時は処理をスキップ
+ *   - 不正なJSON行は無視して解析を継続
+ *   - セッションディレクトリが存在しない場合は空のデータを返す
+ * @abdd.explain
+ * overview: ~/.pi/agent/sessions/ 配下のログファイルを解析し、LLMの使用コストを集計する拡張機能
+ * what_it_does:
+ *   - セッションログから message タイプのエントリを抽出し、コスト情報を収集
+ *   - モデル別・日別・日別モデル別の3軸でコストを集計
+ *   - ファイル単位のmtimeベースキャッシュで差分解析を最適化
+ *   - ヒートマップ表示用のデータを提供
+ * why_it_exists:
+ *   - LLM利用コストの可視化による予算管理
+ *   - モデルごとの費用対効果分析
+ *   - 使用パターンの把握による最適なモデル選択支援
+ * scope:
+ *   in: セッションディレクトリ内のログファイル(JSONL形式)
+ *   out: モデル別/日別/日別モデル別のコスト集計データ
+ */
+
+/**
  * Simple LLM Usage Tracker
  * Shows model costs and daily usage heatmap
  * Optimized with per-file caching

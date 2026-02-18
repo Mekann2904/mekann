@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
-import { getEffectiveLimit, getSchedulerAwareLimit } from '../lib/adaptive-rate-controller';
-import { getMyParallelLimit, isCoordinatorInitialized, getModelParallelLimit... } from '../lib/cross-instance-coordinator';
-import { broadcastQueueState, getWorkStealingSummary } from '../lib/cross-instance-coordinator';
-import { getParallelismAdjuster, getDynamicParallelism } from '../lib/dynamic-parallelism';
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from '../lib/adaptive-rate-controller': getEffectiveLimit, getSchedulerAwareLimit
+// from '../lib/cross-instance-coordinator': getMyParallelLimit, isCoordinatorInitialized, getModelParallelLimit, ...
+// from '../lib/cross-instance-coordinator': broadcastQueueState, getWorkStealingSummary
+// from '../lib/dynamic-parallelism': getParallelismAdjuster, getDynamicParallelism
 // ... and 5 more imports
 ```
 
@@ -29,7 +29,7 @@ import { getParallelismAdjuster, getDynamicParallelism } from '../lib/dynamic-pa
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `setRuntimeStateProvider` | ランタイム状態プロバイダーを設定する（テスト用） |
-| 関数 | `getRuntimeStateProvider` | ランタイム状態プロバイダーを取得する（テスト用） |
+| 関数 | `getRuntimeStateProvider` | - |
 | 関数 | `notifyRuntimeCapacityChanged` | ランタイム容量変更イベントを通知する |
 | 関数 | `getSharedRuntimeState` | 共有ランタイム状態を取得する |
 | 関数 | `getRuntimeSnapshot` | ランタイムのスナップショットを取得する |
@@ -55,18 +55,18 @@ import { getParallelismAdjuster, getDynamicParallelism } from '../lib/dynamic-pa
 | 関数 | `getComprehensiveRuntimeStatus` | ランタイムの包括的なステータスを取得する |
 | 関数 | `formatComprehensiveRuntimeStatus` | ランタイムのステータスを整形して文字列で返す |
 | 関数 | `registerAgentRuntimeExtension` | エージェントランタイム拡張を登録する |
-| インターフェース | `AgentRuntimeLimits` | エージェントランタイムのリミット設定を定義するインターフェース |
-| インターフェース | `RuntimeStateProvider` | ランタイム状態を提供する抽象インターフェース |
-| インターフェース | `AgentRuntimeSnapshot` | エージェントランタイムのスナップショット |
-| インターフェース | `RuntimeStatusLineOptions` | ランタイムステータス行のオプション |
-| インターフェース | `RuntimeCapacityCheckInput` | 容量チェック入力 |
-| インターフェース | `RuntimeCapacityCheck` | ランタイム容量チェック結果を表します |
-| インターフェース | `RuntimeCapacityWaitInput` | オーケストレーション待機結果を表すインターフェース |
-| インターフェース | `RuntimeCapacityWaitResult` | 容量待機の結果を表します。 |
-| インターフェース | `RuntimeCapacityReservationLease` | ランタイム容量の予約リースを表すインターフェース |
-| インターフェース | `RuntimeCapacityReserveInput` | ランタイム容量の予約入力 |
-| インターフェース | `RuntimeCapacityReserveResult` | ランタイム容量予約の結果 |
-| インターフェース | `RuntimeOrchestrationWaitInput` | 実行オーケストレーションの待機入力 |
+| インターフェース | `AgentRuntimeLimits` | - |
+| インターフェース | `RuntimeStateProvider` | - |
+| インターフェース | `AgentRuntimeSnapshot` | - |
+| インターフェース | `RuntimeStatusLineOptions` | - |
+| インターフェース | `RuntimeCapacityCheckInput` | - |
+| インターフェース | `RuntimeCapacityCheck` | - |
+| インターフェース | `RuntimeCapacityWaitInput` | - |
+| インターフェース | `RuntimeCapacityWaitResult` | - |
+| インターフェース | `RuntimeCapacityReservationLease` | - |
+| インターフェース | `RuntimeCapacityReserveInput` | - |
+| インターフェース | `RuntimeCapacityReserveResult` | - |
+| インターフェース | `RuntimeOrchestrationWaitInput` | - |
 | インターフェース | `RuntimeOrchestrationLease` | ランタイムオーケストレーションのリース |
 | インターフェース | `RuntimeOrchestrationWaitResult` | オーケストレーションの待機結果。 |
 
@@ -223,17 +223,63 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  setRuntimeStateProvider["setRuntimeStateProvider()"]
-  getRuntimeStateProvider["getRuntimeStateProvider()"]
-  notifyRuntimeCapacityChanged["notifyRuntimeCapacityChanged()"]
-  getSharedRuntimeState["getSharedRuntimeState()"]
-  getRuntimeSnapshot["getRuntimeSnapshot()"]
+  checkRuntimeCapacity["checkRuntimeCapacity()"]
+  cleanupExpiredReservations["cleanupExpiredReservations()"]
+  computeBackoffDelay["computeBackoffDelay()"]
+  createCapacityCheck["createCapacityCheck()"]
+  createReservationLease["createReservationLease()"]
+  createRuntimeQueueEntryId["createRuntimeQueueEntryId()"]
+  createRuntimeReservationId["createRuntimeReservationId()"]
   formatRuntimeStatusLine["formatRuntimeStatusLine()"]
-  setRuntimeStateProvider -.-> getRuntimeStateProvider
-  getRuntimeStateProvider -.-> notifyRuntimeCapacityChanged
-  notifyRuntimeCapacityChanged -.-> getSharedRuntimeState
-  getSharedRuntimeState -.-> getRuntimeSnapshot
-  getRuntimeSnapshot -.-> formatRuntimeStatusLine
+  getRuntimeSnapshot["getRuntimeSnapshot()"]
+  getRuntimeStateProvider["getRuntimeStateProvider()"]
+  getSharedRuntimeState["getSharedRuntimeState()"]
+  normalizePositiveInt["normalizePositiveInt()"]
+  normalizeReservationTtlMs["normalizeReservationTtlMs()"]
+  notifyRuntimeCapacityChanged["notifyRuntimeCapacityChanged()"]
+  reserveRuntimeCapacity["reserveRuntimeCapacity()"]
+  sanitizePlannedCount["sanitizePlannedCount()"]
+  schedulerBasedWait["schedulerBasedWait()"]
+  setRuntimeStateProvider["setRuntimeStateProvider()"]
+  sortQueueByPriority["sortQueueByPriority()"]
+  tryReserveRuntimeCapacity["tryReserveRuntimeCapacity()"]
+  wait["wait()"]
+  waitForRuntimeCapacity["waitForRuntimeCapacity()"]
+  waitForRuntimeCapacityEvent["waitForRuntimeCapacityEvent()"]
+  waitForRuntimeOrchestrationTurn["waitForRuntimeOrchestrationTurn()"]
+  checkRuntimeCapacity --> createCapacityCheck
+  checkRuntimeCapacity --> getRuntimeSnapshot
+  formatRuntimeStatusLine --> getRuntimeSnapshot
+  getRuntimeSnapshot --> cleanupExpiredReservations
+  getRuntimeSnapshot --> getSharedRuntimeState
+  reserveRuntimeCapacity --> checkRuntimeCapacity
+  reserveRuntimeCapacity --> computeBackoffDelay
+  reserveRuntimeCapacity --> getRuntimeSnapshot
+  reserveRuntimeCapacity --> normalizePositiveInt
+  reserveRuntimeCapacity --> tryReserveRuntimeCapacity
+  reserveRuntimeCapacity --> wait
+  reserveRuntimeCapacity --> waitForRuntimeCapacityEvent
+  tryReserveRuntimeCapacity --> cleanupExpiredReservations
+  tryReserveRuntimeCapacity --> createCapacityCheck
+  tryReserveRuntimeCapacity --> createReservationLease
+  tryReserveRuntimeCapacity --> createRuntimeReservationId
+  tryReserveRuntimeCapacity --> getRuntimeSnapshot
+  tryReserveRuntimeCapacity --> getSharedRuntimeState
+  tryReserveRuntimeCapacity --> normalizeReservationTtlMs
+  tryReserveRuntimeCapacity --> notifyRuntimeCapacityChanged
+  tryReserveRuntimeCapacity --> sanitizePlannedCount
+  waitForRuntimeCapacity --> checkRuntimeCapacity
+  waitForRuntimeCapacity --> computeBackoffDelay
+  waitForRuntimeCapacity --> getRuntimeSnapshot
+  waitForRuntimeCapacity --> normalizePositiveInt
+  waitForRuntimeCapacity --> schedulerBasedWait
+  waitForRuntimeCapacity --> wait
+  waitForRuntimeCapacity --> waitForRuntimeCapacityEvent
+  waitForRuntimeOrchestrationTurn --> createRuntimeQueueEntryId
+  waitForRuntimeOrchestrationTurn --> getRuntimeSnapshot
+  waitForRuntimeOrchestrationTurn --> getSharedRuntimeState
+  waitForRuntimeOrchestrationTurn --> normalizePositiveInt
+  waitForRuntimeOrchestrationTurn --> sortQueueByPriority
 ```
 
 ### シーケンス図
@@ -281,8 +327,6 @@ setRuntimeStateProvider(provider: RuntimeStateProvider): void
 ```typescript
 getRuntimeStateProvider(): RuntimeStateProvider
 ```
-
-ランタイム状態プロバイダーを取得する（テスト用）
 
 **戻り値**: `RuntimeStateProvider`
 
@@ -1119,8 +1163,6 @@ interface AgentRuntimeLimits {
 }
 ```
 
-エージェントランタイムのリミット設定を定義するインターフェース
-
 ### RuntimeQueueEntry
 
 ```typescript
@@ -1184,8 +1226,6 @@ interface RuntimeStateProvider {
 }
 ```
 
-ランタイム状態を提供する抽象インターフェース
-
 ### AgentRuntimeSnapshot
 
 ```typescript
@@ -1214,8 +1254,6 @@ interface AgentRuntimeSnapshot {
 }
 ```
 
-エージェントランタイムのスナップショット
-
 ### RuntimeStatusLineOptions
 
 ```typescript
@@ -1227,8 +1265,6 @@ interface RuntimeStatusLineOptions {
 }
 ```
 
-ランタイムステータス行のオプション
-
 ### RuntimeCapacityCheckInput
 
 ```typescript
@@ -1237,8 +1273,6 @@ interface RuntimeCapacityCheckInput {
   additionalLlm: number;
 }
 ```
-
-容量チェック入力
 
 ### RuntimeCapacityCheck
 
@@ -1252,8 +1286,6 @@ interface RuntimeCapacityCheck {
 }
 ```
 
-ランタイム容量チェック結果を表します
-
 ### RuntimeCapacityWaitInput
 
 ```typescript
@@ -1264,10 +1296,6 @@ interface RuntimeCapacityWaitInput {
 }
 ```
 
-オーケストレーション待機結果を表すインターフェース
-
-待機処理の完了状態、待機時間、試行回数、キュー位置などの情報を含みます。
-
 ### RuntimeCapacityWaitResult
 
 ```typescript
@@ -1277,8 +1305,6 @@ interface RuntimeCapacityWaitResult {
   timedOut: boolean;
 }
 ```
-
-容量待機の結果を表します。
 
 ### RuntimeCapacityReservationLease
 
@@ -1295,8 +1321,6 @@ interface RuntimeCapacityReservationLease {
 }
 ```
 
-ランタイム容量の予約リースを表すインターフェース
-
 ### RuntimeCapacityReserveInput
 
 ```typescript
@@ -1309,8 +1333,6 @@ interface RuntimeCapacityReserveInput {
 }
 ```
 
-ランタイム容量の予約入力
-
 ### RuntimeCapacityReserveResult
 
 ```typescript
@@ -1322,8 +1344,6 @@ interface RuntimeCapacityReserveResult {
   reservation?: RuntimeCapacityReservationLease;
 }
 ```
-
-ランタイム容量予約の結果
 
 ### RuntimeOrchestrationWaitInput
 
@@ -1340,8 +1360,6 @@ interface RuntimeOrchestrationWaitInput {
   signal?: AbortSignal;
 }
 ```
-
-実行オーケストレーションの待機入力
 
 ### RuntimeOrchestrationLease
 
@@ -1383,4 +1401,4 @@ type GlobalScopeWithRuntime = typeof globalThis & {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.074Z*
+*自動生成: 2026-02-18T14:31:30.424Z*

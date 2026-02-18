@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { dnsLookup } from 'node:dns/promises';
+// from 'node:dns/promises': dnsLookup
 ```
 
 ## エクスポート一覧
@@ -34,10 +34,12 @@ import { dnsLookup } from 'node:dns/promises';
 ```mermaid
 flowchart TD
   isBlockedHostname["isBlockedHostname()"]
+  isPrivateIPv4["isPrivateIPv4()"]
   isPrivateOrReservedIP["isPrivateOrReservedIP()"]
   validateUrlForSsrf["validateUrlForSsrf()"]
-  isBlockedHostname -.-> isPrivateOrReservedIP
-  isPrivateOrReservedIP -.-> validateUrlForSsrf
+  isPrivateOrReservedIP --> isPrivateIPv4
+  validateUrlForSsrf --> isBlockedHostname
+  validateUrlForSsrf --> isPrivateOrReservedIP
 ```
 
 ### シーケンス図
@@ -122,4 +124,4 @@ SSRF保護のためURLを検証する
 **戻り値**: `Promise<void>`
 
 ---
-*自動生成: 2026-02-18T07:48:44.513Z*
+*自動生成: 2026-02-18T14:31:30.751Z*

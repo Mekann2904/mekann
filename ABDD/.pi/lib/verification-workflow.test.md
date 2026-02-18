@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { shouldTriggerVerification, isHighStakesTask, resolveVerificationConfig... } from './verification-workflow.js';
+// from './verification-workflow.js': shouldTriggerVerification, isHighStakesTask, resolveVerificationConfig, ...
 ```
 
 ## エクスポート一覧
@@ -165,4 +165,4 @@ interface TestResult {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:45.408Z*
+*自動生成: 2026-02-18T14:31:31.049Z*

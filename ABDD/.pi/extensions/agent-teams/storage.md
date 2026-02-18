@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { createPathsFactory, createEnsurePaths, pruneRunArtifacts... } from '../../lib/storage-base.js';
-import { atomicWriteTextFile, withFileLock } from '../../lib/storage-lock.js';
-import { getLogger } from '../../lib/comprehensive-logger.js';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
+// from '../../lib/storage-base.js': createPathsFactory, createEnsurePaths, pruneRunArtifacts, ...
+// from '../../lib/storage-lock.js': atomicWriteTextFile, withFileLock
+// from '../../lib/comprehensive-logger.js': getLogger
 ```
 
 ## エクスポート一覧
@@ -152,13 +152,16 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  toId["toId()"]
   loadStorage["loadStorage()"]
+  mergeTeamStorageWithDisk["mergeTeamStorageWithDisk()"]
   saveStorage["saveStorage()"]
   saveStorageWithPatterns["saveStorageWithPatterns()"]
-  toId -.-> loadStorage
-  loadStorage -.-> saveStorage
-  saveStorage -.-> saveStorageWithPatterns
+  toId["toId()"]
+  loadStorage --> saveStorage
+  mergeTeamStorageWithDisk --> mergeTeamStorageWithDisk
+  saveStorage --> mergeTeamStorageWithDisk
+  saveStorageWithPatterns --> saveStorage
+  toId --> toId
 ```
 
 ### シーケンス図
@@ -488,4 +491,4 @@ type TeamJudgeVerdict = "trusted" | "partial" | "untrusted"
 チーム審査の判定結果
 
 ---
-*自動生成: 2026-02-18T07:48:44.346Z*
+*自動生成: 2026-02-18T14:31:30.482Z*

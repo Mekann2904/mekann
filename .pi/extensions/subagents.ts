@@ -1,3 +1,41 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/subagents.ts
+ * role: サブエージェントの作成、管理、委任実行ツールを提供する拡張モジュール
+ * why: タスクを特化型ヘルパーエージェントへ積極的に委譲するデフォルトワークフローを実現するため
+ * related: .pi/extensions/agent-runtime.ts, .pi/extensions/agent-teams.ts, .pi/lib/agent-common.js, .pi/lib/agent-errors.js
+ * public_api: サブエージェント作成ツール, サブエージェント管理ツール, 委任実行関数
+ * invariants:
+ *   - サブエージェント実行は親エージェントのランタイム容量予約内で動作する
+ *   - タイムアウト値はモデル設定とDEFAULT_AGENT_TIMEOUT_MSから決定される
+ *   - リトライはSTABLE_RUNTIME_PROFILEに従い実行される
+ * side_effects:
+ *   - ファイルシステムへのサブエージェント状態書き込み
+ *   - ランタイム容量の予約と解放
+ *   - 並列実行ペナルティの適用と減衰
+ *   - レート制限ゲートの更新
+ * failure_modes:
+ *   - 容量不足による実行キュー待機
+ *   - レート制限による一時停止とリトライ
+ *   - タイムアウトによる実行中断
+ *   - スキーマ検証エラーによる出力却下
+ * @abdd.explain
+ * overview: pi-coding-agent用のサブエージェント実行フレームワーク。タスク委譲、並列実行、エラーハンドリング、ライブステータス表示を統合管理する。
+ * what_it_does:
+ *   - サブエージェントの作成と設定管理
+ *   - 親エージェントからのタスク委任実行
+ *   - 並列実行数のアダプティブ制御とレート制限対応
+ *   - 実行結果の検証とエラー分類
+ *   - ランタイム容量の予約とオーケストレーション待機
+ * why_it_exists:
+ *   - 複雑なタスクを特化型エージェントへ分割して効率化するため
+ *   - 並列実行とリソース管理を統一的に制御するため
+ *   - 再試行ロジックとエラー回復を標準化するため
+ * scope:
+ *   in: タスク指示文字列, サブエージェント設定, 親AbortControllerシグナル, 実行ルール
+ *   out: 実行結果, ステータスイベント, エラー情報, コスト見積もり
+ */
+
 // File: .pi/extensions/subagents.ts
 // Description: Adds subagent creation, management, and delegated execution tools for pi.
 // Why: Enables proactive task delegation to focused helper agents as a default workflow.

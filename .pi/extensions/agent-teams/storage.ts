@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams/storage.ts
+ * role: エージェントチームの定義と実行結果の永続化ストレージモジュール
+ * why: チーム構成情報と実行履歴をディスク上で管理し、再利用可能にするため
+ * related: lib/storage-base.ts, lib/storage-lock.ts, lib/comprehensive-logger.ts, subagents/storage.ts
+ * public_api: TeamEnabledState, TeamStrategy, TeamJudgeVerdict, TeamMember, TeamDefinition, TeamMemberResult
+ * invariants: チームIDは一意、createdAt/updatedAtはISO 8601形式、members配列は空でない
+ * side_effects: ファイルシステムへの読み書き、ロックファイルの作成・削除
+ * failure_modes: ディスク容量不足、ファイルロック競合、不正なJSON形式での読み込み失敗
+ * @abdd.explain
+ * overview: 共通ストレージユーティリティを利用し、エージェントチームの定義と実行記録を永続化する
+ * what_it_does:
+ *   - チーム定義（TeamDefinition）の保存・読み込み・更新
+ *   - チームメンバーの実行結果（TeamMemberResult）の記録
+ *   - ファイルロックによる排他制御付きアトミック書き込み
+ *   - 実行アーティファクトの整理・削除
+ * why_it_exists:
+ *   - チーム構成をセッション間で永続化するため
+ *   - subagents/storage.tsとのDRY違反を解消し共通基盤を利用するため
+ *   - 型安全性のあるチームデータ管理を提供するため
+ * scope:
+ *   in: チームID、チーム定義オブジェクト、実行結果オブジェクト
+ *   out: ファイルシステム上のチーム定義ファイル、実行記録ファイル
+ */
+
+/**
  * Agent team storage module.
  * Handles persistence for team definitions and run records.
  *

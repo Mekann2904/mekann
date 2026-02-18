@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { VectorSearchResult } from './types.js';
+// from './types.js': VectorSearchResult
 ```
 
 ## エクスポート一覧
@@ -56,17 +56,21 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  cosineSimilarity["cosineSimilarity()"]
-  euclideanDistance["euclideanDistance()"]
-  normalizeVector["normalizeVector()"]
   addVectors["addVectors()"]
-  subtractVectors["subtractVectors()"]
+  cosineSimilarity["cosineSimilarity()"]
+  dotProduct["dotProduct()"]
+  euclideanDistance["euclideanDistance()"]
+  findBySimilarityThreshold["findBySimilarityThreshold()"]
+  findNearestNeighbors["findNearestNeighbors()"]
+  isValidEmbedding["isValidEmbedding()"]
+  meanVector["meanVector()"]
+  normalizeVector["normalizeVector()"]
   scaleVector["scaleVector()"]
-  cosineSimilarity -.-> euclideanDistance
-  euclideanDistance -.-> normalizeVector
-  normalizeVector -.-> addVectors
-  addVectors -.-> subtractVectors
-  subtractVectors -.-> scaleVector
+  subtractVectors["subtractVectors()"]
+  vectorNorm["vectorNorm()"]
+  zeroVector["zeroVector()"]
+  findBySimilarityThreshold --> cosineSimilarity
+  findNearestNeighbors --> cosineSimilarity
 ```
 
 ### シーケンス図
@@ -308,4 +312,4 @@ dotProduct(a: number[], b: number[]): number
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-18T07:48:44.963Z*
+*自動生成: 2026-02-18T14:31:30.988Z*

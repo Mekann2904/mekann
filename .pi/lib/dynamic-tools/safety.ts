@@ -1,4 +1,35 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/safety.ts
+ * role: 動的ツール実行時のコード安全性解析エンジン
+ * why: 生成コードの危険操作を事前検出し、システム破壊やセキュリティ侵害を防止するため
+ * related: dynamic-tools/executor.ts, dynamic-tools/permissions.ts, core/config.ts
+ * public_api: SafetyAnalysisResult, SafetyAnalysisIssue, SafetyAnalysisIssueType
+ * invariants:
+ *   - score は必ず 0.0〜1.0 の範囲
+ *   - isSafe=false の場合、issues に少なくとも1件の critical/high severity 問題が含まれる
+ *   - blockedOperations の検出時は必ず isSafe=false
+ * side_effects: なし（純粋な解析関数のみ提供）
+ * failure_modes:
+ *   - 正規表現の複雑性による解析タイムアウト
+ *   - 難読化コードでの誤検出・検出漏れ
+ *   - location.line/snippet が特定できない場合あり
+ * @abdd.explain
+ * overview: 生成されたコードを静的解析し、危険パターンを検出して安全性スコアを算出する
+ * what_it_does:
+ *   - fs.rm/fs.unlink 等のファイル削除操作を検出
+ *   - child_process/eval 等の動的実行を検出
+ *   - ネットワークアクセス、環境変数アクセスの検出
+ *   - 検出結果に基づき score、isSafe、recommendations を生成
+ * why_it_exists:
+ *   - LLM生成コードの無条件実行によるシステム損壊リスクの排除
+ *   - 許可/禁止操作の境界を明確化し、実行前検証を可能にする
+ * scope:
+ *   in: 解析対象のソースコード文字列、許可操作リスト
+ *   out: SafetyAnalysisResult（score、issues、allowed/blockedOperations、recommendations）
+ */
+
+/**
  * コード安全性解析モジュール
  * 生成されたコードの安全性を評価し、危険な操作を検出
  */

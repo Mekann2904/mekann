@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/provider-limits.ts
+ * role: プロバイダー/モデル別のレート制限と同時実行数制限の定義および管理
+ * why: APIレート制限違反を防ぎ、各プロバイダーの制約に基づいた適切なリクエスト制御を実現するため
+ * related: api-client.ts, rate-limiter.ts, config-manager.ts, model-resolver.ts
+ * public_api: ModelLimits, ModelTierLimits, ProviderLimitsConfig, ResolvedModelLimits
+ * invariants: RPMとconcurrencyは常に正の整数、tpmは未定義または正の整数
+ * side_effects: ファイルシステムへの読み書き（~/.pi/runtime/provider-limits.json）
+ * failure_modes: 設定ファイルの読み込み失敗時はビルトイン制限値にフォールバック
+ * @abdd.explain
+ * overview: 複数のLLMプロバイダー（Anthropic、OpenAI、Google等）のAPIレート制限と同時実行数を一元管理するレジストリ
+ * what_it_does:
+ *   - プロバイダーごと、モデルパターンごとのRPM/TPM/同時実行数制限を定義
+ *   - モデルティア別に異なる制限値をサポート
+ *   - ユーザー定義の制限設定を~/.pi/runtime/provider-limits.jsonから読み込み
+ *   - 制限が不明な場合のフォールバック値を提供
+ * why_it_exists:
+ *   - プロバイダーごとに異なるレート制限仕様を統一的なインターフェースで管理
+ *   - APIエラー（429 Too Many Requests）を予防的に回避
+ *   - 設定の外部化により制限値の更新をコード変更なしで実現
+ * scope:
+ *   in: プロバイダー名、モデル名、ティア情報
+ *   out: ResolvedModelLimitsオブジェクト（解決済みの制限値）
+ */
+
+/**
  * Provider Limits Registry
  *
  * Defines rate limits and concurrency limits for each provider/model.

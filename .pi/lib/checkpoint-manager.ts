@@ -1,3 +1,29 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/checkpoint-manager.ts
+ * role: 長時間実行タスクの状態永続化・復旧を行うチェックポイント管理モジュール
+ * why: タスクの途中状態を保存し、割り込みや障害発生時に再開可能にするため
+ * related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
+ * public_api: Checkpoint, CheckpointSaveResult, PreemptionResult, CheckpointManagerConfig, CheckpointSource, CheckpointPriority
+ * invariants: progressは0.0〜1.0の範囲、ttlMsは正の整数、checkpointDirは有効なディレクトリパス
+ * side_effects: ファイルシステムへの読み書き（チェックポイントの保存・削除）、ディレクトリ作成
+ * failure_modes: ディスク容量不足による保存失敗、不正なJSONシリアライズ/デシリアライズ、期限切れチェックポイントの読み込み
+ * @abdd.explain
+ * overview: 長時間実行タスクのチェックポイントをTTLベースで管理し、状態の永続化と復旧を提供する
+ * what_it_does:
+ *   - Checkpoint型によるタスク状態の構造化定義（id, taskId, source, state, progress等）
+ *   - TTLベースのチェックポイント自動クリーンアップ機能
+ *   - 優先度レベル（critical, high, normal, low, background）によるタスク分類
+ *   - 保存・復旧操作の結果をCheckpointSaveResult/PreemptionResultで返却
+ * why_it_exists:
+ *   - プリエンプション（割り込み）発生時のタスク状態保存を実現
+ *   - 中断されたタスクをチェックポイントから再開可能にする
+ *   - 複数のタスクソース（subagent_run, agent_team_run等）に対応した統一的な状態管理
+ * scope:
+ *   in: Checkpoint型の状態データ、CheckpointManagerConfigによる設定値
+ *   out: CheckpointSaveResult, PreemptionResult, チェックポイント統計情報
+ */
+
 // File: .pi/lib/checkpoint-manager.ts
 // Description: Checkpoint management for long-running tasks with TTL-based cleanup.
 // Why: Enables task state persistence and recovery for preemption and resumption.

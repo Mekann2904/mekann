@@ -1,3 +1,36 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/subagents/parallel-execution.ts
+ * role: サブエージェント並列実行時の容量解決と予約管理
+ * why: 並列実行の容量制御をsubagents.tsから分離し、保守性を確保するため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-runtime.ts
+ * public_api: resolveSubagentParallelCapacity, SubagentParallelCapacityResolution
+ * invariants:
+ *   - appliedParallelismは常に1以上の整数
+ *   - candidateはrequestedParallelismから1ずつ減らして探索
+ *   - 予約取得失敗時はallowed=falseで返却
+ * side_effects:
+ *   - RuntimeCapacityReservationLeaseの発行
+ *   - 容量予約によるランタイムリソースの確保
+ *   - 待機発生時のポーリング実行
+ * failure_modes:
+ *   - タイムアウトによる予約失敗
+ *   - AbortSignalによる中断
+ *   - 全candidateでの即時予約失敗
+ * @abdd.explain
+ * overview: サブエージェント並列実行における容量予約の解決を行うモジュール
+ * what_it_does:
+ *   - 要求並列度から利用可能な容量を降順探索で検索
+ *   - 即時予約不可時は最小枠(1)で待機予約を実行
+ *   - 予約結果に削減有無、待機時間、試行回数等のメタ情報を付与
+ * why_it_exists:
+ *   - subagents.tsの単一責任を守るため並列容量制御を分離
+ *   - 並列度の段階的削減ロジックを再利用可能にするため
+ * scope:
+ *   in: 並列実行容量の解決、予約、待機処理
+ *   out: 実際のサブエージェント実行、タスクスケジューリング
+ */
+
 // File: .pi/extensions/subagents/parallel-execution.ts
 // Description: Parallel execution capacity resolution for subagents.
 // Why: Separates parallel execution logic from main subagents.ts for maintainability.

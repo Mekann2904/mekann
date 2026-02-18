@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { SemanticSearchInput, SemanticSearchOutput, SemanticSearchResult... } from '../types.js';
-import { INDEX_DIR_NAME } from '../utils/constants.js';
-import { cosineSimilarity } from '../../../lib/embeddings/utils.js';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
+// from '../types.js': SemanticSearchInput, SemanticSearchOutput, SemanticSearchResult, ...
+// from '../utils/constants.js': INDEX_DIR_NAME
+// from '../../../lib/embeddings/utils.js': cosineSimilarity
 ```
 
 ## エクスポート一覧
@@ -51,9 +51,14 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  semanticSearch["semanticSearch()"]
+  findNearestNeighbors["findNearestNeighbors()"]
   formatSemanticSearch["formatSemanticSearch()"]
-  semanticSearch -.-> formatSemanticSearch
+  getIndexPath["getIndexPath()"]
+  loadIndex["loadIndex()"]
+  semanticSearch["semanticSearch()"]
+  loadIndex --> getIndexPath
+  semanticSearch --> findNearestNeighbors
+  semanticSearch --> loadIndex
 ```
 
 ### シーケンス図
@@ -163,4 +168,4 @@ formatSemanticSearch(result: SemanticSearchOutput): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T07:48:44.616Z*
+*自動生成: 2026-02-18T14:31:30.861Z*

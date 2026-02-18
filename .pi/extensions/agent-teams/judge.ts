@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams/judge.ts
+ * role: エージェントチームの不確実性計算および最終判定ロジックを提供するモジュール
+ * why: agent-teams.tsからSRP準拠で分離し、判定ロジックを独立して管理・テスト可能にするため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/text-parsing.js
+ * public_api: JudgeWeightConfig, DEFAULT_JUDGE_WEIGHTS, getJudgeWeights, TeamDefinition, TeamFinalJudge, TeamMemberResult, TeamStrategy, clampConfidence, parseUnitInterval, extractField, countKeywordSignals
+ * invariants: 不確実性値は常に[0,1]区間、重み合計は各カテゴリ内で1.0、DEFAULT_JUDGE_WEIGHTSは変更不可
+ * side_effects: customWeightsグローバル変数の読み書き（getJudgeWeightsがキャッシュを返す）
+ * failure_modes: カスタム重み設定の読み込み失敗時はデフォルト値にフォールバック
+ * @abdd.explain
+ * overview: マルチエージェントシステムにおける回答の不確実性を計算し、最終判定を行うための重み付け設定と計算ロジックを提供する
+ * what_it_does:
+ *   - JudgeWeightConfigインターフェースによる判定重みの型定義
+ *   - 内部重み、相互重み、システム重みの3層構造で不確実性を評価
+ *   - デフォルト重み設定（DEFAULT_JUDGE_WEIGHTS）の提供
+ *   - カスタム重み設定のキャッシュ機能
+ *   - 型定義とユーティリティ関数の再エクスポート
+ * why_it_exists:
+ *   - agent-teams.tsから判定ロジックを分離し単一責任原則を遵守
+ *   - 重みパラメータを外部設定可能にし、チューニングを容易にするため
+ *   - 判定プロセスの透明性と説明可能性を向上させるため
+ * scope:
+ *   in: TeamMemberResult配列、TeamDefinition、カスタム重み設定（オプション）
+ *   out: 不確実性スコア、最終判定結果、TeamFinalJudge
+ */
+
+/**
  * Agent team judge module.
  * Handles uncertainty calculation and final judgment logic.
  *

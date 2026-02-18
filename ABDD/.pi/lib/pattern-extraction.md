@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { ensureDir } from './fs-utils.js';
-import { extractKeywords, classifyTaskType, extractFiles... } from './run-index.js';
-import { atomicWriteTextFile } from './storage-lock.js';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
+// from './fs-utils.js': ensureDir
+// from './run-index.js': extractKeywords, classifyTaskType, extractFiles, ...
+// from './storage-lock.js': atomicWriteTextFile
 ```
 
 ## エクスポート一覧
@@ -99,17 +99,43 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  extractPatternFromRun["extractPatternFromRun()"]
-  getPatternStoragePath["getPatternStoragePath()"]
-  loadPatternStorage["loadPatternStorage()"]
-  savePatternStorage["savePatternStorage()"]
   addRunToPatterns["addRunToPatterns()"]
+  arePatternsSimilar["arePatternsSimilar()"]
   extractAllPatterns["extractAllPatterns()"]
-  extractPatternFromRun -.-> getPatternStoragePath
-  getPatternStoragePath -.-> loadPatternStorage
-  loadPatternStorage -.-> savePatternStorage
-  savePatternStorage -.-> addRunToPatterns
-  addRunToPatterns -.-> extractAllPatterns
+  extractPatternFromRun["extractPatternFromRun()"]
+  findRelevantPatterns["findRelevantPatterns()"]
+  generatePatternId["generatePatternId()"]
+  getFailurePatternsToAvoid["getFailurePatternsToAvoid()"]
+  getPatternStoragePath["getPatternStoragePath()"]
+  getPatternsForTaskType["getPatternsForTaskType()"]
+  getTopSuccessPatterns["getTopSuccessPatterns()"]
+  isErrorResolved["isErrorResolved()"]
+  isFailurePattern["isFailurePattern()"]
+  isSuccessPattern["isSuccessPattern()"]
+  loadPatternStorage["loadPatternStorage()"]
+  mergePatterns["mergePatterns()"]
+  savePatternStorage["savePatternStorage()"]
+  addRunToPatterns --> arePatternsSimilar
+  addRunToPatterns --> extractPatternFromRun
+  addRunToPatterns --> loadPatternStorage
+  addRunToPatterns --> mergePatterns
+  addRunToPatterns --> savePatternStorage
+  extractAllPatterns --> arePatternsSimilar
+  extractAllPatterns --> extractPatternFromRun
+  extractAllPatterns --> loadPatternStorage
+  extractAllPatterns --> mergePatterns
+  extractAllPatterns --> savePatternStorage
+  extractPatternFromRun --> generatePatternId
+  extractPatternFromRun --> isFailurePattern
+  extractPatternFromRun --> isSuccessPattern
+  findRelevantPatterns --> loadPatternStorage
+  getFailurePatternsToAvoid --> loadPatternStorage
+  getPatternsForTaskType --> loadPatternStorage
+  getTopSuccessPatterns --> loadPatternStorage
+  isFailurePattern --> isErrorResolved
+  isFailurePattern --> isSuccessPattern
+  loadPatternStorage --> getPatternStoragePath
+  savePatternStorage --> getPatternStoragePath
 ```
 
 ### シーケンス図
@@ -469,4 +495,4 @@ interface RunData {
 パターン抽出用の実行データ
 
 ---
-*自動生成: 2026-02-18T07:48:45.041Z*
+*自動生成: 2026-02-18T14:31:31.006Z*

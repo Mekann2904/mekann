@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { normalizeForSingleLine } from '../../lib/format-utils.js';
-import { analyzeDiscussionStance } from '../../lib/text-parsing';
-import { classifyFailureType, shouldRetryByClassification, FailureClassification } from '../../lib/agent-errors';
-import { getCommunicationIdMode, getStanceClassificationMode, CommunicationIdMode } from '../../lib/output-schema';
-import { TeamMember, TeamMemberResult, TeamDefinition... } from './storage';
+// from '../../lib/format-utils.js': normalizeForSingleLine
+// from '../../lib/text-parsing': analyzeDiscussionStance
+// from '../../lib/agent-errors': classifyFailureType, shouldRetryByClassification, FailureClassification
+// from '../../lib/output-schema': getCommunicationIdMode, getStanceClassificationMode, CommunicationIdMode
+// from './storage': TeamMember, TeamMemberResult, TeamDefinition, ...
 // ... and 1 more imports
 ```
 
@@ -117,17 +117,27 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  addLink["addLink()"]
+  buildCommunicationContext["buildCommunicationContext()"]
   buildPrecomputedContextMap["buildPrecomputedContextMap()"]
+  checkTermination["checkTermination()"]
+  clearBeliefStateCache["clearBeliefStateCache()"]
+  createCommunicationLinksMap["createCommunicationLinksMap()"]
+  detectPartnerReferences["detectPartnerReferences()"]
+  detectPartnerReferencesV2["detectPartnerReferencesV2()"]
+  extractField["extractField()"]
+  getBeliefSummary["getBeliefSummary()"]
   normalizeCommunicationRounds["normalizeCommunicationRounds()"]
   normalizeFailedMemberRetryRounds["normalizeFailedMemberRetryRounds()"]
-  shouldRetryFailedMemberResult["shouldRetryFailedMemberResult()"]
+  sanitizeCommunicationSnippet["sanitizeCommunicationSnippet()"]
   shouldPreferAnchorMember["shouldPreferAnchorMember()"]
-  createCommunicationLinksMap["createCommunicationLinksMap()"]
-  buildPrecomputedContextMap -.-> normalizeCommunicationRounds
-  normalizeCommunicationRounds -.-> normalizeFailedMemberRetryRounds
-  normalizeFailedMemberRetryRounds -.-> shouldRetryFailedMemberResult
-  shouldRetryFailedMemberResult -.-> shouldPreferAnchorMember
-  shouldPreferAnchorMember -.-> createCommunicationLinksMap
+  shouldRetryFailedMemberResult["shouldRetryFailedMemberResult()"]
+  updateBeliefState["updateBeliefState()"]
+  buildPrecomputedContextMap --> extractField
+  buildPrecomputedContextMap --> sanitizeCommunicationSnippet
+  checkTermination --> extractField
+  createCommunicationLinksMap --> addLink
+  updateBeliefState --> extractField
 ```
 
 ### シーケンス図
@@ -503,4 +513,4 @@ interface BeliefContradiction {
 エージェントの信念間で検出された矛盾
 
 ---
-*自動生成: 2026-02-18T07:48:44.098Z*
+*自動生成: 2026-02-18T14:31:30.439Z*

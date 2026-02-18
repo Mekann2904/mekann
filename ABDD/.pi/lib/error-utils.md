@@ -30,15 +30,16 @@ related: []
 
 ```mermaid
 flowchart TD
-  toErrorMessage["toErrorMessage()"]
-  extractStatusCodeFromMessage["extractStatusCodeFromMessage()"]
   classifyPressureError["classifyPressureError()"]
+  extractStatusCodeFromMessage["extractStatusCodeFromMessage()"]
   isCancelledErrorMessage["isCancelledErrorMessage()"]
   isTimeoutErrorMessage["isTimeoutErrorMessage()"]
-  toErrorMessage -.-> extractStatusCodeFromMessage
-  extractStatusCodeFromMessage -.-> classifyPressureError
-  classifyPressureError -.-> isCancelledErrorMessage
-  isCancelledErrorMessage -.-> isTimeoutErrorMessage
+  toErrorMessage["toErrorMessage()"]
+  classifyPressureError --> extractStatusCodeFromMessage
+  classifyPressureError --> toErrorMessage
+  extractStatusCodeFromMessage --> toErrorMessage
+  isCancelledErrorMessage --> toErrorMessage
+  isTimeoutErrorMessage --> toErrorMessage
 ```
 
 ## 関数
@@ -134,4 +135,4 @@ type PressureErrorType = "rate_limit" | "timeout" | "capacity" | "other"
 圧力エラーの分類型
 
 ---
-*自動生成: 2026-02-18T07:48:44.966Z*
+*自動生成: 2026-02-18T14:31:30.989Z*

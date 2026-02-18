@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { StructureData, FunctionInfo, ClassInfo... } from './extract-structure.js';
-import { MermaidDiagrams } from './generate-diagrams.js';
+// from './extract-structure.js': StructureData, FunctionInfo, ClassInfo, ...
+// from './generate-diagrams.js': MermaidDiagrams
 ```
 
 ## エクスポート一覧
@@ -70,6 +70,33 @@ flowchart LR
     generate_diagrams["generate-diagrams"]
   end
   main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  generateAPIReference["generateAPIReference()"]
+  generateClassSection["generateClassSection()"]
+  generateDiagramsSection["generateDiagramsSection()"]
+  generateDocSections["generateDocSections()"]
+  generateFunctionSection["generateFunctionSection()"]
+  generateInterfaceSection["generateInterfaceSection()"]
+  generateLLMContext["generateLLMContext()"]
+  generateOverview["generateOverview()"]
+  generateStructureSection["generateStructureSection()"]
+  generateSuggestedExplanationPoints["generateSuggestedExplanationPoints()"]
+  generateTitle["generateTitle()"]
+  generateAPIReference --> generateClassSection
+  generateAPIReference --> generateFunctionSection
+  generateAPIReference --> generateInterfaceSection
+  generateDocSections --> generateAPIReference
+  generateDocSections --> generateDiagramsSection
+  generateDocSections --> generateLLMContext
+  generateDocSections --> generateOverview
+  generateDocSections --> generateStructureSection
+  generateDocSections --> generateTitle
+  generateLLMContext --> generateSuggestedExplanationPoints
 ```
 
 ## 関数
@@ -277,4 +304,4 @@ interface LLMContext {
 LLM用のコンテキスト情報
 
 ---
-*自動生成: 2026-02-18T07:48:44.442Z*
+*自動生成: 2026-02-18T14:31:30.663Z*

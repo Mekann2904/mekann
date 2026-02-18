@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/cache.ts
+ * role: 検索ツール結果のキャッシュ管理ユーティリティ
+ * why: 検索結果の再利用によるレスポンス時間短縮と重複計算の回避
+ * related: search/index.ts, search/tools.ts, search/config.ts
+ * public_api: CacheEntry, CacheConfig, CacheStats, DEFAULT_CACHE_CONFIG, getCacheKey
+ * invariants: TTL超過エントリは無効、maxEntries超過時はエントリ削除が必要、hitRateは0.0-1.0の範囲
+ * side_effects: なし（純粋な型定義と設定値、キー生成関数）
+ * failure_modes: 不正なparams渡によるキー生成エラー、maxEntries超過時の古いエントリ喪失
+ * @abdd.explain
+ * overview: 検索ツールの結果をTTLベースでキャッシュするための型定義とユーティリティ関数を提供する
+ * what_it_does:
+ *   - キャッシュエントリの型安全な定義（タイムスタンプ、TTL、パラメータ、結果）
+ *   - デフォルトキャッシュ設定の提供（TTL 5分、最大200エントリ、有効状態）
+ *   - ツール名とパラメータから決定的なキャッシュキーを生成
+ *   - キャッシュ統計情報（ヒット数、ミス数、ヒット率）の型定義
+ * why_it_exists:
+ *   - 検索処理のパフォーマンス最適化
+ *   - 同一パラメータでの再検索時のオーバーヘッド削減
+ *   - キャッシュ管理の一元化と型安全性の確保
+ * scope:
+ *   in: ツール名（string）、パラメータオブジェクト（Record<string, unknown>）
+ *   out: キャッシュキー（string）、型定義、デフォルト設定オブジェクト
+ */
+
+/**
  * Search Result Cache
  *
  * Provides caching for search tool results:

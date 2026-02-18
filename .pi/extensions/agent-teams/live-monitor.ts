@@ -1,3 +1,28 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams/live-monitor.ts
+ * role: エージェントチーム実行時のライブモニタリングUI描画モジュール
+ * why: メインのagent-teams.tsからライブモニタリング機能を分離し、保守性を確保するため
+ * related: .pi/extensions/agent-teams.ts, ../../lib/team-types.ts, ../../lib/live-view-utils.js, ../../lib/tui/tui-utils.js
+ * public_api: renderAgentTeamLiveView, toTeamLiveItemKey, TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonitorController, LiveStreamView
+ * invariants: イベント履歴はLIVE_EVENT_TAIL_LIMIT(120行)を超えた場合、古い順に削除される。toTeamLiveItemKeyは"teamId/memberId"形式の一意キーを返す。
+ * side_effects: pushLiveEvent内でTeamLiveItem.events配列を直接変更する（push/splice）。TeamLiveItemのlastEvent、lastEventAtMsフィールドを更新する。
+ * failure_modes: 入力イベントが空または"-"の場合、イベントは追加されない。幅・高さ制約により描画内容が切り捨てられる可能性がある。
+ * @abdd.explain
+ * overview: エージェントチームの実行状態をリアルタイムで表示するTUI描画機能を提供する
+ * what_it_does:
+ *   - チームメンバーの実行フェーズ(initial/communication/judge/finished/queued)をフォーマット表示
+ *   - タイムスタンプ付きイベントをアイテムに追加し、上限超過時に古いイベントを削除
+ *   - ライブビューの描画ウィンドウ計算とイベント履歴のテール取得
+ *   - チームIDとメンバーIDから一意キーを生成
+ * why_it_exists:
+ *   - agent-teams.tsの責務を軽量化し、UI描画ロジックを独立させる
+ *   - ライブモニタリング機能の再利用性とテスト容易性を向上させる
+ * scope:
+ *   in: TeamLiveItem配列、グローバルイベント、カーソル位置、表示モード、ストリームビュー、幅/高さ、テーマ設定
+ *   out: 描画用文字列配列、型定義の再エクスポート
+ */
+
 // File: .pi/extensions/agent-teams/live-monitor.ts
 // Description: Live monitoring UI for agent team execution.
 // Why: Separates live monitoring logic from main agent-teams.ts for maintainability.

@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/run-index.ts
+ * role: 過去の実行履歴を検索可能なインデックスとして構築・管理するモジュール
+ * why: 過去の解決策や類似タスクを高速に検索・再利用するため
+ * related: fs-utils.js, storage-lock.js, run-history.ts, search-engine.ts
+ * public_api: IndexedRun, TaskType, RunIndex, SearchOptions, SearchResult, RUN_INDEX_VERSION
+ * invariants: RUN_INDEX_VERSIONは1で固定、keywordIndexとtaskTypeIndexの値は常にrun内のrunIdを参照
+ * side_effects: ファイルシステムへの読み書き（インデックスファイルの作成・更新）
+ * failure_modes: インデックスファイル不存在時は空のインデックスを返却、ファイル読み込み失敗時は例外送出
+ * @abdd.explain
+ * overview: サブエージェントとチームの実行履歴から検索インデックスを生成し、キーワード・タスク種別・ステータスによる検索を可能にする
+ * what_it_does:
+ *   - 実行履歴からIndexedRunレコードを抽出しキーワードとタスク種別を付与
+ *   - キーワード逆引きインデックス（keywordIndex）とタスク種別逆引きインデックス（taskTypeIndex）を構築
+ *   - ステータス・タスク種別・キーワード一致数によるフィルタリング検索を提供
+ * why_it_exists:
+ *   - 過去の成功パターンや失敗パターンを効率的に再参照するため
+ *   - 類似タスク解決時の意思決定を支援するため
+ * scope:
+ *   in: 実行履歴データ（subagent/agent-team）、検索クエリ（キーワード、ステータス、タスク種別）
+ *   out: RunIndex構造体、SearchResult配列、永続化されたインデックスJSONファイル
+ */
+
+/**
  * Run Index Module.
  * Creates searchable indexes from subagent and team run histories.
  * Enables semantic and keyword-based retrieval of past solutions.

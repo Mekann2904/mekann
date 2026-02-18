@@ -90,17 +90,22 @@ classDiagram
 
 ```mermaid
 flowchart TD
+  analyzeQualityTrend["analyzeQualityTrend()"]
   assessCodeQuality["assessCodeQuality()"]
-  recordExecutionMetrics["recordExecutionMetrics()"]
-  getUsageStatistics["getUsageStatistics()"]
+  calculateConfidence["calculateConfidence()"]
+  extractFunctionLengths["extractFunctionLengths()"]
+  findLineNumber["findLineNumber()"]
+  generateImprovements["generateImprovements()"]
   getAllUsageStatistics["getAllUsageStatistics()"]
-  resetUsageStatistics["resetUsageStatistics()"]
+  getUsageStatistics["getUsageStatistics()"]
+  recordExecutionMetrics["recordExecutionMetrics()"]
   recordQualityScore["recordQualityScore()"]
-  assessCodeQuality -.-> recordExecutionMetrics
-  recordExecutionMetrics -.-> getUsageStatistics
-  getUsageStatistics -.-> getAllUsageStatistics
-  getAllUsageStatistics -.-> resetUsageStatistics
-  resetUsageStatistics -.-> recordQualityScore
+  resetUsageStatistics["resetUsageStatistics()"]
+  assessCodeQuality --> calculateConfidence
+  assessCodeQuality --> extractFunctionLengths
+  assessCodeQuality --> findLineNumber
+  assessCodeQuality --> generateImprovements
+  extractFunctionLengths --> findLineNumber
 ```
 
 ## 関数
@@ -383,4 +388,4 @@ interface QualityPattern {
 品質パターンの定義
 
 ---
-*自動生成: 2026-02-18T07:48:44.924Z*
+*自動生成: 2026-02-18T14:31:30.979Z*

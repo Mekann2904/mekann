@@ -16,10 +16,10 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { basename, isAbsolute, join... } from 'node:path';
-import { toErrorMessage } from '../../lib/error-utils.js';
-import { validateUrlForSsrf } from './ssrf-protection';
+// from 'node:fs': existsSync, readFileSync, statSync
+// from 'node:path': basename, isAbsolute, join, ...
+// from '../../lib/error-utils.js': toErrorMessage
+// from './ssrf-protection': validateUrlForSsrf
 ```
 
 ## エクスポート一覧
@@ -69,9 +69,28 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  loadReferences["loadReferences()"]
   fetchTextFromUrl["fetchTextFromUrl()"]
-  loadReferences -.-> fetchTextFromUrl
+  htmlToText["htmlToText()"]
+  loadReferences["loadReferences()"]
+  loadSingleReference["loadSingleReference()"]
+  looksLikeHtml["looksLikeHtml()"]
+  looksLikeUrl["looksLikeUrl()"]
+  normalizeRefSpec["normalizeRefSpec()"]
+  resolvePath["resolvePath()"]
+  throwIfAborted["throwIfAborted()"]
+  toPreview["toPreview()"]
+  truncateText["truncateText()"]
+  fetchTextFromUrl --> htmlToText
+  fetchTextFromUrl --> looksLikeHtml
+  loadReferences --> loadSingleReference
+  loadReferences --> normalizeRefSpec
+  loadReferences --> resolvePath
+  loadReferences --> throwIfAborted
+  loadReferences --> truncateText
+  loadSingleReference --> fetchTextFromUrl
+  loadSingleReference --> looksLikeUrl
+  loadSingleReference --> resolvePath
+  loadSingleReference --> toPreview
 ```
 
 ### シーケンス図
@@ -307,4 +326,4 @@ interface LoadedReferenceResult {
 参照読み込みの結果
 
 ---
-*自動生成: 2026-02-18T07:48:44.510Z*
+*自動生成: 2026-02-18T14:31:30.750Z*

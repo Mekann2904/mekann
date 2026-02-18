@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/code-structure-analyzer/tools/generate-doc.ts
+ * role: ドキュメントセクション生成器
+ * why: コード構造データとMermaid図から、LLM解説用プレースホルダを含むドキュメントセクションを統一的に生成するため
+ * related: extract-structure.ts, generate-diagrams.ts, DocSections, LLMContext
+ * public_api: generateDocSections, DocOptions, DocSections, LLMContext
+ * invariants: 入力StructureDataとMermaidDiagramsが非nullの場合、全セクション文字列を返す; includeLLMContext未指定時はllmContextをundefinedとする
+ * side_effects: なし（純粋関数として動作）
+ * failure_modes: structureまたはdiagramsがnull/undefinedの場合、TypeErrorが発生
+ * @abdd.explain
+ * overview: 構造データとMermaid図を入力とし、タイトル・概要・構造・API参照・図解セクションを生成するモジュール
+ * what_it_does:
+ *   - StructureDataからタイトル、概要、APIリファレンス、構造セクションの各文字列を生成
+ *   - MermaidDiagramsから図解セクション文字列を生成
+ *   - includeLLMContext=true時、主要関数・クラス・インターフェース・依存関係・推奨解説ポイントを含むLLMContextを生成
+ *   - 生成結果をDocSectionsオブジェクトとして返却
+ * why_it_exists:
+ *   - コード解析結果を人間可読なドキュメント形式に変換するため
+ *   - LLMによる自動解説生成に必要なコンテキストを提供するため
+ *   - ドキュメント生成処理を一元管理し、フォーマットの一貫性を保証するため
+ * scope:
+ *   in: StructureData（関数・クラス・インターフェース情報）, MermaidDiagrams（生成済み図）, DocOptions（テンプレートパス・LLMコンテキスト含有フラグ）
+ *   out: DocSections（title, overview, structure, apiReference, diagrams, llmContext）
+ */
+
+/**
  * Document Section Generator
  *
  * 構造データとMermaid図からドキュメントセクションを生成

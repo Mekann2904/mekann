@@ -1,3 +1,29 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/cross-instance-runtime.ts
+ * role: PI拡張モジュール - クロスインスタンス協調とレート制御をPIライフサイクルに統合
+ * why: 複数のPIインスタンスが同時実行される環境で、アクティブなインスタンス数に応じて並列度とレート制限を動的に調整するため
+ * related: .pi/lib/cross-instance-coordinator.ts, .pi/lib/adaptive-rate-controller.ts, .pi/lib/provider-limits.ts, .pi/extensions/agent-runtime.ts
+ * public_api: registerCrossInstanceRuntimeExtension（デフォルトエクスポート）, pi-instances コマンド, pi-limits コマンド
+ * invariants: インスタンス登録は初期化時に必須, getMyParallelLimitは登録済みインスタンスでのみ有効な値を返す
+ * side_effects: 起動時にadaptive-controllerを初期化, インスタンス登録/解除でファイルシステム上の調整ファイルを更新, コマンド実行でUI通知を表示
+ * failure_modes: クロスインスタンス調整未初期化時は警告を表示してステータス表示を中断, プロバイダ設定不明時はデフォルト値を使用
+ * @abdd.explain
+ * overview: クロスインスタンスコーディネーターとアダプティブレートコントローラーをPIエージェントのランタイムに統合し、インスタンス間の並列度配分とレート制御を自動化する拡張モジュール
+ * what_it_does:
+ *   - PI起動時にアダプティブコントローラーを初期化
+ *   - pi-instances コマンドでアクティブなPIインスタンス一覧、並列度配分、モデル使用状況を表示
+ *   - pi-limits コマンドでプロバイダ/モデルのレート制限設定を表示
+ *   - インスタンスの自己登録と並列度制限の動的取得
+ * why_it_exists:
+ *   - 複数PIインスタンスの同時実行時にプロバイダレート制限を超過しないよう調整が必要
+ *   - インスタンス数の増減に応じて並列度をリアルタイムに配分するため
+ *   - 429エラーからの学習による自動レート調整をランタイムに統合するため
+ * scope:
+ *   in: ExtensionAPI, コマンドライン引数, 環境変数(PI_CURRENT_MODEL), クロスインスタンス調整状態
+ *   out: UI通知, コマンド実行結果の表示, ランタイム容量変更通知
+ */
+
 // File: .pi/extensions/cross-instance-runtime.ts
 // Description: Integrates cross-instance coordinator with pi lifecycle.
 // Why: Enables automatic parallelism adjustment based on active pi instance count.

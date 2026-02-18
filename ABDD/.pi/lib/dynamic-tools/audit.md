@@ -16,10 +16,10 @@ related: []
 ## インポート
 
 ```typescript
-import { appendFileSync, existsSync, mkdirSync... } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { createHash } from 'node:crypto';
-import { AuditLogEntry, AuditAction, DynamicToolsPaths... } from './types.js';
+// from 'node:fs': appendFileSync, existsSync, mkdirSync, ...
+// from 'node:path': join, dirname
+// from 'node:crypto': createHash
+// from './types.js': AuditLogEntry, AuditAction, DynamicToolsPaths, ...
 ```
 
 ## エクスポート一覧
@@ -53,17 +53,20 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  logAudit["logAudit()"]
-  readAuditLog["readAuditLog()"]
-  getToolHistory["getToolHistory()"]
-  getAuditStatistics["getAuditStatistics()"]
+  archiveOldLogs["archiveOldLogs()"]
   formatAuditLogEntry["formatAuditLogEntry()"]
   generateAuditReport["generateAuditReport()"]
-  logAudit -.-> readAuditLog
-  readAuditLog -.-> getToolHistory
-  getToolHistory -.-> getAuditStatistics
-  getAuditStatistics -.-> formatAuditLogEntry
-  formatAuditLogEntry -.-> generateAuditReport
+  generateEntryId["generateEntryId()"]
+  getAuditStatistics["getAuditStatistics()"]
+  getToolHistory["getToolHistory()"]
+  logAudit["logAudit()"]
+  readAuditLog["readAuditLog()"]
+  generateAuditReport --> formatAuditLogEntry
+  generateAuditReport --> getAuditStatistics
+  generateAuditReport --> readAuditLog
+  getAuditStatistics --> readAuditLog
+  getToolHistory --> readAuditLog
+  logAudit --> generateEntryId
 ```
 
 ### シーケンス図
@@ -254,4 +257,4 @@ archiveOldLogs(daysToKeep: number, paths?: DynamicToolsPaths): { archived: numbe
 **戻り値**: `{ archived: number; error?: string }`
 
 ---
-*自動生成: 2026-02-18T07:48:44.916Z*
+*自動生成: 2026-02-18T14:31:30.978Z*

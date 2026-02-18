@@ -16,10 +16,10 @@ related: []
 ## インポート
 
 ```typescript
-import { readFileSync, existsSync, writeFileSync... } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { getRuntimeConfig, RuntimeConfig } from './runtime-config.js';
+// from 'node:fs': readFileSync, existsSync, writeFileSync, ...
+// from 'node:os': homedir
+// from 'node:path': join
+// from './runtime-config.js': getRuntimeConfig, RuntimeConfig
 ```
 
 ## エクスポート一覧
@@ -113,17 +113,60 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  initAdaptiveController["initAdaptiveController()"]
-  shutdownAdaptiveController["shutdownAdaptiveController()"]
+  analyze429Probability["analyze429Probability()"]
+  buildKey["buildKey()"]
+  clampConcurrency["clampConcurrency()"]
+  configureRecovery["configureRecovery()"]
+  ensureState["ensureState()"]
+  formatAdaptiveSummary["formatAdaptiveSummary()"]
+  getAdaptiveState["getAdaptiveState()"]
   getEffectiveLimit["getEffectiveLimit()"]
-  recordEvent["recordEvent()"]
+  getLearnedLimit["getLearnedLimit()"]
+  getPredictiveAnalysis["getPredictiveAnalysis()"]
+  initAdaptiveController["initAdaptiveController()"]
+  isRateLimitError["isRateLimitError()"]
+  loadState["loadState()"]
+  processRecovery["processRecovery()"]
   record429["record429()"]
+  recordEvent["recordEvent()"]
   recordSuccess["recordSuccess()"]
-  initAdaptiveController -.-> shutdownAdaptiveController
-  shutdownAdaptiveController -.-> getEffectiveLimit
-  getEffectiveLimit -.-> recordEvent
-  recordEvent -.-> record429
-  record429 -.-> recordSuccess
+  resetAllLearnedLimits["resetAllLearnedLimits()"]
+  resetLearnedLimit["resetLearnedLimit()"]
+  saveState["saveState()"]
+  scheduleRecovery["scheduleRecovery()"]
+  setGlobalMultiplier["setGlobalMultiplier()"]
+  shutdownAdaptiveController["shutdownAdaptiveController()"]
+  updateHistorical429s["updateHistorical429s()"]
+  analyze429Probability --> buildKey
+  analyze429Probability --> ensureState
+  configureRecovery --> ensureState
+  configureRecovery --> saveState
+  formatAdaptiveSummary --> ensureState
+  getAdaptiveState --> ensureState
+  getEffectiveLimit --> buildKey
+  getEffectiveLimit --> clampConcurrency
+  getEffectiveLimit --> ensureState
+  getEffectiveLimit --> saveState
+  getLearnedLimit --> buildKey
+  getLearnedLimit --> ensureState
+  getPredictiveAnalysis --> ensureState
+  initAdaptiveController --> loadState
+  initAdaptiveController --> processRecovery
+  record429 --> recordEvent
+  recordEvent --> buildKey
+  recordEvent --> clampConcurrency
+  recordEvent --> ensureState
+  recordEvent --> saveState
+  recordEvent --> scheduleRecovery
+  recordEvent --> updateHistorical429s
+  recordSuccess --> recordEvent
+  resetAllLearnedLimits --> ensureState
+  resetAllLearnedLimits --> saveState
+  resetLearnedLimit --> buildKey
+  resetLearnedLimit --> ensureState
+  resetLearnedLimit --> saveState
+  setGlobalMultiplier --> ensureState
+  setGlobalMultiplier --> saveState
 ```
 
 ### シーケンス図
@@ -733,4 +776,4 @@ interface PredictiveAnalysis {
 予測分析の結果を表すインターフェース
 
 ---
-*自動生成: 2026-02-18T07:48:44.788Z*
+*自動生成: 2026-02-18T14:31:30.948Z*

@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { reserveRuntimeCapacity, tryReserveRuntimeCapacity, RuntimeCapacityReservationLease } from '../agent-runtime';
+// from '../agent-runtime': reserveRuntimeCapacity, tryReserveRuntimeCapacity, RuntimeCapacityReservationLease
 ```
 
 ## エクスポート一覧
@@ -126,4 +126,4 @@ interface SubagentParallelCapacityResolution {
 サブエージェントの並列実行容量解決結果
 
 ---
-*自動生成: 2026-02-18T07:48:44.736Z*
+*自動生成: 2026-02-18T14:31:30.899Z*

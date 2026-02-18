@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
-import { dnsLookup } from 'node:dns/promises';
-import { appendFileSync, existsSync, mkdirSync... } from 'node:fs';
-import { basename, isAbsolute, join... } from 'node:path';
+// from 'node:child_process': spawn
+// from 'node:crypto': randomBytes
+// from 'node:dns/promises': dnsLookup
+// from 'node:fs': appendFileSync, existsSync, mkdirSync, ...
+// from 'node:path': basename, isAbsolute, join, ...
 // ... and 19 more imports
 ```
 
@@ -29,6 +29,167 @@ import { basename, isAbsolute, join... } from 'node:path';
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `registerLoopExtension` | 自動反復ループ実行ツールをExtensionAPIに登録 |
+
+## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+### loop_run
+
+Run an autonomous iteration loop for a task, optionally with explicit goal criteria and verification command checks.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+  participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
+
+  User->>System: Run an autonomous iteration loop for a task, optionally w...
+  System->>Unresolved: String(params.task ?? '').trim (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: normalizeLoopConfig
+  Internal->>Internal: 整数値の検証と範囲制限を行う
+  Internal->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: Boolean (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Storage: 参照情報を読み込む
+  Storage->>Internal: normalizeRefSpec
+  Internal->>Unresolved: trimmed.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: trimmed.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: specs.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Judge: resolvePath
+  Judge->>Internal: isAbsolute
+  Judge->>Judge: resolve
+  Storage->>Storage: readFileSync
+  Storage->>Unresolved: raw.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Internal: 不明なエラーを文字列メッセージに変換します
+  Storage->>Internal: throwIfAborted
+  Storage->>Internal: loadSingleReference
+  Storage->>Executor: truncateText
+  Storage->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: pi.getThinkingLevel (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
+  System->>Executor: startLoopActivityIndicator
+  Executor->>Internal: render
+  Executor->>Internal: setInterval
+  Executor->>Internal: toPreview
+  Executor->>Internal: ミリ秒を読みやすい文字列に変換
+  Internal->>Unresolved: Math.round (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: (ms / 1000).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: clearInterval
+  System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
+  System->>Internal: normalizeOptionalText
+  System->>Executor: runLoop
+  Executor->>Executor: 一意な実行IDを生成します。
+  Executor->>Unresolved: [     now.getFullYear(),     String(now.getMonth() + 1).padStart(2, '0'),     String(now.getDate()).padStart(2, '0'),     '-',     String(now.getHours()).padStart(2, '0'),     String(now.getMinutes()).padStart(2, '0'),     String(now.getSeconds()).padStart(2, '0'),   ].join (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: now.getFullYear (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: String(now.getMonth() + 1).padStart (node_modules/typescript/lib/lib.es2017.string.d.ts)
+  Executor->>Unresolved: now.getMonth (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: now.getDate (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: now.getHours (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: now.getMinutes (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: now.getSeconds (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
+  Executor->>Internal: randomBytes
+  Executor->>Internal: mkdirSync
+  Executor->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: appendJsonl
+  Internal->>Storage: ファイルロックを取得して関数を実行
+  Storage->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Storage->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Internal: hasEfficientSyncSleep
+  Storage->>Internal: tryAcquireLock
+  Storage->>Internal: clearStaleLock
+  Storage->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
+  Storage->>Internal: sleepSync
+  Storage->>Internal: unlinkSync
+  Internal->>Storage: appendFileSync
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: ループコマンドのプレビュー文字列を生成する
+  Executor->>Judge: 環境変数から検証ポリシーを解決する
+  Judge->>Unresolved: String(process.env[VERIFICATION_POLICY_ENV] || '')     .trim()     .toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: タスクの意図を分類する
+  Internal->>Unresolved: Object.entries (node_modules/typescript/lib/lib.es2017.object.d.ts)
+  Internal->>Unresolved: regex.test (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: 反復のフォーカス文字列を構築する
+  Internal->>Internal: extractNextStepLine
+  Executor->>Internal: イテレーション用のプロンプトを構築する
+  Internal->>Internal: buildReferencePack
+  Executor->>Internal: モデルの適切なタイムアウトを計算
+  Internal->>Internal: getModelBaseTimeoutMs
+  Internal->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>LLM: callModelViaPi
+  Executor->>LLM: LLM出力からループ契約を解析する
+  LLM->>Internal: parseLoopStatus
+  LLM->>Internal: parseLoopGoalStatus
+  LLM->>Internal: extractGoalEvidence
+  LLM->>Internal: extractCitations
+  LLM->>Internal: extractSummaryLine
+  LLM->>Internal: parseLoopJsonObject
+  LLM->>Internal: normalizeLoopStatus
+  LLM->>Internal: parseStructuredLoopGoalStatus
+  LLM->>Internal: normalizeStringArray
+  LLM->>Internal: normalizeCitationList
+  Executor->>Judge: イテレーションの入力値を検証し、エラーを返す
+  Judge->>Unresolved: input.citations.filter (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Executor: 検証コマンドを実行すべきか判定する
+  Executor->>Executor: 検証コマンドを実行する
+  Executor->>Internal: parseVerificationCommand
+  Executor->>Internal: resolveVerificationAllowlistPrefixes
+  Executor->>Internal: isVerificationCommandAllowed
+  Executor->>Internal: formatAllowlistPreview
+  Executor->>Internal: spawn
+  Executor->>Internal: cleanup
+  Executor->>Internal: redactSensitiveText
+  Executor->>Unresolved: child.kill (node_modules/@types/node/child_process.d.ts)
+  Executor->>Internal: killSafely
+  Executor->>Internal: setTimeout
+  Executor->>Internal: finish
+  Executor->>Internal: clearTimeout
+  Executor->>Internal: removeEventListener
+  Executor->>Internal: addEventListener
+  Executor->>Unresolved: child.stdout.on (node_modules/@types/node/stream.d.ts)
+  Executor->>Internal: 検証結果からフィードバックメッセージを生成する
+  Internal->>Unresolved: reason.replace (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: 完了宣言のフィードバックを構築する
+  Executor->>Internal: バリデーションエラーを正規化・整形する
+  Internal->>Unresolved: errors     .map (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: normalizeValidationIssue
+  Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: unique.sort (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: validationIssuePriority
+  Executor->>Internal: イテレーション失敗時の出力を生成する
+  Executor->>Internal: 出力の意味的な重複を検出する
+  Internal->>Internal: normalizeText
+  Internal->>Internal: デフォルトのエンベディングプロバイダーを取得
+  Internal->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
+  Internal->>Internal: エンベディングを生成する
+  Internal->>Internal: 2つのベクトル間のコサイン類似度を計算
+  Internal->>Unresolved: Math.sqrt (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: ループ出力を正規化する
+  Executor->>Internal: 意図に応じた予算を取得する。
+  Executor->>Unresolved: semanticStagnationStats.similarities.reduce (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: ループ結果の本文を抽出する
+  Internal->>Internal: extractTaggedBlock
+  Executor->>Storage: テキストファイルをアトミックに書き込む
+  Storage->>Storage: writeFileSync
+  Storage->>Internal: renameSync
+  Executor->>Storage: writeLatestSummarySnapshot
+  System->>Internal: formatLoopProgress
+  System->>Unresolved: pi.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
+  System->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
+  System->>Internal: formatLoopResultText
+  System-->>User: 結果
+
+```
 
 ## 図解
 
@@ -137,6 +298,51 @@ flowchart LR
     _mariozechner["@mariozechner"]
   end
   main --> external
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  appendJsonl["appendJsonl()"]
+  callModelViaPi["callModelViaPi()"]
+  formatLoopProgress["formatLoopProgress()"]
+  formatLoopResultText["formatLoopResultText()"]
+  formatLoopSummary["formatLoopSummary()"]
+  normalizeLoopConfig["normalizeLoopConfig()"]
+  normalizeOptionalText["normalizeOptionalText()"]
+  parseLoopCommand["parseLoopCommand()"]
+  readLatestSummary["readLatestSummary()"]
+  registerLoopExtension["registerLoopExtension()"]
+  render["render()"]
+  runLoop["runLoop()"]
+  startLoopActivityIndicator["startLoopActivityIndicator()"]
+  throwIfAborted["throwIfAborted()"]
+  toPreview["toPreview()"]
+  tokenizeArgs["tokenizeArgs()"]
+  withArgError["withArgError()"]
+  writeLatestSummarySnapshot["writeLatestSummarySnapshot()"]
+  callModelViaPi --> callModelViaPi
+  parseLoopCommand --> normalizeOptionalText
+  parseLoopCommand --> tokenizeArgs
+  parseLoopCommand --> withArgError
+  registerLoopExtension --> formatLoopProgress
+  registerLoopExtension --> formatLoopResultText
+  registerLoopExtension --> formatLoopSummary
+  registerLoopExtension --> normalizeLoopConfig
+  registerLoopExtension --> normalizeOptionalText
+  registerLoopExtension --> parseLoopCommand
+  registerLoopExtension --> readLatestSummary
+  registerLoopExtension --> runLoop
+  registerLoopExtension --> startLoopActivityIndicator
+  runLoop --> appendJsonl
+  runLoop --> callModelViaPi
+  runLoop --> throwIfAborted
+  runLoop --> toPreview
+  runLoop --> writeLatestSummarySnapshot
+  startLoopActivityIndicator --> render
+  startLoopActivityIndicator --> toPreview
+  withArgError --> normalizeOptionalText
 ```
 
 ### シーケンス図
@@ -690,4 +896,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.546Z*
+*自動生成: 2026-02-18T14:31:30.779Z*

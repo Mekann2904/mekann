@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { SymFindInput, SymFindOutput, SymbolDefinition... } from '../types.js';
-import { truncateResults, createErrorResponse, createSimpleHints } from '../utils/output.js';
-import { SearchToolError, isSearchToolError, getErrorMessage... } from '../utils/errors.js';
-import { DEFAULT_SYMBOL_LIMIT } from '../utils/constants.js';
-import { symIndex, readSymbolIndex } from './sym_index.js';
+// from '../types.js': SymFindInput, SymFindOutput, SymbolDefinition, ...
+// from '../utils/output.js': truncateResults, createErrorResponse, createSimpleHints
+// from '../utils/errors.js': SearchToolError, isSearchToolError, getErrorMessage, ...
+// from '../utils/constants.js': DEFAULT_SYMBOL_LIMIT
+// from './sym_index.js': symIndex, readSymbolIndex
 // ... and 2 more imports
 ```
 
@@ -47,6 +47,23 @@ flowchart LR
     sym_index["sym_index"]
   end
   main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  escapeRegex["escapeRegex()"]
+  extractResultPaths["extractResultPaths()"]
+  filterSymbols["filterSymbols()"]
+  sortSymbols["sortSymbols()"]
+  symFind["symFind()"]
+  wildcardToRegex["wildcardToRegex()"]
+  filterSymbols --> wildcardToRegex
+  symFind --> extractResultPaths
+  symFind --> filterSymbols
+  symFind --> sortSymbols
+  wildcardToRegex --> escapeRegex
 ```
 
 ### シーケンス図
@@ -170,4 +187,4 @@ async symFind(input: SymFindInput, cwd: string): Promise<SymFindOutput>
 **戻り値**: `Promise<SymFindOutput>`
 
 ---
-*自動生成: 2026-02-18T07:48:44.618Z*
+*自動生成: 2026-02-18T14:31:30.862Z*

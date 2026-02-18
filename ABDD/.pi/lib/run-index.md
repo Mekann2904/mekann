@@ -16,10 +16,10 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { ensureDir } from './fs-utils.js';
-import { atomicWriteTextFile } from './storage-lock.js';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
+// from './fs-utils.js': ensureDir
+// from './storage-lock.js': atomicWriteTextFile
 ```
 
 ## エクスポート一覧
@@ -101,17 +101,36 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  extractKeywords["extractKeywords()"]
+  buildRunIndex["buildRunIndex()"]
   classifyTaskType["classifyTaskType()"]
   extractFiles["extractFiles()"]
+  extractKeywords["extractKeywords()"]
+  findSimilarRuns["findSimilarRuns()"]
+  getOrBuildRunIndex["getOrBuildRunIndex()"]
+  getRunIndexPath["getRunIndexPath()"]
+  getRunsByType["getRunsByType()"]
+  getSuccessfulPatterns["getSuccessfulPatterns()"]
   indexSubagentRun["indexSubagentRun()"]
   indexTeamRun["indexTeamRun()"]
-  buildRunIndex["buildRunIndex()"]
-  extractKeywords -.-> classifyTaskType
-  classifyTaskType -.-> extractFiles
-  extractFiles -.-> indexSubagentRun
-  indexSubagentRun -.-> indexTeamRun
-  indexTeamRun -.-> buildRunIndex
+  loadRunIndex["loadRunIndex()"]
+  saveRunIndex["saveRunIndex()"]
+  searchRuns["searchRuns()"]
+  buildRunIndex --> indexSubagentRun
+  buildRunIndex --> indexTeamRun
+  findSimilarRuns --> searchRuns
+  getOrBuildRunIndex --> buildRunIndex
+  getOrBuildRunIndex --> loadRunIndex
+  getOrBuildRunIndex --> saveRunIndex
+  getSuccessfulPatterns --> getRunsByType
+  indexSubagentRun --> classifyTaskType
+  indexSubagentRun --> extractFiles
+  indexSubagentRun --> extractKeywords
+  indexTeamRun --> classifyTaskType
+  indexTeamRun --> extractFiles
+  indexTeamRun --> extractKeywords
+  loadRunIndex --> getRunIndexPath
+  saveRunIndex --> getRunIndexPath
+  searchRuns --> extractKeywords
 ```
 
 ### シーケンス図
@@ -485,4 +504,4 @@ type TaskType = | "code-review"
 タスクの種類を表す型
 
 ---
-*自動生成: 2026-02-18T07:48:45.154Z*
+*自動生成: 2026-02-18T14:31:31.015Z*

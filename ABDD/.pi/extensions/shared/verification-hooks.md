@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { shouldTriggerVerification, buildInspectorPrompt, buildChallengerPrompt... } from '../../lib/verification-workflow.js';
-import { getLogger } from '../../lib/comprehensive-logger.js';
-import { OperationType } from '../../lib/comprehensive-logger-types.js';
+// from '../../lib/verification-workflow.js': shouldTriggerVerification, buildInspectorPrompt, buildChallengerPrompt, ...
+// from '../../lib/comprehensive-logger.js': getLogger
+// from '../../lib/comprehensive-logger-types.js': OperationType
 ```
 
 ## エクスポート一覧
@@ -75,13 +75,22 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  resolveVerificationHookConfig["resolveVerificationHookConfig()"]
+  buildTeamVerificationContext["buildTeamVerificationContext()"]
+  formatVerificationResult["formatVerificationResult()"]
+  parseChallengerOutput["parseChallengerOutput()"]
+  parseInspectorOutput["parseInspectorOutput()"]
   postSubagentVerificationHook["postSubagentVerificationHook()"]
   postTeamVerificationHook["postTeamVerificationHook()"]
-  formatVerificationResult["formatVerificationResult()"]
-  resolveVerificationHookConfig -.-> postSubagentVerificationHook
-  postSubagentVerificationHook -.-> postTeamVerificationHook
-  postTeamVerificationHook -.-> formatVerificationResult
+  resolveVerificationHookConfig["resolveVerificationHookConfig()"]
+  truncateOutput["truncateOutput()"]
+  buildTeamVerificationContext --> truncateOutput
+  postSubagentVerificationHook --> parseChallengerOutput
+  postSubagentVerificationHook --> parseInspectorOutput
+  postSubagentVerificationHook --> resolveVerificationHookConfig
+  postTeamVerificationHook --> buildTeamVerificationContext
+  postTeamVerificationHook --> parseChallengerOutput
+  postTeamVerificationHook --> parseInspectorOutput
+  postTeamVerificationHook --> resolveVerificationHookConfig
 ```
 
 ### シーケンス図
@@ -280,4 +289,4 @@ interface VerificationHookResult {
 検証フックの結果
 
 ---
-*自動生成: 2026-02-18T07:48:44.702Z*
+*自動生成: 2026-02-18T14:31:30.884Z*

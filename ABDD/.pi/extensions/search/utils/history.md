@@ -67,13 +67,11 @@ classDiagram
 
 ```mermaid
 flowchart TD
+  createHistoryEntry["createHistoryEntry()"]
+  extractQuery["extractQuery()"]
   getSearchHistory["getSearchHistory()"]
   resetSearchHistory["resetSearchHistory()"]
-  extractQuery["extractQuery()"]
-  createHistoryEntry["createHistoryEntry()"]
-  getSearchHistory -.-> resetSearchHistory
-  resetSearchHistory -.-> extractQuery
-  extractQuery -.-> createHistoryEntry
+  createHistoryEntry --> extractQuery
 ```
 
 ## 関数
@@ -201,4 +199,4 @@ interface QuerySuggestion {
 サジェッション用のクエリとメタデータ
 
 ---
-*自動生成: 2026-02-18T07:48:44.666Z*
+*自動生成: 2026-02-18T14:31:30.869Z*

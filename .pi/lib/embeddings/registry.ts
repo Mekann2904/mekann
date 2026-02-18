@@ -1,4 +1,38 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/embeddings/registry.ts
+ * role: 埋め込みプロバイダーの登録・管理を行うレジストリクラス
+ * why: 複数の埋め込みプロバイダーを統一的に管理し、利用可能判定や設定の永続化を一元化するため
+ * related: ./types.js, ./openai.ts, ./local.ts, ./mock.ts
+ * public_api: EmbeddingProviderRegistry, register, unregister, get, getAll, getAvailable, getAllStatus
+ * invariants:
+ *   - providers Mapのキーはprovider.idと一致する
+ *   - configは常にCONFIG_FILE_PATHから読み込まれた有効なEmbeddingModuleConfigである
+ *   - fallbackOrderは最低1つのプロバイダーIDを含む
+ * side_effects:
+ *   - コンストラクタで設定ファイルを同期的に読み込む
+ *   - 設定ファイルが存在しない場合、デフォルト設定で初期化
+ * failure_modes:
+ *   - 設定ファイルの読み込みに失敗した場合、DEFAULT_CONFIGを使用
+ *   - 存在しないproviderIdでget呼び出し時はundefinedを返す
+ *   - プロバイダーのisAvailableが非同期で失敗した場合、利用不可と判定される
+ * @abdd.explain
+ * overview: 埋め込みプロバイダーを登録・管理し、利用可能なプロバイダーの検索と状態取得を提供するレジストリ
+ * what_it_does:
+ *   - プロバイダーの登録、解除、取得を行う
+ *   - 全プロバイダーおよび利用可能なプロバイダーの一覧を返す
+ *   - 各プロバイダーの可用性を非同期で判定し状態を返す
+ *   - 設定ファイル（~/.pi/agent/embedding-config.json）から構成を読み込む
+ * why_it_exists:
+ *   - 複数の埋め込みバックエンド（OpenAI, Local, Mock等）を透過的に切り替えるため
+ *   - プロバイダーのライフサイクル管理を一箇所に集約するため
+ *   - 設定の永続化とフォールバック順序の管理を実現するため
+ * scope:
+ *   in: EmbeddingProviderインターフェースを実装したプロバイダーインスタンス
+ *   out: 登録されたプロバイダー、可用性ステータス、設定情報
+ */
+
+/**
  * Embeddings Module - Provider Registry.
  * Manages embedding providers and provides a unified interface.
  */

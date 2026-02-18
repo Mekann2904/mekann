@@ -1,4 +1,36 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/output-validation.ts
+ * role: サブエージェントおよびチームメンバーの出力フォーマット検証ユーティリティ
+ * why: 構造化出力のフォーマット準拠を保証し、必須セクションの欠落や空セクションを検出するため
+ * related: output-schema.ts, subagent-runner.ts, team-coordinator.ts
+ * public_api: validateSubagentOutput, validateTeamMemberOutput, hasNonEmptyResultSection, SubagentValidationOptions, TeamMemberValidationOptions
+ * invariants:
+ *   - デフォルトのrequiredLabelsは変更されない
+ *   - 空の出力は常に検証失敗となる
+ *   - RESULTセクションが存在しない場合hasNonEmptyResultSectionはfalseを返す
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes:
+ *   - 必須ラベル欠落時にok=falseを返す
+ *   - 文字数不足時にok=falseを返す
+ *   - RESULTセクションが空の場合ok=falseを返す
+ * @abdd.explain
+ * overview: サブエージェントとチームメンバーの出力が所定のフォーマット規約に準拠しているか検証する関数群を提供する
+ * what_it_does:
+ *   - 出力テキストの最小文字数チェック
+ *   - 必須ラベル（SUMMARY:, RESULT:, NEXT_STEP:等）の存在確認
+ *   - RESULTセクションが空でないことの確認
+ *   - 正規表現ベースのラベル検出
+ * why_it_exists:
+ *   - エージェント出力の一貫性と品質を保証するため
+ *   - 不完全な出力を早期に検出し、下流処理でのエラーを防ぐため
+ *   - サブエージェントとチームメンバーで異なる検証要件を満たすため
+ * scope:
+ *   in: 出力テキスト文字列、検証オプション（minChars, requiredLabels）
+ *   out: 検証結果オブジェクト（ok, reason）、RESULTセクションの非空判定
+ */
+
+/**
  * Output validation utilities for subagent and team member outputs.
  * Provides consistent validation for structured output format compliance.
  *

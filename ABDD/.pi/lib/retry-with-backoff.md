@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
 ```
 
 ## エクスポート一覧
@@ -97,17 +97,59 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  getRateLimitGateSnapshot["getRateLimitGateSnapshot()"]
-  resolveRetryWithBackoffConfig["resolveRetryWithBackoffConfig()"]
-  extractRetryStatusCode["extractRetryStatusCode()"]
-  isRetryableError["isRetryableError()"]
+  applyJitter["applyJitter()"]
+  clampFloat["clampFloat()"]
+  clampInteger["clampInteger()"]
   computeBackoffDelayMs["computeBackoffDelayMs()"]
+  createAbortError["createAbortError()"]
+  createRateLimitFastFailError["createRateLimitFastFailError()"]
+  createRateLimitKeyScope["createRateLimitKeyScope()"]
+  extractRetryStatusCode["extractRetryStatusCode()"]
+  getRateLimitGateSnapshot["getRateLimitGateSnapshot()"]
+  getSharedRateLimitState["getSharedRateLimitState()"]
+  isRetryableError["isRetryableError()"]
+  normalizeRateLimitKey["normalizeRateLimitKey()"]
+  pruneRateLimitState["pruneRateLimitState()"]
+  readConfigOverrides["readConfigOverrides()"]
+  registerRateLimitGateHit["registerRateLimitGateHit()"]
+  registerRateLimitGateSuccess["registerRateLimitGateSuccess()"]
+  resolveRetryWithBackoffConfig["resolveRetryWithBackoffConfig()"]
   retryWithBackoff["retryWithBackoff()"]
-  getRateLimitGateSnapshot -.-> resolveRetryWithBackoffConfig
-  resolveRetryWithBackoffConfig -.-> extractRetryStatusCode
-  extractRetryStatusCode -.-> isRetryableError
-  isRetryableError -.-> computeBackoffDelayMs
-  computeBackoffDelayMs -.-> retryWithBackoff
+  sanitizeOverrides["sanitizeOverrides()"]
+  selectLongestRateLimitGate["selectLongestRateLimitGate()"]
+  sleepWithAbort["sleepWithAbort()"]
+  toFiniteNumber["toFiniteNumber()"]
+  toOptionalNonNegativeInt["toOptionalNonNegativeInt()"]
+  toOptionalPositiveInt["toOptionalPositiveInt()"]
+  computeBackoffDelayMs --> applyJitter
+  extractRetryStatusCode --> clampInteger
+  extractRetryStatusCode --> toFiniteNumber
+  getRateLimitGateSnapshot --> getSharedRateLimitState
+  getRateLimitGateSnapshot --> normalizeRateLimitKey
+  getRateLimitGateSnapshot --> pruneRateLimitState
+  isRetryableError --> extractRetryStatusCode
+  pruneRateLimitState --> getSharedRateLimitState
+  readConfigOverrides --> sanitizeOverrides
+  resolveRetryWithBackoffConfig --> readConfigOverrides
+  resolveRetryWithBackoffConfig --> sanitizeOverrides
+  retryWithBackoff --> computeBackoffDelayMs
+  retryWithBackoff --> createAbortError
+  retryWithBackoff --> createRateLimitFastFailError
+  retryWithBackoff --> createRateLimitKeyScope
+  retryWithBackoff --> extractRetryStatusCode
+  retryWithBackoff --> getRateLimitGateSnapshot
+  retryWithBackoff --> isRetryableError
+  retryWithBackoff --> normalizeRateLimitKey
+  retryWithBackoff --> registerRateLimitGateHit
+  retryWithBackoff --> registerRateLimitGateSuccess
+  retryWithBackoff --> resolveRetryWithBackoffConfig
+  retryWithBackoff --> selectLongestRateLimitGate
+  retryWithBackoff --> sleepWithAbort
+  retryWithBackoff --> toOptionalNonNegativeInt
+  retryWithBackoff --> toOptionalPositiveInt
+  sanitizeOverrides --> clampFloat
+  sanitizeOverrides --> clampInteger
+  sanitizeOverrides --> toFiniteNumber
 ```
 
 ### シーケンス図
@@ -614,4 +656,4 @@ type RetryWithBackoffOverrides = Partial<RetryWithBackoffConfig>
 RetryWithBackoffConfigの部分的オーバーライド設定
 
 ---
-*自動生成: 2026-02-18T07:48:45.129Z*
+*自動生成: 2026-02-18T14:31:31.011Z*

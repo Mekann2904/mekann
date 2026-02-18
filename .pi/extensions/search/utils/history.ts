@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/history.ts
+ * role: 検索履歴管理ユーティリティ。型定義、デフォルト設定、履歴ストアクラスの提供。
+ * why: 過去の検索クエリに基づくサジェスチョン生成、関連クエリの検出、検索結果の利用状況追跡を可能にするため。
+ * related: search/index.ts, search/tools/file_candidates.ts, search/tools/code_search.ts
+ * public_api: SearchHistoryEntry, HistoryConfig, QuerySuggestion, DEFAULT_HISTORY_CONFIG
+ * invariants: maxEntriesは100、maxResultsPerEntryは10がデフォルト。resultsは最大10件まで保存。
+ * side_effects: なし（純粋な型定義と設定値のエクスポートのみ）
+ * failure_modes: なし（実行時ロジックは含まれていない）
+ * @abdd.explain
+ * overview: 検索履歴管理機能の型定義とデフォルト設定を提供するモジュール。
+ * what_it_does:
+ *   - SearchHistoryEntry型で履歴エントリの構造（タイムスタンプ、ツール名、パラメータ、クエリ、結果、受理状態）を定義
+ *   - HistoryConfig型で履歴管理設定（最大エントリ数、エントリあたりの最大結果数）を定義
+ *   - QuerySuggestion型でサジェスチョン用クエリのメタデータ（クエリ、使用回数、最終使用日時、受理フラグ）を定義
+ *   - DEFAULT_HISTORY_CONFIGでmaxEntries=100、maxResultsPerEntry=10のデフォルト設定をエクスポート
+ * why_it_exists:
+ *   - 過去の検索に基づくクエリサジェスチョン機能の実現
+ *   - 関連クエリの発見と検索効率の向上
+ *   - どの検索結果が実際に使用されたかの追跡による検索品質の可視化
+ * scope:
+ *   in: なし（型定義と定数のみ）
+ *   out: 3つのインターフェース型、1つのデフォルト設定オブジェクト
+ */
+
+/**
  * Search History Management
  *
  * Tracks search queries and their results for:

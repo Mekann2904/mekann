@@ -1,3 +1,28 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/subagents/task-execution.ts
+ * role: サブエージェントのタスク実行ロジックを提供するモジュール
+ * why: subagents.tsから実行ロジックを分離し、保守性を確保するため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/subagents/storage.ts, .pi/lib/output-validation.js, .pi/lib/retry-with-backoff.js
+ * public_api: normalizeSubagentOutput, SubagentExecutionResult, RunOutcomeCode, RunOutcomeSignal
+ * invariants: normalizeSubagentOutputは常にSubagentExecutionResultオブジェクトを返す、空文字列入力時はok=falseでreason="empty output"を返す
+ * side_effects: なし（純粋関数として動作する正規化処理のみ公開APIに含まれる）
+ * failure_modes: 入力が空文字列の場合は失敗結果を返す、バリデーション不合格時はフォールバック構造化処理を実行
+ * @abdd.explain
+ * overview: サブエージェント実行結果の正規化と出力整形を行うユーティリティモジュール
+ * what_it_does:
+ *   - サブエージェントの出力文字列を正規化し、構造化された結果オブジェクトを生成する
+ *   - 出力が所定フォーマット(SUMMARY/RESULT/NEXT_STEP)に準拠しない場合、自動的に構造化する
+ *   - 正規化前にvalidateSubagentOutputで品質チェックを行う
+ *   - 非構造化出力からSUMMARY候補を抽出するpickSubagentSummaryCandidate関数を提供する
+ * why_it_exists:
+ *   - メインのsubagents.tsの責務を分離し、コードの可読性と保守性を向上させるため
+ *   - サブエージェント出力のフォーマット統一を保証するため
+ * scope:
+ *   in: 任意の文字列（サブエージェントの生出力）
+ *   out: SubagentExecutionResultオブジェクト（ok, output, degraded, reasonフィールドを持つ）
+ */
+
 // File: .pi/extensions/subagents/task-execution.ts
 // Description: Subagent task execution logic.
 // Why: Separates task execution logic from main subagents.ts for maintainability.

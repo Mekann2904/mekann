@@ -55,16 +55,22 @@ classDiagram
 ```mermaid
 flowchart TD
   dependencyError["dependencyError()"]
-  parameterError["parameterError()"]
+  err["err()"]
   executionError["executionError()"]
-  timeoutError["timeoutError()"]
-  indexError["indexError()"]
   filesystemError["filesystemError()"]
-  dependencyError -.-> parameterError
-  parameterError -.-> executionError
-  executionError -.-> timeoutError
-  timeoutError -.-> indexError
-  indexError -.-> filesystemError
+  getErrorMessage["getErrorMessage()"]
+  getInstallHint["getInstallHint()"]
+  indexError["indexError()"]
+  isErr["isErr()"]
+  isErrorCategory["isErrorCategory()"]
+  isOk["isOk()"]
+  isSearchToolError["isSearchToolError()"]
+  ok["ok()"]
+  parameterError["parameterError()"]
+  timeoutError["timeoutError()"]
+  dependencyError --> getInstallHint
+  getErrorMessage --> isSearchToolError
+  isErrorCategory --> isSearchToolError
 ```
 
 ## 関数
@@ -357,4 +363,4 @@ type SearchResult = | { ok: true; value: T }
 検索操作の結果を表す型
 
 ---
-*自動生成: 2026-02-18T07:48:44.659Z*
+*自動生成: 2026-02-18T14:31:30.868Z*

@@ -1,4 +1,41 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/sym_index.ts
+ * role: シンボルインデックス生成ツール（ctags使用、JSONL出力）
+ * why: コードベースのシンボル情報を高速に検索可能な形式で事前生成し、検索機能のパフォーマンスを確保するため
+ * related: ../utils/cli.js, ../utils/constants.js, ../types.js, ../utils/errors.js
+ * public_api: デフォルトエクスポート（SymIndexInput→SymIndexOutput変換）、checkToolAvailability再エクスポート
+ * invariants:
+ *   - インデックスバージョンはINDEX_VERSION(=2)で統一
+ *   - シャードあたりのエントリ数はMAX_ENTRIES_PER_SHARD以下
+ *   - ファイルハッシュはMD5で計算（暗号化目的ではない）
+ * side_effects:
+ *   - .pi/search/配下へのファイル読み書き（manifest.json, shard-*.jsonl, meta.json）
+ *   - ctags外部プロセスの実行
+ *   - レガシーインデックスファイルの読み込み（後方互換性）
+ * failure_modes:
+ *   - ctagsが未インストールまたはPATHに存在しない
+ *   - 対象ディレクトリへの読み書き権限不足
+ *   - ディスク容量不足によるシャード書き込み失敗
+ *   - ソースファイルのエンコーディング問題によるctags解析エラー
+ * @abdd.explain
+ * overview: ctagsを用いてソースコードからシンボル情報を抽出し、シャード化されたJSONLインデックスとして永続化するツール
+ * what_it_does:
+ *   - ctagsを実行し、JSONL形式でシンボルエントリを取得
+ *   - コンテンツハッシュに基づく変更検出でインクリメンタル更新を実現
+ *   - シンボルをシャードファイルに分割保存（エントリ数上限で自動分割）
+ *   - manifest.jsonでファイル単位のハッシュ・mtime・shardIdを管理
+ *   - レガシー単一ファイル形式からの移行をサポート
+ * why_it_exists:
+ *   - 検索時に都度ctagsを実行するオーバーヘッドを回避
+ *   - 大規模コードベースでインデックスサイズを管理可能に分割
+ *   - 変更されていないファイルの再インデックスをスキップし効率化
+ * scope:
+ *   in: 対象ディレクトリパス(cwd)、インクリメンタルモード指定、対象ファイルパターン
+ *   out: 生成されたインデックスのメタデータ、処理ファイル数、新規/更新/削除エントリ数
+ */
+
+/**
  * sym_index Tool
  *
  * Generate symbol index using ctags with JSONL output format.

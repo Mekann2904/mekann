@@ -1,4 +1,39 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-parallelism.ts
+ * role: プロバイダ/モデル単位の動的並列度調整管理
+ * why: APIレート制限(429)やタイムアウト発生時に並列度を自動調整し、エラー率を下げつつスループットを最適化するため
+ * related: task-scheduler.ts, cross-instance-coordinator.ts, adaptive-rate-controller.ts
+ * public_api: ParallelismConfig, ProviderHealth, DynamicAdjusterConfig
+ * invariants:
+ *   - currentParallelismは常にminParallelism以上、maxParallelism以下
+ *   - 429エラー発生時は30%低減
+ *   - タイムアウト発生時は10%低減
+ *   - 回復時は10%ずつ段階的に増加
+ * side_effects:
+ *   - プロバイダ/モデル状態のインメモリ保持
+ *   - 並列度調整履歴の更新
+ * failure_modes:
+ *   - 全プロバイダで並列度がminParallelismに到達し復旧不能
+ *   - エラー履歴ウィンドウ(5分)内で過剰なエラー蓄積
+ * @abdd.explain
+ * overview: プロバイダとモデルの組み合わせごとにエラー率を監視し、429/タイムアウト時に並列度を自動低減、回復時に段階的に復旧させる調整器
+ * what_it_does:
+ *   - プロバイダ/モデル単位で並列度設定と健全性ステータスを追跡
+ *   - 429エラー検知時に並列度を30%低減
+ *   - タイムアウト検知時に並列度を10%低減
+ *   - recoveryIntervalMs(デフォルト1分)ごとに10%ずつ並列度を回復
+ *   - 直近5分間のエラー履歴と応答時間を保持
+ * why_it_exists:
+ *   - APIレート制限による429エラーの連鎖的発生を防止
+ *   - タイムアウト増加時の過負荷を自動緩和
+ *   - 手動調整なしでプロバイダ健全性に応じた並列度を維持
+ * scope:
+ *   in: QueueStats型定義のインポート、プロバイダ/モデル識別子、エラーイベント
+ *   out: 並列度調整後のParallelismConfig、健全性を示すProviderHealth
+ */
+
+/**
  * Dynamic Parallelism Adjuster
  *
  * Manages per-provider/model parallelism based on error rates and recovery.

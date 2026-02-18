@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/semantic-memory.ts
+ * role: セマンティックメモリ管理モジュール。実行履歴に対するベクトル埋め込みの保存と意味的検索を提供する。
+ * why: 過去の実行履歴から「類似タスク」をベクトル類似度で発見する機能を実現するため。
+ * related: ./embeddings/index.js, ./run-index.ts, ./fs-utils.ts, ./storage-lock.js
+ * public_api: generateEmbedding, generateEmbeddingsBatch, isSemanticMemoryAvailable, cosineSimilarity, findNearestNeighbors, RunEmbedding, SemanticMemoryStorage, SemanticSearchResult
+ * invariants: 埋め込みベクトルの次元数はEMBEDDING_DIMENSIONS(1536)で固定。SEMANTIC_MEMORY_VERSIONは1。
+ * side_effects: 埋め込み生成時に外部API(OpenAI等)を呼び出す可能性がある。ストレージへのファイル読み書きが発生する。
+ * failure_modes: 外部埋め込みAPI呼び出し失敗時はnullを返す。埋め込み生成失敗時は配列内でnullを返す。
+ * @abdd.explain
+ * overview: 実行履歴のセマンティック検索機能を提供するモジュール。embeddingsサブモジュールを使用してベクトル埋め込みを生成し、コサイン類似度で類似実行を検索する。
+ * what_it_does:
+ *   - テキストからベクトル埋め込みの生成（単一/バッチ）
+ *   - 実行履歴に対するベクトル類似度検索
+ *   - セマンティックメモリの永続ストレージ管理
+ *   - 後方互換性のためのラッパー関数提供
+ * why_it_exists:
+ *   - ユーザーが「似たようなタスクを以前どう処理したか」を検索できるようにするため
+ *   - キーワード一致では発見できない意味的類似性を捉えるため
+ *   - 実行履歴の再利用性を高めるため
+ * scope:
+ *   in: テキストデータ、IndexedRun、RunIndex、既存の埋め込みストレージ
+ *   out: RunEmbedding、SemanticSearchResult、埋め込みベクトル配列
+ */
+
+/**
  * Semantic Memory Module.
  * Provides semantic search over run history using embedding providers.
  * Enables "find similar tasks" functionality with vector similarity.

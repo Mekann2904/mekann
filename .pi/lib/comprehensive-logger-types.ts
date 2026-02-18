@@ -1,3 +1,29 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/comprehensive-logger-types.ts
+ * role: 包括的ログ収集システムの型定義モジュール
+ * why: ログイベントの構造と種類を型レベルで厳密に定義し、ログ収集・分析時の型安全性を保証するため
+ * related: comprehensive-logger.ts, event-processor.ts, log-aggregator.ts
+ * public_api: EventType, ComponentType, ToolType, Status, BaseEvent, SessionStartEvent
+ * invariants: 全イベントはBaseEventを継承しeventId/sessionId/taskId/operationIdを必須とする、timestampはナノ秒精度の文字列形式
+ * side_effects: なし（型定義のみ）
+ * failure_modes: なし（実行時コードを含まない）
+ * @abdd.explain
+ * overview: ログ収集システムで使用する全ての型定義を集約した純粋型定義ファイル
+ * what_it_does:
+ *   - イベント種別（EventType）として20種類のユニオン型を定義（ライフサイクル/ツール/LLM/ユーザー/システム）
+ *   - コンポーネント種別（ComponentType）、ツール種別（ToolType）、ステータス（Status）のユニオン型を定義
+ *   - BaseEventインターフェースで全イベントの共通構造（識別子、相関ID、タイムスタンプ、コンポーネント情報）を規定
+ *   - SessionStartEvent等の具象イベント型でイベント種別ごとのデータ構造を定義
+ * why_it_exists:
+ *   - ログイベントのスキーマを一元管理し、収集側と分析側で型の不整合を防ぐ
+ *   - 階層的な相関ID（session/task/operation）によるトレーサビリティを型レベルで強制
+ *   - ナノ秒精度タイムスタンプによる高精度な時系列分析を可能にする
+ * scope:
+ *   in: なし
+ *   out: ログイベントのシリアライズ/デシリアライズ処理、ログ分析・可視化モジュール
+ */
+
  /**
   * 包括的ログ収集システムで発生するイベントの種類
   */

@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+// from 'node:crypto': createHash
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
 ```
 
 ## エクスポート一覧
@@ -50,15 +50,14 @@ classDiagram
 
 ```mermaid
 flowchart TD
+  calculateChecksum["calculateChecksum()"]
+  createPlanModeState["createPlanModeState()"]
   isBashCommandAllowed["isBashCommandAllowed()"]
   isPlanModeActive["isPlanModeActive()"]
-  calculateChecksum["calculateChecksum()"]
   validatePlanModeState["validatePlanModeState()"]
-  createPlanModeState["createPlanModeState()"]
-  isBashCommandAllowed -.-> isPlanModeActive
-  isPlanModeActive -.-> calculateChecksum
-  calculateChecksum -.-> validatePlanModeState
-  validatePlanModeState -.-> createPlanModeState
+  createPlanModeState --> calculateChecksum
+  isPlanModeActive --> validatePlanModeState
+  validatePlanModeState --> calculateChecksum
 ```
 
 ### シーケンス図
@@ -167,4 +166,4 @@ interface PlanModeState {
 プランモードの状態を表すインターフェース
 
 ---
-*自動生成: 2026-02-18T07:48:45.050Z*
+*自動生成: 2026-02-18T14:31:31.006Z*

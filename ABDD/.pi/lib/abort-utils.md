@@ -28,7 +28,7 @@ related: []
 flowchart TD
   createChildAbortController["createChildAbortController()"]
   createChildAbortControllers["createChildAbortControllers()"]
-  createChildAbortController -.-> createChildAbortControllers
+  createChildAbortControllers --> createChildAbortController
 ```
 
 ## 関数
@@ -84,4 +84,4 @@ createChildAbortControllers(count: number, parentSignal?: AbortSignal): { contro
 **戻り値**: `{ controllers: AbortController[]; cleanup: () => void }`
 
 ---
-*自動生成: 2026-02-18T07:48:44.776Z*
+*自動生成: 2026-02-18T14:31:30.945Z*

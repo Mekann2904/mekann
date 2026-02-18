@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/agent-common.ts
+ * role: エージェント共通ユーティリティライブラリ
+ * why: subagents.tsとagent-teams.ts間のコード重複を排除し、統一された実行時プロファイルと設定を提供するため
+ * related: subagents.ts, agent-teams.ts, validation-utils.ts, error-utils.ts
+ * public_api: STABLE_RUNTIME_PROFILE, ADAPTIVE_PARALLEL_MAX_PENALTY, ADAPTIVE_PARALLEL_DECAY_MS, STABLE_MAX_RETRIES, STABLE_INITIAL_DELAY_MS, STABLE_MAX_DELAY_MS, STABLE_MAX_RATE_LIMIT_RETRIES, STABLE_MAX_RATE_LIMIT_WAIT_MS, EntityType, EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG
+ * invariants: STABLE_RUNTIME_PROFILE=trueの場合、ADAPTIVE_PARALLEL_MAX_PENALTYは常に0、リトライ設定は固定値を使用
+ * side_effects: なし（純粋な定数・型定義のみ）
+ * failure_modes: なし（実行時処理を行わない）
+ * @abdd.explain
+ * overview: SubagentとTeam Memberの実行で使用する共通定数・型・設定オブジェクトを提供するLayer 1モジュール
+ * what_it_does:
+ *   - 安定した実行時プロファイル用のグローバルフラグと並列処理ペナルティ設定を定義
+ *   - リトライ・バックオフ・レート制限用の固定パラメータを提供
+ *   - EntityType（subagent/team-member）の型定義とEntityConfigインターフェースを定義
+ *   - SUBAGENT_CONFIGとTEAM_MEMBER_CONFIGのデフォルト設定オブジェクトをエクスポート
+ * why_it_exists:
+ *   - subagents.tsとagent-teams.tsの設定値重複を一箇所に集約
+ *   - 本番環境での予測可能な動作を保証する安定プロファイルの統一管理
+ *   - エンティティ種別ごとの挙動差異を設定オブジェクトで抽象化
+ * scope:
+ *   in: validation-utils.ts（toFiniteNumberWithDefault）
+ *   out: subagents.ts, agent-teams.ts
+ */
+
+/**
  * Shared agent common utilities.
  * Provides unified constants and functions for subagent and team member execution.
  * Eliminates code duplication between subagents.ts and agent-teams.ts.

@@ -1,3 +1,30 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/plan-mode-shared.ts
+ * role: プランモード用の共有定数・ユーティリティ定義モジュール
+ * why: 複数の拡張機能間でプランモードの挙動を一貫させ、定義の重複や矛盾を防止するため
+ * related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-Teams.ts
+ * public_api: READ_ONLY_COMMANDS, DESTRUCTIVE_COMMANDS, SHELL_COMMANDS, WRITE_COMMANDS, GIT_READONLY_SUBCOMMANDS, GIT_WRITE_SUBCOMMANDS, WRITE_BASH_COMMANDS, ADDITIONAL_WRITE_COMMANDS, PlanModeState, PLAN_MODE_POLICY
+ * invariants: 各コマンドSetは相互排他的ではなく、役割ごとに分類される。GIT_READONLY_SUBCOMMANDSとGIT_WRITE_SUBCOMMANDSはgitのサブコマンドをそれぞれ明示的に列挙する
+ * side_effects: なし（純粋な定数と型定義のみ）
+ * failure_modes: なし（実行時ロジックを含まない）
+ * @abdd.explain
+ * overview: プランモードにおけるbashコマンド分類定数、状態インターフェース、ポリシーテキストを定義する
+ * what_it_does:
+ *   - 読み取り専用コマンド、破壊的コマンド、シェル呼び出しコマンド、書き込み可能コマンドのSetを定義
+ *   - Gitの読み取り専用/書き込みサブコマンドの許可・禁止リストを定義
+ *   - パッケージマネージャコマンドの禁止リストを定義
+ *   - プランモード状態（enabled, timestamp, checksum）の型定義
+ *   - プランモード有効時のポリシーテキスト（PLAN_MODE_POLICY）の提供
+ * why_it_exists:
+ *   - 拡張機能間でコマンド分類基準を統一し、セキュリティ判定の不整合を防ぐ
+ *   - gitサブコマンドのような複雑なケースを明示的な許可/禁止リストで処理する
+ *   - プランモードの状態管理に必要な型とポリシーを一元管理する
+ * scope:
+ *   in: なし（外部依存なし、Node.js標準ライブラリのみ使用）
+ *   out: コマンド実行、ファイル操作、状態変更（すべての定数は参照のみ）
+ */
+
 // File: .pi/extensions/plan-mode-shared.ts
 // Description: Shared constants and utilities for plan mode across all extensions
 // Why: Ensures consistent plan mode behavior and prevents duplicate/contradictory definitions

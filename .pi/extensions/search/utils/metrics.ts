@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/metrics.ts
+ * role: 検索操作のパフォーマンス計測とメトリクス収集ユーティリティ
+ * why: 検索処理の実行時間、ファイル数、インデックスヒット率などの統計情報を追跡し、モニタリング・デバッグ・ユーザーフィードバックに使用するため
+ * related: search-engine.ts, search-coordinator.ts, performance-monitor.ts
+ * public_api: SearchMetrics, ExtendedSearchMetrics, MetricsCollector
+ * invariants: durationMsは必ず0以上の数値、indexHitRateは設定時0.0-1.0の範囲、filesSearchedは0以上
+ * side_effects: なし（純粋なデータ構造と計測ユーティリティ）
+ * failure_modes: performance.now()が使用できない環境での計測エラー
+ * @abdd.explain
+ * overview: 検索拡張機能向けのパフォーマンスメトリクス型定義と収集クラスを提供する
+ * what_it_does:
+ *   - SearchMetricsインターフェースで基本メトリクス（実行時間、検索ファイル数、インデックスヒット率）を定義
+ *   - ExtendedSearchMetricsでCLI実行時間、解析時間、結果切り捨て情報を追加
+ *   - MetricsCollectorクラスでメソッドチェーンによるメトリクス収集を提供
+ * why_it_exists:
+ *   - 検索操作のパフォーマンス可視化とボトルネック特定
+ *   - CLIツールとネイティブフォールバックの性能比較
+ *   - ユーザーへの検索進捗・統計フィードバック
+ * scope:
+ *   in: ツール名、検索ファイル数、インデックスヒット率、CLI/解析時間、結果数
+ *   out: SearchMetrics/ExtendedSearchMetricsオブジェクト、経過時間の取得
+ */
+
+/**
  * Search Extension Metrics
  *
  * Performance metrics and statistics for search operations.

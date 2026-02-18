@@ -1,3 +1,37 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/priority-scheduler.ts
+ * role: 優先度ベースのタスクスケジューリング定義ユーティリティ
+ * why: サブエージェントおよびエージェントチームの実行順序を優先度に基づいて制御するため
+ * related: .pi/extensions/agent-runtime.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+ * public_api: TaskPriority, PRIORITY_WEIGHTS, PRIORITY_VALUES, PriorityTaskMetadata, PriorityQueueEntry, TaskType, TaskComplexity, EstimationContext
+ * invariants:
+ *   - PRIORITY_WEIGHTSとPRIORITY_VALUESは常に同じ5つの優先度レベルを持つ
+ *   - criticalが最上位、backgroundが最下位の優先度となる
+ *   - PRIORITY_WEIGHTSの値は正の整数であり、大きいほど高頻度でスケジューリングされる
+ *   - PRIORITY_VALUESの値は0以上の整数であり、大きいほど先にスケジューリングされる
+ * side_effects: なし（純粋な型定義と定数のエクスポートのみ）
+ * failure_modes:
+ *   - 不正な優先度レベル文字列を指定した場合、PRIORITY_WEIGHTS/PRIORITY_VALUESへのアクセスでundefinedが返る
+ *   - enqueuedAtMsが未設定の場合、待機時間計算が不正になる
+ * @abdd.explain
+ * overview: WFQ（Weighted Fair Queuing）方式による優先度スケジューリングのための型定義と優先度重み付け定数を提供する
+ * what_it_does:
+ *   - 5段階のタスク優先度を定義する
+ *   - WFQスケジューリング用の重み付け値（100〜5）を提供する
+ *   - 優先度比較用の数値（4〜0）を提供する
+ *   - タスクメタデータおよびキューエントリのインターフェースを定義する
+ *   - タスク種別と複雑度の分類型を定義する
+ *   - ラウンド推定用コンテキスト情報のインターフェースを定義する
+ * why_it_exists:
+ *   - 複数のエージェントやサブエージェントが同時実行時にリソース競合する問題を解決する
+ *   - ユーザー対話タスクをバックグラウンドタスクより優先して処理するため
+ *   - スタベーション（低優先度タスクの無限待機）を検出・防止するための基盤を提供する
+ * scope:
+ *   in: なし（型定義と定数のみを提供）
+ *   out: 実際のキューデータ構造、スケジューリングアルゴリズム実装、タスク実行ロジック
+ */
+
 // File: .pi/lib/priority-scheduler.ts
 // Description: Priority-based task scheduling utilities.
 // Why: Enables priority-aware scheduling for subagents and agent teams.

@@ -1,3 +1,34 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams/parallel-execution.ts
+ * role: エージェントチームの並列実行容量解決・確保モジュール
+ * why: agent-teams.tsから並列実行ロジックを分離し、保守性と再利用性を確保するため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts, .pi/extensions/agent-runtime/capacity.ts
+ * public_api: TeamParallelCapacityCandidate, TeamParallelCapacityResolution, buildMemberParallelCandidates, buildTeamAndMemberParallelCandidates
+ * invariants:
+ *   - teamParallelism, memberParallelismは常に1以上の整数値
+ *   - candidates配列は並列度の降順（要求値から1へ段階的減少）で生成される
+ *   - additionalLlm = teamParallelism * memberParallelism
+ * side_effects:
+ *   - agent-runtimeのreserveRuntimeCapacity/tryReserveRuntimeCapacity経由でランタイム容量を予約・消費する
+ * failure_modes:
+ *   - ランタイム容量不足により要求並列度から削減される
+ *   - maxWaitMsタイムアウトによる待機失敗
+ *   - 予約処理の中断（aborted）
+ * @abdd.explain
+ * overview: エージェントチーム実行時の並列度をランタイム容量に基づき解決・確保する
+ * what_it_does:
+ *   - チーム・メンバー並列度の候補リストを降順で生成する
+ *   - 要求並列度から利用可能な容量を探索し、確保可能な並列度を決定する
+ *   - RuntimeCapacityReservationLeaseを通じてリソース予約を管理する
+ * why_it_exists:
+ *   - 複数エージェントの並列実行時にリソース競合を調整するため
+ *   - 容量不足時に段階的に並列度を下げるフォールバック戦略を実装するため
+ * scope:
+ *   in: 要求されたチーム並列度、メンバー並列度、待機タイムアウト設定
+ *   out: 解決結果（許可/拒否、適用並列度、削減フラグ、予約リース）
+ */
+
 // File: .pi/extensions/agent-teams/parallel-execution.ts
 // Description: Parallel execution capacity resolution for agent teams.
 // Why: Separates parallel execution logic from main agent-teams.ts for maintainability.

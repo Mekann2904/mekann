@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/shared/verification-hooks.ts
+ * role: サブエージェント実行後の自動検証フック制御モジュール
+ * why: LLM推論の失敗を検出・軽減するため、サブエージェント出力に対する事後検証を自動化する
+ * related: lib/verification-workflow.js, lib/comprehensive-logger.js, lib/comprehensive-logger-types.ts
+ * public_api: resolveVerificationHookConfig, postSubagentVerificationHook, VerificationHookConfig, VerificationHookResult
+ * invariants: disabledモード時は検証を実行しない、strictモード時はInspectorとChallengerの両方を実行する
+ * side_effects: 環境変数PI_VERIFICATION_WORKFLOW_MODEの読み取り、ログ操作の開始・終了、runVerificationAgentコールバックの実行
+ * failure_modes: 環境変数未設定時はautoモードで動作、トリガー条件を満たさない場合は検証をスキップする
+ * @abdd.explain
+ * overview: サブエージェント/チーム実行後に自動的に検証プロセスを起動するフックシステム
+ * what_it_does:
+ *   - 環境変数から検証モード(disabled/minimal/auto/strict)を解決し設定を生成する
+ *   - shouldTriggerVerificationで検証要否を判定し、必要時にInspector/Challengerを実行する
+ *   - 検証結果をVerificationHookResultとして返却する
+ * why_it_exists:
+ *   - 論文「Large Language Model Reasoning Failures」のP0推奨事項に基づく実装
+ *   - LLMの推論エラーを自動検出し、信頼性の低い出力を早期に特定するため
+ * scope:
+ *   in: サブエージェントの出力文字列、信頼度スコア(0-1)、エージェントコンテキスト、検証エージェント実行関数
+ *   out: VerificationHookResult(トリガー状態、検証結果、実行フラグ、エラー情報)
+ */
+
+/**
  * 検証フックモジュール
  * 論文「Large Language Model Reasoning Failures」のP0推奨事項
  * サブエージェント/チーム実行後の自動検証フック

@@ -1,4 +1,37 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/test-runner.ts
+ * role: Search拡張機能の統合テストランナー
+ * why: file_candidates, code_search, sym_index, sym_findの各ツールが正しく動作することを検証するため
+ * related: tools/file_candidates.js, tools/code_search.js, tools/sym_index.js, utils/cli.js
+ * public_api: なし（テスト実行用スクリプト）
+ * invariants:
+ *   - テスト結果はbooleanのpassedフィールドで成功/失敗を表す
+ *   - 各テストは実行時間をdurationとして記録する
+ *   - テスト失敗時はerrorフィールドにエラーメッセージを格納する
+ * side_effects:
+ *   - コンソールへのログ出力
+ *   - 外部ツール（fd, rg, ctags）の実行
+ *   - results配列へのテスト結果追加
+ * failure_modes:
+ *   - 外部ツールが利用不可能な場合にテストが失敗する
+ *   - アサーション不一致時にAssertion failedエラーを投げる
+ * @abdd.explain
+ * overview: Search拡張機能のツール群に対する包括的なテストを実行するランナー
+ * what_it_does:
+ *   - テストフレームワーク（runTest, assert, log）を提供する
+ *   - checkToolAvailabilityでfd, rg, ctagsの利用可能性を検証する
+ *   - テスト結果をTestResult/TestSuite形式で収集する
+ *   - 各テストの実行時間を計測する
+ * why_it_exists:
+ *   - 検索ツールの品質保証と回帰テストを自動化するため
+ *   - 外部依存ツールの環境要件を事前に確認するため
+ * scope:
+ *   in: tools/file_candidates.js, tools/code_search.js, tools/sym_index.js, tools/sym_find.js, utils/cli.js
+ *   out: 本番用の検索機能自体（テストコードのみを含む）
+ */
+
+/**
  * Search Tools Test Runner
  *
  * Comprehensive tests for file_candidates, code_search, sym_index, and sym_find tools.

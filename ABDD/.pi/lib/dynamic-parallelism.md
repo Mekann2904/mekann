@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { QueueStats } from './task-scheduler';
+// from './task-scheduler': QueueStats
 ```
 
 ## エクスポート一覧
@@ -112,17 +112,20 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  getParallelismAdjuster["getParallelismAdjuster()"]
-  createParallelismAdjuster["createParallelismAdjuster()"]
-  resetParallelismAdjuster["resetParallelismAdjuster()"]
-  getParallelism["getParallelism()"]
   adjustForError["adjustForError()"]
   attemptRecovery["attemptRecovery()"]
-  getParallelismAdjuster -.-> createParallelismAdjuster
-  createParallelismAdjuster -.-> resetParallelismAdjuster
-  resetParallelismAdjuster -.-> getParallelism
-  getParallelism -.-> adjustForError
-  adjustForError -.-> attemptRecovery
+  createParallelismAdjuster["createParallelismAdjuster()"]
+  formatDynamicParallelismSummary["formatDynamicParallelismSummary()"]
+  getParallelism["getParallelism()"]
+  getParallelismAdjuster["getParallelismAdjuster()"]
+  resetParallelismAdjuster["resetParallelismAdjuster()"]
+  adjustForError --> adjustForError
+  adjustForError --> getParallelismAdjuster
+  attemptRecovery --> attemptRecovery
+  attemptRecovery --> getParallelismAdjuster
+  formatDynamicParallelismSummary --> getParallelismAdjuster
+  getParallelism --> getParallelism
+  getParallelism --> getParallelismAdjuster
 ```
 
 ### シーケンス図
@@ -379,4 +382,4 @@ interface ErrorEvent {
 エラー追跡用イベント
 
 ---
-*自動生成: 2026-02-18T07:48:44.913Z*
+*自動生成: 2026-02-18T14:31:30.974Z*

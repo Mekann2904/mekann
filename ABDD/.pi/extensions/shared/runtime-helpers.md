@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { getRuntimeSnapshot, RuntimeCapacityReservationLease } from '../agent-runtime.js';
+// from '../agent-runtime.js': getRuntimeSnapshot, RuntimeCapacityReservationLease
 ```
 
 ## エクスポート一覧
@@ -62,19 +62,6 @@ flowchart LR
     agent_runtime["agent-runtime"]
   end
   main --> local
-```
-
-### 関数フロー
-
-```mermaid
-flowchart TD
-  buildRuntimeLimitError["buildRuntimeLimitError()"]
-  buildRuntimeQueueWaitError["buildRuntimeQueueWaitError()"]
-  startReservationHeartbeat["startReservationHeartbeat()"]
-  refreshRuntimeStatus["refreshRuntimeStatus()"]
-  buildRuntimeLimitError -.-> buildRuntimeQueueWaitError
-  buildRuntimeQueueWaitError -.-> startReservationHeartbeat
-  startReservationHeartbeat -.-> refreshRuntimeStatus
 ```
 
 ### シーケンス図
@@ -198,4 +185,4 @@ interface RuntimeQueueWaitInfo {
 キューエラーメッセージ構築用情報
 
 ---
-*自動生成: 2026-02-18T07:48:44.696Z*
+*自動生成: 2026-02-18T14:31:30.881Z*

@@ -16,10 +16,10 @@ related: []
 ## インポート
 
 ```typescript
-import { CallGraphIndexInput, CallGraphIndexOutput, FindCallersInput... } from '../call-graph/types.js';
-import { buildCallGraph, saveCallGraphIndex, readCallGraphIndex... } from '../call-graph/builder.js';
-import { findCallers, findCallees } from '../call-graph/query.js';
-import { symIndex, readSymbolIndex } from './sym_index.js';
+// from '../call-graph/types.js': CallGraphIndexInput, CallGraphIndexOutput, FindCallersInput, ...
+// from '../call-graph/builder.js': buildCallGraph, saveCallGraphIndex, readCallGraphIndex, ...
+// from '../call-graph/query.js': findCallers, findCallees
+// from './sym_index.js': symIndex, readSymbolIndex
 ```
 
 ## エクスポート一覧
@@ -56,16 +56,13 @@ flowchart LR
 ```mermaid
 flowchart TD
   callGraphIndex["callGraphIndex()"]
-  findCallersTool["findCallersTool()"]
   findCalleesTool["findCalleesTool()"]
+  findCallersTool["findCallersTool()"]
   formatCallGraphIndex["formatCallGraphIndex()"]
-  formatCallers["formatCallers()"]
   formatCallees["formatCallees()"]
-  callGraphIndex -.-> findCallersTool
-  findCallersTool -.-> findCalleesTool
-  findCalleesTool -.-> formatCallGraphIndex
-  formatCallGraphIndex -.-> formatCallers
-  formatCallers -.-> formatCallees
+  formatCallers["formatCallers()"]
+  findCalleesTool --> callGraphIndex
+  findCallersTool --> callGraphIndex
 ```
 
 ### シーケンス図
@@ -194,4 +191,4 @@ formatCallees(result: FindCalleesOutput): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T07:48:44.598Z*
+*自動生成: 2026-02-18T14:31:30.857Z*

@@ -84,15 +84,12 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  inferTaskType["inferTaskType()"]
-  estimateRounds["estimateRounds()"]
-  inferPriority["inferPriority()"]
   comparePriority["comparePriority()"]
+  estimateRounds["estimateRounds()"]
   formatPriorityQueueStats["formatPriorityQueueStats()"]
-  inferTaskType -.-> estimateRounds
-  estimateRounds -.-> inferPriority
-  inferPriority -.-> comparePriority
-  comparePriority -.-> formatPriorityQueueStats
+  inferPriority["inferPriority()"]
+  inferTaskType["inferTaskType()"]
+  estimateRounds --> inferTaskType
 ```
 
 ## 関数
@@ -318,4 +315,4 @@ type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "explorato
 タスクの複雑度を表す型
 
 ---
-*自動生成: 2026-02-18T07:48:45.062Z*
+*自動生成: 2026-02-18T14:31:31.007Z*

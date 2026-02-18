@@ -1,3 +1,28 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/token-bucket.ts
+ * role: トークンバケットアルゴリズムによるレート制限ライブラリ
+ * why: LLM API呼び出し時のRPMベースレート制限とバースト許容を実現し、API制限違反を防止する
+ * related: .pi/lib/task-scheduler.ts, .pi/lib/adaptive-rate-controller.ts
+ * public_api: RateLimitConfig, RateLimiterStats, TokenBucketRateLimiter
+ * invariants: トークン数はmaxTokensを超えない、refillRateは正の値、429検知時はretryAfterMsまでブロック
+ * side_effects: なし（純粋な計算・状態管理）
+ * failure_modes: 不明なプロバイダ/モデル組み合わせにはdefault設定を使用
+ * @abdd.explain
+ * overview: プロバイダ/モデル別のレート制限をトークンバケット方式で管理する
+ * what_it_does:
+ *   - プロバイダとモデルの組み合わせごとに個別のバケット（トークン残高）を管理
+ *   - 時間経過に伴うトークン補充と、リクエスト時のトークン消費を追跡
+ *   - バースト乗数により一時的なレート超過を許容
+ *   - 429エラー検知時に指定時間までリクエストをブロック
+ * why_it_exists:
+ *   - LLM APIのRPM制限に準拠しつつ、バーストトラフィックを許容するため
+ *   - プロバイダ/モデルごとの異なる制限値を統一的に管理するため
+ * scope:
+ *   in: プロバイダ名、モデル名、必要トークン数、429再試行待機時間
+ *   out: リクエスト可否判定、待機時間（ms）、統計情報
+ */
+
 // File: .pi/lib/token-bucket.ts
 // Description: Token bucket rate limiter with provider/model-specific limits.
 // Why: Enables RPM-based rate limiting with burst tolerance for LLM API calls.

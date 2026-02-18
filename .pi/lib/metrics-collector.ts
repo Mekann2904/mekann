@@ -1,3 +1,28 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/metrics-collector.ts
+ * role: スケジューラーメトリクスの収集・JSONLログ出力・集計を行うモジュール
+ * why: タスクスケジューラーのパフォーマンスを可観測にし、最適化のためのデータを提供する
+ * related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
+ * public_api: SchedulerMetrics, TaskCompletionEvent, PreemptionEvent, WorkStealEvent, MetricsSummary
+ * invariants: timestampは常にエポックからのミリ秒、全数値メトリクスは非負整数
+ * side_effects: ~/.pi/logs配下へのJSONLファイル追記・読込・削除、ディレクトリ作成
+ * failure_modes: ディスク容量不足時の書き込み失敗、ログファイル不在時の読込エラー
+ * @abdd.explain
+ * overview: タスクスケジューラーの実行メトリクスを収集し、JSONL形式で永続化・集計する機能を提供する
+ * what_it_does:
+ *   - キューディープス、アクティブタスク数、待機時間（平均/P50/P99）の収集
+ *   - タスク完了イベントの記録（成功/失敗、実行時間、プロバイダ/モデル/優先度別）
+ *   - プリエンプション・ワークスティールイベントの追跡
+ *   - 指定期間のメトリクス集計（成功率、スループット、パーセンタイル計算）
+ * why_it_exists:
+ *   - スケジューラーパフォーマンスの定量的監視を実現するため
+ *   - ボトルネック検出とレートリミット対応の最適化に必要なデータを提供するため
+ * scope:
+ *   in: タスク実行イベント、キューメトリクス、プリエンプション/スティールイベント
+ *   out: JSONLログファイル、MetricsSummary集計結果
+ */
+
 // File: .pi/lib/metrics-collector.ts
 // Description: Scheduler metrics collection with JSONL logging and aggregation.
 // Why: Enables observability of task scheduler performance for optimization.

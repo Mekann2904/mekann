@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { toErrorMessage, extractStatusCodeFromMessage, classifyPressureError... } from '../../lib/error-utils.js';
-import { RunOutcomeCode, RunOutcomeSignal } from '../../lib/agent-types.js';
-import { TeamMemberResult, TeamRunRecord, TeamDefinition... } from './storage';
+// from '../../lib/error-utils.js': toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, ...
+// from '../../lib/agent-types.js': RunOutcomeCode, RunOutcomeSignal
+// from './storage': TeamMemberResult, TeamRunRecord, TeamDefinition, ...
 ```
 
 ## エクスポート一覧
@@ -53,17 +53,16 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  buildTeamResultText["buildTeamResultText()"]
+  extractSummary["extractSummary()"]
   isRetryableTeamMemberError["isRetryableTeamMemberError()"]
   resolveTeamFailureOutcome["resolveTeamFailureOutcome()"]
   resolveTeamMemberAggregateOutcome["resolveTeamMemberAggregateOutcome()"]
   resolveTeamParallelRunOutcome["resolveTeamParallelRunOutcome()"]
-  buildTeamResultText["buildTeamResultText()"]
-  extractSummary["extractSummary()"]
-  isRetryableTeamMemberError -.-> resolveTeamFailureOutcome
-  resolveTeamFailureOutcome -.-> resolveTeamMemberAggregateOutcome
-  resolveTeamMemberAggregateOutcome -.-> resolveTeamParallelRunOutcome
-  resolveTeamParallelRunOutcome -.-> buildTeamResultText
-  buildTeamResultText -.-> extractSummary
+  resolveTeamFailureOutcome --> isRetryableTeamMemberError
+  resolveTeamMemberAggregateOutcome --> resolveTeamFailureOutcome
+  resolveTeamParallelRunOutcome --> resolveTeamFailureOutcome
+  resolveTeamParallelRunOutcome --> resolveTeamMemberAggregateOutcome
 ```
 
 ### シーケンス図
@@ -212,4 +211,4 @@ extractSummary(output: string): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T07:48:44.340Z*
+*自動生成: 2026-02-18T14:31:30.481Z*

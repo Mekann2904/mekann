@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/dynamic-tools.ts
+ * role: 動的ツール生成・実行機能を提供する拡張モジュール
+ * why: Live-SWE-agent統合において、タスク実行中に必要なツールをオンデマンドで生成・実行するため
+ * related: lib/dynamic-tools/registry.js, lib/dynamic-tools/safety.js, lib/dynamic-tools/quality.js, lib/verification-workflow.js
+ * public_api: create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection
+ * invariants: 動的ツールはVMコンテキストで実行されrequire/processへのアクセスは禁止、監査ログは必ず.pi/logs/に出力される
+ * side_effects: .pi/logs/dynamic-tools-audit.jsonlへの監査ログ書き込み、動的ツールのレジストリへの登録・削除
+ * failure_modes: 安全性チェック不合格時のツール生成拒否、ツール実行タイムアウト、存在しないツールID/名前指定時のエラー
+ * @abdd.explain
+ * overview: タスク実行中に必要なツールを動的に生成・管理・実行するための拡張機能
+ * what_it_does:
+ *   - 動的ツールの生成(create_tool)、実行(run_dynamic_tool)、一覧表示(list_dynamic_tools)、削除(delete_dynamic_tool)
+ *   - ツール実行後の反省と追加ツール生成判定(tool_reflection)
+ *   - コード安全性解析と品質評価の実施
+ *   - 全操作の監査ログへの記録
+ * why_it_exists:
+ *   - 静的に定義できないタスク固有のツールをランタイムで生成可能にするため
+ *   - 高ステークスタスクにおけるInspector/Challenger検証パターンとの統合のため
+ *   - セキュアなVMコンテキストでのコード実行を提供するため
+ * scope:
+ *   in: ツール定義(name, description, code, parameters)、実行パラメータ、検索フィルタ条件
+ *   out: ツール実行結果、ツール一覧、安全性スコア、品質メトリクス
+ */
+
+/**
  * 動的ツール生成・実行拡張機能
  * Live-SWE-agent統合: タスク実行中に必要なツールを動的に生成・実行
  *

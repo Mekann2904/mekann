@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { trimForError, buildRateLimitKey } from '../../lib/runtime-utils.js';
-import { toErrorMessage, extractStatusCodeFromMessage, classifyPressureError... } from '../../lib/error-utils.js';
-import { createRunId } from '../../lib/agent-utils.js';
+// from 'node:fs': writeFileSync
+// from 'node:path': join
+// from '../../lib/runtime-utils.js': trimForError, buildRateLimitKey
+// from '../../lib/error-utils.js': toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, ...
+// from '../../lib/agent-utils.js': createRunId
 // ... and 10 more imports
 ```
 
@@ -77,17 +77,33 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  normalizeSubagentOutput["normalizeSubagentOutput()"]
-  isRetryableSubagentError["isRetryableSubagentError()"]
-  isEmptyOutputFailureMessage["isEmptyOutputFailureMessage()"]
   buildFailureSummary["buildFailureSummary()"]
-  resolveSubagentFailureOutcome["resolveSubagentFailureOutcome()"]
+  buildSubagentPrompt["buildSubagentPrompt()"]
+  emitStderrChunk["emitStderrChunk()"]
+  extractSummary["extractSummary()"]
+  formatSkillsSection["formatSkillsSection()"]
+  isEmptyOutputFailureMessage["isEmptyOutputFailureMessage()"]
+  isRetryableSubagentError["isRetryableSubagentError()"]
   mergeSkillArrays["mergeSkillArrays()"]
-  normalizeSubagentOutput -.-> isRetryableSubagentError
-  isRetryableSubagentError -.-> isEmptyOutputFailureMessage
-  isEmptyOutputFailureMessage -.-> buildFailureSummary
-  buildFailureSummary -.-> resolveSubagentFailureOutcome
-  resolveSubagentFailureOutcome -.-> mergeSkillArrays
+  normalizeSubagentOutput["normalizeSubagentOutput()"]
+  pickSubagentSummaryCandidate["pickSubagentSummaryCandidate()"]
+  resolveEffectiveSkills["resolveEffectiveSkills()"]
+  resolveSubagentFailureOutcome["resolveSubagentFailureOutcome()"]
+  runPiPrintMode["runPiPrintMode()"]
+  runSubagentTask["runSubagentTask()"]
+  buildSubagentPrompt --> formatSkillsSection
+  buildSubagentPrompt --> resolveEffectiveSkills
+  normalizeSubagentOutput --> pickSubagentSummaryCandidate
+  resolveEffectiveSkills --> mergeSkillArrays
+  resolveSubagentFailureOutcome --> isRetryableSubagentError
+  runPiPrintMode --> runPiPrintMode
+  runSubagentTask --> buildFailureSummary
+  runSubagentTask --> buildSubagentPrompt
+  runSubagentTask --> emitStderrChunk
+  runSubagentTask --> extractSummary
+  runSubagentTask --> isRetryableSubagentError
+  runSubagentTask --> normalizeSubagentOutput
+  runSubagentTask --> runPiPrintMode
 ```
 
 ### シーケンス図
@@ -402,4 +418,4 @@ interface SubagentExecutionResult {
 サブエージェントの実行結果を表します。
 
 ---
-*自動生成: 2026-02-18T07:48:44.751Z*
+*自動生成: 2026-02-18T14:31:30.905Z*

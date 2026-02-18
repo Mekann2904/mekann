@@ -16,10 +16,10 @@ related: []
 ## インポート
 
 ```typescript
-import { getCheckpointManager, Checkpoint, PreemptionResult... } from './checkpoint-manager';
-import { TaskPriority, PriorityTaskQueue, comparePriority... } from './priority-scheduler';
-import { getRuntimeConfig, RuntimeConfig } from './runtime-config.js';
-import { PRIORITY_VALUES } from './priority-scheduler';
+// from './checkpoint-manager': getCheckpointManager, Checkpoint, PreemptionResult, ...
+// from './priority-scheduler': TaskPriority, PriorityTaskQueue, comparePriority, ...
+// from './runtime-config.js': getRuntimeConfig, RuntimeConfig
+// from './priority-scheduler': PRIORITY_VALUES
 ```
 
 ## エクスポート一覧
@@ -134,17 +134,14 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  shouldPreempt["shouldPreempt()"]
-  preemptTask["preemptTask()"]
-  resumeFromCheckpoint["resumeFromCheckpoint()"]
+  createScheduler["createScheduler()"]
   createTaskId["createTaskId()"]
   getScheduler["getScheduler()"]
-  createScheduler["createScheduler()"]
-  shouldPreempt -.-> preemptTask
-  preemptTask -.-> resumeFromCheckpoint
-  resumeFromCheckpoint -.-> createTaskId
-  createTaskId -.-> getScheduler
-  getScheduler -.-> createScheduler
+  preemptTask["preemptTask()"]
+  resetScheduler["resetScheduler()"]
+  resumeFromCheckpoint["resumeFromCheckpoint()"]
+  shouldPreempt["shouldPreempt()"]
+  preemptTask --> getScheduler
 ```
 
 ### シーケンス図
@@ -601,4 +598,4 @@ type TaskSource = | "subagent_run"
 タスクの作成元を識別する種別
 
 ---
-*自動生成: 2026-02-18T07:48:45.321Z*
+*自動生成: 2026-02-18T14:31:31.039Z*

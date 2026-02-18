@@ -1,4 +1,33 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/sym_find.ts
+ * role: シンボル定義検索ツール。ctags生成インデックスから条件に一致するシンボルを抽出・フィルタリング・ソートする
+ * why: 大規模コードベースで関数・クラス等の定義位置を高速に特定するため
+ * related: sym_index.ts, types.js, utils/output.js, utils/cache.js
+ * public_api: なし（内部フィルタリング・ソーティング関数群）
+ * invariants:
+ *   - nameRegex生成時は入力パターンを必ずエスケープしてからワイルドカード変換する
+ *   - フィルタリング条件はAND結合（全条件を満たすエントリのみ返却）
+ *   - ソート順は完全一致 > kind順(function優先) > ファイルパス順で固定
+ * side_effects: なし（純粋関数として動作）
+ * failure_modes:
+ *   - 不正な正規表現パターン入力時にSyntaxError発生の可能性
+ *   - インデックスエントリ欠損時は該当エントリをスキップ
+ * @abdd.explain
+ * overview: ctags生成シンボルインデックスから定義を検索するフィルタリング・ソーティング処理を提供する
+ * what_it_does:
+ *   - ワイルドカードパターンを正規表現に変換しシンボル名をフィルタリング
+ *   - kind/fileによる追加フィルタリング条件を適用
+ *   - 完全一致優先・kind順・ファイルパス順でソート
+ * why_it_exists:
+ *   - コードベース全体から特定シンボルの定義位置を効率的に発見するため
+ *   - 検索結果の品質を一貫した順序付けで提供するため
+ * scope:
+ *   in: SymbolIndexEntry配列, SymFindInput（name, kind, fileフィルタ条件）
+ *   out: SymbolDefinition配列（フィルタ・ソート済み）
+ */
+
+/**
  * sym_find Tool
  *
  * Search symbol definitions from the ctags-generated index

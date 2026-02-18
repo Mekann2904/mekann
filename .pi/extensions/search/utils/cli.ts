@@ -1,4 +1,38 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/cli.ts
+ * role: 外部コマンド実行ユーティリティ
+ * why: 子プロセス実行時のタイムアウト、AbortSignal、出力サイズ制限を統一的に管理するため
+ * related: types.ts, constants.ts, spawn (node:child_process), search/index.ts
+ * public_api: execute
+ * invariants:
+ *   - 戻り値は常にCliResultオブジェクト形式
+ *   - 出力はmaxOutputSizeを超えると切り捨てられる
+ *   - デフォルトタイムアウトは30秒
+ * side_effects:
+ *   - 外部プロセスの起動と終了
+ *   - プロセスへのSIGTERM送信（タイムアウトまたは中断時）
+ * failure_modes:
+ *   - コマンドが存在しない場合、code=1で終了
+ *   - タイムアウト時はtimedOut=true、killed=trueでSIGTERM送信
+ *   - AbortSignal検出時は即座にプロセスをkill
+ * @abdd.explain
+ * overview: CLIコマンドを安全に実行し、構造化された結果を返すspawnラッパー関数
+ * what_it_does:
+ *   - spawnによる外部コマンド実行とstdout/stderrの収集
+ *   - 指定時間経過後のプロセス強制終了（タイムアウト処理）
+ *   - AbortSignalによる実行中断サポート
+ *   - 出力サイズが上限を超えた場合の切り捨て処理
+ * why_it_exists:
+ *   - 外部ツール（grep, rg等）実行時のリソース保護
+ *   - 無応答プロセスによるハングアップ防止
+ *   - 呼び出し元でのエラーハンドリング統一
+ * scope:
+ *   in: コマンド文字列、引数配列、実行オプション（cwd, timeout, signal, maxOutputSize, env）
+ *   out: CliResult（code, stdout, stderr, timedOut, killed）
+ */
+
+/**
  * CLI Execution Utilities
  *
  * Provides spawn wrapper with:

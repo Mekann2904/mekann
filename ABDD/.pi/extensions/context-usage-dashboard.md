@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { BranchSummaryEntry, CompactionEntry, ContextUsage... } from '@mariozechner/pi-coding-agent';
-import { truncateToWidth } from '@mariozechner/pi-tui';
+// from 'node:fs': existsSync, readdirSync, readFileSync
+// from 'node:os': homedir
+// from 'node:path': dirname, join
+// from '@mariozechner/pi-coding-agent': BranchSummaryEntry, CompactionEntry, ContextUsage, ...
+// from '@mariozechner/pi-tui': truncateToWidth
 // ... and 1 more imports
 ```
 
@@ -446,4 +446,4 @@ interface DashboardSnapshot {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.450Z*
+*自動生成: 2026-02-18T14:31:30.668Z*

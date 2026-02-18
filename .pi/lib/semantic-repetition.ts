@@ -1,4 +1,37 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/semantic-repetition.ts
+ * role: 意味的反復検出モジュール。連続する出力間の意味的類似度を計算し、エージェントの停滞を特定する
+ * why: Agentic Search研究（arXiv:2601.17617v2）によれば32.15%の軌跡が反復パターンを示し、早期停止の機会となるため
+ * related: embeddings/index.js, types/trajectory, agent-runner, loop-detector
+ * public_api: detectSemanticRepetition, SemanticRepetitionResult, SemanticRepetitionOptions, TrajectorySummary, DEFAULT_REPETITION_THRESHOLD, DEFAULT_MAX_TEXT_LENGTH
+ * invariants:
+ *   - similarityは必ず0.0〜1.0の範囲内
+ *   - 完全一致時はsimilarity=1.0、method="exact"を返す
+ *   - 空文字列入力時はisRepeated=false、similarity=0を返す
+ * side_effects:
+ *   - useEmbedding=true時: embeddings/index.js経由で外部API（OpenAI等）を呼び出し
+ *   - ネットワーク通信とトークン消費が発生
+ * failure_modes:
+ *   - 埋め込みプロバイダーが利用不可の場合: method="unavailable"として処理継続
+ *   - テキストがmaxTextLengthを超過: 切り詰めて比較（情報損失の可能性）
+ * @abdd.explain
+ * overview: 連続する出力の意味的類似度を測定し、エージェントが同じ内容を繰り返しているかを判定する
+ * what_it_does:
+ *   - 現在と前回の出力テキストの類似度スコア（0.0-1.0）を計算
+ *   - 完全一致の高速チェック（exact）、埋め込みベースの意味比較の2段階検出
+ *   - 閾値（デフォルト0.85）を超える類似度でisRepeated=trueを返す
+ *   - テキスト正規化と長さ制限（デフォルト2000文字）を適用
+ * why_it_exists:
+ *   - 反復は32.15%の軌跡で観測され、停滞の指標となる
+ *   - 無限ループや無駄な反復を早期検出し、リソース消費を抑制
+ *   - 早期停止によりエージェントの効率を向上
+ * scope:
+ *   in: 連続する2つのテキスト出力、オプション（threshold, useEmbedding, maxTextLength）
+ *   out: SemanticRepetitionResult（isRepeated, similarity, method）
+ */
+
+/**
  * Semantic Repetition Detection Module.
  * Detects semantic similarity between consecutive outputs to identify stagnation.
  * Based on findings from "Agentic Search in the Wild" paper (arXiv:2601.17617v2):

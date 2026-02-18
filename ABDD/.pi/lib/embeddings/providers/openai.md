@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
-import { execSync } from 'node:child_process';
-import { EmbeddingProvider, ProviderCapabilities } from '../types.js';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
+// from 'node:os': homedir
+// from 'node:child_process': execSync
+// from '../types.js': EmbeddingProvider, ProviderCapabilities
 ```
 
 ## エクスポート一覧
@@ -68,6 +68,17 @@ flowchart LR
     types["types"]
   end
   main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  getOpenAIKey["getOpenAIKey()"]
+  loadAuthConfig["loadAuthConfig()"]
+  resolveKeyValue["resolveKeyValue()"]
+  getOpenAIKey --> loadAuthConfig
+  getOpenAIKey --> resolveKeyValue
 ```
 
 ## 関数
@@ -160,4 +171,4 @@ interface OpenAIEmbeddingResponse {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.954Z*
+*自動生成: 2026-02-18T14:31:30.987Z*

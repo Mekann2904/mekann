@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/types.ts
+ * role: 検索拡張機能全体で使用する型定義の集約モジュール
+ * why: file_candidates, code_search, sym_index, sym_findツール間で共通する型を一元管理し、型の一貫性と再利用性を確保するため
+ * related: file_candidates.ts, code_search.ts, sym_index.ts, sym_find.ts
+ * public_api: SearchHints, SearchDetails, SearchResponse<T>, SearchErrorResponse, FileCandidatesInput, FileCandidate, FileCandidatesOutput
+ * invariants: SearchErrorResponseはtotal=0, truncated=false, results=[]を固定値として持つ、SearchResponseのtotalはresults.length以上の値を取る
+ * side_effects: なし（型定義のみをエクスポートし、実行時処理は存在しない）
+ * failure_modes: なし（純粋な型定義ファイルのため実行時エラーは発生しない）
+ * @abdd.explain
+ * overview: 検索拡張機能の共通型定義ファイル。ジェネリックな検索レスポンス構造と各ツール固有の入出力型を提供する。
+ * what_it_does:
+ *   - 検索結果の汎用コンテナとしてSearchResponse<T>を定義し、ページネーション情報とエラーハンドリングを統一
+ *   - SearchHintsを通じてエージェントへの次アクション提案機能を型化
+ *   - FileCandidatesInputでglobパターン、拡張子フィルタ、除外パターン等の検索条件を型定義
+ *   - SearchErrorResponseでエラー時の固定構造を型レベルで保証
+ * why_it_exists:
+ *   - 複数の検索ツール間でレスポンス形式を統一し、エージェントが一貫した方法で結果を処理できるようにするため
+ *   - 型安全性を通じて検索APIの契約を明確化し、実装ミスをコンパイル時に検出するため
+ * scope:
+ *   in: なし（外部依存なし）
+ *   out: 検索ツール群で使用される全ての型定義
+ */
+
+/**
  * Search Extension Type Definitions
  *
  * Common types used across file_candidates, code_search, sym_index, and sym_find tools.

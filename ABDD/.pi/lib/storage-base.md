@@ -16,10 +16,10 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readdirSync, readFileSync... } from 'node:fs';
-import { basename, join } from 'node:path';
-import { ensureDir } from './fs-utils.js';
-import { atomicWriteTextFile, withFileLock } from './storage-lock.js';
+// from 'node:fs': existsSync, readdirSync, readFileSync, ...
+// from 'node:path': basename, join
+// from './fs-utils.js': ensureDir
+// from './storage-lock.js': atomicWriteTextFile, withFileLock
 ```
 
 ## エクスポート一覧
@@ -111,17 +111,27 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  createPathsFactory["createPathsFactory()"]
   createEnsurePaths["createEnsurePaths()"]
-  pruneRunArtifacts["pruneRunArtifacts()"]
+  createPathsFactory["createPathsFactory()"]
+  createStorageLoader["createStorageLoader()"]
+  createStorageSaver["createStorageSaver()"]
   mergeEntitiesById["mergeEntitiesById()"]
   mergeRunsById["mergeRunsById()"]
+  mergeSubagentStorageWithDisk["mergeSubagentStorageWithDisk()"]
+  mergeTeamStorageWithDisk["mergeTeamStorageWithDisk()"]
+  pruneRunArtifacts["pruneRunArtifacts()"]
   resolveCurrentId["resolveCurrentId()"]
-  createPathsFactory -.-> createEnsurePaths
-  createEnsurePaths -.-> pruneRunArtifacts
-  pruneRunArtifacts -.-> mergeEntitiesById
-  mergeEntitiesById -.-> mergeRunsById
-  mergeRunsById -.-> resolveCurrentId
+  resolveDefaultsVersion["resolveDefaultsVersion()"]
+  toId["toId()"]
+  createStorageSaver --> pruneRunArtifacts
+  mergeSubagentStorageWithDisk --> mergeEntitiesById
+  mergeSubagentStorageWithDisk --> mergeRunsById
+  mergeSubagentStorageWithDisk --> resolveCurrentId
+  mergeSubagentStorageWithDisk --> resolveDefaultsVersion
+  mergeTeamStorageWithDisk --> mergeEntitiesById
+  mergeTeamStorageWithDisk --> mergeRunsById
+  mergeTeamStorageWithDisk --> resolveCurrentId
+  mergeTeamStorageWithDisk --> resolveDefaultsVersion
 ```
 
 ### シーケンス図
@@ -448,4 +458,4 @@ interface CreateStorageSaverOptions {
 ストレージ保存機能の作成オプション。
 
 ---
-*自動生成: 2026-02-18T07:48:45.270Z*
+*自動生成: 2026-02-18T14:31:31.029Z*

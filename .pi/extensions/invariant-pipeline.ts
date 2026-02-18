@@ -1,4 +1,40 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/invariant-pipeline.ts
+ * role: 仕様駆動コード生成パイプラインを提供するPi拡張機能
+ * why: spec.mdからQuint形式仕様、TypeScriptインバリアント、プロパティベーステスト、モデルベーステストを一貫して生成し、形式検証とテスト自動化を実現するため
+ * related: invariant-generation(スキル), invariant-generation-team, spec.md(入力ソース), fast-check(外部ライブラリ)
+ * public_api: generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver
+ * invariants:
+ *   - ParsedSpecは必ず空配列のstates/operations/invariantsを持つ
+ *   - GenerationResultはsuccessフラグとerrors配列で生成結果を一意に表す
+ *   - 各生成関数はspec_pathを必須入力とする
+ * side_effects:
+ *   - readFileSyncによるspec.md読み込み
+ *   - writeFileSyncによるQuint/TypeScript/テストファイルへの書き込み
+ *   - mkdirSyncによる出力ディレクトリ作成
+ * failure_modes:
+ *   - spec.mdが存在しない、またはパース不可能な場合にエラー
+ *   - 書き込み先パスの権限不足またはディスク容量不足
+ *   - Quint検証ツールが未インストールの場合のverify_quint_spec失敗
+ * @abdd.explain
+ * overview: Markdown形式の仕様書から形式検証可能なコード資産を自動生成するパイプライン拡張機能
+ * what_it_does:
+ *   - spec.mdをMarkdownパーサーで解析し、ParsedSpec構造（states/operations/invariants/constants）に変換する
+ *   - ParsedSpecからQuint形式仕様ファイルを生成し、invariant/liveness検証を実行する
+ *   - ParsedSpecからTypeScriptインバリアントバリデーション関数を生成する
+ *   - fast-checkを使用したプロパティベーステストコードを生成する
+ *   - モデルベーステスト用のTypeScriptドライバーコードを生成する
+ * why_it_exists:
+ *   - 仕様と実装の整合性を形式手法で保証するため
+ *   - 手動テスト作成の負荷を軽減し、網羅的なテスト自動生成を実現するため
+ *   - Quint形式検証とfast-checkプロパティテストを統合パイプラインで一元管理するため
+ * scope:
+ *   in: spec.md(Markdown形式仕様)、Quintファイルパス、生成オプション(struct_name/test_count/max_steps等)
+ *   out: Quint形式仕様ファイル、TypeScriptインバリアント関数、fast-checkテストコード、モデルベーステストドライバー、GenerationResult
+ */
+
+/**
  * Invariant Validation Pipeline拡張機能
  * spec.mdからQuint形式仕様、TypeScriptインバリアントバリデーション、プロパティベーステスト(fast-check)、モデルベーステストを自動生成
  *

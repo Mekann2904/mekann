@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
-import { parseFrontmatter } from '@mariozechner/pi-coding-agent';
-import { TeamDefinition, TeamMember, TeamStorage } from './storage';
+// from 'node:fs': existsSync, readdirSync, readFileSync
+// from 'node:os': homedir
+// from 'node:path': basename, join
+// from '@mariozechner/pi-coding-agent': parseFrontmatter
+// from './storage': TeamDefinition, TeamMember, TeamStorage
 // ... and 2 more imports
 ```
 
@@ -60,17 +60,31 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  parseTeamMarkdownFile["parseTeamMarkdownFile()"]
+  createDefaultTeams["createDefaultTeams()"]
+  createRapidSwarmMembers["createRapidSwarmMembers()"]
+  ensureDefaults["ensureDefaults()"]
+  getAgentBaseDirFromEnv["getAgentBaseDirFromEnv()"]
+  getBundledTeamDefinitionsDir["getBundledTeamDefinitionsDir()"]
+  getCandidateTeamDefinitionsDirs["getCandidateTeamDefinitionsDirs()"]
+  getGlobalTeamDefinitionsDir["getGlobalTeamDefinitionsDir()"]
+  getHardcodedDefaultTeams["getHardcodedDefaultTeams()"]
+  getTeamDefinitionsDir["getTeamDefinitionsDir()"]
   loadTeamDefinitionsFromDir["loadTeamDefinitionsFromDir()"]
   loadTeamDefinitionsFromMarkdown["loadTeamDefinitionsFromMarkdown()"]
-  createDefaultTeams["createDefaultTeams()"]
   mergeDefaultTeam["mergeDefaultTeam()"]
-  ensureDefaults["ensureDefaults()"]
-  parseTeamMarkdownFile -.-> loadTeamDefinitionsFromDir
-  loadTeamDefinitionsFromDir -.-> loadTeamDefinitionsFromMarkdown
-  loadTeamDefinitionsFromMarkdown -.-> createDefaultTeams
-  createDefaultTeams -.-> mergeDefaultTeam
-  mergeDefaultTeam -.-> ensureDefaults
+  parseTeamMarkdownFile["parseTeamMarkdownFile()"]
+  createDefaultTeams --> getHardcodedDefaultTeams
+  createDefaultTeams --> loadTeamDefinitionsFromMarkdown
+  ensureDefaults --> createDefaultTeams
+  ensureDefaults --> mergeDefaultTeam
+  getCandidateTeamDefinitionsDirs --> getBundledTeamDefinitionsDir
+  getCandidateTeamDefinitionsDirs --> getGlobalTeamDefinitionsDir
+  getCandidateTeamDefinitionsDirs --> getTeamDefinitionsDir
+  getGlobalTeamDefinitionsDir --> getAgentBaseDirFromEnv
+  getHardcodedDefaultTeams --> createRapidSwarmMembers
+  loadTeamDefinitionsFromDir --> parseTeamMarkdownFile
+  loadTeamDefinitionsFromMarkdown --> getCandidateTeamDefinitionsDirs
+  loadTeamDefinitionsFromMarkdown --> loadTeamDefinitionsFromDir
 ```
 
 ### シーケンス図
@@ -280,4 +294,4 @@ ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage
 **戻り値**: `TeamStorage`
 
 ---
-*自動生成: 2026-02-18T07:48:44.123Z*
+*自動生成: 2026-02-18T14:31:30.448Z*

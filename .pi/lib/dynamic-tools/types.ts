@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/types.ts
+ * role: 動的ツール生成システムの型定義とデフォルトパス生成
+ * why: Live-SWE-agent統合における動的ツール、パラメータ、パスの型安全性を保証するため
+ * related: .pi/lib/dynamic-tools/generator.ts, .pi/lib/dynamic-tools/executor.ts, .pi/lib/dynamic-tools/validator.ts
+ * public_api: DynamicToolsPaths, getDynamicToolsPaths, DynamicToolMode, ToolParameterDefinition, DynamicToolDefinition
+ * invariants: getDynamicToolsPathsは常に4つのパスキーを含むオブジェクトを返す、confidenceScoreは0-1の範囲、modeは4種類の固定値のみ
+ * side_effects: getDynamicToolsPathsでprocess.cwd()を呼び出し、実行時のカレントディレクトリに依存
+ * failure_modes: CWDが変更されるとパスが無効になる可能性がある
+ * @abdd.explain
+ * overview: 動的ツール生成システムで使用される型定義とデフォルトパス設定を提供するモジュール
+ * what_it_does:
+ *   - DynamicToolsPaths: ツール/スキル/監査ログ/メトリクスの保存パスを定義
+ *   - getDynamicToolsPaths: CWDベースで.pi配下のデフォルトパスを生成して返す
+ *   - DynamicToolMode: bash/function/template/skillの4種類の実行モードを定義
+ *   - ToolParameterDefinition: パラメータ名/型/必須/説明/デフォルト値/許可値を定義
+ *   - DynamicToolDefinition: ツールID/名前/説明/モード/パラメータ/コード/メタ情報を定義
+ * why_it_exists:
+ *   - 動的ツール生成機能全体で共有する型を一元管理し型安全性を確保するため
+ *   - Live-SWE-agent統合におけるツール定義の標準フォーマットを提供するため
+ * scope:
+ *   in: process.cwd()の実行結果
+ *   out: 型定義とパス生成関数
+ */
+
+/**
  * 動的ツール生成システム - 型定義
  * Live-SWE-agent統合用の共通型
  */

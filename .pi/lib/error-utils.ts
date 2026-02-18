@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/error-utils.ts
+ * role: エラー処理ユーティリティライブラリ
+ * why: 複数のエージェント拡張機能間で重複していたエラー処理ロジックを一元管理し、保守性を向上させるため
+ * related: agent-teams.ts, subagents.ts, loop.ts, rsa.ts
+ * public_api: toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, isCancelledErrorMessage, isTimeoutErrorMessage, PressureErrorType
+ * invariants: 全関数はunknown型を受け入れ、null/undefinedを含む任意の値を安全に処理する
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes: なし（全入力に対して安全に文字列変換または分類結果を返す）
+ * @abdd.explain
+ * overview: エラーオブジェクトの分類・判定・変換を行う共有ユーティリティ関数群
+ * what_it_does:
+ *   - unknown型のエラーを文字列メッセージに変換
+ *   - HTTPステータスコード429および5xxをエラーメッセージから抽出
+ *   - エラーをrate_limit/timeout/capacity/otherの4種類に分類
+ *   - キャンセル/タイムアウトを示すエラーメッセージを多言語で判定
+ * why_it_exists:
+ *   - agent-teams.ts, subagents.ts, loop.ts, rsa.tsで重複実装されていたエラー処理を統合
+ *   - 日本語・英語双方のエラーメッセージを一貫して処理
+ * scope:
+ *   in: unknown型のエラーオブジェクト、Errorインスタンス、文字列、null/undefined
+ *   out: 文字列、数値、boolean、PressureErrorTypeリテラル
+ */
+
+/**
  * Error handling utilities shared across extensions.
  * Consolidates duplicate implementations from:
  * - agent-teams.ts

@@ -65,17 +65,6 @@ classDiagram
   }
 ```
 
-### 関数フロー
-
-```mermaid
-flowchart TD
-  getTokenBucketRateLimiter["getTokenBucketRateLimiter()"]
-  createTokenBucketRateLimiter["createTokenBucketRateLimiter()"]
-  resetTokenBucketRateLimiter["resetTokenBucketRateLimiter()"]
-  getTokenBucketRateLimiter -.-> createTokenBucketRateLimiter
-  createTokenBucketRateLimiter -.-> resetTokenBucketRateLimiter
-```
-
 ## 関数
 
 ### getTokenBucketRateLimiter
@@ -197,4 +186,4 @@ interface TokenBucketRateLimiter {
 トークンバケット方式のレート制限インターフェース
 
 ---
-*自動生成: 2026-02-18T07:48:45.356Z*
+*自動生成: 2026-02-18T14:31:31.041Z*

@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/subagent-types.ts
+ * role: サブエージェント監視システムの型定義モジュール
+ * why: subagents.ts から型定義を分離し、保守性と再利用性を向上させるため
+ * related: extensions/subagents.ts, extensions/subagents/storage.ts, lib/tui/live-monitor-base.ts, lib/live-view-utils.ts
+ * public_api: SubagentLiveViewMode, SubagentLiveStreamView, SubagentLiveItem, SubagentMonitorLifecycle, SubagentMonitorStream, SubagentMonitorResource
+ * invariants: SubagentLiveViewModeとSubagentLiveStreamViewはlive-monitor-base.tsの型エイリアスであること、LiveStatusはlive-view-utils.ts由来であること
+ * side_effects: なし（純粋な型定義ファイル）
+ * failure_modes: なし（型定義のみのため実行時エラーは発生しない）
+ * @abdd.explain
+ * overview: サブエージェントのライブ監視および並列実行調整で使用する型定義を集約したモジュール
+ * what_it_does:
+ *   - ライブ監視ビューの表示モード型を再エクスポート
+ *   - サブエージェントの実行状態を管理するSubagentLiveItemインターフェースを定義
+ *   - ISP（Interface Segregation Principle）準拠の監視インターフェース群を定義
+ *   - ライフサイクル操作、ストリーム追記、リソース管理の責務を分離
+ * why_it_exists:
+ *   - 巨大化したsubagents.tsから型定義を抽出して保守性を確保するため
+ *   - 監視機能の型を他モジュールから再利用可能にするため
+ *   - ISPに基づき利用者が必要なメソッドのみに依存できるよう分離するため
+ * scope:
+ *   in: LiveStreamView, LiveViewMode（live-monitor-base.ts）, LiveStatus（live-view-utils.ts）
+ *   out: サブエージェント監視システムで使用される全ての型定義
+ */
+
+/**
  * Subagent type definitions.
  * Extracted from subagents.ts for maintainability.
  *

@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { SearchResponse, FileCandidate, CodeSearchMatch... } from '../types';
-import { SearchMetrics } from './metrics.js';
-import { DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT } from './constants.js';
+// from '../types': SearchResponse, FileCandidate, CodeSearchMatch, ...
+// from './metrics.js': SearchMetrics
+// from './constants.js': DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT
 ```
 
 ## エクスポート一覧
@@ -100,17 +100,37 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  truncateResults["truncateResults()"]
-  truncateHead["truncateHead()"]
-  parseFdOutput["parseFdOutput()"]
+  calculateConfidence["calculateConfidence()"]
+  calculateSimpleConfidence["calculateSimpleConfidence()"]
+  createCodeSearchError["createCodeSearchError()"]
+  createErrorResponse["createErrorResponse()"]
+  createHints["createHints()"]
+  createSimpleHints["createSimpleHints()"]
+  enhanceOutput["enhanceOutput()"]
+  escapeText["escapeText()"]
+  formatCodeSearch["formatCodeSearch()"]
+  formatError["formatError()"]
   formatFileCandidates["formatFileCandidates()"]
+  formatSymbols["formatSymbols()"]
+  generateRelatedQueries["generateRelatedQueries()"]
+  getAlternativeTools["getAlternativeTools()"]
+  parseCtagsOutput["parseCtagsOutput()"]
+  parseCtagsTraditional["parseCtagsTraditional()"]
+  parseFdOutput["parseFdOutput()"]
   parseRgOutput["parseRgOutput()"]
+  relativePath["relativePath()"]
+  suggestNextAction["suggestNextAction()"]
   summarizeResults["summarizeResults()"]
-  truncateResults -.-> truncateHead
-  truncateHead -.-> parseFdOutput
-  parseFdOutput -.-> formatFileCandidates
-  formatFileCandidates -.-> parseRgOutput
-  parseRgOutput -.-> summarizeResults
+  truncateHead["truncateHead()"]
+  truncateResults["truncateResults()"]
+  truncateText["truncateText()"]
+  createHints --> calculateConfidence
+  createHints --> getAlternativeTools
+  createHints --> suggestNextAction
+  createSimpleHints --> calculateSimpleConfidence
+  createSimpleHints --> generateRelatedQueries
+  createSimpleHints --> getAlternativeTools
+  enhanceOutput --> calculateConfidence
 ```
 
 ### シーケンス図
@@ -626,4 +646,4 @@ type SuggestedNextAction = | "refine_pattern"      // Pattern too broad, narrow 
 エージェント向けの推奨次回アクション
 
 ---
-*自動生成: 2026-02-18T07:48:44.678Z*
+*自動生成: 2026-02-18T14:31:30.872Z*

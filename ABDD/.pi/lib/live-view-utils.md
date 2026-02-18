@@ -24,17 +24,6 @@ related: []
 
 ## 図解
 
-### 関数フロー
-
-```mermaid
-flowchart TD
-  getLiveStatusGlyph["getLiveStatusGlyph()"]
-  isEnterInput["isEnterInput()"]
-  finalizeLiveLines["finalizeLiveLines()"]
-  getLiveStatusGlyph -.-> isEnterInput
-  isEnterInput -.-> finalizeLiveLines
-```
-
 ## 関数
 
 ### getLiveStatusGlyph
@@ -97,4 +86,4 @@ type LiveStatus = "pending" | "running" | "completed" | "failed"
 ライブビューのステータスを表す型
 
 ---
-*自動生成: 2026-02-18T07:48:44.998Z*
+*自動生成: 2026-02-18T14:31:30.994Z*

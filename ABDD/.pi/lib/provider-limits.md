@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { readFileSync, existsSync, writeFileSync... } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+// from 'node:fs': readFileSync, existsSync, writeFileSync, ...
+// from 'node:os': homedir
+// from 'node:path': join
 ```
 
 ## エクスポート一覧
@@ -80,17 +80,29 @@ classDiagram
 
 ```mermaid
 flowchart TD
+  detectTier["detectTier()"]
+  formatLimitsSummary["formatLimitsSummary()"]
+  getBuiltinLimits["getBuiltinLimits()"]
+  getConcurrencyLimit["getConcurrencyLimit()"]
   getLimitsConfig["getLimitsConfig()"]
+  getRpmLimit["getRpmLimit()"]
+  listModels["listModels()"]
+  listProviders["listProviders()"]
+  loadUserLimits["loadUserLimits()"]
+  matchesPattern["matchesPattern()"]
+  mergeLimits["mergeLimits()"]
   reloadLimits["reloadLimits()"]
   resolveLimits["resolveLimits()"]
-  getConcurrencyLimit["getConcurrencyLimit()"]
-  getRpmLimit["getRpmLimit()"]
-  listProviders["listProviders()"]
-  getLimitsConfig -.-> reloadLimits
-  reloadLimits -.-> resolveLimits
-  resolveLimits -.-> getConcurrencyLimit
-  getConcurrencyLimit -.-> getRpmLimit
-  getRpmLimit -.-> listProviders
+  saveUserLimits["saveUserLimits()"]
+  getConcurrencyLimit --> resolveLimits
+  getLimitsConfig --> loadUserLimits
+  getLimitsConfig --> mergeLimits
+  getRpmLimit --> resolveLimits
+  listModels --> getLimitsConfig
+  listProviders --> getLimitsConfig
+  reloadLimits --> getLimitsConfig
+  resolveLimits --> getLimitsConfig
+  resolveLimits --> matchesPattern
 ```
 
 ### シーケンス図
@@ -373,4 +385,4 @@ interface ResolvedModelLimits {
 解決されたモデル制限
 
 ---
-*自動生成: 2026-02-18T07:48:45.076Z*
+*自動生成: 2026-02-18T14:31:31.009Z*

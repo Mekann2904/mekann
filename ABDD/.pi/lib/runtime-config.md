@@ -47,17 +47,25 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  getRuntimeConfig["getRuntimeConfig()"]
+  detectProfile["detectProfile()"]
+  formatRuntimeConfig["formatRuntimeConfig()"]
   getConfigVersion["getConfigVersion()"]
-  reloadRuntimeConfig["reloadRuntimeConfig()"]
+  getRuntimeConfig["getRuntimeConfig()"]
   getRuntimeProfile["getRuntimeProfile()"]
   isStableProfile["isStableProfile()"]
+  parseBoolean["parseBoolean()"]
+  parseNumber["parseNumber()"]
+  reloadRuntimeConfig["reloadRuntimeConfig()"]
   validateConfigConsistency["validateConfigConsistency()"]
-  getRuntimeConfig -.-> getConfigVersion
-  getConfigVersion -.-> reloadRuntimeConfig
-  reloadRuntimeConfig -.-> getRuntimeProfile
-  getRuntimeProfile -.-> isStableProfile
-  isStableProfile -.-> validateConfigConsistency
+  formatRuntimeConfig --> getRuntimeConfig
+  formatRuntimeConfig --> validateConfigConsistency
+  getRuntimeConfig --> detectProfile
+  getRuntimeConfig --> parseBoolean
+  getRuntimeConfig --> parseNumber
+  getRuntimeProfile --> getRuntimeConfig
+  isStableProfile --> getRuntimeConfig
+  reloadRuntimeConfig --> getRuntimeConfig
+  validateConfigConsistency --> getRuntimeConfig
 ```
 
 ## 関数
@@ -220,4 +228,4 @@ type RuntimeProfile = "stable" | "default"
 - default: バランス型の制限 (8並列)
 
 ---
-*自動生成: 2026-02-18T07:48:45.183Z*
+*自動生成: 2026-02-18T14:31:31.018Z*

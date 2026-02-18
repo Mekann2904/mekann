@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { CodeSearchMatch, SymbolDefinition, FileCandidate } from '../types';
+// from '../types': CodeSearchMatch, SymbolDefinition, FileCandidate
 ```
 
 ## エクスポート一覧
@@ -85,17 +85,30 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  fileCandidateToUnified["fileCandidateToUnified()"]
+  calculateRelevanceScore["calculateRelevanceScore()"]
   codeSearchMatchToUnified["codeSearchMatchToUnified()"]
-  symbolDefinitionToUnified["symbolDefinitionToUnified()"]
+  createResultKey["createResultKey()"]
+  deduplicateResults["deduplicateResults()"]
+  fileCandidateToUnified["fileCandidateToUnified()"]
+  filterByFilePattern["filterByFilePattern()"]
+  filterByType["filterByType()"]
+  formatUnifiedResult["formatUnifiedResult()"]
+  formatUnifiedResults["formatUnifiedResults()"]
+  groupByFile["groupByFile()"]
+  integrateSearchResults["integrateSearchResults()"]
   mergeSearchResults["mergeSearchResults()"]
   rankByRelevance["rankByRelevance()"]
-  deduplicateResults["deduplicateResults()"]
-  fileCandidateToUnified -.-> codeSearchMatchToUnified
-  codeSearchMatchToUnified -.-> symbolDefinitionToUnified
-  symbolDefinitionToUnified -.-> mergeSearchResults
-  mergeSearchResults -.-> rankByRelevance
-  rankByRelevance -.-> deduplicateResults
+  symbolDefinitionToUnified["symbolDefinitionToUnified()"]
+  deduplicateResults --> createResultKey
+  formatUnifiedResults --> formatUnifiedResult
+  integrateSearchResults --> codeSearchMatchToUnified
+  integrateSearchResults --> deduplicateResults
+  integrateSearchResults --> fileCandidateToUnified
+  integrateSearchResults --> mergeSearchResults
+  integrateSearchResults --> rankByRelevance
+  integrateSearchResults --> symbolDefinitionToUnified
+  mergeSearchResults --> createResultKey
+  rankByRelevance --> calculateRelevanceScore
 ```
 
 ### シーケンス図
@@ -401,4 +414,4 @@ interface RankOptions {
 検索結果のランク付けオプション
 
 ---
-*自動生成: 2026-02-18T07:48:44.684Z*
+*自動生成: 2026-02-18T14:31:30.876Z*

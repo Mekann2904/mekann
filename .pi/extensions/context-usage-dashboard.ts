@@ -1,3 +1,38 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/context-usage-dashboard.ts
+ * role: コンテクスト使用量ダッシュボード表示拡張機能
+ * why: ツールごとのコンテクスト占有傾向と空き容量を可視化し、拡張機能の取捨選択を支援するため
+ * related: .pi/extensions/usage-tracker.ts, docs/extensions.md, README.md, .pi/lib/validation-utils.js
+ * public_api: なし（拡張機能として登録され、ダッシュボードUIを提供）
+ * invariants:
+ *   - WEEK_MS = 604800000 (7日間のミリ秒) で直近1週間を集計期間とする
+ *   - TOP_ROWS = 8 で上位ツール表示数を制限する
+ *   - セッションデータは ~/.pi/agent/sessions 配下から読み込む
+ *   - トークン推定は文字列長を4で割って概算する
+ * side_effects:
+ *   - ファイルシステムからのセッションデータ読み込み
+ *   - ExtensionAPI経由でのダッシュボード表示出力
+ * failure_modes:
+ *   - セッションディレクトリが存在しない場合、空のデータを返す
+ *   - JSONパース失敗時は空文字またはString()変換でフォールバック
+ *   - 無限大/NaNの数値は0として処理
+ * @abdd.explain
+ * overview: 現在のコンテキスト使用量と直近7日間の使用量・内訳を表示するダッシュボード拡張機能
+ * what_it_does:
+ *   - 現在のセッションのコンテキスト使用状況（ユーザー/アシスタント/ツール/その他別トークン）を集計
+ *   - ツールごとのコンテキスト占有トークン数と呼び出し回数を追跡
+ *   - 直近7日間の使用量（input/output/cacheRead/cacheWrite別）とコストを集計
+ *   - モデル別・ツール別の使用統計を生成
+ *   - 空きトークン容量と参照総トークン数を計算
+ * why_it_exists:
+ *   - コンテキストウィンドウの容量を可視化し、どのツールが多く消費しているか把握するため
+ *   - 拡張機能の有効/無効を判断するための定量データを提供するため
+ * scope:
+ *   in: ExtensionAPI, セッションファイル(JSON), ContextUsage, BranchSummaryEntry, CompactionEntry, CustomMessageEntry
+ *   out: DashboardSnapshot(CurrentSnapshot, WeeklySnapshot)
+ */
+
 // .pi/extensions/context-usage-dashboard.ts
 // 現在のコンテクスト使用量と直近7日間の使用量・内訳を表示する拡張機能。
 // ツールごとの占有傾向と空き容量を可視化し、拡張機能の取捨選択を助けるために存在する。

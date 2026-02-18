@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { normalizeTimeoutMs } from './runtime-utils.js';
-import { computeModelTimeoutMs } from './model-timeouts.js';
+// from './runtime-utils.js': normalizeTimeoutMs
+// from './model-timeouts.js': computeModelTimeoutMs
 ```
 
 ## エクスポート一覧
@@ -63,4 +63,4 @@ resolveEffectiveTimeoutMs(userTimeoutMs: unknown, modelId: string | undefined, f
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-18T07:48:45.187Z*
+*自動生成: 2026-02-18T14:31:31.018Z*

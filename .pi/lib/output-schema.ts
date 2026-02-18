@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/output-schema.ts
+ * role: サブエージェントおよびチームメンバーの出力に対するJSON Schemaライクな検証機能を提供する
+ * why: LLM出力の構造を保証し、パースエラーを削減して下流処理の信頼性を向上させるため
+ * related: text-parsing.ts, output-validation.ts, agent-teams/judge.ts
+ * public_api: SchemaValidationMode, SchemaValidationResult, SchemaViolation, ParsedStructuredOutput
+ * invariants: SUMMARYは10〜500文字、RESULTは20〜10000文字の範囲内、SchemaValidationResult.violationsは失敗時に常に空配列以上を含む
+ * side_effects: なし（純粋な検証・パース関数のみ）
+ * failure_modes: パターン不一致でフィールド抽出失敗、文字数制限超過で検証不合格、不正な型で型エラー
+ * @abdd.explain
+ * overview: 構造化出力のスキーマ定義と検証機能を提供するモジュール
+ * what_it_does:
+ *   - 出力フィールドの必須/任意定義、型、文字数範囲、正規表現パターンによるスキーマ定義
+ *   - テキスト抽出、信頼度パース・クランプ処理の呼び出し
+ *   - legacy/dual/strictの3モードによる検証切り替え（PI_OUTPUT_SCHEMA_MODE）
+ * why_it_exists:
+ *   - 正規表現ベースのみの検証では不十分なケースに対応するため
+ *   - サブエージェント出力の一貫性を強制し、後続処理の失敗を防ぐため
+ * scope:
+ *   in: サブエージェント/チームメンバーの生テキスト出力、スキーマ定義
+ *   out: 検証結果、違反リスト(SchemaViolation)、パース済み構造化データ
+ */
+
+/**
  * Structured output schema definitions and validation.
  * Provides JSON Schema-like validation for subagent and team member outputs.
  *

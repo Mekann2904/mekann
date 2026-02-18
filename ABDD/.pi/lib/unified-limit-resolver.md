@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { getEffectiveLimit, getPredictiveAnalysis, PredictiveAnalysis } from './adaptive-rate-controller.js';
-import { getMyParallelLimit, getModelParallelLimit, getCoordinatorStatus... } from './cross-instance-coordinator.js';
-import { resolveLimits, getConcurrencyLimit, getRpmLimit... } from './provider-limits.js';
-import { getRuntimeConfig, validateConfigConsistency, RuntimeConfig } from './runtime-config.js';
-import { IRuntimeSnapshot, RuntimeSnapshotProvider } from './interfaces/runtime-snapshot.js';
+// from './adaptive-rate-controller.js': getEffectiveLimit, getPredictiveAnalysis, PredictiveAnalysis
+// from './cross-instance-coordinator.js': getMyParallelLimit, getModelParallelLimit, getCoordinatorStatus, ...
+// from './provider-limits.js': resolveLimits, getConcurrencyLimit, getRpmLimit, ...
+// from './runtime-config.js': getRuntimeConfig, validateConfigConsistency, RuntimeConfig
+// from './interfaces/runtime-snapshot.js': IRuntimeSnapshot, RuntimeSnapshotProvider
 ```
 
 ## エクスポート一覧
@@ -92,17 +92,15 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  setRuntimeSnapshotProvider["setRuntimeSnapshotProvider()"]
-  isSnapshotProviderInitialized["isSnapshotProviderInitialized()"]
-  getInitializationState["getInitializationState()"]
-  getUnifiedEnvConfig["getUnifiedEnvConfig()"]
-  resolveUnifiedLimits["resolveUnifiedLimits()"]
   formatUnifiedLimitsResult["formatUnifiedLimitsResult()"]
-  setRuntimeSnapshotProvider -.-> isSnapshotProviderInitialized
-  isSnapshotProviderInitialized -.-> getInitializationState
-  getInitializationState -.-> getUnifiedEnvConfig
-  getUnifiedEnvConfig -.-> resolveUnifiedLimits
-  resolveUnifiedLimits -.-> formatUnifiedLimitsResult
+  getAllLimitsSummary["getAllLimitsSummary()"]
+  getInitializationState["getInitializationState()"]
+  getRuntimeSnapshot["getRuntimeSnapshot()"]
+  getUnifiedEnvConfig["getUnifiedEnvConfig()"]
+  isSnapshotProviderInitialized["isSnapshotProviderInitialized()"]
+  resolveUnifiedLimits["resolveUnifiedLimits()"]
+  setRuntimeSnapshotProvider["setRuntimeSnapshotProvider()"]
+  resolveUnifiedLimits --> getRuntimeSnapshot
 ```
 
 ### シーケンス図
@@ -308,4 +306,4 @@ type UnifiedEnvConfig = RuntimeConfig
 下位互換用エイリアス。
 
 ---
-*自動生成: 2026-02-18T07:48:45.383Z*
+*自動生成: 2026-02-18T14:31:31.047Z*

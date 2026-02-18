@@ -30,8 +30,6 @@ const DEFAULT_PARALLEL_LIMIT = 6;
 const MIN_PARALLEL_LIMIT = 1;
 const MAX_PARALLEL_LIMIT = 12;
 const MAX_CONTEXT_LINES = 120;
-/** LLM呼び出しのデフォルトタイムアウト（ミリ秒） */
-const DEFAULT_LLM_TIMEOUT_MS = 60000; // 60秒
 const APPEND_SYSTEM_PATH = join(__dirname, '..', '.pi', 'APPEND_SYSTEM.md');
 const HEADER_PROMPT_START = '<!-- ABDD_FILE_HEADER_PROMPT_START -->';
 const HEADER_PROMPT_END = '<!-- ABDD_FILE_HEADER_PROMPT_END -->';
@@ -134,8 +132,8 @@ async function main() {
     return;
   }
 
-  const targets = allTargets.slice(0, options.limit);
-  if (targets.length < allTargets.length) {
+  const targets = options.limit > 0 ? allTargets.slice(0, options.limit) : allTargets;
+  if (options.limit > 0 && targets.length < allTargets.length) {
     console.log(`上限により ${targets.length}/${allTargets.length} 件を処理します\n`);
   }
 
@@ -144,66 +142,93 @@ async function main() {
   console.log(`LLM並列数: ${parallelLimit}`);
   console.log('ヘッダーを生成中...\n');
 
-  const results = await runWithConcurrencyLimit(
-    targets,
-    parallelLimit,
-    async (file): Promise<GenerationResult> => {
-      try {
-        const cached = checkCache(file, model.id, options.force, options.noCache);
-        if (cached) {
-          return { file, header: cached };
-        }
-
-        const header = await retryWithBackoff(
-          () => generateHeader(model, apiKey, file, options),
-          { rateLimitKey, shouldRetry: isRetryableError }
-        );
-
-        if (header && !options.noCache) {
-          cacheHeader(file, header, model.id);
-        }
-
-        return { file, header };
-      } catch (error) {
-        return {
-          file,
-          header: null,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        };
-      }
-    }
-  );
-
+  let pending = [...targets];
   let processed = 0;
   let updated = 0;
+  const maxRetries = 10;
+  let retryCount = 0;
+  let currentParallelLimit = parallelLimit;
 
-  for (const result of results) {
-    processed++;
-    const { file, header, errorMessage } = result;
-    console.log(`\n[${processed}/${targets.length}] ${file.relativePath}`);
-
-    if (errorMessage) {
-      console.log(`    エラー: ${errorMessage}`);
-      continue;
-    }
-    if (!header) {
-      console.log('    ヘッダーを生成できませんでした');
-      continue;
+  while (pending.length > 0 && retryCount <= maxRetries) {
+    if (retryCount > 0) {
+      // リトライごとに並列数を半分に（最低1）
+      currentParallelLimit = Math.max(1, Math.floor(currentParallelLimit / 2));
+      const waitTime = Math.min(retryCount * 5000, 60000); // 最大60秒待機
+      console.log(`\n=== リトライ ${retryCount}/${maxRetries} (${pending.length}件残り、並列数${currentParallelLimit}、${waitTime/1000}秒待機) ===\n`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
-    if (options.dryRun) {
-      console.log(`    生成されたヘッダー:\n${header.split('\n').map(l => `       ${l}`).join('\n')}`);
-    } else {
-      insertHeader(file, header);
-      updated++;
-      console.log('    ヘッダーを挿入しました');
+    const results = await runWithConcurrencyLimit(
+      pending,
+      currentParallelLimit,
+      async (file): Promise<GenerationResult> => {
+        try {
+          const cached = checkCache(file, model.id, options.force, options.noCache);
+          if (cached) {
+            return { file, header: cached };
+          }
+
+          const header = await retryWithBackoff(
+            () => generateHeader(model, apiKey, file, options),
+            { rateLimitKey, shouldRetry: isRetryableError, maxRetries: 3 }
+          );
+
+          if (header && !options.noCache) {
+            cacheHeader(file, header, model.id);
+          }
+
+          return { file, header };
+        } catch (error) {
+          return {
+            file,
+            header: null,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+    );
+
+    // 成功したものを処理、失敗したものは再試行キューへ
+    const failed: FileInfo[] = [];
+    for (const result of results) {
+      processed++;
+      const { file, header, errorMessage } = result;
+      console.log(`\n[${processed}/${targets.length}] ${file.relativePath}`);
+
+      if (errorMessage) {
+        console.log(`    エラー: ${errorMessage}`);
+        failed.push(file);
+        continue;
+      }
+      if (!header) {
+        console.log('    ヘッダーを生成できませんでした');
+        failed.push(file);
+        continue;
+      }
+
+      if (options.dryRun) {
+        console.log(`    生成されたヘッダー:\n${header.split('\n').map(l => `       ${l}`).join('\n')}`);
+      } else {
+        insertHeader(file, header);
+        updated++;
+        console.log('    ヘッダーを挿入しました');
+      }
     }
+
+    pending = failed;
+    retryCount++;
+
+    // すべて成功したら終了
+    if (failed.length === 0) break;
   }
 
   console.log('\n=== 完了 ===');
   console.log(`処理: ${processed}件`);
   if (!options.dryRun) {
     console.log(`更新: ${updated}件`);
+  }
+  if (pending.length > 0) {
+    console.log(`\n警告: ${pending.length}件が最大リトライ回数(${maxRetries})を超過しました`);
   }
 }
 
@@ -289,21 +314,11 @@ async function generateHeader(
   const eventStream = streamSimple(model, context, { apiKey });
   let response = '';
 
-  // タイムアウト付きでasync iteratorでイベントを収集
-  const timeoutMs = DEFAULT_LLM_TIMEOUT_MS;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`LLM timeout after ${timeoutMs}ms`)), timeoutMs);
-  });
-
-  const streamPromise = (async () => {
-    for await (const event of eventStream) {
-      if (event.type === 'text_delta') response += event.delta;
-      if (event.type === 'error') throw new Error(`LLM error: ${JSON.stringify(event)}`);
-    }
-    return response;
-  })();
-
-  await Promise.race([streamPromise, timeoutPromise]);
+  // async iteratorでイベントを収集（タイムアウトなし）
+  for await (const event of eventStream) {
+    if (event.type === 'text_delta') response += event.delta;
+    if (event.type === 'error') throw new Error(`LLM error: ${JSON.stringify(event)}`);
+  }
 
   return extractAndValidateHeader(response, file.relativePath);
 }
@@ -500,7 +515,7 @@ function parseArgs(args: string[]): Options {
     dryRun: false,
     check: false,
     verbose: false,
-    limit: 50,
+    limit: 0, // 0 = 無制限
     file: undefined,
     regenerate: false,
     force: false,
@@ -520,7 +535,7 @@ function parseArgs(args: string[]): Options {
         options.verbose = true;
         break;
       case '--limit':
-        options.limit = parseInt(args[++i], 10) || 50;
+        options.limit = parseInt(args[++i], 10) || 0;
         break;
       case '--file':
         options.file = args[++i];

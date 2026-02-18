@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { randomBytes } from 'node:crypto';
+// from 'node:crypto': randomBytes
 ```
 
 ## エクスポート一覧
@@ -27,15 +27,6 @@ import { randomBytes } from 'node:crypto';
 | 関数 | `computeLiveWindow` | ライブリスト表示のスライディングウィンドウを計算 |
 
 ## 図解
-
-### 関数フロー
-
-```mermaid
-flowchart TD
-  createRunId["createRunId()"]
-  computeLiveWindow["computeLiveWindow()"]
-  createRunId -.-> computeLiveWindow
-```
 
 ### シーケンス図
 
@@ -83,4 +74,4 @@ computeLiveWindow(cursor: number, total: number, maxRows: number): { start: numb
 **戻り値**: `{ start: number; end: number }`
 
 ---
-*自動生成: 2026-02-18T07:48:44.817Z*
+*自動生成: 2026-02-18T14:31:30.952Z*

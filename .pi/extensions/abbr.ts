@@ -1,4 +1,38 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/abbr.ts
+ * role: 略語展開拡張モジュール
+ * why: Fish shellライクな略語機能により、短いエイリアス入力を完全なコマンドに自動展開するため
+ * related: @mariozechner/pi-coding-agent, @mariozechner/pi-tui, ~/.pi/abbr.json
+ * public_api: AbbrParams, Abbreviationインターフェース
+ * invariants:
+ *   - abbreviations Mapは常にCONFIG_FILEと同期する
+ *   - CONFIG_DIRは初回アクセス時に作成済みである
+ *   - piInstance設定後のみpersistStateが呼ばれる
+ * side_effects:
+ *   - ~/.pi/abbr.jsonへの読み書き
+ *   - ~/.piディレクトリの作成
+ *   - pi-coding-agentへの状態永続化エントリ追加
+ * failure_modes:
+ *   - CONFIG_FILE読み込み時のJSONパースエラー
+ *   - CONFIG_FILE書き込み時のディスクI/Oエラー
+ * @abdd.explain
+ * overview: Fish shell風の略語展開システムを提供する拡張機能
+ * what_it_does:
+ *   - 略語の追加/一覧/削除/名前変更/存在確認を提供
+ *   - 入力時の略語を完全なコマンドに自動展開
+ *   - 略語設定を~/.pi/abbr.jsonに永続化
+ *   - 正規表現パターンと位置指定による柔軟なマッチング
+ * why_it_exists:
+ *   - 頻繁に入力する長いコマンドの効率化
+ *   - ユーザー固有の略語カスタマイズ
+ *   - セッションを跨いだ略語設定の保持
+ * scope:
+ *   in: ユーザー入力テキスト、/abbrコマンドとパラメータ
+ *   out: 展開後テキスト、略語操作結果、永続化された設定ファイル
+ */
+
+/**
  * Abbreviation (abbr) Extension
  *
  * Fish shell-like abbreviation support for pi.
@@ -34,14 +68,15 @@ if (!fs.existsSync(CONFIG_DIR)) {
 	fs.mkdirSync(CONFIG_DIR, { recursive: true });
 }
 
- /**
-  * 略語を表すインターフェース
-  * @param name - 略語の名称
-  * @param expansion - 略語の展開
-  * @param regex - 正規表現を使用するかどうか（オプション）
-  * @param pattern - 略語のパターン（オプション）
-  * @param position - 略語の位置（"command" または "anywhere"）（オプション）
-  */
+/**
+ * @summary 略語情報定義
+ * @param name - 略語名
+ * @param expansion - 展開後テキスト
+ * @param regex - マッチ正規表現
+ * @param pattern - パターン文字列
+ * @param position - 位置情報
+ * @returns {Abbreviation}
+ */
 export interface Abbreviation {
 	name: string;
 	expansion: string;
@@ -208,22 +243,22 @@ class AbbrListComponent {
 		this.onClose = onClose;
 	}
 
-	 /**
-	  * 入力を処理する
-	  * @param data 入力データ
-	  * @returns なし
-	  */
+	/**
+	 * @summary 入力データ処理
+	 * @param data - 入力データ
+	 * @returns {void}
+	 */
 	handleInput(data: string): void {
 		if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c") || matchesKey(data, "q")) {
 			this.onClose();
 		}
 	}
 
-	 /**
-	  * 指定幅でリストを描画する
-	  * @param width - 描画幅（文字数）
-	  * @returns 描画された行の配列
-	  */
+	/**
+	 * @summary 指定幅でリスト描画
+	 * @param width - 描画幅
+	 * @returns 描画文字列配列
+	 */
 	render(width: number): string[] {
 		if (this.cachedLines && this.cachedWidth === width) {
 			return this.cachedLines;
@@ -270,10 +305,10 @@ class AbbrListComponent {
 		return lines;
 	}
 
-	 /**
-	  * キャッシュを無効化する
-	  * @returns 戻り値なし
-	  */
+	/**
+	 * @summary キャッシュを無効化する
+	 * @returns {void} 戻り値なし
+	 */
 	invalidate(): void {
 		this.cachedWidth = undefined;
 		this.cachedLines = undefined;

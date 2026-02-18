@@ -1,3 +1,37 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/storage-lock.ts
+ * role: 同期ファイルロックおよび原子書き込みヘルパーの提供
+ * why: 並行するエージェント実行中にストレージファイルへの競合書き込みを防止する
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/plan.ts
+ * public_api: FileLockOptions
+ * invariants:
+ *   - ロックファイルは排他モード(wx)で作成され、存在時はEEXISTで失敗する
+ *   - ロックファイルにはPIDとタイムスタンプが記録される
+ *   - busy-waitを使用せず、CPUスピンを回避する
+ * side_effects:
+ *   - ロックファイルの作成・削除
+ *   - ファイルシステムへの読み書き
+ * failure_modes:
+ *   - EEXIST: ロックファイルが既に存在し取得不可
+ *   - SharedArrayBuffer不可: 効率的な同期スリープが利用できない環境
+ *   - ファイルシステムエラー: 権限不足やディスクフル
+ * @abdd.explain
+ * overview: 拡張機能ストレージファイル向けの同期ファイルロック機構を提供するユーティリティ
+ * what_it_does:
+ *   - 排他ロックファイルをwxモードで作成し、PIDとタイムスタンプを書き込む
+ *   - 期限切れロック（staleMs経過）を検出して削除する
+ *   - SharedArrayBuffer+Atomics.waitによるブロッキングなしの同期スリープを実装
+ *   - ロック取得失敗時は即座にfalseを返しbusy-waitを回避
+ * why_it_exists:
+ *   - 複数エージェントの並行実行時のデータ破損を防止
+ *   - ストレージ操作の原子性を保証
+ *   - Node.js同期APIのみでロック機構を実現
+ * scope:
+ *   in: ターゲットファイルパス、ロックオプション（maxWaitMs, pollMs, staleMs）
+ *   out: ロック取得成功/失敗の真偽値、ロックファイルの作成/削除
+ */
+
 // File: .pi/lib/storage-lock.ts
 // Description: Provides synchronous file lock and atomic write helpers for extension storage files.
 // Why: Prevents concurrent storage writes from clobbering records during parallel agent executions.

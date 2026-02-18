@@ -1,4 +1,32 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/structured-logger.ts
+ * role: 構造化ログ出力ユーティリティ
+ * why: 統一フォーマットによるログ出力で、デバッグ、監査、トレース時の可読性と検索性を確保するため
+ * related: .pi/lib/config.ts, .pi/lib/storage.ts, .pi/lib/agent-manager.ts
+ * public_api: LogLevel, LogContext, StructuredLogEntry, StructuredLoggerOptions
+ * invariants: LOG_LEVEL_PRIORITY順序は変更不可、timestampは常にISO8601形式、未設定時のminLevelはINFO
+ * side_effects: console/stdout/stderrへの書き込み、環境変数PI_LOG_LEVELの読み取り
+ * failure_modes: 無効なLogLevel指定時はDEBUG扱い、metadataシリアライズ失敗時は文字列表現を出力
+ * @abdd.explain
+ * overview: 統一フォーマットによる構造化ログ出力機能を提供する。ログレベル、コンテキスト、操作名、メタデータを含む一貫したログエントリを生成する。
+ * what_it_does:
+ *   - DEBUG/INFO/WARN/ERRORの4段階ログレベルを定義し、優先度に基づくフィルタリングを行う
+ *   - 12種類の定義済みLogContextと任意文字列によるコンテキスト指定をサポートする
+ *   - StructuredLogEntryインターフェースに基づくログエントリを生成する
+ *   - 環境変数PI_LOG_LEVELによる実行時ログレベル制御を提供する
+ *   - console/stdout/stderrの出力先選択、JSON/プレーンテキスト形式の切り替えをサポートする
+ * why_it_exists:
+ *   - 分散システムにおけるログ相関追跡を可能にするため（correlationId）
+ *   - モジュール別・操作別のログフィルタリングを実現するため
+ *   - 実行時間計測とエラー情報を含むリッチなデバッグ情報を提供するため
+ *   - 本番/開発環境でのログ出力制御を一元管理するため
+ * scope:
+ *   in: ログメッセージ、メタデータ、ログレベル、コンテキスト、correlationId
+ *   out: 構造化されたログエントリ（JSONまたはフォーマット済みテキスト）
+ */
+
+/**
  * 構造化ログユーティリティ
  *
  * 統一フォーマットによるログ出力を提供する。

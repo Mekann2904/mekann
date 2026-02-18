@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { matchesKey, Key, truncateToWidth } from '@mariozechner/pi-tui';
-import { formatDurationMs, formatBytes, formatClockTime } from '../format-utils.js';
-import { computeLiveWindow } from '../agent-utils.js';
-import { getLiveStatusGlyph, isEnterInput, finalizeLiveLines } from '../live-view-utils.js';
-import { appendTail, countOccurrences, estimateLineCount... } from './tui-utils.js';
+// from '@mariozechner/pi-tui': matchesKey, Key, truncateToWidth
+// from '../format-utils.js': formatDurationMs, formatBytes, formatClockTime
+// from '../agent-utils.js': computeLiveWindow
+// from '../live-view-utils.js': getLiveStatusGlyph, isEnterInput, finalizeLiveLines
+// from './tui-utils.js': appendTail, countOccurrences, estimateLineCount, ...
 ```
 
 ## エクスポート一覧
@@ -128,17 +128,35 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  createBaseLiveItem["createBaseLiveItem()"]
+  add["add()"]
   appendStreamChunk["appendStreamChunk()"]
-  getStreamTail["getStreamTail()"]
+  applyInputResult["applyInputResult()"]
+  createBaseLiveItem["createBaseLiveItem()"]
   getStreamBytes["getStreamBytes()"]
   getStreamLineCount["getStreamLineCount()"]
+  getStreamTail["getStreamTail()"]
+  handleDetailModeInput["handleDetailModeInput()"]
+  handleListModeInput["handleListModeInput()"]
+  renderBaseListItemLine["renderBaseListItemLine()"]
+  renderDetailHeader["renderDetailHeader()"]
+  renderDetailKeyboardHints["renderDetailKeyboardHints()"]
+  renderListKeyboardHints["renderListKeyboardHints()"]
+  renderListWindow["renderListWindow()"]
   renderLiveViewHeader["renderLiveViewHeader()"]
-  createBaseLiveItem -.-> appendStreamChunk
-  appendStreamChunk -.-> getStreamTail
-  getStreamTail -.-> getStreamBytes
-  getStreamBytes -.-> getStreamLineCount
-  getStreamLineCount -.-> renderLiveViewHeader
+  renderSelectedItemSummary["renderSelectedItemSummary()"]
+  renderStreamOutput["renderStreamOutput()"]
+  getStreamLineCount --> getStreamBytes
+  renderBaseListItemLine --> getStreamLineCount
+  renderDetailHeader --> add
+  renderDetailKeyboardHints --> add
+  renderListKeyboardHints --> add
+  renderListWindow --> add
+  renderLiveViewHeader --> add
+  renderSelectedItemSummary --> add
+  renderStreamOutput --> add
+  renderStreamOutput --> getStreamBytes
+  renderStreamOutput --> getStreamLineCount
+  renderStreamOutput --> getStreamTail
 ```
 
 ### シーケンス図
@@ -701,4 +719,4 @@ type LiveViewMode = "list" | "detail"
 ライブビューのモードオプション。
 
 ---
-*自動生成: 2026-02-18T07:48:45.373Z*
+*自動生成: 2026-02-18T14:31:31.044Z*

@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, mkdirSync, appendFileSync... } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+// from 'node:fs': existsSync, mkdirSync, appendFileSync, ...
+// from 'node:os': homedir
+// from 'node:path': join
 ```
 
 ## エクスポート一覧
@@ -119,17 +119,20 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  initMetricsCollector["initMetricsCollector()"]
+  ensureMetricsDir["ensureMetricsDir()"]
   getMetricsCollector["getMetricsCollector()"]
-  resetMetricsCollector["resetMetricsCollector()"]
-  isMetricsCollectorInitialized["isMetricsCollectorInitialized()"]
-  recordStealingAttempt["recordStealingAttempt()"]
   getMetricsConfigFromEnv["getMetricsConfigFromEnv()"]
-  initMetricsCollector -.-> getMetricsCollector
-  getMetricsCollector -.-> resetMetricsCollector
-  resetMetricsCollector -.-> isMetricsCollectorInitialized
-  isMetricsCollectorInitialized -.-> recordStealingAttempt
-  recordStealingAttempt -.-> getMetricsConfigFromEnv
+  initMetricsCollector["initMetricsCollector()"]
+  isMetricsCollectorInitialized["isMetricsCollectorInitialized()"]
+  nowMs["nowMs()"]
+  recordStealingAttempt["recordStealingAttempt()"]
+  resetMetricsCollector["resetMetricsCollector()"]
+  resolveMetricsDir["resolveMetricsDir()"]
+  getMetricsCollector --> initMetricsCollector
+  initMetricsCollector --> ensureMetricsDir
+  initMetricsCollector --> nowMs
+  initMetricsCollector --> resolveMetricsDir
+  recordStealingAttempt --> nowMs
 ```
 
 ### シーケンス図
@@ -667,4 +670,4 @@ interface CollectorState {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:45.009Z*
+*自動生成: 2026-02-18T14:31:30.998Z*

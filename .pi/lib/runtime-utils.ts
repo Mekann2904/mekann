@@ -1,4 +1,37 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/runtime-utils.ts
+ * role: エージェント実行ランタイム用ユーティリティ関数群
+ * why: タイムアウト、リトライ、レート制限、同時実行制御の設定正規化とID生成を集約し、サブエージェント実行の安定性を確保するため
+ * related: retry-with-backoff.js, agent-executor.ts, subagent-handler.ts, types.ts
+ * public_api: trimForError, buildRateLimitKey, buildTraceTaskId, normalizeTimeoutMs, createRetrySchema, toRetryOverrides, toConcurrencyLimit
+ * invariants:
+ *   - normalizeTimeoutMsは常に0以上の整数を返す（入力が正の有限値なら1以上、無効ならfallback）
+ *   - toConcurrencyLimitは常に1以上の整数またはfallbackを返す
+ *   - buildRateLimitKeyは常に小文字のprovider::model形式を返す
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes:
+ *   - trimForErrorに不正な文字列入力時は空文字を返す
+ *   - normalizeTimeoutMsに無効値入力時はfallback値を返す
+ *   - toRetryOverridesに不正なオブジェクト入力時はundefinedを返す
+ * @abdd.explain
+ * overview: サブエージェントとエージェントチーム実行のためのランタイムユーティリティ関数を提供する
+ * what_it_does:
+ *   - エラーメッセージの正規化・短縮（trimForError）
+ *   - レート制限キーとトレースタスクIDの生成（buildRateLimitKey, buildTraceTaskId）
+ *   - タイムアウト値の正規化（normalizeTimeoutMs）
+ *   - リトライ設定のTypeBoxスキーマ作成とオーバーライド変換（createRetrySchema, toRetryOverrides）
+ *   - 同時実行数の正規化（toConcurrencyLimit）
+ * why_it_exists:
+ *   - LLMプロバイダ呼び出しの設定値を安全に正規化し、実行時エラーを防ぐ
+ *   - 分散トレースとデバッグ用に一意なIDを生成する
+ *   - リトライ設定のバリデーションと型安全性を担保する
+ * scope:
+ *   in: 文字列、数値、unknown型の設定値
+ *   out: 正規化された数値、文字列、TypeBoxスキーマ、RetryWithBackoffOverrides
+ */
+
+/**
  * Runtime utilities for subagent and agent team execution.
  * Provides timeout handling, retry schema, and error formatting utilities.
  */

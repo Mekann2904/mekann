@@ -131,17 +131,39 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  estimateTokens["estimateTokens()"]
-  estimateContextItemTokens["estimateContextItemTokens()"]
-  optimizeContextWindow["optimizeContextWindow()"]
-  detectSemanticBoundaries["detectSemanticBoundaries()"]
+  addOverlapToChunks["addOverlapToChunks()"]
+  calculateItemScore["calculateItemScore()"]
+  calculateUtilization["calculateUtilization()"]
   chunkText["chunkText()"]
+  createContextItem["createContextItem()"]
+  detectSemanticBoundaries["detectSemanticBoundaries()"]
+  detectSemanticGaps["detectSemanticGaps()"]
+  determineChunkPriority["determineChunkPriority()"]
+  estimateContextItemTokens["estimateContextItemTokens()"]
+  estimateTokens["estimateTokens()"]
   extractStateSummary["extractStateSummary()"]
-  estimateTokens -.-> estimateContextItemTokens
-  estimateContextItemTokens -.-> optimizeContextWindow
-  optimizeContextWindow -.-> detectSemanticBoundaries
-  detectSemanticBoundaries -.-> chunkText
-  chunkText -.-> extractStateSummary
+  findChunkBoundaries["findChunkBoundaries()"]
+  formatStateSummary["formatStateSummary()"]
+  mergeContextItems["mergeContextItems()"]
+  optimizeContextWindow["optimizeContextWindow()"]
+  summarizeItem["summarizeItem()"]
+  addOverlapToChunks --> estimateTokens
+  calculateUtilization --> estimateContextItemTokens
+  chunkText --> addOverlapToChunks
+  chunkText --> detectSemanticBoundaries
+  chunkText --> determineChunkPriority
+  chunkText --> estimateTokens
+  chunkText --> findChunkBoundaries
+  createContextItem --> estimateTokens
+  detectSemanticBoundaries --> detectSemanticGaps
+  estimateContextItemTokens --> estimateTokens
+  findChunkBoundaries --> estimateTokens
+  mergeContextItems --> createContextItem
+  mergeContextItems --> summarizeItem
+  optimizeContextWindow --> calculateItemScore
+  optimizeContextWindow --> estimateContextItemTokens
+  optimizeContextWindow --> estimateTokens
+  optimizeContextWindow --> summarizeItem
 ```
 
 ## 関数
@@ -651,4 +673,4 @@ type ScoredItem = ContextItem & { score: number; trimmed: boolean }
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.875Z*
+*自動生成: 2026-02-18T14:31:30.967Z*

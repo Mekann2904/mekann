@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { execute, buildFdArgs, checkToolAvailability } from '../utils/cli.js';
-import { FileCandidatesInput, FileCandidatesOutput, FileCandidate } from '../types.js';
-import { truncateResults, parseFdOutput, createErrorResponse... } from '../utils/output.js';
-import { SearchToolError, isSearchToolError, getErrorMessage } from '../utils/errors.js';
-import { DEFAULT_LIMIT, DEFAULT_EXCLUDES } from '../utils/constants.js';
+// from '../utils/cli.js': execute, buildFdArgs, checkToolAvailability
+// from '../types.js': FileCandidatesInput, FileCandidatesOutput, FileCandidate
+// from '../utils/output.js': truncateResults, parseFdOutput, createErrorResponse, ...
+// from '../utils/errors.js': SearchToolError, isSearchToolError, getErrorMessage
+// from '../utils/constants.js': DEFAULT_LIMIT, DEFAULT_EXCLUDES
 // ... and 2 more imports
 ```
 
@@ -47,6 +47,25 @@ flowchart LR
     constants["constants"]
   end
   main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  extractResultPaths["extractResultPaths()"]
+  fileCandidates["fileCandidates()"]
+  nativeFileCandidates["nativeFileCandidates()"]
+  scan["scan()"]
+  shouldExclude["shouldExclude()"]
+  useFdCommand["useFdCommand()"]
+  fileCandidates --> extractResultPaths
+  fileCandidates --> nativeFileCandidates
+  fileCandidates --> useFdCommand
+  nativeFileCandidates --> scan
+  nativeFileCandidates --> shouldExclude
+  scan --> scan
+  scan --> shouldExclude
 ```
 
 ### シーケンス図
@@ -171,4 +190,4 @@ fdまたはフォールバックでファイル候補を列挙
 **戻り値**: `Promise<FileCandidatesOutput>`
 
 ---
-*自動生成: 2026-02-18T07:48:44.608Z*
+*自動生成: 2026-02-18T14:31:30.859Z*

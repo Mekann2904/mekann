@@ -1,3 +1,34 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/loop/iteration-builder.ts
+ * role: ループ拡張機能向けのプロンプト構築と契約パース処理
+ * why: 自動品質改善ループにおいてLLMへ渡す指示を構築し、LLMから返却される構造化契約を解析するため
+ * related: .pi/extensions/loop.ts, .pi/lib/agent-types.js, .pi/extensions/loop/reference-loader.ts
+ * public_api: buildIterationPrompt, parseLoopContract, ParsedLoopContract, LoopStatus, LoopGoalStatus, LOOP_JSON_BLOCK_TAG, LOOP_RESULT_BLOCK_TAG
+ * invariants:
+ *   - 前回出力はmaxPreviousOutputChars(9000文字)で制限される
+ *   - 検証フィードバックは最大4件、各180文字以内に制限される
+ *   - 構造化ブロック(LOOP_JSON)が存在する場合、パース優先度は構造化ブロック > プレーンテキスト抽出の順
+ * side_effects: なし(純粋関数として動作)
+ * failure_modes:
+ *   - LOOP_JSONブロックのJSONパース失敗時にparseErrorsへエラーメッセージを格納
+ *   - 不正なstatus/goalStatus値はunknownへフォールバック
+ * @abdd.explain
+ * overview: 自律的品質改善ループの各イテレーションで使用するプロンプト生成と、LLM応答からの契約抽出を行う
+ * what_it_does:
+ *   - タスク、目標、検証コマンド、参照情報、前回出力を組み込んだプロンプトを構築
+ *   - LLM応答から<LOOP_JSON>ブロックを検出しJSONとしてパース
+ *   - パース結果としてstatus, goalStatus, citations, nextActions等を抽出
+ *   - 構造化ブロック不在時はプレーンテキストから情報を抽出
+ * why_it_exists:
+ *   - ループ処理の各反復で一貫した形式のプロンプトを提供するため
+ *   - LLM応答を機械可読な契約形式へ統一するため
+ *   - イテレーション間の状態遷移を決定論的に処理するため
+ * scope:
+ *   in: タスク定義、目標、検証コマンド、参照情報、前回出力、検証フィードバック
+ *   out: 構築済みプロンプト文字列、パース済み契約オブジェクト(ParsedLoopContract)
+ */
+
 // File: .pi/extensions/loop/iteration-builder.ts
 // Description: Iteration prompt building and contract parsing for loop extension.
 // Why: Handles building iteration prompts and parsing the machine-readable contract.

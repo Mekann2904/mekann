@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/storage-base.ts
+ * role: 汎用ストレージパターンの基底モジュール。サブエージェント・エージェントチーム等のストレージ実装の共通基盤を提供
+ * why: 複数の類似ストレージ実装間でのDRY違反を解消し、一貫したストレージ操作パターンを確立するため
+ * related: storage-lock.ts, fs-utils.js, subagent-storage.ts, agent-teams-storage.ts
+ * public_api: HasId, BaseRunRecord, BaseStoragePaths, BaseStorage, createPathsFactory, createEnsurePaths, pruneRunArtifacts
+ * invariants: baseDir配下にrunsDirとstorageFileが必ず配置される、runIdは一意識別子として機能する、definitionsはidを持つエンティティのみ許可
+ * side_effects: ensurePaths呼び出し時にディレクトリをファイルシステムに作成する、pruneRunArtifacts呼び出し時にファイルを削除する
+ * failure_modes: ディレクトリ作成失敗時はensureDirが例外を投げる、ファイルロック取得失敗時はstorage-lockの挙動に依存
+ * @abdd.explain
+ * overview: 拡張ストレージ実装のための基底型定義とユーティリティ関数を提供するモジュール
+ * what_it_does:
+ *   - ID付きエンティティと実行記録のジェネリック型インターフェースを定義
+ *   - サブディレクトリ構造を持つストレージパスを生成するファクトリ関数を提供
+ *   - ディレクトリ自動作成付きのパス確保関数を生成
+ *   - 古い実行アーティファクトの削除機能を提供
+ * why_it_exists:
+ *   - subagents、agent-teams等の類似ストレージ実装の重複コードを排除
+ *   - ストレージ構造の一貫性を保証する共通契約を定義
+ *   - パス生成・初期化・クリーンアップのパターンを再利用可能にする
+ * scope:
+ *   in: ストレージ定義型、実行記録型、現在選択中のキー型
+ *   out: ファイルシステム上のディレクトリ構造、ストレージJSONファイル、実行アーティファクト
+ */
+
+/**
  * Generic storage base module.
  * Provides common patterns for extension storage (subagents, agent-teams, etc.).
  * Eliminates DRY violations between similar storage implementations.

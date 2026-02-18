@@ -1,3 +1,37 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-runtime.ts
+ * role: サブエージェントおよびエージェントチーム間で実行時カウンターとリソース制限を共有する拡張モジュール
+ * why: 複数のサブエージェントやチーム全体で一貫したリアルタイムのLLMワーカーおよびリクエスト状況を維持するため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, ../lib/task-scheduler.ts, ../lib/cross-instance-coordinator.ts
+ * public_api: AgentRuntimeLimits, getRuntimeConfig, isStableProfile, RuntimeConfig
+ * invariants:
+ *   - activeRunRequests, activeAgents, activeTeamRuns, activeTeammatesは常に非負整数
+ *   - リソース制限値は設定プロファイルから解決され、実行中に動的調整される
+ *   - キュー内のエントリは優先度順に整列される
+ * side_effects:
+ *   - ランタイムスナップショットプロバイダーの登録（setRuntimeSnapshotProvider経由）
+ *   - 優先度付きタスクキューへのエンキュー/デキュー操作
+ *   - クロスインスタンス間のワークスティーリング実行
+ * failure_modes:
+ *   - 容量上限到達時のキューエントリー待機（capacityWaitMs, capacityPollMsで制御）
+ *   - 予約レコードの期限切れによるリソース解放
+ *   - スケジューラー未初期化時のフォールバック処理
+ * @abdd.explain
+ * overview: エージェント実行時のリソース管理とタスクスケジューリングを統合的に制御するランタイム拡張
+ * what_it_does:
+ *   - サブエージェント・チームのアクティブ数を追跡し、並列制限を適用する
+ *   - 優先度ベースのタスクキューを管理し、オーケストレーション数を制御する
+ *   - 動的並列度調整とクロスインスタンス協調（ワークスティーリング等）を統合する
+ *   - プロバイダー別のレート制限とティア検出を適用する
+ * why_it_exists:
+ *   - 複数のエージェント実行コンテキスト間でリソース競合を防ぎ、一貫した制限を適用するため
+ *   - リアルタイムの負荷状況に基づいて並列度を動的に調整し、API制限違反を回避するため
+ * scope:
+ *   in: RuntimeConfig設定、タスクメタデータ、プロバイダー制限情報
+ *   out: AgentRuntimeLimits定義、キューステート通知、スケジューリング結果
+ */
+
 // File: .pi/extensions/agent-runtime.ts
 // Description: Shares runtime counters across subagents and agent teams.
 // Why: Keeps one consistent, real-time view of active LLM workers and requests.
@@ -61,17 +95,16 @@ import {
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
 
- /**
-  * エージェントランタイムのリミット設定を定義するインターフェース
-  * @property maxTotalActiveLlm - 全体での最大同時アクティブLLM数
-  * @property maxTotalActiveRequests - 全体での最大同時アクティブリクエスト数
-  * @property maxParallelSubagentsPerRun - 1回の実行における最大並列サブエージェント数
-  * @property maxParallelTeamsPerRun - 1回の実行における最大並列チーム数
-  * @property maxParallelTeammatesPerTeam - 1チームあたりの最大並列チームメイト数
-  * @property maxConcurrentOrchestrations - 最大同時オーケストレーション数
-  * @property capacityWaitMs - キャパシティ獲得時の最大待機時間（ミリ秒）
-  * @property capacityPollMs - キャパシティ確認のポーリング間隔（ミリ秒）
-  */
+/**
+ * @summary リソース制限値を定義する
+ * @typedef {object} AgentRuntimeLimits
+ * @property {number} maxTotalActiveLlm - 最大アクティブLLM数
+ * @property {number} maxTotalActiveRequests - 最大アクティブリクエスト数
+ * @property {number} maxParallelSubagentsPerRun - 実行あたりの最大並列サブエージェント数
+ * @property {number} maxParallelTeamsPerRun - 実行あたりの最大並列チーム数
+ * @property {number} maxParallelTeammatesPerTeam - チームあたりの最大並列メンバー数
+ * @returns {void}
+ */
 export interface AgentRuntimeLimits {
   maxTotalActiveLlm: number;
   maxTotalActiveRequests: number;
@@ -138,9 +171,9 @@ type GlobalScopeWithRuntime = typeof globalThis & {
   __PI_SHARED_AGENT_RUNTIME_STATE__?: AgentRuntimeState;
 };
 
- /**
-  * ランタイム状態を提供する抽象インターフェース
-  */
+/**
+ * @summary ランタイム状態を提供する
+ */
 export interface RuntimeStateProvider {
   getState(): AgentRuntimeState;
   resetState(): void;
@@ -172,10 +205,10 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
     this.globalScope = globalThis as GlobalScopeWithRuntime;
   }
 
-   /**
-    * ランタイムの状態スナップショットを取得
-    * @returns 現在のエージェントランタイム状態
-    */
+  /**
+   * @summary ランタイム状態を取得する
+   * @returns 現在のエージェントランタイム状態
+   */
   getState(): AgentRuntimeState {
     if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
       this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
@@ -215,31 +248,23 @@ export function setRuntimeStateProvider(provider: RuntimeStateProvider): void {
   runtimeStateProvider = provider;
 }
 
- /**
-  * ランタイム状態プロバイダーを取得する（テスト用）
-  * @returns 現在のランタイム状態プロバイダー
-  */
+/**
+ * @summary 状態プロバイダを取得
+ * @returns ランタイム状態プロバイダインスタンス
+ */
 export function getRuntimeStateProvider(): RuntimeStateProvider {
   return runtimeStateProvider;
 }
 
- /**
-  * エージェントランタイムのスナップショット
-  * @param subagentActiveRequests サブエージェントのアクティブなリクエスト数
-  * @param subagentActiveAgents サブエージェントのアクティブなエージェント数
-  * @param teamActiveRuns チームのアクティブな実行数
-  * @param teamActiveAgents チームのアクティブなエージェント数
-  * @param reservedRequests 予約済みリクエスト数
-  * @param reservedLlm 予約済みLLM数
-  * @param activeReservations アクティブな予約数
-  * @param activeOrchestrations アクティブなオーケストレーション数
-  * @param queuedOrchestrations キュー待機中のオーケストレーション数
-  * @param queuedTools キュー待機中のツール名配列
-  * @param totalActiveRequests アクティブなリクエスト総数
-  * @param totalActiveLlm アクティブなLLM総数
-  * @param limits ランタイム制限設定
-  * @param limitsVersion 制限設定のバージョン
-  */
+/**
+ * @summary 実行時スナップショットを定義
+ * @param subagentActiveRequests サブエージェントのアクティブリクエスト数
+ * @param subagentActiveAgents サブエージェントのアクティブエージェント数
+ * @param teamActiveRuns チームのアクティブ実行数
+ * @param teamActiveAgents チームのアクティブエージェント数
+ * @param reservedRequests 予約済みリクエスト数
+ * @returns 定義済みのプロパティを持つオブジェクト型
+ */
 export interface AgentRuntimeSnapshot {
   subagentActiveRequests: number;
   subagentActiveAgents: number;
@@ -265,13 +290,14 @@ export interface AgentRuntimeSnapshot {
   };
 }
 
- /**
-  * ランタイムステータス行のオプション
-  * @param title タイトル
-  * @param storedRuns 保存された実行数
-  * @param adaptivePenalty 適応的ペナルティ値
-  * @param adaptivePenaltyMax 適応的ペナルティの最大値
-  */
+/**
+ * @summary ステータスライン設定を定義
+ * @param title ステータスラインのタイトル
+ * @param storedRuns 保存済み実行数
+ * @param adaptivePenalty 適応的ペナルティ値
+ * @param adaptivePenaltyMax ペナルティの最大値
+ * @returns 定義済みのプロパティを持つオブジェクト型
+ */
 export interface RuntimeStatusLineOptions {
   title?: string;
   storedRuns?: number;
@@ -290,24 +316,26 @@ export interface RuntimeStatusLineOptions {
   adaptivePenaltyMax?: number;
 }
 
- /**
-  * 容量チェック入力
-  * @param additionalRequests 追加リクエスト数
-  * @param additionalLlm 追加LLM呼び出し数
-  */
+/**
+ * @summary 容量チェック入力を定義
+ * @param additionalRequests 追加リクエスト数
+ * @param additionalLlm 追加LLM呼び出し数
+ * @returns 定義済みのプロパティを持つオブジェクト型
+ */
 export interface RuntimeCapacityCheckInput {
   additionalRequests: number;
   additionalLlm: number;
 }
 
- /**
-  * ランタイム容量チェック結果を表します
-  * @property allowed - 実行が許可されているか
-  * @property reasons - 許可/拒否の理由リスト
-  * @property projectedRequests - 予測リクエスト数
-  * @property projectedLlm - 予測LLM使用量
-  * @property snapshot - 現在のランタイムスナップショット
-  */
+/**
+ * @summary 容量チェック結果を定義
+ * @param allowed 実行許可フラグ
+ * @param reasons 拒否理由のリスト
+ * @param projectedRequests 予測リクエスト数
+ * @param projectedLlm 予測LLM呼び出し数
+ * @param snapshot 容量チェック時のスナップショット
+ * @returns 定義済みのプロパティを持つオブジェクト型
+ */
 export interface RuntimeCapacityCheck {
   allowed: boolean;
   reasons: string[];
@@ -318,19 +346,11 @@ export interface RuntimeCapacityCheck {
 }
 
 /**
- * オーケストレーション待機結果を表すインターフェース
- *
- * 待機処理の完了状態、待機時間、試行回数、キュー位置などの情報を含みます。
- *
- * @property allowed - 待機が成功し、実行が許可されたかどうか
- * @property waitedMs - 待機した合計時間（ミリ秒）
- * @property attempts - ポーリングの試行回数
- * @property timedOut - タイムアウトしたかどうか
- * @property aborted - 中断されたかどうか
- * @property queuePosition - キュー内の位置
- * @property queuedAhead - 前方に待機している項目数
- * @property orchestrationId - オーケストレーションの一意識別子
- * @property lease - 取得したリースオブジェクト（許可された場合）
+ * @summary 容量待機の入力を定義する
+ * @summary 容量待機入力パラメータ
+ * @param maxWaitMs - 最大待機時間（ミリ秒）
+ * @param pollIntervalMs - ポーリング間隔（ミリ秒）
+ * @param signal - 中断シグナル
  */
 
 export interface RuntimeCapacityWaitInput extends RuntimeCapacityCheckInput {
@@ -339,29 +359,28 @@ export interface RuntimeCapacityWaitInput extends RuntimeCapacityCheckInput {
   signal?: AbortSignal;
 }
 
- /**
-  * 容量待機の結果を表します。
-  * @property waitedMs - 待機時間（ミリ秒）
-  * @property attempts - ポーリングの試行回数
-  * @property timedOut - タイムアウトしたかどうか
-  */
+/**
+ * @summary 容量待機の結果を返す
+ * @summary 容量待機結果
+ * @param waitedMs - 待機時間（ミリ秒）
+ * @param attempts - 試行回数
+ * @param timedOut - タイムアウトしたかどうか
+ */
 export interface RuntimeCapacityWaitResult extends RuntimeCapacityCheck {
   waitedMs: number;
   attempts: number;
   timedOut: boolean;
 }
 
- /**
-  * ランタイム容量の予約リースを表すインターフェース
-  * @param id - リースの一意な識別子
-  * @param toolName - ツール名
-  * @param additionalRequests - 追加のリクエスト数
-  * @param additionalLlm - 追加のLLMリソース
-  * @param expiresAtMs - 有効期限（ミリ秒）
-  * @param consume - リースを消費する関数
-  * @param heartbeat - ハートビートを送信する関数
-  * @param release - リースを解放する関数
-  */
+/**
+ * @summary 容量リース情報を表す
+ * @summary 容量リース情報
+ * @param id - リースID
+ * @param toolName - ツール名
+ * @param additionalRequests - 追加リクエスト数
+ * @param additionalLlm - 追加LLM数
+ * @param expiresAtMs - 有効期限（ミリ秒）
+ */
 export interface RuntimeCapacityReservationLease {
   id: string;
   toolName: string;
@@ -373,14 +392,15 @@ export interface RuntimeCapacityReservationLease {
   release: () => void;
 }
 
- /**
-  * ランタイム容量の予約入力
-  * @param toolName ツール名
-  * @param maxWaitMs 最大待機時間（ミリ秒）
-  * @param pollIntervalMs ポーリング間隔（ミリ秒）
-  * @param reservationTtlMs 予約TTL（ミリ秒）
-  * @param signal 中断シグナル
-  */
+/**
+ * @summary 容量予約の入力を定義する
+ * @summary 容量予約入力パラメータ
+ * @param toolName - ツール名
+ * @param maxWaitMs - 最大待機時間（ミリ秒）
+ * @param pollIntervalMs - ポーリング間隔（ミリ秒）
+ * @param reservationTtlMs - 予約の有効期限（ミリ秒）
+ * @param signal - 中断シグナル
+ */
 export interface RuntimeCapacityReserveInput extends RuntimeCapacityCheckInput {
   toolName?: string;
   maxWaitMs?: number;
@@ -389,14 +409,10 @@ export interface RuntimeCapacityReserveInput extends RuntimeCapacityCheckInput {
   signal?: AbortSignal;
 }
 
- /**
-  * ランタイム容量予約の結果
-  * @param waitedMs 待機時間（ミリ秒）
-  * @param attempts 試行回数
-  * @param timedOut タイムアウトしたかどうか
-  * @param aborted 中断されたかどうか
-  * @param reservation 予約リース情報
-  */
+/**
+ * @summary 容量予約の結果を返す
+ * @summary 容量予約結果を表す
+ */
 export interface RuntimeCapacityReserveResult extends RuntimeCapacityCheck {
   waitedMs: number;
   attempts: number;
@@ -405,18 +421,16 @@ export interface RuntimeCapacityReserveResult extends RuntimeCapacityCheck {
   reservation?: RuntimeCapacityReservationLease;
 }
 
- /**
-  * 実行オーケストレーションの待機入力
-  * @param toolName ツール名
-  * @param priority 優先度（省略時はtoolNameから推論）
-  * @param estimatedDurationMs 推定所要時間（ミリ秒）
-  * @param estimatedRounds 推定ラウンド数
-  * @param deadlineMs 期限タイムスタンプ（ミリ秒）
-  * @param source 優先度推論の元情報
-  * @param maxWaitMs 最大待機時間（ミリ秒）
-  * @param pollIntervalMs ポーリング間隔（ミリ秒）
-  * @param signal 中断シグナル
-  */
+/**
+ * @summary 待機入力定義インターフェース
+ * 実行オーケストレーションにおける入力待機の設定と推定値を定義します。
+ * @param {string} toolName - ツール名
+ * @param {number} priority - 優先度
+ * @param {number} estimatedDurationMs - 推定所要時間（ミリ秒）
+ * @param {number} estimatedRounds - 推定ラウンド数
+ * @param {number} deadlineMs - タイムアウト期限（ミリ秒）
+ * @returns {RuntimeOrchestrationWaitInput} 待機入力オブジェクト
+ */
 export interface RuntimeOrchestrationWaitInput {
   toolName: string;
   /** Optional priority override. If not specified, inferred from toolName. */

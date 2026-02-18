@@ -1,3 +1,28 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/loop/ssrf-protection.ts
+ * role: SSRF攻撃防止のためのURL/ホスト名検証ユーティリティ
+ * why: ループ拡張機能における外部リクエスト時に、内部ネットワークやプライベートIPへのアクセスを遮断し、SSRF脆弱性を防ぐため
+ * related: .pi/extensions/loop.ts, .pi/extensions/loop/reference-loader.ts
+ * public_api: isBlockedHostname, isPrivateOrReservedIP
+ * invariants: ホスト名判定は小文字正規化後に実行される、ブロックパターンは固定リストで定義される
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes: 不正なIP形式の入力時はfalseを返却（例外を投げない）
+ * @abdd.explain
+ * overview: SSRF保護のためのホスト名・IPアドレス検証機能を提供する
+ * what_it_does:
+ *   - localhost、.local、.internal等のブロック対象ホスト名パターンとの照合
+ *   - IPv4プライベートアドレス（10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16等）の検出
+ *   - IPv6ローカルアドレス（::1, fe80::/10, fc00::/7）の検出
+ *   - IPv4マップドIPv6アドレス（::ffff:x.x.x.x）からのプライベートIP抽出・判定
+ * why_it_exists:
+ *   - 外部リソース参照時のSSRF攻撃を防止するため
+ *   - 内部ネットワークリソースへの不正アクセスを遮断するため
+ * scope:
+ *   in: ホスト名文字列、IPアドレス文字列
+ *   out: ブロック判定結果（boolean）
+ */
+
 // File: .pi/extensions/loop/ssrf-protection.ts
 // Description: SSRF protection utilities for URL validation in loop extension.
 // Why: Prevents Server-Side Request Forgery by blocking access to private/internal networks.

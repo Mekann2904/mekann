@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { TaskSource } from './task-scheduler';
+// from './task-scheduler': TaskSource
 ```
 
 ## エクスポート一覧
@@ -91,17 +91,6 @@ flowchart LR
     task_scheduler["task-scheduler"]
   end
   main --> local
-```
-
-### 関数フロー
-
-```mermaid
-flowchart TD
-  getCostEstimator["getCostEstimator()"]
-  createCostEstimator["createCostEstimator()"]
-  resetCostEstimator["resetCostEstimator()"]
-  getCostEstimator -.-> createCostEstimator
-  createCostEstimator -.-> resetCostEstimator
 ```
 
 ### シーケンス図
@@ -255,4 +244,4 @@ type CostEstimationMethod = "default" | "historical" | "heuristic"
 コスト計算の推定方法を表す型。
 
 ---
-*自動生成: 2026-02-18T07:48:44.892Z*
+*自動生成: 2026-02-18T14:31:30.968Z*

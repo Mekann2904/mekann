@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { spawn } from 'node:child_process';
+// from 'node:child_process': spawn
 ```
 
 ## エクスポート一覧
@@ -69,9 +69,35 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  runPiPrintMode["runPiPrintMode()"]
   callModelViaPi["callModelViaPi()"]
-  runPiPrintMode -.-> callModelViaPi
+  cleanup["cleanup()"]
+  combineTextAndThinking["combineTextAndThinking()"]
+  extractFinalText["extractFinalText()"]
+  finish["finish()"]
+  formatThinkingBlock["formatThinkingBlock()"]
+  killSafely["killSafely()"]
+  parseJsonStreamLine["parseJsonStreamLine()"]
+  resetIdleTimeout["resetIdleTimeout()"]
+  runPiPrintMode["runPiPrintMode()"]
+  trimForError["trimForError()"]
+  callModelViaPi --> cleanup
+  callModelViaPi --> combineTextAndThinking
+  callModelViaPi --> extractFinalText
+  callModelViaPi --> finish
+  callModelViaPi --> killSafely
+  callModelViaPi --> parseJsonStreamLine
+  callModelViaPi --> resetIdleTimeout
+  combineTextAndThinking --> formatThinkingBlock
+  finish --> cleanup
+  resetIdleTimeout --> killSafely
+  runPiPrintMode --> cleanup
+  runPiPrintMode --> combineTextAndThinking
+  runPiPrintMode --> extractFinalText
+  runPiPrintMode --> finish
+  runPiPrintMode --> killSafely
+  runPiPrintMode --> parseJsonStreamLine
+  runPiPrintMode --> resetIdleTimeout
+  runPiPrintMode --> trimForError
 ```
 
 ### シーケンス図
@@ -376,4 +402,4 @@ interface CallModelViaPiOptions {
 pi経由でモデルを呼び出すためのオプション
 
 ---
-*自動生成: 2026-02-18T07:48:44.690Z*
+*自動生成: 2026-02-18T14:31:30.880Z*

@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { embeddingsGenerateEmbedding, embeddingsGenerateEmbeddingsBatch, cosineSimilarity... } from './embeddings/index.js';
-import { ensureDir } from './fs-utils.js';
-import { IndexedRun, RunIndex, getOrBuildRunIndex } from './run-index.js';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
+// from './embeddings/index.js': embeddingsGenerateEmbedding, embeddingsGenerateEmbeddingsBatch, cosineSimilarity, ...
+// from './fs-utils.js': ensureDir
+// from './run-index.js': IndexedRun, RunIndex, getOrBuildRunIndex
 // ... and 1 more imports
 ```
 
@@ -94,17 +94,38 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  addRunToSemanticMemory["addRunToSemanticMemory()"]
+  buildEmbeddingText["buildEmbeddingText()"]
+  buildSemanticMemoryIndex["buildSemanticMemoryIndex()"]
+  clearSemanticMemory["clearSemanticMemory()"]
+  findNearestNeighbors["findNearestNeighbors()"]
+  findSimilarRunsById["findSimilarRunsById()"]
   generateEmbedding["generateEmbedding()"]
   generateEmbeddingsBatch["generateEmbeddingsBatch()"]
-  isSemanticMemoryAvailable["isSemanticMemoryAvailable()"]
-  findNearestNeighbors["findNearestNeighbors()"]
   getSemanticMemoryPath["getSemanticMemoryPath()"]
+  getSemanticMemoryStats["getSemanticMemoryStats()"]
+  isSemanticMemoryAvailable["isSemanticMemoryAvailable()"]
   loadSemanticMemory["loadSemanticMemory()"]
-  generateEmbedding -.-> generateEmbeddingsBatch
-  generateEmbeddingsBatch -.-> isSemanticMemoryAvailable
-  isSemanticMemoryAvailable -.-> findNearestNeighbors
-  findNearestNeighbors -.-> getSemanticMemoryPath
-  getSemanticMemoryPath -.-> loadSemanticMemory
+  saveSemanticMemory["saveSemanticMemory()"]
+  semanticSearch["semanticSearch()"]
+  addRunToSemanticMemory --> buildEmbeddingText
+  addRunToSemanticMemory --> generateEmbedding
+  addRunToSemanticMemory --> loadSemanticMemory
+  addRunToSemanticMemory --> saveSemanticMemory
+  buildSemanticMemoryIndex --> generateEmbeddingsBatch
+  buildSemanticMemoryIndex --> loadSemanticMemory
+  buildSemanticMemoryIndex --> saveSemanticMemory
+  clearSemanticMemory --> saveSemanticMemory
+  findSimilarRunsById --> findNearestNeighbors
+  findSimilarRunsById --> loadSemanticMemory
+  generateEmbedding --> generateEmbedding
+  generateEmbeddingsBatch --> generateEmbeddingsBatch
+  getSemanticMemoryStats --> loadSemanticMemory
+  loadSemanticMemory --> getSemanticMemoryPath
+  saveSemanticMemory --> getSemanticMemoryPath
+  semanticSearch --> findNearestNeighbors
+  semanticSearch --> generateEmbedding
+  semanticSearch --> loadSemanticMemory
 ```
 
 ### シーケンス図
@@ -419,4 +440,4 @@ interface SemanticSearchResult {
 セマンティック検索の結果
 
 ---
-*自動生成: 2026-02-18T07:48:45.196Z*
+*自動生成: 2026-02-18T14:31:31.022Z*

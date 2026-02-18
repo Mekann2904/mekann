@@ -86,12 +86,10 @@ classDiagram
 ```mermaid
 flowchart TD
   aggregateMetrics["aggregateMetrics()"]
-  formatMetrics["formatMetrics()"]
-  formatDuration["formatDuration()"]
   classifySpeed["classifySpeed()"]
-  aggregateMetrics -.-> formatMetrics
-  formatMetrics -.-> formatDuration
-  formatDuration -.-> classifySpeed
+  formatDuration["formatDuration()"]
+  formatMetrics["formatMetrics()"]
+  formatMetrics --> formatDuration
 ```
 
 ## 関数
@@ -257,4 +255,4 @@ interface PerformanceThresholds {
 検索操作のパフォーマンスしきい値
 
 ---
-*自動生成: 2026-02-18T07:48:44.670Z*
+*自動生成: 2026-02-18T14:31:30.870Z*

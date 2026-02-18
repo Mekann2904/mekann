@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/storage.ts
+ * role: ストレージ関連モジュールの統合エクスポートポイント（バレルファイル）
+ * why: storage-base、run-index、pattern-extraction、semantic-memory、embeddingsへの統一アクセスを提供し、個別インポートの手間を削減するため
+ * related: storage-base.ts, run-index.ts, pattern-extraction.ts, semantic-memory.ts
+ * public_api: HasId, BaseRunRecord, BaseStorage, createStorageLoader, createStorageSaver, IndexedRun, RunIndex, searchRuns, findSimilarRuns, ExtractedPattern, PatternStorage, extractPatternFromRun, RunEmbedding, SemanticMemoryStorage, semanticSearch, EmbeddingProvider, generateEmbedding, cosineSimilarity
+ * invariants: 再エクスポートのみを行い、独自の実装を持たない、Layer 2のモジュールのみを集約する
+ * side_effects: なし（純粋な再エクスポート）
+ * failure_modes: 元モジュールが存在しない場合にインポートエラーが発生する、循環依存による読み込み失敗
+ * @abdd.explain
+ * overview: ストレージ、メモリ、エンベディング関連の5つのサブモジュールを集約し、単一のエントリポイントから一括インポート可能にするバレルファイル
+ * what_it_does:
+ *   - storage-baseからストレージ基本型とCRUDユーティリティを再エクスポート
+ *   - run-indexからALMAベースの実行履歴インデックス機能を再エクスポート
+ *   - pattern-extractionから実行履歴からのパターン抽出機能を再エクスポート
+ *   - semantic-memoryからOpenAI Embeddingsベースの意味検索機能を再エクスポート
+ *   - embeddingsから統一エンベディングプロバイダインターフェースを再エクスポート
+ * why_it_exists:
+ *   - 利用者が複数のストレージ関連モジュールを個別にインポートする負担を軽減するため
+ *   - lib全体をインポートせずにストレージ機能のみを選択的に利用可能にするため
+ *   - ストレージ関連APIの公開インターフェースを一箇所で管理するため
+ * scope:
+ *   in: storage-base.ts, run-index.ts, pattern-extraction.ts, semantic-memory.ts, embeddings関連モジュール
+ *   out: これら以外のlib配下モジュール、Layer 1の低レベルユーティリティ
+ */
+
+/**
  * Storage-related utilities and types.
  *
  * Aggregates all storage, memory, and embedding-related exports

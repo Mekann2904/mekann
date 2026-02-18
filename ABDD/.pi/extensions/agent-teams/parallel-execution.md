@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { reserveRuntimeCapacity, tryReserveRuntimeCapacity, RuntimeCapacityReservationLease } from '../agent-runtime';
+// from '../agent-runtime': reserveRuntimeCapacity, tryReserveRuntimeCapacity, RuntimeCapacityReservationLease
 ```
 
 ## エクスポート一覧
@@ -63,17 +63,6 @@ flowchart LR
     agent_runtime["agent-runtime"]
   end
   main --> local
-```
-
-### 関数フロー
-
-```mermaid
-flowchart TD
-  buildMemberParallelCandidates["buildMemberParallelCandidates()"]
-  buildTeamAndMemberParallelCandidates["buildTeamAndMemberParallelCandidates()"]
-  resolveTeamParallelCapacity["resolveTeamParallelCapacity()"]
-  buildMemberParallelCandidates -.-> buildTeamAndMemberParallelCandidates
-  buildTeamAndMemberParallelCandidates -.-> resolveTeamParallelCapacity
 ```
 
 ### シーケンス図
@@ -199,4 +188,4 @@ interface TeamParallelCapacityResolution {
 チーム並列実行の解決結果を表すインターフェース
 
 ---
-*自動生成: 2026-02-18T07:48:44.331Z*
+*自動生成: 2026-02-18T14:31:30.477Z*

@@ -1,4 +1,39 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/call-graph/query.ts
+ * role: コールグラフ検索クエリ関数群
+ * why: インデックス化されたコールグラフから呼び出し元/呼び出し先の関係を効率的に検索するため
+ * related: types.ts, builder.ts, index.ts, analyzer.ts
+ * public_api: findNodesByName, findNodeById, findNodesByFile, findCallers
+ * invariants:
+ *   - findNodesByNameは大文字小文字を区別しない一致を行う
+ *   - findCallersのdepthは1以上で直接の呼び出し元のみ、それ以上で再帰的に探索
+ *   - findCallersの結果は最大limit件（デフォルト50件）に制限される
+ *   - 結果のMapキーはノードIDを使用し重複を排除する
+ * side_effects:
+ *   - なし（純粋関数、インデックスへの読み取り専用アクセス）
+ * failure_modes:
+ *   - シンボル名がインデックスに存在しない場合、空配列を返す
+ *   - ノードIDが見つからない場合、undefinedを返す
+ *   - depth=0の場合、findCallersは初期シンボルのみをキューに追加し結果なしで終了
+ * @abdd.explain
+ * overview: コールグラフインデックスに対する検索クエリ機能を提供するモジュール
+ * what_it_does:
+ *   - シンボル名によるノード検索（完全一致または大文字小文字無視）
+ *   - ノードIDによる単一ノード検索
+ *   - ファイルパスによるノードフィルタリング
+ *   - 指定シンボルの呼び出し元を深さ指定で再帰探索（BFS）
+ *   - 呼び出し連鎖の信頼度計算（confidence乗算）
+ * why_it_exists:
+ *   - 静的解析結果を検索可能な形で提供するため
+ *   - 呼び出し関係のトレーサビリティを実現するため
+ *   - 影響範囲調査や依存関係分析を可能にするため
+ * scope:
+ *   in: CallGraphIndex（nodes配列、edges配列を含む構造）
+ *   out: CallGraphNode配列、単一CallGraphNode、CallChainResult配列
+ */
+
+/**
  * Call Graph Query Functions
  *
  * Provides functions to query the call graph for callers and callees.

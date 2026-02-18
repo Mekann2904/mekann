@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { Type } from '@mariozechner/pi-ai';
-import { RetryWithBackoffOverrides } from './retry-with-backoff.js';
+// from '@mariozechner/pi-ai': Type
+// from './retry-with-backoff.js': RetryWithBackoffOverrides
 ```
 
 ## エクスポート一覧
@@ -49,23 +49,6 @@ flowchart LR
     _mariozechner["@mariozechner"]
   end
   main --> external
-```
-
-### 関数フロー
-
-```mermaid
-flowchart TD
-  trimForError["trimForError()"]
-  buildRateLimitKey["buildRateLimitKey()"]
-  buildTraceTaskId["buildTraceTaskId()"]
-  normalizeTimeoutMs["normalizeTimeoutMs()"]
-  createRetrySchema["createRetrySchema()"]
-  toRetryOverrides["toRetryOverrides()"]
-  trimForError -.-> buildRateLimitKey
-  buildRateLimitKey -.-> buildTraceTaskId
-  buildTraceTaskId -.-> normalizeTimeoutMs
-  normalizeTimeoutMs -.-> createRetrySchema
-  createRetrySchema -.-> toRetryOverrides
 ```
 
 ### シーケンス図
@@ -204,4 +187,4 @@ toConcurrencyLimit(value: unknown, fallback: number): number
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-18T07:48:45.190Z*
+*自動生成: 2026-02-18T14:31:31.019Z*

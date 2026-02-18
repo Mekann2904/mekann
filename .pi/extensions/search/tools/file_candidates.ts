@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/file_candidates.ts
+ * role: ファイル候補列挙ツールの実装（fd優先・Node.jsフォールバック付き）
+ * why: 高速なファイル検索を提供しつつ、fd未導入環境でも動作保証するため
+ * related: cli.js, output.js, constants.ts, cache.js
+ * public_api: nativeFileCandidates（内部フォールバック関数）
+ * invariants: limit未指定時はDEFAULT_LIMITを使用、結果は常にlimitで打ち切り
+ * side_effects: ファイルシステム走査（readdir/stat）、キャッシュ操作（getSearchCache経由）
+ * failure_modes: アクセス権限のないディレクトリは無視して継続、fd実行失敗時はnativeフォールバックへ移行
+ * @abdd.explain
+ * overview: fdコマンドベースのファイル列挙と、純粋Node.js実装のフォールバックを提供
+ * what_it_does:
+ *   - globパターン/拡張子/タイプ/除外パターンによるファイルフィルタリング
+ *   - maxDepthによる再帰深度制限とlimitによる結果数制限
+ *   - 隠しファイル（.始まり）の自動除外
+ *   - DEFAULT_EXCLUDESによるnode_modules等の標準除外
+ * why_it_exists:
+ *   - fdコマンドの高速性を活用しつつ環境依存を吸収
+ *   - 検索ツール群で再利用可能なファイル列挙ロジックの提供
+ * scope:
+ *   in: FileCandidatesInput（pattern, extension, type, limit, maxDepth, exclude）
+ *   out: FileCandidatesOutput（FileCandidate配列）
+ */
+
+/**
  * file_candidates Tool
  *
  * Fast file enumeration using fd with fallback support

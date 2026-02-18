@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/validation-utils.ts
+ * role: 共通バリデーションユーティリティライブラリ
+ * why: 複数の拡張機能間で重複していた数値変換・検証ロジックを一元管理し、保守性を向上させるため
+ * related: context-usage-dashboard.ts, agent-usage-tracker.ts, retry-with-backoff.ts, loop.ts
+ * public_api: toFiniteNumber, toFiniteNumberWithDefault, toBoundedInteger, clampInteger, clampFloat, BoundedIntegerResult
+ * invariants: 全てのclamp系関数はmin <= result <= maxを満たす、toFiniteNumber系は無限大やNaNを返さない
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes: toBoundedIntegerは非整数または範囲外の入力でok: falseとエラーメッセージを返す、toFiniteNumberは非有限値でundefinedを返す
+ * @abdd.explain
+ * overview: 不明な値の数値変換、範囲制限、整数検証を行う純粋関数セットを提供する
+ * what_it_does:
+ *   - unknown型を有限数値またはundefinedに変換する
+ *   - 数値を指定範囲[min, max]内に制限する
+ *   - 整数値の検証と範囲チェックを行い結果オブジェクトを返す
+ * why_it_exists:
+ *   - context-usage-dashboard, agent-usage-tracker, retry-with-backoff, loop, rsaで重複実装を解消
+ *   - 型安全な数値処理の統一インターフェース提供
+ * scope:
+ *   in: unknown, number, fallback値, min/max範囲指定, フィールド名（エラー用）
+ *   out: 有限数値, undefined, BoundedIntegerResult（成功値またはエラー）
+ */
+
+/**
  * Validation utilities shared across extensions.
  * Consolidates duplicate implementations from:
  * - context-usage-dashboard.ts

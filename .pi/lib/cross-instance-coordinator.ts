@@ -1,4 +1,39 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/cross-instance-coordinator.ts
+ * role: 複数のpiインスタンス間でLLM並列数を制御するコーディネーター
+ * why: 複数インスタンスが同時実行する際、全インスタンス合計のLLM並列数を制限し、リソース枯渇を防ぐため
+ * related: runtime-config.ts, instance-manager.ts, session-manager.ts, lock-manager.ts
+ * public_api: ActiveModelInfo, InstanceInfo, CoordinatorConfig, CoordinatorInternalState, getDefaultConfig
+ * invariants:
+ *   - インスタンスIDは {sessionId}-{pid} 形式で一意に生成される
+ *   - ハートビート間隔はタイムアウト未満である
+ *   - totalMaxLlmはRuntimeConfigから取得され全インスタンス共通
+ * side_effects:
+ *   - ~/.pi/runtime/instances/ 配下へのロックファイル作成・削除
+ *   - ~/.pi/runtime/coordinator.json の読み書き
+ *   - ハートビート用setIntervalタイマーの起動
+ * failure_modes:
+ *   - ロックファイル書き込み権限不足によるインスタンス登録失敗
+ *   - ディスク容量不足による状態ファイル更新不可
+ *   - ゾンビロックファイル（異常終了時の残留）
+ * @abdd.explain
+ * overview: ファイルベースのロックとハートビート機構で、複数piインスタンスの活動を検知・調整する
+ * what_it_does:
+ *   - 自インスタンスの情報を~/.pi/runtime/instances/にロックファイルとして登録
+ *   - 定期的なハートビートでアクティブ状態を通知
+ *   - 全アクティブインスタンスを集計し、LLM並列数の割り当てを判断
+ *   - タイムアウトしたインスタンスのロックファイルを削除
+ * why_it_exists:
+ *   - 単一マシンで複数piセッション実行時のAPIレート制限対応
+ *   - ユーザーが意識せず複数インスタンスを起動してもリソース過負荷を防ぐ
+ *   - インスタンス間でアクティブモデル情報を共有し、競合を回避
+ * scope:
+ *   in: RuntimeConfigから取得する設定値（totalMaxLlm, heartbeatIntervalMs, heartbeatTimeoutMs）
+ *   out: アクティブインスタンス一覧、現在利用可能なLLM並列スロット数
+ */
+
+/**
  * Cross-Instance Coordinator
  *
  * Coordinates LLM parallelism limits across multiple pi instances.

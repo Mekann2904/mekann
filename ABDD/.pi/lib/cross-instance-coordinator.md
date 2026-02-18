@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, mkdirSync, readdirSync... } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { pid } from 'node:process';
-import { getRuntimeConfig, RuntimeConfig } from './runtime-config.js';
+// from 'node:fs': existsSync, mkdirSync, readdirSync, ...
+// from 'node:os': homedir
+// from 'node:path': join
+// from 'node:process': pid
+// from './runtime-config.js': getRuntimeConfig, RuntimeConfig
 ```
 
 ## エクスポート一覧
@@ -161,17 +161,53 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  registerInstance["registerInstance()"]
-  unregisterInstance["unregisterInstance()"]
-  updateHeartbeat["updateHeartbeat()"]
   cleanupDeadInstances["cleanupDeadInstances()"]
+  clearActiveModel["clearActiveModel()"]
+  clearAllActiveModels["clearAllActiveModels()"]
+  ensureDirs["ensureDirs()"]
+  generateInstanceId["generateInstanceId()"]
   getActiveInstanceCount["getActiveInstanceCount()"]
   getActiveInstances["getActiveInstances()"]
-  registerInstance -.-> unregisterInstance
-  unregisterInstance -.-> updateHeartbeat
-  updateHeartbeat -.-> cleanupDeadInstances
-  cleanupDeadInstances -.-> getActiveInstanceCount
-  getActiveInstanceCount -.-> getActiveInstances
+  getActiveInstancesForModel["getActiveInstancesForModel()"]
+  getCoordinatorStatus["getCoordinatorStatus()"]
+  getDynamicParallelLimit["getDynamicParallelLimit()"]
+  getEnvOverrides["getEnvOverrides()"]
+  getMyParallelLimit["getMyParallelLimit()"]
+  getTotalMaxLlm["getTotalMaxLlm()"]
+  getWorkStealingCandidates["getWorkStealingCandidates()"]
+  isCoordinatorInitialized["isCoordinatorInitialized()"]
+  isInstanceAlive["isInstanceAlive()"]
+  loadConfig["loadConfig()"]
+  parseLockFile["parseLockFile()"]
+  registerInstance["registerInstance()"]
+  setActiveModel["setActiveModel()"]
+  shouldAttemptWorkStealing["shouldAttemptWorkStealing()"]
+  unregisterInstance["unregisterInstance()"]
+  updateHeartbeat["updateHeartbeat()"]
+  updateWorkloadInfo["updateWorkloadInfo()"]
+  cleanupDeadInstances --> ensureDirs
+  cleanupDeadInstances --> isInstanceAlive
+  cleanupDeadInstances --> parseLockFile
+  getActiveInstanceCount --> ensureDirs
+  getActiveInstanceCount --> isInstanceAlive
+  getActiveInstanceCount --> parseLockFile
+  getActiveInstances --> ensureDirs
+  getActiveInstances --> isInstanceAlive
+  getActiveInstances --> parseLockFile
+  getActiveInstancesForModel --> getActiveInstances
+  getCoordinatorStatus --> getActiveInstanceCount
+  getCoordinatorStatus --> getActiveInstances
+  getCoordinatorStatus --> getMyParallelLimit
+  getDynamicParallelLimit --> getActiveInstances
+  getMyParallelLimit --> getActiveInstanceCount
+  getWorkStealingCandidates --> getActiveInstances
+  registerInstance --> cleanupDeadInstances
+  registerInstance --> ensureDirs
+  registerInstance --> generateInstanceId
+  registerInstance --> loadConfig
+  registerInstance --> updateHeartbeat
+  shouldAttemptWorkStealing --> getActiveInstances
+  updateHeartbeat --> ensureDirs
 ```
 
 ### シーケンス図
@@ -921,4 +957,4 @@ interface StealingStatsInternal {
 Stealing statistics tracking (internal).
 
 ---
-*自動生成: 2026-02-18T07:48:44.905Z*
+*自動生成: 2026-02-18T14:31:30.972Z*

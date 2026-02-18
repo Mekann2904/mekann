@@ -1,4 +1,39 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/adaptive-penalty.ts
+ * role: 並列処理の動的調整のための適応的ペナルティ制御ライブラリ
+ * why: サブエージェントとエージェントチーム間でのコード重複を回避しつつ、APIレート制限やタイムアウト等の負荷状況に応じて並列度を動的に調整するため
+ * related: subagent-runner.ts, agent-team.ts, feature-flags.ts, parallel-executor.ts
+ * public_api: AdaptivePenaltyState, AdaptivePenaltyOptions, EnhancedPenaltyOptions, AdaptivePenaltyController, EnhancedPenaltyController, PenaltyReason, DecayStrategy, getAdaptivePenaltyMode, createAdaptivePenaltyController
+ * invariants:
+ *   - penaltyは0以上maxPenalty以下の範囲に維持される
+ *   - decayMs経過後にペナルティは減衰する
+ *   - historySizeを超える履歴は古い順に破棄される
+ * side_effects:
+ *   - 環境変数PI_ADAPTIVE_PENALTY_MODEの読み取り（モード判定時1回のみキャッシュ）
+ *   - ペナルティ状態の更新（updatedAtMs, reasonHistoryへの追記）
+ * failure_modes:
+ *   - 不正なPenaltyReason値が渡された場合の動作未定義
+ *   - maxPenalty=0の場合、applyLimitが常に0を返す
+ *   - decayMs=0の場合、即座にペナルティが0に減衰する
+ * @abdd.explain
+ * overview: 動的並列処理の効率化とエラー回避を目的としたペナルティスコア管理システム。legacy（線形減衰）とenhanced（指数関数減衰・理由別重み付け）の2モードを提供。
+ * what_it_does:
+ *   - rate_limit, timeout, capacity, schema_violationの4種類の理由でペナルティを加算・管理
+ *   - 指定時間経過後のペナルティ減衰（線形/指数関数/ハイブリッド）
+ *   - 理由別の重み付けによるペナルティ増加率の調整（enhancedモード）
+ *   - 履歴管理と理由別統計情報の提供
+ *   - baseLimitからpenaltyを減じた実効並列度の算出
+ * why_it_exists:
+ *   - APIレート制限やタイムアウト等の障害発生時に並列度を自動的に下げ、システム負荷を軽減するため
+ *   - 障害回復後に並列度を段階的に戻し、スループットを最適化するため
+ *   - サブエージェントとエージェントチームで共通のペナルティロジックを再利用するため
+ * scope:
+ *   in: ペナルティ操作指示、現在時刻、基本並列度
+ *   out: ペナルティ状態、実効並列度、理由別統計、減衰戦略情報
+ */
+
+/**
  * Adaptive penalty controller for dynamic parallelism adjustment.
  * Shared between subagents and agent-teams to reduce code duplication.
  *

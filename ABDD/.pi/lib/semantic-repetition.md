@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { generateEmbedding, cosineSimilarity, getEmbeddingProvider } from './embeddings/index.js';
+// from './embeddings/index.js': generateEmbedding, cosineSimilarity, getEmbeddingProvider
 ```
 
 ## エクスポート一覧
@@ -86,11 +86,10 @@ flowchart LR
 flowchart TD
   detectSemanticRepetition["detectSemanticRepetition()"]
   detectSemanticRepetitionFromEmbeddings["detectSemanticRepetitionFromEmbeddings()"]
-  isSemanticRepetitionAvailable["isSemanticRepetitionAvailable()"]
   getRecommendedAction["getRecommendedAction()"]
-  detectSemanticRepetition -.-> detectSemanticRepetitionFromEmbeddings
-  detectSemanticRepetitionFromEmbeddings -.-> isSemanticRepetitionAvailable
-  isSemanticRepetitionAvailable -.-> getRecommendedAction
+  isSemanticRepetitionAvailable["isSemanticRepetitionAvailable()"]
+  normalizeText["normalizeText()"]
+  detectSemanticRepetition --> normalizeText
 ```
 
 ### シーケンス図
@@ -263,4 +262,4 @@ interface TrajectorySummary {
 セッション軌跡のサマリー監視用インターフェース
 
 ---
-*自動生成: 2026-02-18T07:48:45.213Z*
+*自動生成: 2026-02-18T14:31:31.023Z*

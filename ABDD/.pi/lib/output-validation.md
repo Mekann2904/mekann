@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { SchemaValidationMode, SchemaValidationResult, SchemaViolation... } from './output-schema.js';
+// from './output-schema.js': SchemaValidationMode, SchemaValidationResult, SchemaViolation, ...
 ```
 
 ## エクスポート一覧
@@ -77,13 +77,12 @@ flowchart LR
 flowchart TD
   hasNonEmptyResultSection["hasNonEmptyResultSection()"]
   validateSubagentOutput["validateSubagentOutput()"]
-  validateTeamMemberOutput["validateTeamMemberOutput()"]
   validateSubagentOutputEnhanced["validateSubagentOutputEnhanced()"]
+  validateTeamMemberOutput["validateTeamMemberOutput()"]
   validateTeamMemberOutputEnhanced["validateTeamMemberOutputEnhanced()"]
-  hasNonEmptyResultSection -.-> validateSubagentOutput
-  validateSubagentOutput -.-> validateTeamMemberOutput
-  validateTeamMemberOutput -.-> validateSubagentOutputEnhanced
-  validateSubagentOutputEnhanced -.-> validateTeamMemberOutputEnhanced
+  validateSubagentOutput --> hasNonEmptyResultSection
+  validateSubagentOutputEnhanced --> validateSubagentOutput
+  validateTeamMemberOutputEnhanced --> validateTeamMemberOutput
 ```
 
 ### シーケンス図
@@ -233,4 +232,4 @@ interface ExtendedValidationResult {
 スキーマ情報を含む拡張検証結果
 
 ---
-*自動生成: 2026-02-18T07:48:45.027Z*
+*自動生成: 2026-02-18T14:31:31.001Z*

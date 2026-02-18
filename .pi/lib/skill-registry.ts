@@ -1,4 +1,38 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/skill-registry.ts
+ * role: pi-coreスキルシステムのロード、解決、マージ処理を担当するユーティリティモジュール
+ * why: サブエージェントやチーム構成において、スキルの継承・マージを統一的に管理するため
+ * related: pi-core skill system, subagent-module, agent-team-config, prompt-builder
+ * public_api: SkillDefinition, SkillReference, ResolvedSkill, ResolveSkillsOptions, SkillMergeConfig, ResolveSkillsResult
+ * invariants:
+ *   - SKILL.mdファイル名は変更不可
+ *   - 解決失敗時は例外ではなくerrors配列に格納
+ *   - デフォルトエージェントディレクトリは~/.pi/agent
+ * side_effects:
+ *   - ファイルシステムからのスキルファイル読み込み
+ *   - 環境変数PI_CODING_AGENT_DIRの参照
+ * failure_modes:
+ *   - スキルファイルが存在しない場合、ResolveSkillsResult.errorsにエラー追加
+ *   - 無効なファイルパス指定時、相対パス解決失敗
+ *   - 環境変数の不正なパス指定によるディレクトリ特定失敗
+ * @abdd.explain
+ * overview: pi-coreのSKILL.mdファイルをロード・解決・マージし、プロンプト注入用に整形するスキル管理モジュール
+ * what_it_does:
+ *   - ローカル/グローバルのスキル検索パスを構築
+ *   - スキル名またはパスからSKILL.mdファイルを探索・読み込み
+ *   - 親子継承ルール（replace/merge戦略）によるスキル統合
+ *   - 解決結果をResolvedSkill配列として返却（エラー・警告含む）
+ * why_it_exists:
+ *   - エージェントチーム間でのスキル再利用と継承を可能にする
+ *   - 複数のスキル検索パスを統一的に管理
+ *   - スキル解決エラーを非例外形式で呼び出し元に通知
+ * scope:
+ *   in: スキル参照文字列、作業ディレクトリパス、マージ設定
+ *   out: 解決済みスキル配列、エラー/警告メッセージリスト
+ */
+
+/**
  * Skill Registry Module
  * Handles skill loading, resolution, and merging for subagents and agent teams.
  *

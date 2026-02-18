@@ -88,17 +88,30 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  getMinLogLevel["getMinLogLevel()"]
-  resetMinLogLevelCache["resetMinLogLevelCache()"]
-  formatTimestamp["formatTimestamp()"]
-  shouldLog["shouldLog()"]
+  createLogger["createLogger()"]
   formatError["formatError()"]
+  formatReadableEntry["formatReadableEntry()"]
+  formatTimestamp["formatTimestamp()"]
+  getAgentTeamsLogger["getAgentTeamsLogger()"]
+  getDefaultLogger["getDefaultLogger()"]
+  getMinLogLevel["getMinLogLevel()"]
+  getStorageLogger["getStorageLogger()"]
+  getSubagentLogger["getSubagentLogger()"]
+  logDebug["logDebug()"]
+  logError["logError()"]
+  logInfo["logInfo()"]
+  logWarn["logWarn()"]
+  resetDefaultLogger["resetDefaultLogger()"]
+  resetMinLogLevelCache["resetMinLogLevelCache()"]
   serializeLogEntry["serializeLogEntry()"]
-  getMinLogLevel -.-> resetMinLogLevelCache
-  resetMinLogLevelCache -.-> formatTimestamp
-  formatTimestamp -.-> shouldLog
-  shouldLog -.-> formatError
-  formatError -.-> serializeLogEntry
+  shouldLog["shouldLog()"]
+  getAgentTeamsLogger --> createLogger
+  getStorageLogger --> createLogger
+  getSubagentLogger --> createLogger
+  logDebug --> createLogger
+  logError --> createLogger
+  logInfo --> createLogger
+  logWarn --> createLogger
 ```
 
 ## 関数
@@ -463,4 +476,4 @@ type LogContext = | "subagents"
 ログコンテキスト定義
 
 ---
-*自動生成: 2026-02-18T07:48:45.291Z*
+*自動生成: 2026-02-18T14:31:31.032Z*

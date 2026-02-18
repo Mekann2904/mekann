@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/pattern-extraction.ts
+ * role: 実行履歴から再利用可能なパターン（成功・失敗・アプローチ）を抽出・学習するモジュール
+ * why: 過去の実行結果から成功/失敗パターンを特定し、将来のタスク実行精度を向上させるため
+ * related: run-index.ts, storage-lock.ts, fs-utils.js
+ * public_api: ExtractedPattern, PatternExample, PatternStorage, RunData, PATTERN_STORAGE_VERSION
+ * invariants: confidenceは0〜1の範囲、frequencyは正の整数、patternTypeは3種類のいずれか
+ * side_effects: ファイルシステムへのパターンデータ読み書き（atomicWriteTextFile経由）
+ * failure_modes: パターンファイル不存在時は空データを返却、ファイル読み込み失敗時は例外送出
+ * @abdd.explain
+ * overview: 実行履歴データを分析し、タスク種別ごとに成功・失敗・アプローチのパターンを抽出して永続化する
+ * what_it_does:
+ *   - RunDataから成功/失敗/アプローチパターンを抽出しExtractedPatternとして構造化
+ *   - パターンをタスク種別ごとに分類しPatternStorageに永続化
+ *   - 成功インジケーター（completed/success/完了等）を用いてパターン種別を判定
+ *   - 出現頻度・信頼度を計算しパターンの重要度を評価
+ * why_it_exists:
+ *   - 過去の成功経験を再利用可能な形で蓄積するため
+ *   - 失敗パターンを学習し再発防止に活用するため
+ *   - タスク種別ごとに最適なアプローチを自動選択できるようにするため
+ * scope:
+ *   in: RunData（実行ID、タスク内容、ステータス、要約等）、既存パターンファイル
+ *   out: ExtractedPattern配列、PatternStorage（JSONファイル）、タスク種別ごとのパターンID一覧
+ */
+
+/**
  * Pattern Extraction Module.
  * Extracts reusable patterns from run history for learning.
  * Identifies success/failure patterns and task-specific approaches.

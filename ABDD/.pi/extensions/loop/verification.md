@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { spawn } from 'node:child_process';
-import { formatDuration } from '../../lib/format-utils.js';
-import { toErrorMessage } from '../../lib/error-utils.js';
+// from 'node:child_process': spawn
+// from '../../lib/format-utils.js': formatDuration
+// from '../../lib/error-utils.js': toErrorMessage
 ```
 
 ## エクスポート一覧
@@ -82,17 +82,36 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  resolveVerificationPolicy["resolveVerificationPolicy()"]
-  shouldRunVerificationCommand["shouldRunVerificationCommand()"]
-  runVerificationCommand["runVerificationCommand()"]
-  parseVerificationCommand["parseVerificationCommand()"]
-  resolveVerificationAllowlistPrefixes["resolveVerificationAllowlistPrefixes()"]
+  buildVerificationValidationFeedback["buildVerificationValidationFeedback()"]
+  cleanup["cleanup()"]
+  finish["finish()"]
+  formatAllowlistPreview["formatAllowlistPreview()"]
   isVerificationCommandAllowed["isVerificationCommandAllowed()"]
-  resolveVerificationPolicy -.-> shouldRunVerificationCommand
-  shouldRunVerificationCommand -.-> runVerificationCommand
-  runVerificationCommand -.-> parseVerificationCommand
-  parseVerificationCommand -.-> resolveVerificationAllowlistPrefixes
-  resolveVerificationAllowlistPrefixes -.-> isVerificationCommandAllowed
+  killSafely["killSafely()"]
+  parseVerificationCommand["parseVerificationCommand()"]
+  redactSensitiveText["redactSensitiveText()"]
+  resolveVerificationAllowlistPrefixes["resolveVerificationAllowlistPrefixes()"]
+  resolveVerificationPolicy["resolveVerificationPolicy()"]
+  runVerificationCommand["runVerificationCommand()"]
+  shouldRunVerificationCommand["shouldRunVerificationCommand()"]
+  toPreview["toPreview()"]
+  tokenizeArgs["tokenizeArgs()"]
+  truncateText["truncateText()"]
+  buildVerificationValidationFeedback --> toPreview
+  finish --> cleanup
+  finish --> redactSensitiveText
+  finish --> truncateText
+  parseVerificationCommand --> tokenizeArgs
+  resolveVerificationAllowlistPrefixes --> tokenizeArgs
+  runVerificationCommand --> cleanup
+  runVerificationCommand --> finish
+  runVerificationCommand --> formatAllowlistPreview
+  runVerificationCommand --> isVerificationCommandAllowed
+  runVerificationCommand --> killSafely
+  runVerificationCommand --> parseVerificationCommand
+  runVerificationCommand --> redactSensitiveText
+  runVerificationCommand --> resolveVerificationAllowlistPrefixes
+  runVerificationCommand --> truncateText
 ```
 
 ### シーケンス図
@@ -413,4 +432,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 検証ポリシーのモード
 
 ---
-*自動生成: 2026-02-18T07:48:44.517Z*
+*自動生成: 2026-02-18T14:31:30.755Z*

@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { embeddingRegistry } from './registry.js';
-import { openAIEmbeddingProvider } from './providers/openai.js';
+// from './registry.js': embeddingRegistry
+// from './providers/openai.js': openAIEmbeddingProvider
 ```
 
 ## エクスポート一覧
@@ -41,15 +41,6 @@ flowchart LR
     openai["openai"]
   end
   main --> local
-```
-
-### 関数フロー
-
-```mermaid
-flowchart TD
-  initializeEmbeddingModule["initializeEmbeddingModule()"]
-  initializeEmbeddingModuleSync["initializeEmbeddingModuleSync()"]
-  initializeEmbeddingModule -.-> initializeEmbeddingModuleSync
 ```
 
 ### シーケンス図
@@ -97,4 +88,4 @@ initializeEmbeddingModuleSync(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T07:48:44.952Z*
+*自動生成: 2026-02-18T14:31:30.986Z*

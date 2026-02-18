@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { execute, buildRgArgs, checkToolAvailability } from '../utils/cli.js';
-import { CodeSearchInput, CodeSearchOutput, CodeSearchMatch... } from '../types.js';
-import { truncateResults, parseRgOutput, summarizeResults... } from '../utils/output.js';
-import { SearchToolError, isSearchToolError, getErrorMessage... } from '../utils/errors.js';
-import { DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_EXCLUDES } from '../utils/constants.js';
+// from '../utils/cli.js': execute, buildRgArgs, checkToolAvailability
+// from '../types.js': CodeSearchInput, CodeSearchOutput, CodeSearchMatch, ...
+// from '../utils/output.js': truncateResults, parseRgOutput, summarizeResults, ...
+// from '../utils/errors.js': SearchToolError, isSearchToolError, getErrorMessage, ...
+// from '../utils/constants.js': DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_EXCLUDES
 // ... and 2 more imports
 ```
 
@@ -47,6 +47,28 @@ flowchart LR
     constants["constants"]
   end
   main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  codeSearch["codeSearch()"]
+  extractResultPaths["extractResultPaths()"]
+  nativeCodeSearch["nativeCodeSearch()"]
+  scanDir["scanDir()"]
+  searchFile["searchFile()"]
+  shouldExclude["shouldExclude()"]
+  useRgCommand["useRgCommand()"]
+  codeSearch --> extractResultPaths
+  codeSearch --> nativeCodeSearch
+  codeSearch --> useRgCommand
+  nativeCodeSearch --> scanDir
+  nativeCodeSearch --> searchFile
+  nativeCodeSearch --> shouldExclude
+  scanDir --> scanDir
+  scanDir --> searchFile
+  scanDir --> shouldExclude
 ```
 
 ### シーケンス図
@@ -184,4 +206,4 @@ rgを使用したコード検索
 **戻り値**: `Promise<CodeSearchOutput>`
 
 ---
-*自動生成: 2026-02-18T07:48:44.604Z*
+*自動生成: 2026-02-18T14:31:30.858Z*

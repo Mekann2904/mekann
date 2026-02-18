@@ -1,4 +1,36 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/embeddings/utils.ts
+ * role: エンベディングベクトル操作用ユーティリティ関数群
+ * why: ベクトル演算（類似度計算、正規化、加減算、スカラー倍、平均）を一元管理し、埋め込みベクトルの数学的操作を再利用可能にするため
+ * related: types.ts, index.ts, search.ts, embedder.ts
+ * public_api: cosineSimilarity, euclideanDistance, normalizeVector, addVectors, subtractVectors, scaleVector, meanVector
+ * invariants:
+ *   - 全ベクトル演算関数は入力ベクトルの次元数が一致することを前提とする
+ *   - cosineSimilarityとeuclideanDistanceは次元不一致時、それぞれ0とInfinityを返す
+ *   - normalizeVectorはノルム0の場合、ゼロベクトルを返す
+ *   - meanVectorは空配列入力時、nullを返す
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes:
+ *   - addVectors/subtractVectors: 次元不一致時にErrorをスロー
+ *   - meanVector: 次元不一致時にErrorをスロー
+ * @abdd.explain
+ * overview: 埋め込みベクトルに対する基本演算を提供するユーティリティモジュール
+ * what_it_does:
+ *   - コサイン類似度とユークリッド距離の計算
+ *   - ベクトルの正規化
+ *   - ベクトル同士の加算・減算
+ *   - ベクトルのスカラー倍
+ *   - 複数ベクトルの平均を算出
+ * why_it_exists:
+ *   - 埋め込みベクトルを用いた類似度計算を共通化するため
+ *   - ベクトル変換処理を標準化し、他モジュールから再利用可能にするため
+ * scope:
+ *   in: 数値配列として表現されたベクトル、ベクトルの配列
+ *   out: 類似度/距離の数値、変換後のベクトル配列、null
+ */
+
+/**
  * Embeddings Module - Vector Utilities.
  * Provides vector operations for embeddings.
  */

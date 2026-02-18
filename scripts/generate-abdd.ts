@@ -7,7 +7,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, mkdtempSync, rmSync } from 'fs';
 import { join, relative, dirname, basename } from 'path';
-import { execSync, exec } from 'child_process';
+import { execSync, exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as ts from 'typescript';
 import * as os from 'os';
@@ -162,8 +162,6 @@ const ABDD_DIR = join(ROOT_DIR, 'ABDD');
 
 /** Mermaid検証の並列数（mmdcはPuppeteerを使用するため控えめに） */
 const MERMAID_PARALLEL_LIMIT = 4;
-/** mmdcのタイムアウト（ミリ秒） */
-const MERMAID_TIMEOUT_MS = 30000;
 
 /**
  * コマンドライン引数をパースする
@@ -2105,7 +2103,7 @@ function validateMermaid(code: string): { valid: boolean; error?: string } {
 }
 
 /**
- * Mermaid図を非同期で検証（並列実行用）
+ * Mermaid図を非同期で検証（mmdc使用、タイムアウトなし）
  */
 async function validateMermaidAsync(code: string): Promise<{ valid: boolean; error?: string }> {
   // 簡易チェックを先に実行
@@ -2130,10 +2128,8 @@ async function validateMermaidAsync(code: string): Promise<{ valid: boolean; err
   try {
     writeFileSync(tmpFile, code, 'utf-8');
 
-    // mmdcで検証（SVGを出力して成功するか確認）
-    await execAsync(`mmdc -i "${tmpFile}" -o "${tmpOutput}" -b transparent`, {
-      timeout: MERMAID_TIMEOUT_MS,
-    });
+    // mmdcで検証（タイムアウトなし）
+    await execAsync(`mmdc -i "${tmpFile}" -o "${tmpOutput}" -b transparent`);
 
     return { valid: true };
   } catch (error) {

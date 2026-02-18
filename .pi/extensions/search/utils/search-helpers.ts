@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/search-helpers.ts
+ * role: 複数検索ツールの結果を統合・正規化・ランク付けするユーティリティモジュール
+ * why: 異なる検索ツール（コード検索、シンボル検索、ファイル検索）の結果を統一形式でマージし、重複排除と関連度順ソートを実現するため
+ * related: .pi/extensions/search/types.ts, .pi/extensions/search/index.ts, .pi/extensions/search/tools/code-search.ts, .pi/extensions/search/tools/symbol-search.ts
+ * public_api: UnifiedSearchResult, MergeOptions, RankOptions
+ * invariants: UnifiedSearchResult.scoreは数値、UnifiedSearchResult.sourcesは空配列でない文字列配列、typeは"file"|"match"|"symbol"のいずれか
+ * side_effects: なし（純粋関数・型定義のみ）
+ * failure_modes: 不正な入力型によるランタイムエラー、score計算時の数値オーバーフロー、空のsources配列による整合性違反
+ * @abdd.explain
+ * overview: 検索拡張機能において、複数の検索ツールから返される結果を統一的な形式に変換し、マージ・重複排除・関連度ランク付けを行うための型定義とヘルパー関数を提供する
+ * what_it_does:
+ *   - CodeSearchMatch, SymbolDefinition, FileCandidate等の異なる結果型をUnifiedSearchResultに正規化
+ *   - 複数ツールで見つかった同一結果の重複排除とsources配列への追跡
+ *   - クエリに対する関連度スコア計算（完全一致、部分一致、パス一致の重み付け）
+ *   - マージ時のマルチソースブースト適用と結果数制限
+ * why_it_exists:
+ *   - 検索ツールごとに異なる結果形式を統一し、UI層での一貫した表示を実現するため
+ *   - 複数ツールの結果を組み合わせることで検索精度を向上させるため
+ *   - スコアリングロジックを一箇所に集約し、保守性を確保するため
+ * scope:
+ *   in: CodeSearchMatch, SymbolDefinition, FileCandidate, MergeOptions, RankOptions
+ *   out: UnifiedSearchResult, マージ・ランク付け済みの検索結果配列
+ */
+
+/**
  * Search Result Integration Helpers
  *
  * Utilities for merging and ranking results from multiple search tools:

@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-import { StructureData, ClassInfo, FunctionInfo... } from './extract-structure.js';
+// from './extract-structure.js': StructureData, ClassInfo, FunctionInfo, ...
 ```
 
 ## エクスポート一覧
@@ -57,6 +57,38 @@ flowchart LR
     extract_structure["extract-structure"]
   end
   main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  generateClassDiagram["generateClassDiagram()"]
+  generateFlowchart["generateFlowchart()"]
+  generateMermaidDiagrams["generateMermaidDiagrams()"]
+  generateSequenceDiagram["generateSequenceDiagram()"]
+  getVisibilitySymbol["getVisibilitySymbol()"]
+  join["join()"]
+  resolveImportPath["resolveImportPath()"]
+  sanitizeIdentifier["sanitizeIdentifier()"]
+  sanitizeLabel["sanitizeLabel()"]
+  sanitizeType["sanitizeType()"]
+  truncateText["truncateText()"]
+  generateClassDiagram --> getVisibilitySymbol
+  generateClassDiagram --> join
+  generateClassDiagram --> sanitizeIdentifier
+  generateClassDiagram --> sanitizeType
+  generateClassDiagram --> truncateText
+  generateFlowchart --> join
+  generateFlowchart --> sanitizeLabel
+  generateMermaidDiagrams --> generateClassDiagram
+  generateMermaidDiagrams --> generateFlowchart
+  generateMermaidDiagrams --> generateSequenceDiagram
+  generateSequenceDiagram --> join
+  generateSequenceDiagram --> resolveImportPath
+  generateSequenceDiagram --> sanitizeLabel
+  join --> join
+  resolveImportPath --> join
 ```
 
 ## 関数
@@ -246,4 +278,4 @@ interface MermaidDiagrams {
 Mermaid図の出力結果
 
 ---
-*自動生成: 2026-02-18T07:48:44.436Z*
+*自動生成: 2026-02-18T14:31:30.657Z*

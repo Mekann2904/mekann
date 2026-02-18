@@ -1,3 +1,39 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams/definition-loader.ts
+ * role: チーム定義Markdownファイルの読み込みと解析を行うモジュール
+ * why: 定義読み込みロジックをagent-teams.tsから分離し、保守性を向上させるため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/team-types.js
+ * public_api: parseTeamMarkdownFile, loadTeamDefinitionsFromDir, TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown
+ * invariants:
+ *   - 解析失敗時は例外を投げずnullを返す
+ *   - frontmatterのidとnameは必須フィールド
+ *   - members配列は空でないことを検証
+ * side_effects:
+ *   - ファイルシステムからの読み込み（readFileSync, readdirSync）
+ *   - console.warnによる警告出力
+ *   - process.env.PI_CODING_AGENT_DIRの参照
+ * failure_modes:
+ *   - ファイルが存在しない、または読み込み権限がない
+ *   - YAMLフロントマターのパースエラー
+ *   - 必須フィールド（id, name, members）の欠落
+ *   - 不正なenabled値の指定
+ * @abdd.explain
+ * overview: Markdownファイル形式で定義されたエージェントチーム設定を読み込み、TeamDefinitionオブジェクトに変換する
+ * what_it_does:
+ *   - ローカル/グローバル/同梱ディレクトリから.mdファイルを探索
+ *   - YAMLフロントマターを解析し、チーム定義情報を抽出
+ *   - frontmatterのバリデーション（id, name, members, enabled）
+ *   - チーム型の再エクスポート提供
+ * why_it_exists:
+ *   - agent-teams.tsから定義読み込みロジックを分離し単一責任化
+ *   - 複数の定義ソース（ローカル、グローバル、同梱）を統一的に扱うため
+ *   - チーム定義の解析処理を再利用可能にするため
+ * scope:
+ *   in: ファイルパス文字列、ディレクトリパス、現在日時ISO文字列
+ *   out: ParsedTeamMarkdownオブジェクト、TeamDefinition配列、型定義
+ */
+
 // File: .pi/extensions/agent-teams/definition-loader.ts
 // Description: Team definition loading from markdown files.
 // Why: Separates definition loading logic from main agent-teams.ts for maintainability.

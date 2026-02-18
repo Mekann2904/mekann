@@ -117,17 +117,34 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  shouldTriggerVerification["shouldTriggerVerification()"]
+  buildChallengerPrompt["buildChallengerPrompt()"]
+  buildInspectorPrompt["buildInspectorPrompt()"]
+  checkOutputPatterns["checkOutputPatterns()"]
+  detectClaimResultMismatch["detectClaimResultMismatch()"]
+  detectConfirmationBias["detectConfirmationBias()"]
+  detectMissingAlternatives["detectMissingAlternatives()"]
+  detectOverconfidence["detectOverconfidence()"]
+  extractKeyTerms["extractKeyTerms()"]
+  formatCategoryName["formatCategoryName()"]
+  formatPatternName["formatPatternName()"]
+  getVerificationWorkflowRules["getVerificationWorkflowRules()"]
   isHighStakesTask["isHighStakesTask()"]
   resolveVerificationConfig["resolveVerificationConfig()"]
-  buildInspectorPrompt["buildInspectorPrompt()"]
-  buildChallengerPrompt["buildChallengerPrompt()"]
+  shouldTriggerVerification["shouldTriggerVerification()"]
   synthesizeVerificationResult["synthesizeVerificationResult()"]
-  shouldTriggerVerification -.-> isHighStakesTask
-  isHighStakesTask -.-> resolveVerificationConfig
-  resolveVerificationConfig -.-> buildInspectorPrompt
-  buildInspectorPrompt -.-> buildChallengerPrompt
-  buildChallengerPrompt -.-> synthesizeVerificationResult
+  buildChallengerPrompt --> formatCategoryName
+  buildChallengerPrompt --> resolveVerificationConfig
+  buildInspectorPrompt --> formatPatternName
+  buildInspectorPrompt --> resolveVerificationConfig
+  checkOutputPatterns --> detectClaimResultMismatch
+  checkOutputPatterns --> detectConfirmationBias
+  checkOutputPatterns --> detectMissingAlternatives
+  checkOutputPatterns --> detectOverconfidence
+  detectClaimResultMismatch --> extractKeyTerms
+  shouldTriggerVerification --> checkOutputPatterns
+  shouldTriggerVerification --> isHighStakesTask
+  shouldTriggerVerification --> resolveVerificationConfig
+  synthesizeVerificationResult --> resolveVerificationConfig
 ```
 
 ## 関数
@@ -565,4 +582,4 @@ type VerificationVerdict = | "pass"              // 検証通過
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:45.417Z*
+*自動生成: 2026-02-18T14:31:31.051Z*

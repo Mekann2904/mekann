@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+// from 'node:child_process': execSync
+// from 'node:fs': existsSync, readFileSync
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
 
 ## エクスポート一覧
@@ -42,4 +42,4 @@ flowchart LR
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.730Z*
+*自動生成: 2026-02-18T14:31:30.894Z*

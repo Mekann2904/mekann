@@ -1,4 +1,39 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/verification-workflow.ts
+ * role: LLM推論失敗を検出するためのInspector/Challenger二重検証ワークフローの型定義モジュール
+ * why: LLMが生成する推論結果の信頼性を、対立する2つの視点（監査者・挑戦者）から検証し、失敗を事前に検出するため
+ * related: inspector-agent.ts, challenger-agent.ts, verification-executor.ts, types/common.ts
+ * public_api: VerificationWorkflowConfig, VerificationResult, VerificationTriggerMode, FallbackBehavior, ChallengeCategory, InspectionPattern, SuspicionThreshold, VerificationVerdict, ChallengerConfig, InspectorConfig
+ * invariants:
+ *   - confidence値は0.0〜1.0の範囲
+ *   - maxVerificationDepthは正の整数
+ *   - minConfidenceToSkipVerificationは0.0〜1.0の範囲
+ *   - requiredFlawsは非負整数
+ * side_effects: なし（型定義のみのモジュール）
+ * failure_modes:
+ *   - 検証深度が深すぎる場合のパフォーマンス低下
+ *   - 信頼度閾値設定不適切による過検出/検出漏れ
+ *   - 全カテゴリ無効化による検証機能の実質的無効化
+ * @abdd.explain
+ * overview: 論文「Large Language Model Reasoning Failures」のP0推奨事項に基づき、Inspector（監査者）とChallenger（挑戦者）の2つのエージェントによる相互検証メカニズムを定義
+ * what_it_does:
+ *   - 検証ワークフローの設定インターフェースを定義（有効/無効、トリガーモード、最大深度等）
+ *   - 検証トリガー条件を5種類定義（サブエージェント実行後、チーム実行後、低信頼度時、明示的要求時、高リスクタスク時）
+ *   - Challengerが検出する欠陥カテゴリを6種類定義（証拠欠落、論理欠陥、隠れた仮定、代替解釈未考慮、境界条件未考慮、因果逆転）
+ *   - Inspectorが実行する検査パターンを7種類定義（CLAIM/RESULT不一致、証拠/信頼度ギャップ等）
+ *   - 検証失敗時のフォールバック動作を3種類定義（警告のみ、ブロック/再実行、自動拒否）
+ *   - 検証結果の判定を4段階で定義（pass、警告付きpass、要レビュー、失敗）
+ * why_it_exists:
+ *   - LLMの推論は自信満々に誤った結論を出す傾向があり、単一の検証では見落としが発生する
+ *   - 対立的な2つの視点から検証することで、確証バイアスや過信を検出可能にする
+ *   - 検証の深度と厳格さをタスクのリスクレベルに応じて調整可能にする
+ * scope:
+ *   in: 検証ワークフローの設定パラメータ、トリガー条件、Challenger/Inspectorの設定、検証結果の構造
+ *   out: 実際の検証実行ロジック、エージェントの具体的な実装、外部システムとの連携
+ */
+
+/**
  * 検証ワークフローモジュール
  * 論文「Large Language Model Reasoning Failures」のP0推奨事項に基づく
  * Inspector/Challengerエージェントによる自動検証メカニズム

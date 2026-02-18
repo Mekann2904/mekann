@@ -1,3 +1,36 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/task-scheduler.ts
+ * role: 優先度ベースのタスクスケジューラー。プリエンプション機能付きイベント駆動実行を提供する。
+ * why: プロバイダー/モデル別のキューマネジメントによる効率的なタスクスケジューリングを実現するため。
+ * related: .pi/lib/checkpoint-manager.ts, .pi/lib/priority-scheduler.ts, .pi/lib/runtime-config.js, .pi/lib/token-bucket.ts
+ * public_api: shouldPreempt, preemptTask, PREEMPTION_MATRIX, getScheduler
+ * invariants:
+ *   - critical優先度はhigh/normal/low/backgroundをプリエンプト可能
+ *   - high優先度はnormal/low/backgroundをプリエンプト可能
+ *   - 同一優先度のタスクは相互にプリエンプトしない
+ *   - 環境変数PI_ENABLE_PREEMPTION=falseの場合、プリエンプション無効
+ * side_effects:
+ *   - チェックポイントマネージャーへの状態保存
+ *   - アクティブ実行タスクの中断シグナル送信
+ *   - 環境変数の読み込み
+ * failure_modes:
+ *   - タスクIDがアクティブ実行中に見つからない場合は失敗
+ *   - チェックポイント保存失敗時にエラーを返す
+ * @abdd.explain
+ * overview: 優先度に基づくタスクスケジューリングと、高優先度タスクによる実行中タスクの割り込み（プリエンプション）を管理する。
+ * what_it_does:
+ *   - 優先度行列に基づき、実行中タスクを割り込むべきか判定する
+ *   - 実行中タスクを一時中断し、チェックポイントとして状態を保存する
+ *   - プロバイダー/モデル/優先度ごとのキューマネジメントを行う
+ * why_it_exists:
+ *   - 重要度の高いタスクを低優先度タスクより優先的に実行するため
+ *   - 長時間実行タスクを中断・再開可能にし、リソース効率を最大化するため
+ * scope:
+ *   in: ScheduledTask（優先度、プロバイダー、モデル、シグナルを含む）、プリエンプション理由、タスク状態、進捗率
+ *   out: プリエンプション判定結果、チェックポイントIDを含む割り込み結果
+ */
+
 // File: .pi/lib/task-scheduler.ts
 // Description: Priority-based task scheduler with event-driven execution and preemption support.
 // Why: Enables efficient task scheduling with provider/model-specific queue management.

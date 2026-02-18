@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/agent.ts
+ * role: エージェント関連モジュールの統合エクスポートポイント
+ * why: 複数のエージェント関連モジュールから必要な型・定数・関数を一元再エクスポートし、利用側のimport文を簡潔にするため
+ * related: agent-types.js, agent-common.js, agent-errors.js, runtime-utils.js
+ * public_api: ThinkingLevel, RunOutcomeCode, RunOutcomeSignal, createRunId, computeLiveWindow, pickFieldCandidate, normalizeEntityOutput, resolveFailureOutcome, resolveAggregateOutcome, getModelBaseTimeoutMs, computeModelTimeoutMs, createAdaptivePenaltyController, getLiveStatusGlyph, validateSubagentOutput, validateTeamMemberOutput, buildRateLimitKey, createRetrySchema, toConcurrencyLimit, resolveEffectiveTimeoutMs
+ * invariants: 再エクスポートのみを行い、独自の実装ロジックを含まない
+ * side_effects: なし（純粋な再エクスポートモジュール）
+ * failure_modes: なし（依存モジュールの読み込み失敗時のみModuleNotFoundErrorが発生）
+ * @abdd.explain
+ * overview: エージェント、サブエージェント、チーム関連の型定義・ユーティリティ関数・定数を集約して再エクスポートするバレルモジュール
+ * what_it_does:
+ *   - agent-typesから型定義とタイムアウト定数を再エクスポート
+ *   - agent-utils, agent-commonからユーティリティ関数と設定定数を再エクスポート
+ *   - agent-errorsからエラー判定・解決関数を再エクスポート
+ *   - model-timeouts, adaptive-penaltyからタイムアウト計算・ペナルティ制御を再エクスポート
+ *   - live-view-utils, output-validationからUI・検証ユーティリティを再エクスポート
+ *   - runtime-utils, process-utilsから実行時ユーティリティを再エクスポート
+ * why_it_exists:
+ *   - lib全体をimportしなくてもエージェント関連機能だけを効率的に参照可能にするため
+ *   - 利用側で複数のサブモジュールパスを個別に指定する手間を削減するため
+ * scope:
+ *   in: なし（再エクスポートのみ）
+ *   out: 全てのエクスポートは他モジュールへの委譲
+ */
+
+/**
  * Agent-related utilities and types.
  *
  * Aggregates all agent, subagent, and team-related exports

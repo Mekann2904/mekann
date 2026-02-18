@@ -46,16 +46,16 @@ classDiagram
 ```mermaid
 flowchart TD
   buildExecutionRulesSection["buildExecutionRulesSection()"]
-  getSubagentExecutionRules["getSubagentExecutionRules()"]
-  getTeamMemberExecutionRules["getTeamMemberExecutionRules()"]
   getChallengerExecutionRules["getChallengerExecutionRules()"]
   getInspectorExecutionRules["getInspectorExecutionRules()"]
+  getSubagentExecutionRules["getSubagentExecutionRules()"]
+  getTeamMemberExecutionRules["getTeamMemberExecutionRules()"]
   getVerificationWorkflowExecutionRules["getVerificationWorkflowExecutionRules()"]
-  buildExecutionRulesSection -.-> getSubagentExecutionRules
-  getSubagentExecutionRules -.-> getTeamMemberExecutionRules
-  getTeamMemberExecutionRules -.-> getChallengerExecutionRules
-  getChallengerExecutionRules -.-> getInspectorExecutionRules
-  getInspectorExecutionRules -.-> getVerificationWorkflowExecutionRules
+  getChallengerExecutionRules --> buildExecutionRulesSection
+  getInspectorExecutionRules --> buildExecutionRulesSection
+  getSubagentExecutionRules --> buildExecutionRulesSection
+  getTeamMemberExecutionRules --> buildExecutionRulesSection
+  getVerificationWorkflowExecutionRules --> buildExecutionRulesSection
 ```
 
 ## 関数
@@ -183,4 +183,4 @@ interface BuildExecutionRulesOptions {
 実行ルールの構築オプション
 
 ---
-*自動生成: 2026-02-18T07:48:44.981Z*
+*自動生成: 2026-02-18T14:31:30.992Z*

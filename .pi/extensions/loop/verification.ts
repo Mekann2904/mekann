@@ -1,3 +1,40 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/loop/verification.ts
+ * role: ループ拡張機能における検証コマンド実行エンジン
+ * why: 任意のコマンド実行によるセキュリティリスクを軽減しつつ、テスト/検証コマンドを決定論的に実行するため
+ * related: .pi/extensions/loop.ts, .pi/lib/format-utils.js, .pi/lib/error-utils.js, node:child_process
+ * public_api: runVerificationCommand, parseVerificationCommand, getVerificationPolicy, isVerificationAllowed, LoopVerificationResult, ParsedVerificationCommand, VerificationPolicyConfig
+ * invariants:
+ *   - 許可リストにないコマンドprefixを持つコマンドは実行されない
+ *   - 検証結果は常にpassed(boolean)とdurationMs(number)を含む
+ *   - タイムアウト時はtimedOut=true、exitCode=null
+ * side_effects:
+ *   - 子プロセスの生成と外部コマンド実行
+ *   - 環境変数(VERIFICATION_ALLOWLIST_ENV等)の読み取り
+ *   - プロセスのSIGTERMシグナル送信
+ * failure_modes:
+ *   - 許可リスト不一致による実行拒否
+ *   - コマンドタイムアウト(GRACEFUL_SHUTDOWN_DELAY_MS経過後の強制終了)
+ *   - 子プロセス起動失敗によるエラー
+ *   - コマンドパース失敗(空文字列や無効な形式)
+ * @abdd.explain
+ * overview: ループ処理中にテスト/検証コマンドをセキュアに実行するためのモジュール。許可リストベースのセキュリティ検証とポリシー制御を提供する。
+ * what_it_does:
+ *   - 検証コマンド文字列を実行可能ファイルと引数にパースする
+ *   - コマンドが許可リストのプレフィックスと一致するか検証する
+ *   - 子プロセスとしてコマンドを実行し、結果を収集する
+ *   - タイムアウト発生時にGRACEFUL_SHUTDOWN_DELAY_MS待機後、プロセスを終了する
+ *   - 検証ポリシー(always/done_only/every_n)に基づき実行タイミングを制御する
+ * why_it_exists:
+ *   - ループ処理の各反復後または完了時に自動検証を実行し、コード品質を維持するため
+ *   - 任意シェルコマンド実行のセキュリティリスクをallowlist方式で緩和するため
+ *   - 検証実行の頻度をポリシーで制御し、パフォーマンスと品質保証のバランスを取るため
+ * scope:
+ *   in: 検証コマンド文字列、許可リスト設定(環境変数経由)、検証ポリシー設定、タイムアウト設定
+ *   out: LoopVerificationResult(成功/失敗、終了コード、出力、所要時間)、ParsedVerificationCommand
+ */
+
 // File: .pi/extensions/loop/verification.ts
 // Description: Verification command execution for loop extension.
 // Why: Handles deterministic verification commands with allowlist-based security.

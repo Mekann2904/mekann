@@ -38,6 +38,20 @@ classDiagram
   }
 ```
 
+### 関数フロー
+
+```mermaid
+flowchart TD
+  ensureNotAborted["ensureNotAborted()"]
+  runWithConcurrencyLimit["runWithConcurrencyLimit()"]
+  runWorker["runWorker()"]
+  toPositiveLimit["toPositiveLimit()"]
+  runWithConcurrencyLimit --> ensureNotAborted
+  runWithConcurrencyLimit --> runWorker
+  runWithConcurrencyLimit --> toPositiveLimit
+  runWorker --> ensureNotAborted
+```
+
 ### シーケンス図
 
 ```mermaid
@@ -142,4 +156,4 @@ Result wrapper for tracking success/failure of individual workers.
 Used internally to ensure all workers complete before throwing errors.
 
 ---
-*自動生成: 2026-02-18T07:48:44.853Z*
+*自動生成: 2026-02-18T14:31:30.959Z*

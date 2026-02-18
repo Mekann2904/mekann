@@ -1,4 +1,33 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/agent-utils.ts
+ * role: エージェント関連の共通ユーティリティ関数を提供するモジュール
+ * why: loop.ts, subagents.ts, agent-teams.tsで重複していたcreateRunIdとcomputeLiveWindowの実装を一元管理し、保守性を向上させるため
+ * related: .pi/extensions/loop.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+ * public_api: createRunId, computeLiveWindow
+ * invariants:
+ *   - createRunIdは呼び出しごとに一意のIDを返す（タイムスタンプ+乱数の組み合わせ）
+ *   - computeLiveWindowは返却されるendは常にstart以上でtotal以下
+ *   - computeLiveWindowの戻り値の範囲サイズはmaxRowsとtotalの小さい方以下
+ * side_effects:
+ *   - createRunId: 乱数生成のためにnode:cryptoを使用
+ * failure_modes:
+ *   - createRunId: システム時刻が不正な場合、IDの順序性が保証されない
+ *   - computeLiveWindow: totalが負数の場合、start=0, end=totalとなり意図しない動作となる
+ * @abdd.explain
+ * overview: エージェント機能で使用する実行ID生成とUI表示用ウィンドウ計算のユーティリティ関数を集約したモジュール
+ * what_it_does:
+ *   - タイムスタンプベースの一意な実行IDを生成する（YYYYMMDD-HHmmss-xxxxxx形式）
+ *   - リスト表示用のスライディングウィンドウの開始・終了位置を計算する
+ * why_it_exists:
+ *   - 複数のエクステンション間で重複していたID生成ロジックを統一するため
+ *   - ライブリスト表示でのカーソル位置に基づく表示範囲計算を共通化するため
+ * scope:
+ *   in: カーソル位置、アイテム総数、最大表示行数、現在時刻
+ *   out: 実行ID文字列、表示範囲（start, end）を示すオブジェクト
+ */
+
+/**
  * Shared agent utility functions.
  * Consolidates duplicate implementations from:
  * - .pi/extensions/loop.ts (createRunId)

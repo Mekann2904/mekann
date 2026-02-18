@@ -1,3 +1,32 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams/result-aggregation.ts
+ * role: チームメンバーの実行結果集約・エラー分類モジュール
+ * why: エラー判定と結果集約ロジックをagent-teams.tsから分離し、保守性とテスト容易性を確保するため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/error-utils.js, .pi/lib/agent-types.ts
+ * public_api: isRetryableTeamMemberError, resolveTeamFailureOutcome, resolveTeamMemberAggregateOutcome, RunOutcomeCode, RunOutcomeSignal
+ * invariants:
+ *   - キャンセルエラーはretryRecommended=falseを返す
+ *   - タイムアウト・レート制限・502/503/接続エラーは再試行可能と判定する
+ *   - 全メンバー成功時のみoutcomeCode="SUCCESS"となる
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes:
+ *   - 不明なエラーパターンはNONRETRYABLE_FAILUREとして扱う
+ *   - 空のmemberResults配列が渡された場合、SUCCESSとなる（失敗0件のため）
+ * @abdd.explain
+ * overview: エージェントチームの実行結果を集約し、エラーの再試行可否と全体の結果コードを判定する
+ * what_it_does:
+ *   - エラーメッセージからHTTPステータスコード・エラー種別を抽出・分類
+ *   - キャンセル/タイムアウト/プレッシャーエラー/再試行可能エラー/非再試行エラーを判定
+ *   - メンバー結果配列から成功/失敗を集約し、失敗メンバーIDを特定
+ * why_it_exists:
+ *   - agent-teams.tsの責務を結果処理と実行制御に分離するため
+ *   - エラー分類ロジックを一元管理し、判定基準の変更を容易にするため
+ * scope:
+ *   in: TeamMemberResult配列、unknown型のエラーオブジェクト
+ *   out: RunOutcomeSignal（outcomeCode + retryRecommended）、失敗メンバーID一覧
+ */
+
 // File: .pi/extensions/agent-teams/result-aggregation.ts
 // Description: Result aggregation and formatting for agent teams.
 // Why: Separates result handling logic from main agent-teams.ts for maintainability.

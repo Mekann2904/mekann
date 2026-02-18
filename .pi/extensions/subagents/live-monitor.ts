@@ -1,3 +1,34 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/subagents/live-monitor.ts
+ * role: サブエージェント実行状態のライブモニタリングUI描画モジュール
+ * why: メインのsubagents.tsからライブモニタリングロジックを分離し、保守性と責任分離を確保するため
+ * related: .pi/extensions/subagents.ts, lib/subagent-types.ts, lib/live-view-utils.ts, lib/tui/tui-utils.ts
+ * public_api: renderSubagentLiveView, SubagentLiveItem, SubagentLiveMonitorController, LiveStreamView, LiveViewMode
+ * invariants:
+ *   - カーソル位置は常に0以上items.length-1以下にクランプされる
+ *   - 出力行は指定幅でトランケートされる
+ *   - 空のitems配列時は専用の空状態メッセージを返す
+ * side_effects:
+ *   - なし（純粋関数として動作）
+ * failure_modes:
+ *   - items配列が空の場合、空状態UIを返す（エラーではない）
+ *   - 不正なcursor値はクランプにより補正される
+ * @abdd.explain
+ * overview: サブエージェントの実行状態をリアルタイムで表示するTUIライブビューを描画する
+ * what_it_does:
+ *   - サブエージェント一覧のリスト表示とステータス（running/completed/failed）の集計
+ *   - 選択中アイテムのstdout/stderr行数推定とプレビュー表示
+ *   - list/streamモードの切り替えに対応したビューレンダリング
+ *   - キーボードショートカット（j/k, enter, tab, q等）のヘルプ表示
+ * why_it_exists:
+ *   - subagents.tsの責務過多を回避し、UI描画ロジックを独立させるため
+ *   - ライブモニタリング機能の単体テストと再利用を容易にするため
+ * scope:
+ *   in: SubagentLiveItem配列、カーソル位置、表示モード、ストリーム設定、幅・高さ、テーマ
+ *   out: 描画済み文字列配列（finalizeLiveLinesで高さ調整済み）
+ */
+
 // File: .pi/extensions/subagents/live-monitor.ts
 // Description: Live monitoring UI for subagent execution.
 // Why: Separates live monitoring logic from main subagents.ts for maintainability.

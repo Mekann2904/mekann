@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/code-structure-analyzer/tools/extract-structure.ts
+ * role: TypeScript AST解析による構造抽出器
+ * why: ソースコードから関数・クラス・メソッド等の構造情報をプログラム的に取得し、解析・ドキュメント生成基盤を提供するため
+ * related: typescript, fs, path, minimatch
+ * public_api: ExtractOptions, FunctionInfo, ParameterInfo, ClassInfo, MethodInfo
+ * invariants: TypeScriptソースファイルのみ処理対象、AST解析はTypeScript Compiler APIに依存、filePathは常に絶対パスまたは相対パスで返却
+ * side_effects: ファイルシステム読み込み（readFileSync, readdirSync）、外部モジュールの読み込み
+ * failure_modes: 対象パスが存在しない場合はエラー、TypeScriptパースエラー発生時は例外送出、除外パターン不一致時は全ファイル処理
+ * @abdd.explain
+ * overview: TypeScript Compiler APIを用いてソースコードをAST解析し、型定義付きの構造情報を抽出するツール
+ * what_it_does:
+ *   - 指定パス（ファイル/ディレクトリ）からTypeScriptファイルを収集
+ *   - 関数（FunctionInfo）のシグネチャ、パラメータ、戻り値型、JSDocを抽出
+ *   - クラス（ClassInfo）のメソッド、プロパティ、継承関係、実装インターフェースを抽出
+ *   - globパターンによる除外フィルタリング
+ * why_it_exists:
+ *   - コード構造の自動解析によるドキュメント生成の効率化
+ *   - リファクタリング支援のための構造可視化
+ * scope:
+ *   in: TypeScriptソースファイル（.ts）、ディレクトリパス、除外パターン（glob形式）
+ *   out: FunctionInfo, ClassInfo, MethodInfo, ParameterInfoの各オブジェクト、JSONシリアライズ可能な構造データ
+ */
+
+/**
  * AST Structure Extractor
  *
  * TypeScript Compiler APIを使用してソースコードから構造データを抽出

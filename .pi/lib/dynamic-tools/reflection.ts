@@ -1,4 +1,35 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/reflection.ts
+ * role: 動的ツール生成システムにおける実行後のリフレクションと新規ツール生成判定
+ * why: ツール実行結果を分析し、繰り返しパターンや効率化の機会を検出して新規ツール生成を提案するため
+ * related: types.js, registry.js, generator.ts, orchestrator.ts
+ * public_api: detectRepetitivePattern, shouldCreateNewTool
+ * invariants:
+ *   - detectRepetitivePatternはcontextがnullでない場合のみ呼び出される
+ *   - shouldCreateNewToolは必ずToolReflectionResult型を返す
+ *   - failureCountが負の値であってはならない
+ * side_effects:
+ *   - loadAllToolDefinitions, recommendToolsForTaskの呼び出しによるファイルシステムアクセス（shouldCreateNewTool内）
+ * failure_modes:
+ *   - context.lastToolResultが空文字またはundefinedの場合、パターン検出はnullを返す
+ *   - bashコマンドパターンが検出されない場合、空配列を返す
+ * @abdd.explain
+ * overview: ツール実行後の反省機能を提供し、操作パターンを分析して新規ツール生成の必要性を判定するモジュール
+ * what_it_does:
+ *   - 実行コンテキストから繰り返し操作パターンを検出する
+ *   - 同一ツールの重複使用や類似Bashコマンドパターンを抽出する
+ *   - 検出されたパターンに基づいて新規ツール作成の可否を判定する
+ *   - 改善提案とプロトタイプツール定義を生成する
+ * why_it_exists:
+ *   - 手動での繰り返し操作を自動的に検出し、動的ツール生成のトリガーとするため
+ *   - 効率的なワークフロー実現のため、操作パターンのツール化を自動提案するため
+ * scope:
+ *   in: ToolReflectionContext（lastToolName, lastToolResult, currentTask, failureCount等）
+ *   out: ToolReflectionResult（shouldCreateTool, proposedTool, improvementSuggestions, reflectionReason）
+ */
+
+/**
  * 動的ツール生成システム - リフレクション
  * ツール実行後の反省と新規ツール生成の判定
  */

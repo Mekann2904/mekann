@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/call-graph/types.ts
+ * role: コールグラフ解析システムの型定義モジュール
+ * why: ripgrepベースの呼び出し関係解析において、ノード・エッジ・インデックスのデータ構造を統一するため
+ * related: call-graph-indexer.ts, call-graph-builder.ts, search-handler.ts
+ * public_api: CallGraphNodeKind, CallGraphNode, CallSite, CallGraphEdge, CallGraphMetadata
+ * invariants:
+ *   - CallGraphNode.idは"file:line:name"形式の一意識別子
+ *   - CallGraphEdge.confidenceは0.0〜1.0の範囲
+ *   - CallGraphMetadata.parserBackendは"ripgrep"固定
+ * side_effects: なし（純粋な型定義）
+ * failure_modes: なし（型定義のみで実行時動作なし）
+ * @abdd.explain
+ * overview: ripgrepベースのコールグラフ解析（Phase 1: 正規表現による呼び出し検出）で使用される型定義集
+ * what_it_does:
+ *   - 関数・メソッド等の呼び出し可能シンボルを表すCallGraphNode型を定義
+ *   - 呼び出し関係（caller→callee）とその位置情報を表すCallGraphEdge型を定義
+ *   - インデックスの統計情報を保持するCallGraphMetadata型を定義
+ * why_it_exists:
+ *   - 正規表現ベースの検出はAST解析より信頼度が低いため、confidenceスコアを導入して品質を可視化
+ *   - ripgrep実装に特化した型定義により、Phase 1の簡易実装と将来のAST移行を区別
+ * scope:
+ *   in: TypeScript/JavaScriptファイルの関数定義・呼び出しパターンの表現
+ *   out: 実際のインデックス構築ロジック、クエリ処理、ASTベースの解析
+ */
+
+/**
  * Call Graph Type Definitions
  *
  * Types for the ripgrep-based call graph analysis system.

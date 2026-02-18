@@ -137,17 +137,16 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  isPiError["isPiError()"]
-  hasErrorCode["hasErrorCode()"]
-  isRetryableError["isRetryableError()"]
-  toPiError["toPiError()"]
   getErrorCode["getErrorCode()"]
+  hasErrorCode["hasErrorCode()"]
+  isPiError["isPiError()"]
+  isRetryableError["isRetryableError()"]
   isRetryableErrorCode["isRetryableErrorCode()"]
-  isPiError -.-> hasErrorCode
-  hasErrorCode -.-> isRetryableError
-  isRetryableError -.-> toPiError
-  toPiError -.-> getErrorCode
-  getErrorCode -.-> isRetryableErrorCode
+  toPiError["toPiError()"]
+  getErrorCode --> isPiError
+  hasErrorCode --> isPiError
+  isRetryableError --> isPiError
+  toPiError --> isPiError
 ```
 
 ## 関数
@@ -541,4 +540,4 @@ type ErrorSeverity = "low" | "medium" | "high" | "critical"
 エラー重要度レベル。
 
 ---
-*自動生成: 2026-02-18T07:48:44.977Z*
+*自動生成: 2026-02-18T14:31:30.990Z*

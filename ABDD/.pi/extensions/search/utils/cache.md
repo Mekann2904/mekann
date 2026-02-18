@@ -71,14 +71,16 @@ classDiagram
 ```mermaid
 flowchart TD
   getCacheKey["getCacheKey()"]
-  getSearchCache["getSearchCache()"]
-  resetSearchCache["resetSearchCache()"]
   getOrCompute["getOrCompute()"]
   getOrComputeSync["getOrComputeSync()"]
-  getCacheKey -.-> getSearchCache
-  getSearchCache -.-> resetSearchCache
-  resetSearchCache -.-> getOrCompute
-  getOrCompute -.-> getOrComputeSync
+  getSearchCache["getSearchCache()"]
+  resetSearchCache["resetSearchCache()"]
+  sortObjectKeys["sortObjectKeys()"]
+  getCacheKey --> sortObjectKeys
+  getOrCompute --> getCacheKey
+  getOrCompute --> getSearchCache
+  getOrComputeSync --> getCacheKey
+  getOrComputeSync --> getSearchCache
 ```
 
 ### シーケンス図
@@ -261,4 +263,4 @@ interface CacheStats {
 キャッシュの統計情報。
 
 ---
-*自動生成: 2026-02-18T07:48:44.639Z*
+*自動生成: 2026-02-18T14:31:30.866Z*

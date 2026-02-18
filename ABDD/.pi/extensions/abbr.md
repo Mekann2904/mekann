@@ -16,8 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { StringEnum } from '@mariozechner/pi-ai';
-import { ExtensionAPI, ExtensionContext, Theme } from '@mariozechner/pi-coding-agent';
+// from 'node:fs': fs
+// from 'node:os': os
+// from 'node:path': path
+// from '@mariozechner/pi-ai': StringEnum
+// from '@mariozechner/pi-coding-agent': ExtensionAPI, ExtensionContext, Theme
 // ... and 2 more imports
 ```
 
@@ -25,7 +28,43 @@ import { ExtensionAPI, ExtensionContext, Theme } from '@mariozechner/pi-coding-a
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `Abbreviation` | 略語を表すインターフェース |
+| インターフェース | `Abbreviation` | - |
+
+## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+### abbr
+
+Manage abbreviations. Actions: list, add (name, expansion), erase (name), rename (name, newName), query (name)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+
+  User->>System: Manage abbreviations. Actions: list, add (name, expansion...
+  System->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  System->>Unresolved: abbreviations.values (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
+  System->>Unresolved: abbrs.map((a) => `${a.name} → ${a.expansion}`).join (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: abbrs.map (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: abbreviations.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  System->>Internal: persistState
+  Internal->>Storage: saveToFile
+  Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Storage: writeFileSync
+  Storage->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
+  Internal->>Unresolved: piInstance.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
+  System->>Unresolved: abbreviations.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  System->>Unresolved: abbreviations.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  System->>Unresolved: abbreviations.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  System-->>User: 結果
+
+```
 
 ## 図解
 
@@ -201,8 +240,6 @@ interface Abbreviation {
 }
 ```
 
-略語を表すインターフェース
-
 ### AbbrState
 
 ```typescript
@@ -223,4 +260,4 @@ interface AbbrDetails {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:43.856Z*
+*自動生成: 2026-02-18T14:31:30.377Z*

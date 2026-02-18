@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/code-structure-analyzer/extension.ts
+ * role: コード構造解析エクステンションのエントリーポイント、AST抽出・Mermaid図生成・ドキュメント生成の統合実行
+ * why: 実装コードからドキュメントを自動生成するハイブリッドシステムの基盤として、3フェーズの解析パイプラインを提供する
+ * related: tools/extract-structure.js, tools/generate-diagrams.js, tools/generate-doc.js
+ * public_api: analyzeCodeStructure, AnalyzeOptions, AnalysisResult
+ * invariants: 分析結果は必ずstructure/diagrams/docSections/metadataを含む、diagramTypes未指定時は3種類全てを生成
+ * side_effects: ファイルシステム読み込み（extractCodeStructure内）、現在時刻のISO文字列をmetadata.analyzedAtに設定
+ * failure_modes: 対象パス不存在時のAST抽出失敗、テンプレートファイル不存在時のドキュメント生成エラー
+ * @abdd.explain
+ * overview: TypeScript/JavaScriptソースコードを解析し、構造データ・Mermaid図・ドキュメントセクションを統合的に生成する
+ * what_it_does:
+ *   - AnalyzeOptionsに基づきextractCodeStructureでAST抽出を実行
+ *   - 抽出結果からgenerateMermaidDiagramsでflowchart/classDiagram/sequenceDiagramを生成
+ *   - generateDocSectionsでLLM用コンテキストを含むドキュメントセクションを生成
+ *   - 解析時刻・ソースパス・ファイルハッシュ・統計情報を含むメタデータを構築
+ * why_it_exists:
+ *   - 手動ドキュメント作成の負担を軽減し、実装との整合性を保証する
+ *   - Mermaid Diagram Team、Docs Enablement Teamによる品質保証プロセスにデータを供給する
+ * scope:
+ *   in: ソースファイルパス、出力ディレクトリ、図種類指定、除外パターン、LLMコンテキスト含有フラグ
+ *   out: AnalysisResult（構造データ、Mermaid図、ドキュメントセクション、メタデータ）
+ */
+
+/**
  * Code Structure Analyzer Extension
  *
  * 実装からドキュメントを自動生成するハイブリッドシステム

@@ -1,4 +1,34 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/embeddings/types.ts
+ * role: エンベディングモジュールの型定義ファイル
+ * why: 複数のエンベディングプロバイダーを統一的に扱うための契約を定義し、プロバイダー実装の差異を吸収する
+ * related: .pi/lib/embeddings/index.ts, .pi/lib/embeddings/providers/openai.ts, .pi/lib/embeddings/providers/local.ts, .pi/lib/embeddings/config.ts
+ * public_api: ProviderCapabilities, EmbeddingProvider, ProviderConfig, EmbeddingModuleConfig
+ * invariants:
+ *   - EmbeddingProvider.idは不変（readonly）
+ *   - dimensionsは正の整数
+ *   - maxTokensは正の整数
+ *   - maxBatchSizeはsupportsBatch=true時のみ意味を持つ
+ * side_effects: なし（純粋な型定義）
+ * failure_modes: なし（型定義のため実行時エラーは発生しない）
+ * @abdd.explain
+ * overview: エンベディングプロバイダーのインターフェースと設定型を定義するTypeScript型定義ファイル
+ * what_it_does:
+ *   - プロバイダーの能力（maxTokens, dimensions, supportsBatch等）を表現するProviderCapabilities型を定義
+ *   - プロバイダー共通インターフェースEmbeddingProviderを定義（generateEmbedding, generateEmbeddingsBatch等）
+ *   - プロバイダー設定とモジュール全体設定の型を定義
+ *   - ライフサイクルメソッド（initialize, dispose）をオプション定義
+ * why_it_exists:
+ *   - OpenAI、ローカル、モック等の複数プロバイダーを統一インターフェースで扱うため
+ *   - フォールバック機構を実現するための共通契約を提供
+ *   - プロバイダー実装者に必要なメソッド実装を強制
+ * scope:
+ *   in: なし（型定義のみ）
+ *   out: 4つのexportされたinterface型
+ */
+
+/**
  * Embeddings Module - Type Definitions.
  * Provides common types for embedding providers.
  */

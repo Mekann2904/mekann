@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, mkdirSync, readdirSync... } from 'node:fs';
-import { homedir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
-import { getLogger } from '../lib/comprehensive-logger';
+// from 'node:fs': existsSync, mkdirSync, readdirSync, ...
+// from 'node:os': homedir
+// from 'node:path': join, dirname
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from '../lib/comprehensive-logger': getLogger
 // ... and 1 more imports
 ```
 
@@ -248,4 +248,4 @@ interface CacheData {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.770Z*
+*自動生成: 2026-02-18T14:31:30.943Z*

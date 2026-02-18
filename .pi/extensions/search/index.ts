@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/index.ts
+ * role: Search extension entry point for PI Coding Agent
+ * why: 高性能なコード検索機能を統一的に提供し、エージェントのコードナビゲーション能力を向上させるため
+ * related: tools/file_candidates.js, tools/code_search.js, tools/sym_index.js, utils/cli.js
+ * public_api: default export (extension registration function)
+ * invariants: pi オブジェクトが null の場合は早期リターンする、各ツールは独立して動作する
+ * side_effects: 外部CLIツール（fd, rg, ctags）の実行、ファイルシステムへのアクセス
+ * failure_modes: 外部ツールが利用不可能な場合のフォールバック処理、不正なパラメータによるエラー
+ * @abdd.explain
+ * overview: PI Coding Agent用の検索拡張機能。fd、ripgrep、ctagsをラップし、フォールバック対応の高性能検索ツール群を提供する。
+ * what_it_does:
+ *   - file_candidates: fd連携による高速ファイル列挙（glob/拡張子フィルタ対応）
+ *   - code_search: ripgrep連携によるコードパターン検索
+ *   - sym_index/sym_find: ctags連携によるシンボルインデックス・定義検索
+ *   - call_graph_index/findCallers/findCallees: 呼び出しグラフ生成と呼び出し元/先検索
+ *   - semantic_index/semantic_search: コードベクトル埋め込みとセマンティック検索
+ *   - checkToolAvailabilityによる外部ツール可用性チェック
+ * why_it_exists:
+ *   - コードベース内の高速なファイル・シンボル・パターン検索を一元管理するため
+ *   - 外部ツールへの依存を抽象化し、フォールバック機能で環境差異を吸収するため
+ * scope:
+ *   in: ExtensionAPIインスタンス、各ツールのパラメータ（pattern, type, extension等）
+ *   out: 登録されたツール定義、フォーマット済み検索結果
+ */
+
+/**
  * Search Extension for PI Coding Agent
  *
  * High-performance search tools using fd, ripgrep, and ctags

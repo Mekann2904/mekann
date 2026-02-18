@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { createPathsFactory, createEnsurePaths, pruneRunArtifacts... } from '../../lib/storage-base.js';
-import { atomicWriteTextFile, withFileLock } from '../../lib/storage-lock.js';
-import { getLogger } from '../../lib/comprehensive-logger.js';
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': join
+// from '../../lib/storage-base.js': createPathsFactory, createEnsurePaths, pruneRunArtifacts, ...
+// from '../../lib/storage-lock.js': atomicWriteTextFile, withFileLock
+// from '../../lib/comprehensive-logger.js': getLogger
 ```
 
 ## エクスポート一覧
@@ -91,12 +91,20 @@ flowchart LR
 ```mermaid
 flowchart TD
   createDefaultAgents["createDefaultAgents()"]
+  ensureDefaults["ensureDefaults()"]
   loadStorage["loadStorage()"]
+  mergeDefaultSubagent["mergeDefaultSubagent()"]
+  mergeSubagentStorageWithDisk["mergeSubagentStorageWithDisk()"]
   saveStorage["saveStorage()"]
   saveStorageWithPatterns["saveStorageWithPatterns()"]
-  createDefaultAgents -.-> loadStorage
-  loadStorage -.-> saveStorage
-  saveStorage -.-> saveStorageWithPatterns
+  ensureDefaults --> createDefaultAgents
+  ensureDefaults --> mergeDefaultSubagent
+  loadStorage --> createDefaultAgents
+  loadStorage --> ensureDefaults
+  loadStorage --> saveStorage
+  mergeSubagentStorageWithDisk --> mergeSubagentStorageWithDisk
+  saveStorage --> mergeSubagentStorageWithDisk
+  saveStorageWithPatterns --> saveStorage
 ```
 
 ### シーケンス図
@@ -315,4 +323,4 @@ type AgentEnabledState = "enabled" | "disabled"
 エージェントの有効/無効状態を表す
 
 ---
-*自動生成: 2026-02-18T07:48:44.740Z*
+*自動生成: 2026-02-18T14:31:30.901Z*

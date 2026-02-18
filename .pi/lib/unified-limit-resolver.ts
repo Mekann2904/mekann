@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/unified-limit-resolver.ts
+ * role: 5層の並列数制限計算を統合するfacadeレイヤー
+ * why: プリセット、適応学習、クロスインスタンス分散、ランタイム制約を単一インターフェースで提供し、制限計算の複雑性を隠蔽するため
+ * related: provider-limits.ts, adaptive-rate-controller.ts, cross-instance-coordinator.ts, runtime-config.ts
+ * public_api: UnifiedLimitInput, LimitBreakdown, UnifiedLimitResult
+ * invariants: 戻り値の並列数は常に正の整数、各層の制限値は非負、最終有効制限は全層の最小値以下
+ * side_effects: 依存モジュール経由で429履歴の読み取り、インスタンス状態の参照、ランタイム設定の検証を実行
+ * failure_modes: RuntimeSnapshotProviderが未注入時は警告ログを出力してデフォルト値を使用
+ * @abdd.explain
+ * overview: 複数の制限ソース(Layer 1-5)を統合し、provider/model/tier/priorityに基づいて最終的な並列数制限を算出する
+ * what_it_does:
+ *   - プリセット制限、適応調整、クロスインスタンス分散、ランタイム制約を集約
+ *   - 各層の内訳をLimitBreakdownとして提供し、制約要因を特定
+ *   - 予測分析を含む将来の429確率見積もりを提供
+ * why_it_exists:
+ *   - 複数モジュールに分散した制限計算ロジックを単一エントリポイントで管理
+ *   - デバッグ時にどの層が制約になったかを追跡可能にする
+ * scope:
+ *   in: provider名、model名、tier(任意)、operationType(任意)、priority(任意)
+ *   out: 最終有効並列数、有効RPM、有効TPM、各層の内訳、制約要因
+ */
+
+/**
  * Unified Limit Resolver
  *
  * 5層の並列数制限計算を統合するfacadeレイヤー。

@@ -1,4 +1,35 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/output.ts
+ * role: 検索ツール統一出力フォーマッター
+ * why: 異なる検索バックエンド（fd, ripgrep等）の出力を統一フォーマットに変換し、エージェントが解釈可能な形式で提供するため
+ * related: types.ts, metrics.ts, constants.ts, formatUtils.ts
+ * public_api: truncateResults, truncateHead, parseFdOutput, formatFileCandidates
+ * invariants:
+ *   - truncateResults/truncateHeadは元配列を変更せず新しい配列を返す
+ *   - SearchResponseのtotalは常に元の結果数を示す
+ *   - truncatedがtrueの場合、results.length < totalが成立する
+ * side_effects: なし（純粋関数のみ）
+ * failure_modes:
+ *   - stdoutが不正な形式の場合、空配列または部分的な結果を返す
+ *   - output.errorが設定されている場合、フォーマット結果はエラーメッセージのみ
+ * @abdd.explain
+ * overview: 検索結果のトランケーション、パース、フォーマット処理を提供するユーティリティモジュール
+ * what_it_does:
+ *   - 検索結果配列を指定上限で切り詰め、メタデータ（total, truncated）を付与
+ *   - fdコマンド出力をFileCandidate配列に変換
+ *   - FileCandidate検索結果を人間可読文字列にフォーマット
+ *   - 先頭・末尾からのトランケーション戦略を提供
+ * why_it_exists:
+ *   - 検索結果のサイズ制限によりトークン消費を抑制
+ *   - バックエンド間の差異を吸収し一貫した出力形式を提供
+ *   - エージェントが結果の切捨て状態を認識できるようにする
+ * scope:
+ *   in: 検索コマンドの生出力文字列、型付けされた検索結果配列、制限値（limit）
+ *   out: SearchResponse<T>オブジェクト、人間可読フォーマット文字列
+ */
+
+/**
  * Output Formatting Utilities
  *
  * Provides consistent output formatting for all search tools:

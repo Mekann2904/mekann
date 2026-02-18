@@ -16,9 +16,9 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, mkdirSync, readdirSync... } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+// from 'node:fs': existsSync, mkdirSync, readdirSync, ...
+// from 'node:os': homedir
+// from 'node:path': join
 ```
 
 ## エクスポート一覧
@@ -88,17 +88,30 @@ classDiagram
 
 ```mermaid
 flowchart TD
-  initCheckpointManager["initCheckpointManager()"]
-  getCheckpointManager["getCheckpointManager()"]
-  resetCheckpointManager["resetCheckpointManager()"]
-  isCheckpointManagerInitialized["isCheckpointManagerInitialized()"]
-  getCheckpointDir["getCheckpointDir()"]
+  cleanupExpiredCheckpoints["cleanupExpiredCheckpoints()"]
+  ensureCheckpointDir["ensureCheckpointDir()"]
   getCheckpointConfigFromEnv["getCheckpointConfigFromEnv()"]
-  initCheckpointManager -.-> getCheckpointManager
-  getCheckpointManager -.-> resetCheckpointManager
-  resetCheckpointManager -.-> isCheckpointManagerInitialized
-  isCheckpointManagerInitialized -.-> getCheckpointDir
-  getCheckpointDir -.-> getCheckpointConfigFromEnv
+  getCheckpointDir["getCheckpointDir()"]
+  getCheckpointManager["getCheckpointManager()"]
+  getCheckpointPath["getCheckpointPath()"]
+  initCheckpointManager["initCheckpointManager()"]
+  isCheckpointExpired["isCheckpointExpired()"]
+  isCheckpointManagerInitialized["isCheckpointManagerInitialized()"]
+  listExpiredCheckpoints["listExpiredCheckpoints()"]
+  parseCheckpointFile["parseCheckpointFile()"]
+  resetCheckpointManager["resetCheckpointManager()"]
+  resolveCheckpointDir["resolveCheckpointDir()"]
+  cleanupExpiredCheckpoints --> getCheckpointPath
+  cleanupExpiredCheckpoints --> initCheckpointManager
+  cleanupExpiredCheckpoints --> listExpiredCheckpoints
+  getCheckpointDir --> initCheckpointManager
+  getCheckpointManager --> initCheckpointManager
+  initCheckpointManager --> cleanupExpiredCheckpoints
+  initCheckpointManager --> ensureCheckpointDir
+  initCheckpointManager --> resolveCheckpointDir
+  listExpiredCheckpoints --> initCheckpointManager
+  listExpiredCheckpoints --> isCheckpointExpired
+  listExpiredCheckpoints --> parseCheckpointFile
 ```
 
 ### シーケンス図
@@ -506,4 +519,4 @@ type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background"
 チェックポイントの優先度レベル
 
 ---
-*自動生成: 2026-02-18T07:48:44.826Z*
+*自動生成: 2026-02-18T14:31:30.955Z*

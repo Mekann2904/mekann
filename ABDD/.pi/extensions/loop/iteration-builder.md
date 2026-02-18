@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { ThinkingLevel } from '../../lib/agent-types.js';
-import { LoopReference } from './reference-loader';
+// from '../../lib/agent-types.js': ThinkingLevel
+// from './reference-loader': LoopReference
 ```
 
 ## エクスポート一覧
@@ -75,17 +75,47 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  buildIterationPrompt["buildIterationPrompt()"]
-  buildReferencePack["buildReferencePack()"]
-  buildIterationFocus["buildIterationFocus()"]
-  buildLoopCommandPreview["buildLoopCommandPreview()"]
   buildIterationFailureOutput["buildIterationFailureOutput()"]
+  buildIterationFocus["buildIterationFocus()"]
+  buildIterationPrompt["buildIterationPrompt()"]
+  buildLoopCommandPreview["buildLoopCommandPreview()"]
+  buildReferencePack["buildReferencePack()"]
+  extractCitations["extractCitations()"]
+  extractGoalEvidence["extractGoalEvidence()"]
+  extractLoopResultBody["extractLoopResultBody()"]
+  extractNextStepLine["extractNextStepLine()"]
+  extractSummaryLine["extractSummaryLine()"]
+  extractTaggedBlock["extractTaggedBlock()"]
+  normalizeCitationList["normalizeCitationList()"]
+  normalizeLoopStatus["normalizeLoopStatus()"]
+  normalizeOptionalText["normalizeOptionalText()"]
+  normalizeStringArray["normalizeStringArray()"]
+  normalizeValidationFeedback["normalizeValidationFeedback()"]
+  normalizeValidationIssue["normalizeValidationIssue()"]
   parseLoopContract["parseLoopContract()"]
-  buildIterationPrompt -.-> buildReferencePack
-  buildReferencePack -.-> buildIterationFocus
-  buildIterationFocus -.-> buildLoopCommandPreview
-  buildLoopCommandPreview -.-> buildIterationFailureOutput
-  buildIterationFailureOutput -.-> parseLoopContract
+  parseLoopGoalStatus["parseLoopGoalStatus()"]
+  parseLoopJsonObject["parseLoopJsonObject()"]
+  parseLoopStatus["parseLoopStatus()"]
+  parseStructuredLoopGoalStatus["parseStructuredLoopGoalStatus()"]
+  truncateText["truncateText()"]
+  validateIteration["validateIteration()"]
+  buildIterationFocus --> extractNextStepLine
+  buildIterationPrompt --> buildReferencePack
+  buildIterationPrompt --> truncateText
+  extractLoopResultBody --> extractTaggedBlock
+  normalizeValidationFeedback --> normalizeValidationIssue
+  parseLoopContract --> extractCitations
+  parseLoopContract --> extractGoalEvidence
+  parseLoopContract --> extractNextStepLine
+  parseLoopContract --> extractSummaryLine
+  parseLoopContract --> normalizeCitationList
+  parseLoopContract --> normalizeLoopStatus
+  parseLoopContract --> normalizeOptionalText
+  parseLoopContract --> normalizeStringArray
+  parseLoopContract --> parseLoopGoalStatus
+  parseLoopContract --> parseLoopJsonObject
+  parseLoopContract --> parseLoopStatus
+  parseLoopContract --> parseStructuredLoopGoalStatus
 ```
 
 ### シーケンス図
@@ -651,4 +681,4 @@ type LoopGoalStatus = "met" | "not_met" | "unknown"
 ループの目標達成状態を表す型
 
 ---
-*自動生成: 2026-02-18T07:48:44.507Z*
+*自動生成: 2026-02-18T14:31:30.747Z*

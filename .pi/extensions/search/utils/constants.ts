@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/constants.ts
+ * role: 検索拡張機能全体で共有される定数定義（除外パターン、制限値、インデックス設定）
+ * why: マジックナンバーの排除、設定値の一元管理、検索動作の一貫性保証
+ * related: .pi/extensions/search/indexer.ts, .pi/extensions/search/searcher.ts, .pi/extensions/search/tools/code_search.ts, .pi/extensions/search/tools/file_search.ts
+ * public_api: DEFAULT_EXCLUDES, DefaultExclude, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_MAX_DEPTH, INDEX_DIR_NAME, SYMBOL_INDEX_FILE, INDEX_META_FILE, INDEX_MANIFEST_FILE, SHARD_DIR_NAME
+ * invariants: DEFAULT_EXCLUDESはreadonly配列、DEFAULT_LIMITは100、DEFAULT_CODE_SEARCH_LIMITとDEFAULT_SYMBOL_LIMITは50、INDEX_DIR_NAMEは".pi/search"固定
+ * side_effects: なし（純粋な定数定義）
+ * failure_modes: なし（静的定数のため実行時エラーは発生しない）
+ * @abdd.explain
+ * overview: 検索機能の挙動を制御する定数を一元管理するモジュール
+ * what_it_does:
+ *   - 検索対象から除外するディレクトリ・ファイルパターンの定義（node_modules、.git、ビルド出力等）
+ *   - 検索結果件数のデフォルト制限値の定義（通常100件、コード検索・シンボル検索は50件）
+ *   - インデックス格納ディレクトリ・ファイル名の定義
+ * why_it_exists:
+ *   - 検索ツール間で一貫した除外ルールを適用するため
+ *   - パフォーマンスと結果の完全性のバランスを調整可能にするため
+ *   - インデックスファイルのパスを統一するため
+ * scope:
+ *   in: なし（外部入力に依存しない）
+ *   out: エクスポートされた定数値
+ */
+
+/**
  * Search Extension Constants
  *
  * Shared constants for all search tools including default exclusion patterns,

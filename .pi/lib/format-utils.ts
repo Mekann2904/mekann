@@ -1,4 +1,33 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/format-utils.ts
+ * role: フォーマット変換ユーティリティライブラリ
+ * why: loop.ts, rsa.ts, agent-teams.ts, subagents.tsで重複していた実装を統合するため
+ * related: loop.ts, rsa.ts, agent-teams.ts, subagents.ts
+ * public_api: formatDuration, formatDurationMs, formatBytes, formatClockTime, normalizeForSingleLine
+ * invariants:
+ *   - 非有限数・負数の入力に対しては安全なデフォルト値を返す
+ *   - normalizeForSingleLineのキャッシュは最大256エントリ
+ * side_effects: normalizeForSingleLine呼び出し時にモジュールレベルのLRUキャッシュ(Map)を更新・読み込み
+ * failure_modes:
+ *   - 非有限数(infinity, NaN)や負数を渡した場合、"0ms"や"0B"等のデフォルト値を返す
+ *   - 未定義値やnullを渡した場合、"-"を返す
+ * @abdd.explain
+ * overview: 時間・バイト・テキストの表示用フォーマット変換関数を提供するレイヤー0のユーティリティモジュール
+ * what_it_does:
+ *   - ミリ秒を"500ms", "1.50s"等の可読文字列に変換
+ *   - バイト数を"B", "KB", "MB"単位の人間可読形式に変換
+ *   - タイムスタンプを"HH:MM:SS"形式の時刻文字列に変換
+ *   - テキストを単一行表示用に正規化(空白圧縮・切り詰め)、LRUキャッシュで高速化
+ * why_it_exists:
+ *   - 複数の拡張機能で重複していたフォーマット処理を一箇所に集約
+ *   - 一貫した表示フォーマットを提供
+ * scope:
+ *   in: 数値(ミリ秒・バイト・タイムスタンプ)、文字列、DurationItemオブジェクト
+ *   out: フォーマット済み文字列
+ */
+
+/**
  * Formatting utilities shared across extensions.
  * Consolidates duplicate implementations from:
  * - loop.ts

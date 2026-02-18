@@ -1,3 +1,36 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-usage-tracker.ts
+ * role: エージェント活動に関する拡張機能別の特徴使用量、ツールエラー、平均コンテキスト占有率を追跡・永続化する統計モジュール
+ * why: 各拡張機能の特徴がどの程度使用され、どの程度信頼性があるかを詳細かつ永続的な分析ビューとして提供するため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/usage-tracker.ts
+ * public_api: FeatureMetrics, UsageEventRecord, UsageTrackerState, FeatureCatalog インターフェース群
+ * invariants:
+ *   - STATE_VERSION は常に 1
+ *   - イベント履歴は MAX_EVENT_HISTORY(5000) を超えない
+ *   - 各メトリクスの数値は非負整数または非負数
+ * side_effects:
+ *   - .pi/analytics ディレクトリへのファイル読み書き
+ *   - 状態ファイルの作成・更新
+ * failure_modes:
+ *   - ストレージファイルの読み込み失敗時は初期状態で開始
+ *   - ディスク書き込み失敗時はエラーログ出力
+ * @abdd.explain
+ * overview: エージェントの活動を拡張機能単位で追跡し、ツール呼び出し・エラー・コンテキスト使用率をメトリクスとして集計・永続化する
+ * what_it_does:
+ *   - ツール呼び出しとエージェント実行の開始・完了をイベントとして記録
+ *   - 拡張機能・特徴タイプ・特徴名ごとに呼び出し回数とエラー回数を集計
+ *   - コンテキストウィンドウの占有率をサンプリングし平均値を算出
+ *   - 直近 DEFAULT_RECENT_LIMIT(20) 件のイベント履歴と上位 DEFAULT_TOP_LIMIT(20) 件の特徴を提供
+ * why_it_exists:
+ *   - どの拡張機能の特徴が頻繁に使用されているかを可視化するため
+ *   - ツールの信頼性（エラー率）を定量化して改善の優先順位を決定するため
+ *   - コンテキスト使用パターンを分析してリソース効率を最適化するため
+ * scope:
+ *   in: ツール呼び出しID、拡張機能名、特徴名、実行ステータス、コンテキストスナップショット
+ *   out: 集計メトリクス、イベント履歴、特徴カタログ、永続化された状態ファイル
+ */
+
 // File: .pi/extensions/agent-usage-tracker.ts
 // Description: Tracks per-extension feature usage, tool errors, and average context occupancy for agent activity.
 // Why: Gives a detailed and persistent analytics view of which extension features are used and how reliable they are.

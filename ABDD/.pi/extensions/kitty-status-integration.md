@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-import { spawn, execSync } from 'child_process';
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+// from 'child_process': spawn, execSync
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
 
 ## エクスポート一覧
@@ -177,4 +177,4 @@ interface NotificationOptions {
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.499Z*
+*自動生成: 2026-02-18T14:31:30.739Z*

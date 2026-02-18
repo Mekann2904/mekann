@@ -1,3 +1,32 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/concurrency.ts
+ * role: 並行実行数制限付きワーカープールの提供
+ * why: 複数モジュールでのプールロジック重複を排除し、キャンセル後の不要なタスク起動を防止するため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts
+ * public_api: ConcurrencyRunOptions, runWithConcurrencyLimit
+ * invariants:
+ *   - limitは必ず1以上、かつitems.length以下に正規化される
+ *   - items.length === 0の場合、即座に空配列を返す
+ *   - 結果配列の順序は入力配列の順序と一致する
+ * side_effects: なし（純粋な非同期処理のみ）
+ * failure_modes:
+ *   - AbortSignalがaborted状態の場合、"concurrency pool aborted"エラーをスロー
+ *   - worker関数で例外発生時、最初のエラーを記録し全ワーカー完了後に再スロー
+ * @abdd.explain
+ * overview: AbortSignal対応の並行実行数制御ユーティリティ
+ * what_it_does:
+ *   - 指定した並行数上限で非同期タスクを順次実行する
+ *   - 中止シグナル検知時に即座に例外をスローして実行を中断する
+ *   - エラー発生時は全ワーカーの完了を待機し、最初のエラーをスローする
+ * why_it_exists:
+ *   - サブエージェントやチーム実行での並行処理を統一管理するため
+ *   - キャンセル後の無駄なタスク起動を防ぐため
+ * scope:
+ *   in: TInput型の配列、並行数上限、非同期worker関数、AbortSignal（省略可）
+ *   out: TResult型の配列（入力順序を維持）
+ */
+
 // File: .pi/lib/concurrency.ts
 // Description: Provides a shared concurrency-limited worker pool with abort-aware scheduling.
 // Why: Removes duplicated pool logic and avoids spawning extra work after cancellation.

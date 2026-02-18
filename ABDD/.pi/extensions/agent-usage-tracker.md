@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync... } from 'node:fs';
-import { basename, dirname, join... } from 'node:path';
-import { Type } from '@mariozechner/pi-ai';
-import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+// from 'node:crypto': randomBytes
+// from 'node:fs': existsSync, mkdirSync, readdirSync, ...
+// from 'node:path': basename, dirname, join, ...
+// from '@mariozechner/pi-ai': Type
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
 // ... and 4 more imports
 ```
 
@@ -29,6 +29,86 @@ import { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `registerAgentUsageTracker` | エージェントの使用状況追跡を登録 |
+
+## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+### agent_usage_stats
+
+Read/reset/export extension usage stats including per-feature call count, error rate, and context occupancy averages.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Runtime as "Runtime"
+  participant Storage as "Storage"
+  participant Internal as "Internal"
+  participant Judge as "Judge"
+
+  User->>System: Read/reset/export extension usage stats including per-fea...
+  System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
+  System->>Runtime: ensureRuntime
+  Runtime->>Storage: getStorageFile
+  Storage->>Internal: join
+  Storage->>Internal: ディレクトリが存在することを保証します
+  Internal->>Internal: existsSync
+  Internal->>Internal: mkdirSync
+  Runtime->>Storage: loadState
+  Storage->>Internal: createEmptyState
+  Internal->>Internal: nowIso
+  Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Storage: readFileSync
+  Storage->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: parsed.events.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Runtime->>Internal: discoverFeatureCatalog
+  Internal->>Storage: readdirSync
+  Internal->>Unresolved: fileName.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: candidateFiles.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: basename
+  Internal->>Internal: extractRegisteredToolNames
+  Internal->>Unresolved: source.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: probe.match (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: match[1].trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Internal: extractRegisteredCommandNames
+  Internal->>Unresolved: matcher.exec (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: currentRuntime.pendingTools.clear (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  System->>Storage: saveState
+  Storage->>Storage: writeFileSync
+  Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
+  System->>Internal: exportState
+  Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Judge: resolve
+  Internal->>Internal: dirname
+  System->>Internal: parsePositiveInt
+  Internal->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: buildRecentReport
+  Internal->>Unresolved: state.events.slice(-limit).reverse (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: formatPercent
+  Internal->>Unresolved: (value * 100).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.round (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: buildSummaryReport
+  Internal->>Unresolved: Object.values(state.features).sort (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Object.values (node_modules/typescript/lib/lib.es2017.object.d.ts)
+  Internal->>Internal: aggregateByExtension
+  Internal->>Unresolved: map.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: map.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: map.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Internal: formatRate
+  Internal->>Unresolved: Object.keys (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
 
 ## 図解
 
@@ -117,6 +197,64 @@ flowchart LR
     _mariozechner["@mariozechner"]
   end
   main --> external
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  appendEvent["appendEvent()"]
+  buildRecentReport["buildRecentReport()"]
+  buildSummaryReport["buildSummaryReport()"]
+  createEmptyState["createEmptyState()"]
+  discoverFeatureCatalog["discoverFeatureCatalog()"]
+  ensureRuntime["ensureRuntime()"]
+  exportState["exportState()"]
+  extractToolErrorMessage["extractToolErrorMessage()"]
+  getStorageFile["getStorageFile()"]
+  handleAgentUsageCommand["handleAgentUsageCommand()"]
+  loadState["loadState()"]
+  markFeatureCall["markFeatureCall()"]
+  nowIso["nowIso()"]
+  parsePositiveInt["parsePositiveInt()"]
+  previewInput["previewInput()"]
+  readContextSnapshot["readContextSnapshot()"]
+  recordAgentEnd["recordAgentEnd()"]
+  recordAgentStart["recordAgentStart()"]
+  recordToolCall["recordToolCall()"]
+  recordToolResult["recordToolResult()"]
+  registerAgentUsageTracker["registerAgentUsageTracker()"]
+  resolveExtensionForTool["resolveExtensionForTool()"]
+  saveState["saveState()"]
+  toFeatureKey["toFeatureKey()"]
+  ensureRuntime --> discoverFeatureCatalog
+  ensureRuntime --> getStorageFile
+  ensureRuntime --> loadState
+  recordToolCall --> appendEvent
+  recordToolCall --> ensureRuntime
+  recordToolCall --> markFeatureCall
+  recordToolCall --> nowIso
+  recordToolCall --> previewInput
+  recordToolCall --> readContextSnapshot
+  recordToolCall --> resolveExtensionForTool
+  recordToolResult --> ensureRuntime
+  recordToolResult --> extractToolErrorMessage
+  recordToolResult --> nowIso
+  recordToolResult --> resolveExtensionForTool
+  recordToolResult --> toFeatureKey
+  registerAgentUsageTracker --> buildRecentReport
+  registerAgentUsageTracker --> buildSummaryReport
+  registerAgentUsageTracker --> createEmptyState
+  registerAgentUsageTracker --> ensureRuntime
+  registerAgentUsageTracker --> exportState
+  registerAgentUsageTracker --> handleAgentUsageCommand
+  registerAgentUsageTracker --> parsePositiveInt
+  registerAgentUsageTracker --> recordAgentEnd
+  registerAgentUsageTracker --> recordAgentStart
+  registerAgentUsageTracker --> recordToolCall
+  registerAgentUsageTracker --> recordToolResult
+  registerAgentUsageTracker --> saveState
+  saveState --> nowIso
 ```
 
 ## 関数
@@ -793,4 +931,4 @@ type EventStatus = "ok" | "error"
 ```
 
 ---
-*自動生成: 2026-02-18T07:48:44.403Z*
+*自動生成: 2026-02-18T14:31:30.634Z*

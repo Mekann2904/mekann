@@ -1,3 +1,37 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/ul-dual-mode.ts
+ * role: ULプレフィックス検出とセッション永続モード管理、サブエージェント/チーム実行への適応的委譲を行う拡張機能
+ * why: 高品質なタスク実行を実現するため、LLMの裁量でフェーズ数を柔軟に決定しつつ、必須reviewerによる品質ゲートを保証する
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, docs/extensions.md
+ * public_api: なし（ExtensionAPI経由で登録される拡張機能として動作）
+ * invariants:
+ *   - persistentUlModeがtrueの場合、後続の全ユーザー入力でULモードが適用される
+ *   - UL_REQUIRE_FINAL_REVIEWER_GUARDRAILがtrueの場合、非trivialタスクでreviewerフェーズが必須
+ *   - 小規模タスク（200文字未満かつTRIVIAL_PATTERNSに合致）ではreviewerをスキップ可能
+ * side_effects:
+ *   - pi.appendEntryによるセッション状態の永続化
+ *   - ctx.ui.setStatusによるUI ステータス表示の更新
+ * failure_modes:
+ *   - ctxまたはctx.uiが未定義の場合、ステータス更新がスキップされる
+ *   - PI_UL_SKIP_REVIEWER_FOR_TRIVIAL環境変数が"0"以外の場合、trivialタスク判定が無効化される
+ * @abdd.explain
+ * overview: ユーザー入力の"ul"プレフィックスを検出し、セッション全体で継続する高品質実行モード（ULモード）を提供する拡張機能
+ * what_it_does:
+ *   - 入力テキストからUL_PREFIX（/^\s*ul(?:\s+|$)/i）を検出し、ULモードを有効化
+ *   - サブエージェント（researcher/architect/implementer）およびエージェントチーム（core-delivery-team）への委譲を推奨
+ *   - 完了条件シグナル（CLEAR_GOAL_SIGNAL）を検出し、ゴールループモードを有効化
+ *   - タスク内容に基づき小規模タスク（trivial）を判定し、reviewerスキップを判断
+ *   - UIステータスに現在のULモード状態（subagent/team/reviewer/loopの進捗）を表示
+ * why_it_exists:
+ *   - 複雑なタスクにおいて、単一フェーズではなくLLMの裁量で1〜Nフェーズの実行を可能にするため
+ *   - 実装品質を保証するための必須reviewerフェーズを強制するため
+ *   - セッション全体で一貫した高品質実行モードを維持するため
+ * scope:
+ *   in: ユーザー入力テキスト、ExtensionAPI、コンテキストオブジェクト（hasUI, ui.setStatus）
+ *   out: セッション状態の永続化、UI ステータス更新、モード状態フラグの更新
+ */
+
 // File: .pi/extensions/ul-dual-mode.ts
 // Description: Adds an "ul" prefix mode and session-wide persistent UL mode with adaptive delegation.
 // Why: Enables efficient, high-quality execution with flexible phase count and mandatory reviewer quality gate.

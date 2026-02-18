@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { existsSync, mkdirSync, readFileSync... } from 'node:fs';
-import { join, basename } from 'node:path';
-import { createHash } from 'node:crypto';
-import { DynamicToolDefinition, DynamicToolRegistrationRequest, DynamicToolRegistrationResult... } from './types.js';
-import { quickSafetyCheck, analyzeCodeSafety } from './safety.js';
+// from 'node:fs': existsSync, mkdirSync, readFileSync, ...
+// from 'node:path': join, basename
+// from 'node:crypto': createHash
+// from './types.js': DynamicToolDefinition, DynamicToolRegistrationRequest, DynamicToolRegistrationResult, ...
+// from './safety.js': quickSafetyCheck, analyzeCodeSafety
 // ... and 2 more imports
 ```
 
@@ -133,17 +133,39 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  deleteDynamicTool["deleteDynamicTool()"]
+  deleteToolDefinition["deleteToolDefinition()"]
   ensureDynamicToolsPaths["ensureDynamicToolsPaths()"]
-  generateToolId["generateToolId()"]
   generateRunId["generateRunId()"]
-  saveToolDefinition["saveToolDefinition()"]
+  generateToolId["generateToolId()"]
+  getRegistry["getRegistry()"]
+  listDynamicTools["listDynamicTools()"]
+  loadAllToolDefinitions["loadAllToolDefinitions()"]
   loadToolDefinition["loadToolDefinition()"]
   loadToolDefinitionByName["loadToolDefinitionByName()"]
-  ensureDynamicToolsPaths -.-> generateToolId
-  generateToolId -.-> generateRunId
-  generateRunId -.-> saveToolDefinition
-  saveToolDefinition -.-> loadToolDefinition
-  loadToolDefinition -.-> loadToolDefinitionByName
+  recommendToolsForTask["recommendToolsForTask()"]
+  registerDynamicTool["registerDynamicTool()"]
+  resetRegistry["resetRegistry()"]
+  resolveToolDefinition["resolveToolDefinition()"]
+  saveToolDefinition["saveToolDefinition()"]
+  searchDynamicTools["searchDynamicTools()"]
+  updateToolUsage["updateToolUsage()"]
+  validateToolName["validateToolName()"]
+  deleteDynamicTool --> deleteToolDefinition
+  deleteDynamicTool --> resolveToolDefinition
+  listDynamicTools --> loadAllToolDefinitions
+  recommendToolsForTask --> loadAllToolDefinitions
+  registerDynamicTool --> ensureDynamicToolsPaths
+  registerDynamicTool --> generateToolId
+  registerDynamicTool --> loadAllToolDefinitions
+  registerDynamicTool --> loadToolDefinitionByName
+  registerDynamicTool --> saveToolDefinition
+  registerDynamicTool --> validateToolName
+  resolveToolDefinition --> loadToolDefinition
+  resolveToolDefinition --> loadToolDefinitionByName
+  searchDynamicTools --> loadAllToolDefinitions
+  updateToolUsage --> loadToolDefinition
+  updateToolUsage --> saveToolDefinition
 ```
 
 ### シーケンス図
@@ -578,4 +600,4 @@ interface RegisterToolResult {
 ツール登録結果（拡張機能互換）
 
 ---
-*自動生成: 2026-02-18T07:48:44.943Z*
+*自動生成: 2026-02-18T14:31:30.983Z*

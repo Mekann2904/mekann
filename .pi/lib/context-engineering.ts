@@ -1,4 +1,34 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/context-engineering.ts
+ * role: コンテキストウィンドウ管理と最適化のための型定義モジュール
+ * why: LLM推論失敗の論文推奨事項に基づき、コンテキストウィンドウの効率的な管理を実現するため
+ * related: .pi/lib/state-manager.ts, .pi/lib/prompt-optimizer.ts, .pi/lib/chunk-strategy.ts
+ * public_api: ContextPriority, ContextItem, ContextCategory, ContextWindowConfig, OptimizedContext, TrimmedItem, SemanticBoundary
+ * invariants:
+ *   - ContextItem.tokenEstimateは常に非負整数
+ *   - ContextWindowConfig.maxTokensはreservedTokensより大きい値
+ *   - priorityWeightsには全ContextPriorityの重みが定義される
+ * side_effects: なし（純粋な型定義のみ）
+ * failure_modes: なし（実行時コードを含まない）
+ * @abdd.explain
+ * overview: LLMのコンテキストウィンドウを効率的に管理するための型システムを提供する
+ * what_it_does:
+ *   - コンテキストアイテムの優先度レベル（critical/medium/low等）を定義
+ *   - 11種類のコンテキストカテゴリ（task-instruction/file-content等）を定義
+ *   - コンテキストウィンドウ設定の構造（maxTokens/reservedTokens/categoryLimits）を定義
+ *   - 最適化結果の構造（utilizationRatio/trimmedItems/warnings）を定義
+ *   - 意味的境界検出のためのSemanticBoundary型を定義
+ * why_it_exists:
+ *   - 「Large Language Model Reasoning Failures」論文のP1推奨事項を実装するため
+ *   - コンテキストウィンドウのトークン予算を明示的に管理し、推論失敗を防ぐため
+ *   - チャンク戦略と状態サマリー最適化のための基盤型を提供するため
+ * scope:
+ *   in: なし（型定義のみ）
+ *   out: 7つのexport型（ContextPriority, ContextItem, ContextCategory, ContextWindowConfig, OptimizedContext, TrimmedItem, SemanticBoundary）
+ */
+
+/**
  * Context Engineering Optimization Module
  * 論文「Large Language Model Reasoning Failures」のP1推奨事項
  * コンテキストウィンドウ管理、チャンク戦略、状態サマリー最適化

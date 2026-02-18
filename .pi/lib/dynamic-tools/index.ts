@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/index.ts
+ * role: 動的ツールモジュールのエクスポート統合ポイント
+ * why: Live-SWE-agent統合向けに型定義・レジストリ関数・安全性解析を単一APIとして公開するため
+ * related: types.ts, registry.ts, safety.ts, quality.ts
+ * public_api: DynamicToolDefinition, DynamicToolResult, registerDynamicTool, listDynamicTools, analyzeCodeSafety, DynamicToolRegistry
+ * invariants: 再エクスポート元モジュールの型シグネチャと完全に一致すること、循環依存を含まないこと
+ * side_effects: なし（純粋な再エクスポートのみ）
+ * failure_modes: 参照先モジュールが存在しない場合にインポートエラーが発生する
+ * @abdd.explain
+ * overview: 動的ツール生成・実行システムの統合エクスポートモジュール
+ * what_it_does:
+ *   - types.tsから型定義と設定定数を再エクスポート
+ *   - registry.tsからツール登録・管理関数とDynamicToolRegistryクラスを再エクスポート
+ *   - safety.tsからコード安全性解析関数を再エクスポート
+ * why_it_exists:
+ *   - 利用者が個別モジュールを知らずに単一importで全機能にアクセスできるようにするため
+ *   - モジュール間の依存関係を隠蔽しAPIを一元管理するため
+ * scope:
+ *   in: types.ts, registry.ts, safety.ts, quality.ts, audit.ts, reflection.ts
+ *   out: 外部システム統合、ランタイム実行ロジック、UI層
+ */
+
+/**
  * 動的ツールモジュール - エクスポート統合
  * Live-SWE-agent統合用の動的ツール生成・実行システム
  *

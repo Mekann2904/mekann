@@ -16,11 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-import { randomUUID } from 'crypto';
-import { createHash } from 'crypto';
-import { existsSync, statSync } from 'fs';
-import { appendFile, mkdir } from 'fs/promises';
-import { join, dirname } from 'path';
+// from 'crypto': randomUUID
+// from 'crypto': createHash
+// from 'fs': existsSync, statSync
+// from 'fs/promises': appendFile, mkdir
+// from 'path': join, dirname
 // ... and 3 more imports
 ```
 
@@ -72,15 +72,6 @@ flowchart LR
     path["path"]
   end
   main --> external
-```
-
-### 関数フロー
-
-```mermaid
-flowchart TD
-  getLogger["getLogger()"]
-  resetLogger["resetLogger()"]
-  getLogger -.-> resetLogger
 ```
 
 ### シーケンス図
@@ -222,4 +213,4 @@ resetLogger(): void
 | getTotalTokens | `getTotalTokens(): number` |
 
 ---
-*自動生成: 2026-02-18T07:48:44.847Z*
+*自動生成: 2026-02-18T14:31:30.958Z*

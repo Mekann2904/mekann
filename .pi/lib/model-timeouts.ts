@@ -1,4 +1,36 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/model-timeouts.ts
+ * role: モデル別タイムアウト設定および計算ユーティリティ
+ * why: モデルごとの応答速度差に対応するため、個別のタイムアウト値と思考レベル倍率が必要
+ * related: api-client.ts, model-config.ts, retry-handler.ts
+ * public_api: MODEL_TIMEOUT_BASE_MS, THINKING_LEVEL_MULTIPLIERS, ComputeModelTimeoutOptions, getModelBaseTimeoutMs, computeModelTimeoutMs, computeProgressiveTimeoutMs
+ * invariants:
+ *   - 戻り値は常に正の整数（ミリ秒）
+ *   - userTimeoutMs > 0 の場合、計算結果は指定値そのまま
+ *   - 不明なモデルIDは default 値（240000ms）を使用
+ *   - 不明な思考レベルは medium 倍率（1.4）を使用
+ * side_effects: なし（純粋関数と定数のみ）
+ * failure_modes:
+ *   - モデルIDが空文字の場合、default値を返す
+ *   - thinkingLevel が null/undefined の場合、medium として処理
+ * @abdd.explain
+ * overview: LLMモデルごとのタイムアウト値を定義し、思考レベルと再試行回数に応じた動的タイムアウト計算を提供
+ * what_it_does:
+ *   - モデル別の基本タイムアウト値を定義（120000ms〜600000ms）
+ *   - 思考レベルに応じた倍率適用（1.0〜2.5倍）
+ *   - モデルIDの完全一致→部分一致→defaultの順でタイムアウトを解決
+ *   - 再試行時に25%増のタイムアウトを計算（最大2倍まで）
+ * why_it_exists:
+ *   - 遅いモデル（glm-5等）は長いタイムアウトがないと完了前に中断される
+ *   - 高い思考レベルは処理時間が長くなるため倍率調整が必要
+ *   - 再試行時は一時的な遅延を考慮してタイムアウトを延長すべき
+ * scope:
+ *   in: モデルID、ユーザー指定タイムアウト、思考レベル、試行回数
+ *   out: 計算されたタイムアウト値（ミリ秒）
+ */
+
+/**
  * Model-specific timeout configuration.
  * Different models have different response characteristics.
  */

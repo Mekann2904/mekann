@@ -33,9 +33,7 @@
     "lint:fix": "eslint .pi/extensions/*.ts .pi/lib/*.ts --fix --no-ignore",
     "ci": "npm run typecheck && npm run lint && npm run test",
     "generate-abdd": "npx tsx scripts/generate-abdd.ts",
-    "add-abdd-header": "npx tsx scripts/add-abdd-header.ts",
-    "abdd": "./scripts/run-abdd-workflow.sh fast",
-    "abdd:strict": "./scripts/run-abdd-workflow.sh strict"
+    "add-abdd-header": "npx tsx scripts/add-abdd-header.ts"
   },
   "pi": {
     "extensions": [
