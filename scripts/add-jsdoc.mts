@@ -25,9 +25,15 @@ import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from '
 import { join, relative, dirname } from 'path';
 import * as ts from 'typescript';
 import { fileURLToPath } from 'url';
-import { streamSimple, getModel, type Context, type AssistantMessageEvent } from '@mariozechner/pi-ai';
+import { streamSimple, getModel, type Context } from '@mariozechner/pi-ai';
 import { AuthStorage, ModelRegistry, SettingsManager } from '@mariozechner/pi-coding-agent';
 import type { Model } from '@mariozechner/pi-ai';
+import { runWithConcurrencyLimit } from '../.pi/lib/concurrency';
+import { resolveUnifiedLimits, isSnapshotProviderInitialized } from '../.pi/lib/unified-limit-resolver';
+import { getSchedulerAwareLimit, notifyScheduler429, notifySchedulerSuccess } from '../.pi/lib/adaptive-rate-controller';
+import { retryWithBackoff, isRetryableError } from '../.pi/lib/retry-with-backoff';
+import { buildRateLimitKey } from '../.pi/lib/runtime-utils';
+import { getConcurrencyLimit } from '../.pi/lib/provider-limits';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -49,6 +55,12 @@ interface ElementInfo {
 interface JsDocRange {
   startLine: number;
   endLine: number;
+}
+
+interface GenerationResult {
+  element: ElementInfo;
+  jsDoc: string | null;
+  errorMessage?: string;
 }
 
 interface Options {
@@ -137,31 +149,71 @@ async function main() {
     return b.line - a.line;
   });
 
-  // 要素ごとにJSDocを生成
+  const parallelLimit = resolveJSDocParallelLimit(model, elementsToProcess.length);
+  const rateLimitKey = buildRateLimitKey(model.provider, model.id);
+  console.log(`⚙️  LLM並列数: ${parallelLimit}`);
+  console.log('🚀 JSDocを並列生成中...\n');
+
+  // 生成は並列、挿入は逐次（行番号ずれ対策）
+  const generationResults = await runWithConcurrencyLimit(
+    elementsToProcess,
+    parallelLimit,
+    async (element): Promise<GenerationResult> => {
+      try {
+        const jsDoc = await retryWithBackoff(
+          () => generateJsDocWithStreamSimple(model, apiKey, element, options),
+          {
+            rateLimitKey,
+            shouldRetry: isRetryableError,
+            onRetry: ({ statusCode, error }) => {
+              if (statusCode === 429) {
+                notifyScheduler429(
+                  model.provider,
+                  model.id,
+                  error instanceof Error ? error.message : String(error)
+                );
+              }
+            },
+          }
+        );
+
+        notifySchedulerSuccess(model.provider, model.id);
+        return { element, jsDoc };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (isLikelyRateLimitError(errorMessage)) {
+          notifyScheduler429(model.provider, model.id, errorMessage);
+        }
+        return { element, jsDoc: null, errorMessage };
+      }
+    }
+  );
+
   let processed = 0;
   let updated = 0;
 
-  for (const element of elementsToProcess) {
+  for (const result of generationResults) {
     processed++;
+    const { element, jsDoc, errorMessage } = result;
     console.log(`\n[${processed}/${elementsToProcess.length}] ${element.type}: ${element.name}`);
     console.log(`    📄 ${relative(process.cwd(), element.filePath)}:${element.line}`);
 
-    try {
-      const jsDoc = await generateJsDocWithStreamSimple(model, apiKey, element, options);
+    if (errorMessage) {
+      console.log(`    ❌ エラー: ${errorMessage}`);
+      continue;
+    }
 
-      if (jsDoc) {
-        if (options.dryRun) {
-          console.log(`    📝 生成されたJSDoc:\n${jsDoc.split('\n').map(l => '       ' + l).join('\n')}`);
-        } else {
-          insertJsDoc(element, jsDoc);
-          updated++;
-          console.log(`    ✅ JSDocを挿入しました`);
-        }
-      } else {
-        console.log(`    ⚠️  JSDocを生成できませんでした`);
-      }
-    } catch (error) {
-      console.log(`    ❌ エラー: ${error instanceof Error ? error.message : String(error)}`);
+    if (!jsDoc) {
+      console.log(`    ⚠️  JSDocを生成できませんでした`);
+      continue;
+    }
+
+    if (options.dryRun) {
+      console.log(`    📝 生成されたJSDoc:\n${jsDoc.split('\n').map(l => '       ' + l).join('\n')}`);
+    } else {
+      insertJsDoc(element, jsDoc);
+      updated++;
+      console.log(`    ✅ JSDocを挿入しました`);
     }
   }
 
@@ -170,6 +222,31 @@ async function main() {
   if (!options.dryRun) {
     console.log(`更新: ${updated}件`);
   }
+}
+
+function resolveJSDocParallelLimit(model: Model, taskCount: number): number {
+  try {
+    const baseLimit = isSnapshotProviderInitialized()
+      ? resolveUnifiedLimits({
+          provider: model.provider,
+          model: model.id,
+          operationType: 'direct',
+        }).effectiveConcurrency
+      : getConcurrencyLimit(model.provider, model.id);
+    const schedulerAware = getSchedulerAwareLimit(
+      model.provider,
+      model.id,
+      baseLimit
+    );
+    const safeLimit = Number.isFinite(schedulerAware) ? Math.trunc(schedulerAware) : 1;
+    return Math.max(1, Math.min(taskCount, safeLimit));
+  } catch {
+    return 1;
+  }
+}
+
+function isLikelyRateLimitError(message: string): boolean {
+  return /429|rate\s*limit|too many requests/i.test(message);
 }
 
 // ============================================================================
