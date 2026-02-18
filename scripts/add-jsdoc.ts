@@ -22,7 +22,7 @@
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
-import { join, relative, dirname } from 'path';
+import { join, relative, dirname, homedir } from 'path';
 import * as ts from 'typescript';
 import { fileURLToPath } from 'url';
 import { streamSimple, getModel, type Context } from '@mariozechner/pi-ai';
@@ -35,11 +35,6 @@ import { getSchedulerAwareLimit, notifyScheduler429, notifySchedulerSuccess } fr
 import { retryWithBackoff, isRetryableError } from '../.pi/lib/retry-with-backoff';
 import { buildRateLimitKey } from '../.pi/lib/runtime-utils';
 import { getConcurrencyLimit } from '../.pi/lib/provider-limits';
-
-// pi-coding-agentからインポート
-import { AuthStorage } from '@mariozechner/pi-coding-agent/dist/core/auth-storage.js';
-import { ModelRegistry } from '@mariozechner/pi-coding-agent/dist/core/model-registry.js';
-import { SettingsManager } from '@mariozechner/pi-coding-agent/dist/core/settings-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -319,39 +314,58 @@ async function checkMode(options: Options) {
 // ============================================================================
 
 async function initializePiSdk(): Promise<{
-  authStorage: AuthStorage;
   model: Model | null;
   apiKey: string | null;
 }> {
-  // pi SDKの標準的な初期化パターン
-  const authStorage = AuthStorage.create();
-  const modelRegistry = new ModelRegistry(authStorage);
-  const settingsManager = SettingsManager.create();
+  // 設定ファイルから読み込み
+  const piDir = join(homedir(), '.pi', 'agent');
+  const settingsPath = join(piDir, 'settings.json');
+  const authPath = join(piDir, 'auth.json');
 
-  // settings.jsonからデフォルトモデルを取得
-  const provider = settingsManager.getDefaultProvider() || 'anthropic';
-  const modelId = settingsManager.getDefaultModel() || 'claude-sonnet-4-20250514';
+  let provider = 'anthropic';
+  let modelId = 'claude-sonnet-4-20250514';
 
-  // モデルを検索（カスタムモデルも含む）
-  let model = modelRegistry.find(provider, modelId);
-
-  // 見つからない場合はビルトインモデルを検索
-  if (!model) {
-    model = getModel(provider, modelId);
+  try {
+    const settingsContent = readFileSync(settingsPath, 'utf-8');
+    const settings = JSON.parse(settingsContent);
+    provider = settings.defaultProvider || provider;
+    modelId = settings.defaultModel || modelId;
+  } catch (error) {
+    console.warn('設定ファイルの読み込みに失敗しました、デフォルト値を使用します');
   }
 
-  // それでも見つからない場合は利用可能なモデルを取得
+  // モデルIDを変換（zai.glm-4.7のような形式）
+  let modelKey = `${provider}.${modelId}`;
+
+  // モデルを取得
+  let model = getModel(provider, modelId);
+
+  // 見つからない場合、完全なキー形式で再試行
   if (!model) {
-    const available = await modelRegistry.getAvailable();
-    if (available.length > 0) {
-      model = available[0];
-    }
+    model = getModel(provider, modelKey);
+  }
+
+  if (!model) {
+    console.error(`モデルが見つかりません: ${provider}:${modelId}`);
+    return { model: null, apiKey: null };
   }
 
   // APIキーを取得
-  const apiKey = model ? await authStorage.getApiKey(model.provider) : null;
+  let apiKey: string | null = null;
+  try {
+    const authContent = readFileSync(authPath, 'utf-8');
+    const auth = JSON.parse(authContent);
 
-  return { authStorage, model, apiKey };
+    if (auth[provider] && auth[provider].type === 'api_key') {
+      apiKey = auth[provider].key;
+    } else {
+      console.error(`APIキーが見つかりません: ${provider}`);
+    }
+  } catch (error) {
+    console.error('認証ファイルの読み込みに失敗しました');
+  }
+
+  return { model, apiKey };
 }
 
 // ============================================================================
