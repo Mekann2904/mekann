@@ -1,34 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/subagents/parallel-execution.ts
- * role: サブエージェント並列実行時の容量解決と予約管理
- * why: 並列実行の容量制御をsubagents.tsから分離し、保守性を確保するため
+ * role: サブエージェントの並列実行容量を確保・解決するモジュール
+ * why: 並列実行ロジックをメインファイルから分離し、保守性を向上させるため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-runtime.ts
- * public_api: resolveSubagentParallelCapacity, SubagentParallelCapacityResolution
- * invariants:
- *   - appliedParallelismは常に1以上の整数
- *   - candidateはrequestedParallelismから1ずつ減らして探索
- *   - 予約取得失敗時はallowed=falseで返却
- * side_effects:
- *   - RuntimeCapacityReservationLeaseの発行
- *   - 容量予約によるランタイムリソースの確保
- *   - 待機発生時のポーリング実行
- * failure_modes:
- *   - タイムアウトによる予約失敗
- *   - AbortSignalによる中断
- *   - 全candidateでの即時予約失敗
+ * public_api: SubagentParallelCapacityResolution, resolveSubagentParallelCapacity
+ * invariants: appliedParallelismは常に1以上、requestedParallelismは1以上に丸められる
+ * side_effects: ランタイム容量のリソース予約を行う
+ * failure_modes: 容量不足による並列度低下、最大待機時間経過によるタイムアウト、シグナルによる中断
  * @abdd.explain
- * overview: サブエージェント並列実行における容量予約の解決を行うモジュール
+ * overview: サブエージェントの並列実行に必要なリソース容量の確保と、その解決結果を管理する
  * what_it_does:
- *   - 要求並列度から利用可能な容量を降順探索で検索
- *   - 即時予約不可時は最小枠(1)で待機予約を実行
- *   - 予約結果に削減有無、待機時間、試行回数等のメタ情報を付与
+ *   - 要求された並列度に基づき、即座に利用可能な容量を探索して予約を試行する
+ *   - 即時確保できない場合、最小限の容量（並列度1）の確保を待機する
+ *   - タイムアウトや中断シグナルに応じて、確保状況を判定して結果を返す
  * why_it_exists:
- *   - subagents.tsの単一責任を守るため並列容量制御を分離
- *   - 並列度の段階的削減ロジックを再利用可能にするため
+ *   - 並列処理数を動的に制御し、システムリソースの過負荷を防ぐため
+ *   - 容量確保の複雑なロジックを単一の責務として分離するため
  * scope:
- *   in: 並列実行容量の解決、予約、待機処理
- *   out: 実際のサブエージェント実行、タスクスケジューリング
+ *   in: 要求並列度、追加リクエスト数、待機設定、中断シグナル
+ *   out: 許可可否、適用並列度、待機時間、予約リース
  */
 
 // File: .pi/extensions/subagents/parallel-execution.ts
@@ -46,18 +37,15 @@ import {
 // Types
 // ============================================================================
 
- /**
-  * サブエージェントの並列実行容量解決結果
-  * @property allowed - 並列実行が許可されたかどうか
-  * @property requestedParallelism - 要求された並列度
-  * @property appliedParallelism - 実際に適用された並列度
-  * @property reduced - 並列度が削減されたかどうか
-  * @property reasons - 判定理由のリスト
-  * @property waitedMs - 待機時間（ミリ秒）
-  * @property timedOut - タイムアウトしたかどうか
-  * @property aborted - 中止されたかどうか
-  * @property attempts - 試行回数
-  */
+/**
+ * サブエージェント並列容量解決結果
+ * @summary 解決結果
+ * @property {number} allowed - 許可数
+ * @property {number} requestedParallelism - リクエスト並列数
+ * @property {number} appliedParallelism - 適用並列数
+ * @property {boolean} reduced - 削減されたか
+ * @property {string[]} reasons - 理由
+ */
 export interface SubagentParallelCapacityResolution {
   allowed: boolean;
 /**
@@ -95,14 +83,15 @@ export interface SubagentParallelCapacityResolution {
 // ============================================================================
 
 /**
- * サブエージェントの並列実行容量を解決する
- * @param input リクエストパラメータ
- * @param input.requestedParallelism リクエストされた並列数
- * @param input.additionalRequests 追加リクエスト数
- * @param input.maxWaitMs 最大待機時間（ミリ秒）
- * @param input.pollIntervalMs ポーリング間隔（ミリ秒）
- * @param input.signal 中断シグナル
- * @returns 容量解決結果
+ * 並列実行容量を解決
+ * @summary 容量解決
+ * @param input - リクエストパラメータ
+ * @param input.requestedParallelism - リクエストされた並列数
+ * @param input.additionalRequests - 追加リクエスト数
+ * @param input.maxWaitMs - 最大待機時間
+ * @param input.pollIntervalMs - ポーリング間隔
+ * @param input.signal - 中断シグナル
+ * @returns {Promise<SubagentParallelCapacityResolution>} 並列実行容量解決結果
  */
 export async function resolveSubagentParallelCapacity(input: {
   requestedParallelism: number;

@@ -1,33 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/embeddings/utils.ts
- * role: エンベディングベクトル操作用ユーティリティ関数群
- * why: ベクトル演算（類似度計算、正規化、加減算、スカラー倍、平均）を一元管理し、埋め込みベクトルの数学的操作を再利用可能にするため
- * related: types.ts, index.ts, search.ts, embedder.ts
+ * role: ベクトル演算ユーティリティ
+ * why: 埋め込みベクトルの類似度計算や幾何学的操作を行うための基礎的な数学関数を提供する
+ * related: .pi/lib/embeddings/types.js
  * public_api: cosineSimilarity, euclideanDistance, normalizeVector, addVectors, subtractVectors, scaleVector, meanVector
- * invariants:
- *   - 全ベクトル演算関数は入力ベクトルの次元数が一致することを前提とする
- *   - cosineSimilarityとeuclideanDistanceは次元不一致時、それぞれ0とInfinityを返す
- *   - normalizeVectorはノルム0の場合、ゼロベクトルを返す
- *   - meanVectorは空配列入力時、nullを返す
- * side_effects: なし（純粋関数のみ）
- * failure_modes:
- *   - addVectors/subtractVectors: 次元不一致時にErrorをスロー
- *   - meanVector: 次元不一致時にErrorをスロー
+ * invariants: 入力ベクトルの次元数は演算間で一致する必要がある、ゼロベクトルの正規化はゼロベクトルを返す
+ * side_effects: なし（純粋関数）
+ * failure_modes: 次元数不一致による計算結果の0またはInfinity、次元数不一致によるError例外、空配列によるnull返却
  * @abdd.explain
- * overview: 埋め込みベクトルに対する基本演算を提供するユーティリティモジュール
+ * overview: ベクトル解析のための共通数学関数セット
  * what_it_does:
- *   - コサイン類似度とユークリッド距離の計算
- *   - ベクトルの正規化
- *   - ベクトル同士の加算・減算
- *   - ベクトルのスカラー倍
- *   - 複数ベクトルの平均を算出
+ *   - 2ベクトル間のコサイン類似度とユークリッド距離を算出
+ *   - ベクトルのL2正規化、加算、減算、スカラー倍を実行
+ *   - 複数ベクトルの平均ベクトルを生成
  * why_it_exists:
- *   - 埋め込みベクトルを用いた類似度計算を共通化するため
- *   - ベクトル変換処理を標準化し、他モジュールから再利用可能にするため
+ *   - 検索アルゴリズムやデータ処理におけるベクトル操作のロジックを共通化する
+ *   - 数値計算の実装詳細を隠蔽し、呼び出し元の複雑さを低減する
  * scope:
- *   in: 数値配列として表現されたベクトル、ベクトルの配列
- *   out: 類似度/距離の数値、変換後のベクトル配列、null
+ *   in: 数値配列（ベクトル）、スカラー値
+ *   out: 類似度スコア、距離、演算後の数値配列、またはnull
  */
 
 /**
@@ -41,12 +33,13 @@ import type { VectorSearchResult } from "./types.js";
 // Vector Operations
 // ============================================================================
 
- /**
-  * 2つのベクトル間のコサイン類似度を計算
-  * @param a ベクトルA
-  * @param b ベクトルB
-  * @returns コサイン類似度
-  */
+/**
+ * コサイン類似度を計算
+ * @summary コサイン類似度計算
+ * @param a ベクトルA
+ * @param b ベクトルB
+ * @returns コサイン類似度
+ */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) return 0;
 
@@ -67,7 +60,11 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
- * Calculate Euclidean distance between two vectors.
+ * ユークリッド距離を算出
+ * @summary ユークリッド距離算出
+ * @param a 比較するベクトル
+ * @param b 比較するベクトル
+ * @returns 二つのベクトル間の距離
  */
 export function euclideanDistance(a: number[], b: number[]): number {
   if (a.length !== b.length) return Infinity;
@@ -81,11 +78,12 @@ export function euclideanDistance(a: number[], b: number[]): number {
   return Math.sqrt(sum);
 }
 
- /**
-  * ベクトルを正規化する
-  * @param vector 正規化する数値配列
-  * @returns 正規化されたベクトル
-  */
+/**
+ * ベクトルを正規化
+ * @summary ベクトルを正規化
+ * @param vector 正規化するベクトル
+ * @returns 正規化されたベクトル
+ */
 export function normalizeVector(vector: number[]): number[] {
   let norm = 0;
   for (const v of vector) {
@@ -98,12 +96,13 @@ export function normalizeVector(vector: number[]): number[] {
   return vector.map((v) => v / norm);
 }
 
- /**
-  * 2つのベクトルの要素ごとの和を計算する
-  * @param a - 最初のベクトル
-  * @param b - 2番目のベクトル
-  * @returns 各要素の和からなるベクトル
-  */
+/**
+ * ベクトル同士の加算
+ * @summary ベクトル同士の加算
+ * @param a 加算されるベクトル
+ * @param b 足し算するベクトル
+ * @returns 各要素が和のベクトル
+ */
 export function addVectors(a: number[], b: number[]): number[] {
   if (a.length !== b.length) {
     throw new Error("Vector dimensions must match");
@@ -112,10 +111,11 @@ export function addVectors(a: number[], b: number[]): number[] {
 }
 
 /**
- * 2つのベクトルの要素ごとの差を計算する
- * @param a - 最初のベクトル
- * @param b - 2番目のベクトル
- * @returns 各要素の差からなる新しいベクトル
+ * ベクトル同士の減算
+ * @summary ベクトル同士の減算
+ * @param a 減算されるベクトル
+ * @param b 引き算するベクトル
+ * @returns 各要素が差分のベクトル
  */
 export function subtractVectors(a: number[], b: number[]): number[] {
   if (a.length !== b.length) {
@@ -124,21 +124,23 @@ export function subtractVectors(a: number[], b: number[]): number[] {
   return a.map((v, i) => v - b[i]);
 }
 
- /**
-  * ベクトルをスカラー倍する
-  * @param vector - ベクトル
-  * @param scalar - スカラー値
-  * @returns スカラー倍されたベクトル
-  */
+/**
+ * ベクトルをスカラー倍
+ * @summary ベクトルをスカラー倍
+ * @param vector 対象のベクトル
+ * @param scalar 乗算するスカラー値
+ * @returns スカラー倍されたベクトル
+ */
 export function scaleVector(vector: number[], scalar: number): number[] {
   return vector.map((v) => v * scalar);
 }
 
- /**
-  * 複数のベクトルの平均を計算する
-  * @param vectors - ベクトルの配列
-  * @returns 平均ベクトル、または入力が空の場合はnull
-  */
+/**
+ * ベクトル集合の平均ベクトルを計算
+ * @summary 平均ベクトル計算
+ * @param vectors ベクトルの配列
+ * @returns 平均ベクトル。入力が空ならnull
+ */
 export function meanVector(vectors: number[][]): number[] | null {
   if (vectors.length === 0) return null;
 
@@ -161,13 +163,14 @@ export function meanVector(vectors: number[][]): number[] | null {
 // Search Functions
 // ============================================================================
 
- /**
-  * クエリベクトルに類似した上位k件を検索します。
-  * @param queryVector - 検索対象のベクトル
-  * @param items - 検索対象のアイテムの配列
-  * @param k - 取得する近傍数（デフォルト: 5）
-  * @returns 類似度とアイテムの配列
-  */
+/**
+ * クエリベクトルに類似した上位k件を検索
+ * @summary 近傍k件検索
+ * @param queryVector クエリベクトル
+ * @param items 検索対象のアイテム配列
+ * @param k 取得件数
+ * @returns 類似度が高いk件のアイテムとスコア
+ */
 export function findNearestNeighbors<T extends { embedding: number[] }>(
   queryVector: number[],
   items: T[],
@@ -184,13 +187,14 @@ export function findNearestNeighbors<T extends { embedding: number[] }>(
   return similarities.slice(0, k);
 }
 
- /**
-  * 類似度の閾値を超えるアイテムを検索
-  * @param queryVector クエリベクトル
-  * @param items 検索対象のアイテム配列
-  * @param threshold 類似度の閾値（デフォルト: 0.5）
-  * @returns 閾値を超えたアイテムと類似度の配列
-  */
+/**
+ * 類似度の閾値を超えるアイテムを検索
+ * @summary 類似度閾値検索
+ * @param queryVector クエリベクトル
+ * @param items 検索対象のアイテム配列
+ * @param threshold 類似度の閾値
+ * @returns 閾値を超えたアイテムとスコアの配列
+ */
 export function findBySimilarityThreshold<T extends { embedding: number[] }>(
   queryVector: number[],
   items: T[],
@@ -215,11 +219,12 @@ export function findBySimilarityThreshold<T extends { embedding: number[] }>(
 // Utility Functions
 // ============================================================================
 
- /**
-  * 値が有効な埋め込みベクトルか判定
-  * @param value 検査対象の値
-  * @returns number[]型の条件を満たす場合true
-  */
+/**
+ * 埋め込みベクトルか検証
+ * @summary 埋め込みベクトル検証
+ * @param value 検証対象の値
+ * @returns 有効な数値配列ならtrue
+ */
 export function isValidEmbedding(value: unknown): value is number[] {
   if (!Array.isArray(value)) return false;
   if (value.length === 0) return false;
@@ -227,14 +232,18 @@ export function isValidEmbedding(value: unknown): value is number[] {
 }
 
 /**
- * Create a zero vector of specified dimensions.
+ * ゼロベクトルを生成
+ * @summary ゼロベクトル生成
+ * @param dimensions ベクトルの次元数
+ * @returns すべての要素が0のベクトル
  */
 export function zeroVector(dimensions: number): number[] {
   return new Array(dimensions).fill(0);
 }
 
 /**
- * ベクトルのノルム（大きさ）を計算します。
+ * ベクトルのノルムを計算
+ * @summary ノルム計算
  * @param vector 数値配列で表現されたベクトル
  * @returns ノルムの値
  */
@@ -246,12 +255,13 @@ export function vectorNorm(vector: number[]): number {
   return Math.sqrt(sum);
 }
 
- /**
-  * 2つのベクトルの内積を計算する。
-  * @param a 1つ目のベクトル
-  * @param b 2つ目のベクトル
-  * @returns 内積
-  */
+/**
+ * 内積を計算
+ * @summary 内積を計算
+ * @param a 1つ目のベクトル
+ * @param b 2つ目のベクトル
+ * @returns 内積
+ */
 export function dotProduct(a: number[], b: number[]): number {
   if (a.length !== b.length) return 0;
 

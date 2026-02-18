@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/constants.ts
- * role: 検索拡張機能全体で共有される定数定義（除外パターン、制限値、インデックス設定）
- * why: マジックナンバーの排除、設定値の一元管理、検索動作の一貫性保証
- * related: .pi/extensions/search/indexer.ts, .pi/extensions/search/searcher.ts, .pi/extensions/search/tools/code_search.ts, .pi/extensions/search/tools/file_search.ts
- * public_api: DEFAULT_EXCLUDES, DefaultExclude, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_MAX_DEPTH, INDEX_DIR_NAME, SYMBOL_INDEX_FILE, INDEX_META_FILE, INDEX_MANIFEST_FILE, SHARD_DIR_NAME
- * invariants: DEFAULT_EXCLUDESはreadonly配列、DEFAULT_LIMITは100、DEFAULT_CODE_SEARCH_LIMITとDEFAULT_SYMBOL_LIMITは50、INDEX_DIR_NAMEは".pi/search"固定
+ * role: 検索拡張機能における定数値の定義および型情報のエクスポート
+ * why: 検索機能全体で共通利用される設定値（除外パターン、リミット、パス等）を一元管理し、整合性を維持するため
+ * related: .pi/extensions/search/indexer/index.ts, .pi/extensions/search/tools/search.ts, .pi/extensions/search/types.ts
+ * public_api: DEFAULT_EXCLUDES, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_MAX_DEPTH, INDEX_DIR_NAME, SYMBOL_INDEX_FILE, INDEX_META_FILE, INDEX_MANIFEST_FILE, SHARD_DIR_NAME, DefaultExclude
+ * invariants: DEFAULT_EXCLUDESは読み取り専用(as const)であり要素の変更不可
  * side_effects: なし（純粋な定数定義）
- * failure_modes: なし（静的定数のため実行時エラーは発生しない）
+ * failure_modes: なし
  * @abdd.explain
- * overview: 検索機能の挙動を制御する定数を一元管理するモジュール
+ * overview: 検索ツールおよびインデクサで使用される除外パス、検索上限、インデックスファイル名などの設定定数を集約したモジュール
  * what_it_does:
- *   - 検索対象から除外するディレクトリ・ファイルパターンの定義（node_modules、.git、ビルド出力等）
- *   - 検索結果件数のデフォルト制限値の定義（通常100件、コード検索・シンボル検索は50件）
- *   - インデックス格納ディレクトリ・ファイル名の定義
+ *   - 検索対象から除外するデフォルトのディレクトリやファイルパターン（node_modules等）を定義する
+ *   - 検索結果、コード検索、シンボル検索ごとのデフォルト件数上限を定義する
+ *   - 大文字小文字の区別設定や検索深度の制限を定義する
+ *   - インデックスの保存先ディレクトリ名やファイル名を定義する
  * why_it_exists:
- *   - 検索ツール間で一貫した除外ルールを適用するため
- *   - パフォーマンスと結果の完全性のバランスを調整可能にするため
- *   - インデックスファイルのパスを統一するため
+ *   - 設定値を分散させず、コードベース全体で挙動の一貫性を保つため
+ *   - マジックナンバーを排除し、可読性と保守性を向上させるため
  * scope:
- *   in: なし（外部入力に依存しない）
- *   out: エクスポートされた定数値
+ *   in: なし
+ *   out: 検索設定に関するプリミティブ値、配列、およびリテラル型のユニオン型
  */
 
 /**
@@ -69,9 +69,11 @@ export const DEFAULT_EXCLUDES = [
 	".pi/analytics",
 ] as const;
 
- /**
-  * DEFAULT_EXCLUDES配列の要素の型
-  */
+/**
+ * デフォルト除外要素
+ * @summary デフォルト除外要素型
+ * @returns {string} 除外パス文字列
+ */
 export type DefaultExclude = (typeof DEFAULT_EXCLUDES)[number];
 
 // ============================================

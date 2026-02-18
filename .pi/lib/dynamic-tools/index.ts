@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-tools/index.ts
- * role: 動的ツールモジュールのエクスポート統合ポイント
- * why: Live-SWE-agent統合向けに型定義・レジストリ関数・安全性解析を単一APIとして公開するため
- * related: types.ts, registry.ts, safety.ts, quality.ts
- * public_api: DynamicToolDefinition, DynamicToolResult, registerDynamicTool, listDynamicTools, analyzeCodeSafety, DynamicToolRegistry
- * invariants: 再エクスポート元モジュールの型シグネチャと完全に一致すること、循環依存を含まないこと
- * side_effects: なし（純粋な再エクスポートのみ）
- * failure_modes: 参照先モジュールが存在しない場合にインポートエラーが発生する
+ * role: 動的ツールシステムの統合エントリーポイント
+ * why: 型定義、登録機能、安全性解析など分散した機能を単一のインターフェースから提供するため
+ * related: ./types.ts, ./registry.ts, ./safety.ts, ./quality.ts
+ * public_api: 型定義, Registry Functions, Safety Analysisのエクスポート群
+ * invariants: モジュール構造の依存順序、再エクスポートされた名前の不変性
+ * side_effects: なし
+ * failure_modes: サブモジュールのインポートエラー、名前の衝突
  * @abdd.explain
- * overview: 動的ツール生成・実行システムの統合エクスポートモジュール
+ * overview: Live-SWE-agent統合用の動的ツールシステムの全機能を集約したバレルファイル
  * what_it_does:
- *   - types.tsから型定義と設定定数を再エクスポート
- *   - registry.tsからツール登録・管理関数とDynamicToolRegistryクラスを再エクスポート
- *   - safety.tsからコード安全性解析関数を再エクスポート
+ *   - types.tsから全型定義とデフォルト設定を再エクスポートする
+ *   - registry.tsからツールの生成、保存、検索、登録を行う関数とクラスを再エクスポートする
+ *   - safety.tsからコード解析とホワイトリスト準拠チェック機能を再エクスポートする
  * why_it_exists:
- *   - 利用者が個別モジュールを知らずに単一importで全機能にアクセスできるようにするため
- *   - モジュール間の依存関係を隠蔽しAPIを一元管理するため
+ *   - インポートパスを簡素化し、利用者の一貫したアクセスを保証するため
+ *   - モジュールの階層構造を隠蔽し、APIの変更に対する耐性を高めるため
  * scope:
- *   in: types.ts, registry.ts, safety.ts, quality.ts, audit.ts, reflection.ts
- *   out: 外部システム統合、ランタイム実行ロジック、UI層
+ *   in: 各サブモジュール（types, registry, safety, quality, audit, reflection）
+ *   out: 動的ツールシステム全体のパブリックAPI
  */
 
 /**

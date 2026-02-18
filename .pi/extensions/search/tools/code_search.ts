@@ -1,36 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/code_search.ts
- * role: ripgrepベースのコード検索ツール実装。rgが利用不可能な場合はNode.jsネイティブ実装にフォールバック
- * why: 高速なコード検索機能を提供し、ripgrep未導入環境でも検索を可能にするため
- * related: ../utils/cli.js, ../types.js, ../utils/output.js, ../utils/cache.js
- * public_api: nativeCodeSearch関数（内部フォールバック用）、コード検索実行機能
- * invariants:
- *   - 入力パターンが正規表現として不正な場合はエラー結果を返す
- *   - 結果件数はlimit * 2を上限として切り捨てる
- *   - 読み取り不可能なファイルはサイレントにスキップする
- * side_effects:
- *   - ファイルシステムからのファイル読み込み
- *   - キャッシュへの読み書き（getSearchCache経由）
- *   - 検索履歴への記録（getSearchHistory経由）
- * failure_modes:
- *   - 不正な正規表現パターン指定時はcreateCodeSearchErrorを返却
- *   - ディレクトリ読み取り権限がない場合は当該ディレクトリをスキップ
- *   - ripgrep実行失敗時はネイティブ実装へフォールバック
+ * role: コード検索ツールの実装とフォールバック処理
+ * why: ripgrepによる高速検索と、利用不可時のネイティブNode.js実装を提供するため
+ * related: .pi/extensions/search/utils/cli.js, .pi/extensions/search/types.js, .pi/extensions/search/utils/output.js, .pi/extensions/search/utils/cache.js
+ * public_api: nativeCodeSearch(input, cwd)
+ * invariants: 検索結果はlimitで指定された数（またはデフォルト値）を上限とする、正規表現フラグはignoreCaseオプションに依存する
+ * side_effects: ファイルシステムの読み取りを行う、キャッシュと履歴へのアクセスを行う
+ * failure_modes: 無効な正規表現パターン、ファイルの読み取りエラー（スキップされる）、プロセス実行の失敗
  * @abdd.explain
- * overview: ripgrepを優先使用し、利用不可時にNode.jsネイティブ実装でコード検索を行うツール
+ * overview: ripgrepを使用した高速コード検索と、環境依存しない純粋なNode.js実装によるフォールバック機能を提供するモジュール。
  * what_it_does:
- *   - 正規表現またはリテラルパターンでソースコードを検索
- *   - 大文字小文字無視、除外パターン、コンテキスト行数を指定可能
- *   - 検索結果をファイル単位で集計しサマリーを生成
- *   - 結果をキャッシュし重複検索を高速化
+ *   - ripgrep（rg）コマンドを実行し、JSON出力を解析して検索結果を返す
+ *   - ripgrepが利用できない場合、Node.jsのfsモジュールを使用してファイルを走査し検索する
+ *   - 正規表現パターンのコンパイルと、除外パターン（globおよび完全一致）によるフィルタリングを行う
+ *   - 検索結果の要約と、上限制限（limit）に基づく切り捨て処理を行う
  * why_it_exists:
- *   - 開発者がコードベース内の関数、変数、パターンを素早く見つけるため
- *   - 外部ツール依存を最小限に抑え、環境差異を吸収するため
- *   - 検索結果の構造化と要約でAIによるコード理解を支援するため
+ *   - 外部ツールへの依存を最小限にしつつ、高速な検索パフォーマンスを実現するため
+ *   - 実行環境によってripgrepがインストールされていない場合でも検索機能を担保するため
  * scope:
- *   in: 検索パターン（正規表現/リテラル）、対象ディレクトリ、オプション（limit, ignoreCase, context, excludes）
- *   out: CodeSearchOutput（マッチ結果配列、サマリー、ヒント、エラー情報）
+ *   in: 検索パターン、オプション（大文字小文字の区別、リミット、除外パターン等）、カレントワーキングディレクトリ
+ *   out: 検索一致の配列（CodeSearchMatch）、検索の要約（CodeSearchSummary）、またはエラーオブジェクト
  */
 
 /**
@@ -237,12 +227,13 @@ function extractResultPaths(results: CodeSearchMatch[]): string[] {
 // Main Entry Point
 // ============================================
 
- /**
-  * rgを使用したコード検索
-  * @param input 検索条件
-  * @param cwd 作業ディレクトリ
-  * @returns 検索結果
-  */
+/**
+ * コードを検索
+ * @summary コード検索
+ * @param input 検索入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 検索結果データ
+ */
 export async function codeSearch(
 	input: CodeSearchInput,
 	cwd: string

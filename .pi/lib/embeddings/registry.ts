@@ -1,35 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/embeddings/registry.ts
- * role: 埋め込みプロバイダーの登録・管理を行うレジストリクラス
- * why: 複数の埋め込みプロバイダーを統一的に管理し、利用可能判定や設定の永続化を一元化するため
- * related: ./types.js, ./openai.ts, ./local.ts, ./mock.ts
+ * role: 埋め込みプロバイダーの管理と設定の永続化を行うレジストリ
+ * why: プロバイダーの登録、状態監視、設定管理を一元化するため
+ * related: .pi/lib/embeddings/types.ts, node:fs, node:path, node:os
  * public_api: EmbeddingProviderRegistry, register, unregister, get, getAll, getAvailable, getAllStatus
- * invariants:
- *   - providers Mapのキーはprovider.idと一致する
- *   - configは常にCONFIG_FILE_PATHから読み込まれた有効なEmbeddingModuleConfigである
- *   - fallbackOrderは最低1つのプロバイダーIDを含む
- * side_effects:
- *   - コンストラクタで設定ファイルを同期的に読み込む
- *   - 設定ファイルが存在しない場合、デフォルト設定で初期化
- * failure_modes:
- *   - 設定ファイルの読み込みに失敗した場合、DEFAULT_CONFIGを使用
- *   - 存在しないproviderIdでget呼び出し時はundefinedを返す
- *   - プロバイダーのisAvailableが非同期で失敗した場合、利用不可と判定される
+ * invariants: プロバイダーIDは一意である必要がある
+ * side_effects: 設定ファイルの読み書きによるファイルシステムの変更
+ * failure_modes: 設定ファイルの破損、読み書き権限の欠如、無効なプロバイダーIDの指定
  * @abdd.explain
- * overview: 埋め込みプロバイダーを登録・管理し、利用可能なプロバイダーの検索と状態取得を提供するレジストリ
+ * overview: 埋め込みベクトル生成プロバイダーを管理するクラスと、その設定をJSONファイルで永続化する機能を提供する
  * what_it_does:
- *   - プロバイダーの登録、解除、取得を行う
- *   - 全プロバイダーおよび利用可能なプロバイダーの一覧を返す
- *   - 各プロバイダーの可用性を非同期で判定し状態を返す
- *   - 設定ファイル（~/.pi/agent/embedding-config.json）から構成を読み込む
+ *   - プロバイダーの登録、解除、取得、一覧取得を行う
+ *   - プロバイダーの利用可否を判定し、ステータス一覧を生成する
+ *   - 設定ファイル(~/.pi/agent/embedding-config.json)の読み込みとデフォルト値の適用を行う
  * why_it_exists:
- *   - 複数の埋め込みバックエンド（OpenAI, Local, Mock等）を透過的に切り替えるため
- *   - プロバイダーのライフサイクル管理を一箇所に集約するため
- *   - 設定の永続化とフォールバック順序の管理を実現するため
+ *   - 複数の埋め込みプロバイダー（OpenAI, Local, Mock等）を統一的なインターフェースで利用可能にするため
+ *   - 実行時に利用可能なプロバイダーを動的に把握する仕組みを提供するため
+ *   - ユーザー環境ごとの設定を永続化し、デフォルトプロバイダーなどを管理するため
  * scope:
- *   in: EmbeddingProviderインターフェースを実装したプロバイダーインスタンス
- *   out: 登録されたプロバイダー、可用性ステータス、設定情報
+ *   in: プロバイダーインスタンス、プロバイダーID、ファイルシステムパス
+ *   out: プロバイダーインスタンス、利用可能プロバイダーリスト、プロバイダーステータスリスト
  */
 
 /**
@@ -63,9 +54,11 @@ const DEFAULT_CONFIG: EmbeddingModuleConfig = {
 // Registry Class
 // ============================================================================
 
- /**
-  * 組み込みプロバイダーのレジストリクラス
-  */
+/**
+ * @summary プロバイダー登録
+ * @param provider 登録するプロバイダー
+ * @returns なし
+ */
 export class EmbeddingProviderRegistry {
   private providers = new Map<string, EmbeddingProvider>();
   private config: EmbeddingModuleConfig;
@@ -78,45 +71,50 @@ export class EmbeddingProviderRegistry {
   // Provider Management
   // ============================================================================
 
-   /**
-    * プロバイダーを登録する
-    * @param provider 登録するプロバイダー
-    * @returns なし
-    */
+  /**
+   * プロバイダ登録
+   * @summary プロバイダ登録
+   * @param {EmbeddingProvider} provider 登録するプロバイダ
+   * @returns {void}
+   */
   register(provider: EmbeddingProvider): void {
     this.providers.set(provider.id, provider);
   }
 
-   /**
-    * プロバイダーを登録解除
-    * @param providerId プロバイダーID
-    * @returns 戻り値なし
-    */
+  /**
+   * プロバイダ削除
+   * @summary プロバイダ削除
+   * @param {string} providerId プロバイダID
+   * @returns {void}
+   */
   unregister(providerId: string): void {
     this.providers.delete(providerId);
   }
 
-   /**
-    * プロバイダーを取得
-    * @param providerId プロバイダーID
-    * @returns 対応するプロバイダー、見つからない場合は undefined
-    */
+  /**
+   * プロバイダ取得
+   * @summary プロバイダ取得
+   * @param {string} providerId プロバイダID
+   * @returns 対応するプロバイダー、見つからない場合は undefined
+   */
   get(providerId: string): EmbeddingProvider | undefined {
     return this.providers.get(providerId);
   }
 
-   /**
-    * 全プロバイダーを取得（利用不可含む）
-    * @returns 全てのEmbeddingProvider
-    */
+  /**
+   * 全プロバイダ取得
+   * @summary 全プロバイダ取得
+   * @returns 全てのEmbeddingProvider
+   */
   getAll(): EmbeddingProvider[] {
     return Array.from(this.providers.values());
   }
 
-   /**
-    * 利用可能なプロバイダーを取得
-    * @returns 利用可能なプロバイダーの配列
-    */
+  /**
+   * 利用可能プロバイダ取得
+   * @summary 利用可能プロバイダ取得
+   * @returns 全てのEmbeddingProvider
+   */
   async getAvailable(): Promise<EmbeddingProvider[]> {
     const available: EmbeddingProvider[] = [];
     for (const provider of this.providers.values()) {
@@ -127,10 +125,11 @@ export class EmbeddingProviderRegistry {
     return available;
   }
 
-   /**
-    * 全プロバイダーの状態を取得
-    * @returns プロバイダーの状態リスト
-    */
+  /**
+   * 全プロバイダーの状態を取得する
+   * @summary 全状態取得
+   * @returns プロバイダーの状態配列
+   */
   async getAllStatus(): Promise<ProviderStatus[]> {
     const statuses: ProviderStatus[] = [];
     for (const provider of this.providers.values()) {
@@ -151,11 +150,12 @@ export class EmbeddingProviderRegistry {
   // Default Provider Management
   // ============================================================================
 
-   /**
-    * デフォルトプロバイダーを設定する
-    * @param providerId プロバイダーID
-    * @returns void
-    */
+  /**
+   * デフォルトプロバイダーを設定する
+   * @summary デフォルト設定
+   * @param providerId プロバイダーID
+   * @throws {Error} プロバイダーが見つからない場合
+   */
   setDefault(providerId: string | null): void {
     if (providerId && !this.providers.has(providerId)) {
       throw new Error(`Provider not found: ${providerId}`);
@@ -164,18 +164,20 @@ export class EmbeddingProviderRegistry {
     this.saveConfig();
   }
 
-   /**
-    * デフォルトプロバイダーIDを取得
-    * @returns デフォルトプロバイダーID、または設定されていない場合はnull
-    */
+  /**
+   * デフォルトプロバイダーIDを取得する
+   * @summary デフォルトID取得
+   * @returns デフォルトプロバイダーID、またはnull
+   */
   getDefaultProviderId(): string | null {
     return this.config.defaultProvider;
   }
 
-   /**
-    * デフォルトのプロバイダーを取得する
-    * @returns 利用可能なプロバイダー、存在しない場合はnull
-    */
+  /**
+   * デフォルトプロバイダーを取得する
+   * @summary デフォルト取得
+   * @returns デフォルトプロバイダー、またはnull
+   */
   async getDefault(): Promise<EmbeddingProvider | null> {
     // 設定されたデフォルトを確認
     if (this.config.defaultProvider) {
@@ -202,11 +204,12 @@ export class EmbeddingProviderRegistry {
   // Provider Resolution
   // ============================================================================
 
-   /**
-    * 設定からプロバイダーを解決
-    * @param config プロバイダー設定
-    * @returns 解決されたプロバイダー、利用不可の場合はnull
-    */
+  /**
+   * プロバイダーを解決する
+   * @summary プロバイダー解決
+   * @param config 設定情報
+   * @returns 解決されたプロバイダー、またはnull
+   */
   async resolve(config?: ProviderConfig): Promise<EmbeddingProvider | null> {
     // 明示的なプロバイダー指定
     if (config?.provider) {
@@ -224,27 +227,30 @@ export class EmbeddingProviderRegistry {
   // Configuration Management
   // ============================================================================
 
-   /**
-    * 設定ファイルのパスを取得
-    * @returns 設定ファイルのパス
-    */
+  /**
+   * 設定ファイルパスを取得
+   * @summary 設定パス取得
+   * @returns 設定ファイルのパス
+   */
   getConfigPath(): string {
     return CONFIG_FILE_PATH;
   }
 
-   /**
-    * 設定を取得する
-    * @returns 設定オブジェクトのコピー
-    */
+  /**
+   * 設定を取得
+   * @summary 設定取得
+   * @returns 現在の設定
+   */
   getConfig(): EmbeddingModuleConfig {
     return { ...this.config };
   }
 
-   /**
-    * 設定を更新する
-    * @param updates 適用する設定の一部
-    * @returns なし
-    */
+  /**
+   * 設定を更新
+   * @summary 設定更新
+   * @param updates 更新内容
+   * @returns なし
+   */
   updateConfig(updates: Partial<EmbeddingModuleConfig>): void {
     this.config = { ...this.config, ...updates };
     this.saveConfig();
@@ -293,23 +299,25 @@ export const embeddingRegistry = new EmbeddingProviderRegistry();
 // Convenience Functions
 // ============================================================================
 
- /**
-  * デフォルトのエンベディングプロバイダーを取得
-  * @param config プロバイダーの設定オプション
-  * @returns 解決されたプロバイダー、または見つからない場合はnull
-  */
+/**
+ * プロバイダを取得
+ * @summary プロバイダ取得
+ * @param config プロバイダ設定
+ * @returns プロバイダインスタンスまたはnull
+ */
 export async function getEmbeddingProvider(
   config?: ProviderConfig
 ): Promise<EmbeddingProvider | null> {
   return embeddingRegistry.resolve(config);
 }
 
- /**
-  * エンベディングを生成する
-  * @param text 対象テキスト
-  * @param config プロバイダー設定
-  * @returns エンベディングベクトル、またはnull
-  */
+/**
+ * ベクトルを生成
+ * @summary ベクトル生成
+ * @param text テキスト
+ * @param config プロバイダ設定
+ * @returns ベクトル配列またはnull
+ */
 export async function generateEmbedding(
   text: string,
   config?: ProviderConfig
@@ -319,12 +327,13 @@ export async function generateEmbedding(
   return provider.generateEmbedding(text);
 }
 
- /**
-  * バッチでエンベディングを生成
-  * @param texts エンベディングを生成するテキストの配列
-  * @param config プロバイダーの設定オプション
-  * @returns 各テキストに対応するエンベディング配列（失敗時はnull）
-  */
+/**
+ * 埋め込みベクトルを一括生成
+ * @summary 一括生成実行
+ * @param {string[]} texts - 入力テキストの配列
+ * @param {ProviderConfig} [config] - プロバイダ設定
+ * @returns {Promise<(number[] | null)[]>} 埋め込みベクトルの配列
+ */
 export async function generateEmbeddingsBatch(
   texts: string[],
   config?: ProviderConfig

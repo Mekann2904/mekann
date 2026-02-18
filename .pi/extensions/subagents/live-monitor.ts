@@ -1,32 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/subagents/live-monitor.ts
- * role: サブエージェント実行状態のライブモニタリングUI描画モジュール
- * why: メインのsubagents.tsからライブモニタリングロジックを分離し、保守性と責任分離を確保するため
- * related: .pi/extensions/subagents.ts, lib/subagent-types.ts, lib/live-view-utils.ts, lib/tui/tui-utils.ts
- * public_api: renderSubagentLiveView, SubagentLiveItem, SubagentLiveMonitorController, LiveStreamView, LiveViewMode
- * invariants:
- *   - カーソル位置は常に0以上items.length-1以下にクランプされる
- *   - 出力行は指定幅でトランケートされる
- *   - 空のitems配列時は専用の空状態メッセージを返す
- * side_effects:
- *   - なし（純粋関数として動作）
- * failure_modes:
- *   - items配列が空の場合、空状態UIを返す（エラーではない）
- *   - 不正なcursor値はクランプにより補正される
+ * role: サブエージェント実行のライブ監視UI描画および型定義の再エクスポート
+ * why: メインのsubagents.tsから監視ロジックを分離し、保守性を高めるため
+ * related: .pi/extensions/subagents.ts, ../../lib/subagent-types.ts, ../../lib/live-view-utils.ts, ../../lib/tui/tui-utils.ts
+ * public_api: renderSubagentLiveView
+ * invariants: itemsはSubagentLiveItemの配列である、cursorはitemsのインデックス範囲内に収まる
+ * side_effects: なし（純粋な描画関数）
+ * failure_modes: 不正なcursor値によるインデックスエラー、幅/高さの計算誤差による描画崩れ
  * @abdd.explain
- * overview: サブエージェントの実行状態をリアルタイムで表示するTUIライブビューを描画する
+ * overview: サブエージェントの実行状態をリストまたはストリームモードで可視化するTUIコンポーネントを提供する
  * what_it_does:
- *   - サブエージェント一覧のリスト表示とステータス（running/completed/failed）の集計
- *   - 選択中アイテムのstdout/stderr行数推定とプレビュー表示
- *   - list/streamモードの切り替えに対応したビューレンダリング
- *   - キーボードショートカット（j/k, enter, tab, q等）のヘルプ表示
+ *   - サブエージェントの状態（running, completed, failed）を集計し、ステータスバーを表示する
+ *   - カーソル位置に基づいたウィンドウ計算を行い、アイテム一覧を描画する
+ *   - ライブストリームビューおよびプレビューのフォーマットを行う
+ *   - 必要な型定義を再エクスポートする
  * why_it_exists:
- *   - subagents.tsの責務過多を回避し、UI描画ロジックを独立させるため
- *   - ライブモニタリング機能の単体テストと再利用を容易にするため
+ *   - 実行中のサブエージェントの進捗と出力をリアルタイムに確認するため
+ *   - コードベースのモジュール分割を行い、責任範囲を明確にするため
  * scope:
- *   in: SubagentLiveItem配列、カーソル位置、表示モード、ストリーム設定、幅・高さ、テーマ
- *   out: 描画済み文字列配列（finalizeLiveLinesで高さ調整済み）
+ *   in: SubagentLiveItem配列、現在のカーソル位置、表示モード、ビュー設定、テーマ
+ *   out: TUI描画用の文字列配列
  */
 
 // File: .pi/extensions/subagents/live-monitor.ts
@@ -83,18 +77,20 @@ const LIVE_LIST_WINDOW_SIZE = 20;
 // Live View Rendering
 // ============================================================================
 
- /**
-  * サブエージェントのライブビューを描画する
-  * @param input.title - ビューのタイトル
-  * @param input.items - 表示するサブエージェントアイテムの配列
-  * @param input.cursor - 現在のカーソル位置
-  * @param input.mode - ライブビューの表示モード
-  * @param input.stream - ライブストリームビューの設定
-  * @param input.width - ビューの幅
-  * @param input.height - ビューの高さ（省略可能）
-  * @param input.theme - テーマ設定
-  * @returns 描画結果の文字列配列
-  */
+/**
+ * ライブビューを描画
+ * @summary ライブビュー描画
+ * @param input - 入力データ
+ * @param input.title - ビューのタイトル
+ * @param input.items - 表示するサブエージェントアイテムの配列
+ * @param input.cursor - 現在のカーソル位置
+ * @param input.mode - ライブビューの表示モード
+ * @param input.stream - ライブストリームビューの設定
+ * @param input.width - 幅
+ * @param input.height - 高さ
+ * @param input.theme - テーマ
+ * @returns {string[]} 描画結果の文字列配列
+ */
 export function renderSubagentLiveView(input: {
   title: string;
   items: SubagentLiveItem[];
@@ -277,12 +273,15 @@ export function renderSubagentLiveView(input: {
 // Live Monitor Controller
 // ============================================================================
 
- /**
-  * サブエージェントのライブモニターを作成する
-  * @param ctx コンテキスト
-  * @param input タイトルとアイテム一覧を含む入力データ
-  * @returns ライブモニターコントローラー、UIが利用できない場合はundefined
-  */
+/**
+ * ライブ監視コントローラ作成
+ * @summary 監視コントローラ作成
+ * @param ctx - コンテキスト
+ * @param input - 入力データ
+ * @param input.title - タイトル
+ * @param input.items - アイテム配列
+ * @returns {SubagentLiveMonitorController | undefined} ライブ監視コントローラ
+ */
 export function createSubagentLiveMonitor(
   ctx: any,
   input: {

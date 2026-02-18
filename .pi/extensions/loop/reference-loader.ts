@@ -1,35 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop/reference-loader.ts
- * role: ループ拡張機能向けの参照読み込みユーティリティ。ファイル、URL、インラインテキストからの参照を読み込み正規化する
- * why: 複数の参照ソースを統一的に扱い、文字数制限と参照数制限を強制するため
- * related: .pi/extensions/loop.ts, .pi/extensions/loop/ssrf-protection.ts, .pi/lib/error-utils.js
+ * role: ループ拡張機能における参照データの読み込みと正規化を行うローダー
+ * why: 外部ファイル、URL、インラインテキストから参照コンテンツを取得し、文字数制限やSSRF対策を適用して安全に利用するため
+ * related: .pi/extensions/loop.ts, .pi/extensions/loop/ssrf-protection.ts
  * public_api: loadReferences, LoopReference, LoadedReferenceResult
- * invariants:
- *   - 参照IDは R1, R2, ... の形式で連番割り当て
- *   - 参照数は最大24件、総文字数は最大30,000文字
- *   - 個別参照は最大8,000文字
- * side_effects:
- *   - ファイルシステムからの読み込み（refsFile, ローカルパス参照）
- *   - URLへのHTTPリクエスト（SSRF検証経由）
- * failure_modes:
- *   - refsFileが存在しない、または読み込み権限がない場合に警告を追加して継続
- *   - 参照内容が空の場合、警告を追加してスキップ
- *   - AbortSignalで処理が中断された場合、エラーをスロー
+ * invariants: 参照IDはR1からの連番となる、総文字数はmaxReferenceCharsTotalを超えない
+ * side_effects: ファイルシステムからの読み込み、HTTPリクエストの発行
+ * failure_modes: ファイル読み込みエラー、ネットワークエラー、文字数制限超過によるデータ切り捨て
  * @abdd.explain
- * overview: ループ処理で使用する参照データをファイル、URL、インラインテキストから読み込む
+ * overview: 参照指定（パス、URL、テキスト）を解釈し、内容を取得して`LoopReference`オブジェクトのリストとして返すモジュール。
  * what_it_does:
- *   - refs配列とrefsFileから参照指定を収集し正規化
- *   - 各参照を順次読み込み、安定ID（R1, R2...）を割り当て
- *   - 文字数制限と参照数制限を強制し、超過分は警告を追加して切り捨て
- *   - 空行と#で始まるコメント行を除外
+ *   - refs配列およびrefsFileで指定された参照仕様をパースする
+ *   - ファイルパス、URL、インラインテキストを識別してコンテンツを読み込む
+ *   - 読み込んだコンテンツの文字数をチェックし、制限を超過する場合は切り捨てる
+ *   - SSRF（Server-Side Request Forgery）対策としてURLを検証する
  * why_it_exists:
- *   - 複数ソースの参照を統一的なインターフェースで扱うため
- *   - 参照データのサイズを制御し、処理の安定性を保証するため
- *   - SSRF攻撃を防ぎながら安全にURLをフェッチするため
+ *   - ループ処理内で複数のソースから参照データを統一的に扱う必要があるため
+ *   - 外部リソースへのアクセスにおけるセキュリティリスクを軽減するため
  * scope:
- *   in: refs（参照指定文字列配列）、refsFile（参照ファイルパス、省略可）、cwd（作業ディレクトリ）、signal（AbortSignal、省略可）
- *   out: LoadedReferenceResult（読み込まれた参照配列と警告配列）
+ *   in: 参照文字列の配列、参照ファイルパス、作業ディレクトリ(cwd)
+ *   out: 読み込み済みの参照配列と処理中に発生した警告リスト
  */
 
 // File: .pi/extensions/loop/reference-loader.ts
@@ -47,13 +38,10 @@ import { validateUrlForSsrf } from "./ssrf-protection";
 // Types
 // ============================================================================
 
- /**
-  * ループ参照データの構造を定義します。
-  * @property id - 参照の一意識別子
-  * @property source - 参照元のパス、URL、または識別子
-  * @property title - 参照のタイトル
-  * @property content - 参照の本文内容
-  */
+/**
+ * ループ参照のデータ構造
+ * @summary ループ参照定義
+ */
 export interface LoopReference {
   id: string;
   source: string;
@@ -75,11 +63,11 @@ export interface LoopReference {
   content: string;
 }
 
- /**
-  * 参照読み込みの結果
-  * @param references - 読み込まれた参照の配列
-  * @param warnings - 警告メッセージの配列
-  */
+/**
+ * 参照読み込みの結果を表すインターフェース
+ * @summary 参照読込結果
+ * @returns 解析済みの参照データと警告リスト
+ */
 export interface LoadedReferenceResult {
   references: LoopReference[];
   warnings: string[];
@@ -99,12 +87,13 @@ const LIMITS = {
 // Reference Loading
 // ============================================================================
 
- /**
-  * 参照情報を読み込む
-  * @param input 参照リストとパスを含む入力オブジェクト
-  * @param signal 中断シグナル
-  * @returns 読み込み結果
-  */
+/**
+ * 外部参照を読み込み、解析結果を返す
+ * @summary 参照読込
+ * @param input - 参照パスやファイルの設定を含むオブジェクト
+ * @param signal - 処理を中断するためのAbortSignal（省略可）
+ * @returns 読み込まれた参照の結果と警告を含むPromise
+ */
 export async function loadReferences(
   input: { refs: string[]; refsFile?: string; cwd: string },
   signal?: AbortSignal,
@@ -229,12 +218,13 @@ async function loadSingleReference(
   };
 }
 
- /**
-  * 指定されたURLからテキストを取得する
-  * @param url 取得先のURL
-  * @param signal リクエストの中断シグナル
-  * @returns 取得したテキスト
-  */
+/**
+ * 指定されたURLからテキストデータを取得する
+ * @summary テキスト取得
+ * @param url - 取得先のURL
+ * @param signal - 処理を中断するためのAbortSignal（省略可）
+ * @returns 取得したテキストデータを含むPromise
+ */
 export async function fetchTextFromUrl(url: string, signal?: AbortSignal): Promise<string> {
   // SSRF protection: validate URL before fetching
   await validateUrlForSsrf(url);

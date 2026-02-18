@@ -1,28 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/index.ts
- * role: Search extension entry point for PI Coding Agent
- * why: 高性能なコード検索機能を統一的に提供し、エージェントのコードナビゲーション能力を向上させるため
- * related: tools/file_candidates.js, tools/code_search.js, tools/sym_index.js, utils/cli.js
- * public_api: default export (extension registration function)
- * invariants: pi オブジェクトが null の場合は早期リターンする、各ツールは独立して動作する
- * side_effects: 外部CLIツール（fd, rg, ctags）の実行、ファイルシステムへのアクセス
- * failure_modes: 外部ツールが利用不可能な場合のフォールバック処理、不正なパラメータによるエラー
+ * role: 検索機能の拡張登録エントリーポイント
+ * why: fd, ripgrep, ctagsを用いた高速なファイル検索、コード検索、シンボル検索、および意味検索をエージェントに提供するため
+ * related: .pi/extensions/search/tools/file_candidates.ts, .pi/extensions/search/tools/code_search.ts, .pi/extensions/search/tools/call_graph.ts, .pi/extensions/search/tools/semantic_search.ts
+ * public_api: file_candidates, code_search, sym_index, sym_find, call_graph_index, find_callers, find_callees, semantic_index, semantic_search
+ * invariants: 実行にはExtensionAPIインスタンスが必要、ツールごとの戻り値はフォーマット済み文字列と詳細オブジェクトを含む構造体
+ * side_effects: 外部コマンド(fd, rg, ctags)のプロセス生成、標準出力へのエラーログ出力
+ * failure_modes: 必要な外部コマンドがインストールされていない場合のエラー、無効な正規表現やパス指定による実行時エラー
  * @abdd.explain
- * overview: PI Coding Agent用の検索拡張機能。fd、ripgrep、ctagsをラップし、フォールバック対応の高性能検索ツール群を提供する。
+ * overview: PI Coding Agentに対して、ソースコードの静的解析と検索を行うツール群を登録するモジュール
  * what_it_does:
- *   - file_candidates: fd連携による高速ファイル列挙（glob/拡張子フィルタ対応）
- *   - code_search: ripgrep連携によるコードパターン検索
- *   - sym_index/sym_find: ctags連携によるシンボルインデックス・定義検索
- *   - call_graph_index/findCallers/findCallees: 呼び出しグラフ生成と呼び出し元/先検索
- *   - semantic_index/semantic_search: コードベクトル埋め込みとセマンティック検索
- *   - checkToolAvailabilityによる外部ツール可用性チェック
+ *   - 高速ファイル列挙ツール(fd)とコードパターン検索ツール(ripgrep)の登録
+ *   - ctagsを利用したシンボル定義のインデックス作成と検索機能の提供
+ *   - 呼び出し関係(call graph)のインデックス作成、呼び出し元/呼び出し先の検索
+ *   - ベクトル埋め込みを用いた意味的インデックス作成と自然言語検索の実行
+ *   - 外部コマンドの有無チェックと実行結果のフォーマット
  * why_it_exists:
- *   - コードベース内の高速なファイル・シンボル・パターン検索を一元管理するため
- *   - 外部ツールへの依存を抽象化し、フォールバック機能で環境差異を吸収するため
+ *   - エージェントがプロジェクト内のファイルやコード構造を迅速に把握・移動するため
+ *   - テキストマッチングだけでなく、意味理解や構造依存の検索ニーズに対応するため
  * scope:
- *   in: ExtensionAPIインスタンス、各ツールのパラメータ（pattern, type, extension等）
- *   out: 登録されたツール定義、フォーマット済み検索結果
+ *   in: ExtensionAPIオブジェクト、各ツールのクエリパラメータ
+ *   out: 登録されたツールオブジェクト、ツール実行結果としてのテキストメッセージおよび詳細データオブジェクト
  */
 
 /**

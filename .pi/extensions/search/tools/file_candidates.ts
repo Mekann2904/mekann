@@ -1,26 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/file_candidates.ts
- * role: ファイル候補列挙ツールの実装（fd優先・Node.jsフォールバック付き）
- * why: 高速なファイル検索を提供しつつ、fd未導入環境でも動作保証するため
- * related: cli.js, output.js, constants.ts, cache.js
- * public_api: nativeFileCandidates（内部フォールバック関数）
- * invariants: limit未指定時はDEFAULT_LIMITを使用、結果は常にlimitで打ち切り
- * side_effects: ファイルシステム走査（readdir/stat）、キャッシュ操作（getSearchCache経由）
- * failure_modes: アクセス権限のないディレクトリは無視して継続、fd実行失敗時はnativeフォールバックへ移行
+ * role: 高速ファイル列挙ツール
+ * why: fdコマンドを優先し、利用不可環境ではNode.jsネイティブ実装へフォールバックすることで、検索機能の可用性と速度を両立するため
+ * related: ../utils/cli.js, ../types.js, ../utils/output.js, ../utils/errors.js
+ * public_api: nativeFileCandidates (export via index.ts implied), shouldExclude (internal helper)
+ * invariants: excludeパターンに一致するパスは結果に含まれない、hiddenファイル(先頭.)は無視される、結果数はlimitを超えない
+ * side_effects: ファイルシステムへの読み取りアクセスが発生する
+ * failure_modes: fdコマンドがインストールされていない場合、ファイルシステムアクセス権限がない場合、正規表現パターンが無効な場合
  * @abdd.explain
- * overview: fdコマンドベースのファイル列挙と、純粋Node.js実装のフォールバックを提供
+ * overview: 外部コマンドfdを使用した高速なファイル候補列挙と、Node.jsのみで動作するネイティブフォールバック処理を実装するモジュール
  * what_it_does:
- *   - globパターン/拡張子/タイプ/除外パターンによるファイルフィルタリング
- *   - maxDepthによる再帰深度制限とlimitによる結果数制限
- *   - 隠しファイル（.始まり）の自動除外
- *   - DEFAULT_EXCLUDESによるnode_modules等の標準除外
+ *   - fdコマンドの引数を構築し、実行結果をパースしてFileCandidateオブジェクトの配列に変換する
+ *   - fdが利用できない場合、fs.readdirを用いた再帰的ディレクトリ走査によりファイル候補を収集する
+ *   - 拡張子、パターン、タイプ、最大深さ、除外リストに基づき候補をフィルタリングする
+ *   - 結果数が制限を超過する場合、リストを切り詰める
+ *   - キャッシュと履歴の管理を支援するユーティリティ関数を呼び出す
  * why_it_exists:
- *   - fdコマンドの高速性を活用しつつ環境依存を吸収
- *   - 検索ツール群で再利用可能なファイル列挙ロジックの提供
+ *   - fdコマンドは高速だが環境依存であるため、すべての環境で動作させる代替手段が必要
+ *   - 検索APIの要件に応じて柔軟なフィルタリング（拡張子、globパターン等）を提供する
+ *   - パフォーマンスと信頼性のバランスを取るため
  * scope:
- *   in: FileCandidatesInput（pattern, extension, type, limit, maxDepth, exclude）
- *   out: FileCandidatesOutput（FileCandidate配列）
+ *   in: FileCandidatesInput (query, limit, exclude, type, extension, pattern, maxDepth), cwd (current working directory)
+ *   out: FileCandidatesOutput (candidates array, hints, truncated flag)
  */
 
 /**
@@ -182,12 +184,13 @@ function extractResultPaths(results: FileCandidate[]): string[] {
 // Main Entry Point
 // ============================================
 
- /**
-  * fdまたはフォールバックでファイル候補を列挙
-  * @param input 検索入力データ
-  * @param cwd カレントワーキングディレクトリ
-  * @returns ファイル候補の出力データ
-  */
+/**
+ * 候補ファイルを一覧
+ * @summary 候補ファイル一覧取得
+ * @param input 入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 候補ファイルリスト
+ */
 export async function fileCandidates(
 	input: FileCandidatesInput,
 	cwd: string

@@ -1,36 +1,23 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/call-graph/query.ts
- * role: コールグラフ検索クエリ関数群
- * why: インデックス化されたコールグラフから呼び出し元/呼び出し先の関係を効率的に検索するため
- * related: types.ts, builder.ts, index.ts, analyzer.ts
+ * role: コールグラフの検索ロジックを提供するモジュール
+ * why: ノードID、シンボル名、ファイルパスによるノード特定、および呼び出し元の探索を集約するため
+ * related: .pi/extensions/search/call-graph/types.ts, .pi/extensions/search/call-graph/index.ts
  * public_api: findNodesByName, findNodeById, findNodesByFile, findCallers
- * invariants:
- *   - findNodesByNameは大文字小文字を区別しない一致を行う
- *   - findCallersのdepthは1以上で直接の呼び出し元のみ、それ以上で再帰的に探索
- *   - findCallersの結果は最大limit件（デフォルト50件）に制限される
- *   - 結果のMapキーはノードIDを使用し重複を排除する
- * side_effects:
- *   - なし（純粋関数、インデックスへの読み取り専用アクセス）
- * failure_modes:
- *   - シンボル名がインデックスに存在しない場合、空配列を返す
- *   - ノードIDが見つからない場合、undefinedを返す
- *   - depth=0の場合、findCallersは初期シンボルのみをキューに追加し結果なしで終了
+ * invariants: findCallersはキューが空になるか結果数がlimitに達するまで実行される
+ * side_effects: なし（純粋な関数型プログラミング）
+ * failure_modes: 指定されたdepthやlimitが過度に大きい場合、探索完了までに時間がかかる
  * @abdd.explain
- * overview: コールグラフインデックスに対する検索クエリ機能を提供するモジュール
+ * overview: コールグラフ構造に対する各種クエリ（検索・探索）機能を実装する
  * what_it_does:
- *   - シンボル名によるノード検索（完全一致または大文字小文字無視）
- *   - ノードIDによる単一ノード検索
- *   - ファイルパスによるノードフィルタリング
- *   - 指定シンボルの呼び出し元を深さ指定で再帰探索（BFS）
- *   - 呼び出し連鎖の信頼度計算（confidence乗算）
+ *   - 名前、ID、ファイルパスによるノードの抽出
+ *   - 指定シンボルの呼び出し元を幅優先探索で特定し、チェーンと信頼度を計算
  * why_it_exists:
- *   - 静的解析結果を検索可能な形で提供するため
- *   - 呼び出し関係のトレーサビリティを実現するため
- *   - 影響範囲調査や依存関係分析を可能にするため
+ *   - コード解析機能において、特定の関数やファイルの関連性を動的に調査する必要があるため
  * scope:
- *   in: CallGraphIndex（nodes配列、edges配列を含む構造）
- *   out: CallGraphNode配列、単一CallGraphNode、CallChainResult配列
+ *   in: CallGraphIndex（ノードとエッジの集合）、検索条件（名前、ID、パス、深さ、上限数）
+ *   out: 一致するノード、または呼び出しチェーン情報を含む結果配列
  */
 
 /**
@@ -50,12 +37,13 @@ import type {
 // Node Lookup
 // ============================================
 
- /**
-  * 名前を指定してノードを検索する
-  * @param index 検索対象のインデックス
-  * @param symbolName シンボル名（大文字小文字を区別しない）
-  * @returns 一致するノードの配列
-  */
+/**
+ * 名前でノード検索
+ * @summary 名前でノード検索
+ * @param index 呼び出しグラフのインデックス
+ * @param symbolName 検索対象のシンボル名
+ * @returns 一致するノードの配列
+ */
 export function findNodesByName(
 	index: CallGraphIndex,
 	symbolName: string
@@ -67,12 +55,13 @@ export function findNodesByName(
 	);
 }
 
- /**
-  * IDに一致するノードを検索する。
-  * @param index 検索対象の呼び出しグラフインデックス
-  * @param nodeId 検索するノードID
-  * @returns 一致したノード、見つからない場合はundefined
-  */
+/**
+ * ノードを検索
+ * @summary IDでノード検索
+ * @param index 検索対象の呼び出しグラフインデックス
+ * @param nodeId 検索するノードID
+ * @returns 一致したノード、見つからない場合はundefined
+ */
 export function findNodeById(index: CallGraphIndex, nodeId: string): CallGraphNode | undefined {
 	return index.nodes.find((node) => node.id === nodeId);
 }
@@ -358,12 +347,13 @@ export function findCallPath(
 // Statistics
 // ============================================
 
- /**
-  * 呼び出しグラフのノード統計情報を取得する
-  * @param index 呼び出しグラフのインデックス
-  * @param symbolName シンボル名
-  * @returns ノード情報、呼び出し元・呼び出し先の数（直接・全経路）
-  */
+/**
+ * ノード統計取得
+ * @summary ノード統計取得
+ * @param index コールグラフインデックス
+ * @param symbolName シンボル名
+ * @returns ノード情報と呼び出し数の統計
+ */
 export function getNodeStats(
 	index: CallGraphIndex,
 	symbolName: string

@@ -1,38 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/shared/pi-print-executor.ts
- * role: piコマンド実行プロセスの共通エグゼキューター
- * why: subagents.tsとagent-teams.tsで一貫したプロセス実行を提供し、ストリーミング出力とアイドルタイムアウト検出を標準化するため
- * related: subagents.ts, agent-teams.ts, pi（CLIコマンド）
- * public_api: PrintExecutorOptions, PrintCommandResult, executePiPrintMode（関数 exported）
- * invariants:
- *   - デフォルトアイドルタイムアウトは300000ms（5分）
- *   - JSONストリーム行のみをパース対象とする（{で始まる行）
- *   - グレースフルシャットダウン遅延は2000ms固定
- * side_effects:
- *   - 子プロセス（pi --mode json）の起動と終了
- *   - AbortSignalによるプロセスキャンセル時の強制終了
- *   - コールバック経由での外部状態更新（onStdoutChunk, onStderrChunk, onTextDelta, onThinkingDelta）
- * failure_modes:
- *   - プロセス起動失敗（piコマンド不在、権限エラー）
- *   - アイドルタイムアウト超過（指定時間内に出力なし）
- *   - AbortSignalによるキャンセル
- *   - JSONパース失敗（不正なストリーム行）
+ * role: piコマンドのJSONストリーミング実行を管理するエグゼキューター
+ * why: subagents.tsとagent-teams.ts間で一貫したプロセス実行とアイドルタイムアウト検出を実現するため
+ * related: .pi/extensions/shared/subagents.ts, .pi/extensions/shared/agent-teams.ts
+ * public_api: executePrintCommand関数, PrintExecutorOptionsインターフェース, PrintCommandResultインターフェース
+ * invariants: タイムアウト期間中に出力がなければプロセスを終了する, agent_endまたはmessage_endを受信すると実行完了とみなす
+ * side_effects: 外部プロセスを生成する, 標準出力・標準エラーをリアルタイムで処理する
+ * failure_modes: プロセスが応答しない場合のタイムアウト, JSONパースエラーによる行の無視, シグナルによる中断時の強制終了
  * @abdd.explain
- * overview: pi CLIを--mode jsonで実行し、ストリーミングJSON出力をリアルタイム処理する共通モジュール
+ * overview: pi --mode json を使用した外部プロセスの実行ラッパー
  * what_it_does:
- *   - pi子プロセスのspawnとライフサイクル管理
- *   - JSONストリーム行のパース（text_delta, thinking_delta, agent_end, message_endを抽出）
- *   - 出力チャンクごとにアイドルタイムアウトをリセット
- *   - AbortSignal監視とプロセスキャンセル処理
- *   - エラーメッセージの200文字トリム処理
+ *   - piプロセスを生成し、stdout/stderrのストリームを監視する
+ *   - JSON行をパースし、text_deltaとthinking_deltaを抽出する
+ *   - 出力ごとにタイマーをリセットし、アイドル状態を検出してタイムアウトする
+ *   - AbortSignalを使用してプロセスをキャンセルする
  * why_it_exists:
- *   - GLM-5等の長時間思考モデルに対応するため、固定タイムアウトではなくアイドルベースのタイムアウトを実現
- *   - subagents.tsとagent-teams.tsでのプロセス実行ロジックの重複を排除
- *   - リアルタイムでのテキスト/思考プレビュー表示を可能にする
+ *   - GLM-5など推論時間が長いモデルに対応するため
+ *   - 複数の呼び出し元で一貫した実行ロジックを再利用するため
+ *   - 出力がない場合のみタイムアウトすることで、正確な応答待機を行うため
  * scope:
- *   in: PrintExecutorOptions（プロンプト、タイムアウト、AbortSignal、各種コールバック）
- *   out: PrintCommandResult（生成テキスト、実行時間）、またはエラー時は例外送出
+ *   in: プロンプト、プロバイダー/モデル設定、タイムアウト時間、AbortSignal
+ *   out: 生成されたテキスト、実行時間、ストリーミングイベント
  */
 
 /**
@@ -52,17 +41,16 @@ const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
 /** Default idle timeout for subagent execution (5 minutes) */
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
 
- /**
-  * プリント実行のオプション
-  * @param entityLabel エラーメッセージ用エンティティタイプラベル
-  * @param provider プロバイダーのオーバーライド（オプション）
-  * @param model モデルのオーバーライド（オプション）
-  * @param prompt piに送信するプロンプト
-  * @param timeoutMs アイドルタイムアウト（ミリ秒、出力ごとにリセット、0で無効、デフォルト300000）
-  * @param signal キャンセル用AbortSignal（オプション）
-  * @param onStdoutChunk stdoutチャンク用コールバック（オプション）
-  * @param onStderrChunk stderrチャンク用コールバック（オプション）
-  */
+/**
+ * 印刷実行オプション
+ * @summary オプション設定
+ * @param entityLabel - エンティティラベル
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @param prompt - プロンプト
+ * @param timeoutMs - タイムアウト時間
+ * @returns -
+ */
 export interface PrintExecutorOptions {
   /** Entity type label for error messages (e.g., "subagent", "agent team member") */
   entityLabel: string;
@@ -86,11 +74,13 @@ export interface PrintExecutorOptions {
   onThinkingDelta?: (delta: string) => void;
 }
 
- /**
-  * 印刷コマンドの実行結果
-  * @param output 生成された出力テキスト
-  * @param latencyMs 実行時間（ミリ秒）
-  */
+/**
+ * 印刷コマンド結果
+ * @summary 結果を表す
+ * @param output - 出力データ
+ * @param latencyMs - レイテンシ(ミリ秒)
+ * @returns -
+ */
 export interface PrintCommandResult {
   output: string;
   latencyMs: number;
@@ -190,11 +180,12 @@ function combineTextAndThinking(text: string, thinking: string): string {
   return parts.join("\n");
 }
 
- /**
-  * Piプリントモードを実行します
-  * @param input - 実行オプション
-  * @returns 実行コマンドの結果
-  */
+/**
+ * Pi印刷モード実行
+ * @summary 印刷を実行する
+ * @param input - 実行オプション
+ * @returns コマンド実行結果
+ */
 export async function runPiPrintMode(
   input: PrintExecutorOptions,
 ): Promise<PrintCommandResult> {
@@ -394,12 +385,13 @@ export async function runPiPrintMode(
 // callModelViaPi - Used by loop.ts and rsa.ts
 // ============================================================================
 
- /**
-  * モデル呼び出しのオプション
-  * @param provider プロバイダID
-  * @param id モデルID
-  * @param thinkingLevel 思考レベル（オプション）
-  */
+/**
+ * モデル呼び出し共通オプション
+ * @summary 共通オプション
+ * @param provider プロバイダID
+ * @param id モデルID
+ * @param thinkingLevel 思考レベル
+ */
 export interface CallModelOptions {
   /** Provider ID */
   provider: string;
@@ -409,16 +401,15 @@ export interface CallModelOptions {
   thinkingLevel?: string;
 }
 
- /**
-  * pi経由でモデルを呼び出すためのオプション
-  * @param model モデル設定
-  * @param prompt piに送信するプロンプト
-  * @param timeoutMs タイムアウト（ミリ秒、0で無効）
-  * @param signal キャンセル用のAbortSignal
-  * @param onChunk stdoutチャンク（生JSON行）用コールバック
-  * @param onTextDelta テキストデルタイベント用コールバック
-  * @param entityLabel エラーメッセージ用エンティティラベル（デフォルト: "RSA"）
-  */
+/**
+ * PI呼び出しオプション
+ * @summary 呼び出しオプション
+ * @param model モデル名
+ * @param prompt プロンプト
+ * @param timeoutMs タイムアウト(ミリ秒)
+ * @param signal 中断シグナル
+ * @param onChunk チャンク受信コールバック
+ */
 export interface CallModelViaPiOptions {
   /** Model configuration */
   model: CallModelOptions;
@@ -436,11 +427,12 @@ export interface CallModelViaPiOptions {
   entityLabel?: string;
 }
 
- /**
-  * piを介してモデルを呼び出す
-  * @param options 呼び出しオプション
-  * @returns モデルからのレスポンス文字列
-  */
+/**
+ * PI経由でLLMを呼び出す
+ * @summary モデル呼び出し
+ * @param options 呼び出しオプション
+ * @returns 生成テキスト
+ */
 export async function callModelViaPi(options: CallModelViaPiOptions): Promise<string> {
   const { model, prompt, timeoutMs, signal, onChunk, onTextDelta, entityLabel = "RSA" } = options;
 

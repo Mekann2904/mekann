@@ -1,33 +1,32 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/semantic_search.ts
- * role: 意味的コード検索ツール。ベクトル類似度を用いてクエリに一致するコードを検索する
- * why: キーワード検索では発見困難な、意図や機能に基づくコード検索を実現するため
- * related: ../types.js, ../utils/constants.js, ../../../lib/embeddings/utils.js, ./semantic_index.ts
+ * role: ベクトル類似度に基づくコード意味検索ツール
+ * why: 事前構築されたインデックスを利用し、自然語クエリやコード断片に対して意味的に近いコード箇所を特定するため
+ * related: .pi/extensions/search/types.ts, .pi/extensions/search/utils/constants.ts, .pi/lib/embeddings/utils.ts
  * public_api: semanticSearch(input, cwd): Promise<SemanticSearchOutput>
  * invariants:
- *   - クエリが空または空白のみの場合、total=0, results=[], error="Query is required"を返す
- *   - インデックスが存在しない場合、total=0, results=[]を返す
- *   - 類似度はthreshold以上の結果のみ返す
- *   - 結果は類似度降順でソート済み
- * side_effects:
- *   - ファイルシステムからsemantic-index.jsonlを読み込む（読み取り専用）
+ *   - 入力クエリは空文字ではない
+ *   - topKは正の整数である
+ *   - thresholdは0以上1以下である
+ *   - インデックスファイルが存在しない場合、空の配列を返す
+ * side_effects: ファイルシステムからインデックスファイルを読み込む
  * failure_modes:
- *   - インデックスファイルが存在しない場合に空の結果を返す
- *   - インデックスファイルのJSONパースに失敗した場合に例外をスローする可能性がある
+ *   - インデックスファイルが破損している場合、JSON.parseで例外が発生する
+ *   - クエリベクトルの生成失敗（呼び出し元依存）
  * @abdd.explain
- * overview: 事前構築済みのセマンティックインデックスを使用し、ベクトル類似度によるコード検索を実行する
+ * overview: ディスク上のセマンティックインデックスを読み込み、クエリベクトルとコード埋め込みのコサイン類似度を計算して上位k件を返すモジュール
  * what_it_does:
- *   - ディスクからJSONL形式のセマンティックインデックスを読み込む
- *   - クエリベクトルとインデックス内エンベディング間のコサイン類似度を計算する
- *   - 類似度threshold以上の結果を類似度降順でtopK件返す
- *   - language/kindによるフィルタリングパラメータを受け取る（入力定義に基づく）
+ *   - semantic-index.jsonlファイルの読み込みとパース
+ *   - クエリ埋め込みとインデックス内の埋め込みのコサイン類似度計算
+ *   - 類似度によるフィルタリングと降順ソート
+ *   - 指定された件数（topK）への結果切り詰め
  * why_it_exists:
- *   - 関数名や変数名を正確に知らなくても、機能や意図に基づいてコードを発見できるようにする
- *   - semantic_index.tsで構築されたインデックスを活用して高速な意味検索を提供する
+ *   - キーワード一致のみでは検出できない、意味的に関連するコードの発見を支援するため
+ *   - 大規模なコードベースにおいて、特定の機能や実装パターンを素早く特定するため
  * scope:
- *   in: クエリ文字列、topK（デフォルト10）、threshold（デフォルト0.5）、language、kind、作業ディレクトリパス
- *   out: 検索結果配列（各結果はコードスニペット、ファイルパス、類似度スコアを含む）、総件数、truncatedフラグ、エラーメッセージ
+ *   in: SemanticSearchInput(クエリ、topK、閾値、フィルタ条件)、作業ディレクトリパス
+ *   out: SemanticSearchOutput(ヒット数、切り詰めフラグ、検索結果リスト、エラー情報)
  */
 
 /**
@@ -114,12 +113,13 @@ function findNearestNeighbors(
 // Main Function
 // ============================================================================
 
- /**
-  * コードの意味検索を行う
-  * @param input 検索クエリや上位K件などの入力パラメータ
-  * @param cwd 作業ディレクトリのパス
-  * @returns 検索結果を含む出力オブジェクト
-  */
+/**
+ * 意味的検索を実行する
+ * @summary 意味的検索実行
+ * @param input 検索入力データ
+ * @param cwd 作業ディレクトリ
+ * @returns 検索出力データ
+ */
 export async function semanticSearch(
 	input: SemanticSearchInput,
 	cwd: string
@@ -212,11 +212,12 @@ export async function semanticSearch(
 	}
 }
 
- /**
-  * セマンティック検索の結果を整形します。
-  * @param result セマンティック検索の出力結果
-  * @returns 整形された文字列
-  */
+/**
+ * 検索結果を整形する
+ * @summary 検索結果整形
+ * @param result 検索結果オブジェクト
+ * @returns 整形された文字列
+ */
 export function formatSemanticSearch(result: SemanticSearchOutput): string {
 	if (result.error) {
 		return `Error: ${result.error}`;

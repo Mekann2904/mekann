@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/call-graph/index.ts
- * role: call-graphモジュールのエントリーポイント
- * why: call-graph機能の型定義とビルダー・クエリ関数を一元的に公開し、モジュール利用者へのインターフェースを提供するため
- * related: types.js, builder.js, query.js
- * public_api: CallGraphNode, CallGraphEdge, CallSite, CallGraphIndex, CallGraphMetadata, CallGraphNodeKind, CallGraphIndexInput, CallGraphIndexOutput, FindCallersInput, FindCalleesInput, FindCallersOutput, FindCalleesOutput, CallChainResult, buildCallGraph, saveCallGraphIndex, readCallGraphIndex, isCallGraphIndexStale, findCallers, findCallees, findCallPath, findNodesByName, findNodeById, findNodesByFile, getNodeStats
- * invariants: エクスポートされる型と関数のシグネチャはサブモジュールと整合している
- * side_effects: なし（再エクスポートのみ）
- * failure_modes: サブモジュールのimportに失敗した場合、モジュール全体が読み込めない
+ * role: 本モジュールの公開APIを定義するエントリーポイント
+ * why: コールグラフ分析の機能を統一的に利用可能にするため
+ * related: .pi/extensions/search/call-graph/types.ts, .pi/extensions/search/call-graph/builder.ts, .pi/extensions/search/call-graph/query.ts
+ * public_api: buildCallGraph, findCallers, findCallees, findCallPath
+ * invariants: エクスポートされる型と関数はサブモジュールから直接再エクスポートされる
+ * side_effects: なし（純粋なモジュール定義）
+ * failure_modes: サブモジュールの循環参照、またはビルド・クエリ時のランタイムエラーが伝播する
  * @abdd.explain
- * overview: call-graphモジュールの公開APIを集約するエントリーポイント
+ * overview: ripgrepとctagsを用いたコールグラフ分析機能の集約モジュール
  * what_it_does:
- *   - types.jsから13種類の型定義を再エクスポートする
- *   - builder.jsから4つのインデックス構築関数を再エクスポートする
- *   - query.jsから7つのクエリ関数を再エクスポートする
+ *   - コールグラフの型定義（Type, Node, Edge等）を公開する
+ *   - コールグラフの構築および保存・読み込み機能（Builder）を提供する
+ *   - 呼び出し元・呼び出し先の検索やパス探索機能（Query）を提供する
  * why_it_exists:
- *   - モジュール利用者が個別のサブモジュールを直接importする手間を省くため
- *   - call-graph機能の公開インターフェースを一箇所で管理するため
+ *   - 外部モジュールからのインポート経路を単一のエントリーポイントに集約するため
+ *   - 実装詳細（Builder, Query）を隠蔽し、利用者に対して明確なAPIを提示するため
  * scope:
- *   in: なし（再エクスポートのみでロジックを持たない）
- *   out: types.js, builder.js, query.jsの全公開API
+ *   in: サブモジュール（types, builder, query）
+ *   out: コールグラフ分析機能の型および関数セット
  */
 
 /**

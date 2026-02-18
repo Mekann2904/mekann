@@ -1,26 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/code-structure-analyzer/extension.ts
- * role: コード構造解析エクステンションのエントリーポイント、AST抽出・Mermaid図生成・ドキュメント生成の統合実行
- * why: 実装コードからドキュメントを自動生成するハイブリッドシステムの基盤として、3フェーズの解析パイプラインを提供する
- * related: tools/extract-structure.js, tools/generate-diagrams.js, tools/generate-doc.js
- * public_api: analyzeCodeStructure, AnalyzeOptions, AnalysisResult
- * invariants: 分析結果は必ずstructure/diagrams/docSections/metadataを含む、diagramTypes未指定時は3種類全てを生成
- * side_effects: ファイルシステム読み込み（extractCodeStructure内）、現在時刻のISO文字列をmetadata.analyzedAtに設定
- * failure_modes: 対象パス不存在時のAST抽出失敗、テンプレートファイル不存在時のドキュメント生成エラー
+ * role: コード構造解析のエントリポイントおよびオーケストレータ
+ * why: AST抽出、図生成、ドキュメント作成という複数のフェーズを統一的なインターフェースで実行するため
+ * related: ./tools/extract-structure.js, ./tools/generate-diagrams.js, ./tools/generate-doc.js
+ * public_api: AnalyzeOptions, AnalysisResult, analyzeCodeStructure
+ * invariants: 出力ディレクトリが指定された場合、そこにファイルが生成される
+ * side_effects: ファイルシステムへの書き込み（オプション）およびファイルの読み取り
+ * failure_modes: 対象パスが存在しない、読み取り権限がない、構文解析エラー
  * @abdd.explain
- * overview: TypeScript/JavaScriptソースコードを解析し、構造データ・Mermaid図・ドキュメントセクションを統合的に生成する
+ * overview: 実装からドキュメントを自動生成するハイブリッドシステムのメインモジュール
  * what_it_does:
- *   - AnalyzeOptionsに基づきextractCodeStructureでAST抽出を実行
- *   - 抽出結果からgenerateMermaidDiagramsでflowchart/classDiagram/sequenceDiagramを生成
- *   - generateDocSectionsでLLM用コンテキストを含むドキュメントセクションを生成
- *   - 解析時刻・ソースパス・ファイルハッシュ・統計情報を含むメタデータを構築
+ *   - AST抽出、Mermaid図生成、ドキュメントセクション生成の各フェーズを順次実行する
+ *   - 解析結果（構造、図、ドキュメント、メタデータ）を統合されたオブジェクトとして返す
  * why_it_exists:
- *   - 手動ドキュメント作成の負担を軽減し、実装との整合性を保証する
- *   - Mermaid Diagram Team、Docs Enablement Teamによる品質保証プロセスにデータを供給する
+ *   - 機械的生成とLLM解説を組み合わせた品質の高いドキュメント生成プロセスを提供する
+ *   - ユーザーに対し、詳細な設定を意識せずに一連の解析処理を実行するAPIを提供する
  * scope:
- *   in: ソースファイルパス、出力ディレクトリ、図種類指定、除外パターン、LLMコンテキスト含有フラグ
- *   out: AnalysisResult（構造データ、Mermaid図、ドキュメントセクション、メタデータ）
+ *   in: AnalyzeOptions (対象パス、出力設定、図の種類)
+ *   out: AnalysisResult (構造データ、Mermaid図、ドキュメントセクション、メタデータ)
  */
 
 /**
@@ -41,15 +39,15 @@ import { join, relative, basename } from 'path';
 // Types
 // ============================================================================
 
- /**
-  * コード構造解析のオプション
-  * @param target - 対象ソースファイルまたはディレクトリ
-  * @param outputDir - 出力ディレクトリ
-  * @param diagramTypes - 生成する図の種類
-  * @param templatePath - テンプレートファイルパス
-  * @param exclude - 除外パターン
-  * @param includeLLMContext - LLM用コンテキストを含める
-  */
+/**
+ * 解析オプション定義
+ * @summary 解析オプション設定
+ * @param target 解析対象のパス
+ * @param outputDir 出力先ディレクトリ
+ * @param diagramTypes 生成する図の種類
+ * @param templatePath テンプレートファイルパス
+ * @param exclude 除外対象パターン
+ */
 export interface AnalyzeOptions {
   /** 対象ソースファイルまたはディレクトリ */
   target: string;
@@ -65,13 +63,14 @@ export interface AnalyzeOptions {
   includeLLMContext?: boolean;
 }
 
- /**
-  * コード構造解析の結果を表します。
-  * @param {StructureData} structure 構造化データ
-  * @param {MermaidDiagrams} diagrams Mermaid図
-  * @param {DocSections} docSections ドキュメントセクション
-  * @param {object} metadata メタデータ
-  */
+/**
+ * 解析結果インターフェース
+ * @summary 解析結果定義
+ * @property structure 構造データ
+ * @property diagrams ダイアグラム
+ * @property docSections ドキュメントセクション
+ * @property metadata メタデータ
+ */
 export interface AnalysisResult {
   /** 構造化データ */
   structure: StructureData;
@@ -97,11 +96,16 @@ export interface AnalysisResult {
 // Main Tool Functions
 // ============================================================================
 
- /**
-  * コード構造を解析し、データを抽出
-  * @param params 解析オプション（対象パス、出力先、図種類、LLMコンテキスト）
-  * @returns 解析結果（構造データ、Mermaid図、ドキュメントセクション）
-  */
+/**
+ * コード構造を解析
+ * @summary コード構造解析
+ * @param params 解析オプション
+ * @param params.target 対象ディレクトリ
+ * @param params.outputDir 出力先ディレクトリ
+ * @param params.diagramTypes ダイアグラム種別
+ * @param params.includeLLMContext LLMコンテキストフラグ
+ * @returns 解析結果データ
+ */
 export async function analyzeCodeStructure(params: {
   target: string;
   outputDir?: string;
@@ -160,12 +164,14 @@ export async function analyzeCodeStructure(params: {
   };
 }
 
- /**
-  * 構造データを抽出する
-  * @param params.target 対象のパス
-  * @param params.exclude 除外パターンの配列
-  * @returns 構造化データ
-  */
+/**
+ * 構造を抽出
+ * @summary 構造抽出
+ * @param params ターゲットと除外設定
+ * @param params.target 対象ディレクトリ
+ * @param params.exclude 除外パターン
+ * @returns 抽出された構造データ
+ */
 export async function extractStructure(params: {
   target: string;
   exclude?: string[];
@@ -178,11 +184,14 @@ export async function extractStructure(params: {
   return extractCodeStructure(options);
 }
 
- /**
-  * Mermaid図を生成する
-  * @param params 構造データと生成対象の種類
-  * @returns 生成されたMermaid図
-  */
+/**
+ * ダイアグラム生成
+ * @summary ダイアグラム生成
+ * @param params 構造データと種別
+ * @param params.structure 構造データ
+ * @param params.types ダイアグラム種別
+ * @returns Mermaidダイアグラムデータ
+ */
 export async function generateDiagrams(params: {
   structure: StructureData;
   types?: string[];
@@ -195,11 +204,14 @@ export async function generateDiagrams(params: {
   return generateMermaidDiagrams(params.structure, options);
 }
 
- /**
-  * 解析結果をMarkdown形式で生成
-  * @param params 解析結果と出力パスを含むオブジェクト
-  * @returns 生成されたMarkdownテキスト
-  */
+/**
+ * Markdownを生成
+ * @summary Markdown生成
+ * @param params 解析結果と出力パス
+ * @param params.result 解析結果データ
+ * @param params.outputPath 出力先ファイルパス
+ * @returns 生成されたMarkdown文字列
+ */
 export async function generateMarkdown(params: {
   result: AnalysisResult;
   outputPath?: string;

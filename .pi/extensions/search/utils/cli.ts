@@ -1,35 +1,33 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/cli.ts
- * role: 外部コマンド実行ユーティリティ
- * why: 子プロセス実行時のタイムアウト、AbortSignal、出力サイズ制限を統一的に管理するため
- * related: types.ts, constants.ts, spawn (node:child_process), search/index.ts
+ * role: 外部プロセス実行ラッパー
+ * why: タイムアウト、出力サイズ制限、中止シグナル、エラーハンドリングを統一的に管理するため
+ * related: .pi/extensions/search/types.ts, .pi/extensions/search/utils/constants.ts
  * public_api: execute
  * invariants:
- *   - 戻り値は常にCliResultオブジェクト形式
- *   - 出力はmaxOutputSizeを超えると切り捨てられる
- *   - デフォルトタイムアウトは30秒
- * side_effects:
- *   - 外部プロセスの起動と終了
- *   - プロセスへのSIGTERM送信（タイムアウトまたは中断時）
+ * - Promiseは必ず解決され、rejectされない
+ * - 出力サイズがmaxOutputSizeを超える場合、切り詰められる
+ * - プロセス終了時にタイマーとシグナルリスナーはクリアされる
+ * side_effects: 子プロセスの生成と終了、環境変数のマージ、プロセスへのシグナル送信(SIGTERM)
  * failure_modes:
- *   - コマンドが存在しない場合、code=1で終了
- *   - タイムアウト時はtimedOut=true、killed=trueでSIGTERM送信
- *   - AbortSignal検出時は即座にプロセスをkill
+ * - コマンドが見つからない場合
+ * - タイムアウト発生による強制終了
+ * - AbortSignalによる中断
+ * - 出力バッファ制限超過によるデータ欠落
  * @abdd.explain
- * overview: CLIコマンドを安全に実行し、構造化された結果を返すspawnラッパー関数
+ * overview: Node.jsのspawnをラップし、タイムアウトや出力制限などの安全機材を備えたCLI実行機能を提供する
  * what_it_does:
- *   - spawnによる外部コマンド実行とstdout/stderrの収集
- *   - 指定時間経過後のプロセス強制終了（タイムアウト処理）
- *   - AbortSignalによる実行中断サポート
- *   - 出力サイズが上限を超えた場合の切り捨て処理
+ *   - 指定されたコマンドと引数で子プロセスを生成し、標準出力・標準エラーを収集する
+ *   - タイムアウト時間経過時、またはAbortSignal発火時にSIGTERMを送信しプロセスを終了する
+ *   - stdoutとstderrのサイズが上限を超えた場合、それ以上の書き込みを停止する
+ *   - プロセスの終了コード、出力内容、中断状態などを含むCliResultオブジェクトを返す
  * why_it_exists:
- *   - 外部ツール（grep, rg等）実行時のリソース保護
- *   - 無応答プロセスによるハングアップ防止
- *   - 呼び出し元でのエラーハンドリング統一
+ *   - 生のchild_process.spawnを使用すると、タイムアウト処理やリソース管理が複雑化するため
+ *   - 検索ツール等で想定外の長時間実行や大量出力を防ぐ安全策が共通的に必要なため
  * scope:
- *   in: コマンド文字列、引数配列、実行オプション（cwd, timeout, signal, maxOutputSize, env）
- *   out: CliResult（code, stdout, stderr, timedOut, killed）
+ *   in: コマンド文字列、引数配列、実行オプション(cwd, timeout, signal, maxOutputSize, env)
+ *   out: 終了コード、標準出力、標準エラー出力、タイムアウトフラグ、キルフラグを含む結果オブジェクト
  */
 
 /**
@@ -53,13 +51,15 @@ const DEFAULT_TIMEOUT = 30_000;
 // Maximum output size: 10MB
 const DEFAULT_MAX_OUTPUT_SIZE = 10 * 1024 * 1024;
 
- /**
-  * コマンドを実行し、構造化された結果を返す
-  * @param command - 実行するコマンド
-  * @param args - コマンド引数
-  * @param options - 実行オプション
-  * @returns コマンドの実行結果
-  */
+/**
+ * コマンドを実行する
+ * @summary コマンドを実行する
+ * @param command - 実行するコマンド
+ * @param args - コマンド引数
+ * @param options - 実行オプション
+ * @returns コマンドの実行結果
+ * @throws コマンド実行失敗時
+ */
 export async function execute(
   command: string,
   args: string[] = [],
@@ -172,13 +172,15 @@ export async function execute(
   });
 }
 
- /**
-  * コマンドを実行し、失敗時に例外を投げる
-  * @param command - 実行するコマンド
-  * @param args - コマンド引数
-  * @param options - 実行オプション
-  * @returns 標準出力の内容
-  */
+/**
+ * コマンド実行
+ * @summary コマンド実行
+ * @param command - 実行するコマンド
+ * @param args - コマンド引数
+ * @param options - 実行オプション
+ * @returns 標準出力の内容
+ * @throws コマンド失敗時
+ */
 export async function executeOrThrow(
   command: string,
   args: string[] = [],
@@ -200,23 +202,25 @@ export async function executeOrThrow(
   return result.stdout;
 }
 
- /**
-  * コマンドがPATHにあるかチェックする
-  * @param command - コマンド名
-  * @returns 利用可能であれば true
-  */
+/**
+ * コマンドの存在確認
+ * @summary コマンド確認
+ * @param command - コマンド名
+ * @returns 利用可能であれば true
+ */
 export async function isAvailable(command: string): Promise<boolean> {
   const whichCommand = process.platform === "win32" ? "where" : "which";
   const result = await execute(whichCommand, [command], { timeout: 5000 });
   return result.code === 0 && result.stdout.trim().length > 0;
 }
 
- /**
-  * 指定したコマンドのバージョン情報を取得する
-  * @param command - コマンド名
-  * @param versionFlag - バージョンを取得するためのフラグ（デフォルト: "--version"）
-  * @returns ツールのバージョン情報、またはコマンドが見つからない場合は null
-  */
+/**
+ * ツールバージョン取得
+ * @summary ツールバージョンを取得
+ * @param command - コマンド名
+ * @param versionFlag - バージョンフラグ
+ * @returns ツールバージョン情報
+ */
 export async function getVersion(
   command: string,
   versionFlag = "--version"
@@ -242,9 +246,10 @@ export async function getVersion(
 let cachedAvailability: ToolAvailability | null = null;
 
 /**
- * ツールの利用可能性を確認する
- * @param force - キャッシュを強制的に更新するかどうか
- * @returns ツールの利用可能性を示すオブジェクト
+ * ツール利用可否チェック
+ * @summary ツール利用可否を確認
+ * @param force - キャッシュを強制更新するか
+ * @returns ツール利用可否情報
  */
 export async function checkToolAvailability(force = false): Promise<ToolAvailability> {
   if (cachedAvailability && !force) return cachedAvailability;
@@ -268,11 +273,12 @@ export async function checkToolAvailability(force = false): Promise<ToolAvailabi
   return cachedAvailability;
 }
 
- /**
-  * 入力オプションからfdコマンドの引数を生成
-  * @param input - 検索オプション
-  * @returns fdコマンドの引数リスト
-  */
+/**
+ * fdコマンド引数作成
+ * @summary fd引数を生成
+ * @param input - ファイル候補入力
+ * @returns コマンド引数配列
+ */
 export function buildFdArgs(input: import("../types").FileCandidatesInput): string[] {
   const args: string[] = [];
 
@@ -315,11 +321,12 @@ export function buildFdArgs(input: import("../types").FileCandidatesInput): stri
   return args;
 }
 
- /**
-  * 入力オプションからripgrepコマンドの引数を構築
-  * @param input - コード検索の入力オプション
-  * @returns ripgrepに渡す引数の配列
-  */
+/**
+ * ripgrepコマンド引数作成
+ * @summary ripgrep引数を生成
+ * @param input - コード検索入力
+ * @returns コマンド引数配列
+ */
 export function buildRgArgs(input: import("../types").CodeSearchInput): string[] {
   const args: string[] = ["--json"];
 
@@ -363,12 +370,13 @@ export function buildRgArgs(input: import("../types").CodeSearchInput): string[]
   return args;
 }
 
- /**
-  * JSON出力用のctagsコマンド引数を生成する
-  * @param targetPath 対象パス
-  * @param cwd カレントワーキングディレクトリ
-  * @returns ctagsコマンドの引数リスト
-  */
+/**
+ * ctagsコマンド引数作成
+ * @summary ctags引数を生成
+ * @param targetPath - 対象パス
+ * @param cwd - カレントディレクトリ
+ * @returns コマンド引数配列
+ */
 export function buildCtagsArgs(targetPath: string, cwd: string): string[] {
   return [
     "--output-format=json",

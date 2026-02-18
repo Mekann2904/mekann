@@ -1,31 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/embeddings/types.ts
- * role: エンベディングモジュールの型定義ファイル
- * why: 複数のエンベディングプロバイダーを統一的に扱うための契約を定義し、プロバイダー実装の差異を吸収する
- * related: .pi/lib/embeddings/index.ts, .pi/lib/embeddings/providers/openai.ts, .pi/lib/embeddings/providers/local.ts, .pi/lib/embeddings/config.ts
+ * role: エンベディングプロバイダーとモジュール設定の型定義
+ * why: プロバイダー実装のインターフェース統一、設定データの型安全性確保
+ * related: .pi/lib/embeddings/provider.ts, .pi/lib/embeddings/openai.ts, .pi/lib/embeddings/module.ts
  * public_api: ProviderCapabilities, EmbeddingProvider, ProviderConfig, EmbeddingModuleConfig
- * invariants:
- *   - EmbeddingProvider.idは不変（readonly）
- *   - dimensionsは正の整数
- *   - maxTokensは正の整数
- *   - maxBatchSizeはsupportsBatch=true時のみ意味を持つ
+ * invariants: capabilities.dimensions は正の整数, fallbackOrder は空でない配列
  * side_effects: なし（純粋な型定義）
- * failure_modes: なし（型定義のため実行時エラーは発生しない）
+ * failure_modes: 型定義不整合による実行時エラー
  * @abdd.explain
- * overview: エンベディングプロバイダーのインターフェースと設定型を定義するTypeScript型定義ファイル
+ * overview: エンベディング機能に関する共通インターフェースと設定型を定義する
  * what_it_does:
- *   - プロバイダーの能力（maxTokens, dimensions, supportsBatch等）を表現するProviderCapabilities型を定義
- *   - プロバイダー共通インターフェースEmbeddingProviderを定義（generateEmbedding, generateEmbeddingsBatch等）
- *   - プロバイダー設定とモジュール全体設定の型を定義
- *   - ライフサイクルメソッド（initialize, dispose）をオプション定義
+ *   - プロバイダーの能力制限と実装要件を定義 (EmbeddingProvider, ProviderCapabilities)
+ *   - モジュール全体の初期化設定とプロバイダー選択ロジック用データ構造を定義 (EmbeddingModuleConfig)
+ *   - 単一プロバイダー設定スキーマを定義 (ProviderConfig)
  * why_it_exists:
- *   - OpenAI、ローカル、モック等の複数プロバイダーを統一インターフェースで扱うため
- *   - フォールバック機構を実現するための共通契約を提供
- *   - プロバイダー実装者に必要なメソッド実装を強制
+ *   - 異なるエンベディングプロバイダー（OpenAI, Local, Mock等）を同一インターフェースで扱うため
+ *   - 設定ファイルや依存性注入における型安全性を担保するため
  * scope:
- *   in: なし（型定義のみ）
- *   out: 4つのexportされたinterface型
+ *   in: 外部からのプロバイダー実装、設定オブジェクト
+ *   out: TypeScript型情報
  */
 
 /**
@@ -38,7 +32,8 @@
 // ============================================================================
 
 /**
- * エンベディングプロバイダーの能力定義
+ * @summary プロバイダ能力定義
+ * @description エンベディングプロバイダーの能力を定義します。
  * @param maxTokens 最大入力トークン数
  * @param dimensions エンベディング次元数
  * @param supportsBatch バッチリクエスト対応
@@ -116,11 +111,12 @@ export interface EmbeddingProvider {
 // Configuration Types
 // ============================================================================
 
- /**
-  * プロバイダー設定を定義します。
-  * @param provider 使用するプロバイダーID
-  * @param options プロバイダー固有のオプション
-  */
+/**
+ * プロバイダー設定を定義
+ * @summary プロバイダー設定
+ * @param provider 使用するプロバイダーID
+ * @param options プロバイダー固有のオプション
+ */
 export interface ProviderConfig {
   /** 使用するプロバイダーID */
   provider?: string;
@@ -129,13 +125,16 @@ export interface ProviderConfig {
   options?: Record<string, unknown>;
 }
 
- /**
-  * エンベディングモジュール設定
-  * @param version バージョン
-  * @param defaultProvider デフォルトプロバイダーID
-  * @param fallbackOrder フォールバック順序
-  * @param providerOptions プロバイダー固有オプション
-  */
+/**
+ * @summary 埋め込み結果
+ * @description 埋め込みベクトル生成の結果を表します。
+ * @param {number[]} embedding 生成されたベクトル
+ * @param {string} provider プロバイダー名
+ * @param {string} model モデル名
+ * @param {number} dimensions ベクトル次元数
+ * @param {number} [tokens] 使用トークン数
+ * @returns {EmbeddingResult} 埋め込み結果オブジェクト
+ */
 export interface EmbeddingModuleConfig {
   /** バージョン */
   version: number;
@@ -154,14 +153,16 @@ export interface EmbeddingModuleConfig {
 // Result Types
 // ============================================================================
 
- /**
-  * エンベディング生成結果
-  * @param embedding エンベディングベクトル
-  * @param provider 使用したプロバイダーID
-  * @param model 使用したモデル名
-  * @param dimensions 次元数
-  * @param tokens トークン使用量（利用可能な場合）
-  */
+/**
+ * @summary ステータス定義
+ * @description プロバイダーの現在のステータス情報を表します。
+ * @param {string} id プロバイダーID
+ * @param {string} name プロバイダー名
+ * @param {string} model モデル名
+ * @param {boolean} available 利用可能か
+ * @param {string} [unavailableReason] 利用不可の理由
+ * @returns {ProviderStatus} ステータス情報
+ */
 export interface EmbeddingResult {
   /** エンベディングベクトル */
   embedding: number[];
@@ -179,14 +180,13 @@ export interface EmbeddingResult {
   tokens?: number;
 }
 
- /**
-  * プロバイダーの状態
-  * @param id プロバイダーID
-  * @param name 表示名
-  * @param model モデル名
-  * @param available 利用可能か
-  * @param unavailableReason 利用不可の理由
-  */
+/**
+ * @summary 検索結果保持
+ * @description ベクトル検索の結果を表します。
+ * @param {T} item 検索対象アイテム
+ * @param {number} similarity 類似度スコア
+ * @returns {VectorSearchResult<T>} 検索結果オブジェクト
+ */
 export interface ProviderStatus {
   /** プロバイダーID */
   id: string;
@@ -211,12 +211,13 @@ export interface ProviderStatus {
 // Utility Types
 // ============================================================================
 
- /**
-  * ベクトル検索結果の型定義
-  * @template T アイテムの型
-  * @param item 検索結果のアイテム
-  * @param similarity 類似度スコア (0-1)
-  */
+/**
+ * @summary プロバイダー登録
+ * @description ベクトル検索や埋め込み生成を行うプロバイダーを管理します。
+ * @param {string} id プロバイダーID
+ * @param {EmbeddingProvider} provider プロバイダーインスタンス
+ * @returns {void}
+ */
 export interface VectorSearchResult<T> {
   /** 検索結果のアイテム */
   item: T;

@@ -1,30 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/result-aggregation.ts
- * role: チームメンバーの実行結果集約・エラー分類モジュール
- * why: エラー判定と結果集約ロジックをagent-teams.tsから分離し、保守性とテスト容易性を確保するため
- * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/error-utils.js, .pi/lib/agent-types.ts
- * public_api: isRetryableTeamMemberError, resolveTeamFailureOutcome, resolveTeamMemberAggregateOutcome, RunOutcomeCode, RunOutcomeSignal
- * invariants:
- *   - キャンセルエラーはretryRecommended=falseを返す
- *   - タイムアウト・レート制限・502/503/接続エラーは再試行可能と判定する
- *   - 全メンバー成功時のみoutcomeCode="SUCCESS"となる
- * side_effects: なし（純粋関数のみ）
- * failure_modes:
- *   - 不明なエラーパターンはNONRETRYABLE_FAILUREとして扱う
- *   - 空のmemberResults配列が渡された場合、SUCCESSとなる（失敗0件のため）
+ * role: エージェントチームの実行結果集約およびエラー分類ロジックの提供
+ * why: メインロジックから結果処理を分離し、保守性を確保するため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, ../../lib/error-utils.js
+ * public_api: isRetryableTeamMemberError, resolveTeamFailureOutcome, resolveTeamMemberAggregateOutcome, type RunOutcomeCode, type RunOutcomeSignal
+ * invariants: RunOutcomeSignalは必ずoutcomeCodeとretryRecommendedを含む
+ * side_effects: なし（純粋関数）
+ * failure_modes: 不正なエラーオブジェクトが渡された場合の分類ロジックの誤動作
  * @abdd.explain
- * overview: エージェントチームの実行結果を集約し、エラーの再試行可否と全体の結果コードを判定する
+ * overview: エージェントチームの実行結果を集約し、エラーの種別に応じて再試行可否や結果コードを判定するモジュール
  * what_it_does:
- *   - エラーメッセージからHTTPステータスコード・エラー種別を抽出・分類
- *   - キャンセル/タイムアウト/プレッシャーエラー/再試行可能エラー/非再試行エラーを判定
- *   - メンバー結果配列から成功/失敗を集約し、失敗メンバーIDを特定
+ *   - エラーメッセージやステータスコードに基づき、再試行可能か否かを判定する
+ *   - エラーの内容（キャンセル、タイムアウト、プレッシャー、再試行可能/不可能な失敗）を解析し、RunOutcomeSignalを生成する
+ *   - 複数のチームメンバーの実行結果を集約し、全体の成否と失敗メンバーを特定する
  * why_it_exists:
- *   - agent-teams.tsの責務を結果処理と実行制御に分離するため
- *   - エラー分類ロジックを一元管理し、判定基準の変更を容易にするため
+ *   - 結果処理ロジックを一元化し、エージェントチームの振る舞いを一貫させるため
+ *   - 複雑なエラー分類条件をユーティリティとして切り出し、メインフローの可読性を向上させるため
  * scope:
- *   in: TeamMemberResult配列、unknown型のエラーオブジェクト
- *   out: RunOutcomeSignal（outcomeCode + retryRecommended）、失敗メンバーID一覧
+ *   in: エラーオブジェクト、ステータスコード、チームメンバーの実行結果配列
+ *   out: 再試行可否フラグ、結果コード、失敗メンバーIDリストを含む実行結果シグナル
  */
 
 // File: .pi/extensions/agent-teams/result-aggregation.ts
@@ -53,12 +48,13 @@ export type { RunOutcomeCode, RunOutcomeSignal };
 // Failure Resolution
 // ============================================================================
 
- /**
-  * チームメンバーのエラーが再試行可能か判定
-  * @param error 判定対象のエラー
-  * @param statusCode HTTPステータスコード（任意）
-  * @returns 再試行可能な場合はtrue
-  */
+/**
+ * リトライ可能か判定
+ * @summary リトライ可否判定
+ * @param error 判定対象のエラー
+ * @param statusCode HTTPステータスコード
+ * @returns リトライ可能な場合はtrue
+ */
 export function isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean {
   const message = toErrorMessage(error).toLowerCase();
   if (/429|rate\s*limit|too many requests/i.test(message)) {
@@ -92,11 +88,12 @@ export function isRetryableTeamMemberError(error: unknown, statusCode?: number):
   return message.includes("agent team member returned empty output");
 }
 
- /**
-  * チームのエラー種別を判定し、実行結果シグナルを返す
-  * @param error - 発生したエラー
-  * @returns 判定された実行結果シグナル
-  */
+/**
+ * 失敗時の結果生成
+ * @summary 失敗結果生成
+ * @param error 発生したエラー
+ * @returns 失敗シグナル
+ */
 export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
   if (isCancelledErrorMessage(error)) {
     return { outcomeCode: "CANCELLED", retryRecommended: false };
@@ -138,11 +135,12 @@ export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
 // Member Outcome Resolution
 // ============================================================================
 
- /**
-  * チームメンバーの実行結果を集約して解決する
-  * @param memberResults チームメンバーの実行結果リスト
-  * @returns 実行結果と失敗したメンバーIDのリスト
-  */
+/**
+ * メンバー結果の統合判定
+ * @summary メンバー統合判定
+ * @param memberResults メンバーの実行結果リスト
+ * @returns 統合された実行結果と失敗メンバーID
+ */
 export function resolveTeamMemberAggregateOutcome(memberResults: TeamMemberResult[]): RunOutcomeSignal & {
   failedMemberIds: string[];
 } {
@@ -193,11 +191,12 @@ export function resolveTeamMemberAggregateOutcome(memberResults: TeamMemberResul
 // Parallel Run Outcome Resolution
 // ============================================================================
 
- /**
-  * チームの並列実行結果を集計して解決する
-  * @param results チーム定義、実行記録、メンバー結果を含む配列
-  * @returns 実行結果シグナル、失敗・一部成功チームID、メンバー別失敗ID
-  */
+/**
+ * 並列実行結果の判定
+ * @summary 並列実行判定
+ * @param results チームごとの実行結果リスト
+ * @returns 統合された実行結果と失敗情報
+ */
 export function resolveTeamParallelRunOutcome(
   results: Array<{
     team: TeamDefinition;
@@ -298,14 +297,15 @@ export function resolveTeamParallelRunOutcome(
 // Result Formatting
 // ============================================================================
 
- /**
-  * チームの実行結果をテキスト形式で構築します。
-  * @param input.run チームの実行記録
-  * @param input.team チーム定義
-  * @param input.memberResults メンバーごとの結果配列
-  * @param input.communicationAudit 通信監査ログ（オプション）
-  * @returns 結果を表す文字列
-  */
+/**
+ * チーム結果のテキスト構築
+ * @summary チーム結果構築
+ * @param input.run チームの実行記録
+ * @param input.team チーム定義
+ * @param input.memberResults メンバーの実行結果リスト
+ * @param input.communicationAudit コミュニケーション監査ログ（オプション）
+ * @returns チーム実行結果のテキスト
+ */
 export function buildTeamResultText(input: {
   run: TeamRunRecord;
   team: TeamDefinition;
@@ -404,11 +404,12 @@ export function buildTeamResultText(input: {
 // Utility Functions
 // ============================================================================
 
- /**
-  * 出力文字列からサマリーを抽出する
-  * @param output 処理対象の出力文字列
-  * @returns 抽出されたサマリー文字列、または見つからない場合は最初の非空行
-  */
+/**
+ * 要約を抽出
+ * @summary 要約抽出
+ * @param output LLMの出力文字列
+ * @returns 抽出された要約文字列
+ */
 export function extractSummary(output: string): string {
   const match = output.match(/^\s*summary\s*:\s*(.+)$/im);
   if (match?.[1]) {

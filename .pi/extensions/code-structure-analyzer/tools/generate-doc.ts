@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/code-structure-analyzer/tools/generate-doc.ts
- * role: ドキュメントセクション生成器
- * why: コード構造データとMermaid図から、LLM解説用プレースホルダを含むドキュメントセクションを統一的に生成するため
- * related: extract-structure.ts, generate-diagrams.ts, DocSections, LLMContext
- * public_api: generateDocSections, DocOptions, DocSections, LLMContext
- * invariants: 入力StructureDataとMermaidDiagramsが非nullの場合、全セクション文字列を返す; includeLLMContext未指定時はllmContextをundefinedとする
- * side_effects: なし（純粋関数として動作）
- * failure_modes: structureまたはdiagramsがnull/undefinedの場合、TypeErrorが発生
+ * role: ドキュメントセクション生成エンジン
+ * why: コード構造データと図解データから、LLM解説用プレースホルダを含む構造化ドキュメントを作成するため
+ * related: ./extract-structure.js, ./generate-diagrams.js
+ * public_api: generateDocSections
+ * invariants: 入力構造データに基づきタイトルと概要を生成する、LLMコンテキストはオプション指定時のみ生成する
+ * side_effects: ファイルシステムへの直接書き込みは行わない（データ生成のみ）
+ * failure_modes: テンプレートファイルの不存在、構造データのフォーマット不一致
  * @abdd.explain
- * overview: 構造データとMermaid図を入力とし、タイトル・概要・構造・API参照・図解セクションを生成するモジュール
+ * overview: 解析されたコード構造とMermaid図から、統合された技術ドキュメントの各セクション文字列を生成するモジュール。
  * what_it_does:
- *   - StructureDataからタイトル、概要、APIリファレンス、構造セクションの各文字列を生成
- *   - MermaidDiagramsから図解セクション文字列を生成
- *   - includeLLMContext=true時、主要関数・クラス・インターフェース・依存関係・推奨解説ポイントを含むLLMContextを生成
- *   - 生成結果をDocSectionsオブジェクトとして返却
+ *   - 構造データからタイトル、概要、APIリファレンスセクションを生成する
+ *   - Mermaid図を基に図解セクションを生成する
+ *   - オプションに応じてLLMが解説生成に使用するためのコンテキストデータ（要約、主要要素リスト）を生成する
  * why_it_exists:
- *   - コード解析結果を人間可読なドキュメント形式に変換するため
- *   - LLMによる自動解説生成に必要なコンテキストを提供するため
- *   - ドキュメント生成処理を一元管理し、フォーマットの一貫性を保証するため
+ *   - コード解析と可視化の結果を、人間およびAIが参照可能なドキュメント形式に変換するため
+ *   - LLMによる高精度な解説生成のための構造化データを提供するため
  * scope:
- *   in: StructureData（関数・クラス・インターフェース情報）, MermaidDiagrams（生成済み図）, DocOptions（テンプレートパス・LLMコンテキスト含有フラグ）
- *   out: DocSections（title, overview, structure, apiReference, diagrams, llmContext）
+ *   in: コード構造データ, Mermaid図データ, 生成オプション
+ *   out: ドキュメントセクションオブジェクト, LLMコンテキスト
  */
 
 /**
@@ -38,11 +36,12 @@ import type { MermaidDiagrams } from './generate-diagrams.js';
 // Types
 // ============================================================================
 
- /**
-  * ドキュメント生成のオプション設定
-  * @param templatePath テンプレートファイルパス
-  * @param includeLLMContext LLM用コンテキストを含めるかどうか
-  */
+/**
+ * ドキュメント生成オプション
+ * @summary 生成オプション設定
+ * @param templatePath テンプレートファイルパス
+ * @param includeLLMContext LLM用コンテキストを含めるか
+ */
 export interface DocOptions {
   /** テンプレートファイルパス */
 /**
@@ -56,15 +55,10 @@ export interface DocOptions {
   includeLLMContext?: boolean;
 }
 
- /**
-  * ドキュメントの各セクションを定義
-  * @param title タイトル
-  * @param overview 概要セクション（LLM用コンテキスト含む）
-  * @param structure 構造セクション
-  * @param apiReference APIリファレンスセクション
-  * @param diagrams 図解セクション
-  * @param llmContext LLM用コンテキストデータ
-  */
+/**
+ * ドキュメントセクション定義
+ * @summary セクション定義
+ */
 export interface DocSections {
   /** タイトル */
   title: string;
@@ -80,14 +74,10 @@ export interface DocSections {
   llmContext?: LLMContext;
 }
 
- /**
-  * LLM用のコンテキスト情報
-  * @param summary 解析サマリー
-  * @param keyFunctions 主要な関数一覧
-  * @param keyClasses 主要なクラス一覧
-  * @param keyInterfaces 主要なインターフェース一覧
-  * @param dependencies 依存関係情報
-  */
+/**
+ * LLMコンテキスト定義
+ * @summary LLM用データ定義
+ */
 export interface LLMContext {
   /** 解析サマリー */
   summary: string;
@@ -116,13 +106,14 @@ export interface LLMContext {
 // Main Export Function
 // ============================================================================
 
- /**
-  * 構造データからドキュメントセクションを生成する
-  * @param structure - 解析された構造データ
-  * @param diagrams - 生成されたMermaid図
-  * @param options - ドキュメント生成オプション
-  * @returns 生成されたドキュメントセクション
-  */
+/**
+ * ドキュメントセクション生成
+ * @summary ドキュメント生成
+ * @param structure - 解析された構造データ
+ * @param diagrams - 生成されたMermaid図
+ * @param options - ドキュメント生成オプション
+ * @returns 生成されたドキュメントセクション
+ */
 export function generateDocSections(
   structure: StructureData,
   diagrams: MermaidDiagrams,

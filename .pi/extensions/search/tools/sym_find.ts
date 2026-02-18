@@ -1,30 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/sym_find.ts
- * role: シンボル定義検索ツール。ctags生成インデックスから条件に一致するシンボルを抽出・フィルタリング・ソートする
- * why: 大規模コードベースで関数・クラス等の定義位置を高速に特定するため
- * related: sym_index.ts, types.js, utils/output.js, utils/cache.js
- * public_api: なし（内部フィルタリング・ソーティング関数群）
- * invariants:
- *   - nameRegex生成時は入力パターンを必ずエスケープしてからワイルドカード変換する
- *   - フィルタリング条件はAND結合（全条件を満たすエントリのみ返却）
- *   - ソート順は完全一致 > kind順(function優先) > ファイルパス順で固定
- * side_effects: なし（純粋関数として動作）
- * failure_modes:
- *   - 不正な正規表現パターン入力時にSyntaxError発生の可能性
- *   - インデックスエントリ欠損時は該当エントリをスキップ
+ * role: シンボル定義の検索ツール
+ * why: ctags生成インデックスからのシンボル検索、正規表現によるフィルタリング、関連性によるソートを行うため
+ * related: .pi/extensions/search/tools/sym_index.ts, .pi/extensions/search/types.ts, .pi/extensions/search/utils/output.ts
+ * public_api: filterSymbols, sortSymbols, wildcardToRegex
+ * invariants: nameRegexは有効なRegExpオブジェクト、kind比較はすべて小文字で行われる
+ * side_effects: なし（引数の配列を直接ソート・加工する）
+ * failure_modes: 無効な正規表現パターンによるエラー、入力エントリの不正な形式による処理不全
  * @abdd.explain
- * overview: ctags生成シンボルインデックスから定義を検索するフィルタリング・ソーティング処理を提供する
+ * overview: ctags生成インデックスに対するシンボル検索ロジックの実装
  * what_it_does:
- *   - ワイルドカードパターンを正規表現に変換しシンボル名をフィルタリング
- *   - kind/fileによる追加フィルタリング条件を適用
- *   - 完全一致優先・kind順・ファイルパス順でソート
+ *   - ワイルドカードパターンを正規表現に変換する
+ *   - 名前、種類、ファイルパスを基準にシンボルをフィルタリングする
+ *   - 完全一致優先、種類優先度、ファイルパス順で結果をソートする
  * why_it_exists:
- *   - コードベース全体から特定シンボルの定義位置を効率的に発見するため
- *   - 検索結果の品質を一貫した順序付けで提供するため
+ *   - ユーザー提供の検索条件（ワイルドカード等）をインデックス問い合わせに適用するため
+ *   - 検索結果の関連性と可読性を高めるため
  * scope:
- *   in: SymbolIndexEntry配列, SymFindInput（name, kind, fileフィルタ条件）
- *   out: SymbolDefinition配列（フィルタ・ソート済み）
+ *   in: SymFindInput（検索条件）、SymbolIndexEntry[]（インデックスデータ）
+ *   out: SymbolDefinition[]（フィルタ・ソート済みのシンボル定義リスト）
  */
 
 /**
@@ -159,12 +154,13 @@ function extractResultPaths(results: SymbolDefinition[]): string[] {
 // Main Entry Point
 // ============================================
 
- /**
-  * インデックスからシンボル定義を検索
-  * @param input 検索条件
-  * @param cwd カレントワーキングディレクトリ
-  * @returns 検索結果
-  */
+/**
+ * シンボル検索を行う
+ * @summary シンボル検索実行
+ * @param input 検索入力データ
+ * @param cwd 作業ディレクトリ
+ * @returns シンボル検索出力データ
+ */
 export async function symFind(
 	input: SymFindInput,
 	cwd: string

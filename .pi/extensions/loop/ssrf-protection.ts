@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop/ssrf-protection.ts
- * role: SSRF攻撃防止のためのURL/ホスト名検証ユーティリティ
- * why: ループ拡張機能における外部リクエスト時に、内部ネットワークやプライベートIPへのアクセスを遮断し、SSRF脆弱性を防ぐため
+ * role: SSRF防御ユーティリティ
+ * why: Server-Side Request Forgery (SSRF) 攻撃を防止し、プライベート/内部ネットワークへの不正アクセスをブロックするため
  * related: .pi/extensions/loop.ts, .pi/extensions/loop/reference-loader.ts
  * public_api: isBlockedHostname, isPrivateOrReservedIP
- * invariants: ホスト名判定は小文字正規化後に実行される、ブロックパターンは固定リストで定義される
- * side_effects: なし（純粋関数のみ）
- * failure_modes: 不正なIP形式の入力時はfalseを返却（例外を投げない）
+ * invariants: 入力文字列は trim および toLowerCase により正規化されて判定される
+ * side_effects: 外部DNS問い合わせ (dnsLookup) をインポートしているが、本ファイル内のエクスポート関数は同期的に計算のみを行う
+ * failure_modes: 不正なIPアドレス形式、無効なホスト名文字列が入力された場合の挙動は個別の関数実装に依存する
  * @abdd.explain
- * overview: SSRF保護のためのホスト名・IPアドレス検証機能を提供する
+ * overview: URL検証におけるSSRF対策のため、ホスト名とIPアドレスがプライベート or 内部ネットワークに属するかを判定するモジュール
  * what_it_does:
- *   - localhost、.local、.internal等のブロック対象ホスト名パターンとの照合
- *   - IPv4プライベートアドレス（10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16等）の検出
- *   - IPv6ローカルアドレス（::1, fe80::/10, fc00::/7）の検出
- *   - IPv4マップドIPv6アドレス（::ffff:x.x.x.x）からのプライベートIP抽出・判定
+ *   - ブロック対象のホスト名パターン（localhost等）に基づきホスト名を検証する
+ *   - IPアドレスがIPv4のプライベート範囲、予約済み範囲、またはIPv6のループバック/リンクローカル/ユニークローカルかを判定する
+ *   - IPv4マッピングされたIPv6アドレスをIPv4として扱い判定する
  * why_it_exists:
- *   - 外部リソース参照時のSSRF攻撃を防止するため
- *   - 内部ネットワークリソースへの不正アクセスを遮断するため
+ *   - 外部リソース取得時に、攻撃者が内部システムへアクセスするリスクを排除するため
+ *   - loop拡張機能において、安全な外部参照のみを許可するため
  * scope:
  *   in: ホスト名文字列、IPアドレス文字列
- *   out: ブロック判定結果（boolean）
+ *   out: ブロック対象か否かを示す真偽値 (boolean)
  */
 
 // File: .pi/extensions/loop/ssrf-protection.ts
@@ -49,11 +48,12 @@ const BLOCKED_HOSTNAME_PATTERNS = [
   /^::$/,
 ];
 
- /**
-  * ホスト名がブロック対象か判定する
-  * @param hostname チェック対象のホスト名
-  * @returns ブロック対象の場合はtrue
-  */
+/**
+ * ホスト名を判定
+ * @summary ブロック対象か判定
+ * @param hostname チェック対象のホスト名
+ * @returns ブロック対象の場合はtrue
+ */
 export function isBlockedHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().trim();
   for (const pattern of BLOCKED_HOSTNAME_PATTERNS) {
@@ -102,11 +102,12 @@ function isPrivateIPv4(ip: string): boolean {
   return false;
 }
 
- /**
-  * IPアドレスがプライベートまたは予約済みか判定
-  * @param ip チェック対象のIPアドレス文字列
-  * @returns プライベートまたは予約済みの場合はtrue
-  */
+/**
+ * プライベート・予約済みIP判定
+ * @summary IPアドレス種別を判定
+ * @param ip チェック対象のIPアドレス文字列
+ * @returns プライベートまたは予約済みの場合はtrue
+ */
 export function isPrivateOrReservedIP(ip: string): boolean {
   // Handle IPv6 addresses
   const normalizedIP = ip.toLowerCase();

@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/live-monitor.ts
- * role: エージェントチーム実行時のライブモニタリングUI描画モジュール
- * why: メインのagent-teams.tsからライブモニタリング機能を分離し、保守性を確保するため
- * related: .pi/extensions/agent-teams.ts, ../../lib/team-types.ts, ../../lib/live-view-utils.js, ../../lib/tui/tui-utils.js
- * public_api: renderAgentTeamLiveView, toTeamLiveItemKey, TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonitorController, LiveStreamView
- * invariants: イベント履歴はLIVE_EVENT_TAIL_LIMIT(120行)を超えた場合、古い順に削除される。toTeamLiveItemKeyは"teamId/memberId"形式の一意キーを返す。
- * side_effects: pushLiveEvent内でTeamLiveItem.events配列を直接変更する（push/splice）。TeamLiveItemのlastEvent、lastEventAtMsフィールドを更新する。
- * failure_modes: 入力イベントが空または"-"の場合、イベントは追加されない。幅・高さ制約により描画内容が切り捨てられる可能性がある。
+ * role: エージェントチーム実行のライブ監視UIおよび制御ロジックの実装
+ * why: ライブ監視の責務をメインのagent-teams.tsから分離し、保守性を向上させるため
+ * related: .pi/extensions/agent-teams.ts, .pi/lib/team-types.ts, .pi/lib/live-view-utils.ts, .pi/lib/agent-utils.ts
+ * public_api: renderAgentTeamLiveView, toTeamLiveItemKey, type TeamLivePhase, type TeamLiveItem, type AgentTeamLiveMonitorController
+ * invariants: イベント履歴はLIVE_EVENT_TAIL_LIMITで固定長管理される、すべての出力文字列は単一行に正規化される
+ * side_effects: なし（純粋な描画・変換関数とエクスポートのみ）
+ * failure_modes: イベントログの長さが制限を超えた場合に古いログが破棄される、フォーマット処理に失敗するとプレビューが崩れる可能性がある
  * @abdd.explain
- * overview: エージェントチームの実行状態をリアルタイムで表示するTUI描画機能を提供する
+ * overview: エージェントチームの実行状態を可視化するためのUI描画、イベント管理、およびユーティリティ関数を提供するモジュール
  * what_it_does:
- *   - チームメンバーの実行フェーズ(initial/communication/judge/finished/queued)をフォーマット表示
- *   - タイムスタンプ付きイベントをアイテムに追加し、上限超過時に古いイベントを削除
- *   - ライブビューの描画ウィンドウ計算とイベント履歴のテール取得
- *   - チームIDとメンバーIDから一意キーを生成
+ *   - エージェントチームのライブアイテム（TeamLiveItem）のイベントログを整形・格納する
+ *   - チームIDとメンバーIDから一意のキー文字列を生成する
+ *   - ライブストリーム、イベント、カーソル位置、テーマ設定に基づいて監視画面の文字列配列を描画する
+ *   - チームの実行フェーズ（communication, judge, finished等）を文字列ラベルに変換する
  * why_it_exists:
- *   - agent-teams.tsの責務を軽量化し、UI描画ロジックを独立させる
- *   - ライブモニタリング機能の再利用性とテスト容易性を向上させる
+ *   - agent-teams.tsの複雑さを軽減し、UIロジックの変更を分離するため
+ *   - ライブ監視に特化した定数（行数制限、ウィンドウサイズなど）を一元管理するため
  * scope:
- *   in: TeamLiveItem配列、グローバルイベント、カーソル位置、表示モード、ストリームビュー、幅/高さ、テーマ設定
- *   out: 描画用文字列配列、型定義の再エクスポート
+ *   in: チーム実行イベント（生文字列）、現在のステータス情報、表示設定（幅、高さ、テーマ）、ユーザー操作（カーソル、モード）
+ *   out: 画面描画用の文字列配列、整形済みイベントログ、フェーズ表示文字列、型定義
  */
 
 // File: .pi/extensions/agent-teams/live-monitor.ts
@@ -105,12 +105,13 @@ function toEventTailLines(events: string[], limit: number): string[] {
   return events.slice(events.length - limit);
 }
 
- /**
-  * チームIDとメンバーIDから一意のキーを生成する
-  * @param teamId - チームID
-  * @param memberId - メンバーID
-  * @returns "teamId/memberId"形式の結合キー
-  */
+/**
+ * チームIDとメンバーIDからキー生成
+ * @summary キーを生成
+ * @param teamId チームID
+ * @param memberId メンバーID
+ * @returns 生成されたキー文字列
+ */
 export function toTeamLiveItemKey(teamId: string, memberId: string): string {
   return `${teamId}/${memberId}`;
 }
@@ -119,19 +120,12 @@ export function toTeamLiveItemKey(teamId: string, memberId: string): string {
 // Live View Rendering
 // ============================================================================
 
- /**
-  * エージェントチームのライブビューを描画する
-  * @param input.title - タイトル
-  * @param input.items - チームライブアイテムの配列
-  * @param input.globalEvents - グローバルイベントの配列
-  * @param input.cursor - カーソル位置
-  * @param input.mode - 表示モード
-  * @param input.stream - ライブストリームビュー
-  * @param input.width - 幅
-  * @param input.height - 高さ
-  * @param input.theme - テーマ設定
-  * @returns 描画結果の文字列配列
-  */
+/**
+ * ライブビューを描画
+ * @summary ライブビューを描画
+ * @param input - 描画用パラメータ
+ * @returns {string[]} 描画結果の文字列配列
+ */
 export function renderAgentTeamLiveView(input: {
   title: string;
   items: TeamLiveItem[];
@@ -443,12 +437,13 @@ export function renderAgentTeamLiveView(input: {
 // Live Monitor Controller
 // ============================================================================
 
- /**
-  * エージェントチームのライブモニターを作成する
-  * @param ctx コンテキスト
-  * @param input タイトルとアイテムを含む設定オブジェクト
-  * @returns モニターコントローラー、またはUI利用不可時はundefined
-  */
+/**
+ * ライブ監視を生成
+ * @summary ライブ監視を生成
+ * @param ctx - コンテキスト情報
+ * @param input - 入力データ（タイトル、アイテムリスト）
+ * @returns {AgentTeamLiveMonitorController | undefined} コントローラインスタンス
+ */
 export function createAgentTeamLiveMonitor(
   ctx: any,
   input: {

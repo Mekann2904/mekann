@@ -1,34 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/test-runner.ts
- * role: Search拡張機能の統合テストランナー
- * why: file_candidates, code_search, sym_index, sym_findの各ツールが正しく動作することを検証するため
- * related: tools/file_candidates.js, tools/code_search.js, tools/sym_index.js, utils/cli.js
- * public_api: なし（テスト実行用スクリプト）
- * invariants:
- *   - テスト結果はbooleanのpassedフィールドで成功/失敗を表す
- *   - 各テストは実行時間をdurationとして記録する
- *   - テスト失敗時はerrorフィールドにエラーメッセージを格納する
- * side_effects:
- *   - コンソールへのログ出力
- *   - 外部ツール（fd, rg, ctags）の実行
- *   - results配列へのテスト結果追加
- * failure_modes:
- *   - 外部ツールが利用不可能な場合にテストが失敗する
- *   - アサーション不一致時にAssertion failedエラーを投げる
+ * role: 検索ツール群の統合テストランナー
+ * why: 外部依存（fd, rg, ctags）とツールロジックの正当性を検証するため
+ * related: .pi/extensions/search/utils/cli.ts, .pi/extensions/search/tools/file_candidates.ts, .pi/extensions/search/tools/code_search.ts
+ * public_api: testToolAvailability, runTest, results
+ * invariants: テスト結果は必ずTestResult型の配列に格納される、全テストは非同期で実行され実行時間が記録される
+ * side_effects: 標準出力へのログ出力、外部プロセス（fd, rg, ctags）の実行
+ * failure_modes: 外部ツールがインストールされていない場合、コマンド実行権限がない場合、アサーション失敗時のエラー
  * @abdd.explain
- * overview: Search拡張機能のツール群に対する包括的なテストを実行するランナー
+ * overview: 検索関連ツールとユーティリティの動作検証を行うテストスイート実装
  * what_it_does:
- *   - テストフレームワーク（runTest, assert, log）を提供する
- *   - checkToolAvailabilityでfd, rg, ctagsの利用可能性を検証する
- *   - テスト結果をTestResult/TestSuite形式で収集する
- *   - 各テストの実行時間を計測する
+ *   - fd, rg, ctags のコマンド可用性を確認する
+ *   - fileCandidates, codeSearch, symIndex, symFind の機能テストを実行する
+ *   - テストの実行時間、成功可否、エラー詳細を収集・管理する
+ *   - 結果をコンソールにログ出力する
  * why_it_exists:
- *   - 検索ツールの品質保証と回帰テストを自動化するため
- *   - 外部依存ツールの環境要件を事前に確認するため
+ *   - リファクタリングや環境変更によりツールが正しく動作し続けているか保証するため
+ *   - 開発者が検索機能の信頼性を迅速に確認できるようにするため
  * scope:
- *   in: tools/file_candidates.js, tools/code_search.js, tools/sym_index.js, tools/sym_find.js, utils/cli.js
- *   out: 本番用の検索機能自体（テストコードのみを含む）
+ *   in: 外部コマンドのバイナリパス、検索対象のファイルシステム
+ *   out: 標準出力へのテスト結果ログ、メモリ内のテスト結果オブジェクト
  */
 
 /**

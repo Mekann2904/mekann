@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/shared/runtime-helpers.ts
- * role: ランタイム共通ヘルパーユーティリティ
- * why: subagents.tsとagent-teams.tsで一貫したランタイムエラーメッセージと予約管理を提供するため
- * related: subagents.ts, agent-teams.ts, agent-runtime.ts, extensions-context.ts
- * public_api: buildRuntimeLimitError, buildRuntimeQueueWaitError, startReservationHeartbeat, RuntimeLimitErrorOptions, RuntimeQueueWaitInfo
- * invariants: ハートビート間隔は5000ms固定、エラーメッセージは現在値と上限値の両方を含む
- * side_effects: startReservationHeartbeatはsetIntervalを生成しタイマーを登録する、getRuntimeSnapshotを通じてランタイム状態を参照する
- * failure_modes: reservation.heartbeat()の失敗は無視される、存在しないreservation渡しでハートビート呼び出し失敗
+ * role: ランタイム制限・キュー待機のエラーメッセージ生成と、リソース予約維持機能の提供
+ * why: subagents.tsとagent-teams.tsでランタイム動作を一貫させるため
+ * related: ../agent-runtime.js, subagents.ts, agent-teams.ts
+ * public_api: RuntimeLimitErrorOptions, RuntimeQueueWaitInfo, buildRuntimeLimitError, buildRuntimeQueueWaitError, startReservationHeartbeat
+ * invariants: buildRuntimeLimitErrorはgetRuntimeSnapshotから最新情報を取得する、startReservationHeartbeatは5秒間隔でheartbeatを実行する
+ * side_effects: startReservationHeartbeatはタイマーを起動し、reservation.heartbeatを呼び出す
+ * failure_modes: リソース取得失敗時、heartbeat呼び出し時の例外は握りつぶされる
  * @abdd.explain
- * overview: エージェントランタイムの制限・キューエラー通知と予約維持を行う共有ユーティリティ
+ * overview: エージェント実行時のリソース制限やオーケストレーションキューエラーを通知するためのユーティリティ。
  * what_it_does:
- *   - ランタイム制限到達時のエラーメッセージを構築する
- *   - オーケストレーションキュー待機時のエラーメッセージを構築する
- *   - 予約リースのTTLを定期的に延長するハートビートを開始・停止する
+ *   - 現在のリソース使用状況と制限値を含むエラーメッセージを生成する
+ *   - キュー待機状況（待ち時間、順位、試行回数）を含むエラーメッセージを生成する
+ *   - リソース予約を維持するための定期的ハートビートタイマーを開始・停止する
  * why_it_exists:
- *   - 複数のエージェント種別で同一フォーマットのエラーメッセージを使い回すため
- *   - ゾンビ予約による容量リークを防ぐため自動的にTTLを延長する仕組みが必要
+ *   - 複数のエージェント種別（subagents, agent-teams）間でエラーハンドリングロジックを共通化するため
+ *   - リソース枯渇時やキュー拥堵時にユーザーへ復旧手順を明示するため
+ *   - 期限切れによるリソース予約の消失を防ぐため
  * scope:
- *   in: ツール名、制限理由、待機情報、予約リース
- *   out: フォーマット済みエラーメッセージ文字列、ハートビート停止関数
+ *   in: ツール名、理由配列、待機情報、予約リースオブジェクト
+ * out: フォーマットされたエラーメッセージ文字列、タイマー停止用クリーンアップ関数
  */
 
 /**
@@ -32,25 +33,19 @@ import {
   type RuntimeCapacityReservationLease,
 } from "../agent-runtime.js";
 
- /**
-  * 実行制限エラーのオプション。
-  * @param waitedMs 待機時間（ミリ秒）。
-  * @param timedOut タイムアウトしたかどうか。
-  */
+/**
+ * 実行時制限エラーオプション
+ * @summary 制限エラーオプション定義
+ */
 export interface RuntimeLimitErrorOptions {
   waitedMs?: number;
   timedOut?: boolean;
 }
 
- /**
-  * キューエラーメッセージ構築用情報
-  * @param waitedMs 待機時間（ミリ秒）。
-  * @param attempts 試行回数。
-  * @param timedOut タイムアウトしたかどうか。
-  * @param aborted 中断されたかどうか。
-  * @param queuePosition キュー内の位置。
-  * @param queuedAhead 自分より前のキュー数。
-  */
+/**
+ * 実行時キューウェイト情報
+ * @summary キューウェイト情報定義
+ */
 export interface RuntimeQueueWaitInfo {
   waitedMs: number;
   attempts: number;
@@ -60,13 +55,14 @@ export interface RuntimeQueueWaitInfo {
   queuedAhead: number;
 }
 
- /**
-  * 実行時制限エラーメッセージを生成する
-  * @param toolName - ブロックされたツール名
-  * @param reasons - 理由の文字列配列
-  * @param options - 待機時間などのオプション情報
-  * @returns フォーマットされたエラーメッセージ文字列
-  */
+/**
+ * 実行制限エラーメッセージ生成
+ * @summary 実行制限エラー生成
+ * @param toolName ツール名
+ * @param reasons エラー理由リスト
+ * @param options オプション設定
+ * @returns エラーメッセージ文字列
+ */
 export function buildRuntimeLimitError(
   toolName: string,
   reasons: string[],
@@ -89,12 +85,13 @@ export function buildRuntimeLimitError(
     .join("\n");
 }
 
- /**
-  * オーケストレーションキュー待機のエラーメッセージを生成します。
-  * @param toolName - ブロックされたツールの名前
-  * @param queueWait - キュー待機情報
-  * @returns フォーマットされたエラーメッセージ文字列
-  */
+/**
+ * キューウェイトエラーを生成
+ * @summary キューウェイトエラー生成
+ * @param toolName ツール名
+ * @param queueWait キューウェイト情報
+ * @returns エラーメッセージ文字列
+ */
 export function buildRuntimeQueueWaitError(
   toolName: string,
   queueWait: RuntimeQueueWaitInfo,
@@ -115,11 +112,12 @@ export function buildRuntimeQueueWaitError(
   ].join("\n");
 }
 
- /**
-  * 予約を維持するハートビートを開始する
-  * @param reservation 維持する予約リース
-  * @returns ハートビートを停止するクリーンアップ関数
-  */
+/**
+ * 予約ハートビート開始
+ * @summary ハートビート開始
+ * @param reservation - 容量予約リース情報
+ * @returns ハートビート停止関数
+ */
 export function startReservationHeartbeat(
   reservation: RuntimeCapacityReservationLease,
 ): () => void {
@@ -138,16 +136,17 @@ export function startReservationHeartbeat(
   };
 }
 
- /**
-  * ランタイムステータス表示を更新する
-  * @param ctx - UI機能を持つ拡張機能コンテキスト
-  * @param statusKey - 使用するステータスキー ("subagent-runtime" または "agent-team-runtime")
-  * @param primaryLabel - プライマリエージェントの表示ラベル
-  * @param primaryActive - プライマリエージェントのアクティブ数
-  * @param secondaryLabel - セカンダリエージェントの表示ラベル
-  * @param secondaryActive - セカンダリエージェントのアクティブ数
-  * @returns なし
-  */
+/**
+ * ランタイムステータス更新
+ * @summary ステータス更新
+ * @param ctx - UI機能を持つ拡張機能コンテキスト
+ * @param statusKey - ステータスキー ("subagent-runtime" または "agent-team-runtime")
+ * @param primaryLabel - プライマリエージェントの表示ラベル
+ * @param primaryActive - プライマリのアクティブ数
+ * @param secondaryLabel - セカンダリエージェントの表示ラベル
+ * @param secondaryActive - セカンダリのアクティブ数
+ * @returns -
+ */
 export function refreshRuntimeStatus(
   ctx: any,
   statusKey: "subagent-runtime" | "agent-team-runtime",

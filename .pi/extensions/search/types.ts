@@ -1,26 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/types.ts
- * role: 検索拡張機能全体で使用する型定義の集約モジュール
- * why: file_candidates, code_search, sym_index, sym_findツール間で共通する型を一元管理し、型の一貫性と再利用性を確保するため
- * related: file_candidates.ts, code_search.ts, sym_index.ts, sym_find.ts
- * public_api: SearchHints, SearchDetails, SearchResponse<T>, SearchErrorResponse, FileCandidatesInput, FileCandidate, FileCandidatesOutput
- * invariants: SearchErrorResponseはtotal=0, truncated=false, results=[]を固定値として持つ、SearchResponseのtotalはresults.length以上の値を取る
- * side_effects: なし（型定義のみをエクスポートし、実行時処理は存在しない）
- * failure_modes: なし（純粋な型定義ファイルのため実行時エラーは発生しない）
+ * role: 検索拡張機能で共有される型定義の集約モジュール
+ * why: file_candidates, code_search, sym_index, sym_findツール間でデータ構造を統一し、型安全性と保守性を確保するため
+ * related: .pi/extensions/search/file_candidates.ts, .pi/extensions/search/code_search.ts, .pi/extensions/search/sym_index.ts
+ * public_api: SearchHints, SearchDetails, SearchResponse, SearchErrorResponse, FileCandidatesInput, FileCandidate, FileCandidatesOutput
+ * invariants:
+ *   - SearchResponseのtotalはresultsの長さと一致する
+ *   - SearchErrorResponseのtotalは常に0、truncatedは常にfalseである
+ *   - FileCandidate.typeは"file"または"dir"のいずれかである
+ * side_effects: なし（純粋な型定義モジュールである）
+ * failure_modes: 型定義の不整合による実行時エラー、インターフェースの変更忘れによる他モジュールとの非互換
  * @abdd.explain
- * overview: 検索拡張機能の共通型定義ファイル。ジェネリックな検索レスポンス構造と各ツール固有の入出力型を提供する。
+ * overview: 検索関連ツール全体で利用される共通のレスポンス構造、入力オプション、およびエンティティ型を定義する
  * what_it_does:
- *   - 検索結果の汎用コンテナとしてSearchResponse<T>を定義し、ページネーション情報とエラーハンドリングを統一
- *   - SearchHintsを通じてエージェントへの次アクション提案機能を型化
- *   - FileCandidatesInputでglobパターン、拡張子フィルタ、除外パターン等の検索条件を型定義
- *   - SearchErrorResponseでエラー時の固定構造を型レベルで保証
+ *   - 検索結果の共通フォーマット（SearchResponse）を提供する
+ *   - 検索結果のメタデータやヒント（SearchHints）を定義する
+ *   - ファイル候補検索（file_candidates）の入力と出力の型を定義する
  * why_it_exists:
- *   - 複数の検索ツール間でレスポンス形式を統一し、エージェントが一貫した方法で結果を処理できるようにするため
- *   - 型安全性を通じて検索APIの契約を明確化し、実装ミスをコンパイル時に検出するため
+ *   - 複数の検索ツール間で重複する型定義を排除し、DRY原則を守るため
+ *   - 検索結果の標準的な構造（件数、切り詰めフラグ、エラー情報）を統一するため
  * scope:
- *   in: なし（外部依存なし）
- *   out: 検索ツール群で使用される全ての型定義
+ *   in: なし
+ *   out: 検索機能を利用するすべてのツールおよびAIエージェント
  */
 
 /**
@@ -33,13 +35,10 @@
 // Common Response Types
 // ============================================
 
- /**
-  * 検索結果に対するエージェントへのヒント。
-  * @param confidence 検索結果の信頼度
-  * @param suggestedNextAction 推奨される次のアクション
-  * @param alternativeTools 代替ツールのリスト
-  * @param relatedQueries 関連するクエリのリスト
-  */
+/**
+ * 共通で使用される型定義
+ * @summary 共通型定義
+ */
 export interface SearchHints {
   confidence: number;
   suggestedNextAction?: "refine_pattern" | "expand_scope" | "try_different_tool" | "increase_limit" | "regenerate_index";
@@ -47,22 +46,22 @@ export interface SearchHints {
   relatedQueries?: string[];
 }
 
- /**
-  * 検索結果の追加詳細
-  * @param hints 検索に関するヒント情報
-  */
+/**
+ * 検索に関するヒント情報
+ * @summary 検索ヒントを取得
+ * @param suggestedNextAction 推奨される次のアクション
+ * @param alternativeTools 代替ツールのリスト
+ * @param relatedQueries 関連するクエリのリスト
+ */
 export interface SearchDetails {
   hints?: SearchHints;
 }
 
- /**
-  * 検索ツールの基本レスポンス構造
-  * @param total 総件数
-  * @param truncated 結果が切り詰められているか
-  * @param results 検索結果の配列
-  * @param error エラーメッセージ
-  * @param details 追加詳細情報
-  */
+/**
+ * 検索結果の追加詳細
+ * @summary 検索詳細を取得
+ * @param hints 検索に関するヒント情報
+ */
 export interface SearchResponse<T> {
   total: number;
   truncated: boolean;
@@ -71,13 +70,14 @@ export interface SearchResponse<T> {
   details?: SearchDetails;
 }
 
- /**
-  * 検索エラーレスポンス
-  * @param error エラーメッセージ
-  * @param total 総件数（常に0）
-  * @param truncated 結果が切り詰められているか（常にfalse）
-  * @param results 結果配列（常に空）
-  */
+/**
+ * 検索エラーレスポンス
+ * @summary エラーを返す
+ * @param error エラーメッセージ
+ * @param total 総件数（常に0）
+ * @param truncated 結果が切り詰められているか（常にfalse）
+ * @param results 結果配列（常に空）
+ */
 export interface SearchErrorResponse {
   error: string;
   total: 0;
@@ -89,16 +89,17 @@ export interface SearchErrorResponse {
 // file_candidates Types
 // ============================================
 
- /**
-  * ファイル候補の検索入力オプション
-  * @param pattern Globパターン
-  * @param type エントリタイプのフィルタ
-  * @param extension 拡張子フィルタ
-  * @param exclude 除外パターン
-  * @param maxDepth 最大ディレクトリ深さ
-  * @param limit 結果の上限
-  * @param cwd 作業ディレクトリ
-  */
+/**
+ * ファイル候補入力
+ * @summary ファイル候補検索
+ * @param pattern Globパターン
+ * @param type エントリタイプのフィルタ
+ * @param extension 拡張子フィルタ
+ * @param exclude 除外パターン
+ * @param maxDepth 最大ディレクトリ深さ
+ * @param limit 結果の上限
+ * @param cwd 作業ディレクトリ
+ */
 export interface FileCandidatesInput {
   /** Glob pattern (e.g., "*.ts") */
   pattern?: string;
@@ -116,11 +117,12 @@ export interface FileCandidatesInput {
   cwd?: string;
 }
 
- /**
-  * ファイルまたはディレクトリの候補
-  * @param path - ファイルまたはディレクトリのパス
-  * @param type - エントリの種類（"file" または "dir"）
-  */
+/**
+ * @summary ファイル候補定義
+ * @description ファイルまたはディレクトリの候補
+ * @param path - ファイルまたはディレクトリのパス
+ * @param type - エントリの種類（"file" または "dir"）
+ */
 export interface FileCandidate {
   path: string;
   type: "file" | "dir";
@@ -144,14 +146,15 @@ export type FileCandidatesOutput = SearchResponse<FileCandidate>;
 // code_search Types
 // ============================================
 
- /**
-  * コード検索の入力パラメータ
-  * @param pattern - 検索パターン（正規表現対応）
-  * @param path - 検索対象のパス
-  * @param type - ファイルタイプフィルタ（ts, js, pyなど）
-  * @param ignoreCase - 大文字小文字を区別するか
-  * @param literal - リテラル文字列として検索するか
-  */
+/**
+ * @summary コード検索入力
+ * コード検索の入力パラメータ
+ * @param pattern - 検索パターン（正規表現対応）
+ * @param path - 検索対象のパス
+ * @param type - ファイルタイプフィルタ（ts, js, pyなど）
+ * @param ignoreCase - 大文字小文字を区別するか
+ * @param literal - リテラル文字列として検索するか
+ */
 export interface CodeSearchInput {
   /** Search pattern (regex supported) */
   pattern: string;
@@ -212,14 +215,16 @@ export interface CodeSearchInput {
  */
 }
 
- /**
-  * コード検索のマッチ結果を表すインターフェース
-  * @property file - ファイルパス
-  * @property line - 行番号
-  * @property column - 列番号
-  * @property text - マッチしたテキスト
-  * @property context - コンテキスト情報
-  */
+/**
+ * コード検索マッチ
+ * @summary マッチ情報を出力
+ * @param file - ファイルパス
+ * @param line - 行番号
+ * @param column - カラム番号
+ * @param text - マッチしたテキスト
+ * @param context - コンテキスト行
+ * @returns マッチ情報オブジェクト
+ */
 export interface CodeSearchMatch {
   file: string;
 /**
@@ -245,25 +250,28 @@ export interface CodeSearchMatch {
   context?: string[];
 }
 
- /**
-  * コード検索のサマリー情報
-  * @param file ファイルパス
-  * @param count ヒット数
-  */
+/**
+ * コード検索サマリ
+ * @summary サマリを出力
+ * @param file - ファイルパス
+ * @param count - ヒット件数
+ * @returns サマリ情報
+ */
 export interface CodeSearchSummary {
   file: string;
   count: number;
 }
 
- /**
-  * コード検索の出力結果
-  * @param total 検索ヒット数の合計
-  * @param truncated 結果が切り詰められているかどうか
-  * @param summary ファイルごとの検索結果の概要
-  * @param results 検索ヒットしたコードの詳細リスト
-  * @param error エラーメッセージ（存在する場合）
-  * @param details 検索の詳細情報
-  */
+/**
+ * コード検索出力
+ * @summary 検索結果を出力
+ * @param total - 総ヒット件数
+ * @param truncated - 結果切り捨てフラグ
+ * @param summary - サマリ情報
+ * @param results - 検索結果リスト
+ * @param error - エラー情報
+ * @returns 出力結果オブジェクト
+ */
 export interface CodeSearchOutput {
   total: number;
   truncated: boolean;
@@ -321,13 +329,14 @@ export interface CodeSearchOutput {
  *   console.error(`Command failed: ${cliError.command}`);
  *   console.error(`Exit code: ${cliError.code}`);
  * }
+/**
+ * シンボルインデックス入力
+ * @summary インデックス生成入力
+ * @param path - インデックス対象パス
+ * @param force - 強制再生成フラグ
+ * @param cwd - 作業ディレクトリ
+ * @returns 入力設定オブジェクト
  */
- /**
-  * シンボルインデックスの入力オプション
-  * @param path インデックス対象のパス
-  * @param force 強制的に再生成するかどうか
-  * @param cwd 作業ディレクトリ
-  */
 export interface SymIndexInput {
   /** Target path for indexing */
   path?: string;
@@ -337,12 +346,14 @@ export interface SymIndexInput {
   cwd?: string;
 }
 
- /**
-  * シンボルインデックス作成の出力結果
-  * @param indexed インデックス化されたシンボル数
-  * @param outputPath 出力先のパス
-  * @param error エラーメッセージ（任意）
-  */
+/**
+ * シンボルインデックス出力
+ * @summary インデックスを出力
+ * @param indexed - インデックス化されたシンボル
+ * @param outputPath - 出力先パス
+ * @param error - エラー情報
+ * @returns 出力結果オブジェクト
+ */
 export interface SymIndexOutput {
   indexed: number;
   outputPath: string;
@@ -353,14 +364,15 @@ export interface SymIndexOutput {
 // sym_find Types
 // ============================================
 
- /**
-  * シンボル検索の入力オプション
-  * @param name シンボル名パターン
-  * @param kind シンボル種別フィルタ
-  * @param file ファイルフィルタ
-  * @param limit 結果の最大件数 (デフォルト: 50)
-  * @param cwd 作業ディレクトリ
-  */
+/**
+ * シンボル検索の入力パラメータ
+ * @summary 検索入力パラメータ
+ * @param name シンボル名
+ * @param kind 種類
+ * @param file ファイルパス
+ * @param limit 結果の上限数
+ * @param cwd 作業ディレクトリ
+ */
 export interface SymFindInput {
   /** Symbol name pattern */
   name?: string;
@@ -380,15 +392,16 @@ export interface SymFindInput {
   cwd?: string;
 }
 
- /**
-  * シンボル定義を表すインターフェース
-  * @param name シンボル名
-  * @param kind シンボルの種類
-  * @param file ファイルパス
-  * @param line 行番号
-  * @param signature シグネチャ
-  * @param scope スコープ
-  */
+/**
+ * シンボルの定義情報
+ * @summary シンボル定義情報
+ * @param name シンボル名
+ * @param kind 種類
+ * @param file ファイルパス
+ * @param line 行番号
+ * @param signature シグネチャ
+ * @param scope スコープ
+ */
 export interface SymbolDefinition {
   name: string;
   kind: string;
@@ -398,23 +411,25 @@ export interface SymbolDefinition {
   scope?: string;
 }
 
- /**
-  * シンボル検索の出力型
-  */
+/**
+ * シンボル検索の出力結果
+ * @summary シンボル検索結果
+ */
 export type SymFindOutput = SearchResponse<SymbolDefinition>;
 
 // ============================================
 // CLI Execution Types
 // ============================================
 
- /**
-  * CLI実行オプション
-  * @param cwd 作業ディレクトリ
-  * @param timeout タイムアウト（ミリ秒）
-  * @param signal 中断用シグナル
-  * @param maxOutputSize 最大出力サイズ（バイト）
-  * @param env 環境変数
-  */
+/**
+ * CLI実行時のオプション設定
+ * @summary CLI実行オプション
+ * @param cwd 作業ディレクトリ
+ * @param timeout タイムアウト時間（ミリ秒）
+ * @param signal 中断シグナル
+ * @param maxOutputSize 最大出力サイズ（バイト）
+ * @param env 環境変数
+ */
 export interface CliOptions {
   /** Working directory */
   cwd?: string;
@@ -428,14 +443,10 @@ export interface CliOptions {
   env?: Record<string, string>;
 }
 
- /**
-  * CLIコマンドの実行結果を表します
-  * @param code 終了コード
-  * @param stdout 標準出力
-  * @param stderr 標準エラー
-  * @param timedOut タイムアウトしたかどうか
-  * @param killed シグナルによって強制終了されたかどうか
-  */
+/**
+ * CLI実行結果を表す
+ * @summary CLI実行結果
+ */
 export interface CliResult {
   /** Exit code */
   code: number;
@@ -449,13 +460,10 @@ export interface CliResult {
   killed: boolean;
 }
 
- /**
-  * CLIエラー情報を表すインターフェース
-  * @param code 終了コード
-  * @param stdout 標準出力
-  * @param stderr 標準エラー出力
-  * @param command 実行されたコマンド
-  */
+/**
+ * CLIコマンド実行時のエラー情報を表します
+ * @summary CLIエラー情報
+ */
 export interface CliError extends Error {
   code: number;
   stdout: string;
@@ -467,13 +475,10 @@ export interface CliError extends Error {
 // Tool Detection Types
 // ============================================
 
- /**
-  * 各ツールの利用可能性を表す
-  * @param fd fdコマンドが利用可能かどうか
-  * @param rg rgコマンドが利用可能かどうか
-  * @param ctags ctagsコマンドが利用可能かどうか
-  * @param ctagsJson JSON出力対応のctagsが利用可能かどうか
-  */
+/**
+ * 外部ツールの利用可能性を表します
+ * @summary ツール利用可否状態
+ */
 export interface ToolAvailability {
   fd: boolean;
   rg: boolean;
@@ -481,12 +486,10 @@ export interface ToolAvailability {
   ctagsJson: boolean; // universal-ctags with JSON output
 }
 
- /**
-  * ツールのバージョン情報
-  * @param name ツール名
-  * @param version バージョン文字列
-  * @param path 実行ファイルのパス
-  */
+/**
+ * 外部ツールのバージョン情報を表します
+ * @summary ツールバージョン情報
+ */
 export interface ToolVersion {
   name: string;
   version: string;
@@ -497,16 +500,10 @@ export interface ToolVersion {
 // Internal Types
 // ============================================
 
- /**
-  * キャッシュされたシンボルインデックスのエントリ
-  * @param name シンボル名
-  * @param kind シンボルの種類
-  * @param file ファイルパス
-  * @param line 行番号
-  * @param signature シグネチャ（オプション）
-  * @param scope スコープ（オプション）
-  * @param pattern パターン（オプション）
-  */
+/**
+ * シンボルインデックスのエントリを表します
+ * @summary シンボルインデックス情報
+ */
 export interface SymbolIndexEntry {
   name: string;
   kind: string;
@@ -517,11 +514,10 @@ export interface SymbolIndexEntry {
   pattern?: string;
 }
 
- /**
-  * Ripgrep JSON出力フォーマットのサブセット
-  * @param type - 一致タイプ
-  * @param data - 一致データ（パス、行番号、サブマッチ等）
-  */
+/**
+ * 正規表現マッチ結果を表します
+ * @summary 正規表現マッチ結果
+ */
 export interface RgMatch {
   type: "match";
   data: {
@@ -537,11 +533,12 @@ export interface RgMatch {
   };
 }
 
- /**
-  * ripgrepの検索開始メッセージ
-  * @param type メッセージタイプ "begin"
-  * @param data 検索対象のパス情報
-  */
+/**
+ * 検索開始メッセージ型
+ * @summary 開始通知を送信
+ * @param type メッセージタイプ "begin"
+ * @param data 検索対象のパス情報
+ */
 export interface RgBegin {
   type: "begin";
   data: {
@@ -549,11 +546,10 @@ export interface RgBegin {
   };
 }
 
- /**
-  * ripgrepの検索終了メッセージ
-  * @param type メッセージタイプ "end"
-  * @param data 検索結果の統計情報とパス情報
-  */
+/**
+ * 検索終了メッセージ型
+ * @summary 終了通知を送信
+ */
 export interface RgEnd {
   type: "end";
   data: {
@@ -570,21 +566,21 @@ export interface RgEnd {
   };
 }
 
- /**
-  * ripgrepの出力型（マッチ、開始、終了）
-  */
+/**
+ * ripgrep出力の共用体型
+ * @summary 出力結果を判定
+ * @type {RgMatch | RgBegin | RgEnd}
+ */
 export type RgOutput = RgMatch | RgBegin | RgEnd;
 
 // ============================================
 // Incremental Index Types
 // ============================================
 
- /**
-  * マニフェストエントリ
-  * @param hash ファイルの内容ハッシュ（MD5等）
-  * @param mtime 最終更新日時のタイムスタンプ
-  * @param shardId このファイルのシンボルが格納されているシャードID
-  */
+/**
+ * マニフェストエントリ情報
+ * @summary エントリ情報を取得
+ */
 export interface ManifestEntry {
   /**
    * Content hash of the file (MD5 or similar).
@@ -602,20 +598,22 @@ export interface ManifestEntry {
   shardId: number;
 }
 
- /**
-  * インデックスマニフェスト構造
-  * @type {Record<string, ManifestEntry>}
-  */
+/**
+ * インデックスマニフェスト型
+ * @summary マニフェストを取得
+ * @type {Record<string, ManifestEntry>}
+ */
 export type IndexManifest = Record<string, ManifestEntry>;
 
- /**
-  * インデックスのメタデータ構造
-  * @param createdAt インデックスが作成されたタイムスタンプ
-  * @param updatedAt インデックスが最後に更新されたタイムスタンプ
-  * @param sourceDir インデックス化されたソースディレクトリ
-  * @param totalSymbols インデックス内のシンボルの総数
-  * @param totalFiles インデックス内のファイルの総数
-  */
+/**
+ * @summary インデックスメタデータ
+ * インデックスのメタデータ構造
+ * @param createdAt インデックスが作成されたタイムスタンプ
+ * @param updatedAt インデックスが最後に更新されたタイムスタンプ
+ * @param sourceDir インデックス化されたソースディレクトリ
+ * @param totalSymbols インデックス内のシンボルの総数
+ * @param totalFiles インデックス内のファイルの総数
+ */
 export interface IndexMetadata {
   /**
    * Timestamp when the index was created.
@@ -653,13 +651,14 @@ export interface IndexMetadata {
   version: number;
 }
 
- /**
-  * シャードヘッダー構造
-  * @param id シャードID（0から始まるインデックス）
-  * @param entryCount このシャード内のエントリ数
-  * @param createdAt 作成日時（タイムスタンプ）
-  * @param updatedAt 更新日時（タイムスタンプ）
-  */
+/**
+ * シャードヘッダー定義
+ * @summary シャードヘッダー取得
+ * @param id シャードID（0から始まるインデックス）
+ * @param entryCount このシャード内のエントリ数
+ * @param createdAt 作成日時（タイムスタンプ）
+ * @param updatedAt 更新日時（タイムスタンプ）
+ */
 export interface ShardHeader {
   /**
    * Shard ID (0-indexed).
@@ -760,13 +759,14 @@ export interface SemanticIndexInput {
   cwd?: string;
 }
 
- /**
-  * セマンティックインデックスの出力結果
-  * @param indexed インデックス化された埋め込みの数
-  * @param files 処理されたファイル数
-  * @param outputPath 生成されたインデックスファイルのパス
-  * @param error インデックス作成失敗時のエラーメッセージ
-  */
+/**
+ * セマンティックインデックスの出力
+ * @summary 出力結果を返却
+ * @param indexed インデックス化された埋め込みの数
+ * @param files 処理されたファイル数
+ * @param outputPath 生成されたインデックスファイルのパス
+ * @param error インデックス作成失敗時のエラーメッセージ
+ */
 export interface SemanticIndexOutput {
   /** Number of embeddings indexed */
   indexed: number;
@@ -781,14 +781,17 @@ export interface SemanticIndexOutput {
   error?: string;
 }
 
- /**
-  * セマンティック検索の入力パラメータ
-  * @param query 検索クエリ（自然言語またはコードスニペット）
-  * @param topK 最大結果数（デフォルト: 10）
-  * @param threshold 類似度のしきい値（デフォルト: 0.5）
-  * @param language プログラミング言語によるフィルタ
-  * @param kind シンボルの種類によるフィルタ
-  */
+/**
+ * 検索の入力設定
+ * @summary 検索入力定義
+ * @param query 検索クエリ文字列
+ * @param topK 返す最大件数
+ * @param threshold 類似度の閾値
+ * @param language プログラミング言語
+ * @param kind シンボル種別でフィルタ
+ * @param cwd 作業ディレクトリ
+ * @returns 検索入力オブジェクト
+ */
 export interface SemanticSearchInput {
   /** Search query (natural language or code snippet) */
   query: string;
@@ -809,14 +812,16 @@ export interface SemanticSearchInput {
   cwd?: string;
 }
 
- /**
-  * セマンティック検索の結果アイテム
-  * @param file 相対ファイルパス
-  * @param line 開始行番号
-  * @param code コード内容
-  * @param similarity 類似度スコア (0-1)
-  * @param metadata コードチャンクのメタデータ
-  */
+/**
+ * 単一の検索結果
+ * @summary 検索結果定義
+ * @param file ファイルパス
+ * @param line 行番号
+ * @param code コードスニペット
+ * @param similarity 類似度スコア
+ * @param metadata コードチャンクのメタデータ
+ * @returns 検索結果オブジェクト
+ */
 export interface SemanticSearchResult {
   /** Relative file path */
   file: string;
@@ -834,13 +839,15 @@ export interface SemanticSearchResult {
   metadata: CodeEmbedding["metadata"];
 }
 
- /**
-  * セマンティック検索の出力結果
-  * @param total 一致件数の合計
-  * @param truncated 結果が切り詰められたかどうか
-  * @param results 類似度順にソートされた検索結果
-  * @param error 検索失敗時のエラーメッセージ
-  */
+/**
+ * 検索結果の出力形式
+ * @summary 検索出力定義
+ * @param total 総ヒット数
+ * @param truncated 結果が切り詰められたか
+ * @param results 類似度ソートされた結果
+ * @param error 検索失敗時のエラー
+ * @returns 検索出力データ
+ */
 export interface SemanticSearchOutput {
   /** Total number of matches */
   total: number;
@@ -855,14 +862,16 @@ export interface SemanticSearchOutput {
   error?: string;
 }
 
- /**
-  * セマンティックインデックスのメタデータ
-  * @param createdAt インデックス作成時のタイムスタンプ
-  * @param updatedAt インデックス最終更新時のタイムスタンプ
-  * @param sourceDir インデックス化されたソースディレクトリ
-  * @param totalEmbeddings 埋め込みベクトルの総数
-  * @param totalFiles インデックス化されたファイルの総数
-  */
+/**
+ * インデックスのメタデータ
+ * @summary メタデータ定義
+ * @param createdAt 作成日時
+ * @param updatedAt 更新日時
+ * @param sourceDir ソースディレクトリ
+ * @param totalEmbeddings 総埋め込み数
+ * @param totalFiles 総ファイル数
+ * @returns メタデータオブジェクト
+ */
 export interface SemanticIndexMetadata {
   /** Timestamp when the index was created */
   createdAt: number;

@@ -1,34 +1,23 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-tools/audit.ts
- * role: 動的ツール生成システムの監査ログ記録・参照モジュール
- * why: 全操作を追跡可能にし、セキュリティインシデント調査やデバッグを可能にするため
- * related: types.js, manager.ts, registry.ts, cli.ts
+ * role: 監査ログの記録および読み込み
+ * why: 全操作の履歴をJSONL形式で永続化し、追跡可能性を確保するため
+ * related: .pi/lib/dynamic-tools/types.ts, node:fs, node:crypto
  * public_api: logAudit, readAuditLog
- * invariants:
- *   - ログエントリは一意のIDを持つ
- *   - タイムスタンプはISO 8601形式
- *   - ログファイルはJSONL形式で追記のみ
- * side_effects:
- *   - 監査ログファイルへの追記書き込み
- *   - ログディレクトリの自動作成
- *   - 標準エラー出力へのエラー出力
- * failure_modes:
- *   - ファイル書き込み権限不足でログ記録失敗（処理は継続）
- *   - 不正なJSONL行は読み込み時にスキップ
- *   - ログファイル不在時は空配列を返却
+ * invariants: ログエントリは一意のIDとISO 8601形式のタイムスタンプを持つ
+ * side_effects: ファイルシステムへのログファイル追記、ディレクトリの自動作成
+ * failure_modes: ファイル書き込み失敗時はエラーコンソール出力のみで処理続行、不正なJSON行は読み込み時に無視
  * @abdd.explain
- * overview: 動的ツール生成システムにおける全操作の監査証跡をJSONL形式で永続化する
+ * overview: 動的ツール生成システムにおける操作監査ログを管理するモジュール
  * what_it_does:
- *   - ツール作成/更新/削除/有効化/無効化操作を監査ログとして記録
- *   - ツールID、アクション種別、実行者、時刻、成否をエントリに含む
- *   - ツールID/アクション種別/開始日時によるログフィルタリング機能を提供
+ *   - 操作アクション、実行者、詳細を含む監査エントリを非同期で生成・記録する
+ *   - JSONL形式のログファイルを読み込み、ツールIDやアクション種別でフィルタリングする
  * why_it_exists:
- *   - セキュリティ監査のため全操作の証跡を保持
- *   - 障害発生時の原因追跡と再現を可能にする
+ *   - システム内の変更履歴や操作履歴を保持し、トラブルシューティングや監査対応を可能にする
  * scope:
- *   in: AuditAction型のアクション種別、tools/toolId/toolName/actor/details/success/errorMessage
- *   out: JSONL形式の監査ログファイル、フィルタ済みAuditLogEntry配列
+ *   in: アクション種別、ツールID、実行者情報、詳細データ、フィルタオプション
+ * out: 生成された監査エントリ、フィルタリングされたエントリ配列
  */
 
 /**
@@ -111,12 +100,13 @@ export async function logAudit(
   return logEntry;
 }
 
- /**
-  * 監査ログを読み込む
-  * @param options 検索オプション（取得件数、ツールID、アクション、開始日時）
-  * @param paths パス設定（省略時はデフォルト）
-  * @returns 監査ログエントリの配列
-  */
+/**
+ * ログ読込
+ * @summary ログを読み込む
+ * @param {{ limit?: number; toolId?: string; action?: AuditAction; since?: Date; }} [options] オプション設定
+ * @param {DynamicToolsPaths} [paths] パス設定
+ * @returns {AuditLogEntry[]} 監査ログエントリ配列
+ */
 export function readAuditLog(
   options?: {
     limit?: number;
@@ -175,12 +165,13 @@ export function readAuditLog(
   }
 }
 
- /**
-  * ツールの操作履歴を取得
-  * @param toolId ツールID
-  * @param paths 動的ツールのパス設定
-  * @returns 監査ログエントリの配列
-  */
+/**
+ * 履歴取得
+ * @summary 履歴を取得
+ * @param {string} toolId ツールID
+ * @param {DynamicToolsPaths} [paths] パス設定
+ * @returns {AuditLogEntry[]} 監査ログエントリ配列
+ */
 export function getToolHistory(
   toolId: string,
   paths?: DynamicToolsPaths
@@ -188,12 +179,13 @@ export function getToolHistory(
   return readAuditLog({ toolId }, paths);
 }
 
- /**
-  * 指定期間内の監査統計を取得
-  * @param since 集計の開始日時
-  * @param paths オプションのパス設定
-  * @returns アクション数、成功率、ツール別集計などを含む統計データ
-  */
+/**
+ * 監査統計を取得
+ * @summary 監査統計を取得
+ * @param since 集計の開始日時
+ * @param paths オプションのパス設定
+ * @returns アクション数、成功率、ツール別集計などを含む統計データ
+ */
 export function getAuditStatistics(
   since: Date,
   paths?: DynamicToolsPaths
@@ -254,11 +246,12 @@ export function getAuditStatistics(
   };
 }
 
- /**
-  * 監査ログエントリをフォーマットする
-  * @param entry 監査ログエントリ
-  * @returns フォーマット済みの文字列
-  */
+/**
+ * 監査ログをフォーマット
+ * @summary 監査ログをフォーマット
+ * @param entry 監査ログエントリ
+ * @returns フォーマット済みの文字列
+ */
 export function formatAuditLogEntry(entry: AuditLogEntry): string {
   const timestamp = new Date(entry.timestamp).toLocaleString("ja-JP");
   const status = entry.success ? "[OK]" : "[FAIL]";
@@ -280,12 +273,13 @@ export function formatAuditLogEntry(entry: AuditLogEntry): string {
   return line;
 }
 
- /**
-  * 監査ログレポートを生成
-  * @param since 集計開始日時
-  * @param paths パス設定オプション
-  * @returns 生成されたレポート文字列
-  */
+/**
+ * 監査ログレポートを生成
+ * @summary レポートを生成
+ * @param since 集計開始日時
+ * @param paths パス設定オプション
+ * @returns 生成されたレポート文字列
+ */
 export function generateAuditReport(
   since: Date,
   paths?: DynamicToolsPaths
@@ -331,12 +325,13 @@ export function generateAuditReport(
   return lines.join("\n");
 }
 
- /**
-  * 古いログをアーカイブ
-  * @param daysToKeep 保存日数
-  * @param paths パス設定（省略可）
-  * @returns アーカイブ数とエラー情報
-  */
+/**
+ * 古いログをアーカイブ
+ * @summary 古いログをアーカイブ
+ * @param daysToKeep 保存日数
+ * @param paths パス設定（省略可）
+ * @returns アーカイブ数とエラー情報
+ */
 export function archiveOldLogs(
   daysToKeep: number = 30,
   paths?: DynamicToolsPaths

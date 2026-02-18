@@ -1,27 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/embeddings/index.ts
- * role: embeddingsモジュールの公開APIエントリーポイント
- * why: 型定義、レジストリ、ユーティリティ、プロバイダを統一的にエクスポートし、外部からの利用を簡素化するため
- * related: types.js, registry.js, utils.js, providers/openai.js
- * public_api: EmbeddingProvider, EmbeddingResult, embeddingRegistry, generateEmbedding, generateEmbeddingsBatch, cosineSimilarity, OpenAIEmbeddingProvider, initializeEmbeddingModule, initializeEmbeddingModuleSync
- * invariants: インポート時にopenAIEmbeddingProviderが自動登録される
- * side_effects: モジュール読み込み時にregistryへプロバイダ登録を実行（initializeEmbeddingModuleSyncが自動実行）
- * failure_modes: OpenAIプロバイダの登録失敗時はregistry内でハンドリングされる
+ * role: エンベディング機能のパブリックエントリーポイント
+ * why: 型定義、プロバイダー登録、ユーティリティ関数、初期化処理を単一のインターフェースで公開するため
+ * related: .pi/lib/embeddings/types.ts, .pi/lib/embeddings/registry.ts, .pi/lib/embeddings/utils.ts, .pi/lib/embeddings/providers/openai.ts
+ * public_api: 型エイリアス一式, EmbeddingProviderRegistry, generateEmbedding, cosineSimilarity, OpenAIEmbeddingProvider, initializeEmbeddingModule, initializeEmbeddingModuleSync
+ * invariants: インポート時（同期的）にOpenAIプロバイダがレジストリに登録される
+ * side_effects: モジュールロード時の自動初期化によりregistryが変更される
+ * failure_modes: プロバイダ登録済みの状態で再初期化を呼ぶと重複登録される可能性がある
  * @abdd.explain
- * overview: 埋め込みベクトル生成機能のファサードモジュール。型、レジストリ操作、ベクトル演算ユーティリティ、OpenAIプロバイダを再エクスポートする。
+ * overview: エンベディング生成とベクトル操作に関するモジュールの統一フロントエンド
  * what_it_does:
- *   - types.jsから埋め込み関連型定義をエクスポート
- *   - registry.jsからプロバイダ登録・埋め込み生成関数をエクスポート
- *   - utils.jsからベクトル演算・類似度計算関数をエクスポート
- *   - providers/openai.jsからOpenAI埋め込みプロバイダをエクスポート
- *   - 初期化関数（同期/非同期）を提供し、インポート時に自動初期化を実行
+ *   - 型定義、レジストリ、計算ユーティリティ、プロバイダー実装を再エクスポートする
+ *   - デフォルトのOpenAIプロバイダーを使用してモジュールを初期化する
  * why_it_exists:
- *   - 外部モジュールが埋め込み機能を単一のインポートパスで利用可能にする
- *   - 実装詳細を隠蔽し、安定した公開APIを提供する
+ *   - 利用者に対してモジュール構成の詳細を隠蔽し、シンプルなインポートパスを提供する
+ *   - モジュール利用開始に必要な初期化処理（プロバイダ登録）を標準化する
  * scope:
- *   in: なし（再エクスポート専用）
- *   out: 埋め込み生成に必要なすべての型、関数、プロバイダ
+ *   in: 内部モジュールからのエクスポート、OpenAIプロバイダーの定義
+ *   out: エンベディング生成関数、ベクトル計算ユーティリティ、初期化関数
  */
 
 /**
@@ -92,18 +89,20 @@ export {
 import { embeddingRegistry } from "./registry.js";
 import { openAIEmbeddingProvider } from "./providers/openai.js";
 
- /**
-  * デフォルトプロバイダで埋め込みモジュールを初期化
-  * @returns {Promise<void>}
-  */
+/**
+ * @summary モジュール初期化
+ * 埋め込みモジュールを非同期に初期化する
+ * @returns {Promise<void>}
+ */
 export async function initializeEmbeddingModule(): Promise<void> {
   embeddingRegistry.register(openAIEmbeddingProvider);
 }
 
- /**
-  * 非同期コンテキスト用の同期初期化
-  * @returns 戻り値なし
-  */
+/**
+ * @summary モジュール初期化
+ * 埋め込みモジュールを同期的に初期化する
+ * @returns {void}
+ */
 export function initializeEmbeddingModuleSync(): void {
   embeddingRegistry.register(openAIEmbeddingProvider);
 }

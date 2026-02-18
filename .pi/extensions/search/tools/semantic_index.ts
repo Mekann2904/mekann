@@ -1,35 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/semantic_index.ts
- * role: セマンティックインデックス生成ツール。コードファイルのベクトル埋め込みを生成してインデックスに保存する
- * why: コードの意味ベース検索を可能にし、キーワード検索では見つけにくい関連コードを発見できるようにするため
- * related: types.js, utils/constants.js, embeddings, vector_store
- * public_api: デフォルトエクスポート（SemanticIndexInputを受け取りSemanticIndexOutputを返すツール関数）
- * invariants:
- *   - インデックスファイルはJSONL形式で保存される
- *   - チャンクIDはファイルパスと行番号から一意に生成される
- *   - 同一ファイルの再インデックス時はハッシュで変更を検出する
- * side_effects:
- *   - .pi/semantic-index/ディレクトリへのファイル読み書き
- *   - ソースファイルの読み込み
- *   - 埋め込みプロバイダーへのAPI呼び出し
- * failure_modes:
- *   - 対象ディレクトリが存在しない場合はエラー
- *   - 埋め込みプロバイダーが全て失敗した場合はインデックス生成に失敗する
- *   - 読み取り権限のないファイルはスキップされる
+ * role: ソースコードのベクトル検索インデックスを作成するツール
+ * why: コードの意味的検索を可能にするため、ファイルをチャンク化してベクトル埋め込みを生成・永続化する
+ * related: .pi/extensions/search/types.js, .pi/extensions/search/utils/constants.js, .pi/extensions/search/tools/embeddings.ts
+ * public_api: semantic_index (SemanticIndexInput): Promise<SemanticIndexOutput>
+ * invariants: 出力ディレクトリ構造はINDEX_DIR_NAMEに依存する、チャンクIDはファイルパスと行番号から一意に決まる
+ * side_effects: ファイルシステムへのインデックスファイル(semantic-index.jsonl, semantic-meta.json)の書き込み、インデックスディレクトリの作成
+ * failure_modes: ファイル読み込み権限不足、埋め込み生成APIの失敗、ディスク容量不足
  * @abdd.explain
- * overview: 指定されたパス配下のコードファイルを収集し、チャンク分割してベクトル埋め込みを生成、セマンティックインデックスとして保存するツール
+ * overview: 指定されたディレクトリ内のコードファイルを収集・分割し、ベクトル埋め込みを生成してセマンティックインデックスを構築するツール
  * what_it_does:
- *   - ディレクトリを再帰的に走査し、指定拡張子のファイルを収集する
- *   - コードを行ベースでチャンク分割する（デフォルト500行、オーバーラップ50行）
- *   - 各チャンクのベクトル埋め込みを生成する
- *   - インデックスとメタデータをJSONL/JSONファイルとして永続化する
+ *   - 対象ディレクトリから拡張子に基づいてファイルを再帰的に収集する
+ *   - コードを行単位のチャンク（オーバーラップあり）に分割し、IDと言語情報を付与する
+ *   - 各チャックのベクトル埋め込みを生成し、JSONL形式で保存する
+ *   - インデックスのメタデータ（ハッシュ、設定など）を管理する
  * why_it_exists:
- *   - コードの意味的類似性に基づく検索機能を提供するため
- *   - 大規模コードベースでの関連コード発見を効率化するため
+ *   - LLMによるコード解析や検索において、ファイル単位よりもチャンク単位の方が精度が高いため
+ *   - 埋め込み計算のコストを削減するため、差分更新やキャッシュ機構が必要なため
  * scope:
- *   in: 対象ルートパス、対象拡張子リスト、除外パターン、forceフラグ、チャンクサイズ設定
- *   out: インデックスされたチャンク数、生成されたインデックスファイルパス、処理されたファイル一覧
+ *   in: SemanticIndexInput (path, extensions, excludes, force, chunkSize, overlap)
+ *   out: SemanticIndexOutput (status, stats, meta)
  */
 
 /**
@@ -295,12 +286,13 @@ async function saveMetadata(
 // Main Function
 // ============================================================================
 
- /**
-  * セマンティックインデックスを生成する
-  * @param input インデックス生成の設定オプション
-  * @param cwd 作業ディレクトリのパス
-  * @returns 生成結果を含むオブジェクト
-  */
+/**
+ * 意味的索引を作成
+ * @summary 意味的索引作成
+ * @param input 入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 索引作成結果
+ */
 export async function semanticIndex(
 	input: SemanticIndexInput,
 	cwd: string

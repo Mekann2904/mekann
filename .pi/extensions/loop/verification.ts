@@ -1,38 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop/verification.ts
- * role: ループ拡張機能における検証コマンド実行エンジン
- * why: 任意のコマンド実行によるセキュリティリスクを軽減しつつ、テスト/検証コマンドを決定論的に実行するため
- * related: .pi/extensions/loop.ts, .pi/lib/format-utils.js, .pi/lib/error-utils.js, node:child_process
- * public_api: runVerificationCommand, parseVerificationCommand, getVerificationPolicy, isVerificationAllowed, LoopVerificationResult, ParsedVerificationCommand, VerificationPolicyConfig
- * invariants:
- *   - 許可リストにないコマンドprefixを持つコマンドは実行されない
- *   - 検証結果は常にpassed(boolean)とdurationMs(number)を含む
- *   - タイムアウト時はtimedOut=true、exitCode=null
- * side_effects:
- *   - 子プロセスの生成と外部コマンド実行
- *   - 環境変数(VERIFICATION_ALLOWLIST_ENV等)の読み取り
- *   - プロセスのSIGTERMシグナル送信
- * failure_modes:
- *   - 許可リスト不一致による実行拒否
- *   - コマンドタイムアウト(GRACEFUL_SHUTDOWN_DELAY_MS経過後の強制終了)
- *   - 子プロセス起動失敗によるエラー
- *   - コマンドパース失敗(空文字列や無効な形式)
+ * role: ループ拡張機能における検証コマンドの実行と設定管理
+ * why: 決定的な検証コマンドの実行を処理し、許可リストベースのセキュリティと実行ポリシー制御を提供するため
+ * related: .pi/extensions/loop.ts, ../../lib/format-utils.js, ../../lib/error-utils.js
+ * public_api: LoopVerificationResult, ParsedVerificationCommand, VerificationPolicyConfig, executeVerification, parseVerificationCommand, DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES
+ * invariants: 検証実行は許可リストのプレフィックス一致を必須とする、結果オブジェクトは成功/失敗/タイムアウトのいずれかの状態を持つ
+ * side_effects: 子プロセスの生成、標準入出力の読み取り、環境変数の参照
+ * failure_modes: 許可リスト不一致による実行拒否、コマンドパースエラー、子プロセスの起動失敗またはタイムアウト
  * @abdd.explain
- * overview: ループ処理中にテスト/検証コマンドをセキュアに実行するためのモジュール。許可リストベースのセキュリティ検証とポリシー制御を提供する。
+ * overview: ループ処理内での検証コマンド（テスト等）を安全に実行するためのモジュール。コマンド文字列のパース、許可リスト（Allowlist）によるセキュリティチェック、実行ポリシー（頻度やタイミング）の制御を行う。
  * what_it_does:
  *   - 検証コマンド文字列を実行可能ファイルと引数にパースする
- *   - コマンドが許可リストのプレフィックスと一致するか検証する
- *   - 子プロセスとしてコマンドを実行し、結果を収集する
- *   - タイムアウト発生時にGRACEFUL_SHUTDOWN_DELAY_MS待機後、プロセスを終了する
- *   - 検証ポリシー(always/done_only/every_n)に基づき実行タイミングを制御する
+ *   - 事前定義された許可リストと照合し、一致する場合のみ実行を許可する
+ *   - 子プロセスとして検証コマンドを実行し、終了コード、標準出力、実行時間を収集する
+ *   - 環境変数や設定に基づいて検証の実行ポリシー（毎回、完了時のみ、N回ごと）を決定する
+ *   - デフォルトの許可リストとしてnpm, pnpm, yarn, vitest等の主要なテストコマンドを提供する
  * why_it_exists:
- *   - ループ処理の各反復後または完了時に自動検証を実行し、コード品質を維持するため
- *   - 任意シェルコマンド実行のセキュリティリスクをallowlist方式で緩和するため
- *   - 検証実行の頻度をポリシーで制御し、パフォーマンスと品質保証のバランスを取るため
+ *   - CI/CDや開発ループにおいて、ビルドと検証を自動的に連携させるため
+ *   - 任意のコマンド実行によるセキュリティリスクを許可リストで軽減するため
+ *   - 検証の実行頻度を制御し、リソース消費を最適化するため
  * scope:
- *   in: 検証コマンド文字列、許可リスト設定(環境変数経由)、検証ポリシー設定、タイムアウト設定
- *   out: LoopVerificationResult(成功/失敗、終了コード、出力、所要時間)、ParsedVerificationCommand
+ *   in: 検証コマンド文字列、環境変数（PI_LOOP_VERIFY_*）、実行ポリシー設定
+ *   out: 検証実行結果（成否、時間、ログ）、パースエラー情報
  */
 
 // File: .pi/extensions/loop/verification.ts
@@ -110,17 +100,15 @@ export const DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES: string[][] = [
    * };
    */
 
- /**
-  * ループ検証結果を表すインターフェース
-  * @property command - 実行されたコマンド
-  * @property passed - 検証が成功したかどうか
-  * @property timedOut - タイムアウトしたかどうか
-  * @property exitCode - 終了コード
-  * @property durationMs - 実行時間（ミリ秒）
-  * @property stdout - 標準出力の内容
-  * @property stderr - 標準エラー出力の内容
-  * @property error - エラーが発生した場合のエラーメッセージ（オプション）
-  */
+/**
+ * ループ検証の実行結果
+ * @summary 検証結果
+ * @param command - 実行したコマンド
+ * @param passed - 検証合格フラグ
+ * @param timedOut - タイムアウトフラグ
+ * @param exitCode - 終了コード
+ * @param durationMs - 実行時間（ミリ秒）
+ */
 export interface LoopVerificationResult {
   command: string;
   passed: boolean;
@@ -141,29 +129,31 @@ export interface LoopVerificationResult {
   error?: string;
 }
 
- /**
-  * 検証コマンドの解析結果
-  * @param executable - 実行可能ファイルパス
-  * @param args - 引数リスト
-  * @param error - エラーメッセージ（任意）
-  */
+/**
+ * パースされた検証コマンド
+ * @summary 検証コマンド情報
+ * @param executable - 実行ファイルパス
+ * @param args - 引数リスト
+ * @param error - エラー文字列（任意）
+ */
 export interface ParsedVerificationCommand {
   executable: string;
   args: string[];
   error?: string;
 }
 
- /**
-  * 検証ポリシーのモード
-  * @type {"always" | "done_only" | "every_n"}
-  */
+/**
+ * 検証ポリシーのモード
+ * @summary 検証モード
+ */
 export type VerificationPolicyMode = "always" | "done_only" | "every_n";
 
- /**
-  * 検証ポリシーの設定
-  * @param mode 検証モード
-  * @param everyN 実行頻度（modeがevery_nの場合）
-  */
+/**
+ * 検証ポリシーの設定
+ * @summary 検証ポリシー設定
+ * @param mode - 検証モード
+ * @param everyN - 実行頻度（modeがevery_nの場合）
+ */
 export interface VerificationPolicyConfig {
   mode: VerificationPolicyMode;
   everyN: number;
@@ -173,10 +163,11 @@ export interface VerificationPolicyConfig {
 // Verification Policy
 // ============================================================================
 
- /**
-  * 環境変数から検証ポリシーを解決する
-  * @returns 検証ポリシーの設定オブジェクト
-  */
+/**
+ * 検証ポリシー設定を解決
+ * @summary ポリシー設定解決
+ * @returns 検証ポリシーの設定オブジェクト
+ */
 export function resolveVerificationPolicy(): VerificationPolicyConfig {
   const rawMode = String(process.env[VERIFICATION_POLICY_ENV] || "")
     .trim()
@@ -191,11 +182,12 @@ export function resolveVerificationPolicy(): VerificationPolicyConfig {
   return { mode, everyN };
 }
 
- /**
-  * 検証コマンドを実行すべきか判定する
-  * @param input - 現在のイテレーション情報と検証ポリシー
-  * @returns 実行する場合はtrue
-  */
+/**
+ * 検証実行判定
+ * @summary 実行可否判定
+ * @param input - 現在のイテレーション情報と検証ポリシー
+ * @returns 実行する場合はtrue
+ */
 export function shouldRunVerificationCommand(input: {
   iteration: number;
   maxIterations: number;
@@ -399,11 +391,11 @@ export async function runVerificationCommand(input: {
 // Command Parsing
 // ============================================================================
 
- /**
-  * 検証コマンドをパースする
-  * @param command - パース対象のコマンド文字列
-  * @returns パース結果（実行ファイル、引数、エラー）
-  */
+/**
+ * @summary コマンドをパース
+ * @param command - パース対象のコマンド文字列
+ * @returns パース結果（実行ファイル、引数、エラー）
+ */
 export function parseVerificationCommand(command: string): ParsedVerificationCommand {
   const raw = String(command ?? "").trim();
   if (!raw) {
@@ -510,10 +502,12 @@ function tokenizeArgs(input: string): string[] {
 // Allowlist
 // ============================================================================
 
- /**
-  * 検証許可リストのプレフィックスを解決する
-  * @returns 許可リストのプレフィックスの2次元配列
-  */
+/**
+ * 許可リストを解決
+ * @summary プレフィックスを解決
+ * @param なし
+ * @returns 許可リストのプレフィックスの2次元配列
+ */
 export function resolveVerificationAllowlistPrefixes(): string[][] {
   // Always start with the default allowlist for security
   const basePrefixes = DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES.map((item) => [...item]);
@@ -599,11 +593,12 @@ function redactSensitiveText(value: string): string {
   return redacted;
 }
 
- /**
-  * 検証結果からフィードバックメッセージを生成する
-  * @param result 検証結果
-  * @returns フィードバックメッセージの配列
-  */
+/**
+ * 検証結果からフィードバックを生成
+ * @summary フィードバック生成
+ * @param result 検証結果
+ * @returns フィードバックメッセージの配列
+ */
 export function buildVerificationValidationFeedback(result: LoopVerificationResult): string[] {
   if (result.passed) return [];
 

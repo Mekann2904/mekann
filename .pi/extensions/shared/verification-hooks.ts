@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/shared/verification-hooks.ts
- * role: サブエージェント実行後の自動検証フック制御モジュール
- * why: LLM推論の失敗を検出・軽減するため、サブエージェント出力に対する事後検証を自動化する
- * related: lib/verification-workflow.js, lib/comprehensive-logger.js, lib/comprehensive-logger-types.ts
- * public_api: resolveVerificationHookConfig, postSubagentVerificationHook, VerificationHookConfig, VerificationHookResult
- * invariants: disabledモード時は検証を実行しない、strictモード時はInspectorとChallengerの両方を実行する
- * side_effects: 環境変数PI_VERIFICATION_WORKFLOW_MODEの読み取り、ログ操作の開始・終了、runVerificationAgentコールバックの実行
- * failure_modes: 環境変数未設定時はautoモードで動作、トリガー条件を満たさない場合は検証をスキップする
+ * role: 検証フックのエントリーポイントおよび設定解決モジュール
+ * why: 論文「Large Language Model Reasoning Failures」の推奨事項に基づき、サブエージェント実行後の出力を自動検証するため
+ * related: .pi/lib/verification-workflow.js, .pi/lib/comprehensive-logger.js
+ * public_api: VerificationHookConfig, VerificationHookResult, resolveVerificationHookConfig, postSubagentVerificationHook
+ * invariants: resolveVerificationHookConfigの返すenabledはmodeに依存する、logResultsは環境変数PI_VERIFICATION_LOGに依存する
+ * side_effects: 環境変数を読み込む、ロガーを通じて操作ログを出力する
+ * failure_modes: 環境変数の未定義によるデフォルト設定の適用、runVerificationAgent関数の実行失敗
  * @abdd.explain
- * overview: サブエージェント/チーム実行後に自動的に検証プロセスを起動するフックシステム
+ * overview: サブエージェント出力に対する検証プロセスのトリガーと制御を行う
  * what_it_does:
- *   - 環境変数から検証モード(disabled/minimal/auto/strict)を解決し設定を生成する
- *   - shouldTriggerVerificationで検証要否を判定し、必要時にInspector/Challengerを実行する
- *   - 検証結果をVerificationHookResultとして返却する
+ *   - 環境変数に基づき検証フックの有効/無効やモードを解決する
+ *   - サブエージェント実行後の出力と信頼度を受け取り、検証の要否を判定する
+ *   - インスペクタおよびチャレンジャーの実行制御を行う
+ *   - 検証結果をログに記録する
  * why_it_exists:
- *   - 論文「Large Language Model Reasoning Failures」のP0推奨事項に基づく実装
- *   - LLMの推論エラーを自動検出し、信頼性の低い出力を早期に特定するため
+ *   - LLMの推論失敗を検知し、出力の信頼性を高めるため
+ *   - 高リスクタスクにおける出力安全性を確保するため
+ *   - 検証プロセスを環境設定により柔軟に制御可能にするため
  * scope:
- *   in: サブエージェントの出力文字列、信頼度スコア(0-1)、エージェントコンテキスト、検証エージェント実行関数
- *   out: VerificationHookResult(トリガー状態、検証結果、実行フラグ、エラー情報)
+ *   in: 環境変数(PI_VERIFICATION_WORKFLOW_MODE, PI_VERIFICATION_LOG)、サブエージェントの出力文字列、信頼度数値、コンテキスト
+ *   out: 解決された設定オブジェクト、検証実行の有無、検証結果オブジェクト
  */
 
 /**
@@ -45,14 +47,15 @@ import type { OperationType } from "../../lib/comprehensive-logger-types.js";
 
 const logger = getLogger();
 
- /**
-  * 検証フックの設定オプション
-  * @param enabled 有効かどうか
-  * @param mode 動作モード
-  * @param runInspector インスペクタを実行するか
-  * @param runChallenger チャレンジャーを実行するか
-  * @param logResults 結果をログ出力するか
-  */
+/**
+ * 検証フックの設定
+ * @summary 検証設定
+ * @param enabled - 有効かどうか
+ * @param mode - 動作モード
+ * @param runInspector - 検査官を実行するか
+ * @param runChallenger - チャレンジャーを実行するか
+ * @param logResults - 結果をログに出力するか
+ */
 export interface VerificationHookConfig {
   enabled: boolean;
   mode: "disabled" | "minimal" | "auto" | "strict";
@@ -61,14 +64,15 @@ export interface VerificationHookConfig {
   logResults: boolean;
 }
 
- /**
-  * 検証フックの結果
-  * @param triggered トリガーされたかどうか
-  * @param result 検証結果
-  * @param inspectorRun インスペクターが実行されたかどうか
-  * @param challengerRun チャレンジャーが実行されたかどうか
-  * @param error エラーメッセージ
-  */
+/**
+ * 検証フックの結果
+ * @summary 検証結果
+ * @param triggered - トリガーされたか
+ * @param result - 検証結果
+ * @param inspectorRun - 検査官が実行されたか
+ * @param challengerRun - チャレンジャーが実行されたか
+ * @param error - エラーメッセージ
+ */
 export interface VerificationHookResult {
   triggered: boolean;
   result?: VerificationResult;
@@ -77,10 +81,11 @@ export interface VerificationHookResult {
   error?: string;
 }
 
- /**
-  * 検証フック設定を解決
-  * @returns 解決された検証フックの設定
-  */
+/**
+ * 検証フック設定を解決
+ * @summary 設定解決
+ * @returns 検証フックの設定
+ */
 export function resolveVerificationHookConfig(): VerificationHookConfig {
   const envMode = process.env.PI_VERIFICATION_WORKFLOW_MODE || "auto";
   
@@ -489,11 +494,12 @@ function parseChallengerOutput(rawOutput: string): ChallengerOutput {
   };
 }
 
- /**
-  * 検証結果をフォーマットする
-  * @param result 検証フックの結果
-  * @returns フォーマットされた文字列
-  */
+/**
+ * 検証結果のフォーマット
+ * @summary 検証結果フォーマット
+ * @param result 検証フック結果
+ * @returns フォーマット済み文字列
+ */
 export function formatVerificationResult(result: VerificationHookResult): string {
   if (!result.triggered) {
     return "[Verification] Not triggered";

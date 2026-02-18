@@ -1,34 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/call-graph/builder.ts
- * role: コールグラフ構築モジュール
- * why: ripgrepとctagsシンボルインデックスを用いて関数呼び出し関係を解析し、コールグラフインデックスを生成するため
- * related: ./types.js, ../utils/cli.js, ../tools/sym_index.js, ../utils/constants.js
- * public_api: getCallGraphDir, getCallGraphIndexPath, fileExists, mapKind
- * invariants:
- *   - COMMON_NAMESは一般的すぎて信頼度が低い関数名のセットを保持する
- *   - CONFIDENCE_EXACT_MATCH = 0.8, CONFIDENCE_SAME_FILE = 1.0, CONFIDENCE_COMMON_NAME = 0.5
- *   - INDEX_VERSION = 1
- * side_effects:
- *   - execute経由でripgrep等の外部CLIを実行する可能性がある
- *   - readFile, writeFile, mkdir, accessによるファイルシステム操作
- * failure_modes:
- *   - ctagsシンボルインデックスが存在しない場合、呼び出し検出が不完全になる
- *   - COMMON_NAMESに含まれる関数名は常に低信頼度スコアになる
- *   - ファイルシステムアクセス権限がない場合、fileExists等が失敗する
+ * role: コールグラフの構築とインデックスの永続化を担当するモジュール
+ * why: ripgrepとctagsを利用した静的解析により、関数呼び出し関係を可視化し、コード探索を支援するため
+ * related: .pi/extensions/search/call-graph/types.ts, .pi/extensions/search/utils/cli.ts, .pi/extensions/search/tools/sym_index.ts, .pi/extensions/search/utils/constants.ts
+ * public_api: getCallGraphDir, getCallGraphIndexPath, mapKind
+ * invariants: インデックスのバージョンは1である、コールグラフディレクトリは.pi/search/call-graph配下である
+ * side_effects: ファイルシステムへのディレクトリ作成およびJSONファイルの書き込み
+ * failure_modes: ripgrepまたはctagsの実行失敗、ctagsの出力形式の変更、パーミッションエラーによる書き込み失敗
  * @abdd.explain
- * overview: ripgrepとctagsベースのPhase 1正規表現呼び出し検出によるコールグラフ構築
+ * overview: ripgrepによるテキスト検索とctagsによるシンボル定義を組み合わせ、関数呼び出しノードとエッジを持つコールグラフを構築する
  * what_it_does:
- *   - 関数定義をctagsシンボルインデックスから抽出する
- *   - 正規表現で関数呼び出しを検出し信頼度スコアを付与する
- *   - コールグラフのノードとエッジを生成する
- *   - 構築したコールグラフを.pi/search/call-graph/index.jsonに保存する
+ *   - ctagsの出力から関数定義を抽出し、ノードとしてマッピングする
+ *   - 正規表現ベースのパターンマッチングで呼び出しを検出し、信頼度スコアを付与する
+ *   - コールグラフのメタデータと構造をJSONファイルに永続化する
+ *   - 一般的な関数名（get, handle等）を検出対象から除外してノイズを低減する
  * why_it_exists:
- *   - コードベース内の関数呼び出し関係を静的解析で把握するため
- *   - 影響範囲調査やリファクタリング支援のための依存関係データを提供するため
+ *   - コードの依存関係を把握するための構造的なデータを提供する
+ *   - 定義と呼び出しの対応付けを自動化し、リファクタリングや影響分析を効率化する
+ *   - 外部ツール（ripgrep, ctags）の統合インターフェースとして機能する
  * scope:
- *   in: SymbolIndexEntry配列、ソースコードファイルパス、現在の作業ディレクトリ(cwd)
- *   out: CallGraphIndex（nodes, edges, metadataを含むJSON）、CallGraphNodeKindへのマッピング
+ *   in: ctagsが出力するシンボルインデックス、ripgrepの検索結果、作業ディレクトリパス
+ *   out: 関数定義リスト、検出された呼び出しリスト、コールグラフインデックスJSON
  */
 
 /**
@@ -434,12 +427,13 @@ function calculateConfidence(
 	return Math.min(1.0, Math.max(0.1, confidence));
 }
 
- /**
-  * プロジェクトのコールグラフを構築する
-  * @param path - ターゲットパス（デフォルト: cwd）
-  * @param cwd - 作業ディレクトリ
-  * @returns コールグラフインデックス
-  */
+/**
+ * コールグラフ構築
+ * @summary コールグラフ構築
+ * @param path 解析対象のファイルパス
+ * @param cwd カレントワーキングディレクトリ
+ * @returns 構築されたコールグラフインデックス
+ */
 export async function buildCallGraph(
 	path: string,
 	cwd: string
@@ -549,12 +543,13 @@ export async function buildCallGraph(
 // Index Persistence
 // ============================================
 
- /**
-  * コールグラフのインデックスをファイルに保存します。
-  * @param index コールグラフのインデックスデータ
-  * @param cwd カレントワーキングディレクトリ
-  * @returns 保存先のファイルパス
-  */
+/**
+ * インデックス保存
+ * @summary インデックス保存
+ * @param index 保存するコールグラフインデックス
+ * @param cwd カレントワーキングディレクトリ
+ * @returns 保存したファイルパス
+ */
 export async function saveCallGraphIndex(
 	index: CallGraphIndex,
 	cwd: string
@@ -568,11 +563,12 @@ export async function saveCallGraphIndex(
 	return indexPath;
 }
 
- /**
-  * コールグラフのインデックスを読み込む
-  * @param cwd 作業ディレクトリのパス
-  * @returns コールグラフのインデックス、存在しない場合はnull
-  */
+/**
+ * インデックス読込
+ * @summary インデックス読込
+ * @param cwd カレントワーキングディレクトリ
+ * @returns 読み込んだインデックス、失敗時はnull
+ */
 export async function readCallGraphIndex(
 	cwd: string
 ): Promise<CallGraphIndex | null> {
@@ -590,11 +586,12 @@ export async function readCallGraphIndex(
 	}
 }
 
- /**
-  * コールグラフインデックスが古いか確認
-  * @param cwd カレントワーキングディレクトリ
-  * @returns 古い場合は true
-  */
+/**
+ * インデックス期限確認
+ * @summary インデックス期限確認
+ * @param cwd カレントワーキングディレクトリ
+ * @returns 期限切れの場合はtrue
+ */
 export async function isCallGraphIndexStale(cwd: string): Promise<boolean> {
 	const index = await readCallGraphIndex(cwd);
 	if (!index) return true;

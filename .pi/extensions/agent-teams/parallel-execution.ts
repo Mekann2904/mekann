@@ -1,32 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/parallel-execution.ts
- * role: エージェントチームの並列実行容量解決・確保モジュール
- * why: agent-teams.tsから並列実行ロジックを分離し、保守性と再利用性を確保するため
- * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts, .pi/extensions/agent-runtime/capacity.ts
- * public_api: TeamParallelCapacityCandidate, TeamParallelCapacityResolution, buildMemberParallelCandidates, buildTeamAndMemberParallelCandidates
- * invariants:
- *   - teamParallelism, memberParallelismは常に1以上の整数値
- *   - candidates配列は並列度の降順（要求値から1へ段階的減少）で生成される
- *   - additionalLlm = teamParallelism * memberParallelism
- * side_effects:
- *   - agent-runtimeのreserveRuntimeCapacity/tryReserveRuntimeCapacity経由でランタイム容量を予約・消費する
- * failure_modes:
- *   - ランタイム容量不足により要求並列度から削減される
- *   - maxWaitMsタイムアウトによる待機失敗
- *   - 予約処理の中断（aborted）
+ * role: エージェントチームの並列実行容量解決およびリソース確保を行うモジュール
+ * why: 並列実行ロジックを分離し、メインのagent-teams.tsの保守性を向上させるため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts
+ * public_api: TeamParallelCapacityCandidate, TeamParallelCapacityResolution, buildMemberParallelCandidates, buildTeamAndMemberParallelCandidates, resolveTeamParallelCapacity
+ * invariants: 候補生成時の並列度は1以上の整数であること、解決結果のapplied値はrequested値以下であること
+ * side_effects: agent-runtime.tsの関数を呼び出し、リソース予約を変更する
+ * failure_modes: リソース不足による容量確保の失敗、タイムアウトによる中断
  * @abdd.explain
- * overview: エージェントチーム実行時の並列度をランタイム容量に基づき解決・確保する
+ * overview: エージェントチームの並列度に基づいて、実行に必要な容量の候補リストを作成し、利用可能なリソースを確保する
  * what_it_does:
- *   - チーム・メンバー並列度の候補リストを降順で生成する
- *   - 要求並列度から利用可能な容量を探索し、確保可能な並列度を決定する
- *   - RuntimeCapacityReservationLeaseを通じてリソース予約を管理する
+ *   - メンバー単位、チーム・メンバー単位の並列実行容量候補を生成する
+ *   - 要求された並列度をもとに、利用可能な容量を探索・予約する
+ *   - 予約結果（許可可否、削減の有無、待機時間など）を返す
  * why_it_exists:
- *   - 複数エージェントの並列実行時にリソース競合を調整するため
- *   - 容量不足時に段階的に並列度を下げるフォールバック戦略を実装するため
+ *   - チームおよびメンバーの並列処理に必要なリソース量を計算・管理するため
+ *   - リソース競合時に並列度を調整し、システム安定性を保つため
  * scope:
- *   in: 要求されたチーム並列度、メンバー並列度、待機タイムアウト設定
- *   out: 解決結果（許可/拒否、適用並列度、削減フラグ、予約リース）
+ *   in: 要求するチーム並列度、メンバー並列度、最大待機時間
+ *   out: 並列実行容量の解決結果、確保されたリソース予約リース
  */
 
 // File: .pi/extensions/agent-teams/parallel-execution.ts
@@ -44,13 +37,15 @@ import {
 // Types
 // ============================================================================
 
- /**
-  * チーム並列実行容量の候補
-  * @param teamParallelism - チーム全体の並列実行数
-  * @param memberParallelism - 各メンバーの並列実行数
-  * @param additionalRequests - 追加のリクエスト数
-  * @param additionalLlm - 追加のLLM呼び出し数
-  */
+/**
+ * チーム並列容量の候補
+ * @summary 容量候補の定義
+ * @param teamParallelism チームの並列数
+ * @param memberParallelism メンバーの並列数
+ * @param additionalRequests 追加リクエスト数
+ * @param additionalLlm 追加LLM数
+ * @returns 候補オブジェクト
+ */
 export interface TeamParallelCapacityCandidate {
   teamParallelism: number;
   memberParallelism: number;
@@ -58,23 +53,16 @@ export interface TeamParallelCapacityCandidate {
   additionalLlm: number;
 }
 
- /**
-  * チーム並列実行の解決結果を表すインターフェース
-  * @param allowed - 許可されたかどうか
-  * @param requestedTeamParallelism - 要求されたチーム並列度
-  * @param requestedMemberParallelism - 要求されたメンバー並列度
-  * @param appliedTeamParallelism - 適用されたチーム並列度
-  * @param appliedMemberParallelism - 適用されたメンバー並列度
-  * @param reduced - 削減されたかどうか
-  * @param reasons - 理由の配列
-  * @param waitedMs - 待機時間（ミリ秒）
-  * @param timedOut - タイムアウトしたかどうか
-  * @param aborted - 中断されたかどうか
-  * @param attempts - 試行回数
-  * @param projectedRequests - 予測リクエスト数
-  * @param projectedLlm - 予測LLM数
-  * @param reservation - 予約リソース（オプション）
-  */
+/**
+ * チーム並列容量の解決結果
+ * @summary 解決結果の定義
+ * @param allowed 許可されたかどうか
+ * @param requestedTeamParallelism 要求されたチーム並列度
+ * @param requestedMemberParallelism 要求されたメンバー並列度
+ * @param appliedTeamParallelism 適用されたチーム並列度
+ * @param appliedMemberParallelism 適用されたメンバー並列度
+ * @returns 解決結果オブジェクト
+ */
 export interface TeamParallelCapacityResolution {
   allowed: boolean;
   requestedTeamParallelism: number;
@@ -96,11 +84,12 @@ export interface TeamParallelCapacityResolution {
 // Candidate Building
 // ============================================================================
 
- /**
-  * メンバーの並列度に基づいて候補を生成する
-  * @param memberParallelism メンバーの並列度
-  * @returns チーム並列容量候補の配列
-  */
+/**
+ * メンバーの候補を作成
+ * @summary メンバー候補作成
+ * @param memberParallelism メンバーの並列数
+ * @returns 作成された候補リスト
+ */
 export function buildMemberParallelCandidates(memberParallelism: number): TeamParallelCapacityCandidate[] {
   const requestedMemberParallelism = Math.max(1, Math.trunc(memberParallelism));
   const candidates: TeamParallelCapacityCandidate[] = [];
@@ -115,12 +104,13 @@ export function buildMemberParallelCandidates(memberParallelism: number): TeamPa
   return candidates;
 }
 
- /**
-  * チームとメンバーの並列実行候補を生成
-  * @param teamParallelism - チームの並列度
-  * @param memberParallelism - メンバーの並列度
-  * @returns 並列実行容量の候補リスト
-  */
+/**
+ * チームとメンバーの候補を作成
+ * @summary 候補リスト作成
+ * @param teamParallelism チームの並列数
+ * @param memberParallelism メンバーの並列数
+ * @returns 作成された候補リスト
+ */
 export function buildTeamAndMemberParallelCandidates(
   teamParallelism: number,
 /**
@@ -160,18 +150,19 @@ export function buildTeamAndMemberParallelCandidates(
 // Capacity Resolution
 // ============================================================================
 
- /**
-  * チームの並列容量を解決する
-  * @param input 解決に必要な入力データ
-  * @param input.requestedTeamParallelism 要求するチームの並列数
-  * @param input.requestedMemberParallelism 要求するメンバーの並列数
-  * @param input.candidates 候補となるチーム並列容量のリスト
-  * @param input.toolName 対象のツール名（オプション）
-  * @param input.maxWaitMs 最大待機時間（ミリ秒）
-  * @param input.pollIntervalMs ポーリング間隔（ミリ秒）
-  * @param input.signal 中断シグナル（オプション）
-  * @returns チーム並列容量の解決結果を含むPromise
-  */
+/**
+ * チーム並列容量を解決する
+ * @summary 並列容量を解決
+ * @param input 解決に必要な入力データ
+ * @param input.requestedTeamParallelism 要求するチームの並列数
+ * @param input.requestedMemberParallelism 要求するメンバーの並列数
+ * @param input.candidates 候補となるチーム並列容量のリスト
+ * @param input.toolName 対象のツール名（オプション）
+ * @param input.maxWaitMs 最大待機時間（ミリ秒）
+ * @param input.pollIntervalMs ポーリング間隔（ミリ秒）
+ * @param input.signal 中断シグナル（オプション）
+ * @returns 並列容量の解決結果
+ */
 export async function resolveTeamParallelCapacity(input: {
   requestedTeamParallelism: number;
   requestedMemberParallelism: number;

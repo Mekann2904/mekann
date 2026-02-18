@@ -1,24 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/interfaces/runtime-snapshot.ts
- * role: DIPに基づくランタイム状態の抽象化インターフェース定義
- * why: lib/モジュールがextensions/の具象実装に依存しないよう、Clean Architecture準拠で状態取得を抽象化するため
- * related: lib/unified-limit-resolver.ts, extensions/agent-runtime.ts, lib/interfaces/index.ts, lib/orchestrator.ts
+ * role: ランタイム状態の抽象化インターフェースおよびその取得関数の型定義
+ * why: DIP（依存性逆転の原則）に従い、lib/モジュールがextensions/の具象実装に依存せず抽象に依存するため
+ * related: lib/unified-limit-resolver.ts, extensions/agent-runtime.ts
  * public_api: IRuntimeSnapshot, RuntimeSnapshotProvider
- * invariants: 全プロパティは非負の整数値を持つ
- * side_effects: なし（純粋な型定義）
- * failure_modes: なし（インターフェース定義のため実行時エラーは発生しない）
+ * invariants: 各カウントプロパティ（totalActiveLlm, totalActiveRequestsなど）は常に0以上の整数
+ * side_effects: なし（インターフェースと型エイリアスのみ）
+ * failure_modes: Providerが不正な値（負数など）を返した場合、呼び出し元のリミット制御ロジックが誤動作する
  * @abdd.explain
- * overview: ランタイムの実行状態を表すスナップショットデータ構造とその取得関数型を定義する
+ * overview: システム全体のアクティブな処理数とエージェント数を表現するデータ構造と、それを提供する関数の型定義
  * what_it_does:
- *   - LLM操作数、リクエスト数、サブエージェント数、チームエージェント数を含む状態オブジェクトIRuntimeSnapshotを定義
- *   - IRuntimeSnapshotを返す関数型RuntimeSnapshotProviderを定義
+ *   - LLM操作、リクエスト、サブエージェント、チームエージェントの各アクティブ数を保持するIRuntimeSnapshotインターフェースを定義する
+ *   - IRuntimeSnapshotを返すRuntimeSnapshotProvider型を定義する
  * why_it_exists:
- *   - 依存性逆転の原則によりlib/層がextensions/層の具象実装へ直接依存することを防ぐ
- *   - ランタイム状態の取得方法を呼び出し元から隠蔽し、テスト容易性と交換可能性を確保する
+ *   - Clean Architecture適用のため、lib/レイヤーが実装詳細に依存せず、ランタイム状態のスナップショットを取得できるようにする
+ *   - アクティブリソースの集計方法を隠蔽し、リミット解決ロジックと切り離すため
  * scope:
- *   in: なし（型定義のみ）
- *   out: IRuntimeSnapshot型の構造定義、RuntimeSnapshotProvider型の関数シグネチャ
+ *   in: なし
+ *   out: IRuntimeSnapshot型のオブジェクト、RuntimeSnapshotProvider型
  */
 
 /**
@@ -32,13 +32,11 @@
  * Related: lib/unified-limit-resolver.ts, extensions/agent-runtime.ts
  */
 
- /**
-  * ランタイムスナップショットインターフェース
-  * @param totalActiveLlm 全体のアクティブなLLM操作数
-  * @param totalActiveRequests 全体のアクティブなリクエスト数
-  * @param subagentActiveCount アクティブなサブエージェント数
-  * @param teamActiveCount アクティブなチームエージェント数
-  */
+/**
+ * 実行時の状態スナップショット
+ * @summary 実行状態インターフェース
+ * @returns 状態情報
+ */
 export interface IRuntimeSnapshot {
 	/** Total active LLM operations across subagents and teams */
 	totalActiveLlm: number;
@@ -50,8 +48,9 @@ export interface IRuntimeSnapshot {
 	teamActiveCount: number;
 }
 
- /**
-  * ランタイムスナップショットの提供関数
-  * @returns ランタイムスナップショット
-  */
+/**
+ * 実行時スナップショットを提供
+ * @summary スナップショット取得
+ * @returns 現在の実行状態
+ */
 export type RuntimeSnapshotProvider = () => IRuntimeSnapshot;

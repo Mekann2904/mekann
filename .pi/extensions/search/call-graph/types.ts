@@ -1,28 +1,29 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/call-graph/types.ts
- * role: コールグラフ解析システムの型定義モジュール
- * why: ripgrepベースの呼び出し関係解析において、ノード・エッジ・インデックスのデータ構造を統一するため
- * related: call-graph-indexer.ts, call-graph-builder.ts, search-handler.ts
- * public_api: CallGraphNodeKind, CallGraphNode, CallSite, CallGraphEdge, CallGraphMetadata
+ * role: コールグラフ解析システムの型定義
+ * why: ripgrepと正規表現を用いたコールグラフ構築において、ノード、エッジ、インデックスのデータ構造を統一するため
+ * related: .pi/extensions/search/call-graph/index.ts, .pi/extensions/search/call-graph/parser.ts
+ * public_api: CallGraphNode, CallGraphEdge, CallGraphNodeKind, CallGraphMetadata
  * invariants:
- *   - CallGraphNode.idは"file:line:name"形式の一意識別子
- *   - CallGraphEdge.confidenceは0.0〜1.0の範囲
- *   - CallGraphMetadata.parserBackendは"ripgrep"固定
+ *   - CallGraphNode.idは "file:line:name" の形式を持つ
+ *   - confidenceは0.0から1.0の範囲の数値である
  * side_effects: なし（純粋な型定義）
- * failure_modes: なし（型定義のみで実行時動作なし）
+ * failure_modes:
+ *   - id形式が不正な場合、ノードの紐付けが失敗する
+ *   - confidenceスコアが低い場合、誤った呼び出し関係を参照する可能性がある
  * @abdd.explain
- * overview: ripgrepベースのコールグラフ解析（Phase 1: 正規表現による呼び出し検出）で使用される型定義集
+ * overview: ripgrepベースのコールグラフ解析システムにおける主要なデータ構造を定義するファイル
  * what_it_does:
- *   - 関数・メソッド等の呼び出し可能シンボルを表すCallGraphNode型を定義
- *   - 呼び出し関係（caller→callee）とその位置情報を表すCallGraphEdge型を定義
- *   - インデックスの統計情報を保持するCallGraphMetadata型を定義
+ *   - 関数・メソッド定義を表すCallGraphNodeインターフェースを提供する
+ *   - 呼び出し関係とその位置・信頼度を表すCallGraphEdgeインターフェースを提供する
+ *   - インデックス全体のメタデータを管理するCallGraphMetadataインターフェースを提供する
  * why_it_exists:
- *   - 正規表現ベースの検出はAST解析より信頼度が低いため、confidenceスコアを導入して品質を可視化
- *   - ripgrep実装に特化した型定義により、Phase 1の簡易実装と将来のAST移行を区別
+ *   - パーサーとインデックス間でデータ構造を共有し、型安全性を保証するため
+ *   - AST解析よりも軽量な正規表現ベースの解析結果を表現するため
  * scope:
- *   in: TypeScript/JavaScriptファイルの関数定義・呼び出しパターンの表現
- *   out: 実際のインデックス構築ロジック、クエリ処理、ASTベースの解析
+ *   in: なし
+ *   out: コールグラフ生成・解析機能全体
  */
 
 /**
@@ -36,21 +37,16 @@
 // Node Types
 // ============================================
 
- /**
-  * 呼び出し可能なシンボルの種類
-  */
+/**
+ * 呼び出し可能なシンボルの種類
+ * @summary ノード種別を定義
+ */
 export type CallGraphNodeKind = "function" | "method" | "arrow" | "const";
 
- /**
-  * コールグラフのノード
-  * @param id 一意の識別子
-  * @param name 関数名・メソッド名
-  * @param file プロジェクトルートからの相対パス
-  * @param line 定義された行番号
-  * @param kind 呼び出し可能な型
-  * @param scope クラスやモジュールのスコープ
-  * @param signature 関数シグネチャ
-  */
+/**
+ * 呼び出し可能なノード（関数など）を表します
+ * @summary 呼び出し可能なノード
+ */
 export interface CallGraphNode {
 	/** Unique identifier: file:line:name */
 	id: string;
@@ -72,12 +68,10 @@ export interface CallGraphNode {
 // Edge Types
 // ============================================
 
- /**
-  * 呼び出し箇所の位置情報
-  * @param file 呼び出しを含むファイル
-  * @param line 呼び出しの行番号
-  * @param column 呼び出しの列番号
-  */
+/**
+ * 呼び出し箇所の位置情報を表します
+ * @summary 呼び出し箇所の位置
+ */
 export interface CallSite {
 	/** File containing the call */
 	file: string;
@@ -87,13 +81,10 @@ export interface CallSite {
 	column: number;
 }
 
- /**
-  * コールグラフのエッジを表す
-  * @param caller 呼び出し元ノードID (file:line:name)
-  * @param callee 呼び出し先シンボル名 (IDではなく、複数の定義に解決される可能性あり)
-  * @param callSite 呼び出し箇所の位置情報
-  * @param confidence 信頼度スコア (0.0-1.0)。正規表現ベースの検出はAST解析より低くなる
-  */
+/**
+ * 呼び出し元から呼び出し先への関係を表します
+ * @summary 呼び出し関係のエッジ
+ */
 export interface CallGraphEdge {
 	/** Caller node ID (file:line:name) */
 	caller: string;
@@ -115,15 +106,10 @@ export interface CallGraphEdge {
 // Index Types
 // ============================================
 
- /**
-  * コールグラフインデックスのメタデータ
-  * @param indexedAt インデックスが作成されたタイムスタンプ
-  * @param parserBackend 使用されたパーサーバックエンド
-  * @param fileCount インデックスされたユニークなファイル数
-  * @param nodeCount ノード（関数定義）の総数
-  * @param edgeCount エッジ（呼び出し関係）の総数
-  * @param version インデックス形式のバージョン
-  */
+/**
+ * コールグラフのメタデータ情報を表します
+ * @summary コールグラフのメタデータ
+ */
 export interface CallGraphMetadata {
 	/** Timestamp when the index was built */
 	indexedAt: number;
@@ -139,12 +125,13 @@ export interface CallGraphMetadata {
 	version: number;
 }
 
- /**
-  * 呼び出しグラフの完全なインデックス
-  * @param nodes 関数・メソッド定義の配列
-  * @param edges 呼び出し関係の配列
-  * @param metadata インデックスのメタデータ
-  */
+/**
+ * コールグラフ全体のインデックス情報を表します
+ * @summary コールグラフ全体のインデックス
+ * @param {number} fileCount ファイル数
+ * @param {number} nodeCount ノード（関数定義）総数
+ * @param {number} edgeCount エッジ（呼び出し関係）総数
+ */
 export interface CallGraphIndex {
 	/** All function/method definitions */
 	nodes: CallGraphNode[];
@@ -158,12 +145,14 @@ export interface CallGraphIndex {
 // Input/Output Types for Tools
 // ============================================
 
- /**
-  * call_graph_indexツールの入力
-  * @param path インデックス対象のパス（デフォルト: プロジェクトルート）
-  * @param force インデックスの強制再生成
-  * @param cwd 作業ディレクトリ
-  */
+/**
+ * インデックス入力定義
+ * @summary インデックス生成
+ * @param path インデックス対象のパス（デフォルト: プロジェクトルート）
+ * @param force インデックスの強制再生成
+ * @param cwd 作業ディレクトリ
+ * returns CallGraphIndexInput
+ */
 export interface CallGraphIndexInput {
 	/** Target path for indexing (default: project root) */
 	path?: string;
@@ -173,13 +162,17 @@ export interface CallGraphIndexInput {
 	cwd?: string;
 }
 
- /**
-  * call_graph_indexツールの出力
-  * @param nodeCount インデックスされたノード数
-  * @param edgeCount 検出されたエッジ数
-  * @param outputPath 生成されたインデックスファイルのパス
-  * @param error エラーメッセージ（ある場合）
-  */
+/**
+ * @summary インデックス出力
+ *
+ * call_graph_indexツールの出力
+ *
+ * @param nodeCount インデックスされたノード数
+ * @param edgeCount 検出されたエッジ数
+ * @param outputPath 生成されたインデックスファイルのパス
+ * @param error エラーメッセージ（ある場合）
+ * @returns 出力結果オブジェクト
+ */
 export interface CallGraphIndexOutput {
 	/** Number of nodes indexed */
 	nodeCount: number;
@@ -191,13 +184,15 @@ export interface CallGraphIndexOutput {
 	error?: string;
 }
 
- /**
-  * find_callersツールの入力
-  * @param symbolName 呼び出し元を検索するシンボル名
-  * @param depth 再帰の深さ（デフォルト: 1）
-  * @param limit 最大結果数（デフォルト: 50）
-  * @param cwd 作業ディレクトリ
-  */
+/**
+ * @summary 呼び出し元検索
+ * find_callersツールの入力
+ * @param symbolName 呼び出し元を検索するシンボル名
+ * @param depth 再帰の深さ（デフォルト: 1）
+ * @param limit 最大結果数（デフォルト: 50）
+ * @param cwd 作業ディレクトリ
+ * @returns なし
+ */
 export interface FindCallersInput {
 	/** Symbol name to find callers for */
 	symbolName: string;
@@ -209,13 +204,14 @@ export interface FindCallersInput {
 	cwd?: string;
 }
 
- /**
-  * find_calleesツールの入力
-  * @param symbolName 呼び出し先を検索するシンボル名
-  * @param depth 再帰の深さ (デフォルト: 1)
-  * @param limit 最大結果数 (デフォルト: 50)
-  * @param cwd 作業ディレクトリ
-  */
+/**
+ * @summary 呼び出し先検索入力
+ * 呼び出し先を検索するための入力インターフェース
+ * @param symbolName 呼び出し先を検索するシンボル名
+ * @param depth 再帰の深さ (デフォルト: 1)
+ * @param limit 最大結果数 (デフォルト: 50)
+ * @param cwd 作業ディレクトリ
+ */
 export interface FindCalleesInput {
 	/** Symbol name to find callees for */
 	symbolName: string;
@@ -227,13 +223,15 @@ export interface FindCalleesInput {
 	cwd?: string;
 }
 
- /**
-  * 呼び出しチェーンの結果情報
-  * @param node 呼び出し元/呼び出し先のノード
-  * @param depth 呼び出しチェーンの深さ (0=直接, 1=間接など)
-  * @param callSite 呼び出し位置情報 (直接呼び出しの場合のみ)
-  * @param confidence 関連性の信頼度
-  */
+/**
+ * 呼び出しチェーンの結果
+ * @summary 呼び出しチェーンを取得
+ * @param node 呼び出し元/呼び出し先のノード
+ * @param depth 呼び出しチェーンの深さ (0=直接, 1=間接など)
+ * @param callSite 呼び出し位置情報 (直接呼び出しの場合のみ)
+ * @param confidence 関連性の信頼度
+ * @returns 呼び出しチェーンの結果情報
+ */
 export interface CallChainResult {
 	/** The node that calls/is called */
 	node: CallGraphNode;
@@ -245,14 +243,10 @@ export interface CallChainResult {
 	confidence: number;
 }
 
- /**
-  * find_callersツールの出力形式
-  * @param symbolName 検索されたシンボル名
-  * @param total 検出された呼び出し元の合計数
-  * @param truncated 結果が切り詰められたかどうか
-  * @param results 呼び出し元の結果一覧
-  * @param error エラーメッセージ（存在する場合）
-  */
+/**
+ * 呼び出し元検索結果
+ * @summary 呼び出し元検索結果
+ */
 export interface FindCallersOutput {
 	/** Symbol name that was searched */
 	symbolName: string;
@@ -266,14 +260,10 @@ export interface FindCallersOutput {
 	error?: string;
 }
 
- /**
-  * 呼び出し先ツールの出力形式
-  * @param symbolName 検索対象のシンボル名
-  * @param total 見つかった呼び出し先の総数
-  * @param truncated 結果が切り詰められているかどうか
-  * @param results 呼び出し先の結果リスト
-  * @param error エラーメッセージ（存在する場合）
-  */
+/**
+ * 被呼び出し検索結果
+ * @summary 被呼び出し検索結果
+ */
 export interface FindCalleesOutput {
 	/** Symbol name that was searched */
 	symbolName: string;
@@ -291,17 +281,10 @@ export interface FindCalleesOutput {
 // Internal Types
 // ============================================
 
- /**
-  * コールグラフ構築用の中間構造
-  * @param name 関数名
-  * @param file ファイルパス
-  * @param line 行番号
-  * @param kind 関数の種類
-  * @param scope スコープ/クラス名
-  * @param body 関数本体のソースコード全体
-  * @param bodyStartLine 本体の開始行
-  * @param bodyEndLine 本体の終了行
-  */
+/**
+ * 関数定義情報
+ * @summary 関数定義を表現
+ */
 export interface FunctionDefinition {
 	/** Function name */
 	name: string;
@@ -321,14 +304,10 @@ export interface FunctionDefinition {
 	bodyEndLine?: number;
 }
 
- /**
-  * ソースコード内で検出された関数呼び出し
-  * @param name 呼び出された関数名
-  * @param file 呼び出しを含むファイル
-  * @param line 呼び出しの行番号
-  * @param column 呼び出しの列番号
-  * @param text 呼び出しの生テキスト
-  */
+/**
+ * 検出された呼び出し
+ * @summary 呼び出し情報を保持
+ */
 export interface DetectedCall {
 	/** Called function name */
 	name: string;

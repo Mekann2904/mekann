@@ -1,28 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-tools/quality.ts
- * role: 動的ツールの品質評価・メトリクス収集用型定義モジュール
- * why: 生成されたツールのコード品質を定量的に評価し、継続的改善のためのデータ構造を提供する
- * related: dynamic-tools/executor.ts, dynamic-tools/registry.ts, dynamic-tools/builder.ts
+ * role: 品質メトリクス定義およびデータ構造の提供
+ * why: 生成されたツールの品質評価、実行計測、使用統計を共通フォーマットで扱うため
+ * related: .pi/lib/dynamic-tools/analyzer.ts, .pi/lib/dynamic-tools/reporter.ts, .pi/lib/dynamic-tools/collector.ts
  * public_api: QualityAssessment, CategoryScores, QualityIssue, ExecutionMetrics, ToolUsageStatistics
- * invariants: スコア値は0.0-1.0の範囲、重大度は"high"|"medium"|"low"のいずれか、categoryはCategoryScoresのキーと一致
- * side_effects: なし（型定義のみのモジュール）
- * failure_modes: なし（実行時ロジックを含まない）
+ * invariants: scoreは0.0以上1.0以下、severityはhigh/medium/lowのいずれか
+ * side_effects: なし（純粋な型定義）
+ * failure_modes: なし（型定義のみのため実行時エラーは発生しない）
  * @abdd.explain
- * overview: 生成ツールの品質評価結果、カテゴリ別スコア、品質問題、実行メトリクス、使用統計を表す型定義
+ * overview: 生成ツールの品質評価および実行パフォーマンスに関するデータ構造を定義するモジュール
  * what_it_does:
- *   - QualityAssessment: 総合品質スコア、カテゴリ別スコア、問題リスト、改善提案、信頼度を管理
- *   - CategoryScores: 可読性、エラーハンドリング、ドキュメント、テスタビリティ、パフォーマンス、セキュリティの6軸評価
- *   - QualityIssue: カテゴリ・重大度・説明・位置情報・改善提案を持つ問題定義
- *   - ExecutionMetrics: 実行時間、メモリ使用量、成功/失敗、エラー情報を記録
- *   - ToolUsageStatistics: ツール別の使用回数、成功率、実行時間統計を管理
+ *   - 品質スコアとカテゴリ別評価を格納する型（QualityAssessment, CategoryScores）を定義
+ *   - 検出された問題と改善提案を表す型（QualityIssue）を定義
+ *   - 実行時間やメモリ使用量などの計測データを格納する型（ExecutionMetrics）を定義
+ *   - ツールの使用頻度や成功率を集計する型（ToolUsageStatistics）を定義
  * why_it_exists:
- *   - 生成ツールの品質を客観的な数値で評価し、改善ポイントを特定するため
- *   - 実行時パフォーマンスとエラー傾向を追跡し、信頼性向上に寄与するため
- *   - 品質評価の統一フォーマットを提供し、ツール間での比較を可能にするため
+ *   - 品質評価基準を型システムで明示し、評価ロジックの一貫性を担保するため
+ *   - 計測データを構造化し、分析・レポート生成機能への入力として利用するため
  * scope:
- *   in: 生成された動的ツールのコード、実行結果、使用履歴
- *   out: 品質評価結果、品質問題レポート、実行メトリクス、統計情報
+ *   in: なし（定義のみ）
+ *   out: 品質評価、実行メトリクス、統計情報に関するインターフェース定義
  */
 
 /**
@@ -34,14 +32,10 @@
 // Types
 // ============================================================================
 
- /**
-  * 品質評価結果
-  * @param score 品質スコア（0.0-1.0）
-  * @param categoryScores カテゴリ別スコア
-  * @param issues 検出された品質問題
-  * @param improvements 改善提案
-  * @param confidence 信頼度
-  */
+/**
+ * 品質評価結果
+ * @summary 品質を評価
+ */
 export interface QualityAssessment {
   /** 品質スコア（0.0-1.0） */
   score: number;
@@ -55,15 +49,10 @@ export interface QualityAssessment {
   confidence: number;
 }
 
- /**
-  * カテゴリ別スコア
-  * @param readability コードの可読性
-  * @param errorHandling エラーハンドリングの完全性
-  * @param documentation ドキュメント品質
-  * @param testability テスタビリティ
-  * @param performance パフォーマンス効率
-  * @param securityAwareness セキュリティ意識
-  */
+/**
+ * カテゴリ別スコア
+ * @summary スコアを集計
+ */
 export interface CategoryScores {
   /** コードの可読性 */
   readability: number;
@@ -79,14 +68,10 @@ export interface CategoryScores {
   securityAwareness: number;
 }
 
- /**
-  * 品質問題を表すインターフェース
-  * @param category カテゴリ
-  * @param severity 重大度
-  * @param description 説明
-  * @param location 位置情報
-  * @param suggestion 改善提案
-  */
+/**
+ * 品質課題
+ * @summary 課題を特定
+ */
 export interface QualityIssue {
   /** カテゴリ */
   category: keyof CategoryScores;
@@ -103,16 +88,11 @@ export interface QualityIssue {
   suggestion: string;
 }
 
- /**
-  * 実行メトリクスを表すインターフェース
-  * @param executionTimeMs 実行時間（ミリ秒）
-  * @param memoryUsedBytes メモリ使用量（バイト）
-  * @param success 成功フラグ
-  * @param errorType エラータイプ（失敗時）
-  * @param errorMessage エラーメッセージ（失敗時）
-  * @param inputParameters 入力パラメータ
-  * @param outputSizeBytes 出力サイズ（バイト）
-  */
+/**
+ * 実行メトリクス
+ * @summary メトリクスを記録
+ * @returns 改善提案
+ */
 export interface ExecutionMetrics {
   /** 実行時間（ミリ秒） */
   executionTimeMs: number;
@@ -130,17 +110,10 @@ export interface ExecutionMetrics {
   outputSizeBytes?: number;
 }
 
- /**
-  * ツールの使用統計情報
-  * @param toolId ツールID
-  * @param totalUsage 総使用回数
-  * @param successCount 成功回数
-  * @param failureCount 失敗回数
-  * @param avgExecutionTimeMs 平均実行時間（ミリ秒）
-  * @param maxExecutionTimeMs 最大実行時間（ミリ秒）
-  * @param minExecutionTimeMs 最小実行時間（ミリ秒）
-  * @param avgExecutionTimeMs 平均メモリ使用量（バイト）
-  */
+/**
+ * ツール使用統計
+ * @summary 統計を取得
+ */
 export interface ToolUsageStatistics {
   /** ツールID */
   toolId: string;
@@ -399,11 +372,12 @@ const QUALITY_PATTERNS: QualityPattern[] = [
 // Quality Assessment Functions
 // ============================================================================
 
- /**
-  * コードの品質を評価する
-  * @param code 評価対象のコード
-  * @returns 品質評価結果
-  */
+/**
+ * 品質を評価する
+ * @summary 品質評価
+ * @param {string} code コード文字列
+ * @returns {QualityAssessment} 品質評価結果
+ */
 export function assessCodeQuality(code: string): QualityAssessment {
   const lines = code.split("\n");
   const issues: QualityIssue[] = [];
@@ -634,12 +608,13 @@ function calculateConfidence(code: string, issueCount: number): number {
 
 const usageStatistics = new Map<string, ToolUsageStatistics>();
 
- /**
-  * 実行メトリクスを記録する
-  * @param toolId ツールID
-  * @param metrics 実行メトリクス
-  * @returns なし
-  */
+/**
+ * メトリクスを記録する
+ * @summary メトリクス記録
+ * @param {string} toolId ツールID
+ * @param {ExecutionMetrics} metrics 実行メトリクス
+ * @returns {void} なし
+ */
 export function recordExecutionMetrics(
   toolId: string,
   metrics: ExecutionMetrics
@@ -694,37 +669,41 @@ export function recordExecutionMetrics(
   }
 }
 
- /**
-  * 指定ツールの使用統計を取得
-  * @param toolId ツールID
-  * @returns 使用統計情報（存在しない場合はundefined）
-  */
+/**
+ * 統計を取得する
+ * @summary 統計取得
+ * @param {string} toolId ツールID
+ * @returns {ToolUsageStatistics | undefined} 使用統計情報（存在しない場合はundefined）
+ */
 export function getUsageStatistics(toolId: string): ToolUsageStatistics | undefined {
   return usageStatistics.get(toolId);
 }
 
- /**
-  * 全ツールの使用統計を取得
-  * @returns 全ツールの使用統計情報の配列
-  */
+/**
+ * 全統計を取得する
+ * @summary 全統計取得
+ * @returns {ToolUsageStatistics[]} 全ツールの使用統計情報の配列
+ */
 export function getAllUsageStatistics(): ToolUsageStatistics[] {
   return Array.from(usageStatistics.values());
 }
 
- /**
-  * 使用統計をリセットする
-  * @returns なし
-  */
+/**
+ * 統計を初期化する
+ * @summary 統計リセット
+ * @returns {void} なし
+ */
 export function resetUsageStatistics(): void {
   usageStatistics.clear();
 }
 
- /**
-  * 指定ツールの品質スコアを記録
-  * @param toolId ツールID
-  * @param score 品質スコア
-  * @returns なし
-  */
+/**
+ * スコア記録
+ * @summary スコアを記録
+ * @param {string} toolId ツールID
+ * @param {number} score 品質スコア
+ * @returns {void} なし
+ */
 export function recordQualityScore(toolId: string, score: number): void {
   const stats = usageStatistics.get(toolId);
   if (stats) {
@@ -736,11 +715,12 @@ export function recordQualityScore(toolId: string, score: number): void {
   }
 }
 
- /**
-  * 品質トレンドの傾向を分析
-  * @param toolId ツールID
-  * @returns トレンドの状態、平均スコア、変化率
-  */
+/**
+ * 品質傾向分析
+ * @summary 品質傾向を分析
+ * @param {string} toolId ツールID
+ * @returns {{ trend: "improving" | "declining" | "stable"; avgRecentScore: number; changeRate: number; }} 傾向分析結果
+ */
 export function analyzeQualityTrend(toolId: string): {
   trend: "improving" | "declining" | "stable";
   avgRecentScore: number;

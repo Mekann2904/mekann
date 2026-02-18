@@ -1,35 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/embeddings/providers/openai.ts
- * role: OpenAI埋め込みプロバイダーの実装モジュール
- * why: OpenAI APIを使用したテキスト埋め込みベクトル生成を標準化されたインターフェースで提供するため
- * related: ../types.js, ~/.pi/agent/auth.json, openai-api, ../index.ts
- * public_api: OpenAIEmbeddingProvider, getOpenAIKey
- * invariants:
- *   - DEFAULT_MODELは常に"text-embedding-3-small"
- *   - DEFAULT_DIMENSIONSは常に1536
- *   - APIキーはauth.jsonを優先し、次に環境変数を参照する
- *   - resolveKeyValueは"!"始まりをシェルコマンド、大文字_区切りを環境変数、それ以外をリテラルとして扱う
- * side_effects:
- *   - auth.jsonファイルの読み込み（ファイルシステムアクセス）
- *   - シェルコマンド実行（"!"プレフィックス付きキーの場合）
- *   - OpenAI APIへのHTTPリクエスト
- * failure_modes:
- *   - auth.jsonが存在しない、またはパース失敗時は空オブジェクトを返す
- *   - シェルコマンド実行失敗時はnullを返す
- *   - APIキーが全ソースで見つからない場合はnullを返す
+ * role: OpenAI APIを使用した埋め込みベクトル生成プロバイダーの実装
+ * why: text-embedding-3-smallモデルによる埋め込み処理と、pi公式のAPIキー解決ロジックを提供するため
+ * related: .pi/lib/embeddings/types.ts, .pi/agent/auth.json
+ * public_api: getOpenAIKey, OpenAIEmbeddingProvider
+ * invariants: デフォルトモデルはtext-embedding-3-small、デフォルト次元数は1536
+ * side_effects: APIキー解決時にファイルシステム読み込みまたはシェルコマンド実行を行う
+ * failure_modes: auth.jsonの読み込み失敗、シェルコマンド実行エラー、APIキー未設定
  * @abdd.explain
- * overview: OpenAI text-embedding-3-smallモデルを使用した埋め込みプロバイダーの実装。pi公式認証方式に準拠したAPIキー解決機能を含む。
+ * overview: OpenAI APIを利用してテキストの埋め込みベクトルを生成し、認証情報を解決するモジュール
  * what_it_does:
- *   - OpenAI APIキーの解決（auth.json、環境変数、シェルコマンドの3方式をサポート）
- *   - EmbeddingProviderインターフェースの実装提供
- *   - text-embedding-3-smallモデルでの1536次元埋め込みベクトル生成
+ *   - auth.jsonまたは環境変数からOpenAI APIキーを解決する
+ *   - APIキー値がリテラル、環境変数参照、シェルコマンドの場合を判定し値を取得する
+ *   - OpenAI Embeddings APIへリクエストを送信しベクトルデータを返却する
  * why_it_exists:
- *   - OpenAI埋め込み機能を他プロバイダーと統一されたインターフェースで利用可能にするため
- *   - piエコシステムの標準認証方式（auth.json）との統合のため
+ *   - アプリケーション共通の認証管理方式（pi公式）に従うため
+ *   - 特定のAIモデル（text-embedding-3-small）によるベクトル生成機能を抽象化するため
  * scope:
- *   in: テキスト文字列、認証設定（auth.jsonまたは環境変数）
- *   out: OpenAIEmbeddingProviderインスタンス、埋め込みベクトル配列
+ *   in: 認証設定ファイルパス、環境変数、埋め込み生成対象のテキスト
+ *   out: 解決されたAPIキー文字列、数値配列の埋め込みベクトル
  */
 
 /**
@@ -129,10 +119,11 @@ function loadAuthConfig(): AuthConfig {
   return {};
 }
 
- /**
-  * OpenAI APIキーを取得する
-  * @returns APIキー（見つからない場合はnull）
-  */
+/**
+ * OpenAI APIキーを取得
+ * @summary APIキー取得
+ * @returns {string | null} APIキー（見つからない場合はnull）
+ */
 export function getOpenAIKey(): string | null {
   const auth = loadAuthConfig();
   if (auth.openai?.key) {
@@ -146,10 +137,13 @@ export function getOpenAIKey(): string | null {
 // Provider Implementation
 // ============================================================================
 
- /**
-  * OpenAI埋め込みプロバイダー
-  * @implements {EmbeddingProvider}
-  */
+/**
+ * OpenAI埋め込みプロバイダ
+ * @summary プロバイダ生成
+ * @param {string[]} texts - 入力テキストの配列
+ * @param {ProviderConfig} [config] - プロバイダ設定（オプション）
+ * @returns {Promise<(number[] | null)[]>} 埋め込みベクトルの配列
+ */
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   readonly id = "openai";
   readonly name = "OpenAI Embeddings";
@@ -164,18 +158,20 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   };
 
   /**
-   * OpenAI APIが利用可能かどうかを確認する
-   * @returns APIキーが設定されている場合はtrue
+   * 利用可能か確認
+   * @summary 利用可否確認
+   * @returns {Promise<boolean>} 利用可能な場合はtrue
    */
   async isAvailable(): Promise<boolean> {
     return getOpenAIKey() !== null;
   }
 
-   /**
-    * テキストの埋め込みベクトルを生成する
-    * @param text 入力テキスト
-    * @returns 埋め込みベクトル、またはAPIキー未設定時はnull
-    */
+  /**
+   * OpenAI埋め込みを生成
+   * @summary 埋め込みベクトル生成
+   * @param {string} text - 入力テキスト
+   * @returns {Promise<number[] | null>} 埋め込みベクトルまたは失敗時はnull
+   */
   async generateEmbedding(text: string): Promise<number[] | null> {
     const apiKey = getOpenAIKey();
     if (!apiKey) {
@@ -206,11 +202,12 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     }
   }
 
-   /**
-    * テキストのリストからエンベディングを一括生成
-    * @param texts - エンベディングを生成するテキストの配列
-    * @returns 各テキストのエンベディング配列、失敗時はnull
-    */
+  /**
+   * @summary バッチ生成
+   * テキスト配列からベクトルをバッチ生成
+   * @param {string[]} texts 入力テキスト配列
+   * @returns {Promise<(number[] | null)[]>} ベクトル配列またはnull
+   */
   async generateEmbeddingsBatch(texts: string[]): Promise<(number[] | null)[]> {
     const apiKey = getOpenAIKey();
     if (!apiKey) {

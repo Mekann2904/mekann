@@ -1,32 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-tools/safety.ts
- * role: 動的ツール実行時のコード安全性解析エンジン
- * why: 生成コードの危険操作を事前検出し、システム破壊やセキュリティ侵害を防止するため
- * related: dynamic-tools/executor.ts, dynamic-tools/permissions.ts, core/config.ts
+ * role: 生成コードの静的解析による安全性評価と危険操作の検出
+ * why: コード生成による意図しない破壊的操作やセキュリティリスクを実行前に防止するため
+ * related: .pi/lib/dynamic-tools/types.ts, .pi/lib/dynamic-tools/executor.ts, .pi/lib/dynamic-tools/config.ts
  * public_api: SafetyAnalysisResult, SafetyAnalysisIssue, SafetyAnalysisIssueType
- * invariants:
- *   - score は必ず 0.0〜1.0 の範囲
- *   - isSafe=false の場合、issues に少なくとも1件の critical/high severity 問題が含まれる
- *   - blockedOperations の検出時は必ず isSafe=false
- * side_effects: なし（純粋な解析関数のみ提供）
- * failure_modes:
- *   - 正規表現の複雑性による解析タイムアウト
- *   - 難読化コードでの誤検出・検出漏れ
- *   - location.line/snippet が特定できない場合あり
+ * invariants: SafetyAnalysisResultのscoreは0.0以上1.0以下、DANGEROUS_PATTERNSは不変
+ * side_effects: なし（純粋な解析モジュール）
+ * failure_modes: 不正な正規表現による解析エラー、未知のパターンの見逃し
  * @abdd.explain
- * overview: 生成されたコードを静的解析し、危険パターンを検出して安全性スコアを算出する
+ * overview: 生成されたコードに対して定義された危険パターン（正規表現）を適用し、安全性スコアと問題リストを算出するモジュール
  * what_it_does:
- *   - fs.rm/fs.unlink 等のファイル削除操作を検出
- *   - child_process/eval 等の動的実行を検出
- *   - ネットワークアクセス、環境変数アクセスの検出
- *   - 検出結果に基づき score、isSafe、recommendations を生成
+ *   - ファイルシステム削除、プロセス実行、ネットワークアクセス等の危険パターンを照合
+ *   - 検出された問題の重大度、種類、位置、修正提案を含む詳細を生成
+ *   - 許可操作と禁止操作のリストを作成
+ *   - 0.0-1.0の安全性スコアと信頼度を計算
  * why_it_exists:
- *   - LLM生成コードの無条件実行によるシステム損壊リスクの排除
- *   - 許可/禁止操作の境界を明確化し、実行前検証を可能にする
+ *   - 自動生成コードに含まれる破壊的コマンド（rm -rf等）や外部通信を検閲するため
+ *   - 実行環境のセキュリティを維持しつつ動的なコード生成を可能にするため
  * scope:
- *   in: 解析対象のソースコード文字列、許可操作リスト
- *   out: SafetyAnalysisResult（score、issues、allowed/blockedOperations、recommendations）
+ *   in: 解析対象のソースコード文字列
+ *   out: SafetyAnalysisResultオブジェクト（スコア、問題リスト、推奨事項）
  */
 
 /**
@@ -38,16 +32,15 @@
 // Types
 // ============================================================================
 
- /**
-  * 安全性解析結果
-  * @param score 安全性スコア（0.0-1.0）
-  * @param issues 検出された問題
-  * @param allowedOperations 許可された操作
-  * @param blockedOperations 禁止された操作の検出
-  * @param recommendations 推奨事項
-  * @param isSafe 安全と判定されたか
-  * @param confidence 信頼度
-  */
+/**
+ * 安全解析の結果を表す
+ * @summary 安全解析結果
+ * @param {number} score - 安全スコア
+ * @param {SafetyAnalysisIssue[]} issues - 検出された問題リスト
+ * @param {string[]} allowedOperations - 許可された操作
+ * @param {string[]} blockedOperations - ブロックされた操作
+ * @param {string[]} recommendations - 推奨事項リスト
+ */
 export interface SafetyAnalysisResult {
   /** 安全性スコア（0.0-1.0） */
   score: number;
@@ -65,14 +58,18 @@ export interface SafetyAnalysisResult {
   confidence: number;
 }
 
- /**
-  * 安全性解析で検出された問題の詳細
-  * @param severity 重大度
-  * @param type 問題の種類
-  * @param description 説明
-  * @param location コード内の位置
-  * @param suggestion 修正提案
-  */
+/**
+ * 検出された安全上の問題
+ * @summary 安全上の問題
+ * @param {string} severity - 重大度
+ * @param {SafetyAnalysisIssueType} type - 問題の種類
+ * @param {string} description - 説明文
+ * @param {{filePath?: string, line?: number, snippet?: string}} location - 発生場所
+ * @param {string} [suggestion] - 修正提案
+ * @param {string[]} recommendations - 推奨事項リスト
+ * @param {boolean} isSafe - 安全と判定されたか
+ * @param {number} confidence - 信頼度
+ */
 export interface SafetyAnalysisIssue {
   /** 重大度 */
   severity: "critical" | "high" | "medium" | "low";
@@ -89,9 +86,11 @@ export interface SafetyAnalysisIssue {
   suggestion?: string;
 }
 
- /**
-  * 安全性問題の種類（解析用）
-  */
+/**
+ * 安全解析の種別
+ * @summary 安全解析種別
+ * @typedef {("file-system-write" | "file-system-delete")} SafetyAnalysisIssueType
+ */
 export type SafetyAnalysisIssueType =
   | "file-system-write"
   | "file-system-delete"
@@ -354,6 +353,7 @@ const SAFE_PATTERNS: RegExp[] = [
 
 /**
  * コードの安全性を解析
+ * @summary コードの安全性を解析
  * @param code - 解析対象のコード
  * @param options - 解析オプション
  * @returns 安全性解析結果
@@ -514,11 +514,15 @@ function getSeverityPenalty(severity: SafetyAnalysisIssue["severity"], strict: b
 // Quick Safety Check
 // ============================================================================
 
- /**
-  * 高速な安全性チェック（詳細解析なし）
-  * @param code チェック対象のコード
-  * @returns 安全性判定結果（isSafe: 安全かどうか, reason: 不安全な理由）
-  */
+/**
+ * コードの安全性分析
+ * @summary 安全性分析実行
+ * @param code 検査対象コード
+ * @param options 分析オプション
+ * @param options.allowlist 許可された操作のリスト
+ * @param options.strict 厳格モード（より低いスコア）
+ * @returns 安全性分析結果
+ */
 export function quickSafetyCheck(code: string): {
   isSafe: boolean;
   reason?: string;
@@ -538,12 +542,12 @@ export function quickSafetyCheck(code: string): {
   return { isSafe: true };
 }
 
- /**
-  * 許可リストへの準拠をチェック
-  * @param code チェック対象のコード
-  * @param allowlist 許可されたキーワードのリスト
-  * @returns 準拠状況と違反内容を含むオブジェクト
-  */
+/**
+ * @summary 許可リスト準拠チェック
+ * @param code チェック対象のコード
+ * @param allowlist 許可されたキーワードのリスト
+ * @returns 準拠状況と違反内容を含むオブジェクト
+ */
 export function checkAllowlistCompliance(
   code: string,
   allowlist: string[]

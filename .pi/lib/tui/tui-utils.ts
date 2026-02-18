@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/tui/tui-utils.ts
- * role: TUI共通ユーティリティ関数群
- * why: agent-teams.tsとsubagents.ts間の重複実装を統合するため
- * related: agent-teams.ts, subagents.ts, @mariozechner/pi-tui
+ * role: 拡張機能間で共有されるTUI関連のユーティリティ関数と定数
+ * why: agent-teams.ts と subagents.ts に存在する重複実装を集約し、コードの重複を排除するため
+ * related: @mariozechner/pi-tui, .pi/lib/tui/agent-teams.ts, .pi/lib/tui/subagents.ts
  * public_api: LIVE_TAIL_LIMIT, LIVE_MARKDOWN_PREVIEW_MIN_WIDTH, appendTail, toTailLines, countOccurrences, estimateLineCount, looksLikeMarkdown, MarkdownPreviewResult
- * invariants: appendTailはmaxLength超過時のみ先頭を切り捨てる、toTailLinesは末尾の空行を常に削除する
- * side_effects: なし（純粋関数のみ）
- * failure_modes: 引数にnull/undefined渡過時の TypeError（TypeScript型チェックで防止）
+ * invariants: appendTailは常にmaxLength以下の文字列を返す, estimateLineCountはbytesが0以下のとき0を返す
+ * side_effects: なし（すべて純粋関数）
+ * failure_modes: appendTailでmaxLengthが負の値の場合空文字列になる可能性がある, looksLikeMarkdownは複雑な構造の誤判定をする可能性がある
  * @abdd.explain
- * overview: Terminal User Interface用の文字列処理・マークダウン判定ユーティリティ。Layer 0として他libモジュールへの依存を持たない。
+ * overview: TUI出力の制御、整形、検出を行うステートレスなユーティリティ集
  * what_it_does:
- *   - 末尾文字列の追記と最大長制御（appendTail）
- *   - 行配列変換と末尾空行削除・行数制限
- *   - 文字列出現回数カウント（countOccurrences）
- *   - バイト数・改行数に基づく行数推定
- *   - マークダウン構文判定（looksLikeMarkdown）
+ *   - appendTail: 文字列結合によるバッファリングと最大長制限
+ *   - toTailLines: 末尾空白除去と最大行数制限による行配列化
+ *   - countOccurrences: 特定文字列の出現回数カウント
+ *   - estimateLineCount: バイト数と改行数からの行数推定
+ *   - looksLikeMarkdown: 文字列パターンによるMarkdown形式判定
  * why_it_exists:
- *   - 複数拡張機能での同一処理の重複実装を解消
- *   - TUI表示用の文字列操作ロジックを一元管理
+ *   - エージェントとサブエージェントのTUI実装で共通利用される文字列処理を一箇所にまとめる
+ *   - 重複コードを削減し、メンテナンス性を向上させる
  * scope:
- *   in: 文字列処理、マークダウン判定、行数計算
- *   out: 非同期処理、ファイルI/O、外部API呼び出し
+ *   in: 文字列(生データ), 数値(制限値/カウント), 真理値(フラグ)
+ *   out: 加工・整形後の文字列, 行配列, 数値推定値, 判定結果
  */
 
 /**
@@ -41,13 +41,14 @@ export const LIVE_TAIL_LIMIT = 40_000;
 /** Minimum width for markdown preview rendering */
 export const LIVE_MARKDOWN_PREVIEW_MIN_WIDTH = 24;
 
- /**
-  * 現在の末尾文字列にチャンクを追加し、最大長を制御する
-  * @param current - 現在の末尾文字列
-  * @param chunk - 追加するチャンク
-  * @param maxLength - 結果の最大長（デフォルト: LIVE_TAIL_LIMIT）
-  * @returns 新しい末尾文字列
-  */
+/**
+ * チャンクを追加し長さ制御
+ * @summary 末尾にチャンク追加
+ * @param current - 現在の文字列
+ * @param chunk - 追加するチャンク
+ * @param maxLength - 最大長
+ * @returns 結合された文字列
+ */
 export function appendTail(current: string, chunk: string, maxLength = LIVE_TAIL_LIMIT): string {
   if (!chunk) return current;
   const next = `${current}${chunk}`;
@@ -55,12 +56,13 @@ export function appendTail(current: string, chunk: string, maxLength = LIVE_TAIL
   return next.slice(next.length - maxLength);
 }
 
- /**
-  * 末尾の空白除去と行数制限を行う
-  * @param tail 処理対象の文字列
-  * @param limit 返す最大行数
-  * @returns 処理後の行配列
-  */
+/**
+ * 末尾の行を取得
+ * @summary 末尾行を取得
+ * @param tail - 処理対象の文字列
+ * @param limit - 取得する最大行数
+ * @returns 末尾の行の配列
+ */
 export function toTailLines(tail: string, limit: number): string[] {
   const lines = tail
     .split(/\r?\n/)
@@ -73,12 +75,13 @@ export function toTailLines(tail: string, limit: number): string[] {
   return lines.slice(lines.length - limit);
 }
 
- /**
-  * 文字列内の特定の文字列の出現回数を数える
-  * @param input - 検索対象の文字列
-  * @param target - 検索する文字列
-  * @returns 出現回数
-  */
+/**
+ * 出現回数を数える
+ * @summary 出現回数を数える
+ * @param input - 検索対象の文字列
+ * @param target - 数える対象の文字列
+ * @returns 出現回数
+ */
 export function countOccurrences(input: string, target: string): number {
   if (!input || !target) return 0;
   let count = 0;
@@ -92,23 +95,27 @@ export function countOccurrences(input: string, target: string): number {
   return count;
 }
 
- /**
-  * バイト数と改行数に基づき行数を推定
-  * @param bytes - バイト数
-  * @param newlineCount - 改行文字の数
-  * @param endsWithNewline - 末尾が改行で終わるか
-  * @returns 推定された行数
-  */
+/**
+ * 行数を推定する
+ * @summary 行数を推定
+ * @param bytes - 総バイト数
+ * @param newlineCount - 改行文字の数
+ * @param endsWithNewline - 末尾が改行で終わるか
+ * @returns 推定された行数
+ */
 export function estimateLineCount(bytes: number, newlineCount: number, endsWithNewline: boolean): number {
   if (bytes <= 0) return 0;
   return newlineCount + (endsWithNewline ? 0 : 1);
 }
 
- /**
-  * Markdown形式の文字列か判定する
-  * @param input - 判定対象の文字列
-  * @returns Markdown形式の場合はtrue
-  */
+/**
+ * 行数を推定する
+ * @summary 行数を推定
+ * @param bytes - 総バイト数
+ * @param newlineCount - 改行文字の数
+ * @param endsWithNewline - 末尾が改行で終わるか
+ * @returns 推定された行数
+ */
 export function looksLikeMarkdown(input: string): boolean {
   const text = input.trim();
   if (!text) return false;
@@ -133,23 +140,23 @@ export function looksLikeMarkdown(input: string): boolean {
   return false;
 }
 
- /**
-  * マークダウンプレビューの結果を表します
-  * @param lines - レンダリング後の行配列
-  * @param renderedAsMarkdown - マークダウンとしてレンダリングされたか
-  */
+/**
+ * Markdown描画結果
+ * @summary 結果を格納
+ */
 export interface MarkdownPreviewResult {
   lines: string[];
   renderedAsMarkdown: boolean;
 }
 
- /**
-  * Markdown形式でプレビューを描画する
-  * @param text - 描画対象のテキスト
-  * @param width - 描画幅
-  * @param maxLines - 最大行数
-  * @returns 描画結果の行とMarkdown形式かどうか
-  */
+/**
+ * Markdown形式で描画
+ * @summary 描画を行う
+ * @param {string} text 入力テキスト
+ * @param {number} width 表示幅
+ * @param {number} maxLines 最大行数
+ * @returns {MarkdownPreviewResult} 描画結果
+ */
 export function renderPreviewWithMarkdown(
   text: string,
   width: number,

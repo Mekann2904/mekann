@@ -1,38 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/sym_index.ts
- * role: シンボルインデックス生成ツール（ctags使用、JSONL出力）
- * why: コードベースのシンボル情報を高速に検索可能な形式で事前生成し、検索機能のパフォーマンスを確保するため
- * related: ../utils/cli.js, ../utils/constants.js, ../types.js, ../utils/errors.js
- * public_api: デフォルトエクスポート（SymIndexInput→SymIndexOutput変換）、checkToolAvailability再エクスポート
- * invariants:
- *   - インデックスバージョンはINDEX_VERSION(=2)で統一
- *   - シャードあたりのエントリ数はMAX_ENTRIES_PER_SHARD以下
- *   - ファイルハッシュはMD5で計算（暗号化目的ではない）
- * side_effects:
- *   - .pi/search/配下へのファイル読み書き（manifest.json, shard-*.jsonl, meta.json）
- *   - ctags外部プロセスの実行
- *   - レガシーインデックスファイルの読み込み（後方互換性）
- * failure_modes:
- *   - ctagsが未インストールまたはPATHに存在しない
- *   - 対象ディレクトリへの読み書き権限不足
- *   - ディスク容量不足によるシャード書き込み失敗
- *   - ソースファイルのエンコーディング問題によるctags解析エラー
+ * role: シンボルインデックス生成ツール
+ * why: ctagsを用いてソースコードのシンボル情報を抽出し、JSONL形式でインデックスを作成・管理するため
+ * related: .pi/extensions/search/utils/cli.js, .pi/extensions/search/utils/constants.js, .pi/extensions/search/types.js
+ * public_api: exportされた関数 (ファイル内には含まれないが、ツールのエントリーポイントとして機能)
+ * invariants: インデックスのバージョンは常に2である。シャードファイルはJSONL形式である。
+ * side_effects: ファイルシステムへの読み書き（.pi/search/以下のディレクトリおよびファイル作成・更新・削除）。ctagsプロセスの実行。
+ * failure_modes: ctagsコマンドが実行できない場合、ファイルシステムへのアクセス権限がない場合、入力ファイルの読み取りに失敗した場合。
  * @abdd.explain
- * overview: ctagsを用いてソースコードからシンボル情報を抽出し、シャード化されたJSONLインデックスとして永続化するツール
+ * overview: ctagsを利用してソースコードからシンボル情報を抽出し、ハッシュベースの差分検出を行いながらシェルディングされたインデックスファイルを生成・管理するツール。
  * what_it_does:
- *   - ctagsを実行し、JSONL形式でシンボルエントリを取得
- *   - コンテンツハッシュに基づく変更検出でインクリメンタル更新を実現
- *   - シンボルをシャードファイルに分割保存（エントリ数上限で自動分割）
- *   - manifest.jsonでファイル単位のハッシュ・mtime・shardIdを管理
- *   - レガシー単一ファイル形式からの移行をサポート
+ *   - ctagsを実行し、出力をJSONL形式のシンボルインデックスとして保存する
+ *   - ファイルのコンテンツハッシュを計算し、変更がないファイルのインデックス再生成をスキップする
+ *   - インデックスをエントリー数制限に基づいて複数のシャードファイルに分割して保存する
+ *   - マニフェストファイルを用いてファイルパスとハッシュ、シャードIDの対応関係を管理する
+ *   - レガシーな単一ファイルインデックス形式への後方互換性を維持する
  * why_it_exists:
- *   - 検索時に都度ctagsを実行するオーバーヘッドを回避
- *   - 大規模コードベースでインデックスサイズを管理可能に分割
- *   - 変更されていないファイルの再インデックスをスキップし効率化
+ *   - ソースコードの高速なシンボル検索を実現するためのインデックスデータを生成する
+ *   - 増分更新を行うことで、大規模なプロジェクトでのインデックス再構築コストを削減する
+ *   - 1つのファイルに巨大なデータを蓄積せず、シャード化して管理運用を容易にする
  * scope:
- *   in: 対象ディレクトリパス(cwd)、インクリメンタルモード指定、対象ファイルパターン
- *   out: 生成されたインデックスのメタデータ、処理ファイル数、新規/更新/削除エントリ数
+ *   in: ソースコードファイルパス、プロジェクトのルートディレクトリ、ctagsの設定
+ * out: JSONL形式のシンボルインデックスファイル（shard-{id}.jsonl）、マニフェスト（manifest.json）、メタデータ（meta.json）
  */
 
 /**
@@ -692,12 +682,13 @@ async function writeShardedIndex(
 // Main Entry Point
 // ============================================
 
- /**
-  * ctagsを使用してシンボルインデックスを生成
-  * @param input インデックス作成の入力設定
-  * @param cwd カレントワーキングディレクトリ
-  * @returns インデックス作成結果
-  */
+/**
+ * 意味的インデックスを作成
+ * @summary インデックスを作成
+ * @param input インデックス化の入力設定
+ * @param cwd 作業ディレクトリのパス
+ * @returns 作成されたインデックスデータ
+ */
 export async function symIndex(
 	input: SymIndexInput,
 	cwd: string
@@ -804,11 +795,13 @@ export async function symIndex(
 	}
 }
 
- /**
-  * シンボルインデックスを読み込みパースする
-  * @param cwd 作業ディレクトリのパス
-  * @returns シンボルインデックスのエントリ配列、またはnull
-  */
+/**
+ * シンボルインデックス読込
+ * @summary インデックス読込
+ * @param cwd 作業ディレクトリ
+ * @returns シンボルリストまたはnull
+ * @throws インデックスが無効な場合
+ */
 export async function readSymbolIndex(
 	cwd: string
 ): Promise<SymbolIndexEntry[] | null> {
@@ -830,11 +823,12 @@ export async function readSymbolIndex(
 	return null;
 }
 
- /**
-  * インデックスのメタデータを取得する
-  * @param cwd 作業ディレクトリのパス
-  * @returns インデックスのメタデータ、存在しない場合はnull
-  */
+/**
+ * インデックスメタデータ取得
+ * @summary メタデータ取得
+ * @param cwd 作業ディレクトリ
+ * @returns メタデータまたはnull
+ */
 export async function getIndexMetadata(
 	cwd: string
 ): Promise<IndexMetadata | null> {

@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/communication.ts
- * role: エージェントチームの通信ラウンド制御とメンバー間コンテキスト共有
- * why: 通信ロジックをagent-teams.tsから分離し、SRP準拠と保守性を向上させるため
- * related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/agent-errors.ts, .pi/lib/text-parsing.ts
- * public_api: buildPrecomputedContextMap, normalizeCommunicationRounds, DEFAULT_COMMUNICATION_ROUNDS, MAX_COMMUNICATION_ROUNDS, MAX_COMMUNICATION_PARTNERS, PrecomputedMemberContext
- * invariants: 通信ラウンド数は0以上MAX_COMMUNICATION_ROUNDS以下、メンバーIDは一意、コンテキストフィールド長はCOMMUNICATION_CONTEXT_FIELD_LIMIT以下
- * side_effects: なし（純粋関数のみ）
- * failure_modes: 不正なラウンド数入力時にフォールバック値使用、サニタイズ失敗時にプレースホルダー使用
+ * role: チームメンバー間の通信ラウンドロジックとコンテキスト構築を管理する
+ * why: agent-teams.ts から分離し、保守性と単一責任の原則（SRP）を遵守するため
+ * related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, ../../lib/format-utils.js, ../../lib/text-parsing.ts
+ * public_api: buildPrecomputedContextMap, normalizeCommunicationRounds, DEFAULT_COMMUNICATION_ROUNDS, MAX_COMMUNICATION_ROUNDS
+ * invariants: 通信ラウンド数は0以上MAX_COMMUNICATION_ROUNDS以下である、コンテキストフィールドの文字数はCOMMUNICATION_CONTEXT_FIELD_LIMIT以下に制限される
+ * side_effects: なし（純粋関数と定数定義のみ）
+ * failure_modes: 無効なラウンド数入力はフォールバック値に置換される、出力解析に失敗したフィールドはデフォルト文字列に置換される
  * @abdd.explain
- * overview: エージェントチームオーケストレーションにおけるメンバー間通信の定数定義とユーティリティ関数を提供する
+ * overview: エージェントチーム内でのメンバー間通信に関する定数、型定義、およびユーティリティ関数を提供する
  * what_it_does:
- *   - チームメンバーの事前計算済みコンテキスト（role, status, summary, claim）をマップ形式で構築
- *   - 通信ラウンド数の正規化と検証（安定版ランタイム時は固定値を返却）
- *   - 通信関連定数（最大ラウンド数、最大パートナー数、フィールド制限）の定義
- *   - 指示インジェクション検出パターンの定義
+ *   - チームメンバーの実行結果から、IDや主張（claim）を含む事前計算済みコンテキストマップを構築する
+ *   - 通信ラウンド数の入力値を検証し、許容範囲内に正規化する
+ *   - 通信コンテキストにおける文字数制限や最大ラウンド数などの定数を定義する
  * why_it_exists:
- *   - 通信ロジックの関心の分離によりagent-teams.tsの複雑性を低減
- *   - メンバー間コンテキスト共有の再利用可能なインターフェース提供
- *   - 通信パラメータの一元管理による設定ミス防止
+ *   - 複雑な通信ロジックをメインのオーケストレーションファイルから分離して責務を明確にする
+ *   - 通信パラメータの検証とサニタイズを一元化し、プロンプトインジェクションや無限ループを防ぐ
  * scope:
- *   in: TeamMemberResult配列、通信ラウンド数設定値、安定版ランタイムフラグ
- *   out: PrecomputedMemberContextのマップ、正規化済み通信ラウンド数、型定義の再エクスポート
+ *   in: TeamMemberResult（実行結果）、通信ラウンド数の生値
+ *   out: PrecomputedMemberContext（メンバー情報）、正規化されたラウンド数、通信定数
  */
 
 // File: .pi/extensions/agent-teams/communication.ts
@@ -47,14 +45,16 @@ import { extractDiscussionSection } from "./judge";
 // Re-export types needed by communication consumers
 export type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference };
 
- /**
-  * メンバーの事前計算されたコンテキスト
-  * @param memberId メンバーID
-  * @param role 役割
-  * @param status ステータス
-  * @param summary サマリー
-  * @param claim 主張
-  */
+/**
+ * メンバーの事前計算コンテキスト
+ * @summary 事前計算コンテキスト保持
+ * @param memberId メンバーID
+ * @param role 役割
+ * @param status ステータス
+ * @param summary サマリー
+ * @param claim 主張
+ * @returns なし
+ */
 export interface PrecomputedMemberContext {
   memberId: string;
   role: string;
@@ -63,11 +63,14 @@ export interface PrecomputedMemberContext {
   claim: string;
 }
 
- /**
-  * 事前計算済みのメンバーごとのコンテキストを構築します。
-  * @param results - チームメンバーの実行結果リスト
-  * @returns メンバーIDをキーとする事前計算済みコンテキストのマップ
-  */
+/**
+ * コンテキストマップを生成
+ *
+ * チームメンバーの実行結果から事前計算されたコンテキスト情報を構築します。
+ * @summary コンテキストマップを生成
+ * @param results - チームメンバーの実行結果リスト
+ * @returns メンバーIDをキーとするコンテキスト情報のマップ
+ */
 export function buildPrecomputedContextMap(results: TeamMemberResult[]): Map<string, PrecomputedMemberContext> {
   const map = new Map<string, PrecomputedMemberContext>();
   for (const result of results) {
@@ -124,13 +127,16 @@ export const COMMUNICATION_INSTRUCTION_PATTERN =
 // Communication Utility Functions
 // ============================================================================
 
- /**
-  * 通信ラウンド数を正規化・検証する
-  * @param value - 通信ラウンドの生の入力値
-  * @param fallback - 入力が無効な場合のフォールバック値
-  * @param isStableRuntime - 安定版ランタイムプロファイルが有効かどうか
-  * @returns 正規化された通信ラウンド数
-  */
+/**
+ * 通信ラウンド数を正規化
+ *
+ * 不明な値や不正な値を検証し、安全な数値型に変換します。
+ * @summary 通信ラウンド数を正規化
+ * @param value - 変換対象の値
+ * @param fallback - 変換失敗時のフォールバック値
+ * @param isStableRuntime - 安定したランタイム環境かどうか
+ * @returns 正規化された通信ラウンド数
+ */
 export function normalizeCommunicationRounds(
   value: unknown,
   fallback = DEFAULT_COMMUNICATION_ROUNDS,
@@ -152,13 +158,13 @@ export const DEFAULT_FAILED_MEMBER_RETRY_ROUNDS = 0;
  */
 export const MAX_FAILED_MEMBER_RETRY_ROUNDS = 2;
 
- /**
-  * メンバーの再試行回数を正規化
-  * @param value - 再試行回数の入力値
-  * @param fallback - 無効な場合のフォールバック値
-  * @param isStableRuntime - 安定版ランタイムかどうか
-  * @returns 正規化された再試行回数
-  */
+/**
+ * @summary 再試行回数正規化
+ * @param value - 再試行回数の入力値
+ * @param fallback - 無効な場合のフォールバック値
+ * @param isStableRuntime - 安定版ランタイムかどうか
+ * @returns 正規化された再試行回数
+ */
 export function normalizeFailedMemberRetryRounds(
   value: unknown,
   fallback = DEFAULT_FAILED_MEMBER_RETRY_ROUNDS,
@@ -192,21 +198,23 @@ export function shouldRetryFailedMemberResult(
   return shouldRetryByClassification(classification, retryRound);
 }
 
- /**
-  * メンバーをアンカーとして優先するか判定
-  * @param member - 評価対象のチームメンバー
-  * @returns メンバーがアンカーとなるべきかどうか
-  */
+/**
+ * メンバー優先判定
+ * @summary アンカー優先判定
+ * @param member - 評価対象のチームメンバー
+ * @returns メンバーがアンカーとなるべきかどうか
+ */
 export function shouldPreferAnchorMember(member: TeamMember): boolean {
   const source = `${member.id} ${member.role}`.toLowerCase();
   return /consensus|synthesizer|reviewer|lead|judge/.test(source);
 }
 
- /**
-  * チームメンバーの通信リンクマップを作成する
-  * @param members - チームメンバーのリスト
-  * @returns メンバーIDからコミュニケーション相手IDのリストへのマップ
-  */
+/**
+ * 通信リンクマップ生成
+ * @summary マップを作成
+ * @param members - チームメンバーのリスト
+ * @returns メンバーIDからコミュニケーション相手IDのリストへのマップ
+ */
 export function createCommunicationLinksMap(members: TeamMember[]): Map<string, string[]> {
   const ids = members.map((member) => member.id);
   const links = new Map<string, Set<string>>(ids.map((id) => [id, new Set<string>()]));
@@ -249,12 +257,13 @@ export function createCommunicationLinksMap(members: TeamMember[]): Map<string, 
   );
 }
 
- /**
-  * 通信スニペットをサニタイズする
-  * @param value - サニタイズ対象の生テキスト
-  * @param fallback - サニタイズで空になった場合の代替テキスト
-  * @returns プロンプトに安全なサニタイズ済みテキスト
-  */
+/**
+ * 通信スニペットをサニタイズする
+ * @summary 通信スニペットをサニタイズ
+ * @param value - サニタイズ対象の生テキスト
+ * @param fallback - サニタイズで空になった場合の代替テキスト
+ * @returns プロンプトに安全なサニタイズ済みテキスト
+ */
 export function sanitizeCommunicationSnippet(value: string, fallback: string): string {
   const compact = normalizeForSingleLine(value || "", COMMUNICATION_CONTEXT_FIELD_LIMIT);
   if (!compact || compact === "-") return fallback;
@@ -268,13 +277,14 @@ export function sanitizeCommunicationSnippet(value: string, fallback: string): s
 // Structured Communication IDs (V2)
 // ============================================================================
 
- /**
-  * 構造化ID追跡付きのパートナー参照検出結果
-  * @param referencedPartners 参照されたパートナー
-  * @param missingPartners 参照されなかったパートナー
-  * @param claimReferences 検出された請求参照の詳細
-  * @param referenceQuality 参照品質スコア (0-1)
-  */
+/**
+ * パートナー参照結果(V2)
+ * @summary 参照結果(V2)
+ * @property referencedPartners 参照されたパートナーIDのリスト
+ * @property missingPartners 存在しないパートナーIDのリスト
+ * @property claimReferences クレーム参照のリスト
+ * @property referenceQuality 参照の品質スコア
+ */
 export interface PartnerReferenceResultV2 {
   /** Partners whose claims were referenced */
   referencedPartners: string[];
@@ -361,12 +371,13 @@ export function detectPartnerReferencesV2(
   };
 }
 
- /**
-  * 構造化されたテキストから指定フィールドの値を抽出
-  * @param output - 解析対象の出力テキスト
-  * @param name - 抽出するフィールド名
-  * @returns 抽出されたフィールドの値、見つからない場合は undefined
-  */
+/**
+ * フィールド値を抽出
+ * @summary 値を抽出
+ * @param output 解析対象の出力テキスト
+ * @param name 抽出対象のフィールド名
+ * @returns 抽出されたフィールド値（見つからない場合はundefined）
+ */
 export function extractField(output: string, name: string): string | undefined {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = output.match(new RegExp(`^\\s*${escaped}\\s*:\\s*(.+)$`, "im"));
@@ -470,14 +481,15 @@ export { extractDiscussionSection };
 // Termination Check (P0 from arXiv:2602.06176)
 // ============================================================================
 
- /**
-  * タスク終了チェックの結果を表します。
-  * @param canTerminate - 終了可能かどうか
-  * @param completionScore - 完了スコア (0-1)
-  * @param missingElements - 欠落している要素のリスト
-  * @param suspiciousPatterns - 疑わしいパターンのリスト
-  * @param recommendation - 推奨アクション ("proceed" | "extend" | "challenge")
-  */
+/**
+ * 終了判定結果を表すインターフェース
+ * @summary 終了判定結果定義
+ * @param canTerminate 終了可能かどうかのフラグ
+ * @param completionScore 完了スコア
+ * @param missingElements 不足している要素
+ * @param suspiciousPatterns 疑わしいパターン
+ * @param recommendation 推奨事項
+ */
 export interface TerminationCheckResult {
   canTerminate: boolean;
   completionScore: number;  // 0-1
@@ -487,13 +499,12 @@ export interface TerminationCheckResult {
 }
 
 /**
- * Check if task execution can be safely terminated.
- * Based on arXiv:2602.06176 recommendations for completion verification.
- *
- * @param task - Original task description
- * @param results - Team member results to evaluate
- * @param minCompletionScore - Minimum score required for termination (default 0.7)
- * @returns Termination check result
+ * タスクの終了条件を判定する
+ * @summary 終了条件を判定
+ * @param task 判定対象のタスク内容
+ * @param results チームメンバーの実行結果配列
+ * @param minCompletionScore 最低完了スコアの閾値
+ * @returns 終了判定結果を含むオブジェクト
  */
 export function checkTermination(
   task: string,
@@ -571,16 +582,15 @@ export function checkTermination(
 // Belief Tracking (P0 from arXiv:2602.06176)
 // ============================================================================
 
- /**
-  * エージェントの信念追跡構造
-  * @param memberId メンバーID
-  * @param claimId 主張ID
-  * @param claimText 主張内容
-  * @param confidence 信頼度
-  * @param evidenceRefs 証拠参照の配列
-  * @param round ラウンド番号
-  * @param timestamp タイムスタンプ
-  */
+/**
+ * エージェントの信念を定義するインターフェース
+ * @summary エージェントの信念定義
+ * @param memberId エージェントのメンバーID
+ * @param claimId クレーム（主張）のID
+ * @param claimText クレームのテキスト内容
+ * @param confidence 確信度
+ * @param evidenceRefs 証拠の参照リスト
+ */
 export interface AgentBelief {
   memberId: string;
   claimId: string;
@@ -591,14 +601,15 @@ export interface AgentBelief {
   timestamp: string;
 }
 
- /**
-  * エージェントの信念間で検出された矛盾
-  * @param belief1 - 1つ目の信念
-  * @param belief2 - 2つ目の信念
-  * @param contradictionType - 矛盾の種別 ("direct" | "implicit" | "assumption_conflict")
-  * @param severity - 重大度 ("low" | "medium" | "high")
-  * @param description - 説明文
-  */
+/**
+ * 信念の矛盾を定義するインターフェース
+ * @summary 信念の矛盾定義
+ * @param belief1 最初の信念
+ * @param belief2 矛盾するもう一つの信念
+ * @param contradictionType 矛盾の種類
+ * @param severity 重大度レベル
+ * @param description 説明文
+ */
 export interface BeliefContradiction {
   belief1: AgentBelief;
   belief2: AgentBelief;
@@ -610,13 +621,14 @@ export interface BeliefContradiction {
 // Belief state cache for tracking across rounds
 const beliefStateCache = new Map<string, AgentBelief[]>();
 
- /**
-  * メンバーの出力に基づき信念状態を更新する
-  * @param memberId - メンバーID
-  * @param output - メンバーの出力テキスト
-  * @param round - 現在のコミュニケーションラウンド
-  * @returns メンバーの更新された信念リスト
-  */
+/**
+ * 信念状態を更新する
+ * @summary 信念状態を更新
+ * @param memberId エージェントのメンバーID
+ * @param output 生成された出力内容
+ * @param round 現在のラウンド数
+ * @returns 更新された信念状態の配列
+ */
 export function updateBeliefState(
   memberId: string,
   output: string,
@@ -643,11 +655,12 @@ export function updateBeliefState(
   return beliefStateCache.get(memberId) || [];
 }
 
- /**
-  * 指定されたメンバーの信念サマリーを取得する
-  * @param memberIds - サマリーに含めるメンバーID
-  * @returns フォーマットされた信念サマリー文字列
-  */
+/**
+ * 信念サマリーを取得
+ * @summary サマリー取得
+ * @param memberIds メンバーID配列
+ * @returns サマリー文字列
+ */
 export function getBeliefSummary(memberIds: string[]): string {
   const lines: string[] = ["【信念追跡 - 他エージェントの立場】"];
 
@@ -664,9 +677,11 @@ export function getBeliefSummary(memberIds: string[]): string {
   return lines.join("\n");
 }
 
- /**
-  * 新しいチーム実行開始時に信念状態キャッシュをクリア
-  */
+/**
+ * 信念状態キャッシュをクリア
+ * @summary キャッシュクリア
+ * @returns void
+ */
 export function clearBeliefStateCache(): void {
   beliefStateCache.clear();
 }

@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/history.ts
- * role: 検索履歴管理ユーティリティ。型定義、デフォルト設定、履歴ストアクラスの提供。
- * why: 過去の検索クエリに基づくサジェスチョン生成、関連クエリの検出、検索結果の利用状況追跡を可能にするため。
- * related: search/index.ts, search/tools/file_candidates.ts, search/tools/code_search.ts
+ * role: 検索履歴のデータ構造定義およびデフォルト設定の提供
+ * why: 過去の検索クエリと結果を追跡し、サジェスト機能や関連性分析の基盤データを維持するため
+ * related: .pi/extensions/search/utils/manager.ts, .pi/extensions/search/utils/suggest.ts, .pi/extensions/search/index.ts
  * public_api: SearchHistoryEntry, HistoryConfig, QuerySuggestion, DEFAULT_HISTORY_CONFIG
- * invariants: maxEntriesは100、maxResultsPerEntryは10がデフォルト。resultsは最大10件まで保存。
- * side_effects: なし（純粋な型定義と設定値のエクスポートのみ）
- * failure_modes: なし（実行時ロジックは含まれていない）
+ * invariants: SearchHistoryEntryのresultsは配列長制限を持つ, timestampは数値型である
+ * side_effects: なし（定数と型定義のみ）
+ * failure_modes: なし
  * @abdd.explain
- * overview: 検索履歴管理機能の型定義とデフォルト設定を提供するモジュール。
+ * overview: 検索履歴を表現するインターフェースと、その管理設定を定義するモジュール
  * what_it_does:
- *   - SearchHistoryEntry型で履歴エントリの構造（タイムスタンプ、ツール名、パラメータ、クエリ、結果、受理状態）を定義
- *   - HistoryConfig型で履歴管理設定（最大エントリ数、エントリあたりの最大結果数）を定義
- *   - QuerySuggestion型でサジェスチョン用クエリのメタデータ（クエリ、使用回数、最終使用日時、受理フラグ）を定義
- *   - DEFAULT_HISTORY_CONFIGでmaxEntries=100、maxResultsPerEntry=10のデフォルト設定をエクスポート
+ *   - 検索履歴1件分のデータ構造 SearchHistoryEntry を定義する
+ *   - 履歴管理の設定項目 HistoryConfig を定義する
+ *   - クエリサジェスト生成用のデータ構造 QuerySuggestion を定義する
+ *   - デフォルトの設定値 DEFAULT_HISTORY_CONFIG をエクスポートする
  * why_it_exists:
- *   - 過去の検索に基づくクエリサジェスチョン機能の実現
- *   - 関連クエリの発見と検索効率の向上
- *   - どの検索結果が実際に使用されたかの追跡による検索品質の可視化
+ *   - 履歴データの型安全性を保証するため
+ *   - 履歴保持の上限設定などを一箇所で管理するため
+ *   - 検索機能間でデータ構造を共有するため
  * scope:
- *   in: なし（型定義と定数のみ）
- *   out: 3つのインターフェース型、1つのデフォルト設定オブジェクト
+ *   in: なし
+ *   out: TypeScriptインターフェースと定数オブジェクト
  */
 
 /**
@@ -37,14 +37,16 @@
 // Types
 // ============================================
 
- /**
-  * 検索履歴のエントリ。
-  * @param timestamp 検索実行時のタイムスタンプ
-  * @param tool 使用したツール名
-  * @param params 検索パラメータ
-  * @param query 検索クエリ
-  * @param results 検索結果
-  */
+/**
+ * 検索履歴エントリ
+ * @summary 検索履歴を保持
+ * @param timestamp 検索実行時のタイムスタンプ
+ * @param tool 使用したツール名
+ * @param params 検索パラメータ
+ * @param query 検索クエリ
+ * @param results 検索結果
+ * @returns 検索履歴のエントリオブジェクト
+ */
 export interface SearchHistoryEntry {
 	/**
 	 * Timestamp when the search was performed (Date.now()).
@@ -77,11 +79,12 @@ export interface SearchHistoryEntry {
 	accepted: boolean;
 }
 
- /**
-  * 履歴管理の設定。
-  * @param maxEntries 保持する最大エントリ数。
-  * @param maxResultsPerEntry エントリごとに保存する最大結果パス数。
-  */
+/**
+ * 履歴管理の設定を定義
+ * @summary 履歴設定を定義
+ * @param maxEntries 保持する最大エントリ数
+ * @param maxResultsPerEntry エントリごとに保存する最大結果パス数
+ */
 export interface HistoryConfig {
 	/**
 	 * Maximum number of entries to keep.
@@ -94,13 +97,11 @@ export interface HistoryConfig {
 	maxResultsPerEntry: number;
 }
 
- /**
-  * サジェッション用のクエリとメタデータ
-  * @param query クエリ文字列
-  * @param count 使用回数
-  * @param lastUsed 最終使用日時
-  * @param wasAccepted 受け入れられたかどうか
-  */
+/**
+ * クエリ候補インターフェース
+ * @summary クエリ候補の定義
+ * @returns なし
+ */
 export interface QuerySuggestion {
 	/**
 	 * The query string.
@@ -139,11 +140,11 @@ export const DEFAULT_HISTORY_CONFIG: HistoryConfig = {
 // History Store
 // ============================================
 
- /**
-  * 検索履歴を管理するクラス
-  * @constructor
-  * @param config - 履歴の設定（オプション）
-  */
+/**
+ * 検索履歴管理クラス
+ * @summary 検索履歴を管理
+ * @returns なし
+ */
 export class SearchHistory {
 	private entries: SearchHistoryEntry[] = [];
 	private config: HistoryConfig;
@@ -152,11 +153,12 @@ export class SearchHistory {
 		this.config = { ...DEFAULT_HISTORY_CONFIG, ...config };
 	}
 
-	 /**
-	  * 履歴に新しいエントリを追加する。
-	  * @param entry - 追加するエントリ（タイムスタンプと承認状態を除く）
-	  * @returns 追加された完全なエントリ情報
-	  */
+	/**
+	 * 履歴エントリ追加
+	 * @summary 履歴エントリを追加
+	 * @param entry 追加する履歴エントリ
+	 * @returns 追加された履歴エントリ
+	 */
 	addHistoryEntry(entry: Omit<SearchHistoryEntry, "timestamp" | "accepted">): SearchHistoryEntry {
 		const fullEntry: SearchHistoryEntry = {
 			...entry,
@@ -175,12 +177,13 @@ export class SearchHistory {
 		return fullEntry;
 	}
 
-	 /**
-	  * 最近の検索クエリを取得する
-	  * @param limit 取得件数（デフォルト: 10）
-	  * @param tool フィルタリングするツール名（オプション）
-	  * @returns 検索クエリの候補リスト
-	  */
+	/**
+	 * 最近のクエリ取得
+	 * @summary 最近のクエリを取得
+	 * @param limit 取得上限数
+	 * @param tool ツール名
+	 * @returns 最近のクエリ候補リスト
+	 */
 	getRecentQueries(limit: number = 10, tool?: string): QuerySuggestion[] {
 		const queryMap = new Map<string, QuerySuggestion>();
 
@@ -215,12 +218,13 @@ export class SearchHistory {
 			.slice(0, limit);
 	}
 
-	 /**
-	  * 指定されたクエリに関連するクエリを検索
-	  * @param query 検索クエリ
-	  * @param limit 最大取得数
-	  * @returns 関連クエリの配列
-	  */
+	/**
+	 * 関連クエリ取得
+	 * @summary 関連クエリを取得
+	 * @param query 検索クエリ
+	 * @param limit 取得上限数
+	 * @returns 関連クエリの候補リスト
+	 */
 	getRelatedQueries(query: string, limit: number = 5): QuerySuggestion[] {
 		const normalizedQuery = query.toLowerCase();
 		const related = new Map<string, QuerySuggestion>();
@@ -271,27 +275,30 @@ export class SearchHistory {
 		return false;
 	}
 
-	 /**
-	  * タイムスタンプからエントリを取得する
-	  * @param timestamp タイムスタンプ
-	  * @returns 一致するエントリ、または undefined
-	  */
+	/**
+	 * タイムスタンプからエントリを取得する
+	 * @summary エントリを取得
+	 * @param timestamp タイムスタンプ
+	 * @returns 一致するエントリ、または undefined
+	 */
 	getEntry(timestamp: number): SearchHistoryEntry | undefined {
 		return this.entries.find((e) => e.timestamp === timestamp);
 	}
 
-	 /**
-	  * 全エントリを取得する（デバッグ/エクスポート用）
-	  * @returns 検索履歴エントリの配列
-	  */
+	/**
+	 * 全エントリを取得
+	 * @summary 全エントリ取得
+	 * @returns 検索履歴エントリの配列
+	 */
 	getAllEntries(): SearchHistoryEntry[] {
 		return [...this.entries];
 	}
 
-	 /**
-	  * 履歴をすべてクリアする
-	  * @returns なし
-	  */
+	/**
+	 * 履歴をすべてクリア
+	 * @summary 履歴をすべてクリア
+	 * @returns なし
+	 */
 	clear(): void {
 		this.entries = [];
 	}
@@ -337,10 +344,11 @@ export class SearchHistory {
  */
 let globalHistory: SearchHistory | undefined;
 
- /**
-  * グローバル検索履歴を取得する。
-  * @returns 検索履歴オブジェクト
-  */
+/**
+ * @summary 検索履歴取得
+ * グローバル検索履歴を取得する。
+ * @returns 検索履歴オブジェクト
+ */
 export function getSearchHistory(): SearchHistory {
 	if (!globalHistory) {
 		globalHistory = new SearchHistory();
@@ -348,10 +356,11 @@ export function getSearchHistory(): SearchHistory {
 	return globalHistory;
 }
 
- /**
-  * グローバル履歴インスタンスをリセット
-  * @returns {void}
-  */
+/**
+ * 検索履歴をリセットする
+ * @summary 履歴リセット
+ * @returns なし
+ */
 export function resetSearchHistory(): void {
 	globalHistory = undefined;
 }

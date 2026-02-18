@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/subagents/task-execution.ts
- * role: サブエージェントのタスク実行ロジックを提供するモジュール
- * why: subagents.tsから実行ロジックを分離し、保守性を確保するため
- * related: .pi/extensions/subagents.ts, .pi/extensions/subagents/storage.ts, .pi/lib/output-validation.js, .pi/lib/retry-with-backoff.js
- * public_api: normalizeSubagentOutput, SubagentExecutionResult, RunOutcomeCode, RunOutcomeSignal
- * invariants: normalizeSubagentOutputは常にSubagentExecutionResultオブジェクトを返す、空文字列入力時はok=falseでreason="empty output"を返す
- * side_effects: なし（純粋関数として動作する正規化処理のみ公開APIに含まれる）
- * failure_modes: 入力が空文字列の場合は失敗結果を返す、バリデーション不合格時はフォールバック構造化処理を実行
+ * role: サブエージェントのタスク実行および出力正規化を担当する
+ * why: メインのサブエージェントロジックから実行詳細を分離し、保守性を向上させるため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/subagents/storage.ts, ../../lib/output-validation.ts, ../../lib/agent-types.js
+ * public_api: SubagentExecutionResult, normalizeSubagentOutput
+ * invariants: 出力はvalidateSubagentOutputによる検証を経るか、構造化フォーマットに整形される
+ * side_effects: ファイルシステムへの書き込みを伴う処理を含む（writeFileSyncインポート）
+ * failure_modes: 検証失敗時の出力整形、空の出力、空文字トリムエラー
  * @abdd.explain
- * overview: サブエージェント実行結果の正規化と出力整形を行うユーティリティモジュール
+ * overview: サブエージェントの実行結果を扱うロジックを集約したモジュール
  * what_it_does:
- *   - サブエージェントの出力文字列を正規化し、構造化された結果オブジェクトを生成する
- *   - 出力が所定フォーマット(SUMMARY/RESULT/NEXT_STEP)に準拠しない場合、自動的に構造化する
- *   - 正規化前にvalidateSubagentOutputで品質チェックを行う
- *   - 非構造化出力からSUMMARY候補を抽出するpickSubagentSummaryCandidate関数を提供する
+ *   - SubagentExecutionResult型の定義
+ *   - 出力文字列の正規化および検証
+ *   - 不正な出力に対する構造化フォーマット（SUMMARY, RESULT, NEXT_STEP）への変換
+ *   - 関連する型（RunOutcomeCode等）の再エクスポート
  * why_it_exists:
- *   - メインのsubagents.tsの責務を分離し、コードの可読性と保守性を向上させるため
- *   - サブエージェント出力のフォーマット統一を保証するため
+ *   - タスク実行の詳細を分割してコードベースを整理するため
+ *   - 出力形式の統一および品質検証を行うため
  * scope:
- *   in: 任意の文字列（サブエージェントの生出力）
- *   out: SubagentExecutionResultオブジェクト（ok, output, degraded, reasonフィールドを持つ）
+ *   in: 生の出力文字列
+ *   out: 正規化された実行結果オブジェクト（SubagentExecutionResult）
  */
 
 // File: .pi/extensions/subagents/task-execution.ts
@@ -77,13 +77,14 @@ export type { RunOutcomeCode, RunOutcomeSignal };
 // Types
 // ============================================================================
 
- /**
-  * サブエージェントの実行結果を表します。
-  * @param ok 成功したかどうか
-  * @param output 出力文字列
-  * @param degraded パフォーマンス低下などが発生したかどうか
-  * @param reason 失敗や劣化の理由（任意）
-  */
+/**
+ * サブエージェントの実行結果
+ * @summary 実行結果を取得
+ * @param ok 成功したかどうか
+ * @param output 出力文字列
+ * @param degraded パフォーマンス低下などが発生したかどうか
+ * @param reason 失敗や劣化の理由（任意）
+ */
 export interface SubagentExecutionResult {
   ok: boolean;
   output: string;
@@ -117,11 +118,12 @@ function pickSubagentSummaryCandidate(text: string): string {
   return compact.length <= 90 ? compact : `${compact.slice(0, 90)}...`;
 }
 
- /**
-  * サブエージェントの出力を正規化する。
-  * @param output 正規化前の出力文字列
-  * @returns 正規化された実行結果
-  */
+/**
+ * 出力を正規化する
+ * @summary 出力を正規化
+ * @param output サブエージェントの出力文字列
+ * @returns 正規化された実行結果オブジェクト
+ */
 export function normalizeSubagentOutput(output: string): SubagentExecutionResult {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -164,12 +166,13 @@ export function normalizeSubagentOutput(output: string): SubagentExecutionResult
 // Failure Resolution
 // ============================================================================
 
- /**
-  * サブエージェントのエラーが再試行可能か判定する
-  * @param error 判定対象のエラー
-  * @param statusCode ステータスコード（任意）
-  * @returns 再試行可能な場合はtrue
-  */
+/**
+ * リトライ可能か判定する
+ * @summary リトライ可否判定
+ * @param error 判定対象のエラー
+ * @param statusCode ステータスコード（任意）
+ * @returns リトライ可能な場合true
+ */
 export function isRetryableSubagentError(error: unknown, statusCode?: number): boolean {
   if (isRetryableError(error, statusCode)) {
     return true;
@@ -179,20 +182,22 @@ export function isRetryableSubagentError(error: unknown, statusCode?: number): b
   return message.includes("subagent returned empty output");
 }
 
- /**
-  * 空の出力失敗メッセージか判定
-  * @param message チェック対象のメッセージ
-  * @returns 条件に一致する場合true
-  */
+/**
+ * 空出力エラーか判定する
+ * @summary 空出力エラー判定
+ * @param message 検査するメッセージ
+ * @returns 空出力エラーの場合true
+ */
 export function isEmptyOutputFailureMessage(message: string): boolean {
   return message.toLowerCase().includes("subagent returned empty output");
 }
 
- /**
-  * 失敗の要約を構築する
-  * @param message エラーメッセージ
-  * @returns 失敗要約文字列
-  */
+/**
+ * エラー概要を作成する
+ * @summary エラー概要を作成
+ * @param message 元のエラーメッセージ
+ * @returns 作成した要約文字列
+ */
 export function buildFailureSummary(message: string): string {
   const lowered = message.toLowerCase();
   if (lowered.includes("empty output")) return "(failed: empty output)";
@@ -201,11 +206,12 @@ export function buildFailureSummary(message: string): string {
   return "(failed)";
 }
 
- /**
-  * サブエージェントの失敗結果を解決する
-  * @param error 発生したエラー
-  * @returns 処理結果を示すシグナル
-  */
+/**
+ * エラー種別を判定する
+ * @summary エラー種別を判定
+ * @param error 判定対象のエラー
+ * @returns エラー種別を示すシグナル
+ */
 export function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal {
   if (isCancelledErrorMessage(error)) {
     return { outcomeCode: "CANCELLED", retryRecommended: false };
@@ -231,12 +237,12 @@ export function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal 
 // Prompt Building
 // ============================================================================
 
- /**
-  * スキル配列を継承ルールに従ってマージする
-  * @param base ベースとなるスキル配列
-  * @param override 上書きするスキル配列
-  * @returns マージ後のスキル配列（どちらも指定がない場合はundefined）
-  */
+/**
+ * @summary スキル配列をマージ
+ * @param base ベースとなるスキル配列
+ * @param override 上書きするスキル配列
+ * @returns マージ後のスキル配列（どちらも指定がない場合はundefined）
+ */
 export function mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined {
   const hasBase = Array.isArray(base) && base.length > 0;
   const hasOverride = Array.isArray(override) && override.length > 0;
@@ -254,12 +260,13 @@ export function mergeSkillArrays(base: string[] | undefined, override: string[] 
   return merged;
 }
 
- /**
-  * サブエージェントの実効スキルを解決する
-  * @param agent サブエージェント定義
-  * @param parentSkills 親スキルのリスト（任意）
-  * @returns マージされたスキルの配列、または未定義
-  */
+/**
+ * サブエージェントの実効スキルを解決する
+ * @summary 実効スキルを解決
+ * @param agent サブエージェント定義
+ * @param parentSkills 親スキルのリスト（任意）
+ * @returns マージされたスキルの配列、または未定義
+ */
 export function resolveEffectiveSkills(
   agent: SubagentDefinition,
   parentSkills?: string[],
@@ -267,11 +274,12 @@ export function resolveEffectiveSkills(
   return mergeSkillArrays(parentSkills, agent.skills);
 }
 
- /**
-  * スキル一覧をプロンプト用に整形
-  * @param skills スキル配列
-  * @returns 整形された文字列、またはnull
-  */
+/**
+ * スキル一覧を整形
+ * @summary スキル一覧を整形
+ * @param skills スキル配列
+ * @returns 整形された文字列、またはnull
+ */
 export function formatSkillsSection(skills: string[] | undefined): string | null {
   if (!skills || skills.length === 0) return null;
   return skills.map((skill) => `- ${skill}`).join("\n");
@@ -360,24 +368,25 @@ async function runPiPrintMode(input: {
   });
 }
 
- /**
-  * サブエージェントタスクを実行する
-  * @param input.agent サブエージェントの定義
-  * @param input.task 実行するタスク
-  * @param input.extraContext 追加のコンテキスト
-  * @param input.timeoutMs タイムアウト時間（ミリ秒）
-  * @param input.cwd カレントワーキングディレクトリ
-  * @param input.retryOverrides リトライ設定のオーバーライド
-  * @param input.modelProvider モデルプロバイダー
-  * @param input.modelId モデルID
-  * @param input.parentSkills 親スキルのリスト
-  * @param input.signal 中断シグナル
-  * @param input.onStart 開始時のコールバック
-  * @param input.onEnd 終了時のコールバック
-  * @param input.onTextDelta テキスト差分のコールバック
-  * @param input.onStderrChunk 標準エラーチャンクのコールバック
-  * @returns 実行レコード、出力、プロンプトを含む結果
-  */
+/**
+ * サブエージェントタスク実行
+ * @summary サブエージェントタスク実行
+ * @param input.agent サブエージェント定義
+ * @param input.task タスク内容
+ * @param input.extraContext 追加コンテキスト
+ * @param input.timeoutMs タイムアウト時間（ミリ秒）
+ * @param input.cwd カレントワーキングディレクトリ
+ * @param input.retryOverrides リトライ設定の上書き
+ * @param input.modelProvider モデルプロバイダー
+ * @param input.modelId モデルID
+ * @param input.parentSkills 親スキルのリスト
+ * @param input.signal 中断シグナル
+ * @param input.onStart 開始時のコールバック
+ * @param input.onEnd 終了時のコールバック
+ * @param input.onTextDelta テキスト差分のコールバック
+ * @param input.onStderrChunk 標準エラーチャンクのコールバック
+ * @returns 実行レコード、出力、プロンプトを含む結果
+ */
 export async function runSubagentTask(input: {
   agent: SubagentDefinition;
   task: string;
@@ -595,11 +604,12 @@ export async function runSubagentTask(input: {
 // Utility Functions
 // ============================================================================
 
- /**
-  * 出力文字列から要約を抽出する
-  * @param output 出力文字列
-  * @returns 抽出された要約
-  */
+/**
+ * 要約を抽出
+ * @summary 要約を抽出
+ * @param output 出力文字列
+ * @returns 抽出された要約
+ */
 export function extractSummary(output: string): string {
   const match = output.match(/^\s*summary\s*:\s*(.+)$/im);
   if (match?.[1]) {

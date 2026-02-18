@@ -1,32 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop/iteration-builder.ts
- * role: ループ拡張機能向けのプロンプト構築と契約パース処理
- * why: 自動品質改善ループにおいてLLMへ渡す指示を構築し、LLMから返却される構造化契約を解析するため
- * related: .pi/extensions/loop.ts, .pi/lib/agent-types.js, .pi/extensions/loop/reference-loader.ts
- * public_api: buildIterationPrompt, parseLoopContract, ParsedLoopContract, LoopStatus, LoopGoalStatus, LOOP_JSON_BLOCK_TAG, LOOP_RESULT_BLOCK_TAG
- * invariants:
- *   - 前回出力はmaxPreviousOutputChars(9000文字)で制限される
- *   - 検証フィードバックは最大4件、各180文字以内に制限される
- *   - 構造化ブロック(LOOP_JSON)が存在する場合、パース優先度は構造化ブロック > プレーンテキスト抽出の順
- * side_effects: なし(純粋関数として動作)
- * failure_modes:
- *   - LOOP_JSONブロックのJSONパース失敗時にparseErrorsへエラーメッセージを格納
- *   - 不正なstatus/goalStatus値はunknownへフォールバック
+ * role: ループ拡張におけるイテレーションプロンプトの構築と、応答からループ契約の解析を行うモジュール
+ * why: LLMへの指示を一貫して生成し、構造化された応答をプログラムaticallyに解釈してループ制御を行うため
+ * related: .pi/extensions/loop.ts, .pi/extensions/loop/reference-loader.ts, .pi/lib/agent-types.js
+ * public_api: buildIterationPrompt, parseLoopContract, ParsedLoopContract, LoopStatus, LoopGoalStatus
+ * invariants: プロンプトは常に現在のイテレーション数と最大数を含む、パースは構造化ブロックまたは正規表現パターンに依存する
+ * side_effects: なし（純粋な関数と型定義）
+ * failure_modes: 構造化ブロックのJSON形式が不正な場合のパース失敗、正規表現によるフォールバック時の抽出漏れ
  * @abdd.explain
- * overview: 自律的品質改善ループの各イテレーションで使用するプロンプト生成と、LLM応答からの契約抽出を行う
+ * overview: 自動品質改善ループのためのプロンプト生成と、LLM応答からのステータス解析を担当する。
  * what_it_does:
- *   - タスク、目標、検証コマンド、参照情報、前回出力を組み込んだプロンプトを構築
- *   - LLM応答から<LOOP_JSON>ブロックを検出しJSONとしてパース
- *   - パース結果としてstatus, goalStatus, citations, nextActions等を抽出
- *   - 構造化ブロック不在時はプレーンテキストから情報を抽出
+ *   - タスク、目標、検証コマンド、参照情報を含むイテレーション用プロンプトを文字列構築する
+ *   - LLM応答から機械可読な契約データをパースし、ステータス、目標達成状況、次のアクション等を抽出する
+ *   - 前回の出力やフィードバックを要約し、プロンプト内で制限を遵守して参照する
  * why_it_exists:
- *   - ループ処理の各反復で一貫した形式のプロンプトを提供するため
- *   - LLM応答を機械可読な契約形式へ統一するため
- *   - イテレーション間の状態遷移を決定論的に処理するため
+ *   - ループ処理の進行状況と終了条件を判断するために、LLMとのやり取りを構造化する必要があるため
+ *   - プロンプトの一部（参照やフィードバック）に対し、トークン量や長さの制限を厳密に適用するため
  * scope:
- *   in: タスク定義、目標、検証コマンド、参照情報、前回出力、検証フィードバック
- *   out: 構築済みプロンプト文字列、パース済み契約オブジェクト(ParsedLoopContract)
+ *   in: タスク定義、目標、検証コマンド、イテレーション回数、参照データリスト、前回の出力、検証フィードバック
+ *   out: LLMへ送信するプロンプト文字列、または解析済みのループ契約オブジェクト（ParsedLoopContract）
  */
 
 // File: .pi/extensions/loop/iteration-builder.ts
@@ -55,26 +48,32 @@ const LIMITS = {
 // Types
 // ============================================================================
 
- /**
-  * ループの状態を表す型
-  */
+/**
+ * ループの進行状態を表す型
+ * @summary ループ進行状態
+ * @returns ループの進行状態値
+ */
 export type LoopStatus = "continue" | "done" | "unknown";
- /**
-  * ループの目標達成状態を表す型
-  */
+/**
+ * ループの状態を表す型
+ * @summary ループ状態
+ * @returns ループの状態値
+ */
 export type LoopGoalStatus = "met" | "not_met" | "unknown";
 
- /**
-  * ループ処理の契約解析結果を表すインターフェース
-  * @param status ループのステータス
-  * @param goalStatus 目標の達成ステータス
-  * @param goalEvidence 目標達成の根拠
-  * @param citations 引用リスト
-  * @param summary サマリー
-  * @param nextActions 次のアクションリスト
-  * @param parseErrors パースエラーのリスト
-  * @param usedStructuredBlock 構造化ブロックを使用したかどうか
-  */
+/**
+ * ループ契約解析結果
+ * @summary 解析結果を保持
+ * @param status ループのステータス
+ * @param goalStatus 目標の達成ステータス
+ * @param goalEvidence 目標達成の根拠
+ * @param citations 引用リスト
+ * @param summary サマリー
+ * @param nextActions 次のアクションリスト
+ * @param parseErrors パースエラーのリスト
+ * @param usedStructuredBlock 構造化ブロックを使用したかどうか
+ * @returns ループ処理の契約解析結果
+ */
 export interface ParsedLoopContract {
   status: LoopStatus;
   goalStatus: LoopGoalStatus;
@@ -90,18 +89,18 @@ export interface ParsedLoopContract {
 // Prompt Building
 // ============================================================================
 
- /**
-  * イテレーション用のプロンプトを構築する
-  * @param input.task 実行するタスク
-  * @param input.goal タスクの目標
-  * @param input.verificationCommand 検証用コマンド
-  * @param input.iteration 現在のイテレーション回数
-  * @param input.maxIterations 最大イテレーション回数
-  * @param input.references 参照情報の配列
-  * @param input.previousOutput 前回の出力内容
-  * @param input.validationFeedback 検証フィードバックの配列
-  * @returns 構築されたプロンプト文字列
-  */
+/**
+ * @summary プロンプト生成
+ * @param input.task 実行するタスク
+ * @param input.goal タスクの目標
+ * @param input.verificationCommand 検証用コマンド
+ * @param input.iteration 現在のイテレーション回数
+ * @param input.maxIterations 最大イテレーション回数
+ * @param input.references 参照情報の配列
+ * @param input.previousOutput 前回の出力内容
+ * @param input.validationFeedback 検証フィードバックの配列
+ * @returns 構築されたプロンプト文字列
+ */
 export function buildIterationPrompt(input: {
   task: string;
   goal?: string;
@@ -196,13 +195,14 @@ export function buildReferencePack(references: LoopReference[]): string {
   return lines.join("\n").trim();
 }
 
- /**
-  * 反復のフォーカス文字列を構築する
-  * @param task - タスク内容
-  * @param previousOutput - 前回の出力
-  * @param validationFeedback - 検証フィードバックの配列
-  * @returns 構築されたフォーカス文字列
-  */
+/**
+ * 反復フォーカス構築
+ * @summary 反復フォーカスを構築
+ * @param task - タスク内容
+ * @param previousOutput - 前回の出力
+ * @param validationFeedback - 検証フィードバックの配列
+ * @returns 構築されたフォーカス文字列
+ */
 export function buildIterationFocus(task: string, previousOutput: string, validationFeedback: string[]): string {
   if (validationFeedback.length > 0) {
     return `fix: ${validationFeedback[0]}`;
@@ -275,11 +275,12 @@ export function buildLoopCommandPreview(model: {
   return parts.join(" ");
 }
 
- /**
-  * イテレーション失敗時の出力を生成する
-  * @param message エラーメッセージ
-  * @returns 失敗情報を含む文字列
-  */
+/**
+ * イテレーション失敗時の出力を生成
+ * @summary 失敗出力生成
+ * @param message - エラーメッセージ
+ * @returns 生成された失敗出力文字列
+ */
 export function buildIterationFailureOutput(message: string): string {
   const contract = {
     status: "continue",
@@ -303,12 +304,13 @@ export function buildIterationFailureOutput(message: string): string {
 // Contract Parsing
 // ============================================================================
 
- /**
-  * LLM出力からループ契約を解析する
-  * @param output 解析対象の出力文字列
-  * @param hasGoal 目標が設定されているかどうか
-  * @returns 解析されたループ契約情報
-  */
+/**
+ * ループ契約を解析
+ * @summary 契約解析
+ * @param output - 出力文字列
+ * @param hasGoal - 目標の有無
+ * @returns 解析されたループ契約オブジェクト
+ */
 export function parseLoopContract(output: string, hasGoal: boolean): ParsedLoopContract {
   const parseErrors: string[] = [];
   let status = parseLoopStatus(output);
@@ -402,11 +404,12 @@ export function parseLoopContract(output: string, hasGoal: boolean): ParsedLoopC
   };
 }
 
- /**
-  * ループ結果の本文を抽出する
-  * @param output 出力文字列
-  * @returns 抽出された本文、またはトリムされた出力
-  */
+/**
+ * ループ結果の本文を抽出
+ * @summary 結果本文抽出
+ * @param output - 出力文字列
+ * @returns 抽出された本文
+ */
 export function extractLoopResultBody(output: string): string {
   const block = extractTaggedBlock(output, LOOP_RESULT_BLOCK_TAG);
   if (block) return block;
@@ -417,17 +420,18 @@ export function extractLoopResultBody(output: string): string {
 // Validation
 // ============================================================================
 
- /**
-  * イテレーションの入力値を検証し、エラーを返す
-  * @param input - 検証対象の入力データ
-  * @param input.status - ループの状態
-  * @param input.goal - 目標（オプション）
-  * @param input.goalStatus - 目標の状態
-  * @param input.citations - 引用の配列
-  * @param input.referenceCount - 参照回数
-  * @param input.requireCitation - 引用が必要かどうか
-  * @returns 検証で見つかったエラーメッセージの配列
-  */
+/**
+ * 入力値を検証してエラーを返す
+ * @summary 入力値検証
+ * @param input - 検証対象の入力データ
+ * @param input.status - ループの状態
+ * @param input.goal - 目標（オプション）
+ * @param input.goalStatus - 目標の状態
+ * @param input.citations - 引用文献の配列
+ * @param input.referenceCount - 参照文献数
+ * @param input.requireCitation - 引用の要否
+ * @returns エラーメッセージの配列
+ */
 export function validateIteration(input: {
   status: LoopStatus;
   goal?: string;
@@ -463,11 +467,12 @@ export function validateIteration(input: {
   return errors;
 }
 
- /**
-  * バリデーションエラーを正規化・整形する
-  * @param errors エラーメッセージの配列
-  * @returns 整形された一意のエラーリスト
-  */
+/**
+ * 検証フィードバックを正規化
+ * @summary フィードバック正規化
+ * @param errors - エラーメッセージの配列
+ * @returns 正規化されたエラーメッセージ配列
+ */
 export function normalizeValidationFeedback(errors: string[]): string[] {
   const compact = errors
     .map((issue) => normalizeValidationIssue(issue))
@@ -479,11 +484,12 @@ export function normalizeValidationFeedback(errors: string[]): string[] {
     .map((issue, index) => `${index + 1}. ${toPreview(issue, LIMITS.maxValidationFeedbackCharsPerItem)}`);
 }
 
- /**
-  * 完了宣言のフィードバックを構築する
-  * @param errors バリデーションエラーのリスト
-  * @returns エラーメッセージを含むフィードバック配列
-  */
+/**
+ * 完了宣言フィードバックを構築する
+ * @summary フィードバックを構築
+ * @param errors - エラー文字列の配列
+ * @returns 構築されたフィードバック配列
+ */
 export function buildDoneDeclarationFeedback(errors: string[]): string[] {
   return [
     "STATUS=done was rejected by system validation. Keep STATUS=continue until all gates pass.",
@@ -604,11 +610,12 @@ function extractCitations(output: string): string[] {
     .map((id) => `R${id}`);
 }
 
- /**
-  * 次のステップ行を抽出する
-  * @param output 出力文字列
-  * @returns 抽出された次のステップ
-  */
+/**
+ * 次のステップ行を抽出する
+ * @summary 次ステップ行を抽出
+ * @param output - 出力文字列
+ * @returns 抽出された次ステップ行
+ */
 export function extractNextStepLine(output: string): string {
   const structured = parseLoopJsonObject(output);
   if (structured) {
@@ -621,11 +628,12 @@ export function extractNextStepLine(output: string): string {
   return match?.[1]?.trim() ?? "";
 }
 
- /**
-  * 出力からサマリー行を抽出する
-  * @param output 出力文字列
-  * @returns 抽出されたサマリー
-  */
+/**
+ * 要約行を抽出する
+ * @summary 要約行を抽出
+ * @param output - 出力文字列
+ * @returns 抽出された要約行
+ */
 export function extractSummaryLine(output: string): string {
   const structured = parseLoopJsonObject(output);
   if (structured) {
@@ -778,11 +786,12 @@ function toPreview(value: string, maxChars: number): string {
   return `${value.slice(0, maxChars)}...`;
 }
 
- /**
-  * ループ出力を正規化する
-  * @param value 入力文字列
-  * @returns 正規化された文字列
-  */
+/**
+ * 出力文字を正規化する
+ * @summary 出力を正規化
+ * @param value - 元の文字列
+ * @returns 正規化された文字列
+ */
 export function normalizeLoopOutput(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }

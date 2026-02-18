@@ -1,34 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/call_graph.ts
- * role: 呼び出しグラフ操作のツール関数エクスポート層
- * why: 呼び出しグラフのインデックス生成・検索機能への統一インターフェースを提供する
- * related: ../call-graph/builder.js, ../call-graph/query.js, ./sym_index.js, ../call-graph/types.js
+ * role: 呼び出しグラフインデックスの作成・更新および、呼び出し元・呼び出し先の検索ツールを提供する
+ * why: コード解析において関数間の参照関係を追跡可能にするため
+ * related: ../call-graph/types.js, ../call-graph/builder.js, ../call-graph/query.js, sym_index.ts
  * public_api: callGraphIndex, findCallersTool, findCalleesTool
- * invariants:
- *   - callGraphIndexは呼び出しグラフ構築前にシンボルインデックスの存在を保証する
- *   - シンボルインデックスが空の場合はnodeCount=0, edgeCount=0のエラー結果を返す
- *   - 既存インデックスが有効かつforce=falseの場合は再構築をスキップする
- * side_effects:
- *   - ファイルシステムへのインデックス書き込み
- *   - シンボルインデックスの自動生成
- * failure_modes:
- *   - ctags未動作またはソースファイル不在によりシンボルインデックスが空
- *   - インデックス読み書き時のファイルシステムエラー
- *   - symbolName未指定による検索エラー
+ * invariants: シンボルインデックスが存在しない場合は生成を試みる、インデックスが古い場合は再構築する
+ * side_effects: ファイルシステム（.pi/search/call-graph/index.json）への書き込み、ctagsの実行
+ * failure_modes: シンボルが見つからない、インデックス読み取りエラー、ctags実行エラー
  * @abdd.explain
- * overview: 呼び出しグラフのインデックス構築・クエリ実行を提供するツールモジュール
+ * overview: 呼び出しグラフ（Call Graph）に関するインデックス化と検索機能を集約したツールセット
  * what_it_does:
- *   - callGraphIndex: シンボルインデックス依存確認後、呼び出しグラフを構築・キャッシュ・保存
- *   - findCallersTool: 指定シンボルを呼び出す関数一覧を返却
- *   - findCalleesTool: 指定シンボルが呼び出す関数一覧を返却
+ *   - 呼び出しグラフインデックスの生成、更新、およびキャッシュ管理
+ *   - シンボルインデックスの事前チェックおよび不足時の自動生成
+ *   - 指定シンボルの呼び出し元（Callers）の検索
+ *   - 指定シンボルの呼び出し先（Callees）の検索
  * why_it_exists:
- *   - builder/queryモジュールの低レベルAPIを高レベルツールとして統合
- *   - インデックス鮮度判定とキャッシュ再利用ロジックの集約
- *   - 検索拡張機能からの呼び出しグラフ機能利用の簡素化
+ *   - 関数の依存関係や影響範囲を可視化・分析するため
+ *   - 静的解析によるリファクタリング支援やコード理解を促進するため
  * scope:
- *   in: CallGraphIndexInput, FindCallersInput, FindCalleesInput, cwd文字列
- *   out: CallGraphIndexOutput, FindCallersOutput, FindCalleesOutput
+ *   in: 検索クエリ、パス設定、再構築フラグ、カレントワーキングディレクトリ
+ *   out: インデックスメタデータ、検索結果リスト、エラーメッセージ
  */
 
 /**
@@ -59,12 +51,13 @@ import { symIndex, readSymbolIndex } from "./sym_index.js";
 // Call Graph Index Tool
 // ============================================
 
- /**
-  * 呼び出しグラフのインデックスを生成または更新
-  * @param input 入力設定
-  * @param cwd 作業ディレクトリ
-  * @returns 出力結果
-  */
+/**
+ * 呼び出しグラフを索引付け
+ * @summary 呼び出しグラフ索引付け
+ * @param input 索引付け入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 索引付け結果データ
+ */
 export async function callGraphIndex(
 	input: CallGraphIndexInput,
 	cwd: string
@@ -127,12 +120,13 @@ export async function callGraphIndex(
 // Find Callers Tool
 // ============================================
 
- /**
-  * 指定されたシンボルを呼び出す関数を検索します。
-  * @param input 検索条件を含む入力オブジェクト
-  * @param cwd カレントワーキングディレクトリ
-  * @returns 検索結果を含むオブジェクト
-  */
+/**
+ * 呼び出し元を検索
+ * @summary 呼び出し元検索
+ * @param input 検索入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 検索結果データ
+ */
 export async function findCallersTool(
 	input: FindCallersInput,
 	cwd: string
@@ -273,11 +267,11 @@ export async function findCalleesTool(
 // Output Formatting
 // ============================================
 
- /**
-  * コールグラフのインデックス結果をフォーマット
-  * @param result コールグラフの出力結果
-  * @returns フォーマットされた文字列
-  */
+/**
+ * @summary インデックスをフォーマット
+ * @param result コールグラフの出力結果
+ * @returns フォーマットされた文字列
+ */
 export function formatCallGraphIndex(result: CallGraphIndexOutput): string {
 	if (result.error) {
 		return `Error: ${result.error}`;
@@ -291,11 +285,11 @@ export function formatCallGraphIndex(result: CallGraphIndexOutput): string {
 	].join("\n");
 }
 
- /**
-  * 呼び出し元の検索結果を整形して文字列で返す
-  * @param result 呼び出し元の検索結果
-  * @returns 整形された文字列
-  */
+/**
+ * @summary 呼び出し元を整形
+ * @param result 呼び出し元の検索結果
+ * @returns 整形された文字列
+ */
 export function formatCallers(result: FindCallersOutput): string {
 	if (result.error) {
 		return `Error: ${result.error}`;

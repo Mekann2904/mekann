@@ -1,32 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/member-execution.ts
- * role: チームメンバー実行結果の正規化と出力処理を担当するモジュール
- * why: エージェントチーム機能から実行ロジックを分離し、保守性を向上させるため
- * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/output-validation.ts, .pi/lib/errors.ts
- * public_api: TeamNormalizedOutput, normalizeTeamMemberOutput
- * invariants:
- *   - normalizeTeamMemberOutputは空文字列入力時、ok=falseで返却する
- *   - 出力文字列は必ずtrim済みの状態で返却される
- *   - 正規化失敗時はok=falseとなりoutputは空文字列
- * side_effects:
- *   - なし（純粋関数として動作）
- * failure_modes:
- *   - 入力が空文字列の場合: ok=false, reason="empty output"
- *   - 正規化試行後もバリデーション不通過の場合: ok=false, reasonに失敗理由を格納
+ * role: チームメンバーの出力正規化ロジックの実装
+ * why: メインファイルから分離し、責務を明確にして保守性を向上させるため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, ../../lib/output-validation.ts, ../../lib/agent-types.ts
+ * public_api: normalizeTeamMemberOutput, type TeamNormalizedOutput
+ * invariants: 出力正規化の際は validateTeamMemberOutput を通じて品質検証を行う
+ * side_effects: ファイルシステムへのアクセスなし（純粋な関数処理）
+ * failure_modes: 正規化に失敗した場合、ok: false の結果を返す
  * @abdd.explain
- * overview: エージェントチームのメンバー実行結果を正規化し、構造化された出力形式へ変換する
+ * overview: エージェントチームメンバーの実行結果出力を、システムで扱いやすい形式に整形・正規化するモジュール。
  * what_it_does:
- *   - チームメンバーの出力テキストを受け取り、バリデーションを実行する
- *   - バリデーション不通過時はSUMMARY/CLAIM/EVIDENCE/RESULT/NEXT_STEP形式へ構造化を試行する
- *   - 構造化成功時はdegraded=trueで正規化済み出力を返す
- *   - 構造化失敗時はok=falseで失敗理由を返す
+ *   - 入力文字列をバリデーションし、必要に応じて構造化フォーマット（SUMMARY, CLAIM等）に変換する
+ *   - 変換された出力が有効かどうか検証し、成功/失敗/縮退モードのフラグを返す
+ *   - 無効な出力から有用なテキスト候補を抽出して代替構造を生成する
  * why_it_exists:
- *   - メインのagent-teams.tsから実行ロジックを分離し責務を明確化する
- *   - チームメンバー固有のフィールド抽出ロジック（pickTeamFieldCandidate）を局所化する
+ *   - LLMからの出力形式を統一し、ダウンストリーム処理でのエラーを防ぐため
+ *   - 複雑な正規化ロジックを agent-teams.ts 本体から分離してモジュール性を高めるため
  * scope:
- *   in: 任意の文字列出力（チームメンバーの実行結果）
- *   out: TeamNormalizedOutputオブジェクト（正規化結果と成否情報）
+ *   in: 生のテキスト出力（TeamMemberResult.output相当）
+ *   out: 検証済みの正規化済み文字列、またはエラー理由を含むステータスオブジェクト
  */
 
 // File: .pi/extensions/agent-teams/member-execution.ts
@@ -63,13 +56,14 @@ import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from 
 // Types
 // ============================================================================
 
- /**
-  * チームメンバー実行結果の正規化出力
-  * @property ok - 実行が成功したかどうか
-  * @property output - 実行結果の出力テキスト
-  * @property degraded - 縮退モードで実行されたかどうか
-  * @property reason - 縮退または失敗の理由（オプション）
-  */
+/**
+ * チーム実行結果の正規化出力
+ * @summary 正規化出力
+ * @property ok - 実行が成功したかどうか
+ * @property output - 実行結果の出力テキスト
+ * @property degraded - 縮退モードで実行されたかどうか
+ * @property reason - 縮退または失敗の理由（オプション）
+ */
 export interface TeamNormalizedOutput {
   ok: boolean;
   output: string;
@@ -103,11 +97,12 @@ function pickTeamFieldCandidate(text: string, maxLength: number): string {
   return compact.length <= maxLength ? compact : `${compact.slice(0, maxLength)}...`;
 }
 
- /**
-  * チームメンバーの出力を正規化します。
-  * @param output - 正規化対象の文字列
-  * @returns 正規化された結果オブジェクト
-  */
+/**
+ * チームメンバー出力を正規化
+ * @summary 出力を正規化
+ * @param output - 正規化対象の文字列
+ * @returns 正規化された結果オブジェクト
+ */
 export function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -208,11 +203,12 @@ const TEAM_SKILL_PATHS = [
   join(process.cwd(), ".pi", "skills"),
 ];
 
- /**
-  * スキルの内容をSKILL.mdから読み込む
-  * @param skillName スキル名
-  * @returns スキルの内容（見つからない場合はnull）
-  */
+/**
+ * スキル名からファイル内容を読込
+ * @summary スキル内容読込
+ * @param skillName スキル名
+ * @returns スキルのファイル内容、またはnull
+ */
 export function loadSkillContent(skillName: string): string | null {
   for (const basePath of TEAM_SKILL_PATHS) {
     const skillPath = join(basePath, skillName, "SKILL.md");
@@ -230,11 +226,12 @@ export function loadSkillContent(skillName: string): string | null {
   return null;
 }
 
- /**
-  * スキルセクションの文字列を構築する
-  * @param skills スキル名の配列
-  * @returns 構築された文字列、または入力がない場合はnull
-  */
+/**
+ * スキル定義からコンテンツを生成
+ * @summary スキルセクション生成
+ * @param skills スキル名の配列
+ * @returns 生成されたスキルセクション文字列、またはnull
+ */
 export function buildSkillsSectionWithContent(skills: string[] | undefined): string | null {
   if (!skills || skills.length === 0) return null;
 
@@ -278,11 +275,17 @@ export function buildSkillsSectionWithContent(skills: string[] | undefined): str
   return lines.length > 0 ? lines.join("\n").trim() : null;
 }
 
- /**
-  * チームメンバー用のプロンプトを構築する
-  * @param input チーム、メンバー、タスク、コンテキスト等を含む入力オブジェクト
-  * @returns 構築されたプロンプト文字列
-  */
+/**
+ * チームメンバー用プロンプトを構築
+ * @summary プロンプト構築
+ * @param input.team チーム定義
+ * @param input.member チームメンバー
+ * @param input.task 実行タスク
+ * @param input.sharedContext 共有コンテキスト
+ * @param input.phase フェーズ
+ * @param input.communicationContext コミュニケーションコンテキスト
+ * @returns 構築されたプロンプト文字列
+ */
 export function buildTeamMemberPrompt(input: {
   team: TeamDefinition;
   member: TeamMember;
@@ -378,27 +381,28 @@ async function runPiPrintMode(input: {
   });
 }
 
- /**
-  * チームメンバーのタスクを実行する
-  * @param input.team チーム定義
-  * @param input.member チームメンバー
-  * @param input.task タスク
-  * @param input.sharedContext 共有コンテキスト
-  * @param input.phase フェーズ
-  * @param input.communicationContext コミュニケーションコンテキスト
-  * @param input.timeoutMs タイムアウト（ミリ秒）
-  * @param input.cwd 作業ディレクトリ
-  * @param input.retryOverrides リトライ設定
-  * @param input.fallbackProvider フォールバックプロバイダー
-  * @param input.fallbackModel フォールバックモデル
-  * @param input.signal 中断シグナル
-  * @param input.onStart 開始時コールバック
-  * @param input.onEnd 終了時コールバック
-  * @param input.onEvent イベント発生時コールバック
-  * @param input.onTextDelta テキスト差分受信時コールバック
-  * @param input.onStderrChunk 標準エラー受信時コールバック
-  * @returns 実行結果
-  */
+/**
+ * メンバータスクを実行し結果を返却
+ * @summary タスクを実行
+ * @param input.team チーム定義
+ * @param input.member チームメンバー
+ * @param input.task 実行タスク
+ * @param input.sharedContext 共有コンテキスト
+ * @param input.phase フェーズ
+ * @param input.communicationContext コミュニケーションコンテキスト
+ * @param input.timeoutMs タイムアウト時間
+ * @param input.cwd カレントワーキングディレクトリ
+ * @param input.retryOverrides リトライ設定
+ * @param input.fallbackProvider フォールバックプロバイダー
+ * @param input.fallbackModel フォールバックモデル
+ * @param input.signal 中断シグナル
+ * @param input.onStart 開始時コールバック
+ * @param input.onEnd 終了時コールバック
+ * @param input.onEvent イベント発生時コールバック
+ * @param input.onTextDelta テキスト追加時コールバック
+ * @param input.onStderrChunk 標準エラー出力時コールバック
+ * @returns 実行結果
+ */
 export async function runMember(input: {
   team: TeamDefinition;
   member: TeamMember;

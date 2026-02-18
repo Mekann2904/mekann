@@ -1,37 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/definition-loader.ts
- * role: チーム定義Markdownファイルの読み込みと解析を行うモジュール
- * why: 定義読み込みロジックをagent-teams.tsから分離し、保守性を向上させるため
- * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/team-types.js
- * public_api: parseTeamMarkdownFile, loadTeamDefinitionsFromDir, TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown
- * invariants:
- *   - 解析失敗時は例外を投げずnullを返す
- *   - frontmatterのidとnameは必須フィールド
- *   - members配列は空でないことを検証
- * side_effects:
- *   - ファイルシステムからの読み込み（readFileSync, readdirSync）
- *   - console.warnによる警告出力
- *   - process.env.PI_CODING_AGENT_DIRの参照
- * failure_modes:
- *   - ファイルが存在しない、または読み込み権限がない
- *   - YAMLフロントマターのパースエラー
- *   - 必須フィールド（id, name, members）の欠落
- *   - 不正なenabled値の指定
+ * role: Markdownファイルからのチーム定義の読み込みとパース処理
+ * why: 定義読み込みロジックをメインファイルから分離し、保守性を高めるため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/team-types.ts
+ * public_api: parseTeamMarkdownFile, loadTeamDefinitionsFromDir
+ * invariants: 読み込むMarkdownファイルにはidとnameを含む有効なYAMLフロントマターが存在する
+ * side_effects: ファイルシステムからファイルを読み込み、標準出力に警告ログを出力する
+ * failure_modes: ファイル読み込みエラー、パースエラー、必須フィールド欠損時にnullを返すか警告を出力する
  * @abdd.explain
- * overview: Markdownファイル形式で定義されたエージェントチーム設定を読み込み、TeamDefinitionオブジェクトに変換する
+ * overview: ローカル、グローバル、バンドルされたディレクトリからチーム定義ファイルを検出し、解析するモジュール
  * what_it_does:
- *   - ローカル/グローバル/同梱ディレクトリから.mdファイルを探索
- *   - YAMLフロントマターを解析し、チーム定義情報を抽出
- *   - frontmatterのバリデーション（id, name, members, enabled）
- *   - チーム型の再エクスポート提供
+ *   - 環境変数やパスに基づき、チーム定義ファイルの格納候補ディレクトリを決定する
+ *   - MarkdownファイルのYAMLフロントマターをパースし、TeamFrontmatterオブジェクトを生成する
+ *   - 必須フィールドの有効性チェックを行い、無効な場合は警告を出力して処理をスキップする
  * why_it_exists:
- *   - agent-teams.tsから定義読み込みロジックを分離し単一責任化
- *   - 複数の定義ソース（ローカル、グローバル、同梱）を統一的に扱うため
- *   - チーム定義の解析処理を再利用可能にするため
+ *   - ファイルシステムへのアクセスとデータ解析の責務を明確に分離するため
+ *   - チーム定義の取得元（ローカル/グローバル）の違いを抽象化するため
  * scope:
- *   in: ファイルパス文字列、ディレクトリパス、現在日時ISO文字列
- *   out: ParsedTeamMarkdownオブジェクト、TeamDefinition配列、型定義
+ *   in: チーム定義が含まれるディレクトリパス、現在日時（ISO文字列）
+ *   out: パースされたチーム定義オブジェクトの配列、または単一のパース結果
  */
 
 // File: .pi/extensions/agent-teams/definition-loader.ts
@@ -93,11 +81,12 @@ function getCandidateTeamDefinitionsDirs(cwd: string): string[] {
   return Array.from(new Set(candidates));
 }
 
- /**
-  * YAMLフロントマター付きチームMarkdownを解析
-  * @param filePath ファイルパス
-  * @returns 解析結果、失敗時はnull
-  */
+/**
+ * チームMarkdownファイルをパース
+ * @summary ファイルをパース
+ * @param filePath Markdownファイルのパス
+ * @returns パース結果。失敗時はnullを返す
+ */
 export function parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | null {
   try {
     const content = readFileSync(filePath, "utf-8");
@@ -128,12 +117,13 @@ export function parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | nu
   }
 }
 
- /**
-  * ディレクトリからチーム定義を読み込む
-  * @param definitionsDir 定義ファイルが含まれるディレクトリのパス
-  * @param nowIso 現在日時のISO形式文字列
-  * @returns 読み込まれたチーム定義の配列
-  */
+/**
+ * ディレクトリからチーム定義を読込
+ * @summary ディレクトリから読込
+ * @param definitionsDir 定義ファイルが含まれるディレクトリパス
+ * @param nowIso 現在日時のISO形式文字列
+ * @returns チーム定義の配列
+ */
 export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): TeamDefinition[] {
   const teams: TeamDefinition[] = [];
   const entries = readdirSync(definitionsDir, { withFileTypes: true });
@@ -174,12 +164,13 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
   return teams;
 }
 
- /**
-  * Markdownからチーム定義を読み込む
-  * @param cwd - 作業ディレクトリのパス
-  * @param nowIso - 作成日時・更新日時として設定するISO形式のタイムスタンプ
-  * @returns 読み込まれたチーム定義の配列
-  */
+/**
+ * Markdownからチーム定義を読込
+ * @summary Markdownから読込
+ * @param cwd カレントワーキングディレクトリ
+ * @param nowIso 現在日時のISO形式文字列
+ * @returns チーム定義の配列
+ */
 export function loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): TeamDefinition[] {
   const candidates = getCandidateTeamDefinitionsDirs(cwd);
   const missingDirs: string[] = [];
@@ -432,12 +423,13 @@ function getHardcodedDefaultTeams(nowIso: string): TeamDefinition[] {
   ];
 }
 
- /**
-  * デフォルトのチーム定義を作成する
-  * @param nowIso ISO形式の日時文字列
-  * @param cwd カレントワーキングディレクトリ（省略可）
-  * @returns チーム定義の配列
-  */
+/**
+ * デフォルトチーム定義を生成
+ * @summary デフォルトチーム作成
+ * @param nowIso 現在日時のISO形式文字列
+ * @param cwd カレントワーキングディレクトリ（任意）
+ * @returns チーム定義の配列
+ */
 export function createDefaultTeams(nowIso: string, cwd?: string): TeamDefinition[] {
   const effectiveCwd = cwd || process.cwd();
   const markdownTeams = loadTeamDefinitionsFromMarkdown(effectiveCwd, nowIso);
@@ -493,12 +485,15 @@ const LEGACY_DEFAULT_MEMBER_IDS_BY_TEAM: Record<string, Set<string>> = {
   ]),
 };
 
- /**
-  * 既存とデフォルトのチーム定義をマージする
-  * @param existing 既存のチーム定義
-  * @param fallback デフォルトのチーム定義
-  * @returns マージ後のチーム定義
-  */
+/**
+ * デフォルトチーム定義を統合
+ *
+ * 既存のチーム定義に、フォールバック用のデフォルト定義をマージします。
+ * @summary デフォルトチーム定義を統合
+ * @param existing - 既存のチーム定義
+ * @param fallback - フォールバック用のデフォルトチーム定義
+ * @returns マージ後のチーム定義
+ */
 export function mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinition): TeamDefinition {
   const existingMembers = new Map(existing.members.map((member) => [member.id, member]));
   const fallbackMemberIds = new Set(fallback.members.map((member) => member.id));
@@ -548,13 +543,16 @@ export function mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinit
   };
 }
 
- /**
-  * デフォルトチーム設定を適用・統合する
-  * @param storage 既存のチーム定義ストレージ
-  * @param nowIso 現在日時のISO文字列
-  * @param cwd カレントワーキングディレクトリ（任意）
-  * @returns デフォルト設定が統合されたストレージ
-  */
+/**
+ * デフォルト設定を適用
+ *
+ * ストレージに対して、現在時刻やディレクトリ情報を含むデフォルト設定を反映・統合します。
+ * @summary デフォルト設定を適用
+ * @param storage - 対象のストレージオブジェクト
+ * @param nowIso - 現在時刻のISO 8601形式文字列
+ * @param cwd - カレントワーキングディレクトリ（任意）
+ * @returns デフォルト設定が適用されたストレージ
+ */
 export function ensureDefaults(
   storage: TeamStorage,
   nowIso: string,

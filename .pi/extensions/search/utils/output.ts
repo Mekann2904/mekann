@@ -1,32 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/output.ts
- * role: 検索ツール統一出力フォーマッター
- * why: 異なる検索バックエンド（fd, ripgrep等）の出力を統一フォーマットに変換し、エージェントが解釈可能な形式で提供するため
- * related: types.ts, metrics.ts, constants.ts, formatUtils.ts
+ * role: 検索ツールの出力整形・フォーマットユーティリティ
+ * why: 検索コマンド（fd, ripgrep等）の生データを統一的な構造（SearchResponse等）に変換し、結果の切り詰めやテキストフォーマットを行うため
+ * related: ../types.ts, ./constants.ts, ./metrics.ts
  * public_api: truncateResults, truncateHead, parseFdOutput, formatFileCandidates
- * invariants:
- *   - truncateResults/truncateHeadは元配列を変更せず新しい配列を返す
- *   - SearchResponseのtotalは常に元の結果数を示す
- *   - truncatedがtrueの場合、results.length < totalが成立する
- * side_effects: なし（純粋関数のみ）
- * failure_modes:
- *   - stdoutが不正な形式の場合、空配列または部分的な結果を返す
- *   - output.errorが設定されている場合、フォーマット結果はエラーメッセージのみ
+ * invariants: 結果の配列長がlimitを超える場合のみtruncatedがtrue、totalは元の配列長を保持
+ * side_effects: なし（純粋関数）
+ * failure_modes: 標準出力のフォーマットが想定と異なる場合、不正なパスが含まれる場合
  * @abdd.explain
- * overview: 検索結果のトランケーション、パース、フォーマット処理を提供するユーティリティモジュール
+ * overview: 検索結果のフィルタリング、構造化、および文字列表現への変換を行うモジュール
  * what_it_does:
- *   - 検索結果配列を指定上限で切り詰め、メタデータ（total, truncated）を付与
- *   - fdコマンド出力をFileCandidate配列に変換
- *   - FileCandidate検索結果を人間可読文字列にフォーマット
- *   - 先頭・末尾からのトランケーション戦略を提供
+ *   - 検索結果の配列を最大数で切り詰め、総数と切り詰められたかどうかのメタデータを付与
+ *   - fdコマンドなどの標準出力文字列をFileCandidateオブジェクトの配列に変換
+ *   - FileCandidateの検索結果を、種別（[D]/[F]）と共に可読性の高い文字列にフォーマット
  * why_it_exists:
- *   - 検索結果のサイズ制限によりトークン消費を抑制
- *   - バックエンド間の差異を吸収し一貫した出力形式を提供
- *   - エージェントが結果の切捨て状態を認識できるようにする
+ *   - 異なる検索ツールの出力形式を吸収し、システム内で統一的なデータ構造を利用するため
+ *   - 大量の検索結果による出力の溢れやリソース消費を防ぐため
+ *   - ユーザーやエージェント向けに見やすい検索結果を提供するため
  * scope:
- *   in: 検索コマンドの生出力文字列、型付けされた検索結果配列、制限値（limit）
- *   out: SearchResponse<T>オブジェクト、人間可読フォーマット文字列
+ *   in: 生の検索結果（文字列、配列）、制限数、ファイル種別
+ *   out: SearchResponse型オブジェクト、FileCandidate配列、整形された文字列
  */
 
 /**
@@ -56,12 +50,13 @@ import { DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT } from "
 // Result Truncation
 // ============================================
 
- /**
-  * 検索結果を制限し、メタデータを含める
-  * @param results 検索結果の配列
-  * @param limit 上限数
-  * @returns 検索レスポンス
-  */
+/**
+ * 結果を切り詰める
+ * @summary 結果を切り詰める
+ * @param results 検索結果の配列
+ * @param limit 上限数
+ * @returns 制限された検索レスポンス
+ */
 export function truncateResults<T>(
   results: T[],
   limit: number
@@ -78,8 +73,11 @@ export function truncateResults<T>(
 }
 
 /**
- * Truncate from head (keep last N items).
- * Useful for keeping most recent/relevant results.
+ * 先頭を制限して返す
+ * @summary 先頭を制限
+ * @param results 検索結果の配列
+ * @param limit 上限数
+ * @returns 制限された検索レスポンス
  */
 export function truncateHead<T>(
   results: T[],
@@ -100,12 +98,13 @@ export function truncateHead<T>(
 // File Candidates Formatting
 // ============================================
 
- /**
-  * fdの出力をFileCandidate配列に変換
-  * @param stdout fdコマンドの標準出力
-  * @param type "file"または"dir"
-  * @returns 変換後のFileCandidate配列
-  */
+/**
+ * fd出力を解析
+ * @summary 出力を解析して構造化
+ * @param stdout 標準出力文字列
+ * @param type 検索対象タイプ
+ * @returns ファイル候補の配列
+ */
 export function parseFdOutput(
   stdout: string,
   type: "file" | "dir" = "file"
@@ -117,11 +116,12 @@ export function parseFdOutput(
   }));
 }
 
- /**
-  * ファイル候補を整形する
-  * @param output 検索結果
-  * @returns 整形された文字列
-  */
+/**
+ * 候補ファイルを整形
+ * @summary 候補一覧を整形
+ * @param output 検索レスポンス
+ * @returns 整形済みの文字列
+ */
 export function formatFileCandidates(output: SearchResponse<FileCandidate>): string {
   const lines: string[] = [];
 
@@ -145,12 +145,13 @@ export function formatFileCandidates(output: SearchResponse<FileCandidate>): str
 // Code Search Formatting
 // ============================================
 
- /**
-  * ripgrepのJSON出力を解析します。
-  * @param stdout - ripgrepの出力文字列
-  * @param contextLines - コンテキスト行数
-  * @returns 構造化されたマッチ情報とサマリー
-  */
+/**
+ * rg出力を解析
+ * @summary 出力を解析して構造化
+ * @param stdout 標準出力文字列
+ * @param contextLines コンテキスト行数
+ * @returns マッチ情報とサマリ
+ */
 export function parseRgOutput(
   stdout: string,
   contextLines: number = 0
@@ -223,11 +224,12 @@ export function summarizeResults(
     .sort((a, b) => b.count - a.count);
 }
 
- /**
-  * コード検索結果を表示用に整形する
-  * @param output - 検索結果オブジェクト
-  * @returns 整形された文字列
-  */
+/**
+ * コード検索結果を整形
+ * @summary 検索結果を整形
+ * @param output コード検索の出力データ
+ * @returns 整形済みの文字列
+ */
 export function formatCodeSearch(output: CodeSearchOutput): string {
   const lines: string[] = [];
 
@@ -270,11 +272,12 @@ export function formatCodeSearch(output: CodeSearchOutput): string {
 // Symbol Formatting
 // ============================================
 
- /**
-  * ctagsのJSON出力をパースする
-  * @param stdout ctagsの出力文字列
-  * @returns パースされたシンボル定義の配列
-  */
+/**
+ * ctags出力を解析する
+ * @summary ctags出力解析
+ * @param stdout ctagsの出力文字列
+ * @returns シンボル定義の配列
+ */
 export function parseCtagsOutput(stdout: string): SymbolDefinition[] {
   const symbols: SymbolDefinition[] = [];
   const lines = stdout.trim().split("\n").filter(Boolean);
@@ -308,11 +311,12 @@ export function parseCtagsOutput(stdout: string): SymbolDefinition[] {
   return symbols;
 }
 
- /**
-  * 従来のctags形式を解析します。
-  * @param stdout ctagsの出力文字列
-  * @returns 解析されたシンボル定義の配列
-  */
+/**
+ * ctags標準出力を解析する
+ * @summary ctags標準出力解析
+ * @param stdout ctagsの出力文字列
+ * @returns シンボル定義の配列
+ */
 export function parseCtagsTraditional(stdout: string): SymbolDefinition[] {
   const symbols: SymbolDefinition[] = [];
   const lines = stdout.trim().split("\n").filter(Boolean);
@@ -359,11 +363,12 @@ export function parseCtagsTraditional(stdout: string): SymbolDefinition[] {
   return symbols;
 }
 
- /**
-  * シンボルの検索結果をフォーマットする
-  * @param output シンボル定義の検索結果
-  * @returns フォーマットされた文字列
-  */
+/**
+ * シンボルをフォーマットする
+ * @summary シンボルフォーマット
+ * @param output シンボル定義を含む検索レスポンス
+ * @returns フォーマット済みの文字列
+ */
 export function formatSymbols(output: SearchResponse<SymbolDefinition>): string {
   const lines: string[] = [];
 
@@ -401,11 +406,12 @@ export function formatSymbols(output: SearchResponse<SymbolDefinition>): string 
 // Error Formatting
 // ============================================
 
- /**
-  * 標準化されたエラーレスポンスを作成する
-  * @param error エラーメッセージ
-  * @returns エラー情報を含む検索レスポンス
-  */
+/**
+ * エラーレスポンスを作成する
+ * @summary エラーレスポンス作成
+ * @param error エラーメッセージ
+ * @returns 検索レスポンスオブジェクト
+ */
 export function createErrorResponse<T>(error: string): SearchResponse<T> {
   return {
     total: 0,
@@ -415,11 +421,12 @@ export function createErrorResponse<T>(error: string): SearchResponse<T> {
   };
 }
 
- /**
-  * コード検索のエラーレスポンスを作成する
-  * @param error エラーメッセージ
-  * @returns エラー情報を含むコード検索結果
-  */
+/**
+ * エラーを作成する
+ * @summary エラー作成
+ * @param error エラーメッセージ
+ * @returns コード検索出力オブジェクト
+ */
 export function createCodeSearchError(error: string): CodeSearchOutput {
   return {
     total: 0,
@@ -430,12 +437,13 @@ export function createCodeSearchError(error: string): CodeSearchOutput {
   };
 }
 
- /**
-  * エラーを整形して表示用文字列を返す
-  * @param tool ツール名
-  * @param error エラー情報
-  * @returns 整形されたエラーメッセージ
-  */
+/**
+ * エラー文字列を生成
+ * @summary エラー整形
+ * @param tool ツール名
+ * @param error エラー情報
+ * @returns 整形されたエラーメッセージ
+ */
 export function formatError(tool: string, error: unknown): string {
   if (error instanceof Error) {
     return `${tool} error: ${error.message}`;
@@ -463,12 +471,13 @@ export function escapeText(text: string): string {
   });
 }
 
- /**
-  * テキストを省略記号付きで切り詰める。
-  * @param text 対象のテキスト
-  * @param maxLength 最大長
-  * @returns 切り詰められたテキスト
-  */
+/**
+ * テキストを省略記号付きで切り詰める
+ * @summary テキストを切り詰める
+ * @param text 対象のテキスト
+ * @param maxLength 最大長
+ * @returns 切り詰められたテキスト
+ */
 export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength - 3) + "...";
@@ -502,12 +511,13 @@ export type SuggestedNextAction =
   | "increase_limit"      // Results truncated, may need more
   | "regenerate_index";   // Index may be stale
 
- /**
-  * 検索結果のヒント情報
-  * @param confidence 結果の信頼度（0.0-1.0）
-  * @param suggestedNextAction 次に推奨されるアクション
-  * @param alternativeTools 代替候補のツールリスト
-  */
+/**
+ * 検索結果のヒント情報
+ * @summary ヒント情報を取得
+ * @param confidence 結果の信頼度（0.0-1.0）
+ * @param suggestedNextAction 次に推奨されるアクション
+ * @param alternativeTools 代替候補のツールリスト
+ */
 export interface SearchHints {
   /**
    * Confidence in the results (0.0-1.0).
@@ -531,12 +541,13 @@ export interface SearchHints {
   relatedQueries?: string[];
 }
 
- /**
-  * 検索操作に関する統計情報。
-  * @param filesSearched 検索または列挙されたファイル数
-  * @param durationMs 実行時間（ミリ秒）
-  * @param indexHitRate インデックス使用時のヒット率
-  */
+/**
+ * @summary 検索統計情報
+ * @description 検索操作に関する統計情報。
+ * @param filesSearched 検索または列挙されたファイル数
+ * @param durationMs 実行時間（ミリ秒）
+ * @param indexHitRate インデックス使用時のヒット率
+ */
 export interface SearchStats {
   /**
    * Number of files searched or enumerated.
@@ -554,12 +565,14 @@ export interface SearchStats {
   indexHitRate?: number;
 }
 
- /**
-  * エージェントのヒントや統計情報を含む拡張出力
-  * @param {T[]} results 検索結果
-  * @param {number} total 切り捨て前の結果の総数
-  * @param {boolean} truncated 上限により結果が切り捨てられたかどうか
-  */
+/**
+ * エージェントのヒントや統計情報を含む拡張出力
+ * @summary 拡張出力を返す
+ * @param {T[]} results 検索結果
+ * @param {number} total 切り捨て前の結果の総数
+ * @param {boolean} truncated 上限により結果が切り捨てられたかどうか
+ * @returns 拡張出力
+ */
 export interface EnhancedOutput<T> {
   /**
    * Search results.
@@ -596,13 +609,14 @@ export interface EnhancedOutput<T> {
 // Enhanced Output Factories
 // ============================================
 
- /**
-  * 検索レスポンスから拡張出力を生成する
-  * @param response 基本的な検索レスポンス
-  * @param metrics 検索に関するメトリクス
-  * @param hints 検索ヒントの一部（オプション）
-  * @returns 拡張された出力オブジェクト
-  */
+/**
+ * 拡張出力を生成
+ * @summary 拡張出力を生成
+ * @param response 基本的な検索レスポンス
+ * @param metrics 検索に関するメトリクス
+ * @param hints 検索ヒントの一部（オプション）
+ * @returns 拡張された出力オブジェクト
+ */
 export function enhanceOutput<T>(
   response: SearchResponse<T>,
   metrics: SearchMetrics,
@@ -658,12 +672,13 @@ function calculateConfidence<T>(
   return 0.9;
 }
 
- /**
-  * 検索結果に基づき推奨される次のアクションを決定します。
-  * @param response 検索レスポンス
-  * @param pattern 検索パターン（省略可）
-  * @returns 推奨されるアクション、または条件に合致しない場合はundefined
-  */
+/**
+ * 次のアクションを決定
+ * @summary アクション決定
+ * @param response 検索レスポンス
+ * @param pattern 検索パターン（省略可）
+ * @returns 推奨されるアクション、または条件に合致しない場合はundefined
+ */
 export function suggestNextAction<T>(
   response: SearchResponse<T>,
   pattern?: string
@@ -686,13 +701,14 @@ export function suggestNextAction<T>(
   return undefined;
 }
 
- /**
-  * 検索結果からヒントを生成する
-  * @param response 検索レスポンス
-  * @param metrics 検索メトリクス
-  * @param toolName ツール名
-  * @returns 生成されたヒント
-  */
+/**
+ * 検索結果からヒントを生成する
+ * @summary ヒント生成
+ * @param response - 検索レスポンス
+ * @param metrics - 検索メトリクス
+ * @param toolName - 検索ツールの名前
+ * @returns 検索ヒントオブジェクト
+ */
 export function createHints<T>(
   response: SearchResponse<T>,
   metrics: SearchMetrics,
@@ -732,26 +748,28 @@ function getAlternativeTools(toolName: string): string[] {
 // Simple Hints Factory (Lightweight Version)
 // ============================================
 
- /**
-  * シンプルな信頼度を計算する
-  * @param count - 検索結果の件数
-  * @param truncated - 結果が切り詰められているか
-  * @returns 信頼度（0.0〜1.0）
-  */
+/**
+ * シンプルなロジックで信頼度を算出
+ * @summary 信頼度算出
+ * @param count - 結果件数
+ * @param truncated - 結果が切り詰められたか
+ * @returns 信頼度スコア
+ */
 export function calculateSimpleConfidence(count: number, truncated: boolean): number {
   if (count === 0) return 0.1;
   if (count > 50 || truncated) return 0.9;
   return Math.min(0.5 + count * 0.01, 0.85);
 }
 
- /**
-  * シンプルなパラメータからヒントを作成
-  * @param toolName - 検索ツールの名前
-  * @param resultCount - 返された結果の件数
-  * @param truncated - 結果が切り詰められたかどうか
-  * @param queryPattern - 使用された検索パターン
-  * @returns 生成された検索ヒント
-  */
+/**
+ * シンプルなパラメータからヒントを作成
+ * @summary シンプルヒント作成
+ * @param toolName - 検索ツールの名前
+ * @param resultCount - 結果件数
+ * @param truncated - 結果が切り詰められたか
+ * @param queryPattern - クエリパターン（任意）
+ * @returns 検索ヒントオブジェクト
+ */
 export function createSimpleHints(
   toolName: string,
   resultCount: number,
@@ -811,12 +829,13 @@ function generateRelatedQueries(query: string): string[] {
 // Enhanced Output Formatting
 // ============================================
 
- /**
-  * 拡張出力を表示用にフォーマットします。
-  * @param output 拡張出力オブジェクト
-  * @param formatResult 結果を文字列化する関数
-  * @returns フォーマットされた文字列
-  */
+/**
+ * 拡張出力をフォーマット
+ * @summary 拡張出力のフォーマット
+ * @param output - 拡張出力オブジェクト
+ * @param formatResult - 結果を文字列化する関数
+ * @returns フォーマット済みの文字列
+ */
 export function formatEnhancedOutput<T>(
   output: EnhancedOutput<T>,
   formatResult: (result: T) => string

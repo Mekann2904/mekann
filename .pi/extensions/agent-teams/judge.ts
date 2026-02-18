@@ -1,28 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/judge.ts
- * role: エージェントチームの不確実性計算および最終判定ロジックを提供するモジュール
- * why: agent-teams.tsからSRP準拠で分離し、判定ロジックを独立して管理・テスト可能にするため
- * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/text-parsing.js
- * public_api: JudgeWeightConfig, DEFAULT_JUDGE_WEIGHTS, getJudgeWeights, TeamDefinition, TeamFinalJudge, TeamMemberResult, TeamStrategy, clampConfidence, parseUnitInterval, extractField, countKeywordSignals
- * invariants: 不確実性値は常に[0,1]区間、重み合計は各カテゴリ内で1.0、DEFAULT_JUDGE_WEIGHTSは変更不可
- * side_effects: customWeightsグローバル変数の読み書き（getJudgeWeightsがキャッシュを返す）
- * failure_modes: カスタム重み設定の読み込み失敗時はデフォルト値にフォールバック
+ * role: チーム実行結果の不確実性計算と最終判定を行うモジュール
+ * why: SRP準拠のため判定ロジックを分離し、重み付け設定の拡張性と判断根拠の説明可能性を確保するため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/text-parsing.ts
+ * public_api: JudgeWeightConfig, DEFAULT_JUDGE_WEIGHTS, getJudgeWeights, computeProxyUncertaintyWithExplainability (実装コードにあるため推測含む), type exports (TeamDefinition等), utility exports (clampConfidence等)
+ * invariants: 内部・相互・システムの各重みは合計が1.0になる構造を維持する, しきい値は0.0から1.0の範囲内である
+ * side_effects: 外部からカスタム重み設定を読み込み、モジュール内キャッシュ `customWeights` を更新する
+ * failure_modes: 重み設定の整合性が取れない場合の計算結果の不正、キャッシュされた設定と実行環境の不整合
  * @abdd.explain
- * overview: マルチエージェントシステムにおける回答の不確実性を計算し、最終判定を行うための重み付け設定と計算ロジックを提供する
+ * overview: エージェントチームの実行結果に対し、設定可能な重み付けに基づいて不確実性を算出し、最終的な成功/失敗の判定を行うモジュールです。
  * what_it_does:
- *   - JudgeWeightConfigインターフェースによる判定重みの型定義
- *   - 内部重み、相互重み、システム重みの3層構造で不確実性を評価
- *   - デフォルト重み設定（DEFAULT_JUDGE_WEIGHTS）の提供
- *   - カスタム重み設定のキャッシュ機能
- *   - 型定義とユーティリティ関数の再エクスポート
+ *   - TeamMemberResult, TeamStrategy, TeamDefinition 等の型定義を再エクスポートする
+ *   - clampConfidence, parseUnitInterval 等のテキスト解析ユーティリティを再エクスポートする
+ *   - 判定重み設定 (JudgeWeightConfig) を定義し、デフォルト値 (DEFAULT_JUDGE_WEIGHTS) を提供する
+ *   - カスタム重み設定のキャッシュ管理および取得機能 (getJudgeWeights) を提供する
+ *   - 内部・相互・システムレベルの指標に基づき、不確実性と判定結果を算出する (実装詳細は後続コード)
  * why_it_exists:
- *   - agent-teams.tsから判定ロジックを分離し単一責任原則を遵守
- *   - 重みパラメータを外部設定可能にし、チューニングを容易にするため
- *   - 判定プロセスの透明性と説明可能性を向上させるため
+ *   - 複雑な判定ロジックを単一責任原則 (SRP) に基づいて分離し、コードの保守性を向上させるため
+ *   - 判定基準の重み付けを外部設定可能にし、柔軟性と説明可能性を高めるため
  * scope:
- *   in: TeamMemberResult配列、TeamDefinition、カスタム重み設定（オプション）
- *   out: 不確実性スコア、最終判定結果、TeamFinalJudge
+ *   in: エージェントチームの実行結果、判定重み設定、環境変数やファイルからのカスタム設定
+ *   out: 不確実性スコア、最終判定結果、判定根拠の詳細情報
  */
 
 /**
@@ -65,14 +64,10 @@ export { clampConfidence, parseUnitInterval, extractField, countKeywordSignals }
 // Judge Weight Configuration (P0-3)
 // ============================================================================
 
- /**
-  * 判定の重み付け設定
-  * @param version バージョン
-  * @param intraWeights 内部重み
-  * @param interWeights 相互重み
-  * @param sysWeights システム重み
-  * @param collapseThresholds しきい値
-  */
+/**
+ * 審判の重み設定
+ * @summary 審判の重み設定
+ */
 export interface JudgeWeightConfig {
   version: string;
   intraWeights: {
@@ -138,10 +133,11 @@ export const DEFAULT_JUDGE_WEIGHTS: JudgeWeightConfig = {
  */
 let customWeights: JudgeWeightConfig | undefined;
 
- /**
-  * 現在の判定重み設定を取得する
-  * @returns 判定重み設定
-  */
+/**
+ * 重み設定を取得
+ * @summary 重み設定を取得
+ * @returns {JudgeWeightConfig} 現在の重み設定
+ */
 export function getJudgeWeights(): JudgeWeightConfig {
   // Return cached custom weights if set
   if (customWeights) {
@@ -184,19 +180,21 @@ export function getJudgeWeights(): JudgeWeightConfig {
   return DEFAULT_JUDGE_WEIGHTS;
 }
 
- /**
-  * カスタムの判定重みを設定
-  * @param weights 設定するカスタム重み
-  * @returns なし
-  */
+/**
+ * 重み設定を更新
+ * @summary 重み設定を更新
+ * @param weights - 重みの設定情報
+ * @returns {void}
+ */
 export function setJudgeWeights(weights: JudgeWeightConfig): void {
   customWeights = weights;
 }
 
- /**
-  * 判定の重みをデフォルトに戻す
-  * @returns 戻り値なし
-  */
+/**
+ * 判定重みを初期化
+ * @summary 判定重みを初期化
+ * @returns 戻り値なし
+ */
 export function resetJudgeWeights(): void {
   customWeights = undefined;
 }
@@ -205,9 +203,13 @@ export function resetJudgeWeights(): void {
 // Judge Explanation (P0-3)
 // ============================================================================
 
- /**
-  * 判定決定要因の詳細な説明
-  */
+/**
+ * 判定決定要因の詳細な説明
+ * @summary 判定要因を保持
+ * @param inputs 入力値
+ * @param computation 中間計算結果
+ * @returns なし
+ */
 export interface JudgeExplanation {
   /** Input values used for computation */
   inputs: {
@@ -250,13 +252,14 @@ export interface JudgeExplanation {
 // Core Types
 // ============================================================================
 
- /**
-  * メンバー結果から計算される不確実性プロキシ
-  * @param uIntra メンバー内の不確実性（内部の不一致）
-  * @param uInter メンバー間の不確実性（メンバー間の意見の相違）
-  * @param uSys システムレベルの不確実性（総合的な指標）
-  * @param collapseSignals 崩壊条件をトリガーしたシグナル
-  */
+/**
+ * チームの不確実性を表現
+ * @summary 不確実性を表現
+ * @param uIntra メンバー内の不確実性（内部の不一致）
+ * @param uInter メンバー間の不確実性（メンバー間の意見の相違）
+ * @param uSys システムレベルの不確実性（総合的な指標）
+ * @param collapseSignals 崩壊条件をトリガーしたシグナル
+ */
 export interface TeamUncertaintyProxy {
   /** Intra-member uncertainty (internal inconsistency) */
   uIntra: number;
@@ -295,11 +298,11 @@ export function extractDiscussionSection(output: string): string {
   return discussionLines.join("\n");
 }
 
- /**
-  * 出力内の証拠シグナルの数をカウントする
-  * @param output - 解析対象の出力文字列
-  * @returns 証拠シグナルの数
-  */
+/**
+ * @summary 証拠シグナルをカウント
+ * @param output - 解析対象の出力文字列
+ * @returns 証拠シグナルの数
+ */
 export function countEvidenceSignals(output: string): number {
   let count = 0;
 
@@ -320,11 +323,12 @@ export function countEvidenceSignals(output: string): number {
   return Math.max(0, Math.min(50, count));
 }
 
- /**
-  * チームメンバーの出力を解析し、診断情報を返す
-  * @param output 解析対象の出力文字列
-  * @returns 診断メトリクス（信頼度や矛盾数など）
-  */
+/**
+ * メンバー出力を解析
+ * @summary 出力解析
+ * @param output 解析対象の文字列出力
+ * @returns 診断情報を含む解析結果
+ */
 export function analyzeMemberOutput(output: string): TeamMemberResult["diagnostics"] {
   const confidence = parseUnitInterval(extractField(output, "CONFIDENCE")) ?? 0.5;
   const evidenceCount = countEvidenceSignals(output);
@@ -352,11 +356,12 @@ export function analyzeMemberOutput(output: string): TeamMemberResult["diagnosti
   };
 }
 
- /**
-  * チームの不確実性プロキシを計算する
-  * @param memberResults チームメンバーの実行結果一覧
-  * @returns 計算された不確実性プロキシ
-  */
+/**
+ * 代理不確実性を計算
+ * @summary 代理不確実性計算
+ * @param memberResults チームメンバーの判定結果リスト
+ * @returns 計算された不確実性プロキシ
+ */
 export function computeProxyUncertainty(memberResults: TeamMemberResult[]): TeamUncertaintyProxy {
   const total = Math.max(1, memberResults.length);
   const failedCount = memberResults.filter((result) => result.status === "failed").length;
@@ -400,12 +405,13 @@ export function computeProxyUncertainty(memberResults: TeamMemberResult[]): Team
   };
 }
 
- /**
-  * 不確実性プロキシと説明を計算する
-  * @param memberResults - 分析対象のチームメンバー結果
-  * @param weights - カスタム重み設定
-  * @returns 不確実性プロキシと説明
-  */
+/**
+ * 不確実性と説明を計算
+ * @summary 不確実性計算
+ * @param memberResults チームメンバーの判定結果リスト
+ * @param weights 判定の重み設定
+ * @returns 計算されたプロキシと判定理由
+ */
 export function computeProxyUncertaintyWithExplainability(
   memberResults: TeamMemberResult[],
   weights: JudgeWeightConfig = getJudgeWeights(),
@@ -587,11 +593,12 @@ export function computeProxyUncertaintyWithExplainability(
   return { proxy, explanation };
 }
 
- /**
-  * 判定の決定理由を人間が読める形式で整形する
-  * @param explanation - 判定の説明オブジェクト
-  * @returns 整形された説明文字列
-  */
+/**
+ * 判定理由を整形
+ * @summary 判定理由整形
+ * @param explanation 整形前の判定理由オブジェクト
+ * @returns 整形された判定理由文字列
+ */
 export function formatJudgeExplanation(explanation: JudgeExplanation): string {
   const lines: string[] = [];
 
@@ -632,14 +639,12 @@ export function formatJudgeExplanation(explanation: JudgeExplanation): string {
   return lines.join("\n");
 }
 
- /**
-  * LLM判定がない場合の代替判定を生成する
-  * @param input 入力データ
-  * @param input.memberResults チームメンバーの実行結果一覧
-  * @param input.proxy 不確実性プロキシ（省略時は計算）
-  * @param input.error エラー文字列
-  * @returns 代替判定結果
-  */
+/**
+ * 代替判定を生成
+ * @summary 代替判定生成
+ * @param input メンバー結果、プロキシ、エラーを含む入力データ
+ * @returns 生成された最終判定
+ */
 export function buildFallbackJudge(input: {
   memberResults: TeamMemberResult[];
   proxy?: TeamUncertaintyProxy;
@@ -692,18 +697,19 @@ export function buildFallbackJudge(input: {
   };
 }
 
- /**
-  * 最終判定プロセスを実行します
-  * @param input 入力データ
-  * @param input.team チーム定義
-  * @param input.task タスク内容
-  * @param input.strategy チーム戦略
-  * @param input.memberResults メンバーの実行結果リスト
-  * @param input.proxy チームの不確実性プロキシ
-  * @param input.timeoutMs タイムアウト時間（ミリ秒）
-  * @param input.signal 中断シグナル
-  * @returns 最終判定結果
-  */
+/**
+ * 最終審査を実行
+ * @summary 最終審査の実行
+ * @param input 入力データ
+ * @param input.team チーム定義
+ * @param input.task タスク内容
+ * @param input.strategy チーム戦略
+ * @param input.memberResults メンバーの実行結果リスト
+ * @param input.proxy チーム不確実性プロキシ
+ * @param input.timeoutMs タイムアウト時間（ミリ秒）
+ * @param input.signal 中断シグナル（任意）
+ * @returns 最終審査結果
+ */
 export async function runFinalJudge(input: {
   team: TeamDefinition;
   task: string;
