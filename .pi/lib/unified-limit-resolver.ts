@@ -11,6 +11,14 @@
  * Layer 3: cross-instance-coordinator.ts (インスタンス間分散)
  * Layer 4: agent-runtime.ts (ランタイム制約)
  * Layer 5: task-scheduler.ts (優先度ベーススケジューリング)
+ *
+ * Initialization Order (IMPORTANT):
+ * 1. Runtime config is loaded first (no dependencies)
+ * 2. Cross-instance coordinator registers on session start
+ * 3. Agent runtime extension injects snapshot provider
+ * 4. This resolver combines all layers
+ *
+ * If snapshot provider is not injected, a warning is logged and defaults are used.
  */
 
 
@@ -31,10 +39,15 @@ import {
   getRpmLimit,
   type ResolvedModelLimits,
 } from "./provider-limits.js";
+import {
+  getRuntimeConfig,
+  validateConfigConsistency,
+  type RuntimeConfig,
+} from "./runtime-config.js";
 import type { IRuntimeSnapshot, RuntimeSnapshotProvider } from "./interfaces/runtime-snapshot.js";
 
 // ============================================================================
-// Types
+// Types (RuntimeConfig is imported from runtime-config.ts)
 // ============================================================================
 
 /**
@@ -149,20 +162,77 @@ export interface UnifiedEnvConfig {
 let _getRuntimeSnapshot: RuntimeSnapshotProvider | null = null;
 
 /**
+ * Track initialization state for diagnostics.
+ */
+let _initializationState: {
+  snapshotProviderSet: boolean;
+  setAt: string | null;
+  warningsLogged: string[];
+} = {
+  snapshotProviderSet: false,
+  setAt: null,
+  warningsLogged: [],
+};
+
+/**
  * Set the runtime snapshot provider function.
  * Called by extensions/agent-runtime.ts during initialization.
+ *
+ * IMPORTANT: This should be called once during extension initialization.
+ * Multiple calls will log a warning but allow the update.
  */
 export function setRuntimeSnapshotProvider(fn: RuntimeSnapshotProvider): void {
+  const previousState = _getRuntimeSnapshot !== null;
   _getRuntimeSnapshot = fn;
+  _initializationState.snapshotProviderSet = true;
+  _initializationState.setAt = new Date().toISOString();
+
+  if (previousState) {
+    const warning = "Runtime snapshot provider was set multiple times. This may indicate a bug.";
+    _initializationState.warningsLogged.push(warning);
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn(`[unified-limit-resolver] ${warning}`);
+    }
+  }
+}
+
+/**
+ * Check if the runtime snapshot provider has been initialized.
+ * Useful for diagnostics and debugging initialization order issues.
+ */
+export function isSnapshotProviderInitialized(): boolean {
+  return _initializationState.snapshotProviderSet;
+}
+
+/**
+ * Get initialization state for diagnostics.
+ */
+export function getInitializationState(): typeof _initializationState {
+  return { ..._initializationState };
 }
 
 /**
  * Get runtime snapshot with fallback to default values.
  * Internal function used by resolveUnifiedLimits.
+ *
+ * If the snapshot provider is not initialized, logs a warning once
+ * and returns default values (all zeros).
  */
 function getRuntimeSnapshot(): IRuntimeSnapshot {
   if (!_getRuntimeSnapshot) {
-    // Fallback: return default values when not initialized
+    // Log warning once
+    if (!_initializationState.warningsLogged.includes("snapshot_provider_not_set")) {
+      _initializationState.warningsLogged.push("snapshot_provider_not_set");
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn(
+          "[unified-limit-resolver] Runtime snapshot provider not initialized. " +
+          "Using default values (0 active). " +
+          "This may indicate agent-runtime extension is not loaded yet."
+        );
+      }
+    }
+
+    // Return default values when not initialized
     return {
       totalActiveLlm: 0,
       totalActiveRequests: 0,
@@ -170,91 +240,40 @@ function getRuntimeSnapshot(): IRuntimeSnapshot {
       teamActiveCount: 0,
     };
   }
-  return _getRuntimeSnapshot();
+
+  try {
+    return _getRuntimeSnapshot();
+  } catch (error) {
+    // Handle errors gracefully
+    if (typeof console !== "undefined" && console.error) {
+      console.error("[unified-limit-resolver] Error getting runtime snapshot:", error);
+    }
+    return {
+      totalActiveLlm: 0,
+      totalActiveRequests: 0,
+      subagentActiveCount: 0,
+      teamActiveCount: 0,
+    };
+  }
 }
 
 // ============================================================================
-// Constants
-// ============================================================================
-
-const DEFAULT_ENV_CONFIG: UnifiedEnvConfig = {
-  maxTotalLlm: 8,
-  maxTotalRequests: 6,
-  maxSubagentParallel: 4,
-  maxTeamParallel: 3,
-  maxTeammateParallel: 6,
-  maxOrchestrationParallel: 4,
-  adaptiveEnabled: true,
-  predictiveEnabled: true,
-};
-
-// ============================================================================
-// Environment Variable Resolution
+// Constants (Now using RuntimeConfig from runtime-config.ts)
 // ============================================================================
 
 /**
- * 統合環境変数設定を取得
- * 
- * 優先順位:
- * 1. PI_LIMIT_* (新しい統一形式)
- * 2. PI_AGENT_* (従来形式 - 後方互換性)
- * 3. デフォルト値
+ * Backward compatibility alias.
+ * @deprecated Use RuntimeConfig from runtime-config.ts instead.
+ */
+export type UnifiedEnvConfig = RuntimeConfig;
+
+/**
+ * Get unified environment configuration.
+ * @deprecated Use getRuntimeConfig() from runtime-config.ts instead.
+ * This function is kept for backward compatibility.
  */
 export function getUnifiedEnvConfig(): UnifiedEnvConfig {
-  const config = { ...DEFAULT_ENV_CONFIG };
-
-  // 新しい統一形式 (PI_LIMIT_*)
-  if (process.env.PI_LIMIT_MAX_TOTAL_LLM) {
-    config.maxTotalLlm = parseInt(process.env.PI_LIMIT_MAX_TOTAL_LLM, 10);
-  }
-  if (process.env.PI_LIMIT_MAX_TOTAL_REQUESTS) {
-    config.maxTotalRequests = parseInt(process.env.PI_LIMIT_MAX_TOTAL_REQUESTS, 10);
-  }
-  if (process.env.PI_LIMIT_SUBAGENT_PARALLEL) {
-    config.maxSubagentParallel = parseInt(process.env.PI_LIMIT_SUBAGENT_PARALLEL, 10);
-  }
-  if (process.env.PI_LIMIT_TEAM_PARALLEL) {
-    config.maxTeamParallel = parseInt(process.env.PI_LIMIT_TEAM_PARALLEL, 10);
-  }
-  if (process.env.PI_LIMIT_TEAMMATE_PARALLEL) {
-    config.maxTeammateParallel = parseInt(process.env.PI_LIMIT_TEAMMATE_PARALLEL, 10);
-  }
-  if (process.env.PI_LIMIT_ORCHESTRATION_PARALLEL) {
-    config.maxOrchestrationParallel = parseInt(process.env.PI_LIMIT_ORCHESTRATION_PARALLEL, 10);
-  }
-  if (process.env.PI_LIMIT_ADAPTIVE_ENABLED !== undefined) {
-    config.adaptiveEnabled = process.env.PI_LIMIT_ADAPTIVE_ENABLED === "1" || process.env.PI_LIMIT_ADAPTIVE_ENABLED === "true";
-  }
-  if (process.env.PI_LIMIT_PREDICTIVE_ENABLED !== undefined) {
-    config.predictiveEnabled = process.env.PI_LIMIT_PREDICTIVE_ENABLED === "1" || process.env.PI_LIMIT_PREDICTIVE_ENABLED === "true";
-  }
-
-  // 従来形式 (PI_AGENT_*) - 後方互換性
-  if (process.env.PI_AGENT_MAX_TOTAL_LLM && !process.env.PI_LIMIT_MAX_TOTAL_LLM) {
-    config.maxTotalLlm = parseInt(process.env.PI_AGENT_MAX_TOTAL_LLM, 10);
-  }
-  if (process.env.PI_AGENT_MAX_TOTAL_REQUESTS && !process.env.PI_LIMIT_MAX_TOTAL_REQUESTS) {
-    config.maxTotalRequests = parseInt(process.env.PI_AGENT_MAX_TOTAL_REQUESTS, 10);
-  }
-  if (process.env.PI_AGENT_MAX_PARALLEL_SUBAGENTS && !process.env.PI_LIMIT_SUBAGENT_PARALLEL) {
-    config.maxSubagentParallel = parseInt(process.env.PI_AGENT_MAX_PARALLEL_SUBAGENTS, 10);
-  }
-  if (process.env.PI_AGENT_MAX_PARALLEL_TEAMS && !process.env.PI_LIMIT_TEAM_PARALLEL) {
-    config.maxTeamParallel = parseInt(process.env.PI_AGENT_MAX_PARALLEL_TEAMS, 10);
-  }
-  if (process.env.PI_AGENT_MAX_PARALLEL_TEAMMATES && !process.env.PI_LIMIT_TEAMMATE_PARALLEL) {
-    config.maxTeammateParallel = parseInt(process.env.PI_AGENT_MAX_PARALLEL_TEAMMATES, 10);
-  }
-  if (process.env.PI_AGENT_MAX_CONCURRENT_ORCHESTRATIONS && !process.env.PI_LIMIT_ORCHESTRATION_PARALLEL) {
-    config.maxOrchestrationParallel = parseInt(process.env.PI_AGENT_MAX_CONCURRENT_ORCHESTRATIONS, 10);
-  }
-
-  // クロスインスタンス従来形式
-  if (process.env.PI_TOTAL_MAX_LLM && !process.env.PI_LIMIT_MAX_TOTAL_LLM && !process.env.PI_AGENT_MAX_TOTAL_LLM) {
-    config.maxTotalLlm = parseInt(process.env.PI_TOTAL_MAX_LLM, 10);
-  }
-
-  return config;
+  return getRuntimeConfig();
 }
 
 // ============================================================================
@@ -273,7 +292,7 @@ export function getUnifiedEnvConfig(): UnifiedEnvConfig {
  */
 export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResult {
   const { provider, model, tier } = input;
-  const envConfig = getUnifiedEnvConfig();
+  const envConfig = getRuntimeConfig();
   
   // Layer 1: プリセット制限
   const presetLimits = resolveLimits(provider, model, tier);
@@ -306,7 +325,7 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
   }
   
   // Layer 4: ランタイム制約
-  const runtimeMax = envConfig.maxTotalLlm;
+  const runtimeMax = envConfig.totalMaxLlm;
   const runtimeSnapshot = getRuntimeSnapshot();
   const currentActive = runtimeSnapshot.totalActiveLlm;
   const runtimeConcurrency = Math.min(crossInstanceConcurrency, runtimeMax);
@@ -407,27 +426,45 @@ export function formatUnifiedLimitsResult(result: UnifiedLimitResult): string {
  * 全プロバイダーの制限サマリーを取得
  */
 export function getAllLimitsSummary(): string {
-  const envConfig = getUnifiedEnvConfig();
+  const envConfig = getRuntimeConfig();
   const coordinatorStatus = getCoordinatorStatus();
+  const validation = validateConfigConsistency();
   
   const lines: string[] = [
     `Unified Limit Resolver Summary`,
     `================================`,
     ``,
+    `Profile: ${envConfig.profile}`,
+    ``,
     `Environment Config:`,
-    `  maxTotalLlm: ${envConfig.maxTotalLlm}`,
-    `  maxTotalRequests: ${envConfig.maxTotalRequests}`,
-    `  maxSubagentParallel: ${envConfig.maxSubagentParallel}`,
-    `  maxTeamParallel: ${envConfig.maxTeamParallel}`,
-    `  maxTeammateParallel: ${envConfig.maxTeammateParallel}`,
-    `  maxOrchestrationParallel: ${envConfig.maxOrchestrationParallel}`,
+    `  totalMaxLlm: ${envConfig.totalMaxLlm}`,
+    `  totalMaxRequests: ${envConfig.totalMaxRequests}`,
+    `  maxParallelSubagents: ${envConfig.maxParallelSubagents}`,
+    `  maxParallelTeams: ${envConfig.maxParallelTeams}`,
+    `  maxParallelTeammates: ${envConfig.maxParallelTeammates}`,
+    `  maxConcurrentOrchestrations: ${envConfig.maxConcurrentOrchestrations}`,
     `  adaptiveEnabled: ${envConfig.adaptiveEnabled}`,
     `  predictiveEnabled: ${envConfig.predictiveEnabled}`,
+    ``,
+    `Task Scheduler:`,
+    `  maxConcurrentPerModel: ${envConfig.maxConcurrentPerModel}`,
+    `  maxTotalConcurrent: ${envConfig.maxTotalConcurrent}`,
     ``,
     `Cross-Instance Status:`,
     `  activeInstances: ${coordinatorStatus.activeInstanceCount || 1}`,
     `  registered: ${coordinatorStatus.registered || false}`,
+    ``,
+    `Initialization:`,
+    `  snapshotProviderSet: ${_initializationState.snapshotProviderSet}`,
+    `  setAt: ${_initializationState.setAt || "not set"}`,
   ];
+
+  if (validation.warnings.length > 0) {
+    lines.push("", "Configuration Warnings:");
+    for (const warning of validation.warnings) {
+      lines.push(`  - ${warning}`);
+    }
+  }
   
   return lines.join("\n");
 }

@@ -10,12 +10,20 @@
  * │   ├── {sessionId}-{pid}.lock
  * │   └── ...
  * └── coordinator.json
+ *
+ * Configuration:
+ * Uses centralized RuntimeConfig from runtime-config.ts for consistency
+ * across all layers (stable/default profiles).
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pid } from "node:process";
+import {
+  getRuntimeConfig,
+  type RuntimeConfig,
+} from "./runtime-config.js";
 
 // ============================================================================
 // Types
@@ -62,10 +70,27 @@ export interface CoordinatorState {
 // Constants
 // ============================================================================
 
+/**
+ * Get default config from centralized RuntimeConfig.
+ * This ensures consistency with other layers.
+ */
+function getDefaultConfig(): CoordinatorConfig {
+  const runtimeConfig = getRuntimeConfig();
+  return {
+    totalMaxLlm: runtimeConfig.totalMaxLlm,
+    heartbeatIntervalMs: runtimeConfig.heartbeatIntervalMs,
+    heartbeatTimeoutMs: runtimeConfig.heartbeatTimeoutMs,
+  };
+}
+
+/**
+ * Legacy constant for backward compatibility.
+ * @deprecated Use getRuntimeConfig() instead.
+ */
 const DEFAULT_CONFIG: CoordinatorConfig = {
-  totalMaxLlm: 6,  // GLMの経験則に基づく
-  heartbeatIntervalMs: 15_000,  // 15秒ごとにハートビート
-  heartbeatTimeoutMs: 60_000,  // 60秒更新なし = 死亡とみなす
+  totalMaxLlm: 6,  // Will be overridden by runtime-config
+  heartbeatIntervalMs: 15_000,
+  heartbeatTimeoutMs: 60_000,
 };
 
 const COORDINATOR_DIR = join(homedir(), ".pi", "runtime");
@@ -113,20 +138,23 @@ function isInstanceAlive(info: InstanceInfo, nowMs: number, timeoutMs: number): 
 }
 
 function loadConfig(): CoordinatorConfig {
+  // Start with centralized config
+  const defaults = getDefaultConfig();
+
   try {
     if (existsSync(CONFIG_FILE)) {
       const content = readFileSync(CONFIG_FILE, "utf-8");
       const parsed = JSON.parse(content);
       return {
-        totalMaxLlm: parsed.totalMaxLlm ?? DEFAULT_CONFIG.totalMaxLlm,
-        heartbeatIntervalMs: parsed.heartbeatIntervalMs ?? DEFAULT_CONFIG.heartbeatIntervalMs,
-        heartbeatTimeoutMs: parsed.heartbeatTimeoutMs ?? DEFAULT_CONFIG.heartbeatTimeoutMs,
+        totalMaxLlm: parsed.totalMaxLlm ?? defaults.totalMaxLlm,
+        heartbeatIntervalMs: parsed.heartbeatIntervalMs ?? defaults.heartbeatIntervalMs,
+        heartbeatTimeoutMs: parsed.heartbeatTimeoutMs ?? defaults.heartbeatTimeoutMs,
       };
     }
   } catch {
     // ignore
   }
-  return { ...DEFAULT_CONFIG };
+  return defaults;
 }
 
 // ============================================================================
@@ -139,7 +167,7 @@ function loadConfig(): CoordinatorConfig {
  *
  * @param sessionId - pi session ID
  * @param cwd - Current working directory
- * @param configOverrides - Optional config overrides
+ * @param configOverrides - Optional config overrides (from env vars)
  */
 export function registerInstance(
   sessionId: string,
@@ -154,7 +182,16 @@ export function registerInstance(
 
   ensureDirs();
 
-  const config = { ...DEFAULT_CONFIG, ...loadConfig(), ...configOverrides };
+  // Priority: runtime-config defaults > file config > env overrides
+  const runtimeConfig = getRuntimeConfig();
+  const defaults: CoordinatorConfig = {
+    totalMaxLlm: runtimeConfig.totalMaxLlm,
+    heartbeatIntervalMs: runtimeConfig.heartbeatIntervalMs,
+    heartbeatTimeoutMs: runtimeConfig.heartbeatTimeoutMs,
+  };
+  const fileConfig = loadConfig();
+  const config = { ...defaults, ...fileConfig, ...configOverrides };
+
   const instanceId = generateInstanceId(sessionId);
   const now = new Date().toISOString();
 
@@ -549,9 +586,13 @@ export function isCoordinatorInitialized(): boolean {
 
 /**
  * Get total max LLM from config.
+ * Uses centralized RuntimeConfig for consistency.
  */
 export function getTotalMaxLlm(): number {
-  return state?.config.totalMaxLlm ?? DEFAULT_CONFIG.totalMaxLlm;
+  if (state?.config.totalMaxLlm) {
+    return state.config.totalMaxLlm;
+  }
+  return getRuntimeConfig().totalMaxLlm;
 }
 
 /**

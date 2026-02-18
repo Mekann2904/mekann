@@ -226,3 +226,83 @@ export {
   cleanupExpiredLocks,
   enhancedHeartbeat,
 } from "./cross-instance-coordinator.js";
+
+// Runtime Configuration (Layer 0 - Core)
+export {
+  type RuntimeProfile,
+  type RuntimeConfig,
+  getRuntimeConfig,
+  getConfigVersion,
+  reloadRuntimeConfig,
+  getRuntimeProfile,
+  isStableProfile,
+  validateConfigConsistency,
+  formatRuntimeConfig,
+} from "./runtime-config.js";
+
+// Unified Limit Resolver (Layer 3 - Coordination)
+export {
+  type UnifiedLimitInput,
+  type LimitBreakdown,
+  type UnifiedLimitResult,
+  type UnifiedEnvConfig,
+  setRuntimeSnapshotProvider,
+  isSnapshotProviderInitialized,
+  getInitializationState,
+  resolveUnifiedLimits,
+  formatUnifiedLimitsResult,
+  getAllLimitsSummary,
+  getUnifiedEnvConfig,
+} from "./unified-limit-resolver.js";
+
+// Adaptive Rate Controller (Layer 2)
+export {
+  type LearnedLimit,
+  type AdaptiveControllerState,
+  type RateLimitEvent,
+  type PredictiveAnalysis,
+  initAdaptiveController,
+  shutdownAdaptiveController,
+  getEffectiveLimit,
+  recordEvent,
+  record429,
+  recordSuccess,
+  getAdaptiveState,
+  getLearnedLimit,
+  resetLearnedLimit,
+  resetAllLearnedLimits,
+  setGlobalMultiplier,
+  configureRecovery,
+  isRateLimitError,
+  formatAdaptiveSummary,
+  analyze429Probability,
+  getPredictiveAnalysis,
+  shouldProactivelyThrottle,
+  getPredictiveConcurrency,
+  setPredictiveEnabled,
+  setPredictiveThreshold,
+  getSchedulerAwareLimit,
+  notifyScheduler429,
+  notifySchedulerTimeout,
+  notifySchedulerSuccess,
+  getCombinedRateControlSummary,
+} from "./adaptive-rate-controller.js";
+
+// Provider Limits (Layer 1)
+export {
+  type ModelLimits,
+  type ModelTierLimits,
+  type ProviderLimitsConfig,
+  type ResolvedModelLimits,
+  getLimitsConfig,
+  reloadLimits,
+  resolveLimits,
+  getConcurrencyLimit,
+  getRpmLimit,
+  listProviders,
+  listModels,
+  saveUserLimits,
+  getBuiltinLimits,
+  detectTier,
+  formatLimitsSummary,
+} from "./provider-limits.js";

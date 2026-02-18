@@ -11,6 +11,10 @@ import {
   type CheckpointPriority,
 } from "./checkpoint-manager";
 import { TaskPriority, PriorityTaskQueue, comparePriority, type PriorityQueueEntry } from "./priority-scheduler";
+import {
+  getRuntimeConfig,
+  type RuntimeConfig,
+} from "./runtime-config.js";
 
 // ============================================================================
 // Preemption Support
@@ -303,6 +307,24 @@ export interface SchedulerConfig {
 // Constants
 // ============================================================================
 
+/**
+ * Get default scheduler config from centralized RuntimeConfig.
+ */
+function getDefaultSchedulerConfig(): SchedulerConfig {
+  const runtimeConfig = getRuntimeConfig();
+  return {
+    maxConcurrentPerModel: runtimeConfig.maxConcurrentPerModel,
+    maxTotalConcurrent: runtimeConfig.maxTotalConcurrent,
+    defaultTimeoutMs: 60_000,
+    starvationThresholdMs: 60_000,
+    maxSkipCount: 10,
+  };
+}
+
+/**
+ * Legacy constant for backward compatibility.
+ * @deprecated Use getDefaultSchedulerConfig() instead.
+ */
 const DEFAULT_CONFIG: SchedulerConfig = {
   maxConcurrentPerModel: 4,
   maxTotalConcurrent: 8,
@@ -554,7 +576,9 @@ class TaskSchedulerImpl {
   private taskIdCounter = 0;
 
   constructor(config: Partial<SchedulerConfig> = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    // Use centralized config as defaults
+    const defaults = getDefaultSchedulerConfig();
+    this.config = { ...defaults, ...config };
   }
 
   /**

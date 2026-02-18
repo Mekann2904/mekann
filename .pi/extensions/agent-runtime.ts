@@ -52,6 +52,11 @@ import {
 import {
   setRuntimeSnapshotProvider,
 } from "../lib/unified-limit-resolver";
+import {
+  getRuntimeConfig,
+  isStableProfile,
+  type RuntimeConfig,
+} from "../lib/runtime-config";
 
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
@@ -293,16 +298,8 @@ export interface RuntimeOrchestrationWaitResult {
   lease?: RuntimeOrchestrationLease;
 }
 
-const STABLE_AGENT_RUNTIME_PROFILE = process.env.STABLE_RUNTIME_PROFILE === "true";
-const DEFAULT_MAX_TOTAL_ACTIVE_LLM = STABLE_AGENT_RUNTIME_PROFILE ? 4 : 8;
-const DEFAULT_MAX_TOTAL_ACTIVE_REQUESTS = STABLE_AGENT_RUNTIME_PROFILE ? 2 : 6;
-const DEFAULT_MAX_PARALLEL_SUBAGENTS_PER_RUN = STABLE_AGENT_RUNTIME_PROFILE ? 2 : 4;
-const DEFAULT_MAX_PARALLEL_TEAMS_PER_RUN = STABLE_AGENT_RUNTIME_PROFILE ? 1 : 3;
-const DEFAULT_MAX_PARALLEL_TEAMMATES_PER_TEAM = STABLE_AGENT_RUNTIME_PROFILE ? 3 : 6;
+// Constants now come from centralized runtime-config
 const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 4;
-const DEFAULT_CAPACITY_WAIT_MS = STABLE_AGENT_RUNTIME_PROFILE ? 12_000 : 30_000;
-const DEFAULT_CAPACITY_POLL_MS = 100;
-const DEFAULT_RESERVATION_TTL_MS = STABLE_AGENT_RUNTIME_PROFILE ? 45_000 : 60_000;
 const DEFAULT_RESERVATION_SWEEP_MS = 5_000;
 const MIN_RESERVATION_TTL_MS = 2_000;
 const MAX_RESERVATION_TTL_MS = 10 * 60 * 1_000;
@@ -314,6 +311,13 @@ let runtimeReservationSequence = 0;
 let runtimeReservationSweeper: NodeJS.Timeout | undefined;
 const runtimeCapacityEventTarget = new EventTarget();
 
+/**
+ * Get default reservation TTL from runtime config.
+ */
+function getDefaultReservationTtlMs(): number {
+  return isStableProfile() ? 45_000 : 60_000;
+}
+
 function normalizePositiveInt(value: unknown, fallback: number, max = 64): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -322,7 +326,7 @@ function normalizePositiveInt(value: unknown, fallback: number, max = 64): numbe
 }
 
 function normalizeReservationTtlMs(value: unknown): number {
-  const fallback = DEFAULT_RESERVATION_TTL_MS;
+  const fallback = getDefaultReservationTtlMs();
   const ttl = value === undefined ? fallback : Number(value);
   if (!Number.isFinite(ttl) || ttl <= 0) return fallback;
   return Math.max(MIN_RESERVATION_TTL_MS, Math.min(MAX_RESERVATION_TTL_MS, Math.trunc(ttl)));
@@ -366,11 +370,14 @@ async function waitForRuntimeCapacityEvent(
 }
 
 function createRuntimeLimits(): AgentRuntimeLimits {
+  // Use centralized RuntimeConfig as the source of truth
+  const config = getRuntimeConfig();
+
   // Cross-instance coordination: if coordinator is initialized, use dynamic parallel limit
-  // Priority: env var > coordinator > default
+  // Priority: env var > coordinator > runtime-config
   let effectiveParallelSubagents = resolveLimitFromEnv(
     "PI_AGENT_MAX_PARALLEL_SUBAGENTS",
-    DEFAULT_MAX_PARALLEL_SUBAGENTS_PER_RUN,
+    config.maxParallelSubagents,
   );
 
   // Only override with coordinator if env var is NOT set and coordinator is ready
@@ -380,7 +387,7 @@ function createRuntimeLimits(): AgentRuntimeLimits {
 
   let effectiveTotalLlm = resolveLimitFromEnv(
     "PI_AGENT_MAX_TOTAL_LLM",
-    DEFAULT_MAX_TOTAL_ACTIVE_LLM,
+    config.totalMaxLlm,
   );
 
   // Also adjust total LLM based on coordinator if env var is not set
@@ -392,24 +399,24 @@ function createRuntimeLimits(): AgentRuntimeLimits {
     maxTotalActiveLlm: effectiveTotalLlm,
     maxTotalActiveRequests: resolveLimitFromEnv(
       "PI_AGENT_MAX_TOTAL_REQUESTS",
-      DEFAULT_MAX_TOTAL_ACTIVE_REQUESTS,
+      config.totalMaxRequests,
     ),
     maxParallelSubagentsPerRun: effectiveParallelSubagents,
     maxParallelTeamsPerRun: resolveLimitFromEnv(
       "PI_AGENT_MAX_PARALLEL_TEAMS",
-      DEFAULT_MAX_PARALLEL_TEAMS_PER_RUN,
+      config.maxParallelTeams,
     ),
     maxParallelTeammatesPerTeam: resolveLimitFromEnv(
       "PI_AGENT_MAX_PARALLEL_TEAMMATES",
-      DEFAULT_MAX_PARALLEL_TEAMMATES_PER_TEAM,
+      config.maxParallelTeammates,
     ),
     maxConcurrentOrchestrations: resolveLimitFromEnv(
       "PI_AGENT_MAX_CONCURRENT_ORCHESTRATIONS",
-      DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS,
+      config.maxConcurrentOrchestrations,
       16,
     ),
-    capacityWaitMs: resolveLimitFromEnv("PI_AGENT_CAPACITY_WAIT_MS", DEFAULT_CAPACITY_WAIT_MS, 3_600_000),
-    capacityPollMs: resolveLimitFromEnv("PI_AGENT_CAPACITY_POLL_MS", DEFAULT_CAPACITY_POLL_MS, 60_000),
+    capacityWaitMs: resolveLimitFromEnv("PI_AGENT_CAPACITY_WAIT_MS", config.capacityWaitMs, 3_600_000),
+    capacityPollMs: resolveLimitFromEnv("PI_AGENT_CAPACITY_POLL_MS", config.capacityPollMs, 60_000),
   };
 }
 

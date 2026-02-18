@@ -10,11 +10,18 @@
  * 3. After recovery period (5 min), gradually restore limit
  * 4. Track per provider/model for granular control
  * 5. NEW: Predictive scheduling based on historical patterns
+ *
+ * Configuration:
+ * Uses centralized RuntimeConfig from runtime-config.ts for consistency.
  */
 
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import {
+  getRuntimeConfig,
+  type RuntimeConfig,
+} from "./runtime-config.js";
 
 // ============================================================================
 // Types
@@ -90,6 +97,28 @@ export interface PredictiveAnalysis {
 const RUNTIME_DIR = join(homedir(), ".pi", "runtime");
 const STATE_FILE = join(RUNTIME_DIR, "adaptive-limits.json");
 
+/**
+ * Get default state from centralized RuntimeConfig.
+ */
+function getDefaultState(): AdaptiveControllerState {
+  const config = getRuntimeConfig();
+  return {
+    version: 2,
+    lastUpdated: new Date().toISOString(),
+    limits: {},
+    globalMultiplier: 1.0,
+    recoveryIntervalMs: config.recoveryIntervalMs,
+    reductionFactor: config.reductionFactor,
+    recoveryFactor: config.recoveryFactor,
+    predictiveEnabled: config.predictiveEnabled,
+    predictiveThreshold: 0.3, // Proactively throttle if >30% 429 probability
+  };
+}
+
+/**
+ * Legacy constant for migration purposes.
+ * @deprecated Use getDefaultState() instead.
+ */
 const DEFAULT_STATE: AdaptiveControllerState = {
   version: 2,
   lastUpdated: new Date().toISOString(),
@@ -123,21 +152,28 @@ function buildKey(provider: string, model: string): string {
 }
 
 function loadState(): AdaptiveControllerState {
+  const defaults = getDefaultState();
+
   try {
     if (existsSync(STATE_FILE)) {
       const content = readFileSync(STATE_FILE, "utf-8");
       const parsed = JSON.parse(content);
       if (parsed && typeof parsed === "object" && parsed.version) {
         return {
-          ...DEFAULT_STATE,
+          ...defaults,
           ...parsed,
+          // Ensure new config values are used if not in file
+          recoveryIntervalMs: defaults.recoveryIntervalMs,
+          reductionFactor: defaults.reductionFactor,
+          recoveryFactor: defaults.recoveryFactor,
+          predictiveEnabled: parsed.predictiveEnabled ?? defaults.predictiveEnabled,
         } as AdaptiveControllerState;
       }
     }
   } catch (error) {
     // ignore
   }
-  return { ...DEFAULT_STATE };
+  return { ...defaults };
 }
 
 function saveState(): void {
