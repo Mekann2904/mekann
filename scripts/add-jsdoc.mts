@@ -41,9 +41,14 @@ interface ElementInfo {
   name: string;
   line: number;
   signature: string;
-  existingJsDoc?: string;
+  existingJsDocRange?: JsDocRange;
   context: string;
   filePath: string;
+}
+
+interface JsDocRange {
+  startLine: number;
+  endLine: number;
 }
 
 interface Options {
@@ -351,10 +356,10 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
   function visit(node: ts.Node) {
     // 関数宣言
     if (ts.isFunctionDeclaration(node) && node.name) {
-      const jsDoc = ts.getJSDocCommentsAndTags(node);
+      const jsDocInfo = getJsDocInfo(node, sourceFile);
       const isExported = node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 
-      if (isExported && (regenerate || jsDoc.length === 0)) {
+      if (isExported && shouldProcessElement(jsDocInfo, regenerate)) {
         const name = node.name.getText(sourceFile);
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
         const params = Array.from(node.parameters).map(p => {
@@ -374,7 +379,7 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
           signature,
           context: getContext(lines, line - 1, 10),
           filePath,
-          existingJsDoc: jsDoc.length > 0 ? extractJsDocText(jsDoc) : undefined,
+          existingJsDocRange: jsDocInfo?.range,
         });
       }
     }
@@ -387,12 +392,12 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
         const isExported = varStmt && ts.isVariableStatement(varStmt) &&
           (varStmt.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false);
 
-        if (isExported) {
-          const jsDoc = varStmt ? ts.getJSDocCommentsAndTags(varStmt) : [];
+        if (isExported && varStmt && ts.isVariableStatement(varStmt)) {
+          const jsDocInfo = getJsDocInfo(varStmt, sourceFile);
 
-          if (regenerate || jsDoc.length === 0) {
+          if (shouldProcessElement(jsDocInfo, regenerate)) {
             const name = node.name.getText(sourceFile);
-            const line = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+            const line = sourceFile.getLineAndCharacterOfPosition(varStmt.getStart(sourceFile)).line + 1;
             const params = Array.from(func.parameters).map(p => {
               const paramName = p.name.getText(sourceFile);
               const paramType = p.type?.getText(sourceFile) || 'any';
@@ -410,7 +415,7 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
               signature,
               context: getContext(lines, line - 1, 10),
               filePath,
-              existingJsDoc: jsDoc.length > 0 ? extractJsDocText(jsDoc) : undefined,
+              existingJsDocRange: jsDocInfo?.range,
             });
           }
         }
@@ -419,10 +424,10 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
 
     // クラス
     if (ts.isClassDeclaration(node) && node.name) {
-      const jsDoc = ts.getJSDocCommentsAndTags(node);
+      const jsDocInfo = getJsDocInfo(node, sourceFile);
       const isExported = node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 
-      if (isExported && (regenerate || jsDoc.length === 0)) {
+      if (isExported && shouldProcessElement(jsDocInfo, regenerate)) {
         const name = node.name.getText(sourceFile);
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
         const methods = Array.from(node.members)
@@ -439,18 +444,18 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
           signature,
           context: getContext(lines, line - 1, 20),
           filePath,
-          existingJsDoc: jsDoc.length > 0 ? extractJsDocText(jsDoc) : undefined,
+          existingJsDocRange: jsDocInfo?.range,
         });
       }
 
       // クラスメソッド（publicのみ）
       for (const member of node.members) {
         if (ts.isMethodDeclaration(member)) {
-          const methodJsDoc = ts.getJSDocCommentsAndTags(member);
+          const methodJsDocInfo = getJsDocInfo(member, sourceFile);
           const isPrivate = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword) ?? false;
           const isProtected = member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword) ?? false;
 
-          if (!isPrivate && !isProtected && (regenerate || methodJsDoc.length === 0)) {
+          if (!isPrivate && !isProtected && shouldProcessElement(methodJsDocInfo, regenerate)) {
             const methodName = member.name.getText(sourceFile);
             const methodLine = sourceFile.getLineAndCharacterOfPosition(member.getStart()).line + 1;
             const params = Array.from(member.parameters).map(p => p.name.getText(sourceFile)).join(', ');
@@ -464,7 +469,7 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
               signature,
               context: getContext(lines, methodLine - 1, 10),
               filePath,
-              existingJsDoc: methodJsDoc.length > 0 ? extractJsDocText(methodJsDoc) : undefined,
+              existingJsDocRange: methodJsDocInfo?.range,
             });
           }
         }
@@ -473,10 +478,10 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
 
     // インターフェース
     if (ts.isInterfaceDeclaration(node)) {
-      const jsDoc = ts.getJSDocCommentsAndTags(node);
+      const jsDocInfo = getJsDocInfo(node, sourceFile);
       const isExported = node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 
-      if (isExported && (regenerate || jsDoc.length === 0)) {
+      if (isExported && shouldProcessElement(jsDocInfo, regenerate)) {
         const name = node.name.getText(sourceFile);
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
         const props = Array.from(node.members)
@@ -493,17 +498,17 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
           signature,
           context: getContext(lines, line - 1, 15),
           filePath,
-          existingJsDoc: jsDoc.length > 0 ? extractJsDocText(jsDoc) : undefined,
+          existingJsDocRange: jsDocInfo?.range,
         });
       }
     }
 
     // 型エイリアス
     if (ts.isTypeAliasDeclaration(node)) {
-      const jsDoc = ts.getJSDocCommentsAndTags(node);
+      const jsDocInfo = getJsDocInfo(node, sourceFile);
       const isExported = node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 
-      if (isExported && (regenerate || jsDoc.length === 0)) {
+      if (isExported && shouldProcessElement(jsDocInfo, regenerate)) {
         const name = node.name.getText(sourceFile);
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
         const definition = node.type?.getText(sourceFile) || '';
@@ -516,7 +521,7 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
           signature,
           context: getContext(lines, line - 1, 10),
           filePath,
-          existingJsDoc: jsDoc.length > 0 ? extractJsDocText(jsDoc) : undefined,
+          existingJsDocRange: jsDocInfo?.range,
         });
       }
     }
@@ -529,10 +534,27 @@ function extractElements(filePath: string, regenerate: boolean): ElementInfo[] {
 }
 
 /**
- * JSDocノードからテキストを抽出
+ * 対象ノードに紐づくJSDocの行範囲を取得
  */
-function extractJsDocText(jsDocNodes: readonly ts.JSDoc[]): string {
-  return jsDocNodes.map(j => j.comment).filter(Boolean).join('\n');
+function getJsDocInfo(node: ts.Node, sourceFile: ts.SourceFile): { range: JsDocRange } | undefined {
+  const jsDocNode = ts.getJSDocCommentsAndTags(node).find(ts.isJSDoc);
+  if (!jsDocNode) {
+    return undefined;
+  }
+
+  const start = jsDocNode.getStart(sourceFile);
+  const end = jsDocNode.getEnd();
+
+  return {
+    range: {
+      startLine: sourceFile.getLineAndCharacterOfPosition(start).line + 1,
+      endLine: sourceFile.getLineAndCharacterOfPosition(end).line + 1,
+    },
+  };
+}
+
+function shouldProcessElement(jsDocInfo: { range: JsDocRange } | undefined, regenerate: boolean): boolean {
+  return regenerate || !jsDocInfo;
 }
 
 function getContext(lines: string[], startLine: number, contextLines: number): string {
@@ -669,6 +691,41 @@ function extractJsDocFromResponse(response: string): string | null {
   return null;
 }
 
+/**
+ * LLMのばらついたJSDoc出力を、安定した複数行フォーマットに正規化する
+ */
+function normalizeJsDoc(jsDoc: string): string {
+  const trimmed = jsDoc.trim();
+  if (!trimmed.startsWith('/**') || !trimmed.endsWith('*/')) {
+    return jsDoc;
+  }
+
+  // 1行JSDoc（/** ... */）を含め、常に複数行形式へ統一
+  let body = trimmed
+    .replace(/^\/\*\*/, '')
+    .replace(/\*\/$/, '')
+    .trim();
+
+  // 行頭の`*`は一旦取り除き、統一フォーマットで再構築する
+  const bodyLines = body.length > 0
+    ? body
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map(line => line.replace(/^\*\s?/, '').trim())
+    : [];
+
+  const normalizedLines = [
+    '/**',
+    ...(bodyLines.length > 0
+      ? bodyLines.map(line => line.length > 0 ? ` * ${line}` : ' *')
+      : [' *']),
+    ' */',
+  ];
+
+  return normalizedLines.join('\n');
+}
+
 // ============================================================================
 // JSDoc Insertion
 // ============================================================================
@@ -677,36 +734,27 @@ function insertJsDoc(element: ElementInfo, jsDoc: string): void {
   const sourceCode = readFileSync(element.filePath, 'utf-8');
   const lines = sourceCode.split('\n');
 
-  // インデントを推測
-  const targetLine = lines[element.line - 1];
+  // 既存のJSDocがある場合は削除（regenerateモード用）
+  let insertIndex = element.line - 1;
+  if (element.existingJsDocRange) {
+    const deleteStart = element.existingJsDocRange.startLine - 1;
+    const deleteCount = element.existingJsDocRange.endLine - element.existingJsDocRange.startLine + 1;
+    lines.splice(deleteStart, deleteCount);
+    insertIndex = deleteStart;
+  }
+
+  // 置換後の挿入位置を基準にインデントを決める
+  const targetLine = lines[insertIndex] ?? '';
   const indentMatch = targetLine.match(/^(\s*)/);
   const indent = indentMatch ? indentMatch[1] : '';
 
-  // 既存のJSDocがある場合は削除（regenerateモード用）
-  let insertIndex = element.line - 1;
-  if (element.existingJsDoc) {
-    // 既存のJSDocの行数を数える
-    const existingLines = element.existingJsDoc.split('\n').length;
-    // JSDocの開始行を探す（要素の直前にある /** で始まるブロック）
-    let jsDocStartLine = insertIndex - 1;
-    while (jsDocStartLine >= 0 && !lines[jsDocStartLine].trim().startsWith('/**')) {
-      jsDocStartLine--;
-    }
-    if (jsDocStartLine >= 0) {
-      // 既存のJSDocを削除
-      lines.splice(jsDocStartLine, existingLines);
-      insertIndex = jsDocStartLine;
-    }
-  }
-
-  // JSDocにインデントを適用
-  const indentedJsDoc = jsDoc
+  // JSDocを整形してインデントを付与
+  const indentedJsDocLines = normalizeJsDoc(jsDoc)
     .split('\n')
-    .map((line, i) => i === 0 ? line : indent + line)
-    .join('\n');
+    .map(line => indent + line);
 
-  // JSDocを挿入
-  lines.splice(insertIndex, 0, indentedJsDoc);
+  // JSDocを行単位で挿入
+  lines.splice(insertIndex, 0, ...indentedJsDocLines);
 
   // ファイルに書き戻し
   writeFileSync(element.filePath, lines.join('\n'), 'utf-8');
