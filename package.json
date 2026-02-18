@@ -21,7 +21,7 @@
     "vitest": "^3.2.4"
   },
   "scripts": {
-    "postinstall": "patch-package",
+    "postinstall": "patch-package && ./scripts/patch-global-pi.sh",
     "build": "vitest run",
     "test": "vitest run",
     "test:watch": "vitest",
