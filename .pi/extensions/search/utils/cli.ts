@@ -19,14 +19,13 @@ const DEFAULT_TIMEOUT = 30_000;
 // Maximum output size: 10MB
 const DEFAULT_MAX_OUTPUT_SIZE = 10 * 1024 * 1024;
 
-/**
- * Execute a command and return structured result.
- *
- * @param command - Command to execute
- * @param args - Command arguments
- * @param options - Execution options
- * @returns Promise<CliResult>
- */
+ /**
+  * コマンドを実行し、構造化された結果を返す
+  * @param command - 実行するコマンド
+  * @param args - コマンド引数
+  * @param options - 実行オプション
+  * @returns コマンドの実行結果
+  */
 export async function execute(
   command: string,
   args: string[] = [],
@@ -139,15 +138,13 @@ export async function execute(
   });
 }
 
-/**
- * Execute a command and throw on non-zero exit.
- *
- * @param command - Command to execute
- * @param args - Command arguments
- * @param options - Execution options
- * @returns Promise<string> - stdout content
- * @throws CliError on failure
- */
+ /**
+  * コマンドを実行し、失敗時に例外を投げる
+  * @param command - 実行するコマンド
+  * @param args - コマンド引数
+  * @param options - 実行オプション
+  * @returns 標準出力の内容
+  */
 export async function executeOrThrow(
   command: string,
   args: string[] = [],
@@ -169,26 +166,23 @@ export async function executeOrThrow(
   return result.stdout;
 }
 
-/**
- * Check if a command is available in PATH.
- * Works on both Unix (which) and Windows (where).
- *
- * @param command - Command name to check
- * @returns boolean
- */
+ /**
+  * コマンドがPATHにあるかチェックする
+  * @param command - コマンド名
+  * @returns 利用可能であれば true
+  */
 export async function isAvailable(command: string): Promise<boolean> {
   const whichCommand = process.platform === "win32" ? "where" : "which";
   const result = await execute(whichCommand, [command], { timeout: 5000 });
   return result.code === 0 && result.stdout.trim().length > 0;
 }
 
-/**
- * Get version info for a command.
- *
- * @param command - Command name
- * @param versionFlag - Flag to get version (default: "--version")
- * @returns ToolVersion or null
- */
+ /**
+  * 指定したコマンドのバージョン情報を取得する
+  * @param command - コマンド名
+  * @param versionFlag - バージョンを取得するためのフラグ（デフォルト: "--version"）
+  * @returns ツールのバージョン情報、またはコマンドが見つからない場合は null
+  */
 export async function getVersion(
   command: string,
   versionFlag = "--version"
@@ -214,19 +208,9 @@ export async function getVersion(
 let cachedAvailability: ToolAvailability | null = null;
 
 /**
- * 全検索ツールの利用可能性を確認する
- *
- * fd、rg、ctagsなどの検索ツールがシステムで利用可能かを確認し、
- * 結果をセッション中キャッシュする。
- *
- * @param force - キャッシュを強制的に更新するかどうか（デフォルト: false）
+ * ツールの利用可能性を確認する
+ * @param force - キャッシュを強制的に更新するかどうか
  * @returns ツールの利用可能性を示すオブジェクト
- * @example
- * // キャッシュを使用して確認
- * const availability = await checkToolAvailability();
- * 
- * // 強制的に再確認
- * const freshAvailability = await checkToolAvailability(true);
  */
 export async function checkToolAvailability(force = false): Promise<ToolAvailability> {
   if (cachedAvailability && !force) return cachedAvailability;
@@ -250,10 +234,11 @@ export async function checkToolAvailability(force = false): Promise<ToolAvailabi
   return cachedAvailability;
 }
 
-/**
- * Build fd command arguments from input options.
- * Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
- */
+ /**
+  * 入力オプションからfdコマンドの引数を生成
+  * @param input - 検索オプション
+  * @returns fdコマンドの引数リスト
+  */
 export function buildFdArgs(input: import("../types").FileCandidatesInput): string[] {
   const args: string[] = [];
 
@@ -296,11 +281,11 @@ export function buildFdArgs(input: import("../types").FileCandidatesInput): stri
   return args;
 }
 
-/**
- * Build ripgrep command arguments from input options.
- * Uses default values from constants when not specified.
- * Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
- */
+ /**
+  * 入力オプションからripgrepコマンドの引数を構築
+  * @param input - コード検索の入力オプション
+  * @returns ripgrepに渡す引数の配列
+  */
 export function buildRgArgs(input: import("../types").CodeSearchInput): string[] {
   const args: string[] = ["--json"];
 
@@ -344,9 +329,12 @@ export function buildRgArgs(input: import("../types").CodeSearchInput): string[]
   return args;
 }
 
-/**
- * Build ctags command arguments for JSON output.
- */
+ /**
+  * JSON出力用のctagsコマンド引数を生成する
+  * @param targetPath 対象パス
+  * @param cwd カレントワーキングディレクトリ
+  * @returns ctagsコマンドの引数リスト
+  */
 export function buildCtagsArgs(targetPath: string, cwd: string): string[] {
   return [
     "--output-format=json",

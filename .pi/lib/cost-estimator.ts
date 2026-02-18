@@ -9,15 +9,18 @@ import type { TaskSource } from "./task-scheduler";
 // Types
 // ============================================================================
 
-/**
- * Estimation method used for cost calculation.
- */
+ /**
+  * コスト計算の推定方法を表す型。
+  */
 export type CostEstimationMethod = "default" | "historical" | "heuristic";
 
-/**
- * Detailed cost estimation result with confidence and method tracking.
- * Used by CostEstimator for internal tracking and future learning.
- */
+ /**
+  * コスト推定結果
+  * @param estimatedDurationMs 推定実行時間（ミリ秒）
+  * @param estimatedTokens 推定トークン消費量
+  * @param confidence 推定の信頼度（0.0 - 1.0）
+  * @param method 推定に使用された手法
+  */
 export interface CostEstimation {
   /** Estimated execution duration in milliseconds */
   estimatedDurationMs: number;
@@ -29,9 +32,17 @@ export interface CostEstimation {
   method: CostEstimationMethod;
 }
 
-/**
- * Entry recording a completed execution for historical learning.
- */
+ /**
+  * 履歴学習用の実行記録エントリ
+  * @param source タスクを作成したソースツール
+  * @param provider プロバイダ名
+  * @param model モデル名
+  * @param taskDescription タスクの説明（省略可）
+  * @param actualDurationMs 実際の実行時間（ミリ秒）
+  * @param actualTokens 実際のトークン消費量
+  * @param success 実行が成功したかどうか
+  * @param timestamp 実行のタイムスタンプ
+  */
 export interface ExecutionHistoryEntry {
   /** Source tool that created the task */
   source: TaskSource;
@@ -51,9 +62,16 @@ export interface ExecutionHistoryEntry {
   timestamp: number;
 }
 
-/**
- * Statistics for a specific source type.
- */
+ /**
+  * 特定のソースタイプの統計情報。
+  * @param executionCount 記録された実行回数
+  * @param avgDurationMs 平均実行時間（ミリ秒）
+  * @param avgTokens 平均トークン消費量
+  * @param minDurationMs 最小実行時間（ミリ秒）
+  * @param maxDurationMs 最大実行時間（ミリ秒）
+  * @param successRate 成功率（0.0 - 1.0）
+  * @param lastUpdated 最終更新タイムスタンプ
+  */
 export interface SourceStatistics {
   /** Number of recorded executions */
   executionCount: number;
@@ -71,9 +89,12 @@ export interface SourceStatistics {
   lastUpdated: number;
 }
 
-/**
- * Configuration for cost estimator.
- */
+ /**
+  * コスト推定の設定
+  * @param minHistoricalExecutions 履歴データ使用に必要な最小実行回数
+  * @param maxHistoryPerSource ソースごとの保持する最大履歴エントリ数
+  * @param historicalWeight 履歴データとデフォルトの重み（0.0 - 1.0）
+  */
 export interface CostEstimatorConfig {
   /** Minimum executions required before using historical data */
   minHistoricalExecutions: number;
@@ -112,10 +133,13 @@ const DEFAULT_CONFIG: CostEstimatorConfig = {
 // Cost Estimator
 // ============================================================================
 
-/**
- * Cost estimator with support for default estimates and historical learning.
- * Designed for future extension with ML-based heuristics.
- */
+ /**
+  * コストを見積もるクラス。デフォルト値と履歴学習をサポート
+  * @param source - ソースツールの種類
+  * @param provider - プロバイダ名（将来の調整用）
+  * @param model - モデル名（将来の調整用）
+  * @param taskDescription - タスクの説明（将来のヒューリスティック改善用）
+  */
 export class CostEstimator {
   private readonly config: CostEstimatorConfig;
   private readonly history: Map<TaskSource, ExecutionHistoryEntry[]> = new Map();
@@ -125,15 +149,14 @@ export class CostEstimator {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  /**
-   * Estimate cost for a task.
-   * Falls back to default estimates if insufficient historical data.
-   *
-   * @param source - Source tool type
-   * @param provider - Provider name (for future per-provider tuning)
-   * @param model - Model name (for future per-model tuning)
-   * @param taskDescription - Optional task description (for future heuristic improvements)
-   */
+   /**
+    * タスクのコストを推定する
+    * @param source - ソースツールの種類
+    * @param provider - プロバイダ名
+    * @param model - モデル名
+    * @param taskDescription - タスクの説明
+    * @returns コスト推定結果
+    */
   estimate(
     source: TaskSource,
     provider?: string,
@@ -171,10 +194,11 @@ export class CostEstimator {
     };
   }
 
-  /**
-   * Record a completed execution for historical learning.
-   * Thread-safe: uses immutable array replacement.
-   */
+   /**
+    * 実行履歴を記録して学習する
+    * @param entry 追加する実行履歴のエントリ
+    * @returns なし
+    */
   recordExecution(entry: ExecutionHistoryEntry): void {
     const source = entry.source;
     let entries = this.history.get(source) ?? [];
@@ -193,10 +217,11 @@ export class CostEstimator {
     this.statsCache.delete(source);
   }
 
-  /**
-   * Get statistics for a source type.
-   * Returns undefined if no history exists.
-   */
+   /**
+    * ソース種別の統計情報を取得する。
+    * @param source ソース種別
+    * @returns 統計情報。履歴がない場合はundefined。
+    */
   getStats(source: TaskSource): SourceStatistics | undefined {
     // Check cache
     const cached = this.statsCache.get(source);
@@ -238,18 +263,18 @@ export class CostEstimator {
     return stats;
   }
 
-  /**
-   * Clear all history and cache.
-   * Useful for testing or resetting state.
-   */
+   /**
+    * すべての履歴とキャッシュをクリアする
+    */
   clear(): void {
     this.history.clear();
     this.statsCache.clear();
   }
 
   /**
-   * Get default estimate for a source type.
-   * Public helper for external use.
+   * ソース種別のデフォルト推定値を取得
+   * @param source タスクのソース種別
+   * @returns 推定される所要時間（ミリ秒）とトークン数
    */
   static getDefaultEstimate(source: TaskSource): { durationMs: number; tokens: number } {
     return DEFAULT_ESTIMATES[source] ?? { durationMs: 60_000, tokens: 10_000 };
@@ -262,9 +287,10 @@ export class CostEstimator {
 
 let estimatorInstance: CostEstimator | null = null;
 
-/**
- * Get the singleton cost estimator instance.
- */
+ /**
+  * コスト推定のシングルトンインスタンスを取得
+  * @returns コスト推定インスタンス
+  */
 export function getCostEstimator(): CostEstimator {
   if (!estimatorInstance) {
     estimatorInstance = new CostEstimator();
@@ -272,17 +298,19 @@ export function getCostEstimator(): CostEstimator {
   return estimatorInstance;
 }
 
-/**
- * Create a new cost estimator with custom config.
- * Useful for testing or isolated usage.
- */
+ /**
+  * コスト推定器のインスタンスを作成
+  * @param config コスト推定器の設定オプション
+  * @returns 作成されたコスト推定器のインスタンス
+  */
 export function createCostEstimator(config?: Partial<CostEstimatorConfig>): CostEstimator {
   return new CostEstimator(config);
 }
 
-/**
- * Reset the singleton estimator (for testing).
- */
+ /**
+  * シングルトンのインスタンスをリセットする
+  * @returns なし
+  */
 export function resetCostEstimator(): void {
   estimatorInstance = null;
 }

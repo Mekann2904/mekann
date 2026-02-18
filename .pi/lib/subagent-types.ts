@@ -18,10 +18,9 @@ export type { LiveStreamView, LiveViewMode } from "./tui/live-monitor-base.js";
 // Subagent Live Monitor Types
 // ============================================================================
 
-/**
- * View mode for subagent live monitoring interface.
- * Alias for base LiveViewMode for semantic clarity.
- */
+ /**
+  * サブエージェントのライブ監視ビューの表示モード
+  */
 export type SubagentLiveViewMode = LiveViewMode;
 
 /**
@@ -30,10 +29,17 @@ export type SubagentLiveViewMode = LiveViewMode;
  */
 export type SubagentLiveStreamView = LiveStreamView;
 
-/**
- * Live item tracking for subagent execution.
- * Maintains real-time state for TUI rendering.
- */
+ /**
+  * サブエージェントの実行状態を管理するライブアイテム
+  * @param id サブエージェントID
+  * @param name サブエージェント名
+  * @param status 現在の実行ステータス
+  * @param startedAtMs 実行開始タイムスタンプ
+  * @param finishedAtMs 実行終了タイムスタンプ
+  * @param lastChunkAtMs 最後の出力チャンクタイムスタンプ
+  * @param summary 実行サマリー
+  * @param error 失敗時のエラーメッセージ
+  */
 export interface SubagentLiveItem {
   /** Subagent ID */
   id: string;
@@ -89,10 +95,12 @@ export interface SubagentMonitorLifecycle {
   ) => void;
 }
 
-/**
- * Stream output operations for appending stdout/stderr chunks.
- * Used by code that only needs to handle output streaming.
- */
+ /**
+  * 標準出力/標準エラー出力のチャンク追加操作
+  * @param agentId エージェントID
+  * @param stream 出力ストリームの種類
+  * @param chunk 追加するチャンク文字列
+  */
 export interface SubagentMonitorStream {
   appendChunk: (agentId: string, stream: SubagentLiveStreamView, chunk: string) => void;
 }
@@ -120,10 +128,12 @@ export interface SubagentLiveMonitorController
 // Subagent Parallel Execution Types
 // ============================================================================
 
-/**
- * Normalized output structure for subagent execution.
- * Used for parsing and validating subagent outputs.
- */
+ /**
+  * サブエージェントの出力正規化構造
+  * @param summary 抽出された要約
+  * @param output 完全な出力内容
+  * @param hasResult 結果セクションを含むかどうか
+  */
 export interface SubagentNormalizedOutput {
   /** Extracted summary */
   summary: string;
@@ -133,10 +143,13 @@ export interface SubagentNormalizedOutput {
   hasResult: boolean;
 }
 
-/**
- * Resolution result for subagent parallel capacity.
- * Determines actual parallelism after capacity negotiation.
- */
+ /**
+  * サブエージェントの並列容量解決結果
+  * @param agentId サブエージェントID
+  * @param approvedParallelism 承認された並列度
+  * @param approved リクエストが承認されたか
+  * @param reason 非承認の場合の理由
+  */
 export interface SubagentParallelCapacityResolution {
   /** Subagent ID */
   agentId: string;
@@ -152,10 +165,13 @@ export interface SubagentParallelCapacityResolution {
 // Subagent Delegation State Types
 // ============================================================================
 
-/**
- * State tracking for delegation-first policy enforcement.
- * Monitors whether delegation has occurred and direct write confirmations.
- */
+ /**
+  * 委譲優先ポリシーの状態追跡
+  * @param delegatedThisRequest このリクエストで委譲ツールが呼び出されたか
+  * @param directWriteConfirmedThisRequest このリクエストで直接書き込みが確認されたか
+  * @param pendingDirectWriteConfirmUntilMs 直接書き込みが確認されている期限のタイムスタンプ
+  * @param sessionDelegationCalls セッション内の委譲呼び出しの合計数
+  */
 export interface DelegationState {
   /** Whether any delegation tool was called this request */
   delegatedThisRequest: boolean;
@@ -167,10 +183,11 @@ export interface DelegationState {
   sessionDelegationCalls: number;
 }
 
-/**
- * Print command execution result.
- * Used for print mode execution tracking.
- */
+ /**
+  * コマンド実行結果
+  * @param output 出力内容
+  * @param latencyMs 実行レイテンシ（ミリ秒）
+  */
 export interface PrintCommandResult {
   /** Output content */
   output: string;

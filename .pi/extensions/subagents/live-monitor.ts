@@ -52,23 +52,18 @@ const LIVE_LIST_WINDOW_SIZE = 20;
 // Live View Rendering
 // ============================================================================
 
-/**
- * /**
- * * サブエージェントのライブビューを描画する
- * *
- * * 指定された設定とデータに基づいて、ライブモニタリング用の
- * * 文字列配列を生成する。
- * *
- * * @param input - 描画設定オブジェクト
- * * @param input.title - ビューのタイトル
- * * @param input.items - 表示するサブエージェントアイテムの配列
- * * @param input.cursor - 現在のカーソル位置
- * * @param input.mode - ライブビューの表示モード
- * * @param input.stream - ライブストリームビューの設定
- * * @param input.width - ビューの幅
- * * @param input.height - ビューの高さ（省略可能）
- * * @param
- */
+ /**
+  * サブエージェントのライブビューを描画する
+  * @param input.title - ビューのタイトル
+  * @param input.items - 表示するサブエージェントアイテムの配列
+  * @param input.cursor - 現在のカーソル位置
+  * @param input.mode - ライブビューの表示モード
+  * @param input.stream - ライブストリームビューの設定
+  * @param input.width - ビューの幅
+  * @param input.height - ビューの高さ（省略可能）
+  * @param input.theme - テーマ設定
+  * @returns 描画結果の文字列配列
+  */
 export function renderSubagentLiveView(input: {
   title: string;
   items: SubagentLiveItem[];
@@ -251,6 +246,12 @@ export function renderSubagentLiveView(input: {
 // Live Monitor Controller
 // ============================================================================
 
+ /**
+  * サブエージェントのライブモニターを作成する
+  * @param ctx コンテキスト
+  * @param input タイトルとアイテム一覧を含む入力データ
+  * @returns ライブモニターコントローラー、UIが利用できない場合はundefined
+  */
 export function createSubagentLiveMonitor(
   ctx: any,
   input: {

@@ -13,23 +13,18 @@ import {
 // Types
 // ============================================================================
 
-/**
- * /**
- * * サブエージェントの並列実行容量解決結果を表すインターフェース
- * *
- * * 並列実行の許可判定、適用された並列度、待機時間、タイムアウト等の
- * * 容量解決に関する詳細情報を格納する。
- * *
- * * @property allowed - 並列実行が許可されたかどうか
- * * @property requestedParallelism - 要求された並列度
- * * @property appliedParallelism - 実際に適用された並列度
- * * @property reduced - 並列度が削減されたかどうか
- * * @property reasons - 判定理由のリスト
- * * @property waitedMs - 待機時間（ミリ秒）
- * * @property timedOut - タイムアウトしたかどうか
- * * @property aborted - 中止されたかどうか
- * * @property attempts
- */
+ /**
+  * サブエージェントの並列実行容量解決結果
+  * @property allowed - 並列実行が許可されたかどうか
+  * @property requestedParallelism - 要求された並列度
+  * @property appliedParallelism - 実際に適用された並列度
+  * @property reduced - 並列度が削減されたかどうか
+  * @property reasons - 判定理由のリスト
+  * @property waitedMs - 待機時間（ミリ秒）
+  * @property timedOut - タイムアウトしたかどうか
+  * @property aborted - 中止されたかどうか
+  * @property attempts - 試行回数
+  */
 export interface SubagentParallelCapacityResolution {
   allowed: boolean;
 /**
@@ -66,6 +61,16 @@ export interface SubagentParallelCapacityResolution {
 // Capacity Resolution
 // ============================================================================
 
+/**
+ * サブエージェントの並列実行容量を解決する
+ * @param input リクエストパラメータ
+ * @param input.requestedParallelism リクエストされた並列数
+ * @param input.additionalRequests 追加リクエスト数
+ * @param input.maxWaitMs 最大待機時間（ミリ秒）
+ * @param input.pollIntervalMs ポーリング間隔（ミリ秒）
+ * @param input.signal 中断シグナル
+ * @returns 容量解決結果
+ */
 export async function resolveSubagentParallelCapacity(input: {
   requestedParallelism: number;
   additionalRequests: number;

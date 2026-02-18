@@ -20,9 +20,11 @@ import type { StructureData, ClassInfo, FunctionInfo, ImportInfo } from './extra
  * * Mermaid図を生成する際の設定を定義します。
  * * 生成する図
  */
-/**
- * /**
- */
+ /**
+  * 図生成の設定オプション
+  * @param types 生成する図の種類
+  * @param includePositions ノードの位置情報を含めるかどうか
+  */
 export interface DiagramOptions {
   /** 生成する図の種類 */
   types: ('flowchart' | 'classDiagram' | 'sequenceDiagram')[];
@@ -30,6 +32,12 @@ export interface DiagramOptions {
   includePositions?: boolean;
 }
 
+ /**
+  * Mermaid図の出力結果
+  * @property flowchart 依存関係図
+  * @property classDiagram クラス図
+  * @property sequenceDiagram シーケンス図
+  */
 export interface MermaidDiagrams {
   /** 依存関係図（flowchart） */
   flowchart?: string;
@@ -43,6 +51,12 @@ export interface MermaidDiagrams {
 // Main Export Function
 // ============================================================================
 
+ /**
+  * 構造データからMermaid図を生成する
+  * @param structure 解析対象の構造データ
+  * @param options 図の生成オプション
+  * @returns 生成されたMermaid図のオブジェクト
+  */
 export function generateMermaidDiagrams(
   structure: StructureData,
   options: DiagramOptions

@@ -13,15 +13,12 @@ import {
   writeFileSync,
 } from "node:fs";
 
-/**
- * /**
- * * ファイルロックのオプション設定
- * *
- * * ロック取得時のタイムアウトやポーリング間隔、有効期限を設定します。
- * *
- * * @property maxWaitMs - ロック取得の最大待機時間（ミリ秒）。デフォルト: 4000
- * * @property pollMs - ロック確認のポーリング間隔（ミリ秒）。
- */
+ /**
+  * ファイルロックのオプション設定
+  * @param maxWaitMs - ロック取得の最大待機時間（ミリ秒）
+  * @param pollMs - ロック確認のポーリング間隔（ミリ秒）
+  * @param staleMs - ロックの有効期限（ミリ秒）
+  */
 export interface FileLockOptions {
   maxWaitMs?: number;
   pollMs?: number;
@@ -123,6 +120,13 @@ function clearStaleLock(lockFile: string, staleMs: number): void {
   }
 }
 
+ /**
+  * ファイルロックを取得して関数を実行
+  * @param targetFile ロック対象のファイルパス
+  * @param fn 実行する関数
+  * @param options ロックのオプション
+  * @returns 関数の実行結果
+  */
 export function withFileLock<T>(
   targetFile: string,
   fn: () => T,
@@ -187,6 +191,12 @@ export function withFileLock<T>(
   }
 }
 
+/**
+ * テキストファイルをアトミックに書き込む
+ * @param filePath 書き込み先のファイルパス
+ * @param content 書き込む内容
+ * @returns なし
+ */
 export function atomicWriteTextFile(filePath: string, content: string): void {
   const tmpFile = `${filePath}.tmp-${process.pid}-${randomBytes(3).toString("hex")}`;
   writeFileSync(tmpFile, content, "utf-8");

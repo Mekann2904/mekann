@@ -32,14 +32,13 @@ import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from 
 // Types
 // ============================================================================
 
-/**
- * チームメンバー実行結果の正規化出力を表すインターフェース
- *
- * @property ok - 実行が成功したかどうか
- * @property output - 実行結果の出力テキスト
- * @property degraded - 縮退モードで実行されたかどうか
- * @property reason - 縮退または失敗の理由（オプション）
- */
+ /**
+  * チームメンバー実行結果の正規化出力
+  * @property ok - 実行が成功したかどうか
+  * @property output - 実行結果の出力テキスト
+  * @property degraded - 縮退モードで実行されたかどうか
+  * @property reason - 縮退または失敗の理由（オプション）
+  */
 export interface TeamNormalizedOutput {
   ok: boolean;
   output: string;
@@ -73,14 +72,11 @@ function pickTeamFieldCandidate(text: string, maxLength: number): string {
   return compact.length <= maxLength ? compact : `${compact.slice(0, maxLength)}...`;
 }
 
-/**
- * Normalize team member output to required format.
- * Note: Kept locally (not in lib) because:
- * - Uses team-member-specific SUMMARY/CLAIM/EVIDENCE/CONFIDENCE/RESULT/NEXT_STEP format
- * - Has team-member-specific fallback messages (Japanese)
- * - Uses pickTeamFieldCandidate which is team-member-specific
- * Subagent output has different requirements (only SUMMARY/RESULT/NEXT_STEP).
- */
+ /**
+  * チームメンバーの出力を正規化します。
+  * @param output - 正規化対象の文字列
+  * @returns 正規化された結果オブジェクト
+  */
 export function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -125,11 +121,12 @@ export function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput 
 // Prompt Building
 // ============================================================================
 
-/**
- * Merge skill arrays following inheritance rules.
- * - Empty array [] is treated as unspecified (ignored)
- * - Non-empty arrays are merged with deduplication
- */
+ /**
+  * スキル配列を継承ルールに従ってマージする。
+  * @param base ベースとなるスキル配列
+  * @param override 上書きするスキル配列
+  * @returns マージされたスキル配列、または未定義
+  */
 export function mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined {
   const hasBase = Array.isArray(base) && base.length > 0;
   const hasOverride = Array.isArray(override) && override.length > 0;
@@ -147,10 +144,12 @@ export function mergeSkillArrays(base: string[] | undefined, override: string[] 
   return merged;
 }
 
-/**
- * Resolve effective skills for a team member.
- * Inheritance: teamSkills (common) -> memberSkills (individual)
- */
+ /**
+  * チームメンバーの有効なスキルを解決する。
+  * @param team チーム定義
+  * @param member チームメンバー
+  * @returns マージされたスキルリスト
+  */
 export function resolveEffectiveTeamMemberSkills(
   team: TeamDefinition,
   member: TeamMember,
@@ -158,9 +157,11 @@ export function resolveEffectiveTeamMemberSkills(
   return mergeSkillArrays(team.skills, member.skills);
 }
 
-/**
- * Format skill list for prompt inclusion (Japanese).
- */
+ /**
+  * スキルリストをプロンプト用に整形
+  * @param skills スキル名の配列（未定義可）
+  * @returns 整形されたスキルリストの文字列、またはnull
+  */
 export function formatTeamMemberSkillsSection(skills: string[] | undefined): string | null {
   if (!skills || skills.length === 0) return null;
   return skills.map((skill) => `- ${skill}`).join("\n");
@@ -176,11 +177,11 @@ const TEAM_SKILL_PATHS = [
   join(process.cwd(), ".pi", "skills"),
 ];
 
-/**
- * Load skill content from SKILL.md file.
- * Searches in team-specific path first, then global path.
- * Returns null if skill not found.
- */
+ /**
+  * スキルの内容をSKILL.mdから読み込む
+  * @param skillName スキル名
+  * @returns スキルの内容（見つからない場合はnull）
+  */
 export function loadSkillContent(skillName: string): string | null {
   for (const basePath of TEAM_SKILL_PATHS) {
     const skillPath = join(basePath, skillName, "SKILL.md");
@@ -198,11 +199,11 @@ export function loadSkillContent(skillName: string): string | null {
   return null;
 }
 
-/**
- * Build skills section with content for prompt inclusion.
- * Only includes skills that are explicitly assigned to the team/member.
- * Falls back to skill names only if content cannot be loaded.
- */
+ /**
+  * スキルセクションの文字列を構築する
+  * @param skills スキル名の配列
+  * @returns 構築された文字列、または入力がない場合はnull
+  */
 export function buildSkillsSectionWithContent(skills: string[] | undefined): string | null {
   if (!skills || skills.length === 0) return null;
 
@@ -246,6 +247,11 @@ export function buildSkillsSectionWithContent(skills: string[] | undefined): str
   return lines.length > 0 ? lines.join("\n").trim() : null;
 }
 
+ /**
+  * チームメンバー用のプロンプトを構築する
+  * @param input チーム、メンバー、タスク、コンテキスト等を含む入力オブジェクト
+  * @returns 構築されたプロンプト文字列
+  */
 export function buildTeamMemberPrompt(input: {
   team: TeamDefinition;
   member: TeamMember;
@@ -341,6 +347,27 @@ async function runPiPrintMode(input: {
   });
 }
 
+ /**
+  * チームメンバーのタスクを実行する
+  * @param input.team チーム定義
+  * @param input.member チームメンバー
+  * @param input.task タスク
+  * @param input.sharedContext 共有コンテキスト
+  * @param input.phase フェーズ
+  * @param input.communicationContext コミュニケーションコンテキスト
+  * @param input.timeoutMs タイムアウト（ミリ秒）
+  * @param input.cwd 作業ディレクトリ
+  * @param input.retryOverrides リトライ設定
+  * @param input.fallbackProvider フォールバックプロバイダー
+  * @param input.fallbackModel フォールバックモデル
+  * @param input.signal 中断シグナル
+  * @param input.onStart 開始時コールバック
+  * @param input.onEnd 終了時コールバック
+  * @param input.onEvent イベント発生時コールバック
+  * @param input.onTextDelta テキスト差分受信時コールバック
+  * @param input.onStderrChunk 標準エラー受信時コールバック
+  * @returns 実行結果
+  */
 export async function runMember(input: {
   team: TeamDefinition;
   member: TeamMember;

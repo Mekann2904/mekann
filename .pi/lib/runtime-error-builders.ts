@@ -6,18 +6,13 @@
 import { normalizeTimeoutMs } from "./runtime-utils.js";
 import { computeModelTimeoutMs } from "./model-timeouts.js";
 
-/**
- * Resolve effective timeout with model-specific adjustment.
- * Priority: max(user-specified, model-specific) > default
- *
- * This ensures that slow models (e.g., GLM-5) always get sufficient timeout,
- * even if the caller specifies a shorter timeout intended for faster models.
- *
- * @param userTimeoutMs - User-specified timeout (unknown type for safety)
- * @param modelId - Model ID for model-specific timeout lookup
- * @param fallback - Default fallback timeout in milliseconds
- * @returns Resolved timeout in milliseconds
- */
+ /**
+  * 有効なタイムアウト時間を解決する
+  * @param userTimeoutMs - ユーザー指定のタイムアウト
+  * @param modelId - モデル固有のタイムアウト検索用ID
+  * @param fallback - デフォルトのフォールバック時間（ミリ秒）
+  * @returns 解決されたタイムアウト時間（ミリ秒）
+  */
 export function resolveEffectiveTimeoutMs(
   userTimeoutMs: unknown,
   modelId: string | undefined,

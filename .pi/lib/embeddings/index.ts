@@ -66,17 +66,18 @@ export {
 import { embeddingRegistry } from "./registry.js";
 import { openAIEmbeddingProvider } from "./providers/openai.js";
 
-/**
- * Initialize the embedding module with default providers.
- * Registers OpenAI provider.
- */
+ /**
+  * デフォルトプロバイダで埋め込みモジュールを初期化
+  * @returns {Promise<void>}
+  */
 export async function initializeEmbeddingModule(): Promise<void> {
   embeddingRegistry.register(openAIEmbeddingProvider);
 }
 
-/**
- * Synchronous initialization for non-async contexts.
- */
+ /**
+  * 非同期コンテキスト用の同期初期化
+  * @returns 戻り値なし
+  */
 export function initializeEmbeddingModuleSync(): void {
   embeddingRegistry.register(openAIEmbeddingProvider);
 }

@@ -24,9 +24,11 @@ const BLOCKED_HOSTNAME_PATTERNS = [
   /^::$/,
 ];
 
-/**
- * Check if a hostname matches blocked patterns.
- */
+ /**
+  * ホスト名がブロック対象か判定する
+  * @param hostname チェック対象のホスト名
+  * @returns ブロック対象の場合はtrue
+  */
 export function isBlockedHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().trim();
   for (const pattern of BLOCKED_HOSTNAME_PATTERNS) {
@@ -75,21 +77,11 @@ function isPrivateIPv4(ip: string): boolean {
   return false;
 }
 
-/**
- * Check if an IP address is private or reserved.
- * Blocks:
- * - 10.0.0.0/8 (Private network)
- * - 172.16.0.0/12 (Private network)
- * - 192.168.0.0/16 (Private network)
- * - 127.0.0.0/8 (Loopback)
- * - 169.254.0.0/16 (Link-local)
- * - 0.0.0.0/8 (Current network)
- * - 224.0.0.0/4 (Multicast)
- * - 240.0.0.0/4 (Reserved)
- * - ::1 (IPv6 loopback)
- * - fe80::/10 (IPv6 link-local)
- * - fc00::/7 (IPv6 unique local)
- */
+ /**
+  * IPアドレスがプライベートまたは予約済みか判定
+  * @param ip チェック対象のIPアドレス文字列
+  * @returns プライベートまたは予約済みの場合はtrue
+  */
 export function isPrivateOrReservedIP(ip: string): boolean {
   // Handle IPv6 addresses
   const normalizedIP = ip.toLowerCase();
@@ -125,10 +117,11 @@ export function isPrivateOrReservedIP(ip: string): boolean {
   return isPrivateIPv4(ip);
 }
 
-/**
- * Validate URL for SSRF protection.
- * Throws an error if the URL points to a blocked resource.
- */
+ /**
+  * SSRF保護のためURLを検証する
+  * @param urlString 検証対象のURL文字列
+  * @returns 解決時に値を返さないPromise
+  */
 export async function validateUrlForSsrf(urlString: string): Promise<void> {
   let parsedUrl: URL;
   try {

@@ -7,35 +7,35 @@ import { Type } from "@mariozechner/pi-ai";
 
 import type { RetryWithBackoffOverrides } from "./retry-with-backoff.js";
 
-/**
- * Trim message for error display, normalizing whitespace.
- * @param message - Message to trim
- * @param maxLength - Maximum length (default: 600)
- * @returns Trimmed message
- */
+ /**
+  * エラー表示用にメッセージを整形・短縮
+  * @param message - 処理対象のメッセージ
+  * @param maxLength - 最大長（デフォルト: 600）
+  * @returns 整形されたメッセージ
+  */
 export function trimForError(message: string, maxLength = 600): string {
   const normalized = message.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength)}...`;
 }
 
-/**
- * Build rate limit key from provider and model.
- * @param provider - Provider name
- * @param model - Model name
- * @returns Normalized rate limit key
- */
+ /**
+  * プロバイダとモデルからレート制限キーを生成
+  * @param provider - プロバイダ名
+  * @param model - モデル名
+  * @returns 正規化されたレート制限キー
+  */
 export function buildRateLimitKey(provider: string, model: string): string {
   return `${provider.toLowerCase()}::${model.toLowerCase()}`;
 }
 
-/**
- * Build trace task ID for debugging and logging.
- * @param traceId - Trace ID (optional)
- * @param delegateId - Delegate ID
- * @param sequence - Sequence number
- * @returns Formatted trace task ID
- */
+ /**
+  * トレースタスクIDを生成する
+  * @param traceId - トレースID（省略可）
+  * @param delegateId - デリゲートID
+  * @param sequence - シーケンス番号
+  * @returns フォーマットされたトレースタスクID
+  */
 export function buildTraceTaskId(
   traceId: string | undefined,
   delegateId: string,
@@ -46,12 +46,12 @@ export function buildTraceTaskId(
   return `${safeTrace}:${safeDelegate}:${Math.max(0, Math.trunc(sequence))}`;
 }
 
-/**
- * Normalize timeout value in milliseconds.
- * @param value - Timeout value (unknown)
- * @param fallback - Fallback value if invalid
- * @returns Normalized timeout in milliseconds
- */
+ /**
+  * タイムアウト値（ミリ秒）を正規化します。
+  * @param value - タイムアウト値（任意の型）
+  * @param fallback - 値が無効な場合のフォールバック値
+  * @returns 正規化されたタイムアウト値（ミリ秒）
+  */
 export function normalizeTimeoutMs(value: unknown, fallback: number): number {
   const resolved = value === undefined ? fallback : Number(value);
   if (!Number.isFinite(resolved)) return fallback;
@@ -59,10 +59,10 @@ export function normalizeTimeoutMs(value: unknown, fallback: number): number {
   return Math.max(1, Math.trunc(resolved));
 }
 
-/**
- * Create retry schema for tool input validation.
- * @returns TypeBox schema for retry options
- */
+ /**
+  * リトライ設定のスキーマを作成する
+  * @returns TypeBoxによるリトライオプションのスキーマ
+  */
 export function createRetrySchema() {
   return Type.Optional(
     Type.Object({
@@ -85,17 +85,11 @@ export function createRetrySchema() {
   );
 }
 
-/**
- * Convert retry input value to RetryWithBackoffOverrides.
- *
- * Note: This is the "unstable" version that does NOT check STABLE_*_RUNTIME.
- * Extensions (subagents.ts, agent-teams.ts) have their own local versions that
- * return undefined in stable mode. If you want to use this function from extensions,
- * you must handle stable mode check in the caller.
- *
- * @param value - Raw retry input value
- * @returns RetryWithBackoffOverrides or undefined
- */
+ /**
+  * リトライ入力値をRetryWithBackoffOverridesに変換する。
+  * @param value - 生のリトライ入力値
+  * @returns RetryWithBackoffOverridesまたはundefined
+  */
 export function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
@@ -112,12 +106,12 @@ export function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | un
   };
 }
 
-/**
- * Convert concurrency limit input to number.
- * @param value - Raw concurrency limit value
- * @param fallback - Fallback value if invalid
- * @returns Normalized concurrency limit
- */
+ /**
+  * 同時実行数の入力値を数値に変換する。
+  * @param value - 生の同時実行数の値
+  * @param fallback - 無効な場合の代替値
+  * @returns 正規化された同時実行数
+  */
 export function toConcurrencyLimit(value: unknown, fallback: number): number {
   const resolved = value === undefined ? fallback : Number(value);
   if (!Number.isFinite(resolved)) return fallback;

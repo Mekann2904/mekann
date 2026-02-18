@@ -46,24 +46,12 @@ export function createChildAbortController(
   return { controller, cleanup };
 }
 
-/**
- * Creates multiple child AbortControllers from a single parent signal.
- * Useful for parallel execution where each worker needs its own signal.
- *
- * @param count - Number of child controllers to create
- * @param parentSignal - Optional parent signal to link to
- * @returns Array of child controllers and a single cleanup function
- *
- * @example
- * ```typescript
- * const { controllers, cleanup } = createChildAbortControllers(10, parentSignal);
- * try {
- *   await Promise.all(controllers.map((c, i) => doWork(c.signal, i)));
- * } finally {
- *   cleanup();
- * }
- * ```
- */
+ /**
+  * 親シグナルに連動する複数の子コントローラを作成
+  * @param count 作成するコントローラの数
+  * @param parentSignal 親のAbortSignal（省略可）
+  * @returns controllers: コントローラの配列, cleanup: 全てのコントローラを中止する関数
+  */
 export function createChildAbortControllers(
   count: number,
   parentSignal?: AbortSignal,

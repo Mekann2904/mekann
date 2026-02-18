@@ -6,8 +6,20 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+ /**
+  * リトライ時のジッターモード
+  * @type {"full" | "partial" | "none"}
+  */
 export type RetryJitterMode = "full" | "partial" | "none";
 
+ /**
+  * 指数バックオフとジッターを伴うリトライ設定
+  * @param maxRetries 最大リトライ回数
+  * @param initialDelayMs 初回遅延時間（ミリ秒）
+  * @param maxDelayMs 最大遅延時間（ミリ秒）
+  * @param multiplier 遅延時間の乗数
+  * @param jitter ジッターモード
+  */
 export interface RetryWithBackoffConfig {
   maxRetries: number;
   initialDelayMs: number;
@@ -16,8 +28,19 @@ export interface RetryWithBackoffConfig {
   jitter: RetryJitterMode;
 }
 
+ /**
+  * RetryWithBackoffConfigの部分的オーバーライド設定
+  */
 export type RetryWithBackoffOverrides = Partial<RetryWithBackoffConfig>;
 
+ /**
+  * リトライ時のコンテキスト情報
+  * @param attempt 現在のリトライ回数
+  * @param maxRetries 最大リトライ回数
+  * @param delayMs 次回のリトライ遅延時間（ミリ秒）
+  * @param statusCode ステータスコード（任意）
+  * @param error 発生したエラー
+  */
 export interface RetryAttemptContext {
   attempt: number;
   maxRetries: number;
@@ -48,6 +71,13 @@ interface SharedRateLimitState {
   entries: Map<string, SharedRateLimitStateEntry>;
 }
 
+ /**
+  * レート制限のスナップショット
+  * @param key キー
+  * @param waitMs 待機時間（ミリ秒）
+  * @param hits ヒット数
+  * @param untilMs 有効期限（ミリ秒）
+  */
 export interface RateLimitGateSnapshot {
   key: string;
   waitMs: number;
@@ -55,6 +85,13 @@ export interface RateLimitGateSnapshot {
   untilMs: number;
 }
 
+ /**
+  * レート制限待機コンテキスト
+  * @param key キー
+  * @param waitMs 待機時間（ミリ秒）
+  * @param hits ヒット数
+  * @param untilMs 有効期限（ミリ秒）
+  */
 export interface RateLimitWaitContext {
   key: string;
   waitMs: number;
@@ -219,6 +256,11 @@ function pruneRateLimitState(nowMs = Date.now()): void {
   }
 }
 
+ /**
+  * 指定キーのレートリミット情報を取得する
+  * @param key レート制限キー
+  * @returns スナップショット情報
+  */
 export function getRateLimitGateSnapshot(key: string | undefined): RateLimitGateSnapshot {
   const normalizedKey = normalizeRateLimitKey(key);
   const nowMs = Date.now();
@@ -295,6 +337,12 @@ function registerRateLimitGateSuccess(key: string | undefined): void {
   });
 }
 
+/**
+ * バックオフ設定を解決する
+ * @param cwd カレントディレクトリ
+ * @param overrides 上書き設定
+ * @returns 解決された設定
+ */
 export function resolveRetryWithBackoffConfig(
   cwd?: string,
   overrides?: RetryWithBackoffOverrides,
@@ -320,6 +368,11 @@ export function resolveRetryWithBackoffConfig(
   return merged;
 }
 
+ /**
+  * エラーからステータスコードを抽出
+  * @param error エラーオブジェクト
+  * @returns ステータスコード（0〜999）、またはundefined
+  */
 export function extractRetryStatusCode(error: unknown): number | undefined {
   if (error && typeof error === "object") {
     const status = toFiniteNumber((error as { status?: unknown }).status);
@@ -346,6 +399,12 @@ export function extractRetryStatusCode(error: unknown): number | undefined {
   return undefined;
 }
 
+ /**
+  * エラーがリトライ可能か判定する
+  * @param error - 判定対象のエラー
+  * @param statusCode - HTTPステータスコード（省略時はerrorから抽出）
+  * @returns リトライ可能な場合はtrue
+  */
 export function isRetryableError(error: unknown, statusCode?: number): boolean {
   const code = statusCode ?? extractRetryStatusCode(error);
   if (code === 429) return true;
@@ -427,6 +486,12 @@ function sleepWithAbort(delayMs: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+ /**
+  * 指数バックオフでオペレーションをリトライする
+  * @param operation 実行する非同期処理
+  * @param options リトライ設定オプション
+  * @returns オペレーションの結果
+  */
 export async function retryWithBackoff<T>(
   operation: () => Promise<T>,
   options: RetryWithBackoffOptions = {},

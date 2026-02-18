@@ -41,9 +41,11 @@ export const THINKING_LEVEL_MULTIPLIERS: Record<string, number> = {
   xhigh: 2.5,
 } as const;
 
-/**
- * Options for computing model timeout.
- */
+ /**
+  * モデルのタイムアウト計算オプション
+  * @param userTimeoutMs ユーザー指定のタイムアウト（0より大きい場合優先）
+  * @param thinkingLevel モデルの思考レベル
+  */
 export interface ComputeModelTimeoutOptions {
   /** User-specified timeout (takes precedence if > 0) */
   userTimeoutMs?: number;
@@ -51,11 +53,11 @@ export interface ComputeModelTimeoutOptions {
   thinkingLevel?: string;
 }
 
-/**
- * Get the base timeout for a model without thinking level adjustment.
- * @param modelId - The model identifier
- * @returns Base timeout in milliseconds
- */
+ /**
+  * モデルの基本タイムアウトを取得
+  * @param modelId - モデル識別子
+  * @returns 基本タイムアウト（ミリ秒）
+  */
 export function getModelBaseTimeoutMs(modelId: string): number {
   // Exact match
   if (MODEL_TIMEOUT_BASE_MS[modelId]) {
@@ -76,14 +78,12 @@ export function getModelBaseTimeoutMs(modelId: string): number {
   return MODEL_TIMEOUT_BASE_MS.default;
 }
 
-/**
- * Compute the appropriate timeout for a model with all adjustments.
- * Priority: user-specified > model-specific + thinking adjustment > default
- *
- * @param modelId - The model identifier (e.g., "glm-5", "claude-3-5-sonnet")
- * @param options - Timeout computation options
- * @returns Timeout in milliseconds
- */
+ /**
+  * モデルの適切なタイムアウトを計算
+  * @param modelId - モデルID（例: "glm-5", "claude-3-5-sonnet"）
+  * @param options - タイムアウト計算のオプション
+  * @returns ミリ秒単位のタイムアウト値
+  */
 export function computeModelTimeoutMs(
   modelId: string,
   options?: ComputeModelTimeoutOptions,
@@ -103,12 +103,12 @@ export function computeModelTimeoutMs(
   return Math.floor(baseTimeout * multiplier);
 }
 
-/**
- * Compute a progressive timeout that increases with retry attempts.
- * @param baseTimeoutMs - Base timeout
- * @param attempt - Current attempt number (0-indexed)
- * @returns Adjusted timeout in milliseconds
- */
+ /**
+  * 再試行回数に応じて増加するタイムアウトを計算
+  * @param baseTimeoutMs - 基本タイムアウト（ミリ秒）
+  * @param attempt - 試行回数
+  * @returns 調整後のタイムアウト（ミリ秒）
+  */
 export function computeProgressiveTimeoutMs(
   baseTimeoutMs: number,
   attempt: number,

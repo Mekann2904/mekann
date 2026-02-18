@@ -20,9 +20,20 @@ import { atomicWriteTextFile } from "./storage-lock.js";
 // Types
 // ============================================================================
 
-/**
- * Extracted pattern from run history.
- */
+ /**
+  * 実行履歴から抽出されたパターン。
+  * @param id パターンの一意な識別子
+  * @param patternType パターンの種類（成功、失敗、アプローチ）
+  * @param taskType タスクの種類
+  * @param description パターンの説明
+  * @param keywords 関連するキーワードの配列
+  * @param files 関連するファイルの配列
+  * @param agentOrTeam 関連するエージェントまたはチーム
+  * @param frequency 出現頻度
+  * @param lastSeen 最後に確認された日時
+  * @param confidence 信頼度
+  * @param examples パターンの実行例
+  */
 export interface ExtractedPattern {
   id: string;
   patternType: "success" | "failure" | "approach";
@@ -37,9 +48,13 @@ export interface ExtractedPattern {
   examples: PatternExample[];
 }
 
-/**
- * Example of a pattern in action.
- */
+ /**
+  * パターンの実行例
+  * @param runId 実行ID
+  * @param task タスク内容
+  * @param summary 要約
+  * @param timestamp タイムスタンプ
+  */
 export interface PatternExample {
   runId: string;
   task: string;
@@ -47,9 +62,13 @@ export interface PatternExample {
   timestamp: string;
 }
 
-/**
- * Pattern storage structure.
- */
+ /**
+  * パターン情報のストレージ構造
+  * @param version ストレージのバージョン
+  * @param lastUpdated 最終更新日時
+  * @param patterns 抽出されたパターン一覧
+  * @param patternsByTaskType タスク種別ごとのパターンID一覧
+  */
 export interface PatternStorage {
   version: number;
   lastUpdated: string;
@@ -57,9 +76,18 @@ export interface PatternStorage {
   patternsByTaskType: Record<TaskType, string[]>;
 }
 
-/**
- * Run data for pattern extraction.
- */
+ /**
+  * パターン抽出用の実行データ
+  * @param runId 実行ID
+  * @param agentId エージェントID
+  * @param teamId チームID
+  * @param task タスク内容
+  * @param summary 実行の概要
+  * @param status 実行ステータス
+  * @param startedAt 開始日時
+  * @param finishedAt 終了日時
+  * @param error エラー内容
+  */
 export interface RunData {
   runId: string;
   agentId?: string;
@@ -197,9 +225,11 @@ function isFailurePattern(summary: string, status: string): boolean {
   return FAILURE_INDICATORS.some((ind) => lower.includes(ind));
 }
 
-/**
- * Extract pattern from a single run.
- */
+ /**
+  * 単一の実行データからパターンを抽出する
+  * @param run 実行データ
+  * @returns 抽出されたパターン、該当しない場合はnull
+  */
 export function extractPatternFromRun(run: RunData): ExtractedPattern | null {
   const taskType = classifyTaskType(run.task, run.summary);
   const keywords = extractKeywords(`${run.task} ${run.summary}`);
@@ -296,16 +326,20 @@ function arePatternsSimilar(a: ExtractedPattern, b: ExtractedPattern): boolean {
 // Pattern Storage Operations
 // ============================================================================
 
-/**
- * Get the path to the pattern storage file.
- */
+ /**
+  * パターンストレージのパスを取得
+  * @param cwd カレントワーキングディレクトリ
+  * @returns パターンストレージファイルのパス
+  */
 export function getPatternStoragePath(cwd: string): string {
   return join(cwd, ".pi", "memory", "patterns.json");
 }
 
-/**
- * Load pattern storage from disk.
- */
+ /**
+  * パターンストレージをディスクから読み込む
+  * @param cwd 作業ディレクトリのパス
+  * @returns 読み込まれたパターンストレージ
+  */
 export function loadPatternStorage(cwd: string): PatternStorage {
   const path = getPatternStoragePath(cwd);
   if (!existsSync(path)) {
@@ -330,9 +364,12 @@ export function loadPatternStorage(cwd: string): PatternStorage {
   }
 }
 
-/**
- * Save pattern storage to disk.
- */
+ /**
+  * パターンストレージを保存する
+  * @param cwd 作業ディレクトリのパス
+  * @param storage 保存対象のストレージデータ
+  * @returns なし
+  */
 export function savePatternStorage(cwd: string, storage: PatternStorage): void {
   const path = getPatternStoragePath(cwd);
   ensureDir(join(cwd, ".pi", "memory"));
@@ -340,10 +377,12 @@ export function savePatternStorage(cwd: string, storage: PatternStorage): void {
   atomicWriteTextFile(path, JSON.stringify(storage, null, 2));
 }
 
-/**
- * Add a run to pattern storage.
- * Extracts pattern and merges with existing if similar.
- */
+ /**
+  * パターンストレージに実行データを追加する
+  * @param cwd カレントワーキングディレクトリ
+  * @param run 追加する実行データ
+  * @returns なし
+  */
 export function addRunToPatterns(cwd: string, run: RunData): void {
   const storage = loadPatternStorage(cwd);
   const newPattern = extractPatternFromRun(run);
@@ -377,9 +416,11 @@ export function addRunToPatterns(cwd: string, run: RunData): void {
   savePatternStorage(cwd, storage);
 }
 
-/**
- * Extract patterns from all runs in storage.
- */
+ /**
+  * すべてのパターンを抽出する
+  * @param cwd カレントワーキングディレクトリ
+  * @returns 抽出されたパターン情報のストレージ
+  */
 export function extractAllPatterns(cwd: string): PatternStorage {
   const storage = loadPatternStorage(cwd);
 
@@ -474,9 +515,13 @@ export function extractAllPatterns(cwd: string): PatternStorage {
 // Pattern Query Functions
 // ============================================================================
 
-/**
- * Get patterns for a specific task type.
- */
+ /**
+  * 指定されたタスクタイプのパターンを取得する
+  * @param cwd 作業ディレクトリ
+  * @param taskType タスクタイプ
+  * @param patternType パターンの種類（成功、失敗、手法）
+  * @returns 抽出されたパターンの配列
+  */
 export function getPatternsForTaskType(
   cwd: string,
   taskType: TaskType,
@@ -507,9 +552,12 @@ export function getTopSuccessPatterns(
     .slice(0, limit);
 }
 
-/**
- * Get failure patterns to avoid.
- */
+ /**
+  * 避けるべき失敗パターンを取得する。
+  * @param cwd 作業ディレクトリのパス
+  * @param taskType タスクの種類（オプション）
+  * @returns 抽出された失敗パターンの配列
+  */
 export function getFailurePatternsToAvoid(
   cwd: string,
   taskType?: TaskType
@@ -526,9 +574,13 @@ export function getFailurePatternsToAvoid(
   return patterns.sort((a, b) => b.frequency - a.frequency);
 }
 
-/**
- * Find patterns relevant to a task description.
- */
+ /**
+  * タスク説明に関連するパターンを検索する。
+  * @param cwd 作業ディレクトリのパス
+  * @param taskDescription タスクの説明文
+  * @param limit 取得するパターンの最大件数
+  * @returns 関連性の高いパターンのリスト
+  */
 export function findRelevantPatterns(
   cwd: string,
   taskDescription: string,

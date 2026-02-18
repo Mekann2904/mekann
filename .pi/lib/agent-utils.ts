@@ -8,11 +8,10 @@
 
 import { randomBytes } from "node:crypto";
 
-/**
- * Creates a unique run ID with timestamp and random suffix.
- * Format: YYYYMMDD-HHMMSS-xxxxxx (where xxxxxx is 6 hex chars)
- * @returns A unique run ID string
- */
+ /**
+  * 一意な実行IDを生成します。
+  * @returns 一意な実行ID文字列
+  */
 export function createRunId(): string {
   const now = new Date();
   const stamp = [
@@ -28,14 +27,13 @@ export function createRunId(): string {
   return `${stamp}-${suffix}`;
 }
 
-/**
- * Computes a sliding window for live list display.
- * Centers the cursor when possible, adjusts when near boundaries.
- * @param cursor - Current cursor position (0-indexed)
- * @param total - Total number of items
- * @param maxRows - Maximum rows to display
- * @returns Object with start (inclusive) and end (exclusive) indices
- */
+ /**
+  * ライブリスト表示のスライディングウィンドウを計算
+  * @param cursor - 現在のカーソル位置（0開始）
+  * @param total - 全アイテム数
+  * @param maxRows - 表示可能な最大行数
+  * @returns 開始位置（含む）と終了位置（不含）を持つオブジェクト
+  */
 export function computeLiveWindow(
   cursor: number,
   total: number,

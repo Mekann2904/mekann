@@ -40,6 +40,11 @@ import { getRuntimeSnapshot, notifyRuntimeCapacityChanged } from "./agent-runtim
 
 const Text = require("@mariozechner/pi-tui").Text;
 
+ /**
+  * クロスインスタンスランタイム拡張を登録する
+  * @param pi ExtensionAPI
+  * @returns void
+  */
 export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) {
   // Initialize adaptive controller at startup
   initAdaptiveController();

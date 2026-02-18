@@ -16,16 +16,15 @@ import { join, relative, basename } from 'path';
 // Types
 // ============================================================================
 
-/**
- * /**
- * * コード構造解析のオプション設定
- * *
- * * ソースコード解析、Mermaid図生成、ドキュメント生成の動作をカスタマイズします。
- * *
- * * @property target - 解析対象のソースファイルまたはディレクトリのパス
- * * @property outputDir - 解析結果の出力ディレクトリ（省略時はカレントディレクトリ）
- * * @property diagramTypes - 生成するMer
- */
+ /**
+  * コード構造解析のオプション
+  * @param target - 対象ソースファイルまたはディレクトリ
+  * @param outputDir - 出力ディレクトリ
+  * @param diagramTypes - 生成する図の種類
+  * @param templatePath - テンプレートファイルパス
+  * @param exclude - 除外パターン
+  * @param includeLLMContext - LLM用コンテキストを含める
+  */
 export interface AnalyzeOptions {
   /** 対象ソースファイルまたはディレクトリ */
   target: string;
@@ -41,6 +40,13 @@ export interface AnalyzeOptions {
   includeLLMContext?: boolean;
 }
 
+ /**
+  * コード構造解析の結果を表します。
+  * @param {StructureData} structure 構造化データ
+  * @param {MermaidDiagrams} diagrams Mermaid図
+  * @param {DocSections} docSections ドキュメントセクション
+  * @param {object} metadata メタデータ
+  */
 export interface AnalysisResult {
   /** 構造化データ */
   structure: StructureData;
@@ -66,12 +72,11 @@ export interface AnalysisResult {
 // Main Tool Functions
 // ============================================================================
 
-/**
- * コード構造を解析し、ドキュメント生成に必要なデータを抽出
- *
- * @param params 解析オプション
- * @returns 解析結果（構造データ、Mermaid図、ドキュメントセクション）
- */
+ /**
+  * コード構造を解析し、データを抽出
+  * @param params 解析オプション（対象パス、出力先、図種類、LLMコンテキスト）
+  * @returns 解析結果（構造データ、Mermaid図、ドキュメントセクション）
+  */
 export async function analyzeCodeStructure(params: {
   target: string;
   outputDir?: string;
@@ -130,12 +135,12 @@ export async function analyzeCodeStructure(params: {
   };
 }
 
-/**
- * 構造データのみを抽出（軽量版）
- *
- * @param params 抽出オプション
- * @returns 構造化データ
- */
+ /**
+  * 構造データを抽出する
+  * @param params.target 対象のパス
+  * @param params.exclude 除外パターンの配列
+  * @returns 構造化データ
+  */
 export async function extractStructure(params: {
   target: string;
   exclude?: string[];
@@ -148,12 +153,11 @@ export async function extractStructure(params: {
   return extractCodeStructure(options);
 }
 
-/**
- * Mermaid図のみを生成（構造データから）
- *
- * @param params 生成オプション
- * @returns Mermaid図
- */
+ /**
+  * Mermaid図を生成する
+  * @param params 構造データと生成対象の種類
+  * @returns 生成されたMermaid図
+  */
 export async function generateDiagrams(params: {
   structure: StructureData;
   types?: string[];
@@ -166,12 +170,11 @@ export async function generateDiagrams(params: {
   return generateMermaidDiagrams(params.structure, options);
 }
 
-/**
- * ドキュメントをMarkdown形式で出力
- *
- * @param params 出力オプション
- * @returns Markdownテキスト
- */
+ /**
+  * 解析結果をMarkdown形式で生成
+  * @param params 解析結果と出力パスを含むオブジェクト
+  * @returns 生成されたMarkdownテキスト
+  */
 export async function generateMarkdown(params: {
   result: AnalysisResult;
   outputPath?: string;

@@ -7,16 +7,14 @@
  * - .pi/extensions/agent-teams.ts (RunOutcomeCode, RunOutcomeSignal)
  */
 
-/**
- * Thinking level for model reasoning.
- * Controls the depth of thinking/reasoning output from the model.
- */
+ /**
+  * モデルの推論レベルを表す型。
+  */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
-/**
- * Outcome codes for agent/subagent/team execution results.
- * Used to classify the result of a run for retry logic and reporting.
- */
+ /**
+  * エージェントの実行結果コード
+  */
 export type RunOutcomeCode =
   | "SUCCESS"
   | "PARTIAL_SUCCESS"
@@ -25,10 +23,11 @@ export type RunOutcomeCode =
   | "CANCELLED"
   | "TIMEOUT";
 
-/**
- * Signal returned from agent/subagent/team execution.
- * Encapsulates the outcome code and whether a retry is recommended.
- */
+ /**
+  * 実行結果を表すシグナル
+  * @param outcomeCode 実行結果コード
+  * @param retryRecommended 再試行推奨フラグ
+  */
 export interface RunOutcomeSignal {
   outcomeCode: RunOutcomeCode;
   retryRecommended: boolean;

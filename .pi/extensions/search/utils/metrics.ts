@@ -9,9 +9,12 @@
 // Core Metrics Types
 // ============================================
 
-/**
- * Performance metrics for search operations.
- */
+ /**
+  * 検索操作のパフォーマンス指標。
+  * @param durationMs 総実行時間（ミリ秒）。
+  * @param filesSearched 検索または列挙されたファイル数。
+  * @param indexHitRate インデックス使用時のヒット率（0.0-1.0）。
+  */
 export interface SearchMetrics {
 	/**
 	 * Total execution time in milliseconds.
@@ -35,9 +38,14 @@ export interface SearchMetrics {
 	toolName: string;
 }
 
-/**
- * Extended metrics with additional details.
- */
+ /**
+  * 拡張検索メトリクス
+  * @param cliTimeMs 外部CLIツールの実行時間（ミリ秒）
+  * @param parseTimeMs 結果の解析時間（ミリ秒）
+  * @param totalResults 切り捨て前の結果数
+  * @param returnedResults 返された結果数
+  * @param truncated 結果が切り捨てられたかどうか
+  */
 export interface ExtendedSearchMetrics extends SearchMetrics {
 	/**
 	 * Time spent in the external CLI tool (if applicable).
@@ -74,9 +82,10 @@ export interface ExtendedSearchMetrics extends SearchMetrics {
 // Metrics Collector
 // ============================================
 
-/**
- * Simple metrics collector for timing operations.
- */
+ /**
+  * 操作の時間計測用メトリクスコレクタ
+  * @param toolName ツール名
+  */
 export class MetricsCollector {
 	private startTime: number;
 	private toolName: string;
@@ -96,24 +105,28 @@ export class MetricsCollector {
 		return this;
 	}
 
-	/**
-	 * Set the index hit rate.
-	 */
+	 /**
+	  * インデックスのヒット率を設定する。
+	  * @param rate ヒット率
+	  * @returns this
+	  */
 	setIndexHitRate(rate: number): this {
 		this.indexHitRate = rate;
 		return this;
 	}
 
-	/**
-	 * Get the elapsed time in milliseconds.
-	 */
+	 /**
+	  * 経過時間（ミリ秒）を取得する。
+	  * @returns 経過時間（ミリ秒）
+	  */
 	elapsedMs(): number {
 		return performance.now() - this.startTime;
 	}
 
-	/**
-	 * Finalize and return the metrics.
-	 */
+	 /**
+	  * メトリクスを確定して返却します。
+	  * @returns 検索メトリクス
+	  */
 	finish(): SearchMetrics {
 		return {
 			durationMs: this.elapsedMs(),
@@ -128,9 +141,12 @@ export class MetricsCollector {
 // Metrics Aggregation
 // ============================================
 
-/**
- * Aggregated metrics across multiple operations.
- */
+ /**
+  * 複数操作の集計メトリクス
+  * @param operationCount 操作の合計回数
+  * @param totalDurationMs 合計実行時間（ミリ秒）
+  * @param averageDurationMs 平均実行時間（ミリ秒）
+  */
 export interface AggregatedMetrics {
 	/**
 	 * Total number of operations.
@@ -173,9 +189,12 @@ export interface AggregatedMetrics {
 	byTool: Record<string, ToolMetricsSummary>;
 }
 
-/**
- * Metrics summary for a single tool.
- */
+ /**
+  * 単一ツールのメトリクス概要
+  * @param count 操作回数
+  * @param totalDurationMs 総実行時間
+  * @param averageDurationMs 平均実行時間
+  */
 export interface ToolMetricsSummary {
 	/**
 	 * Number of operations for this tool.
@@ -193,9 +212,11 @@ export interface ToolMetricsSummary {
 	averageDurationMs: number;
 }
 
-/**
- * Aggregate multiple metrics into a summary.
- */
+ /**
+  * メトリクスを集計してサマリーを生成する
+  * @param metrics - 検索メトリクスの配列
+  * @returns 集計されたメトリクスサマリー
+  */
 export function aggregateMetrics(metrics: SearchMetrics[]): AggregatedMetrics {
 	if (metrics.length === 0) {
 		return {
@@ -252,9 +273,11 @@ export function aggregateMetrics(metrics: SearchMetrics[]): AggregatedMetrics {
 // Metrics Formatting
 // ============================================
 
-/**
- * Format metrics for display.
- */
+ /**
+  * 検索メトリクスを表示用にフォーマットする
+  * @param metrics 検索メトリクス
+  * @returns フォーマットされた文字列
+  */
 export function formatMetrics(metrics: SearchMetrics): string {
 	const lines: string[] = [
 		`Tool: ${metrics.toolName}`,
@@ -269,9 +292,11 @@ export function formatMetrics(metrics: SearchMetrics): string {
 	return lines.join("\n");
 }
 
-/**
- * Format duration in human-readable form.
- */
+ /**
+  * ミリ秒を読みやすい時間文字列に変換
+  * @param ms ミリ秒単位の時間
+  * @returns フォーマットされた時間文字列
+  */
 export function formatDuration(ms: number): string {
 	if (ms < 1) {
 		return `${(ms * 1000).toFixed(0)}us`;
@@ -289,10 +314,12 @@ export function formatDuration(ms: number): string {
 // Performance Thresholds
 // ============================================
 
-/**
- * Performance thresholds for search operations.
- * Used to identify slow operations.
- */
+ /**
+  * 検索操作のパフォーマンスしきい値
+  * @param fast 高速操作の最大許容時間 (ms)
+  * @param normal 通常操作の最大許容時間 (ms)
+  * @param slow 低速操作の最大許容時間 (ms)
+  */
 export interface PerformanceThresholds {
 	/**
 	 * Maximum acceptable duration for fast operations (ms).
@@ -319,9 +346,12 @@ export const DEFAULT_THRESHOLDS: PerformanceThresholds = {
 	slow: 5000,   // < 5s is acceptable, > 5s is slow
 };
 
-/**
- * Classify operation speed based on duration.
- */
+ /**
+  * 実行時間に基づいて速度を分類する
+  * @param durationMs 実行時間（ミリ秒）
+  * @param thresholds 各速度の閾値
+  * @returns "fast", "normal", "slow", "very-slow" のいずれか
+  */
 export function classifySpeed(
 	durationMs: number,
 	thresholds: PerformanceThresholds = DEFAULT_THRESHOLDS

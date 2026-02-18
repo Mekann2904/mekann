@@ -11,9 +11,14 @@
 // Types
 // ============================================
 
-/**
- * Entry in the search history.
- */
+ /**
+  * 検索履歴のエントリ。
+  * @param timestamp 検索実行時のタイムスタンプ
+  * @param tool 使用したツール名
+  * @param params 検索パラメータ
+  * @param query 検索クエリ
+  * @param results 検索結果
+  */
 export interface SearchHistoryEntry {
 	/**
 	 * Timestamp when the search was performed (Date.now()).
@@ -46,9 +51,11 @@ export interface SearchHistoryEntry {
 	accepted: boolean;
 }
 
-/**
- * Configuration for history management.
- */
+ /**
+  * 履歴管理の設定。
+  * @param maxEntries 保持する最大エントリ数。
+  * @param maxResultsPerEntry エントリごとに保存する最大結果パス数。
+  */
 export interface HistoryConfig {
 	/**
 	 * Maximum number of entries to keep.
@@ -61,9 +68,13 @@ export interface HistoryConfig {
 	maxResultsPerEntry: number;
 }
 
-/**
- * Query with metadata for suggestions.
- */
+ /**
+  * サジェッション用のクエリとメタデータ
+  * @param query クエリ文字列
+  * @param count 使用回数
+  * @param lastUsed 最終使用日時
+  * @param wasAccepted 受け入れられたかどうか
+  */
 export interface QuerySuggestion {
 	/**
 	 * The query string.
@@ -102,10 +113,11 @@ export const DEFAULT_HISTORY_CONFIG: HistoryConfig = {
 // History Store
 // ============================================
 
-/**
- * In-memory search history store.
- * Designed for easy extension to persistent storage.
- */
+ /**
+  * 検索履歴を管理するクラス
+  * @constructor
+  * @param config - 履歴の設定（オプション）
+  */
 export class SearchHistory {
 	private entries: SearchHistoryEntry[] = [];
 	private config: HistoryConfig;
@@ -114,9 +126,11 @@ export class SearchHistory {
 		this.config = { ...DEFAULT_HISTORY_CONFIG, ...config };
 	}
 
-	/**
-	 * Add a new entry to the history.
-	 */
+	 /**
+	  * 履歴に新しいエントリを追加する。
+	  * @param entry - 追加するエントリ（タイムスタンプと承認状態を除く）
+	  * @returns 追加された完全なエントリ情報
+	  */
 	addHistoryEntry(entry: Omit<SearchHistoryEntry, "timestamp" | "accepted">): SearchHistoryEntry {
 		const fullEntry: SearchHistoryEntry = {
 			...entry,
@@ -135,9 +149,12 @@ export class SearchHistory {
 		return fullEntry;
 	}
 
-	/**
-	 * Get recent queries, optionally filtered by tool.
-	 */
+	 /**
+	  * 最近の検索クエリを取得する
+	  * @param limit 取得件数（デフォルト: 10）
+	  * @param tool フィルタリングするツール名（オプション）
+	  * @returns 検索クエリの候補リスト
+	  */
 	getRecentQueries(limit: number = 10, tool?: string): QuerySuggestion[] {
 		const queryMap = new Map<string, QuerySuggestion>();
 
@@ -172,10 +189,12 @@ export class SearchHistory {
 			.slice(0, limit);
 	}
 
-	/**
-	 * Find queries related to the given query.
-	 * Uses simple substring matching and shared results.
-	 */
+	 /**
+	  * 指定されたクエリに関連するクエリを検索
+	  * @param query 検索クエリ
+	  * @param limit 最大取得数
+	  * @returns 関連クエリの配列
+	  */
 	getRelatedQueries(query: string, limit: number = 5): QuerySuggestion[] {
 		const normalizedQuery = query.toLowerCase();
 		const related = new Map<string, QuerySuggestion>();
@@ -212,9 +231,11 @@ export class SearchHistory {
 			.slice(0, limit);
 	}
 
-	/**
-	 * Mark an entry as accepted (results were used).
-	 */
+	 /**
+	  * 検索結果が使用されたエントリをマークする
+	  * @param timestamp エントリのタイムスタンプ
+	  * @returns 更新に成功したかどうか
+	  */
 	markAccepted(timestamp: number): boolean {
 		const entry = this.entries.find((e) => e.timestamp === timestamp);
 		if (entry) {
@@ -224,23 +245,27 @@ export class SearchHistory {
 		return false;
 	}
 
-	/**
-	 * Get entry by timestamp.
-	 */
+	 /**
+	  * タイムスタンプからエントリを取得する
+	  * @param timestamp タイムスタンプ
+	  * @returns 一致するエントリ、または undefined
+	  */
 	getEntry(timestamp: number): SearchHistoryEntry | undefined {
 		return this.entries.find((e) => e.timestamp === timestamp);
 	}
 
-	/**
-	 * Get all entries (for debugging/export).
-	 */
+	 /**
+	  * 全エントリを取得する（デバッグ/エクスポート用）
+	  * @returns 検索履歴エントリの配列
+	  */
 	getAllEntries(): SearchHistoryEntry[] {
 		return [...this.entries];
 	}
 
-	/**
-	 * Clear all history.
-	 */
+	 /**
+	  * 履歴をすべてクリアする
+	  * @returns なし
+	  */
 	clear(): void {
 		this.entries = [];
 	}
@@ -286,9 +311,10 @@ export class SearchHistory {
  */
 let globalHistory: SearchHistory | undefined;
 
-/**
- * Get the global history instance.
- */
+ /**
+  * グローバル検索履歴を取得する。
+  * @returns 検索履歴オブジェクト
+  */
 export function getSearchHistory(): SearchHistory {
 	if (!globalHistory) {
 		globalHistory = new SearchHistory();
@@ -296,9 +322,10 @@ export function getSearchHistory(): SearchHistory {
 	return globalHistory;
 }
 
-/**
- * Reset the global history instance (for testing).
- */
+ /**
+  * グローバル履歴インスタンスをリセット
+  * @returns {void}
+  */
 export function resetSearchHistory(): void {
 	globalHistory = undefined;
 }
@@ -307,9 +334,12 @@ export function resetSearchHistory(): void {
 // Utility Functions
 // ============================================
 
-/**
- * Extract the primary query string from tool parameters.
- */
+ /**
+  * ツールのパラメータからクエリ文字列を抽出する
+  * @param tool ツール名
+  * @param params パラメータオブジェクト
+  * @returns 抽出されたクエリ文字列
+  */
 export function extractQuery(tool: string, params: Record<string, unknown>): string {
 	switch (tool) {
 		case "file_candidates":
@@ -325,9 +355,13 @@ export function extractQuery(tool: string, params: Record<string, unknown>): str
 	}
 }
 
-/**
- * Create a history entry from tool execution.
- */
+ /**
+  * ツール実行から履歴エントリを作成する
+  * @param tool ツール名
+  * @param params 実行パラメータ
+  * @param results 実行結果の文字列配列
+  * @returns タイムスタンプと受理フラグを除く履歴エントリ
+  */
 export function createHistoryEntry(
 	tool: string,
 	params: Record<string, unknown>,

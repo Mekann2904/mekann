@@ -95,12 +95,10 @@ function loadAuthConfig(): AuthConfig {
   return {};
 }
 
-/**
- * Get OpenAI API key from auth.json or environment variable.
- * Resolution order (pi's official method):
- * 1. auth.json entry
- * 2. OPENAI_API_KEY environment variable
- */
+ /**
+  * OpenAI APIキーを取得する
+  * @returns APIキー（見つからない場合はnull）
+  */
 export function getOpenAIKey(): string | null {
   const auth = loadAuthConfig();
   if (auth.openai?.key) {
@@ -114,6 +112,10 @@ export function getOpenAIKey(): string | null {
 // Provider Implementation
 // ============================================================================
 
+ /**
+  * OpenAI埋め込みプロバイダー
+  * @implements {EmbeddingProvider}
+  */
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   readonly id = "openai";
   readonly name = "OpenAI Embeddings";
@@ -127,10 +129,19 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     offlineCapable: false,
   };
 
+  /**
+   * OpenAI APIが利用可能かどうかを確認する
+   * @returns APIキーが設定されている場合はtrue
+   */
   async isAvailable(): Promise<boolean> {
     return getOpenAIKey() !== null;
   }
 
+   /**
+    * テキストの埋め込みベクトルを生成する
+    * @param text 入力テキスト
+    * @returns 埋め込みベクトル、またはAPIキー未設定時はnull
+    */
   async generateEmbedding(text: string): Promise<number[] | null> {
     const apiKey = getOpenAIKey();
     if (!apiKey) {
@@ -161,6 +172,11 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     }
   }
 
+   /**
+    * テキストのリストからエンベディングを一括生成
+    * @param texts - エンベディングを生成するテキストの配列
+    * @returns 各テキストのエンベディング配列、失敗時はnull
+    */
   async generateEmbeddingsBatch(texts: string[]): Promise<(number[] | null)[]> {
     const apiKey = getOpenAIKey();
     if (!apiKey) {

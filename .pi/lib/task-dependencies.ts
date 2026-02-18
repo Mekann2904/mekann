@@ -3,14 +3,14 @@
 // Why: Enables dependency-aware scheduling where tasks can wait for other tasks to complete.
 // Related: .pi/lib/priority-scheduler.ts, .pi/extensions/agent-runtime.ts
 
-/**
- * Task status in the dependency graph.
- */
+ /**
+  * 依存関係グラフにおけるタスクの状態
+  */
 export type TaskDependencyStatus = "pending" | "ready" | "running" | "completed" | "failed" | "cancelled";
 
-/**
- * Task node in the dependency graph.
- */
+ /**
+  * 依存関係グラフ内のタスクノード
+  */
 export interface TaskDependencyNode {
   /** Unique task identifier */
   id: string;
@@ -36,9 +36,13 @@ export interface TaskDependencyNode {
   estimatedDurationMs?: number;
 }
 
-/**
- * Options for adding a task to the graph.
- */
+ /**
+  * タスクをグラフに追加するためのオプション
+  * @param name 表示用のタスク名
+  * @param dependencies 先行して完了する必要があるタスクIDの配列
+  * @param priority スケジューリングの優先度
+  * @param estimatedDurationMs 推定実行時間（ミリ秒）
+  */
 export interface AddTaskOptions {
   /** Task name for display */
   name?: string;
@@ -50,29 +54,32 @@ export interface AddTaskOptions {
   estimatedDurationMs?: number;
 }
 
-/**
- * Result of cycle detection.
- */
+ /**
+  * 循環検出の結果
+  * @param hasCycle - 循環があるかどうか
+  * @param cyclePath - 循環パス（存在しない場合はnull）
+  */
 export interface CycleDetectionResult {
   hasCycle: boolean;
   cyclePath: string[] | null;
 }
 
-/**
- * Task dependency graph with cycle detection and topological sorting.
- */
+ /**
+  * タスク依存関係グラフ
+  * @param id - タスクの一意なID
+  * @param options - 依存関係を含むタスクオプション
+  * @returns 作成されたタスクノード
+  */
 export class TaskDependencyGraph {
   private nodes: Map<string, TaskDependencyNode> = new Map();
   private readyQueue: string[] = [];
 
-  /**
-   * Add a task to the dependency graph.
-   *
-   * @param id - Unique task identifier
-   * @param options - Task options including dependencies
-   * @returns The created task node
-   * @throws Error if task already exists or dependency doesn't exist
-   */
+   /**
+    * タスクを依存関係グラフに追加する
+    * @param id - 一意なタスクID
+    * @param options - 依存関係を含むタスクオプション
+    * @returns 作成されたタスクノード
+    */
   addTask(id: string, options: AddTaskOptions = {}): TaskDependencyNode {
     if (this.nodes.has(id)) {
       throw new Error(`Task with id "${id}" already exists`);
@@ -116,12 +123,11 @@ export class TaskDependencyGraph {
     return node;
   }
 
-  /**
-   * Remove a task from the graph.
-   *
-   * @param id - Task ID to remove
-   * @returns True if task was removed
-   */
+   /**
+    * タスクをグラフから削除する
+    * @param id - 削除するタスクID
+    * @returns 削除された場合はtrue
+    */
   removeTask(id: string): boolean {
     const node = this.nodes.get(id);
     if (!node) {
@@ -155,30 +161,37 @@ export class TaskDependencyGraph {
     return true;
   }
 
-  /**
-   * Check if a task exists.
-   */
+   /**
+    * タスクが存在するか確認する
+    * @param id タスクID
+    * @returns 存在する場合はtrue
+    */
   hasTask(id: string): boolean {
     return this.nodes.has(id);
   }
 
-  /**
-   * Get a task by ID.
-   */
+   /**
+    * IDでタスクを取得する
+    * @param id タスクID
+    * @returns タスクノード。存在しない場合はundefined
+    */
   getTask(id: string): TaskDependencyNode | undefined {
     return this.nodes.get(id);
   }
 
-  /**
-   * Get all tasks.
-   */
+   /**
+    * 全タスクを取得する
+    * @returns タスクの配列
+    */
   getAllTasks(): TaskDependencyNode[] {
     return Array.from(this.nodes.values());
   }
 
-  /**
-   * Check if a task is ready to run (all dependencies completed).
-   */
+   /**
+    * タスクが実行可能か判定する
+    * @param id タスクID
+    * @returns 実行可能な場合はtrue
+    */
   isTaskReady(id: string): boolean {
     const node = this.nodes.get(id);
     if (!node) {
@@ -195,25 +208,29 @@ export class TaskDependencyGraph {
     return true;
   }
 
-  /**
-   * Get all tasks that are ready to run.
-   */
+   /**
+    * 実行準備が完了したタスクを全て取得する。
+    * @returns 実行準備が完了したタスクノードの配列
+    */
   getReadyTasks(): TaskDependencyNode[] {
     return this.readyQueue
       .map((id) => this.nodes.get(id))
       .filter((node): node is TaskDependencyNode => node?.status === "ready");
   }
 
-  /**
-   * Get ready task IDs.
-   */
+   /**
+    * 実行可能なタスクIDのリストを取得する
+    * @returns タスクIDの配列
+    */
   getReadyTaskIds(): string[] {
     return [...this.readyQueue];
   }
 
-  /**
-   * Mark a task as running.
-   */
+   /**
+    * タスクを実行中にマークする
+    * @param id タスクID
+    * @returns なし
+    */
   markRunning(id: string): void {
     const node = this.nodes.get(id);
     if (!node) {
@@ -234,9 +251,11 @@ export class TaskDependencyGraph {
     }
   }
 
-  /**
-   * Mark a task as completed.
-   */
+   /**
+    * タスクを完了状態にする
+    * @param id タスクID
+    * @returns なし
+    */
   markCompleted(id: string): void {
     const node = this.nodes.get(id);
     if (!node) {
@@ -258,9 +277,12 @@ export class TaskDependencyGraph {
     }
   }
 
-  /**
-   * Mark a task as failed.
-   */
+   /**
+    * タスクを失敗状態にする
+    * @param id タスクID
+    * @param error エラーオブジェクト
+    * @returns なし
+    */
   markFailed(id: string, error?: Error): void {
     const node = this.nodes.get(id);
     if (!node) {
@@ -286,9 +308,11 @@ export class TaskDependencyGraph {
     }
   }
 
-  /**
-   * Mark a task as cancelled.
-   */
+   /**
+    * タスクをキャンセル済みにする
+    * @param id タスクID
+    * @returns なし
+    */
   markCancelled(id: string): void {
     const node = this.nodes.get(id);
     if (!node) {
@@ -313,10 +337,10 @@ export class TaskDependencyGraph {
     }
   }
 
-  /**
-   * Detect if there are any cycles in the graph.
-   * Uses DFS with coloring (white/gray/black).
-   */
+   /**
+    * グラフ内のサイクルを検出する
+    * @returns サイクル検出の結果
+    */
   detectCycle(): CycleDetectionResult {
     const WHITE = 0; // Not visited
     const GRAY = 1; // Currently visiting (in recursion stack)
@@ -379,10 +403,10 @@ export class TaskDependencyGraph {
     return { hasCycle: false, cyclePath: null };
   }
 
-  /**
-   * Get topological order of all tasks.
-   * Returns null if graph has cycles.
-   */
+   /**
+    * 全タスクのトポロジカル順序を取得する
+    * @returns 順序付けされたタスクIDの配列、サイクルがある場合はnull
+    */
   getTopologicalOrder(): string[] | null {
     if (this.detectCycle().hasCycle) {
       return null;
@@ -414,9 +438,10 @@ export class TaskDependencyGraph {
     return result;
   }
 
-  /**
-   * Get statistics about the graph.
-   */
+   /**
+    * グラフの統計情報を取得する
+    * @returns グラフの統計情報を含むオブジェクト
+    */
   getStats(): {
     total: number;
     byStatus: Record<TaskDependencyStatus, number>;
@@ -478,17 +503,19 @@ export class TaskDependencyGraph {
     };
   }
 
-  /**
-   * Clear all tasks from the graph.
-   */
+   /**
+    * グラフから全タスクを削除する。
+    * @returns void
+    */
   clear(): void {
     this.nodes.clear();
     this.readyQueue = [];
   }
 
-  /**
-   * Export graph as a simple object for serialization.
-   */
+   /**
+    * グラフをシリアライズ用オブジェクトとしてエクスポートする。
+    * @returns タスク情報、ID、状態、依存関係を含むオブジェクトの配列。
+    */
   export(): {
     tasks: Array<{
       id: string;
@@ -509,9 +536,11 @@ export class TaskDependencyGraph {
     return { tasks };
   }
 
-  /**
-   * Import graph from exported data.
-   */
+   /**
+    * エクスポートデータからグラフを復元します。
+    * @param data エクスポートされたタスクデータ
+    * @returns なし
+    */
   import(data: { tasks: Array<{ id: string; name?: string; dependencies?: string[]; priority?: string }> }): void {
     this.clear();
 

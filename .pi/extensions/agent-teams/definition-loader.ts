@@ -57,9 +57,11 @@ function getCandidateTeamDefinitionsDirs(cwd: string): string[] {
   return Array.from(new Set(candidates));
 }
 
-/**
- * Parse a team markdown file with YAML frontmatter.
- */
+ /**
+  * YAMLフロントマター付きチームMarkdownを解析
+  * @param filePath ファイルパス
+  * @returns 解析結果、失敗時はnull
+  */
 export function parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | null {
   try {
     const content = readFileSync(filePath, "utf-8");
@@ -90,9 +92,12 @@ export function parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | nu
   }
 }
 
-/**
- * Load team definitions from markdown files.
- */
+ /**
+  * ディレクトリからチーム定義を読み込む
+  * @param definitionsDir 定義ファイルが含まれるディレクトリのパス
+  * @param nowIso 現在日時のISO形式文字列
+  * @returns 読み込まれたチーム定義の配列
+  */
 export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): TeamDefinition[] {
   const teams: TeamDefinition[] = [];
   const entries = readdirSync(definitionsDir, { withFileTypes: true });
@@ -133,18 +138,12 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
   return teams;
 }
 
-/**
- * Markdownファイルからチーム定義を読み込む
- *
- * 指定された作業ディレクトリ内の候補ディレクトリからMarkdown形式の
- * チーム定義ファイルを探索し、TeamDefinition配列として返します。
- *
- * @param cwd - 作業ディレクトリのパス
- * @param nowIso - 作成日時・更新日時として設定するISO形式のタイムスタンプ
- * @returns 読み込まれたチーム定義の配列
- * @example
- * const teams = loadTeamDefinitionsFromMarkdown('/path/to/project', new Date().toISOString());
- */
+ /**
+  * Markdownからチーム定義を読み込む
+  * @param cwd - 作業ディレクトリのパス
+  * @param nowIso - 作成日時・更新日時として設定するISO形式のタイムスタンプ
+  * @returns 読み込まれたチーム定義の配列
+  */
 export function loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): TeamDefinition[] {
   const candidates = getCandidateTeamDefinitionsDirs(cwd);
   const missingDirs: string[] = [];
@@ -397,10 +396,12 @@ function getHardcodedDefaultTeams(nowIso: string): TeamDefinition[] {
   ];
 }
 
-/**
- * Load team definitions from Markdown files if available,
- * otherwise fallback to hardcoded defaults.
- */
+ /**
+  * デフォルトのチーム定義を作成する
+  * @param nowIso ISO形式の日時文字列
+  * @param cwd カレントワーキングディレクトリ（省略可）
+  * @returns チーム定義の配列
+  */
 export function createDefaultTeams(nowIso: string, cwd?: string): TeamDefinition[] {
   const effectiveCwd = cwd || process.cwd();
   const markdownTeams = loadTeamDefinitionsFromMarkdown(effectiveCwd, nowIso);
@@ -456,6 +457,12 @@ const LEGACY_DEFAULT_MEMBER_IDS_BY_TEAM: Record<string, Set<string>> = {
   ]),
 };
 
+ /**
+  * 既存とデフォルトのチーム定義をマージする
+  * @param existing 既存のチーム定義
+  * @param fallback デフォルトのチーム定義
+  * @returns マージ後のチーム定義
+  */
 export function mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinition): TeamDefinition {
   const existingMembers = new Map(existing.members.map((member) => [member.id, member]));
   const fallbackMemberIds = new Set(fallback.members.map((member) => member.id));
@@ -505,6 +512,13 @@ export function mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinit
   };
 }
 
+ /**
+  * デフォルトチーム設定を適用・統合する
+  * @param storage 既存のチーム定義ストレージ
+  * @param nowIso 現在日時のISO文字列
+  * @param cwd カレントワーキングディレクトリ（任意）
+  * @returns デフォルト設定が統合されたストレージ
+  */
 export function ensureDefaults(
   storage: TeamStorage,
   nowIso: string,

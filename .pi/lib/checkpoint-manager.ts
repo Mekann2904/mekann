@@ -21,14 +21,22 @@ export type CheckpointSource =
   | "agent_team_run"
   | "agent_team_run_parallel";
 
-/**
- * Task priority for checkpoint ordering.
- */
+ /**
+  * チェックポイントの優先度レベル
+  */
 export type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background";
 
-/**
- * Checkpoint state for a long-running task.
- */
+ /**
+  * チェックポイント状態を表すインターフェース
+  * @param id チェックポイントの一意な識別子
+  * @param taskId 関連するタスクの識別子
+  * @param source タスクを作成したソースツール
+  * @param provider プロバイダ名（例: "anthropic"）
+  * @param model モデル名（例: "claude-sonnet-4"）
+  * @param priority タスクの優先度レベル
+  * @param state タスク固有の状態（JSONとしてシリアライズ）
+  * @param progress 進捗インジケーター（0.0 = 開始, 1.0 = 完了）
+  */
 export interface Checkpoint {
   /** Unique checkpoint identifier */
   id: string;
@@ -54,9 +62,13 @@ export interface Checkpoint {
   metadata?: Record<string, unknown>;
 }
 
-/**
- * Result of checkpoint save operation.
- */
+ /**
+  * チェックポイント保存操作の結果
+  * @param success 成功したかどうか
+  * @param checkpointId チェックポイントID
+  * @param path 保存先パス
+  * @param error エラーメッセージ（失敗時）
+  */
 export interface CheckpointSaveResult {
   success: boolean;
   checkpointId: string;
@@ -64,9 +76,13 @@ export interface CheckpointSaveResult {
   error?: string;
 }
 
-/**
- * Result of preemption operation.
- */
+ /**
+  * 割り込み操作の結果を表します
+  * @param success 操作が成功したかどうか
+  * @param checkpointId チェックポイントID
+  * @param error エラーメッセージ
+  * @param resumedFromCheckpoint チェックポイントから再開したかどうか
+  */
 export interface PreemptionResult {
   success: boolean;
   checkpointId?: string;
@@ -74,9 +90,13 @@ export interface PreemptionResult {
   resumedFromCheckpoint?: boolean;
 }
 
-/**
- * Checkpoint manager configuration.
- */
+ /**
+  * チェックポイントマネージャーの設定
+  * @param checkpointDir チェックポイントファイルの保存ディレクトリ
+  * @param defaultTtlMs チェックポイントのデフォルト存続期間（ミリ秒）
+  * @param maxCheckpoints 保持するチェックポイントの最大数
+  * @param cleanupIntervalMs 自動クリーニングの間隔（ミリ秒）
+  */
 export interface CheckpointManagerConfig {
   /** Directory for storing checkpoint files */
   checkpointDir: string;
@@ -88,9 +108,16 @@ export interface CheckpointManagerConfig {
   cleanupIntervalMs: number;
 }
 
-/**
- * Checkpoint statistics.
- */
+ /**
+  * チェックポイント統計情報
+  * @param totalCount 総チェックポイント数
+  * @param totalSizeBytes 総サイズ（バイト）
+  * @param oldestCreatedAt 最古の作成日時
+  * @param newestCreatedAt 最新の作成日時
+  * @param bySource ソース別のカウント
+  * @param byPriority 優先度別のカウント
+  * @param expiredCount 有効期限切れの数
+  */
 export interface CheckpointStats {
   totalCount: number;
   totalSizeBytes: number;
@@ -203,10 +230,11 @@ function getFileSizeBytes(filePath: string): number {
 // Checkpoint Manager Implementation
 // ============================================================================
 
-/**
- * Initialize the checkpoint manager.
- * Must be called before using other checkpoint operations.
- */
+ /**
+  * チェックポイントマネージャーを初期化する
+  * @param configOverrides デフォルト設定を上書きするオプション設定
+  * @returns なし
+  */
 export function initCheckpointManager(
   configOverrides?: Partial<CheckpointManagerConfig>
 ): void {
@@ -235,9 +263,10 @@ export function initCheckpointManager(
   };
 }
 
-/**
- * Get checkpoint manager instance (initializes if needed).
- */
+ /**
+  * チェックポイントマネージャーを取得
+  * @returns チェックポイント管理オブジェクト
+  */
 export function getCheckpointManager(): {
   save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
   load: (taskId: string) => Promise<Checkpoint | null>;
@@ -565,9 +594,10 @@ function getCheckpointStats(): CheckpointStats {
   return stats;
 }
 
-/**
- * Reset checkpoint manager state (for testing).
- */
+ /**
+  * チェックポイントマネージャをリセット
+  * @returns 戻り値なし
+  */
 export function resetCheckpointManager(): void {
   if (managerState?.cleanupTimer) {
     clearInterval(managerState.cleanupTimer);
@@ -575,16 +605,18 @@ export function resetCheckpointManager(): void {
   managerState = null;
 }
 
-/**
- * Check if checkpoint manager is initialized.
- */
+ /**
+  * チェックポイントマネージャーが初期化済みか判定
+  * @returns 初期化済みの場合はtrue、未初期化の場合はfalse
+  */
 export function isCheckpointManagerInitialized(): boolean {
   return managerState?.initialized ?? false;
 }
 
-/**
- * Get checkpoint directory path.
- */
+ /**
+  * チェックポイントディレクトリのパスを取得する
+  * @returns チェックポイントディレクトリのパス
+  */
 export function getCheckpointDir(): string {
   if (!managerState?.initialized) {
     initCheckpointManager();
@@ -596,9 +628,10 @@ export function getCheckpointDir(): string {
 // Environment Variable Configuration
 // ============================================================================
 
-/**
- * Get checkpoint manager config from environment variables.
- */
+ /**
+  * 環境変数からチェックポイント設定を取得する。
+  * @returns チェックポイントマネージャーの設定オブジェクト。
+  */
 export function getCheckpointConfigFromEnv(): Partial<CheckpointManagerConfig> {
   const config: Partial<CheckpointManagerConfig> = {};
 

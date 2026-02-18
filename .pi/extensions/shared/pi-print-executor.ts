@@ -15,6 +15,17 @@ const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
 /** Default idle timeout for subagent execution (5 minutes) */
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
 
+ /**
+  * プリント実行のオプション
+  * @param entityLabel エラーメッセージ用エンティティタイプラベル
+  * @param provider プロバイダーのオーバーライド（オプション）
+  * @param model モデルのオーバーライド（オプション）
+  * @param prompt piに送信するプロンプト
+  * @param timeoutMs アイドルタイムアウト（ミリ秒、出力ごとにリセット、0で無効、デフォルト300000）
+  * @param signal キャンセル用AbortSignal（オプション）
+  * @param onStdoutChunk stdoutチャンク用コールバック（オプション）
+  * @param onStderrChunk stderrチャンク用コールバック（オプション）
+  */
 export interface PrintExecutorOptions {
   /** Entity type label for error messages (e.g., "subagent", "agent team member") */
   entityLabel: string;
@@ -38,6 +49,11 @@ export interface PrintExecutorOptions {
   onThinkingDelta?: (delta: string) => void;
 }
 
+ /**
+  * 印刷コマンドの実行結果
+  * @param output 生成された出力テキスト
+  * @param latencyMs 実行時間（ミリ秒）
+  */
 export interface PrintCommandResult {
   output: string;
   latencyMs: number;
@@ -137,10 +153,11 @@ function combineTextAndThinking(text: string, thinking: string): string {
   return parts.join("\n");
 }
 
-/**
- * Execute pi in JSON mode and return the result.
- * Uses idle timeout strategy: timer resets on each output, allowing long tasks to continue.
- */
+ /**
+  * Piプリントモードを実行します
+  * @param input - 実行オプション
+  * @returns 実行コマンドの結果
+  */
 export async function runPiPrintMode(
   input: PrintExecutorOptions,
 ): Promise<PrintCommandResult> {
@@ -340,6 +357,12 @@ export async function runPiPrintMode(
 // callModelViaPi - Used by loop.ts and rsa.ts
 // ============================================================================
 
+ /**
+  * モデル呼び出しのオプション
+  * @param provider プロバイダID
+  * @param id モデルID
+  * @param thinkingLevel 思考レベル（オプション）
+  */
 export interface CallModelOptions {
   /** Provider ID */
   provider: string;
@@ -349,6 +372,16 @@ export interface CallModelOptions {
   thinkingLevel?: string;
 }
 
+ /**
+  * pi経由でモデルを呼び出すためのオプション
+  * @param model モデル設定
+  * @param prompt piに送信するプロンプト
+  * @param timeoutMs タイムアウト（ミリ秒、0で無効）
+  * @param signal キャンセル用のAbortSignal
+  * @param onChunk stdoutチャンク（生JSON行）用コールバック
+  * @param onTextDelta テキストデルタイベント用コールバック
+  * @param entityLabel エラーメッセージ用エンティティラベル（デフォルト: "RSA"）
+  */
 export interface CallModelViaPiOptions {
   /** Model configuration */
   model: CallModelOptions;
@@ -366,10 +399,11 @@ export interface CallModelViaPiOptions {
   entityLabel?: string;
 }
 
-/**
- * Call model via pi --mode json for loop and RSA modules.
- * Uses idle timeout strategy with streaming support.
- */
+ /**
+  * piを介してモデルを呼び出す
+  * @param options 呼び出しオプション
+  * @returns モデルからのレスポンス文字列
+  */
 export async function callModelViaPi(options: CallModelViaPiOptions): Promise<string> {
   const { model, prompt, timeoutMs, signal, onChunk, onTextDelta, entityLabel = "RSA" } = options;
 

@@ -79,9 +79,13 @@ export const STABLE_MAX_RATE_LIMIT_WAIT_MS = 90_000;
  */
 export type EntityType = "subagent" | "team-member";
 
-/**
- * Configuration for entity-specific behavior.
- */
+ /**
+  * エンティティ固有の挙動を設定します。
+  * @param type エンティティの種類
+  * @param label エンティティのラベル
+  * @param emptyOutputMessage 出力が空の場合のメッセージ
+  * @param defaultSummaryFallback デフォルトの要約フォールバック
+  */
 export interface EntityConfig {
   type: EntityType;
   label: string;
@@ -113,9 +117,13 @@ export const TEAM_MEMBER_CONFIG: EntityConfig = {
 // Normalized Output Types
 // ============================================================================
 
-/**
- * Result of normalizing entity output to required format.
- */
+ /**
+  * エンティティ出力を正規化した結果
+  * @param ok 成功したかどうか
+  * @param output 出力文字列
+  * @param degraded 品質が低下しているかどうか
+  * @param reason 理由（オプション）
+  */
 export interface NormalizedEntityOutput {
   ok: boolean;
   output: string;
@@ -127,9 +135,12 @@ export interface NormalizedEntityOutput {
 // Field Candidate Picker
 // ============================================================================
 
-/**
- * Options for pickFieldCandidate function.
- */
+ /**
+  * pickFieldCandidate関数のオプション
+  * @param maxLength 候補テキストの最大長
+  * @param excludeLabels 除外対象のラベル（例: SUMMARY:, RESULT:）
+  * @param fallback 有効な候補が見つからない場合の代替テキスト
+  */
 export interface PickFieldCandidateOptions {
   /** Maximum length for the candidate text */
   maxLength: number;
@@ -139,21 +150,12 @@ export interface PickFieldCandidateOptions {
   fallback?: string;
 }
 
-/**
- * Pick a candidate text for a structured field from unstructured output.
- * Used to extract SUMMARY, CLAIM, or other field values when output
- * doesn't conform to expected format.
- *
- * Algorithm:
- * 1. Split text into non-empty lines
- * 2. Find first line that doesn't start with excluded labels
- * 3. Clean markdown formatting and extra whitespace
- * 4. Truncate to maxLength with ellipsis if needed
- *
- * @param text - Raw output text to extract candidate from
- * @param options - Configuration options
- * @returns Extracted candidate text or fallback
- */
+ /**
+  * テキストから候補となるフィールドを抽出する
+  * @param text 抽出元の生テキスト
+  * @param options 設定オプション
+  * @returns 抽出された候補テキスト
+  */
 export function pickFieldCandidate(
   text: string,
   options: PickFieldCandidateOptions,
@@ -197,13 +199,11 @@ export function pickFieldCandidate(
     : `${compact.slice(0, maxLength)}...`;
 }
 
-/**
- * Pick candidate text for SUMMARY field.
- * Convenience wrapper with subagent-specific defaults.
- *
- * @param text - Raw output text
- * @returns Extracted summary candidate
- */
+ /**
+  * SUMMARYフィールドの候補テキストを選択する
+  * @param text - 生の出力テキスト
+  * @returns 抽出された要約の候補
+  */
 export function pickSummaryCandidate(text: string): string {
   return pickFieldCandidate(text, {
     maxLength: 90,
@@ -231,9 +231,15 @@ export function pickClaimCandidate(text: string): string {
 // Entity Output Normalization
 // ============================================================================
 
-/**
- * Options for normalizeEntityOutput function.
- */
+ /**
+  * normalizeEntityOutput関数のオプション
+  * @param config コンテキスト依存の動作のためのエンティティ設定
+  * @param validateFn 出力形式をチェックするバリデーション関数
+  * @param requiredLabels 構造化出力に必要なラベル
+  * @param pickSummary フィールド候補を抽出する関数
+  * @param includeConfidence CONFIDENCEフィールドを含めるかどうか（チームメンバーのみ）
+  * @param formatAdditionalFields 追加フィールド用のカスタムフォーマッタ
+  */
 export interface NormalizeEntityOutputOptions {
   /** Entity configuration for context-specific behavior */
   config: EntityConfig;
@@ -249,15 +255,12 @@ export interface NormalizeEntityOutputOptions {
   formatAdditionalFields?: (text: string) => string[];
 }
 
-/**
- * Normalize entity output to required structured format.
- * When output doesn't conform to expected format, attempts to restructure
- * it while preserving the original content.
- *
- * @param output - Raw output text
- * @param options - Normalization options
- * @returns Normalized output result
- */
+ /**
+  * エンティティ出力を正規化
+  * @param output - 生の出力テキスト
+  * @param options - 正規化オプション
+  * @returns 正規化された出力結果
+  */
 export function normalizeEntityOutput(
   output: string,
   options: NormalizeEntityOutputOptions,
@@ -334,13 +337,12 @@ export function normalizeEntityOutput(
 // Utility Functions
 // ============================================================================
 
-/**
- * Check if error message indicates empty output failure.
- *
- * @param message - Error message to check
- * @param config - Entity configuration
- * @returns True if message indicates empty output
- */
+ /**
+  * 出力が空であることを示すエラーメッセージか判定する
+  * @param message - チェック対象のエラーメッセージ
+  * @param config - エンティティ設定
+  * @returns メッセージが空出力を示す場合はtrue
+  */
 export function isEmptyOutputFailureMessage(
   message: string,
   config: EntityConfig,
@@ -348,12 +350,11 @@ export function isEmptyOutputFailureMessage(
   return message.toLowerCase().includes(config.emptyOutputMessage.toLowerCase());
 }
 
-/**
- * Build a human-readable failure summary from error message.
- *
- * @param message - Error message
- * @returns Short failure summary
- */
+ /**
+  * エラーの要約を作成する
+  * @param message - エラーメッセージ
+  * @returns 失敗の要約文字列
+  */
 export function buildFailureSummary(message: string): string {
   const lowered = message.toLowerCase();
   if (lowered.includes("empty output")) return "(failed: empty output)";
@@ -362,13 +363,12 @@ export function buildFailureSummary(message: string): string {
   return "(failed)";
 }
 
-/**
- * Resolve timeout with environment variable override support.
- *
- * @param defaultMs - Default timeout in milliseconds
- * @param envKey - Environment variable key to check
- * @returns Resolved timeout value
- */
+ /**
+  * 環境変数で上書き可能なタイムアウトを解決
+  * @param defaultMs - デフォルトのタイムアウト（ミリ秒）
+  * @param envKey - 確認する環境変数のキー
+  * @returns 解決されたタイムアウト値
+  */
 export function resolveTimeoutWithEnv(
   defaultMs: number,
   envKey: string,

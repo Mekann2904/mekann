@@ -227,8 +227,9 @@ async function main() {
 }
 
 function resolveJSDocParallelLimit(model: Model, taskCount: number): number {
-  // JSDoc生成はLLM呼び出しが多いため、1並列で確実に実行
-  return 1;
+  // 最大3並列で実行（モデルの制限を考慮）
+  const modelParallelLimit = model.maxParallelGenerations || 3;
+  return Math.min(modelParallelLimit, 3);
 }
 
 function isLikelyRateLimitError(message: string): boolean {
@@ -716,7 +717,7 @@ JSDocコメントのみを出力してください。`;
 
 function extractJsDocFromResponse(response: string): string | null {
   // 最初の完全なJSDocブロックを抽出（ネストを許容しない）
-  // `/**`で始まり、途中に`/**`を含まず、`*/`で終わるブロック
+  // JSDocで始まり、途中にJSDocを含まず、終了タグで終わるブロック
   const lines = response.split('\n');
   const jsDocLines: string[] = [];
   let inJsDoc = false;
@@ -812,31 +813,129 @@ function normalizeJsDoc(jsDoc: string): string {
 // JSDoc Insertion
 // ============================================================================
 
-function insertJsDoc(element: ElementInfo, jsDoc: string): void {
-  const sourceCode = readFileSync(element.filePath, 'utf-8');
-  const lines = sourceCode.split('\n');
-
-  // 既存のJSDocがある場合は削除（regenerateモード用）
+/**
+ * 既存のJSDocを正確に削除する
+ * 行単位でJSDocから始まり終了タグで終わるブロックを削除する
+ */
+function removeExistingJsDoc(lines: string[], element: ElementInfo): { lines: string[]; insertIndex: number } {
   let insertIndex = element.line - 1;
-  if (element.existingJsDocRange) {
-    const deleteStart = element.existingJsDocRange.startLine - 1;
-    const deleteCount = element.existingJsDocRange.endLine - element.existingJsDocRange.startLine + 1;
+
+  if (!element.existingJsDocRange) {
+    return { lines, insertIndex };
+  }
+
+  // 削除範囲を特定（JSDocの開始行から終了行まで）
+  const deleteStart = element.existingJsDocRange.startLine - 1;
+  let deleteEnd = element.existingJsDocRange.endLine - 1;
+
+  // 終了行の後ろにある空行も削除範囲に含める
+  let extendedEnd = deleteEnd + 1;
+  while (extendedEnd < lines.length && lines[extendedEnd].trim() === '') {
+    extendedEnd++;
+  }
+  // 空行が1つだけの場合は削除、複数ある場合は最初の1つだけ残す
+  if (extendedEnd > deleteEnd + 1) {
+    deleteEnd = extendedEnd - 2; // 最後の空行は残す
+  }
+
+  // JSDocブロックを正確に削除（+1 で終了行を含める）
+  const deleteCount = deleteEnd - deleteStart + 1;
+  if (deleteCount > 0) {
     lines.splice(deleteStart, deleteCount);
     insertIndex = deleteStart;
   }
+
+  return { lines, insertIndex };
+}
+
+/**
+ * 生成されたJSDocに重複する終了タグがないか検証
+ */
+function validateJsDoc(jsDoc: string): string {
+  const normalized = normalizeJsDoc(jsDoc);
+  const lines = normalized.split('\n');
+
+  // 終了タグが重複していないかチェック
+  let endTagCount = 0;
+  for (const line of lines) {
+    if (line.trim().endsWith('*/')) {
+      endTagCount++;
+      // 重複検出：同じ行に複数の終了タグがあれば後続を削除
+      const match = line.match(new RegExp("\\*/", "g"));
+      if (match && match.length > 1) {
+        // 最初の終了タグのみを残す
+        const firstIndex = line.indexOf('*/');
+        const cleaned = line.substring(0, firstIndex + 2) + line.substring(firstIndex + 2).replace(new RegExp("\\*/", "g"), '').trim();
+        return lines.map(l => l === line ? cleaned : l).join('\n');
+      }
+    }
+  }
+
+  // 複数の行に終了タグがある場合、最初のみを残す
+  if (endTagCount > 1) {
+    let seenEndTag = false;
+    const cleanedLines = lines.map(line => {
+      if (line.trim().endsWith('*/')) {
+        if (seenEndTag) {
+          // 2番目以降の終了タグ行は削除
+          return '';
+        }
+        seenEndTag = true;
+      }
+      return line;
+    }).filter(l => l !== '');
+    return cleanedLines.join('\n');
+  }
+
+  return normalized;
+}
+
+function insertJsDoc(element: ElementInfo, jsDoc: string): void {
+  const sourceCode = readFileSync(element.filePath, 'utf-8');
+  let lines = sourceCode.split('\n');
+
+  // 既存のJSDocを削除
+  const result = removeExistingJsDoc(lines, element);
+  lines = result.lines;
+  let insertIndex = result.insertIndex;
+
+  // JSDocを検証
+  jsDoc = validateJsDoc(jsDoc);
 
   // 置換後の挿入位置を基準にインデントを決める
   const targetLine = lines[insertIndex] ?? '';
   const indentMatch = targetLine.match(/^(\s*)/);
   const indent = indentMatch ? indentMatch[1] : '';
 
+  // 挿入位置の直前に孤立した「*/」がないか確認して削除
+  if (insertIndex > 0) {
+    const prevLine = lines[insertIndex - 1];
+    if (prevLine && prevLine.trim() === '*/') {
+      lines.splice(insertIndex - 1, 1);
+      insertIndex--;
+    } else if (prevLine && prevLine.trim().endsWith('*/') && !prevLine.trim().startsWith('/**')) {
+      // 行の末尾に孤立した「*/」がある場合、その部分を削除
+      const lastEndTagIndex = prevLine.lastIndexOf('*/');
+      lines[insertIndex - 1] = prevLine.substring(0, lastEndTagIndex).trimEnd();
+    }
+  }
+
   // JSDocを整形してインデントを付与
-  const indentedJsDocLines = normalizeJsDoc(jsDoc)
+  const indentedJsDocLines = jsDoc
     .split('\n')
     .map(line => indent + line);
 
   // JSDocを行単位で挿入
   lines.splice(insertIndex, 0, ...indentedJsDocLines);
+
+  // 挿入後に重複する「*/」がないか確認してクリーンアップ
+  const newJsDocEndLine = insertIndex + indentedJsDocLines.length;
+  if (newJsDocEndLine < lines.length) {
+    const nextLine = lines[newJsDocEndLine];
+    if (nextLine && nextLine.trim() === '*/') {
+      lines.splice(newJsDocEndLine, 1);
+    }
+  }
 
   // ファイルに書き戻し
   writeFileSync(element.filePath, lines.join('\n'), 'utf-8');

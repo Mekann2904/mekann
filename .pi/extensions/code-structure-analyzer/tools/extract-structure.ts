@@ -13,6 +13,11 @@ import { minimatch } from 'minimatch';
 // Types
 // ============================================================================
 
+ /**
+  * 構造抽出オプション
+  * @param targetPath 解析対象パス（ファイルまたはディレクトリ）
+  * @param excludePatterns 除外パターン（glob形式）
+  */
 export interface ExtractOptions {
   /** 解析対象パス（ファイルまたはディレクトリ） */
   targetPath: string;
@@ -20,12 +25,9 @@ export interface ExtractOptions {
   excludePatterns?: string[];
 }
 
-/**
- * 関数の構造情報を表すインターフェース
- *
- * コード解析によって抽出された関数のメタデータを格納します。
- * 関数名、シグネチャ、ファイル位置、パラメータ情報などを含みます。
- */
+ /**
+  * 関数の構造情報を表すインターフェース
+  */
 export interface FunctionInfo {
   /** 関数名 */
   name: string;
@@ -47,6 +49,13 @@ export interface FunctionInfo {
   isExported: boolean;
 }
 
+ /**
+  * 関数のパラメータ情報
+  * @param name パラメータ名
+  * @param type 型
+  * @param optional 省略可能か
+  * @param defaultValue デフォルト値
+  */
 export interface ParameterInfo {
   name: string;
   type: string;
@@ -54,6 +63,17 @@ export interface ParameterInfo {
   defaultValue?: string;
 }
 
+ /**
+  * クラスの構造情報を表します。
+  * @param name クラス名
+  * @param filePath ファイルパス
+  * @param line 行番号
+  * @param jsDoc JSDocコメント
+  * @param methods メソッド一覧
+  * @param properties プロパティ一覧
+  * @param extends 継承元クラス
+  * @param implements 実装インターフェース
+  */
 export interface ClassInfo {
   /** クラス名 */
   name: string;
@@ -75,6 +95,17 @@ export interface ClassInfo {
   isExported: boolean;
 }
 
+ /**
+  * メソッドの構造情報
+  * @param name メソッド名
+  * @param signature シグネチャ
+  * @param parameters パラメータ情報の配列
+  * @param returnType 戻り値の型
+  * @param isAsync 非同期メソッドかどうか
+  * @param isStatic 静的メソッドかどうか
+  * @param visibility 可視性
+  * @param jsDoc JSDocコメント
+  */
 export interface MethodInfo {
   name: string;
   signature: string;
@@ -86,6 +117,15 @@ export interface MethodInfo {
   jsDoc?: string;
 }
 
+ /**
+  * プロパティの情報を表すインターフェース
+  * @param name プロパティ名
+  * @param type プロパティの型
+  * @param visibility 可視性（'public' | 'protected' | 'private'）
+  * @param isStatic 静的プロパティかどうか
+  * @param isReadonly 読み取り専用かどうか
+  * @param jsDoc ドキュメントコメント（省略可）
+  */
 export interface PropertyInfo {
   name: string;
   type: string;
@@ -101,6 +141,16 @@ export interface PropertyInfo {
   jsDoc?: string;
 }
 
+ /**
+  * インターフェースの構造情報
+  * @param name インターフェース名
+  * @param filePath ファイルパス
+  * @param line 行番号
+  * @param jsDoc JSDocコメント
+  * @param properties プロパティ一覧
+  * @param methods メソッド一覧
+  * @param extends 継承元インターフェース
+  */
 export interface InterfaceInfo {
   /** インターフェース名 */
   name: string;
@@ -120,6 +170,14 @@ export interface InterfaceInfo {
   isExported: boolean;
 }
 
+ /**
+  * インターフェースプロパティの情報
+  * @property name - プロパティ名
+  * @property type - 型情報
+  * @property optional - オプションプロパティかどうか
+  * @property isReadonly - 読み取り専用かどうか
+  * @property jsDoc - JSDocコメント
+  */
 export interface InterfacePropertyInfo {
   name: string;
   type: string;
@@ -154,6 +212,13 @@ export interface InterfacePropertyInfo {
  */
 }
 
+ /**
+  * インターフェースメソッド情報
+  * @param name メソッド名
+  * @param signature シグネチャ
+  * @param parameters パラメータ情報一覧
+  * @param returnType 戻り値の型
+  */
 export interface InterfaceMethodInfo {
   name: string;
   signature: string;
@@ -161,6 +226,15 @@ export interface InterfaceMethodInfo {
   returnType: string;
 }
 
+ /**
+  * インポート情報
+  * @param source インポート元モジュール
+  * @param names インポート名一覧
+  * @param filePath ファイルパス
+  * @param line 行番号
+  * @param isDefault デフォルトインポートかどうか
+  * @param isNamespace 名前空間インポートかどうか
+  */
 export interface ImportInfo {
   /** インポート元モジュール */
   source: string;
@@ -176,6 +250,14 @@ export interface ImportInfo {
   isNamespace: boolean;
 }
 
+ /**
+  * エクスポート情報
+  * @param name エクスポート名
+  * @param source エクスポート元（再エクスポートの場合）
+  * @param filePath ファイルパス
+  * @param line 行番号
+  * @param isDefault デフォルトエクスポートかどうか
+  */
 export interface ExportInfo {
   /** エクスポート名 */
   name: string;
@@ -189,6 +271,14 @@ export interface ExportInfo {
   isDefault: boolean;
 }
 
+ /**
+  * ファイル構造を表すインターフェース
+  * @param filePath - ファイルパス
+  * @param relativePath - 相対パス
+  * @param functions - 関数一覧
+  * @param classes - クラス一覧
+  * @param interfaces - インターフェース一覧
+  */
 export interface FileStructure {
   /** ファイルパス */
   filePath: string;
@@ -215,6 +305,17 @@ export interface FileStructure {
   exports: ExportInfo[];
 }
 
+ /**
+  * コード構造解析データの全体像
+  * @param basePath - 解析対象のベースパス
+  * @param analyzedAt - 解析日時
+  * @param files - ファイル構造一覧
+  * @param functions - 全関数一覧（集計）
+  * @param classes - 全クラス一覧（集計）
+  * @param interfaces - 全インターフェース一覧（集計）
+  * @param imports - 全インポート一覧（集計）
+  * @param exports - 全エクスポート一覧（集計）
+  */
 export interface StructureData {
   /** 解析対象のベースパス */
   basePath: string;
@@ -236,6 +337,9 @@ export interface StructureData {
   dependencyGraph: DependencyGraph;
 }
 
+/**
+ * 依存関係グラフ
+ */
 export interface DependencyGraph {
   /** ノード（ファイル）一覧 */
   nodes: { id: string; name: string; path: string }[];
@@ -247,6 +351,11 @@ export interface DependencyGraph {
 // Main Export Function
 // ============================================================================
 
+ /**
+  * コード構造を抽出する
+  * @param options 抽出オプション
+  * @returns 抽出された構造データ
+  */
 export async function extractCodeStructure(options: ExtractOptions): Promise<StructureData> {
   const { targetPath, excludePatterns = [] } = options;
 

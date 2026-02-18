@@ -21,9 +21,14 @@ import { extractDiscussionSection } from "./judge";
 // Re-export types needed by communication consumers
 export type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference };
 
-/**
- * Precomputed context for a team member to avoid redundant parsing.
- */
+ /**
+  * メンバーの事前計算されたコンテキスト
+  * @param memberId メンバーID
+  * @param role 役割
+  * @param status ステータス
+  * @param summary サマリー
+  * @param claim 主張
+  */
 export interface PrecomputedMemberContext {
   memberId: string;
   role: string;
@@ -32,10 +37,11 @@ export interface PrecomputedMemberContext {
   claim: string;
 }
 
-/**
- * Build a map of precomputed member contexts.
- * Extracts and sanitizes fields once per round.
- */
+ /**
+  * 事前計算済みのメンバーごとのコンテキストを構築します。
+  * @param results - チームメンバーの実行結果リスト
+  * @returns メンバーIDをキーとする事前計算済みコンテキストのマップ
+  */
 export function buildPrecomputedContextMap(results: TeamMemberResult[]): Map<string, PrecomputedMemberContext> {
   const map = new Map<string, PrecomputedMemberContext>();
   for (const result of results) {
@@ -92,15 +98,13 @@ export const COMMUNICATION_INSTRUCTION_PATTERN =
 // Communication Utility Functions
 // ============================================================================
 
-/**
- * Normalize and validate communication rounds parameter.
- * In stable runtime profile, always returns DEFAULT_COMMUNICATION_ROUNDS.
- *
- * @param value - Raw input value for communication rounds
- * @param fallback - Fallback value if input is invalid
- * @param isStableRuntime - Whether stable runtime profile is active
- * @returns Normalized communication rounds count
- */
+ /**
+  * 通信ラウンド数を正規化・検証する
+  * @param value - 通信ラウンドの生の入力値
+  * @param fallback - 入力が無効な場合のフォールバック値
+  * @param isStableRuntime - 安定版ランタイムプロファイルが有効かどうか
+  * @returns 正規化された通信ラウンド数
+  */
 export function normalizeCommunicationRounds(
   value: unknown,
   fallback = DEFAULT_COMMUNICATION_ROUNDS,
@@ -122,15 +126,13 @@ export const DEFAULT_FAILED_MEMBER_RETRY_ROUNDS = 0;
  */
 export const MAX_FAILED_MEMBER_RETRY_ROUNDS = 2;
 
-/**
- * Normalize and validate failed member retry rounds parameter.
- * In stable runtime profile, always returns DEFAULT_FAILED_MEMBER_RETRY_ROUNDS.
- *
- * @param value - Raw input value for retry rounds
- * @param fallback - Fallback value if input is invalid
- * @param isStableRuntime - Whether stable runtime profile is active
- * @returns Normalized retry rounds count
- */
+ /**
+  * メンバーの再試行回数を正規化
+  * @param value - 再試行回数の入力値
+  * @param fallback - 無効な場合のフォールバック値
+  * @param isStableRuntime - 安定版ランタイムかどうか
+  * @returns 正規化された再試行回数
+  */
 export function normalizeFailedMemberRetryRounds(
   value: unknown,
   fallback = DEFAULT_FAILED_MEMBER_RETRY_ROUNDS,
@@ -142,16 +144,13 @@ export function normalizeFailedMemberRetryRounds(
   return Math.max(0, Math.min(MAX_FAILED_MEMBER_RETRY_ROUNDS, Math.trunc(resolved)));
 }
 
-/**
- * Determine if a failed member result should be retried.
- * Uses unified failure classification from agent-errors.ts.
- * Rate-limit and capacity errors are excluded (handled by backoff in runMember).
- *
- * @param result - The team member result to evaluate
- * @param retryRound - Current retry round number
- * @param classifyPressureError - Function to classify pressure errors (for backward compatibility)
- * @returns Whether retry should be attempted
- */
+ /**
+  * 失敗したメンバー結果を再試行すべきか判定する
+  * @param result - 評価対象のチームメンバー結果
+  * @param retryRound - 現在の再試行回数
+  * @param classifyPressureError - 圧力エラーを分類する関数（下位互換用）
+  * @returns 再試行を行うかどうか
+  */
 export function shouldRetryFailedMemberResult(
   result: TeamMemberResult,
   retryRound: number,
@@ -167,28 +166,21 @@ export function shouldRetryFailedMemberResult(
   return shouldRetryByClassification(classification, retryRound);
 }
 
-/**
- * Determine if a member should be preferred as an anchor in communication.
- * Anchors are members with consensus, synthesizer, reviewer, lead, or judge roles.
- *
- * @param member - Team member to evaluate
- * @returns Whether member should be an anchor
- */
+ /**
+  * メンバーをアンカーとして優先するか判定
+  * @param member - 評価対象のチームメンバー
+  * @returns メンバーがアンカーとなるべきかどうか
+  */
 export function shouldPreferAnchorMember(member: TeamMember): boolean {
   const source = `${member.id} ${member.role}`.toLowerCase();
   return /consensus|synthesizer|reviewer|lead|judge/.test(source);
 }
 
-/**
- * Create a communication links map for team members.
- * Each member gets a list of partners they should communicate with.
- * Links are created based on:
- * 1. Adjacent members in the team (circular)
- * 2. Anchor members (consensus, synthesizer, reviewer, lead, judge)
- *
- * @param members - List of team members
- * @returns Map from member ID to list of partner IDs
- */
+ /**
+  * チームメンバーの通信リンクマップを作成する
+  * @param members - チームメンバーのリスト
+  * @returns メンバーIDからコミュニケーション相手IDのリストへのマップ
+  */
 export function createCommunicationLinksMap(members: TeamMember[]): Map<string, string[]> {
   const ids = members.map((member) => member.id);
   const links = new Map<string, Set<string>>(ids.map((id) => [id, new Set<string>()]));
@@ -231,14 +223,12 @@ export function createCommunicationLinksMap(members: TeamMember[]): Map<string, 
   );
 }
 
-/**
- * Sanitize a communication snippet for safe inclusion in prompts.
- * Removes instruction-like text that could be exploited.
- *
- * @param value - Raw text to sanitize
- * @param fallback - Fallback text if sanitization removes everything
- * @returns Sanitized text safe for prompt inclusion
- */
+ /**
+  * 通信スニペットをサニタイズする
+  * @param value - サニタイズ対象の生テキスト
+  * @param fallback - サニタイズで空になった場合の代替テキスト
+  * @returns プロンプトに安全なサニタイズ済みテキスト
+  */
 export function sanitizeCommunicationSnippet(value: string, fallback: string): string {
   const compact = normalizeForSingleLine(value || "", COMMUNICATION_CONTEXT_FIELD_LIMIT);
   if (!compact || compact === "-") return fallback;
@@ -252,9 +242,13 @@ export function sanitizeCommunicationSnippet(value: string, fallback: string): s
 // Structured Communication IDs (V2)
 // ============================================================================
 
-/**
- * Result of detecting partner references with structured ID tracking.
- */
+ /**
+  * 構造化ID追跡付きのパートナー参照検出結果
+  * @param referencedPartners 参照されたパートナー
+  * @param missingPartners 参照されなかったパートナー
+  * @param claimReferences 検出された請求参照の詳細
+  * @param referenceQuality 参照品質スコア (0-1)
+  */
 export interface PartnerReferenceResultV2 {
   /** Partners whose claims were referenced */
   referencedPartners: string[];
@@ -272,16 +266,14 @@ export interface PartnerReferenceResultV2 {
  */
 const CLAIM_ID_PATTERN = /\[([a-z0-9_-]+:\d+)\]|claimId[=:\s]+([a-z0-9_-]+:\d+)/gi;
 
-/**
- * Detect partner references with optional structured ID tracking (V2).
- * Falls back to string matching for backward compatibility.
- *
- * @param output - Member output text to analyze
- * @param partnerIds - List of expected partner IDs
- * @param memberById - Map of member ID to member definition
- * @param mode - Communication ID mode (defaults to current setting)
- * @returns Object with referenced and missing partner lists, plus structured references
- */
+ /**
+  * パートナーの参照を検出する（V2）
+  * @param output - 解析対象の出力テキスト
+  * @param partnerIds - 期待されるパートナーIDのリスト
+  * @param memberById - メンバーIDからメンバー定義へのマップ
+  * @param mode - コミュニケーションIDモード（デフォルトは現在の設定）
+  * @returns 参照済み・未参照のパートナーリストと構造化参照を持つオブジェクト
+  */
 export function detectPartnerReferencesV2(
   output: string,
   partnerIds: string[],
@@ -343,27 +335,24 @@ export function detectPartnerReferencesV2(
   };
 }
 
-/**
- * Extract a named field from structured output text.
- * Looks for patterns like "FIELD_NAME: value" at the start of lines.
- *
- * @param output - Output text to parse
- * @param name - Field name to extract
- * @returns Extracted field value or undefined
- */
+ /**
+  * 構造化されたテキストから指定フィールドの値を抽出
+  * @param output - 解析対象の出力テキスト
+  * @param name - 抽出するフィールド名
+  * @returns 抽出されたフィールドの値、見つからない場合は undefined
+  */
 export function extractField(output: string, name: string): string | undefined {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = output.match(new RegExp(`^\\s*${escaped}\\s*:\\s*(.+)$`, "im"));
   return match?.[1]?.trim();
 }
 
-/**
- * Build communication context for a team member.
- * Includes partner summaries, claims, and communication instructions.
- *
- * @param input - Context building parameters
- * @returns Formatted communication context string
- */
+ /**
+  * チームメンバー向けの通信コンテキストを作成する
+  *
+  * @param input - チーム定義、メンバー情報、ラウンド数、パートナーID、コンテキストマップを含むパラメータ
+  * @returns フォーマットされた通信コンテキスト文字列
+  */
 export function buildCommunicationContext(input: {
   team: TeamDefinition;
   member: TeamMember;
@@ -417,15 +406,13 @@ export function buildCommunicationContext(input: {
   return lines.join("\n");
 }
 
-/**
- * Detect which partners are referenced in member output.
- * Checks for partner ID or role name mentions.
- *
- * @param output - Member output text to analyze
- * @param partnerIds - List of expected partner IDs
- * @param memberById - Map of member ID to member definition
- * @returns Object with referenced and missing partner lists
- */
+ /**
+  * メンバーの出力から参照されるパートナーを検出します。
+  * @param output - 解析対象のメンバー出力テキスト
+  * @param partnerIds - 期待されるパートナーIDのリスト
+  * @param memberById - メンバーIDからメンバー定義へのマップ
+  * @returns 参照されたパートナーと不足しているパートナーのリストを含むオブジェクト
+  */
 export function detectPartnerReferences(
   output: string,
   partnerIds: string[],
@@ -457,11 +444,14 @@ export { extractDiscussionSection };
 // Termination Check (P0 from arXiv:2602.06176)
 // ============================================================================
 
-/**
- * Termination check result.
- * Verifies that the task has been completed before ending execution.
- * Based on arXiv:2602.06176 recommendations for completion verification.
- */
+ /**
+  * タスク終了チェックの結果を表します。
+  * @param canTerminate - 終了可能かどうか
+  * @param completionScore - 完了スコア (0-1)
+  * @param missingElements - 欠落している要素のリスト
+  * @param suspiciousPatterns - 疑わしいパターンのリスト
+  * @param recommendation - 推奨アクション ("proceed" | "extend" | "challenge")
+  */
 export interface TerminationCheckResult {
   canTerminate: boolean;
   completionScore: number;  // 0-1
@@ -555,10 +545,16 @@ export function checkTermination(
 // Belief Tracking (P0 from arXiv:2602.06176)
 // ============================================================================
 
-/**
- * Belief tracking structure for monitoring agent positions across rounds.
- * Based on arXiv:2602.06176 recommendations for multi-agent robustness.
- */
+ /**
+  * エージェントの信念追跡構造
+  * @param memberId メンバーID
+  * @param claimId 主張ID
+  * @param claimText 主張内容
+  * @param confidence 信頼度
+  * @param evidenceRefs 証拠参照の配列
+  * @param round ラウンド番号
+  * @param timestamp タイムスタンプ
+  */
 export interface AgentBelief {
   memberId: string;
   claimId: string;
@@ -569,9 +565,14 @@ export interface AgentBelief {
   timestamp: string;
 }
 
-/**
- * Detected contradiction between agent beliefs.
- */
+ /**
+  * エージェントの信念間で検出された矛盾
+  * @param belief1 - 1つ目の信念
+  * @param belief2 - 2つ目の信念
+  * @param contradictionType - 矛盾の種別 ("direct" | "implicit" | "assumption_conflict")
+  * @param severity - 重大度 ("low" | "medium" | "high")
+  * @param description - 説明文
+  */
 export interface BeliefContradiction {
   belief1: AgentBelief;
   belief2: AgentBelief;
@@ -583,14 +584,13 @@ export interface BeliefContradiction {
 // Belief state cache for tracking across rounds
 const beliefStateCache = new Map<string, AgentBelief[]>();
 
-/**
- * Update belief state for a member based on their output.
- *
- * @param memberId - Member ID
- * @param output - Member output text
- * @param round - Current communication round
- * @returns Updated belief list for the member
- */
+ /**
+  * メンバーの出力に基づき信念状態を更新する
+  * @param memberId - メンバーID
+  * @param output - メンバーの出力テキスト
+  * @param round - 現在のコミュニケーションラウンド
+  * @returns メンバーの更新された信念リスト
+  */
 export function updateBeliefState(
   memberId: string,
   output: string,
@@ -617,12 +617,11 @@ export function updateBeliefState(
   return beliefStateCache.get(memberId) || [];
 }
 
-/**
- * Get belief summary for communication context.
- *
- * @param memberIds - Member IDs to include in summary
- * @returns Formatted belief summary string
- */
+ /**
+  * 指定されたメンバーの信念サマリーを取得する
+  * @param memberIds - サマリーに含めるメンバーID
+  * @returns フォーマットされた信念サマリー文字列
+  */
 export function getBeliefSummary(memberIds: string[]): string {
   const lines: string[] = ["【信念追跡 - 他エージェントの立場】"];
 
@@ -639,9 +638,9 @@ export function getBeliefSummary(memberIds: string[]): string {
   return lines.join("\n");
 }
 
-/**
- * Clear belief state cache (call at start of new team execution).
- */
+ /**
+  * 新しいチーム実行開始時に信念状態キャッシュをクリア
+  */
 export function clearBeliefStateCache(): void {
   beliefStateCache.clear();
 }

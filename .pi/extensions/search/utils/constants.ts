@@ -44,9 +44,9 @@ export const DEFAULT_EXCLUDES = [
 	".pi/analytics",
 ] as const;
 
-/**
- * Type for DEFAULT_EXCLUDES array items
- */
+ /**
+  * DEFAULT_EXCLUDES配列の要素の型
+  */
 export type DefaultExclude = (typeof DEFAULT_EXCLUDES)[number];
 
 // ============================================

@@ -39,14 +39,22 @@ const logger = getLogger();
  * @property updatedAt - 最終更新日時（ISO 8601形式）
  */
 
-/**
- * エージェントの有効/無効状態を表す型
- * @example
- * const enabled: AgentEnabledState = "enabled";
- * const disabled: AgentEnabledState = "disabled";
- */
+ /**
+  * エージェントの有効/無効状態を表す
+  */
 export type AgentEnabledState = "enabled" | "disabled";
 
+ /**
+  * サブエージェントの定義情報を表すインターフェース
+  * @param id - サブエージェントの一意識別子
+  * @param name - 表示名
+  * @param description - 説明文
+  * @param systemPrompt - システムプロンプト
+  * @param provider - プロバイダ名（省略可能）
+  * @param model - 使用するモデル名（省略可能）
+  * @param enabled - 有効/無効状態
+  * @param skills - 利用可能なスキルIDの配列（省略可能）
+  */
 export interface SubagentDefinition {
   id: string;
   name: string;
@@ -69,6 +77,21 @@ export interface SubagentDefinition {
   updatedAt: string;
 }
 
+ /**
+  * サブエージェントの実行記録を表す
+  * @param runId 実行ID
+  * @param agentId エージェントID
+  * @param task タスク内容
+  * @param summary 実行結果の要約
+  * @param status ステータス
+  * @param startedAt 開始日時
+  * @param finishedAt 終了日時
+  * @param latencyMs 遅延時間（ミリ秒）
+  * @param outputFile 出力ファイルパス
+  * @param error エラー内容（任意）
+  * @param correlationId 相関ID（任意、後方互換性用）
+  * @param parentEventId 親イベントID（任意）
+  */
 export interface SubagentRunRecord {
   runId: string;
   agentId: string;
@@ -85,6 +108,13 @@ export interface SubagentRunRecord {
   parentEventId?: string;
 }
 
+ /**
+  * サブエージェントのストレージ構造
+  * @param agents - サブエージェント定義のリスト
+  * @param runs - サブエージェントの実行記録リスト
+  * @param currentAgentId - 現在のエージェントID（オプション）
+  * @param defaultsVersion - デフォルト設定のバージョン（オプション）
+  */
 export interface SubagentStorage {
   agents: SubagentDefinition[];
   runs: SubagentRunRecord[];
@@ -92,6 +122,9 @@ export interface SubagentStorage {
   defaultsVersion?: number;
 }
 
+ /**
+  * サブエージェントのストレージパスを表すインターフェース
+  */
 export interface SubagentPaths extends BaseStoragePaths {}
 
 // Constants
@@ -103,9 +136,11 @@ const getBasePaths = createPathsFactory("subagents");
 export const getPaths = getBasePaths as (cwd: string) => SubagentPaths;
 export const ensurePaths = createEnsurePaths(getPaths);
 
-/**
- * Create default subagent definitions.
- */
+ /**
+  * デフォルトのサブエージェント定義を作成する
+  * @param nowIso 現在時刻のISO文字列
+  * @returns サブエージェント定義の配列
+  */
 export function createDefaultAgents(nowIso: string): SubagentDefinition[] {
   return [
     {
@@ -275,9 +310,11 @@ function mergeSubagentStorageWithDisk(
   ) as SubagentStorage;
 }
 
-/**
- * Load subagent storage from disk.
- */
+ /**
+  * ディスクからサブエージェントのストレージを読み込む
+  * @param cwd カレントワーキングディレクトリ
+  * @returns サブエージェントストレージ
+  */
 export function loadStorage(cwd: string): SubagentStorage {
   const paths = ensurePaths(cwd);
   const nowIso = new Date().toISOString();
@@ -312,9 +349,12 @@ export function loadStorage(cwd: string): SubagentStorage {
   }
 }
 
-/**
- * Save subagent storage to disk.
- */
+ /**
+  * サブエージェントのストレージをディスクに保存する
+  * @param cwd カレントワーキングディレクトリ
+  * @param storage 保存するストレージデータ
+  * @returns なし
+  */
 export function saveStorage(cwd: string, storage: SubagentStorage): void {
   const paths = ensurePaths(cwd);
   const normalized: SubagentStorage = {
@@ -339,10 +379,12 @@ export function saveStorage(cwd: string, storage: SubagentStorage): void {
   });
 }
 
-/**
- * Save storage and extract patterns from recent runs.
- * Integrates with ALMA memory system for automatic learning.
- */
+ /**
+  * ストレージを保存し、実行パターンを抽出する
+  * @param cwd 作業ディレクトリのパス
+  * @param storage 保存するサブエージェントのストレージデータ
+  * @returns 解決時に値を返さないPromise
+  */
 export async function saveStorageWithPatterns(
   cwd: string,
   storage: SubagentStorage,

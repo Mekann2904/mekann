@@ -13,14 +13,20 @@
 // Types
 // ============================================================================
 
-/**
- * Task intent types from paper taxonomy.
- */
+ /**
+  * タスクの意図タイプ
+  */
 export type TaskIntent = "declarative" | "procedural" | "reasoning";
 
-/**
- * Intent-aware budget configuration.
- */
+ /**
+  * インテント対応の予算設定。
+  * @param intent インテントの種類
+  * @param maxIterations 推奨される最大反復回数
+  * @param timeoutMultiplier タイムアウトの乗数（ベースタイムアウトに適用）
+  * @param parallelismMultiplier 並列度の乗数（ベース並列度に適用）
+  * @param repetitionTolerance 繰り返しの許容度（0-1、大きいほど許容）
+  * @param description この予算プロファイルの説明
+  */
 export interface IntentBudget {
   /** Intent type */
   intent: TaskIntent;
@@ -36,9 +42,12 @@ export interface IntentBudget {
   description: string;
 }
 
-/**
- * Input for intent classification.
- */
+ /**
+  * 意図分類の入力データ
+  * @param task タスクの説明
+  * @param goal 目標基準（指定されている場合）
+  * @param referenceCount 参照可能なリソース数
+  */
 export interface IntentClassificationInput {
   /** Task description */
   task: string;
@@ -48,9 +57,13 @@ export interface IntentClassificationInput {
   referenceCount?: number;
 }
 
-/**
- * Result of intent classification.
- */
+ /**
+  * 意図分類の結果を表します。
+  * @param intent 分類された意図
+  * @param confidence 信頼度スコア (0-1)
+  * @param matchedPatterns マッチしたパターン
+  * @param recommendedBudget 推奨予算
+  */
 export interface IntentClassificationResult {
   /** Classified intent */
   intent: TaskIntent;
@@ -191,12 +204,11 @@ const INTENT_PATTERNS: Record<TaskIntent, string[]> = {
 // Intent Classification
 // ============================================================================
 
-/**
- * Classify task intent based on content analysis.
- *
- * @param input - Classification input
- * @returns Classification result with recommended budget
- */
+ /**
+  * タスクの意図を分類する
+  * @param input - 分類入力
+  * @returns 推奨予算を含む分類結果
+  */
 export function classifyIntent(input: IntentClassificationInput): IntentClassificationResult {
   const taskLower = input.task.toLowerCase();
   const goalLower = (input.goal || "").toLowerCase();
@@ -256,9 +268,11 @@ export function classifyIntent(input: IntentClassificationInput): IntentClassifi
   };
 }
 
-/**
- * Get budget for a specific intent.
- */
+ /**
+  * 意図に応じた予算を取得する。
+  * @param intent - タスクの意図
+  * @returns 意図に対応する予算
+  */
 export function getIntentBudget(intent: TaskIntent): IntentBudget {
   return INTENT_BUDGETS[intent];
 }
@@ -267,13 +281,12 @@ export function getIntentBudget(intent: TaskIntent): IntentBudget {
 // Budget Application
 // ============================================================================
 
-/**
- * Apply intent-aware adjustments to base limits.
- *
- * @param baseLimits - Base limits to adjust
- * @param intent - Task intent
- * @returns Adjusted limits
- */
+ /**
+  * インテントに基づいて制限値を調整する
+  * @param baseLimits - 調整対象のベース制限値
+  * @param intent - タスクのインテント
+  * @returns 調整後の制限値
+  */
 export function applyIntentLimits<T extends {
   maxIterations?: number;
   timeoutMs?: number;
@@ -295,13 +308,12 @@ export function applyIntentLimits<T extends {
   };
 }
 
-/**
- * Calculate effective repetition threshold based on intent.
- *
- * @param baseThreshold - Base threshold (0-1)
- * @param intent - Task intent
- * @returns Adjusted threshold
- */
+ /**
+  * インテントに基づく反復しきい値を計算
+  * @param baseThreshold - 基本しきい値（0-1）
+  * @param intent - タスクインテント
+  * @returns 調整後のしきい値
+  */
 export function getEffectiveRepetitionThreshold(
   baseThreshold: number,
   intent: TaskIntent
@@ -315,23 +327,27 @@ export function getEffectiveRepetitionThreshold(
 // Utility Functions
 // ============================================================================
 
-/**
- * Check if intent classification is available.
- */
+ /**
+  * インテント分類が利用可能か判定する
+  * @returns 常にtrueを返す
+  */
 export function isIntentClassificationAvailable(): boolean {
   return true; // Always available (pattern-based, no external dependencies)
 }
 
-/**
- * Get all intent budgets.
- */
+ /**
+  * 全てのインテント予算を取得する
+  * @returns 各インテントの予算設定を含むオブジェクト
+  */
 export function getAllIntentBudgets(): Record<TaskIntent, IntentBudget> {
   return { ...INTENT_BUDGETS };
 }
 
-/**
- * Summarize intent classification for logging.
- */
+ /**
+  * 意図分類結果の要約ログを生成
+  * @param result 意図分類の結果
+  * @returns 生成された要約文字列
+  */
 export function summarizeIntentClassification(result: IntentClassificationResult): string {
   const budget = result.recommendedBudget;
   return [

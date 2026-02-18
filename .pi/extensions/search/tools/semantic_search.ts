@@ -82,9 +82,12 @@ function findNearestNeighbors(
 // Main Function
 // ============================================================================
 
-/**
- * Perform semantic search on code.
- */
+ /**
+  * コードの意味検索を行う
+  * @param input 検索クエリや上位K件などの入力パラメータ
+  * @param cwd 作業ディレクトリのパス
+  * @returns 検索結果を含む出力オブジェクト
+  */
 export async function semanticSearch(
 	input: SemanticSearchInput,
 	cwd: string
@@ -177,9 +180,11 @@ export async function semanticSearch(
 	}
 }
 
-/**
- * Format semantic search results for display.
- */
+ /**
+  * セマンティック検索の結果を整形します。
+  * @param result セマンティック検索の出力結果
+  * @returns 整形された文字列
+  */
 export function formatSemanticSearch(result: SemanticSearchOutput): string {
 	if (result.error) {
 		return `Error: ${result.error}`;

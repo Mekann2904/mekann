@@ -9,9 +9,12 @@ import type { VectorSearchResult } from "./types.js";
 // Vector Operations
 // ============================================================================
 
-/**
- * Calculate cosine similarity between two vectors.
- */
+ /**
+  * 2つのベクトル間のコサイン類似度を計算
+  * @param a ベクトルA
+  * @param b ベクトルB
+  * @returns コサイン類似度
+  */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) return 0;
 
@@ -46,9 +49,11 @@ export function euclideanDistance(a: number[], b: number[]): number {
   return Math.sqrt(sum);
 }
 
-/**
- * Normalize a vector to unit length.
- */
+ /**
+  * ベクトルを正規化する
+  * @param vector 正規化する数値配列
+  * @returns 正規化されたベクトル
+  */
 export function normalizeVector(vector: number[]): number[] {
   let norm = 0;
   for (const v of vector) {
@@ -61,9 +66,12 @@ export function normalizeVector(vector: number[]): number[] {
   return vector.map((v) => v / norm);
 }
 
-/**
- * Add two vectors element-wise.
- */
+ /**
+  * 2つのベクトルの要素ごとの和を計算する
+  * @param a - 最初のベクトル
+  * @param b - 2番目のベクトル
+  * @returns 各要素の和からなるベクトル
+  */
 export function addVectors(a: number[], b: number[]): number[] {
   if (a.length !== b.length) {
     throw new Error("Vector dimensions must match");
@@ -72,7 +80,10 @@ export function addVectors(a: number[], b: number[]): number[] {
 }
 
 /**
- * Subtract two vectors element-wise.
+ * 2つのベクトルの要素ごとの差を計算する
+ * @param a - 最初のベクトル
+ * @param b - 2番目のベクトル
+ * @returns 各要素の差からなる新しいベクトル
  */
 export function subtractVectors(a: number[], b: number[]): number[] {
   if (a.length !== b.length) {
@@ -81,16 +92,21 @@ export function subtractVectors(a: number[], b: number[]): number[] {
   return a.map((v, i) => v - b[i]);
 }
 
-/**
- * Scale a vector by a scalar.
- */
+ /**
+  * ベクトルをスカラー倍する
+  * @param vector - ベクトル
+  * @param scalar - スカラー値
+  * @returns スカラー倍されたベクトル
+  */
 export function scaleVector(vector: number[], scalar: number): number[] {
   return vector.map((v) => v * scalar);
 }
 
-/**
- * Calculate the mean of multiple vectors.
- */
+ /**
+  * 複数のベクトルの平均を計算する
+  * @param vectors - ベクトルの配列
+  * @returns 平均ベクトル、または入力が空の場合はnull
+  */
 export function meanVector(vectors: number[][]): number[] | null {
   if (vectors.length === 0) return null;
 
@@ -113,9 +129,13 @@ export function meanVector(vectors: number[][]): number[] | null {
 // Search Functions
 // ============================================================================
 
-/**
- * Find the k nearest neighbors to a query vector.
- */
+ /**
+  * クエリベクトルに類似した上位k件を検索します。
+  * @param queryVector - 検索対象のベクトル
+  * @param items - 検索対象のアイテムの配列
+  * @param k - 取得する近傍数（デフォルト: 5）
+  * @returns 類似度とアイテムの配列
+  */
 export function findNearestNeighbors<T extends { embedding: number[] }>(
   queryVector: number[],
   items: T[],
@@ -132,9 +152,13 @@ export function findNearestNeighbors<T extends { embedding: number[] }>(
   return similarities.slice(0, k);
 }
 
-/**
- * Find items above a similarity threshold.
- */
+ /**
+  * 類似度の閾値を超えるアイテムを検索
+  * @param queryVector クエリベクトル
+  * @param items 検索対象のアイテム配列
+  * @param threshold 類似度の閾値（デフォルト: 0.5）
+  * @returns 閾値を超えたアイテムと類似度の配列
+  */
 export function findBySimilarityThreshold<T extends { embedding: number[] }>(
   queryVector: number[],
   items: T[],
@@ -159,9 +183,11 @@ export function findBySimilarityThreshold<T extends { embedding: number[] }>(
 // Utility Functions
 // ============================================================================
 
-/**
- * Check if a value is a valid embedding vector.
- */
+ /**
+  * 値が有効な埋め込みベクトルか判定
+  * @param value 検査対象の値
+  * @returns number[]型の条件を満たす場合true
+  */
 export function isValidEmbedding(value: unknown): value is number[] {
   if (!Array.isArray(value)) return false;
   if (value.length === 0) return false;
@@ -176,7 +202,9 @@ export function zeroVector(dimensions: number): number[] {
 }
 
 /**
- * Calculate the norm (magnitude) of a vector.
+ * ベクトルのノルム（大きさ）を計算します。
+ * @param vector 数値配列で表現されたベクトル
+ * @returns ノルムの値
  */
 export function vectorNorm(vector: number[]): number {
   let sum = 0;
@@ -186,9 +214,12 @@ export function vectorNorm(vector: number[]): number {
   return Math.sqrt(sum);
 }
 
-/**
- * Calculate dot product of two vectors.
- */
+ /**
+  * 2つのベクトルの内積を計算する。
+  * @param a 1つ目のベクトル
+  * @param b 2つ目のベクトル
+  * @returns 内積
+  */
 export function dotProduct(a: number[], b: number[]): number {
   if (a.length !== b.length) return 0;
 

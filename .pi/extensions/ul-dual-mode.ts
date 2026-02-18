@@ -291,18 +291,11 @@ Rules:
 ---`;
 }
 
-/**
- * ULデュアルモード拡張機能を登録する
- *
- * CLIフラグとスラッシュコマンドを登録し、セッション全体で
- * ULデュアルオーケストレーションモードの有効化・切り替えを可能にする。
- *
- * @param pi - 拡張機能APIインターフェース
- * @returns なし
- * @example
- * // 拡張機能の登録
- * registerUlDualModeExtension(pi);
- */
+ /**
+  * ULデュアルモード拡張機能を登録する
+  * @param pi - 拡張機能APIインターフェース
+  * @returns なし
+  */
 export default function registerUlDualModeExtension(pi: ExtensionAPI) {
   // CLIフラグ: セッション全体でULモードを有効化
   pi.registerFlag("ul", {

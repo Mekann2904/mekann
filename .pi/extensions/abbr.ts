@@ -34,17 +34,14 @@ if (!fs.existsSync(CONFIG_DIR)) {
 	fs.mkdirSync(CONFIG_DIR, { recursive: true });
 }
 
-/**
- * 略語を表すインターフェース
- *
- * 略語の名称、展開、正規表現、パターン、位置を定義します。
- *
- * @param name - 略語の名称
- * @param expansion - 略語の展開
- * @param regex - 正規表現を使用するかどうか（オプション）
- * @param pattern - 略語のパターン（オプション）
- * @param position - 略語の位置（"command" または "anywhere"）（オプション）
- */
+ /**
+  * 略語を表すインターフェース
+  * @param name - 略語の名称
+  * @param expansion - 略語の展開
+  * @param regex - 正規表現を使用するかどうか（オプション）
+  * @param pattern - 略語のパターン（オプション）
+  * @param position - 略語の位置（"command" または "anywhere"）（オプション）
+  */
 export interface Abbreviation {
 	name: string;
 	expansion: string;
@@ -211,23 +208,22 @@ class AbbrListComponent {
 		this.onClose = onClose;
 	}
 
+	 /**
+	  * 入力を処理する
+	  * @param data 入力データ
+	  * @returns なし
+	  */
 	handleInput(data: string): void {
 		if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c") || matchesKey(data, "q")) {
 			this.onClose();
 		}
 	}
 
-/**
-	 * 指定幅でリストを描画し、行の配列を返す
-	 *
-	 * キャッシュされた結果が存在し、幅が変更されていない場合はキャッシュを返却します。
-	 *
-	 * @param width - 描画幅（文字数）
-	 * @returns 描画された行の配列
-	 * @example
-	 * const lines = component.render(80);
-	 * lines.forEach(line => console.log(line));
-	 */
+	 /**
+	  * 指定幅でリストを描画する
+	  * @param width - 描画幅（文字数）
+	  * @returns 描画された行の配列
+	  */
 	render(width: number): string[] {
 		if (this.cachedLines && this.cachedWidth === width) {
 			return this.cachedLines;
@@ -274,6 +270,10 @@ class AbbrListComponent {
 		return lines;
 	}
 
+	 /**
+	  * キャッシュを無効化する
+	  * @returns 戻り値なし
+	  */
 	invalidate(): void {
 		this.cachedWidth = undefined;
 		this.cachedLines = undefined;

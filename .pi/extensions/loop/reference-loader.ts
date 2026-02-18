@@ -13,23 +13,13 @@ import { validateUrlForSsrf } from "./ssrf-protection";
 // Types
 // ============================================================================
 
-/**
- * ループ拡張で使用する参照情報を表すインターフェース
- *
- * ファイル、URL、またはインラインテキストから読み込まれた参照データの構造を定義します。
- *
- * @property id - 参照の一意識別子
- * @property source - 参照元のパス、URL、または識別子
- * @property title - 参照のタイトル
- * @property content - 参照の本文内容
- * @example
- * const reference: LoopReference = {
- *   id: "ref-001",
- *   source: "./docs/example.md",
- *   title: "サンプルドキュメント",
- *   content: "ドキュメントの内容..."
- * };
- */
+ /**
+  * ループ参照データの構造を定義します。
+  * @property id - 参照の一意識別子
+  * @property source - 参照元のパス、URL、または識別子
+  * @property title - 参照のタイトル
+  * @property content - 参照の本文内容
+  */
 export interface LoopReference {
   id: string;
   source: string;
@@ -51,6 +41,11 @@ export interface LoopReference {
   content: string;
 }
 
+ /**
+  * 参照読み込みの結果
+  * @param references - 読み込まれた参照の配列
+  * @param warnings - 警告メッセージの配列
+  */
 export interface LoadedReferenceResult {
   references: LoopReference[];
   warnings: string[];
@@ -70,6 +65,12 @@ const LIMITS = {
 // Reference Loading
 // ============================================================================
 
+ /**
+  * 参照情報を読み込む
+  * @param input 参照リストとパスを含む入力オブジェクト
+  * @param signal 中断シグナル
+  * @returns 読み込み結果
+  */
 export async function loadReferences(
   input: { refs: string[]; refsFile?: string; cwd: string },
   signal?: AbortSignal,
@@ -194,6 +195,12 @@ async function loadSingleReference(
   };
 }
 
+ /**
+  * 指定されたURLからテキストを取得する
+  * @param url 取得先のURL
+  * @param signal リクエストの中断シグナル
+  * @returns 取得したテキスト
+  */
 export async function fetchTextFromUrl(url: string, signal?: AbortSignal): Promise<string> {
   // SSRF protection: validate URL before fetching
   await validateUrlForSsrf(url);

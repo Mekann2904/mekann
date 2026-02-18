@@ -1,9 +1,6 @@
-/**
- * 包括的ログ収集システム - 型定義
- * 
- * ファイル: .pi/lib/comprehensive-logger-types.ts
- * 目的: 全イベントの型定義
- */
+ /**
+  * 包括的ログ収集システムで発生するイベントの種類
+  */
 
 // ============================================
 // 基本型
@@ -33,16 +30,36 @@ export type EventType =
   | 'state_change'
   | 'metrics_snapshot';
 
+ /**
+  * コンポーネントの種類を表す型定義
+  */
 export type ComponentType = 'extension' | 'subagent' | 'team' | 'skill' | 'tool';
 
+ /**
+  * ツールの種類を表す型定義
+  */
 export type ToolType = 'builtin' | 'extension' | 'dynamic';
 
+ /**
+  * ステータスの種類を表すユニオン型
+  */
 export type Status = 'pending' | 'running' | 'success' | 'failure' | 'timeout' | 'partial' | 'cancelled';
 
 // ============================================
 // ベースイベント
 // ============================================
 
+ /**
+  * 全てのイベントの基本構造を定義するインターフェース
+  * @param eventId イベントの一意な識別子
+  * @param eventType イベントの種類
+  * @param sessionId セッションの識別子
+  * @param taskId タスクの識別子
+  * @param operationId オペレーションの識別子
+  * @param parentEventId 親イベントの識別子（任意）
+  * @param timestamp タイムスタンプ（ナノ秒精度）
+  * @param component コンポーネント情報
+  */
 export interface BaseEvent {
   // 識別子
   eventId: string;
@@ -70,24 +87,18 @@ export interface BaseEvent {
 // セッションイベント
 // ============================================
 
-/**
- * /**
- * * セッション開始イベントを表すインターフェース
- * *
- * * セッションが開始された際に記録されるイベント。PIバージョン、Node.jsバージョン、
- * * プラットフォーム情報、環境変数キー一覧、設定ハッシュ、起動時間などの
- * * セッション初期化に関する情報を含む。
- * *
- * * @property eventType - イベント種別（'session_start'）
- * * @property data - セッション開始時の環境情報とメタデータ
- * * @property data.piVersion - PIのバージョン
- * * @property data.nodeVersion - Node.jsのバージョン
- * * @property data.platform - 実行プラットフォーム情報
- * * @property data.cwd - カレントワーキングディレクトリ
- * * @property data.envKeys - 環境変数のキー一覧
- * * @property data.configHash - 設定ファイルのハッシュ値
- * * @property data.startupTimeMs -
- */
+ /**
+  * セッション開始イベントのデータ構造。
+  * @property eventType - イベント種別（'session_start'）
+  * @property data - セッション開始時の環境情報とメタデータ
+  * @property data.piVersion - PIのバージョン
+  * @property data.nodeVersion - Node.jsのバージョン
+  * @property data.platform - 実行プラットフォーム情報
+  * @property data.cwd - カレントワーキングディレクトリ
+  * @property data.envKeys - 環境変数のキー一覧
+  * @property data.configHash - 設定ファイルのハッシュ値
+  * @property data.startupTimeMs - 起動時間（ミリ秒）
+  */
 export interface SessionStartEvent extends BaseEvent {
   eventType: 'session_start';
   data: {
@@ -101,6 +112,15 @@ export interface SessionStartEvent extends BaseEvent {
   };
 }
 
+ /**
+  * セッション終了イベント
+  * @property eventType - イベントタイプ
+  * @property data.durationMs - 実行時間（ミリ秒）
+  * @property data.taskCount - タスク数
+  * @property data.errorCount - エラー数
+  * @property data.totalTokensUsed - 使用トークン合計
+  * @property data.exitReason - 終了理由
+  */
 export interface SessionEndEvent extends BaseEvent {
   eventType: 'session_end';
   data: {
@@ -116,6 +136,18 @@ export interface SessionEndEvent extends BaseEvent {
 // タスクイベント
 // ============================================
 
+ /**
+  * タスク開始イベント
+  * @param eventType イベント種別 'task_start'
+  * @param data タスクデータ
+  * @param data.userInput ユーザー入力
+  * @param data.inputType 入力種別
+  * @param data.context コンテキスト情報
+  * @param data.context.filesReferenced 参照ファイル一覧
+  * @param data.context.skillsLoaded ロード済みスキル一覧
+  * @param data.context.teamsAvailable 利用可能なチーム一覧
+  * @param data.intent 意図（任意）
+  */
 export interface TaskStartEvent extends BaseEvent {
   eventType: 'task_start';
   data: {
@@ -130,6 +162,14 @@ export interface TaskStartEvent extends BaseEvent {
   };
 }
 
+ /**
+  * タスク終了イベント
+  * @param eventType イベントの種類
+  * @param data.durationMs 実行時間（ミリ秒）
+  * @param data.status ステータス
+  * @param data.operationsCount 操作数
+  * @param data.toolsCount ツール数
+  */
 export interface TaskEndEvent extends BaseEvent {
   eventType: 'task_end';
   data: {
@@ -168,8 +208,21 @@ export interface TaskEndEvent extends BaseEvent {
 // 操作イベント
 // ============================================
 
+/**
+ * 操作の種類を表す文字列リテラル型
+ */
 export type OperationType = 'subagent_run' | 'team_run' | 'loop_run' | 'direct';
 
+ /**
+  * 操作開始イベント
+  * @param eventType イベントの種別
+  * @param data 操作詳細データ
+  * @param data.operationType 操作の種類
+  * @param data.target 操作対象
+  * @param data.input 操作入力
+  * @param data.input.task タスク内容
+  * @param data.input.params パラメータ
+  */
 export interface OperationStartEvent extends BaseEvent {
   eventType: 'operation_start';
   data: {
@@ -195,24 +248,13 @@ export interface OperationStartEvent extends BaseEvent {
   };
 }
 
-/**
- * ツール実行結果を表すイベントインターフェース
- *
- * ツールの実行完了時に生成されるイベントで、実行ステータス、
- * 出力内容、実行時間などの結果情報を含みます。
- *
- * @property eventType - イベント種別（'tool_result'で固定）
- * @property data - ツール実行結果の詳細データ
- * @property data.toolName - 実行されたツール名
- * @property data.status - 実行ステータス（success/error/partial）
- * @property data.durationMs - 実行時間（ミリ秒）
- * @property data.outputType - 出力タイプ（inline/file/truncated）
- * @property data.output - ツールの出力内容
- * @property data.outputHash - 出力内容のハッシュ値（オプション）
- * @property data.outputSize - 出力サイズ（バイト）
- * @property data.exitCode - 終了コード（オプション）
- * @property data.mimeType - 出力のMIMEタイプ（オプション）
- */
+ /**
+  * オペレーション終了イベント
+  * @property eventType - イベント種別
+  * @property data.durationMs - 実行時間（ミリ秒）
+  * @property data.status - ステータス
+  * @property data.tokensUsed - 使用トークン数
+  */
 export interface OperationEndEvent extends BaseEvent {
   eventType: 'operation_end';
   data: {
@@ -288,18 +330,21 @@ export interface OperationEndEvent extends BaseEvent {
  * };
  */
 
-/**
- * ユーザーからのフィードバックを表すイベント
- *
- * ユーザーがシステムの応答やアクションに対して行ったフィードバック情報を格納する。
- * 承認、拒否、修正、明確化の4種類のフィードバックタイプをサポートする。
- *
- * @property eventType - イベント種別（'user_feedback'で固定）
- * @property data - フィードバックデータ
- * @property data.feedbackType - フィードバック種別（'approval' | 'rejection' | 'correction' | 'clarification'）
- * @property data.targetEventId - フィードバック対象のイベントID
- * @property data.content - フィードバックの内容
- */
+ /**
+  * ツール呼び出しイベント
+  * @property eventType - イベント種別（'tool_call'で固定）
+  * @property data - ツール呼び出しデータ
+  * @property data.toolName - ツール名
+  * @property data.toolType - ツール種別
+  * @property data.params - ツール引数
+  * @property data.caller - 呼び出し元情報
+  * @property data.caller.file - ファイルパス
+  * @property data.caller.line - 行番号
+  * @property data.caller.function - 関数名
+  * @property data.environment - 実行環境情報
+  * @property data.environment.cwd - カレントワーキングディレクトリ
+  * @property data.environment.shell - シェル（オプション）
+  */
 export interface ToolCallEvent extends BaseEvent {
   eventType: 'tool_call';
   data: {
@@ -318,6 +363,11 @@ export interface ToolCallEvent extends BaseEvent {
   };
 }
 
+ /**
+  * ツール実行結果を表すイベント
+  * @param eventType イベントの種別（'tool_result'）
+  * @param data ツール実行結果データ
+  */
 export interface ToolResultEvent extends BaseEvent {
   eventType: 'tool_result';
   data: {
@@ -332,18 +382,18 @@ export interface ToolResultEvent extends BaseEvent {
     mimeType?: string;
   };
 }
-/**
- * すべてのログイベント型を統合したユニオン型
- *
- * セッション、タスク、操作、ツール呼び出し、LLMリクエストなど、
- * ログシステムで扱うすべてのイベント型を統合した型定義です。
- *
- * @example
- * const event: LogEvent = sessionStartEvent;
- * if (event.type === 'session_start') {
- *   console.log('Session started:', event.sessionId);
- * }
- */
+ /**
+  * ツール実行時のエラーイベントを表します。
+  * @param eventType - イベントの種類
+  * @param data - エラーの詳細情報
+  * @param data.toolName - エラーが発生したツール名
+  * @param data.errorType - エラーの種類
+  * @param data.errorMessage - エラーメッセージ
+  * @param data.errorStack - エラースタックトレース（任意）
+  * @param data.recoveryAttempted - 復旧が試みられたかどうか
+  * @param data.recoveryMethod - 復旧方法（任意）
+  * @param data.recoverySuccessful - 復旧が成功したかどうか（任意）
+  */
 
 export interface ToolErrorEvent extends BaseEvent {
   eventType: 'tool_error';
@@ -379,6 +429,21 @@ export interface ToolErrorEvent extends BaseEvent {
 // LLMイベント
 // ============================================
 
+ /**
+  * LLMリクエストイベント
+  * @param eventType イベントタイプ
+  * @param data リクエストデータ
+  * @param data.provider プロバイダ名
+  * @param data.model モデル名
+  * @param data.systemPromptLength システムプロンプトの長さ
+  * @param data.systemPromptHash システムプロンプトのハッシュ
+  * @param data.userMessageCount ユーザーメッセージ数
+  * @param data.userMessageLength ユーザーメッセージの長さ
+  * @param data.temperature 温度パラメータ
+  * @param data.maxTokens 最大トークン数
+  * @param data.contextWindowUsed 使用コンテキストウィンドウ
+  * @param data.toolsAvailable 利用可能ツール
+  */
 export interface LLMRequestEvent extends BaseEvent {
   eventType: 'llm_request';
   data: {
@@ -395,6 +460,11 @@ export interface LLMRequestEvent extends BaseEvent {
   };
 }
 
+ /**
+  * LLMの応答イベント
+  * @param eventType イベントタイプ
+  * @param data プロバイダー、モデル、トークン数、所要時間、停止理由、ツール呼び出し情報を含む応答データ
+  */
 export interface LLMResponseEvent extends BaseEvent {
   eventType: 'llm_response';
   data: {
@@ -413,6 +483,17 @@ export interface LLMResponseEvent extends BaseEvent {
   };
 }
 
+ /**
+  * LLMエラー発生時のイベント情報
+  * @param eventType イベントの種類
+  * @param data エラー詳細情報
+  * @param data.provider プロバイダ名
+  * @param data.model モデル名
+  * @param data.errorType エラーの種類
+  * @param data.errorMessage エラーメッセージ
+  * @param data.retryAttempt リトライ回数
+  * @param data.retryAfterMs リトライ待機時間
+  */
 export interface LLMErrorEvent extends BaseEvent {
   eventType: 'llm_error';
   data: {
@@ -429,6 +510,10 @@ export interface LLMErrorEvent extends BaseEvent {
 // ユーザーイベント
 // ============================================
 
+ /**
+  * ユーザー入力イベント
+  * @param data 入力データ（input, inputType, metadata）
+  */
 export interface UserInputEvent extends BaseEvent {
   eventType: 'user_input';
   data: {
@@ -441,6 +526,11 @@ export interface UserInputEvent extends BaseEvent {
   };
 }
 
+ /**
+  * ユーザーフィードバックイベント
+  * @param eventType イベントの種類
+  * @param data フィードバックデータ
+  */
 export interface UserFeedbackEvent extends BaseEvent {
   eventType: 'user_feedback';
   data: {
@@ -454,6 +544,15 @@ export interface UserFeedbackEvent extends BaseEvent {
 // システムイベント
 // ============================================
 
+ /**
+  * 設定読み込みイベント
+  * @param eventType イベントの種類
+  * @param configType 設定の種類
+  * @param configPath 設定ファイルのパス
+  * @param configHash 設定のハッシュ値
+  * @param keysLoaded 読み込まれたキーのリスト
+  * @param overrides 上書き設定
+  */
 export interface ConfigLoadEvent extends BaseEvent {
   eventType: 'config_load';
   data: {
@@ -465,6 +564,11 @@ export interface ConfigLoadEvent extends BaseEvent {
   };
 }
 
+ /**
+  * 状態変化イベントを表すインターフェース
+  * @param eventType イベント種別
+  * @param data 変更詳細
+  */
 export interface StateChangeEvent extends BaseEvent {
   eventType: 'state_change';
   data: {
@@ -481,6 +585,10 @@ export interface StateChangeEvent extends BaseEvent {
   };
 }
 
+ /**
+  * メトリクススナップショットイベントを表します
+  * @param data メモリ使用量、CPU使用率、イベント数などのメトリクスデータ
+  */
 export interface MetricsSnapshotEvent extends BaseEvent {
   eventType: 'metrics_snapshot';
   data: {
@@ -501,6 +609,9 @@ export interface MetricsSnapshotEvent extends BaseEvent {
 // 統合型
 // ============================================
 
+ /**
+  * すべてのログイベントの共用体型
+  */
 export type LogEvent =
   | SessionStartEvent
   | SessionEndEvent
@@ -524,6 +635,17 @@ export type LogEvent =
 // 設定型
 // ============================================
 
+ /**
+  * ロガーの動作設定を定義します
+  * @param logDir ログ出力先ディレクトリ
+  * @param enabled ログ機能の有効フラグ
+  * @param bufferSize バッファサイズ
+  * @param flushIntervalMs フラッシュ間隔（ミリ秒）
+  * @param maxFileSizeMB 最大ファイルサイズ（MB）
+  * @param retentionDays ログ保持日数
+  * @param environment 実行環境
+  * @param minLogLevel 最小ログレベル
+  */
 export interface LoggerConfig {
   logDir: string;
   enabled: boolean;

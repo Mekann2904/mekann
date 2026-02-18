@@ -52,6 +52,13 @@ export type { RunOutcomeCode, RunOutcomeSignal };
 // Types
 // ============================================================================
 
+ /**
+  * サブエージェントの実行結果を表します。
+  * @param ok 成功したかどうか
+  * @param output 出力文字列
+  * @param degraded パフォーマンス低下などが発生したかどうか
+  * @param reason 失敗や劣化の理由（任意）
+  */
 export interface SubagentExecutionResult {
   ok: boolean;
   output: string;
@@ -85,14 +92,11 @@ function pickSubagentSummaryCandidate(text: string): string {
   return compact.length <= 90 ? compact : `${compact.slice(0, 90)}...`;
 }
 
-/**
- * Normalize subagent output to required format.
- * Note: Kept locally (not in lib) because:
- * - Uses subagent-specific SUMMARY/RESULT/NEXT_STEP format
- * - Has subagent-specific fallback messages (Japanese)
- * - Uses pickSubagentSummaryCandidate which is subagent-specific
- * Team member output has different requirements (CLAIM/EVIDENCE/CONFIDENCE).
- */
+ /**
+  * サブエージェントの出力を正規化する。
+  * @param output 正規化前の出力文字列
+  * @returns 正規化された実行結果
+  */
 export function normalizeSubagentOutput(output: string): SubagentExecutionResult {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -135,6 +139,12 @@ export function normalizeSubagentOutput(output: string): SubagentExecutionResult
 // Failure Resolution
 // ============================================================================
 
+ /**
+  * サブエージェントのエラーが再試行可能か判定する
+  * @param error 判定対象のエラー
+  * @param statusCode ステータスコード（任意）
+  * @returns 再試行可能な場合はtrue
+  */
 export function isRetryableSubagentError(error: unknown, statusCode?: number): boolean {
   if (isRetryableError(error, statusCode)) {
     return true;
@@ -144,10 +154,20 @@ export function isRetryableSubagentError(error: unknown, statusCode?: number): b
   return message.includes("subagent returned empty output");
 }
 
+ /**
+  * 空の出力失敗メッセージか判定
+  * @param message チェック対象のメッセージ
+  * @returns 条件に一致する場合true
+  */
 export function isEmptyOutputFailureMessage(message: string): boolean {
   return message.toLowerCase().includes("subagent returned empty output");
 }
 
+ /**
+  * 失敗の要約を構築する
+  * @param message エラーメッセージ
+  * @returns 失敗要約文字列
+  */
 export function buildFailureSummary(message: string): string {
   const lowered = message.toLowerCase();
   if (lowered.includes("empty output")) return "(failed: empty output)";
@@ -156,6 +176,11 @@ export function buildFailureSummary(message: string): string {
   return "(failed)";
 }
 
+ /**
+  * サブエージェントの失敗結果を解決する
+  * @param error 発生したエラー
+  * @returns 処理結果を示すシグナル
+  */
 export function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal {
   if (isCancelledErrorMessage(error)) {
     return { outcomeCode: "CANCELLED", retryRecommended: false };
@@ -181,11 +206,12 @@ export function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal 
 // Prompt Building
 // ============================================================================
 
-/**
- * Merge skill arrays following inheritance rules.
- * - Empty array [] is treated as unspecified (ignored)
- * - Non-empty arrays are merged with deduplication
- */
+ /**
+  * スキル配列を継承ルールに従ってマージする
+  * @param base ベースとなるスキル配列
+  * @param override 上書きするスキル配列
+  * @returns マージ後のスキル配列（どちらも指定がない場合はundefined）
+  */
 export function mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined {
   const hasBase = Array.isArray(base) && base.length > 0;
   const hasOverride = Array.isArray(override) && override.length > 0;
@@ -203,10 +229,12 @@ export function mergeSkillArrays(base: string[] | undefined, override: string[] 
   return merged;
 }
 
-/**
- * Resolve effective skills for a subagent.
- * Inheritance: parentSkills (if any) -> agent.skills
- */
+ /**
+  * サブエージェントの実効スキルを解決する
+  * @param agent サブエージェント定義
+  * @param parentSkills 親スキルのリスト（任意）
+  * @returns マージされたスキルの配列、または未定義
+  */
 export function resolveEffectiveSkills(
   agent: SubagentDefinition,
   parentSkills?: string[],
@@ -214,14 +242,25 @@ export function resolveEffectiveSkills(
   return mergeSkillArrays(parentSkills, agent.skills);
 }
 
-/**
- * Format skill list for prompt inclusion.
- */
+ /**
+  * スキル一覧をプロンプト用に整形
+  * @param skills スキル配列
+  * @returns 整形された文字列、またはnull
+  */
 export function formatSkillsSection(skills: string[] | undefined): string | null {
   if (!skills || skills.length === 0) return null;
   return skills.map((skill) => `- ${skill}`).join("\n");
 }
 
+ /**
+  * サブエージェント用のプロンプトを構築する
+  * @param input.agent サブエージェントの定義
+  * @param input.task 実行するタスク
+  * @param input.extraContext 追加のコンテキスト
+  * @param input.enforcePlanMode プランモードを強制するか
+  * @param input.parentSkills 親エージェントのスキルリスト
+  * @returns 構築されたプロンプト文字列
+  */
 export function buildSubagentPrompt(input: {
   agent: SubagentDefinition;
   task: string;
@@ -296,6 +335,24 @@ async function runPiPrintMode(input: {
   });
 }
 
+ /**
+  * サブエージェントタスクを実行する
+  * @param input.agent サブエージェントの定義
+  * @param input.task 実行するタスク
+  * @param input.extraContext 追加のコンテキスト
+  * @param input.timeoutMs タイムアウト時間（ミリ秒）
+  * @param input.cwd カレントワーキングディレクトリ
+  * @param input.retryOverrides リトライ設定のオーバーライド
+  * @param input.modelProvider モデルプロバイダー
+  * @param input.modelId モデルID
+  * @param input.parentSkills 親スキルのリスト
+  * @param input.signal 中断シグナル
+  * @param input.onStart 開始時のコールバック
+  * @param input.onEnd 終了時のコールバック
+  * @param input.onTextDelta テキスト差分のコールバック
+  * @param input.onStderrChunk 標準エラーチャンクのコールバック
+  * @returns 実行レコード、出力、プロンプトを含む結果
+  */
 export async function runSubagentTask(input: {
   agent: SubagentDefinition;
   task: string;
@@ -513,6 +570,11 @@ export async function runSubagentTask(input: {
 // Utility Functions
 // ============================================================================
 
+ /**
+  * 出力文字列から要約を抽出する
+  * @param output 出力文字列
+  * @returns 抽出された要約
+  */
 export function extractSummary(output: string): string {
   const match = output.match(/^\s*summary\s*:\s*(.+)$/im);
   if (match?.[1]) {

@@ -130,9 +130,12 @@ function extractResultPaths(results: SymbolDefinition[]): string[] {
 // Main Entry Point
 // ============================================
 
-/**
- * Find symbol definitions from index
- */
+ /**
+  * インデックスからシンボル定義を検索
+  * @param input 検索条件
+  * @param cwd カレントワーキングディレクトリ
+  * @returns 検索結果
+  */
 export async function symFind(
 	input: SymFindInput,
 	cwd: string

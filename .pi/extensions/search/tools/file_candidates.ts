@@ -157,9 +157,12 @@ function extractResultPaths(results: FileCandidate[]): string[] {
 // Main Entry Point
 // ============================================
 
-/**
- * Enumerate file candidates with fd or fallback
- */
+ /**
+  * fdまたはフォールバックでファイル候補を列挙
+  * @param input 検索入力データ
+  * @param cwd カレントワーキングディレクトリ
+  * @returns ファイル候補の出力データ
+  */
 export async function fileCandidates(
 	input: FileCandidatesInput,
 	cwd: string

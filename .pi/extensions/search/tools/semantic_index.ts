@@ -261,9 +261,12 @@ async function saveMetadata(
 // Main Function
 // ============================================================================
 
-/**
- * Generate semantic index for code files.
- */
+ /**
+  * セマンティックインデックスを生成する
+  * @param input インデックス生成の設定オプション
+  * @param cwd 作業ディレクトリのパス
+  * @returns 生成結果を含むオブジェクト
+  */
 export async function semanticIndex(
 	input: SemanticIndexInput,
 	cwd: string

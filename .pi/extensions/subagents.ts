@@ -362,6 +362,11 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
 
 // Note: runSubagentTask is now imported from ./subagents/task-execution
 
+ /**
+  * サブエージェント拡張を登録する
+  * @param pi 拡張API
+  * @returns なし
+  */
 export default function registerSubagentExtension(pi: ExtensionAPI) {
   // サブエージェント一覧
   pi.registerTool({

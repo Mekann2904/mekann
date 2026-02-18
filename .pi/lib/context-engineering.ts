@@ -8,14 +8,22 @@
 // Types
 // ============================================================================
 
-/**
- * Priority levels for context content
- */
+ /**
+  * コンテキストの優先度レベル
+  */
 export type ContextPriority = "critical" | "high" | "medium" | "low" | "optional";
 
-/**
- * Content item with metadata for context management
- */
+ /**
+  * コンテキスト管理用のメタデータ付きアイテム
+  * @param id 一意の識別子
+  * @param content コンテンツ文字列
+  * @param priority 優先度
+  * @param tokenEstimate トークン推定値
+  * @param category カテゴリ
+  * @param timestamp タイムスタンプ
+  * @param source ソース（任意）
+  * @param metadata メタデータ（任意）
+  */
 export interface ContextItem {
   id: string;
   content: string;
@@ -27,9 +35,10 @@ export interface ContextItem {
   metadata?: Record<string, unknown>;
 }
 
-/**
- * Categories for context content
- */
+ /**
+  * コンテンツのカテゴリ
+  * @typedef {"task-instruction" | "system-prompt" | "execution-rules" | "file-content" | "conversation" | "agent-output" | "verification-result" | "working-memory" | "skill-content" | "reference-doc"} ContextCategory
+  */
 export type ContextCategory =
   | "task-instruction"    // The main task/request
   | "system-prompt"       // System-level instructions
@@ -43,9 +52,15 @@ export type ContextCategory =
   | "reference-doc"       // Reference documentation
   | "error-context";      // Error information
 
-/**
- * Configuration for context window management
- */
+ /**
+  * コンテキストウィンドウ管理の設定
+  * @param maxTokens 最大トークン数
+  * @param reservedTokens レスポンス用の予約トークン数
+  * @param priorityWeights 各優先度の重み付け
+  * @param categoryLimits カテゴリごとの上限
+  * @param preserveOrder 優先度内の順序を維持するか
+  * @param enableSummarization 予算オーバー時に要約するか
+  */
 export interface ContextWindowConfig {
   maxTokens: number;
   reservedTokens: number;        // Tokens reserved for response
@@ -55,9 +70,16 @@ export interface ContextWindowConfig {
   enableSummarization: boolean;  // Whether to summarize when over budget
 }
 
-/**
- * Result of context window optimization
- */
+ /**
+  * コンテキストウィンドウ最適化の結果
+  * @param items 最適化されたコンテキストアイテムの配列
+  * @param totalTokens トークンの合計数
+  * @param budget 利用可能なトークンの予算
+  * @param utilizationRatio 予算の利用率
+  * @param trimmedItems 除外されたアイテムの情報
+  * @param summaryGenerated 要約が生成されたかどうか
+  * @param warnings 警告メッセージの配列
+  */
 export interface OptimizedContext {
   items: ContextItem[];
   totalTokens: number;
@@ -68,9 +90,13 @@ export interface OptimizedContext {
   warnings: string[];
 }
 
-/**
- * Information about trimmed content
- */
+ /**
+  * トリミングされたアイテムの情報
+  * @param item トリミングされたアイテム
+  * @param reason トリミングの理由
+  * @param originalTokens 元のトークン数
+  * @param preservedTokens 保持されたトークン数
+  */
 export interface TrimmedItem {
   item: ContextItem;
   reason: "budget-exceeded" | "category-limit" | "low-priority" | "duplicate";
@@ -78,9 +104,13 @@ export interface TrimmedItem {
   preservedTokens: number;
 }
 
-/**
- * Semantic boundary for chunking
- */
+ /**
+  * チャンキングのための意味的境界
+  * @param position 境界の位置
+  * @param type 境界の種類
+  * @param confidence 信頼度
+  * @param metadata 任意のメタデータ
+  */
 export interface SemanticBoundary {
   position: number;
   type: BoundaryType;
@@ -88,9 +118,9 @@ export interface SemanticBoundary {
   metadata?: Record<string, unknown>;
 }
 
-/**
- * Types of semantic boundaries
- */
+ /**
+  * 意味的な境界の種類を表す型
+  */
 export type BoundaryType =
   | "paragraph"      // Paragraph break
   | "section"        // Section heading
@@ -102,9 +132,15 @@ export type BoundaryType =
   | "agent-output"   // Agent output boundary
   | "semantic-gap";  // Detected semantic gap
 
-/**
- * Chunk result from text splitting
- */
+ /**
+  * テキスト分割結果のチャンク
+  * @param id チャンクID
+  * @param content チャンクの内容
+  * @param tokenEstimate トークン概算数
+  * @param boundaries 意味的境界のリスト
+  * @param priority 優先度
+  * @param metadata メタデータ（開始位置、終了位置、コードブロックの有無、マークダウン見出しの有無、行数）
+  */
 export interface TextChunk {
   id: string;
   content: string;
@@ -120,9 +156,16 @@ export interface TextChunk {
   };
 }
 
-/**
- * Configuration for chunking
- */
+ /**
+  * チャンキングの設定
+  * @param maxChunkTokens チャンクの最大トークン数
+  * @param minChunkTokens チャンクの最小トークン数
+  * @param overlapTokens オーバーラップするトークン数
+  * @param respectBoundaries 境界を尊重するかどうか
+  * @param boundaryTypes 境界の種類
+  * @param preserveCodeBlocks コードブロックを保持するかどうか
+  * @param preserveMarkdownSections マークダウンセクションを保持するかどうか
+  */
 export interface ChunkingConfig {
   maxChunkTokens: number;
   minChunkTokens: number;
@@ -133,9 +176,18 @@ export interface ChunkingConfig {
   preserveMarkdownSections: boolean;
 }
 
-/**
- * State summary for working memory
- */
+ /**
+  * ワーキングメモリの状態概要
+  * @param id 一意識別子
+  * @param timestamp タイムスタンプ
+  * @param carriedForward 引き継ぐ重要事実
+  * @param pendingTasks 未完了タスク
+  * @param decisions 行われた決定事項
+  * @param blockers 現在のブロッカー
+  * @param assumptions 現在有効な仮定
+  * @param evidence 収集されたエビデンス
+  * @param confidence 信頼度
+  */
 export interface StateSummary {
   id: string;
   timestamp: number;
@@ -148,9 +200,14 @@ export interface StateSummary {
   confidence: number;
 }
 
-/**
- * Summary of evidence collected
- */
+ /**
+  * 収集されたエビデンスの要約
+  * @param claim 主張の内容
+  * @param evidence エビデンスの内容
+  * @param source エビデンスのソース
+  * @param confidence 信頼度
+  * @param contradicted 矛盾しているかどうか
+  */
 export interface EvidenceSummary {
   claim: string;
   evidence: string;
@@ -159,9 +216,16 @@ export interface EvidenceSummary {
   contradicted: boolean;
 }
 
-/**
- * Configuration for state summary extraction
- */
+ /**
+  * 状態要約抽出の設定
+  * @param maxCarriedForward 繰り越される項目の最大数
+  * @param maxPendingTasks 保留タスクの最大数
+  * @param maxDecisions 決定事項の最大数
+  * @param maxBlockers ブロッカーの最大数
+  * @param maxAssumptions 前提の最大数
+  * @param maxEvidence エビデンスの最大数
+  * @param minConfidence 最小信頼度
+  */
 export interface SummaryExtractionConfig {
   maxCarriedForward: number;
   maxPendingTasks: number;
@@ -235,10 +299,11 @@ const CHARS_PER_TOKEN = 4;
 // Token Estimation
 // ============================================================================
 
-/**
- * Estimate token count for text
- * This is a simple heuristic; for accuracy, use a proper tokenizer
- */
+ /**
+  * テキストのトークン数を見積もる
+  * @param text 対象のテキスト
+  * @returns 推定トークン数
+  */
 export function estimateTokens(text: string): number {
   if (!text) return 0;
   
@@ -255,9 +320,11 @@ export function estimateTokens(text: string): number {
   return Math.ceil(words + cjkChars * 0.5 + codeTokens * 0.3);
 }
 
-/**
- * Estimate tokens for a context item
- */
+ /**
+  * コンテキストアイテムのトークン数を推定
+  * @param item コンテキストアイテム
+  * @returns 推定トークン数
+  */
 export function estimateContextItemTokens(item: ContextItem): number {
   return item.tokenEstimate || estimateTokens(item.content);
 }
@@ -266,9 +333,12 @@ export function estimateContextItemTokens(item: ContextItem): number {
 // Context Window Management
 // ============================================================================
 
-/**
- * Manage context window with priority-based trimming
- */
+ /**
+  * コンテキストウィンドウを優先度に基づき最適化
+  * @param items コンテキストアイテムの配列
+  * @param config 最大トークン数などの設定
+  * @returns トークン予算内に収まった最適化されたコンテキスト
+  */
 export function optimizeContextWindow(
   items: ContextItem[],
   config: ContextWindowConfig = DEFAULT_CONTEXT_WINDOW_CONFIG
@@ -436,9 +506,11 @@ function summarizeItem(item: ContextItem): string {
 // Semantic Boundary Detection
 // ============================================================================
 
-/**
- * Detect semantic boundaries in text
- */
+ /**
+  * テキストから意味的な境界を検出する
+  * @param text - 分析対象のテキスト
+  * @returns 検出された意味的境界の配列
+  */
 export function detectSemanticBoundaries(text: string): SemanticBoundary[] {
   const boundaries: SemanticBoundary[] = [];
   const lines = text.split("\n");
@@ -589,9 +661,12 @@ function detectSemanticGaps(text: string, existingBoundaries: SemanticBoundary[]
 // Chunking Strategy
 // ============================================================================
 
-/**
- * Chunk text based on semantic boundaries
- */
+ /**
+  * テキストを意味的境界に基づいて分割する
+  * @param text - 入力テキスト
+  * @param config - 分割設定
+  * @returns 分割されたテキストチャンクの配列
+  */
 export function chunkText(
   text: string,
   config: ChunkingConfig = DEFAULT_CHUNKING_CONFIG
@@ -854,9 +929,13 @@ function addOverlapToChunks(chunks: TextChunk[], overlapTokens: number): void {
 // State Summary Extraction
 // ============================================================================
 
-/**
- * Extract state summary from output text
- */
+ /**
+  * 出力テキストから状態サマリーを抽出する
+  * @param text 元のテキスト
+  * @param previousSummary 前回のサマリー
+  * @param config 抽出設定
+  * @returns 抽出された状態サマリー
+  */
 export function extractStateSummary(
   text: string,
   previousSummary?: StateSummary,
@@ -984,9 +1063,11 @@ export function extractStateSummary(
   };
 }
 
-/**
- * Format state summary for inclusion in context
- */
+ /**
+  * コンテキスト用にステートサマリーを整形する
+  * @param summary - ステートサマリーオブジェクト
+  * @returns 整形された文字列
+  */
 export function formatStateSummary(summary: StateSummary): string {
   const lines: string[] = [];
   
@@ -1034,9 +1115,14 @@ export function formatStateSummary(summary: StateSummary): string {
 // Utility Functions
 // ============================================================================
 
-/**
- * Create a context item from text content
- */
+ /**
+  * コンテキストアイテムを作成する
+  * @param content コンテンツ文字列
+  * @param category カテゴリ
+  * @param priority 優先度
+  * @param options オプション設定（id, source, metadataなど）
+  * @returns 作成されたContextItem
+  */
 export function createContextItem(
   content: string,
   category: ContextCategory,
@@ -1059,9 +1145,12 @@ export function createContextItem(
   };
 }
 
-/**
- * Merge multiple context items intelligently
- */
+ /**
+  * 複数のコンテキストアイテムを統合する
+  * @param items 統合対象のコンテキストアイテム配列
+  * @param strategy 統合戦略（"concat" | "summarize" | "priority-first"）
+  * @returns 統合されたコンテキストアイテム
+  */
 export function mergeContextItems(
   items: ContextItem[],
   strategy: "concat" | "summarize" | "priority-first" = "concat"
@@ -1117,9 +1206,12 @@ export function mergeContextItems(
   });
 }
 
-/**
- * Calculate context window utilization
- */
+ /**
+  * コンテキストウィンドウの利用率を計算する
+  * @param items コンテキストアイテムの配列
+  * @param maxTokens 最大トークン数
+  * @returns 使用量、利用率、カテゴリ別・優先度別の内訳
+  */
 export function calculateUtilization(
   items: ContextItem[],
   maxTokens: number

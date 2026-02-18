@@ -9,10 +9,13 @@
  * Related: lib/unified-limit-resolver.ts, extensions/agent-runtime.ts
  */
 
-/**
- * Minimal runtime snapshot interface for limit resolution.
- * Captures the essential runtime state needed for capacity calculations.
- */
+ /**
+  * ランタイムスナップショットインターフェース
+  * @param totalActiveLlm 全体のアクティブなLLM操作数
+  * @param totalActiveRequests 全体のアクティブなリクエスト数
+  * @param subagentActiveCount アクティブなサブエージェント数
+  * @param teamActiveCount アクティブなチームエージェント数
+  */
 export interface IRuntimeSnapshot {
 	/** Total active LLM operations across subagents and teams */
 	totalActiveLlm: number;
@@ -24,8 +27,8 @@ export interface IRuntimeSnapshot {
 	teamActiveCount: number;
 }
 
-/**
- * Provider function type for runtime snapshot.
- * Used for dependency injection from agent-runtime.ts.
- */
+ /**
+  * ランタイムスナップショットの提供関数
+  * @returns ランタイムスナップショット
+  */
 export type RuntimeSnapshotProvider = () => IRuntimeSnapshot;

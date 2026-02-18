@@ -15,10 +15,12 @@ import type {
 // Node Lookup
 // ============================================
 
-/**
- * Find node by name in the index.
- * Returns all nodes with matching name (may have multiple with same name in different files).
- */
+ /**
+  * 名前を指定してノードを検索する
+  * @param index 検索対象のインデックス
+  * @param symbolName シンボル名（大文字小文字を区別しない）
+  * @returns 一致するノードの配列
+  */
 export function findNodesByName(
 	index: CallGraphIndex,
 	symbolName: string
@@ -30,16 +32,22 @@ export function findNodesByName(
 	);
 }
 
-/**
- * Find node by ID.
- */
+ /**
+  * IDに一致するノードを検索する。
+  * @param index 検索対象の呼び出しグラフインデックス
+  * @param nodeId 検索するノードID
+  * @returns 一致したノード、見つからない場合はundefined
+  */
 export function findNodeById(index: CallGraphIndex, nodeId: string): CallGraphNode | undefined {
 	return index.nodes.find((node) => node.id === nodeId);
 }
 
-/**
- * Find nodes by file path.
- */
+ /**
+  * ファイルパスでノードを検索
+  * @param index コールグラフのインデックス
+  * @param filePath 検索対象のファイルパス
+  * @returns 該当するノードの配列
+  */
 export function findNodesByFile(
 	index: CallGraphIndex,
 	filePath: string
@@ -56,15 +64,14 @@ interface CallerSearchState {
 	queue: Array<{ name: string; level: number; callSite?: CallGraphEdge["callSite"]; confidence: number }>;
 }
 
-/**
- * Find all functions that call the given symbol.
- *
- * @param index - Call graph index
- * @param symbolName - Symbol name to find callers for
- * @param depth - Recursion depth (1 = direct callers only)
- * @param limit - Maximum number of results
- * @returns Array of caller nodes with depth and call site info
- */
+ /**
+  * 指定されたシンボルを呼び出す全ての関数を検索します。
+  * @param index - 呼び出しグラフのインデックス
+  * @param symbolName - 呼び出し元を検索するシンボル名
+  * @param depth - 再帰の深さ（1 = 直接の呼び出し元のみ）
+  * @param limit - 最大結果数
+  * @returns 深度と呼び出し位置情報を持つ呼び出し元ノードの配列
+  */
 export function findCallers(
 	index: CallGraphIndex,
 	symbolName: string,
@@ -131,15 +138,14 @@ export function findCallers(
 // Find Callees
 // ============================================
 
-/**
- * Find all functions called by the given symbol.
- *
- * @param index - Call graph index
- * @param symbolName - Symbol name to find callees for
- * @param depth - Recursion depth (1 = direct callees only)
- * @param limit - Maximum number of results
- * @returns Array of callee nodes with depth and call site info
- */
+ /**
+  * 指定されたシンボルから呼ばれる関数を検索する
+  * @param index - コールグラフインデックス
+  * @param symbolName - 呼び出し先を検索するシンボル名
+  * @param depth - 再帰の深さ（1 = 直接の呼び出し先のみ）
+  * @param limit - 最大結果数
+  * @returns 深度と呼び出し位置情報を含む呼び出し先ノードの配列
+  */
 export function findCallees(
 	index: CallGraphIndex,
 	symbolName: string,
@@ -233,10 +239,14 @@ export function findCallees(
 // Call Path Analysis
 // ============================================
 
-/**
- * Find call path between two symbols.
- * Uses BFS to find shortest path.
- */
+ /**
+  * 2つのシンボル間の呼び出し経路を探索する
+  * @param index 呼び出しグラフのインデックス
+  * @param fromSymbol 開始シンボル名
+  * @param toSymbol 終了シンボル名
+  * @param maxDepth 最大探索深さ
+  * @returns 呼び出し経路のノード配列、見つからなければnull
+  */
 export function findCallPath(
 	index: CallGraphIndex,
 	fromSymbol: string,
@@ -313,9 +323,12 @@ export function findCallPath(
 // Statistics
 // ============================================
 
-/**
- * Get statistics for a function in the call graph.
- */
+ /**
+  * 呼び出しグラフのノード統計情報を取得する
+  * @param index 呼び出しグラフのインデックス
+  * @param symbolName シンボル名
+  * @returns ノード情報、呼び出し元・呼び出し先の数（直接・全経路）
+  */
 export function getNodeStats(
 	index: CallGraphIndex,
 	symbolName: string

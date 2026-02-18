@@ -17,9 +17,15 @@ import { dirname, join } from "node:path";
 // Types
 // ============================================================================
 
-/**
- * Skill definition matching pi-core Skill interface
- */
+ /**
+  * pi-coreのSkillインターフェースに対応する定義
+  * @param name スキル名
+  * @param description 説明
+  * @param filePath ファイルパス
+  * @param baseDir ベースディレクトリ
+  * @param source ソース
+  * @param disableModelInvocation モデル呼び出しの有無
+  */
 export interface SkillDefinition {
   name: string;
   description: string;
@@ -29,21 +35,24 @@ export interface SkillDefinition {
   disableModelInvocation: boolean;
 }
 
-/**
- * Skill reference - can be a skill name or path
- */
+ /**
+  * スキル名またはパスを表す文字列
+  */
 export type SkillReference = string;
 
-/**
- * Resolved skill with content loaded
- */
+ /**
+  * コンテンツが読み込まれた解決済みスキル
+  */
 export interface ResolvedSkill extends SkillDefinition {
   content: string;
 }
 
-/**
- * Skill resolution options
- */
+ /**
+  * スキル解決のオプション
+  * @param cwd 相対パス解決用の作業ディレクトリ
+  * @param agentDir グローバルスキル用のエージェントディレクトリ（デフォルト: ~/.pi/agent）
+  * @param skillPaths 検索対象の追加スキルパス
+  */
 export interface ResolveSkillsOptions {
   /** Working directory for resolving relative paths */
   cwd: string;
@@ -53,9 +62,12 @@ export interface ResolveSkillsOptions {
   skillPaths?: string[];
 }
 
-/**
- * Skill merge configuration for inheritance
- */
+ /**
+  * スキル継承のマージ設定
+  * @param parentSkills 親スキル（チーム/サブエージェントレベルから継承）
+  * @param childSkills 子スキル（メンバー固有）
+  * @param strategy 戦略："replace"は親を無視、"merge"は両方を結合
+  */
 export interface SkillMergeConfig {
   /** Parent skills (inherited from team/subagent level) */
   parentSkills?: SkillReference[];
@@ -65,9 +77,12 @@ export interface SkillMergeConfig {
   strategy?: "replace" | "merge";
 }
 
-/**
- * Result of skill resolution
- */
+ /**
+  * スキル解決の結果
+  * @param skills 解決されたスキルのリスト
+  * @param errors エラーメッセージのリスト
+  * @param warnings 警告メッセージのリスト
+  */
 export interface ResolveSkillsResult {
   skills: ResolvedSkill[];
   errors: string[];
@@ -327,9 +342,12 @@ function resolveSkillContent(skill: SkillDefinition): {
   }
 }
 
-/**
- * Resolve multiple skills by reference
- */
+ /**
+  * 複数のスキルを参照から解決する
+  * @param references スキル参照の配列
+  * @param options 解決オプション
+  * @returns 解決結果を含むオブジェクト
+  */
 export function resolveSkills(
   references: SkillReference[],
   options: ResolveSkillsOptions,
@@ -391,15 +409,12 @@ export function resolveSkills(
 // Skill Merging
 // ============================================================================
 
-/**
- * Merge skills according to inheritance rules
- *
- * Rules:
- * - Empty array [] is ignored (treated as "not specified")
- * - Parent skills are inherited by default
- * - Child skills are merged with parent skills
- * - "replace" strategy ignores parent skills
- */
+ /**
+  * 継承ルールに従ってスキルをマージする
+  * @param config マージ設定
+  * @param options 解決オプション
+  * @returns 解決されたスキル結果
+  */
 export function mergeSkills(
   config: SkillMergeConfig,
   options: ResolveSkillsOptions,
@@ -432,10 +447,12 @@ export function mergeSkills(
   return resolveSkills(finalReferences, options);
 }
 
-/**
- * Merge skill arrays handling the inheritance pattern
- * Used by subagents and agent teams
- */
+ /**
+  * スキル配列をマージする
+  * @param parentSkills 親のスキル配列
+  * @param childSkills 子のスキル配列
+  * @returns マージされたスキル配列
+  */
 export function mergeSkillArrays(
   parentSkills: SkillReference[] | undefined,
   childSkills: SkillReference[] | undefined,
@@ -459,9 +476,11 @@ export function mergeSkillArrays(
 // Skill Formatting
 // ============================================================================
 
-/**
- * Format resolved skills for prompt injection
- */
+ /**
+  * 解決済みスキルをプロンプト用に整形する
+  * @param skills 解決済みスキルの配列
+  * @returns 整形された文字列
+  */
 export function formatSkillsForPrompt(skills: ResolvedSkill[]): string {
   if (!skills || skills.length === 0) {
     return "";
@@ -489,9 +508,11 @@ export function formatSkillsForPrompt(skills: ResolvedSkill[]): string {
   return lines.join("\n");
 }
 
-/**
- * Format resolved skills with full content for immediate use
- */
+ /**
+  * 解決済みスキルをフルコンテンツ付きでフォーマットする
+  * @param skills 解決済みスキルの配列
+  * @returns フォーマットされた文字列
+  */
 export function formatSkillsWithContent(skills: ResolvedSkill[]): string {
   if (!skills || skills.length === 0) {
     return "";
@@ -525,9 +546,13 @@ function escapeXml(str: string): string {
 // Convenience Functions
 // ============================================================================
 
-/**
- * Load and resolve skills for a subagent or team member
- */
+ /**
+  * サブエージェント用のスキルを読み込み解決する
+  * @param skillReferences 読み込むスキルの参照リスト
+  * @param parentSkillReferences 親から継承するスキルの参照リスト
+  * @param cwd カレントワーキングディレクトリ
+  * @returns プロンプトセクション、解決されたスキル、エラー配列
+  */
 export function loadSkillsForAgent(
   skillReferences: SkillReference[] | undefined,
   parentSkillReferences: SkillReference[] | undefined,
@@ -548,9 +573,12 @@ export function loadSkillsForAgent(
   };
 }
 
-/**
- * Validate skill references without loading content
- */
+ /**
+  * スキル参照を検証
+  * @param references スキル参照リスト
+  * @param cwd 作業ディレクトリ
+  * @returns 有効・無効な参照のリスト
+  */
 export function validateSkillReferences(
   references: SkillReference[],
   cwd: string,

@@ -20,9 +20,10 @@ import {
 // Schema Types
 // ============================================================================
 
-/**
- * Validation mode for output schema checking.
- */
+ /**
+  * 出力スキーマ検証モード
+  * @type {"legacy" | "dual" | "strict"}
+  */
 export type SchemaValidationMode = "legacy" | "dual" | "strict";
 
 /**
@@ -45,9 +46,14 @@ interface OutputSchema {
   [fieldName: string]: SchemaField;
 }
 
-/**
- * Schema validation result.
- */
+ /**
+  * スキーマ検証の結果を表します。
+  * @param ok 検証が成功したかどうか
+  * @param reason 失敗の理由
+  * @param violations 違反のリスト
+  * @param fallbackUsed フォールバックが使用されたかどうか
+  * @param parsed パースされた構造化データ
+  */
 export interface SchemaValidationResult {
   ok: boolean;
   reason?: string;
@@ -56,9 +62,13 @@ export interface SchemaValidationResult {
   parsed?: ParsedStructuredOutput;
 }
 
-/**
- * Individual schema violation.
- */
+ /**
+  * 個別のスキーマ違反
+  * @param field 違反が発生したフィールド名
+  * @param violationType 違反の種類
+  * @param expected 期待される値
+  * @param actual 実際の値
+  */
 export interface SchemaViolation {
   field: string;
   violationType: "missing" | "too_short" | "too_long" | "pattern_mismatch" | "out_of_range" | "invalid_type";
@@ -66,9 +76,16 @@ export interface SchemaViolation {
   actual?: string;
 }
 
-/**
- * Parsed structured output.
- */
+ /**
+  * 構造化された出力データの解析結果
+  * @param SUMMARY 概要
+  * @param CLAIM 主張
+  * @param EVIDENCE 証拠
+  * @param CONFIDENCE 信頼度
+  * @param DISCUSSION 議論
+  * @param RESULT 結果
+  * @param NEXT_STEP 次のステップ
+  */
 export interface ParsedStructuredOutput {
   SUMMARY: string;
   CLAIM?: string;
@@ -165,12 +182,10 @@ export type CommunicationIdMode = "legacy" | "structured";
  */
 let cachedCommunicationIdMode: CommunicationIdMode | undefined;
 
-/**
- * Get the current communication ID mode.
- * Reads from PI_COMMUNICATION_ID_MODE environment variable.
- *
- * @returns Current communication ID mode
- */
+ /**
+  * 現在のコミュニケーションIDモードを取得
+  * @returns 現在のコミュニケーションIDモード
+  */
 export function getCommunicationIdMode(): CommunicationIdMode {
   if (cachedCommunicationIdMode !== undefined) {
     return cachedCommunicationIdMode;
@@ -187,16 +202,19 @@ export function getCommunicationIdMode(): CommunicationIdMode {
   return cachedCommunicationIdMode;
 }
 
-/**
- * Reset the cached communication ID mode (primarily for testing).
- */
+ /**
+  * キャッシュされた通信IDモードをリセットする
+  * @returns なし
+  */
 export function resetCommunicationIdModeCache(): void {
   cachedCommunicationIdMode = undefined;
 }
 
-/**
- * Set communication ID mode at runtime (primarily for testing).
- */
+ /**
+  * 通信IDモードを設定する
+  * @param mode 設定する通信IDモード
+  * @returns なし
+  */
 export function setCommunicationIdMode(mode: CommunicationIdMode): void {
   cachedCommunicationIdMode = mode;
 }
@@ -205,12 +223,12 @@ export function setCommunicationIdMode(mode: CommunicationIdMode): void {
 // Stance Classification Mode (P0-2: Structured Communication Context)
 // ============================================================================
 
-/**
- * Stance classification mode for discussion analysis.
- * - "disabled" (default): No stance classification, backward compatible
- * - "heuristic": Use regex-based pattern matching for stance detection
- * - "structured": Full structured analysis with confidence scores
- */
+ /**
+  * 態度分類モード
+  * @param "disabled" 分類なし（デフォルト、互換性維持）
+  * @param "heuristic" 正規表現ベースのパターンマッチング
+  * @param "structured" 信頼度スコア付きの完全構造化分析
+  */
 export type StanceClassificationMode = "disabled" | "heuristic" | "structured";
 
 /**
@@ -218,12 +236,10 @@ export type StanceClassificationMode = "disabled" | "heuristic" | "structured";
  */
 let cachedStanceClassificationMode: StanceClassificationMode | undefined;
 
-/**
- * Get the current stance classification mode.
- * Reads from PI_STANCE_CLASSIFICATION_MODE environment variable.
- *
- * @returns Current stance classification mode (defaults to "disabled")
- */
+ /**
+  * 現在のスタンス分類モードを取得する。
+  * @returns 現在のスタンス分類モード（デフォルトは "disabled"）
+  */
 export function getStanceClassificationMode(): StanceClassificationMode {
   if (cachedStanceClassificationMode !== undefined) {
     return cachedStanceClassificationMode;
@@ -240,16 +256,19 @@ export function getStanceClassificationMode(): StanceClassificationMode {
   return cachedStanceClassificationMode;
 }
 
-/**
- * Reset the cached stance classification mode (primarily for testing).
- */
+ /**
+  * キャッシュされたスタンス分類モードをリセットする
+  * @returns {void}
+  */
 export function resetStanceClassificationModeCache(): void {
   cachedStanceClassificationMode = undefined;
 }
 
-/**
- * Set stance classification mode at runtime (primarily for testing).
- */
+ /**
+  * スタンス分類モードを設定する
+  * @param mode 設定するスタンス分類モード
+  * @returns なし
+  */
 export function setStanceClassificationMode(mode: StanceClassificationMode): void {
   cachedStanceClassificationMode = mode;
 }
@@ -259,17 +278,10 @@ export function setStanceClassificationMode(mode: StanceClassificationMode): voi
  */
 let cachedMode: SchemaValidationMode | undefined;
 
-/**
- * Get the current schema validation mode.
- * Reads from PI_OUTPUT_SCHEMA_MODE environment variable.
- *
- * MIGRATION COMPLETE: Default is now "strict" (v2.0.0+)
- * - "legacy": Use regex-based validation only (deprecated)
- * - "dual": Run both regex and schema validation, log differences
- * - "strict": Use schema validation only (default)
- *
- * @returns Current validation mode
- */
+ /**
+  * 現在のスキーマ検証モードを取得する
+  * @returns 現在の検証モード
+  */
 export function getSchemaValidationMode(): SchemaValidationMode {
   if (cachedMode !== undefined) {
     return cachedMode;
@@ -288,16 +300,19 @@ export function getSchemaValidationMode(): SchemaValidationMode {
   return cachedMode;
 }
 
-/**
- * Reset the cached schema validation mode (primarily for testing).
- */
+ /**
+  * キャッシュされたスキーマ検証モードをリセットする。
+  * @returns なし
+  */
 export function resetSchemaValidationModeCache(): void {
   cachedMode = undefined;
 }
 
-/**
- * Set schema validation mode at runtime (primarily for testing).
- */
+ /**
+  * 実行時にスキーマ検証モードを設定する（主にテスト用）。
+  * @param mode 設定するスキーマ検証モード
+  * @returns なし
+  */
 export function setSchemaValidationMode(mode: SchemaValidationMode): void {
   cachedMode = mode;
 }
@@ -306,12 +321,11 @@ export function setSchemaValidationMode(mode: SchemaValidationMode): void {
 // Schema Validation
 // ============================================================================
 
-/**
- * Parse structured output text into a structured object.
- *
- * @param output - Raw output text
- * @returns Parsed structured output
- */
+ /**
+  * 構造化された出力テキストを解析する
+  * @param output - 生の出力テキスト
+  * @returns 解析された構造化出力
+  */
 export function parseStructuredOutput(output: string): ParsedStructuredOutput {
   const parsed: ParsedStructuredOutput = {
     SUMMARY: extractField(output, "SUMMARY") || "",
@@ -462,13 +476,12 @@ function validateAgainstSchema(
   return violations;
 }
 
-/**
- * Validate subagent output with schema.
- *
- * @param output - Raw output text
- * @param mode - Validation mode (defaults to current setting)
- * @returns Validation result with violations and fallback flag
- */
+ /**
+  * サブエージェントの出力をスキーマ検証する
+  * @param output - 生の出力テキスト
+  * @param mode - 検証モード
+  * @returns 検証結果
+  */
 export function validateSubagentOutputWithSchema(
   output: string,
   mode: SchemaValidationMode = getSchemaValidationMode(),
@@ -490,13 +503,12 @@ export function validateSubagentOutputWithSchema(
   };
 }
 
-/**
- * Validate team member output with schema.
- *
- * @param output - Raw output text
- * @param mode - Validation mode (defaults to current setting)
- * @returns Validation result with violations and fallback flag
- */
+ /**
+  * チームメンバー出力のスキーマ検証
+  * @param output - 生の出力テキスト
+  * @param mode - 検証モード（デフォルトは現在の設定）
+  * @returns 違反とフォールバックフラグを含む検証結果
+  */
 export function validateTeamMemberOutputWithSchema(
   output: string,
   mode: SchemaValidationMode = getSchemaValidationMode(),
@@ -527,29 +539,28 @@ export function validateTeamMemberOutputWithSchema(
  */
 const violationStats: Map<string, number> = new Map();
 
-/**
- * Record a schema violation for analytics.
- *
- * @param violation - Violation to record
- */
+ /**
+  * スキーマ違反を記録する
+  * @param violation - 記録する違反情報
+  * @returns void
+  */
 export function recordSchemaViolation(violation: SchemaViolation): void {
   const key = `${violation.field}:${violation.violationType}`;
   const current = violationStats.get(key) || 0;
   violationStats.set(key, current + 1);
 }
 
-/**
- * Get schema violation statistics.
- *
- * @returns Map of violation key to count
- */
+ /**
+  * スキーマ違反の統計情報を取得
+  * @returns 違反キーとカウントのマップ
+  */
 export function getSchemaViolationStats(): Map<string, number> {
   return new Map(violationStats);
 }
 
-/**
- * Reset schema violation statistics.
- */
+ /**
+  * スキーマ違反の統計情報をリセットする。
+  */
 export function resetSchemaViolationStats(): void {
   violationStats.clear();
 }

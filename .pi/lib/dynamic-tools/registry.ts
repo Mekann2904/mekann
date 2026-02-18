@@ -31,9 +31,15 @@ import { logAudit, type AuditAction } from "./audit.js";
 // 拡張機能互換型定義
 // ============================================================================
 
-/**
- * ツールパラメータのプロパティ定義（拡張機能互換）
- */
+ /**
+  * ツールパラメータのプロパティ定義
+  * @param type パラメータの型
+  * @param description パラメータの説明
+  * @param default デフォルト値
+  * @param enum 列挙型の候補値
+  * @param minimum 最小値
+  * @param maximum 最大値
+  */
 export interface ToolParameterProperty {
   type: string;
   description: string;
@@ -43,17 +49,23 @@ export interface ToolParameterProperty {
   maximum?: number;
 }
 
-/**
- * ツールパラメータスキーマ（拡張機能互換）
- */
+ /**
+  * ツールパラメータのスキーマ定義
+  * @param properties プロパティ定義のマッピング
+  * @param required 必須プロパティ名の配列
+  */
 export interface ToolParameterSchema {
   properties: Record<string, ToolParameterProperty>;
   required: string[];
 }
 
-/**
- * ツール実行結果（拡張機能互換）
- */
+ /**
+  * ツール実行結果
+  * @param success 実行が成功したか
+  * @param result 実行結果
+  * @param error エラーメッセージ
+  * @param executionTimeMs 実行時間（ミリ秒）
+  */
 export interface ToolExecutionResult {
   success: boolean;
   result?: unknown;
@@ -61,9 +73,13 @@ export interface ToolExecutionResult {
   executionTimeMs: number;
 }
 
-/**
- * ツール検索オプション（拡張機能互換）
- */
+ /**
+  * ツール検索オプション（拡張機能互換）
+  * @param name ツール名
+  * @param tags タグ一覧
+  * @param minSafetyScore 最小セーフティスコア
+  * @param limit 結果の最大件数
+  */
 export interface ToolSearchOptions {
   name?: string;
   tags?: string[];
@@ -71,9 +87,15 @@ export interface ToolSearchOptions {
   limit?: number;
 }
 
-/**
- * ツール登録オプション（拡張機能互換）
- */
+ /**
+  * ツール登録オプション
+  * @param name ツール名
+  * @param description ツールの説明
+  * @param code 実行コード
+  * @param parameters パラメータスキーマ
+  * @param tags タグ
+  * @param generatedFrom 生成元
+  */
 export interface RegisterToolOptions {
   name: string;
   description: string;
@@ -83,9 +105,13 @@ export interface RegisterToolOptions {
   generatedFrom?: string;
 }
 
-/**
- * ツール登録結果（拡張機能互換）
- */
+ /**
+  * ツール登録結果（拡張機能互換）
+  * @param success 登録が成功したかどうか
+  * @param toolId ツールID
+  * @param error エラーメッセージ
+  * @param warnings 警告メッセージの配列
+  */
 export interface RegisterToolResult {
   success: boolean;
   toolId?: string;
@@ -99,9 +125,11 @@ export interface RegisterToolResult {
 
 const CWD = process.cwd();
 
-/**
- * ディレクトリを確保
- */
+ /**
+  * 動的ツールのディレクトリパスを確保する
+  * @param paths - ツールおよびスキルのディレクトリパスを含むオブジェクト
+  * @returns なし
+  */
 export function ensureDynamicToolsPaths(paths: DynamicToolsPaths): void {
   if (!existsSync(paths.toolsDir)) {
     mkdirSync(paths.toolsDir, { recursive: true });
@@ -119,10 +147,12 @@ export function ensureDynamicToolsPaths(paths: DynamicToolsPaths): void {
 // ツールID生成
 // ============================================================================
 
-/**
- * ツールIDを生成
- * 名前とコードのハッシュベース
- */
+ /**
+  * ツールIDを生成する
+  * @param name ツール名
+  * @param code ツールコード
+  * @returns 生成されたツールID
+  */
 export function generateToolId(name: string, code: string): string {
   const hash = createHash("sha256")
     .update(`${name}:${code}`)
@@ -131,9 +161,10 @@ export function generateToolId(name: string, code: string): string {
   return `dt_${hash}`;
 }
 
-/**
- * 実行IDを生成
- */
+ /**
+  * 実行IDを生成する
+  * @returns 生成された実行ID
+  */
 export function generateRunId(): string {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).slice(2, 6);
@@ -144,9 +175,12 @@ export function generateRunId(): string {
 // ツールストレージ
 // ============================================================================
 
-/**
- * ツール定義をファイルに保存
- */
+ /**
+  * ツール定義を保存する
+  * @param tool ツール定義
+  * @param paths ツールのパス情報
+  * @returns なし
+  */
 export function saveToolDefinition(
   tool: DynamicToolDefinition,
   paths: DynamicToolsPaths
@@ -155,9 +189,12 @@ export function saveToolDefinition(
   writeFileSync(toolFile, JSON.stringify(tool, null, 2), "utf-8");
 }
 
-/**
- * ツール定義をファイルから読み込み
- */
+ /**
+  * ツール定義を読み込む
+  * @param toolId ツールID
+  * @param paths パス設定
+  * @returns ツール定義、見つからない場合はnull
+  */
 export function loadToolDefinition(
   toolId: string,
   paths: DynamicToolsPaths
@@ -175,7 +212,10 @@ export function loadToolDefinition(
 }
 
 /**
- * 名前でツール定義を検索
+ * ツール定義を名前でロード
+ * @param name ツール名
+ * @param paths パス設定
+ * @returns ツール定義、見つからなければnull
  */
 export function loadToolDefinitionByName(
   name: string,
@@ -202,9 +242,12 @@ export function loadToolDefinitionByName(
   return null;
 }
 
-/**
- * IDまたは名前でツール定義を取得
- */
+ /**
+  * IDまたは名前でツール定義を取得
+  * @param toolIdOrName ツールのIDまたは名前
+  * @param paths 動的ツールのパス設定
+  * @returns 見つかったツール定義、見つからない場合はnull
+  */
 export function resolveToolDefinition(
   toolIdOrName: string,
   paths: DynamicToolsPaths
@@ -219,9 +262,11 @@ export function resolveToolDefinition(
   return loadToolDefinitionByName(toolIdOrName, paths);
 }
 
-/**
- * すべてのツール定義をロード
- */
+ /**
+  * 全ツール定義をロード
+  * @param paths ツールのパス設定
+  * @returns ロードされたツール定義の配列
+  */
 export function loadAllToolDefinitions(
   paths: DynamicToolsPaths
 ): DynamicToolDefinition[] {
@@ -245,9 +290,12 @@ export function loadAllToolDefinitions(
   return tools;
 }
 
-/**
- * ツール定義を削除
- */
+ /**
+  * ツール定義を削除する
+  * @param toolId 削除するツールのID
+  * @param paths ツールのパス設定
+  * @returns 削除に成功したかどうか
+  */
 export function deleteToolDefinition(
   toolId: string,
   paths: DynamicToolsPaths
@@ -269,9 +317,15 @@ export function deleteToolDefinition(
 // ツール登録
 // ============================================================================
 
-/**
- * ツールを登録
- */
+ /**
+  * 動的ツールを登録
+  * @param request 登録リクエスト
+  * @param options 登録オプション
+  * @param options.actor 実行主体
+  * @param options.skipVerification 検証をスキップするか
+  * @param options.paths パス設定
+  * @returns 登録結果
+  */
 export async function registerDynamicTool(
   request: DynamicToolRegistrationRequest,
   options?: {
@@ -427,9 +481,12 @@ function validateToolName(name: string): { valid: boolean; error?: string } {
 // ツール一覧
 // ============================================================================
 
-/**
- * ツール一覧を取得
- */
+ /**
+  * 動的ツール一覧を取得
+  * @param options フィルタリングオプション
+  * @param paths ツール定義ファイルのパス
+  * @returns ツール定義の配列
+  */
 export function listDynamicTools(
   options?: DynamicToolListOptions,
   paths?: DynamicToolsPaths
@@ -494,9 +551,13 @@ export function listDynamicTools(
 // ツール削除
 // ============================================================================
 
-/**
- * ツールを削除
- */
+ /**
+  * ダイナミックツールを削除する
+  * @param toolIdOrName ツールIDまたはツール名
+  * @param options.actor 実行者
+  * @param options.paths ツール設定のパス
+  * @returns 成功したかどうかとエラー情報
+  */
 export async function deleteDynamicTool(
   toolIdOrName: string,
   options?: {
@@ -540,9 +601,14 @@ export async function deleteDynamicTool(
 // 使用統計の更新
 // ============================================================================
 
-/**
- * ツールの使用統計を更新
- */
+ /**
+  * ツールの使用統計を更新します。
+  * @param toolId ツールID
+  * @param success 成功したかどうか
+  * @param executionTimeMs 実行時間（ミリ秒）
+  * @param paths 動的ツールのパス（省略可）
+  * @returns なし
+  */
 export function updateToolUsage(
   toolId: string,
   success: boolean,
@@ -572,9 +638,12 @@ export function updateToolUsage(
 // ツール検索
 // ============================================================================
 
-/**
- * キーワードでツールを検索
- */
+ /**
+  * キーワードでツールを検索
+  * @param keyword 検索キーワード
+  * @param paths 検索対象のパス（省略可）
+  * @returns 検索条件に一致するツール定義の配列
+  */
 export function searchDynamicTools(
   keyword: string,
   paths?: DynamicToolsPaths
@@ -590,9 +659,12 @@ export function searchDynamicTools(
   );
 }
 
-/**
- * タスクに適したツールを推奨
- */
+ /**
+  * タスクに適したツールを推奨する
+  * @param task タスクを表す文字列
+  * @param paths ツール定義のパス（省略可）
+  * @returns 推奨されるツール定義の配列
+  */
 export function recommendToolsForTask(
   task: string,
   paths?: DynamicToolsPaths
@@ -633,20 +705,10 @@ export function recommendToolsForTask(
 // 拡張機能との互換性のためのクラスベースAPI
 // ============================================================================
 
-/**
- * 動的ツールレジストリクラス
- * 関数ベースのAPIをラップしてオブジェクト指向APIを提供
- *
- * 使用例:
- * ```typescript
- * const registry = getRegistry();
- * const result = registry.register({
- *   name: "my_tool",
- *   description: "ツールの説明",
- *   code: "console.log('hello');",
- * });
- * ```
- */
+ /**
+  * 動的ツールのレジストリクラス
+  * @param paths - パス設定（省略可）
+  */
 export class DynamicToolRegistry {
   private paths: DynamicToolsPaths;
   private tools: Map<string, DynamicToolDefinition> = new Map();
@@ -670,9 +732,11 @@ export class DynamicToolRegistry {
     this.initialized = true;
   }
 
-  /**
-   * ツールを登録
-   */
+   /**
+    * ツールを登録する
+    * @param options - 登録オプション
+    * @returns 登録結果
+    */
   register(options: RegisterToolOptions): RegisterToolResult {
     this.ensureInitialized();
 
@@ -764,17 +828,21 @@ export class DynamicToolRegistry {
     };
   }
 
-  /**
-   * IDでツールを取得
-   */
+   /**
+    * IDでツールを取得
+    * @param toolId ツールID
+    * @returns ツール定義、存在しない場合はundefined
+    */
   getById(toolId: string): DynamicToolDefinition | undefined {
     this.ensureInitialized();
     return this.tools.get(toolId);
   }
 
-  /**
-   * 名前でツールを検索
-   */
+   /**
+    * 名前でツールを検索
+    * @param name ツール名
+    * @returns 該当するツール定義、見つからない場合はundefined
+    */
   findByName(name: string): DynamicToolDefinition | undefined {
     this.ensureInitialized();
     for (const tool of Array.from(this.tools.values())) {
@@ -785,9 +853,11 @@ export class DynamicToolRegistry {
     return undefined;
   }
 
-  /**
-   * ツールを検索
-   */
+   /**
+    * ツールを検索
+    * @param options 検索オプション
+    * @returns 検索条件に一致するツール定義の配列
+    */
   search(options: ToolSearchOptions): DynamicToolDefinition[] {
     this.ensureInitialized();
 
@@ -823,9 +893,11 @@ export class DynamicToolRegistry {
     return results;
   }
 
-  /**
-   * ツールを削除
-   */
+   /**
+    * ツールを削除します
+    * @param toolId - 削除するツールのID
+    * @returns 成功したかどうかと、失敗時のエラーメッセージを含むオブジェクト
+    */
   delete(toolId: string): { success: boolean; error?: string } {
     this.ensureInitialized();
 
@@ -861,9 +933,11 @@ export class DynamicToolRegistry {
     };
   }
 
-  /**
-   * 使用を記録
-   */
+   /**
+    * ツールの使用を記録する
+    * @param toolId ツールID
+    * @returns なし
+    */
   recordUsage(toolId: string): void {
     this.ensureInitialized();
 
@@ -877,17 +951,19 @@ export class DynamicToolRegistry {
     saveToolDefinition(tool, this.paths);
   }
 
-  /**
-   * 全ツールを取得
-   */
+   /**
+    * 全ツールを取得
+    * @returns 全ての動的ツール定義の配列
+    */
   getAll(): DynamicToolDefinition[] {
     this.ensureInitialized();
     return Array.from(this.tools.values());
   }
 
-  /**
-   * ツール数を取得
-   */
+   /**
+    * ツール数を取得
+    * @returns ツールの総数
+    */
   count(): number {
     this.ensureInitialized();
     return this.tools.size;
@@ -965,9 +1041,10 @@ export class DynamicToolRegistry {
 
 let registryInstance: DynamicToolRegistry | null = null;
 
-/**
- * レジストリのシングルトンインスタンスを取得
- */
+ /**
+  * レジストリのシングルトンインスタンスを取得
+  * @returns DynamicToolRegistryのインスタンス
+  */
 export function getRegistry(): DynamicToolRegistry {
   if (!registryInstance) {
     registryInstance = new DynamicToolRegistry();
@@ -975,9 +1052,10 @@ export function getRegistry(): DynamicToolRegistry {
   return registryInstance;
 }
 
-/**
- * レジストリをリセット（テスト用）
- */
+ /**
+  * レジストリをリセット（テスト用）
+  * @returns {void}
+  */
 export function resetRegistry(): void {
   registryInstance = null;
 }

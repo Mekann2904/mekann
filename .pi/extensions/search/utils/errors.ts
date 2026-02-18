@@ -9,10 +9,15 @@
 // Error Categories
 // ============================================
 
-/**
- * Categories for search tool errors.
- * Each category has different recovery strategies.
- */
+ /**
+  * 検索ツールのエラー区分
+  * @param "dependency" 外部ツールが利用不可 (rg, fd, ctags)
+  * @param "parameter" 入力パラメータが無効
+  * @param "execution" コマンド実行の失敗
+  * @param "timeout" 操作のタイムアウト
+  * @param "index" インデックスに関連する問題
+  * @param "filesystem" ファイルシステムのエラー (権限、未検出など)
+  */
 export type SearchErrorCategory =
 	| "dependency"   // External tool not available (rg, fd, ctags)
 	| "parameter"    // Invalid input parameters
@@ -25,18 +30,13 @@ export type SearchErrorCategory =
 // SearchToolError Class
 // ============================================
 
-/**
- * Base error class for search tools with categorization and recovery hints.
- *
- * @example
- * ```typescript
- * throw new SearchToolError(
- *   "ripgrep (rg) not found",
- *   "dependency",
- *   "Install ripgrep: brew install ripgrep"
- * );
- * ```
- */
+ /**
+  * 検索ツール用の基底エラークラス
+  * @param message エラーメッセージ
+  * @param category エラーのカテゴリ
+  * @param recovery 回復のヒント（省略可）
+  * @param cause 元のエラー（省略可）
+  */
 export class SearchToolError extends Error {
 	/**
 	 * Category of the error for programmatic handling.
@@ -71,9 +71,10 @@ export class SearchToolError extends Error {
 		}
 	}
 
-	/**
-	 * Format error for display to users.
-	 */
+	 /**
+	  * ユーザー向けにエラーをフォーマットする
+	  * @returns フォーマットされたエラーメッセージ
+	  */
 	format(): string {
 		let result = this.message;
 
@@ -84,9 +85,10 @@ export class SearchToolError extends Error {
 		return result;
 	}
 
-	/**
-	 * Create a JSON-serializable representation.
-	 */
+	 /**
+	  * JSONシリアライズ可能なオブジェクトを返す
+	  * @returns エラー情報を含むオブジェクト
+	  */
 	toJSON(): {
 		name: string;
 		message: string;
@@ -106,9 +108,12 @@ export class SearchToolError extends Error {
 // Error Factory Functions
 // ============================================
 
-/**
- * Create a dependency error (external tool not available).
- */
+ /**
+  * 依存関係エラーを作成する
+  * @param tool ツール名
+  * @param recovery 回復方法
+  * @returns 検索ツールエラー
+  */
 export function dependencyError(
 	tool: string,
 	recovery?: string
@@ -135,9 +140,13 @@ function getInstallHint(tool: string): string {
 	return hints[tool] ?? `Please install ${tool} to your system PATH.`;
 }
 
-/**
- * Create a parameter validation error.
- */
+ /**
+  * パラメータ検証エラーを作成する
+  * @param parameter パラメータ名
+  * @param reason エラーの理由
+  * @param recovery 回復手順
+  * @returns SearchToolError インスタンス
+  */
 export function parameterError(
 	parameter: string,
 	reason: string,
@@ -150,9 +159,13 @@ export function parameterError(
 	);
 }
 
-/**
- * Create an execution error (command failed).
- */
+ /**
+  * コマンド実行エラーを作成する
+  * @param command コマンド名
+  * @param stderr 標準エラー出力
+  * @param recovery 回復手段
+  * @returns SearchToolError インスタンス
+  */
 export function executionError(
 	command: string,
 	stderr: string,
@@ -165,9 +178,13 @@ export function executionError(
 	return new SearchToolError(message, "execution", recovery);
 }
 
-/**
- * Create a timeout error.
- */
+ /**
+  * タイムアウトエラーを作成する
+  * @param operation 操作名
+  * @param timeoutMs タイムアウト時間（ミリ秒）
+  * @param recovery 回復手順（省略可）
+  * @returns SearchToolError インスタンス
+  */
 export function timeoutError(
 	operation: string,
 	timeoutMs: number,
@@ -180,9 +197,12 @@ export function timeoutError(
 	);
 }
 
-/**
- * Create an index-related error.
- */
+ /**
+  * インデックス関連のエラーを作成する
+  * @param message エラーメッセージ
+  * @param recovery 回復方法のオプション
+  * @returns 作成されたSearchToolError
+  */
 export function indexError(
 	message: string,
 	recovery?: string
@@ -190,9 +210,13 @@ export function indexError(
 	return new SearchToolError(message, "index", recovery);
 }
 
-/**
- * Create a filesystem error.
- */
+ /**
+  * ファイルシステム操作のエラーを作成する
+  * @param operation 操作内容
+  * @param path ファイルパス
+  * @param cause 元となったエラー
+  * @returns 検索ツールエラー
+  */
 export function filesystemError(
 	operation: string,
 	path: string,
@@ -210,16 +234,21 @@ export function filesystemError(
 // Error Detection Utilities
 // ============================================
 
-/**
- * Check if an error is a SearchToolError.
- */
+ /**
+  * SearchToolErrorかどうかを判定する
+  * @param error 判定対象のエラー
+  * @returns SearchToolErrorの場合はtrue
+  */
 export function isSearchToolError(error: unknown): error is SearchToolError {
 	return error instanceof SearchToolError;
 }
 
-/**
- * Check if an error is of a specific category.
- */
+ /**
+  * エラーが特定のカテゴリか判定する
+  * @param error 検査対象のエラー
+  * @param category 判定するカテゴリ
+  * @returns 一致する場合はtrue
+  */
 export function isErrorCategory(
 	error: unknown,
 	category: SearchErrorCategory
@@ -227,9 +256,11 @@ export function isErrorCategory(
 	return isSearchToolError(error) && error.category === category;
 }
 
-/**
- * Get a user-friendly error message from any error type.
- */
+ /**
+  * エラーメッセージを取得する
+  * @param error エラーオブジェクト
+  * @returns エラーメッセージ
+  */
 export function getErrorMessage(error: unknown): string {
 	if (isSearchToolError(error)) {
 		return error.format();
@@ -246,24 +277,29 @@ export function getErrorMessage(error: unknown): string {
 // Result Type Helpers
 // ============================================
 
-/**
- * Result type for operations that can fail.
- * Provides a type-safe way to handle errors without exceptions.
- */
+ /**
+  * 検索操作の結果を表す型
+  * @param T 成功時の値の型
+  * @param E 失敗時のエラー型（デフォルトはSearchToolError）
+  */
 export type SearchResult<T, E = SearchToolError> =
 	| { ok: true; value: T }
 	| { ok: false; error: E };
 
 /**
- * Create a successful result.
+ * 成功結果を作成する
+ * @param value 成功時の値
+ * @returns 成功を表す検索結果
  */
 export function ok<T>(value: T): SearchResult<T> {
 	return { ok: true, value };
 }
 
-/**
- * Create a failed result.
- */
+ /**
+  * 失敗を表す検索結果を作成する
+  * @param error エラー
+  * @returns 失敗した検索結果
+  */
 export function err<E = SearchToolError>(error: E): SearchResult<never, E> {
 	return { ok: false, error };
 }
@@ -275,9 +311,11 @@ export function isOk<T, E>(result: SearchResult<T, E>): result is { ok: true; va
 	return result.ok === true;
 }
 
-/**
- * Check if a result is a failure.
- */
+ /**
+  * 検索結果が失敗か判定する
+  * @param result 検索結果
+  * @returns 失敗の場合true
+  */
 export function isErr<T, E>(result: SearchResult<T, E>): result is { ok: false; error: E } {
 	return result.ok === false;
 }

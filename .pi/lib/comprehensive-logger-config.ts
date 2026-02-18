@@ -53,6 +53,11 @@ function parseEnvValue(value: string, type: string): unknown {
   }
 }
 
+ /**
+  * 環境変数から設定を読み込む
+  * @param baseConfig ベースとなる設定
+  * @returns 環境変数で上書きされた設定
+  */
 export function loadConfigFromEnv(baseConfig: LoggerConfig = DEFAULT_CONFIG): LoggerConfig {
   const config = { ...baseConfig };
   
@@ -70,17 +75,11 @@ export function loadConfigFromEnv(baseConfig: LoggerConfig = DEFAULT_CONFIG): Lo
 // 設定バリデーション
 // ============================================
 
-/**
- * ロガー設定を検証する
- *
- * @param config - 検証対象のロガー設定オブジェクト
- * @returns 検証結果オブジェクト。validは検証成功かどうか、errorsはエラーメッセージの配列
- * @example
- * const result = validateConfig({ bufferSize: 10, flushIntervalMs: 1000 });
- * if (!result.valid) {
- *   console.error(result.errors);
- * }
- */
+ /**
+  * ロガー設定を検証する
+  * @param config - 検証対象のロガー設定オブジェクト
+  * @returns 検証結果オブジェクト。validは検証成功かどうか、errorsはエラーメッセージの配列
+  */
 export function validateConfig(config: LoggerConfig): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
@@ -122,6 +121,10 @@ export function validateConfig(config: LoggerConfig): { valid: boolean; errors: 
 
 let cachedConfig: LoggerConfig | null = null;
 
+ /**
+  * ロガーの設定を取得する
+  * @returns ロガー設定オブジェクト
+  */
 export function getConfig(): LoggerConfig {
 /**
    * キャッシュされた設定をクリアしてリセットする
@@ -146,6 +149,10 @@ export function getConfig(): LoggerConfig {
   return cachedConfig;
 }
 
+ /**
+  * 設定をリセットする
+  * @returns なし
+  */
 export function resetConfig(): void {
   cachedConfig = null;
 }

@@ -73,18 +73,17 @@ export const DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES: string[][] = [
    * };
    */
 
-/**
- * ループ検証結果を表すインターフェース
- *
- * @property command - 実行されたコマンド
- * @property passed - 検証が成功したかどうか
- * @property timedOut - タイムアウトしたかどうか
- * @property exitCode - 終了コード
- * @property durationMs - 実行時間（ミリ秒）
- * @property stdout - 標準出力の内容
- * @property stderr - 標準エラー出力の内容
- * @property error - エラーが発生した場合のエラーメッセージ（オプション）
- */
+ /**
+  * ループ検証結果を表すインターフェース
+  * @property command - 実行されたコマンド
+  * @property passed - 検証が成功したかどうか
+  * @property timedOut - タイムアウトしたかどうか
+  * @property exitCode - 終了コード
+  * @property durationMs - 実行時間（ミリ秒）
+  * @property stdout - 標準出力の内容
+  * @property stderr - 標準エラー出力の内容
+  * @property error - エラーが発生した場合のエラーメッセージ（オプション）
+  */
 export interface LoopVerificationResult {
   command: string;
   passed: boolean;
@@ -105,14 +104,29 @@ export interface LoopVerificationResult {
   error?: string;
 }
 
+ /**
+  * 検証コマンドの解析結果
+  * @param executable - 実行可能ファイルパス
+  * @param args - 引数リスト
+  * @param error - エラーメッセージ（任意）
+  */
 export interface ParsedVerificationCommand {
   executable: string;
   args: string[];
   error?: string;
 }
 
+ /**
+  * 検証ポリシーのモード
+  * @type {"always" | "done_only" | "every_n"}
+  */
 export type VerificationPolicyMode = "always" | "done_only" | "every_n";
 
+ /**
+  * 検証ポリシーの設定
+  * @param mode 検証モード
+  * @param everyN 実行頻度（modeがevery_nの場合）
+  */
 export interface VerificationPolicyConfig {
   mode: VerificationPolicyMode;
   everyN: number;
@@ -122,6 +136,10 @@ export interface VerificationPolicyConfig {
 // Verification Policy
 // ============================================================================
 
+ /**
+  * 環境変数から検証ポリシーを解決する
+  * @returns 検証ポリシーの設定オブジェクト
+  */
 export function resolveVerificationPolicy(): VerificationPolicyConfig {
   const rawMode = String(process.env[VERIFICATION_POLICY_ENV] || "")
     .trim()
@@ -136,6 +154,11 @@ export function resolveVerificationPolicy(): VerificationPolicyConfig {
   return { mode, everyN };
 }
 
+ /**
+  * 検証コマンドを実行すべきか判定する
+  * @param input - 現在のイテレーション情報と検証ポリシー
+  * @returns 実行する場合はtrue
+  */
 export function shouldRunVerificationCommand(input: {
   iteration: number;
   maxIterations: number;
@@ -157,6 +180,14 @@ export function shouldRunVerificationCommand(input: {
 // Verification Execution
 // ============================================================================
 
+ /**
+  * 検証コマンドを実行する
+  * @param input.command - 実行するコマンド
+  * @param input.cwd - 作業ディレクトリ
+  * @param input.timeoutMs - タイムアウト（ミリ秒）
+  * @param input.signal - 中断シグナル
+  * @returns 検証結果
+  */
 export async function runVerificationCommand(input: {
   command: string;
   cwd: string;
@@ -331,6 +362,11 @@ export async function runVerificationCommand(input: {
 // Command Parsing
 // ============================================================================
 
+ /**
+  * 検証コマンドをパースする
+  * @param command - パース対象のコマンド文字列
+  * @returns パース結果（実行ファイル、引数、エラー）
+  */
 export function parseVerificationCommand(command: string): ParsedVerificationCommand {
   const raw = String(command ?? "").trim();
   if (!raw) {
@@ -437,6 +473,10 @@ function tokenizeArgs(input: string): string[] {
 // Allowlist
 // ============================================================================
 
+ /**
+  * 検証許可リストのプレフィックスを解決する
+  * @returns 許可リストのプレフィックスの2次元配列
+  */
 export function resolveVerificationAllowlistPrefixes(): string[][] {
   // Always start with the default allowlist for security
   const basePrefixes = DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES.map((item) => [...item]);
@@ -468,6 +508,12 @@ export function resolveVerificationAllowlistPrefixes(): string[][] {
   return [...basePrefixes, ...additionalPrefixes];
 }
 
+ /**
+  * 検証コマンドが許可リストに含まれるか判定
+  * @param command 検証対象のコマンド
+  * @param allowlistPrefixes 許可するコマンド接頭辞のリスト
+  * @returns 許可されている場合はtrue
+  */
 export function isVerificationCommandAllowed(
   command: ParsedVerificationCommand,
   allowlistPrefixes: string[][],
@@ -516,6 +562,11 @@ function redactSensitiveText(value: string): string {
   return redacted;
 }
 
+ /**
+  * 検証結果からフィードバックメッセージを生成する
+  * @param result 検証結果
+  * @returns フィードバックメッセージの配列
+  */
 export function buildVerificationValidationFeedback(result: LoopVerificationResult): string[] {
   if (result.passed) return [];
 

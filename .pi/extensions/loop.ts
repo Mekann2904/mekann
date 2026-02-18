@@ -326,19 +326,11 @@ const LOOP_HELP = [
 
 let lastRunSummary: LoopRunSummary | null = null;
 
-/**
- * Loop拡張機能を登録する
- *
- * 自動反復ループ実行ツールをExtensionAPIに登録します。
- * loop_runツールを提供し、タスクの自律的な反復実行を可能にします。
- *
- * @param pi - ExtensionAPIのインスタンス
- * @returns なし
- * @example
- * // 拡張機能の登録
- * import registerLoopExtension from './extensions/loop';
- * registerLoopExtension(pi);
- */
+ /**
+  * 自動反復ループ実行ツールをExtensionAPIに登録
+  * @param pi - ExtensionAPIのインスタンス
+  * @returns なし
+  */
 export default function registerLoopExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "loop_run",

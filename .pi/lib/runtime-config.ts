@@ -13,16 +13,21 @@
 // Types
 // ============================================================================
 
-/**
- * Runtime profile modes.
- * - stable: Conservative limits for reliability (4 concurrent)
- * - default: Balanced limits (8 concurrent)
- */
+ /**
+  * ランタイムプロファイルモード
+  * - stable: 信頼性重視の制限 (4並列)
+  * - default: バランス型の制限 (8並列)
+  */
 export type RuntimeProfile = "stable" | "default";
 
-/**
- * Centralized runtime configuration.
- */
+ /**
+  * ランタイム設定の集中管理
+  * @param profile ランタイムプロファイルモード
+  * @param totalMaxLlm 全インスタンスのLLM操作合計上限
+  * @param totalMaxRequests 全インスタンスのリクエスト合計上限
+  * @param maxParallelSubagents 実行ごとのサブエージェント並列数上限
+  * @param maxParallelTeams 実行ごとのチーム並列数上限
+  */
 export interface RuntimeConfig {
   /** Runtime profile mode */
   profile: RuntimeProfile;
@@ -201,17 +206,10 @@ function detectProfile(): RuntimeProfile {
 // Public API
 // ============================================================================
 
-/**
- * Get the current runtime configuration.
- *
- * Configuration priority (highest to lowest):
- * 1. PI_LIMIT_* environment variables
- * 2. PI_AGENT_* environment variables
- * 3. PI_TOTAL_* / PI_HEARTBEAT_* environment variables
- * 4. Profile preset (stable or default)
- *
- * @returns The current runtime configuration
- */
+ /**
+  * 実行時設定を取得する
+  * @returns 現在の実行時設定
+  */
 export function getRuntimeConfig(): RuntimeConfig {
   if (cachedConfig) {
     return cachedConfig;
@@ -315,41 +313,42 @@ export function getRuntimeConfig(): RuntimeConfig {
   return config;
 }
 
-/**
- * Get the current configuration version.
- * Increments each time the configuration is reloaded.
- */
+ /**
+  * 現在の設定バージョンを取得します。 @returns 設定バージョン
+  */
 export function getConfigVersion(): number {
   return configVersion;
 }
 
-/**
- * Reload configuration from environment.
- * Call this after changing environment variables at runtime.
- */
+ /**
+  * 実行時に環境変数から設定を再読み込みする。
+  * @returns 再読み込みされたランタイム設定
+  */
 export function reloadRuntimeConfig(): RuntimeConfig {
   cachedConfig = null;
   return getRuntimeConfig();
 }
 
-/**
- * Get the current runtime profile.
- */
+ /**
+  * 現在のランタイムプロファイルを取得する。
+  * @returns 現在のランタイムプロファイル。
+  */
 export function getRuntimeProfile(): RuntimeProfile {
   return getRuntimeConfig().profile;
 }
 
-/**
- * Check if running in stable mode.
- */
+ /**
+  * 安定版プロファイルで動作しているか判定する。
+  * @returns 安定版の場合はtrue、それ以外はfalse。
+  */
 export function isStableProfile(): boolean {
   return getRuntimeConfig().profile === "stable";
 }
 
-/**
- * Validate configuration consistency across layers.
- * Returns warnings if inconsistencies are detected.
- */
+ /**
+  * 設定の整合性を検証する
+  * @returns 整合性、警告、詳細を含むオブジェクト
+  */
 export function validateConfigConsistency(): {
   consistent: boolean;
   warnings: string[];
@@ -407,9 +406,10 @@ export function validateConfigConsistency(): {
   };
 }
 
-/**
- * Format configuration for display.
- */
+ /**
+  * 実行時設定を整形して文字列で返す
+  * @returns 整形された設定文字列
+  */
 export function formatRuntimeConfig(): string {
   const config = getRuntimeConfig();
   const validation = validateConfigConsistency();

@@ -26,9 +26,12 @@ function generateEntryId(): string {
   return `audit_${timestamp}_${random}`;
 }
 
-/**
- * 監査ログにエントリを追加
- */
+ /**
+  * 監査ログを非同期で記録する
+  * @param entry 監査ログエントリ（アクション、実行者、詳細等）
+  * @param paths 動的ツールのパス設定（省略可）
+  * @returns 作成された監査ログエントリ
+  */
 export async function logAudit(
   entry: {
     action: AuditAction;
@@ -75,9 +78,12 @@ export async function logAudit(
   return logEntry;
 }
 
-/**
- * 監査ログを読み込み
- */
+ /**
+  * 監査ログを読み込む
+  * @param options 検索オプション（取得件数、ツールID、アクション、開始日時）
+  * @param paths パス設定（省略時はデフォルト）
+  * @returns 監査ログエントリの配列
+  */
 export function readAuditLog(
   options?: {
     limit?: number;
@@ -136,9 +142,12 @@ export function readAuditLog(
   }
 }
 
-/**
- * ツールの操作履歴を取得
- */
+ /**
+  * ツールの操作履歴を取得
+  * @param toolId ツールID
+  * @param paths 動的ツールのパス設定
+  * @returns 監査ログエントリの配列
+  */
 export function getToolHistory(
   toolId: string,
   paths?: DynamicToolsPaths
@@ -146,9 +155,12 @@ export function getToolHistory(
   return readAuditLog({ toolId }, paths);
 }
 
-/**
- * 指定期間内の統計を取得
- */
+ /**
+  * 指定期間内の監査統計を取得
+  * @param since 集計の開始日時
+  * @param paths オプションのパス設定
+  * @returns アクション数、成功率、ツール別集計などを含む統計データ
+  */
 export function getAuditStatistics(
   since: Date,
   paths?: DynamicToolsPaths
@@ -209,9 +221,11 @@ export function getAuditStatistics(
   };
 }
 
-/**
- * 監査ログをフォーマットして表示用文字列を生成
- */
+ /**
+  * 監査ログエントリをフォーマットする
+  * @param entry 監査ログエントリ
+  * @returns フォーマット済みの文字列
+  */
 export function formatAuditLogEntry(entry: AuditLogEntry): string {
   const timestamp = new Date(entry.timestamp).toLocaleString("ja-JP");
   const status = entry.success ? "[OK]" : "[FAIL]";
@@ -233,9 +247,12 @@ export function formatAuditLogEntry(entry: AuditLogEntry): string {
   return line;
 }
 
-/**
- * 監査ログレポートを生成
- */
+ /**
+  * 監査ログレポートを生成
+  * @param since 集計開始日時
+  * @param paths パス設定オプション
+  * @returns 生成されたレポート文字列
+  */
 export function generateAuditReport(
   since: Date,
   paths?: DynamicToolsPaths
@@ -281,9 +298,12 @@ export function generateAuditReport(
   return lines.join("\n");
 }
 
-/**
- * 古いログをアーカイブ
- */
+ /**
+  * 古いログをアーカイブ
+  * @param daysToKeep 保存日数
+  * @param paths パス設定（省略可）
+  * @returns アーカイブ数とエラー情報
+  */
 export function archiveOldLogs(
   daysToKeep: number = 30,
   paths?: DynamicToolsPaths

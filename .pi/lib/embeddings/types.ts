@@ -8,7 +8,12 @@
 // ============================================================================
 
 /**
- * エンベディングプロバイダーの能力
+ * エンベディングプロバイダーの能力定義
+ * @param maxTokens 最大入力トークン数
+ * @param dimensions エンベディング次元数
+ * @param supportsBatch バッチリクエスト対応
+ * @param maxBatchSize 最大バッチサイズ
+ * @param offlineCapable オフライン動作可能
  */
 export interface ProviderCapabilities {
   /** 最大入力トークン数 */
@@ -23,9 +28,13 @@ export interface ProviderCapabilities {
   offlineCapable: boolean;
 }
 
-/**
- * エンベディングプロバイダーインターフェース
- */
+ /**
+  * エンベディングプロバイダーインターフェース
+  * @param id プロバイダー識別子 (openai, local, mock)
+  * @param name 表示名
+  * @param model モデル名
+  * @param capabilities 能力情報
+  */
 export interface EmbeddingProvider {
   /** プロバイダー識別子 (openai, local, mock) */
   readonly id: string;
@@ -77,9 +86,11 @@ export interface EmbeddingProvider {
 // Configuration Types
 // ============================================================================
 
-/**
- * プロバイダー設定
- */
+ /**
+  * プロバイダー設定を定義します。
+  * @param provider 使用するプロバイダーID
+  * @param options プロバイダー固有のオプション
+  */
 export interface ProviderConfig {
   /** 使用するプロバイダーID */
   provider?: string;
@@ -88,9 +99,13 @@ export interface ProviderConfig {
   options?: Record<string, unknown>;
 }
 
-/**
- * エンベディングモジュール設定
- */
+ /**
+  * エンベディングモジュール設定
+  * @param version バージョン
+  * @param defaultProvider デフォルトプロバイダーID
+  * @param fallbackOrder フォールバック順序
+  * @param providerOptions プロバイダー固有オプション
+  */
 export interface EmbeddingModuleConfig {
   /** バージョン */
   version: number;
@@ -109,9 +124,14 @@ export interface EmbeddingModuleConfig {
 // Result Types
 // ============================================================================
 
-/**
- * エンベディング生成結果
- */
+ /**
+  * エンベディング生成結果
+  * @param embedding エンベディングベクトル
+  * @param provider 使用したプロバイダーID
+  * @param model 使用したモデル名
+  * @param dimensions 次元数
+  * @param tokens トークン使用量（利用可能な場合）
+  */
 export interface EmbeddingResult {
   /** エンベディングベクトル */
   embedding: number[];
@@ -129,9 +149,14 @@ export interface EmbeddingResult {
   tokens?: number;
 }
 
-/**
- * プロバイダー状態
- */
+ /**
+  * プロバイダーの状態
+  * @param id プロバイダーID
+  * @param name 表示名
+  * @param model モデル名
+  * @param available 利用可能か
+  * @param unavailableReason 利用不可の理由
+  */
 export interface ProviderStatus {
   /** プロバイダーID */
   id: string;
@@ -156,9 +181,12 @@ export interface ProviderStatus {
 // Utility Types
 // ============================================================================
 
-/**
- * ベクトル検索結果
- */
+ /**
+  * ベクトル検索結果の型定義
+  * @template T アイテムの型
+  * @param item 検索結果のアイテム
+  * @param similarity 類似度スコア (0-1)
+  */
 export interface VectorSearchResult<T> {
   /** 検索結果のアイテム */
   item: T;

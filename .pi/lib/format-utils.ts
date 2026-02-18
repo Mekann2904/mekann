@@ -9,11 +9,11 @@
  * Layer 0: No dependencies on other lib modules.
  */
 
-/**
- * Formats a duration in milliseconds to a human-readable string.
- * @param ms - Duration in milliseconds
- * @returns Formatted duration string (e.g., "500ms", "1.50s")
- */
+ /**
+  * ミリ秒を読みやすい文字列に変換
+  * @param ms - ミリ秒単位の時間
+  * @returns フォーマットされた時間文字列（例: "500ms", "1.50s"）
+  */
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "0ms";
   if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -28,12 +28,11 @@ interface DurationItem {
   finishedAtMs?: number;
 }
 
-/**
- * Formats duration from an item with start and optional finish timestamps.
- * If not finished, uses current time.
- * @param item - Object with startedAtMs and optional finishedAtMs
- * @returns Formatted duration string (e.g., "1.5s", "-" if not started)
- */
+ /**
+  * ミリ秒単位の持続時間を文字列化
+  * @param item - startedAtMsとオプションのfinishedAtMsを持つオブジェクト
+  * @returns フォーマットされた持続時間文字列（例: "1.5s"、未開始なら"-"）
+  */
 export function formatDurationMs(item: DurationItem): string {
   if (!item.startedAtMs) return "-";
   const endMs = item.finishedAtMs ?? Date.now();
@@ -41,11 +40,11 @@ export function formatDurationMs(item: DurationItem): string {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
-/**
- * Formats a byte count to a human-readable string.
- * @param value - Byte count
- * @returns Formatted string (e.g., "512B", "1.5KB", "2.3MB")
- */
+ /**
+  * バイト数を人間が読める形式に変換
+  * @param value - バイト数
+  * @returns フォーマットされた文字列（例: "512B", "1.5KB", "2.3MB"）
+  */
 export function formatBytes(value: number): string {
   const bytes = Math.max(0, Math.trunc(value));
   if (bytes < 1024) return `${bytes}B`;
@@ -53,11 +52,11 @@ export function formatBytes(value: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-/**
- * Formats a timestamp to clock time (HH:MM:SS).
- * @param value - Timestamp in milliseconds, or undefined
- * @returns Formatted clock time or "-" if no value
- */
+ /**
+  * タイムスタンプを時刻に変換
+  * @param value - ミリ秒単位のタイムスタンプ、未指定可
+  * @returns フォーマットされた時刻、値がない場合は"-"
+  */
 export function formatClockTime(value?: number): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -80,18 +79,12 @@ export function formatClockTime(value?: number): string {
 const normalizeCache = new Map<string, string>();
 const NORMALIZE_CACHE_MAX_SIZE = 256;
 
-/**
- * /**
- * * テキストを単一行用に正規化する
- * *
- * * 連続する空白を1つのスペースに置換し、前後の空白を削除します。
- * * 同じ入力に対する繰り返し呼び出しはLRUキャッシュで最適化されます。
- * *
- * * @param input - 正規化する入力テキスト
- * * @param maxLength - 最大文字数（デフォルト: 160）
- * * @returns 正規化された単一行テキスト
- * * @example
- */
+ /**
+  * テキストを単一行用に正規化する
+  * @param input - 正規化する入力テキスト
+  * @param maxLength - 最大文字数（デフォルト: 160）
+  * @returns 正規化された単一行テキスト
+  */
 export function normalizeForSingleLine(input: string, maxLength = 160): string {
   // キャッシュキーを生成
   const cacheKey = `${maxLength}:${input}`;

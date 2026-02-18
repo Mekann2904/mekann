@@ -27,9 +27,12 @@ interface TokenBucketState {
   burstTokensUsed: number;
 }
 
-/**
- * Rate limit configuration for a provider/model.
- */
+ /**
+  * レート制限の設定
+  * @param rpm 1分あたりのリクエスト数
+  * @param burstMultiplier バースト許容量（基本レートの倍率）
+  * @param minIntervalMs リクエスト間の最小待機時間（ミリ秒）
+  */
 export interface RateLimitConfig {
   /** Requests per minute */
   rpm: number;
@@ -39,9 +42,13 @@ export interface RateLimitConfig {
   minIntervalMs: number;
 }
 
-/**
- * Rate limiter statistics.
- */
+ /**
+  * レートリミッターの統計情報
+  * @param trackedModels 追踪中のプロバイダ/モデル数
+  * @param blockedModels 429で現在ブロックされているモデル
+  * @param avgAvailableTokens 全モデルの平均利用可能トークン数
+  * @param lowCapacityModels 低容量（<20%）のモデル
+  */
 export interface RateLimiterStats {
   /** Provider/model combinations being tracked */
   trackedModels: number;
@@ -53,9 +60,9 @@ export interface RateLimiterStats {
   lowCapacityModels: string[];
 }
 
-/**
- * Token bucket rate limiter interface.
- */
+ /**
+  * トークンバケット方式のレート制限インターフェース
+  */
 export interface TokenBucketRateLimiter {
   /**
    * Check if we can proceed with a request.
@@ -138,10 +145,13 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     }
   }
 
-  /**
-   * Check if we can proceed with a request.
-   * @returns Wait time in ms, or 0 if can proceed immediately
-   */
+   /**
+    * リクエストが実行可能か確認する
+    * @param provider プロバイダ名
+    * @param model モデル名
+    * @param tokensNeeded 必要なトークン数
+    * @returns 待機時間（ミリ秒）、即時実行可能な場合は0
+    */
   canProceed(provider: string, model: string, tokensNeeded: number): number {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
@@ -174,9 +184,13 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     return Math.max(1, waitMs);
   }
 
-  /**
-   * Consume tokens from the bucket.
-   */
+   /**
+    * バケットからトークンを消費する
+    * @param provider プロバイダ名
+    * @param model モデル名
+    * @param tokens 消費するトークン数
+    * @returns なし
+    */
   consume(provider: string, model: string, tokens: number): void {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
@@ -199,9 +213,12 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     state.burstTokensUsed = Math.min(state.maxTokens * state.burstMultiplier, state.burstTokensUsed);
   }
 
-  /**
-   * Record a 429 error and adjust rate limiting.
-   */
+   /**
+    * 429エラーを記録し、レート制限を調整します。
+    * @param provider プロバイダ名
+    * @param model モデル名
+    * @param retryAfterMs リトライまでの待機時間（ミリ秒）
+    */
   record429(provider: string, model: string, retryAfterMs?: number): void {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
@@ -224,9 +241,12 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     state.refillRate = Math.max(0.5, state.refillRate * 0.9);
   }
 
-  /**
-   * Record a successful request.
-   */
+   /**
+    * 成功したリクエストを記録する。
+    * @param provider プロバイダ名
+    * @param model モデル名
+    * @returns 戻り値なし
+    */
   recordSuccess(provider: string, model: string): void {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
@@ -246,9 +266,10 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     state.refillRate = Math.min(baseRefillRate, state.refillRate + 0.1);
   }
 
-  /**
-   * Get current statistics.
-   */
+   /**
+    * 現在の統計情報を取得する
+    * @returns 統計情報オブジェクト
+    */
   getStats(): RateLimiterStats {
     const now = Date.now();
     const trackedModels = this.buckets.size;
@@ -280,9 +301,13 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     };
   }
 
-  /**
-   * Configure rate limit for a specific provider/model.
-   */
+   /**
+    * 指定したプロバイダー/モデルのレート制限を設定
+    * @param provider プロバイダー名
+    * @param model モデル名
+    * @param config レート制限設定
+    * @returns なし
+    */
   configure(provider: string, model: string, config: Partial<RateLimitConfig>): void {
     const key = this.getKey(provider, model);
     const existing = this.configs.get(key) ?? DEFAULT_CONFIGS["default:default"];
@@ -297,24 +322,31 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     }
   }
 
-  /**
-   * Reset a specific bucket.
-   */
+   /**
+    * 指定したバケットをリセットする
+    * @param provider プロバイダ名
+    * @param model モデル名
+    * @returns なし
+    */
   reset(provider: string, model: string): void {
     const key = this.getKey(provider, model);
     this.buckets.delete(key);
   }
 
-  /**
-   * Reset all buckets.
-   */
+   /**
+    * すべてのバケットをリセットする。
+    * @returns 戻り値なし
+    */
   resetAll(): void {
     this.buckets.clear();
   }
 
-  /**
-   * Get bucket state for debugging.
-   */
+   /**
+    * デバッグ用にバケット状態を取得
+    * @param provider プロバイダ名
+    * @param model モデル名
+    * @returns バケット状態のコピー、存在しない場合はundefined
+    */
   getBucketState(provider: string, model: string): TokenBucketState | undefined {
     const key = this.getKey(provider, model);
     const state = this.buckets.get(key);
@@ -387,9 +419,10 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
 
 let limiterInstance: TokenBucketRateLimiterImpl | null = null;
 
-/**
- * Get the singleton rate limiter instance.
- */
+ /**
+  * シングルトンのレートリミッターを取得する。
+  * @returns レートリミッターのインスタンス。
+  */
 export function getTokenBucketRateLimiter(): TokenBucketRateLimiterImpl {
   if (!limiterInstance) {
     limiterInstance = new TokenBucketRateLimiterImpl();
@@ -397,16 +430,17 @@ export function getTokenBucketRateLimiter(): TokenBucketRateLimiterImpl {
   return limiterInstance;
 }
 
-/**
- * Create a new rate limiter (for testing).
- */
+ /**
+  * 新しいレート制限インスタンスを作成（テスト用）
+  * @returns 新しいTokenBucketRateLimiterImplインスタンス
+  */
 export function createTokenBucketRateLimiter(): TokenBucketRateLimiterImpl {
   return new TokenBucketRateLimiterImpl();
 }
 
-/**
- * Reset the singleton rate limiter (for testing).
- */
+ /**
+  * シングルトンのレートリミッターをリセット
+  */
 export function resetTokenBucketRateLimiter(): void {
   limiterInstance = null;
 }

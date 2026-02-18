@@ -26,9 +26,12 @@ import { symIndex, readSymbolIndex } from "./sym_index.js";
 // Call Graph Index Tool
 // ============================================
 
-/**
- * Generate or update call graph index.
- */
+ /**
+  * 呼び出しグラフのインデックスを生成または更新
+  * @param input 入力設定
+  * @param cwd 作業ディレクトリ
+  * @returns 出力結果
+  */
 export async function callGraphIndex(
 	input: CallGraphIndexInput,
 	cwd: string
@@ -91,9 +94,12 @@ export async function callGraphIndex(
 // Find Callers Tool
 // ============================================
 
-/**
- * Find all functions that call the given symbol.
- */
+ /**
+  * 指定されたシンボルを呼び出す関数を検索します。
+  * @param input 検索条件を含む入力オブジェクト
+  * @param cwd カレントワーキングディレクトリ
+  * @returns 検索結果を含むオブジェクト
+  */
 export async function findCallersTool(
 	input: FindCallersInput,
 	cwd: string
@@ -161,9 +167,12 @@ export async function findCallersTool(
 // Find Callees Tool
 // ============================================
 
-/**
- * Find all functions called by the given symbol.
- */
+ /**
+  * 指定されたシンボルが呼び出す関数を検索
+  * @param input 検索条件
+  * @param cwd 作業ディレクトリ
+  * @returns 呼び出し先関数のリスト
+  */
 export async function findCalleesTool(
 	input: FindCalleesInput,
 	cwd: string
@@ -231,9 +240,11 @@ export async function findCalleesTool(
 // Output Formatting
 // ============================================
 
-/**
- * Format call graph index result for display.
- */
+ /**
+  * コールグラフのインデックス結果をフォーマット
+  * @param result コールグラフの出力結果
+  * @returns フォーマットされた文字列
+  */
 export function formatCallGraphIndex(result: CallGraphIndexOutput): string {
 	if (result.error) {
 		return `Error: ${result.error}`;
@@ -247,9 +258,11 @@ export function formatCallGraphIndex(result: CallGraphIndexOutput): string {
 	].join("\n");
 }
 
-/**
- * Format callers result for display.
- */
+ /**
+  * 呼び出し元の検索結果を整形して文字列で返す
+  * @param result 呼び出し元の検索結果
+  * @returns 整形された文字列
+  */
 export function formatCallers(result: FindCallersOutput): string {
 	if (result.error) {
 		return `Error: ${result.error}`;
@@ -281,9 +294,11 @@ export function formatCallers(result: FindCallersOutput): string {
 	return lines.join("\n");
 }
 
-/**
- * Format callees result for display.
- */
+ /**
+  * 呼び出し先の検索結果をフォーマットする
+  * @param result 検索結果
+  * @returns フォーマット済みの文字列
+  */
 export function formatCallees(result: FindCalleesOutput): string {
 	if (result.error) {
 		return `Error: ${result.error}`;

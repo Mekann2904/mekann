@@ -52,6 +52,14 @@ function ensureNotAborted(signal?: AbortSignal): void {
   }
 }
 
+ /**
+  * 指定した並列数でアイテムを処理する
+  * @param items 処理対象のアイテム配列
+  * @param limit 最大並列数
+  * @param worker 各アイテムを処理する非同期関数
+  * @param options 実行オプション
+  * @returns すべての処理結果を含む配列
+  */
 export async function runWithConcurrencyLimit<TInput, TResult>(
   items: TInput[],
   limit: number,

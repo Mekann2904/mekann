@@ -14,17 +14,22 @@ import { atomicWriteTextFile, withFileLock } from "./storage-lock.js";
 // Core Types
 // ============================================================================
 
-/**
- * Base interface for entities that have an ID.
- */
+ /**
+  * IDを持つエンティティの基底インターフェース
+  */
 export interface HasId {
   id: string;
 }
 
-/**
- * Base interface for run records.
- * Note: Uses runId as the unique identifier (not id).
- */
+ /**
+  * 実行記録の基本インターフェース。runIdを一意識別子とする。
+  * @param runId 実行ID
+  * @param status 実行ステータス
+  * @param startedAt 開始日時
+  * @param finishedAt 終了日時
+  * @param outputFile 出力ファイルパス
+  * @param error エラー内容（任意）
+  */
 export interface BaseRunRecord {
   runId: string;
   status: "completed" | "failed";
@@ -34,18 +39,24 @@ export interface BaseRunRecord {
   error?: string;
 }
 
-/**
- * Base interface for storage paths.
- */
+ /**
+  * ストレージの基本パスを定義するインターフェース
+  * @param baseDir ベースディレクトリのパス
+  * @param runsDir 実行結果を格納するディレクトリのパス
+  * @param storageFile ストレージファイルのパス
+  */
 export interface BaseStoragePaths {
   baseDir: string;
   runsDir: string;
   storageFile: string;
 }
 
-/**
- * Base interface for storage with definitions and runs.
- */
+ /**
+  * 定義と実行を含むストレージの基底インターフェース
+  * @param TDefinition IDを持つ定義の型
+  * @param TRun 実行レコードの型
+  * @param TCurrentKey 現在のキーの型
+  */
 export interface BaseStorage<
   TDefinition extends HasId,
   TRun extends BaseRunRecord,
@@ -61,9 +72,11 @@ export interface BaseStorage<
 // Path Utilities
 // ============================================================================
 
-/**
- * Create a paths factory for a given subdirectory.
- */
+ /**
+  * サブディレクトリ用のパスファクトリを作成
+  * @param subdir サブディレクトリ名
+  * @returns 現在のディレクトリからパスを生成する関数
+  */
 export function createPathsFactory(subdir: string) {
   return (cwd: string): BaseStoragePaths => {
     const baseDir = join(cwd, ".pi", subdir);
@@ -75,9 +88,11 @@ export function createPathsFactory(subdir: string) {
   };
 }
 
-/**
- * Create an ensurePaths function that creates directories.
- */
+ /**
+  * ディレクトリを作成する関数を生成する
+  * @param getPaths パスオブジェクトを取得する関数
+  * @returns 指定されたパスのディレクトリを作成し、パスオブジェクトを返す関数
+  */
 export function createEnsurePaths<TPaths extends BaseStoragePaths>(
   getPaths: (cwd: string) => TPaths,
 ): (cwd: string) => TPaths {
@@ -93,10 +108,12 @@ export function createEnsurePaths<TPaths extends BaseStoragePaths>(
 // Run Artifact Pruning
 // ============================================================================
 
-/**
- * Prune old run artifacts from disk.
- * Generic version that works with any run record type.
- */
+ /**
+  * 古い実行アーティファクトを削除する
+  * @param paths ストレージのパス情報
+  * @param runs 実行レコードの配列
+  * @returns なし
+  */
 export function pruneRunArtifacts<TRun extends BaseRunRecord>(
   paths: BaseStoragePaths,
   runs: TRun[],
@@ -132,9 +149,12 @@ export function pruneRunArtifacts<TRun extends BaseRunRecord>(
 // Storage Merge Utilities
 // ============================================================================
 
-/**
- * Merge two arrays of entities by ID, preferring the second array for duplicates.
- */
+ /**
+  * IDを基にエンティティ配列をマージする。
+  * @param disk ディスク上の既存エンティティ配列
+  * @param next 追加または更新するエンティティ配列
+  * @returns マージされたエンティティ配列
+  */
 export function mergeEntitiesById<TEntity extends HasId>(
   disk: TEntity[],
   next: TEntity[],
@@ -160,10 +180,13 @@ export function mergeEntitiesById<TEntity extends HasId>(
   return Array.from(byId.values());
 }
 
-/**
- * Merge two arrays of run records by runId, preferring the second array for duplicates.
- * Also sorts by finishedAt/startedAt and limits to maxRuns.
- */
+ /**
+  * runIdで配列を結合・ソートし上限を適用
+  * @param disk ディスク上の実行レコード配列
+  * @param next 新しい実行レコード配列（重複は優先）
+  * @param maxRuns 最大保持数
+  * @returns 結合・ソート・制限後の実行レコード配列
+  */
 export function mergeRunsById<TRun extends BaseRunRecord>(
   disk: TRun[],
   next: TRun[],
@@ -196,9 +219,13 @@ export function mergeRunsById<TRun extends BaseRunRecord>(
     .slice(-maxRuns);
 }
 
-/**
- * Resolve the current ID, ensuring it exists in the merged definitions.
- */
+ /**
+  * 現在のIDを解決し、定義内に存在するか確認
+  * @param nextId 次のID
+  * @param diskId ディスクに保存されたID
+  * @param definitions エンティティ定義の配列
+  * @returns 有効なID、または存在しない場合はundefined
+  */
 export function resolveCurrentId<TEntity extends HasId>(
   nextId: string | undefined,
   diskId: string | undefined,
@@ -235,9 +262,14 @@ export function resolveDefaultsVersion(
 // Storage Load/Save Factories
 // ============================================================================
 
-/**
- * Options for creating a storage loader.
- */
+ /**
+  * ストレージローダー作成用のオプション
+  * @param ensurePaths パスを生成する関数
+  * @param createDefaults デフォルト値を生成する関数
+  * @param validateStorage 検証済みストレージを返す関数
+  * @param defaultsVersion デフォルトのバージョン番号
+  * @param storageKey エラーメッセージ用のキー名
+  */
 export interface CreateStorageLoaderOptions<
   TStorage,
   TPaths extends BaseStoragePaths,
@@ -249,9 +281,11 @@ export interface CreateStorageLoaderOptions<
   storageKey: string; // For error messages
 }
 
-/**
- * Create a storage loader function.
- */
+ /**
+  * ストレージローダー関数を作成する。
+  * @param options パス生成、デフォルト作成、バリデーションなどの設定
+  * @returns 作業ディレクトリを受け取り、ストレージを返す関数
+  */
 export function createStorageLoader<
   TStorage,
   TPaths extends BaseStoragePaths,
@@ -277,9 +311,13 @@ export function createStorageLoader<
   };
 }
 
-/**
- * Options for creating a storage saver.
- */
+ /**
+  * ストレージ保存機能の作成オプション。
+  * @param ensurePaths パス情報を生成する関数。
+  * @param normalizeStorage ストレージデータを正規化する関数。
+  * @param mergeWithDisk ディスクのデータとマージする関数。
+  * @param getRuns 実行レコードのリストを取得する関数。
+  */
 export interface CreateStorageSaverOptions<
   TStorage,
   TPaths extends BaseStoragePaths,
@@ -290,9 +328,11 @@ export interface CreateStorageSaverOptions<
   getRuns: (storage: TStorage) => BaseRunRecord[];
 }
 
-/**
- * Create a storage saver function.
- */
+ /**
+  * ストレージ保存用関数を作成する
+  * @param options 保存処理のオプション
+  * @returns ストレージを保存する関数
+  */
 export function createStorageSaver<
   TStorage,
   TPaths extends BaseStoragePaths,
@@ -335,10 +375,14 @@ export function toId(input: string): string {
 // Subagent-specific Helpers
 // ============================================================================
 
-/**
- * Merge subagent storage with disk state.
- * Note: This is exported for direct use by subagents/storage.ts during migration.
- */
+ /**
+  * サブエージェントストレージとディスク状態をマージ
+  * @param storageFile ストレージファイルパス
+  * @param next マージする次の状態
+  * @param defaultsVersion デフォルトバージョン
+  * @param maxRuns 最大実行数
+  * @returns マージ後の状態
+  */
 export function mergeSubagentStorageWithDisk(
   storageFile: string,
   next: {
@@ -384,10 +428,14 @@ export function mergeSubagentStorageWithDisk(
   };
 }
 
-/**
- * Merge team storage with disk state.
- * Note: This is exported for direct use by agent-teams/storage.ts during migration.
- */
+ /**
+  * チームストレージとディスクの状態をマージする。
+  * @param storageFile ストレージファイルパス
+  * @param next マージする次の状態
+  * @param defaultsVersion デフォルトのバージョン
+  * @param maxRuns 最大実行数
+  * @returns マージされた状態
+  */
 export function mergeTeamStorageWithDisk(
   storageFile: string,
   next: {

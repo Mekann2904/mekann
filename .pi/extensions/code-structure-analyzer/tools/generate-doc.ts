@@ -12,11 +12,11 @@ import type { MermaidDiagrams } from './generate-diagrams.js';
 // Types
 // ============================================================================
 
-/**
- * ドキュメント生成のオプション設定
- *
- * テンプレートパスやLLM用コンテキストの有無を指定する。
- */
+ /**
+  * ドキュメント生成のオプション設定
+  * @param templatePath テンプレートファイルパス
+  * @param includeLLMContext LLM用コンテキストを含めるかどうか
+  */
 export interface DocOptions {
   /** テンプレートファイルパス */
 /**
@@ -30,6 +30,15 @@ export interface DocOptions {
   includeLLMContext?: boolean;
 }
 
+ /**
+  * ドキュメントの各セクションを定義
+  * @param title タイトル
+  * @param overview 概要セクション（LLM用コンテキスト含む）
+  * @param structure 構造セクション
+  * @param apiReference APIリファレンスセクション
+  * @param diagrams 図解セクション
+  * @param llmContext LLM用コンテキストデータ
+  */
 export interface DocSections {
   /** タイトル */
   title: string;
@@ -45,6 +54,14 @@ export interface DocSections {
   llmContext?: LLMContext;
 }
 
+ /**
+  * LLM用のコンテキスト情報
+  * @param summary 解析サマリー
+  * @param keyFunctions 主要な関数一覧
+  * @param keyClasses 主要なクラス一覧
+  * @param keyInterfaces 主要なインターフェース一覧
+  * @param dependencies 依存関係情報
+  */
 export interface LLMContext {
   /** 解析サマリー */
   summary: string;
@@ -73,6 +90,13 @@ export interface LLMContext {
 // Main Export Function
 // ============================================================================
 
+ /**
+  * 構造データからドキュメントセクションを生成する
+  * @param structure - 解析された構造データ
+  * @param diagrams - 生成されたMermaid図
+  * @param options - ドキュメント生成オプション
+  * @returns 生成されたドキュメントセクション
+  */
 export function generateDocSections(
   structure: StructureData,
   diagrams: MermaidDiagrams,

@@ -8,21 +8,20 @@
  */
 
 /**
- * Converts an unknown error to a string message.
- * @param error - The error to convert
- * @returns The error message as a string
+ * 不明なエラーを文字列メッセージに変換します
+ * @param error - 変換対象のエラー
+ * @returns エラーメッセージの文字列
  */
 export function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
 }
 
-/**
- * Extracts HTTP status code from an error message.
- * Looks for 429 or 5xx status codes in the message.
- * @param error - The error to extract from
- * @returns The status code if found, undefined otherwise
- */
+ /**
+  * エラーメッセージからHTTPステータスコードを抽出
+  * @param error - 対象のエラー
+  * @returns 見つかったステータスコード、なければ undefined
+  */
 export function extractStatusCodeFromMessage(error: unknown): number | undefined {
   const message = toErrorMessage(error);
   const codeMatch = message.match(/\b(429|5\d{2})\b/);
@@ -31,16 +30,16 @@ export function extractStatusCodeFromMessage(error: unknown): number | undefined
   return Number.isFinite(code) ? code : undefined;
 }
 
-/**
- * Pressure error classification types.
- */
+ /**
+  * 圧力エラーの分類型
+  */
 export type PressureErrorType = "rate_limit" | "timeout" | "capacity" | "other";
 
-/**
- * Classifies an error into pressure-related categories.
- * @param error - The error to classify
- * @returns The classification type
- */
+ /**
+  * エラーを圧力関連のカテゴリに分類する
+  * @param error 分類対象のエラー
+  * @returns 分類タイプ
+  */
 export function classifyPressureError(error: unknown): PressureErrorType {
   const message = toErrorMessage(error).toLowerCase();
   if (message.includes("runtime limit reached") || message.includes("capacity")) return "capacity";
@@ -52,11 +51,11 @@ export function classifyPressureError(error: unknown): PressureErrorType {
   return "other";
 }
 
-/**
- * Checks if an error message indicates cancellation.
- * @param error - The error to check
- * @returns True if the error indicates cancellation
- */
+ /**
+  * エラーがキャンセルを示すか判定する
+  * @param error - 検査対象のエラー
+  * @returns キャンセルを示す場合はtrue
+  */
 export function isCancelledErrorMessage(error: unknown): boolean {
   const message = toErrorMessage(error).toLowerCase();
   return (
@@ -68,11 +67,11 @@ export function isCancelledErrorMessage(error: unknown): boolean {
   );
 }
 
-/**
- * Checks if an error message indicates a timeout.
- * @param error - The error to check
- * @returns True if the error indicates a timeout
- */
+ /**
+  * エラーがタイムアウトか判定する
+  * @param error - 検査対象のエラー
+  * @returns タイムアウトの場合true
+  */
 export function isTimeoutErrorMessage(error: unknown): boolean {
   const message = toErrorMessage(error).toLowerCase();
   return (

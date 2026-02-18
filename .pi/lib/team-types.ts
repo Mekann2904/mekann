@@ -114,18 +114,22 @@ export interface TeamMonitorLifecycle {
   ) => void;
 }
 
-/**
- * Phase tracking operations for team member execution phases.
- * Used by code that only needs to manage phase transitions.
- */
+ /**
+  * チームメンバーの実行フェーズ操作
+  * @param itemKey アイテムのキー
+  * @param phase フェーズ
+  * @param round ラウンド番号（省略可）
+  */
 export interface TeamMonitorPhase {
   markPhase: (itemKey: string, phase: TeamLivePhase, round?: number) => void;
 }
 
-/**
- * Event logging operations for tracking execution events.
- * Used by code that only needs to record events.
- */
+ /**
+  * 実行イベントを記録するための操作。イベントのログ記録のみを行うコードで使用されます。
+  * @param {string} itemKey - 対象のアイテムキー
+  * @param {string} event - 記録するイベント文字列
+  * @returns {void}
+  */
 export interface TeamMonitorEvents {
   appendEvent: (itemKey: string, event: string) => void;
   appendBroadcastEvent: (event: string) => void;
@@ -147,20 +151,17 @@ export interface TeamMonitorDiscussion {
   appendDiscussion: (itemKey: string, discussion: string) => void;
 }
 
-/**
- * Resource cleanup and termination operations.
- * Used by code that only needs to manage monitor lifecycle.
- */
+ /**
+  * リソースのクリーンアップと終了操作。
+  */
 export interface TeamMonitorResource {
   close: () => void;
   wait: () => Promise<void>;
 }
 
-/**
- * Full monitor controller combining all capabilities.
- * Extends partial interfaces to maintain backward compatibility.
- * Clients should use narrower interfaces when possible.
- */
+ /**
+  * エージェントチームのライブ監視を制御するインターフェース
+  */
 export interface AgentTeamLiveMonitorController
   extends TeamMonitorLifecycle,
     TeamMonitorPhase,
@@ -173,10 +174,13 @@ export interface AgentTeamLiveMonitorController
 // Team Parallel Execution Types
 // ============================================================================
 
-/**
- * Normalized output structure for team member execution.
- * Used for parsing and validating member outputs.
- */
+ /**
+  * チームメンバー実行の正規化された出力構造。
+  * @param summary 抽出された要約
+  * @param output 出力の完全な内容
+  * @param evidenceCount 出力からのエビデンス数
+  * @param hasDiscussion 出力にディスカッションセクションが含まれるか
+  */
 export interface TeamNormalizedOutput {
   /** Extracted summary */
   summary: string;
@@ -199,10 +203,13 @@ export interface TeamParallelCapacityCandidate {
   parallelism: number;
 }
 
-/**
- * Resolution result for team parallel capacity.
- * Determines actual parallelism after capacity negotiation.
- */
+ /**
+  * チーム並列容量の解決結果
+  * @param teamId チームID
+  * @param approvedParallelism 承認された並列度
+  * @param approved リクエストが承認されたかどうか
+  * @param reason 非承認の場合の拒否理由
+  */
 export interface TeamParallelCapacityResolution {
   /** Team ID */
   teamId: string;
@@ -218,10 +225,16 @@ export interface TeamParallelCapacityResolution {
 // Team Frontmatter Types (Markdown Parsing)
 // ============================================================================
 
-/**
- * Team frontmatter structure for markdown team definitions.
- * Used when parsing team definition files.
- */
+ /**
+  * チーム定義のフロントマター構造
+  * @param id チームID
+  * @param name チーム名
+  * @param description チームの説明
+  * @param enabled 有効状態 ("enabled" | "disabled")
+  * @param strategy 実行戦略 ("parallel" | "sequential")
+  * @param skills スキルリスト
+  * @param members メンバーリスト
+  */
 export interface TeamFrontmatter {
   id: string;
   name: string;
@@ -232,9 +245,16 @@ export interface TeamFrontmatter {
   members: TeamMemberFrontmatter[];
 }
 
-/**
- * Team member frontmatter for markdown parsing.
- */
+ /**
+  * チームメンバーのフロントマター
+  * @param id メンバーID
+  * @param role 役割
+  * @param description 説明
+  * @param enabled 有効かどうか
+  * @param provider プロバイダー名
+  * @param model モデル名
+  * @param skills スキル一覧
+  */
 export interface TeamMemberFrontmatter {
   id: string;
   role: string;
@@ -245,9 +265,12 @@ export interface TeamMemberFrontmatter {
   skills?: string[];
 }
 
-/**
- * Parsed team markdown file structure.
- */
+ /**
+  * パースされたチームMarkdownファイル構造
+  * @param frontmatter フロントマター
+  * @param content コンテンツ
+  * @param filePath ファイルパス
+  */
 export interface ParsedTeamMarkdown {
   frontmatter: TeamFrontmatter;
   content: string;

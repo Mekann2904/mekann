@@ -401,13 +401,12 @@ function calculateConfidence(
 	return Math.min(1.0, Math.max(0.1, confidence));
 }
 
-/**
- * Build call graph for a project.
- *
- * @param path - Target path (default: cwd)
- * @param cwd - Working directory
- * @returns Call graph index
- */
+ /**
+  * プロジェクトのコールグラフを構築する
+  * @param path - ターゲットパス（デフォルト: cwd）
+  * @param cwd - 作業ディレクトリ
+  * @returns コールグラフインデックス
+  */
 export async function buildCallGraph(
 	path: string,
 	cwd: string
@@ -517,9 +516,12 @@ export async function buildCallGraph(
 // Index Persistence
 // ============================================
 
-/**
- * Save call graph index to file.
- */
+ /**
+  * コールグラフのインデックスをファイルに保存します。
+  * @param index コールグラフのインデックスデータ
+  * @param cwd カレントワーキングディレクトリ
+  * @returns 保存先のファイルパス
+  */
 export async function saveCallGraphIndex(
 	index: CallGraphIndex,
 	cwd: string
@@ -533,9 +535,11 @@ export async function saveCallGraphIndex(
 	return indexPath;
 }
 
-/**
- * Read call graph index from file.
- */
+ /**
+  * コールグラフのインデックスを読み込む
+  * @param cwd 作業ディレクトリのパス
+  * @returns コールグラフのインデックス、存在しない場合はnull
+  */
 export async function readCallGraphIndex(
 	cwd: string
 ): Promise<CallGraphIndex | null> {
@@ -553,10 +557,11 @@ export async function readCallGraphIndex(
 	}
 }
 
-/**
- * Check if call graph index is stale.
- * Simple check: compare with symbol index timestamp.
- */
+ /**
+  * コールグラフインデックスが古いか確認
+  * @param cwd カレントワーキングディレクトリ
+  * @returns 古い場合は true
+  */
 export async function isCallGraphIndexStale(cwd: string): Promise<boolean> {
 	const index = await readCallGraphIndex(cwd);
 	if (!index) return true;

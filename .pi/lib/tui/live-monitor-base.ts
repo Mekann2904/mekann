@@ -15,24 +15,39 @@ import { appendTail, countOccurrences, estimateLineCount, renderPreviewWithMarkd
 // Core Types
 // ============================================================================
 
-/**
- * Live item status.
- */
+ /**
+  * ライブアイテムの状態。
+  */
 export type LiveItemStatus = "pending" | "running" | "completed" | "failed";
 
-/**
- * Live stream view options.
- */
+ /**
+  * ライブストリームの表示オプション
+  */
 export type LiveStreamView = "stdout" | "stderr";
 
-/**
- * Live view mode options.
- */
+ /**
+  * ライブビューのモードオプション。
+  */
 export type LiveViewMode = "list" | "detail";
 
-/**
- * Base interface for live monitor items with stream data.
- */
+ /**
+  * ライブモニターのアイテムの基底インターフェース
+  * @param id アイテムID
+  * @param status ステータス
+  * @param startedAtMs 開始日時（ミリ秒）
+  * @param finishedAtMs 終了日時（ミリ秒）
+  * @param lastChunkAtMs 最後のチャンク日時（ミリ秒）
+  * @param summary 概要
+  * @param error エラー内容
+  * @param stdoutTail 標準出力の末尾
+  * @param stderrTail 標準エラー出力の末尾
+  * @param stdoutBytes 標準出力のバイト数
+  * @param stderrBytes 標準エラー出力のバイト数
+  * @param stdoutNewlineCount 標準出力の改行数
+  * @param stderrNewlineCount 標準エラー出力の改行数
+  * @param stdoutEndsWithNewline 標準出力が改行で終わるか
+  * @param stderrEndsWithNewline 標準エラー出力が改行で終わるか
+  */
 export interface BaseLiveItem {
   id: string;
   status: LiveItemStatus;
@@ -51,9 +66,14 @@ export interface BaseLiveItem {
   stderrEndsWithNewline: boolean;
 }
 
-/**
- * Base interface for live monitor controller.
- */
+ /**
+  * ライブモニタコントローラの基底インターフェース
+  * @param markStarted 開始をマーク
+  * @param appendChunk チャンクを追加
+  * @param markFinished 完了をマーク
+  * @param close クローズ処理
+  * @param wait 待機処理
+  */
 export interface BaseLiveMonitorController {
   markStarted: (id: string) => void;
   appendChunk: (id: string, stream: LiveStreamView, chunk: string) => void;
@@ -62,9 +82,11 @@ export interface BaseLiveMonitorController {
   wait: () => Promise<void>;
 }
 
-/**
- * Input for creating a live item.
- */
+ /**
+  * ライブアイテム作成用の入力
+  * @param id アイテムID
+  * @param name アイテム名
+  */
 export interface CreateLiveItemInput {
   id: string;
   name?: string;
@@ -84,9 +106,11 @@ export interface LiveMonitorFactoryOptions<TItem extends BaseLiveItem> {
 // Live Item Factory
 // ============================================================================
 
-/**
- * Create a base live item with default values.
- */
+ /**
+  * デフォルト値を持つベースライブアイテムを作成する
+  * @param input 作成に必要な入力データ
+  * @returns 作成されたベースライブアイテム
+  */
 export function createBaseLiveItem(input: CreateLiveItemInput): BaseLiveItem {
   return {
     id: input.id,
@@ -106,9 +130,13 @@ export function createBaseLiveItem(input: CreateLiveItemInput): BaseLiveItem {
 // Stream Utilities
 // ============================================================================
 
-/**
- * Append a chunk to the appropriate stream tail.
- */
+ /**
+  * 適切なストリームにチャンクを追加する
+  * @param item 対象のアイテム
+  * @param stream 追加先のストリーム（"stdout" または "stderr"）
+  * @param chunk 追加するテキストチャンク
+  * @returns なし
+  */
 export function appendStreamChunk(
   item: BaseLiveItem,
   stream: LiveStreamView,
@@ -128,10 +156,13 @@ export function appendStreamChunk(
   item.lastChunkAtMs = Date.now();
 }
 
-/**
- * Get the appropriate stream tail based on view mode and stream.
- * Auto-switches to stderr for failed items with no stdout.
- */
+ /**
+  * ビューモードとストリームに基づいて末尾を取得
+  * @param item ベースライブアイテム
+  * @param stream ライブストリームビュー
+  * @param autoSwitchOnFailure 失敗時に自動切り替えするか
+  * @returns ストリームの末尾
+  */
 export function getStreamTail(
   item: BaseLiveItem,
   stream: LiveStreamView,
@@ -149,9 +180,12 @@ export function getStreamTail(
   return stream === "stdout" ? item.stdoutTail : item.stderrTail;
 }
 
-/**
- * Get stream bytes count.
- */
+ /**
+  * ストリームのバイト数を取得
+  * @param item ライブアイテム
+  * @param stream 対象のストリーム
+  * @returns バイト数
+  */
 export function getStreamBytes(item: BaseLiveItem, stream: LiveStreamView): number {
   return stream === "stdout" ? item.stdoutBytes : item.stderrBytes;
 }
@@ -171,9 +205,15 @@ export function getStreamLineCount(item: BaseLiveItem, stream: LiveStreamView): 
 // Render Utilities
 // ============================================================================
 
-/**
- * Common header data for live views.
- */
+ /**
+  * ライブビューの共通ヘッダーデータ
+  * @param title タイトル
+  * @param mode 表示モード
+  * @param running 実行中の数
+  * @param completed 完了した数
+  * @param failed 失敗した数
+  * @param total 合計数
+  */
 export interface LiveViewHeaderData {
   title: string;
   mode: LiveViewMode;
@@ -183,9 +223,13 @@ export interface LiveViewHeaderData {
   total: number;
 }
 
-/**
- * Render common header lines for live views.
- */
+ /**
+  * ライブビューの共通ヘッダーを描画する
+  * @param data ヘッダー表示データ
+  * @param width 描画幅
+  * @param theme テーマ設定
+  * @returns 描画されたヘッダー行の配列
+  */
 export function renderLiveViewHeader(
   data: LiveViewHeaderData,
   width: number,
@@ -205,9 +249,12 @@ export function renderLiveViewHeader(
   return lines;
 }
 
-/**
- * Render list item keyboard hints.
- */
+ /**
+  * キーボード操作のヒントを描画する
+  * @param width 表示幅
+  * @param theme テーマ設定
+  * @returns 描画行の配列
+  */
 export function renderListKeyboardHints(width: number, theme: any): string[] {
   const lines: string[] = [];
   const add = (line = "") => lines.push(truncateToWidth(line, width));
@@ -222,9 +269,13 @@ export function renderListKeyboardHints(width: number, theme: any): string[] {
   return lines;
 }
 
-/**
- * Render detail item keyboard hints.
- */
+ /**
+  * 詳細画面のキーボード操作ヒントを描画する
+  * @param width 画面幅
+  * @param theme テーマ設定
+  * @param extraKeys 追加キーのヒント
+  * @returns 描画用の文字列配列
+  */
 export function renderDetailKeyboardHints(
   width: number,
   theme: any,
@@ -244,9 +295,16 @@ export function renderDetailKeyboardHints(
   return lines;
 }
 
-/**
- * Render list window with pagination.
- */
+ /**
+  * リストウィンドウをページネーション付きで描画する
+  * @param items - アイテムの配列
+  * @param cursor - カーソル位置のインデックス
+  * @param windowSize - 表示するウィンドウのサイズ
+  * @param renderItem - アイテムを文字列に変換する関数
+  * @param width - 表示幅
+  * @param theme - テーマ設定オブジェクト
+  * @returns 描画された各行の文字列配列
+  */
 export function renderListWindow<T>(
   items: T[],
   cursor: number,
@@ -277,9 +335,16 @@ export function renderListWindow<T>(
   return lines;
 }
 
-/**
- * Render a single list item line (base format).
- */
+ /**
+  * 単一のリストアイテム行を描画する
+  * @param item リストアイテム
+  * @param index インデックス
+  * @param isSelected 選択状態かどうか
+  * @param width 幅
+  * @param theme テーマ
+  * @param extraMeta 追加メタ情報
+  * @returns 描画された文字列
+  */
 export function renderBaseListItemLine(
   item: BaseLiveItem & { name?: string },
   index: number,
@@ -342,9 +407,17 @@ export function renderSelectedItemSummary<T>(
   return lines;
 }
 
-/**
- * Render detail header for selected item.
- */
+ /**
+  * 選択アイテムの詳細ヘッダーを描画する
+  * @param item 対象アイテム
+  * @param cursor 選択位置のインデックス
+  * @param total 全体の件数
+  * @param getItemId ID取得関数
+  * @param getItemName 名前取得関数
+  * @param width 表示幅
+  * @param theme テーマオブジェクト
+  * @returns 描画された行の配列
+  */
 export function renderDetailHeader<T>(
   item: T,
   cursor: number,
@@ -365,9 +438,17 @@ export function renderDetailHeader<T>(
   return lines;
 }
 
-/**
- * Render stream output section.
- */
+ /**
+  * ストリーム出力セクションを描画する
+  * @param item ライブアイテム
+  * @param stream ライブストリームビュー
+  * @param width 幅
+  * @param height 高さ
+  * @param currentLines 現在の行数
+  * @param theme テーマ設定
+  * @param itemId アイテムID
+  * @returns 描画結果の文字列配列
+  */
 export function renderStreamOutput(
   item: BaseLiveItem,
   stream: LiveStreamView,
@@ -418,9 +499,13 @@ export function renderStreamOutput(
 // Input Handling
 // ============================================================================
 
-/**
- * Result of handling input.
- */
+ /**
+  * 入力処理の結果を表します。
+  * @param handled 入力が処理されたかどうか
+  * @param action 実行するアクション（閉じる、モード切り替え等）
+  * @param cursorDelta カーソルの相対移動量
+  * @param cursorAbsolute カーソルの絶対位置
+  */
 export interface HandleInputResult {
   handled: boolean;
   action?: "close" | "mode-list" | "mode-detail" | "stream-toggle";
@@ -428,9 +513,11 @@ export interface HandleInputResult {
   cursorAbsolute?: number;
 }
 
-/**
- * Handle common keyboard input for list mode.
- */
+ /**
+  * リストモードでのキーボード入力を処理する。
+  * @param rawInput 入力されたキー文字列
+  * @returns 処理結果を表すオブジェクト
+  */
 export function handleListModeInput(rawInput: string): HandleInputResult {
   if (matchesKey(rawInput, "q") || matchesKey(rawInput, Key.escape)) {
     return { handled: true, action: "close" };
@@ -498,9 +585,12 @@ export function handleDetailModeInput(rawInput: string): HandleInputResult {
   return { handled: false };
 }
 
-/**
- * Apply input result to state.
- */
+ /**
+  * 入力結果を状態に適用する
+  * @param result 入力ハンドリングの結果
+  * @param state 現在の状態
+  * @returns 更新後の状態と画面操作フラグ
+  */
 export function applyInputResult(
   result: HandleInputResult,
   state: {

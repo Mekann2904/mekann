@@ -202,9 +202,12 @@ function extractResultPaths(results: CodeSearchMatch[]): string[] {
 // Main Entry Point
 // ============================================
 
-/**
- * Code search with rg or fallback
- */
+ /**
+  * rgを使用したコード検索
+  * @param input 検索条件
+  * @param cwd 作業ディレクトリ
+  * @returns 検索結果
+  */
 export async function codeSearch(
 	input: CodeSearchInput,
 	cwd: string

@@ -22,23 +22,31 @@ import { getLogger } from "../../lib/comprehensive-logger.js";
 const logger = getLogger();
 
 // Re-export types
+ /**
+  * チームの有効状態を表す型
+  * @type {"enabled" | "disabled"}
+  */
 export type TeamEnabledState = "enabled" | "disabled";
+ /**
+  * チームの実行戦略を表す型
+  * @type {"parallel" | "sequential"}
+  */
 export type TeamStrategy = "parallel" | "sequential";
+ /**
+  * チーム審査の判定結果
+  */
 export type TeamJudgeVerdict = "trusted" | "partial" | "untrusted";
 
-/**
- * チームメンバーの定義情報を表すインターフェース
- *
- * エージェントチームにおける個々のメンバーの設定を管理します。
- *
- * @property id - メンバーの一意識別子
- * @property role - メンバーの役割名
- * @property description - メンバーの説明文
- * @property provider - 使用するプロバイダー名（オプション）
- * @property model - 使用するモデル名（オプション）
- * @property enabled - メンバーの有効/無効状態
- * @property skills - メンバーが持つスキル一覧（オプション）
- */
+ /**
+  * チームメンバーの定義情報を表す
+  * @param id - メンバーの一意識別子
+  * @param role - メンバーの役割名
+  * @param description - メンバーの説明文
+  * @param provider - 使用するプロバイダー名（オプション）
+  * @param model - 使用するモデル名（オプション）
+  * @param enabled - メンバーの有効/無効状態
+  * @param skills - メンバーが持つスキル一覧（オプション）
+  */
 export interface TeamMember {
   id: string;
   role: string;
@@ -59,6 +67,17 @@ export interface TeamMember {
  */
 }
 
+ /**
+  * エージェントチームの定義
+  * @param id - チームの一意識別子
+  * @param name - チーム名
+  * @param description - チームの説明
+  * @param enabled - チームの有効状態
+  * @param members - チームメンバーのリスト
+  * @param skills - チームが持つスキルのリスト（任意）
+  * @param createdAt - 作成日時（ISO 8601形式）
+  * @param updatedAt - 更新日時（ISO 8601形式）
+  */
 export interface TeamDefinition {
   id: string;
   name: string;
@@ -70,6 +89,17 @@ export interface TeamDefinition {
   updatedAt: string;
 }
 
+/**
+ * チームメンバーの実行結果
+ * @param memberId メンバーID
+ * @param role 役割
+ * @param summary まとめ
+ * @param output 出力内容
+ * @param status ステータス
+ * @param latencyMs レイテンシ（ミリ秒）
+ * @param error エラー内容
+ * @param diagnostics 診断情報
+ */
 export interface TeamMemberResult {
   memberId: string;
   role: string;
@@ -86,6 +116,18 @@ export interface TeamMemberResult {
   };
 }
 
+ /**
+  * チーム最終審査の結果を表します。
+  * @param verdict 審査結果
+  * @param confidence 信頼度
+  * @param reason 理由
+  * @param nextStep 次のステップ
+  * @param uIntra 内部整合性
+  * @param uInter 外部整合性
+  * @param uSys システム整合性
+  * @param collapseSignals 崩壊シグナル
+  * @param rawOutput 生の出力
+  */
 export interface TeamFinalJudge {
   verdict: TeamJudgeVerdict;
   confidence: number;
@@ -98,13 +140,13 @@ export interface TeamFinalJudge {
   rawOutput: string;
 }
 
-/**
- * Claim reference structure for tracking cross-member references.
- * Used in structured communication mode (PI_COMMUNICATION_ID_MODE="structured").
- *
- * Phase 2 (P0-2): Added "partial" stance and confidence field.
- * Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
- */
+ /**
+  * メンバー間のClaim参照構造
+  * @param claimId 参照対象のClaimID
+  * @param memberId メンバーID
+  * @param stance スタンス（"agree" | "disagree" | "neutral" | "partial"）
+  * @param confidence 信頼度（オプション）
+  */
 export interface ClaimReference {
   claimId: string;
   memberId: string;
@@ -123,10 +165,14 @@ export interface DiscussionAnalysis {
   stanceDistribution: { agree: number; disagree: number; neutral: number; partial: number };
 }
 
-/**
- * Individual discussion reference tracking member-to-member stances.
- * Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
- */
+ /**
+  * メンバー間のスタンス参照を追跡する
+  * @param targetMemberId - 対象メンバーのID
+  * @param targetClaimId - 対象の主張ID（省略可）
+  * @param stance - スタンス
+  * @param excerpt - 抜粋
+  * @param confidence - 信頼度
+  */
 export interface DiscussionReference {
 /**
    * /**
@@ -148,6 +194,21 @@ export interface DiscussionReference {
   confidence: number;
 }
 
+ /**
+  * チーム内通信監査エントリ
+  * @property round - ラウンド数
+  * @property memberId - メンバーID
+  * @property role - 役割
+  * @property partnerIds - パートナーIDリスト
+  * @property referencedPartners - 参照されたパートナーIDリスト
+  * @property missingPartners - 欠落しているパートナーIDリスト
+  * @property contextPreview - コンテキストのプレビュー
+  * @property partnerSnapshots - パートナーのスナップショットリスト
+  * @property resultStatus - 実行結果ステータス
+  * @property claimId - クレームID（省略可）
+  * @property evidenceId - エビデンスID（省略可）
+  * @property claimReferences - クレーム参照リスト（省略可）
+  */
 export interface TeamCommunicationAuditEntry {
   round: number;
   memberId: string;
@@ -164,6 +225,18 @@ export interface TeamCommunicationAuditEntry {
   claimReferences?: ClaimReference[];
 }
 
+ /**
+  * チーム実行記録を表すインターフェース
+  * @param runId 実行ID
+  * @param teamId チームID
+  * @param strategy チーム戦略
+  * @param task タスク内容
+  * @param communicationRounds 通信ラウンド数
+  * @param failedMemberRetryRounds 失敗メンバーの再試行ラウンド数
+  * @param failedMemberRetryApplied 適用された失敗メンバーの再試行数
+  * @param recoveredMembers 回復したメンバーIDの配列
+  * @param communicationLinks 通信リンクのレコード
+  */
 export interface TeamRunRecord {
   runId: string;
 /**
@@ -201,6 +274,13 @@ export interface TeamRunRecord {
   parentEventId?: string;
 }
 
+ /**
+  * チーム定義と実行記録のストレージ
+  * @param teams チーム定義の配列
+  * @param runs チーム実行記録の配列
+  * @param currentTeamId 現在選択中のチームID
+  * @param defaultsVersion デフォルト設定のバージョン
+  */
 export interface TeamStorage {
   teams: TeamDefinition[];
   runs: TeamRunRecord[];
@@ -208,6 +288,9 @@ export interface TeamStorage {
   defaultsVersion?: number;
 }
 
+ /**
+  * チームストレージのパス定義（BaseStoragePathsを拡張）
+  */
 export interface TeamPaths extends BaseStoragePaths {}
 
 // Constants
@@ -219,10 +302,11 @@ const getBasePaths = createPathsFactory("agent-teams");
 export const getPaths = getBasePaths as (cwd: string) => TeamPaths;
 export const ensurePaths = createEnsurePaths(getPaths);
 
-/**
- * Convert string to ID format.
- * Uses common utility from lib/storage-base.ts.
- */
+ /**
+  * 文字列をID形式に変換する
+  * @param input 入力文字列
+  * @returns 変換されたID
+  */
 export function toId(input: string): string {
   return toIdCommon(input);
 }
@@ -248,9 +332,11 @@ function mergeTeamStorageWithDisk(
   ) as TeamStorage;
 }
 
-/**
- * Load team storage from disk.
- */
+ /**
+  * ディスクからチームストレージを読み込む
+  * @param cwd カレントワーキングディレクトリのパス
+  * @returns 読み込まれたチームストレージ
+  */
 export function loadStorage(cwd: string): TeamStorage {
   const paths = ensurePaths(cwd);
 
@@ -289,9 +375,12 @@ export function loadStorage(cwd: string): TeamStorage {
   }
 }
 
-/**
- * Save team storage to disk.
- */
+ /**
+  * チームストレージをディスクに保存する。
+  * @param cwd 作業ディレクトリのパス
+  * @param storage 保存するストレージデータ
+  * @returns なし
+  */
 export function saveStorage(cwd: string, storage: TeamStorage): void {
   const paths = ensurePaths(cwd);
   const normalized: TeamStorage = {
@@ -316,10 +405,12 @@ export function saveStorage(cwd: string, storage: TeamStorage): void {
   });
 }
 
-/**
- * Save storage and extract patterns from recent team runs.
- * Integrates with ALMA memory system for automatic learning.
- */
+ /**
+  * ストレージを保存し、パターンを抽出
+  * @param cwd 作業ディレクトリ
+  * @param storage 保存するストレージデータ
+  * @returns Promise<void>
+  */
 export async function saveStorageWithPatterns(
   cwd: string,
   storage: TeamStorage,

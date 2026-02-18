@@ -21,9 +21,14 @@ import type { OperationType } from "../../lib/comprehensive-logger-types.js";
 
 const logger = getLogger();
 
-/**
- * 検証フック設定
- */
+ /**
+  * 検証フックの設定オプション
+  * @param enabled 有効かどうか
+  * @param mode 動作モード
+  * @param runInspector インスペクタを実行するか
+  * @param runChallenger チャレンジャーを実行するか
+  * @param logResults 結果をログ出力するか
+  */
 export interface VerificationHookConfig {
   enabled: boolean;
   mode: "disabled" | "minimal" | "auto" | "strict";
@@ -32,9 +37,14 @@ export interface VerificationHookConfig {
   logResults: boolean;
 }
 
-/**
- * 検証フックの結果
- */
+ /**
+  * 検証フックの結果
+  * @param triggered トリガーされたかどうか
+  * @param result 検証結果
+  * @param inspectorRun インスペクターが実行されたかどうか
+  * @param challengerRun チャレンジャーが実行されたかどうか
+  * @param error エラーメッセージ
+  */
 export interface VerificationHookResult {
   triggered: boolean;
   result?: VerificationResult;
@@ -43,9 +53,10 @@ export interface VerificationHookResult {
   error?: string;
 }
 
-/**
- * 検証フック設定を解決
- */
+ /**
+  * 検証フック設定を解決
+  * @returns 解決された検証フックの設定
+  */
 export function resolveVerificationHookConfig(): VerificationHookConfig {
   const envMode = process.env.PI_VERIFICATION_WORKFLOW_MODE || "auto";
   
@@ -69,10 +80,14 @@ export function resolveVerificationHookConfig(): VerificationHookConfig {
   return config;
 }
 
-/**
- * サブエージェント実行後の検証フック
- * subagents.tsから呼び出される
- */
+ /**
+  * サブエージェント実行後の検証フック
+  * @param output サブエージェントの出力
+  * @param confidence 出力の信頼度
+  * @param context エージェントIDとタスクを含むコンテキスト
+  * @param runVerificationAgent 検証エージェントを実行する関数
+  * @returns 検証結果
+  */
 export async function postSubagentVerificationHook(
   output: string,
   confidence: number,
@@ -191,10 +206,14 @@ export async function postSubagentVerificationHook(
   }
 }
 
-/**
- * チーム実行後の検証フック
- * agent-teams.tsから呼び出される
- */
+ /**
+  * チーム実行後の検証フック
+  * @param aggregatedOutput - 集計された出力
+  * @param confidence - 信頼度
+  * @param context - チームID、タスク、メンバー出力を含むコンテキスト
+  * @param runVerificationAgent - 検証エージェントを実行する関数
+  * @returns 検証フックの結果
+  */
 export async function postTeamVerificationHook(
   aggregatedOutput: string,
   confidence: number,
@@ -446,9 +465,11 @@ function parseChallengerOutput(rawOutput: string): ChallengerOutput {
   };
 }
 
-/**
- * 検証結果をログ出力用にフォーマット
- */
+ /**
+  * 検証結果をフォーマットする
+  * @param result 検証フックの結果
+  * @returns フォーマットされた文字列
+  */
 export function formatVerificationResult(result: VerificationHookResult): string {
   if (!result.triggered) {
     return "[Verification] Not triggered";

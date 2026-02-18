@@ -11,9 +11,13 @@ const CWD = process.cwd();
 // パス定義
 // ============================================================================
 
-/**
- * 動的ツール関連のパス
- */
+ /**
+  * 動的ツール関連のパス設定
+  * @param toolsDir ツール保存ディレクトリ
+  * @param skillsDir スキル保存ディレクトリ
+  * @param auditLogFile 監査ログファイル
+  * @param metricsFile 品質メトリクスファイル
+  */
 export interface DynamicToolsPaths {
   /** ツール保存ディレクトリ */
   toolsDir: string;
@@ -25,9 +29,10 @@ export interface DynamicToolsPaths {
   metricsFile: string;
 }
 
-/**
- * デフォルトパスを取得
- */
+ /**
+  * デフォルトのダイナミックツールパスを取得
+  * @returns ダイナミックツールのパス設定オブジェクト
+  */
 export function getDynamicToolsPaths(): DynamicToolsPaths {
   return {
     toolsDir: join(CWD, ".pi", "tools"),
@@ -41,18 +46,24 @@ export function getDynamicToolsPaths(): DynamicToolsPaths {
 // ツール定義
 // ============================================================================
 
-/**
- * 動的ツールの実行モード
- */
+ /**
+  * 動的ツールの実行モード
+  */
 export type DynamicToolMode =
   | "bash"          // Bash コマンド実行
   | "function"      // TypeScript関数実行
   | "template"      // テンプレートベース
   | "skill";        // スキルとして保存
 
-/**
- * ツールパラメータ定義
- */
+ /**
+  * ツールのパラメータ定義
+  * @param name パラメータ名
+  * @param type パラメータの型
+  * @param required 必須かどうか
+  * @param description 説明
+  * @param default デフォルト値
+  * @param allowedValues 値の制約（allowlist）
+  */
 export interface ToolParameterDefinition {
   /** パラメータ名 */
   name: string;
@@ -68,9 +79,17 @@ export interface ToolParameterDefinition {
   allowedValues?: unknown[];
 }
 
-/**
- * 動的ツール定義
- */
+ /**
+  * 動的ツール定義
+  * @param id ツールID（自動生成）
+  * @param name ツール名（コマンド名として使用）
+  * @param description 説明
+  * @param mode 実行モード
+  * @param parameters パラメータ定義
+  * @param code 実行コードまたはコマンドテンプレート
+  * @param createdAt 作成日時
+  * @param updatedAt 更新日時
+  */
 export interface DynamicToolDefinition {
   /** ツールID（自動生成） */
   id: string;
@@ -104,9 +123,9 @@ export interface DynamicToolDefinition {
   createdBy: string;
 }
 
-/**
- * 検証状態
- */
+ /**
+  * 検証状態を表す文字列リテラル型
+  */
 export type VerificationStatus =
   | "unverified"     // 未検証
   | "pending"        // 検証中
@@ -118,9 +137,16 @@ export type VerificationStatus =
 // 実行結果
 // ============================================================================
 
-/**
- * ツール実行結果
- */
+ /**
+  * 動的ツールの実行結果を表します
+  * @param success 成功したかどうか
+  * @param output 出力
+  * @param error エラーメッセージ
+  * @param executionTimeMs 実行時間（ミリ秒）
+  * @param toolId ツールID
+  * @param runId 実行ID
+  * @param timestamp タイムスタンプ
+  */
 export interface DynamicToolResult {
   /** 成功したかどうか */
   success: boolean;
@@ -138,9 +164,14 @@ export interface DynamicToolResult {
   timestamp: string;
 }
 
-/**
- * ツール実行オプション
- */
+ /**
+  * ツール実行オプション
+  * @param toolIdOrName ツールIDまたは名前
+  * @param parameters パラメータ値
+  * @param timeoutMs タイムアウト（ミリ秒）
+  * @param signal 中止シグナル
+  * @param debug デバッグモード
+  */
 export interface DynamicToolRunOptions {
   /** ツールIDまたは名前 */
   toolIdOrName: string;
@@ -158,9 +189,16 @@ export interface DynamicToolRunOptions {
 // 登録・管理
 // ============================================================================
 
-/**
- * ツール登録リクエスト
- */
+ /**
+  * 動的ツール登録リクエスト
+  * @param name ツール名
+  * @param description 説明
+  * @param mode 実行モード
+  * @param parameters パラメータ定義
+  * @param code 実行コード
+  * @param createdFromTask 作成元のタスク
+  * @param tags タグ
+  */
 export interface DynamicToolRegistrationRequest {
   /** ツール名 */
   name: string;
@@ -180,9 +218,13 @@ export interface DynamicToolRegistrationRequest {
   createdBy?: string;
 }
 
-/**
- * ツール登録結果
- */
+ /**
+  * 動的ツールの登録結果
+  * @param success 成功したかどうか
+  * @param tool 作成されたツール定義
+  * @param error エラーメッセージ
+  * @param verificationResult 検証結果
+  */
 export interface DynamicToolRegistrationResult {
   /** 成功したかどうか */
   success: boolean;
@@ -194,9 +236,15 @@ export interface DynamicToolRegistrationResult {
   verificationResult?: SafetyVerificationResult;
 }
 
-/**
- * ツール一覧オプション
- */
+ /**
+  * ツール一覧のフィルタ・ソートオプション
+  * @param tags フィルタ: タグ
+  * @param verificationStatus フィルタ: 検証状態
+  * @param mode フィルタ: 実行モード
+  * @param sortBy ソート順
+  * @param sortOrder 昇順/降順
+  * @param limit 最大件数
+  */
 export interface DynamicToolListOptions {
   /** フィルタ: タグ */
   tags?: string[];
@@ -216,9 +264,14 @@ export interface DynamicToolListOptions {
 // 安全性検証
 // ============================================================================
 
-/**
- * 安全性検証結果
- */
+ /**
+  * 安全性検証結果
+  * @param safe 安全かどうか
+  * @param riskLevel リスクレベル
+  * @param issues 検出された問題
+  * @param recommendations 推奨事項
+  * @param verifiedAt 検証時刻
+  */
 export interface SafetyVerificationResult {
   /** 安全かどうか */
   safe: boolean;
@@ -232,9 +285,14 @@ export interface SafetyVerificationResult {
   verifiedAt: string;
 }
 
-/**
- * 安全性の問題
- */
+ /**
+  * 安全性の問題
+  * @param type 問題の種類
+  * @param severity 重要度
+  * @param description 説明
+  * @param location コード内の位置
+  * @param suggestion 修正提案
+  */
 export interface SafetyIssue {
   /** 問題の種類 */
   type: SafetyIssueType;
@@ -251,9 +309,9 @@ export interface SafetyIssue {
   suggestion?: string;
 }
 
-/**
- * 安全性問題の種類
- */
+ /**
+  * 安全性問題の種類
+  */
 export type SafetyIssueType =
   | "forbidden-function"      // 禁止関数の使用
   | "network-access"          // ネットワークアクセス
@@ -266,9 +324,15 @@ export type SafetyIssueType =
   | "hardcoded-secret"        // ハードコードされた秘密情報
   | "excessive-permissions";  // 過度な権限
 
-/**
- * 許可された操作のallowlist
- */
+ /**
+  * 許可された操作の設定
+  * @param allowedModules 許可されたNode.jsモジュール
+  * @param allowedCommands 許可されたbashコマンド
+  * @param allowedFilePaths 許可されたファイルパスパターン
+  * @param allowedDomains 許可されたネットワークドメイン
+  * @param maxExecutionTimeMs 最大実行時間（ミリ秒）
+  * @param maxOutputSizeBytes 最大出力サイズ（バイト）
+  */
 export interface AllowedOperations {
   /** 許可されたNode.jsモジュール */
   allowedModules: string[];
@@ -288,9 +352,16 @@ export interface AllowedOperations {
 // 品質メトリクス
 // ============================================================================
 
-/**
- * ツール品質メトリクス
- */
+ /**
+  * 動的ツールの品質メトリクス
+  * @param toolId ツールID
+  * @param successRate 成功率
+  * @param averageExecutionTimeMs 平均実行時間（ミリ秒）
+  * @param totalUsageCount 総使用回数
+  * @param errorCount エラー回数
+  * @param lastError 最終エラー
+  * @param lastErrorAt 最終エラー日時
+  */
 export interface DynamicToolQualityMetrics {
   /** ツールID */
   toolId: string;
@@ -314,9 +385,14 @@ export interface DynamicToolQualityMetrics {
   calculatedAt: string;
 }
 
-/**
- * 品質メトリクス収集結果
- */
+ /**
+  * 品質メトリクス収集結果
+  * @param totalTools 全ツール数
+  * @param activeTools アクティブなツール数（30日以内に使用）
+  * @param averageSuccessRate 平均成功率
+  * @param averageQualityScore 平均品質スコア
+  * @param topTools トップツール（使用回数順）
+  */
 export interface QualityMetricsReport {
   /** 全ツール数 */
   totalTools: number;
@@ -347,9 +423,16 @@ export interface QualityMetricsReport {
 // 監査ログ
 // ============================================================================
 
-/**
- * 監査ログエントリ
- */
+ /**
+  * 監査ログエントリ
+  * @param id エントリID
+  * @param timestamp タイムスタンプ
+  * @param action 操作種類
+  * @param toolId ツールID
+  * @param toolName ツール名
+  * @param actor 操作者
+  * @param details 操作の詳細
+  */
 export interface AuditLogEntry {
   /** エントリID */
   id: string;
@@ -372,7 +455,7 @@ export interface AuditLogEntry {
 }
 
 /**
- * 監査操作の種類
+ * 監査ログに記録される操作の種類を表す文字列リテラル型。
  */
 export type AuditAction =
   | "tool.create"       // ツール作成
@@ -389,9 +472,13 @@ export type AuditAction =
 // スキル変換
 // ============================================================================
 
-/**
- * スキルへの変換オプション
- */
+ /**
+  * スキルへの変換オプション
+  * @param toolId ツールID
+  * @param skillName スキル名（指定しない場合はツール名を使用）
+  * @param skillDescription スキルの説明（指定しない場合はツールの説明を使用）
+  * @param overwrite 上書きするかどうか
+  */
 export interface ConvertToSkillOptions {
   /** ツールID */
   toolId: string;
@@ -403,9 +490,12 @@ export interface ConvertToSkillOptions {
   overwrite?: boolean;
 }
 
-/**
- * スキル変換結果
- */
+ /**
+  * スキル変換結果
+  * param success 成功したかどうか
+  * param skillPath スキルのパス
+  * param error エラーメッセージ
+  */
 export interface ConvertToSkillResult {
   /** 成功したかどうか */
   success: boolean;
@@ -419,9 +509,14 @@ export interface ConvertToSkillResult {
 // リフレクション・反省
 // ============================================================================
 
-/**
- * ツール実行後のリフレクション結果
- */
+ /**
+  * ツール実行後のリフレクション結果
+  * @param needsReflection - リフレクションが必要かどうか
+  * @param shouldCreateTool - 新しいツールを作成すべきかどうか
+  * @param proposedTool - 提案されるツール定義
+  * @param improvementSuggestions - 改善提案
+  * @param reflectionReason - リフレクションの理由
+  */
 export interface ToolReflectionResult {
   /** リフレクションが必要かどうか */
   needsReflection: boolean;
@@ -442,7 +537,12 @@ export interface ToolReflectionResult {
 }
 
 /**
- * リフレクションコンテキスト
+ * ツールのリフレクションコンテキスト
+ * @param lastToolName 直前のツール名
+ * @param lastToolResult 直前のツール結果
+ * @param currentTask 現在のタスク
+ * @param failureCount 失敗回数
+ * @param patternMatch パターンマッチ（繰り返し操作の検出）
  */
 export interface ToolReflectionContext {
   /** 直前のツール名 */
@@ -465,9 +565,16 @@ export interface ToolReflectionContext {
 // 設定
 // ============================================================================
 
-/**
- * 動的ツールシステムの設定
- */
+ /**
+  * 動的ツールシステムの設定
+  * @param enabled 有効かどうか
+  * @param autoCreateEnabled 自動ツール生成を有効にするか
+  * @param autoVerificationEnabled 自動検証を有効にするか
+  * @param maxTools 最大ツール数
+  * @param defaultTimeoutMs デフォルトのタイムアウト（ミリ秒）
+  * @param auditLogEnabled 監査ログを有効にするか
+  * @param autoConvertToSkill スキル自動変換を有効にするか
+  */
 export interface DynamicToolsConfig {
   /** 有効かどうか */
   enabled: boolean;

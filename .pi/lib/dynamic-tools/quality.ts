@@ -7,9 +7,14 @@
 // Types
 // ============================================================================
 
-/**
- * 品質評価結果
- */
+ /**
+  * 品質評価結果
+  * @param score 品質スコア（0.0-1.0）
+  * @param categoryScores カテゴリ別スコア
+  * @param issues 検出された品質問題
+  * @param improvements 改善提案
+  * @param confidence 信頼度
+  */
 export interface QualityAssessment {
   /** 品質スコア（0.0-1.0） */
   score: number;
@@ -23,9 +28,15 @@ export interface QualityAssessment {
   confidence: number;
 }
 
-/**
- * カテゴリ別スコア
- */
+ /**
+  * カテゴリ別スコア
+  * @param readability コードの可読性
+  * @param errorHandling エラーハンドリングの完全性
+  * @param documentation ドキュメント品質
+  * @param testability テスタビリティ
+  * @param performance パフォーマンス効率
+  * @param securityAwareness セキュリティ意識
+  */
 export interface CategoryScores {
   /** コードの可読性 */
   readability: number;
@@ -41,9 +52,14 @@ export interface CategoryScores {
   securityAwareness: number;
 }
 
-/**
- * 品質問題
- */
+ /**
+  * 品質問題を表すインターフェース
+  * @param category カテゴリ
+  * @param severity 重大度
+  * @param description 説明
+  * @param location 位置情報
+  * @param suggestion 改善提案
+  */
 export interface QualityIssue {
   /** カテゴリ */
   category: keyof CategoryScores;
@@ -60,9 +76,16 @@ export interface QualityIssue {
   suggestion: string;
 }
 
-/**
- * 実行メトリクス
- */
+ /**
+  * 実行メトリクスを表すインターフェース
+  * @param executionTimeMs 実行時間（ミリ秒）
+  * @param memoryUsedBytes メモリ使用量（バイト）
+  * @param success 成功フラグ
+  * @param errorType エラータイプ（失敗時）
+  * @param errorMessage エラーメッセージ（失敗時）
+  * @param inputParameters 入力パラメータ
+  * @param outputSizeBytes 出力サイズ（バイト）
+  */
 export interface ExecutionMetrics {
   /** 実行時間（ミリ秒） */
   executionTimeMs: number;
@@ -80,9 +103,17 @@ export interface ExecutionMetrics {
   outputSizeBytes?: number;
 }
 
-/**
- * ツール使用統計
- */
+ /**
+  * ツールの使用統計情報
+  * @param toolId ツールID
+  * @param totalUsage 総使用回数
+  * @param successCount 成功回数
+  * @param failureCount 失敗回数
+  * @param avgExecutionTimeMs 平均実行時間（ミリ秒）
+  * @param maxExecutionTimeMs 最大実行時間（ミリ秒）
+  * @param minExecutionTimeMs 最小実行時間（ミリ秒）
+  * @param avgExecutionTimeMs 平均メモリ使用量（バイト）
+  */
 export interface ToolUsageStatistics {
   /** ツールID */
   toolId: string;
@@ -341,9 +372,11 @@ const QUALITY_PATTERNS: QualityPattern[] = [
 // Quality Assessment Functions
 // ============================================================================
 
-/**
- * コードの品質を評価
- */
+ /**
+  * コードの品質を評価する
+  * @param code 評価対象のコード
+  * @returns 品質評価結果
+  */
 export function assessCodeQuality(code: string): QualityAssessment {
   const lines = code.split("\n");
   const issues: QualityIssue[] = [];
@@ -574,9 +607,12 @@ function calculateConfidence(code: string, issueCount: number): number {
 
 const usageStatistics = new Map<string, ToolUsageStatistics>();
 
-/**
- * 実行メトリクスを記録
- */
+ /**
+  * 実行メトリクスを記録する
+  * @param toolId ツールID
+  * @param metrics 実行メトリクス
+  * @returns なし
+  */
 export function recordExecutionMetrics(
   toolId: string,
   metrics: ExecutionMetrics
@@ -631,30 +667,37 @@ export function recordExecutionMetrics(
   }
 }
 
-/**
- * 使用統計を取得
- */
+ /**
+  * 指定ツールの使用統計を取得
+  * @param toolId ツールID
+  * @returns 使用統計情報（存在しない場合はundefined）
+  */
 export function getUsageStatistics(toolId: string): ToolUsageStatistics | undefined {
   return usageStatistics.get(toolId);
 }
 
-/**
- * 全ツールの使用統計を取得
- */
+ /**
+  * 全ツールの使用統計を取得
+  * @returns 全ツールの使用統計情報の配列
+  */
 export function getAllUsageStatistics(): ToolUsageStatistics[] {
   return Array.from(usageStatistics.values());
 }
 
-/**
- * 使用統計をリセット（テスト用）
- */
+ /**
+  * 使用統計をリセットする
+  * @returns なし
+  */
 export function resetUsageStatistics(): void {
   usageStatistics.clear();
 }
 
-/**
- * 品質スコアをトレンドに追加
- */
+ /**
+  * 指定ツールの品質スコアを記録
+  * @param toolId ツールID
+  * @param score 品質スコア
+  * @returns なし
+  */
 export function recordQualityScore(toolId: string, score: number): void {
   const stats = usageStatistics.get(toolId);
   if (stats) {
@@ -666,9 +709,11 @@ export function recordQualityScore(toolId: string, score: number): void {
   }
 }
 
-/**
- * 品質トレンドの傾向を分析
- */
+ /**
+  * 品質トレンドの傾向を分析
+  * @param toolId ツールID
+  * @returns トレンドの状態、平均スコア、変化率
+  */
 export function analyzeQualityTrend(toolId: string): {
   trend: "improving" | "declining" | "stable";
   avgRecentScore: number;

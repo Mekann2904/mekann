@@ -15,14 +15,13 @@ export const LIVE_TAIL_LIMIT = 40_000;
 /** Minimum width for markdown preview rendering */
 export const LIVE_MARKDOWN_PREVIEW_MIN_WIDTH = 24;
 
-/**
- * Appends a chunk to the current tail string, respecting the maximum length.
- * If the result exceeds maxLength, the beginning is truncated.
- * @param current - The current tail string
- * @param chunk - The chunk to append
- * @param maxLength - Maximum length of the result (default: LIVE_TAIL_LIMIT)
- * @returns The new tail string
- */
+ /**
+  * 現在の末尾文字列にチャンクを追加し、最大長を制御する
+  * @param current - 現在の末尾文字列
+  * @param chunk - 追加するチャンク
+  * @param maxLength - 結果の最大長（デフォルト: LIVE_TAIL_LIMIT）
+  * @returns 新しい末尾文字列
+  */
 export function appendTail(current: string, chunk: string, maxLength = LIVE_TAIL_LIMIT): string {
   if (!chunk) return current;
   const next = `${current}${chunk}`;
@@ -30,13 +29,12 @@ export function appendTail(current: string, chunk: string, maxLength = LIVE_TAIL
   return next.slice(next.length - maxLength);
 }
 
-/**
- * Splits a tail string into lines, trims trailing whitespace, and limits the number of lines.
- * Empty lines at the end are removed before limiting.
- * @param tail - The tail string to process
- * @param limit - Maximum number of lines to return
- * @returns Array of processed lines
- */
+ /**
+  * 末尾の空白除去と行数制限を行う
+  * @param tail 処理対象の文字列
+  * @param limit 返す最大行数
+  * @returns 処理後の行配列
+  */
 export function toTailLines(tail: string, limit: number): string[] {
   const lines = tail
     .split(/\r?\n/)
@@ -49,12 +47,12 @@ export function toTailLines(tail: string, limit: number): string[] {
   return lines.slice(lines.length - limit);
 }
 
-/**
- * Counts occurrences of a target string within an input string.
- * @param input - The string to search in
- * @param target - The string to search for
- * @returns The number of occurrences
- */
+ /**
+  * 文字列内の特定の文字列の出現回数を数える
+  * @param input - 検索対象の文字列
+  * @param target - 検索する文字列
+  * @returns 出現回数
+  */
 export function countOccurrences(input: string, target: string): number {
   if (!input || !target) return 0;
   let count = 0;
@@ -68,24 +66,23 @@ export function countOccurrences(input: string, target: string): number {
   return count;
 }
 
-/**
- * Estimates line count based on byte count and newline count.
- * @param bytes - The byte count
- * @param newlineCount - The number of newlines
- * @param endsWithNewline - Whether the content ends with a newline
- * @returns Estimated line count
- */
+ /**
+  * バイト数と改行数に基づき行数を推定
+  * @param bytes - バイト数
+  * @param newlineCount - 改行文字の数
+  * @param endsWithNewline - 末尾が改行で終わるか
+  * @returns 推定された行数
+  */
 export function estimateLineCount(bytes: number, newlineCount: number, endsWithNewline: boolean): number {
   if (bytes <= 0) return 0;
   return newlineCount + (endsWithNewline ? 0 : 1);
 }
 
-/**
- * Checks if a string looks like Markdown content.
- * Detects common Markdown patterns: headers, lists, code blocks, links, etc.
- * @param input - The string to check
- * @returns True if the string appears to be Markdown
- */
+ /**
+  * Markdown形式の文字列か判定する
+  * @param input - 判定対象の文字列
+  * @returns Markdown形式の場合はtrue
+  */
 export function looksLikeMarkdown(input: string): boolean {
   const text = input.trim();
   if (!text) return false;
@@ -110,21 +107,23 @@ export function looksLikeMarkdown(input: string): boolean {
   return false;
 }
 
-/**
- * Result type for markdown preview rendering.
- */
+ /**
+  * マークダウンプレビューの結果を表します
+  * @param lines - レンダリング後の行配列
+  * @param renderedAsMarkdown - マークダウンとしてレンダリングされたか
+  */
 export interface MarkdownPreviewResult {
   lines: string[];
   renderedAsMarkdown: boolean;
 }
 
-/**
- * Renders text as Markdown if it looks like Markdown, otherwise returns plain lines.
- * @param text - The text to render
- * @param width - The width for rendering
- * @param maxLines - Maximum number of lines to return
- * @returns Object with lines and whether it was rendered as Markdown
- */
+ /**
+  * Markdown形式でプレビューを描画する
+  * @param text - 描画対象のテキスト
+  * @param width - 描画幅
+  * @param maxLines - 最大行数
+  * @returns 描画結果の行とMarkdown形式かどうか
+  */
 export function renderPreviewWithMarkdown(
   text: string,
   width: number,

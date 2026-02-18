@@ -24,9 +24,26 @@ const LIMITS = {
 // Types
 // ============================================================================
 
+ /**
+  * ループの状態を表す型
+  */
 export type LoopStatus = "continue" | "done" | "unknown";
+ /**
+  * ループの目標達成状態を表す型
+  */
 export type LoopGoalStatus = "met" | "not_met" | "unknown";
 
+ /**
+  * ループ処理の契約解析結果を表すインターフェース
+  * @param status ループのステータス
+  * @param goalStatus 目標の達成ステータス
+  * @param goalEvidence 目標達成の根拠
+  * @param citations 引用リスト
+  * @param summary サマリー
+  * @param nextActions 次のアクションリスト
+  * @param parseErrors パースエラーのリスト
+  * @param usedStructuredBlock 構造化ブロックを使用したかどうか
+  */
 export interface ParsedLoopContract {
   status: LoopStatus;
   goalStatus: LoopGoalStatus;
@@ -42,6 +59,18 @@ export interface ParsedLoopContract {
 // Prompt Building
 // ============================================================================
 
+ /**
+  * イテレーション用のプロンプトを構築する
+  * @param input.task 実行するタスク
+  * @param input.goal タスクの目標
+  * @param input.verificationCommand 検証用コマンド
+  * @param input.iteration 現在のイテレーション回数
+  * @param input.maxIterations 最大イテレーション回数
+  * @param input.references 参照情報の配列
+  * @param input.previousOutput 前回の出力内容
+  * @param input.validationFeedback 検証フィードバックの配列
+  * @returns 構築されたプロンプト文字列
+  */
 export function buildIterationPrompt(input: {
   task: string;
   goal?: string;
@@ -120,15 +149,11 @@ export function buildIterationPrompt(input: {
   return lines.join("\n");
 }
 
-/**
- * /**
- * * 参照情報をパック形式の文字列に変換する
- * *
- * * 各参照情報を[ID]タイトル、Source、内容の形式でフォーマットし、
- * * 改行区切りで結合した文字列を生成します。
- * *
- * * @param references - 参照情報の配列（LoopReference
- */
+ /**
+  * 参照情報をパック形式の文字列に変換
+  * @param references - 参照情報の配列
+  * @returns フォーマットされたパック文字列
+  */
 export function buildReferencePack(references: LoopReference[]): string {
   const lines: string[] = [];
   for (const ref of references) {
@@ -140,6 +165,13 @@ export function buildReferencePack(references: LoopReference[]): string {
   return lines.join("\n").trim();
 }
 
+ /**
+  * 反復のフォーカス文字列を構築する
+  * @param task - タスク内容
+  * @param previousOutput - 前回の出力
+  * @param validationFeedback - 検証フィードバックの配列
+  * @returns 構築されたフォーカス文字列
+  */
 export function buildIterationFocus(task: string, previousOutput: string, validationFeedback: string[]): string {
   if (validationFeedback.length > 0) {
     return `fix: ${validationFeedback[0]}`;
@@ -180,6 +212,11 @@ export function buildIterationFocus(task: string, previousOutput: string, valida
   return task;
 }
 
+ /**
+  * ループコマンドのプレビュー文字列を生成する
+  * @param model プロバイダ、ID、思考レベルを含むモデル
+  * @returns 生成されたプレビュー文字列
+  */
 export function buildLoopCommandPreview(model: {
   provider: string;
   id: string;
@@ -207,6 +244,11 @@ export function buildLoopCommandPreview(model: {
   return parts.join(" ");
 }
 
+ /**
+  * イテレーション失敗時の出力を生成する
+  * @param message エラーメッセージ
+  * @returns 失敗情報を含む文字列
+  */
 export function buildIterationFailureOutput(message: string): string {
   const contract = {
     status: "continue",
@@ -230,6 +272,12 @@ export function buildIterationFailureOutput(message: string): string {
 // Contract Parsing
 // ============================================================================
 
+ /**
+  * LLM出力からループ契約を解析する
+  * @param output 解析対象の出力文字列
+  * @param hasGoal 目標が設定されているかどうか
+  * @returns 解析されたループ契約情報
+  */
 export function parseLoopContract(output: string, hasGoal: boolean): ParsedLoopContract {
   const parseErrors: string[] = [];
   let status = parseLoopStatus(output);
@@ -323,6 +371,11 @@ export function parseLoopContract(output: string, hasGoal: boolean): ParsedLoopC
   };
 }
 
+ /**
+  * ループ結果の本文を抽出する
+  * @param output 出力文字列
+  * @returns 抽出された本文、またはトリムされた出力
+  */
 export function extractLoopResultBody(output: string): string {
   const block = extractTaggedBlock(output, LOOP_RESULT_BLOCK_TAG);
   if (block) return block;
@@ -333,6 +386,17 @@ export function extractLoopResultBody(output: string): string {
 // Validation
 // ============================================================================
 
+ /**
+  * イテレーションの入力値を検証し、エラーを返す
+  * @param input - 検証対象の入力データ
+  * @param input.status - ループの状態
+  * @param input.goal - 目標（オプション）
+  * @param input.goalStatus - 目標の状態
+  * @param input.citations - 引用の配列
+  * @param input.referenceCount - 参照回数
+  * @param input.requireCitation - 引用が必要かどうか
+  * @returns 検証で見つかったエラーメッセージの配列
+  */
 export function validateIteration(input: {
   status: LoopStatus;
   goal?: string;
@@ -368,6 +432,11 @@ export function validateIteration(input: {
   return errors;
 }
 
+ /**
+  * バリデーションエラーを正規化・整形する
+  * @param errors エラーメッセージの配列
+  * @returns 整形された一意のエラーリスト
+  */
 export function normalizeValidationFeedback(errors: string[]): string[] {
   const compact = errors
     .map((issue) => normalizeValidationIssue(issue))
@@ -379,6 +448,11 @@ export function normalizeValidationFeedback(errors: string[]): string[] {
     .map((issue, index) => `${index + 1}. ${toPreview(issue, LIMITS.maxValidationFeedbackCharsPerItem)}`);
 }
 
+ /**
+  * 完了宣言のフィードバックを構築する
+  * @param errors バリデーションエラーのリスト
+  * @returns エラーメッセージを含むフィードバック配列
+  */
 export function buildDoneDeclarationFeedback(errors: string[]): string[] {
   return [
     "STATUS=done was rejected by system validation. Keep STATUS=continue until all gates pass.",
@@ -499,6 +573,11 @@ function extractCitations(output: string): string[] {
     .map((id) => `R${id}`);
 }
 
+ /**
+  * 次のステップ行を抽出する
+  * @param output 出力文字列
+  * @returns 抽出された次のステップ
+  */
 export function extractNextStepLine(output: string): string {
   const structured = parseLoopJsonObject(output);
   if (structured) {
@@ -511,6 +590,11 @@ export function extractNextStepLine(output: string): string {
   return match?.[1]?.trim() ?? "";
 }
 
+ /**
+  * 出力からサマリー行を抽出する
+  * @param output 出力文字列
+  * @returns 抽出されたサマリー
+  */
 export function extractSummaryLine(output: string): string {
   const structured = parseLoopJsonObject(output);
   if (structured) {
@@ -663,6 +747,11 @@ function toPreview(value: string, maxChars: number): string {
   return `${value.slice(0, maxChars)}...`;
 }
 
+ /**
+  * ループ出力を正規化する
+  * @param value 入力文字列
+  * @returns 正規化された文字列
+  */
 export function normalizeLoopOutput(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }

@@ -7,9 +7,16 @@
 // Types
 // ============================================================================
 
-/**
- * 安全性解析結果
- */
+ /**
+  * 安全性解析結果
+  * @param score 安全性スコア（0.0-1.0）
+  * @param issues 検出された問題
+  * @param allowedOperations 許可された操作
+  * @param blockedOperations 禁止された操作の検出
+  * @param recommendations 推奨事項
+  * @param isSafe 安全と判定されたか
+  * @param confidence 信頼度
+  */
 export interface SafetyAnalysisResult {
   /** 安全性スコア（0.0-1.0） */
   score: number;
@@ -27,9 +34,14 @@ export interface SafetyAnalysisResult {
   confidence: number;
 }
 
-/**
- * 安全性の問題（解析用）
- */
+ /**
+  * 安全性解析で検出された問題の詳細
+  * @param severity 重大度
+  * @param type 問題の種類
+  * @param description 説明
+  * @param location コード内の位置
+  * @param suggestion 修正提案
+  */
 export interface SafetyAnalysisIssue {
   /** 重大度 */
   severity: "critical" | "high" | "medium" | "low";
@@ -46,9 +58,9 @@ export interface SafetyAnalysisIssue {
   suggestion?: string;
 }
 
-/**
- * 安全性問題の種類（解析用）
- */
+ /**
+  * 安全性問題の種類（解析用）
+  */
 export type SafetyAnalysisIssueType =
   | "file-system-write"
   | "file-system-delete"
@@ -311,7 +323,6 @@ const SAFE_PATTERNS: RegExp[] = [
 
 /**
  * コードの安全性を解析
- * 
  * @param code - 解析対象のコード
  * @param options - 解析オプション
  * @returns 安全性解析結果
@@ -472,10 +483,11 @@ function getSeverityPenalty(severity: SafetyAnalysisIssue["severity"], strict: b
 // Quick Safety Check
 // ============================================================================
 
-/**
- * 高速な安全性チェック（詳細解析なし）
- * ツール実行前の簡易チェック用
- */
+ /**
+  * 高速な安全性チェック（詳細解析なし）
+  * @param code チェック対象のコード
+  * @returns 安全性判定結果（isSafe: 安全かどうか, reason: 不安全な理由）
+  */
 export function quickSafetyCheck(code: string): {
   isSafe: boolean;
   reason?: string;
@@ -495,9 +507,12 @@ export function quickSafetyCheck(code: string): {
   return { isSafe: true };
 }
 
-/**
- * コードが許可リストに準拠しているかチェック
- */
+ /**
+  * 許可リストへの準拠をチェック
+  * @param code チェック対象のコード
+  * @param allowlist 許可されたキーワードのリスト
+  * @returns 準拠状況と違反内容を含むオブジェクト
+  */
 export function checkAllowlistCompliance(
   code: string,
   allowlist: string[]

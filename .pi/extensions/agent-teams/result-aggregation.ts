@@ -24,15 +24,12 @@ export type { RunOutcomeCode, RunOutcomeSignal };
 // Failure Resolution
 // ============================================================================
 
-/**
- * /**
- * * チームメンバーのエラーが再試行可能かどうかを判定する
- * *
- * * エラーメッセージを解析し、レート制限、タイムアウト、サービス利用不可などの
- * * 一時的なエラーかどうかを判定します。
- * *
- * * @param
- */
+ /**
+  * チームメンバーのエラーが再試行可能か判定
+  * @param error 判定対象のエラー
+  * @param statusCode HTTPステータスコード（任意）
+  * @returns 再試行可能な場合はtrue
+  */
 export function isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean {
   const message = toErrorMessage(error).toLowerCase();
   if (/429|rate\s*limit|too many requests/i.test(message)) {
@@ -66,6 +63,11 @@ export function isRetryableTeamMemberError(error: unknown, statusCode?: number):
   return message.includes("agent team member returned empty output");
 }
 
+ /**
+  * チームのエラー種別を判定し、実行結果シグナルを返す
+  * @param error - 発生したエラー
+  * @returns 判定された実行結果シグナル
+  */
 export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
   if (isCancelledErrorMessage(error)) {
     return { outcomeCode: "CANCELLED", retryRecommended: false };
@@ -107,6 +109,11 @@ export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
 // Member Outcome Resolution
 // ============================================================================
 
+ /**
+  * チームメンバーの実行結果を集約して解決する
+  * @param memberResults チームメンバーの実行結果リスト
+  * @returns 実行結果と失敗したメンバーIDのリスト
+  */
 export function resolveTeamMemberAggregateOutcome(memberResults: TeamMemberResult[]): RunOutcomeSignal & {
   failedMemberIds: string[];
 } {
@@ -157,6 +164,11 @@ export function resolveTeamMemberAggregateOutcome(memberResults: TeamMemberResul
 // Parallel Run Outcome Resolution
 // ============================================================================
 
+ /**
+  * チームの並列実行結果を集計して解決する
+  * @param results チーム定義、実行記録、メンバー結果を含む配列
+  * @returns 実行結果シグナル、失敗・一部成功チームID、メンバー別失敗ID
+  */
 export function resolveTeamParallelRunOutcome(
   results: Array<{
     team: TeamDefinition;
@@ -257,6 +269,14 @@ export function resolveTeamParallelRunOutcome(
 // Result Formatting
 // ============================================================================
 
+ /**
+  * チームの実行結果をテキスト形式で構築します。
+  * @param input.run チームの実行記録
+  * @param input.team チーム定義
+  * @param input.memberResults メンバーごとの結果配列
+  * @param input.communicationAudit 通信監査ログ（オプション）
+  * @returns 結果を表す文字列
+  */
 export function buildTeamResultText(input: {
   run: TeamRunRecord;
   team: TeamDefinition;
@@ -355,6 +375,11 @@ export function buildTeamResultText(input: {
 // Utility Functions
 // ============================================================================
 
+ /**
+  * 出力文字列からサマリーを抽出する
+  * @param output 処理対象の出力文字列
+  * @returns 抽出されたサマリー文字列、または見つからない場合は最初の非空行
+  */
 export function extractSummary(output: string): string {
   const match = output.match(/^\s*summary\s*:\s*(.+)$/im);
   if (match?.[1]) {

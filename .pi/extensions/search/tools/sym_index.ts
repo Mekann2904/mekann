@@ -655,10 +655,12 @@ async function writeShardedIndex(
 // Main Entry Point
 // ============================================
 
-/**
- * Generate symbol index using ctags.
- * Supports both full and incremental indexing.
- */
+ /**
+  * ctagsを使用してシンボルインデックスを生成
+  * @param input インデックス作成の入力設定
+  * @param cwd カレントワーキングディレクトリ
+  * @returns インデックス作成結果
+  */
 export async function symIndex(
 	input: SymIndexInput,
 	cwd: string
@@ -765,10 +767,11 @@ export async function symIndex(
 	}
 }
 
-/**
- * Read and parse existing symbol index.
- * Supports both legacy and sharded formats.
- */
+ /**
+  * シンボルインデックスを読み込みパースする
+  * @param cwd 作業ディレクトリのパス
+  * @returns シンボルインデックスのエントリ配列、またはnull
+  */
 export async function readSymbolIndex(
 	cwd: string
 ): Promise<SymbolIndexEntry[] | null> {
@@ -790,9 +793,11 @@ export async function readSymbolIndex(
 	return null;
 }
 
-/**
- * Get index metadata.
- */
+ /**
+  * インデックスのメタデータを取得する
+  * @param cwd 作業ディレクトリのパス
+  * @returns インデックスのメタデータ、存在しない場合はnull
+  */
 export async function getIndexMetadata(
 	cwd: string
 ): Promise<IndexMetadata | null> {

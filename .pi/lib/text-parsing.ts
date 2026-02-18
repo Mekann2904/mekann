@@ -9,10 +9,11 @@
 // Number Utilities
 // ============================================================================
 
-/**
- * Clamp a confidence value to the valid range [0, 1].
- * Invalid values default to 0.5 (neutral).
- */
+ /**
+  * 信頼度を0から1の範囲に丸める
+  * @param value 入力値
+  * @returns 丸められた信頼度（範囲外または無効な値は0.5）
+  */
 export function clampConfidence(value: number): number {
   if (!Number.isFinite(value)) return 0.5;
   return Math.max(0, Math.min(1, value));
@@ -34,23 +35,21 @@ export function generateClaimId(): string {
   return `claim-${timestamp}-${random}`;
 }
 
-/**
- * Generate a unique evidence ID for structured communication tracking.
- * Format: evidence-<timestamp>-<random>
- *
- * @returns Unique evidence identifier
- */
+ /**
+  * 構造化された通信追跡用の証拠IDを生成する
+  * @returns 一意の証跡ID
+  */
 export function generateEvidenceId(): string {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).slice(2, 8);
   return `evidence-${timestamp}-${random}`;
 }
 
-/**
- * Parse a unit interval value from a string.
- * Handles both decimal (0.5) and percentage (50%) formats.
- * Returns undefined for invalid or empty input.
- */
+ /**
+  * 文字列から単位区間の値をパースする。
+  * @param raw 入力文字列（小数またはパーセント形式）
+  * @returns パースされた数値、または無効な場合はundefined
+  */
 export function parseUnitInterval(raw: string | undefined): number | undefined {
   if (!raw) return undefined;
   const value = raw.trim();
@@ -80,10 +79,12 @@ export function extractField(output: string, name: string): string | undefined {
   return match?.[1]?.trim();
 }
 
-/**
- * Extract multiple lines for a named field.
- * Returns content from the field label until the next major label.
- */
+ /**
+  * 指定されたフィールドの複数行を抽出する。
+  * @param output - 検索対象のテキスト
+  * @param name - フィールド名
+  * @returns フィールドの内容
+  */
 export function extractMultilineField(output: string, name: string): string {
   const pattern = new RegExp(`^${name}\\s*:\\s*$`, "im");
   const lines = output.split(/\r?\n/);
@@ -116,10 +117,12 @@ export function extractMultilineField(output: string, name: string): string {
 // Text Analysis Utilities
 // ============================================================================
 
-/**
- * Count how many keywords appear in the output text.
- * Used for signal detection in member outputs.
- */
+ /**
+  * 出力テキストに含まれるキーワードの数をカウントする
+  * @param output 検索対象のテキスト
+  * @param keywords 検索するキーワードの配列
+  * @returns 見つかったキーワードの数
+  */
 export function countKeywordSignals(output: string, keywords: string[]): number {
   const lowered = output.toLowerCase();
   let count = 0;
@@ -135,15 +138,17 @@ export function countKeywordSignals(output: string, keywords: string[]): number 
 // Discussion Analysis Utilities (P0-2: Structured Communication Context)
 // ============================================================================
 
-/**
- * Stance type for discussion analysis.
- * Matches StanceClassificationMode behavior in output-schema.ts.
- */
+ /**
+  * ディスカッションの立場を表す型
+  */
 export type DiscussionStance = "agree" | "disagree" | "neutral" | "partial";
 
-/**
- * Result of discussion stance analysis.
- */
+ /**
+  * ディスカッションのスタンス分析結果
+  * @param stance スタンス（同意、反対、中立、部分的同意）
+  * @param confidence 信頼度（0～1）
+  * @param evidence 判断根拠となったテキストのリスト
+  */
 export interface DiscussionStanceResult {
   stance: DiscussionStance;
   confidence: number;
@@ -173,13 +178,12 @@ export const STANCE_PATTERNS: Record<DiscussionStance, RegExp[]> = {
   ],
 };
 
-/**
- * Analyze the discussion stance relative to a target member.
- *
- * @param text - Discussion text to analyze
- * @param targetMemberId - Member ID to find context around
- * @returns Stance analysis result with confidence and evidence
- */
+ /**
+  * 対象メンバーに関する議論のスタンスを分析する
+  * @param text - 分析対象の議論テキスト
+  * @param targetMemberId - 文脈を検索するメンバーID
+  * @returns 確信度と証拠を含むスタンス分析結果
+  */
 export function analyzeDiscussionStance(
   text: string,
   targetMemberId: string
@@ -269,13 +273,11 @@ export function analyzeDiscussionStance(
   };
 }
 
-/**
- * Extract consensus marker from discussion text.
- * Looks for lines starting with "合意:" (Japanese) or "Consensus:" (English).
- *
- * @param text - Discussion text to search
- * @returns Extracted consensus text, or undefined if not found
- */
+ /**
+  * テキストから合意マーカーを抽出する
+  * @param text - 検索対象のテキスト
+  * @returns 抽出された合意テキスト。見つからない場合はundefined
+  */
 export function extractConsensusMarker(text: string): string | undefined {
   // Japanese pattern: "合意:" or "合意："
   const jaMatch = text.match(/合意\s*[:：]\s*(.+)/);

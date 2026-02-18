@@ -367,9 +367,22 @@ export const QUESTION_TOOL_GUIDELINES = [
   "",
 ].join("\n");
 
-/**
- * 実行ルールセクションを構築する
- */
+ /**
+  * 実行ルールの構築オプション
+  * @param forSubagent サブエージェント向けかどうか
+  * @param forTeam チーム向けかどうか
+  * @param phase フェーズ
+  * @param includeGuidelines ガイドラインを含めるかどうか
+  * @param includeDiscussionRules ディスカッションルールを含めるかどうか
+  * @param includeCognitiveBiasCountermeasures 認知バイアス対策を含めるかどうか
+  * @param includeSelfVerification 自己検証を含めるかどうか
+  * @param includeWorkingMemoryGuidelines ワーキングメモリガイドラインを含めるかどうか
+  * @param includeTerminationCheck 終了チェックを含めるかどうか
+  * @param includeCompositionalInference 合成推論を含めるかどうか
+  * @param includeChallengeRules チャレンジルールを含めるかどうか
+  * @param includeInspectionRules 検査ルールを含めるかどうか
+  * @param includeVerificationWorkflow 検証ワークフローを含めるかどうか
+  */
 export interface BuildExecutionRulesOptions {
   forSubagent?: boolean;
   forTeam?: boolean;
@@ -389,6 +402,11 @@ export interface BuildExecutionRulesOptions {
 // 実行ルールのキャッシュ（オプション組み合わせに対する結果を保持）
 const executionRulesCache = new Map<string, string>();
 
+ /**
+  * 実行ルールセクションを構築する
+  * @param options ビルドオプション
+  * @returns 構築された実行ルールの文字列
+  */
 export function buildExecutionRulesSection(options: BuildExecutionRulesOptions = {}): string {
   // キャッシュキーを生成（新しいオプションを含む）
   const cacheKey = [
@@ -491,10 +509,11 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
 // サブエージェント用ルールのキャッシュ（複数パターン）
 const subagentRulesCache = new Map<string, string>();
 
-/**
- * サブエージェント用の実行ルールを取得
- * デフォルトで認知バイアス対策と自己検証ルールを含める
- */
+ /**
+  * サブエージェント用の実行ルールを取得
+  * @param includeGuidelines ガイドラインを含めるかどうか
+  * @returns 実行ルールの文字列
+  */
 export function getSubagentExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
   const cached = subagentRulesCache.get(key);
@@ -514,11 +533,12 @@ export function getSubagentExecutionRules(includeGuidelines = false): string {
 // チームメンバー用ルールのキャッシュ（複数パターン）
 const teamMemberRulesCache = new Map<string, string>();
 
-/**
- * チームメンバー用の実行ルールを取得
- * デフォルトで認知バイアス対策と自己検証ルールを含める
- * 論文「Large Language Model Reasoning Failures」のP0/P1推奨事項を含む
- */
+ /**
+  * チームメンバー用の実行ルールを取得する
+  * @param phase フェーズ（"initial" | "communication"）
+  * @param includeGuidelines ガイドラインを含めるかどうか
+  * @returns 生成された実行ルールの文字列
+  */
 export function getTeamMemberExecutionRules(
   phase: "initial" | "communication" = "initial",
   includeGuidelines = false
@@ -545,10 +565,11 @@ export function getTeamMemberExecutionRules(
 // Challenger用ルールのキャッシュ
 const challengerRulesCache = new Map<string, string>();
 
-/**
- * Challengerサブエージェント用の実行ルールを取得
- * 論文「Large Language Model Reasoning Failures」のP0推奨事項
- */
+ /**
+  * Challenger用実行ルールを取得
+  * @param includeGuidelines ガイドラインを含めるかどうか
+  * @returns 生成された実行ルールの文字列
+  */
 export function getChallengerExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
   const cached = challengerRulesCache.get(key);
@@ -569,10 +590,11 @@ export function getChallengerExecutionRules(includeGuidelines = false): string {
 // Inspector用ルールのキャッシュ
 const inspectorRulesCache = new Map<string, string>();
 
-/**
- * Inspectorサブエージェント用の実行ルールを取得
- * 論文「Large Language Model Reasoning Failures」のP0推奨事項
- */
+ /**
+  * Inspectorサブエージェント用の実行ルールを取得
+  * @param includeGuidelines ガイドラインを含めるかどうか
+  * @returns 生成された実行ルール
+  */
 export function getInspectorExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
   const cached = inspectorRulesCache.get(key);
@@ -593,10 +615,12 @@ export function getInspectorExecutionRules(includeGuidelines = false): string {
 // 検証ワークフロー用ルールのキャッシュ
 const verificationWorkflowRulesCache = new Map<string, string>();
 
-/**
- * 検証ワークフロー用の実行ルールを取得
- * 論文「Large Language Model Reasoning Failures」のP0推奨事項
- */
+ /**
+  * 検証ワークフロー用の実行ルールを取得
+  * @param phase 対象フェーズ ("inspector" | "challenger" | "both")
+  * @param includeGuidelines ガイドラインを含めるか
+  * @returns 実行ルールの文字列
+  */
 export function getVerificationWorkflowExecutionRules(
   phase: "inspector" | "challenger" | "both" = "both",
   includeGuidelines = false

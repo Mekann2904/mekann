@@ -13,15 +13,13 @@ import {
 // Types
 // ============================================================================
 
-/**
- * チーム並列実行容量の候補値を定義するインターフェース
- *
- * 並列実行の容量確保時に使用される、チームおよびメンバーの並列度と
- * 追加リソース要件を表します。
- *
- * @property teamParallelism - チーム全体の並列実行数
- * @property memberParallelism - 各メンバーの並列実行数
- */
+ /**
+  * チーム並列実行容量の候補
+  * @param teamParallelism - チーム全体の並列実行数
+  * @param memberParallelism - 各メンバーの並列実行数
+  * @param additionalRequests - 追加のリクエスト数
+  * @param additionalLlm - 追加のLLM呼び出し数
+  */
 export interface TeamParallelCapacityCandidate {
   teamParallelism: number;
   memberParallelism: number;
@@ -29,6 +27,23 @@ export interface TeamParallelCapacityCandidate {
   additionalLlm: number;
 }
 
+ /**
+  * チーム並列実行の解決結果を表すインターフェース
+  * @param allowed - 許可されたかどうか
+  * @param requestedTeamParallelism - 要求されたチーム並列度
+  * @param requestedMemberParallelism - 要求されたメンバー並列度
+  * @param appliedTeamParallelism - 適用されたチーム並列度
+  * @param appliedMemberParallelism - 適用されたメンバー並列度
+  * @param reduced - 削減されたかどうか
+  * @param reasons - 理由の配列
+  * @param waitedMs - 待機時間（ミリ秒）
+  * @param timedOut - タイムアウトしたかどうか
+  * @param aborted - 中断されたかどうか
+  * @param attempts - 試行回数
+  * @param projectedRequests - 予測リクエスト数
+  * @param projectedLlm - 予測LLM数
+  * @param reservation - 予約リソース（オプション）
+  */
 export interface TeamParallelCapacityResolution {
   allowed: boolean;
   requestedTeamParallelism: number;
@@ -50,6 +65,11 @@ export interface TeamParallelCapacityResolution {
 // Candidate Building
 // ============================================================================
 
+ /**
+  * メンバーの並列度に基づいて候補を生成する
+  * @param memberParallelism メンバーの並列度
+  * @returns チーム並列容量候補の配列
+  */
 export function buildMemberParallelCandidates(memberParallelism: number): TeamParallelCapacityCandidate[] {
   const requestedMemberParallelism = Math.max(1, Math.trunc(memberParallelism));
   const candidates: TeamParallelCapacityCandidate[] = [];
@@ -64,6 +84,12 @@ export function buildMemberParallelCandidates(memberParallelism: number): TeamPa
   return candidates;
 }
 
+ /**
+  * チームとメンバーの並列実行候補を生成
+  * @param teamParallelism - チームの並列度
+  * @param memberParallelism - メンバーの並列度
+  * @returns 並列実行容量の候補リスト
+  */
 export function buildTeamAndMemberParallelCandidates(
   teamParallelism: number,
 /**
@@ -103,6 +129,18 @@ export function buildTeamAndMemberParallelCandidates(
 // Capacity Resolution
 // ============================================================================
 
+ /**
+  * チームの並列容量を解決する
+  * @param input 解決に必要な入力データ
+  * @param input.requestedTeamParallelism 要求するチームの並列数
+  * @param input.requestedMemberParallelism 要求するメンバーの並列数
+  * @param input.candidates 候補となるチーム並列容量のリスト
+  * @param input.toolName 対象のツール名（オプション）
+  * @param input.maxWaitMs 最大待機時間（ミリ秒）
+  * @param input.pollIntervalMs ポーリング間隔（ミリ秒）
+  * @param input.signal 中断シグナル（オプション）
+  * @returns チーム並列容量の解決結果を含むPromise
+  */
 export async function resolveTeamParallelCapacity(input: {
   requestedTeamParallelism: number;
   requestedMemberParallelism: number;

@@ -8,44 +8,43 @@
  * - rsa.ts
  */
 
-/**
- * Converts an unknown value to a finite number.
- * Returns undefined if the value is not a valid finite number.
- * @param value - The value to convert
- * @returns The finite number or undefined
- */
+ /**
+  * 不明な値を有限の数値に変換する
+  * @param value - 変換対象の値
+  * @returns 有限の数値、または変換不可の場合はundefined
+  */
 export function toFiniteNumber(value: unknown): number | undefined {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : undefined;
 }
 
-/**
- * Converts an unknown value to a finite number with a default fallback.
- * @param value - The value to convert
- * @param fallback - The fallback value if conversion fails (default: 0)
- * @returns The finite number or fallback
- */
+ /**
+  * 有限数またはデフォルト値を返す
+  * @param value - 変換対象の値
+  * @param fallback - 変換失敗時のフォールバック値（デフォルト: 0）
+  * @returns 有限数またはフォールバック値
+  */
 export function toFiniteNumberWithDefault(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   return fallback;
 }
 
-/**
- * Result type for bounded integer validation.
- */
+ /**
+  * 整数範囲検証の結果型
+  */
 export type BoundedIntegerResult =
   | { ok: true; value: number }
   | { ok: false; error: string };
 
-/**
- * Validates and bounds an integer value.
- * @param value - The value to validate
- * @param fallback - The fallback value if undefined
- * @param min - Minimum allowed value
- * @param max - Maximum allowed value
- * @param field - Field name for error messages
- * @returns Validation result with value or error
- */
+ /**
+  * 整数値の検証と範囲制限を行う
+  * @param value - 検証対象の値
+  * @param fallback - 未定義時のフォールバック値
+  * @param min - 許容される最小値
+  * @param max - 許容される最大値
+  * @param field - エラーメッセージ用のフィールド名
+  * @returns 値またはエラーを含む検証結果
+  */
 export function toBoundedInteger(
   value: unknown,
   fallback: number,
@@ -63,25 +62,24 @@ export function toBoundedInteger(
   return { ok: true, value: resolved };
 }
 
-/**
- * Clamps an integer value to the specified range.
- * Uses Math.trunc to ensure integer result.
- * @param value - The value to clamp
- * @param min - Minimum allowed value
- * @param max - Maximum allowed value
- * @returns The clamped integer
- */
+ /**
+  * 整数値を指定範囲内に制限する
+  * @param value - 制限対象の値
+  * @param min - 最小値
+  * @param max - 最大値
+  * @returns 範囲内に制限された整数値
+  */
 export function clampInteger(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
-/**
- * Clamps a float value to the specified range.
- * @param value - The value to clamp
- * @param min - Minimum allowed value
- * @param max - Maximum allowed value
- * @returns The clamped float
- */
+ /**
+  * 浮動小数点数を指定範囲内に制限する
+  * @param value - 対象の数値
+  * @param min - 最小値
+  * @param max - 最大値
+  * @returns 範囲内に収められた数値
+  */
 export function clampFloat(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

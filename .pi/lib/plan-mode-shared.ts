@@ -84,13 +84,12 @@ export const ADDITIONAL_WRITE_COMMANDS = new Set([
 // Type Definitions
 // ============================================
 
-/**
- * プランモードの状態を表すインターフェース
- *
- * @property enabled - プランモードが有効かどうか
- * @property timestamp - 状態が記録された時刻（Unixタイムスタンプ）
- * @property checksum - 状態の整合性検証用チェックサム
- */
+ /**
+  * プランモードの状態を表すインターフェース
+  * @property enabled - プランモードが有効かどうか
+  * @property timestamp - 状態が記録された時刻（Unixタイムスタンプ）
+  * @property checksum - 状態の整合性検証用チェックサム
+  */
 export interface PlanModeState {
 	enabled: boolean;
 	timestamp: number;
@@ -136,20 +135,11 @@ export const PLAN_MODE_WARNING = `PLAN MODE is ACTIVE. Restrictions have been di
 // Utility Functions
 // ============================================
 
-/**
- * Check if a bash command is allowed in plan mode.
- *
- * This function implements a multi-layered check to prevent write operations:
- * 1. Check for output redirections (> >> 2> &>)
- * 2. Check for pipelines with write commands
- * 3. Check for subshells and command substitution
- * 4. Check for explicit shell invocation (bash -c, sh -c)
- * 5. Check first word against write command list
- * 6. Verify first word is in read-only allowlist
- *
- * @param command - The bash command to check
- * @returns true if the command is allowed, false if it should be blocked
- */
+ /**
+  * Bashコマンドが許可されているか判定
+  * @param command チェックするBashコマンド
+  * @returns 許可されている場合はtrue、ブロックする場合はfalse
+  */
 export function isBashCommandAllowed(command: string): boolean {
 	const trimmed = command.trim();
 	if (!trimmed) return false;
@@ -194,15 +184,10 @@ export function isBashCommandAllowed(command: string): boolean {
 	return READ_ONLY_COMMANDS.has(firstWord);
 }
 
-/**
- * Check if plan mode is active.
- *
- * Requires both:
- * 1) PI_PLAN_MODE="1" environment flag
- * 2) A valid persisted state file with enabled=true
- *
- * @returns true if plan mode is active
- */
+ /**
+  * プランモードが有効か判定する
+  * @returns プランモードが有効な場合はtrue
+  */
 export function isPlanModeActive(): boolean {
 	// Fast path: no env flag means plan mode is definitely off.
 	if (process.env.PI_PLAN_MODE !== "1") {
@@ -225,21 +210,22 @@ export function isPlanModeActive(): boolean {
 	}
 }
 
-/**
- * Calculate checksum for plan mode state validation.
- */
+ /**
+  * プランモード状態のチェックサムを計算する
+  * @param state - チェックサムを除くプランモードの状態
+  * @returns SHA256ハッシュの16進数文字列
+  */
 export function calculateChecksum(state: Omit<PlanModeState, 'checksum'>): string {
 	return createHash('sha256')
 		.update(JSON.stringify(state))
 		.digest('hex');
 }
 
-/**
- * Validate plan mode state checksum.
- *
- * @param state - The state to validate
- * @returns true if checksum is valid
- */
+ /**
+  * プランモードの状態チェックサムを検証する
+  * @param state - 検証対象の状態
+  * @returns チェックサムが有効な場合はtrue
+  */
 export function validatePlanModeState(state: PlanModeState): boolean {
 	if (!state || typeof state.checksum !== 'string') {
 		return false;
@@ -251,9 +237,11 @@ export function validatePlanModeState(state: PlanModeState): boolean {
 	return state.checksum === expectedChecksum;
 }
 
-/**
- * Create a new plan mode state with checksum.
- */
+ /**
+  * チェックサム付きのプランモード状態を作成する
+  * @param enabled プランモードが有効かどうか
+  * @returns 作成されたプランモード状態
+  */
 export function createPlanModeState(enabled: boolean): PlanModeState {
 	const state: Omit<PlanModeState, 'checksum'> = {
 		enabled,

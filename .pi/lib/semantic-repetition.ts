@@ -16,9 +16,9 @@ import {
 // Types
 // ============================================================================
 
-/**
- * Result of semantic repetition detection.
- */
+ /**
+  * 意味的な重複検出の結果
+  */
 export interface SemanticRepetitionResult {
   /** Whether semantic repetition was detected */
   isRepeated: boolean;
@@ -28,9 +28,12 @@ export interface SemanticRepetitionResult {
   method: "embedding" | "exact" | "unavailable";
 }
 
-/**
- * Options for semantic repetition detection.
- */
+ /**
+  * 意味的繰り返し検出のオプション
+  * @param threshold 繰り返しとみなす類似度の閾値（デフォルト: 0.85）
+  * @param useEmbedding 埋め込みベースの検出を使用するか（OPENAI_API_KEYが必要）
+  * @param maxTextLength 比較する最大テキスト長（デフォルト: 2000）
+  */
 export interface SemanticRepetitionOptions {
   /** Similarity threshold for considering outputs as repeated (default: 0.85) */
   threshold?: number;
@@ -40,9 +43,9 @@ export interface SemanticRepetitionOptions {
   maxTextLength?: number;
 }
 
-/**
- * Session trajectory summary for monitoring.
- */
+ /**
+  * セッション軌跡のサマリー監視用インターフェース
+  */
 export interface TrajectorySummary {
   /** Total steps analyzed */
   totalSteps: number;
@@ -76,18 +79,13 @@ export const DEFAULT_MAX_TEXT_LENGTH = 2000;
 // Core Functions
 // ============================================================================
 
-/**
- * Detect semantic repetition between two outputs.
- *
- * This function compares consecutive outputs using either:
- * 1. Embedding-based cosine similarity (if OPENAI_API_KEY available)
- * 2. Exact string match (fallback)
- *
- * @param current - Current output text
- * @param previous - Previous output text
- * @param options - Detection options
- * @returns Detection result with similarity score
- */
+ /**
+  * 出力の意味的な重複を検出する
+  * @param current - 現在の出力テキスト
+  * @param previous - 直前の出力テキスト
+  * @param options - 検出オプション
+  * @returns 類似度スコアを含む検出結果
+  */
 export async function detectSemanticRepetition(
   current: string,
   previous: string,
@@ -163,10 +161,13 @@ export async function detectSemanticRepetition(
   };
 }
 
-/**
- * Synchronous version using pre-computed embeddings.
- * Use when embeddings are already available.
- */
+ /**
+  * 事前計算された埋め込み込みを使用して検出
+  * @param currentEmbedding 現在の埋め込みベクトル
+  * @param previousEmbedding 以前の埋め込みベクトル
+  * @param threshold 類似度の閾値
+  * @returns 繰り返し判定結果
+  */
 export function detectSemanticRepetitionFromEmbeddings(
   currentEmbedding: number[],
   previousEmbedding: number[],
@@ -190,10 +191,10 @@ export function detectSemanticRepetitionFromEmbeddings(
  */
 export const DEFAULT_MAX_TRAJECTORY_STEPS = 100;
 
-/**
- * Simple trajectory tracker for monitoring session progress.
- * Implements memory bounds to prevent DoS via unbounded accumulation.
- */
+ /**
+  * セッションの進行状況を追跡するクラス
+  * @param maxSteps 保持する最大ステップ数（デフォルトは100）
+  */
 export class TrajectoryTracker {
   private steps: Array<{
     output: string;
@@ -240,9 +241,10 @@ export class TrajectoryTracker {
     return result;
   }
 
-  /**
-   * Get trajectory summary.
-   */
+   /**
+    * 軌跡の概要を取得する
+    * @returns 軌跡のサマリー情報を含むオブジェクト
+    */
   getSummary(): TrajectorySummary {
     if (this.steps.length === 0) {
       return {
@@ -301,9 +303,10 @@ export class TrajectoryTracker {
     return this.steps.length;
   }
 
-  /**
-   * Reset tracker.
-   */
+   /**
+    * トラッカーをリセットする。
+    * @returns 戻り値なし
+    */
   reset(): void {
     this.steps = [];
   }
@@ -323,19 +326,22 @@ function normalizeText(text: string, maxLength: number): string {
     .slice(0, maxLength);
 }
 
-/**
- * Check if semantic repetition detection is available.
- * Uses the embeddings module's provider registry.
- */
+ /**
+  * 意味的反復検出が利用可能か確認
+  * @returns 利用可能な場合はtrue
+  */
 export async function isSemanticRepetitionAvailable(): Promise<boolean> {
   const provider = await getEmbeddingProvider();
   return provider !== null;
 }
 
-/**
- * Get recommended action based on repetition score.
- * Based on paper findings: high repetition indicates stagnation.
- */
+ /**
+  * 繰り返し状況に基づく推奨アクションを取得
+  * @param repetitionCount 繰り返し回数
+  * @param totalSteps 総ステップ数
+  * @param isStuck 停滞状態かどうか
+  * @returns "continue" | "pivot" | "early_stop"
+  */
 export function getRecommendedAction(
   repetitionCount: number,
   totalSteps: number,

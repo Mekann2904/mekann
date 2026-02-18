@@ -57,23 +57,10 @@ function hashString(str: string): string {
 // ロガークラス
 // ============================================
 
-/**
- * セッション、タスク、オペレーションを包括的に管理するロガークラス
- *
- * ログイベントのバッファリング、定期フラッシュ、エラー追跡、トークン使用量の記録など、
- * 高度なログ機能を提供します。各ログイベントは一意のIDで追跡され、
- * 階層的なタスク・オペレーション管理をサポートします。
- *
- * @param config - ロガー設定オプション（省略時はデフォルト設定を使用）
- * @example
- * // 基本的な使用方法
- * const logger = new ComprehensiveLogger({ logDir: './logs' });
- * logger.startSession();
- * logger.startTask('ユーザー入力');
- * // ... 処理 ...
- * logger.endTask();
- * logger.endSession();
- */
+ /**
+  * 包括的なログ管理クラス
+  * @param config - ロガー設定オプション（省略時はデフォルト設定を使用）
+  */
 export class ComprehensiveLogger {
   private config: LoggerConfig;
   private buffer: LogEvent[] = [];
@@ -138,6 +125,11 @@ export class ComprehensiveLogger {
   // セッション管理
   // ============================================
   
+   /**
+    * セッションを開始する
+    * @param data セッション開始データ（startupTimeMsを除く）
+    * @returns セッションID
+    */
   startSession(data: Omit<SessionStartEvent['data'], 'startupTimeMs'>): string {
     this.emit({
       eventType: 'session_start',
@@ -149,6 +141,11 @@ export class ComprehensiveLogger {
     return this.sessionId;
   }
   
+   /**
+    * セッションを終了し、終了イベントを記録する
+    * @param exitReason - 終了理由
+    * @returns なし
+    */
   endSession(exitReason: SessionEndEvent['data']['exitReason']): void {
 /**
      * タスクを終了し、終了イベントを記録する
@@ -192,6 +189,12 @@ export class ComprehensiveLogger {
   // タスク管理
   // ============================================
   
+   /**
+    * 新しいタスクを開始する
+    * @param userInput ユーザー入力
+    * @param context コンテキスト情報
+    * @returns 生成されたタスクID
+    */
   startTask(
     userInput: string,
     context: TaskStartEvent['data']['context']
@@ -216,6 +219,11 @@ export class ComprehensiveLogger {
     return this.currentTaskId;
   }
   
+   /**
+    * タスク終了ログを出力する
+    * @param data タスク終了データ（durationMsは自動計算）
+    * @returns なし
+    */
   endTask(data: Omit<TaskEndEvent['data'], 'durationMs'>): void {
     const durationMs = Math.round(performance.now() - this.taskStartTime);
     
@@ -245,6 +253,14 @@ export class ComprehensiveLogger {
   // 操作管理
   // ============================================
   
+   /**
+    * 操作を開始し、操作IDを生成する
+    * @param operationType 操作の種類
+    * @param target 操作の対象
+    * @param input 操作の入力データ
+    * @param options 追加オプション（戦略や再試行設定）
+    * @returns 生成された操作ID
+    */
   startOperation(
     operationType: OperationType,
     target: string,
@@ -276,6 +292,11 @@ export class ComprehensiveLogger {
     return this.currentOperationId;
   }
   
+   /**
+    * 操作を終了する
+    * @param data 操作終了データ（durationMsを除く）
+    * @returns なし
+    */
   endOperation(data: Omit<OperationEndEvent['data'], 'durationMs'>): void {
     const durationMs = Math.round(performance.now() - this.operationStartTime);
     
@@ -316,6 +337,13 @@ export class ComprehensiveLogger {
   // ツールログ
   // ============================================
   
+   /**
+    * ツール呼び出しをログに記録する
+    * @param toolName - ツール名
+    * @param params - ツールの引数
+    * @param caller - 呼び出し元情報
+    * @returns ログID
+    */
   logToolCall(
     toolName: string,
     params: Record<string, unknown>,
@@ -396,6 +424,12 @@ export class ComprehensiveLogger {
     return eventId;
   }
   
+   /**
+    * ツールの実行結果をログに出力する
+    * @param toolName ツール名
+    * @param result ツール名を除く実行結果
+    * @returns なし
+    */
   logToolResult(
     toolName: string,
     result: Omit<ToolResultEvent['data'], 'toolName'>
@@ -411,6 +445,12 @@ export class ComprehensiveLogger {
     this.parentEventId = '';
   }
   
+   /**
+    * ツールエラーをログに出力する
+    * @param toolName ツール名
+    * @param error エラー情報
+    * @returns なし
+    */
   logToolError(
     toolName: string,
     error: Omit<ToolErrorEvent['data'], 'toolName'>
@@ -432,6 +472,11 @@ export class ComprehensiveLogger {
   // LLMログ
   // ============================================
   
+   /**
+    * LLMへのリクエストをログに記録
+    * @param data - リクエストデータ（プロバイダ、モデル、プロンプト等）
+    * @returns 生成されたイベントID
+    */
   logLLMRequest(data: {
     provider: string;
     model: string;
@@ -463,54 +508,59 @@ export class ComprehensiveLogger {
     return eventId;
   }
   
-  /**
-   * 現在のセッションIDを取得する
-   * @returns セッションID文字列
-   */
+   /**
+    * 現在のセッションIDを取得する
+    * @returns セッションID文字列
+    */
   getSessionId(): string {
     return this.sessionId;
   }
   
-  /**
-   * 現在のタスクIDを取得する
-   * @returns 現在のタスクID文字列
-   */
+   /**
+    * 現在のタスクIDを取得する
+    * @returns 現在のタスクID文字列
+    */
   getCurrentTaskId(): string | undefined {
     return this.currentTaskId;
   }
   
-  /**
-   * 現在の操作IDを取得する
-   * @returns 現在の操作ID文字列
-   */
+   /**
+    * 現在の操作IDを取得する
+    * @returns 現在の操作ID文字列
+    */
   getCurrentOperationId(): string | undefined {
     return this.currentOperationId;
   }
   
-  /**
-   * 記録されたイベント数を取得する
-   * @returns これまでに記録されたイベントの総数
-   */
+   /**
+    * 記録されたイベント数を取得する
+    * @returns これまでに記録されたイベントの総数
+    */
   getEventCount(): number {
     return this.events.length;
   }
   
-  /**
-   * エラー発生回数を取得する
-   * @returns 記録されたエラーの総数
-   */
+   /**
+    * エラー発生回数を取得する
+    * @returns 記録されたエラーの総数
+    */
   getErrorCount(): number {
     return this.events.filter(e => e.eventType === 'error').length;
   }
   
-  /**
-   * 累積トークン数を取得する
-   * @returns 累積トークン数
-   */
+   /**
+    * 累積トークン数を取得する
+    * @returns 累積トークン数
+    */
   getTotalTokens(): number {
     return this.totalTokens;
   }
   
+   /**
+    * LLM応答をログ記録する
+    * @param data プロバイダ、モデル、トークン数、所要時間等を含む応答データ
+    * @returns なし
+    */
   logLLMResponse(data: {
     provider: string;
     model: string;
@@ -539,6 +589,11 @@ export class ComprehensiveLogger {
   // 状態変更ログ
   // ============================================
   
+   /**
+    * 状態変更ログを出力する
+    * @param data 状態変更データ（エンティティ種別、パス、変更種別、変更前後の内容など）
+    * @returns なし
+    */
   logStateChange(data: {
     entityType: 'file' | 'storage' | 'memory' | 'config';
     entityPath: string;
@@ -564,6 +619,11 @@ export class ComprehensiveLogger {
   // メトリクススナップショット
   // ============================================
   
+   /**
+    * メトリクススナップショットを記録する
+    * @param data スナップショットデータ
+    * @returns なし
+    */
   logMetricsSnapshot(data: MetricsSnapshotEvent['data']): void {
     this.emit({
       eventType: 'metrics_snapshot',
@@ -607,6 +667,10 @@ export class ComprehensiveLogger {
     }
   }
   
+   /**
+    * バッファ内のイベントをファイルに書き出す
+    * @returns Promise<void>
+    */
   async flush(): Promise<void> {
     if (this.buffer.length === 0) return;
     
@@ -653,26 +717,50 @@ export class ComprehensiveLogger {
   // ユーティリティ
   // ============================================
   
+   /**
+    * セッションIDを取得する
+    * @returns セッションID
+    */
   getSessionId(): string {
     return this.sessionId;
   }
   
+   /**
+    * 現在のタスクIDを取得する
+    * @returns タスクID
+    */
   getCurrentTaskId(): string {
     return this.currentTaskId;
   }
   
+  /**
+   * 現在のオペレーションIDを取得する。
+   * @returns 現在のオペレーションID
+   */
   getCurrentOperationId(): string {
     return this.currentOperationId;
   }
   
+   /**
+    * イベントの発生件数を取得する
+    * @returns イベントの発生件数
+    */
   getEventCount(): number {
     return this.eventCounter;
   }
   
+   /**
+    * エラー数を取得する
+    * @returns エラー数
+    */
   getErrorCount(): number {
     return this.errorCount;
   }
   
+   /**
+    * トークン総数を取得する
+    * @returns トークン総数
+    */
   getTotalTokens(): number {
     return this.totalTokens;
   }
@@ -684,6 +772,10 @@ export class ComprehensiveLogger {
 
 let globalLogger: ComprehensiveLogger | null = null;
 
+ /**
+  * Loggerのシングルトンインスタンスを取得
+  * @returns ComprehensiveLoggerのインスタンス
+  */
 export function getLogger(): ComprehensiveLogger {
   if (globalLogger === null) {
     globalLogger = new ComprehensiveLogger();
@@ -691,6 +783,10 @@ export function getLogger(): ComprehensiveLogger {
   return globalLogger;
 }
 
+ /**
+  * グローバルロガーをリセットする。
+  * @returns void
+  */
 export function resetLogger(): void {
   if (globalLogger) {
     globalLogger.endSession('normal');

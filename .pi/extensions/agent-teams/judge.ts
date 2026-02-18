@@ -38,10 +38,14 @@ export { clampConfidence, parseUnitInterval, extractField, countKeywordSignals }
 // Judge Weight Configuration (P0-3)
 // ============================================================================
 
-/**
- * Configuration for uncertainty weight parameters.
- * These weights determine how different factors contribute to uncertainty.
- */
+ /**
+  * 判定の重み付け設定
+  * @param version バージョン
+  * @param intraWeights 内部重み
+  * @param interWeights 相互重み
+  * @param sysWeights システム重み
+  * @param collapseThresholds しきい値
+  */
 export interface JudgeWeightConfig {
   version: string;
   intraWeights: {
@@ -107,15 +111,10 @@ export const DEFAULT_JUDGE_WEIGHTS: JudgeWeightConfig = {
  */
 let customWeights: JudgeWeightConfig | undefined;
 
-/**
- * Get the current judge weight configuration.
- * Can be overridden via PI_JUDGE_WEIGHTS_PATH environment variable.
- *
- * MIGRATION COMPLETE: File-based configuration now supported (v2.0.0+)
- * Set PI_JUDGE_WEIGHTS_PATH to a JSON file path to use custom weights.
- *
- * @returns Current judge weight configuration
- */
+ /**
+  * 現在の判定重み設定を取得する
+  * @returns 判定重み設定
+  */
 export function getJudgeWeights(): JudgeWeightConfig {
   // Return cached custom weights if set
   if (customWeights) {
@@ -158,18 +157,19 @@ export function getJudgeWeights(): JudgeWeightConfig {
   return DEFAULT_JUDGE_WEIGHTS;
 }
 
-/**
- * Set custom judge weights at runtime (primarily for testing).
- *
- * @param weights - Custom weights to use
- */
+ /**
+  * カスタムの判定重みを設定
+  * @param weights 設定するカスタム重み
+  * @returns なし
+  */
 export function setJudgeWeights(weights: JudgeWeightConfig): void {
   customWeights = weights;
 }
 
-/**
- * Reset judge weights to defaults.
- */
+ /**
+  * 判定の重みをデフォルトに戻す
+  * @returns 戻り値なし
+  */
 export function resetJudgeWeights(): void {
   customWeights = undefined;
 }
@@ -178,9 +178,9 @@ export function resetJudgeWeights(): void {
 // Judge Explanation (P0-3)
 // ============================================================================
 
-/**
- * Detailed explanation of judge decision factors.
- */
+ /**
+  * 判定決定要因の詳細な説明
+  */
 export interface JudgeExplanation {
   /** Input values used for computation */
   inputs: {
@@ -223,10 +223,13 @@ export interface JudgeExplanation {
 // Core Types
 // ============================================================================
 
-/**
- * Uncertainty proxy computed from member results.
- * Used to assess overall team output quality and reliability.
- */
+ /**
+  * メンバー結果から計算される不確実性プロキシ
+  * @param uIntra メンバー内の不確実性（内部の不一致）
+  * @param uInter メンバー間の不確実性（メンバー間の意見の相違）
+  * @param uSys システムレベルの不確実性（総合的な指標）
+  * @param collapseSignals 崩壊条件をトリガーしたシグナル
+  */
 export interface TeamUncertaintyProxy {
   /** Intra-member uncertainty (internal inconsistency) */
   uIntra: number;
@@ -238,10 +241,11 @@ export interface TeamUncertaintyProxy {
   collapseSignals: string[];
 }
 
-/**
- * Extract the DISCUSSION section from structured output.
- * Returns content between DISCUSSION: label and the next major label.
- */
+ /**
+  * 構造化出力からDISCUSSIONセクションを抽出
+  * @param output 構造化された出力文字列
+  * @returns DISCUSSIONセクションの内容（該当しない場合は空文字）
+  */
 export function extractDiscussionSection(output: string): string {
   const discussionPattern = /^DISCUSSION\s*:\s*$/im;
   const lines = output.split(/\r?\n/);
@@ -264,10 +268,11 @@ export function extractDiscussionSection(output: string): string {
   return discussionLines.join("\n");
 }
 
-/**
- * Count evidence signals in the output.
- * Looks for EVIDENCE field items and file:line references.
- */
+ /**
+  * 出力内の証拠シグナルの数をカウントする
+  * @param output - 解析対象の出力文字列
+  * @returns 証拠シグナルの数
+  */
 export function countEvidenceSignals(output: string): number {
   let count = 0;
 
@@ -288,10 +293,11 @@ export function countEvidenceSignals(output: string): number {
   return Math.max(0, Math.min(50, count));
 }
 
-/**
- * Analyze a team member's output for quality signals.
- * Returns diagnostic metrics for uncertainty calculation.
- */
+ /**
+  * チームメンバーの出力を解析し、診断情報を返す
+  * @param output 解析対象の出力文字列
+  * @returns 診断メトリクス（信頼度や矛盾数など）
+  */
 export function analyzeMemberOutput(output: string): TeamMemberResult["diagnostics"] {
   const confidence = parseUnitInterval(extractField(output, "CONFIDENCE")) ?? 0.5;
   const evidenceCount = countEvidenceSignals(output);
@@ -319,10 +325,11 @@ export function analyzeMemberOutput(output: string): TeamMemberResult["diagnosti
   };
 }
 
-/**
- * Compute uncertainty proxy from team member results.
- * Calculates intra-member, inter-member, and system-level uncertainty.
- */
+ /**
+  * チームの不確実性プロキシを計算する
+  * @param memberResults チームメンバーの実行結果一覧
+  * @returns 計算された不確実性プロキシ
+  */
 export function computeProxyUncertainty(memberResults: TeamMemberResult[]): TeamUncertaintyProxy {
   const total = Math.max(1, memberResults.length);
   const failedCount = memberResults.filter((result) => result.status === "failed").length;
@@ -366,14 +373,12 @@ export function computeProxyUncertainty(memberResults: TeamMemberResult[]): Team
   };
 }
 
-/**
- * Compute uncertainty proxy with detailed explanation.
- * Enhanced version that provides factor-by-factor breakdown.
- *
- * @param memberResults - Team member results to analyze
- * @param weights - Optional custom weight configuration
- * @returns Uncertainty proxy with explanation
- */
+ /**
+  * 不確実性プロキシと説明を計算する
+  * @param memberResults - 分析対象のチームメンバー結果
+  * @param weights - カスタム重み設定
+  * @returns 不確実性プロキシと説明
+  */
 export function computeProxyUncertaintyWithExplainability(
   memberResults: TeamMemberResult[],
   weights: JudgeWeightConfig = getJudgeWeights(),
@@ -555,12 +560,11 @@ export function computeProxyUncertaintyWithExplainability(
   return { proxy, explanation };
 }
 
-/**
- * Generate human-readable explanation of judge decision.
- *
- * @param explanation - Judge explanation object
- * @returns Formatted explanation string
- */
+ /**
+  * 判定の決定理由を人間が読める形式で整形する
+  * @param explanation - 判定の説明オブジェクト
+  * @returns 整形された説明文字列
+  */
 export function formatJudgeExplanation(explanation: JudgeExplanation): string {
   const lines: string[] = [];
 
@@ -601,10 +605,14 @@ export function formatJudgeExplanation(explanation: JudgeExplanation): string {
   return lines.join("\n");
 }
 
-/**
- * Build a fallback judge verdict when no LLM-based judgment is available.
- * Uses deterministic rules based on uncertainty proxy.
- */
+ /**
+  * LLM判定がない場合の代替判定を生成する
+  * @param input 入力データ
+  * @param input.memberResults チームメンバーの実行結果一覧
+  * @param input.proxy 不確実性プロキシ（省略時は計算）
+  * @param input.error エラー文字列
+  * @returns 代替判定結果
+  */
 export function buildFallbackJudge(input: {
   memberResults: TeamMemberResult[];
   proxy?: TeamUncertaintyProxy;
@@ -657,10 +665,18 @@ export function buildFallbackJudge(input: {
   };
 }
 
-/**
- * Run the final judge process.
- * In stable profile mode, this uses deterministic fallback logic without LLM calls.
- */
+ /**
+  * 最終判定プロセスを実行します
+  * @param input 入力データ
+  * @param input.team チーム定義
+  * @param input.task タスク内容
+  * @param input.strategy チーム戦略
+  * @param input.memberResults メンバーの実行結果リスト
+  * @param input.proxy チームの不確実性プロキシ
+  * @param input.timeoutMs タイムアウト時間（ミリ秒）
+  * @param input.signal 中断シグナル
+  * @returns 最終判定結果
+  */
 export async function runFinalJudge(input: {
   team: TeamDefinition;
   task: string;

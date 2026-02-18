@@ -80,16 +80,12 @@ function toEventTailLines(events: string[], limit: number): string[] {
   return events.slice(events.length - limit);
 }
 
-/**
- * チームIDとメンバーIDから一意のキーを生成する
- *
- * @param teamId - チームID
- * @param memberId - メンバーID
- * @returns "teamId/memberId"形式の結合キー
- * @example
- * const key = toTeamLiveItemKey("team-123", "member-456");
- * // "team-123/member-456"
- */
+ /**
+  * チームIDとメンバーIDから一意のキーを生成する
+  * @param teamId - チームID
+  * @param memberId - メンバーID
+  * @returns "teamId/memberId"形式の結合キー
+  */
 export function toTeamLiveItemKey(teamId: string, memberId: string): string {
   return `${teamId}/${memberId}`;
 }
@@ -98,6 +94,19 @@ export function toTeamLiveItemKey(teamId: string, memberId: string): string {
 // Live View Rendering
 // ============================================================================
 
+ /**
+  * エージェントチームのライブビューを描画する
+  * @param input.title - タイトル
+  * @param input.items - チームライブアイテムの配列
+  * @param input.globalEvents - グローバルイベントの配列
+  * @param input.cursor - カーソル位置
+  * @param input.mode - 表示モード
+  * @param input.stream - ライブストリームビュー
+  * @param input.width - 幅
+  * @param input.height - 高さ
+  * @param input.theme - テーマ設定
+  * @returns 描画結果の文字列配列
+  */
 export function renderAgentTeamLiveView(input: {
   title: string;
   items: TeamLiveItem[];
@@ -409,6 +418,12 @@ export function renderAgentTeamLiveView(input: {
 // Live Monitor Controller
 // ============================================================================
 
+ /**
+  * エージェントチームのライブモニターを作成する
+  * @param ctx コンテキスト
+  * @param input タイトルとアイテムを含む設定オブジェクト
+  * @returns モニターコントローラー、またはUI利用不可時はundefined
+  */
 export function createAgentTeamLiveMonitor(
   ctx: any,
   input: {

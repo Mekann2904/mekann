@@ -1220,6 +1220,11 @@ async function runTeamTask(input: {
   };
 }
 
+ /**
+  * エージェントチーム拡張を登録する
+  * @param pi 拡張API
+  * @returns なし
+  */
 export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
   // チーム一覧
   pi.registerTool({

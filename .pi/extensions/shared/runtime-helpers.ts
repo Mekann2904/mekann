@@ -8,17 +8,25 @@ import {
   type RuntimeCapacityReservationLease,
 } from "../agent-runtime.js";
 
-/**
- * Options for building runtime limit error messages.
- */
+ /**
+  * 実行制限エラーのオプション。
+  * @param waitedMs 待機時間（ミリ秒）。
+  * @param timedOut タイムアウトしたかどうか。
+  */
 export interface RuntimeLimitErrorOptions {
   waitedMs?: number;
   timedOut?: boolean;
 }
 
-/**
- * Queue wait information for building queue wait error messages.
- */
+ /**
+  * キューエラーメッセージ構築用情報
+  * @param waitedMs 待機時間（ミリ秒）。
+  * @param attempts 試行回数。
+  * @param timedOut タイムアウトしたかどうか。
+  * @param aborted 中断されたかどうか。
+  * @param queuePosition キュー内の位置。
+  * @param queuedAhead 自分より前のキュー数。
+  */
 export interface RuntimeQueueWaitInfo {
   waitedMs: number;
   attempts: number;
@@ -28,13 +36,13 @@ export interface RuntimeQueueWaitInfo {
   queuedAhead: number;
 }
 
-/**
- * Build an error message for runtime limit reached conditions.
- * @param toolName - Name of the tool that was blocked
- * @param reasons - Array of reason strings
- * @param options - Optional wait time information
- * @returns Formatted error message string
- */
+ /**
+  * 実行時制限エラーメッセージを生成する
+  * @param toolName - ブロックされたツール名
+  * @param reasons - 理由の文字列配列
+  * @param options - 待機時間などのオプション情報
+  * @returns フォーマットされたエラーメッセージ文字列
+  */
 export function buildRuntimeLimitError(
   toolName: string,
   reasons: string[],
@@ -57,12 +65,12 @@ export function buildRuntimeLimitError(
     .join("\n");
 }
 
-/**
- * Build an error message for orchestration queue wait conditions.
- * @param toolName - Name of the tool that was blocked
- * @param queueWait - Queue wait information
- * @returns Formatted error message string
- */
+ /**
+  * オーケストレーションキュー待機のエラーメッセージを生成します。
+  * @param toolName - ブロックされたツールの名前
+  * @param queueWait - キュー待機情報
+  * @returns フォーマットされたエラーメッセージ文字列
+  */
 export function buildRuntimeQueueWaitError(
   toolName: string,
   queueWait: RuntimeQueueWaitInfo,
@@ -83,11 +91,11 @@ export function buildRuntimeQueueWaitError(
   ].join("\n");
 }
 
-/**
- * Start a heartbeat timer to keep a reservation alive during long-running operations.
- * @param reservation - The reservation lease to keep alive
- * @returns Cleanup function to stop the heartbeat
- */
+ /**
+  * 予約を維持するハートビートを開始する
+  * @param reservation 維持する予約リース
+  * @returns ハートビートを停止するクリーンアップ関数
+  */
 export function startReservationHeartbeat(
   reservation: RuntimeCapacityReservationLease,
 ): () => void {
@@ -106,15 +114,16 @@ export function startReservationHeartbeat(
   };
 }
 
-/**
- * Refresh runtime status display in the UI.
- * @param ctx - Extension context with UI capabilities
- * @param statusKey - Status key to use ("subagent-runtime" or "agent-team-runtime")
- * @param primaryLabel - Primary agent label for display
- * @param primaryActive - Primary agent active count
- * @param secondaryLabel - Secondary agent label for display
- * @param secondaryActive - Secondary agent active count
- */
+ /**
+  * ランタイムステータス表示を更新する
+  * @param ctx - UI機能を持つ拡張機能コンテキスト
+  * @param statusKey - 使用するステータスキー ("subagent-runtime" または "agent-team-runtime")
+  * @param primaryLabel - プライマリエージェントの表示ラベル
+  * @param primaryActive - プライマリエージェントのアクティブ数
+  * @param secondaryLabel - セカンダリエージェントの表示ラベル
+  * @param secondaryActive - セカンダリエージェントのアクティブ数
+  * @returns なし
+  */
 export function refreshRuntimeStatus(
   ctx: any,
   statusKey: "subagent-runtime" | "agent-team-runtime",
