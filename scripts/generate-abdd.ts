@@ -55,6 +55,24 @@ interface TypeInfo {
   isExported: boolean;
 }
 
+// ユーザーフロー生成用の型
+interface ToolInfo {
+  name: string;
+  description: string;
+  executeFunction: string;
+  line: number;
+  executeExpr?: ts.Expression;       // execute関数のAST（PropertyAssignmentの場合）
+  executeMethodDecl?: ts.MethodDeclaration; // execute関数のAST（MethodDeclarationの場合）
+  executeCalls?: CallNode[];         // execute関数内の呼び出し（事前抽出）
+}
+
+interface CallNode {
+  callee: string;
+  isAsync: boolean;
+  line: number;
+  importance: "critical" | "important" | "minor" | "noise";
+}
+
 interface FileInfo {
   path: string;
   relativePath: string;
@@ -64,6 +82,9 @@ interface FileInfo {
   types: TypeInfo[];
   imports: { source: string; names: string[] }[];
   exports: string[];
+  // ユーザーフロー用
+  tools: ToolInfo[];
+  calls: Map<string, CallNode[]>;
 }
 
 // ============================================================================
@@ -82,10 +103,11 @@ const ABDD_DIR = join(ROOT_DIR, 'ABDD');
 /**
  * コマンドライン引数をパースする
  */
-function parseArgs(args: string[]): { dryRun: boolean; verbose: boolean } {
+function parseArgs(args: string[]): { dryRun: boolean; verbose: boolean; file?: string } {
   return {
     dryRun: args.includes('--dry-run'),
     verbose: args.includes('--verbose') || args.includes('-v'),
+    file: args.find(a => a.startsWith('--file='))?.split('=')[1],
   };
 }
 
@@ -104,6 +126,15 @@ async function main() {
   if (!options.dryRun) {
     mkdirIfNotExists(join(ABDD_DIR, '.pi/extensions'));
     mkdirIfNotExists(join(ABDD_DIR, '.pi/lib'));
+  }
+
+  // --file オプションがある場合はそのファイルだけ処理
+  if (options.file) {
+    console.log(`Processing single file: ${options.file}`);
+    const fullPath = join(EXTENSIONS_DIR, options.file);
+    processFile(fullPath, EXTENSIONS_DIR, join(ABDD_DIR, '.pi/extensions'));
+    console.log('\n=== Done ===');
+    return;
   }
 
   // Extensions ファイルを処理
@@ -355,6 +386,30 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
 
   visit(sourceFile);
 
+  // ツール登録を検出
+  const tools = detectToolRegistrations(sourceFile);
+
+  // 関数内の呼び出しを抽出
+  const calls = extractAllCalls(sourceFile, functions);
+
+  // 関数名のセットを作成
+  const functionNames = new Set(functions.map(f => f.name));
+
+  // 関数情報をMapに変換
+  const allFunctionsMap = new Map<string, FunctionInfo>();
+  for (const fn of functions) {
+    allFunctionsMap.set(fn.name, fn);
+  }
+
+  // 各ツールのexecute関数内の呼び出しを抽出
+  for (const tool of tools) {
+    if (tool.executeExpr) {
+      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeExpr, functionNames, allFunctionsMap);
+    } else if (tool.executeMethodDecl) {
+      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeMethodDecl, functionNames, allFunctionsMap);
+    }
+  }
+
   return {
     path: filePath,
     relativePath: relative(baseDir, filePath),
@@ -364,7 +419,642 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
     types,
     imports,
     exports,
+    tools,
+    calls,
   };
+}
+
+// ============================================================================
+// User Flow Generation (Tool Detection & Call Extraction)
+// ============================================================================
+
+/**
+ * pi.registerTool() で登録されたツールを検出する
+ */
+function detectToolRegistrations(sourceFile: ts.SourceFile): ToolInfo[] {
+  const tools: ToolInfo[] = [];
+
+  function visit(node: ts.Node) {
+    // pi.registerTool({ name: "...", description: "...", execute: ... })
+    if (ts.isCallExpression(node)) {
+      const expr = node.expression;
+      if (ts.isPropertyAccessExpression(expr) &&
+          expr.name.getText(sourceFile) === "registerTool") {
+        const arg = node.arguments[0];
+        if (arg && ts.isObjectLiteralExpression(arg)) {
+          // nameプロパティを探す
+          const nameProp = arg.properties.find(p =>
+            ts.isPropertyAssignment(p) && p.name?.getText(sourceFile) === "name"
+          );
+          
+          // descriptionプロパティを探す
+          const descProp = arg.properties.find(p =>
+            ts.isPropertyAssignment(p) && p.name?.getText(sourceFile) === "description"
+          );
+          
+          // executeプロパティを探す（PropertyAssignment または MethodDeclaration）
+          const executeProp = arg.properties.find(p => {
+            const name = p.name?.getText(sourceFile);
+            return name === "execute";
+          });
+
+          if (nameProp && ts.isPropertyAssignment(nameProp)) {
+            const nameValue = getStringLiteralValue(nameProp.initializer);
+            const descValue = descProp && ts.isPropertyAssignment(descProp)
+              ? getStringLiteralValue(descProp.initializer) || ""
+              : "";
+            
+            let executeFn: string | undefined;
+            let executeExpr: ts.Expression | undefined;
+
+            if (executeProp) {
+              if (ts.isPropertyAssignment(executeProp)) {
+                executeFn = extractFunctionName(executeProp.initializer);
+                executeExpr = executeProp.initializer;
+              } else if (ts.isMethodDeclaration(executeProp)) {
+                // async execute(...) { ... } 形式
+                executeFn = "";
+                // MethodDeclarationの本体をFunctionExpressionとして扱う
+                // 実際には、メソッド本体を直接走査する
+                executeExpr = undefined; // MethodDeclarationはExpressionではない
+              }
+            }
+
+            if (nameValue) {
+              tools.push({
+                name: nameValue,
+                description: descValue,
+                executeFunction: executeFn || "",
+                line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+                executeExpr,
+                // MethodDeclarationの場合は直接ノードを保存
+                executeMethodDecl: (executeProp && ts.isMethodDeclaration(executeProp)) ? executeProp : undefined,
+              });
+            }
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return tools;
+}
+
+/**
+ * 文字列リテラルの値を取得
+ */
+function getStringLiteralValue(expr: ts.Expression): string | null {
+  if (ts.isStringLiteral(expr)) {
+    return expr.text;
+  }
+  return null;
+}
+
+/**
+ * 関数名を抽出（関数宣言、矢印関数、関数式から）
+ */
+function extractFunctionName(expr: ts.Expression): string | null {
+  if (ts.isIdentifier(expr)) {
+    return expr.text;
+  }
+  if (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr)) {
+    // 無名関数の場合は空文字を返す
+    return "";
+  }
+  return null;
+}
+
+/**
+ * すべての関数から呼び出しを抽出
+ */
+function extractAllCalls(
+  sourceFile: ts.SourceFile,
+  functions: FunctionInfo[]
+): Map<string, CallNode[]> {
+  const calls = new Map<string, CallNode[]>();
+  const functionNames = new Set(functions.map(f => f.name));
+
+  // 関数宣言・矢印関数を探して呼び出しを抽出
+  function visitFunction(node: ts.Node, funcName: string) {
+    const funcCalls: CallNode[] = [];
+
+    function extractCalls(n: ts.Node) {
+      // await someFunction() → 非同期呼び出し
+      if (ts.isAwaitExpression(n)) {
+        if (ts.isCallExpression(n.expression)) {
+          const callee = extractCalleeName(n.expression.expression, sourceFile);
+          if (callee && functionNames.has(callee)) {
+            funcCalls.push({
+              callee,
+              isAsync: true,
+              line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
+              importance: "minor", // 初期値、後で更新
+            });
+          }
+        }
+      }
+      // someFunction() → 同期呼び出し
+      else if (ts.isCallExpression(n)) {
+        // await式の内部でない場合
+        if (!ts.isAwaitExpression(n.parent)) {
+          const callee = extractCalleeName(n.expression, sourceFile);
+          if (callee && functionNames.has(callee)) {
+            funcCalls.push({
+              callee,
+              isAsync: false,
+              line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
+              importance: "minor", // 初期値、後で更新
+            });
+          }
+        }
+      }
+      ts.forEachChild(n, extractCalls);
+    }
+
+    ts.forEachChild(node, extractCalls);
+
+    if (funcCalls.length > 0) {
+      calls.set(funcName, funcCalls);
+    }
+  }
+
+  // 関数宣言を探す
+  function visit(node: ts.Node) {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      visitFunction(node, node.name.getText(sourceFile));
+    }
+    // 矢印関数・関数式の変数宣言
+    else if (ts.isVariableDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+      const name = node.name.getText(sourceFile);
+      if (node.initializer && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
+        visitFunction(node.initializer, name);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return calls;
+}
+
+/**
+ * executeプロパティ（矢印関数/関数式/メソッド宣言）内の呼び出しを直接抽出
+ * ツール登録のexecute関数専用
+ */
+function extractCallsFromExecute(
+  sourceFile: ts.SourceFile,
+  executeExpr: ts.Expression | ts.MethodDeclaration,
+  functionNames: Set<string>,
+  allFunctions: Map<string, FunctionInfo>
+): CallNode[] {
+  const funcCalls: CallNode[] = [];
+
+  // 矢印関数、関数式、メソッド宣言を処理
+  const isValidFunction = ts.isArrowFunction(executeExpr) || 
+                          ts.isFunctionExpression(executeExpr) ||
+                          ts.isMethodDeclaration(executeExpr);
+  
+  if (!isValidFunction) {
+    return funcCalls;
+  }
+
+  function extractCalls(n: ts.Node) {
+    // await someFunction() → 非同期呼び出し
+    if (ts.isAwaitExpression(n)) {
+      if (ts.isCallExpression(n.expression)) {
+        const callee = extractCalleeName(n.expression.expression, sourceFile);
+        if (callee && functionNames.has(callee)) {
+          const calleeInfo = allFunctions.get(callee);
+          funcCalls.push({
+            callee,
+            isAsync: true,
+            line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
+            importance: determineCallImportance(callee, calleeInfo),
+          });
+        }
+      }
+    }
+    // someFunction() → 同期呼び出し
+    else if (ts.isCallExpression(n)) {
+      if (!ts.isAwaitExpression(n.parent)) {
+        const callee = extractCalleeName(n.expression, sourceFile);
+        if (callee && functionNames.has(callee)) {
+          const calleeInfo = allFunctions.get(callee);
+          funcCalls.push({
+            callee,
+            isAsync: false,
+            line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
+            importance: determineCallImportance(callee, calleeInfo),
+          });
+        }
+      }
+    }
+    ts.forEachChild(n, extractCalls);
+  }
+
+  ts.forEachChild(executeExpr, extractCalls);
+  return funcCalls;
+}
+
+/**
+ * 呼び出し先の関数名を抽出
+ */
+function extractCalleeName(expr: ts.Expression | undefined, sourceFile: ts.SourceFile): string | null {
+  if (!expr) return null;
+  if (ts.isIdentifier(expr)) {
+    return expr.text;
+  }
+  if (ts.isPropertyAccessExpression(expr)) {
+    // obj.method() → methodを返す
+    return expr.name.text;
+  }
+  return null;
+}
+
+/**
+ * 関数の重要度を判定
+ * - critical: LLM呼び出し、主要なビジネスロジック
+ * - important: 並列実行、結果統合、判定
+ * - minor: データ取得、変換
+ * - noise: UI更新、ログ、getter/setter
+ */
+function determineCallImportance(
+  calleeName: string,
+  calleeInfo?: FunctionInfo
+): "critical" | "important" | "minor" | "noise" {
+  const nm = calleeName.toLowerCase();
+  const desc = (calleeInfo?.jsDoc || "").toLowerCase();
+  const params = calleeInfo?.parameters || [];
+  const returnType = calleeInfo?.returnType.toLowerCase() || "";
+
+  // noise: UI更新、フォーマット、getter/setter、型変換、データ取得
+  const noisePatterns = [
+    /^format/i, /^to[A-Z]/, /^get[A-Z]/, /^set[A-Z]/,
+    /^is[A-Z]/, /^has[A-Z]/, /^can[A-Z]/,
+    /^pick/i, /^select/i, /^find/i, /^fetch/i,
+    /^refresh/i, /^update/i, /^notify/i, /^emit/i,
+    /^log/i, /^trace/i, /^debug/i,
+    /status$/i, /display$/i, /view$/i, /ui$/i,
+    /^on[A-Z]/, /^build[A-Z].*error/i, /^create.*error/i,
+    /^ensure/i, /^validate$/i, /^normalize$/i, /^convert/i,
+    /^parse$/i, /^stringify/i, /^trim/i, /^slice/i,
+  ];
+  
+  for (const pattern of noisePatterns) {
+    if (pattern.test(calleeName)) {
+      return "noise";
+    }
+  }
+
+  // noise: パラメータがなく、戻り値が単純
+  if (params.length === 0 && (returnType.includes("void") || returnType.includes("string") || returnType.includes("boolean"))) {
+    if (!calleeInfo?.isAsync) {
+      return "noise";
+    }
+  }
+
+  // noise: 同期的なデータアクセス関数
+  if (!calleeInfo?.isAsync && params.length <= 2) {
+    const simpleReturnTypes = ["string", "number", "boolean", "undefined", "null"];
+    for (const t of simpleReturnTypes) {
+      if (returnType.includes(t) && !returnType.includes("|")) {
+        return "noise";
+      }
+    }
+  }
+
+  // critical: LLM呼び出し
+  if (nm.includes("llm") || nm.includes("pi") || nm.includes("print") ||
+      nm.includes("model") || nm.includes("provider") ||
+      desc.includes("llm") || desc.includes("model response") || desc.includes("api call")) {
+    return "critical";
+  }
+
+  // critical: メインの実行関数（run, executeの後に主要な処理が続く）
+  if ((nm.startsWith("run") || nm.startsWith("execute")) && calleeInfo?.isAsync) {
+    if (nm.includes("task") || nm.includes("team") || nm.includes("member") ||
+        nm.includes("agent") || nm.includes("member") || nm.includes("parallel")) {
+      return "critical";
+    }
+  }
+
+  // important: チーム・メンバー関連の処理（ただしデータ取得は除外）
+  if ((nm.includes("team") || nm.includes("member") || nm.includes("agent") ||
+      nm.includes("teammate")) && calleeInfo?.isAsync) {
+    return "important";
+  }
+
+  // important: 並列実行
+  if (nm.includes("parallel") || nm.includes("sequential") || nm.includes("concurrent")) {
+    return "important";
+  }
+
+  // important: 判定・統合
+  if (nm.includes("judge") || nm.includes("aggregate") || nm.includes("merge") ||
+      nm.includes("combine") || nm.includes("integrate") || nm.includes("resolve")) {
+    return "important";
+  }
+
+  // important: 結果・エラー処理（重大なもの）
+  if (nm.includes("result") || nm.includes("outcome") || nm.includes("complete")) {
+    return "important";
+  }
+
+  // minor: それ以外の非同期処理
+  if (calleeInfo?.isAsync) {
+    return "minor";
+  }
+
+  // noise: それ以外の同期処理
+  return "noise";
+}
+
+/**
+ * 関数名からアクター（参加者）を分類
+ */
+function classifyFunction(name: string, info?: FunctionInfo): string {
+  if (!info) return "Internal";
+
+  const nm = name.toLowerCase();
+  const desc = (info.jsDoc || "").toLowerCase();
+
+  // LLM関連
+  if (nm.includes("llm") || nm.includes("pi") || nm.includes("print") ||
+      desc.includes("llm") || desc.includes("model") || desc.includes("provider")) {
+    return "LLM";
+  }
+  // ランタイム関連
+  if (nm.includes("runtime") || nm.includes("capacity") || nm.includes("queue") ||
+      nm.includes("wait") || nm.includes("parallel") || nm.includes("limit")) {
+    return "Runtime";
+  }
+  // チーム・メンバー関連
+  if (nm.includes("member") || nm.includes("team") || nm.includes("agent") ||
+      nm.includes("teammate")) {
+    return "Team";
+  }
+  // 判定・検証関連
+  if (nm.includes("judge") || nm.includes("validate") || nm.includes("check") ||
+      nm.includes("verify") || nm.includes("resolve")) {
+    return "Judge";
+  }
+  // ストレージ関連
+  if (nm.includes("storage") || nm.includes("load") || nm.includes("save") ||
+      nm.includes("read") || nm.includes("write") || nm.includes("file")) {
+    return "Storage";
+  }
+  // 実行関連
+  if (nm.includes("run") || nm.includes("execute") || nm.includes("start") ||
+      nm.includes("process") || nm.includes("handle")) {
+    return "Executor";
+  }
+
+  return "Internal";
+}
+
+/**
+ * 関数名からアクションラベルを生成
+ * JSDocの日本語コメントがあればそれを優先、なければ関数名をそのまま使用
+ */
+function generateActionLabel(name: string, info?: FunctionInfo): string {
+  // JSDocの最初の行を使う（日本語が含まれている場合のみ）
+  if (info?.jsDoc) {
+    const firstLine = info.jsDoc.split("\n")[0].trim();
+    // 日本語が含まれている場合は使用
+    if (/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(firstLine) && firstLine.length < 50) {
+      return firstLine;
+    }
+  }
+
+  // デフォルト: 関数名をそのまま使用
+  return name;
+}
+
+/**
+ * ユーザーフローのシーケンス図を生成
+ */
+function generateUserSequence(
+  tool: ToolInfo,
+  allFunctions: Map<string, FunctionInfo>,
+  calls: Map<string, CallNode[]>,
+  maxDepth: number = 4
+): string {
+  const participants = new Map<string, string>();
+  const steps: { from: string; to: string; action: string; isAsync: boolean }[] = [];
+
+  // 参加者を追加
+  participants.set("User", "actor User as ユーザー");
+  participants.set("System", "participant System as System");
+
+  // 既に追加した参加者を追跡
+  const addedParticipants = new Set<string>(["User", "System"]);
+
+  // 呼び出しを再帰的に追跡
+  function traceCalls(
+    funcName: string,
+    callerActor: string,
+    currentDepth: number,
+    visited: Set<string>
+  ) {
+    if (currentDepth > maxDepth || visited.has(funcName)) return;
+    visited.add(funcName);
+
+    const funcCalls = calls.get(funcName);
+    if (!funcCalls) return;
+
+    const funcInfo = allFunctions.get(funcName);
+
+    for (const call of funcCalls) {
+      const calleeInfo = allFunctions.get(call.callee);
+      const actor = classifyFunction(call.callee, calleeInfo);
+
+      // 参加者を追加
+      if (!addedParticipants.has(actor)) {
+        participants.set(actor, `participant ${sanitizeMermaidIdentifier(actor)} as "${actor}"`);
+        addedParticipants.add(actor);
+      }
+
+      // アクションラベルを生成
+      const actionLabel = generateActionLabel(call.callee, calleeInfo);
+
+      steps.push({
+        from: callerActor,
+        to: actor,
+        action: actionLabel,
+        isAsync: call.isAsync,
+      });
+
+      // 再帰的に追跡
+      traceCalls(call.callee, actor, currentDepth + 1, visited);
+    }
+  }
+
+  // CallNode配列から直接ステップを生成
+  function traceCallNodes(
+    callNodes: CallNode[],
+    callerActor: string,
+    currentDepth: number,
+    visited: Set<string>
+  ) {
+    if (currentDepth > maxDepth) return;
+
+    // 重要度でフィルタリングしてソート
+    const sortedCalls = callNodes
+      .filter(call => call.importance !== "noise")
+      .sort((a, b) => {
+        // critical > important > minor
+        const order = { critical: 0, important: 1, minor: 2, noise: 3 };
+        return order[a.importance] - order[b.importance];
+      });
+
+    // 表示するステップ数を制限（深さに応じて減らす）
+    const maxSteps = currentDepth === 1 ? 8 : currentDepth === 2 ? 4 : 2;
+    const displayCalls = sortedCalls.slice(0, maxSteps);
+
+    for (const call of displayCalls) {
+      if (visited.has(call.callee)) continue;
+      visited.add(call.callee);
+
+      const calleeInfo = allFunctions.get(call.callee);
+      const actor = classifyFunction(call.callee, calleeInfo);
+
+      // 参加者を追加
+      if (!addedParticipants.has(actor)) {
+        participants.set(actor, `participant ${sanitizeMermaidIdentifier(actor)} as "${actor}"`);
+        addedParticipants.add(actor);
+      }
+
+      // アクションラベルを生成
+      const actionLabel = generateActionLabel(call.callee, calleeInfo);
+
+      steps.push({
+        from: callerActor,
+        to: actor,
+        action: actionLabel,
+        isAsync: call.isAsync,
+      });
+
+      // 再帰的に追跡（criticalとimportantのみ）
+      if (call.importance === "critical" || call.importance === "important") {
+        const funcCalls = calls.get(call.callee);
+        if (funcCalls) {
+          // 重要度付きのCallNodeに変換して渡す
+          const callsWithImportance = funcCalls.map(fc => ({
+            ...fc,
+            importance: determineCallImportance(fc.callee, allFunctions.get(fc.callee)),
+          }));
+          traceCallNodes(callsWithImportance, actor, currentDepth + 1, visited);
+        }
+      }
+    }
+  }
+
+  // 開始: User -> System (ツール呼び出し)
+  const toolDesc = tool.description || tool.name;
+  steps.push({
+    from: "User",
+    to: "System",
+    action: toolDesc.length > 60 ? toolDesc.substring(0, 57) + "..." : toolDesc,
+    isAsync: true,
+  });
+
+  // execute関数内の呼び出しから追跡開始
+  if (tool.executeCalls && tool.executeCalls.length > 0) {
+    // executeCallsから直接ステップを生成
+    traceCallNodes(tool.executeCalls, "System", 1, new Set());
+  } else if (tool.executeFunction) {
+    // 従来の方法（名前付き関数の場合）
+    traceCalls(tool.executeFunction, "System", 1, new Set());
+  }
+
+  // 終了: System -> User (結果返却)
+  steps.push({
+    from: "System",
+    to: "User",
+    action: "結果",
+    isAsync: false,
+  });
+
+  // 重要なステップ（critical/important）の数をカウント
+  const importantSteps = steps.filter(s => {
+    // User→SystemとSystem→User以外のステップ
+    return !(s.from === "User" && s.to === "System") && !(s.from === "System" && s.to === "User");
+  });
+
+  // 重要なステップがない場合は空文字を返す（シーケンス図を生成しない）
+  if (importantSteps.length === 0) {
+    return "";
+  }
+
+  // ステップが少ない場合（2以下）も詳細がなさすぎるのでスキップ
+  if (importantSteps.length <= 1) {
+    return "";
+  }
+
+  // Mermaidシーケンス図を生成
+  let diagram = "sequenceDiagram\n";
+  diagram += "  autonumber\n";
+
+  // 参加者を定義
+  for (const [, def] of participants) {
+    diagram += `  ${def}\n`;
+  }
+  diagram += "\n";
+
+  // ステップを生成
+  for (const step of steps) {
+    const fromId = step.from === "User" ? "User" : sanitizeMermaidIdentifier(step.from);
+    const toId = step.to === "User" ? "User" : sanitizeMermaidIdentifier(step.to);
+    const escapedAction = step.action.replace(/"/g, "'").replace(/\n/g, " ");
+
+    if (step.to === "User") {
+      // 戻り
+      diagram += `  ${fromId}-->>${toId}: ${escapedAction}\n`;
+    } else if (step.isAsync) {
+      diagram += `  ${fromId}->>${toId}: ${escapedAction}\n`;
+    } else {
+      diagram += `  ${fromId}->>${toId}: ${escapedAction}\n`;
+    }
+  }
+
+  return diagram;
+}
+
+/**
+ * ユーザーフローセクションを生成
+ */
+function generateUserFlowSection(info: FileInfo): string {
+  if (info.tools.length === 0) return "";
+
+  let section = `## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+`;
+
+  // 関数情報をMapに変換
+  const allFunctions = new Map<string, FunctionInfo>();
+  for (const fn of info.functions) {
+    allFunctions.set(fn.name, fn);
+  }
+
+  for (const tool of info.tools) {
+    const sequenceDiagram = generateUserSequence(tool, allFunctions, info.calls);
+
+    section += `### ${tool.name}
+
+${tool.description}
+
+\`\`\`mermaid
+${sequenceDiagram}
+\`\`\`
+
+`;
+  }
+
+  return section;
 }
 
 // ============================================================================
@@ -442,6 +1132,9 @@ related: []
   }
 
   md += '\n';
+
+  // ユーザーフロー（ツールがある場合）
+  md += generateUserFlowSection(info);
 
   // Mermaid図
   md += generateMermaidSection(info);
