@@ -37,7 +37,9 @@ import { buildRateLimitKey } from '../.pi/lib/runtime-utils';
 import { getConcurrencyLimit } from '../.pi/lib/provider-limits';
 
 // pi-coding-agentからインポート
-import { AuthStorage, ModelRegistry, SettingsManager } from '@mariozechner/pi-coding-agent';
+import { AuthStorage } from '@mariozechner/pi-coding-agent/dist/core/auth-storage.js';
+import { ModelRegistry } from '@mariozechner/pi-coding-agent/dist/core/model-registry.js';
+import { SettingsManager } from '@mariozechner/pi-coding-agent/dist/core/settings-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
