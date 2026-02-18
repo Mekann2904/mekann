@@ -70,6 +70,17 @@ export function loadConfigFromEnv(baseConfig: LoggerConfig = DEFAULT_CONFIG): Lo
 // 設定バリデーション
 // ============================================
 
+/**
+ * ロガー設定を検証する
+ *
+ * @param config - 検証対象のロガー設定オブジェクト
+ * @returns 検証結果オブジェクト。validは検証成功かどうか、errorsはエラーメッセージの配列
+ * @example
+ * const result = validateConfig({ bufferSize: 10, flushIntervalMs: 1000 });
+ * if (!result.valid) {
+ *   console.error(result.errors);
+ * }
+ */
 export function validateConfig(config: LoggerConfig): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
@@ -112,6 +123,18 @@ export function validateConfig(config: LoggerConfig): { valid: boolean; errors: 
 let cachedConfig: LoggerConfig | null = null;
 
 export function getConfig(): LoggerConfig {
+/**
+   * キャッシュされた設定をクリアしてリセットする
+   *
+   * 設定のキャッシュを破棄し、次回取得時に再読み込みを強制します。
+   * テスト時や設定の動的変更後に使用します。
+   *
+   * @returns 戻り値なし
+   * @example
+   * // 設定をリセット
+   * resetConfig();
+   * // 次回getConfig()呼び出し時に設定が再読み込みされる
+   */
   if (cachedConfig === null) {
     cachedConfig = loadConfigFromEnv();
     const validation = validateConfig(cachedConfig);

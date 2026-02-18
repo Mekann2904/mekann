@@ -80,6 +80,16 @@ function toEventTailLines(events: string[], limit: number): string[] {
   return events.slice(events.length - limit);
 }
 
+/**
+ * チームIDとメンバーIDから一意のキーを生成する
+ *
+ * @param teamId - チームID
+ * @param memberId - メンバーID
+ * @returns "teamId/memberId"形式の結合キー
+ * @example
+ * const key = toTeamLiveItemKey("team-123", "member-456");
+ * // "team-123/member-456"
+ */
 export function toTeamLiveItemKey(teamId: string, memberId: string): string {
   return `${teamId}/${memberId}`;
 }
@@ -354,6 +364,22 @@ export function renderAgentTeamLiveView(input: {
   add(
     theme.bold(
       theme.fg(
+/**
+         * /**
+         * * エージェントチームのライブモニターを作成する
+         * *
+         * * 指定されたタイトルとアイテム構成でライブモニターを生成し、
+         * * そのコントローラーを返す。UI機能が利用できない場合はundefinedを返す。
+         * *
+         * * @param ctx - コンテキストオブジェクト（hasUI、ui.customプロパティを確認）
+         * * @param input - モニターの設定オブジェクト
+         * * @param input.title - モニターのタイトル
+         * * @param input.items - モニター項目の配列
+         * * @param input.items[].key - 項目の一意キー
+         * * @param input.items[].label - 項目の表示ラベル
+         * * @param input.items[].partners - 関連パートナーの配列（省略可）
+         * * @returns モニターコントローラー、またはUIが利用できない場合はundefined
+         */
         "accent",
         `[${selected.label}] ${input.stream} tail (last ${LIVE_PREVIEW_LINE_LIMIT} lines | total ${formatBytes(
           selectedStreamBytes,

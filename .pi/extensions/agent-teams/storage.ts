@@ -26,6 +26,19 @@ export type TeamEnabledState = "enabled" | "disabled";
 export type TeamStrategy = "parallel" | "sequential";
 export type TeamJudgeVerdict = "trusted" | "partial" | "untrusted";
 
+/**
+ * チームメンバーの定義情報を表すインターフェース
+ *
+ * エージェントチームにおける個々のメンバーの設定を管理します。
+ *
+ * @property id - メンバーの一意識別子
+ * @property role - メンバーの役割名
+ * @property description - メンバーの説明文
+ * @property provider - 使用するプロバイダー名（オプション）
+ * @property model - 使用するモデル名（オプション）
+ * @property enabled - メンバーの有効/無効状態
+ * @property skills - メンバーが持つスキル一覧（オプション）
+ */
 export interface TeamMember {
   id: string;
   role: string;
@@ -34,6 +47,16 @@ export interface TeamMember {
   model?: string;
   enabled: boolean;
   skills?: string[];
+/**
+ * /**
+ * * チームメンバーの実行結果を表すインターフェース
+ * *
+ * * エージェントチームのメンバーがタスクを実行した際の結果情報を格納します。
+ * * 成功時は出力内容、失敗時はエラー情報を含みます。
+ * *
+ * * @property memberId - メンバーの一意識別子
+ * * @property role - メンバー
+ */
 }
 
 export interface TeamDefinition {
@@ -105,6 +128,19 @@ export interface DiscussionAnalysis {
  * Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
  */
 export interface DiscussionReference {
+/**
+   * /**
+   * * チーム実行の記録を表すインターフェース
+   * *
+   * * チームによるタスク実行の詳細情報、通信状況、実行結果を含む。
+   * *
+   * * @property runId - 実行の一意識別子
+   * * @property teamId - チームの一意識別子
+   * * @property strategy - チームが採用した戦略
+   * * @property task - 実行されたタスクの内容
+   * * @property communicationRounds - 通信の総ラウンド数（省略可）
+   * * @property failedMemberRetryRounds - 失敗メ
+   */
   targetMemberId: string;
   targetClaimId?: string;
   stance: "agree" | "disagree" | "neutral" | "partial";
@@ -130,6 +166,12 @@ export interface TeamCommunicationAuditEntry {
 
 export interface TeamRunRecord {
   runId: string;
+/**
+   * チーム関連のストレージパスを管理するインターフェース
+   *
+   * BaseStoragePathsを拡張し、エージェントチーム機能で使用される
+   * ストレージパス情報を定義します。
+   */
   teamId: string;
   strategy: TeamStrategy;
   task: string;

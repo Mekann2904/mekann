@@ -37,6 +37,15 @@ export type DecayStrategy = "linear" | "exponential" | "hybrid";
 // Core Types
 // ============================================================================
 
+/**
+ * /**
+ * * 適応的ペナルティの状態を管理するインターフェース
+ * *
+ * * ペナルティ値、更新時刻、最後の理由、履歴を保持します。
+ * *
+ * * @property penalty - 現在のペナルティ値
+ * * @property updatedAtMs - 最終更新時刻（ミリ秒単位のタイム
+ */
 export interface AdaptivePenaltyState {
   penalty: number;
   updatedAtMs: number;

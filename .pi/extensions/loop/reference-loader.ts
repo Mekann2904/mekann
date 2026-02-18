@@ -13,9 +13,40 @@ import { validateUrlForSsrf } from "./ssrf-protection";
 // Types
 // ============================================================================
 
+/**
+ * ループ拡張で使用する参照情報を表すインターフェース
+ *
+ * ファイル、URL、またはインラインテキストから読み込まれた参照データの構造を定義します。
+ *
+ * @property id - 参照の一意識別子
+ * @property source - 参照元のパス、URL、または識別子
+ * @property title - 参照のタイトル
+ * @property content - 参照の本文内容
+ * @example
+ * const reference: LoopReference = {
+ *   id: "ref-001",
+ *   source: "./docs/example.md",
+ *   title: "サンプルドキュメント",
+ *   content: "ドキュメントの内容..."
+ * };
+ */
 export interface LoopReference {
   id: string;
   source: string;
+/**
+   * /**
+   * * 参照指定を読み込み、正規化して結果を返す
+   * *
+   * * @param input - 参照読み込みの入力オブジェクト
+   * * @param input.refs - 参照指定文字列の配列
+   * * @param input.refsFile - 参照ファイルのパス（省略可）
+   * * @param input.cwd - 作業ディレクトリのパス
+   * * @param signal - 処理を中断するためのAbortSignal（省略可）
+   * * @returns 読み込まれた参照の結果を含むPromise
+   * * @example
+   * * const result = await loadReferences({
+   * *   refs: ['./src/index.ts', './
+   */
   title: string;
   content: string;
 }
@@ -112,6 +143,20 @@ export async function loadReferences(
     warnings,
   };
 }
+/**
+ * 指定されたURLからテキストを取得する
+ *
+ * SSRF対策としてURLの検証を行い、20秒のタイムアウトを設定してフェッチを行う。
+ *
+ * @param url - 取得対象のURL
+ * @param signal - 処理を中断するためのAbortSignal（省略可能）
+ * @returns 取得したテキストコンテンツ
+ * @example
+ * const text = await fetchTextFromUrl("https://example.com/data.txt");
+ * @example
+ * const controller = new AbortController();
+ * const text = await fetchTextFromUrl("https://example.com/data.txt", controller.signal);
+ */
 
 async function loadSingleReference(
   spec: string,

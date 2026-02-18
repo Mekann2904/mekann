@@ -904,6 +904,19 @@ function recordAgentEnd(ctx: ExtensionAPI["context"]): void {
   saveState(currentRuntime);
 }
 
+/**
+ * エージェント使用量トラッカーを登録する
+ *
+ * セッション開始時の初期化やツール呼び出し時の使用量記録など、
+ * エージェントの使用状況を追跡するためのイベントリスナーを設定する。
+ *
+ * @param pi - 拡張機能APIインターフェース
+ * @returns なし
+ * @example
+ * // 拡張機能として登録
+ * import registerAgentUsageTracker from './agent-usage-tracker';
+ * registerAgentUsageTracker(pi);
+ */
 export default function registerAgentUsageTracker(pi: ExtensionAPI) {
   // 起動時に初期化と通知を行う。
   pi.on("session_start", async (_event, ctx) => {

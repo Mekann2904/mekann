@@ -84,6 +84,13 @@ export const ADDITIONAL_WRITE_COMMANDS = new Set([
 // Type Definitions
 // ============================================
 
+/**
+ * プランモードの状態を表すインターフェース
+ *
+ * @property enabled - プランモードが有効かどうか
+ * @property timestamp - 状態が記録された時刻（Unixタイムスタンプ）
+ * @property checksum - 状態の整合性検証用チェックサム
+ */
 export interface PlanModeState {
 	enabled: boolean;
 	timestamp: number;

@@ -822,6 +822,20 @@ async function handleToolReflection(
 // Extension Registration (TypeBox形式)
 // ============================================================================
 
+/**
+ * 動的ツール拡張機能を登録する
+ *
+ * 指定されたExtensionAPIを使用して、動的ツール生成機能を登録します。
+ * create_toolなどのツールをシステムに登録し、実行時にツールを動的に
+ * 作成・管理できるようにします。
+ *
+ * @param pi - 拡張機能APIインターフェース。ツール登録用のメソッドを提供
+ * @returns なし
+ * @example
+ * // 拡張機能の登録
+ * import registerDynamicTools from './extensions/dynamic-tools';
+ * registerDynamicTools(pi);
+ */
 export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   // create_tool: 動的ツール生成
   pi.registerTool({

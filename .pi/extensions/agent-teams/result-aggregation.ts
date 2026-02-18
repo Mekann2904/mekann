@@ -24,6 +24,15 @@ export type { RunOutcomeCode, RunOutcomeSignal };
 // Failure Resolution
 // ============================================================================
 
+/**
+ * /**
+ * * チームメンバーのエラーが再試行可能かどうかを判定する
+ * *
+ * * エラーメッセージを解析し、レート制限、タイムアウト、サービス利用不可などの
+ * * 一時的なエラーかどうかを判定します。
+ * *
+ * * @param
+ */
 export function isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean {
   const message = toErrorMessage(error).toLowerCase();
   if (/429|rate\s*limit|too many requests/i.test(message)) {
@@ -35,6 +44,19 @@ export function isRetryableTeamMemberError(error: unknown, statusCode?: number):
   if (/503|service unavailable|overloaded/i.test(message)) {
     return true;
   }
+/**
+   * チーム失敗時のエラーから実行結果シグナルを生成する
+   *
+   * エラーの種類（キャンセル、タイムアウト、プレッシャーエラー等）を判定し、
+   * 適切な結果コードと再試行推奨フラグを含むシグナルを返す。
+   *
+   * @param error - 処理対象のエラーオブジェクト
+   * @returns 結果コードと再試行推奨フラグを含む実行結果シグナル
+   * @example
+   * // タイムアウトエラーの処理
+   * const outcome = resolveTeamFailureOutcome(new Error("timeout"));
+   * // { outcomeCode: "TIMEOUT", retryRecommended: true }
+   */
   if (/502|bad gateway/i.test(message)) {
     return true;
   }
@@ -47,6 +69,22 @@ export function isRetryableTeamMemberError(error: unknown, statusCode?: number):
 export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
   if (isCancelledErrorMessage(error)) {
     return { outcomeCode: "CANCELLED", retryRecommended: false };
+/**
+   * チームメンバーの結果を集約し、全体の実行結果を判定する
+   *
+   * メンバーごとの実行結果を分析し、成功・失敗の判定と失敗したメンバーIDを返却する。
+   * 全メンバーが成功した場合はSUCCESS、それ以外は失敗として扱う。
+   *
+   * @param memberResults - チームメンバーの実行結果の配列
+   * @returns 実行結果シグナルと失敗したメンバーIDの配列を含むオブジェクト
+   * @example
+   * // 全メンバーが成功した場合
+   * const results = resolveTeamMemberAggregateOutcome([
+   *   { status: "success", memberId: "agent1" },
+   *   { status: "success", memberId: "agent2" }
+   * ]);
+   * // results: { outcomeCode: "SUCCESS", retryRecommended: false, failedMemberIds: [] }
+   */
   }
   if (isTimeoutErrorMessage(error)) {
     return { outcomeCode: "TIMEOUT", retryRecommended: true };
@@ -75,6 +113,12 @@ export function resolveTeamMemberAggregateOutcome(memberResults: TeamMemberResul
   const failed = memberResults.filter((result) => result.status === "failed");
   if (failed.length === 0) {
     return {
+/**
+       * /**
+       * * チームの並列実行結果を集約し、全体の実行結果を解決する
+       * *
+       * * 複数チームの並列実
+       */
       outcomeCode: "SUCCESS",
       retryRecommended: false,
       failedMemberIds: [],
@@ -152,6 +196,23 @@ export function resolveTeamParallelRunOutcome(
     if (failedTeamOutcome.retryRecommended || memberOutcome.retryRecommended) {
       retryableFailureCount += 1;
     }
+/**
+   * チーム実行結果のテキスト形式レポートを生成する
+   *
+   * @param input - チーム結果生成に必要な入力データ
+   * @param input.run - チーム実行レコード
+   * @param input.team - チーム定義情報
+   * @param input.memberResults - チームメンバーの実行結果一覧
+   * @param input.communicationAudit - コミュニケーション監査エントリ（省略可能）
+   * @returns フォーマットされたチーム結果テキスト
+   * @example
+   * // チーム実行結果のテキスト生成
+   * const resultText = buildTeamResultText({
+   *   run: teamRunRecord,
+   *   team: teamDefinition,
+   *   memberResults: results,
+   * });
+   */
   }
 
   const hasAnyFailure = failedTeamIds.length > 0 || partialTeamIds.length > 0;
@@ -220,6 +281,19 @@ export function buildTeamResultText(input: {
   if (input.run.communicationLinks) {
     lines.push("Communication links:");
     for (const [memberId, partners] of Object.entries(input.run.communicationLinks)) {
+/**
+       * /**
+       * * 出力テキストから要約を抽出する
+       * *
+       * * "summary:" で始まる行を探し、その値を返します。
+       * * 見つからない場合は、最初の非空行を返します。
+       * *
+       * * @param output - 処理対象の出力テキスト
+       * * @returns 抽出された要約文字列
+       * * @example
+       * * const text = "summary: これは要約です";
+       * * const summary = extractSummary(text); // "これは要約です"
+       */
       lines.push(`- ${memberId} -> ${partners.join(", ") || "-"}`);
     }
   }

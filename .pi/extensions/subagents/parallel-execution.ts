@@ -13,8 +13,42 @@ import {
 // Types
 // ============================================================================
 
+/**
+ * /**
+ * * サブエージェントの並列実行容量解決結果を表すインターフェース
+ * *
+ * * 並列実行の許可判定、適用された並列度、待機時間、タイムアウト等の
+ * * 容量解決に関する詳細情報を格納する。
+ * *
+ * * @property allowed - 並列実行が許可されたかどうか
+ * * @property requestedParallelism - 要求された並列度
+ * * @property appliedParallelism - 実際に適用された並列度
+ * * @property reduced - 並列度が削減されたかどうか
+ * * @property reasons - 判定理由のリスト
+ * * @property waitedMs - 待機時間（ミリ秒）
+ * * @property timedOut - タイムアウトしたかどうか
+ * * @property aborted - 中止されたかどうか
+ * * @property attempts
+ */
 export interface SubagentParallelCapacityResolution {
   allowed: boolean;
+/**
+   * /**
+   * * サブエージェントの並列実行容量を解決する
+   * *
+   * * 要求された並列度に基づいて、利用可能な容量を探索し、
+   * * 並列実行のための容量予約を解決します。
+   * *
+   * * @param input - 容量解決の入力パラメータ
+   * * @param input.requestedParallelism - 要求する並列実行数
+   * * @param input.additionalRequests - 追加で必要なリクエスト数
+   * * @param input.maxWaitMs - 最大待機時間（ミリ秒）
+   * * @param input.pollIntervalMs - ポーリング間隔（ミリ秒）
+   * * @param input.signal - 処理を中断するためのAbortSignal
+   * * @returns 容量解決結果を含むPromise
+   * * @example
+   * * //
+   */
   requestedParallelism: number;
   appliedParallelism: number;
   reduced: boolean;

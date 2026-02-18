@@ -34,6 +34,17 @@ if (!fs.existsSync(CONFIG_DIR)) {
 	fs.mkdirSync(CONFIG_DIR, { recursive: true });
 }
 
+/**
+ * 略語を表すインターフェース
+ *
+ * 略語の名称、展開、正規表現、パターン、位置を定義します。
+ *
+ * @param name - 略語の名称
+ * @param expansion - 略語の展開
+ * @param regex - 正規表現を使用するかどうか（オプション）
+ * @param pattern - 略語のパターン（オプション）
+ * @param position - 略語の位置（"command" または "anywhere"）（オプション）
+ */
 export interface Abbreviation {
 	name: string;
 	expansion: string;
@@ -177,6 +188,18 @@ function reconstructState(ctx: ExtensionContext) {
 }
 
 // UI component for listing abbreviations
+/**
+ * 略語一覧を表示するUIコンポーネント
+ *
+ * 指定された幅に基づいて文字列の配列を生成します。
+ * キャッシュが利用可能で、幅が変更されていない場合はキャッシュされた行を返します。
+ *
+ * @param width - 行を生成するための幅
+ * @returns 生成された文字列の配列
+ * @example
+ * const abbrList = new AbbrListComponent(theme, onClose);
+ * const lines = abbrList.render(80);
+ */
 class AbbrListComponent {
 	private theme: Theme;
 	private onClose: () => void;
@@ -194,6 +217,17 @@ class AbbrListComponent {
 		}
 	}
 
+/**
+	 * 指定幅でリストを描画し、行の配列を返す
+	 *
+	 * キャッシュされた結果が存在し、幅が変更されていない場合はキャッシュを返却します。
+	 *
+	 * @param width - 描画幅（文字数）
+	 * @returns 描画された行の配列
+	 * @example
+	 * const lines = component.render(80);
+	 * lines.forEach(line => console.log(line));
+	 */
 	render(width: number): string[] {
 		if (this.cachedLines && this.cachedWidth === width) {
 			return this.cachedLines;
@@ -203,6 +237,13 @@ class AbbrListComponent {
 		const th = this.theme;
 
 		lines.push("");
+/**
+		 * キャッシュを無効化します。
+		 *
+		 * このメソッドは、キャッシュされた幅と行を未定義に設定します。
+		 *
+		 * @returns なし
+		 */
 		const title = th.fg("accent", " Abbreviations ");
 		const headerLine =
 			th.fg("borderMuted", "─".repeat(2)) + title + th.fg("borderMuted", "─".repeat(Math.max(0, width - 18)));

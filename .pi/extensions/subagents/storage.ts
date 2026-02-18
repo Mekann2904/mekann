@@ -21,6 +21,30 @@ import { getLogger } from "../../lib/comprehensive-logger.js";
 const logger = getLogger();
 
 // Re-export types for convenience
+/**
+/**
+ * サブエージェントの定義情報を表すインターフェース
+ *
+ * サブエージェントの設定、プロバイダー情報、スキルなどを管理します。
+ *
+ * @property id - サブエージェントの一意識別子
+ * @property name - サブエージェントの表示名
+ * @property description - サブエージェントの機能説明
+ * @property systemPrompt - エージェントの動作を定義するシステムプロンプト
+ * @property provider - 使用するAIプロバイダー（省略可能）
+ * @property model - 使用するモデル名（省略可能）
+ * @property enabled - エージェントの有効/無効状態
+ * @property skills - エージェントが使用可能なスキルIDの配列（省略可能）
+ * @property createdAt - 作成日時（ISO 8601形式）
+ * @property updatedAt - 最終更新日時（ISO 8601形式）
+ */
+
+/**
+ * エージェントの有効/無効状態を表す型
+ * @example
+ * const enabled: AgentEnabledState = "enabled";
+ * const disabled: AgentEnabledState = "disabled";
+ */
 export type AgentEnabledState = "enabled" | "disabled";
 
 export interface SubagentDefinition {
@@ -32,6 +56,15 @@ export interface SubagentDefinition {
   model?: string;
   enabled: AgentEnabledState;
   skills?: string[];
+/**
+   * サブエージェントのストレージパスを定義するインターフェース
+   *
+   * BaseStoragePathsを継承し、サブエージェント固有のパス構造を提供します。
+   *
+   * @example
+   * const paths = getPaths('/project/root');
+   * console.log(paths.dataDir);
+   */
   createdAt: string;
   updatedAt: string;
 }

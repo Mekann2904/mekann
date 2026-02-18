@@ -13,6 +13,15 @@ import {
   writeFileSync,
 } from "node:fs";
 
+/**
+ * /**
+ * * ファイルロックのオプション設定
+ * *
+ * * ロック取得時のタイムアウトやポーリング間隔、有効期限を設定します。
+ * *
+ * * @property maxWaitMs - ロック取得の最大待機時間（ミリ秒）。デフォルト: 4000
+ * * @property pollMs - ロック確認のポーリング間隔（ミリ秒）。
+ */
 export interface FileLockOptions {
   maxWaitMs?: number;
   pollMs?: number;
@@ -96,6 +105,15 @@ function tryAcquireLock(lockFile: string): boolean {
 
 function clearStaleLock(lockFile: string, staleMs: number): void {
   try {
+/**
+     * /**
+     * * ファイルロックを取得して関数を実行する
+     * *
+     * * 指定されたファイルに対してロックを取得し、ロック保持中に渡された関数を実行します。
+     * * 関数の実行完了後、ロックは自動的に解放されます。
+     * *
+     * * @param targetFile
+     */
     const ageMs = Date.now() - statSync(lockFile).mtimeMs;
     if (ageMs > staleMs) {
       unlinkSync(lockFile);

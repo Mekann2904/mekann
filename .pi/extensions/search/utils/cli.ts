@@ -213,6 +213,21 @@ export async function getVersion(
  */
 let cachedAvailability: ToolAvailability | null = null;
 
+/**
+ * 全検索ツールの利用可能性を確認する
+ *
+ * fd、rg、ctagsなどの検索ツールがシステムで利用可能かを確認し、
+ * 結果をセッション中キャッシュする。
+ *
+ * @param force - キャッシュを強制的に更新するかどうか（デフォルト: false）
+ * @returns ツールの利用可能性を示すオブジェクト
+ * @example
+ * // キャッシュを使用して確認
+ * const availability = await checkToolAvailability();
+ * 
+ * // 強制的に再確認
+ * const freshAvailability = await checkToolAvailability(true);
+ */
 export async function checkToolAvailability(force = false): Promise<ToolAvailability> {
   if (cachedAvailability && !force) return cachedAvailability;
 

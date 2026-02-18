@@ -16,6 +16,16 @@ import { join, relative, basename } from 'path';
 // Types
 // ============================================================================
 
+/**
+ * /**
+ * * コード構造解析のオプション設定
+ * *
+ * * ソースコード解析、Mermaid図生成、ドキュメント生成の動作をカスタマイズします。
+ * *
+ * * @property target - 解析対象のソースファイルまたはディレクトリのパス
+ * * @property outputDir - 解析結果の出力ディレクトリ（省略時はカレントディレクトリ）
+ * * @property diagramTypes - 生成するMer
+ */
 export interface AnalyzeOptions {
   /** 対象ソースファイルまたはディレクトリ */
   target: string;

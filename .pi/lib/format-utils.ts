@@ -80,6 +80,18 @@ export function formatClockTime(value?: number): string {
 const normalizeCache = new Map<string, string>();
 const NORMALIZE_CACHE_MAX_SIZE = 256;
 
+/**
+ * /**
+ * * テキストを単一行用に正規化する
+ * *
+ * * 連続する空白を1つのスペースに置換し、前後の空白を削除します。
+ * * 同じ入力に対する繰り返し呼び出しはLRUキャッシュで最適化されます。
+ * *
+ * * @param input - 正規化する入力テキスト
+ * * @param maxLength - 最大文字数（デフォルト: 160）
+ * * @returns 正規化された単一行テキスト
+ * * @example
+ */
 export function normalizeForSingleLine(input: string, maxLength = 160): string {
   // キャッシュキーを生成
   const cacheKey = `${maxLength}:${input}`;

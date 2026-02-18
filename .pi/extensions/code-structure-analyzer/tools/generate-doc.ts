@@ -12,8 +12,19 @@ import type { MermaidDiagrams } from './generate-diagrams.js';
 // Types
 // ============================================================================
 
+/**
+ * ドキュメント生成のオプション設定
+ *
+ * テンプレートパスやLLM用コンテキストの有無を指定する。
+ */
 export interface DocOptions {
   /** テンプレートファイルパス */
+/**
+   * /**
+   * * ドキュメントの各セクションを定義するインターフェース
+   * *
+   * * 生成されるドキュメントの構成要素を表します
+   */
   templatePath?: string;
   /** LLM用コンテキストを含める */
   includeLLMContext?: boolean;
@@ -42,6 +53,15 @@ export interface LLMContext {
   /** 主要なクラス一覧 */
   keyClasses: string[];
   /** 主要なインターフェース一覧 */
+/**
+   * /**
+   * * ドキュメントの各セクションを生成する
+   * *
+   * * コード構造データとMermaidダイアグラムから、タイトル、概要、API参照、
+   * * 構造セクション、ダイアグラムセクションを含む完全なドキュメントセクションを生成します。
+   * *
+   * * @param structure - コ
+   */
   keyInterfaces: string[];
   /** 依存関係の概要 */
   dependencies: string[];

@@ -3,6 +3,14 @@
 // Why: Removes duplicated pool logic and avoids spawning extra work after cancellation.
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts
 
+/**
+ * /**
+ * * 並行実行のオプション設定
+ * *
+ * * 中止シグナルを指定して、実行中のタスクをキャンセル可能にする。
+ * *
+ * * @property signal - 中止シグナル。キャンセル時に実行中の
+ */
 export interface ConcurrencyRunOptions {
   signal?: AbortSignal;
 }
@@ -20,6 +28,22 @@ interface WorkerResult<TResult> {
 function toPositiveLimit(limit: number, itemCount: number): number {
   const safeLimit = Number.isFinite(limit) ? Math.trunc(limit) : 1;
   return Math.max(1, Math.min(itemCount, safeLimit));
+/**
+ * 指定した並行数制限で非同期タスクを実行する
+ *
+ * @param items - 処理対象のアイテム配列
+ * @param limit - 同時実行数の上限
+ * @param worker - 各アイテムを処理する非同期関数
+ * @param options - 実行オプション（AbortSignalなど）
+ * @returns 各アイテムの処理結果の配列
+ * @example
+ * const results = await runWithConcurrencyLimit(
+ *   [1, 2, 3, 4, 5],
+ *   2,
+ *   async (item) => item * 2,
+ *   { signal: abortController.signal }
+ * );
+ */
 }
 
 function ensureNotAborted(signal?: AbortSignal): void {

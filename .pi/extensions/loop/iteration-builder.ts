@@ -120,6 +120,15 @@ export function buildIterationPrompt(input: {
   return lines.join("\n");
 }
 
+/**
+ * /**
+ * * 参照情報をパック形式の文字列に変換する
+ * *
+ * * 各参照情報を[ID]タイトル、Source、内容の形式でフォーマットし、
+ * * 改行区切りで結合した文字列を生成します。
+ * *
+ * * @param references - 参照情報の配列（LoopReference
+ */
 export function buildReferencePack(references: LoopReference[]): string {
   const lines: string[] = [];
   for (const ref of references) {
@@ -135,8 +144,35 @@ export function buildIterationFocus(task: string, previousOutput: string, valida
   if (validationFeedback.length > 0) {
     return `fix: ${validationFeedback[0]}`;
   }
+/**
+ * ループコマンドのプレビュー文字列を生成する
+ *
+ * @param model - モデル情報オブジェクト
+ * @param model.provider - プロバイダー名
+ * @param model.id - モデルID
+ * @param model.thinkingLevel - 思考レベル
+ * @returns 生成されたコマンドプレビュー文字列
+ * @example
+ * const preview = buildLoopCommandPreview({
+ *   provider: "openai",
+ *   id: "gpt-4",
+ *   thinkingLevel: ThinkingLevel.Medium
+ * });
+ * // "pi -p --no-extensions --provider openai --model gpt-4"
+ */
 
   const nextStep = extractNextStepLine(previousOutput);
+/**
+   * イテレーション失敗時の出力文字列を構築する
+   *
+   * 実行失敗を示す契約オブジェクトを作成し、JSONブロックタグでラップして返す。
+   *
+   * @param message - 失敗理由を示すメッセージ
+   * @returns JSONブロックタグでラップされた失敗時の契約オブジェクトを含む文字列
+   * @example
+   * // 失敗出力の生成
+   * const output = buildIterationFailureOutput("処理がタイムアウトしました");
+   */
   if (nextStep && !/^none$/i.test(nextStep.trim())) {
     return `next: ${nextStep}`;
   }
@@ -149,6 +185,15 @@ export function buildLoopCommandPreview(model: {
   id: string;
   thinkingLevel: ThinkingLevel;
 }): string {
+/**
+   * /**
+   * * ループ契約の出力文字列を解析して構造化データを返す
+   * *
+   * * 出力文字列からステータス、ゴール状態、証拠、引用、サマリー、次のアクション等を抽出し、
+   * * ParsedLoopContractオブジェクトとして構造化します。
+   * *
+   * * @param output - 解析対象の出力文字列（ループ実行結果を
+   */
   const parts = [
     "pi -p --no-extensions",
     `--provider ${model.provider}`,
@@ -221,6 +266,18 @@ export function parseLoopContract(output: string, hasGoal: boolean): ParsedLoopC
     const structuredSummary = normalizeOptionalText(structured.summary);
     if (!structuredSummary) {
       parseErrors.push("LOOP_JSON.summary is required.");
+/**
+     * ループ結果ブロックを抽出する
+     *
+     * タグ付きブロックが存在する場合はその内容を返し、存在しない場合は出力全体をトリムして返します。
+     *
+     * @param output - 処理対象の出力文字列
+     * @returns 抽出されたブロック、またはトリムされた出力文字列
+     * @example
+     * // タグ付きブロックがある場合
+     * const result = extractLoopResultBody("<loopResult>内容</loopResult>");
+     */
+
     } else {
       summary = structuredSummary;
     }
@@ -363,6 +420,18 @@ function stripMarkdownCodeFence(value: string): string {
     return fenced[1].trim();
   }
   return trimmed;
+/**
+ * 出力テキストから要約行を抽出する
+ *
+ * 構造化されたJSONオブジェクトのsummaryフィールドを優先的に取得し、
+ * 見つからない場合は正規表現で"summary: ..."パターンを検索する。
+ *
+ * @param output - 解析対象の出力テキスト
+ * @returns 抽出された要約行、見つからない場合は空文字列
+ * @example
+ * const summary = extractSummaryLine("summary: これは要約です");
+ * // => "これは要約です"
+ */
 }
 
 function parseLoopStatus(output: string): LoopStatus {

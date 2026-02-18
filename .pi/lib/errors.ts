@@ -143,6 +143,18 @@ export class RuntimeLimitError extends PiError {
     this.maxCount = options?.maxCount;
   }
 
+/**
+   * /**
+   * * エラー情報をJSON形式でシリアライズする
+   * *
+   * * 親クラスのJSON情報に加えて、現在のカウント値と最大カウント値を含める。
+   * *
+   * * @returns currentCountとmaxCountを含むJSONオブジェクト
+   * * @example
+   * * const error = new RuntimeLimitError("制限に達しました", { currentCount: 100, maxCount: 100 });
+   * * const json = error.toJSON();
+   * * // {
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -323,6 +335,17 @@ export class CancelledError extends PiError {
   constructor(
     message: string,
     options?: {
+/**
+       * エラー情報をJSON形式でシリアライズする
+       *
+       * 親クラスのtoJSON結果にreasonプロパティを追加して返します。
+       *
+       * @returns シリアライズされたエラー情報を含むオブジェクト
+       * @example
+       * const error = new CancelledError("操作がキャンセルされました", { reason: "user_cancelled" });
+       * const json = error.toJSON();
+       * // { name: "CancelledError", message: "...", reason: "user_cancelled", ... }
+       */
       reason?: string;
       cause?: Error;
     },
@@ -380,9 +403,14 @@ export class RateLimitError extends PiError {
 }
 
 /**
- * システム容量を超過したときにスローされるエラー。
+ * CapacityError - システム容量を超過したときにスローされるエラー
  *
  * このエラーは即座には再試行不可。
+ *
+ * @example
+ * const error = new CapacityError("容量超過", { resource: "storage" });
+ * const json = error.toJSON();
+ * // { name: "CapacityError", message: "容量超過", resource: "storage", ... }
  */
 export class CapacityError extends PiError {
   /** 容量を超過したリソース */
@@ -409,6 +437,18 @@ export class CapacityError extends PiError {
       resource: this.resource,
     };
   }
+/**
+ * エラー情報をJSON形式で返す
+ *
+ * 親クラスのJSON出力に加え、コンテンツ（100文字で切り詰め）と
+ * パース位置情報を含めます。
+ *
+ * @returns エラー情報を含むJSONオブジェクト
+ * @example
+ * const error = new ParsingError("パースエラー", { content: "long text...", position: 10 });
+ * const json = error.toJSON();
+ * // => { name: "ParsingError", message: "パースエラー", content: "long text...", position: 10, ... }
+ */
 }
 
 // ============================================================================

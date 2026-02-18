@@ -72,6 +72,18 @@ export interface AdaptiveControllerState {
   predictiveThreshold: number;
 }
 
+/**
+ * レート制限イベントを表すインターフェース
+ *
+ * APIリクエストに関するレート制限イベントの詳細情報を格納します。
+ * 429エラー、成功、タイムアウト、エラーの各イベントタイプを記録します。
+ *
+ * @property provider - APIプロバイダー名
+ * @property model - 使用されたモデル名
+ * @property type - イベントタイプ（429エラー、成功、タイムアウト、エラー）
+ * @property timestamp - イベント発生時のタイムスタンプ
+ * @property details - イベントの追加詳細情報（オプション）
+ */
 export interface RateLimitEvent {
   provider: string;
   model: string;

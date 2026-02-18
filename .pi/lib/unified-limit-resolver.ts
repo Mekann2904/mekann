@@ -129,28 +129,6 @@ export interface UnifiedLimitResult {
   };
 }
 
-/**
- * 統合環境変数設定
- */
-export interface UnifiedEnvConfig {
-  /** 全体のLLM並列上限 */
-  maxTotalLlm: number;
-  /** 全体のリクエスト並列上限 */
-  maxTotalRequests: number;
-  /** サブエージェント並列数 */
-  maxSubagentParallel: number;
-  /** チーム並列数 */
-  maxTeamParallel: number;
-  /** チームメンバー並列数 */
-  maxTeammateParallel: number;
-  /** オーケストレーション並列数 */
-  maxOrchestrationParallel: number;
-  /** 適応制御の有効/無効 */
-  adaptiveEnabled: boolean;
-  /** 予測スケジューリングの有効/無効 */
-  predictiveEnabled: boolean;
-}
-
 // ============================================================================
 // Dependency Injection (DIP Compliance)
 // ============================================================================

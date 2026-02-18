@@ -29,6 +29,16 @@ import {
 // Types
 // ============================================================================
 
+/**
+ * アクティブなモデルの情報を表すインターフェース
+ *
+ * 現在使用中のAIモデルのプロバイダー、モデル名、使用開始時刻を管理します。
+ * インスタンスのハートビートごとに更新されます。
+ *
+ * @property provider - モデルプロバイダー名（例: "anthropic", "openai"）
+ * @property model - モデル識別子（例: "claude-3-opus", "gpt-4"）
+ * @property since - モデルがアクティブになった時刻（ISO 8601形式）
+ */
 export interface ActiveModelInfo {
   provider: string;
   model: string;
@@ -42,23 +52,39 @@ export interface InstanceInfo {
   startedAt: string;
   lastHeartbeat: string;
   cwd: string;
-  /** Currently active models (updated on each heartbeat) */
   activeModels: ActiveModelInfo[];
-  /** Work-stealing support: current pending task count */
   pendingTaskCount?: number;
-  /** Work-stealing support: average task latency in milliseconds */
   avgLatencyMs?: number;
-  /** Work-stealing support: timestamp of last task completion */
   lastTaskCompletedAt?: string;
 }
 
+/**
+ * クロスインスタンスコーディネーターの設定
+ *
+ * 複数のインスタンス間で協調動作するための設定パラメータを定義します。
+ *
+ * @property totalMaxLlm - 全インスタンスで許可されるLLMの最大数
+ * @property heartbeatIntervalMs - ハートビート送信間隔（ミリ秒）
+ * @property heartbeatTimeoutMs - ハートビートタイムアウト時間（ミリ秒）
+ * @example
+ * const config: CoordinatorConfig = {
+ *   totalMaxLlm: 10,
+ *   heartbeatIntervalMs: 5000,
+ *   heartbeatTimeoutMs: 15000
+ * };
+ */
 export interface CoordinatorConfig {
   totalMaxLlm: number;
   heartbeatIntervalMs: number;
   heartbeatTimeoutMs: number;
 }
 
-export interface CoordinatorState {
+/**
+ * コーディネーターの内部状態を管理するインターフェース
+ *
+ * クロスインスタンス調整における現在のインスタンスの内部状態情報
+ */
+export interface CoordinatorInternalState {
   myInstanceId: string;
   mySessionId: string;
   myStartedAt: string;
@@ -101,7 +127,7 @@ const CONFIG_FILE = join(COORDINATOR_DIR, "coordinator.json");
 // State
 // ============================================================================
 
-let state: CoordinatorState | null = null;
+let state: CoordinatorInternalState | null = null;
 
 // ============================================================================
 // Utilities

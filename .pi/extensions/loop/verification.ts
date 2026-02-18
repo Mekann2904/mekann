@@ -40,6 +40,51 @@ export const DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES: string[][] = [
 // Types
 // ============================================================================
 
+/**
+ * ループ検証の実行結果を表すインターフェース
+ *
+ * テストコマンドや検証コマンドの実行結果を格納します。
+ *
+ * @property command - 実行されたコマンド文字列
+ * @property passed - 検証が成功したかどうか
+ * @property timedOut - コマンドがタイムアウトしたかどうか
+ * @property exitCode - プロセスの終了コード（取得できない場合はnull）
+ * @property durationMs - 実行時間（ミリ秒）
+ * @property stdout - 標準出力の内容
+/**
+  * パース済みの検証コマンド情報を表すインターフェース
+  *
+  * 検証コマンド文字列を解析し、実行可能ファイル名と引数に分解した結果を格納します。
+  * パースに失敗した場合はerrorフィールドにエラーメッセージが設定されます。
+  *
+  * @property executable - 実行可能ファイルのパスまたは名前
+  * @property args - コマンドに渡す引数の配列
+/**
+   * 検証ポリシーの設定を定義するインターフェース
+   *
+   * ループ処理における検証実行のタイミングと頻度を制御する。
+   *
+   * @property mode - 検証モード（"always": 常に検証, "done_only": 完了時のみ, "every_n": N回ごとに検証）
+   * @property everyN - modeが"every_n"の場合の検証間隔（何回に1回検証するか）
+   * @example
+   * const config: VerificationPolicyConfig = {
+   *   mode: "every_n",
+   *   everyN: 10
+   * };
+   */
+
+/**
+ * ループ検証結果を表すインターフェース
+ *
+ * @property command - 実行されたコマンド
+ * @property passed - 検証が成功したかどうか
+ * @property timedOut - タイムアウトしたかどうか
+ * @property exitCode - 終了コード
+ * @property durationMs - 実行時間（ミリ秒）
+ * @property stdout - 標準出力の内容
+ * @property stderr - 標準エラー出力の内容
+ * @property error - エラーが発生した場合のエラーメッセージ（オプション）
+ */
 export interface LoopVerificationResult {
   command: string;
   passed: boolean;
@@ -48,6 +93,15 @@ export interface LoopVerificationResult {
   durationMs: number;
   stdout: string;
   stderr: string;
+/**
+   * /**
+   * * 検証コマンドを実行し、結果を返す
+   * *
+   * * 指定されたコマンドをシェル経由せず直接実行し、
+   * * 許可リストのプレフィックスに一致するか検証します。
+   * *
+   * * @param input - 実行パラ
+   */
   error?: string;
 }
 
@@ -196,6 +250,23 @@ export async function runVerificationCommand(input: {
     const timeout = setTimeout(() => {
       timedOut = true;
       killSafely("SIGTERM");
+/**
+       * 検証コマンド文字列を解析する
+       *
+       * コマンド文字列を受け取り、実行可能ファイル名と引数の配列に分解して返す。
+       * 空文字列や無効な形式の場合は、エラー情報を含むオブジェクトを返す。
+       *
+       * @param command - 解析対象の検証コマンド文字列
+       * @returns 解析結果。executable、args、error（エラー時のみ）を含むオブジェクト
+       * @example
+       * // 正常なコマンドの解析
+       * const result = parseVerificationCommand("node --check script.js");
+       * // result: { executable: "node", args: ["--check", "script.js"] }
+       * @example
+       * // 空文字列の場合
+       * const result = parseVerificationCommand("");
+       * // result: { executable: "", args: [], error: "verification command is empty" }
+       */
       setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
     }, input.timeoutMs);
 
@@ -303,6 +374,19 @@ export function parseVerificationCommand(command: string): ParsedVerificationCom
 
 function tokenizeArgs(input: string): string[] {
   const tokens: string[] = [];
+/**
+   * /**
+   * * 検証コマンドが許可リストのプレフィックスと一致するか判定する
+   * *
+   * * コマンドの実行ファイルと引数を結合し、許可リストのいずれかのプレフィックスと
+   * * 先頭から一致するかを確認する。大文字小文字は区別しない。
+   * *
+   * * @param command - 検証対象のパース済みコマンド
+   * * @param allowlistPrefixes - 許可されたコマンドプレフィックスのリスト（各プレフィックスはトークン配列）
+   * * @returns コマンドが許可リストのいずれかのプレフィックスと一致する場合true
+   * * @example
+   * * // 許可リストに基づくコマンド検
+   */
   let current = "";
   let quote: "'" | '"' | null = null;
   let escaping = false;

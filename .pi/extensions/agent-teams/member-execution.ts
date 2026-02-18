@@ -32,6 +32,14 @@ import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from 
 // Types
 // ============================================================================
 
+/**
+ * チームメンバー実行結果の正規化出力を表すインターフェース
+ *
+ * @property ok - 実行が成功したかどうか
+ * @property output - 実行結果の出力テキスト
+ * @property degraded - 縮退モードで実行されたかどうか
+ * @property reason - 縮退または失敗の理由（オプション）
+ */
 export interface TeamNormalizedOutput {
   ok: boolean;
   output: string;
@@ -209,6 +217,27 @@ export function buildSkillsSectionWithContent(skills: string[] | undefined): str
     } else {
       // Fallback: skill name only
       lines.push(`## ${skill}`);
+/**
+       * /**
+       * * チームメンバー用のプロンプトを構築する
+       * *
+       * * チーム定義、メンバー情報、タスク内容などを組み合わせて、
+       * * エージェントが実行するためのプロンプト文字列を生成します。
+       * *
+       * * @param input - プロンプト構築に必要な入力オブジェクト
+       * * @param input.team - チームの定義情報
+       * * @param input.member - 対象となるチームメンバーの情報
+       * * @param input.task - メンバーに割り当てるタスク内容
+       * * @param input.sharedContext - チーム全体で共有するコンテキスト（省略可）
+       * * @param input.phase - 実行フェーズ（"initial" または "communication"、省略時は "initial"）
+       * * @param input.communicationContext - コミュニケーションフェーズでの追加コンテキスト（省略可）
+       * * @returns 構築されたプロンプト文字列
+       * * @example
+       * * // 基本的な使用例
+       * * const prompt = buildTeamMemberPrompt({
+       * *   team: teamDefinition,
+       * *   member:
+       */
       lines.push("(スキル内容を読み込めませんでした)");
       lines.push("");
     }
@@ -277,6 +306,12 @@ export function buildTeamMemberPrompt(input: {
   lines.push("EVIDENCE: <根拠をカンマ区切り。可能なら file:line>");
   if (phase === "communication") {
     lines.push("DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>");
+/**
+   * /**
+   * * チームメンバーを実行し、タスク処理結果を返す
+   * *
+   * * 指定されたチーム定義とメンバー設定に基
+   */
   } else {
     lines.push("DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（コミュニケーションフェーズで必須）>");
   }

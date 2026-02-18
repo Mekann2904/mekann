@@ -52,6 +52,23 @@ const LIVE_LIST_WINDOW_SIZE = 20;
 // Live View Rendering
 // ============================================================================
 
+/**
+ * /**
+ * * サブエージェントのライブビューを描画する
+ * *
+ * * 指定された設定とデータに基づいて、ライブモニタリング用の
+ * * 文字列配列を生成する。
+ * *
+ * * @param input - 描画設定オブジェクト
+ * * @param input.title - ビューのタイトル
+ * * @param input.items - 表示するサブエージェントアイテムの配列
+ * * @param input.cursor - 現在のカーソル位置
+ * * @param input.mode - ライブビューの表示モード
+ * * @param input.stream - ライブストリームビューの設定
+ * * @param input.width - ビューの幅
+ * * @param input.height - ビューの高さ（省略可能）
+ * * @param
+ */
 export function renderSubagentLiveView(input: {
   title: string;
   items: SubagentLiveItem[];
@@ -211,6 +228,12 @@ export function renderSubagentLiveView(input: {
     input.height && input.height > 0
       ? Math.max(1, Math.min(LIVE_PREVIEW_LINE_LIMIT, input.height - lines.length - 1))
       : LIVE_PREVIEW_LINE_LIMIT;
+/**
+   * /**
+   * * サブエージェント用のライブモニターを作成する
+   * *
+   * * 指
+   */
   const preview = renderPreviewWithMarkdown(selectedTail, input.width, detailPreviewLimit);
   add(theme.fg("dim", `render mode: ${preview.renderedAsMarkdown ? "markdown" : "raw"}`));
   const previewLines = preview.lines;

@@ -133,6 +133,18 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
   return teams;
 }
 
+/**
+ * Markdownファイルからチーム定義を読み込む
+ *
+ * 指定された作業ディレクトリ内の候補ディレクトリからMarkdown形式の
+ * チーム定義ファイルを探索し、TeamDefinition配列として返します。
+ *
+ * @param cwd - 作業ディレクトリのパス
+ * @param nowIso - 作成日時・更新日時として設定するISO形式のタイムスタンプ
+ * @returns 読み込まれたチーム定義の配列
+ * @example
+ * const teams = loadTeamDefinitionsFromMarkdown('/path/to/project', new Date().toISOString());
+ */
 export function loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): TeamDefinition[] {
   const candidates = getCandidateTeamDefinitionsDirs(cwd);
   const missingDirs: string[] = [];
@@ -419,6 +431,19 @@ const LEGACY_DEFAULT_MEMBER_IDS_BY_TEAM: Record<string, Set<string>> = {
     "swarm-06",
     "swarm-07",
     "swarm-08",
+/**
+   * 既存のチーム定義とデフォルト定義をマージする
+   *
+   * 既存のチーム定義のメンバー設定（provider, model）を保持しつつ、
+   * デフォルト定義のメンバーと統合して新しいチーム定義を返す。
+   *
+   * @param existing - 既存のチーム定義（ユーザー設定など）
+   * @param fallback - デフォルトのチーム定義（フォールバック用）
+   * @returns マージされたチーム定義
+   * @example
+   * const merged = mergeDefaultTeam(userTeam, defaultTeam);
+   * // userTeamの設定を保持しつつ、defaultTeamのメンバーを統合
+   */
   ]),
   "refactor-migration-team": new Set(["compatibility-tester", "rollback-planner"]),
   "code-excellence-review-team": new Set([
@@ -446,6 +471,15 @@ export function mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinit
     };
   });
   const preservedExtraMembers = existing.members.filter((member) => {
+/**
+     * /**
+     * * チームストレージにデフォルトチームを確保・マージする
+     * *
+     * * 既存のチームとデフォルトチームをマージし、デフォルトチームの存在を保証します。
+     * * 非推奨のデフォルトチームIDは除外されます。
+     * *
+     * * @param storage - 既存の
+     */
     if (fallbackMemberIds.has(member.id)) return false;
     if (legacyDefaultIds.has(member.id)) return false;
     return true;

@@ -61,6 +61,16 @@ import {
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
 
+/**
+ * /**
+ * * エージェントランタイムのリミット設定を定義するインターフェース
+ * *
+ * * 同時実行数や並列処理の制限値、キャパシティ管理に関連する待機時間などを設定します。
+ * *
+ * * @property maxTotalActiveLlm - 全体での最大同時アクティブLLM数
+ * * @property maxTotalActiveRequests - 全体での最大同時アクティブリクエスト数
+ * * @property max
+ */
 export interface AgentRuntimeLimits {
   maxTotalActiveLlm: number;
   maxTotalActiveRequests: number;
@@ -137,7 +147,22 @@ export interface RuntimeStateProvider {
 }
 
 /**
+/**
+  * グローバルランタイム状態を取得する
+  *
+  * globalThisを通じてプロセス全体で共有されるエージェントランタイム状態を返します。
+  * 状態が未初期化の場合は作成し、整合性チェックを経て返却します。
+  *
+  * @returns エージェントランタイム状態オブジェクト
+  * @example
+  * // ランタイム状態の取得
+  * const provider = new GlobalRuntimeStateProvider();
+  * const state = provider.getState();
+  */
+
+/**
  * GlobalRuntimeStateProvider - デフォルト実装
+ *
  * globalThisを使用してプロセス全体で状態を共有する
  */
 class GlobalRuntimeStateProvider implements RuntimeStateProvider {
@@ -147,6 +172,13 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
     this.globalScope = globalThis as GlobalScopeWithRuntime;
   }
 
+/**
+   * /**
+   * * エージェントランタイムの状態スナップショット
+   * *
+   * * 現在のランタイムの状態を表す不変のスナップショット。
+   * * アクティブなリクエスト数、エージェント数、オーケストレーション状況、
+   */
   getState(): AgentRuntimeState {
     if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
       this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
@@ -165,6 +197,14 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
 /** プロバイダーのデフォルトインスタンス（シングルトン） */
 let runtimeStateProvider: RuntimeStateProvider = new GlobalRuntimeStateProvider();
 
+/**
+ * ランタイムステータスラインの表示オプション
+ *
+ * @property title - ステータスラインのタイトル
+ * @property storedRuns - 保存された実行回数
+ * @property adaptivePenalty - 適応的ペナルティの現在値
+ * @property adaptivePenaltyMax - 適応的ペナルティの最大値
+ */
 /**
  * ランタイム状態プロバイダーを設定する（テスト用）
  * 本番コードでは使用せず、テストでのモック注入のみに使用すること
@@ -208,6 +248,17 @@ export interface AgentRuntimeSnapshot {
 export interface RuntimeStatusLineOptions {
   title?: string;
   storedRuns?: number;
+/**
+   * 容量予約の試行結果を表すインターフェース
+   *
+   * 予約待機時間、試行回数、タイムアウト/中止状態、および予約リース情報を含む。
+   *
+   * @property waitedMs - 予約確定までの待機時間（ミリ秒）
+   * @property attempts - 予約試行回数
+   * @property timedOut - タイムアウトしたかどうか
+   * @property aborted - 中止されたかどうか
+   * @property reservation - 確保された予約リース（成功時のみ）
+   */
   adaptivePenalty?: number;
   adaptivePenaltyMax?: number;
 }
@@ -222,8 +273,25 @@ export interface RuntimeCapacityCheck {
   reasons: string[];
   projectedRequests: number;
   projectedLlm: number;
+  /** Current runtime snapshot */
   snapshot: AgentRuntimeSnapshot;
 }
+
+/**
+ * オーケストレーション待機結果を表すインターフェース
+ *
+ * 待機処理の完了状態、待機時間、試行回数、キュー位置などの情報を含みます。
+ *
+ * @property allowed - 待機が成功し、実行が許可されたかどうか
+ * @property waitedMs - 待機した合計時間（ミリ秒）
+ * @property attempts - ポーリングの試行回数
+ * @property timedOut - タイムアウトしたかどうか
+ * @property aborted - 中断されたかどうか
+ * @property queuePosition - キュー内の位置
+ * @property queuedAhead - 前方に待機している項目数
+ * @property orchestrationId - オーケストレーションの一意識別子
+ * @property lease - 取得したリースオブジェクト（許可された場合）
+ */
 
 export interface RuntimeCapacityWaitInput extends RuntimeCapacityCheckInput {
   maxWaitMs?: number;
@@ -585,6 +653,16 @@ function updateReservationHeartbeat(
   if (!reservation) return undefined;
   const nowMs = Date.now();
   const normalizedTtlMs = normalizeReservationTtlMs(ttlMs);
+/**
+   * /**
+   * * ランタイムステータス行を整形して返す
+   * *
+   * * 現在のランタイムの状態（アクティブなLLM数、リクエスト数など）を
+   * * 人間が読みやすい形式の文字列として整形します。
+   * *
+   * * @param options - ステータス行のオプション（タイトルのカスタマイズなど）
+   * * @returns 整形されたステータス情報を含む文字列
+   */
   reservation.heartbeatAtMs = nowMs;
   reservation.expiresAtMs = nowMs + normalizedTtlMs;
   return reservation.expiresAtMs;
@@ -836,6 +914,15 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal.aborted) {
     return Promise.reject(new Error("capacity wait aborted"));
   }
+/**
+ * /**
+ * * ランタイムの容量を非同期で予約する
+ * *
+ * * 指定された入力パラメータに基づいてランタイム容量を予約します。
+ * * 容量が利用可能になるまで最大待機時間までポーリングで待機します。
+ * *
+ * * @param
+ */
 
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -999,6 +1086,21 @@ export async function reserveRuntimeCapacity(
       if (eventResult === "event") {
         continue;
       }
+/**
+ * /**
+ * * ランタイムの容量が利用可能になるまで待機する
+ * *
+ * * スケジューラベースの待機（USE_SCHEDULER有効時）または
+ * * 従来のポーリング方式で容量確保を待機する。
+ * * 最大待機時間を超えた場合はタイムアウトとして結果を返す。
+ * *
+ * * @param input - 待機条件（maxWaitMs等）を指定する入力オブジェクト
+ * * @returns 待機結果（成功/タイムアウト、待機時間、試行回数等を含む）
+ * * @example
+ * * // 最大5秒間ランタイム容量を待機
+ * * const result = await waitForRuntimeCapacity({ maxWaitMs: 5000 });
+ * * if (!result.timedOut)
+ */
 
       const remainingDelayMs = Math.max(0, backoffDelayMs - eventWaitMs);
       if (remainingDelayMs > 0) {
@@ -1043,6 +1145,21 @@ async function schedulerBasedWait(
       },
       execute: async () => {
         // Perform actual capacity check within scheduler context
+/**
+         * ランタイムオーケストレーションの実行順番を待機する
+         *
+         * 指定された条件でランタイムのオーケストレーション実行順番が来るまで待機します。
+         * 最大待機時間とポーリング間隔を設定可能で、タイムアウトやキャンセルにも対応します。
+         *
+         * @param input - 待機設定を含む入力オブジェクト
+         * @returns 待機結果を含むPromise
+         * @example
+         * const result = await waitForRuntimeOrchestrationTurn({
+         *   maxWaitMs: 60000,
+         *   pollIntervalMs: 5000,
+         *   signal: abortController.signal,
+         * });
+         */
         // This respects both scheduler rate limits and runtime capacity
         let check = checkRuntimeCapacity(input);
         attempts++;
@@ -1200,6 +1317,17 @@ export async function waitForRuntimeOrchestrationTurn(
   sortQueueByPriority(runtime);
   updatePriorityStats(runtime);
   notifyRuntimeCapacityChanged();
+/**
+ * ランタイムの一時的な状態をリセットする
+ *
+ * アクティブなサブエージェント数、チーム実行数、キューデータ、
+ * 予約情報などの実行時一時状態を初期値にリセットします。
+ *
+ * @returns 戻り値なし
+ * @example
+ * // 実行時状態をクリアする
+ * resetRuntimeTransientState();
+ */
 
   const queuedAhead = Math.max(0, runtime.queue.pending.findIndex((e) => e.id === entryId));
   let attempts = 0;
@@ -1528,6 +1656,18 @@ export function recordTaskCompletion(
   task: { id: string; source: string; provider: string; model: string; priority: string },
   result: { waitedMs: number; executionMs: number; success: boolean }
 ): void {
+/**
+   * エージェントランタイム拡張を登録・初期化する
+   *
+   * ランタイム状態管理、リザベーションスイーパー、並列度調整器、
+   * チェックポイントマネージャーなどのコンポーネントを初期化する。
+   *
+   * @param _pi - 拡張APIインターフェースのインスタンス
+   * @returns なし
+   * @example
+   * // 拡張の登録
+   * registerAgentRuntimeExtension(extensionAPI);
+   */
   const collector = getMetricsCollectorInstance();
   if (collector) {
     collector.recordTaskCompletion(task, result);

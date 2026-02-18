@@ -20,6 +20,12 @@ export interface ExtractOptions {
   excludePatterns?: string[];
 }
 
+/**
+ * 関数の構造情報を表すインターフェース
+ *
+ * コード解析によって抽出された関数のメタデータを格納します。
+ * 関数名、シグネチャ、ファイル位置、パラメータ情報などを含みます。
+ */
 export interface FunctionInfo {
   /** 関数名 */
   name: string;
@@ -83,6 +89,12 @@ export interface MethodInfo {
 export interface PropertyInfo {
   name: string;
   type: string;
+/**
+   * インターフェースの構造情報を表す型定義
+   *
+   * コード解析時に抽出されたインターフェースのメタデータを格納する。
+   * インターフェース名、ファイル位置、プロパティ、メソッド、継承関係などの情報を含む。
+   */
   visibility: 'public' | 'protected' | 'private';
   isStatic: boolean;
   isReadonly: boolean;
@@ -111,9 +123,35 @@ export interface InterfaceInfo {
 export interface InterfacePropertyInfo {
   name: string;
   type: string;
+/**
+   * インポート文の構造情報を表すインターフェース
+   *
+   * コード解析時に抽出されたimport文の詳細情報を保持します。
+   *
+   * @property source - インポート元モジュールのパス
+   * @property names - インポート対象の名前一覧
+   * @property filePath - インポート文が存在するファイルパス
+   * @property line - インポート文の行番号
+   * @property isDefault - デフォルトインポートの場合true
+   * @property isNamespace - 名前空間インポートの場合true
+   */
   optional: boolean;
   isReadonly: boolean;
   jsDoc?: string;
+/**
+ * エクスポート情報を表すインターフェース
+ *
+ * ファイル内のエクスポート宣言に関する情報を保持する。
+ * 再エクスポートの場合はsourceプロパティに元のモジュールパスが格納される。
+ *
+ * @example
+ * const exportInfo: ExportInfo = {
+ *   name: 'MyComponent',
+ *   filePath: '/src/components/index.ts',
+ *   line: 5,
+ *   isDefault: true
+ * };
+ */
 }
 
 export interface InterfaceMethodInfo {
@@ -162,6 +200,15 @@ export interface FileStructure {
   classes: ClassInfo[];
   /** インターフェース一覧 */
   interfaces: InterfaceInfo[];
+/**
+   * /**
+   * * コード構造を抽出し、依存関係を解析する
+   * *
+   * * 指定されたパスからTypeScriptファイルを収集し、ファイル間の依存関係を
+   * * ノードとエッジの形式で返します。
+   * *
+   * * @param options - 抽出オプ
+   */
   /** インポート一覧 */
   imports: ImportInfo[];
   /** エクスポート一覧 */

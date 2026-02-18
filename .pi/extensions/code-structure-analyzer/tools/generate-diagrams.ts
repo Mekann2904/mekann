@@ -13,6 +13,16 @@ import type { StructureData, ClassInfo, FunctionInfo, ImportInfo } from './extra
 // Types
 // ============================================================================
 
+/**
+ * /**
+ * * 図生成の設定オプション
+ * *
+ * * Mermaid図を生成する際の設定を定義します。
+ * * 生成する図
+ */
+/**
+ * /**
+ */
 export interface DiagramOptions {
   /** 生成する図の種類 */
   types: ('flowchart' | 'classDiagram' | 'sequenceDiagram')[];

@@ -13,6 +13,15 @@ import {
 // Types
 // ============================================================================
 
+/**
+ * チーム並列実行容量の候補値を定義するインターフェース
+ *
+ * 並列実行の容量確保時に使用される、チームおよびメンバーの並列度と
+ * 追加リソース要件を表します。
+ *
+ * @property teamParallelism - チーム全体の並列実行数
+ * @property memberParallelism - 各メンバーの並列実行数
+ */
 export interface TeamParallelCapacityCandidate {
   teamParallelism: number;
   memberParallelism: number;
@@ -57,6 +66,19 @@ export function buildMemberParallelCandidates(memberParallelism: number): TeamPa
 
 export function buildTeamAndMemberParallelCandidates(
   teamParallelism: number,
+/**
+   * /**
+   * * チーム並列実行容量を解決・確保する
+   * *
+   * * 要求されたチーム並列度とメンバー並列度に基づいて、利用可能な候補から
+   * * 実行容量を確保します。容量が不足する場合は、maxWaitMsで指定された
+   * * タイムアウトまでポーリングして待機します。
+   * *
+   * * @param input - 解決パラメータを含むオブジェクト
+   * * @param input.requestedTeamParallelism - 要求するチームレベルの並列度（最小1）
+   * * @param input.requestedMemberParallelism - 要求するメンバーごとの並列度（最小1）
+   * * @param input.candidates - 並列容量候
+   */
   memberParallelism: number,
 ): TeamParallelCapacityCandidate[] {
   const requestedTeamParallelism = Math.max(1, Math.trunc(teamParallelism));
