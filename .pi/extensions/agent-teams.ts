@@ -122,6 +122,7 @@ import {
   buildPrecomputedContextMap,
   detectPartnerReferences,
   detectPartnerReferencesV2,
+  clearBeliefStateCache,
   type PartnerReferenceResultV2,
 } from "./agent-teams/communication";
 
@@ -518,6 +519,9 @@ async function runTeamTask(input: {
   onMemberEvent?: (member: TeamMember, event: string) => void;
   onTeamEvent?: (event: string) => void;
 }): Promise<{ runRecord: TeamRunRecord; memberResults: TeamMemberResult[]; communicationAudit: TeamCommunicationAuditEntry[] }> {
+  // Clear belief state cache at the start of each team execution to prevent state pollution
+  clearBeliefStateCache();
+
   const enabledMembers = input.team.members.filter((member) => member.enabled);
   if (enabledMembers.length === 0) {
     throw new ValidationError(`no enabled members in team (${input.team.id})`, {
@@ -621,7 +625,10 @@ async function runTeamTask(input: {
       { signal: input.signal },
     );
     for (let index = 0; index < activeMembers.length; index += 1) {
-      input.onMemberResult?.(activeMembers[index], memberResults[index]);
+      const result = memberResults[index];
+      if (result) {
+        input.onMemberResult?.(activeMembers[index], result);
+      }
     }
     input.onTeamEvent?.(
       `initial phase finished: success=${memberResults.filter((result) => result.status === "completed").length}/${memberResults.length}`,
@@ -1870,7 +1877,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           runtimeState.activeTeamRuns = Math.max(0, runtimeState.activeTeamRuns - 1);
           notifyRuntimeCapacityChanged();
           refreshRuntimeStatus(ctx);
-          liveMonitor?.close();
+          await liveMonitor?.close?.();
           await liveMonitor?.wait();
         }
       } finally {
@@ -2506,7 +2513,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           },
         };
         } finally {
-          liveMonitor?.close();
+          await liveMonitor?.close?.();
           await liveMonitor?.wait();
         }
       } finally {
