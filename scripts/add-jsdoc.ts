@@ -6,7 +6,7 @@
  * pi SDKを使用して日本語のJSDocを生成してソースコードに挿入する。
  *
  * 使用方法:
- *   npx tsx scripts/add-jsdoc.mts [options] [files...]
+ *   npx tsx scripts/add-jsdoc.ts [options] [files...]
  *
  * オプション:
  *   --dry-run       変更を適用せず、生成内容のみ表示
@@ -26,126 +26,21 @@ import { join, relative, dirname } from 'path';
 import * as ts from 'typescript';
 import { fileURLToPath } from 'url';
 import { streamSimple, getModel, type Context } from '@mariozechner/pi-ai';
-import { AuthStorage, ModelRegistry, SettingsManager } from '@mariozechner/pi-coding-agent';
 import type { Model } from '@mariozechner/pi-ai';
+
+// 既存のライブラリからインポート
+import { runWithConcurrencyLimit } from '../.pi/lib/concurrency';
+import { resolveUnifiedLimits, isSnapshotProviderInitialized } from '../.pi/lib/unified-limit-resolver';
+import { getSchedulerAwareLimit, notifyScheduler429, notifySchedulerSuccess } from '../.pi/lib/adaptive-rate-controller';
+import { retryWithBackoff, isRetryableError } from '../.pi/lib/retry-with-backoff';
+import { buildRateLimitKey } from '../.pi/lib/runtime-utils';
+import { getConcurrencyLimit } from '../.pi/lib/provider-limits';
+
+// pi-coding-agentからインポート
+import { AuthStorage, ModelRegistry, SettingsManager } from '@mariozechner/pi-coding-agent';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// ============================================================================
-// Local implementations of utility functions (to avoid ESM import issues)
-// ============================================================================
-
-function buildRateLimitKey(provider: string, model: string): string {
-  return `${provider.toLowerCase()}::${model.toLowerCase()}`;
-}
-
-async function runWithConcurrencyLimit<TInput, TResult>(
-  inputs: TInput[],
-  limit: number,
-  fn: (input: TInput) => Promise<TResult>
-): Promise<TResult[]> {
-  const results: TResult[] = [];
-  const executing: Promise<void>[] = [];
-
-  for (const input of inputs) {
-    const promise = fn(input).then(result => {
-      results.push(result);
-    });
-    executing.push(promise);
-
-    if (executing.length >= limit) {
-      await Promise.race(executing);
-      // Remove completed promises
-      const stillRunning = executing.filter(p => {
-        let resolved = false;
-        p.then(() => { resolved = true; }).catch(() => { resolved = true; });
-        return !resolved;
-      });
-      executing.length = 0;
-      executing.push(...stillRunning);
-    }
-  }
-
-  await Promise.all(executing);
-  return results;
-}
-
-function isRetryableError(error: unknown, statusCode?: number): boolean {
-  if (statusCode === 429 || statusCode === 503 || statusCode === 502) return true;
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    return msg.includes('rate limit') || msg.includes('429') ||
-           msg.includes('overloaded') || msg.includes('timeout');
-  }
-  return false;
-}
-
-function notifyScheduler429(_provider: string, _model: string, _details?: string): void {
-  // No-op stub for standalone script
-}
-
-function notifySchedulerSuccess(_provider: string, _model: string): void {
-  // No-op stub for standalone script
-}
-
-function isSnapshotProviderInitialized(): boolean {
-  return false;
-}
-
-function resolveUnifiedLimits(_input: { provider: string; model: string }): { concurrency: number } {
-  return { concurrency: 3 };
-}
-
-function getConcurrencyLimit(_provider: string, _model: string): number {
-  return 3;
-}
-
-function getSchedulerAwareLimit(_provider: string, _model: string, baseLimit: number): number {
-  return baseLimit;
-}
-
-interface RetryConfig {
-  rateLimitKey?: string;
-  maxRetries?: number;
-  initialDelayMs?: number;
-  maxDelayMs?: number;
-  multiplier?: number;
-  shouldRetry?: (error: unknown, statusCode?: number) => boolean;
-  onRetry?: (ctx: { attempt: number; error: unknown; statusCode?: number; delayMs: number }) => void;
-}
-
-async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
-  config: RetryConfig = {}
-): Promise<T> {
-  const maxRetries = config.maxRetries ?? 3;
-  const initialDelayMs = config.initialDelayMs ?? 1000;
-  const maxDelayMs = config.maxDelayMs ?? 30000;
-  const multiplier = config.multiplier ?? 2;
-
-  let lastError: unknown;
-  let delayMs = initialDelayMs;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      const statusCode = error instanceof Error ? undefined : undefined;
-
-      if (attempt < maxRetries && config.shouldRetry?.(error, statusCode) !== false) {
-        config.onRetry?.({ attempt: attempt + 1, error, statusCode, delayMs });
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        delayMs = Math.min(delayMs * multiplier, maxDelayMs);
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  throw lastError;
-}
 
 // ============================================================================
 // Types
@@ -198,28 +93,28 @@ async function main() {
   }
 
   if (options.dryRun) {
-    console.log('🔍 ドライランモード: 変更は適用されません\n');
+    console.log('ドライランモード: 変更は適用されません\n');
   }
 
   // pi SDKを使用してLLM設定を初期化
-  console.log('🔌 pi設定を読み込み中...');
+  console.log('pi設定を読み込み中...');
   const { authStorage, model, apiKey } = await initializePiSdk();
 
   if (!model) {
-    console.error('❌ 利用可能なモデルが見つかりません');
+    console.error('利用可能なモデルが見つかりません');
     process.exit(1);
   }
 
   if (!apiKey) {
-    console.error('❌ APIキーが見つかりません');
+    console.error('APIキーが見つかりません');
     process.exit(1);
   }
 
-  console.log(`✅ モデル: ${model.provider}:${model.id}\n`);
+  console.log(`モデル: ${model.provider}:${model.id}\n`);
 
   // 対象ファイルを収集
   const files = collectTargetFiles(options);
-  console.log(`📁 対象ファイル: ${files.length}件\n`);
+  console.log(`対象ファイル: ${files.length}件\n`);
 
   if (files.length === 0) {
     console.log('対象ファイルがありません。');
@@ -234,17 +129,17 @@ async function main() {
   }
 
   const modeLabel = options.regenerate ? '全要素' : 'JSDocなしの要素';
-  console.log(`📝 ${modeLabel}: ${allElements.length}件\n`);
+  console.log(`${modeLabel}: ${allElements.length}件\n`);
 
   if (allElements.length === 0) {
-    console.log('✅ 処理対象の要素がありません。');
+    console.log('処理対象の要素がありません。');
     return;
   }
 
   // 上限を適用
   const elementsToProcess = allElements.slice(0, options.limit);
   if (elementsToProcess.length < allElements.length) {
-    console.log(`⚠️  上限により ${elementsToProcess.length}/${allElements.length} 件を処理します\n`);
+    console.log(`上限により ${elementsToProcess.length}/${allElements.length} 件を処理します\n`);
   }
 
   // 行番号のずれを防ぐため、ファイルごとに行番号の降順でソート
@@ -260,8 +155,8 @@ async function main() {
 
   const parallelLimit = resolveJSDocParallelLimit(model, elementsToProcess.length);
   const rateLimitKey = buildRateLimitKey(model.provider, model.id);
-  console.log(`⚙️  LLM並列数: ${parallelLimit}`);
-  console.log('🚀 JSDocを並列生成中...\n');
+  console.log(`LLM並列数: ${parallelLimit}`);
+  console.log('JSDocを並列生成中...\n');
 
   // 生成は並列、挿入は逐次（行番号ずれ対策）
   const generationResults = await runWithConcurrencyLimit(
@@ -305,24 +200,24 @@ async function main() {
     processed++;
     const { element, jsDoc, errorMessage } = result;
     console.log(`\n[${processed}/${elementsToProcess.length}] ${element.type}: ${element.name}`);
-    console.log(`    📄 ${relative(process.cwd(), element.filePath)}:${element.line}`);
+    console.log(`    ${relative(process.cwd(), element.filePath)}:${element.line}`);
 
     if (errorMessage) {
-      console.log(`    ❌ エラー: ${errorMessage}`);
+      console.log(`    エラー: ${errorMessage}`);
       continue;
     }
 
     if (!jsDoc) {
-      console.log(`    ⚠️  JSDocを生成できませんでした`);
+      console.log(`    JSDocを生成できませんでした`);
       continue;
     }
 
     if (options.dryRun) {
-      console.log(`    📝 生成されたJSDoc:\n${jsDoc.split('\n').map(l => '       ' + l).join('\n')}`);
+      console.log(`    生成されたJSDoc:\n${jsDoc.split('\n').map(l => '       ' + l).join('\n')}`);
     } else {
       insertJsDoc(element, jsDoc);
       updated++;
-      console.log(`    ✅ JSDocを挿入しました`);
+      console.log(`    JSDocを挿入しました`);
     }
   }
 
