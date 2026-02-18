@@ -28,15 +28,124 @@ import { fileURLToPath } from 'url';
 import { streamSimple, getModel, type Context } from '@mariozechner/pi-ai';
 import { AuthStorage, ModelRegistry, SettingsManager } from '@mariozechner/pi-coding-agent';
 import type { Model } from '@mariozechner/pi-ai';
-import { runWithConcurrencyLimit } from '../.pi/lib/concurrency';
-import { resolveUnifiedLimits, isSnapshotProviderInitialized } from '../.pi/lib/unified-limit-resolver';
-import { getSchedulerAwareLimit, notifyScheduler429, notifySchedulerSuccess } from '../.pi/lib/adaptive-rate-controller';
-import { retryWithBackoff, isRetryableError } from '../.pi/lib/retry-with-backoff';
-import { buildRateLimitKey } from '../.pi/lib/runtime-utils';
-import { getConcurrencyLimit } from '../.pi/lib/provider-limits';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// ============================================================================
+// Local implementations of utility functions (to avoid ESM import issues)
+// ============================================================================
+
+function buildRateLimitKey(provider: string, model: string): string {
+  return `${provider.toLowerCase()}::${model.toLowerCase()}`;
+}
+
+async function runWithConcurrencyLimit<TInput, TResult>(
+  inputs: TInput[],
+  limit: number,
+  fn: (input: TInput) => Promise<TResult>
+): Promise<TResult[]> {
+  const results: TResult[] = [];
+  const executing: Promise<void>[] = [];
+
+  for (const input of inputs) {
+    const promise = fn(input).then(result => {
+      results.push(result);
+    });
+    executing.push(promise);
+
+    if (executing.length >= limit) {
+      await Promise.race(executing);
+      // Remove completed promises
+      const stillRunning = executing.filter(p => {
+        let resolved = false;
+        p.then(() => { resolved = true; }).catch(() => { resolved = true; });
+        return !resolved;
+      });
+      executing.length = 0;
+      executing.push(...stillRunning);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
+}
+
+function isRetryableError(error: unknown, statusCode?: number): boolean {
+  if (statusCode === 429 || statusCode === 503 || statusCode === 502) return true;
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return msg.includes('rate limit') || msg.includes('429') ||
+           msg.includes('overloaded') || msg.includes('timeout');
+  }
+  return false;
+}
+
+function notifyScheduler429(_provider: string, _model: string, _details?: string): void {
+  // No-op stub for standalone script
+}
+
+function notifySchedulerSuccess(_provider: string, _model: string): void {
+  // No-op stub for standalone script
+}
+
+function isSnapshotProviderInitialized(): boolean {
+  return false;
+}
+
+function resolveUnifiedLimits(_input: { provider: string; model: string }): { concurrency: number } {
+  return { concurrency: 3 };
+}
+
+function getConcurrencyLimit(_provider: string, _model: string): number {
+  return 3;
+}
+
+function getSchedulerAwareLimit(_provider: string, _model: string, baseLimit: number): number {
+  return baseLimit;
+}
+
+interface RetryConfig {
+  rateLimitKey?: string;
+  maxRetries?: number;
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  multiplier?: number;
+  shouldRetry?: (error: unknown, statusCode?: number) => boolean;
+  onRetry?: (ctx: { attempt: number; error: unknown; statusCode?: number; delayMs: number }) => void;
+}
+
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  config: RetryConfig = {}
+): Promise<T> {
+  const maxRetries = config.maxRetries ?? 3;
+  const initialDelayMs = config.initialDelayMs ?? 1000;
+  const maxDelayMs = config.maxDelayMs ?? 30000;
+  const multiplier = config.multiplier ?? 2;
+
+  let lastError: unknown;
+  let delayMs = initialDelayMs;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const statusCode = error instanceof Error ? undefined : undefined;
+
+      if (attempt < maxRetries && config.shouldRetry?.(error, statusCode) !== false) {
+        config.onRetry?.({ attempt: attempt + 1, error, statusCode, delayMs });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        delayMs = Math.min(delayMs * multiplier, maxDelayMs);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
 
 // ============================================================================
 // Types
