@@ -229,24 +229,8 @@ async function main() {
 }
 
 function resolveJSDocParallelLimit(model: Model, taskCount: number): number {
-  try {
-    const baseLimit = isSnapshotProviderInitialized()
-      ? resolveUnifiedLimits({
-          provider: model.provider,
-          model: model.id,
-          operationType: 'direct',
-        }).effectiveConcurrency
-      : getConcurrencyLimit(model.provider, model.id);
-    const schedulerAware = getSchedulerAwareLimit(
-      model.provider,
-      model.id,
-      baseLimit
-    );
-    const safeLimit = Number.isFinite(schedulerAware) ? Math.trunc(schedulerAware) : 1;
-    return Math.max(1, Math.min(taskCount, safeLimit));
-  } catch {
-    return 1;
-  }
+  // JSDoc生成はLLM呼び出しが多いため、1並列で確実に実行
+  return 1;
 }
 
 function isLikelyRateLimitError(message: string): boolean {
