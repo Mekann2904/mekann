@@ -30,6 +30,8 @@ const DEFAULT_PARALLEL_LIMIT = 6;
 const MIN_PARALLEL_LIMIT = 1;
 const MAX_PARALLEL_LIMIT = 12;
 const MAX_CONTEXT_LINES = 120;
+/** LLM呼び出しのデフォルトタイムアウト（ミリ秒） */
+const DEFAULT_LLM_TIMEOUT_MS = 60000; // 60秒
 const APPEND_SYSTEM_PATH = join(__dirname, '..', '.pi', 'APPEND_SYSTEM.md');
 const HEADER_PROMPT_START = '<!-- ABDD_FILE_HEADER_PROMPT_START -->';
 const HEADER_PROMPT_END = '<!-- ABDD_FILE_HEADER_PROMPT_END -->';
@@ -286,10 +288,22 @@ async function generateHeader(
 
   const eventStream = streamSimple(model, context, { apiKey });
   let response = '';
-  for await (const event of eventStream) {
-    if (event.type === 'text_delta') response += event.delta;
-    if (event.type === 'error') throw new Error(`LLM error: ${JSON.stringify(event)}`);
-  }
+
+  // タイムアウト付きでasync iteratorでイベントを収集
+  const timeoutMs = DEFAULT_LLM_TIMEOUT_MS;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`LLM timeout after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  const streamPromise = (async () => {
+    for await (const event of eventStream) {
+      if (event.type === 'text_delta') response += event.delta;
+      if (event.type === 'error') throw new Error(`LLM error: ${JSON.stringify(event)}`);
+    }
+    return response;
+  })();
+
+  await Promise.race([streamPromise, timeoutPromise]);
 
   return extractAndValidateHeader(response, file.relativePath);
 }

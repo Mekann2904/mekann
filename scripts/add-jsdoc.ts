@@ -64,6 +64,8 @@ const BATCH_DELIMITER = '===JSDOC_ELEMENT_SEPARATOR===';
 const MIN_PARALLEL_LIMIT = 1;
 /** 並列度の最大値 */
 const MAX_PARALLEL_LIMIT = 20;
+/** LLM呼び出しのデフォルトタイムアウト（ミリ秒） */
+const DEFAULT_LLM_TIMEOUT_MS = 60000; // 60秒
 /** APPEND_SYSTEM.md のパス */
 const APPEND_SYSTEM_PATH = join(__dirname, '..', '.pi', 'APPEND_SYSTEM.md');
 /** APPEND_SYSTEM.md 内のJSDocプロンプト開始マーカー */
@@ -180,7 +182,7 @@ interface CacheEntry {
 
 interface BatchResult {
   results: Map<string, string | null>;
-  failedElements: string[];
+  failedElementKeys: string[];
 }
 
 // ============================================================================
@@ -222,6 +224,7 @@ function getJsDocSystemPrompt(mode: 'single' | 'batch'): string {
 // ============================================================================
 
 async function main() {
+  const startTime = Date.now();
   const args = process.argv.slice(2);
   const options = parseArgs(args);
 
@@ -294,44 +297,135 @@ async function main() {
   });
 
   const parallelLimit = resolveJSDocParallelLimit(model, elementsToProcess.length);
+  resetParallelLimit();
+  currentParallelLimit = parallelLimit;
   const rateLimitKey = buildRateLimitKey(model.provider, model.id);
   console.log(`LLM並列数: ${parallelLimit}`);
-  console.log('JSDocを並列生成中...\n');
+  console.log('JSDocを生成中...\n');
 
-  // 生成は並列、挿入は逐次（行番号ずれ対策）
-  const generationResults = await runWithConcurrencyLimit(
-    elementsToProcess,
-    parallelLimit,
-    async (element): Promise<GenerationResult> => {
-      try {
-        const jsDoc = await retryWithBackoff(
-          () => generateJsDocWithStreamSimple(model, apiKey, element, options),
-          {
-            rateLimitKey,
-            shouldRetry: isRetryableError,
-            onRetry: ({ statusCode, error }) => {
-              if (statusCode === 429) {
-                notifyScheduler429(
-                  model.provider,
-                  model.id,
-                  error instanceof Error ? error.message : String(error)
-                );
-              }
-            },
-          }
-        );
+  if (options.force && !options.noCache) {
+    clearCache();
+    console.log('キャッシュをクリアしました (--force)\n');
+  }
 
-        notifySchedulerSuccess(model.provider, model.id);
-        return { element, jsDoc };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (isLikelyRateLimitError(errorMessage)) {
-          notifyScheduler429(model.provider, model.id, errorMessage);
-        }
-        return { element, jsDoc: null, errorMessage };
-      }
+  const generationResults: GenerationResult[] = [];
+  const qualityScores: ElementQualityScore[] = [];
+  let cacheHits = 0;
+  let batchCalls = 0;
+  let individualCalls = 0;
+
+  // 1) キャッシュで解決できるものを先に処理
+  const uncachedElements: ElementInfo[] = [];
+  for (const element of elementsToProcess) {
+    const cached = checkCache(element, model.id, options.force, options.noCache);
+    if (!cached) {
+      uncachedElements.push(element);
+      continue;
     }
-  );
+
+    const normalized = validateJsDoc(cached);
+    const gate = validateRequiredTags(normalized, element);
+    if (!gate.ok) {
+      uncachedElements.push(element);
+      continue;
+    }
+
+    generationResults.push({ element, jsDoc: normalized, fromCache: true });
+    cacheHits++;
+  }
+
+  // 2) 未キャッシュ要素を生成（バッチ or 個別）
+  if (uncachedElements.length > 0) {
+    const useBatch = options.batchSize > 1;
+    if (useBatch) {
+      const batches = chunkArray(uncachedElements, options.batchSize);
+      const batchParallelLimit = Math.max(1, Math.min(getCurrentParallelLimit(), batches.length));
+
+      const batchGenerationResults = await runWithConcurrencyLimit(
+        batches,
+        batchParallelLimit,
+        async (batchElements): Promise<GenerationResult[]> => {
+          const results: GenerationResult[] = [];
+          let batchResult: BatchResult | null = null;
+
+          try {
+            batchCalls++;
+            batchResult = await retryWithBackoff(
+              () => generateJsDocBatch(model, apiKey, batchElements, options),
+              {
+                rateLimitKey,
+                shouldRetry: isRetryableError,
+                onRetry: ({ statusCode, error }) => {
+                  if (statusCode === 429) {
+                    notifyScheduler429(
+                      model.provider,
+                      model.id,
+                      error instanceof Error ? error.message : String(error)
+                    );
+                    reduceParallelLimit();
+                  }
+                },
+              }
+            );
+            notifySchedulerSuccess(model.provider, model.id);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (isLikelyRateLimitError(errorMessage)) {
+              notifyScheduler429(model.provider, model.id, errorMessage);
+              reduceParallelLimit();
+            }
+          }
+
+          for (const element of batchElements) {
+            const elementKey = generateElementKey(element);
+            const fromBatch = batchResult?.results.get(elementKey);
+            const failedInBatch = batchResult?.failedElementKeys.includes(elementKey) ?? true;
+
+            if (fromBatch && !failedInBatch) {
+              const normalized = validateJsDoc(fromBatch);
+              const gate = validateRequiredTags(normalized, element);
+              if (gate.ok) {
+                results.push({ element, jsDoc: normalized });
+                continue;
+              }
+            }
+
+            individualCalls++;
+            const fallback = await generateJsDocWithQualityGate(
+              model,
+              apiKey,
+              element,
+              options,
+              rateLimitKey
+            );
+            results.push(fallback);
+          }
+
+          return results;
+        }
+      );
+
+      for (const group of batchGenerationResults) {
+        generationResults.push(...group);
+      }
+    } else {
+      const individualResults = await runWithConcurrencyLimit(
+        uncachedElements,
+        getCurrentParallelLimit(),
+        async (element): Promise<GenerationResult> => {
+          individualCalls++;
+          return generateJsDocWithQualityGate(
+            model,
+            apiKey,
+            element,
+            options,
+            rateLimitKey
+          );
+        }
+      );
+      generationResults.push(...individualResults);
+    }
+  }
 
   let processed = 0;
   let updated = 0;
@@ -352,10 +446,22 @@ async function main() {
       continue;
     }
 
+    const normalizedJsDoc = validateJsDoc(jsDoc);
+    const gate = validateRequiredTags(normalizedJsDoc, element);
+    if (!gate.ok) {
+      console.log(`    必須タグ不足: ${gate.missing.join(', ')}`);
+      continue;
+    }
+
+    qualityScores.push(calculateQualityScore(normalizedJsDoc, element));
+
     if (options.dryRun) {
-      console.log(`    生成されたJSDoc:\n${jsDoc.split('\n').map(l => '       ' + l).join('\n')}`);
+      console.log(`    生成されたJSDoc:\n${normalizedJsDoc.split('\n').map(l => '       ' + l).join('\n')}`);
     } else {
-      insertJsDoc(element, jsDoc);
+      insertJsDoc(element, normalizedJsDoc);
+      if (!result.fromCache && !options.noCache) {
+        cacheJsDoc(element, normalizedJsDoc, model.id);
+      }
       updated++;
       console.log(`    JSDocを挿入しました`);
     }
@@ -366,6 +472,125 @@ async function main() {
   if (!options.dryRun) {
     console.log(`更新: ${updated}件`);
   }
+
+  if (options.metrics) {
+    const metrics = aggregateMetrics(
+      generationResults,
+      qualityScores,
+      startTime,
+      cacheHits,
+      batchCalls,
+      individualCalls
+    );
+    console.log('\n=== Metrics ===');
+    console.log(JSON.stringify(metrics, null, 2));
+  }
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function validateRequiredTags(
+  jsDoc: string,
+  element: ElementInfo
+): { ok: boolean; missing: string[] } {
+  const missing: string[] = [];
+  const content = jsDoc.replace(/^\/\*\*|\*\/$/g, '').replace(/^\s*\*\s?/gm, '');
+  const hasSummary = /@summary\s+\S+/.test(content);
+  if (!hasSummary) {
+    missing.push('@summary');
+  }
+
+  const isFunctionLike = element.type === 'function' || element.type === 'method';
+  const signatureParams = element.signature.match(/\(([^)]*)\)/);
+  const expectedParamCount = signatureParams
+    ? signatureParams[1].split(',').filter(p => p.trim() && !p.includes('...')).length
+    : 0;
+  const paramMatches = content.match(/@param\s+\S+/g) || [];
+  if (isFunctionLike && expectedParamCount > 0 && paramMatches.length < expectedParamCount) {
+    missing.push('@param');
+  }
+
+  const hasReturns = /@returns?\s+\S+/.test(content);
+  const expectsReturns = isFunctionLike &&
+    !element.signature.includes(': void') &&
+    !element.signature.includes(':void');
+  if (expectsReturns && !hasReturns) {
+    missing.push('@returns');
+  }
+
+  return { ok: missing.length === 0, missing };
+}
+
+async function generateJsDocWithQualityGate(
+  model: Model,
+  apiKey: string,
+  element: ElementInfo,
+  options: Options,
+  rateLimitKey: string
+): Promise<GenerationResult> {
+  const maxAttempts = 2;
+  let lastMissing: string[] = [];
+  let lastErrorMessage: string | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const jsDoc = await retryWithBackoff(
+        () => generateJsDocIndividual(model, apiKey, element, options),
+        {
+          rateLimitKey,
+          shouldRetry: isRetryableError,
+          onRetry: ({ statusCode, error }) => {
+            if (statusCode === 429) {
+              notifyScheduler429(
+                model.provider,
+                model.id,
+                error instanceof Error ? error.message : String(error)
+              );
+              reduceParallelLimit();
+            }
+          },
+        }
+      );
+
+      notifySchedulerSuccess(model.provider, model.id);
+
+      if (!jsDoc) {
+        lastErrorMessage = 'JSDoc抽出に失敗';
+        continue;
+      }
+
+      const normalized = validateJsDoc(jsDoc);
+      const gate = validateRequiredTags(normalized, element);
+      if (gate.ok) {
+        return { element, jsDoc: normalized };
+      }
+
+      lastMissing = gate.missing;
+      lastErrorMessage = `必須タグ不足: ${gate.missing.join(', ')}`;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      lastErrorMessage = errorMessage;
+      if (isLikelyRateLimitError(errorMessage)) {
+        notifyScheduler429(model.provider, model.id, errorMessage);
+        reduceParallelLimit();
+      }
+    }
+  }
+
+  return {
+    element,
+    jsDoc: null,
+    errorMessage: lastMissing.length > 0
+      ? `品質ゲート失敗 (${lastMissing.join(', ')})`
+      : lastErrorMessage ?? 'JSDocを生成できませんでした',
+  };
 }
 
 /**
@@ -1128,15 +1353,25 @@ async function generateJsDocWithStreamSimple(
 
   let response = '';
 
-  // async iteratorでイベントを収集
-  for await (const event of eventStream) {
-    if (event.type === 'text_delta') {
-      response += event.delta;
+  // タイムアウト付きでasync iteratorでイベントを収集
+  const timeoutMs = DEFAULT_LLM_TIMEOUT_MS;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`LLM timeout after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  const streamPromise = (async () => {
+    for await (const event of eventStream) {
+      if (event.type === 'text_delta') {
+        response += event.delta;
+      }
+      if (event.type === 'error') {
+        throw new Error(`LLM error: ${JSON.stringify(event)}`);
+      }
     }
-    if (event.type === 'error') {
-      throw new Error(`LLM error: ${JSON.stringify(event)}`);
-    }
-  }
+    return response;
+  })();
+
+  await Promise.race([streamPromise, timeoutPromise]);
 
   return extractJsDocFromResponse(response);
 }
@@ -1215,10 +1450,10 @@ async function generateJsDocBatch(
   options: Options
 ): Promise<BatchResult> {
   const results = new Map<string, string | null>();
-  const failedElements: string[] = [];
+  const failedElementKeys: string[] = [];
 
   if (elements.length === 0) {
-    return { results, failedElements };
+    return { results, failedElementKeys };
   }
 
   const prompt = buildBatchPrompt(elements);
@@ -1238,39 +1473,51 @@ async function generateJsDocBatch(
     const eventStream = streamSimple(model, context, { apiKey });
     let response = '';
 
-    for await (const event of eventStream) {
-      if (event.type === 'text_delta') {
-        response += event.delta;
+    // バッチは要素数に応じてタイムアウトを延長（最大180秒）
+    const batchTimeoutMs = Math.min(DEFAULT_LLM_TIMEOUT_MS * elements.length, 180000);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`LLM batch timeout after ${batchTimeoutMs}ms`)), batchTimeoutMs);
+    });
+
+    const streamPromise = (async () => {
+      for await (const event of eventStream) {
+        if (event.type === 'text_delta') {
+          response += event.delta;
+        }
+        if (event.type === 'error') {
+          throw new Error(`LLM error: ${JSON.stringify(event)}`);
+        }
       }
-      if (event.type === 'error') {
-        throw new Error(`LLM error: ${JSON.stringify(event)}`);
-      }
-    }
+      return response;
+    })();
+
+    await Promise.race([streamPromise, timeoutPromise]);
 
     // 区切り文字で分割して各JSDocを抽出
     const parts = response.split(BATCH_DELIMITER);
 
     for (let i = 0; i < elements.length; i++) {
       const element = elements[i];
+      const elementKey = generateElementKey(element);
       const part = parts[i]?.trim() || '';
       const jsDoc = extractJsDocFromResponse(part);
 
       if (jsDoc) {
-        results.set(element.name, jsDoc);
+        results.set(elementKey, jsDoc);
       } else {
-        failedElements.push(element.name);
+        failedElementKeys.push(elementKey);
       }
     }
 
     // バッチ数よりJSDocが少ない場合、残りを失敗としてマーク
     for (let i = parts.length; i < elements.length; i++) {
-      failedElements.push(elements[i].name);
+      failedElementKeys.push(generateElementKey(elements[i]));
     }
 
   } catch (error) {
     // バッチ全体が失敗した場合、全要素を個別処理対象に
     for (const element of elements) {
-      failedElements.push(element.name);
+      failedElementKeys.push(generateElementKey(element));
     }
 
     if (options.verbose) {
@@ -1278,7 +1525,7 @@ async function generateJsDocBatch(
     }
   }
 
-  return { results, failedElements };
+  return { results, failedElementKeys };
 }
 
 /**
@@ -1307,14 +1554,25 @@ async function generateJsDocIndividual(
 
   let response = '';
 
-  for await (const event of eventStream) {
-    if (event.type === 'text_delta') {
-      response += event.delta;
+  // タイムアウト付きでasync iteratorでイベントを収集
+  const timeoutMs = DEFAULT_LLM_TIMEOUT_MS;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`LLM timeout after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  const streamPromise = (async () => {
+    for await (const event of eventStream) {
+      if (event.type === 'text_delta') {
+        response += event.delta;
+      }
+      if (event.type === 'error') {
+        throw new Error(`LLM error: ${JSON.stringify(event)}`);
+      }
     }
-    if (event.type === 'error') {
-      throw new Error(`LLM error: ${JSON.stringify(event)}`);
-    }
-  }
+    return response;
+  })();
+
+  await Promise.race([streamPromise, timeoutPromise]);
 
   return extractJsDocFromResponse(response);
 }

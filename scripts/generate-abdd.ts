@@ -7,9 +7,12 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, mkdtempSync, rmSync } from 'fs';
 import { join, relative, dirname, basename } from 'path';
-import { execSync } from 'child_process';
+import { execSync, exec } from 'child_process';
+import { promisify } from 'util';
 import * as ts from 'typescript';
 import * as os from 'os';
+
+const execAsync = promisify(exec);
 
 // ============================================================================
 // Types
@@ -56,6 +59,18 @@ interface TypeInfo {
   isExported: boolean;
 }
 
+interface ImportBinding {
+  source: string;
+  localName: string;
+  importedName: string;
+  kind: 'named' | 'default' | 'namespace';
+}
+
+interface ImportInfo {
+  source: string;
+  bindings: ImportBinding[];
+}
+
 /**
  * JSDocから@summaryタグを抽出
  */
@@ -94,10 +109,13 @@ interface ToolInfo {
 
 interface CallNode {
   callee: string;
+  displayName?: string;
   isAsync: boolean;
   line: number;
   /** 外部ファイルからインポートされた関数の場合、そのファイルパス */
   importedFrom?: string;
+  /** importedFromに紐づくシンボル名 */
+  importedSymbol?: string;
 }
 
 /** クロスファイル追跡用のキャッシュ */
@@ -108,6 +126,13 @@ interface CrossFileCache {
   functionLocations: Map<string, { filePath: string; info: FunctionInfo }>;
 }
 
+interface TypeCheckerContext {
+  program: ts.Program;
+  checker: ts.TypeChecker;
+  sourceFiles: Map<string, ts.SourceFile>;
+  compilerOptions: ts.CompilerOptions;
+}
+
 interface FileInfo {
   path: string;
   relativePath: string;
@@ -115,7 +140,7 @@ interface FileInfo {
   classes: ClassInfo[];
   interfaces: InterfaceInfo[];
   types: TypeInfo[];
-  imports: { source: string; names: string[] }[];
+  imports: ImportInfo[];
   exports: string[];
   // ユーザーフロー用
   tools: ToolInfo[];
@@ -134,6 +159,11 @@ const ROOT_DIR = join(__dirname, '..');
 const EXTENSIONS_DIR = join(ROOT_DIR, '.pi/extensions');
 const LIB_DIR = join(ROOT_DIR, '.pi/lib');
 const ABDD_DIR = join(ROOT_DIR, 'ABDD');
+
+/** Mermaid検証の並列数（mmdcはPuppeteerを使用するため控えめに） */
+const MERMAID_PARALLEL_LIMIT = 4;
+/** mmdcのタイムアウト（ミリ秒） */
+const MERMAID_TIMEOUT_MS = 30000;
 
 /**
  * コマンドライン引数をパースする
@@ -190,7 +220,7 @@ async function main() {
   if (options.dryRun) {
     console.log('\nドライランのため、Mermaid検証をスキップします');
   } else {
-    const errors = validateAllMermaidDiagrams();
+    const errors = await validateAllMermaidDiagrams();
 
     if (errors.length > 0) {
       console.log('\n⚠️  Mermaid errors detected. Please fix the generation logic.');
@@ -212,6 +242,79 @@ const crossFileCache: CrossFileCache = {
   fileInfos: new Map(),
   functionLocations: new Map(),
 };
+
+let typeCheckerContext: TypeCheckerContext | null = null;
+
+function normalizeFsPath(p: string): string {
+  return p.replace(/\\/g, '/');
+}
+
+function buildTypeCheckerContext(): TypeCheckerContext | null {
+  try {
+    const configCandidates = [
+      join(ROOT_DIR, 'tsconfig-check.json'),
+      join(ROOT_DIR, 'tsconfig.json'),
+    ];
+    const configPath = configCandidates.find(p => existsSync(p));
+
+    let program: ts.Program;
+    if (configPath) {
+      const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
+      if (configFile.error) {
+        throw new Error(ts.flattenDiagnosticMessageText(configFile.error.messageText, '\n'));
+      }
+
+      const parsed = ts.parseJsonConfigFileContent(
+        configFile.config,
+        ts.sys,
+        dirname(configPath),
+      );
+      program = ts.createProgram({
+        rootNames: parsed.fileNames,
+        options: parsed.options,
+      });
+    } else {
+      const rootNames = [
+        ...collectTypeScriptFiles(EXTENSIONS_DIR),
+        ...collectTypeScriptFiles(LIB_DIR),
+      ];
+      program = ts.createProgram({
+        rootNames,
+        options: {
+          target: ts.ScriptTarget.ES2022,
+          module: ts.ModuleKind.ESNext,
+          moduleResolution: ts.ModuleResolutionKind.NodeNext,
+          allowJs: false,
+          skipLibCheck: true,
+        },
+      });
+    }
+
+    const checker = program.getTypeChecker();
+    const sourceFiles = new Map<string, ts.SourceFile>();
+    for (const sf of program.getSourceFiles()) {
+      sourceFiles.set(normalizeFsPath(sf.fileName), sf);
+    }
+    return {
+      program,
+      checker,
+      sourceFiles,
+      compilerOptions: program.getCompilerOptions(),
+    };
+  } catch (error) {
+    if (globalOptions.verbose) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`[TypeChecker] 初期化失敗: ${msg}`);
+    }
+    return null;
+  }
+}
+
+function getTypeCheckerContext(): TypeCheckerContext | null {
+  if (typeCheckerContext !== null) return typeCheckerContext;
+  typeCheckerContext = buildTypeCheckerContext();
+  return typeCheckerContext;
+}
 
 // ============================================================================
 // File Processing
@@ -253,7 +356,9 @@ function processFile(filePath: string, baseDir: string, outputDir: string) {
 
 function analyzeFile(filePath: string, baseDir: string): FileInfo {
   const sourceCode = readFileSync(filePath, 'utf-8');
-  const sourceFile = ts.createSourceFile(
+  const checkerCtx = getTypeCheckerContext();
+  const checkerSourceFile = checkerCtx?.sourceFiles.get(normalizeFsPath(filePath));
+  const sourceFile = checkerSourceFile || ts.createSourceFile(
     filePath,
     sourceCode,
     ts.ScriptTarget.Latest,
@@ -265,7 +370,7 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
   const classes: ClassInfo[] = [];
   const interfaces: InterfaceInfo[] = [];
   const types: TypeInfo[] = [];
-  const imports: { source: string; names: string[] }[] = [];
+  const imports: ImportInfo[] = [];
   const exports: string[] = [];
 
   // AST走査
@@ -273,16 +378,34 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
     // インポート
     if (ts.isImportDeclaration(node)) {
       const source = node.moduleSpecifier.getText(sourceFile).replace(/['"]/g, '');
-      const names: string[] = [];
+      const bindings: ImportBinding[] = [];
+      if (node.importClause?.name) {
+        bindings.push({
+          source,
+          localName: node.importClause.name.getText(sourceFile),
+          importedName: 'default',
+          kind: 'default',
+        });
+      }
       if (node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
         for (const spec of node.importClause.namedBindings.elements) {
-          names.push(spec.name.getText(sourceFile));
+          bindings.push({
+            source,
+            localName: spec.name.getText(sourceFile),
+            importedName: spec.propertyName?.getText(sourceFile) || spec.name.getText(sourceFile),
+            kind: 'named',
+          });
         }
       }
-      if (node.importClause?.name) {
-        names.push(node.importClause.name.getText(sourceFile));
+      if (node.importClause?.namedBindings && ts.isNamespaceImport(node.importClause.namedBindings)) {
+        bindings.push({
+          source,
+          localName: node.importClause.namedBindings.name.getText(sourceFile),
+          importedName: '*',
+          kind: 'namespace',
+        });
       }
-      imports.push({ source, names });
+      imports.push({ source, bindings });
     }
 
     // 関数
@@ -440,22 +563,27 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
   const tools = detectToolRegistrations(sourceFile);
 
   // 関数内の呼び出しを抽出（インポートされた関数も含む）
-  const calls = extractAllCalls(sourceFile, functions, imports);
+  const calls = extractAllCalls(
+    sourceFile,
+    functions,
+    imports,
+    checkerCtx?.checker
+  );
 
   // 関数名のセットを作成（インポートされた関数も含む）
   const functionNames = new Set(functions.map(f => f.name));
   for (const imp of imports) {
-    for (const name of imp.names) {
-      functionNames.add(name);
+    for (const binding of imp.bindings) {
+      functionNames.add(binding.localName);
     }
   }
 
   // 各ツールのexecute関数内の呼び出しを抽出
   for (const tool of tools) {
     if (tool.executeExpr) {
-      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeExpr, functionNames);
+      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeExpr, functionNames, imports, checkerCtx?.checker);
     } else if (tool.executeMethodDecl) {
-      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeMethodDecl, functionNames);
+      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeMethodDecl, functionNames, imports, checkerCtx?.checker);
     }
   }
 
@@ -583,34 +711,30 @@ function extractFunctionName(expr: ts.Expression): string | null {
  * @returns 解決されたファイルパス（見つからない場合はundefined）
  */
 function resolveImportedFunction(
-  funcName: string,
-  imports: { source: string; names: string[] }[],
+  call: CallNode,
+  imports: ImportInfo[],
   currentFilePath: string
-): string | undefined {
-  // インポートから関数が含まれるソースを探す
+): { filePath?: string; symbol: string } {
+  if (call.importedFrom) {
+    return {
+      filePath: call.importedFrom,
+      symbol: call.importedSymbol || call.callee,
+    };
+  }
+
   for (const imp of imports) {
-    if (imp.names.includes(funcName)) {
-      // 相対パスを解決
-      if (imp.source.startsWith('.')) {
-        const currentDir = dirname(currentFilePath);
-        let resolvedPath = join(currentDir, imp.source);
-        // .ts拡張子を追加
-        if (!resolvedPath.endsWith('.ts')) {
-          resolvedPath += '.ts';
-        }
-        // ファイルが存在するか確認
-        if (existsSync(resolvedPath)) {
-          return resolvedPath;
-        }
-        // index.tsも試す
-        const indexPath = join(resolvedPath.replace('.ts', ''), 'index.ts');
-        if (existsSync(indexPath)) {
-          return indexPath;
-        }
+    for (const binding of imp.bindings) {
+      if (binding.localName !== call.callee && binding.importedName !== call.callee) {
+        continue;
       }
+      const resolvedPath = resolveImportSourcePath(binding.source, currentFilePath);
+      const symbol = binding.kind === 'default'
+        ? call.callee
+        : (binding.importedName === '*' ? call.callee : binding.importedName);
+      return { filePath: resolvedPath, symbol };
     }
   }
-  return undefined;
+  return { symbol: call.callee };
 }
 
 /**
@@ -618,7 +742,7 @@ function resolveImportedFunction(
  */
 function getExternalFileInfo(
   filePath: string
-): { functions: FunctionInfo[]; calls: Map<string, CallNode[]>; imports: { source: string; names: string[] }[] } | undefined {
+): { functions: FunctionInfo[]; calls: Map<string, CallNode[]>; imports: ImportInfo[] } | undefined {
   // キャッシュを確認
   const cached = crossFileCache.fileInfos.get(filePath);
   if (cached) {
@@ -651,23 +775,13 @@ function getExternalFileInfo(
 function extractAllCalls(
   sourceFile: ts.SourceFile,
   functions: FunctionInfo[],
-  imports: { source: string; names: string[] }[]
+  imports: ImportInfo[],
+  checker?: ts.TypeChecker
 ): Map<string, CallNode[]> {
   const calls = new Map<string, CallNode[]>();
   
-  // 同一ファイル内の関数名
-  const functionNames = new Set(functions.map(f => f.name));
-  
-  // インポートされた関数名も追跡対象に追加
-  const importedNames = new Set<string>();
-  for (const imp of imports) {
-    for (const name of imp.names) {
-      importedNames.add(name);
-    }
-  }
-  
-  // 追跡対象の関数名（同一ファイル + インポート）
-  const trackableNames = new Set([...functionNames, ...importedNames]);
+  const localFunctionNames = new Set(functions.map(f => f.name));
+  const importLookup = buildImportLookup(imports);
 
   // 関数宣言・矢印関数を探して呼び出しを抽出
   function visitFunction(node: ts.Node, funcName: string) {
@@ -677,13 +791,21 @@ function extractAllCalls(
       // await someFunction() → 非同期呼び出し
       if (ts.isAwaitExpression(n)) {
         if (ts.isCallExpression(n.expression)) {
-          const callee = extractCalleeName(n.expression.expression, sourceFile);
-          if (callee && trackableNames.has(callee)) {
+          const resolved = resolveCallTarget(
+            n.expression.expression,
+            localFunctionNames,
+            importLookup,
+            currentFilePathFromSource(sourceFile),
+            checker
+          );
+          if (resolved) {
             funcCalls.push({
-              callee,
+              callee: resolved.callee,
+              displayName: resolved.displayName,
               isAsync: true,
               line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
-              importedFrom: importedNames.has(callee) ? callee : undefined,
+              importedFrom: resolved.importedFrom,
+              importedSymbol: resolved.importedSymbol,
             });
           }
         }
@@ -692,13 +814,21 @@ function extractAllCalls(
       else if (ts.isCallExpression(n)) {
         // await式の内部でない場合
         if (!ts.isAwaitExpression(n.parent)) {
-          const callee = extractCalleeName(n.expression, sourceFile);
-          if (callee && trackableNames.has(callee)) {
+          const resolved = resolveCallTarget(
+            n.expression,
+            localFunctionNames,
+            importLookup,
+            currentFilePathFromSource(sourceFile),
+            checker
+          );
+          if (resolved) {
             funcCalls.push({
-              callee,
+              callee: resolved.callee,
+              displayName: resolved.displayName,
               isAsync: false,
               line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
-              importedFrom: importedNames.has(callee) ? callee : undefined,
+              importedFrom: resolved.importedFrom,
+              importedSymbol: resolved.importedSymbol,
             });
           }
         }
@@ -739,9 +869,12 @@ function extractAllCalls(
 function extractCallsFromExecute(
   sourceFile: ts.SourceFile,
   executeExpr: ts.Expression | ts.MethodDeclaration,
-  functionNames: Set<string>
+  functionNames: Set<string>,
+  imports: ImportInfo[],
+  checker?: ts.TypeChecker
 ): CallNode[] {
   const funcCalls: CallNode[] = [];
+  const importLookup = buildImportLookup(imports);
 
   // 矢印関数、関数式、メソッド宣言を処理
   const isValidFunction = ts.isArrowFunction(executeExpr) || 
@@ -756,12 +889,21 @@ function extractCallsFromExecute(
     // await someFunction() → 非同期呼び出し
     if (ts.isAwaitExpression(n)) {
       if (ts.isCallExpression(n.expression)) {
-        const callee = extractCalleeName(n.expression.expression, sourceFile);
-        if (callee && functionNames.has(callee)) {
+        const resolved = resolveCallTarget(
+          n.expression.expression,
+          functionNames,
+          importLookup,
+          currentFilePathFromSource(sourceFile),
+          checker
+        );
+        if (resolved) {
           funcCalls.push({
-            callee,
+            callee: resolved.callee,
+            displayName: resolved.displayName,
             isAsync: true,
             line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
+            importedFrom: resolved.importedFrom,
+            importedSymbol: resolved.importedSymbol,
           });
         }
       }
@@ -769,12 +911,21 @@ function extractCallsFromExecute(
     // someFunction() → 同期呼び出し
     else if (ts.isCallExpression(n)) {
       if (!ts.isAwaitExpression(n.parent)) {
-        const callee = extractCalleeName(n.expression, sourceFile);
-        if (callee && functionNames.has(callee)) {
+        const resolved = resolveCallTarget(
+          n.expression,
+          functionNames,
+          importLookup,
+          currentFilePathFromSource(sourceFile),
+          checker
+        );
+        if (resolved) {
           funcCalls.push({
-            callee,
+            callee: resolved.callee,
+            displayName: resolved.displayName,
             isAsync: false,
             line: sourceFile.getLineAndCharacterOfPosition(n.getStart()).line + 1,
+            importedFrom: resolved.importedFrom,
+            importedSymbol: resolved.importedSymbol,
           });
         }
       }
@@ -787,18 +938,183 @@ function extractCallsFromExecute(
 }
 
 /**
- * 呼び出し先の関数名を抽出
+ * importのローカル名索引を作成
  */
-function extractCalleeName(expr: ts.Expression | undefined, sourceFile: ts.SourceFile): string | null {
+function buildImportLookup(imports: ImportInfo[]): {
+  byLocalName: Map<string, ImportBinding>;
+  namespaceByLocalName: Map<string, ImportBinding>;
+} {
+  const byLocalName = new Map<string, ImportBinding>();
+  const namespaceByLocalName = new Map<string, ImportBinding>();
+  for (const imp of imports) {
+    for (const binding of imp.bindings) {
+      if (binding.kind === 'namespace') {
+        namespaceByLocalName.set(binding.localName, binding);
+      } else {
+        byLocalName.set(binding.localName, binding);
+      }
+    }
+  }
+  return { byLocalName, namespaceByLocalName };
+}
+
+/**
+ * import sourceから実ファイルパスを推定する（ローカル import のみ）
+ */
+function resolveImportSourcePath(source: string, currentFilePath: string): string | undefined {
+  if (!source.startsWith('.')) return undefined;
+
+  // TypeScript公式のモジュール解決を優先（paths/baseUrl含む）
+  const compilerOptions = getTypeCheckerContext()?.compilerOptions;
+  if (compilerOptions) {
+    const resolved = ts.resolveModuleName(source, currentFilePath, compilerOptions, ts.sys);
+    const resolvedFileName = resolved.resolvedModule?.resolvedFileName;
+    if (resolvedFileName && existsSync(resolvedFileName)) {
+      // .d.ts を引いた場合は実装ファイルを優先して探す
+      if (resolvedFileName.endsWith('.d.ts')) {
+        const impl = resolveDeclarationToImplementation(resolvedFileName);
+        return impl || resolvedFileName;
+      }
+      return resolvedFileName;
+    }
+  }
+
+  // フォールバック: 既存の手動候補探索
+  const currentDir = dirname(currentFilePath);
+  const baseResolvedPath = join(currentDir, source);
+  const candidates = [
+    baseResolvedPath,
+    `${baseResolvedPath}.ts`,
+    `${baseResolvedPath}.tsx`,
+    `${baseResolvedPath}.js`,
+    join(baseResolvedPath, 'index.ts'),
+    join(baseResolvedPath, 'index.tsx'),
+    join(baseResolvedPath, 'index.js'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function resolveDeclarationToImplementation(dtsPath: string): string | undefined {
+  const withoutDts = dtsPath.replace(/\.d\.ts$/, '');
+  const candidates = [
+    `${withoutDts}.ts`,
+    `${withoutDts}.tsx`,
+    `${withoutDts}.js`,
+    join(withoutDts, 'index.ts'),
+    join(withoutDts, 'index.tsx'),
+    join(withoutDts, 'index.js'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function currentFilePathFromSource(sourceFile: ts.SourceFile): string {
+  return sourceFile.fileName;
+}
+
+/**
+ * 呼び出し式を実体シンボルに解決
+ */
+function resolveCallTarget(
+  expr: ts.Expression | undefined,
+  localFunctionNames: Set<string>,
+  importLookup: {
+    byLocalName: Map<string, ImportBinding>;
+    namespaceByLocalName: Map<string, ImportBinding>;
+  },
+  currentFilePath: string,
+  checker?: ts.TypeChecker
+): { callee: string; displayName: string; importedFrom?: string; importedSymbol?: string } | null {
   if (!expr) return null;
+
+  const fromChecker = resolveCallTargetWithTypeChecker(expr, currentFilePath, checker);
+  if (fromChecker) {
+    // TypeCheckerで十分な情報が取れた場合を優先する
+    if (fromChecker.importedFrom || localFunctionNames.has(fromChecker.callee)) {
+      return fromChecker;
+    }
+  }
+
   if (ts.isIdentifier(expr)) {
-    return expr.text;
+    const name = expr.text;
+    if (localFunctionNames.has(name)) {
+      return { callee: name, displayName: name };
+    }
+
+    const binding = importLookup.byLocalName.get(name);
+    if (!binding) return null;
+
+    return {
+      callee: binding.kind === 'named' ? binding.importedName : binding.localName,
+      displayName: name,
+      importedFrom: resolveImportSourcePath(binding.source, currentFilePath),
+      importedSymbol: binding.kind === 'named' ? binding.importedName : binding.importedName,
+    };
   }
-  if (ts.isPropertyAccessExpression(expr)) {
-    // obj.method() → methodを返す
-    return expr.name.text;
+
+  if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
+    const objectName = expr.expression.text;
+    const propertyName = expr.name.text;
+
+    const namespaceBinding = importLookup.namespaceByLocalName.get(objectName);
+    if (namespaceBinding) {
+      return {
+        callee: propertyName,
+        displayName: `${objectName}.${propertyName}`,
+        importedFrom: resolveImportSourcePath(namespaceBinding.source, currentFilePath),
+        importedSymbol: propertyName,
+      };
+    }
+
+    if (localFunctionNames.has(propertyName)) {
+      return { callee: propertyName, displayName: `${objectName}.${propertyName}` };
+    }
   }
+
   return null;
+}
+
+function resolveCallTargetWithTypeChecker(
+  expr: ts.Expression,
+  currentFilePath: string,
+  checker?: ts.TypeChecker
+): { callee: string; displayName: string; importedFrom?: string; importedSymbol?: string } | null {
+  if (!checker) return null;
+
+  const symbolAtExpr = checker.getSymbolAtLocation(expr);
+  if (!symbolAtExpr) return null;
+
+  const resolvedSymbol = (symbolAtExpr.flags & ts.SymbolFlags.Alias)
+    ? checker.getAliasedSymbol(symbolAtExpr)
+    : symbolAtExpr;
+  const declarations = resolvedSymbol.declarations || [];
+  const declaration = declarations[0];
+  if (!declaration) return null;
+
+  const declaredFile = declaration.getSourceFile().fileName;
+  const symbolName = resolvedSymbol.getName();
+  const displayName = expr.getText();
+
+  if (normalizeFsPath(declaredFile) !== normalizeFsPath(currentFilePath)) {
+    return {
+      callee: symbolName,
+      displayName,
+      importedFrom: declaredFile,
+      importedSymbol: symbolName,
+    };
+  }
+
+  return {
+    callee: symbolName,
+    displayName,
+  };
 }
 
 /**
@@ -874,7 +1190,7 @@ function generateUserSequence(
   tool: ToolInfo,
   allFunctions: Map<string, FunctionInfo>,
   calls: Map<string, CallNode[]>,
-  imports: { source: string; names: string[] }[],
+  imports: ImportInfo[],
   currentFilePath: string,
   maxDepth: number = 4
 ): string {
@@ -934,7 +1250,7 @@ function generateUserSequence(
     callerActor: string,
     currentDepth: number,
     visited: Set<string>,
-    currentFileImports: { source: string; names: string[] }[],
+    currentFileImports: ImportInfo[],
     currentFilePath: string
   ) {
     if (currentDepth > maxDepth) return;
@@ -951,25 +1267,27 @@ function generateUserSequence(
 
       // インポートされた関数の場合、外部ファイルから情報を取得
       if (!calleeInfo) {
-        const importedFilePath = resolveImportedFunction(call.callee, currentFileImports, currentFilePath);
-        if (importedFilePath) {
-          const externalInfo = getExternalFileInfo(importedFilePath);
+        const resolved = resolveImportedFunction(call, currentFileImports, currentFilePath);
+        if (resolved.filePath) {
+          const externalInfo = getExternalFileInfo(resolved.filePath);
           if (externalInfo) {
             // 外部ファイルの関数情報を一時的にallFunctionsに追加
             for (const fn of externalInfo.functions) {
-              if (fn.name === call.callee) {
+              if (fn.name === resolved.symbol || fn.name === call.callee) {
                 calleeInfo = fn;
                 break;
               }
             }
-            calleeCalls = externalInfo.calls.get(call.callee);
+            calleeCalls = externalInfo.calls.get(resolved.symbol) || externalInfo.calls.get(call.callee);
             calleeImports = externalInfo.imports;
-            calleeFilePath = importedFilePath;
+            calleeFilePath = resolved.filePath;
           }
         }
       }
 
-      const actor = classifyFunction(call.callee, calleeInfo);
+      const actor = calleeInfo
+        ? classifyFunction(call.callee, calleeInfo)
+        : (call.importedFrom ? "Unresolved" : "Internal");
 
       // 参加者を追加
       if (!addedParticipants.has(actor)) {
@@ -978,7 +1296,13 @@ function generateUserSequence(
       }
 
       // アクションラベルを生成
-      const actionLabel = generateActionLabel(call.callee, calleeInfo);
+      let actionLabel = generateActionLabel(call.callee, calleeInfo);
+      if (!calleeInfo && call.displayName) {
+        actionLabel = call.displayName;
+      }
+      if (call.importedFrom && !calleeInfo) {
+        actionLabel = `${actionLabel} (${relative(ROOT_DIR, call.importedFrom)})`;
+      }
 
       steps.push({
         from: callerActor,
@@ -1143,8 +1467,14 @@ related: []
 \`\`\`typescript
 `;
     for (const imp of info.imports.slice(0, 5)) {
-      if (imp.names.length > 0) {
-        md += `import { ${imp.names.slice(0, 3).join(', ')}${imp.names.length > 3 ? '...' : ''} } from '${imp.source}';\n`;
+      if (imp.bindings.length > 0) {
+        const preview = imp.bindings
+          .slice(0, 3)
+          .map(b => b.localName)
+          .join(', ');
+        md += `// from '${imp.source}': ${preview}${imp.bindings.length > 3 ? ', ...' : ''}\n`;
+      } else {
+        md += `import '${imp.source}';\n`;
       }
     }
     if (info.imports.length > 5) {
@@ -1363,6 +1693,55 @@ function sanitizeMermaidIdentifier(name: string): string {
   return sanitized;
 }
 
+function buildActualFunctionFlowDiagram(info: FileInfo, maxNodes: number = 24, maxEdges: number = 40, maxDepth: number = 5): string {
+  const exportedRoots = info.functions.filter(f => f.isExported).map(f => f.name);
+  if (exportedRoots.length === 0) {
+    return '';
+  }
+
+  const localFunctions = new Set(info.functions.map(f => f.name));
+  const nodes = new Set<string>();
+  const edges = new Set<string>();
+
+  const queue: Array<{ name: string; depth: number }> = exportedRoots.map(name => ({ name, depth: 0 }));
+  const visitedByDepth = new Set<string>();
+
+  while (queue.length > 0 && nodes.size < maxNodes && edges.size < maxEdges) {
+    const current = queue.shift();
+    if (!current) break;
+    const visitKey = `${current.name}@${current.depth}`;
+    if (visitedByDepth.has(visitKey)) continue;
+    visitedByDepth.add(visitKey);
+    nodes.add(current.name);
+
+    if (current.depth >= maxDepth) continue;
+    const outgoing = info.calls.get(current.name) || [];
+    for (const call of outgoing) {
+      if (!localFunctions.has(call.callee)) continue;
+      nodes.add(call.callee);
+      edges.add(`${current.name}-->${call.callee}`);
+      queue.push({ name: call.callee, depth: current.depth + 1 });
+      if (nodes.size >= maxNodes || edges.size >= maxEdges) break;
+    }
+  }
+
+  if (edges.size === 0) {
+    return '';
+  }
+
+  const sortedNodes = [...nodes].sort();
+  const sortedEdges = [...edges].sort();
+  let diagram = `flowchart TD\n`;
+  for (const node of sortedNodes) {
+    diagram += `  ${sanitizeMermaidIdentifier(node)}["${node}()"]\n`;
+  }
+  for (const edge of sortedEdges) {
+    const [from, to] = edge.split('-->');
+    diagram += `  ${sanitizeMermaidIdentifier(from)} --> ${sanitizeMermaidIdentifier(to)}\n`;
+  }
+  return diagram;
+}
+
 function generateMermaidSection(info: FileInfo): string {
   let section = `## 図解
 
@@ -1450,27 +1829,14 @@ flowchart LR
     }
   }
 
-  // 関数呼び出しフロー（関数がある場合）
+  // 関数呼び出しフロー（実コールエッジのみ）
   if (info.functions.length > 1) {
-    const exportedFns = info.functions.filter(f => f.isExported);
-    if (exportedFns.length > 1) {
+    const flowDiagram = buildActualFunctionFlowDiagram(info);
+    if (flowDiagram.trim()) {
       section += `### 関数フロー
 
 \`\`\`mermaid
-flowchart TD
-`;
-      for (let i = 0; i < Math.min(exportedFns.length, 6); i++) {
-        const fn = exportedFns[i];
-        const fnId = sanitizeMermaidIdentifier(fn.name);
-        section += `  ${fnId}["${fn.name}()"]\n`;
-      }
-      // シンプルな順序関係
-      for (let i = 0; i < Math.min(exportedFns.length - 1, 5); i++) {
-        const from = sanitizeMermaidIdentifier(exportedFns[i].name);
-        const to = sanitizeMermaidIdentifier(exportedFns[i + 1].name);
-        section += `  ${from} -.-> ${to}\n`;
-      }
-      section += `\`\`\`\n\n`;
+${flowDiagram}\`\`\`\n\n`;
     }
   }
 
@@ -1590,39 +1956,76 @@ interface MermaidError {
   error: string;
 }
 
-function validateAllMermaidDiagrams(): MermaidError[] {
+/**
+ * Mermaid図を並列検証
+ */
+async function validateAllMermaidDiagrams(): Promise<MermaidError[]> {
   const errors: MermaidError[] = [];
   const mdFiles = collectMarkdownFiles(ABDD_DIR);
 
-  console.log('\n=== Validating Mermaid diagrams ===\n');
+  console.log('\n=== Validating Mermaid diagrams (parallel) ===\n');
 
-  let totalDiagrams = 0;
-  let validDiagrams = 0;
+  // すべてのブロックを先に収集
+  interface BlockInfo {
+    file: string;
+    line: number;
+    code: string;
+  }
 
+  const allBlocks: BlockInfo[] = [];
   for (const file of mdFiles) {
     const content = readFileSync(file, 'utf-8');
     const mermaidBlocks = extractMermaidBlocks(content);
+    for (const block of mermaidBlocks) {
+      allBlocks.push({
+        file: relative(ROOT_DIR, file),
+        line: block.line,
+        code: block.code,
+      });
+    }
+  }
 
-    for (let i = 0; i < mermaidBlocks.length; i++) {
-      totalDiagrams++;
-      const block = mermaidBlocks[i];
-      const validation = validateMermaid(block.code);
+  console.log(`  Total diagrams to validate: ${allBlocks.length}`);
+  console.log(`  Parallel limit: ${MERMAID_PARALLEL_LIMIT}\n`);
 
+  let validCount = 0;
+  let errorCount = 0;
+
+  // 並列数を制限して検証
+  const batchSize = MERMAID_PARALLEL_LIMIT;
+  for (let i = 0; i < allBlocks.length; i += batchSize) {
+    const batch = allBlocks.slice(i, i + batchSize);
+
+    const results = await Promise.all(
+      batch.map(async (block) => {
+        const validation = await validateMermaidAsync(block.code);
+        return { block, validation };
+      })
+    );
+
+    for (const { block, validation } of results) {
       if (!validation.valid) {
+        errorCount++;
         errors.push({
-          file: relative(ROOT_DIR, file),
+          file: block.file,
           line: block.line,
           diagram: block.code.substring(0, 100) + '...',
           error: validation.error || 'Unknown error',
         });
-        console.log(`  ❌ ${relative(ROOT_DIR, file)}:${block.line} - ${validation.error}`);
+        console.log(`  ❌ ${block.file}:${block.line} - ${validation.error}`);
       } else {
-        validDiagrams++;
+        validCount++;
       }
+    }
+
+    // 進捗表示
+    const processed = Math.min(i + batchSize, allBlocks.length);
+    if (processed % (batchSize * 5) === 0 || processed === allBlocks.length) {
+      console.log(`  Progress: ${processed}/${allBlocks.length} (${validCount} valid, ${errorCount} errors)`);
     }
   }
 
-  console.log(`\n📊 Results: ${validDiagrams}/${totalDiagrams} diagrams valid`);
+  console.log(`\n📊 Results: ${validCount}/${allBlocks.length} diagrams valid`);
 
   if (errors.length > 0) {
     console.log(`\n❌ ${errors.length} errors found:\n`);
@@ -1697,6 +2100,28 @@ function validateMermaid(code: string): { valid: boolean; error?: string } {
     return validateMermaidSimple(code);
   }
 
+  // 同期版は非推奨（並列検証にはvalidateMermaidAsyncを使用）
+  return validateMermaidSimple(code);
+}
+
+/**
+ * Mermaid図を非同期で検証（並列実行用）
+ */
+async function validateMermaidAsync(code: string): Promise<{ valid: boolean; error?: string }> {
+  // 簡易チェックを先に実行
+  const simpleResult = validateMermaidSimple(code);
+  if (!simpleResult.valid) {
+    return simpleResult;
+  }
+
+  // mmdcがインストールされているかチェック
+  try {
+    await execAsync('which mmdc', { timeout: 5000 });
+  } catch {
+    // mmdcがない場合は簡易チェックの結果を返す
+    return { valid: true };
+  }
+
   // 一時ファイルに書き出してmmdcで検証
   const tmpDir = mkdtempSync(join(os.tmpdir(), 'mermaid-'));
   const tmpFile = join(tmpDir, 'diagram.mmd');
@@ -1706,9 +2131,8 @@ function validateMermaid(code: string): { valid: boolean; error?: string } {
     writeFileSync(tmpFile, code, 'utf-8');
 
     // mmdcで検証（SVGを出力して成功するか確認）
-    execSync(`mmdc -i "${tmpFile}" -o "${tmpOutput}" -b transparent`, {
-      timeout: 15000,
-      stdio: 'pipe',
+    await execAsync(`mmdc -i "${tmpFile}" -o "${tmpOutput}" -b transparent`, {
+      timeout: MERMAID_TIMEOUT_MS,
     });
 
     return { valid: true };
@@ -1716,7 +2140,6 @@ function validateMermaid(code: string): { valid: boolean; error?: string } {
     let errorMsg = 'Parse error';
 
     if (error instanceof Error) {
-      // stdout/stderrからエラーメッセージを抽出
       const anyError = error as any;
       if (anyError.stderr) {
         errorMsg = anyError.stderr.toString();
@@ -1727,21 +2150,18 @@ function validateMermaid(code: string): { valid: boolean; error?: string } {
       }
     }
 
-    // エラーメッセージを簡潔に
     const lines = errorMsg.split('\n');
     let cleanError = lines.find((l: string) =>
       l.includes('Error') || l.includes('error') || l.includes('Parse')
     ) || lines[0] || 'Parse error';
     cleanError = cleanError.substring(0, 150).trim();
 
-    // 一般的なエラーだけを表示
     if (cleanError.includes('Command failed') || cleanError.length < 5) {
       cleanError = 'Parse error';
     }
 
     return { valid: false, error: cleanError };
   } finally {
-    // 一時ファイルを削除
     try {
       rmSync(tmpDir, { recursive: true });
     } catch {
