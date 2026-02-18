@@ -2,7 +2,7 @@
 title: adaptive-penalty
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -41,7 +41,7 @@ classDiagram
     +penalty: number
     +updatedAtMs: number
     +lastReason: PenaltyReason
-    +reasonHistory: Array<reasonPenaltyReasontimestampnumber>
+    +reasonHistory: Array_reason_Penalt
   }
   class AdaptivePenaltyOptions {
     <<interface>>
@@ -53,22 +53,22 @@ classDiagram
     <<interface>>
     +decayStrategy: DecayStrategy
     +exponentialBase: number
-    +reasonWeights: Partial<Record<PenaltyReasonnumber>>
+    +reasonWeights: Partial_Record_Penal
     +historySize: number
   }
   class AdaptivePenaltyController {
     <<interface>>
     +state: AdaptivePenaltyState
-    +decay: nowMsnumber>void
-    +raise: reasonrate_limittimeoutcapacity>void
-    +lower: >void
-    +get: >number
+    +decay: nowMs_number_voi
+    +raise: reason_rate_limit
+    +lower: void
+    +get: number
   }
   class EnhancedPenaltyController {
     <<interface>>
-    +raiseWithReason: reasonPenaltyReason>void
-    +getReasonStats: >Record<PenaltyReasonnumber>
-    +getDecayStrategy: >DecayStrategy
+    +raiseWithReason: reason_PenaltyReaso
+    +getReasonStats: Record_PenaltyRe
+    +getDecayStrategy: DecayStrategy
   }
 ```
 
@@ -402,4 +402,4 @@ type DecayStrategy = "linear" | "exponential" | "hybrid"
 Decay strategy options.
 
 ---
-*自動生成: 2026-02-17T22:24:18.888Z*
+*自動生成: 2026-02-18T00:15:35.637Z*

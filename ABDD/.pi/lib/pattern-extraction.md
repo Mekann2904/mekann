@@ -2,7 +2,7 @@
 title: pattern-extraction
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -51,10 +51,10 @@ classDiagram
   class ExtractedPattern {
     <<interface>>
     +id: string
-    +patternType: successfailureapproach
+    +patternType: success_failure
     +taskType: TaskType
     +description: string
-    +keywords: string[]
+    +keywords: string
   }
   class PatternExample {
     <<interface>>
@@ -67,8 +67,8 @@ classDiagram
     <<interface>>
     +version: number
     +lastUpdated: string
-    +patterns: ExtractedPattern[]
-    +patternsByTaskType: Record<TaskTypestring[]>
+    +patterns: ExtractedPattern
+    +patternsByTaskType: Record_TaskType_stri
   }
   class RunData {
     <<interface>>
@@ -88,9 +88,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js["fs-utils.js"]
-    run_index_js["run-index.js"]
-    storage_lock_js["storage-lock.js"]
+    fs_utils["fs-utils"]
+    run_index["run-index"]
+    storage_lock["storage-lock"]
   end
   main --> local
 ```
@@ -119,13 +119,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant pattern_extraction as "pattern-extraction"
-  participant fs_utils_js as "fs-utils.js"
-  participant run_index_js as "run-index.js"
+  participant fs_utils as "fs-utils"
+  participant run_index as "run-index"
 
   Caller->>pattern_extraction: extractPatternFromRun()
-  pattern_extraction->>fs_utils_js: 内部関数呼び出し
-  fs_utils_js-->>pattern_extraction: 結果
-  pattern_extraction-->>Caller: ExtractedPattern | null
+  pattern_extraction->>fs_utils: 内部関数呼び出し
+  fs_utils-->>pattern_extraction: 結果
+  pattern_extraction-->>Caller: ExtractedPattern_nul
 
   Caller->>pattern_extraction: getPatternStoragePath()
   pattern_extraction-->>Caller: string
@@ -470,4 +470,4 @@ interface RunData {
 Run data for pattern extraction.
 
 ---
-*自動生成: 2026-02-17T22:24:18.954Z*
+*自動生成: 2026-02-18T00:15:35.739Z*

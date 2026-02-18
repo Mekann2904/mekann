@@ -2,7 +2,7 @@
 title: task-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -64,11 +64,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    runtime_utils_js["runtime-utils.js"]
-    error_utils_js["error-utils.js"]
-    agent_utils_js["agent-utils.js"]
-    agent_types_js["agent-types.js"]
-    output_validation_js["output-validation.js"]
+    runtime_utils["runtime-utils"]
+    error_utils["error-utils"]
+    agent_utils["agent-utils"]
+    agent_types["agent-types"]
+    output_validation["output-validation"]
   end
   main --> local
 ```
@@ -97,13 +97,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant task_execution as "task-execution"
-  participant runtime_utils_js as "runtime-utils.js"
-  participant error_utils_js as "error-utils.js"
+  participant runtime_utils as "runtime-utils"
+  participant error_utils as "error-utils"
 
   Caller->>task_execution: normalizeSubagentOutput()
-  task_execution->>runtime_utils_js: 内部関数呼び出し
-  runtime_utils_js-->>task_execution: 結果
-  task_execution-->>Caller: SubagentExecutionResult
+  task_execution->>runtime_utils: 内部関数呼び出し
+  runtime_utils-->>task_execution: 結果
+  task_execution-->>Caller: SubagentExecutionRes
 
   Caller->>task_execution: isRetryableSubagentError()
   task_execution-->>Caller: boolean
@@ -401,4 +401,4 @@ interface SubagentExecutionResult {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.874Z*
+*自動生成: 2026-02-18T00:15:35.620Z*

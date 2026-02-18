@@ -2,7 +2,7 @@
 title: agent-common
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -59,15 +59,15 @@ classDiagram
   class PickFieldCandidateOptions {
     <<interface>>
     +maxLength: number
-    +excludeLabels: string[]
+    +excludeLabels: string
     +fallback: string
   }
   class NormalizeEntityOutputOptions {
     <<interface>>
     +config: EntityConfig
-    +validateFn: outputstring>okbooleanreasonstring
-    +requiredLabels: string[]
-    +pickSummary: textstring>string
+    +validateFn: output_string_ok
+    +requiredLabels: string
+    +pickSummary: text_string_strin
     +includeConfidence: boolean
   }
 ```
@@ -80,7 +80,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    validation_utils_js["validation-utils.js"]
+    validation_utils["validation-utils"]
   end
   main --> local
 ```
@@ -109,11 +109,11 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant agent_common as "agent-common"
-  participant validation_utils_js as "validation-utils.js"
+  participant validation_utils as "validation-utils"
 
   Caller->>agent_common: pickFieldCandidate()
-  agent_common->>validation_utils_js: 内部関数呼び出し
-  validation_utils_js-->>agent_common: 結果
+  agent_common->>validation_utils: 内部関数呼び出し
+  validation_utils-->>agent_common: 結果
   agent_common-->>Caller: string
 
   Caller->>agent_common: pickSummaryCandidate()
@@ -317,4 +317,4 @@ Entity type identifier for shared functions.
 Used to distinguish between subagent and team member contexts.
 
 ---
-*自動生成: 2026-02-17T22:24:18.892Z*
+*自動生成: 2026-02-18T00:15:35.642Z*

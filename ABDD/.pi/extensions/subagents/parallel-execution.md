@@ -2,7 +2,7 @@
 title: parallel-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -38,7 +38,7 @@ classDiagram
     +requestedParallelism: number
     +appliedParallelism: number
     +reduced: boolean
-    +reasons: string[]
+    +reasons: string
   }
 ```
 
@@ -70,7 +70,7 @@ sequenceDiagram
   parallel_execution->>agent_runtime: 内部関数呼び出し
   agent_runtime-->>parallel_execution: 結果
   deactivate parallel_execution
-  parallel_execution-->>Caller: Promise<SubagentParallelCapacityResolution>
+  parallel_execution-->>Caller: Promise_SubagentPara
 ```
 
 ## 関数
@@ -123,4 +123,4 @@ interface SubagentParallelCapacityResolution {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.870Z*
+*自動生成: 2026-02-18T00:15:35.615Z*

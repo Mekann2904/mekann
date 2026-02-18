@@ -2,7 +2,7 @@
 title: runtime-error-builders
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -36,8 +36,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    runtime_utils_js["runtime-utils.js"]
-    model_timeouts_js["model-timeouts.js"]
+    runtime_utils["runtime-utils"]
+    model_timeouts["model-timeouts"]
   end
   main --> local
 ```
@@ -67,4 +67,4 @@ even if the caller specifies a shorter timeout intended for faster models.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-17T22:24:18.965Z*
+*自動生成: 2026-02-18T00:15:35.751Z*

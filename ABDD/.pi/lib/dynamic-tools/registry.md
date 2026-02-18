@@ -2,7 +2,7 @@
 title: registry
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -61,26 +61,26 @@ import { quickSafetyCheck, analyzeCodeSafety } from './safety.js';
 classDiagram
   class DynamicToolRegistry {
     -paths: DynamicToolsPaths
-    -tools: Map<stringDynamicToolDefinition>
+    -tools: Map_string_DynamicTo
     -initialized: any
-    -ensureInitialized
-    +register
-    +getById
-    +findByName
-    +search
+    -ensureInitialized()
+    +register()
+    +getById()
+    +findByName()
+    +search()
   }
   class ToolParameterProperty {
     <<interface>>
     +type: string
     +description: string
     +default: unknown
-    +enum: string[]
+    +enum: string
     +minimum: number
   }
   class ToolParameterSchema {
     <<interface>>
-    +properties: Record<stringToolParameterProperty>
-    +required: string[]
+    +properties: Record_string_ToolPa
+    +required: string
   }
   class ToolExecutionResult {
     <<interface>>
@@ -92,7 +92,7 @@ classDiagram
   class ToolSearchOptions {
     <<interface>>
     +name: string
-    +tags: string[]
+    +tags: string
     +minSafetyScore: number
     +limit: number
   }
@@ -102,14 +102,14 @@ classDiagram
     +description: string
     +code: string
     +parameters: ToolParameterSchema
-    +tags: string[]
+    +tags: string
   }
   class RegisterToolResult {
     <<interface>>
     +success: boolean
     +toolId: string
     +error: string
-    +warnings: string[]
+    +warnings: string
   }
 ```
 
@@ -121,10 +121,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
-    safety_js["safety.js"]
-    quality_js["quality.js"]
-    audit_js["audit.js"]
+    types["types"]
+    safety["safety"]
+    quality["quality"]
+    audit["audit"]
   end
   main --> local
 ```
@@ -153,12 +153,12 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant registry as "registry"
-  participant types_js as "types.js"
-  participant safety_js as "safety.js"
+  participant types as "types"
+  participant safety as "safety"
 
   Caller->>registry: ensureDynamicToolsPaths()
-  registry->>types_js: 内部関数呼び出し
-  types_js-->>registry: 結果
+  registry->>types: 内部関数呼び出し
+  types-->>registry: 結果
   registry-->>Caller: void
 
   Caller->>registry: generateToolId()
@@ -592,4 +592,4 @@ interface RegisterToolResult {
 ツール登録結果（拡張機能互換）
 
 ---
-*自動生成: 2026-02-17T22:24:18.927Z*
+*自動生成: 2026-02-18T00:15:35.695Z*

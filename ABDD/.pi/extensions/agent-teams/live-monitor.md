@@ -2,7 +2,7 @@
 title: live-monitor
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -42,11 +42,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    format_utils_js["format-utils.js"]
-    tui_utils_js["tui-utils.js"]
-    live_view_utils_js["live-view-utils.js"]
-    agent_utils_js["agent-utils.js"]
-    team_types_js["team-types.js"]
+    format_utils["format-utils"]
+    tui_utils["tui-utils"]
+    live_view_utils["live-view-utils"]
+    agent_utils["agent-utils"]
+    team_types["team-types"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -73,19 +73,19 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant live_monitor as "live-monitor"
-  participant _mariozechner as "@mariozechner"
-  participant format_utils_js as "format-utils.js"
-  participant tui_utils_js as "tui-utils.js"
+  participant mariozechner as "@mariozechner"
+  participant format_utils as "format-utils"
+  participant tui_utils as "tui-utils"
 
   Caller->>live_monitor: toTeamLiveItemKey()
-  live_monitor->>_mariozechner: API呼び出し
-  _mariozechner-->>live_monitor: レスポンス
-  live_monitor->>format_utils_js: 内部関数呼び出し
-  format_utils_js-->>live_monitor: 結果
+  live_monitor->>mariozechner: API呼び出し
+  mariozechner-->>live_monitor: レスポンス
+  live_monitor->>format_utils: 内部関数呼び出し
+  format_utils-->>live_monitor: 結果
   live_monitor-->>Caller: string
 
   Caller->>live_monitor: renderAgentTeamLiveView()
-  live_monitor-->>Caller: string[]
+  live_monitor-->>Caller: string
 ```
 
 ## 関数
@@ -244,4 +244,4 @@ close(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:24:18.731Z*
+*自動生成: 2026-02-18T00:15:35.402Z*

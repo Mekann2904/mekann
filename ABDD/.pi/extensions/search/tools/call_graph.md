@@ -2,7 +2,7 @@
 title: call_graph
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -43,10 +43,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
-    builder_js["builder.js"]
-    query_js["query.js"]
-    sym_index_js["sym_index.js"]
+    types["types"]
+    builder["builder"]
+    query["query"]
+    sym_index["sym_index"]
   end
   main --> local
 ```
@@ -75,20 +75,20 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant call_graph as "call_graph"
-  participant types_js as "types.js"
-  participant builder_js as "builder.js"
+  participant types as "types"
+  participant builder as "builder"
 
   Caller->>call_graph: callGraphIndex()
   activate call_graph
   Note over call_graph: 非同期処理開始
-  call_graph->>types_js: 内部関数呼び出し
-  types_js-->>call_graph: 結果
+  call_graph->>types: 内部関数呼び出し
+  types-->>call_graph: 結果
   deactivate call_graph
-  call_graph-->>Caller: Promise<CallGraphIndexOutput>
+  call_graph-->>Caller: Promise_CallGraphInd
 
   Caller->>call_graph: findCallersTool()
   activate call_graph
-  call_graph-->>Caller: Promise<FindCallersOutput>
+  call_graph-->>Caller: Promise_FindCallersO
   deactivate call_graph
 ```
 
@@ -194,4 +194,4 @@ Format callees result for display.
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-17T22:24:18.833Z*
+*自動生成: 2026-02-18T00:15:35.563Z*

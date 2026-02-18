@@ -2,7 +2,7 @@
 title: priority-scheduler
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -38,15 +38,15 @@ related: []
 ```mermaid
 classDiagram
   class PriorityTaskQueue {
-    -entries: PriorityQueueEntry[]
+    -entries: PriorityQueueEntry
     -virtualTime: number
     -maxSkipCount: number
     -starvationThresholdMs: number
-    +enqueue
-    +dequeue
-    +peek
-    +remove
-    +getAll
+    +enqueue()
+    +dequeue()
+    +peek()
+    +remove()
+    +getAll()
   }
   class PriorityTaskMetadata {
     <<interface>>
@@ -345,4 +345,4 @@ type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "explorato
 Task complexity level.
 
 ---
-*自動生成: 2026-02-17T22:24:18.957Z*
+*自動生成: 2026-02-18T00:15:35.742Z*

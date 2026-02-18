@@ -2,7 +2,7 @@
 title: result-aggregation
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -42,8 +42,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    error_utils_js["error-utils.js"]
-    agent_types_js["agent-types.js"]
+    error_utils["error-utils"]
+    agent_types["agent-types"]
     storage["storage"]
   end
   main --> local
@@ -73,12 +73,12 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant result_aggregation as "result-aggregation"
-  participant error_utils_js as "error-utils.js"
-  participant agent_types_js as "agent-types.js"
+  participant error_utils as "error-utils"
+  participant agent_types as "agent-types"
 
   Caller->>result_aggregation: isRetryableTeamMemberError()
-  result_aggregation->>error_utils_js: 内部関数呼び出し
-  error_utils_js-->>result_aggregation: 結果
+  result_aggregation->>error_utils: 内部関数呼び出し
+  error_utils-->>result_aggregation: 結果
   result_aggregation-->>Caller: boolean
 
   Caller->>result_aggregation: resolveTeamFailureOutcome()
@@ -203,4 +203,4 @@ extractSummary(output: string): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-17T22:24:18.739Z*
+*自動生成: 2026-02-18T00:15:35.414Z*

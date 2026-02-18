@@ -2,7 +2,7 @@
 title: error-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -135,4 +135,4 @@ type PressureErrorType = "rate_limit" | "timeout" | "capacity" | "other"
 Pressure error classification types.
 
 ---
-*自動生成: 2026-02-17T22:24:18.936Z*
+*自動生成: 2026-02-18T00:15:35.716Z*

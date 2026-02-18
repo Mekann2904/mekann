@@ -2,7 +2,7 @@
 title: utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -47,7 +47,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
+    types["types"]
   end
   main --> local
 ```
@@ -76,11 +76,11 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant utils as "utils"
-  participant types_js as "types.js"
+  participant types as "types"
 
   Caller->>utils: cosineSimilarity()
-  utils->>types_js: 内部関数呼び出し
-  types_js-->>utils: 結果
+  utils->>types: 内部関数呼び出し
+  types-->>utils: 結果
   utils-->>Caller: number
 
   Caller->>utils: euclideanDistance()
@@ -308,4 +308,4 @@ Calculate dot product of two vectors.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-17T22:24:18.936Z*
+*自動生成: 2026-02-18T00:15:35.714Z*

@@ -2,7 +2,7 @@
 title: generate-doc
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -51,10 +51,10 @@ classDiagram
   class LLMContext {
     <<interface>>
     +summary: string
-    +keyFunctions: string[]
-    +keyClasses: string[]
-    +keyInterfaces: string[]
-    +dependencies: string[]
+    +keyFunctions: string
+    +keyClasses: string
+    +keyInterfaces: string
+    +dependencies: string
   }
 ```
 
@@ -66,8 +66,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    extract_structure_js["extract-structure.js"]
-    generate_diagrams_js["generate-diagrams.js"]
+    extract_structure["extract-structure"]
+    generate_diagrams["generate-diagrams"]
   end
   main --> local
 ```
@@ -269,4 +269,4 @@ interface LLMContext {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.777Z*
+*自動生成: 2026-02-18T00:15:35.487Z*

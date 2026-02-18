@@ -2,7 +2,7 @@
 title: text-parsing
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -39,7 +39,7 @@ classDiagram
     <<interface>>
     +stance: DiscussionStance
     +confidence: number
-    +evidence: string[]
+    +evidence: string
   }
 ```
 
@@ -233,4 +233,4 @@ Stance type for discussion analysis.
 Matches StanceClassificationMode behavior in output-schema.ts.
 
 ---
-*自動生成: 2026-02-17T22:24:18.984Z*
+*自動生成: 2026-02-18T00:15:35.772Z*

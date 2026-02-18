@@ -2,7 +2,7 @@
 title: verification-workflow
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -49,7 +49,7 @@ classDiagram
   class VerificationWorkflowConfig {
     <<interface>>
     +enabled: boolean
-    +triggerModes: VerificationTriggerMode[]
+    +triggerModes: VerificationTriggerM
     +challengerConfig: ChallengerConfig
     +inspectorConfig: InspectorConfig
     +fallbackBehavior: FallbackBehavior
@@ -58,12 +58,12 @@ classDiagram
     <<interface>>
     +minConfidenceToChallenge: number
     +requiredFlaws: number
-    +enabledCategories: ChallengeCategory[]
+    +enabledCategories: ChallengeCategory
   }
   class InspectorConfig {
     <<interface>>
     +suspicionThreshold: SuspicionThreshold
-    +requiredPatterns: InspectionPattern[]
+    +requiredPatterns: InspectionPattern
     +autoTriggerOnCollapseSignals: boolean
   }
   class VerificationResult {
@@ -77,7 +77,7 @@ classDiagram
   class InspectorOutput {
     <<interface>>
     +suspicionLevel: SuspicionThreshold
-    +detectedPatterns: DetectedPattern[]
+    +detectedPatterns: DetectedPattern
     +summary: string
     +recommendation: string
   }
@@ -85,15 +85,15 @@ classDiagram
     <<interface>>
     +pattern: InspectionPattern
     +location: string
-    +severity: lowmediumhigh
+    +severity: low_medium_high
     +description: string
   }
   class ChallengerOutput {
     <<interface>>
-    +challengedClaims: ChallengedClaim[]
-    +overallSeverity: minormoderatecritical
+    +challengedClaims: ChallengedClaim
+    +overallSeverity: minor_moderate
     +summary: string
-    +suggestedRevisions: string[]
+    +suggestedRevisions: string
   }
   class ChallengedClaim {
     <<interface>>
@@ -106,7 +106,7 @@ classDiagram
   class VerificationContext {
     <<interface>>
     +task: string
-    +triggerMode: postsubagentpostteamexplicitlowconfidencehighstakes
+    +triggerMode: post_subagent_pos
     +agentId: string
     +teamId: string
     +previousVerifications: number
@@ -544,4 +544,4 @@ type VerificationVerdict = | "pass"              // 検証通過
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.996Z*
+*自動生成: 2026-02-18T00:15:35.787Z*

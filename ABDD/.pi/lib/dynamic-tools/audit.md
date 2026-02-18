@@ -2,7 +2,7 @@
 title: audit
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -44,7 +44,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
+    types["types"]
   end
   main --> local
 ```
@@ -73,18 +73,18 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant audit as "audit"
-  participant types_js as "types.js"
+  participant types as "types"
 
   Caller->>audit: logAudit()
   activate audit
   Note over audit: 非同期処理開始
-  audit->>types_js: 内部関数呼び出し
-  types_js-->>audit: 結果
+  audit->>types: 内部関数呼び出し
+  types-->>audit: 結果
   deactivate audit
-  audit-->>Caller: Promise<AuditLogEntry>
+  audit-->>Caller: Promise_AuditLogEntr
 
   Caller->>audit: readAuditLog()
-  audit-->>Caller: AuditLogEntry[]
+  audit-->>Caller: AuditLogEntry
 ```
 
 ## 関数
@@ -256,4 +256,4 @@ archiveOldLogs(daysToKeep: number, paths?: DynamicToolsPaths): { archived: numbe
 **戻り値**: `{ archived: number; error?: string }`
 
 ---
-*自動生成: 2026-02-17T22:24:18.920Z*
+*自動生成: 2026-02-18T00:15:35.681Z*

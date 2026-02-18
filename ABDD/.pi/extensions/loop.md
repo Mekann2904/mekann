@@ -2,7 +2,7 @@
 title: loop
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -64,7 +64,7 @@ classDiagram
     <<interface>>
     +summary: LoopRunSummary
     +finalOutput: string
-    +iterations: LoopIterationResult[]
+    +iterations: LoopIterationResult
   }
   class LoopRunInput {
     <<interface>>
@@ -72,11 +72,11 @@ classDiagram
     +goal: string
     +verificationCommand: string
     +config: LoopConfig
-    +references: LoopReference[]
+    +references: LoopReference
   }
   class LoopProgress {
     <<interface>>
-    +type: run_startiteration_startiteration_donerun_done
+    +type: run_start_iterati
     +iteration: number
     +maxIterations: number
     +status: LoopStatus
@@ -84,34 +84,34 @@ classDiagram
   }
   class ParsedLoopCommand {
     <<interface>>
-    +mode: helpstatusrun
+    +mode: help_status_run
     +task: string
     +goal: string
     +verifyCommand: string
-    +refs: string[]
+    +refs: string
   }
   class LoopActivityIndicator {
     <<interface>>
-    +updateFromProgress: progressLoopProgress>void
-    +stop: >void
+    +updateFromProgress: progress_LoopProgre
+    +stop: void
   }
   class ParsedLoopContract {
     <<interface>>
     +status: LoopStatus
     +goalStatus: LoopGoalStatus
     +goalEvidence: string
-    +citations: string[]
+    +citations: string
     +summary: string
   }
   class VerificationPolicyConfig {
     <<interface>>
-    +mode: VerificationPolicyMode
+    +mode: VerificationPolicyMo
     +everyN: number
   }
   class ParsedVerificationCommand {
     <<interface>>
     +executable: string
-    +args: string[]
+    +args: string
     +error: string
   }
 ```
@@ -124,11 +124,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    format_utils_js["format-utils.js"]
-    error_utils_js["error-utils.js"]
-    validation_utils_js["validation-utils.js"]
-    agent_types_js["agent-types.js"]
-    agent_utils_js["agent-utils.js"]
+    format_utils["format-utils"]
+    error_utils["error-utils"]
+    validation_utils["validation-utils"]
+    agent_types["agent-types"]
+    agent_utils["agent-utils"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -145,17 +145,17 @@ flowchart LR
 sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
-  participant loop as "loop"
-  participant _mariozechner as "@mariozechner"
-  participant format_utils_js as "format-utils.js"
-  participant error_utils_js as "error-utils.js"
+  participant Mloop as "loop"
+  participant mariozechner as "@mariozechner"
+  participant format_utils as "format-utils"
+  participant error_utils as "error-utils"
 
-  Caller->>loop: registerLoopExtension()
-  loop->>_mariozechner: API呼び出し
-  _mariozechner-->>loop: レスポンス
-  loop->>format_utils_js: 内部関数呼び出し
-  format_utils_js-->>loop: 結果
-  loop-->>Caller: void
+  Caller->>Mloop: registerLoopExtension()
+  Mloop->>mariozechner: API呼び出し
+  mariozechner-->>Mloop: レスポンス
+  Mloop->>format_utils: 内部関数呼び出し
+  format_utils-->>Mloop: 結果
+  Mloop-->>Caller: void
 ```
 
 ## 関数
@@ -685,4 +685,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.812Z*
+*自動生成: 2026-02-18T00:15:35.534Z*

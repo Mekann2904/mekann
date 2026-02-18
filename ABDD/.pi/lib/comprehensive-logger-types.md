@@ -2,7 +2,7 @@
 title: comprehensive-logger-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -60,87 +60,87 @@ classDiagram
   class SessionStartEvent {
     <<interface>>
     +eventType: session_start
-    +data: piVersionstringnodeVersionstringplatformstringcwdstringenvKeysstring[]configHashstringstartupTimeMsnumber
+    +data: piVersion_string_no
   }
   class SessionEndEvent {
     <<interface>>
     +eventType: session_end
-    +data: durationMsnumbertaskCountnumbererrorCountnumbertotalTokensUsednumberexitReasonnormalerroruser_interrupttimeout
+    +data: durationMs_number_t
   }
   class TaskStartEvent {
     <<interface>>
     +eventType: task_start
-    +data: userInputstringinputTypetextvoicefilecontextfilesReferencedstring[]skillsLoadedstring[]teamsAvailablestring[]intentstring
+    +data: userInput_string_in
   }
   class TaskEndEvent {
     <<interface>>
     +eventType: task_end
-    +data: durationMsnumberstatusStatusoperationsCountnumbertoolsCountnumbertokensUsednumberfilesCreatedstring[]filesModifiedstring[]filesDeletedstring[]commandsExecutedstring[]summarystringerrorsArray<eventIdstringmessagestringtypestring>
+    +data: durationMs_number_s
   }
   class OperationStartEvent {
     <<interface>>
     +eventType: operation_start
-    +data: operationTypeOperationTypetargetstringinputtaskstringparamsRecord<stringunknown>strategystringretryConfigmaxRetriesnumberbackoffMsnumber
+    +data: operationType_Opera
   }
   class OperationEndEvent {
     <<interface>>
     +eventType: operation_end
-    +data: durationMsnumberstatusStatustokensUsednumberoutputLengthnumberoutputFilestringchildOperationsnumbertoolCallsnumbererrortypestringmessagestringstackstring
+    +data: durationMs_number_s
   }
   class ToolCallEvent {
     <<interface>>
     +eventType: tool_call
-    +data: toolNamestringtoolTypeToolTypeparamsRecord<stringunknown>callerfilestringlinenumberfunctionstringenvironmentcwdstringshellstring
+    +data: toolName_string_too
   }
   class ToolResultEvent {
     <<interface>>
     +eventType: tool_result
-    +data: toolNamestringstatussuccesserrorpartialdurationMsnumberoutputTypeinlinefiletruncatedoutputstringoutputHashstringoutputSizenumberexitCodenumbermimeTypestring
+    +data: toolName_string_sta
   }
   class ToolErrorEvent {
     <<interface>>
     +eventType: tool_error
-    +data: toolNamestringerrorTypevalidationexecutiontimeoutpermissionunknownerrorMessagestringerrorStackstringrecoveryAttemptedbooleanrecoveryMethodstringrecoverySuccessfulbooleanparamsRecord<stringunknown>partialOutputstring
+    +data: toolName_string_err
   }
   class LLMRequestEvent {
     <<interface>>
     +eventType: llm_request
-    +data: providerstringmodelstringsystemPromptLengthnumbersystemPromptHashstringuserMessageCountnumberuserMessageLengthnumbertemperaturenumbermaxTokensnumbercontextWindowUsednumbertoolsAvailablestring[]
+    +data: provider_string_mod
   }
   class LLMResponseEvent {
     <<interface>>
     +eventType: llm_response
-    +data: providerstringmodelstringinputTokensnumberoutputTokensnumbertotalTokensnumberdurationMsnumberresponseLengthnumberstopReasonend_turnmax_tokenstool_useerrortoolsCalledArray<namestringparamsSizenumber>
+    +data: provider_string_mod
   }
   class LLMErrorEvent {
     <<interface>>
     +eventType: llm_error
-    +data: providerstringmodelstringerrorTyperate_limittimeoutcontext_too_longapi_errorunknownerrorMessagestringretryAttemptnumberretryAfterMsnumber
+    +data: provider_string_mod
   }
   class UserInputEvent {
     <<interface>>
     +eventType: user_input
-    +data: inputstringinputTypetextvoicefilemetadatasourcestringtimestampstring
+    +data: input_string_inputT
   }
   class UserFeedbackEvent {
     <<interface>>
     +eventType: user_feedback
-    +data: feedbackTypeapprovalrejectioncorrectionclarificationtargetEventIdstringcontentstring
+    +data: feedbackType_appro
   }
   class ConfigLoadEvent {
     <<interface>>
     +eventType: config_load
-    +data: configTypesystemprojectuserconfigPathstringconfigHashstringkeysLoadedstring[]overridesRecord<stringboolean>
+    +data: configType_system
   }
   class StateChangeEvent {
     <<interface>>
     +eventType: state_change
-    +data: entityTypefilestoragememoryconfigentityPathstringchangeTypecreateupdatedeletediffadditionsnumberdeletionsnumberhunksnumberbeforeHashstringafterHashstring
+    +data: entityType_file
   }
   class MetricsSnapshotEvent {
     <<interface>>
     +eventType: metrics_snapshot
-    +data: memoryUsageMBnumbercpuPercentnumbereventsTotalnumbertasksCompletednumberoperationsCompletednumbertoolCallsTotalnumbertokensTotalnumbererrorRatenumberavgResponseTimeMsnumberp95ResponseTimeMsnumber
+    +data: memoryUsageMB_numbe
   }
   class LoggerConfig {
     <<interface>>
@@ -589,4 +589,4 @@ type LogEvent = | SessionStartEvent
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.899Z*
+*自動生成: 2026-02-18T00:15:35.656Z*

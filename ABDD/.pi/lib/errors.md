@@ -2,7 +2,7 @@
 title: errors
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -51,84 +51,84 @@ classDiagram
     +retryable: boolean
     +cause: Error
     +timestamp: number
-    +is
-    +toJSON
+    +is()
+    +toJSON()
   }
   Error <|-- PiError
   class RuntimeLimitError {
     +currentCount: number
     +maxCount: number
-    +toJSON
+    +toJSON()
   }
   PiError <|-- RuntimeLimitError
   class RuntimeQueueWaitError {
     +waitTimeMs: number
     +maxWaitMs: number
-    +toJSON
+    +toJSON()
   }
   PiError <|-- RuntimeQueueWaitError
   class SchemaValidationError {
-    +violations: string[]
+    +violations: string
     +field: string
-    +toJSON
+    +toJSON()
   }
   PiError <|-- SchemaValidationError
   class ValidationError {
     +field: string
     +expected: string
     +actual: string
-    +toJSON
+    +toJSON()
   }
   PiError <|-- ValidationError
   class TimeoutError {
     +timeoutMs: number
-    +toJSON
+    +toJSON()
   }
   PiError <|-- TimeoutError
   class CancelledError {
     +reason: string
-    +toJSON
+    +toJSON()
   }
   PiError <|-- CancelledError
   class RateLimitError {
     +retryAfterMs: number
-    +toJSON
+    +toJSON()
   }
   PiError <|-- RateLimitError
   class CapacityError {
     +resource: string
-    +toJSON
+    +toJSON()
   }
   PiError <|-- CapacityError
   class ParsingError {
     +content: string
     +position: number
-    +toJSON
+    +toJSON()
   }
   PiError <|-- ParsingError
   class ExecutionError {
     +severity: ErrorSeverity
     +context: ErrorContext
-    +toJSON
+    +toJSON()
   }
   PiError <|-- ExecutionError
   class ConfigurationError {
     +key: string
     +expected: string
-    +toJSON
+    +toJSON()
   }
   PiError <|-- ConfigurationError
   class StorageError {
     +path: string
-    +operation: readwritedeletelock
-    +toJSON
+    +operation: read_write_dele
+    +toJSON()
   }
   PiError <|-- StorageError
   class ErrorContext {
     <<interface>>
     +operation: string
     +component: string
-    +metadata: Record<stringunknown>
+    +metadata: Record_string_unknow
     +timestamp: number
   }
 ```
@@ -579,4 +579,4 @@ type ErrorSeverity = "low" | "medium" | "high" | "critical"
 エラー重要度レベル（分類用）。
 
 ---
-*自動生成: 2026-02-17T22:24:18.939Z*
+*自動生成: 2026-02-18T00:15:35.720Z*

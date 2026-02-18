@@ -2,7 +2,7 @@
 title: output
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -62,8 +62,8 @@ classDiagram
     <<interface>>
     +confidence: number
     +suggestedNextAction: SuggestedNextAction
-    +alternativeTools: string[]
-    +relatedQueries: string[]
+    +alternativeTools: string
+    +relatedQueries: string
   }
   class SearchStats {
     <<interface>>
@@ -73,7 +73,7 @@ classDiagram
   }
   class EnhancedOutput {
     <<interface>>
-    +results: T[]
+    +results: T
     +total: number
     +truncated: boolean
     +error: string
@@ -90,8 +90,8 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     types["types"]
-    metrics_js["metrics.js"]
-    constants_js["constants.js"]
+    metrics["metrics"]
+    constants["constants"]
   end
   main --> local
 ```
@@ -121,15 +121,15 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant output as "output"
   participant types as "types"
-  participant metrics_js as "metrics.js"
+  participant metrics as "metrics"
 
   Caller->>output: truncateResults()
   output->>types: 内部関数呼び出し
   types-->>output: 結果
-  output-->>Caller: SearchResponse<T>
+  output-->>Caller: SearchResponse_T
 
   Caller->>output: truncateHead()
-  output-->>Caller: SearchResponse<T>
+  output-->>Caller: SearchResponse_T
 ```
 
 ## 関数
@@ -631,4 +631,4 @@ Suggested next action for the agent.
 Helps guide the agent towards more effective searches.
 
 ---
-*自動生成: 2026-02-17T22:24:18.856Z*
+*自動生成: 2026-02-18T00:15:35.593Z*

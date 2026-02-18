@@ -2,7 +2,7 @@
 title: registry
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -39,12 +39,12 @@ import { EmbeddingProvider, ProviderConfig, EmbeddingModuleConfig... } from './t
 classDiagram
   class EmbeddingProviderRegistry {
     -providers: any
-    -config: EmbeddingModuleConfig
-    +register
-    +unregister
-    +get
-    +getAll
-    +getAvailable
+    -config: EmbeddingModuleConfi
+    +register()
+    +unregister()
+    +get()
+    +getAll()
+    +getAvailable()
   }
 ```
 
@@ -56,7 +56,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
+    types["types"]
   end
   main --> local
 ```
@@ -79,19 +79,19 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant registry as "registry"
-  participant types_js as "types.js"
+  participant types as "types"
 
   Caller->>registry: getEmbeddingProvider()
   activate registry
   Note over registry: 非同期処理開始
-  registry->>types_js: 内部関数呼び出し
-  types_js-->>registry: 結果
+  registry->>types: 内部関数呼び出し
+  types-->>registry: 結果
   deactivate registry
-  registry-->>Caller: Promise<EmbeddingProvider | null>
+  registry-->>Caller: Promise_EmbeddingPro
 
   Caller->>registry: generateEmbedding()
   activate registry
-  registry-->>Caller: Promise<number[] | null>
+  registry-->>Caller: Promise_number_nul
   deactivate registry
 ```
 
@@ -186,4 +186,4 @@ async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise
 | saveConfig | `saveConfig(): void` |
 
 ---
-*自動生成: 2026-02-17T22:24:18.934Z*
+*自動生成: 2026-02-18T00:15:35.709Z*

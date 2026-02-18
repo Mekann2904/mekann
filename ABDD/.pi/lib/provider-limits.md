@@ -2,7 +2,7 @@
 title: provider-limits
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -56,7 +56,7 @@ classDiagram
   }
   class ModelTierLimits {
     <<interface>>
-    +tiers: [tierstring]ModelLimits
+    +tiers: tier_string_Model
     +default: ModelLimits
   }
   class ProviderLimitsConfig {
@@ -64,7 +64,7 @@ classDiagram
     +version: number
     +lastUpdated: string
     +source: string
-    +providers: [providerstring]displayNamestringdocumentationstringmodels[patternstring]ModelTierLimits
+    +providers: provider_string
   }
   class ResolvedModelLimits {
     <<interface>>
@@ -72,7 +72,7 @@ classDiagram
     +model: string
     +tier: string
     +rpm: number
-    +tpm: numberundefined
+    +tpm: number_undefined
   }
 ```
 
@@ -366,4 +366,4 @@ interface ResolvedModelLimits {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.960Z*
+*自動生成: 2026-02-18T00:15:35.745Z*

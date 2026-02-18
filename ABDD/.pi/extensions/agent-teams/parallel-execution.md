@@ -2,7 +2,7 @@
 title: parallel-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -88,10 +88,10 @@ sequenceDiagram
   Caller->>parallel_execution: buildMemberParallelCandidates()
   parallel_execution->>agent_runtime: 内部関数呼び出し
   agent_runtime-->>parallel_execution: 結果
-  parallel_execution-->>Caller: TeamParallelCapacityCandidate[]
+  parallel_execution-->>Caller: TeamParallelCapacity
 
   Caller->>parallel_execution: buildTeamAndMemberParallelCandidates()
-  parallel_execution-->>Caller: TeamParallelCapacityCandidate[]
+  parallel_execution-->>Caller: TeamParallelCapacity
 ```
 
 ## 関数
@@ -190,4 +190,4 @@ interface TeamParallelCapacityResolution {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.736Z*
+*自動生成: 2026-02-18T00:15:35.410Z*

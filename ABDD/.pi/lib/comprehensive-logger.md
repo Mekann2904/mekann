@@ -2,7 +2,7 @@
 title: comprehensive-logger
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -40,15 +40,15 @@ import { join, dirname } from 'path';
 classDiagram
   class ComprehensiveLogger {
     -config: LoggerConfig
-    -buffer: LogEvent[]
+    -buffer: LogEvent
     -sessionId: string
     -currentTaskId: string
     -currentOperationId: string
-    -ensureLogDir
-    -startFlushTimer
-    +startSession
-    +endSession
-    +startTask
+    -ensureLogDir()
+    -startFlushTimer()
+    +startSession()
+    +endSession()
+    +startTask()
   }
 ```
 
@@ -210,4 +210,4 @@ resetLogger(): void
 | getTotalTokens | `getTotalTokens(): number` |
 
 ---
-*自動生成: 2026-02-17T22:24:18.901Z*
+*自動生成: 2026-02-18T00:15:35.658Z*

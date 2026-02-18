@@ -2,7 +2,7 @@
 title: cost-estimator
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -41,13 +41,13 @@ import { TaskSource } from './task-scheduler';
 classDiagram
   class CostEstimator {
     -config: CostEstimatorConfig
-    -history: Map<TaskSourceExecutionHistoryEntry[]>
-    -statsCache: Map<TaskSourceSourceStatistics>
-    +estimate
-    +recordExecution
-    +getStats
-    +clear
-    +getDefaultEstimate
+    -history: Map_TaskSource_Execu
+    -statsCache: Map_TaskSource_Sourc
+    +estimate()
+    +recordExecution()
+    +getStats()
+    +clear()
+    +getDefaultEstimate()
   }
   class CostEstimation {
     <<interface>>
@@ -258,4 +258,4 @@ type CostEstimationMethod = "default" | "historical" | "heuristic"
 Estimation method used for cost calculation.
 
 ---
-*自動生成: 2026-02-17T22:24:18.915Z*
+*自動生成: 2026-02-18T00:15:35.668Z*

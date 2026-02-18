@@ -2,7 +2,7 @@
 title: checkpoint-manager
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -78,9 +78,9 @@ classDiagram
     <<interface>>
     +totalCount: number
     +totalSizeBytes: number
-    +oldestCreatedAt: numbernull
-    +newestCreatedAt: numbernull
-    +bySource: Record<CheckpointSourcenumber>
+    +oldestCreatedAt: number_null
+    +newestCreatedAt: number_null
+    +bySource: Record_CheckpointSou
   }
 ```
 
@@ -113,14 +113,7 @@ sequenceDiagram
   checkpoint_manager-->>Caller: void
 
   Caller->>checkpoint_manager: getCheckpointManager()
-  checkpoint_manager-->>Caller: {
-  save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
-  load: (taskId: string) => Promise<Checkpoint | null>;
-  delete: (taskId: string) => Promise<boolean>;
-  listExpired: () => Promise<Checkpoint[]>;
-  cleanup: () => Promise<number>;
-  getStats: () => CheckpointStats;
-}
+  checkpoint_manager-->>Caller: save_checkpoint_Om
 ```
 
 ## 関数
@@ -514,4 +507,4 @@ type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background"
 Task priority for checkpoint ordering.
 
 ---
-*自動生成: 2026-02-17T22:24:18.897Z*
+*自動生成: 2026-02-18T00:15:35.653Z*

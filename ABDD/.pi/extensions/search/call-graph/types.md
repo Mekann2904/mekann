@@ -2,7 +2,7 @@
 title: types
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -70,8 +70,8 @@ classDiagram
   }
   class CallGraphIndex {
     <<interface>>
-    +nodes: CallGraphNode[]
-    +edges: CallGraphEdge[]
+    +nodes: CallGraphNode
+    +edges: CallGraphEdge
     +metadata: CallGraphMetadata
   }
   class CallGraphIndexInput {
@@ -113,7 +113,7 @@ classDiagram
     +symbolName: string
     +total: number
     +truncated: boolean
-    +results: CallChainResult[]
+    +results: CallChainResult
     +error: string
   }
   class FindCalleesOutput {
@@ -121,7 +121,7 @@ classDiagram
     +symbolName: string
     +total: number
     +truncated: boolean
-    +results: CallChainResult[]
+    +results: CallChainResult
     +error: string
   }
   class FunctionDefinition {
@@ -344,4 +344,4 @@ type CallGraphNodeKind = "function" | "method" | "arrow" | "const"
 Kind of callable symbol
 
 ---
-*自動生成: 2026-02-17T22:24:18.824Z*
+*自動生成: 2026-02-18T00:15:35.551Z*

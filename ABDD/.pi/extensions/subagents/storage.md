@@ -2,7 +2,7 @@
 title: storage
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -57,12 +57,12 @@ classDiagram
     +agentId: string
     +task: string
     +summary: string
-    +status: completedfailed
+    +status: completed_failed
   }
   class SubagentStorage {
     <<interface>>
-    +agents: SubagentDefinition[]
-    +runs: SubagentRunRecord[]
+    +agents: SubagentDefinition
+    +runs: SubagentRunRecord
     +currentAgentId: string
     +defaultsVersion: number
   }
@@ -79,9 +79,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    storage_base_js["storage-base.js"]
-    storage_lock_js["storage-lock.js"]
-    comprehensive_logger_js["comprehensive-logger.js"]
+    storage_base["storage-base"]
+    storage_lock["storage-lock"]
+    comprehensive_logger["comprehensive-logger"]
   end
   main --> local
 ```
@@ -106,13 +106,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant storage as "storage"
-  participant storage_base_js as "storage-base.js"
-  participant storage_lock_js as "storage-lock.js"
+  participant storage_base as "storage-base"
+  participant storage_lock as "storage-lock"
 
   Caller->>storage: createDefaultAgents()
-  storage->>storage_base_js: 内部関数呼び出し
-  storage_base_js-->>storage: 結果
-  storage-->>Caller: SubagentDefinition[]
+  storage->>storage_base: 内部関数呼び出し
+  storage_base-->>storage: 結果
+  storage-->>Caller: SubagentDefinition
 
   Caller->>storage: loadStorage()
   storage-->>Caller: SubagentStorage
@@ -306,4 +306,4 @@ type AgentEnabledState = "enabled" | "disabled"
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.872Z*
+*自動生成: 2026-02-18T00:15:35.617Z*

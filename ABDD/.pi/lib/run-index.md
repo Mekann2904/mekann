@@ -2,7 +2,7 @@
 title: run-index
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -55,7 +55,7 @@ classDiagram
   class IndexedRun {
     <<interface>>
     +runId: string
-    +source: subagentagentteam
+    +source: subagent_agent_te
     +agentId: string
     +teamId: string
     +task: string
@@ -64,14 +64,14 @@ classDiagram
     <<interface>>
     +version: number
     +lastUpdated: string
-    +runs: IndexedRun[]
-    +keywordIndex: Record<stringstring[]>
-    +taskTypeIndex: Record<TaskTypestring[]>
+    +runs: IndexedRun
+    +keywordIndex: Record_string_string
+    +taskTypeIndex: Record_TaskType_stri
   }
   class SearchOptions {
     <<interface>>
     +limit: number
-    +status: completedfailed
+    +status: completed_failed
     +taskType: TaskType
     +minKeywordMatch: number
   }
@@ -79,7 +79,7 @@ classDiagram
     <<interface>>
     +run: IndexedRun
     +score: number
-    +matchedKeywords: string[]
+    +matchedKeywords: string
   }
 ```
 
@@ -91,8 +91,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js["fs-utils.js"]
-    storage_lock_js["storage-lock.js"]
+    fs_utils["fs-utils"]
+    storage_lock["storage-lock"]
   end
   main --> local
 ```
@@ -121,13 +121,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant run_index as "run-index"
-  participant fs_utils_js as "fs-utils.js"
-  participant storage_lock_js as "storage-lock.js"
+  participant fs_utils as "fs-utils"
+  participant storage_lock as "storage-lock"
 
   Caller->>run_index: extractKeywords()
-  run_index->>fs_utils_js: 内部関数呼び出し
-  fs_utils_js-->>run_index: 結果
-  run_index-->>Caller: string[]
+  run_index->>fs_utils: 内部関数呼び出し
+  fs_utils-->>run_index: 結果
+  run_index-->>Caller: string
 
   Caller->>run_index: classifyTaskType()
   run_index-->>Caller: TaskType
@@ -488,4 +488,4 @@ type TaskType = | "code-review"
 Task type classification.
 
 ---
-*自動生成: 2026-02-17T22:24:18.965Z*
+*自動生成: 2026-02-18T00:15:35.750Z*

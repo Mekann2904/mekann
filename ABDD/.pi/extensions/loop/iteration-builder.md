@@ -2,7 +2,7 @@
 title: iteration-builder
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -52,7 +52,7 @@ classDiagram
     +status: LoopStatus
     +goalStatus: LoopGoalStatus
     +goalEvidence: string
-    +citations: string[]
+    +citations: string
     +summary: string
   }
 ```
@@ -65,7 +65,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    agent_types_js["agent-types.js"]
+    agent_types["agent-types"]
     reference_loader["reference-loader"]
   end
   main --> local
@@ -95,12 +95,12 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant iteration_builder as "iteration-builder"
-  participant agent_types_js as "agent-types.js"
+  participant agent_types as "agent-types"
   participant reference_loader as "reference-loader"
 
   Caller->>iteration_builder: buildIterationPrompt()
-  iteration_builder->>agent_types_js: 内部関数呼び出し
-  agent_types_js-->>iteration_builder: 結果
+  iteration_builder->>agent_types: 内部関数呼び出し
+  agent_types-->>iteration_builder: 結果
   iteration_builder-->>Caller: string
 
   Caller->>iteration_builder: buildReferencePack()
@@ -622,4 +622,4 @@ type LoopGoalStatus = "met" | "not_met" | "unknown"
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.801Z*
+*自動生成: 2026-02-18T00:15:35.521Z*

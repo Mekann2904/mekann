@@ -2,7 +2,7 @@
 title: member-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -62,10 +62,10 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     storage["storage"]
-    format_utils_js["format-utils.js"]
-    error_utils_js["error-utils.js"]
-    agent_types_js["agent-types.js"]
-    output_validation_js["output-validation.js"]
+    format_utils["format-utils"]
+    error_utils["error-utils"]
+    agent_types["agent-types"]
+    output_validation["output-validation"]
   end
   main --> local
 ```
@@ -95,7 +95,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant member_execution as "member-execution"
   participant storage as "storage"
-  participant format_utils_js as "format-utils.js"
+  participant format_utils as "format-utils"
 
   Caller->>member_execution: normalizeTeamMemberOutput()
   member_execution->>storage: 内部関数呼び出し
@@ -103,7 +103,7 @@ sequenceDiagram
   member_execution-->>Caller: TeamNormalizedOutput
 
   Caller->>member_execution: mergeSkillArrays()
-  member_execution-->>Caller: string[] | undefined
+  member_execution-->>Caller: string_undefined
 ```
 
 ## 関数
@@ -372,4 +372,4 @@ interface TeamNormalizedOutput {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.735Z*
+*自動生成: 2026-02-18T00:15:35.407Z*

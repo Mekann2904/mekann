@@ -2,7 +2,7 @@
 title: semantic_search
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -40,9 +40,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
-    constants_js["constants.js"]
-    utils_js["utils.js"]
+    types["types"]
+    constants["constants"]
+    utils["utils"]
   end
   main --> local
 ```
@@ -63,16 +63,16 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant semantic_search as "semantic_search"
-  participant types_js as "types.js"
-  participant constants_js as "constants.js"
+  participant types as "types"
+  participant constants as "constants"
 
   Caller->>semantic_search: semanticSearch()
   activate semantic_search
   Note over semantic_search: 非同期処理開始
-  semantic_search->>types_js: 内部関数呼び出し
-  types_js-->>semantic_search: 結果
+  semantic_search->>types: 内部関数呼び出し
+  types-->>semantic_search: 結果
   deactivate semantic_search
-  semantic_search-->>Caller: Promise<SemanticSearchOutput>
+  semantic_search-->>Caller: Promise_SemanticSear
 
   Caller->>semantic_search: formatSemanticSearch()
   semantic_search-->>Caller: string
@@ -163,4 +163,4 @@ Format semantic search results for display.
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-17T22:24:18.838Z*
+*自動生成: 2026-02-18T00:15:35.569Z*

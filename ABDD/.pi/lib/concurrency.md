@@ -2,7 +2,7 @@
 title: concurrency
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -50,7 +50,7 @@ sequenceDiagram
   activate concurrency
   Note over concurrency: 非同期処理開始
   deactivate concurrency
-  concurrency-->>Caller: Promise<TResult[]>
+  concurrency-->>Caller: Promise_TResult
 ```
 
 ## 関数
@@ -133,4 +133,4 @@ Result wrapper for tracking success/failure of individual workers.
 Used internally to ensure all workers complete before throwing errors.
 
 ---
-*自動生成: 2026-02-17T22:24:18.902Z*
+*自動生成: 2026-02-18T00:15:35.659Z*

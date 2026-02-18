@@ -2,7 +2,7 @@
 title: context-usage-dashboard
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -37,11 +37,11 @@ import { truncateToWidth } from '@mariozechner/pi-tui';
 classDiagram
   class CurrentSnapshot {
     <<interface>>
-    +usage: ContextUsageundefined
-    +freeTokens: numbernull
+    +usage: ContextUsage_undefin
+    +freeTokens: number_null
     +referenceTotalTokens: number
-    +categoryTokens: usernumberassistantnumbertoolsnumberothernumber
-    +toolTokens: Map<stringnumber>
+    +categoryTokens: user_number_assista
+    +toolTokens: Map_string_number
   }
   class ToolStats {
     <<interface>>
@@ -55,7 +55,7 @@ classDiagram
     +endMs: number
     +files: number
     +totalUsageTokens: number
-    +usageBreakdown: inputnumberoutputnumbercacheReadnumbercacheWritenumber
+    +usageBreakdown: input_number_output
   }
   class DashboardSnapshot {
     <<interface>>
@@ -73,7 +73,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    validation_utils_js["validation-utils.js"]
+    validation_utils["validation-utils"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -446,4 +446,4 @@ interface DashboardSnapshot {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.781Z*
+*自動生成: 2026-02-18T00:15:35.493Z*

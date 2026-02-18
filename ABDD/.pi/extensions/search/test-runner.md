@@ -2,7 +2,7 @@
 title: test-runner
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -45,7 +45,7 @@ classDiagram
   class TestSuite {
     <<interface>>
     +name: string
-    +tests: TestResult[]
+    +tests: TestResult
     +totalDuration: number
   }
 ```
@@ -58,11 +58,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    file_candidates_js["file_candidates.js"]
-    code_search_js["code_search.js"]
-    sym_index_js["sym_index.js"]
-    sym_find_js["sym_find.js"]
-    cli_js["cli.js"]
+    file_candidates["file_candidates"]
+    code_search["code_search"]
+    sym_index["sym_index"]
+    sym_find["sym_find"]
+    cli["cli"]
   end
   main --> local
 ```
@@ -74,8 +74,8 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant test_runner as "test-runner"
-  participant file_candidates_js as "file_candidates.js"
-  participant code_search_js as "code_search.js"
+  participant file_candidates as "file_candidates"
+  participant code_search as "code_search"
 
 ```
 
@@ -221,4 +221,4 @@ interface TestSuite {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.831Z*
+*自動生成: 2026-02-18T00:15:35.561Z*

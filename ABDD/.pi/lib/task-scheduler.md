@@ -2,7 +2,7 @@
 title: task-scheduler
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -48,15 +48,15 @@ import { PRIORITY_VALUES } from './priority-scheduler';
 classDiagram
   class TaskSchedulerImpl {
     -config: SchedulerConfig
-    -queues: Map<stringTaskQueueEntry[]>
-    -activeExecutions: Map<stringTaskQueueEntry>
+    -queues: Map_string_TaskQueue
+    -activeExecutions: Map_string_TaskQueue
     -eventTarget: EventTarget
     -taskIdCounter: any
-    +submit
-    +getStats
-    -getQueueKey
-    -sortQueue
-    -promoteStarvingTasks
+    +submit()
+    +getStats()
+    -getQueueKey()
+    -sortQueue()
+    -promoteStarvingTasks()
   }
   class TaskCostEstimate {
     <<interface>>
@@ -82,14 +82,14 @@ classDiagram
   class QueueStats {
     <<interface>>
     +totalQueued: number
-    +byPriority: Record<TaskPrioritynumber>
-    +byProvider: Record<stringnumber>
+    +byPriority: Record_TaskPriority
+    +byProvider: Record_string_number
     +avgWaitMs: number
     +maxWaitMs: number
   }
   class TaskQueueEntry {
     <<interface>>
-    +task: ScheduledTask<unknown>
+    +task: ScheduledTask_unknow
     +enqueuedAtMs: number
     +startedAtMs: number
     +completedAtMs: number
@@ -162,7 +162,7 @@ sequenceDiagram
 
   Caller->>task_scheduler: preemptTask()
   activate task_scheduler
-  task_scheduler-->>Caller: Promise<PreemptionResult>
+  task_scheduler-->>Caller: Promise_PreemptionRe
   deactivate task_scheduler
 ```
 
@@ -592,4 +592,4 @@ Source type for scheduled tasks.
 Identifies which tool created this task.
 
 ---
-*自動生成: 2026-02-17T22:24:18.982Z*
+*自動生成: 2026-02-18T00:15:35.770Z*

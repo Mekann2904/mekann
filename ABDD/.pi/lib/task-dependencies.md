@@ -2,7 +2,7 @@
 title: task-dependencies
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -31,33 +31,33 @@ related: []
 ```mermaid
 classDiagram
   class TaskDependencyGraph {
-    -nodes: Map<stringTaskDependencyNode>
-    -readyQueue: string[]
-    +addTask
-    +removeTask
-    +hasTask
-    +getTask
-    +getAllTasks
+    -nodes: Map_string_TaskDepen
+    -readyQueue: string
+    +addTask()
+    +removeTask()
+    +hasTask()
+    +getTask()
+    +getAllTasks()
   }
   class TaskDependencyNode {
     <<interface>>
     +id: string
     +name: string
     +status: TaskDependencyStatus
-    +dependencies: Set<string>
-    +dependents: Set<string>
+    +dependencies: Set_string
+    +dependents: Set_string
   }
   class AddTaskOptions {
     <<interface>>
     +name: string
-    +dependencies: string[]
-    +priority: criticalhighnormallow
+    +dependencies: string
+    +priority: critical_high_n
     +estimatedDurationMs: number
   }
   class CycleDetectionResult {
     <<interface>>
     +hasCycle: boolean
-    +cyclePath: string[]null
+    +cyclePath: string_null
   }
 ```
 
@@ -230,4 +230,4 @@ type TaskDependencyStatus = "pending" | "ready" | "running" | "completed" | "fai
 Task status in the dependency graph.
 
 ---
-*自動生成: 2026-02-17T22:24:18.978Z*
+*自動生成: 2026-02-18T00:15:35.766Z*

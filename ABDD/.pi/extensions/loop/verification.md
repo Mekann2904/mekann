@@ -2,7 +2,7 @@
 title: verification
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -48,18 +48,18 @@ classDiagram
     +command: string
     +passed: boolean
     +timedOut: boolean
-    +exitCode: numbernull
+    +exitCode: number_null
     +durationMs: number
   }
   class ParsedVerificationCommand {
     <<interface>>
     +executable: string
-    +args: string[]
+    +args: string
     +error: string
   }
   class VerificationPolicyConfig {
     <<interface>>
-    +mode: VerificationPolicyMode
+    +mode: VerificationPolicyMo
     +everyN: number
   }
 ```
@@ -72,8 +72,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    format_utils_js["format-utils.js"]
-    error_utils_js["error-utils.js"]
+    format_utils["format-utils"]
+    error_utils["error-utils"]
   end
   main --> local
 ```
@@ -102,13 +102,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant verification as "verification"
-  participant format_utils_js as "format-utils.js"
-  participant error_utils_js as "error-utils.js"
+  participant format_utils as "format-utils"
+  participant error_utils as "error-utils"
 
   Caller->>verification: resolveVerificationPolicy()
-  verification->>format_utils_js: 内部関数呼び出し
-  format_utils_js-->>verification: 結果
-  verification-->>Caller: VerificationPolicyConfig
+  verification->>format_utils: 内部関数呼び出し
+  format_utils-->>verification: 結果
+  verification-->>Caller: VerificationPolicyCo
 
   Caller->>verification: shouldRunVerificationCommand()
   verification-->>Caller: boolean
@@ -394,4 +394,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.806Z*
+*自動生成: 2026-02-18T00:15:35.526Z*

@@ -2,7 +2,7 @@
 title: dynamic-parallelism
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -43,15 +43,15 @@ import { QueueStats } from './task-scheduler';
 ```mermaid
 classDiagram
   class DynamicParallelismAdjuster {
-    -states: Map<stringProviderModelState>
-    -config: DynamicAdjusterConfig
-    -recoveryTimer: ReturnType<typeofsetInterval>null
+    -states: Map_string_ProviderM
+    -config: DynamicAdjusterConfi
+    -recoveryTimer: ReturnType_typeofset
     -eventTarget: EventTarget
-    +getParallelism
-    +getConfig
-    +adjustForError
-    +attemptRecovery
-    +applyCrossInstanceLimits
+    +getParallelism()
+    +getConfig()
+    +adjustForError()
+    +attemptRecovery()
+    +applyCrossInstanceLimits()
   }
   class ParallelismConfig {
     <<interface>>
@@ -74,8 +74,8 @@ classDiagram
     +config: ParallelismConfig
     +health: ProviderHealth
     +activeRequests: number
-    +recentErrors: Array<type429timeouterrortimestampnumber>
-    +responseTimes: number[]
+    +recentErrors: Array_type_429_t
+    +responseTimes: number
   }
   class DynamicAdjusterConfig {
     <<interface>>
@@ -89,7 +89,7 @@ classDiagram
     <<interface>>
     +provider: string
     +model: string
-    +type: 429timeouterror
+    +type: T429_timeout_err
     +timestamp: number
     +details: string
   }
@@ -137,10 +137,10 @@ sequenceDiagram
   Caller->>dynamic_parallelism: getParallelismAdjuster()
   dynamic_parallelism->>task_scheduler: 内部関数呼び出し
   task_scheduler-->>dynamic_parallelism: 結果
-  dynamic_parallelism-->>Caller: DynamicParallelismAdjuster
+  dynamic_parallelism-->>Caller: DynamicParallelismAd
 
   Caller->>dynamic_parallelism: createParallelismAdjuster()
-  dynamic_parallelism-->>Caller: DynamicParallelismAdjuster
+  dynamic_parallelism-->>Caller: DynamicParallelismAd
 ```
 
 ## 関数
@@ -379,4 +379,4 @@ interface ErrorEvent {
 Error event for tracking.
 
 ---
-*自動生成: 2026-02-17T22:24:18.918Z*
+*自動生成: 2026-02-18T00:15:35.679Z*

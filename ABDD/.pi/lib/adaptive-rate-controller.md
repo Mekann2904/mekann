@@ -2,7 +2,7 @@
 title: adaptive-rate-controller
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -65,7 +65,7 @@ classDiagram
     <<interface>>
     +concurrency: number
     +originalConcurrency: number
-    +last429At: stringnull
+    +last429At: string_null
     +consecutive429Count: number
     +total429Count: number
   }
@@ -73,7 +73,7 @@ classDiagram
     <<interface>>
     +version: number
     +lastUpdated: string
-    +limits: [keystring]LearnedLimitprovidermodel
+    +limits: key_string_Learne
     +globalMultiplier: number
     +recoveryIntervalMs: number
   }
@@ -81,7 +81,7 @@ classDiagram
     <<interface>>
     +provider: string
     +model: string
-    +type: 429successtimeouterror
+    +type: T429_success_tim
     +timestamp: string
     +details: string
   }
@@ -707,4 +707,4 @@ interface PredictiveAnalysis {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.891Z*
+*自動生成: 2026-02-18T00:15:35.641Z*

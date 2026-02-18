@@ -2,7 +2,7 @@
 title: generate-diagrams
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -35,7 +35,7 @@ import { StructureData, ClassInfo, FunctionInfo... } from './extract-structure.j
 classDiagram
   class DiagramOptions {
     <<interface>>
-    +types: flowchartclassDiagramsequenceDiagram[]
+    +types: flowchart_classD
     +includePositions: boolean
   }
   class MermaidDiagrams {
@@ -54,7 +54,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    extract_structure_js["extract-structure.js"]
+    extract_structure["extract-structure"]
   end
   main --> local
 ```
@@ -240,4 +240,4 @@ interface MermaidDiagrams {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.775Z*
+*自動生成: 2026-02-18T00:15:35.484Z*

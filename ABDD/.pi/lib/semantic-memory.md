@@ -2,7 +2,7 @@
 title: semantic-memory
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -54,7 +54,7 @@ classDiagram
   class RunEmbedding {
     <<interface>>
     +runId: string
-    +embedding: number[]
+    +embedding: number
     +text: string
     +timestamp: string
   }
@@ -62,7 +62,7 @@ classDiagram
     <<interface>>
     +version: number
     +lastUpdated: string
-    +embeddings: RunEmbedding[]
+    +embeddings: RunEmbedding
     +model: string
     +dimensions: number
   }
@@ -82,10 +82,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    index_js["index.js"]
-    fs_utils_js["fs-utils.js"]
-    run_index_js["run-index.js"]
-    storage_lock_js["storage-lock.js"]
+    index["index"]
+    fs_utils["fs-utils"]
+    run_index["run-index"]
+    storage_lock["storage-lock"]
   end
   main --> local
 ```
@@ -114,20 +114,20 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant semantic_memory as "semantic-memory"
-  participant index_js as "index.js"
-  participant fs_utils_js as "fs-utils.js"
+  participant index as "index"
+  participant fs_utils as "fs-utils"
 
   Caller->>semantic_memory: generateEmbedding()
   activate semantic_memory
   Note over semantic_memory: 非同期処理開始
-  semantic_memory->>index_js: 内部関数呼び出し
-  index_js-->>semantic_memory: 結果
+  semantic_memory->>index: 内部関数呼び出し
+  index-->>semantic_memory: 結果
   deactivate semantic_memory
-  semantic_memory-->>Caller: Promise<number[] | null>
+  semantic_memory-->>Caller: Promise_number_nul
 
   Caller->>semantic_memory: generateEmbeddingsBatch()
   activate semantic_memory
-  semantic_memory-->>Caller: Promise<(number[] | null)[]>
+  semantic_memory-->>Caller: Promise_number_nu
   deactivate semantic_memory
 ```
 
@@ -421,4 +421,4 @@ interface SemanticSearchResult {
 Semantic search result.
 
 ---
-*自動生成: 2026-02-17T22:24:18.967Z*
+*自動生成: 2026-02-18T00:15:35.753Z*

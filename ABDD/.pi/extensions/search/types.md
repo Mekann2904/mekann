@@ -2,7 +2,7 @@
 title: types
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -64,9 +64,9 @@ classDiagram
   class SearchHints {
     <<interface>>
     +confidence: number
-    +suggestedNextAction: refine_patternexpand_scopetry_different_toolincrease_limitregenerate_index
-    +alternativeTools: string[]
-    +relatedQueries: string[]
+    +suggestedNextAction: refine_pattern_ex
+    +alternativeTools: string
+    +relatedQueries: string
   }
   class SearchDetails {
     <<interface>>
@@ -76,29 +76,29 @@ classDiagram
     <<interface>>
     +total: number
     +truncated: boolean
-    +results: T[]
+    +results: T
     +error: string
     +details: SearchDetails
   }
   class SearchErrorResponse {
     <<interface>>
     +error: string
-    +total: 0
+    +total: T0
     +truncated: false
-    +results: []
+    +results: any
   }
   class FileCandidatesInput {
     <<interface>>
     +pattern: string
-    +type: filedir
-    +extension: string[]
-    +exclude: string[]
+    +type: file_dir
+    +extension: string
+    +exclude: string
     +maxDepth: number
   }
   class FileCandidate {
     <<interface>>
     +path: string
-    +type: filedir
+    +type: file_dir
   }
   class CodeSearchInput {
     <<interface>>
@@ -114,7 +114,7 @@ classDiagram
     +line: number
     +column: number
     +text: string
-    +context: string[]
+    +context: string
   }
   class CodeSearchSummary {
     <<interface>>
@@ -125,8 +125,8 @@ classDiagram
     <<interface>>
     +total: number
     +truncated: boolean
-    +summary: CodeSearchSummary[]
-    +results: CodeSearchMatch[]
+    +summary: CodeSearchSummary
+    +results: CodeSearchMatch
     +error: string
   }
   class SymIndexInput {
@@ -144,7 +144,7 @@ classDiagram
   class SymFindInput {
     <<interface>>
     +name: string
-    +kind: string[]
+    +kind: string
     +file: string
     +limit: number
     +cwd: string
@@ -163,7 +163,7 @@ classDiagram
     +timeout: number
     +signal: AbortSignal
     +maxOutputSize: number
-    +env: Record<stringstring>
+    +env: Record_string_string
   }
   class CliResult {
     <<interface>>
@@ -204,17 +204,17 @@ classDiagram
   class RgMatch {
     <<interface>>
     +type: match
-    +data: pathtextstringlinestextstringline_numbernumberabsolute_offsetnumbersubmatchesArray<matchtextstringstartnumberendnumber>
+    +data: path_text_string
   }
   class RgBegin {
     <<interface>>
     +type: begin
-    +data: pathtextstring
+    +data: path_text_string
   }
   class RgEnd {
     <<interface>>
     +type: end
-    +data: pathtextstringstatselapsedsecsnumbernanosnumbersearchesnumbersearches_with_matchnumberbytes_searchednumberbytes_printednumbermatched_linesnumbermatchesnumber
+    +data: path_text_string
   }
   class ManifestEntry {
     <<interface>>
@@ -243,7 +243,7 @@ classDiagram
     +file: string
     +line: number
     +code: string
-    +embedding: number[]
+    +embedding: number
   }
   class SemanticIndexInput {
     <<interface>>
@@ -251,7 +251,7 @@ classDiagram
     +force: boolean
     +chunkSize: number
     +chunkOverlap: number
-    +extensions: string[]
+    +extensions: string
   }
   class SemanticIndexOutput {
     <<interface>>
@@ -266,7 +266,7 @@ classDiagram
     +topK: number
     +threshold: number
     +language: string
-    +kind: functionclassvariablechunk[]
+    +kind: function_class
   }
   class SemanticSearchResult {
     <<interface>>
@@ -274,13 +274,13 @@ classDiagram
     +line: number
     +code: string
     +similarity: number
-    +metadata: CodeEmbedding[metadata]
+    +metadata: CodeEmbedding_metad
   }
   class SemanticSearchOutput {
     <<interface>>
     +total: number
     +truncated: boolean
-    +results: SemanticSearchResult[]
+    +results: SemanticSearchResult
     +error: string
   }
   class SemanticIndexMetadata {
@@ -786,4 +786,4 @@ Index manifest structure.
 Maps file paths to their manifest entries.
 
 ---
-*自動生成: 2026-02-17T22:24:18.844Z*
+*自動生成: 2026-02-18T00:15:35.577Z*

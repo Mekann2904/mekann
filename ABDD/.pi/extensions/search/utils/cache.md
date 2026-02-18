@@ -2,7 +2,7 @@
 title: cache
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -38,17 +38,17 @@ classDiagram
     -config: CacheConfig
     -hits: any
     -misses: any
-    +getCached
-    +setCache
-    +has
-    +invalidateCache
-    +invalidateTool
+    +getCached()
+    +setCache()
+    +has()
+    +invalidateCache()
+    +invalidateTool()
   }
   class CacheEntry {
     <<interface>>
     +timestamp: number
     +ttl: number
-    +params: Record<stringunknown>
+    +params: Record_string_unknow
     +result: T
   }
   class CacheConfig {
@@ -263,4 +263,4 @@ interface CacheStats {
 Cache statistics.
 
 ---
-*自動生成: 2026-02-17T22:24:18.846Z*
+*自動生成: 2026-02-18T00:15:35.579Z*

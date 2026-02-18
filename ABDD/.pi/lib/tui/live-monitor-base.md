@@ -2,7 +2,7 @@
 title: live-monitor-base
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -69,11 +69,11 @@ classDiagram
   }
   class BaseLiveMonitorController {
     <<interface>>
-    +markStarted: idstring>void
-    +appendChunk: idstringstreamLiveStreamViewchunkstring>void
-    +markFinished: idstringstatuscompletedfailedsummarystringerrorstring>void
-    +close: >void
-    +wait: >Promise<void>
+    +markStarted: id_string_void
+    +appendChunk: id_string_stream_Li
+    +markFinished: id_string_status_c
+    +close: void
+    +wait: Promise_void
   }
   class CreateLiveItemInput {
     <<interface>>
@@ -82,10 +82,10 @@ classDiagram
   }
   class LiveMonitorFactoryOptions {
     <<interface>>
-    +createItem: inputCreateLiveItemInput>TItem
-    +onStarted: itemTItem>void
-    +onChunk: itemTItemstreamLiveStreamViewchunkstring>void
-    +onFinished: itemTItemstatuscompletedfailedsummarystringerrorstring>void
+    +createItem: input_CreateLiveIte
+    +onStarted: item_TItem_void
+    +onChunk: item_TItem_stream_L
+    +onFinished: item_TItem_status
   }
   class LiveViewHeaderData {
     <<interface>>
@@ -98,7 +98,7 @@ classDiagram
   class HandleInputResult {
     <<interface>>
     +handled: boolean
-    +action: closemodelistmodedetailstreamtoggle
+    +action: close_mode_list
     +cursorDelta: number
     +cursorAbsolute: number
   }
@@ -112,10 +112,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    format_utils_js["format-utils.js"]
-    agent_utils_js["agent-utils.js"]
-    live_view_utils_js["live-view-utils.js"]
-    tui_utils_js["tui-utils.js"]
+    format_utils["format-utils"]
+    agent_utils["agent-utils"]
+    live_view_utils["live-view-utils"]
+    tui_utils["tui-utils"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -148,15 +148,15 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant live_monitor_base as "live-monitor-base"
-  participant _mariozechner as "@mariozechner"
-  participant format_utils_js as "format-utils.js"
-  participant agent_utils_js as "agent-utils.js"
+  participant mariozechner as "@mariozechner"
+  participant format_utils as "format-utils"
+  participant agent_utils as "agent-utils"
 
   Caller->>live_monitor_base: createBaseLiveItem()
-  live_monitor_base->>_mariozechner: API呼び出し
-  _mariozechner-->>live_monitor_base: レスポンス
-  live_monitor_base->>format_utils_js: 内部関数呼び出し
-  format_utils_js-->>live_monitor_base: 結果
+  live_monitor_base->>mariozechner: API呼び出し
+  mariozechner-->>live_monitor_base: レスポンス
+  live_monitor_base->>format_utils: 内部関数呼び出し
+  format_utils-->>live_monitor_base: 結果
   live_monitor_base-->>Caller: BaseLiveItem
 
   Caller->>live_monitor_base: appendStreamChunk()
@@ -703,4 +703,4 @@ type LiveViewMode = "list" | "detail"
 Live view mode options.
 
 ---
-*自動生成: 2026-02-17T22:24:18.988Z*
+*自動生成: 2026-02-18T00:15:35.777Z*

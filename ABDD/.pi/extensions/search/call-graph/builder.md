@@ -2,7 +2,7 @@
 title: builder
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -43,11 +43,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
-    cli_js["cli.js"]
-    sym_index_js["sym_index.js"]
-    types_js["types.js"]
-    constants_js["constants.js"]
+    types["types"]
+    cli["cli"]
+    sym_index["sym_index"]
+    types["types"]
+    constants["constants"]
   end
   main --> local
 ```
@@ -72,20 +72,20 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant builder as "builder"
-  participant types_js as "types.js"
-  participant cli_js as "cli.js"
+  participant types as "types"
+  participant cli as "cli"
 
   Caller->>builder: buildCallGraph()
   activate builder
   Note over builder: 非同期処理開始
-  builder->>types_js: 内部関数呼び出し
-  types_js-->>builder: 結果
+  builder->>types: 内部関数呼び出し
+  types-->>builder: 結果
   deactivate builder
-  builder-->>Caller: Promise<CallGraphIndex>
+  builder-->>Caller: Promise_CallGraphInd
 
   Caller->>builder: saveCallGraphIndex()
   activate builder
-  builder-->>Caller: Promise<string>
+  builder-->>Caller: Promise_string
   deactivate builder
 ```
 
@@ -342,4 +342,4 @@ Simple check: compare with symbol index timestamp.
 **戻り値**: `Promise<boolean>`
 
 ---
-*自動生成: 2026-02-17T22:24:18.821Z*
+*自動生成: 2026-02-18T00:15:35.545Z*

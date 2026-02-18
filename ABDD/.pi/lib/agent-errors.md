@@ -2,7 +2,7 @@
 title: agent-errors
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -58,12 +58,12 @@ classDiagram
     <<interface>>
     +outcomeCode: ExtendedOutcomeCode
     +semanticError: string
-    +schemaViolations: string[]
-    +failedEntityIds: string[]
+    +schemaViolations: string
+    +failedEntityIds: string
   }
   class EntityResultItem {
     <<interface>>
-    +status: completedfailed
+    +status: completed_failed
     +error: string
     +summary: string
     +entityId: string
@@ -78,9 +78,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    agent_common_js["agent-common.js"]
-    agent_types_js["agent-types.js"]
-    error_utils_js["error-utils.js"]
+    agent_common["agent-common"]
+    agent_types["agent-types"]
+    error_utils["error-utils"]
   end
   main --> local
 ```
@@ -109,16 +109,16 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant agent_errors as "agent-errors"
-  participant agent_common_js as "agent-common.js"
-  participant agent_types_js as "agent-types.js"
+  participant agent_common as "agent-common"
+  participant agent_types as "agent-types"
 
   Caller->>agent_errors: classifySemanticError()
-  agent_errors->>agent_common_js: 内部関数呼び出し
-  agent_common_js-->>agent_errors: 結果
-  agent_errors-->>Caller: { code: ExtendedOutcomeCode | null; details?: string[] }
+  agent_errors->>agent_common: 内部関数呼び出し
+  agent_common-->>agent_errors: 結果
+  agent_errors-->>Caller: code_ExtendedOutcom
 
   Caller->>agent_errors: resolveExtendedFailureOutcome()
-  agent_errors-->>Caller: ExtendedOutcomeSignal
+  agent_errors-->>Caller: ExtendedOutcomeSigna
 ```
 
 ## 関数
@@ -505,4 +505,4 @@ Standardized failure classification types for retry decision making.
 Each classification maps to a specific retry policy.
 
 ---
-*自動生成: 2026-02-17T22:24:18.894Z*
+*自動生成: 2026-02-18T00:15:35.645Z*

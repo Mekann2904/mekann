@@ -2,7 +2,7 @@
 title: communication
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -65,18 +65,18 @@ classDiagram
   }
   class PartnerReferenceResultV2 {
     <<interface>>
-    +referencedPartners: string[]
-    +missingPartners: string[]
-    +claimReferences: ClaimReference[]
+    +referencedPartners: string
+    +missingPartners: string
+    +claimReferences: ClaimReference
     +referenceQuality: number
   }
   class TerminationCheckResult {
     <<interface>>
     +canTerminate: boolean
     +completionScore: number
-    +missingElements: string[]
-    +suspiciousPatterns: string[]
-    +recommendation: proceedextendchallenge
+    +missingElements: string
+    +suspiciousPatterns: string
+    +recommendation: proceed_extend
   }
   class AgentBelief {
     <<interface>>
@@ -84,14 +84,14 @@ classDiagram
     +claimId: string
     +claimText: string
     +confidence: number
-    +evidenceRefs: string[]
+    +evidenceRefs: string
   }
   class BeliefContradiction {
     <<interface>>
     +belief1: AgentBelief
     +belief2: AgentBelief
-    +contradictionType: directimplicitassumption_conflict
-    +severity: lowmediumhigh
+    +contradictionType: direct_implicit
+    +severity: low_medium_high
     +description: string
   }
 ```
@@ -104,7 +104,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    format_utils_js["format-utils.js"]
+    format_utils["format-utils"]
     text_parsing["text-parsing"]
     agent_errors["agent-errors"]
     output_schema["output-schema"]
@@ -137,13 +137,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant communication as "communication"
-  participant format_utils_js as "format-utils.js"
+  participant format_utils as "format-utils"
   participant text_parsing as "text-parsing"
 
   Caller->>communication: buildPrecomputedContextMap()
-  communication->>format_utils_js: 内部関数呼び出し
-  format_utils_js-->>communication: 結果
-  communication-->>Caller: Map<string, PrecomputedMemberContext>
+  communication->>format_utils: 内部関数呼び出し
+  format_utils-->>communication: 結果
+  communication-->>Caller: Map_string_Precomput
 
   Caller->>communication: normalizeCommunicationRounds()
   communication-->>Caller: number
@@ -522,4 +522,4 @@ interface BeliefContradiction {
 Detected contradiction between agent beliefs.
 
 ---
-*自動生成: 2026-02-17T22:24:18.713Z*
+*自動生成: 2026-02-18T00:15:35.380Z*

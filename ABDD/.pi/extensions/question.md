@@ -2,7 +2,7 @@
 title: question
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -42,7 +42,7 @@ classDiagram
     <<interface>>
     +question: string
     +header: string
-    +options: QuestionOption[]
+    +options: QuestionOption
     +multiple: boolean
     +custom: boolean
   }
@@ -71,7 +71,7 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant question as "question"
-  participant _mariozechner as "@mariozechner"
+  participant mariozechner as "@mariozechner"
 
 ```
 
@@ -203,4 +203,4 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.819Z*
+*自動生成: 2026-02-18T00:15:35.542Z*

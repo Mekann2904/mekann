@@ -2,7 +2,7 @@
 title: agent-teams
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -40,11 +40,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js["fs-utils.js"]
-    format_utils_js["format-utils.js"]
-    live_view_utils_js["live-view-utils.js"]
-    tui_utils_js["tui-utils.js"]
-    error_utils_js["error-utils.js"]
+    fs_utils["fs-utils"]
+    format_utils["format-utils"]
+    live_view_utils["live-view-utils"]
+    tui_utils["tui-utils"]
+    error_utils["error-utils"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -62,15 +62,15 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant agent_teams as "agent-teams"
-  participant _mariozechner as "@mariozechner"
-  participant fs_utils_js as "fs-utils.js"
-  participant format_utils_js as "format-utils.js"
+  participant mariozechner as "@mariozechner"
+  participant fs_utils as "fs-utils"
+  participant format_utils as "format-utils"
 
   Caller->>agent_teams: registerAgentTeamsExtension()
-  agent_teams->>_mariozechner: API呼び出し
-  _mariozechner-->>agent_teams: レスポンス
-  agent_teams->>fs_utils_js: 内部関数呼び出し
-  fs_utils_js-->>agent_teams: 結果
+  agent_teams->>mariozechner: API呼び出し
+  mariozechner-->>agent_teams: レスポンス
+  agent_teams->>fs_utils: 内部関数呼び出し
+  fs_utils-->>agent_teams: 結果
   agent_teams-->>Caller: void
 ```
 
@@ -368,4 +368,4 @@ type LiveViewMode = TeamLiveViewMode
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.760Z*
+*自動生成: 2026-02-18T00:15:35.450Z*

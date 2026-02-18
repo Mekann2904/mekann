@@ -2,7 +2,7 @@
 title: quality
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -40,8 +40,8 @@ classDiagram
     <<interface>>
     +score: number
     +categoryScores: CategoryScores
-    +issues: QualityIssue[]
-    +improvements: string[]
+    +issues: QualityIssue
+    +improvements: string
     +confidence: number
   }
   class CategoryScores {
@@ -55,9 +55,9 @@ classDiagram
   class QualityIssue {
     <<interface>>
     +category: keyofCategoryScores
-    +severity: highmediumlow
+    +severity: high_medium_low
     +description: string
-    +location: linenumbersnippetstring
+    +location: line_number_snippe
     +suggestion: string
   }
   class ExecutionMetrics {
@@ -80,7 +80,7 @@ classDiagram
     <<interface>>
     +pattern: RegExp
     +category: keyofCategoryScores
-    +severity: QualityIssue[severity]
+    +severity: QualityIssue_severi
     +description: string
     +suggestion: string
   }
@@ -383,4 +383,4 @@ interface QualityPattern {
 品質パターンの定義
 
 ---
-*自動生成: 2026-02-17T22:24:18.923Z*
+*自動生成: 2026-02-18T00:15:35.684Z*

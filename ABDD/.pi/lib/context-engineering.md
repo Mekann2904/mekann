@@ -2,7 +2,7 @@
 title: context-engineering
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -59,22 +59,22 @@ classDiagram
     <<interface>>
     +maxTokens: number
     +reservedTokens: number
-    +priorityWeights: Record<ContextPrioritynumber>
-    +categoryLimits: Partial<Record<ContextCategorynumber>>
+    +priorityWeights: Record_ContextPriori
+    +categoryLimits: Partial_Record_Conte
     +preserveOrder: boolean
   }
   class OptimizedContext {
     <<interface>>
-    +items: ContextItem[]
+    +items: ContextItem
     +totalTokens: number
     +budget: number
     +utilizationRatio: number
-    +trimmedItems: TrimmedItem[]
+    +trimmedItems: TrimmedItem
   }
   class TrimmedItem {
     <<interface>>
     +item: ContextItem
-    +reason: budgetexceededcategorylimitlowpriorityduplicate
+    +reason: budget_exceeded_c
     +originalTokens: number
     +preservedTokens: number
   }
@@ -83,14 +83,14 @@ classDiagram
     +position: number
     +type: BoundaryType
     +confidence: number
-    +metadata: Record<stringunknown>
+    +metadata: Record_string_unknow
   }
   class TextChunk {
     <<interface>>
     +id: string
     +content: string
     +tokenEstimate: number
-    +boundaries: SemanticBoundary[]
+    +boundaries: SemanticBoundary
     +priority: ContextPriority
   }
   class ChunkingConfig {
@@ -99,15 +99,15 @@ classDiagram
     +minChunkTokens: number
     +overlapTokens: number
     +respectBoundaries: boolean
-    +boundaryTypes: BoundaryType[]
+    +boundaryTypes: BoundaryType
   }
   class StateSummary {
     <<interface>>
     +id: string
     +timestamp: number
-    +carriedForward: string[]
-    +pendingTasks: string[]
-    +decisions: string[]
+    +carriedForward: string
+    +pendingTasks: string
+    +decisions: string
   }
   class EvidenceSummary {
     <<interface>>
@@ -653,4 +653,4 @@ type ScoredItem = ContextItem & { score: number; trimmed: boolean }
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.906Z*
+*自動生成: 2026-02-18T00:15:35.665Z*

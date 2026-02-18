@@ -2,7 +2,7 @@
 title: invariant-pipeline
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -38,14 +38,14 @@ classDiagram
     +name: string
     +type: string
     +initialValue: unknown
-    +constraints: string[]
+    +constraints: string
   }
   class SpecOperation {
     <<interface>>
     +name: string
-    +parameters: namestringtypestring[]
-    +preconditions: string[]
-    +postconditions: string[]
+    +parameters: name_string_type_st
+    +preconditions: string
+    +postconditions: string
     +description: string
   }
   class SpecInvariant {
@@ -58,22 +58,22 @@ classDiagram
     <<interface>>
     +title: string
     +description: string
-    +states: SpecState[]
-    +operations: SpecOperation[]
-    +invariants: SpecInvariant[]
+    +states: SpecState
+    +operations: SpecOperation
+    +invariants: SpecInvariant
   }
   class GenerationOutput {
     <<interface>>
     +content: string
-    +warnings: string[]
-    +errors: string[]
+    +warnings: string
+    +errors: string
   }
   class GenerationResult {
     <<interface>>
     +success: boolean
-    +outputs: quintpathstringcontentstringmacrospathstringcontentstringtestspathstringcontentstringmbtpathstringcontentstring
-    +errors: string[]
-    +warnings: string[]
+    +outputs: quint_path_string
+    +errors: string
+    +warnings: string
   }
   class VerifyQuintInput {
     <<interface>>
@@ -532,4 +532,4 @@ Handles patterns like:
 - "count == old_count + 1" -> "new_state.count = self.count + 1"
 
 ---
-*自動生成: 2026-02-17T22:24:18.795Z*
+*自動生成: 2026-02-18T00:15:35.514Z*

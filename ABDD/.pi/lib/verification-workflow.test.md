@@ -2,7 +2,7 @@
 title: verification-workflow.test
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -46,7 +46,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    verification_workflow_js["verification-workflow.js"]
+    verification_workflow["verification-workflow"]
   end
   main --> local
 ```
@@ -165,4 +165,4 @@ interface TestResult {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.994Z*
+*自動生成: 2026-02-18T00:15:35.784Z*

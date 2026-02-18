@@ -2,7 +2,7 @@
 title: dynamic-tools
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -41,20 +41,20 @@ classDiagram
     +name: string
     +description: string
     +code: string
-    +parameters: Record<stringtypestringnumberbooleanobjectarraydescriptionstringdefaultunknownenumstring[]minimumnumbermaximumnumberrequiredboolean>
-    +tags: string[]
+    +parameters: Record_string_type
+    +tags: string
   }
   class RunDynamicToolInput {
     <<interface>>
     +tool_id: string
     +tool_name: string
-    +parameters: Record<stringunknown>
+    +parameters: Record_string_unknow
     +timeout_ms: number
   }
   class ListDynamicToolsInput {
     <<interface>>
     +name: string
-    +tags: string[]
+    +tags: string
     +min_safety_score: number
     +limit: number
   }
@@ -82,9 +82,9 @@ flowchart LR
   subgraph local[ローカルモジュール]
     comprehensive_logger["comprehensive-logger"]
     comprehensive_logger_types["comprehensive-logger-types"]
-    registry_js["registry.js"]
-    safety_js["safety.js"]
-    quality_js["quality.js"]
+    registry["registry"]
+    safety["safety"]
+    quality["quality"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -101,13 +101,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant dynamic_tools as "dynamic-tools"
-  participant _mariozechner as "@mariozechner"
+  participant mariozechner as "@mariozechner"
   participant comprehensive_logger as "comprehensive-logger"
   participant comprehensive_logger_types as "comprehensive-logger-types"
 
   Caller->>dynamic_tools: registerDynamicToolsExtension()
-  dynamic_tools->>_mariozechner: API呼び出し
-  _mariozechner-->>dynamic_tools: レスポンス
+  dynamic_tools->>mariozechner: API呼び出し
+  mariozechner-->>dynamic_tools: レスポンス
   dynamic_tools->>comprehensive_logger: 内部関数呼び出し
   comprehensive_logger-->>dynamic_tools: 結果
   dynamic_tools-->>Caller: void
@@ -363,4 +363,4 @@ interface ToolReflectionInput {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.788Z*
+*自動生成: 2026-02-18T00:15:35.504Z*

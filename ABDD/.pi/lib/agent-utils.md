@@ -2,7 +2,7 @@
 title: agent-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -49,7 +49,7 @@ sequenceDiagram
   agent_utils-->>Caller: string
 
   Caller->>agent_utils: computeLiveWindow()
-  agent_utils-->>Caller: { start: number; end: number }
+  agent_utils-->>Caller: start_number_end_nu
 ```
 
 ## 関数
@@ -85,4 +85,4 @@ Centers the cursor when possible, adjusts when near boundaries.
 **戻り値**: `{ start: number; end: number }`
 
 ---
-*自動生成: 2026-02-17T22:24:18.895Z*
+*自動生成: 2026-02-18T00:15:35.650Z*

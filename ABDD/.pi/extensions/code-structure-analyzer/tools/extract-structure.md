@@ -2,7 +2,7 @@
 title: extract-structure
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -50,7 +50,7 @@ classDiagram
   class ExtractOptions {
     <<interface>>
     +targetPath: string
-    +excludePatterns: string[]
+    +excludePatterns: string
   }
   class FunctionInfo {
     <<interface>>
@@ -73,13 +73,13 @@ classDiagram
     +filePath: string
     +line: number
     +jsDoc: string
-    +methods: MethodInfo[]
+    +methods: MethodInfo
   }
   class MethodInfo {
     <<interface>>
     +name: string
     +signature: string
-    +parameters: ParameterInfo[]
+    +parameters: ParameterInfo
     +returnType: string
     +isAsync: boolean
   }
@@ -87,7 +87,7 @@ classDiagram
     <<interface>>
     +name: string
     +type: string
-    +visibility: publicprotectedprivate
+    +visibility: public_protected
     +isStatic: boolean
     +isReadonly: boolean
   }
@@ -97,7 +97,7 @@ classDiagram
     +filePath: string
     +line: number
     +jsDoc: string
-    +properties: InterfacePropertyInfo[]
+    +properties: InterfacePropertyInf
   }
   class InterfacePropertyInfo {
     <<interface>>
@@ -111,13 +111,13 @@ classDiagram
     <<interface>>
     +name: string
     +signature: string
-    +parameters: ParameterInfo[]
+    +parameters: ParameterInfo
     +returnType: string
   }
   class ImportInfo {
     <<interface>>
     +source: string
-    +names: string[]
+    +names: string
     +filePath: string
     +line: number
     +isDefault: boolean
@@ -134,30 +134,30 @@ classDiagram
     <<interface>>
     +filePath: string
     +relativePath: string
-    +functions: FunctionInfo[]
-    +classes: ClassInfo[]
-    +interfaces: InterfaceInfo[]
+    +functions: FunctionInfo
+    +classes: ClassInfo
+    +interfaces: InterfaceInfo
   }
   class StructureData {
     <<interface>>
     +basePath: string
     +analyzedAt: string
-    +files: FileStructure[]
-    +functions: FunctionInfo[]
-    +classes: ClassInfo[]
+    +files: FileStructure
+    +functions: FunctionInfo
+    +classes: ClassInfo
   }
   class DependencyGraph {
     <<interface>>
-    +nodes: idstringnamestringpathstring[]
-    +edges: fromstringtostringtypeimportexport[]
+    +nodes: id_string_name_stri
+    +edges: from_string_to_stri
   }
   class VisitorCallbacks {
     <<interface>>
-    +onFunction: funcFunctionInfo>void
-    +onClass: clsClassInfo>void
-    +onInterface: intfInterfaceInfo>void
-    +onImport: impImportInfo>void
-    +onExport: expExportInfo>void
+    +onFunction: func_FunctionInfo
+    +onClass: cls_ClassInfo_voi
+    +onInterface: intf_InterfaceInfo
+    +onImport: imp_ImportInfo_vo
+    +onExport: exp_ExportInfo_vo
   }
 ```
 
@@ -194,7 +194,7 @@ sequenceDiagram
   extract_structure->>typescript: API呼び出し
   typescript-->>extract_structure: レスポンス
   deactivate extract_structure
-  extract_structure-->>Caller: Promise<StructureData>
+  extract_structure-->>Caller: Promise_StructureDat
 ```
 
 ## 関数
@@ -681,4 +681,4 @@ interface VisitorCallbacks {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.772Z*
+*自動生成: 2026-02-18T00:15:35.479Z*

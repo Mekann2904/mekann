@@ -2,7 +2,7 @@
 title: semantic-repetition
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -39,17 +39,17 @@ import { generateEmbedding, cosineSimilarity, getEmbeddingProvider } from './emb
 ```mermaid
 classDiagram
   class TrajectoryTracker {
-    -steps: Array<outputstringsimilaritynumberisRepeatedboolean>
+    -steps: Array_output_string
     -maxSteps: number
-    +recordStep
-    +getSummary
-    +reset
+    +recordStep()
+    +getSummary()
+    +reset()
   }
   class SemanticRepetitionResult {
     <<interface>>
     +isRepeated: boolean
     +similarity: number
-    +method: embeddingexactunavailable
+    +method: embedding_exact
   }
   class SemanticRepetitionOptions {
     <<interface>>
@@ -62,7 +62,7 @@ classDiagram
     +totalSteps: number
     +repetitionCount: number
     +averageSimilarity: number
-    +similarityTrend: increasingdecreasingstable
+    +similarityTrend: increasing_decrea
     +isStuck: boolean
   }
 ```
@@ -75,7 +75,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    index_js["index.js"]
+    index["index"]
   end
   main --> local
 ```
@@ -100,18 +100,18 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant semantic_repetition as "semantic-repetition"
-  participant index_js as "index.js"
+  participant index as "index"
 
   Caller->>semantic_repetition: detectSemanticRepetition()
   activate semantic_repetition
   Note over semantic_repetition: 非同期処理開始
-  semantic_repetition->>index_js: 内部関数呼び出し
-  index_js-->>semantic_repetition: 結果
+  semantic_repetition->>index: 内部関数呼び出し
+  index-->>semantic_repetition: 結果
   deactivate semantic_repetition
-  semantic_repetition-->>Caller: Promise<SemanticRepetitionResult>
+  semantic_repetition-->>Caller: Promise_SemanticRepe
 
   Caller->>semantic_repetition: detectSemanticRepetitionFromEmbeddings()
-  semantic_repetition-->>Caller: SemanticRepetitionResult
+  semantic_repetition-->>Caller: SemanticRepetitionRe
 ```
 
 ## 関数
@@ -271,4 +271,4 @@ interface TrajectorySummary {
 Session trajectory summary for monitoring.
 
 ---
-*自動生成: 2026-02-17T22:24:18.969Z*
+*自動生成: 2026-02-18T00:15:35.755Z*

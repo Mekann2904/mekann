@@ -2,7 +2,7 @@
 title: subagent-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -52,17 +52,17 @@ classDiagram
   }
   class SubagentMonitorLifecycle {
     <<interface>>
-    +markStarted: agentIdstring>void
-    +markFinished: agentIdstringstatuscompletedfailedsummarystringerrorstring>void
+    +markStarted: agentId_string_vo
+    +markFinished: agentId_string_stat
   }
   class SubagentMonitorStream {
     <<interface>>
-    +appendChunk: agentIdstringstreamSubagentLiveStreamViewchunkstring>void
+    +appendChunk: agentId_string_stre
   }
   class SubagentMonitorResource {
     <<interface>>
-    +close: >void
-    +wait: >Promise<void>
+    +close: void
+    +wait: Promise_void
   }
   class SubagentLiveMonitorController {
     <<interface>>
@@ -102,8 +102,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    live_monitor_base_js["live-monitor-base.js"]
-    live_view_utils_js["live-view-utils.js"]
+    live_monitor_base["live-monitor-base"]
+    live_view_utils["live-view-utils"]
   end
   main --> local
 ```
@@ -261,4 +261,4 @@ Stream view selection for subagent output display.
 Alias for base LiveStreamView for semantic clarity.
 
 ---
-*自動生成: 2026-02-17T22:24:18.976Z*
+*自動生成: 2026-02-18T00:15:35.763Z*

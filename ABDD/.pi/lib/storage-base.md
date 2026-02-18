@@ -2,7 +2,7 @@
 title: storage-base
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -58,7 +58,7 @@ classDiagram
   class BaseRunRecord {
     <<interface>>
     +runId: string
-    +status: completedfailed
+    +status: completed_failed
     +startedAt: string
     +finishedAt: string
     +outputFile: string
@@ -71,25 +71,25 @@ classDiagram
   }
   class BaseStorage {
     <<interface>>
-    +definitions: TDefinition[]
-    +runs: TRun[]
+    +definitions: TDefinition
+    +runs: TRun
     +currentId: TCurrentKey
     +defaultsVersion: number
   }
   class CreateStorageLoaderOptions {
     <<interface>>
-    +ensurePaths: cwdstring>TPaths
-    +createDefaults: nowIsostring>TStorage
-    +validateStorage: parsedunknownnowIsostring>TStorage
+    +ensurePaths: cwd_string_TPaths
+    +createDefaults: nowIso_string_TSt
+    +validateStorage: parsed_unknown_nowI
     +defaultsVersion: number
     +storageKey: string
   }
   class CreateStorageSaverOptions {
     <<interface>>
-    +ensurePaths: cwdstring>TPaths
-    +normalizeStorage: storageTStorage>TStorage
-    +mergeWithDisk: storageFilestringstorageTStorage>TStorage
-    +getRuns: storageTStorage>BaseRunRecord[]
+    +ensurePaths: cwd_string_TPaths
+    +normalizeStorage: storage_TStorage
+    +mergeWithDisk: storageFile_string
+    +getRuns: storage_TStorage
   }
 ```
 
@@ -101,8 +101,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js["fs-utils.js"]
-    storage_lock_js["storage-lock.js"]
+    fs_utils["fs-utils"]
+    storage_lock["storage-lock"]
   end
   main --> local
 ```
@@ -131,16 +131,16 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant storage_base as "storage-base"
-  participant fs_utils_js as "fs-utils.js"
-  participant storage_lock_js as "storage-lock.js"
+  participant fs_utils as "fs-utils"
+  participant storage_lock as "storage-lock"
 
   Caller->>storage_base: createPathsFactory()
-  storage_base->>fs_utils_js: 内部関数呼び出し
-  fs_utils_js-->>storage_base: 結果
+  storage_base->>fs_utils: 内部関数呼び出し
+  fs_utils-->>storage_base: 結果
   storage_base-->>Caller: void
 
   Caller->>storage_base: createEnsurePaths()
-  storage_base-->>Caller: (cwd: string) => TPaths
+  storage_base-->>Caller: cwd_string_TPaths
 ```
 
 ## 関数
@@ -455,4 +455,4 @@ interface CreateStorageSaverOptions {
 Options for creating a storage saver.
 
 ---
-*自動生成: 2026-02-17T22:24:18.972Z*
+*自動生成: 2026-02-18T00:15:35.759Z*

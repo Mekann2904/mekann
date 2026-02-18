@@ -2,7 +2,7 @@
 title: semantic_index
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -53,8 +53,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
-    constants_js["constants.js"]
+    types["types"]
+    constants["constants"]
   end
   main --> local
 ```
@@ -66,16 +66,16 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant semantic_index as "semantic_index"
-  participant types_js as "types.js"
-  participant constants_js as "constants.js"
+  participant types as "types"
+  participant constants as "constants"
 
   Caller->>semantic_index: semanticIndex()
   activate semantic_index
   Note over semantic_index: 非同期処理開始
-  semantic_index->>types_js: 内部関数呼び出し
-  types_js-->>semantic_index: 結果
+  semantic_index->>types: 内部関数呼び出し
+  types-->>semantic_index: 結果
   deactivate semantic_index
-  semantic_index-->>Caller: Promise<SemanticIndexOutput>
+  semantic_index-->>Caller: Promise_SemanticInde
 ```
 
 ## 関数
@@ -327,4 +327,4 @@ interface CodeChunk {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.837Z*
+*自動生成: 2026-02-18T00:15:35.568Z*

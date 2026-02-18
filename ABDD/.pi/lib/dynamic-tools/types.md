@@ -2,7 +2,7 @@
 title: types
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -64,7 +64,7 @@ classDiagram
   class ToolParameterDefinition {
     <<interface>>
     +name: string
-    +type: stringnumberbooleanobjectarray
+    +type: string_number_b
     +required: boolean
     +description: string
     +default: unknown
@@ -75,7 +75,7 @@ classDiagram
     +name: string
     +description: string
     +mode: DynamicToolMode
-    +parameters: ToolParameterDefinition[]
+    +parameters: ToolParameterDefinit
   }
   class DynamicToolResult {
     <<interface>>
@@ -88,7 +88,7 @@ classDiagram
   class DynamicToolRunOptions {
     <<interface>>
     +toolIdOrName: string
-    +parameters: Record<stringunknown>
+    +parameters: Record_string_unknow
     +timeoutMs: number
     +signal: AbortSignal
     +debug: boolean
@@ -98,46 +98,46 @@ classDiagram
     +name: string
     +description: string
     +mode: DynamicToolMode
-    +parameters: ToolParameterDefinition[]
+    +parameters: ToolParameterDefinit
     +code: string
   }
   class DynamicToolRegistrationResult {
     <<interface>>
     +success: boolean
-    +tool: DynamicToolDefinition
+    +tool: DynamicToolDefinitio
     +error: string
-    +verificationResult: SafetyVerificationResult
+    +verificationResult: SafetyVerificationRe
   }
   class DynamicToolListOptions {
     <<interface>>
-    +tags: string[]
-    +verificationStatus: VerificationStatus[]
-    +mode: DynamicToolMode[]
-    +sortBy: namecreatedAtupdatedAtusageCountconfidenceScore
-    +sortOrder: ascdesc
+    +tags: string
+    +verificationStatus: VerificationStatus
+    +mode: DynamicToolMode
+    +sortBy: name_createdAt
+    +sortOrder: asc_desc
   }
   class SafetyVerificationResult {
     <<interface>>
     +safe: boolean
-    +riskLevel: lowmediumhighcritical
-    +issues: SafetyIssue[]
-    +recommendations: string[]
+    +riskLevel: low_medium_high
+    +issues: SafetyIssue
+    +recommendations: string
     +verifiedAt: string
   }
   class SafetyIssue {
     <<interface>>
     +type: SafetyIssueType
-    +severity: lowmediumhighcritical
+    +severity: low_medium_high
     +description: string
-    +location: linenumbercolumnnumber
+    +location: line_number_column
     +suggestion: string
   }
   class AllowedOperations {
     <<interface>>
-    +allowedModules: string[]
-    +allowedCommands: string[]
-    +allowedFilePaths: string[]
-    +allowedDomains: string[]
+    +allowedModules: string
+    +allowedCommands: string
+    +allowedFilePaths: string
+    +allowedDomains: string
     +maxExecutionTimeMs: number
   }
   class DynamicToolQualityMetrics {
@@ -154,7 +154,7 @@ classDiagram
     +activeTools: number
     +averageSuccessRate: number
     +averageQualityScore: number
-    +topTools: Array<toolIdstringnamestringusageCountnumbersuccessRatenumber>
+    +topTools: Array_toolId_string
   }
   class AuditLogEntry {
     <<interface>>
@@ -181,8 +181,8 @@ classDiagram
     <<interface>>
     +needsReflection: boolean
     +shouldCreateTool: boolean
-    +proposedTool: namestringdescriptionstringmodeDynamicToolModecodestringreasonstring
-    +improvementSuggestions: string[]
+    +proposedTool: name_string_descrip
+    +improvementSuggestions: string
     +reflectionReason: string
   }
   class ToolReflectionContext {
@@ -191,7 +191,7 @@ classDiagram
     +lastToolResult: string
     +currentTask: string
     +failureCount: number
-    +patternMatch: detectedbooleanpatternstringoccurrencesnumber
+    +patternMatch: detected_boolean_pa
   }
   class DynamicToolsConfig {
     <<interface>>
@@ -591,4 +591,4 @@ type AuditAction = | "tool.create"       // ツール作成
 監査操作の種類
 
 ---
-*自動生成: 2026-02-17T22:24:18.930Z*
+*自動生成: 2026-02-18T00:15:35.702Z*

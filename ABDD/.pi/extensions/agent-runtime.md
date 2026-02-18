@@ -2,7 +2,7 @@
 title: agent-runtime
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -77,9 +77,9 @@ import { getParallelismAdjuster, getDynamicParallelism } from '../lib/dynamic-pa
 ```mermaid
 classDiagram
   class GlobalRuntimeStateProvider {
-    -globalScope: GlobalScopeWithRuntime
-    +getState
-    +resetState
+    -globalScope: GlobalScopeWithRunti
+    +getState()
+    +resetState()
   }
   class AgentRuntimeLimits {
     <<interface>>
@@ -102,10 +102,10 @@ classDiagram
   }
   class AgentRuntimeState {
     <<interface>>
-    +subagents: activeRunRequestsnumberactiveAgentsnumber
-    +teams: activeTeamRunsnumberactiveTeammatesnumber
-    +queue: activeOrchestrationsnumberpendingRuntimeQueueEntry[]PriorityqueuestatisticsupdatedonenqueuedequeuepriorityStatscriticalnumberhighnumbernormalnumberlownumberbackgroundnumber
-    +reservations: activeRuntimeCapacityReservationRecord[]
+    +subagents: activeRunRequests_n
+    +teams: activeTeamRuns_numb
+    +queue: activeOrchestration
+    +reservations: active_RuntimeCapac
     +limits: AgentRuntimeLimits
   }
   class RuntimeStateProvider {
@@ -134,7 +134,7 @@ classDiagram
   class RuntimeCapacityCheck {
     <<interface>>
     +allowed: boolean
-    +reasons: string[]
+    +reasons: string
     +projectedRequests: number
     +projectedLlm: number
     +snapshot: AgentRuntimeSnapshot
@@ -173,7 +173,7 @@ classDiagram
     +attempts: number
     +timedOut: boolean
     +aborted: boolean
-    +reservation: RuntimeCapacityReservationLease
+    +reservation: RuntimeCapacityReser
   }
   class RuntimeOrchestrationWaitInput {
     <<interface>>
@@ -186,7 +186,7 @@ classDiagram
   class RuntimeOrchestrationLease {
     <<interface>>
     +id: string
-    +release: >void
+    +release: void
   }
   class RuntimeOrchestrationWaitResult {
     <<interface>>
@@ -243,13 +243,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant agent_runtime as "agent-runtime"
-  participant _mariozechner as "@mariozechner"
+  participant mariozechner as "@mariozechner"
   participant adaptive_rate_controller as "adaptive-rate-controller"
   participant cross_instance_coordinator as "cross-instance-coordinator"
 
   Caller->>agent_runtime: setRuntimeStateProvider()
-  agent_runtime->>_mariozechner: API呼び出し
-  _mariozechner-->>agent_runtime: レスポンス
+  agent_runtime->>mariozechner: API呼び出し
+  mariozechner-->>agent_runtime: レスポンス
   agent_runtime->>adaptive_rate_controller: 内部関数呼び出し
   adaptive_rate_controller-->>agent_runtime: 結果
   agent_runtime-->>Caller: void
@@ -1325,4 +1325,4 @@ type GlobalScopeWithRuntime = typeof globalThis & {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.703Z*
+*自動生成: 2026-02-18T00:15:35.369Z*

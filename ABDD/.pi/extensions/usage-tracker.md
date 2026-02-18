@@ -2,7 +2,7 @@
 title: usage-tracker
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -38,13 +38,13 @@ classDiagram
   class FileStats {
     <<interface>>
     +mtimeMs: number
-    +byModel: Record<stringnumber>
-    +byDate: Record<stringnumber>
-    +byDateModel: Record<stringRecord<stringnumber>>
+    +byModel: Record_string_number
+    +byDate: Record_string_number
+    +byDateModel: Record_string_Record
   }
   class CacheData {
     <<interface>>
-    +files: Record<stringFileStats>
+    +files: Record_string_FileSt
   }
 ```
 
@@ -248,4 +248,4 @@ interface CacheData {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.883Z*
+*自動生成: 2026-02-18T00:15:35.632Z*

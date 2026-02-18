@@ -2,7 +2,7 @@
 title: file_candidates
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -40,11 +40,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    cli_js["cli.js"]
-    types_js["types.js"]
-    output_js["output.js"]
-    errors_js["errors.js"]
-    constants_js["constants.js"]
+    cli["cli"]
+    types["types"]
+    output["output"]
+    errors["errors"]
+    constants["constants"]
   end
   main --> local
 ```
@@ -56,16 +56,16 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant file_candidates as "file_candidates"
-  participant cli_js as "cli.js"
-  participant types_js as "types.js"
+  participant cli as "cli"
+  participant types as "types"
 
   Caller->>file_candidates: fileCandidates()
   activate file_candidates
   Note over file_candidates: 非同期処理開始
-  file_candidates->>cli_js: 内部関数呼び出し
-  cli_js-->>file_candidates: 結果
+  file_candidates->>cli: 内部関数呼び出し
+  cli-->>file_candidates: 結果
   deactivate file_candidates
-  file_candidates-->>Caller: Promise<FileCandidatesOutput>
+  file_candidates-->>Caller: Promise_FileCandidat
 ```
 
 ## 関数
@@ -171,4 +171,4 @@ Enumerate file candidates with fd or fallback
 **戻り値**: `Promise<FileCandidatesOutput>`
 
 ---
-*自動生成: 2026-02-17T22:24:18.836Z*
+*自動生成: 2026-02-18T00:15:35.566Z*

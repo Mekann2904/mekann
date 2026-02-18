@@ -2,7 +2,7 @@
 title: live-view-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -100,4 +100,4 @@ Common status type for live view items.
 Used by both subagent live items and team member live items.
 
 ---
-*自動生成: 2026-02-17T22:24:18.945Z*
+*自動生成: 2026-02-18T00:15:35.728Z*

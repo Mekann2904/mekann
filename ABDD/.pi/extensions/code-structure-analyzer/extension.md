@@ -2,7 +2,7 @@
 title: extension
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -44,16 +44,16 @@ classDiagram
     <<interface>>
     +target: string
     +outputDir: string
-    +diagramTypes: flowchartclassDiagramsequenceDiagram[]
+    +diagramTypes: flowchart_classD
     +templatePath: string
-    +exclude: string[]
+    +exclude: string
   }
   class AnalysisResult {
     <<interface>>
     +structure: StructureData
     +diagrams: MermaidDiagrams
     +docSections: DocSections
-    +metadata: analyzedAtstringsourcePathstringfileHashstringstatsfunctionsnumberclassesnumberinterfacesnumberimportsnumber
+    +metadata: analyzedAt_string_s
   }
 ```
 
@@ -65,9 +65,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    extract_structure_js["extract-structure.js"]
-    generate_diagrams_js["generate-diagrams.js"]
-    generate_doc_js["generate-doc.js"]
+    extract_structure["extract-structure"]
+    generate_diagrams["generate-diagrams"]
+    generate_doc["generate-doc"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -99,22 +99,22 @@ sequenceDiagram
   participant extension as "extension"
   participant fs as "fs"
   participant path as "path"
-  participant extract_structure_js as "extract-structure.js"
-  participant generate_diagrams_js as "generate-diagrams.js"
+  participant extract_structure as "extract-structure"
+  participant generate_diagrams as "generate-diagrams"
 
   Caller->>extension: analyzeCodeStructure()
   activate extension
   Note over extension: 非同期処理開始
   extension->>fs: API呼び出し
   fs-->>extension: レスポンス
-  extension->>extract_structure_js: 内部関数呼び出し
-  extract_structure_js-->>extension: 結果
+  extension->>extract_structure: 内部関数呼び出し
+  extract_structure-->>extension: 結果
   deactivate extension
-  extension-->>Caller: Promise<AnalysisResult>
+  extension-->>Caller: Promise_AnalysisResu
 
   Caller->>extension: extractStructure()
   activate extension
-  extension-->>Caller: Promise<StructureData>
+  extension-->>Caller: Promise_StructureDat
   deactivate extension
 ```
 
@@ -265,4 +265,4 @@ interface AnalysisResult {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.768Z*
+*自動生成: 2026-02-18T00:15:35.468Z*

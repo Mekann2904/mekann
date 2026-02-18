@@ -2,7 +2,7 @@
 title: token-bucket
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -31,13 +31,13 @@ related: []
 ```mermaid
 classDiagram
   class TokenBucketRateLimiterImpl {
-    -buckets: Map<stringTokenBucketState>
-    -configs: Map<stringRateLimitConfig>
-    +canProceed
-    +consume
-    +record429
-    +recordSuccess
-    +getStats
+    -buckets: Map_string_TokenBuck
+    -configs: Map_string_RateLimit
+    +canProceed()
+    +consume()
+    +record429()
+    +recordSuccess()
+    +getStats()
   }
   class TokenBucketState {
     <<interface>>
@@ -56,9 +56,9 @@ classDiagram
   class RateLimiterStats {
     <<interface>>
     +trackedModels: number
-    +blockedModels: string[]
+    +blockedModels: string
     +avgAvailableTokens: number
-    +lowCapacityModels: string[]
+    +lowCapacityModels: string
   }
   class TokenBucketRateLimiter {
     <<interface>>
@@ -197,4 +197,4 @@ interface TokenBucketRateLimiter {
 Token bucket rate limiter interface.
 
 ---
-*自動生成: 2026-02-17T22:24:18.985Z*
+*自動生成: 2026-02-18T00:15:35.774Z*

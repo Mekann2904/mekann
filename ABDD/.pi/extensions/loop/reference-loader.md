@@ -2,7 +2,7 @@
 title: reference-loader
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -46,8 +46,8 @@ classDiagram
   }
   class LoadedReferenceResult {
     <<interface>>
-    +references: LoopReference[]
-    +warnings: string[]
+    +references: LoopReference
+    +warnings: string
   }
 ```
 
@@ -59,7 +59,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    error_utils_js["error-utils.js"]
+    error_utils["error-utils"]
     ssrf_protection["ssrf-protection"]
   end
   main --> local
@@ -81,20 +81,20 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant reference_loader as "reference-loader"
-  participant error_utils_js as "error-utils.js"
+  participant error_utils as "error-utils"
   participant ssrf_protection as "ssrf-protection"
 
   Caller->>reference_loader: loadReferences()
   activate reference_loader
   Note over reference_loader: 非同期処理開始
-  reference_loader->>error_utils_js: 内部関数呼び出し
-  error_utils_js-->>reference_loader: 結果
+  reference_loader->>error_utils: 内部関数呼び出し
+  error_utils-->>reference_loader: 結果
   deactivate reference_loader
-  reference_loader-->>Caller: Promise<LoadedReferenceResult>
+  reference_loader-->>Caller: Promise_LoadedRefere
 
   Caller->>reference_loader: fetchTextFromUrl()
   activate reference_loader
-  reference_loader-->>Caller: Promise<string>
+  reference_loader-->>Caller: Promise_string
   deactivate reference_loader
 ```
 
@@ -292,4 +292,4 @@ interface LoadedReferenceResult {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.803Z*
+*自動生成: 2026-02-18T00:15:35.523Z*

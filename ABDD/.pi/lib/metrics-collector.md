@@ -2,7 +2,7 @@
 title: metrics-collector
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -99,17 +99,17 @@ classDiagram
   }
   class MetricsWindowState {
     <<interface>>
-    +waitTimes: number[]
-    +executionTimes: number[]
+    +waitTimes: number
+    +executionTimes: number
     +taskCompletions: number
     +preemptions: number
     +steals: number
   }
   class CollectorState {
     <<interface>>
-    +config: MetricsCollectorConfig
+    +config: MetricsCollectorConf
     +metricsDir: string
-    +collectionTimer: ReturnType<typeofsetInterval>
+    +collectionTimer: ReturnType_typeofset
     +initialized: boolean
     +window: MetricsWindowState
   }
@@ -144,18 +144,7 @@ sequenceDiagram
   metrics_collector-->>Caller: void
 
   Caller->>metrics_collector: getMetricsCollector()
-  metrics_collector-->>Caller: {
-  recordTaskCompletion: (task: { id: string; source: string; provider: string; model: string; priority: string }, result: { waitedMs: number; executionMs: number; success: boolean }) => void;
-  recordPreemption: (taskId: string, reason: string) => void;
-  recordWorkSteal: (sourceInstance: string, taskId: string) => void;
-  recordRateLimitHit: () => void;
-  updateQueueStats: (queueDepth: number, activeTasks: number) => void;
-  getMetrics: () => SchedulerMetrics;
-  getSummary: (periodMs: number) => MetricsSummary;
-  getStealingStats: () => StealingStats;
-  startCollection: (intervalMs?: number) => void;
-  stopCollection: () => void;
-}
+  metrics_collector-->>Caller: recordTaskCompletio
 ```
 
 ## 関数
@@ -670,4 +659,4 @@ interface CollectorState {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.948Z*
+*自動生成: 2026-02-18T00:15:35.731Z*

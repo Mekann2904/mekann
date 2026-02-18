@@ -2,7 +2,7 @@
 title: agent-usage-tracker
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -63,14 +63,14 @@ classDiagram
     +version: number
     +createdAt: string
     +updatedAt: string
-    +totals: toolCallsnumbertoolErrorsnumberagentRunsnumberagentRunErrorsnumbercontextSamplesnumbercontextRatioSumnumbercontextTokenSamplesnumbercontextTokenSumnumber
-    +features: Record<stringFeatureMetrics>
+    +totals: toolCalls_number_to
+    +features: Record_string_Featur
   }
   class FeatureCatalog {
     <<interface>>
     +discoveredAt: string
-    +toolToExtension: Record<stringstring>
-    +commandToExtension: Record<stringstring>
+    +toolToExtension: Record_string_string
+    +commandToExtension: Record_string_string
   }
   class ActiveToolCall {
     <<interface>>
@@ -94,7 +94,7 @@ classDiagram
     +storageFile: string
     +state: UsageTrackerState
     +catalog: FeatureCatalog
-    +pendingTools: Map<stringActiveToolCall>
+    +pendingTools: Map_string_ActiveToo
   }
 ```
 
@@ -106,8 +106,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    fs_utils_js["fs-utils.js"]
-    validation_utils_js["validation-utils.js"]
+    fs_utils["fs-utils"]
+    validation_utils["validation-utils"]
     comprehensive_logger["comprehensive-logger"]
     comprehensive_logger_types["comprehensive-logger-types"]
   end
@@ -792,4 +792,4 @@ type EventStatus = "ok" | "error"
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.765Z*
+*自動生成: 2026-02-18T00:15:35.457Z*

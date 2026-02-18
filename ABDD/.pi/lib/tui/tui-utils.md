@@ -2,7 +2,7 @@
 title: tui-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -39,7 +39,7 @@ import { Markdown, getMarkdownTheme } from '@mariozechner/pi-tui';
 classDiagram
   class MarkdownPreviewResult {
     <<interface>>
-    +lines: string[]
+    +lines: string
     +renderedAsMarkdown: boolean
   }
 ```
@@ -81,15 +81,15 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant tui_utils as "tui-utils"
-  participant _mariozechner as "@mariozechner"
+  participant mariozechner as "@mariozechner"
 
   Caller->>tui_utils: appendTail()
-  tui_utils->>_mariozechner: API呼び出し
-  _mariozechner-->>tui_utils: レスポンス
+  tui_utils->>mariozechner: API呼び出し
+  mariozechner-->>tui_utils: レスポンス
   tui_utils-->>Caller: string
 
   Caller->>tui_utils: toTailLines()
-  tui_utils-->>Caller: string[]
+  tui_utils-->>Caller: string
 ```
 
 ## 関数
@@ -215,4 +215,4 @@ interface MarkdownPreviewResult {
 Result type for markdown preview rendering.
 
 ---
-*自動生成: 2026-02-17T22:24:18.989Z*
+*自動生成: 2026-02-18T00:15:35.778Z*

@@ -2,7 +2,7 @@
 title: output-validation
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -41,12 +41,12 @@ classDiagram
   class SubagentValidationOptions {
     <<interface>>
     +minChars: number
-    +requiredLabels: string[]
+    +requiredLabels: string
   }
   class TeamMemberValidationOptions {
     <<interface>>
     +minChars: number
-    +requiredLabels: string[]
+    +requiredLabels: string
   }
   class ExtendedValidationResult {
     <<interface>>
@@ -66,7 +66,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    output_schema_js["output-schema.js"]
+    output_schema["output-schema"]
   end
   main --> local
 ```
@@ -93,15 +93,15 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant output_validation as "output-validation"
-  participant output_schema_js as "output-schema.js"
+  participant output_schema as "output-schema"
 
   Caller->>output_validation: hasNonEmptyResultSection()
-  output_validation->>output_schema_js: 内部関数呼び出し
-  output_schema_js-->>output_validation: 結果
+  output_validation->>output_schema: 内部関数呼び出し
+  output_schema-->>output_validation: 結果
   output_validation-->>Caller: boolean
 
   Caller->>output_validation: validateSubagentOutput()
-  output_validation-->>Caller: { ok: boolean; reason?: string }
+  output_validation-->>Caller: ok_boolean_reason
 ```
 
 ## 関数
@@ -236,4 +236,4 @@ interface ExtendedValidationResult {
 Extended validation result with schema information.
 
 ---
-*自動生成: 2026-02-17T22:24:18.952Z*
+*自動生成: 2026-02-18T00:15:35.736Z*

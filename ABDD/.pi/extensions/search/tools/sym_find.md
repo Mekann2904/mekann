@@ -2,7 +2,7 @@
 title: sym_find
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -40,11 +40,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
-    output_js["output.js"]
-    errors_js["errors.js"]
-    constants_js["constants.js"]
-    sym_index_js["sym_index.js"]
+    types["types"]
+    output["output"]
+    errors["errors"]
+    constants["constants"]
+    sym_index["sym_index"]
   end
   main --> local
 ```
@@ -56,16 +56,16 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant sym_find as "sym_find"
-  participant types_js as "types.js"
-  participant output_js as "output.js"
+  participant types as "types"
+  participant output as "output"
 
   Caller->>sym_find: symFind()
   activate sym_find
   Note over sym_find: 非同期処理開始
-  sym_find->>types_js: 内部関数呼び出し
-  types_js-->>sym_find: 結果
+  sym_find->>types: 内部関数呼び出し
+  types-->>sym_find: 結果
   deactivate sym_find
-  sym_find-->>Caller: Promise<SymFindOutput>
+  sym_find-->>Caller: Promise_SymFindOutpu
 ```
 
 ## 関数
@@ -170,4 +170,4 @@ Find symbol definitions from index
 **戻り値**: `Promise<SymFindOutput>`
 
 ---
-*自動生成: 2026-02-17T22:24:18.839Z*
+*自動生成: 2026-02-18T00:15:35.571Z*

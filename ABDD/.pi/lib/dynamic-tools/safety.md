@@ -2,7 +2,7 @@
 title: safety
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -33,24 +33,24 @@ classDiagram
   class SafetyAnalysisResult {
     <<interface>>
     +score: number
-    +issues: SafetyAnalysisIssue[]
-    +allowedOperations: string[]
-    +blockedOperations: string[]
-    +recommendations: string[]
+    +issues: SafetyAnalysisIssue
+    +allowedOperations: string
+    +blockedOperations: string
+    +recommendations: string
   }
   class SafetyAnalysisIssue {
     <<interface>>
-    +severity: criticalhighmediumlow
-    +type: SafetyAnalysisIssueType
+    +severity: critical_high_m
+    +type: SafetyAnalysisIssueT
     +description: string
-    +location: linenumbersnippetstring
+    +location: line_number_snippe
     +suggestion: string
   }
   class DangerousPattern {
     <<interface>>
     +pattern: RegExp
-    +type: SafetyAnalysisIssueType
-    +severity: SafetyAnalysisIssue[severity]
+    +type: SafetyAnalysisIssueT
+    +severity: SafetyAnalysisIssue
     +description: string
     +suggestion: string
   }
@@ -247,4 +247,4 @@ type SafetyAnalysisIssueType = | "file-system-write"
 安全性問題の種類（解析用）
 
 ---
-*自動生成: 2026-02-17T22:24:18.929Z*
+*自動生成: 2026-02-18T00:15:35.700Z*

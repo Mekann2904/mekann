@@ -2,7 +2,7 @@
 title: agent-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -74,4 +74,4 @@ Outcome codes for agent/subagent/team execution results.
 Used to classify the result of a run for retry logic and reporting.
 
 ---
-*自動生成: 2026-02-17T22:24:18.895Z*
+*自動生成: 2026-02-18T00:15:35.648Z*

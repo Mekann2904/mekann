@@ -2,7 +2,7 @@
 title: skill-inspector
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -45,7 +45,7 @@ classDiagram
     +id: string
     +role: string
     +enabled: boolean
-    +skills: string[]
+    +skills: string
   }
   class TeamWithSkills {
     <<interface>>
@@ -53,14 +53,14 @@ classDiagram
     +name: string
     +description: string
     +enabled: string
-    +skills: string[]
+    +skills: string
   }
   class SkillUsage {
     <<interface>>
     +name: string
     +description: string
-    +usedByTeams: string[]
-    +usedByMembers: teamIdstringmemberIdstring[]
+    +usedByTeams: string
+    +usedByMembers: teamId_string_membe
   }
   class TeamFrontmatter {
     <<interface>>
@@ -68,7 +68,7 @@ classDiagram
     +name: string
     +description: string
     +enabled: string
-    +skills: string[]
+    +skills: string
   }
 ```
 
@@ -325,4 +325,4 @@ interface TeamFrontmatter {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.867Z*
+*自動生成: 2026-02-18T00:15:35.611Z*

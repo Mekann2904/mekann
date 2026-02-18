@@ -2,7 +2,7 @@
 title: judge
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -48,24 +48,24 @@ classDiagram
   class JudgeWeightConfig {
     <<interface>>
     +version: string
-    +intraWeights: failedRationumberlowConfidencenumbernoEvidencenumbercontradictionnumber
-    +interWeights: conflictRationumberconfidenceSpreadnumberfailedRationumbernoEvidencenumber
-    +sysWeights: uIntranumberuInternumberfailedRationumber
-    +collapseThresholds: uIntranumberuInternumberuSysnumberfailedRationumbernoEvidenceRationumber
+    +intraWeights: failedRatio_number
+    +interWeights: conflictRatio_numbe
+    +sysWeights: uIntra_number_uInte
+    +collapseThresholds: uIntra_number_uInte
   }
   class JudgeExplanation {
     <<interface>>
-    +inputs: failedRationumberlowConfidencenumbernoEvidenceRationumbercontradictionRationumberconflictRationumberconfidenceSpreadnumbertotalnumberfailedCountnumber
-    +computation: uIntravaluenumbercontributionsArray<factorstringweightnumbervaluenumbercontributionnumber>uIntervaluenumbercontributionsArray<factorstringweightnumbervaluenumbercontributionnumber>uSysvaluenumbercontributionsArray<factorstringweightnumbervaluenumbercontributionnumber>
-    +triggers: Array<signalstringactualValuenumberthresholdnumbertriggeredboolean>
-    +reasoningChain: string[]
+    +inputs: failedRatio_number
+    +computation: uIntra_value_numbe
+    +triggers: Array_signal_string
+    +reasoningChain: string
   }
   class TeamUncertaintyProxy {
     <<interface>>
     +uIntra: number
     +uInter: number
     +uSys: number
-    +collapseSignals: string[]
+    +collapseSignals: string
   }
 ```
 
@@ -78,7 +78,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     storage["storage"]
-    text_parsing_js["text-parsing.js"]
+    text_parsing["text-parsing"]
   end
   main --> local
 ```
@@ -108,7 +108,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant judge as "judge"
   participant storage as "storage"
-  participant text_parsing_js as "text-parsing.js"
+  participant text_parsing as "text-parsing"
 
   Caller->>judge: getJudgeWeights()
   judge->>storage: 内部関数呼び出し
@@ -413,4 +413,4 @@ Uncertainty proxy computed from member results.
 Used to assess overall team output quality and reliability.
 
 ---
-*自動生成: 2026-02-17T22:24:18.724Z*
+*自動生成: 2026-02-18T00:15:35.395Z*

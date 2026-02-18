@@ -2,7 +2,7 @@
 title: skill-registry
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -61,19 +61,19 @@ classDiagram
     <<interface>>
     +cwd: string
     +agentDir: string
-    +skillPaths: string[]
+    +skillPaths: string
   }
   class SkillMergeConfig {
     <<interface>>
-    +parentSkills: SkillReference[]
-    +childSkills: SkillReference[]
-    +strategy: replacemerge
+    +parentSkills: SkillReference
+    +childSkills: SkillReference
+    +strategy: replace_merge
   }
   class ResolveSkillsResult {
     <<interface>>
-    +skills: ResolvedSkill[]
-    +errors: string[]
-    +warnings: string[]
+    +skills: ResolvedSkill
+    +errors: string
+    +warnings: string
   }
 ```
 
@@ -449,4 +449,4 @@ type SkillReference = string
 Skill reference - can be a skill name or path
 
 ---
-*自動生成: 2026-02-17T22:24:18.971Z*
+*自動生成: 2026-02-18T00:15:35.757Z*

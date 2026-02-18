@@ -2,7 +2,7 @@
 title: execution-rules
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -35,7 +35,7 @@ classDiagram
     <<interface>>
     +forSubagent: boolean
     +forTeam: boolean
-    +phase: initialcommunication
+    +phase: initial_communica
     +includeGuidelines: boolean
     +includeDiscussionRules: boolean
   }
@@ -187,4 +187,4 @@ interface BuildExecutionRulesOptions {
 実行ルールセクションを構築する
 
 ---
-*自動生成: 2026-02-17T22:24:18.941Z*
+*自動生成: 2026-02-18T00:15:35.722Z*

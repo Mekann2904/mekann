@@ -2,7 +2,7 @@
 title: openai
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -41,19 +41,19 @@ classDiagram
     +name: any
     +model: any
     +capabilities: ProviderCapabilities
-    +isAvailable
-    +generateEmbedding
-    +generateEmbeddingsBatch
+    +isAvailable()
+    +generateEmbedding()
+    +generateEmbeddingsBatch()
   }
   class AuthConfig {
     <<interface>>
   }
   class OpenAIEmbeddingResponse {
     <<interface>>
-    +data: Array<embeddingnumber[]indexnumberobjectstring>
+    +data: Array_embedding_num
     +model: string
     +object: string
-    +usage: prompt_tokensnumbertotal_tokensnumber
+    +usage: prompt_tokens_numbe
   }
 ```
 
@@ -65,7 +65,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
+    types["types"]
   end
   main --> local
 ```
@@ -161,4 +161,4 @@ interface OpenAIEmbeddingResponse {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.932Z*
+*自動生成: 2026-02-18T00:15:35.706Z*

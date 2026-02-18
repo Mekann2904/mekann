@@ -2,7 +2,7 @@
 title: runtime-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -42,7 +42,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    retry_with_backoff_js["retry-with-backoff.js"]
+    retry_with_backoff["retry-with-backoff"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -75,14 +75,14 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant runtime_utils as "runtime-utils"
-  participant _mariozechner as "@mariozechner"
-  participant retry_with_backoff_js as "retry-with-backoff.js"
+  participant mariozechner as "@mariozechner"
+  participant retry_with_backoff as "retry-with-backoff"
 
   Caller->>runtime_utils: trimForError()
-  runtime_utils->>_mariozechner: API呼び出し
-  _mariozechner-->>runtime_utils: レスポンス
-  runtime_utils->>retry_with_backoff_js: 内部関数呼び出し
-  retry_with_backoff_js-->>runtime_utils: 結果
+  runtime_utils->>mariozechner: API呼び出し
+  mariozechner-->>runtime_utils: レスポンス
+  runtime_utils->>retry_with_backoff: 内部関数呼び出し
+  retry_with_backoff-->>runtime_utils: 結果
   runtime_utils-->>Caller: string
 
   Caller->>runtime_utils: buildRateLimitKey()
@@ -209,4 +209,4 @@ Convert concurrency limit input to number.
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-17T22:24:18.966Z*
+*自動生成: 2026-02-18T00:15:35.752Z*

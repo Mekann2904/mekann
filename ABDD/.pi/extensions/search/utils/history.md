@@ -2,7 +2,7 @@
 title: history
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -33,21 +33,21 @@ related: []
 ```mermaid
 classDiagram
   class SearchHistory {
-    -entries: SearchHistoryEntry[]
+    -entries: SearchHistoryEntry
     -config: HistoryConfig
-    +addHistoryEntry
-    +getRecentQueries
-    +getRelatedQueries
-    +markAccepted
-    +getEntry
+    +addHistoryEntry()
+    +getRecentQueries()
+    +getRelatedQueries()
+    +markAccepted()
+    +getEntry()
   }
   class SearchHistoryEntry {
     <<interface>>
     +timestamp: number
     +tool: string
-    +params: Record<stringunknown>
+    +params: Record_string_unknow
     +query: string
-    +results: string[]
+    +results: string
   }
   class HistoryConfig {
     <<interface>>
@@ -202,4 +202,4 @@ interface QuerySuggestion {
 Query with metadata for suggestions.
 
 ---
-*自動生成: 2026-02-17T22:24:18.852Z*
+*自動生成: 2026-02-18T00:15:35.587Z*

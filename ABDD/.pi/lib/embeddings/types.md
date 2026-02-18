@@ -2,7 +2,7 @@
 title: types
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -49,18 +49,18 @@ classDiagram
   class ProviderConfig {
     <<interface>>
     +provider: string
-    +options: Record<stringunknown>
+    +options: Record_string_unknow
   }
   class EmbeddingModuleConfig {
     <<interface>>
     +version: number
-    +defaultProvider: stringnull
-    +fallbackOrder: string[]
-    +providerOptions: Record<stringRecord<stringunknown>>
+    +defaultProvider: string_null
+    +fallbackOrder: string
+    +providerOptions: Record_string_Record
   }
   class EmbeddingResult {
     <<interface>>
-    +embedding: number[]
+    +embedding: number
     +provider: string
     +model: string
     +dimensions: number
@@ -180,4 +180,4 @@ interface VectorSearchResult {
 ベクトル検索結果
 
 ---
-*自動生成: 2026-02-17T22:24:18.934Z*
+*自動生成: 2026-02-18T00:15:35.711Z*

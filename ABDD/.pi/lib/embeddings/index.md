@@ -2,7 +2,7 @@
 title: index
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -37,8 +37,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    registry_js["registry.js"]
-    openai_js["openai.js"]
+    registry["registry"]
+    openai["openai"]
   end
   main --> local
 ```
@@ -59,16 +59,16 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant index as "index"
-  participant registry_js as "registry.js"
-  participant openai_js as "openai.js"
+  participant registry as "registry"
+  participant openai as "openai"
 
   Caller->>index: initializeEmbeddingModule()
   activate index
   Note over index: 非同期処理開始
-  index->>registry_js: 内部関数呼び出し
-  registry_js-->>index: 結果
+  index->>registry: 内部関数呼び出し
+  registry-->>index: 結果
   deactivate index
-  index-->>Caller: Promise<void>
+  index-->>Caller: Promise_void
 
   Caller->>index: initializeEmbeddingModuleSync()
   index-->>Caller: void
@@ -98,4 +98,4 @@ Synchronous initialization for non-async contexts.
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:24:18.931Z*
+*自動生成: 2026-02-18T00:15:35.704Z*

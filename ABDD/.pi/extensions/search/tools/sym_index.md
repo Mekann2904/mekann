@@ -2,7 +2,7 @@
 title: sym_index
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -53,10 +53,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    cli_js["cli.js"]
-    constants_js["constants.js"]
-    types_js["types.js"]
-    errors_js["errors.js"]
+    cli["cli"]
+    constants["constants"]
+    types["types"]
+    errors["errors"]
   end
   main --> local
 ```
@@ -79,20 +79,20 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant sym_index as "sym_index"
-  participant cli_js as "cli.js"
-  participant constants_js as "constants.js"
+  participant cli as "cli"
+  participant constants as "constants"
 
   Caller->>sym_index: symIndex()
   activate sym_index
   Note over sym_index: 非同期処理開始
-  sym_index->>cli_js: 内部関数呼び出し
-  cli_js-->>sym_index: 結果
+  sym_index->>cli: 内部関数呼び出し
+  cli-->>sym_index: 結果
   deactivate sym_index
-  sym_index-->>Caller: Promise<SymIndexOutput>
+  sym_index-->>Caller: Promise_SymIndexOutp
 
   Caller->>sym_index: readSymbolIndex()
   activate sym_index
-  sym_index-->>Caller: Promise<SymbolIndexEntry[] | null>
+  sym_index-->>Caller: Promise_SymbolIndexE
   deactivate sym_index
 ```
 
@@ -648,4 +648,4 @@ interface LegacyIndexMeta {
 Legacy index metadata structure
 
 ---
-*自動生成: 2026-02-17T22:24:18.842Z*
+*自動生成: 2026-02-18T00:15:35.575Z*

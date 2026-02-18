@@ -2,7 +2,7 @@
 title: retry-with-backoff
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -62,7 +62,7 @@ classDiagram
   class RetryWithBackoffOptions {
     <<interface>>
     +cwd: string
-    +overrides: RetryWithBackoffOverrides
+    +overrides: RetryWithBackoffOver
     +signal: AbortSignal
     +rateLimitKey: string
     +maxRateLimitRetries: number
@@ -75,7 +75,7 @@ classDiagram
   }
   class SharedRateLimitState {
     <<interface>>
-    +entries: Map<stringSharedRateLimitStateEntry>
+    +entries: Map_string_SharedRat
   }
   class RateLimitGateSnapshot {
     <<interface>>
@@ -119,10 +119,10 @@ sequenceDiagram
   participant retry_with_backoff as "retry-with-backoff"
 
   Caller->>retry_with_backoff: getRateLimitGateSnapshot()
-  retry_with_backoff-->>Caller: RateLimitGateSnapshot
+  retry_with_backoff-->>Caller: RateLimitGateSnapsho
 
   Caller->>retry_with_backoff: resolveRetryWithBackoffConfig()
-  retry_with_backoff-->>Caller: RetryWithBackoffConfig
+  retry_with_backoff-->>Caller: RetryWithBackoffConf
 ```
 
 ## 関数
@@ -592,4 +592,4 @@ type RetryWithBackoffOverrides = Partial<RetryWithBackoffConfig>
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.962Z*
+*自動生成: 2026-02-18T00:15:35.748Z*

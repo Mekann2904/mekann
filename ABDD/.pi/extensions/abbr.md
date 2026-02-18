@@ -2,7 +2,7 @@
 title: abbr
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -35,12 +35,12 @@ import { ExtensionAPI, ExtensionContext, Theme } from '@mariozechner/pi-coding-a
 classDiagram
   class AbbrListComponent {
     -theme: Theme
-    -onClose: >void
+    -onClose: void
     -cachedWidth: number
-    -cachedLines: string[]
-    +handleInput
-    +render
-    +invalidate
+    -cachedLines: string
+    +handleInput()
+    +render()
+    +invalidate()
   }
   class Abbreviation {
     <<interface>>
@@ -48,16 +48,16 @@ classDiagram
     +expansion: string
     +regex: boolean
     +pattern: string
-    +position: commandanywhere
+    +position: command_anywhere
   }
   class AbbrState {
     <<interface>>
-    +abbreviations: Abbreviation[]
+    +abbreviations: Abbreviation
   }
   class AbbrDetails {
     <<interface>>
-    +action: listadderaserenamequery
-    +abbreviations: Abbreviation[]
+    +action: list_add_erase
+    +abbreviations: Abbreviation
     +result: string
     +error: string
   }
@@ -216,4 +216,4 @@ interface AbbrDetails {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.681Z*
+*自動生成: 2026-02-18T00:15:35.344Z*

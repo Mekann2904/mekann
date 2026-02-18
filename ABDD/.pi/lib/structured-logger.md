@@ -2,7 +2,7 @@
 title: structured-logger
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -49,37 +49,37 @@ related: []
 classDiagram
   class StructuredLogger {
     -minLevel: LogLevel
-    -context: LogContextstring
+    -context: LogContext_string
     -correlationId: string
-    -output: consolestdoutstderr
+    -output: console_stdout
     -json: boolean
-    +child
-    -log
-    -outputEntry
-    +debug
-    +info
+    +child()
+    -log()
+    -outputEntry()
+    +debug()
+    +info()
   }
   class ChildLogger {
-    +debug
-    +info
-    +warn
-    +error
-    +withTiming
+    +debug()
+    +info()
+    +warn()
+    +error()
+    +withTiming()
   }
   class StructuredLogEntry {
     <<interface>>
     +timestamp: string
     +level: LogLevel
-    +context: LogContextstring
+    +context: LogContext_string
     +operation: string
     +message: string
   }
   class StructuredLoggerOptions {
     <<interface>>
     +minLevel: LogLevel
-    +context: LogContextstring
+    +context: LogContext_string
     +correlationId: string
-    +output: consolestdoutstderr
+    +output: console_stdout
     +json: boolean
   }
 ```
@@ -464,4 +464,4 @@ type LogContext = | "subagents"
 モジュールやコンポーネントを識別するために使用
 
 ---
-*自動生成: 2026-02-17T22:24:18.976Z*
+*自動生成: 2026-02-18T00:15:35.763Z*

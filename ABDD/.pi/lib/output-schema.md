@@ -2,7 +2,7 @@
 title: output-schema
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -66,14 +66,14 @@ classDiagram
     <<interface>>
     +ok: boolean
     +reason: string
-    +violations: SchemaViolation[]
+    +violations: SchemaViolation
     +fallbackUsed: boolean
-    +parsed: ParsedStructuredOutput
+    +parsed: ParsedStructuredOutp
   }
   class SchemaViolation {
     <<interface>>
     +field: string
-    +violationType: missingtoo_shorttoo_longpattern_mismatchout_of_rangeinvalid_type
+    +violationType: missing_too_short
     +expected: string
     +actual: string
   }
@@ -95,7 +95,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    text_parsing_js["text-parsing.js"]
+    text_parsing["text-parsing"]
   end
   main --> local
 ```
@@ -124,11 +124,11 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant output_schema as "output-schema"
-  participant text_parsing_js as "text-parsing.js"
+  participant text_parsing as "text-parsing"
 
   Caller->>output_schema: getCommunicationIdMode()
-  output_schema->>text_parsing_js: 内部関数呼び出し
-  text_parsing_js-->>output_schema: 結果
+  output_schema->>text_parsing: 内部関数呼び出し
+  text_parsing-->>output_schema: 結果
   output_schema-->>Caller: CommunicationIdMode
 
   Caller->>output_schema: resetCommunicationIdModeCache()
@@ -476,4 +476,4 @@ Stance classification mode for discussion analysis.
 - "structured": Full structured analysis with confidence scores
 
 ---
-*自動生成: 2026-02-17T22:24:18.950Z*
+*自動生成: 2026-02-18T00:15:35.734Z*

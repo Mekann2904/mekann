@@ -2,7 +2,7 @@
 title: verification-hooks
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -41,7 +41,7 @@ classDiagram
   class VerificationHookConfig {
     <<interface>>
     +enabled: boolean
-    +mode: disabledminimalautostrict
+    +mode: disabled_minimal
     +runInspector: boolean
     +runChallenger: boolean
     +logResults: boolean
@@ -64,9 +64,9 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    verification_workflow_js["verification-workflow.js"]
-    comprehensive_logger_js["comprehensive-logger.js"]
-    comprehensive_logger_types_js["comprehensive-logger-types.js"]
+    verification_workflow["verification-workflow"]
+    comprehensive_logger["comprehensive-logger"]
+    comprehensive_logger_types["comprehensive-logger-types"]
   end
   main --> local
 ```
@@ -91,17 +91,17 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant verification_hooks as "verification-hooks"
-  participant verification_workflow_js as "verification-workflow.js"
-  participant comprehensive_logger_js as "comprehensive-logger.js"
+  participant verification_workflow as "verification-workflow"
+  participant comprehensive_logger as "comprehensive-logger"
 
   Caller->>verification_hooks: resolveVerificationHookConfig()
-  verification_hooks->>verification_workflow_js: 内部関数呼び出し
-  verification_workflow_js-->>verification_hooks: 結果
-  verification_hooks-->>Caller: VerificationHookConfig
+  verification_hooks->>verification_workflow: 内部関数呼び出し
+  verification_workflow-->>verification_hooks: 結果
+  verification_hooks-->>Caller: VerificationHookConf
 
   Caller->>verification_hooks: postSubagentVerificationHook()
   activate verification_hooks
-  verification_hooks-->>Caller: Promise<VerificationHookResult>
+  verification_hooks-->>Caller: Promise_Verification
   deactivate verification_hooks
 ```
 
@@ -284,4 +284,4 @@ interface VerificationHookResult {
 検証フックの結果
 
 ---
-*自動生成: 2026-02-17T22:24:18.864Z*
+*自動生成: 2026-02-18T00:15:35.606Z*

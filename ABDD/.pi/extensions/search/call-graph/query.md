@@ -2,7 +2,7 @@
 title: query
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -39,8 +39,8 @@ import { CallGraphIndex, CallGraphNode, CallGraphEdge... } from './types.js';
 classDiagram
   class CallerSearchState {
     <<interface>>
-    +results: Map<stringCallChainResult>
-    +queue: Array<namestringlevelnumbercallSiteCallGraphEdge[callSite]confidencenumber>
+    +results: Map_string_CallChain
+    +queue: Array_name_string_l
   }
 ```
 
@@ -52,7 +52,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    types_js["types.js"]
+    types["types"]
   end
   main --> local
 ```
@@ -81,15 +81,15 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant query as "query"
-  participant types_js as "types.js"
+  participant types as "types"
 
   Caller->>query: findNodesByName()
-  query->>types_js: 内部関数呼び出し
-  types_js-->>query: 結果
-  query-->>Caller: CallGraphNode[]
+  query->>types: 内部関数呼び出し
+  types-->>query: 結果
+  query-->>Caller: CallGraphNode
 
   Caller->>query: findNodeById()
-  query-->>Caller: CallGraphNode | undefined
+  query-->>Caller: CallGraphNode_undefi
 ```
 
 ## 関数
@@ -245,4 +245,4 @@ interface CallerSearchState {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.823Z*
+*自動生成: 2026-02-18T00:15:35.549Z*

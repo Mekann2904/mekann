@@ -2,7 +2,7 @@
 title: fs-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -59,4 +59,4 @@ Ensures a directory exists, creating it recursively if necessary.
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:24:18.942Z*
+*自動生成: 2026-02-18T00:15:35.724Z*

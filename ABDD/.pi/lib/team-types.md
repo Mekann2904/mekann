@@ -2,7 +2,7 @@
 title: team-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -51,36 +51,36 @@ classDiagram
     <<interface>>
     +key: string
     +label: string
-    +partners: string[]
+    +partners: string
     +status: LiveStatus
     +phase: TeamLivePhase
   }
   class TeamMonitorLifecycle {
     <<interface>>
-    +markStarted: itemKeystring>void
-    +markFinished: itemKeystringstatuscompletedfailedsummarystringerrorstring>void
+    +markStarted: itemKey_string_vo
+    +markFinished: itemKey_string_stat
   }
   class TeamMonitorPhase {
     <<interface>>
-    +markPhase: itemKeystringphaseTeamLivePhaseroundnumber>void
+    +markPhase: itemKey_string_phas
   }
   class TeamMonitorEvents {
     <<interface>>
-    +appendEvent: itemKeystringeventstring>void
-    +appendBroadcastEvent: eventstring>void
+    +appendEvent: itemKey_string_even
+    +appendBroadcastEvent: event_string_void
   }
   class TeamMonitorStream {
     <<interface>>
-    +appendChunk: itemKeystringstreamLiveStreamViewchunkstring>void
+    +appendChunk: itemKey_string_stre
   }
   class TeamMonitorDiscussion {
     <<interface>>
-    +appendDiscussion: itemKeystringdiscussionstring>void
+    +appendDiscussion: itemKey_string_disc
   }
   class TeamMonitorResource {
     <<interface>>
-    +close: >void
-    +wait: >Promise<void>
+    +close: void
+    +wait: Promise_void
   }
   class AgentTeamLiveMonitorController {
     <<interface>>
@@ -109,8 +109,8 @@ classDiagram
     +id: string
     +name: string
     +description: string
-    +enabled: enableddisabled
-    +strategy: parallelsequential
+    +enabled: enabled_disabled
+    +strategy: parallel_sequenti
   }
   class TeamMemberFrontmatter {
     <<interface>>
@@ -136,8 +136,8 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    live_monitor_base_js["live-monitor-base.js"]
-    live_view_utils_js["live-view-utils.js"]
+    live_monitor_base["live-monitor-base"]
+    live_view_utils["live-view-utils"]
   end
   main --> local
 ```
@@ -375,4 +375,4 @@ View mode for team live monitoring interface.
 Extends base LiveViewMode with "discussion" mode.
 
 ---
-*自動生成: 2026-02-17T22:24:18.982Z*
+*自動生成: 2026-02-18T00:15:35.770Z*

@@ -2,7 +2,7 @@
 title: pi-print-executor
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -61,7 +61,7 @@ classDiagram
     +prompt: string
     +timeoutMs: number
     +signal: AbortSignal
-    +onChunk: chunkstring>void
+    +onChunk: chunk_string_void
   }
 ```
 
@@ -86,11 +86,11 @@ sequenceDiagram
   activate pi_print_executor
   Note over pi_print_executor: 非同期処理開始
   deactivate pi_print_executor
-  pi_print_executor-->>Caller: Promise<PrintCommandResult>
+  pi_print_executor-->>Caller: Promise_PrintCommand
 
   Caller->>pi_print_executor: callModelViaPi()
   activate pi_print_executor
-  pi_print_executor-->>Caller: Promise<string>
+  pi_print_executor-->>Caller: Promise_string
   deactivate pi_print_executor
 ```
 
@@ -370,4 +370,4 @@ interface CallModelViaPiOptions {
 ```
 
 ---
-*自動生成: 2026-02-17T22:24:18.861Z*
+*自動生成: 2026-02-18T00:15:35.602Z*

@@ -2,7 +2,7 @@
 title: runtime-snapshot
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -63,4 +63,4 @@ Provider function type for runtime snapshot.
 Used for dependency injection from agent-runtime.ts.
 
 ---
-*自動生成: 2026-02-17T22:24:18.944Z*
+*自動生成: 2026-02-18T00:15:35.727Z*

@@ -2,7 +2,7 @@
 title: comprehensive-logger-config
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -71,7 +71,7 @@ sequenceDiagram
   comprehensive_logger_config-->>Caller: LoggerConfig
 
   Caller->>comprehensive_logger_config: validateConfig()
-  comprehensive_logger_config-->>Caller: { valid: boolean; errors: string[] }
+  comprehensive_logger_config-->>Caller: valid_boolean_error
 ```
 
 ## 関数
@@ -136,4 +136,4 @@ resetConfig(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-17T22:24:18.898Z*
+*自動生成: 2026-02-18T00:15:35.654Z*

@@ -2,7 +2,7 @@
 title: cli
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -45,7 +45,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     types["types"]
-    constants_js["constants.js"]
+    constants["constants"]
   end
   main --> local
 ```
@@ -75,7 +75,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant cli as "cli"
   participant types as "types"
-  participant constants_js as "constants.js"
+  participant constants as "constants"
 
   Caller->>cli: execute()
   activate cli
@@ -83,11 +83,11 @@ sequenceDiagram
   cli->>types: 内部関数呼び出し
   types-->>cli: 結果
   deactivate cli
-  cli-->>Caller: Promise<CliResult>
+  cli-->>Caller: Promise_CliResult
 
   Caller->>cli: executeOrThrow()
   activate cli
-  cli-->>Caller: Promise<string>
+  cli-->>Caller: Promise_string
   deactivate cli
 ```
 
@@ -238,4 +238,4 @@ Build ctags command arguments for JSON output.
 **戻り値**: `string[]`
 
 ---
-*自動生成: 2026-02-17T22:24:18.848Z*
+*自動生成: 2026-02-18T00:15:35.581Z*

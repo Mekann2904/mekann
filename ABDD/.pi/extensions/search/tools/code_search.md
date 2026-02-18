@@ -2,7 +2,7 @@
 title: code_search
 category: api-reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-18
 tags: [auto-generated]
 related: []
 ---
@@ -40,11 +40,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
-    cli_js["cli.js"]
-    types_js["types.js"]
-    output_js["output.js"]
-    errors_js["errors.js"]
-    constants_js["constants.js"]
+    cli["cli"]
+    types["types"]
+    output["output"]
+    errors["errors"]
+    constants["constants"]
   end
   main --> local
 ```
@@ -56,16 +56,16 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant code_search as "code_search"
-  participant cli_js as "cli.js"
-  participant types_js as "types.js"
+  participant cli as "cli"
+  participant types as "types"
 
   Caller->>code_search: codeSearch()
   activate code_search
   Note over code_search: 非同期処理開始
-  code_search->>cli_js: 内部関数呼び出し
-  cli_js-->>code_search: 結果
+  code_search->>cli: 内部関数呼び出し
+  cli-->>code_search: 結果
   deactivate code_search
-  code_search-->>Caller: Promise<CodeSearchOutput>
+  code_search-->>Caller: Promise_CodeSearchOu
 ```
 
 ## 関数
@@ -184,4 +184,4 @@ Code search with rg or fallback
 **戻り値**: `Promise<CodeSearchOutput>`
 
 ---
-*自動生成: 2026-02-17T22:24:18.834Z*
+*自動生成: 2026-02-18T00:15:35.565Z*
