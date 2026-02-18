@@ -255,4 +255,4 @@ type CostEstimationMethod = "default" | "historical" | "heuristic"
 コスト計算の推定方法を表す型。
 
 ---
-*自動生成: 2026-02-18T06:37:19.812Z*
+*自動生成: 2026-02-18T07:17:30.406Z*

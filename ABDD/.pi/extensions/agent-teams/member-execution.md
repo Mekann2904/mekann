@@ -243,14 +243,13 @@ buildTeamMemberPrompt(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  team: TeamDefinition;
-  member: TeamMember;
-  task: string;
-  sharedContext?: string;
-  phase?: "initial" | "communication";
-  communicationContext?: string;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ team | `TeamDefinition` | はい |
+| &nbsp;&nbsp;↳ member | `TeamMember` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ sharedContext | `string` | いいえ |
+| &nbsp;&nbsp;↳ phase | `"initial" | "communication"` | いいえ |
+| &nbsp;&nbsp;↳ communicationContext | `string` | いいえ |
 
 **戻り値**: `string`
 
@@ -272,15 +271,13 @@ async runPiPrintMode(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  provider?: string;
-  model?: string;
-  prompt: string;
-  timeoutMs: number;
-  signal?: AbortSignal;
-  onTextDelta?: (delta: string) => void;
-  onStderrChunk?: (chunk: string) => void;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | いいえ |
+| &nbsp;&nbsp;↳ model | `string` | いいえ |
+| &nbsp;&nbsp;↳ prompt | `string` | はい |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+| &nbsp;&nbsp;↳ onTextDelta | `(delta: string) => void;  onStderrChunk?: (chunk: string) => void;` | いいえ |
 
 **戻り値**: `Promise<PrintCommandResult>`
 
@@ -314,25 +311,20 @@ async runMember(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  team: TeamDefinition;
-  member: TeamMember;
-  task: string;
-  sharedContext?: string;
-  phase?: "initial" | "communication";
-  communicationContext?: string;
-  timeoutMs: number;
-  cwd: string;
-  retryOverrides?: any;
-  fallbackProvider?: string;
-  fallbackModel?: string;
-  signal?: AbortSignal;
-  onStart?: (member: TeamMember) => void;
-  onEnd?: (member: TeamMember) => void;
-  onEvent?: (member: TeamMember, event: string) => void;
-  onTextDelta?: (member: TeamMember, delta: string) => void;
-  onStderrChunk?: (member: TeamMember, chunk: string) => void;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ team | `TeamDefinition` | はい |
+| &nbsp;&nbsp;↳ member | `TeamMember` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ sharedContext | `string` | いいえ |
+| &nbsp;&nbsp;↳ phase | `"initial" | "communication"` | いいえ |
+| &nbsp;&nbsp;↳ communicationContext | `string` | いいえ |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ cwd | `string` | はい |
+| &nbsp;&nbsp;↳ retryOverrides | `any` | いいえ |
+| &nbsp;&nbsp;↳ fallbackProvider | `string` | いいえ |
+| &nbsp;&nbsp;↳ fallbackModel | `string` | いいえ |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+| &nbsp;&nbsp;↳ onStart | `(member: TeamMember) => void;  onEnd?: (member: TeamMember) => void;  onEvent?: (member: TeamMember, event: string) => void;  onTextDelta?: (member: TeamMember, delta: string) => void;  onStderrChunk?: (member: TeamMember, chunk: string) => void;` | いいえ |
 
 **戻り値**: `Promise<TeamMemberResult>`
 
@@ -366,4 +358,4 @@ interface TeamNormalizedOutput {
 チームメンバー実行結果の正規化出力
 
 ---
-*自動生成: 2026-02-18T06:37:19.513Z*
+*自動生成: 2026-02-18T07:17:30.143Z*

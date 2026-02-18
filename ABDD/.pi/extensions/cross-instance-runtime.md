@@ -70,4 +70,4 @@ registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T06:37:19.587Z*
+*自動生成: 2026-02-18T07:17:30.211Z*

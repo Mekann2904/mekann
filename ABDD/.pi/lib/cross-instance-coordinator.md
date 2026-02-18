@@ -603,12 +603,11 @@ broadcastQueueState(options: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| options | `{
-  pendingTaskCount: number;
-  activeOrchestrations: number;
-  stealableEntries?: StealableQueueEntry[];
-  avgLatencyMs?: number;
-}` | はい |
+| options | `object` | はい |
+| &nbsp;&nbsp;↳ pendingTaskCount | `number` | はい |
+| &nbsp;&nbsp;↳ activeOrchestrations | `number` | はい |
+| &nbsp;&nbsp;↳ stealableEntries | `StealableQueueEntry[]` | いいえ |
+| &nbsp;&nbsp;↳ avgLatencyMs | `number` | いいえ |
 
 **戻り値**: `void`
 
@@ -922,4 +921,4 @@ interface StealingStatsInternal {
 Stealing statistics tracking (internal).
 
 ---
-*自動生成: 2026-02-18T06:37:19.822Z*
+*自動生成: 2026-02-18T07:17:30.414Z*

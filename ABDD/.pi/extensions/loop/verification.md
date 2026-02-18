@@ -143,12 +143,11 @@ shouldRunVerificationCommand(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  iteration: number;
-  maxIterations: number;
-  status: "continue" | "done" | "unknown";
-  policy: VerificationPolicyConfig;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ iteration | `number` | はい |
+| &nbsp;&nbsp;↳ maxIterations | `number` | はい |
+| &nbsp;&nbsp;↳ status | `"continue" | "done" | "unknown"` | はい |
+| &nbsp;&nbsp;↳ policy | `VerificationPolicyConfig` | はい |
 
 **戻り値**: `boolean`
 
@@ -169,12 +168,11 @@ async runVerificationCommand(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  command: string;
-  cwd: string;
-  timeoutMs: number;
-  signal?: AbortSignal;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ command | `string` | はい |
+| &nbsp;&nbsp;↳ cwd | `string` | はい |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
 
 **戻り値**: `Promise<LoopVerificationResult>`
 
@@ -193,12 +191,11 @@ finish(partial: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| partial | `{
-      passed: boolean;
-      timedOut: boolean;
-      exitCode: number | null;
-      error?: string;
-    }` | はい |
+| partial | `object` | はい |
+| &nbsp;&nbsp;↳ passed | `boolean` | はい |
+| &nbsp;&nbsp;↳ timedOut | `boolean` | はい |
+| &nbsp;&nbsp;↳ exitCode | `number | null` | はい |
+| &nbsp;&nbsp;↳ error | `string` | いいえ |
 
 **戻り値**: `void`
 
@@ -416,4 +413,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 検証ポリシーのモード
 
 ---
-*自動生成: 2026-02-18T06:37:19.625Z*
+*自動生成: 2026-02-18T07:17:30.246Z*

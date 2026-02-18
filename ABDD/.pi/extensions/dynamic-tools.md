@@ -141,15 +141,14 @@ writeAuditLog(entry: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| entry | `{
-  timestamp: string;
-  action: string;
-  toolId?: string;
-  toolName?: string;
-  success: boolean;
-  details?: Record<string, unknown>;
-  error?: string;
-}` | はい |
+| entry | `object` | はい |
+| &nbsp;&nbsp;↳ timestamp | `string` | はい |
+| &nbsp;&nbsp;↳ action | `string` | はい |
+| &nbsp;&nbsp;↳ toolId | `string` | いいえ |
+| &nbsp;&nbsp;↳ toolName | `string` | いいえ |
+| &nbsp;&nbsp;↳ success | `boolean` | はい |
+| &nbsp;&nbsp;↳ details | `Record<string, unknown>` | いいえ |
+| &nbsp;&nbsp;↳ error | `string` | いいえ |
 
 **戻り値**: `void`
 
@@ -365,4 +364,4 @@ interface ToolReflectionInput {
 ```
 
 ---
-*自動生成: 2026-02-18T06:37:19.596Z*
+*自動生成: 2026-02-18T07:17:30.216Z*

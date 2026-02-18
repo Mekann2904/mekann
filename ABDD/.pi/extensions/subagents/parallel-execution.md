@@ -93,13 +93,12 @@ async resolveSubagentParallelCapacity(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  requestedParallelism: number;
-  additionalRequests: number;
-  maxWaitMs: number;
-  pollIntervalMs: number;
-  signal?: AbortSignal;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ requestedParallelism | `number` | はい |
+| &nbsp;&nbsp;↳ additionalRequests | `number` | はい |
+| &nbsp;&nbsp;↳ maxWaitMs | `number` | はい |
+| &nbsp;&nbsp;↳ pollIntervalMs | `number` | はい |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
 
 **戻り値**: `Promise<SubagentParallelCapacityResolution>`
 
@@ -127,4 +126,4 @@ interface SubagentParallelCapacityResolution {
 サブエージェントの並列実行容量解決結果
 
 ---
-*自動生成: 2026-02-18T06:37:19.746Z*
+*自動生成: 2026-02-18T07:17:30.348Z*

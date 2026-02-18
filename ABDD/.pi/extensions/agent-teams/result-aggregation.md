@@ -162,9 +162,7 @@ resolveTeamParallelRunOutcome(results: Array<{
 |------|-----|------|
 | results | `Array<{
     team: TeamDefinition;
-    runRecord: TeamRunRecord;
-    memberResults: TeamMemberResult[];
-  }>` | はい |
+    runRecord...` | はい |
 
 **戻り値**: `RunOutcomeSignal & {
   failedTeamIds: string[];
@@ -189,12 +187,11 @@ buildTeamResultText(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  run: TeamRunRecord;
-  team: TeamDefinition;
-  memberResults: TeamMemberResult[];
-  communicationAudit?: TeamCommunicationAuditEntry[];
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ run | `TeamRunRecord` | はい |
+| &nbsp;&nbsp;↳ team | `TeamDefinition` | はい |
+| &nbsp;&nbsp;↳ memberResults | `TeamMemberResult[]` | はい |
+| &nbsp;&nbsp;↳ communicationAudit | `TeamCommunicationAuditEntry[]` | いいえ |
 
 **戻り値**: `string`
 
@@ -215,4 +212,4 @@ extractSummary(output: string): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T06:37:19.519Z*
+*自動生成: 2026-02-18T07:17:30.148Z*

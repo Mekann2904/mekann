@@ -171,15 +171,13 @@ Merge skill arrays following inheritance rules.
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  provider?: string;
-  model?: string;
-  prompt: string;
-  timeoutMs: number;
-  signal?: AbortSignal;
-  onTextDelta?: (delta: string) => void;
-  onStderrChunk?: (chunk: string) => void;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | いいえ |
+| &nbsp;&nbsp;↳ model | `string` | いいえ |
+| &nbsp;&nbsp;↳ prompt | `string` | はい |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+| &nbsp;&nbsp;↳ onTextDelta | `(delta: string) => void;  onStderrChunk?: (chunk: string) => void;` | いいえ |
 
 **戻り値**: `Promise<PrintCommandResult>`
 
@@ -229,4 +227,4 @@ registerSubagentExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T06:37:19.761Z*
+*自動生成: 2026-02-18T07:17:30.365Z*

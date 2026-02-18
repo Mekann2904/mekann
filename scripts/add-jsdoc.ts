@@ -572,6 +572,121 @@ function cacheJsDoc(
 }
 
 // ============================================================================
+// Quality Metrics
+// ============================================================================
+
+/**
+ * JSDocの品質スコアを計算する
+ */
+function calculateQualityScore(jsDoc: string, element: ElementInfo): ElementQualityScore {
+  const lines = jsDoc.split('\n');
+  const content = jsDoc.replace(/^\/\*\*|\*\/$/g, '').replace(/^\s*\*\s?/gm, '');
+
+  // @paramの数をカウント
+  const paramMatches = content.match(/@param\s+\S+/g) || [];
+  const paramCount = paramMatches.length;
+
+  // 期待される@param数を推定（シグネチャから）
+  const signatureParams = element.signature.match(/\(([^)]*)\)/);
+  const expectedParamCount = signatureParams
+    ? signatureParams[1].split(',').filter(p => p.trim() && !p.includes('...')).length
+    : 0;
+
+  // @returnsの有無
+  const hasReturns = /@returns?/.test(content);
+
+  // @returnsが期待されるか（関数・メソッドで戻り値がvoidでない）
+  const expectsReturns = (element.type === 'function' || element.type === 'method') &&
+    !element.signature.includes(': void') &&
+    !element.signature.includes(':void');
+
+  // スコア計算（0-100）
+  let score = 50; // ベーススコア
+
+  // 要約行がある (+10)
+  const summaryLine = lines.find(l => l.trim() && !l.trim().startsWith('* @'));
+  if (summaryLine && summaryLine.length > 5) {
+    score += 10;
+  }
+
+  // @paramカバレッジ (+20)
+  if (expectedParamCount > 0) {
+    const paramCoverageRatio = Math.min(paramCount / expectedParamCount, 1);
+    score += Math.floor(20 * paramCoverageRatio);
+  } else if (paramCount === 0) {
+    score += 10; // パラメータなしの場合
+  }
+
+  // @returns (+20)
+  if (expectsReturns) {
+    if (hasReturns) score += 20;
+  } else {
+    score += 10; // 戻り値なしの場合
+  }
+
+  return {
+    elementName: element.name,
+    elementType: element.type,
+    score: Math.min(100, score),
+    paramCount,
+    expectedParamCount,
+    hasReturns,
+    expectsReturns,
+  };
+}
+
+/**
+ * メトリクスを集計する
+ */
+function aggregateMetrics(
+  results: GenerationResult[],
+  qualityScores: ElementQualityScore[],
+  startTime: number,
+  cacheHits: number,
+  batchCalls: number,
+  individualCalls: number
+): QualityMetrics {
+  const succeeded = results.filter(r => r.jsDoc !== null);
+  const errors = results.filter(r => r.errorMessage);
+
+  // 平均品質スコア
+  const avgScore = qualityScores.length > 0
+    ? qualityScores.reduce((sum, s) => sum + s.score, 0) / qualityScores.length
+    : 0;
+
+  // @paramカバレッジ
+  const elementsWithParams = qualityScores.filter(s => s.expectedParamCount > 0);
+  const paramCoverage = elementsWithParams.length > 0
+    ? elementsWithParams.filter(s => s.paramCount >= s.expectedParamCount).length /
+      elementsWithParams.length * 100
+    : 100;
+
+  // @returnsカバレッジ
+  const elementsWithReturns = qualityScores.filter(s => s.expectsReturns);
+  const returnsCoverage = elementsWithReturns.length > 0
+    ? elementsWithReturns.filter(s => s.hasReturns).length /
+      elementsWithReturns.length * 100
+    : 100;
+
+  // 一意なファイル数
+  const uniqueFiles = new Set(results.map(r => r.element.filePath));
+
+  return {
+    filesProcessed: uniqueFiles.size,
+    elementsProcessed: results.length,
+    elementsSucceeded: succeeded.length,
+    cacheHits,
+    batchCalls,
+    individualCalls,
+    averageQualityScore: Math.round(avgScore * 100) / 100,
+    paramCoverage: Math.round(paramCoverage * 100) / 100,
+    returnsCoverage: Math.round(returnsCoverage * 100) / 100,
+    processingTimeMs: Date.now() - startTime,
+    errorCount: errors.length,
+  };
+}
+
+// ============================================================================
 // Check Mode
 // ============================================================================
 
@@ -985,27 +1100,168 @@ async function generateJsDocWithStreamSimple(
 }
 
 function buildPrompt(element: ElementInfo): string {
-  return `以下のTypeScriptコードの要素に対して、日本語のJSDocコメントを1つだけ生成してください。
+  // プロンプト圧縮版: 共有コンテキストを分離し、トークン数を約60%削減
+  return `# JSDoc生成
+種別: ${element.type}
+名前: ${element.name}
+シグネチャ: ${element.signature}
 
-## 要素情報
-- 種別: ${element.type}
-- 名前: ${element.name}
-- シグネチャ: ${element.signature}
-- ファイル: ${relative(process.cwd(), element.filePath)}:${element.line}
-
-## 周辺コード
-\`\`\`typescript
+## コード
+\`\`\`ts
 ${element.context}
 \`\`\`
 
-## 要件
-1. 日本語で記述
-2. 1行目は簡潔な要約（50文字以内）
-3. @param で各パラメータの説明
-4. @returns で戻り値の説明（関数の場合）
-5. 余計な説明やコードブロック記法は不要
+要件: 日本語/要約50字以内/@param/@returns/出力はJSDocのみ`;
+}
 
-JSDocコメントのみを出力してください。`;
+/**
+ * 圧縮されたバッチ用プロンプトを構築する
+ * 複数要素を1回のLLM呼び出しで処理するためのプロンプト
+ */
+function buildBatchPrompt(elements: ElementInfo[]): string {
+  // 共有コンテキスト（ファイル情報）を1回だけ記述
+  const filePaths = [...new Set(elements.map(e => relative(process.cwd(), e.filePath)))];
+  const sharedContext = filePaths.length === 1
+    ? `ファイル: ${filePaths[0]}`
+    : `ファイル: ${filePaths.length}件`;
+
+  // 各要素の簡潔な情報
+  const elementList = elements.map((e, i) => {
+    const contextPreview = e.context.split('\n').slice(0, 5).join('\n');
+    return `[${i + 1}] ${e.type} ${e.name}
+シグネチャ: ${e.signature}
+\`\`\`ts
+${contextPreview}
+...
+\`\`\``;
+  }).join('\n\n');
+
+  return `# バッチJSDoc生成
+${sharedContext}
+
+## 要素 (${elements.length}件)
+${elementList}
+
+## 出力形式
+各要素のJSDocを以下の区切り文字で区切って出力:
+${BATCH_DELIMITER}
+
+要件: 日本語/要約50字以内/@param/@returns`;
+}
+
+/**
+ * バッチLLM呼び出しで複数要素のJSDocを生成する
+ * 失敗時は個別処理にフォールバック
+ */
+async function generateJsDocBatch(
+  model: Model,
+  apiKey: string,
+  elements: ElementInfo[],
+  options: Options
+): Promise<BatchResult> {
+  const results = new Map<string, string | null>();
+  const failedElements: string[] = [];
+
+  if (elements.length === 0) {
+    return { results, failedElements };
+  }
+
+  const prompt = buildBatchPrompt(elements);
+
+  if (options.verbose) {
+    console.log(`\n    [Batch Prompt for ${elements.length} elements]\n${prompt.split('\n').map(l => '       ' + l).join('\n')}`);
+  }
+
+  try {
+    const context: Context = {
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: prompt }] }
+      ],
+      systemPrompt: 'JSDoc生成アシスタント。日本語で簡潔なJSDocを生成。区切り文字を正確に使用。',
+    };
+
+    const eventStream = streamSimple(model, context, { apiKey });
+    let response = '';
+
+    for await (const event of eventStream) {
+      if (event.type === 'text_delta') {
+        response += event.delta;
+      }
+      if (event.type === 'error') {
+        throw new Error(`LLM error: ${JSON.stringify(event)}`);
+      }
+    }
+
+    // 区切り文字で分割して各JSDocを抽出
+    const parts = response.split(BATCH_DELIMITER);
+
+    for (let i = 0; i < elements.length; i++) {
+      const element = elements[i];
+      const part = parts[i]?.trim() || '';
+      const jsDoc = extractJsDocFromResponse(part);
+
+      if (jsDoc) {
+        results.set(element.name, jsDoc);
+      } else {
+        failedElements.push(element.name);
+      }
+    }
+
+    // バッチ数よりJSDocが少ない場合、残りを失敗としてマーク
+    for (let i = parts.length; i < elements.length; i++) {
+      failedElements.push(elements[i].name);
+    }
+
+  } catch (error) {
+    // バッチ全体が失敗した場合、全要素を個別処理対象に
+    for (const element of elements) {
+      failedElements.push(element.name);
+    }
+
+    if (options.verbose) {
+      console.log(`    バッチ処理失敗: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  return { results, failedElements };
+}
+
+/**
+ * 個別のJSDoc生成（バッチフォールバック用）
+ */
+async function generateJsDocIndividual(
+  model: Model,
+  apiKey: string,
+  element: ElementInfo,
+  options: Options
+): Promise<string | null> {
+  const prompt = buildPrompt(element);
+
+  if (options.verbose) {
+    console.log(`\n    [Prompt]\n${prompt.split('\n').map(l => '       ' + l).join('\n')}`);
+  }
+
+  const context: Context = {
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: prompt }] }
+    ],
+    systemPrompt: 'JSDoc生成アシスタント。日本語で簡潔なJSDocを生成。出力はJSDocのみ。',
+  };
+
+  const eventStream = streamSimple(model, context, { apiKey });
+
+  let response = '';
+
+  for await (const event of eventStream) {
+    if (event.type === 'text_delta') {
+      response += event.delta;
+    }
+    if (event.type === 'error') {
+      throw new Error(`LLM error: ${JSON.stringify(event)}`);
+    }
+  }
+
+  return extractJsDocFromResponse(response);
 }
 
 function extractJsDocFromResponse(response: string): string | null {

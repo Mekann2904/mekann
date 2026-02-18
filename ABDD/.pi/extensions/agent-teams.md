@@ -170,15 +170,13 @@ Run pi-print mode for team member execution.
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  provider?: string;
-  model?: string;
-  prompt: string;
-  timeoutMs: number;
-  signal?: AbortSignal;
-  onTextDelta?: (delta: string) => void;
-  onStderrChunk?: (chunk: string) => void;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | いいえ |
+| &nbsp;&nbsp;↳ model | `string` | いいえ |
+| &nbsp;&nbsp;↳ prompt | `string` | はい |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+| &nbsp;&nbsp;↳ onTextDelta | `(delta: string) => void;  onStderrChunk?: (chunk: string) => void;` | いいえ |
 
 **戻り値**: `Promise<PrintCommandResult>`
 
@@ -244,30 +242,22 @@ async runTeamTask(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  team: TeamDefinition;
-  task: string;
-  strategy: TeamStrategy;
-  memberParallelLimit?: number;
-  communicationRounds: number;
-  failedMemberRetryRounds?: number;
-  communicationLinks?: Map<string, string[]>;
-  sharedContext?: string;
-  timeoutMs: number;
-  cwd: string;
-  retryOverrides?: RetryWithBackoffOverrides;
-  fallbackProvider?: string;
-  fallbackModel?: string;
-  signal?: AbortSignal;
-  onMemberStart?: (member: TeamMember) => void;
-  onMemberEnd?: (member: TeamMember) => void;
-  onMemberTextDelta?: (member: TeamMember, delta: string) => void;
-  onMemberStderrChunk?: (member: TeamMember, chunk: string) => void;
-  onMemberResult?: (member: TeamMember, result: TeamMemberResult) => void;
-  onMemberPhase?: (member: TeamMember, phase: TeamLivePhase, round?: number) => void;
-  onMemberEvent?: (member: TeamMember, event: string) => void;
-  onTeamEvent?: (event: string) => void;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ team | `TeamDefinition` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ strategy | `TeamStrategy` | はい |
+| &nbsp;&nbsp;↳ memberParallelLimit | `number` | いいえ |
+| &nbsp;&nbsp;↳ communicationRounds | `number` | はい |
+| &nbsp;&nbsp;↳ failedMemberRetryRounds | `number` | いいえ |
+| &nbsp;&nbsp;↳ communicationLinks | `Map<string, string[]>` | いいえ |
+| &nbsp;&nbsp;↳ sharedContext | `string` | いいえ |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ cwd | `string` | はい |
+| &nbsp;&nbsp;↳ retryOverrides | `RetryWithBackoffOverrides` | いいえ |
+| &nbsp;&nbsp;↳ fallbackProvider | `string` | いいえ |
+| &nbsp;&nbsp;↳ fallbackModel | `string` | いいえ |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+| &nbsp;&nbsp;↳ onMemberStart | `(member: TeamMember) => void;  onMemberEnd?: (member: TeamMember) => void;  onMemberTextDelta?: (member: TeamMember, delta: string) => void;  onMemberStderrChunk?: (member: TeamMember, chunk: string) => void;  onMemberResult?: (member: TeamMember, result: TeamMemberResult) => void;  onMemberPhase?: (member: TeamMember, phase: TeamLivePhase, round?: number) => void;  onMemberEvent?: (member: TeamMember, event: string) => void;  onTeamEvent?: (event: string) => void;` | いいえ |
 
 **戻り値**: `Promise<{ runRecord: TeamRunRecord; memberResults: TeamMemberResult[]; communicationAudit: TeamCommunicationAuditEntry[] }>`
 
@@ -370,4 +360,4 @@ type LiveViewMode = TeamLiveViewMode
 ```
 
 ---
-*自動生成: 2026-02-18T06:37:19.548Z*
+*自動生成: 2026-02-18T07:17:30.173Z*

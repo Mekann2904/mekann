@@ -254,4 +254,4 @@ Stream view selection for subagent output display.
 Alias for base LiveStreamView for semantic clarity.
 
 ---
-*自動生成: 2026-02-18T06:37:20.044Z*
+*自動生成: 2026-02-18T07:17:30.496Z*

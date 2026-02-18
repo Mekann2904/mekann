@@ -119,15 +119,14 @@ async logAudit(entry: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| entry | `{
-    action: AuditAction;
-    toolId?: string;
-    toolName?: string;
-    actor: string;
-    details: Record<string, unknown>;
-    success: boolean;
-    errorMessage?: string;
-  }` | はい |
+| entry | `object` | はい |
+| &nbsp;&nbsp;↳ action | `AuditAction` | はい |
+| &nbsp;&nbsp;↳ toolId | `string` | いいえ |
+| &nbsp;&nbsp;↳ toolName | `string` | いいえ |
+| &nbsp;&nbsp;↳ actor | `string` | はい |
+| &nbsp;&nbsp;↳ details | `Record<string, unknown>` | はい |
+| &nbsp;&nbsp;↳ success | `boolean` | はい |
+| &nbsp;&nbsp;↳ errorMessage | `string` | いいえ |
 | paths | `DynamicToolsPaths` | いいえ |
 
 **戻り値**: `Promise<AuditLogEntry>`
@@ -149,12 +148,11 @@ readAuditLog(options?: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| options | `{
-    limit?: number;
-    toolId?: string;
-    action?: AuditAction;
-    since?: Date;
-  }` | いいえ |
+| options | `object` | いいえ |
+| &nbsp;&nbsp;↳ limit | `number` | いいえ |
+| &nbsp;&nbsp;↳ toolId | `string` | いいえ |
+| &nbsp;&nbsp;↳ action | `AuditAction` | いいえ |
+| &nbsp;&nbsp;↳ since | `Date` | いいえ |
 | paths | `DynamicToolsPaths` | いいえ |
 
 **戻り値**: `AuditLogEntry[]`
@@ -256,4 +254,4 @@ archiveOldLogs(daysToKeep: number, paths?: DynamicToolsPaths): { archived: numbe
 **戻り値**: `{ archived: number; error?: string }`
 
 ---
-*自動生成: 2026-02-18T06:37:19.835Z*
+*自動生成: 2026-02-18T07:17:30.421Z*

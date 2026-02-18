@@ -97,4 +97,4 @@ type LiveStatus = "pending" | "running" | "completed" | "failed"
 ライブビューのステータスを表す型
 
 ---
-*自動生成: 2026-02-18T06:37:19.906Z*
+*自動生成: 2026-02-18T07:17:30.454Z*

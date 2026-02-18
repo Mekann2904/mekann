@@ -408,11 +408,10 @@ configureRecovery(options: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| options | `{
-  recoveryIntervalMs?: number;
-  reductionFactor?: number;
-  recoveryFactor?: number;
-}` | はい |
+| options | `object` | はい |
+| &nbsp;&nbsp;↳ recoveryIntervalMs | `number` | いいえ |
+| &nbsp;&nbsp;↳ reductionFactor | `number` | いいえ |
+| &nbsp;&nbsp;↳ recoveryFactor | `number` | いいえ |
 
 **戻り値**: `void`
 
@@ -734,4 +733,4 @@ interface PredictiveAnalysis {
 予測分析の結果を表すインターフェース
 
 ---
-*自動生成: 2026-02-18T06:37:19.776Z*
+*自動生成: 2026-02-18T07:17:30.381Z*

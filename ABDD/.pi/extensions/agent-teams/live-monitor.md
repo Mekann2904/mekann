@@ -174,17 +174,16 @@ renderAgentTeamLiveView(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  title: string;
-  items: TeamLiveItem[];
-  globalEvents: string[];
-  cursor: number;
-  mode: TeamLiveViewMode;
-  stream: LiveStreamView;
-  width: number;
-  height?: number;
-  theme: any;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ title | `string` | はい |
+| &nbsp;&nbsp;↳ items | `TeamLiveItem[]` | はい |
+| &nbsp;&nbsp;↳ globalEvents | `string[]` | はい |
+| &nbsp;&nbsp;↳ cursor | `number` | はい |
+| &nbsp;&nbsp;↳ mode | `TeamLiveViewMode` | はい |
+| &nbsp;&nbsp;↳ stream | `LiveStreamView` | はい |
+| &nbsp;&nbsp;↳ width | `number` | はい |
+| &nbsp;&nbsp;↳ height | `number` | いいえ |
+| &nbsp;&nbsp;↳ theme | `any` | はい |
 
 **戻り値**: `string[]`
 
@@ -218,10 +217,9 @@ createAgentTeamLiveMonitor(ctx: any, input: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | ctx | `any` | はい |
-| input | `{
-    title: string;
-    items: Array<{ key: string; label: string; partners?: string[] }>;
-  }` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ title | `string` | はい |
+| &nbsp;&nbsp;↳ items | `Array<{ key: string; label: string; partners?: string[] }>` | はい |
 
 **戻り値**: `AgentTeamLiveMonitorController | undefined`
 
@@ -250,4 +248,4 @@ close(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T06:37:19.507Z*
+*自動生成: 2026-02-18T07:17:30.138Z*

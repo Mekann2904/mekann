@@ -256,7 +256,10 @@ async callModelViaPi(model: { provider: string; id: string; thinkingLevel: Think
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| model | `{ provider: string; id: string; thinkingLevel: ThinkingLevel }` | はい |
+| model | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | はい |
+| &nbsp;&nbsp;↳ id | `string` | はい |
+| &nbsp;&nbsp;↳ thinkingLevel | `ThinkingLevel` | はい |
 | prompt | `string` | はい |
 | timeoutMs | `number` | はい |
 | signal | `AbortSignal` | いいえ |
@@ -687,4 +690,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-18T06:37:19.634Z*
+*自動生成: 2026-02-18T07:17:30.256Z*

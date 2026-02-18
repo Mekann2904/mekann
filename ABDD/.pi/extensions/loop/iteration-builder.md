@@ -130,16 +130,15 @@ buildIterationPrompt(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  task: string;
-  goal?: string;
-  verificationCommand?: string;
-  iteration: number;
-  maxIterations: number;
-  references: LoopReference[];
-  previousOutput: string;
-  validationFeedback: string[];
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ goal | `string` | いいえ |
+| &nbsp;&nbsp;↳ verificationCommand | `string` | いいえ |
+| &nbsp;&nbsp;↳ iteration | `number` | はい |
+| &nbsp;&nbsp;↳ maxIterations | `number` | はい |
+| &nbsp;&nbsp;↳ references | `LoopReference[]` | はい |
+| &nbsp;&nbsp;↳ previousOutput | `string` | はい |
+| &nbsp;&nbsp;↳ validationFeedback | `string[]` | はい |
 
 **戻り値**: `string`
 
@@ -193,11 +192,10 @@ buildLoopCommandPreview(model: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| model | `{
-  provider: string;
-  id: string;
-  thinkingLevel: ThinkingLevel;
-}` | はい |
+| model | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | はい |
+| &nbsp;&nbsp;↳ id | `string` | はい |
+| &nbsp;&nbsp;↳ thinkingLevel | `ThinkingLevel` | はい |
 
 **戻り値**: `string`
 
@@ -269,14 +267,13 @@ validateIteration(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  status: LoopStatus;
-  goal?: string;
-  goalStatus: LoopGoalStatus;
-  citations: string[];
-  referenceCount: number;
-  requireCitation: boolean;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ status | `LoopStatus` | はい |
+| &nbsp;&nbsp;↳ goal | `string` | いいえ |
+| &nbsp;&nbsp;↳ goalStatus | `LoopGoalStatus` | はい |
+| &nbsp;&nbsp;↳ citations | `string[]` | はい |
+| &nbsp;&nbsp;↳ referenceCount | `number` | はい |
+| &nbsp;&nbsp;↳ requireCitation | `boolean` | はい |
 
 **戻り値**: `string[]`
 
@@ -654,4 +651,4 @@ type LoopGoalStatus = "met" | "not_met" | "unknown"
 ループの目標達成状態を表す型
 
 ---
-*自動生成: 2026-02-18T06:37:19.618Z*
+*自動生成: 2026-02-18T07:17:30.240Z*

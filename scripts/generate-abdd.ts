@@ -421,7 +421,16 @@ ${fn.signature}
       if (fn.parameters.length > 0) {
         md += `**パラメータ**\n\n| 名前 | 型 | 必須 |\n|------|-----|------|\n`;
         for (const p of fn.parameters) {
-          md += `| ${p.name} | \`${p.type}\` | ${p.optional ? 'いいえ' : 'はい'} |\n`;
+          const formatted = formatTypeForDisplay(p.type);
+          if (formatted.isInlineObject && formatted.properties) {
+            // インラインオブジェクト型: 親パラメータを表示してから展開
+            md += `| ${p.name} | \`object\` | ${p.optional ? 'いいえ' : 'はい'} |\n`;
+            for (const prop of formatted.properties) {
+              md += `| &nbsp;&nbsp;↳ ${prop.name} | \`${prop.type}\` | ${prop.optional ? 'いいえ' : 'はい'} |\n`;
+            }
+          } else {
+            md += `| ${p.name} | \`${formatted.display}\` | ${p.optional ? 'いいえ' : 'はい'} |\n`;
+          }
         }
         md += '\n';
       }
@@ -995,6 +1004,118 @@ function validateMermaidSimple(code: string): { valid: boolean; error?: string }
 // ============================================================================
 // Utilities
 // ============================================================================
+
+/**
+ * インラインオブジェクト型をパースしてプロパティを抽出する
+ * 例: "{ a: number; b?: string }" => [{ name: "a", type: "number", optional: false }, ...]
+ */
+function parseInlineObjectType(typeStr: string): { name: string; type: string; optional: boolean }[] | null {
+  const trimmed = typeStr.trim();
+  
+  // オブジェクト型でない場合はnullを返す
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+    return null;
+  }
+  
+  // 中身を抽出
+  let content = trimmed.slice(1, -1).trim();
+  if (!content) return [];
+  
+  const properties: { name: string; type: string; optional: boolean }[] = [];
+  
+  // プロパティを解析
+  // ネストした型（配列、ジェネリクス、入れ子オブジェクト）を考慮
+  let depth = 0;
+  let current = '';
+  let i = 0;
+  
+  while (i < content.length) {
+    const char = content[i];
+    
+    if (char === '{' || char === '<' || char === '[' || char === '(') {
+      depth++;
+      current += char;
+    } else if (char === '}' || char === '>' || char === ']' || char === ')') {
+      depth--;
+      current += char;
+    } else if (char === ';' || char === ',') {
+      if (depth === 0 && current.trim()) {
+        const prop = parseProperty(current.trim());
+        if (prop) properties.push(prop);
+        current = '';
+      } else {
+        current += char;
+      }
+    } else if (char === '\n' || char === '\r') {
+      // 改行は区切りとして扱う
+      if (depth === 0 && current.trim()) {
+        const prop = parseProperty(current.trim());
+        if (prop) properties.push(prop);
+        current = '';
+      }
+    } else {
+      current += char;
+    }
+    i++;
+  }
+  
+  // 最後のプロパティ
+  if (current.trim()) {
+    const prop = parseProperty(current.trim());
+    if (prop) properties.push(prop);
+  }
+  
+  return properties.length > 0 ? properties : null;
+}
+
+/**
+ * 単一のプロパティ定義をパースする
+ * 例: "name?: string" => { name: "name", type: "string", optional: true }
+ */
+function parseProperty(propStr: string): { name: string; type: string; optional: boolean } | null {
+  // "propertyName?: type" または "propertyName: type" の形式
+  const match = propStr.match(/^\s*(\w+)(\?)?\s*:\s*(.+?)\s*$/);
+  if (!match) return null;
+  
+  return {
+    name: match[1],
+    optional: match[2] === '?',
+    type: match[3].trim(),
+  };
+}
+
+/**
+ * 型文字列を表示用にフォーマットする
+ * 長い型は短縮し、インラインオブジェクト型は別途展開用の情報を返す
+ */
+function formatTypeForDisplay(typeStr: string): { display: string; isInlineObject: boolean; properties?: { name: string; type: string; optional: boolean }[] } {
+  const trimmed = typeStr.trim();
+  
+  // インラインオブジェクト型かチェック
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    const properties = parseInlineObjectType(trimmed);
+    if (properties && properties.length > 0) {
+      return {
+        display: 'object',
+        isInlineObject: true,
+        properties,
+      };
+    }
+  }
+  
+  // 長い型は短縮
+  if (trimmed.length > 50) {
+    return {
+      display: trimmed.substring(0, 47) + '...',
+      isInlineObject: false,
+    };
+  }
+  
+  return {
+    display: trimmed,
+    isInlineObject: false,
+  };
+}
 
 function collectTypeScriptFiles(dir: string): string[] {
   const files: string[] = [];

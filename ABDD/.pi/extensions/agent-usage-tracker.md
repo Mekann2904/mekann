@@ -323,13 +323,12 @@ markFeatureCall(state: UsageTrackerState, input: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | state | `UsageTrackerState` | はい |
-| input | `{
-    extension: string;
-    featureType: FeatureType;
-    featureName: string;
-    at: string;
-    context?: ContextSnapshot;
-  }` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ extension | `string` | はい |
+| &nbsp;&nbsp;↳ featureType | `FeatureType` | はい |
+| &nbsp;&nbsp;↳ featureName | `string` | はい |
+| &nbsp;&nbsp;↳ at | `string` | はい |
+| &nbsp;&nbsp;↳ context | `ContextSnapshot` | いいえ |
 
 **戻り値**: `string`
 
@@ -794,4 +793,4 @@ type EventStatus = "ok" | "error"
 ```
 
 ---
-*自動生成: 2026-02-18T06:37:19.557Z*
+*自動生成: 2026-02-18T07:17:30.180Z*

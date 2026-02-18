@@ -310,11 +310,10 @@ async semanticSearch(cwd: string, query: string, options: {
 |------|-----|------|
 | cwd | `string` | はい |
 | query | `string` | はい |
-| options | `{
-    limit?: number;
-    status?: "completed" | "failed";
-    minSimilarity?: number;
-  }` | はい |
+| options | `object` | はい |
+| &nbsp;&nbsp;↳ limit | `number` | いいえ |
+| &nbsp;&nbsp;↳ status | `"completed" | "failed"` | いいえ |
+| &nbsp;&nbsp;↳ minSimilarity | `number` | いいえ |
 
 **戻り値**: `Promise<SemanticSearchResult[]>`
 
@@ -420,4 +419,4 @@ interface SemanticSearchResult {
 セマンティック検索の結果
 
 ---
-*自動生成: 2026-02-18T06:37:20.019Z*
+*自動生成: 2026-02-18T07:17:30.483Z*

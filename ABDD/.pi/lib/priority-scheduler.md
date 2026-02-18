@@ -147,12 +147,11 @@ inferPriority(toolName: string, context?: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | toolName | `string` | はい |
-| context | `{
-    isInteractive?: boolean;
-    isRetry?: boolean;
-    isBackground?: boolean;
-    agentCount?: number;
-  }` | いいえ |
+| context | `object` | いいえ |
+| &nbsp;&nbsp;↳ isInteractive | `boolean` | いいえ |
+| &nbsp;&nbsp;↳ isRetry | `boolean` | いいえ |
+| &nbsp;&nbsp;↳ isBackground | `boolean` | いいえ |
+| &nbsp;&nbsp;↳ agentCount | `number` | いいえ |
 
 **戻り値**: `TaskPriority`
 
@@ -319,4 +318,4 @@ type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "explorato
 タスクの複雑度を表す型
 
 ---
-*自動生成: 2026-02-18T06:37:19.983Z*
+*自動生成: 2026-02-18T07:17:30.468Z*

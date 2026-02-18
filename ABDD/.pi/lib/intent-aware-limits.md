@@ -232,4 +232,4 @@ type TaskIntent = "declarative" | "procedural" | "reasoning"
 タスクの意図タイプ
 
 ---
-*自動生成: 2026-02-18T06:37:19.904Z*
+*自動生成: 2026-02-18T07:17:30.453Z*

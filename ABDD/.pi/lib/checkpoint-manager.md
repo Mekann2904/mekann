@@ -286,7 +286,7 @@ Operation is idempotent - saving the same taskId overwrites the previous checkpo
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| checkpoint | `Omit<Checkpoint, "id" | "createdAt"> & { id?: string }` | はい |
+| checkpoint | `Omit<Checkpoint, "id" | "createdAt"> & { id?: s...` | はい |
 
 **戻り値**: `Promise<CheckpointSaveResult>`
 
@@ -506,4 +506,4 @@ type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background"
 チェックポイントの優先度レベル
 
 ---
-*自動生成: 2026-02-18T06:37:19.788Z*
+*自動生成: 2026-02-18T07:17:30.390Z*

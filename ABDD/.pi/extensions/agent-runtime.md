@@ -946,8 +946,16 @@ recordTaskCompletion(task: { id: string; source: string; provider: string; model
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| task | `{ id: string; source: string; provider: string; model: string; priority: string }` | はい |
-| result | `{ waitedMs: number; executionMs: number; success: boolean }` | はい |
+| task | `object` | はい |
+| &nbsp;&nbsp;↳ id | `string` | はい |
+| &nbsp;&nbsp;↳ source | `string` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | はい |
+| &nbsp;&nbsp;↳ model | `string` | はい |
+| &nbsp;&nbsp;↳ priority | `string` | はい |
+| result | `object` | はい |
+| &nbsp;&nbsp;↳ waitedMs | `number` | はい |
+| &nbsp;&nbsp;↳ executionMs | `number` | はい |
+| &nbsp;&nbsp;↳ success | `boolean` | はい |
 
 **戻り値**: `void`
 
@@ -1375,4 +1383,4 @@ type GlobalScopeWithRuntime = typeof globalThis & {
 ```
 
 ---
-*自動生成: 2026-02-18T06:37:19.468Z*
+*自動生成: 2026-02-18T07:17:30.085Z*

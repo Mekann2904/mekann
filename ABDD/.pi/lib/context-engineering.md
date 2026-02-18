@@ -386,11 +386,10 @@ createContextItem(content: string, category: ContextCategory, priority: ContextP
 | content | `string` | はい |
 | category | `ContextCategory` | はい |
 | priority | `ContextPriority` | はい |
-| options | `{
-    id?: string;
-    source?: string;
-    metadata?: Record<string, unknown>;
-  }` | はい |
+| options | `object` | はい |
+| &nbsp;&nbsp;↳ id | `string` | いいえ |
+| &nbsp;&nbsp;↳ source | `string` | いいえ |
+| &nbsp;&nbsp;↳ metadata | `Record<string, unknown>` | いいえ |
 
 **戻り値**: `ContextItem`
 
@@ -652,4 +651,4 @@ type ScoredItem = ContextItem & { score: number; trimmed: boolean }
 ```
 
 ---
-*自動生成: 2026-02-18T06:37:19.808Z*
+*自動生成: 2026-02-18T07:17:30.403Z*

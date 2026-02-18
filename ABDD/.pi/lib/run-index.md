@@ -204,15 +204,14 @@ indexSubagentRun(run: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| run | `{
-    runId: string;
-    agentId: string;
-    task: string;
-    summary: string;
-    status: "completed" | "failed";
-    startedAt: string;
-    finishedAt: string;
-  }` | はい |
+| run | `object` | はい |
+| &nbsp;&nbsp;↳ runId | `string` | はい |
+| &nbsp;&nbsp;↳ agentId | `string` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ summary | `string` | はい |
+| &nbsp;&nbsp;↳ status | `"completed" | "failed"` | はい |
+| &nbsp;&nbsp;↳ startedAt | `string` | はい |
+| &nbsp;&nbsp;↳ finishedAt | `string` | はい |
 
 **戻り値**: `IndexedRun`
 
@@ -236,15 +235,14 @@ indexTeamRun(run: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| run | `{
-    runId: string;
-    teamId: string;
-    task: string;
-    summary: string;
-    status: "completed" | "failed";
-    startedAt: string;
-    finishedAt: string;
-  }` | はい |
+| run | `object` | はい |
+| &nbsp;&nbsp;↳ runId | `string` | はい |
+| &nbsp;&nbsp;↳ teamId | `string` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ summary | `string` | はい |
+| &nbsp;&nbsp;↳ status | `"completed" | "failed"` | はい |
+| &nbsp;&nbsp;↳ startedAt | `string` | はい |
+| &nbsp;&nbsp;↳ finishedAt | `string` | はい |
 
 **戻り値**: `IndexedRun`
 
@@ -487,4 +485,4 @@ type TaskType = | "code-review"
 タスクの種類を表す型
 
 ---
-*自動生成: 2026-02-18T06:37:19.996Z*
+*自動生成: 2026-02-18T07:17:30.477Z*

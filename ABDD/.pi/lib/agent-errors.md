@@ -324,7 +324,7 @@ Resolve aggregate outcome for subagent parallel execution.
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| results | `Array<{ runRecord: { status: "completed" | "failed"; error?: string; summary?: string; agentId: string } }>` | はい |
+| results | `Array<{ runRecord: { status: "completed" | "fai...` | はい |
 
 **戻り値**: `RunOutcomeSignal & { failedSubagentIds: string[] }`
 
@@ -340,7 +340,7 @@ resolveTeamMemberAggregateOutcome(memberResults: Array<{ status: "completed" | "
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| memberResults | `Array<{ status: "completed" | "failed"; error?: string; summary?: string; memberId: string }>` | はい |
+| memberResults | `Array<{ status: "completed" | "failed"; error?:...` | はい |
 
 **戻り値**: `RunOutcomeSignal & { failedMemberIds: string[] }`
 
@@ -383,17 +383,16 @@ buildDiagnosticContext(context: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| context | `{
-  provider?: string;
-  model?: string;
-  retries?: number;
-  lastStatusCode?: number;
-  lastRetryMessage?: string;
-  rateLimitWaitMs?: number;
-  rateLimitHits?: number;
-  gateWaitMs?: number;
-  gateHits?: number;
-}` | はい |
+| context | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | いいえ |
+| &nbsp;&nbsp;↳ model | `string` | いいえ |
+| &nbsp;&nbsp;↳ retries | `number` | いいえ |
+| &nbsp;&nbsp;↳ lastStatusCode | `number` | いいえ |
+| &nbsp;&nbsp;↳ lastRetryMessage | `string` | いいえ |
+| &nbsp;&nbsp;↳ rateLimitWaitMs | `number` | いいえ |
+| &nbsp;&nbsp;↳ rateLimitHits | `number` | いいえ |
+| &nbsp;&nbsp;↳ gateWaitMs | `number` | いいえ |
+| &nbsp;&nbsp;↳ gateHits | `number` | いいえ |
 
 **戻り値**: `string`
 
@@ -487,4 +486,4 @@ type FailureClassification = | "rate_limit"   // HTTP 429 - backoffで処理
 リトライ判定用の標準化された失敗分類
 
 ---
-*自動生成: 2026-02-18T06:37:19.782Z*
+*自動生成: 2026-02-18T07:17:30.386Z*

@@ -626,4 +626,4 @@ type SuggestedNextAction = | "refine_pattern"      // Pattern too broad, narrow 
 エージェント向けの推奨次回アクション
 
 ---
-*自動生成: 2026-02-18T06:37:19.717Z*
+*自動生成: 2026-02-18T07:17:30.319Z*

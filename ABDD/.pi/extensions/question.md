@@ -88,7 +88,7 @@ createRenderer(initialState: TState, renderFn: (state: TState, width: number, th
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | initialState | `TState` | はい |
-| renderFn | `(state: TState, width: number, theme: any) => string[]` | はい |
+| renderFn | `(state: TState, width: number, theme: any) => s...` | はい |
 
 **戻り値**: `void`
 
@@ -203,4 +203,4 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 ```
 
 ---
-*自動生成: 2026-02-18T06:37:19.642Z*
+*自動生成: 2026-02-18T07:17:30.263Z*

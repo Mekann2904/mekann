@@ -84,4 +84,4 @@ createChildAbortControllers(count: number, parentSignal?: AbortSignal): { contro
 **戻り値**: `{ controllers: AbortController[]; cleanup: () => void }`
 
 ---
-*自動生成: 2026-02-18T06:37:19.769Z*
+*自動生成: 2026-02-18T07:17:30.375Z*

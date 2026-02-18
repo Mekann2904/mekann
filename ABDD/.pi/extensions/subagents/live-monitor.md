@@ -108,16 +108,15 @@ renderSubagentLiveView(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  title: string;
-  items: SubagentLiveItem[];
-  cursor: number;
-  mode: LiveViewMode;
-  stream: LiveStreamView;
-  width: number;
-  height?: number;
-  theme: any;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ title | `string` | はい |
+| &nbsp;&nbsp;↳ items | `SubagentLiveItem[]` | はい |
+| &nbsp;&nbsp;↳ cursor | `number` | はい |
+| &nbsp;&nbsp;↳ mode | `LiveViewMode` | はい |
+| &nbsp;&nbsp;↳ stream | `LiveStreamView` | はい |
+| &nbsp;&nbsp;↳ width | `number` | はい |
+| &nbsp;&nbsp;↳ height | `number` | いいえ |
+| &nbsp;&nbsp;↳ theme | `any` | はい |
 
 **戻り値**: `string[]`
 
@@ -151,10 +150,9 @@ createSubagentLiveMonitor(ctx: any, input: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | ctx | `any` | はい |
-| input | `{
-    title: string;
-    items: Array<{ id: string; name: string }>;
-  }` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ title | `string` | はい |
+| &nbsp;&nbsp;↳ items | `Array<{ id: string; name: string }>` | はい |
 
 **戻り値**: `SubagentLiveMonitorController | undefined`
 
@@ -183,4 +181,4 @@ close(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T06:37:19.745Z*
+*自動生成: 2026-02-18T07:17:30.347Z*

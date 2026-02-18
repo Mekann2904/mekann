@@ -328,11 +328,10 @@ async registerDynamicTool(request: DynamicToolRegistrationRequest, options?: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | request | `DynamicToolRegistrationRequest` | はい |
-| options | `{
-    actor?: string;
-    skipVerification?: boolean;
-    paths?: DynamicToolsPaths;
-  }` | いいえ |
+| options | `object` | いいえ |
+| &nbsp;&nbsp;↳ actor | `string` | いいえ |
+| &nbsp;&nbsp;↳ skipVerification | `boolean` | いいえ |
+| &nbsp;&nbsp;↳ paths | `DynamicToolsPaths` | いいえ |
 
 **戻り値**: `Promise<DynamicToolRegistrationResult>`
 
@@ -385,10 +384,9 @@ async deleteDynamicTool(toolIdOrName: string, options?: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | toolIdOrName | `string` | はい |
-| options | `{
-    actor?: string;
-    paths?: DynamicToolsPaths;
-  }` | いいえ |
+| options | `object` | いいえ |
+| &nbsp;&nbsp;↳ actor | `string` | いいえ |
+| &nbsp;&nbsp;↳ paths | `DynamicToolsPaths` | いいえ |
 
 **戻り値**: `Promise<{ success: boolean; error?: string }>`
 
@@ -580,4 +578,4 @@ interface RegisterToolResult {
 ツール登録結果（拡張機能互換）
 
 ---
-*自動生成: 2026-02-18T06:37:19.863Z*
+*自動生成: 2026-02-18T07:17:30.430Z*

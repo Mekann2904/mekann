@@ -134,11 +134,10 @@ async postSubagentVerificationHook(output: string, confidence: number, context: 
 |------|-----|------|
 | output | `string` | はい |
 | confidence | `number` | はい |
-| context | `{
-    agentId: string;
-    task: string;
-  }` | はい |
-| runVerificationAgent | `(agentId: string, prompt: string) => Promise<string>` | はい |
+| context | `object` | はい |
+| &nbsp;&nbsp;↳ agentId | `string` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| runVerificationAgent | `(agentId: string, prompt: string) => Promise<st...` | はい |
 
 **戻り値**: `Promise<VerificationHookResult>`
 
@@ -160,12 +159,11 @@ async postTeamVerificationHook(aggregatedOutput: string, confidence: number, con
 |------|-----|------|
 | aggregatedOutput | `string` | はい |
 | confidence | `number` | はい |
-| context | `{
-    teamId: string;
-    task: string;
-    memberOutputs: Array<{ agentId: string; output: string }>;
-  }` | はい |
-| runVerificationAgent | `(agentId: string, prompt: string) => Promise<string>` | はい |
+| context | `object` | はい |
+| &nbsp;&nbsp;↳ teamId | `string` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ memberOutputs | `Array<{ agentId: string; output: string }>` | はい |
+| runVerificationAgent | `(agentId: string, prompt: string) => Promise<st...` | はい |
 
 **戻り値**: `Promise<VerificationHookResult>`
 
@@ -282,4 +280,4 @@ interface VerificationHookResult {
 検証フックの結果
 
 ---
-*自動生成: 2026-02-18T06:37:19.730Z*
+*自動生成: 2026-02-18T07:17:30.334Z*

@@ -230,4 +230,4 @@ type TaskDependencyStatus = "pending" | "ready" | "running" | "completed" | "fai
 依存関係グラフにおけるタスクの状態
 
 ---
-*自動生成: 2026-02-18T06:37:20.048Z*
+*自動生成: 2026-02-18T07:17:30.499Z*

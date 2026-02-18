@@ -270,11 +270,10 @@ LLM判定がない場合の代替判定を生成する
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  memberResults: TeamMemberResult[];
-  proxy?: TeamUncertaintyProxy;
-  error?: string;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ memberResults | `TeamMemberResult[]` | はい |
+| &nbsp;&nbsp;↳ proxy | `TeamUncertaintyProxy` | いいえ |
+| &nbsp;&nbsp;↳ error | `string` | いいえ |
 
 **戻り値**: `TeamFinalJudge`
 
@@ -298,15 +297,14 @@ async runFinalJudge(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  team: TeamDefinition;
-  task: string;
-  strategy: TeamStrategy;
-  memberResults: TeamMemberResult[];
-  proxy: TeamUncertaintyProxy;
-  timeoutMs: number;
-  signal?: AbortSignal;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ team | `TeamDefinition` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ strategy | `TeamStrategy` | はい |
+| &nbsp;&nbsp;↳ memberResults | `TeamMemberResult[]` | はい |
+| &nbsp;&nbsp;↳ proxy | `TeamUncertaintyProxy` | はい |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
 
 **戻り値**: `Promise<TeamFinalJudge>`
 
@@ -400,4 +398,4 @@ interface TeamUncertaintyProxy {
 メンバー結果から計算される不確実性プロキシ
 
 ---
-*自動生成: 2026-02-18T06:37:19.500Z*
+*自動生成: 2026-02-18T07:17:30.131Z*

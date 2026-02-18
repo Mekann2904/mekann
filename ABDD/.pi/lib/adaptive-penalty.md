@@ -401,4 +401,4 @@ type DecayStrategy = "linear" | "exponential" | "hybrid"
 減衰戦略の種類 ("linear" | "exponential" | "hybrid")
 
 ---
-*自動生成: 2026-02-18T06:37:19.772Z*
+*自動生成: 2026-02-18T07:17:30.377Z*

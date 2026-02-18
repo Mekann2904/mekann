@@ -339,13 +339,12 @@ buildCommunicationContext(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  team: TeamDefinition;
-  member: TeamMember;
-  round: number;
-  partnerIds: string[];
-  contextMap: Map<string, PrecomputedMemberContext>;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ team | `TeamDefinition` | はい |
+| &nbsp;&nbsp;↳ member | `TeamMember` | はい |
+| &nbsp;&nbsp;↳ round | `number` | はい |
+| &nbsp;&nbsp;↳ partnerIds | `string[]` | はい |
+| &nbsp;&nbsp;↳ contextMap | `Map<string, PrecomputedMemberContext>` | はい |
 
 **戻り値**: `string`
 
@@ -504,4 +503,4 @@ interface BeliefContradiction {
 エージェントの信念間で検出された矛盾
 
 ---
-*自動生成: 2026-02-18T06:37:19.480Z*
+*自動生成: 2026-02-18T07:17:30.113Z*

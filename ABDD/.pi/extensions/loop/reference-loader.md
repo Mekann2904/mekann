@@ -112,7 +112,10 @@ async loadReferences(input: { refs: string[]; refsFile?: string; cwd: string }, 
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{ refs: string[]; refsFile?: string; cwd: string }` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ refs | `string[]` | はい |
+| &nbsp;&nbsp;↳ refsFile | `string` | いいえ |
+| &nbsp;&nbsp;↳ cwd | `string` | はい |
 | signal | `AbortSignal` | いいえ |
 
 **戻り値**: `Promise<LoadedReferenceResult>`
@@ -304,4 +307,4 @@ interface LoadedReferenceResult {
 参照読み込みの結果
 
 ---
-*自動生成: 2026-02-18T06:37:19.621Z*
+*自動生成: 2026-02-18T07:17:30.242Z*

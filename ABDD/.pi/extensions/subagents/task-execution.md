@@ -277,13 +277,12 @@ buildSubagentPrompt(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  agent: SubagentDefinition;
-  task: string;
-  extraContext?: string;
-  enforcePlanMode?: boolean;
-  parentSkills?: string[];
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ agent | `SubagentDefinition` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ extraContext | `string` | いいえ |
+| &nbsp;&nbsp;↳ enforcePlanMode | `boolean` | いいえ |
+| &nbsp;&nbsp;↳ parentSkills | `string[]` | いいえ |
 
 **戻り値**: `string`
 
@@ -305,15 +304,13 @@ async runPiPrintMode(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  provider?: string;
-  model?: string;
-  prompt: string;
-  timeoutMs: number;
-  signal?: AbortSignal;
-  onTextDelta?: (delta: string) => void;
-  onStderrChunk?: (chunk: string) => void;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | いいえ |
+| &nbsp;&nbsp;↳ model | `string` | いいえ |
+| &nbsp;&nbsp;↳ prompt | `string` | はい |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+| &nbsp;&nbsp;↳ onTextDelta | `(delta: string) => void;  onStderrChunk?: (chunk: string) => void;` | いいえ |
 
 **戻り値**: `Promise<PrintCommandResult>`
 
@@ -344,22 +341,18 @@ async runSubagentTask(input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| input | `{
-  agent: SubagentDefinition;
-  task: string;
-  extraContext?: string;
-  timeoutMs: number;
-  cwd: string;
-  retryOverrides?: RetryWithBackoffOverrides;
-  modelProvider?: string;
-  modelId?: string;
-  parentSkills?: string[];
-  signal?: AbortSignal;
-  onStart?: () => void;
-  onEnd?: () => void;
-  onTextDelta?: (delta: string) => void;
-  onStderrChunk?: (chunk: string) => void;
-}` | はい |
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ agent | `SubagentDefinition` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ extraContext | `string` | いいえ |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ cwd | `string` | はい |
+| &nbsp;&nbsp;↳ retryOverrides | `RetryWithBackoffOverrides` | いいえ |
+| &nbsp;&nbsp;↳ modelProvider | `string` | いいえ |
+| &nbsp;&nbsp;↳ modelId | `string` | いいえ |
+| &nbsp;&nbsp;↳ parentSkills | `string[]` | いいえ |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+| &nbsp;&nbsp;↳ onStart | `() => void;  onEnd?: () => void;  onTextDelta?: (delta: string) => void;  onStderrChunk?: (chunk: string) => void;` | いいえ |
 
 **戻り値**: `Promise<{ runRecord: SubagentRunRecord; output: string; prompt: string }>`
 
@@ -409,4 +402,4 @@ interface SubagentExecutionResult {
 サブエージェントの実行結果を表します。
 
 ---
-*自動生成: 2026-02-18T06:37:19.753Z*
+*自動生成: 2026-02-18T07:17:30.359Z*

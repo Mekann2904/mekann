@@ -87,12 +87,9 @@ analyzeCodeSafety(code: string, options: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | code | `string` | はい |
-| options | `{
-    /** 許可された操作のリスト */
-    allowlist?: string[];
-    /** 厳格モード（より低いスコア） */
-    strict?: boolean;
-  }` | はい |
+| options | `object` | はい |
+| &nbsp;&nbsp;↳ allowlist | `string[]` | いいえ |
+| &nbsp;&nbsp;↳ strict | `boolean` | いいえ |
 
 **戻り値**: `SafetyAnalysisResult`
 
@@ -246,4 +243,4 @@ type SafetyAnalysisIssueType = | "file-system-write"
 安全性問題の種類（解析用）
 
 ---
-*自動生成: 2026-02-18T06:37:19.867Z*
+*自動生成: 2026-02-18T07:17:30.432Z*

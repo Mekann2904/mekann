@@ -330,12 +330,11 @@ mergeSubagentStorageWithDisk(storageFile: string, next: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | storageFile | `string` | はい |
-| next | `{
-    agents: Array<{ id: string }>;
-    runs: Array<{ runId: string; startedAt?: string; finishedAt?: string }>;
-    currentAgentId?: string;
-    defaultsVersion?: number;
-  }` | はい |
+| next | `object` | はい |
+| &nbsp;&nbsp;↳ agents | `Array<{ id: string }>` | はい |
+| &nbsp;&nbsp;↳ runs | `Array<{ runId: string; startedAt?: string; finishedAt?: string }>` | はい |
+| &nbsp;&nbsp;↳ currentAgentId | `string` | いいえ |
+| &nbsp;&nbsp;↳ defaultsVersion | `number` | いいえ |
 | defaultsVersion | `number` | はい |
 | maxRuns | `number` | はい |
 
@@ -359,12 +358,11 @@ mergeTeamStorageWithDisk(storageFile: string, next: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | storageFile | `string` | はい |
-| next | `{
-    teams: Array<{ id: string }>;
-    runs: Array<{ runId: string; startedAt?: string; finishedAt?: string }>;
-    currentTeamId?: string;
-    defaultsVersion?: number;
-  }` | はい |
+| next | `object` | はい |
+| &nbsp;&nbsp;↳ teams | `Array<{ id: string }>` | はい |
+| &nbsp;&nbsp;↳ runs | `Array<{ runId: string; startedAt?: string; finishedAt?: string }>` | はい |
+| &nbsp;&nbsp;↳ currentTeamId | `string` | いいえ |
+| &nbsp;&nbsp;↳ defaultsVersion | `number` | いいえ |
 | defaultsVersion | `number` | はい |
 | maxRuns | `number` | はい |
 
@@ -450,4 +448,4 @@ interface CreateStorageSaverOptions {
 ストレージ保存機能の作成オプション。
 
 ---
-*自動生成: 2026-02-18T06:37:20.037Z*
+*自動生成: 2026-02-18T07:17:30.491Z*

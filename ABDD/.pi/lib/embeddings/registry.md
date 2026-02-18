@@ -181,4 +181,4 @@ async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise
 | saveConfig | `saveConfig(): void` |
 
 ---
-*自動生成: 2026-02-18T06:37:19.877Z*
+*自動生成: 2026-02-18T07:17:30.439Z*

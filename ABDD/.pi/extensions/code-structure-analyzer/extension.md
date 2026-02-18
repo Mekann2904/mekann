@@ -137,12 +137,11 @@ async analyzeCodeStructure(params: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| params | `{
-  target: string;
-  outputDir?: string;
-  diagramTypes?: string[];
-  includeLLMContext?: boolean;
-}` | はい |
+| params | `object` | はい |
+| &nbsp;&nbsp;↳ target | `string` | はい |
+| &nbsp;&nbsp;↳ outputDir | `string` | いいえ |
+| &nbsp;&nbsp;↳ diagramTypes | `string[]` | いいえ |
+| &nbsp;&nbsp;↳ includeLLMContext | `boolean` | いいえ |
 
 **戻り値**: `Promise<AnalysisResult>`
 
@@ -161,10 +160,9 @@ async extractStructure(params: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| params | `{
-  target: string;
-  exclude?: string[];
-}` | はい |
+| params | `object` | はい |
+| &nbsp;&nbsp;↳ target | `string` | はい |
+| &nbsp;&nbsp;↳ exclude | `string[]` | いいえ |
 
 **戻り値**: `Promise<StructureData>`
 
@@ -183,10 +181,9 @@ Mermaid図を生成する
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| params | `{
-  structure: StructureData;
-  types?: string[];
-}` | はい |
+| params | `object` | はい |
+| &nbsp;&nbsp;↳ structure | `StructureData` | はい |
+| &nbsp;&nbsp;↳ types | `string[]` | いいえ |
 
 **戻り値**: `Promise<MermaidDiagrams>`
 
@@ -205,10 +202,9 @@ async generateMarkdown(params: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| params | `{
-  result: AnalysisResult;
-  outputPath?: string;
-}` | はい |
+| params | `object` | はい |
+| &nbsp;&nbsp;↳ result | `AnalysisResult` | はい |
+| &nbsp;&nbsp;↳ outputPath | `string` | いいえ |
 
 **戻り値**: `Promise<string>`
 
@@ -269,4 +265,4 @@ interface AnalysisResult {
 コード構造解析の結果を表します。
 
 ---
-*自動生成: 2026-02-18T06:37:19.560Z*
+*自動生成: 2026-02-18T07:17:30.182Z*

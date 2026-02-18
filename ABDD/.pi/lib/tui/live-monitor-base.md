@@ -361,7 +361,7 @@ renderListWindow(items: T[], cursor: number, windowSize: number, renderItem: (it
 | items | `T[]` | はい |
 | cursor | `number` | はい |
 | windowSize | `number` | はい |
-| renderItem | `(item: T, index: number, isSelected: boolean) => string` | はい |
+| renderItem | `(item: T, index: number, isSelected: boolean) =...` | はい |
 | width | `number` | はい |
 | theme | `any` | はい |
 
@@ -568,12 +568,11 @@ applyInputResult(result: HandleInputResult, state: {
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | result | `HandleInputResult` | はい |
-| state | `{
-    cursor: number;
-    itemCount: number;
-    mode: LiveViewMode;
-    stream: LiveStreamView;
-  }` | はい |
+| state | `object` | はい |
+| &nbsp;&nbsp;↳ cursor | `number` | はい |
+| &nbsp;&nbsp;↳ itemCount | `number` | はい |
+| &nbsp;&nbsp;↳ mode | `LiveViewMode` | はい |
+| &nbsp;&nbsp;↳ stream | `LiveStreamView` | はい |
 
 **戻り値**: `{
   cursor: number;
@@ -702,4 +701,4 @@ type LiveViewMode = "list" | "detail"
 ライブビューのモードオプション。
 
 ---
-*自動生成: 2026-02-18T06:37:20.068Z*
+*自動生成: 2026-02-18T07:17:30.512Z*

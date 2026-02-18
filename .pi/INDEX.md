@@ -15,6 +15,7 @@
 | Troubleshooting | `docs/04-reference/03-troubleshooting.md` | `CHANGELOG.md` |
 | Getting started | `docs/01-getting-started/01-quick-start.md` | `README.md` |
 | Code review | `docs/06-code-review-report/` | `.pi/skills/code-review/SKILL.md` |
+| ABDD documentation | `ABDD/` + `scripts/generate-abdd.ts` | `.pi/skills/abdd/SKILL.md` |
 
 ## Repository Structure Map
 
@@ -33,9 +34,10 @@ mekann/
 │   ├── lib/                  <-- Shared libraries (55 files)
 │   │   ├── embeddings/       <-- Embedding modules (5 files)
 │   │   └── *.ts              <-- Core libraries
-│   ├── skills/               <-- Skill definitions (8 skills)
+│   ├── skills/               <-- Skill definitions (9 skills)
 │   │   ├── agent-estimation/ <-- Agent work estimation
 │   │   ├── alma-memory/      <-- ALMA memory design
+│   │   ├── abdd/             <-- As-Built Driven Development (NEW)
 │   │   ├── harness-engineering/
 │   │   ├── dynamic-tools/    <-- Runtime tool generation
 │   │   ├── git-workflow/
@@ -54,6 +56,13 @@ mekann/
 │   ├── 04-reference/         <-- Config, troubleshooting
 │   ├── 05-meta/              <-- Changelog, roadmap
 │   └── 06-code-review-report/<-- Code review results (NEW)
+├── ABDD/                     <-- As-Built Driven Development (NEW)
+│   ├── index.md              <-- ABDD index
+│   ├── spec.md               <-- Domain specification
+│   ├── .pi/extensions/       <-- Generated extension docs
+│   ├── .pi/lib/              <-- Generated library docs
+│   └── reviews/              <-- Review records
+├── philosophy.md             <-- Project philosophy
 └── README.md                 <-- Project overview
 ```
 
@@ -86,6 +95,7 @@ mekann/
 | agent-estimation | `skills/agent-estimation/` | AI agent workload estimation |
 | alma-memory | `skills/alma-memory/` | ALMA-based memory design |
 | harness-engineering | `skills/harness-engineering/` | Quality assurance patterns |
+| abdd | `skills/abdd/` | Documentation review, gap analysis (NEW) |
 
 ## Library Index
 
@@ -108,6 +118,23 @@ mekann/
 | output-schema | `lib/output-schema.ts` | Output schema definitions |
 | text-parsing | `lib/text-parsing.ts` | Text parsing utilities |
 | embeddings | `lib/embeddings/` | Embedding modules |
+
+## ABDD System Index
+
+| Artifact | Location | Purpose |
+|----------|----------|---------|
+| philosophy.md | Root | Project values and priorities |
+| spec.md | `ABDD/spec.md` | Domain invariants and contracts |
+| As-built docs | `ABDD/.pi/extensions/`, `ABDD/.pi/lib/` | Generated API documentation |
+| Review records | `ABDD/reviews/` | Gap analysis records |
+
+### ABDD Commands
+
+| Command | Purpose |
+|---------|---------|
+| `npx tsx scripts/generate-abdd.ts` | Generate as-built documentation |
+| `npx tsx scripts/add-jsdoc.ts --dry-run` | Preview JSDoc additions |
+| `npx tsx scripts/add-jsdoc.ts --check` | Check JSDoc coverage (CI) |
 
 ## Rules Summary
 
