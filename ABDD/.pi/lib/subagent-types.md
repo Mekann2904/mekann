@@ -24,17 +24,17 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `SubagentLiveItem` | サブエージェントの実行状態を管理するライブアイテム |
-| インターフェース | `SubagentMonitorLifecycle` | Lifecycle operations for marking agent execution s |
-| インターフェース | `SubagentMonitorStream` | 標準出力/標準エラー出力のチャンク追加操作 |
-| インターフェース | `SubagentMonitorResource` | Resource cleanup and termination operations. |
-| インターフェース | `SubagentLiveMonitorController` | Full monitor controller combining all capabilities |
-| インターフェース | `SubagentNormalizedOutput` | サブエージェントの出力正規化構造 |
-| インターフェース | `SubagentParallelCapacityResolution` | サブエージェントの並列容量解決結果 |
-| インターフェース | `DelegationState` | 委譲優先ポリシーの状態追跡 |
+| インターフェース | `SubagentLiveItem` | 実行中のサブエージェント項目 |
+| インターフェース | `SubagentMonitorLifecycle` | ライフサイクル管理インターフェース |
+| インターフェース | `SubagentMonitorStream` | ストリーム監視インターフェース |
+| インターフェース | `SubagentMonitorResource` | モニターのリソース管理を行うインターフェース |
+| インターフェース | `SubagentLiveMonitorController` | ライブモニターの制御およびライフサイクル管理を行う |
+| インターフェース | `SubagentNormalizedOutput` | サブエージェントの出力正規化データを表す |
+| インターフェース | `SubagentParallelCapacityResolution` | サブエージェントの並列実行解決情報を表す |
+| インターフェース | `DelegationState` | 委任状態を表すインターフェース |
 | インターフェース | `PrintCommandResult` | コマンド実行結果 |
-| 型 | `SubagentLiveViewMode` | サブエージェントのライブ監視ビューの表示モード |
-| 型 | `SubagentLiveStreamView` | Stream view selection for subagent output display. |
+| 型 | `SubagentLiveViewMode` | ライブビューの表示モード |
+| 型 | `SubagentLiveStreamView` | ライブストリームビューの別名 |
 
 ## 図解
 
@@ -133,7 +133,7 @@ interface SubagentLiveItem {
 }
 ```
 
-サブエージェントの実行状態を管理するライブアイテム
+実行中のサブエージェント項目
 
 ### SubagentMonitorLifecycle
 
@@ -149,8 +149,7 @@ interface SubagentMonitorLifecycle {
 }
 ```
 
-Lifecycle operations for marking agent execution states.
-Used by code that only needs to track start/finish transitions.
+ライフサイクル管理インターフェース
 
 ### SubagentMonitorStream
 
@@ -160,7 +159,7 @@ interface SubagentMonitorStream {
 }
 ```
 
-標準出力/標準エラー出力のチャンク追加操作
+ストリーム監視インターフェース
 
 ### SubagentMonitorResource
 
@@ -171,8 +170,7 @@ interface SubagentMonitorResource {
 }
 ```
 
-Resource cleanup and termination operations.
-Used by code that only needs to manage monitor lifecycle.
+モニターのリソース管理を行うインターフェース
 
 ### SubagentLiveMonitorController
 
@@ -181,9 +179,7 @@ interface SubagentLiveMonitorController {
 }
 ```
 
-Full monitor controller combining all capabilities.
-Extends partial interfaces to maintain backward compatibility.
-Clients should use narrower interfaces when possible.
+ライブモニターの制御およびライフサイクル管理を行う
 
 ### SubagentNormalizedOutput
 
@@ -195,7 +191,7 @@ interface SubagentNormalizedOutput {
 }
 ```
 
-サブエージェントの出力正規化構造
+サブエージェントの出力正規化データを表す
 
 ### SubagentParallelCapacityResolution
 
@@ -208,7 +204,7 @@ interface SubagentParallelCapacityResolution {
 }
 ```
 
-サブエージェントの並列容量解決結果
+サブエージェントの並列実行解決情報を表す
 
 ### DelegationState
 
@@ -221,7 +217,7 @@ interface DelegationState {
 }
 ```
 
-委譲優先ポリシーの状態追跡
+委任状態を表すインターフェース
 
 ### PrintCommandResult
 
@@ -242,7 +238,7 @@ interface PrintCommandResult {
 type SubagentLiveViewMode = LiveViewMode
 ```
 
-サブエージェントのライブ監視ビューの表示モード
+ライブビューの表示モード
 
 ### SubagentLiveStreamView
 
@@ -250,8 +246,7 @@ type SubagentLiveViewMode = LiveViewMode
 type SubagentLiveStreamView = LiveStreamView
 ```
 
-Stream view selection for subagent output display.
-Alias for base LiveStreamView for semantic clarity.
+ライブストリームビューの別名
 
 ---
-*自動生成: 2026-02-18T14:31:31.033Z*
+*自動生成: 2026-02-18T15:54:41.526Z*

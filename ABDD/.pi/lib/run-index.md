@@ -26,25 +26,25 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `extractKeywords` | テキストからキーワードを抽出します。 |
-| 関数 | `classifyTaskType` | キーワードに基づいてタスクの種類を分類する |
-| 関数 | `extractFiles` | テキストからファイルパスを抽出する |
-| 関数 | `indexSubagentRun` | サブエージェントの実行記録からインデックスを作成 |
-| 関数 | `indexTeamRun` | チーム実行レコードからインデックスを作成 |
-| 関数 | `buildRunIndex` | Build the complete run index from storage files. |
-| 関数 | `getRunIndexPath` | ランインデックスのファイルパスを取得する |
-| 関数 | `loadRunIndex` | ディスクから実行インデックスを読み込む |
-| 関数 | `saveRunIndex` | 実行インデックスを保存する |
-| 関数 | `getOrBuildRunIndex` | 実行インデックスを取得または構築 |
+| 関数 | `extractKeywords` | テキストからキーワードを抽出する |
+| 関数 | `classifyTaskType` | タスクの種類を分類 |
+| 関数 | `extractFiles` | テキストからファイルパスを抽出 |
+| 関数 | `indexSubagentRun` | サブエージェント実行をインデックス化 |
+| 関数 | `indexTeamRun` | チーム実行をインデックス化 |
+| 関数 | `buildRunIndex` | 実行インデックスを構築 |
+| 関数 | `getRunIndexPath` | ランインデックスのパスを取得 |
+| 関数 | `loadRunIndex` | - |
+| 関数 | `saveRunIndex` | - |
+| 関数 | `getOrBuildRunIndex` | 実行インデックス取得 |
 | 関数 | `searchRuns` | クエリに一致する実行を検索します。 |
-| 関数 | `findSimilarRuns` | タスク説明に基づき類似の過去の実行を検索 |
-| 関数 | `getRunsByType` | タスクタイプに対応する実行を取得する |
-| 関数 | `getSuccessfulPatterns` | 指定したタスクタイプの成功したパターンを取得 |
-| インターフェース | `IndexedRun` | 抽出されたキーワードとタグを持つインデックス化された実行レコード |
-| インターフェース | `RunIndex` | 実行インデックスの構造。 |
-| インターフェース | `SearchOptions` | インデックス検索のオプション |
-| インターフェース | `SearchResult` | 検索結果と関連性スコア |
-| 型 | `TaskType` | タスクの種類を表す型 |
+| 関数 | `findSimilarRuns` | タスク説明に基づき類似の過去の実行を検索する |
+| 関数 | `getRunsByType` | 指定したタスクタイプの実行リストを取得する |
+| 関数 | `getSuccessfulPatterns` | 指定したタスクタイプの成功したパターンを取得する |
+| インターフェース | `IndexedRun` | インデックス化実行レコード |
+| インターフェース | `RunIndex` | 実行履歴のインデックスデータ構造 |
+| インターフェース | `SearchOptions` | 検索時のオプション設定 |
+| インターフェース | `SearchResult` | 検索結果を表すインターフェース |
+| 型 | `TaskType` | タスクの種類を定義する型 |
 
 ## 図解
 
@@ -160,7 +160,7 @@ sequenceDiagram
 extractKeywords(text: string): string[]
 ```
 
-テキストからキーワードを抽出します。
+テキストからキーワードを抽出する
 
 **パラメータ**
 
@@ -176,7 +176,7 @@ extractKeywords(text: string): string[]
 classifyTaskType(task: string, summary: string): TaskType
 ```
 
-キーワードに基づいてタスクの種類を分類する
+タスクの種類を分類
 
 **パラメータ**
 
@@ -193,7 +193,7 @@ classifyTaskType(task: string, summary: string): TaskType
 extractFiles(text: string): string[]
 ```
 
-テキストからファイルパスを抽出する
+テキストからファイルパスを抽出
 
 **パラメータ**
 
@@ -217,7 +217,7 @@ indexSubagentRun(run: {
   }): IndexedRun
 ```
 
-サブエージェントの実行記録からインデックスを作成
+サブエージェント実行をインデックス化
 
 **パラメータ**
 
@@ -248,7 +248,7 @@ indexTeamRun(run: {
   }): IndexedRun
 ```
 
-チーム実行レコードからインデックスを作成
+チーム実行をインデックス化
 
 **パラメータ**
 
@@ -271,7 +271,7 @@ indexTeamRun(run: {
 buildRunIndex(cwd: string): RunIndex
 ```
 
-Build the complete run index from storage files.
+実行インデックスを構築
 
 **パラメータ**
 
@@ -287,7 +287,7 @@ Build the complete run index from storage files.
 getRunIndexPath(cwd: string): string
 ```
 
-ランインデックスのファイルパスを取得する
+ランインデックスのパスを取得
 
 **パラメータ**
 
@@ -303,8 +303,6 @@ getRunIndexPath(cwd: string): string
 loadRunIndex(cwd: string): RunIndex | null
 ```
 
-ディスクから実行インデックスを読み込む
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -318,8 +316,6 @@ loadRunIndex(cwd: string): RunIndex | null
 ```typescript
 saveRunIndex(cwd: string, index: RunIndex): void
 ```
-
-実行インデックスを保存する
 
 **パラメータ**
 
@@ -336,7 +332,7 @@ saveRunIndex(cwd: string, index: RunIndex): void
 getOrBuildRunIndex(cwd: string, maxAgeMs: number): RunIndex
 ```
 
-実行インデックスを取得または構築
+実行インデックス取得
 
 **パラメータ**
 
@@ -371,7 +367,7 @@ searchRuns(index: RunIndex, query: string, options: SearchOptions): SearchResult
 findSimilarRuns(index: RunIndex, task: string, limit: number): SearchResult[]
 ```
 
-タスク説明に基づき類似の過去の実行を検索
+タスク説明に基づき類似の過去の実行を検索する
 
 **パラメータ**
 
@@ -389,7 +385,7 @@ findSimilarRuns(index: RunIndex, task: string, limit: number): SearchResult[]
 getRunsByType(index: RunIndex, taskType: TaskType): IndexedRun[]
 ```
 
-タスクタイプに対応する実行を取得する
+指定したタスクタイプの実行リストを取得する
 
 **パラメータ**
 
@@ -406,7 +402,7 @@ getRunsByType(index: RunIndex, taskType: TaskType): IndexedRun[]
 getSuccessfulPatterns(index: RunIndex, taskType: TaskType, limit: number): IndexedRun[]
 ```
 
-指定したタスクタイプの成功したパターンを取得
+指定したタスクタイプの成功したパターンを取得する
 
 **パラメータ**
 
@@ -440,7 +436,7 @@ interface IndexedRun {
 }
 ```
 
-抽出されたキーワードとタグを持つインデックス化された実行レコード
+インデックス化実行レコード
 
 ### RunIndex
 
@@ -454,7 +450,7 @@ interface RunIndex {
 }
 ```
 
-実行インデックスの構造。
+実行履歴のインデックスデータ構造
 
 ### SearchOptions
 
@@ -467,7 +463,7 @@ interface SearchOptions {
 }
 ```
 
-インデックス検索のオプション
+検索時のオプション設定
 
 ### SearchResult
 
@@ -479,7 +475,7 @@ interface SearchResult {
 }
 ```
 
-検索結果と関連性スコア
+検索結果を表すインターフェース
 
 ## 型定義
 
@@ -501,7 +497,7 @@ type TaskType = | "code-review"
   | "unknown"
 ```
 
-タスクの種類を表す型
+タスクの種類を定義する型
 
 ---
-*自動生成: 2026-02-18T14:31:31.015Z*
+*自動生成: 2026-02-18T15:54:41.510Z*

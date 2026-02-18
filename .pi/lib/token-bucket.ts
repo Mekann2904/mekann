@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/token-bucket.ts
- * role: トークンバケットアルゴリズムによるレート制限ライブラリ
- * why: LLM API呼び出し時のRPMベースレート制限とバースト許容を実現し、API制限違反を防止する
+ * role: トークンバケットアルゴリズムによるプロバイダ/モデル単位のレート制限実装
+ * why: LLM API呼び出しにおいてRPM制限とバースト許容を両立するため
  * related: .pi/lib/task-scheduler.ts, .pi/lib/adaptive-rate-controller.ts
- * public_api: RateLimitConfig, RateLimiterStats, TokenBucketRateLimiter
- * invariants: トークン数はmaxTokensを超えない、refillRateは正の値、429検知時はretryAfterMsまでブロック
- * side_effects: なし（純粋な計算・状態管理）
- * failure_modes: 不明なプロバイダ/モデル組み合わせにはdefault設定を使用
+ * public_api: TokenBucketRateLimiter, RateLimitConfig, RateLimiterStats
+ * invariants: tokens <= maxTokens + (burstMultiplier * maxTokens), tokens >= 0
+ * side_effects: 内部状態（トークン残高、再試行時刻）を変更する
+ * failure_modes: 設定より大きいRPM要求、429エラーによるリミット超過
  * @abdd.explain
- * overview: プロバイダ/モデル別のレート制限をトークンバケット方式で管理する
+ * overview: プロバイダとモデルごとのバケットを管理し、経過時間に応じたトークン補充と消費を行う
  * what_it_does:
- *   - プロバイダとモデルの組み合わせごとに個別のバケット（トークン残高）を管理
- *   - 時間経過に伴うトークン補充と、リクエスト時のトークン消費を追跡
- *   - バースト乗数により一時的なレート超過を許容
- *   - 429エラー検知時に指定時間までリクエストをブロック
+ *   - canProceed: リクエスト実行可否と待機時間を計算する
+ *   - consume: 指定量のトークンを消費しバースト枠を利用する
+ *   - record429: 429エラーを受信し再試行時刻を設定する
+ *   - recordSuccess: 成功時の統計情報を更新する
+ *   - getStats: 現在の追跡数やブロック状況を返す
  * why_it_exists:
- *   - LLM APIのRPM制限に準拠しつつ、バーストトラフィックを許容するため
- *   - プロバイダ/モデルごとの異なる制限値を統一的に管理するため
+ *   - プロバイダごとのRPM制限を遵守するため
+ *   - 瞬時トラヒック（バースト）を許容しつつ長期的なレートを抑えるため
  * scope:
- *   in: プロバイダ名、モデル名、必要トークン数、429再試行待機時間
- *   out: リクエスト可否判定、待機時間（ms）、統計情報
+ *   in: プロバイダ名、モデル名、消費トークン数、再試行待機時間
+ *   out: 待機時間、統計情報（追跡数、ブロック済みモデル、平均トークン残高）
  */
 
 // File: .pi/lib/token-bucket.ts
@@ -52,12 +53,13 @@ interface TokenBucketState {
   burstTokensUsed: number;
 }
 
- /**
-  * レート制限の設定
-  * @param rpm 1分あたりのリクエスト数
-  * @param burstMultiplier バースト許容量（基本レートの倍率）
-  * @param minIntervalMs リクエスト間の最小待機時間（ミリ秒）
-  */
+/**
+ * @summary リミタ状態
+ * @description トークンバケットの内部状態を管理します。
+ * @param lastRefillMs 最終補填タイムスタンプ
+ * @param retryAfterMs 再試行待機タイムスタンプ
+ * @param burstMultiplier バースト倍率
+ */
 export interface RateLimitConfig {
   /** Requests per minute */
   rpm: number;
@@ -67,13 +69,14 @@ export interface RateLimitConfig {
   minIntervalMs: number;
 }
 
- /**
-  * レートリミッターの統計情報
-  * @param trackedModels 追踪中のプロバイダ/モデル数
-  * @param blockedModels 429で現在ブロックされているモデル
-  * @param avgAvailableTokens 全モデルの平均利用可能トークン数
-  * @param lowCapacityModels 低容量（<20%）のモデル
-  */
+/**
+ * @summary 統計情報
+ * @description レート制限の統計情報を表します。
+ * @param trackedModels 追踪中のモデル数
+ * @param blockedModels 現在ブロックされているモデル数
+ * @param avgAvailableTokens 平均利用可能トークン数
+ * @param lowCapacityModels 低容量モデル
+ */
 export interface RateLimiterStats {
   /** Provider/model combinations being tracked */
   trackedModels: number;
@@ -85,9 +88,13 @@ export interface RateLimiterStats {
   lowCapacityModels: string[];
 }
 
- /**
-  * トークンバケット方式のレート制限インターフェース
-  */
+/**
+ * @summary レート制限設定
+ * @description トークンバケットアルゴリズムの設定を定義します。
+ * @param rpm 1分あたりのリクエスト数
+ * @param burstMultiplier 許容量（基本レートの倍数）
+ * @param minIntervalMs リクエスト間の最小待機時間（ミリ秒）
+ */
 export interface TokenBucketRateLimiter {
   /**
    * Check if we can proceed with a request.
@@ -170,13 +177,14 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     }
   }
 
-   /**
-    * リクエストが実行可能か確認する
-    * @param provider プロバイダ名
-    * @param model モデル名
-    * @param tokensNeeded 必要なトークン数
-    * @returns 待機時間（ミリ秒）、即時実行可能な場合は0
-    */
+  /**
+   * リクエストが実行可能か確認する
+   * @summary 実行可否判定
+   * @param {string} provider プロバイダ名
+   * @param {string} model モデル名
+   * @param {number} tokensNeeded 必要なトークン数
+   * @returns {number} 待機時間(ミリ秒)、0なら即時実行可能
+   */
   canProceed(provider: string, model: string, tokensNeeded: number): number {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
@@ -209,13 +217,14 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     return Math.max(1, waitMs);
   }
 
-   /**
-    * バケットからトークンを消費する
-    * @param provider プロバイダ名
-    * @param model モデル名
-    * @param tokens 消費するトークン数
-    * @returns なし
-    */
+  /**
+   * バケットからトークンを消費する
+   * @summary トークン消費
+   * @param {string} provider プロバイダ名
+   * @param {string} model モデル名
+   * @param {number} tokens 消費するトークン数
+   * @returns {void}
+   */
   consume(provider: string, model: string, tokens: number): void {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
@@ -238,12 +247,14 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     state.burstTokensUsed = Math.min(state.maxTokens * state.burstMultiplier, state.burstTokensUsed);
   }
 
-   /**
-    * 429エラーを記録し、レート制限を調整します。
-    * @param provider プロバイダ名
-    * @param model モデル名
-    * @param retryAfterMs リトライまでの待機時間（ミリ秒）
-    */
+  /**
+   * 429エラー時の状態を更新する
+   * @summary 429エラー時更新
+   * @param {string} provider プロバイダ名
+   * @param {string} model モデル名
+   * @param {number} retryAfterMs 再試行までの待機時間(ミリ秒)
+   * @returns {void}
+   */
   record429(provider: string, model: string, retryAfterMs?: number): void {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
@@ -266,12 +277,13 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     state.refillRate = Math.max(0.5, state.refillRate * 0.9);
   }
 
-   /**
-    * 成功したリクエストを記録する。
-    * @param provider プロバイダ名
-    * @param model モデル名
-    * @returns 戻り値なし
-    */
+  /**
+   * 成功時の状態を更新する
+   * @summary 成功時更新
+   * @param {string} provider プロバイダ名
+   * @param {string} model モデル名
+   * @returns {void}
+   */
   recordSuccess(provider: string, model: string): void {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
@@ -291,10 +303,11 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     state.refillRate = Math.min(baseRefillRate, state.refillRate + 0.1);
   }
 
-   /**
-    * 現在の統計情報を取得する
-    * @returns 統計情報オブジェクト
-    */
+  /**
+   * 統計情報を取得する
+   * @summary 統計情報取得
+   * @returns {RateLimiterStats} 現在のレートリミット統計
+   */
   getStats(): RateLimiterStats {
     const now = Date.now();
     const trackedModels = this.buckets.size;
@@ -326,13 +339,14 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     };
   }
 
-   /**
-    * 指定したプロバイダー/モデルのレート制限を設定
-    * @param provider プロバイダー名
-    * @param model モデル名
-    * @param config レート制限設定
-    * @returns なし
-    */
+  /**
+   * @summary レート制限を設定
+   * 指定したプロバイダー/モデルのレート制限を設定
+   * @param provider プロバイダー名
+   * @param model モデル名
+   * @param config レート制限設定
+   * @returns なし
+   */
   configure(provider: string, model: string, config: Partial<RateLimitConfig>): void {
     const key = this.getKey(provider, model);
     const existing = this.configs.get(key) ?? DEFAULT_CONFIGS["default:default"];
@@ -347,31 +361,34 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     }
   }
 
-   /**
-    * 指定したバケットをリセットする
-    * @param provider プロバイダ名
-    * @param model モデル名
-    * @returns なし
-    */
+  /**
+   * 指定したバケットをリセットする
+   * @summary バケットをリセット
+   * @param provider プロバイダ名
+   * @param model モデル名
+   * @returns なし
+   */
   reset(provider: string, model: string): void {
     const key = this.getKey(provider, model);
     this.buckets.delete(key);
   }
 
-   /**
-    * すべてのバケットをリセットする。
-    * @returns 戻り値なし
-    */
+  /**
+   * すべてのバケットを削除
+   * @summary 全バケット削除
+   * @returns 戻り値なし
+   */
   resetAll(): void {
     this.buckets.clear();
   }
 
-   /**
-    * デバッグ用にバケット状態を取得
-    * @param provider プロバイダ名
-    * @param model モデル名
-    * @returns バケット状態のコピー、存在しない場合はundefined
-    */
+  /**
+   * バケット状態を取得
+   * @summary バケット状態を取得
+   * @param provider プロバイダ名
+   * @param model モデル名
+   * @returns バケット状態のコピー、存在しない場合はundefined
+   */
   getBucketState(provider: string, model: string): TokenBucketState | undefined {
     const key = this.getKey(provider, model);
     const state = this.buckets.get(key);
@@ -455,17 +472,20 @@ export function getTokenBucketRateLimiter(): TokenBucketRateLimiterImpl {
   return limiterInstance;
 }
 
- /**
-  * 新しいレート制限インスタンスを作成（テスト用）
-  * @returns 新しいTokenBucketRateLimiterImplインスタンス
-  */
+/**
+ * レート制限インスタンス作成
+ * @summary インスタンス生成
+ * @returns 新しいTokenBucketRateLimiterImplインスタンス
+ */
 export function createTokenBucketRateLimiter(): TokenBucketRateLimiterImpl {
   return new TokenBucketRateLimiterImpl();
 }
 
- /**
-  * シングルトンのレートリミッターをリセット
-  */
+/**
+ * レート制限をリセットする
+ * @summary 制限リセット
+ * @returns なし
+ */
 export function resetTokenBucketRateLimiter(): void {
   limiterInstance = null;
 }

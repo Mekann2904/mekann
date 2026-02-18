@@ -17,29 +17,29 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getMinLogLevel` | 最小ログレベルを取得する |
-| 関数 | `resetMinLogLevelCache` | キャッシュされた最小ログレベルをリセット（テスト用） |
-| 関数 | `formatTimestamp` | 日付をISO8601形式の文字列に変換する |
-| 関数 | `shouldLog` | 指定されたログレベルが出力対象か判定する |
-| 関数 | `formatError` | エラーオブジェクトを構造化された形式に変換する |
-| 関数 | `serializeLogEntry` | ログエントリをJSON文字列に変換する |
-| 関数 | `formatReadableEntry` | ログエントリを読み取り可能な形式でフォーマットする |
-| 関数 | `getDefaultLogger` | デフォルトロガーを取得する |
-| 関数 | `resetDefaultLogger` | デフォルトロガーをリセットする |
+| 関数 | `getMinLogLevel` | 最小ログレベルを取得 |
+| 関数 | `resetMinLogLevelCache` | 最小ログレベルキャッシュをリセット |
+| 関数 | `formatTimestamp` | 日付をISO8601形式に変換 |
+| 関数 | `shouldLog` | - |
+| 関数 | `formatError` | エラーを構造化形式に変換 |
+| 関数 | `serializeLogEntry` | エントリをシリアライズ |
+| 関数 | `formatReadableEntry` | エントリを整形 |
+| 関数 | `getDefaultLogger` | デフォルトロガー取得 |
+| 関数 | `resetDefaultLogger` | デフォルトロガー初期化 |
 | 関数 | `createLogger` | 指定されたコンテキストでロガーを作成 |
-| 関数 | `getSubagentLogger` | subagentsコンテキストのロガーを取得する |
-| 関数 | `getAgentTeamsLogger` | agent-teamsコンテキストのロガーを取得 |
-| 関数 | `getStorageLogger` | storageコンテキストのロガーを取得 |
+| 関数 | `getSubagentLogger` | サブロガー生成 |
+| 関数 | `getAgentTeamsLogger` | AgentTeamsロガー取得 |
+| 関数 | `getStorageLogger` | ストレージロガー取得 |
 | 関数 | `logInfo` | INFOレベルのログを出力 |
 | 関数 | `logWarn` | クイックWARNログ |
 | 関数 | `logError` | クイックERRORログ |
 | 関数 | `logDebug` | DEBUGレベルのログを出力 |
 | クラス | `StructuredLogger` | 構造化ロガークラス |
-| クラス | `ChildLogger` | 子ロガー - 操作名が固定されたロガー |
+| クラス | `ChildLogger` | 子ロガークラス |
 | インターフェース | `StructuredLogEntry` | 構造化ログエントリ |
 | インターフェース | `StructuredLoggerOptions` | ロガー設定オプション |
-| 型 | `LogLevel` | ログレベルの種別を定義 |
-| 型 | `LogContext` | ログコンテキスト定義 |
+| 型 | `LogLevel` | ログレベルの種別 |
+| 型 | `LogContext` | ログコンテキストの種別 |
 
 ## 図解
 
@@ -122,7 +122,7 @@ flowchart TD
 getMinLogLevel(): LogLevel
 ```
 
-最小ログレベルを取得する
+最小ログレベルを取得
 
 **戻り値**: `LogLevel`
 
@@ -132,7 +132,7 @@ getMinLogLevel(): LogLevel
 resetMinLogLevelCache(): void
 ```
 
-キャッシュされた最小ログレベルをリセット（テスト用）
+最小ログレベルキャッシュをリセット
 
 **戻り値**: `void`
 
@@ -142,7 +142,7 @@ resetMinLogLevelCache(): void
 formatTimestamp(date: Date): string
 ```
 
-日付をISO8601形式の文字列に変換する
+日付をISO8601形式に変換
 
 **パラメータ**
 
@@ -157,8 +157,6 @@ formatTimestamp(date: Date): string
 ```typescript
 shouldLog(level: LogLevel, minLevel: LogLevel): boolean
 ```
-
-指定されたログレベルが出力対象か判定する
 
 **パラメータ**
 
@@ -175,7 +173,7 @@ shouldLog(level: LogLevel, minLevel: LogLevel): boolean
 formatError(error: Error | unknown): StructuredLogEntry["error"]
 ```
 
-エラーオブジェクトを構造化された形式に変換する
+エラーを構造化形式に変換
 
 **パラメータ**
 
@@ -191,7 +189,7 @@ formatError(error: Error | unknown): StructuredLogEntry["error"]
 serializeLogEntry(entry: StructuredLogEntry): string
 ```
 
-ログエントリをJSON文字列に変換する
+エントリをシリアライズ
 
 **パラメータ**
 
@@ -207,7 +205,7 @@ serializeLogEntry(entry: StructuredLogEntry): string
 formatReadableEntry(entry: StructuredLogEntry): string
 ```
 
-ログエントリを読み取り可能な形式でフォーマットする
+エントリを整形
 
 **パラメータ**
 
@@ -223,7 +221,7 @@ formatReadableEntry(entry: StructuredLogEntry): string
 getDefaultLogger(): StructuredLogger
 ```
 
-デフォルトロガーを取得する
+デフォルトロガー取得
 
 **戻り値**: `StructuredLogger`
 
@@ -233,7 +231,7 @@ getDefaultLogger(): StructuredLogger
 resetDefaultLogger(): void
 ```
 
-デフォルトロガーをリセットする
+デフォルトロガー初期化
 
 **戻り値**: `void`
 
@@ -260,7 +258,7 @@ createLogger(context: LogContext | string, options?: Omit<StructuredLoggerOption
 getSubagentLogger(): StructuredLogger
 ```
 
-subagentsコンテキストのロガーを取得する
+サブロガー生成
 
 **戻り値**: `StructuredLogger`
 
@@ -270,7 +268,7 @@ subagentsコンテキストのロガーを取得する
 getAgentTeamsLogger(): StructuredLogger
 ```
 
-agent-teamsコンテキストのロガーを取得
+AgentTeamsロガー取得
 
 **戻り値**: `StructuredLogger`
 
@@ -280,7 +278,7 @@ agent-teamsコンテキストのロガーを取得
 getStorageLogger(): StructuredLogger
 ```
 
-storageコンテキストのロガーを取得
+ストレージロガー取得
 
 **戻り値**: `StructuredLogger`
 
@@ -394,7 +392,7 @@ DEBUGレベルのログを出力
 
 ### ChildLogger
 
-子ロガー - 操作名が固定されたロガー
+子ロガークラス
 
 **メソッド**
 
@@ -454,7 +452,7 @@ interface StructuredLoggerOptions {
 type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
 ```
 
-ログレベルの種別を定義
+ログレベルの種別
 
 ### LogContext
 
@@ -473,7 +471,7 @@ type LogContext = | "subagents"
   | "general"
 ```
 
-ログコンテキスト定義
+ログコンテキストの種別
 
 ---
-*自動生成: 2026-02-18T14:31:31.032Z*
+*自動生成: 2026-02-18T15:54:41.525Z*

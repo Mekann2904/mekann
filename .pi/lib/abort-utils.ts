@@ -1,30 +1,29 @@
 /**
  * @abdd.meta
  * path: .pi/lib/abort-utils.ts
- * role: AbortSignal階層管理ユーティリティ
- * why: 複数の非同期処理が同一AbortSignalを共有する際のMaxListenersExceededWarningを防止
+ * role: AbortSignalの階層管理とリスナー累積の防止ユーティリティ
+ * why: 複数の非同期操作が同一のAbortSignalを共有する際に、Node.jsのMaxListenersExceededWarningを回避するため
  * related: .pi/lib/concurrency.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
  * public_api: createChildAbortController, createChildAbortControllers
  * invariants:
- *   - 親シグナルがabort済みの場合、子コントローラは即座にabortされる
- *   - cleanup呼び出し後は親シグナルへのイベントリスナーが削除される
- * side_effects: 親シグナルへabortイベントリスナーを追加する
+ * - 返されるcleanup関数を実行すると、親シグナルへのイベントリスナー登録が解除される
+ * - 親シグナルが中止状態の場合、生成される子コントローラも即座に中止状態になる
+ * side_effects:
+ * - 親シグナルに'abort'イベントリスナーを一時的に追加する
  * failure_modes:
- *   - cleanup未呼び出しによるリスナー蓄積
- *   - parentSignal(undefined)時はリスナー登録されず独立動作
+ * - cleanup呼び出し忘れによる親シグナルへのリスナー残留（メモリリーク）
  * @abdd.explain
- * overview: AbortControllerの階層構造を作成し、親の中断を子へ伝播させるユーティリティ
+ * overview: 親AbortSignalに連動する子AbortControllerを生成し、リスナーの集中を防ぐモジュール
  * what_it_does:
- *   - 親AbortSignalに連動する子AbortControllerを生成
- *   - 各子コントローラは独自のシグナルを持ち、親へのリスナー蓄積を回避
- *   - 親abort時に子へ伝播、cleanupでリスナー削除
- *   - 複数の子コントローラを一括生成する関数を提供
+ * - 親シグナルに連動して中止する単一の子AbortControllerを作成する
+ * - 親シグナルに連動する複数の子AbortControllerを一括作成する
+ * - 親子間のイベントリスナー接続を解除するcleanup関数を提供する
  * why_it_exists:
- *   - 複数非同期処理が同一AbortSignalを使用するとリスナー過多警告が発生
- *   - 子コントローラパターンでリスナーを分散させ警告を回避
+ * - 同一のAbortSignalに多数のリスナーを登録すると、MaxListenersExceededWarningが発生するため
+ * - 並列実行やサブエージェント管理など、複数の非同期タスクで安全に中止制御を行うため
  * scope:
- *   in: AbortSignal(省略可)、生成するコントローラ数
- *   out: 子AbortController配列、cleanup関数
+ * in: 親AbortSignal（省略可）、作成数（createChildAbortControllers）
+ * out: AbortControllerインスタンス（または配列）とcleanup関数を持つオブジェクト
  */
 
 // File: .pi/lib/abort-utils.ts
@@ -33,21 +32,9 @@
 // Related: .pi/lib/concurrency.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
 
 /**
- * Creates a child AbortController that aborts when the parent signal aborts.
- * Each child has its own signal, preventing listener accumulation on the parent.
- *
- * @param parentSignal - Optional parent signal to link to
- * @returns Child AbortController and cleanup function
- *
- * @example
- * ```typescript
- * const { controller, cleanup } = createChildAbortController(parentSignal);
- * try {
- *   await doWork(controller.signal);
- * } finally {
- *   cleanup();
- * }
- * ```
+ * @summary 親に連動する中止制御
+ * @param parentSignal - 親のAbortSignal。省略時は独立動作。
+ * @returns 子AbortControllerとクリーンアップ関数
  */
 export function createChildAbortController(
   parentSignal?: AbortSignal,

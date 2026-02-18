@@ -25,19 +25,19 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `initMetricsCollector` | メトリクスコレクタを初期化する |
-| 関数 | `getMetricsCollector` | メトリクス収集インスタンスを取得（必要なら初期化） |
-| 関数 | `resetMetricsCollector` | メトリクス収集器の状態をリセットする（テスト用）。 |
-| 関数 | `isMetricsCollectorInitialized` | メトリクスコレクターが初期化済みか確認 |
-| 関数 | `recordStealingAttempt` | 盗用試行を記録する |
-| 関数 | `getMetricsConfigFromEnv` | 環境変数からメトリクス設定を取得 |
-| インターフェース | `SchedulerMetrics` | スケジューラーのメトリクス |
+| 関数 | `initMetricsCollector` | 初期化設定 |
+| 関数 | `getMetricsCollector` | メトリクス取得API |
+| 関数 | `resetMetricsCollector` | コレクタリセット |
+| 関数 | `isMetricsCollectorInitialized` | 初期化確認 |
+| 関数 | `recordStealingAttempt` | - |
+| 関数 | `getMetricsConfigFromEnv` | 環境変数から設定取得 |
+| インターフェース | `SchedulerMetrics` | スケジューラの指標 |
 | インターフェース | `TaskCompletionEvent` | メトリクス用タスク完了イベント |
 | インターフェース | `PreemptionEvent` | プリエンプションイベント |
-| インターフェース | `WorkStealEvent` | ワークスティールイベント |
-| インターフェース | `MetricsSummary` | 指定期間のメトリクス集計結果を表します。 |
-| インターフェース | `MetricsCollectorConfig` | メトリクス収集の設定 |
-| インターフェース | `StealingStats` | ワークスティーリングの統計情報 |
+| インターフェース | `WorkStealEvent` | ワークスチールイベント |
+| インターフェース | `MetricsSummary` | メトリクスサマリー情報 |
+| インターフェース | `MetricsCollectorConfig` | メトリクス収集設定 |
+| インターフェース | `StealingStats` | ワークスチール統計 |
 
 ## 図解
 
@@ -267,7 +267,7 @@ Rotate log files if needed.
 initMetricsCollector(configOverrides?: Partial<MetricsCollectorConfig>): void
 ```
 
-メトリクスコレクタを初期化する
+初期化設定
 
 **パラメータ**
 
@@ -294,7 +294,7 @@ getMetricsCollector(): {
 }
 ```
 
-メトリクス収集インスタンスを取得（必要なら初期化）
+メトリクス取得API
 
 **戻り値**: `{
   recordTaskCompletion: (task: { id: string; source: string; provider: string; model: string; priority: string }, result: { waitedMs: number; executionMs: number; success: boolean }) => void;
@@ -473,7 +473,7 @@ Collect and log current metrics.
 resetMetricsCollector(): void
 ```
 
-メトリクス収集器の状態をリセットする（テスト用）。
+コレクタリセット
 
 **戻り値**: `void`
 
@@ -483,7 +483,7 @@ resetMetricsCollector(): void
 isMetricsCollectorInitialized(): boolean
 ```
 
-メトリクスコレクターが初期化済みか確認
+初期化確認
 
 **戻り値**: `boolean`
 
@@ -492,8 +492,6 @@ isMetricsCollectorInitialized(): boolean
 ```typescript
 recordStealingAttempt(success: boolean, latencyMs?: number): void
 ```
-
-盗用試行を記録する
 
 **パラメータ**
 
@@ -510,7 +508,7 @@ recordStealingAttempt(success: boolean, latencyMs?: number): void
 getMetricsConfigFromEnv(): Partial<MetricsCollectorConfig>
 ```
 
-環境変数からメトリクス設定を取得
+環境変数から設定取得
 
 **戻り値**: `Partial<MetricsCollectorConfig>`
 
@@ -533,7 +531,7 @@ interface SchedulerMetrics {
 }
 ```
 
-スケジューラーのメトリクス
+スケジューラの指標
 
 ### TaskCompletionEvent
 
@@ -575,7 +573,7 @@ interface WorkStealEvent {
 }
 ```
 
-ワークスティールイベント
+ワークスチールイベント
 
 ### MetricsSummary
 
@@ -599,7 +597,7 @@ interface MetricsSummary {
 }
 ```
 
-指定期間のメトリクス集計結果を表します。
+メトリクスサマリー情報
 
 ### MetricsCollectorConfig
 
@@ -613,7 +611,7 @@ interface MetricsCollectorConfig {
 }
 ```
 
-メトリクス収集の設定
+メトリクス収集設定
 
 ### StealingStats
 
@@ -628,7 +626,7 @@ interface StealingStats {
 }
 ```
 
-ワークスティーリングの統計情報
+ワークスチール統計
 
 ### MetricsWindowState
 
@@ -670,4 +668,4 @@ interface CollectorState {
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.998Z*
+*自動生成: 2026-02-18T15:54:41.492Z*

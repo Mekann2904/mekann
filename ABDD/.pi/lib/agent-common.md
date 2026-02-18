@@ -23,18 +23,18 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `pickFieldCandidate` | テキストから候補となるフィールドを抽出する |
-| 関数 | `pickSummaryCandidate` | SUMMARYフィールドの候補テキストを選択する |
-| 関数 | `pickClaimCandidate` | Pick candidate text for CLAIM field. |
+| 関数 | `pickFieldCandidate` | フィールド候補を選択 |
+| 関数 | `pickSummaryCandidate` | 概要候補を選択 |
+| 関数 | `pickClaimCandidate` | CLAIM候補を選択 |
 | 関数 | `normalizeEntityOutput` | エンティティ出力を正規化 |
-| 関数 | `isEmptyOutputFailureMessage` | 出力が空であることを示すエラーメッセージか判定する |
-| 関数 | `buildFailureSummary` | エラーの要約を作成する |
-| 関数 | `resolveTimeoutWithEnv` | 環境変数で上書き可能なタイムアウトを解決 |
-| インターフェース | `EntityConfig` | エンティティ固有の挙動を設定します。 |
-| インターフェース | `NormalizedEntityOutput` | エンティティ出力を正規化した結果 |
-| インターフェース | `PickFieldCandidateOptions` | pickFieldCandidate関数のオプション |
-| インターフェース | `NormalizeEntityOutputOptions` | normalizeEntityOutput関数のオプション |
-| 型 | `EntityType` | Entity type identifier for shared functions. |
+| 関数 | `isEmptyOutputFailureMessage` | 空出力による失敗か判定 |
+| 関数 | `buildFailureSummary` | 失敗要約メッセージを構築 |
+| 関数 | `resolveTimeoutWithEnv` | タイムアウト値を環境変数から取得 |
+| インターフェース | `EntityConfig` | エンティティ設定を定義 |
+| インターフェース | `NormalizedEntityOutput` | 正規化エンティティ出力 |
+| インターフェース | `PickFieldCandidateOptions` | フィールド候補オプション |
+| インターフェース | `NormalizeEntityOutputOptions` | 正規化オプション定義 |
+| 型 | `EntityType` | エンティティの種別 |
 
 ## 図解
 
@@ -127,7 +127,7 @@ sequenceDiagram
 pickFieldCandidate(text: string, options: PickFieldCandidateOptions): string
 ```
 
-テキストから候補となるフィールドを抽出する
+フィールド候補を選択
 
 **パラメータ**
 
@@ -144,7 +144,7 @@ pickFieldCandidate(text: string, options: PickFieldCandidateOptions): string
 pickSummaryCandidate(text: string): string
 ```
 
-SUMMARYフィールドの候補テキストを選択する
+概要候補を選択
 
 **パラメータ**
 
@@ -160,8 +160,7 @@ SUMMARYフィールドの候補テキストを選択する
 pickClaimCandidate(text: string): string
 ```
 
-Pick candidate text for CLAIM field.
-Convenience wrapper with team-member-specific defaults.
+CLAIM候補を選択
 
 **パラメータ**
 
@@ -194,7 +193,7 @@ normalizeEntityOutput(output: string, options: NormalizeEntityOutputOptions): No
 isEmptyOutputFailureMessage(message: string, config: EntityConfig): boolean
 ```
 
-出力が空であることを示すエラーメッセージか判定する
+空出力による失敗か判定
 
 **パラメータ**
 
@@ -211,7 +210,7 @@ isEmptyOutputFailureMessage(message: string, config: EntityConfig): boolean
 buildFailureSummary(message: string): string
 ```
 
-エラーの要約を作成する
+失敗要約メッセージを構築
 
 **パラメータ**
 
@@ -227,7 +226,7 @@ buildFailureSummary(message: string): string
 resolveTimeoutWithEnv(defaultMs: number, envKey: string): number
 ```
 
-環境変数で上書き可能なタイムアウトを解決
+タイムアウト値を環境変数から取得
 
 **パラメータ**
 
@@ -251,7 +250,7 @@ interface EntityConfig {
 }
 ```
 
-エンティティ固有の挙動を設定します。
+エンティティ設定を定義
 
 ### NormalizedEntityOutput
 
@@ -264,7 +263,7 @@ interface NormalizedEntityOutput {
 }
 ```
 
-エンティティ出力を正規化した結果
+正規化エンティティ出力
 
 ### PickFieldCandidateOptions
 
@@ -276,7 +275,7 @@ interface PickFieldCandidateOptions {
 }
 ```
 
-pickFieldCandidate関数のオプション
+フィールド候補オプション
 
 ### NormalizeEntityOutputOptions
 
@@ -291,7 +290,7 @@ interface NormalizeEntityOutputOptions {
 }
 ```
 
-normalizeEntityOutput関数のオプション
+正規化オプション定義
 
 ## 型定義
 
@@ -301,8 +300,7 @@ normalizeEntityOutput関数のオプション
 type EntityType = "subagent" | "team-member"
 ```
 
-Entity type identifier for shared functions.
-Used to distinguish between subagent and team member contexts.
+エンティティの種別
 
 ---
-*自動生成: 2026-02-18T14:31:30.950Z*
+*自動生成: 2026-02-18T15:54:41.433Z*

@@ -17,17 +17,17 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `clampConfidence` | 信頼度を0から1の範囲に丸める |
-| 関数 | `generateClaimId` | Generate a unique claim ID for structured communic |
-| 関数 | `generateEvidenceId` | 構造化された通信追跡用の証拠IDを生成する |
-| 関数 | `parseUnitInterval` | 文字列から単位区間の値をパースする。 |
-| 関数 | `extractField` | Extract a named field from structured output text. |
-| 関数 | `extractMultilineField` | 指定されたフィールドの複数行を抽出する。 |
-| 関数 | `countKeywordSignals` | 出力テキストに含まれるキーワードの数をカウントする |
-| 関数 | `analyzeDiscussionStance` | 対象メンバーに関する議論のスタンスを分析する |
+| 関数 | `clampConfidence` | 信頼度を範囲内に収める |
+| 関数 | `generateClaimId` | エビデンスIDを生成する |
+| 関数 | `generateEvidenceId` | クレームIDを生成する |
+| 関数 | `parseUnitInterval` | - |
+| 関数 | `extractField` | - |
+| 関数 | `extractMultilineField` | - |
+| 関数 | `countKeywordSignals` | - |
+| 関数 | `analyzeDiscussionStance` | 議論におけるメンバーの立場を解析する |
 | 関数 | `extractConsensusMarker` | テキストから合意マーカーを抽出する |
-| インターフェース | `DiscussionStanceResult` | ディスカッションのスタンス分析結果 |
-| 型 | `DiscussionStance` | ディスカッションの立場を表す型 |
+| インターフェース | `DiscussionStanceResult` | 議論の立場解析結果を表すインターフェース |
+| 型 | `DiscussionStance` | - |
 
 ## 図解
 
@@ -68,7 +68,7 @@ flowchart TD
 clampConfidence(value: number): number
 ```
 
-信頼度を0から1の範囲に丸める
+信頼度を範囲内に収める
 
 **パラメータ**
 
@@ -84,8 +84,7 @@ clampConfidence(value: number): number
 generateClaimId(): string
 ```
 
-Generate a unique claim ID for structured communication tracking.
-Format: claim-<timestamp>-<random>
+エビデンスIDを生成する
 
 **戻り値**: `string`
 
@@ -95,7 +94,7 @@ Format: claim-<timestamp>-<random>
 generateEvidenceId(): string
 ```
 
-構造化された通信追跡用の証拠IDを生成する
+クレームIDを生成する
 
 **戻り値**: `string`
 
@@ -104,8 +103,6 @@ generateEvidenceId(): string
 ```typescript
 parseUnitInterval(raw: string | undefined): number | undefined
 ```
-
-文字列から単位区間の値をパースする。
 
 **パラメータ**
 
@@ -120,9 +117,6 @@ parseUnitInterval(raw: string | undefined): number | undefined
 ```typescript
 extractField(output: string, name: string): string | undefined
 ```
-
-Extract a named field from structured output text.
-Matches patterns like "FIELD_NAME: value" (case-insensitive).
 
 **パラメータ**
 
@@ -139,8 +133,6 @@ Matches patterns like "FIELD_NAME: value" (case-insensitive).
 extractMultilineField(output: string, name: string): string
 ```
 
-指定されたフィールドの複数行を抽出する。
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -155,8 +147,6 @@ extractMultilineField(output: string, name: string): string
 ```typescript
 countKeywordSignals(output: string, keywords: string[]): number
 ```
-
-出力テキストに含まれるキーワードの数をカウントする
 
 **パラメータ**
 
@@ -173,7 +163,7 @@ countKeywordSignals(output: string, keywords: string[]): number
 analyzeDiscussionStance(text: string, targetMemberId: string): DiscussionStanceResult
 ```
 
-対象メンバーに関する議論のスタンスを分析する
+議論におけるメンバーの立場を解析する
 
 **パラメータ**
 
@@ -212,7 +202,7 @@ interface DiscussionStanceResult {
 }
 ```
 
-ディスカッションのスタンス分析結果
+議論の立場解析結果を表すインターフェース
 
 ## 型定義
 
@@ -222,7 +212,5 @@ interface DiscussionStanceResult {
 type DiscussionStance = "agree" | "disagree" | "neutral" | "partial"
 ```
 
-ディスカッションの立場を表す型
-
 ---
-*自動生成: 2026-02-18T14:31:31.040Z*
+*自動生成: 2026-02-18T15:54:41.534Z*

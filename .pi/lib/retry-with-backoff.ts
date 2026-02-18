@@ -1,26 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/retry-with-backoff.ts
- * role: 指数バックオフとジッターを伴うリトライ処理の共通ユーティリティ
- * why: LLM APIの429/5xxエラーに対する復旧ポリシーを一元管理し、サブエージェントとエージェントチームで再利用するため
+ * role: 指数バックオフとジッターを含むリトライ処理およびレート制限管理の実装
+ * why: LLMの一時的な障害（429/5xxエラー）からの回復ポリシーを一元管理し、サブエージェントやエージェントチーム間で再利用するため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json
- * public_api: RetryJitterMode, RetryWithBackoffConfig, RetryWithBackoffOverrides, RetryAttemptContext, RateLimitGateSnapshot, RateLimitWaitContext
- * invariants: maxDelayMsを超える遅延時間は返さない、負のリトライ回数は無効
- * side_effects: sharedRateLimitStateによるグローバルなレート制限状態の更新、onRetry/onRateLimitWaitコールバックの実行
- * failure_modes: 全リトライ失敗時は最後のエラーをスロー、AbortSignal中止時は即座に中断
+ * public_api: RetryWithBackoffConfig, RetryWithBackoffOverrides, RetryAttemptContext, RateLimitGateSnapshot, RateLimitWaitContext
+ * invariants: maxRetries, initialDelayMs, maxDelayMs, multiplierは0以上の数値、delayMsはmaxDelayMs以下に収束する
+ * side_effects: プロセス全体で共有されるMapオブジェクト(sharedRateLimitState.entries)の状態を変更する
+ * failure_modes: リトライ回数超過による処理中断、AbortSignalによる強制停止、レート制限エントリ上限(Max 64)到達時の挙動
  * @abdd.explain
- * overview: 一時的なLLM API障害（429/5xx）からの復旧のため、指数バックオフとジッターを組み込んだリトライ機構を提供する
+ * overview: 外部API呼び出しなどに対して、指数バックオフおよびジッター機能を提供し、429エラー等のレート制限に対するグローバルな待機管理を行うライブラリ
  * what_it_does:
- *   - 指数バックオフによる遅延時間の計算（multiplier倍で増加、maxDelayMsで上限設定）
- *   - full/partial/noneの3種類のジッターモードによる遅延時間のランダム化
- *   - プロセス間で共有されるレート制限状態の管理（最大64エントリ、TTL 10分）
- *   - リトライ試行時のコンテキスト情報をコールバックで通知
+ *   - 指数バックオフアルゴリズムに基づく遅延時間の計算
+ *   - full/partial/noneのモードを持つジッターの適用
+ *   - レート制限状態の共有管理と有効期限(TTL)に基づく自動クリーンアップ
+ *   - リトライ時のフック(onRetry, shouldRetry)による挙動のカスタマイズ
+ *   - AbortSignalに対応したキャンセル処理
  * why_it_exists:
- *   - サブエージェントとエージェントチームで同一のリトライポリシーを適用するため
- *   - 429レート制限と5xxサーバーエラーに対する統一的な復旧戦略を提供するため
+ *   - 分散したリトライロジックを統一し、メンテナンス性を向上させるため
+ *   - 過負荷状態でのAPI呼び出しを抑制し、安定性を確保するため
+ *   - 複数のエージェント間でレート制限状態を共有し、全体のリクエストレートを適切に制御するため
  * scope:
- *   in: 非同期処理で発生する一時的なエラー、HTTPステータスコード（429/5xx）、AbortSignal
- *   out: リトライ成功時の結果、レート制限待機時間のスナップショット
+ *   in: 設定オブジェクト(RetryWithBackoffOptions)、エラー情報、AbortSignal
+ *   out: リトライの実行、レート制限待機、コールバック関数の呼び出し、共有状態の更新
  */
 
 // File: .pi/lib/retry-with-backoff.ts
@@ -31,20 +33,18 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
- /**
-  * リトライ時のジッターモード
-  * @type {"full" | "partial" | "none"}
-  */
+/**
+ * リトライ時のジッターモード
+ * @summary ジッターモード
+ * @typedef {"full" | "partial" | "none"} RetryJitterMode
+ */
 export type RetryJitterMode = "full" | "partial" | "none";
 
- /**
-  * 指数バックオフとジッターを伴うリトライ設定
-  * @param maxRetries 最大リトライ回数
-  * @param initialDelayMs 初回遅延時間（ミリ秒）
-  * @param maxDelayMs 最大遅延時間（ミリ秒）
-  * @param multiplier 遅延時間の乗数
-  * @param jitter ジッターモード
-  */
+/**
+ * リトライ設定を定義
+ * @summary リトライ設定
+ * @interface RetryWithBackoffConfig
+ */
 export interface RetryWithBackoffConfig {
   maxRetries: number;
   initialDelayMs: number;
@@ -53,19 +53,24 @@ export interface RetryWithBackoffConfig {
   jitter: RetryJitterMode;
 }
 
- /**
-  * RetryWithBackoffConfigの部分的オーバーライド設定
-  */
+/**
+ * @summary 設定オーバーライド
+ * @param maxRetries 最大リトライ数
+ * @param initialDelayMs 初期遅延時間
+ * @param maxDelayMs 最大遅延時間
+ * @param multiplier 乗数
+ * @param jitter ジッターモード
+ */
 export type RetryWithBackoffOverrides = Partial<RetryWithBackoffConfig>;
 
- /**
-  * リトライ時のコンテキスト情報
-  * @param attempt 現在のリトライ回数
-  * @param maxRetries 最大リトライ回数
-  * @param delayMs 次回のリトライ遅延時間（ミリ秒）
-  * @param statusCode ステータスコード（任意）
-  * @param error 発生したエラー
-  */
+/**
+ * @summary リトライコンテキスト
+ * @param attempt 試行回数
+ * @param maxRetries 最大リトライ数
+ * @param delayMs 遅延時間
+ * @param statusCode ステータスコード
+ * @param error エラー内容
+ */
 export interface RetryAttemptContext {
   attempt: number;
   maxRetries: number;
@@ -96,13 +101,13 @@ interface SharedRateLimitState {
   entries: Map<string, SharedRateLimitStateEntry>;
 }
 
- /**
-  * レート制限のスナップショット
-  * @param key キー
-  * @param waitMs 待機時間（ミリ秒）
-  * @param hits ヒット数
-  * @param untilMs 有効期限（ミリ秒）
-  */
+/**
+ * @summary ゲートスナップショット
+ * @param key 対象のキー
+ * @param waitMs 待機時間
+ * @param hits ヒット数
+ * @param untilMs 有効期限
+ */
 export interface RateLimitGateSnapshot {
   key: string;
   waitMs: number;
@@ -110,13 +115,13 @@ export interface RateLimitGateSnapshot {
   untilMs: number;
 }
 
- /**
-  * レート制限待機コンテキスト
-  * @param key キー
-  * @param waitMs 待機時間（ミリ秒）
-  * @param hits ヒット数
-  * @param untilMs 有効期限（ミリ秒）
-  */
+/**
+ * @summary 待機コンテキスト
+ * @param key 対象のキー
+ * @param waitMs 待機時間
+ * @param hits ヒット数
+ * @param untilMs 有効期限
+ */
 export interface RateLimitWaitContext {
   key: string;
   waitMs: number;
@@ -281,11 +286,11 @@ function pruneRateLimitState(nowMs = Date.now()): void {
   }
 }
 
- /**
-  * 指定キーのレートリミット情報を取得する
-  * @param key レート制限キー
-  * @returns スナップショット情報
-  */
+/**
+ * @summary スナップショット取得
+ * @param key 対象のキー
+ * @returns 現在のレートリミット状態
+ */
 export function getRateLimitGateSnapshot(key: string | undefined): RateLimitGateSnapshot {
   const normalizedKey = normalizeRateLimitKey(key);
   const nowMs = Date.now();
@@ -363,10 +368,11 @@ function registerRateLimitGateSuccess(key: string | undefined): void {
 }
 
 /**
- * バックオフ設定を解決する
- * @param cwd カレントディレクトリ
- * @param overrides 上書き設定
- * @returns 解決された設定
+ * 再試行設定の解決とマージ
+ * @summary 設定解決
+ * @param cwd - カレントディレクトリ
+ * @param overrides - 上書き設定
+ * @returns マージされた設定
  */
 export function resolveRetryWithBackoffConfig(
   cwd?: string,
@@ -393,11 +399,12 @@ export function resolveRetryWithBackoffConfig(
   return merged;
 }
 
- /**
-  * エラーからステータスコードを抽出
-  * @param error エラーオブジェクト
-  * @returns ステータスコード（0〜999）、またはundefined
-  */
+/**
+ * エラーからステータスコード抽出
+ * @summary ステータスコード抽出
+ * @param error - 発生したエラー
+ * @returns ステータスコード
+ */
 export function extractRetryStatusCode(error: unknown): number | undefined {
   if (error && typeof error === "object") {
     const status = toFiniteNumber((error as { status?: unknown }).status);
@@ -424,12 +431,13 @@ export function extractRetryStatusCode(error: unknown): number | undefined {
   return undefined;
 }
 
- /**
-  * エラーがリトライ可能か判定する
-  * @param error - 判定対象のエラー
-  * @param statusCode - HTTPステータスコード（省略時はerrorから抽出）
-  * @returns リトライ可能な場合はtrue
-  */
+/**
+ * エラーが再試行可能か判定
+ * @summary 再試行可否判定
+ * @param error - 発生したエラー
+ * @param statusCode - ステータスコード
+ * @returns 再試行可能かどうか
+ */
 export function isRetryableError(error: unknown, statusCode?: number): boolean {
   const code = statusCode ?? extractRetryStatusCode(error);
   if (code === 429) return true;
@@ -451,6 +459,13 @@ function applyJitter(delayMs: number, jitter: RetryJitterMode): number {
   return delayMs;
 }
 
+/**
+ * バックオフ遅延時間計算
+ * @summary 遅延時間計算
+ * @param attempt - 現在の試行回数
+ * @param config - 再試行設定
+ * @returns 遅延時間
+ */
 export function computeBackoffDelayMs(
   attempt: number,
   config: RetryWithBackoffConfig,
@@ -511,12 +526,14 @@ function sleepWithAbort(delayMs: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
- /**
-  * 指数バックオフでオペレーションをリトライする
-  * @param operation 実行する非同期処理
-  * @param options リトライ設定オプション
-  * @returns オペレーションの結果
-  */
+/**
+ * 指数関数的バックオフで再試行
+ * @summary バックオフ再試行実行
+ * @param operation - 非同期処理
+ * @param options - 再試行オプション
+ * @returns 処理結果
+ * @throws 中断または最大試行回数超過時
+ */
 export async function retryWithBackoff<T>(
   operation: () => Promise<T>,
   options: RetryWithBackoffOptions = {},

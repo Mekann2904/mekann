@@ -28,8 +28,8 @@ related: []
 | 関数 | `resolveVerificationHookConfig` | 検証フック設定を解決 |
 | 関数 | `postSubagentVerificationHook` | サブエージェント実行後の検証フック |
 | 関数 | `postTeamVerificationHook` | チーム実行後の検証フック |
-| 関数 | `formatVerificationResult` | 検証結果をフォーマットする |
-| インターフェース | `VerificationHookConfig` | 検証フックの設定オプション |
+| 関数 | `formatVerificationResult` | 検証結果のフォーマット |
+| インターフェース | `VerificationHookConfig` | 検証フックの設定 |
 | インターフェース | `VerificationHookResult` | 検証フックの結果 |
 
 ## 図解
@@ -248,7 +248,7 @@ Challenger出力をパース
 formatVerificationResult(result: VerificationHookResult): string
 ```
 
-検証結果をフォーマットする
+検証結果のフォーマット
 
 **パラメータ**
 
@@ -272,7 +272,7 @@ interface VerificationHookConfig {
 }
 ```
 
-検証フックの設定オプション
+検証フックの設定
 
 ### VerificationHookResult
 
@@ -289,4 +289,4 @@ interface VerificationHookResult {
 検証フックの結果
 
 ---
-*自動生成: 2026-02-18T14:31:30.884Z*
+*自動生成: 2026-02-18T15:54:41.347Z*

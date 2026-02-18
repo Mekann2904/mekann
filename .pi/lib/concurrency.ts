@@ -1,30 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/concurrency.ts
- * role: 並行実行数制限付きワーカープールの提供
- * why: 複数モジュールでのプールロジック重複を排除し、キャンセル後の不要なタスク起動を防止するため
+ * role: 並列実行数を制限する非同期タスクプールの実装
+ * why: 重複するプールロジックを排除し、キャンセル後の余計なタスク起動を防ぐため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts
- * public_api: ConcurrencyRunOptions, runWithConcurrencyLimit
- * invariants:
- *   - limitは必ず1以上、かつitems.length以下に正規化される
- *   - items.length === 0の場合、即座に空配列を返す
- *   - 結果配列の順序は入力配列の順序と一致する
- * side_effects: なし（純粋な非同期処理のみ）
- * failure_modes:
- *   - AbortSignalがaborted状態の場合、"concurrency pool aborted"エラーをスロー
- *   - worker関数で例外発生時、最初のエラーを記録し全ワーカー完了後に再スロー
+ * public_api: runWithConcurrencyLimit, ConcurrencyRunOptions
+ * invariants: limitは常に1以上の整数に正規化される、results配列のインデックスはitemsの順序と一致する、いずれかのワーカーが失敗した場合最初のエラーが再スローされる
+ * side_effects: AbortSignalによる中断時、即座にErrorをスローして処理を停止する
+ * failure_modes: limitが非数または無限大の場合は1にフォールバックする、空配列が渡されると即座に空配列を返す
  * @abdd.explain
- * overview: AbortSignal対応の並行実行数制御ユーティリティ
+ * overview: アイテム配列を指定された最大並列数で処理し、すべての完了を待機して結果を返すユーティリティ
  * what_it_does:
- *   - 指定した並行数上限で非同期タスクを順次実行する
- *   - 中止シグナル検知時に即座に例外をスローして実行を中断する
- *   - エラー発生時は全ワーカーの完了を待機し、最初のエラーをスローする
+ *   - 入力limitを正の整数（1以上、items.length以下）に正規化する
+ *   - 指定された数のワーカーを起動し、アイテムを順次消費してworker関数を実行する
+ *   - AbortSignalの状態を監視し、中断要求があれば処理を停止する
+ *   - 最初に発生したエラーを保持し、すべての処理完了後に再スローする
  * why_it_exists:
- *   - サブエージェントやチーム実行での並行処理を統一管理するため
- *   - キャンセル後の無駄なタスク起動を防ぐため
+ *   - サブエージェントやチーム実行など、複数箇所で必要となる並列処理ロジックを共通化するため
+ *   - 並列数制御と中止処理を一箇所に集約し、不整合やリソースリークを防ぐため
  * scope:
- *   in: TInput型の配列、並行数上限、非同期worker関数、AbortSignal（省略可）
- *   out: TResult型の配列（入力順序を維持）
+ *   in: アイテム配列、並列数、処理関数、中断シグナル
+ *   out: 処理結果の配列（入力順）または最初のエラー
  */
 
 // File: .pi/lib/concurrency.ts
@@ -33,12 +29,8 @@
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts
 
 /**
- * /**
- * * 並行実行のオプション設定
- * *
- * * 中止シグナルを指定して、実行中のタスクをキャンセル可能にする。
- * *
- * * @property signal - 中止シグナル。キャンセル時に実行中の
+ * 並列実行のオプション設定
+ * @summary 並列実行オプション
  */
 export interface ConcurrencyRunOptions {
   signal?: AbortSignal;
@@ -81,14 +73,15 @@ function ensureNotAborted(signal?: AbortSignal): void {
   }
 }
 
- /**
-  * 指定した並列数でアイテムを処理する
-  * @param items 処理対象のアイテム配列
-  * @param limit 最大並列数
-  * @param worker 各アイテムを処理する非同期関数
-  * @param options 実行オプション
-  * @returns すべての処理結果を含む配列
-  */
+/**
+ * アイテムを並列処理する
+ * @summary アイテム並列処理
+ * @param items 処理対象のアイテム配列
+ * @param limit 並列実行数の上限
+ * @param worker 各アイテムに対する非同期処理関数
+ * @param options 実行オプション（signal等）
+ * @returns 処理結果の配列
+ */
 export async function runWithConcurrencyLimit<TInput, TResult>(
   items: TInput[],
   limit: number,

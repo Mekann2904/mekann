@@ -17,12 +17,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildExecutionRulesSection` | 実行ルールセクションを構築する |
-| 関数 | `getSubagentExecutionRules` | サブエージェント用の実行ルールを取得 |
-| 関数 | `getTeamMemberExecutionRules` | チームメンバー用の実行ルールを取得する |
-| 関数 | `getChallengerExecutionRules` | Challenger用実行ルールを取得 |
-| 関数 | `getInspectorExecutionRules` | Inspectorサブエージェント用の実行ルールを取得 |
-| 関数 | `getVerificationWorkflowExecutionRules` | 検証ワークフロー用の実行ルールを取得 |
+| 関数 | `buildExecutionRulesSection` | 実行ルールセクションを構築 |
+| 関数 | `getSubagentExecutionRules` | サブエージェントルールを取得 |
+| 関数 | `getTeamMemberExecutionRules` | チームメンバールールを取得 |
+| 関数 | `getChallengerExecutionRules` | チャレンジャールールを取得 |
+| 関数 | `getInspectorExecutionRules` | - |
+| 関数 | `getVerificationWorkflowExecutionRules` | - |
 | インターフェース | `BuildExecutionRulesOptions` | 実行ルールの構築オプション |
 
 ## 図解
@@ -66,7 +66,7 @@ flowchart TD
 buildExecutionRulesSection(options: BuildExecutionRulesOptions): string
 ```
 
-実行ルールセクションを構築する
+実行ルールセクションを構築
 
 **パラメータ**
 
@@ -82,7 +82,7 @@ buildExecutionRulesSection(options: BuildExecutionRulesOptions): string
 getSubagentExecutionRules(includeGuidelines: any): string
 ```
 
-サブエージェント用の実行ルールを取得
+サブエージェントルールを取得
 
 **パラメータ**
 
@@ -98,7 +98,7 @@ getSubagentExecutionRules(includeGuidelines: any): string
 getTeamMemberExecutionRules(phase: "initial" | "communication", includeGuidelines: any): string
 ```
 
-チームメンバー用の実行ルールを取得する
+チームメンバールールを取得
 
 **パラメータ**
 
@@ -115,7 +115,7 @@ getTeamMemberExecutionRules(phase: "initial" | "communication", includeGuideline
 getChallengerExecutionRules(includeGuidelines: any): string
 ```
 
-Challenger用実行ルールを取得
+チャレンジャールールを取得
 
 **パラメータ**
 
@@ -131,8 +131,6 @@ Challenger用実行ルールを取得
 getInspectorExecutionRules(includeGuidelines: any): string
 ```
 
-Inspectorサブエージェント用の実行ルールを取得
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -146,8 +144,6 @@ Inspectorサブエージェント用の実行ルールを取得
 ```typescript
 getVerificationWorkflowExecutionRules(phase: "inspector" | "challenger" | "both", includeGuidelines: any): string
 ```
-
-検証ワークフロー用の実行ルールを取得
 
 **パラメータ**
 
@@ -183,4 +179,4 @@ interface BuildExecutionRulesOptions {
 実行ルールの構築オプション
 
 ---
-*自動生成: 2026-02-18T14:31:30.992Z*
+*自動生成: 2026-02-18T15:54:41.484Z*

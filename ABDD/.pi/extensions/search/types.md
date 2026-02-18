@@ -17,43 +17,43 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `SearchHints` | 検索結果に対するエージェントへのヒント。 |
-| インターフェース | `SearchDetails` | 検索結果の追加詳細 |
-| インターフェース | `SearchResponse` | 検索ツールの基本レスポンス構造 |
+| インターフェース | `SearchHints` | 共通で使用される型定義 |
+| インターフェース | `SearchDetails` | 検索に関するヒント情報 |
+| インターフェース | `SearchResponse` | 検索結果の追加詳細 |
 | インターフェース | `SearchErrorResponse` | 検索エラーレスポンス |
-| インターフェース | `FileCandidatesInput` | ファイル候補の検索入力オプション |
-| インターフェース | `FileCandidate` | ファイルまたはディレクトリの候補 |
-| インターフェース | `CodeSearchInput` | コード検索の入力パラメータ |
-| インターフェース | `CodeSearchMatch` | コード検索のマッチ結果を表すインターフェース |
-| インターフェース | `CodeSearchSummary` | コード検索のサマリー情報 |
-| インターフェース | `CodeSearchOutput` | コード検索の出力結果 |
-| インターフェース | `SymIndexInput` | シンボルインデックスの入力オプション |
-| インターフェース | `SymIndexOutput` | シンボルインデックス作成の出力結果 |
-| インターフェース | `SymFindInput` | シンボル検索の入力オプション |
-| インターフェース | `SymbolDefinition` | シンボル定義を表すインターフェース |
-| インターフェース | `CliOptions` | CLI実行オプション |
-| インターフェース | `CliResult` | CLIコマンドの実行結果を表します |
-| インターフェース | `CliError` | CLIエラー情報を表すインターフェース |
-| インターフェース | `ToolAvailability` | 各ツールの利用可能性を表す |
-| インターフェース | `ToolVersion` | ツールのバージョン情報 |
-| インターフェース | `SymbolIndexEntry` | キャッシュされたシンボルインデックスのエントリ |
-| インターフェース | `RgMatch` | Ripgrep JSON出力フォーマットのサブセット |
-| インターフェース | `RgBegin` | ripgrepの検索開始メッセージ |
-| インターフェース | `RgEnd` | ripgrepの検索終了メッセージ |
-| インターフェース | `ManifestEntry` | マニフェストエントリ |
-| インターフェース | `IndexMetadata` | インデックスのメタデータ構造 |
-| インターフェース | `ShardHeader` | シャードヘッダー構造 |
+| インターフェース | `FileCandidatesInput` | ファイル候補入力 |
+| インターフェース | `FileCandidate` | - |
+| インターフェース | `CodeSearchInput` | - |
+| インターフェース | `CodeSearchMatch` | コード検索マッチ |
+| インターフェース | `CodeSearchSummary` | コード検索サマリ |
+| インターフェース | `CodeSearchOutput` | コード検索出力 |
+| インターフェース | `SymIndexInput` | シンボルインデックス入力 |
+| インターフェース | `SymIndexOutput` | シンボルインデックス出力 |
+| インターフェース | `SymFindInput` | シンボル検索の入力パラメータ |
+| インターフェース | `SymbolDefinition` | シンボルの定義情報 |
+| インターフェース | `CliOptions` | CLI実行時のオプション設定 |
+| インターフェース | `CliResult` | CLI実行結果を表す |
+| インターフェース | `CliError` | CLIコマンド実行時のエラー情報を表します |
+| インターフェース | `ToolAvailability` | 外部ツールの利用可能性を表します |
+| インターフェース | `ToolVersion` | 外部ツールのバージョン情報を表します |
+| インターフェース | `SymbolIndexEntry` | シンボルインデックスのエントリを表します |
+| インターフェース | `RgMatch` | 正規表現マッチ結果を表します |
+| インターフェース | `RgBegin` | 検索開始メッセージ型 |
+| インターフェース | `RgEnd` | 検索終了メッセージ型 |
+| インターフェース | `ManifestEntry` | マニフェストエントリ情報 |
+| インターフェース | `IndexMetadata` | - |
+| インターフェース | `ShardHeader` | シャードヘッダー定義 |
 | インターフェース | `CodeEmbedding` | コード埋め込みエントリ（セマンティック検索用） |
 | インターフェース | `SemanticIndexInput` | セマンティックインデックスの入力パラメータ |
-| インターフェース | `SemanticIndexOutput` | セマンティックインデックスの出力結果 |
-| インターフェース | `SemanticSearchInput` | セマンティック検索の入力パラメータ |
-| インターフェース | `SemanticSearchResult` | セマンティック検索の結果アイテム |
-| インターフェース | `SemanticSearchOutput` | セマンティック検索の出力結果 |
-| インターフェース | `SemanticIndexMetadata` | セマンティックインデックスのメタデータ |
+| インターフェース | `SemanticIndexOutput` | セマンティックインデックスの出力 |
+| インターフェース | `SemanticSearchInput` | 検索の入力設定 |
+| インターフェース | `SemanticSearchResult` | 単一の検索結果 |
+| インターフェース | `SemanticSearchOutput` | 検索結果の出力形式 |
+| インターフェース | `SemanticIndexMetadata` | インデックスのメタデータ |
 | 型 | `FileCandidatesOutput` | ファイル候補の検索レスポンス |
-| 型 | `SymFindOutput` | シンボル検索の出力型 |
-| 型 | `RgOutput` | ripgrepの出力型（マッチ、開始、終了） |
-| 型 | `IndexManifest` | インデックスマニフェスト構造 |
+| 型 | `SymFindOutput` | シンボル検索の出力結果 |
+| 型 | `RgOutput` | ripgrep出力の共用体型 |
+| 型 | `IndexManifest` | インデックスマニフェスト型 |
 
 ## 図解
 
@@ -306,7 +306,7 @@ interface SearchHints {
 }
 ```
 
-検索結果に対するエージェントへのヒント。
+共通で使用される型定義
 
 ### SearchDetails
 
@@ -316,7 +316,7 @@ interface SearchDetails {
 }
 ```
 
-検索結果の追加詳細
+検索に関するヒント情報
 
 ### SearchResponse
 
@@ -330,7 +330,7 @@ interface SearchResponse {
 }
 ```
 
-検索ツールの基本レスポンス構造
+検索結果の追加詳細
 
 ### SearchErrorResponse
 
@@ -359,7 +359,7 @@ interface FileCandidatesInput {
 }
 ```
 
-ファイル候補の検索入力オプション
+ファイル候補入力
 
 ### FileCandidate
 
@@ -369,8 +369,6 @@ interface FileCandidate {
   type: "file" | "dir";
 }
 ```
-
-ファイルまたはディレクトリの候補
 
 ### CodeSearchInput
 
@@ -388,8 +386,6 @@ interface CodeSearchInput {
 }
 ```
 
-コード検索の入力パラメータ
-
 ### CodeSearchMatch
 
 ```typescript
@@ -402,7 +398,7 @@ interface CodeSearchMatch {
 }
 ```
 
-コード検索のマッチ結果を表すインターフェース
+コード検索マッチ
 
 ### CodeSearchSummary
 
@@ -413,7 +409,7 @@ interface CodeSearchSummary {
 }
 ```
 
-コード検索のサマリー情報
+コード検索サマリ
 
 ### CodeSearchOutput
 
@@ -428,7 +424,7 @@ interface CodeSearchOutput {
 }
 ```
 
-コード検索の出力結果
+コード検索出力
 
 ### SymIndexInput
 
@@ -440,7 +436,7 @@ interface SymIndexInput {
 }
 ```
 
-シンボルインデックスの入力オプション
+シンボルインデックス入力
 
 ### SymIndexOutput
 
@@ -452,7 +448,7 @@ interface SymIndexOutput {
 }
 ```
 
-シンボルインデックス作成の出力結果
+シンボルインデックス出力
 
 ### SymFindInput
 
@@ -466,7 +462,7 @@ interface SymFindInput {
 }
 ```
 
-シンボル検索の入力オプション
+シンボル検索の入力パラメータ
 
 ### SymbolDefinition
 
@@ -481,7 +477,7 @@ interface SymbolDefinition {
 }
 ```
 
-シンボル定義を表すインターフェース
+シンボルの定義情報
 
 ### CliOptions
 
@@ -495,7 +491,7 @@ interface CliOptions {
 }
 ```
 
-CLI実行オプション
+CLI実行時のオプション設定
 
 ### CliResult
 
@@ -509,7 +505,7 @@ interface CliResult {
 }
 ```
 
-CLIコマンドの実行結果を表します
+CLI実行結果を表す
 
 ### CliError
 
@@ -522,7 +518,7 @@ interface CliError {
 }
 ```
 
-CLIエラー情報を表すインターフェース
+CLIコマンド実行時のエラー情報を表します
 
 ### ToolAvailability
 
@@ -535,7 +531,7 @@ interface ToolAvailability {
 }
 ```
 
-各ツールの利用可能性を表す
+外部ツールの利用可能性を表します
 
 ### ToolVersion
 
@@ -547,7 +543,7 @@ interface ToolVersion {
 }
 ```
 
-ツールのバージョン情報
+外部ツールのバージョン情報を表します
 
 ### SymbolIndexEntry
 
@@ -563,7 +559,7 @@ interface SymbolIndexEntry {
 }
 ```
 
-キャッシュされたシンボルインデックスのエントリ
+シンボルインデックスのエントリを表します
 
 ### RgMatch
 
@@ -584,7 +580,7 @@ interface RgMatch {
 }
 ```
 
-Ripgrep JSON出力フォーマットのサブセット
+正規表現マッチ結果を表します
 
 ### RgBegin
 
@@ -597,7 +593,7 @@ interface RgBegin {
 }
 ```
 
-ripgrepの検索開始メッセージ
+検索開始メッセージ型
 
 ### RgEnd
 
@@ -619,7 +615,7 @@ interface RgEnd {
 }
 ```
 
-ripgrepの検索終了メッセージ
+検索終了メッセージ型
 
 ### ManifestEntry
 
@@ -631,7 +627,7 @@ interface ManifestEntry {
 }
 ```
 
-マニフェストエントリ
+マニフェストエントリ情報
 
 ### IndexMetadata
 
@@ -647,8 +643,6 @@ interface IndexMetadata {
 }
 ```
 
-インデックスのメタデータ構造
-
 ### ShardHeader
 
 ```typescript
@@ -660,7 +654,7 @@ interface ShardHeader {
 }
 ```
 
-シャードヘッダー構造
+シャードヘッダー定義
 
 ### CodeEmbedding
 
@@ -721,7 +715,7 @@ interface SemanticIndexOutput {
 }
 ```
 
-セマンティックインデックスの出力結果
+セマンティックインデックスの出力
 
 ### SemanticSearchInput
 
@@ -736,7 +730,7 @@ interface SemanticSearchInput {
 }
 ```
 
-セマンティック検索の入力パラメータ
+検索の入力設定
 
 ### SemanticSearchResult
 
@@ -750,7 +744,7 @@ interface SemanticSearchResult {
 }
 ```
 
-セマンティック検索の結果アイテム
+単一の検索結果
 
 ### SemanticSearchOutput
 
@@ -763,7 +757,7 @@ interface SemanticSearchOutput {
 }
 ```
 
-セマンティック検索の出力結果
+検索結果の出力形式
 
 ### SemanticIndexMetadata
 
@@ -780,7 +774,7 @@ interface SemanticIndexMetadata {
 }
 ```
 
-セマンティックインデックスのメタデータ
+インデックスのメタデータ
 
 ## 型定義
 
@@ -798,7 +792,7 @@ type FileCandidatesOutput = SearchResponse<FileCandidate>
 type SymFindOutput = SearchResponse<SymbolDefinition>
 ```
 
-シンボル検索の出力型
+シンボル検索の出力結果
 
 ### RgOutput
 
@@ -806,7 +800,7 @@ type SymFindOutput = SearchResponse<SymbolDefinition>
 type RgOutput = RgMatch | RgBegin | RgEnd
 ```
 
-ripgrepの出力型（マッチ、開始、終了）
+ripgrep出力の共用体型
 
 ### IndexManifest
 
@@ -814,7 +808,7 @@ ripgrepの出力型（マッチ、開始、終了）
 type IndexManifest = Record<string, ManifestEntry>
 ```
 
-インデックスマニフェスト構造
+インデックスマニフェスト型
 
 ---
-*自動生成: 2026-02-18T14:31:30.865Z*
+*自動生成: 2026-02-18T15:54:41.327Z*

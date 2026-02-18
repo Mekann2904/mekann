@@ -23,13 +23,13 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `findNodesByName` | 名前を指定してノードを検索する |
-| 関数 | `findNodeById` | IDに一致するノードを検索する。 |
+| 関数 | `findNodesByName` | 名前でノード検索 |
+| 関数 | `findNodeById` | ノードを検索 |
 | 関数 | `findNodesByFile` | ファイルパスでノードを検索 |
 | 関数 | `findCallers` | 指定されたシンボルを呼び出す全ての関数を検索します。 |
 | 関数 | `findCallees` | 指定されたシンボルから呼ばれる関数を検索する |
 | 関数 | `findCallPath` | 2つのシンボル間の呼び出し経路を探索する |
-| 関数 | `getNodeStats` | 呼び出しグラフのノード統計情報を取得する |
+| 関数 | `getNodeStats` | ノード統計取得 |
 
 ## 図解
 
@@ -103,7 +103,7 @@ sequenceDiagram
 findNodesByName(index: CallGraphIndex, symbolName: string): CallGraphNode[]
 ```
 
-名前を指定してノードを検索する
+名前でノード検索
 
 **パラメータ**
 
@@ -120,7 +120,7 @@ findNodesByName(index: CallGraphIndex, symbolName: string): CallGraphNode[]
 findNodeById(index: CallGraphIndex, nodeId: string): CallGraphNode | undefined
 ```
 
-IDに一致するノードを検索する。
+ノードを検索
 
 **パラメータ**
 
@@ -217,7 +217,7 @@ getNodeStats(index: CallGraphIndex, symbolName: string): {
 }
 ```
 
-呼び出しグラフのノード統計情報を取得する
+ノード統計取得
 
 **パラメータ**
 
@@ -246,4 +246,4 @@ interface CallerSearchState {
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.802Z*
+*自動生成: 2026-02-18T15:54:41.256Z*

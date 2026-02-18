@@ -1,25 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/index.ts
- * role: バレルエクスポート（後方互換性維持用の統合エントリポイント）
- * why: 既存コードのimportパスを維持しつつ、将来的な廃止に向けた移行期間を提供する
- * related: lib/core.ts, lib/agent.ts, lib/storage.ts, lib/tui/live-monitor-base.ts
- * public_api: core.ts, agent.ts, storage.ts, live-monitor-base.ts, skill-registry.ts, semantic-repetition.ts, intent-aware-limits.ts の全エクスポート
- * invariants: core.ts, agent.ts, storage.ts から全てのエクスポートを再エクスポートすること
- * side_effects: なし（純粋な再エクスポートのみ）
- * failure_modes: 推奨エントリポイントへの移行が完了した後の削除時、古いimportパスを使用するコードでのコンパイルエラー
+ * role: 非推奨の集約エントリーポイント
+ * why: コード移行期間中の後方互換性維持のため
+ * related: lib/core.ts, lib/agent.ts, lib/storage.ts
+ * public_api: core, agent, storage, tui, skill-registry等の全再エクスポート
+ * invariants: コメントで@deprecatedが付与されている
+ * side_effects: モジュール解析時に依存ファイルを読み込む
+ * failure_modes: 移行完了後の削除漏れによる循環参照リスク
  * @abdd.explain
- * overview: 非推奨のバレルエクスポートファイル。3つのフォーカスドエントリポイントと追加のLayer 2/3ユーティリティを集約して再エクスポートする。
+ * overview: 個別のエントリーポイントへ再エクスポートを行う廃止予定のバレルファイル
  * what_it_does:
- *   - core.ts（Layer 0: エラー、バリデーション、フォーマット）、agent.ts（Layer 1: エージェント型/ユーティリティ）、storage.ts（Layer 2/3: 埋め込み、メモリ、スケジューリング）からの再エクスポート
- *   - tui/live-monitor-base.ts（TUIライブモニター）、skill-registry.ts（スキル管理）、semantic-repetition.ts（意味的繰り返し検出）、intent-aware-limits.ts（インテント分類）からの再エクスポート
- *   - 新規コードは各フォーカスドエントリポイントから直接インポートすべきことを示す非推奨警告の提供
+ *   - core.ts, agent.ts, storage.ts, tui等のモジュールを再エクスポートする
+ *   - 移行ガイドへ誘導する警告を出力する
  * why_it_exists:
- *   - 既存のimportパス（from "./lib/index.js"）を使用するコードの後方互換性維持
- *   - 段階的な移行期間の提供（core/agent/storageへの分割後も旧パスを動作させる）
+ *   - 個別インポートへの移行を促進するため
+ *   - 既存コードの破壊的変更を防ぐため
  * scope:
- *   in: なし（再エクスポートのみ）
- *   out: 統合された全モジュールの公開API
+ *   in: コードベース全体のモジュール
+ *   out: このファイルをインポートする呼び出し元
  */
 
 /**

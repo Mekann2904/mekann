@@ -25,19 +25,19 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `resolveSkills` | 複数のスキルを参照から解決する |
-| 関数 | `mergeSkills` | 継承ルールに従ってスキルをマージする |
+| 関数 | `resolveSkills` | スキルを解決する |
+| 関数 | `mergeSkills` | スキルをマージする |
 | 関数 | `mergeSkillArrays` | スキル配列をマージする |
-| 関数 | `formatSkillsForPrompt` | 解決済みスキルをプロンプト用に整形する |
-| 関数 | `formatSkillsWithContent` | 解決済みスキルをフルコンテンツ付きでフォーマットする |
-| 関数 | `loadSkillsForAgent` | サブエージェント用のスキルを読み込み解決する |
+| 関数 | `formatSkillsForPrompt` | - |
+| 関数 | `formatSkillsWithContent` | - |
+| 関数 | `loadSkillsForAgent` | サブエージェントのスキル解決 |
 | 関数 | `validateSkillReferences` | スキル参照を検証 |
-| インターフェース | `SkillDefinition` | pi-coreのSkillインターフェースに対応する定義 |
-| インターフェース | `ResolvedSkill` | コンテンツが読み込まれた解決済みスキル |
+| インターフェース | `SkillDefinition` | スキル定義 |
+| インターフェース | `ResolvedSkill` | スキル解決結果 |
 | インターフェース | `ResolveSkillsOptions` | スキル解決のオプション |
 | インターフェース | `SkillMergeConfig` | スキル継承のマージ設定 |
 | インターフェース | `ResolveSkillsResult` | スキル解決の結果 |
-| 型 | `SkillReference` | スキル名またはパスを表す文字列 |
+| 型 | `SkillReference` | スキル参照 |
 
 ## 図解
 
@@ -258,7 +258,7 @@ Resolve skill content from file
 resolveSkills(references: SkillReference[], options: ResolveSkillsOptions): ResolveSkillsResult
 ```
 
-複数のスキルを参照から解決する
+スキルを解決する
 
 **パラメータ**
 
@@ -275,7 +275,7 @@ resolveSkills(references: SkillReference[], options: ResolveSkillsOptions): Reso
 mergeSkills(config: SkillMergeConfig, options: ResolveSkillsOptions): ResolveSkillsResult
 ```
 
-継承ルールに従ってスキルをマージする
+スキルをマージする
 
 **パラメータ**
 
@@ -309,8 +309,6 @@ mergeSkillArrays(parentSkills: SkillReference[] | undefined, childSkills: SkillR
 formatSkillsForPrompt(skills: ResolvedSkill[]): string
 ```
 
-解決済みスキルをプロンプト用に整形する
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -324,8 +322,6 @@ formatSkillsForPrompt(skills: ResolvedSkill[]): string
 ```typescript
 formatSkillsWithContent(skills: ResolvedSkill[]): string
 ```
-
-解決済みスキルをフルコンテンツ付きでフォーマットする
 
 **パラメータ**
 
@@ -357,7 +353,7 @@ Escape special characters for XML
 loadSkillsForAgent(skillReferences: SkillReference[] | undefined, parentSkillReferences: SkillReference[] | undefined, cwd: string): { promptSection: string; skills: ResolvedSkill[]; errors: string[] }
 ```
 
-サブエージェント用のスキルを読み込み解決する
+サブエージェントのスキル解決
 
 **パラメータ**
 
@@ -401,7 +397,7 @@ interface SkillDefinition {
 }
 ```
 
-pi-coreのSkillインターフェースに対応する定義
+スキル定義
 
 ### ResolvedSkill
 
@@ -411,7 +407,7 @@ interface ResolvedSkill {
 }
 ```
 
-コンテンツが読み込まれた解決済みスキル
+スキル解決結果
 
 ### ResolveSkillsOptions
 
@@ -457,7 +453,7 @@ interface ResolveSkillsResult {
 type SkillReference = string
 ```
 
-スキル名またはパスを表す文字列
+スキル参照
 
 ---
-*自動生成: 2026-02-18T14:31:31.026Z*
+*自動生成: 2026-02-18T15:54:41.519Z*

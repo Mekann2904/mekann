@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerDynamicToolsExtension` | 動的ツールの拡張機能を登録します。 |
+| 関数 | `registerDynamicToolsExtension` | 動的ツール拡張を登録 |
 
 ## ユーザーフロー
 
@@ -51,11 +51,11 @@ sequenceDiagram
   User->>System: 動的ツールを生成します。TypeScriptコードを指定して新しいツールを作成します。
   System->>Executor: create_tool: 動的ツールを生成
   Executor->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
-  Executor->>Internal: レジストリのシングルトンインスタンスを取得
+  Executor->>Internal: レジストリ取得
   Executor->>Unresolved: input.name.trim (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
   Executor->>Unresolved: /^[a-z][a-z0-9_-]*$/i.test (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Internal: 高リスクタスクか判定する
+  Executor->>Internal: リスク判定
   Internal->>Unresolved: HIGH_STAKES_PATTERNS.some (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Storage: writeAuditLog
   Storage->>Internal: getAuditLogPath
@@ -80,7 +80,7 @@ sequenceDiagram
   Internal->>Unresolved: issueTypes.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Internal: コードの品質を評価する
+  Executor->>Internal: 品質評価
   Internal->>Internal: extractFunctionLengths
   Internal->>Unresolved: code.match (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Object.entries (node_modules/typescript/lib/lib.es2017.object.d.ts)
@@ -113,7 +113,7 @@ sequenceDiagram
   User->>System: 登録済みの動的ツールを実行します。tool_idまたはtool_nameでツールを指定します。
   System->>Executor: run_dynamic_tool: 動的ツールを実行
   Executor->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
-  Executor->>Internal: レジストリのシングルトンインスタンスを取得
+  Executor->>Internal: レジストリ取得
   Executor->>Unresolved: registry.getById (.pi/lib/dynamic-tools/registry.ts)
   Executor->>Unresolved: registry.findByName (.pi/lib/dynamic-tools/registry.ts)
   Executor->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
@@ -122,7 +122,7 @@ sequenceDiagram
   Executor->>Unresolved: missingParams.join (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Executor: 動的ツールを実行
   Executor->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Judge: 高速な安全性チェック（詳細解析なし）
+  Executor->>Judge: 安全性分析実行
   Judge->>Unresolved: pattern.pattern.test (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: Promise.race (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
@@ -132,7 +132,7 @@ sequenceDiagram
   Executor->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: setTimeout
   Executor->>Unresolved: registry.recordUsage (.pi/lib/dynamic-tools/registry.ts)
-  Executor->>Internal: 実行メトリクスを記録する
+  Executor->>Internal: メトリクス記録
   Internal->>Unresolved: usageStatistics.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: usageStatistics.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
@@ -165,7 +165,7 @@ sequenceDiagram
 
   User->>System: 登録済みの動的ツール一覧を表示します。フィルタリングオプションを利用可能です。
   System->>Executor: list_dynamic_tools: ツール一覧を表示
-  Executor->>Internal: レジストリのシングルトンインスタンスを取得
+  Executor->>Internal: レジストリ取得
   Executor->>Unresolved: registry.search (.pi/lib/dynamic-tools/registry.ts)
   Executor->>Unresolved: new Date(tool.lastUsedAt).toLocaleString (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
@@ -192,7 +192,7 @@ sequenceDiagram
   User->>System: 登録済みの動的ツールを削除します。confirm: true で削除を確定します。
   System->>Executor: delete_dynamic_tool: ツールを削除
   Executor->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
-  Executor->>Internal: レジストリのシングルトンインスタンスを取得
+  Executor->>Internal: レジストリ取得
   Executor->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
   Executor->>Unresolved: registry.getById (.pi/lib/dynamic-tools/registry.ts)
   Executor->>Unresolved: registry.findByName (.pi/lib/dynamic-tools/registry.ts)
@@ -520,7 +520,7 @@ tool_reflection: 実行後の反省とツール生成判定
 registerDynamicToolsExtension(pi: ExtensionAPI): void
 ```
 
-動的ツールの拡張機能を登録します。
+動的ツール拡張を登録
 
 **パラメータ**
 
@@ -596,4 +596,4 @@ interface ToolReflectionInput {
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.717Z*
+*自動生成: 2026-02-18T15:54:41.172Z*

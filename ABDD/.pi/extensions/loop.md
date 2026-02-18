@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerLoopExtension` | 自動反復ループ実行ツールをExtensionAPIに登録 |
+| 関数 | `registerLoopExtension` | ループ機能を拡張する |
 
 ## ユーザーフロー
 
@@ -54,12 +54,12 @@ sequenceDiagram
   System->>Unresolved: String(params.task ?? '').trim (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: normalizeLoopConfig
-  Internal->>Internal: 整数値の検証と範囲制限を行う
+  Internal->>Internal: 整数値を検証・制限
   Internal->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: Boolean (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Storage: 参照情報を読み込む
+  System->>Storage: 参照読込
   Storage->>Internal: normalizeRefSpec
   Internal->>Unresolved: trimmed.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: trimmed.slice (node_modules/typescript/lib/lib.es5.d.ts)
@@ -69,7 +69,7 @@ sequenceDiagram
   Judge->>Judge: resolve
   Storage->>Storage: readFileSync
   Storage->>Unresolved: raw.split (node_modules/typescript/lib/lib.es5.d.ts)
-  Storage->>Internal: 不明なエラーを文字列メッセージに変換します
+  Storage->>Internal: メッセージを文字列化
   Storage->>Internal: throwIfAborted
   Storage->>Internal: loadSingleReference
   Storage->>Executor: truncateText
@@ -80,7 +80,7 @@ sequenceDiagram
   Executor->>Internal: render
   Executor->>Internal: setInterval
   Executor->>Internal: toPreview
-  Executor->>Internal: ミリ秒を読みやすい文字列に変換
+  Executor->>Internal: ミリ秒変換
   Internal->>Unresolved: Math.round (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: (ms / 1000).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: clearInterval
@@ -101,7 +101,7 @@ sequenceDiagram
   Executor->>Internal: mkdirSync
   Executor->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: appendJsonl
-  Internal->>Storage: ファイルロックを取得して関数を実行
+  Internal->>Storage: ロック取得実行
   Storage->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Storage->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
@@ -114,33 +114,33 @@ sequenceDiagram
   Internal->>Storage: appendFileSync
   Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: ループコマンドのプレビュー文字列を生成する
-  Executor->>Judge: 環境変数から検証ポリシーを解決する
+  Executor->>Judge: ポリシー設定解決
   Judge->>Unresolved: String(process.env[VERIFICATION_POLICY_ENV] || '')     .trim()     .toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Internal: タスクの意図を分類する
+  Executor->>Internal: 意図を分類
   Internal->>Unresolved: Object.entries (node_modules/typescript/lib/lib.es2017.object.d.ts)
   Internal->>Unresolved: regex.test (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Internal: 反復のフォーカス文字列を構築する
+  Executor->>Internal: 反復フォーカスを構築
   Internal->>Internal: extractNextStepLine
-  Executor->>Internal: イテレーション用のプロンプトを構築する
+  Executor->>Internal: プロンプト生成
   Internal->>Internal: buildReferencePack
-  Executor->>Internal: モデルの適切なタイムアウトを計算
+  Executor->>Internal: モデル別タイムアウト
   Internal->>Internal: getModelBaseTimeoutMs
   Internal->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>LLM: callModelViaPi
-  Executor->>LLM: LLM出力からループ契約を解析する
-  LLM->>Internal: parseLoopStatus
-  LLM->>Internal: parseLoopGoalStatus
-  LLM->>Internal: extractGoalEvidence
-  LLM->>Internal: extractCitations
-  LLM->>Internal: extractSummaryLine
-  LLM->>Internal: parseLoopJsonObject
-  LLM->>Internal: normalizeLoopStatus
-  LLM->>Internal: parseStructuredLoopGoalStatus
-  LLM->>Internal: normalizeStringArray
-  LLM->>Internal: normalizeCitationList
-  Executor->>Judge: イテレーションの入力値を検証し、エラーを返す
+  Executor->>Internal: 契約解析
+  Internal->>Internal: parseLoopStatus
+  Internal->>Internal: parseLoopGoalStatus
+  Internal->>Internal: extractGoalEvidence
+  Internal->>Internal: extractCitations
+  Internal->>Internal: extractSummaryLine
+  Internal->>Internal: parseLoopJsonObject
+  Internal->>Internal: normalizeLoopStatus
+  Internal->>Internal: parseStructuredLoopGoalStatus
+  Internal->>Internal: normalizeStringArray
+  Internal->>Internal: normalizeCitationList
+  Executor->>Judge: 入力値検証
   Judge->>Unresolved: input.citations.filter (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Executor: 検証コマンドを実行すべきか判定する
+  Executor->>Executor: 実行可否判定
   Executor->>Executor: 検証コマンドを実行する
   Executor->>Internal: parseVerificationCommand
   Executor->>Internal: resolveVerificationAllowlistPrefixes
@@ -157,29 +157,29 @@ sequenceDiagram
   Executor->>Internal: removeEventListener
   Executor->>Internal: addEventListener
   Executor->>Unresolved: child.stdout.on (node_modules/@types/node/stream.d.ts)
-  Executor->>Internal: 検証結果からフィードバックメッセージを生成する
+  Executor->>Internal: フィードバック生成
   Internal->>Unresolved: reason.replace (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Internal: 完了宣言のフィードバックを構築する
-  Executor->>Internal: バリデーションエラーを正規化・整形する
+  Executor->>Internal: フィードバックを構築
+  Executor->>Internal: フィードバック正規化
   Internal->>Unresolved: errors     .map (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: normalizeValidationIssue
   Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: unique.sort (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: validationIssuePriority
-  Executor->>Internal: イテレーション失敗時の出力を生成する
-  Executor->>Internal: 出力の意味的な重複を検出する
+  Executor->>Internal: 失敗出力生成
+  Executor->>Internal: 重複を検出
   Internal->>Internal: normalizeText
-  Internal->>Internal: デフォルトのエンベディングプロバイダーを取得
+  Internal->>Internal: プロバイダ取得
   Internal->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
-  Internal->>Internal: エンベディングを生成する
-  Internal->>Internal: 2つのベクトル間のコサイン類似度を計算
+  Internal->>Internal: ベクトル生成
+  Internal->>Internal: コサイン類似度計算
   Internal->>Unresolved: Math.sqrt (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Internal: ループ出力を正規化する
-  Executor->>Internal: 意図に応じた予算を取得する。
+  Executor->>Internal: 出力を正規化
+  Executor->>Internal: 予算を取得
   Executor->>Unresolved: semanticStagnationStats.similarities.reduce (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Internal: ループ結果の本文を抽出する
+  Executor->>Internal: 結果本文抽出
   Internal->>Internal: extractTaggedBlock
-  Executor->>Storage: テキストファイルをアトミックに書き込む
+  Executor->>Storage: テキスト書込
   Storage->>Storage: writeFileSync
   Storage->>Internal: renameSync
   Executor->>Storage: writeLatestSummarySnapshot
@@ -372,7 +372,7 @@ sequenceDiagram
 registerLoopExtension(pi: ExtensionAPI): void
 ```
 
-自動反復ループ実行ツールをExtensionAPIに登録
+ループ機能を拡張する
 
 **パラメータ**
 
@@ -896,4 +896,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.779Z*
+*自動生成: 2026-02-18T15:54:41.236Z*

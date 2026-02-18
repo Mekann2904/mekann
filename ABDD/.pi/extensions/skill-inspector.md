@@ -20,7 +20,6 @@ related: []
 // from 'node:path': join, basename
 // from '@mariozechner/pi-coding-agent': parseFrontmatter
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
-// from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
 
 ## エクスポート一覧
@@ -141,7 +140,6 @@ flowchart LR
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
-    _mariozechner["@mariozechner"]
     _mariozechner["@mariozechner"]
     _mariozechner["@mariozechner"]
   end
@@ -386,4 +384,4 @@ interface TeamFrontmatter {
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.894Z*
+*自動生成: 2026-02-18T15:54:41.361Z*

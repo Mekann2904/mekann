@@ -17,10 +17,10 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getModelBaseTimeoutMs` | モデルの基本タイムアウトを取得 |
-| 関数 | `computeModelTimeoutMs` | モデルの適切なタイムアウトを計算 |
-| 関数 | `computeProgressiveTimeoutMs` | 再試行回数に応じて増加するタイムアウトを計算 |
-| インターフェース | `ComputeModelTimeoutOptions` | モデルのタイムアウト計算オプション |
+| 関数 | `getModelBaseTimeoutMs` | モデル基本タイムアウト取得 |
+| 関数 | `computeModelTimeoutMs` | モデルごとのタイムアウト計算 |
+| 関数 | `computeProgressiveTimeoutMs` | 漸進的タイムアウト計算 |
+| インターフェース | `ComputeModelTimeoutOptions` | 計算オプション |
 
 ## 図解
 
@@ -53,7 +53,7 @@ flowchart TD
 getModelBaseTimeoutMs(modelId: string): number
 ```
 
-モデルの基本タイムアウトを取得
+モデル基本タイムアウト取得
 
 **パラメータ**
 
@@ -69,7 +69,7 @@ getModelBaseTimeoutMs(modelId: string): number
 computeModelTimeoutMs(modelId: string, options?: ComputeModelTimeoutOptions): number
 ```
 
-モデルの適切なタイムアウトを計算
+モデルごとのタイムアウト計算
 
 **パラメータ**
 
@@ -86,7 +86,7 @@ computeModelTimeoutMs(modelId: string, options?: ComputeModelTimeoutOptions): nu
 computeProgressiveTimeoutMs(baseTimeoutMs: number, attempt: number): number
 ```
 
-再試行回数に応じて増加するタイムアウトを計算
+漸進的タイムアウト計算
 
 **パラメータ**
 
@@ -108,7 +108,7 @@ interface ComputeModelTimeoutOptions {
 }
 ```
 
-モデルのタイムアウト計算オプション
+計算オプション
 
 ---
-*自動生成: 2026-02-18T14:31:30.998Z*
+*自動生成: 2026-02-18T15:54:41.492Z*

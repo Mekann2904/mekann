@@ -1,37 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/kitty-status-integration.ts
- * role: kittyターミナル向けの作業状態通知・ウィンドウタイトル制御エクステンション
- * why: piの長時間タスクの進捗をOS通知とタイトル変更でユーザーにフィードバックするため
- * related: ExtensionAPI, child_process, @mariozechner/pi-coding-agent
- * public_api: なし（エクステンションとしてpi本体に統合される内部モジュール）
- * invariants:
- *   - KITTY_WINDOW_ID環境変数が未設定の場合は全機能がno-op
- *   - サウンド再生はmacOS限定で動作
- *   - spawnはdetached + unrefで非同期実行され親プロセスをブロックしない
- * side_effects:
- *   - stdoutへのOSCエスケープシーケンス出力（タイトル設定、kittyネイティブ通知）
- *   - osascriptによるmacOS通知センターへの通知送信
- *   - afplayによるサウンドファイル再生
- * failure_modes:
- *   - osascript実行失敗時はエラーログ出力して処理継続
- *   - afplay実行失敗時はエラーログ出力して処理継続
- *   - kitty以外のターミナルでは全機能が無効化される
+ * role: kittyターミナル統合エクステンション
+ * why: piの作業状態をkittyのウィンドウタイトルや通知システムへ連携するため
+ * related: @mariozechner/pi-coding-agent, child_process
+ * public_api: setWindow, notify
+ * invariants: kitty以外のターミナルでは標準出力へのエスケープシーケンス出力と通知発火を行わない
+ * side_effects: プロセス標準出力への書き込み、osascript/afplayプロセスの生成
+ * failure_modes: 外部コマンド(osascript, afplay)の実行失敗時はエラーをログ出力して処理を継続する
  * @abdd.explain
- * overview: kittyターミナルのshell integration機能を活用し、piエージェントの作業状態をOSレベルの通知とウィンドウタイトルで可視化する
+ * overview: kittyのshell integrationを利用し、piのエージェント状態可視化と通知を行う
  * what_it_does:
- *   - 環境変数KITTY_WINDOW_IDの有無でkittyターミナルを判定
- *   - OSCエスケープシーケンスでウィンドウタイトル/タブ名を動的変更
- *   - macOSではosascript経由で通知センターに通知、他プラットフォームではkittyネイティブ通知を使用
- *   - macOSでのみafplayコマンドでサウンド再生（成功時Tink、エラー時Basso）
- *   - 通知有無、サウンド有無、通知センター有無をNotificationOptionsで制御
+ *   - kittyのウィンドウタイトルとタブ名をエスケープシーケンスで設定する
+ *   - macOSではAppleScriptとafplayを用いて通知とシステムサウンドを再生する
+ *   - Linuxではkittyネイティブ通知を表示する
+ *   - 実行環境がkittyかどうかを環境変数KITTY_WINDOW_IDで判定する
  * why_it_exists:
- *   - 長時間実行されるコーディングタスクの完了をユーザーに即座に知らせるため
- *   - ターミナルウィンドウのタイトルで現在のpiの状態を常時表示するため
- *   - kitty以外の環境では透過的に無効化し互換性問題を回避するため
+ *   - ユーザーがターミナル操作中にpiの状態を非干渉で把握するため
+ *   - プラットフォームごとの最適な通知手段（macOS通知センター、kitty通知）を提供するため
  * scope:
- *   in: piエージェントからの状態変更イベント、NotificationOptionsによる設定
- *   out: ターミナル画面への表示変更、OS通知、サウンド再生
+ *   in: piのExtensionAPIコールバック、通知設定オブジェクト
+ *   out: 標準出力(ESCシーケンス)、OSの通知サブシステム、サウンド再生プロセス
  */
 
 /**

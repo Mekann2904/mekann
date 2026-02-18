@@ -28,19 +28,19 @@ related: []
 |------|------|------|
 | 関数 | `extractCodeStructure` | コード構造を抽出する |
 | インターフェース | `ExtractOptions` | 構造抽出オプション |
-| インターフェース | `FunctionInfo` | 関数の構造情報を表すインターフェース |
+| インターフェース | `FunctionInfo` | 関数情報を定義 |
 | インターフェース | `ParameterInfo` | 関数のパラメータ情報 |
 | インターフェース | `ClassInfo` | クラスの構造情報を表します。 |
-| インターフェース | `MethodInfo` | メソッドの構造情報 |
-| インターフェース | `PropertyInfo` | プロパティの情報を表すインターフェース |
-| インターフェース | `InterfaceInfo` | インターフェースの構造情報 |
-| インターフェース | `InterfacePropertyInfo` | インターフェースプロパティの情報 |
-| インターフェース | `InterfaceMethodInfo` | インターフェースメソッド情報 |
-| インターフェース | `ImportInfo` | インポート情報 |
+| インターフェース | `MethodInfo` | メソッドの構造情報を表すインターフェース |
+| インターフェース | `PropertyInfo` | プロパティ情報を表す |
+| インターフェース | `InterfaceInfo` | インターフェースのプロパティ情報を表す |
+| インターフェース | `InterfacePropertyInfo` | インターフェースのメソッド情報を表す |
+| インターフェース | `InterfaceMethodInfo` | インポート情報を表すインターフェース |
+| インターフェース | `ImportInfo` | エクスポート情報を表すインターフェース |
 | インターフェース | `ExportInfo` | エクスポート情報 |
-| インターフェース | `FileStructure` | ファイル構造を表すインターフェース |
-| インターフェース | `StructureData` | コード構造解析データの全体像 |
-| インターフェース | `DependencyGraph` | 依存関係グラフ |
+| インターフェース | `FileStructure` | 単一ファイルの構造情報 |
+| インターフェース | `StructureData` | 構造解析結果データ |
+| インターフェース | `DependencyGraph` | 依存関係グラフデータ |
 
 ## 図解
 
@@ -573,7 +573,7 @@ interface FunctionInfo {
 }
 ```
 
-関数の構造情報を表すインターフェース
+関数情報を定義
 
 ### ParameterInfo
 
@@ -621,7 +621,7 @@ interface MethodInfo {
 }
 ```
 
-メソッドの構造情報
+メソッドの構造情報を表すインターフェース
 
 ### PropertyInfo
 
@@ -636,7 +636,7 @@ interface PropertyInfo {
 }
 ```
 
-プロパティの情報を表すインターフェース
+プロパティ情報を表す
 
 ### InterfaceInfo
 
@@ -653,7 +653,7 @@ interface InterfaceInfo {
 }
 ```
 
-インターフェースの構造情報
+インターフェースのプロパティ情報を表す
 
 ### InterfacePropertyInfo
 
@@ -667,7 +667,7 @@ interface InterfacePropertyInfo {
 }
 ```
 
-インターフェースプロパティの情報
+インターフェースのメソッド情報を表す
 
 ### InterfaceMethodInfo
 
@@ -680,7 +680,7 @@ interface InterfaceMethodInfo {
 }
 ```
 
-インターフェースメソッド情報
+インポート情報を表すインターフェース
 
 ### ImportInfo
 
@@ -695,7 +695,7 @@ interface ImportInfo {
 }
 ```
 
-インポート情報
+エクスポート情報を表すインターフェース
 
 ### ExportInfo
 
@@ -725,7 +725,7 @@ interface FileStructure {
 }
 ```
 
-ファイル構造を表すインターフェース
+単一ファイルの構造情報
 
 ### StructureData
 
@@ -743,7 +743,7 @@ interface StructureData {
 }
 ```
 
-コード構造解析データの全体像
+構造解析結果データ
 
 ### DependencyGraph
 
@@ -754,7 +754,7 @@ interface DependencyGraph {
 }
 ```
 
-依存関係グラフ
+依存関係グラフデータ
 
 ### VisitorCallbacks
 
@@ -769,4 +769,4 @@ interface VisitorCallbacks {
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.653Z*
+*自動生成: 2026-02-18T15:54:41.107Z*

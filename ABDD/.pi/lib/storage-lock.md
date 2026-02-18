@@ -24,9 +24,9 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `withFileLock` | ファイルロックを取得して関数を実行 |
-| 関数 | `atomicWriteTextFile` | テキストファイルをアトミックに書き込む |
-| インターフェース | `FileLockOptions` | ファイルロックのオプション設定 |
+| 関数 | `withFileLock` | - |
+| 関数 | `atomicWriteTextFile` | - |
+| インターフェース | `FileLockOptions` | - |
 
 ## 図解
 
@@ -157,8 +157,6 @@ clearStaleLock(lockFile: string, staleMs: number): void
 withFileLock(targetFile: string, fn: () => T, options?: FileLockOptions): T
 ```
 
-ファイルロックを取得して関数を実行
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -174,8 +172,6 @@ withFileLock(targetFile: string, fn: () => T, options?: FileLockOptions): T
 ```typescript
 atomicWriteTextFile(filePath: string, content: string): void
 ```
-
-テキストファイルをアトミックに書き込む
 
 **パラメータ**
 
@@ -198,7 +194,5 @@ interface FileLockOptions {
 }
 ```
 
-ファイルロックのオプション設定
-
 ---
-*自動生成: 2026-02-18T14:31:31.030Z*
+*自動生成: 2026-02-18T15:54:41.524Z*

@@ -17,28 +17,28 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `shouldTriggerVerification` | 検証が必要かどうかを判断 |
-| 関数 | `isHighStakesTask` | 高リスクタスクか判定する |
+| 関数 | `shouldTriggerVerification` | 検証が必要か判断 |
+| 関数 | `isHighStakesTask` | 高リスクタスク判定 |
 | 関数 | `resolveVerificationConfig` | 検証設定を解決 |
-| 関数 | `buildInspectorPrompt` | Inspectorプロンプトを生成 |
-| 関数 | `buildChallengerPrompt` | Challengerプロンプトを生成する |
-| 関数 | `synthesizeVerificationResult` | 検証結果を統合 |
-| 関数 | `getVerificationWorkflowRules` | 検証ワークフロー実行ルールを取得 |
+| 関数 | `buildInspectorPrompt` | 検査用プロンプトを構築 |
+| 関数 | `buildChallengerPrompt` | 挑戦者用プロンプトを作成する |
+| 関数 | `synthesizeVerificationResult` | 検証結果を統合する |
+| 関数 | `getVerificationWorkflowRules` | ワークフールールを取得する |
 | インターフェース | `VerificationWorkflowConfig` | 検証ワークフローの設定 |
-| インターフェース | `ChallengerConfig` | チャレンジ動作の設定 |
-| インターフェース | `InspectorConfig` | 検証プロセスのインスペクタ設定 |
-| インターフェース | `VerificationResult` | 検証ワークフローの結果を表すインターフェース |
-| インターフェース | `InspectorOutput` | インスペクターの出力結果を表すインターフェース |
-| インターフェース | `DetectedPattern` | 検出されたパターン情報を表すインターフェース |
-| インターフェース | `ChallengerOutput` | 検証作業の出力結果を表すインターフェース |
-| インターフェース | `ChallengedClaim` | チャレンジ対象の主張を表すインターフェース |
+| インターフェース | `ChallengerConfig` | チャレンジャー設定インターフェース |
+| インターフェース | `InspectorConfig` | 検査者の設定 |
+| インターフェース | `VerificationResult` | 検証結果を表す |
+| インターフェース | `InspectorOutput` | 検査官の結果出力を表す |
+| インターフェース | `DetectedPattern` | 検出されたパターンを表す |
+| インターフェース | `ChallengerOutput` | 検証の結果出力を表す |
+| インターフェース | `ChallengedClaim` | 挑戦された主張を表す |
 | インターフェース | `VerificationContext` | 検証のコンテキスト情報 |
-| 型 | `VerificationTriggerMode` | 検証トリガーのモードを表す型 |
-| 型 | `FallbackBehavior` | - |
-| 型 | `ChallengeCategory` | チャレンジのカテゴリ種別 |
+| 型 | `VerificationTriggerMode` | 検証トリガーのモード定義 |
+| 型 | `FallbackBehavior` | フォールバック時の動作方針 |
+| 型 | `ChallengeCategory` | チャレンジのカテゴリ |
 | 型 | `SuspicionThreshold` | 疑わしさの閾値レベル |
-| 型 | `InspectionPattern` | 検証パターンの種別を表す共用型。 |
-| 型 | `VerificationVerdict` | - |
+| 型 | `InspectionPattern` | 検査パターン定義 |
+| 型 | `VerificationVerdict` | 検証の最終判定結果 |
 
 ## 図解
 
@@ -155,7 +155,7 @@ flowchart TD
 shouldTriggerVerification(output: string, confidence: number, context: VerificationContext): { trigger: boolean; reason: string }
 ```
 
-検証が必要かどうかを判断
+検証が必要か判断
 
 **パラメータ**
 
@@ -271,7 +271,7 @@ detectConfirmationBias(output: string): { detected: boolean; reason: string }
 isHighStakesTask(task: string): boolean
 ```
 
-高リスクタスクか判定する
+高リスクタスク判定
 
 **パラメータ**
 
@@ -297,7 +297,7 @@ resolveVerificationConfig(): VerificationWorkflowConfig
 buildInspectorPrompt(targetOutput: string, context: VerificationContext): string
 ```
 
-Inspectorプロンプトを生成
+検査用プロンプトを構築
 
 **パラメータ**
 
@@ -314,7 +314,7 @@ Inspectorプロンプトを生成
 buildChallengerPrompt(targetOutput: string, context: VerificationContext): string
 ```
 
-Challengerプロンプトを生成する
+挑戦者用プロンプトを作成する
 
 **パラメータ**
 
@@ -331,7 +331,7 @@ Challengerプロンプトを生成する
 synthesizeVerificationResult(originalOutput: string, originalConfidence: number, inspectorOutput: InspectorOutput | undefined, challengerOutput: ChallengerOutput | undefined, context: VerificationContext): VerificationResult
 ```
 
-検証結果を統合
+検証結果を統合する
 
 **パラメータ**
 
@@ -383,7 +383,7 @@ formatCategoryName(category: ChallengeCategory): string
 getVerificationWorkflowRules(): string
 ```
 
-検証ワークフロー実行ルールを取得
+ワークフールールを取得する
 
 **戻り値**: `string`
 
@@ -415,7 +415,7 @@ interface ChallengerConfig {
 }
 ```
 
-チャレンジ動作の設定
+チャレンジャー設定インターフェース
 
 ### InspectorConfig
 
@@ -427,7 +427,7 @@ interface InspectorConfig {
 }
 ```
 
-検証プロセスのインスペクタ設定
+検査者の設定
 
 ### VerificationResult
 
@@ -444,7 +444,7 @@ interface VerificationResult {
 }
 ```
 
-検証ワークフローの結果を表すインターフェース
+検証結果を表す
 
 ### InspectorOutput
 
@@ -457,7 +457,7 @@ interface InspectorOutput {
 }
 ```
 
-インスペクターの出力結果を表すインターフェース
+検査官の結果出力を表す
 
 ### DetectedPattern
 
@@ -470,7 +470,7 @@ interface DetectedPattern {
 }
 ```
 
-検出されたパターン情報を表すインターフェース
+検出されたパターンを表す
 
 ### ChallengerOutput
 
@@ -483,7 +483,7 @@ interface ChallengerOutput {
 }
 ```
 
-検証作業の出力結果を表すインターフェース
+検証の結果出力を表す
 
 ### ChallengedClaim
 
@@ -498,7 +498,7 @@ interface ChallengedClaim {
 }
 ```
 
-チャレンジ対象の主張を表すインターフェース
+挑戦された主張を表す
 
 ### VerificationContext
 
@@ -526,7 +526,7 @@ type VerificationTriggerMode = | "post-subagent"     // サブエージェント
   | "high-stakes"
 ```
 
-検証トリガーのモードを表す型
+検証トリガーのモード定義
 
 ### FallbackBehavior
 
@@ -535,6 +535,8 @@ type FallbackBehavior = | "warn"              // 警告のみ
   | "block"             // ブロックして再実行
   | "auto-reject"
 ```
+
+フォールバック時の動作方針
 
 ### ChallengeCategory
 
@@ -547,7 +549,7 @@ type ChallengeCategory = | "evidence-gap"      // 証拠の欠落
   | "causal-reversal"
 ```
 
-チャレンジのカテゴリ種別
+チャレンジのカテゴリ
 
 ### SuspicionThreshold
 
@@ -569,7 +571,7 @@ type InspectionPattern = | "claim-result-mismatch"    // CLAIMとRESULTの不一
   | "incomplete-reasoning"
 ```
 
-検証パターンの種別を表す共用型。
+検査パターン定義
 
 ### VerificationVerdict
 
@@ -581,5 +583,7 @@ type VerificationVerdict = | "pass"              // 検証通過
   | "blocked"
 ```
 
+検証の最終判定結果
+
 ---
-*自動生成: 2026-02-18T14:31:31.051Z*
+*自動生成: 2026-02-18T15:54:41.547Z*

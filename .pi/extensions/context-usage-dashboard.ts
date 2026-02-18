@@ -1,36 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/context-usage-dashboard.ts
- * role: コンテクスト使用量ダッシュボード表示拡張機能
- * why: ツールごとのコンテクスト占有傾向と空き容量を可視化し、拡張機能の取捨選択を支援するため
- * related: .pi/extensions/usage-tracker.ts, docs/extensions.md, README.md, .pi/lib/validation-utils.js
- * public_api: なし（拡張機能として登録され、ダッシュボードUIを提供）
- * invariants:
- *   - WEEK_MS = 604800000 (7日間のミリ秒) で直近1週間を集計期間とする
- *   - TOP_ROWS = 8 で上位ツール表示数を制限する
- *   - セッションデータは ~/.pi/agent/sessions 配下から読み込む
- *   - トークン推定は文字列長を4で割って概算する
- * side_effects:
- *   - ファイルシステムからのセッションデータ読み込み
- *   - ExtensionAPI経由でのダッシュボード表示出力
- * failure_modes:
- *   - セッションディレクトリが存在しない場合、空のデータを返す
- *   - JSONパース失敗時は空文字またはString()変換でフォールバック
- *   - 無限大/NaNの数値は0として処理
+ * role: コンテクスト使用量の可視化と分析を行う拡張機能
+ * why: ツールごとの占有傾向と空き容量を把握し、拡張機能の取捨選択を支援するため
+ * related: .pi/extensions/usage-tracker.ts, docs/extensions.md, README.md
+ * public_api: なし (ExtensionAPI経由での実行のみ)
+ * invariants: 週集計は過去7日間のデータに基づく, トークン数は整数値で扱う
+ * side_effects: ファイルシステムからの読み取り (セッションディレクトリ)
+ * failure_modes: セッションファイルの読み取りエラー, JSONパースエラー, 不正なトークン値の検出
  * @abdd.explain
- * overview: 現在のコンテキスト使用量と直近7日間の使用量・内訳を表示するダッシュボード拡張機能
+ * overview: 現在のコンテクスト使用量と過去7日間の使用統計を集計し、ダッシュボード形式で出力する機能
  * what_it_does:
- *   - 現在のセッションのコンテキスト使用状況（ユーザー/アシスタント/ツール/その他別トークン）を集計
- *   - ツールごとのコンテキスト占有トークン数と呼び出し回数を追跡
- *   - 直近7日間の使用量（input/output/cacheRead/cacheWrite別）とコストを集計
- *   - モデル別・ツール別の使用統計を生成
- *   - 空きトークン容量と参照総トークン数を計算
+ *   - セッションディレクトリをスキャンし、直近7日間の使用トークン数とコストを集計する
+ *   - 現在のスナップショットからツールごとの呼び出し回数とトークン使用量を計算する
+ *   - モデル別、ツール別の統計情報を生成し、トップN項目を抽出する
+ *   - 文字列や配列からのトークン数推定を行う補助計算を実行する
  * why_it_exists:
- *   - コンテキストウィンドウの容量を可視化し、どのツールが多く消費しているか把握するため
- *   - 拡張機能の有効/無効を判断するための定量データを提供するため
+ *   - コンテクスト容量の制限下で、どのツールがリソースを消費しているかを明確にする
+ *   - 過去の傾向を分析し、効率的な拡張機能の構成を判断する材料を提供する
+ *   - コスト管理とパフォーマンスの最適化を支援する
  * scope:
- *   in: ExtensionAPI, セッションファイル(JSON), ContextUsage, BranchSummaryEntry, CompactionEntry, CustomMessageEntry
- *   out: DashboardSnapshot(CurrentSnapshot, WeeklySnapshot)
+ *   in: ExtensionAPI (コールバックトリガー), ファイルシステム (.pi/agent/sessions)
+ *   out: なし (標準出力へ描画するのみ、状態は保持しない)
  */
 
 // .pi/extensions/context-usage-dashboard.ts

@@ -23,13 +23,13 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `appendTail` | 現在の末尾文字列にチャンクを追加し、最大長を制御する |
-| 関数 | `toTailLines` | 末尾の空白除去と行数制限を行う |
-| 関数 | `countOccurrences` | 文字列内の特定の文字列の出現回数を数える |
-| 関数 | `estimateLineCount` | バイト数と改行数に基づき行数を推定 |
-| 関数 | `looksLikeMarkdown` | Markdown形式の文字列か判定する |
-| 関数 | `renderPreviewWithMarkdown` | Markdown形式でプレビューを描画する |
-| インターフェース | `MarkdownPreviewResult` | マークダウンプレビューの結果を表します |
+| 関数 | `appendTail` | チャンクを追加し長さ制御 |
+| 関数 | `toTailLines` | 末尾の行を取得 |
+| 関数 | `countOccurrences` | 出現回数を数える |
+| 関数 | `estimateLineCount` | 行数を推定する |
+| 関数 | `looksLikeMarkdown` | 行数を推定する |
+| 関数 | `renderPreviewWithMarkdown` | Markdown形式で描画 |
+| インターフェース | `MarkdownPreviewResult` | Markdown描画結果 |
 
 ## 図解
 
@@ -97,7 +97,7 @@ sequenceDiagram
 appendTail(current: string, chunk: string, maxLength: any): string
 ```
 
-現在の末尾文字列にチャンクを追加し、最大長を制御する
+チャンクを追加し長さ制御
 
 **パラメータ**
 
@@ -115,7 +115,7 @@ appendTail(current: string, chunk: string, maxLength: any): string
 toTailLines(tail: string, limit: number): string[]
 ```
 
-末尾の空白除去と行数制限を行う
+末尾の行を取得
 
 **パラメータ**
 
@@ -132,7 +132,7 @@ toTailLines(tail: string, limit: number): string[]
 countOccurrences(input: string, target: string): number
 ```
 
-文字列内の特定の文字列の出現回数を数える
+出現回数を数える
 
 **パラメータ**
 
@@ -149,7 +149,7 @@ countOccurrences(input: string, target: string): number
 estimateLineCount(bytes: number, newlineCount: number, endsWithNewline: boolean): number
 ```
 
-バイト数と改行数に基づき行数を推定
+行数を推定する
 
 **パラメータ**
 
@@ -167,7 +167,7 @@ estimateLineCount(bytes: number, newlineCount: number, endsWithNewline: boolean)
 looksLikeMarkdown(input: string): boolean
 ```
 
-Markdown形式の文字列か判定する
+行数を推定する
 
 **パラメータ**
 
@@ -183,7 +183,7 @@ Markdown形式の文字列か判定する
 renderPreviewWithMarkdown(text: string, width: number, maxLines: number): MarkdownPreviewResult
 ```
 
-Markdown形式でプレビューを描画する
+Markdown形式で描画
 
 **パラメータ**
 
@@ -206,7 +206,7 @@ interface MarkdownPreviewResult {
 }
 ```
 
-マークダウンプレビューの結果を表します
+Markdown描画結果
 
 ---
-*自動生成: 2026-02-18T14:31:31.045Z*
+*自動生成: 2026-02-18T15:54:41.539Z*

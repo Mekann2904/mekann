@@ -17,11 +17,11 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `formatDuration` | ミリ秒を読みやすい文字列に変換 |
-| 関数 | `formatDurationMs` | ミリ秒単位の持続時間を文字列化 |
-| 関数 | `formatBytes` | バイト数を人間が読める形式に変換 |
-| 関数 | `formatClockTime` | タイムスタンプを時刻に変換 |
-| 関数 | `normalizeForSingleLine` | テキストを単一行用に正規化する |
+| 関数 | `formatDuration` | ミリ秒を時間文字列へ |
+| 関数 | `formatDurationMs` | 継続時間をフォーマット |
+| 関数 | `formatBytes` | バイト数をフォーマット |
+| 関数 | `formatClockTime` | 時刻をフォーマット |
+| 関数 | `normalizeForSingleLine` | 単一行文字列を正規化 |
 
 ## 図解
 
@@ -44,7 +44,7 @@ classDiagram
 formatDuration(ms: number): string
 ```
 
-ミリ秒を読みやすい文字列に変換
+ミリ秒を時間文字列へ
 
 **パラメータ**
 
@@ -60,7 +60,7 @@ formatDuration(ms: number): string
 formatDurationMs(item: DurationItem): string
 ```
 
-ミリ秒単位の持続時間を文字列化
+継続時間をフォーマット
 
 **パラメータ**
 
@@ -76,7 +76,7 @@ formatDurationMs(item: DurationItem): string
 formatBytes(value: number): string
 ```
 
-バイト数を人間が読める形式に変換
+バイト数をフォーマット
 
 **パラメータ**
 
@@ -92,7 +92,7 @@ formatBytes(value: number): string
 formatClockTime(value?: number): string
 ```
 
-タイムスタンプを時刻に変換
+時刻をフォーマット
 
 **パラメータ**
 
@@ -108,7 +108,7 @@ formatClockTime(value?: number): string
 normalizeForSingleLine(input: string, maxLength: any): string
 ```
 
-テキストを単一行用に正規化する
+単一行文字列を正規化
 
 **パラメータ**
 
@@ -133,4 +133,4 @@ interface DurationItem {
 Item with start and finish timestamps for duration calculation.
 
 ---
-*自動生成: 2026-02-18T14:31:30.993Z*
+*自動生成: 2026-02-18T15:54:41.485Z*

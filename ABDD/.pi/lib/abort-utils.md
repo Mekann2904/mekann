@@ -17,7 +17,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `createChildAbortController` | Creates a child AbortController that aborts when t |
+| 関数 | `createChildAbortController` | - |
 | 関数 | `createChildAbortControllers` | 親シグナルに連動する複数の子コントローラを作成 |
 
 ## 図解
@@ -38,9 +38,6 @@ flowchart TD
 ```typescript
 createChildAbortController(parentSignal?: AbortSignal): { controller: AbortController; cleanup: () => void }
 ```
-
-Creates a child AbortController that aborts when the parent signal aborts.
-Each child has its own signal, preventing listener accumulation on the parent.
 
 **パラメータ**
 
@@ -84,4 +81,4 @@ createChildAbortControllers(count: number, parentSignal?: AbortSignal): { contro
 **戻り値**: `{ controllers: AbortController[]; cleanup: () => void }`
 
 ---
-*自動生成: 2026-02-18T14:31:30.945Z*
+*自動生成: 2026-02-18T15:54:41.426Z*

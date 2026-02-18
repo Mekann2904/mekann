@@ -28,8 +28,8 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `renderSubagentLiveView` | サブエージェントのライブビューを描画する |
-| 関数 | `createSubagentLiveMonitor` | サブエージェントのライブモニターを作成する |
+| 関数 | `renderSubagentLiveView` | ライブビューを描画 |
+| 関数 | `createSubagentLiveMonitor` | ライブ監視コントローラ作成 |
 
 ## 図解
 
@@ -111,7 +111,7 @@ renderSubagentLiveView(input: {
 }): string[]
 ```
 
-サブエージェントのライブビューを描画する
+ライブビューを描画
 
 **パラメータ**
 
@@ -152,7 +152,7 @@ createSubagentLiveMonitor(ctx: any, input: {
   }): SubagentLiveMonitorController | undefined
 ```
 
-サブエージェントのライブモニターを作成する
+ライブ監視コントローラ作成
 
 **パラメータ**
 
@@ -190,4 +190,4 @@ close(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T14:31:30.898Z*
+*自動生成: 2026-02-18T15:54:41.370Z*

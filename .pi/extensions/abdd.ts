@@ -1,35 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/abdd.ts
- * role: ABDDツールセット統合拡張機能
- * why: 実態ドキュメント生成、JSDoc自動生成、乖離確認をCLI経由で実行可能にするため
- * related: scripts/generate-abdd.ts, @mariozechner/pi-coding-agent, @sinclair/typebox, node:child_process
- * public_api: default(pi: ExtensionAPI): void
- * invariants:
- *   - ROOT_DIR = process.cwd() で作業ディレクトリを固定
- *   - SCRIPTS_DIR = ROOT_DIR/scripts に生成スクリプトが存在
- *   - ABDD_DIR = ROOT_DIR/ABDD にドキュメントを出力
- * side_effects:
- *   - npx tsx scripts/generate-abdd.ts を子プロセスで実行
- *   - ABDD/ ディレクトリ配下にMarkdownファイルを生成・更新
- *   - mmdc (Mermaid CLI) がグローバルインストールされている場合、図検証を実行
- * failure_modes:
- *   - スクリプトファイルが存在しない場合、エラーメッセージを返却
- *   - 子プロセスが120秒でタイムアウトした場合、例外をキャッチしてエラー返却
- *   - mmdc未インストール時は図検証をスキップ（致命的エラーではない）
+ * role: ABDDツール統合拡張機能
+ * why: コード解析によるドキュメント自動生成とコードの乖離検知を行うため
+ * related: scripts/generate-abdd.ts, @mariozechner/pi-coding-agent
+ * public_api: abdd_generate, abdd_jsdoc
+ * invariants: 実行にはNode.js環境とscriptsディレクトリ配下のスクリプトが存在すること
+ * side_effects: ファイルシステムへの書き込み（ドキュメント生成、JSDoc挿入）、外部プロセス（npx tsx）の実行
+ * failure_modes: スクリプトファイル不在、タイムアウト(120秒)、Mermaid CLI未インストールによる図検証エラー
  * @abdd.explain
- * overview: ABDD (As-Built Driven Development) の3つのコアツール（実態ドキュメント生成、JSDoc自動生成、乖離確認）を提供する拡張機能
+ * overview: PIエージェント上でABDD（As-Built Driven Development）の各種ツールを実行するためのインターフェース定義
  * what_it_does:
- *   - abdd_generate: TypeScriptファイルを解析し、Mermaid図付きAPIリファレンスを生成
- *   - abdd_jsdoc: LLMを使用して日本語JSDocを生成し、ソースコードに挿入
- *   - 乖離タイプとして value_mismatch, invariant_violation, contract_breach, missing_jsdoc を定義
- *   - contract_breachは未実装（Phase 2以降でAST解析ベースの実装を検討）
+ *   - abdd_generate: TypeScriptファイルを解析し、Mermaid図付きのAPIリファレンス（実態ドキュメント）を生成する
+ *   - abdd_jsdoc: LLMを使用してソースコードに日本語JSDocを自動生成または挿入する
+ *   - スクリプト実行の引数制御（dryRun, verbose, checkモードなど）と結果のハンドリングを行う
  * why_it_exists:
- *   - 実装とドキュメントの乖離を自動検出・修正するワークフローを確立するため
- *   - PIエージェントからABDDツールを直接呼び出せるようにするため
+ *   - 開発プロセスにおけるドキュメント作成とコード注釈の手間を自動化により削減するため
+ *   - ドキュメントと実装コードの整合性を維持・確認する仕組みを提供するため
  * scope:
- *   in: ExtensionAPI, ツール呼び出しパラメータ(dryRun, check, verbose)
- *   out: ツール実行結果(成功/失敗、出力内容、エラー詳細)
+ *   in: ツール実行パラメータ（dryRun, check, verbose等のフラグ）
+ *   out: 標準出力への実行結果ログ、ファイルシステムへのMarkdown/TSファイル出力
  */
 
 /**
@@ -41,7 +31,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -510,11 +500,15 @@ CI用途: check: true でJSDocがない要素数を確認
 		description: `ABDD実行フローを統合実行。通常モード（fast）と厳格モード（strict）の2系統を提供。
 
 fast（通常）: generate-abddのみ実行。日常運用向け。高速。
-strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → generate-abdd。PR前・大規模変更向け。`,
+strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → generate-abdd。PR前・大規模変更向け。
+
+注意: 各ステップにはタイムアウト（デフォルト5分）が設定されています。LLM応答がない場合は自動的に次のステップに進みます。`,
 		parameters: Type.Object({
 			mode: Type.Optional(Type.String({ description: "実行モード: fast（デフォルト）または strict" })),
 			dryRun: Type.Optional(Type.Boolean({ description: "ドライラン" })),
 			verbose: Type.Optional(Type.Boolean({ description: "詳細ログ" })),
+			timeoutMs: Type.Optional(Type.Number({ description: "各ステップのタイムアウト（ミリ秒、デフォルト: 300000 = 5分）" })),
+			continueOnError: Type.Optional(Type.Boolean({ description: "エラー時も続行する（デフォルト: true）" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			const p = params as Record<string, unknown>;
@@ -529,61 +523,92 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
 
 			const dryRun = p.dryRun === true;
 			const verbose = p.verbose === true;
+			const timeoutMs = (p.timeoutMs as number) || 300000; // デフォルト5分
+			const continueOnError = p.continueOnError !== false; // デフォルトtrue
 			const baseArgs: string[] = [];
 			if (dryRun) baseArgs.push("--dry-run");
 			if (verbose) baseArgs.push("--verbose");
 
-			const results: { step: string; success: boolean; output: string }[] = [];
+			const results: { step: string; success: boolean; output: string; timedOut?: boolean }[] = [];
 
-			// 共通実行関数（リトライ付き）
-			const runStep = (stepName: string, scriptName: string, extraArgs: string[] = []): boolean => {
-				const scriptPath = path.join(SCRIPTS_DIR, scriptName);
-				if (!fs.existsSync(scriptPath)) {
-					results.push({ step: stepName, success: false, output: `スクリプトが見つかりません: ${scriptPath}` });
-					return false;
-				}
+			// spawnを使用したタイムアウト付き実行関数
+			const runStepAsync = (stepName: string, scriptName: string, extraArgs: string[] = []): Promise<boolean> => {
+				return new Promise((resolve) => {
+					const scriptPath = path.join(SCRIPTS_DIR, scriptName);
+					if (!fs.existsSync(scriptPath)) {
+						results.push({ step: stepName, success: false, output: `スクリプトが見つかりません: ${scriptPath}` });
+						resolve(false);
+						return;
+					}
 
-				const args = ["npx", "tsx", scriptPath, ...baseArgs, ...extraArgs];
-				try {
-					const result = execSync(args.join(" "), {
+					const args = ["tsx", scriptPath, ...baseArgs, ...extraArgs];
+					let stdout = "";
+					let stderr = "";
+
+					const childProcess = spawn("npx", args, {
 						cwd: ROOT_DIR,
-						encoding: "utf-8",
-						timeout: 300000,
+						shell: false,
 						stdio: ["pipe", "pipe", "pipe"],
 					});
-					results.push({ step: stepName, success: true, output: result.slice(-2000) });
-					return true;
-				} catch (error) {
-					// 1回リトライ
-					try {
-						const retryResult = execSync(args.join(" "), {
-							cwd: ROOT_DIR,
-							encoding: "utf-8",
-							timeout: 300000,
-							stdio: ["pipe", "pipe", "pipe"],
+
+					const timeoutId = setTimeout(() => {
+						childProcess.kill("SIGTERM");
+						results.push({
+							step: stepName,
+							success: false,
+							output: `タイムアウト (${timeoutMs / 1000}秒) - プロセスを終了しました\n${stdout.slice(-1000)}`,
+							timedOut: true,
 						});
-						results.push({ step: stepName, success: true, output: `(リトライ成功)\n${retryResult.slice(-2000)}` });
-						return true;
-					} catch (retryError) {
-						const errorMessage = retryError instanceof Error ? retryError.message : String(retryError);
-						results.push({ step: stepName, success: false, output: errorMessage });
-						return false;
-					}
-				}
+						resolve(false);
+					}, timeoutMs);
+
+					childProcess.stdout?.on("data", (data: Buffer) => {
+						stdout += data.toString();
+					});
+
+					childProcess.stderr?.on("data", (data: Buffer) => {
+						stderr += data.toString();
+					});
+
+					childProcess.on("close", (code) => {
+						clearTimeout(timeoutId);
+						if (code === 0) {
+							results.push({ step: stepName, success: true, output: stdout.slice(-2000) });
+							resolve(true);
+						} else {
+							results.push({
+								step: stepName,
+								success: false,
+								output: `終了コード: ${code}\n${stdout.slice(-1000)}\n${stderr.slice(-500)}`,
+							});
+							resolve(false);
+						}
+					});
+
+					childProcess.on("error", (error) => {
+						clearTimeout(timeoutId);
+						results.push({ step: stepName, success: false, output: `プロセスエラー: ${error.message}` });
+						resolve(false);
+					});
+				});
 			};
 
 			if (mode === "fast") {
 				// 通常モード: generate-abddのみ
-				runStep("generate-abdd", "generate-abdd.ts");
+				await runStepAsync("generate-abdd", "generate-abdd.ts");
 			} else {
 				// 厳格モード: header → jsdoc → generate
-				const headerOk = runStep("add-abdd-header", "add-abdd-header.ts", ["--regenerate"]);
-				const jsdocOk = runStep("add-jsdoc", "add-jsdoc.ts", ["--regenerate"]);
-				runStep("generate-abdd", "generate-abdd.ts");
+				const headerOk = await runStepAsync("add-abdd-header", "add-abdd-header.ts", ["--regenerate"]);
+				if (continueOnError || headerOk) {
+					const jsdocOk = await runStepAsync("add-jsdoc", "add-jsdoc.ts", ["--regenerate"]);
+					if (continueOnError || jsdocOk) {
+						await runStepAsync("generate-abdd", "generate-abdd.ts");
+					}
+				}
 			}
 
 			const allSuccess = results.every(r => r.success);
-			const summary = results.map(r => `${r.step}: ${r.success ? "成功" : "失敗"}`).join("\n");
+			const summary = results.map(r => `${r.step}: ${r.success ? "成功" : "失敗"}${r.timedOut ? " (タイムアウト)" : ""}`).join("\n");
 
 			let output = `ABDD workflow (${mode}) 完了\n\n${summary}\n\n`;
 			if (verbose) {
@@ -595,7 +620,7 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
 
 			return {
 				content: [{ type: "text" as const, text: output }],
-				details: { success: allSuccess, mode, results },
+				details: { success: allSuccess, mode, results, timeoutMs },
 			};
 		},
 	});

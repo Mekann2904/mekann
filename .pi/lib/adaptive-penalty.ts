@@ -1,36 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/adaptive-penalty.ts
- * role: 並列処理の動的調整のための適応的ペナルティ制御ライブラリ
- * why: サブエージェントとエージェントチーム間でのコード重複を回避しつつ、APIレート制限やタイムアウト等の負荷状況に応じて並列度を動的に調整するため
- * related: subagent-runner.ts, agent-team.ts, feature-flags.ts, parallel-executor.ts
- * public_api: AdaptivePenaltyState, AdaptivePenaltyOptions, EnhancedPenaltyOptions, AdaptivePenaltyController, EnhancedPenaltyController, PenaltyReason, DecayStrategy, getAdaptivePenaltyMode, createAdaptivePenaltyController
- * invariants:
- *   - penaltyは0以上maxPenalty以下の範囲に維持される
- *   - decayMs経過後にペナルティは減衰する
- *   - historySizeを超える履歴は古い順に破棄される
- * side_effects:
- *   - 環境変数PI_ADAPTIVE_PENALTY_MODEの読み取り（モード判定時1回のみキャッシュ）
- *   - ペナルティ状態の更新（updatedAtMs, reasonHistoryへの追記）
- * failure_modes:
- *   - 不正なPenaltyReason値が渡された場合の動作未定義
- *   - maxPenalty=0の場合、applyLimitが常に0を返す
- *   - decayMs=0の場合、即座にペナルティが0に減衰する
+ * role: 適応的ペナルティ制御のロジック実装と状態管理
+ * why: 動的な並列度調整のための共通部品として、サブエージェントとチーム間でコード重複を排除するため
+ * related: .pi/lib/agent-team.ts, .pi/lib/subagent.ts, .pi/lib/config.ts
+ * public_api: AdaptivePenaltyController, EnhancedPenaltyController, createAdaptivePenaltyController, getAdaptivePenaltyMode
+ * invariants: penalty値は常に0以上maxPenalty以下、reasonHistoryのサイズはhistorySize以下、updatedAtMsはモノトニック増加
+ * side_effects: グローバル変数cachedModeの更新、AdaptivePenaltyStateオブジェクトの内部変更
+ * failure_modes: 環境変数の不正値によるモード誤判定、履歴サイズ超過による古いデータの消失、減衰計算における数値精度の低下
  * @abdd.explain
- * overview: 動的並列処理の効率化とエラー回避を目的としたペナルティスコア管理システム。legacy（線形減衰）とenhanced（指数関数減衰・理由別重み付け）の2モードを提供。
+ * overview: APIレート制限やタイムアウト等のエラー要因に基づき、システムの並列実行数を制御するためのペナルティ値を算出・管理するモジュール。
  * what_it_does:
- *   - rate_limit, timeout, capacity, schema_violationの4種類の理由でペナルティを加算・管理
- *   - 指定時間経過後のペナルティ減衰（線形/指数関数/ハイブリッド）
- *   - 理由別の重み付けによるペナルティ増加率の調整（enhancedモード）
- *   - 履歴管理と理由別統計情報の提供
- *   - baseLimitからpenaltyを減じた実効並列度の算出
+ *   - ペナルティ値の増減（raise/lower）と時間経過による減衰（decay）を実行する
+ *   - エラー要因（PenaltyReason）ごとに重み付けを行い、ペナルティの影響度を調整する
+ *   - 線形・指数関数・ハイブリッドの減衰戦略を適用する
+ *   - 履歴（reasonHistory）と統計情報を記録・参照する
+ *   - 機能フラグ（PI_ADAPTIVE_PENALTY_MODE）によりレガシー/拡張モードを切り替える
  * why_it_exists:
- *   - APIレート制限やタイムアウト等の障害発生時に並列度を自動的に下げ、システム負荷を軽減するため
- *   - 障害回復後に並列度を段階的に戻し、スループットを最適化するため
- *   - サブエージェントとエージェントチームで共通のペナルティロジックを再利用するため
+ *   - 外部APIへの過負荷を防ぎ、レートリミット回避やリソース保護を行うため
+ *   - エラーの種類に応じて柔軟に並列度を動的調整するため
  * scope:
- *   in: ペナルティ操作指示、現在時刻、基本並列度
- *   out: ペナルティ状態、実効並列度、理由別統計、減衰戦略情報
+ *   in: 現在時刻, エラー発生の理由, 設定オプション（最大ペナルティ, 減衰時間など）
+ *   out: 制御された並列リミット値, 現在のペナルティ値, 理由別統計
  */
 
 /**
@@ -47,10 +38,11 @@
 // Enhanced Types (P1-4)
 // ============================================================================
 
- /**
-  * ペナルティ調整の理由種別
-  * @typedef {"rate_limit" | "timeout" | "capacity" | "schema_violation"} PenaltyReason
-  */
+/**
+ * ペナルティ理由の型定義
+ * @summary ペナルティ理由
+ * @typedef {"rate_limit"|"timeout"|"capacity"|"schema_violation"} PenaltyReason
+ */
 export type PenaltyReason = "rate_limit" | "timeout" | "capacity" | "schema_violation";
 
 /**
@@ -64,22 +56,25 @@ const DEFAULT_REASON_WEIGHTS: Record<PenaltyReason, number> = {
   schema_violation: 0.5,  // Schema issues are usually transient
 };
 
- /**
-  * 減衰戦略の種類 ("linear" | "exponential" | "hybrid")
-  */
+/**
+ * 減衰戦略の種類。
+ * @summary 戦略を定義
+ * @returns 減衰戦略名。
+ */
 export type DecayStrategy = "linear" | "exponential" | "hybrid";
 
 // ============================================================================
 // Core Types
 // ============================================================================
 
- /**
-  * 適応的ペナルティの状態を表すインターフェース
-  * @property penalty - 現在のペナルティ値
-  * @property updatedAtMs - 最終更新時刻（ミリ秒単位）
-  * @property lastReason - 最後にペナルティが適用された理由
-  * @property reasonHistory - 適用理由とタイムスタンプの履歴配列
-  */
+/**
+ * 適応型ペナルティの状態。
+ * @summary 状態を保持
+ * @property penalty 現在のペナルティ値。
+ * @property updatedAtMs 最終更新時刻。
+ * @property lastReason 最後の適用理由。
+ * @property reasonHistory 適用理由とタイムスタンプの履歴配列。
+ */
 export interface AdaptivePenaltyState {
   penalty: number;
   updatedAtMs: number;
@@ -88,10 +83,11 @@ export interface AdaptivePenaltyState {
 }
 
 /**
- * 適応的ペナルティの設定オプション
- * @param isStable 安定状態かどうか
- * @param maxPenalty 最大ペナルティ値
- * @param decayMs 減衰までの時間（ミリ秒）
+ * 適応型ペナルティオプション。
+ * @summary 設定を保持
+ * @param isStable 安定フラグ。
+ * @param maxPenalty 最大ペナルティ値。
+ * @param decayMs 減衰までの時間（ミリ秒）。
  */
 export interface AdaptivePenaltyOptions {
   isStable: boolean;
@@ -99,13 +95,14 @@ export interface AdaptivePenaltyOptions {
   decayMs: number;
 }
 
- /**
-  * 拡張ペナルティオプション。
-  * @param decayStrategy 減衰戦略。
-  * @param exponentialBase 指数関数的減衰の基数（デフォルト: 0.5）。
-  * @param reasonWeights 理由ごとの重み付け。
-  * @param historySize 保持する履歴の最大エントリ数（デフォルト: 100）。
-  */
+/**
+ * 拡張ペナルティオプション。
+ * @summary オプションを定義
+ * @param decayStrategy 減衰戦略。
+ * @param exponentialBase 指数関数的減衰の基数（デフォルト: 0.5）。
+ * @param reasonWeights 理由ごとの重み。
+ * @param historySize 履歴サイズ。
+ */
 export interface EnhancedPenaltyOptions extends AdaptivePenaltyOptions {
   decayStrategy?: DecayStrategy;
   exponentialBase?: number;        // Base for exponential decay (default: 0.5)
@@ -113,6 +110,10 @@ export interface EnhancedPenaltyOptions extends AdaptivePenaltyOptions {
   historySize?: number;            // Max history entries to keep (default: 100)
 }
 
+/**
+ * ペナルティ制御インターフェース。
+ * @summary ペナルティを制御
+ */
 export interface AdaptivePenaltyController {
   readonly state: AdaptivePenaltyState;
   decay: (nowMs?: number) => void;
@@ -122,13 +123,14 @@ export interface AdaptivePenaltyController {
   applyLimit: (baseLimit: number) => number;
 }
 
- /**
-  * 拡張ペナルティコントローラ
-  * @extends AdaptivePenaltyController
-  * @param raiseWithReason 理由を指定してペナルティを発生させる
-  * @param getReasonStats 理由ごとの統計情報を取得する
-  * @param getDecayStrategy 減衰戦略を取得する
-  */
+/**
+ * 拡張ペナルティ制御
+ * @summary ペナルティ制御
+ * @param raiseWithReason 理由を指定してペナルティを発生させる
+ * @param getReasonStats 理由ごとの統計情報を取得する
+ * @param getDecayStrategy 減衰戦略を取得する
+ * @returns void
+ */
 export interface EnhancedPenaltyController extends AdaptivePenaltyController {
   raiseWithReason: (reason: PenaltyReason) => void;
   getReasonStats: () => Record<PenaltyReason, number>;
@@ -141,10 +143,12 @@ export interface EnhancedPenaltyController extends AdaptivePenaltyController {
 
 let cachedMode: "legacy" | "enhanced" | undefined;
 
- /**
-  * 現在のアダプティブペナルティモードを取得
-  * @returns "legacy" または "enhanced"
-  */
+/**
+ * アダプティブペナルティモード取得
+ * @summary モードを取得
+ * @param なし
+ * @returns "legacy" または "enhanced"
+ */
 export function getAdaptivePenaltyMode(): "legacy" | "enhanced" {
   if (cachedMode !== undefined) {
     return cachedMode;
@@ -156,10 +160,11 @@ export function getAdaptivePenaltyMode(): "legacy" | "enhanced" {
   return cachedMode;
 }
 
- /**
-  * キャッシュモードをリセットする
-  * @returns void
-  */
+/**
+ * @summary キャッシュをリセット
+ * アダプティブペナルティモードのキャッシュをリセットする
+ * @returns {void}
+ */
 export function resetAdaptivePenaltyModeCache(): void {
   cachedMode = undefined;
 }
@@ -168,11 +173,12 @@ export function resetAdaptivePenaltyModeCache(): void {
 // Legacy Controller (unchanged for backward compatibility)
 // ============================================================================
 
- /**
-  * アダプティブペナルティコントローラを作成する
-  * @param options - コントローラの設定オプション
-  * @returns 作成されたアダプティブペナルティコントローラ
-  */
+/**
+ * アダプティブペナルティコントローラ作成
+ * @summary コントローラを作成
+ * @param options - コントローラの設定オプション
+ * @returns 作成されたアダプティブペナルティコントローラ
+ */
 export function createAdaptivePenaltyController(
   options: AdaptivePenaltyOptions
 ): AdaptivePenaltyController {
@@ -367,11 +373,12 @@ export function createEnhancedPenaltyController(
   };
 }
 
- /**
-  * フラグに基づいて適切なペナルティコントローラを作成する
-  * @param options - ペナルティオプション
-  * @returns フラグに基づいたペナルティコントローラ
-  */
+/**
+ * ペナルティコントローラ生成
+ * @summary コントローラを生成
+ * @param options - ペナルティオプション
+ * @returns フラグに基づいたペナルティコントローラ
+ */
 export function createAutoPenaltyController(
   options: AdaptivePenaltyOptions | EnhancedPenaltyOptions
 ): AdaptivePenaltyController | EnhancedPenaltyController {

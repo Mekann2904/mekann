@@ -23,30 +23,30 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getDynamicToolsPaths` | デフォルトのダイナミックツールパスを取得 |
-| インターフェース | `DynamicToolsPaths` | 動的ツール関連のパス設定 |
-| インターフェース | `ToolParameterDefinition` | ツールのパラメータ定義 |
-| インターフェース | `DynamicToolDefinition` | 動的ツール定義 |
-| インターフェース | `DynamicToolResult` | 動的ツールの実行結果を表します |
-| インターフェース | `DynamicToolRunOptions` | ツール実行オプション |
-| インターフェース | `DynamicToolRegistrationRequest` | 動的ツール登録リクエスト |
-| インターフェース | `DynamicToolRegistrationResult` | 動的ツールの登録結果 |
-| インターフェース | `DynamicToolListOptions` | ツール一覧のフィルタ・ソートオプション |
-| インターフェース | `SafetyVerificationResult` | 安全性検証結果 |
-| インターフェース | `SafetyIssue` | 安全性の問題 |
-| インターフェース | `AllowedOperations` | 許可された操作の設定 |
-| インターフェース | `DynamicToolQualityMetrics` | 動的ツールの品質メトリクス |
-| インターフェース | `QualityMetricsReport` | 品質メトリクス収集結果 |
-| インターフェース | `AuditLogEntry` | 監査ログエントリ |
-| インターフェース | `ConvertToSkillOptions` | スキルへの変換オプション |
-| インターフェース | `ConvertToSkillResult` | スキル変換結果 |
-| インターフェース | `ToolReflectionResult` | ツール実行後のリフレクション結果 |
+| 関数 | `getDynamicToolsPaths` | デフォルトパスを取得 |
+| インターフェース | `DynamicToolsPaths` | - |
+| インターフェース | `ToolParameterDefinition` | ツールパラメータ定義 |
+| インターフェース | `DynamicToolDefinition` | 動的ツールの定義 |
+| インターフェース | `DynamicToolResult` | ツール実行結果 |
+| インターフェース | `DynamicToolRunOptions` | - |
+| インターフェース | `DynamicToolRegistrationRequest` | - |
+| インターフェース | `DynamicToolRegistrationResult` | - |
+| インターフェース | `DynamicToolListOptions` | - |
+| インターフェース | `SafetyVerificationResult` | - |
+| インターフェース | `SafetyIssue` | 検出されたセキュリティ問題の詳細を表します。 |
+| インターフェース | `AllowedOperations` | 許可された操作範囲を定義します。 |
+| インターフェース | `DynamicToolQualityMetrics` | 動的ツールごとの品質メトリクス詳細を表します。 |
+| インターフェース | `QualityMetricsReport` | 品質メトリクスレポートを表します。 |
+| インターフェース | `AuditLogEntry` | システム監査ログのエントリを表します。 |
+| インターフェース | `ConvertToSkillOptions` | スキル変換時のオプションを指定します。 |
+| インターフェース | `ConvertToSkillResult` | スキル変換の実行結果を表します。 |
+| インターフェース | `ToolReflectionResult` | ツールのリフレクション結果を表します。 |
 | インターフェース | `ToolReflectionContext` | ツールのリフレクションコンテキスト |
-| インターフェース | `DynamicToolsConfig` | 動的ツールシステムの設定 |
-| 型 | `DynamicToolMode` | 動的ツールの実行モード |
-| 型 | `VerificationStatus` | 検証状態を表す文字列リテラル型 |
-| 型 | `SafetyIssueType` | 安全性問題の種類 |
-| 型 | `AuditAction` | 監査ログに記録される操作の種類を表す文字列リテラル型。 |
+| インターフェース | `DynamicToolsConfig` | 動的ツールの設定 |
+| 型 | `DynamicToolMode` | ツール実行モード |
+| 型 | `VerificationStatus` | 検証ステータス |
+| 型 | `SafetyIssueType` | セキュリティ問題の種別を定義します。 |
+| 型 | `AuditAction` | 監査ログに記録されるアクションの種別を定義します。 |
 
 ## 図解
 
@@ -211,7 +211,7 @@ classDiagram
 getDynamicToolsPaths(): DynamicToolsPaths
 ```
 
-デフォルトのダイナミックツールパスを取得
+デフォルトパスを取得
 
 **戻り値**: `DynamicToolsPaths`
 
@@ -228,8 +228,6 @@ interface DynamicToolsPaths {
 }
 ```
 
-動的ツール関連のパス設定
-
 ### ToolParameterDefinition
 
 ```typescript
@@ -243,7 +241,7 @@ interface ToolParameterDefinition {
 }
 ```
 
-ツールのパラメータ定義
+ツールパラメータ定義
 
 ### DynamicToolDefinition
 
@@ -267,7 +265,7 @@ interface DynamicToolDefinition {
 }
 ```
 
-動的ツール定義
+動的ツールの定義
 
 ### DynamicToolResult
 
@@ -283,7 +281,7 @@ interface DynamicToolResult {
 }
 ```
 
-動的ツールの実行結果を表します
+ツール実行結果
 
 ### DynamicToolRunOptions
 
@@ -296,8 +294,6 @@ interface DynamicToolRunOptions {
   debug?: boolean;
 }
 ```
-
-ツール実行オプション
 
 ### DynamicToolRegistrationRequest
 
@@ -314,8 +310,6 @@ interface DynamicToolRegistrationRequest {
 }
 ```
 
-動的ツール登録リクエスト
-
 ### DynamicToolRegistrationResult
 
 ```typescript
@@ -326,8 +320,6 @@ interface DynamicToolRegistrationResult {
   verificationResult?: SafetyVerificationResult;
 }
 ```
-
-動的ツールの登録結果
 
 ### DynamicToolListOptions
 
@@ -342,8 +334,6 @@ interface DynamicToolListOptions {
 }
 ```
 
-ツール一覧のフィルタ・ソートオプション
-
 ### SafetyVerificationResult
 
 ```typescript
@@ -355,8 +345,6 @@ interface SafetyVerificationResult {
   verifiedAt: string;
 }
 ```
-
-安全性検証結果
 
 ### SafetyIssue
 
@@ -373,7 +361,7 @@ interface SafetyIssue {
 }
 ```
 
-安全性の問題
+検出されたセキュリティ問題の詳細を表します。
 
 ### AllowedOperations
 
@@ -388,7 +376,7 @@ interface AllowedOperations {
 }
 ```
 
-許可された操作の設定
+許可された操作範囲を定義します。
 
 ### DynamicToolQualityMetrics
 
@@ -407,7 +395,7 @@ interface DynamicToolQualityMetrics {
 }
 ```
 
-動的ツールの品質メトリクス
+動的ツールごとの品質メトリクス詳細を表します。
 
 ### QualityMetricsReport
 
@@ -432,7 +420,7 @@ interface QualityMetricsReport {
 }
 ```
 
-品質メトリクス収集結果
+品質メトリクスレポートを表します。
 
 ### AuditLogEntry
 
@@ -450,7 +438,7 @@ interface AuditLogEntry {
 }
 ```
 
-監査ログエントリ
+システム監査ログのエントリを表します。
 
 ### ConvertToSkillOptions
 
@@ -463,7 +451,7 @@ interface ConvertToSkillOptions {
 }
 ```
 
-スキルへの変換オプション
+スキル変換時のオプションを指定します。
 
 ### ConvertToSkillResult
 
@@ -475,10 +463,7 @@ interface ConvertToSkillResult {
 }
 ```
 
-スキル変換結果
-param success 成功したかどうか
-param skillPath スキルのパス
-param error エラーメッセージ
+スキル変換の実行結果を表します。
 
 ### ToolReflectionResult
 
@@ -498,7 +483,7 @@ interface ToolReflectionResult {
 }
 ```
 
-ツール実行後のリフレクション結果
+ツールのリフレクション結果を表します。
 
 ### ToolReflectionContext
 
@@ -533,7 +518,7 @@ interface DynamicToolsConfig {
 }
 ```
 
-動的ツールシステムの設定
+動的ツールの設定
 
 ## 型定義
 
@@ -546,7 +531,7 @@ type DynamicToolMode = | "bash"          // Bash コマンド実行
   | "skill"
 ```
 
-動的ツールの実行モード
+ツール実行モード
 
 ### VerificationStatus
 
@@ -558,7 +543,7 @@ type VerificationStatus = | "unverified"     // 未検証
   | "deprecated"
 ```
 
-検証状態を表す文字列リテラル型
+検証ステータス
 
 ### SafetyIssueType
 
@@ -575,7 +560,7 @@ type SafetyIssueType = | "forbidden-function"      // 禁止関数の使用
   | "excessive-permissions"
 ```
 
-安全性問題の種類
+セキュリティ問題の種別を定義します。
 
 ### AuditAction
 
@@ -591,7 +576,7 @@ type AuditAction = | "tool.create"       // ツール作成
   | "verification.fail"
 ```
 
-監査ログに記録される操作の種類を表す文字列リテラル型。
+監査ログに記録されるアクションの種別を定義します。
 
 ---
-*自動生成: 2026-02-18T14:31:30.985Z*
+*自動生成: 2026-02-18T15:54:41.476Z*

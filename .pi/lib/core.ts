@@ -1,27 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/core.ts
- * role: Layer 0基盤ユーティリティの統合エクスポートポイント
- * why: 下位レイヤーへの依存を持たない純粋なユーティリティを一箇所から提供し、他モジュールの依存関係を単純化するため
- * related: error-utils.js, errors.js, validation-utils.js, format-utils.js
- * public_api: toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, isCancelledErrorMessage, isTimeoutErrorMessage, PiError, RuntimeLimitError, RuntimeQueueWaitError, SchemaValidationError, ValidationError, TimeoutError, CancelledError, RateLimitError, CapacityError, ParsingError, ExecutionError, ConfigurationError, StorageError, isPiError, hasErrorCode, isRetryableError, toPiError, getErrorCode, isRetryableErrorCode, appendTail, toTailLines, countOccurrences, estimateLineCount, looksLikeMarkdown, renderPreviewWithMarkdown, toFiniteNumber, toFiniteNumberWithDefault, toBoundedInteger, clampInteger, clampFloat, ensureDir, formatDuration, formatDurationMs, formatBytes, formatClockTime, normalizeForSingleLine
- * invariants: 再エクスポートするすべての関数・クラスは他レイヤーに依存しない(Layer 0)
- * side_effects: ensureDir呼び出し時にディレクトリ作成のファイルシステム副作用が発生する
- * failure_modes: なし(エクスポートのみのモジュールのため実行時エラーは発生しない)
+ * role: 依存関係のないレイヤー0ユーティリティのエントリーポイント
+ * why: ライブラリの基盤機能を独立して提供し、他モジュールからの再利用を可能にするため
+ * related: .pi/lib/error-utils.js, .pi/lib/errors.js, .pi/lib/tui/tui-utils.js, .pi/lib/validation-utils.js
+ * public_api: エラー処理関数(toErrorMessage等), 統一エラークラス(PiError等), TUIユーティリティ(appendTail等), 検証・フォーマット・ファイルシステム関連関数
+ * invariants: エクスポートされるモジュールは相互または上位レイヤーに依存しない
+ * side_effects: なし(純粋な再エクスポート)
+ * failure_modes: 子モジュールの読み込み失敗時、または循環依存発生時に初期化エラー
  * @abdd.explain
- * overview: 依存関係を持たないLayer 0ユーティリティ群をカテゴリ別に集約したエクスポート専用モジュール
+ * overview: .piライブラリの基盤となる汎用ツール集を集約したファイル
  * what_it_does:
- *   - エラーハンドリングユーティリティ(toErrorMessage等)の再エクスポート
- *   - 統一エラークラス(PiError等13種)と型定義の再エクスポート
- *   - TUIユーティリティ(appendTail等)の再エクスポート
- *   - 数値検証ユーティリティ(toFiniteNumber等)の再エクスポート
- *   - ファイルシステム・フォーマットユーティリティの再エクスポート
+ *   - エラー判定、分類、統一エラークラス定義のエクスポート
+ *   - TUI表示、文字数カウント、Markdown判定などの表示関連機能のエクスポート
+ *   - 数値の丸め、範囲チェック、型保証などの検証機能のエクスポート
+ *   - ディレクトリ作成、時間・バイト単位のフォーマット機能のエクスポート
  * why_it_exists:
- *   - Layer 0ユーティリティへの単一のインポートパスを提供する
- *   - モジュール間の依存関係を明確化し循環依存を防止する
+ *   - アプリケーション全体で共通して使用する低レベルな操作を一箇所にまとめるため
+ *   - 外部ライブラリへの依存なしに利用可能な機能セットを提供するため
  * scope:
- *   in: ./lib/error-utils.js, ./lib/errors.js, ./lib/tui/tui-utils.js, ./lib/validation-utils.js, ./lib/fs-utils.js, ./lib/format-utils.js
- *   out: なし(他モジュールへの依存なし)
+ *   in: なし(定義済みモジュールの参照のみ)
+ *   out: エラー処理、TUI、バリデーション、ファイルシステム、フォーマット処理を行う関数と型
  */
 
 /**

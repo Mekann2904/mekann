@@ -1,38 +1,29 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/startup-context.ts
- * role: セッション開始時に動的コンテキストをシステムプロンプトへ自動注入する拡張モジュール
- * why: AIエージェントがプロジェクトの現状・最近の変更・構造を理解し、文脈に即した応答を行うため
- * related: @mariozechner/pi-coding-agent, node:child_process, node:fs, README.md
- * public_api: default function (ExtensionAPI) => void
- * invariants:
- *   - isFirstPrompt はセッション開始時に true にリセットされる
- *   - 初回プロンプト処理後は isFirstPrompt が false になる
- *   - コンテキスト注入はシステムプロンプトへの追記として行われる（TUIには表示されない）
- * side_effects:
- *   - git log コマンド実行（タイムアウト5秒）
- *   - README.md ファイル読み込み（ファイルシステムアクセス）
- *   - イベントリスナーの登録（session_start, before_agent_start）
- * failure_modes:
- *   - Gitリポジトリ以外で実行された場合、gitコミット情報はスキップされる
- *   - README.md が存在しない、または読み込み権限がない場合、README情報はスキップされる
- *   - すべてのコンテキスト取得に失敗した場合、システムプロンプトは変更されない
+ * role: セッション開始時に動的コンテキストを注入するエージェント拡張機能
+ * why: エージェントがプロジェクトの現在の状態、最近の変更、全体的な構造を即座に理解するため
+ * related: @mariozechner/pi-coding-agent, README.md, git log
+ * public_api: default function(pi: ExtensionAPI): void
+ * invariants: コンテキスト注入はセッション内の最初のプロンプトのみ実行される
+ * side_effects: エージェントのシステムプロンプトを書き換える（TUIには表示されない）
+ * failure_modes: gitコマンド実行失敗時はコミットログをスキップ、README読み込み失敗時は該当ファイルをスキップ
  * @abdd.explain
- * overview: セッション初回プロンプト時に、現在の作業ディレクトリ・直近10件のGitコミット・README.mdの内容を収集し、システムプロンプト末尾に自動追加する拡張機能
+ * overview: セッション開始時にGitログ、README、作業ディレクトリ情報を収集し、システムプロンプトに追加してエージェントに提供するモジュール
  * what_it_does:
- *   - session_start イベントで isFirstPrompt フラグを true に初期化
- *   - before_agent_start イベントで初回のみコンテキストを構築して注入
- *   - process.cwd() から作業ディレクトリパスを取得し、ファイル操作の基準パスとして提示
- *   - git log -10 --pretty=format:"%h %s" --no-merges を実行して最近のコミットメッセージを取得
- *   - README.md / readme.md / README / readme の順で存在確認し、最初に見つかったものを読み込み
- *   - 構築したコンテキストをシステムプロンプトに追記して返却
+ *   - セッション開始時フラグをリセットする
+ *   - 最初のエージェント起動直前にシステムプロンプトへコンテキストを挿入する
+ *   - カレントワーキングディレクトリのパスを取得する
+ *   - 直近10件のGitコミットメッセージ（タイトルのみ）を取得する
+ *   - README.md（または類似ファイル名）の内容を取得する
+ *   - 各情報に利用ガイダンスを付与してシステムプロンプトに連結する
  * why_it_exists:
- *   - セッション開始時にプロジェクトの全体像をAIに提示し、文脈理解を促進するため
- *   - 最近の開発活動を把握させ、不適切な変更や重複作業を防ぐため
- *   - READMEの情報を自動的に参照可能にし、プロジェクト固有の知識を共有するため
+ *   - エージェントが開発履歴を把握し、最近の変更を壊さずに修正できるようにするため
+ *   - プロジェクトの設定や構造に関するドキュメント（README）を参照可能にするため
+ *   - ファイル操作の基準となるパスを明確にするため
  * scope:
- *   in: ExtensionAPI インスタンス、process.cwd()、gitコマンド、READMEファイル
- *   out: システムプロンプトへの追記（文字列）、TUI表示なし
+ *   in: ExtensionAPIのイベントフック(session_start, before_agent_start)
+ *   out: 追加されたコンテキストを含む修正済みシステムプロンプト文字列
  */
 
 /**

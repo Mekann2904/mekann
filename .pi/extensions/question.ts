@@ -1,33 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/question.ts
- * role: PIエージェント用インタラクティブ質問UI拡張モジュール
- * why: エージェントがユーザーに選択肢または自由記述で回答を求める際の統一インターフェースを提供するため
- * related: @mariozechner/pi-coding-agent, @mariozechner/pi-tui, @mariozechner/pi-ai
- * public_api: askSingleQuestion関数, QuestionInfo型, QuestionOption型, Answer型
- * invariants:
- *   - options未指定時は空配列として扱う
- *   - custom:true(デフォルト)の場合、「その他」オプションが末尾に自動追加される
- *   - multiple:true時のみ複数選択が可能
- * side_effects:
- *   - 標準入力のキーイベントを監視・消費する
- *   - 端末画面に質問UIを描画する
- * failure_modes:
- *   - ユーザーがキャンセル操作を行った場合nullを返す
- *   - 端末幅が狭い場合truncateToWidthにより表示が切り詰められる
+ * role: ユーザーへの対話的質問UI拡張
+ * why: PIエージェントが実行中にユーザーへ入力を要求するためのopencode互換インターフェースを提供するため
+ * related: @mariozechner/pi-tui, @mariozechner/pi-coding-agent, @mariozechner/pi-ai
+ * public_api: askSingleQuestion, types(QuestionInfo, QuestionOption, Answer)
+ * invariants: rendererのstateはimmutablyに更新される, カーソル位置は常に文字列範囲内である
+ * side_effects: 標準出力へのUI描画, ユーザー入力待機による処理ブロック
+ * failure_modes: 描画幅オーバーフロー, 不正なキー入力による状態破損
  * @abdd.explain
- * overview: opencode互換の質問インターフェースを持つPIエージェント拡張。単一選択・複数選択・自由記述の3つの回答モードをサポートする。
+ * overview: エージェントがユーザーへ質問し、選択または自由記述による回答を受け付けるUIコンポーネント実装
  * what_it_does:
- *   - ヘッダーと質問文、選択肢を含むTUIを描画する
- *   - カーソル移動と選択状態の管理を行う
- *   - 自由記述モードでの複数行テキスト入力を処理する
- *   - IME入力位置をCURSOR_MARKERで制御する
+ *   - 質問と選択肢リストをTUI上に描画する
+ *   - 単一/複数選択およびカスタム自由入力モードを提供する
+ *   - キーボード操作によるカーソル移動と決定を処理する
  * why_it_exists:
- *   - エージェントとユーザー間の双方向コミュニケーションを実現するため
- *   - opencodeとの互換性により既存ワークフローを維持するため
+ *   - opencode仕様に準拠したシンプルな質問インターフェースが必要なため
+ *   - ユーザー介入が必要なタスクにおいて決定を収集するため
  * scope:
- *   in: QuestionInfoオブジェクト(質問文、ヘッダー、選択肢、multiple/customフラグ), ExtensionAPIのコンテキスト
- *   out: 選択されたラベルの配列(Answer), またはキャンセル時はnull
+ *   in: QuestionInfo(質問内容), キーボード入力イベント
+ *   out: Answer(ユーザー回答配列), null(キャンセル時)
  */
 
 /**

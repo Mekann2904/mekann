@@ -1,32 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/live-view-utils.ts
- * role: TUI用ライブビュー描画の共通ユーティリティ関数群
- * why: サブエージェントやエージェントチームのステータス表示において、一貫したグリフ表現・入力判定・行整形を提供するため
- * related: live-view.ts, subagent-live-view.ts, team-live-view.ts, types.ts
+ * role: ライブビュー（TUI）の表示補助と入力判定を行うユーティリティモジュール
+ * why: サブエージェントやチームの状態表示、およびユーザー入力処理の共通ロジックを集約するため
+ * related: .pi/lib/live-view-renderer.ts, .pi/lib/subagent.ts
  * public_api: LiveStatus, getLiveStatusGlyph, isEnterInput, finalizeLiveLines
- * invariants:
- *   - getLiveStatusGlyphは常に2文字の文字列を返す
- *   - LiveStatusは4つの固定値のみを受け入れる
- *   - finalizeLiveLinesはheightが正の場合、返却配列長はheightと等しい
- * side_effects: なし（純粋関数のみ）
- * failure_modes:
- *   - heightに負数を渡すとパディングされずそのまま返る
- *   - rawInputにnull/undefinedを渡すと例外が発生する
+ * invariants: getLiveStatusGlyphは必ず2文字の文字列を返す、finalizeLiveLinesは戻り値の長さがheightと一致する（height指定時）
+ * side_effects: なし（純粋関数）
+ * failure_modes: finalizeLiveLinesでheightが負数の場合は何もしない、isEnterInputで想定外の制御文字が来るとfalseを返す
  * @abdd.explain
- * overview: ライブビューTUI描画用の型定義と3つの純粋関数を提供するユーティリティモジュール
+ * overview: TUIにおけるステータスグリフ変換、Enterキー判定、表示行の高さ調整を行う
  * what_it_does:
- *   - LiveStatus型（pending/running/completed/failed）を定義
- *   - ステータスを2文字のグリフ（OK/!!/>>/..）に変換
- *   - Enterキー入力を検出（\r, \n, \r\n, enterを判定）
- *   - 行配列を指定高さで整形（切り詰めまたは空行パディング）
+ *   - 実行状態（pending/running/completed/failed）に対応する2文字のグリフ文字列を返す
+ *   - 改行文字や"enter"文字列をEnterキー入力として判定する
+ *   - 指定された高さに合わせて行数を切り詰め、または空行で埋める
  * why_it_exists:
- *   - 複数のライブビューコンポーネントでステータス表現を統一するため
- *   - キー入力判定ロジックの重複を回避するため
- *   - 固定高さUIでの行整形処理を共通化するため
+ *   - ライブビュー描画ロジックからステータス表現や入力処理を分離し、コードの可読性と再利用性を高めるため
+ *   - 複数箇所で同様の行整形処理が発生するのを防ぐため
  * scope:
- *   in: ライブビュー描画に必要なステータス変換・入力判定・行整形機能
- *   out: 画面描画ロジック、イベントループ、状態管理
+ *   in: ステータス列挙型、生の入力文字列、整形対象の文字列配列、高さ数値
+ *   out: グリフ文字列、判定結果の真偽値、高さ固定された文字列配列
  */
 
 /**
@@ -34,16 +27,18 @@
  * Shared functions for rendering live status views in TUI.
  */
 
- /**
-  * ライブビューのステータスを表す型
-  */
+/**
+ * ライブビューのステータス型
+ * @summary ステータスを定義
+ * @returns ライブビューのステータス
+ */
 export type LiveStatus = "pending" | "running" | "completed" | "failed";
 
- /**
-  * ステータスに対応するグリフを返す
-  * @param status - 変換対象のステータス
-  * @returns ステータスを表す2文字の文字列
-  */
+/**
+ * @summary ステータス文字列取得
+ * @param status - 変換対象のステータス
+ * @returns ステータスを表す2文字の文字列
+ */
 export function getLiveStatusGlyph(status: LiveStatus): string {
   if (status === "completed") return "OK";
   if (status === "failed") return "!!";
@@ -51,11 +46,11 @@ export function getLiveStatusGlyph(status: LiveStatus): string {
   return "..";
 }
 
- /**
-  * 入力がEnterキーか判定する
-  * @param rawInput - 判定する生の入力文字列
-  * @returns Enterキーの場合はtrue
-  */
+/**
+ * @summary Enterキー判定
+ * @param rawInput - 判定する生の入力文字列
+ * @returns Enterキーの場合はtrue
+ */
 export function isEnterInput(rawInput: string): boolean {
   return (
     rawInput === "\r" ||
@@ -65,12 +60,13 @@ export function isEnterInput(rawInput: string): boolean {
   );
 }
 
- /**
-  * 固定高さの表示用に行を整形する
-  * @param lines - 対象の行配列
-  * @param height - オプションの高さ
-  * @returns 整形された行配列
-  */
+/**
+ * 行データを最終化する
+ * @summary 行データ最終化
+ * @param lines 対象の行配列
+ * @param height 高さ（任意）
+ * @returns 処理後の行配列
+ */
 export function finalizeLiveLines(lines: string[], height?: number): string[] {
   if (!height || height <= 0) {
     return lines;

@@ -17,15 +17,15 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getRuntimeConfig` | 実行時設定を取得する |
-| 関数 | `getConfigVersion` | 現在の設定バージョンを取得します。 |
-| 関数 | `reloadRuntimeConfig` | 実行時に環境変数から設定を再読み込みする。 |
-| 関数 | `getRuntimeProfile` | 現在のランタイムプロファイルを取得する。 |
-| 関数 | `isStableProfile` | 安定版プロファイルで動作しているか判定する。 |
-| 関数 | `validateConfigConsistency` | 設定の整合性を検証する |
-| 関数 | `formatRuntimeConfig` | 実行時設定を整形して文字列で返す |
-| インターフェース | `RuntimeConfig` | ランタイム設定の集中管理 |
-| 型 | `RuntimeProfile` | ランタイムプロファイルモード |
+| 関数 | `getRuntimeConfig` | ランタイム設定取得 |
+| 関数 | `getConfigVersion` | 設定バージョンを取得 |
+| 関数 | `reloadRuntimeConfig` | ランタイム設定を再読込 |
+| 関数 | `getRuntimeProfile` | 現在のランタイムプロファイルを取得する |
+| 関数 | `isStableProfile` | 安定版プロファイルか判定する |
+| 関数 | `validateConfigConsistency` | 設定の一貫性を検証する |
+| 関数 | `formatRuntimeConfig` | ランタイム設定を整形する |
+| インターフェース | `RuntimeConfig` | ランタイム設定のインターフェース |
+| 型 | `RuntimeProfile` | ランタイムプロファイルの型定義 |
 
 ## 図解
 
@@ -114,7 +114,7 @@ detectProfile(): RuntimeProfile
 getRuntimeConfig(): RuntimeConfig
 ```
 
-実行時設定を取得する
+ランタイム設定取得
 
 **戻り値**: `RuntimeConfig`
 
@@ -124,7 +124,7 @@ getRuntimeConfig(): RuntimeConfig
 getConfigVersion(): number
 ```
 
-現在の設定バージョンを取得します。
+設定バージョンを取得
 
 **戻り値**: `number`
 
@@ -134,7 +134,7 @@ getConfigVersion(): number
 reloadRuntimeConfig(): RuntimeConfig
 ```
 
-実行時に環境変数から設定を再読み込みする。
+ランタイム設定を再読込
 
 **戻り値**: `RuntimeConfig`
 
@@ -144,7 +144,7 @@ reloadRuntimeConfig(): RuntimeConfig
 getRuntimeProfile(): RuntimeProfile
 ```
 
-現在のランタイムプロファイルを取得する。
+現在のランタイムプロファイルを取得する
 
 **戻り値**: `RuntimeProfile`
 
@@ -154,7 +154,7 @@ getRuntimeProfile(): RuntimeProfile
 isStableProfile(): boolean
 ```
 
-安定版プロファイルで動作しているか判定する。
+安定版プロファイルか判定する
 
 **戻り値**: `boolean`
 
@@ -168,7 +168,7 @@ validateConfigConsistency(): {
 }
 ```
 
-設定の整合性を検証する
+設定の一貫性を検証する
 
 **戻り値**: `{
   consistent: boolean;
@@ -182,7 +182,7 @@ validateConfigConsistency(): {
 formatRuntimeConfig(): string
 ```
 
-実行時設定を整形して文字列で返す
+ランタイム設定を整形する
 
 **戻り値**: `string`
 
@@ -213,7 +213,7 @@ interface RuntimeConfig {
 }
 ```
 
-ランタイム設定の集中管理
+ランタイム設定のインターフェース
 
 ## 型定義
 
@@ -223,9 +223,7 @@ interface RuntimeConfig {
 type RuntimeProfile = "stable" | "default"
 ```
 
-ランタイムプロファイルモード
-- stable: 信頼性重視の制限 (4並列)
-- default: バランス型の制限 (8並列)
+ランタイムプロファイルの型定義
 
 ---
-*自動生成: 2026-02-18T14:31:31.018Z*
+*自動生成: 2026-02-18T15:54:41.511Z*

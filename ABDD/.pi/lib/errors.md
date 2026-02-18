@@ -17,28 +17,28 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `isPiError` | PiErrorかどうかを判定する |
-| 関数 | `hasErrorCode` | エラーが特定のエラーコードを持つか確認する。 |
-| 関数 | `isRetryableError` | エラーが再試行可能か判定する |
-| 関数 | `toPiError` | 任意のエラーをPiErrorに変換する |
-| 関数 | `getErrorCode` | エラーからエラーコードを取得する |
-| 関数 | `isRetryableErrorCode` | エラーコードが再試行可能か判定する |
-| クラス | `PiError` | pi固有エラーの基底クラス。 |
-| クラス | `RuntimeLimitError` | ランタイム容量制限に達したエラー。 |
-| クラス | `RuntimeQueueWaitError` | ランタイムキューでの待機タイムアウトエラー。 |
-| クラス | `SchemaValidationError` | 出力スキーマ検証が失敗したときにスローされるエラー。 |
-| クラス | `ValidationError` | 一般的な検証エラーを表すクラス。 |
-| クラス | `TimeoutError` | 操作がタイムアウトしたときにスローされるエラー。 |
-| クラス | `CancelledError` | 操作がキャンセルされたときにスローされるエラー |
-| クラス | `RateLimitError` | レート制限エラー |
-| クラス | `CapacityError` | 容量超過エラー |
-| クラス | `ParsingError` | パース処理で発生したエラー |
-| クラス | `ExecutionError` | 実行操作中にスローされるエラー。 |
-| クラス | `ConfigurationError` | 設定エラーを表すクラス |
-| クラス | `StorageError` | ストレージ操作に対してスローされるエラー |
+| 関数 | `isPiError` | PiErrorか判定 |
+| 関数 | `hasErrorCode` | エラーコードを確認 |
+| 関数 | `isRetryableError` | リトライ可能か判定 |
+| 関数 | `toPiError` | Piエラー変換 |
+| 関数 | `getErrorCode` | エラーコード取得 |
+| 関数 | `isRetryableErrorCode` | リトライ可否判定 |
+| クラス | `PiError` | pi固有エラーを生成 |
+| クラス | `RuntimeLimitError` | ランタイム容量制限エラー |
+| クラス | `RuntimeQueueWaitError` | キュー待機タイムアウト |
+| クラス | `SchemaValidationError` | スキーマ検証エラー |
+| クラス | `ValidationError` | 検証エラー |
+| クラス | `TimeoutError` | タイムアウトエラー |
+| クラス | `CancelledError` | - |
+| クラス | `RateLimitError` | - |
+| クラス | `CapacityError` | キャパシティ超過時のエラーを表すクラス |
+| クラス | `ParsingError` | パース処理中に発生したエラーを表すクラス |
+| クラス | `ExecutionError` | 実行エラーを生成 |
+| クラス | `ConfigurationError` | 設定エラーを表す |
+| クラス | `StorageError` | ストレージエラー |
 | インターフェース | `ErrorContext` | エラーハンドリング用の追加コンテキスト。 |
-| 型 | `PiErrorCode` | piエラーの標準化されたエラーコード。 |
-| 型 | `ErrorSeverity` | エラー重要度レベル。 |
+| 型 | `PiErrorCode` | pi標準エラーコード |
+| 型 | `ErrorSeverity` | エラー深刻度を表す型定義 |
 
 ## 図解
 
@@ -157,7 +157,7 @@ flowchart TD
 isPiError(error: unknown): error is PiError
 ```
 
-PiErrorかどうかを判定する
+PiErrorか判定
 
 **パラメータ**
 
@@ -173,7 +173,7 @@ PiErrorかどうかを判定する
 hasErrorCode(error: unknown, code: PiErrorCode): boolean
 ```
 
-エラーが特定のエラーコードを持つか確認する。
+エラーコードを確認
 
 **パラメータ**
 
@@ -190,7 +190,7 @@ hasErrorCode(error: unknown, code: PiErrorCode): boolean
 isRetryableError(error: unknown): boolean
 ```
 
-エラーが再試行可能か判定する
+リトライ可能か判定
 
 **パラメータ**
 
@@ -206,7 +206,7 @@ isRetryableError(error: unknown): boolean
 toPiError(error: unknown): PiError
 ```
 
-任意のエラーをPiErrorに変換する
+Piエラー変換
 
 **パラメータ**
 
@@ -222,7 +222,7 @@ toPiError(error: unknown): PiError
 getErrorCode(error: unknown): PiErrorCode
 ```
 
-エラーからエラーコードを取得する
+エラーコード取得
 
 **パラメータ**
 
@@ -238,7 +238,7 @@ getErrorCode(error: unknown): PiErrorCode
 isRetryableErrorCode(code: PiErrorCode): boolean
 ```
 
-エラーコードが再試行可能か判定する
+リトライ可否判定
 
 **パラメータ**
 
@@ -252,7 +252,7 @@ isRetryableErrorCode(code: PiErrorCode): boolean
 
 ### PiError
 
-pi固有エラーの基底クラス。
+pi固有エラーを生成
 
 **継承**: `Error`
 
@@ -274,7 +274,7 @@ pi固有エラーの基底クラス。
 
 ### RuntimeLimitError
 
-ランタイム容量制限に達したエラー。
+ランタイム容量制限エラー
 
 **継承**: `PiError`
 
@@ -293,7 +293,7 @@ pi固有エラーの基底クラス。
 
 ### RuntimeQueueWaitError
 
-ランタイムキューでの待機タイムアウトエラー。
+キュー待機タイムアウト
 
 **継承**: `PiError`
 
@@ -312,7 +312,7 @@ pi固有エラーの基底クラス。
 
 ### SchemaValidationError
 
-出力スキーマ検証が失敗したときにスローされるエラー。
+スキーマ検証エラー
 
 **継承**: `PiError`
 
@@ -331,7 +331,7 @@ pi固有エラーの基底クラス。
 
 ### ValidationError
 
-一般的な検証エラーを表すクラス。
+検証エラー
 
 **継承**: `PiError`
 
@@ -351,7 +351,7 @@ pi固有エラーの基底クラス。
 
 ### TimeoutError
 
-操作がタイムアウトしたときにスローされるエラー。
+タイムアウトエラー
 
 **継承**: `PiError`
 
@@ -369,8 +369,6 @@ pi固有エラーの基底クラス。
 
 ### CancelledError
 
-操作がキャンセルされたときにスローされるエラー
-
 **継承**: `PiError`
 
 **プロパティ**
@@ -386,8 +384,6 @@ pi固有エラーの基底クラス。
 | toJSON | `toJSON(): Record<string, unknown>` |
 
 ### RateLimitError
-
-レート制限エラー
 
 **継承**: `PiError`
 
@@ -405,7 +401,7 @@ pi固有エラーの基底クラス。
 
 ### CapacityError
 
-容量超過エラー
+キャパシティ超過時のエラーを表すクラス
 
 **継承**: `PiError`
 
@@ -423,7 +419,7 @@ pi固有エラーの基底クラス。
 
 ### ParsingError
 
-パース処理で発生したエラー
+パース処理中に発生したエラーを表すクラス
 
 **継承**: `PiError`
 
@@ -442,7 +438,7 @@ pi固有エラーの基底クラス。
 
 ### ExecutionError
 
-実行操作中にスローされるエラー。
+実行エラーを生成
 
 **継承**: `PiError`
 
@@ -461,7 +457,7 @@ pi固有エラーの基底クラス。
 
 ### ConfigurationError
 
-設定エラーを表すクラス
+設定エラーを表す
 
 **継承**: `PiError`
 
@@ -480,7 +476,7 @@ pi固有エラーの基底クラス。
 
 ### StorageError
 
-ストレージ操作に対してスローされるエラー
+ストレージエラー
 
 **継承**: `PiError`
 
@@ -529,7 +525,7 @@ type PiErrorCode = | "UNKNOWN_ERROR"
   | "PARSING_ERROR"
 ```
 
-piエラーの標準化されたエラーコード。
+pi標準エラーコード
 
 ### ErrorSeverity
 
@@ -537,7 +533,7 @@ piエラーの標準化されたエラーコード。
 type ErrorSeverity = "low" | "medium" | "high" | "critical"
 ```
 
-エラー重要度レベル。
+エラー深刻度を表す型定義
 
 ---
-*自動生成: 2026-02-18T14:31:30.990Z*
+*自動生成: 2026-02-18T15:54:41.482Z*

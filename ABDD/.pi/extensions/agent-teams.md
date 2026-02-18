@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerAgentTeamsExtension` | エージェントチーム拡張を登録する |
+| 関数 | `registerAgentTeamsExtension` | エージェントチーム拡張登録 |
 
 ## ユーザーフロー
 
@@ -50,7 +50,7 @@ sequenceDiagram
 
   User->>System: 設定済みのエージェントチームとメンバー一覧を表示する。
   System->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Storage: ディスクからチームストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Internal: existsSync
   Storage->>Internal: saveStorage
   Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
@@ -58,7 +58,7 @@ sequenceDiagram
   Storage->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  System->>Internal: デフォルトチーム設定を適用・統合する
+  System->>Internal: デフォルト設定を適用
   Internal->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
   Internal->>Internal: createDefaultTeams
   Internal->>Unresolved: defaults.map (node_modules/typescript/lib/lib.es5.d.ts)
@@ -87,7 +87,7 @@ sequenceDiagram
   participant Unresolved as "Unresolved"
 
   User->>System: 独立したメンバーロールを持つカスタムエージェントチームを作成する。
-  System->>Storage: ディスクからチームストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Internal: existsSync
   Storage->>Internal: saveStorage
   Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
@@ -96,7 +96,7 @@ sequenceDiagram
   Storage->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Internal: 文字列をID形式に変換する
+  System->>Internal: ID文字列へ変換
   System->>Unresolved: storage.teams.some (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: randomBytes(2).toString (node_modules/@types/node/buffer.d.ts)
   System->>Internal: randomBytes
@@ -120,7 +120,7 @@ sequenceDiagram
   participant Unresolved as "Unresolved"
 
   User->>System: チームの有効化/無効化、デフォルトチームの設定を行う。
-  System->>Storage: ディスクからチームストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Internal: existsSync
   Storage->>Internal: saveStorage
   Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
@@ -154,7 +154,7 @@ sequenceDiagram
   participant Judge as "Judge"
 
   User->>System: 複数のメンバーエージェントでタスクを実行する。複数チームを並列実行できる場合はagent_team_run_par...
-  System->>Storage: ディスクからチームストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Internal: existsSync
   Storage->>Internal: saveStorage
   Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
@@ -167,7 +167,7 @@ sequenceDiagram
   System->>Internal: toRetryOverrides
   System->>Unresolved: team.members.filter (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
-  System->>Runtime: ランタイムのスナップショットを取得する
+  System->>Runtime: スナップショットを取得
   Runtime->>Internal: getSharedRuntimeState
   Runtime->>Internal: cleanupExpiredReservations
   Runtime->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
@@ -177,7 +177,7 @@ sequenceDiagram
   Runtime->>Internal: normalizePositiveInt
   Runtime->>Internal: createRuntimeQueueEntryId
   Runtime->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
-  Runtime->>Internal: ツール名とコンテキストからタスク優先度を推論する
+  Runtime->>Internal: 優先度を推論
   Internal->>Unresolved: toolName.toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: lowerToolName.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: lowerToolName.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
@@ -193,47 +193,47 @@ sequenceDiagram
   Runtime->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Internal: waitForRuntimeCapacityEvent
   Runtime->>Internal: wait
-  System->>Runtime: オーケストレーションキュー待機のエラーメッセージを生成します。
+  System->>Runtime: キューウェイトエラー生成
   Runtime->>Unresolved: snapshot.queuedTools.join (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Internal: 通信ラウンド数を正規化・検証する
+  System->>Internal: 通信ラウンド数を正規化
   Internal->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Team: メンバーの再試行回数を正規化
-  System->>Internal: チームメンバーの通信リンクマップを作成する
+  System->>Team: 再試行回数正規化
+  System->>Internal: マップを作成
   Internal->>Unresolved: links.get(fromId)?.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: links.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Internal: addLink
   Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  System->>Runtime: 同時実行数の入力値を数値に変換する。
+  System->>Runtime: 並行数リミットを取得
   System->>Runtime: applyLimit
   Runtime->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Runtime: チームの並列容量を解決する
-  Runtime->>Runtime: ランタイム容量の予約を試行する
+  System->>Runtime: 並列容量を解決
+  Runtime->>Runtime: 容量予約を試行
   Runtime->>Internal: createCapacityCheck
   Runtime->>Internal: createRuntimeReservationId
   Runtime->>Internal: sanitizePlannedCount
   Runtime->>Internal: normalizeReservationTtlMs
   Runtime->>Internal: createReservationLease
-  Runtime->>Runtime: ランタイム容量を予約する
+  Runtime->>Runtime: 容量予約を実行
   Runtime->>Internal: checkRuntimeCapacity
-  System->>Runtime: メンバーの並列度に基づいて候補を生成する
+  System->>Runtime: メンバー候補作成
   System->>Internal: raise
   Internal->>Internal: raiseWithReason
-  System->>Runtime: 実行時制限エラーメッセージを生成する
+  System->>Runtime: 実行制限エラー生成
   Runtime->>Unresolved: Boolean (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Executor: 予約を維持するハートビートを開始する
+  System->>Executor: ハートビート開始
   Executor->>Internal: setInterval
   Executor->>Unresolved: reservation.heartbeat (.pi/extensions/agent-runtime.ts)
   Executor->>Unresolved: timer.unref (node_modules/@types/node/timers.d.ts)
   Executor->>Internal: clearInterval
-  System->>Judge: 有効なタイムアウト時間を解決する
-  Judge->>Internal: モデルの適切なタイムアウトを計算
+  System->>Judge: タイムアウト時間を解決
+  Judge->>Internal: モデル別タイムアウト
   Internal->>Internal: getModelBaseTimeoutMs
-  Judge->>Internal: タイムアウト値（ミリ秒）を正規化します。
+  Judge->>Internal: タイムアウトを正規化
   System->>Unresolved: getCostEstimator().estimate (.pi/lib/cost-estimator.ts)
-  System->>Internal: コスト推定のシングルトンインスタンスを取得
+  System->>Internal: コスト推定インスタンス取得
   System->>Unresolved: Math.round (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: console.log (node_modules/typescript/lib/lib.dom.d.ts)
-  System->>Team: エージェントチームのライブモニターを作成する
+  System->>Team: ライブ監視を生成
   Team->>Internal: clearTimeout
   Team->>Internal: setTimeout
   Team->>Internal: clearRenderTimer
@@ -241,15 +241,15 @@ sequenceDiagram
   Team->>Internal: matchesKey
   Team->>Internal: close
   Team->>Internal: queueRender
-  Team->>Internal: 入力がEnterキーか判定する
+  Team->>Internal: Enterキー判定
   Team->>Internal: pushLiveEvent
   Team->>Internal: formatLivePhase
-  Team->>Internal: タイムスタンプを時刻に変換
+  Team->>Internal: 時刻フォーマット
   Internal->>Unresolved: String(date.getHours()).padStart (node_modules/typescript/lib/lib.es2017.string.d.ts)
   Internal->>Unresolved: date.getHours (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: date.getMinutes (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: date.getSeconds (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: テキストを単一行用に正規化する
+  Team->>Internal: 文字列正規化
   Internal->>Unresolved: input.replace(/\s+/g, ' ').trim (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: input.replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: normalizeCache.keys().next (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
@@ -257,19 +257,19 @@ sequenceDiagram
   Internal->>Unresolved: normalizeCache.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: normalizeCache.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Team->>Unresolved: globalEvents.splice (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: 現在の末尾文字列にチャンクを追加し、最大長を制御する
+  Team->>Internal: 末尾にチャンク追加
   Team->>Unresolved: Buffer.byteLength (node_modules/@types/node/buffer.d.ts)
-  Team->>Internal: 文字列内の特定の文字列の出現回数を数える
+  Team->>Internal: 出現回数を数える
   Internal->>Unresolved: input.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: chunk.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  System->>Team: チームIDとメンバーIDから一意のキーを生成する
+  System->>Team: キーを生成
   System->>Unresolved: liveMonitor?.appendBroadcastEvent (.pi/lib/team-types.ts)
   System->>Runtime: refreshRuntimeStatus
   System->>Unresolved: capacityReservation.consume (.pi/extensions/agent-runtime.ts)
   System->>Unresolved: liveMonitor?.markStarted (.pi/lib/team-types.ts)
   System->>Unresolved: liveMonitor?.appendEvent (.pi/lib/team-types.ts)
   System->>Team: チームでタスクを実行
-  Team->>Internal: 新しいチーム実行開始時に信念状態キャッシュをクリア
+  Team->>Internal: キャッシュクリア
   Internal->>Unresolved: beliefStateCache.clear (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Team->>Executor: 一意な実行IDを生成します。
   Executor->>Unresolved: now.getFullYear (node_modules/typescript/lib/lib.es5.d.ts)
@@ -280,44 +280,44 @@ sequenceDiagram
   Team->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: ensurePaths (.pi/extensions/agent-teams/storage.ts)
   Team->>Unresolved: result.diagnostics.confidence.toFixed (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Runtime: 指定した並列数でアイテムを処理する
+  Team->>Runtime: アイテム並列処理
   Runtime->>Internal: toPositiveLimit
   Runtime->>Internal: ensureNotAborted
   Runtime->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Runtime->>Internal: runWorker
-  Team->>Internal: createChildAbortController
+  Team->>Internal: 親に連動する中止制御
   Internal->>Unresolved: controller.abort (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Internal: addEventListener
   Internal->>Internal: removeEventListener
-  Team->>Team: チームメンバーのタスクを実行する
+  Team->>Team: タスクを実行
   Team->>Internal: buildTeamMemberPrompt
   Team->>LLM: runPiPrintMode
   Team->>Internal: normalizeTeamMemberOutput
   Team->>Internal: extractSummary
-  Team->>Internal: 不明なエラーを文字列メッセージに変換します
+  Team->>Internal: メッセージを文字列化
   Team->>Internal: emitResultEvent
   Team->>Unresolved: communicationMembers.some (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: 事前計算済みのメンバーごとのコンテキストを構築します。
+  Team->>Internal: コンテキストマップを生成
   Internal->>Internal: sanitizeCommunicationSnippet
   Internal->>Internal: extractField
   Team->>Internal: チームメンバー向けの通信コンテキストを作成する
   Internal->>Unresolved: input.contextMap.values (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Internal->>Unresolved: mentioned.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Team->>Internal: パートナーの参照を検出する（V2）
-  Internal->>Internal: 現在のコミュニケーションIDモードを取得
-  Internal->>Internal: 現在のスタンス分類モードを取得する。
+  Internal->>Internal: 通信IDモード取得
+  Internal->>Internal: モード取得
   Internal->>Unresolved: pattern.exec (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: id.split (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: 対象メンバーに関する議論のスタンスを分析する
+  Internal->>Internal: 議論立場解析
   Internal->>Unresolved: Object.entries (node_modules/typescript/lib/lib.es2017.object.d.ts)
   Internal->>Unresolved: Object.values(STANCE_PATTERNS).reduce (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: clampConfidence
   Team->>Team: shouldRetryFailedMemberResult
   Team->>Team: メンバーの再試行を実行
   Team->>Unresolved: Object.fromEntries (node_modules/typescript/lib/lib.es2019.object.d.ts)
-  Team->>Internal: チームの不確実性プロキシを計算する
+  Team->>Internal: 代理不確実性計算
   Internal->>Unresolved: Math.sqrt (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Judge: 最終判定プロセスを実行します
+  Team->>Judge: 最終審査の実行
   Judge->>Internal: buildFallbackJudge
   Team->>Unresolved: getCostEstimator().recordExecution (.pi/lib/cost-estimator.ts)
   Team->>Storage: writeFileSync
@@ -328,20 +328,20 @@ sequenceDiagram
   Internal->>Unresolved: discussionPattern.test (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: liveMonitor?.appendDiscussion (.pi/lib/team-types.ts)
   System->>Unresolved: liveMonitor?.markFinished (.pi/lib/team-types.ts)
-  System->>Storage: ストレージを保存し、パターンを抽出
+  System->>Storage: パターン付き保存
   Storage->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   System->>Unresolved: pi.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
   System->>Internal: エラーを圧力関連のカテゴリに分類する
   Internal->>Internal: extractStatusCodeFromMessage
   System->>Internal: lower
   Internal->>Internal: decay
-  System->>Team: チームメンバーの実行結果を集約して解決する
+  System->>Team: メンバー統合判定
   Team->>Internal: resolveTeamFailureOutcome
-  System->>Team: チームの実行結果をテキスト形式で構築します。
+  System->>Team: チーム結果構築
   Team->>Unresolved: (input.communicationAudit ?? [])       .slice()       .sort (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: left.memberId.localeCompare (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
-  System->>Internal: トレースタスクIDを生成する
+  System->>Internal: トレースIDを生成
   System->>Unresolved: capacityReservation.release (.pi/extensions/agent-runtime.ts)
   System-->>User: 結果
 
@@ -366,7 +366,7 @@ sequenceDiagram
   participant Executor as "Executor"
 
   User->>System: 選択したチームを並列実行する。teamIdsを省略した場合、現在の有効なチームのみを実行（保守的デフォルト）。
-  System->>Storage: ディスクからチームストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Internal: existsSync
   Storage->>Internal: saveStorage
   Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
@@ -388,7 +388,7 @@ sequenceDiagram
   System->>Unresolved: storage.teams.some (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: missingIds.join (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
-  System->>Runtime: ランタイムのスナップショットを取得する
+  System->>Runtime: スナップショットを取得
   Runtime->>Internal: getSharedRuntimeState
   Runtime->>Internal: cleanupExpiredReservations
   Runtime->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
@@ -396,7 +396,7 @@ sequenceDiagram
   Runtime->>Internal: normalizePositiveInt
   Runtime->>Internal: createRuntimeQueueEntryId
   Runtime->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
-  Runtime->>Internal: ツール名とコンテキストからタスク優先度を推論する
+  Runtime->>Internal: 優先度を推論
   Internal->>Unresolved: lowerToolName.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: lowerToolName.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Runtime->>Unresolved: runtime.queue.pending.push (node_modules/typescript/lib/lib.es5.d.ts)
@@ -410,39 +410,39 @@ sequenceDiagram
   Runtime->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Internal: waitForRuntimeCapacityEvent
   Runtime->>Internal: wait
-  System->>Runtime: オーケストレーションキュー待機のエラーメッセージを生成します。
-  System->>Internal: 通信ラウンド数を正規化・検証する
+  System->>Runtime: キューウェイトエラー生成
+  System->>Internal: 通信ラウンド数を正規化
   Internal->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Team: メンバーの再試行回数を正規化
-  System->>Judge: 有効なタイムアウト時間を解決する
-  Judge->>Internal: モデルの適切なタイムアウトを計算
+  System->>Team: 再試行回数正規化
+  System->>Judge: タイムアウト時間を解決
+  Judge->>Internal: モデル別タイムアウト
   Internal->>Internal: getModelBaseTimeoutMs
   Internal->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
-  Judge->>Internal: タイムアウト値（ミリ秒）を正規化します。
-  System->>Runtime: 同時実行数の入力値を数値に変換する。
+  Judge->>Internal: タイムアウトを正規化
+  System->>Runtime: 並行数リミットを取得
   System->>Internal: get
   Internal->>Internal: decay
   System->>Runtime: applyLimit
   System->>Unresolved: enabledTeams.reduce (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Runtime: チームの並列容量を解決する
-  Runtime->>Runtime: ランタイム容量の予約を試行する
+  System->>Runtime: 並列容量を解決
+  Runtime->>Runtime: 容量予約を試行
   Runtime->>Internal: createCapacityCheck
   Runtime->>Internal: createRuntimeReservationId
   Runtime->>Internal: sanitizePlannedCount
   Runtime->>Internal: normalizeReservationTtlMs
   Runtime->>Internal: createReservationLease
-  Runtime->>Runtime: ランタイム容量を予約する
+  Runtime->>Runtime: 容量予約を実行
   Runtime->>Internal: checkRuntimeCapacity
-  System->>Runtime: チームとメンバーの並列実行候補を生成
+  System->>Runtime: 候補リスト作成
   System->>Internal: raise
   Internal->>Internal: raiseWithReason
-  System->>Runtime: 実行時制限エラーメッセージを生成する
-  System->>Executor: 予約を維持するハートビートを開始する
+  System->>Runtime: 実行制限エラー生成
+  System->>Executor: ハートビート開始
   Executor->>Internal: setInterval
   Executor->>Unresolved: reservation.heartbeat (.pi/extensions/agent-runtime.ts)
   Executor->>Unresolved: timer.unref (node_modules/@types/node/timers.d.ts)
   Executor->>Internal: clearInterval
-  System->>Team: エージェントチームのライブモニターを作成する
+  System->>Team: ライブ監視を生成
   Team->>Internal: clearTimeout
   Team->>Internal: setTimeout
   Team->>Internal: clearRenderTimer
@@ -450,49 +450,49 @@ sequenceDiagram
   Team->>Internal: matchesKey
   Team->>Internal: close
   Team->>Internal: queueRender
-  Team->>Internal: 入力がEnterキーか判定する
+  Team->>Internal: Enterキー判定
   Team->>Internal: pushLiveEvent
   Team->>Internal: formatLivePhase
-  Team->>Internal: タイムスタンプを時刻に変換
+  Team->>Internal: 時刻フォーマット
   Internal->>Unresolved: String(date.getHours()).padStart (node_modules/typescript/lib/lib.es2017.string.d.ts)
   Internal->>Unresolved: date.getHours (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: date.getMinutes (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: date.getSeconds (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: テキストを単一行用に正規化する
+  Team->>Internal: 文字列正規化
   Internal->>Unresolved: input.replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: normalizeCache.keys().next (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Internal->>Unresolved: normalizeCache.keys (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Internal->>Unresolved: normalizeCache.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: normalizeCache.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Team->>Unresolved: globalEvents.splice (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: 現在の末尾文字列にチャンクを追加し、最大長を制御する
+  Team->>Internal: 末尾にチャンク追加
   Team->>Unresolved: Buffer.byteLength (node_modules/@types/node/buffer.d.ts)
-  Team->>Internal: 文字列内の特定の文字列の出現回数を数える
+  Team->>Internal: 出現回数を数える
   Internal->>Unresolved: input.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: chunk.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System->>Unresolved: enabledTeams.flatMap (node_modules/typescript/lib/lib.es2019.array.d.ts)
-  System->>Internal: チームメンバーの通信リンクマップを作成する
+  System->>Internal: マップを作成
   Internal->>Unresolved: links.get(fromId)?.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Internal: addLink
-  System->>Team: チームIDとメンバーIDから一意のキーを生成する
+  System->>Team: キーを生成
   System->>Unresolved: liveMonitor?.appendBroadcastEvent (.pi/lib/team-types.ts)
   System->>Runtime: refreshRuntimeStatus
   System->>Unresolved: getCostEstimator().estimate (.pi/lib/cost-estimator.ts)
-  System->>Internal: コスト推定のシングルトンインスタンスを取得
+  System->>Internal: コスト推定インスタンス取得
   System->>Unresolved: Math.round (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: console.log (node_modules/typescript/lib/lib.dom.d.ts)
   System->>Unresolved: capacityReservation.consume (.pi/extensions/agent-runtime.ts)
-  System->>Runtime: 指定した並列数でアイテムを処理する
+  System->>Runtime: アイテム並列処理
   Runtime->>Internal: toPositiveLimit
   Runtime->>Internal: ensureNotAborted
   Runtime->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Runtime->>Internal: runWorker
-  System->>Internal: createChildAbortController
+  System->>Internal: 親に連動する中止制御
   Internal->>Unresolved: controller.abort (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Internal: addEventListener
   Internal->>Internal: removeEventListener
   System->>Team: チームでタスクを実行
-  Team->>Internal: 新しいチーム実行開始時に信念状態キャッシュをクリア
+  Team->>Internal: キャッシュクリア
   Internal->>Unresolved: beliefStateCache.clear (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Team->>Executor: 一意な実行IDを生成します。
   Executor->>Unresolved: now.getFullYear (node_modules/typescript/lib/lib.es5.d.ts)
@@ -503,33 +503,33 @@ sequenceDiagram
   Team->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: ensurePaths (.pi/extensions/agent-teams/storage.ts)
   Team->>Unresolved: result.diagnostics.confidence.toFixed (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Team: チームメンバーのタスクを実行する
+  Team->>Team: タスクを実行
   Team->>Internal: buildTeamMemberPrompt
   Team->>LLM: runPiPrintMode
   Team->>Internal: normalizeTeamMemberOutput
   Team->>Internal: extractSummary
-  Team->>Internal: 不明なエラーを文字列メッセージに変換します
+  Team->>Internal: メッセージを文字列化
   Team->>Internal: emitResultEvent
-  Team->>Internal: 事前計算済みのメンバーごとのコンテキストを構築します。
+  Team->>Internal: コンテキストマップを生成
   Internal->>Internal: sanitizeCommunicationSnippet
   Internal->>Internal: extractField
   Team->>Internal: チームメンバー向けの通信コンテキストを作成する
   Internal->>Unresolved: input.contextMap.values (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Internal->>Unresolved: mentioned.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Team->>Internal: パートナーの参照を検出する（V2）
-  Internal->>Internal: 現在のコミュニケーションIDモードを取得
-  Internal->>Internal: 現在のスタンス分類モードを取得する。
+  Internal->>Internal: 通信IDモード取得
+  Internal->>Internal: モード取得
   Internal->>Unresolved: pattern.exec (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: id.split (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: 対象メンバーに関する議論のスタンスを分析する
+  Internal->>Internal: 議論立場解析
   Internal->>Unresolved: Object.entries (node_modules/typescript/lib/lib.es2017.object.d.ts)
   Internal->>Internal: clampConfidence
   Team->>Team: shouldRetryFailedMemberResult
   Team->>Team: メンバーの再試行を実行
   Team->>Unresolved: Object.fromEntries (node_modules/typescript/lib/lib.es2019.object.d.ts)
-  Team->>Internal: チームの不確実性プロキシを計算する
+  Team->>Internal: 代理不確実性計算
   Internal->>Unresolved: Math.sqrt (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Judge: 最終判定プロセスを実行します
+  Team->>Judge: 最終審査の実行
   Judge->>Internal: buildFallbackJudge
   Team->>Unresolved: getCostEstimator().recordExecution (.pi/lib/cost-estimator.ts)
   Team->>Storage: writeFileSync
@@ -548,14 +548,14 @@ sequenceDiagram
   System->>Internal: エラーを圧力関連のカテゴリに分類する
   Internal->>Internal: extractStatusCodeFromMessage
   System->>Internal: lower
-  System->>Runtime: チームの並列実行結果を集計して解決する
+  System->>Runtime: 並列実行判定
   Runtime->>Internal: resolveTeamMemberAggregateOutcome
   Runtime->>Internal: resolveTeamFailureOutcome
-  System->>Team: チームの実行結果をテキスト形式で構築します。
+  System->>Team: チーム結果構築
   Team->>Unresolved: (input.communicationAudit ?? [])       .slice()       .sort (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: left.memberId.localeCompare (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
-  System->>Internal: トレースタスクIDを生成する
+  System->>Internal: トレースIDを生成
   System->>Unresolved: capacityReservation.release (.pi/extensions/agent-runtime.ts)
   System-->>User: 結果
 
@@ -576,7 +576,7 @@ sequenceDiagram
   participant Runtime as "Runtime"
 
   User->>System: アクティブなチーム実行数とメンバーエージェント数を表示する。
-  System->>Storage: ディスクからチームストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Internal: existsSync
   Storage->>Internal: saveStorage
   Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
@@ -584,13 +584,13 @@ sequenceDiagram
   Storage->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  System->>Runtime: ランタイムのスナップショットを取得する
+  System->>Runtime: スナップショットを取得
   Runtime->>Internal: getSharedRuntimeState
   Runtime->>Internal: cleanupExpiredReservations
   Runtime->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: runtime.queue.pending.slice(0, 16).map (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: runtime.queue.pending.slice (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Runtime: ランタイムの状態ステータス行をフォーマットする
+  System->>Runtime: ステータス行を生成
   Runtime->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: snapshot.queuedTools.join (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: get
@@ -614,7 +614,7 @@ sequenceDiagram
   participant Executor as "Executor"
 
   User->>System: 最近のエージェントチーム実行履歴を表示する。
-  System->>Storage: ディスクからチームストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Internal: existsSync
   Storage->>Internal: saveStorage
   Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
@@ -938,7 +938,7 @@ async runRetryMember(member: TeamMember): Promise<TeamMemberResult>
 registerAgentTeamsExtension(pi: ExtensionAPI): void
 ```
 
-エージェントチーム拡張を登録する
+エージェントチーム拡張登録
 
 **パラメータ**
 
@@ -1001,4 +1001,4 @@ type LiveViewMode = TeamLiveViewMode
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.624Z*
+*自動生成: 2026-02-18T15:54:41.077Z*

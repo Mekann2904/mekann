@@ -24,11 +24,11 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `detectRepetitivePattern` | 繰り返し操作のパターンを検出する |
-| 関数 | `shouldCreateNewTool` | 新しいツール作成可否を判定 |
-| 関数 | `buildReflectionPrompt` | リフレクション用のプロンプトを生成 |
-| 関数 | `proposeToolFromTask` | タスクに基づきツールを提案 |
-| 関数 | `shouldTriggerReflection` | リフレクション実行の要否を判定 |
+| 関数 | `detectRepetitivePattern` | - |
+| 関数 | `shouldCreateNewTool` | - |
+| 関数 | `buildReflectionPrompt` | - |
+| 関数 | `proposeToolFromTask` | - |
+| 関数 | `shouldTriggerReflection` | - |
 
 ## 図解
 
@@ -97,8 +97,6 @@ sequenceDiagram
 detectRepetitivePattern(context: ToolReflectionContext): { detected: boolean; pattern: string; occurrences: number } | null
 ```
 
-繰り返し操作のパターンを検出する
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -128,8 +126,6 @@ Bashコマンドパターンを抽出
 ```typescript
 shouldCreateNewTool(context: ToolReflectionContext): ToolReflectionResult
 ```
-
-新しいツール作成可否を判定
 
 **パラメータ**
 
@@ -209,8 +205,6 @@ detectComplexChain(result: string): boolean
 buildReflectionPrompt(context: ToolReflectionContext, reflectionResult: ToolReflectionResult): string
 ```
 
-リフレクション用のプロンプトを生成
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -225,8 +219,6 @@ buildReflectionPrompt(context: ToolReflectionContext, reflectionResult: ToolRefl
 ```typescript
 proposeToolFromTask(task: string, lastToolResult?: string): ToolReflectionResult["proposedTool"] | null
 ```
-
-タスクに基づきツールを提案
 
 **パラメータ**
 
@@ -243,8 +235,6 @@ proposeToolFromTask(task: string, lastToolResult?: string): ToolReflectionResult
 shouldTriggerReflection(context: Partial<ToolReflectionContext>): boolean
 ```
 
-リフレクション実行の要否を判定
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -254,4 +244,4 @@ shouldTriggerReflection(context: Partial<ToolReflectionContext>): boolean
 **戻り値**: `boolean`
 
 ---
-*自動生成: 2026-02-18T14:31:30.981Z*
+*自動生成: 2026-02-18T15:54:41.472Z*

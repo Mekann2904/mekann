@@ -25,11 +25,11 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `isBashCommandAllowed` | Bashコマンドが許可されているか判定 |
+| 関数 | `isBashCommandAllowed` | Bashコマンドが許可されているか判定する |
 | 関数 | `isPlanModeActive` | プランモードが有効か判定する |
 | 関数 | `calculateChecksum` | プランモード状態のチェックサムを計算する |
-| 関数 | `validatePlanModeState` | プランモードの状態チェックサムを検証する |
-| 関数 | `createPlanModeState` | チェックサム付きのプランモード状態を作成する |
+| 関数 | `validatePlanModeState` | 状態チェックサム検証 |
+| 関数 | `createPlanModeState` | プランモードの状態を検証 |
 | インターフェース | `PlanModeState` | プランモードの状態を表すインターフェース |
 
 ## 図解
@@ -83,7 +83,7 @@ sequenceDiagram
 isBashCommandAllowed(command: string): boolean
 ```
 
-Bashコマンドが許可されているか判定
+Bashコマンドが許可されているか判定する
 
 **パラメータ**
 
@@ -125,7 +125,7 @@ calculateChecksum(state: Omit<PlanModeState, 'checksum'>): string
 validatePlanModeState(state: PlanModeState): boolean
 ```
 
-プランモードの状態チェックサムを検証する
+状態チェックサム検証
 
 **パラメータ**
 
@@ -141,7 +141,7 @@ validatePlanModeState(state: PlanModeState): boolean
 createPlanModeState(enabled: boolean): PlanModeState
 ```
 
-チェックサム付きのプランモード状態を作成する
+プランモードの状態を検証
 
 **パラメータ**
 
@@ -166,4 +166,4 @@ interface PlanModeState {
 プランモードの状態を表すインターフェース
 
 ---
-*自動生成: 2026-02-18T14:31:31.006Z*
+*自動生成: 2026-02-18T15:54:41.501Z*

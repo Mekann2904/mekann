@@ -24,10 +24,10 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `generateDocSections` | 構造データからドキュメントセクションを生成する |
-| インターフェース | `DocOptions` | ドキュメント生成のオプション設定 |
-| インターフェース | `DocSections` | ドキュメントの各セクションを定義 |
-| インターフェース | `LLMContext` | LLM用のコンテキスト情報 |
+| 関数 | `generateDocSections` | ドキュメントセクション生成 |
+| インターフェース | `DocOptions` | ドキュメント生成オプション |
+| インターフェース | `DocSections` | ドキュメントセクション定義 |
+| インターフェース | `LLMContext` | LLMコンテキスト定義 |
 
 ## 図解
 
@@ -107,7 +107,7 @@ flowchart TD
 generateDocSections(structure: StructureData, diagrams: MermaidDiagrams, options: DocOptions): DocSections
 ```
 
-構造データからドキュメントセクションを生成する
+ドキュメントセクション生成
 
 **パラメータ**
 
@@ -271,7 +271,7 @@ interface DocOptions {
 }
 ```
 
-ドキュメント生成のオプション設定
+ドキュメント生成オプション
 
 ### DocSections
 
@@ -286,7 +286,7 @@ interface DocSections {
 }
 ```
 
-ドキュメントの各セクションを定義
+ドキュメントセクション定義
 
 ### LLMContext
 
@@ -301,7 +301,7 @@ interface LLMContext {
 }
 ```
 
-LLM用のコンテキスト情報
+LLMコンテキスト定義
 
 ---
-*自動生成: 2026-02-18T14:31:30.663Z*
+*自動生成: 2026-02-18T15:54:41.117Z*

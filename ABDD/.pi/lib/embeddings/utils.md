@@ -23,19 +23,19 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `cosineSimilarity` | 2つのベクトル間のコサイン類似度を計算 |
-| 関数 | `euclideanDistance` | Calculate Euclidean distance between two vectors. |
-| 関数 | `normalizeVector` | ベクトルを正規化する |
-| 関数 | `addVectors` | 2つのベクトルの要素ごとの和を計算する |
-| 関数 | `subtractVectors` | 2つのベクトルの要素ごとの差を計算する |
-| 関数 | `scaleVector` | ベクトルをスカラー倍する |
-| 関数 | `meanVector` | 複数のベクトルの平均を計算する |
-| 関数 | `findNearestNeighbors` | クエリベクトルに類似した上位k件を検索します。 |
+| 関数 | `cosineSimilarity` | コサイン類似度を計算 |
+| 関数 | `euclideanDistance` | ユークリッド距離を算出 |
+| 関数 | `normalizeVector` | ベクトルを正規化 |
+| 関数 | `addVectors` | ベクトル同士の加算 |
+| 関数 | `subtractVectors` | ベクトル同士の減算 |
+| 関数 | `scaleVector` | ベクトルをスカラー倍 |
+| 関数 | `meanVector` | ベクトル集合の平均ベクトルを計算 |
+| 関数 | `findNearestNeighbors` | クエリベクトルに類似した上位k件を検索 |
 | 関数 | `findBySimilarityThreshold` | 類似度の閾値を超えるアイテムを検索 |
-| 関数 | `isValidEmbedding` | 値が有効な埋め込みベクトルか判定 |
-| 関数 | `zeroVector` | Create a zero vector of specified dimensions. |
-| 関数 | `vectorNorm` | ベクトルのノルム（大きさ）を計算します。 |
-| 関数 | `dotProduct` | 2つのベクトルの内積を計算する。 |
+| 関数 | `isValidEmbedding` | 埋め込みベクトルか検証 |
+| 関数 | `zeroVector` | ゼロベクトルを生成 |
+| 関数 | `vectorNorm` | ベクトルのノルムを計算 |
+| 関数 | `dotProduct` | 内積を計算 |
 
 ## 図解
 
@@ -99,7 +99,7 @@ sequenceDiagram
 cosineSimilarity(a: number[], b: number[]): number
 ```
 
-2つのベクトル間のコサイン類似度を計算
+コサイン類似度を計算
 
 **パラメータ**
 
@@ -116,7 +116,7 @@ cosineSimilarity(a: number[], b: number[]): number
 euclideanDistance(a: number[], b: number[]): number
 ```
 
-Calculate Euclidean distance between two vectors.
+ユークリッド距離を算出
 
 **パラメータ**
 
@@ -133,7 +133,7 @@ Calculate Euclidean distance between two vectors.
 normalizeVector(vector: number[]): number[]
 ```
 
-ベクトルを正規化する
+ベクトルを正規化
 
 **パラメータ**
 
@@ -149,7 +149,7 @@ normalizeVector(vector: number[]): number[]
 addVectors(a: number[], b: number[]): number[]
 ```
 
-2つのベクトルの要素ごとの和を計算する
+ベクトル同士の加算
 
 **パラメータ**
 
@@ -166,7 +166,7 @@ addVectors(a: number[], b: number[]): number[]
 subtractVectors(a: number[], b: number[]): number[]
 ```
 
-2つのベクトルの要素ごとの差を計算する
+ベクトル同士の減算
 
 **パラメータ**
 
@@ -183,7 +183,7 @@ subtractVectors(a: number[], b: number[]): number[]
 scaleVector(vector: number[], scalar: number): number[]
 ```
 
-ベクトルをスカラー倍する
+ベクトルをスカラー倍
 
 **パラメータ**
 
@@ -200,7 +200,7 @@ scaleVector(vector: number[], scalar: number): number[]
 meanVector(vectors: number[][]): number[] | null
 ```
 
-複数のベクトルの平均を計算する
+ベクトル集合の平均ベクトルを計算
 
 **パラメータ**
 
@@ -216,7 +216,7 @@ meanVector(vectors: number[][]): number[] | null
 findNearestNeighbors(queryVector: number[], items: T[], k: number): VectorSearchResult<T>[]
 ```
 
-クエリベクトルに類似した上位k件を検索します。
+クエリベクトルに類似した上位k件を検索
 
 **パラメータ**
 
@@ -252,7 +252,7 @@ findBySimilarityThreshold(queryVector: number[], items: T[], threshold: number):
 isValidEmbedding(value: unknown): value is number[]
 ```
 
-値が有効な埋め込みベクトルか判定
+埋め込みベクトルか検証
 
 **パラメータ**
 
@@ -268,7 +268,7 @@ isValidEmbedding(value: unknown): value is number[]
 zeroVector(dimensions: number): number[]
 ```
 
-Create a zero vector of specified dimensions.
+ゼロベクトルを生成
 
 **パラメータ**
 
@@ -284,7 +284,7 @@ Create a zero vector of specified dimensions.
 vectorNorm(vector: number[]): number
 ```
 
-ベクトルのノルム（大きさ）を計算します。
+ベクトルのノルムを計算
 
 **パラメータ**
 
@@ -300,7 +300,7 @@ vectorNorm(vector: number[]): number
 dotProduct(a: number[], b: number[]): number
 ```
 
-2つのベクトルの内積を計算する。
+内積を計算
 
 **パラメータ**
 
@@ -312,4 +312,4 @@ dotProduct(a: number[], b: number[]): number
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-18T14:31:30.988Z*
+*自動生成: 2026-02-18T15:54:41.480Z*

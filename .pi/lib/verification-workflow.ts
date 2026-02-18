@@ -1,36 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/verification-workflow.ts
- * role: LLM推論失敗を検出するためのInspector/Challenger二重検証ワークフローの型定義モジュール
- * why: LLMが生成する推論結果の信頼性を、対立する2つの視点（監査者・挑戦者）から検証し、失敗を事前に検出するため
- * related: inspector-agent.ts, challenger-agent.ts, verification-executor.ts, types/common.ts
- * public_api: VerificationWorkflowConfig, VerificationResult, VerificationTriggerMode, FallbackBehavior, ChallengeCategory, InspectionPattern, SuspicionThreshold, VerificationVerdict, ChallengerConfig, InspectorConfig
- * invariants:
- *   - confidence値は0.0〜1.0の範囲
- *   - maxVerificationDepthは正の整数
- *   - minConfidenceToSkipVerificationは0.0〜1.0の範囲
- *   - requiredFlawsは非負整数
- * side_effects: なし（型定義のみのモジュール）
- * failure_modes:
- *   - 検証深度が深すぎる場合のパフォーマンス低下
- *   - 信頼度閾値設定不適切による過検出/検出漏れ
- *   - 全カテゴリ無効化による検証機能の実質的無効化
+ * role: 検証ワークフロー用の型定義と設定モジュール
+ * why: Inspector/Challengerエージェントによる自動検証メカニズムの構造と動作を静的に保証するため
+ * related: .pi/lib/agents.ts, .pi/lib/config.ts
+ * public_api: VerificationWorkflowConfig, VerificationResult, VerificationTriggerMode, FallbackBehavior, ChallengerConfig, InspectorConfig, ChallengeCategory, InspectionPattern, SuspicionThreshold, VerificationVerdict
+ * invariants: VerificationResultのfinalVerdictがpass系の場合、requiresReRunはfalseである必要がある
+ * side_effects: なし（純粋な型定義とインターフェース）
+ * failure_modes: 設定値の論理矛盾（例：閾値設定の不整合）、検証深度のオーバーフロー
  * @abdd.explain
- * overview: 論文「Large Language Model Reasoning Failures」のP0推奨事項に基づき、Inspector（監査者）とChallenger（挑戦者）の2つのエージェントによる相互検証メカニズムを定義
+ * overview: 論文「Large Language Model Reasoning Failures」のP0推奨事項に基づき、LLMの出力をInspectorとChallengerが監査・挑戦する仕組みを定義する。
  * what_it_does:
- *   - 検証ワークフローの設定インターフェースを定義（有効/無効、トリガーモード、最大深度等）
- *   - 検証トリガー条件を5種類定義（サブエージェント実行後、チーム実行後、低信頼度時、明示的要求時、高リスクタスク時）
- *   - Challengerが検出する欠陥カテゴリを6種類定義（証拠欠落、論理欠陥、隠れた仮定、代替解釈未考慮、境界条件未考慮、因果逆転）
- *   - Inspectorが実行する検査パターンを7種類定義（CLAIM/RESULT不一致、証拠/信頼度ギャップ等）
- *   - 検証失敗時のフォールバック動作を3種類定義（警告のみ、ブロック/再実行、自動拒否）
- *   - 検証結果の判定を4段階で定義（pass、警告付きpass、要レビュー、失敗）
+ *   - 検証のトリガー条件（実行タイミング、信頼度、リスク）を定義する
+ *   - Challengerによる論理的欠陥の発見設定とInspectorによる監査パターンを構造化する
+ *   - 検証結果の判定（Pass/Warning/Review）と再実行の要否を決定するデータ構造を提供する
+ *   - 検証失敗時のフォールバック動作を定義する
  * why_it_exists:
- *   - LLMの推論は自信満々に誤った結論を出す傾向があり、単一の検証では見落としが発生する
- *   - 対立的な2つの視点から検証することで、確証バイアスや過信を検出可能にする
- *   - 検証の深度と厳格さをタスクのリスクレベルに応じて調整可能にする
+ *   - 複雑な推論チェーンにおけるLLMのハルシネーションや論理的飛躍をシステム的に検知するため
+ *   - 検証プロセスの挙動を型安全に設定し、実行時の挙動不整合を防ぐため
  * scope:
- *   in: 検証ワークフローの設定パラメータ、トリガー条件、Challenger/Inspectorの設定、検証結果の構造
- *   out: 実際の検証実行ロジック、エージェントの具体的な実装、外部システムとの連携
+ *   in: なし
+ *   out: ワークフロー制御用の型定義、設定インターフェース
  */
 
 /**
@@ -39,16 +29,17 @@
  * Inspector/Challengerエージェントによる自動検証メカニズム
  */
 
- /**
-  * 検証ワークフローの設定
-  * @param enabled ワークフローの有効/無効
-  * @param triggerModes 検証のトリガーモード一覧
-  * @param challengerConfig 検証者エージェントの設定
-  * @param inspectorConfig 監査者エージェントの設定
-  * @param fallbackBehavior 検証失敗時のフォールバック動作
-  * @param maxVerificationDepth 最大検証深度
-  * @param minConfidenceToSkipVerification 検証をスキップするための最小信頼度
-  */
+/**
+ * 検証ワークフローの設定
+ * @summary ワークフロー設定
+ * @param enabled ワークフロー有効化フラグ
+ * @param triggerModes トリガーモード配列
+ * @param challengerConfig チャレンジャーの設定
+ * @param inspectorConfig インスペクターの設定
+ * @param fallbackBehavior フォールバック動作
+ * @param maxVerificationDepth 最大検証深度
+ * @param minConfidenceToSkipVerification 検証をスキップする最小信頼度
+ */
 export interface VerificationWorkflowConfig {
   enabled: boolean;
   triggerModes: VerificationTriggerMode[];
@@ -60,7 +51,8 @@ export interface VerificationWorkflowConfig {
 }
 
 /**
- * 検証トリガーのモードを表す型
+ * 検証トリガーのモード定義
+ * @summary 検証トリガーモード
  */
 export type VerificationTriggerMode =
   | "post-subagent"     // サブエージェント実行後
@@ -69,16 +61,21 @@ export type VerificationTriggerMode =
   | "explicit"          // 明示的な要求時
   | "high-stakes";      // 高リスクタスク時
 
+/**
+ * フォールバック時の動作方針
+ * @summary フォールバック挙動
+ */
 export type FallbackBehavior =
   | "warn"              // 警告のみ
   | "block"             // ブロックして再実行
   | "auto-reject";      // 自動拒否
 
 /**
- * チャレンジ動作の設定
- * @param minConfidenceToChallenge チャレンジをトリガーする信頼度閾値
- * @param requiredFlaws 要求される欠陥の最小数
- * @param enabledCategories 有効なチャレンジカテゴリのリスト
+ * チャレンジャー設定インターフェース
+ * @summary チャレンジャー設定
+ * @param minConfidenceToChallenge チャレンジを行う最小信頼度
+ * @param requiredFlaws 必須の検出フラグ
+ * @param enabledCategories 有効なカテゴリ
  */
 export interface ChallengerConfig {
   minConfidenceToChallenge: number;  // チャレンジをトリガーする信頼度閾値
@@ -87,8 +84,9 @@ export interface ChallengerConfig {
 }
 
 /**
- * チャレンジのカテゴリ種別
- * @typedef {"evidence-gap" | "logical-flaw" | "assumption" | "alternative" | "boundary" | "causal-reversal"} ChallengeCategory
+ * チャレンジのカテゴリ
+ * @summary カテゴリを定義
+ * @typedef {"evidence-gap" | "logical-flaw" | "assumption"} ChallengeCategory
  */
 export type ChallengeCategory =
   | "evidence-gap"      // 証拠の欠落
@@ -99,10 +97,11 @@ export type ChallengeCategory =
   | "causal-reversal";  // 因果関係の逆転
 
 /**
- * 検証プロセスのインスペクタ設定
- * @param suspicionThreshold 疑わしさの閾値
- * @param requiredPatterns 要求される検査パターン
- * @param autoTriggerOnCollapseSignals 信号消失時の自動トリガー
+ * 検査者の設定
+ * @summary 検査設定を保持
+ * @param {SuspicionThreshold} suspicionThreshold 疑わしさの閾値
+ * @param {InspectionPattern[]} requiredPatterns 必要なパターン
+ * @param {boolean} autoTriggerOnCollapseSignals 信号崩落時の自動トリガー
  */
 export interface InspectorConfig {
   suspicionThreshold: SuspicionThreshold;
@@ -112,11 +111,15 @@ export interface InspectorConfig {
 
 /**
  * 疑わしさの閾値レベル
+ * @summary 閾値レベルを設定
+ * @typedef {"low" | "medium" | "high"} SuspicionThreshold
  */
 export type SuspicionThreshold = "low" | "medium" | "high";
 
 /**
- * 検証パターンの種別を表す共用型。
+ * 検査パターン定義
+ * @summary パターンを定義
+ * @typedef {"claim-result-mismatch" | "inconsistency"} InspectionPattern
  */
 export type InspectionPattern =
   | "claim-result-mismatch"    // CLAIMとRESULTの不一致
@@ -127,17 +130,16 @@ export type InspectionPattern =
   | "overconfidence"           // 過信（証拠に対して高すぎる信頼度）
   | "incomplete-reasoning";    // 不完全な推論
 
- /**
-  * 検証ワークフローの結果を表すインターフェース
-  * @param triggered 検証がトリガーされたか
-  * @param triggerReason トリガーされた理由
-  * @param inspectorOutput 監査人の出力
-  * @param challengerOutput 挑戦者の出力
-  * @param finalVerdict 最終判定
-  * @param confidence 信頼度
-  * @param requiresReRun 再実行が必要か
-  * @param warnings 警告メッセージのリスト
-  */
+/**
+ * 検証結果を表す
+ * @summary 検証結果を取得
+ * @property {boolean} triggered トリガーされたか
+ * @property {string} triggerReason トリガー理由
+ * @property {any} inspectorOutput 検査出力
+ * @property {any} challengerOutput 挑戦者出力
+ * @property {string} finalVerdict 最終判定
+ * @property {"confirmation-bias" | "overconfidence" | "incomplete-reasoning"} biasType バイアス種別
+ */
 export interface VerificationResult {
   triggered: boolean;
   triggerReason: string;
@@ -149,6 +151,11 @@ export interface VerificationResult {
   warnings: string[];
 }
 
+/**
+ * 検証の最終判定結果
+ * @summary 検証の最終判定
+ * @returns {"pass" | "pass-with-warnings" | "needs-review" | "fail"} 判定結果の種類
+ */
 export type VerificationVerdict =
   | "pass"              // 検証通過
   | "pass-with-warnings" // 警告付き通過
@@ -157,11 +164,12 @@ export type VerificationVerdict =
   | "blocked";          // ブロック（再実行必要）
 
 /**
- * インスペクターの出力結果を表すインターフェース
- * @param suspicionLevel 疑わしさのレベル
- * @param detectedPatterns 検知されたパターンの配列
- * @param summary 要約
- * @param recommendation 推奨事項
+ * 検査官の結果出力を表す
+ * @summary 検査官の出力
+ * @property {SuspicionThreshold} suspicionLevel 疑念の閾値
+ * @property {DetectedPattern[]} detectedPatterns 検出されたパターン
+ * @property {string} summary 結果の要約
+ * @property {string} recommendation 推奨事項
  */
 export interface InspectorOutput {
   suspicionLevel: SuspicionThreshold;
@@ -171,11 +179,12 @@ export interface InspectorOutput {
 }
 
 /**
- * 検出されたパターン情報を表すインターフェース
- * @param pattern 検査パターン
- * @param location 出力内の位置
- * @param severity 重要度（"low" | "medium" | "high"）
- * @param description 説明文
+ * 検出されたパターンを表す
+ * @summary パターン検出結果
+ * @property {InspectionPattern} pattern 検査パターン
+ * @property {string} location 出力内の位置
+ * @property {"low" | "medium" | "high"} severity 重大度
+ * @property {string} description パターンの説明
  */
 export interface DetectedPattern {
   pattern: InspectionPattern;
@@ -185,11 +194,12 @@ export interface DetectedPattern {
 }
 
 /**
- * 検証作業の出力結果を表すインターフェース
- * @param challengedClaims 挑戦された主張のリスト
- * @param overallSeverity 全体の重要度
- * @param summary 概要
- * @param suggestedRevisions 提案された修正内容のリスト
+ * 検証の結果出力を表す
+ * @summary 検証結果の出力
+ * @property {ChallengedClaim[]} challengedClaims 挑戦された主張のリスト
+ * @property {"minor" | "moderate" | "critical"} overallSeverity 全体の深刻度
+ * @property {string} summary 結果の要約
+ * @property {string[]} suggestedRevisions 提示される修正案
  */
 export interface ChallengerOutput {
   challengedClaims: ChallengedClaim[];
@@ -199,13 +209,13 @@ export interface ChallengerOutput {
 }
 
 /**
- * チャレンジ対象の主張を表すインターフェース
- * @param claim 主張内容
- * @param flaw 欠陥の内容
- * @param evidenceGap エビデンスの不足
- * @param alternative 代替案
- * @param boundaryFailure 境界条件の失敗（任意）
- * @param severity 重大度
+ * 挑戦された主張を表す
+ * @summary 主張の課題定義
+ * @property {any} claim 対象の主張
+ * @property {string} flaw 欠陥の内容
+ * @property {string} evidenceGap 証拠の不足
+ * @property {string} alternative 代替案
+ * @property {string} boundaryFailure 境界失敗の詳細
  */
 export interface ChallengedClaim {
   claim: string;
@@ -419,13 +429,14 @@ export const HIGH_STAKES_PATTERNS: RegExp[] = [
   /\boverwrite\b/i,
 ];
 
- /**
-  * 検証が必要かどうかを判断
-  * @param output - 出力内容
-  * @param confidence - 信頼度
-  * @param context - 検証コンテキスト
-  * @returns トリガー判定と理由
-  */
+/**
+ * 検証が必要か判断
+ * @summary 検証要否判定
+ * @param output 出力内容
+ * @param confidence 信頼度
+ * @param context 検証コンテキスト
+ * @returns トリガー判定と理由
+ */
 export function shouldTriggerVerification(
   output: string,
   confidence: number,
@@ -475,6 +486,7 @@ export function shouldTriggerVerification(
 
 /**
  * 検証のコンテキスト情報
+ * @summary コンテキスト情報
  * @param task タスク内容
  * @param triggerMode トリガーモード
  * @param agentId エージェントID
@@ -721,19 +733,21 @@ function detectConfirmationBias(output: string): { detected: boolean; reason: st
   return { detected: false, reason: "" };
 }
 
- /**
-  * 高リスクタスクか判定する
-  * @param task タスク内容
-  * @returns 高リスクの場合はtrue
-  */
+/**
+ * 高リスクタスク判定
+ * @summary リスク判定
+ * @param task タスク内容
+ * @returns 高リスクの場合はtrue
+ */
 export function isHighStakesTask(task: string): boolean {
   return HIGH_STAKES_PATTERNS.some(pattern => pattern.test(task));
 }
 
- /**
-  * 検証設定を解決
-  * @returns 解決された検証ワークフロー設定
-  */
+/**
+ * 検証設定を解決
+ * @summary 設定解決
+ * @returns 検証ワークフロー設定
+ */
 export function resolveVerificationConfig(): VerificationWorkflowConfig {
   const envMode = process.env.PI_VERIFICATION_WORKFLOW_MODE;
   
@@ -785,12 +799,13 @@ export function resolveVerificationConfig(): VerificationWorkflowConfig {
   return config;
 }
 
- /**
-  * Inspectorプロンプトを生成
-  * @param targetOutput 検証対象の出力
-  * @param context 検証コンテキスト
-  * @returns 生成されたプロンプト文字列
-  */
+/**
+ * 検査用プロンプトを構築
+ * @summary プロンプト構築
+ * @param targetOutput 検証対象の出力内容
+ * @param context 検証コンテキスト情報
+ * @returns 構築されたプロンプト文字列
+ */
 export function buildInspectorPrompt(targetOutput: string, context: VerificationContext): string {
   const config = resolveVerificationConfig();
   
@@ -829,12 +844,13 @@ Focus on:
 6. Confirmation bias patterns (only seeking supporting evidence)`;
 }
 
- /**
-  * Challengerプロンプトを生成する
-  * @param targetOutput 検証対象の出力内容
-  * @param context 検証のコンテキスト情報
-  * @returns 生成されたChallengerプロンプト
-  */
+/**
+ * 挑戦者用プロンプトを作成する
+ * @summary プロンプトを作成
+ * @param targetOutput 対象となる出力
+ * @param context 検証コンテキスト
+ * @returns 生成されたプロンプト文字列
+ */
 export function buildChallengerPrompt(targetOutput: string, context: VerificationContext): string {
   const config = resolveVerificationConfig();
   
@@ -876,15 +892,16 @@ SUGGESTED_REVISIONS:
 ...`;
 }
 
- /**
-  * 検証結果を統合
-  * @param originalOutput 元の出力
-  * @param originalConfidence 元の信頼度
-  * @param inspectorOutput 検査者の出力
-  * @param challengerOutput 挑戦者の出力
-  * @param context 検証コンテキスト
-  * @returns 統合された検証結果
-  */
+/**
+ * 検証結果を統合する
+ * @summary 検証結果を統合
+ * @param originalOutput 元の出力
+ * @param originalConfidence 元の信頼度
+ * @param inspectorOutput 検査官の出力
+ * @param challengerOutput 挑戦者の出力
+ * @param context 検証コンテキスト
+ * @returns 統合された検証結果
+ */
 export function synthesizeVerificationResult(
   originalOutput: string,
   originalConfidence: number,
@@ -989,10 +1006,11 @@ function formatCategoryName(category: ChallengeCategory): string {
   return names[category] || category;
 }
 
- /**
-  * 検証ワークフロー実行ルールを取得
-  * @returns 検証手順を記述した文字列
-  */
+/**
+ * ワークフールールを取得する
+ * @summary ルール名を取得
+ * @returns ワークフローのルール名
+ */
 export function getVerificationWorkflowRules(): string {
   return `
 【検証ワークフロー】

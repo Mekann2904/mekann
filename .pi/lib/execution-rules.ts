@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/execution-rules.ts
- * role: エージェント実行時の振る舞いルール定数定義モジュール
- * why: LLMの推論品質を安定させるため、認知バイアス対策・自己検証・作業記憶管理のルールを一元管理する
- * related: agent-config.ts, prompt-builder.ts, system-prompt.ts, cognitive-bias-utils.ts
+ * role: LLMエージェントの振る舞いを制御するシステムプロンプト定数の集約モジュール
+ * why: 複数のエージェントやサブエージェントに対し、統一的かつ論理的な推論・実行基準を提供するため
+ * related: .pi/lib/agent.ts, .pi/lib/tools.ts, .pi/prompts/system-prompt.ts
  * public_api: COMMON_EXECUTION_RULES, SUBAGENT_SPECIFIC_RULES, COGNITIVE_BIAS_COUNTERMEASURES, SELF_VERIFICATION_RULES, WORKING_MEMORY_GUIDELINES, TERMINATION_CHECK_RULES
- * invariants: 全定数はas constで不変、文字列配列または結合済み文字列として定義される
- * side_effects: なし（純粋な定数定義のみ）
- * failure_modes: なし（実行時ロジックを含まない）
+ * invariants: すべての定数は `as const` で定義され、変更不可である
+ * side_effects: なし
+ * failure_modes: 定数の読み込みに失敗した場合、プロンプト生成が不完全になる
  * @abdd.explain
- * overview: LLMエージェントの推論品質向上を目的とした実行ルール定数群。論文「Large Language Model Reasoning Failures」の知見に基づく対策を含む。
+ * overview: エージェントの生成出力の品質担保、論理的誤謬の回避、タスク遂行プロセスの標準化を目的としたルールセットを定義する
  * what_it_does:
- *   - 全エージェント共通の基本実行ルール（絵文字禁止、questionツール必須、自走推奨）を定義
- *   - サブエージェント向けの固有ルール（ファイルパス明示、仮定最小化）を定義
- *   - 確認バイアス・アンカリング・フレーミング・追従バイアス等の5種の認知バイアス対策を提供
- *   - 自己検証・作業記憶管理・終了チェックの各ガイドラインを提供
+ *   - エージェント共通の出力フォーマット（絵文字禁止など）とツール使用規約を定義する
+ *   - 認知バイアス（確認バイアス、アンカリングなど）への具体的な対策手順を提示する
+ *   - 自己矛盾の有無や証拠の妥当性を検証するチェックリストを提供する
+ *   - 複雑なタスクにおける作業記憶の管理方法と推論のステップ化を指示する
+ *   - タスク完了前に達成状況を確認する終了チェック基準を設ける
  * why_it_exists:
- *   - LLMに特有の推論失敗（認知バイアス、自己矛盾、 premature termination）を軽減するため
- *   - 複数エージェント間で一貫した振る舞いルールを適用するため
- *   - 論文ベースの実証された対策をコード化して再利用可能にするため
+ *   - LLM特有の推論失敗（論文「Large Language Model Reasoning Failures」）を軽減するため
+ *   - ユーザーとの対話およびコード生成の一貫性を維持するため
  * scope:
- *   in: なし（外部入力に依存しない静的定数）
- *   out: 他モジュールからimportされてプロンプト構築等に使用される文字列定数
+ *   in: 外部プロンプト定義ファイルやエージェント設定
+ *   out: 文字列配列、または改行結合された文字列としてのプロンプト指示
  */
 
 /**
@@ -393,22 +393,15 @@ export const QUESTION_TOOL_GUIDELINES = [
   "",
 ].join("\n");
 
- /**
-  * 実行ルールの構築オプション
-  * @param forSubagent サブエージェント向けかどうか
-  * @param forTeam チーム向けかどうか
-  * @param phase フェーズ
-  * @param includeGuidelines ガイドラインを含めるかどうか
-  * @param includeDiscussionRules ディスカッションルールを含めるかどうか
-  * @param includeCognitiveBiasCountermeasures 認知バイアス対策を含めるかどうか
-  * @param includeSelfVerification 自己検証を含めるかどうか
-  * @param includeWorkingMemoryGuidelines ワーキングメモリガイドラインを含めるかどうか
-  * @param includeTerminationCheck 終了チェックを含めるかどうか
-  * @param includeCompositionalInference 合成推論を含めるかどうか
-  * @param includeChallengeRules チャレンジルールを含めるかどうか
-  * @param includeInspectionRules 検査ルールを含めるかどうか
-  * @param includeVerificationWorkflow 検証ワークフローを含めるかどうか
-  */
+/**
+ * 実行ルールの構築オプション
+ * @summary 実行ルール構築オプション
+ * @param forSubagent サブエージェント向けかどうか
+ * @param forTeam チーム向けかどうか
+ * @param phase フェーズ
+ * @param includeGuidelines ガイドラインを含めるかどうか
+ * @returns void
+ */
 export interface BuildExecutionRulesOptions {
   forSubagent?: boolean;
   forTeam?: boolean;
@@ -428,11 +421,12 @@ export interface BuildExecutionRulesOptions {
 // 実行ルールのキャッシュ（オプション組み合わせに対する結果を保持）
 const executionRulesCache = new Map<string, string>();
 
- /**
-  * 実行ルールセクションを構築する
-  * @param options ビルドオプション
-  * @returns 構築された実行ルールの文字列
-  */
+/**
+ * 実行ルールセクションを構築
+ * @summary 実行ルール構築
+ * @param options 構築オプション
+ * @returns 実行ルール文字列
+ */
 export function buildExecutionRulesSection(options: BuildExecutionRulesOptions = {}): string {
   // キャッシュキーを生成（新しいオプションを含む）
   const cacheKey = [
@@ -535,11 +529,12 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
 // サブエージェント用ルールのキャッシュ（複数パターン）
 const subagentRulesCache = new Map<string, string>();
 
- /**
-  * サブエージェント用の実行ルールを取得
-  * @param includeGuidelines ガイドラインを含めるかどうか
-  * @returns 実行ルールの文字列
-  */
+/**
+ * サブエージェントルールを取得
+ * @summary サブエージェントルール取得
+ * @param includeGuidelines ガイドラインを含めるか
+ * @returns 実行ルール文字列
+ */
 export function getSubagentExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
   const cached = subagentRulesCache.get(key);
@@ -559,12 +554,13 @@ export function getSubagentExecutionRules(includeGuidelines = false): string {
 // チームメンバー用ルールのキャッシュ（複数パターン）
 const teamMemberRulesCache = new Map<string, string>();
 
- /**
-  * チームメンバー用の実行ルールを取得する
-  * @param phase フェーズ（"initial" | "communication"）
-  * @param includeGuidelines ガイドラインを含めるかどうか
-  * @returns 生成された実行ルールの文字列
-  */
+/**
+ * チームメンバールールを取得
+ * @summary チームメンバールール取得
+ * @param phase フェーズ ("initial" | "communication")
+ * @param includeGuidelines ガイドラインを含めるか
+ * @returns 実行ルール文字列
+ */
 export function getTeamMemberExecutionRules(
   phase: "initial" | "communication" = "initial",
   includeGuidelines = false
@@ -591,11 +587,12 @@ export function getTeamMemberExecutionRules(
 // Challenger用ルールのキャッシュ
 const challengerRulesCache = new Map<string, string>();
 
- /**
-  * Challenger用実行ルールを取得
-  * @param includeGuidelines ガイドラインを含めるかどうか
-  * @returns 生成された実行ルールの文字列
-  */
+/**
+ * チャレンジャールールを取得
+ * @summary チャレンジャールール取得
+ * @param includeGuidelines ガイドラインを含めるか
+ * @returns 実行ルール文字列
+ */
 export function getChallengerExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
   const cached = challengerRulesCache.get(key);
@@ -616,11 +613,12 @@ export function getChallengerExecutionRules(includeGuidelines = false): string {
 // Inspector用ルールのキャッシュ
 const inspectorRulesCache = new Map<string, string>();
 
- /**
-  * Inspectorサブエージェント用の実行ルールを取得
-  * @param includeGuidelines ガイドラインを含めるかどうか
-  * @returns 生成された実行ルール
-  */
+/**
+ * @summary 検査実行ルール取得
+ * Inspectorサブエージェント用の実行ルールを取得
+ * @param includeGuidelines ガイドラインを含めるかどうか
+ * @returns 生成された実行ルール
+ */
 export function getInspectorExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
   const cached = inspectorRulesCache.get(key);
@@ -641,12 +639,12 @@ export function getInspectorExecutionRules(includeGuidelines = false): string {
 // 検証ワークフロー用ルールのキャッシュ
 const verificationWorkflowRulesCache = new Map<string, string>();
 
- /**
-  * 検証ワークフロー用の実行ルールを取得
-  * @param phase 対象フェーズ ("inspector" | "challenger" | "both")
-  * @param includeGuidelines ガイドラインを含めるか
-  * @returns 実行ルールの文字列
-  */
+/**
+ * @summary 実行ルール取得
+ * @param phase 対象フェーズ ("inspector" | "challenger" | "both")
+ * @param includeGuidelines ガイドラインを含めるか
+ * @returns 実行ルールの文字列
+ */
 export function getVerificationWorkflowExecutionRules(
   phase: "inspector" | "challenger" | "both" = "both",
   includeGuidelines = false

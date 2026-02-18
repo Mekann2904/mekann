@@ -1,34 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-usage-tracker.ts
- * role: エージェント活動に関する拡張機能別の特徴使用量、ツールエラー、平均コンテキスト占有率を追跡・永続化する統計モジュール
- * why: 各拡張機能の特徴がどの程度使用され、どの程度信頼性があるかを詳細かつ永続的な分析ビューとして提供するため
+ * role: エージェントの拡張機能ごとの機能使用状況、ツールエラー、コンテキスト使用率を追跡する
+ * why: 拡張機能のどの機能が使用されているか、およびその信頼性に関する詳細かつ永続的な分析ビューを提供するため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/usage-tracker.ts
- * public_api: FeatureMetrics, UsageEventRecord, UsageTrackerState, FeatureCatalog インターフェース群
- * invariants:
- *   - STATE_VERSION は常に 1
- *   - イベント履歴は MAX_EVENT_HISTORY(5000) を超えない
- *   - 各メトリクスの数値は非負整数または非負数
- * side_effects:
- *   - .pi/analytics ディレクトリへのファイル読み書き
- *   - 状態ファイルの作成・更新
- * failure_modes:
- *   - ストレージファイルの読み込み失敗時は初期状態で開始
- *   - ディスク書き込み失敗時はエラーログ出力
+ * public_api: 機能の使用状況、エラー率、平均コンテキスト占有率の集計データとイベント履歴の提供
+ * invariants: イベント履歴は最大5000件まで保持する、状態ファイルはバージョン1のフォーマットを維持する
+ * side_effects: ディスク上の状態ファイル(`.pi/analytics/`)の読み書きを行う
+ * failure_modes: ディスクIOの失敗によるデータ記録の欠落、ステータスファイルの破損による読み込みエラー
  * @abdd.explain
- * overview: エージェントの活動を拡張機能単位で追跡し、ツール呼び出し・エラー・コンテキスト使用率をメトリクスとして集計・永続化する
+ * overview: エージェントのアクティビティにおけるツール呼び出しやエージェント実行を記録し、分析用データを永続化する追跡システム
  * what_it_does:
- *   - ツール呼び出しとエージェント実行の開始・完了をイベントとして記録
- *   - 拡張機能・特徴タイプ・特徴名ごとに呼び出し回数とエラー回数を集計
- *   - コンテキストウィンドウの占有率をサンプリングし平均値を算出
- *   - 直近 DEFAULT_RECENT_LIMIT(20) 件のイベント履歴と上位 DEFAULT_TOP_LIMIT(20) 件の特徴を提供
+ *   - ツール呼び出しとエージェント実行の開始・終了およびエラーを記録する
+ *   - コンテキストウィンドウの使用状況（トークン数、占有率）をサンプリングする
+ *   - 機能ごとのメトリクス（呼び出し回数、エラー回数など）を集計してファイルに保存する
+ *   - 過去のイベント履歴と機能カタログを管理する
  * why_it_exists:
- *   - どの拡張機能の特徴が頻繁に使用されているかを可視化するため
- *   - ツールの信頼性（エラー率）を定量化して改善の優先順位を決定するため
- *   - コンテキスト使用パターンを分析してリソース効率を最適化するため
+ *   - エージェントの振る舞いと拡張機能の信頼性を定量的に評価可能にするため
+ *   - コンテキストリソースの消費傾向を可視化するため
  * scope:
- *   in: ツール呼び出しID、拡張機能名、特徴名、実行ステータス、コンテキストスナップショット
- *   out: 集計メトリクス、イベント履歴、特徴カタログ、永続化された状態ファイル
+ *   in: ExtensionAPI経由のツール呼び出しイベント、エージェント実行イベント、コンテキストスナップショット
+ *   out: 集計されたメトリクスデータ、イベント履歴ログを含むJSON形式の状態ファイル
  */
 
 // File: .pi/extensions/agent-usage-tracker.ts
@@ -937,11 +929,12 @@ function recordAgentEnd(ctx: ExtensionAPI["context"]): void {
   saveState(currentRuntime);
 }
 
- /**
-  * エージェントの使用状況追跡を登録
-  * @param pi - 拡張機能APIインターフェース
-  * @returns なし
-  */
+/**
+ * エージェント使用状況トラッカーを登録する
+ * @summary トラッカー登録
+ * @param {ExtensionAPI} pi - 拡張API
+ * @returns {void}
+ */
 export default function registerAgentUsageTracker(pi: ExtensionAPI) {
   // 起動時に初期化と通知を行う。
   pi.on("session_start", async (_event, ctx) => {

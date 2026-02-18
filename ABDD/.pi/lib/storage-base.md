@@ -26,24 +26,24 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `createPathsFactory` | サブディレクトリ用のパスファクトリを作成 |
-| 関数 | `createEnsurePaths` | ディレクトリを作成する関数を生成する |
-| 関数 | `pruneRunArtifacts` | 古い実行アーティファクトを削除する |
-| 関数 | `mergeEntitiesById` | IDを基にエンティティ配列をマージする。 |
+| 関数 | `createPathsFactory` | パスファクトリを作成 |
+| 関数 | `createEnsurePaths` | パス生成関数を作成 |
+| 関数 | `pruneRunArtifacts` | 実行アーティファクトを削除 |
+| 関数 | `mergeEntitiesById` | IDでエンティティをマージ |
 | 関数 | `mergeRunsById` | runIdで配列を結合・ソートし上限を適用 |
-| 関数 | `resolveCurrentId` | 現在のIDを解決し、定義内に存在するか確認 |
-| 関数 | `resolveDefaultsVersion` | Extract defaults version from disk storage. |
+| 関数 | `resolveCurrentId` | 現在のIDを解決 |
+| 関数 | `resolveDefaultsVersion` | デフォルト版数を解決 |
 | 関数 | `createStorageLoader` | ストレージローダー関数を作成する。 |
 | 関数 | `createStorageSaver` | ストレージ保存用関数を作成する |
-| 関数 | `toId` | Convert string to ID format (lowercase, hyphen-sep |
+| 関数 | `toId` | IDを生成する |
 | 関数 | `mergeSubagentStorageWithDisk` | サブエージェントストレージとディスク状態をマージ |
 | 関数 | `mergeTeamStorageWithDisk` | チームストレージとディスクの状態をマージする。 |
-| インターフェース | `HasId` | IDを持つエンティティの基底インターフェース |
-| インターフェース | `BaseRunRecord` | 実行記録の基本インターフェース。runIdを一意識別子とする。 |
-| インターフェース | `BaseStoragePaths` | ストレージの基本パスを定義するインターフェース |
-| インターフェース | `BaseStorage` | 定義と実行を含むストレージの基底インターフェース |
-| インターフェース | `CreateStorageLoaderOptions` | ストレージローダー作成用のオプション |
-| インターフェース | `CreateStorageSaverOptions` | ストレージ保存機能の作成オプション。 |
+| インターフェース | `HasId` | - |
+| インターフェース | `BaseRunRecord` | 実行記録のインターフェース |
+| インターフェース | `BaseStoragePaths` | ストレージパスのインターフェース |
+| インターフェース | `BaseStorage` | ストレージの基底インターフェース |
+| インターフェース | `CreateStorageLoaderOptions` | ストレージ読込用オプション |
+| インターフェース | `CreateStorageSaverOptions` | ストレージ保存用オプション |
 
 ## 図解
 
@@ -161,7 +161,7 @@ sequenceDiagram
 createPathsFactory(subdir: string): void
 ```
 
-サブディレクトリ用のパスファクトリを作成
+パスファクトリを作成
 
 **パラメータ**
 
@@ -177,7 +177,7 @@ createPathsFactory(subdir: string): void
 createEnsurePaths(getPaths: (cwd: string) => TPaths): (cwd: string) => TPaths
 ```
 
-ディレクトリを作成する関数を生成する
+パス生成関数を作成
 
 **パラメータ**
 
@@ -193,7 +193,7 @@ createEnsurePaths(getPaths: (cwd: string) => TPaths): (cwd: string) => TPaths
 pruneRunArtifacts(paths: BaseStoragePaths, runs: TRun[]): void
 ```
 
-古い実行アーティファクトを削除する
+実行アーティファクトを削除
 
 **パラメータ**
 
@@ -210,7 +210,7 @@ pruneRunArtifacts(paths: BaseStoragePaths, runs: TRun[]): void
 mergeEntitiesById(disk: TEntity[], next: TEntity[]): TEntity[]
 ```
 
-IDを基にエンティティ配列をマージする。
+IDでエンティティをマージ
 
 **パラメータ**
 
@@ -245,7 +245,7 @@ runIdで配列を結合・ソートし上限を適用
 resolveCurrentId(nextId: string | undefined, diskId: string | undefined, definitions: TEntity[]): string | undefined
 ```
 
-現在のIDを解決し、定義内に存在するか確認
+現在のIDを解決
 
 **パラメータ**
 
@@ -263,7 +263,7 @@ resolveCurrentId(nextId: string | undefined, diskId: string | undefined, definit
 resolveDefaultsVersion(diskVersion: unknown, currentVersion: number): number
 ```
 
-Extract defaults version from disk storage.
+デフォルト版数を解決
 
 **パラメータ**
 
@@ -312,7 +312,7 @@ createStorageSaver(options: CreateStorageSaverOptions<TStorage, TPaths>): (cwd: 
 toId(input: string): string
 ```
 
-Convert string to ID format (lowercase, hyphen-separated).
+IDを生成する
 
 **パラメータ**
 
@@ -388,8 +388,6 @@ interface HasId {
 }
 ```
 
-IDを持つエンティティの基底インターフェース
-
 ### BaseRunRecord
 
 ```typescript
@@ -403,7 +401,7 @@ interface BaseRunRecord {
 }
 ```
 
-実行記録の基本インターフェース。runIdを一意識別子とする。
+実行記録のインターフェース
 
 ### BaseStoragePaths
 
@@ -415,7 +413,7 @@ interface BaseStoragePaths {
 }
 ```
 
-ストレージの基本パスを定義するインターフェース
+ストレージパスのインターフェース
 
 ### BaseStorage
 
@@ -428,7 +426,7 @@ interface BaseStorage {
 }
 ```
 
-定義と実行を含むストレージの基底インターフェース
+ストレージの基底インターフェース
 
 ### CreateStorageLoaderOptions
 
@@ -442,7 +440,7 @@ interface CreateStorageLoaderOptions {
 }
 ```
 
-ストレージローダー作成用のオプション
+ストレージ読込用オプション
 
 ### CreateStorageSaverOptions
 
@@ -455,7 +453,7 @@ interface CreateStorageSaverOptions {
 }
 ```
 
-ストレージ保存機能の作成オプション。
+ストレージ保存用オプション
 
 ---
-*自動生成: 2026-02-18T14:31:31.029Z*
+*自動生成: 2026-02-18T15:54:41.523Z*

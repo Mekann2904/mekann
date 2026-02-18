@@ -24,22 +24,22 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildIterationPrompt` | イテレーション用のプロンプトを構築する |
+| 関数 | `buildIterationPrompt` | - |
 | 関数 | `buildReferencePack` | 参照情報をパック形式の文字列に変換 |
-| 関数 | `buildIterationFocus` | 反復のフォーカス文字列を構築する |
+| 関数 | `buildIterationFocus` | 反復フォーカス構築 |
 | 関数 | `buildLoopCommandPreview` | ループコマンドのプレビュー文字列を生成する |
-| 関数 | `buildIterationFailureOutput` | イテレーション失敗時の出力を生成する |
-| 関数 | `parseLoopContract` | LLM出力からループ契約を解析する |
-| 関数 | `extractLoopResultBody` | ループ結果の本文を抽出する |
-| 関数 | `validateIteration` | イテレーションの入力値を検証し、エラーを返す |
-| 関数 | `normalizeValidationFeedback` | バリデーションエラーを正規化・整形する |
-| 関数 | `buildDoneDeclarationFeedback` | 完了宣言のフィードバックを構築する |
+| 関数 | `buildIterationFailureOutput` | イテレーション失敗時の出力を生成 |
+| 関数 | `parseLoopContract` | ループ契約を解析 |
+| 関数 | `extractLoopResultBody` | ループ結果の本文を抽出 |
+| 関数 | `validateIteration` | 入力値を検証してエラーを返す |
+| 関数 | `normalizeValidationFeedback` | 検証フィードバックを正規化 |
+| 関数 | `buildDoneDeclarationFeedback` | 完了宣言フィードバックを構築する |
 | 関数 | `extractNextStepLine` | 次のステップ行を抽出する |
-| 関数 | `extractSummaryLine` | 出力からサマリー行を抽出する |
-| 関数 | `normalizeLoopOutput` | ループ出力を正規化する |
-| インターフェース | `ParsedLoopContract` | ループ処理の契約解析結果を表すインターフェース |
-| 型 | `LoopStatus` | ループの状態を表す型 |
-| 型 | `LoopGoalStatus` | ループの目標達成状態を表す型 |
+| 関数 | `extractSummaryLine` | 要約行を抽出する |
+| 関数 | `normalizeLoopOutput` | 出力文字を正規化する |
+| インターフェース | `ParsedLoopContract` | ループ契約解析結果 |
+| 型 | `LoopStatus` | ループの進行状態を表す型 |
+| 型 | `LoopGoalStatus` | ループの状態を表す型 |
 
 ## 図解
 
@@ -154,8 +154,6 @@ buildIterationPrompt(input: {
 }): string
 ```
 
-イテレーション用のプロンプトを構築する
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -194,7 +192,7 @@ buildReferencePack(references: LoopReference[]): string
 buildIterationFocus(task: string, previousOutput: string, validationFeedback: string[]): string
 ```
 
-反復のフォーカス文字列を構築する
+反復フォーカス構築
 
 **パラメータ**
 
@@ -235,7 +233,7 @@ buildLoopCommandPreview(model: {
 buildIterationFailureOutput(message: string): string
 ```
 
-イテレーション失敗時の出力を生成する
+イテレーション失敗時の出力を生成
 
 **パラメータ**
 
@@ -251,7 +249,7 @@ buildIterationFailureOutput(message: string): string
 parseLoopContract(output: string, hasGoal: boolean): ParsedLoopContract
 ```
 
-LLM出力からループ契約を解析する
+ループ契約を解析
 
 **パラメータ**
 
@@ -268,7 +266,7 @@ LLM出力からループ契約を解析する
 extractLoopResultBody(output: string): string
 ```
 
-ループ結果の本文を抽出する
+ループ結果の本文を抽出
 
 **パラメータ**
 
@@ -291,7 +289,7 @@ validateIteration(input: {
 }): string[]
 ```
 
-イテレーションの入力値を検証し、エラーを返す
+入力値を検証してエラーを返す
 
 **パラメータ**
 
@@ -313,7 +311,7 @@ validateIteration(input: {
 normalizeValidationFeedback(errors: string[]): string[]
 ```
 
-バリデーションエラーを正規化・整形する
+検証フィードバックを正規化
 
 **パラメータ**
 
@@ -329,7 +327,7 @@ normalizeValidationFeedback(errors: string[]): string[]
 buildDoneDeclarationFeedback(errors: string[]): string[]
 ```
 
-完了宣言のフィードバックを構築する
+完了宣言フィードバックを構築する
 
 **パラメータ**
 
@@ -461,7 +459,7 @@ extractNextStepLine(output: string): string
 extractSummaryLine(output: string): string
 ```
 
-出力からサマリー行を抽出する
+要約行を抽出する
 
 **パラメータ**
 
@@ -633,7 +631,7 @@ toPreview(value: string, maxChars: number): string
 normalizeLoopOutput(value: string): string
 ```
 
-ループ出力を正規化する
+出力文字を正規化する
 
 **パラメータ**
 
@@ -660,7 +658,7 @@ interface ParsedLoopContract {
 }
 ```
 
-ループ処理の契約解析結果を表すインターフェース
+ループ契約解析結果
 
 ## 型定義
 
@@ -670,7 +668,7 @@ interface ParsedLoopContract {
 type LoopStatus = "continue" | "done" | "unknown"
 ```
 
-ループの状態を表す型
+ループの進行状態を表す型
 
 ### LoopGoalStatus
 
@@ -678,7 +676,7 @@ type LoopStatus = "continue" | "done" | "unknown"
 type LoopGoalStatus = "met" | "not_met" | "unknown"
 ```
 
-ループの目標達成状態を表す型
+ループの状態を表す型
 
 ---
-*自動生成: 2026-02-18T14:31:30.747Z*
+*自動生成: 2026-02-18T15:54:41.203Z*

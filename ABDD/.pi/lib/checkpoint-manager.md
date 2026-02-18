@@ -25,19 +25,19 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `initCheckpointManager` | チェックポイントマネージャーを初期化する |
-| 関数 | `getCheckpointManager` | チェックポイントマネージャーを取得 |
-| 関数 | `resetCheckpointManager` | チェックポイントマネージャをリセット |
-| 関数 | `isCheckpointManagerInitialized` | チェックポイントマネージャーが初期化済みか判定 |
-| 関数 | `getCheckpointDir` | チェックポイントディレクトリのパスを取得する |
-| 関数 | `getCheckpointConfigFromEnv` | 環境変数からチェックポイント設定を取得する。 |
-| インターフェース | `Checkpoint` | チェックポイント状態を表すインターフェース |
-| インターフェース | `CheckpointSaveResult` | チェックポイント保存操作の結果 |
-| インターフェース | `PreemptionResult` | 割り込み操作の結果を表します |
-| インターフェース | `CheckpointManagerConfig` | チェックポイントマネージャーの設定 |
+| 関数 | `initCheckpointManager` | チェックポイントマネージャーを初期化 |
+| 関数 | `getCheckpointManager` | チェックポイントマネージャーのインスタンスを取得 |
+| 関数 | `resetCheckpointManager` | チェックポイントマネージャーをリセット |
+| 関数 | `isCheckpointManagerInitialized` | 初期化状態を確認 |
+| 関数 | `getCheckpointDir` | チェックポイントディレクトリを取得 |
+| 関数 | `getCheckpointConfigFromEnv` | 環境変数から設定を取得 |
+| インターフェース | `Checkpoint` | チェックポイントエンティティ |
+| インターフェース | `CheckpointSaveResult` | チェックポイント保存結果 |
+| インターフェース | `PreemptionResult` | 割り込み処理の結果 |
+| インターフェース | `CheckpointManagerConfig` | チェックポイント管理設定 |
 | インターフェース | `CheckpointStats` | チェックポイント統計情報 |
-| 型 | `CheckpointSource` | Source type for checkpointed tasks. |
-| 型 | `CheckpointPriority` | チェックポイントの優先度レベル |
+| 型 | `CheckpointSource` | チェックポイントのソース種別 |
+| 型 | `CheckpointPriority` | チェックポイント優先度定義 |
 
 ## 図解
 
@@ -252,7 +252,7 @@ Get checkpoint file size in bytes.
 initCheckpointManager(configOverrides?: Partial<CheckpointManagerConfig>): void
 ```
 
-チェックポイントマネージャーを初期化する
+チェックポイントマネージャーを初期化
 
 **パラメータ**
 
@@ -275,7 +275,7 @@ getCheckpointManager(): {
 }
 ```
 
-チェックポイントマネージャーを取得
+チェックポイントマネージャーのインスタンスを取得
 
 **戻り値**: `{
   save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
@@ -385,7 +385,7 @@ Get checkpoint statistics.
 resetCheckpointManager(): void
 ```
 
-チェックポイントマネージャをリセット
+チェックポイントマネージャーをリセット
 
 **戻り値**: `void`
 
@@ -395,7 +395,7 @@ resetCheckpointManager(): void
 isCheckpointManagerInitialized(): boolean
 ```
 
-チェックポイントマネージャーが初期化済みか判定
+初期化状態を確認
 
 **戻り値**: `boolean`
 
@@ -405,7 +405,7 @@ isCheckpointManagerInitialized(): boolean
 getCheckpointDir(): string
 ```
 
-チェックポイントディレクトリのパスを取得する
+チェックポイントディレクトリを取得
 
 **戻り値**: `string`
 
@@ -415,7 +415,7 @@ getCheckpointDir(): string
 getCheckpointConfigFromEnv(): Partial<CheckpointManagerConfig>
 ```
 
-環境変数からチェックポイント設定を取得する。
+環境変数から設定を取得
 
 **戻り値**: `Partial<CheckpointManagerConfig>`
 
@@ -439,7 +439,7 @@ interface Checkpoint {
 }
 ```
 
-チェックポイント状態を表すインターフェース
+チェックポイントエンティティ
 
 ### CheckpointSaveResult
 
@@ -452,7 +452,7 @@ interface CheckpointSaveResult {
 }
 ```
 
-チェックポイント保存操作の結果
+チェックポイント保存結果
 
 ### PreemptionResult
 
@@ -465,7 +465,7 @@ interface PreemptionResult {
 }
 ```
 
-割り込み操作の結果を表します
+割り込み処理の結果
 
 ### CheckpointManagerConfig
 
@@ -478,7 +478,7 @@ interface CheckpointManagerConfig {
 }
 ```
 
-チェックポイントマネージャーの設定
+チェックポイント管理設定
 
 ### CheckpointStats
 
@@ -507,8 +507,7 @@ type CheckpointSource = | "subagent_run"
   | "agent_team_run_parallel"
 ```
 
-Source type for checkpointed tasks.
-Must match TaskSource from task-scheduler.ts.
+チェックポイントのソース種別
 
 ### CheckpointPriority
 
@@ -516,7 +515,7 @@ Must match TaskSource from task-scheduler.ts.
 type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background"
 ```
 
-チェックポイントの優先度レベル
+チェックポイント優先度定義
 
 ---
-*自動生成: 2026-02-18T14:31:30.955Z*
+*自動生成: 2026-02-18T15:54:41.440Z*

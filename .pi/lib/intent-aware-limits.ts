@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/intent-aware-limits.ts
- * role: タスク意図に基づくリソース予算の分類・提供モジュール
- * why: "Agentic Search in the Wild"論文の知見に基づき、意図別に最適化された予算設定を提供し、無駄な反復や過剰なリソース消費を防ぐため
- * related: search-controller.ts, task-executor.ts, budget-manager.ts
+ * role: タスクの意図分類とそれに基づくリソース配分ポリシーを定義するモジュール
+ * why: タスクの特性（宣言的・手順的・推論的）に応じて反復回数やタイムアウトを最適化するため
+ * related: .pi/lib/execution-planner.ts, .pi/lib/search-engine.ts
  * public_api: TaskIntent, IntentBudget, IntentClassificationInput, IntentClassificationResult, INTENT_BUDGETS
- * invariants: INTENT_BUDGETSの各エントリはTaskIntent型のキーに対応、repetitionToleranceは0-1の範囲、maxIterationsは正の整数
- * side_effects: なし（純粋な型定義と定数のエクスポートのみ）
- * failure_modes: 意図分類の信頼度が低い場合に不適切な予算が選択される可能性
+ * invariants: IntentBudgetの各乗数は正の数である、maxIterationsは0以上である
+ * side_effects: なし（純粋な定義と定数のエクスポート）
+ * failure_modes: タスク説明が曖昧な場合の意図誤判定、未知のタスクタイプへの対応漏れ
  * @abdd.explain
- * overview: タスクの意図（declarative/procedural/reasoning）を分類し、各意図に最適化されたリソース予算プロファイルを提供する
+ * overview: 論文 "Agentic Search in the Wild" に基づき、タスクの意図を3種類に分類し、それぞれに最適な計算リソース（反復回数、並列度、タイムアウト）を割り当てる設定を提供する
  * what_it_does:
- *   - TaskIntent型として3種類の意図（宣言的/手順的/推論的）を定義
- *   - 意図別の予算設定（最大反復数、タイムアウト係数、並列度係数、反復許容度）を提供
- *   - IntentClassificationInput/Result型で分類入出力の構造を定義
- *   - 論文の統計データに基づき、declarativeは短縮・高許容、reasoningは長時間・低許容の予算を設定
+ *   - TaskIntent型と分類用インターフェースを定義する
+ *   - 意図の種類ごとに推奨リソース設定（INTENT_BUDGETS）を保持する
+ *   - 分類パターン（INTENT_PATTERNS）を保持する
  * why_it_exists:
- *   - 意図別に検索パターンが大きく異なる（declarative: 88.64%が早期収束、reasoning: 意味ドリフト大）ため、一律の予算は非効率
- *   - declarativeタスクでの過剰な反復を抑制し、reasoningタスクには十分なリソースを確保する必要がある
+ *   - 単一のリソース制限では、反復の多い事実探索と複雑な推論タスクの両方に対応できないため
+ *   - 意図に応じて早期収束させるか深く探索させるかを制御し、効率と精度を両立するため
  * scope:
- *   in: タスク説明文、目標基準、参照リソース数（分類用入力）
- *   out: 意図分類結果、推奨予算プロファイル（最大反復数6-12、タイムアウト係数1.0-2.0、並列度係数0.8-1.2、反復許容度0.3-0.6）
+ *   in: タスクの説明、目標基準、参照リソース数
+ *   out: 意図分類結果および推奨される予算設定
  */
 
 /**
@@ -38,20 +37,18 @@
 // Types
 // ============================================================================
 
- /**
-  * タスクの意図タイプ
-  */
+/**
+ * タスクの意図タイプを定義
+ * @summary 意図タイプ定義
+ * @returns タスクの種別
+ */
 export type TaskIntent = "declarative" | "procedural" | "reasoning";
 
- /**
-  * インテント対応の予算設定。
-  * @param intent インテントの種類
-  * @param maxIterations 推奨される最大反復回数
-  * @param timeoutMultiplier タイムアウトの乗数（ベースタイムアウトに適用）
-  * @param parallelismMultiplier 並列度の乗数（ベース並列度に適用）
-  * @param repetitionTolerance 繰り返しの許容度（0-1、大きいほど許容）
-  * @param description この予算プロファイルの説明
-  */
+/**
+ * タスクの意図タイプ
+ * @summary 意図タイプ定義
+ * @returns 宣言的、手続き的、または推論的
+ */
 export interface IntentBudget {
   /** Intent type */
   intent: TaskIntent;
@@ -67,12 +64,14 @@ export interface IntentBudget {
   description: string;
 }
 
- /**
-  * 意図分類の入力データ
-  * @param task タスクの説明
-  * @param goal 目標基準（指定されている場合）
-  * @param referenceCount 参照可能なリソース数
-  */
+/**
+ * 意図分類の入力
+ *
+ * @summary 分類入力
+ * @param task タスクの説明文
+ * @param goal 目標基準（任意）
+ * @param referenceCount 参照資料の数
+ */
 export interface IntentClassificationInput {
   /** Task description */
   task: string;
@@ -82,13 +81,15 @@ export interface IntentClassificationInput {
   referenceCount?: number;
 }
 
- /**
-  * 意図分類の結果を表します。
-  * @param intent 分類された意図
-  * @param confidence 信頼度スコア (0-1)
-  * @param matchedPatterns マッチしたパターン
-  * @param recommendedBudget 推奨予算
-  */
+/**
+ * 意図分類の結果
+ *
+ * @summary 分類結果
+ * @param intent 特定された意図
+ * @param confidence 信頼度スコア
+ * @param matchedPatterns 一致したパターン
+ * @param recommendedBudget 推奨される予算設定
+ */
 export interface IntentClassificationResult {
   /** Classified intent */
   intent: TaskIntent;
@@ -229,11 +230,13 @@ const INTENT_PATTERNS: Record<TaskIntent, string[]> = {
 // Intent Classification
 // ============================================================================
 
- /**
-  * タスクの意図を分類する
-  * @param input - 分類入力
-  * @returns 推奨予算を含む分類結果
-  */
+/**
+ * 意図の分類実行
+ *
+ * @summary 意図を分類
+ * @param input 分類用入力データ
+ * @returns 分類結果と推奨設定
+ */
 export function classifyIntent(input: IntentClassificationInput): IntentClassificationResult {
   const taskLower = input.task.toLowerCase();
   const goalLower = (input.goal || "").toLowerCase();
@@ -293,11 +296,13 @@ export function classifyIntent(input: IntentClassificationInput): IntentClassifi
   };
 }
 
- /**
-  * 意図に応じた予算を取得する。
-  * @param intent - タスクの意図
-  * @returns 意図に対応する予算
-  */
+/**
+ * 意図予算の取得
+ *
+ * @summary 予算を取得
+ * @param intent タスクの意図
+ * @returns 意図に基づく推奨予算
+ */
 export function getIntentBudget(intent: TaskIntent): IntentBudget {
   return INTENT_BUDGETS[intent];
 }
@@ -306,12 +311,14 @@ export function getIntentBudget(intent: TaskIntent): IntentBudget {
 // Budget Application
 // ============================================================================
 
- /**
-  * インテントに基づいて制限値を調整する
-  * @param baseLimits - 調整対象のベース制限値
-  * @param intent - タスクのインテント
-  * @returns 調整後の制限値
-  */
+/**
+ * 意図に応じた制限適用
+ *
+ * @summary 制限を適用
+ * @param baseLimits 基本となる制限設定
+ * @param intent タスクの意図分類
+ * @returns 適用後の制限設定
+ */
 export function applyIntentLimits<T extends {
   maxIterations?: number;
   timeoutMs?: number;
@@ -333,12 +340,13 @@ export function applyIntentLimits<T extends {
   };
 }
 
- /**
-  * インテントに基づく反復しきい値を計算
-  * @param baseThreshold - 基本しきい値（0-1）
-  * @param intent - タスクインテント
-  * @returns 調整後のしきい値
-  */
+/**
+ * インテントに基づき反復しきい値を計算
+ * @summary 反復しきい値を計算
+ * @param baseThreshold - 基本しきい値（0-1）
+ * @param intent - タスクインテント
+ * @returns 調整後のしきい値
+ */
 export function getEffectiveRepetitionThreshold(
   baseThreshold: number,
   intent: TaskIntent
@@ -352,18 +360,20 @@ export function getEffectiveRepetitionThreshold(
 // Utility Functions
 // ============================================================================
 
- /**
-  * インテント分類が利用可能か判定する
-  * @returns 常にtrueを返す
-  */
+/**
+ * インテント分類利用可否判定
+ * @summary インテント利用可否判定
+ * @returns 常にtrueを返す
+ */
 export function isIntentClassificationAvailable(): boolean {
   return true; // Always available (pattern-based, no external dependencies)
 }
 
- /**
-  * 全てのインテント予算を取得する
-  * @returns 各インテントの予算設定を含むオブジェクト
-  */
+/**
+ * @summary 予算設定全取得
+ * 全てのインテント予算を取得する
+ * @returns 各インテントの予算設定を含むオブジェクト
+ */
 export function getAllIntentBudgets(): Record<TaskIntent, IntentBudget> {
   return { ...INTENT_BUDGETS };
 }

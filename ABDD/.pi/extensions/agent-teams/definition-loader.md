@@ -28,12 +28,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `parseTeamMarkdownFile` | YAMLフロントマター付きチームMarkdownを解析 |
-| 関数 | `loadTeamDefinitionsFromDir` | ディレクトリからチーム定義を読み込む |
-| 関数 | `loadTeamDefinitionsFromMarkdown` | Markdownからチーム定義を読み込む |
-| 関数 | `createDefaultTeams` | デフォルトのチーム定義を作成する |
-| 関数 | `mergeDefaultTeam` | 既存とデフォルトのチーム定義をマージする |
-| 関数 | `ensureDefaults` | デフォルトチーム設定を適用・統合する |
+| 関数 | `parseTeamMarkdownFile` | チームMarkdownファイルをパース |
+| 関数 | `loadTeamDefinitionsFromDir` | ディレクトリからチーム定義を読込 |
+| 関数 | `loadTeamDefinitionsFromMarkdown` | Markdownからチーム定義を読込 |
+| 関数 | `createDefaultTeams` | デフォルトチーム定義を生成 |
+| 関数 | `mergeDefaultTeam` | デフォルトチーム定義を統合 |
+| 関数 | `ensureDefaults` | デフォルト設定を適用 |
 
 ## 図解
 
@@ -169,7 +169,7 @@ getCandidateTeamDefinitionsDirs(cwd: string): string[]
 parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | null
 ```
 
-YAMLフロントマター付きチームMarkdownを解析
+チームMarkdownファイルをパース
 
 **パラメータ**
 
@@ -185,7 +185,7 @@ YAMLフロントマター付きチームMarkdownを解析
 loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): TeamDefinition[]
 ```
 
-ディレクトリからチーム定義を読み込む
+ディレクトリからチーム定義を読込
 
 **パラメータ**
 
@@ -202,7 +202,7 @@ loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): TeamDefiniti
 loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): TeamDefinition[]
 ```
 
-Markdownからチーム定義を読み込む
+Markdownからチーム定義を読込
 
 **パラメータ**
 
@@ -247,7 +247,7 @@ getHardcodedDefaultTeams(nowIso: string): TeamDefinition[]
 createDefaultTeams(nowIso: string, cwd?: string): TeamDefinition[]
 ```
 
-デフォルトのチーム定義を作成する
+デフォルトチーム定義を生成
 
 **パラメータ**
 
@@ -264,7 +264,9 @@ createDefaultTeams(nowIso: string, cwd?: string): TeamDefinition[]
 mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinition): TeamDefinition
 ```
 
-既存とデフォルトのチーム定義をマージする
+デフォルトチーム定義を統合
+
+既存のチーム定義に、フォールバック用のデフォルト定義をマージします。
 
 **パラメータ**
 
@@ -281,7 +283,9 @@ mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinition): TeamDefini
 ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage
 ```
 
-デフォルトチーム設定を適用・統合する
+デフォルト設定を適用
+
+ストレージに対して、現在時刻やディレクトリ情報を含むデフォルト設定を反映・統合します。
 
 **パラメータ**
 
@@ -294,4 +298,4 @@ ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage
 **戻り値**: `TeamStorage`
 
 ---
-*自動生成: 2026-02-18T14:31:30.448Z*
+*自動生成: 2026-02-18T15:54:40.904Z*

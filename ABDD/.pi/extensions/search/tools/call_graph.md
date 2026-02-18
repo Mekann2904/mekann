@@ -26,11 +26,11 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `callGraphIndex` | 呼び出しグラフのインデックスを生成または更新 |
-| 関数 | `findCallersTool` | 指定されたシンボルを呼び出す関数を検索します。 |
+| 関数 | `callGraphIndex` | 呼び出しグラフを索引付け |
+| 関数 | `findCallersTool` | 呼び出し元を検索 |
 | 関数 | `findCalleesTool` | 指定されたシンボルが呼び出す関数を検索 |
-| 関数 | `formatCallGraphIndex` | コールグラフのインデックス結果をフォーマット |
-| 関数 | `formatCallers` | 呼び出し元の検索結果を整形して文字列で返す |
+| 関数 | `formatCallGraphIndex` | - |
+| 関数 | `formatCallers` | - |
 | 関数 | `formatCallees` | 呼び出し先の検索結果をフォーマットする |
 
 ## 図解
@@ -97,7 +97,7 @@ sequenceDiagram
 async callGraphIndex(input: CallGraphIndexInput, cwd: string): Promise<CallGraphIndexOutput>
 ```
 
-呼び出しグラフのインデックスを生成または更新
+呼び出しグラフを索引付け
 
 **パラメータ**
 
@@ -114,7 +114,7 @@ async callGraphIndex(input: CallGraphIndexInput, cwd: string): Promise<CallGraph
 async findCallersTool(input: FindCallersInput, cwd: string): Promise<FindCallersOutput>
 ```
 
-指定されたシンボルを呼び出す関数を検索します。
+呼び出し元を検索
 
 **パラメータ**
 
@@ -148,8 +148,6 @@ async findCalleesTool(input: FindCalleesInput, cwd: string): Promise<FindCallees
 formatCallGraphIndex(result: CallGraphIndexOutput): string
 ```
 
-コールグラフのインデックス結果をフォーマット
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -163,8 +161,6 @@ formatCallGraphIndex(result: CallGraphIndexOutput): string
 ```typescript
 formatCallers(result: FindCallersOutput): string
 ```
-
-呼び出し元の検索結果を整形して文字列で返す
 
 **パラメータ**
 
@@ -191,4 +187,4 @@ formatCallees(result: FindCalleesOutput): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T14:31:30.857Z*
+*自動生成: 2026-02-18T15:54:41.320Z*

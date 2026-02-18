@@ -23,14 +23,14 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `hasNonEmptyResultSection` | RESULTセクションが空でないか確認する |
-| 関数 | `validateSubagentOutput` | サブエージェントの出力を検証する |
-| 関数 | `validateTeamMemberOutput` | チームメンバーの出力を検証します。 |
-| 関数 | `validateSubagentOutputEnhanced` | サブエージェント出力を検証 |
-| 関数 | `validateTeamMemberOutputEnhanced` | 拡張スキーマ対応でチームメンバー出力を検証 |
-| インターフェース | `SubagentValidationOptions` | サブエージェント出力の検証オプション。 |
-| インターフェース | `TeamMemberValidationOptions` | チームメンバー出力の検証オプション |
-| インターフェース | `ExtendedValidationResult` | スキーマ情報を含む拡張検証結果 |
+| 関数 | `hasNonEmptyResultSection` | 結果セクションが空でないか判定 |
+| 関数 | `validateSubagentOutput` | サブエージェント出力を検証する |
+| 関数 | `validateTeamMemberOutput` | チームメンバ出力の検証を行う |
+| 関数 | `validateSubagentOutputEnhanced` | サブエージェント出力の拡張検証を行う |
+| 関数 | `validateTeamMemberOutputEnhanced` | チームメンバ出力の拡張検証を行う |
+| インターフェース | `SubagentValidationOptions` | サブエージェント検証オプション |
+| インターフェース | `TeamMemberValidationOptions` | チームメンバー検証オプション |
+| インターフェース | `ExtendedValidationResult` | スキーマ情報を含む拡張検証結果のインターフェース |
 
 ## 図解
 
@@ -111,7 +111,7 @@ sequenceDiagram
 hasNonEmptyResultSection(output: string): boolean
 ```
 
-RESULTセクションが空でないか確認する
+結果セクションが空でないか判定
 
 **パラメータ**
 
@@ -127,7 +127,7 @@ RESULTセクションが空でないか確認する
 validateSubagentOutput(output: string, options?: Partial<SubagentValidationOptions>): { ok: boolean; reason?: string }
 ```
 
-サブエージェントの出力を検証する
+サブエージェント出力を検証する
 
 **パラメータ**
 
@@ -144,7 +144,7 @@ validateSubagentOutput(output: string, options?: Partial<SubagentValidationOptio
 validateTeamMemberOutput(output: string, options?: Partial<TeamMemberValidationOptions>): { ok: boolean; reason?: string }
 ```
 
-チームメンバーの出力を検証します。
+チームメンバ出力の検証を行う
 
 **パラメータ**
 
@@ -161,7 +161,7 @@ validateTeamMemberOutput(output: string, options?: Partial<TeamMemberValidationO
 validateSubagentOutputEnhanced(output: string, options?: Partial<SubagentValidationOptions>): ExtendedValidationResult
 ```
 
-サブエージェント出力を検証
+サブエージェント出力の拡張検証を行う
 
 **パラメータ**
 
@@ -178,7 +178,7 @@ validateSubagentOutputEnhanced(output: string, options?: Partial<SubagentValidat
 validateTeamMemberOutputEnhanced(output: string, options?: Partial<TeamMemberValidationOptions>): ExtendedValidationResult
 ```
 
-拡張スキーマ対応でチームメンバー出力を検証
+チームメンバ出力の拡張検証を行う
 
 **パラメータ**
 
@@ -200,7 +200,7 @@ interface SubagentValidationOptions {
 }
 ```
 
-サブエージェント出力の検証オプション。
+サブエージェント検証オプション
 
 ### TeamMemberValidationOptions
 
@@ -211,7 +211,7 @@ interface TeamMemberValidationOptions {
 }
 ```
 
-チームメンバー出力の検証オプション
+チームメンバー検証オプション
 
 ### ExtendedValidationResult
 
@@ -229,7 +229,7 @@ interface ExtendedValidationResult {
 }
 ```
 
-スキーマ情報を含む拡張検証結果
+スキーマ情報を含む拡張検証結果のインターフェース
 
 ---
-*自動生成: 2026-02-18T14:31:31.001Z*
+*自動生成: 2026-02-18T15:54:41.495Z*

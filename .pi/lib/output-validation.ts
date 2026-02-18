@@ -1,33 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/output-validation.ts
- * role: サブエージェントおよびチームメンバーの出力フォーマット検証ユーティリティ
- * why: 構造化出力のフォーマット準拠を保証し、必須セクションの欠落や空セクションを検出するため
- * related: output-schema.ts, subagent-runner.ts, team-coordinator.ts
- * public_api: validateSubagentOutput, validateTeamMemberOutput, hasNonEmptyResultSection, SubagentValidationOptions, TeamMemberValidationOptions
- * invariants:
- *   - デフォルトのrequiredLabelsは変更されない
- *   - 空の出力は常に検証失敗となる
- *   - RESULTセクションが存在しない場合hasNonEmptyResultSectionはfalseを返す
- * side_effects: なし（純粋関数のみ）
- * failure_modes:
- *   - 必須ラベル欠落時にok=falseを返す
- *   - 文字数不足時にok=falseを返す
- *   - RESULTセクションが空の場合ok=falseを返す
+ * role: 構造化された出力形式への準拠を検証するバリデーター
+ * why: サブエージェントおよびチームメンバーの出力がフォーマット要件を満たしていることを保証するため
+ * related: .pi/lib/output-schema.ts, .pi/lib/subagent-executor.ts, .pi/lib/team-executor.ts
+ * public_api: hasNonEmptyResultSection, validateSubagentOutput, validateTeamMemberOutput, SubagentValidationOptions, TeamMemberValidationOptions
+ * invariants: 必須ラベル（SUMMARY等）は大文字小文字を区別せず検出される
+ * side_effects: スキーマ検証モードが有効な場合、違反記録関数（recordSchemaViolation）を呼び出す
+ * failure_modes: 必須ラベル欠如、RESULTセクションの空欄、文字数不足、スキーマ違反
  * @abdd.explain
- * overview: サブエージェントとチームメンバーの出力が所定のフォーマット規約に準拠しているか検証する関数群を提供する
+ * overview: サブエージェントとチームメンバーの出力テキストに対し、正規表現およびオプションでJSONスキーマを用いた構文検証を行うモジュール
  * what_it_does:
- *   - 出力テキストの最小文字数チェック
- *   - 必須ラベル（SUMMARY:, RESULT:, NEXT_STEP:等）の存在確認
- *   - RESULTセクションが空でないことの確認
- *   - 正規表現ベースのラベル検出
+ *   - RESULTセクションの内容有無を確認する
+ *   - 最小文字数および必須ラベルの存在を検証する
+ *   - 機能フラグに基づきレガシー検証、デュアル検証、厳格検証を切り替える
  * why_it_exists:
- *   - エージェント出力の一貫性と品質を保証するため
- *   - 不完全な出力を早期に検出し、下流処理でのエラーを防ぐため
- *   - サブエージェントとチームメンバーで異なる検証要件を満たすため
+ *   - エージェントの出力フォーマットを統一し、ダウンストリーム処理の安定性を確保する
+ *   - スキーマ検証（P0-1改善）により構造的な整合性を強化する
  * scope:
- *   in: 出力テキスト文字列、検証オプション（minChars, requiredLabels）
- *   out: 検証結果オブジェクト（ok, reason）、RESULTセクションの非空判定
+ *   in: 検証対象の文字列（output）、検証オプション（minChars, requiredLabels）
+ *   out: 検証結果（ok: boolean, reason: string）
  */
 
 /**
@@ -53,11 +45,12 @@ import {
   recordSchemaViolation,
 } from "./output-schema.js";
 
- /**
-  * RESULTセクションが空でないか確認する
-  * @param output - 検査対象の出力テキスト
-  * @returns RESULTセクションに内容がある場合はtrue
-  */
+/**
+ * 結果セクションが空でないか判定
+ * @summary 結果セクションを判定
+ * @param output 検証対象の文字列
+ * @returns 空でない場合はtrue
+ */
 export function hasNonEmptyResultSection(output: string): boolean {
   const lines = output.split(/\r?\n/);
   const resultIndex = lines.findIndex((line) => /^\s*RESULT\s*:/i.test(line));
@@ -75,11 +68,11 @@ export function hasNonEmptyResultSection(output: string): boolean {
   return false;
 }
 
- /**
-  * サブエージェント出力の検証オプション。
-  * @param minChars - 最小文字数
-  * @param requiredLabels - 必須ラベルの配列
-  */
+/**
+ * サブエージェント検証オプション
+ * @summary 検証オプション定義
+ * @interface
+ */
 export interface SubagentValidationOptions {
   minChars: number;
   requiredLabels: string[];
@@ -90,12 +83,13 @@ const SUBAGENT_DEFAULT_OPTIONS: SubagentValidationOptions = {
   requiredLabels: ["SUMMARY:", "RESULT:", "NEXT_STEP:"],
 };
 
- /**
-  * サブエージェントの出力を検証する
-  * @param output - 検証対象の出力テキスト
-  * @param options - 検証オプション（任意）
-  * @returns 検証結果（okとreasonを含むオブジェクト）
-  */
+/**
+ * サブエージェント出力を検証する
+ * @summary 出力を検証
+ * @param output 検証対象の文字列
+ * @param options 検証オプション（部分指定可）
+ * @returns 検証結果と理由を含むオブジェクト
+ */
 export function validateSubagentOutput(
   output: string,
   options?: Partial<SubagentValidationOptions>,
@@ -125,11 +119,11 @@ export function validateSubagentOutput(
   return { ok: true };
 }
 
- /**
-  * チームメンバー出力の検証オプション
-  * @param minChars - 最小文字数
-  * @param requiredLabels - 必須ラベルのリスト
-  */
+/**
+ * チームメンバー検証オプション
+ * @summary 検証オプション定義
+ * @interface
+ */
 export interface TeamMemberValidationOptions {
   minChars: number;
   requiredLabels: string[];
@@ -140,12 +134,13 @@ const TEAM_MEMBER_DEFAULT_OPTIONS: TeamMemberValidationOptions = {
   requiredLabels: ["SUMMARY:", "CLAIM:", "EVIDENCE:", "RESULT:", "NEXT_STEP:"],
 };
 
- /**
-  * チームメンバーの出力を検証します。
-  * @param output - 検証対象の出力テキスト
-  * @param options - 検証オプション（任意）
-  * @returns 検証結果（okとreasonを含むオブジェクト）
-  */
+/**
+ * チームメンバ出力の検証を行う
+ * @summary 出力検証実行
+ * @param output 検証対象の文字列
+ * @param options 検証オプション
+ * @returns 検証結果オブジェクト
+ */
 export function validateTeamMemberOutput(
   output: string,
   options?: Partial<TeamMemberValidationOptions>,
@@ -175,18 +170,10 @@ export function validateTeamMemberOutput(
 // Enhanced Validation with Schema Support (P0-1)
 // ============================================================================
 
- /**
-  * スキーマ情報を含む拡張検証結果
-  * @param ok 検証が成功したか
-  * @param reason 失敗の理由
-  * @param mode スキーマ検証モード
-  * @param legacyOk レガシー検証の成功判定
-  * @param legacyReason レガシー検証の失敗理由
-  * @param schemaOk スキーマ検証の成功判定
-  * @param schemaReason スキーマ検証の失敗理由
-  * @param schemaViolations スキーマ違反のリスト
-  * @param fallbackUsed フォールバックが使用されたか
-  */
+/**
+ * スキーマ情報を含む拡張検証結果のインターフェース
+ * @summary 拡張検証結果
+ */
 export interface ExtendedValidationResult {
   ok: boolean;
   reason?: string;
@@ -199,12 +186,13 @@ export interface ExtendedValidationResult {
   fallbackUsed: boolean;
 }
 
- /**
-  * サブエージェント出力を検証
-  * @param output - 検証対象の出力テキスト
-  * @param options - 検証オプション（省略可）
-  * @returns スキーマ詳細を含む拡張検証結果
-  */
+/**
+ * サブエージェント出力の拡張検証を行う
+ * @summary サブエージェント検証
+ * @param output 検証対象の文字列
+ * @param options 検証オプション
+ * @returns 拡張検証結果
+ */
 export function validateSubagentOutputEnhanced(
   output: string,
   options?: Partial<SubagentValidationOptions>,
@@ -276,12 +264,13 @@ export function validateSubagentOutputEnhanced(
   };
 }
 
- /**
-  * 拡張スキーマ対応でチームメンバー出力を検証
-  * @param output - 検証対象の出力テキスト
-  * @param options - 検証オプション（任意）
-  * @returns スキーマ詳細を含む拡張検証結果
-  */
+/**
+ * チームメンバ出力の拡張検証を行う
+ * @summary 拡張検証実行
+ * @param output 検証対象の文字列
+ * @param options 検証オプション
+ * @returns 拡張検証結果
+ */
 export function validateTeamMemberOutputEnhanced(
   output: string,
   options?: Partial<TeamMemberValidationOptions>,

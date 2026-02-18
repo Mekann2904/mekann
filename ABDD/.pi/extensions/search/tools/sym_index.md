@@ -28,9 +28,9 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `symIndex` | ctagsを使用してシンボルインデックスを生成 |
-| 関数 | `readSymbolIndex` | シンボルインデックスを読み込みパースする |
-| 関数 | `getIndexMetadata` | インデックスのメタデータを取得する |
+| 関数 | `symIndex` | 意味的インデックスを作成 |
+| 関数 | `readSymbolIndex` | シンボルインデックス読込 |
+| 関数 | `getIndexMetadata` | インデックスメタデータ取得 |
 
 ## 図解
 
@@ -636,7 +636,7 @@ Write entries to sharded files.
 async symIndex(input: SymIndexInput, cwd: string): Promise<SymIndexOutput>
 ```
 
-ctagsを使用してシンボルインデックスを生成
+意味的インデックスを作成
 
 **パラメータ**
 
@@ -653,7 +653,7 @@ ctagsを使用してシンボルインデックスを生成
 async readSymbolIndex(cwd: string): Promise<SymbolIndexEntry[] | null>
 ```
 
-シンボルインデックスを読み込みパースする
+シンボルインデックス読込
 
 **パラメータ**
 
@@ -669,7 +669,7 @@ async readSymbolIndex(cwd: string): Promise<SymbolIndexEntry[] | null>
 async getIndexMetadata(cwd: string): Promise<IndexMetadata | null>
 ```
 
-インデックスのメタデータを取得する
+インデックスメタデータ取得
 
 **パラメータ**
 
@@ -693,4 +693,4 @@ interface LegacyIndexMeta {
 Legacy index metadata structure
 
 ---
-*自動生成: 2026-02-18T14:31:30.864Z*
+*自動生成: 2026-02-18T15:54:41.326Z*

@@ -1,34 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/runtime-utils.ts
- * role: エージェント実行ランタイム用ユーティリティ関数群
- * why: タイムアウト、リトライ、レート制限、同時実行制御の設定正規化とID生成を集約し、サブエージェント実行の安定性を確保するため
- * related: retry-with-backoff.js, agent-executor.ts, subagent-handler.ts, types.ts
+ * role: サブエージェントおよびエージェントチーム実行のためのランタイムユーティリティ
+ * why: タイムアウト、リトライ、同時実行制御、ID生成、エラー整形など、実行時に必要となる共通処理を一箇所に集約し再利用性と信頼性を確保するため
+ * related: ./retry-with-backoff.js, @mariozechner/pi-ai
  * public_api: trimForError, buildRateLimitKey, buildTraceTaskId, normalizeTimeoutMs, createRetrySchema, toRetryOverrides, toConcurrencyLimit
- * invariants:
- *   - normalizeTimeoutMsは常に0以上の整数を返す（入力が正の有限値なら1以上、無効ならfallback）
- *   - toConcurrencyLimitは常に1以上の整数またはfallbackを返す
- *   - buildRateLimitKeyは常に小文字のprovider::model形式を返す
- * side_effects: なし（純粋関数のみ）
- * failure_modes:
- *   - trimForErrorに不正な文字列入力時は空文字を返す
- *   - normalizeTimeoutMsに無効値入力時はfallback値を返す
- *   - toRetryOverridesに不正なオブジェクト入力時はundefinedを返す
+ * invariants: すべての数値変換関数は0以上の整数を返す、文字列キー生成は小文字化・正規化された空白を使用する
+ * side_effects: なし
+ * failure_modes: 不正な型入力によるフォールバック値の使用、数値変換時の精度消失
  * @abdd.explain
- * overview: サブエージェントとエージェントチーム実行のためのランタイムユーティリティ関数を提供する
+ * overview: エージェントシステムの実行制御に関連する補助関数群を提供するモジュール。
  * what_it_does:
- *   - エラーメッセージの正規化・短縮（trimForError）
- *   - レート制限キーとトレースタスクIDの生成（buildRateLimitKey, buildTraceTaskId）
- *   - タイムアウト値の正規化（normalizeTimeoutMs）
- *   - リトライ設定のTypeBoxスキーマ作成とオーバーライド変換（createRetrySchema, toRetryOverrides）
- *   - 同時実行数の正規化（toConcurrencyLimit）
+ *   - エラーメッセージの空白正規化と文字数制限による整形
+ *   - プロバイダとモデル名に基づくレート制限キーの生成
+ *   - トレースID、デリゲートID、シーケンス番号による一意タスクIDの生成
+ *   - 任意の入力値からのタイムアウトミリ秒と同時実行数の正規化
+ *   - TypeBoxによるリトライ設定スキーマの定義と、生オブジェクトから型安全なオプションへの変換
  * why_it_exists:
- *   - LLMプロバイダ呼び出しの設定値を安全に正規化し、実行時エラーを防ぐ
- *   - 分散トレースとデバッグ用に一意なIDを生成する
- *   - リトライ設定のバリデーションと型安全性を担保する
+ *   - ランタイム設定の検証と正規化ロジックを共通化し、実装の重複を防ぐため
+ *   - 外部入力の型安全性を保証し、実行時エラーを未然に防ぐため
  * scope:
- *   in: 文字列、数値、unknown型の設定値
- *   out: 正規化された数値、文字列、TypeBoxスキーマ、RetryWithBackoffOverrides
+ *   in: 生の文字列、数値、不明型のオブジェクト
+ *   out: 正規化された文字列、数値、TypeBoxスキーマ、型定義されたオプションオブジェクト
  */
 
 /**
@@ -40,35 +33,38 @@ import { Type } from "@mariozechner/pi-ai";
 
 import type { RetryWithBackoffOverrides } from "./retry-with-backoff.js";
 
- /**
-  * エラー表示用にメッセージを整形・短縮
-  * @param message - 処理対象のメッセージ
-  * @param maxLength - 最大長（デフォルト: 600）
-  * @returns 整形されたメッセージ
-  */
+/**
+ * エラーメッセージ整形
+ * @summary エラーメッセージを整形
+ * @param message - 対象のメッセージ
+ * @param maxLength - 最大長
+ * @returns 整形されたメッセージ
+ */
 export function trimForError(message: string, maxLength = 600): string {
   const normalized = message.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength)}...`;
 }
 
- /**
-  * プロバイダとモデルからレート制限キーを生成
-  * @param provider - プロバイダ名
-  * @param model - モデル名
-  * @returns 正規化されたレート制限キー
-  */
+/**
+ * レート制限キー生成
+ * @summary レート制限キー生成
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @returns 生成されたレート制限キー
+ */
 export function buildRateLimitKey(provider: string, model: string): string {
   return `${provider.toLowerCase()}::${model.toLowerCase()}`;
 }
 
- /**
-  * トレースタスクIDを生成する
-  * @param traceId - トレースID（省略可）
-  * @param delegateId - デリゲートID
-  * @param sequence - シーケンス番号
-  * @returns フォーマットされたトレースタスクID
-  */
+/**
+ * トレースID生成
+ * @summary トレースIDを生成
+ * @param traceId - トレースID
+ * @param delegateId - 委譲先ID
+ * @param sequence - シーケンス番号
+ * @returns 生成されたトレースタスクID
+ */
 export function buildTraceTaskId(
   traceId: string | undefined,
   delegateId: string,
@@ -79,12 +75,13 @@ export function buildTraceTaskId(
   return `${safeTrace}:${safeDelegate}:${Math.max(0, Math.trunc(sequence))}`;
 }
 
- /**
-  * タイムアウト値（ミリ秒）を正規化します。
-  * @param value - タイムアウト値（任意の型）
-  * @param fallback - 値が無効な場合のフォールバック値
-  * @returns 正規化されたタイムアウト値（ミリ秒）
-  */
+/**
+ * タイムアウト正規化
+ * @summary タイムアウトを正規化
+ * @param value 入力値
+ * @param fallback デフォルト値
+ * @returns 正規化されたタイムアウト時間
+ */
 export function normalizeTimeoutMs(value: unknown, fallback: number): number {
   const resolved = value === undefined ? fallback : Number(value);
   if (!Number.isFinite(resolved)) return fallback;
@@ -92,10 +89,11 @@ export function normalizeTimeoutMs(value: unknown, fallback: number): number {
   return Math.max(1, Math.trunc(resolved));
 }
 
- /**
-  * リトライ設定のスキーマを作成する
-  * @returns TypeBoxによるリトライオプションのスキーマ
-  */
+/**
+ * スキーマ生成
+ * @summary リトライスキーマを作成
+ * @returns void
+ */
 export function createRetrySchema() {
   return Type.Optional(
     Type.Object({
@@ -118,11 +116,12 @@ export function createRetrySchema() {
   );
 }
 
- /**
-  * リトライ入力値をRetryWithBackoffOverridesに変換する。
-  * @param value - 生のリトライ入力値
-  * @returns RetryWithBackoffOverridesまたはundefined
-  */
+/**
+ * リトライ設定変換
+ * @summary リトライ設定を変換
+ * @param value 入力値
+ * @returns リトライ設定オブジェクト
+ */
 export function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
@@ -139,12 +138,13 @@ export function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | un
   };
 }
 
- /**
-  * 同時実行数の入力値を数値に変換する。
-  * @param value - 生の同時実行数の値
-  * @param fallback - 無効な場合の代替値
-  * @returns 正規化された同時実行数
-  */
+/**
+ * 並行数変換
+ * @summary 並行数リミットを取得
+ * @param value 入力値
+ * @param fallback デフォルト値
+ * @returns 並行数
+ */
 export function toConcurrencyLimit(value: unknown, fallback: number): number {
   const resolved = value === undefined ? fallback : Number(value);
   if (!Number.isFinite(resolved)) return fallback;

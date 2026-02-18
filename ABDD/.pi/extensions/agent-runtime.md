@@ -28,47 +28,47 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `setRuntimeStateProvider` | ランタイム状態プロバイダーを設定する（テスト用） |
-| 関数 | `getRuntimeStateProvider` | - |
-| 関数 | `notifyRuntimeCapacityChanged` | ランタイム容量変更イベントを通知する |
-| 関数 | `getSharedRuntimeState` | 共有ランタイム状態を取得する |
-| 関数 | `getRuntimeSnapshot` | ランタイムのスナップショットを取得する |
-| 関数 | `formatRuntimeStatusLine` | ランタイムの状態ステータス行をフォーマットする |
+| 関数 | `setRuntimeStateProvider` | ランタイムステータスラインの表示オプション |
+| 関数 | `getRuntimeStateProvider` | プロバイダを設定 |
+| 関数 | `notifyRuntimeCapacityChanged` | 容量変更通知 |
+| 関数 | `getSharedRuntimeState` | 共有ランタイム状態取得 |
+| 関数 | `getRuntimeSnapshot` | ランタイムスナップショット取得 |
+| 関数 | `formatRuntimeStatusLine` | ステータス行を生成 |
 | 関数 | `checkRuntimeCapacity` | ランタイムの容量チェックを行う |
-| 関数 | `tryReserveRuntimeCapacity` | ランタイム容量の予約を試行する |
+| 関数 | `tryReserveRuntimeCapacity` | 容量予約を試行 |
 | 関数 | `reserveRuntimeCapacity` | ランタイム容量を予約する |
 | 関数 | `waitForRuntimeCapacity` | ランタイム容量が利用可能になるまで待機する |
 | 関数 | `waitForRuntimeOrchestrationTurn` | ランタイムのオーケストレーション実行を待機する |
-| 関数 | `resetRuntimeTransientState` | ランタイムの一時的な状態をリセットする |
-| 関数 | `getModelAwareParallelLimit` | プロバイダとモデルに基づく並列制限を取得する |
-| 関数 | `shouldAllowParallelForModel` | 特定のモデルでの並列実行を許可するか判定 |
-| 関数 | `getLimitsSummary` | デバッグ用の現在の制限概要を取得 |
-| 関数 | `broadcastCurrentQueueState` | 現在のキューステータスをブロードキャスト |
+| 関数 | `resetRuntimeTransientState` | 一時状態をリセット |
+| 関数 | `getModelAwareParallelLimit` | 並列制限数を取得 |
+| 関数 | `shouldAllowParallelForModel` | 並列実行許可判定 |
+| 関数 | `getLimitsSummary` | 制限サマリを取得 |
+| 関数 | `broadcastCurrentQueueState` | キュー状態を配信 |
 | 関数 | `getCheckpointManagerInstance` | チェックポイントマネージャーのインスタンスを取得 |
-| 関数 | `getMetricsCollectorInstance` | メトリクスコレクターのインスタンスを取得（遅延初期化） |
-| 関数 | `recordTaskCompletion` | タスク完了を記録する |
-| 関数 | `recordPreemptionEvent` | プリエンプションイベントを記録する |
-| 関数 | `recordWorkStealEvent` | ワークスチールイベントを記録する |
-| 関数 | `getSchedulerMetrics` | スケジューラのメトリクスを取得する |
+| 関数 | `getMetricsCollectorInstance` | メトリクスコレクタのインスタンスを取得 |
+| 関数 | `recordTaskCompletion` | タスク完了を記録 |
+| 関数 | `recordPreemptionEvent` | プリエンプションイベントを記録 |
+| 関数 | `recordWorkStealEvent` | ワークスチールイベントを記録 |
+| 関数 | `getSchedulerMetrics` | メトリクスを取得 |
 | 関数 | `getCheckpointStats` | チェックポイント統計を取得する。 |
-| 関数 | `attemptWorkStealing` | ワークスチーリングを試行します。 |
-| 関数 | `getComprehensiveRuntimeStatus` | ランタイムの包括的なステータスを取得する |
-| 関数 | `formatComprehensiveRuntimeStatus` | ランタイムのステータスを整形して文字列で返す |
+| 関数 | `attemptWorkStealing` | ワークスチーリングを試行 |
+| 関数 | `getComprehensiveRuntimeStatus` | ランタイム包括ステータス取得 |
+| 関数 | `formatComprehensiveRuntimeStatus` | ランタイム状態を整形 |
 | 関数 | `registerAgentRuntimeExtension` | エージェントランタイム拡張を登録する |
-| インターフェース | `AgentRuntimeLimits` | - |
-| インターフェース | `RuntimeStateProvider` | - |
-| インターフェース | `AgentRuntimeSnapshot` | - |
+| インターフェース | `AgentRuntimeLimits` | エージェント実行制限値 |
+| インターフェース | `RuntimeStateProvider` | ランタイム状態を提供 |
+| インターフェース | `AgentRuntimeSnapshot` | プロバイダを取得 |
 | インターフェース | `RuntimeStatusLineOptions` | - |
 | インターフェース | `RuntimeCapacityCheckInput` | - |
 | インターフェース | `RuntimeCapacityCheck` | - |
 | インターフェース | `RuntimeCapacityWaitInput` | - |
 | インターフェース | `RuntimeCapacityWaitResult` | - |
-| インターフェース | `RuntimeCapacityReservationLease` | - |
-| インターフェース | `RuntimeCapacityReserveInput` | - |
-| インターフェース | `RuntimeCapacityReserveResult` | - |
-| インターフェース | `RuntimeOrchestrationWaitInput` | - |
-| インターフェース | `RuntimeOrchestrationLease` | ランタイムオーケストレーションのリース |
-| インターフェース | `RuntimeOrchestrationWaitResult` | オーケストレーションの待機結果。 |
+| インターフェース | `RuntimeCapacityReservationLease` | キャパシティ予約リース |
+| インターフェース | `RuntimeCapacityReserveInput` | キャパシティ予約入力 |
+| インターフェース | `RuntimeCapacityReserveResult` | キャパシティ予約結果 |
+| インターフェース | `RuntimeOrchestrationWaitInput` | オーケストレーションの待機入力 |
+| インターフェース | `RuntimeOrchestrationLease` | オーケストレーションのリース情報 |
+| インターフェース | `RuntimeOrchestrationWaitResult` | オーケストレーション待機結果 |
 
 ## 図解
 
@@ -312,7 +312,7 @@ sequenceDiagram
 setRuntimeStateProvider(provider: RuntimeStateProvider): void
 ```
 
-ランタイム状態プロバイダーを設定する（テスト用）
+ランタイムステータスラインの表示オプション
 
 **パラメータ**
 
@@ -327,6 +327,8 @@ setRuntimeStateProvider(provider: RuntimeStateProvider): void
 ```typescript
 getRuntimeStateProvider(): RuntimeStateProvider
 ```
+
+プロバイダを設定
 
 **戻り値**: `RuntimeStateProvider`
 
@@ -392,7 +394,7 @@ resolveLimitFromEnv(envName: string, fallback: number, max: any): number
 notifyRuntimeCapacityChanged(): void
 ```
 
-ランタイム容量変更イベントを通知する
+容量変更通知
 
 **戻り値**: `void`
 
@@ -535,7 +537,7 @@ enforceRuntimeLimitConsistency(runtime: AgentRuntimeState): void
 getSharedRuntimeState(): AgentRuntimeState
 ```
 
-共有ランタイム状態を取得する
+共有ランタイム状態取得
 
 **戻り値**: `AgentRuntimeState`
 
@@ -606,7 +608,7 @@ consumeReservation(runtime: AgentRuntimeState, reservationId: string): boolean
 getRuntimeSnapshot(): AgentRuntimeSnapshot
 ```
 
-ランタイムのスナップショットを取得する
+ランタイムスナップショット取得
 
 **戻り値**: `AgentRuntimeSnapshot`
 
@@ -616,7 +618,7 @@ getRuntimeSnapshot(): AgentRuntimeSnapshot
 formatRuntimeStatusLine(options: RuntimeStatusLineOptions): string
 ```
 
-ランタイムの状態ステータス行をフォーマットする
+ステータス行を生成
 
 **パラメータ**
 
@@ -810,7 +812,7 @@ createReservationLease(reservation: RuntimeCapacityReservationRecord): RuntimeCa
 tryReserveRuntimeCapacity(input: RuntimeCapacityReserveInput): RuntimeCapacityCheck & { reservation?: RuntimeCapacityReservationLease }
 ```
 
-ランタイム容量の予約を試行する
+容量予約を試行
 
 **パラメータ**
 
@@ -892,7 +894,7 @@ async waitForRuntimeOrchestrationTurn(input: RuntimeOrchestrationWaitInput): Pro
 resetRuntimeTransientState(): void
 ```
 
-ランタイムの一時的な状態をリセットする
+一時状態をリセット
 
 **戻り値**: `void`
 
@@ -902,7 +904,7 @@ resetRuntimeTransientState(): void
 getModelAwareParallelLimit(provider: string, model: string): number
 ```
 
-プロバイダとモデルに基づく並列制限を取得する
+並列制限数を取得
 
 **パラメータ**
 
@@ -919,7 +921,7 @@ getModelAwareParallelLimit(provider: string, model: string): number
 shouldAllowParallelForModel(provider: string, model: string, currentActive: number): boolean
 ```
 
-特定のモデルでの並列実行を許可するか判定
+並列実行許可判定
 
 **パラメータ**
 
@@ -937,7 +939,7 @@ shouldAllowParallelForModel(provider: string, model: string, currentActive: numb
 getLimitsSummary(provider?: string, model?: string): string
 ```
 
-デバッグ用の現在の制限概要を取得
+制限サマリを取得
 
 **パラメータ**
 
@@ -954,7 +956,7 @@ getLimitsSummary(provider?: string, model?: string): string
 broadcastCurrentQueueState(): void
 ```
 
-現在のキューステータスをブロードキャスト
+キュー状態を配信
 
 **戻り値**: `void`
 
@@ -974,7 +976,7 @@ getCheckpointManagerInstance(): ReturnType<typeof import("../lib/checkpoint-mana
 getMetricsCollectorInstance(): ReturnType<typeof import("../lib/metrics-collector").getMetricsCollector> | null
 ```
 
-メトリクスコレクターのインスタンスを取得（遅延初期化）
+メトリクスコレクタのインスタンスを取得
 
 **戻り値**: `ReturnType<typeof import("../lib/metrics-collector").getMetricsCollector> | null`
 
@@ -984,7 +986,7 @@ getMetricsCollectorInstance(): ReturnType<typeof import("../lib/metrics-collecto
 recordTaskCompletion(task: { id: string; source: string; provider: string; model: string; priority: string }, result: { waitedMs: number; executionMs: number; success: boolean }): void
 ```
 
-タスク完了を記録する
+タスク完了を記録
 
 **パラメータ**
 
@@ -1009,7 +1011,7 @@ recordTaskCompletion(task: { id: string; source: string; provider: string; model
 recordPreemptionEvent(taskId: string, reason: string): void
 ```
 
-プリエンプションイベントを記録する
+プリエンプションイベントを記録
 
 **パラメータ**
 
@@ -1026,7 +1028,7 @@ recordPreemptionEvent(taskId: string, reason: string): void
 recordWorkStealEvent(sourceInstance: string, taskId: string): void
 ```
 
-ワークスチールイベントを記録する
+ワークスチールイベントを記録
 
 **パラメータ**
 
@@ -1043,7 +1045,7 @@ recordWorkStealEvent(sourceInstance: string, taskId: string): void
 getSchedulerMetrics(): import("../lib/metrics-collector").SchedulerMetrics | null
 ```
 
-スケジューラのメトリクスを取得する
+メトリクスを取得
 
 **戻り値**: `import("../lib/metrics-collector").SchedulerMetrics | null`
 
@@ -1063,7 +1065,7 @@ getCheckpointStats(): import("../lib/checkpoint-manager").CheckpointStats | null
 async attemptWorkStealing(): Promise<import("../lib/cross-instance-coordinator").StealableQueueEntry | null>
 ```
 
-ワークスチーリングを試行します。
+ワークスチーリングを試行
 
 **戻り値**: `Promise<import("../lib/cross-instance-coordinator").StealableQueueEntry | null>`
 
@@ -1084,7 +1086,7 @@ getComprehensiveRuntimeStatus(): {
 }
 ```
 
-ランタイムの包括的なステータスを取得する
+ランタイム包括ステータス取得
 
 **戻り値**: `{
   runtime: AgentRuntimeSnapshot;
@@ -1105,7 +1107,7 @@ getComprehensiveRuntimeStatus(): {
 formatComprehensiveRuntimeStatus(): string
 ```
 
-ランタイムのステータスを整形して文字列で返す
+ランタイム状態を整形
 
 **戻り値**: `string`
 
@@ -1162,6 +1164,8 @@ interface AgentRuntimeLimits {
   capacityPollMs: number;
 }
 ```
+
+エージェント実行制限値
 
 ### RuntimeQueueEntry
 
@@ -1226,6 +1230,8 @@ interface RuntimeStateProvider {
 }
 ```
 
+ランタイム状態を提供
+
 ### AgentRuntimeSnapshot
 
 ```typescript
@@ -1253,6 +1259,8 @@ interface AgentRuntimeSnapshot {
   };
 }
 ```
+
+プロバイダを取得
 
 ### RuntimeStatusLineOptions
 
@@ -1321,6 +1329,8 @@ interface RuntimeCapacityReservationLease {
 }
 ```
 
+キャパシティ予約リース
+
 ### RuntimeCapacityReserveInput
 
 ```typescript
@@ -1333,6 +1343,8 @@ interface RuntimeCapacityReserveInput {
 }
 ```
 
+キャパシティ予約入力
+
 ### RuntimeCapacityReserveResult
 
 ```typescript
@@ -1344,6 +1356,8 @@ interface RuntimeCapacityReserveResult {
   reservation?: RuntimeCapacityReservationLease;
 }
 ```
+
+キャパシティ予約結果
 
 ### RuntimeOrchestrationWaitInput
 
@@ -1361,6 +1375,8 @@ interface RuntimeOrchestrationWaitInput {
 }
 ```
 
+オーケストレーションの待機入力
+
 ### RuntimeOrchestrationLease
 
 ```typescript
@@ -1370,7 +1386,7 @@ interface RuntimeOrchestrationLease {
 }
 ```
 
-ランタイムオーケストレーションのリース
+オーケストレーションのリース情報
 
 ### RuntimeOrchestrationWaitResult
 
@@ -1388,7 +1404,7 @@ interface RuntimeOrchestrationWaitResult {
 }
 ```
 
-オーケストレーションの待機結果。
+オーケストレーション待機結果
 
 ## 型定義
 
@@ -1401,4 +1417,4 @@ type GlobalScopeWithRuntime = typeof globalThis & {
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.424Z*
+*自動生成: 2026-02-18T15:54:40.876Z*

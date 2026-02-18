@@ -1,35 +1,28 @@
 /**
+ * /**
  * @abdd.meta
  * path: .pi/lib/priority-scheduler.ts
- * role: 優先度ベースのタスクスケジューリング定義ユーティリティ
- * why: サブエージェントおよびエージェントチームの実行順序を優先度に基づいて制御するため
+ * role: タスクの優先度定義およびWFQ（Weighted Fair Queuing）スケジューリング用データ構造の定義モジュール
+ * why: エージェントおよびチームのタスク実行順序を制御し、重要度に応じたリソース配分を行うため
  * related: .pi/extensions/agent-runtime.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
  * public_api: TaskPriority, PRIORITY_WEIGHTS, PRIORITY_VALUES, PriorityTaskMetadata, PriorityQueueEntry, TaskType, TaskComplexity, EstimationContext
- * invariants:
- *   - PRIORITY_WEIGHTSとPRIORITY_VALUESは常に同じ5つの優先度レベルを持つ
- *   - criticalが最上位、backgroundが最下位の優先度となる
- *   - PRIORITY_WEIGHTSの値は正の整数であり、大きいほど高頻度でスケジューリングされる
- *   - PRIORITY_VALUESの値は0以上の整数であり、大きいほど先にスケジューリングされる
- * side_effects: なし（純粋な型定義と定数のエクスポートのみ）
- * failure_modes:
- *   - 不正な優先度レベル文字列を指定した場合、PRIORITY_WEIGHTS/PRIORITY_VALUESへのアクセスでundefinedが返る
- *   - enqueuedAtMsが未設定の場合、待機時間計算が不正になる
+ * invariants: PRIORITY_VALUESの数値が高いほど優先度が高い、PRIORITY_WEIGHTSの数値が高いほど実行頻度の重みが大きい
+ * side_effects: なし（純粋な定義と型エクスポート）
+ * failure_modes: タイプ定義の不整合による実行時エラー、優先度定義の不正によるスケジューリングロジックの破綻
  * @abdd.explain
- * overview: WFQ（Weighted Fair Queuing）方式による優先度スケジューリングのための型定義と優先度重み付け定数を提供する
+ * overview: サブエージェントやエージェントチーム向けの優先度ベースのタスクスケジューリングにおいて使用される型、定数、インターフェースを定義する。
  * what_it_does:
- *   - 5段階のタスク優先度を定義する
- *   - WFQスケジューリング用の重み付け値（100〜5）を提供する
- *   - 優先度比較用の数値（4〜0）を提供する
- *   - タスクメタデータおよびキューエントリのインターフェースを定義する
- *   - タスク種別と複雑度の分類型を定義する
- *   - ラウンド推定用コンテキスト情報のインターフェースを定義する
+ *   - 5段階の優先度レベルと、その重み付け・比較値を定数として提供する
+ *   - タスクのメタデータ（ID、推定時間、期限など）を格納するインターフェースを定義する
+ *   - WFQアルゴリズム用の仮想開始・終了時刻やスタベーション検出用カウンタを含むキューエントリを定義する
+ *   - ラウンド推定（SRT最適化）のためのタスクタイプ、複雑度、推定コンテキストの型を定義する
  * why_it_exists:
- *   - 複数のエージェントやサブエージェントが同時実行時にリソース競合する問題を解決する
- *   - ユーザー対話タスクをバックグラウンドタスクより優先して処理するため
- *   - スタベーション（低優先度タスクの無限待機）を検出・防止するための基盤を提供する
+ *   - タスクの重要度や緊急度に応じて実行順序を動的に変更する仕組みを提供するため
+ *   - 複数のエージェントやチームが競合する環境において、公平かつ効率的なリソース配分を実現するため
+ *   - 実行コストや複雑度を見積もり、スケジューリング判断に活用するためのデータ構造を標準化するため
  * scope:
- *   in: なし（型定義と定数のみを提供）
- *   out: 実際のキューデータ構造、スケジューリングアルゴリズム実装、タスク実行ロジック
+ *   in: なし
+ *   out: 優先度定数、タスクメタデータ型、キューエントリ型、推定用型定義
  */
 
 // File: .pi/lib/priority-scheduler.ts
@@ -37,9 +30,10 @@
 // Why: Enables priority-aware scheduling for subagents and agent teams.
 // Related: .pi/extensions/agent-runtime.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
 
- /**
-  * タスクスケジューリングの優先度レベル
-  */
+/**
+ * タスクの優先度を表す型
+ * @summary タスク優先度定義
+ */
 export type TaskPriority = "critical" | "high" | "normal" | "low" | "background";
 
 /**
@@ -66,17 +60,10 @@ export const PRIORITY_VALUES: Record<TaskPriority, number> = {
   background: 0,
 };
 
- /**
-  * 優先度スケジューリング用のタスクメタデータ
-  * @param id タスク識別子
-  * @param toolName このタスクを作成したツール名
-  * @param priority タスクの優先度レベル
-  * @param estimatedDurationMs 推定実行時間（ミリ秒）（オプション）
-  * @param estimatedRounds agent-estimationによる推定ツール呼び出しラウンド数（オプション）
-  * @param deadlineMs 期限タイムスタンプ（ミリ秒）（オプション）
-  * @param enqueuedAtMs タスクがキューに入った時間
-  * @param source ソースコンテキスト（ユーザー操作、バックグラウンドなど）
-  */
+/**
+ * タスクのメタデータを表すインターフェース
+ * @summary タスクメタデータ定義
+ */
 export interface PriorityTaskMetadata {
   /** Task identifier */
   id: string;
@@ -96,13 +83,10 @@ export interface PriorityTaskMetadata {
   source?: "user-interactive" | "background" | "scheduled" | "retry";
 }
 
- /**
-  * WFQスケジューリング用の優先度キューエントリ
-  * @param virtualStartTime WFQスケジューリング用の仮想開始時刻
-  * @param virtualFinishTime WFQスケジューリング用の仮想終了時刻
-  * @param skipCount タスクがスキップされた回数（スタベーション検出）
-  * @param lastConsideredMs 前回スケジューリング検討された時刻からの経過時間
-  */
+/**
+ * 優先度付きキューエントリのインターフェース
+ * @summary キューエントリ定義
+ */
 export interface PriorityQueueEntry extends PriorityTaskMetadata {
   /** Virtual start time for WFQ scheduling */
   virtualStartTime: number;
@@ -118,9 +102,10 @@ export interface PriorityQueueEntry extends PriorityTaskMetadata {
 // Round Estimation (SRT Optimization)
 // ============================================================================
 
- /**
-  * タスクの種類を表す型
-  */
+/**
+ * タスクの種類を表す型
+ * @summary タスク種別定義
+ */
 export type TaskType =
   | "read"      // Information retrieval
   | "bash"      // Command execution
@@ -133,18 +118,16 @@ export type TaskType =
   | "unknown";  // Unclassifiable
 
 /**
- * タスクの複雑度を表す型
+ * タスクの複雑さを表す型
+ * @summary タスク複雑さ定義
  */
 export type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "exploratory";
 
- /**
-  * ラウンド推定のコンテキスト情報
-  * @param toolName ツール名
-  * @param taskDescription タスクの説明
-  * @param agentCount エージェント数
-  * @param isRetry リトライかどうか
-  * @param hasUnknownFramework 不明なフレームワークを含むかどうか
-  */
+/**
+ * 推定コンテキストを表すインターフェース
+ * @summary 推定コンテキスト
+ * @returns ツール名やエージェント数などのコンテキスト情報
+ */
 export interface EstimationContext {
   toolName: string;
   taskDescription?: string;
@@ -153,13 +136,11 @@ export interface EstimationContext {
   hasUnknownFramework?: boolean;
 }
 
- /**
-  * ラウンド推定の結果
-  * @param estimatedRounds 推定ラウンド数
-  * @param taskType タスクの種類
-  * @param complexity タスクの複雑さ
-  * @param confidence 信頼度（0.0 - 1.0）
-  */
+/**
+ * ラウンド推定結果を表すインターフェース
+ * @summary ラウンド推定結果
+ * @returns 推定されたラウンド数やタスク情報
+ */
 export interface RoundEstimation {
   estimatedRounds: number;
   taskType: TaskType;
@@ -167,11 +148,12 @@ export interface RoundEstimation {
   confidence: number; // 0.0 - 1.0
 }
 
- /**
-  * ツール名からタスク種別を推測
-  * @param toolName ツール名
-  * @returns 推測されたタスクの種類
-  */
+/**
+ * タスクタイプを推論
+ * @summary タスクタイプ推論
+ * @param toolName ツール名
+ * @returns 推論されたタスクタイプ
+ */
 export function inferTaskType(toolName: string): TaskType {
   const lower = toolName.toLowerCase();
   if (lower === "question") return "question";
@@ -185,11 +167,12 @@ export function inferTaskType(toolName: string): TaskType {
   return "unknown";
 }
 
- /**
-  * タスクの種類に基づいて推定ラウンド数を計算する
-  * @param context - 推定コンテキスト
-  * @returns ラウンド推定結果
-  */
+/**
+ * 実行ラウンド数を見積もる
+ * @summary ラウンド数を見積
+ * @param context 推定コンテキスト
+ * @returns ラウンド推定結果
+ */
 export function estimateRounds(context: EstimationContext): RoundEstimation {
   const taskType = inferTaskType(context.toolName);
   
@@ -253,12 +236,13 @@ export function estimateRounds(context: EstimationContext): RoundEstimation {
   };
 }
 
- /**
-  * ツール名とコンテキストからタスク優先度を推論する
-  * @param toolName 呼び出されるツールの名前
-  * @param context オプションのコンテキストヒント
-  * @returns 推論された優先度レベル
-  */
+/**
+ * タスク優先度を推論
+ * @summary 優先度を推論
+ * @param toolName ツール名
+ * @param context 実行コンテキスト
+ * @returns 推論されたタスク優先度
+ */
 export function inferPriority(
   toolName: string,
   context?: {
@@ -322,12 +306,13 @@ export function inferPriority(
   return "normal";
 }
 
- /**
-  * 優先度を比較して順序を決定する
-  * @param a - 比較対象のタスクエントリ1
-  * @param b - 比較対象のタスクエントリ2
-  * @returns 比較結果
-  */
+/**
+ * 優先度を比較する
+ * @summary 優先度を比較
+ * @param a 比較対象のエントリ
+ * @param b 比較対象のエントリ
+ * @returns ソート順序（整数）
+ */
 export function comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number {
   // 1. Priority comparison (higher value = higher priority)
   const priorityDiff = PRIORITY_VALUES[b.priority] - PRIORITY_VALUES[a.priority];
@@ -384,20 +369,22 @@ export function comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): n
   return a.id.localeCompare(b.id);
 }
 
- /**
-  * WFQ方式のタスク優先度キュー
-  */
+/**
+ * 優先度付きタスクキュー
+ * @summary 優先度キュー管理
+ */
 export class PriorityTaskQueue {
   private entries: PriorityQueueEntry[] = [];
   private virtualTime: number = 0;
   private maxSkipCount: number = 10;
   private starvationThresholdMs: number = 60_000; // 1 minute
 
-   /**
-    * 優先度タスクをキューに追加します。
-    * @param metadata - タスクの優先度などを含むメタデータ
-    * @returns 作成された優先度キューのエントリ
-    */
+  /**
+   * タスクを追加する
+   * @summary タスクを追加
+   * @param metadata タスクのメタデータ
+   * @returns 追加されたエントリ
+   */
   enqueue(metadata: PriorityTaskMetadata): PriorityQueueEntry {
     const weight = PRIORITY_WEIGHTS[metadata.priority];
 
@@ -418,10 +405,11 @@ export class PriorityTaskQueue {
     return entry;
   }
 
-   /**
-    * 最優先度のタスクを取り出す
-    * @returns 取り出されたタスク。キューが空の場合はundefined
-    */
+  /**
+   * 先頭要素を取り出す
+   * @summary 先頭要素を取り出し
+   * @returns 取り出されたエントリ、空ならundefined
+   */
   dequeue(): PriorityQueueEntry | undefined {
     if (this.entries.length === 0) {
       return undefined;
@@ -443,19 +431,21 @@ export class PriorityTaskQueue {
     return entry;
   }
 
-   /**
-    * 最優先タスクを参照する
-    * @returns 最優先タスクのエントリ、または undefined
-    */
+  /**
+   * 先頭要素を参照する
+   * @summary 先頭要素を取得
+   * @returns 先頭のエントリ、空ならundefined
+   */
   peek(): PriorityQueueEntry | undefined {
     return this.entries[0];
   }
 
-   /**
-    * 指定IDのタスクを削除する
-    * @param id 削除するタスクのID
-    * @returns 削除されたタスクのエントリ、または undefined
-    */
+  /**
+   * 指定IDのタスクを削除する
+   * @summary タスクを削除
+   * @param id 削除するタスクのID
+   * @returns 削除されたタスクのエントリ、または undefined
+   */
   remove(id: string): PriorityQueueEntry | undefined {
     const index = this.entries.findIndex((e) => e.id === id);
     if (index < 0) {
@@ -494,10 +484,11 @@ export class PriorityTaskQueue {
     return this.entries.filter((e) => e.priority === priority);
   }
 
-   /**
-    * キューの統計情報を取得する。
-    * @returns 総数、優先度別件数、平均待機時間、最大待機時間、飢餓タスク数を含む統計情報
-    */
+  /**
+   * 統計情報を取得
+   * @summary 統計情報を取得
+   * @returns 総数、優先度別件数、平均待機時間、最大待機時間、飢餓タスク数を含む統計情報
+   */
   getStats(): {
     total: number;
     byPriority: Record<TaskPriority, number>;
@@ -539,10 +530,11 @@ export class PriorityTaskQueue {
     };
   }
 
-   /**
-    * 飢餓タスクを昇格させる
-    * @returns 昇格されたタスク数
-    */
+  /**
+   * 待機タスク昇格
+   * @summary 待機タスクを昇格
+   * @returns 昇格したタスク数
+   */
   promoteStarvingTasks(): number {
     const now = Date.now();
     let promoted = 0;
@@ -589,11 +581,12 @@ export class PriorityTaskQueue {
   }
 }
 
- /**
-  * 優先度キューの統計情報をフォーマットする
-  * @param stats 統計情報オブジェクト
-  * @returns フォーマットされた文字列
-  */
+/**
+ * 優先キューの統計情報をフォーマットする
+ * @summary 統計情報フォーマット
+ * @param {ReturnType<PriorityTaskQueue["getStats"]>} stats - 優先キューの統計情報
+ * @returns {string} フォーマットされた統計情報文字列
+ */
 export function formatPriorityQueueStats(stats: ReturnType<PriorityTaskQueue["getStats"]>): string {
   const lines: string[] = [];
   lines.push(`Priority Queue Stats:`);

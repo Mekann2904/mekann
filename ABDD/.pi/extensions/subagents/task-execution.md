@@ -28,18 +28,18 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `normalizeSubagentOutput` | サブエージェントの出力を正規化する。 |
-| 関数 | `isRetryableSubagentError` | サブエージェントのエラーが再試行可能か判定する |
-| 関数 | `isEmptyOutputFailureMessage` | 空の出力失敗メッセージか判定 |
-| 関数 | `buildFailureSummary` | 失敗の要約を構築する |
-| 関数 | `resolveSubagentFailureOutcome` | サブエージェントの失敗結果を解決する |
-| 関数 | `mergeSkillArrays` | スキル配列を継承ルールに従ってマージする |
+| 関数 | `normalizeSubagentOutput` | 出力を正規化する |
+| 関数 | `isRetryableSubagentError` | リトライ可能か判定する |
+| 関数 | `isEmptyOutputFailureMessage` | 空出力エラーか判定する |
+| 関数 | `buildFailureSummary` | エラー概要を作成する |
+| 関数 | `resolveSubagentFailureOutcome` | エラー種別を判定する |
+| 関数 | `mergeSkillArrays` | - |
 | 関数 | `resolveEffectiveSkills` | サブエージェントの実効スキルを解決する |
-| 関数 | `formatSkillsSection` | スキル一覧をプロンプト用に整形 |
+| 関数 | `formatSkillsSection` | スキル一覧を整形 |
 | 関数 | `buildSubagentPrompt` | サブエージェント用のプロンプトを構築する |
-| 関数 | `runSubagentTask` | サブエージェントタスクを実行する |
-| 関数 | `extractSummary` | 出力文字列から要約を抽出する |
-| インターフェース | `SubagentExecutionResult` | サブエージェントの実行結果を表します。 |
+| 関数 | `runSubagentTask` | サブエージェントタスク実行 |
+| 関数 | `extractSummary` | 要約を抽出 |
+| インターフェース | `SubagentExecutionResult` | サブエージェントの実行結果 |
 
 ## 図解
 
@@ -150,7 +150,7 @@ Note: Kept locally because the summary format is subagent-specific.
 normalizeSubagentOutput(output: string): SubagentExecutionResult
 ```
 
-サブエージェントの出力を正規化する。
+出力を正規化する
 
 **パラメータ**
 
@@ -166,7 +166,7 @@ normalizeSubagentOutput(output: string): SubagentExecutionResult
 isRetryableSubagentError(error: unknown, statusCode?: number): boolean
 ```
 
-サブエージェントのエラーが再試行可能か判定する
+リトライ可能か判定する
 
 **パラメータ**
 
@@ -183,7 +183,7 @@ isRetryableSubagentError(error: unknown, statusCode?: number): boolean
 isEmptyOutputFailureMessage(message: string): boolean
 ```
 
-空の出力失敗メッセージか判定
+空出力エラーか判定する
 
 **パラメータ**
 
@@ -199,7 +199,7 @@ isEmptyOutputFailureMessage(message: string): boolean
 buildFailureSummary(message: string): string
 ```
 
-失敗の要約を構築する
+エラー概要を作成する
 
 **パラメータ**
 
@@ -215,7 +215,7 @@ buildFailureSummary(message: string): string
 resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal
 ```
 
-サブエージェントの失敗結果を解決する
+エラー種別を判定する
 
 **パラメータ**
 
@@ -230,8 +230,6 @@ resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal
 ```typescript
 mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined
 ```
-
-スキル配列を継承ルールに従ってマージする
 
 **パラメータ**
 
@@ -265,7 +263,7 @@ resolveEffectiveSkills(agent: SubagentDefinition, parentSkills?: string[]): stri
 formatSkillsSection(skills: string[] | undefined): string | null
 ```
 
-スキル一覧をプロンプト用に整形
+スキル一覧を整形
 
 **パラメータ**
 
@@ -351,7 +349,7 @@ async runSubagentTask(input: {
 }): Promise<{ runRecord: SubagentRunRecord; output: string; prompt: string }>
 ```
 
-サブエージェントタスクを実行する
+サブエージェントタスク実行
 
 **パラメータ**
 
@@ -392,7 +390,7 @@ emitStderrChunk(chunk: string): void
 extractSummary(output: string): string
 ```
 
-出力文字列から要約を抽出する
+要約を抽出
 
 **パラメータ**
 
@@ -415,7 +413,7 @@ interface SubagentExecutionResult {
 }
 ```
 
-サブエージェントの実行結果を表します。
+サブエージェントの実行結果
 
 ---
-*自動生成: 2026-02-18T14:31:30.905Z*
+*自動生成: 2026-02-18T15:54:41.381Z*

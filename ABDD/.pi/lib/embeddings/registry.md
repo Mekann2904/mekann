@@ -26,10 +26,10 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getEmbeddingProvider` | デフォルトのエンベディングプロバイダーを取得 |
-| 関数 | `generateEmbedding` | エンベディングを生成する |
-| 関数 | `generateEmbeddingsBatch` | バッチでエンベディングを生成 |
-| クラス | `EmbeddingProviderRegistry` | 組み込みプロバイダーのレジストリクラス |
+| 関数 | `getEmbeddingProvider` | プロバイダを取得 |
+| 関数 | `generateEmbedding` | ベクトルを生成 |
+| 関数 | `generateEmbeddingsBatch` | 埋め込みベクトルを一括生成 |
+| クラス | `EmbeddingProviderRegistry` | - |
 
 ## 図解
 
@@ -105,7 +105,7 @@ sequenceDiagram
 async getEmbeddingProvider(config?: ProviderConfig): Promise<EmbeddingProvider | null>
 ```
 
-デフォルトのエンベディングプロバイダーを取得
+プロバイダを取得
 
 **パラメータ**
 
@@ -121,7 +121,7 @@ async getEmbeddingProvider(config?: ProviderConfig): Promise<EmbeddingProvider |
 async generateEmbedding(text: string, config?: ProviderConfig): Promise<number[] | null>
 ```
 
-エンベディングを生成する
+ベクトルを生成
 
 **パラメータ**
 
@@ -138,7 +138,7 @@ async generateEmbedding(text: string, config?: ProviderConfig): Promise<number[]
 async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise<(number[] | null)[]>
 ```
 
-バッチでエンベディングを生成
+埋め込みベクトルを一括生成
 
 **パラメータ**
 
@@ -152,8 +152,6 @@ async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise
 ## クラス
 
 ### EmbeddingProviderRegistry
-
-組み込みプロバイダーのレジストリクラス
 
 **プロパティ**
 
@@ -183,4 +181,4 @@ async generateEmbeddingsBatch(texts: string[], config?: ProviderConfig): Promise
 | saveConfig | `saveConfig(): void` |
 
 ---
-*自動生成: 2026-02-18T14:31:30.987Z*
+*自動生成: 2026-02-18T15:54:41.479Z*

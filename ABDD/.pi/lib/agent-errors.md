@@ -25,27 +25,27 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `classifySemanticError` | 出力内容から意味論的なエラーを分類する |
-| 関数 | `resolveExtendedFailureOutcome` | 拡張失敗結果を解決して分類する |
+| 関数 | `classifySemanticError` | 意味論的エラーを分類 |
+| 関数 | `resolveExtendedFailureOutcome` | 拡張失敗結果を解決 |
 | 関数 | `getRetryablePatterns` | リトライ可能なエラーパターンを取得 |
-| 関数 | `resetRetryablePatternsCache` | キャッシュされたリトライ可能パターンをリセット |
-| 関数 | `addRetryablePatterns` | 再試行パターンを実行時に追加する |
-| 関数 | `isRetryableEntityError` | エンティティ実行時のエラーが再試行可能か判定 |
+| 関数 | `resetRetryablePatternsCache` | キャッシュをリセット |
+| 関数 | `addRetryablePatterns` | 再試行パターンを追加 |
+| 関数 | `isRetryableEntityError` | 再試行可否判定 |
 | 関数 | `isRetryableSubagentError` | サブエージェントのエラーが再試行可能か判定 |
-| 関数 | `isRetryableTeamMemberError` | チームメンバーのエラーがリトライ可能か判定 |
-| 関数 | `resolveFailureOutcome` | 失敗時の結果シグナルを解決する |
-| 関数 | `resolveSubagentFailureOutcome` | サブエージェントの失敗結果を解決する |
-| 関数 | `resolveTeamFailureOutcome` | チームメンバーの失敗結果を解決する |
-| 関数 | `resolveAggregateOutcome` | 複数の結果から集約された実行結果を解決する |
-| 関数 | `resolveSubagentParallelOutcome` | Resolve aggregate outcome for subagent parallel ex |
-| 関数 | `resolveTeamMemberAggregateOutcome` | チームメンバーの実行結果を集約する |
-| 関数 | `trimErrorMessage` | エラーメッセージを最大長に合わせて切り詰める |
-| 関数 | `buildDiagnosticContext` | 診断コンテキスト文字列を構築します |
-| 関数 | `classifyFailureType` | エラーをリトライ判定用の標準カテゴリに分類 |
-| 関数 | `shouldRetryByClassification` | 失敗分類に基づきリトライ可否を判定 |
-| インターフェース | `ExtendedOutcomeSignal` | 拡張された実行結果シグナル |
-| インターフェース | `EntityResultItem` | 集約結果解決用の結果項目インターフェース |
-| 型 | `ExtendedOutcomeCode` | 拡張エラー分類コード |
+| 関数 | `isRetryableTeamMemberError` | - |
+| 関数 | `resolveFailureOutcome` | チームメンバーのエラーが再試行可能か判定 |
+| 関数 | `resolveSubagentFailureOutcome` | エラー設定に基づき実行結果を解決する |
+| 関数 | `resolveTeamFailureOutcome` | サブエージェント失敗時の結果解決 |
+| 関数 | `resolveAggregateOutcome` | 集計結果解決 |
+| 関数 | `resolveSubagentParallelOutcome` | サブエージェント並列結果解決 |
+| 関数 | `resolveTeamMemberAggregateOutcome` | チームメンバー集計結果解決 |
+| 関数 | `trimErrorMessage` | エラーメッセージ整形 |
+| 関数 | `buildDiagnosticContext` | 診断コンテキスト構築 |
+| 関数 | `classifyFailureType` | エラー情報を解析して失敗分類を決定 |
+| 関数 | `shouldRetryByClassification` | 分類結果に基づきリトライ可否を判定 |
+| インターフェース | `ExtendedOutcomeSignal` | 拡張実行結果シグナル |
+| インターフェース | `EntityResultItem` | チーム失敗時の結果解決 |
+| 型 | `ExtendedOutcomeCode` | 拡張実行結果コード |
 | 型 | `FailureClassification` | リトライ判定用の標準化された失敗分類 |
 
 ## 図解
@@ -147,7 +147,7 @@ sequenceDiagram
 classifySemanticError(output?: string, error?: unknown): { code: ExtendedOutcomeCode | null; details?: string[] }
 ```
 
-出力内容から意味論的なエラーを分類する
+意味論的エラーを分類
 
 **パラメータ**
 
@@ -164,7 +164,7 @@ classifySemanticError(output?: string, error?: unknown): { code: ExtendedOutcome
 resolveExtendedFailureOutcome(error: unknown, output?: string, config?: EntityConfig): ExtendedOutcomeSignal
 ```
 
-拡張失敗結果を解決して分類する
+拡張失敗結果を解決
 
 **パラメータ**
 
@@ -192,7 +192,7 @@ getRetryablePatterns(): string[]
 resetRetryablePatternsCache(): void
 ```
 
-キャッシュされたリトライ可能パターンをリセット
+キャッシュをリセット
 
 **戻り値**: `void`
 
@@ -202,7 +202,7 @@ resetRetryablePatternsCache(): void
 addRetryablePatterns(patterns: string[]): void
 ```
 
-再試行パターンを実行時に追加する
+再試行パターンを追加
 
 **パラメータ**
 
@@ -218,7 +218,7 @@ addRetryablePatterns(patterns: string[]): void
 isRetryableEntityError(error: unknown, statusCode: number | undefined, config: EntityConfig): boolean
 ```
 
-エンティティ実行時のエラーが再試行可能か判定
+再試行可否判定
 
 **パラメータ**
 
@@ -253,8 +253,6 @@ isRetryableSubagentError(error: unknown, statusCode?: number): boolean
 isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean
 ```
 
-チームメンバーのエラーがリトライ可能か判定
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -270,7 +268,7 @@ isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean
 resolveFailureOutcome(error: unknown, config?: EntityConfig): RunOutcomeSignal
 ```
 
-失敗時の結果シグナルを解決する
+チームメンバーのエラーが再試行可能か判定
 
 **パラメータ**
 
@@ -287,7 +285,7 @@ resolveFailureOutcome(error: unknown, config?: EntityConfig): RunOutcomeSignal
 resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal
 ```
 
-サブエージェントの失敗結果を解決する
+エラー設定に基づき実行結果を解決する
 
 **パラメータ**
 
@@ -303,7 +301,7 @@ resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal
 resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal
 ```
 
-チームメンバーの失敗結果を解決する
+サブエージェント失敗時の結果解決
 
 **パラメータ**
 
@@ -319,7 +317,7 @@ resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal
 resolveAggregateOutcome(results: T[], resolveEntityFailure: (error: unknown) => RunOutcomeSignal): RunOutcomeSignal & { failedEntityIds: string[] }
 ```
 
-複数の結果から集約された実行結果を解決する
+集計結果解決
 
 **パラメータ**
 
@@ -336,7 +334,7 @@ resolveAggregateOutcome(results: T[], resolveEntityFailure: (error: unknown) => 
 resolveSubagentParallelOutcome(results: Array<{ runRecord: { status: "completed" | "failed"; error?: string; summary?: string; agentId: string } }>): RunOutcomeSignal & { failedSubagentIds: string[] }
 ```
 
-Resolve aggregate outcome for subagent parallel execution.
+サブエージェント並列結果解決
 
 **パラメータ**
 
@@ -352,7 +350,7 @@ Resolve aggregate outcome for subagent parallel execution.
 resolveTeamMemberAggregateOutcome(memberResults: Array<{ status: "completed" | "failed"; error?: string; summary?: string; memberId: string }>): RunOutcomeSignal & { failedMemberIds: string[] }
 ```
 
-チームメンバーの実行結果を集約する
+チームメンバー集計結果解決
 
 **パラメータ**
 
@@ -368,7 +366,7 @@ resolveTeamMemberAggregateOutcome(memberResults: Array<{ status: "completed" | "
 trimErrorMessage(message: string, maxLength: any): string
 ```
 
-エラーメッセージを最大長に合わせて切り詰める
+エラーメッセージ整形
 
 **パラメータ**
 
@@ -395,7 +393,7 @@ buildDiagnosticContext(context: {
 }): string
 ```
 
-診断コンテキスト文字列を構築します
+診断コンテキスト構築
 
 **パラメータ**
 
@@ -420,7 +418,7 @@ buildDiagnosticContext(context: {
 classifyFailureType(error: unknown, statusCode?: number): FailureClassification
 ```
 
-エラーをリトライ判定用の標準カテゴリに分類
+エラー情報を解析して失敗分類を決定
 
 **パラメータ**
 
@@ -437,7 +435,7 @@ classifyFailureType(error: unknown, statusCode?: number): FailureClassification
 shouldRetryByClassification(classification: FailureClassification, currentRound: number): boolean
 ```
 
-失敗分類に基づきリトライ可否を判定
+分類結果に基づきリトライ可否を判定
 
 **パラメータ**
 
@@ -461,7 +459,7 @@ interface ExtendedOutcomeSignal {
 }
 ```
 
-拡張された実行結果シグナル
+拡張実行結果シグナル
 
 ### EntityResultItem
 
@@ -474,7 +472,7 @@ interface EntityResultItem {
 }
 ```
 
-集約結果解決用の結果項目インターフェース
+チーム失敗時の結果解決
 
 ## 型定義
 
@@ -488,7 +486,7 @@ type ExtendedOutcomeCode = | RunOutcomeCode
   | "PARSE_ERROR"
 ```
 
-拡張エラー分類コード
+拡張実行結果コード
 
 ### FailureClassification
 
@@ -504,4 +502,4 @@ type FailureClassification = | "rate_limit"   // HTTP 429 - backoffで処理
 リトライ判定用の標準化された失敗分類
 
 ---
-*自動生成: 2026-02-18T14:31:30.951Z*
+*自動生成: 2026-02-18T15:54:41.435Z*

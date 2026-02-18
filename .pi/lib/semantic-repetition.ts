@@ -1,34 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/semantic-repetition.ts
- * role: 意味的反復検出モジュール。連続する出力間の意味的類似度を計算し、エージェントの停滞を特定する
- * why: Agentic Search研究（arXiv:2601.17617v2）によれば32.15%の軌跡が反復パターンを示し、早期停止の機会となるため
- * related: embeddings/index.js, types/trajectory, agent-runner, loop-detector
- * public_api: detectSemanticRepetition, SemanticRepetitionResult, SemanticRepetitionOptions, TrajectorySummary, DEFAULT_REPETITION_THRESHOLD, DEFAULT_MAX_TEXT_LENGTH
- * invariants:
- *   - similarityは必ず0.0〜1.0の範囲内
- *   - 完全一致時はsimilarity=1.0、method="exact"を返す
- *   - 空文字列入力時はisRepeated=false、similarity=0を返す
- * side_effects:
- *   - useEmbedding=true時: embeddings/index.js経由で外部API（OpenAI等）を呼び出し
- *   - ネットワーク通信とトークン消費が発生
- * failure_modes:
- *   - 埋め込みプロバイダーが利用不可の場合: method="unavailable"として処理継続
- *   - テキストがmaxTextLengthを超過: 切り詰めて比較（情報損失の可能性）
+ * role: 連続する出力間の意味的類似度を検出し、停滞状態を特定するモジュール
+ * why: "Agentic Search in the Wild" に基づき、軌跡の32.15%で発生する繰り返しパターンを検出して早期停止を判断するため
+ * related: .pi/lib/embeddings/index.ts, .pi/lib/trajectory.ts, .pi/config.ts
+ * public_api: detectSemanticRepetition, SemanticRepetitionResult, SemanticRepetitionOptions, TrajectorySummary
+ * invariants: 類似度スコアは0.0から1.0の範囲、maxTextLength超過のテキストは比較前に切り詰められる
+ * side_effects: 外部API（埋め込みプロバイダ）を呼び出す可能性がある
+ * failure_modes: OPENAI_API_KEY未設定時は埋め込み検出がスキップされる、空文字入力時は類似度0扱い
  * @abdd.explain
- * overview: 連続する出力の意味的類似度を測定し、エージェントが同じ内容を繰り返しているかを判定する
+ * overview: 埋め込みベースまたは完全一致による類似度計算を行い、エージェントの出力がループ（停滞）しているか判定する
  * what_it_does:
- *   - 現在と前回の出力テキストの類似度スコア（0.0-1.0）を計算
- *   - 完全一致の高速チェック（exact）、埋め込みベースの意味比較の2段階検出
- *   - 閾値（デフォルト0.85）を超える類似度でisRepeated=trueを返す
- *   - テキスト正規化と長さ制限（デフォルト2000文字）を適用
+ *   - 現在と直前の出力テキストを正規化し、指定最大長に切り詰める
+ *   - 完全一致チェック（高速パス）または埋め込みコサイン類似度計算を実行する
+ *   - 類似度スコアと閾値に基づき、isRepeatedフラグを返す
  * why_it_exists:
- *   - 反復は32.15%の軌跡で観測され、停滞の指標となる
- *   - 無限ループや無駄な反復を早期検出し、リソース消費を抑制
- *   - 早期停止によりエージェントの効率を向上
+ *   - 学習論文で指摘された、思考ループによる計算資源の無駄を防ぐ
+ *   - 意味的に同じ出力が繰り返される「停滞」状態をプログラム的に検知する
  * scope:
- *   in: 連続する2つのテキスト出力、オプション（threshold, useEmbedding, maxTextLength）
- *   out: SemanticRepetitionResult（isRepeated, similarity, method）
+ *   in: 現在の文字列、直前の文字列、検出オプション（閾値、埋め込み利用有無、最大長）
+ *   out: 繰り返し判定、類似度スコア、使用された検出手法
  */
 
 /**
@@ -49,9 +40,13 @@ import {
 // Types
 // ============================================================================
 
- /**
-  * 意味的な重複検出の結果
-  */
+/**
+ * 意味的重複検出の結果
+ * @summary 結果を返却
+ * @returns {boolean} isRepeated 意味的重複が検出されたか
+ * @returns {number} similarity 類似度スコア (0.0-1.0)
+ * @returns {string} method 使用された検出手法
+ */
 export interface SemanticRepetitionResult {
   /** Whether semantic repetition was detected */
   isRepeated: boolean;
@@ -61,12 +56,13 @@ export interface SemanticRepetitionResult {
   method: "embedding" | "exact" | "unavailable";
 }
 
- /**
-  * 意味的繰り返し検出のオプション
-  * @param threshold 繰り返しとみなす類似度の閾値（デフォルト: 0.85）
-  * @param useEmbedding 埋め込みベースの検出を使用するか（OPENAI_API_KEYが必要）
-  * @param maxTextLength 比較する最大テキスト長（デフォルト: 2000）
-  */
+/**
+ * 意味的重複検出のオプション設定
+ * @summary オプションを定義
+ * @returns {number} threshold 重複とみなす類似度の閾値（デフォルト: 0.85）
+ * @returns {boolean} useEmbedding 埋め込みベースの検出を使用するか（OPENAI_API_KEYが必要）
+ * @returns {number} maxTextLength 比較する最大テキスト長（デフォルト: 2000）
+ */
 export interface SemanticRepetitionOptions {
   /** Similarity threshold for considering outputs as repeated (default: 0.85) */
   threshold?: number;
@@ -76,9 +72,15 @@ export interface SemanticRepetitionOptions {
   maxTextLength?: number;
 }
 
- /**
-  * セッション軌跡のサマリー監視用インターフェース
-  */
+/**
+ * 軌跡の要約情報を表すインターフェース
+ * @summary 軌跡を要約
+ * @returns {number} totalSteps 総ステップ数
+ * @returns {number} repetitionCount 重複検出回数
+ * @returns {number} averageSimilarity 平均類似度
+ * @returns {number[]} similarityTrend 類似度のトレンド配列
+ * @returns {boolean} isStuck ループに陥っているかどうか
+ */
 export interface TrajectorySummary {
   /** Total steps analyzed */
   totalSteps: number;
@@ -112,13 +114,14 @@ export const DEFAULT_MAX_TEXT_LENGTH = 2000;
 // Core Functions
 // ============================================================================
 
- /**
-  * 出力の意味的な重複を検出する
-  * @param current - 現在の出力テキスト
-  * @param previous - 直前の出力テキスト
-  * @param options - 検出オプション
-  * @returns 類似度スコアを含む検出結果
-  */
+/**
+ * 出力の意味的な重複を検出する
+ * @summary 重複を検出
+ * @param current 現在のテキスト
+ * @param previous 直前のテキスト
+ * @param options 検出オプション（閾値、埋め込み利用など）
+ * @returns 重複判定結果を含むPromise
+ */
 export async function detectSemanticRepetition(
   current: string,
   previous: string,
@@ -194,13 +197,14 @@ export async function detectSemanticRepetition(
   };
 }
 
- /**
-  * 事前計算された埋め込み込みを使用して検出
-  * @param currentEmbedding 現在の埋め込みベクトル
-  * @param previousEmbedding 以前の埋め込みベクトル
-  * @param threshold 類似度の閾値
-  * @returns 繰り返し判定結果
-  */
+/**
+ * 事前計算埋め込みを用いて検出
+ * @summary 重複を検出
+ * @param currentEmbedding 現在の埋め込みベクトル
+ * @param previousEmbedding 直前の埋め込みベクトル
+ * @param threshold 重複とみなす閾値
+ * @returns 重複判定結果を含むオブジェクト
+ */
 export function detectSemanticRepetitionFromEmbeddings(
   currentEmbedding: number[],
   previousEmbedding: number[],
@@ -224,10 +228,11 @@ export function detectSemanticRepetitionFromEmbeddings(
  */
 export const DEFAULT_MAX_TRAJECTORY_STEPS = 100;
 
- /**
-  * セッションの進行状況を追跡するクラス
-  * @param maxSteps 保持する最大ステップ数（デフォルトは100）
-  */
+/**
+ * トラjectory追跡クラス
+ * @summary インスタンス生成
+ * @param maxSteps 最大ステップ数
+ */
 export class TrajectoryTracker {
   private steps: Array<{
     output: string;
@@ -241,7 +246,11 @@ export class TrajectoryTracker {
   }
 
   /**
-   * Record a new step and check for repetition.
+   * ステップ記録
+   * @summary ステップを記録
+   * @param output 出力内容
+   * @param options オプション設定
+   * @returns 結果情報
    */
   async recordStep(
     output: string,
@@ -274,10 +283,11 @@ export class TrajectoryTracker {
     return result;
   }
 
-   /**
-    * 軌跡の概要を取得する
-    * @returns 軌跡のサマリー情報を含むオブジェクト
-    */
+  /**
+   * トラjectory要約取得
+   * @summary 要約を取得
+   * @returns トラjectory要約
+   */
   getSummary(): TrajectorySummary {
     if (this.steps.length === 0) {
       return {
@@ -336,10 +346,10 @@ export class TrajectoryTracker {
     return this.steps.length;
   }
 
-   /**
-    * トラッカーをリセットする。
-    * @returns 戻り値なし
-    */
+  /**
+   * リセット状態
+   * @summary 状態をリセット
+   */
   reset(): void {
     this.steps = [];
   }
@@ -359,22 +369,24 @@ function normalizeText(text: string, maxLength: number): string {
     .slice(0, maxLength);
 }
 
- /**
-  * 意味的反復検出が利用可能か確認
-  * @returns 利用可能な場合はtrue
-  */
+/**
+ * 機能利用可否判定
+ * @summary 機能利用可否を確認
+ * @returns 利用可能でtrue
+ */
 export async function isSemanticRepetitionAvailable(): Promise<boolean> {
   const provider = await getEmbeddingProvider();
   return provider !== null;
 }
 
- /**
-  * 繰り返し状況に基づく推奨アクションを取得
-  * @param repetitionCount 繰り返し回数
-  * @param totalSteps 総ステップ数
-  * @param isStuck 停滞状態かどうか
-  * @returns "continue" | "pivot" | "early_stop"
-  */
+/**
+ * 繰り返し状況に基づき推奨アクションを決定
+ * @summary 推奨アクション決定
+ * @param repetitionCount 現在の繰り返し回数
+ * @param totalSteps 総ステップ数
+ * @param isStuck 停滞状態かどうか
+ * @returns "continue" | "pivot" | "early_stop"
+ */
 export function getRecommendedAction(
   repetitionCount: number,
   totalSteps: number,

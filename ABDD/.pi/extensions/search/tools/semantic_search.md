@@ -27,8 +27,8 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `semanticSearch` | コードの意味検索を行う |
-| 関数 | `formatSemanticSearch` | セマンティック検索の結果を整形します。 |
+| 関数 | `semanticSearch` | 意味的検索を実行する |
+| 関数 | `formatSemanticSearch` | 検索結果を整形する |
 
 ## 図解
 
@@ -140,7 +140,7 @@ Find the k nearest neighbors to a query vector.
 async semanticSearch(input: SemanticSearchInput, cwd: string): Promise<SemanticSearchOutput>
 ```
 
-コードの意味検索を行う
+意味的検索を実行する
 
 **パラメータ**
 
@@ -157,7 +157,7 @@ async semanticSearch(input: SemanticSearchInput, cwd: string): Promise<SemanticS
 formatSemanticSearch(result: SemanticSearchOutput): string
 ```
 
-セマンティック検索の結果を整形します。
+検索結果を整形する
 
 **パラメータ**
 
@@ -168,4 +168,4 @@ formatSemanticSearch(result: SemanticSearchOutput): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T14:31:30.861Z*
+*自動生成: 2026-02-18T15:54:41.323Z*

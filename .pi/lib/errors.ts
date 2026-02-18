@@ -1,28 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/errors.ts
- * role: pi-plugin全体で使用する共通エラークラスとエラーコード型定義
- * why: 全拡張機能で統一されたエラー形式を提供し、エラーの分類・処理・デバッグを標準化するため
- * related: lib/agent-errors.ts, lib/runtime.ts, lib/validator.ts, index.ts
+ * role: pi-plugin共通エラークラスおよびエラーコード型の定義モジュール
+ * why: 全拡張機能で統一されたエラーハンドリング、リトライ判定、ログ記録を実現するため
+ * related: lib/agent-errors.ts, lib/index.ts
  * public_api: PiErrorCode, PiError, RuntimeLimitError, SchemaValidationError
- * invariants: PiError.codeは常にPiErrorCodeの値, PiError.retryableはデフォルトfalse, PiError.timestampはインスタンス生成時刻
- * side_effects: なし（純粋なクラス定義）
- * failure_modes: 不正なエラーコード文字列を渡した場合TypeScriptが型エラーを検出
+ * invariants: PiErrorインスタンスは必ずcodeプロパティとtimestampプロパティを持つ
+ * side_effects: なし（純粋な定義とインスタンス化のみ）
+ * failure_modes: エラーコードの不正指定、不正なオプションオブジェクトの渡入
  * @abdd.explain
- * overview: pi-pluginのエラーハンドリング基盤。標準化されたエラーコードと、構造化されたエラー情報を持つ基底クラスを提供する。
+ * overview: pi-plugin全体で使用される標準エラークラス（PiError）と、特定のエラー種別（RuntimeLimitError等）を定義するモジュール。
  * what_it_does:
- *   - PiErrorCode型で10種類の標準エラーコードを定義
- *   - PiError基底クラスでcode/retryable/cause/timestampプロパティを提供
- *   - is()メソッドでエラーコード照合
- *   - toJSON()メソッドでエラー情報のシリアライズ
- *   - RuntimeLimitError, SchemaValidationError等の派生クラス定義
+ *   - PiErrorCode型を通じて標準化されたエラーコードを定義する
+ *   - Errorクラスを継承したPiError基底クラスを提供する
+ *   - エラーのリトライ可否、原因エラー、タイムスタンプを管理する
+ *   - エラー内容をJSON形式でシリアライズする機能を提供する
  * why_it_exists:
- *   - Errorオブジェクトをそのまま使うとコード分類・再試行可否判定が困難
- *   - 拡張機能間で一貫したエラー形式を保証する必要がある
- *   - ログ解析・監視でのエラー集計を容易にする
+ *   - 異なる拡張機能間でエラー構造を統一し、キャッチ処理を共通化するため
+ *   - エラーログのフォーマットや再試行ロジックの一貫性を保証するため
  * scope:
- *   in: エラーメッセージ文字列、エラーコード、オプション(再試行可否/原因エラー)
- *   out: 構造化されたエラーオブジェクト、JSONシリアライズ結果
+ *   in: エラーメッセージ（文字列）、エラーコード、オプション設定オブジェクト
+ *   out: PiError派生クラスのインスタンス、PiErrorCode型
  */
 
 /**
@@ -52,9 +50,12 @@
 // エラーコード
 // ============================================================================
 
- /**
-  * piエラーの標準化されたエラーコード。
-  */
+/**
+ * pi標準エラーコード
+ * @summary piエラーコード
+ * @param エラーの種類を表す文字列リテラル
+ * @returns エラーコードの型定義
+ */
 export type PiErrorCode =
   | "UNKNOWN_ERROR"
   | "RUNTIME_LIMIT_REACHED"
@@ -71,12 +72,13 @@ export type PiErrorCode =
 // 基本エラークラス
 // ============================================================================
 
- /**
-  * pi固有エラーの基底クラス。
-  * @param message エラーメッセージ
-  * @param code エラーコード
-  * @param options オプション設定
-  */
+/**
+ * pi固有エラーを生成
+ * @summary pi固有エラー生成
+ * @param message エラーメッセージ
+ * @param code エラーコード
+ * @param options オプション設定
+ */
 export class PiError extends Error {
   /** プログラムによる処理のためのエラーコード */
   public readonly code: PiErrorCode;
@@ -109,7 +111,8 @@ export class PiError extends Error {
   }
 
   /**
-   * エラーコードが一致するか判定する。
+   * エラーコードを判定
+   * @summary エラーコード判定
    * @param code 比較対象のエラーコード
    * @returns 一致する場合はtrue
    */
@@ -117,10 +120,11 @@ export class PiError extends Error {
     return this.code === code;
   }
 
-   /**
-    * エラー情報をJSON形式のオブジェクトに変換する。
-    * @returns エラープロパティを含むオブジェクト
-    */
+  /**
+   * エラー情報をJSON形式に変換
+   * @summary JSON形式に変換
+   * @returns エラープロパティを含むオブジェクト
+   */
   toJSON(): Record<string, unknown> {
     return {
       name: this.name,
@@ -138,14 +142,16 @@ export class PiError extends Error {
 // ランタイムエラー
 // ============================================================================
 
- /**
-  * ランタイム容量制限に達したエラー。
-  * @param message エラーメッセージ
-  * @param options オプション設定
-  * @param options.currentCount 現在のランタイム数
-  * @param options.maxCount 最大ランタイム数
-  * @param options.cause 原因となったエラー
-  */
+/**
+ * ランタイム容量制限エラー
+ * @summary ランタイム制限超過
+ * @param message エラーメッセージ
+ * @param options オプション設定
+ * @param options.currentCount 現在のランタイム数
+ * @param options.maxCount 最大ランタイム数
+ * @param options.cause 原因となったエラー
+ * @returns RuntimeLimitError
+ */
 export class RuntimeLimitError extends PiError {
   /** 制限に達した時点の現在のランタイム数 */
   public readonly currentCount?: number;
@@ -169,10 +175,11 @@ export class RuntimeLimitError extends PiError {
     this.maxCount = options?.maxCount;
   }
 
-   /**
-    * エラー情報をJSON形式でシリアライズする
-    * @returns currentCountとmaxCountを含むJSONオブジェクト
-    */
+  /**
+   * エラー情報をJSON形式でシリアライズする
+   * @summary JSON形式でシリアライズ
+   * @returns currentCountとmaxCountを含むJSONオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -183,7 +190,8 @@ export class RuntimeLimitError extends PiError {
 }
 
 /**
- * ランタイムキューでの待機タイムアウトエラー。
+ * キュー待機タイムアウト
+ * @summary 待機タイムアウト
  * @param message エラーメッセージ
  * @param options 追加オプション（待機時間、最大待機時間、原因エラー）
  */
@@ -227,14 +235,11 @@ export class RuntimeQueueWaitError extends PiError {
 // 検証エラー
 // ============================================================================
 
- /**
-  * 出力スキーマ検証が失敗したときにスローされるエラー。
-  * @param message エラーメッセージ
-  * @param options 追加オプション
-  * @param options.violations 検証エラーのリスト
-  * @param options.field 検証に失敗したフィールド
-  * @param options.cause 原因となったエラー
-  */
+/**
+ * スキーマ検証エラー
+ * @summary スキーマ違反発生
+ * @returns プロパティを含むオブジェクト
+ */
 export class SchemaValidationError extends PiError {
   /** 検証エラーのリスト */
   public readonly violations: string[];
@@ -258,10 +263,11 @@ export class SchemaValidationError extends PiError {
     this.field = options?.field;
   }
 
-   /**
-    * エラーオブジェクトをJSON形式に変換する。
-    * @returns プロパティを含むオブジェクト
-    */
+  /**
+   * JSONに変換する
+   * @summary スキーマ違反取得
+   * @returns プロパティを含むオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -271,15 +277,11 @@ export class SchemaValidationError extends PiError {
   }
 }
 
- /**
-  * 一般的な検証エラーを表すクラス。
-  * @param message エラーメッセージ
-  * @param options 追加オプション
-  * @param options.field 検証に失敗したフィールド
-  * @param options.expected 期待される値または形式
-  * @param options.actual 実際に受け取った値
-  * @param options.cause 原因となったエラー
-  */
+/**
+ * 検証エラー
+ * @summary 検証エラー発生
+ * @returns プロパティを含むオブジェクト
+ */
 export class ValidationError extends PiError {
   /** 検証に失敗したフィールド */
   public readonly field?: string;
@@ -307,10 +309,11 @@ export class ValidationError extends PiError {
     this.actual = options?.actual;
   }
 
-   /**
-    * 検証エラーをJSON形式に変換
-    * @returns エラー情報を含むJSONオブジェクト
-    */
+  /**
+   * JSONに変換する
+   * @summary 検証エラー取得
+   * @returns プロパティを含むオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -325,11 +328,11 @@ export class ValidationError extends PiError {
 // タイムアウト & キャンセルエラー
 // ============================================================================
 
- /**
-  * 操作がタイムアウトしたときにスローされるエラー。
-  * @param message エラーメッセージ
-  * @param options タイムアウト時間や原因エラーを含むオプション
-  */
+/**
+ * タイムアウトエラー
+ * @summary タイムアウト発生
+ * @returns プロパティを含むオブジェクト
+ */
 export class TimeoutError extends PiError {
   /** 操作タイムアウト時間（ミリ秒） */
   public readonly timeoutMs?: number;
@@ -349,10 +352,11 @@ export class TimeoutError extends PiError {
     this.timeoutMs = options?.timeoutMs;
   }
 
-   /**
-    * エラー情報をJSON形式に変換する。
-    * @returns JSON形式のエラーオブジェクト
-    */
+  /**
+   * @summary JSON形式へ変換
+   * エラー情報をJSON形式に変換する
+   * @returns JSON形式のエラーオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -362,11 +366,8 @@ export class TimeoutError extends PiError {
 }
 
 /**
- * 操作がキャンセルされたときにスローされるエラー
- * @param message エラーメッセージ
- * @param options オプション設定
- * @param options.reason キャンセルの理由
- * @param options.cause 原因となったエラー
+ * @summary キャンセルエラー
+ * 操作がキャンセルされた場合に発生するエラー
  */
 export class CancelledError extends PiError {
   /** キャンセルの理由 */
@@ -398,10 +399,11 @@ export class CancelledError extends PiError {
     this.reason = options?.reason;
   }
 
-   /**
-    * JSON形式でエラー情報を返す
-    * @returns JSON形式のエラーオブジェクト
-    */
+  /**
+   * @summary JSON形式へ変換
+   * エラー情報をJSON形式に変換する
+   * @returns JSON形式のエラーオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -414,13 +416,10 @@ export class CancelledError extends PiError {
 // レート制限 & 容量エラー
 // ============================================================================
 
- /**
-  * レート制限エラー
-  * @param message エラーメッセージ
-  * @param options オプション
-  * @param options.retryAfterMs 推奨待機時間（ミリ秒）
-  * @param options.cause 原因となったエラー
-  */
+/**
+ * @summary レート制限エラー
+ * レート制限を超えた場合に発生するエラー
+ */
 export class RateLimitError extends PiError {
   /** 推奨待機時間（ミリ秒） */
   public readonly retryAfterMs?: number;
@@ -440,10 +439,11 @@ export class RateLimitError extends PiError {
     this.retryAfterMs = options?.retryAfterMs;
   }
 
-   /**
-    * JSON形式でシリアライズする
-    * @returns JSONオブジェクト
-    */
+  /**
+   * @summary JSON形式へ変換
+   * エラー情報をJSON形式に変換する
+   * @returns JSON形式のエラーオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -453,11 +453,12 @@ export class RateLimitError extends PiError {
 }
 
 /**
- * 容量超過エラー
- * @param message エラーメッセージ
- * @param options オプション
- * @param options.resource 容量を超過したリソース
- * @param options.cause 原因となったエラー
+ * キャパシティ超過時のエラーを表すクラス
+ * @summary キャパシティエラー生成
+ * @param {string} message エラーメッセージ
+ * @param {Object} [options] 追加オプション
+ * @param {string} [options.resource] リソース名
+ * @param {Error} [options.cause] 原因となったエラー
  */
 export class CapacityError extends PiError {
   /** 容量を超過したリソース */
@@ -478,10 +479,11 @@ export class CapacityError extends PiError {
     this.resource = options?.resource;
   }
 
-   /**
-    * JSON形式で返す
-    * @returns JSON形式のエラーオブジェクト
-    */
+  /**
+   * JSON形式でシリアライズする
+   * @summary JSON形式へ変換
+   * @returns エラー情報を含むJSONオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -506,14 +508,14 @@ export class CapacityError extends PiError {
 // パースエラー
 // ============================================================================
 
- /**
-  * パース処理で発生したエラー
-  * @param message エラーメッセージ
-  * @param options エラーオプション
-  * @param options.content パース失敗時のコンテンツ
-  * @param options.position パース失敗位置
-  * @param options.cause 原因となったエラー
-  */
+/**
+ * パース処理中に発生したエラーを表すクラス
+ * @summary パースエラー生成
+ * @param {string} message エラーメッセージ
+ * @param {Object} [options] 追加オプション
+ * @param {string} [options.content] エラー対象のコンテンツ
+ * @param {number} [options.position] エラー位置
+ */
 export class ParsingError extends PiError {
   /** パースに失敗したコンテンツ */
   public readonly content?: string;
@@ -537,10 +539,11 @@ export class ParsingError extends PiError {
     this.position = options?.position;
   }
 
-   /**
-    * JSONシリアライズ可能なオブジェクトを返す
-    * @returns エラー情報を含むオブジェクト
-    */
+  /**
+   * JSON形式でシリアライズする
+   * @summary JSON形式へ変換
+   * @returns エラー情報を含むJSONオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -554,9 +557,11 @@ export class ParsingError extends PiError {
 // 実行エラー
 // ============================================================================
 
- /**
-  * エラー重要度レベル。
-  */
+/**
+ * エラー深刻度を表す型定義
+ * @summary エラー深刻度定義
+ * @type {"low" | "medium" | "high" | "critical"}
+ */
 export type ErrorSeverity = "low" | "medium" | "high" | "critical";
 
  /**
@@ -577,11 +582,13 @@ export interface ErrorContext {
   timestamp?: number;
 }
 
- /**
-  * 実行操作中にスローされるエラー。
-  * @param message エラーメッセージ
-  * @param options オプション設定
-  */
+/**
+ * 実行エラーを生成
+ * @class ExecutionError
+ * @summary 実行エラー生成
+ * @param message エラーメッセージ
+ * @param options オプション設定
+ */
 export class ExecutionError extends PiError {
   /** エラーの重要度 */
   public readonly severity: ErrorSeverity;
@@ -605,10 +612,11 @@ export class ExecutionError extends PiError {
     this.context = options?.context;
   }
 
-   /**
-    * エラー情報をJSON形式に変換します。
-    * @returns JSONオブジェクト
-    */
+  /**
+   * JSON形式に変換
+   * @summary JSONに変換
+   * @returns JSONオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -618,14 +626,16 @@ export class ExecutionError extends PiError {
   }
 }
 
- /**
-  * 設定エラーを表すクラス
-  * @param message エラーメッセージ
-  * @param options エラーの追加情報
-  * @param options.key エラーの原因となった設定キー
-  * @param options.expected 期待される設定値
-  * @param options.cause エラーの原因となったオブジェクト
-  */
+/**
+ * 設定エラーを表す
+ * @summary 設定エラー生成
+ * @param message エラーメッセージ
+ * @param options エラーの追加情報
+ * @param options.key エラーの原因となった設定キー
+ * @param options.expected 期待される設定値
+ * @param options.cause エラーの原因となったオブジェクト
+ * @returns 設定エラーインスタンス
+ */
 export class ConfigurationError extends PiError {
   /** エラーの原因となった設定キー */
   public readonly key?: string;
@@ -649,10 +659,11 @@ export class ConfigurationError extends PiError {
     this.expected = options?.expected;
   }
 
-   /**
-    * JSONシリアライズ可能なオブジェクトを返す
-    * @returns エラー情報を含むオブジェクト
-    */
+  /**
+   * JSON形式に変換
+   * @summary JSON形式に変換
+   * @returns エラー情報を含むオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -662,14 +673,11 @@ export class ConfigurationError extends PiError {
   }
 }
 
- /**
-  * ストレージ操作に対してスローされるエラー
-  * @param message エラーメッセージ
-  * @param options オプション設定
-  * @param options.path エラーの原因となったストレージパス
-  * @param options.operation 失敗した操作（read/write/delete/lock）
-  * @param options.cause 原因となったエラー
-  */
+/**
+ * ストレージエラー
+ * @summary ストレージエラー生成
+ * @param options エラーオプション
+ */
 export class StorageError extends PiError {
   /** エラーの原因となったストレージパス */
   public readonly path?: string;
@@ -693,10 +701,11 @@ export class StorageError extends PiError {
     this.operation = options?.operation;
   }
 
-   /**
-    * エラー情報をJSON形式に変換する
-    * @returns JSON形式のエラーデータ
-    */
+  /**
+   * JSON形式に変換
+   * @summary JSON形式変換
+   * @returns エラー情報オブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -710,30 +719,33 @@ export class StorageError extends PiError {
 // エラーユーティリティ
 // ============================================================================
 
- /**
-  * PiErrorかどうかを判定する
-  * @param error 判定対象のエラー
-  * @returns PiErrorの場合はtrue
-  */
+/**
+ * PiErrorか判定
+ * @summary PiError型ガード
+ * @param error エラー对象
+ * @returns PiErrorの場合true
+ */
 export function isPiError(error: unknown): error is PiError {
   return error instanceof PiError;
 }
 
- /**
-  * エラーが特定のエラーコードを持つか確認する。
-  * @param error - 検査対象のエラー
-  * @param code - 比較するエラーコード
-  * @returns エラーコードが一致する場合はtrue
-  */
+/**
+ * エラーコードを確認
+ * @summary エラーコード確認
+ * @param error エラー对象
+ * @param code エラーコード
+ * @returns 一致する場合true
+ */
 export function hasErrorCode(error: unknown, code: PiErrorCode): boolean {
   return isPiError(error) && error.code === code;
 }
 
- /**
-  * エラーが再試行可能か判定する
-  * @param error - 判定対象のエラー
-  * @returns 再試行可能な場合はtrue、それ以外はfalse
-  */
+/**
+ * リトライ可能か判定
+ * @summary リトライ可否判定
+ * @param error エラー对象
+ * @returns リトライ可能な場合true
+ */
 export function isRetryableError(error: unknown): boolean {
   if (isPiError(error)) {
     return error.retryable;
@@ -741,11 +753,12 @@ export function isRetryableError(error: unknown): boolean {
   return false;
 }
 
- /**
-  * 任意のエラーをPiErrorに変換する
-  * @param error 変換対象のエラー
-  * @returns PiErrorインスタンス
-  */
+/**
+ * Piエラー変換
+ * @summary Piエラーに変換
+ * @param error エラーオブジェクト
+ * @returns PiErrorインスタンス
+ */
 export function toPiError(error: unknown): PiError {
   if (isPiError(error)) {
     return error;
@@ -756,11 +769,12 @@ export function toPiError(error: unknown): PiError {
   });
 }
 
- /**
-  * エラーからエラーコードを取得する
-  * @param error エラーオブジェクト
-  * @returns エラーコード（PiError以外はUNKNOWN_ERROR）
-  */
+/**
+ * エラーコード取得
+ * @summary エラーコードを取得
+ * @param error エラーオブジェクト
+ * @returns PIエラーコード
+ */
 export function getErrorCode(error: unknown): PiErrorCode {
   if (isPiError(error)) {
     return error.code;
@@ -768,11 +782,12 @@ export function getErrorCode(error: unknown): PiErrorCode {
   return "UNKNOWN_ERROR";
 }
 
- /**
-  * エラーコードが再試行可能か判定する
-  * @param code エラーコード
-  * @returns 再試行可能な場合はtrue、そうでない場合はfalse
-  */
+/**
+ * リトライ可否判定
+ * @summary リトライ可能か判定
+ * @param code PIエラーコード
+ * @returns リトライ可能な場合はtrue
+ */
 export function isRetryableErrorCode(code: PiErrorCode): boolean {
   const retryableCodes: PiErrorCode[] = [
     "TIMEOUT_ERROR",

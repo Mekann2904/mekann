@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/semantic-memory.ts
- * role: セマンティックメモリ管理モジュール。実行履歴に対するベクトル埋め込みの保存と意味的検索を提供する。
- * why: 過去の実行履歴から「類似タスク」をベクトル類似度で発見する機能を実現するため。
- * related: ./embeddings/index.js, ./run-index.ts, ./fs-utils.ts, ./storage-lock.js
- * public_api: generateEmbedding, generateEmbeddingsBatch, isSemanticMemoryAvailable, cosineSimilarity, findNearestNeighbors, RunEmbedding, SemanticMemoryStorage, SemanticSearchResult
- * invariants: 埋め込みベクトルの次元数はEMBEDDING_DIMENSIONS(1536)で固定。SEMANTIC_MEMORY_VERSIONは1。
- * side_effects: 埋め込み生成時に外部API(OpenAI等)を呼び出す可能性がある。ストレージへのファイル読み書きが発生する。
- * failure_modes: 外部埋め込みAPI呼び出し失敗時はnullを返す。埋め込み生成失敗時は配列内でnullを返す。
+ * role: セマンティック検索（意味検索）およびベクトル埋め込みの管理モジュール
+ * why: 過去の実行履歴に対しベクトル検索を行い、類似タスクを特定するため
+ * related: .pi/lib/embeddings/index.ts, .pi/lib/run-index.ts, .pi/lib/storage-lock.ts, .pi/lib/fs-utils.ts
+ * public_api: generateEmbedding, generateEmbeddingsBatch, isSemanticMemoryAvailable, findNearestNeighbors
+ * invariants: SemanticMemoryStorageは常に固定のモデル名と次元数を持つ
+ * side_effects: ファイルシステムへの埋め込みデータの読み書き、外部埋め込みプロバイダへのAPIリクエスト
+ * failure_modes: 外部API通信エラー、埋め込み生成時のメモリ不足、ディスクIOエラー
  * @abdd.explain
- * overview: 実行履歴のセマンティック検索機能を提供するモジュール。embeddingsサブモジュールを使用してベクトル埋め込みを生成し、コサイン類似度で類似実行を検索する。
+ * overview: 実行履歴の埋め込みベクトルを生成・永続化し、類似度計算による検索機能を提供する。外部プロバイダとの連携はembeddingsモジュールに委譲する。
  * what_it_does:
- *   - テキストからベクトル埋め込みの生成（単一/バッチ）
- *   - 実行履歴に対するベクトル類似度検索
- *   - セマンティックメモリの永続ストレージ管理
- *   - 後方互換性のためのラッパー関数提供
+ *   - テキストから埋め込みベクトルを生成する（単一およびバッチ）
+ *   - 実行履歴のインデックスと埋め込みベクトルを紐付けて管理する
+ *   - クエリベクトルに対するk近傍探索を行う
+ *   - セマンティックメモリストレージを読み書きする
  * why_it_exists:
- *   - ユーザーが「似たようなタスクを以前どう処理したか」を検索できるようにするため
- *   - キーワード一致では発見できない意味的類似性を捉えるため
- *   - 実行履歴の再利用性を高めるため
+ *   - 「類似のタスクを探す」機能を実現するため
+ *   - ベクトル類似度に基づく高度な検索を可能にするため
+ *   - 埋め込み生成ロジックと検索ロジックを分離して依存関係を整理するため
  * scope:
- *   in: テキストデータ、IndexedRun、RunIndex、既存の埋め込みストレージ
- *   out: RunEmbedding、SemanticSearchResult、埋め込みベクトル配列
+ *   in: 実行ID、検索クエリテキスト、埋め込み対象テキスト、実行インデックス
+ *   out: 類似度スコア付きの検索結果、埋め込みベクトル、メモリの利用可否状態
  */
 
 /**
@@ -50,13 +50,10 @@ import { atomicWriteTextFile } from "./storage-lock.js";
 // Types
 // ============================================================================
 
- /**
-  * 実行のベクトル埋め込み
-  * @param runId 実行ID
-  * @param embedding ベクトル埋め込み
-  * @param text 埋め込み対象のテキスト
-  * @param timestamp タイムスタンプ
-  */
+/**
+ * 実行単位の埋め込みデータ
+ * @summary 実行埋め込みデータ
+ */
 export interface RunEmbedding {
   runId: string;
   embedding: number[];
@@ -64,14 +61,10 @@ export interface RunEmbedding {
   timestamp: string;
 }
 
- /**
-  * セマンティックメモリストレージ。
-  * @param version バージョン。
-  * @param lastUpdated 最終更新日時。
-  * @param embeddings 実行の埋め込みリスト。
-  * @param model モデル名。
-  * @param dimensions ベクトルの次元数。
-  */
+/**
+ * セマンティックメモリのストレージ構造
+ * @summary セマンティックメモリ構造
+ */
 export interface SemanticMemoryStorage {
   version: number;
   lastUpdated: string;
@@ -80,12 +73,10 @@ export interface SemanticMemoryStorage {
   dimensions: number;
 }
 
- /**
-  * セマンティック検索の結果
-  * @param run 検索対象の実行記録
-  * @param similarity 類似度スコア
-  * @param embedding 対応する埋め込みベクトル
-  */
+/**
+ * セマンティック検索の結果
+ * @summary セマンティック検索結果
+ */
 export interface SemanticSearchResult {
   run: IndexedRun;
   similarity: number;
@@ -104,30 +95,31 @@ export const EMBEDDING_DIMENSIONS = 1536;
 // Backward Compatibility Wrappers
 // ============================================================================
 
- /**
-  * テキストの埋め込みベクトルを生成する（非推奨）
-  * @param text 入力テキスト
-  * @returns 埋め込みベクトル、または失敗時はnull
-  */
+/**
+ * テキストの埋め込みベクトルを生成
+ * @summary 埋め込みベクトル生成
+ * @param text 埋め込み対象のテキスト
+ * @returns 生成された埋め込みベクトル、失敗時はnull
+ */
 export async function generateEmbedding(text: string): Promise<number[] | null> {
   return embeddingsGenerateEmbedding(text);
 }
 
- /**
-  * 複数テキストのベクトルを一括生成
-  * @param texts テキスト配列
-  * @returns ベクトル配列またはnullの配列
-  */
+/**
+ * @summary ベクトル生成(一括)
+ * @param texts ベクトル化するテキスト配列
+ * @returns 生成された埋め込みベクトルの配列
+ */
 export async function generateEmbeddingsBatch(
   texts: string[]
 ): Promise<(number[] | null)[]> {
   return embeddingsGenerateEmbeddingsBatch(texts);
 }
 
- /**
-  * セマンティックメモリが利用可能か確認
-  * @returns 利用可能な場合はtrue
-  */
+/**
+ * @summary 利用可否判定
+ * @returns セマンティックメモリが利用可能かどうか
+ */
 export function isSemanticMemoryAvailable(): boolean {
   // This is now async in the new module, but we keep sync for backward compat
   // We check if any provider might be available
@@ -139,7 +131,11 @@ export function isSemanticMemoryAvailable(): boolean {
 // ============================================================================
 
 /**
- * Find the k nearest neighbors to a query vector.
+ * @summary 類似ベクトル検索
+ * @param queryVector クエリベクトル
+ * @param embeddings 検索対象の埋め込みベクトル配列
+ * @param k 取得する近傍数
+ * @returns 類似度と埋め込みを含む配列
  */
 export function findNearestNeighbors(
   queryVector: number[],
@@ -161,20 +157,20 @@ export function findNearestNeighbors(
 // Semantic Memory Storage
 // ============================================================================
 
- /**
-  * セマンティックメモリのストレージファイルパスを取得
-  * @param cwd 作業ディレクトリのパス
-  * @returns セマンティックメモリファイルのパス
-  */
+/**
+ * @summary パスを取得
+ * @param cwd カレントワーキングディレクトリ
+ * @returns メモリファイルの絶対パス
+ */
 export function getSemanticMemoryPath(cwd: string): string {
   return join(cwd, ".pi", "memory", "semantic-memory.json");
 }
 
- /**
-  * ディスクからセマンティックメモリを読み込む
-  * @param cwd カレントワーキングディレクトリ
-  * @returns セマンティックメモリストレージ
-  */
+/**
+ * @summary メモリをロード
+ * @param cwd カレントワーキングディレクトリ
+ * @returns セマンティックメモリストレージ
+ */
 export function loadSemanticMemory(cwd: string): SemanticMemoryStorage {
   const path = getSemanticMemoryPath(cwd);
   if (!existsSync(path)) {
@@ -201,12 +197,13 @@ export function loadSemanticMemory(cwd: string): SemanticMemoryStorage {
   }
 }
 
- /**
-  * セマンティックメモリをディスクに保存する
-  * @param cwd カレントワーキングディレクトリ
-  * @param storage 保存するセマンティックメモリストレージ
-  * @returns なし
-  */
+/**
+ * セマンティックメモリを保存
+ * @summary メモリを保存
+ * @param cwd カレントワーキングディレクトリ
+ * @param storage 保存対象のストレージデータ
+ * @returns なし
+ */
 export function saveSemanticMemory(cwd: string, storage: SemanticMemoryStorage): void {
   const path = getSemanticMemoryPath(cwd);
   ensureDir(join(cwd, ".pi", "memory"));
@@ -236,12 +233,13 @@ function buildEmbeddingText(run: IndexedRun): string {
   return parts.join("\n");
 }
 
- /**
-  * ランインデックスからセマンティックメモリを構築
-  * @param cwd 作業ディレクトリのパス
-  * @param batchSize 処理バッチサイズ
-  * @returns 構築されたセマンティックメモリストレージ
-  */
+/**
+ * セマンティックメモリのインデックスを構築
+ * @summary インデックス構築
+ * @param cwd カレントワーキングディレクトリ
+ * @param batchSize バッチ処理サイズ
+ * @returns 構築されたセマンティックメモリストレージ
+ */
 export async function buildSemanticMemoryIndex(
   cwd: string,
   batchSize: number = 20
@@ -296,12 +294,13 @@ export async function buildSemanticMemoryIndex(
   return storage;
 }
 
- /**
-  * 実行履歴をセマンティックメモリに追加
-  * @param cwd 作業ディレクトリのパス
-  * @param run 追加する実行履歴
-  * @returns Promise<void>
-  */
+/**
+ * 実行記録をセマンティックメモリに追加
+ * @summary 実行記録を追加
+ * @param cwd カレントワーキングディレクトリ
+ * @param run インデックス対象の実行記録
+ * @returns なし
+ */
 export async function addRunToSemanticMemory(
   cwd: string,
   run: IndexedRun
@@ -332,13 +331,17 @@ export async function addRunToSemanticMemory(
 // Semantic Search
 // ============================================================================
 
- /**
-  * 類似した実行をセマンティック検索します。
-  * @param cwd 作業ディレクトリ
-  * @param query 検索クエリ
-  * @param options 検索オプション
-  * @returns セマンティック検索結果の配列
-  */
+/**
+ * セマンティック検索を実行
+ * @summary セマンティック検索
+ * @param cwd カレントワーキングディレクトリ
+ * @param query 検索クエリ
+ * @param options 検索オプション
+ * @param options.limit 取得件数の上限
+ * @param options.status 実行ステータスのフィルタ
+ * @param options.minSimilarity 類似度の閾値
+ * @returns 検索結果の配列
+ */
 export async function semanticSearch(
   cwd: string,
   query: string,
@@ -388,13 +391,14 @@ export async function semanticSearch(
   return results;
 }
 
- /**
-  * 指定された実行IDに類似した実行を検索する。
-  * @param cwd 作業ディレクトリのパス
-  * @param runId 検索基準となる実行ID
-  * @param limit 返す結果の最大件数（デフォルト: 5）
-  * @returns 類似した実行の検索結果リスト
-  */
+/**
+ * 類似実行をIDで検索
+ * @summary 類似実行検索
+ * @param cwd カレントワーキングディレクトリ
+ * @param runId 実行ID
+ * @param limit 取得件数
+ * @returns 類似した実行結果の配列
+ */
 export function findSimilarRunsById(
   cwd: string,
   runId: string,
@@ -438,11 +442,12 @@ export function findSimilarRunsById(
 // Utility Functions
 // ============================================================================
 
- /**
-  * セマンティックメモリの統計情報を取得する
-  * @param cwd 作業ディレクトリのパス
-  * @returns 総エンベディング数、最終更新日時、モデル名、利用可否を含むオブジェクト
-  */
+/**
+ * 意味メモリ統計取得
+ * @summary 意味メモリ統計を取得
+ * @param cwd - カレントワーキングディレクトリ
+ * @returns 統計情報オブジェクト
+ */
 export function getSemanticMemoryStats(cwd: string): {
   totalEmbeddings: number;
   lastUpdated: string;
@@ -458,11 +463,12 @@ export function getSemanticMemoryStats(cwd: string): {
   };
 }
 
- /**
-  * セマンティックメモリをクリアする。
-  * @param cwd 作業ディレクトリのパス
-  * @returns なし
-  */
+/**
+ * 意味メモリクリア
+ * @summary 意味メモリをクリア
+ * @param cwd - カレントワーキングディレクトリ
+ * @returns なし
+ */
 export function clearSemanticMemory(cwd: string): void {
   const storage: SemanticMemoryStorage = {
     version: SEMANTIC_MEMORY_VERSION,

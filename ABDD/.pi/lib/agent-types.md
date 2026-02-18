@@ -17,9 +17,9 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `RunOutcomeSignal` | 実行結果を表すシグナル |
-| 型 | `ThinkingLevel` | モデルの推論レベルを表す型。 |
-| 型 | `RunOutcomeCode` | エージェントの実行結果コード |
+| インターフェース | `RunOutcomeSignal` | 実行結果シグナル |
+| 型 | `ThinkingLevel` | モデルの推論レベル |
+| 型 | `RunOutcomeCode` | 実行結果コード |
 
 ## 図解
 
@@ -45,7 +45,7 @@ interface RunOutcomeSignal {
 }
 ```
 
-実行結果を表すシグナル
+実行結果シグナル
 
 ## 型定義
 
@@ -55,7 +55,7 @@ interface RunOutcomeSignal {
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
 ```
 
-モデルの推論レベルを表す型。
+モデルの推論レベル
 
 ### RunOutcomeCode
 
@@ -68,7 +68,7 @@ type RunOutcomeCode = | "SUCCESS"
   | "TIMEOUT"
 ```
 
-エージェントの実行結果コード
+実行結果コード
 
 ---
-*自動生成: 2026-02-18T14:31:30.951Z*
+*自動生成: 2026-02-18T15:54:41.436Z*

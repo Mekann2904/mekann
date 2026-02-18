@@ -23,27 +23,27 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getCommunicationIdMode` | 現在のコミュニケーションIDモードを取得 |
-| 関数 | `resetCommunicationIdModeCache` | キャッシュされた通信IDモードをリセットする |
-| 関数 | `setCommunicationIdMode` | 通信IDモードを設定する |
-| 関数 | `getStanceClassificationMode` | 現在のスタンス分類モードを取得する。 |
-| 関数 | `resetStanceClassificationModeCache` | キャッシュされたスタンス分類モードをリセットする |
+| 関数 | `getCommunicationIdMode` | 通信IDモードを取得する |
+| 関数 | `resetCommunicationIdModeCache` | キャッシュをリセットする |
+| 関数 | `setCommunicationIdMode` | モードを設定する |
+| 関数 | `getStanceClassificationMode` | 分類モードを取得する |
+| 関数 | `resetStanceClassificationModeCache` | キャッシュをリセットする |
 | 関数 | `setStanceClassificationMode` | スタンス分類モードを設定する |
-| 関数 | `getSchemaValidationMode` | 現在のスキーマ検証モードを取得する |
-| 関数 | `resetSchemaValidationModeCache` | キャッシュされたスキーマ検証モードをリセットする。 |
-| 関数 | `setSchemaValidationMode` | 実行時にスキーマ検証モードを設定する（主にテスト用）。 |
-| 関数 | `parseStructuredOutput` | 構造化された出力テキストを解析する |
-| 関数 | `validateSubagentOutputWithSchema` | サブエージェントの出力をスキーマ検証する |
-| 関数 | `validateTeamMemberOutputWithSchema` | チームメンバー出力のスキーマ検証 |
-| 関数 | `recordSchemaViolation` | スキーマ違反を記録する |
-| 関数 | `getSchemaViolationStats` | スキーマ違反の統計情報を取得 |
-| 関数 | `resetSchemaViolationStats` | スキーマ違反の統計情報をリセットする。 |
-| インターフェース | `SchemaValidationResult` | スキーマ検証の結果を表します。 |
-| インターフェース | `SchemaViolation` | 個別のスキーマ違反 |
-| インターフェース | `ParsedStructuredOutput` | 構造化された出力データの解析結果 |
-| 型 | `SchemaValidationMode` | 出力スキーマ検証モード |
-| 型 | `CommunicationIdMode` | Communication ID mode for structured output proces |
-| 型 | `StanceClassificationMode` | 態度分類モード |
+| 関数 | `getSchemaValidationMode` | 現在の検証モードを取得 |
+| 関数 | `resetSchemaValidationModeCache` | キャッシュをリセット |
+| 関数 | `setSchemaValidationMode` | - |
+| 関数 | `parseStructuredOutput` | 構造化出力を解析 |
+| 関数 | `validateSubagentOutputWithSchema` | サブエージェント出力を検証 |
+| 関数 | `validateTeamMemberOutputWithSchema` | チームメンバー出力を検証 |
+| 関数 | `recordSchemaViolation` | スキーマ違反を記録 |
+| 関数 | `getSchemaViolationStats` | 違反統計を取得 |
+| 関数 | `resetSchemaViolationStats` | 違反統計をリセット |
+| インターフェース | `SchemaValidationResult` | スキーマ検証の実行結果 |
+| インターフェース | `SchemaViolation` | スキーマ違反の詳細情報 |
+| インターフェース | `ParsedStructuredOutput` | 構造化出力の解析結果 |
+| 型 | `SchemaValidationMode` | スキーマ検証モード定義 |
+| 型 | `CommunicationIdMode` | 通信IDモードの型定義 |
+| 型 | `StanceClassificationMode` | 分類モードの型定義 |
 
 ## 図解
 
@@ -156,7 +156,7 @@ sequenceDiagram
 getCommunicationIdMode(): CommunicationIdMode
 ```
 
-現在のコミュニケーションIDモードを取得
+通信IDモードを取得する
 
 **戻り値**: `CommunicationIdMode`
 
@@ -166,7 +166,7 @@ getCommunicationIdMode(): CommunicationIdMode
 resetCommunicationIdModeCache(): void
 ```
 
-キャッシュされた通信IDモードをリセットする
+キャッシュをリセットする
 
 **戻り値**: `void`
 
@@ -176,7 +176,7 @@ resetCommunicationIdModeCache(): void
 setCommunicationIdMode(mode: CommunicationIdMode): void
 ```
 
-通信IDモードを設定する
+モードを設定する
 
 **パラメータ**
 
@@ -192,7 +192,7 @@ setCommunicationIdMode(mode: CommunicationIdMode): void
 getStanceClassificationMode(): StanceClassificationMode
 ```
 
-現在のスタンス分類モードを取得する。
+分類モードを取得する
 
 **戻り値**: `StanceClassificationMode`
 
@@ -202,7 +202,7 @@ getStanceClassificationMode(): StanceClassificationMode
 resetStanceClassificationModeCache(): void
 ```
 
-キャッシュされたスタンス分類モードをリセットする
+キャッシュをリセットする
 
 **戻り値**: `void`
 
@@ -228,7 +228,7 @@ setStanceClassificationMode(mode: StanceClassificationMode): void
 getSchemaValidationMode(): SchemaValidationMode
 ```
 
-現在のスキーマ検証モードを取得する
+現在の検証モードを取得
 
 **戻り値**: `SchemaValidationMode`
 
@@ -238,7 +238,7 @@ getSchemaValidationMode(): SchemaValidationMode
 resetSchemaValidationModeCache(): void
 ```
 
-キャッシュされたスキーマ検証モードをリセットする。
+キャッシュをリセット
 
 **戻り値**: `void`
 
@@ -247,8 +247,6 @@ resetSchemaValidationModeCache(): void
 ```typescript
 setSchemaValidationMode(mode: SchemaValidationMode): void
 ```
-
-実行時にスキーマ検証モードを設定する（主にテスト用）。
 
 **パラメータ**
 
@@ -264,7 +262,7 @@ setSchemaValidationMode(mode: SchemaValidationMode): void
 parseStructuredOutput(output: string): ParsedStructuredOutput
 ```
 
-構造化された出力テキストを解析する
+構造化出力を解析
 
 **パラメータ**
 
@@ -315,7 +313,7 @@ Validate parsed output against a schema.
 validateSubagentOutputWithSchema(output: string, mode: SchemaValidationMode): SchemaValidationResult
 ```
 
-サブエージェントの出力をスキーマ検証する
+サブエージェント出力を検証
 
 **パラメータ**
 
@@ -332,7 +330,7 @@ validateSubagentOutputWithSchema(output: string, mode: SchemaValidationMode): Sc
 validateTeamMemberOutputWithSchema(output: string, mode: SchemaValidationMode): SchemaValidationResult
 ```
 
-チームメンバー出力のスキーマ検証
+チームメンバー出力を検証
 
 **パラメータ**
 
@@ -349,7 +347,7 @@ validateTeamMemberOutputWithSchema(output: string, mode: SchemaValidationMode): 
 recordSchemaViolation(violation: SchemaViolation): void
 ```
 
-スキーマ違反を記録する
+スキーマ違反を記録
 
 **パラメータ**
 
@@ -365,7 +363,7 @@ recordSchemaViolation(violation: SchemaViolation): void
 getSchemaViolationStats(): Map<string, number>
 ```
 
-スキーマ違反の統計情報を取得
+違反統計を取得
 
 **戻り値**: `Map<string, number>`
 
@@ -375,7 +373,7 @@ getSchemaViolationStats(): Map<string, number>
 resetSchemaViolationStats(): void
 ```
 
-スキーマ違反の統計情報をリセットする。
+違反統計をリセット
 
 **戻り値**: `void`
 
@@ -418,7 +416,7 @@ interface SchemaValidationResult {
 }
 ```
 
-スキーマ検証の結果を表します。
+スキーマ検証の実行結果
 
 ### SchemaViolation
 
@@ -431,7 +429,7 @@ interface SchemaViolation {
 }
 ```
 
-個別のスキーマ違反
+スキーマ違反の詳細情報
 
 ### ParsedStructuredOutput
 
@@ -447,7 +445,7 @@ interface ParsedStructuredOutput {
 }
 ```
 
-構造化された出力データの解析結果
+構造化出力の解析結果
 
 ## 型定義
 
@@ -457,7 +455,7 @@ interface ParsedStructuredOutput {
 type SchemaValidationMode = "legacy" | "dual" | "strict"
 ```
 
-出力スキーマ検証モード
+スキーマ検証モード定義
 
 ### CommunicationIdMode
 
@@ -465,9 +463,7 @@ type SchemaValidationMode = "legacy" | "dual" | "strict"
 type CommunicationIdMode = "legacy" | "structured"
 ```
 
-Communication ID mode for structured output processing.
-- "legacy" (default): No structured claim/evidence IDs
-- "structured": Enable claim and evidence ID tracking
+通信IDモードの型定義
 
 ### StanceClassificationMode
 
@@ -475,7 +471,7 @@ Communication ID mode for structured output processing.
 type StanceClassificationMode = "disabled" | "heuristic" | "structured"
 ```
 
-態度分類モード
+分類モードの型定義
 
 ---
-*自動生成: 2026-02-18T14:31:30.999Z*
+*自動生成: 2026-02-18T15:54:41.493Z*

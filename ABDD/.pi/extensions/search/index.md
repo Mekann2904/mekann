@@ -49,9 +49,9 @@ sequenceDiagram
 
   User->>System: Enumerate files and directories using fd with fast glob a...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
-  System->>Storage: fdまたはフォールバックでファイル候補を列挙
+  System->>Storage: 候補ファイル一覧取得
   Storage->>Internal: グローバルキャッシュインスタンスを取得する。
-  Storage->>Internal: グローバル検索履歴を取得する。
+  Storage->>Internal: 検索履歴取得
   Storage->>Internal: キャッシュキーを生成する
   Internal->>Unresolved: Object.keys(params).sort (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Object.keys (node_modules/typescript/lib/lib.es5.d.ts)
@@ -65,24 +65,24 @@ sequenceDiagram
   Storage->>Unresolved: history.addHistoryEntry (.pi/extensions/search/utils/history.ts)
   Storage->>Internal: ツールのパラメータからクエリ文字列を抽出する
   Storage->>Internal: extractResultPaths
-  Storage->>Judge: ツールの利用可能性を確認する
+  Storage->>Judge: ツール利用可否を確認
   Judge->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Judge->>Internal: isAvailable
   Judge->>Internal: execute
   Judge->>Unresolved: ctagsHelp.stdout.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Storage->>Internal: useFdCommand
   Storage->>Internal: nativeFileCandidates
-  Storage->>Internal: SearchToolErrorかどうかを判定する
-  Storage->>Internal: エラーメッセージを取得する
-  Storage->>Internal: 標準化されたエラーレスポンスを作成する
+  Storage->>Internal: エラーカテゴリを判定
+  Storage->>Internal: エラーメッセージ取得
+  Storage->>Internal: エラーレスポンス作成
   Storage->>Unresolved: toolError.format (.pi/extensions/search/utils/errors.ts)
-  Storage->>Internal: シンプルなパラメータからヒントを作成
+  Storage->>Internal: シンプルヒント作成
   Internal->>Internal: calculateSimpleConfidence
   Internal->>Internal: getAlternativeTools
   Internal->>Internal: generateRelatedQueries
   Storage->>Unresolved: extractResultPaths(result.results).slice (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: cache.setCache (.pi/extensions/search/utils/cache.ts)
-  System->>Storage: ファイル候補を整形する
+  System->>Storage: 候補一覧を整形
   System-->>User: 結果
 
 ```
@@ -102,10 +102,10 @@ sequenceDiagram
 
   User->>System: Search code patterns using ripgrep (rg) with regex suppor...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
-  System->>Internal: rgを使用したコード検索
-  Internal->>Internal: パラメータ検証エラーを作成する
+  System->>Internal: コード検索
+  Internal->>Internal: パラメータエラー生成
   Internal->>Internal: グローバルキャッシュインスタンスを取得する。
-  Internal->>Internal: グローバル検索履歴を取得する。
+  Internal->>Internal: 検索履歴取得
   Internal->>Internal: キャッシュキーを生成する
   Internal->>Unresolved: Object.keys(params).sort (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Object.keys (node_modules/typescript/lib/lib.es5.d.ts)
@@ -119,24 +119,24 @@ sequenceDiagram
   Internal->>Unresolved: history.addHistoryEntry (.pi/extensions/search/utils/history.ts)
   Internal->>Internal: ツールのパラメータからクエリ文字列を抽出する
   Internal->>Internal: extractResultPaths
-  Internal->>Judge: ツールの利用可能性を確認する
+  Internal->>Judge: ツール利用可否を確認
   Judge->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Judge->>Internal: isAvailable
   Judge->>Internal: execute
   Judge->>Unresolved: ctagsHelp.stdout.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Internal: useRgCommand
   Internal->>Internal: nativeCodeSearch
-  Internal->>Internal: SearchToolErrorかどうかを判定する
-  Internal->>Internal: エラーメッセージを取得する
-  Internal->>Internal: コード検索のエラーレスポンスを作成する
+  Internal->>Internal: エラーカテゴリを判定
+  Internal->>Internal: エラーメッセージ取得
+  Internal->>Internal: エラー作成
   Internal->>Unresolved: toolError.format (.pi/extensions/search/utils/errors.ts)
-  Internal->>Internal: シンプルなパラメータからヒントを作成
+  Internal->>Internal: シンプルヒント作成
   Internal->>Internal: calculateSimpleConfidence
   Internal->>Internal: getAlternativeTools
   Internal->>Internal: generateRelatedQueries
   Internal->>Unresolved: extractResultPaths(result.results).slice (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: cache.setCache (.pi/extensions/search/utils/cache.ts)
-  System->>Internal: コード検索結果を表示用に整形する
+  System->>Internal: 検索結果を整形
   System-->>User: 結果
 
 ```
@@ -156,13 +156,13 @@ sequenceDiagram
 
   User->>System: Generate a symbol index using ctags. Creates a JSONL file...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
-  System->>Internal: ctagsを使用してシンボルインデックスを生成
-  Internal->>Judge: ツールの利用可能性を確認する
+  System->>Internal: インデックスを作成
+  Internal->>Judge: ツール利用可否を確認
   Judge->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Judge->>Internal: isAvailable
   Judge->>Internal: execute
   Judge->>Unresolved: ctagsHelp.stdout.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  Internal->>Internal: 依存関係エラーを作成する
+  Internal->>Internal: 依存関係エラー生成
   Internal->>Internal: getInstallHint
   Internal->>Internal: getLegacyIndexPath
   Internal->>Internal: getLegacyMetaPath
@@ -180,7 +180,7 @@ sequenceDiagram
   Internal->>Internal: getSourceFiles
   Internal->>Internal: useCtagsCommand
   Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: コマンド実行エラーを作成する
+  Internal->>Internal: 実行エラー生成
   System-->>User: 結果
 
 ```
@@ -202,9 +202,9 @@ sequenceDiagram
 
   User->>System: Search for symbol definitions (functions, classes, variab...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
-  System->>Internal: インデックスからシンボル定義を検索
+  System->>Internal: シンボル検索実行
   Internal->>Internal: グローバルキャッシュインスタンスを取得する。
-  Internal->>Internal: グローバル検索履歴を取得する。
+  Internal->>Internal: 検索履歴取得
   Internal->>Internal: キャッシュキーを生成する
   Internal->>Unresolved: Object.keys(params).sort (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Object.keys (node_modules/typescript/lib/lib.es5.d.ts)
@@ -218,19 +218,19 @@ sequenceDiagram
   Internal->>Unresolved: history.addHistoryEntry (.pi/extensions/search/utils/history.ts)
   Internal->>Internal: ツールのパラメータからクエリ文字列を抽出する
   Internal->>Internal: extractResultPaths
-  Internal->>Storage: シンボルインデックスを読み込みパースする
+  Internal->>Storage: インデックス読込
   Storage->>Internal: getShardDir
   Storage->>Internal: fileExists
   Storage->>Internal: readAllShards
   Storage->>Internal: getLegacyIndexPath
   Storage->>Internal: readLegacyIndex
-  Internal->>Internal: ctagsを使用してシンボルインデックスを生成
-  Internal->>Judge: ツールの利用可能性を確認する
+  Internal->>Internal: インデックスを作成
+  Internal->>Judge: ツール利用可否を確認
   Judge->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Judge->>Internal: isAvailable
   Judge->>Internal: execute
   Judge->>Unresolved: ctagsHelp.stdout.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  Internal->>Internal: 依存関係エラーを作成する
+  Internal->>Internal: 依存関係エラー生成
   Internal->>Internal: getInstallHint
   Internal->>Internal: getLegacyMetaPath
   Internal->>Internal: isIndexStale
@@ -244,22 +244,22 @@ sequenceDiagram
   Internal->>Internal: getMetaPath
   Internal->>Internal: getSourceFiles
   Internal->>Internal: useCtagsCommand
-  Internal->>Internal: コマンド実行エラーを作成する
-  Internal->>Internal: インデックス関連のエラーを作成する
-  Internal->>Internal: SearchToolErrorかどうかを判定する
-  Internal->>Internal: エラーメッセージを取得する
-  Internal->>Internal: 標準化されたエラーレスポンスを作成する
+  Internal->>Internal: 実行エラー生成
+  Internal->>Internal: FSエラーを生成
+  Internal->>Internal: エラーカテゴリを判定
+  Internal->>Internal: エラーメッセージ取得
+  Internal->>Internal: エラーレスポンス作成
   Internal->>Unresolved: toolError.format (.pi/extensions/search/utils/errors.ts)
   Internal->>Internal: filterSymbols
   Internal->>Internal: sortSymbols
-  Internal->>Executor: 検索結果を制限し、メタデータを含める
+  Internal->>Executor: 結果を切り詰める
   Executor->>Unresolved: results.slice (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: シンプルなパラメータからヒントを作成
+  Internal->>Internal: シンプルヒント作成
   Internal->>Internal: calculateSimpleConfidence
   Internal->>Internal: getAlternativeTools
   Internal->>Internal: generateRelatedQueries
   Internal->>Unresolved: cache.setCache (.pi/extensions/search/utils/cache.ts)
-  System->>Internal: シンボルの検索結果をフォーマットする
+  System->>Internal: シンボルフォーマット
   Internal->>Unresolved: byKind.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: byKind.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   System-->>User: 結果
@@ -282,20 +282,20 @@ sequenceDiagram
 
   User->>System: Generate a call graph index showing function call relatio...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
-  System->>Internal: 呼び出しグラフのインデックスを生成または更新
-  Internal->>Storage: シンボルインデックスを読み込みパースする
+  System->>Internal: 呼び出しグラフ索引付け
+  Internal->>Storage: インデックス読込
   Storage->>Internal: getShardDir
   Storage->>Internal: fileExists
   Storage->>Internal: readAllShards
   Storage->>Internal: getLegacyIndexPath
   Storage->>Internal: readLegacyIndex
-  Internal->>Internal: ctagsを使用してシンボルインデックスを生成
-  Internal->>Judge: ツールの利用可能性を確認する
+  Internal->>Internal: インデックスを作成
+  Internal->>Judge: ツール利用可否を確認
   Judge->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Judge->>Internal: isAvailable
   Judge->>Internal: execute
   Judge->>Unresolved: ctagsHelp.stdout.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  Internal->>Internal: 依存関係エラーを作成する
+  Internal->>Internal: 依存関係エラー生成
   Internal->>Internal: getInstallHint
   Internal->>Internal: getLegacyMetaPath
   Internal->>Internal: isIndexStale
@@ -310,14 +310,14 @@ sequenceDiagram
   Internal->>Internal: getSourceFiles
   Internal->>Internal: useCtagsCommand
   Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: コマンド実行エラーを作成する
-  Internal->>Internal: コールグラフインデックスが古いか確認
+  Internal->>Internal: 実行エラー生成
+  Internal->>Internal: インデックス期限確認
   Internal->>Internal: readCallGraphIndex
   Internal->>Unresolved: import('../tools/sym_index.js') 		.then((m) => m.getIndexMetadata(cwd)) 		.catch (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: import('../tools/sym_index.js') 		.then (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: インデックスのメタデータを取得する
+  Internal->>Internal: メタデータ取得
   Internal->>Internal: readMeta
-  Internal->>Internal: プロジェクトのコールグラフを構築する
+  Internal->>Internal: コールグラフ構築
   Internal->>Internal: getFunctionDefinitions
   Internal->>Unresolved: definitions.map (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: generateNodeId
@@ -328,13 +328,13 @@ sequenceDiagram
   Internal->>Unresolved: sortedDefs.findIndex (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Internal: findCallsInFile
   Internal->>Internal: calculateConfidence
-  Internal->>Storage: コールグラフのインデックスをファイルに保存します。
+  Internal->>Storage: インデックス保存
   Storage->>Internal: getCallGraphIndexPath
   Storage->>Internal: dirname
   Storage->>Internal: mkdir
   Storage->>Storage: writeFile
   Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Internal: コールグラフのインデックス結果をフォーマット
+  System->>Internal: インデックスをフォーマット
   Internal->>Unresolved: [ 		`Call Graph Index Generated`, 		`  Nodes (functions): ${result.nodeCount}`, 		`  Edges (calls): ${result.edgeCount}`, 		`  Output: ${result.outputPath}`, 	].join (node_modules/typescript/lib/lib.es5.d.ts)
   System-->>User: 結果
 
@@ -355,16 +355,16 @@ sequenceDiagram
 
   User->>System: Find all functions that call the specified symbol. Suppor...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
-  System->>Internal: 指定されたシンボルを呼び出す関数を検索します。
-  Internal->>Storage: コールグラフのインデックスを読み込む
+  System->>Internal: 呼び出し元検索
+  Internal->>Storage: インデックス読込
   Storage->>Internal: getCallGraphIndexPath
   Storage->>Internal: fileExists
   Storage->>Storage: readFile
   Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: コールグラフインデックスが古いか確認
+  Internal->>Internal: インデックス期限確認
   Internal->>Unresolved: import('../tools/sym_index.js') 		.then((m) => m.getIndexMetadata(cwd)) 		.catch (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: import('../tools/sym_index.js') 		.then (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: インデックスのメタデータを取得する
+  Internal->>Internal: メタデータ取得
   Internal->>Internal: getMetaPath
   Internal->>Internal: readMeta
   Internal->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
@@ -382,7 +382,7 @@ sequenceDiagram
   Internal->>Unresolved: sorted.sort (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: sorted.slice (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Internal: 呼び出し元の検索結果を整形して文字列で返す
+  System->>Internal: 呼び出し元を整形
   Internal->>Unresolved: '  '.repeat (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: (confidence * 100).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: lines.join (node_modules/typescript/lib/lib.es5.d.ts)
@@ -406,15 +406,15 @@ sequenceDiagram
   User->>System: Find all functions called by the specified symbol. Suppor...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
   System->>Internal: 指定されたシンボルが呼び出す関数を検索
-  Internal->>Storage: コールグラフのインデックスを読み込む
+  Internal->>Storage: インデックス読込
   Storage->>Internal: getCallGraphIndexPath
   Storage->>Internal: fileExists
   Storage->>Storage: readFile
   Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: コールグラフインデックスが古いか確認
+  Internal->>Internal: インデックス期限確認
   Internal->>Unresolved: import('../tools/sym_index.js') 		.then((m) => m.getIndexMetadata(cwd)) 		.catch (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: import('../tools/sym_index.js') 		.then (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: インデックスのメタデータを取得する
+  Internal->>Internal: メタデータ取得
   Internal->>Internal: getMetaPath
   Internal->>Internal: readMeta
   Internal->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
@@ -455,7 +455,7 @@ sequenceDiagram
 
   User->>System: Generate a semantic index of code files using vector embe...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
-  System->>Internal: セマンティックインデックスを生成する
+  System->>Internal: 意味的索引作成
   Internal->>Internal: existsSync
   Internal->>Internal: getIndexPath
   Internal->>Internal: getMetaPath
@@ -494,7 +494,7 @@ sequenceDiagram
   User->>System: Search code using natural language queries with semantic ...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
   System->>Unresolved: params.query.trim (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Internal: コードの意味検索を行う
+  System->>Internal: 意味的検索実行
   Internal->>Internal: loadIndex
   Internal->>Unresolved: filteredIndex.filter (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: e.metadata.language.toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
@@ -503,7 +503,7 @@ sequenceDiagram
   Internal->>Unresolved: nearest.map (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
-  System->>Internal: セマンティック検索の結果を整形します。
+  System->>Internal: 検索結果整形
   Internal->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: (item.similarity * 100).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: item.code.split('\n').slice (node_modules/typescript/lib/lib.es5.d.ts)
@@ -539,4 +539,4 @@ flowchart LR
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.850Z*
+*自動生成: 2026-02-18T15:54:41.310Z*

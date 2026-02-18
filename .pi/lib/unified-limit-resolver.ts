@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/unified-limit-resolver.ts
- * role: 5層の並列数制限計算を統合するfacadeレイヤー
- * why: プリセット、適応学習、クロスインスタンス分散、ランタイム制約を単一インターフェースで提供し、制限計算の複雑性を隠蔽するため
+ * role: 5層の並列数制限計算を統合し、単一のインターフェースを提供するFacade
+ * why: プリセット、適応学習、分散、ランタイム、スケジューリングという異なる制約レイヤーを集約し、一貫したAPIで並列数を解決するため
  * related: provider-limits.ts, adaptive-rate-controller.ts, cross-instance-coordinator.ts, runtime-config.ts
- * public_api: UnifiedLimitInput, LimitBreakdown, UnifiedLimitResult
- * invariants: 戻り値の並列数は常に正の整数、各層の制限値は非負、最終有効制限は全層の最小値以下
- * side_effects: 依存モジュール経由で429履歴の読み取り、インスタンス状態の参照、ランタイム設定の検証を実行
- * failure_modes: RuntimeSnapshotProviderが未注入時は警告ログを出力してデフォルト値を使用
+ * public_api: resolveUnifiedLimits, type UnifiedLimitInput, type LimitBreakdown
+ * invariants: 返り値のeffectiveConcurrencyは常に全レイヤーの制約を満たす最小値である、snapshot provider未注入時はデフォルト値と警告ログを使用する
+ * side_effects: なし（純粋な計算と統合ロジックのみ）
+ * failure_modes: 依存モジュールからの値取得失敗、スナップショットプロバイダーの未注入による設定不備
  * @abdd.explain
- * overview: 複数の制限ソース(Layer 1-5)を統合し、provider/model/tier/priorityに基づいて最終的な並列数制限を算出する
+ * overview: provider-limits, adaptive-rate-controller, cross-instance-coordinator, runtime-config, task-schedulerの5層から制限値を収集・統合し、最終的な有効並列数を算出する
  * what_it_does:
- *   - プリセット制限、適応調整、クロスインスタンス分散、ランタイム制約を集約
- *   - 各層の内訳をLimitBreakdownとして提供し、制約要因を特定
- *   - 予測分析を含む将来の429確率見積もりを提供
+ *   - 入力プロバイダー/モデル/優先度に基づき各レイヤーの制限値を収集する
+ *   - 各レイヤーの内訳を含む統合結果を生成する
+ *   - 最も制約となる要因と理由を特定する
  * why_it_exists:
- *   - 複数モジュールに分散した制限計算ロジックを単一エントリポイントで管理
- *   - デバッグ時にどの層が制約になったかを追跡可能にする
+ *   - 複雑な多層アーキテクチャにおける制限計算の複雑度を隠蔽するため
+ *   - 初期化順序や依存関係を正しく管理して一貫した結果を返すため
+ *   - デバッグ用に制約のボトルネックを特定する情報を提供するため
  * scope:
- *   in: provider名、model名、tier(任意)、operationType(任意)、priority(任意)
- *   out: 最終有効並列数、有効RPM、有効TPM、各層の内訳、制約要因
+ *   in: UnifiedLimitInput (provider, model, tier, operationType, priority)
+ *   out: UnifiedLimitResult (effectiveConcurrency, effectiveRpm, breakdown, limitingFactor)
  */
 
 /**
@@ -74,14 +75,15 @@ import type { IRuntimeSnapshot, RuntimeSnapshotProvider } from "./interfaces/run
 // Types (RuntimeConfig is imported from runtime-config.ts)
 // ============================================================================
 
- /**
-  * 制限解決の入力パラメータ
-  * @param provider プロバイダー名 (例: "anthropic", "openai")
-  * @param model モデル名 (例: "claude-sonnet-4-20250514")
-  * @param tier ティア (例: "pro", "max") - 省略時は自動検出
-  * @param operationType 操作タイプ - サブエージェント/チーム/オーケストレーション
-  * @param priority タスク優先度
-  */
+/**
+ * 統合リミット入力インターフェース
+ * @summary 統合リミット入力定義
+ * @param provider - プロバイダ識別子
+ * @param model - モデル識別子
+ * @param tier - 利用ティア
+ * @param operationType - 操作種別
+ * @param priority - 優先度
+ */
 export interface UnifiedLimitInput {
   /** プロバイダー名 (例: "anthropic", "openai") */
   provider: string;
@@ -95,14 +97,10 @@ export interface UnifiedLimitInput {
   priority?: "critical" | "high" | "normal" | "low" | "background";
 }
 
- /**
-  * 各レイヤーの制限内訳
-  * @param preset Layer 1: プリセット制限
-  * @param adaptive Layer 2: 適応的調整
-  * @param crossInstance Layer 3: クロスインスタンス調整
-  * @param runtime Layer 4: ランタイム調整
-  * @param prediction Layer 5: 予測モデル
-  */
+/**
+ * リミット内訳のインターフェース
+ * @summary リミット内訳定義
+ */
 export interface LimitBreakdown {
   /** Layer 1: プリセット制限 */
   preset: {
@@ -134,15 +132,10 @@ export interface LimitBreakdown {
   prediction?: PredictiveAnalysis;
 }
 
- /**
-  * 制限解決の結果
-  * @param effectiveConcurrency 最終的な有効並列数
-  * @param effectiveRpm 最終的な有効RPM
-  * @param effectiveTpm 最終的な有効TPM（利用可能な場合）
-  * @param breakdown 各レイヤーの内訳（デバッグ用）
-  * @param limitingFactor 最も制約となったレイヤー
-  * @param limitingReason 制約の理由
-  */
+/**
+ * 統一リミット結果のインターフェース
+ * @summary リミット結果定義
+ */
 export interface UnifiedLimitResult {
   /** 最終的な有効並列数 */
   effectiveConcurrency: number;
@@ -192,11 +185,12 @@ let _initializationState: {
   warningsLogged: [],
 };
 
- /**
-  * ランタイムスナップショットプロバイダを設定する。
-  * @param fn ランタイムスナップショットを提供する関数
-  * @returns なし
-  */
+/**
+ * ランタイムスナップショットプロバイダを設定
+ * @summary プロバイダ設定
+ * @param fn 設定する関数
+ * @returns なし
+ */
 export function setRuntimeSnapshotProvider(fn: RuntimeSnapshotProvider): void {
   const previousState = _getRuntimeSnapshot !== null;
   _getRuntimeSnapshot = fn;
@@ -212,18 +206,20 @@ export function setRuntimeSnapshotProvider(fn: RuntimeSnapshotProvider): void {
   }
 }
 
- /**
-  * ランタイムスナップショットプロバイダーが初期化済みか確認
-  * @returns 初化済みの場合はtrue
-  */
+/**
+ * スナップショットプロバイダ初期化判定
+ * @summary 初期化判定
+ * @returns 初期化済みの場合はtrue
+ */
 export function isSnapshotProviderInitialized(): boolean {
   return _initializationState.snapshotProviderSet;
 }
 
- /**
-  * 初期化状態を取得する（診断用）。
-  * @returns 初期化状態のコピー
-  */
+/**
+ * 初期化状態を取得
+ * @summary 状態取得
+ * @returns 初期化状態
+ */
 export function getInitializationState(): typeof _initializationState {
   return { ..._initializationState };
 }
@@ -278,16 +274,19 @@ function getRuntimeSnapshot(): IRuntimeSnapshot {
 // Constants (Now using RuntimeConfig from runtime-config.ts)
 // ============================================================================
 
- /**
-  * 下位互換用エイリアス。
-  * @deprecated 代わりに runtime-config.ts の RuntimeConfig を使用してください。
-  */
+/**
+ * 統合環境設定の型
+ * @summary 環境設定型
+ * @deprecated 代わりに runtime-config.ts の RuntimeConfig を使用してください。
+ */
 export type UnifiedEnvConfig = RuntimeConfig;
 
- /**
-  * 統合環境設定を取得
-  * @returns 統合環境設定
-  */
+/**
+ * 統合環境設定を取得
+ * @summary 環境設定取得
+ * @deprecated 代わりに runtime-config.ts の RuntimeConfig を使用してください。
+ * @returns 統合環境設定オブジェクト
+ */
 export function getUnifiedEnvConfig(): UnifiedEnvConfig {
   return getRuntimeConfig();
 }
@@ -296,11 +295,12 @@ export function getUnifiedEnvConfig(): UnifiedEnvConfig {
 // Unified Limit Resolver
 // ============================================================================
 
- /**
-  * 統合制限を解決する
-  * @param input プロバイダ、モデル、ティアを含む入力
-  * @returns 解決された統合制限の結果
-  */
+/**
+ * 統合制限を解決
+ * @summary 制限を解決
+ * @param input 統合制限の入力データ
+ * @returns 統合制限の判定結果
+ */
 export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResult {
   const { provider, model, tier } = input;
   const envConfig = getRuntimeConfig();
@@ -410,11 +410,12 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
   };
 }
 
- /**
-  * 制限解決結果を文字列としてフォーマットする
-  * @param result - フォーマット対象の制限解決結果
-  * @returns フォーマット済みの文字列
-  */
+/**
+ * 制限結果をフォーマット
+ * @summary 結果をフォーマット
+ * @param result 統合制限の判定結果
+ * @returns フォーマット済みのJSON文字列
+ */
 export function formatUnifiedLimitsResult(result: UnifiedLimitResult): string {
   const lines: string[] = [
     `Unified Limit Resolution: ${result.metadata.provider}/${result.metadata.model}`,
@@ -435,10 +436,11 @@ export function formatUnifiedLimitsResult(result: UnifiedLimitResult): string {
   return lines.join("\n");
 }
 
- /**
-  * 全プロバイダーの制限サマリーを取得
-  * @returns 制限サマリーの文字列
-  */
+/**
+ * 制限サマリを生成
+ * @summary サマリを生成
+ * @returns フォーマットされたサマリ文字列
+ */
 export function getAllLimitsSummary(): string {
   const envConfig = getRuntimeConfig();
   const coordinatorStatus = getCoordinatorStatus();

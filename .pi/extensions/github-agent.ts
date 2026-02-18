@@ -1,34 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/github-agent.ts
- * role: GitHub リポジトリ探索ツールの Pi エージェント拡張モジュール
- * why: LLM エージェントが gh CLI 経由で GitHub リポジトリの情報取得、ファイルツリー参照、ファイル読み込み、コード/Issue/リポジトリ検索を行えるようにするため
- * related: github-agent/gh_agent.sh, @mariozechner/pi-coding-agent, @sinclair/typebox
- * public_api: default関数（ExtensionAPI を受け取り gh_agent ツールを登録）
- * invariants:
- *   - info/tree コマンド実行時は repo 引数が必須
- *   - read コマンド実行時は repo と path 引数が必須
- *   - search コマンド実行時は query 引数が必須
- *   - コマンド引数は gh_agent.sh に渡される
- * side_effects:
- *   - gh_agent.sh シェルスクリプトを子プロセスとして実行
- *   - 外部ネットワークへの GitHub API 呼び出し（gh CLI 経由）
- * failure_modes:
- *   - 必須引数欠如時にエラーメッセージを返却（ツール実行は継続）
- *   - シェルスクリプト実行失敗時（終了コード非ゼロ）にエラーメッセージと stderr を返却
- *   - stdout が空で stderr のみ存在する場合、stderr の内容を返却
+ * role: GitHub操作ツールのアダプタ
+ * why: LLMエージェントからGitHubリポジトリの情報取得、ファイル閲覧、検索を行うためのインターフェースを提供する
+ * related: .pi/extensions/github-agent/gh_agent.sh, node:child_process, @mariozechner/pi-coding-agent
+ * public_api: execute(_toolCallId, params: GhAgentArgs)
+ * invariants: params.commandは["info", "tree", "read", "search"]のいずれかである、shellスクリプトは実行可能である
+ * side_effects: 外部プロセス(gh_agent.sh)を実行する、GitHub APIへのリクエストが発生する
+ * failure_modes: 必須パラメータ不足によるエラー、shellスクリプト実行失敗、ネットワークエラー、GitHub APIレートリミット
  * @abdd.explain
- * overview: Pi コーディングエージェント用の GitHub 連携ツール拡張。gh CLI をラップし、リポジトリ情報の取得と検索機能を提供する。
+ * overview: GitHub CLIまたはAPIをラップするシェルスクリプトを呼び出し、リポジトリ探索機能を提供する拡張機能
  * what_it_does:
- *   - TypeBox スキーマで定義された4種のコマンド（info/tree/read/search）を受け付ける
- *   - コマンド種別に応じて必須引数のバリデーションを行う
- *   - 引数を gh_agent.sh に渡して実行し、結果をテキスト形式で返す
+ *   - info, tree, read, searchコマンドのパラメータ検証と引数構築を行う
+ *   - gh_agent.shを子プロセスとして実行し、標準出力を戻り値として返す
+ *   - 実行時のエラーを捕捉し、エラーメッセージをフォーマットする
  * why_it_exists:
- *   - LLM エージェントが GitHub 上のソースコードや Issue を参照できるようにするため
- *   - 外部リポジトリの構造や内容を動的に調査する能力をエージェントに付与するため
+ *   - GitHub上のコードベースをエージェントが探索可能にする
+ *   - シェルスクリプトによる実装詳細(TypeScriptへの直接的な依存)を隠蔽する
  * scope:
- *   in: GhAgentParams で定義されたコマンドと引数（command, repo, path, query, search_type, limit, extension）
- *   out: テキスト形式のコンテンツを含むツール実行結果オブジェクト
+ *   in: コマンド種別、リポジトリ指定、パス、検索クエリ、フィルタオプション
+ *   out: コマンド実行結果のテキストまたはエラーメッセージ
  */
 
 import * as path from "node:path";

@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/runtime-error-builders.ts
- * role: タイムアウト時間解決ユーティリティの提供
- * why: subagents.tsとagent-teams.ts間で一貫したタイムアウト動作を実現するため
- * related: subagents.ts, agent-teams.ts, runtime-utils.ts, model-timeouts.ts
+ * role: タイムアウト時間の解決と統一
+ * why: subagents.ts と agent-teams.ts で一貫したタイムアウト挙動を保証するため
+ * related: ./runtime-utils.js, ./model-timeouts.js, ./subagents.ts, ./agent-teams.ts
  * public_api: resolveEffectiveTimeoutMs
- * invariants: 戻り値は常に正の整数（ミリ秒）、0や未指定の場合はfallbackを返す
- * side_effects: なし（純粋関数）
- * failure_modes: すべてのタイムアウトソースが0または未指定の場合、fallback値を返す
+ * invariants: 戻り値は0以上の数値
+ * side_effects: なし
+ * failure_modes: 不正な型が入力された場合の挙動は依存関数に依存する
  * @abdd.explain
- * overview: ユーザー指定・モデル固有・フォールバックの3つのタイムアウトソースから有効な値を決定する
+ * overview: ユーザー指定、モデル固有、デフォルトの各タイムアウト値を受け取り、最適な有効時間を決定するモジュール。
  * what_it_does:
- *   - ユーザー指定タイムアウトの正規化
- *   - モデルIDに基づくモデル固有タイムアウトの取得
- *   - 複数のタイムアウトが有効な場合、最大値を採用して低速モデルに十分な時間を確保
- *   - すべて未指定時はフォールバック値を返却
+ *   - ユーザー指定タイムアウトとモデル固有タイムアウトを正規化して取得する
+ *   - 両方が正の値の場合、大きい方を優先して採用する
+ *   - いずれも指定がない場合、フォールバック値を返す
  * why_it_exists:
- *   - subagentsとagent-teamsでタイムアウト処理を統一
- *   - モデルの特性に応じた適切なタイムアウト設定の自動調整
- *   - ユーザー設定とモデル要件の競合を解決（最大値を採用）
+ *   - 処理速度の異なる複数のモデルに対し、十分な実行時間を確保するため
+ *   - タイムアウト計算ロジックを共通化し、コード重複を排除するため
  * scope:
- *   in: ユーザー指定タイムアウト値（unknown型）、モデルID（string | undefined）、フォールバック値（number）
- *   out: 解決されたタイムアウト時間（ミリ秒単位のnumber）
+ *   in: ユーザー指定値(unknown), モデルID(string|undefined), フォールバック値(number)
+ *   out: 決定されたタイムアウト時間(ミリ秒)
  */
 
 /**
@@ -32,13 +30,14 @@
 import { normalizeTimeoutMs } from "./runtime-utils.js";
 import { computeModelTimeoutMs } from "./model-timeouts.js";
 
- /**
-  * 有効なタイムアウト時間を解決する
-  * @param userTimeoutMs - ユーザー指定のタイムアウト
-  * @param modelId - モデル固有のタイムアウト検索用ID
-  * @param fallback - デフォルトのフォールバック時間（ミリ秒）
-  * @returns 解決されたタイムアウト時間（ミリ秒）
-  */
+/**
+ * タイムアウト解決
+ * @summary タイムアウト時間を解決
+ * @param userTimeoutMs ユーザー指定のタイムアウト値
+ * @param modelId モデルID
+ * @param fallback デフォルト値
+ * @returns 有効なタイムアウト時間
+ */
 export function resolveEffectiveTimeoutMs(
   userTimeoutMs: unknown,
   modelId: string | undefined,

@@ -1,25 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/skill-inspector.ts
- * role: スキル割り当て状況の検査・表示ツール
- * why: プロジェクト内のスキルがどのチーム・メンバーに割り当てられているかを可視化するため
- * related: .pi/lib/skills/SKILL.md, .pi/agent-teams/definitions/*.md, @mariozechner/pi-coding-agent
- * public_api: ExtensionAPIに登録されるskill-inspectorコマンド
- * invariants: スキルディレクトリは.pi/lib/skills/配下に存在、チーム定義は.pi/agent-teams/definitions/配下に存在
- * side_effects: ファイルシステムからの読み込み（.pi/lib/skills/, .pi/agent-teams/definitions/）
- * failure_modes: スキルディレクトリ不存在時は空のMapを返す、SKILL.mdパース失敗時は該当スキルをスキップ
+ * role: プロジェクト内のスキル定義とチームへの割り当て状況を集計・分析するツール
+ * why: スキルがどこで定義され、どのチーム・メンバーに利用されているかを可視化するため
+ * related: .pi/lib/skills/, .pi/agent-teams/definitions/, @mariozechner/pi-coding-agent
+ * public_api: loadAvailableSkills, loadTeamDefinitions
+ * invariants: SKILL.mdの必須項目不足時はディレクトリ名をnameとして使用する, ファイル読み込みエラー時は該当エントリをスキップする
+ * side_effects: ファイルシステムからの読み取りのみ行い、書き込みは行わない
+ * failure_modes: 指定ディレクトリが存在しない場合は空のMapまたは配列を返す, ファイルのパースに失敗した場合は例外を捕捉して処理を継続する
  * @abdd.explain
- * overview: プロジェクト内のスキル定義とチーム・メンバーへの割り当て状況を収集・表示する拡張機能
+ * overview: `.pi/lib/skills/` ディレクトリから利用可能なスキルをロードし、`.pi/agent-teams/definitions/` からチーム定義をロードして、スキルの利用状況をマッピングする。
  * what_it_does:
- *   - .pi/lib/skills/配下のスキルディレクトリからSKILL.mdを読み込みスキル情報を収集
- *   - .pi/agent-teams/definitions/配下のチーム定義ファイルを読み込みスキル割り当てを解析
- *   - スキルごとの使用状況（チーム・メンバー単位）を集計
+ *   - SKILL.mdファイルのパースとスキル情報のMap作成
+ *   - チーム定義ファイル（.md/.json）の走査とチーム・メンバーごとのスキル保持状況の特定
  * why_it_exists:
- *   - スキルの利用状況を把握し、未使用スキルや重複割り当てを特定するため
- *   - チーム構成の検証とスキル配分の最適化を支援するため
+ *   - 複数のエージェントやチーム間でスキルの重複や未使用状況を把握する
+ *   - プロジェクト全体のスキルアーキテクチャを理解しやすくする
  * scope:
- *   in: .pi/lib/skills/, .pi/agent-teams/definitions/
- *   out: スキル使用状況のレポート表示
+ *   in: .pi/lib/skills/ ディレクトリ構造, .pi/agent-teams/definitions/ ファイル内容
+ *   out: スキル定義のMap, スキル利用状況を含むチーム定義配列
  */
 
 /**

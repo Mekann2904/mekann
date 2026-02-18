@@ -17,18 +17,18 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `assessCodeQuality` | コードの品質を評価する |
-| 関数 | `recordExecutionMetrics` | 実行メトリクスを記録する |
-| 関数 | `getUsageStatistics` | 指定ツールの使用統計を取得 |
-| 関数 | `getAllUsageStatistics` | 全ツールの使用統計を取得 |
-| 関数 | `resetUsageStatistics` | 使用統計をリセットする |
-| 関数 | `recordQualityScore` | 指定ツールの品質スコアを記録 |
-| 関数 | `analyzeQualityTrend` | 品質トレンドの傾向を分析 |
+| 関数 | `assessCodeQuality` | 品質を評価する |
+| 関数 | `recordExecutionMetrics` | メトリクスを記録する |
+| 関数 | `getUsageStatistics` | 統計を取得する |
+| 関数 | `getAllUsageStatistics` | 全統計を取得する |
+| 関数 | `resetUsageStatistics` | 統計を初期化する |
+| 関数 | `recordQualityScore` | スコア記録 |
+| 関数 | `analyzeQualityTrend` | 品質傾向分析 |
 | インターフェース | `QualityAssessment` | 品質評価結果 |
 | インターフェース | `CategoryScores` | カテゴリ別スコア |
-| インターフェース | `QualityIssue` | 品質問題を表すインターフェース |
-| インターフェース | `ExecutionMetrics` | 実行メトリクスを表すインターフェース |
-| インターフェース | `ToolUsageStatistics` | ツールの使用統計情報 |
+| インターフェース | `QualityIssue` | 品質課題 |
+| インターフェース | `ExecutionMetrics` | 実行メトリクス |
+| インターフェース | `ToolUsageStatistics` | ツール使用統計 |
 
 ## 図解
 
@@ -116,7 +116,7 @@ flowchart TD
 assessCodeQuality(code: string): QualityAssessment
 ```
 
-コードの品質を評価する
+品質を評価する
 
 **パラメータ**
 
@@ -199,7 +199,7 @@ calculateConfidence(code: string, issueCount: number): number
 recordExecutionMetrics(toolId: string, metrics: ExecutionMetrics): void
 ```
 
-実行メトリクスを記録する
+メトリクスを記録する
 
 **パラメータ**
 
@@ -216,7 +216,7 @@ recordExecutionMetrics(toolId: string, metrics: ExecutionMetrics): void
 getUsageStatistics(toolId: string): ToolUsageStatistics | undefined
 ```
 
-指定ツールの使用統計を取得
+統計を取得する
 
 **パラメータ**
 
@@ -232,7 +232,7 @@ getUsageStatistics(toolId: string): ToolUsageStatistics | undefined
 getAllUsageStatistics(): ToolUsageStatistics[]
 ```
 
-全ツールの使用統計を取得
+全統計を取得する
 
 **戻り値**: `ToolUsageStatistics[]`
 
@@ -242,7 +242,7 @@ getAllUsageStatistics(): ToolUsageStatistics[]
 resetUsageStatistics(): void
 ```
 
-使用統計をリセットする
+統計を初期化する
 
 **戻り値**: `void`
 
@@ -252,7 +252,7 @@ resetUsageStatistics(): void
 recordQualityScore(toolId: string, score: number): void
 ```
 
-指定ツールの品質スコアを記録
+スコア記録
 
 **パラメータ**
 
@@ -273,7 +273,7 @@ analyzeQualityTrend(toolId: string): {
 }
 ```
 
-品質トレンドの傾向を分析
+品質傾向分析
 
 **パラメータ**
 
@@ -333,7 +333,7 @@ interface QualityIssue {
 }
 ```
 
-品質問題を表すインターフェース
+品質課題
 
 ### ExecutionMetrics
 
@@ -349,7 +349,7 @@ interface ExecutionMetrics {
 }
 ```
 
-実行メトリクスを表すインターフェース
+実行メトリクス
 
 ### ToolUsageStatistics
 
@@ -370,7 +370,7 @@ interface ToolUsageStatistics {
 }
 ```
 
-ツールの使用統計情報
+ツール使用統計
 
 ### QualityPattern
 
@@ -388,4 +388,4 @@ interface QualityPattern {
 品質パターンの定義
 
 ---
-*自動生成: 2026-02-18T14:31:30.979Z*
+*自動生成: 2026-02-18T15:54:41.470Z*

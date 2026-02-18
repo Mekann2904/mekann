@@ -25,12 +25,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `isRetryableTeamMemberError` | チームメンバーのエラーが再試行可能か判定 |
-| 関数 | `resolveTeamFailureOutcome` | チームのエラー種別を判定し、実行結果シグナルを返す |
-| 関数 | `resolveTeamMemberAggregateOutcome` | チームメンバーの実行結果を集約して解決する |
-| 関数 | `resolveTeamParallelRunOutcome` | チームの並列実行結果を集計して解決する |
-| 関数 | `buildTeamResultText` | チームの実行結果をテキスト形式で構築します。 |
-| 関数 | `extractSummary` | 出力文字列からサマリーを抽出する |
+| 関数 | `isRetryableTeamMemberError` | リトライ可能か判定 |
+| 関数 | `resolveTeamFailureOutcome` | 失敗時の結果生成 |
+| 関数 | `resolveTeamMemberAggregateOutcome` | メンバー結果の統合判定 |
+| 関数 | `resolveTeamParallelRunOutcome` | 並列実行結果の判定 |
+| 関数 | `buildTeamResultText` | チーム結果のテキスト構築 |
+| 関数 | `extractSummary` | 要約を抽出 |
 
 ## 図解
 
@@ -92,7 +92,7 @@ sequenceDiagram
 isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean
 ```
 
-チームメンバーのエラーが再試行可能か判定
+リトライ可能か判定
 
 **パラメータ**
 
@@ -109,7 +109,7 @@ isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean
 resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal
 ```
 
-チームのエラー種別を判定し、実行結果シグナルを返す
+失敗時の結果生成
 
 **パラメータ**
 
@@ -127,7 +127,7 @@ resolveTeamMemberAggregateOutcome(memberResults: TeamMemberResult[]): RunOutcome
 }
 ```
 
-チームメンバーの実行結果を集約して解決する
+メンバー結果の統合判定
 
 **パラメータ**
 
@@ -153,7 +153,7 @@ resolveTeamParallelRunOutcome(results: Array<{
 }
 ```
 
-チームの並列実行結果を集計して解決する
+並列実行結果の判定
 
 **パラメータ**
 
@@ -180,7 +180,7 @@ buildTeamResultText(input: {
 }): string
 ```
 
-チームの実行結果をテキスト形式で構築します。
+チーム結果のテキスト構築
 
 **パラメータ**
 
@@ -200,7 +200,7 @@ buildTeamResultText(input: {
 extractSummary(output: string): string
 ```
 
-出力文字列からサマリーを抽出する
+要約を抽出
 
 **パラメータ**
 
@@ -211,4 +211,4 @@ extractSummary(output: string): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T14:31:30.481Z*
+*自動生成: 2026-02-18T15:54:40.934Z*

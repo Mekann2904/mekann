@@ -1,29 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/agent-errors.ts
- * role: エージェント実行時のエラー分類・解決ユーティリティ
- * why: サブエージェント・チームメンバー実行における統一的なエラー分類と結果解決を提供するため
- * related: agent-common.ts, agent-types.ts, error-utils.ts
+ * role: エラー分類および実行結果解決モジュール
+ * why: サブエージェントおよびチームメンバーの実行結果に対し、統一的なエラー分類とスキーマ違反・低品質出力などの意味論的エラー検出を行うため
+ * related: ./error-utils.ts, ./agent-types.ts, ./agent-common.ts
  * public_api: ExtendedOutcomeCode, ExtendedOutcomeSignal, classifySemanticError, resolveExtendedFailureOutcome
- * invariants:
- *   - classifySemanticErrorは入力が空またはエラーなしの場合nullを返す
- *   - ExtendedOutcomeCodeはRunOutcomeCodeをベースに5種類の拡張コードを追加
- * side_effects: なし（純粋関数のみ）
- * failure_modes:
- *   - エラーメッセージのパターンマッチング漏れによる誤分類
- *   - 不正な入力による予期せぬ分類結果
+ * invariants: ExtendedOutcomeSignalのoutcomeCodeはExtendedOutcomeCode型に含まれる値のみをとる
+ * side_effects: なし（純粋な関数と型定義のみ）
+ * failure_modes: 分類ロジックがエラーメッセージのキーワードに依存するため、予期しないメッセージ形式の場合は分類がnullになる
  * @abdd.explain
- * overview: エージェント実行時のエラーを統一的に分類・解決するLayer 1ユーティリティ
+ * overview: Layer 1に位置し、共通のエラーユーティリティとエージェント型定義を利用して、実行時の出力内容とエラーオブジェクトから意味論的なエラーを分類・解決するモジュール。
  * what_it_does:
- *   - 拡張エラー分類コード（SCHEMA_VIOLATION, LOW_SUBSTANCE, EMPTY_OUTPUT, PARSE_ERROR）の定義
- *   - 出力内容とエラーメッセージからの意味論的エラー分類
- *   - 失敗結果の解決とExtendedOutcomeSignalの生成
+ *   - RunOutcomeCodeを拡張したExtendedOutcomeCode（SCHEMA_VIOLATION, LOW_SUBSTANCE等）を定義する
+ *   - 出力文字列やエラーメッセージのパターンマッチングにより、意味論的なエラーを特定する
+ *   - エラーと出力内容に基づき、詳細なエラー情報を含むExtendedOutcomeSignalを生成する
  * why_it_exists:
- *   - サブエージェントとチームメンバーで共通するエラー処理を一元管理するため
- *   - P1-5改善による詳細なエラー分類を可能にするため
+ *   - 従来のステータスコードだけでは表現できない、スキーマ違反や中身のない出力などの品質問題を検知するため
+ *   - サブエージェントとチームメンバーの実行結果ハンドリングを共通化し、集約結果の生成（failedEntityIdsなど）を容易にするため
  * scope:
- *   in: エラーオブジェクト、出力文字列、エンティティ設定
- *   out: ExtendedOutcomeSignal、分類されたエラーコード
+ *   in: エラーオブジェクト（unknown）、出力文字列（string）、エンティティ設定（EntityConfig）
+ *   out: 拡張された実行結果コード、エラー詳細配列、結果シグナル（ExtendedOutcomeSignal）
  */
 
 /**
@@ -51,9 +47,10 @@ import {
 // Extended Error Classification (P1-5)
 // ============================================================================
 
- /**
-  * 拡張エラー分類コード
-  */
+/**
+ * 拡張実行結果コード
+ * @summary 拡張実行結果コード
+ */
 export type ExtendedOutcomeCode =
   | RunOutcomeCode
   | "SCHEMA_VIOLATION"
@@ -61,13 +58,10 @@ export type ExtendedOutcomeCode =
   | "EMPTY_OUTPUT"
   | "PARSE_ERROR";
 
- /**
-  * 拡張された実行結果シグナル
-  * @param outcomeCode - 拡張されたエラー分類コード
-  * @param semanticError - セマンティックエラーメッセージ
-  * @param schemaViolations - スキーマ違反の詳細
-  * @param failedEntityIds - 失敗したエンティティID（集約結果向け）
-  */
+/**
+ * 拡張実行結果シグナル
+ * @summary 拡張実行結果シグナル
+ */
 export interface ExtendedOutcomeSignal extends Omit<RunOutcomeSignal, 'outcomeCode'> {
   outcomeCode: ExtendedOutcomeCode;
   semanticError?: string;
@@ -76,12 +70,13 @@ export interface ExtendedOutcomeSignal extends Omit<RunOutcomeSignal, 'outcomeCo
   failedEntityIds?: string[];
 }
 
- /**
-  * 出力内容から意味論的なエラーを分類する
-  * @param output - 解析対象の出力内容
-  * @param error - 利用可能な場合のエラーオブジェクト
-  * @returns 拡張エラーコードと詳細（任意）、エラーなしの場合はnull
-  */
+/**
+ * 意味論的エラーを分類
+ * @summary 意味論的エラーを分類
+ * @param output 出力文字列
+ * @param error エラーオブジェクト
+ * @returns エラーコードと詳細を含むオブジェクト
+ */
 export function classifySemanticError(
   output?: string,
   error?: unknown,
@@ -131,13 +126,14 @@ export function classifySemanticError(
   return { code: null };
 }
 
- /**
-  * 拡張失敗結果を解決して分類する
-  * @param error 発生したエラー
-  * @param output 利用可能な出力内容
-  * @param config エンティティの設定
-  * @returns 意味的分類を含む拡張結果シグナル
-  */
+/**
+ * 拡張失敗結果を解決
+ * @summary 拡張失敗結果を解決
+ * @param error 未知のエラーオブジェクト
+ * @param output 出力文字列
+ * @param config エンティティ設定
+ * @returns 拡張実行結果シグナル
+ */
 export function resolveExtendedFailureOutcome(
   error: unknown,
   output?: string,
@@ -211,19 +207,21 @@ export function getRetryablePatterns(): string[] {
   return cachedRetryablePatterns;
 }
 
- /**
-  * キャッシュされたリトライ可能パターンをリセット
-  * @returns なし
-  */
+/**
+ * キャッシュをリセット
+ * @summary キャッシュをリセット
+ * @returns なし
+ */
 export function resetRetryablePatternsCache(): void {
   cachedRetryablePatterns = undefined;
 }
 
- /**
-  * 再試行パターンを実行時に追加する
-  * @param patterns 再試行リストに追加するパターン
-  * @returns なし
-  */
+/**
+ * 再試行パターンを追加
+ * @summary パターン追加
+ * @param patterns 再試行リストに追加するパターン
+ * @returns なし
+ */
 export function addRetryablePatterns(patterns: string[]): void {
   const normalizedPatterns = patterns
     .map((p) => p.trim().toLowerCase())
@@ -241,13 +239,14 @@ export function addRetryablePatterns(patterns: string[]): void {
 // Retryable Error Detection
 // ============================================================================
 
- /**
-  * エンティティ実行時のエラーが再試行可能か判定
-  * @param error - チェック対象のエラー
-  * @param statusCode - HTTPステータスコード（任意）
-  * @param config - コンテキスト固有のチェックを行うエンティティ設定
-  * @returns エラーが再試行可能な場合はtrue
-  */
+/**
+ * 再試行可否判定
+ * @summary 再試行可否判定
+ * @param error - チェック対象のエラー
+ * @param statusCode - HTTPステータスコード（任意）
+ * @param config - コンテキスト固有のチェックを行うエンティティ設定
+ * @returns エラーが再試行可能な場合はtrue
+ */
 export function isRetryableEntityError(
   error: unknown,
   statusCode: number | undefined,
@@ -288,12 +287,12 @@ export function isRetryableSubagentError(
   return isRetryableEntityError(error, statusCode, SUBAGENT_CONFIG);
 }
 
- /**
-  * チームメンバーのエラーがリトライ可能か判定
-  * @param error - 判定対象のエラー
-  * @param statusCode - HTTPステータスコード（任意）
-  * @returns リトライ可能な場合はtrue
-  */
+/**
+ * @summary リトライ可否判定
+ * @param error - 判定対象のエラー
+ * @param statusCode - HTTPステータスコード（任意）
+ * @returns リトライ可能な場合はtrue
+ */
 export function isRetryableTeamMemberError(
   error: unknown,
   statusCode?: number,
@@ -305,12 +304,13 @@ export function isRetryableTeamMemberError(
 // Failure Outcome Resolution
 // ============================================================================
 
- /**
-  * 失敗時の結果シグナルを解決する
-  * @param error 発生したエラー
-  * @param config エンティティ設定（省略可）
-  * @returns コードとリトライ推奨度を含む結果シグナル
-  */
+/**
+ * チームメンバーのエラーが再試行可能か判定
+ * @summary 再試行可否判定
+ * @param error 不明なエラーオブジェクト
+ * @param statusCode ステータスコード
+ * @returns 再試行可能な場合はtrue
+ */
 export function resolveFailureOutcome(
   error: unknown,
   config?: EntityConfig,
@@ -341,20 +341,23 @@ export function resolveFailureOutcome(
   return { outcomeCode: "NONRETRYABLE_FAILURE", retryRecommended: false };
 }
 
- /**
-  * サブエージェントの失敗結果を解決する
-  * @param error - 発生したエラー
-  * @returns コードと再試行推奨を含む結果シグナル
-  */
+/**
+ * エラー設定に基づき実行結果を解決する
+ * @summary 実行結果を解決
+ * @param error 不明なエラーオブジェクト
+ * @param config エンティティ設定オプション
+ * @returns 実行結果シグナル
+ */
 export function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal {
   return resolveFailureOutcome(error, SUBAGENT_CONFIG);
 }
 
- /**
-  * チームメンバーの失敗結果を解決する
-  * @param error - 発生したエラー
-  * @returns コードと再試行推奨を含む結果シグナル
-  */
+/**
+ * サブエージェント失敗時の結果解決
+ * @summary 失敗結果を解決
+ * @param error 不明なエラーオブジェクト
+ * @returns 実行結果シグナル
+ */
 export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
   return resolveFailureOutcome(error, TEAM_MEMBER_CONFIG);
 }
@@ -363,13 +366,12 @@ export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
 // Aggregate Outcome Resolution
 // ============================================================================
 
- /**
-  * 集約結果解決用の結果項目インターフェース
-  * @param status - ステータス（"completed" または "failed"）
-  * @param error - エラーメッセージ（任意）
-  * @param summary - サマリー（任意）
-  * @param entityId - エンティティID
-  */
+/**
+ * チーム失敗時の結果解決
+ * @summary 失敗結果を解決
+ * @param error 不明なエラーオブジェクト
+ * @returns 実行結果シグナル
+ */
 export interface EntityResultItem {
   status: "completed" | "failed";
   error?: string;
@@ -377,12 +379,13 @@ export interface EntityResultItem {
   entityId: string;
 }
 
- /**
-  * 複数の結果から集約された実行結果を解決する
-  * @param results - エンティティの結果の配列
-  * @param resolveEntityFailure - 個別のエンティティの失敗結果を解決する関数
-  * @returns 失敗したエンティティIDを含む集約結果
-  */
+/**
+ * 集計結果解決
+ * @summary 結果集計
+ * @param results - 実行結果リスト
+ * @param resolveEntityFailure - エンティティの失敗を解決する関数
+ * @returns 失敗したエンティティIDを含む集計結果シグナル
+ */
 export function resolveAggregateOutcome<T extends EntityResultItem>(
   results: T[],
   resolveEntityFailure: (error: unknown) => RunOutcomeSignal,
@@ -430,10 +433,10 @@ export function resolveAggregateOutcome<T extends EntityResultItem>(
 }
 
 /**
- * Resolve aggregate outcome for subagent parallel execution.
- *
- * @param results - Array of subagent run results
- * @returns Aggregate outcome with failed subagent IDs
+ * サブエージェント並列結果解決
+ * @summary 並列結果集計
+ * @param results - サブエージェントの実行結果リスト
+ * @returns 失敗したサブエージェントIDを含む集計結果シグナル
  */
 export function resolveSubagentParallelOutcome(
   results: Array<{ runRecord: { status: "completed" | "failed"; error?: string; summary?: string; agentId: string } }>,
@@ -452,11 +455,12 @@ export function resolveSubagentParallelOutcome(
   };
 }
 
- /**
-  * チームメンバーの実行結果を集約する
-  * @param memberResults - チームメンバーの実行結果の配列
-  * @returns 失敗したメンバーIDを含む集約結果
-  */
+/**
+ * チームメンバー集計結果解決
+ * @summary チーム結果集計
+ * @param memberResults - チームメンバーの実行結果リスト
+ * @returns 失敗したメンバーIDを含む集計結果シグナル
+ */
 export function resolveTeamMemberAggregateOutcome(
   memberResults: Array<{ status: "completed" | "failed"; error?: string; summary?: string; memberId: string }>,
 ): RunOutcomeSignal & { failedMemberIds: string[] } {
@@ -478,31 +482,32 @@ export function resolveTeamMemberAggregateOutcome(
 // Error Message Utilities
 // ============================================================================
 
- /**
-  * エラーメッセージを最大長に合わせて切り詰める
-  * @param message - 切り詰める対象のエラーメッセージ
-  * @param maxLength - 最大文字長（デフォルト: 200）
-  * @returns 切り詰められたメッセージ
-  */
+/**
+ * エラーメッセージ整形
+ * @summary メッセージ切り詰め
+ * @param message - 元のエラーメッセージ
+ * @param maxLength - 最大文字数
+ * @returns 整形されたエラーメッセージ
+ */
 export function trimErrorMessage(message: string, maxLength = 200): string {
   if (message.length <= maxLength) return message;
   return `${message.slice(0, maxLength - 3)}...`;
 }
 
- /**
-  * 診断コンテキスト文字列を構築します
-  * @param context - 診断情報オブジェクト
-  * @param context.provider - プロバイダ名
-  * @param context.model - モデル名
-  * @param context.retries - リトライ回数
-  * @param context.lastStatusCode - 最後のステータスコード
-  * @param context.lastRetryMessage - 最後のリトライメッセージ
-  * @param context.rateLimitWaitMs - レートリミット待機時間（ミリ秒）
-  * @param context.rateLimitHits - レートリヒット数
-  * @param context.gateWaitMs - ゲート待機時間（ミリ秒）
-  * @param context.gateHits - ゲートヒット数
-  * @returns フォーマットされた診断文字列
-  */
+/**
+ * 診断コンテキスト構築
+ * @summary 診断コンテキスト生成
+ * @param context.provider - プロバイダ名
+ * @param context.model - モデル名
+ * @param context.retries - リトライ回数
+ * @param context.lastStatusCode - 最後のステータスコード
+ * @param context.lastRetryMessage - 最後のリトライメッセージ
+ * @param context.rateLimitWaitMs - レートリミット待機時間（ミリ秒）
+ * @param context.rateLimitHits - レートリミットヒット数
+ * @param context.gateWaitMs - ゲート待機時間（ミリ秒）
+ * @param context.gateHits - ゲートヒット数
+ * @returns 構築されたコンテキスト文字列
+ */
 export function buildDiagnosticContext(context: {
   provider?: string;
   model?: string;
@@ -537,15 +542,13 @@ export function buildDiagnosticContext(context: {
 // Failure Classification & Retry Policy Standardization (P2)
 // ============================================================================
 
- /**
-  * リトライ判定用の標準化された失敗分類
-  * @param rate_limit HTTP 429 - backoffで処理
-  * @param capacity リソース枯渇 - backoffで処理
-  * @param timeout 実行タイムアウト - リトライ可
-  * @param quality 空出力/低品質 - リトライ可
-  * @param transient 一時的エラー - リトライ可
-  * @param permanent 恒久的エラー - リトライ不可
-  */
+/**
+ * リトライ判定用の標準化された失敗分類
+ * @summary 失敗分類型
+ * @param {"rate_limit"} HTTP 429 - backoffで処理
+ * @param {"capacity"} リソース枯渇 - backoffで処理
+ * @returns 失敗分類の種類
+ */
 export type FailureClassification =
   | "rate_limit"   // HTTP 429 - backoffで処理
   | "capacity"     // リソース枯渇 - backoffで処理
@@ -570,12 +573,13 @@ export const RETRY_POLICY: Record<FailureClassification, {
   permanent:   { retryable: false },
 };
 
- /**
-  * エラーをリトライ判定用の標準カテゴリに分類
-  * @param error - 分類対象のエラー
-  * @param statusCode - 文脈情報のためのHTTPステータスコード（省略可）
-  * @returns 失敗分類カテゴリ
-  */
+/**
+ * エラー情報を解析して失敗分類を決定
+ * @summary 失敗分類決定
+ * @param error 発生したエラー
+ * @param statusCode HTTPステータスコード
+ * @returns 失敗分類結果
+ */
 export function classifyFailureType(
   error: unknown,
   statusCode?: number,
@@ -610,12 +614,13 @@ export function classifyFailureType(
   return "permanent";
 }
 
- /**
-  * 失敗分類に基づきリトライ可否を判定
-  * @param classification - 失敗分類
-  * @param currentRound - 現在のリトライ回数（0始まり）
-  * @returns リトライする場合はtrue、それ以外はfalse
-  */
+/**
+ * 分類結果に基づきリトライ可否を判定
+ * @summary リトライ可否判定
+ * @param classification 失敗分類結果
+ * @param currentRound 現在の試行回数
+ * @returns リトライする場合はtrue
+ */
 export function shouldRetryByClassification(
   classification: FailureClassification,
   currentRound: number,

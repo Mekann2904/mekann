@@ -25,14 +25,14 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `execute` | コマンドを実行し、構造化された結果を返す |
-| 関数 | `executeOrThrow` | コマンドを実行し、失敗時に例外を投げる |
-| 関数 | `isAvailable` | コマンドがPATHにあるかチェックする |
-| 関数 | `getVersion` | 指定したコマンドのバージョン情報を取得する |
-| 関数 | `checkToolAvailability` | ツールの利用可能性を確認する |
-| 関数 | `buildFdArgs` | 入力オプションからfdコマンドの引数を生成 |
-| 関数 | `buildRgArgs` | 入力オプションからripgrepコマンドの引数を構築 |
-| 関数 | `buildCtagsArgs` | JSON出力用のctagsコマンド引数を生成する |
+| 関数 | `execute` | コマンドを実行する |
+| 関数 | `executeOrThrow` | コマンド実行 |
+| 関数 | `isAvailable` | コマンドの存在確認 |
+| 関数 | `getVersion` | ツールバージョン取得 |
+| 関数 | `checkToolAvailability` | ツール利用可否チェック |
+| 関数 | `buildFdArgs` | fdコマンド引数作成 |
+| 関数 | `buildRgArgs` | ripgrepコマンド引数作成 |
+| 関数 | `buildCtagsArgs` | ctagsコマンド引数作成 |
 
 ## 図解
 
@@ -101,7 +101,7 @@ sequenceDiagram
 async execute(command: string, args: string[], options: CliOptions): Promise<CliResult>
 ```
 
-コマンドを実行し、構造化された結果を返す
+コマンドを実行する
 
 **パラメータ**
 
@@ -127,7 +127,7 @@ abortHandler(): void
 async executeOrThrow(command: string, args: string[], options: CliOptions): Promise<string>
 ```
 
-コマンドを実行し、失敗時に例外を投げる
+コマンド実行
 
 **パラメータ**
 
@@ -145,7 +145,7 @@ async executeOrThrow(command: string, args: string[], options: CliOptions): Prom
 async isAvailable(command: string): Promise<boolean>
 ```
 
-コマンドがPATHにあるかチェックする
+コマンドの存在確認
 
 **パラメータ**
 
@@ -161,7 +161,7 @@ async isAvailable(command: string): Promise<boolean>
 async getVersion(command: string, versionFlag: any): Promise<ToolVersion | null>
 ```
 
-指定したコマンドのバージョン情報を取得する
+ツールバージョン取得
 
 **パラメータ**
 
@@ -178,7 +178,7 @@ async getVersion(command: string, versionFlag: any): Promise<ToolVersion | null>
 async checkToolAvailability(force: any): Promise<ToolAvailability>
 ```
 
-ツールの利用可能性を確認する
+ツール利用可否チェック
 
 **パラメータ**
 
@@ -194,7 +194,7 @@ async checkToolAvailability(force: any): Promise<ToolAvailability>
 buildFdArgs(input: import("../types").FileCandidatesInput): string[]
 ```
 
-入力オプションからfdコマンドの引数を生成
+fdコマンド引数作成
 
 **パラメータ**
 
@@ -210,7 +210,7 @@ buildFdArgs(input: import("../types").FileCandidatesInput): string[]
 buildRgArgs(input: import("../types").CodeSearchInput): string[]
 ```
 
-入力オプションからripgrepコマンドの引数を構築
+ripgrepコマンド引数作成
 
 **パラメータ**
 
@@ -226,7 +226,7 @@ buildRgArgs(input: import("../types").CodeSearchInput): string[]
 buildCtagsArgs(targetPath: string, cwd: string): string[]
 ```
 
-JSON出力用のctagsコマンド引数を生成する
+ctagsコマンド引数作成
 
 **パラメータ**
 
@@ -238,4 +238,4 @@ JSON出力用のctagsコマンド引数を生成する
 **戻り値**: `string[]`
 
 ---
-*自動生成: 2026-02-18T14:31:30.867Z*
+*自動生成: 2026-02-18T15:54:41.329Z*

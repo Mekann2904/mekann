@@ -27,47 +27,47 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerInstance` | インスタンスを登録してハートビートを開始 |
-| 関数 | `unregisterInstance` | このPIインスタンスの登録を解除する |
-| 関数 | `updateHeartbeat` | このインスタンスのハートビートを更新する |
-| 関数 | `cleanupDeadInstances` | 無効なインスタンスをクリーンアップする |
+| 関数 | `registerInstance` | インスタンスを登録してハートビートを開始する |
+| 関数 | `unregisterInstance` | 自身のインスタンス登録を解除 |
+| 関数 | `updateHeartbeat` | ハートビート時刻を更新 |
+| 関数 | `cleanupDeadInstances` | 無効なインスタンス情報を削除 |
 | 関数 | `getActiveInstanceCount` | アクティブなインスタンス数を取得 |
-| 関数 | `getActiveInstances` | アクティブなインスタンス情報を取得する |
-| 関数 | `getMyParallelLimit` | このインスタンスの並列処理制限を取得する |
-| 関数 | `getDynamicParallelLimit` | 保留タスク数に基づき動的に並列数を制限する。 |
-| 関数 | `shouldAttemptWorkStealing` | ワークスチーリングを試みるべきか判定 |
-| 関数 | `getWorkStealingCandidates` | ワークスチーリングの候補インスタンスを取得 |
+| 関数 | `getActiveInstances` | アクティブなインスタンス情報一覧を取得 |
+| 関数 | `getMyParallelLimit` | 自身の並列実行数の上限を取得する |
+| 関数 | `getDynamicParallelLimit` | 動的並列数の上限を計算する |
+| 関数 | `shouldAttemptWorkStealing` | ワークスチーリングを試行すべきか判定する |
+| 関数 | `getWorkStealingCandidates` | ワークスチーリングの候補を取得する |
 | 関数 | `updateWorkloadInfo` | ワークロード情報を更新する |
-| 関数 | `getCoordinatorStatus` | コーディネーターの詳細ステータスを取得する |
-| 関数 | `isCoordinatorInitialized` | コーディネータが初期化済みか確認 |
-| 関数 | `getTotalMaxLlm` | 合計最大LLM数を取得 |
+| 関数 | `getCoordinatorStatus` | コーディネーター詳細を取得 |
+| 関数 | `isCoordinatorInitialized` | コーディネータ初期化確認 |
+| 関数 | `getTotalMaxLlm` | - |
 | 関数 | `getEnvOverrides` | 環境変数による設定上書きを取得 |
-| 関数 | `setActiveModel` | アクティブなモデルを更新します |
-| 関数 | `clearActiveModel` | このインスタンスのアクティブなモデルを解除する。 |
-| 関数 | `clearAllActiveModels` | 全てのアクティブなモデルをクリアする。 |
-| 関数 | `getActiveInstancesForModel` | モデルを使用するアクティブなインスタンス数を取得 |
-| 関数 | `getModelParallelLimit` | モデルごとの実行並列数の上限を取得 |
-| 関数 | `getModelUsageSummary` | モデル使用状況の概要を取得 |
+| 関数 | `setActiveModel` | アクティブモデルを設定 |
+| 関数 | `clearActiveModel` | 指定モデル情報をクリア |
+| 関数 | `clearAllActiveModels` | 全てのモデル情報をクリア |
+| 関数 | `getActiveInstancesForModel` | アクティブインスタンス数を取得 |
+| 関数 | `getModelParallelLimit` | 並列数上限を取得 |
+| 関数 | `getModelUsageSummary` | 使用状況を取得 |
 | 関数 | `broadcastQueueState` | キューステータスを他のインスタンスにブロードキャスト |
-| 関数 | `getRemoteQueueStates` | 全アクティブインスタンスのキューステートを取得 |
-| 関数 | `checkRemoteCapacity` | リモートインスタンスの余裕を確認 |
-| 関数 | `stealWork` | 他のインスタンスからタスクを奪う |
-| 関数 | `getWorkStealingSummary` | ワークスチーリングの概要を取得 |
-| 関数 | `cleanupQueueStates` | 古いキューステートファイルをクリーンアップする。 |
-| 関数 | `isIdle` | インスタンスがアイドル状態か確認する |
-| 関数 | `findStealCandidate` | 仕事を奪う最適なインスタンスを探す |
-| 関数 | `safeStealWork` | 他インスタンスからワークを安全にスチール |
-| 関数 | `getStealingStats` | ワークスティーリングの統計情報を取得する。 |
-| 関数 | `resetStealingStats` | 盗み統計をリセットする。 |
-| 関数 | `cleanupExpiredLocks` | 期限切れのロックを削除する。 |
-| 関数 | `enhancedHeartbeat` | 強化されたハートビート処理 |
-| インターフェース | `ActiveModelInfo` | アクティブなモデル情報を表すインターフェース |
+| 関数 | `getRemoteQueueStates` | リモートキューステータスを取得 |
+| 関数 | `checkRemoteCapacity` | リモート容量を確認 |
+| 関数 | `stealWork` | タスクをスチール実行 |
+| 関数 | `getWorkStealingSummary` | ワークスチーリング概要取得 |
+| 関数 | `cleanupQueueStates` | キュー状態を初期化 |
+| 関数 | `isIdle` | アイドル状態か確認 |
+| 関数 | `findStealCandidate` | 奪取候補を検索 |
+| 関数 | `safeStealWork` | 安全にタスクを奪取 |
+| 関数 | `getStealingStats` | ステータス統計を取得 |
+| 関数 | `resetStealingStats` | ステータス統計をリセット |
+| 関数 | `cleanupExpiredLocks` | 期限切れロックを削除 |
+| 関数 | `enhancedHeartbeat` | ハートビート処理の強化 |
+| インターフェース | `ActiveModelInfo` | アクティブなモデルの情報を表すインターフェース |
 | インターフェース | `InstanceInfo` | インスタンスの情報を表す |
-| インターフェース | `CoordinatorConfig` | クロスインスタンスコーディネーターの設定 |
-| インターフェース | `CoordinatorInternalState` | コーディネーターの内部状態 |
-| インターフェース | `StealableQueueEntry` | ワークスティーリング用のキューエントリ |
-| インターフェース | `BroadcastQueueState` | キュー状態のブロードキャスト形式 |
-| インターフェース | `StealingStats` | スチール統計情報（公開インターフェース） |
+| インターフェース | `CoordinatorConfig` | コーディネータの設定を表すインターフェース |
+| インターフェース | `CoordinatorInternalState` | コーディネータの内部状態を表すインターフェース |
+| インターフェース | `StealableQueueEntry` | 横取り可能なキューエントリ |
+| インターフェース | `BroadcastQueueState` | ブロードキャスト用キューステート |
+| インターフェース | `StealingStats` | ステータス統計情報 |
 
 ## 図解
 
@@ -307,7 +307,7 @@ loadConfig(): CoordinatorConfig
 registerInstance(sessionId: string, cwd: string, configOverrides?: Partial<CoordinatorConfig>): void
 ```
 
-インスタンスを登録してハートビートを開始
+インスタンスを登録してハートビートを開始する
 
 **パラメータ**
 
@@ -325,7 +325,7 @@ registerInstance(sessionId: string, cwd: string, configOverrides?: Partial<Coord
 unregisterInstance(): void
 ```
 
-このPIインスタンスの登録を解除する
+自身のインスタンス登録を解除
 
 **戻り値**: `void`
 
@@ -335,7 +335,7 @@ unregisterInstance(): void
 updateHeartbeat(): void
 ```
 
-このインスタンスのハートビートを更新する
+ハートビート時刻を更新
 
 **戻り値**: `void`
 
@@ -345,7 +345,7 @@ updateHeartbeat(): void
 cleanupDeadInstances(): void
 ```
 
-無効なインスタンスをクリーンアップする
+無効なインスタンス情報を削除
 
 **戻り値**: `void`
 
@@ -365,7 +365,7 @@ getActiveInstanceCount(): number
 getActiveInstances(): InstanceInfo[]
 ```
 
-アクティブなインスタンス情報を取得する
+アクティブなインスタンス情報一覧を取得
 
 **戻り値**: `InstanceInfo[]`
 
@@ -375,7 +375,7 @@ getActiveInstances(): InstanceInfo[]
 getMyParallelLimit(): number
 ```
 
-このインスタンスの並列処理制限を取得する
+自身の並列実行数の上限を取得する
 
 **戻り値**: `number`
 
@@ -385,7 +385,7 @@ getMyParallelLimit(): number
 getDynamicParallelLimit(myPendingTasks: number): number
 ```
 
-保留タスク数に基づき動的に並列数を制限する。
+動的並列数の上限を計算する
 
 **パラメータ**
 
@@ -401,7 +401,7 @@ getDynamicParallelLimit(myPendingTasks: number): number
 shouldAttemptWorkStealing(): boolean
 ```
 
-ワークスチーリングを試みるべきか判定
+ワークスチーリングを試行すべきか判定する
 
 **戻り値**: `boolean`
 
@@ -411,7 +411,7 @@ shouldAttemptWorkStealing(): boolean
 getWorkStealingCandidates(topN: number): string[]
 ```
 
-ワークスチーリングの候補インスタンスを取得
+ワークスチーリングの候補を取得する
 
 **パラメータ**
 
@@ -451,7 +451,7 @@ getCoordinatorStatus(): {
 }
 ```
 
-コーディネーターの詳細ステータスを取得する
+コーディネーター詳細を取得
 
 **戻り値**: `{
   registered: boolean;
@@ -468,7 +468,7 @@ getCoordinatorStatus(): {
 isCoordinatorInitialized(): boolean
 ```
 
-コーディネータが初期化済みか確認
+コーディネータ初期化確認
 
 **戻り値**: `boolean`
 
@@ -477,8 +477,6 @@ isCoordinatorInitialized(): boolean
 ```typescript
 getTotalMaxLlm(): number
 ```
-
-合計最大LLM数を取得
 
 **戻り値**: `number`
 
@@ -498,7 +496,7 @@ getEnvOverrides(): Partial<CoordinatorConfig>
 setActiveModel(provider: string, model: string): void
 ```
 
-アクティブなモデルを更新します
+アクティブモデルを設定
 
 **パラメータ**
 
@@ -515,7 +513,7 @@ setActiveModel(provider: string, model: string): void
 clearActiveModel(provider: string, model: string): void
 ```
 
-このインスタンスのアクティブなモデルを解除する。
+指定モデル情報をクリア
 
 **パラメータ**
 
@@ -532,7 +530,7 @@ clearActiveModel(provider: string, model: string): void
 clearAllActiveModels(): void
 ```
 
-全てのアクティブなモデルをクリアする。
+全てのモデル情報をクリア
 
 **戻り値**: `void`
 
@@ -542,7 +540,7 @@ clearAllActiveModels(): void
 getActiveInstancesForModel(provider: string, model: string): number
 ```
 
-モデルを使用するアクティブなインスタンス数を取得
+アクティブインスタンス数を取得
 
 **パラメータ**
 
@@ -559,7 +557,7 @@ getActiveInstancesForModel(provider: string, model: string): number
 getModelParallelLimit(provider: string, model: string, baseLimit: number): number
 ```
 
-モデルごとの実行並列数の上限を取得
+並列数上限を取得
 
 **パラメータ**
 
@@ -601,7 +599,7 @@ getModelUsageSummary(): {
 }
 ```
 
-モデル使用状況の概要を取得
+使用状況を取得
 
 **戻り値**: `{
   models: Array<{
@@ -653,7 +651,7 @@ broadcastQueueState(options: {
 getRemoteQueueStates(): BroadcastQueueState[]
 ```
 
-全アクティブインスタンスのキューステートを取得
+リモートキューステータスを取得
 
 **戻り値**: `BroadcastQueueState[]`
 
@@ -663,7 +661,7 @@ getRemoteQueueStates(): BroadcastQueueState[]
 checkRemoteCapacity(): boolean
 ```
 
-リモートインスタンスの余裕を確認
+リモート容量を確認
 
 **戻り値**: `boolean`
 
@@ -673,7 +671,7 @@ checkRemoteCapacity(): boolean
 stealWork(): StealableQueueEntry | null
 ```
 
-他のインスタンスからタスクを奪う
+タスクをスチール実行
 
 **戻り値**: `StealableQueueEntry | null`
 
@@ -689,7 +687,7 @@ getWorkStealingSummary(): {
 }
 ```
 
-ワークスチーリングの概要を取得
+ワークスチーリング概要取得
 
 **戻り値**: `{
   remoteInstances: number;
@@ -705,7 +703,7 @@ getWorkStealingSummary(): {
 cleanupQueueStates(): void
 ```
 
-古いキューステートファイルをクリーンアップする。
+キュー状態を初期化
 
 **戻り値**: `void`
 
@@ -758,7 +756,7 @@ Release a distributed lock.
 isIdle(): boolean
 ```
 
-インスタンスがアイドル状態か確認する
+アイドル状態か確認
 
 **戻り値**: `boolean`
 
@@ -768,7 +766,7 @@ isIdle(): boolean
 findStealCandidate(): InstanceInfo | null
 ```
 
-仕事を奪う最適なインスタンスを探す
+奪取候補を検索
 
 **戻り値**: `InstanceInfo | null`
 
@@ -778,7 +776,7 @@ findStealCandidate(): InstanceInfo | null
 async safeStealWork(): Promise<StealableQueueEntry | null>
 ```
 
-他インスタンスからワークを安全にスチール
+安全にタスクを奪取
 
 **戻り値**: `Promise<StealableQueueEntry | null>`
 
@@ -788,7 +786,7 @@ async safeStealWork(): Promise<StealableQueueEntry | null>
 getStealingStats(): StealingStats
 ```
 
-ワークスティーリングの統計情報を取得する。
+ステータス統計を取得
 
 **戻り値**: `StealingStats`
 
@@ -798,7 +796,7 @@ getStealingStats(): StealingStats
 resetStealingStats(): void
 ```
 
-盗み統計をリセットする。
+ステータス統計をリセット
 
 **戻り値**: `void`
 
@@ -808,7 +806,7 @@ resetStealingStats(): void
 cleanupExpiredLocks(): void
 ```
 
-期限切れのロックを削除する。
+期限切れロックを削除
 
 **戻り値**: `void`
 
@@ -818,7 +816,7 @@ cleanupExpiredLocks(): void
 enhancedHeartbeat(): void
 ```
 
-強化されたハートビート処理
+ハートビート処理の強化
 
 **戻り値**: `void`
 
@@ -834,7 +832,7 @@ interface ActiveModelInfo {
 }
 ```
 
-アクティブなモデル情報を表すインターフェース
+アクティブなモデルの情報を表すインターフェース
 
 ### InstanceInfo
 
@@ -865,7 +863,7 @@ interface CoordinatorConfig {
 }
 ```
 
-クロスインスタンスコーディネーターの設定
+コーディネータの設定を表すインターフェース
 
 ### CoordinatorInternalState
 
@@ -879,7 +877,7 @@ interface CoordinatorInternalState {
 }
 ```
 
-コーディネーターの内部状態
+コーディネータの内部状態を表すインターフェース
 
 ### StealableQueueEntry
 
@@ -895,7 +893,7 @@ interface StealableQueueEntry {
 }
 ```
 
-ワークスティーリング用のキューエントリ
+横取り可能なキューエントリ
 
 ### BroadcastQueueState
 
@@ -910,7 +908,7 @@ interface BroadcastQueueState {
 }
 ```
 
-キュー状態のブロードキャスト形式
+ブロードキャスト用キューステート
 
 ### DistributedLock
 
@@ -938,7 +936,7 @@ interface StealingStats {
 }
 ```
 
-スチール統計情報（公開インターフェース）
+ステータス統計情報
 
 ### StealingStatsInternal
 
@@ -957,4 +955,4 @@ interface StealingStatsInternal {
 Stealing statistics tracking (internal).
 
 ---
-*自動生成: 2026-02-18T14:31:30.972Z*
+*自動生成: 2026-02-18T15:54:41.460Z*

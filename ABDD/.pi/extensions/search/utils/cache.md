@@ -21,11 +21,11 @@ related: []
 | 関数 | `getSearchCache` | グローバルキャッシュインスタンスを取得する。 |
 | 関数 | `resetSearchCache` | グローバルキャッシュをリセットする |
 | 関数 | `getOrCompute` | キャッシュを取得または計算して返す |
-| 関数 | `getOrComputeSync` | getOrComputeの同期バージョン |
-| クラス | `SearchResultCache` | 検索結果をキャッシュするクラス |
-| インターフェース | `CacheEntry` | メタデータを持つ単一のキャッシュエントリ |
-| インターフェース | `CacheConfig` | キャッシュ設定 |
-| インターフェース | `CacheStats` | キャッシュの統計情報。 |
+| 関数 | `getOrComputeSync` | キャッシュを取得または計算して返す（同期版） |
+| クラス | `SearchResultCache` | 検索結果をキャッシュする |
+| インターフェース | `CacheEntry` | キャッシュエントリ定義 |
+| インターフェース | `CacheConfig` | キャッシュ設定を保持する |
+| インターフェース | `CacheStats` | キャッシュ統計情報を定義 |
 
 ## 図解
 
@@ -178,7 +178,7 @@ async getOrCompute(tool: string, params: Record<string, unknown>, factory: () =>
 getOrComputeSync(tool: string, params: Record<string, unknown>, factory: () => T, ttl?: number): T
 ```
 
-getOrComputeの同期バージョン
+キャッシュを取得または計算して返す（同期版）
 
 **パラメータ**
 
@@ -195,7 +195,7 @@ getOrComputeの同期バージョン
 
 ### SearchResultCache
 
-検索結果をキャッシュするクラス
+検索結果をキャッシュする
 
 **プロパティ**
 
@@ -235,7 +235,7 @@ interface CacheEntry {
 }
 ```
 
-メタデータを持つ単一のキャッシュエントリ
+キャッシュエントリ定義
 
 ### CacheConfig
 
@@ -247,7 +247,7 @@ interface CacheConfig {
 }
 ```
 
-キャッシュ設定
+キャッシュ設定を保持する
 
 ### CacheStats
 
@@ -260,7 +260,7 @@ interface CacheStats {
 }
 ```
 
-キャッシュの統計情報。
+キャッシュ統計情報を定義
 
 ---
-*自動生成: 2026-02-18T14:31:30.866Z*
+*自動生成: 2026-02-18T15:54:41.328Z*

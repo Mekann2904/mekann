@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/comprehensive-logger-config.ts
- * role: ログ収集システムの設定管理と環境変数ベースの設定上書き、および設定バリデーション
- * why: ログシステムの動作を環境変数で制御可能にし、設定値の正当性を保証するため
- * related: comprehensive-logger-types.ts, comprehensive-logger.ts, .env
+ * role: ロガー設定の定義、環境変数からの上書きロード、および入力値検証を行うコンフィグレーションモジュール
+ * why: ログシステムの振る舞い（出力先、バッファサイズ、保持期間など）を一元管理し、実行環境（開発・本番）に応じて柔軟に変更するため
+ * related: .pi/lib/comprehensive-logger-types.ts
  * public_api: DEFAULT_CONFIG, loadConfigFromEnv, validateConfig
- * invariants: DEFAULT_CONFIGは常に有効なデフォルト値を持つ、validateConfigは必ず{valid, errors}構造を返す
- * side_effects: loadConfigFromEnvがprocess.envを読み取る
- * failure_modes: 環境変数の数値変換でNaNが発生する可能性、不正な環境変数値による設定不整合
+ * invariants: config.bufferSizeは1以上、config.flushIntervalMsは100ms以上、maxFileSizeMBおよびretentionDaysは1以上
+ * side_effects: process.envからの読み取りによる設定値の書き換え（loadConfigFromEnv関数）
+ * failure_modes: 環境変数の型変換失敗（parseIntなど）、不正な環境名やログレベルの指定による検証エラー
  * @abdd.explain
- * overview: 包括的ログ収集システムの設定を管理するモジュール
+ * overview: ログ出力に関する設定値のデフォルト定義、環境変数による動的設定、および設定値の整合性チェック機能を提供する
  * what_it_does:
- *   - デフォルト設定(DEFAULT_CONFIG)の定義とエクスポート
- *   - 環境変数(PI_LOG_*)からの設定読み込みと型変換
- *   - 設定値の妥当性検証(最小値、列挙値のチェック)
+ *   - LoggerConfig型のデフォルト値（DEFAULT_CONFIG）を定義する
+ *   - 環境変数（PI_LOG_*）を読み込み、型変換して設定を上書きする
+ *   - 設定オブジェクトのバリデーションを行い、エラー詳細を返す
  * why_it_exists:
- *   - ログシステムの動作をデプロイ環境ごとに設定可能にするため
- *   - 設定ミスによるログシステムの誤動作を防ぐため
+ *   - ログ出力制御をハードコードから分離し、環境ごとのチューニングを可能にする
+ *   - 設定ミス（負のバッファサイズや無効な文字列など）を早期に検出する
  * scope:
- *   in: LoggerConfig型の設定オブジェクト、環境変数(process.env)
- *   out: 検証済みのLoggerConfig、バリデーション結果
+ *   in: 環境変数 (process.env)、ベース設定オブジェクト (LoggerConfig)
+ *   out: 環境変数でマージされた設定オブジェクト、バリデーション結果
  */
 
 /**
@@ -77,11 +77,12 @@ function parseEnvValue(value: string, type: string): unknown {
   }
 }
 
- /**
-  * 環境変数から設定を読み込む
-  * @param baseConfig ベースとなる設定
-  * @returns 環境変数で上書きされた設定
-  */
+/**
+ * 環境変数から設定を読込
+ * @summary 設定を読込
+ * @param {LoggerConfig} baseConfig - ベースとなる設定オブジェクト
+ * @returns {LoggerConfig} 環境変数でマージされた設定オブジェクト
+ */
 export function loadConfigFromEnv(baseConfig: LoggerConfig = DEFAULT_CONFIG): LoggerConfig {
   const config = { ...baseConfig };
   
@@ -99,11 +100,12 @@ export function loadConfigFromEnv(baseConfig: LoggerConfig = DEFAULT_CONFIG): Lo
 // 設定バリデーション
 // ============================================
 
- /**
-  * ロガー設定を検証する
-  * @param config - 検証対象のロガー設定オブジェクト
-  * @returns 検証結果オブジェクト。validは検証成功かどうか、errorsはエラーメッセージの配列
-  */
+/**
+ * ロガー設定を検証する
+ * @summary 設定を検証
+ * @param config - 検証対象のロガー設定オブジェクト
+ * @returns 検証結果オブジェクト。validは検証成功かどうか、errorsはエラーメッセージの配列
+ */
 export function validateConfig(config: LoggerConfig): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
@@ -145,10 +147,11 @@ export function validateConfig(config: LoggerConfig): { valid: boolean; errors: 
 
 let cachedConfig: LoggerConfig | null = null;
 
- /**
-  * ロガーの設定を取得する
-  * @returns ロガー設定オブジェクト
-  */
+/**
+ * @summary 設定を取得
+ * ロガーの設定を取得する
+ * @returns ロガー設定オブジェクト
+ */
 export function getConfig(): LoggerConfig {
 /**
    * キャッシュされた設定をクリアしてリセットする
@@ -173,10 +176,12 @@ export function getConfig(): LoggerConfig {
   return cachedConfig;
 }
 
- /**
-  * 設定をリセットする
-  * @returns なし
-  */
+/**
+ * 設定をリセットする
+ * @summary 設定をリセット
+ * @param なし
+ * @returns なし
+ */
 export function resetConfig(): void {
   cachedConfig = null;
 }

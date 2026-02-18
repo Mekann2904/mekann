@@ -1,24 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/fs-utils.ts
- * role: 共有ファイルシステムユーティリティライブラリ
- * why: agent-teams.ts, agent-usage-tracker.ts, subagents.ts に散在していたディレクトリ操作の重複実装を一元管理するため
+ * role: ディレクトリ操作に関するユーティリティを提供する共有モジュール
+ * why: 複数の拡張機能で重複していた実装を統一・集約するため
  * related: agent-teams.ts, agent-usage-tracker.ts, subagents.ts
- * public_api: ensureDir
- * invariants: path引数は非空文字列であることを呼び出し元が保証
- * side_effects: ファイルシステムにディレクトリを作成する
- * failure_modes: パスに書き込み権限がない場合、mkdirSyncが例外をスローする
+ * public_api: ensureDir(path: string): void
+ * invariants: ensureDir実行後、指定されたパスのディレクトリが存在する状態になる
+ * side_effects: ファイルシステム上にディレクトリが作成される
+ * failure_modes: 指定されたパスへの書き込み権限がない場合、またはパスが無効な場合にエラーが発生する
  * @abdd.explain
- * overview: 複数の拡張機能で使用されるファイルシステム操作の共通ユーティリティ
+ * overview: ファイルシステム操作のヘルパー関数を定義したモジュール
  * what_it_does:
- *   - ディレクトリの存在確認を行う
- *   - ディレクトリが存在しない場合、再帰的に作成する
+ *   - 指定されたパスにディレクトリが存在しない場合、再帰的に作成する
+ *   - agent-teams.ts, agent-usage-tracker.ts, subagents.ts に分散していた重複コードを置き換える
  * why_it_exists:
- *   - 各モジュールでのexistsSync/mkdirSyncの重複コードを削減
- *   - ディレクトリ作成ロジックの単一責任化
+ *   - コードの重複を排除し、保守性を向上させるため
+ *   - 拡張機能間で共通のファイルシステム操作ロジックを再利用するため
  * scope:
- *   in: ディレクトリパスの文字列
- *   out: ファイル読み込み、ネットワーク通信、プロセス管理
+ *   in: ディレクトリパス（文字列）
+ *   out: ファイルシステムへのディレクトリ作成、および戻り値なし（void）
  */
 
 /**
@@ -31,11 +31,12 @@
 
 import { existsSync, mkdirSync } from "fs";
 
- /**
-  * ディレクトリが存在することを保証します
-  * @param path - 確認するディレクトリのパス
-  * @returns なし
-  */
+/**
+ * ディレクトリ生成
+ * @summary ディレクトリを生成
+ * @param path - 確認するディレクトリのパス
+ * @returns なし
+ */
 export function ensureDir(path: string): void {
   if (!existsSync(path)) {
     mkdirSync(path, { recursive: true });

@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/pattern-extraction.ts
- * role: 実行履歴から再利用可能なパターン（成功・失敗・アプローチ）を抽出・学習するモジュール
- * why: 過去の実行結果から成功/失敗パターンを特定し、将来のタスク実行精度を向上させるため
- * related: run-index.ts, storage-lock.ts, fs-utils.js
- * public_api: ExtractedPattern, PatternExample, PatternStorage, RunData, PATTERN_STORAGE_VERSION
- * invariants: confidenceは0〜1の範囲、frequencyは正の整数、patternTypeは3種類のいずれか
- * side_effects: ファイルシステムへのパターンデータ読み書き（atomicWriteTextFile経由）
- * failure_modes: パターンファイル不存在時は空データを返却、ファイル読み込み失敗時は例外送出
+ * role: 実行履歴から再利用可能なパターン（成功、失敗、アプローチ）を抽出・管理するモジュール
+ * why: 過去の実行データから知識を獲得し、将来のタスク実行の効率と成功率を向上させるため
+ * related: .pi/lib/run-index.ts, .pi/lib/storage-lock.ts, .pi/lib/fs-utils.js
+ * public_api: ExtractedPattern, PatternStorage, RunData, PATTERN_STORAGE_VERSION
+ * invariants: patternTypeはsuccess/failure/approachのいずれかである、RunDataのstatusはcompleted/failedのいずれかである
+ * side_effects: ファイルシステムへのパターン情報書き込み
+ * failure_modes: 履歴ファイルの読み取りエラー、無効なJSONデータ、書き込み時の競合
  * @abdd.explain
- * overview: 実行履歴データを分析し、タスク種別ごとに成功・失敗・アプローチのパターンを抽出して永続化する
+ * overview: 実行履歴を解析してパターンを抽出し、PatternStorage形式で永続化するモジュール
  * what_it_does:
- *   - RunDataから成功/失敗/アプローチパターンを抽出しExtractedPatternとして構造化
- *   - パターンをタスク種別ごとに分類しPatternStorageに永続化
- *   - 成功インジケーター（completed/success/完了等）を用いてパターン種別を判定
- *   - 出現頻度・信頼度を計算しパターンの重要度を評価
+ *   - RunDataからキーワードやファイル情報を抽出する
+ *   - 成功/失敗の指標に基づいてパターンを分類する
+ *   - 抽出したパターンを集約し、ストレージへ書き出す
+ *   - タスク種類ごとにパターンをインデックス化する
  * why_it_exists:
- *   - 過去の成功経験を再利用可能な形で蓄積するため
- *   - 失敗パターンを学習し再発防止に活用するため
- *   - タスク種別ごとに最適なアプローチを自動選択できるようにするため
+ *   - 過去の成功事例や失敗事例を形式知化するため
+ *   - 類似タスクにおけるエージェントの推論精度を向上させるため
+ *   - 頻出するアプローチを特定して再利用するため
  * scope:
- *   in: RunData（実行ID、タスク内容、ステータス、要約等）、既存パターンファイル
- *   out: ExtractedPattern配列、PatternStorage（JSONファイル）、タスク種別ごとのパターンID一覧
+ *   in: 実行履歴データ（RunData）、サマリー文字列、ステータス
+ *   out: ExtractedPatternオブジェクト、PatternStorage JSONファイル
  */
 
 /**
@@ -46,20 +46,12 @@ import { atomicWriteTextFile } from "./storage-lock.js";
 // Types
 // ============================================================================
 
- /**
-  * 実行履歴から抽出されたパターン。
-  * @param id パターンの一意な識別子
-  * @param patternType パターンの種類（成功、失敗、アプローチ）
-  * @param taskType タスクの種類
-  * @param description パターンの説明
-  * @param keywords 関連するキーワードの配列
-  * @param files 関連するファイルの配列
-  * @param agentOrTeam 関連するエージェントまたはチーム
-  * @param frequency 出現頻度
-  * @param lastSeen 最後に確認された日時
-  * @param confidence 信頼度
-  * @param examples パターンの実行例
-  */
+/**
+ * プランモードの状態を作成
+ * @summary 状態オブジェクト生成
+ * @param enabled 有効かどうか
+ * @returns PlanModeStateオブジェクト
+ */
 export interface ExtractedPattern {
   id: string;
   patternType: "success" | "failure" | "approach";
@@ -74,13 +66,15 @@ export interface ExtractedPattern {
   examples: PatternExample[];
 }
 
- /**
-  * パターンの実行例
-  * @param runId 実行ID
-  * @param task タスク内容
-  * @param summary 要約
-  * @param timestamp タイムスタンプ
-  */
+/**
+ * 抽出されたパターン情報
+ * @summary パターン情報を定義
+ * @param id パターンID
+ * @param patternType パターン種別
+ * @param taskType タスク種別
+ * @param description 説明文
+ * @param keywords キーワード配列
+ */
 export interface PatternExample {
   runId: string;
   task: string;
@@ -88,13 +82,19 @@ export interface PatternExample {
   timestamp: string;
 }
 
- /**
-  * パターン情報のストレージ構造
-  * @param version ストレージのバージョン
-  * @param lastUpdated 最終更新日時
-  * @param patterns 抽出されたパターン一覧
-  * @param patternsByTaskType タスク種別ごとのパターンID一覧
-  */
+/**
+ * パターン例を表します
+ * @summary パターン例を保持
+ * @param runId 実行ID
+ * @param task タスク名
+ * @param summary 処理概要
+ * @param timestamp タイムスタンプ
+ * @param files 関連ファイルリスト
+ * @param agentOrTeam 担当エージェント or チーム
+ * @param frequency 出現頻度
+ * @param lastSeen 最終観測日時
+ * @param confidence 信頼度スコア
+ */
 export interface PatternStorage {
   version: number;
   lastUpdated: string;
@@ -102,18 +102,15 @@ export interface PatternStorage {
   patternsByTaskType: Record<TaskType, string[]>;
 }
 
- /**
-  * パターン抽出用の実行データ
-  * @param runId 実行ID
-  * @param agentId エージェントID
-  * @param teamId チームID
-  * @param task タスク内容
-  * @param summary 実行の概要
-  * @param status 実行ステータス
-  * @param startedAt 開始日時
-  * @param finishedAt 終了日時
-  * @param error エラー内容
-  */
+/**
+ * パターン抽出用の実行データ
+ * @summary 実行データ定義
+ * @property {string} runId 実行ID
+ * @property {string} agentId エージェントID
+ * @property {string} teamId チームID
+ * @property {string} task タスク内容
+ * @property {string} summary 実行サマリー
+ */
 export interface RunData {
   runId: string;
   agentId?: string;
@@ -251,11 +248,12 @@ function isFailurePattern(summary: string, status: string): boolean {
   return FAILURE_INDICATORS.some((ind) => lower.includes(ind));
 }
 
- /**
-  * 単一の実行データからパターンを抽出する
-  * @param run 実行データ
-  * @returns 抽出されたパターン、該当しない場合はnull
-  */
+/**
+ * 実行データからパターン抽出
+ * @summary パターン抽出
+ * @param run 実行データ
+ * @returns {ExtractedPattern | null} 抽出されたパターン、抽出できなかった場合はnull
+ */
 export function extractPatternFromRun(run: RunData): ExtractedPattern | null {
   const taskType = classifyTaskType(run.task, run.summary);
   const keywords = extractKeywords(`${run.task} ${run.summary}`);
@@ -352,20 +350,22 @@ function arePatternsSimilar(a: ExtractedPattern, b: ExtractedPattern): boolean {
 // Pattern Storage Operations
 // ============================================================================
 
- /**
-  * パターンストレージのパスを取得
-  * @param cwd カレントワーキングディレクトリ
-  * @returns パターンストレージファイルのパス
-  */
+/**
+ * 保存先パス取得
+ * @summary パス取得
+ * @param cwd カレントディレクトリ
+ * @returns {string} パターン保存ファイルのパス
+ */
 export function getPatternStoragePath(cwd: string): string {
   return join(cwd, ".pi", "memory", "patterns.json");
 }
 
- /**
-  * パターンストレージをディスクから読み込む
-  * @param cwd 作業ディレクトリのパス
-  * @returns 読み込まれたパターンストレージ
-  */
+/**
+ * パターンを読み込み
+ * @summary パターン読込
+ * @param cwd カレントディレクトリ
+ * @returns {PatternStorage} 読み込まれたパターンストレージデータ
+ */
 export function loadPatternStorage(cwd: string): PatternStorage {
   const path = getPatternStoragePath(cwd);
   if (!existsSync(path)) {
@@ -390,12 +390,13 @@ export function loadPatternStorage(cwd: string): PatternStorage {
   }
 }
 
- /**
-  * パターンストレージを保存する
-  * @param cwd 作業ディレクトリのパス
-  * @param storage 保存対象のストレージデータ
-  * @returns なし
-  */
+/**
+ * パターンを保存
+ * @summary パターン保存
+ * @param cwd カレントディレクトリ
+ * @param storage 保存するパターンストレージデータ
+ * @returns {void}
+ */
 export function savePatternStorage(cwd: string, storage: PatternStorage): void {
   const path = getPatternStoragePath(cwd);
   ensureDir(join(cwd, ".pi", "memory"));
@@ -403,12 +404,13 @@ export function savePatternStorage(cwd: string, storage: PatternStorage): void {
   atomicWriteTextFile(path, JSON.stringify(storage, null, 2));
 }
 
- /**
-  * パターンストレージに実行データを追加する
-  * @param cwd カレントワーキングディレクトリ
-  * @param run 追加する実行データ
-  * @returns なし
-  */
+/**
+ * 実行記録追加
+ * @summary 実行記録追加
+ * @param cwd 作業ディレクトリのパス
+ * @param run 追加する実行データ
+ * @returns なし
+ */
 export function addRunToPatterns(cwd: string, run: RunData): void {
   const storage = loadPatternStorage(cwd);
   const newPattern = extractPatternFromRun(run);
@@ -442,11 +444,12 @@ export function addRunToPatterns(cwd: string, run: RunData): void {
   savePatternStorage(cwd, storage);
 }
 
- /**
-  * すべてのパターンを抽出する
-  * @param cwd カレントワーキングディレクトリ
-  * @returns 抽出されたパターン情報のストレージ
-  */
+/**
+ * 全パターン抽出
+ * @summary 全パターン抽出
+ * @param cwd 作業ディレクトリのパス
+ * @returns パターンストレージデータ
+ */
 export function extractAllPatterns(cwd: string): PatternStorage {
   const storage = loadPatternStorage(cwd);
 
@@ -541,13 +544,14 @@ export function extractAllPatterns(cwd: string): PatternStorage {
 // Pattern Query Functions
 // ============================================================================
 
- /**
-  * 指定されたタスクタイプのパターンを取得する
-  * @param cwd 作業ディレクトリ
-  * @param taskType タスクタイプ
-  * @param patternType パターンの種類（成功、失敗、手法）
-  * @returns 抽出されたパターンの配列
-  */
+/**
+ * タスク別パターン取得
+ * @summary タスク別パターン取得
+ * @param cwd 作業ディレクトリのパス
+ * @param taskType タスクタイプ
+ * @param patternType パターンタイプ（任意）
+ * @returns 抽出されたパターンの配列
+ */
 export function getPatternsForTaskType(
   cwd: string,
   taskType: TaskType,
@@ -564,7 +568,11 @@ export function getPatternsForTaskType(
 }
 
 /**
- * Get top success patterns.
+ * 成功パターン取得
+ * @summary 成功パターン取得
+ * @param cwd 作業ディレクトリのパス
+ * @param limit 取得件数の上限
+ * @returns 抽出されたパターンの配列
  */
 export function getTopSuccessPatterns(
   cwd: string,
@@ -578,12 +586,13 @@ export function getTopSuccessPatterns(
     .slice(0, limit);
 }
 
- /**
-  * 避けるべき失敗パターンを取得する。
-  * @param cwd 作業ディレクトリのパス
-  * @param taskType タスクの種類（オプション）
-  * @returns 抽出された失敗パターンの配列
-  */
+/**
+ * 回避パターン取得
+ * @summary 回避パターン取得
+ * @param cwd 作業ディレクトリのパス
+ * @param taskType タスクタイプ（任意）
+ * @returns 抽出されたパターンの配列
+ */
 export function getFailurePatternsToAvoid(
   cwd: string,
   taskType?: TaskType
@@ -600,13 +609,14 @@ export function getFailurePatternsToAvoid(
   return patterns.sort((a, b) => b.frequency - a.frequency);
 }
 
- /**
-  * タスク説明に関連するパターンを検索する。
-  * @param cwd 作業ディレクトリのパス
-  * @param taskDescription タスクの説明文
-  * @param limit 取得するパターンの最大件数
-  * @returns 関連性の高いパターンのリスト
-  */
+/**
+ * タスクに関連するパターンを検索
+ * @summary 関連パターンを検索
+ * @param cwd 作業ディレクトリ
+ * @param taskDescription タスク説明
+ * @param limit 最大取得件数
+ * @returns 抽出されたパターン配列
+ */
 export function findRelevantPatterns(
   cwd: string,
   taskDescription: string,

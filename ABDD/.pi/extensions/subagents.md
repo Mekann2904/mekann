@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerSubagentExtension` | サブエージェント拡張を登録する |
+| 関数 | `registerSubagentExtension` | サブエージェント拡張を登録 |
 
 ## ユーザーフロー
 
@@ -49,7 +49,7 @@ sequenceDiagram
   participant Team as "Team"
 
   User->>System: List all subagent definitions and the current default sub...
-  System->>Storage: ディスクからサブエージェントのストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Internal: createDefaultAgents
   Storage->>Internal: existsSync
@@ -82,7 +82,7 @@ sequenceDiagram
   participant Team as "Team"
 
   User->>System: Create a custom subagent definition for delegated runs.
-  System->>Storage: ディスクからサブエージェントのストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Internal: createDefaultAgents
   Storage->>Internal: existsSync
@@ -118,7 +118,7 @@ sequenceDiagram
   participant Internal as "Internal"
 
   User->>System: Update enabled state or set current default subagent.
-  System->>Storage: ディスクからサブエージェントのストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Internal: createDefaultAgents
   Storage->>Internal: existsSync
@@ -153,7 +153,7 @@ sequenceDiagram
   participant Team as "Team"
 
   User->>System: Run one focused delegated task with one subagent. Use thi...
-  System->>Storage: ディスクからサブエージェントのストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Internal: createDefaultAgents
   Storage->>Internal: existsSync
@@ -168,7 +168,7 @@ sequenceDiagram
   LLM->>Unresolved: storage.agents.find (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System->>Internal: toRetryOverrides
   System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
-  System->>Runtime: ランタイムのスナップショットを取得する
+  System->>Runtime: スナップショットを取得
   Runtime->>Internal: getSharedRuntimeState
   Runtime->>Internal: cleanupExpiredReservations
   Runtime->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
@@ -178,7 +178,7 @@ sequenceDiagram
   Runtime->>Internal: normalizePositiveInt
   Runtime->>Internal: createRuntimeQueueEntryId
   Runtime->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
-  Runtime->>Internal: ツール名とコンテキストからタスク優先度を推論する
+  Runtime->>Internal: 優先度を推論
   Internal->>Unresolved: toolName.toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: lowerToolName.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: lowerToolName.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
@@ -194,34 +194,34 @@ sequenceDiagram
   Runtime->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Internal: waitForRuntimeCapacityEvent
   Runtime->>Internal: wait
-  System->>Runtime: オーケストレーションキュー待機のエラーメッセージを生成します。
+  System->>Runtime: キューウェイトエラー生成
   Runtime->>Unresolved: snapshot.queuedTools.join (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Runtime: ランタイム容量を予約する
+  System->>Runtime: 容量予約を実行
   Runtime->>Internal: checkRuntimeCapacity
   Runtime->>Internal: tryReserveRuntimeCapacity
   System->>Internal: raise
   Internal->>Internal: raiseWithReason
-  System->>Runtime: 実行時制限エラーメッセージを生成する
+  System->>Runtime: 実行制限エラー生成
   Runtime->>Unresolved: [     `${toolName} blocked: runtime limit reached.`,     ...reasons.map((reason) => `- ${reason}`),     `現在: requests=${snapshot.totalActiveRequests}, llm=${snapshot.totalActiveLlm}`,     `上限: requests=${snapshot.limits.maxTotalActiveRequests}, llm=${snapshot.limits.maxTotalActiveLlm}`,     waitLine,     'ヒント: 対象数を減らすか、実行中ジョブの完了を待って再実行してください。',   ]     .filter (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: Boolean (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: get
   Internal->>Internal: decay
-  System->>Executor: 予約を維持するハートビートを開始する
+  System->>Executor: ハートビート開始
   Executor->>Internal: setInterval
   Executor->>Unresolved: reservation.heartbeat (.pi/extensions/agent-runtime.ts)
   Executor->>Unresolved: timer.unref (node_modules/@types/node/timers.d.ts)
   Executor->>Internal: clearInterval
-  System->>Judge: 有効なタイムアウト時間を解決する
-  Judge->>Internal: モデルの適切なタイムアウトを計算
+  System->>Judge: タイムアウト時間を解決
+  Judge->>Internal: モデル別タイムアウト
   Internal->>Internal: getModelBaseTimeoutMs
   Internal->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
-  Judge->>Internal: タイムアウト値（ミリ秒）を正規化します。
+  Judge->>Internal: タイムアウトを正規化
   Internal->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: getCostEstimator().estimate (.pi/lib/cost-estimator.ts)
-  System->>Internal: コスト推定のシングルトンインスタンスを取得
+  System->>Internal: コスト推定インスタンス取得
   System->>Unresolved: console.log (node_modules/typescript/lib/lib.dom.d.ts)
   System->>Unresolved: costEstimate.confidence.toFixed (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Team: サブエージェントのライブモニターを作成する
+  System->>Team: 監視コントローラ作成
   Team->>Internal: clearTimeout
   Team->>Internal: setTimeout
   Team->>Internal: clearRenderTimer
@@ -229,15 +229,15 @@ sequenceDiagram
   Team->>Internal: matchesKey
   Team->>Internal: close
   Team->>Internal: queueRender
-  Team->>Internal: 入力がEnterキーか判定する
-  Team->>Internal: 現在の末尾文字列にチャンクを追加し、最大長を制御する
+  Team->>Internal: Enterキー判定
+  Team->>Internal: 末尾にチャンク追加
   Team->>Unresolved: Buffer.byteLength (node_modules/@types/node/buffer.d.ts)
-  Team->>Internal: 文字列内の特定の文字列の出現回数を数える
+  Team->>Internal: 出現回数を数える
   Internal->>Unresolved: input.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: chunk.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System->>Runtime: refreshRuntimeStatus
   System->>Unresolved: capacityReservation.consume (.pi/extensions/agent-runtime.ts)
-  System->>Team: サブエージェントタスクを実行する
+  System->>Team: サブエージェントタスク実行
   Team->>Executor: 一意な実行IDを生成します。
   Executor->>Unresolved: now.getFullYear (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: String(now.getMonth() + 1).padStart (node_modules/typescript/lib/lib.es2017.string.d.ts)
@@ -249,13 +249,13 @@ sequenceDiagram
   Executor->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
   Executor->>Internal: randomBytes
   Team->>Unresolved: ensurePaths (.pi/extensions/subagents/storage.ts)
-  Team->>Internal: プランモードが有効か判定する
+  Team->>Internal: プランモード判定
   Internal->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
   Internal->>Internal: validatePlanModeState
   Team->>Internal: buildSubagentPrompt
-  Team->>Runtime: プロバイダとモデルからレート制限キーを生成
+  Team->>Runtime: レート制限キー生成
   Team->>Unresolved: /429|rate\s*limit|too many requests/i.test (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: 指数バックオフでオペレーションをリトライする
+  Team->>Internal: バックオフ再試行実行
   Internal->>Internal: resolveRetryWithBackoffConfig
   Internal->>Internal: toOptionalNonNegativeInt
   Internal->>Internal: toOptionalPositiveInt
@@ -276,9 +276,9 @@ sequenceDiagram
   Team->>Internal: normalizeSubagentOutput
   Team->>Internal: emitStderrChunk
   Team->>Internal: isRetryableSubagentError
-  Team->>Internal: エラー表示用にメッセージを整形・短縮
+  Team->>Internal: エラーメッセージを整形
   Internal->>Unresolved: message.replace (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: 不明なエラーを文字列メッセージに変換します
+  Team->>Internal: メッセージを文字列化
   Team->>Internal: extractSummary
   Team->>Storage: writeFileSync
   Team->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
@@ -286,16 +286,16 @@ sequenceDiagram
   System->>Unresolved: liveMonitor?.markStarted (.pi/lib/subagent-types.ts)
   System->>Unresolved: liveMonitor?.appendChunk (.pi/lib/subagent-types.ts)
   System->>Unresolved: liveMonitor?.markFinished (.pi/lib/subagent-types.ts)
-  System->>Storage: ストレージを保存し、実行パターンを抽出する
+  System->>Storage: ストレージ保存
   Storage->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   System->>Unresolved: pi.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
   System->>Internal: エラーを圧力関連のカテゴリに分類する
   Internal->>Internal: extractStatusCodeFromMessage
-  System->>Team: サブエージェントの失敗結果を解決する
-  Team->>Internal: エラーがキャンセルを示すか判定する
-  Team->>Internal: エラーがタイムアウトか判定する
+  System->>Team: エラー種別を判定
+  Team->>Internal: エラー判定
+  Team->>Internal: タイムアウト判定
   System->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
-  System->>Internal: トレースタスクIDを生成する
+  System->>Internal: トレースIDを生成
   System->>Internal: lower
   System->>Unresolved: capacityReservation.release (.pi/extensions/agent-runtime.ts)
   System-->>User: 結果
@@ -321,7 +321,7 @@ sequenceDiagram
   participant Team as "Team"
 
   User->>System: Run selected subagents in parallel. Strongly recommended ...
-  System->>Storage: ディスクからサブエージェントのストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Internal: createDefaultAgents
   Storage->>Internal: existsSync
@@ -346,7 +346,7 @@ sequenceDiagram
   System->>Unresolved: storage.agents.some (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: missingIds.join (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
-  System->>Runtime: ランタイムのスナップショットを取得する
+  System->>Runtime: スナップショットを取得
   Runtime->>Internal: getSharedRuntimeState
   Runtime->>Internal: cleanupExpiredReservations
   Runtime->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
@@ -354,7 +354,7 @@ sequenceDiagram
   Runtime->>Internal: normalizePositiveInt
   Runtime->>Internal: createRuntimeQueueEntryId
   Runtime->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
-  Runtime->>Internal: ツール名とコンテキストからタスク優先度を推論する
+  Runtime->>Internal: 優先度を推論
   Internal->>Unresolved: lowerToolName.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: lowerToolName.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Runtime->>Unresolved: runtime.queue.pending.push (node_modules/typescript/lib/lib.es5.d.ts)
@@ -368,39 +368,39 @@ sequenceDiagram
   Runtime->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Internal: waitForRuntimeCapacityEvent
   Runtime->>Internal: wait
-  System->>Runtime: オーケストレーションキュー待機のエラーメッセージを生成します。
-  System->>Runtime: 同時実行数の入力値を数値に変換する。
+  System->>Runtime: キューウェイトエラー生成
+  System->>Runtime: 並行数リミットを取得
   Runtime->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: get
   Internal->>Internal: decay
   System->>Runtime: applyLimit
   Runtime->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Runtime: サブエージェントの並列実行容量を解決する
-  Runtime->>Runtime: ランタイム容量の予約を試行する
+  System->>Runtime: 容量解決
+  Runtime->>Runtime: 容量予約を試行
   Runtime->>Internal: createCapacityCheck
   Runtime->>Internal: createRuntimeReservationId
   Runtime->>Internal: sanitizePlannedCount
   Runtime->>Internal: normalizeReservationTtlMs
   Runtime->>Internal: createReservationLease
-  Runtime->>Runtime: ランタイム容量を予約する
+  Runtime->>Runtime: 容量予約を実行
   Runtime->>Internal: checkRuntimeCapacity
   System->>Internal: raise
   Internal->>Internal: raiseWithReason
-  System->>Runtime: 実行時制限エラーメッセージを生成する
-  System->>Executor: 予約を維持するハートビートを開始する
+  System->>Runtime: 実行制限エラー生成
+  System->>Executor: ハートビート開始
   Executor->>Internal: setInterval
   Executor->>Unresolved: reservation.heartbeat (.pi/extensions/agent-runtime.ts)
   Executor->>Unresolved: timer.unref (node_modules/@types/node/timers.d.ts)
   Executor->>Internal: clearInterval
-  System->>Judge: 有効なタイムアウト時間を解決する
-  Judge->>Internal: モデルの適切なタイムアウトを計算
+  System->>Judge: タイムアウト時間を解決
+  Judge->>Internal: モデル別タイムアウト
   Internal->>Internal: getModelBaseTimeoutMs
-  Judge->>Internal: タイムアウト値（ミリ秒）を正規化します。
+  Judge->>Internal: タイムアウトを正規化
   System->>Unresolved: getCostEstimator().estimate (.pi/lib/cost-estimator.ts)
-  System->>Internal: コスト推定のシングルトンインスタンスを取得
+  System->>Internal: コスト推定インスタンス取得
   System->>Unresolved: console.log (node_modules/typescript/lib/lib.dom.d.ts)
   System->>Unresolved: costEstimate.confidence.toFixed (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Team: サブエージェントのライブモニターを作成する
+  System->>Team: 監視コントローラ作成
   Team->>Internal: clearTimeout
   Team->>Internal: setTimeout
   Team->>Internal: clearRenderTimer
@@ -408,24 +408,24 @@ sequenceDiagram
   Team->>Internal: matchesKey
   Team->>Internal: close
   Team->>Internal: queueRender
-  Team->>Internal: 入力がEnterキーか判定する
-  Team->>Internal: 現在の末尾文字列にチャンクを追加し、最大長を制御する
+  Team->>Internal: Enterキー判定
+  Team->>Internal: 末尾にチャンク追加
   Team->>Unresolved: Buffer.byteLength (node_modules/@types/node/buffer.d.ts)
-  Team->>Internal: 文字列内の特定の文字列の出現回数を数える
+  Team->>Internal: 出現回数を数える
   Internal->>Unresolved: input.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: chunk.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System->>Runtime: refreshRuntimeStatus
   System->>Unresolved: capacityReservation.consume (.pi/extensions/agent-runtime.ts)
-  System->>Runtime: 指定した並列数でアイテムを処理する
+  System->>Runtime: アイテム並列処理
   Runtime->>Internal: toPositiveLimit
   Runtime->>Internal: ensureNotAborted
   Runtime->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Runtime->>Internal: runWorker
-  System->>Internal: createChildAbortController
+  System->>Internal: 親に連動する中止制御
   Internal->>Unresolved: controller.abort (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Internal: addEventListener
   Internal->>Internal: removeEventListener
-  System->>Team: サブエージェントタスクを実行する
+  System->>Team: サブエージェントタスク実行
   Team->>Executor: 一意な実行IDを生成します。
   Executor->>Unresolved: now.getFullYear (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: String(now.getMonth() + 1).padStart (node_modules/typescript/lib/lib.es2017.string.d.ts)
@@ -437,13 +437,13 @@ sequenceDiagram
   Executor->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
   Executor->>Internal: randomBytes
   Team->>Unresolved: ensurePaths (.pi/extensions/subagents/storage.ts)
-  Team->>Internal: プランモードが有効か判定する
+  Team->>Internal: プランモード判定
   Internal->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
   Internal->>Internal: validatePlanModeState
   Team->>Internal: buildSubagentPrompt
-  Team->>Runtime: プロバイダとモデルからレート制限キーを生成
+  Team->>Runtime: レート制限キー生成
   Team->>Unresolved: /429|rate\s*limit|too many requests/i.test (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: 指数バックオフでオペレーションをリトライする
+  Team->>Internal: バックオフ再試行実行
   Internal->>Internal: resolveRetryWithBackoffConfig
   Internal->>Internal: toOptionalNonNegativeInt
   Internal->>Internal: toOptionalPositiveInt
@@ -463,9 +463,9 @@ sequenceDiagram
   Team->>Internal: normalizeSubagentOutput
   Team->>Internal: emitStderrChunk
   Team->>Internal: isRetryableSubagentError
-  Team->>Internal: エラー表示用にメッセージを整形・短縮
+  Team->>Internal: エラーメッセージを整形
   Internal->>Unresolved: message.replace (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: 不明なエラーを文字列メッセージに変換します
+  Team->>Internal: メッセージを文字列化
   Team->>Internal: extractSummary
   Team->>Storage: writeFileSync
   Team->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
@@ -474,15 +474,15 @@ sequenceDiagram
   System->>Unresolved: liveMonitor?.appendChunk (.pi/lib/subagent-types.ts)
   System->>Unresolved: liveMonitor?.markFinished (.pi/lib/subagent-types.ts)
   System->>Unresolved: pi.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
-  System->>Storage: ストレージを保存し、実行パターンを抽出する
+  System->>Storage: ストレージ保存
   Storage->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   System->>Internal: エラーを圧力関連のカテゴリに分類する
   Internal->>Internal: extractStatusCodeFromMessage
   System->>Internal: lower
-  System->>Runtime: resolveSubagentParallelOutcome
+  System->>Runtime: 並列結果集計
   Runtime->>Internal: resolveAggregateOutcome
   System->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
-  System->>Internal: トレースタスクIDを生成する
+  System->>Internal: トレースIDを生成
   System->>Unresolved: capacityReservation.release (.pi/extensions/agent-runtime.ts)
   System-->>User: 結果
 
@@ -503,7 +503,7 @@ sequenceDiagram
   participant Runtime as "Runtime"
 
   User->>System: Show active subagent request count and active subagent ag...
-  System->>Storage: ディスクからサブエージェントのストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Internal: createDefaultAgents
   Storage->>Internal: existsSync
@@ -514,13 +514,13 @@ sequenceDiagram
   Storage->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Storage->>Internal: ensureDefaults
-  System->>Runtime: ランタイムのスナップショットを取得する
+  System->>Runtime: スナップショットを取得
   Runtime->>Internal: getSharedRuntimeState
   Runtime->>Internal: cleanupExpiredReservations
   Runtime->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: runtime.queue.pending.slice(0, 16).map (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: runtime.queue.pending.slice (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Runtime: ランタイムの状態ステータス行をフォーマットする
+  System->>Runtime: ステータス行を生成
   Runtime->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: snapshot.queuedTools.join (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: get
@@ -544,7 +544,7 @@ sequenceDiagram
   participant Executor as "Executor"
 
   User->>System: Show recent subagent run history.
-  System->>Storage: ディスクからサブエージェントのストレージを読み込む
+  System->>Storage: ストレージ読込
   Storage->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Internal: createDefaultAgents
   Storage->>Internal: existsSync
@@ -775,7 +775,7 @@ pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition[]
 registerSubagentExtension(pi: ExtensionAPI): void
 ```
 
-サブエージェント拡張を登録する
+サブエージェント拡張を登録
 
 **パラメータ**
 
@@ -786,4 +786,4 @@ registerSubagentExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T14:31:30.934Z*
+*自動生成: 2026-02-18T15:54:41.412Z*

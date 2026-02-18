@@ -1,28 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/plan-mode-shared.ts
- * role: プランモード用の共有定数・ユーティリティ定義モジュール
- * why: 複数の拡張機能間でプランモードの挙動を一貫させ、定義の重複や矛盾を防止するため
- * related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-Teams.ts
- * public_api: READ_ONLY_COMMANDS, DESTRUCTIVE_COMMANDS, SHELL_COMMANDS, WRITE_COMMANDS, GIT_READONLY_SUBCOMMANDS, GIT_WRITE_SUBCOMMANDS, WRITE_BASH_COMMANDS, ADDITIONAL_WRITE_COMMANDS, PlanModeState, PLAN_MODE_POLICY
- * invariants: 各コマンドSetは相互排他的ではなく、役割ごとに分類される。GIT_READONLY_SUBCOMMANDSとGIT_WRITE_SUBCOMMANDSはgitのサブコマンドをそれぞれ明示的に列挙する
- * side_effects: なし（純粋な定数と型定義のみ）
- * failure_modes: なし（実行時ロジックを含まない）
+ * role: プランモードの共通定数、型定義、ポリシーテキストを提供するライブラリ
+ * why: 全ての拡張機能において一貫したプランモードの挙動を保証し、定義の重複や矛盾を防ぐため
+ * related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+ * public_api: PlanModeState, READ_ONLY_COMMANDS, DESTRUCTIVE_COMMANDS, PLAN_MODE_POLICY
+ * invariants: 各定数セット（Set）はイミュータブルとして扱われ、実行中に変更されない
+ * side_effects: なし（純粋な定数と型の定義のみ）
+ * failure_modes: 定義の不整合により許可されていないコマンドが実行される、または許可すべきコマンドがブロックされる
  * @abdd.explain
- * overview: プランモードにおけるbashコマンド分類定数、状態インターフェース、ポリシーテキストを定義する
+ * overview: プランモードにおけるコマンド実行の許可/ブロック判定や状態管理に必要な静的なリソースを定義する
  * what_it_does:
- *   - 読み取り専用コマンド、破壊的コマンド、シェル呼び出しコマンド、書き込み可能コマンドのSetを定義
- *   - Gitの読み取り専用/書き込みサブコマンドの許可・禁止リストを定義
- *   - パッケージマネージャコマンドの禁止リストを定義
- *   - プランモード状態（enabled, timestamp, checksum）の型定義
- *   - プランモード有効時のポリシーテキスト（PLAN_MODE_POLICY）の提供
+ *   - Bashコマンドの分類（読み取り専用、破壊的、書き込み可能など）を行うSet定数をエクスポートする
+ *   - プランモードの状態（有効/無効、タイムスタンプ、チェックサム）を持つインターフェースを定義する
+ *   - プランモード有効時のポリシー説明文を定数として提供する
  * why_it_exists:
- *   - 拡張機能間でコマンド分類基準を統一し、セキュリティ判定の不整合を防ぐ
- *   - gitサブコマンドのような複雑なケースを明示的な許可/禁止リストで処理する
- *   - プランモードの状態管理に必要な型とポリシーを一元管理する
+ *   - 複数の拡張機能間でコマンドフィルタリングロジックを共有し、セキュリティポリシーの一貫性を維持するため
+ *   - 個別のファイルに重複して定義を記述することによるメンテナンス性の低下やバグの混入を防ぐため
  * scope:
- *   in: なし（外部依存なし、Node.js標準ライブラリのみ使用）
- *   out: コマンド実行、ファイル操作、状態変更（すべての定数は参照のみ）
+ *   in: なし（外部依存なし）
+ *   out: プランモードの挙動制御に必要な定数、型、テキスト
  */
 
 // File: .pi/extensions/plan-mode-shared.ts
@@ -111,12 +108,10 @@ export const ADDITIONAL_WRITE_COMMANDS = new Set([
 // Type Definitions
 // ============================================
 
- /**
-  * プランモードの状態を表すインターフェース
-  * @property enabled - プランモードが有効かどうか
-  * @property timestamp - 状態が記録された時刻（Unixタイムスタンプ）
-  * @property checksum - 状態の整合性検証用チェックサム
-  */
+/**
+ * プランモードの状態を表すインターフェース
+ * @summary プランモード状態定義
+ */
 export interface PlanModeState {
 	enabled: boolean;
 	timestamp: number;
@@ -162,11 +157,12 @@ export const PLAN_MODE_WARNING = `PLAN MODE is ACTIVE. Restrictions have been di
 // Utility Functions
 // ============================================
 
- /**
-  * Bashコマンドが許可されているか判定
-  * @param command チェックするBashコマンド
-  * @returns 許可されている場合はtrue、ブロックする場合はfalse
-  */
+/**
+ * Bashコマンドが許可されているか判定する
+ * @summary コマンド許可判定
+ * @param {string} command - チェック対象のコマンド文字列
+ * @returns {boolean} 許可されている場合はtrue
+ */
 export function isBashCommandAllowed(command: string): boolean {
 	const trimmed = command.trim();
 	if (!trimmed) return false;
@@ -211,10 +207,11 @@ export function isBashCommandAllowed(command: string): boolean {
 	return READ_ONLY_COMMANDS.has(firstWord);
 }
 
- /**
-  * プランモードが有効か判定する
-  * @returns プランモードが有効な場合はtrue
-  */
+/**
+ * プランモードが有効か判定する
+ * @summary プランモード判定
+ * @returns {boolean} プランモードが有効な場合はtrue
+ */
 export function isPlanModeActive(): boolean {
 	// Fast path: no env flag means plan mode is definitely off.
 	if (process.env.PI_PLAN_MODE !== "1") {
@@ -248,11 +245,12 @@ export function calculateChecksum(state: Omit<PlanModeState, 'checksum'>): strin
 		.digest('hex');
 }
 
- /**
-  * プランモードの状態チェックサムを検証する
-  * @param state - 検証対象の状態
-  * @returns チェックサムが有効な場合はtrue
-  */
+/**
+ * 状態チェックサム検証
+ * @summary チェックサム検証
+ * @param state - 検証対象の状態
+ * @returns チェックサムが有効な場合はtrue
+ */
 export function validatePlanModeState(state: PlanModeState): boolean {
 	if (!state || typeof state.checksum !== 'string') {
 		return false;
@@ -264,11 +262,12 @@ export function validatePlanModeState(state: PlanModeState): boolean {
 	return state.checksum === expectedChecksum;
 }
 
- /**
-  * チェックサム付きのプランモード状態を作成する
-  * @param enabled プランモードが有効かどうか
-  * @returns 作成されたプランモード状態
-  */
+/**
+ * プランモードの状態を検証
+ * @summary 状態整合性を検証
+ * @param state 検証対象の状態
+ * @returns 検証結果
+ */
 export function createPlanModeState(enabled: boolean): PlanModeState {
 	const state: Omit<PlanModeState, 'checksum'> = {
 		enabled,

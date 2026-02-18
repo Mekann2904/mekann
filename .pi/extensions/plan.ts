@@ -1,35 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/plan.ts
- * role: プラン管理機能拡張モジュール（作成、管理、実行）
- * why: pi-coding-agentで構造化されたタスクプランニングとステップバイステップ実行を可能にするため
- * related: README.md, .pi/extensions/loop.ts, .pi/lib/plan-mode-shared.ts, .pi/lib/comprehensive-logger.ts
- * public_api: なし（ExtensionAPI経由で登録される内部エクスポート）
- * invariants:
- *   - PLAN_DIRは必ず存在する（ensurePlanDirが保証）
- *   - プランIDは一意（タイムスタンプ + シーケンス番号で生成）
- *   - ストレージ読み込み失敗時は空のプランリストを返す
- * side_effects:
- *   - .pi/plans/storage.jsonへのファイル読み書き
- *   - .pi/plansディレクトリの作成（存在しない場合）
- *   - planIdSequenceのインクリメント
- * failure_modes:
- *   - JSONパースエラー時は空ストレージを返す（データ損失の可能性）
- *   - ファイル書き込み権限なしの場合は例外発生
+ * role: タスク計画の作成、管理、実行を行う拡張機能
+ * why: 構造化されたステップ実行によるタスク計画管理を可能にするため
+ * related: .pi/extensions/loop.ts, README.md
+ * public_api: createPlan, updatePlan, deletePlan, getPlan, executePlan, cancelPlan
+ * invariants: 計画データは.json形式で永続化される、planIdSequenceは単調増加する、ステータスは定義済みの値のみ
+ * side_effects: .pi/plans/storage.json への書き込み、ファイルシステムへのディレクトリ作成、グローバルステート(planModeEnabled)の変更
+ * failure_modes: storage.jsonの破損、ディスクI/Oエラー、不正なステータス遷移
  * @abdd.explain
- * overview: pi-coding-agent用のプラン管理拡張機能。タスクプランの作成、ステップ管理、実行状態追跡を提供する。
+ * overview: 計画（Plan）およびステップ（PlanStep）の定義、永続化処理、状態管理を提供する
  * what_it_does:
- *   - プランの作成、更新、削除、取得
- *   - プランステップの状態管理（pending/in_progress/completed/blocked）
- *   - プランの永続化（JSONファイルストレージ）
- *   - plan-mode-sharedモジュールとの連携による実行ポリシー管理
+ *   - .pi/plans ディレクトリと storage.json への計画データ保存・読み込み
+ *   - 一意のID生成と計画オブジェクトの作成
+ *   - plan-mode-shared からの定数・ユーティリティの統合
  * why_it_exists:
- *   - 複雑なタスクをステップ単位で管理・追跡するため
- *   - プラン実行状態をセッション間で永続化するため
- *   - 他の拡張機能（loop等）と連携したタスク自動化のため
+ *   - 複数ステップにまたがるタスクの進捗管理と追跡を行うため
+ *   - エージェントによる計画的な動作を担保するため
  * scope:
- *   in: プラン名、説明文、ステップ定義、ステータス更新
- *   out: Plan/PlanStepオブジェクト、ストレージファイル操作
+ *   in: 拡張機能API, AgentMessage
+ *   out: PlanStorage形式のJSONファイル, ログ出力
  */
 
 // File: .pi/extensions/plan.ts

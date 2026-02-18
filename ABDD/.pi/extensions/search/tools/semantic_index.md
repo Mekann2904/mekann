@@ -27,7 +27,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `semanticIndex` | セマンティックインデックスを生成する |
+| 関数 | `semanticIndex` | 意味的索引を作成 |
 
 ## 図解
 
@@ -295,7 +295,7 @@ async saveMetadata(metadata: SemanticIndexMetadata, cwd: string): Promise<void>
 async semanticIndex(input: SemanticIndexInput, cwd: string): Promise<SemanticIndexOutput>
 ```
 
-セマンティックインデックスを生成する
+意味的索引を作成
 
 **パラメータ**
 
@@ -365,4 +365,4 @@ interface CodeChunk {
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.861Z*
+*自動生成: 2026-02-18T15:54:41.323Z*

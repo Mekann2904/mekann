@@ -27,15 +27,15 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `createDefaultAgents` | デフォルトのサブエージェント定義を作成する |
-| 関数 | `loadStorage` | ディスクからサブエージェントのストレージを読み込む |
-| 関数 | `saveStorage` | サブエージェントのストレージをディスクに保存する |
-| 関数 | `saveStorageWithPatterns` | ストレージを保存し、実行パターンを抽出する |
+| 関数 | `createDefaultAgents` | デフォルト作成 |
+| 関数 | `loadStorage` | ストレージを読み込み |
+| 関数 | `saveStorage` | ストレージを保存 |
+| 関数 | `saveStorageWithPatterns` | ストレージを保存 |
 | インターフェース | `SubagentDefinition` | サブエージェントの定義情報を表すインターフェース |
-| インターフェース | `SubagentRunRecord` | サブエージェントの実行記録を表す |
-| インターフェース | `SubagentStorage` | サブエージェントのストレージ構造 |
-| インターフェース | `SubagentPaths` | サブエージェントのストレージパスを表すインターフェース |
-| 型 | `AgentEnabledState` | エージェントの有効/無効状態を表す |
+| インターフェース | `SubagentRunRecord` | サブエージェントの実行記録 |
+| インターフェース | `SubagentStorage` | サブエージェントのストレージ |
+| インターフェース | `SubagentPaths` | パス定義 |
+| 型 | `AgentEnabledState` | エージェントの有効/無効状態 |
 
 ## 図解
 
@@ -134,7 +134,7 @@ sequenceDiagram
 createDefaultAgents(nowIso: string): SubagentDefinition[]
 ```
 
-デフォルトのサブエージェント定義を作成する
+デフォルト作成
 
 **パラメータ**
 
@@ -204,7 +204,7 @@ Uses common utility from lib/storage-base.ts.
 loadStorage(cwd: string): SubagentStorage
 ```
 
-ディスクからサブエージェントのストレージを読み込む
+ストレージを読み込み
 
 **パラメータ**
 
@@ -220,7 +220,7 @@ loadStorage(cwd: string): SubagentStorage
 saveStorage(cwd: string, storage: SubagentStorage): void
 ```
 
-サブエージェントのストレージをディスクに保存する
+ストレージを保存
 
 **パラメータ**
 
@@ -237,7 +237,7 @@ saveStorage(cwd: string, storage: SubagentStorage): void
 async saveStorageWithPatterns(cwd: string, storage: SubagentStorage): Promise<void>
 ```
 
-ストレージを保存し、実行パターンを抽出する
+ストレージを保存
 
 **パラメータ**
 
@@ -288,7 +288,7 @@ interface SubagentRunRecord {
 }
 ```
 
-サブエージェントの実行記録を表す
+サブエージェントの実行記録
 
 ### SubagentStorage
 
@@ -301,7 +301,7 @@ interface SubagentStorage {
 }
 ```
 
-サブエージェントのストレージ構造
+サブエージェントのストレージ
 
 ### SubagentPaths
 
@@ -310,7 +310,7 @@ interface SubagentPaths {
 }
 ```
 
-サブエージェントのストレージパスを表すインターフェース
+パス定義
 
 ## 型定義
 
@@ -320,7 +320,7 @@ interface SubagentPaths {
 type AgentEnabledState = "enabled" | "disabled"
 ```
 
-エージェントの有効/無効状態を表す
+エージェントの有効/無効状態
 
 ---
-*自動生成: 2026-02-18T14:31:30.901Z*
+*自動生成: 2026-02-18T15:54:41.375Z*

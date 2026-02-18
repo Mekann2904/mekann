@@ -23,8 +23,8 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `resolveSubagentParallelCapacity` | サブエージェントの並列実行容量を解決する |
-| インターフェース | `SubagentParallelCapacityResolution` | サブエージェントの並列実行容量解決結果 |
+| 関数 | `resolveSubagentParallelCapacity` | 並列実行容量を解決 |
+| インターフェース | `SubagentParallelCapacityResolution` | サブエージェント並列容量解決結果 |
 
 ## 図解
 
@@ -87,7 +87,7 @@ async resolveSubagentParallelCapacity(input: {
 }): Promise<SubagentParallelCapacityResolution>
 ```
 
-サブエージェントの並列実行容量を解決する
+並列実行容量を解決
 
 **パラメータ**
 
@@ -123,7 +123,7 @@ interface SubagentParallelCapacityResolution {
 }
 ```
 
-サブエージェントの並列実行容量解決結果
+サブエージェント並列容量解決結果
 
 ---
-*自動生成: 2026-02-18T14:31:30.899Z*
+*自動生成: 2026-02-18T15:54:41.371Z*

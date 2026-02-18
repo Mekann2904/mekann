@@ -24,13 +24,13 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `detectSemanticRepetition` | 出力の意味的な重複を検出する |
-| 関数 | `detectSemanticRepetitionFromEmbeddings` | 事前計算された埋め込み込みを使用して検出 |
-| 関数 | `isSemanticRepetitionAvailable` | 意味的反復検出が利用可能か確認 |
-| 関数 | `getRecommendedAction` | 繰り返し状況に基づく推奨アクションを取得 |
-| クラス | `TrajectoryTracker` | セッションの進行状況を追跡するクラス |
-| インターフェース | `SemanticRepetitionResult` | 意味的な重複検出の結果 |
-| インターフェース | `SemanticRepetitionOptions` | 意味的繰り返し検出のオプション |
-| インターフェース | `TrajectorySummary` | セッション軌跡のサマリー監視用インターフェース |
+| 関数 | `detectSemanticRepetitionFromEmbeddings` | 事前計算埋め込みを用いて検出 |
+| 関数 | `isSemanticRepetitionAvailable` | 機能利用可否判定 |
+| 関数 | `getRecommendedAction` | 繰り返し状況に基づき推奨アクションを決定 |
+| クラス | `TrajectoryTracker` | トラjectory追跡クラス |
+| インターフェース | `SemanticRepetitionResult` | 意味的重複検出の結果 |
+| インターフェース | `SemanticRepetitionOptions` | 意味的重複検出のオプション設定 |
+| インターフェース | `TrajectorySummary` | 軌跡の要約情報を表すインターフェース |
 
 ## 図解
 
@@ -139,7 +139,7 @@ async detectSemanticRepetition(current: string, previous: string, options: Seman
 detectSemanticRepetitionFromEmbeddings(currentEmbedding: number[], previousEmbedding: number[], threshold: number): SemanticRepetitionResult
 ```
 
-事前計算された埋め込み込みを使用して検出
+事前計算埋め込みを用いて検出
 
 **パラメータ**
 
@@ -174,7 +174,7 @@ Normalize text for comparison.
 async isSemanticRepetitionAvailable(): Promise<boolean>
 ```
 
-意味的反復検出が利用可能か確認
+機能利用可否判定
 
 **戻り値**: `Promise<boolean>`
 
@@ -184,7 +184,7 @@ async isSemanticRepetitionAvailable(): Promise<boolean>
 getRecommendedAction(repetitionCount: number, totalSteps: number, isStuck: boolean): "continue" | "pivot" | "early_stop"
 ```
 
-繰り返し状況に基づく推奨アクションを取得
+繰り返し状況に基づき推奨アクションを決定
 
 **パラメータ**
 
@@ -200,7 +200,7 @@ getRecommendedAction(repetitionCount: number, totalSteps: number, isStuck: boole
 
 ### TrajectoryTracker
 
-セッションの進行状況を追跡するクラス
+トラjectory追跡クラス
 
 **プロパティ**
 
@@ -233,7 +233,7 @@ interface SemanticRepetitionResult {
 }
 ```
 
-意味的な重複検出の結果
+意味的重複検出の結果
 
 ### SemanticRepetitionOptions
 
@@ -245,7 +245,7 @@ interface SemanticRepetitionOptions {
 }
 ```
 
-意味的繰り返し検出のオプション
+意味的重複検出のオプション設定
 
 ### TrajectorySummary
 
@@ -259,7 +259,7 @@ interface TrajectorySummary {
 }
 ```
 
-セッション軌跡のサマリー監視用インターフェース
+軌跡の要約情報を表すインターフェース
 
 ---
-*自動生成: 2026-02-18T14:31:31.023Z*
+*自動生成: 2026-02-18T15:54:41.516Z*

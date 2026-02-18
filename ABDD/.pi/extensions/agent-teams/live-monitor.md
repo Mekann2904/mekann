@@ -28,9 +28,9 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `toTeamLiveItemKey` | チームIDとメンバーIDから一意のキーを生成する |
-| 関数 | `renderAgentTeamLiveView` | エージェントチームのライブビューを描画する |
-| 関数 | `createAgentTeamLiveMonitor` | エージェントチームのライブモニターを作成する |
+| 関数 | `toTeamLiveItemKey` | チームIDとメンバーIDからキー生成 |
+| 関数 | `renderAgentTeamLiveView` | ライブビューを描画 |
+| 関数 | `createAgentTeamLiveMonitor` | ライブ監視を生成 |
 
 ## 図解
 
@@ -156,7 +156,7 @@ toEventTailLines(events: string[], limit: number): string[]
 toTeamLiveItemKey(teamId: string, memberId: string): string
 ```
 
-チームIDとメンバーIDから一意のキーを生成する
+チームIDとメンバーIDからキー生成
 
 **パラメータ**
 
@@ -183,7 +183,7 @@ renderAgentTeamLiveView(input: {
 }): string[]
 ```
 
-エージェントチームのライブビューを描画する
+ライブビューを描画
 
 **パラメータ**
 
@@ -225,7 +225,7 @@ createAgentTeamLiveMonitor(ctx: any, input: {
   }): AgentTeamLiveMonitorController | undefined
 ```
 
-エージェントチームのライブモニターを作成する
+ライブ監視を生成
 
 **パラメータ**
 
@@ -263,4 +263,4 @@ close(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T14:31:30.470Z*
+*自動生成: 2026-02-18T15:54:40.924Z*

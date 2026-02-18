@@ -1,37 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/invariant-pipeline.ts
- * role: 仕様駆動コード生成パイプラインを提供するPi拡張機能
- * why: spec.mdからQuint形式仕様、TypeScriptインバリアント、プロパティベーステスト、モデルベーステストを一貫して生成し、形式検証とテスト自動化を実現するため
- * related: invariant-generation(スキル), invariant-generation-team, spec.md(入力ソース), fast-check(外部ライブラリ)
+ * role: spec.mdからQuint仕様、TypeScriptインバリアント、PBT、MBTドライバーを自動生成するパイプライン拡張
+ * why: 形式仕様と実装コードの整合性を担保し、検証可能なテストアーティファクトを自動生成するため
+ * related: @mariozechner/pi-coding-agent, spec.md, fast-check, Quint
  * public_api: generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver
- * invariants:
- *   - ParsedSpecは必ず空配列のstates/operations/invariantsを持つ
- *   - GenerationResultはsuccessフラグとerrors配列で生成結果を一意に表す
- *   - 各生成関数はspec_pathを必須入力とする
- * side_effects:
- *   - readFileSyncによるspec.md読み込み
- *   - writeFileSyncによるQuint/TypeScript/テストファイルへの書き込み
- *   - mkdirSyncによる出力ディレクトリ作成
- * failure_modes:
- *   - spec.mdが存在しない、またはパース不可能な場合にエラー
- *   - 書き込み先パスの権限不足またはディスク容量不足
- *   - Quint検証ツールが未インストールの場合のverify_quint_spec失敗
+ * invariants: 生成されるTypeScriptバリデーションコードは、定義された仕様の不変条件と矛盾しない
+ * side_effects: ファイルシステムへの成果物書き出し（Quintファイル、TSマクロ、テストコード、MBTドライバー）
+ * failure_modes: spec.mdのパースエラー、Quint検証の失敗、出力ディレクトリのアクセス権限エラー
  * @abdd.explain
- * overview: Markdown形式の仕様書から形式検証可能なコード資産を自動生成するパイプライン拡張機能
+ * overview: Invariant Validation Pipeline拡張機能として、仕様記述から検証可能なアーティファクトを生成する
  * what_it_does:
- *   - spec.mdをMarkdownパーサーで解析し、ParsedSpec構造（states/operations/invariants/constants）に変換する
- *   - ParsedSpecからQuint形式仕様ファイルを生成し、invariant/liveness検証を実行する
- *   - ParsedSpecからTypeScriptインバリアントバリデーション関数を生成する
- *   - fast-checkを使用したプロパティベーステストコードを生成する
- *   - モデルベーステスト用のTypeScriptドライバーコードを生成する
+ *   - spec.mdをパースしてParsedSpecオブジェクトを構築する
+ *   - Quint形式の形式仕様を生成・検証する
+ *   - TypeScriptのインバリアントバリデーションマクロを生成する
+ *   - fast-checkを用いたプロパティベーステストを生成する
+ *   - モデルベーステストドライバーを生成する
  * why_it_exists:
- *   - 仕様と実装の整合性を形式手法で保証するため
- *   - 手動テスト作成の負荷を軽減し、網羅的なテスト自動生成を実現するため
- *   - Quint形式検証とfast-checkプロパティテストを統合パイプラインで一元管理するため
+ *   - 手作業での仕様とコードの同期を省くため
+ *   - 形式検証と実行可能テストの両方を簡単に利用可能にするため
  * scope:
- *   in: spec.md(Markdown形式仕様)、Quintファイルパス、生成オプション(struct_name/test_count/max_steps等)
- *   out: Quint形式仕様ファイル、TypeScriptインバリアント関数、fast-checkテストコード、モデルベーステストドライバー、GenerationResult
+ *   in: spec.md（Markdown形式の仕様定義）
+ *   out: Quint仕様ファイル、TypeScriptマクロファイル、テストコードファイル、MBTドライバーファイル
  */
 
 /**

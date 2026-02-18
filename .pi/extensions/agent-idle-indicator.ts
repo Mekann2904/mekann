@@ -1,32 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-idle-indicator.ts
- * role: エージェント実行状態の視覚的インジケーターを提供する拡張機能
- * why: ターミナルを見るだけでエージェントの待機状態を即座に判別可能にするため
- * related: ExtensionAPI, event-system, ui-title-manager, status-bar
- * public_api: default (エクスポート関数)
- * invariants:
- *   - isAgentRunning はエージェント実行状態を一意に表す
- *   - savedTitle は空文字列時のみ元タイトルを保存し、重複保存しない
- * side_effects:
- *   - ターミナルタイトルの変更 (ctx.ui.setTitle)
- *   - フッターステータスの設定/クリア (ctx.ui.setStatus)
- * failure_modes:
- *   - ctx.ui.getTitle が undefined を返す場合、空文字列として処理される
- *   - タイトル取得失敗時はフォールバック値として空文字列を使用
+ * role: エージェントの実行状態を視覚的に通知するエクステンション
+ * why: ユーザーがエージェントの稼働状況をタイトルバーやフッターから即座に把握するため
+ * related: @mariozechner/pi-coding-agent, extension-api
+ * public_api: default function (pi: ExtensionAPI)
+ * invariants: isAgentRunningは実行状態を反映する、savedTitleは元のタイトルを保持する
+ * side_effects: ctx.ui.setTitleによるタイトル変更、ctx.ui.setStatusによるフッターステータス更新
+ * failure_modes: タイトル取得失敗時は空文字として扱う、保存済みタイトルがない場合は現在のタイトルを基準にする
  * @abdd.explain
- * overview: エージェントの実行状態に応じてターミナルタイトルとフッターに視覚的インジケーターを表示する拡張機能
+ * overview: エージェントのアイドル状態を赤い丸印とフッターテキストで通知する
  * what_it_does:
- *   - agent_start イベント受信時に [🟢] タイトルを設定しステータスをクリア
- *   - agent_end イベント受信時に [🔴] タイトルと「停止中」ステータスを設定
- *   - session_start イベント受信時にエージェント非実行時のみアイドル表示
- *   - session_shutdown イベント受信時に元のタイトルを復元しステータスをクリア
+ *   - agent_start時に緑色の丸[🟢]を表示しインジケーターを消去する
+ *   - agent_end時に赤色の丸[🔴]と「停止中」を表示する
+ *   - session_start時に未実行であればアイドル表示を適用する
+ *   - session_shutdown時に元のタイトルと状態へ復元する
  * why_it_exists:
- *   - ユーザーがターミナルタイトルを見るだけでエージェント状態を判別できるようにするため
- *   - 長時間セッションでエージェント待機状態を見落とさないようにするため
+ *   - 実行待機時間を明確にするため
+ *   - 日本語環境で「停止中」状態を直感的に伝えるため
  * scope:
- *   in: ExtensionAPI, agent_start/agent_end/session_start/session_shutdown イベント
- *   out: UI タイトル操作、ステータスバー操作
+ *   in: ExtensionAPI (agent_start, agent_end, session_start, session_shutdown)
+ *   out: UIタイトル文字列、フッターステータス表示
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";

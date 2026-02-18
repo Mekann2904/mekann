@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/subagent-types.ts
- * role: サブエージェント監視システムの型定義モジュール
- * why: subagents.ts から型定義を分離し、保守性と再利用性を向上させるため
- * related: extensions/subagents.ts, extensions/subagents/storage.ts, lib/tui/live-monitor-base.ts, lib/live-view-utils.ts
- * public_api: SubagentLiveViewMode, SubagentLiveStreamView, SubagentLiveItem, SubagentMonitorLifecycle, SubagentMonitorStream, SubagentMonitorResource
- * invariants: SubagentLiveViewModeとSubagentLiveStreamViewはlive-monitor-base.tsの型エイリアスであること、LiveStatusはlive-view-utils.ts由来であること
- * side_effects: なし（純粋な型定義ファイル）
- * failure_modes: なし（型定義のみのため実行時エラーは発生しない）
+ * role: サブエージェントのライブ監視システムおよび並列実行調整に使用される型定義
+ * why: subagents.tsから型定義を分離し、保守性と依存関係の明確化を図るため
+ * related: ./tui/live-monitor-base.ts, ./live-view-utils.ts, extensions/subagents.ts, extensions/subagents/storage.ts
+ * public_api: SubagentLiveItem, SubagentMonitorLifecycle, SubagentMonitorStream, SubagentMonitorResource
+ * invariants: LiveStatusはlive-view-utils.tsの正規定義を使用する
+ * side_effects: なし（型定義のみ）
+ * failure_modes: なし
  * @abdd.explain
- * overview: サブエージェントのライブ監視および並列実行調整で使用する型定義を集約したモジュール
+ * overview: サブエージェントの実行状態、ライフサイクル、ストリーム出力、リソース管理に関する型定義を集約したモジュール
  * what_it_does:
- *   - ライブ監視ビューの表示モード型を再エクスポート
- *   - サブエージェントの実行状態を管理するSubagentLiveItemインターフェースを定義
- *   - ISP（Interface Segregation Principle）準拠の監視インターフェース群を定義
- *   - ライフサイクル操作、ストリーム追記、リソース管理の責務を分離
+ *   - SubagentLiveItemにて、ID、ステータス、タイムスタンプ、標準出力バイト数等の実行状態を定義する
+ *   - SubagentMonitorLifecycle、SubagentMonitorStream、SubagentMonitorResourceにて、監視機能をInterface Segregation Principle（ISP）に基づき分割定義する
+ *   - LiveStreamViewおよびLiveViewModeの型エイリアスを提供し、意味の明確化を図る
  * why_it_exists:
- *   - 巨大化したsubagents.tsから型定義を抽出して保守性を確保するため
- *   - 監視機能の型を他モジュールから再利用可能にするため
- *   - ISPに基づき利用者が必要なメソッドのみに依存できるよう分離するため
+ *   - subagents.tsから型定義を抽出し、コードベースのモジュール化と保守性を向上させるため
+ *   - ライブ監視システムと並列実行調整の間で共有されるデータ構造を一元管理するため
  * scope:
- *   in: LiveStreamView, LiveViewMode（live-monitor-base.ts）, LiveStatus（live-view-utils.ts）
- *   out: サブエージェント監視システムで使用される全ての型定義
+ *   in: ./tui/live-monitor-base.ts (LiveStreamView, LiveViewMode), ./live-view-utils.ts (LiveStatus)
+ * out: サブエージェント監視・制御ロジックを実装するモジュール
  */
 
 /**
@@ -44,28 +42,25 @@ export type { LiveStreamView, LiveViewMode } from "./tui/live-monitor-base.js";
 // Subagent Live Monitor Types
 // ============================================================================
 
- /**
-  * サブエージェントのライブ監視ビューの表示モード
-  */
+/**
+ * ライブビューの表示モード
+ * @summary 表示モード定義
+ * @returns なし
+ */
 export type SubagentLiveViewMode = LiveViewMode;
 
 /**
- * Stream view selection for subagent output display.
- * Alias for base LiveStreamView for semantic clarity.
+ * ライブストリームビューの別名
+ * @summary ライブストリームビュー
+ * @returns なし
  */
 export type SubagentLiveStreamView = LiveStreamView;
 
- /**
-  * サブエージェントの実行状態を管理するライブアイテム
-  * @param id サブエージェントID
-  * @param name サブエージェント名
-  * @param status 現在の実行ステータス
-  * @param startedAtMs 実行開始タイムスタンプ
-  * @param finishedAtMs 実行終了タイムスタンプ
-  * @param lastChunkAtMs 最後の出力チャンクタイムスタンプ
-  * @param summary 実行サマリー
-  * @param error 失敗時のエラーメッセージ
-  */
+/**
+ * 実行中のサブエージェント項目
+ * @summary エージェント項目定義
+ * @returns なし
+ */
 export interface SubagentLiveItem {
   /** Subagent ID */
   id: string;
@@ -106,10 +101,9 @@ export interface SubagentLiveItem {
 // ============================================================================
 
 /**
- * Lifecycle operations for marking agent execution states.
- * Used by code that only needs to track start/finish transitions.
- *
- * @see Interface Segregation Principle - clients depend only on needed methods
+ * ライフサイクル管理インターフェース
+ * @summary ライフサイクル管理
+ * @returns なし
  */
 export interface SubagentMonitorLifecycle {
   markStarted: (agentId: string) => void;
@@ -121,19 +115,21 @@ export interface SubagentMonitorLifecycle {
   ) => void;
 }
 
- /**
-  * 標準出力/標準エラー出力のチャンク追加操作
-  * @param agentId エージェントID
-  * @param stream 出力ストリームの種類
-  * @param chunk 追加するチャンク文字列
-  */
+/**
+ * ストリーム監視インターフェース
+ * @summary ストリーム監視操作
+ * @param agentId エージェントID
+ * @param status 状態
+ * @param summary 概要
+ * @returns なし
+ */
 export interface SubagentMonitorStream {
   appendChunk: (agentId: string, stream: SubagentLiveStreamView, chunk: string) => void;
 }
 
 /**
- * Resource cleanup and termination operations.
- * Used by code that only needs to manage monitor lifecycle.
+ * モニターのリソース管理を行うインターフェース
+ * @summary リソースを管理
  */
 export interface SubagentMonitorResource {
   close: () => void;
@@ -141,9 +137,8 @@ export interface SubagentMonitorResource {
 }
 
 /**
- * Full monitor controller combining all capabilities.
- * Extends partial interfaces to maintain backward compatibility.
- * Clients should use narrower interfaces when possible.
+ * ライブモニターの制御およびライフサイクル管理を行う
+ * @summary モニターを制御
  */
 export interface SubagentLiveMonitorController
   extends SubagentMonitorLifecycle,
@@ -154,12 +149,10 @@ export interface SubagentLiveMonitorController
 // Subagent Parallel Execution Types
 // ============================================================================
 
- /**
-  * サブエージェントの出力正規化構造
-  * @param summary 抽出された要約
-  * @param output 完全な出力内容
-  * @param hasResult 結果セクションを含むかどうか
-  */
+/**
+ * サブエージェントの出力正規化データを表す
+ * @summary 出力を正規化
+ */
 export interface SubagentNormalizedOutput {
   /** Extracted summary */
   summary: string;
@@ -169,13 +162,10 @@ export interface SubagentNormalizedOutput {
   hasResult: boolean;
 }
 
- /**
-  * サブエージェントの並列容量解決結果
-  * @param agentId サブエージェントID
-  * @param approvedParallelism 承認された並列度
-  * @param approved リクエストが承認されたか
-  * @param reason 非承認の場合の理由
-  */
+/**
+ * サブエージェントの並列実行解決情報を表す
+ * @summary 並列解決情報を取得
+ */
 export interface SubagentParallelCapacityResolution {
   /** Subagent ID */
   agentId: string;
@@ -191,13 +181,10 @@ export interface SubagentParallelCapacityResolution {
 // Subagent Delegation State Types
 // ============================================================================
 
- /**
-  * 委譲優先ポリシーの状態追跡
-  * @param delegatedThisRequest このリクエストで委譲ツールが呼び出されたか
-  * @param directWriteConfirmedThisRequest このリクエストで直接書き込みが確認されたか
-  * @param pendingDirectWriteConfirmUntilMs 直接書き込みが確認されている期限のタイムスタンプ
-  * @param sessionDelegationCalls セッション内の委譲呼び出しの合計数
-  */
+/**
+ * 委任状態を表すインターフェース
+ * @summary 委任状態を保持
+ */
 export interface DelegationState {
   /** Whether any delegation tool was called this request */
   delegatedThisRequest: boolean;
@@ -209,11 +196,14 @@ export interface DelegationState {
   sessionDelegationCalls: number;
 }
 
- /**
-  * コマンド実行結果
-  * @param output 出力内容
-  * @param latencyMs 実行レイテンシ（ミリ秒）
-  */
+/**
+ * コマンド実行結果
+ * @summary コマンド結果を出力
+ * @param output 出力内容
+ * @param latencyMs レイテンシ
+ * @param delegatedThisRequest 委任実行フラグ
+ * @param directWriteConfirmedThisRequest 直接書込確認フラグ
+ */
 export interface PrintCommandResult {
   /** Output content */
   output: string;

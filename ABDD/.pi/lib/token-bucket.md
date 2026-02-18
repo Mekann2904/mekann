@@ -18,11 +18,11 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `getTokenBucketRateLimiter` | シングルトンのレートリミッターを取得する。 |
-| 関数 | `createTokenBucketRateLimiter` | 新しいレート制限インスタンスを作成（テスト用） |
-| 関数 | `resetTokenBucketRateLimiter` | シングルトンのレートリミッターをリセット |
-| インターフェース | `RateLimitConfig` | レート制限の設定 |
-| インターフェース | `RateLimiterStats` | レートリミッターの統計情報 |
-| インターフェース | `TokenBucketRateLimiter` | トークンバケット方式のレート制限インターフェース |
+| 関数 | `createTokenBucketRateLimiter` | レート制限インスタンス作成 |
+| 関数 | `resetTokenBucketRateLimiter` | レート制限をリセットする |
+| インターフェース | `RateLimitConfig` | - |
+| インターフェース | `RateLimiterStats` | - |
+| インターフェース | `TokenBucketRateLimiter` | - |
 
 ## 図解
 
@@ -83,7 +83,7 @@ getTokenBucketRateLimiter(): TokenBucketRateLimiterImpl
 createTokenBucketRateLimiter(): TokenBucketRateLimiterImpl
 ```
 
-新しいレート制限インスタンスを作成（テスト用）
+レート制限インスタンス作成
 
 **戻り値**: `TokenBucketRateLimiterImpl`
 
@@ -93,7 +93,7 @@ createTokenBucketRateLimiter(): TokenBucketRateLimiterImpl
 resetTokenBucketRateLimiter(): void
 ```
 
-シングルトンのレートリミッターをリセット
+レート制限をリセットする
 
 **戻り値**: `void`
 
@@ -156,8 +156,6 @@ interface RateLimitConfig {
 }
 ```
 
-レート制限の設定
-
 ### RateLimiterStats
 
 ```typescript
@@ -168,8 +166,6 @@ interface RateLimiterStats {
   lowCapacityModels: string[];
 }
 ```
-
-レートリミッターの統計情報
 
 ### TokenBucketRateLimiter
 
@@ -183,7 +179,5 @@ interface TokenBucketRateLimiter {
 }
 ```
 
-トークンバケット方式のレート制限インターフェース
-
 ---
-*自動生成: 2026-02-18T14:31:31.041Z*
+*自動生成: 2026-02-18T15:54:41.535Z*

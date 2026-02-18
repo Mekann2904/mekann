@@ -23,12 +23,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildRuntimeLimitError` | 実行時制限エラーメッセージを生成する |
-| 関数 | `buildRuntimeQueueWaitError` | オーケストレーションキュー待機のエラーメッセージを生成します。 |
-| 関数 | `startReservationHeartbeat` | 予約を維持するハートビートを開始する |
-| 関数 | `refreshRuntimeStatus` | ランタイムステータス表示を更新する |
-| インターフェース | `RuntimeLimitErrorOptions` | 実行制限エラーのオプション。 |
-| インターフェース | `RuntimeQueueWaitInfo` | キューエラーメッセージ構築用情報 |
+| 関数 | `buildRuntimeLimitError` | 実行制限エラーメッセージ生成 |
+| 関数 | `buildRuntimeQueueWaitError` | キューウェイトエラーを生成 |
+| 関数 | `startReservationHeartbeat` | 予約ハートビート開始 |
+| 関数 | `refreshRuntimeStatus` | ランタイムステータス更新 |
+| インターフェース | `RuntimeLimitErrorOptions` | 実行時制限エラーオプション |
+| インターフェース | `RuntimeQueueWaitInfo` | 実行時キューウェイト情報 |
 
 ## 図解
 
@@ -90,7 +90,7 @@ sequenceDiagram
 buildRuntimeLimitError(toolName: string, reasons: string[], options?: RuntimeLimitErrorOptions): string
 ```
 
-実行時制限エラーメッセージを生成する
+実行制限エラーメッセージ生成
 
 **パラメータ**
 
@@ -108,7 +108,7 @@ buildRuntimeLimitError(toolName: string, reasons: string[], options?: RuntimeLim
 buildRuntimeQueueWaitError(toolName: string, queueWait: RuntimeQueueWaitInfo): string
 ```
 
-オーケストレーションキュー待機のエラーメッセージを生成します。
+キューウェイトエラーを生成
 
 **パラメータ**
 
@@ -125,7 +125,7 @@ buildRuntimeQueueWaitError(toolName: string, queueWait: RuntimeQueueWaitInfo): s
 startReservationHeartbeat(reservation: RuntimeCapacityReservationLease): () => void
 ```
 
-予約を維持するハートビートを開始する
+予約ハートビート開始
 
 **パラメータ**
 
@@ -141,7 +141,7 @@ startReservationHeartbeat(reservation: RuntimeCapacityReservationLease): () => v
 refreshRuntimeStatus(ctx: any, statusKey: "subagent-runtime" | "agent-team-runtime", primaryLabel: string, primaryActive: number, secondaryLabel: string, secondaryActive: number): void
 ```
 
-ランタイムステータス表示を更新する
+ランタイムステータス更新
 
 **パラメータ**
 
@@ -167,7 +167,7 @@ interface RuntimeLimitErrorOptions {
 }
 ```
 
-実行制限エラーのオプション。
+実行時制限エラーオプション
 
 ### RuntimeQueueWaitInfo
 
@@ -182,7 +182,7 @@ interface RuntimeQueueWaitInfo {
 }
 ```
 
-キューエラーメッセージ構築用情報
+実行時キューウェイト情報
 
 ---
-*自動生成: 2026-02-18T14:31:30.881Z*
+*自動生成: 2026-02-18T15:54:41.342Z*

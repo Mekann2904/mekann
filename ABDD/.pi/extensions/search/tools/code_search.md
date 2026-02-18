@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `codeSearch` | rgを使用したコード検索 |
+| 関数 | `codeSearch` | コードを検索 |
 
 ## 図解
 
@@ -194,7 +194,7 @@ Extract file paths from results for history recording.
 async codeSearch(input: CodeSearchInput, cwd: string): Promise<CodeSearchOutput>
 ```
 
-rgを使用したコード検索
+コードを検索
 
 **パラメータ**
 
@@ -206,4 +206,4 @@ rgを使用したコード検索
 **戻り値**: `Promise<CodeSearchOutput>`
 
 ---
-*自動生成: 2026-02-18T14:31:30.858Z*
+*自動生成: 2026-02-18T15:54:41.321Z*

@@ -17,12 +17,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `formatDependencyGraphStats` | Format dependency graph stats for display. |
+| 関数 | `formatDependencyGraphStats` | グラフ統計情報を整形する |
 | クラス | `TaskDependencyGraph` | タスク依存関係グラフ |
-| インターフェース | `TaskDependencyNode` | 依存関係グラフ内のタスクノード |
-| インターフェース | `AddTaskOptions` | タスクをグラフに追加するためのオプション |
-| インターフェース | `CycleDetectionResult` | 循環検出の結果 |
-| 型 | `TaskDependencyStatus` | 依存関係グラフにおけるタスクの状態 |
+| インターフェース | `TaskDependencyNode` | タスク依存ノード定義 |
+| インターフェース | `AddTaskOptions` | - |
+| インターフェース | `CycleDetectionResult` | - |
+| 型 | `TaskDependencyStatus` | タスクの依存状態 |
 
 ## 図解
 
@@ -111,7 +111,7 @@ getDepth(id: string): number
 formatDependencyGraphStats(stats: ReturnType<TaskDependencyGraph["getStats"]>): string
 ```
 
-Format dependency graph stats for display.
+グラフ統計情報を整形する
 
 **パラメータ**
 
@@ -193,7 +193,7 @@ interface TaskDependencyNode {
 }
 ```
 
-依存関係グラフ内のタスクノード
+タスク依存ノード定義
 
 ### AddTaskOptions
 
@@ -206,8 +206,6 @@ interface AddTaskOptions {
 }
 ```
 
-タスクをグラフに追加するためのオプション
-
 ### CycleDetectionResult
 
 ```typescript
@@ -217,8 +215,6 @@ interface CycleDetectionResult {
 }
 ```
 
-循環検出の結果
-
 ## 型定義
 
 ### TaskDependencyStatus
@@ -227,7 +223,7 @@ interface CycleDetectionResult {
 type TaskDependencyStatus = "pending" | "ready" | "running" | "completed" | "failed" | "cancelled"
 ```
 
-依存関係グラフにおけるタスクの状態
+タスクの依存状態
 
 ---
-*自動生成: 2026-02-18T14:31:31.035Z*
+*自動生成: 2026-02-18T15:54:41.528Z*

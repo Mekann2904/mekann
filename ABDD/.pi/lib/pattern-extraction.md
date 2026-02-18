@@ -27,19 +27,19 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `extractPatternFromRun` | 単一の実行データからパターンを抽出する |
-| 関数 | `getPatternStoragePath` | パターンストレージのパスを取得 |
-| 関数 | `loadPatternStorage` | パターンストレージをディスクから読み込む |
-| 関数 | `savePatternStorage` | パターンストレージを保存する |
-| 関数 | `addRunToPatterns` | パターンストレージに実行データを追加する |
-| 関数 | `extractAllPatterns` | すべてのパターンを抽出する |
-| 関数 | `getPatternsForTaskType` | 指定されたタスクタイプのパターンを取得する |
-| 関数 | `getTopSuccessPatterns` | Get top success patterns. |
-| 関数 | `getFailurePatternsToAvoid` | 避けるべき失敗パターンを取得する。 |
-| 関数 | `findRelevantPatterns` | タスク説明に関連するパターンを検索する。 |
-| インターフェース | `ExtractedPattern` | 実行履歴から抽出されたパターン。 |
-| インターフェース | `PatternExample` | パターンの実行例 |
-| インターフェース | `PatternStorage` | パターン情報のストレージ構造 |
+| 関数 | `extractPatternFromRun` | 実行データからパターン抽出 |
+| 関数 | `getPatternStoragePath` | 保存先パス取得 |
+| 関数 | `loadPatternStorage` | パターンを読み込み |
+| 関数 | `savePatternStorage` | パターンを保存 |
+| 関数 | `addRunToPatterns` | 実行記録追加 |
+| 関数 | `extractAllPatterns` | 全パターン抽出 |
+| 関数 | `getPatternsForTaskType` | タスク別パターン取得 |
+| 関数 | `getTopSuccessPatterns` | 成功パターン取得 |
+| 関数 | `getFailurePatternsToAvoid` | 回避パターン取得 |
+| 関数 | `findRelevantPatterns` | タスクに関連するパターンを検索 |
+| インターフェース | `ExtractedPattern` | プランモードの状態を作成 |
+| インターフェース | `PatternExample` | 抽出されたパターン情報 |
+| インターフェース | `PatternStorage` | パターン例を表します |
 | インターフェース | `RunData` | パターン抽出用の実行データ |
 
 ## 図解
@@ -232,7 +232,7 @@ Improved logic to avoid false positives from resolved errors.
 extractPatternFromRun(run: RunData): ExtractedPattern | null
 ```
 
-単一の実行データからパターンを抽出する
+実行データからパターン抽出
 
 **パラメータ**
 
@@ -282,7 +282,7 @@ Check if two patterns are similar enough to merge.
 getPatternStoragePath(cwd: string): string
 ```
 
-パターンストレージのパスを取得
+保存先パス取得
 
 **パラメータ**
 
@@ -298,7 +298,7 @@ getPatternStoragePath(cwd: string): string
 loadPatternStorage(cwd: string): PatternStorage
 ```
 
-パターンストレージをディスクから読み込む
+パターンを読み込み
 
 **パラメータ**
 
@@ -314,7 +314,7 @@ loadPatternStorage(cwd: string): PatternStorage
 savePatternStorage(cwd: string, storage: PatternStorage): void
 ```
 
-パターンストレージを保存する
+パターンを保存
 
 **パラメータ**
 
@@ -331,7 +331,7 @@ savePatternStorage(cwd: string, storage: PatternStorage): void
 addRunToPatterns(cwd: string, run: RunData): void
 ```
 
-パターンストレージに実行データを追加する
+実行記録追加
 
 **パラメータ**
 
@@ -348,7 +348,7 @@ addRunToPatterns(cwd: string, run: RunData): void
 extractAllPatterns(cwd: string): PatternStorage
 ```
 
-すべてのパターンを抽出する
+全パターン抽出
 
 **パラメータ**
 
@@ -364,7 +364,7 @@ extractAllPatterns(cwd: string): PatternStorage
 getPatternsForTaskType(cwd: string, taskType: TaskType, patternType?: "success" | "failure" | "approach"): ExtractedPattern[]
 ```
 
-指定されたタスクタイプのパターンを取得する
+タスク別パターン取得
 
 **パラメータ**
 
@@ -382,7 +382,7 @@ getPatternsForTaskType(cwd: string, taskType: TaskType, patternType?: "success" 
 getTopSuccessPatterns(cwd: string, limit: number): ExtractedPattern[]
 ```
 
-Get top success patterns.
+成功パターン取得
 
 **パラメータ**
 
@@ -399,7 +399,7 @@ Get top success patterns.
 getFailurePatternsToAvoid(cwd: string, taskType?: TaskType): ExtractedPattern[]
 ```
 
-避けるべき失敗パターンを取得する。
+回避パターン取得
 
 **パラメータ**
 
@@ -416,7 +416,7 @@ getFailurePatternsToAvoid(cwd: string, taskType?: TaskType): ExtractedPattern[]
 findRelevantPatterns(cwd: string, taskDescription: string, limit: number): ExtractedPattern[]
 ```
 
-タスク説明に関連するパターンを検索する。
+タスクに関連するパターンを検索
 
 **パラメータ**
 
@@ -448,7 +448,7 @@ interface ExtractedPattern {
 }
 ```
 
-実行履歴から抽出されたパターン。
+プランモードの状態を作成
 
 ### PatternExample
 
@@ -461,7 +461,7 @@ interface PatternExample {
 }
 ```
 
-パターンの実行例
+抽出されたパターン情報
 
 ### PatternStorage
 
@@ -474,7 +474,7 @@ interface PatternStorage {
 }
 ```
 
-パターン情報のストレージ構造
+パターン例を表します
 
 ### RunData
 
@@ -495,4 +495,4 @@ interface RunData {
 パターン抽出用の実行データ
 
 ---
-*自動生成: 2026-02-18T14:31:31.006Z*
+*自動生成: 2026-02-18T15:54:41.500Z*

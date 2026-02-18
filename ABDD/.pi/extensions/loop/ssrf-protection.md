@@ -23,8 +23,8 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `isBlockedHostname` | ホスト名がブロック対象か判定する |
-| 関数 | `isPrivateOrReservedIP` | IPアドレスがプライベートまたは予約済みか判定 |
+| 関数 | `isBlockedHostname` | ホスト名を判定 |
+| 関数 | `isPrivateOrReservedIP` | プライベート・予約済みIP判定 |
 | 関数 | `validateUrlForSsrf` | SSRF保護のためURLを検証する |
 
 ## 図解
@@ -65,7 +65,7 @@ sequenceDiagram
 isBlockedHostname(hostname: string): boolean
 ```
 
-ホスト名がブロック対象か判定する
+ホスト名を判定
 
 **パラメータ**
 
@@ -97,7 +97,7 @@ Check if an IPv4 address is private or reserved.
 isPrivateOrReservedIP(ip: string): boolean
 ```
 
-IPアドレスがプライベートまたは予約済みか判定
+プライベート・予約済みIP判定
 
 **パラメータ**
 
@@ -124,4 +124,4 @@ SSRF保護のためURLを検証する
 **戻り値**: `Promise<void>`
 
 ---
-*自動生成: 2026-02-18T14:31:30.751Z*
+*自動生成: 2026-02-18T15:54:41.207Z*

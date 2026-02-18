@@ -17,20 +17,20 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `CallGraphNode` | コールグラフのノード |
-| インターフェース | `CallSite` | 呼び出し箇所の位置情報 |
-| インターフェース | `CallGraphEdge` | コールグラフのエッジを表す |
-| インターフェース | `CallGraphMetadata` | コールグラフインデックスのメタデータ |
-| インターフェース | `CallGraphIndex` | 呼び出しグラフの完全なインデックス |
-| インターフェース | `CallGraphIndexInput` | call_graph_indexツールの入力 |
-| インターフェース | `CallGraphIndexOutput` | call_graph_indexツールの出力 |
-| インターフェース | `FindCallersInput` | find_callersツールの入力 |
-| インターフェース | `FindCalleesInput` | find_calleesツールの入力 |
-| インターフェース | `CallChainResult` | 呼び出しチェーンの結果情報 |
-| インターフェース | `FindCallersOutput` | find_callersツールの出力形式 |
-| インターフェース | `FindCalleesOutput` | 呼び出し先ツールの出力形式 |
-| インターフェース | `FunctionDefinition` | コールグラフ構築用の中間構造 |
-| インターフェース | `DetectedCall` | ソースコード内で検出された関数呼び出し |
+| インターフェース | `CallGraphNode` | 呼び出し可能なノード（関数など）を表します |
+| インターフェース | `CallSite` | 呼び出し箇所の位置情報を表します |
+| インターフェース | `CallGraphEdge` | 呼び出し元から呼び出し先への関係を表します |
+| インターフェース | `CallGraphMetadata` | コールグラフのメタデータ情報を表します |
+| インターフェース | `CallGraphIndex` | コールグラフ全体のインデックス情報を表します |
+| インターフェース | `CallGraphIndexInput` | インデックス入力定義 |
+| インターフェース | `CallGraphIndexOutput` | - |
+| インターフェース | `FindCallersInput` | - |
+| インターフェース | `FindCalleesInput` | - |
+| インターフェース | `CallChainResult` | 呼び出しチェーンの結果 |
+| インターフェース | `FindCallersOutput` | 呼び出し元検索結果 |
+| インターフェース | `FindCalleesOutput` | 被呼び出し検索結果 |
+| インターフェース | `FunctionDefinition` | 関数定義情報 |
+| インターフェース | `DetectedCall` | 検出された呼び出し |
 | 型 | `CallGraphNodeKind` | 呼び出し可能なシンボルの種類 |
 
 ## 図解
@@ -158,7 +158,7 @@ interface CallGraphNode {
 }
 ```
 
-コールグラフのノード
+呼び出し可能なノード（関数など）を表します
 
 ### CallSite
 
@@ -170,7 +170,7 @@ interface CallSite {
 }
 ```
 
-呼び出し箇所の位置情報
+呼び出し箇所の位置情報を表します
 
 ### CallGraphEdge
 
@@ -183,7 +183,7 @@ interface CallGraphEdge {
 }
 ```
 
-コールグラフのエッジを表す
+呼び出し元から呼び出し先への関係を表します
 
 ### CallGraphMetadata
 
@@ -198,7 +198,7 @@ interface CallGraphMetadata {
 }
 ```
 
-コールグラフインデックスのメタデータ
+コールグラフのメタデータ情報を表します
 
 ### CallGraphIndex
 
@@ -210,7 +210,7 @@ interface CallGraphIndex {
 }
 ```
 
-呼び出しグラフの完全なインデックス
+コールグラフ全体のインデックス情報を表します
 
 ### CallGraphIndexInput
 
@@ -222,7 +222,7 @@ interface CallGraphIndexInput {
 }
 ```
 
-call_graph_indexツールの入力
+インデックス入力定義
 
 ### CallGraphIndexOutput
 
@@ -235,8 +235,6 @@ interface CallGraphIndexOutput {
 }
 ```
 
-call_graph_indexツールの出力
-
 ### FindCallersInput
 
 ```typescript
@@ -247,8 +245,6 @@ interface FindCallersInput {
   cwd?: string;
 }
 ```
-
-find_callersツールの入力
 
 ### FindCalleesInput
 
@@ -261,8 +257,6 @@ interface FindCalleesInput {
 }
 ```
 
-find_calleesツールの入力
-
 ### CallChainResult
 
 ```typescript
@@ -274,7 +268,7 @@ interface CallChainResult {
 }
 ```
 
-呼び出しチェーンの結果情報
+呼び出しチェーンの結果
 
 ### FindCallersOutput
 
@@ -288,7 +282,7 @@ interface FindCallersOutput {
 }
 ```
 
-find_callersツールの出力形式
+呼び出し元検索結果
 
 ### FindCalleesOutput
 
@@ -302,7 +296,7 @@ interface FindCalleesOutput {
 }
 ```
 
-呼び出し先ツールの出力形式
+被呼び出し検索結果
 
 ### FunctionDefinition
 
@@ -319,7 +313,7 @@ interface FunctionDefinition {
 }
 ```
 
-コールグラフ構築用の中間構造
+関数定義情報
 
 ### DetectedCall
 
@@ -333,7 +327,7 @@ interface DetectedCall {
 }
 ```
 
-ソースコード内で検出された関数呼び出し
+検出された呼び出し
 
 ## 型定義
 
@@ -346,4 +340,4 @@ type CallGraphNodeKind = "function" | "method" | "arrow" | "const"
 呼び出し可能なシンボルの種類
 
 ---
-*自動生成: 2026-02-18T14:31:30.802Z*
+*自動生成: 2026-02-18T15:54:41.257Z*

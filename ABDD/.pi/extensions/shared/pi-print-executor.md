@@ -23,12 +23,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `runPiPrintMode` | Piプリントモードを実行します |
-| 関数 | `callModelViaPi` | piを介してモデルを呼び出す |
-| インターフェース | `PrintExecutorOptions` | プリント実行のオプション |
-| インターフェース | `PrintCommandResult` | 印刷コマンドの実行結果 |
-| インターフェース | `CallModelOptions` | モデル呼び出しのオプション |
-| インターフェース | `CallModelViaPiOptions` | pi経由でモデルを呼び出すためのオプション |
+| 関数 | `runPiPrintMode` | Pi印刷モード実行 |
+| 関数 | `callModelViaPi` | PI経由でLLMを呼び出す |
+| インターフェース | `PrintExecutorOptions` | 印刷実行オプション |
+| インターフェース | `PrintCommandResult` | 印刷コマンド結果 |
+| インターフェース | `CallModelOptions` | モデル呼び出し共通オプション |
+| インターフェース | `CallModelViaPiOptions` | PI呼び出しオプション |
 
 ## 図解
 
@@ -211,7 +211,7 @@ Combine text and thinking content with proper formatting.
 async runPiPrintMode(input: PrintExecutorOptions): Promise<PrintCommandResult>
 ```
 
-Piプリントモードを実行します
+Pi印刷モード実行
 
 **パラメータ**
 
@@ -279,7 +279,7 @@ cleanup(): void
 async callModelViaPi(options: CallModelViaPiOptions): Promise<string>
 ```
 
-piを介してモデルを呼び出す
+PI経由でLLMを呼び出す
 
 **パラメータ**
 
@@ -360,7 +360,7 @@ interface PrintExecutorOptions {
 }
 ```
 
-プリント実行のオプション
+印刷実行オプション
 
 ### PrintCommandResult
 
@@ -371,7 +371,7 @@ interface PrintCommandResult {
 }
 ```
 
-印刷コマンドの実行結果
+印刷コマンド結果
 
 ### CallModelOptions
 
@@ -383,7 +383,7 @@ interface CallModelOptions {
 }
 ```
 
-モデル呼び出しのオプション
+モデル呼び出し共通オプション
 
 ### CallModelViaPiOptions
 
@@ -399,7 +399,7 @@ interface CallModelViaPiOptions {
 }
 ```
 
-pi経由でモデルを呼び出すためのオプション
+PI呼び出しオプション
 
 ---
-*自動生成: 2026-02-18T14:31:30.880Z*
+*自動生成: 2026-02-18T15:54:41.341Z*

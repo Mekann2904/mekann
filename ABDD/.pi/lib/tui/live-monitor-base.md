@@ -27,31 +27,31 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `createBaseLiveItem` | デフォルト値を持つベースライブアイテムを作成する |
+| 関数 | `createBaseLiveItem` | ライブアイテムを生成 |
 | 関数 | `appendStreamChunk` | 適切なストリームにチャンクを追加する |
 | 関数 | `getStreamTail` | ビューモードとストリームに基づいて末尾を取得 |
-| 関数 | `getStreamBytes` | ストリームのバイト数を取得 |
-| 関数 | `getStreamLineCount` | Get estimated stream line count. |
-| 関数 | `renderLiveViewHeader` | ライブビューの共通ヘッダーを描画する |
+| 関数 | `getStreamBytes` | バイト数を取得する |
+| 関数 | `getStreamLineCount` | 行数を取得する |
+| 関数 | `renderLiveViewHeader` | ヘッダー描画 |
 | 関数 | `renderListKeyboardHints` | キーボード操作のヒントを描画する |
 | 関数 | `renderDetailKeyboardHints` | 詳細画面のキーボード操作ヒントを描画する |
-| 関数 | `renderListWindow` | リストウィンドウをページネーション付きで描画する |
+| 関数 | `renderListWindow` | リストを描画 |
 | 関数 | `renderBaseListItemLine` | 単一のリストアイテム行を描画する |
-| 関数 | `renderSelectedItemSummary` | Render selected item summary. |
+| 関数 | `renderSelectedItemSummary` | 選択中アイテムの概要を描画する |
 | 関数 | `renderDetailHeader` | 選択アイテムの詳細ヘッダーを描画する |
 | 関数 | `renderStreamOutput` | ストリーム出力セクションを描画する |
-| 関数 | `handleListModeInput` | リストモードでのキーボード入力を処理する。 |
-| 関数 | `handleDetailModeInput` | Handle common keyboard input for detail mode. |
-| 関数 | `applyInputResult` | 入力結果を状態に適用する |
-| インターフェース | `BaseLiveItem` | ライブモニターのアイテムの基底インターフェース |
-| インターフェース | `BaseLiveMonitorController` | ライブモニタコントローラの基底インターフェース |
-| インターフェース | `CreateLiveItemInput` | ライブアイテム作成用の入力 |
-| インターフェース | `LiveMonitorFactoryOptions` | Options for createLiveMonitorFactory. |
-| インターフェース | `LiveViewHeaderData` | ライブビューの共通ヘッダーデータ |
-| インターフェース | `HandleInputResult` | 入力処理の結果を表します。 |
-| 型 | `LiveItemStatus` | ライブアイテムの状態。 |
-| 型 | `LiveStreamView` | ライブストリームの表示オプション |
-| 型 | `LiveViewMode` | ライブビューのモードオプション。 |
+| 関数 | `handleListModeInput` | リストモード入力を処理 |
+| 関数 | `handleDetailModeInput` | - |
+| 関数 | `applyInputResult` | - |
+| インターフェース | `BaseLiveItem` | ライブアイテムの基底データ定義 |
+| インターフェース | `BaseLiveMonitorController` | ライブモニタの基底コントローラー定義 |
+| インターフェース | `CreateLiveItemInput` | ライブアイテム作成用の入力定義 |
+| インターフェース | `LiveMonitorFactoryOptions` | ライブモニタファクトリのオプション定義 |
+| インターフェース | `LiveViewHeaderData` | ヘッダー表示データ |
+| インターフェース | `HandleInputResult` | 入力処理結果のインターフェース |
+| 型 | `LiveItemStatus` | ライブアイテムの状態 |
+| 型 | `LiveStreamView` | ストリーム出力種別 |
+| 型 | `LiveViewMode` | ライブ表示モード種別 |
 
 ## 図解
 
@@ -189,7 +189,7 @@ sequenceDiagram
 createBaseLiveItem(input: CreateLiveItemInput): BaseLiveItem
 ```
 
-デフォルト値を持つベースライブアイテムを作成する
+ライブアイテムを生成
 
 **パラメータ**
 
@@ -241,7 +241,7 @@ getStreamTail(item: BaseLiveItem, stream: LiveStreamView, autoSwitchOnFailure: b
 getStreamBytes(item: BaseLiveItem, stream: LiveStreamView): number
 ```
 
-ストリームのバイト数を取得
+バイト数を取得する
 
 **パラメータ**
 
@@ -258,7 +258,7 @@ getStreamBytes(item: BaseLiveItem, stream: LiveStreamView): number
 getStreamLineCount(item: BaseLiveItem, stream: LiveStreamView): number
 ```
 
-Get estimated stream line count.
+行数を取得する
 
 **パラメータ**
 
@@ -275,7 +275,7 @@ Get estimated stream line count.
 renderLiveViewHeader(data: LiveViewHeaderData, width: number, theme: any): string[]
 ```
 
-ライブビューの共通ヘッダーを描画する
+ヘッダー描画
 
 **パラメータ**
 
@@ -370,7 +370,7 @@ add(line: any): void
 renderListWindow(items: T[], cursor: number, windowSize: number, renderItem: (item: T, index: number, isSelected: boolean) => string, width: number, theme: any): string[]
 ```
 
-リストウィンドウをページネーション付きで描画する
+リストを描画
 
 **パラメータ**
 
@@ -426,7 +426,7 @@ renderBaseListItemLine(item: BaseLiveItem & { name?: string }, index: number, is
 renderSelectedItemSummary(items: T[], cursor: number, getItemId: (item: T) => string, getItemName: (item: T) => string | undefined, getItemStatus: (item: T) => LiveItemStatus, getItemElapsed: (item: T) => string, width: number, theme: any, extraInfo?: (item: T) => string | undefined): string[]
 ```
 
-Render selected item summary.
+選択中アイテムの概要を描画する
 
 **パラメータ**
 
@@ -536,7 +536,7 @@ add(line: any): void
 handleListModeInput(rawInput: string): HandleInputResult
 ```
 
-リストモードでのキーボード入力を処理する。
+リストモード入力を処理
 
 **パラメータ**
 
@@ -551,8 +551,6 @@ handleListModeInput(rawInput: string): HandleInputResult
 ```typescript
 handleDetailModeInput(rawInput: string): HandleInputResult
 ```
-
-Handle common keyboard input for detail mode.
 
 **パラメータ**
 
@@ -578,8 +576,6 @@ applyInputResult(result: HandleInputResult, state: {
   shouldRender: boolean;
 }
 ```
-
-入力結果を状態に適用する
 
 **パラメータ**
 
@@ -624,7 +620,7 @@ interface BaseLiveItem {
 }
 ```
 
-ライブモニターのアイテムの基底インターフェース
+ライブアイテムの基底データ定義
 
 ### BaseLiveMonitorController
 
@@ -638,7 +634,7 @@ interface BaseLiveMonitorController {
 }
 ```
 
-ライブモニタコントローラの基底インターフェース
+ライブモニタの基底コントローラー定義
 
 ### CreateLiveItemInput
 
@@ -649,7 +645,7 @@ interface CreateLiveItemInput {
 }
 ```
 
-ライブアイテム作成用の入力
+ライブアイテム作成用の入力定義
 
 ### LiveMonitorFactoryOptions
 
@@ -662,7 +658,7 @@ interface LiveMonitorFactoryOptions {
 }
 ```
 
-Options for createLiveMonitorFactory.
+ライブモニタファクトリのオプション定義
 
 ### LiveViewHeaderData
 
@@ -677,7 +673,7 @@ interface LiveViewHeaderData {
 }
 ```
 
-ライブビューの共通ヘッダーデータ
+ヘッダー表示データ
 
 ### HandleInputResult
 
@@ -690,7 +686,7 @@ interface HandleInputResult {
 }
 ```
 
-入力処理の結果を表します。
+入力処理結果のインターフェース
 
 ## 型定義
 
@@ -700,7 +696,7 @@ interface HandleInputResult {
 type LiveItemStatus = "pending" | "running" | "completed" | "failed"
 ```
 
-ライブアイテムの状態。
+ライブアイテムの状態
 
 ### LiveStreamView
 
@@ -708,7 +704,7 @@ type LiveItemStatus = "pending" | "running" | "completed" | "failed"
 type LiveStreamView = "stdout" | "stderr"
 ```
 
-ライブストリームの表示オプション
+ストリーム出力種別
 
 ### LiveViewMode
 
@@ -716,7 +712,7 @@ type LiveStreamView = "stdout" | "stderr"
 type LiveViewMode = "list" | "detail"
 ```
 
-ライブビューのモードオプション。
+ライブ表示モード種別
 
 ---
-*自動生成: 2026-02-18T14:31:31.044Z*
+*自動生成: 2026-02-18T15:54:41.539Z*

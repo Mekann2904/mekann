@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `fileCandidates` | fdまたはフォールバックでファイル候補を列挙 |
+| 関数 | `fileCandidates` | 候補ファイルを一覧 |
 
 ## 図解
 
@@ -178,7 +178,7 @@ Extract file paths from results for history recording.
 async fileCandidates(input: FileCandidatesInput, cwd: string): Promise<FileCandidatesOutput>
 ```
 
-fdまたはフォールバックでファイル候補を列挙
+候補ファイルを一覧
 
 **パラメータ**
 
@@ -190,4 +190,4 @@ fdまたはフォールバックでファイル候補を列挙
 **戻り値**: `Promise<FileCandidatesOutput>`
 
 ---
-*自動生成: 2026-02-18T14:31:30.859Z*
+*自動生成: 2026-02-18T15:54:41.322Z*

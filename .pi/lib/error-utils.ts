@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/error-utils.ts
- * role: エラー処理ユーティリティライブラリ
- * why: 複数のエージェント拡張機能間で重複していたエラー処理ロジックを一元管理し、保守性を向上させるため
+ * role: エラー処理の共通ユーティリティ実装
+ * why: agent-teams.ts, subagents.ts, loop.ts, rsa.ts に存在していた重複実装を統一し、保守性を向上させるため
  * related: agent-teams.ts, subagents.ts, loop.ts, rsa.ts
- * public_api: toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, isCancelledErrorMessage, isTimeoutErrorMessage, PressureErrorType
- * invariants: 全関数はunknown型を受け入れ、null/undefinedを含む任意の値を安全に処理する
- * side_effects: なし（純粋関数のみ）
- * failure_modes: なし（全入力に対して安全に文字列変換または分類結果を返す）
+ * public_api: toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, isCancelledErrorMessage, isTimeoutErrorMessage
+ * invariants: エラーメッセージ文字列化処理は null や undefined を含む unknown 型を正しく文字列に変換する
+ * side_effects: なし
+ * failure_modes: 正規表現によるステータスコード抽出において、メッセージ内の意図しない数値をステータスコードとして誤認する可能性がある
  * @abdd.explain
- * overview: エラーオブジェクトの分類・判定・変換を行う共有ユーティリティ関数群
+ * overview: 拡張機能間で共有されるエラー処理ユーティリティ
  * what_it_does:
- *   - unknown型のエラーを文字列メッセージに変換
- *   - HTTPステータスコード429および5xxをエラーメッセージから抽出
- *   - エラーをrate_limit/timeout/capacity/otherの4種類に分類
- *   - キャンセル/タイムアウトを示すエラーメッセージを多言語で判定
+ *   - unknown 型のエラーを文字列メッセージに正規化する
+ *   - エラーメッセージからHTTPステータスコード（4xx, 5xx）を抽出する
+ *   - エラーをレートリミット、タイムアウト、容量超過などの圧力カテゴリに分類する
+ *   - エラーメッセージに基づき、キャンセルやタイムアウトの発生を判定する
  * why_it_exists:
- *   - agent-teams.ts, subagents.ts, loop.ts, rsa.tsで重複実装されていたエラー処理を統合
- *   - 日本語・英語双方のエラーメッセージを一貫して処理
+ *   - エラー判定ロジックの重複を排除し、コードベースの一貫性を保つため
+ *   - 外部APIや実行環境からのエラー応答を統一的な基準でハンドリングするため
  * scope:
- *   in: unknown型のエラーオブジェクト、Errorインスタンス、文字列、null/undefined
- *   out: 文字列、数値、boolean、PressureErrorTypeリテラル
+ *   in: unknown 型のエラーオブジェクト、エラーメッセージ文字列
+ *   out: 文字列、数値、判定結果、または分類タイプ
  */
 
 /**
@@ -33,20 +33,22 @@
  */
 
 /**
- * 不明なエラーを文字列メッセージに変換します
- * @param error - 変換対象のエラー
- * @returns エラーメッセージの文字列
+ * エラーメッセージ取得
+ * @summary メッセージを文字列化
+ * @param error エラーオブジェクト
+ * @returns エラーメッセージ文字列
  */
 export function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
 }
 
- /**
-  * エラーメッセージからHTTPステータスコードを抽出
-  * @param error - 対象のエラー
-  * @returns 見つかったステータスコード、なければ undefined
-  */
+/**
+ * ステータスコード抽出
+ * @summary ステータスコードを抽出
+ * @param error エラーオブジェクト
+ * @returns ステータスコードまたはundefined
+ */
 export function extractStatusCodeFromMessage(error: unknown): number | undefined {
   const message = toErrorMessage(error);
   const codeMatch = message.match(/\b(429|5\d{2})\b/);
@@ -55,9 +57,11 @@ export function extractStatusCodeFromMessage(error: unknown): number | undefined
   return Number.isFinite(code) ? code : undefined;
 }
 
- /**
-  * 圧力エラーの分類型
-  */
+/**
+ * 圧力エラーの分類型
+ * @summary 圧力エラー分類
+ * @returns エラーの種別
+ */
 export type PressureErrorType = "rate_limit" | "timeout" | "capacity" | "other";
 
  /**
@@ -76,11 +80,12 @@ export function classifyPressureError(error: unknown): PressureErrorType {
   return "other";
 }
 
- /**
-  * エラーがキャンセルを示すか判定する
-  * @param error - 検査対象のエラー
-  * @returns キャンセルを示す場合はtrue
-  */
+/**
+ * キャンセル済みか判定
+ * @summary エラー判定
+ * @param error - 検査対象のエラー
+ * @returns キャンセルを示す場合はtrue
+ */
 export function isCancelledErrorMessage(error: unknown): boolean {
   const message = toErrorMessage(error).toLowerCase();
   return (
@@ -92,11 +97,12 @@ export function isCancelledErrorMessage(error: unknown): boolean {
   );
 }
 
- /**
-  * エラーがタイムアウトか判定する
-  * @param error - 検査対象のエラー
-  * @returns タイムアウトの場合true
-  */
+/**
+ * タイムアウト判定
+ * @summary タイムアウト判定
+ * @param error - 検査対象のエラー
+ * @returns タイムアウトの場合true
+ */
 export function isTimeoutErrorMessage(error: unknown): boolean {
   const message = toErrorMessage(error).toLowerCase();
   return (

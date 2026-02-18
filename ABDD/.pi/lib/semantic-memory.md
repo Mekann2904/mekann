@@ -28,21 +28,21 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `generateEmbedding` | テキストの埋め込みベクトルを生成する（非推奨） |
-| 関数 | `generateEmbeddingsBatch` | 複数テキストのベクトルを一括生成 |
-| 関数 | `isSemanticMemoryAvailable` | セマンティックメモリが利用可能か確認 |
-| 関数 | `findNearestNeighbors` | Find the k nearest neighbors to a query vector. |
-| 関数 | `getSemanticMemoryPath` | セマンティックメモリのストレージファイルパスを取得 |
-| 関数 | `loadSemanticMemory` | ディスクからセマンティックメモリを読み込む |
-| 関数 | `saveSemanticMemory` | セマンティックメモリをディスクに保存する |
-| 関数 | `buildSemanticMemoryIndex` | ランインデックスからセマンティックメモリを構築 |
-| 関数 | `addRunToSemanticMemory` | 実行履歴をセマンティックメモリに追加 |
-| 関数 | `semanticSearch` | 類似した実行をセマンティック検索します。 |
-| 関数 | `findSimilarRunsById` | 指定された実行IDに類似した実行を検索する。 |
-| 関数 | `getSemanticMemoryStats` | セマンティックメモリの統計情報を取得する |
-| 関数 | `clearSemanticMemory` | セマンティックメモリをクリアする。 |
-| インターフェース | `RunEmbedding` | 実行のベクトル埋め込み |
-| インターフェース | `SemanticMemoryStorage` | セマンティックメモリストレージ。 |
+| 関数 | `generateEmbedding` | テキストの埋め込みベクトルを生成 |
+| 関数 | `generateEmbeddingsBatch` | - |
+| 関数 | `isSemanticMemoryAvailable` | - |
+| 関数 | `findNearestNeighbors` | - |
+| 関数 | `getSemanticMemoryPath` | - |
+| 関数 | `loadSemanticMemory` | - |
+| 関数 | `saveSemanticMemory` | セマンティックメモリを保存 |
+| 関数 | `buildSemanticMemoryIndex` | セマンティックメモリのインデックスを構築 |
+| 関数 | `addRunToSemanticMemory` | 実行記録をセマンティックメモリに追加 |
+| 関数 | `semanticSearch` | セマンティック検索を実行 |
+| 関数 | `findSimilarRunsById` | 類似実行をIDで検索 |
+| 関数 | `getSemanticMemoryStats` | 意味メモリ統計取得 |
+| 関数 | `clearSemanticMemory` | 意味メモリクリア |
+| インターフェース | `RunEmbedding` | 実行単位の埋め込みデータ |
+| インターフェース | `SemanticMemoryStorage` | セマンティックメモリのストレージ構造 |
 | インターフェース | `SemanticSearchResult` | セマンティック検索の結果 |
 
 ## 図解
@@ -160,7 +160,7 @@ sequenceDiagram
 async generateEmbedding(text: string): Promise<number[] | null>
 ```
 
-テキストの埋め込みベクトルを生成する（非推奨）
+テキストの埋め込みベクトルを生成
 
 **パラメータ**
 
@@ -176,8 +176,6 @@ async generateEmbedding(text: string): Promise<number[] | null>
 async generateEmbeddingsBatch(texts: string[]): Promise<(number[] | null)[]>
 ```
 
-複数テキストのベクトルを一括生成
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -192,8 +190,6 @@ async generateEmbeddingsBatch(texts: string[]): Promise<(number[] | null)[]>
 isSemanticMemoryAvailable(): boolean
 ```
 
-セマンティックメモリが利用可能か確認
-
 **戻り値**: `boolean`
 
 ### findNearestNeighbors
@@ -201,8 +197,6 @@ isSemanticMemoryAvailable(): boolean
 ```typescript
 findNearestNeighbors(queryVector: number[], embeddings: RunEmbedding[], k: number): Array<{ embedding: RunEmbedding; similarity: number }>
 ```
-
-Find the k nearest neighbors to a query vector.
 
 **パラメータ**
 
@@ -220,8 +214,6 @@ Find the k nearest neighbors to a query vector.
 getSemanticMemoryPath(cwd: string): string
 ```
 
-セマンティックメモリのストレージファイルパスを取得
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -235,8 +227,6 @@ getSemanticMemoryPath(cwd: string): string
 ```typescript
 loadSemanticMemory(cwd: string): SemanticMemoryStorage
 ```
-
-ディスクからセマンティックメモリを読み込む
 
 **パラメータ**
 
@@ -252,7 +242,7 @@ loadSemanticMemory(cwd: string): SemanticMemoryStorage
 saveSemanticMemory(cwd: string, storage: SemanticMemoryStorage): void
 ```
 
-セマンティックメモリをディスクに保存する
+セマンティックメモリを保存
 
 **パラメータ**
 
@@ -285,7 +275,7 @@ Build text to embed from a run.
 async buildSemanticMemoryIndex(cwd: string, batchSize: number): Promise<SemanticMemoryStorage>
 ```
 
-ランインデックスからセマンティックメモリを構築
+セマンティックメモリのインデックスを構築
 
 **パラメータ**
 
@@ -302,7 +292,7 @@ async buildSemanticMemoryIndex(cwd: string, batchSize: number): Promise<Semantic
 async addRunToSemanticMemory(cwd: string, run: IndexedRun): Promise<void>
 ```
 
-実行履歴をセマンティックメモリに追加
+実行記録をセマンティックメモリに追加
 
 **パラメータ**
 
@@ -323,7 +313,7 @@ async semanticSearch(cwd: string, query: string, options: {
   }): Promise<SemanticSearchResult[]>
 ```
 
-類似した実行をセマンティック検索します。
+セマンティック検索を実行
 
 **パラメータ**
 
@@ -344,7 +334,7 @@ async semanticSearch(cwd: string, query: string, options: {
 findSimilarRunsById(cwd: string, runId: string, limit: number): SemanticSearchResult[]
 ```
 
-指定された実行IDに類似した実行を検索する。
+類似実行をIDで検索
 
 **パラメータ**
 
@@ -367,7 +357,7 @@ getSemanticMemoryStats(cwd: string): {
 }
 ```
 
-セマンティックメモリの統計情報を取得する
+意味メモリ統計取得
 
 **パラメータ**
 
@@ -388,7 +378,7 @@ getSemanticMemoryStats(cwd: string): {
 clearSemanticMemory(cwd: string): void
 ```
 
-セマンティックメモリをクリアする。
+意味メモリクリア
 
 **パラメータ**
 
@@ -411,7 +401,7 @@ interface RunEmbedding {
 }
 ```
 
-実行のベクトル埋め込み
+実行単位の埋め込みデータ
 
 ### SemanticMemoryStorage
 
@@ -425,7 +415,7 @@ interface SemanticMemoryStorage {
 }
 ```
 
-セマンティックメモリストレージ。
+セマンティックメモリのストレージ構造
 
 ### SemanticSearchResult
 
@@ -440,4 +430,4 @@ interface SemanticSearchResult {
 セマンティック検索の結果
 
 ---
-*自動生成: 2026-02-18T14:31:31.022Z*
+*自動生成: 2026-02-18T15:54:41.516Z*

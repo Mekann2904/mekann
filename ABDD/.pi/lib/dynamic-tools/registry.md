@@ -28,30 +28,30 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `ensureDynamicToolsPaths` | 動的ツールのディレクトリパスを確保する |
+| 関数 | `ensureDynamicToolsPaths` | パス設定を検証・反映 |
 | 関数 | `generateToolId` | ツールIDを生成する |
 | 関数 | `generateRunId` | 実行IDを生成する |
-| 関数 | `saveToolDefinition` | ツール定義を保存する |
-| 関数 | `loadToolDefinition` | ツール定義を読み込む |
+| 関数 | `saveToolDefinition` | ツール定義を保存 |
+| 関数 | `loadToolDefinition` | ツール定義をロード |
 | 関数 | `loadToolDefinitionByName` | ツール定義を名前でロード |
 | 関数 | `resolveToolDefinition` | IDまたは名前でツール定義を取得 |
 | 関数 | `loadAllToolDefinitions` | 全ツール定義をロード |
-| 関数 | `deleteToolDefinition` | ツール定義を削除する |
+| 関数 | `deleteToolDefinition` | ツール定義を削除 |
 | 関数 | `registerDynamicTool` | 動的ツールを登録 |
-| 関数 | `listDynamicTools` | 動的ツール一覧を取得 |
+| 関数 | `listDynamicTools` | - |
 | 関数 | `deleteDynamicTool` | ダイナミックツールを削除する |
 | 関数 | `updateToolUsage` | ツールの使用統計を更新します。 |
 | 関数 | `searchDynamicTools` | キーワードでツールを検索 |
 | 関数 | `recommendToolsForTask` | タスクに適したツールを推奨する |
-| 関数 | `getRegistry` | レジストリのシングルトンインスタンスを取得 |
-| 関数 | `resetRegistry` | レジストリをリセット（テスト用） |
-| クラス | `DynamicToolRegistry` | 動的ツールのレジストリクラス |
-| インターフェース | `ToolParameterProperty` | ツールパラメータのプロパティ定義 |
-| インターフェース | `ToolParameterSchema` | ツールパラメータのスキーマ定義 |
+| 関数 | `getRegistry` | - |
+| 関数 | `resetRegistry` | - |
+| クラス | `DynamicToolRegistry` | 動的ツールを管理するレジストリ |
+| インターフェース | `ToolParameterProperty` | コードの許可リード確認 |
+| インターフェース | `ToolParameterSchema` | ツールのプロパティ定義 |
 | インターフェース | `ToolExecutionResult` | ツール実行結果 |
-| インターフェース | `ToolSearchOptions` | ツール検索オプション（拡張機能互換） |
+| インターフェース | `ToolSearchOptions` | ツール検索オプション |
 | インターフェース | `RegisterToolOptions` | ツール登録オプション |
-| インターフェース | `RegisterToolResult` | ツール登録結果（拡張機能互換） |
+| インターフェース | `RegisterToolResult` | ツール登録結果 |
 
 ## 図解
 
@@ -195,7 +195,7 @@ sequenceDiagram
 ensureDynamicToolsPaths(paths: DynamicToolsPaths): void
 ```
 
-動的ツールのディレクトリパスを確保する
+パス設定を検証・反映
 
 **パラメータ**
 
@@ -238,7 +238,7 @@ generateRunId(): string
 saveToolDefinition(tool: DynamicToolDefinition, paths: DynamicToolsPaths): void
 ```
 
-ツール定義を保存する
+ツール定義を保存
 
 **パラメータ**
 
@@ -255,7 +255,7 @@ saveToolDefinition(tool: DynamicToolDefinition, paths: DynamicToolsPaths): void
 loadToolDefinition(toolId: string, paths: DynamicToolsPaths): DynamicToolDefinition | null
 ```
 
-ツール定義を読み込む
+ツール定義をロード
 
 **パラメータ**
 
@@ -322,7 +322,7 @@ loadAllToolDefinitions(paths: DynamicToolsPaths): DynamicToolDefinition[]
 deleteToolDefinition(toolId: string, paths: DynamicToolsPaths): boolean
 ```
 
-ツール定義を削除する
+ツール定義を削除
 
 **パラメータ**
 
@@ -378,8 +378,6 @@ validateToolName(name: string): { valid: boolean; error?: string }
 ```typescript
 listDynamicTools(options?: DynamicToolListOptions, paths?: DynamicToolsPaths): DynamicToolDefinition[]
 ```
-
-動的ツール一覧を取得
 
 **パラメータ**
 
@@ -471,8 +469,6 @@ recommendToolsForTask(task: string, paths?: DynamicToolsPaths): DynamicToolDefin
 getRegistry(): DynamicToolRegistry
 ```
 
-レジストリのシングルトンインスタンスを取得
-
 **戻り値**: `DynamicToolRegistry`
 
 ### resetRegistry
@@ -481,15 +477,13 @@ getRegistry(): DynamicToolRegistry
 resetRegistry(): void
 ```
 
-レジストリをリセット（テスト用）
-
 **戻り値**: `void`
 
 ## クラス
 
 ### DynamicToolRegistry
 
-動的ツールのレジストリクラス
+動的ツールを管理するレジストリ
 
 **プロパティ**
 
@@ -532,7 +526,7 @@ interface ToolParameterProperty {
 }
 ```
 
-ツールパラメータのプロパティ定義
+コードの許可リード確認
 
 ### ToolParameterSchema
 
@@ -543,7 +537,7 @@ interface ToolParameterSchema {
 }
 ```
 
-ツールパラメータのスキーマ定義
+ツールのプロパティ定義
 
 ### ToolExecutionResult
 
@@ -569,7 +563,7 @@ interface ToolSearchOptions {
 }
 ```
 
-ツール検索オプション（拡張機能互換）
+ツール検索オプション
 
 ### RegisterToolOptions
 
@@ -597,7 +591,7 @@ interface RegisterToolResult {
 }
 ```
 
-ツール登録結果（拡張機能互換）
+ツール登録結果
 
 ---
-*自動生成: 2026-02-18T14:31:30.983Z*
+*自動生成: 2026-02-18T15:54:41.474Z*

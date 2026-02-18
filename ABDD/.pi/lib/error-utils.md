@@ -17,11 +17,11 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `toErrorMessage` | 不明なエラーを文字列メッセージに変換します |
-| 関数 | `extractStatusCodeFromMessage` | エラーメッセージからHTTPステータスコードを抽出 |
+| 関数 | `toErrorMessage` | エラーメッセージ取得 |
+| 関数 | `extractStatusCodeFromMessage` | ステータスコード抽出 |
 | 関数 | `classifyPressureError` | エラーを圧力関連のカテゴリに分類する |
-| 関数 | `isCancelledErrorMessage` | エラーがキャンセルを示すか判定する |
-| 関数 | `isTimeoutErrorMessage` | エラーがタイムアウトか判定する |
+| 関数 | `isCancelledErrorMessage` | キャンセル済みか判定 |
+| 関数 | `isTimeoutErrorMessage` | タイムアウト判定 |
 | 型 | `PressureErrorType` | 圧力エラーの分類型 |
 
 ## 図解
@@ -50,7 +50,7 @@ flowchart TD
 toErrorMessage(error: unknown): string
 ```
 
-不明なエラーを文字列メッセージに変換します
+エラーメッセージ取得
 
 **パラメータ**
 
@@ -66,7 +66,7 @@ toErrorMessage(error: unknown): string
 extractStatusCodeFromMessage(error: unknown): number | undefined
 ```
 
-エラーメッセージからHTTPステータスコードを抽出
+ステータスコード抽出
 
 **パラメータ**
 
@@ -98,7 +98,7 @@ classifyPressureError(error: unknown): PressureErrorType
 isCancelledErrorMessage(error: unknown): boolean
 ```
 
-エラーがキャンセルを示すか判定する
+キャンセル済みか判定
 
 **パラメータ**
 
@@ -114,7 +114,7 @@ isCancelledErrorMessage(error: unknown): boolean
 isTimeoutErrorMessage(error: unknown): boolean
 ```
 
-エラーがタイムアウトか判定する
+タイムアウト判定
 
 **パラメータ**
 
@@ -135,4 +135,4 @@ type PressureErrorType = "rate_limit" | "timeout" | "capacity" | "other"
 圧力エラーの分類型
 
 ---
-*自動生成: 2026-02-18T14:31:30.989Z*
+*自動生成: 2026-02-18T15:54:41.481Z*

@@ -27,7 +27,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerCrossInstanceRuntimeExtension` | クロスインスタンスランタイム拡張を登録する |
+| 関数 | `registerCrossInstanceRuntimeExtension` | クロスインスタンスランタイム拡張を登録 |
 
 ## ユーザーフロー
 
@@ -47,22 +47,22 @@ sequenceDiagram
   participant Unresolved as "Unresolved"
 
   User->>System: Get current cross-instance coordinator status and paralle...
-  System->>Internal: コーディネーターの詳細ステータスを取得する
+  System->>Internal: コーディネーター詳細を取得
   Internal->>Internal: getActiveInstanceCount
   Internal->>Internal: getMyParallelLimit
   Internal->>Internal: getActiveInstances
-  System->>Runtime: ランタイムのスナップショットを取得する
+  System->>Runtime: スナップショットを取得
   Runtime->>Internal: getSharedRuntimeState
   Runtime->>Internal: cleanupExpiredReservations
   Runtime->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: runtime.queue.pending.slice(0, 16).map (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: runtime.queue.pending.slice (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Internal: モデル使用状況の概要を取得
+  System->>Internal: 使用状況取得
   Internal->>Unresolved: modelMap.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: modelMap.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: modelMap.values (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
-  System->>Internal: 適応制御状態の概要を作成する。
+  System->>Internal: 適応サマリーを整形
   Internal->>Internal: ensureState
   Internal->>Unresolved: currentState.globalMultiplier.toFixed (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.round (node_modules/typescript/lib/lib.es5.d.ts)
@@ -91,25 +91,25 @@ sequenceDiagram
 
   User->>System: Get rate limits for a specific provider/model combination.
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Internal: 環境変数からティアを検出します。
+  System->>Internal: ティア特定
   Internal->>Unresolved: provider.toUpperCase (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Runtime: 指定したプロバイダ/モデル/ティアの制限を解決する
   Runtime->>Internal: getLimitsConfig
   Runtime->>Unresolved: provider.toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: Object.entries (node_modules/typescript/lib/lib.es2017.object.d.ts)
   Runtime->>Internal: matchesPattern
-  System->>Runtime: 指定プロバイダー/モデルの学習済み制限を取得
+  System->>Runtime: 制限取得
   Runtime->>Internal: ensureState
   Runtime->>Internal: buildKey
-  System->>Internal: コーディネーターの詳細ステータスを取得する
+  System->>Internal: コーディネーター詳細を取得
   Internal->>Internal: getActiveInstanceCount
   Internal->>Internal: getMyParallelLimit
   Internal->>Internal: getActiveInstances
-  System->>Runtime: プロバイダーとモデルの有効な同時実行制限を取得
+  System->>Runtime: 制限値取得
   Runtime->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Internal: clampConcurrency
   Runtime->>Internal: saveState
-  System->>Runtime: モデルごとの実行並列数の上限を取得
+  System->>Runtime: 並列上限取得
   Runtime->>Internal: getActiveInstancesForModel
   Runtime->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: lines.join (node_modules/typescript/lib/lib.es5.d.ts)
@@ -147,7 +147,7 @@ flowchart LR
 registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 ```
 
-クロスインスタンスランタイム拡張を登録する
+クロスインスタンスランタイム拡張を登録
 
 **パラメータ**
 
@@ -158,4 +158,4 @@ registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T14:31:30.690Z*
+*自動生成: 2026-02-18T15:54:41.149Z*

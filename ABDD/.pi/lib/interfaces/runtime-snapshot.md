@@ -17,8 +17,8 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `IRuntimeSnapshot` | ランタイムスナップショットインターフェース |
-| 型 | `RuntimeSnapshotProvider` | ランタイムスナップショットの提供関数 |
+| インターフェース | `IRuntimeSnapshot` | 実行時の状態スナップショット |
+| 型 | `RuntimeSnapshotProvider` | 実行時スナップショットを提供 |
 
 ## 図解
 
@@ -48,7 +48,7 @@ interface IRuntimeSnapshot {
 }
 ```
 
-ランタイムスナップショットインターフェース
+実行時の状態スナップショット
 
 ## 型定義
 
@@ -58,7 +58,7 @@ interface IRuntimeSnapshot {
 type RuntimeSnapshotProvider = () => IRuntimeSnapshot
 ```
 
-ランタイムスナップショットの提供関数
+実行時スナップショットを提供
 
 ---
-*自動生成: 2026-02-18T14:31:30.994Z*
+*自動生成: 2026-02-18T15:54:41.486Z*

@@ -17,13 +17,13 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `ProviderCapabilities` | エンベディングプロバイダーの能力定義 |
+| インターフェース | `ProviderCapabilities` | - |
 | インターフェース | `EmbeddingProvider` | エンベディングプロバイダーインターフェース |
-| インターフェース | `ProviderConfig` | プロバイダー設定を定義します。 |
-| インターフェース | `EmbeddingModuleConfig` | エンベディングモジュール設定 |
-| インターフェース | `EmbeddingResult` | エンベディング生成結果 |
-| インターフェース | `ProviderStatus` | プロバイダーの状態 |
-| インターフェース | `VectorSearchResult` | ベクトル検索結果の型定義 |
+| インターフェース | `ProviderConfig` | プロバイダー設定を定義 |
+| インターフェース | `EmbeddingModuleConfig` | - |
+| インターフェース | `EmbeddingResult` | - |
+| インターフェース | `ProviderStatus` | - |
+| インターフェース | `VectorSearchResult` | - |
 
 ## 図解
 
@@ -95,8 +95,6 @@ interface ProviderCapabilities {
 }
 ```
 
-エンベディングプロバイダーの能力定義
-
 ### EmbeddingProvider
 
 ```typescript
@@ -124,7 +122,7 @@ interface ProviderConfig {
 }
 ```
 
-プロバイダー設定を定義します。
+プロバイダー設定を定義
 
 ### EmbeddingModuleConfig
 
@@ -137,8 +135,6 @@ interface EmbeddingModuleConfig {
 }
 ```
 
-エンベディングモジュール設定
-
 ### EmbeddingResult
 
 ```typescript
@@ -150,8 +146,6 @@ interface EmbeddingResult {
   tokens?: number;
 }
 ```
-
-エンベディング生成結果
 
 ### ProviderStatus
 
@@ -166,8 +160,6 @@ interface ProviderStatus {
 }
 ```
 
-プロバイダーの状態
-
 ### VectorSearchResult
 
 ```typescript
@@ -177,7 +169,5 @@ interface VectorSearchResult {
 }
 ```
 
-ベクトル検索結果の型定義
-
 ---
-*自動生成: 2026-02-18T14:31:30.988Z*
+*自動生成: 2026-02-18T15:54:41.479Z*

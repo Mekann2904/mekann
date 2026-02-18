@@ -1,31 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/context-engineering.ts
- * role: コンテキストウィンドウ管理と最適化のための型定義モジュール
- * why: LLM推論失敗の論文推奨事項に基づき、コンテキストウィンドウの効率的な管理を実現するため
- * related: .pi/lib/state-manager.ts, .pi/lib/prompt-optimizer.ts, .pi/lib/chunk-strategy.ts
+ * role: コンテキストウィンドウの最適化とトークン管理を行うモジュール
+ * why: LLMの推論失敗を防ぐため、論文に基づき効率的なコンテキスト管理と要約戦略を実装する
+ * related: .pi/lib/context-manager.ts, .pi/types/context.ts, .pi/config/model-settings.ts
  * public_api: ContextPriority, ContextItem, ContextCategory, ContextWindowConfig, OptimizedContext, TrimmedItem, SemanticBoundary
- * invariants:
- *   - ContextItem.tokenEstimateは常に非負整数
- *   - ContextWindowConfig.maxTokensはreservedTokensより大きい値
- *   - priorityWeightsには全ContextPriorityの重みが定義される
- * side_effects: なし（純粋な型定義のみ）
- * failure_modes: なし（実行時コードを含まない）
+ * invariants: ContextItemのidは一意である、priorityWeightsの合計が正である、tokenEstimateは0以上である
+ * side_effects: 外部システムからのコンテキスト取得を伴わない、データの変換とフィルタリングのみを行う
+ * failure_modes: トークン見積もりの誤差によるbudget超過、要約機能による情報欠落のリスク
  * @abdd.explain
- * overview: LLMのコンテキストウィンドウを効率的に管理するための型システムを提供する
+ * overview: LLMのコンテキストウィンドウ管理を最適化し、重要度とカテゴリに基づいたトークン配分を行う定義と戦略を提供する
  * what_it_does:
- *   - コンテキストアイテムの優先度レベル（critical/medium/low等）を定義
- *   - 11種類のコンテキストカテゴリ（task-instruction/file-content等）を定義
- *   - コンテキストウィンドウ設定の構造（maxTokens/reservedTokens/categoryLimits）を定義
- *   - 最適化結果の構造（utilizationRatio/trimmedItems/warnings）を定義
- *   - 意味的境界検出のためのSemanticBoundary型を定義
+ *   - コンテキストアイテムに優先度とカテゴリを定義する
+ *   - コンテキストウィンドウの設定（上限、重み、要約有無）を管理する
+ *   - 最適化結果の構造（トリミング情報、利用率など）を定義する
+ *   - 意味的チャンキングの境界構造を定義する
  * why_it_exists:
- *   - 「Large Language Model Reasoning Failures」論文のP1推奨事項を実装するため
- *   - コンテキストウィンドウのトークン予算を明示的に管理し、推論失敗を防ぐため
- *   - チャンク戦略と状態サマリー最適化のための基盤型を提供するため
+ *   - コンテキストウィンドウの制限を超過した際の情報損失を最小化する
+ *   - 重要な情報を維持しつつ、トークン使用効率を最大化する
  * scope:
- *   in: なし（型定義のみ）
- *   out: 7つのexport型（ContextPriority, ContextItem, ContextCategory, ContextWindowConfig, OptimizedContext, TrimmedItem, SemanticBoundary）
+ *   in: コンテキスト設定値、トークン見積もりデータ、優先度ルール
+ *   out: 最適化されたコンテキスト構造、トリミングレポート、境界情報
  */
 
 /**
@@ -38,22 +33,24 @@
 // Types
 // ============================================================================
 
- /**
-  * コンテキストの優先度レベル
-  */
+/**
+ * コンテキストの優先度レベル
+ * @summary 優先度を定義
+ */
 export type ContextPriority = "critical" | "high" | "medium" | "low" | "optional";
 
- /**
-  * コンテキスト管理用のメタデータ付きアイテム
-  * @param id 一意の識別子
-  * @param content コンテンツ文字列
-  * @param priority 優先度
-  * @param tokenEstimate トークン推定値
-  * @param category カテゴリ
-  * @param timestamp タイムスタンプ
-  * @param source ソース（任意）
-  * @param metadata メタデータ（任意）
-  */
+/**
+ * コンテキストアイテム
+ * @summary アイテムを定義
+ * @param id ID
+ * @param content コンテンツ
+ * @param priority 優先度
+ * @param tokenEstimate トークン見積もり
+ * @param category カテゴリ
+ * @param timestamp タイムスタンプ
+ * @param source 送信元
+ * @param metadata メタデータ
+ */
 export interface ContextItem {
   id: string;
   content: string;
@@ -65,10 +62,10 @@ export interface ContextItem {
   metadata?: Record<string, unknown>;
 }
 
- /**
-  * コンテンツのカテゴリ
-  * @typedef {"task-instruction" | "system-prompt" | "execution-rules" | "file-content" | "conversation" | "agent-output" | "verification-result" | "working-memory" | "skill-content" | "reference-doc"} ContextCategory
-  */
+/**
+ * コンテキストのカテゴリ種別
+ * @summary カテゴリを定義
+ */
 export type ContextCategory =
   | "task-instruction"    // The main task/request
   | "system-prompt"       // System-level instructions
@@ -82,15 +79,15 @@ export type ContextCategory =
   | "reference-doc"       // Reference documentation
   | "error-context";      // Error information
 
- /**
-  * コンテキストウィンドウ管理の設定
-  * @param maxTokens 最大トークン数
-  * @param reservedTokens レスポンス用の予約トークン数
-  * @param priorityWeights 各優先度の重み付け
-  * @param categoryLimits カテゴリごとの上限
-  * @param preserveOrder 優先度内の順序を維持するか
-  * @param enableSummarization 予算オーバー時に要約するか
-  */
+/**
+ * コンテキストウィンドウの設定
+ * @summary 設定を定義
+ * @param maxTokens 最大トークン数
+ * @param reservedTokens 予約トークン数
+ * @param priorityWeights 優先度の重み
+ * @param categoryLimits カテゴリ別制限
+ * @param preserveOrder 順序保持フラグ
+ */
 export interface ContextWindowConfig {
   maxTokens: number;
   reservedTokens: number;        // Tokens reserved for response
@@ -100,16 +97,15 @@ export interface ContextWindowConfig {
   enableSummarization: boolean;  // Whether to summarize when over budget
 }
 
- /**
-  * コンテキストウィンドウ最適化の結果
-  * @param items 最適化されたコンテキストアイテムの配列
-  * @param totalTokens トークンの合計数
-  * @param budget 利用可能なトークンの予算
-  * @param utilizationRatio 予算の利用率
-  * @param trimmedItems 除外されたアイテムの情報
-  * @param summaryGenerated 要約が生成されたかどうか
-  * @param warnings 警告メッセージの配列
-  */
+/**
+ * 最適化されたコンテキスト情報
+ * @summary コンテキストを最適化
+ * @param items コンテキストアイテム
+ * @param totalTokens 総トークン数
+ * @param budget 予算
+ * @param utilizationRatio 利用率
+ * @param trimmedItems トリムされたアイテム
+ */
 export interface OptimizedContext {
   items: ContextItem[];
   totalTokens: number;
@@ -120,13 +116,14 @@ export interface OptimizedContext {
   warnings: string[];
 }
 
- /**
-  * トリミングされたアイテムの情報
-  * @param item トリミングされたアイテム
-  * @param reason トリミングの理由
-  * @param originalTokens 元のトークン数
-  * @param preservedTokens 保持されたトークン数
-  */
+/**
+ * トリムされたアイテムの情報を表すインターフェース
+ * @summary トリムアイテム定義
+ * @param item トリムされたコンテキストアイテム
+ * @param reason トリム理由
+ * @param originalTokens 元のトークン数
+ * @param preservedTokens 保持されたトークン数
+ */
 export interface TrimmedItem {
   item: ContextItem;
   reason: "budget-exceeded" | "category-limit" | "low-priority" | "duplicate";
@@ -134,13 +131,14 @@ export interface TrimmedItem {
   preservedTokens: number;
 }
 
- /**
-  * チャンキングのための意味的境界
-  * @param position 境界の位置
-  * @param type 境界の種類
-  * @param confidence 信頼度
-  * @param metadata 任意のメタデータ
-  */
+/**
+ * 意味的な境界情報を表すインターフェース
+ * @summary 意味的境界定義
+ * @param position 境界の位置
+ * @param type 境界タイプ
+ * @param confidence 信頼度
+ * @param metadata メタデータ
+ */
 export interface SemanticBoundary {
   position: number;
   type: BoundaryType;
@@ -148,9 +146,11 @@ export interface SemanticBoundary {
   metadata?: Record<string, unknown>;
 }
 
- /**
-  * 意味的な境界の種類を表す型
-  */
+/**
+ * テキストの境界種別を定義する型
+ * @summary 境界種別定義
+ * @returns 境界種別
+ */
 export type BoundaryType =
   | "paragraph"      // Paragraph break
   | "section"        // Section heading
@@ -162,15 +162,15 @@ export type BoundaryType =
   | "agent-output"   // Agent output boundary
   | "semantic-gap";  // Detected semantic gap
 
- /**
-  * テキスト分割結果のチャンク
-  * @param id チャンクID
-  * @param content チャンクの内容
-  * @param tokenEstimate トークン概算数
-  * @param boundaries 意味的境界のリスト
-  * @param priority 優先度
-  * @param metadata メタデータ（開始位置、終了位置、コードブロックの有無、マークダウン見出しの有無、行数）
-  */
+/**
+ * 分割されたテキストチャンクを表すインターフェース
+ * @summary テキストチャンク定義
+ * @param id チャンクID
+ * @param content チャンクの内容
+ * @param tokenEstimate トークン推定数
+ * @param boundaries 境界情報の配列
+ * @param priority 優先度
+ */
 export interface TextChunk {
   id: string;
   content: string;
@@ -186,16 +186,15 @@ export interface TextChunk {
   };
 }
 
- /**
-  * チャンキングの設定
-  * @param maxChunkTokens チャンクの最大トークン数
-  * @param minChunkTokens チャンクの最小トークン数
-  * @param overlapTokens オーバーラップするトークン数
-  * @param respectBoundaries 境界を尊重するかどうか
-  * @param boundaryTypes 境界の種類
-  * @param preserveCodeBlocks コードブロックを保持するかどうか
-  * @param preserveMarkdownSections マークダウンセクションを保持するかどうか
-  */
+/**
+ * テキスト分割設定を定義するインターフェース
+ * @summary 分割設定を定義
+ * @param maxChunkTokens チャンクの最大トークン数
+ * @param minChunkTokens チャンクの最小トークン数
+ * @param overlapTokens チャンク間のオーバーラップトークン数
+ * @param respectBoundaries 境界を尊重するか
+ * @param boundaryTypes 境界タイプの配列
+ */
 export interface ChunkingConfig {
   maxChunkTokens: number;
   minChunkTokens: number;
@@ -206,18 +205,10 @@ export interface ChunkingConfig {
   preserveMarkdownSections: boolean;
 }
 
- /**
-  * ワーキングメモリの状態概要
-  * @param id 一意識別子
-  * @param timestamp タイムスタンプ
-  * @param carriedForward 引き継ぐ重要事実
-  * @param pendingTasks 未完了タスク
-  * @param decisions 行われた決定事項
-  * @param blockers 現在のブロッカー
-  * @param assumptions 現在有効な仮定
-  * @param evidence 収集されたエビデンス
-  * @param confidence 信頼度
-  */
+/**
+ * ワーキングメモリの状態概要
+ * @summary 状態概要
+ */
 export interface StateSummary {
   id: string;
   timestamp: number;
@@ -230,14 +221,10 @@ export interface StateSummary {
   confidence: number;
 }
 
- /**
-  * 収集されたエビデンスの要約
-  * @param claim 主張の内容
-  * @param evidence エビデンスの内容
-  * @param source エビデンスのソース
-  * @param confidence 信頼度
-  * @param contradicted 矛盾しているかどうか
-  */
+/**
+ * エビデンス概要
+ * @summary エビデンス定義
+ */
 export interface EvidenceSummary {
   claim: string;
   evidence: string;
@@ -246,16 +233,10 @@ export interface EvidenceSummary {
   contradicted: boolean;
 }
 
- /**
-  * 状態要約抽出の設定
-  * @param maxCarriedForward 繰り越される項目の最大数
-  * @param maxPendingTasks 保留タスクの最大数
-  * @param maxDecisions 決定事項の最大数
-  * @param maxBlockers ブロッカーの最大数
-  * @param maxAssumptions 前提の最大数
-  * @param maxEvidence エビデンスの最大数
-  * @param minConfidence 最小信頼度
-  */
+/**
+ * 要約抽出設定
+ * @summary 設定定義
+ */
 export interface SummaryExtractionConfig {
   maxCarriedForward: number;
   maxPendingTasks: number;
@@ -329,11 +310,12 @@ const CHARS_PER_TOKEN = 4;
 // Token Estimation
 // ============================================================================
 
- /**
-  * テキストのトークン数を見積もる
-  * @param text 対象のテキスト
-  * @returns 推定トークン数
-  */
+/**
+ * テキストトークン数推定
+ * @summary テキスト推定
+ * @param text 対象テキスト
+ * @returns 推定トークン数
+ */
 export function estimateTokens(text: string): number {
   if (!text) return 0;
   
@@ -350,11 +332,12 @@ export function estimateTokens(text: string): number {
   return Math.ceil(words + cjkChars * 0.5 + codeTokens * 0.3);
 }
 
- /**
-  * コンテキストアイテムのトークン数を推定
-  * @param item コンテキストアイテム
-  * @returns 推定トークン数
-  */
+/**
+ * コンテキストトークン数推定
+ * @summary トークン数推定
+ * @param item コンテキストアイテム
+ * @returns 推定トークン数
+ */
 export function estimateContextItemTokens(item: ContextItem): number {
   return item.tokenEstimate || estimateTokens(item.content);
 }
@@ -363,12 +346,13 @@ export function estimateContextItemTokens(item: ContextItem): number {
 // Context Window Management
 // ============================================================================
 
- /**
-  * コンテキストウィンドウを優先度に基づき最適化
-  * @param items コンテキストアイテムの配列
-  * @param config 最大トークン数などの設定
-  * @returns トークン予算内に収まった最適化されたコンテキスト
-  */
+/**
+ * コンテキストウィンドウを最適化する
+ * @summary ウィンドウを最適化
+ * @param {ContextItem[]} items - コンテキストアイテム配列
+ * @param {ContextWindowConfig} config - ウィンドウ設定
+ * @returns {OptimizedContext} 最適化されたコンテキスト情報
+ */
 export function optimizeContextWindow(
   items: ContextItem[],
   config: ContextWindowConfig = DEFAULT_CONTEXT_WINDOW_CONFIG
@@ -536,11 +520,12 @@ function summarizeItem(item: ContextItem): string {
 // Semantic Boundary Detection
 // ============================================================================
 
- /**
-  * テキストから意味的な境界を検出する
-  * @param text - 分析対象のテキスト
-  * @returns 検出された意味的境界の配列
-  */
+/**
+ * テキストから意味的な境界を検出する
+ * @summary 境界を検出
+ * @param {string} text - 分析対象のテキスト
+ * @returns {SemanticBoundary[]} 検出された意味的境界の配列
+ */
 export function detectSemanticBoundaries(text: string): SemanticBoundary[] {
   const boundaries: SemanticBoundary[] = [];
   const lines = text.split("\n");
@@ -691,12 +676,13 @@ function detectSemanticGaps(text: string, existingBoundaries: SemanticBoundary[]
 // Chunking Strategy
 // ============================================================================
 
- /**
-  * テキストを意味的境界に基づいて分割する
-  * @param text - 入力テキスト
-  * @param config - 分割設定
-  * @returns 分割されたテキストチャンクの配列
-  */
+/**
+ * テキストを指定された設定で分割する
+ * @summary テキストを分割
+ * @param {string} text - 分割対象のテキスト
+ * @param {ChunkingConfig} config - 分割設定
+ * @returns {TextChunk[]} 分割されたテキストチャンク配列
+ */
 export function chunkText(
   text: string,
   config: ChunkingConfig = DEFAULT_CHUNKING_CONFIG
@@ -959,13 +945,14 @@ function addOverlapToChunks(chunks: TextChunk[], overlapTokens: number): void {
 // State Summary Extraction
 // ============================================================================
 
- /**
-  * 出力テキストから状態サマリーを抽出する
-  * @param text 元のテキスト
-  * @param previousSummary 前回のサマリー
-  * @param config 抽出設定
-  * @returns 抽出された状態サマリー
-  */
+/**
+ * 出力テキストから状態サマリーを抽出する
+ * @summary サマリーを抽出
+ * @param {string} text - 処理対象のテキスト
+ * @param {StateSummary} [previousSummary] - 前回のサマリー（差分更新用）
+ * @param {SummaryExtractionConfig} config - 抽出設定
+ * @returns {StateSummary} 抽出された状態サマリー
+ */
 export function extractStateSummary(
   text: string,
   previousSummary?: StateSummary,
@@ -1093,11 +1080,12 @@ export function extractStateSummary(
   };
 }
 
- /**
-  * コンテキスト用にステートサマリーを整形する
-  * @param summary - ステートサマリーオブジェクト
-  * @returns 整形された文字列
-  */
+/**
+ * 状態サマリーをフォーマット
+ * @summary サマリーを整形
+ * @param {StateSummary} summary - 状態サマリーオブジェクト
+ * @returns {string} フォーマットされた文字列
+ */
 export function formatStateSummary(summary: StateSummary): string {
   const lines: string[] = [];
   
@@ -1175,12 +1163,13 @@ export function createContextItem(
   };
 }
 
- /**
-  * 複数のコンテキストアイテムを統合する
-  * @param items 統合対象のコンテキストアイテム配列
-  * @param strategy 統合戦略（"concat" | "summarize" | "priority-first"）
-  * @returns 統合されたコンテキストアイテム
-  */
+/**
+ * 複数のコンテキストアイテムを結合する
+ * @summary アイテムを結合
+ * @param items 結合対象のコンテキストアイテム配列
+ * @param strategy 結合戦略（"concat" | "summarize" | "priority-first"）
+ * @returns 結合された単一のコンテキストアイテム
+ */
 export function mergeContextItems(
   items: ContextItem[],
   strategy: "concat" | "summarize" | "priority-first" = "concat"
@@ -1236,12 +1225,13 @@ export function mergeContextItems(
   });
 }
 
- /**
-  * コンテキストウィンドウの利用率を計算する
-  * @param items コンテキストアイテムの配列
-  * @param maxTokens 最大トークン数
-  * @returns 使用量、利用率、カテゴリ別・優先度別の内訳
-  */
+/**
+ * コンテキストの利用率を計算する
+ * @summary 利用率を計算
+ * @param items コンテキストアイテム配列
+ * @param maxTokens トークンの最大許容量
+ * @returns 使用量と最大値、およびカテゴリ別・優先度別の内訳
+ */
 export function calculateUtilization(
   items: ContextItem[],
   maxTokens: number

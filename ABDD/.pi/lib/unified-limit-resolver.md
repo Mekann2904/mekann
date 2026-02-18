@@ -27,17 +27,17 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `setRuntimeSnapshotProvider` | ランタイムスナップショットプロバイダを設定する。 |
-| 関数 | `isSnapshotProviderInitialized` | ランタイムスナップショットプロバイダーが初期化済みか確認 |
-| 関数 | `getInitializationState` | 初期化状態を取得する（診断用）。 |
+| 関数 | `setRuntimeSnapshotProvider` | ランタイムスナップショットプロバイダを設定 |
+| 関数 | `isSnapshotProviderInitialized` | スナップショットプロバイダ初期化判定 |
+| 関数 | `getInitializationState` | 初期化状態を取得 |
 | 関数 | `getUnifiedEnvConfig` | 統合環境設定を取得 |
-| 関数 | `resolveUnifiedLimits` | 統合制限を解決する |
-| 関数 | `formatUnifiedLimitsResult` | 制限解決結果を文字列としてフォーマットする |
-| 関数 | `getAllLimitsSummary` | 全プロバイダーの制限サマリーを取得 |
-| インターフェース | `UnifiedLimitInput` | 制限解決の入力パラメータ |
-| インターフェース | `LimitBreakdown` | 各レイヤーの制限内訳 |
-| インターフェース | `UnifiedLimitResult` | 制限解決の結果 |
-| 型 | `UnifiedEnvConfig` | 下位互換用エイリアス。 |
+| 関数 | `resolveUnifiedLimits` | 統合制限を解決 |
+| 関数 | `formatUnifiedLimitsResult` | 制限結果をフォーマット |
+| 関数 | `getAllLimitsSummary` | 制限サマリを生成 |
+| インターフェース | `UnifiedLimitInput` | 統合リミット入力インターフェース |
+| インターフェース | `LimitBreakdown` | リミット内訳のインターフェース |
+| インターフェース | `UnifiedLimitResult` | 統一リミット結果のインターフェース |
+| 型 | `UnifiedEnvConfig` | 統合環境設定の型 |
 
 ## 図解
 
@@ -130,7 +130,7 @@ sequenceDiagram
 setRuntimeSnapshotProvider(fn: RuntimeSnapshotProvider): void
 ```
 
-ランタイムスナップショットプロバイダを設定する。
+ランタイムスナップショットプロバイダを設定
 
 **パラメータ**
 
@@ -146,7 +146,7 @@ setRuntimeSnapshotProvider(fn: RuntimeSnapshotProvider): void
 isSnapshotProviderInitialized(): boolean
 ```
 
-ランタイムスナップショットプロバイダーが初期化済みか確認
+スナップショットプロバイダ初期化判定
 
 **戻り値**: `boolean`
 
@@ -156,7 +156,7 @@ isSnapshotProviderInitialized(): boolean
 getInitializationState(): typeof _initializationState
 ```
 
-初期化状態を取得する（診断用）。
+初期化状態を取得
 
 **戻り値**: `typeof _initializationState`
 
@@ -190,7 +190,7 @@ getUnifiedEnvConfig(): UnifiedEnvConfig
 resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResult
 ```
 
-統合制限を解決する
+統合制限を解決
 
 **パラメータ**
 
@@ -206,7 +206,7 @@ resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResult
 formatUnifiedLimitsResult(result: UnifiedLimitResult): string
 ```
 
-制限解決結果を文字列としてフォーマットする
+制限結果をフォーマット
 
 **パラメータ**
 
@@ -222,7 +222,7 @@ formatUnifiedLimitsResult(result: UnifiedLimitResult): string
 getAllLimitsSummary(): string
 ```
 
-全プロバイダーの制限サマリーを取得
+制限サマリを生成
 
 **戻り値**: `string`
 
@@ -240,7 +240,7 @@ interface UnifiedLimitInput {
 }
 ```
 
-制限解決の入力パラメータ
+統合リミット入力インターフェース
 
 ### LimitBreakdown
 
@@ -272,7 +272,7 @@ interface LimitBreakdown {
 }
 ```
 
-各レイヤーの制限内訳
+リミット内訳のインターフェース
 
 ### UnifiedLimitResult
 
@@ -293,7 +293,7 @@ interface UnifiedLimitResult {
 }
 ```
 
-制限解決の結果
+統一リミット結果のインターフェース
 
 ## 型定義
 
@@ -303,7 +303,7 @@ interface UnifiedLimitResult {
 type UnifiedEnvConfig = RuntimeConfig
 ```
 
-下位互換用エイリアス。
+統合環境設定の型
 
 ---
-*自動生成: 2026-02-18T14:31:31.047Z*
+*自動生成: 2026-02-18T15:54:41.542Z*

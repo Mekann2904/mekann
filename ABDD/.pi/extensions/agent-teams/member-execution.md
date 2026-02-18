@@ -28,15 +28,15 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `normalizeTeamMemberOutput` | チームメンバーの出力を正規化します。 |
+| 関数 | `normalizeTeamMemberOutput` | チームメンバー出力を正規化 |
 | 関数 | `mergeSkillArrays` | スキル配列を継承ルールに従ってマージする。 |
 | 関数 | `resolveEffectiveTeamMemberSkills` | チームメンバーの有効なスキルを解決する。 |
 | 関数 | `formatTeamMemberSkillsSection` | スキルリストをプロンプト用に整形 |
-| 関数 | `loadSkillContent` | スキルの内容をSKILL.mdから読み込む |
-| 関数 | `buildSkillsSectionWithContent` | スキルセクションの文字列を構築する |
-| 関数 | `buildTeamMemberPrompt` | チームメンバー用のプロンプトを構築する |
-| 関数 | `runMember` | チームメンバーのタスクを実行する |
-| インターフェース | `TeamNormalizedOutput` | チームメンバー実行結果の正規化出力 |
+| 関数 | `loadSkillContent` | スキル名からファイル内容を読込 |
+| 関数 | `buildSkillsSectionWithContent` | スキル定義からコンテンツを生成 |
+| 関数 | `buildTeamMemberPrompt` | チームメンバー用プロンプトを構築 |
+| 関数 | `runMember` | メンバータスクを実行し結果を返却 |
+| インターフェース | `TeamNormalizedOutput` | チーム実行結果の正規化出力 |
 
 ## 図解
 
@@ -142,7 +142,7 @@ Note: Kept locally because the field format is team-member-specific.
 normalizeTeamMemberOutput(output: string): TeamNormalizedOutput
 ```
 
-チームメンバーの出力を正規化します。
+チームメンバー出力を正規化
 
 **パラメータ**
 
@@ -208,7 +208,7 @@ formatTeamMemberSkillsSection(skills: string[] | undefined): string | null
 loadSkillContent(skillName: string): string | null
 ```
 
-スキルの内容をSKILL.mdから読み込む
+スキル名からファイル内容を読込
 
 **パラメータ**
 
@@ -224,7 +224,7 @@ loadSkillContent(skillName: string): string | null
 buildSkillsSectionWithContent(skills: string[] | undefined): string | null
 ```
 
-スキルセクションの文字列を構築する
+スキル定義からコンテンツを生成
 
 **パラメータ**
 
@@ -247,7 +247,7 @@ buildTeamMemberPrompt(input: {
 }): string
 ```
 
-チームメンバー用のプロンプトを構築する
+チームメンバー用プロンプトを構築
 
 **パラメータ**
 
@@ -315,7 +315,7 @@ async runMember(input: {
 }): Promise<TeamMemberResult>
 ```
 
-チームメンバーのタスクを実行する
+メンバータスクを実行し結果を返却
 
 **パラメータ**
 
@@ -365,7 +365,7 @@ interface TeamNormalizedOutput {
 }
 ```
 
-チームメンバー実行結果の正規化出力
+チーム実行結果の正規化出力
 
 ---
-*自動生成: 2026-02-18T14:31:30.476Z*
+*自動生成: 2026-02-18T15:54:40.930Z*

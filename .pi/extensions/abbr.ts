@@ -1,35 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/abbr.ts
- * role: 略語展開拡張モジュール
- * why: Fish shellライクな略語機能により、短いエイリアス入力を完全なコマンドに自動展開するため
- * related: @mariozechner/pi-coding-agent, @mariozechner/pi-tui, ~/.pi/abbr.json
- * public_api: AbbrParams, Abbreviationインターフェース
- * invariants:
- *   - abbreviations Mapは常にCONFIG_FILEと同期する
- *   - CONFIG_DIRは初回アクセス時に作成済みである
- *   - piInstance設定後のみpersistStateが呼ばれる
- * side_effects:
- *   - ~/.pi/abbr.jsonへの読み書き
- *   - ~/.piディレクトリの作成
- *   - pi-coding-agentへの状態永続化エントリ追加
- * failure_modes:
- *   - CONFIG_FILE読み込み時のJSONパースエラー
- *   - CONFIG_FILE書き込み時のディスクI/Oエラー
+ * role: Fish shell風略語展開機能の拡張
+ * why: ユーザーが短いエイリアスを入力するだけで、コマンドや定型文を素早く展開・入力するため
+ * related: @mariozechner/pi-ai, @mariozechner/pi-coding-agent, @mariozechner/pi-tui
+ * public_api: export interface Abbreviation, /abbr <action> コマンド群
+ * invariants: 略語名は一意である必要がある、設定ファイルは ~/.pi/abbr.json に保存される
+ * side_effects: ファイルシステムへの設定ファイルの書き込み、ExtensionContextへの状態保存
+ * failure_modes: 設定ファイルの破損、読み書き権限の欠如、JSONパースエラー
  * @abdd.explain
- * overview: Fish shell風の略語展開システムを提供する拡張機能
+ * overview: 入力フィールドでの略語展開と、略語管理のためのCLIコマンドを提供する
  * what_it_does:
- *   - 略語の追加/一覧/削除/名前変更/存在確認を提供
- *   - 入力時の略語を完全なコマンドに自動展開
- *   - 略語設定を~/.pi/abbr.jsonに永続化
- *   - 正規表現パターンと位置指定による柔軟なマッチング
+ *   - 略語と展開後の文字列のペアを追加・一覧・削除・名前変更・検索する
+ *   - 入力の先頭単語が登録された略語と一致する場合、空白入力時に展開文字列へ置換する
+ *   - 略語データを ~/.pi/abbr.json およびエージェントの状態として永続化する
  * why_it_exists:
- *   - 頻繁に入力する長いコマンドの効率化
- *   - ユーザー固有の略語カスタマイズ
- *   - セッションを跨いだ略語設定の保持
+ *   - 頻繁に使用する長いコマンドや定型入力を省略し、操作効率を向上させるため
  * scope:
- *   in: ユーザー入力テキスト、/abbrコマンドとパラメータ
- *   out: 展開後テキスト、略語操作結果、永続化された設定ファイル
+ *   in: ExtensionAPI, ExtensionContext, ユーザー入力文字列
+ *   out: 展開後のコマンド文字列、状態管理用エントリ
  */
 
 /**
@@ -244,7 +233,7 @@ class AbbrListComponent {
 	}
 
 	/**
-	 * @summary 入力データ処理
+	 * @summary 入力処理
 	 * @param data - 入力データ
 	 * @returns {void}
 	 */
@@ -255,7 +244,7 @@ class AbbrListComponent {
 	}
 
 	/**
-	 * @summary 指定幅でリスト描画
+	 * @summary リストを描画
 	 * @param width - 描画幅
 	 * @returns 描画文字列配列
 	 */

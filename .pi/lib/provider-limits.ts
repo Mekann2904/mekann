@@ -1,27 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/provider-limits.ts
- * role: プロバイダー/モデル別のレート制限と同時実行数制限の定義および管理
- * why: APIレート制限違反を防ぎ、各プロバイダーの制約に基づいた適切なリクエスト制御を実現するため
- * related: api-client.ts, rate-limiter.ts, config-manager.ts, model-resolver.ts
- * public_api: ModelLimits, ModelTierLimits, ProviderLimitsConfig, ResolvedModelLimits
- * invariants: RPMとconcurrencyは常に正の整数、tpmは未定義または正の整数
- * side_effects: ファイルシステムへの読み書き（~/.pi/runtime/provider-limits.json）
- * failure_modes: 設定ファイルの読み込み失敗時はビルトイン制限値にフォールバック
+ * role: 各プロバイダーおよびモデルのAPIレート制限と同時実行数を定義・管理する静的設定モジュール
+ * why: 公式ドキュメントに基づいた制限値を集中管理し、API実行時のリミット超過エラーを防止するため
+ * related: .pi/lib/provider.ts, .pi/lib/api-client.ts
+ * public_api: ModelLimits, ModelTierLimits, ProviderLimitsConfig, ResolvedModelLimits, 定数RUNTIME_DIR, USER_LIMITS_FILE
+ * invariants: rpmとconcurrencyは正の整数、tpmは未定義または正の整数
+ * side_effects: ファイルシステムへの読み書き（readFileSync, writeFileSync）
+ * failure_modes: 設定ファイルのフォーマット不正、JSONパースエラー、ファイルシステムアクセス権限エラー
  * @abdd.explain
- * overview: 複数のLLMプロバイダー（Anthropic、OpenAI、Google等）のAPIレート制限と同時実行数を一元管理するレジストリ
+ * overview: 公式ドキュメントおよびコミュニティの知見に基づき、プロバイダーごとのレート制限（RPM, TPM）と並行数制限を定義したレジストリ。
  * what_it_does:
- *   - プロバイダーごと、モデルパターンごとのRPM/TPM/同時実行数制限を定義
- *   - モデルティア別に異なる制限値をサポート
- *   - ユーザー定義の制限設定を~/.pi/runtime/provider-limits.jsonから読み込み
- *   - 制限が不明な場合のフォールバック値を提供
+ *   - ModelLimits, ModelTierLimits, ProviderLimitsConfigなどの制限設定を表すインターフェースを定義する
+ *   - 組み込みの制限設定を静的データとして保持する
+ *   - ユーザー設定ファイルの保存パス（~/.pi/runtime/provider-limits.json）を定義する
+ *   - 設定ファイルの読み込み・書き込み・ディレクトリ作成を行うユーティリティ機能を提供する
  * why_it_exists:
- *   - プロバイダーごとに異なるレート制限仕様を統一的なインターフェースで管理
- *   - APIエラー（429 Too Many Requests）を予防的に回避
- *   - 設定の外部化により制限値の更新をコード変更なしで実現
+ *   - 複数のAIプロバイダー（Anthropic, OpenAI, Googleなど）の異なる制限仕様を一元管理する
+ *   - API呼び出しにおいて、プロバイダー側の制限を超過してリクエスト拒否やエラーが発生するのを防ぐ
  * scope:
- *   in: プロバイダー名、モデル名、ティア情報
- *   out: ResolvedModelLimitsオブジェクト（解決済みの制限値）
+ *   in: 定義された制限値、読み込まれたJSON設定ファイル
+ *   out: 制限値の解決結果（ResolvedModelLimits）、ファイルシステムへの設定書き込み
  */
 
 /**
@@ -43,13 +42,14 @@ import { join } from "node:path";
 // Types
 // ============================================================================
 
- /**
-  * モデルごとのAPIレート制限を定義
-  * @param rpm 1分あたりのリクエスト数
-  * @param tpm 1分あたりのトークン数（任意）
-  * @param concurrency 最大同時リクエスト数
-  * @param description デバッグ用の説明（任意）
-  */
+/**
+ * @summary モデル制限詳細
+ * モデルの具体的な制限値を定義します。
+ * @param rpm リクエストレート制限。
+ * @param tpm トークンレート制限。
+ * @param concurrency 最大同時実行数。
+ * @param description 説明文。
+ */
 export interface ModelLimits {
   /** Requests per minute */
   rpm: number;
@@ -61,11 +61,12 @@ export interface ModelLimits {
   description?: string;
 }
 
- /**
-  * モデルティア別の制限設定
-  * @property tiers - ティア名をキーとする制限設定のマップ
-  * @property default - ティアが不明な場合のフォールバック設定
-  */
+/**
+ * @summary 階層制限定義
+ * モデルの各階層ごとの制限値を定義します。
+ * @param tiers 階層ごとの制限設定マップ。
+ * @param default デフォルトの制限設定。
+ */
 export interface ModelTierLimits {
   tiers: {
     [tier: string]: ModelLimits;
@@ -93,13 +94,14 @@ export interface ModelTierLimits {
  * };
  */
 
- /**
-  * プロバイダー制限設定を表すインターフェース
-  * @property version - バージョン番号
-  * @property lastUpdated - 最終更新日時
-  * @property source - 設定のソース
-  * @property providers - プロバイダーごとの制限設定
-  */
+/**
+ * @summary 制限設定形式
+ * 全プロバイダーの制限設定を表すインターフェースです。
+ * @param version 設定のバージョン番号。
+ * @param lastUpdated 最終更新日時。
+ * @param source 設定の取得元URL。
+ * @param providers プロバイダーごとの制限設定マップ。
+ */
 export interface ProviderLimitsConfig {
   version: number;
   lastUpdated: string;
@@ -115,16 +117,15 @@ export interface ProviderLimitsConfig {
   };
 }
 
- /**
-  * 解決されたモデル制限
-  * @param provider プロバイダ名
-  * @param model モデル名
-  * @param tier モデルのティア
-  * @param rpm 1分あたりのリクエスト数
-  * @param tpm 1分あたりのトークン数（未定義の場合あり）
-  * @param concurrency 同時実行数
-  * @param source 設定のソース（preset, fallback, default）
-  */
+/**
+ * @summary モデル制限定義
+ * 特定のモデルと階層の制限値を定義します。
+ * @param provider プロバイダー名。
+ * @param model モデル名。
+ * @param tier モデル階層。
+ * @param rpm 1分あたりのリクエスト数。
+ * @param tpm 1分あたりのトークン数。
+ */
 export interface ResolvedModelLimits {
   provider: string;
   model: string;
@@ -447,10 +448,11 @@ function mergeLimits(
 // Public API
 // ============================================================================
 
- /**
-  * 有効な制限設定を取得する（標準＋ユーザー設定）。
-  * @returns マージされた制限設定オブジェクト
-  */
+/**
+ * @summary 設定取得
+ * プロバイダーの制限設定を取得します。
+ * @returns プロバイダー制限設定オブジェクト。
+ */
 export function getLimitsConfig(): ProviderLimitsConfig {
   if (cachedLimits) return cachedLimits;
 
@@ -459,10 +461,11 @@ export function getLimitsConfig(): ProviderLimitsConfig {
   return cachedLimits;
 }
 
- /**
-  * ディスクから制限設定を再読み込みする
-  * @returns {void}
-  */
+/**
+ * 制限設定を再読み込み
+ * @summary 制限設定を再読み込み
+ * @returns {void}
+ */
 export function reloadLimits(): void {
   cachedLimits = null;
   getLimitsConfig();
@@ -596,20 +599,22 @@ export function getRpmLimit(provider: string, model: string, tier?: string): num
   return resolveLimits(provider, model, tier).rpm;
 }
 
- /**
-  * 既知のすべてのプロバイダー一覧を取得
-  * @returns プロバイダー名の配列
-  */
+/**
+ * @summary プロバイダー一覧取得
+ * 既知のすべてのプロバイダー一覧を取得
+ * @returns プロバイダー名の配列
+ */
 export function listProviders(): string[] {
   const config = getLimitsConfig();
   return Object.keys(config.providers);
 }
 
- /**
-  * 指定プロバイダーのモデル一覧を取得
-  * @param provider プロバイダー名
-  * @returns モデル名の配列
-  */
+/**
+ * 利用可能モデル一覧取得
+ * @summary モデル一覧取得
+ * @param provider プロバイダ名
+ * @returns モデル名配列
+ */
 export function listModels(provider: string): string[] {
   const config = getLimitsConfig();
   const providerConfig = config.providers[provider.toLowerCase()];
@@ -617,11 +622,11 @@ export function listModels(provider: string): string[] {
   return Object.keys(providerConfig.models);
 }
 
- /**
-  * ユーザー制限を保存する
-  * @param limits プロバイダー制限設定
-  * @returns なし
-  */
+/**
+ * ユーザー制限設定保存
+ * @summary 設定保存
+ * @param limits プロバイダ制限設定
+ */
 export function saveUserLimits(limits: ProviderLimitsConfig): void {
   if (!existsSync(RUNTIME_DIR)) {
     mkdirSync(RUNTIME_DIR, { recursive: true });
@@ -632,20 +637,22 @@ export function saveUserLimits(limits: ProviderLimitsConfig): void {
   cachedLimits = null; // Invalidate cache
 }
 
- /**
-  * 組み込みの制限設定を取得する（参照用）
-  * @returns プロバイダーの制限設定
-  */
+/**
+ * 組み込み制限設定取得
+ * @summary 組み込み設定取得
+ * @returns プロバイダ制限設定
+ */
 export function getBuiltinLimits(): ProviderLimitsConfig {
   return JSON.parse(JSON.stringify(BUILTIN_LIMITS));
 }
 
- /**
-  * 環境変数からティアを検出します。
-  * @param provider プロバイダ名
-  * @param _model モデル名（未使用）
-  * @returns 検出されたティア、見つからない場合はundefined
-  */
+/**
+ * プロバイダティア検出
+ * @summary ティア特定
+ * @param provider プロバイダ名
+ * @param _model モデル名
+ * @returns ティア名
+ */
 export function detectTier(provider: string, _model: string): string | undefined {
   const envTier = process.env.PI_PROVIDER_TIER;
   if (envTier) return envTier;
@@ -658,11 +665,12 @@ export function detectTier(provider: string, _model: string): string | undefined
   return undefined;
 }
 
- /**
-  * 制限情報を読みやすい文字列でフォーマットする
-  * @param limits - 解決済みのモデル制限情報
-  * @returns フォーマットされた文字列
-  */
+/**
+ * 制限サマリを生成
+ * @summary サマリ生成
+ * @param limits 解決済みモデル制限
+ * @returns サマリ文字列
+ */
 export function formatLimitsSummary(limits: ResolvedModelLimits): string {
   const parts = [
     `${limits.provider}/${limits.model}`,

@@ -28,10 +28,10 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildCallGraph` | プロジェクトのコールグラフを構築する |
-| 関数 | `saveCallGraphIndex` | コールグラフのインデックスをファイルに保存します。 |
-| 関数 | `readCallGraphIndex` | コールグラフのインデックスを読み込む |
-| 関数 | `isCallGraphIndexStale` | コールグラフインデックスが古いか確認 |
+| 関数 | `buildCallGraph` | コールグラフ構築 |
+| 関数 | `saveCallGraphIndex` | インデックス保存 |
+| 関数 | `readCallGraphIndex` | インデックス読込 |
+| 関数 | `isCallGraphIndexStale` | インデックス期限確認 |
 
 ## 図解
 
@@ -295,7 +295,7 @@ Calculate confidence score for a call relationship.
 async buildCallGraph(path: string, cwd: string): Promise<CallGraphIndex>
 ```
 
-プロジェクトのコールグラフを構築する
+コールグラフ構築
 
 **パラメータ**
 
@@ -312,7 +312,7 @@ async buildCallGraph(path: string, cwd: string): Promise<CallGraphIndex>
 async saveCallGraphIndex(index: CallGraphIndex, cwd: string): Promise<string>
 ```
 
-コールグラフのインデックスをファイルに保存します。
+インデックス保存
 
 **パラメータ**
 
@@ -329,7 +329,7 @@ async saveCallGraphIndex(index: CallGraphIndex, cwd: string): Promise<string>
 async readCallGraphIndex(cwd: string): Promise<CallGraphIndex | null>
 ```
 
-コールグラフのインデックスを読み込む
+インデックス読込
 
 **パラメータ**
 
@@ -345,7 +345,7 @@ async readCallGraphIndex(cwd: string): Promise<CallGraphIndex | null>
 async isCallGraphIndexStale(cwd: string): Promise<boolean>
 ```
 
-コールグラフインデックスが古いか確認
+インデックス期限確認
 
 **パラメータ**
 
@@ -356,4 +356,4 @@ async isCallGraphIndexStale(cwd: string): Promise<boolean>
 **戻り値**: `Promise<boolean>`
 
 ---
-*自動生成: 2026-02-18T14:31:30.798Z*
+*自動生成: 2026-02-18T15:54:41.252Z*

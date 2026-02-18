@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerAgentUsageTracker` | エージェントの使用状況追跡を登録 |
+| 関数 | `registerAgentUsageTracker` | エージェント使用状況トラッカーを登録する |
 
 ## ユーザーフロー
 
@@ -54,7 +54,7 @@ sequenceDiagram
   System->>Runtime: ensureRuntime
   Runtime->>Storage: getStorageFile
   Storage->>Internal: join
-  Storage->>Internal: ディレクトリが存在することを保証します
+  Storage->>Internal: ディレクトリを生成
   Internal->>Internal: existsSync
   Internal->>Internal: mkdirSync
   Runtime->>Storage: loadState
@@ -785,7 +785,7 @@ recordAgentEnd(ctx: ExtensionAPI["context"]): void
 registerAgentUsageTracker(pi: ExtensionAPI): void
 ```
 
-エージェントの使用状況追跡を登録
+エージェント使用状況トラッカーを登録する
 
 **パラメータ**
 
@@ -931,4 +931,4 @@ type EventStatus = "ok" | "error"
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.634Z*
+*自動生成: 2026-02-18T15:54:41.090Z*

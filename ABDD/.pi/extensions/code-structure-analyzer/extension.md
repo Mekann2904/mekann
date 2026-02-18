@@ -27,12 +27,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `analyzeCodeStructure` | コード構造を解析し、データを抽出 |
-| 関数 | `extractStructure` | 構造データを抽出する |
-| 関数 | `generateDiagrams` | Mermaid図を生成する |
-| 関数 | `generateMarkdown` | 解析結果をMarkdown形式で生成 |
-| インターフェース | `AnalyzeOptions` | コード構造解析のオプション |
-| インターフェース | `AnalysisResult` | コード構造解析の結果を表します。 |
+| 関数 | `analyzeCodeStructure` | コード構造を解析 |
+| 関数 | `extractStructure` | 構造を抽出 |
+| 関数 | `generateDiagrams` | ダイアグラム生成 |
+| 関数 | `generateMarkdown` | Markdownを生成 |
+| インターフェース | `AnalyzeOptions` | 解析オプション定義 |
+| インターフェース | `AnalysisResult` | 解析結果インターフェース |
 
 ## 図解
 
@@ -130,7 +130,7 @@ async analyzeCodeStructure(params: {
 }): Promise<AnalysisResult>
 ```
 
-コード構造を解析し、データを抽出
+コード構造を解析
 
 **パラメータ**
 
@@ -153,7 +153,7 @@ async extractStructure(params: {
 }): Promise<StructureData>
 ```
 
-構造データを抽出する
+構造を抽出
 
 **パラメータ**
 
@@ -174,7 +174,7 @@ async generateDiagrams(params: {
 }): Promise<MermaidDiagrams>
 ```
 
-Mermaid図を生成する
+ダイアグラム生成
 
 **パラメータ**
 
@@ -195,7 +195,7 @@ async generateMarkdown(params: {
 }): Promise<string>
 ```
 
-解析結果をMarkdown形式で生成
+Markdownを生成
 
 **パラメータ**
 
@@ -238,7 +238,7 @@ interface AnalyzeOptions {
 }
 ```
 
-コード構造解析のオプション
+解析オプション定義
 
 ### AnalysisResult
 
@@ -261,7 +261,7 @@ interface AnalysisResult {
 }
 ```
 
-コード構造解析の結果を表します。
+解析結果インターフェース
 
 ---
-*自動生成: 2026-02-18T14:31:30.637Z*
+*自動生成: 2026-02-18T15:54:41.093Z*

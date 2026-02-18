@@ -17,19 +17,19 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `inferTaskType` | ツール名からタスク種別を推測 |
-| 関数 | `estimateRounds` | タスクの種類に基づいて推定ラウンド数を計算する |
-| 関数 | `inferPriority` | ツール名とコンテキストからタスク優先度を推論する |
-| 関数 | `comparePriority` | 優先度を比較して順序を決定する |
-| 関数 | `formatPriorityQueueStats` | 優先度キューの統計情報をフォーマットする |
-| クラス | `PriorityTaskQueue` | WFQ方式のタスク優先度キュー |
-| インターフェース | `PriorityTaskMetadata` | 優先度スケジューリング用のタスクメタデータ |
-| インターフェース | `PriorityQueueEntry` | WFQスケジューリング用の優先度キューエントリ |
-| インターフェース | `EstimationContext` | ラウンド推定のコンテキスト情報 |
-| インターフェース | `RoundEstimation` | ラウンド推定の結果 |
-| 型 | `TaskPriority` | タスクスケジューリングの優先度レベル |
+| 関数 | `inferTaskType` | タスクタイプを推論 |
+| 関数 | `estimateRounds` | 実行ラウンド数を見積もる |
+| 関数 | `inferPriority` | タスク優先度を推論 |
+| 関数 | `comparePriority` | 優先度を比較する |
+| 関数 | `formatPriorityQueueStats` | 優先キューの統計情報をフォーマットする |
+| クラス | `PriorityTaskQueue` | 優先度付きタスクキュー |
+| インターフェース | `PriorityTaskMetadata` | タスクのメタデータを表すインターフェース |
+| インターフェース | `PriorityQueueEntry` | 優先度付きキューエントリのインターフェース |
+| インターフェース | `EstimationContext` | 推定コンテキストを表すインターフェース |
+| インターフェース | `RoundEstimation` | ラウンド推定結果を表すインターフェース |
+| 型 | `TaskPriority` | タスクの優先度を表す型 |
 | 型 | `TaskType` | タスクの種類を表す型 |
-| 型 | `TaskComplexity` | タスクの複雑度を表す型 |
+| 型 | `TaskComplexity` | タスクの複雑さを表す型 |
 
 ## 図解
 
@@ -100,7 +100,7 @@ flowchart TD
 inferTaskType(toolName: string): TaskType
 ```
 
-ツール名からタスク種別を推測
+タスクタイプを推論
 
 **パラメータ**
 
@@ -116,7 +116,7 @@ inferTaskType(toolName: string): TaskType
 estimateRounds(context: EstimationContext): RoundEstimation
 ```
 
-タスクの種類に基づいて推定ラウンド数を計算する
+実行ラウンド数を見積もる
 
 **パラメータ**
 
@@ -137,7 +137,7 @@ inferPriority(toolName: string, context?: {
   }): TaskPriority
 ```
 
-ツール名とコンテキストからタスク優先度を推論する
+タスク優先度を推論
 
 **パラメータ**
 
@@ -158,7 +158,7 @@ inferPriority(toolName: string, context?: {
 comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number
 ```
 
-優先度を比較して順序を決定する
+優先度を比較する
 
 **パラメータ**
 
@@ -175,7 +175,7 @@ comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number
 formatPriorityQueueStats(stats: ReturnType<PriorityTaskQueue["getStats"]>): string
 ```
 
-優先度キューの統計情報をフォーマットする
+優先キューの統計情報をフォーマットする
 
 **パラメータ**
 
@@ -189,7 +189,7 @@ formatPriorityQueueStats(stats: ReturnType<PriorityTaskQueue["getStats"]>): stri
 
 ### PriorityTaskQueue
 
-WFQ方式のタスク優先度キュー
+優先度付きタスクキュー
 
 **プロパティ**
 
@@ -238,7 +238,7 @@ interface PriorityTaskMetadata {
 }
 ```
 
-優先度スケジューリング用のタスクメタデータ
+タスクのメタデータを表すインターフェース
 
 ### PriorityQueueEntry
 
@@ -251,7 +251,7 @@ interface PriorityQueueEntry {
 }
 ```
 
-WFQスケジューリング用の優先度キューエントリ
+優先度付きキューエントリのインターフェース
 
 ### EstimationContext
 
@@ -265,7 +265,7 @@ interface EstimationContext {
 }
 ```
 
-ラウンド推定のコンテキスト情報
+推定コンテキストを表すインターフェース
 
 ### RoundEstimation
 
@@ -278,7 +278,7 @@ interface RoundEstimation {
 }
 ```
 
-ラウンド推定の結果
+ラウンド推定結果を表すインターフェース
 
 ## 型定義
 
@@ -288,7 +288,7 @@ interface RoundEstimation {
 type TaskPriority = "critical" | "high" | "normal" | "low" | "background"
 ```
 
-タスクスケジューリングの優先度レベル
+タスクの優先度を表す型
 
 ### TaskType
 
@@ -312,7 +312,7 @@ type TaskType = | "read"      // Information retrieval
 type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "exploratory"
 ```
 
-タスクの複雑度を表す型
+タスクの複雑さを表す型
 
 ---
-*自動生成: 2026-02-18T14:31:31.007Z*
+*自動生成: 2026-02-18T15:54:41.502Z*

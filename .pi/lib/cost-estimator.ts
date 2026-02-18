@@ -1,35 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/cost-estimator.ts
- * role: タスク実行のコスト（所要時間・トークン消費量）推定エンジン
- * why: スケジューラーが実行順序とリソース配分を決定するための精度の高い推定値を提供し、履歴学習により推定精度を向上させる
+ * role: タスク実行のコストと所要時間を推定し、履歴データに基づいて精度を向上させるエスティメータ
+ * why: 正確なタスクスケジューリングとリソース配分の決定を、トークン消費量と実行時間の予測によってサポートするため
  * related: .pi/lib/task-scheduler.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
- * public_api: CostEstimation, CostEstimationMethod, ExecutionHistoryEntry, SourceStatistics, CostEstimatorConfig
- * invariants:
- *   - confidence は 0.0 から 1.0 の範囲
- *   - estimatedDurationMs と estimatedTokens は非負の数値
- *   - successRate は 0.0 から 1.0 の範囲
- * side_effects:
- *   - 履歴データの永続化ストレージへの読み書き（実行記録追加時）
- *   - 統計情報のキャッシュ更新
- * failure_modes:
- *   - 履歴データ不足時はデフォルト推定値にフォールバック
- *   - 不正な入力ソースタイプに対しては例外をスロー
- *   - 永続化ストレージ障害時は履歴機能を無効化して動作継続
+ * public_api: CostEstimation, ExecutionHistoryEntry, SourceStatistics, CostEstimatorConfig, estimateCost, recordExecution
+ * invariants: confidence は 0.0 から 1.0 の範囲内, historicalWeight は 0.0 から 1.0 の範囲内
+ * side_effects: なし（推定ロジック自体は純粋だが、履歴記録インターフェースは外部ストレージへの副作用を想定）
+ * failure_modes: 履歴データ不足によるフォールバック、過去の異常値による平均値の歪み
  * @abdd.explain
- * overview: タスクの実行時間とトークン消費量を推定し、履歴データに基づく学習で推定精度を向上させるコンポーネント
+ * overview: タスクのソース種別に応じたデフォルト推定値と、過去の実行履歴に基づく統計情報を組み合わせてコストを算出するモジュール
  * what_it_does:
- *   - TaskSource ごとに実行時間とトークン消費量を推定
- *   - 過去の実行履歴を記録し、ソース別統計（平均・最小・最大・成功率）を算出
- *   - 履歴データが閾値以上の場合は履歴ベース、不足時はデフォルト値を使用
- *   - 信頼度（confidence）を算出し、推定手法（method）を明示
+ *   - ソース種別（subagent, teamなど）ごとのデフォルト実行時間・トークン消費量を定義
+ *   - 過去の実行記録を集計し、平均・最小・最大・成功率などの統計情報を生成
+ *   - 統計情報とデフォルト値を統合して、推定コストと信頼度を算出
  * why_it_exists:
- *   - スケジューラーがタスク実行順序を最適化するためにコスト予測が必要
- *   - ユーザーへの進捗表示やリソース制限管理に推定値を活用
- *   - 履歴学習により、特定環境での実際の挙動に適応した推定を実現
+ *   - 一定量の実行履歴が蓄積された環境で、スケジューリング精度を統計的に向上させるため
+ *   - 履歴データがない場合のために、事前定義された合理的な初期値を提供するため
  * scope:
- *   in: TaskSource（subagent_run, subagent_run_parallel, team_run, team_run_parallel）, プロバイダ/モデル情報, タスク説明（省略可）, 実行結果（履歴記録用）
- *   out: CostEstimation（推定時間・トークン・信頼度・手法）, SourceStatistics（ソース別統計）
+ *   in: タスクのソース種別、実行履歴データ、設定値（最小実行回数、重み付けなど）
+ *   out: 推定実行時間、推定トークン消費量、信頼度、および統計情報の集計結果
  */
 
 // File: .pi/lib/cost-estimator.ts
@@ -43,18 +33,20 @@ import type { TaskSource } from "./task-scheduler";
 // Types
 // ============================================================================
 
- /**
-  * コスト計算の推定方法を表す型。
-  */
+/**
+ * コスト計算の推定方法
+ * @summary 推定方法を定義
+ * @typedef {string} CostEstimationMethod
+ * @property {"default"} default デフォルト
+ * @property {"historical"} historical 過去の実績
+ * @property {"heuristic"} heuristic ヒューリスティック
+ */
 export type CostEstimationMethod = "default" | "historical" | "heuristic";
 
- /**
-  * コスト推定結果
-  * @param estimatedDurationMs 推定実行時間（ミリ秒）
-  * @param estimatedTokens 推定トークン消費量
-  * @param confidence 推定の信頼度（0.0 - 1.0）
-  * @param method 推定に使用された手法
-  */
+/**
+ * コストの推定結果
+ * @summary コストを推定
+ */
 export interface CostEstimation {
   /** Estimated execution duration in milliseconds */
   estimatedDurationMs: number;
@@ -66,17 +58,10 @@ export interface CostEstimation {
   method: CostEstimationMethod;
 }
 
- /**
-  * 履歴学習用の実行記録エントリ
-  * @param source タスクを作成したソースツール
-  * @param provider プロバイダ名
-  * @param model モデル名
-  * @param taskDescription タスクの説明（省略可）
-  * @param actualDurationMs 実際の実行時間（ミリ秒）
-  * @param actualTokens 実際のトークン消費量
-  * @param success 実行が成功したかどうか
-  * @param timestamp 実行のタイムスタンプ
-  */
+/**
+ * 実行履歴のエントリ
+ * @summary 履歴エントリを取得
+ */
 export interface ExecutionHistoryEntry {
   /** Source tool that created the task */
   source: TaskSource;
@@ -96,16 +81,10 @@ export interface ExecutionHistoryEntry {
   timestamp: number;
 }
 
- /**
-  * 特定のソースタイプの統計情報。
-  * @param executionCount 記録された実行回数
-  * @param avgDurationMs 平均実行時間（ミリ秒）
-  * @param avgTokens 平均トークン消費量
-  * @param minDurationMs 最小実行時間（ミリ秒）
-  * @param maxDurationMs 最大実行時間（ミリ秒）
-  * @param successRate 成功率（0.0 - 1.0）
-  * @param lastUpdated 最終更新タイムスタンプ
-  */
+/**
+ * ソースの統計情報
+ * @summary 統計情報を取得
+ */
 export interface SourceStatistics {
   /** Number of recorded executions */
   executionCount: number;
@@ -123,12 +102,10 @@ export interface SourceStatistics {
   lastUpdated: number;
 }
 
- /**
-  * コスト推定の設定
-  * @param minHistoricalExecutions 履歴データ使用に必要な最小実行回数
-  * @param maxHistoryPerSource ソースごとの保持する最大履歴エントリ数
-  * @param historicalWeight 履歴データとデフォルトの重み（0.0 - 1.0）
-  */
+/**
+ * 設定定義
+ * @summary 推定器設定
+ */
 export interface CostEstimatorConfig {
   /** Minimum executions required before using historical data */
   minHistoricalExecutions: number;
@@ -167,13 +144,10 @@ const DEFAULT_CONFIG: CostEstimatorConfig = {
 // Cost Estimator
 // ============================================================================
 
- /**
-  * コストを見積もるクラス。デフォルト値と履歴学習をサポート
-  * @param source - ソースツールの種類
-  * @param provider - プロバイダ名（将来の調整用）
-  * @param model - モデル名（将来の調整用）
-  * @param taskDescription - タスクの説明（将来のヒューリスティック改善用）
-  */
+/**
+ * コスト推定器
+ * @summary コスト推定器クラス
+ */
 export class CostEstimator {
   private readonly config: CostEstimatorConfig;
   private readonly history: Map<TaskSource, ExecutionHistoryEntry[]> = new Map();
@@ -183,14 +157,15 @@ export class CostEstimator {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-   /**
-    * タスクのコストを推定する
-    * @param source - ソースツールの種類
-    * @param provider - プロバイダ名
-    * @param model - モデル名
-    * @param taskDescription - タスクの説明
-    * @returns コスト推定結果
-    */
+  /**
+   * コスト推定
+   * @summary コストを見積もる
+   * @param source - ソースツールの種類
+   * @param provider - プロバイダ名
+   * @param model - モデル名
+   * @param taskDescription - タスク説明
+   * @returns コスト推定結果
+   */
   estimate(
     source: TaskSource,
     provider?: string,
@@ -228,11 +203,12 @@ export class CostEstimator {
     };
   }
 
-   /**
-    * 実行履歴を記録して学習する
-    * @param entry 追加する実行履歴のエントリ
-    * @returns なし
-    */
+  /**
+   * 実行情報記録
+   * @summary 実行情報を記録
+   * @param entry - 実行履歴エントリ
+   * @returns なし
+   */
   recordExecution(entry: ExecutionHistoryEntry): void {
     const source = entry.source;
     let entries = this.history.get(source) ?? [];
@@ -251,11 +227,12 @@ export class CostEstimator {
     this.statsCache.delete(source);
   }
 
-   /**
-    * ソース種別の統計情報を取得する。
-    * @param source ソース種別
-    * @returns 統計情報。履歴がない場合はundefined。
-    */
+  /**
+   * ソース統計取得
+   * @summary 統計情報を取得
+   * @param source - ソースツールの種類
+   * @returns ソース統計情報
+   */
   getStats(source: TaskSource): SourceStatistics | undefined {
     // Check cache
     const cached = this.statsCache.get(source);
@@ -297,9 +274,11 @@ export class CostEstimator {
     return stats;
   }
 
-   /**
-    * すべての履歴とキャッシュをクリアする
-    */
+  /**
+   * 履歴とキャッシュをクリア
+   * @summary 履歴とキャッシュをクリア
+   * @returns void
+   */
   clear(): void {
     this.history.clear();
     this.statsCache.clear();
@@ -321,10 +300,10 @@ export class CostEstimator {
 
 let estimatorInstance: CostEstimator | null = null;
 
- /**
-  * コスト推定のシングルトンインスタンスを取得
-  * @returns コスト推定インスタンス
-  */
+/**
+ * @summary コスト推定インスタンス取得
+ * @returns コスト推定インスタンス
+ */
 export function getCostEstimator(): CostEstimator {
   if (!estimatorInstance) {
     estimatorInstance = new CostEstimator();
@@ -332,19 +311,21 @@ export function getCostEstimator(): CostEstimator {
   return estimatorInstance;
 }
 
- /**
-  * コスト推定器のインスタンスを作成
-  * @param config コスト推定器の設定オプション
-  * @returns 作成されたコスト推定器のインスタンス
-  */
+/**
+ * コスト推定器を作成
+ * @summary コスト推定器を作成
+ * @param config コスト推定器の設定オプション
+ * @returns 作成されたコスト推定器のインスタンス
+ */
 export function createCostEstimator(config?: Partial<CostEstimatorConfig>): CostEstimator {
   return new CostEstimator(config);
 }
 
- /**
-  * シングルトンのインスタンスをリセットする
-  * @returns なし
-  */
+/**
+ * @summary インスタンスをリセット
+ * シングルトンのインスタンスをリセットする
+ * @returns なし
+ */
 export function resetCostEstimator(): void {
   estimatorInstance = null;
 }

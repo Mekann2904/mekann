@@ -1,28 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/storage.ts
- * role: ストレージ関連モジュールの統合エクスポートポイント（バレルファイル）
- * why: storage-base、run-index、pattern-extraction、semantic-memory、embeddingsへの統一アクセスを提供し、個別インポートの手間を削減するため
- * related: storage-base.ts, run-index.ts, pattern-extraction.ts, semantic-memory.ts
- * public_api: HasId, BaseRunRecord, BaseStorage, createStorageLoader, createStorageSaver, IndexedRun, RunIndex, searchRuns, findSimilarRuns, ExtractedPattern, PatternStorage, extractPatternFromRun, RunEmbedding, SemanticMemoryStorage, semanticSearch, EmbeddingProvider, generateEmbedding, cosineSimilarity
- * invariants: 再エクスポートのみを行い、独自の実装を持たない、Layer 2のモジュールのみを集約する
- * side_effects: なし（純粋な再エクスポート）
- * failure_modes: 元モジュールが存在しない場合にインポートエラーが発生する、循環依存による読み込み失敗
+ * role: ストレージ・メモリ・埋め込み機能のエクスポート集約モジュール
+ * why: lib配下の個別モジュールをインポートせず、単一のエントリポイントから関連機能を利用するため
+ * related: .pi/lib/storage-base.ts, .pi/lib/run-index.ts, .pi/lib/pattern-extraction.ts
+ * public_api: ストレージ基底ユーティリティ、実行インデックス、パターン抽出、セマンティックメモリ、埋め込みプロバイダ関連の型・関数
+ * invariants: エクスポートされるシンボルは各ソースファイルから直接再エクスポートされる
+ * side_effects: なし（純粋なエクスポート集約）
+ * failure_modes: 依存モジュールで型エラーまたは循環参照が発生した場合にコンパイルが失敗する
  * @abdd.explain
- * overview: ストレージ、メモリ、エンベディング関連の5つのサブモジュールを集約し、単一のエントリポイントから一括インポート可能にするバレルファイル
+ * overview: 実行履歴の管理、検索、パターン抽出、およびベクトル埋め込みに関連するモジュールを一箇所に集約するバレルファイル。
  * what_it_does:
- *   - storage-baseからストレージ基本型とCRUDユーティリティを再エクスポート
- *   - run-indexからALMAベースの実行履歴インデックス機能を再エクスポート
- *   - pattern-extractionから実行履歴からのパターン抽出機能を再エクスポート
- *   - semantic-memoryからOpenAI Embeddingsベースの意味検索機能を再エクスポート
- *   - embeddingsから統一エンベディングプロバイダインターフェースを再エクスポート
+ *   - ストレージ基底型・関数の再エクスポート
+ *   - 実行インデックス作成・検索機能の再エクスポート
+ *   - パターン抽出・ストレージ機能の再エクスポート
+ *   - セマンティックメモリ（埋め込み）機能の再エクスポート
+ *   - 埋め込みプロバイダインターフェースとレジストリの再エクスポート
  * why_it_exists:
- *   - 利用者が複数のストレージ関連モジュールを個別にインポートする負担を軽減するため
- *   - lib全体をインポートせずにストレージ機能のみを選択的に利用可能にするため
- *   - ストレージ関連APIの公開インターフェースを一箇所で管理するため
+ *   - 利用者が個別のモジュールパスを覚える負担を軽減するため
+ *   - lib配下すべてをインポートせず、必要なストレージ機能群のみを選択的にロードするため
  * scope:
- *   in: storage-base.ts, run-index.ts, pattern-extraction.ts, semantic-memory.ts, embeddings関連モジュール
- *   out: これら以外のlib配下モジュール、Layer 1の低レベルユーティリティ
+ *   in: なし（内部実装を持たない）
+ *   out: ストレージ、インデックス、パターン、セマンティックメモリ、埋め込みプロバイダに関連するすべての公開API
  */
 
 /**

@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `symFind` | インデックスからシンボル定義を検索 |
+| 関数 | `symFind` | シンボル検索を行う |
 
 ## 図解
 
@@ -175,7 +175,7 @@ Extract file paths from results for history recording.
 async symFind(input: SymFindInput, cwd: string): Promise<SymFindOutput>
 ```
 
-インデックスからシンボル定義を検索
+シンボル検索を行う
 
 **パラメータ**
 
@@ -187,4 +187,4 @@ async symFind(input: SymFindInput, cwd: string): Promise<SymFindOutput>
 **戻り値**: `Promise<SymFindOutput>`
 
 ---
-*自動生成: 2026-02-18T14:31:30.862Z*
+*自動生成: 2026-02-18T15:54:41.324Z*

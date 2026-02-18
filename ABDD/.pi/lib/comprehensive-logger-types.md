@@ -17,31 +17,31 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `BaseEvent` | 全てのイベントの基本構造を定義するインターフェース |
-| インターフェース | `SessionStartEvent` | セッション開始イベントのデータ構造。 |
+| インターフェース | `BaseEvent` | ベースイベント |
+| インターフェース | `SessionStartEvent` | セッション開始 |
 | インターフェース | `SessionEndEvent` | セッション終了イベント |
 | インターフェース | `TaskStartEvent` | タスク開始イベント |
 | インターフェース | `TaskEndEvent` | タスク終了イベント |
 | インターフェース | `OperationStartEvent` | 操作開始イベント |
-| インターフェース | `OperationEndEvent` | オペレーション終了イベント |
+| インターフェース | `OperationEndEvent` | 操作終了イベント |
 | インターフェース | `ToolCallEvent` | ツール呼び出しイベント |
-| インターフェース | `ToolResultEvent` | ツール実行結果を表すイベント |
+| インターフェース | `ToolResultEvent` | ツール実行結果イベント |
 | インターフェース | `ToolErrorEvent` | ツール実行時のエラーイベントを表します。 |
 | インターフェース | `LLMRequestEvent` | LLMリクエストイベント |
-| インターフェース | `LLMResponseEvent` | LLMの応答イベント |
-| インターフェース | `LLMErrorEvent` | LLMエラー発生時のイベント情報 |
+| インターフェース | `LLMResponseEvent` | - |
+| インターフェース | `LLMErrorEvent` | LLMエラー通知 |
 | インターフェース | `UserInputEvent` | ユーザー入力イベント |
-| インターフェース | `UserFeedbackEvent` | ユーザーフィードバックイベント |
-| インターフェース | `ConfigLoadEvent` | 設定読み込みイベント |
-| インターフェース | `StateChangeEvent` | 状態変化イベントを表すインターフェース |
-| インターフェース | `MetricsSnapshotEvent` | メトリクススナップショットイベントを表します |
-| インターフェース | `LoggerConfig` | ロガーの動作設定を定義します |
-| 型 | `EventType` | 包括的ログ収集システムで発生するイベントの種類 |
-| 型 | `ComponentType` | コンポーネントの種類を表す型定義 |
-| 型 | `ToolType` | ツールの種類を表す型定義 |
-| 型 | `Status` | ステータスの種類を表すユニオン型 |
+| インターフェース | `UserFeedbackEvent` | フィードバック通知 |
+| インターフェース | `ConfigLoadEvent` | 設定読み込み通知 |
+| インターフェース | `StateChangeEvent` | 状態変更イベント |
+| インターフェース | `MetricsSnapshotEvent` | メトリクススナップショットイベント |
+| インターフェース | `LoggerConfig` | ロガー設定 |
+| 型 | `EventType` | イベント種別定義 |
+| 型 | `ComponentType` | コンポーネント型 |
+| 型 | `ToolType` | ツール型 |
+| 型 | `Status` | ステータス型 |
 | 型 | `OperationType` | 操作の種類を表す文字列リテラル型 |
-| 型 | `LogEvent` | すべてのログイベントの共用体型 |
+| 型 | `LogEvent` | ログイベントの統合型 |
 
 ## 図解
 
@@ -174,7 +174,7 @@ interface BaseEvent {
 }
 ```
 
-全てのイベントの基本構造を定義するインターフェース
+ベースイベント
 
 ### SessionStartEvent
 
@@ -193,7 +193,7 @@ interface SessionStartEvent {
 }
 ```
 
-セッション開始イベントのデータ構造。
+セッション開始
 
 ### SessionEndEvent
 
@@ -344,7 +344,7 @@ interface OperationEndEvent {
 }
 ```
 
-オペレーション終了イベント
+操作終了イベント
 
 ### ToolCallEvent
 
@@ -389,7 +389,7 @@ interface ToolResultEvent {
 }
 ```
 
-ツール実行結果を表すイベント
+ツール実行結果イベント
 
 ### ToolErrorEvent
 
@@ -471,8 +471,6 @@ interface LLMResponseEvent {
 }
 ```
 
-LLMの応答イベント
-
 ### LLMErrorEvent
 
 ```typescript
@@ -489,7 +487,7 @@ interface LLMErrorEvent {
 }
 ```
 
-LLMエラー発生時のイベント情報
+LLMエラー通知
 
 ### UserInputEvent
 
@@ -522,7 +520,7 @@ interface UserFeedbackEvent {
 }
 ```
 
-ユーザーフィードバックイベント
+フィードバック通知
 
 ### ConfigLoadEvent
 
@@ -539,7 +537,7 @@ interface ConfigLoadEvent {
 }
 ```
 
-設定読み込みイベント
+設定読み込み通知
 
 ### StateChangeEvent
 
@@ -561,7 +559,7 @@ interface StateChangeEvent {
 }
 ```
 
-状態変化イベントを表すインターフェース
+状態変更イベント
 
 ### MetricsSnapshotEvent
 
@@ -583,7 +581,7 @@ interface MetricsSnapshotEvent {
 }
 ```
 
-メトリクススナップショットイベントを表します
+メトリクススナップショットイベント
 
 ### LoggerConfig
 
@@ -600,7 +598,7 @@ interface LoggerConfig {
 }
 ```
 
-ロガーの動作設定を定義します
+ロガー設定
 
 ## 型定義
 
@@ -630,7 +628,7 @@ type EventType = | 'session_start'
   | 'metrics_snapshot'
 ```
 
-包括的ログ収集システムで発生するイベントの種類
+イベント種別定義
 
 ### ComponentType
 
@@ -638,7 +636,7 @@ type EventType = | 'session_start'
 type ComponentType = 'extension' | 'subagent' | 'team' | 'skill' | 'tool'
 ```
 
-コンポーネントの種類を表す型定義
+コンポーネント型
 
 ### ToolType
 
@@ -646,7 +644,7 @@ type ComponentType = 'extension' | 'subagent' | 'team' | 'skill' | 'tool'
 type ToolType = 'builtin' | 'extension' | 'dynamic'
 ```
 
-ツールの種類を表す型定義
+ツール型
 
 ### Status
 
@@ -654,7 +652,7 @@ type ToolType = 'builtin' | 'extension' | 'dynamic'
 type Status = 'pending' | 'running' | 'success' | 'failure' | 'timeout' | 'partial' | 'cancelled'
 ```
 
-ステータスの種類を表すユニオン型
+ステータス型
 
 ### OperationType
 
@@ -686,7 +684,7 @@ type LogEvent = | SessionStartEvent
   | MetricsSnapshotEvent
 ```
 
-すべてのログイベントの共用体型
+ログイベントの統合型
 
 ---
-*自動生成: 2026-02-18T14:31:30.956Z*
+*自動生成: 2026-02-18T15:54:41.442Z*

@@ -24,20 +24,20 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getJudgeWeights` | 現在の判定重み設定を取得する |
-| 関数 | `setJudgeWeights` | カスタムの判定重みを設定 |
-| 関数 | `resetJudgeWeights` | 判定の重みをデフォルトに戻す |
+| 関数 | `getJudgeWeights` | 重み設定を取得 |
+| 関数 | `setJudgeWeights` | 重み設定を更新 |
+| 関数 | `resetJudgeWeights` | 判定重みを初期化 |
 | 関数 | `extractDiscussionSection` | 構造化出力からDISCUSSIONセクションを抽出 |
-| 関数 | `countEvidenceSignals` | 出力内の証拠シグナルの数をカウントする |
-| 関数 | `analyzeMemberOutput` | チームメンバーの出力を解析し、診断情報を返す |
-| 関数 | `computeProxyUncertainty` | チームの不確実性プロキシを計算する |
-| 関数 | `computeProxyUncertaintyWithExplainability` | 不確実性プロキシと説明を計算する |
-| 関数 | `formatJudgeExplanation` | 判定の決定理由を人間が読める形式で整形する |
-| 関数 | `buildFallbackJudge` | LLM判定がない場合の代替判定を生成する |
-| 関数 | `runFinalJudge` | 最終判定プロセスを実行します |
-| インターフェース | `JudgeWeightConfig` | 判定の重み付け設定 |
+| 関数 | `countEvidenceSignals` | - |
+| 関数 | `analyzeMemberOutput` | メンバー出力を解析 |
+| 関数 | `computeProxyUncertainty` | 代理不確実性を計算 |
+| 関数 | `computeProxyUncertaintyWithExplainability` | 不確実性と説明を計算 |
+| 関数 | `formatJudgeExplanation` | 判定理由を整形 |
+| 関数 | `buildFallbackJudge` | 代替判定を生成 |
+| 関数 | `runFinalJudge` | 最終審査を実行 |
+| インターフェース | `JudgeWeightConfig` | 審判の重み設定 |
 | インターフェース | `JudgeExplanation` | 判定決定要因の詳細な説明 |
-| インターフェース | `TeamUncertaintyProxy` | メンバー結果から計算される不確実性プロキシ |
+| インターフェース | `TeamUncertaintyProxy` | チームの不確実性を表現 |
 
 ## 図解
 
@@ -131,7 +131,7 @@ sequenceDiagram
 getJudgeWeights(): JudgeWeightConfig
 ```
 
-現在の判定重み設定を取得する
+重み設定を取得
 
 **戻り値**: `JudgeWeightConfig`
 
@@ -141,7 +141,7 @@ getJudgeWeights(): JudgeWeightConfig
 setJudgeWeights(weights: JudgeWeightConfig): void
 ```
 
-カスタムの判定重みを設定
+重み設定を更新
 
 **パラメータ**
 
@@ -157,7 +157,7 @@ setJudgeWeights(weights: JudgeWeightConfig): void
 resetJudgeWeights(): void
 ```
 
-判定の重みをデフォルトに戻す
+判定重みを初期化
 
 **戻り値**: `void`
 
@@ -183,8 +183,6 @@ extractDiscussionSection(output: string): string
 countEvidenceSignals(output: string): number
 ```
 
-出力内の証拠シグナルの数をカウントする
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -199,7 +197,7 @@ countEvidenceSignals(output: string): number
 analyzeMemberOutput(output: string): TeamMemberResult["diagnostics"]
 ```
 
-チームメンバーの出力を解析し、診断情報を返す
+メンバー出力を解析
 
 **パラメータ**
 
@@ -215,7 +213,7 @@ analyzeMemberOutput(output: string): TeamMemberResult["diagnostics"]
 computeProxyUncertainty(memberResults: TeamMemberResult[]): TeamUncertaintyProxy
 ```
 
-チームの不確実性プロキシを計算する
+代理不確実性を計算
 
 **パラメータ**
 
@@ -231,7 +229,7 @@ computeProxyUncertainty(memberResults: TeamMemberResult[]): TeamUncertaintyProxy
 computeProxyUncertaintyWithExplainability(memberResults: TeamMemberResult[], weights: JudgeWeightConfig): { proxy: TeamUncertaintyProxy; explanation: JudgeExplanation }
 ```
 
-不確実性プロキシと説明を計算する
+不確実性と説明を計算
 
 **パラメータ**
 
@@ -248,7 +246,7 @@ computeProxyUncertaintyWithExplainability(memberResults: TeamMemberResult[], wei
 formatJudgeExplanation(explanation: JudgeExplanation): string
 ```
 
-判定の決定理由を人間が読める形式で整形する
+判定理由を整形
 
 **パラメータ**
 
@@ -268,7 +266,7 @@ buildFallbackJudge(input: {
 }): TeamFinalJudge
 ```
 
-LLM判定がない場合の代替判定を生成する
+代替判定を生成
 
 **パラメータ**
 
@@ -295,7 +293,7 @@ async runFinalJudge(input: {
 }): Promise<TeamFinalJudge>
 ```
 
-最終判定プロセスを実行します
+最終審査を実行
 
 **パラメータ**
 
@@ -346,7 +344,7 @@ interface JudgeWeightConfig {
 }
 ```
 
-判定の重み付け設定
+審判の重み設定
 
 ### JudgeExplanation
 
@@ -399,7 +397,7 @@ interface TeamUncertaintyProxy {
 }
 ```
 
-メンバー結果から計算される不確実性プロキシ
+チームの不確実性を表現
 
 ---
-*自動生成: 2026-02-18T14:31:30.460Z*
+*自動生成: 2026-02-18T15:54:40.912Z*

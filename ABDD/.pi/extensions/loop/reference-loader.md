@@ -26,10 +26,10 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `loadReferences` | 参照情報を読み込む |
-| 関数 | `fetchTextFromUrl` | 指定されたURLからテキストを取得する |
-| インターフェース | `LoopReference` | ループ参照データの構造を定義します。 |
-| インターフェース | `LoadedReferenceResult` | 参照読み込みの結果 |
+| 関数 | `loadReferences` | 外部参照を読み込み、解析結果を返す |
+| 関数 | `fetchTextFromUrl` | 指定されたURLからテキストデータを取得する |
+| インターフェース | `LoopReference` | ループ参照のデータ構造 |
+| インターフェース | `LoadedReferenceResult` | 参照読み込みの結果を表すインターフェース |
 
 ## 図解
 
@@ -125,7 +125,7 @@ sequenceDiagram
 async loadReferences(input: { refs: string[]; refsFile?: string; cwd: string }, signal?: AbortSignal): Promise<LoadedReferenceResult>
 ```
 
-参照情報を読み込む
+外部参照を読み込み、解析結果を返す
 
 **パラメータ**
 
@@ -165,7 +165,7 @@ SSRF対策としてURLの検証を行い、20秒のタイムアウトを設定�
 async fetchTextFromUrl(url: string, signal?: AbortSignal): Promise<string>
 ```
 
-指定されたURLからテキストを取得する
+指定されたURLからテキストデータを取得する
 
 **パラメータ**
 
@@ -312,7 +312,7 @@ interface LoopReference {
 }
 ```
 
-ループ参照データの構造を定義します。
+ループ参照のデータ構造
 
 ### LoadedReferenceResult
 
@@ -323,7 +323,7 @@ interface LoadedReferenceResult {
 }
 ```
 
-参照読み込みの結果
+参照読み込みの結果を表すインターフェース
 
 ---
-*自動生成: 2026-02-18T14:31:30.750Z*
+*自動生成: 2026-02-18T15:54:41.205Z*

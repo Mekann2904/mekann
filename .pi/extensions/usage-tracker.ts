@@ -1,36 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/usage-tracker.ts
- * role: LLM使用量・コスト追跡エージェント拡張
- * why: セッションごとのLLMコストを可視化し、モデル別・日別の使用傾向を把握するため
- * related: comprehensive-logger.ts, comprehensive-logger-types.ts, ExtensionAPI
- * public_api: collectData(), parseUsageFile()
- * invariants:
- *   - キャッシュファイルは ~/.pi/extensions/usage-cache.json に配置される
- *   - セッションデータは ~/.pi/agent/sessions/ 以下から読み込まれる
- *   - ファイル解析は末尾1000行に制限される
- * side_effects:
- *   - キャッシュディレクトリの作成
- *   - キャッシュファイルの読み書き
- *   - セッションディレクトリの走査
- * failure_modes:
- *   - キャッシュディレクトリ/ファイルの権限エラー時は処理をスキップ
- *   - 不正なJSON行は無視して解析を継続
- *   - セッションディレクトリが存在しない場合は空のデータを返す
+ * role: LLM使用量トラッカー拡張機能
+ * why: エージェントのセッションログからコストを集計し、モデル別および日別の使用状況を可視化するため
+ * related: ../lib/comprehensive-logger.ts, ../lib/comprehensive-logger-types.ts
+ * public_api: collectData, parseUsageFile
+ * invariants: キャッシュファイルはホームディレクトリ配下の固定パージに存在する
+ * side_effects: セッションディレクトリの読み取り、キャッシュファイルの読み取りおよび書き込み
+ * failure_modes: セッションログのパース失敗、キャッシュファイルの破損、ファイルシステム権限エラー
  * @abdd.explain
- * overview: ~/.pi/agent/sessions/ 配下のログファイルを解析し、LLMの使用コストを集計する拡張機能
+ * overview: セッションログを解析してLLMの使用コストを集計し、キャッシュを利用して集計処理を効率化する拡張機能
  * what_it_does:
- *   - セッションログから message タイプのエントリを抽出し、コスト情報を収集
- *   - モデル別・日別・日別モデル別の3軸でコストを集計
- *   - ファイル単位のmtimeベースキャッシュで差分解析を最適化
- *   - ヒートマップ表示用のデータを提供
+ *   - セッションログファイルからコスト情報を抽出し、モデル別・日別に集計する
+ *   - ファイルの変更時刻を比較し、変更がない場合はキャッシュを再利用する
+ *   - 集計結果をキャッシュファイルとして保存する
  * why_it_exists:
- *   - LLM利用コストの可視化による予算管理
- *   - モデルごとの費用対効果分析
- *   - 使用パターンの把握による最適なモデル選択支援
+ *   - LLMの利用コストを把握し、コスト管理を行うため
+ *   - 毎回全ログをパースするオーバーヘッドを削減するため
  * scope:
- *   in: セッションディレクトリ内のログファイル(JSONL形式)
- *   out: モデル別/日別/日別モデル別のコスト集計データ
+ *   in: セッションログファイルのパス、キャッシュファイルのデータ
+ *   out: モデル別コストのMap、日別コストのMap、日別モデル別コストのMap
  */
 
 /**

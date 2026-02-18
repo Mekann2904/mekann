@@ -1,39 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams.ts
- * role: 複数メンバー構成のエージェントチームオーケストレーション拡張機能
- * why: 特化ロールを持つ複数エージェントの並列協調実行による問題解決を可能にするため
- * related: .pi/extensions/subagents.ts, .pi/extensions/plan.ts, .pi/extensions/agent-teams/storage.ts, .pi/extensions/agent-teams/judge.ts
- * public_api: ExtensionAPI経由でチームオーケストレーションツールを登録
- * invariants:
- *   - チームメンバー定義は各メンバーが一意のロールを持つ
- *   - 通信ラウンド数は正規化され上限([MAX_COMMUNICATION_ROUNDS])を超えない
- *   - キープする実行履歴数は[MAX_RUNS_TO_KEEP]に制限される
- * side_effects:
- *   - ファイルシステムへのチーム定義・実行記録の永続化
- *   - 子プロセスでのLLM API呼び出し
- *   - AbortController経由でのプロセス制御
- * failure_modes:
- *   - タイムアウト超過による実行中断([isTimeoutErrorMessage])
- *   - APIレート制限・負荷エラー([classifyPressureError])
- *   - ユーザーキャンセル([isCancelledErrorMessage])
- *   - 出力バリデーション失敗([validateTeamMemberOutput])
+ * role: 多数決と並列実行によるエージェントチームの調整機能
+ * why: 専門化されたチームメンバー間での能動的な並列協力を実現するため
+ * related: .pi/extensions/agent-teams/storage.ts, .pi/extensions/agent-teams/judge.ts, .pi/extensions/subagents.ts, .pi/extensions/plan.ts
+ * public_api: チーム定義、ストレージ管理、コミュニケーション、審判ロジックの型とヘルパー関数
+ * invariants: チーム実行IDは一意、判定信頼度は0〜1の範囲、コミュニケーションラウンド数は上限以内
+ * side_effects: ファイルシステムへの実行記録書き込み、標準出力へのライブログ表示、ロガーへの出力
+ * failure_modes: スキーマ検証エラー、メンバー出力のタイムアウト、審判ロジックの失敗、ファイル書き込みエラー
  * @abdd.explain
- * overview: 複数の専門ロールを持つエージェントチームを編成し、並列実行・相互通信・最終判定を行うオーケストレーション基盤
+ * overview: 複数のエージェント（チームメンバー）を定義し、タスクを並列実行させ、通信ラウンドや審判（Judge）を介して結果を統合・評価する機能を提供する拡張モジュール。
  * what_it_does:
- *   - チーム定義の読み込み・保存・管理
- *   - チームメンバーへの並列タスク分散実行
- *   - メンバー間のコミュニケーションラウンド調整
- *   - 失敗メンバーの再試行制御([shouldRetryFailedMemberResultBase])
- *   - Judgeによる最終判定と不確実性評価([runFinalJudge])
- *   - 実行履歴とコスト推定の管理
+ *   - チーム定義（構成員、役割、審判設定）の管理とストレージへの永続化
+ *   - チームメンバーのタスク並列実行と結果の検証
+ *   - メンバー間のコミュニケーションコンテキスト共有と再試行制御
+ *   - 出力に基づいた審判（Judge）による信頼度判定と最終結果の選定
+ *   - 実行履歴の保存と管理（古い履歴のローテーション）
  * why_it_exists:
- *   - 単一エージェントでは困難な複雑なタスクを専門ロール分担で解決するため
- *   - 並列実行による処理効率向上
- *   - メンバー間通信による情報共有と協調の実現
+ *   - 単一エージェントでは到達できない、専門領域ごとの意見の収集と多数決による精度向上を実現するため
+ *   - 並列実行によるタスク完了の高速化と、多角的な視点からの議論・検証を行うため
  * scope:
- *   in: チーム定義、タスク指示、設定パラメータ(タイムアウト、通信ラウンド数等)
- *   out: チーム実行結果、Judge判定、実行履歴、コスト推定値
+ *   in: チーム定義、タスクプロンプト、実行設定（タイムアウト、通信ラウンド数など）
+ *   out: 各メンバーの実行結果、審判による最終判定結果、実行ログと統計情報
  */
 
 // File: .pi/extensions/agent-teams.ts
@@ -1272,11 +1260,12 @@ async function runTeamTask(input: {
   };
 }
 
- /**
-  * エージェントチーム拡張を登録する
-  * @param pi 拡張API
-  * @returns なし
-  */
+/**
+ * エージェントチーム拡張登録
+ * @summary 拡張登録
+ * @param pi 拡張APIインターフェース
+ * @returns void
+ */
 export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
   // チーム一覧
   pi.registerTool({

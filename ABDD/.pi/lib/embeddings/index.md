@@ -24,8 +24,8 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `initializeEmbeddingModule` | デフォルトプロバイダで埋め込みモジュールを初期化 |
-| 関数 | `initializeEmbeddingModuleSync` | 非同期コンテキスト用の同期初期化 |
+| 関数 | `initializeEmbeddingModule` | - |
+| 関数 | `initializeEmbeddingModuleSync` | - |
 
 ## 図解
 
@@ -73,8 +73,6 @@ sequenceDiagram
 async initializeEmbeddingModule(): Promise<void>
 ```
 
-デフォルトプロバイダで埋め込みモジュールを初期化
-
 **戻り値**: `Promise<void>`
 
 ### initializeEmbeddingModuleSync
@@ -83,9 +81,7 @@ async initializeEmbeddingModule(): Promise<void>
 initializeEmbeddingModuleSync(): void
 ```
 
-非同期コンテキスト用の同期初期化
-
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T14:31:30.986Z*
+*自動生成: 2026-02-18T15:54:41.477Z*

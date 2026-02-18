@@ -27,34 +27,34 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `initAdaptiveController` | アダプティブコントローラーを初期化する。 |
-| 関数 | `shutdownAdaptiveController` | アダプティブコントローラーをシャットダウンする。 |
+| 関数 | `shutdownAdaptiveController` | コントローラーをシャットダウン |
 | 関数 | `getEffectiveLimit` | プロバイダーとモデルの有効な同時実行制限を取得 |
-| 関数 | `recordEvent` | レートリミットイベントを記録する |
-| 関数 | `record429` | 429エラーを記録する |
-| 関数 | `recordSuccess` | 成功したリクエストを記録する。 |
-| 関数 | `getAdaptiveState` | 現在の状態を取得する（デバッグ用）。 |
-| 関数 | `getLearnedLimit` | 指定プロバイダー/モデルの学習済み制限を取得 |
+| 関数 | `recordEvent` | レート制限イベントを記録 |
+| 関数 | `record429` | 429エラーを記録 |
+| 関数 | `recordSuccess` | 成功を記録 |
+| 関数 | `getAdaptiveState` | 適応制御の状態を取得する |
+| 関数 | `getLearnedLimit` | 学習した制限を取得する |
 | 関数 | `resetLearnedLimit` | 学習した制限をリセットする |
-| 関数 | `resetAllLearnedLimits` | 学習した制限値をすべてリセットする |
-| 関数 | `setGlobalMultiplier` | グローバル乗数を設定 |
-| 関数 | `configureRecovery` | 復元パラメータを設定する。 |
-| 関数 | `isRateLimitError` | エラーがレートリミットか判定する |
-| 関数 | `formatAdaptiveSummary` | 適応制御状態の概要を作成する。 |
-| 関数 | `analyze429Probability` | 429エラーの発生確率を予測します。 |
-| 関数 | `getPredictiveAnalysis` | プロバイダー/モデルの予測分析を取得する |
-| 関数 | `shouldProactivelyThrottle` | 予測に基づいて事前にスロットルするか判定 |
-| 関数 | `getPredictiveConcurrency` | 予測に基づいた推奨並列数を取得 |
-| 関数 | `setPredictiveEnabled` | 予測スケジューリングの有効/無効を設定する |
-| 関数 | `setPredictiveThreshold` | 予測閾値を設定する（0-1） |
-| 関数 | `getSchedulerAwareLimit` | スケジューラ対応の同時実行制限を取得する |
+| 関数 | `resetAllLearnedLimits` | 全ての学習制限をリセットする |
+| 関数 | `setGlobalMultiplier` | グローバル乗数を設定する |
+| 関数 | `configureRecovery` | 復元パラメータを設定 |
+| 関数 | `isRateLimitError` | レート制限エラー判定 |
+| 関数 | `formatAdaptiveSummary` | 適応サマリーを整形 |
+| 関数 | `analyze429Probability` | 429確率を分析 |
+| 関数 | `getPredictiveAnalysis` | 予測分析を取得 |
+| 関数 | `shouldProactivelyThrottle` | スロットル要否判定 |
+| 関数 | `getPredictiveConcurrency` | 予測並列数を取得 |
+| 関数 | `setPredictiveEnabled` | 予測機能の有効化 |
+| 関数 | `setPredictiveThreshold` | 予測閾値を設定 |
+| 関数 | `getSchedulerAwareLimit` | スケジューラ対応制限取得 |
 | 関数 | `notifyScheduler429` | スケジューラに429エラーを通知する |
 | 関数 | `notifySchedulerTimeout` | スケジューラにタイムアウトを通知する |
 | 関数 | `notifySchedulerSuccess` | スケジューラに成功を通知する |
-| 関数 | `getCombinedRateControlSummary` | レート制御の統合サマリーを取得 |
-| インターフェース | `LearnedLimit` | 学習された同時実行制限と状態 |
-| インターフェース | `AdaptiveControllerState` | 適応的レート制御の状態 |
-| インターフェース | `RateLimitEvent` | レート制限イベントを表す |
-| インターフェース | `PredictiveAnalysis` | 予測分析の結果を表すインターフェース |
+| 関数 | `getCombinedRateControlSummary` | レート制限の統合サマリを取得する |
+| インターフェース | `LearnedLimit` | 学習された同時実行制限と状態を保持 |
+| インターフェース | `AdaptiveControllerState` | - |
+| インターフェース | `RateLimitEvent` | レート制限イベント |
+| インターフェース | `PredictiveAnalysis` | 予測分析結果を保持 |
 
 ## 図解
 
@@ -291,7 +291,7 @@ initAdaptiveController(): void
 shutdownAdaptiveController(): void
 ```
 
-アダプティブコントローラーをシャットダウンする。
+コントローラーをシャットダウン
 
 **戻り値**: `void`
 
@@ -319,7 +319,7 @@ getEffectiveLimit(provider: string, model: string, presetLimit: number): number
 recordEvent(event: RateLimitEvent): void
 ```
 
-レートリミットイベントを記録する
+レート制限イベントを記録
 
 **パラメータ**
 
@@ -335,7 +335,7 @@ recordEvent(event: RateLimitEvent): void
 record429(provider: string, model: string, details?: string): void
 ```
 
-429エラーを記録する
+429エラーを記録
 
 **パラメータ**
 
@@ -353,7 +353,7 @@ record429(provider: string, model: string, details?: string): void
 recordSuccess(provider: string, model: string): void
 ```
 
-成功したリクエストを記録する。
+成功を記録
 
 **パラメータ**
 
@@ -370,7 +370,7 @@ recordSuccess(provider: string, model: string): void
 getAdaptiveState(): AdaptiveControllerState
 ```
 
-現在の状態を取得する（デバッグ用）。
+適応制御の状態を取得する
 
 **戻り値**: `AdaptiveControllerState`
 
@@ -380,7 +380,7 @@ getAdaptiveState(): AdaptiveControllerState
 getLearnedLimit(provider: string, model: string): LearnedLimit | undefined
 ```
 
-指定プロバイダー/モデルの学習済み制限を取得
+学習した制限を取得する
 
 **パラメータ**
 
@@ -415,7 +415,7 @@ resetLearnedLimit(provider: string, model: string, newLimit?: number): void
 resetAllLearnedLimits(): void
 ```
 
-学習した制限値をすべてリセットする
+全ての学習制限をリセットする
 
 **戻り値**: `void`
 
@@ -425,7 +425,7 @@ resetAllLearnedLimits(): void
 setGlobalMultiplier(multiplier: number): void
 ```
 
-グローバル乗数を設定
+グローバル乗数を設定する
 
 **パラメータ**
 
@@ -445,7 +445,7 @@ configureRecovery(options: {
 }): void
 ```
 
-復元パラメータを設定する。
+復元パラメータを設定
 
 **パラメータ**
 
@@ -464,7 +464,7 @@ configureRecovery(options: {
 isRateLimitError(error: unknown): boolean
 ```
 
-エラーがレートリミットか判定する
+レート制限エラー判定
 
 **パラメータ**
 
@@ -480,7 +480,7 @@ isRateLimitError(error: unknown): boolean
 formatAdaptiveSummary(): string
 ```
 
-適応制御状態の概要を作成する。
+適応サマリーを整形
 
 **戻り値**: `string`
 
@@ -490,7 +490,7 @@ formatAdaptiveSummary(): string
 analyze429Probability(provider: string, model: string): number
 ```
 
-429エラーの発生確率を予測します。
+429確率を分析
 
 **パラメータ**
 
@@ -507,7 +507,7 @@ analyze429Probability(provider: string, model: string): number
 getPredictiveAnalysis(provider: string, model: string): PredictiveAnalysis
 ```
 
-プロバイダー/モデルの予測分析を取得する
+予測分析を取得
 
 **パラメータ**
 
@@ -524,7 +524,7 @@ getPredictiveAnalysis(provider: string, model: string): PredictiveAnalysis
 shouldProactivelyThrottle(provider: string, model: string): boolean
 ```
 
-予測に基づいて事前にスロットルするか判定
+スロットル要否判定
 
 **パラメータ**
 
@@ -541,7 +541,7 @@ shouldProactivelyThrottle(provider: string, model: string): boolean
 getPredictiveConcurrency(provider: string, model: string, currentConcurrency: number): number
 ```
 
-予測に基づいた推奨並列数を取得
+予測並列数を取得
 
 **パラメータ**
 
@@ -575,7 +575,7 @@ Update historical 429 data (called on 429 events).
 setPredictiveEnabled(enabled: boolean): void
 ```
 
-予測スケジューリングの有効/無効を設定する
+予測機能の有効化
 
 **パラメータ**
 
@@ -591,7 +591,7 @@ setPredictiveEnabled(enabled: boolean): void
 setPredictiveThreshold(threshold: number): void
 ```
 
-予測閾値を設定する（0-1）
+予測閾値を設定
 
 **パラメータ**
 
@@ -607,7 +607,7 @@ setPredictiveThreshold(threshold: number): void
 getSchedulerAwareLimit(provider: string, model: string, baseLimit?: number): number
 ```
 
-スケジューラ対応の同時実行制限を取得する
+スケジューラ対応制限取得
 
 **パラメータ**
 
@@ -685,7 +685,7 @@ getCombinedRateControlSummary(provider: string, model: string): {
 }
 ```
 
-レート制御の統合サマリーを取得
+レート制限の統合サマリを取得する
 
 **パラメータ**
 
@@ -723,7 +723,7 @@ interface LearnedLimit {
 }
 ```
 
-学習された同時実行制限と状態
+学習された同時実行制限と状態を保持
 
 ### AdaptiveControllerState
 
@@ -743,8 +743,6 @@ interface AdaptiveControllerState {
 }
 ```
 
-適応的レート制御の状態
-
 ### RateLimitEvent
 
 ```typescript
@@ -757,7 +755,7 @@ interface RateLimitEvent {
 }
 ```
 
-レート制限イベントを表す
+レート制限イベント
 
 ### PredictiveAnalysis
 
@@ -773,7 +771,7 @@ interface PredictiveAnalysis {
 }
 ```
 
-予測分析の結果を表すインターフェース
+予測分析結果を保持
 
 ---
-*自動生成: 2026-02-18T14:31:30.948Z*
+*自動生成: 2026-02-18T15:54:41.430Z*

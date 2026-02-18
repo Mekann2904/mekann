@@ -23,9 +23,9 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `loadConfigFromEnv` | 環境変数から設定を読み込む |
+| 関数 | `loadConfigFromEnv` | 環境変数から設定を読込 |
 | 関数 | `validateConfig` | ロガー設定を検証する |
-| 関数 | `getConfig` | ロガーの設定を取得する |
+| 関数 | `getConfig` | - |
 | 関数 | `resetConfig` | 設定をリセットする |
 
 ## 図解
@@ -98,7 +98,7 @@ parseEnvValue(value: string, type: string): unknown
 loadConfigFromEnv(baseConfig: LoggerConfig): LoggerConfig
 ```
 
-環境変数から設定を読み込む
+環境変数から設定を読込
 
 **パラメータ**
 
@@ -130,8 +130,6 @@ validateConfig(config: LoggerConfig): { valid: boolean; errors: string[] }
 getConfig(): LoggerConfig
 ```
 
-ロガーの設定を取得する
-
 **戻り値**: `LoggerConfig`
 
 ### resetConfig
@@ -145,4 +143,4 @@ resetConfig(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T14:31:30.956Z*
+*自動生成: 2026-02-18T15:54:41.441Z*

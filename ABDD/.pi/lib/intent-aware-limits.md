@@ -17,17 +17,17 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `classifyIntent` | タスクの意図を分類する |
-| 関数 | `getIntentBudget` | 意図に応じた予算を取得する。 |
-| 関数 | `applyIntentLimits` | インテントに基づいて制限値を調整する |
-| 関数 | `getEffectiveRepetitionThreshold` | インテントに基づく反復しきい値を計算 |
-| 関数 | `isIntentClassificationAvailable` | インテント分類が利用可能か判定する |
-| 関数 | `getAllIntentBudgets` | 全てのインテント予算を取得する |
+| 関数 | `classifyIntent` | 意図の分類実行 |
+| 関数 | `getIntentBudget` | 意図予算の取得 |
+| 関数 | `applyIntentLimits` | 意図に応じた制限適用 |
+| 関数 | `getEffectiveRepetitionThreshold` | インテントに基づき反復しきい値を計算 |
+| 関数 | `isIntentClassificationAvailable` | インテント分類利用可否判定 |
+| 関数 | `getAllIntentBudgets` | - |
 | 関数 | `summarizeIntentClassification` | 意図分類結果の要約ログを生成 |
-| インターフェース | `IntentBudget` | インテント対応の予算設定。 |
-| インターフェース | `IntentClassificationInput` | 意図分類の入力データ |
-| インターフェース | `IntentClassificationResult` | 意図分類の結果を表します。 |
-| 型 | `TaskIntent` | タスクの意図タイプ |
+| インターフェース | `IntentBudget` | タスクの意図タイプ |
+| インターフェース | `IntentClassificationInput` | 意図分類の入力 |
+| インターフェース | `IntentClassificationResult` | 意図分類の結果 |
+| 型 | `TaskIntent` | タスクの意図タイプを定義 |
 
 ## 図解
 
@@ -66,7 +66,7 @@ classDiagram
 classifyIntent(input: IntentClassificationInput): IntentClassificationResult
 ```
 
-タスクの意図を分類する
+意図の分類実行
 
 **パラメータ**
 
@@ -82,7 +82,7 @@ classifyIntent(input: IntentClassificationInput): IntentClassificationResult
 getIntentBudget(intent: TaskIntent): IntentBudget
 ```
 
-意図に応じた予算を取得する。
+意図予算の取得
 
 **パラメータ**
 
@@ -98,7 +98,7 @@ getIntentBudget(intent: TaskIntent): IntentBudget
 applyIntentLimits(baseLimits: T, intent: TaskIntent): T
 ```
 
-インテントに基づいて制限値を調整する
+意図に応じた制限適用
 
 **パラメータ**
 
@@ -115,7 +115,7 @@ applyIntentLimits(baseLimits: T, intent: TaskIntent): T
 getEffectiveRepetitionThreshold(baseThreshold: number, intent: TaskIntent): number
 ```
 
-インテントに基づく反復しきい値を計算
+インテントに基づき反復しきい値を計算
 
 **パラメータ**
 
@@ -132,7 +132,7 @@ getEffectiveRepetitionThreshold(baseThreshold: number, intent: TaskIntent): numb
 isIntentClassificationAvailable(): boolean
 ```
 
-インテント分類が利用可能か判定する
+インテント分類利用可否判定
 
 **戻り値**: `boolean`
 
@@ -141,8 +141,6 @@ isIntentClassificationAvailable(): boolean
 ```typescript
 getAllIntentBudgets(): Record<TaskIntent, IntentBudget>
 ```
-
-全てのインテント予算を取得する
 
 **戻り値**: `Record<TaskIntent, IntentBudget>`
 
@@ -177,7 +175,7 @@ interface IntentBudget {
 }
 ```
 
-インテント対応の予算設定。
+タスクの意図タイプ
 
 ### IntentClassificationInput
 
@@ -189,7 +187,7 @@ interface IntentClassificationInput {
 }
 ```
 
-意図分類の入力データ
+意図分類の入力
 
 ### IntentClassificationResult
 
@@ -202,7 +200,7 @@ interface IntentClassificationResult {
 }
 ```
 
-意図分類の結果を表します。
+意図分類の結果
 
 ## 型定義
 
@@ -212,7 +210,7 @@ interface IntentClassificationResult {
 type TaskIntent = "declarative" | "procedural" | "reasoning"
 ```
 
-タスクの意図タイプ
+タスクの意図タイプを定義
 
 ---
-*自動生成: 2026-02-18T14:31:30.994Z*
+*自動生成: 2026-02-18T15:54:41.486Z*

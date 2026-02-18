@@ -27,21 +27,21 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `toId` | 文字列をID形式に変換する |
-| 関数 | `loadStorage` | ディスクからチームストレージを読み込む |
-| 関数 | `saveStorage` | チームストレージをディスクに保存する。 |
-| 関数 | `saveStorageWithPatterns` | ストレージを保存し、パターンを抽出 |
-| インターフェース | `TeamMember` | チームメンバーの定義情報を表す |
-| インターフェース | `TeamDefinition` | エージェントチームの定義 |
-| インターフェース | `TeamMemberResult` | チームメンバーの実行結果 |
-| インターフェース | `TeamFinalJudge` | チーム最終審査の結果を表します。 |
+| 関数 | `toId` | ID文字列へ変換 |
+| 関数 | `loadStorage` | ストレージを読込 |
+| 関数 | `saveStorage` | ストレージを保存 |
+| 関数 | `saveStorageWithPatterns` | パターン付きで保存 |
+| インターフェース | `TeamMember` | チームメンバー情報 |
+| インターフェース | `TeamDefinition` | エージェントチーム定義 |
+| インターフェース | `TeamMemberResult` | チームメンバー実行結果 |
+| インターフェース | `TeamFinalJudge` | チーム最終審査の結果 |
 | インターフェース | `ClaimReference` | メンバー間のClaim参照構造 |
-| インターフェース | `DiscussionAnalysis` | Discussion analysis structure for structured commu |
-| インターフェース | `DiscussionReference` | メンバー間のスタンス参照を追跡する |
-| インターフェース | `TeamCommunicationAuditEntry` | チーム内通信監査エントリ |
-| インターフェース | `TeamRunRecord` | チーム実行記録を表すインターフェース |
-| インターフェース | `TeamStorage` | チーム定義と実行記録のストレージ |
-| インターフェース | `TeamPaths` | チームストレージのパス定義（BaseStoragePathsを拡張） |
+| インターフェース | `DiscussionAnalysis` | - |
+| インターフェース | `DiscussionReference` | ディスカッション参照情報 |
+| インターフェース | `TeamCommunicationAuditEntry` | 通信監査エントリ |
+| インターフェース | `TeamRunRecord` | チーム実行記録 |
+| インターフェース | `TeamStorage` | チームストレージ定義 |
+| インターフェース | `TeamPaths` | チームパス定義 |
 | 型 | `TeamEnabledState` | チームの有効状態を表す型 |
 | 型 | `TeamStrategy` | チームの実行戦略を表す型 |
 | 型 | `TeamJudgeVerdict` | チーム審査の判定結果 |
@@ -191,7 +191,7 @@ sequenceDiagram
 toId(input: string): string
 ```
 
-文字列をID形式に変換する
+ID文字列へ変換
 
 **パラメータ**
 
@@ -225,7 +225,7 @@ Uses common utility from lib/storage-base.ts.
 loadStorage(cwd: string): TeamStorage
 ```
 
-ディスクからチームストレージを読み込む
+ストレージを読込
 
 **パラメータ**
 
@@ -241,7 +241,7 @@ loadStorage(cwd: string): TeamStorage
 saveStorage(cwd: string, storage: TeamStorage): void
 ```
 
-チームストレージをディスクに保存する。
+ストレージを保存
 
 **パラメータ**
 
@@ -258,7 +258,7 @@ saveStorage(cwd: string, storage: TeamStorage): void
 async saveStorageWithPatterns(cwd: string, storage: TeamStorage): Promise<void>
 ```
 
-ストレージを保存し、パターンを抽出
+パターン付きで保存
 
 **パラメータ**
 
@@ -285,7 +285,7 @@ interface TeamMember {
 }
 ```
 
-チームメンバーの定義情報を表す
+チームメンバー情報
 
 ### TeamDefinition
 
@@ -302,7 +302,7 @@ interface TeamDefinition {
 }
 ```
 
-エージェントチームの定義
+エージェントチーム定義
 
 ### TeamMemberResult
 
@@ -324,7 +324,7 @@ interface TeamMemberResult {
 }
 ```
 
-チームメンバーの実行結果
+チームメンバー実行結果
 
 ### TeamFinalJudge
 
@@ -342,7 +342,7 @@ interface TeamFinalJudge {
 }
 ```
 
-チーム最終審査の結果を表します。
+チーム最終審査の結果
 
 ### ClaimReference
 
@@ -367,10 +367,6 @@ interface DiscussionAnalysis {
 }
 ```
 
-Discussion analysis structure for structured communication context.
-Tracks references between team members and stance distribution.
-Controlled by PI_STANCE_CLASSIFICATION_MODE feature flag.
-
 ### DiscussionReference
 
 ```typescript
@@ -383,7 +379,7 @@ interface DiscussionReference {
 }
 ```
 
-メンバー間のスタンス参照を追跡する
+ディスカッション参照情報
 
 ### TeamCommunicationAuditEntry
 
@@ -404,7 +400,7 @@ interface TeamCommunicationAuditEntry {
 }
 ```
 
-チーム内通信監査エントリ
+通信監査エントリ
 
 ### TeamRunRecord
 
@@ -440,7 +436,7 @@ interface TeamRunRecord {
 }
 ```
 
-チーム実行記録を表すインターフェース
+チーム実行記録
 
 ### TeamStorage
 
@@ -453,7 +449,7 @@ interface TeamStorage {
 }
 ```
 
-チーム定義と実行記録のストレージ
+チームストレージ定義
 
 ### TeamPaths
 
@@ -462,7 +458,7 @@ interface TeamPaths {
 }
 ```
 
-チームストレージのパス定義（BaseStoragePathsを拡張）
+チームパス定義
 
 ## 型定義
 
@@ -491,4 +487,4 @@ type TeamJudgeVerdict = "trusted" | "partial" | "untrusted"
 チーム審査の判定結果
 
 ---
-*自動生成: 2026-02-18T14:31:30.482Z*
+*自動生成: 2026-02-18T15:54:40.936Z*

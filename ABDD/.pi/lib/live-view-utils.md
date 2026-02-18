@@ -17,10 +17,10 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getLiveStatusGlyph` | ステータスに対応するグリフを返す |
-| 関数 | `isEnterInput` | 入力がEnterキーか判定する |
-| 関数 | `finalizeLiveLines` | 固定高さの表示用に行を整形する |
-| 型 | `LiveStatus` | ライブビューのステータスを表す型 |
+| 関数 | `getLiveStatusGlyph` | - |
+| 関数 | `isEnterInput` | - |
+| 関数 | `finalizeLiveLines` | 行データを最終化する |
+| 型 | `LiveStatus` | ライブビューのステータス型 |
 
 ## 図解
 
@@ -31,8 +31,6 @@ related: []
 ```typescript
 getLiveStatusGlyph(status: LiveStatus): string
 ```
-
-ステータスに対応するグリフを返す
 
 **パラメータ**
 
@@ -48,8 +46,6 @@ getLiveStatusGlyph(status: LiveStatus): string
 isEnterInput(rawInput: string): boolean
 ```
 
-入力がEnterキーか判定する
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -64,7 +60,7 @@ isEnterInput(rawInput: string): boolean
 finalizeLiveLines(lines: string[], height?: number): string[]
 ```
 
-固定高さの表示用に行を整形する
+行データを最終化する
 
 **パラメータ**
 
@@ -83,7 +79,7 @@ finalizeLiveLines(lines: string[], height?: number): string[]
 type LiveStatus = "pending" | "running" | "completed" | "failed"
 ```
 
-ライブビューのステータスを表す型
+ライブビューのステータス型
 
 ---
-*自動生成: 2026-02-18T14:31:30.994Z*
+*自動生成: 2026-02-18T15:54:41.486Z*

@@ -1,36 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/adaptive-rate-controller.ts
- * role: 429エラーから学習し、プロバイダー/モデル別の同時実行制限を動的に調整する適応的レート制御マネージャー
- * why: 静的なレート制限プリセットだけでは対応できない動的なAPI利用制限に対処し、429エラーの発生を最小限に抑えつつスループットを最適化するため
- * related: provider-limits.ts, cross-instance-coordinator.ts, runtime-config.ts
+ * role: APIレートリミット動的制御と学習エンジン
+ * why: 429エラー発生時の自動的な同時実行数調整と、過去のエラー履歴に基づく予測的スケジューリングを行うため
+ * related: runtime-config.ts, provider-limits.ts, cross-instance-coordinator.ts
  * public_api: LearnedLimit, AdaptiveControllerState, RateLimitEvent
- * invariants:
- *   - concurrency は元の制限値(originalConcurrency)を超えない
- *   - reductionFactor は0.7で固定（429発生時に30%削減）
- *   - recoveryFactor は1.1で固定（回復ごとに10%増加）
- *   - recoveryIntervalMs は5分間で回復処理を実行
- * side_effects:
- *   - ファイルシステムへの状態読み書き（学習データの永続化）
- *   - 内部タイマーによる回復スケジューリング
- * failure_modes:
- *   - 状態ファイルの読み書き失敗時はデフォルト値で動作
- *   - 連続429エラー発生時は制限を段階的に削減
+ * invariants: concurrencyはoriginalConcurrency以下、recoveryFactorは1以上、reductionFactorは1未満、versionは正の整数
+ * side_effects: ファイルシステムへの状態保存、RuntimeConfigの参照、同時実行制限値の動的書き換え
+ * failure_modes: ディスクI/O失敗時の状態不整合、クロック精度による予測ズレ、急激な負荷変動への遅延追従
  * @abdd.explain
- * overview: APIプロバイダーからの429エラーを学習し、プロバイダー/モデル単位で同時実行制限を動的に調整する。予測的スロットリング機能により、履歴パターンに基づく先制制御も行う。
+ * overview: 429エラーを検知して即座に同時実行数を削減し、その後時間をかけて制限値を段階的に回復させる。さらに履歴データを蓄積し、将来のエラー発生確率を予測して能動的なスロットリングを行う。
  * what_it_does:
- *   - 429エラー検知時に該当プロバイダー/モデルの同時実行制限を30%削減
- *   - 5分間の回復期間後に制限を段階的に元の値へ復元
- *   - プロバイダー:モデル単位で学習状態を管理
- *   - 過去の429エラー履歴から将来のリスクを予測し、先制的にスロットリング
- *   - 学習状態をファイルへ永続化し、プロセス再起動後も維持
+ *   - プロバイダ/モデルごとの学習済み制限値を管理する
+ *   - 429エラー発生時に制限値を30%（reductionFactor）削減する
+ *   - 成功リクエストに基づき、設定した間隔で制限値を回復させる
+ *   - 過去の429タイムスタンプを解析し、エラー確率と推奨並列数を算出する
  * why_it_exists:
- *   - 静的なプリセット制限では実際のAPIレート制限に追従できない
- *   - 手動調整では複数プロバイダー/モデルの個別最適化が困難
- *   - クロスインスタンス間での制限調整が必要
+ *   - プリセット固定値だけでは追従できない動的なAPI制限に対応するため
+ *   - 429エラーによるサービス停止リスクを最小限に抑えるため
+ *   - ヒューリスティックな予測によりリソース利用効率を最大化するため
  * scope:
- *   in: プロバイダー名、モデル名、イベントタイプ（429/success/timeout/error）
- *   out: 調整後の同時実行制限値、予測的スロットリング推奨値
+ *   in: 429またはSuccessイベント、RuntimeConfig
+ *   out: 更新されたLearnedLimit、プロアクティブな制御指示
  */
 
 /**
@@ -62,17 +53,19 @@ import {
 // Types
 // ============================================================================
 
- /**
-  * 学習された同時実行制限と状態
-  * @param concurrency 現在の学習された同時実行制限
-  * @param originalConcurrency 回復用の元の制限値
-  * @param last429At 直近の429エラーのタイムスタンプ
-  * @param consecutive429Count 連続した429エラーの数
-  * @param total429Count このモデルの総429エラー数
-  * @param lastSuccessAt 直近の成功リクエストのタイムスタンプ
-  * @param recoveryScheduled 回復スケジュール済みフラグ
-  * @param modelNotes モデル固有のメモ
-  */
+/**
+ * 学習された同時実行制限と状態を保持
+ * @summary 同時実行制限状態取得
+ * @param concurrency 現在の学習された同時実行制限
+ * @param originalConcurrency 回復用の元の制限値
+ * @param last429At 直近の429エラーのタイムスタンプ
+ * @param consecutive429Count 連続した429エラーの数
+ * @param total429Count このモデルの総429エラー数
+ * @param lastSuccessAt 直近の成功リクエストのタイムスタンプ
+ * @param recoveryScheduled 回復スケジュール済みフラグ
+ * @param modelNotes モデル固有のメモ
+ * @returns LearnedLimit オブジェクト
+ */
 export interface LearnedLimit {
   /** Current learned concurrency limit */
   concurrency: number;
@@ -98,17 +91,18 @@ export interface LearnedLimit {
   rampUpSchedule?: number[];
 }
 
- /**
-  * 適応的レート制御の状態
-  * @param version バージョン
-  * @param lastUpdated 最終更新日時
-  * @param limits 学習された制限値（プロバイダ:モデル別）
-  * @param globalMultiplier 全体倍率（すべての制限に適用）
-  * @param recoveryIntervalMs 回復間隔（ミリ秒）
-  * @param reductionFactor 429発生時の低減係数（0.7 = 30%減）
-  * @param recoveryFactor 回復係数（1.1 = 回復ごとに10%増）
-  * @param predictiveEnabled 予測的スロットリングの有効化
-  */
+/**
+ * @summary レート制御状態
+ * 適応的レート制御の状態
+ * @param version バージョン
+ * @param lastUpdated 最終更新日時
+ * @param limits 学習された制限値（プロバイダ:モデル別）
+ * @param globalMultiplier 全体倍率（すべての制限に適用）
+ * @param recoveryIntervalMs 回復間隔（ミリ秒）
+ * @param reductionFactor 429発生時の低減係数（0.7 = 30%減）
+ * @param recoveryFactor 回復係数（1.1 = 回復ごとに10%増）
+ * @param predictiveEnabled 予測的スロットリングの有効化
+ */
 export interface AdaptiveControllerState {
   version: number;
   lastUpdated: string;
@@ -129,14 +123,15 @@ export interface AdaptiveControllerState {
   predictiveThreshold: number;
 }
 
- /**
-  * レート制限イベントを表す
-  * @param provider - APIプロバイダー名
-  * @param model - 使用されたモデル名
-  * @param type - イベントタイプ（"429" | "success" | "timeout" | "error"）
-  * @param timestamp - イベント発生時のタイムスタンプ
-  * @param details - イベントの追加詳細情報
-  */
+/**
+ * レート制限イベント
+ * @summary レート制限イベント
+ * @param provider - APIプロバイダー名
+ * @param model - 使用されたモデル名
+ * @param type - イベントタイプ（"429" | "success" | "timeout" | "error"）
+ * @param timestamp - イベント発生時のタイムスタンプ
+ * @param details - イベントの追加詳細情報
+ */
 export interface RateLimitEvent {
   provider: string;
   model: string;
@@ -145,16 +140,17 @@ export interface RateLimitEvent {
   details?: string;
 }
 
- /**
-  * 予測分析の結果を表すインターフェース
-  * @param provider - APIプロバイダー名
-  * @param model - 使用されたモデル名
-  * @param predicted429Probability - 429エラーの予測確率
-  * @param shouldProactivelyThrottle - 能動的なスロットリングが必要かどうか
-  * @param recommendedConcurrency - 推奨される並列数
-  * @param nextRiskWindow - 次のリスクが予測される時間枠（オプション）
-  * @param confidence - 予測の信頼度
-  */
+/**
+ * 予測分析結果を保持
+ * @summary 分析結果を保持
+ * @param provider - APIプロバイダー名
+ * @param model - 使用されたモデル名
+ * @param predicted429Probability - 429エラーの予測確率
+ * @param shouldProactivelyThrottle - 能動的なスロットリングが必要かどうか
+ * @param recommendedConcurrency - 推奨される並列数
+ * @param nextRiskWindow - 次のリスクが予測される時間枠（オプション）
+ * @param confidence - 予測の信頼度
+ */
 export interface PredictiveAnalysis {
   provider: string;
   model: string;
@@ -365,10 +361,10 @@ export function initAdaptiveController(): void {
   }
 }
 
- /**
-  * アダプティブコントローラーをシャットダウンする。
-  * @returns なし
-  */
+/**
+ * コントローラーをシャットダウン
+ * @summary シャットダウン
+ */
 export function shutdownAdaptiveController(): void {
   if (recoveryTimer) {
     clearInterval(recoveryTimer);
@@ -377,13 +373,14 @@ export function shutdownAdaptiveController(): void {
   state = null;
 }
 
- /**
-  * プロバイダーとモデルの有効な同時実行制限を取得
-  * @param provider - プロバイダー名（例: "anthropic"）
-  * @param model - モデル名（例: "claude-sonnet-4"）
-  * @param presetLimit - プロバイダー制限からのプリセット制限値
-  * @returns 有効な同時実行制限
-  */
+/**
+ * プロバイダーとモデルの有効な同時実行制限を取得
+ * @summary 制限値取得
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @param presetLimit 事前設定された制限値
+ * @returns 有効な制限値
+ */
 export function getEffectiveLimit(
   provider: string,
   model: string,
@@ -415,11 +412,11 @@ export function getEffectiveLimit(
   return clampConcurrency(Math.floor(presetLimit * currentState.globalMultiplier));
 }
 
- /**
-  * レートリミットイベントを記録する
-  * @param event 記録するイベント情報
-  * @returns なし
-  */
+/**
+ * レート制限イベントを記録
+ * @summary イベント記録
+ * @param event レート制限イベント
+ */
 export function recordEvent(event: RateLimitEvent): void {
   const currentState = ensureState();
   const key = buildKey(event.provider, event.model);
@@ -494,13 +491,13 @@ export function recordEvent(event: RateLimitEvent): void {
   saveState();
 }
 
- /**
-  * 429エラーを記録する
-  * @param provider プロバイダ名
-  * @param model モデル名
-  * @param details エラー詳細
-  * @returns なし
-  */
+/**
+ * 429エラーを記録
+ * @summary 429エラー記録
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @param details 詳細情報
+ */
 export function record429(provider: string, model: string, details?: string): void {
   recordEvent({
     provider,
@@ -511,12 +508,12 @@ export function record429(provider: string, model: string, details?: string): vo
   });
 }
 
- /**
-  * 成功したリクエストを記録する。
-  * @param provider プロバイダ名
-  * @param model モデル名
-  * @returns なし
-  */
+/**
+ * 成功を記録
+ * @summary 成功を記録
+ * @param provider プロバイダ名
+ * @param model モデル名
+ */
 export function recordSuccess(provider: string, model: string): void {
   recordEvent({
     provider,
@@ -526,33 +523,36 @@ export function recordSuccess(provider: string, model: string): void {
   });
 }
 
- /**
-  * 現在の状態を取得する（デバッグ用）。
-  * @returns 現在の状態
-  */
+/**
+ * 適応制御の状態を取得する
+ * @summary 状態取得
+ * @returns {AdaptiveControllerState} 現在の状態オブジェクト
+ */
 export function getAdaptiveState(): AdaptiveControllerState {
   return { ...ensureState() };
 }
 
- /**
-  * 指定プロバイダー/モデルの学習済み制限を取得
-  * @param provider プロバイダー名
-  * @param model モデル名
-  * @returns 学習済み制限オブジェクト（存在しない場合は undefined）
-  */
+/**
+ * 学習した制限を取得する
+ * @summary 制限取得
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns {LearnedLimit | undefined} 学習した制限オブジェクト
+ */
 export function getLearnedLimit(provider: string, model: string): LearnedLimit | undefined {
   const currentState = ensureState();
   const key = buildKey(provider, model);
   return currentState.limits[key] ? { ...currentState.limits[key] } : undefined;
 }
 
- /**
-  * 学習した制限をリセットする
-  * @param provider プロバイダ名
-  * @param model モデル名
-  * @param newLimit 新しい制限値（省略時は初期値に戻す）
-  * @returns なし
-  */
+/**
+ * 学習した制限をリセットする
+ * @summary 制限リセット
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @param {number} [newLimit] 新しい制限値（任意）
+ * @returns {void}
+ */
 export function resetLearnedLimit(provider: string, model: string, newLimit?: number): void {
   const currentState = ensureState();
   const key = buildKey(provider, model);
@@ -572,10 +572,11 @@ export function resetLearnedLimit(provider: string, model: string, newLimit?: nu
   }
 }
 
- /**
-  * 学習した制限値をすべてリセットする
-  * @returns なし
-  */
+/**
+ * 全ての学習制限をリセットする
+ * @summary 全制限リセット
+ * @returns {void}
+ */
 export function resetAllLearnedLimits(): void {
   const currentState = ensureState();
   currentState.limits = {};
@@ -583,24 +584,27 @@ export function resetAllLearnedLimits(): void {
   saveState();
 }
 
- /**
-  * グローバル乗数を設定
-  * @param multiplier 乗数
-  * @returns なし
-  */
+/**
+ * グローバル乗数を設定する
+ * @summary グローバル乗数設定
+ * @param multiplier 設定する乗数
+ * @returns {void}
+ */
 export function setGlobalMultiplier(multiplier: number): void {
   const currentState = ensureState();
   currentState.globalMultiplier = Math.max(0.1, Math.min(2.0, multiplier));
   saveState();
 }
 
- /**
-  * 復元パラメータを設定する。
-  * @param options.recoveryIntervalMs 復元間隔（ミリ秒）
-  * @param options.reductionFactor 低減係数
-  * @param options.recoveryFactor 復元係数
-  * @returns なし
-  */
+/**
+ * 復元パラメータを設定
+ * @summary 復元パラメータを設定
+ * @param options 設定オプション
+ * @param options.recoveryIntervalMs 復元間隔（ミリ秒）
+ * @param options.reductionFactor 低減係数
+ * @param options.recoveryFactor 復元係数
+ * @returns なし
+ */
 export function configureRecovery(options: {
   recoveryIntervalMs?: number;
   reductionFactor?: number;
@@ -621,11 +625,12 @@ export function configureRecovery(options: {
   saveState();
 }
 
- /**
-  * エラーがレートリミットか判定する
-  * @param error 判定対象のエラー
-  * @returns レートリミットの場合true
-  */
+/**
+ * レート制限エラー判定
+ * @summary レート制限エラー判定
+ * @param error エラーオブジェクト
+ * @returns レート制限エラーの場合true
+ */
 export function isRateLimitError(error: unknown): boolean {
   if (!error) return false;
 
@@ -646,10 +651,11 @@ export function isRateLimitError(error: unknown): boolean {
   return indicators.some((indicator) => message.includes(indicator));
 }
 
- /**
-  * 適応制御状態の概要を作成する。
-  * @returns 状態概要を含む文字列
-  */
+/**
+ * 適応サマリーを整形
+ * @summary 適応サマリーを整形
+ * @returns 整形されたサマリー文字列
+ */
 export function formatAdaptiveSummary(): string {
   const currentState = ensureState();
   const lines: string[] = [
@@ -690,12 +696,13 @@ export function formatAdaptiveSummary(): string {
 // Predictive Scheduling
 // ============================================================================
 
- /**
-  * 429エラーの発生確率を予測します。
-  * @param provider プロバイダ名
-  * @param model モデル名
-  * @returns 429エラーが発生する予測確率（0〜1）
-  */
+/**
+ * 429確率を分析
+ * @summary 429確率を分析
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns 429エラーの確率
+ */
 export function analyze429Probability(provider: string, model: string): number {
   const currentState = ensureState();
   const key = buildKey(provider, model);
@@ -739,12 +746,13 @@ export function analyze429Probability(provider: string, model: string): number {
   return Math.min(1.0, probability);
 }
 
- /**
-  * プロバイダー/モデルの予測分析を取得する
-  * @param provider プロバイダー名
-  * @param model モデル名
-  * @returns 予測分析結果
-  */
+/**
+ * 予測分析を取得
+ * @summary 予測分析を取得
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns 予測分析結果
+ */
 export function getPredictiveAnalysis(provider: string, model: string): PredictiveAnalysis {
   const currentState = ensureState();
   const key = buildKey(provider, model);
@@ -807,24 +815,26 @@ export function getPredictiveAnalysis(provider: string, model: string): Predicti
   };
 }
 
- /**
-  * 予測に基づいて事前にスロットルするか判定
-  * @param provider プロバイダ名
-  * @param model モデル名
-  * @returns スロットルする場合はtrue
-  */
+/**
+ * スロットル要否判定
+ * @summary 先制的スロットル判定
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns スロットルすべきか
+ */
 export function shouldProactivelyThrottle(provider: string, model: string): boolean {
   const analysis = getPredictiveAnalysis(provider, model);
   return analysis.shouldProactivelyThrottle;
 }
 
- /**
-  * 予測に基づいた推奨並列数を取得
-  * @param provider プロバイダ名
-  * @param model モデル名
-  * @param currentConcurrency 現在の並列数
-  * @returns 推奨される並列数
-  */
+/**
+ * 予測並列数を取得
+ * @summary 推奨並列数を取得
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @param currentConcurrency 現在の並列数
+ * @returns 推奨並列数
+ */
 export function getPredictiveConcurrency(
   provider: string,
   model: string,
@@ -861,22 +871,24 @@ function updateHistorical429s(limit: LearnedLimit): void {
   );
 }
 
- /**
-  * 予測スケジューリングの有効/無効を設定する
-  * @param enabled 有効にする場合はtrue
-  * @returns なし
-  */
+/**
+ * 予測機能の有効化
+ * @summary 予測機能を有効化
+ * @param enabled 有効化するか
+ * @returns なし
+ */
 export function setPredictiveEnabled(enabled: boolean): void {
   const currentState = ensureState();
   currentState.predictiveEnabled = enabled;
   saveState();
 }
 
- /**
-  * 予測閾値を設定する（0-1）
-  * @param threshold 設定する閾値（0から1の範囲に丸められる）
-  * @returns なし
-  */
+/**
+ * 予測閾値を設定
+ * @summary 予測閾値を設定
+ * @param threshold 設定する閾値
+ * @returns なし
+ */
 export function setPredictiveThreshold(threshold: number): void {
   const currentState = ensureState();
   currentState.predictiveThreshold = Math.max(0, Math.min(1, threshold));
@@ -887,13 +899,14 @@ export function setPredictiveThreshold(threshold: number): void {
 // Dynamic Parallelism Integration
 // ============================================================================
 
- /**
-  * スケジューラ対応の同時実行制限を取得する
-  * @param provider - プロバイダ名
-  * @param model - モデル名
-  * @param baseLimit - プロバイダ制限からの基本同時実行数
-  * @returns スケジューラ対応の同時実行制限数
-  */
+/**
+ * スケジューラ対応制限取得
+ * @summary 同時実行制限を取得
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @param baseLimit 基本制限値
+ * @returns 計算された制限値
+ */
 export function getSchedulerAwareLimit(
   provider: string,
   model: string,
@@ -910,10 +923,11 @@ export function getSchedulerAwareLimit(
 
 /**
  * スケジューラに429エラーを通知する
- * @param provider - プロバイダ名
- * @param model - モデル名
- * @param details - オプションのエラー詳細
- * @returns 戻り値なし
+ * @summary 429エラー通知
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @param details 詳細情報（任意）
+ * @returns なし
  */
 export function notifyScheduler429(
   provider: string,
@@ -932,12 +946,13 @@ export function notifyScheduler429(
   }
 }
 
- /**
-  * スケジューラにタイムアウトを通知する
-  * @param provider - プロバイダ名
-  * @param model - モデル名
-  * @returns なし
-  */
+/**
+ * スケジューラにタイムアウトを通知する
+ * @summary タイムアウト通知
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns なし
+ */
 export function notifySchedulerTimeout(provider: string, model: string): void {
   recordEvent({
     provider,
@@ -955,13 +970,14 @@ export function notifySchedulerTimeout(provider: string, model: string): void {
   }
 }
 
- /**
-  * スケジューラに成功を通知する
-  * @param provider - プロバイダ名
-  * @param model - モデル名
-  * @param responseMs - レスポンス時間（ミリ秒）
-  * @returns なし
-  */
+/**
+ * スケジューラに成功を通知する
+ * @summary 成功通知
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @param responseMs レスポンス時間（任意）
+ * @returns なし
+ */
 export function notifySchedulerSuccess(
   provider: string,
   model: string,
@@ -982,12 +998,13 @@ export function notifySchedulerSuccess(
   }
 }
 
- /**
-  * レート制御の統合サマリーを取得
-  * @param provider プロバイダー名
-  * @param model モデル名
-  * @returns 統合されたサマリーオブジェクト
-  */
+/**
+ * レート制限の統合サマリを取得する
+ * @summary 統合制限サマリ取得
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns 適応制限、元制限、予測制限、429確率、スロットルフラグ、429回数
+ */
 export function getCombinedRateControlSummary(
   provider: string,
   model: string

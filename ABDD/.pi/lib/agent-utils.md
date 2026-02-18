@@ -24,7 +24,7 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `createRunId` | 一意な実行IDを生成します。 |
-| 関数 | `computeLiveWindow` | ライブリスト表示のスライディングウィンドウを計算 |
+| 関数 | `computeLiveWindow` | - |
 
 ## 図解
 
@@ -61,8 +61,6 @@ createRunId(): string
 computeLiveWindow(cursor: number, total: number, maxRows: number): { start: number; end: number }
 ```
 
-ライブリスト表示のスライディングウィンドウを計算
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -74,4 +72,4 @@ computeLiveWindow(cursor: number, total: number, maxRows: number): { start: numb
 **戻り値**: `{ start: number; end: number }`
 
 ---
-*自動生成: 2026-02-18T14:31:30.952Z*
+*自動生成: 2026-02-18T15:54:41.436Z*

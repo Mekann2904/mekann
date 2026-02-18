@@ -24,22 +24,22 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| インターフェース | `TeamLiveItem` | Live item tracking for team member execution. |
-| インターフェース | `TeamMonitorLifecycle` | Lifecycle operations for marking team member execu |
-| インターフェース | `TeamMonitorPhase` | チームメンバーの実行フェーズ操作 |
-| インターフェース | `TeamMonitorEvents` | 実行イベントを記録するための操作。イベントのログ記録のみを行うコードで使用されます。 |
-| インターフェース | `TeamMonitorStream` | Stream output operations for appending stdout/stde |
-| インターフェース | `TeamMonitorDiscussion` | Discussion tracking operations for multi-agent com |
-| インターフェース | `TeamMonitorResource` | リソースのクリーンアップと終了操作。 |
-| インターフェース | `AgentTeamLiveMonitorController` | エージェントチームのライブ監視を制御するインターフェース |
-| インターフェース | `TeamNormalizedOutput` | チームメンバー実行の正規化された出力構造。 |
-| インターフェース | `TeamParallelCapacityCandidate` | Candidate for parallel capacity allocation. |
-| インターフェース | `TeamParallelCapacityResolution` | チーム並列容量の解決結果 |
-| インターフェース | `TeamFrontmatter` | チーム定義のフロントマター構造 |
+| インターフェース | `TeamLiveItem` | アイテムのライブ状態を表す |
+| インターフェース | `TeamMonitorLifecycle` | ライフサイクル情報を保持する |
+| インターフェース | `TeamMonitorPhase` | 開始または終了をマークする |
+| インターフェース | `TeamMonitorEvents` | 実行フェーズを操作する |
+| インターフェース | `TeamMonitorStream` | チャンクを追加する |
+| インターフェース | `TeamMonitorDiscussion` | チームの議論ログを管理します。 |
+| インターフェース | `TeamMonitorResource` | モニタリングリソースを管理します。 |
+| インターフェース | `AgentTeamLiveMonitorController` | エージェントチームのライブモニタリングを制御します。 |
+| インターフェース | `TeamNormalizedOutput` | 正規化されたチーム出力を表します。 |
+| インターフェース | `TeamParallelCapacityCandidate` | チーム並列容量候補を表します。 |
+| インターフェース | `TeamParallelCapacityResolution` | 並列容量の解決結果 |
+| インターフェース | `TeamFrontmatter` | チームのフロントマター |
 | インターフェース | `TeamMemberFrontmatter` | チームメンバーのフロントマター |
-| インターフェース | `ParsedTeamMarkdown` | パースされたチームMarkdownファイル構造 |
-| 型 | `TeamLivePhase` | Team execution phase during orchestration. |
-| 型 | `TeamLiveViewMode` | View mode for team live monitoring interface. |
+| インターフェース | `ParsedTeamMarkdown` | チームMarkdownの解析結果 |
+| 型 | `TeamLivePhase` | チームライブのフェーズ定義 |
+| 型 | `TeamLiveViewMode` | チームライブの表示モード |
 
 ## 図解
 
@@ -177,8 +177,7 @@ interface TeamLiveItem {
 }
 ```
 
-Live item tracking for team member execution.
-Maintains real-time state for TUI rendering.
+アイテムのライブ状態を表す
 
 ### TeamMonitorLifecycle
 
@@ -194,8 +193,7 @@ interface TeamMonitorLifecycle {
 }
 ```
 
-Lifecycle operations for marking team member execution states.
-Used by code that only needs to track start/finish transitions.
+ライフサイクル情報を保持する
 
 ### TeamMonitorPhase
 
@@ -205,7 +203,7 @@ interface TeamMonitorPhase {
 }
 ```
 
-チームメンバーの実行フェーズ操作
+開始または終了をマークする
 
 ### TeamMonitorEvents
 
@@ -216,7 +214,7 @@ interface TeamMonitorEvents {
 }
 ```
 
-実行イベントを記録するための操作。イベントのログ記録のみを行うコードで使用されます。
+実行フェーズを操作する
 
 ### TeamMonitorStream
 
@@ -226,8 +224,7 @@ interface TeamMonitorStream {
 }
 ```
 
-Stream output operations for appending stdout/stderr chunks.
-Used by code that only needs to handle output streaming.
+チャンクを追加する
 
 ### TeamMonitorDiscussion
 
@@ -237,8 +234,7 @@ interface TeamMonitorDiscussion {
 }
 ```
 
-Discussion tracking operations for multi-agent communication.
-Used by code that only needs to track discussion content.
+チームの議論ログを管理します。
 
 ### TeamMonitorResource
 
@@ -249,7 +245,7 @@ interface TeamMonitorResource {
 }
 ```
 
-リソースのクリーンアップと終了操作。
+モニタリングリソースを管理します。
 
 ### AgentTeamLiveMonitorController
 
@@ -258,7 +254,7 @@ interface AgentTeamLiveMonitorController {
 }
 ```
 
-エージェントチームのライブ監視を制御するインターフェース
+エージェントチームのライブモニタリングを制御します。
 
 ### TeamNormalizedOutput
 
@@ -271,7 +267,7 @@ interface TeamNormalizedOutput {
 }
 ```
 
-チームメンバー実行の正規化された出力構造。
+正規化されたチーム出力を表します。
 
 ### TeamParallelCapacityCandidate
 
@@ -282,8 +278,7 @@ interface TeamParallelCapacityCandidate {
 }
 ```
 
-Candidate for parallel capacity allocation.
-Used in team parallel execution planning.
+チーム並列容量候補を表します。
 
 ### TeamParallelCapacityResolution
 
@@ -296,7 +291,7 @@ interface TeamParallelCapacityResolution {
 }
 ```
 
-チーム並列容量の解決結果
+並列容量の解決結果
 
 ### TeamFrontmatter
 
@@ -312,7 +307,7 @@ interface TeamFrontmatter {
 }
 ```
 
-チーム定義のフロントマター構造
+チームのフロントマター
 
 ### TeamMemberFrontmatter
 
@@ -340,7 +335,7 @@ interface ParsedTeamMarkdown {
 }
 ```
 
-パースされたチームMarkdownファイル構造
+チームMarkdownの解析結果
 
 ## 型定義
 
@@ -354,8 +349,7 @@ type TeamLivePhase = | "queued"
   | "finished"
 ```
 
-Team execution phase during orchestration.
-Tracks the current stage of team member execution.
+チームライブのフェーズ定義
 
 ### TeamLiveViewMode
 
@@ -363,8 +357,7 @@ Tracks the current stage of team member execution.
 type TeamLiveViewMode = "list" | "detail" | "discussion"
 ```
 
-View mode for team live monitoring interface.
-Extends base LiveViewMode with "discussion" mode.
+チームライブの表示モード
 
 ---
-*自動生成: 2026-02-18T14:31:31.039Z*
+*自動生成: 2026-02-18T15:54:41.533Z*

@@ -18,11 +18,11 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `analyzeCodeSafety` | コードの安全性を解析 |
-| 関数 | `quickSafetyCheck` | 高速な安全性チェック（詳細解析なし） |
-| 関数 | `checkAllowlistCompliance` | 許可リストへの準拠をチェック |
-| インターフェース | `SafetyAnalysisResult` | 安全性解析結果 |
-| インターフェース | `SafetyAnalysisIssue` | 安全性解析で検出された問題の詳細 |
-| 型 | `SafetyAnalysisIssueType` | 安全性問題の種類（解析用） |
+| 関数 | `quickSafetyCheck` | コードの安全性分析 |
+| 関数 | `checkAllowlistCompliance` | - |
+| インターフェース | `SafetyAnalysisResult` | 安全解析の結果を表す |
+| インターフェース | `SafetyAnalysisIssue` | 検出された安全上の問題 |
+| 型 | `SafetyAnalysisIssueType` | 安全解析の種別 |
 
 ## 図解
 
@@ -138,7 +138,7 @@ quickSafetyCheck(code: string): {
 }
 ```
 
-高速な安全性チェック（詳細解析なし）
+コードの安全性分析
 
 **パラメータ**
 
@@ -159,8 +159,6 @@ checkAllowlistCompliance(code: string, allowlist: string[]): {
   violations: string[];
 }
 ```
-
-許可リストへの準拠をチェック
 
 **パラメータ**
 
@@ -190,7 +188,7 @@ interface SafetyAnalysisResult {
 }
 ```
 
-安全性解析結果
+安全解析の結果を表す
 
 ### SafetyAnalysisIssue
 
@@ -207,7 +205,7 @@ interface SafetyAnalysisIssue {
 }
 ```
 
-安全性解析で検出された問題の詳細
+検出された安全上の問題
 
 ### DangerousPattern
 
@@ -242,7 +240,7 @@ type SafetyAnalysisIssueType = | "file-system-write"
   | "unsafe-regex"
 ```
 
-安全性問題の種類（解析用）
+安全解析の種別
 
 ---
-*自動生成: 2026-02-18T14:31:30.984Z*
+*自動生成: 2026-02-18T15:54:41.475Z*

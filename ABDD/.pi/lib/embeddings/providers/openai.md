@@ -27,8 +27,8 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getOpenAIKey` | OpenAI APIキーを取得する |
-| クラス | `OpenAIEmbeddingProvider` | OpenAI埋め込みプロバイダー |
+| 関数 | `getOpenAIKey` | OpenAI APIキーを取得 |
+| クラス | `OpenAIEmbeddingProvider` | OpenAI埋め込みプロバイダ |
 
 ## 図解
 
@@ -116,7 +116,7 @@ Load auth configuration from auth.json.
 getOpenAIKey(): string | null
 ```
 
-OpenAI APIキーを取得する
+OpenAI APIキーを取得
 
 **戻り値**: `string | null`
 
@@ -124,7 +124,7 @@ OpenAI APIキーを取得する
 
 ### OpenAIEmbeddingProvider
 
-OpenAI埋め込みプロバイダー
+OpenAI埋め込みプロバイダ
 
 **プロパティ**
 
@@ -171,4 +171,4 @@ interface OpenAIEmbeddingResponse {
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.987Z*
+*自動生成: 2026-02-18T15:54:41.478Z*

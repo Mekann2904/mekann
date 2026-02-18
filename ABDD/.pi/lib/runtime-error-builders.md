@@ -24,7 +24,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `resolveEffectiveTimeoutMs` | 有効なタイムアウト時間を解決する |
+| 関数 | `resolveEffectiveTimeoutMs` | タイムアウト解決 |
 
 ## 図解
 
@@ -50,7 +50,7 @@ flowchart LR
 resolveEffectiveTimeoutMs(userTimeoutMs: unknown, modelId: string | undefined, fallback: number): number
 ```
 
-有効なタイムアウト時間を解決する
+タイムアウト解決
 
 **パラメータ**
 
@@ -63,4 +63,4 @@ resolveEffectiveTimeoutMs(userTimeoutMs: unknown, modelId: string | undefined, f
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-18T14:31:31.018Z*
+*自動生成: 2026-02-18T15:54:41.512Z*

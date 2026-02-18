@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/run-index.ts
- * role: 過去の実行履歴を検索可能なインデックスとして構築・管理するモジュール
- * why: 過去の解決策や類似タスクを高速に検索・再利用するため
- * related: fs-utils.js, storage-lock.js, run-history.ts, search-engine.ts
- * public_api: IndexedRun, TaskType, RunIndex, SearchOptions, SearchResult, RUN_INDEX_VERSION
- * invariants: RUN_INDEX_VERSIONは1で固定、keywordIndexとtaskTypeIndexの値は常にrun内のrunIdを参照
- * side_effects: ファイルシステムへの読み書き（インデックスファイルの作成・更新）
- * failure_modes: インデックスファイル不存在時は空のインデックスを返却、ファイル読み込み失敗時は例外送出
+ * role: 実行履歴のインデックス生成・検索モジュール
+ * why: 過去のエージェントやチームの実行結果をキーワードやタスク種別で高速に検索可能にするため
+ * related: .pi/lib/fs-utils.ts, .pi/lib/storage-lock.ts
+ * public_api: IndexedRun, RunIndex, SearchOptions, SearchResult, searchRunIndex
+ * invariants: キーワードインデックスとタスクタイプインデックスは常にruns配列と整合している
+ * side_effects: インデックスファイルの読み込みおよび書き込みによるファイルシステム変更
+ * failure_modes: インデックスファイルの破損、I/Oエラーによる検索失敗、メモリ不足による大規模インデックスの処理失敗
  * @abdd.explain
- * overview: サブエージェントとチームの実行履歴から検索インデックスを生成し、キーワード・タスク種別・ステータスによる検索を可能にする
+ * overview: subagentおよびteamの実行履歴から検索可能なインデックスを作成し、キーワードやタスクタイプに基づいた検索機能を提供するモジュール
  * what_it_does:
- *   - 実行履歴からIndexedRunレコードを抽出しキーワードとタスク種別を付与
- *   - キーワード逆引きインデックス（keywordIndex）とタスク種別逆引きインデックス（taskTypeIndex）を構築
- *   - ステータス・タスク種別・キーワード一致数によるフィルタリング検索を提供
+ *   - 実行レコード（IndexedRun）の定義と管理
+ *   - キーワードおよびタスクタイプによるインデックス構築
+ *   - スコアリングを伴う実行履歴の検索
  * why_it_exists:
- *   - 過去の成功パターンや失敗パターンを効率的に再参照するため
- *   - 類似タスク解決時の意思決定を支援するため
+ *   - 過去の解決策や失敗パターンを再利用するため
+ *   - 類似タスクの過去のアプローチを迅速に参照するため
  * scope:
- *   in: 実行履歴データ（subagent/agent-team）、検索クエリ（キーワード、ステータス、タスク種別）
- *   out: RunIndex構造体、SearchResult配列、永続化されたインデックスJSONファイル
+ *   in: 実行履歴データ、検索クエリ（キーワード、ステータス、タスクタイプ）
+ *   out: 検索結果のリスト、関連性スコア、更新されたインデックスファイル
  */
 
 /**
@@ -38,22 +38,15 @@ import { atomicWriteTextFile } from "./storage-lock.js";
 // Types
 // ============================================================================
 
- /**
-  * 抽出されたキーワードとタグを持つインデックス化された実行レコード
-  * @param runId 実行ID
-  * @param source ソース（"subagent"または"agent-team"）
-  * @param agentId エージェントID
-  * @param teamId チームID
-  * @param task タスク
-  * @param summary 要約
-  * @param status ステータス（"completed"または"failed"）
-  * @param keywords キーワードの配列
-  * @param taskType タスクタイプ
-  * @param files ファイルの配列
-  * @param timestamp タイムスタンプ
-  * @param successPattern 成功パターン
-  * @param failurePattern 失敗パターン
-  */
+/**
+ * インデックス化実行レコード
+ * @summary 実行記録取得
+ * @param runId 実行ID
+ * @param source ソース
+ * @param agentId エージェントID
+ * @param teamId チームID
+ * @param task タスク
+ */
 export interface IndexedRun {
   runId: string;
   source: "subagent" | "agent-team";
@@ -70,9 +63,10 @@ export interface IndexedRun {
   failurePattern?: string;
 }
 
- /**
-  * タスクの種類を表す型
-  */
+/**
+ * タスクの種類を定義する型
+ * @summary タスク種別定義
+ */
 export type TaskType =
   | "code-review"
   | "bug-fix"
@@ -88,14 +82,10 @@ export type TaskType =
   | "configuration"
   | "unknown";
 
- /**
-  * 実行インデックスの構造。
-  * @param version インデックスのバージョン番号
-  * @param lastUpdated 最終更新日時
-  * @param runs インデックスされた実行のリスト
-  * @param keywordIndex キーワードから実行IDへのマッピング
-  * @param taskTypeIndex タスクタイプから実行IDへのマッピング
-  */
+/**
+ * 実行履歴のインデックスデータ構造
+ * @summary 実行履歴インデックス
+ */
 export interface RunIndex {
   version: number;
   lastUpdated: string;
@@ -104,13 +94,14 @@ export interface RunIndex {
   taskTypeIndex: Record<TaskType, string[]>; // taskType -> runIds
 }
 
- /**
-  * インデックス検索のオプション
-  * @param limit 取得上限数
-  * @param status ステータス（"completed" | "failed"）
-  * @param taskType タスク種別
-  * @param minKeywordMatch 最小キーワード一致数
-  */
+/**
+ * 検索時のオプション設定
+ * @summary 検索オプション定義
+ * @param limit 最大取得件数
+ * @param status ステータスによるフィルタ
+ * @param taskType タスクの種類
+ * @param minKeywordMatch 最小キーワード一致数
+ */
 export interface SearchOptions {
   limit?: number;
   status?: "completed" | "failed";
@@ -118,12 +109,10 @@ export interface SearchOptions {
   minKeywordMatch?: number;
 }
 
- /**
-  * 検索結果と関連性スコア
-  * @param run インデックス化された実行データ
-  * @param score 関連性スコア
-  * @param matchedKeywords 一致したキーワードのリスト
-  */
+/**
+ * 検索結果を表すインターフェース
+ * @summary 検索結果の定義
+ */
 export interface SearchResult {
   run: IndexedRun;
   score: number;
@@ -159,11 +148,12 @@ const TASK_TYPE_KEYWORDS: Record<TaskType, string[]> = {
 // Keyword Extraction
 // ============================================================================
 
- /**
-  * テキストからキーワードを抽出します。
-  * @param text 入力テキスト
-  * @returns キーワードの配列
-  */
+/**
+ * テキストからキーワードを抽出する
+ * @summary キーワード抽出
+ * @param text 解析対象のテキスト
+ * @returns 抽出されたキーワードの配列
+ */
 export function extractKeywords(text: string): string[] {
   const keywords: Set<string> = new Set();
 
@@ -194,12 +184,13 @@ export function extractKeywords(text: string): string[] {
   return Array.from(keywords);
 }
 
- /**
-  * キーワードに基づいてタスクの種類を分類する
-  * @param task - タスク名
-  * @param summary - タスクの概要
-  * @returns 分類されたタスクの種類
-  */
+/**
+ * タスクの種類を分類
+ * @summary タスク分類
+ * @param task タスク内容
+ * @param summary 実行の要約
+ * @returns 分類されたタスク種類
+ */
 export function classifyTaskType(task: string, summary: string): TaskType {
   const text = `${task} ${summary}`.toLowerCase();
   const scores: Record<TaskType, number> = {} as Record<TaskType, number>;
@@ -225,11 +216,12 @@ export function classifyTaskType(task: string, summary: string): TaskType {
   return maxType;
 }
 
- /**
-  * テキストからファイルパスを抽出する
-  * @param text 処理対象のテキスト
-  * @returns 抽出されたファイルパスの配列
-  */
+/**
+ * テキストからファイルパスを抽出
+ * @summary ファイルパス抽出
+ * @param text 対象テキスト
+ * @returns 抽出されたファイルパス配列
+ */
 export function extractFiles(text: string): string[] {
   const filePatterns = [
     // File paths with extensions (handles commas, semicolons, parens, brackets around/before filenames)
@@ -258,18 +250,19 @@ export function extractFiles(text: string): string[] {
 // Index Building
 // ============================================================================
 
- /**
-  * サブエージェントの実行記録からインデックスを作成
-  * @param run 実行記録
-  * @param run.runId 実行ID
-  * @param run.agentId エージェントID
-  * @param run.task タスク内容
-  * @param run.summary 実行の要約
-  * @param run.status 実行状態
-  * @param run.startedAt 開始日時
-  * @param run.finishedAt 終了日時
-  * @returns インデックス化された実行データ
-  */
+/**
+ * サブエージェント実行をインデックス化
+ * @summary サブエージェント実行インデックス化
+ * @param run 実行記録
+ * @param run.runId 実行ID
+ * @param run.agentId エージェントID
+ * @param run.task タスク内容
+ * @param run.summary 実行の要約
+ * @param run.status ステータス
+ * @param run.startedAt 開始日時
+ * @param run.finishedAt 終了日時
+ * @returns インデックス化された実行情報
+ */
 export function indexSubagentRun(
   run: {
     runId: string;
@@ -300,11 +293,19 @@ export function indexSubagentRun(
   };
 }
 
- /**
-  * チーム実行レコードからインデックスを作成
-  * @param run - チーム実行データ
-  * @returns インデックス化された実行データ
-  */
+/**
+ * チーム実行をインデックス化
+ * @summary チーム実行インデックス化
+ * @param run 実行記録
+ * @param run.runId 実行ID
+ * @param run.teamId チームID
+ * @param run.task タスク内容
+ * @param run.summary 実行の要約
+ * @param run.status ステータス
+ * @param run.startedAt 開始日時
+ * @param run.finishedAt 終了日時
+ * @returns インデックス化された実行情報
+ */
 export function indexTeamRun(
   run: {
     runId: string;
@@ -336,7 +337,10 @@ export function indexTeamRun(
 }
 
 /**
- * Build the complete run index from storage files.
+ * 実行インデックスを構築
+ * @summary インデックス構築
+ * @param cwd 作業ディレクトリ
+ * @returns 構築された実行インデックス
  */
 export function buildRunIndex(cwd: string): RunIndex {
   const runs: IndexedRun[] = [];
@@ -409,20 +413,21 @@ export function buildRunIndex(cwd: string): RunIndex {
 // Index Storage
 // ============================================================================
 
- /**
-  * ランインデックスのファイルパスを取得する
-  * @param cwd カレントワーキングディレクトリ
-  * @returns ランインデックスファイルのパス
-  */
+/**
+ * ランインデックスのパスを取得
+ * @summary パスを取得
+ * @param cwd カレントワーキングディレクトリ
+ * @returns ランインデックスファイルのパス
+ */
 export function getRunIndexPath(cwd: string): string {
   return join(cwd, ".pi", "memory", "run-index.json");
 }
 
- /**
-  * ディスクから実行インデックスを読み込む
-  * @param cwd カレントワーキングディレクトリ
-  * @returns 読み込んだ実行インデックス。ファイルが存在しない場合はnull
-  */
+/**
+ * @summary 実行インデックス読込
+ * @param cwd カレントワーキングディレクトリ
+ * @returns 読み込んだ実行インデックス。ファイルが存在しない場合はnull
+ */
 export function loadRunIndex(cwd: string): RunIndex | null {
   const path = getRunIndexPath(cwd);
   if (!existsSync(path)) return null;
@@ -435,12 +440,12 @@ export function loadRunIndex(cwd: string): RunIndex | null {
   }
 }
 
- /**
-  * 実行インデックスを保存する
-  * @param cwd 作業ディレクトリのパス
-  * @param index 保存する実行インデックス
-  * @returns なし
-  */
+/**
+ * @summary 実行インデックス保存
+ * @param cwd 作業ディレクトリのパス
+ * @param index 保存する実行インデックス
+ * @returns なし
+ */
 export function saveRunIndex(cwd: string, index: RunIndex): void {
   const path = getRunIndexPath(cwd);
   ensureDir(join(cwd, ".pi", "memory"));
@@ -448,12 +453,13 @@ export function saveRunIndex(cwd: string, index: RunIndex): void {
   atomicWriteTextFile(path, JSON.stringify(index, null, 2));
 }
 
- /**
-  * 実行インデックスを取得または構築
-  * @param cwd 作業ディレクトリのパス
-  * @param maxAgeMs キャッシュの有効期限（ミリ秒）
-  * @returns 実行インデックス
-  */
+/**
+ * 実行インデックス取得
+ * @summary インデックス取得または構築
+ * @param cwd 作業ディレクトリのパス
+ * @param maxAgeMs キャッシュの有効期限（ミリ秒）
+ * @returns 実行インデックス
+ */
 export function getOrBuildRunIndex(cwd: string, maxAgeMs: number = 60000): RunIndex {
   const cached = loadRunIndex(cwd);
 
@@ -524,13 +530,14 @@ export function searchRuns(
   return results.slice(0, limit);
 }
 
- /**
-  * タスク説明に基づき類似の過去の実行を検索
-  * @param index 検索対象のインデックス
-  * @param task タスク説明
-  * @param limit 取得上限数
-  * @returns 検索結果の配列
-  */
+/**
+ * タスク説明に基づき類似の過去の実行を検索する
+ * @summary 類似実行検索
+ * @param {RunIndex} index - 実行インデックス
+ * @param {string} task - タスク説明
+ * @param {number} limit - 取得件数の上限
+ * @returns {SearchResult[]} 類似実行の検索結果
+ */
 export function findSimilarRuns(
   index: RunIndex,
   task: string,
@@ -539,24 +546,26 @@ export function findSimilarRuns(
   return searchRuns(index, task, { limit, status: "completed" });
 }
 
- /**
-  * タスクタイプに対応する実行を取得する
-  * @param index 実行インデックス
-  * @param taskType タスクタイプ
-  * @returns 実行の配列
-  */
+/**
+ * 指定したタスクタイプの実行リストを取得する
+ * @summary 実行リスト取得
+ * @param {RunIndex} index - 実行インデックス
+ * @param {TaskType} taskType - タスクタイプ
+ * @returns {IndexedRun[]} 実行リスト
+ */
 export function getRunsByType(index: RunIndex, taskType: TaskType): IndexedRun[] {
   const runIds = new Set(index.taskTypeIndex[taskType] || []);
   return index.runs.filter((run) => runIds.has(run.runId));
 }
 
- /**
-  * 指定したタスクタイプの成功したパターンを取得
-  * @param index ランインデックス
-  * @param taskType タスクタイプ
-  * @param limit 取得件数
-  * @returns 成功した実行リスト（新しい順）
-  */
+/**
+ * 指定したタスクタイプの成功したパターンを取得する
+ * @summary 成功パターン取得
+ * @param {RunIndex} index - 実行インデックス
+ * @param {TaskType} taskType - タスクタイプ
+ * @param {number} limit - 取得件数の上限
+ * @returns {IndexedRun[]} 成功した実行リスト
+ */
 export function getSuccessfulPatterns(
   index: RunIndex,
   taskType: TaskType,

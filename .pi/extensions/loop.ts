@@ -1,43 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop.ts
- * role: 自律的なループ実行エンジン。反復的なモデル実行、参照の読み込み・検証、SSRF防御を統合する拡張機能のエントリポイント
- * why: モデルの反復実行において引用チェックと再現可能な実行ログを提供し、安全かつ追跡可能な自律実行を実現するため
- * related: .pi/extensions/loop/iteration-builder.ts, .pi/extensions/loop/reference-loader.ts, .pi/extensions/loop/verification.ts, .pi/extensions/shared/pi-print-executor.ts
- * public_api: isBlockedHostname, isPrivateOrReservedIP, validateUrlForSsrf, loadReferences, fetchTextFromUrl, runVerificationCommand, parseLoopContract, validateIteration, buildIterationPrompt, buildReferencePack, normalizeLoopOutput, LOOP_JSON_BLOCK_TAG, LOOP_RESULT_BLOCK_TAG
- * invariants:
- *   - SSRF防御によりプライベートIPおよび予約済みIPへのアクセスはブロックされる
- *   - 検証コマンドはallowlistに一致する場合のみ実行される
- *   - ループ反復は検証ポリシーに従って制御される
- * side_effects:
- *   - 子プロセスのspawnによる外部コマンド実行
- *   - ファイルシステムへのログ書き込み（appendFileSync）
- *   - ファイルロック取得（withFileLock）
- *   - DNSルックアップ（dnsLookup）
- *   - 外部URLへのHTTPリクエスト（fetchTextFromUrl）
- * failure_modes:
- *   - SSRF防御によるURLアクセス拒否
- *   - 検証コマンドの許可リスト不一致による実行拒否
- *   - ファイルロック取得失敗による同時実行エラー
- *   - 意味的反復検出によるループ終了
- *   - モデルタイムアウト超過
+ * role: ループ実行機能の拡張および検証・参照読み込みサブモジュールのエントリポイント
+ * why: モデルの反復実行、引用チェック、検証コマンドの統合、再現可能な実行ログを実現するため
+ * related: README.md, .pi/extensions/rsa.ts, .pi/extensions/question.ts
+ * public_api: loadReferences, fetchTextFromUrl, runVerificationCommand, buildIterationPrompt, parseLoopContract
+ * invariants: SSRF保護ルールによりプライベートIPやブロック済みホストへのアクセスは拒否される、検証ポリシーは環境変数またはデフォルト設定に基づいて解決される
+ * side_effects: ファイルシステムへのログ書き込み、外部URLへのHTTPリクエスト、検証コマンドのプロセス起動
+ * failure_modes: DNS解決の失敗、参照のロード失敗、検証コマンドの実行エラー、またはセマンティックな重複検出によるループ停止
  * @abdd.explain
- * overview: piエージェント向けの自律ループ実行システム。参照に基づく実行、検証コマンドのポリシー制御、SSRF防御を統合し、安全な反復処理を提供する
+ * overview: piエージェントのための自律的ループランナーを提供し、参照に基づく実行と検証プロセスを管理する
  * what_it_does:
- *   - 反復的なモデル実行をループ契約に基づいて管理
- *   - 参照ファイルおよびURLからのテキスト読み込み
- *   - 検証コマンドのポリシーベース実行制御
- *   - SSRF攻撃防御のためのURLおよびIP検証
- *   - 意味的反復の検出と早期終了
- *   - 実行ログの原子性のある書き込み
+ *   - 反復的なモデル実行プロセスを管理し、引用チェックを実施する
+ *   - 外部参照をロードし、SSRF保護を適用して安全にURLからテキストを取得する
+ *   - 環境変数に基づいて検証ポリシーを解決し、検証コマンドを実行またはスキップする
+ *   - セマンティックな重複を検出し、ループの停止条件を判断する
+ *   - 実行ログをファイルに出力し、プロセスの再現性を確保する
  * why_it_exists:
- *   - モデルの自律的な反復実行において安全性と再現性を保証するため
- *   - 外部リソース参照時のSSRF攻撃を防ぐため
- *   - 検証コマンドの実行を制御可能なポリシーで管理するため
- *   - 無限ループを防ぐ意味的反復検出を提供するため
+ *   - 反復タスクにおいて外部コンテキストとの整合性を検証しつつ進行する必要があるため
+ *   - セキュリティ（SSRF対策）と検証の柔軟性を両立するため
+ *   - 実行の進捗と結果を永続化し、デバッグや監査を可能にするため
  * scope:
- *   in: LoopReference配列, LoopVerificationConfig, 反復プロンプト, 検証ポリシー設定
- *   out: LoadedReferenceResult, LoopVerificationResult, 正規化されたループ出力, 検証フィードバック
+ *   in: 拡張API、ユーザー定義のループ設定、環境変数（検証ポリシーなど）
+ *   out: モデル呼び出しの実行、検証コマンドの実行結果、ログファイル、参照データの読み込み結果
  */
 
 // File: .pi/extensions/loop.ts
@@ -368,11 +353,12 @@ const LOOP_HELP = [
 
 let lastRunSummary: LoopRunSummary | null = null;
 
- /**
-  * 自動反復ループ実行ツールをExtensionAPIに登録
-  * @param pi - ExtensionAPIのインスタンス
-  * @returns なし
-  */
+/**
+ * ループ機能を拡張する
+ * @summary ループ拡張を登録
+ * @param pi - 拡張API
+ * @returns void
+ */
 export default function registerLoopExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "loop_run",

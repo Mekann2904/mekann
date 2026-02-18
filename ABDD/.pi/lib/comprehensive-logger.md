@@ -28,9 +28,9 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getLogger` | Loggerのシングルトンインスタンスを取得 |
-| 関数 | `resetLogger` | グローバルロガーをリセットする。 |
-| クラス | `ComprehensiveLogger` | 包括的なログ管理クラス |
+| 関数 | `getLogger` | ロガーを取得 |
+| 関数 | `resetLogger` | ロガーをリセット |
+| クラス | `ComprehensiveLogger` | 包括的ロガー |
 
 ## 図解
 
@@ -136,7 +136,7 @@ hashString(str: string): string
 getLogger(): ComprehensiveLogger
 ```
 
-Loggerのシングルトンインスタンスを取得
+ロガーを取得
 
 **戻り値**: `ComprehensiveLogger`
 
@@ -146,7 +146,7 @@ Loggerのシングルトンインスタンスを取得
 resetLogger(): void
 ```
 
-グローバルロガーをリセットする。
+ロガーをリセット
 
 **戻り値**: `void`
 
@@ -154,7 +154,7 @@ resetLogger(): void
 
 ### ComprehensiveLogger
 
-包括的なログ管理クラス
+包括的ロガー
 
 **プロパティ**
 
@@ -213,4 +213,4 @@ resetLogger(): void
 | getTotalTokens | `getTotalTokens(): number` |
 
 ---
-*自動生成: 2026-02-18T14:31:30.958Z*
+*自動生成: 2026-02-18T15:54:41.444Z*

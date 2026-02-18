@@ -17,29 +17,29 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `estimateTokens` | テキストのトークン数を見積もる |
-| 関数 | `estimateContextItemTokens` | コンテキストアイテムのトークン数を推定 |
-| 関数 | `optimizeContextWindow` | コンテキストウィンドウを優先度に基づき最適化 |
+| 関数 | `estimateTokens` | テキストトークン数推定 |
+| 関数 | `estimateContextItemTokens` | コンテキストトークン数推定 |
+| 関数 | `optimizeContextWindow` | コンテキストウィンドウを最適化する |
 | 関数 | `detectSemanticBoundaries` | テキストから意味的な境界を検出する |
-| 関数 | `chunkText` | テキストを意味的境界に基づいて分割する |
+| 関数 | `chunkText` | テキストを指定された設定で分割する |
 | 関数 | `extractStateSummary` | 出力テキストから状態サマリーを抽出する |
-| 関数 | `formatStateSummary` | コンテキスト用にステートサマリーを整形する |
+| 関数 | `formatStateSummary` | 状態サマリーをフォーマット |
 | 関数 | `createContextItem` | コンテキストアイテムを作成する |
-| 関数 | `mergeContextItems` | 複数のコンテキストアイテムを統合する |
-| 関数 | `calculateUtilization` | コンテキストウィンドウの利用率を計算する |
-| インターフェース | `ContextItem` | コンテキスト管理用のメタデータ付きアイテム |
-| インターフェース | `ContextWindowConfig` | コンテキストウィンドウ管理の設定 |
-| インターフェース | `OptimizedContext` | コンテキストウィンドウ最適化の結果 |
-| インターフェース | `TrimmedItem` | トリミングされたアイテムの情報 |
-| インターフェース | `SemanticBoundary` | チャンキングのための意味的境界 |
-| インターフェース | `TextChunk` | テキスト分割結果のチャンク |
-| インターフェース | `ChunkingConfig` | チャンキングの設定 |
+| 関数 | `mergeContextItems` | 複数のコンテキストアイテムを結合する |
+| 関数 | `calculateUtilization` | コンテキストの利用率を計算する |
+| インターフェース | `ContextItem` | コンテキストアイテム |
+| インターフェース | `ContextWindowConfig` | コンテキストウィンドウの設定 |
+| インターフェース | `OptimizedContext` | 最適化されたコンテキスト情報 |
+| インターフェース | `TrimmedItem` | トリムされたアイテムの情報を表すインターフェース |
+| インターフェース | `SemanticBoundary` | 意味的な境界情報を表すインターフェース |
+| インターフェース | `TextChunk` | 分割されたテキストチャンクを表すインターフェース |
+| インターフェース | `ChunkingConfig` | テキスト分割設定を定義するインターフェース |
 | インターフェース | `StateSummary` | ワーキングメモリの状態概要 |
-| インターフェース | `EvidenceSummary` | 収集されたエビデンスの要約 |
-| インターフェース | `SummaryExtractionConfig` | 状態要約抽出の設定 |
+| インターフェース | `EvidenceSummary` | エビデンス概要 |
+| インターフェース | `SummaryExtractionConfig` | 要約抽出設定 |
 | 型 | `ContextPriority` | コンテキストの優先度レベル |
-| 型 | `ContextCategory` | コンテンツのカテゴリ |
-| 型 | `BoundaryType` | 意味的な境界の種類を表す型 |
+| 型 | `ContextCategory` | コンテキストのカテゴリ種別 |
+| 型 | `BoundaryType` | テキストの境界種別を定義する型 |
 
 ## 図解
 
@@ -174,7 +174,7 @@ flowchart TD
 estimateTokens(text: string): number
 ```
 
-テキストのトークン数を見積もる
+テキストトークン数推定
 
 **パラメータ**
 
@@ -190,7 +190,7 @@ estimateTokens(text: string): number
 estimateContextItemTokens(item: ContextItem): number
 ```
 
-コンテキストアイテムのトークン数を推定
+コンテキストトークン数推定
 
 **パラメータ**
 
@@ -206,7 +206,7 @@ estimateContextItemTokens(item: ContextItem): number
 optimizeContextWindow(items: ContextItem[], config: ContextWindowConfig): OptimizedContext
 ```
 
-コンテキストウィンドウを優先度に基づき最適化
+コンテキストウィンドウを最適化する
 
 **パラメータ**
 
@@ -290,7 +290,7 @@ Detect semantic gaps where topic shifts occur
 chunkText(text: string, config: ChunkingConfig): TextChunk[]
 ```
 
-テキストを意味的境界に基づいて分割する
+テキストを指定された設定で分割する
 
 **パラメータ**
 
@@ -379,7 +379,7 @@ extractStateSummary(text: string, previousSummary?: StateSummary, config: Summar
 formatStateSummary(summary: StateSummary): string
 ```
 
-コンテキスト用にステートサマリーを整形する
+状態サマリーをフォーマット
 
 **パラメータ**
 
@@ -421,7 +421,7 @@ createContextItem(content: string, category: ContextCategory, priority: ContextP
 mergeContextItems(items: ContextItem[], strategy: "concat" | "summarize" | "priority-first"): ContextItem
 ```
 
-複数のコンテキストアイテムを統合する
+複数のコンテキストアイテムを結合する
 
 **パラメータ**
 
@@ -444,7 +444,7 @@ calculateUtilization(items: ContextItem[], maxTokens: number): {
 }
 ```
 
-コンテキストウィンドウの利用率を計算する
+コンテキストの利用率を計算する
 
 **パラメータ**
 
@@ -478,7 +478,7 @@ interface ContextItem {
 }
 ```
 
-コンテキスト管理用のメタデータ付きアイテム
+コンテキストアイテム
 
 ### ContextWindowConfig
 
@@ -493,7 +493,7 @@ interface ContextWindowConfig {
 }
 ```
 
-コンテキストウィンドウ管理の設定
+コンテキストウィンドウの設定
 
 ### OptimizedContext
 
@@ -509,7 +509,7 @@ interface OptimizedContext {
 }
 ```
 
-コンテキストウィンドウ最適化の結果
+最適化されたコンテキスト情報
 
 ### TrimmedItem
 
@@ -522,7 +522,7 @@ interface TrimmedItem {
 }
 ```
 
-トリミングされたアイテムの情報
+トリムされたアイテムの情報を表すインターフェース
 
 ### SemanticBoundary
 
@@ -535,7 +535,7 @@ interface SemanticBoundary {
 }
 ```
 
-チャンキングのための意味的境界
+意味的な境界情報を表すインターフェース
 
 ### TextChunk
 
@@ -556,7 +556,7 @@ interface TextChunk {
 }
 ```
 
-テキスト分割結果のチャンク
+分割されたテキストチャンクを表すインターフェース
 
 ### ChunkingConfig
 
@@ -572,7 +572,7 @@ interface ChunkingConfig {
 }
 ```
 
-チャンキングの設定
+テキスト分割設定を定義するインターフェース
 
 ### StateSummary
 
@@ -604,7 +604,7 @@ interface EvidenceSummary {
 }
 ```
 
-収集されたエビデンスの要約
+エビデンス概要
 
 ### SummaryExtractionConfig
 
@@ -620,7 +620,7 @@ interface SummaryExtractionConfig {
 }
 ```
 
-状態要約抽出の設定
+要約抽出設定
 
 ## 型定義
 
@@ -648,7 +648,7 @@ type ContextCategory = | "task-instruction"    // The main task/request
   | "error-context"
 ```
 
-コンテンツのカテゴリ
+コンテキストのカテゴリ種別
 
 ### BoundaryType
 
@@ -664,7 +664,7 @@ type BoundaryType = | "paragraph"      // Paragraph break
   | "semantic-gap"
 ```
 
-意味的な境界の種類を表す型
+テキストの境界種別を定義する型
 
 ### ScoredItem
 
@@ -673,4 +673,4 @@ type ScoredItem = ContextItem & { score: number; trimmed: boolean }
 ```
 
 ---
-*自動生成: 2026-02-18T14:31:30.967Z*
+*自動生成: 2026-02-18T15:54:41.455Z*

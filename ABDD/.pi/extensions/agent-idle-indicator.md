@@ -84,4 +84,4 @@ restoreOriginal(ctx: ExtensionAPI["context"]): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T14:31:30.405Z*
+*自動生成: 2026-02-18T15:54:40.859Z*

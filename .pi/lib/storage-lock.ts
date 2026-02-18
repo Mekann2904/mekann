@@ -1,35 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/storage-lock.ts
- * role: 同期ファイルロックおよび原子書き込みヘルパーの提供
- * why: 並行するエージェント実行中にストレージファイルへの競合書き込みを防止する
+ * role: 同期ファイルロックおよびアトミック書き込み機構の提供
+ * why: 並列エージェント実行時におけるストレージファイルの書き込み競合とデータ破損を防ぐため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/plan.ts
- * public_api: FileLockOptions
- * invariants:
- *   - ロックファイルは排他モード(wx)で作成され、存在時はEEXISTで失敗する
- *   - ロックファイルにはPIDとタイムスタンプが記録される
- *   - busy-waitを使用せず、CPUスピンを回避する
- * side_effects:
- *   - ロックファイルの作成・削除
- *   - ファイルシステムへの読み書き
- * failure_modes:
- *   - EEXIST: ロックファイルが既に存在し取得不可
- *   - SharedArrayBuffer不可: 効率的な同期スリープが利用できない環境
- *   - ファイルシステムエラー: 権限不足やディスクフル
+ * public_api: FileLockOptions, tryAcquireLock, clearStaleLock, sleepSync
+ * invariants: ロックファイルにはPIDとタイムスタンプが含まれる、ビジーウェイトは発生しない
+ * side_effects: ファイルシステムへのロックファイル作成、更新、削除
+ * failure_modes: SharedArrayBuffer未対応環境での即時リターン、ロック取得タイムアウト、EEXISTエラーによる取得失敗
  * @abdd.explain
- * overview: 拡張機能ストレージファイル向けの同期ファイルロック機構を提供するユーティリティ
+ * overview: Node.jsのfsモジュールを用いた同期排他制御ライブラリ
  * what_it_does:
- *   - 排他ロックファイルをwxモードで作成し、PIDとタイムスタンプを書き込む
- *   - 期限切れロック（staleMs経過）を検出して削除する
- *   - SharedArrayBuffer+Atomics.waitによるブロッキングなしの同期スリープを実装
- *   - ロック取得失敗時は即座にfalseを返しbusy-waitを回避
+ *   - Atomics.waitを用いた同期スリープの提供（利用可能な場合）
+ *   - 排他的フラグ（wx）を用いたロックファイルのアトミックな作成
+ *   - 経過時間に基づく陳腐化したロックファイルの自動削除
  * why_it_exists:
- *   - 複数エージェントの並行実行時のデータ破損を防止
- *   - ストレージ操作の原子性を保証
- *   - Node.js同期APIのみでロック機構を実現
+ *   - マルチプロセス環境での同時書き込みによるレコードの破壊を回避する必要性
+ *   - プロセスが異常終了した際のロック解放（stale lock）を取り扱う必要性
  * scope:
- *   in: ターゲットファイルパス、ロックオプション（maxWaitMs, pollMs, staleMs）
- *   out: ロック取得成功/失敗の真偽値、ロックファイルの作成/削除
+ *   in: FileLockOptions, ロックファイルパス, 対象ファイルパス
+ *   out: ロック取得成否, スリープ成否, ファイルシステム状態の変更
  */
 
 // File: .pi/lib/storage-lock.ts
@@ -47,12 +37,13 @@ import {
   writeFileSync,
 } from "node:fs";
 
- /**
-  * ファイルロックのオプション設定
-  * @param maxWaitMs - ロック取得の最大待機時間（ミリ秒）
-  * @param pollMs - ロック確認のポーリング間隔（ミリ秒）
-  * @param staleMs - ロックの有効期限（ミリ秒）
-  */
+/**
+ * @summary ロック設定群
+ * @description ファイルロックの動作オプション
+ * @property {number} maxWaitMs - 最大待機時間
+ * @property {number} pollMs - ポーリング間隔
+ * @property {number} staleMs - ステイル検出時間
+ */
 export interface FileLockOptions {
   maxWaitMs?: number;
   pollMs?: number;
@@ -154,13 +145,14 @@ function clearStaleLock(lockFile: string, staleMs: number): void {
   }
 }
 
- /**
-  * ファイルロックを取得して関数を実行
-  * @param targetFile ロック対象のファイルパス
-  * @param fn 実行する関数
-  * @param options ロックのオプション
-  * @returns 関数の実行結果
-  */
+/**
+ * @summary ロック取得実行
+ * @param targetFile - ロック対象ファイル
+ * @param fn - 実行する関数
+ * @param options - ロックオプション
+ * @returns {T} 関数の実行結果
+ * @throws ロック取得失敗時
+ */
 export function withFileLock<T>(
   targetFile: string,
   fn: () => T,
@@ -226,10 +218,10 @@ export function withFileLock<T>(
 }
 
 /**
- * テキストファイルをアトミックに書き込む
- * @param filePath 書き込み先のファイルパス
- * @param content 書き込む内容
- * @returns なし
+ * @summary テキスト書込
+ * @param filePath - ファイルパス
+ * @param content - 書き込む内容
+ * @returns {void}
  */
 export function atomicWriteTextFile(filePath: string, content: string): void {
   const tmpFile = `${filePath}.tmp-${process.pid}-${randomBytes(3).toString("hex")}`;

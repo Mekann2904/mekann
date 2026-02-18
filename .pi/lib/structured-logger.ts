@@ -1,29 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/structured-logger.ts
- * role: 構造化ログ出力ユーティリティ
- * why: 統一フォーマットによるログ出力で、デバッグ、監査、トレース時の可読性と検索性を確保するため
- * related: .pi/lib/config.ts, .pi/lib/storage.ts, .pi/lib/agent-manager.ts
- * public_api: LogLevel, LogContext, StructuredLogEntry, StructuredLoggerOptions
- * invariants: LOG_LEVEL_PRIORITY順序は変更不可、timestampは常にISO8601形式、未設定時のminLevelはINFO
- * side_effects: console/stdout/stderrへの書き込み、環境変数PI_LOG_LEVELの読み取り
- * failure_modes: 無効なLogLevel指定時はDEBUG扱い、metadataシリアライズ失敗時は文字列表現を出力
+ * role: ログ出力の統一フォーマット管理
+ * why: ログレベル、コンテキスト、操作名を含む一貫性のあるログ生成をシステム全体に提供するため
+ * related: .pi/lib/subagents.ts, .pi/lib/scheduler.ts, .pi/lib/storage.ts
+ * public_api: LogLevel, LogContext, StructuredLogEntry, StructuredLoggerOptions, StructuredLogger class
+ * invariants: 出力レベルは現在の最小ログレベル以上であること、タイムスタンプはISO8601形式であること
+ * side_effects: コンソールへの出力、標準出力/標準エラーへの書き込み
+ * failure_modes: 指定された出力先への書き込み失敗、無効なログレベル指定時の振る舞い未定義
  * @abdd.explain
- * overview: 統一フォーマットによる構造化ログ出力機能を提供する。ログレベル、コンテキスト、操作名、メタデータを含む一貫したログエントリを生成する。
+ * overview: 構造化されたログエントリを生成・出力するユーティリティ実装。
  * what_it_does:
- *   - DEBUG/INFO/WARN/ERRORの4段階ログレベルを定義し、優先度に基づくフィルタリングを行う
- *   - 12種類の定義済みLogContextと任意文字列によるコンテキスト指定をサポートする
- *   - StructuredLogEntryインターフェースに基づくログエントリを生成する
- *   - 環境変数PI_LOG_LEVELによる実行時ログレベル制御を提供する
- *   - console/stdout/stderrの出力先選択、JSON/プレーンテキスト形式の切り替えをサポートする
+ *   - LogLevel、LogContext、StructuredLogEntry、StructuredLoggerOptionsの型定義を提供する
+ *   - 機能フラグ（PI_LOG_LEVEL）に基づき出力する最小ログレベルを動的に決定する
+ *   - ログメッセージにタイムスタンプ、コンテキスト、相関ID、エラー情報等を付与して構造化する
  * why_it_exists:
- *   - 分散システムにおけるログ相関追跡を可能にするため（correlationId）
- *   - モジュール別・操作別のログフィルタリングを実現するため
- *   - 実行時間計測とエラー情報を含むリッチなデバッグ情報を提供するため
- *   - 本番/開発環境でのログ出力制御を一元管理するため
+ *   - デバッグおよび監視のために、システム全体で統一されたフォーマットにより可視性を確保するため
+ *   - JSONフォーマット選択や出力先切り替えなど、ログ出力の柔軟性を確保するため
  * scope:
- *   in: ログメッセージ、メタデータ、ログレベル、コンテキスト、correlationId
- *   out: 構造化されたログエントリ（JSONまたはフォーマット済みテキスト）
+ *   in: 機能フラグ（PI_LOG_LEVEL）、ログレベル、コンテキスト、メタデータ、出力先設定
+ *   out: 標準出力、標準エラー出力、コンソールへのフォーマット済みログ文字列
  */
 
 /**
@@ -44,14 +40,16 @@
 // Types
 // ============================================================================
 
- /**
-  * ログレベルの種別を定義
-  */
+/**
+ * ログレベルの種別
+ * @summary ログレベル種別
+ */
 export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
 
- /**
-  * ログコンテキスト定義
-  */
+/**
+ * ログコンテキストの種別
+ * @summary コンテキスト種別
+ */
 export type LogContext =
   | "subagents"
   | "agent-teams"
@@ -66,16 +64,15 @@ export type LogContext =
   | "extensions"
   | "general";
 
- /**
-  * 構造化ログエントリ
-  * @param timestamp ISO8601形式のタイムスタンプ
-  * @param level ログレベル
-  * @param context コンテキスト（モジュール名）
-  * @param operation 操作名（関数名など）
-  * @param message ログメッセージ
-  * @param metadata 追加のメタデータ
-  * @param correlationId 相関ID（トレース用）
-  */
+/**
+ * 構造化ログエントリ
+ * @summary ログエントリを定義
+ * @param timestamp タイムスタンプ
+ * @param level ログレベル
+ * @param context コンテキスト
+ * @param operation 操作名
+ * @param message メッセージ
+ */
 export interface StructuredLogEntry {
   /** ISO8601形式のタイムスタンプ */
   timestamp: string;
@@ -101,15 +98,15 @@ export interface StructuredLogEntry {
   };
 }
 
- /**
-  * ロガー設定オプション
-  * @param minLevel 最小ログレベル
-  * @param context コンテキスト（デフォルト）
-  * @param correlationId 相関ID
-  * @param output 出力先（デフォルト: console）
-  * @param json JSONフォーマットで出力するか
-  * @param includeTimestamp タイムスタンプを含めるか
-  */
+/**
+ * ロガー設定オプション
+ * @summary ロガー設定を定義
+ * @param minLevel 最小ログレベル
+ * @param context ログコンテキスト
+ * @param correlationId 相関ID
+ * @param output 出力先
+ * @param json JSON形式フラグ
+ */
 export interface StructuredLoggerOptions {
   /** 最小ログレベル */
   minLevel?: LogLevel;
@@ -144,10 +141,11 @@ const DEFAULT_MIN_LEVEL: LogLevel = "INFO";
 
 let cachedMinLevel: LogLevel | undefined;
 
- /**
-  * 最小ログレベルを取得する
-  * @returns 取得されたログレベル
-  */
+/**
+ * 最小ログレベルを取得
+ * @summary 最小ログレベル取得
+ * @returns 取得されたログレベル
+ */
 export function getMinLogLevel(): LogLevel {
   if (cachedMinLevel !== undefined) {
     return cachedMinLevel;
@@ -164,7 +162,10 @@ export function getMinLogLevel(): LogLevel {
 }
 
 /**
- * キャッシュされた最小ログレベルをリセット（テスト用）
+ * 最小ログレベルキャッシュをリセット
+ * @summary キャッシュリセット
+ * @param なし
+ * @returns なし
  */
 export function resetMinLogLevelCache(): void {
   cachedMinLevel = undefined;
@@ -174,30 +175,33 @@ export function resetMinLogLevelCache(): void {
 // Utility Functions
 // ============================================================================
 
- /**
-  * 日付をISO8601形式の文字列に変換する
-  * @param date 対象の日付
-  * @returns ISO8601形式のタイムスタンプ
-  */
+/**
+ * 日付をISO8601形式に変換
+ * @summary 日付変換
+ * @param date 対象の日付
+ * @returns ISO8601形式のタイムスタンプ
+ */
 export function formatTimestamp(date: Date = new Date()): string {
   return date.toISOString();
 }
 
- /**
-  * 指定されたログレベルが出力対象か判定する
-  * @param level 判定対象のログレベル
-  * @param minLevel 最小ログレベル
-  * @returns 出力対象の場合はtrue
-  */
+/**
+ * @summary ログ出力判定
+ * 指定されたログレベルが出力対象か判定する
+ * @param level 判定対象のログレベル
+ * @param minLevel 最小ログレベル
+ * @returns 出力対象の場合はtrue
+ */
 export function shouldLog(level: LogLevel, minLevel: LogLevel): boolean {
   return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[minLevel];
 }
 
- /**
-  * エラーオブジェクトを構造化された形式に変換する
-  * @param error 変換対象のエラーオブジェクト
-  * @returns 構造化されたエラー情報
-  */
+/**
+ * エラーを構造化形式に変換
+ * @summary エラー構造化
+ * @param error 変換対象のエラーオブジェクト
+ * @returns 構造化されたエラー情報
+ */
 export function formatError(error: Error | unknown): StructuredLogEntry["error"] {
   if (error instanceof Error) {
     return {
@@ -212,20 +216,22 @@ export function formatError(error: Error | unknown): StructuredLogEntry["error"]
   };
 }
 
- /**
-  * ログエントリをJSON文字列に変換する
-  * @param entry 変換対象のログエントリ
-  * @returns JSON形式の文字列
-  */
+/**
+ * エントリをシリアライズ
+ * @summary エントリシリアライズ
+ * @param {StructuredLogEntry} entry - ログエントリ
+ * @returns {string} JSON文字列
+ */
 export function serializeLogEntry(entry: StructuredLogEntry): string {
   return JSON.stringify(entry);
 }
 
- /**
-  * ログエントリを読み取り可能な形式でフォーマットする
-  * @param entry 構造化されたログエントリ
-  * @returns フォーマットされた文字列
-  */
+/**
+ * エントリを整形
+ * @summary エントリ整形
+ * @param {StructuredLogEntry} entry - ログエントリ
+ * @returns {string} 整形された文字列
+ */
 export function formatReadableEntry(entry: StructuredLogEntry): string {
   const parts = [
     `[${entry.timestamp}]`,
@@ -261,10 +267,12 @@ export function formatReadableEntry(entry: StructuredLogEntry): string {
 // Logger Class
 // ============================================================================
 
- /**
-  * 構造化ロガークラス
-  * @param options ロガー設定オプション
-  */
+/**
+ * 構造化ロガークラス
+ * @summary 構造化ロガー
+ * @param {StructuredLoggerOptions} options - ロガー設定オプション
+ * @returns {StructuredLogger} ロガーインスタンス
+ */
 export class StructuredLogger {
   private readonly minLevel: LogLevel;
   private readonly context: LogContext | string;
@@ -282,12 +290,13 @@ export class StructuredLogger {
     this.includeTimestamp = options.includeTimestamp ?? true;
   }
 
-   /**
-    * 子ロガーを作成する（コンテキストを継承）
-    * @param operation 操作名
-    * @param additionalContext 追加コンテキスト
-    * @returns 子ロガー
-    */
+  /**
+   * 子ロガーを生成
+   * @summary 子ロガー生成
+   * @param {string} operation - 操作名
+   * @param {Record<string, unknown>} [additionalContext] - 追加コンテキスト
+   * @returns {ChildLogger} 生成された子ロガー
+   */
   child(
     operation: string,
     additionalContext?: LogContext | string
@@ -353,13 +362,14 @@ export class StructuredLogger {
   // Public Logging Methods
   // ========================================================================
 
-   /**
-    * DEBUGレベルのログを出力
-    * @param operation 操作名
-    * @param message ログメッセージ
-    * @param metadata 追加のメタデータ
-    * @returns なし
-    */
+  /**
+   * DEBUGレベルログを出力
+   * @summary DEBUGログ出力
+   * @param {string} operation - 操作名
+   * @param {string} message - ログメッセージ
+   * @param {Record<string, unknown>} [metadata] - 追加メタデータ
+   * @returns {void}
+   */
   debug(
     operation: string,
     message: string,
@@ -368,13 +378,14 @@ export class StructuredLogger {
     this.log("DEBUG", operation, message, metadata);
   }
 
-   /**
-    * INFOレベルのログを出力します
-    * @param operation 操作名
-    * @param message ログメッセージ
-    * @param metadata 追加のメタデータ
-    * @returns なし
-    */
+  /**
+   * INFOレベルのログを出力
+   * @summary 情報出力
+   * @param operation 操作名
+   * @param message ログメッセージ
+   * @param metadata 追加のメタデータ
+   * @returns void
+   */
   info(
     operation: string,
     message: string,
@@ -383,13 +394,14 @@ export class StructuredLogger {
     this.log("INFO", operation, message, metadata);
   }
 
-   /**
-    * WARNレベルのログを出力
-    * @param operation 操作名
-    * @param message メッセージ
-    * @param metadata メタデータ
-    * @returns なし
-    */
+  /**
+   * WARNレベルのログを出力
+   * @summary 警告出力
+   * @param operation 操作名
+   * @param message ログメッセージ
+   * @param metadata 追加のメタデータ
+   * @returns void
+   */
   warn(
     operation: string,
     message: string,
@@ -398,14 +410,15 @@ export class StructuredLogger {
     this.log("WARN", operation, message, metadata);
   }
 
-   /**
-    * ERRORレベルのログを出力
-    * @param operation 操作名
-    * @param message ログメッセージ
-    * @param error エラーオブジェクト
-    * @param metadata 追加のメタデータ
-    * @returns 戻り値なし
-    */
+  /**
+   * ERRORレベルのログを出力
+   * @summary エラー出力
+   * @param operation 操作名
+   * @param message ログメッセージ
+   * @param error エラーオブジェクト
+   * @param metadata 追加のメタデータ
+   * @returns void
+   */
   error(
     operation: string,
     message: string,
@@ -415,14 +428,15 @@ export class StructuredLogger {
     this.log("ERROR", operation, message, metadata, error);
   }
 
-   /**
-    * 実行時間を測定してログ出力
-    * @param operation 操作名
-    * @param message メッセージ
-    * @param fn 実行する非同期関数
-    * @param metadata 追加のメタデータ
-    * @returns 関数の実行結果
-    */
+  /**
+   * 非同期処理を測定してログ
+   * @summary 非同期処理測定
+   * @param operation 操作名
+   * @param message ログメッセージ
+   * @param fn 測定対象の非同期関数
+   * @param metadata 追加のメタデータ
+   * @returns 関数の実行結果を含むPromise
+   */
   async withTiming<T>(
     operation: string,
     message: string,
@@ -442,14 +456,15 @@ export class StructuredLogger {
     }
   }
 
-   /**
-    * 同期操作の実行時間を測定してログを出力
-    * @param operation 操作名
-    * @param message メッセージ
-    * @param fn 実行する関数
-    * @param metadata 追加のメタデータ
-    * @returns 関数の実行結果
-    */
+  /**
+   * 同期処理を測定してログ
+   * @summary 同期処理測定
+   * @param operation 操作名
+   * @param message ログメッセージ
+   * @param fn 測定対象の同期関数
+   * @param metadata 追加のメタデータ
+   * @returns 関数の実行結果
+   */
   withTimingSync<T>(
     operation: string,
     message: string,
@@ -474,12 +489,11 @@ export class StructuredLogger {
 // Child Logger Class
 // ============================================================================
 
- /**
-  * 子ロガー - 操作名が固定されたロガー
-  * @param parent 親ロガー
-  * @param operation 固定の操作名
-  * @param additionalContext 追加のコンテキスト
-  */
+/**
+ * 子ロガークラス
+ * @summary 子ロガー生成
+ * @returns void
+ */
 export class ChildLogger {
   constructor(
     private readonly parent: StructuredLogger,
@@ -487,54 +501,59 @@ export class ChildLogger {
     private readonly additionalContext?: LogContext | string
   ) {}
 
-   /**
-    * DEBUGレベルのログを出力する
-    * @param message ログメッセージ
-    * @param metadata 追加のメタデータ
-    * @returns なし
-    */
+  /**
+   * デバッグログを出力する
+   * @summary デバッグログを出力
+   * @param message ログメッセージ
+   * @param metadata 追加のメタデータ
+   * @returns void
+   */
   debug(message: string, metadata?: Record<string, unknown>): void {
     this.parent.debug(this.operation, message, this.withContext(metadata));
   }
 
-   /**
-    * INFOレベルのログを出力
-    * @param message ログメッセージ
-    * @param metadata 追加のメタデータ
-    * @returns なし
-    */
+  /**
+   * 通常ログを出力する
+   * @summary 通常ログを出力
+   * @param message ログメッセージ
+   * @param metadata 追加のメタデータ
+   * @returns void
+   */
   info(message: string, metadata?: Record<string, unknown>): void {
     this.parent.info(this.operation, message, this.withContext(metadata));
   }
 
-   /**
-    * WARNレベルのログを出力
-    * @param message ログメッセージ
-    * @param metadata 追加のメタデータ
-    * @returns なし
-    */
+  /**
+   * 警告ログを出力する
+   * @summary 警告ログを出力
+   * @param message ログメッセージ
+   * @param metadata 追加のメタデータ
+   * @returns void
+   */
   warn(message: string, metadata?: Record<string, unknown>): void {
     this.parent.warn(this.operation, message, this.withContext(metadata));
   }
 
-   /**
-    * ERRORレベルのログを出力
-    * @param message ログメッセージ
-    * @param error エラーオブジェクト
-    * @param metadata 追加のメタデータ
-    * @returns なし
-    */
+  /**
+   * エラーログを出力する
+   * @summary エラーログを出力
+   * @param message ログメッセージ
+   * @param error エラーオブジェクト
+   * @param metadata 追加のメタデータ
+   * @returns void
+   */
   error(message: string, error?: Error | unknown, metadata?: Record<string, unknown>): void {
     this.parent.error(this.operation, message, error, this.withContext(metadata));
   }
 
-   /**
-    * 操作の実行時間を測定
-    * @param message ログメッセージ
-    * @param fn 測定対象の非同期関数
-    * @param metadata 追加のメタデータ
-    * @returns 非同期関数の実行結果
-    */
+  /**
+   * 実行時間を測定
+   * @summary 実行時間測定
+   * @param message ログメッセージ
+   * @param fn 測定対象関数
+   * @param metadata メタデータ
+   * @returns 処理結果
+   */
   async withTiming<T>(
     message: string,
     fn: () => Promise<T>,
@@ -558,10 +577,11 @@ export class ChildLogger {
 
 let defaultLogger: StructuredLogger | undefined;
 
- /**
-  * デフォルトロガーを取得する
-  * @returns StructuredLogger インスタンス
-  */
+/**
+ * デフォルトロガー取得
+ * @summary デフォルトロガー取得
+ * @returns 構造化ロガー
+ */
 export function getDefaultLogger(): StructuredLogger {
   if (!defaultLogger) {
     defaultLogger = new StructuredLogger();
@@ -569,10 +589,11 @@ export function getDefaultLogger(): StructuredLogger {
   return defaultLogger;
 }
 
- /**
-  * デフォルトロガーをリセットする
-  * @returns {void}
-  */
+/**
+ * デフォルトロガー初期化
+ * @summary デフォルトロガー初期化
+ * @returns void
+ */
 export function resetDefaultLogger(): void {
   defaultLogger = undefined;
 }
@@ -590,26 +611,31 @@ export function createLogger(
   return new StructuredLogger({ ...options, context });
 }
 
- /**
-  * subagentsコンテキストのロガーを取得する
-  * @returns 構造化ロガー
-  */
+/**
+ * サブロガー生成
+ * @summary サブロガー生成
+ * @param context ログコンテキスト
+ * @param options オプション設定
+ * @returns 構造化ロガー
+ */
 export function getSubagentLogger(): StructuredLogger {
   return createLogger("subagents");
 }
 
- /**
-  * agent-teamsコンテキストのロガーを取得
-  * @returns ロガーインスタンス
-  */
+/**
+ * AgentTeamsロガー取得
+ * @summary ロガー取得
+ * @returns 構造化ロガーインスタンス
+ */
 export function getAgentTeamsLogger(): StructuredLogger {
   return createLogger("agent-teams");
 }
 
- /**
-  * storageコンテキストのロガーを取得
-  * @returns 構造化ロガーインスタンス
-  */
+/**
+ * ストレージロガー取得
+ * @summary ロガー取得
+ * @returns 構造化ロガーインスタンス
+ */
 export function getStorageLogger(): StructuredLogger {
   return createLogger("storage");
 }

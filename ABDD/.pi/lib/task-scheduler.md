@@ -26,20 +26,20 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `shouldPreempt` | 実行中タスクを割り込むべきか判定する |
-| 関数 | `preemptTask` | 実行中のタスクを一時中断し、チェックポイントに保存する。 |
-| 関数 | `resumeFromCheckpoint` | チェックポイントからタスクを再開する |
-| 関数 | `createTaskId` | 一意なタスクIDを生成する |
-| 関数 | `getScheduler` | シングルトンのスケジューラインスタンスを取得する。 |
-| 関数 | `createScheduler` | Create a new scheduler with custom config. |
-| 関数 | `resetScheduler` | シングルトンのスケジューラーをリセットする（テスト用）。 |
-| インターフェース | `TaskCostEstimate` | スケジュールされたタスクのコスト概算 |
-| インターフェース | `ScheduledTask` | 優先度とレート制限を持つスケジュールされたタスク |
-| インターフェース | `TaskResult` | タスク実行の結果 |
-| インターフェース | `QueueStats` | キューモニタリング用の統計情報 |
-| インターフェース | `SchedulerConfig` | スケジューラーの設定オプション。 |
-| インターフェース | `HybridSchedulerConfig` | ハイブリッドスケジューリングの設定 |
-| 型 | `TaskSource` | タスクの作成元を識別する種別 |
+| 関数 | `shouldPreempt` | 実行中タスクを割り込むか判定 |
+| 関数 | `preemptTask` | - |
+| 関数 | `resumeFromCheckpoint` | - |
+| 関数 | `createTaskId` | タスクIDを生成する |
+| 関数 | `getScheduler` | スケジューラを取得する |
+| 関数 | `createScheduler` | スケジューラを作成する |
+| 関数 | `resetScheduler` | シングルトンのスケジューラーをリセットする |
+| インターフェース | `TaskCostEstimate` | - |
+| インターフェース | `ScheduledTask` | - |
+| インターフェース | `TaskResult` | タスク実行結果 |
+| インターフェース | `QueueStats` | キュー統計情報 |
+| インターフェース | `SchedulerConfig` | スケジューラ設定 |
+| インターフェース | `HybridSchedulerConfig` | ハイブリッドスケジューラ設定 |
+| 型 | `TaskSource` | - |
 
 ## 図解
 
@@ -173,7 +173,7 @@ sequenceDiagram
 shouldPreempt(runningTask: ScheduledTask, incomingTask: ScheduledTask): boolean
 ```
 
-実行中タスクを割り込むべきか判定する
+実行中タスクを割り込むか判定
 
 **パラメータ**
 
@@ -189,8 +189,6 @@ shouldPreempt(runningTask: ScheduledTask, incomingTask: ScheduledTask): boolean
 ```typescript
 async preemptTask(taskId: string, reason: string, state?: unknown, progress?: number): Promise<PreemptionResult>
 ```
-
-実行中のタスクを一時中断し、チェックポイントに保存する。
 
 **パラメータ**
 
@@ -208,8 +206,6 @@ async preemptTask(taskId: string, reason: string, state?: unknown, progress?: nu
 ```typescript
 async resumeFromCheckpoint(checkpointId: string, execute: (checkpoint: Checkpoint) => Promise<TResult>): Promise<TaskResult<TResult>>
 ```
-
-チェックポイントからタスクを再開する
 
 **パラメータ**
 
@@ -236,7 +232,7 @@ Get default scheduler config from centralized RuntimeConfig.
 createTaskId(prefix: string): string
 ```
 
-一意なタスクIDを生成する
+タスクIDを生成する
 
 **パラメータ**
 
@@ -410,7 +406,7 @@ handler(event: Event): void
 getScheduler(): TaskSchedulerImpl
 ```
 
-シングルトンのスケジューラインスタンスを取得する。
+スケジューラを取得する
 
 **戻り値**: `TaskSchedulerImpl`
 
@@ -420,7 +416,7 @@ getScheduler(): TaskSchedulerImpl
 createScheduler(config?: Partial<SchedulerConfig>): TaskSchedulerImpl
 ```
 
-Create a new scheduler with custom config.
+スケジューラを作成する
 
 **パラメータ**
 
@@ -436,7 +432,7 @@ Create a new scheduler with custom config.
 resetScheduler(): void
 ```
 
-シングルトンのスケジューラーをリセットする（テスト用）。
+シングルトンのスケジューラーをリセットする
 
 **戻り値**: `void`
 
@@ -487,8 +483,6 @@ interface TaskCostEstimate {
 }
 ```
 
-スケジュールされたタスクのコスト概算
-
 ### ScheduledTask
 
 ```typescript
@@ -505,8 +499,6 @@ interface ScheduledTask {
 }
 ```
 
-優先度とレート制限を持つスケジュールされたタスク
-
 ### TaskResult
 
 ```typescript
@@ -522,7 +514,7 @@ interface TaskResult {
 }
 ```
 
-タスク実行の結果
+タスク実行結果
 
 ### QueueStats
 
@@ -538,7 +530,7 @@ interface QueueStats {
 }
 ```
 
-キューモニタリング用の統計情報
+キュー統計情報
 
 ### TaskQueueEntry
 
@@ -567,7 +559,7 @@ interface SchedulerConfig {
 }
 ```
 
-スケジューラーの設定オプション。
+スケジューラ設定
 
 ### HybridSchedulerConfig
 
@@ -582,7 +574,7 @@ interface HybridSchedulerConfig {
 }
 ```
 
-ハイブリッドスケジューリングの設定
+ハイブリッドスケジューラ設定
 
 ## 型定義
 
@@ -595,7 +587,5 @@ type TaskSource = | "subagent_run"
   | "agent_team_run_parallel"
 ```
 
-タスクの作成元を識別する種別
-
 ---
-*自動生成: 2026-02-18T14:31:31.039Z*
+*自動生成: 2026-02-18T15:54:41.532Z*

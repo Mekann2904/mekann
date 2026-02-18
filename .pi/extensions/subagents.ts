@@ -1,39 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/subagents.ts
- * role: サブエージェントの作成、管理、委任実行ツールを提供する拡張モジュール
- * why: タスクを特化型ヘルパーエージェントへ積極的に委譲するデフォルトワークフローを実現するため
- * related: .pi/extensions/agent-runtime.ts, .pi/extensions/agent-teams.ts, .pi/lib/agent-common.js, .pi/lib/agent-errors.js
- * public_api: サブエージェント作成ツール, サブエージェント管理ツール, 委任実行関数
- * invariants:
- *   - サブエージェント実行は親エージェントのランタイム容量予約内で動作する
- *   - タイムアウト値はモデル設定とDEFAULT_AGENT_TIMEOUT_MSから決定される
- *   - リトライはSTABLE_RUNTIME_PROFILEに従い実行される
- * side_effects:
- *   - ファイルシステムへのサブエージェント状態書き込み
- *   - ランタイム容量の予約と解放
- *   - 並列実行ペナルティの適用と減衰
- *   - レート制限ゲートの更新
- * failure_modes:
- *   - 容量不足による実行キュー待機
- *   - レート制限による一時停止とリトライ
- *   - タイムアウトによる実行中断
- *   - スキーマ検証エラーによる出力却下
+ * role: サブエージェントの作成、管理、およびタスク委譲の実行を提供する拡張機能
+ * why: フォーカスされたヘルパーエージェントへの能動的なタスク委譲をデフォルトのワークフローとして可能にするため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts, .pi/extensions/shared/runtime-helpers.ts, .pi/lib/agent-types.ts
+ * public_api: サブエージェント実行用ツール、ランタイム状態管理関数、並行性制御ユーティリティ
+ * invariants: サブエージェントの実行は必ずランタイムキャパシティの予約を必要とする、出力はバリデーションルールに準拠する
+ * side_effects: ファイルシステムの読み書き、ランタイム状態の更新、ログの出力
+ * failure_modes: APIレートリミット、タイムアウト、キャンセル、バリデーションエラー、キャパシティ枯渇
  * @abdd.explain
- * overview: pi-coding-agent用のサブエージェント実行フレームワーク。タスク委譲、並列実行、エラーハンドリング、ライブステータス表示を統合管理する。
+ * overview: メインエージェントが特定のタスクを専門のサブエージェントに委譲し、並列または逐次的に実行するための基盤を提供するモジュール
  * what_it_does:
- *   - サブエージェントの作成と設定管理
- *   - 親エージェントからのタスク委任実行
- *   - 並列実行数のアダプティブ制御とレート制限対応
- *   - 実行結果の検証とエラー分類
- *   - ランタイム容量の予約とオーケストレーション待機
+ *   - サブエージェントの生成とライフサイクル管理
+ *   - ランタイムリソースの予約と解放（キャパシティ制御）
+ *   - 再試行ポリシーとエラーハンドリングに基づく実行
+ *   - 実行結果の検証とフィードバックの集約
  * why_it_exists:
- *   - 複雑なタスクを特化型エージェントへ分割して効率化するため
- *   - 並列実行とリソース管理を統一的に制御するため
- *   - 再試行ロジックとエラー回復を標準化するため
+ *   - 複雑なタスクを分割して並列処理効率を向上させるため
+ *   - 特定のドメインに特化したエージェントによる問題解決を支援するため
+ *   - システム全体の安定性を保ちながらリソースを管理するため
  * scope:
- *   in: タスク指示文字列, サブエージェント設定, 親AbortControllerシグナル, 実行ルール
- *   out: 実行結果, ステータスイベント, エラー情報, コスト見積もり
+ *   in: 実行リクエスト、ツール呼び出しイベント、設定パラメータ、エージェント定義
+ *   out: 実行結果、ステータス更新、ログエントリ、ファイルシステム変更
  */
 
 // File: .pi/extensions/subagents.ts
@@ -400,11 +388,12 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
 
 // Note: runSubagentTask is now imported from ./subagents/task-execution
 
- /**
-  * サブエージェント拡張を登録する
-  * @param pi 拡張API
-  * @returns なし
-  */
+/**
+ * サブエージェント拡張を登録
+ * @summary 拡張機能登録
+ * @param pi - 拡張機能API
+ * @returns {void}
+ */
 export default function registerSubagentExtension(pi: ExtensionAPI) {
   // サブエージェント一覧
   pi.registerTool({

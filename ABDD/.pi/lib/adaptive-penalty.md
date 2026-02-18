@@ -17,18 +17,18 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getAdaptivePenaltyMode` | 現在のアダプティブペナルティモードを取得 |
-| 関数 | `resetAdaptivePenaltyModeCache` | キャッシュモードをリセットする |
-| 関数 | `createAdaptivePenaltyController` | アダプティブペナルティコントローラを作成する |
+| 関数 | `getAdaptivePenaltyMode` | アダプティブペナルティモード取得 |
+| 関数 | `resetAdaptivePenaltyModeCache` | - |
+| 関数 | `createAdaptivePenaltyController` | アダプティブペナルティコントローラ作成 |
 | 関数 | `createEnhancedPenaltyController` | 拡張アダプティブペナルティコントローラーを作成 |
-| 関数 | `createAutoPenaltyController` | フラグに基づいて適切なペナルティコントローラを作成する |
-| インターフェース | `AdaptivePenaltyState` | 適応的ペナルティの状態を表すインターフェース |
-| インターフェース | `AdaptivePenaltyOptions` | 適応的ペナルティの設定オプション |
+| 関数 | `createAutoPenaltyController` | ペナルティコントローラ生成 |
+| インターフェース | `AdaptivePenaltyState` | 適応型ペナルティの状態。 |
+| インターフェース | `AdaptivePenaltyOptions` | 適応型ペナルティオプション。 |
 | インターフェース | `EnhancedPenaltyOptions` | 拡張ペナルティオプション。 |
-| インターフェース | `AdaptivePenaltyController` | - |
-| インターフェース | `EnhancedPenaltyController` | 拡張ペナルティコントローラ |
-| 型 | `PenaltyReason` | ペナルティ調整の理由種別 |
-| 型 | `DecayStrategy` | 減衰戦略の種類 ("linear" | "exponential" | "hybrid") |
+| インターフェース | `AdaptivePenaltyController` | ペナルティ制御インターフェース。 |
+| インターフェース | `EnhancedPenaltyController` | 拡張ペナルティ制御 |
+| 型 | `PenaltyReason` | ペナルティ理由の型定義 |
+| 型 | `DecayStrategy` | 減衰戦略の種類。 |
 
 ## 図解
 
@@ -107,7 +107,7 @@ flowchart TD
 getAdaptivePenaltyMode(): "legacy" | "enhanced"
 ```
 
-現在のアダプティブペナルティモードを取得
+アダプティブペナルティモード取得
 
 **戻り値**: `"legacy" | "enhanced"`
 
@@ -117,8 +117,6 @@ getAdaptivePenaltyMode(): "legacy" | "enhanced"
 resetAdaptivePenaltyModeCache(): void
 ```
 
-キャッシュモードをリセットする
-
 **戻り値**: `void`
 
 ### createAdaptivePenaltyController
@@ -127,7 +125,7 @@ resetAdaptivePenaltyModeCache(): void
 createAdaptivePenaltyController(options: AdaptivePenaltyOptions): AdaptivePenaltyController
 ```
 
-アダプティブペナルティコントローラを作成する
+アダプティブペナルティコントローラ作成
 
 **パラメータ**
 
@@ -319,7 +317,7 @@ getDecayStrategy(): DecayStrategy
 createAutoPenaltyController(options: AdaptivePenaltyOptions | EnhancedPenaltyOptions): AdaptivePenaltyController | EnhancedPenaltyController
 ```
 
-フラグに基づいて適切なペナルティコントローラを作成する
+ペナルティコントローラ生成
 
 **パラメータ**
 
@@ -342,7 +340,7 @@ interface AdaptivePenaltyState {
 }
 ```
 
-適応的ペナルティの状態を表すインターフェース
+適応型ペナルティの状態。
 
 ### AdaptivePenaltyOptions
 
@@ -354,7 +352,7 @@ interface AdaptivePenaltyOptions {
 }
 ```
 
-適応的ペナルティの設定オプション
+適応型ペナルティオプション。
 
 ### EnhancedPenaltyOptions
 
@@ -382,6 +380,8 @@ interface AdaptivePenaltyController {
 }
 ```
 
+ペナルティ制御インターフェース。
+
 ### EnhancedPenaltyController
 
 ```typescript
@@ -392,7 +392,7 @@ interface EnhancedPenaltyController {
 }
 ```
 
-拡張ペナルティコントローラ
+拡張ペナルティ制御
 
 ## 型定義
 
@@ -402,7 +402,7 @@ interface EnhancedPenaltyController {
 type PenaltyReason = "rate_limit" | "timeout" | "capacity" | "schema_violation"
 ```
 
-ペナルティ調整の理由種別
+ペナルティ理由の型定義
 
 ### DecayStrategy
 
@@ -410,7 +410,7 @@ type PenaltyReason = "rate_limit" | "timeout" | "capacity" | "schema_violation"
 type DecayStrategy = "linear" | "exponential" | "hybrid"
 ```
 
-減衰戦略の種類 ("linear" | "exponential" | "hybrid")
+減衰戦略の種類。
 
 ---
-*自動生成: 2026-02-18T14:31:30.946Z*
+*自動生成: 2026-02-18T15:54:41.427Z*

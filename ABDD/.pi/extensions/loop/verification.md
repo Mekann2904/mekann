@@ -25,15 +25,15 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `resolveVerificationPolicy` | 環境変数から検証ポリシーを解決する |
-| 関数 | `shouldRunVerificationCommand` | 検証コマンドを実行すべきか判定する |
+| 関数 | `resolveVerificationPolicy` | 検証ポリシー設定を解決 |
+| 関数 | `shouldRunVerificationCommand` | 検証実行判定 |
 | 関数 | `runVerificationCommand` | 検証コマンドを実行する |
-| 関数 | `parseVerificationCommand` | 検証コマンドをパースする |
-| 関数 | `resolveVerificationAllowlistPrefixes` | 検証許可リストのプレフィックスを解決する |
+| 関数 | `parseVerificationCommand` | - |
+| 関数 | `resolveVerificationAllowlistPrefixes` | 許可リストを解決 |
 | 関数 | `isVerificationCommandAllowed` | 検証コマンドが許可リストに含まれるか判定 |
-| 関数 | `buildVerificationValidationFeedback` | 検証結果からフィードバックメッセージを生成する |
-| インターフェース | `LoopVerificationResult` | ループ検証結果を表すインターフェース |
-| インターフェース | `ParsedVerificationCommand` | 検証コマンドの解析結果 |
+| 関数 | `buildVerificationValidationFeedback` | 検証結果からフィードバックを生成 |
+| インターフェース | `LoopVerificationResult` | ループ検証の実行結果 |
+| インターフェース | `ParsedVerificationCommand` | パースされた検証コマンド |
 | インターフェース | `VerificationPolicyConfig` | 検証ポリシーの設定 |
 | 型 | `VerificationPolicyMode` | 検証ポリシーのモード |
 
@@ -141,7 +141,7 @@ sequenceDiagram
 resolveVerificationPolicy(): VerificationPolicyConfig
 ```
 
-環境変数から検証ポリシーを解決する
+検証ポリシー設定を解決
 
 **戻り値**: `VerificationPolicyConfig`
 
@@ -156,7 +156,7 @@ shouldRunVerificationCommand(input: {
 }): boolean
 ```
 
-検証コマンドを実行すべきか判定する
+検証実行判定
 
 **パラメータ**
 
@@ -254,8 +254,6 @@ cleanup(): void
 parseVerificationCommand(command: string): ParsedVerificationCommand
 ```
 
-検証コマンドをパースする
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -284,7 +282,7 @@ tokenizeArgs(input: string): string[]
 resolveVerificationAllowlistPrefixes(): string[][]
 ```
 
-検証許可リストのプレフィックスを解決する
+許可リストを解決
 
 **戻り値**: `string[][]`
 
@@ -354,7 +352,7 @@ redactSensitiveText(value: string): string
 buildVerificationValidationFeedback(result: LoopVerificationResult): string[]
 ```
 
-検証結果からフィードバックメッセージを生成する
+検証結果からフィードバックを生成
 
 **パラメータ**
 
@@ -396,7 +394,7 @@ interface LoopVerificationResult {
 }
 ```
 
-ループ検証結果を表すインターフェース
+ループ検証の実行結果
 
 ### ParsedVerificationCommand
 
@@ -408,7 +406,7 @@ interface ParsedVerificationCommand {
 }
 ```
 
-検証コマンドの解析結果
+パースされた検証コマンド
 
 ### VerificationPolicyConfig
 
@@ -432,4 +430,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 検証ポリシーのモード
 
 ---
-*自動生成: 2026-02-18T14:31:30.755Z*
+*自動生成: 2026-02-18T15:54:41.211Z*

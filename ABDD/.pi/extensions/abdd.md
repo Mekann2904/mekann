@@ -18,7 +18,7 @@ related: []
 ```typescript
 // from 'node:fs': fs
 // from 'node:path': path
-// from 'node:child_process': execSync
+// from 'node:child_process': execSync, spawn
 // from '@sinclair/typebox': Type
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
@@ -159,10 +159,14 @@ sequenceDiagram
   System->>Unresolved: baseArgs.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: join
   System->>Internal: existsSync
-  System->>Internal: execSync
-  System->>Unresolved: result.slice (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Executor: runStep
+  System->>Internal: spawn
+  System->>Internal: setTimeout
+  System->>Unresolved: childProcess.kill (node_modules/@types/node/child_process.d.ts)
+  System->>Unresolved: stdout.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: childProcess.stdout?.on (node_modules/@types/node/stream.d.ts)
+  System->>Unresolved: data.toString (node_modules/@types/node/buffer.d.ts)
+  System->>Internal: clearTimeout
+  System->>Executor: runStepAsync
   System->>Unresolved: results.every (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: results.map (node_modules/typescript/lib/lib.es5.d.ts)
   System-->>User: 結果
@@ -201,10 +205,10 @@ flowchart LR
 
 ## 関数
 
-### runStep
+### runStepAsync
 
 ```typescript
-runStep(stepName: string, scriptName: string, extraArgs: string[]): boolean
+runStepAsync(stepName: string, scriptName: string, extraArgs: string[]): Promise<boolean>
 ```
 
 **パラメータ**
@@ -215,7 +219,7 @@ runStep(stepName: string, scriptName: string, extraArgs: string[]): boolean
 | scriptName | `string` | はい |
 | extraArgs | `string[]` | はい |
 
-**戻り値**: `boolean`
+**戻り値**: `Promise<boolean>`
 
 ### findAllMdFiles
 
@@ -337,4 +341,4 @@ type Severity = "low" | "medium" | "high"
 乖離重要度
 
 ---
-*自動生成: 2026-02-18T14:31:30.401Z*
+*自動生成: 2026-02-18T15:54:40.854Z*

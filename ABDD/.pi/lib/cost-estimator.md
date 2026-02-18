@@ -23,15 +23,15 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getCostEstimator` | コスト推定のシングルトンインスタンスを取得 |
-| 関数 | `createCostEstimator` | コスト推定器のインスタンスを作成 |
-| 関数 | `resetCostEstimator` | シングルトンのインスタンスをリセットする |
-| クラス | `CostEstimator` | コストを見積もるクラス。デフォルト値と履歴学習をサポート |
-| インターフェース | `CostEstimation` | コスト推定結果 |
-| インターフェース | `ExecutionHistoryEntry` | 履歴学習用の実行記録エントリ |
-| インターフェース | `SourceStatistics` | 特定のソースタイプの統計情報。 |
-| インターフェース | `CostEstimatorConfig` | コスト推定の設定 |
-| 型 | `CostEstimationMethod` | コスト計算の推定方法を表す型。 |
+| 関数 | `getCostEstimator` | - |
+| 関数 | `createCostEstimator` | コスト推定器を作成 |
+| 関数 | `resetCostEstimator` | - |
+| クラス | `CostEstimator` | コスト推定器 |
+| インターフェース | `CostEstimation` | コストの推定結果 |
+| インターフェース | `ExecutionHistoryEntry` | 実行履歴のエントリ |
+| インターフェース | `SourceStatistics` | ソースの統計情報 |
+| インターフェース | `CostEstimatorConfig` | 設定定義 |
+| 型 | `CostEstimationMethod` | コスト計算の推定方法 |
 
 ## 図解
 
@@ -119,8 +119,6 @@ sequenceDiagram
 getCostEstimator(): CostEstimator
 ```
 
-コスト推定のシングルトンインスタンスを取得
-
 **戻り値**: `CostEstimator`
 
 ### createCostEstimator
@@ -129,7 +127,7 @@ getCostEstimator(): CostEstimator
 createCostEstimator(config?: Partial<CostEstimatorConfig>): CostEstimator
 ```
 
-コスト推定器のインスタンスを作成
+コスト推定器を作成
 
 **パラメータ**
 
@@ -145,15 +143,13 @@ createCostEstimator(config?: Partial<CostEstimatorConfig>): CostEstimator
 resetCostEstimator(): void
 ```
 
-シングルトンのインスタンスをリセットする
-
 **戻り値**: `void`
 
 ## クラス
 
 ### CostEstimator
 
-コストを見積もるクラス。デフォルト値と履歴学習をサポート
+コスト推定器
 
 **プロパティ**
 
@@ -186,7 +182,7 @@ interface CostEstimation {
 }
 ```
 
-コスト推定結果
+コストの推定結果
 
 ### ExecutionHistoryEntry
 
@@ -203,7 +199,7 @@ interface ExecutionHistoryEntry {
 }
 ```
 
-履歴学習用の実行記録エントリ
+実行履歴のエントリ
 
 ### SourceStatistics
 
@@ -219,7 +215,7 @@ interface SourceStatistics {
 }
 ```
 
-特定のソースタイプの統計情報。
+ソースの統計情報
 
 ### CostEstimatorConfig
 
@@ -231,7 +227,7 @@ interface CostEstimatorConfig {
 }
 ```
 
-コスト推定の設定
+設定定義
 
 ## 型定義
 
@@ -241,7 +237,7 @@ interface CostEstimatorConfig {
 type CostEstimationMethod = "default" | "historical" | "heuristic"
 ```
 
-コスト計算の推定方法を表す型。
+コスト計算の推定方法
 
 ---
-*自動生成: 2026-02-18T14:31:30.968Z*
+*自動生成: 2026-02-18T15:54:41.456Z*

@@ -17,12 +17,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `toFiniteNumber` | 不明な値を有限の数値に変換する |
-| 関数 | `toFiniteNumberWithDefault` | 有限数またはデフォルト値を返す |
+| 関数 | `toFiniteNumber` | 有限数値を取得する |
+| 関数 | `toFiniteNumberWithDefault` | 有限数値を取得する |
 | 関数 | `toBoundedInteger` | 整数値の検証と範囲制限を行う |
 | 関数 | `clampInteger` | 整数値を指定範囲内に制限する |
 | 関数 | `clampFloat` | 浮動小数点数を指定範囲内に制限する |
-| 型 | `BoundedIntegerResult` | 整数範囲検証の結果型 |
+| 型 | `BoundedIntegerResult` | 整数値の範囲制限結果を表す型 |
 
 ## 図解
 
@@ -34,7 +34,7 @@ related: []
 toFiniteNumber(value: unknown): number | undefined
 ```
 
-不明な値を有限の数値に変換する
+有限数値を取得する
 
 **パラメータ**
 
@@ -50,7 +50,7 @@ toFiniteNumber(value: unknown): number | undefined
 toFiniteNumberWithDefault(value: unknown, fallback: any): number
 ```
 
-有限数またはデフォルト値を返す
+有限数値を取得する
 
 **パラメータ**
 
@@ -126,7 +126,7 @@ type BoundedIntegerResult = | { ok: true; value: number }
   | { ok: false; error: string }
 ```
 
-整数範囲検証の結果型
+整数値の範囲制限結果を表す型
 
 ---
-*自動生成: 2026-02-18T14:31:31.047Z*
+*自動生成: 2026-02-18T15:54:41.543Z*

@@ -28,26 +28,26 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `buildPrecomputedContextMap` | 事前計算済みのメンバーごとのコンテキストを構築します。 |
-| 関数 | `normalizeCommunicationRounds` | 通信ラウンド数を正規化・検証する |
-| 関数 | `normalizeFailedMemberRetryRounds` | メンバーの再試行回数を正規化 |
+| 関数 | `buildPrecomputedContextMap` | コンテキストマップを生成 |
+| 関数 | `normalizeCommunicationRounds` | 通信ラウンド数を正規化 |
+| 関数 | `normalizeFailedMemberRetryRounds` | - |
 | 関数 | `shouldRetryFailedMemberResult` | 失敗したメンバー結果を再試行すべきか判定する |
-| 関数 | `shouldPreferAnchorMember` | メンバーをアンカーとして優先するか判定 |
-| 関数 | `createCommunicationLinksMap` | チームメンバーの通信リンクマップを作成する |
+| 関数 | `shouldPreferAnchorMember` | メンバー優先判定 |
+| 関数 | `createCommunicationLinksMap` | 通信リンクマップ生成 |
 | 関数 | `sanitizeCommunicationSnippet` | 通信スニペットをサニタイズする |
 | 関数 | `detectPartnerReferencesV2` | パートナーの参照を検出する（V2） |
-| 関数 | `extractField` | 構造化されたテキストから指定フィールドの値を抽出 |
+| 関数 | `extractField` | フィールド値を抽出 |
 | 関数 | `buildCommunicationContext` | チームメンバー向けの通信コンテキストを作成する |
 | 関数 | `detectPartnerReferences` | メンバーの出力から参照されるパートナーを検出します。 |
-| 関数 | `checkTermination` | Check if task execution can be safely terminated. |
-| 関数 | `updateBeliefState` | メンバーの出力に基づき信念状態を更新する |
-| 関数 | `getBeliefSummary` | 指定されたメンバーの信念サマリーを取得する |
-| 関数 | `clearBeliefStateCache` | 新しいチーム実行開始時に信念状態キャッシュをクリア |
-| インターフェース | `PrecomputedMemberContext` | メンバーの事前計算されたコンテキスト |
-| インターフェース | `PartnerReferenceResultV2` | 構造化ID追跡付きのパートナー参照検出結果 |
-| インターフェース | `TerminationCheckResult` | タスク終了チェックの結果を表します。 |
-| インターフェース | `AgentBelief` | エージェントの信念追跡構造 |
-| インターフェース | `BeliefContradiction` | エージェントの信念間で検出された矛盾 |
+| 関数 | `checkTermination` | タスクの終了条件を判定する |
+| 関数 | `updateBeliefState` | 信念状態を更新する |
+| 関数 | `getBeliefSummary` | 信念サマリーを取得 |
+| 関数 | `clearBeliefStateCache` | 信念状態キャッシュをクリア |
+| インターフェース | `PrecomputedMemberContext` | メンバーの事前計算コンテキスト |
+| インターフェース | `PartnerReferenceResultV2` | パートナー参照結果(V2) |
+| インターフェース | `TerminationCheckResult` | 終了判定結果を表すインターフェース |
+| インターフェース | `AgentBelief` | エージェントの信念を定義するインターフェース |
+| インターフェース | `BeliefContradiction` | 信念の矛盾を定義するインターフェース |
 
 ## 図解
 
@@ -167,7 +167,9 @@ sequenceDiagram
 buildPrecomputedContextMap(results: TeamMemberResult[]): Map<string, PrecomputedMemberContext>
 ```
 
-事前計算済みのメンバーごとのコンテキストを構築します。
+コンテキストマップを生成
+
+チームメンバーの実行結果から事前計算されたコンテキスト情報を構築します。
 
 **パラメータ**
 
@@ -183,7 +185,9 @@ buildPrecomputedContextMap(results: TeamMemberResult[]): Map<string, Precomputed
 normalizeCommunicationRounds(value: unknown, fallback: any, isStableRuntime: any): number
 ```
 
-通信ラウンド数を正規化・検証する
+通信ラウンド数を正規化
+
+不明な値や不正な値を検証し、安全な数値型に変換します。
 
 **パラメータ**
 
@@ -200,8 +204,6 @@ normalizeCommunicationRounds(value: unknown, fallback: any, isStableRuntime: any
 ```typescript
 normalizeFailedMemberRetryRounds(value: unknown, fallback: any, isStableRuntime: any): number
 ```
-
-メンバーの再試行回数を正規化
 
 **パラメータ**
 
@@ -237,7 +239,7 @@ shouldRetryFailedMemberResult(result: TeamMemberResult, retryRound: number, clas
 shouldPreferAnchorMember(member: TeamMember): boolean
 ```
 
-メンバーをアンカーとして優先するか判定
+メンバー優先判定
 
 **パラメータ**
 
@@ -253,7 +255,7 @@ shouldPreferAnchorMember(member: TeamMember): boolean
 createCommunicationLinksMap(members: TeamMember[]): Map<string, string[]>
 ```
 
-チームメンバーの通信リンクマップを作成する
+通信リンクマップ生成
 
 **パラメータ**
 
@@ -320,7 +322,7 @@ detectPartnerReferencesV2(output: string, partnerIds: string[], memberById: Map<
 extractField(output: string, name: string): string | undefined
 ```
 
-構造化されたテキストから指定フィールドの値を抽出
+フィールド値を抽出
 
 **パラメータ**
 
@@ -382,8 +384,7 @@ detectPartnerReferences(output: string, partnerIds: string[], memberById: Map<st
 checkTermination(task: string, results: TeamMemberResult[], minCompletionScore: any): TerminationCheckResult
 ```
 
-Check if task execution can be safely terminated.
-Based on arXiv:2602.06176 recommendations for completion verification.
+タスクの終了条件を判定する
 
 **パラメータ**
 
@@ -401,7 +402,7 @@ Based on arXiv:2602.06176 recommendations for completion verification.
 updateBeliefState(memberId: string, output: string, round: number): AgentBelief[]
 ```
 
-メンバーの出力に基づき信念状態を更新する
+信念状態を更新する
 
 **パラメータ**
 
@@ -419,7 +420,7 @@ updateBeliefState(memberId: string, output: string, round: number): AgentBelief[
 getBeliefSummary(memberIds: string[]): string
 ```
 
-指定されたメンバーの信念サマリーを取得する
+信念サマリーを取得
 
 **パラメータ**
 
@@ -435,7 +436,7 @@ getBeliefSummary(memberIds: string[]): string
 clearBeliefStateCache(): void
 ```
 
-新しいチーム実行開始時に信念状態キャッシュをクリア
+信念状態キャッシュをクリア
 
 **戻り値**: `void`
 
@@ -453,7 +454,7 @@ interface PrecomputedMemberContext {
 }
 ```
 
-メンバーの事前計算されたコンテキスト
+メンバーの事前計算コンテキスト
 
 ### PartnerReferenceResultV2
 
@@ -466,7 +467,7 @@ interface PartnerReferenceResultV2 {
 }
 ```
 
-構造化ID追跡付きのパートナー参照検出結果
+パートナー参照結果(V2)
 
 ### TerminationCheckResult
 
@@ -480,7 +481,7 @@ interface TerminationCheckResult {
 }
 ```
 
-タスク終了チェックの結果を表します。
+終了判定結果を表すインターフェース
 
 ### AgentBelief
 
@@ -496,7 +497,7 @@ interface AgentBelief {
 }
 ```
 
-エージェントの信念追跡構造
+エージェントの信念を定義するインターフェース
 
 ### BeliefContradiction
 
@@ -510,7 +511,7 @@ interface BeliefContradiction {
 }
 ```
 
-エージェントの信念間で検出された矛盾
+信念の矛盾を定義するインターフェース
 
 ---
-*自動生成: 2026-02-18T14:31:30.439Z*
+*自動生成: 2026-02-18T15:54:40.894Z*

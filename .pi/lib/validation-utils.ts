@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/validation-utils.ts
- * role: 共通バリデーションユーティリティライブラリ
- * why: 複数の拡張機能間で重複していた数値変換・検証ロジックを一元管理し、保守性を向上させるため
+ * role: 数値検証・変換ユーティリティの集約モジュール
+ * why: 複数の拡張機能間で重複していた実装（context-usage-dashboard.ts等）を一元管理し、コードの重複を排除するため
  * related: context-usage-dashboard.ts, agent-usage-tracker.ts, retry-with-backoff.ts, loop.ts
  * public_api: toFiniteNumber, toFiniteNumberWithDefault, toBoundedInteger, clampInteger, clampFloat, BoundedIntegerResult
- * invariants: 全てのclamp系関数はmin <= result <= maxを満たす、toFiniteNumber系は無限大やNaNを返さない
- * side_effects: なし（純粋関数のみ）
- * failure_modes: toBoundedIntegerは非整数または範囲外の入力でok: falseとエラーメッセージを返す、toFiniteNumberは非有限値でundefinedを返す
+ * invariants: clampIntegerは整数を返す（Math.truncにより）, toFiniteNumberは有限数のみを変換する
+ * side_effects: なし（純粋関数）
+ * failure_modes: Number()変換による意図しない型強制（数値文字列等が変換される）
  * @abdd.explain
- * overview: 不明な値の数値変換、範囲制限、整数検証を行う純粋関数セットを提供する
+ * overview: 拡張機能間で共有される数値検証および型変換処理を提供するライブラリ
  * what_it_does:
- *   - unknown型を有限数値またはundefinedに変換する
- *   - 数値を指定範囲[min, max]内に制限する
- *   - 整数値の検証と範囲チェックを行い結果オブジェクトを返す
+ *   - unknown型の値を有限数またはデフォルト値に変換する
+ *   - 整数値が指定範囲内に収まるか検証する
+ *   - 数値を指定範囲内に収める（クランプ処理）
+ *   - 浮動小数点数を指定範囲内に収める
  * why_it_exists:
- *   - context-usage-dashboard, agent-usage-tracker, retry-with-backoff, loop, rsaで重複実装を解消
- *   - 型安全な数値処理の統一インターフェース提供
+ *   - バリデーション処理の重複を排除し、メンテナンス性を向上させる
+ *   - 型安全な数値変換ロジックを再利用可能にする
  * scope:
- *   in: unknown, number, fallback値, min/max範囲指定, フィールド名（エラー用）
- *   out: 有限数値, undefined, BoundedIntegerResult（成功値またはエラー）
+ *   in: unknown型の任意の値, 数値, 数値変換可能な文字列, 範囲定義(min/max)
+ *   out: number | undefined, BoundedIntegerResult型の検証結果オブジェクト, 範囲制限された数値
  */
 
 /**
@@ -32,43 +33,48 @@
  * - rsa.ts
  */
 
- /**
-  * 不明な値を有限の数値に変換する
-  * @param value - 変換対象の値
-  * @returns 有限の数値、または変換不可の場合はundefined
-  */
+/**
+ * 有限数値を取得する
+ * @summary 有限数値を取得
+ * @param value 変換対象の値
+ * @returns 有限数値またはundefined
+ */
 export function toFiniteNumber(value: unknown): number | undefined {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : undefined;
 }
 
- /**
-  * 有限数またはデフォルト値を返す
-  * @param value - 変換対象の値
-  * @param fallback - 変換失敗時のフォールバック値（デフォルト: 0）
-  * @returns 有限数またはフォールバック値
-  */
+/**
+ * 有限数値を取得する
+ * @summary 有限数値を取得
+ * @param value 変換対象の値
+ * @param fallback デフォルト値
+ * @returns 変換された有限数値
+ */
 export function toFiniteNumberWithDefault(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   return fallback;
 }
 
- /**
-  * 整数範囲検証の結果型
-  */
+/**
+ * 整数値の範囲制限結果を表す型
+ * @summary 範囲制限結果の型
+ * @returns 成功時は値、失敗時はエラー情報
+ */
 export type BoundedIntegerResult =
   | { ok: true; value: number }
   | { ok: false; error: string };
 
- /**
-  * 整数値の検証と範囲制限を行う
-  * @param value - 検証対象の値
-  * @param fallback - 未定義時のフォールバック値
-  * @param min - 許容される最小値
-  * @param max - 許容される最大値
-  * @param field - エラーメッセージ用のフィールド名
-  * @returns 値またはエラーを含む検証結果
-  */
+/**
+ * 整数値の検証と範囲制限を行う
+ * @summary 整数値を検証・制限
+ * @param value - 検証対象の値
+ * @param fallback - 未定義時のフォールバック値
+ * @param min - 最小値
+ * @param max - 最大値
+ * @param field - フィールド名（エラーメッセージ用）
+ * @returns 検証結果を含むオブジェクト
+ */
 export function toBoundedInteger(
   value: unknown,
   fallback: number,
@@ -86,24 +92,26 @@ export function toBoundedInteger(
   return { ok: true, value: resolved };
 }
 
- /**
-  * 整数値を指定範囲内に制限する
-  * @param value - 制限対象の値
-  * @param min - 最小値
-  * @param max - 最大値
-  * @returns 範囲内に制限された整数値
-  */
+/**
+ * 整数値を指定範囲内に制限する
+ * @summary 整数値を制限
+ * @param value - 入力値
+ * @param min - 最小値
+ * @param max - 最大値
+ * @returns 範囲内に制限された整数値
+ */
 export function clampInteger(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
- /**
-  * 浮動小数点数を指定範囲内に制限する
-  * @param value - 対象の数値
-  * @param min - 最小値
-  * @param max - 最大値
-  * @returns 範囲内に収められた数値
-  */
+/**
+ * 浮動小数点数を指定範囲内に制限する
+ * @summary 浮動小数点数を制限
+ * @param value - 入力値
+ * @param min - 最小値
+ * @param max - 最大値
+ * @returns 範囲内に制限された整数値
+ */
 export function clampFloat(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

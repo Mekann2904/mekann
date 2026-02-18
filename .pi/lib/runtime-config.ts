@@ -1,34 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/runtime-config.ts
- * role: ランタイム設定の中央集権管理とプロファイルプリセット提供
- * why: 複数レイヤー間での設定不整合（drift）を防ぎ、一貫した動作制限を保証するため
- * related: lib/unified-limit-resolver.ts, extensions/agent-runtime.ts, provider-limits, adaptive-rate-controller
- * public_api: RuntimeConfig, RuntimeProfile, createRuntimeConfig
- * invariants:
- *   - profileは"stable"または"default"のいずれか
- *   - totalMaxLlm >= 1
- *   - heartbeatTimeoutMs > heartbeatIntervalMs
- *   - 0 < reductionFactor < 1
- *   - recoveryFactor > 1
- * side_effects:
- *   - なし（純粋な設定定義とファクトリ関数のみ）
- * failure_modes:
- *   - 不正なprofile値を渡した場合: デフォルト(default)プロファイルを返却
- *   - プロパティ未設定での使用: 呼び出し元でランタイムエラー
+ * role: ランタイム設定の型定義およびプロファイルプリセットの管理
+ * why: 全レイヤーで一貫した設定を維持し、設定の漂流を防止するため
+ * related: .pi/lib/unified-limit-resolver.ts, .pi/extensions/agent-runtime.ts, .pi/lib/adaptive-rate-controller.ts, .pi/lib/cross-instance-coordinator.ts
+ * public_api: RuntimeProfile, RuntimeConfig, PROFILE_PRESETS
+ * invariants: プロファイル設定はRuntimeConfig型の構造に準拠する、数値設定は各プロファイルの目的に応じた範囲内である
+ * side_effects: なし（静的な定義と定数のみ）
+ * failure_modes: 不正なプロファイルキーが指定された場合の参照エラー、設定値の型不一致
  * @abdd.explain
- * overview: 全レイヤー共通のランタイム設定を一元管理し、プロファイルベースのプリセットを提供する
+ * overview: 実行時の動作制御（並列数、レート制御、スケジューリング等）の集中管理定義
  * what_it_does:
- *   - RuntimeConfig型による設定スキーマ定義（LLM制限、並列数、ハートビート、レート制御など）
- *   - stable(信頼性重視/低並列)とdefault(バランス型)の2プロファイルプリセット定義
- *   - プロファイル選択による設定オブジェクト生成機能の提供
+ *   - ランタイムプロファイル（stable, default）と設定インターフェースを定義する
+ *   - 各プロファイルに応じた設定のプリセット（定数）を提供する
  * why_it_exists:
- *   - provider-limits、adaptive-rate-controller、cross-instance-coordinator、agent-runtime、task-scheduler間の設定同期
- *   - 環境や用途に応じた設定プリセットの切り替え
- *   - 設定値の単一ソース・オブ・トゥルース確立
+ *   - 複数のレイヤー間で設定が乖離しないよう、設定値のSingle Source of Truthを提供する
+ *   - 信頼性重視（stable）とバランス型（default）の運用モードを明確に切り替えるため
  * scope:
- *   in: RuntimeProfile型のプロファイル名（"stable" | "default"）
- *   out: 完全なRuntimeConfigオブジェクト、型定義
+ *   in: なし
+ *   out: RuntimeConfig型オブジェクト、プロファイルプリセット設定
  */
 
 /**
@@ -46,21 +36,16 @@
 // Types
 // ============================================================================
 
- /**
-  * ランタイムプロファイルモード
-  * - stable: 信頼性重視の制限 (4並列)
-  * - default: バランス型の制限 (8並列)
-  */
+/**
+ * ランタイムプロファイルの型定義
+ * @summary プロファイル型
+ */
 export type RuntimeProfile = "stable" | "default";
 
- /**
-  * ランタイム設定の集中管理
-  * @param profile ランタイムプロファイルモード
-  * @param totalMaxLlm 全インスタンスのLLM操作合計上限
-  * @param totalMaxRequests 全インスタンスのリクエスト合計上限
-  * @param maxParallelSubagents 実行ごとのサブエージェント並列数上限
-  * @param maxParallelTeams 実行ごとのチーム並列数上限
-  */
+/**
+ * ランタイム設定のインターフェース
+ * @summary 設定インターフェース
+ */
 export interface RuntimeConfig {
   /** Runtime profile mode */
   profile: RuntimeProfile;
@@ -239,10 +224,11 @@ function detectProfile(): RuntimeProfile {
 // Public API
 // ============================================================================
 
- /**
-  * 実行時設定を取得する
-  * @returns 現在の実行時設定
-  */
+/**
+ * ランタイム設定取得
+ * @summary 設定取得
+ * @returns キャッシュされたランタイム設定
+ */
 export function getRuntimeConfig(): RuntimeConfig {
   if (cachedConfig) {
     return cachedConfig;
@@ -346,42 +332,48 @@ export function getRuntimeConfig(): RuntimeConfig {
   return config;
 }
 
- /**
-  * 現在の設定バージョンを取得します。 @returns 設定バージョン
-  */
+/**
+ * 設定バージョンを取得
+ * @summary バージョン取得
+ * @returns 現在の設定バージョン番号
+ */
 export function getConfigVersion(): number {
   return configVersion;
 }
 
- /**
-  * 実行時に環境変数から設定を再読み込みする。
-  * @returns 再読み込みされたランタイム設定
-  */
+/**
+ * ランタイム設定を再読込
+ * @summary 設定再読込
+ * @returns 最新のランタイム設定
+ */
 export function reloadRuntimeConfig(): RuntimeConfig {
   cachedConfig = null;
   return getRuntimeConfig();
 }
 
- /**
-  * 現在のランタイムプロファイルを取得する。
-  * @returns 現在のランタイムプロファイル。
-  */
+/**
+ * 現在のランタイムプロファイルを取得する
+ * @summary プロファイル取得
+ * @returns 現在のプロファイル
+ */
 export function getRuntimeProfile(): RuntimeProfile {
   return getRuntimeConfig().profile;
 }
 
- /**
-  * 安定版プロファイルで動作しているか判定する。
-  * @returns 安定版の場合はtrue、それ以外はfalse。
-  */
+/**
+ * 安定版プロファイルか判定する
+ * @summary 安定版判定
+ * @returns 安定版の場合はtrue
+ */
 export function isStableProfile(): boolean {
   return getRuntimeConfig().profile === "stable";
 }
 
- /**
-  * 設定の整合性を検証する
-  * @returns 整合性、警告、詳細を含むオブジェクト
-  */
+/**
+ * 設定の一貫性を検証する
+ * @summary 設定整合性チェック
+ * @returns 検証結果（整合性情報）
+ */
 export function validateConfigConsistency(): {
   consistent: boolean;
   warnings: string[];
@@ -439,10 +431,11 @@ export function validateConfigConsistency(): {
   };
 }
 
- /**
-  * 実行時設定を整形して文字列で返す
-  * @returns 整形された設定文字列
-  */
+/**
+ * ランタイム設定を整形する
+ * @summary 設定文字列化
+ * @returns 整形された設定文字列
+ */
 export function formatRuntimeConfig(): string {
   const config = getRuntimeConfig();
   const validation = validateConfigConsistency();

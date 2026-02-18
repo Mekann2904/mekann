@@ -27,10 +27,10 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `logAudit` | 監査ログを非同期で記録する |
-| 関数 | `readAuditLog` | 監査ログを読み込む |
-| 関数 | `getToolHistory` | ツールの操作履歴を取得 |
-| 関数 | `getAuditStatistics` | 指定期間内の監査統計を取得 |
-| 関数 | `formatAuditLogEntry` | 監査ログエントリをフォーマットする |
+| 関数 | `readAuditLog` | ログ読込 |
+| 関数 | `getToolHistory` | 履歴取得 |
+| 関数 | `getAuditStatistics` | 監査統計を取得 |
+| 関数 | `formatAuditLogEntry` | 監査ログをフォーマット |
 | 関数 | `generateAuditReport` | 監査ログレポートを生成 |
 | 関数 | `archiveOldLogs` | 古いログをアーカイブ |
 
@@ -145,7 +145,7 @@ readAuditLog(options?: {
   }, paths?: DynamicToolsPaths): AuditLogEntry[]
 ```
 
-監査ログを読み込む
+ログ読込
 
 **パラメータ**
 
@@ -166,7 +166,7 @@ readAuditLog(options?: {
 getToolHistory(toolId: string, paths?: DynamicToolsPaths): AuditLogEntry[]
 ```
 
-ツールの操作履歴を取得
+履歴取得
 
 **パラメータ**
 
@@ -189,7 +189,7 @@ getAuditStatistics(since: Date, paths?: DynamicToolsPaths): {
 }
 ```
 
-指定期間内の監査統計を取得
+監査統計を取得
 
 **パラメータ**
 
@@ -212,7 +212,7 @@ getAuditStatistics(since: Date, paths?: DynamicToolsPaths): {
 formatAuditLogEntry(entry: AuditLogEntry): string
 ```
 
-監査ログエントリをフォーマットする
+監査ログをフォーマット
 
 **パラメータ**
 
@@ -257,4 +257,4 @@ archiveOldLogs(daysToKeep: number, paths?: DynamicToolsPaths): { archived: numbe
 **戻り値**: `{ archived: number; error?: string }`
 
 ---
-*自動生成: 2026-02-18T14:31:30.978Z*
+*自動生成: 2026-02-18T15:54:41.468Z*

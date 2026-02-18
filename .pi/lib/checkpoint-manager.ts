@@ -1,27 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/checkpoint-manager.ts
- * role: 長時間実行タスクの状態永続化・復旧を行うチェックポイント管理モジュール
- * why: タスクの途中状態を保存し、割り込みや障害発生時に再開可能にするため
+ * role: 長時間実行タスクの状態永続化管理、TTLベースの自動クリーニング実行、割り込み時のチェックポイント操作提供
+ * why: タスクの先取りと再開を可能にするため、状態永続化とリカバリ機能を提供する
  * related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
- * public_api: Checkpoint, CheckpointSaveResult, PreemptionResult, CheckpointManagerConfig, CheckpointSource, CheckpointPriority
- * invariants: progressは0.0〜1.0の範囲、ttlMsは正の整数、checkpointDirは有効なディレクトリパス
- * side_effects: ファイルシステムへの読み書き（チェックポイントの保存・削除）、ディレクトリ作成
- * failure_modes: ディスク容量不足による保存失敗、不正なJSONシリアライズ/デシリアライズ、期限切れチェックポイントの読み込み
+ * public_api: Checkpoint, CheckpointSource, CheckpointPriority, CheckpointSaveResult, PreemptionResult, CheckpointManagerConfig, CheckpointManager class
+ * invariants: チェックポイントIDは一意、ttlMsおよびcreatedAtに基づき有効期限を判定、maxCheckimitsを超える場合古いものから削除
+ * side_effects: ファイルシステムへのチェックポイントファイル作成、更新、削除、checkpointDirディレクトリの初期化
+ * failure_modes: ディスク容量不足による書き込み失敗、ファイル権限エラーによるIO例外、JSONシリアライズ失敗、設定値の不正（負のTTLなど）
  * @abdd.explain
- * overview: 長時間実行タスクのチェックポイントをTTLベースで管理し、状態の永続化と復旧を提供する
+ * overview: TTL（Time-to-Live）に基づいて有効期限を管理するチェックポイントシステム。ファイルシステムをストレージとして利用し、タスクの状態保存、復元、自動クリーンアップを行う。
  * what_it_does:
- *   - Checkpoint型によるタスク状態の構造化定義（id, taskId, source, state, progress等）
- *   - TTLベースのチェックポイント自動クリーンアップ機能
- *   - 優先度レベル（critical, high, normal, low, background）によるタスク分類
- *   - 保存・復旧操作の結果をCheckpointSaveResult/PreemptionResultで返却
+ *   - チェックポイントデータの構造定義（ID, タスクID, 優先度, 進捗, 状態など）
+ *   - 設定（保存先ディレクトリ, デフォルトTTL, 最大保持数, クリーンアップ間隔）の管理
+ *   - 指定されたTTLに従った期限切れチェックポイントの自動削除
+ *   - 保存操作と割り込み操作の結果型定義
  * why_it_exists:
- *   - プリエンプション（割り込み）発生時のタスク状態保存を実現
- *   - 中断されたタスクをチェックポイントから再開可能にする
- *   - 複数のタスクソース（subagent_run, agent_team_run等）に対応した統一的な状態管理
+ *   - 実行時間の長いタスクにおいて、予期せぬ中断やシステムによる先取りからタスク状態を保護するため
+ *   - 中断地点からタスクを再開し、計算リソースの再利用を効率化するため
  * scope:
- *   in: Checkpoint型の状態データ、CheckpointManagerConfigによる設定値
- *   out: CheckpointSaveResult, PreemptionResult, チェックポイント統計情報
+ *   in: タスクID, ソース種別, プロバイダ/モデル情報, 優先度, シリアライズ可能な状態オブジェクト, 設定値
+ *   out: ファイルシステム上のチェックポイントJSONファイル, 統計情報, 操作結果（成功/失敗）
  */
 
 // File: .pi/lib/checkpoint-manager.ts
@@ -38,8 +37,9 @@ import { join } from "node:path";
 // ============================================================================
 
 /**
- * Source type for checkpointed tasks.
- * Must match TaskSource from task-scheduler.ts.
+ * チェックポイントのソース種別
+ * @summary ソース種別を取得
+ * @returns ソース種別
  */
 export type CheckpointSource =
   | "subagent_run"
@@ -47,22 +47,22 @@ export type CheckpointSource =
   | "agent_team_run"
   | "agent_team_run_parallel";
 
- /**
-  * チェックポイントの優先度レベル
-  */
+/**
+ * チェックポイント優先度定義
+ * @summary チェックポイント優先度を定義
+ * @typedef {"critical"|"high"|"normal"|"low"|"background"} CheckpointPriority
+ */
 export type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background";
 
- /**
-  * チェックポイント状態を表すインターフェース
-  * @param id チェックポイントの一意な識別子
-  * @param taskId 関連するタスクの識別子
-  * @param source タスクを作成したソースツール
-  * @param provider プロバイダ名（例: "anthropic"）
-  * @param model モデル名（例: "claude-sonnet-4"）
-  * @param priority タスクの優先度レベル
-  * @param state タスク固有の状態（JSONとしてシリアライズ）
-  * @param progress 進捗インジケーター（0.0 = 開始, 1.0 = 完了）
-  */
+/**
+ * チェックポイントエンティティ
+ * @summary チェックポイント定義
+ * @property {string} id ID
+ * @property {string} taskId タスクID
+ * @property {string} source ソース
+ * @property {string} provider プロバイダ
+ * @property {string} model モデル
+ */
 export interface Checkpoint {
   /** Unique checkpoint identifier */
   id: string;
@@ -88,13 +88,13 @@ export interface Checkpoint {
   metadata?: Record<string, unknown>;
 }
 
- /**
-  * チェックポイント保存操作の結果
-  * @param success 成功したかどうか
-  * @param checkpointId チェックポイントID
-  * @param path 保存先パス
-  * @param error エラーメッセージ（失敗時）
-  */
+/**
+ * チェックポイント保存結果
+ * @summary 保存結果
+ * @property {boolean} success 成功したか
+ * @property {string} checkpointId チェックポイントID
+ * @property {string} path 保存先パス
+ */
 export interface CheckpointSaveResult {
   success: boolean;
   checkpointId: string;
@@ -102,13 +102,13 @@ export interface CheckpointSaveResult {
   error?: string;
 }
 
- /**
-  * 割り込み操作の結果を表します
-  * @param success 操作が成功したかどうか
-  * @param checkpointId チェックポイントID
-  * @param error エラーメッセージ
-  * @param resumedFromCheckpoint チェックポイントから再開したかどうか
-  */
+/**
+ * 割り込み処理の結果
+ * @summary 割り込み結果
+ * @property {boolean} success 成功したか
+ * @property {string} [checkpointId] チェックポイントID
+ * @property {string} [error] エラーメッセージ
+ */
 export interface PreemptionResult {
   success: boolean;
   checkpointId?: string;
@@ -116,13 +116,14 @@ export interface PreemptionResult {
   resumedFromCheckpoint?: boolean;
 }
 
- /**
-  * チェックポイントマネージャーの設定
-  * @param checkpointDir チェックポイントファイルの保存ディレクトリ
-  * @param defaultTtlMs チェックポイントのデフォルト存続期間（ミリ秒）
-  * @param maxCheckpoints 保持するチェックポイントの最大数
-  * @param cleanupIntervalMs 自動クリーニングの間隔（ミリ秒）
-  */
+/**
+ * チェックポイント管理設定
+ * @summary 設定を定義
+ * @param {string} checkpointDir 保存ディレクトリパス
+ * @param {number} defaultTtlMs デフォルトTTL（ミリ秒）
+ * @param {number} maxCheckpoints 最大保存数
+ * @param {number} cleanupIntervalMs 自動クリーンアップ間隔
+ */
 export interface CheckpointManagerConfig {
   /** Directory for storing checkpoint files */
   checkpointDir: string;
@@ -134,16 +135,15 @@ export interface CheckpointManagerConfig {
   cleanupIntervalMs: number;
 }
 
- /**
-  * チェックポイント統計情報
-  * @param totalCount 総チェックポイント数
-  * @param totalSizeBytes 総サイズ（バイト）
-  * @param oldestCreatedAt 最古の作成日時
-  * @param newestCreatedAt 最新の作成日時
-  * @param bySource ソース別のカウント
-  * @param byPriority 優先度別のカウント
-  * @param expiredCount 有効期限切れの数
-  */
+/**
+ * チェックポイント統計情報
+ * @summary 統計情報取得
+ * @property {number} totalCount 総チェックポイント数
+ * @property {number} totalSizeBytes 総サイズ（バイト）
+ * @property {number} oldestCreatedAt 最古の作成日時
+ * @property {number} newestCreatedAt 最新の作成日時
+ * @property {Object} bySource ソース別の内訳
+ */
 export interface CheckpointStats {
   totalCount: number;
   totalSizeBytes: number;
@@ -256,11 +256,12 @@ function getFileSizeBytes(filePath: string): number {
 // Checkpoint Manager Implementation
 // ============================================================================
 
- /**
-  * チェックポイントマネージャーを初期化する
-  * @param configOverrides デフォルト設定を上書きするオプション設定
-  * @returns なし
-  */
+/**
+ * チェックポイントマネージャーを初期化
+ * @summary マネージャー初期化
+ * @param {Partial<CheckpointManagerConfig>} [configOverrides] - 設定の上書きオプション
+ * @returns なし
+ */
 export function initCheckpointManager(
   configOverrides?: Partial<CheckpointManagerConfig>
 ): void {
@@ -289,10 +290,11 @@ export function initCheckpointManager(
   };
 }
 
- /**
-  * チェックポイントマネージャーを取得
-  * @returns チェックポイント管理オブジェクト
-  */
+/**
+ * チェックポイントマネージャーのインスタンスを取得
+ * @summary マネージャー取得
+ * @returns チェックポイント操作用のメソッドを持つオブジェクト
+ */
 export function getCheckpointManager(): {
   save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
   load: (taskId: string) => Promise<Checkpoint | null>;
@@ -620,10 +622,11 @@ function getCheckpointStats(): CheckpointStats {
   return stats;
 }
 
- /**
-  * チェックポイントマネージャをリセット
-  * @returns 戻り値なし
-  */
+/**
+ * チェックポイントマネージャーをリセット
+ * @summary マネージャーリセット
+ * @returns なし
+ */
 export function resetCheckpointManager(): void {
   if (managerState?.cleanupTimer) {
     clearInterval(managerState.cleanupTimer);
@@ -631,18 +634,20 @@ export function resetCheckpointManager(): void {
   managerState = null;
 }
 
- /**
-  * チェックポイントマネージャーが初期化済みか判定
-  * @returns 初期化済みの場合はtrue、未初期化の場合はfalse
-  */
+/**
+ * 初期化状態を確認
+ * @summary 初期化状態確認
+ * @returns 初期化済みの場合はtrue、未初期化の場合はfalse
+ */
 export function isCheckpointManagerInitialized(): boolean {
   return managerState?.initialized ?? false;
 }
 
- /**
-  * チェックポイントディレクトリのパスを取得する
-  * @returns チェックポイントディレクトリのパス
-  */
+/**
+ * チェックポイントディレクトリを取得
+ * @summary ディレクトリパス取得
+ * @returns チェックポイント用ディレクトリのパス
+ */
 export function getCheckpointDir(): string {
   if (!managerState?.initialized) {
     initCheckpointManager();
@@ -654,10 +659,11 @@ export function getCheckpointDir(): string {
 // Environment Variable Configuration
 // ============================================================================
 
- /**
-  * 環境変数からチェックポイント設定を取得する。
-  * @returns チェックポイントマネージャーの設定オブジェクト。
-  */
+/**
+ * 環境変数から設定を取得
+ * @summary 設定を取得
+ * @returns チェックポイントマネージャーの設定オブジェクト
+ */
 export function getCheckpointConfigFromEnv(): Partial<CheckpointManagerConfig> {
   const config: Partial<CheckpointManagerConfig> = {};
 

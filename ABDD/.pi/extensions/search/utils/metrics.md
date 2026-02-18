@@ -17,16 +17,16 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `aggregateMetrics` | メトリクスを集計してサマリーを生成する |
-| 関数 | `formatMetrics` | 検索メトリクスを表示用にフォーマットする |
-| 関数 | `formatDuration` | ミリ秒を読みやすい時間文字列に変換 |
-| 関数 | `classifySpeed` | 実行時間に基づいて速度を分類する |
-| クラス | `MetricsCollector` | 操作の時間計測用メトリクスコレクタ |
-| インターフェース | `SearchMetrics` | 検索操作のパフォーマンス指標。 |
-| インターフェース | `ExtendedSearchMetrics` | 拡張検索メトリクス |
-| インターフェース | `AggregatedMetrics` | 複数操作の集計メトリクス |
-| インターフェース | `ToolMetricsSummary` | 単一ツールのメトリクス概要 |
-| インターフェース | `PerformanceThresholds` | 検索操作のパフォーマンスしきい値 |
+| 関数 | `aggregateMetrics` | 検索指標を集計 |
+| 関数 | `formatMetrics` | 検索指標を整形 |
+| 関数 | `formatDuration` | - |
+| 関数 | `classifySpeed` | 実行時間を分類する |
+| クラス | `MetricsCollector` | メトリクス収集クラス |
+| インターフェース | `SearchMetrics` | 検索操作のメトリクス |
+| インターフェース | `ExtendedSearchMetrics` | 検索メトリクスインターフェース |
+| インターフェース | `AggregatedMetrics` | 集計された検索指標 |
+| インターフェース | `ToolMetricsSummary` | ツール指標の概要 |
+| インターフェース | `PerformanceThresholds` | パフォーマンスしきい値定義 |
 
 ## 図解
 
@@ -100,7 +100,7 @@ flowchart TD
 aggregateMetrics(metrics: SearchMetrics[]): AggregatedMetrics
 ```
 
-メトリクスを集計してサマリーを生成する
+検索指標を集計
 
 **パラメータ**
 
@@ -116,7 +116,7 @@ aggregateMetrics(metrics: SearchMetrics[]): AggregatedMetrics
 formatMetrics(metrics: SearchMetrics): string
 ```
 
-検索メトリクスを表示用にフォーマットする
+検索指標を整形
 
 **パラメータ**
 
@@ -132,8 +132,6 @@ formatMetrics(metrics: SearchMetrics): string
 formatDuration(ms: number): string
 ```
 
-ミリ秒を読みやすい時間文字列に変換
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -148,7 +146,7 @@ formatDuration(ms: number): string
 classifySpeed(durationMs: number, thresholds: PerformanceThresholds): "fast" | "normal" | "slow" | "very-slow"
 ```
 
-実行時間に基づいて速度を分類する
+実行時間を分類する
 
 **パラメータ**
 
@@ -163,7 +161,7 @@ classifySpeed(durationMs: number, thresholds: PerformanceThresholds): "fast" | "
 
 ### MetricsCollector
 
-操作の時間計測用メトリクスコレクタ
+メトリクス収集クラス
 
 **プロパティ**
 
@@ -196,7 +194,7 @@ interface SearchMetrics {
 }
 ```
 
-検索操作のパフォーマンス指標。
+検索操作のメトリクス
 
 ### ExtendedSearchMetrics
 
@@ -211,7 +209,7 @@ interface ExtendedSearchMetrics {
 }
 ```
 
-拡張検索メトリクス
+検索メトリクスインターフェース
 
 ### AggregatedMetrics
 
@@ -228,7 +226,7 @@ interface AggregatedMetrics {
 }
 ```
 
-複数操作の集計メトリクス
+集計された検索指標
 
 ### ToolMetricsSummary
 
@@ -240,7 +238,7 @@ interface ToolMetricsSummary {
 }
 ```
 
-単一ツールのメトリクス概要
+ツール指標の概要
 
 ### PerformanceThresholds
 
@@ -252,7 +250,7 @@ interface PerformanceThresholds {
 }
 ```
 
-検索操作のパフォーマンスしきい値
+パフォーマンスしきい値定義
 
 ---
-*自動生成: 2026-02-18T14:31:30.870Z*
+*自動生成: 2026-02-18T15:54:41.332Z*

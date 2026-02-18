@@ -1,35 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/ul-dual-mode.ts
- * role: ULプレフィックス検出とセッション永続モード管理、サブエージェント/チーム実行への適応的委譲を行う拡張機能
- * why: 高品質なタスク実行を実現するため、LLMの裁量でフェーズ数を柔軟に決定しつつ、必須reviewerによる品質ゲートを保証する
+ * role: 高品質実行モードとセッション永続化機能の拡張
+ * why: 効率的かつ高品質な実行と、柔軟なフェーズ数制御、必須レビュアによる品質ゲートを可能にするため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, docs/extensions.md
- * public_api: なし（ExtensionAPI経由で登録される拡張機能として動作）
- * invariants:
- *   - persistentUlModeがtrueの場合、後続の全ユーザー入力でULモードが適用される
- *   - UL_REQUIRE_FINAL_REVIEWER_GUARDRAILがtrueの場合、非trivialタスクでreviewerフェーズが必須
- *   - 小規模タスク（200文字未満かつTRIVIAL_PATTERNSに合致）ではreviewerをスキップ可能
- * side_effects:
- *   - pi.appendEntryによるセッション状態の永続化
- *   - ctx.ui.setStatusによるUI ステータス表示の更新
- * failure_modes:
- *   - ctxまたはctx.uiが未定義の場合、ステータス更新がスキップされる
- *   - PI_UL_SKIP_REVIEWER_FOR_TRIVIAL環境変数が"0"以外の場合、trivialタスク判定が無効化される
+ * public_api: `state` オブジェクト、`persistState`、`resetState`、`refreshStatus`、`extractTextWithoutUlPrefix`、`looksLikeClearGoalTask`、`isTrivialTask`
+ * invariants: `UL_PREFIX` は先頭の空白を許容する正規表現である、`state.persistentUlMode` はセッションを通じて維持される
+ * side_effects: UIステータスの更新、PIログへの状態追加
+ * failure_modes: 環境変数 `PI_UL_SKIP_REVIEWER_FOR_TRIVIAL` の設定ミスによるレビュースキップ、UI更新のスロットリングによる表示遅延
  * @abdd.explain
- * overview: ユーザー入力の"ul"プレフィックスを検出し、セッション全体で継続する高品質実行モード（ULモード）を提供する拡張機能
+ * overview: "ul"プレフィックスモードの追加と、セッション全体で継続するULモードを適用的委譲機能付きで提供する拡張機能
  * what_it_does:
- *   - 入力テキストからUL_PREFIX（/^\s*ul(?:\s+|$)/i）を検出し、ULモードを有効化
- *   - サブエージェント（researcher/architect/implementer）およびエージェントチーム（core-delivery-team）への委譲を推奨
- *   - 完了条件シグナル（CLEAR_GOAL_SIGNAL）を検出し、ゴールループモードを有効化
- *   - タスク内容に基づき小規模タスク（trivial）を判定し、reviewerスキップを判断
- *   - UIステータスに現在のULモード状態（subagent/team/reviewer/loopの進捗）を表示
+ *   - "ul"プレフィックスの検出と除去
+ *   - セッション永続化モードとステータス管理
+ *   - サブエージェント/チーム実行ツールの使用状況追跡
+ *   - 小規模タスク判定とレビュースキップ制御
+ *   - UIステータス表示とスロットリング制御
  * why_it_exists:
- *   - 複雑なタスクにおいて、単一フェーズではなくLLMの裁量で1〜Nフェーズの実行を可能にするため
- *   - 実装品質を保証するための必須reviewerフェーズを強制するため
- *   - セッション全体で一貫した高品質実行モードを維持するため
+ *   - LLMの裁量で1〜Nフェーズを実行可能にし、固定フェーズ制限を解除するため
+ *   - 高品質な実行結果を保証するためにレビュアプロセスを強制するため
  * scope:
- *   in: ユーザー入力テキスト、ExtensionAPI、コンテキストオブジェクト（hasUI, ui.setStatus）
- *   out: セッション状態の永続化、UI ステータス更新、モード状態フラグの更新
+ *   in: ユーザー入力テキスト、環境変数
+ *   out: UIステータス、状態ログ、ツール利用フラグ
  */
 
 // File: .pi/extensions/ul-dual-mode.ts
@@ -325,11 +317,12 @@ Rules:
 ---`;
 }
 
- /**
-  * ULデュアルモード拡張機能を登録する
-  * @param pi - 拡張機能APIインターフェース
-  * @returns なし
-  */
+/**
+ * 拡張機能を登録
+ * @summary ULデュアルモード拡張を登録
+ * @param pi - 拡張機能APIインターフェース
+ * @returns なし
+ */
 export default function registerUlDualModeExtension(pi: ExtensionAPI) {
   // CLIフラグ: セッション全体でULモードを有効化
   pi.registerFlag("ul", {

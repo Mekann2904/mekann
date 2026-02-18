@@ -1,34 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/task-scheduler.ts
- * role: 優先度ベースのタスクスケジューラー。プリエンプション機能付きイベント駆動実行を提供する。
- * why: プロバイダー/モデル別のキューマネジメントによる効率的なタスクスケジューリングを実現するため。
- * related: .pi/lib/checkpoint-manager.ts, .pi/lib/priority-scheduler.ts, .pi/lib/runtime-config.js, .pi/lib/token-bucket.ts
- * public_api: shouldPreempt, preemptTask, PREEMPTION_MATRIX, getScheduler
- * invariants:
- *   - critical優先度はhigh/normal/low/backgroundをプリエンプト可能
- *   - high優先度はnormal/low/backgroundをプリエンプト可能
- *   - 同一優先度のタスクは相互にプリエンプトしない
- *   - 環境変数PI_ENABLE_PREEMPTION=falseの場合、プリエンプション無効
- * side_effects:
- *   - チェックポイントマネージャーへの状態保存
- *   - アクティブ実行タスクの中断シグナル送信
- *   - 環境変数の読み込み
- * failure_modes:
- *   - タスクIDがアクティブ実行中に見つからない場合は失敗
- *   - チェックポイント保存失敗時にエラーを返す
+ * role: 優先度ベースのタスクスケジューラおよびプリエンプション機能の提供
+ * why: プロバイダやモデルごとのキュー管理を行い、イベント駆動で高優先度タスクによる低優先度タスクの割り込みを実現するため
+ * related: .pi/lib/priority-scheduler.ts, .pi/lib/checkpoint-manager.ts, .pi/extensions/agent-runtime.ts, .pi/lib/token-bucket.ts
+ * public_api: PREEMPTION_MATRIX, shouldPreempt, preemptTask
+ * invariants: プリエンプションは環境変数PI_ENABLE_PREEMPTIONがfalseの場合は無効化される、同一優先度のタスクは相互にプリエンプションしない
+ * side_effects: preemptTask実行時、CheckpointManagerへの状態保存およびタスクへのAbortSignal通知を行う
+ * failure_modes: タスクがアクティブ実行中に見つからない場合、チェックポイントの保存に失敗した場合
  * @abdd.explain
- * overview: 優先度に基づくタスクスケジューリングと、高優先度タスクによる実行中タスクの割り込み（プリエンプション）を管理する。
+ * overview: 優先度順位付けに基づくタスク実行の制御、プリエンプション行列による割り込み可否の判定、実行中タスクの一時停止とチェックポイント作成を行うモジュール
  * what_it_does:
- *   - 優先度行列に基づき、実行中タスクを割り込むべきか判定する
- *   - 実行中タスクを一時中断し、チェックポイントとして状態を保存する
- *   - プロバイダー/モデル/優先度ごとのキューマネジメントを行う
+ *   - PREEMPTION_MATRIXによる優先度間の割り込みルール定義
+ *   - 実行中タスクと到着タスクの優先度比較に基づくshouldPreempt判定
+ *   - preemptTaskによるタスク中断、状態のシリアライズ、およびCheckpointManagerへの保存
  * why_it_exists:
- *   - 重要度の高いタスクを低優先度タスクより優先的に実行するため
- *   - 長時間実行タスクを中断・再開可能にし、リソース効率を最大化するため
+ *   - リソース効率を最大化するため、重要度（優先度）に応じた動的なタスク実行順序制御を行う
+ *   - 割り込み発生時にタスク状態を永続化し、後で再開可能にするチェックポイント機構を提供する
  * scope:
- *   in: ScheduledTask（優先度、プロバイダー、モデル、シグナルを含む）、プリエンプション理由、タスク状態、進捗率
- *   out: プリエンプション判定結果、チェックポイントIDを含む割り込み結果
+ *   in: TaskPriority, ScheduledTask, チェックポイント保存用のstate/progress/reason
+ *   out: プリエンプション可否(boolean), PreemptionResult(success/error/checkpointId)
  */
 
 // File: .pi/lib/task-scheduler.ts
@@ -67,12 +58,13 @@ export const PREEMPTION_MATRIX: Record<TaskPriority, TaskPriority[]> = {
   background: [],
 };
 
- /**
-  * 実行中タスクを割り込むべきか判定する
-  * @param runningTask 実行中のタスク
-  * @param incomingTask 新しく到着したタスク
-  * @returns 割り込むべき場合はtrue
-  */
+/**
+ * 実行中タスクを割り込むか判定
+ * @summary 割り込み要否判定
+ * @param runningTask 実行中のスケジュール済みタスク
+ * @param incomingTask 新規に割り込ませるスケジュール済みタスク
+ * @returns 割り込みが必要な場合はtrue
+ */
 export function shouldPreempt(
   runningTask: ScheduledTask,
   incomingTask: ScheduledTask
@@ -96,14 +88,15 @@ export function shouldPreempt(
   return preemptablePriorities.includes(runningTask.priority);
 }
 
- /**
-  * 実行中のタスクを一時中断し、チェックポイントに保存する。
-  * @param taskId - 事前割り込み対象のタスクID
-  * @param reason - 事前割り込みの理由
-  * @param state - 保存するタスクの状態（任意）
-  * @param progress - タスクの進捗（0.0-1.0）
-  * @returns チェックポイントIDを含む事前割り込み結果
-  */
+/**
+ * @summary タスク先取り
+ * 実行中のタスクを中断してチェックポイントに保存する
+ * @param taskId - 対象タスクID
+ * @param reason - 中断理由
+ * @param state - 任意の状態データ
+ * @param progress - 進捗値
+ * @returns 先取り処理の結果
+ */
 export async function preemptTask(
   taskId: string,
   reason: string,
@@ -161,12 +154,13 @@ export async function preemptTask(
   };
 }
 
- /**
-  * チェックポイントからタスクを再開する
-  * @param checkpointId - 再開するチェックポイントID
-  * @param execute - 再開タスクを実行する関数
-  * @returns 再開実行時のタスク結果
-  */
+/**
+ * @summary チェックポイント復帰
+ * チェックポイントから処理を再開する
+ * @param checkpointId - チェックポイントID
+ * @param execute - 復帰後の実行関数
+ * @returns タスクの実行結果
+ */
 export async function resumeFromCheckpoint<TResult = unknown>(
   checkpointId: string,
   execute: (checkpoint: Checkpoint) => Promise<TResult>
@@ -211,9 +205,11 @@ export async function resumeFromCheckpoint<TResult = unknown>(
 // Types
 // ============================================================================
 
- /**
-  * タスクの作成元を識別する種別
-  */
+/**
+ * @summary タスク発生元
+ * タスクの実行元の種別を定義する型
+ * @returns void
+ */
 export type TaskSource =
   | "subagent_run"
   | "subagent_run_parallel"
@@ -226,11 +222,13 @@ export type TaskSource =
  */
 export type { TaskPriority };
 
- /**
-  * スケジュールされたタスクのコスト概算
-  * @param estimatedTokens 推定トークン消費量
-  * @param estimatedDurationMs 推定実行時間（ミリ秒）
-  */
+/**
+ * @summary コスト見積もり
+ * タスクの推定コストを表すインターフェース
+ * @param estimatedTokens - 推定トークン数
+ * @param estimatedDurationMs - 推定実行時間（ミリ秒）
+ * @returns void
+ */
 export interface TaskCostEstimate {
   /** Estimated token consumption */
   estimatedTokens: number;
@@ -238,16 +236,16 @@ export interface TaskCostEstimate {
   estimatedDurationMs: number;
 }
 
- /**
-  * 優先度とレート制限を持つスケジュールされたタスク
-  * @param id 一意のタスクID
-  * @param source このタスクを作成したツール
-  * @param provider プロバイダ名（例: "anthropic"）
-  * @param model モデル名（例: "claude-sonnet-4"）
-  * @param priority タスクの優先度レベル
-  * @param costEstimate レート制限用のコスト見積もり
-  * @param execute タスク実行関数
-  */
+/**
+ * @summary スケジュール済みタスク
+ * タスクのメタデータ情報を定義するインターフェース
+ * @param id - タスクの一意なID
+ * @param source - タスクの発生元
+ * @param provider - 実行プロバイダ
+ * @param model - 使用モデル
+ * @param priority - タスク優先度
+ * @returns void
+ */
 export interface ScheduledTask<TResult = unknown> {
   /** Unique task identifier */
   id: string;
@@ -269,17 +267,15 @@ export interface ScheduledTask<TResult = unknown> {
   deadlineMs?: number;
 }
 
- /**
-  * タスク実行の結果
-  * @param taskId タスクID
-  * @param success 成功したかどうか
-  * @param result タスク結果（成功時）
-  * @param error エラーメッセージ（失敗時）
-  * @param waitedMs 実行待機時間（ミリ秒）
-  * @param executionMs 実行時間（ミリ秒）
-  * @param timedOut タイムアウトしたかどうか
-  * @param aborted 中断されたかどうか
-  */
+/**
+ * タスク実行結果
+ * @summary 結果を表す
+ * @property taskId タスクID
+ * @property success 成功したかどうか
+ * @property result 実行結果
+ * @property error エラー情報
+ * @property waitedMs 待機時間
+ */
 export interface TaskResult<TResult = unknown> {
   /** Task ID */
   taskId: string;
@@ -299,16 +295,15 @@ export interface TaskResult<TResult = unknown> {
   aborted: boolean;
 }
 
- /**
-  * キューモニタリング用の統計情報
-  * @param totalQueued - キューに入ったタスクの総数
-  * @param byPriority - 優先度ごとのタスク数
-  * @param byProvider - プロバイダーごとのタスク数
-  * @param avgWaitMs - 平均待機時間（ミリ秒）
-  * @param maxWaitMs - 最大待機時間（ミリ秒）
-  * @param starvingCount - 待機時間の長いタスクの数
-  * @param activeExecutions - 実行中のタスク数
-  */
+/**
+ * キュー統計情報
+ * @summary 統計を取得する
+ * @property totalQueued 総待機タスク数
+ * @property byPriority 優先度別の統計
+ * @property byProvider プロバイダー別の統計
+ * @property avgWaitMs 平均待機時間
+ * @property maxWaitMs 最大待機時間
+ */
 export interface QueueStats {
   /** Total queued tasks */
   totalQueued: number;
@@ -338,14 +333,15 @@ interface TaskQueueEntry {
   skipCount: number;
 }
 
- /**
-  * スケジューラーの設定オプション。
-  * @param maxConcurrentPerModel プロバイダ/モデルごとの最大同時実行数
-  * @param maxTotalConcurrent 全体の最大同時実行数
-  * @param defaultTimeoutMs タスクのデフォルトタイムアウト（ミリ秒）
-  * @param starvationThresholdMs スタベーションしきい値（ミリ秒）
-  * @param maxSkipCount 昇格前の最大スキップ回数
-  */
+/**
+ * スケジューラ設定
+ * @summary 設定を保持する
+ * @property maxConcurrentPerModel モデル別最大同時実行数
+ * @property maxTotalConcurrent 合計最大同時実行数
+ * @property defaultTimeoutMs デフォルトのタイムアウト時間
+ * @property starvationThresholdMs スターベーションしきい値
+ * @property maxSkipCount 最大スキップ回数
+ */
 export interface SchedulerConfig {
   /** Maximum concurrent executions per provider/model */
   maxConcurrentPerModel: number;
@@ -395,15 +391,15 @@ const PRIORITY_ORDER: TaskPriority[] = ["background", "low", "normal", "high", "
 // Hybrid Scheduling Constants
 // ============================================================================
 
- /**
-  * ハイブリッドスケジューリングの設定
-  * @param priorityWeight 優先度の重み（0.0 - 1.0）
-  * @param sjfWeight SJF（最短処理時間優先）の重み（0.0 - 1.0）
-  * @param fairQueueWeight フェアキューの重み（0.0 - 1.0）
-  * @param maxDurationForNormalization 正規化用の最大持続時間（ミリ秒）
-  * @param starvationPenaltyPerSkip スキップごとのスタベーションペナルティ
-  * @param maxStarvationPenalty 最大スタベーションペナルティ
-  */
+/**
+ * ハイブリッドスケジューラ設定
+ * @summary 設定を定義する
+ * @property priorityWeight 優先度の重み
+ * @property sjfWeight SJF（最短処理時間）の重み
+ * @property fairQueueWeight 公平キューの重み
+ * @property maxDurationForNormalization 正規化用最大時間
+ * @property starvationPenaltyPerSkip スキップ時のスターベーションペナルティ
+ */
 export interface HybridSchedulerConfig {
   /** Weight for priority component (0.0 - 1.0) */
   priorityWeight: number;
@@ -432,11 +428,12 @@ const DEFAULT_HYBRID_CONFIG: HybridSchedulerConfig = {
 // Utilities
 // ============================================================================
 
- /**
-  * 一意なタスクIDを生成する
-  * @param prefix IDのプレフィックス（デフォルト: "task"）
-  * @returns 生成されたタスクID
-  */
+/**
+ * タスクIDを生成する
+ * @summary IDを生成する
+ * @param prefix IDの接頭辞
+ * @returns 生成されたタスクID
+ */
 export function createTaskId(prefix: string = "task"): string {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).substring(2, 8);
@@ -644,11 +641,12 @@ class TaskSchedulerImpl {
     this.config = { ...defaults, ...config };
   }
 
-   /**
-    * タスクの実行を依頼する
-    * @param task 依頼するタスク
-    * @returns 実行結果を含むPromise
-    */
+  /**
+   * タスクをスケジュールに送信
+   * @summary タスク送信
+   * @param {Task<TResult>} task 実行するタスク
+   * @returns {Promise<TaskResult<TResult>>} タスクの実行結果
+   */
   async submit<TResult>(task: ScheduledTask<TResult>): Promise<TaskResult<TResult>> {
     const enqueuedAtMs = Date.now();
     const entry: TaskQueueEntry = {
@@ -676,10 +674,11 @@ class TaskSchedulerImpl {
     return this.waitForExecution<TResult>(entry, task);
   }
 
-   /**
-    * 現在のキュー統計情報を取得する
-    * @returns 現在のキュー統計情報
-    */
+  /**
+   * キューの統計情報を取得
+   * @summary 統計情報取得
+   * @returns {QueueStats} 統計情報
+   */
   getStats(): QueueStats {
     const now = Date.now();
     const byPriority: Record<TaskPriority, number> = {
@@ -977,37 +976,41 @@ class TaskSchedulerImpl {
   // Preemption Support Methods
   // ============================================================================
 
-   /**
-    * タスクIDからアクティブな実行情報を取得
-    * @param taskId タスクID
-    * @returns アクティブな実行情報（存在しない場合はnull）
-    */
+  /**
+   * 指定した実行中タスクを取得
+   * @summary 実行中タスク取得
+   * @param {string} taskId タスクID
+   * @returns {TaskQueueEntry | null} タスクエントリ、存在しない場合はnull
+   */
   getActiveExecution(taskId: string): TaskQueueEntry | null {
     return this.activeExecutions.get(taskId) ?? null;
   }
 
-   /**
-    * アクティブな実行エントリを削除する
-    * @param taskId タスクID
-    * @returns 削除されたかどうか
-    */
+  /**
+   * 実行中タスクを削除する
+   * @summary 実行中タスク削除
+   * @param {string} taskId タスクID
+   * @returns {boolean} 削除されたかどうか
+   */
   removeActiveExecution(taskId: string): boolean {
     return this.activeExecutions.delete(taskId);
   }
 
-   /**
-    * すべての実行中タスクを取得する
-    * @returns 実行中タスクのマップ
-    */
+  /**
+   * すべての実行中タスクを取得
+   * @summary 実行中タスク一覧取得
+   * @returns {Map<string, TaskQueueEntry>} 実行中タスクのマップ
+   */
   getAllActiveExecutions(): Map<string, TaskQueueEntry> {
     return new Map(this.activeExecutions);
   }
 
-   /**
-    * 新しいタスクの preempt が必要か判定する
-    * @param incomingTask 追加予定のタスク
-    * @returns preempt 対象のタスク、不要な場合は null
-    */
+  /**
+   * プリエンプト必要性を確認
+   * @summary プリエンプト確認
+   * @param incomingTask 実行予定タスク
+   * @returns 優先度が低いタスク
+   */
   checkPreemptionNeeded(incomingTask: ScheduledTask): ScheduledTask | null {
     if (process.env.PI_ENABLE_PREEMPTION === "false") {
       return null;
@@ -1032,13 +1035,14 @@ class TaskSchedulerImpl {
     return lowestPriorityTask;
   }
 
-   /**
-    * 実行中タスクのプリエンプトを試行します
-    * @param incomingTask 割り込むタスク
-    * @param checkpointState チェックポイント状態
-    * @param checkpointProgress チェックポイント進捗
-    * @returns プリエンプト結果を含むオブジェクト
-    */
+  /**
+   * 実行中タスクのプリエンプトを試行
+   * @summary プリエンプト試行
+   * @param incomingTask 実行予定タスク
+   * @param checkpointState チェックポイント状態
+   * @param checkpointProgress チェックポイント進捗
+   * @returns プリエンプト結果
+   */
   async attemptPreemption(
     incomingTask: ScheduledTask,
     checkpointState?: unknown,
@@ -1079,7 +1083,10 @@ class TaskSchedulerImpl {
   }
 
   /**
-   * Subscribe to preemption events.
+   * プリエンプト監視を登録
+   * @summary プリエンプト監視
+   * @param callback コールバック関数
+   * @returns 監視解除関数
    */
   onPreemption(callback: (taskId: string, checkpointId: string) => void): () => void {
     const handler = (event: Event) => {
@@ -1101,10 +1108,11 @@ class TaskSchedulerImpl {
 
 let schedulerInstance: TaskSchedulerImpl | null = null;
 
- /**
-  * シングルトンのスケジューラインスタンスを取得する。
-  * @returns スケジューラインスタンス。
-  */
+/**
+ * スケジューラを取得する
+ * @summary スケジューラ取得
+ * @returns シングルトンインスタンス
+ */
 export function getScheduler(): TaskSchedulerImpl {
   if (!schedulerInstance) {
     schedulerInstance = new TaskSchedulerImpl();
@@ -1113,16 +1121,20 @@ export function getScheduler(): TaskSchedulerImpl {
 }
 
 /**
- * Create a new scheduler with custom config.
+ * スケジューラを作成する
+ * @summary スケジューラ作成
+ * @param config 設定オブジェクト
+ * @returns スケジューラインスタンス
  */
 export function createScheduler(config?: Partial<SchedulerConfig>): TaskSchedulerImpl {
   return new TaskSchedulerImpl(config);
 }
 
- /**
-  * シングルトンのスケジューラーをリセットする（テスト用）。
-  * @returns 戻り値なし。
-  */
+/**
+ * シングルトンのスケジューラーをリセットする
+ * @summary スケジューラーをリセット
+ * @returns 戻り値なし。
+ */
 export function resetScheduler(): void {
   schedulerInstance = null;
 }

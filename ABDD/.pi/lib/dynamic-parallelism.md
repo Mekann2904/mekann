@@ -23,18 +23,18 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getParallelismAdjuster` | 並列度調整器のインスタンスを取得 |
-| 関数 | `createParallelismAdjuster` | カスタム設定で調整器を作成する |
-| 関数 | `resetParallelismAdjuster` | シングルトンの調整器をリセット（テスト用） |
-| 関数 | `getParallelism` | プロバイダーとモデルに基づいて並列度を取得 |
-| 関数 | `adjustForError` | エラー発生時に並列度を調整する |
+| 関数 | `getParallelismAdjuster` | 並列度調整器を取得 |
+| 関数 | `createParallelismAdjuster` | 並列度調整器を生成 |
+| 関数 | `resetParallelismAdjuster` | 並列度調整器リセット |
+| 関数 | `getParallelism` | 現在の並列度取得 |
+| 関数 | `adjustForError` | エラー時並列度調整 |
 | 関数 | `attemptRecovery` | 復旧を試行する |
-| 関数 | `formatDynamicParallelismSummary` | 動的並列度の状態サマリーを整形する |
-| クラス | `DynamicParallelismAdjuster` | LLMプロバイダの並列度を動的に調整するクラス |
-| インターフェース | `ParallelismConfig` | 動的並列度の設定を表すインターフェース。 |
-| インターフェース | `ProviderHealth` | プロバイダ/モデルの正常性ステータス |
-| インターフェース | `DynamicAdjusterConfig` | 動的並列度調整の設定オプション |
-| インターフェース | `ErrorEvent` | エラー追跡用イベント |
+| 関数 | `formatDynamicParallelismSummary` | 並列度概要を整形 |
+| クラス | `DynamicParallelismAdjuster` | 動的並列度調整器 |
+| インターフェース | `ParallelismConfig` | 動的並列度設定 |
+| インターフェース | `ProviderHealth` | プロバイダー健全性 |
+| インターフェース | `DynamicAdjusterConfig` | 動的調整設定 |
+| インターフェース | `ErrorEvent` | エラーイベント |
 
 ## 図解
 
@@ -168,7 +168,7 @@ handler(e: Event): void
 getParallelismAdjuster(): DynamicParallelismAdjuster
 ```
 
-並列度調整器のインスタンスを取得
+並列度調整器を取得
 
 **戻り値**: `DynamicParallelismAdjuster`
 
@@ -178,7 +178,7 @@ getParallelismAdjuster(): DynamicParallelismAdjuster
 createParallelismAdjuster(config: Partial<DynamicAdjusterConfig>): DynamicParallelismAdjuster
 ```
 
-カスタム設定で調整器を作成する
+並列度調整器を生成
 
 **パラメータ**
 
@@ -194,7 +194,7 @@ createParallelismAdjuster(config: Partial<DynamicAdjusterConfig>): DynamicParall
 resetParallelismAdjuster(): void
 ```
 
-シングルトンの調整器をリセット（テスト用）
+並列度調整器リセット
 
 **戻り値**: `void`
 
@@ -204,7 +204,7 @@ resetParallelismAdjuster(): void
 getParallelism(provider: string, model: string): number
 ```
 
-プロバイダーとモデルに基づいて並列度を取得
+現在の並列度取得
 
 **パラメータ**
 
@@ -221,7 +221,7 @@ getParallelism(provider: string, model: string): number
 adjustForError(provider: string, model: string, errorType: "429" | "timeout" | "error"): void
 ```
 
-エラー発生時に並列度を調整する
+エラー時並列度調整
 
 **パラメータ**
 
@@ -256,7 +256,7 @@ attemptRecovery(provider: string, model: string): void
 formatDynamicParallelismSummary(): string
 ```
 
-動的並列度の状態サマリーを整形する
+並列度概要を整形
 
 **戻り値**: `string`
 
@@ -264,7 +264,7 @@ formatDynamicParallelismSummary(): string
 
 ### DynamicParallelismAdjuster
 
-LLMプロバイダの並列度を動的に調整するクラス
+動的並列度調整器
 
 **プロパティ**
 
@@ -317,7 +317,7 @@ interface ParallelismConfig {
 }
 ```
 
-動的並列度の設定を表すインターフェース。
+動的並列度設定
 
 ### ProviderHealth
 
@@ -331,7 +331,7 @@ interface ProviderHealth {
 }
 ```
 
-プロバイダ/モデルの正常性ステータス
+プロバイダー健全性
 
 ### ProviderModelState
 
@@ -365,7 +365,7 @@ interface DynamicAdjusterConfig {
 }
 ```
 
-動的並列度調整の設定オプション
+動的調整設定
 
 ### ErrorEvent
 
@@ -379,7 +379,7 @@ interface ErrorEvent {
 }
 ```
 
-エラー追跡用イベント
+エラーイベント
 
 ---
-*自動生成: 2026-02-18T14:31:30.974Z*
+*自動生成: 2026-02-18T15:54:41.463Z*

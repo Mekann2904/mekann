@@ -17,14 +17,14 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `getSearchHistory` | グローバル検索履歴を取得する。 |
-| 関数 | `resetSearchHistory` | グローバル履歴インスタンスをリセット |
+| 関数 | `getSearchHistory` | - |
+| 関数 | `resetSearchHistory` | 検索履歴をリセットする |
 | 関数 | `extractQuery` | ツールのパラメータからクエリ文字列を抽出する |
 | 関数 | `createHistoryEntry` | ツール実行から履歴エントリを作成する |
-| クラス | `SearchHistory` | 検索履歴を管理するクラス |
-| インターフェース | `SearchHistoryEntry` | 検索履歴のエントリ。 |
-| インターフェース | `HistoryConfig` | 履歴管理の設定。 |
-| インターフェース | `QuerySuggestion` | サジェッション用のクエリとメタデータ |
+| クラス | `SearchHistory` | 検索履歴管理クラス |
+| インターフェース | `SearchHistoryEntry` | 検索履歴エントリ |
+| インターフェース | `HistoryConfig` | 履歴管理の設定を定義 |
+| インターフェース | `QuerySuggestion` | クエリ候補インターフェース |
 
 ## 図解
 
@@ -82,8 +82,6 @@ flowchart TD
 getSearchHistory(): SearchHistory
 ```
 
-グローバル検索履歴を取得する。
-
 **戻り値**: `SearchHistory`
 
 ### resetSearchHistory
@@ -92,7 +90,7 @@ getSearchHistory(): SearchHistory
 resetSearchHistory(): void
 ```
 
-グローバル履歴インスタンスをリセット
+検索履歴をリセットする
 
 **戻り値**: `void`
 
@@ -135,7 +133,7 @@ createHistoryEntry(tool: string, params: Record<string, unknown>, results: strin
 
 ### SearchHistory
 
-検索履歴を管理するクラス
+検索履歴管理クラス
 
 **プロパティ**
 
@@ -172,7 +170,7 @@ interface SearchHistoryEntry {
 }
 ```
 
-検索履歴のエントリ。
+検索履歴エントリ
 
 ### HistoryConfig
 
@@ -183,7 +181,7 @@ interface HistoryConfig {
 }
 ```
 
-履歴管理の設定。
+履歴管理の設定を定義
 
 ### QuerySuggestion
 
@@ -196,7 +194,7 @@ interface QuerySuggestion {
 }
 ```
 
-サジェッション用のクエリとメタデータ
+クエリ候補インターフェース
 
 ---
-*自動生成: 2026-02-18T14:31:30.869Z*
+*自動生成: 2026-02-18T15:54:41.330Z*

@@ -1,27 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/agent-common.ts
- * role: エージェント共通ユーティリティライブラリ
- * why: subagents.tsとagent-teams.ts間のコード重複を排除し、統一された実行時プロファイルと設定を提供するため
- * related: subagents.ts, agent-teams.ts, validation-utils.ts, error-utils.ts
- * public_api: STABLE_RUNTIME_PROFILE, ADAPTIVE_PARALLEL_MAX_PENALTY, ADAPTIVE_PARALLEL_DECAY_MS, STABLE_MAX_RETRIES, STABLE_INITIAL_DELAY_MS, STABLE_MAX_DELAY_MS, STABLE_MAX_RATE_LIMIT_RETRIES, STABLE_MAX_RATE_LIMIT_WAIT_MS, EntityType, EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG
- * invariants: STABLE_RUNTIME_PROFILE=trueの場合、ADAPTIVE_PARALLEL_MAX_PENALTYは常に0、リトライ設定は固定値を使用
- * side_effects: なし（純粋な定数・型定義のみ）
- * failure_modes: なし（実行時処理を行わない）
+ * role: エージェント実行における共通設定定数および型定義の提供
+ * why: subagents.tsとagent-teams.ts間でのコード重複を排除し、設定の一貫性を維持するため
+ * related: .pi/lib/subagents.ts, .pi/lib/agent-teams.ts, .pi/lib/validation-utils.js
+ * public_api: STABLE_RUNTIME_PROFILE, ADAPTIVE_PARALLEL_MAX_PENALTY, STABLE_MAX_RETRIES, EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG, EntityType
+ * invariants: STABLE_RUNTIME_PROFILEがtrueの場合、ADAPTIVE_PARALLEL_MAX_PENALTYは0である
+ * side_effects: なし（定数および型定義のみ）
+ * failure_modes: なし
  * @abdd.explain
- * overview: SubagentとTeam Memberの実行で使用する共通定数・型・設定オブジェクトを提供するLayer 1モジュール
+ * overview: サブエージェントおよびチームメンバーの実行に必要な共通ユーティリティ、実行プロファイル設定、リトライ戦略、エンティティ設定を集約したモジュール。
  * what_it_does:
- *   - 安定した実行時プロファイル用のグローバルフラグと並列処理ペナルティ設定を定義
- *   - リトライ・バックオフ・レート制限用の固定パラメータを提供
- *   - EntityType（subagent/team-member）の型定義とEntityConfigインターフェースを定義
- *   - SUBAGENT_CONFIGとTEAM_MEMBER_CONFIGのデフォルト設定オブジェクトをエクスポート
+ *   - 安定した実行プロファイル（STABLE_RUNTIME_PROFILE）および適応的並列性制御の定数を定義する
+ *   - リトライ最大回数、バックオフ時間、レート制限待ち時間などの実行パラメータを提供する
+ *   - サブエージェントとチームメンバーを区別するEntityType型およびEntityConfigインターフェースを定義する
+ *   - デフォルトのエンティティ設定（SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG）をエクスポートする
  * why_it_exists:
- *   - subagents.tsとagent-teams.tsの設定値重複を一箇所に集約
- *   - 本番環境での予測可能な動作を保証する安定プロファイルの統一管理
- *   - エンティティ種別ごとの挙動差異を設定オブジェクトで抽象化
+ *   - subagents.tsとagent-teams.tsで同一の設定値やロジックが重複するのを防ぐため
+ *   - 実行環境（安定版/開発版）に応じた挙動を一箇所で制御し、予測可能性を確保するため
  * scope:
- *   in: validation-utils.ts（toFiniteNumberWithDefault）
- *   out: subagents.ts, agent-teams.ts
+ *   in: 外部設定値（環境変数等は使用せず定数として定義）、validation-utilsからの数値変換ユーティリティ
+ *   out: 実行制御用定数、エンティティ型定義、設定オブジェクト
  */
 
 /**
@@ -100,18 +99,20 @@ export const STABLE_MAX_RATE_LIMIT_WAIT_MS = 90_000;
 // ============================================================================
 
 /**
- * Entity type identifier for shared functions.
- * Used to distinguish between subagent and team member contexts.
+ * エンティティの種別
+ * @summary エンティティ種別
+ * @returns {"subagent"|"team-member"} エンティティの種類
  */
 export type EntityType = "subagent" | "team-member";
 
- /**
-  * エンティティ固有の挙動を設定します。
-  * @param type エンティティの種類
-  * @param label エンティティのラベル
-  * @param emptyOutputMessage 出力が空の場合のメッセージ
-  * @param defaultSummaryFallback デフォルトの要約フォールバック
-  */
+/**
+ * エンティティ設定を定義
+ * @summary エンティティ定義
+ * @param type エンティティの種類
+ * @param label 表示ラベル
+ * @param emptyOutputMessage 出力がない場合のメッセージ
+ * @param defaultSummaryFallback サマリーのフォールバック
+ */
 export interface EntityConfig {
   type: EntityType;
   label: string;
@@ -143,13 +144,16 @@ export const TEAM_MEMBER_CONFIG: EntityConfig = {
 // Normalized Output Types
 // ============================================================================
 
- /**
-  * エンティティ出力を正規化した結果
-  * @param ok 成功したかどうか
-  * @param output 出力文字列
-  * @param degraded 品質が低下しているかどうか
-  * @param reason 理由（オプション）
-  */
+/**
+ * 正規化エンティティ出力
+ *
+ * @summary 正規化エンティティ出力
+ * @param ok 成功フラグ
+ * @param output 出力文字列
+ * @param degraded 劣化フラグ
+ * @param reason 理由
+ * @returns 出力オブジェクト
+ */
 export interface NormalizedEntityOutput {
   ok: boolean;
   output: string;
@@ -161,12 +165,15 @@ export interface NormalizedEntityOutput {
 // Field Candidate Picker
 // ============================================================================
 
- /**
-  * pickFieldCandidate関数のオプション
-  * @param maxLength 候補テキストの最大長
-  * @param excludeLabels 除外対象のラベル（例: SUMMARY:, RESULT:）
-  * @param fallback 有効な候補が見つからない場合の代替テキスト
-  */
+/**
+ * フィールド候補オプション
+ *
+ * @summary 候補選択オプション定義
+ * @param maxLength 最大文字数
+ * @param excludeLabels 除外ラベルリスト
+ * @param fallback フォールバックテキスト
+ * @returns オプションオブジェクト
+ */
 export interface PickFieldCandidateOptions {
   /** Maximum length for the candidate text */
   maxLength: number;
@@ -176,12 +183,14 @@ export interface PickFieldCandidateOptions {
   fallback?: string;
 }
 
- /**
-  * テキストから候補となるフィールドを抽出する
-  * @param text 抽出元の生テキスト
-  * @param options 設定オプション
-  * @returns 抽出された候補テキスト
-  */
+/**
+ * フィールド候補を選択
+ *
+ * @summary フィールド候補を選択
+ * @param text 入力テキスト
+ * @param options オプション設定
+ * @returns 選択されたテキスト
+ */
 export function pickFieldCandidate(
   text: string,
   options: PickFieldCandidateOptions,
@@ -225,11 +234,13 @@ export function pickFieldCandidate(
     : `${compact.slice(0, maxLength)}...`;
 }
 
- /**
-  * SUMMARYフィールドの候補テキストを選択する
-  * @param text - 生の出力テキスト
-  * @returns 抽出された要約の候補
-  */
+/**
+ * 概要候補を選択
+ *
+ * @summary 概要候補を選択
+ * @param text 入力テキスト
+ * @returns 選択された概要候補テキスト
+ */
 export function pickSummaryCandidate(text: string): string {
   return pickFieldCandidate(text, {
     maxLength: 90,
@@ -239,11 +250,11 @@ export function pickSummaryCandidate(text: string): string {
 }
 
 /**
- * Pick candidate text for CLAIM field.
- * Convenience wrapper with team-member-specific defaults.
+ * CLAIM候補を選択
  *
- * @param text - Raw output text
- * @returns Extracted claim candidate
+ * @summary CLAIM候補を選択
+ * @param text 入力テキスト
+ * @returns 選択されたCLAIM候補テキスト
  */
 export function pickClaimCandidate(text: string): string {
   return pickFieldCandidate(text, {
@@ -257,15 +268,15 @@ export function pickClaimCandidate(text: string): string {
 // Entity Output Normalization
 // ============================================================================
 
- /**
-  * normalizeEntityOutput関数のオプション
-  * @param config コンテキスト依存の動作のためのエンティティ設定
-  * @param validateFn 出力形式をチェックするバリデーション関数
-  * @param requiredLabels 構造化出力に必要なラベル
-  * @param pickSummary フィールド候補を抽出する関数
-  * @param includeConfidence CONFIDENCEフィールドを含めるかどうか（チームメンバーのみ）
-  * @param formatAdditionalFields 追加フィールド用のカスタムフォーマッタ
-  */
+/**
+ * 正規化オプション定義
+ * @summary オプション定義
+ * @param config エンティティ設定
+ * @param validateFn 検証関数
+ * @param requiredLabels 必須ラベル
+ * @param pickSummary サマリー抽出関数
+ * @param includeConfidence 信頼度を含むか
+ */
 export interface NormalizeEntityOutputOptions {
   /** Entity configuration for context-specific behavior */
   config: EntityConfig;
@@ -281,12 +292,13 @@ export interface NormalizeEntityOutputOptions {
   formatAdditionalFields?: (text: string) => string[];
 }
 
- /**
-  * エンティティ出力を正規化
-  * @param output - 生の出力テキスト
-  * @param options - 正規化オプション
-  * @returns 正規化された出力結果
-  */
+/**
+ * エンティティ出力を正規化
+ * @summary 出力の正規化
+ * @param output 生の出力文字列
+ * @param options 正規化オプション
+ * @returns 正規化された出力オブジェクト
+ */
 export function normalizeEntityOutput(
   output: string,
   options: NormalizeEntityOutputOptions,
@@ -363,12 +375,13 @@ export function normalizeEntityOutput(
 // Utility Functions
 // ============================================================================
 
- /**
-  * 出力が空であることを示すエラーメッセージか判定する
-  * @param message - チェック対象のエラーメッセージ
-  * @param config - エンティティ設定
-  * @returns メッセージが空出力を示す場合はtrue
-  */
+/**
+ * 空出力による失敗か判定
+ * @summary 空出力失敗判定
+ * @param message チェック対象メッセージ
+ * @param config エンティティ設定
+ * @returns 空出力失敗の場合はtrue
+ */
 export function isEmptyOutputFailureMessage(
   message: string,
   config: EntityConfig,
@@ -376,11 +389,12 @@ export function isEmptyOutputFailureMessage(
   return message.toLowerCase().includes(config.emptyOutputMessage.toLowerCase());
 }
 
- /**
-  * エラーの要約を作成する
-  * @param message - エラーメッセージ
-  * @returns 失敗の要約文字列
-  */
+/**
+ * 失敗要約メッセージを構築
+ * @summary 要約メッセージ構築
+ * @param message エラーメッセージ
+ * @returns 構築された要約メッセージ
+ */
 export function buildFailureSummary(message: string): string {
   const lowered = message.toLowerCase();
   if (lowered.includes("empty output")) return "(failed: empty output)";
@@ -389,12 +403,13 @@ export function buildFailureSummary(message: string): string {
   return "(failed)";
 }
 
- /**
-  * 環境変数で上書き可能なタイムアウトを解決
-  * @param defaultMs - デフォルトのタイムアウト（ミリ秒）
-  * @param envKey - 確認する環境変数のキー
-  * @returns 解決されたタイムアウト値
-  */
+/**
+ * タイムアウト値を環境変数から取得
+ * @summary タイムアウト値取得
+ * @param defaultMs デフォルトのミリ秒
+ * @param envKey 環境変数のキー名
+ * @returns 適用されたタイムアウト時間（ミリ秒）
+ */
 export function resolveTimeoutWithEnv(
   defaultMs: number,
   envKey: string,
