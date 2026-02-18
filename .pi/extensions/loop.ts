@@ -1,3 +1,30 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/loop.ts
+ * role: ループ実行機能の拡張および検証・参照読み込みサブモジュールのエントリポイント
+ * why: モデルの反復実行、引用チェック、検証コマンドの統合、再現可能な実行ログを実現するため
+ * related: README.md, .pi/extensions/rsa.ts, .pi/extensions/question.ts
+ * public_api: loadReferences, fetchTextFromUrl, runVerificationCommand, buildIterationPrompt, parseLoopContract
+ * invariants: SSRF保護ルールによりプライベートIPやブロック済みホストへのアクセスは拒否される、検証ポリシーは環境変数またはデフォルト設定に基づいて解決される
+ * side_effects: ファイルシステムへのログ書き込み、外部URLへのHTTPリクエスト、検証コマンドのプロセス起動
+ * failure_modes: DNS解決の失敗、参照のロード失敗、検証コマンドの実行エラー、またはセマンティックな重複検出によるループ停止
+ * @abdd.explain
+ * overview: piエージェントのための自律的ループランナーを提供し、参照に基づく実行と検証プロセスを管理する
+ * what_it_does:
+ *   - 反復的なモデル実行プロセスを管理し、引用チェックを実施する
+ *   - 外部参照をロードし、SSRF保護を適用して安全にURLからテキストを取得する
+ *   - 環境変数に基づいて検証ポリシーを解決し、検証コマンドを実行またはスキップする
+ *   - セマンティックな重複を検出し、ループの停止条件を判断する
+ *   - 実行ログをファイルに出力し、プロセスの再現性を確保する
+ * why_it_exists:
+ *   - 反復タスクにおいて外部コンテキストとの整合性を検証しつつ進行する必要があるため
+ *   - セキュリティ（SSRF対策）と検証の柔軟性を両立するため
+ *   - 実行の進捗と結果を永続化し、デバッグや監査を可能にするため
+ * scope:
+ *   in: 拡張API、ユーザー定義のループ設定、環境変数（検証ポリシーなど）
+ *   out: モデル呼び出しの実行、検証コマンドの実行結果、ログファイル、参照データの読み込み結果
+ */
+
 // File: .pi/extensions/loop.ts
 // Description: Adds an autonomous loop runner with reference-grounded execution for pi.
 // Why: Enables repeated model iterations with citation checks and reproducible run logs.
@@ -13,7 +40,12 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
-import { formatDuration, toErrorMessage, toBoundedInteger, ThinkingLevel, createRunId, computeModelTimeoutMs } from "../lib";
+import { formatDuration } from "../lib/format-utils.js";
+import { toErrorMessage } from "../lib/error-utils.js";
+import { toBoundedInteger } from "../lib/validation-utils.js";
+import { ThinkingLevel } from "../lib/agent-types.js";
+import { createRunId } from "../lib/agent-utils.js";
+import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 
@@ -31,8 +63,96 @@ import {
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
 
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
-type LoopStatus = "continue" | "done" | "unknown";
-type LoopGoalStatus = "met" | "not_met" | "unknown";
+
+// Import extracted modules for SSRF protection, reference loading, verification, and iteration building
+import {
+  isBlockedHostname,
+  isPrivateOrReservedIP,
+  validateUrlForSsrf,
+} from "./loop/ssrf-protection";
+import {
+  type LoopReference,
+  type LoadedReferenceResult,
+  loadReferences,
+  fetchTextFromUrl,
+} from "./loop/reference-loader";
+import {
+  type LoopVerificationResult,
+  type ParsedVerificationCommand,
+  type VerificationPolicyMode,
+  type VerificationPolicyConfig,
+  VERIFICATION_ALLOWLIST_ENV,
+  VERIFICATION_ALLOWLIST_ADDITIONAL_ENV,
+  VERIFICATION_POLICY_ENV,
+  VERIFICATION_POLICY_EVERY_N_ENV,
+  DEFAULT_VERIFICATION_POLICY_MODE,
+  DEFAULT_VERIFICATION_POLICY_EVERY_N,
+  DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES,
+  resolveVerificationPolicy,
+  shouldRunVerificationCommand,
+  runVerificationCommand,
+  parseVerificationCommand,
+  resolveVerificationAllowlistPrefixes,
+  isVerificationCommandAllowed,
+  buildVerificationValidationFeedback,
+} from "./loop/verification";
+import {
+  LOOP_JSON_BLOCK_TAG,
+  LOOP_RESULT_BLOCK_TAG,
+  type LoopStatus,
+  type LoopGoalStatus,
+  type ParsedLoopContract,
+  buildIterationPrompt,
+  buildReferencePack,
+  buildIterationFocus,
+  buildLoopCommandPreview,
+  buildIterationFailureOutput,
+  parseLoopContract,
+  extractLoopResultBody,
+  validateIteration,
+  normalizeValidationFeedback,
+  buildDoneDeclarationFeedback,
+  extractNextStepLine,
+  extractSummaryLine,
+  normalizeLoopOutput,
+} from "./loop/iteration-builder";
+
+// Re-export for backward compatibility
+export {
+  isBlockedHostname,
+  isPrivateOrReservedIP,
+  validateUrlForSsrf,
+  type LoopReference,
+  type LoadedReferenceResult,
+  loadReferences,
+  fetchTextFromUrl,
+  type LoopVerificationResult,
+  type ParsedVerificationCommand,
+  type VerificationPolicyMode,
+  type VerificationPolicyConfig,
+  LOOP_JSON_BLOCK_TAG,
+  LOOP_RESULT_BLOCK_TAG,
+  buildIterationPrompt,
+  buildReferencePack,
+  buildIterationFocus,
+  buildLoopCommandPreview,
+  buildIterationFailureOutput,
+  parseLoopContract,
+  extractLoopResultBody,
+  validateIteration,
+  normalizeValidationFeedback,
+  buildDoneDeclarationFeedback,
+  extractNextStepLine,
+  extractSummaryLine,
+  normalizeLoopOutput,
+  resolveVerificationPolicy,
+  shouldRunVerificationCommand,
+  runVerificationCommand,
+  parseVerificationCommand,
+  resolveVerificationAllowlistPrefixes,
+  isVerificationCommandAllowed,
+  buildVerificationValidationFeedback,
+};
 
 interface LoopConfig {
   maxIterations: number;
@@ -45,12 +165,7 @@ interface LoopConfig {
   semanticRepetitionThreshold?: number;
 }
 
-interface LoopReference {
-  id: string;
-  source: string;
-  title: string;
-  content: string;
-}
+// Note: LoopReference is imported from ./loop/reference-loader.ts
 
 interface LoopIterationResult {
   iteration: number;
@@ -147,26 +262,14 @@ interface ParsedLoopCommand {
   error?: string;
 }
 
-interface LoadedReferenceResult {
-  references: LoopReference[];
-  warnings: string[];
-}
+// Note: LoadedReferenceResult is imported from ./loop/reference-loader.ts
 
 interface LoopActivityIndicator {
   updateFromProgress: (progress: LoopProgress) => void;
   stop: () => void;
 }
 
-interface LoopVerificationResult {
-  command: string;
-  passed: boolean;
-  timedOut: boolean;
-  exitCode: number | null;
-  durationMs: number;
-  stdout: string;
-  stderr: string;
-  error?: string;
-}
+// Note: LoopVerificationResult is imported from ./loop/verification.ts
 
 interface ParsedLoopContract {
   status: LoopStatus;
@@ -224,28 +327,6 @@ const LIMITS = {
   maxSemanticRepetitionThreshold: 0.95,
 };
 
-const LOOP_JSON_BLOCK_TAG = "LOOP_JSON";
-const LOOP_RESULT_BLOCK_TAG = "RESULT";
-const DEFAULT_VERIFICATION_POLICY_MODE: VerificationPolicyMode = "done_only";
-const DEFAULT_VERIFICATION_POLICY_EVERY_N = 2;
-const VERIFICATION_ALLOWLIST_ENV = "PI_LOOP_VERIFY_ALLOWLIST";
-const VERIFICATION_ALLOWLIST_ADDITIONAL_ENV = "PI_LOOP_VERIFY_ALLOWLIST_ADDITIONAL";
-const VERIFICATION_POLICY_ENV = "PI_LOOP_VERIFY_POLICY";
-const VERIFICATION_POLICY_EVERY_N_ENV = "PI_LOOP_VERIFY_EVERY_N";
-const DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES: string[][] = [
-  ["npm", "test"],
-  ["npm", "run", "test"],
-  ["pnpm", "test"],
-  ["pnpm", "run", "test"],
-  ["yarn", "test"],
-  ["yarn", "run", "test"],
-  ["bun", "test"],
-  ["vitest"],
-  ["pytest"],
-  ["go", "test"],
-  ["cargo", "test"],
-];
-
 const LOOP_SPINNER_FRAMES = ["|", "/", "-", "\\"];
 
 const LOOP_HELP = [
@@ -272,6 +353,12 @@ const LOOP_HELP = [
 
 let lastRunSummary: LoopRunSummary | null = null;
 
+/**
+ * ループ機能を拡張する
+ * @summary ループ拡張を登録
+ * @param pi - 拡張API
+ * @returns void
+ */
 export default function registerLoopExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "loop_run",
@@ -1346,867 +1433,6 @@ function tokenizeArgs(input: string): string[] {
   return tokens;
 }
 
-async function loadReferences(
-  input: { refs: string[]; refsFile?: string; cwd: string },
-  signal?: AbortSignal,
-): Promise<LoadedReferenceResult> {
-  const warnings: string[] = [];
-  const specs: string[] = [];
-
-  for (const ref of input.refs) {
-    const normalized = normalizeRefSpec(ref);
-    if (normalized) specs.push(normalized);
-  }
-
-  if (input.refsFile) {
-    const refsFilePath = resolvePath(input.cwd, input.refsFile);
-    try {
-      const raw = readFileSync(refsFilePath, "utf-8");
-      for (const line of raw.split(/\r?\n/)) {
-        const trimmed = normalizeRefSpec(line);
-        if (!trimmed || trimmed.startsWith("#")) continue;
-        specs.push(trimmed);
-      }
-    } catch (error) {
-      warnings.push(`Could not read refs file: ${refsFilePath} (${toErrorMessage(error)})`);
-    }
-  }
-
-  if (specs.length > LIMITS.maxReferences) {
-    warnings.push(`Reference count capped at ${LIMITS.maxReferences}. Extra references were ignored.`);
-  }
-
-  const clippedSpecs = specs.slice(0, LIMITS.maxReferences);
-  const loaded: LoopReference[] = [];
-  let usedChars = 0;
-
-  // Load refs in order and assign stable IDs (R1, R2, ...).
-  for (let i = 0; i < clippedSpecs.length; i++) {
-    throwIfAborted(signal);
-    const spec = clippedSpecs[i];
-    const id = `R${i + 1}`;
-
-    try {
-      const fetched = await loadSingleReference(spec, input.cwd, signal);
-      if (!fetched.content.trim()) {
-        warnings.push(`Reference ${id} has empty content and was skipped: ${spec}`);
-        continue;
-      }
-
-      // Bound total reference size to avoid polluting context windows.
-      const remainingBudget = LIMITS.maxReferenceCharsTotal - usedChars;
-      if (remainingBudget <= 0) {
-        warnings.push("Reference text budget reached. Remaining references were skipped.");
-        break;
-      }
-
-      const clipped = truncateText(fetched.content, Math.min(LIMITS.maxReferenceCharsPerItem, remainingBudget));
-      usedChars += clipped.length;
-
-      loaded.push({
-        id,
-        source: fetched.source,
-        title: fetched.title,
-        content: clipped,
-      });
-    } catch (error) {
-      warnings.push(`Reference ${id} could not be loaded (${spec}): ${toErrorMessage(error)}`);
-    }
-  }
-
-  return {
-    references: loaded,
-    warnings,
-  };
-}
-
-async function loadSingleReference(
-  spec: string,
-  cwd: string,
-  signal?: AbortSignal,
-): Promise<{ source: string; title: string; content: string }> {
-  if (looksLikeUrl(spec)) {
-    const text = await fetchTextFromUrl(spec, signal);
-    return {
-      source: spec,
-      title: `URL: ${spec}`,
-      content: text,
-    };
-  }
-
-  const candidatePath = resolvePath(cwd, spec);
-  if (existsSync(candidatePath)) {
-    const stats = statSync(candidatePath);
-    if (!stats.isFile()) {
-      throw new Error("path exists but is not a file");
-    }
-
-    const content = readFileSync(candidatePath, "utf-8");
-    return {
-      source: candidatePath,
-      title: `File: ${basename(candidatePath)}`,
-      content,
-    };
-  }
-
-  return {
-    source: "inline",
-    title: `Inline reference: ${toPreview(spec, 42)}`,
-    content: spec,
-  };
-}
-
-// ============================================================================
-// SSRF Protection
-// ============================================================================
-
-/**
- * List of blocked hostname patterns for SSRF protection.
- * Blocks localhost, local domains, and internal domains.
- */
-const BLOCKED_HOSTNAME_PATTERNS = [
-  /^localhost$/i,
-  /\.local$/i,
-  /\.internal$/i,
-  /\.localhost$/i,
-  /^127\./,
-  /^0\.0\.0\.0$/,
-  /^::1$/,
-  /^::$/,
-];
-
-/**
- * Check if a hostname matches blocked patterns.
- */
-function isBlockedHostname(hostname: string): boolean {
-  const normalized = hostname.toLowerCase().trim();
-  for (const pattern of BLOCKED_HOSTNAME_PATTERNS) {
-    if (pattern.test(normalized)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Check if an IP address is private or reserved.
- * Blocks:
- * - 10.0.0.0/8 (Private network)
- * - 172.16.0.0/12 (Private network)
- * - 192.168.0.0/16 (Private network)
- * - 127.0.0.0/8 (Loopback)
- * - 169.254.0.0/16 (Link-local)
- * - 0.0.0.0/8 (Current network)
- * - 224.0.0.0/4 (Multicast)
- * - 240.0.0.0/4 (Reserved)
- * - ::1 (IPv6 loopback)
- * - fe80::/10 (IPv6 link-local)
- * - fc00::/7 (IPv6 unique local)
- */
-function isPrivateOrReservedIP(ip: string): boolean {
-  // Handle IPv6 addresses
-  const normalizedIP = ip.toLowerCase();
-
-  // IPv6 loopback
-  if (normalizedIP === "::1" || normalizedIP === "::") {
-    return true;
-  }
-
-  // IPv6 link-local (fe80::/10)
-  if (normalizedIP.startsWith("fe80:")) {
-    return true;
-  }
-
-  // IPv6 unique local (fc00::/7)
-  if (normalizedIP.startsWith("fc") || normalizedIP.startsWith("fd")) {
-    return true;
-  }
-
-  // IPv4-mapped IPv6 addresses (::ffff:192.168.1.1)
-  const ipv4Mapped = normalizedIP.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (ipv4Mapped) {
-    return isPrivateIPv4(ipv4Mapped[1]);
-  }
-
-  // Parse IPv4 address
-  const parts = ip.split(".");
-  if (parts.length !== 4) {
-    // Not a valid IPv4, could be IPv6 or invalid
-    return false;
-  }
-
-  return isPrivateIPv4(ip);
-}
-
-/**
- * Check if an IPv4 address is private or reserved.
- */
-function isPrivateIPv4(ip: string): boolean {
-  const parts = ip.split(".").map((p) => parseInt(p, 10));
-  if (parts.length !== 4 || parts.some(isNaN)) {
-    return false;
-  }
-
-  const [a, b] = parts;
-
-  // 10.0.0.0/8
-  if (a === 10) return true;
-
-  // 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
-  if (a === 172 && b >= 16 && b <= 31) return true;
-
-  // 192.168.0.0/16
-  if (a === 192 && b === 168) return true;
-
-  // 127.0.0.0/8 (Loopback)
-  if (a === 127) return true;
-
-  // 169.254.0.0/16 (Link-local)
-  if (a === 169 && b === 254) return true;
-
-  // 0.0.0.0/8 (Current network)
-  if (a === 0) return true;
-
-  // 224.0.0.0/4 (Multicast)
-  if (a >= 224 && a <= 239) return true;
-
-  // 240.0.0.0/4 (Reserved for future use)
-  if (a >= 240) return true;
-
-  return false;
-}
-
-/**
- * Validate URL for SSRF protection.
- * Throws an error if the URL points to a blocked resource.
- */
-async function validateUrlForSsrf(urlString: string): Promise<void> {
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(urlString);
-  } catch {
-    throw new Error(`Invalid URL: ${urlString}`);
-  }
-
-  // Only allow http and https protocols
-  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-    throw new Error(`URL protocol not allowed: ${parsedUrl.protocol}`);
-  }
-
-  const hostname = parsedUrl.hostname;
-
-  // Check blocked hostname patterns
-  if (isBlockedHostname(hostname)) {
-    throw new Error(`Access to hostname blocked (SSRF protection): ${hostname}`);
-  }
-
-  // Resolve DNS and check IP
-  try {
-    const dnsResult = await dnsLookup(hostname);
-    const resolvedIP = dnsResult.address;
-
-    if (isPrivateOrReservedIP(resolvedIP)) {
-      throw new Error(
-        `Access to private/reserved IP blocked (SSRF protection): ${hostname} resolves to ${resolvedIP}`
-      );
-    }
-  } catch (error) {
-    // If it's our SSRF error, re-throw it
-    if (error instanceof Error && error.message.includes("SSRF protection")) {
-      throw error;
-    }
-    // DNS resolution failed - this could be a security issue or just a bad domain
-    // We'll let it through and let the fetch fail naturally
-  }
-}
-
-async function fetchTextFromUrl(url: string, signal?: AbortSignal): Promise<string> {
-  // SSRF protection: validate URL before fetching
-  await validateUrlForSsrf(url);
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
-  const relayAbort = () => controller.abort();
-  signal?.addEventListener("abort", relayAbort, { once: true });
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "user-agent": "pi-loop-extension/1.0",
-        accept: "text/plain,text/markdown,text/html,application/json;q=0.9,*/*;q=0.5",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const body = await response.text();
-    if (looksLikeHtml(body)) {
-      return htmlToText(body);
-    }
-    return body;
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener("abort", relayAbort);
-  }
-}
-
-function buildIterationPrompt(input: {
-  task: string;
-  goal?: string;
-  verificationCommand?: string;
-  iteration: number;
-  maxIterations: number;
-  references: LoopReference[];
-  previousOutput: string;
-  validationFeedback: string[];
-}): string {
-  const lines: string[] = [];
-
-  lines.push("You are executing an autonomous quality-improvement loop.");
-  lines.push(`Iteration ${input.iteration} of ${input.maxIterations}.`);
-  lines.push("");
-  lines.push("Task:");
-  lines.push(input.task);
-  lines.push("");
-
-  if (input.goal?.trim()) {
-    lines.push("Completion goal:");
-    lines.push(input.goal.trim());
-    lines.push("");
-  }
-
-  if (input.verificationCommand?.trim()) {
-    lines.push("Deterministic verification command (must pass before STATUS: done):");
-    lines.push(input.verificationCommand.trim());
-    lines.push("");
-  }
-
-  lines.push("Rules:");
-  lines.push("- Improve correctness and clarity relative to previous attempts.");
-  lines.push("- When references are provided, cite them inline as [R1], [R2], ...");
-  lines.push("- Do not invent reference IDs.");
-  lines.push("- Use STATUS: done only if the task is actually complete.");
-  lines.push("- If a completion goal exists, mark STATUS: done only when GOAL_STATUS is met.");
-  lines.push("- Return the machine-readable contract in <LOOP_JSON>...</LOOP_JSON>.");
-  lines.push("");
-
-  if (input.references.length > 0) {
-    lines.push("Reference pack:");
-    lines.push(buildReferencePack(input.references));
-    lines.push("");
-  }
-
-  if (input.previousOutput.trim()) {
-    lines.push("Previous iteration output:");
-    lines.push(truncateText(input.previousOutput, LIMITS.maxPreviousOutputChars));
-    lines.push("");
-  }
-
-  if (input.validationFeedback.length > 0) {
-    lines.push("Fix these validation issues from the previous iteration:");
-    for (const issue of input.validationFeedback) {
-      lines.push(`- ${issue}`);
-    }
-    lines.push("");
-  }
-
-  lines.push("Output format (strict):");
-  lines.push(`<${LOOP_JSON_BLOCK_TAG}>`);
-  lines.push("{");
-  lines.push('  "status": "continue|done",');
-  lines.push('  "goal_status": "met|not_met|unknown",');
-  lines.push('  "goal_evidence": "short objective evidence or none",');
-  lines.push('  "summary": "1-3 lines",');
-  lines.push('  "next_actions": ["specific next step or none"],');
-  lines.push('  "citations": ["R1", "R2"]');
-  lines.push("}");
-  lines.push(`</${LOOP_JSON_BLOCK_TAG}>`);
-  lines.push(`<${LOOP_RESULT_BLOCK_TAG}>`);
-  lines.push("<main answer>");
-  lines.push(`</${LOOP_RESULT_BLOCK_TAG}>`);
-
-  return lines.join("\n");
-}
-
-function buildReferencePack(references: LoopReference[]): string {
-  const lines: string[] = [];
-  for (const ref of references) {
-    lines.push(`[${ref.id}] ${ref.title}`);
-    lines.push(`Source: ${ref.source}`);
-    lines.push(ref.content);
-    lines.push("");
-  }
-  return lines.join("\n").trim();
-}
-
-function buildIterationFocus(task: string, previousOutput: string, validationFeedback: string[]): string {
-  if (validationFeedback.length > 0) {
-    return `fix: ${validationFeedback[0]}`;
-  }
-
-  const nextStep = extractNextStepLine(previousOutput);
-  if (nextStep && !/^none$/i.test(nextStep.trim())) {
-    return `next: ${nextStep}`;
-  }
-
-  return task;
-}
-
-function extractNextStepLine(output: string): string {
-  const structured = parseLoopJsonObject(output);
-  if (structured) {
-    const nextActions = normalizeStringArray(structured.next_actions);
-    if (nextActions.length > 0) {
-      return nextActions[0] ?? "";
-    }
-  }
-  const match = output.match(/^\s*next[_\s-]*step\s*:\s*(.+)$/im);
-  return match?.[1]?.trim() ?? "";
-}
-
-function extractSummaryLine(output: string): string {
-  const structured = parseLoopJsonObject(output);
-  if (structured) {
-    const summary = normalizeOptionalText(structured.summary);
-    if (summary) {
-      return summary;
-    }
-  }
-
-  const match = output.match(/^\s*summary\s*:\s*(.+)$/im);
-  if (match?.[1]?.trim()) {
-    return match[1].trim();
-  }
-
-  const lines = output
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines[0] ?? "";
-}
-
-function buildLoopCommandPreview(model: {
-  provider: string;
-  id: string;
-  thinkingLevel: ThinkingLevel;
-}): string {
-  const parts = [
-    "pi -p --no-extensions",
-    `--provider ${model.provider}`,
-    `--model ${model.id}`,
-  ];
-
-  if (model.thinkingLevel) {
-    parts.push(`--thinking ${model.thinkingLevel}`);
-  }
-
-  return parts.join(" ");
-}
-
-// Parse the machine contract first, then fall back to legacy text fields.
-function parseLoopContract(output: string, hasGoal: boolean): ParsedLoopContract {
-  const parseErrors: string[] = [];
-  let status = parseLoopStatus(output);
-  let goalStatus = parseLoopGoalStatus(output, hasGoal);
-  let goalEvidence = extractGoalEvidence(output);
-  let citations = extractCitations(output);
-  let summary = extractSummaryLine(output);
-  const legacyNextStep = normalizeOptionalText(extractNextStepLine(output));
-  let nextActions = legacyNextStep ? [legacyNextStep] : [];
-  let usedStructuredBlock = false;
-
-  const structured = parseLoopJsonObject(output);
-  if (structured) {
-    usedStructuredBlock = true;
-
-    const normalizedStatus = normalizeLoopStatus(structured.status);
-    if (normalizedStatus === "unknown") {
-      parseErrors.push("LOOP_JSON.status must be continue or done.");
-    } else {
-      status = normalizedStatus;
-    }
-
-    const structuredGoalStatus = parseStructuredLoopGoalStatus(structured.goal_status);
-    if (!structuredGoalStatus.valid) {
-      parseErrors.push("LOOP_JSON.goal_status must be met, not_met, or unknown.");
-    }
-    goalStatus = hasGoal ? structuredGoalStatus.status : "met";
-
-    const structuredGoalEvidence = normalizeOptionalText(structured.goal_evidence);
-    if (structuredGoalEvidence) {
-      goalEvidence = structuredGoalEvidence;
-    }
-
-    const structuredSummary = normalizeOptionalText(structured.summary);
-    if (!structuredSummary) {
-      parseErrors.push("LOOP_JSON.summary is required.");
-    } else {
-      summary = structuredSummary;
-    }
-
-    const structuredNextActions = normalizeStringArray(structured.next_actions);
-    if (structuredNextActions.length === 0) {
-      parseErrors.push("LOOP_JSON.next_actions must be a non-empty string array.");
-    } else {
-      nextActions = structuredNextActions;
-    }
-
-    const citationsValue = structured.citations;
-    if (!Array.isArray(citationsValue)) {
-      parseErrors.push("LOOP_JSON.citations must be a string array.");
-    } else {
-      const normalizedCitations = normalizeCitationList(citationsValue);
-      if (normalizedCitations.length !== citationsValue.length) {
-        parseErrors.push("LOOP_JSON.citations must contain only valid R# IDs.");
-      }
-      citations = normalizedCitations;
-    }
-  } else {
-    parseErrors.push("Missing <LOOP_JSON> contract block.");
-  }
-
-  if (!summary) {
-    parseErrors.push("Missing summary.");
-  }
-
-  if (nextActions.length === 0) {
-    nextActions = ["none"];
-  }
-
-  return {
-    status,
-    goalStatus,
-    goalEvidence,
-    citations,
-    summary,
-    nextActions,
-    parseErrors,
-    usedStructuredBlock,
-  };
-}
-
-function extractTaggedBlock(output: string, tag: string): string | undefined {
-  const pattern = new RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*<\\/${tag}>`, "i");
-  const match = output.match(pattern);
-  if (!match?.[1]) return undefined;
-  return match[1].trim();
-}
-
-function extractLoopResultBody(output: string): string {
-  const block = extractTaggedBlock(output, LOOP_RESULT_BLOCK_TAG);
-  if (block) return block;
-  return output.trim();
-}
-
-function parseLoopJsonObject(output: string): Record<string, unknown> | undefined {
-  const block = extractTaggedBlock(output, LOOP_JSON_BLOCK_TAG);
-  if (!block) return undefined;
-
-  const trimmed = stripMarkdownCodeFence(block);
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return undefined;
-    }
-    return parsed as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
-}
-
-function stripMarkdownCodeFence(value: string): string {
-  const trimmed = value.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  if (fenced?.[1]) {
-    return fenced[1].trim();
-  }
-  return trimmed;
-}
-
-function normalizeLoopStatus(value: unknown): LoopStatus {
-  const normalized = String(value ?? "")
-    .trim()
-    .toLowerCase();
-  if (normalized === "continue" || normalized === "done") {
-    return normalized;
-  }
-  return "unknown";
-}
-
-function normalizeLoopGoalStatus(value: unknown): LoopGoalStatus {
-  const normalized = String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-  if (normalized === "met") return "met";
-  if (normalized === "not_met") return "not_met";
-  if (normalized === "unknown") return "unknown";
-  return "unknown";
-}
-
-function parseStructuredLoopGoalStatus(
-  value: unknown,
-): { status: LoopGoalStatus; valid: boolean } {
-  const raw = String(value ?? "").trim();
-  if (!raw) {
-    return { status: "unknown", valid: false };
-  }
-
-  const normalized = normalizeLoopGoalStatus(raw);
-  if (normalized === "met" || normalized === "not_met" || normalized === "unknown") {
-    const valid =
-      normalized === "unknown"
-        ? /^unknown$/i.test(raw.trim())
-        : true;
-    return { status: normalized, valid };
-  }
-
-  return { status: "unknown", valid: false };
-}
-
-function normalizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const normalized = value
-    .map((item) => normalizeOptionalText(item))
-    .filter((item): item is string => Boolean(item));
-  return Array.from(new Set(normalized));
-}
-
-function normalizeCitationId(value: unknown): string | undefined {
-  const raw = String(value ?? "").trim();
-  if (!raw) return undefined;
-
-  const match = raw.match(/^\[?R(\d+)\]?$/i);
-  if (!match?.[1]) return undefined;
-  const id = Number(match[1]);
-  if (!Number.isFinite(id) || id < 1) return undefined;
-  return `R${id}`;
-}
-
-function normalizeCitationList(values: unknown[]): string[] {
-  const normalizedIds = values
-    .map((value) => normalizeCitationId(value))
-    .filter((value): value is string => Boolean(value));
-  const unique = Array.from(new Set(normalizedIds));
-  unique.sort((left, right) => Number(left.slice(1)) - Number(right.slice(1)));
-  return unique;
-}
-
-function parseLoopStatus(output: string): LoopStatus {
-  const statusMatch = output.match(/^\s*status\s*:\s*(continue|done)\b/im);
-  if (statusMatch?.[1]) {
-    const value = statusMatch[1].toLowerCase();
-    if (value === "continue" || value === "done") return value;
-  }
-
-  const stopMatch = output.match(/^\s*stop\s*:\s*(yes|true|done)\b/im);
-  if (stopMatch) return "done";
-
-  return "unknown";
-}
-
-function parseLoopGoalStatus(output: string, hasGoal: boolean): LoopGoalStatus {
-  if (!hasGoal) return "met";
-
-  const match = output.match(/^\s*goal[_\s-]*status\s*:\s*(met|not[_\s-]*met|unknown)\b/im);
-  if (match?.[1]) {
-    const normalized = match[1].toLowerCase().replace(/[\s-]+/g, "_");
-    if (normalized === "met") return "met";
-    if (normalized === "not_met") return "not_met";
-    return "unknown";
-  }
-
-  const passMatch = output.match(/^\s*(goal[_\s-]*met|criteria[_\s-]*met)\s*:\s*(yes|true)\b/im);
-  if (passMatch) return "met";
-
-  return "unknown";
-}
-
-function extractGoalEvidence(output: string): string {
-  const structured = parseLoopJsonObject(output);
-  if (structured) {
-    const goalEvidence = normalizeOptionalText(structured.goal_evidence);
-    if (goalEvidence) {
-      return goalEvidence;
-    }
-  }
-
-  const match = output.match(/^\s*goal[_\s-]*evidence\s*:\s*(.+)$/im);
-  return match?.[1]?.trim() ?? "";
-}
-
-function extractCitations(output: string): string[] {
-  const structured = parseLoopJsonObject(output);
-  if (structured && Array.isArray(structured.citations)) {
-    return normalizeCitationList(structured.citations);
-  }
-
-  const ids = new Set<number>();
-  const matcher = /\[R(\d+)\]/gi;
-  let match: RegExpExecArray | null = null;
-
-  while (true) {
-    match = matcher.exec(output);
-    if (!match?.[1]) break;
-    ids.add(Number(match[1]));
-  }
-
-  return Array.from(ids)
-    .filter((id) => Number.isFinite(id) && id > 0)
-    .sort((a, b) => a - b)
-    .map((id) => `R${id}`);
-}
-
-function validateIteration(input: {
-  status: LoopStatus;
-  goal?: string;
-  goalStatus: LoopGoalStatus;
-  citations: string[];
-  referenceCount: number;
-  requireCitation: boolean;
-}): string[] {
-  const errors: string[] = [];
-
-  if (input.goal) {
-    if (input.goalStatus === "unknown") {
-      errors.push("Missing GOAL_STATUS. Use GOAL_STATUS: met|not_met|unknown.");
-    }
-    if (input.status === "done" && input.goalStatus !== "met") {
-      errors.push("STATUS is done but GOAL_STATUS is not met.");
-    }
-  }
-
-  if (input.referenceCount > 0 && input.requireCitation && input.citations.length === 0) {
-    errors.push("Missing citations. Add [R#] markers that map to the reference pack.");
-  }
-
-  const invalidIds = input.citations.filter((citation) => {
-    const id = Number(citation.slice(1));
-    return !Number.isFinite(id) || id < 1 || id > input.referenceCount;
-  });
-
-  if (invalidIds.length > 0) {
-    errors.push(`Invalid citation IDs: ${invalidIds.join(", ")}.`);
-  }
-
-  return errors;
-}
-
-function normalizeValidationFeedback(errors: string[]): string[] {
-  const compact = errors
-    .map((issue) => normalizeValidationIssue(issue))
-    .filter((issue): issue is string => Boolean(issue));
-  const unique = Array.from(new Set(compact));
-  unique.sort((left, right) => validationIssuePriority(left) - validationIssuePriority(right));
-  return unique
-    .slice(0, LIMITS.maxValidationFeedbackItems)
-    .map((issue, index) => `${index + 1}. ${toPreview(issue, LIMITS.maxValidationFeedbackCharsPerItem)}`);
-}
-
-function normalizeValidationIssue(issue: string): string {
-  const compact = String(issue ?? "")
-    .replace(/^\d+\.\s*/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!compact) return "";
-
-  if (/missing <loop_json>|contract block/i.test(compact)) {
-    return "Return <LOOP_JSON> with the required JSON object contract.";
-  }
-  if (/loop_json\.status/i.test(compact)) {
-    return 'Set "status" to "continue" or "done" in <LOOP_JSON>.';
-  }
-  if (/status is done but goal_status is not met/i.test(compact)) {
-    return "Do not set status=done until goal_status is met.";
-  }
-  if (/loop_json\.goal_status|goal_status/i.test(compact)) {
-    return 'Set "goal_status" to "met", "not_met", or "unknown" in <LOOP_JSON>.';
-  }
-  if (/loop_json\.summary|missing summary/i.test(compact)) {
-    return 'Provide a short "summary" field in <LOOP_JSON>.';
-  }
-  if (/loop_json\.next_actions/i.test(compact)) {
-    return 'Provide "next_actions" as a non-empty string array in <LOOP_JSON>.';
-  }
-  if (/loop_json\.citations|missing citations|invalid citation ids/i.test(compact)) {
-    return 'Fix citations: use valid ["R#"] IDs that exist in the reference pack.';
-  }
-  if (/verification command failed/i.test(compact)) {
-    return "Fix failing verification command before declaring done.";
-  }
-  return compact;
-}
-
-function validationIssuePriority(issue: string): number {
-  if (/status=done|status is done|do not set status=done/i.test(issue)) return 0;
-  if (/verification|command/i.test(issue)) return 1;
-  if (/goal_status|goal/i.test(issue)) return 2;
-  if (/citation|reference/i.test(issue)) return 3;
-  return 4;
-}
-
-function buildDoneDeclarationFeedback(errors: string[]): string[] {
-  return [
-    "STATUS=done was rejected by system validation. Keep STATUS=continue until all gates pass.",
-    ...errors,
-  ];
-}
-
-function buildIterationFailureOutput(message: string): string {
-  const contract = {
-    status: "continue",
-    goal_status: "unknown",
-    goal_evidence: "none",
-    summary: "iteration execution failed",
-    next_actions: ["retry with narrower scope"],
-    citations: [],
-  };
-  return [
-    `<${LOOP_JSON_BLOCK_TAG}>`,
-    JSON.stringify(contract, null, 2),
-    `</${LOOP_JSON_BLOCK_TAG}>`,
-    `<${LOOP_RESULT_BLOCK_TAG}>`,
-    message,
-    `</${LOOP_RESULT_BLOCK_TAG}>`,
-  ].join("\n");
-}
-
-function resolveVerificationPolicy(): VerificationPolicyConfig {
-  const rawMode = String(process.env[VERIFICATION_POLICY_ENV] || "")
-    .trim()
-    .toLowerCase();
-  const mode: VerificationPolicyMode =
-    rawMode === "always" || rawMode === "done_only" || rawMode === "every_n"
-      ? rawMode
-      : DEFAULT_VERIFICATION_POLICY_MODE;
-  const rawEveryN = Number(process.env[VERIFICATION_POLICY_EVERY_N_ENV]);
-  const everyN =
-    Number.isFinite(rawEveryN) && rawEveryN >= 1 ? Math.trunc(rawEveryN) : DEFAULT_VERIFICATION_POLICY_EVERY_N;
-  return { mode, everyN };
-}
-
-function shouldRunVerificationCommand(input: {
-  iteration: number;
-  maxIterations: number;
-  status: LoopStatus;
-  policy: VerificationPolicyConfig;
-}): boolean {
-  if (input.policy.mode === "always") {
-    return true;
-  }
-  if (input.policy.mode === "every_n") {
-    if (input.status === "done") return true;
-    if (input.iteration === input.maxIterations) return true;
-    return input.iteration % input.policy.everyN === 0;
-  }
-  return input.status === "done" || input.iteration === input.maxIterations;
-}
-
 async function callModelViaPi(
   model: { provider: string; id: string; thinkingLevel: ThinkingLevel },
   prompt: string,
@@ -2224,284 +1450,6 @@ async function callModelViaPi(
     signal,
     entityLabel: "loop",
   });
-}
-
-async function runVerificationCommand(input: {
-  command: string;
-  cwd: string;
-  timeoutMs: number;
-  signal?: AbortSignal;
-}): Promise<LoopVerificationResult> {
-  // Verification is executed without a shell and must match an explicit allowlist prefix.
-  const parsedCommand = parseVerificationCommand(input.command);
-  if (parsedCommand.error) {
-    return {
-      command: input.command,
-      passed: false,
-      timedOut: false,
-      exitCode: null,
-      durationMs: 0,
-      stdout: "",
-      stderr: "",
-      error: parsedCommand.error,
-    };
-  }
-
-  const allowlist = resolveVerificationAllowlistPrefixes();
-  if (!isVerificationCommandAllowed(parsedCommand, allowlist)) {
-    return {
-      command: input.command,
-      passed: false,
-      timedOut: false,
-      exitCode: null,
-      durationMs: 0,
-      stdout: "",
-      stderr: "",
-      error: `verification command is not allowed by ${VERIFICATION_ALLOWLIST_ENV}: ${formatAllowlistPreview(allowlist)}`,
-    };
-  }
-
-  const startedAt = Date.now();
-
-  return await new Promise<LoopVerificationResult>((resolvePromise) => {
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let settled = false;
-
-    const child = spawn(parsedCommand.executable, parsedCommand.args, {
-      cwd: input.cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-
-    const finish = (partial: {
-      passed: boolean;
-      timedOut: boolean;
-      exitCode: number | null;
-      error?: string;
-    }) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolvePromise({
-        command: input.command,
-        passed: partial.passed,
-        timedOut: partial.timedOut,
-        exitCode: partial.exitCode,
-        durationMs: Date.now() - startedAt,
-        stdout: truncateText(redactSensitiveText(stdout.trim()), 1_200),
-        stderr: truncateText(redactSensitiveText(stderr.trim()), 1_200),
-        error: partial.error,
-      });
-    };
-
-    const killSafely = (sig: NodeJS.Signals) => {
-      if (child.killed) return;
-      try {
-        child.kill(sig);
-      } catch {
-        // noop
-      }
-    };
-
-    const onAbort = () => {
-      killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-      finish({
-        passed: false,
-        timedOut: false,
-        exitCode: null,
-        error: "verification aborted",
-      });
-    };
-
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
-    }, input.timeoutMs);
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      input.signal?.removeEventListener("abort", onAbort);
-    };
-
-    input.signal?.addEventListener("abort", onAbort, { once: true });
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
-    });
-
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
-    });
-
-    child.on("error", (error) => {
-      finish({
-        passed: false,
-        timedOut: false,
-        exitCode: null,
-        error: toErrorMessage(error),
-      });
-    });
-
-    child.on("close", (code) => {
-      if (timedOut) {
-        finish({
-          passed: false,
-          timedOut: true,
-          exitCode: code,
-          error: `verification timed out after ${input.timeoutMs}ms`,
-        });
-        return;
-      }
-
-      if (code !== 0) {
-        const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
-        finish({
-          passed: false,
-          timedOut: false,
-          exitCode: code,
-          error: detail,
-        });
-        return;
-      }
-
-      finish({
-        passed: true,
-        timedOut: false,
-        exitCode: code,
-      });
-    });
-  });
-}
-
-function parseVerificationCommand(command: string): ParsedVerificationCommand {
-  const raw = String(command ?? "").trim();
-  if (!raw) {
-    return {
-      executable: "",
-      args: [],
-      error: "verification command is empty",
-    };
-  }
-
-  if (/[\r\n]/.test(raw)) {
-    return {
-      executable: "",
-      args: [],
-      error: "verification command must be a single line",
-    };
-  }
-
-  if (/[|&;<>()$`]/.test(raw)) {
-    return {
-      executable: "",
-      args: [],
-      error: "shell operators are not allowed in verification command",
-    };
-  }
-
-  const tokens = tokenizeArgs(raw).filter(Boolean);
-  if (tokens.length === 0) {
-    return {
-      executable: "",
-      args: [],
-      error: "verification command is empty",
-    };
-  }
-
-  return {
-    executable: tokens[0],
-    args: tokens.slice(1),
-  };
-}
-
-function resolveVerificationAllowlistPrefixes(): string[][] {
-  // Always start with the default allowlist for security
-  const basePrefixes = DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES.map((item) => [...item]);
-
-  // Check for deprecated override environment variable (warn but still process for backwards compat)
-  const rawOverride = String(process.env[VERIFICATION_ALLOWLIST_ENV] || "").trim();
-  if (rawOverride) {
-    console.warn(
-      `[loop] Warning: ${VERIFICATION_ALLOWLIST_ENV} is deprecated. ` +
-      `Use ${VERIFICATION_ALLOWLIST_ADDITIONAL_ENV} to add prefixes instead of overriding. ` +
-      `Override will be ignored for security reasons.`
-    );
-  }
-
-  // Only allow additional prefixes via the new environment variable
-  const rawAdditional = String(process.env[VERIFICATION_ALLOWLIST_ADDITIONAL_ENV] || "").trim();
-  if (!rawAdditional) {
-    return basePrefixes;
-  }
-
-  const additionalPrefixes = rawAdditional
-    .split(",")
-    .map((item) => item.trim())
-    .map((entry) => tokenizeArgs(entry))
-    .map((tokens) => tokens.map((token) => token.trim()).filter(Boolean))
-    .filter((tokens) => tokens.length > 0);
-
-  // Merge base prefixes with additional prefixes (additional are appended)
-  return [...basePrefixes, ...additionalPrefixes];
-}
-
-function isVerificationCommandAllowed(
-  command: ParsedVerificationCommand,
-  allowlistPrefixes: string[][],
-): boolean {
-  const commandTokens = [command.executable, ...command.args].map((token) => token.toLowerCase());
-  return allowlistPrefixes.some((prefix) => {
-    if (prefix.length === 0 || commandTokens.length < prefix.length) {
-      return false;
-    }
-    return prefix.every((token, index) => token.toLowerCase() === commandTokens[index]);
-  });
-}
-
-function formatAllowlistPreview(prefixes: string[][]): string {
-  const preview = prefixes.slice(0, 6).map((prefix) => prefix.join(" "));
-  if (prefixes.length > 6) {
-    preview.push("...");
-  }
-  return preview.join(", ");
-}
-
-function redactSensitiveText(value: string): string {
-  if (!value) return value;
-
-  const replacements: Array<[RegExp, string]> = [
-    [/(api[_-]?key\s*[:=]\s*)([^\s]+)/gi, "$1[REDACTED]"],
-    [/(token\s*[:=]\s*)([^\s]+)/gi, "$1[REDACTED]"],
-    [/(password\s*[:=]\s*)([^\s]+)/gi, "$1[REDACTED]"],
-    [/(secret\s*[:=]\s*)([^\s]+)/gi, "$1[REDACTED]"],
-    [/(bearer\s+)([a-z0-9._-]+)/gi, "$1[REDACTED]"],
-  ];
-
-  let redacted = value;
-  for (const [pattern, replacement] of replacements) {
-    redacted = redacted.replace(pattern, replacement);
-  }
-  return redacted;
-}
-
-function buildVerificationValidationFeedback(result: LoopVerificationResult): string[] {
-  if (result.passed) return [];
-
-  const duration = formatDuration(result.durationMs);
-  const code = result.exitCode === null ? "none" : String(result.exitCode);
-  const reason = result.error || result.stderr || result.stdout || "verification failed";
-  const compactReason = toPreview(reason.replace(/\s+/g, " ").trim(), 180);
-
-  return [
-    `Verification: passed=false timedOut=${result.timedOut ? "yes" : "no"} exit=${code} duration=${duration}.`,
-    `Verification reason: ${compactReason}`,
-  ];
 }
 
 function startLoopActivityIndicator(ctx: any, maxIterations: number): LoopActivityIndicator {
@@ -2704,10 +1652,6 @@ function htmlToText(value: string): string {
 function truncateText(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, maxChars)}\n...[truncated]`;
-}
-
-function normalizeLoopOutput(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
 }
 
 function toPreview(value: string, maxChars: number): string {

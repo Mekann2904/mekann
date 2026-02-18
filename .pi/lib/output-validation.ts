@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/output-validation.ts
+ * role: 構造化された出力形式への準拠を検証するバリデーター
+ * why: サブエージェントおよびチームメンバーの出力がフォーマット要件を満たしていることを保証するため
+ * related: .pi/lib/output-schema.ts, .pi/lib/subagent-executor.ts, .pi/lib/team-executor.ts
+ * public_api: hasNonEmptyResultSection, validateSubagentOutput, validateTeamMemberOutput, SubagentValidationOptions, TeamMemberValidationOptions
+ * invariants: 必須ラベル（SUMMARY等）は大文字小文字を区別せず検出される
+ * side_effects: スキーマ検証モードが有効な場合、違反記録関数（recordSchemaViolation）を呼び出す
+ * failure_modes: 必須ラベル欠如、RESULTセクションの空欄、文字数不足、スキーマ違反
+ * @abdd.explain
+ * overview: サブエージェントとチームメンバーの出力テキストに対し、正規表現およびオプションでJSONスキーマを用いた構文検証を行うモジュール
+ * what_it_does:
+ *   - RESULTセクションの内容有無を確認する
+ *   - 最小文字数および必須ラベルの存在を検証する
+ *   - 機能フラグに基づきレガシー検証、デュアル検証、厳格検証を切り替える
+ * why_it_exists:
+ *   - エージェントの出力フォーマットを統一し、ダウンストリーム処理の安定性を確保する
+ *   - スキーマ検証（P0-1改善）により構造的な整合性を強化する
+ * scope:
+ *   in: 検証対象の文字列（output）、検証オプション（minChars, requiredLabels）
+ *   out: 検証結果（ok: boolean, reason: string）
+ */
+
+/**
  * Output validation utilities for subagent and team member outputs.
  * Provides consistent validation for structured output format compliance.
  *
@@ -22,9 +46,10 @@ import {
 } from "./output-schema.js";
 
 /**
- * Check if output has non-empty RESULT section.
- * @param output - Output text to check
- * @returns True if RESULT section has content
+ * 結果セクションが空でないか判定
+ * @summary 結果セクションを判定
+ * @param output 検証対象の文字列
+ * @returns 空でない場合はtrue
  */
 export function hasNonEmptyResultSection(output: string): boolean {
   const lines = output.split(/\r?\n/);
@@ -44,7 +69,9 @@ export function hasNonEmptyResultSection(output: string): boolean {
 }
 
 /**
- * Validation options for subagent output.
+ * サブエージェント検証オプション
+ * @summary 検証オプション定義
+ * @interface
  */
 export interface SubagentValidationOptions {
   minChars: number;
@@ -57,10 +84,11 @@ const SUBAGENT_DEFAULT_OPTIONS: SubagentValidationOptions = {
 };
 
 /**
- * Validate subagent output format and content.
- * @param output - Output text to validate
- * @param options - Validation options (optional)
- * @returns Validation result with ok status and optional reason
+ * サブエージェント出力を検証する
+ * @summary 出力を検証
+ * @param output 検証対象の文字列
+ * @param options 検証オプション（部分指定可）
+ * @returns 検証結果と理由を含むオブジェクト
  */
 export function validateSubagentOutput(
   output: string,
@@ -92,7 +120,9 @@ export function validateSubagentOutput(
 }
 
 /**
- * Validation options for team member output.
+ * チームメンバー検証オプション
+ * @summary 検証オプション定義
+ * @interface
  */
 export interface TeamMemberValidationOptions {
   minChars: number;
@@ -105,11 +135,11 @@ const TEAM_MEMBER_DEFAULT_OPTIONS: TeamMemberValidationOptions = {
 };
 
 /**
- * Validate team member output format and content.
- * Team member output requires more labels and longer content than subagent.
- * @param output - Output text to validate
- * @param options - Validation options (optional)
- * @returns Validation result with ok status and optional reason
+ * チームメンバ出力の検証を行う
+ * @summary 出力検証実行
+ * @param output 検証対象の文字列
+ * @param options 検証オプション
+ * @returns 検証結果オブジェクト
  */
 export function validateTeamMemberOutput(
   output: string,
@@ -141,7 +171,8 @@ export function validateTeamMemberOutput(
 // ============================================================================
 
 /**
- * Extended validation result with schema information.
+ * スキーマ情報を含む拡張検証結果のインターフェース
+ * @summary 拡張検証結果
  */
 export interface ExtendedValidationResult {
   ok: boolean;
@@ -156,12 +187,11 @@ export interface ExtendedValidationResult {
 }
 
 /**
- * Validate subagent output with enhanced schema support.
- * Respects PI_OUTPUT_SCHEMA_MODE feature flag.
- *
- * @param output - Output text to validate
- * @param options - Validation options (optional)
- * @returns Extended validation result with schema details
+ * サブエージェント出力の拡張検証を行う
+ * @summary サブエージェント検証
+ * @param output 検証対象の文字列
+ * @param options 検証オプション
+ * @returns 拡張検証結果
  */
 export function validateSubagentOutputEnhanced(
   output: string,
@@ -235,12 +265,11 @@ export function validateSubagentOutputEnhanced(
 }
 
 /**
- * Validate team member output with enhanced schema support.
- * Respects PI_OUTPUT_SCHEMA_MODE feature flag.
- *
- * @param output - Output text to validate
- * @param options - Validation options (optional)
- * @returns Extended validation result with schema details
+ * チームメンバ出力の拡張検証を行う
+ * @summary 拡張検証実行
+ * @param output 検証対象の文字列
+ * @param options 検証オプション
+ * @returns 拡張検証結果
  */
 export function validateTeamMemberOutputEnhanced(
   output: string,

@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/tui/live-monitor-base.ts
+ * role: ライブモニタービューの基底実装
+ * why: 複数のライブ監視（サブエージェント、エージェントチーム等）間でのコード重複を排除し、共通パターンを提供するため
+ * related: ../agent-utils.js, ../live-view-utils.js, ./tui-utils.ts, @mariozechner/pi-tui
+ * public_api: BaseLiveItem, BaseLiveMonitorController, LiveMonitorFactoryOptions, createLiveMonitorFactory
+ * invariants: BaseLiveItemの各フィールドは状態遷移に応じて一貫して更新される、stdout/stderrのバイト数と改行数はチャンク追加時に計算される
+ * side_effects: なし（純粋なロジックと型定義、ファクトリ関数のみを提供）
+ * failure_modes: チャンク追加時の文字数計算の誤り、ステータス更新の不整合、外部依存（@mariozechner/pi-tui）の変更によるビルドエラー
+ * @abdd.explain
+ * overview: サブエージェントやエージェントチームなど、異なる実装間で共通利用されるライブ監視機能の基底モジュール。データ構造、状態管理、ビューモードの切り替え、TUI描画ロジックを包含する。
+ * what_it_does:
+ *   - ライブアイテムの状態（pending, running等）と出力（stdout/stderr）を管理する型定義を提供
+ *   - ライブモニターの生成と制御を行うファクトリ関数（createLiveMonitorFactory）をエクスポート
+ *   - キー入力処理、リスト/詳細ビューの切り替え、プレビュー描画などの共通TUIロジックを実装
+ *   - フォーマットユーティリティ（時間、バイト数）を利用して画面表示を整形
+ * why_it_exists:
+ *   - 類似するライブモニター実装間でDRY原則に違反する重複コードを削除するため
+ *   - 新しい監視対象（エージェント等）を追加する際の実装コストを削減するため
+ * scope:
+ *   in: TUIライブラリ（@mariozechner/pi-tui）、内部フォーマットユーティリティ
+ *   out: ライブモニターインスタンス、制御コントローラ、基底型インターフェース
+ */
+
+/**
  * Generic live monitor base module.
  * Provides common patterns for live monitoring views (subagents, agent-teams, etc.).
  * Eliminates DRY violations between similar live monitor implementations.
@@ -6,41 +31,36 @@
 
 import { matchesKey, Key, truncateToWidth } from "@mariozechner/pi-tui";
 
-import {
-  formatDurationMs,
-  formatBytes,
-  formatClockTime,
-  computeLiveWindow,
-  getLiveStatusGlyph,
-  isEnterInput,
-  finalizeLiveLines,
-  appendTail,
-  countOccurrences,
-  estimateLineCount,
-  renderPreviewWithMarkdown,
-} from "./index.js";
+import { formatDurationMs, formatBytes, formatClockTime } from "../format-utils.js";
+import { computeLiveWindow } from "../agent-utils.js";
+import { getLiveStatusGlyph, isEnterInput, finalizeLiveLines } from "../live-view-utils.js";
+import { appendTail, countOccurrences, estimateLineCount, renderPreviewWithMarkdown } from "./tui-utils.js";
 
 // ============================================================================
 // Core Types
 // ============================================================================
 
 /**
- * Live item status.
+ * ライブアイテムの状態
+ * @summary 状態を取得
  */
 export type LiveItemStatus = "pending" | "running" | "completed" | "failed";
 
 /**
- * Live stream view options.
+ * ストリーム出力種別
+ * @summary 種別を取得
  */
 export type LiveStreamView = "stdout" | "stderr";
 
 /**
- * Live view mode options.
+ * ライブ表示モード種別
+ * @summary モードを取得
  */
 export type LiveViewMode = "list" | "detail";
 
 /**
- * Base interface for live monitor items with stream data.
+ * ライブアイテムの基底データ定義
+ * @summary 基底アイテム定義
  */
 export interface BaseLiveItem {
   id: string;
@@ -61,7 +81,8 @@ export interface BaseLiveItem {
 }
 
 /**
- * Base interface for live monitor controller.
+ * ライブモニタの基底コントローラー定義
+ * @summary 基底コントローラー定義
  */
 export interface BaseLiveMonitorController {
   markStarted: (id: string) => void;
@@ -72,7 +93,8 @@ export interface BaseLiveMonitorController {
 }
 
 /**
- * Input for creating a live item.
+ * ライブアイテム作成用の入力定義
+ * @summary アイテム作成入力定義
  */
 export interface CreateLiveItemInput {
   id: string;
@@ -80,7 +102,8 @@ export interface CreateLiveItemInput {
 }
 
 /**
- * Options for createLiveMonitorFactory.
+ * ライブモニタファクトリのオプション定義
+ * @summary ファクトリオプション定義
  */
 export interface LiveMonitorFactoryOptions<TItem extends BaseLiveItem> {
   createItem: (input: CreateLiveItemInput) => TItem;
@@ -94,7 +117,10 @@ export interface LiveMonitorFactoryOptions<TItem extends BaseLiveItem> {
 // ============================================================================
 
 /**
- * Create a base live item with default values.
+ * ライブアイテムを生成
+ * @summary ライブアイテム生成
+ * @param input アイテム生成入力
+ * @returns 生成されたライブアイテム
  */
 export function createBaseLiveItem(input: CreateLiveItemInput): BaseLiveItem {
   return {
@@ -116,7 +142,12 @@ export function createBaseLiveItem(input: CreateLiveItemInput): BaseLiveItem {
 // ============================================================================
 
 /**
- * Append a chunk to the appropriate stream tail.
+ * 適切なストリームにチャンクを追加する
+ * @summary チャンク追加処理
+ * @param {BaseLiveItem} item 対象のアイテム
+ * @param {LiveStreamView} stream 追加先のストリーム
+ * @param {string} chunk 追加するチャンク
+ * @returns {void}
  */
 export function appendStreamChunk(
   item: BaseLiveItem,
@@ -138,8 +169,12 @@ export function appendStreamChunk(
 }
 
 /**
- * Get the appropriate stream tail based on view mode and stream.
- * Auto-switches to stderr for failed items with no stdout.
+ * ビューモードとストリームに基づいて末尾を取得
+ * @summary ストリーム末尾取得
+ * @param {BaseLiveItem} item 対象のアイテム
+ * @param {LiveStreamView} stream 対象のストリーム
+ * @param {boolean} autoSwitchOnFailure 失敗時に自動切り替えするか
+ * @returns {string} 末尾の文字列
  */
 export function getStreamTail(
   item: BaseLiveItem,
@@ -159,14 +194,22 @@ export function getStreamTail(
 }
 
 /**
- * Get stream bytes count.
+ * バイト数を取得する
+ * @summary ストリーム容量取得
+ * @param {BaseLiveItem} item 対象のアイテム
+ * @param {LiveStreamView} stream 対象のストリーム
+ * @returns {number} バイト数
  */
 export function getStreamBytes(item: BaseLiveItem, stream: LiveStreamView): number {
   return stream === "stdout" ? item.stdoutBytes : item.stderrBytes;
 }
 
 /**
- * Get estimated stream line count.
+ * 行数を取得する
+ * @summary ストリーム行数取得
+ * @param {BaseLiveItem} item 対象のアイテム
+ * @param {LiveStreamView} stream 対象のストリーム
+ * @returns {number} 行数
  */
 export function getStreamLineCount(item: BaseLiveItem, stream: LiveStreamView): number {
   return estimateLineCount(
@@ -181,7 +224,13 @@ export function getStreamLineCount(item: BaseLiveItem, stream: LiveStreamView): 
 // ============================================================================
 
 /**
- * Common header data for live views.
+ * ヘッダー表示データ
+ * @summary ヘッダー情報定義
+ * @property {string} title タイトル
+ * @property {string} mode モード
+ * @property {number} running 実行中数
+ * @property {number} completed 完了数
+ * @property {number} failed 失敗数
  */
 export interface LiveViewHeaderData {
   title: string;
@@ -193,7 +242,12 @@ export interface LiveViewHeaderData {
 }
 
 /**
- * Render common header lines for live views.
+ * ヘッダー描画
+ * @summary ヘッダー描画
+ * @param data ヘッダー表示データ
+ * @param width 描画幅
+ * @param theme テーマ設定
+ * @returns 描画されたヘッダー行の配列
  */
 export function renderLiveViewHeader(
   data: LiveViewHeaderData,
@@ -215,7 +269,11 @@ export function renderLiveViewHeader(
 }
 
 /**
- * Render list item keyboard hints.
+ * キーボード操作のヒントを描画する
+ * @summary キーボードヒント描画
+ * @param width 表示幅
+ * @param theme テーマ設定
+ * @returns 描画行の配列
  */
 export function renderListKeyboardHints(width: number, theme: any): string[] {
   const lines: string[] = [];
@@ -231,9 +289,13 @@ export function renderListKeyboardHints(width: number, theme: any): string[] {
   return lines;
 }
 
-/**
- * Render detail item keyboard hints.
- */
+ /**
+  * 詳細画面のキーボード操作ヒントを描画する
+  * @param width 画面幅
+  * @param theme テーマ設定
+  * @param extraKeys 追加キーのヒント
+  * @returns 描画用の文字列配列
+  */
 export function renderDetailKeyboardHints(
   width: number,
   theme: any,
@@ -254,7 +316,15 @@ export function renderDetailKeyboardHints(
 }
 
 /**
- * Render list window with pagination.
+ * リストを描画
+ * @summary リストを描画
+ * @param items - アイテムの配列
+ * @param cursor - カーソル位置のインデックス
+ * @param windowSize - 表示するウィンドウのサイズ
+ * @param renderItem - アイテムを文字列に変換する関数
+ * @param width - 表示幅
+ * @param theme - テーマ設定オブジェクト
+ * @returns 描画された各行の文字列配列
  */
 export function renderListWindow<T>(
   items: T[],
@@ -286,9 +356,16 @@ export function renderListWindow<T>(
   return lines;
 }
 
-/**
- * Render a single list item line (base format).
- */
+ /**
+  * 単一のリストアイテム行を描画する
+  * @param item リストアイテム
+  * @param index インデックス
+  * @param isSelected 選択状態かどうか
+  * @param width 幅
+  * @param theme テーマ
+  * @param extraMeta 追加メタ情報
+  * @returns 描画された文字列
+  */
 export function renderBaseListItemLine(
   item: BaseLiveItem & { name?: string },
   index: number,
@@ -318,7 +395,18 @@ export function renderBaseListItemLine(
 }
 
 /**
- * Render selected item summary.
+ * 選択中アイテムの概要を描画する
+ * @summary 選択概要描画
+ * @param items アイテム配列
+ * @param cursor 選択位置のインデックス
+ * @param getItemId ID取得関数
+ * @param getItemName 名前取得関数
+ * @param getItemStatus ステータス取得関数
+ * @param getItemElapsed 経過時間取得関数
+ * @param width 幅
+ * @param theme テーマ設定
+ * @param extraInfo 追加情報取得関数
+ * @returns 描画結果の文字列配列
  */
 export function renderSelectedItemSummary<T>(
   items: T[],
@@ -352,7 +440,16 @@ export function renderSelectedItemSummary<T>(
 }
 
 /**
- * Render detail header for selected item.
+ * 選択アイテムの詳細ヘッダーを描画する
+ * @summary 詳細ヘッダー描画
+ * @param item 対象アイテム
+ * @param cursor 選択位置のインデックス
+ * @param total 全体の件数
+ * @param getItemId ID取得関数
+ * @param getItemName 名前取得関数
+ * @param width 幅
+ * @param theme テーマ設定
+ * @returns 描画結果の文字列配列
  */
 export function renderDetailHeader<T>(
   item: T,
@@ -375,7 +472,16 @@ export function renderDetailHeader<T>(
 }
 
 /**
- * Render stream output section.
+ * ストリーム出力セクションを描画する
+ * @summary ストリーム描画
+ * @param item ライブアイテム
+ * @param stream ライブストリームビュー
+ * @param width 幅
+ * @param height 高さ
+ * @param currentLines 現在の行数
+ * @param theme テーマ設定
+ * @param itemId アイテムID
+ * @returns 描画結果の文字列配列
  */
 export function renderStreamOutput(
   item: BaseLiveItem,
@@ -428,7 +534,12 @@ export function renderStreamOutput(
 // ============================================================================
 
 /**
- * Result of handling input.
+ * 入力処理結果のインターフェース
+ * @summary 入力結果定義
+ * @param handled 処理されたかどうか
+ * @param action 実行するアクション
+ * @param cursorDelta カーソルの相対移動量
+ * @param cursorAbsolute カーソルの絶対位置
  */
 export interface HandleInputResult {
   handled: boolean;
@@ -438,7 +549,10 @@ export interface HandleInputResult {
 }
 
 /**
- * Handle common keyboard input for list mode.
+ * リストモード入力を処理
+ * @summary リスト入力処理
+ * @param rawInput 生の入力文字列
+ * @returns 処理結果オブジェクト
  */
 export function handleListModeInput(rawInput: string): HandleInputResult {
   if (matchesKey(rawInput, "q") || matchesKey(rawInput, Key.escape)) {
@@ -473,7 +587,10 @@ export function handleListModeInput(rawInput: string): HandleInputResult {
 }
 
 /**
- * Handle common keyboard input for detail mode.
+ * @summary 詳細入力処理
+ * @description 詳細モード時の入力を解析します。
+ * @param rawInput 生の入力文字列
+ * @returns 処理結果
  */
 export function handleDetailModeInput(rawInput: string): HandleInputResult {
   if (matchesKey(rawInput, "q")) {
@@ -508,7 +625,11 @@ export function handleDetailModeInput(rawInput: string): HandleInputResult {
 }
 
 /**
- * Apply input result to state.
+ * @summary 結果を適用
+ * @description 入力結果を状態に適用し、次の操作を決定します。
+ * @param result 入力処理結果
+ * @param state 現在の状態
+ * @returns 更新された状態とフラグ
  */
 export function applyInputResult(
   result: HandleInputResult,

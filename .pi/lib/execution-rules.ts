@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/execution-rules.ts
+ * role: LLMエージェントの振る舞いを制御するシステムプロンプト定数の集約モジュール
+ * why: 複数のエージェントやサブエージェントに対し、統一的かつ論理的な推論・実行基準を提供するため
+ * related: .pi/lib/agent.ts, .pi/lib/tools.ts, .pi/prompts/system-prompt.ts
+ * public_api: COMMON_EXECUTION_RULES, SUBAGENT_SPECIFIC_RULES, COGNITIVE_BIAS_COUNTERMEASURES, SELF_VERIFICATION_RULES, WORKING_MEMORY_GUIDELINES, TERMINATION_CHECK_RULES
+ * invariants: すべての定数は `as const` で定義され、変更不可である
+ * side_effects: なし
+ * failure_modes: 定数の読み込みに失敗した場合、プロンプト生成が不完全になる
+ * @abdd.explain
+ * overview: エージェントの生成出力の品質担保、論理的誤謬の回避、タスク遂行プロセスの標準化を目的としたルールセットを定義する
+ * what_it_does:
+ *   - エージェント共通の出力フォーマット（絵文字禁止など）とツール使用規約を定義する
+ *   - 認知バイアス（確認バイアス、アンカリングなど）への具体的な対策手順を提示する
+ *   - 自己矛盾の有無や証拠の妥当性を検証するチェックリストを提供する
+ *   - 複雑なタスクにおける作業記憶の管理方法と推論のステップ化を指示する
+ *   - タスク完了前に達成状況を確認する終了チェック基準を設ける
+ * why_it_exists:
+ *   - LLM特有の推論失敗（論文「Large Language Model Reasoning Failures」）を軽減するため
+ *   - ユーザーとの対話およびコード生成の一貫性を維持するため
+ * scope:
+ *   in: 外部プロンプト定義ファイルやエージェント設定
+ *   out: 文字列配列、または改行結合された文字列としてのプロンプト指示
+ */
+
+/**
  * 共通実行ルール
  * 全てのエージェントおよびサブエージェントに適用される実行ルール
  */
@@ -368,7 +394,13 @@ export const QUESTION_TOOL_GUIDELINES = [
 ].join("\n");
 
 /**
- * 実行ルールセクションを構築する
+ * 実行ルールの構築オプション
+ * @summary 実行ルール構築オプション
+ * @param forSubagent サブエージェント向けかどうか
+ * @param forTeam チーム向けかどうか
+ * @param phase フェーズ
+ * @param includeGuidelines ガイドラインを含めるかどうか
+ * @returns void
  */
 export interface BuildExecutionRulesOptions {
   forSubagent?: boolean;
@@ -389,6 +421,12 @@ export interface BuildExecutionRulesOptions {
 // 実行ルールのキャッシュ（オプション組み合わせに対する結果を保持）
 const executionRulesCache = new Map<string, string>();
 
+/**
+ * 実行ルールセクションを構築
+ * @summary 実行ルール構築
+ * @param options 構築オプション
+ * @returns 実行ルール文字列
+ */
 export function buildExecutionRulesSection(options: BuildExecutionRulesOptions = {}): string {
   // キャッシュキーを生成（新しいオプションを含む）
   const cacheKey = [
@@ -492,8 +530,10 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
 const subagentRulesCache = new Map<string, string>();
 
 /**
- * サブエージェント用の実行ルールを取得
- * デフォルトで認知バイアス対策と自己検証ルールを含める
+ * サブエージェントルールを取得
+ * @summary サブエージェントルール取得
+ * @param includeGuidelines ガイドラインを含めるか
+ * @returns 実行ルール文字列
  */
 export function getSubagentExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
@@ -515,9 +555,11 @@ export function getSubagentExecutionRules(includeGuidelines = false): string {
 const teamMemberRulesCache = new Map<string, string>();
 
 /**
- * チームメンバー用の実行ルールを取得
- * デフォルトで認知バイアス対策と自己検証ルールを含める
- * 論文「Large Language Model Reasoning Failures」のP0/P1推奨事項を含む
+ * チームメンバールールを取得
+ * @summary チームメンバールール取得
+ * @param phase フェーズ ("initial" | "communication")
+ * @param includeGuidelines ガイドラインを含めるか
+ * @returns 実行ルール文字列
  */
 export function getTeamMemberExecutionRules(
   phase: "initial" | "communication" = "initial",
@@ -546,8 +588,10 @@ export function getTeamMemberExecutionRules(
 const challengerRulesCache = new Map<string, string>();
 
 /**
- * Challengerサブエージェント用の実行ルールを取得
- * 論文「Large Language Model Reasoning Failures」のP0推奨事項
+ * チャレンジャールールを取得
+ * @summary チャレンジャールール取得
+ * @param includeGuidelines ガイドラインを含めるか
+ * @returns 実行ルール文字列
  */
 export function getChallengerExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
@@ -570,8 +614,10 @@ export function getChallengerExecutionRules(includeGuidelines = false): string {
 const inspectorRulesCache = new Map<string, string>();
 
 /**
+ * @summary 検査実行ルール取得
  * Inspectorサブエージェント用の実行ルールを取得
- * 論文「Large Language Model Reasoning Failures」のP0推奨事項
+ * @param includeGuidelines ガイドラインを含めるかどうか
+ * @returns 生成された実行ルール
  */
 export function getInspectorExecutionRules(includeGuidelines = false): string {
   const key = String(includeGuidelines);
@@ -594,8 +640,10 @@ export function getInspectorExecutionRules(includeGuidelines = false): string {
 const verificationWorkflowRulesCache = new Map<string, string>();
 
 /**
- * 検証ワークフロー用の実行ルールを取得
- * 論文「Large Language Model Reasoning Failures」のP0推奨事項
+ * @summary 実行ルール取得
+ * @param phase 対象フェーズ ("inspector" | "challenger" | "both")
+ * @param includeGuidelines ガイドラインを含めるか
+ * @returns 実行ルールの文字列
  */
 export function getVerificationWorkflowExecutionRules(
   phase: "inspector" | "challenger" | "both" = "both",

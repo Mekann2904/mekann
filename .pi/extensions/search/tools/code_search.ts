@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/code_search.ts
+ * role: コード検索ツールの実装とフォールバック処理
+ * why: ripgrepによる高速検索と、利用不可時のネイティブNode.js実装を提供するため
+ * related: .pi/extensions/search/utils/cli.js, .pi/extensions/search/types.js, .pi/extensions/search/utils/output.js, .pi/extensions/search/utils/cache.js
+ * public_api: nativeCodeSearch(input, cwd)
+ * invariants: 検索結果はlimitで指定された数（またはデフォルト値）を上限とする、正規表現フラグはignoreCaseオプションに依存する
+ * side_effects: ファイルシステムの読み取りを行う、キャッシュと履歴へのアクセスを行う
+ * failure_modes: 無効な正規表現パターン、ファイルの読み取りエラー（スキップされる）、プロセス実行の失敗
+ * @abdd.explain
+ * overview: ripgrepを使用した高速コード検索と、環境依存しない純粋なNode.js実装によるフォールバック機能を提供するモジュール。
+ * what_it_does:
+ *   - ripgrep（rg）コマンドを実行し、JSON出力を解析して検索結果を返す
+ *   - ripgrepが利用できない場合、Node.jsのfsモジュールを使用してファイルを走査し検索する
+ *   - 正規表現パターンのコンパイルと、除外パターン（globおよび完全一致）によるフィルタリングを行う
+ *   - 検索結果の要約と、上限制限（limit）に基づく切り捨て処理を行う
+ * why_it_exists:
+ *   - 外部ツールへの依存を最小限にしつつ、高速な検索パフォーマンスを実現するため
+ *   - 実行環境によってripgrepがインストールされていない場合でも検索機能を担保するため
+ * scope:
+ *   in: 検索パターン、オプション（大文字小文字の区別、リミット、除外パターン等）、カレントワーキングディレクトリ
+ *   out: 検索一致の配列（CodeSearchMatch）、検索の要約（CodeSearchSummary）、またはエラーオブジェクト
+ */
+
+/**
  * code_search Tool
  *
  * Fast code search using ripgrep (rg) with JSON output and fallback support
@@ -203,7 +228,11 @@ function extractResultPaths(results: CodeSearchMatch[]): string[] {
 // ============================================
 
 /**
- * Code search with rg or fallback
+ * コードを検索
+ * @summary コード検索
+ * @param input 検索入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 検索結果データ
  */
 export async function codeSearch(
 	input: CodeSearchInput,

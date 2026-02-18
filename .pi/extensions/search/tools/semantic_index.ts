@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/semantic_index.ts
+ * role: ソースコードのベクトル検索インデックスを作成するツール
+ * why: コードの意味的検索を可能にするため、ファイルをチャンク化してベクトル埋め込みを生成・永続化する
+ * related: .pi/extensions/search/types.js, .pi/extensions/search/utils/constants.js, .pi/extensions/search/tools/embeddings.ts
+ * public_api: semantic_index (SemanticIndexInput): Promise<SemanticIndexOutput>
+ * invariants: 出力ディレクトリ構造はINDEX_DIR_NAMEに依存する、チャンクIDはファイルパスと行番号から一意に決まる
+ * side_effects: ファイルシステムへのインデックスファイル(semantic-index.jsonl, semantic-meta.json)の書き込み、インデックスディレクトリの作成
+ * failure_modes: ファイル読み込み権限不足、埋め込み生成APIの失敗、ディスク容量不足
+ * @abdd.explain
+ * overview: 指定されたディレクトリ内のコードファイルを収集・分割し、ベクトル埋め込みを生成してセマンティックインデックスを構築するツール
+ * what_it_does:
+ *   - 対象ディレクトリから拡張子に基づいてファイルを再帰的に収集する
+ *   - コードを行単位のチャンク（オーバーラップあり）に分割し、IDと言語情報を付与する
+ *   - 各チャックのベクトル埋め込みを生成し、JSONL形式で保存する
+ *   - インデックスのメタデータ（ハッシュ、設定など）を管理する
+ * why_it_exists:
+ *   - LLMによるコード解析や検索において、ファイル単位よりもチャンク単位の方が精度が高いため
+ *   - 埋め込み計算のコストを削減するため、差分更新やキャッシュ機構が必要なため
+ * scope:
+ *   in: SemanticIndexInput (path, extensions, excludes, force, chunkSize, overlap)
+ *   out: SemanticIndexOutput (status, stats, meta)
+ */
+
+/**
  * Semantic Index Tool
  *
  * Generates vector embeddings for code files and stores them in a semantic index.
@@ -262,7 +287,11 @@ async function saveMetadata(
 // ============================================================================
 
 /**
- * Generate semantic index for code files.
+ * 意味的索引を作成
+ * @summary 意味的索引作成
+ * @param input 入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 索引作成結果
  */
 export async function semanticIndex(
 	input: SemanticIndexInput,

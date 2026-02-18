@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/call-graph/builder.ts
+ * role: コールグラフの構築とインデックスの永続化を担当するモジュール
+ * why: ripgrepとctagsを利用した静的解析により、関数呼び出し関係を可視化し、コード探索を支援するため
+ * related: .pi/extensions/search/call-graph/types.ts, .pi/extensions/search/utils/cli.ts, .pi/extensions/search/tools/sym_index.ts, .pi/extensions/search/utils/constants.ts
+ * public_api: getCallGraphDir, getCallGraphIndexPath, mapKind
+ * invariants: インデックスのバージョンは1である、コールグラフディレクトリは.pi/search/call-graph配下である
+ * side_effects: ファイルシステムへのディレクトリ作成およびJSONファイルの書き込み
+ * failure_modes: ripgrepまたはctagsの実行失敗、ctagsの出力形式の変更、パーミッションエラーによる書き込み失敗
+ * @abdd.explain
+ * overview: ripgrepによるテキスト検索とctagsによるシンボル定義を組み合わせ、関数呼び出しノードとエッジを持つコールグラフを構築する
+ * what_it_does:
+ *   - ctagsの出力から関数定義を抽出し、ノードとしてマッピングする
+ *   - 正規表現ベースのパターンマッチングで呼び出しを検出し、信頼度スコアを付与する
+ *   - コールグラフのメタデータと構造をJSONファイルに永続化する
+ *   - 一般的な関数名（get, handle等）を検出対象から除外してノイズを低減する
+ * why_it_exists:
+ *   - コードの依存関係を把握するための構造的なデータを提供する
+ *   - 定義と呼び出しの対応付けを自動化し、リファクタリングや影響分析を効率化する
+ *   - 外部ツール（ripgrep, ctags）の統合インターフェースとして機能する
+ * scope:
+ *   in: ctagsが出力するシンボルインデックス、ripgrepの検索結果、作業ディレクトリパス
+ *   out: 関数定義リスト、検出された呼び出しリスト、コールグラフインデックスJSON
+ */
+
+/**
  * Call Graph Builder
  *
  * Builds call graph using ripgrep and ctags symbol index.
@@ -402,11 +428,11 @@ function calculateConfidence(
 }
 
 /**
- * Build call graph for a project.
- *
- * @param path - Target path (default: cwd)
- * @param cwd - Working directory
- * @returns Call graph index
+ * コールグラフ構築
+ * @summary コールグラフ構築
+ * @param path 解析対象のファイルパス
+ * @param cwd カレントワーキングディレクトリ
+ * @returns 構築されたコールグラフインデックス
  */
 export async function buildCallGraph(
 	path: string,
@@ -518,7 +544,11 @@ export async function buildCallGraph(
 // ============================================
 
 /**
- * Save call graph index to file.
+ * インデックス保存
+ * @summary インデックス保存
+ * @param index 保存するコールグラフインデックス
+ * @param cwd カレントワーキングディレクトリ
+ * @returns 保存したファイルパス
  */
 export async function saveCallGraphIndex(
 	index: CallGraphIndex,
@@ -534,7 +564,10 @@ export async function saveCallGraphIndex(
 }
 
 /**
- * Read call graph index from file.
+ * インデックス読込
+ * @summary インデックス読込
+ * @param cwd カレントワーキングディレクトリ
+ * @returns 読み込んだインデックス、失敗時はnull
  */
 export async function readCallGraphIndex(
 	cwd: string
@@ -554,8 +587,10 @@ export async function readCallGraphIndex(
 }
 
 /**
- * Check if call graph index is stale.
- * Simple check: compare with symbol index timestamp.
+ * インデックス期限確認
+ * @summary インデックス期限確認
+ * @param cwd カレントワーキングディレクトリ
+ * @returns 期限切れの場合はtrue
  */
 export async function isCallGraphIndexStale(cwd: string): Promise<boolean> {
 	const index = await readCallGraphIndex(cwd);

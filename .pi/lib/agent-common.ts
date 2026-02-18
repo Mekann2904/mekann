@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/agent-common.ts
+ * role: エージェント実行における共通設定定数および型定義の提供
+ * why: subagents.tsとagent-teams.ts間でのコード重複を排除し、設定の一貫性を維持するため
+ * related: .pi/lib/subagents.ts, .pi/lib/agent-teams.ts, .pi/lib/validation-utils.js
+ * public_api: STABLE_RUNTIME_PROFILE, ADAPTIVE_PARALLEL_MAX_PENALTY, STABLE_MAX_RETRIES, EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG, EntityType
+ * invariants: STABLE_RUNTIME_PROFILEがtrueの場合、ADAPTIVE_PARALLEL_MAX_PENALTYは0である
+ * side_effects: なし（定数および型定義のみ）
+ * failure_modes: なし
+ * @abdd.explain
+ * overview: サブエージェントおよびチームメンバーの実行に必要な共通ユーティリティ、実行プロファイル設定、リトライ戦略、エンティティ設定を集約したモジュール。
+ * what_it_does:
+ *   - 安定した実行プロファイル（STABLE_RUNTIME_PROFILE）および適応的並列性制御の定数を定義する
+ *   - リトライ最大回数、バックオフ時間、レート制限待ち時間などの実行パラメータを提供する
+ *   - サブエージェントとチームメンバーを区別するEntityType型およびEntityConfigインターフェースを定義する
+ *   - デフォルトのエンティティ設定（SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG）をエクスポートする
+ * why_it_exists:
+ *   - subagents.tsとagent-teams.tsで同一の設定値やロジックが重複するのを防ぐため
+ *   - 実行環境（安定版/開発版）に応じた挙動を一箇所で制御し、予測可能性を確保するため
+ * scope:
+ *   in: 外部設定値（環境変数等は使用せず定数として定義）、validation-utilsからの数値変換ユーティリティ
+ *   out: 実行制御用定数、エンティティ型定義、設定オブジェクト
+ */
+
+/**
  * Shared agent common utilities.
  * Provides unified constants and functions for subagent and team member execution.
  * Eliminates code duplication between subagents.ts and agent-teams.ts.
@@ -74,13 +99,19 @@ export const STABLE_MAX_RATE_LIMIT_WAIT_MS = 90_000;
 // ============================================================================
 
 /**
- * Entity type identifier for shared functions.
- * Used to distinguish between subagent and team member contexts.
+ * エンティティの種別
+ * @summary エンティティ種別
+ * @returns {"subagent"|"team-member"} エンティティの種類
  */
 export type EntityType = "subagent" | "team-member";
 
 /**
- * Configuration for entity-specific behavior.
+ * エンティティ設定を定義
+ * @summary エンティティ定義
+ * @param type エンティティの種類
+ * @param label 表示ラベル
+ * @param emptyOutputMessage 出力がない場合のメッセージ
+ * @param defaultSummaryFallback サマリーのフォールバック
  */
 export interface EntityConfig {
   type: EntityType;
@@ -114,7 +145,14 @@ export const TEAM_MEMBER_CONFIG: EntityConfig = {
 // ============================================================================
 
 /**
- * Result of normalizing entity output to required format.
+ * 正規化エンティティ出力
+ *
+ * @summary 正規化エンティティ出力
+ * @param ok 成功フラグ
+ * @param output 出力文字列
+ * @param degraded 劣化フラグ
+ * @param reason 理由
+ * @returns 出力オブジェクト
  */
 export interface NormalizedEntityOutput {
   ok: boolean;
@@ -128,7 +166,13 @@ export interface NormalizedEntityOutput {
 // ============================================================================
 
 /**
- * Options for pickFieldCandidate function.
+ * フィールド候補オプション
+ *
+ * @summary 候補選択オプション定義
+ * @param maxLength 最大文字数
+ * @param excludeLabels 除外ラベルリスト
+ * @param fallback フォールバックテキスト
+ * @returns オプションオブジェクト
  */
 export interface PickFieldCandidateOptions {
   /** Maximum length for the candidate text */
@@ -140,19 +184,12 @@ export interface PickFieldCandidateOptions {
 }
 
 /**
- * Pick a candidate text for a structured field from unstructured output.
- * Used to extract SUMMARY, CLAIM, or other field values when output
- * doesn't conform to expected format.
+ * フィールド候補を選択
  *
- * Algorithm:
- * 1. Split text into non-empty lines
- * 2. Find first line that doesn't start with excluded labels
- * 3. Clean markdown formatting and extra whitespace
- * 4. Truncate to maxLength with ellipsis if needed
- *
- * @param text - Raw output text to extract candidate from
- * @param options - Configuration options
- * @returns Extracted candidate text or fallback
+ * @summary フィールド候補を選択
+ * @param text 入力テキスト
+ * @param options オプション設定
+ * @returns 選択されたテキスト
  */
 export function pickFieldCandidate(
   text: string,
@@ -198,11 +235,11 @@ export function pickFieldCandidate(
 }
 
 /**
- * Pick candidate text for SUMMARY field.
- * Convenience wrapper with subagent-specific defaults.
+ * 概要候補を選択
  *
- * @param text - Raw output text
- * @returns Extracted summary candidate
+ * @summary 概要候補を選択
+ * @param text 入力テキスト
+ * @returns 選択された概要候補テキスト
  */
 export function pickSummaryCandidate(text: string): string {
   return pickFieldCandidate(text, {
@@ -213,11 +250,11 @@ export function pickSummaryCandidate(text: string): string {
 }
 
 /**
- * Pick candidate text for CLAIM field.
- * Convenience wrapper with team-member-specific defaults.
+ * CLAIM候補を選択
  *
- * @param text - Raw output text
- * @returns Extracted claim candidate
+ * @summary CLAIM候補を選択
+ * @param text 入力テキスト
+ * @returns 選択されたCLAIM候補テキスト
  */
 export function pickClaimCandidate(text: string): string {
   return pickFieldCandidate(text, {
@@ -232,7 +269,13 @@ export function pickClaimCandidate(text: string): string {
 // ============================================================================
 
 /**
- * Options for normalizeEntityOutput function.
+ * 正規化オプション定義
+ * @summary オプション定義
+ * @param config エンティティ設定
+ * @param validateFn 検証関数
+ * @param requiredLabels 必須ラベル
+ * @param pickSummary サマリー抽出関数
+ * @param includeConfidence 信頼度を含むか
  */
 export interface NormalizeEntityOutputOptions {
   /** Entity configuration for context-specific behavior */
@@ -250,13 +293,11 @@ export interface NormalizeEntityOutputOptions {
 }
 
 /**
- * Normalize entity output to required structured format.
- * When output doesn't conform to expected format, attempts to restructure
- * it while preserving the original content.
- *
- * @param output - Raw output text
- * @param options - Normalization options
- * @returns Normalized output result
+ * エンティティ出力を正規化
+ * @summary 出力の正規化
+ * @param output 生の出力文字列
+ * @param options 正規化オプション
+ * @returns 正規化された出力オブジェクト
  */
 export function normalizeEntityOutput(
   output: string,
@@ -335,11 +376,11 @@ export function normalizeEntityOutput(
 // ============================================================================
 
 /**
- * Check if error message indicates empty output failure.
- *
- * @param message - Error message to check
- * @param config - Entity configuration
- * @returns True if message indicates empty output
+ * 空出力による失敗か判定
+ * @summary 空出力失敗判定
+ * @param message チェック対象メッセージ
+ * @param config エンティティ設定
+ * @returns 空出力失敗の場合はtrue
  */
 export function isEmptyOutputFailureMessage(
   message: string,
@@ -349,10 +390,10 @@ export function isEmptyOutputFailureMessage(
 }
 
 /**
- * Build a human-readable failure summary from error message.
- *
- * @param message - Error message
- * @returns Short failure summary
+ * 失敗要約メッセージを構築
+ * @summary 要約メッセージ構築
+ * @param message エラーメッセージ
+ * @returns 構築された要約メッセージ
  */
 export function buildFailureSummary(message: string): string {
   const lowered = message.toLowerCase();
@@ -363,11 +404,11 @@ export function buildFailureSummary(message: string): string {
 }
 
 /**
- * Resolve timeout with environment variable override support.
- *
- * @param defaultMs - Default timeout in milliseconds
- * @param envKey - Environment variable key to check
- * @returns Resolved timeout value
+ * タイムアウト値を環境変数から取得
+ * @summary タイムアウト値取得
+ * @param defaultMs デフォルトのミリ秒
+ * @param envKey 環境変数のキー名
+ * @returns 適用されたタイムアウト時間（ミリ秒）
  */
 export function resolveTimeoutWithEnv(
   defaultMs: number,

@@ -1,0 +1,301 @@
+---
+title: definition-loader
+category: api-reference
+audience: developer
+last_updated: 2026-02-18
+tags: [auto-generated]
+related: []
+---
+
+# definition-loader
+
+## 概要
+
+`definition-loader` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+// from 'node:fs': existsSync, readdirSync, readFileSync
+// from 'node:os': homedir
+// from 'node:path': basename, join
+// from '@mariozechner/pi-coding-agent': parseFrontmatter
+// from './storage': TeamDefinition, TeamMember, TeamStorage
+// ... and 2 more imports
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `parseTeamMarkdownFile` | チームMarkdownファイルをパース |
+| 関数 | `loadTeamDefinitionsFromDir` | ディレクトリからチーム定義を読込 |
+| 関数 | `loadTeamDefinitionsFromMarkdown` | Markdownからチーム定義を読込 |
+| 関数 | `createDefaultTeams` | デフォルトチーム定義を生成 |
+| 関数 | `mergeDefaultTeam` | デフォルトチーム定義を統合 |
+| 関数 | `ensureDefaults` | デフォルト設定を適用 |
+
+## 図解
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[definition-loader]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    storage["storage"]
+    storage["storage"]
+    team_types["team-types"]
+  end
+  main --> local
+  subgraph external[外部ライブラリ]
+    _mariozechner["@mariozechner"]
+  end
+  main --> external
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  createDefaultTeams["createDefaultTeams()"]
+  createRapidSwarmMembers["createRapidSwarmMembers()"]
+  ensureDefaults["ensureDefaults()"]
+  getAgentBaseDirFromEnv["getAgentBaseDirFromEnv()"]
+  getBundledTeamDefinitionsDir["getBundledTeamDefinitionsDir()"]
+  getCandidateTeamDefinitionsDirs["getCandidateTeamDefinitionsDirs()"]
+  getGlobalTeamDefinitionsDir["getGlobalTeamDefinitionsDir()"]
+  getHardcodedDefaultTeams["getHardcodedDefaultTeams()"]
+  getTeamDefinitionsDir["getTeamDefinitionsDir()"]
+  loadTeamDefinitionsFromDir["loadTeamDefinitionsFromDir()"]
+  loadTeamDefinitionsFromMarkdown["loadTeamDefinitionsFromMarkdown()"]
+  mergeDefaultTeam["mergeDefaultTeam()"]
+  parseTeamMarkdownFile["parseTeamMarkdownFile()"]
+  createDefaultTeams --> getHardcodedDefaultTeams
+  createDefaultTeams --> loadTeamDefinitionsFromMarkdown
+  ensureDefaults --> createDefaultTeams
+  ensureDefaults --> mergeDefaultTeam
+  getCandidateTeamDefinitionsDirs --> getBundledTeamDefinitionsDir
+  getCandidateTeamDefinitionsDirs --> getGlobalTeamDefinitionsDir
+  getCandidateTeamDefinitionsDirs --> getTeamDefinitionsDir
+  getGlobalTeamDefinitionsDir --> getAgentBaseDirFromEnv
+  getHardcodedDefaultTeams --> createRapidSwarmMembers
+  loadTeamDefinitionsFromDir --> parseTeamMarkdownFile
+  loadTeamDefinitionsFromMarkdown --> getCandidateTeamDefinitionsDirs
+  loadTeamDefinitionsFromMarkdown --> loadTeamDefinitionsFromDir
+```
+
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant definition_loader as "definition-loader"
+  participant mariozechner as "@mariozechner"
+  participant storage as "storage"
+  participant storage as "storage"
+
+  Caller->>definition_loader: parseTeamMarkdownFile()
+  definition_loader->>mariozechner: API呼び出し
+  mariozechner-->>definition_loader: レスポンス
+  definition_loader->>storage: 内部関数呼び出し
+  storage-->>definition_loader: 結果
+  definition_loader-->>Caller: ParsedTeamMarkdown_n
+
+  Caller->>definition_loader: loadTeamDefinitionsFromDir()
+  definition_loader-->>Caller: TeamDefinition
+```
+
+## 関数
+
+### getTeamDefinitionsDir
+
+```typescript
+getTeamDefinitionsDir(cwd: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+
+**戻り値**: `string`
+
+### getAgentBaseDirFromEnv
+
+```typescript
+getAgentBaseDirFromEnv(): string
+```
+
+**戻り値**: `string`
+
+### getGlobalTeamDefinitionsDir
+
+```typescript
+getGlobalTeamDefinitionsDir(): string
+```
+
+**戻り値**: `string`
+
+### getBundledTeamDefinitionsDir
+
+```typescript
+getBundledTeamDefinitionsDir(): string | undefined
+```
+
+**戻り値**: `string | undefined`
+
+### getCandidateTeamDefinitionsDirs
+
+```typescript
+getCandidateTeamDefinitionsDirs(cwd: string): string[]
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+
+**戻り値**: `string[]`
+
+### parseTeamMarkdownFile
+
+```typescript
+parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | null
+```
+
+チームMarkdownファイルをパース
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| filePath | `string` | はい |
+
+**戻り値**: `ParsedTeamMarkdown | null`
+
+### loadTeamDefinitionsFromDir
+
+```typescript
+loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): TeamDefinition[]
+```
+
+ディレクトリからチーム定義を読込
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| definitionsDir | `string` | はい |
+| nowIso | `string` | はい |
+
+**戻り値**: `TeamDefinition[]`
+
+### loadTeamDefinitionsFromMarkdown
+
+```typescript
+loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): TeamDefinition[]
+```
+
+Markdownからチーム定義を読込
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cwd | `string` | はい |
+| nowIso | `string` | はい |
+
+**戻り値**: `TeamDefinition[]`
+
+### createRapidSwarmMembers
+
+```typescript
+createRapidSwarmMembers(count: number): TeamMember[]
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| count | `number` | はい |
+
+**戻り値**: `TeamMember[]`
+
+### getHardcodedDefaultTeams
+
+```typescript
+getHardcodedDefaultTeams(nowIso: string): TeamDefinition[]
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nowIso | `string` | はい |
+
+**戻り値**: `TeamDefinition[]`
+
+### createDefaultTeams
+
+```typescript
+createDefaultTeams(nowIso: string, cwd?: string): TeamDefinition[]
+```
+
+デフォルトチーム定義を生成
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nowIso | `string` | はい |
+| cwd | `string` | いいえ |
+
+**戻り値**: `TeamDefinition[]`
+
+### mergeDefaultTeam
+
+```typescript
+mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinition): TeamDefinition
+```
+
+デフォルトチーム定義を統合
+
+既存のチーム定義に、フォールバック用のデフォルト定義をマージします。
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| existing | `TeamDefinition` | はい |
+| fallback | `TeamDefinition` | はい |
+
+**戻り値**: `TeamDefinition`
+
+### ensureDefaults
+
+```typescript
+ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage
+```
+
+デフォルト設定を適用
+
+ストレージに対して、現在時刻やディレクトリ情報を含むデフォルト設定を反映・統合します。
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| storage | `TeamStorage` | はい |
+| nowIso | `string` | はい |
+| cwd | `string` | いいえ |
+
+**戻り値**: `TeamStorage`
+
+---
+*自動生成: 2026-02-18T15:54:40.904Z*

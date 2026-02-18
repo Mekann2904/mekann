@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/sym_index.ts
+ * role: シンボルインデックス生成ツール
+ * why: ctagsを用いてソースコードのシンボル情報を抽出し、JSONL形式でインデックスを作成・管理するため
+ * related: .pi/extensions/search/utils/cli.js, .pi/extensions/search/utils/constants.js, .pi/extensions/search/types.js
+ * public_api: exportされた関数 (ファイル内には含まれないが、ツールのエントリーポイントとして機能)
+ * invariants: インデックスのバージョンは常に2である。シャードファイルはJSONL形式である。
+ * side_effects: ファイルシステムへの読み書き（.pi/search/以下のディレクトリおよびファイル作成・更新・削除）。ctagsプロセスの実行。
+ * failure_modes: ctagsコマンドが実行できない場合、ファイルシステムへのアクセス権限がない場合、入力ファイルの読み取りに失敗した場合。
+ * @abdd.explain
+ * overview: ctagsを利用してソースコードからシンボル情報を抽出し、ハッシュベースの差分検出を行いながらシェルディングされたインデックスファイルを生成・管理するツール。
+ * what_it_does:
+ *   - ctagsを実行し、出力をJSONL形式のシンボルインデックスとして保存する
+ *   - ファイルのコンテンツハッシュを計算し、変更がないファイルのインデックス再生成をスキップする
+ *   - インデックスをエントリー数制限に基づいて複数のシャードファイルに分割して保存する
+ *   - マニフェストファイルを用いてファイルパスとハッシュ、シャードIDの対応関係を管理する
+ *   - レガシーな単一ファイルインデックス形式への後方互換性を維持する
+ * why_it_exists:
+ *   - ソースコードの高速なシンボル検索を実現するためのインデックスデータを生成する
+ *   - 増分更新を行うことで、大規模なプロジェクトでのインデックス再構築コストを削減する
+ *   - 1つのファイルに巨大なデータを蓄積せず、シャード化して管理運用を容易にする
+ * scope:
+ *   in: ソースコードファイルパス、プロジェクトのルートディレクトリ、ctagsの設定
+ * out: JSONL形式のシンボルインデックスファイル（shard-{id}.jsonl）、マニフェスト（manifest.json）、メタデータ（meta.json）
+ */
+
+/**
  * sym_index Tool
  *
  * Generate symbol index using ctags with JSONL output format.
@@ -656,8 +683,11 @@ async function writeShardedIndex(
 // ============================================
 
 /**
- * Generate symbol index using ctags.
- * Supports both full and incremental indexing.
+ * 意味的インデックスを作成
+ * @summary インデックスを作成
+ * @param input インデックス化の入力設定
+ * @param cwd 作業ディレクトリのパス
+ * @returns 作成されたインデックスデータ
  */
 export async function symIndex(
 	input: SymIndexInput,
@@ -766,8 +796,11 @@ export async function symIndex(
 }
 
 /**
- * Read and parse existing symbol index.
- * Supports both legacy and sharded formats.
+ * シンボルインデックス読込
+ * @summary インデックス読込
+ * @param cwd 作業ディレクトリ
+ * @returns シンボルリストまたはnull
+ * @throws インデックスが無効な場合
  */
 export async function readSymbolIndex(
 	cwd: string
@@ -791,7 +824,10 @@ export async function readSymbolIndex(
 }
 
 /**
- * Get index metadata.
+ * インデックスメタデータ取得
+ * @summary メタデータ取得
+ * @param cwd 作業ディレクトリ
+ * @returns メタデータまたはnull
  */
 export async function getIndexMetadata(
 	cwd: string

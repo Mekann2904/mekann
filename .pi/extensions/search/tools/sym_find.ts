@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/sym_find.ts
+ * role: シンボル定義の検索ツール
+ * why: ctags生成インデックスからのシンボル検索、正規表現によるフィルタリング、関連性によるソートを行うため
+ * related: .pi/extensions/search/tools/sym_index.ts, .pi/extensions/search/types.ts, .pi/extensions/search/utils/output.ts
+ * public_api: filterSymbols, sortSymbols, wildcardToRegex
+ * invariants: nameRegexは有効なRegExpオブジェクト、kind比較はすべて小文字で行われる
+ * side_effects: なし（引数の配列を直接ソート・加工する）
+ * failure_modes: 無効な正規表現パターンによるエラー、入力エントリの不正な形式による処理不全
+ * @abdd.explain
+ * overview: ctags生成インデックスに対するシンボル検索ロジックの実装
+ * what_it_does:
+ *   - ワイルドカードパターンを正規表現に変換する
+ *   - 名前、種類、ファイルパスを基準にシンボルをフィルタリングする
+ *   - 完全一致優先、種類優先度、ファイルパス順で結果をソートする
+ * why_it_exists:
+ *   - ユーザー提供の検索条件（ワイルドカード等）をインデックス問い合わせに適用するため
+ *   - 検索結果の関連性と可読性を高めるため
+ * scope:
+ *   in: SymFindInput（検索条件）、SymbolIndexEntry[]（インデックスデータ）
+ *   out: SymbolDefinition[]（フィルタ・ソート済みのシンボル定義リスト）
+ */
+
+/**
  * sym_find Tool
  *
  * Search symbol definitions from the ctags-generated index
@@ -131,7 +155,11 @@ function extractResultPaths(results: SymbolDefinition[]): string[] {
 // ============================================
 
 /**
- * Find symbol definitions from index
+ * シンボル検索を行う
+ * @summary シンボル検索実行
+ * @param input 検索入力データ
+ * @param cwd 作業ディレクトリ
+ * @returns シンボル検索出力データ
  */
 export async function symFind(
 	input: SymFindInput,

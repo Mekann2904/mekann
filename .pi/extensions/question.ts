@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/question.ts
+ * role: ユーザーへの対話的質問UI拡張
+ * why: PIエージェントが実行中にユーザーへ入力を要求するためのopencode互換インターフェースを提供するため
+ * related: @mariozechner/pi-tui, @mariozechner/pi-coding-agent, @mariozechner/pi-ai
+ * public_api: askSingleQuestion, types(QuestionInfo, QuestionOption, Answer)
+ * invariants: rendererのstateはimmutablyに更新される, カーソル位置は常に文字列範囲内である
+ * side_effects: 標準出力へのUI描画, ユーザー入力待機による処理ブロック
+ * failure_modes: 描画幅オーバーフロー, 不正なキー入力による状態破損
+ * @abdd.explain
+ * overview: エージェントがユーザーへ質問し、選択または自由記述による回答を受け付けるUIコンポーネント実装
+ * what_it_does:
+ *   - 質問と選択肢リストをTUI上に描画する
+ *   - 単一/複数選択およびカスタム自由入力モードを提供する
+ *   - キーボード操作によるカーソル移動と決定を処理する
+ * why_it_exists:
+ *   - opencode仕様に準拠したシンプルな質問インターフェースが必要なため
+ *   - ユーザー介入が必要なタスクにおいて決定を収集するため
+ * scope:
+ *   in: QuestionInfo(質問内容), キーボード入力イベント
+ *   out: Answer(ユーザー回答配列), null(キャンセル時)
+ */
+
+/**
  * Question Tool Extension for PI Coding Agent
  *
  * PIエージェントがユーザーに質問するためのインタラクティブUI

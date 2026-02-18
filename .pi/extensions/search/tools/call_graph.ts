@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/call_graph.ts
+ * role: 呼び出しグラフインデックスの作成・更新および、呼び出し元・呼び出し先の検索ツールを提供する
+ * why: コード解析において関数間の参照関係を追跡可能にするため
+ * related: ../call-graph/types.js, ../call-graph/builder.js, ../call-graph/query.js, sym_index.ts
+ * public_api: callGraphIndex, findCallersTool, findCalleesTool
+ * invariants: シンボルインデックスが存在しない場合は生成を試みる、インデックスが古い場合は再構築する
+ * side_effects: ファイルシステム（.pi/search/call-graph/index.json）への書き込み、ctagsの実行
+ * failure_modes: シンボルが見つからない、インデックス読み取りエラー、ctags実行エラー
+ * @abdd.explain
+ * overview: 呼び出しグラフ（Call Graph）に関するインデックス化と検索機能を集約したツールセット
+ * what_it_does:
+ *   - 呼び出しグラフインデックスの生成、更新、およびキャッシュ管理
+ *   - シンボルインデックスの事前チェックおよび不足時の自動生成
+ *   - 指定シンボルの呼び出し元（Callers）の検索
+ *   - 指定シンボルの呼び出し先（Callees）の検索
+ * why_it_exists:
+ *   - 関数の依存関係や影響範囲を可視化・分析するため
+ *   - 静的解析によるリファクタリング支援やコード理解を促進するため
+ * scope:
+ *   in: 検索クエリ、パス設定、再構築フラグ、カレントワーキングディレクトリ
+ *   out: インデックスメタデータ、検索結果リスト、エラーメッセージ
+ */
+
+/**
  * Call Graph Tools
  *
  * Tools for call graph index generation and querying.
@@ -27,7 +52,11 @@ import { symIndex, readSymbolIndex } from "./sym_index.js";
 // ============================================
 
 /**
- * Generate or update call graph index.
+ * 呼び出しグラフを索引付け
+ * @summary 呼び出しグラフ索引付け
+ * @param input 索引付け入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 索引付け結果データ
  */
 export async function callGraphIndex(
 	input: CallGraphIndexInput,
@@ -92,7 +121,11 @@ export async function callGraphIndex(
 // ============================================
 
 /**
- * Find all functions that call the given symbol.
+ * 呼び出し元を検索
+ * @summary 呼び出し元検索
+ * @param input 検索入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 検索結果データ
  */
 export async function findCallersTool(
 	input: FindCallersInput,
@@ -161,9 +194,12 @@ export async function findCallersTool(
 // Find Callees Tool
 // ============================================
 
-/**
- * Find all functions called by the given symbol.
- */
+ /**
+  * 指定されたシンボルが呼び出す関数を検索
+  * @param input 検索条件
+  * @param cwd 作業ディレクトリ
+  * @returns 呼び出し先関数のリスト
+  */
 export async function findCalleesTool(
 	input: FindCalleesInput,
 	cwd: string
@@ -232,7 +268,9 @@ export async function findCalleesTool(
 // ============================================
 
 /**
- * Format call graph index result for display.
+ * @summary インデックスをフォーマット
+ * @param result コールグラフの出力結果
+ * @returns フォーマットされた文字列
  */
 export function formatCallGraphIndex(result: CallGraphIndexOutput): string {
 	if (result.error) {
@@ -248,7 +286,9 @@ export function formatCallGraphIndex(result: CallGraphIndexOutput): string {
 }
 
 /**
- * Format callers result for display.
+ * @summary 呼び出し元を整形
+ * @param result 呼び出し元の検索結果
+ * @returns 整形された文字列
  */
 export function formatCallers(result: FindCallersOutput): string {
 	if (result.error) {
@@ -281,9 +321,11 @@ export function formatCallers(result: FindCallersOutput): string {
 	return lines.join("\n");
 }
 
-/**
- * Format callees result for display.
- */
+ /**
+  * 呼び出し先の検索結果をフォーマットする
+  * @param result 検索結果
+  * @returns フォーマット済みの文字列
+  */
 export function formatCallees(result: FindCalleesOutput): string {
 	if (result.error) {
 		return `Error: ${result.error}`;

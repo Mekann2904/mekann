@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/constants.ts
+ * role: 検索拡張機能における定数値の定義および型情報のエクスポート
+ * why: 検索機能全体で共通利用される設定値（除外パターン、リミット、パス等）を一元管理し、整合性を維持するため
+ * related: .pi/extensions/search/indexer/index.ts, .pi/extensions/search/tools/search.ts, .pi/extensions/search/types.ts
+ * public_api: DEFAULT_EXCLUDES, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_MAX_DEPTH, INDEX_DIR_NAME, SYMBOL_INDEX_FILE, INDEX_META_FILE, INDEX_MANIFEST_FILE, SHARD_DIR_NAME, DefaultExclude
+ * invariants: DEFAULT_EXCLUDESは読み取り専用(as const)であり要素の変更不可
+ * side_effects: なし（純粋な定数定義）
+ * failure_modes: なし
+ * @abdd.explain
+ * overview: 検索ツールおよびインデクサで使用される除外パス、検索上限、インデックスファイル名などの設定定数を集約したモジュール
+ * what_it_does:
+ *   - 検索対象から除外するデフォルトのディレクトリやファイルパターン（node_modules等）を定義する
+ *   - 検索結果、コード検索、シンボル検索ごとのデフォルト件数上限を定義する
+ *   - 大文字小文字の区別設定や検索深度の制限を定義する
+ *   - インデックスの保存先ディレクトリ名やファイル名を定義する
+ * why_it_exists:
+ *   - 設定値を分散させず、コードベース全体で挙動の一貫性を保つため
+ *   - マジックナンバーを排除し、可読性と保守性を向上させるため
+ * scope:
+ *   in: なし
+ *   out: 検索設定に関するプリミティブ値、配列、およびリテラル型のユニオン型
+ */
+
+/**
  * Search Extension Constants
  *
  * Shared constants for all search tools including default exclusion patterns,
@@ -45,7 +70,9 @@ export const DEFAULT_EXCLUDES = [
 ] as const;
 
 /**
- * Type for DEFAULT_EXCLUDES array items
+ * デフォルト除外要素
+ * @summary デフォルト除外要素型
+ * @returns {string} 除外パス文字列
  */
 export type DefaultExclude = (typeof DEFAULT_EXCLUDES)[number];
 

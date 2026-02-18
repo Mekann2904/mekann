@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/comprehensive-logger-config.ts
+ * role: ロガー設定の定義、環境変数からの上書きロード、および入力値検証を行うコンフィグレーションモジュール
+ * why: ログシステムの振る舞い（出力先、バッファサイズ、保持期間など）を一元管理し、実行環境（開発・本番）に応じて柔軟に変更するため
+ * related: .pi/lib/comprehensive-logger-types.ts
+ * public_api: DEFAULT_CONFIG, loadConfigFromEnv, validateConfig
+ * invariants: config.bufferSizeは1以上、config.flushIntervalMsは100ms以上、maxFileSizeMBおよびretentionDaysは1以上
+ * side_effects: process.envからの読み取りによる設定値の書き換え（loadConfigFromEnv関数）
+ * failure_modes: 環境変数の型変換失敗（parseIntなど）、不正な環境名やログレベルの指定による検証エラー
+ * @abdd.explain
+ * overview: ログ出力に関する設定値のデフォルト定義、環境変数による動的設定、および設定値の整合性チェック機能を提供する
+ * what_it_does:
+ *   - LoggerConfig型のデフォルト値（DEFAULT_CONFIG）を定義する
+ *   - 環境変数（PI_LOG_*）を読み込み、型変換して設定を上書きする
+ *   - 設定オブジェクトのバリデーションを行い、エラー詳細を返す
+ * why_it_exists:
+ *   - ログ出力制御をハードコードから分離し、環境ごとのチューニングを可能にする
+ *   - 設定ミス（負のバッファサイズや無効な文字列など）を早期に検出する
+ * scope:
+ *   in: 環境変数 (process.env)、ベース設定オブジェクト (LoggerConfig)
+ *   out: 環境変数でマージされた設定オブジェクト、バリデーション結果
+ */
+
+/**
  * 包括的ログ収集システム - 設定管理
  * 
  * ファイル: .pi/lib/comprehensive-logger-config.ts
@@ -53,6 +77,12 @@ function parseEnvValue(value: string, type: string): unknown {
   }
 }
 
+/**
+ * 環境変数から設定を読込
+ * @summary 設定を読込
+ * @param {LoggerConfig} baseConfig - ベースとなる設定オブジェクト
+ * @returns {LoggerConfig} 環境変数でマージされた設定オブジェクト
+ */
 export function loadConfigFromEnv(baseConfig: LoggerConfig = DEFAULT_CONFIG): LoggerConfig {
   const config = { ...baseConfig };
   
@@ -70,6 +100,12 @@ export function loadConfigFromEnv(baseConfig: LoggerConfig = DEFAULT_CONFIG): Lo
 // 設定バリデーション
 // ============================================
 
+/**
+ * ロガー設定を検証する
+ * @summary 設定を検証
+ * @param config - 検証対象のロガー設定オブジェクト
+ * @returns 検証結果オブジェクト。validは検証成功かどうか、errorsはエラーメッセージの配列
+ */
 export function validateConfig(config: LoggerConfig): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
@@ -111,7 +147,24 @@ export function validateConfig(config: LoggerConfig): { valid: boolean; errors: 
 
 let cachedConfig: LoggerConfig | null = null;
 
+/**
+ * @summary 設定を取得
+ * ロガーの設定を取得する
+ * @returns ロガー設定オブジェクト
+ */
 export function getConfig(): LoggerConfig {
+/**
+   * キャッシュされた設定をクリアしてリセットする
+   *
+   * 設定のキャッシュを破棄し、次回取得時に再読み込みを強制します。
+   * テスト時や設定の動的変更後に使用します。
+   *
+   * @returns 戻り値なし
+   * @example
+   * // 設定をリセット
+   * resetConfig();
+   * // 次回getConfig()呼び出し時に設定が再読み込みされる
+   */
   if (cachedConfig === null) {
     cachedConfig = loadConfigFromEnv();
     const validation = validateConfig(cachedConfig);
@@ -123,6 +176,12 @@ export function getConfig(): LoggerConfig {
   return cachedConfig;
 }
 
+/**
+ * 設定をリセットする
+ * @summary 設定をリセット
+ * @param なし
+ * @returns なし
+ */
 export function resetConfig(): void {
   cachedConfig = null;
 }

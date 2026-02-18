@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/agent-errors.ts
+ * role: エラー分類および実行結果解決モジュール
+ * why: サブエージェントおよびチームメンバーの実行結果に対し、統一的なエラー分類とスキーマ違反・低品質出力などの意味論的エラー検出を行うため
+ * related: ./error-utils.ts, ./agent-types.ts, ./agent-common.ts
+ * public_api: ExtendedOutcomeCode, ExtendedOutcomeSignal, classifySemanticError, resolveExtendedFailureOutcome
+ * invariants: ExtendedOutcomeSignalのoutcomeCodeはExtendedOutcomeCode型に含まれる値のみをとる
+ * side_effects: なし（純粋な関数と型定義のみ）
+ * failure_modes: 分類ロジックがエラーメッセージのキーワードに依存するため、予期しないメッセージ形式の場合は分類がnullになる
+ * @abdd.explain
+ * overview: Layer 1に位置し、共通のエラーユーティリティとエージェント型定義を利用して、実行時の出力内容とエラーオブジェクトから意味論的なエラーを分類・解決するモジュール。
+ * what_it_does:
+ *   - RunOutcomeCodeを拡張したExtendedOutcomeCode（SCHEMA_VIOLATION, LOW_SUBSTANCE等）を定義する
+ *   - 出力文字列やエラーメッセージのパターンマッチングにより、意味論的なエラーを特定する
+ *   - エラーと出力内容に基づき、詳細なエラー情報を含むExtendedOutcomeSignalを生成する
+ * why_it_exists:
+ *   - 従来のステータスコードだけでは表現できない、スキーマ違反や中身のない出力などの品質問題を検知するため
+ *   - サブエージェントとチームメンバーの実行結果ハンドリングを共通化し、集約結果の生成（failedEntityIdsなど）を容易にするため
+ * scope:
+ *   in: エラーオブジェクト（unknown）、出力文字列（string）、エンティティ設定（EntityConfig）
+ *   out: 拡張された実行結果コード、エラー詳細配列、結果シグナル（ExtendedOutcomeSignal）
+ */
+
+/**
  * Shared agent error handling utilities.
  * Provides unified error classification and outcome resolution for
  * subagent and team member execution.
@@ -24,8 +48,8 @@ import {
 // ============================================================================
 
 /**
- * Extended error classification codes.
- * Extends the base RunOutcomeCode with semantic error types.
+ * 拡張実行結果コード
+ * @summary 拡張実行結果コード
  */
 export type ExtendedOutcomeCode =
   | RunOutcomeCode
@@ -35,8 +59,8 @@ export type ExtendedOutcomeCode =
   | "PARSE_ERROR";
 
 /**
- * Extended outcome signal with semantic error classification.
- * Uses Omit to avoid type conflict with RunOutcomeSignal.outcomeCode.
+ * 拡張実行結果シグナル
+ * @summary 拡張実行結果シグナル
  */
 export interface ExtendedOutcomeSignal extends Omit<RunOutcomeSignal, 'outcomeCode'> {
   outcomeCode: ExtendedOutcomeCode;
@@ -47,12 +71,11 @@ export interface ExtendedOutcomeSignal extends Omit<RunOutcomeSignal, 'outcomeCo
 }
 
 /**
- * Classify semantic error from output content.
- * Used for extended error classification beyond infrastructure errors.
- *
- * @param output - Output content to analyze
- * @param error - Error message if available
- * @returns Extended error code if semantic error detected, undefined otherwise
+ * 意味論的エラーを分類
+ * @summary 意味論的エラーを分類
+ * @param output 出力文字列
+ * @param error エラーオブジェクト
+ * @returns エラーコードと詳細を含むオブジェクト
  */
 export function classifySemanticError(
   output?: string,
@@ -104,12 +127,12 @@ export function classifySemanticError(
 }
 
 /**
- * Resolve extended outcome signal with semantic error classification.
- *
- * @param error - The error that occurred
- * @param output - Output content if available
- * @param config - Entity configuration (optional)
- * @returns Extended outcome signal with semantic classification
+ * 拡張失敗結果を解決
+ * @summary 拡張失敗結果を解決
+ * @param error 未知のエラーオブジェクト
+ * @param output 出力文字列
+ * @param config エンティティ設定
+ * @returns 拡張実行結果シグナル
  */
 export function resolveExtendedFailureOutcome(
   error: unknown,
@@ -160,13 +183,10 @@ const DEFAULT_RETRYABLE_PATTERNS: string[] = [
  */
 let cachedRetryablePatterns: string[] | undefined;
 
-/**
- * Get the list of retryable error patterns.
- * Patterns can be extended via PI_RETRYABLE_ERROR_PATTERNS environment variable
- * (comma-separated list of additional patterns).
- *
- * @returns Array of retryable patterns to check against error messages
- */
+ /**
+  * リトライ可能なエラーパターンを取得
+  * @returns エラーメッセージとの照合に使用するパターンの配列
+  */
 export function getRetryablePatterns(): string[] {
   if (cachedRetryablePatterns !== undefined) {
     return cachedRetryablePatterns;
@@ -188,18 +208,19 @@ export function getRetryablePatterns(): string[] {
 }
 
 /**
- * Reset the cached retryable patterns (primarily for testing).
- * Forces next call to getRetryablePatterns() to re-parse environment variable.
+ * キャッシュをリセット
+ * @summary キャッシュをリセット
+ * @returns なし
  */
 export function resetRetryablePatternsCache(): void {
   cachedRetryablePatterns = undefined;
 }
 
 /**
- * Add custom retryable patterns at runtime.
- * Useful for dynamic configuration without environment variable restart.
- *
- * @param patterns - Additional patterns to add to the retryable list
+ * 再試行パターンを追加
+ * @summary パターン追加
+ * @param patterns 再試行リストに追加するパターン
+ * @returns なし
  */
 export function addRetryablePatterns(patterns: string[]): void {
   const normalizedPatterns = patterns
@@ -219,13 +240,12 @@ export function addRetryablePatterns(patterns: string[]): void {
 // ============================================================================
 
 /**
- * Check if an error is retryable for entity execution.
- * Combines generic retryable error checks with entity-specific patterns.
- *
- * @param error - The error to check
- * @param statusCode - Optional HTTP status code
- * @param config - Entity configuration for context-specific checks
- * @returns True if the error is retryable
+ * 再試行可否判定
+ * @summary 再試行可否判定
+ * @param error - チェック対象のエラー
+ * @param statusCode - HTTPステータスコード（任意）
+ * @param config - コンテキスト固有のチェックを行うエンティティ設定
+ * @returns エラーが再試行可能な場合はtrue
  */
 export function isRetryableEntityError(
   error: unknown,
@@ -254,14 +274,12 @@ export function isRetryableEntityError(
   return retryablePatterns.some((pattern) => message.includes(pattern));
 }
 
-/**
- * Check if error is retryable for subagent context.
- * Convenience wrapper with subagent configuration.
- *
- * @param error - The error to check
- * @param statusCode - Optional HTTP status code
- * @returns True if the error is retryable
- */
+ /**
+  * サブエージェントのエラーが再試行可能か判定
+  * @param error - チェック対象のエラー
+  * @param statusCode - HTTPステータスコード（任意）
+  * @returns エラーが再試行可能な場合はtrue
+  */
 export function isRetryableSubagentError(
   error: unknown,
   statusCode?: number,
@@ -270,12 +288,10 @@ export function isRetryableSubagentError(
 }
 
 /**
- * Check if error is retryable for team member context.
- * Convenience wrapper with team member configuration.
- *
- * @param error - The error to check
- * @param statusCode - Optional HTTP status code
- * @returns True if the error is retryable
+ * @summary リトライ可否判定
+ * @param error - 判定対象のエラー
+ * @param statusCode - HTTPステータスコード（任意）
+ * @returns リトライ可能な場合はtrue
  */
 export function isRetryableTeamMemberError(
   error: unknown,
@@ -289,12 +305,11 @@ export function isRetryableTeamMemberError(
 // ============================================================================
 
 /**
- * Resolve the outcome signal for a failed entity execution.
- * Classifies the error and determines whether retry is recommended.
- *
- * @param error - The error that occurred
- * @param config - Entity configuration (optional, uses default classification)
- * @returns Outcome signal with code and retry recommendation
+ * チームメンバーのエラーが再試行可能か判定
+ * @summary 再試行可否判定
+ * @param error 不明なエラーオブジェクト
+ * @param statusCode ステータスコード
+ * @returns 再試行可能な場合はtrue
  */
 export function resolveFailureOutcome(
   error: unknown,
@@ -327,22 +342,21 @@ export function resolveFailureOutcome(
 }
 
 /**
- * Resolve failure outcome for subagent context.
- * Convenience wrapper with subagent configuration.
- *
- * @param error - The error that occurred
- * @returns Outcome signal with code and retry recommendation
+ * エラー設定に基づき実行結果を解決する
+ * @summary 実行結果を解決
+ * @param error 不明なエラーオブジェクト
+ * @param config エンティティ設定オプション
+ * @returns 実行結果シグナル
  */
 export function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal {
   return resolveFailureOutcome(error, SUBAGENT_CONFIG);
 }
 
 /**
- * Resolve failure outcome for team member context.
- * Convenience wrapper with team member configuration.
- *
- * @param error - The error that occurred
- * @returns Outcome signal with code and retry recommendation
+ * サブエージェント失敗時の結果解決
+ * @summary 失敗結果を解決
+ * @param error 不明なエラーオブジェクト
+ * @returns 実行結果シグナル
  */
 export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
   return resolveFailureOutcome(error, TEAM_MEMBER_CONFIG);
@@ -353,7 +367,10 @@ export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
 // ============================================================================
 
 /**
- * Result item interface for aggregate outcome resolution.
+ * チーム失敗時の結果解決
+ * @summary 失敗結果を解決
+ * @param error 不明なエラーオブジェクト
+ * @returns 実行結果シグナル
  */
 export interface EntityResultItem {
   status: "completed" | "failed";
@@ -363,12 +380,11 @@ export interface EntityResultItem {
 }
 
 /**
- * Resolve aggregate outcome from multiple entity results.
- * Used for parallel execution where some entities may succeed and others fail.
- *
- * @param results - Array of entity results
- * @param resolveEntityFailure - Function to resolve individual entity failure outcomes
- * @returns Aggregate outcome with failed entity IDs
+ * 集計結果解決
+ * @summary 結果集計
+ * @param results - 実行結果リスト
+ * @param resolveEntityFailure - エンティティの失敗を解決する関数
+ * @returns 失敗したエンティティIDを含む集計結果シグナル
  */
 export function resolveAggregateOutcome<T extends EntityResultItem>(
   results: T[],
@@ -417,10 +433,10 @@ export function resolveAggregateOutcome<T extends EntityResultItem>(
 }
 
 /**
- * Resolve aggregate outcome for subagent parallel execution.
- *
- * @param results - Array of subagent run results
- * @returns Aggregate outcome with failed subagent IDs
+ * サブエージェント並列結果解決
+ * @summary 並列結果集計
+ * @param results - サブエージェントの実行結果リスト
+ * @returns 失敗したサブエージェントIDを含む集計結果シグナル
  */
 export function resolveSubagentParallelOutcome(
   results: Array<{ runRecord: { status: "completed" | "failed"; error?: string; summary?: string; agentId: string } }>,
@@ -440,10 +456,10 @@ export function resolveSubagentParallelOutcome(
 }
 
 /**
- * Resolve aggregate outcome for team member execution.
- *
- * @param memberResults - Array of team member results
- * @returns Aggregate outcome with failed member IDs
+ * チームメンバー集計結果解決
+ * @summary チーム結果集計
+ * @param memberResults - チームメンバーの実行結果リスト
+ * @returns 失敗したメンバーIDを含む集計結果シグナル
  */
 export function resolveTeamMemberAggregateOutcome(
   memberResults: Array<{ status: "completed" | "failed"; error?: string; summary?: string; memberId: string }>,
@@ -467,11 +483,11 @@ export function resolveTeamMemberAggregateOutcome(
 // ============================================================================
 
 /**
- * Trim error message for display, ensuring it doesn't exceed max length.
- *
- * @param message - Error message to trim
- * @param maxLength - Maximum length (default: 200)
- * @returns Trimmed message
+ * エラーメッセージ整形
+ * @summary メッセージ切り詰め
+ * @param message - 元のエラーメッセージ
+ * @param maxLength - 最大文字数
+ * @returns 整形されたエラーメッセージ
  */
 export function trimErrorMessage(message: string, maxLength = 200): string {
   if (message.length <= maxLength) return message;
@@ -479,11 +495,18 @@ export function trimErrorMessage(message: string, maxLength = 200): string {
 }
 
 /**
- * Build diagnostic context string for error messages.
- * Includes retry count, status codes, and rate limit information.
- *
- * @param context - Diagnostic context values
- * @returns Formatted diagnostic string
+ * 診断コンテキスト構築
+ * @summary 診断コンテキスト生成
+ * @param context.provider - プロバイダ名
+ * @param context.model - モデル名
+ * @param context.retries - リトライ回数
+ * @param context.lastStatusCode - 最後のステータスコード
+ * @param context.lastRetryMessage - 最後のリトライメッセージ
+ * @param context.rateLimitWaitMs - レートリミット待機時間（ミリ秒）
+ * @param context.rateLimitHits - レートリミットヒット数
+ * @param context.gateWaitMs - ゲート待機時間（ミリ秒）
+ * @param context.gateHits - ゲートヒット数
+ * @returns 構築されたコンテキスト文字列
  */
 export function buildDiagnosticContext(context: {
   provider?: string;
@@ -520,8 +543,11 @@ export function buildDiagnosticContext(context: {
 // ============================================================================
 
 /**
- * Standardized failure classification types for retry decision making.
- * Each classification maps to a specific retry policy.
+ * リトライ判定用の標準化された失敗分類
+ * @summary 失敗分類型
+ * @param {"rate_limit"} HTTP 429 - backoffで処理
+ * @param {"capacity"} リソース枯渇 - backoffで処理
+ * @returns 失敗分類の種類
  */
 export type FailureClassification =
   | "rate_limit"   // HTTP 429 - backoffで処理
@@ -548,12 +574,11 @@ export const RETRY_POLICY: Record<FailureClassification, {
 };
 
 /**
- * Classify a failure into a standardized category for retry decision making.
- * Uses error message pattern matching and HTTP status code to determine classification.
- *
- * @param error - The error to classify
- * @param statusCode - Optional HTTP status code for context
- * @returns The failure classification category
+ * エラー情報を解析して失敗分類を決定
+ * @summary 失敗分類決定
+ * @param error 発生したエラー
+ * @param statusCode HTTPステータスコード
+ * @returns 失敗分類結果
  */
 export function classifyFailureType(
   error: unknown,
@@ -590,12 +615,11 @@ export function classifyFailureType(
 }
 
 /**
- * Determine whether a retry should be attempted based on failure classification.
- * Checks the retry policy and current round against max rounds limit.
- *
- * @param classification - The failure classification
- * @param currentRound - Current retry round (0-indexed)
- * @returns True if retry should be attempted, false otherwise
+ * 分類結果に基づきリトライ可否を判定
+ * @summary リトライ可否判定
+ * @param classification 失敗分類結果
+ * @param currentRound 現在の試行回数
+ * @returns リトライする場合はtrue
  */
 export function shouldRetryByClassification(
   classification: FailureClassification,

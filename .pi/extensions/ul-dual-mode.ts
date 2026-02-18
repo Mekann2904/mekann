@@ -1,3 +1,29 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/ul-dual-mode.ts
+ * role: 高品質実行モードとセッション永続化機能の拡張
+ * why: 効率的かつ高品質な実行と、柔軟なフェーズ数制御、必須レビュアによる品質ゲートを可能にするため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, docs/extensions.md
+ * public_api: `state` オブジェクト、`persistState`、`resetState`、`refreshStatus`、`extractTextWithoutUlPrefix`、`looksLikeClearGoalTask`、`isTrivialTask`
+ * invariants: `UL_PREFIX` は先頭の空白を許容する正規表現である、`state.persistentUlMode` はセッションを通じて維持される
+ * side_effects: UIステータスの更新、PIログへの状態追加
+ * failure_modes: 環境変数 `PI_UL_SKIP_REVIEWER_FOR_TRIVIAL` の設定ミスによるレビュースキップ、UI更新のスロットリングによる表示遅延
+ * @abdd.explain
+ * overview: "ul"プレフィックスモードの追加と、セッション全体で継続するULモードを適用的委譲機能付きで提供する拡張機能
+ * what_it_does:
+ *   - "ul"プレフィックスの検出と除去
+ *   - セッション永続化モードとステータス管理
+ *   - サブエージェント/チーム実行ツールの使用状況追跡
+ *   - 小規模タスク判定とレビュースキップ制御
+ *   - UIステータス表示とスロットリング制御
+ * why_it_exists:
+ *   - LLMの裁量で1〜Nフェーズを実行可能にし、固定フェーズ制限を解除するため
+ *   - 高品質な実行結果を保証するためにレビュアプロセスを強制するため
+ * scope:
+ *   in: ユーザー入力テキスト、環境変数
+ *   out: UIステータス、状態ログ、ツール利用フラグ
+ */
+
 // File: .pi/extensions/ul-dual-mode.ts
 // Description: Adds an "ul" prefix mode and session-wide persistent UL mode with adaptive delegation.
 // Why: Enables efficient, high-quality execution with flexible phase count and mandatory reviewer quality gate.
@@ -291,6 +317,12 @@ Rules:
 ---`;
 }
 
+/**
+ * 拡張機能を登録
+ * @summary ULデュアルモード拡張を登録
+ * @param pi - 拡張機能APIインターフェース
+ * @returns なし
+ */
 export default function registerUlDualModeExtension(pi: ExtensionAPI) {
   // CLIフラグ: セッション全体でULモードを有効化
   pi.registerFlag("ul", {

@@ -1,3 +1,28 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-usage-tracker.ts
+ * role: エージェントの拡張機能ごとの機能使用状況、ツールエラー、コンテキスト使用率を追跡する
+ * why: 拡張機能のどの機能が使用されているか、およびその信頼性に関する詳細かつ永続的な分析ビューを提供するため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/usage-tracker.ts
+ * public_api: 機能の使用状況、エラー率、平均コンテキスト占有率の集計データとイベント履歴の提供
+ * invariants: イベント履歴は最大5000件まで保持する、状態ファイルはバージョン1のフォーマットを維持する
+ * side_effects: ディスク上の状態ファイル(`.pi/analytics/`)の読み書きを行う
+ * failure_modes: ディスクIOの失敗によるデータ記録の欠落、ステータスファイルの破損による読み込みエラー
+ * @abdd.explain
+ * overview: エージェントのアクティビティにおけるツール呼び出しやエージェント実行を記録し、分析用データを永続化する追跡システム
+ * what_it_does:
+ *   - ツール呼び出しとエージェント実行の開始・終了およびエラーを記録する
+ *   - コンテキストウィンドウの使用状況（トークン数、占有率）をサンプリングする
+ *   - 機能ごとのメトリクス（呼び出し回数、エラー回数など）を集計してファイルに保存する
+ *   - 過去のイベント履歴と機能カタログを管理する
+ * why_it_exists:
+ *   - エージェントの振る舞いと拡張機能の信頼性を定量的に評価可能にするため
+ *   - コンテキストリソースの消費傾向を可視化するため
+ * scope:
+ *   in: ExtensionAPI経由のツール呼び出しイベント、エージェント実行イベント、コンテキストスナップショット
+ *   out: 集計されたメトリクスデータ、イベント履歴ログを含むJSON形式の状態ファイル
+ */
+
 // File: .pi/extensions/agent-usage-tracker.ts
 // Description: Tracks per-extension feature usage, tool errors, and average context occupancy for agent activity.
 // Why: Gives a detailed and persistent analytics view of which extension features are used and how reliable they are.
@@ -16,7 +41,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { ensureDir, toFiniteNumber } from "../lib";
+import { ensureDir } from "../lib/fs-utils.js";
+import { toFiniteNumber } from "../lib/validation-utils.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 
@@ -903,6 +929,12 @@ function recordAgentEnd(ctx: ExtensionAPI["context"]): void {
   saveState(currentRuntime);
 }
 
+/**
+ * エージェント使用状況トラッカーを登録する
+ * @summary トラッカー登録
+ * @param {ExtensionAPI} pi - 拡張API
+ * @returns {void}
+ */
 export default function registerAgentUsageTracker(pi: ExtensionAPI) {
   // 起動時に初期化と通知を行う。
   pi.on("session_start", async (_event, ctx) => {

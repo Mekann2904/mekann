@@ -1,4 +1,31 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/file_candidates.ts
+ * role: 高速ファイル列挙ツール
+ * why: fdコマンドを優先し、利用不可環境ではNode.jsネイティブ実装へフォールバックすることで、検索機能の可用性と速度を両立するため
+ * related: ../utils/cli.js, ../types.js, ../utils/output.js, ../utils/errors.js
+ * public_api: nativeFileCandidates (export via index.ts implied), shouldExclude (internal helper)
+ * invariants: excludeパターンに一致するパスは結果に含まれない、hiddenファイル(先頭.)は無視される、結果数はlimitを超えない
+ * side_effects: ファイルシステムへの読み取りアクセスが発生する
+ * failure_modes: fdコマンドがインストールされていない場合、ファイルシステムアクセス権限がない場合、正規表現パターンが無効な場合
+ * @abdd.explain
+ * overview: 外部コマンドfdを使用した高速なファイル候補列挙と、Node.jsのみで動作するネイティブフォールバック処理を実装するモジュール
+ * what_it_does:
+ *   - fdコマンドの引数を構築し、実行結果をパースしてFileCandidateオブジェクトの配列に変換する
+ *   - fdが利用できない場合、fs.readdirを用いた再帰的ディレクトリ走査によりファイル候補を収集する
+ *   - 拡張子、パターン、タイプ、最大深さ、除外リストに基づき候補をフィルタリングする
+ *   - 結果数が制限を超過する場合、リストを切り詰める
+ *   - キャッシュと履歴の管理を支援するユーティリティ関数を呼び出す
+ * why_it_exists:
+ *   - fdコマンドは高速だが環境依存であるため、すべての環境で動作させる代替手段が必要
+ *   - 検索APIの要件に応じて柔軟なフィルタリング（拡張子、globパターン等）を提供する
+ *   - パフォーマンスと信頼性のバランスを取るため
+ * scope:
+ *   in: FileCandidatesInput (query, limit, exclude, type, extension, pattern, maxDepth), cwd (current working directory)
+ *   out: FileCandidatesOutput (candidates array, hints, truncated flag)
+ */
+
+/**
  * file_candidates Tool
  *
  * Fast file enumeration using fd with fallback support
@@ -158,7 +185,11 @@ function extractResultPaths(results: FileCandidate[]): string[] {
 // ============================================
 
 /**
- * Enumerate file candidates with fd or fallback
+ * 候補ファイルを一覧
+ * @summary 候補ファイル一覧取得
+ * @param input 入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 候補ファイルリスト
  */
 export async function fileCandidates(
 	input: FileCandidatesInput,

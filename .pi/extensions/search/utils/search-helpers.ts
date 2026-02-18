@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/search-helpers.ts
+ * role: 検索結果の統一フォーマット定義および統合・ランク付けユーティリティの提供
+ * why: 複数の検索ツール（コード検索、シンボル検索など）の結果形式を統一し、重複排除や関連度スコアリングを行うため
+ * related: ../types, search-provider.ts, ranking-engine.ts
+ * public_api: UnifiedSearchResult, MergeOptions, RankOptions
+ * invariants: UnifiedSearchResultのscoreは数値、sourcesは配列、typeはリテラルのいずれかである
+ * side_effects: なし（純粋なデータ構造と型定義）
+ * failure_modes: 不正な型パラメータ渡しによる型エラー、スコア計算時の数値オーバーフロー
+ * @abdd.explain
+ * overview: 複数の検索ツールから得られる結果を統一的に扱うための型定義と、それらをマージ・ランク付けするための設定インターフェースを提供するモジュール。
+ * what_it_does:
+ *   - 全ツール共通の検索結果形式 UnifiedSearchResult を定義する
+ *   - 結果のマージ動作を制御する MergeOptions を定義する
+ *   - 検索結果のランク付け動作を制御する RankOptions を定義する
+ * why_it_exists:
+ *   - 異なる検索バックエンド間で結果形式の違いを吸収し、統一されたハンドリングを可能にするため
+ *   - 重複排除や複数ソースによるブーストなど、高度な検索結果合成処理の構成を明確にするため
+ * scope:
+ *   in: 外部からの型定義のインポート、マージ・ランク付けの設定値
+ *   out: 検索結果統合用の型定義
+ */
+
+/**
  * Search Result Integration Helpers
  *
  * Utilities for merging and ranking results from multiple search tools:
@@ -14,7 +38,13 @@ import type { CodeSearchMatch, SymbolDefinition, FileCandidate } from "../types"
 // ============================================
 
 /**
- * Unified search result format across all tools.
+ * 統合検索結果
+ * @summary 検索結果定義
+ * @param file ファイルパス
+ * @param line 行番号
+ * @param column 列番号
+ * @param snippet コードスニペット
+ * @param score スコア
  */
 export interface UnifiedSearchResult {
 	/**
@@ -59,7 +89,12 @@ export interface UnifiedSearchResult {
 }
 
 /**
- * Options for merging results.
+ * マージオプション定義
+ * @summary オプション定義
+ * @param type 検索タイプ
+ * @param boostMultiSource マルチソース強化
+ * @param multiSourceBoost ソースブースト値
+ * @param limit 上限数
  */
 export interface MergeOptions {
 	/**
@@ -79,7 +114,11 @@ export interface MergeOptions {
 }
 
 /**
- * Options for ranking results.
+ * ランク付けオプション
+ * @summary ランク付けオプション
+ * @param query ランク付け対象のクエリ文字列
+ * @param exactMatchWeight 完全一致の重み
+ * @param partialMatchWeight 部分一致の重み
  */
 export interface RankOptions {
 	/**
@@ -131,7 +170,10 @@ export const DEFAULT_RANK_OPTIONS: RankOptions = {
 // ============================================
 
 /**
- * Convert FileCandidate to UnifiedSearchResult.
+ * @summary 変換処理実行
+ * @param candidate 変換対象の候補ファイル情報
+ * @param source 検索結果のソース
+ * @returns 統合された検索結果オブジェクト
  */
 export function fileCandidateToUnified(
 	candidate: FileCandidate,
@@ -149,7 +191,11 @@ export function fileCandidateToUnified(
 }
 
 /**
- * Convert CodeSearchMatch to UnifiedSearchResult.
+ * 検索結果を変換
+ * @summary 変換
+ * @param match 変換対象のコード検索結果
+ * @param source ソース識別子（デフォルト: "code_search"）
+ * @returns 統合検索結果
  */
 export function codeSearchMatchToUnified(
 	match: CodeSearchMatch,
@@ -170,7 +216,11 @@ export function codeSearchMatchToUnified(
 }
 
 /**
- * Convert SymbolDefinition to UnifiedSearchResult.
+ * シンボル定義を変換
+ * @summary シンボル定義を変換
+ * @param symbol 変換対象のシンボル定義
+ * @param source 検索ソース（デフォルト: "sym_find"）
+ * @returns 変換後の統合検索結果
  */
 export function symbolDefinitionToUnified(
 	symbol: SymbolDefinition,
@@ -196,10 +246,12 @@ export function symbolDefinitionToUnified(
 // Result Merging
 // ============================================
 
-/**
- * Merge multiple UnifiedSearchResult arrays.
- * Deduplicates by file:line combination and combines sources.
- */
+ /**
+  * 複数の検索結果をマージする
+  * @param resultArrays マージする検索結果の配列
+  * @param options マージオプション
+  * @returns マージ後の検索結果
+  */
 export function mergeSearchResults(
 	resultArrays: UnifiedSearchResult[][],
 	options: Partial<MergeOptions> = {}
@@ -258,7 +310,11 @@ function createResultKey(result: UnifiedSearchResult): string {
 // ============================================
 
 /**
- * Rank results by relevance to the query.
+ * クエリに関連度で順位付け
+ * @summary 関連度で順位付け
+ * @param results 検索結果のリスト
+ * @param query 検索クエリ
+ * @returns 順位付けされた検索結果
  */
 export function rankByRelevance(
 	results: UnifiedSearchResult[],
@@ -328,8 +384,10 @@ function calculateRelevanceScore(
 // ============================================
 
 /**
- * Remove duplicate results based on file:line.
- * Keeps the result with the highest score.
+ * 検索結果の重複を排除する
+ * @summary 重複を排除する
+ * @param results 検索結果のリスト
+ * @returns 重複排除後の検索結果
  */
 export function deduplicateResults(results: UnifiedSearchResult[]): UnifiedSearchResult[] {
 	const seen = new Map<string, UnifiedSearchResult>();
@@ -351,7 +409,14 @@ export function deduplicateResults(results: UnifiedSearchResult[]): UnifiedSearc
 // ============================================
 
 /**
- * Process results from multiple tools into a unified, ranked list.
+ * 検索結果を統合してソート済みリストを返す
+ * @summary 統合してソート済みリストを返す
+ * @param fileCandidates ファイル候補のリスト
+ * @param codeMatches コード一致のリスト
+ * @param symbols シンボル定義のリスト
+ * @param query 検索クエリ
+ * @param options マージオプション
+ * @returns 統合・ソートされた検索結果
  */
 export function integrateSearchResults(
 	fileCandidates: FileCandidate[] = [],
@@ -388,7 +453,10 @@ export function integrateSearchResults(
 // ============================================
 
 /**
- * Group results by file.
+ * 検索結果をファイルごとにグループ化
+ * @summary ファイルごとにグループ化
+ * @param results 検索結果のリスト
+ * @returns ファイルパスをキーとした結果のマップ
  */
 export function groupByFile(results: UnifiedSearchResult[]): Map<string, UnifiedSearchResult[]> {
 	const grouped = new Map<string, UnifiedSearchResult[]>();
@@ -403,7 +471,11 @@ export function groupByFile(results: UnifiedSearchResult[]): Map<string, Unified
 }
 
 /**
- * Filter results by type.
+ * 検索結果をタイプでフィルタ
+ * @summary タイプでフィルタ
+ * @param results 検索結果のリスト
+ * @param type フィルタするタイプ
+ * @returns フィルタ後の検索結果
  */
 export function filterByType(
 	results: UnifiedSearchResult[],
@@ -413,7 +485,11 @@ export function filterByType(
 }
 
 /**
- * Filter results by file pattern.
+ * ファイルパターンで抽出
+ * @summary パターンで抽出
+ * @param results 統合検索結果の配列
+ * @param pattern ファイルパターン（正規表現互換）
+ * @returns フィルタリングされた結果配列
  */
 export function filterByFilePattern(
 	results: UnifiedSearchResult[],
@@ -424,7 +500,10 @@ export function filterByFilePattern(
 }
 
 /**
- * Format unified result for display.
+ * 統合結果をフォーマット
+ * @summary 統合結果をフォーマット
+ * @param result 統合検索結果
+ * @returns フォーマット済み文字列
  */
 export function formatUnifiedResult(result: UnifiedSearchResult): string {
 	const parts: string[] = [];
@@ -454,7 +533,10 @@ export function formatUnifiedResult(result: UnifiedSearchResult): string {
 }
 
 /**
- * Format multiple unified results for display.
+ * 統合結果を整形する
+ * @summary 統合結果を整形
+ * @param results 統合検索結果の配列
+ * @returns 整形された文字列
  */
 export function formatUnifiedResults(results: UnifiedSearchResult[]): string {
 	const lines: string[] = [];

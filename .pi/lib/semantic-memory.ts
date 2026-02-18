@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/semantic-memory.ts
+ * role: セマンティック検索（意味検索）およびベクトル埋め込みの管理モジュール
+ * why: 過去の実行履歴に対しベクトル検索を行い、類似タスクを特定するため
+ * related: .pi/lib/embeddings/index.ts, .pi/lib/run-index.ts, .pi/lib/storage-lock.ts, .pi/lib/fs-utils.ts
+ * public_api: generateEmbedding, generateEmbeddingsBatch, isSemanticMemoryAvailable, findNearestNeighbors
+ * invariants: SemanticMemoryStorageは常に固定のモデル名と次元数を持つ
+ * side_effects: ファイルシステムへの埋め込みデータの読み書き、外部埋め込みプロバイダへのAPIリクエスト
+ * failure_modes: 外部API通信エラー、埋め込み生成時のメモリ不足、ディスクIOエラー
+ * @abdd.explain
+ * overview: 実行履歴の埋め込みベクトルを生成・永続化し、類似度計算による検索機能を提供する。外部プロバイダとの連携はembeddingsモジュールに委譲する。
+ * what_it_does:
+ *   - テキストから埋め込みベクトルを生成する（単一およびバッチ）
+ *   - 実行履歴のインデックスと埋め込みベクトルを紐付けて管理する
+ *   - クエリベクトルに対するk近傍探索を行う
+ *   - セマンティックメモリストレージを読み書きする
+ * why_it_exists:
+ *   - 「類似のタスクを探す」機能を実現するため
+ *   - ベクトル類似度に基づく高度な検索を可能にするため
+ *   - 埋め込み生成ロジックと検索ロジックを分離して依存関係を整理するため
+ * scope:
+ *   in: 実行ID、検索クエリテキスト、埋め込み対象テキスト、実行インデックス
+ *   out: 類似度スコア付きの検索結果、埋め込みベクトル、メモリの利用可否状態
+ */
+
+/**
  * Semantic Memory Module.
  * Provides semantic search over run history using embedding providers.
  * Enables "find similar tasks" functionality with vector similarity.
@@ -25,7 +51,8 @@ import { atomicWriteTextFile } from "./storage-lock.js";
 // ============================================================================
 
 /**
- * Vector embedding for a run.
+ * 実行単位の埋め込みデータ
+ * @summary 実行埋め込みデータ
  */
 export interface RunEmbedding {
   runId: string;
@@ -35,7 +62,8 @@ export interface RunEmbedding {
 }
 
 /**
- * Semantic memory storage.
+ * セマンティックメモリのストレージ構造
+ * @summary セマンティックメモリ構造
  */
 export interface SemanticMemoryStorage {
   version: number;
@@ -46,7 +74,8 @@ export interface SemanticMemoryStorage {
 }
 
 /**
- * Semantic search result.
+ * セマンティック検索の結果
+ * @summary セマンティック検索結果
  */
 export interface SemanticSearchResult {
   run: IndexedRun;
@@ -67,16 +96,19 @@ export const EMBEDDING_DIMENSIONS = 1536;
 // ============================================================================
 
 /**
- * Generate embedding for text using the configured provider.
- * @deprecated Use generateEmbedding from embeddings module directly
+ * テキストの埋め込みベクトルを生成
+ * @summary 埋め込みベクトル生成
+ * @param text 埋め込み対象のテキスト
+ * @returns 生成された埋め込みベクトル、失敗時はnull
  */
 export async function generateEmbedding(text: string): Promise<number[] | null> {
   return embeddingsGenerateEmbedding(text);
 }
 
 /**
- * Generate embeddings for multiple texts in batch.
- * @deprecated Use generateEmbeddingsBatch from embeddings module directly
+ * @summary ベクトル生成(一括)
+ * @param texts ベクトル化するテキスト配列
+ * @returns 生成された埋め込みベクトルの配列
  */
 export async function generateEmbeddingsBatch(
   texts: string[]
@@ -85,7 +117,8 @@ export async function generateEmbeddingsBatch(
 }
 
 /**
- * Check if semantic memory is available (any provider configured).
+ * @summary 利用可否判定
+ * @returns セマンティックメモリが利用可能かどうか
  */
 export function isSemanticMemoryAvailable(): boolean {
   // This is now async in the new module, but we keep sync for backward compat
@@ -98,7 +131,11 @@ export function isSemanticMemoryAvailable(): boolean {
 // ============================================================================
 
 /**
- * Find the k nearest neighbors to a query vector.
+ * @summary 類似ベクトル検索
+ * @param queryVector クエリベクトル
+ * @param embeddings 検索対象の埋め込みベクトル配列
+ * @param k 取得する近傍数
+ * @returns 類似度と埋め込みを含む配列
  */
 export function findNearestNeighbors(
   queryVector: number[],
@@ -121,14 +158,18 @@ export function findNearestNeighbors(
 // ============================================================================
 
 /**
- * Get the path to the semantic memory storage file.
+ * @summary パスを取得
+ * @param cwd カレントワーキングディレクトリ
+ * @returns メモリファイルの絶対パス
  */
 export function getSemanticMemoryPath(cwd: string): string {
   return join(cwd, ".pi", "memory", "semantic-memory.json");
 }
 
 /**
- * Load semantic memory storage from disk.
+ * @summary メモリをロード
+ * @param cwd カレントワーキングディレクトリ
+ * @returns セマンティックメモリストレージ
  */
 export function loadSemanticMemory(cwd: string): SemanticMemoryStorage {
   const path = getSemanticMemoryPath(cwd);
@@ -157,7 +198,11 @@ export function loadSemanticMemory(cwd: string): SemanticMemoryStorage {
 }
 
 /**
- * Save semantic memory storage to disk.
+ * セマンティックメモリを保存
+ * @summary メモリを保存
+ * @param cwd カレントワーキングディレクトリ
+ * @param storage 保存対象のストレージデータ
+ * @returns なし
  */
 export function saveSemanticMemory(cwd: string, storage: SemanticMemoryStorage): void {
   const path = getSemanticMemoryPath(cwd);
@@ -189,8 +234,11 @@ function buildEmbeddingText(run: IndexedRun): string {
 }
 
 /**
- * Build semantic memory index from run index.
- * Generates embeddings for all runs.
+ * セマンティックメモリのインデックスを構築
+ * @summary インデックス構築
+ * @param cwd カレントワーキングディレクトリ
+ * @param batchSize バッチ処理サイズ
+ * @returns 構築されたセマンティックメモリストレージ
  */
 export async function buildSemanticMemoryIndex(
   cwd: string,
@@ -247,7 +295,11 @@ export async function buildSemanticMemoryIndex(
 }
 
 /**
- * Add a single run to semantic memory.
+ * 実行記録をセマンティックメモリに追加
+ * @summary 実行記録を追加
+ * @param cwd カレントワーキングディレクトリ
+ * @param run インデックス対象の実行記録
+ * @returns なし
  */
 export async function addRunToSemanticMemory(
   cwd: string,
@@ -280,7 +332,15 @@ export async function addRunToSemanticMemory(
 // ============================================================================
 
 /**
- * Search for similar runs using semantic similarity.
+ * セマンティック検索を実行
+ * @summary セマンティック検索
+ * @param cwd カレントワーキングディレクトリ
+ * @param query 検索クエリ
+ * @param options 検索オプション
+ * @param options.limit 取得件数の上限
+ * @param options.status 実行ステータスのフィルタ
+ * @param options.minSimilarity 類似度の閾値
+ * @returns 検索結果の配列
  */
 export async function semanticSearch(
   cwd: string,
@@ -332,7 +392,12 @@ export async function semanticSearch(
 }
 
 /**
- * Find runs similar to a given run ID.
+ * 類似実行をIDで検索
+ * @summary 類似実行検索
+ * @param cwd カレントワーキングディレクトリ
+ * @param runId 実行ID
+ * @param limit 取得件数
+ * @returns 類似した実行結果の配列
  */
 export function findSimilarRunsById(
   cwd: string,
@@ -378,7 +443,10 @@ export function findSimilarRunsById(
 // ============================================================================
 
 /**
- * Get semantic memory statistics.
+ * 意味メモリ統計取得
+ * @summary 意味メモリ統計を取得
+ * @param cwd - カレントワーキングディレクトリ
+ * @returns 統計情報オブジェクト
  */
 export function getSemanticMemoryStats(cwd: string): {
   totalEmbeddings: number;
@@ -396,7 +464,10 @@ export function getSemanticMemoryStats(cwd: string): {
 }
 
 /**
- * Clear semantic memory index.
+ * 意味メモリクリア
+ * @summary 意味メモリをクリア
+ * @param cwd - カレントワーキングディレクトリ
+ * @returns なし
  */
 export function clearSemanticMemory(cwd: string): void {
   const storage: SemanticMemoryStorage = {

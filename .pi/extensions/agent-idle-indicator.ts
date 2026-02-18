@@ -1,3 +1,28 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/agent-idle-indicator.ts
+ * role: エージェントの実行状態を視覚的に通知するエクステンション
+ * why: ユーザーがエージェントの稼働状況をタイトルバーやフッターから即座に把握するため
+ * related: @mariozechner/pi-coding-agent, extension-api
+ * public_api: default function (pi: ExtensionAPI)
+ * invariants: isAgentRunningは実行状態を反映する、savedTitleは元のタイトルを保持する
+ * side_effects: ctx.ui.setTitleによるタイトル変更、ctx.ui.setStatusによるフッターステータス更新
+ * failure_modes: タイトル取得失敗時は空文字として扱う、保存済みタイトルがない場合は現在のタイトルを基準にする
+ * @abdd.explain
+ * overview: エージェントのアイドル状態を赤い丸印とフッターテキストで通知する
+ * what_it_does:
+ *   - agent_start時に緑色の丸[🟢]を表示しインジケーターを消去する
+ *   - agent_end時に赤色の丸[🔴]と「停止中」を表示する
+ *   - session_start時に未実行であればアイドル表示を適用する
+ *   - session_shutdown時に元のタイトルと状態へ復元する
+ * why_it_exists:
+ *   - 実行待機時間を明確にするため
+ *   - 日本語環境で「停止中」状態を直感的に伝えるため
+ * scope:
+ *   in: ExtensionAPI (agent_start, agent_end, session_start, session_shutdown)
+ *   out: UIタイトル文字列、フッターステータス表示
+ */
+
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 let isAgentRunning = false;

@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/team-types.ts
+ * role: チーム監視と並列実行調整用の型定義コレクション
+ * why: agent-teams.tsから型を分離し、保守性と依存の明確化を確保するため
+ * related: extensions/agent-teams.ts, extensions/agent-teams/storage.ts, .pi/lib/tui/live-monitor-base.ts, .pi/lib/live-view-utils.ts
+ * public_api: TeamLivePhase, TeamLiveViewMode, TeamLiveItem, TeamMonitorLifecycle, LiveStreamView
+ * invariants: TeamLiveItemのkeyは「teamId/memberId」形式
+ * side_effects: なし（純粋な型定義と再エクスポートのみ）
+ * failure_modes: なし（実行時ロジックを含まない）
+ * @abdd.explain
+ * overview: チームの実行フェーズ、TUI用ライブアイテム、ライフサイクル操作のインターフェースを定義する
+ * what_it_does:
+ *   - 実行フェーズ（queued, communication, judge等）とビューモードの型を定義する
+ *   - チームメンバーの実行状態、ログ、議論内容を保持するTeamLiveItemインターフェースを提供する
+ *   - インターフェース分離原則に基づき、開始/完了操作のみを扱うTeamMonitorLifecycleを定義する
+ * why_it_exists:
+ *   - チーム監視システムと並列実行調整で共有される型情報を一元管理するため
+ *   - 監視機能のみを必要とするクライアントに対し、不要な依存を排除するため
+ * scope:
+ *   in: LiveStreamView, LiveStatusの各種型
+ *   out: チーム実行状態、監視インターフェース、TUI描画用の各種型
+ */
+
+/**
  * Team orchestration type definitions.
  * Extracted from agent-teams.ts for maintainability.
  *
@@ -8,18 +32,20 @@
  * Related: extensions/agent-teams.ts, extensions/agent-teams/storage.ts
  */
 
-import type { LiveStatus, LiveStreamView } from "./index.js";
+import type { LiveStreamView } from "./tui/live-monitor-base.js";
+import type { LiveStatus } from "./live-view-utils.js";
 
 // Re-export LiveStreamView for convenience
-export type { LiveStreamView } from "./index.js";
+export type { LiveStreamView } from "./tui/live-monitor-base.js";
 
 // ============================================================================
 // Team Live Monitor Types
 // ============================================================================
 
 /**
- * Team execution phase during orchestration.
- * Tracks the current stage of team member execution.
+ * チームライブのフェーズ定義
+ * @summary フェーズ定義
+ * @typedef {"queued" | "initial" | "communication" | "judge" | "finished"} TeamLivePhase
  */
 export type TeamLivePhase =
   | "queued"
@@ -29,14 +55,16 @@ export type TeamLivePhase =
   | "finished";
 
 /**
- * View mode for team live monitoring interface.
- * Extends base LiveViewMode with "discussion" mode.
+ * チームライブの表示モード
+ * @summary 表示モード定義
+ * @typedef {"list" | "detail" | "discussion"} TeamLiveViewMode
  */
 export type TeamLiveViewMode = "list" | "detail" | "discussion";
 
 /**
- * Live item tracking for team member execution.
- * Maintains real-time state for TUI rendering.
+ * アイテムのライブ状態を表す
+ * @summary ライブ状態表現
+ * @returns {void}
  */
 export interface TeamLiveItem {
   /** Unique key: teamId/memberId */
@@ -98,10 +126,9 @@ export interface TeamLiveItem {
 // ============================================================================
 
 /**
- * Lifecycle operations for marking team member execution states.
- * Used by code that only needs to track start/finish transitions.
- *
- * @see Interface Segregation Principle - clients depend only on needed methods
+ * ライフサイクル情報を保持する
+ * @summary ライフサイクル管理
+ * @returns {void}
  */
 export interface TeamMonitorLifecycle {
   markStarted: (itemKey: string) => void;
@@ -114,16 +141,24 @@ export interface TeamMonitorLifecycle {
 }
 
 /**
- * Phase tracking operations for team member execution phases.
- * Used by code that only needs to manage phase transitions.
+ * 開始または終了をマークする
+ * @summary 状態マーク
+ * @param {string} itemKey - アイテムキー
+ * @param {("completed" | "failed")} status - ステータス
+ * @param {string} summary - サマリー
+ * @returns {void}
  */
 export interface TeamMonitorPhase {
   markPhase: (itemKey: string, phase: TeamLivePhase, round?: number) => void;
 }
 
 /**
- * Event logging operations for tracking execution events.
- * Used by code that only needs to record events.
+ * 実行フェーズを操作する
+ * @summary フェーズ操作
+ * @param {string} itemKey - アイテムのキー
+ * @param {string} phase - フェーズ
+ * @param {number} [round] - ラウンド番号（省略可）
+ * @returns {void}
  */
 export interface TeamMonitorEvents {
   appendEvent: (itemKey: string, event: string) => void;
@@ -131,24 +166,29 @@ export interface TeamMonitorEvents {
 }
 
 /**
- * Stream output operations for appending stdout/stderr chunks.
- * Used by code that only needs to handle output streaming.
+ * チャンクを追加する
+ * @summary チャンク追加
+ * @param {string} itemKey - 対象のアイテムキー
+ * @param {string} event - 記録するイベント文字列
+ * @returns {void}
  */
 export interface TeamMonitorStream {
   appendChunk: (itemKey: string, stream: LiveStreamView, chunk: string) => void;
 }
 
 /**
- * Discussion tracking operations for multi-agent communication.
- * Used by code that only needs to track discussion content.
+ * チームの議論ログを管理します。
+ * @summary 議論ログ
+ * @param itemKey 項目識別子
+ * @param discussion 追加する議論内容
  */
 export interface TeamMonitorDiscussion {
   appendDiscussion: (itemKey: string, discussion: string) => void;
 }
 
 /**
- * Resource cleanup and termination operations.
- * Used by code that only needs to manage monitor lifecycle.
+ * モニタリングリソースを管理します。
+ * @summary 監視リソース
  */
 export interface TeamMonitorResource {
   close: () => void;
@@ -156,9 +196,8 @@ export interface TeamMonitorResource {
 }
 
 /**
- * Full monitor controller combining all capabilities.
- * Extends partial interfaces to maintain backward compatibility.
- * Clients should use narrower interfaces when possible.
+ * エージェントチームのライブモニタリングを制御します。
+ * @summary ライブ監視制御
  */
 export interface AgentTeamLiveMonitorController
   extends TeamMonitorLifecycle,
@@ -173,8 +212,8 @@ export interface AgentTeamLiveMonitorController
 // ============================================================================
 
 /**
- * Normalized output structure for team member execution.
- * Used for parsing and validating member outputs.
+ * 正規化されたチーム出力を表します。
+ * @summary 正規化チーム出力
  */
 export interface TeamNormalizedOutput {
   /** Extracted summary */
@@ -188,8 +227,8 @@ export interface TeamNormalizedOutput {
 }
 
 /**
- * Candidate for parallel capacity allocation.
- * Used in team parallel execution planning.
+ * チーム並列容量候補を表します。
+ * @summary 並列容量候補
  */
 export interface TeamParallelCapacityCandidate {
   /** Team ID */
@@ -199,8 +238,8 @@ export interface TeamParallelCapacityCandidate {
 }
 
 /**
- * Resolution result for team parallel capacity.
- * Determines actual parallelism after capacity negotiation.
+ * 並列容量の解決結果
+ * @summary 並列容量解決
  */
 export interface TeamParallelCapacityResolution {
   /** Team ID */
@@ -218,8 +257,8 @@ export interface TeamParallelCapacityResolution {
 // ============================================================================
 
 /**
- * Team frontmatter structure for markdown team definitions.
- * Used when parsing team definition files.
+ * チームのフロントマター
+ * @summary チームフロントマター
  */
 export interface TeamFrontmatter {
   id: string;
@@ -232,7 +271,8 @@ export interface TeamFrontmatter {
 }
 
 /**
- * Team member frontmatter for markdown parsing.
+ * チームメンバーのフロントマター
+ * @summary メンバーフロントマター
  */
 export interface TeamMemberFrontmatter {
   id: string;
@@ -245,7 +285,8 @@ export interface TeamMemberFrontmatter {
 }
 
 /**
- * Parsed team markdown file structure.
+ * チームMarkdownの解析結果
+ * @summary チームMarkdown構造
  */
 export interface ParsedTeamMarkdown {
   frontmatter: TeamFrontmatter;

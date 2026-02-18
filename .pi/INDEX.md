@@ -15,6 +15,7 @@
 | Troubleshooting | `docs/04-reference/03-troubleshooting.md` | `CHANGELOG.md` |
 | Getting started | `docs/01-getting-started/01-quick-start.md` | `README.md` |
 | Code review | `docs/06-code-review-report/` | `.pi/skills/code-review/SKILL.md` |
+| ABDD documentation | `ABDD/` + `scripts/generate-abdd.ts` | `.pi/skills/abdd/SKILL.md` |
 
 ## Repository Structure Map
 
@@ -33,9 +34,10 @@ mekann/
 │   ├── lib/                  <-- Shared libraries (55 files)
 │   │   ├── embeddings/       <-- Embedding modules (5 files)
 │   │   └── *.ts              <-- Core libraries
-│   ├── skills/               <-- Skill definitions (8 skills)
+│   ├── skills/               <-- Skill definitions (9 skills)
 │   │   ├── agent-estimation/ <-- Agent work estimation
 │   │   ├── alma-memory/      <-- ALMA memory design
+│   │   ├── abdd/             <-- As-Built Driven Development (NEW)
 │   │   ├── harness-engineering/
 │   │   ├── dynamic-tools/    <-- Runtime tool generation
 │   │   ├── git-workflow/
@@ -54,6 +56,13 @@ mekann/
 │   ├── 04-reference/         <-- Config, troubleshooting
 │   ├── 05-meta/              <-- Changelog, roadmap
 │   └── 06-code-review-report/<-- Code review results (NEW)
+├── ABDD/                     <-- As-Built Driven Development (NEW)
+│   ├── index.md              <-- ABDD index
+│   ├── spec.md               <-- Domain specification
+│   ├── .pi/extensions/       <-- Generated extension docs
+│   ├── .pi/lib/              <-- Generated library docs
+│   └── reviews/              <-- Review records
+├── philosophy.md             <-- Project philosophy
 └── README.md                 <-- Project overview
 ```
 
@@ -62,6 +71,9 @@ mekann/
 | Extension | File | Purpose |
 |-----------|------|---------|
 | question | `extensions/question.ts` | Interactive user selection UI |
+| abdd_generate | `extensions/abdd.ts` | ABDD as-built documentation generation |
+| abdd_jsdoc | `extensions/abdd.ts` | JSDoc auto-generation with LLM |
+| abdd_review | `extensions/abdd.ts` | Intent vs implementation gap analysis |
 | loop_run | `extensions/loop.ts` | Autonomous task loop execution |
 | subagent_* | `extensions/subagents.ts` | Sub-agent creation/execution |
 | agent_team_* | `extensions/agent-teams.ts` | Team orchestration |
@@ -86,6 +98,7 @@ mekann/
 | agent-estimation | `skills/agent-estimation/` | AI agent workload estimation |
 | alma-memory | `skills/alma-memory/` | ALMA-based memory design |
 | harness-engineering | `skills/harness-engineering/` | Quality assurance patterns |
+| abdd | `skills/abdd/` | Documentation review, gap analysis (NEW) |
 
 ## Library Index
 
@@ -108,6 +121,26 @@ mekann/
 | output-schema | `lib/output-schema.ts` | Output schema definitions |
 | text-parsing | `lib/text-parsing.ts` | Text parsing utilities |
 | embeddings | `lib/embeddings/` | Embedding modules |
+
+## ABDD System Index
+
+| Artifact | Location | Purpose |
+|----------|----------|---------|
+| philosophy.md | Root | Project values and priorities |
+| spec.md | `ABDD/spec.md` | Domain invariants and contracts |
+| As-built docs | `ABDD/.pi/extensions/`, `ABDD/.pi/lib/` | Generated API documentation |
+| Review records | `ABDD/reviews/` | Gap analysis records |
+
+### ABDD Commands
+
+| Command | Purpose |
+|---------|---------|
+| `pi abdd_generate` | Generate as-built documentation (via extension) |
+| `pi abdd_jsdoc --dry-run` | Preview JSDoc additions (via extension) |
+| `pi abdd_review` | Gap analysis checklist (via extension) |
+| `npx tsx scripts/generate-abdd.ts` | Generate as-built documentation (CLI) |
+| `npx tsx scripts/add-jsdoc.ts --dry-run` | Preview JSDoc additions (CLI) |
+| `npx tsx scripts/add-jsdoc.ts --check` | Check JSDoc coverage (CI) |
 
 ## Rules Summary
 

@@ -1,4 +1,26 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/audit.ts
+ * role: 監査ログの記録および読み込み
+ * why: 全操作の履歴をJSONL形式で永続化し、追跡可能性を確保するため
+ * related: .pi/lib/dynamic-tools/types.ts, node:fs, node:crypto
+ * public_api: logAudit, readAuditLog
+ * invariants: ログエントリは一意のIDとISO 8601形式のタイムスタンプを持つ
+ * side_effects: ファイルシステムへのログファイル追記、ディレクトリの自動作成
+ * failure_modes: ファイル書き込み失敗時はエラーコンソール出力のみで処理続行、不正なJSON行は読み込み時に無視
+ * @abdd.explain
+ * overview: 動的ツール生成システムにおける操作監査ログを管理するモジュール
+ * what_it_does:
+ *   - 操作アクション、実行者、詳細を含む監査エントリを非同期で生成・記録する
+ *   - JSONL形式のログファイルを読み込み、ツールIDやアクション種別でフィルタリングする
+ * why_it_exists:
+ *   - システム内の変更履歴や操作履歴を保持し、トラブルシューティングや監査対応を可能にする
+ * scope:
+ *   in: アクション種別、ツールID、実行者情報、詳細データ、フィルタオプション
+ * out: 生成された監査エントリ、フィルタリングされたエントリ配列
+ */
+
+/**
  * 動的ツール生成システム - 監査ログ
  * 全操作をJSONL形式で記録
  */
@@ -26,9 +48,12 @@ function generateEntryId(): string {
   return `audit_${timestamp}_${random}`;
 }
 
-/**
- * 監査ログにエントリを追加
- */
+ /**
+  * 監査ログを非同期で記録する
+  * @param entry 監査ログエントリ（アクション、実行者、詳細等）
+  * @param paths 動的ツールのパス設定（省略可）
+  * @returns 作成された監査ログエントリ
+  */
 export async function logAudit(
   entry: {
     action: AuditAction;
@@ -76,7 +101,11 @@ export async function logAudit(
 }
 
 /**
- * 監査ログを読み込み
+ * ログ読込
+ * @summary ログを読み込む
+ * @param {{ limit?: number; toolId?: string; action?: AuditAction; since?: Date; }} [options] オプション設定
+ * @param {DynamicToolsPaths} [paths] パス設定
+ * @returns {AuditLogEntry[]} 監査ログエントリ配列
  */
 export function readAuditLog(
   options?: {
@@ -137,7 +166,11 @@ export function readAuditLog(
 }
 
 /**
- * ツールの操作履歴を取得
+ * 履歴取得
+ * @summary 履歴を取得
+ * @param {string} toolId ツールID
+ * @param {DynamicToolsPaths} [paths] パス設定
+ * @returns {AuditLogEntry[]} 監査ログエントリ配列
  */
 export function getToolHistory(
   toolId: string,
@@ -147,7 +180,11 @@ export function getToolHistory(
 }
 
 /**
- * 指定期間内の統計を取得
+ * 監査統計を取得
+ * @summary 監査統計を取得
+ * @param since 集計の開始日時
+ * @param paths オプションのパス設定
+ * @returns アクション数、成功率、ツール別集計などを含む統計データ
  */
 export function getAuditStatistics(
   since: Date,
@@ -210,7 +247,10 @@ export function getAuditStatistics(
 }
 
 /**
- * 監査ログをフォーマットして表示用文字列を生成
+ * 監査ログをフォーマット
+ * @summary 監査ログをフォーマット
+ * @param entry 監査ログエントリ
+ * @returns フォーマット済みの文字列
  */
 export function formatAuditLogEntry(entry: AuditLogEntry): string {
   const timestamp = new Date(entry.timestamp).toLocaleString("ja-JP");
@@ -235,6 +275,10 @@ export function formatAuditLogEntry(entry: AuditLogEntry): string {
 
 /**
  * 監査ログレポートを生成
+ * @summary レポートを生成
+ * @param since 集計開始日時
+ * @param paths パス設定オプション
+ * @returns 生成されたレポート文字列
  */
 export function generateAuditReport(
   since: Date,
@@ -283,6 +327,10 @@ export function generateAuditReport(
 
 /**
  * 古いログをアーカイブ
+ * @summary 古いログをアーカイブ
+ * @param daysToKeep 保存日数
+ * @param paths パス設定（省略可）
+ * @returns アーカイブ数とエラー情報
  */
 export function archiveOldLogs(
   daysToKeep: number = 30,

@@ -1,4 +1,33 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/text-parsing.ts
+ * role: 構造化テキスト出力のパース・正規化・ID生成を行う共有ユーティリティ
+ * why: モジュール間の循環依存を回避するために機能を抽出して配置するため
+ * related: .pi/lib/judge.ts, .pi/lib/output-schema.ts, .pi/lib/output-validation.ts
+ * public_api: clampConfidence, generateClaimId, generateEvidenceId, parseUnitInterval, extractField, extractMultilineField
+ * invariants:
+ *   - clampConfidenceは必ず0以上1以下の数値を返す
+ *   - 生成されるIDは一意かつ指定されたフォーマットに従う
+ * side_effects: なし（純粋関数）
+ * failure_modes:
+ *   - 不正な数値形式や空文字列に対してundefinedまたはデフォルト値を返す
+ *   - フィールド抽出時にパターンマッチが失敗すると空文字またはundefinedを返す
+ * @abdd.explain
+ * overview: 構造化された出力処理において、信頼度の正規化、一意ID生成、テキストフィールド抽出を行うヘルパー関数群
+ * what_it_does:
+ *   - 信頼度を0.0〜1.0の範囲に丸める
+ *   - タイムスタンプと乱数を含む一意のClaim IDとEvidence IDを生成する
+ *   - 文字列から小数またはパーセント表記を数値に変換する
+ *   - 構造化テキストから指定されたフィールド名の値を抽出する（単一行および複数行対応）
+ * why_it_exists:
+ *   - 評価ロジックやバリデーション機能からパース処理を分離し、コードの重複と依存関係の複雑化を防ぐため
+ *   - 構造化通信におけるID生成と値の正規化処理を標準化するため
+ * scope:
+ *   in: 生のテキスト文字列、数値、フォーマット指定
+ *   out: 正規化された数値、一意ID文字列、抽出されたテキスト、またはundefined/空文字
+ */
+
+/**
  * Shared text parsing utilities for structured output processing.
  * Extracted to avoid circular dependencies between modules.
  *
@@ -10,8 +39,10 @@
 // ============================================================================
 
 /**
- * Clamp a confidence value to the valid range [0, 1].
- * Invalid values default to 0.5 (neutral).
+ * 信頼度を範囲内に収める
+ * @summary 値を制限
+ * @param value 制限対象の数値
+ * @returns 0から1の間に収められた数値
  */
 export function clampConfidence(value: number): number {
   if (!Number.isFinite(value)) return 0.5;
@@ -23,10 +54,9 @@ export function clampConfidence(value: number): number {
 // ============================================================================
 
 /**
- * Generate a unique claim ID for structured communication tracking.
- * Format: claim-<timestamp>-<random>
- *
- * @returns Unique claim identifier
+ * エビデンスIDを生成する
+ * @summary ID生成
+ * @returns 生成された一意なID文字列
  */
 export function generateClaimId(): string {
   const timestamp = Date.now().toString(36);
@@ -35,10 +65,9 @@ export function generateClaimId(): string {
 }
 
 /**
- * Generate a unique evidence ID for structured communication tracking.
- * Format: evidence-<timestamp>-<random>
- *
- * @returns Unique evidence identifier
+ * クレームIDを生成する
+ * @summary ID生成
+ * @returns 生成された一意なID文字列
  */
 export function generateEvidenceId(): string {
   const timestamp = Date.now().toString(36);
@@ -47,9 +76,10 @@ export function generateEvidenceId(): string {
 }
 
 /**
- * Parse a unit interval value from a string.
- * Handles both decimal (0.5) and percentage (50%) formats.
- * Returns undefined for invalid or empty input.
+ * @summary 単位区間をパース
+ * @description 文字列を0.0から1.0までの数値に変換します。
+ * @param {string | undefined} raw - 変換対象の文字列
+ * @returns {number | undefined} パースされた数値。無効な場合はundefined
  */
 export function parseUnitInterval(raw: string | undefined): number | undefined {
   if (!raw) return undefined;
@@ -71,8 +101,11 @@ export function parseUnitInterval(raw: string | undefined): number | undefined {
 // ============================================================================
 
 /**
- * Extract a named field from structured output text.
- * Matches patterns like "FIELD_NAME: value" (case-insensitive).
+ * @summary 単一行フィールドを抽出
+ * @description テキストから指定された名前の単一行フィールドの値を抽出します。
+ * @param {string} output - 解析対象のテキスト
+ * @param {string} name - 抽出するフィールド名
+ * @returns {string | undefined} 抽出されたフィールド値。見つからない場合はundefined
  */
 export function extractField(output: string, name: string): string | undefined {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -81,8 +114,11 @@ export function extractField(output: string, name: string): string | undefined {
 }
 
 /**
- * Extract multiple lines for a named field.
- * Returns content from the field label until the next major label.
+ * @summary 複数行フィールドを抽出
+ * @description テキストから指定された名前の複数行フィールドの値を抽出します。
+ * @param {string} output - 解析対象のテキスト
+ * @param {string} name - 抽出するフィールド名
+ * @returns {string} 抽出されたフィールド値
  */
 export function extractMultilineField(output: string, name: string): string {
   const pattern = new RegExp(`^${name}\\s*:\\s*$`, "im");
@@ -117,8 +153,11 @@ export function extractMultilineField(output: string, name: string): string {
 // ============================================================================
 
 /**
- * Count how many keywords appear in the output text.
- * Used for signal detection in member outputs.
+ * @summary キーワード出現数をカウント
+ * @description 指定されたテキスト内に含まれるキーワードの総出現回数をカウントします。
+ * @param {string} output - 検索対象のテキスト
+ * @param {string[]} keywords - 検索するキーワードの配列
+ * @returns {number} キーワードの総出現回数
  */
 export function countKeywordSignals(output: string, keywords: string[]): number {
   const lowered = output.toLowerCase();
@@ -136,13 +175,17 @@ export function countKeywordSignals(output: string, keywords: string[]): number 
 // ============================================================================
 
 /**
- * Stance type for discussion analysis.
- * Matches StanceClassificationMode behavior in output-schema.ts.
+ * @summary 議論の立場を定義
+ * @description 議論における賛成、反対、中立、部分的賛成の立場を表す型。
  */
 export type DiscussionStance = "agree" | "disagree" | "neutral" | "partial";
 
 /**
- * Result of discussion stance analysis.
+ * 議論の立場解析結果を表すインターフェース
+ * @summary 解析結果インターフェース
+ * @property {string} stance 立場
+ * @property {number} confidence 信頼度
+ * @property {string[]} evidence 証拠リスト
  */
 export interface DiscussionStanceResult {
   stance: DiscussionStance;
@@ -174,11 +217,11 @@ export const STANCE_PATTERNS: Record<DiscussionStance, RegExp[]> = {
 };
 
 /**
- * Analyze the discussion stance relative to a target member.
- *
- * @param text - Discussion text to analyze
- * @param targetMemberId - Member ID to find context around
- * @returns Stance analysis result with confidence and evidence
+ * 議論におけるメンバーの立場を解析する
+ * @summary 議論立場解析
+ * @param {string} text 解析対象テキスト
+ * @param {string} targetMemberId 対象メンバーID
+ * @returns {DiscussionStanceResult} 解析結果
  */
 export function analyzeDiscussionStance(
   text: string,
@@ -270,11 +313,10 @@ export function analyzeDiscussionStance(
 }
 
 /**
- * Extract consensus marker from discussion text.
- * Looks for lines starting with "合意:" (Japanese) or "Consensus:" (English).
- *
- * @param text - Discussion text to search
- * @returns Extracted consensus text, or undefined if not found
+ * テキストから合意マーカーを抽出する
+ * @summary 合意マーカー抽出
+ * @param {string} text 解析対象テキスト
+ * @returns {string | undefined} 抽出されたマーカー文字列
  */
 export function extractConsensusMarker(text: string): string | undefined {
   // Japanese pattern: "合意:" or "合意："

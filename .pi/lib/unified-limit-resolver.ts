@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/unified-limit-resolver.ts
+ * role: 5層の並列数制限計算を統合し、単一のインターフェースを提供するFacade
+ * why: プリセット、適応学習、分散、ランタイム、スケジューリングという異なる制約レイヤーを集約し、一貫したAPIで並列数を解決するため
+ * related: provider-limits.ts, adaptive-rate-controller.ts, cross-instance-coordinator.ts, runtime-config.ts
+ * public_api: resolveUnifiedLimits, type UnifiedLimitInput, type LimitBreakdown
+ * invariants: 返り値のeffectiveConcurrencyは常に全レイヤーの制約を満たす最小値である、snapshot provider未注入時はデフォルト値と警告ログを使用する
+ * side_effects: なし（純粋な計算と統合ロジックのみ）
+ * failure_modes: 依存モジュールからの値取得失敗、スナップショットプロバイダーの未注入による設定不備
+ * @abdd.explain
+ * overview: provider-limits, adaptive-rate-controller, cross-instance-coordinator, runtime-config, task-schedulerの5層から制限値を収集・統合し、最終的な有効並列数を算出する
+ * what_it_does:
+ *   - 入力プロバイダー/モデル/優先度に基づき各レイヤーの制限値を収集する
+ *   - 各レイヤーの内訳を含む統合結果を生成する
+ *   - 最も制約となる要因と理由を特定する
+ * why_it_exists:
+ *   - 複雑な多層アーキテクチャにおける制限計算の複雑度を隠蔽するため
+ *   - 初期化順序や依存関係を正しく管理して一貫した結果を返すため
+ *   - デバッグ用に制約のボトルネックを特定する情報を提供するため
+ * scope:
+ *   in: UnifiedLimitInput (provider, model, tier, operationType, priority)
+ *   out: UnifiedLimitResult (effectiveConcurrency, effectiveRpm, breakdown, limitingFactor)
+ */
+
+/**
  * Unified Limit Resolver
  *
  * 5層の並列数制限計算を統合するfacadeレイヤー。
@@ -11,6 +36,14 @@
  * Layer 3: cross-instance-coordinator.ts (インスタンス間分散)
  * Layer 4: agent-runtime.ts (ランタイム制約)
  * Layer 5: task-scheduler.ts (優先度ベーススケジューリング)
+ *
+ * Initialization Order (IMPORTANT):
+ * 1. Runtime config is loaded first (no dependencies)
+ * 2. Cross-instance coordinator registers on session start
+ * 3. Agent runtime extension injects snapshot provider
+ * 4. This resolver combines all layers
+ *
+ * If snapshot provider is not injected, a warning is logged and defaults are used.
  */
 
 
@@ -31,14 +64,25 @@ import {
   getRpmLimit,
   type ResolvedModelLimits,
 } from "./provider-limits.js";
+import {
+  getRuntimeConfig,
+  validateConfigConsistency,
+  type RuntimeConfig,
+} from "./runtime-config.js";
 import type { IRuntimeSnapshot, RuntimeSnapshotProvider } from "./interfaces/runtime-snapshot.js";
 
 // ============================================================================
-// Types
+// Types (RuntimeConfig is imported from runtime-config.ts)
 // ============================================================================
 
 /**
- * 制限解決の入力パラメータ
+ * 統合リミット入力インターフェース
+ * @summary 統合リミット入力定義
+ * @param provider - プロバイダ識別子
+ * @param model - モデル識別子
+ * @param tier - 利用ティア
+ * @param operationType - 操作種別
+ * @param priority - 優先度
  */
 export interface UnifiedLimitInput {
   /** プロバイダー名 (例: "anthropic", "openai") */
@@ -54,7 +98,8 @@ export interface UnifiedLimitInput {
 }
 
 /**
- * 各レイヤーの制限内訳
+ * リミット内訳のインターフェース
+ * @summary リミット内訳定義
  */
 export interface LimitBreakdown {
   /** Layer 1: プリセット制限 */
@@ -88,7 +133,8 @@ export interface LimitBreakdown {
 }
 
 /**
- * 制限解決の結果
+ * 統一リミット結果のインターフェース
+ * @summary リミット結果定義
  */
 export interface UnifiedLimitResult {
   /** 最終的な有効並列数 */
@@ -116,28 +162,6 @@ export interface UnifiedLimitResult {
   };
 }
 
-/**
- * 統合環境変数設定
- */
-export interface UnifiedEnvConfig {
-  /** 全体のLLM並列上限 */
-  maxTotalLlm: number;
-  /** 全体のリクエスト並列上限 */
-  maxTotalRequests: number;
-  /** サブエージェント並列数 */
-  maxSubagentParallel: number;
-  /** チーム並列数 */
-  maxTeamParallel: number;
-  /** チームメンバー並列数 */
-  maxTeammateParallel: number;
-  /** オーケストレーション並列数 */
-  maxOrchestrationParallel: number;
-  /** 適応制御の有効/無効 */
-  adaptiveEnabled: boolean;
-  /** 予測スケジューリングの有効/無効 */
-  predictiveEnabled: boolean;
-}
-
 // ============================================================================
 // Dependency Injection (DIP Compliance)
 // ============================================================================
@@ -149,20 +173,79 @@ export interface UnifiedEnvConfig {
 let _getRuntimeSnapshot: RuntimeSnapshotProvider | null = null;
 
 /**
- * Set the runtime snapshot provider function.
- * Called by extensions/agent-runtime.ts during initialization.
+ * Track initialization state for diagnostics.
+ */
+let _initializationState: {
+  snapshotProviderSet: boolean;
+  setAt: string | null;
+  warningsLogged: string[];
+} = {
+  snapshotProviderSet: false,
+  setAt: null,
+  warningsLogged: [],
+};
+
+/**
+ * ランタイムスナップショットプロバイダを設定
+ * @summary プロバイダ設定
+ * @param fn 設定する関数
+ * @returns なし
  */
 export function setRuntimeSnapshotProvider(fn: RuntimeSnapshotProvider): void {
+  const previousState = _getRuntimeSnapshot !== null;
   _getRuntimeSnapshot = fn;
+  _initializationState.snapshotProviderSet = true;
+  _initializationState.setAt = new Date().toISOString();
+
+  if (previousState) {
+    const warning = "Runtime snapshot provider was set multiple times. This may indicate a bug.";
+    _initializationState.warningsLogged.push(warning);
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn(`[unified-limit-resolver] ${warning}`);
+    }
+  }
+}
+
+/**
+ * スナップショットプロバイダ初期化判定
+ * @summary 初期化判定
+ * @returns 初期化済みの場合はtrue
+ */
+export function isSnapshotProviderInitialized(): boolean {
+  return _initializationState.snapshotProviderSet;
+}
+
+/**
+ * 初期化状態を取得
+ * @summary 状態取得
+ * @returns 初期化状態
+ */
+export function getInitializationState(): typeof _initializationState {
+  return { ..._initializationState };
 }
 
 /**
  * Get runtime snapshot with fallback to default values.
  * Internal function used by resolveUnifiedLimits.
+ *
+ * If the snapshot provider is not initialized, logs a warning once
+ * and returns default values (all zeros).
  */
 function getRuntimeSnapshot(): IRuntimeSnapshot {
   if (!_getRuntimeSnapshot) {
-    // Fallback: return default values when not initialized
+    // Log warning once
+    if (!_initializationState.warningsLogged.includes("snapshot_provider_not_set")) {
+      _initializationState.warningsLogged.push("snapshot_provider_not_set");
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn(
+          "[unified-limit-resolver] Runtime snapshot provider not initialized. " +
+          "Using default values (0 active). " +
+          "This may indicate agent-runtime extension is not loaded yet."
+        );
+      }
+    }
+
+    // Return default values when not initialized
     return {
       totalActiveLlm: 0,
       totalActiveRequests: 0,
@@ -170,91 +253,42 @@ function getRuntimeSnapshot(): IRuntimeSnapshot {
       teamActiveCount: 0,
     };
   }
-  return _getRuntimeSnapshot();
+
+  try {
+    return _getRuntimeSnapshot();
+  } catch (error) {
+    // Handle errors gracefully
+    if (typeof console !== "undefined" && console.error) {
+      console.error("[unified-limit-resolver] Error getting runtime snapshot:", error);
+    }
+    return {
+      totalActiveLlm: 0,
+      totalActiveRequests: 0,
+      subagentActiveCount: 0,
+      teamActiveCount: 0,
+    };
+  }
 }
 
 // ============================================================================
-// Constants
-// ============================================================================
-
-const DEFAULT_ENV_CONFIG: UnifiedEnvConfig = {
-  maxTotalLlm: 8,
-  maxTotalRequests: 6,
-  maxSubagentParallel: 4,
-  maxTeamParallel: 3,
-  maxTeammateParallel: 6,
-  maxOrchestrationParallel: 4,
-  adaptiveEnabled: true,
-  predictiveEnabled: true,
-};
-
-// ============================================================================
-// Environment Variable Resolution
+// Constants (Now using RuntimeConfig from runtime-config.ts)
 // ============================================================================
 
 /**
- * 統合環境変数設定を取得
- * 
- * 優先順位:
- * 1. PI_LIMIT_* (新しい統一形式)
- * 2. PI_AGENT_* (従来形式 - 後方互換性)
- * 3. デフォルト値
+ * 統合環境設定の型
+ * @summary 環境設定型
+ * @deprecated 代わりに runtime-config.ts の RuntimeConfig を使用してください。
+ */
+export type UnifiedEnvConfig = RuntimeConfig;
+
+/**
+ * 統合環境設定を取得
+ * @summary 環境設定取得
+ * @deprecated 代わりに runtime-config.ts の RuntimeConfig を使用してください。
+ * @returns 統合環境設定オブジェクト
  */
 export function getUnifiedEnvConfig(): UnifiedEnvConfig {
-  const config = { ...DEFAULT_ENV_CONFIG };
-
-  // 新しい統一形式 (PI_LIMIT_*)
-  if (process.env.PI_LIMIT_MAX_TOTAL_LLM) {
-    config.maxTotalLlm = parseInt(process.env.PI_LIMIT_MAX_TOTAL_LLM, 10);
-  }
-  if (process.env.PI_LIMIT_MAX_TOTAL_REQUESTS) {
-    config.maxTotalRequests = parseInt(process.env.PI_LIMIT_MAX_TOTAL_REQUESTS, 10);
-  }
-  if (process.env.PI_LIMIT_SUBAGENT_PARALLEL) {
-    config.maxSubagentParallel = parseInt(process.env.PI_LIMIT_SUBAGENT_PARALLEL, 10);
-  }
-  if (process.env.PI_LIMIT_TEAM_PARALLEL) {
-    config.maxTeamParallel = parseInt(process.env.PI_LIMIT_TEAM_PARALLEL, 10);
-  }
-  if (process.env.PI_LIMIT_TEAMMATE_PARALLEL) {
-    config.maxTeammateParallel = parseInt(process.env.PI_LIMIT_TEAMMATE_PARALLEL, 10);
-  }
-  if (process.env.PI_LIMIT_ORCHESTRATION_PARALLEL) {
-    config.maxOrchestrationParallel = parseInt(process.env.PI_LIMIT_ORCHESTRATION_PARALLEL, 10);
-  }
-  if (process.env.PI_LIMIT_ADAPTIVE_ENABLED !== undefined) {
-    config.adaptiveEnabled = process.env.PI_LIMIT_ADAPTIVE_ENABLED === "1" || process.env.PI_LIMIT_ADAPTIVE_ENABLED === "true";
-  }
-  if (process.env.PI_LIMIT_PREDICTIVE_ENABLED !== undefined) {
-    config.predictiveEnabled = process.env.PI_LIMIT_PREDICTIVE_ENABLED === "1" || process.env.PI_LIMIT_PREDICTIVE_ENABLED === "true";
-  }
-
-  // 従来形式 (PI_AGENT_*) - 後方互換性
-  if (process.env.PI_AGENT_MAX_TOTAL_LLM && !process.env.PI_LIMIT_MAX_TOTAL_LLM) {
-    config.maxTotalLlm = parseInt(process.env.PI_AGENT_MAX_TOTAL_LLM, 10);
-  }
-  if (process.env.PI_AGENT_MAX_TOTAL_REQUESTS && !process.env.PI_LIMIT_MAX_TOTAL_REQUESTS) {
-    config.maxTotalRequests = parseInt(process.env.PI_AGENT_MAX_TOTAL_REQUESTS, 10);
-  }
-  if (process.env.PI_AGENT_MAX_PARALLEL_SUBAGENTS && !process.env.PI_LIMIT_SUBAGENT_PARALLEL) {
-    config.maxSubagentParallel = parseInt(process.env.PI_AGENT_MAX_PARALLEL_SUBAGENTS, 10);
-  }
-  if (process.env.PI_AGENT_MAX_PARALLEL_TEAMS && !process.env.PI_LIMIT_TEAM_PARALLEL) {
-    config.maxTeamParallel = parseInt(process.env.PI_AGENT_MAX_PARALLEL_TEAMS, 10);
-  }
-  if (process.env.PI_AGENT_MAX_PARALLEL_TEAMMATES && !process.env.PI_LIMIT_TEAMMATE_PARALLEL) {
-    config.maxTeammateParallel = parseInt(process.env.PI_AGENT_MAX_PARALLEL_TEAMMATES, 10);
-  }
-  if (process.env.PI_AGENT_MAX_CONCURRENT_ORCHESTRATIONS && !process.env.PI_LIMIT_ORCHESTRATION_PARALLEL) {
-    config.maxOrchestrationParallel = parseInt(process.env.PI_AGENT_MAX_CONCURRENT_ORCHESTRATIONS, 10);
-  }
-
-  // クロスインスタンス従来形式
-  if (process.env.PI_TOTAL_MAX_LLM && !process.env.PI_LIMIT_MAX_TOTAL_LLM && !process.env.PI_AGENT_MAX_TOTAL_LLM) {
-    config.maxTotalLlm = parseInt(process.env.PI_TOTAL_MAX_LLM, 10);
-  }
-
-  return config;
+  return getRuntimeConfig();
 }
 
 // ============================================================================
@@ -262,18 +296,14 @@ export function getUnifiedEnvConfig(): UnifiedEnvConfig {
 // ============================================================================
 
 /**
- * 統合制限解決のメイン関数
- * 
- * 制限計算チェーン:
- * 1. プリセット制限を取得 (provider-limits)
- * 2. 適応的調整を適用 (adaptive-rate-controller)
- * 3. クロスインスタンス分散を適用 (cross-instance-coordinator)
- * 4. ランタイム制約を適用 (環境変数 + 現在のアクティブ数)
- * 5. 予測分析を追加 (オプション)
+ * 統合制限を解決
+ * @summary 制限を解決
+ * @param input 統合制限の入力データ
+ * @returns 統合制限の判定結果
  */
 export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResult {
   const { provider, model, tier } = input;
-  const envConfig = getUnifiedEnvConfig();
+  const envConfig = getRuntimeConfig();
   
   // Layer 1: プリセット制限
   const presetLimits = resolveLimits(provider, model, tier);
@@ -306,7 +336,7 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
   }
   
   // Layer 4: ランタイム制約
-  const runtimeMax = envConfig.maxTotalLlm;
+  const runtimeMax = envConfig.totalMaxLlm;
   const runtimeSnapshot = getRuntimeSnapshot();
   const currentActive = runtimeSnapshot.totalActiveLlm;
   const runtimeConcurrency = Math.min(crossInstanceConcurrency, runtimeMax);
@@ -381,7 +411,10 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
 }
 
 /**
- * 制限解決結果をフォーマット
+ * 制限結果をフォーマット
+ * @summary 結果をフォーマット
+ * @param result 統合制限の判定結果
+ * @returns フォーマット済みのJSON文字列
  */
 export function formatUnifiedLimitsResult(result: UnifiedLimitResult): string {
   const lines: string[] = [
@@ -404,30 +437,50 @@ export function formatUnifiedLimitsResult(result: UnifiedLimitResult): string {
 }
 
 /**
- * 全プロバイダーの制限サマリーを取得
+ * 制限サマリを生成
+ * @summary サマリを生成
+ * @returns フォーマットされたサマリ文字列
  */
 export function getAllLimitsSummary(): string {
-  const envConfig = getUnifiedEnvConfig();
+  const envConfig = getRuntimeConfig();
   const coordinatorStatus = getCoordinatorStatus();
+  const validation = validateConfigConsistency();
   
   const lines: string[] = [
     `Unified Limit Resolver Summary`,
     `================================`,
     ``,
+    `Profile: ${envConfig.profile}`,
+    ``,
     `Environment Config:`,
-    `  maxTotalLlm: ${envConfig.maxTotalLlm}`,
-    `  maxTotalRequests: ${envConfig.maxTotalRequests}`,
-    `  maxSubagentParallel: ${envConfig.maxSubagentParallel}`,
-    `  maxTeamParallel: ${envConfig.maxTeamParallel}`,
-    `  maxTeammateParallel: ${envConfig.maxTeammateParallel}`,
-    `  maxOrchestrationParallel: ${envConfig.maxOrchestrationParallel}`,
+    `  totalMaxLlm: ${envConfig.totalMaxLlm}`,
+    `  totalMaxRequests: ${envConfig.totalMaxRequests}`,
+    `  maxParallelSubagents: ${envConfig.maxParallelSubagents}`,
+    `  maxParallelTeams: ${envConfig.maxParallelTeams}`,
+    `  maxParallelTeammates: ${envConfig.maxParallelTeammates}`,
+    `  maxConcurrentOrchestrations: ${envConfig.maxConcurrentOrchestrations}`,
     `  adaptiveEnabled: ${envConfig.adaptiveEnabled}`,
     `  predictiveEnabled: ${envConfig.predictiveEnabled}`,
+    ``,
+    `Task Scheduler:`,
+    `  maxConcurrentPerModel: ${envConfig.maxConcurrentPerModel}`,
+    `  maxTotalConcurrent: ${envConfig.maxTotalConcurrent}`,
     ``,
     `Cross-Instance Status:`,
     `  activeInstances: ${coordinatorStatus.activeInstanceCount || 1}`,
     `  registered: ${coordinatorStatus.registered || false}`,
+    ``,
+    `Initialization:`,
+    `  snapshotProviderSet: ${_initializationState.snapshotProviderSet}`,
+    `  setAt: ${_initializationState.setAt || "not set"}`,
   ];
+
+  if (validation.warnings.length > 0) {
+    lines.push("", "Configuration Warnings:");
+    for (const warning of validation.warnings) {
+      lines.push(`  - ${warning}`);
+    }
+  }
   
   return lines.join("\n");
 }

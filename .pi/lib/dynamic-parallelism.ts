@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-parallelism.ts
+ * role: プロバイダ/モデルごとの並列度をエラー率と回復状態に基づき動的に調整する
+ * why: 429エラーやタイムアウト発生時に負荷を低減し、安定性とリソース効率を維持するため
+ * related: .pi/lib/task-scheduler.ts, .pi/lib/cross-instance-coordinator.ts, .pi/lib/adaptive-rate-controller.ts
+ * public_api: DynamicAdjusterConfig, ParallelismConfig, ProviderHealth
+ * invariants: currentParallelismはminParallelism以上maxParallelism以下
+ * side_effects: プロバイダの並列度設定を更新し、外部のcross-instance-coordinatorへ状態を通知
+ * failure_modes: 調整ロジックの失敗、外部連携タイムアウト、不正な設定値による範囲違反
+ * @abdd.explain
+ * overview: 個別のプロバイダとモデルに対して、エラー発生時の並列度低減と時間経過による漸次的な回復を行う。
+ * what_it_does:
+ *   - 429エラー発生時に並列度を30%低減する
+ *   - タイムアウト発生時に並列度を10%低減する
+ *   - 回復間隔ごとに並列度を10%増加させる
+ *   - インスタンス間の調整係数を反映して最終的な並列度を決定する
+ * why_it_exists:
+ *   - APIレート制限（429）や応答遅延に対してシステム全体の可用性を保つため
+ *   - 静的な並列度設定では対応できない変動する負荷状況に適応するため
+ * scope:
+ *   in: エラーイベント、応答時間、設定パラメータ、インスタンス間調整係数
+ *   out: 調整後の並列度、正常性ステータス、推奨バックオフ時間
+ */
+
+/**
  * Dynamic Parallelism Adjuster
  *
  * Manages per-provider/model parallelism based on error rates and recovery.
@@ -21,7 +46,14 @@ import type { QueueStats } from "./task-scheduler";
 // ============================================================================
 
 /**
- * Configuration for parallelism adjustment.
+ * 動的並列度設定
+ * @summary 並列度設定を取得
+ * @param baseParallelism 基本並列度（開始点）
+ * @param currentParallelism 現在の並列度（調整値）
+ * @param minParallelism 最小並列度（下限）
+ * @param maxParallelism 最大並列度（上限）
+ * @param adjustmentReason 最後の調整理由
+ * @param lastAdjustedAt 最後の調整時刻（ミリ秒）
  */
 export interface ParallelismConfig {
   /** Base parallelism level (starting point) */
@@ -39,7 +71,8 @@ export interface ParallelismConfig {
 }
 
 /**
- * Health status for a provider/model combination.
+ * プロバイダー健全性
+ * @summary 健全性ステータス
  */
 export interface ProviderHealth {
   /** Whether the provider is currently healthy */
@@ -67,7 +100,8 @@ interface ProviderModelState {
 }
 
 /**
- * Configuration for the adjuster.
+ * 動的調整設定
+ * @summary 調整設定インターフェース
  */
 export interface DynamicAdjusterConfig {
   /** Minimum parallelism (default: 1) */
@@ -93,7 +127,8 @@ export interface DynamicAdjusterConfig {
 }
 
 /**
- * Error event for tracking.
+ * エラーイベント
+ * @summary エラーイベント定義
  */
 export interface ErrorEvent {
   provider: string;
@@ -125,21 +160,8 @@ const DEFAULT_CONFIG: DynamicAdjusterConfig = {
 // ============================================================================
 
 /**
- * Manages dynamic parallelism adjustment for LLM providers.
- *
- * @example
- * ```typescript
- * const adjuster = getParallelismAdjuster();
- *
- * // Get current parallelism for a model
- * const limit = adjuster.getParallelism("anthropic", "claude-sonnet-4");
- *
- * // Adjust on error
- * adjuster.adjustForError("anthropic", "claude-sonnet-4", "429");
- *
- * // Attempt recovery
- * adjuster.attemptRecovery("anthropic", "claude-sonnet-4");
- * ```
+ * 動的並列度調整器
+ * @summary 並列度を調整
  */
 export class DynamicParallelismAdjuster {
   private readonly states: Map<string, ProviderModelState> = new Map();
@@ -157,11 +179,11 @@ export class DynamicParallelismAdjuster {
   // ==========================================================================
 
   /**
-   * Get the current parallelism level for a provider/model.
-   *
-   * @param provider - Provider name (e.g., "anthropic")
-   * @param model - Model name (e.g., "claude-sonnet-4")
-   * @returns Current parallelism level
+   * 並列度を取得する
+   * @summary 並列度を取得
+   * @param provider プロバイダー名
+   * @param model モデル名
+   * @returns 計算された並列度
    */
   getParallelism(provider: string, model: string): number {
     const key = this.buildKey(provider, model);
@@ -170,11 +192,11 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Get the full configuration for a provider/model.
-   *
-   * @param provider - Provider name
-   * @param model - Model name
-   * @returns Parallelism configuration
+   * 並列処理設定を取得
+   * @summary 設定を取得
+   * @param provider プロバイダ名
+   * @param model モデル名
+   * @returns 並列処理設定
    */
   getConfig(provider: string, model: string): ParallelismConfig {
     const key = this.buildKey(provider, model);
@@ -183,11 +205,12 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Adjust parallelism based on an error.
-   *
-   * @param provider - Provider name
-   * @param model - Model name
-   * @param errorType - Type of error
+   * 並列度をエラー調整
+   * @summary 並列度調整
+   * @param provider - プロバイダ名
+   * @param model - モデル名
+   * @param errorType - エラーの種類
+   * @returns 戻り値なし
    */
   adjustForError(
     provider: string,
@@ -245,10 +268,11 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Attempt to recover parallelism after a period of stability.
-   *
-   * @param provider - Provider name
-   * @param model - Model name
+   * 安定期間後の並列性回復
+   * @summary 安定期間後の並列性回復
+   * @param provider - プロバイダ名
+   * @param model - モデル名
+   * @returns 戻り値なし
    */
   attemptRecovery(provider: string, model: string): void {
     const key = this.buildKey(provider, model);
@@ -300,11 +324,12 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Apply cross-instance limits based on instance count.
-   *
-   * @param provider - Provider name
-   * @param model - Model name
-   * @param instanceCount - Number of active instances
+   * クロスインスタンス制限を適用
+   * @summary クロスインスタンス制限適用
+   * @param provider - プロバイダー名
+   * @param model - モデル名
+   * @param instanceCount - アクティブなインスタンス数
+   * @returns 戻り値なし
    */
   applyCrossInstanceLimits(
     provider: string,
@@ -328,13 +353,12 @@ export class DynamicParallelismAdjuster {
     }
   }
 
-  /**
-   * Get health status for a provider/model.
-   *
-   * @param provider - Provider name
-   * @param model - Model name
-   * @returns Health status
-   */
+   /**
+    * プロバイダー/モデルのヘルス状態を取得
+    * @param provider - プロバイダー名
+    * @param model - モデル名
+    * @returns ヘルス状態
+    */
   getHealth(provider: string, model: string): ProviderHealth {
     const key = this.buildKey(provider, model);
     const state = this.getOrCreateState(key);
@@ -343,11 +367,12 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Record a successful request (for response time tracking).
-   *
-   * @param provider - Provider name
-   * @param model - Model name
-   * @param responseMs - Response time in milliseconds
+   * 成功時のリクエストを記録する
+   * @summary 成功記録
+   * @param provider プロバイダー
+   * @param model モデル
+   * @param responseMs レスポンス時間（ミリ秒）
+   * @returns void
    */
   recordSuccess(provider: string, model: string, responseMs: number): void {
     const key = this.buildKey(provider, model);
@@ -364,10 +389,11 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Track active request start.
-   *
-   * @param provider - Provider name
-   * @param model - Model name
+   * リクエスト開始を記録する
+   * @summary 開始記録
+   * @param provider プロバイダー
+   * @param model モデル
+   * @returns void
    */
   requestStarted(provider: string, model: string): void {
     const key = this.buildKey(provider, model);
@@ -377,10 +403,11 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Track active request end.
-   *
-   * @param provider - Provider name
-   * @param model - Model name
+   * リクエスト完了を記録する
+   * @summary 完了記録
+   * @param provider プロバイダー
+   * @param model モデル
+   * @returns void
    */
   requestCompleted(provider: string, model: string): void {
     const key = this.buildKey(provider, model);
@@ -392,9 +419,9 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Get all current states (for debugging/monitoring).
-   *
-   * @returns Map of key to state
+   * 全ての状態を取得する
+   * @summary 全状態取得
+   * @returns プロバイダーごとの設定と状態のマップ
    */
   getAllStates(): Map<string, { config: ParallelismConfig; health: ProviderHealth }> {
     const result = new Map<string, { config: ParallelismConfig; health: ProviderHealth }>();
@@ -408,10 +435,11 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Reset a specific provider/model to base configuration.
-   *
-   * @param provider - Provider name
-   * @param model - Model name
+   * リセット処理を実行する
+   * @summary リセット実行
+   * @param provider プロバイダー
+   * @param model モデル
+   * @returns void
    */
   reset(provider: string, model: string): void {
     const key = this.buildKey(provider, model);
@@ -420,7 +448,9 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Reset all states.
+   * 全状態をリセット
+   * @summary 全状態をリセット
+   * @returns なし
    */
   resetAll(): void {
     this.states.clear();
@@ -428,10 +458,10 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Subscribe to parallelism change events.
-   *
-   * @param callback - Callback function
-   * @returns Unsubscribe function
+   * 並列度変更を監視
+   * @summary 並列度変更を監視
+   * @param callback 並列度変更時に実行されるコールバック関数
+   * @returns 監視を解除するための関数
    */
   onParallelismChange(
     callback: (event: {
@@ -452,7 +482,9 @@ export class DynamicParallelismAdjuster {
   }
 
   /**
-   * Shutdown the adjuster.
+   * 調整器を終了
+   * @summary 調整器を終了
+   * @returns なし
    */
   shutdown(): void {
     if (this.recoveryTimer) {
@@ -582,9 +614,9 @@ export class DynamicParallelismAdjuster {
 let adjusterInstance: DynamicParallelismAdjuster | null = null;
 
 /**
- * Get the singleton adjuster instance.
- *
- * @returns DynamicParallelismAdjuster instance
+ * 並列度調整器を取得
+ * @summary 並列度調整器を取得
+ * @returns シングルトンの並列度調整器インスタンス
  */
 export function getParallelismAdjuster(): DynamicParallelismAdjuster {
   if (!adjusterInstance) {
@@ -594,10 +626,10 @@ export function getParallelismAdjuster(): DynamicParallelismAdjuster {
 }
 
 /**
- * Create a new adjuster with custom config.
- *
- * @param config - Custom configuration
- * @returns New DynamicParallelismAdjuster instance
+ * 並列度調整器を生成
+ * @summary 並列度調整器を生成
+ * @param config 設定オブジェクト（部分指定可）
+ * @returns 生成された並列度調整器のインスタンス
  */
 export function createParallelismAdjuster(
   config: Partial<DynamicAdjusterConfig>
@@ -606,7 +638,9 @@ export function createParallelismAdjuster(
 }
 
 /**
- * Reset the singleton adjuster (for testing).
+ * 並列度調整器リセット
+ * @summary 調整器をリセット
+ * @returns なし
  */
 export function resetParallelismAdjuster(): void {
   if (adjusterInstance) {
@@ -620,22 +654,23 @@ export function resetParallelismAdjuster(): void {
 // ============================================================================
 
 /**
- * Get parallelism for a provider/model (convenience function).
- *
- * @param provider - Provider name
- * @param model - Model name
- * @returns Current parallelism level
+ * 現在の並列度取得
+ * @summary 並列度を取得
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns 現在の並列度
  */
 export function getParallelism(provider: string, model: string): number {
   return getParallelismAdjuster().getParallelism(provider, model);
 }
 
 /**
- * Adjust parallelism for an error (convenience function).
- *
- * @param provider - Provider name
- * @param model - Model name
- * @param errorType - Error type
+ * エラー時並列度調整
+ * @summary エラー時並列度調整
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @param errorType エラー種別 ("429" | "timeout" | "error")
+ * @returns なし
  */
 export function adjustForError(
   provider: string,
@@ -646,19 +681,20 @@ export function adjustForError(
 }
 
 /**
- * Attempt recovery (convenience function).
- *
- * @param provider - Provider name
- * @param model - Model name
+ * 復旧を試行する
+ * @summary 復旧を試行
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns なし
  */
 export function attemptRecovery(provider: string, model: string): void {
   getParallelismAdjuster().attemptRecovery(provider, model);
 }
 
 /**
- * Format a summary of the adjuster state.
- *
- * @returns Formatted summary string
+ * 並列度概要を整形
+ * @summary 並列度概要を整形
+ * @returns 整形された並列度サマリー文字列
  */
 export function formatDynamicParallelismSummary(): string {
   const adjuster = getParallelismAdjuster();

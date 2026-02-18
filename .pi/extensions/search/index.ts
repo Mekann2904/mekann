@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/index.ts
+ * role: 検索機能の拡張登録エントリーポイント
+ * why: fd, ripgrep, ctagsを用いた高速なファイル検索、コード検索、シンボル検索、および意味検索をエージェントに提供するため
+ * related: .pi/extensions/search/tools/file_candidates.ts, .pi/extensions/search/tools/code_search.ts, .pi/extensions/search/tools/call_graph.ts, .pi/extensions/search/tools/semantic_search.ts
+ * public_api: file_candidates, code_search, sym_index, sym_find, call_graph_index, find_callers, find_callees, semantic_index, semantic_search
+ * invariants: 実行にはExtensionAPIインスタンスが必要、ツールごとの戻り値はフォーマット済み文字列と詳細オブジェクトを含む構造体
+ * side_effects: 外部コマンド(fd, rg, ctags)のプロセス生成、標準出力へのエラーログ出力
+ * failure_modes: 必要な外部コマンドがインストールされていない場合のエラー、無効な正規表現やパス指定による実行時エラー
+ * @abdd.explain
+ * overview: PI Coding Agentに対して、ソースコードの静的解析と検索を行うツール群を登録するモジュール
+ * what_it_does:
+ *   - 高速ファイル列挙ツール(fd)とコードパターン検索ツール(ripgrep)の登録
+ *   - ctagsを利用したシンボル定義のインデックス作成と検索機能の提供
+ *   - 呼び出し関係(call graph)のインデックス作成、呼び出し元/呼び出し先の検索
+ *   - ベクトル埋め込みを用いた意味的インデックス作成と自然言語検索の実行
+ *   - 外部コマンドの有無チェックと実行結果のフォーマット
+ * why_it_exists:
+ *   - エージェントがプロジェクト内のファイルやコード構造を迅速に把握・移動するため
+ *   - テキストマッチングだけでなく、意味理解や構造依存の検索ニーズに対応するため
+ * scope:
+ *   in: ExtensionAPIオブジェクト、各ツールのクエリパラメータ
+ *   out: 登録されたツールオブジェクト、ツール実行結果としてのテキストメッセージおよび詳細データオブジェクト
+ */
+
+/**
  * Search Extension for PI Coding Agent
  *
  * High-performance search tools using fd, ripgrep, and ctags

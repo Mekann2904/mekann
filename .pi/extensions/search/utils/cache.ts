@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/cache.ts
+ * role: 検索ツールの結果を保持するTTLベースのキャッシュ機構
+ * why: 検索処理の重複実行を防ぎ、パフォーマンスと応答速度を向上させるため
+ * related: .pi/extensions/search/index.ts, .pi/extensions/search/types.ts
+ * public_api: CacheEntry, CacheConfig, CacheStats, DEFAULT_CACHE_CONFIG, getCacheKey
+ * invariants: エントリはtimestamp+ttlに基づき有効期限切れ判定される, キーはツール名とパラメータから決定的に生成される
+ * side_effects: なし（純粋なデータ構造とユーティリティ）
+ * failure_modes: 有効期限切れのデータが読み出される, maxEntries超過による古いデータの排除, params順序差によるキー不一致
+ * @abdd.explain
+ * overview: 検索結果のキャッシュエントリ、設定、統計情報の型定義およびキャッシュキー生成機能を提供するモジュール
+ * what_it_does:
+ *   - キャッシュエントリの構造をタイムスタンプ、TTL、パラメータ、結果で定義する
+ *   - キャッシュの動作設定（TTL、最大数、有効無効）と統計情報（ヒット率等）の型を定義する
+ *   - デフォルト設定（TTL5分、最大200エントリ）を提供する
+ *   - ツール名とパラメータオブジェクトから一意なキャッシュキー文字列を生成する
+ * why_it_exists:
+ *   - 検索結果の構造と有効期限管理を型安全に扱うため
+ *   - キャッシュの振る舞いを設定可能にし、異なる環境や要件に対応するため
+ *   - パラメータの順序に依存しない安定したキー生成を共通化するため
+ * scope:
+ *   in: なし
+ *   out: TypeScript型定義, 設定定数, キー生成文字列
+ */
+
+/**
  * Search Result Cache
  *
  * Provides caching for search tool results:
@@ -12,7 +38,12 @@
 // ============================================
 
 /**
- * A single cache entry with metadata.
+ * キャッシュエントリ定義
+ * @summary キャッシュエントリ
+ * @param timestamp エントリが作成されたタイムスタンプ
+ * @param ttl 有効期限（ミリ秒）
+ * @param params 結果生成に使用されたパラメータ
+ * @returns キャッシュされた結果データ
  */
 export interface CacheEntry<T> {
 	/**
@@ -37,7 +68,11 @@ export interface CacheEntry<T> {
 }
 
 /**
- * Cache configuration.
+ * キャッシュ設定を保持する
+ * @summary キャッシュ設定
+ * @param defaultTtl デフォルトのTTL（ミリ秒）
+ * @param maxEntries 最大エントリ数
+ * @param enabled キャッシュを有効にするかどうか
  */
 export interface CacheConfig {
 	/**
@@ -57,7 +92,12 @@ export interface CacheConfig {
 }
 
 /**
- * Cache statistics.
+ * キャッシュ統計情報を定義
+ * @summary 統計情報を取得
+ * @param entries エントリの総数
+ * @param hits キャッシュヒット数
+ * @param misses キャッシュミス数
+ * @param hitRate ヒット率
  */
 export interface CacheStats {
 	/**
@@ -99,10 +139,12 @@ export const DEFAULT_CACHE_CONFIG: CacheConfig = {
 // Cache Key Generation
 // ============================================
 
-/**
- * Generate a cache key from tool name and parameters.
- * Creates a deterministic string representation.
- */
+ /**
+  * キャッシュキーを生成する
+  * @param tool ツール名
+  * @param params パラメータオブジェクト
+  * @returns 生成されたキャッシュキー
+  */
 export function getCacheKey(tool: string, params: Record<string, unknown>): string {
 	// Sort keys for deterministic ordering
 	const sortedKeys = Object.keys(params).sort();
@@ -148,7 +190,9 @@ function sortObjectKeys(obj: Record<string, unknown>): Record<string, unknown> {
 // ============================================
 
 /**
- * Type-safe cache store with TTL support.
+ * 検索結果をキャッシュする
+ * @summary キャッシュを生成
+ * @param config - キャッシュ設定（オプション）
  */
 export class SearchResultCache {
 	private cache = new Map<string, CacheEntry<unknown>>();
@@ -160,9 +204,11 @@ export class SearchResultCache {
 		this.config = { ...DEFAULT_CACHE_CONFIG, ...config };
 	}
 
-	/**
-	 * Get a cached result if available and not expired.
-	 */
+	 /**
+	  * キャッシュされた結果を取得する
+	  * @param key キャッシュキー
+	  * @returns キャッシュされた結果、存在しない場合は undefined
+	  */
 	getCached<T>(key: string): T | undefined {
 		if (!this.config.enabled) {
 			this.misses++;
@@ -188,7 +234,13 @@ export class SearchResultCache {
 	}
 
 	/**
-	 * Store a result in the cache.
+	 * 結果をキャッシュに保存
+	 * @summary キャッシュ保存
+	 * @param key キャッシュのキー
+	 * @param result 保存する結果
+	 * @param ttl 生存時間（ミリ秒）
+	 * @param params 追加のパラメータ
+	 * @returns なし
 	 */
 	setCache<T>(key: string, result: T, ttl?: number, params?: Record<string, unknown>): void {
 		if (!this.config.enabled) return;
@@ -209,7 +261,10 @@ export class SearchResultCache {
 	}
 
 	/**
-	 * Check if a key exists and is not expired.
+	 * @summary キー有効性確認
+	 * キーの存在と有効期限を確認する
+	 * @param key 確認するキャッシュのキー
+	 * @returns キーが存在し有効な場合はtrue
 	 */
 	has(key: string): boolean {
 		if (!this.config.enabled) return false;
@@ -225,10 +280,11 @@ export class SearchResultCache {
 		return true;
 	}
 
-	/**
-	 * Invalidate cache entries matching a pattern.
-	 * Pattern can include wildcards (*).
-	 */
+	 /**
+	  * パターン一致するキャッシュエントリを無効化
+	  * @param pattern ワイルドカード（*）を含むことができるパターン
+	  * @returns 削除されたエントリの数
+	  */
 	invalidateCache(pattern: string): number {
 		let count = 0;
 
@@ -253,7 +309,10 @@ export class SearchResultCache {
 	}
 
 	/**
-	 * Invalidate all entries for a specific tool.
+	 * ツールエントリを無効化
+	 * @summary エントリを無効化
+	 * @param tool ツール名
+	 * @returns 削除されたエントリ数
 	 */
 	invalidateTool(tool: string): number {
 		let count = 0;
@@ -270,7 +329,9 @@ export class SearchResultCache {
 	}
 
 	/**
-	 * Clear all cache entries.
+	 * キャッシュをクリア
+	 * @summary キャッシュをクリア
+	 * @returns なし
 	 */
 	clear(): void {
 		this.cache.clear();
@@ -279,7 +340,9 @@ export class SearchResultCache {
 	}
 
 	/**
-	 * Get cache statistics.
+	 * 統計情報を取得
+	 * @summary 統計情報取得
+	 * @returns キャッシュのエントリ数、ヒット数、ミス数、ヒット率を含む統計情報
 	 */
 	getStats(): CacheStats {
 		const total = this.hits + this.misses;
@@ -292,7 +355,9 @@ export class SearchResultCache {
 	}
 
 	/**
-	 * Get all cache keys (for debugging).
+	 * 全キーを取得する
+	 * @summary 全キー取得
+	 * @returns キャッシュに保存されている全てのキーの配列。
 	 */
 	getKeys(): string[] {
 		return Array.from(this.cache.keys());
@@ -345,9 +410,10 @@ export class SearchResultCache {
  */
 let globalCache: SearchResultCache | undefined;
 
-/**
- * Get the global cache instance.
- */
+ /**
+  * グローバルキャッシュインスタンスを取得する。
+  * @returns 検索結果キャッシュのインスタンス
+  */
 export function getSearchCache(): SearchResultCache {
 	if (!globalCache) {
 		globalCache = new SearchResultCache();
@@ -356,7 +422,9 @@ export function getSearchCache(): SearchResultCache {
 }
 
 /**
- * Reset the global cache instance (for testing).
+ * グローバルキャッシュをリセットする
+ * @summary キャッシュをリセット
+ * @returns {void}
  */
 export function resetSearchCache(): void {
 	globalCache = undefined;
@@ -367,8 +435,13 @@ export function resetSearchCache(): void {
 // ============================================
 
 /**
- * Get or compute a cached result.
- * If the result is not cached, calls the factory function and caches the result.
+ * キャッシュを取得または計算して返す
+ * @summary キャッシュ取得または計算
+ * @param tool ツール名
+ * @param params パラメータ
+ * @param factory 値を生成する非同期関数
+ * @param ttl キャッシュ有効期間（秒）
+ * @returns キャッシュされた値または計算結果
  */
 export async function getOrCompute<T>(
 	tool: string,
@@ -390,7 +463,13 @@ export async function getOrCompute<T>(
 }
 
 /**
- * Sync version of getOrCompute.
+ * キャッシュを取得または計算して返す（同期版）
+ * @summary キャッシュ取得または計算
+ * @param tool ツール名
+ * @param params パラメータ
+ * @param factory 値を生成する関数
+ * @param ttl キャッシュ有効期間（秒）
+ * @returns キャッシュされた値または計算結果
  */
 export function getOrComputeSync<T>(
 	tool: string,

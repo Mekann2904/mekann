@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/shared/verification-hooks.ts
+ * role: 検証フックのエントリーポイントおよび設定解決モジュール
+ * why: 論文「Large Language Model Reasoning Failures」の推奨事項に基づき、サブエージェント実行後の出力を自動検証するため
+ * related: .pi/lib/verification-workflow.js, .pi/lib/comprehensive-logger.js
+ * public_api: VerificationHookConfig, VerificationHookResult, resolveVerificationHookConfig, postSubagentVerificationHook
+ * invariants: resolveVerificationHookConfigの返すenabledはmodeに依存する、logResultsは環境変数PI_VERIFICATION_LOGに依存する
+ * side_effects: 環境変数を読み込む、ロガーを通じて操作ログを出力する
+ * failure_modes: 環境変数の未定義によるデフォルト設定の適用、runVerificationAgent関数の実行失敗
+ * @abdd.explain
+ * overview: サブエージェント出力に対する検証プロセスのトリガーと制御を行う
+ * what_it_does:
+ *   - 環境変数に基づき検証フックの有効/無効やモードを解決する
+ *   - サブエージェント実行後の出力と信頼度を受け取り、検証の要否を判定する
+ *   - インスペクタおよびチャレンジャーの実行制御を行う
+ *   - 検証結果をログに記録する
+ * why_it_exists:
+ *   - LLMの推論失敗を検知し、出力の信頼性を高めるため
+ *   - 高リスクタスクにおける出力安全性を確保するため
+ *   - 検証プロセスを環境設定により柔軟に制御可能にするため
+ * scope:
+ *   in: 環境変数(PI_VERIFICATION_WORKFLOW_MODE, PI_VERIFICATION_LOG)、サブエージェントの出力文字列、信頼度数値、コンテキスト
+ *   out: 解決された設定オブジェクト、検証実行の有無、検証結果オブジェクト
+ */
+
+/**
  * 検証フックモジュール
  * 論文「Large Language Model Reasoning Failures」のP0推奨事項
  * サブエージェント/チーム実行後の自動検証フック
@@ -22,7 +48,13 @@ import type { OperationType } from "../../lib/comprehensive-logger-types.js";
 const logger = getLogger();
 
 /**
- * 検証フック設定
+ * 検証フックの設定
+ * @summary 検証設定
+ * @param enabled - 有効かどうか
+ * @param mode - 動作モード
+ * @param runInspector - 検査官を実行するか
+ * @param runChallenger - チャレンジャーを実行するか
+ * @param logResults - 結果をログに出力するか
  */
 export interface VerificationHookConfig {
   enabled: boolean;
@@ -34,6 +66,12 @@ export interface VerificationHookConfig {
 
 /**
  * 検証フックの結果
+ * @summary 検証結果
+ * @param triggered - トリガーされたか
+ * @param result - 検証結果
+ * @param inspectorRun - 検査官が実行されたか
+ * @param challengerRun - チャレンジャーが実行されたか
+ * @param error - エラーメッセージ
  */
 export interface VerificationHookResult {
   triggered: boolean;
@@ -45,6 +83,8 @@ export interface VerificationHookResult {
 
 /**
  * 検証フック設定を解決
+ * @summary 設定解決
+ * @returns 検証フックの設定
  */
 export function resolveVerificationHookConfig(): VerificationHookConfig {
   const envMode = process.env.PI_VERIFICATION_WORKFLOW_MODE || "auto";
@@ -69,10 +109,14 @@ export function resolveVerificationHookConfig(): VerificationHookConfig {
   return config;
 }
 
-/**
- * サブエージェント実行後の検証フック
- * subagents.tsから呼び出される
- */
+ /**
+  * サブエージェント実行後の検証フック
+  * @param output サブエージェントの出力
+  * @param confidence 出力の信頼度
+  * @param context エージェントIDとタスクを含むコンテキスト
+  * @param runVerificationAgent 検証エージェントを実行する関数
+  * @returns 検証結果
+  */
 export async function postSubagentVerificationHook(
   output: string,
   confidence: number,
@@ -191,10 +235,14 @@ export async function postSubagentVerificationHook(
   }
 }
 
-/**
- * チーム実行後の検証フック
- * agent-teams.tsから呼び出される
- */
+ /**
+  * チーム実行後の検証フック
+  * @param aggregatedOutput - 集計された出力
+  * @param confidence - 信頼度
+  * @param context - チームID、タスク、メンバー出力を含むコンテキスト
+  * @param runVerificationAgent - 検証エージェントを実行する関数
+  * @returns 検証フックの結果
+  */
 export async function postTeamVerificationHook(
   aggregatedOutput: string,
   confidence: number,
@@ -447,7 +495,10 @@ function parseChallengerOutput(rawOutput: string): ChallengerOutput {
 }
 
 /**
- * 検証結果をログ出力用にフォーマット
+ * 検証結果のフォーマット
+ * @summary 検証結果フォーマット
+ * @param result 検証フック結果
+ * @returns フォーマット済み文字列
  */
 export function formatVerificationResult(result: VerificationHookResult): string {
   if (!result.triggered) {

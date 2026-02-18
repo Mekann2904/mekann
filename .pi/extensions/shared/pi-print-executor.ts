@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/shared/pi-print-executor.ts
+ * role: piコマンドのJSONストリーミング実行を管理するエグゼキューター
+ * why: subagents.tsとagent-teams.ts間で一貫したプロセス実行とアイドルタイムアウト検出を実現するため
+ * related: .pi/extensions/shared/subagents.ts, .pi/extensions/shared/agent-teams.ts
+ * public_api: executePrintCommand関数, PrintExecutorOptionsインターフェース, PrintCommandResultインターフェース
+ * invariants: タイムアウト期間中に出力がなければプロセスを終了する, agent_endまたはmessage_endを受信すると実行完了とみなす
+ * side_effects: 外部プロセスを生成する, 標準出力・標準エラーをリアルタイムで処理する
+ * failure_modes: プロセスが応答しない場合のタイムアウト, JSONパースエラーによる行の無視, シグナルによる中断時の強制終了
+ * @abdd.explain
+ * overview: pi --mode json を使用した外部プロセスの実行ラッパー
+ * what_it_does:
+ *   - piプロセスを生成し、stdout/stderrのストリームを監視する
+ *   - JSON行をパースし、text_deltaとthinking_deltaを抽出する
+ *   - 出力ごとにタイマーをリセットし、アイドル状態を検出してタイムアウトする
+ *   - AbortSignalを使用してプロセスをキャンセルする
+ * why_it_exists:
+ *   - GLM-5など推論時間が長いモデルに対応するため
+ *   - 複数の呼び出し元で一貫した実行ロジックを再利用するため
+ *   - 出力がない場合のみタイムアウトすることで、正確な応答待機を行うため
+ * scope:
+ *   in: プロンプト、プロバイダー/モデル設定、タイムアウト時間、AbortSignal
+ *   out: 生成されたテキスト、実行時間、ストリーミングイベント
+ */
+
+/**
  * Shared pi print mode executor.
  * Used by both subagents.ts and agent-teams.ts for consistent process execution.
  *
@@ -15,6 +41,16 @@ const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
 /** Default idle timeout for subagent execution (5 minutes) */
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
 
+/**
+ * 印刷実行オプション
+ * @summary オプション設定
+ * @param entityLabel - エンティティラベル
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @param prompt - プロンプト
+ * @param timeoutMs - タイムアウト時間
+ * @returns -
+ */
 export interface PrintExecutorOptions {
   /** Entity type label for error messages (e.g., "subagent", "agent team member") */
   entityLabel: string;
@@ -38,6 +74,13 @@ export interface PrintExecutorOptions {
   onThinkingDelta?: (delta: string) => void;
 }
 
+/**
+ * 印刷コマンド結果
+ * @summary 結果を表す
+ * @param output - 出力データ
+ * @param latencyMs - レイテンシ(ミリ秒)
+ * @returns -
+ */
 export interface PrintCommandResult {
   output: string;
   latencyMs: number;
@@ -138,8 +181,10 @@ function combineTextAndThinking(text: string, thinking: string): string {
 }
 
 /**
- * Execute pi in JSON mode and return the result.
- * Uses idle timeout strategy: timer resets on each output, allowing long tasks to continue.
+ * Pi印刷モード実行
+ * @summary 印刷を実行する
+ * @param input - 実行オプション
+ * @returns コマンド実行結果
  */
 export async function runPiPrintMode(
   input: PrintExecutorOptions,
@@ -340,6 +385,13 @@ export async function runPiPrintMode(
 // callModelViaPi - Used by loop.ts and rsa.ts
 // ============================================================================
 
+/**
+ * モデル呼び出し共通オプション
+ * @summary 共通オプション
+ * @param provider プロバイダID
+ * @param id モデルID
+ * @param thinkingLevel 思考レベル
+ */
 export interface CallModelOptions {
   /** Provider ID */
   provider: string;
@@ -349,6 +401,15 @@ export interface CallModelOptions {
   thinkingLevel?: string;
 }
 
+/**
+ * PI呼び出しオプション
+ * @summary 呼び出しオプション
+ * @param model モデル名
+ * @param prompt プロンプト
+ * @param timeoutMs タイムアウト(ミリ秒)
+ * @param signal 中断シグナル
+ * @param onChunk チャンク受信コールバック
+ */
 export interface CallModelViaPiOptions {
   /** Model configuration */
   model: CallModelOptions;
@@ -367,8 +428,10 @@ export interface CallModelViaPiOptions {
 }
 
 /**
- * Call model via pi --mode json for loop and RSA modules.
- * Uses idle timeout strategy with streaming support.
+ * PI経由でLLMを呼び出す
+ * @summary モデル呼び出し
+ * @param options 呼び出しオプション
+ * @returns 生成テキスト
  */
 export async function callModelViaPi(options: CallModelViaPiOptions): Promise<string> {
   const { model, prompt, timeoutMs, signal, onChunk, onTextDelta, entityLabel = "RSA" } = options;

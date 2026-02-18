@@ -1,4 +1,32 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/call-graph/types.ts
+ * role: コールグラフ解析システムの型定義
+ * why: ripgrepと正規表現を用いたコールグラフ構築において、ノード、エッジ、インデックスのデータ構造を統一するため
+ * related: .pi/extensions/search/call-graph/index.ts, .pi/extensions/search/call-graph/parser.ts
+ * public_api: CallGraphNode, CallGraphEdge, CallGraphNodeKind, CallGraphMetadata
+ * invariants:
+ *   - CallGraphNode.idは "file:line:name" の形式を持つ
+ *   - confidenceは0.0から1.0の範囲の数値である
+ * side_effects: なし（純粋な型定義）
+ * failure_modes:
+ *   - id形式が不正な場合、ノードの紐付けが失敗する
+ *   - confidenceスコアが低い場合、誤った呼び出し関係を参照する可能性がある
+ * @abdd.explain
+ * overview: ripgrepベースのコールグラフ解析システムにおける主要なデータ構造を定義するファイル
+ * what_it_does:
+ *   - 関数・メソッド定義を表すCallGraphNodeインターフェースを提供する
+ *   - 呼び出し関係とその位置・信頼度を表すCallGraphEdgeインターフェースを提供する
+ *   - インデックス全体のメタデータを管理するCallGraphMetadataインターフェースを提供する
+ * why_it_exists:
+ *   - パーサーとインデックス間でデータ構造を共有し、型安全性を保証するため
+ *   - AST解析よりも軽量な正規表現ベースの解析結果を表現するため
+ * scope:
+ *   in: なし
+ *   out: コールグラフ生成・解析機能全体
+ */
+
+/**
  * Call Graph Type Definitions
  *
  * Types for the ripgrep-based call graph analysis system.
@@ -10,12 +38,14 @@
 // ============================================
 
 /**
- * Kind of callable symbol
+ * 呼び出し可能なシンボルの種類
+ * @summary ノード種別を定義
  */
 export type CallGraphNodeKind = "function" | "method" | "arrow" | "const";
 
 /**
- * Call Graph Node - Represents a function/method definition
+ * 呼び出し可能なノード（関数など）を表します
+ * @summary 呼び出し可能なノード
  */
 export interface CallGraphNode {
 	/** Unique identifier: file:line:name */
@@ -39,7 +69,8 @@ export interface CallGraphNode {
 // ============================================
 
 /**
- * Call site location
+ * 呼び出し箇所の位置情報を表します
+ * @summary 呼び出し箇所の位置
  */
 export interface CallSite {
 	/** File containing the call */
@@ -51,7 +82,8 @@ export interface CallSite {
 }
 
 /**
- * Call Graph Edge - Represents a function call relationship
+ * 呼び出し元から呼び出し先への関係を表します
+ * @summary 呼び出し関係のエッジ
  */
 export interface CallGraphEdge {
 	/** Caller node ID (file:line:name) */
@@ -75,7 +107,8 @@ export interface CallGraphEdge {
 // ============================================
 
 /**
- * Metadata about the call graph index
+ * コールグラフのメタデータ情報を表します
+ * @summary コールグラフのメタデータ
  */
 export interface CallGraphMetadata {
 	/** Timestamp when the index was built */
@@ -93,7 +126,11 @@ export interface CallGraphMetadata {
 }
 
 /**
- * Complete Call Graph Index
+ * コールグラフ全体のインデックス情報を表します
+ * @summary コールグラフ全体のインデックス
+ * @param {number} fileCount ファイル数
+ * @param {number} nodeCount ノード（関数定義）総数
+ * @param {number} edgeCount エッジ（呼び出し関係）総数
  */
 export interface CallGraphIndex {
 	/** All function/method definitions */
@@ -109,7 +146,12 @@ export interface CallGraphIndex {
 // ============================================
 
 /**
- * Input for call_graph_index tool
+ * インデックス入力定義
+ * @summary インデックス生成
+ * @param path インデックス対象のパス（デフォルト: プロジェクトルート）
+ * @param force インデックスの強制再生成
+ * @param cwd 作業ディレクトリ
+ * returns CallGraphIndexInput
  */
 export interface CallGraphIndexInput {
 	/** Target path for indexing (default: project root) */
@@ -121,7 +163,15 @@ export interface CallGraphIndexInput {
 }
 
 /**
- * Output for call_graph_index tool
+ * @summary インデックス出力
+ *
+ * call_graph_indexツールの出力
+ *
+ * @param nodeCount インデックスされたノード数
+ * @param edgeCount 検出されたエッジ数
+ * @param outputPath 生成されたインデックスファイルのパス
+ * @param error エラーメッセージ（ある場合）
+ * @returns 出力結果オブジェクト
  */
 export interface CallGraphIndexOutput {
 	/** Number of nodes indexed */
@@ -135,7 +185,13 @@ export interface CallGraphIndexOutput {
 }
 
 /**
- * Input for find_callers tool
+ * @summary 呼び出し元検索
+ * find_callersツールの入力
+ * @param symbolName 呼び出し元を検索するシンボル名
+ * @param depth 再帰の深さ（デフォルト: 1）
+ * @param limit 最大結果数（デフォルト: 50）
+ * @param cwd 作業ディレクトリ
+ * @returns なし
  */
 export interface FindCallersInput {
 	/** Symbol name to find callers for */
@@ -149,7 +205,12 @@ export interface FindCallersInput {
 }
 
 /**
- * Input for find_callees tool
+ * @summary 呼び出し先検索入力
+ * 呼び出し先を検索するための入力インターフェース
+ * @param symbolName 呼び出し先を検索するシンボル名
+ * @param depth 再帰の深さ (デフォルト: 1)
+ * @param limit 最大結果数 (デフォルト: 50)
+ * @param cwd 作業ディレクトリ
  */
 export interface FindCalleesInput {
 	/** Symbol name to find callees for */
@@ -163,7 +224,13 @@ export interface FindCalleesInput {
 }
 
 /**
- * Caller/Callee result with chain information
+ * 呼び出しチェーンの結果
+ * @summary 呼び出しチェーンを取得
+ * @param node 呼び出し元/呼び出し先のノード
+ * @param depth 呼び出しチェーンの深さ (0=直接, 1=間接など)
+ * @param callSite 呼び出し位置情報 (直接呼び出しの場合のみ)
+ * @param confidence 関連性の信頼度
+ * @returns 呼び出しチェーンの結果情報
  */
 export interface CallChainResult {
 	/** The node that calls/is called */
@@ -177,7 +244,8 @@ export interface CallChainResult {
 }
 
 /**
- * Output for find_callers/find_callees tools
+ * 呼び出し元検索結果
+ * @summary 呼び出し元検索結果
  */
 export interface FindCallersOutput {
 	/** Symbol name that was searched */
@@ -192,6 +260,10 @@ export interface FindCallersOutput {
 	error?: string;
 }
 
+/**
+ * 被呼び出し検索結果
+ * @summary 被呼び出し検索結果
+ */
 export interface FindCalleesOutput {
 	/** Symbol name that was searched */
 	symbolName: string;
@@ -210,7 +282,8 @@ export interface FindCalleesOutput {
 // ============================================
 
 /**
- * Intermediate structure for building call graph
+ * 関数定義情報
+ * @summary 関数定義を表現
  */
 export interface FunctionDefinition {
 	/** Function name */
@@ -232,7 +305,8 @@ export interface FunctionDefinition {
 }
 
 /**
- * Detected function call within source code
+ * 検出された呼び出し
+ * @summary 呼び出し情報を保持
  */
 export interface DetectedCall {
 	/** Called function name */

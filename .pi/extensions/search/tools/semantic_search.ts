@@ -1,4 +1,35 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/tools/semantic_search.ts
+ * role: ベクトル類似度に基づくコード意味検索ツール
+ * why: 事前構築されたインデックスを利用し、自然語クエリやコード断片に対して意味的に近いコード箇所を特定するため
+ * related: .pi/extensions/search/types.ts, .pi/extensions/search/utils/constants.ts, .pi/lib/embeddings/utils.ts
+ * public_api: semanticSearch(input, cwd): Promise<SemanticSearchOutput>
+ * invariants:
+ *   - 入力クエリは空文字ではない
+ *   - topKは正の整数である
+ *   - thresholdは0以上1以下である
+ *   - インデックスファイルが存在しない場合、空の配列を返す
+ * side_effects: ファイルシステムからインデックスファイルを読み込む
+ * failure_modes:
+ *   - インデックスファイルが破損している場合、JSON.parseで例外が発生する
+ *   - クエリベクトルの生成失敗（呼び出し元依存）
+ * @abdd.explain
+ * overview: ディスク上のセマンティックインデックスを読み込み、クエリベクトルとコード埋め込みのコサイン類似度を計算して上位k件を返すモジュール
+ * what_it_does:
+ *   - semantic-index.jsonlファイルの読み込みとパース
+ *   - クエリ埋め込みとインデックス内の埋め込みのコサイン類似度計算
+ *   - 類似度によるフィルタリングと降順ソート
+ *   - 指定された件数（topK）への結果切り詰め
+ * why_it_exists:
+ *   - キーワード一致のみでは検出できない、意味的に関連するコードの発見を支援するため
+ *   - 大規模なコードベースにおいて、特定の機能や実装パターンを素早く特定するため
+ * scope:
+ *   in: SemanticSearchInput(クエリ、topK、閾値、フィルタ条件)、作業ディレクトリパス
+ *   out: SemanticSearchOutput(ヒット数、切り詰めフラグ、検索結果リスト、エラー情報)
+ */
+
+/**
  * Semantic Search Tool
  *
  * Performs semantic code search using vector similarity.
@@ -83,7 +114,11 @@ function findNearestNeighbors(
 // ============================================================================
 
 /**
- * Perform semantic search on code.
+ * 意味的検索を実行する
+ * @summary 意味的検索実行
+ * @param input 検索入力データ
+ * @param cwd 作業ディレクトリ
+ * @returns 検索出力データ
  */
 export async function semanticSearch(
 	input: SemanticSearchInput,
@@ -178,7 +213,10 @@ export async function semanticSearch(
 }
 
 /**
- * Format semantic search results for display.
+ * 検索結果を整形する
+ * @summary 検索結果整形
+ * @param result 検索結果オブジェクト
+ * @returns 整形された文字列
  */
 export function formatSemanticSearch(result: SemanticSearchOutput): string {
 	if (result.error) {

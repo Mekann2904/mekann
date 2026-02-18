@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/reflection.ts
+ * role: ツール実行履歴の分析と新規ツール生成の要否判定を行うリフレクションエンジン
+ * why: 繰り返される操作パターンを検出し、動的なツール生成トリガーとして機能させるため
+ * related: .pi/lib/dynamic-tools/types.ts, .pi/lib/dynamic-tools/registry.ts
+ * public_api: detectRepetitivePattern, shouldCreateNewTool
+ * invariants: detectRepetitivePatternは引数のコンテキストに基づきパターン文字列を返す、shouldCreateNewToolはToolReflectionResult構造を返す
+ * side_effects: なし（純粋な判定ロジック）
+ * failure_modes: コンテキスト不足による判定ロジックのスキップ、正規表現マッチの失敗
+ * @abdd.explain
+ * overview: ツール実行後の文脈から反復パターンを抽出し、効率化のために新たなツール定義を生成すべきか判定するモジュール
+ * what_it_does:
+ *   - コンテキスト内の直近ツール名とタスクから反復使用パターンを検出する
+ *   - ツール実行結果からBashコマンドパターン（git, npm等）を抽出する
+ *   - 検出されたパターンに基づき、ツール生成フラグと提案ツール情報を含む判定結果を出力する
+ * why_it_exists:
+ *   - 手作業での反復操作を自動化し、開発効率を向上させるため
+ *   - 既存ツールでは対応しきれない動的なニーズに対応するため
+ * scope:
+ *   in: ToolReflectionContext（ツール名、実行結果、現在のタスク、失敗回数）
+ *   out: パターン検出結果オブジェクト または ToolReflectionResult（判定結果と提案ツール定義）
+ */
+
+/**
  * 動的ツール生成システム - リフレクション
  * ツール実行後の反省と新規ツール生成の判定
  */
@@ -21,7 +45,9 @@ import {
 // ============================================================================
 
 /**
- * 繰り返し操作のパターンを検出
+ * @summary 繰り返しを検出
+ * @param {ToolReflectionContext} context - ツールリフレクションのコンテキスト情報
+ * @returns {{ detected: boolean; pattern: string; occurrences: number } | null} 検出結果。検出された場合はパターンと回数、なければnull
  */
 export function detectRepetitivePattern(
   context: ToolReflectionContext
@@ -84,7 +110,9 @@ function extractBashPatterns(output: string): string[] {
 // ============================================================================
 
 /**
- * 新しいツールを作成すべきかどうかを判定
+ * @summary 生成可否を判定
+ * @param {ToolReflectionContext} context - ツールリフレクションのコンテキスト情報
+ * @returns {ToolReflectionResult} ツール生成判定の結果
  */
 export function shouldCreateNewTool(
   context: ToolReflectionContext
@@ -252,7 +280,10 @@ function detectComplexChain(result: string): boolean {
 // ============================================================================
 
 /**
- * リフレクション用のプロンプトを生成
+ * @summary プロンプトを生成
+ * @param {ToolReflectionContext} context - ツールリフレクションのコンテキスト情報
+ * @param {ToolReflectionResult} reflectionResult - リフレクションの結果
+ * @returns {string} 生成されたプロンプト文字列
  */
 export function buildReflectionPrompt(
   context: ToolReflectionContext,
@@ -321,7 +352,10 @@ export function buildReflectionPrompt(
 // ============================================================================
 
 /**
- * タスクから自動的にツールを提案
+ * @summary ツールを提案
+ * @param {string} task - 実行するタスクの内容
+ * @param {string} [lastToolResult] - 直前のツール実行結果
+ * @returns {ToolReflectionResult["proposedTool"] | null} 提案されたツール情報。該当しない場合はnull
  */
 export function proposeToolFromTask(
   task: string,
@@ -382,7 +416,9 @@ export function proposeToolFromTask(
 }
 
 /**
- * リフレクションを実行すべきかどうかを判定
+ * @summary リフレクション要否判定
+ * @param {Partial<ToolReflectionContext>} context - ツールリフレクションのコンテキスト情報
+ * @returns {boolean} リフレクションが必要かどうか
  */
 export function shouldTriggerReflection(
   context: Partial<ToolReflectionContext>

@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/agent.ts
+ * role: エージェント、サブエージェント、チームに関連する全ての型定数とユーティリティ関数の集約エントリポイント
+ * why: 個別のモジュールファイルを直接インポートせず、単一のパスから必要な機能をインポートするため
+ * related: .pi/lib/agent-types.js, .pi/lib/agent-utils.js, .pi/lib/agent-common.js, .pi/lib/agent-errors.js
+ * public_api: ThinkingLevel, createRunId, computeLiveWindow, resolveTimeoutWithEnv, isRetryableEntityError, getModelBaseTimeoutMs, createAdaptivePenaltyController, validateSubagentOutput
+ * invariants: このファイル自体にはロジック実装を持たず、全てのエクスポートはLayer 1の各モジュールから再エクスポートされる
+ * side_effects: なし（定数と型、純粋関数のみを提供）
+ * failure_modes: 元のモジュールで型定義または実装が欠落している場合、インポート時にコンパイルエラーが発生する
+ * @abdd.explain
+ * overview: エージェントシステムの構成要素をまとめるバレルファイル（Barrel file）
+ * what_it_does:
+ *   - 型定義（ThinkingLevel, RunOutcomeCodeなど）を再エクスポートする
+ *   - ランタイム設定定数（タイムアウト、再試行回数など）を再エクスポートする
+ *   - ユーティリティ関数（ID生成、バリデーション、エラー処理など）を再エクスポートする
+ * why_it_exists:
+ *   - インポートパスの整理と階層化を行い、利用者が必要な機能を簡単に見つけられるようにするため
+ *   - lib以下の実装詳細を隠蔽し、公開APIの一貫性を保つため
+ * scope:
+ *   in: なし（このファイルは他のモジュールに依存するのみ）
+ *   out: エージェント実行、設定、エラーハンドリング、バリデーションに関連する全ての公開型と関数
+ */
+
+/**
  * Agent-related utilities and types.
  *
  * Aggregates all agent, subagent, and team-related exports

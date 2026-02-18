@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/test-runner.ts
+ * role: 検索ツール群の統合テストランナー
+ * why: 外部依存（fd, rg, ctags）とツールロジックの正当性を検証するため
+ * related: .pi/extensions/search/utils/cli.ts, .pi/extensions/search/tools/file_candidates.ts, .pi/extensions/search/tools/code_search.ts
+ * public_api: testToolAvailability, runTest, results
+ * invariants: テスト結果は必ずTestResult型の配列に格納される、全テストは非同期で実行され実行時間が記録される
+ * side_effects: 標準出力へのログ出力、外部プロセス（fd, rg, ctags）の実行
+ * failure_modes: 外部ツールがインストールされていない場合、コマンド実行権限がない場合、アサーション失敗時のエラー
+ * @abdd.explain
+ * overview: 検索関連ツールとユーティリティの動作検証を行うテストスイート実装
+ * what_it_does:
+ *   - fd, rg, ctags のコマンド可用性を確認する
+ *   - fileCandidates, codeSearch, symIndex, symFind の機能テストを実行する
+ *   - テストの実行時間、成功可否、エラー詳細を収集・管理する
+ *   - 結果をコンソールにログ出力する
+ * why_it_exists:
+ *   - リファクタリングや環境変更によりツールが正しく動作し続けているか保証するため
+ *   - 開発者が検索機能の信頼性を迅速に確認できるようにするため
+ * scope:
+ *   in: 外部コマンドのバイナリパス、検索対象のファイルシステム
+ *   out: 標準出力へのテスト結果ログ、メモリ内のテスト結果オブジェクト
+ */
+
+/**
  * Search Tools Test Runner
  *
  * Comprehensive tests for file_candidates, code_search, sym_index, and sym_find tools.

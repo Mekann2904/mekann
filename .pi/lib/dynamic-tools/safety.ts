@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/dynamic-tools/safety.ts
+ * role: 生成コードの静的解析による安全性評価と危険操作の検出
+ * why: コード生成による意図しない破壊的操作やセキュリティリスクを実行前に防止するため
+ * related: .pi/lib/dynamic-tools/types.ts, .pi/lib/dynamic-tools/executor.ts, .pi/lib/dynamic-tools/config.ts
+ * public_api: SafetyAnalysisResult, SafetyAnalysisIssue, SafetyAnalysisIssueType
+ * invariants: SafetyAnalysisResultのscoreは0.0以上1.0以下、DANGEROUS_PATTERNSは不変
+ * side_effects: なし（純粋な解析モジュール）
+ * failure_modes: 不正な正規表現による解析エラー、未知のパターンの見逃し
+ * @abdd.explain
+ * overview: 生成されたコードに対して定義された危険パターン（正規表現）を適用し、安全性スコアと問題リストを算出するモジュール
+ * what_it_does:
+ *   - ファイルシステム削除、プロセス実行、ネットワークアクセス等の危険パターンを照合
+ *   - 検出された問題の重大度、種類、位置、修正提案を含む詳細を生成
+ *   - 許可操作と禁止操作のリストを作成
+ *   - 0.0-1.0の安全性スコアと信頼度を計算
+ * why_it_exists:
+ *   - 自動生成コードに含まれる破壊的コマンド（rm -rf等）や外部通信を検閲するため
+ *   - 実行環境のセキュリティを維持しつつ動的なコード生成を可能にするため
+ * scope:
+ *   in: 解析対象のソースコード文字列
+ *   out: SafetyAnalysisResultオブジェクト（スコア、問題リスト、推奨事項）
+ */
+
+/**
  * コード安全性解析モジュール
  * 生成されたコードの安全性を評価し、危険な操作を検出
  */
@@ -8,7 +33,13 @@
 // ============================================================================
 
 /**
- * 安全性解析結果
+ * 安全解析の結果を表す
+ * @summary 安全解析結果
+ * @param {number} score - 安全スコア
+ * @param {SafetyAnalysisIssue[]} issues - 検出された問題リスト
+ * @param {string[]} allowedOperations - 許可された操作
+ * @param {string[]} blockedOperations - ブロックされた操作
+ * @param {string[]} recommendations - 推奨事項リスト
  */
 export interface SafetyAnalysisResult {
   /** 安全性スコア（0.0-1.0） */
@@ -28,7 +59,16 @@ export interface SafetyAnalysisResult {
 }
 
 /**
- * 安全性の問題（解析用）
+ * 検出された安全上の問題
+ * @summary 安全上の問題
+ * @param {string} severity - 重大度
+ * @param {SafetyAnalysisIssueType} type - 問題の種類
+ * @param {string} description - 説明文
+ * @param {{filePath?: string, line?: number, snippet?: string}} location - 発生場所
+ * @param {string} [suggestion] - 修正提案
+ * @param {string[]} recommendations - 推奨事項リスト
+ * @param {boolean} isSafe - 安全と判定されたか
+ * @param {number} confidence - 信頼度
  */
 export interface SafetyAnalysisIssue {
   /** 重大度 */
@@ -47,7 +87,9 @@ export interface SafetyAnalysisIssue {
 }
 
 /**
- * 安全性問題の種類（解析用）
+ * 安全解析の種別
+ * @summary 安全解析種別
+ * @typedef {("file-system-write" | "file-system-delete")} SafetyAnalysisIssueType
  */
 export type SafetyAnalysisIssueType =
   | "file-system-write"
@@ -311,7 +353,7 @@ const SAFE_PATTERNS: RegExp[] = [
 
 /**
  * コードの安全性を解析
- * 
+ * @summary コードの安全性を解析
  * @param code - 解析対象のコード
  * @param options - 解析オプション
  * @returns 安全性解析結果
@@ -473,8 +515,13 @@ function getSeverityPenalty(severity: SafetyAnalysisIssue["severity"], strict: b
 // ============================================================================
 
 /**
- * 高速な安全性チェック（詳細解析なし）
- * ツール実行前の簡易チェック用
+ * コードの安全性分析
+ * @summary 安全性分析実行
+ * @param code 検査対象コード
+ * @param options 分析オプション
+ * @param options.allowlist 許可された操作のリスト
+ * @param options.strict 厳格モード（より低いスコア）
+ * @returns 安全性分析結果
  */
 export function quickSafetyCheck(code: string): {
   isSafe: boolean;
@@ -496,7 +543,10 @@ export function quickSafetyCheck(code: string): {
 }
 
 /**
- * コードが許可リストに準拠しているかチェック
+ * @summary 許可リスト準拠チェック
+ * @param code チェック対象のコード
+ * @param allowlist 許可されたキーワードのリスト
+ * @returns 準拠状況と違反内容を含むオブジェクト
  */
 export function checkAllowlistCompliance(
   code: string,

@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/model-timeouts.ts
+ * role: モデル固有のタイムアウト定数と計算ロジックの提供
+ * why: モデルごとの処理速度差や思考レベルによる負荷変動に応じた適切な待機時間を設定するため
+ * related: .pi/lib/model-loader.ts, .pi/lib/api-client.ts
+ * public_api: MODEL_TIMEOUT_BASE_MS, THINKING_LEVEL_MULTIPLIERS, ComputeModelTimeoutOptions, getModelBaseTimeoutMs, computeModelTimeoutMs, computeProgressiveTimeoutMs
+ * invariants: 返り値は常にミリ秒単位の整数、userTimeoutMsが0より大きい場合はそれを優先して返す
+ * side_effects: なし
+ * failure_modes: 該当するモデルがない場合はdefaultの値を使用する、未知の思考レベルはmediumとして扱う
+ * @abdd.explain
+ * overview: モデルIDと思考レベルに基づいて、APIリクエストのタイムアウト時間を動的に計算するモジュール。
+ * what_it_does:
+ *   - モデルIDに対応する基本タイムアウト値を取得・検索する（部分一致を含む）
+ *   - 思考レベルに応じた乗数を基本タイムアウトに適用する
+ *   - 再試行回数に応じてタイムアウトを最大2倍まで段階的に増加させる
+ *   - ユーザー指定のタイムアウトがある場合はシステム計算値よりも優先する
+ * why_it_exists:
+ *   - 高遅延モデル（GLMなど）で処理打ち切りを防ぐため
+ *   - 高速モデルの応答性を維持しつつ、ULモードの効率を最適化するため
+ *   - 再試行時の一時的な負荷上昇や遅延に対応するため
+ * scope:
+ *   in: モデル識別子（文字列）、ユーザー指定タイムアウト、思考レベル、試行回数
+ *   out: 計算されたタイムアウト時間（ミリ秒単位の整数）
+ */
+
+/**
  * Model-specific timeout configuration.
  * Different models have different response characteristics.
  */
@@ -42,7 +68,11 @@ export const THINKING_LEVEL_MULTIPLIERS: Record<string, number> = {
 } as const;
 
 /**
- * Options for computing model timeout.
+ * 計算オプション
+ * @summary 計算オプション
+ * @type {object}
+ * @property {number} [userTimeoutMs] - ユーザー指定タイムアウト
+ * @property {string} [thinkingLevel] - 思考レベル
  */
 export interface ComputeModelTimeoutOptions {
   /** User-specified timeout (takes precedence if > 0) */
@@ -52,9 +82,10 @@ export interface ComputeModelTimeoutOptions {
 }
 
 /**
- * Get the base timeout for a model without thinking level adjustment.
- * @param modelId - The model identifier
- * @returns Base timeout in milliseconds
+ * モデル基本タイムアウト取得
+ * @summary 基本タイムアウト取得
+ * @param {string} modelId - モデルID
+ * @returns {number} 基本タイムアウト時間
  */
 export function getModelBaseTimeoutMs(modelId: string): number {
   // Exact match
@@ -77,12 +108,11 @@ export function getModelBaseTimeoutMs(modelId: string): number {
 }
 
 /**
- * Compute the appropriate timeout for a model with all adjustments.
- * Priority: user-specified > model-specific + thinking adjustment > default
- *
- * @param modelId - The model identifier (e.g., "glm-5", "claude-3-5-sonnet")
- * @param options - Timeout computation options
- * @returns Timeout in milliseconds
+ * モデルごとのタイムアウト計算
+ * @summary モデル別タイムアウト
+ * @param {string} modelId - モデルID
+ * @param {ComputeModelTimeoutOptions} [options] - 計算オプション
+ * @returns {number} タイムアウト時間
  */
 export function computeModelTimeoutMs(
   modelId: string,
@@ -104,10 +134,11 @@ export function computeModelTimeoutMs(
 }
 
 /**
- * Compute a progressive timeout that increases with retry attempts.
- * @param baseTimeoutMs - Base timeout
- * @param attempt - Current attempt number (0-indexed)
- * @returns Adjusted timeout in milliseconds
+ * 漸進的タイムアウト計算
+ * @summary タイムアウト計算
+ * @param {number} baseTimeoutMs - 基本タイムアウト時間
+ * @param {number} attempt - 試行回数
+ * @returns {number} 計算されたタイムアウト時間
  */
 export function computeProgressiveTimeoutMs(
   baseTimeoutMs: number,

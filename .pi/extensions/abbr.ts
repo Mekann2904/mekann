@@ -1,4 +1,27 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/abbr.ts
+ * role: Fish shell風略語展開機能の拡張
+ * why: ユーザーが短いエイリアスを入力するだけで、コマンドや定型文を素早く展開・入力するため
+ * related: @mariozechner/pi-ai, @mariozechner/pi-coding-agent, @mariozechner/pi-tui
+ * public_api: export interface Abbreviation, /abbr <action> コマンド群
+ * invariants: 略語名は一意である必要がある、設定ファイルは ~/.pi/abbr.json に保存される
+ * side_effects: ファイルシステムへの設定ファイルの書き込み、ExtensionContextへの状態保存
+ * failure_modes: 設定ファイルの破損、読み書き権限の欠如、JSONパースエラー
+ * @abdd.explain
+ * overview: 入力フィールドでの略語展開と、略語管理のためのCLIコマンドを提供する
+ * what_it_does:
+ *   - 略語と展開後の文字列のペアを追加・一覧・削除・名前変更・検索する
+ *   - 入力の先頭単語が登録された略語と一致する場合、空白入力時に展開文字列へ置換する
+ *   - 略語データを ~/.pi/abbr.json およびエージェントの状態として永続化する
+ * why_it_exists:
+ *   - 頻繁に使用する長いコマンドや定型入力を省略し、操作効率を向上させるため
+ * scope:
+ *   in: ExtensionAPI, ExtensionContext, ユーザー入力文字列
+ *   out: 展開後のコマンド文字列、状態管理用エントリ
+ */
+
+/**
  * Abbreviation (abbr) Extension
  *
  * Fish shell-like abbreviation support for pi.
@@ -34,6 +57,15 @@ if (!fs.existsSync(CONFIG_DIR)) {
 	fs.mkdirSync(CONFIG_DIR, { recursive: true });
 }
 
+/**
+ * @summary 略語情報定義
+ * @param name - 略語名
+ * @param expansion - 展開後テキスト
+ * @param regex - マッチ正規表現
+ * @param pattern - パターン文字列
+ * @param position - 位置情報
+ * @returns {Abbreviation}
+ */
 export interface Abbreviation {
 	name: string;
 	expansion: string;
@@ -177,6 +209,18 @@ function reconstructState(ctx: ExtensionContext) {
 }
 
 // UI component for listing abbreviations
+/**
+ * 略語一覧を表示するUIコンポーネント
+ *
+ * 指定された幅に基づいて文字列の配列を生成します。
+ * キャッシュが利用可能で、幅が変更されていない場合はキャッシュされた行を返します。
+ *
+ * @param width - 行を生成するための幅
+ * @returns 生成された文字列の配列
+ * @example
+ * const abbrList = new AbbrListComponent(theme, onClose);
+ * const lines = abbrList.render(80);
+ */
 class AbbrListComponent {
 	private theme: Theme;
 	private onClose: () => void;
@@ -188,12 +232,22 @@ class AbbrListComponent {
 		this.onClose = onClose;
 	}
 
+	/**
+	 * @summary 入力処理
+	 * @param data - 入力データ
+	 * @returns {void}
+	 */
 	handleInput(data: string): void {
 		if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c") || matchesKey(data, "q")) {
 			this.onClose();
 		}
 	}
 
+	/**
+	 * @summary リストを描画
+	 * @param width - 描画幅
+	 * @returns 描画文字列配列
+	 */
 	render(width: number): string[] {
 		if (this.cachedLines && this.cachedWidth === width) {
 			return this.cachedLines;
@@ -203,6 +257,13 @@ class AbbrListComponent {
 		const th = this.theme;
 
 		lines.push("");
+/**
+		 * キャッシュを無効化します。
+		 *
+		 * このメソッドは、キャッシュされた幅と行を未定義に設定します。
+		 *
+		 * @returns なし
+		 */
 		const title = th.fg("accent", " Abbreviations ");
 		const headerLine =
 			th.fg("borderMuted", "─".repeat(2)) + title + th.fg("borderMuted", "─".repeat(Math.max(0, width - 18)));
@@ -233,6 +294,10 @@ class AbbrListComponent {
 		return lines;
 	}
 
+	/**
+	 * @summary キャッシュを無効化する
+	 * @returns {void} 戻り値なし
+	 */
 	invalidate(): void {
 		this.cachedWidth = undefined;
 		this.cachedLines = undefined;

@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/output-schema.ts
+ * role: 出力スキーマ定義と検証ロジックの実装
+ * why: サブエージェントおよびチームメンバーの出力に対し、JSON Schemaライクな構造チェックと制約検証を行うため
+ * related: .pi/lib/text-parsing.ts, .pi/lib/output-validation.ts, .pi/lib/agent-teams/judge.ts
+ * public_api: SchemaValidationMode, SchemaValidationResult, SchemaViolation, ParsedStructuredOutput
+ * invariants: SchemaFieldのtypeは"string"|"number"|"string[]"のいずれかである
+ * side_effects: なし
+ * failure_modes: スキーマ定義と入力データの型不一致により検証例外が発生する
+ * @abdd.explain
+ * overview: 構造化出力のスキーマ定義およびその検証結果を表す型を提供するモジュール
+ * what_it_does:
+ *   - SchemaValidationModeで検証モードを定義する
+ *   - SchemaFieldおよびOutputSchemaで検証ルールを定義する
+ *   - SchemaValidationResultで検証成功/失敗の詳細を保持する
+ *   - ParsedStructuredOutputで解析済みの出力データ構造を規定する
+ * why_it_exists:
+ *   - 正規表現検証に加え、フィールドの型や長さなどの構造的制約を適用するため
+ *   - 検証結果とエラー理由を呼び出し元に明確に伝達するため
+ *   - 機能フラグ（PI_OUTPUT_SCHEMA_MODE）によるモード切替を型システムでサポートするため
+ * scope:
+ *   in: text-parsing.tsからのユーティリティ関数、出力検証の設定
+ *   out: スキーマ型定義、検証結果インターフェース、サブエージェント出力用スキーマ定数
+ */
+
+/**
  * Structured output schema definitions and validation.
  * Provides JSON Schema-like validation for subagent and team member outputs.
  *
@@ -21,7 +47,8 @@ import {
 // ============================================================================
 
 /**
- * Validation mode for output schema checking.
+ * スキーマ検証モード定義
+ * @summary 検証モード
  */
 export type SchemaValidationMode = "legacy" | "dual" | "strict";
 
@@ -46,7 +73,8 @@ interface OutputSchema {
 }
 
 /**
- * Schema validation result.
+ * スキーマ検証の実行結果
+ * @summary 検証結果インターフェース
  */
 export interface SchemaValidationResult {
   ok: boolean;
@@ -57,7 +85,8 @@ export interface SchemaValidationResult {
 }
 
 /**
- * Individual schema violation.
+ * スキーマ違反の詳細情報
+ * @summary 違反情報インターフェース
  */
 export interface SchemaViolation {
   field: string;
@@ -67,7 +96,8 @@ export interface SchemaViolation {
 }
 
 /**
- * Parsed structured output.
+ * 構造化出力の解析結果
+ * @summary 解析結果インターフェース
  */
 export interface ParsedStructuredOutput {
   SUMMARY: string;
@@ -154,9 +184,8 @@ const TEAM_MEMBER_OUTPUT_SCHEMA: OutputSchema = {
 // ============================================================================
 
 /**
- * Communication ID mode for structured output processing.
- * - "legacy" (default): No structured claim/evidence IDs
- * - "structured": Enable claim and evidence ID tracking
+ * 通信IDモードの型定義
+ * @summary 通信IDモード型
  */
 export type CommunicationIdMode = "legacy" | "structured";
 
@@ -166,10 +195,9 @@ export type CommunicationIdMode = "legacy" | "structured";
 let cachedCommunicationIdMode: CommunicationIdMode | undefined;
 
 /**
- * Get the current communication ID mode.
- * Reads from PI_COMMUNICATION_ID_MODE environment variable.
- *
- * @returns Current communication ID mode
+ * 通信IDモードを取得する
+ * @summary 通信IDモード取得
+ * @returns {CommunicationIdMode} 通信IDモード ("legacy" | "structured")
  */
 export function getCommunicationIdMode(): CommunicationIdMode {
   if (cachedCommunicationIdMode !== undefined) {
@@ -188,14 +216,19 @@ export function getCommunicationIdMode(): CommunicationIdMode {
 }
 
 /**
- * Reset the cached communication ID mode (primarily for testing).
+ * キャッシュをリセットする
+ * @summary キャッシュリセット
+ * @returns {void}
  */
 export function resetCommunicationIdModeCache(): void {
   cachedCommunicationIdMode = undefined;
 }
 
 /**
- * Set communication ID mode at runtime (primarily for testing).
+ * モードを設定する
+ * @summary モード設定
+ * @param {CommunicationIdMode} mode モード
+ * @returns {void}
  */
 export function setCommunicationIdMode(mode: CommunicationIdMode): void {
   cachedCommunicationIdMode = mode;
@@ -206,10 +239,8 @@ export function setCommunicationIdMode(mode: CommunicationIdMode): void {
 // ============================================================================
 
 /**
- * Stance classification mode for discussion analysis.
- * - "disabled" (default): No stance classification, backward compatible
- * - "heuristic": Use regex-based pattern matching for stance detection
- * - "structured": Full structured analysis with confidence scores
+ * 分類モードの型定義
+ * @summary 型定義
  */
 export type StanceClassificationMode = "disabled" | "heuristic" | "structured";
 
@@ -219,10 +250,9 @@ export type StanceClassificationMode = "disabled" | "heuristic" | "structured";
 let cachedStanceClassificationMode: StanceClassificationMode | undefined;
 
 /**
- * Get the current stance classification mode.
- * Reads from PI_STANCE_CLASSIFICATION_MODE environment variable.
- *
- * @returns Current stance classification mode (defaults to "disabled")
+ * 分類モードを取得する
+ * @summary モード取得
+ * @returns {StanceClassificationMode} 分類モード
  */
 export function getStanceClassificationMode(): StanceClassificationMode {
   if (cachedStanceClassificationMode !== undefined) {
@@ -241,15 +271,19 @@ export function getStanceClassificationMode(): StanceClassificationMode {
 }
 
 /**
- * Reset the cached stance classification mode (primarily for testing).
+ * キャッシュをリセットする
+ * @summary キャッシュリセット
+ * @returns {void}
  */
 export function resetStanceClassificationModeCache(): void {
   cachedStanceClassificationMode = undefined;
 }
 
-/**
- * Set stance classification mode at runtime (primarily for testing).
- */
+ /**
+  * スタンス分類モードを設定する
+  * @param mode 設定するスタンス分類モード
+  * @returns なし
+  */
 export function setStanceClassificationMode(mode: StanceClassificationMode): void {
   cachedStanceClassificationMode = mode;
 }
@@ -260,15 +294,9 @@ export function setStanceClassificationMode(mode: StanceClassificationMode): voi
 let cachedMode: SchemaValidationMode | undefined;
 
 /**
- * Get the current schema validation mode.
- * Reads from PI_OUTPUT_SCHEMA_MODE environment variable.
- *
- * MIGRATION COMPLETE: Default is now "strict" (v2.0.0+)
- * - "legacy": Use regex-based validation only (deprecated)
- * - "dual": Run both regex and schema validation, log differences
- * - "strict": Use schema validation only (default)
- *
- * @returns Current validation mode
+ * 現在の検証モードを取得
+ * @summary 検証モード取得
+ * @returns 現在の検証モード
  */
 export function getSchemaValidationMode(): SchemaValidationMode {
   if (cachedMode !== undefined) {
@@ -289,14 +317,19 @@ export function getSchemaValidationMode(): SchemaValidationMode {
 }
 
 /**
- * Reset the cached schema validation mode (primarily for testing).
+ * キャッシュをリセット
+ * @summary キャッシュをリセット
+ * @returns なし
  */
 export function resetSchemaValidationModeCache(): void {
   cachedMode = undefined;
 }
 
 /**
- * Set schema validation mode at runtime (primarily for testing).
+ * @summary スキーマ検証モードを設定
+ * 実行時にスキーマ検証モードを設定する（主にテスト用）。
+ * @param mode 設定するスキーマ検証モード
+ * @returns なし
  */
 export function setSchemaValidationMode(mode: SchemaValidationMode): void {
   cachedMode = mode;
@@ -307,10 +340,10 @@ export function setSchemaValidationMode(mode: SchemaValidationMode): void {
 // ============================================================================
 
 /**
- * Parse structured output text into a structured object.
- *
- * @param output - Raw output text
- * @returns Parsed structured output
+ * 構造化出力を解析
+ * @summary 構造化出力を解析
+ * @param output - 生の出力テキスト
+ * @returns 解析された構造化出力
  */
 export function parseStructuredOutput(output: string): ParsedStructuredOutput {
   const parsed: ParsedStructuredOutput = {
@@ -463,11 +496,11 @@ function validateAgainstSchema(
 }
 
 /**
- * Validate subagent output with schema.
- *
- * @param output - Raw output text
- * @param mode - Validation mode (defaults to current setting)
- * @returns Validation result with violations and fallback flag
+ * サブエージェント出力を検証
+ * @summary 出力検証(サブ)
+ * @param {string} output 検証対象の出力文字列
+ * @param {SchemaValidationMode} mode 検証モード
+ * @returns {SchemaValidationResult} 検証結果
  */
 export function validateSubagentOutputWithSchema(
   output: string,
@@ -491,11 +524,11 @@ export function validateSubagentOutputWithSchema(
 }
 
 /**
- * Validate team member output with schema.
- *
- * @param output - Raw output text
- * @param mode - Validation mode (defaults to current setting)
- * @returns Validation result with violations and fallback flag
+ * チームメンバー出力を検証
+ * @summary 出力検証(チーム)
+ * @param {string} output 検証対象の出力文字列
+ * @param {SchemaValidationMode} mode 検証モード
+ * @returns {SchemaValidationResult} 検証結果
  */
 export function validateTeamMemberOutputWithSchema(
   output: string,
@@ -528,9 +561,10 @@ export function validateTeamMemberOutputWithSchema(
 const violationStats: Map<string, number> = new Map();
 
 /**
- * Record a schema violation for analytics.
- *
- * @param violation - Violation to record
+ * スキーマ違反を記録
+ * @summary 違反を記録
+ * @param {SchemaViolation} violation 違反情報
+ * @returns {void}
  */
 export function recordSchemaViolation(violation: SchemaViolation): void {
   const key = `${violation.field}:${violation.violationType}`;
@@ -539,16 +573,18 @@ export function recordSchemaViolation(violation: SchemaViolation): void {
 }
 
 /**
- * Get schema violation statistics.
- *
- * @returns Map of violation key to count
+ * 違反統計を取得
+ * @summary 違反統計取得
+ * @returns {Map<string, number>} 違反キーとカウントのマップ
  */
 export function getSchemaViolationStats(): Map<string, number> {
   return new Map(violationStats);
 }
 
 /**
- * Reset schema violation statistics.
+ * 違反統計をリセット
+ * @summary 違反統計リセット
+ * @returns {void}
  */
 export function resetSchemaViolationStats(): void {
   violationStats.clear();

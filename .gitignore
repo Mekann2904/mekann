@@ -61,6 +61,9 @@ coverage/
 # Dynamic tools runtime data
 .pi/tools/
 
+# Dynamic tools temporary definitions
+.pi/extensions/github-agent/dt_*.json
+
 # ============================================================================
 # Memory & Embeddings (may contain sensitive task data)
 # ============================================================================
@@ -113,3 +116,4 @@ coverage/
 **/*-key.pem
 **/*.pem
 !**/public-key.pem
+philosophy.md

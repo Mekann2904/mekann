@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/kitty-status-integration.ts
+ * role: kittyターミナル統合エクステンション
+ * why: piの作業状態をkittyのウィンドウタイトルや通知システムへ連携するため
+ * related: @mariozechner/pi-coding-agent, child_process
+ * public_api: setWindow, notify
+ * invariants: kitty以外のターミナルでは標準出力へのエスケープシーケンス出力と通知発火を行わない
+ * side_effects: プロセス標準出力への書き込み、osascript/afplayプロセスの生成
+ * failure_modes: 外部コマンド(osascript, afplay)の実行失敗時はエラーをログ出力して処理を継続する
+ * @abdd.explain
+ * overview: kittyのshell integrationを利用し、piのエージェント状態可視化と通知を行う
+ * what_it_does:
+ *   - kittyのウィンドウタイトルとタブ名をエスケープシーケンスで設定する
+ *   - macOSではAppleScriptとafplayを用いて通知とシステムサウンドを再生する
+ *   - Linuxではkittyネイティブ通知を表示する
+ *   - 実行環境がkittyかどうかを環境変数KITTY_WINDOW_IDで判定する
+ * why_it_exists:
+ *   - ユーザーがターミナル操作中にpiの状態を非干渉で把握するため
+ *   - プラットフォームごとの最適な通知手段（macOS通知センター、kitty通知）を提供するため
+ * scope:
+ *   in: piのExtensionAPIコールバック、通知設定オブジェクト
+ *   out: 標準出力(ESCシーケンス)、OSの通知サブシステム、サウンド再生プロセス
+ */
+
+/**
  * Kitty Status Integration Extension
  *
  * kittyのshell integrationを活用して、piの作業状態を反映します。

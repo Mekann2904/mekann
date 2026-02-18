@@ -1,0 +1,405 @@
+---
+title: pi-print-executor
+category: api-reference
+audience: developer
+last_updated: 2026-02-18
+tags: [auto-generated]
+related: []
+---
+
+# pi-print-executor
+
+## 概要
+
+`pi-print-executor` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+// from 'node:child_process': spawn
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `runPiPrintMode` | Pi印刷モード実行 |
+| 関数 | `callModelViaPi` | PI経由でLLMを呼び出す |
+| インターフェース | `PrintExecutorOptions` | 印刷実行オプション |
+| インターフェース | `PrintCommandResult` | 印刷コマンド結果 |
+| インターフェース | `CallModelOptions` | モデル呼び出し共通オプション |
+| インターフェース | `CallModelViaPiOptions` | PI呼び出しオプション |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class PrintExecutorOptions {
+    <<interface>>
+    +entityLabel: string
+    +provider: string
+    +model: string
+    +prompt: string
+    +timeoutMs: number
+  }
+  class PrintCommandResult {
+    <<interface>>
+    +output: string
+    +latencyMs: number
+  }
+  class CallModelOptions {
+    <<interface>>
+    +provider: string
+    +id: string
+    +thinkingLevel: string
+  }
+  class CallModelViaPiOptions {
+    <<interface>>
+    +model: CallModelOptions
+    +prompt: string
+    +timeoutMs: number
+    +signal: AbortSignal
+    +onChunk: chunk_string_void
+  }
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  callModelViaPi["callModelViaPi()"]
+  cleanup["cleanup()"]
+  combineTextAndThinking["combineTextAndThinking()"]
+  extractFinalText["extractFinalText()"]
+  finish["finish()"]
+  formatThinkingBlock["formatThinkingBlock()"]
+  killSafely["killSafely()"]
+  parseJsonStreamLine["parseJsonStreamLine()"]
+  resetIdleTimeout["resetIdleTimeout()"]
+  runPiPrintMode["runPiPrintMode()"]
+  trimForError["trimForError()"]
+  callModelViaPi --> cleanup
+  callModelViaPi --> combineTextAndThinking
+  callModelViaPi --> extractFinalText
+  callModelViaPi --> finish
+  callModelViaPi --> killSafely
+  callModelViaPi --> parseJsonStreamLine
+  callModelViaPi --> resetIdleTimeout
+  combineTextAndThinking --> formatThinkingBlock
+  finish --> cleanup
+  resetIdleTimeout --> killSafely
+  runPiPrintMode --> cleanup
+  runPiPrintMode --> combineTextAndThinking
+  runPiPrintMode --> extractFinalText
+  runPiPrintMode --> finish
+  runPiPrintMode --> killSafely
+  runPiPrintMode --> parseJsonStreamLine
+  runPiPrintMode --> resetIdleTimeout
+  runPiPrintMode --> trimForError
+```
+
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant pi_print_executor as "pi-print-executor"
+
+  Caller->>pi_print_executor: runPiPrintMode()
+  activate pi_print_executor
+  Note over pi_print_executor: 非同期処理開始
+  deactivate pi_print_executor
+  pi_print_executor-->>Caller: Promise_PrintCommand
+
+  Caller->>pi_print_executor: callModelViaPi()
+  activate pi_print_executor
+  pi_print_executor-->>Caller: Promise_string
+  deactivate pi_print_executor
+```
+
+## 関数
+
+### trimForError
+
+```typescript
+trimForError(text: string, maxLength: any): string
+```
+
+Trims error messages to a reasonable length for display.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+| maxLength | `any` | はい |
+
+**戻り値**: `string`
+
+### parseJsonStreamLine
+
+```typescript
+parseJsonStreamLine(line: string): { type: string; textDelta?: string; thinkingDelta?: string; isEnd?: boolean } | null
+```
+
+Parse JSON stream lines and extract text content.
+Handles both complete JSON objects and partial lines.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| line | `string` | はい |
+
+**戻り値**: `{ type: string; textDelta?: string; thinkingDelta?: string; isEnd?: boolean } | null`
+
+### extractFinalText
+
+```typescript
+extractFinalText(line: string): { text: string | null; thinking: string | null }
+```
+
+Extract final text from agent_end message.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| line | `string` | はい |
+
+**戻り値**: `{ text: string | null; thinking: string | null }`
+
+### formatThinkingBlock
+
+```typescript
+formatThinkingBlock(thinking: string): string
+```
+
+Format thinking block with indentation for distinct display.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| thinking | `string` | はい |
+
+**戻り値**: `string`
+
+### combineTextAndThinking
+
+```typescript
+combineTextAndThinking(text: string, thinking: string): string
+```
+
+Combine text and thinking content with proper formatting.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+| thinking | `string` | はい |
+
+**戻り値**: `string`
+
+### runPiPrintMode
+
+```typescript
+async runPiPrintMode(input: PrintExecutorOptions): Promise<PrintCommandResult>
+```
+
+Pi印刷モード実行
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `PrintExecutorOptions` | はい |
+
+**戻り値**: `Promise<PrintCommandResult>`
+
+### finish
+
+```typescript
+finish(fn: () => void): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| fn | `() => void` | はい |
+
+**戻り値**: `void`
+
+### killSafely
+
+```typescript
+killSafely(sig: NodeJS.Signals): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| sig | `NodeJS.Signals` | はい |
+
+**戻り値**: `void`
+
+### resetIdleTimeout
+
+```typescript
+resetIdleTimeout(): void
+```
+
+**戻り値**: `void`
+
+### onAbort
+
+```typescript
+onAbort(): void
+```
+
+**戻り値**: `void`
+
+### cleanup
+
+```typescript
+cleanup(): void
+```
+
+**戻り値**: `void`
+
+### callModelViaPi
+
+```typescript
+async callModelViaPi(options: CallModelViaPiOptions): Promise<string>
+```
+
+PI経由でLLMを呼び出す
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| options | `CallModelViaPiOptions` | はい |
+
+**戻り値**: `Promise<string>`
+
+### finish
+
+```typescript
+finish(fn: () => void): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| fn | `() => void` | はい |
+
+**戻り値**: `void`
+
+### killSafely
+
+```typescript
+killSafely(sig: NodeJS.Signals): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| sig | `NodeJS.Signals` | はい |
+
+**戻り値**: `void`
+
+### resetIdleTimeout
+
+```typescript
+resetIdleTimeout(): void
+```
+
+**戻り値**: `void`
+
+### onAbort
+
+```typescript
+onAbort(): void
+```
+
+**戻り値**: `void`
+
+### cleanup
+
+```typescript
+cleanup(): void
+```
+
+**戻り値**: `void`
+
+## インターフェース
+
+### PrintExecutorOptions
+
+```typescript
+interface PrintExecutorOptions {
+  entityLabel: string;
+  provider?: string;
+  model?: string;
+  prompt: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  onStdoutChunk?: (chunk: string) => void;
+  onStderrChunk?: (chunk: string) => void;
+  onTextDelta?: (delta: string) => void;
+  onThinkingDelta?: (delta: string) => void;
+}
+```
+
+印刷実行オプション
+
+### PrintCommandResult
+
+```typescript
+interface PrintCommandResult {
+  output: string;
+  latencyMs: number;
+}
+```
+
+印刷コマンド結果
+
+### CallModelOptions
+
+```typescript
+interface CallModelOptions {
+  provider: string;
+  id: string;
+  thinkingLevel?: string;
+}
+```
+
+モデル呼び出し共通オプション
+
+### CallModelViaPiOptions
+
+```typescript
+interface CallModelViaPiOptions {
+  model: CallModelOptions;
+  prompt: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  onChunk?: (chunk: string) => void;
+  onTextDelta?: (delta: string) => void;
+  entityLabel?: string;
+}
+```
+
+PI呼び出しオプション
+
+---
+*自動生成: 2026-02-18T15:54:41.341Z*

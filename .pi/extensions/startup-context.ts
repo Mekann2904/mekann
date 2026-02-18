@@ -1,4 +1,32 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/startup-context.ts
+ * role: セッション開始時に動的コンテキストを注入するエージェント拡張機能
+ * why: エージェントがプロジェクトの現在の状態、最近の変更、全体的な構造を即座に理解するため
+ * related: @mariozechner/pi-coding-agent, README.md, git log
+ * public_api: default function(pi: ExtensionAPI): void
+ * invariants: コンテキスト注入はセッション内の最初のプロンプトのみ実行される
+ * side_effects: エージェントのシステムプロンプトを書き換える（TUIには表示されない）
+ * failure_modes: gitコマンド実行失敗時はコミットログをスキップ、README読み込み失敗時は該当ファイルをスキップ
+ * @abdd.explain
+ * overview: セッション開始時にGitログ、README、作業ディレクトリ情報を収集し、システムプロンプトに追加してエージェントに提供するモジュール
+ * what_it_does:
+ *   - セッション開始時フラグをリセットする
+ *   - 最初のエージェント起動直前にシステムプロンプトへコンテキストを挿入する
+ *   - カレントワーキングディレクトリのパスを取得する
+ *   - 直近10件のGitコミットメッセージ（タイトルのみ）を取得する
+ *   - README.md（または類似ファイル名）の内容を取得する
+ *   - 各情報に利用ガイダンスを付与してシステムプロンプトに連結する
+ * why_it_exists:
+ *   - エージェントが開発履歴を把握し、最近の変更を壊さずに修正できるようにするため
+ *   - プロジェクトの設定や構造に関するドキュメント（README）を参照可能にするため
+ *   - ファイル操作の基準となるパスを明確にするため
+ * scope:
+ *   in: ExtensionAPIのイベントフック(session_start, before_agent_start)
+ *   out: 追加されたコンテキストを含む修正済みシステムプロンプト文字列
+ */
+
+/**
  * Startup Context Extension
  *
  * Injects dynamic context information on the first prompt of each session:

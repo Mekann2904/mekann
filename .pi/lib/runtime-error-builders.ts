@@ -1,21 +1,42 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/runtime-error-builders.ts
+ * role: タイムアウト時間の解決と統一
+ * why: subagents.ts と agent-teams.ts で一貫したタイムアウト挙動を保証するため
+ * related: ./runtime-utils.js, ./model-timeouts.js, ./subagents.ts, ./agent-teams.ts
+ * public_api: resolveEffectiveTimeoutMs
+ * invariants: 戻り値は0以上の数値
+ * side_effects: なし
+ * failure_modes: 不正な型が入力された場合の挙動は依存関数に依存する
+ * @abdd.explain
+ * overview: ユーザー指定、モデル固有、デフォルトの各タイムアウト値を受け取り、最適な有効時間を決定するモジュール。
+ * what_it_does:
+ *   - ユーザー指定タイムアウトとモデル固有タイムアウトを正規化して取得する
+ *   - 両方が正の値の場合、大きい方を優先して採用する
+ *   - いずれも指定がない場合、フォールバック値を返す
+ * why_it_exists:
+ *   - 処理速度の異なる複数のモデルに対し、十分な実行時間を確保するため
+ *   - タイムアウト計算ロジックを共通化し、コード重複を排除するため
+ * scope:
+ *   in: ユーザー指定値(unknown), モデルID(string|undefined), フォールバック値(number)
+ *   out: 決定されたタイムアウト時間(ミリ秒)
+ */
+
+/**
  * Runtime error and timeout utilities.
  * Shared by subagents.ts and agent-teams.ts for consistent behavior.
  */
 
-import { normalizeTimeoutMs, computeModelTimeoutMs } from "./index.js";
+import { normalizeTimeoutMs } from "./runtime-utils.js";
+import { computeModelTimeoutMs } from "./model-timeouts.js";
 
 /**
- * Resolve effective timeout with model-specific adjustment.
- * Priority: max(user-specified, model-specific) > default
- *
- * This ensures that slow models (e.g., GLM-5) always get sufficient timeout,
- * even if the caller specifies a shorter timeout intended for faster models.
- *
- * @param userTimeoutMs - User-specified timeout (unknown type for safety)
- * @param modelId - Model ID for model-specific timeout lookup
- * @param fallback - Default fallback timeout in milliseconds
- * @returns Resolved timeout in milliseconds
+ * タイムアウト解決
+ * @summary タイムアウト時間を解決
+ * @param userTimeoutMs ユーザー指定のタイムアウト値
+ * @param modelId モデルID
+ * @param fallback デフォルト値
+ * @returns 有効なタイムアウト時間
  */
 export function resolveEffectiveTimeoutMs(
   userTimeoutMs: unknown,

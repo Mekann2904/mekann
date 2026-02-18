@@ -1,0 +1,83 @@
+---
+title: github-agent
+category: api-reference
+audience: developer
+last_updated: 2026-02-18
+tags: [auto-generated]
+related: []
+---
+
+# github-agent
+
+## 概要
+
+`github-agent` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+// from 'node:path': path
+// from 'node:child_process': execFile
+// from 'node:util': promisify
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from '@sinclair/typebox': Type, Static
+// ... and 1 more imports
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+
+## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+### gh_agent
+
+GitHub repository exploration tool. Supports info, tree, read, and search commands.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Judge as "Judge"
+  participant Unresolved as "Unresolved"
+
+  User->>System: GitHub repository exploration tool. Supports info, tree, ...
+  System->>Judge: resolve
+  System->>Unresolved: cmdArgs.push (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: output.trim (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+## 図解
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[github-agent]
+    main[Main Module]
+  end
+  subgraph external[外部ライブラリ]
+    _mariozechner["@mariozechner"]
+    _sinclair["@sinclair"]
+    _mariozechner["@mariozechner"]
+  end
+  main --> external
+```
+
+## 型定義
+
+### GhAgentArgs
+
+```typescript
+type GhAgentArgs = Static<typeof GhAgentParams>
+```
+
+---
+*自動生成: 2026-02-18T15:54:41.173Z*

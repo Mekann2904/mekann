@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/subagent-types.ts
+ * role: サブエージェントのライブ監視システムおよび並列実行調整に使用される型定義
+ * why: subagents.tsから型定義を分離し、保守性と依存関係の明確化を図るため
+ * related: ./tui/live-monitor-base.ts, ./live-view-utils.ts, extensions/subagents.ts, extensions/subagents/storage.ts
+ * public_api: SubagentLiveItem, SubagentMonitorLifecycle, SubagentMonitorStream, SubagentMonitorResource
+ * invariants: LiveStatusはlive-view-utils.tsの正規定義を使用する
+ * side_effects: なし（型定義のみ）
+ * failure_modes: なし
+ * @abdd.explain
+ * overview: サブエージェントの実行状態、ライフサイクル、ストリーム出力、リソース管理に関する型定義を集約したモジュール
+ * what_it_does:
+ *   - SubagentLiveItemにて、ID、ステータス、タイムスタンプ、標準出力バイト数等の実行状態を定義する
+ *   - SubagentMonitorLifecycle、SubagentMonitorStream、SubagentMonitorResourceにて、監視機能をInterface Segregation Principle（ISP）に基づき分割定義する
+ *   - LiveStreamViewおよびLiveViewModeの型エイリアスを提供し、意味の明確化を図る
+ * why_it_exists:
+ *   - subagents.tsから型定義を抽出し、コードベースのモジュール化と保守性を向上させるため
+ *   - ライブ監視システムと並列実行調整の間で共有されるデータ構造を一元管理するため
+ * scope:
+ *   in: ./tui/live-monitor-base.ts (LiveStreamView, LiveViewMode), ./live-view-utils.ts (LiveStatus)
+ * out: サブエージェント監視・制御ロジックを実装するモジュール
+ */
+
+/**
  * Subagent type definitions.
  * Extracted from subagents.ts for maintainability.
  *
@@ -8,30 +32,34 @@
  * Related: extensions/subagents.ts, extensions/subagents/storage.ts
  */
 
-import type { LiveStatus, LiveStreamView, LiveViewMode } from "./index.js";
+import type { LiveStreamView, LiveViewMode } from "./tui/live-monitor-base.js";
+import type { LiveStatus } from "./live-view-utils.js";
 
-// Re-export base types for convenience
-export type { LiveStreamView, LiveViewMode } from "./index.js";
+// Use LiveStatus from live-view-utils.ts for the canonical definition
+export type { LiveStreamView, LiveViewMode } from "./tui/live-monitor-base.js";
 
 // ============================================================================
 // Subagent Live Monitor Types
 // ============================================================================
 
 /**
- * View mode for subagent live monitoring interface.
- * Alias for base LiveViewMode for semantic clarity.
+ * ライブビューの表示モード
+ * @summary 表示モード定義
+ * @returns なし
  */
 export type SubagentLiveViewMode = LiveViewMode;
 
 /**
- * Stream view selection for subagent output display.
- * Alias for base LiveStreamView for semantic clarity.
+ * ライブストリームビューの別名
+ * @summary ライブストリームビュー
+ * @returns なし
  */
 export type SubagentLiveStreamView = LiveStreamView;
 
 /**
- * Live item tracking for subagent execution.
- * Maintains real-time state for TUI rendering.
+ * 実行中のサブエージェント項目
+ * @summary エージェント項目定義
+ * @returns なし
  */
 export interface SubagentLiveItem {
   /** Subagent ID */
@@ -73,10 +101,9 @@ export interface SubagentLiveItem {
 // ============================================================================
 
 /**
- * Lifecycle operations for marking agent execution states.
- * Used by code that only needs to track start/finish transitions.
- *
- * @see Interface Segregation Principle - clients depend only on needed methods
+ * ライフサイクル管理インターフェース
+ * @summary ライフサイクル管理
+ * @returns なし
  */
 export interface SubagentMonitorLifecycle {
   markStarted: (agentId: string) => void;
@@ -89,16 +116,20 @@ export interface SubagentMonitorLifecycle {
 }
 
 /**
- * Stream output operations for appending stdout/stderr chunks.
- * Used by code that only needs to handle output streaming.
+ * ストリーム監視インターフェース
+ * @summary ストリーム監視操作
+ * @param agentId エージェントID
+ * @param status 状態
+ * @param summary 概要
+ * @returns なし
  */
 export interface SubagentMonitorStream {
   appendChunk: (agentId: string, stream: SubagentLiveStreamView, chunk: string) => void;
 }
 
 /**
- * Resource cleanup and termination operations.
- * Used by code that only needs to manage monitor lifecycle.
+ * モニターのリソース管理を行うインターフェース
+ * @summary リソースを管理
  */
 export interface SubagentMonitorResource {
   close: () => void;
@@ -106,9 +137,8 @@ export interface SubagentMonitorResource {
 }
 
 /**
- * Full monitor controller combining all capabilities.
- * Extends partial interfaces to maintain backward compatibility.
- * Clients should use narrower interfaces when possible.
+ * ライブモニターの制御およびライフサイクル管理を行う
+ * @summary モニターを制御
  */
 export interface SubagentLiveMonitorController
   extends SubagentMonitorLifecycle,
@@ -120,8 +150,8 @@ export interface SubagentLiveMonitorController
 // ============================================================================
 
 /**
- * Normalized output structure for subagent execution.
- * Used for parsing and validating subagent outputs.
+ * サブエージェントの出力正規化データを表す
+ * @summary 出力を正規化
  */
 export interface SubagentNormalizedOutput {
   /** Extracted summary */
@@ -133,8 +163,8 @@ export interface SubagentNormalizedOutput {
 }
 
 /**
- * Resolution result for subagent parallel capacity.
- * Determines actual parallelism after capacity negotiation.
+ * サブエージェントの並列実行解決情報を表す
+ * @summary 並列解決情報を取得
  */
 export interface SubagentParallelCapacityResolution {
   /** Subagent ID */
@@ -152,8 +182,8 @@ export interface SubagentParallelCapacityResolution {
 // ============================================================================
 
 /**
- * State tracking for delegation-first policy enforcement.
- * Monitors whether delegation has occurred and direct write confirmations.
+ * 委任状態を表すインターフェース
+ * @summary 委任状態を保持
  */
 export interface DelegationState {
   /** Whether any delegation tool was called this request */
@@ -167,8 +197,12 @@ export interface DelegationState {
 }
 
 /**
- * Print command execution result.
- * Used for print mode execution tracking.
+ * コマンド実行結果
+ * @summary コマンド結果を出力
+ * @param output 出力内容
+ * @param latencyMs レイテンシ
+ * @param delegatedThisRequest 委任実行フラグ
+ * @param directWriteConfirmedThisRequest 直接書込確認フラグ
  */
 export interface PrintCommandResult {
   /** Output content */

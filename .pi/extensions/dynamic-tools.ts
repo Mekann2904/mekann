@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/dynamic-tools.ts
+ * role: Live-SWE-agentの動的ツール生成と実行を制御する拡張機能
+ * why: エージェントがタスク実行中に必要な機能を自己生成・実行可能にし、柔軟な問題解決を実現するため
+ * related: lib/dynamic-tools/safety.ts, lib/dynamic-tools/registry.js, lib/verification-workflow.js
+ * public_api: create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection
+ * invariants: ツールコードはVMコンテキストで実行され、requireやprocessへのアクセスは禁止される
+ * side_effects: ファイルシステムへの監査ログ(dynamic-tools-audit.jsonl)の追記
+ * failure_modes: 安全性チェック失敗による実行拒否、VM実行時のタイムアウト、コード品質スコア低下による登録拒否
+ * @abdd.explain
+ * overview: エージェントのタスク進行に応じてJavaScriptツールを動的に生成・検証・実行し、実行結果を記録・反省するインターフェース
+ * what_it_does:
+ *   - ツール定義を登録し、安全性と品質をスキャンする
+ *   - VMコンテキスト内で動的ツールを実行し、結果を返す
+ *   - 登録済みツールの一覧表示と削除を行う
+ *   - 実行結果に基づきツールの再生成要否を判定する
+ *   - 全操作の監査ログをJSONL形式でファイルに出力する
+ * why_it_exists:
+ *   - 事前定義されたツールだけでは対応しきれない特定のタスク要件に対応するため
+ *   - 安全なサンドボックス環境でコード実行を許可しつつ、システムへの不正アクセスを防ぐため
+ * scope:
+ *   in: ツール定義、実行パラメータ、タスク記述、前回の実行結果
+ *   out: ツール実行結果、品質スコア、監査ログエントリ、ツール一覧
+ */
+
+/**
  * 動的ツール生成・実行拡張機能
  * Live-SWE-agent統合: タスク実行中に必要なツールを動的に生成・実行
  *
@@ -31,13 +57,19 @@ import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 import {
   getRegistry,
+} from "../lib/dynamic-tools/registry.js";
+import {
   analyzeCodeSafety,
   quickSafetyCheck,
+} from "../lib/dynamic-tools/safety.js";
+import {
   assessCodeQuality,
   recordExecutionMetrics,
-  type DynamicToolDefinition,
-  type ToolExecutionResult,
-} from "../lib/dynamic-tools/index.js";
+} from "../lib/dynamic-tools/quality.js";
+import type {
+  DynamicToolDefinition,
+  ToolExecutionResult,
+} from "../lib/dynamic-tools/types.js";
 import { isHighStakesTask } from "../lib/verification-workflow.js";
 
 const logger = getLogger();
@@ -192,11 +224,11 @@ ${tool.code}
 
 /**
  * コードを実行
- * セキュリティ: VMコンテキストからrequire, processを削除し
- * 外部モジュールアクセスとプロセス操作を制限
+ * セキュリティ: VMコンテキストからrequire, process, タイマーを削除し
+ * 外部モジュールアクセス、プロセス操作、サンドボックスエスケープを制限
  *
  * 利用可能なグローバルオブジェクト:
- * - console, Buffer, setTimeout, setInterval, clearTimeout, clearInterval
+ * - console, Buffer
  * - 標準オブジェクト: Promise, JSON, Object, Array, String, Number, Boolean, Date, Math
  * - エラークラス: Error, TypeError, RangeError, SyntaxError
  * - URL関連: URL, URLSearchParams
@@ -206,6 +238,7 @@ ${tool.code}
  * - process: 環境変数・プロセス情報アクセス禁止
  * - global, globalThis: グローバルスコープ汚染禁止
  * - __dirname, __filename: ファイルシステムパス漏洩禁止
+ * - setTimeout, setInterval, clearTimeout, clearInterval: サンドボックスエスケープ防止
  */
 async function executeCode(code: string): Promise<ToolExecutionResult> {
   try {
@@ -216,11 +249,6 @@ async function executeCode(code: string): Promise<ToolExecutionResult> {
       console,
       // データ操作
       Buffer,
-      // タイマー（リソース制限あり）
-      setTimeout,
-      setInterval,
-      clearTimeout,
-      clearInterval,
       // 標準オブジェクト
       Promise,
       JSON,
@@ -239,6 +267,9 @@ async function executeCode(code: string): Promise<ToolExecutionResult> {
       URLSearchParams,
       // 注意: require, process は意図的に除外
       // 外部モジュールアクセス・環境変数アクセスを禁止
+      // 注意: setTimeout, setInterval 等は意図的に除外
+      // タイマーのコールバックがVMコンテキスト外で実行され
+      // サンドボックスエスケープのリスクがあるため
     });
 
     const script = new vm.Script(code, {
@@ -817,6 +848,11 @@ async function handleToolReflection(
 // Extension Registration (TypeBox形式)
 // ============================================================================
 
+/**
+ * 動的ツール拡張を登録
+ * @summary ツール拡張登録
+ * @param pi 拡張APIインスタンス
+ */
 export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   // create_tool: 動的ツール生成
   pi.registerTool({

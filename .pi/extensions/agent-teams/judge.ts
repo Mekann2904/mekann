@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/agent-teams/judge.ts
+ * role: チーム実行結果の不確実性計算と最終判定を行うモジュール
+ * why: SRP準拠のため判定ロジックを分離し、重み付け設定の拡張性と判断根拠の説明可能性を確保するため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/text-parsing.ts
+ * public_api: JudgeWeightConfig, DEFAULT_JUDGE_WEIGHTS, getJudgeWeights, computeProxyUncertaintyWithExplainability (実装コードにあるため推測含む), type exports (TeamDefinition等), utility exports (clampConfidence等)
+ * invariants: 内部・相互・システムの各重みは合計が1.0になる構造を維持する, しきい値は0.0から1.0の範囲内である
+ * side_effects: 外部からカスタム重み設定を読み込み、モジュール内キャッシュ `customWeights` を更新する
+ * failure_modes: 重み設定の整合性が取れない場合の計算結果の不正、キャッシュされた設定と実行環境の不整合
+ * @abdd.explain
+ * overview: エージェントチームの実行結果に対し、設定可能な重み付けに基づいて不確実性を算出し、最終的な成功/失敗の判定を行うモジュールです。
+ * what_it_does:
+ *   - TeamMemberResult, TeamStrategy, TeamDefinition 等の型定義を再エクスポートする
+ *   - clampConfidence, parseUnitInterval 等のテキスト解析ユーティリティを再エクスポートする
+ *   - 判定重み設定 (JudgeWeightConfig) を定義し、デフォルト値 (DEFAULT_JUDGE_WEIGHTS) を提供する
+ *   - カスタム重み設定のキャッシュ管理および取得機能 (getJudgeWeights) を提供する
+ *   - 内部・相互・システムレベルの指標に基づき、不確実性と判定結果を算出する (実装詳細は後続コード)
+ * why_it_exists:
+ *   - 複雑な判定ロジックを単一責任原則 (SRP) に基づいて分離し、コードの保守性を向上させるため
+ *   - 判定基準の重み付けを外部設定可能にし、柔軟性と説明可能性を高めるため
+ * scope:
+ *   in: エージェントチームの実行結果、判定重み設定、環境変数やファイルからのカスタム設定
+ *   out: 不確実性スコア、最終判定結果、判定根拠の詳細情報
+ */
+
+/**
  * Agent team judge module.
  * Handles uncertainty calculation and final judgment logic.
  *
@@ -32,15 +58,15 @@ export type {
 };
 
 // Re-export utilities that were previously defined here
-export { clampConfidence, parseUnitInterval, extractField };
+export { clampConfidence, parseUnitInterval, extractField, countKeywordSignals };
 
 // ============================================================================
 // Judge Weight Configuration (P0-3)
 // ============================================================================
 
 /**
- * Configuration for uncertainty weight parameters.
- * These weights determine how different factors contribute to uncertainty.
+ * 審判の重み設定
+ * @summary 審判の重み設定
  */
 export interface JudgeWeightConfig {
   version: string;
@@ -108,13 +134,9 @@ export const DEFAULT_JUDGE_WEIGHTS: JudgeWeightConfig = {
 let customWeights: JudgeWeightConfig | undefined;
 
 /**
- * Get the current judge weight configuration.
- * Can be overridden via PI_JUDGE_WEIGHTS_PATH environment variable.
- *
- * MIGRATION COMPLETE: File-based configuration now supported (v2.0.0+)
- * Set PI_JUDGE_WEIGHTS_PATH to a JSON file path to use custom weights.
- *
- * @returns Current judge weight configuration
+ * 重み設定を取得
+ * @summary 重み設定を取得
+ * @returns {JudgeWeightConfig} 現在の重み設定
  */
 export function getJudgeWeights(): JudgeWeightConfig {
   // Return cached custom weights if set
@@ -159,16 +181,19 @@ export function getJudgeWeights(): JudgeWeightConfig {
 }
 
 /**
- * Set custom judge weights at runtime (primarily for testing).
- *
- * @param weights - Custom weights to use
+ * 重み設定を更新
+ * @summary 重み設定を更新
+ * @param weights - 重みの設定情報
+ * @returns {void}
  */
 export function setJudgeWeights(weights: JudgeWeightConfig): void {
   customWeights = weights;
 }
 
 /**
- * Reset judge weights to defaults.
+ * 判定重みを初期化
+ * @summary 判定重みを初期化
+ * @returns 戻り値なし
  */
 export function resetJudgeWeights(): void {
   customWeights = undefined;
@@ -179,7 +204,11 @@ export function resetJudgeWeights(): void {
 // ============================================================================
 
 /**
- * Detailed explanation of judge decision factors.
+ * 判定決定要因の詳細な説明
+ * @summary 判定要因を保持
+ * @param inputs 入力値
+ * @param computation 中間計算結果
+ * @returns なし
  */
 export interface JudgeExplanation {
   /** Input values used for computation */
@@ -224,8 +253,12 @@ export interface JudgeExplanation {
 // ============================================================================
 
 /**
- * Uncertainty proxy computed from member results.
- * Used to assess overall team output quality and reliability.
+ * チームの不確実性を表現
+ * @summary 不確実性を表現
+ * @param uIntra メンバー内の不確実性（内部の不一致）
+ * @param uInter メンバー間の不確実性（メンバー間の意見の相違）
+ * @param uSys システムレベルの不確実性（総合的な指標）
+ * @param collapseSignals 崩壊条件をトリガーしたシグナル
  */
 export interface TeamUncertaintyProxy {
   /** Intra-member uncertainty (internal inconsistency) */
@@ -238,10 +271,11 @@ export interface TeamUncertaintyProxy {
   collapseSignals: string[];
 }
 
-/**
- * Extract the DISCUSSION section from structured output.
- * Returns content between DISCUSSION: label and the next major label.
- */
+ /**
+  * 構造化出力からDISCUSSIONセクションを抽出
+  * @param output 構造化された出力文字列
+  * @returns DISCUSSIONセクションの内容（該当しない場合は空文字）
+  */
 export function extractDiscussionSection(output: string): string {
   const discussionPattern = /^DISCUSSION\s*:\s*$/im;
   const lines = output.split(/\r?\n/);
@@ -265,8 +299,9 @@ export function extractDiscussionSection(output: string): string {
 }
 
 /**
- * Count evidence signals in the output.
- * Looks for EVIDENCE field items and file:line references.
+ * @summary 証拠シグナルをカウント
+ * @param output - 解析対象の出力文字列
+ * @returns 証拠シグナルの数
  */
 export function countEvidenceSignals(output: string): number {
   let count = 0;
@@ -289,8 +324,10 @@ export function countEvidenceSignals(output: string): number {
 }
 
 /**
- * Analyze a team member's output for quality signals.
- * Returns diagnostic metrics for uncertainty calculation.
+ * メンバー出力を解析
+ * @summary 出力解析
+ * @param output 解析対象の文字列出力
+ * @returns 診断情報を含む解析結果
  */
 export function analyzeMemberOutput(output: string): TeamMemberResult["diagnostics"] {
   const confidence = parseUnitInterval(extractField(output, "CONFIDENCE")) ?? 0.5;
@@ -320,8 +357,10 @@ export function analyzeMemberOutput(output: string): TeamMemberResult["diagnosti
 }
 
 /**
- * Compute uncertainty proxy from team member results.
- * Calculates intra-member, inter-member, and system-level uncertainty.
+ * 代理不確実性を計算
+ * @summary 代理不確実性計算
+ * @param memberResults チームメンバーの判定結果リスト
+ * @returns 計算された不確実性プロキシ
  */
 export function computeProxyUncertainty(memberResults: TeamMemberResult[]): TeamUncertaintyProxy {
   const total = Math.max(1, memberResults.length);
@@ -367,12 +406,11 @@ export function computeProxyUncertainty(memberResults: TeamMemberResult[]): Team
 }
 
 /**
- * Compute uncertainty proxy with detailed explanation.
- * Enhanced version that provides factor-by-factor breakdown.
- *
- * @param memberResults - Team member results to analyze
- * @param weights - Optional custom weight configuration
- * @returns Uncertainty proxy with explanation
+ * 不確実性と説明を計算
+ * @summary 不確実性計算
+ * @param memberResults チームメンバーの判定結果リスト
+ * @param weights 判定の重み設定
+ * @returns 計算されたプロキシと判定理由
  */
 export function computeProxyUncertaintyWithExplainability(
   memberResults: TeamMemberResult[],
@@ -556,10 +594,10 @@ export function computeProxyUncertaintyWithExplainability(
 }
 
 /**
- * Generate human-readable explanation of judge decision.
- *
- * @param explanation - Judge explanation object
- * @returns Formatted explanation string
+ * 判定理由を整形
+ * @summary 判定理由整形
+ * @param explanation 整形前の判定理由オブジェクト
+ * @returns 整形された判定理由文字列
  */
 export function formatJudgeExplanation(explanation: JudgeExplanation): string {
   const lines: string[] = [];
@@ -602,8 +640,10 @@ export function formatJudgeExplanation(explanation: JudgeExplanation): string {
 }
 
 /**
- * Build a fallback judge verdict when no LLM-based judgment is available.
- * Uses deterministic rules based on uncertainty proxy.
+ * 代替判定を生成
+ * @summary 代替判定生成
+ * @param input メンバー結果、プロキシ、エラーを含む入力データ
+ * @returns 生成された最終判定
  */
 export function buildFallbackJudge(input: {
   memberResults: TeamMemberResult[];
@@ -658,8 +698,17 @@ export function buildFallbackJudge(input: {
 }
 
 /**
- * Run the final judge process.
- * In stable profile mode, this uses deterministic fallback logic without LLM calls.
+ * 最終審査を実行
+ * @summary 最終審査の実行
+ * @param input 入力データ
+ * @param input.team チーム定義
+ * @param input.task タスク内容
+ * @param input.strategy チーム戦略
+ * @param input.memberResults メンバーの実行結果リスト
+ * @param input.proxy チーム不確実性プロキシ
+ * @param input.timeoutMs タイムアウト時間（ミリ秒）
+ * @param input.signal 中断シグナル（任意）
+ * @returns 最終審査結果
  */
 export async function runFinalJudge(input: {
   team: TeamDefinition;

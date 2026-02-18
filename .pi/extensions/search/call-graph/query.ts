@@ -1,4 +1,26 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/call-graph/query.ts
+ * role: コールグラフの検索ロジックを提供するモジュール
+ * why: ノードID、シンボル名、ファイルパスによるノード特定、および呼び出し元の探索を集約するため
+ * related: .pi/extensions/search/call-graph/types.ts, .pi/extensions/search/call-graph/index.ts
+ * public_api: findNodesByName, findNodeById, findNodesByFile, findCallers
+ * invariants: findCallersはキューが空になるか結果数がlimitに達するまで実行される
+ * side_effects: なし（純粋な関数型プログラミング）
+ * failure_modes: 指定されたdepthやlimitが過度に大きい場合、探索完了までに時間がかかる
+ * @abdd.explain
+ * overview: コールグラフ構造に対する各種クエリ（検索・探索）機能を実装する
+ * what_it_does:
+ *   - 名前、ID、ファイルパスによるノードの抽出
+ *   - 指定シンボルの呼び出し元を幅優先探索で特定し、チェーンと信頼度を計算
+ * why_it_exists:
+ *   - コード解析機能において、特定の関数やファイルの関連性を動的に調査する必要があるため
+ * scope:
+ *   in: CallGraphIndex（ノードとエッジの集合）、検索条件（名前、ID、パス、深さ、上限数）
+ *   out: 一致するノード、または呼び出しチェーン情報を含む結果配列
+ */
+
+/**
  * Call Graph Query Functions
  *
  * Provides functions to query the call graph for callers and callees.
@@ -16,8 +38,11 @@ import type {
 // ============================================
 
 /**
- * Find node by name in the index.
- * Returns all nodes with matching name (may have multiple with same name in different files).
+ * 名前でノード検索
+ * @summary 名前でノード検索
+ * @param index 呼び出しグラフのインデックス
+ * @param symbolName 検索対象のシンボル名
+ * @returns 一致するノードの配列
  */
 export function findNodesByName(
 	index: CallGraphIndex,
@@ -31,15 +56,22 @@ export function findNodesByName(
 }
 
 /**
- * Find node by ID.
+ * ノードを検索
+ * @summary IDでノード検索
+ * @param index 検索対象の呼び出しグラフインデックス
+ * @param nodeId 検索するノードID
+ * @returns 一致したノード、見つからない場合はundefined
  */
 export function findNodeById(index: CallGraphIndex, nodeId: string): CallGraphNode | undefined {
 	return index.nodes.find((node) => node.id === nodeId);
 }
 
-/**
- * Find nodes by file path.
- */
+ /**
+  * ファイルパスでノードを検索
+  * @param index コールグラフのインデックス
+  * @param filePath 検索対象のファイルパス
+  * @returns 該当するノードの配列
+  */
 export function findNodesByFile(
 	index: CallGraphIndex,
 	filePath: string
@@ -56,15 +88,14 @@ interface CallerSearchState {
 	queue: Array<{ name: string; level: number; callSite?: CallGraphEdge["callSite"]; confidence: number }>;
 }
 
-/**
- * Find all functions that call the given symbol.
- *
- * @param index - Call graph index
- * @param symbolName - Symbol name to find callers for
- * @param depth - Recursion depth (1 = direct callers only)
- * @param limit - Maximum number of results
- * @returns Array of caller nodes with depth and call site info
- */
+ /**
+  * 指定されたシンボルを呼び出す全ての関数を検索します。
+  * @param index - 呼び出しグラフのインデックス
+  * @param symbolName - 呼び出し元を検索するシンボル名
+  * @param depth - 再帰の深さ（1 = 直接の呼び出し元のみ）
+  * @param limit - 最大結果数
+  * @returns 深度と呼び出し位置情報を持つ呼び出し元ノードの配列
+  */
 export function findCallers(
 	index: CallGraphIndex,
 	symbolName: string,
@@ -131,15 +162,14 @@ export function findCallers(
 // Find Callees
 // ============================================
 
-/**
- * Find all functions called by the given symbol.
- *
- * @param index - Call graph index
- * @param symbolName - Symbol name to find callees for
- * @param depth - Recursion depth (1 = direct callees only)
- * @param limit - Maximum number of results
- * @returns Array of callee nodes with depth and call site info
- */
+ /**
+  * 指定されたシンボルから呼ばれる関数を検索する
+  * @param index - コールグラフインデックス
+  * @param symbolName - 呼び出し先を検索するシンボル名
+  * @param depth - 再帰の深さ（1 = 直接の呼び出し先のみ）
+  * @param limit - 最大結果数
+  * @returns 深度と呼び出し位置情報を含む呼び出し先ノードの配列
+  */
 export function findCallees(
 	index: CallGraphIndex,
 	symbolName: string,
@@ -233,10 +263,14 @@ export function findCallees(
 // Call Path Analysis
 // ============================================
 
-/**
- * Find call path between two symbols.
- * Uses BFS to find shortest path.
- */
+ /**
+  * 2つのシンボル間の呼び出し経路を探索する
+  * @param index 呼び出しグラフのインデックス
+  * @param fromSymbol 開始シンボル名
+  * @param toSymbol 終了シンボル名
+  * @param maxDepth 最大探索深さ
+  * @returns 呼び出し経路のノード配列、見つからなければnull
+  */
 export function findCallPath(
 	index: CallGraphIndex,
 	fromSymbol: string,
@@ -314,7 +348,11 @@ export function findCallPath(
 // ============================================
 
 /**
- * Get statistics for a function in the call graph.
+ * ノード統計取得
+ * @summary ノード統計取得
+ * @param index コールグラフインデックス
+ * @param symbolName シンボル名
+ * @returns ノード情報と呼び出し数の統計
  */
 export function getNodeStats(
 	index: CallGraphIndex,

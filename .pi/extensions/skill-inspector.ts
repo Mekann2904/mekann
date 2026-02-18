@@ -1,4 +1,27 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/skill-inspector.ts
+ * role: プロジェクト内のスキル定義とチームへの割り当て状況を集計・分析するツール
+ * why: スキルがどこで定義され、どのチーム・メンバーに利用されているかを可視化するため
+ * related: .pi/lib/skills/, .pi/agent-teams/definitions/, @mariozechner/pi-coding-agent
+ * public_api: loadAvailableSkills, loadTeamDefinitions
+ * invariants: SKILL.mdの必須項目不足時はディレクトリ名をnameとして使用する, ファイル読み込みエラー時は該当エントリをスキップする
+ * side_effects: ファイルシステムからの読み取りのみ行い、書き込みは行わない
+ * failure_modes: 指定ディレクトリが存在しない場合は空のMapまたは配列を返す, ファイルのパースに失敗した場合は例外を捕捉して処理を継続する
+ * @abdd.explain
+ * overview: `.pi/lib/skills/` ディレクトリから利用可能なスキルをロードし、`.pi/agent-teams/definitions/` からチーム定義をロードして、スキルの利用状況をマッピングする。
+ * what_it_does:
+ *   - SKILL.mdファイルのパースとスキル情報のMap作成
+ *   - チーム定義ファイル（.md/.json）の走査とチーム・メンバーごとのスキル保持状況の特定
+ * why_it_exists:
+ *   - 複数のエージェントやチーム間でスキルの重複や未使用状況を把握する
+ *   - プロジェクト全体のスキルアーキテクチャを理解しやすくする
+ * scope:
+ *   in: .pi/lib/skills/ ディレクトリ構造, .pi/agent-teams/definitions/ ファイル内容
+ *   out: スキル定義のMap, スキル利用状況を含むチーム定義配列
+ */
+
+/**
  * Skill Inspector Extension
  * スキルの割り当て状況を表示するツール
  */
@@ -732,8 +755,6 @@ function formatSkillDetail(
 // ============================================================================
 // Tool Registration
 // ============================================================================
-
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   // Register skill_status tool

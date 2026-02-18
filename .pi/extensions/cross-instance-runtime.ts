@@ -1,3 +1,27 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/cross-instance-runtime.ts
+ * role: PIライフサイクルとクロスインスタンス調整の統合拡張
+ * why: 複数のPIインスタンス間でリソース使用量を調整し、並列処理制限を動的に変更するため
+ * related: .pi/lib/cross-instance-coordinator.ts, .pi/lib/adaptive-rate-controller.ts, .pi/lib/provider-limits.ts
+ * public_api: registerCrossInstanceRuntimeExtension, pi-instancesコマンド, pi-limitsコマンド
+ * invariants: 拡張ロード時にAdaptiveControllerが初期化されている
+ * side_effects: コマンド実行時、UI通知及びカスタムメッセージの送信を行う
+ * failure_modes: コーディネータ未初期化時はコマンド実行が警告終了する
+ * @abdd.explain
+ * overview: 複数のPIエージェントインスタンス間での並列性制御とレートリミット管理を行うランタイム拡張
+ * what_it_does:
+ *   - 起動時にAdaptiveRateControllerを初期化する
+ *   - `pi-instances`コマンドを提供し、アクティブなインスタンス数と並列性割り当て状況を表示する
+ *   - `pi-limits`コマンドを提供し、プロバイダやモデルごとのレートリミット設定を表示する
+ * why_it_exists:
+ *   - 複数のインスタンスが同一プロバイダへアクセスする際、全体の制限を超えないよう調整するため
+ *   - 実行中のインスタンス数に基づいて並列処理数を動的に最適化するため
+ * scope:
+ *   in: ExtensionAPI, 環境変数(PI_CURRENT_MODEL)
+ *   out: UI通知, カスタムメッセージ, コンソール出力
+ */
+
 // File: .pi/extensions/cross-instance-runtime.ts
 // Description: Integrates cross-instance coordinator with pi lifecycle.
 // Why: Enables automatic parallelism adjustment based on active pi instance count.
@@ -40,6 +64,11 @@ import { getRuntimeSnapshot, notifyRuntimeCapacityChanged } from "./agent-runtim
 
 const Text = require("@mariozechner/pi-tui").Text;
 
+/**
+ * クロスインスタンスランタイム拡張を登録
+ * @summary ランタイム拡張登録
+ * @param pi 拡張APIインスタンス
+ */
 export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) {
   // Initialize adaptive controller at startup
   initAdaptiveController();

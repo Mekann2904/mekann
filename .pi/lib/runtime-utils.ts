@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/runtime-utils.ts
+ * role: サブエージェントおよびエージェントチーム実行のためのランタイムユーティリティ
+ * why: タイムアウト、リトライ、同時実行制御、ID生成、エラー整形など、実行時に必要となる共通処理を一箇所に集約し再利用性と信頼性を確保するため
+ * related: ./retry-with-backoff.js, @mariozechner/pi-ai
+ * public_api: trimForError, buildRateLimitKey, buildTraceTaskId, normalizeTimeoutMs, createRetrySchema, toRetryOverrides, toConcurrencyLimit
+ * invariants: すべての数値変換関数は0以上の整数を返す、文字列キー生成は小文字化・正規化された空白を使用する
+ * side_effects: なし
+ * failure_modes: 不正な型入力によるフォールバック値の使用、数値変換時の精度消失
+ * @abdd.explain
+ * overview: エージェントシステムの実行制御に関連する補助関数群を提供するモジュール。
+ * what_it_does:
+ *   - エラーメッセージの空白正規化と文字数制限による整形
+ *   - プロバイダとモデル名に基づくレート制限キーの生成
+ *   - トレースID、デリゲートID、シーケンス番号による一意タスクIDの生成
+ *   - 任意の入力値からのタイムアウトミリ秒と同時実行数の正規化
+ *   - TypeBoxによるリトライ設定スキーマの定義と、生オブジェクトから型安全なオプションへの変換
+ * why_it_exists:
+ *   - ランタイム設定の検証と正規化ロジックを共通化し、実装の重複を防ぐため
+ *   - 外部入力の型安全性を保証し、実行時エラーを未然に防ぐため
+ * scope:
+ *   in: 生の文字列、数値、不明型のオブジェクト
+ *   out: 正規化された文字列、数値、TypeBoxスキーマ、型定義されたオプションオブジェクト
+ */
+
+/**
  * Runtime utilities for subagent and agent team execution.
  * Provides timeout handling, retry schema, and error formatting utilities.
  */
@@ -8,10 +34,11 @@ import { Type } from "@mariozechner/pi-ai";
 import type { RetryWithBackoffOverrides } from "./retry-with-backoff.js";
 
 /**
- * Trim message for error display, normalizing whitespace.
- * @param message - Message to trim
- * @param maxLength - Maximum length (default: 600)
- * @returns Trimmed message
+ * エラーメッセージ整形
+ * @summary エラーメッセージを整形
+ * @param message - 対象のメッセージ
+ * @param maxLength - 最大長
+ * @returns 整形されたメッセージ
  */
 export function trimForError(message: string, maxLength = 600): string {
   const normalized = message.replace(/\s+/g, " ").trim();
@@ -20,21 +47,23 @@ export function trimForError(message: string, maxLength = 600): string {
 }
 
 /**
- * Build rate limit key from provider and model.
- * @param provider - Provider name
- * @param model - Model name
- * @returns Normalized rate limit key
+ * レート制限キー生成
+ * @summary レート制限キー生成
+ * @param provider - プロバイダ名
+ * @param model - モデル名
+ * @returns 生成されたレート制限キー
  */
 export function buildRateLimitKey(provider: string, model: string): string {
   return `${provider.toLowerCase()}::${model.toLowerCase()}`;
 }
 
 /**
- * Build trace task ID for debugging and logging.
- * @param traceId - Trace ID (optional)
- * @param delegateId - Delegate ID
- * @param sequence - Sequence number
- * @returns Formatted trace task ID
+ * トレースID生成
+ * @summary トレースIDを生成
+ * @param traceId - トレースID
+ * @param delegateId - 委譲先ID
+ * @param sequence - シーケンス番号
+ * @returns 生成されたトレースタスクID
  */
 export function buildTraceTaskId(
   traceId: string | undefined,
@@ -47,10 +76,11 @@ export function buildTraceTaskId(
 }
 
 /**
- * Normalize timeout value in milliseconds.
- * @param value - Timeout value (unknown)
- * @param fallback - Fallback value if invalid
- * @returns Normalized timeout in milliseconds
+ * タイムアウト正規化
+ * @summary タイムアウトを正規化
+ * @param value 入力値
+ * @param fallback デフォルト値
+ * @returns 正規化されたタイムアウト時間
  */
 export function normalizeTimeoutMs(value: unknown, fallback: number): number {
   const resolved = value === undefined ? fallback : Number(value);
@@ -60,8 +90,9 @@ export function normalizeTimeoutMs(value: unknown, fallback: number): number {
 }
 
 /**
- * Create retry schema for tool input validation.
- * @returns TypeBox schema for retry options
+ * スキーマ生成
+ * @summary リトライスキーマを作成
+ * @returns void
  */
 export function createRetrySchema() {
   return Type.Optional(
@@ -86,15 +117,10 @@ export function createRetrySchema() {
 }
 
 /**
- * Convert retry input value to RetryWithBackoffOverrides.
- *
- * Note: This is the "unstable" version that does NOT check STABLE_*_RUNTIME.
- * Extensions (subagents.ts, agent-teams.ts) have their own local versions that
- * return undefined in stable mode. If you want to use this function from extensions,
- * you must handle stable mode check in the caller.
- *
- * @param value - Raw retry input value
- * @returns RetryWithBackoffOverrides or undefined
+ * リトライ設定変換
+ * @summary リトライ設定を変換
+ * @param value 入力値
+ * @returns リトライ設定オブジェクト
  */
 export function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -113,10 +139,11 @@ export function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | un
 }
 
 /**
- * Convert concurrency limit input to number.
- * @param value - Raw concurrency limit value
- * @param fallback - Fallback value if invalid
- * @returns Normalized concurrency limit
+ * 並行数変換
+ * @summary 並行数リミットを取得
+ * @param value 入力値
+ * @param fallback デフォルト値
+ * @returns 並行数
  */
 export function toConcurrencyLimit(value: unknown, fallback: number): number {
   const resolved = value === undefined ? fallback : Number(value);

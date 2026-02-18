@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/cross-instance-coordinator.ts
+ * role: 複数のPIインスタンス間でLLM並列実行数を調整し、リソース競合を防ぐコーディネーター
+ * why: 全インスタンス合計のLLM実行数を制限し、APIレート制限超過やリソース枯渇を回避するため
+ * related: runtime-config.ts, node:fs, node:os, node:process
+ * public_api: ActiveModelInfo, InstanceInfo, CoordinatorConfig, CoordinatorInternalState, getDefaultConfig
+ * invariants: coordinator.jsonおよびインスタンスロックファイルは~/.pi/runtime/配下に存在する、設定値はgetRuntimeConfig()の値に依存する
+ * side_effects: ~/.pi/runtime/配下のファイルシステム（ロックファイル、coordinator.json）の読み書き・削除を行う
+ * failure_modes: ディレクトリアクセス権限不足によるロック取得失敗、プロセス強制終了時のロックファイル残存（ゾンビプロセス）、ファイルシステムI/Oエラー
+ * @abdd.explain
+ * overview: ファイルベースのロック機構とハートビート監視を用いて、複数プロセス間でLLM使用状況を共有・制限するモジュール
+ * what_it_does:
+ *   - ActiveModelInfo, InstanceInfoなどを通じてインスタンスおよびアクティブモデルの状態を定義・管理する
+ *   - getDefaultConfig()により、runtime-config.tsから一元管理された設定（totalMaxLlm等）を取得する
+ *   - ~/.pi/runtime/配下のロックファイルとメタデータを操作し、インスタンス間の調整を行う基盤を提供する
+ * why_it_exists:
+ *   - 複数のインスタンスが同時にLLMを実行する環境において、システム全体の負荷を適切に管理する必要があるため
+ *   - 個別の設定ではなくRuntimeConfigを参照することで、設定の一貫性を保証するため
+ * scope:
+ *   in: RuntimeConfig (totalMaxLlm, heartbeatIntervalMs, heartbeatTimeoutMs)
+ *   out: ファイルシステム上のインスタンスロックファイルおよび状態ファイル
+ */
+
+/**
  * Cross-Instance Coordinator
  *
  * Coordinates LLM parallelism limits across multiple pi instances.
@@ -10,23 +34,40 @@
  * │   ├── {sessionId}-{pid}.lock
  * │   └── ...
  * └── coordinator.json
+ *
+ * Configuration:
+ * Uses centralized RuntimeConfig from runtime-config.ts for consistency
+ * across all layers (stable/default profiles).
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pid } from "node:process";
+import {
+  getRuntimeConfig,
+  type RuntimeConfig,
+} from "./runtime-config.js";
 
 // ============================================================================
 // Types
 // ============================================================================
 
+/**
+ * アクティブなモデルの情報を表すインターフェース
+ * @summary アクティブモデル情報
+ */
 export interface ActiveModelInfo {
   provider: string;
   model: string;
   since: string;
 }
 
+/**
+ * インスタンスの情報を表す
+ * @summary インスタンス情報
+ * @param instanceId - インスタンスID
+ */
 export interface InstanceInfo {
   instanceId: string;
   pid: number;
@@ -34,23 +75,27 @@ export interface InstanceInfo {
   startedAt: string;
   lastHeartbeat: string;
   cwd: string;
-  /** Currently active models (updated on each heartbeat) */
   activeModels: ActiveModelInfo[];
-  /** Work-stealing support: current pending task count */
   pendingTaskCount?: number;
-  /** Work-stealing support: average task latency in milliseconds */
   avgLatencyMs?: number;
-  /** Work-stealing support: timestamp of last task completion */
   lastTaskCompletedAt?: string;
 }
 
+/**
+ * コーディネータの設定を表すインターフェース
+ * @summary 設定定義
+ */
 export interface CoordinatorConfig {
   totalMaxLlm: number;
   heartbeatIntervalMs: number;
   heartbeatTimeoutMs: number;
 }
 
-export interface CoordinatorState {
+/**
+ * コーディネータの内部状態を表すインターフェース
+ * @summary 内部状態定義
+ */
+export interface CoordinatorInternalState {
   myInstanceId: string;
   mySessionId: string;
   myStartedAt: string;
@@ -62,10 +107,27 @@ export interface CoordinatorState {
 // Constants
 // ============================================================================
 
+/**
+ * Get default config from centralized RuntimeConfig.
+ * This ensures consistency with other layers.
+ */
+function getDefaultConfig(): CoordinatorConfig {
+  const runtimeConfig = getRuntimeConfig();
+  return {
+    totalMaxLlm: runtimeConfig.totalMaxLlm,
+    heartbeatIntervalMs: runtimeConfig.heartbeatIntervalMs,
+    heartbeatTimeoutMs: runtimeConfig.heartbeatTimeoutMs,
+  };
+}
+
+/**
+ * Legacy constant for backward compatibility.
+ * @deprecated Use getRuntimeConfig() instead.
+ */
 const DEFAULT_CONFIG: CoordinatorConfig = {
-  totalMaxLlm: 6,  // GLMの経験則に基づく
-  heartbeatIntervalMs: 15_000,  // 15秒ごとにハートビート
-  heartbeatTimeoutMs: 60_000,  // 60秒更新なし = 死亡とみなす
+  totalMaxLlm: 6,  // Will be overridden by runtime-config
+  heartbeatIntervalMs: 15_000,
+  heartbeatTimeoutMs: 60_000,
 };
 
 const COORDINATOR_DIR = join(homedir(), ".pi", "runtime");
@@ -76,7 +138,7 @@ const CONFIG_FILE = join(COORDINATOR_DIR, "coordinator.json");
 // State
 // ============================================================================
 
-let state: CoordinatorState | null = null;
+let state: CoordinatorInternalState | null = null;
 
 // ============================================================================
 // Utilities
@@ -113,20 +175,23 @@ function isInstanceAlive(info: InstanceInfo, nowMs: number, timeoutMs: number): 
 }
 
 function loadConfig(): CoordinatorConfig {
+  // Start with centralized config
+  const defaults = getDefaultConfig();
+
   try {
     if (existsSync(CONFIG_FILE)) {
       const content = readFileSync(CONFIG_FILE, "utf-8");
       const parsed = JSON.parse(content);
       return {
-        totalMaxLlm: parsed.totalMaxLlm ?? DEFAULT_CONFIG.totalMaxLlm,
-        heartbeatIntervalMs: parsed.heartbeatIntervalMs ?? DEFAULT_CONFIG.heartbeatIntervalMs,
-        heartbeatTimeoutMs: parsed.heartbeatTimeoutMs ?? DEFAULT_CONFIG.heartbeatTimeoutMs,
+        totalMaxLlm: parsed.totalMaxLlm ?? defaults.totalMaxLlm,
+        heartbeatIntervalMs: parsed.heartbeatIntervalMs ?? defaults.heartbeatIntervalMs,
+        heartbeatTimeoutMs: parsed.heartbeatTimeoutMs ?? defaults.heartbeatTimeoutMs,
       };
     }
   } catch {
     // ignore
   }
-  return { ...DEFAULT_CONFIG };
+  return defaults;
 }
 
 // ============================================================================
@@ -134,12 +199,12 @@ function loadConfig(): CoordinatorConfig {
 // ============================================================================
 
 /**
- * Register this pi instance and start heartbeat.
- * Must be called once at startup.
- *
- * @param sessionId - pi session ID
- * @param cwd - Current working directory
- * @param configOverrides - Optional config overrides
+ * インスタンスを登録してハートビートを開始する
+ * @summary インスタンス登録
+ * @param sessionId - セッションID
+ * @param cwd - カレントワーキングディレクトリ
+ * @param configOverrides - コンフィグの上書き設定（任意）
+ * @returns {void}
  */
 export function registerInstance(
   sessionId: string,
@@ -154,7 +219,16 @@ export function registerInstance(
 
   ensureDirs();
 
-  const config = { ...DEFAULT_CONFIG, ...loadConfig(), ...configOverrides };
+  // Priority: runtime-config defaults > file config > env overrides
+  const runtimeConfig = getRuntimeConfig();
+  const defaults: CoordinatorConfig = {
+    totalMaxLlm: runtimeConfig.totalMaxLlm,
+    heartbeatIntervalMs: runtimeConfig.heartbeatIntervalMs,
+    heartbeatTimeoutMs: runtimeConfig.heartbeatTimeoutMs,
+  };
+  const fileConfig = loadConfig();
+  const config = { ...defaults, ...fileConfig, ...configOverrides };
+
   const instanceId = generateInstanceId(sessionId);
   const now = new Date().toISOString();
 
@@ -191,8 +265,9 @@ export function registerInstance(
 }
 
 /**
- * Unregister this pi instance.
- * Should be called on graceful shutdown.
+ * 自身のインスタンス登録を解除
+ * @summary インスタンス登録解除
+ * @returns {void}
  */
 export function unregisterInstance(): void {
   if (!state) return;
@@ -216,7 +291,9 @@ export function unregisterInstance(): void {
 }
 
 /**
- * Update heartbeat for this instance.
+ * ハートビート時刻を更新
+ * @summary ハートビート更新
+ * @returns {void}
  */
 export function updateHeartbeat(): void {
   if (!state) return;
@@ -245,8 +322,9 @@ export function updateHeartbeat(): void {
 }
 
 /**
- * Remove dead instance lock files.
- * Called periodically during heartbeat.
+ * 無効なインスタンス情報を削除
+ * @summary 無効インスタンス削除
+ * @returns {void}
  */
 export function cleanupDeadInstances(): void {
   if (!state) return;
@@ -282,9 +360,9 @@ export function cleanupDeadInstances(): void {
 }
 
 /**
- * Get count of active pi instances.
- *
- * @returns Number of active instances (minimum 1)
+ * アクティブなインスタンス数を取得
+ * @summary アクティブ数取得
+ * @returns {number} アクティブなインスタンス数
  */
 export function getActiveInstanceCount(): number {
   if (!state) {
@@ -308,9 +386,9 @@ export function getActiveInstanceCount(): number {
 }
 
 /**
- * Get list of active instances.
- *
- * @returns Array of active instance info
+ * アクティブなインスタンス情報一覧を取得
+ * @summary インスタンス情報一覧取得
+ * @returns {InstanceInfo[]} アクティブなインスタンス情報の配列
  */
 export function getActiveInstances(): InstanceInfo[] {
   if (!state) {
@@ -333,11 +411,9 @@ export function getActiveInstances(): InstanceInfo[] {
 }
 
 /**
- * Get parallelism limit for this instance.
- *
- * Formula: floor(totalMaxLlm / activeInstanceCount)
- *
- * @returns Maximum parallel LLM calls for this instance
+ * 自身の並列実行数の上限を取得する
+ * @summary 自身の並列数取得
+ * @returns 並列実行数の上限
  */
 export function getMyParallelLimit(): number {
   if (!state) {
@@ -351,15 +427,10 @@ export function getMyParallelLimit(): number {
 }
 
 /**
- * Get dynamic parallel limit based on workload distribution.
- *
- * This implements a simple load-balancing strategy:
- * - Instances with higher workload get fewer slots
- * - Instances with lower workload get more slots
- * - Total slots never exceed totalMaxLlm
- *
- * @param myPendingTasks - Current pending task count for this instance
- * @returns Adjusted parallel limit for this instance
+ * 動的並列数の上限を計算する
+ * @summary 動的並列数計算
+ * @param myPendingTasks 自分の保留中タスク数
+ * @returns 並列数の上限
  */
 export function getDynamicParallelLimit(myPendingTasks: number = 0): number {
   if (!state) {
@@ -409,9 +480,9 @@ export function getDynamicParallelLimit(myPendingTasks: number = 0): number {
 }
 
 /**
- * Check if this instance should attempt work stealing.
- *
- * @returns True if this instance is idle and there are busy instances
+ * ワークスチーリングを試行すべきか判定する
+ * @summary スチーリング判定
+ * @returns 試行する場合はtrue
  */
 export function shouldAttemptWorkStealing(): boolean {
   if (!state) {
@@ -434,10 +505,10 @@ export function shouldAttemptWorkStealing(): boolean {
 }
 
 /**
- * Get candidate instances for work stealing (busiest instances).
- *
- * @param topN - Number of candidates to return
- * @returns List of instance IDs sorted by workload (descending)
+ * ワークスチーリングの候補を取得する
+ * @summary 候補インスタンス取得
+ * @param topN 取得する最大数
+ * @returns 候補インスタンスIDの配列
  */
 export function getWorkStealingCandidates(topN: number = 3): string[] {
   if (!state) {
@@ -456,10 +527,11 @@ export function getWorkStealingCandidates(topN: number = 3): string[] {
 }
 
 /**
- * Update workload info for this instance in heartbeat.
- *
- * @param pendingTaskCount - Current pending task count
- * @param avgLatencyMs - Average task latency
+ * ワークロード情報を更新する
+ * @summary ワークロード情報更新
+ * @param pendingTaskCount 保留中のタスク数
+ * @param avgLatencyMs 平均レイテンシ(ms)
+ * @returns void
  */
 export function updateWorkloadInfo(pendingTaskCount: number, avgLatencyMs?: number): void {
   if (!state) {
@@ -506,7 +578,9 @@ export function updateWorkloadInfo(pendingTaskCount: number, avgLatencyMs?: numb
 }
 
 /**
- * Get detailed status for debugging.
+ * コーディネーター詳細を取得
+ * @summary コーディネーター詳細を取得
+ * @returns 登録状態、インスタンスID、アクティブ数、並列制限、設定、インスタンス一覧を含むステータス情報
  */
 export function getCoordinatorStatus(): {
   registered: boolean;
@@ -541,25 +615,29 @@ export function getCoordinatorStatus(): {
 }
 
 /**
- * Check if coordinator is initialized.
+ * コーディネータ初期化確認
+ * @summary 初期化済みか確認
+ * @returns 初期化済みの場合はtrue
  */
 export function isCoordinatorInitialized(): boolean {
   return state !== null;
 }
 
 /**
- * Get total max LLM from config.
+ * @summary 合計最大LLM数を取得
+ * @returns 合計最大LLM数
  */
 export function getTotalMaxLlm(): number {
-  return state?.config.totalMaxLlm ?? DEFAULT_CONFIG.totalMaxLlm;
+  if (state?.config.totalMaxLlm) {
+    return state.config.totalMaxLlm;
+  }
+  return getRuntimeConfig().totalMaxLlm;
 }
 
 /**
- * Environment variable overrides.
- *
- * PI_TOTAL_MAX_LLM: Total max parallel LLM calls across all instances
- * PI_HEARTBEAT_INTERVAL_MS: Heartbeat interval in milliseconds
- * PI_HEARTBEAT_TIMEOUT_MS: Time before instance is considered dead
+ * 環境変数による設定上書きを取得
+ * @summary 設定上書きを取得
+ * @returns 環境変数から読み取った設定の一部
  */
 export function getEnvOverrides(): Partial<CoordinatorConfig> {
   const overrides: Partial<CoordinatorConfig> = {};
@@ -596,8 +674,11 @@ export function getEnvOverrides(): Partial<CoordinatorConfig> {
 // ============================================================================
 
 /**
- * Update the active model for this instance.
- * Call this when starting to use a specific model.
+ * アクティブモデルを設定
+ * @summary モデルを設定
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns なし
  */
 export function setActiveModel(provider: string, model: string): void {
   if (!state) return;
@@ -632,8 +713,11 @@ export function setActiveModel(provider: string, model: string): void {
 }
 
 /**
- * Clear an active model for this instance.
- * Call this when done using a specific model.
+ * 指定モデル情報をクリア
+ * @summary モデルクリア
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns なし
  */
 export function clearActiveModel(provider: string, model: string): void {
   if (!state) return;
@@ -658,7 +742,9 @@ export function clearActiveModel(provider: string, model: string): void {
 }
 
 /**
- * Clear all active models for this instance.
+ * 全てのモデル情報をクリア
+ * @summary 全モデルクリア
+ * @returns なし
  */
 export function clearAllActiveModels(): void {
   if (!state) return;
@@ -677,11 +763,11 @@ export function clearAllActiveModels(): void {
 }
 
 /**
- * Get count of active instances using a specific model.
- *
- * @param provider - Provider name
- * @param model - Model name (or pattern)
- * @returns Number of instances using this model
+ * アクティブインスタンス数を取得
+ * @summary アクティブ数取得
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @returns アクティブなインスタンス数
  */
 export function getActiveInstancesForModel(
   provider: string,
@@ -712,13 +798,12 @@ export function getActiveInstancesForModel(
 }
 
 /**
- * Get the effective parallel limit for a specific model.
- * This accounts for other instances using the same model.
- *
- * @param provider - Provider name
- * @param model - Model name
- * @param baseLimit - The base concurrency limit for this model
- * @returns The effective limit for this instance
+ * 並列数上限を取得
+ * @summary 並列上限取得
+ * @param provider プロバイダ名
+ * @param model モデル名
+ * @param baseLimit 基本上限値
+ * @returns 並列数の上限
  */
 export function getModelParallelLimit(
   provider: string,
@@ -748,7 +833,9 @@ function matchesModelPattern(pattern: string, model: string): boolean {
 }
 
 /**
- * Get a summary of model usage across instances.
+ * 使用状況を取得
+ * @summary 使用状況取得
+ * @returns モデルごとの利用数とインスタンス情報
  */
 export function getModelUsageSummary(): {
   models: Array<{
@@ -791,8 +878,13 @@ export function getModelUsageSummary(): {
 // ============================================================================
 
 /**
- * Queue entry for work stealing.
- * Represents a task that can potentially be stolen by another instance.
+ * 横取り可能なキューエントリ
+ * @summary 横取りエントリ定義
+ * @property {string} id - エントリID
+ * @property {string} toolName - ツール名
+ * @property {number} priority - 優先度
+ * @property {string} instanceId - インスタンスID
+ * @property {string} enqueuedAt - エンキュー日時
  */
 export interface StealableQueueEntry {
   id: string;
@@ -805,7 +897,13 @@ export interface StealableQueueEntry {
 }
 
 /**
- * Queue state broadcast format.
+ * ブロードキャスト用キューステート
+ * @summary キューステート定義
+ * @property {string} instanceId - インスタンスID
+ * @property {string} timestamp - タイムスタンプ
+ * @property {number} pendingTaskCount - 保留タスク数
+ * @property {number} avgLatencyMs - 平均レイテンシ
+ * @property {number} activeOrchestrations - アクティブなオーケストレーション数
  */
 export interface BroadcastQueueState {
   instanceId: string;
@@ -828,13 +926,14 @@ function ensureQueueStateDir(): void {
 }
 
 /**
- * Broadcast this instance's queue state to other instances.
- * Other instances can read this to determine if work stealing is possible.
- *
- * @param pendingTaskCount - Number of pending tasks in queue
- * @param activeOrchestrations - Number of active orchestrations
- * @param stealableEntries - Entries that can be stolen (optional)
- * @param avgLatencyMs - Average task latency (optional)
+ * キューステータスを他のインスタンスにブロードキャスト
+ * @summary ステータス送信
+ * @param {object} options - ステータス情報
+ * @param {number} options.pendingTaskCount - 保留タスク数
+ * @param {number} options.activeOrchestrations - アクティブなオーケストレーション数
+ * @param {StealableQueueEntry[]} [options.stealableEntries] - 横取り可能なキューエントリ
+ * @param {number} [options.avgLatencyMs] - 平均レイテンシ(ミリ秒)
+ * @returns {void}
  */
 export function broadcastQueueState(options: {
   pendingTaskCount: number;
@@ -864,9 +963,9 @@ export function broadcastQueueState(options: {
 }
 
 /**
- * Get queue states from all active instances.
- *
- * @returns Array of queue states
+ * リモートキューステータスを取得
+ * @summary ステータス取得
+ * @returns {BroadcastQueueState[]} リモートインスタンスのキューステート一覧
  */
 export function getRemoteQueueStates(): BroadcastQueueState[] {
   if (!state) return [];
@@ -902,10 +1001,9 @@ export function getRemoteQueueStates(): BroadcastQueueState[] {
 }
 
 /**
- * Check if any remote instance has capacity for more work.
- * This is useful for determining if we should slow down our own task submission.
- *
- * @returns True if remote instances have capacity
+ * リモート容量を確認
+ * @summary 容量確認
+ * @returns {boolean} リモートの処理容量があるかどうか
  */
 export function checkRemoteCapacity(): boolean {
   const remoteStates = getRemoteQueueStates();
@@ -930,13 +1028,9 @@ export function checkRemoteCapacity(): boolean {
 }
 
 /**
- * Attempt to steal work from another instance.
- * Returns a stealable entry if available.
- *
- * Note: This is a cooperative mechanism. The stealing instance must have
- * the actual task data to execute it. This function identifies candidates.
- *
- * @returns A stealable queue entry or null
+ * タスクをスチール実行
+ * @summary タスク取得
+ * @returns {StealableQueueEntry | null} スチール対象エントリ、対象なしの場合null
  */
 export function stealWork(): StealableQueueEntry | null {
   const remoteStates = getRemoteQueueStates();
@@ -978,9 +1072,14 @@ export function stealWork(): StealableQueueEntry | null {
 }
 
 /**
- * Get work stealing summary for monitoring.
- *
- * @returns Summary of work stealing opportunities
+ * ワークスチーリング概要取得
+ * @summary 概要取得
+ * @returns {object} スチーリング概要
+ * @returns {number} remoteInstances - リモートインスタンス数
+ * @returns {number} totalPendingTasks - 総保留タスク数
+ * @returns {number} stealableTasks - スチール可能タスク数
+ * @returns {number} idleInstances - アイドルインスタンス数
+ * @returns {number} busyInstances - ビジーインスタンス数
  */
 export function getWorkStealingSummary(): {
   remoteInstances: number;
@@ -1017,8 +1116,9 @@ export function getWorkStealingSummary(): {
 }
 
 /**
- * Clean up old queue state files.
- * Called periodically during heartbeat.
+ * キュー状態を初期化
+ * @summary 状態初期化
+ * @returns {void}
  */
 export function cleanupQueueStates(): void {
   if (!state) return;
@@ -1143,7 +1243,14 @@ function releaseLock(lock: DistributedLock): void {
 }
 
 /**
- * Stealing statistics (public interface).
+ * ステータス統計情報
+ * @summary 統計情報取得
+ * @returns {object} ステータス統計
+ * @returns {number} totalAttempts - 総試行回数
+ * @returns {number} successfulSteals - 成功回数
+ * @returns {number} failedAttempts - 失敗回数
+ * @returns {number} successRate - 成功率
+ * @returns {number} avgLatencyMs - 平均遅延時間(ms)
  */
 export interface StealingStats {
   totalAttempts: number;
@@ -1178,9 +1285,9 @@ let stealingStats: StealingStatsInternal = {
 };
 
 /**
- * Check if this instance is idle (no pending tasks).
- *
- * @returns True if this instance is idle
+ * アイドル状態か確認
+ * @summary アイドル確認
+ * @returns {boolean} アイドル状態の場合true
  */
 export function isIdle(): boolean {
   if (!state) return true;
@@ -1199,9 +1306,9 @@ export function isIdle(): boolean {
 }
 
 /**
- * Find the best candidate instance to steal work from.
- *
- * @returns Instance info with most work, or null if no candidates
+ * 奪取候補を検索
+ * @summary 候補検索
+ * @returns {InstanceInfo | null} 奪取候補のインスタンス情報、またはnull
  */
 export function findStealCandidate(): InstanceInfo | null {
   if (!state) return null;
@@ -1233,9 +1340,9 @@ export function findStealCandidate(): InstanceInfo | null {
 }
 
 /**
- * Safely steal work from another instance using distributed lock.
- *
- * @returns Stolen queue entry, or null if nothing was stolen
+ * 安全にタスクを奪取
+ * @summary タスク奪取
+ * @returns {Promise<StealableQueueEntry | null>} 奪取したタスク、またはnull
  */
 export async function safeStealWork(): Promise<StealableQueueEntry | null> {
   if (!state) return null;
@@ -1292,9 +1399,9 @@ export async function safeStealWork(): Promise<StealableQueueEntry | null> {
 }
 
 /**
- * Get work stealing statistics.
- *
- * @returns Stealing statistics
+ * ステータス統計を取得
+ * @summary 統計取得
+ * @returns {StealingStats} ステータス統計情報
  */
 export function getStealingStats(): StealingStats {
   return {
@@ -1310,7 +1417,9 @@ export function getStealingStats(): StealingStats {
 }
 
 /**
- * Reset stealing statistics (for testing).
+ * ステータス統計をリセット
+ * @summary 統計リセット
+ * @returns {void}
  */
 export function resetStealingStats(): void {
   stealingStats = {
@@ -1325,8 +1434,9 @@ export function resetStealingStats(): void {
 }
 
 /**
- * Clean up expired locks.
- * Called periodically during heartbeat.
+ * 期限切れロックを削除
+ * @summary 期限切れロック削除
+ * @returns {void}
  */
 export function cleanupExpiredLocks(): void {
   ensureLockDir();
@@ -1354,7 +1464,9 @@ export function cleanupExpiredLocks(): void {
 }
 
 /**
- * Enhanced heartbeat that includes cleanup of locks and queue states.
+ * ハートビート処理の強化
+ * @summary ハートビート送信
+ * @returns {void}
  */
 export function enhancedHeartbeat(): void {
   updateHeartbeat();

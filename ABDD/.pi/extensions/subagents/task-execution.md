@@ -1,0 +1,419 @@
+---
+title: task-execution
+category: api-reference
+audience: developer
+last_updated: 2026-02-18
+tags: [auto-generated]
+related: []
+---
+
+# task-execution
+
+## 概要
+
+`task-execution` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+// from 'node:fs': writeFileSync
+// from 'node:path': join
+// from '../../lib/runtime-utils.js': trimForError, buildRateLimitKey
+// from '../../lib/error-utils.js': toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, ...
+// from '../../lib/agent-utils.js': createRunId
+// ... and 10 more imports
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+| 関数 | `normalizeSubagentOutput` | 出力を正規化する |
+| 関数 | `isRetryableSubagentError` | リトライ可能か判定する |
+| 関数 | `isEmptyOutputFailureMessage` | 空出力エラーか判定する |
+| 関数 | `buildFailureSummary` | エラー概要を作成する |
+| 関数 | `resolveSubagentFailureOutcome` | エラー種別を判定する |
+| 関数 | `mergeSkillArrays` | - |
+| 関数 | `resolveEffectiveSkills` | サブエージェントの実効スキルを解決する |
+| 関数 | `formatSkillsSection` | スキル一覧を整形 |
+| 関数 | `buildSubagentPrompt` | サブエージェント用のプロンプトを構築する |
+| 関数 | `runSubagentTask` | サブエージェントタスク実行 |
+| 関数 | `extractSummary` | 要約を抽出 |
+| インターフェース | `SubagentExecutionResult` | サブエージェントの実行結果 |
+
+## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class SubagentExecutionResult {
+    <<interface>>
+    +ok: boolean
+    +output: string
+    +degraded: boolean
+    +reason: string
+  }
+```
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[task-execution]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    runtime_utils["runtime-utils"]
+    error_utils["error-utils"]
+    agent_utils["agent-utils"]
+    agent_types["agent-types"]
+    output_validation["output-validation"]
+  end
+  main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  buildFailureSummary["buildFailureSummary()"]
+  buildSubagentPrompt["buildSubagentPrompt()"]
+  emitStderrChunk["emitStderrChunk()"]
+  extractSummary["extractSummary()"]
+  formatSkillsSection["formatSkillsSection()"]
+  isEmptyOutputFailureMessage["isEmptyOutputFailureMessage()"]
+  isRetryableSubagentError["isRetryableSubagentError()"]
+  mergeSkillArrays["mergeSkillArrays()"]
+  normalizeSubagentOutput["normalizeSubagentOutput()"]
+  pickSubagentSummaryCandidate["pickSubagentSummaryCandidate()"]
+  resolveEffectiveSkills["resolveEffectiveSkills()"]
+  resolveSubagentFailureOutcome["resolveSubagentFailureOutcome()"]
+  runPiPrintMode["runPiPrintMode()"]
+  runSubagentTask["runSubagentTask()"]
+  buildSubagentPrompt --> formatSkillsSection
+  buildSubagentPrompt --> resolveEffectiveSkills
+  normalizeSubagentOutput --> pickSubagentSummaryCandidate
+  resolveEffectiveSkills --> mergeSkillArrays
+  resolveSubagentFailureOutcome --> isRetryableSubagentError
+  runPiPrintMode --> runPiPrintMode
+  runSubagentTask --> buildFailureSummary
+  runSubagentTask --> buildSubagentPrompt
+  runSubagentTask --> emitStderrChunk
+  runSubagentTask --> extractSummary
+  runSubagentTask --> isRetryableSubagentError
+  runSubagentTask --> normalizeSubagentOutput
+  runSubagentTask --> runPiPrintMode
+```
+
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant task_execution as "task-execution"
+  participant runtime_utils as "runtime-utils"
+  participant error_utils as "error-utils"
+
+  Caller->>task_execution: normalizeSubagentOutput()
+  task_execution->>runtime_utils: 内部関数呼び出し
+  runtime_utils-->>task_execution: 結果
+  task_execution-->>Caller: SubagentExecutionRes
+
+  Caller->>task_execution: isRetryableSubagentError()
+  task_execution-->>Caller: boolean
+```
+
+## 関数
+
+### pickSubagentSummaryCandidate
+
+```typescript
+pickSubagentSummaryCandidate(text: string): string
+```
+
+Pick a candidate text for SUMMARY field from unstructured output.
+Note: Kept locally because the summary format is subagent-specific.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `string`
+
+### normalizeSubagentOutput
+
+```typescript
+normalizeSubagentOutput(output: string): SubagentExecutionResult
+```
+
+出力を正規化する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+
+**戻り値**: `SubagentExecutionResult`
+
+### isRetryableSubagentError
+
+```typescript
+isRetryableSubagentError(error: unknown, statusCode?: number): boolean
+```
+
+リトライ可能か判定する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| error | `unknown` | はい |
+| statusCode | `number` | いいえ |
+
+**戻り値**: `boolean`
+
+### isEmptyOutputFailureMessage
+
+```typescript
+isEmptyOutputFailureMessage(message: string): boolean
+```
+
+空出力エラーか判定する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| message | `string` | はい |
+
+**戻り値**: `boolean`
+
+### buildFailureSummary
+
+```typescript
+buildFailureSummary(message: string): string
+```
+
+エラー概要を作成する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| message | `string` | はい |
+
+**戻り値**: `string`
+
+### resolveSubagentFailureOutcome
+
+```typescript
+resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal
+```
+
+エラー種別を判定する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| error | `unknown` | はい |
+
+**戻り値**: `RunOutcomeSignal`
+
+### mergeSkillArrays
+
+```typescript
+mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| base | `string[] | undefined` | はい |
+| override | `string[] | undefined` | はい |
+
+**戻り値**: `string[] | undefined`
+
+### resolveEffectiveSkills
+
+```typescript
+resolveEffectiveSkills(agent: SubagentDefinition, parentSkills?: string[]): string[] | undefined
+```
+
+サブエージェントの実効スキルを解決する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| agent | `SubagentDefinition` | はい |
+| parentSkills | `string[]` | いいえ |
+
+**戻り値**: `string[] | undefined`
+
+### formatSkillsSection
+
+```typescript
+formatSkillsSection(skills: string[] | undefined): string | null
+```
+
+スキル一覧を整形
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| skills | `string[] | undefined` | はい |
+
+**戻り値**: `string | null`
+
+### buildSubagentPrompt
+
+```typescript
+buildSubagentPrompt(input: {
+  agent: SubagentDefinition;
+  task: string;
+  extraContext?: string;
+  enforcePlanMode?: boolean;
+  parentSkills?: string[];
+}): string
+```
+
+サブエージェント用のプロンプトを構築する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ agent | `SubagentDefinition` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ extraContext | `string` | いいえ |
+| &nbsp;&nbsp;↳ enforcePlanMode | `boolean` | いいえ |
+| &nbsp;&nbsp;↳ parentSkills | `string[]` | いいえ |
+
+**戻り値**: `string`
+
+### runPiPrintMode
+
+```typescript
+async runPiPrintMode(input: {
+  provider?: string;
+  model?: string;
+  prompt: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  onTextDelta?: (delta: string) => void;
+  onStderrChunk?: (chunk: string) => void;
+}): Promise<PrintCommandResult>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | いいえ |
+| &nbsp;&nbsp;↳ model | `string` | いいえ |
+| &nbsp;&nbsp;↳ prompt | `string` | はい |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+| &nbsp;&nbsp;↳ onTextDelta | `(delta: string) => void;  onStderrChunk?: (chunk: string) => void;` | いいえ |
+
+**戻り値**: `Promise<PrintCommandResult>`
+
+### runSubagentTask
+
+```typescript
+async runSubagentTask(input: {
+  agent: SubagentDefinition;
+  task: string;
+  extraContext?: string;
+  timeoutMs: number;
+  cwd: string;
+  retryOverrides?: RetryWithBackoffOverrides;
+  modelProvider?: string;
+  modelId?: string;
+  parentSkills?: string[];
+  signal?: AbortSignal;
+  onStart?: () => void;
+  onEnd?: () => void;
+  onTextDelta?: (delta: string) => void;
+  onStderrChunk?: (chunk: string) => void;
+}): Promise<{ runRecord: SubagentRunRecord; output: string; prompt: string }>
+```
+
+サブエージェントタスク実行
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ agent | `SubagentDefinition` | はい |
+| &nbsp;&nbsp;↳ task | `string` | はい |
+| &nbsp;&nbsp;↳ extraContext | `string` | いいえ |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
+| &nbsp;&nbsp;↳ cwd | `string` | はい |
+| &nbsp;&nbsp;↳ retryOverrides | `RetryWithBackoffOverrides` | いいえ |
+| &nbsp;&nbsp;↳ modelProvider | `string` | いいえ |
+| &nbsp;&nbsp;↳ modelId | `string` | いいえ |
+| &nbsp;&nbsp;↳ parentSkills | `string[]` | いいえ |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+| &nbsp;&nbsp;↳ onStart | `() => void;  onEnd?: () => void;  onTextDelta?: (delta: string) => void;  onStderrChunk?: (chunk: string) => void;` | いいえ |
+
+**戻り値**: `Promise<{ runRecord: SubagentRunRecord; output: string; prompt: string }>`
+
+### emitStderrChunk
+
+```typescript
+emitStderrChunk(chunk: string): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| chunk | `string` | はい |
+
+**戻り値**: `void`
+
+### extractSummary
+
+```typescript
+extractSummary(output: string): string
+```
+
+要約を抽出
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+
+**戻り値**: `string`
+
+## インターフェース
+
+### SubagentExecutionResult
+
+```typescript
+interface SubagentExecutionResult {
+  ok: boolean;
+  output: string;
+  degraded: boolean;
+  reason?: string;
+}
+```
+
+サブエージェントの実行結果
+
+---
+*自動生成: 2026-02-18T15:54:41.381Z*

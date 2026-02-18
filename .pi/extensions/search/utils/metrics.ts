@@ -1,4 +1,27 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/metrics.ts
+ * role: 検索パフォーマンスの計測と記録を行うデータ構造およびコレクタ
+ * why: 検索操作の実行時間、インデックス効率、結果数などを監視・デバッグするため
+ * related: .pi/extensions/search/core/index.ts, .pi/extensions/search/adapter/cli.ts, .pi/extensions/search/ui/result-view.ts
+ * public_api: SearchMetrics, ExtendedSearchMetrics, MetricsCollector
+ * invariants: durationMsは0以上、filesSearchedは0以上、indexHitRateは0.0から1.0の範囲
+ * side_effects: なし（データ保持と計測のみ）
+ * failure_modes: performance.now()が利用できない環境、メトリクス収集中の算術エラー
+ * @abdd.explain
+ * overview: 検索操作のパフォーマンス指標を定義するインターフェースと、時間計測を行うクラスを提供する
+ * what_it_does:
+ *   - SearchMetricsおよびExtendedSearchMetricsで検索結果の統計情報を型定義する
+ *   - MetricsCollectorで開始時刻の記録、経過時間の計測、ファイル数やヒット率の設定を行う
+ * why_it_exists:
+ *   - 検索処理のボトルネックを特定し、パフォーマンス改善に役立てるため
+ *   - ユーザーに対して検索効率（インデックス利用状況など）をフィードバックするため
+ * scope:
+ *   in: ツール名、計測対象ファイル数、インデックスヒット率、CLI/解析の所要時間
+ *   out: 検索操作全体および各フェーズの実行時間、結果件数、切り捨てフラグを含むメトリクスオブジェクト
+ */
+
+/**
  * Search Extension Metrics
  *
  * Performance metrics and statistics for search operations.
@@ -10,7 +33,8 @@
 // ============================================
 
 /**
- * Performance metrics for search operations.
+ * 検索操作のメトリクス
+ * @summary メトリクス定義
  */
 export interface SearchMetrics {
 	/**
@@ -36,7 +60,8 @@ export interface SearchMetrics {
 }
 
 /**
- * Extended metrics with additional details.
+ * 検索メトリクスインターフェース
+ * @summary 検索メトリクス定義
  */
 export interface ExtendedSearchMetrics extends SearchMetrics {
 	/**
@@ -75,7 +100,8 @@ export interface ExtendedSearchMetrics extends SearchMetrics {
 // ============================================
 
 /**
- * Simple metrics collector for timing operations.
+ * メトリクス収集クラス
+ * @summary メトリクスを収集する
  */
 export class MetricsCollector {
 	private startTime: number;
@@ -89,7 +115,10 @@ export class MetricsCollector {
 	}
 
 	/**
-	 * Set the number of files searched.
+	 * 検索ファイル数設定
+	 * @summary 検索ファイル数を設定
+	 * @param {number} count ファイル数
+	 * @returns {this} インスタンス自身
 	 */
 	setFilesSearched(count: number): this {
 		this.filesSearched = count;
@@ -97,7 +126,10 @@ export class MetricsCollector {
 	}
 
 	/**
-	 * Set the index hit rate.
+	 * イン�デックス命中率設定
+	 * @summary インデックス命中率を設定
+	 * @param {number} rate 命中率
+	 * @returns {this} インスタンス自身
 	 */
 	setIndexHitRate(rate: number): this {
 		this.indexHitRate = rate;
@@ -105,14 +137,18 @@ export class MetricsCollector {
 	}
 
 	/**
-	 * Get the elapsed time in milliseconds.
+	 * 経過時間取得
+	 * @summary 経過時間を取得
+	 * @returns {number} 経過時間（ミリ秒）
 	 */
 	elapsedMs(): number {
 		return performance.now() - this.startTime;
 	}
 
 	/**
-	 * Finalize and return the metrics.
+	 * 計測を終了して指標を取得
+	 * @summary 計測終了
+	 * @returns 計測結果の検索指標
 	 */
 	finish(): SearchMetrics {
 		return {
@@ -129,7 +165,9 @@ export class MetricsCollector {
 // ============================================
 
 /**
- * Aggregated metrics across multiple operations.
+ * 集計された検索指標
+ * @summary 集計指標定義
+ * @returns 集計された指標データ
  */
 export interface AggregatedMetrics {
 	/**
@@ -174,7 +212,9 @@ export interface AggregatedMetrics {
 }
 
 /**
- * Metrics summary for a single tool.
+ * ツール指標の概要
+ * @summary ツール指標概要
+ * @returns ツール指標の概要情報
  */
 export interface ToolMetricsSummary {
 	/**
@@ -194,7 +234,10 @@ export interface ToolMetricsSummary {
 }
 
 /**
- * Aggregate multiple metrics into a summary.
+ * 検索指標を集計
+ * @summary 指標を集計
+ * @param metrics 集計対象の検索指標配列
+ * @returns 集計結果
  */
 export function aggregateMetrics(metrics: SearchMetrics[]): AggregatedMetrics {
 	if (metrics.length === 0) {
@@ -253,7 +296,10 @@ export function aggregateMetrics(metrics: SearchMetrics[]): AggregatedMetrics {
 // ============================================
 
 /**
- * Format metrics for display.
+ * 検索指標を整形
+ * @summary 指標を文字列化
+ * @param metrics 整形対象の検索指標
+ * @returns 整形された文字列
  */
 export function formatMetrics(metrics: SearchMetrics): string {
 	const lines: string[] = [
@@ -270,7 +316,9 @@ export function formatMetrics(metrics: SearchMetrics): string {
 }
 
 /**
- * Format duration in human-readable form.
+ * @summary 時間文字列を生成
+ * @param ms ミリ秒単位の時間
+ * @returns フォーマットされた時間文字列
  */
 export function formatDuration(ms: number): string {
 	if (ms < 1) {
@@ -290,8 +338,11 @@ export function formatDuration(ms: number): string {
 // ============================================
 
 /**
- * Performance thresholds for search operations.
- * Used to identify slow operations.
+ * パフォーマンスしきい値定義
+ * @summary パフォーマンスしきい値
+ * @param fast 高速操作の最大許容時間 (ms)
+ * @param normal 通常操作の最大許容時間 (ms)
+ * @param slow 低速操作の最大許容時間 (ms)
  */
 export interface PerformanceThresholds {
 	/**
@@ -320,7 +371,11 @@ export const DEFAULT_THRESHOLDS: PerformanceThresholds = {
 };
 
 /**
- * Classify operation speed based on duration.
+ * 実行時間を分類する
+ * @summary 速度を分類する
+ * @param durationMs 実行時間（ミリ秒）
+ * @param thresholds 各速度の閾値
+ * @returns "fast", "normal", "slow", "very-slow" のいずれか
  */
 export function classifySpeed(
 	durationMs: number,

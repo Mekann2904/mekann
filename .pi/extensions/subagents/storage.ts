@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/subagents/storage.ts
+ * role: サブエージェントの定義および実行記録の永続化を管理するモジュール
+ * why: agent-teams/storage.ts とのコード重複（DRY違反）を解消し、共通ストレージユーティリティを利用して保守性を向上させるため
+ * related: .pi/lib/storage-base.ts, .pi/lib/storage-lock.ts, .pi/extensions/subagents/index.ts
+ * public_api: SubagentDefinition, SubagentRunRecord, SubagentStorage, AgentEnabledState
+ * invariants: SubagentDefinition.idは一意である、SubagentRunRecord.runIdは一意である、createdAtおよびupdatedAtはISO 8601形式である
+ * side_effects: ファイルシステムへの読み書き、実行アーティファクトの削除、ファイルロックの取得と解放
+ * failure_modes: ファイル書き込み時のIOエラー、パス解決の失敗、無効なJSONデータの読み込み、ロック競合によるタイムアウト
+ * @abdd.explain
+ * overview: サブエージェントの定義と実行履歴をJSONファイルとして保存・読み込みするためのデータアクセス層を提供する。共通ロジックはstorage-base.tsに委譲する。
+ * what_it_does:
+ *   - サブエージェント定義および実行記録の型定義をエクスポートする
+ *   - ディスク上のストレージパスを解決し生成する
+ *   - サブエージェントの設定と実行記録をマージして取得する
+ *   - 古い実行アーティファクトを整理・削除する
+ * why_it_exists:
+ *   - サブエージェントの状態を永続化し、再起動後も利用可能にするため
+ *   - 他のストレージ実装とロジックを共通化し、重複コードを排除するため
+ *   - アクセス時に整合性を保ちつつ安全にファイル操作を行うため
+ * scope:
+ *   in: サブエージェントID、ルートディレクトリパス、実行記録フィルタ条件
+ *   out: SubagentStorageオブジェクト、ファイルシステムへの永続化結果
+ */
+
+/**
  * Subagent storage module.
  * Handles persistence for subagent definitions and run records.
  *
@@ -21,8 +47,41 @@ import { getLogger } from "../../lib/comprehensive-logger.js";
 const logger = getLogger();
 
 // Re-export types for convenience
+/**
+/**
+ * サブエージェントの定義情報を表すインターフェース
+ *
+ * サブエージェントの設定、プロバイダー情報、スキルなどを管理します。
+ *
+ * @property id - サブエージェントの一意識別子
+ * @property name - サブエージェントの表示名
+ * @property description - サブエージェントの機能説明
+ * @property systemPrompt - エージェントの動作を定義するシステムプロンプト
+ * @property provider - 使用するAIプロバイダー（省略可能）
+ * @property model - 使用するモデル名（省略可能）
+ * @property enabled - エージェントの有効/無効状態
+ * @property skills - エージェントが使用可能なスキルIDの配列（省略可能）
+ * @property createdAt - 作成日時（ISO 8601形式）
+ * @property updatedAt - 最終更新日時（ISO 8601形式）
+ */
+
+/**
+ * エージェントの有効/無効状態
+ * @summary 有効/無効状態
+ */
 export type AgentEnabledState = "enabled" | "disabled";
 
+ /**
+  * サブエージェントの定義情報を表すインターフェース
+  * @param id - サブエージェントの一意識別子
+  * @param name - 表示名
+  * @param description - 説明文
+  * @param systemPrompt - システムプロンプト
+  * @param provider - プロバイダ名（省略可能）
+  * @param model - 使用するモデル名（省略可能）
+  * @param enabled - 有効/無効状態
+  * @param skills - 利用可能なスキルIDの配列（省略可能）
+  */
 export interface SubagentDefinition {
   id: string;
   name: string;
@@ -32,10 +91,35 @@ export interface SubagentDefinition {
   model?: string;
   enabled: AgentEnabledState;
   skills?: string[];
+/**
+   * サブエージェントのストレージパスを定義するインターフェース
+   *
+   * BaseStoragePathsを継承し、サブエージェント固有のパス構造を提供します。
+   *
+   * @example
+   * const paths = getPaths('/project/root');
+   * console.log(paths.dataDir);
+   */
   createdAt: string;
   updatedAt: string;
 }
 
+/**
+ * サブエージェントの実行記録
+ * @summary 実行記録を保持
+ * @param runId 実行ID
+ * @param agentId エージェントID
+ * @param task タスク内容
+ * @param summary 実行結果の要約
+ * @param status ステータス
+ * @param startedAt 開始日時
+ * @param finishedAt 終了日時
+ * @param latencyMs 遅延時間（ミリ秒）
+ * @param outputFile 出力ファイルパス
+ * @param error エラー内容（任意）
+ * @param correlationId 相関ID（任意、後方互換性用）
+ * @param parentEventId 親イベントID（任意）
+ */
 export interface SubagentRunRecord {
   runId: string;
   agentId: string;
@@ -52,6 +136,14 @@ export interface SubagentRunRecord {
   parentEventId?: string;
 }
 
+/**
+ * サブエージェントのストレージ
+ * @summary ストレージ取得
+ * @param agents - サブエージェント定義のリスト
+ * @param runs - サブエージェントの実行記録リスト
+ * @param currentAgentId - 現在のエージェントID（オプション）
+ * @param defaultsVersion - デフォルト設定のバージョン（オプション）
+ */
 export interface SubagentStorage {
   agents: SubagentDefinition[];
   runs: SubagentRunRecord[];
@@ -59,6 +151,11 @@ export interface SubagentStorage {
   defaultsVersion?: number;
 }
 
+/**
+ * パス定義
+ * @summary パス定義
+ * @returns {void}
+ */
 export interface SubagentPaths extends BaseStoragePaths {}
 
 // Constants
@@ -71,7 +168,10 @@ export const getPaths = getBasePaths as (cwd: string) => SubagentPaths;
 export const ensurePaths = createEnsurePaths(getPaths);
 
 /**
- * Create default subagent definitions.
+ * デフォルト作成
+ * @summary デフォルト作成
+ * @param nowIso - 現在時刻のISO形式文字列
+ * @returns {SubagentDefinition[]} デフォルトのサブエージェント定義リスト
  */
 export function createDefaultAgents(nowIso: string): SubagentDefinition[] {
   return [
@@ -243,7 +343,10 @@ function mergeSubagentStorageWithDisk(
 }
 
 /**
- * Load subagent storage from disk.
+ * ストレージを読み込み
+ * @summary ストレージ読込
+ * @param cwd - カレントワーキングディレクトリ
+ * @returns {SubagentStorage} 読み込まれたサブエージェントストレージデータ
  */
 export function loadStorage(cwd: string): SubagentStorage {
   const paths = ensurePaths(cwd);
@@ -280,7 +383,11 @@ export function loadStorage(cwd: string): SubagentStorage {
 }
 
 /**
- * Save subagent storage to disk.
+ * ストレージを保存
+ * @summary ストレージ保存
+ * @param cwd - カレントワーキングディレクトリ
+ * @param storage - 保存するサブエージェントストレージデータ
+ * @returns {void}
  */
 export function saveStorage(cwd: string, storage: SubagentStorage): void {
   const paths = ensurePaths(cwd);
@@ -307,8 +414,11 @@ export function saveStorage(cwd: string, storage: SubagentStorage): void {
 }
 
 /**
- * Save storage and extract patterns from recent runs.
- * Integrates with ALMA memory system for automatic learning.
+ * ストレージを保存
+ * @summary ストレージ保存
+ * @param cwd - カレントワーキングディレクトリ
+ * @param storage - 保存するサブエージェントストレージデータ
+ * @returns {Promise<void>}
  */
 export async function saveStorageWithPatterns(
   cwd: string,

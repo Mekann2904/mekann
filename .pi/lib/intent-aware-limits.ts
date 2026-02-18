@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/intent-aware-limits.ts
+ * role: タスクの意図分類とそれに基づくリソース配分ポリシーを定義するモジュール
+ * why: タスクの特性（宣言的・手順的・推論的）に応じて反復回数やタイムアウトを最適化するため
+ * related: .pi/lib/execution-planner.ts, .pi/lib/search-engine.ts
+ * public_api: TaskIntent, IntentBudget, IntentClassificationInput, IntentClassificationResult, INTENT_BUDGETS
+ * invariants: IntentBudgetの各乗数は正の数である、maxIterationsは0以上である
+ * side_effects: なし（純粋な定義と定数のエクスポート）
+ * failure_modes: タスク説明が曖昧な場合の意図誤判定、未知のタスクタイプへの対応漏れ
+ * @abdd.explain
+ * overview: 論文 "Agentic Search in the Wild" に基づき、タスクの意図を3種類に分類し、それぞれに最適な計算リソース（反復回数、並列度、タイムアウト）を割り当てる設定を提供する
+ * what_it_does:
+ *   - TaskIntent型と分類用インターフェースを定義する
+ *   - 意図の種類ごとに推奨リソース設定（INTENT_BUDGETS）を保持する
+ *   - 分類パターン（INTENT_PATTERNS）を保持する
+ * why_it_exists:
+ *   - 単一のリソース制限では、反復の多い事実探索と複雑な推論タスクの両方に対応できないため
+ *   - 意図に応じて早期収束させるか深く探索させるかを制御し、効率と精度を両立するため
+ * scope:
+ *   in: タスクの説明、目標基準、参照リソース数
+ *   out: 意図分類結果および推奨される予算設定
+ */
+
+/**
  * Intent-Aware Limits Module.
  * Adapts resource allocation based on task intent classification.
  * Based on findings from "Agentic Search in the Wild" paper (arXiv:2601.17617v2):
@@ -14,12 +38,16 @@
 // ============================================================================
 
 /**
- * Task intent types from paper taxonomy.
+ * タスクの意図タイプを定義
+ * @summary 意図タイプ定義
+ * @returns タスクの種別
  */
 export type TaskIntent = "declarative" | "procedural" | "reasoning";
 
 /**
- * Intent-aware budget configuration.
+ * タスクの意図タイプ
+ * @summary 意図タイプ定義
+ * @returns 宣言的、手続き的、または推論的
  */
 export interface IntentBudget {
   /** Intent type */
@@ -37,7 +65,12 @@ export interface IntentBudget {
 }
 
 /**
- * Input for intent classification.
+ * 意図分類の入力
+ *
+ * @summary 分類入力
+ * @param task タスクの説明文
+ * @param goal 目標基準（任意）
+ * @param referenceCount 参照資料の数
  */
 export interface IntentClassificationInput {
   /** Task description */
@@ -49,7 +82,13 @@ export interface IntentClassificationInput {
 }
 
 /**
- * Result of intent classification.
+ * 意図分類の結果
+ *
+ * @summary 分類結果
+ * @param intent 特定された意図
+ * @param confidence 信頼度スコア
+ * @param matchedPatterns 一致したパターン
+ * @param recommendedBudget 推奨される予算設定
  */
 export interface IntentClassificationResult {
   /** Classified intent */
@@ -192,10 +231,11 @@ const INTENT_PATTERNS: Record<TaskIntent, string[]> = {
 // ============================================================================
 
 /**
- * Classify task intent based on content analysis.
+ * 意図の分類実行
  *
- * @param input - Classification input
- * @returns Classification result with recommended budget
+ * @summary 意図を分類
+ * @param input 分類用入力データ
+ * @returns 分類結果と推奨設定
  */
 export function classifyIntent(input: IntentClassificationInput): IntentClassificationResult {
   const taskLower = input.task.toLowerCase();
@@ -257,7 +297,11 @@ export function classifyIntent(input: IntentClassificationInput): IntentClassifi
 }
 
 /**
- * Get budget for a specific intent.
+ * 意図予算の取得
+ *
+ * @summary 予算を取得
+ * @param intent タスクの意図
+ * @returns 意図に基づく推奨予算
  */
 export function getIntentBudget(intent: TaskIntent): IntentBudget {
   return INTENT_BUDGETS[intent];
@@ -268,11 +312,12 @@ export function getIntentBudget(intent: TaskIntent): IntentBudget {
 // ============================================================================
 
 /**
- * Apply intent-aware adjustments to base limits.
+ * 意図に応じた制限適用
  *
- * @param baseLimits - Base limits to adjust
- * @param intent - Task intent
- * @returns Adjusted limits
+ * @summary 制限を適用
+ * @param baseLimits 基本となる制限設定
+ * @param intent タスクの意図分類
+ * @returns 適用後の制限設定
  */
 export function applyIntentLimits<T extends {
   maxIterations?: number;
@@ -296,11 +341,11 @@ export function applyIntentLimits<T extends {
 }
 
 /**
- * Calculate effective repetition threshold based on intent.
- *
- * @param baseThreshold - Base threshold (0-1)
- * @param intent - Task intent
- * @returns Adjusted threshold
+ * インテントに基づき反復しきい値を計算
+ * @summary 反復しきい値を計算
+ * @param baseThreshold - 基本しきい値（0-1）
+ * @param intent - タスクインテント
+ * @returns 調整後のしきい値
  */
 export function getEffectiveRepetitionThreshold(
   baseThreshold: number,
@@ -316,22 +361,28 @@ export function getEffectiveRepetitionThreshold(
 // ============================================================================
 
 /**
- * Check if intent classification is available.
+ * インテント分類利用可否判定
+ * @summary インテント利用可否判定
+ * @returns 常にtrueを返す
  */
 export function isIntentClassificationAvailable(): boolean {
   return true; // Always available (pattern-based, no external dependencies)
 }
 
 /**
- * Get all intent budgets.
+ * @summary 予算設定全取得
+ * 全てのインテント予算を取得する
+ * @returns 各インテントの予算設定を含むオブジェクト
  */
 export function getAllIntentBudgets(): Record<TaskIntent, IntentBudget> {
   return { ...INTENT_BUDGETS };
 }
 
-/**
- * Summarize intent classification for logging.
- */
+ /**
+  * 意図分類結果の要約ログを生成
+  * @param result 意図分類の結果
+  * @returns 生成された要約文字列
+  */
 export function summarizeIntentClassification(result: IntentClassificationResult): string {
   const budget = result.recommendedBudget;
   return [

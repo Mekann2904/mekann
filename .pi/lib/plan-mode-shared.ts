@@ -1,3 +1,27 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/plan-mode-shared.ts
+ * role: プランモードの共通定数、型定義、ポリシーテキストを提供するライブラリ
+ * why: 全ての拡張機能において一貫したプランモードの挙動を保証し、定義の重複や矛盾を防ぐため
+ * related: .pi/extensions/plan.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
+ * public_api: PlanModeState, READ_ONLY_COMMANDS, DESTRUCTIVE_COMMANDS, PLAN_MODE_POLICY
+ * invariants: 各定数セット（Set）はイミュータブルとして扱われ、実行中に変更されない
+ * side_effects: なし（純粋な定数と型の定義のみ）
+ * failure_modes: 定義の不整合により許可されていないコマンドが実行される、または許可すべきコマンドがブロックされる
+ * @abdd.explain
+ * overview: プランモードにおけるコマンド実行の許可/ブロック判定や状態管理に必要な静的なリソースを定義する
+ * what_it_does:
+ *   - Bashコマンドの分類（読み取り専用、破壊的、書き込み可能など）を行うSet定数をエクスポートする
+ *   - プランモードの状態（有効/無効、タイムスタンプ、チェックサム）を持つインターフェースを定義する
+ *   - プランモード有効時のポリシー説明文を定数として提供する
+ * why_it_exists:
+ *   - 複数の拡張機能間でコマンドフィルタリングロジックを共有し、セキュリティポリシーの一貫性を維持するため
+ *   - 個別のファイルに重複して定義を記述することによるメンテナンス性の低下やバグの混入を防ぐため
+ * scope:
+ *   in: なし（外部依存なし）
+ *   out: プランモードの挙動制御に必要な定数、型、テキスト
+ */
+
 // File: .pi/extensions/plan-mode-shared.ts
 // Description: Shared constants and utilities for plan mode across all extensions
 // Why: Ensures consistent plan mode behavior and prevents duplicate/contradictory definitions
@@ -84,6 +108,10 @@ export const ADDITIONAL_WRITE_COMMANDS = new Set([
 // Type Definitions
 // ============================================
 
+/**
+ * プランモードの状態を表すインターフェース
+ * @summary プランモード状態定義
+ */
 export interface PlanModeState {
 	enabled: boolean;
 	timestamp: number;
@@ -130,18 +158,10 @@ export const PLAN_MODE_WARNING = `PLAN MODE is ACTIVE. Restrictions have been di
 // ============================================
 
 /**
- * Check if a bash command is allowed in plan mode.
- *
- * This function implements a multi-layered check to prevent write operations:
- * 1. Check for output redirections (> >> 2> &>)
- * 2. Check for pipelines with write commands
- * 3. Check for subshells and command substitution
- * 4. Check for explicit shell invocation (bash -c, sh -c)
- * 5. Check first word against write command list
- * 6. Verify first word is in read-only allowlist
- *
- * @param command - The bash command to check
- * @returns true if the command is allowed, false if it should be blocked
+ * Bashコマンドが許可されているか判定する
+ * @summary コマンド許可判定
+ * @param {string} command - チェック対象のコマンド文字列
+ * @returns {boolean} 許可されている場合はtrue
  */
 export function isBashCommandAllowed(command: string): boolean {
 	const trimmed = command.trim();
@@ -188,13 +208,9 @@ export function isBashCommandAllowed(command: string): boolean {
 }
 
 /**
- * Check if plan mode is active.
- *
- * Requires both:
- * 1) PI_PLAN_MODE="1" environment flag
- * 2) A valid persisted state file with enabled=true
- *
- * @returns true if plan mode is active
+ * プランモードが有効か判定する
+ * @summary プランモード判定
+ * @returns {boolean} プランモードが有効な場合はtrue
  */
 export function isPlanModeActive(): boolean {
 	// Fast path: no env flag means plan mode is definitely off.
@@ -218,9 +234,11 @@ export function isPlanModeActive(): boolean {
 	}
 }
 
-/**
- * Calculate checksum for plan mode state validation.
- */
+ /**
+  * プランモード状態のチェックサムを計算する
+  * @param state - チェックサムを除くプランモードの状態
+  * @returns SHA256ハッシュの16進数文字列
+  */
 export function calculateChecksum(state: Omit<PlanModeState, 'checksum'>): string {
 	return createHash('sha256')
 		.update(JSON.stringify(state))
@@ -228,10 +246,10 @@ export function calculateChecksum(state: Omit<PlanModeState, 'checksum'>): strin
 }
 
 /**
- * Validate plan mode state checksum.
- *
- * @param state - The state to validate
- * @returns true if checksum is valid
+ * 状態チェックサム検証
+ * @summary チェックサム検証
+ * @param state - 検証対象の状態
+ * @returns チェックサムが有効な場合はtrue
  */
 export function validatePlanModeState(state: PlanModeState): boolean {
 	if (!state || typeof state.checksum !== 'string') {
@@ -245,7 +263,10 @@ export function validatePlanModeState(state: PlanModeState): boolean {
 }
 
 /**
- * Create a new plan mode state with checksum.
+ * プランモードの状態を検証
+ * @summary 状態整合性を検証
+ * @param state 検証対象の状態
+ * @returns 検証結果
  */
 export function createPlanModeState(enabled: boolean): PlanModeState {
 	const state: Omit<PlanModeState, 'checksum'> = {

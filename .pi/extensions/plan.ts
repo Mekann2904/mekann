@@ -1,3 +1,27 @@
+/**
+ * @abdd.meta
+ * path: .pi/extensions/plan.ts
+ * role: タスク計画の作成、管理、実行を行う拡張機能
+ * why: 構造化されたステップ実行によるタスク計画管理を可能にするため
+ * related: .pi/extensions/loop.ts, README.md
+ * public_api: createPlan, updatePlan, deletePlan, getPlan, executePlan, cancelPlan
+ * invariants: 計画データは.json形式で永続化される、planIdSequenceは単調増加する、ステータスは定義済みの値のみ
+ * side_effects: .pi/plans/storage.json への書き込み、ファイルシステムへのディレクトリ作成、グローバルステート(planModeEnabled)の変更
+ * failure_modes: storage.jsonの破損、ディスクI/Oエラー、不正なステータス遷移
+ * @abdd.explain
+ * overview: 計画（Plan）およびステップ（PlanStep）の定義、永続化処理、状態管理を提供する
+ * what_it_does:
+ *   - .pi/plans ディレクトリと storage.json への計画データ保存・読み込み
+ *   - 一意のID生成と計画オブジェクトの作成
+ *   - plan-mode-shared からの定数・ユーティリティの統合
+ * why_it_exists:
+ *   - 複数ステップにまたがるタスクの進捗管理と追跡を行うため
+ *   - エージェントによる計画的な動作を担保するため
+ * scope:
+ *   in: 拡張機能API, AgentMessage
+ *   out: PlanStorage形式のJSONファイル, ログ出力
+ */
+
 // File: .pi/extensions/plan.ts
 // Description: Adds plan management functionality for pi - create, manage, and execute task plans
 // Why: Enables structured task planning with step-by-step execution

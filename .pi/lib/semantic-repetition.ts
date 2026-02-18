@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/semantic-repetition.ts
+ * role: 連続する出力間の意味的類似度を検出し、停滞状態を特定するモジュール
+ * why: "Agentic Search in the Wild" に基づき、軌跡の32.15%で発生する繰り返しパターンを検出して早期停止を判断するため
+ * related: .pi/lib/embeddings/index.ts, .pi/lib/trajectory.ts, .pi/config.ts
+ * public_api: detectSemanticRepetition, SemanticRepetitionResult, SemanticRepetitionOptions, TrajectorySummary
+ * invariants: 類似度スコアは0.0から1.0の範囲、maxTextLength超過のテキストは比較前に切り詰められる
+ * side_effects: 外部API（埋め込みプロバイダ）を呼び出す可能性がある
+ * failure_modes: OPENAI_API_KEY未設定時は埋め込み検出がスキップされる、空文字入力時は類似度0扱い
+ * @abdd.explain
+ * overview: 埋め込みベースまたは完全一致による類似度計算を行い、エージェントの出力がループ（停滞）しているか判定する
+ * what_it_does:
+ *   - 現在と直前の出力テキストを正規化し、指定最大長に切り詰める
+ *   - 完全一致チェック（高速パス）または埋め込みコサイン類似度計算を実行する
+ *   - 類似度スコアと閾値に基づき、isRepeatedフラグを返す
+ * why_it_exists:
+ *   - 学習論文で指摘された、思考ループによる計算資源の無駄を防ぐ
+ *   - 意味的に同じ出力が繰り返される「停滞」状態をプログラム的に検知する
+ * scope:
+ *   in: 現在の文字列、直前の文字列、検出オプション（閾値、埋め込み利用有無、最大長）
+ *   out: 繰り返し判定、類似度スコア、使用された検出手法
+ */
+
+/**
  * Semantic Repetition Detection Module.
  * Detects semantic similarity between consecutive outputs to identify stagnation.
  * Based on findings from "Agentic Search in the Wild" paper (arXiv:2601.17617v2):
@@ -17,7 +41,11 @@ import {
 // ============================================================================
 
 /**
- * Result of semantic repetition detection.
+ * 意味的重複検出の結果
+ * @summary 結果を返却
+ * @returns {boolean} isRepeated 意味的重複が検出されたか
+ * @returns {number} similarity 類似度スコア (0.0-1.0)
+ * @returns {string} method 使用された検出手法
  */
 export interface SemanticRepetitionResult {
   /** Whether semantic repetition was detected */
@@ -29,7 +57,11 @@ export interface SemanticRepetitionResult {
 }
 
 /**
- * Options for semantic repetition detection.
+ * 意味的重複検出のオプション設定
+ * @summary オプションを定義
+ * @returns {number} threshold 重複とみなす類似度の閾値（デフォルト: 0.85）
+ * @returns {boolean} useEmbedding 埋め込みベースの検出を使用するか（OPENAI_API_KEYが必要）
+ * @returns {number} maxTextLength 比較する最大テキスト長（デフォルト: 2000）
  */
 export interface SemanticRepetitionOptions {
   /** Similarity threshold for considering outputs as repeated (default: 0.85) */
@@ -41,7 +73,13 @@ export interface SemanticRepetitionOptions {
 }
 
 /**
- * Session trajectory summary for monitoring.
+ * 軌跡の要約情報を表すインターフェース
+ * @summary 軌跡を要約
+ * @returns {number} totalSteps 総ステップ数
+ * @returns {number} repetitionCount 重複検出回数
+ * @returns {number} averageSimilarity 平均類似度
+ * @returns {number[]} similarityTrend 類似度のトレンド配列
+ * @returns {boolean} isStuck ループに陥っているかどうか
  */
 export interface TrajectorySummary {
   /** Total steps analyzed */
@@ -77,16 +115,12 @@ export const DEFAULT_MAX_TEXT_LENGTH = 2000;
 // ============================================================================
 
 /**
- * Detect semantic repetition between two outputs.
- *
- * This function compares consecutive outputs using either:
- * 1. Embedding-based cosine similarity (if OPENAI_API_KEY available)
- * 2. Exact string match (fallback)
- *
- * @param current - Current output text
- * @param previous - Previous output text
- * @param options - Detection options
- * @returns Detection result with similarity score
+ * 出力の意味的な重複を検出する
+ * @summary 重複を検出
+ * @param current 現在のテキスト
+ * @param previous 直前のテキスト
+ * @param options 検出オプション（閾値、埋め込み利用など）
+ * @returns 重複判定結果を含むPromise
  */
 export async function detectSemanticRepetition(
   current: string,
@@ -164,8 +198,12 @@ export async function detectSemanticRepetition(
 }
 
 /**
- * Synchronous version using pre-computed embeddings.
- * Use when embeddings are already available.
+ * 事前計算埋め込みを用いて検出
+ * @summary 重複を検出
+ * @param currentEmbedding 現在の埋め込みベクトル
+ * @param previousEmbedding 直前の埋め込みベクトル
+ * @param threshold 重複とみなす閾値
+ * @returns 重複判定結果を含むオブジェクト
  */
 export function detectSemanticRepetitionFromEmbeddings(
   currentEmbedding: number[],
@@ -191,8 +229,9 @@ export function detectSemanticRepetitionFromEmbeddings(
 export const DEFAULT_MAX_TRAJECTORY_STEPS = 100;
 
 /**
- * Simple trajectory tracker for monitoring session progress.
- * Implements memory bounds to prevent DoS via unbounded accumulation.
+ * トラjectory追跡クラス
+ * @summary インスタンス生成
+ * @param maxSteps 最大ステップ数
  */
 export class TrajectoryTracker {
   private steps: Array<{
@@ -207,7 +246,11 @@ export class TrajectoryTracker {
   }
 
   /**
-   * Record a new step and check for repetition.
+   * ステップ記録
+   * @summary ステップを記録
+   * @param output 出力内容
+   * @param options オプション設定
+   * @returns 結果情報
    */
   async recordStep(
     output: string,
@@ -241,7 +284,9 @@ export class TrajectoryTracker {
   }
 
   /**
-   * Get trajectory summary.
+   * トラjectory要約取得
+   * @summary 要約を取得
+   * @returns トラjectory要約
    */
   getSummary(): TrajectorySummary {
     if (this.steps.length === 0) {
@@ -302,7 +347,8 @@ export class TrajectoryTracker {
   }
 
   /**
-   * Reset tracker.
+   * リセット状態
+   * @summary 状態をリセット
    */
   reset(): void {
     this.steps = [];
@@ -324,8 +370,9 @@ function normalizeText(text: string, maxLength: number): string {
 }
 
 /**
- * Check if semantic repetition detection is available.
- * Uses the embeddings module's provider registry.
+ * 機能利用可否判定
+ * @summary 機能利用可否を確認
+ * @returns 利用可能でtrue
  */
 export async function isSemanticRepetitionAvailable(): Promise<boolean> {
   const provider = await getEmbeddingProvider();
@@ -333,8 +380,12 @@ export async function isSemanticRepetitionAvailable(): Promise<boolean> {
 }
 
 /**
- * Get recommended action based on repetition score.
- * Based on paper findings: high repetition indicates stagnation.
+ * 繰り返し状況に基づき推奨アクションを決定
+ * @summary 推奨アクション決定
+ * @param repetitionCount 現在の繰り返し回数
+ * @param totalSteps 総ステップ数
+ * @param isStuck 停滞状態かどうか
+ * @returns "continue" | "pivot" | "early_stop"
  */
 export function getRecommendedAction(
   repetitionCount: number,

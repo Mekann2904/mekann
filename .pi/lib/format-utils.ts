@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/format-utils.ts
+ * role: 数値・日時・文字列のフォーマット処理を行うユーティリティモジュール
+ * why: 拡張機能間で重複していたフォーマット実装を統一し、コードの重複を排除するため
+ * related: loop.ts, rsa.ts, agent-teams.ts, subagents.ts
+ * public_api: formatDuration, formatDurationMs, formatBytes, formatClockTime, normalizeForSingleLine
+ * invariants: 依存関係レイヤー0（他のlibモジュールへの依存なし）、バイト数や時間は負の値を0として扱う
+ * side_effects: normalizeForSingleLineの呼び出し時に内部Mapキャッシュ（LRU）の状態が変更される
+ * failure_modes: 無限大や非数を渡した場合のフォーマット結果、normalizeForSingleLineで巨大な文字列を扱った場合のメモリ消費
+ * @abdd.explain
+ * overview: 時間、容量、時刻、文字列のデータ表示用文字列への変換を行う静的関数群を提供する
+ * what_it_does:
+ *   - ミリ秒を "500ms" や "1.50s" 形式に変換する
+ *   - 開始・終了時刻から経過時間を "1.5s" 形式で算出する
+ *   - バイト数を "512B", "1.5KB" などの人間が読みやすい単位に変換する
+ *   - タイムスタンプを "HH:mm:ss" 形式の時刻文字列に変換する
+ *   - 文字列の空白を圧縮し、指定長で切り詰めて単一行化する（LRUキャッシュを使用）
+ * why_it_exists:
+ *   - loop.ts, rsa.ts, agent-teams.ts, subagents.ts に散在していた重複コードを一箇所に集約する
+ *   - フォーマットロジックの修正や調整を一箇所で完結させるため
+ * scope:
+ *   in: 数値（時間/バイト）、タイムスタンプ、任意の文字列、オプションの最大長
+ *   out: 画面表示用に整形された文字列
+ */
+
+/**
  * Formatting utilities shared across extensions.
  * Consolidates duplicate implementations from:
  * - loop.ts
@@ -10,9 +36,10 @@
  */
 
 /**
- * Formats a duration in milliseconds to a human-readable string.
- * @param ms - Duration in milliseconds
- * @returns Formatted duration string (e.g., "500ms", "1.50s")
+ * ミリ秒を時間文字列へ
+ * @summary ミリ秒変換
+ * @param ms ミリ秒
+ * @returns フォーマット済み文字列
  */
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "0ms";
@@ -29,10 +56,10 @@ interface DurationItem {
 }
 
 /**
- * Formats duration from an item with start and optional finish timestamps.
- * If not finished, uses current time.
- * @param item - Object with startedAtMs and optional finishedAtMs
- * @returns Formatted duration string (e.g., "1.5s", "-" if not started)
+ * 継続時間をフォーマット
+ * @summary 継続時間計算
+ * @param item 期間アイテム
+ * @returns フォーマット済み文字列
  */
 export function formatDurationMs(item: DurationItem): string {
   if (!item.startedAtMs) return "-";
@@ -42,9 +69,10 @@ export function formatDurationMs(item: DurationItem): string {
 }
 
 /**
- * Formats a byte count to a human-readable string.
- * @param value - Byte count
- * @returns Formatted string (e.g., "512B", "1.5KB", "2.3MB")
+ * バイト数をフォーマット
+ * @summary バイト数変換
+ * @param value バイト数
+ * @returns フォーマット済み文字列
  */
 export function formatBytes(value: number): string {
   const bytes = Math.max(0, Math.trunc(value));
@@ -54,9 +82,10 @@ export function formatBytes(value: number): string {
 }
 
 /**
- * Formats a timestamp to clock time (HH:MM:SS).
- * @param value - Timestamp in milliseconds, or undefined
- * @returns Formatted clock time or "-" if no value
+ * 時刻をフォーマット
+ * @summary 時刻フォーマット
+ * @param value 数値（省略可）
+ * @returns フォーマット済み文字列
  */
 export function formatClockTime(value?: number): string {
   if (!value) return "-";
@@ -80,6 +109,13 @@ export function formatClockTime(value?: number): string {
 const normalizeCache = new Map<string, string>();
 const NORMALIZE_CACHE_MAX_SIZE = 256;
 
+/**
+ * 単一行文字列を正規化
+ * @summary 文字列正規化
+ * @param input 入力文字列
+ * @param maxLength 最大長
+ * @returns 正規化された文字列
+ */
 export function normalizeForSingleLine(input: string, maxLength = 160): string {
   // キャッシュキーを生成
   const cacheKey = `${maxLength}:${input}`;

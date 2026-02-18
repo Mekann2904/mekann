@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/shared/runtime-helpers.ts
+ * role: ランタイム制限・キュー待機のエラーメッセージ生成と、リソース予約維持機能の提供
+ * why: subagents.tsとagent-teams.tsでランタイム動作を一貫させるため
+ * related: ../agent-runtime.js, subagents.ts, agent-teams.ts
+ * public_api: RuntimeLimitErrorOptions, RuntimeQueueWaitInfo, buildRuntimeLimitError, buildRuntimeQueueWaitError, startReservationHeartbeat
+ * invariants: buildRuntimeLimitErrorはgetRuntimeSnapshotから最新情報を取得する、startReservationHeartbeatは5秒間隔でheartbeatを実行する
+ * side_effects: startReservationHeartbeatはタイマーを起動し、reservation.heartbeatを呼び出す
+ * failure_modes: リソース取得失敗時、heartbeat呼び出し時の例外は握りつぶされる
+ * @abdd.explain
+ * overview: エージェント実行時のリソース制限やオーケストレーションキューエラーを通知するためのユーティリティ。
+ * what_it_does:
+ *   - 現在のリソース使用状況と制限値を含むエラーメッセージを生成する
+ *   - キュー待機状況（待ち時間、順位、試行回数）を含むエラーメッセージを生成する
+ *   - リソース予約を維持するための定期的ハートビートタイマーを開始・停止する
+ * why_it_exists:
+ *   - 複数のエージェント種別（subagents, agent-teams）間でエラーハンドリングロジックを共通化するため
+ *   - リソース枯渇時やキュー拥堵時にユーザーへ復旧手順を明示するため
+ *   - 期限切れによるリソース予約の消失を防ぐため
+ * scope:
+ *   in: ツール名、理由配列、待機情報、予約リースオブジェクト
+ * out: フォーマットされたエラーメッセージ文字列、タイマー停止用クリーンアップ関数
+ */
+
+/**
  * Shared runtime helper utilities.
  * Used by both subagents.ts and agent-teams.ts for consistent runtime behavior.
  */
@@ -9,7 +34,8 @@ import {
 } from "../agent-runtime.js";
 
 /**
- * Options for building runtime limit error messages.
+ * 実行時制限エラーオプション
+ * @summary 制限エラーオプション定義
  */
 export interface RuntimeLimitErrorOptions {
   waitedMs?: number;
@@ -17,7 +43,8 @@ export interface RuntimeLimitErrorOptions {
 }
 
 /**
- * Queue wait information for building queue wait error messages.
+ * 実行時キューウェイト情報
+ * @summary キューウェイト情報定義
  */
 export interface RuntimeQueueWaitInfo {
   waitedMs: number;
@@ -29,11 +56,12 @@ export interface RuntimeQueueWaitInfo {
 }
 
 /**
- * Build an error message for runtime limit reached conditions.
- * @param toolName - Name of the tool that was blocked
- * @param reasons - Array of reason strings
- * @param options - Optional wait time information
- * @returns Formatted error message string
+ * 実行制限エラーメッセージ生成
+ * @summary 実行制限エラー生成
+ * @param toolName ツール名
+ * @param reasons エラー理由リスト
+ * @param options オプション設定
+ * @returns エラーメッセージ文字列
  */
 export function buildRuntimeLimitError(
   toolName: string,
@@ -58,10 +86,11 @@ export function buildRuntimeLimitError(
 }
 
 /**
- * Build an error message for orchestration queue wait conditions.
- * @param toolName - Name of the tool that was blocked
- * @param queueWait - Queue wait information
- * @returns Formatted error message string
+ * キューウェイトエラーを生成
+ * @summary キューウェイトエラー生成
+ * @param toolName ツール名
+ * @param queueWait キューウェイト情報
+ * @returns エラーメッセージ文字列
  */
 export function buildRuntimeQueueWaitError(
   toolName: string,
@@ -84,9 +113,10 @@ export function buildRuntimeQueueWaitError(
 }
 
 /**
- * Start a heartbeat timer to keep a reservation alive during long-running operations.
- * @param reservation - The reservation lease to keep alive
- * @returns Cleanup function to stop the heartbeat
+ * 予約ハートビート開始
+ * @summary ハートビート開始
+ * @param reservation - 容量予約リース情報
+ * @returns ハートビート停止関数
  */
 export function startReservationHeartbeat(
   reservation: RuntimeCapacityReservationLease,
@@ -107,13 +137,15 @@ export function startReservationHeartbeat(
 }
 
 /**
- * Refresh runtime status display in the UI.
- * @param ctx - Extension context with UI capabilities
- * @param statusKey - Status key to use ("subagent-runtime" or "agent-team-runtime")
- * @param primaryLabel - Primary agent label for display
- * @param primaryActive - Primary agent active count
- * @param secondaryLabel - Secondary agent label for display
- * @param secondaryActive - Secondary agent active count
+ * ランタイムステータス更新
+ * @summary ステータス更新
+ * @param ctx - UI機能を持つ拡張機能コンテキスト
+ * @param statusKey - ステータスキー ("subagent-runtime" または "agent-team-runtime")
+ * @param primaryLabel - プライマリエージェントの表示ラベル
+ * @param primaryActive - プライマリのアクティブ数
+ * @param secondaryLabel - セカンダリエージェントの表示ラベル
+ * @param secondaryActive - セカンダリのアクティブ数
+ * @returns -
  */
 export function refreshRuntimeStatus(
   ctx: any,

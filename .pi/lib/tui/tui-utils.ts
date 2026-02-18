@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/tui/tui-utils.ts
+ * role: 拡張機能間で共有されるTUI関連のユーティリティ関数と定数
+ * why: agent-teams.ts と subagents.ts に存在する重複実装を集約し、コードの重複を排除するため
+ * related: @mariozechner/pi-tui, .pi/lib/tui/agent-teams.ts, .pi/lib/tui/subagents.ts
+ * public_api: LIVE_TAIL_LIMIT, LIVE_MARKDOWN_PREVIEW_MIN_WIDTH, appendTail, toTailLines, countOccurrences, estimateLineCount, looksLikeMarkdown, MarkdownPreviewResult
+ * invariants: appendTailは常にmaxLength以下の文字列を返す, estimateLineCountはbytesが0以下のとき0を返す
+ * side_effects: なし（すべて純粋関数）
+ * failure_modes: appendTailでmaxLengthが負の値の場合空文字列になる可能性がある, looksLikeMarkdownは複雑な構造の誤判定をする可能性がある
+ * @abdd.explain
+ * overview: TUI出力の制御、整形、検出を行うステートレスなユーティリティ集
+ * what_it_does:
+ *   - appendTail: 文字列結合によるバッファリングと最大長制限
+ *   - toTailLines: 末尾空白除去と最大行数制限による行配列化
+ *   - countOccurrences: 特定文字列の出現回数カウント
+ *   - estimateLineCount: バイト数と改行数からの行数推定
+ *   - looksLikeMarkdown: 文字列パターンによるMarkdown形式判定
+ * why_it_exists:
+ *   - エージェントとサブエージェントのTUI実装で共通利用される文字列処理を一箇所にまとめる
+ *   - 重複コードを削減し、メンテナンス性を向上させる
+ * scope:
+ *   in: 文字列(生データ), 数値(制限値/カウント), 真理値(フラグ)
+ *   out: 加工・整形後の文字列, 行配列, 数値推定値, 判定結果
+ */
+
+/**
  * TUI (Terminal User Interface) utilities shared across extensions.
  * Consolidates duplicate implementations from:
  * - agent-teams.ts
@@ -16,12 +42,12 @@ export const LIVE_TAIL_LIMIT = 40_000;
 export const LIVE_MARKDOWN_PREVIEW_MIN_WIDTH = 24;
 
 /**
- * Appends a chunk to the current tail string, respecting the maximum length.
- * If the result exceeds maxLength, the beginning is truncated.
- * @param current - The current tail string
- * @param chunk - The chunk to append
- * @param maxLength - Maximum length of the result (default: LIVE_TAIL_LIMIT)
- * @returns The new tail string
+ * チャンクを追加し長さ制御
+ * @summary 末尾にチャンク追加
+ * @param current - 現在の文字列
+ * @param chunk - 追加するチャンク
+ * @param maxLength - 最大長
+ * @returns 結合された文字列
  */
 export function appendTail(current: string, chunk: string, maxLength = LIVE_TAIL_LIMIT): string {
   if (!chunk) return current;
@@ -31,11 +57,11 @@ export function appendTail(current: string, chunk: string, maxLength = LIVE_TAIL
 }
 
 /**
- * Splits a tail string into lines, trims trailing whitespace, and limits the number of lines.
- * Empty lines at the end are removed before limiting.
- * @param tail - The tail string to process
- * @param limit - Maximum number of lines to return
- * @returns Array of processed lines
+ * 末尾の行を取得
+ * @summary 末尾行を取得
+ * @param tail - 処理対象の文字列
+ * @param limit - 取得する最大行数
+ * @returns 末尾の行の配列
  */
 export function toTailLines(tail: string, limit: number): string[] {
   const lines = tail
@@ -50,10 +76,11 @@ export function toTailLines(tail: string, limit: number): string[] {
 }
 
 /**
- * Counts occurrences of a target string within an input string.
- * @param input - The string to search in
- * @param target - The string to search for
- * @returns The number of occurrences
+ * 出現回数を数える
+ * @summary 出現回数を数える
+ * @param input - 検索対象の文字列
+ * @param target - 数える対象の文字列
+ * @returns 出現回数
  */
 export function countOccurrences(input: string, target: string): number {
   if (!input || !target) return 0;
@@ -69,11 +96,12 @@ export function countOccurrences(input: string, target: string): number {
 }
 
 /**
- * Estimates line count based on byte count and newline count.
- * @param bytes - The byte count
- * @param newlineCount - The number of newlines
- * @param endsWithNewline - Whether the content ends with a newline
- * @returns Estimated line count
+ * 行数を推定する
+ * @summary 行数を推定
+ * @param bytes - 総バイト数
+ * @param newlineCount - 改行文字の数
+ * @param endsWithNewline - 末尾が改行で終わるか
+ * @returns 推定された行数
  */
 export function estimateLineCount(bytes: number, newlineCount: number, endsWithNewline: boolean): number {
   if (bytes <= 0) return 0;
@@ -81,10 +109,12 @@ export function estimateLineCount(bytes: number, newlineCount: number, endsWithN
 }
 
 /**
- * Checks if a string looks like Markdown content.
- * Detects common Markdown patterns: headers, lists, code blocks, links, etc.
- * @param input - The string to check
- * @returns True if the string appears to be Markdown
+ * 行数を推定する
+ * @summary 行数を推定
+ * @param bytes - 総バイト数
+ * @param newlineCount - 改行文字の数
+ * @param endsWithNewline - 末尾が改行で終わるか
+ * @returns 推定された行数
  */
 export function looksLikeMarkdown(input: string): boolean {
   const text = input.trim();
@@ -111,7 +141,8 @@ export function looksLikeMarkdown(input: string): boolean {
 }
 
 /**
- * Result type for markdown preview rendering.
+ * Markdown描画結果
+ * @summary 結果を格納
  */
 export interface MarkdownPreviewResult {
   lines: string[];
@@ -119,11 +150,12 @@ export interface MarkdownPreviewResult {
 }
 
 /**
- * Renders text as Markdown if it looks like Markdown, otherwise returns plain lines.
- * @param text - The text to render
- * @param width - The width for rendering
- * @param maxLines - Maximum number of lines to return
- * @returns Object with lines and whether it was rendered as Markdown
+ * Markdown形式で描画
+ * @summary 描画を行う
+ * @param {string} text 入力テキスト
+ * @param {number} width 表示幅
+ * @param {number} maxLines 最大行数
+ * @returns {MarkdownPreviewResult} 描画結果
  */
 export function renderPreviewWithMarkdown(
   text: string,

@@ -1,3 +1,27 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/metrics-collector.ts
+ * role: スケジューラーのパフォーマンスデータの収集、JSONL形式での永続化、および履歴データの集計を行うモジュール
+ * why: タスクスケジューラの動作状況を可視化し、パフォーマンス最適化のための定量的な指標を提供するため
+ * related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
+ * public_api: SchedulerMetrics, TaskCompletionEvent, PreemptionEvent, WorkStealEvent, MetricsSummary
+ * invariants: JSONLファイルは1行ごとに有効なJSONオブジェクトであること、ファイル操作は同期的に行われること
+ * side_effects: ホームディレクトリ配下の`.pi/metrics`ディレクトリへのファイル作成、追記、読み取り、削除
+ * failure_modes: ファイルシステムへの書き込み権限がない場合、ディレクトリ作成が失敗する場合、JSONLファイルが破損している場合
+ * @abdd.explain
+ * overview: タスク実行の待機時間、成功率、プリエンプションなどのイベントを記録し、統計情報を算出する機能を提供する
+ * what_it_does:
+ *   - タスク完了、プリエンプション、ワークスティールの各イベントをJSONL形式でファイルシステムに永続化する
+ *   - 記録された生データから特定期間の統計サマリー（平均値、パーセンタイル、スループット等）を算出する
+ *   - 古いメトリクスファイルを削除し、ディスク容量を管理する
+ * why_it_exists:
+ *   - スケジューラのスループットやレイテンシの変動を監視するため
+ *   - ボトルネック特定や設定チューニングのために履歴データを解析するため
+ * scope:
+ *   in: スケジューラからの生イベントデータ（待機時間、実行結果など）
+ *   out: 集計された統計サマリー（MetricsSummaryインターフェース）
+ */
+
 // File: .pi/lib/metrics-collector.ts
 // Description: Scheduler metrics collection with JSONL logging and aggregation.
 // Why: Enables observability of task scheduler performance for optimization.
@@ -12,7 +36,14 @@ import { join } from "node:path";
 // ============================================================================
 
 /**
- * Scheduler metrics snapshot.
+ * スケジューラの指標
+ * @summary スケジューラ指標
+ * @type {object}
+ * @property {number} timestamp - タイムスタンプ
+ * @property {number} queueDepth - キューの深さ
+ * @property {number} activeTasks - アクティブなタスク数
+ * @property {number} avgWaitMs - 平均待機時間
+ * @property {number} p50WaitMs - 待機時間の中央値
  */
 export interface SchedulerMetrics {
   /** Timestamp of metrics collection (ms since epoch) */
@@ -38,7 +69,16 @@ export interface SchedulerMetrics {
 }
 
 /**
- * Task completion event for metrics.
+ * メトリクス用タスク完了イベント
+ * @summary タスク完了を記録
+ * @param taskId タスクID
+ * @param source 送信元
+ * @param provider プロバイダ
+ * @param model モデル
+ * @param priority 優先度
+ * @param waitedMs 待機時間（ミリ秒）
+ * @param executionMs 実行時間（ミリ秒）
+ * @param stealCount スチール回数
  */
 export interface TaskCompletionEvent {
   taskId: string;
@@ -53,7 +93,11 @@ export interface TaskCompletionEvent {
 }
 
 /**
- * Preemption event for metrics.
+ * プリエンプションイベント
+ * @summary プリエンプションを記録
+ * @param taskId タスクID
+ * @param reason プリエンプションの理由
+ * @param timestamp タイムスタンプ
  */
 export interface PreemptionEvent {
   taskId: string;
@@ -62,7 +106,11 @@ export interface PreemptionEvent {
 }
 
 /**
- * Work steal event for metrics.
+ * ワークスチールイベント
+ * @summary スチールイベントを保持
+ * @param sourceInstance 送信元インスタンス
+ * @param taskId タスクID
+ * @param timestamp タイムスタンプ
  */
 export interface WorkStealEvent {
   sourceInstance: string;
@@ -71,7 +119,14 @@ export interface WorkStealEvent {
 }
 
 /**
- * Metrics summary over a time period.
+ * メトリクスサマリー情報
+ * @summary 期間サマリーを保持
+ * @param periodStartMs 期間開始時刻（ミリ秒）
+ * @param periodEndMs 期間終了時刻（ミリ秒）
+ * @param totalTasksCompleted 完了タスク総数
+ * @param successRate 成功率
+ * @param avgWaitMs 平均待機時間（ミリ秒）
+ * @param avgExecutionMs 平均実行時間（ミリ秒）
  */
 export interface MetricsSummary {
   periodStartMs: number;
@@ -92,7 +147,18 @@ export interface MetricsSummary {
 }
 
 /**
- * Metrics collector configuration.
+ * メトリクス収集設定
+ * @summary メトリクス設定を保持
+ * @param metricsDir メトリクス保存ディレクトリ
+ * @param collectionIntervalMs 収集間隔（ミリ秒）
+ * @param maxLogFileSizeBytes ログ最大サイズ
+ * @param maxLogFiles ログ最大ファイル数
+ * @param enableLogging ログ出力有効化
+ * @param totalSteals 総盗用数
+ * @param totalRateLimitHits 総レートリミット回数
+ * @param throughputPerMin 1分あたりスループット
+ * @param byProvider プロバイダ別集計
+ * @param byPriority 優先度別集計
  */
 export interface MetricsCollectorConfig {
   /** Directory for storing metrics logs */
@@ -108,7 +174,8 @@ export interface MetricsCollectorConfig {
 }
 
 /**
- * Stealing statistics for work stealing coordination.
+ * ワークスチール統計
+ * @summary ワークスチール統計
  */
 export interface StealingStats {
   totalAttempts: number;
@@ -290,7 +357,10 @@ function rotateLogFilesIfNeeded(dir: string, config: MetricsCollectorConfig): vo
 // ============================================================================
 
 /**
- * Initialize the metrics collector.
+ * 初期化設定
+ * @summary 初期化設定
+ * @param {Partial<MetricsCollectorConfig>} [configOverrides] 設定オーバーライド
+ * @returns {void}
  */
 export function initMetricsCollector(
   configOverrides?: Partial<MetricsCollectorConfig>
@@ -334,7 +404,9 @@ export function initMetricsCollector(
 }
 
 /**
- * Get metrics collector instance (initializes if needed).
+ * メトリクス取得API
+ * @summary メトリクス取得API
+ * @returns {{ recordTaskCompletion: (task: { id: string; source: string; provider: string; model: string; priority: string }, result: { waitedMs: number; executionMs: number; success: boolean }) => void; recordPreemption: (taskId: string, reason: string) => void; recordWorkSteal: (sourceInstance: string, taskId: string) => void; recordRateLimitHit: () => void; updateQueueStats: (queueDepth: number, activeTasks: number) => void; getMetrics: () => SchedulerMetrics; getSummary: (periodMs: number) => MetricsSummary; getStealingStats: () => StealingStats; startCollection: (intervalMs?: number) => void; stopCollection: () => void; }} メトリクス操作API
  */
 export function getMetricsCollector(): {
   recordTaskCompletion: (task: { id: string; source: string; provider: string; model: string; priority: string }, result: { waitedMs: number; executionMs: number; success: boolean }) => void;
@@ -697,7 +769,9 @@ function collectAndLogMetrics(): void {
 }
 
 /**
- * Reset metrics collector state (for testing).
+ * コレクタリセット
+ * @summary コレクタリセット
+ * @returns {void}
  */
 export function resetMetricsCollector(): void {
   if (collectorState?.collectionTimer) {
@@ -707,14 +781,19 @@ export function resetMetricsCollector(): void {
 }
 
 /**
- * Check if metrics collector is initialized.
+ * 初期化確認
+ * @summary 初期化確認
+ * @returns {boolean} 初期化済みかどうか
  */
 export function isMetricsCollectorInitialized(): boolean {
   return collectorState?.initialized ?? false;
 }
 
 /**
- * Record a stealing attempt (for statistics).
+ * @summary 盗用試行を記録
+ * @param success 成功したかどうか
+ * @param latencyMs レイテンシ（ミリ秒）
+ * @returns なし
  */
 export function recordStealingAttempt(success: boolean, latencyMs?: number): void {
   if (!collectorState?.initialized) return;
@@ -739,7 +818,9 @@ export function recordStealingAttempt(success: boolean, latencyMs?: number): voi
 // ============================================================================
 
 /**
- * Get metrics collector config from environment variables.
+ * 環境変数から設定取得
+ * @summary 設定を環境変数から取得
+ * @returns メトリクス収集の設定情報
  */
 export function getMetricsConfigFromEnv(): Partial<MetricsCollectorConfig> {
   const config: Partial<MetricsCollectorConfig> = {};

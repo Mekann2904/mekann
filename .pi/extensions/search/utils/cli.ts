@@ -1,4 +1,36 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/search/utils/cli.ts
+ * role: 外部プロセス実行ラッパー
+ * why: タイムアウト、出力サイズ制限、中止シグナル、エラーハンドリングを統一的に管理するため
+ * related: .pi/extensions/search/types.ts, .pi/extensions/search/utils/constants.ts
+ * public_api: execute
+ * invariants:
+ * - Promiseは必ず解決され、rejectされない
+ * - 出力サイズがmaxOutputSizeを超える場合、切り詰められる
+ * - プロセス終了時にタイマーとシグナルリスナーはクリアされる
+ * side_effects: 子プロセスの生成と終了、環境変数のマージ、プロセスへのシグナル送信(SIGTERM)
+ * failure_modes:
+ * - コマンドが見つからない場合
+ * - タイムアウト発生による強制終了
+ * - AbortSignalによる中断
+ * - 出力バッファ制限超過によるデータ欠落
+ * @abdd.explain
+ * overview: Node.jsのspawnをラップし、タイムアウトや出力制限などの安全機材を備えたCLI実行機能を提供する
+ * what_it_does:
+ *   - 指定されたコマンドと引数で子プロセスを生成し、標準出力・標準エラーを収集する
+ *   - タイムアウト時間経過時、またはAbortSignal発火時にSIGTERMを送信しプロセスを終了する
+ *   - stdoutとstderrのサイズが上限を超えた場合、それ以上の書き込みを停止する
+ *   - プロセスの終了コード、出力内容、中断状態などを含むCliResultオブジェクトを返す
+ * why_it_exists:
+ *   - 生のchild_process.spawnを使用すると、タイムアウト処理やリソース管理が複雑化するため
+ *   - 検索ツール等で想定外の長時間実行や大量出力を防ぐ安全策が共通的に必要なため
+ * scope:
+ *   in: コマンド文字列、引数配列、実行オプション(cwd, timeout, signal, maxOutputSize, env)
+ *   out: 終了コード、標準出力、標準エラー出力、タイムアウトフラグ、キルフラグを含む結果オブジェクト
+ */
+
+/**
  * CLI Execution Utilities
  *
  * Provides spawn wrapper with:
@@ -20,12 +52,13 @@ const DEFAULT_TIMEOUT = 30_000;
 const DEFAULT_MAX_OUTPUT_SIZE = 10 * 1024 * 1024;
 
 /**
- * Execute a command and return structured result.
- *
- * @param command - Command to execute
- * @param args - Command arguments
- * @param options - Execution options
- * @returns Promise<CliResult>
+ * コマンドを実行する
+ * @summary コマンドを実行する
+ * @param command - 実行するコマンド
+ * @param args - コマンド引数
+ * @param options - 実行オプション
+ * @returns コマンドの実行結果
+ * @throws コマンド実行失敗時
  */
 export async function execute(
   command: string,
@@ -140,13 +173,13 @@ export async function execute(
 }
 
 /**
- * Execute a command and throw on non-zero exit.
- *
- * @param command - Command to execute
- * @param args - Command arguments
- * @param options - Execution options
- * @returns Promise<string> - stdout content
- * @throws CliError on failure
+ * コマンド実行
+ * @summary コマンド実行
+ * @param command - 実行するコマンド
+ * @param args - コマンド引数
+ * @param options - 実行オプション
+ * @returns 標準出力の内容
+ * @throws コマンド失敗時
  */
 export async function executeOrThrow(
   command: string,
@@ -170,11 +203,10 @@ export async function executeOrThrow(
 }
 
 /**
- * Check if a command is available in PATH.
- * Works on both Unix (which) and Windows (where).
- *
- * @param command - Command name to check
- * @returns boolean
+ * コマンドの存在確認
+ * @summary コマンド確認
+ * @param command - コマンド名
+ * @returns 利用可能であれば true
  */
 export async function isAvailable(command: string): Promise<boolean> {
   const whichCommand = process.platform === "win32" ? "where" : "which";
@@ -183,11 +215,11 @@ export async function isAvailable(command: string): Promise<boolean> {
 }
 
 /**
- * Get version info for a command.
- *
- * @param command - Command name
- * @param versionFlag - Flag to get version (default: "--version")
- * @returns ToolVersion or null
+ * ツールバージョン取得
+ * @summary ツールバージョンを取得
+ * @param command - コマンド名
+ * @param versionFlag - バージョンフラグ
+ * @returns ツールバージョン情報
  */
 export async function getVersion(
   command: string,
@@ -213,6 +245,12 @@ export async function getVersion(
  */
 let cachedAvailability: ToolAvailability | null = null;
 
+/**
+ * ツール利用可否チェック
+ * @summary ツール利用可否を確認
+ * @param force - キャッシュを強制更新するか
+ * @returns ツール利用可否情報
+ */
 export async function checkToolAvailability(force = false): Promise<ToolAvailability> {
   if (cachedAvailability && !force) return cachedAvailability;
 
@@ -236,8 +274,10 @@ export async function checkToolAvailability(force = false): Promise<ToolAvailabi
 }
 
 /**
- * Build fd command arguments from input options.
- * Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
+ * fdコマンド引数作成
+ * @summary fd引数を生成
+ * @param input - ファイル候補入力
+ * @returns コマンド引数配列
  */
 export function buildFdArgs(input: import("../types").FileCandidatesInput): string[] {
   const args: string[] = [];
@@ -282,9 +322,10 @@ export function buildFdArgs(input: import("../types").FileCandidatesInput): stri
 }
 
 /**
- * Build ripgrep command arguments from input options.
- * Uses default values from constants when not specified.
- * Applies DEFAULT_EXCLUDES when no exclude patterns are specified.
+ * ripgrepコマンド引数作成
+ * @summary ripgrep引数を生成
+ * @param input - コード検索入力
+ * @returns コマンド引数配列
  */
 export function buildRgArgs(input: import("../types").CodeSearchInput): string[] {
   const args: string[] = ["--json"];
@@ -330,7 +371,11 @@ export function buildRgArgs(input: import("../types").CodeSearchInput): string[]
 }
 
 /**
- * Build ctags command arguments for JSON output.
+ * ctagsコマンド引数作成
+ * @summary ctags引数を生成
+ * @param targetPath - 対象パス
+ * @param cwd - カレントディレクトリ
+ * @returns コマンド引数配列
  */
 export function buildCtagsArgs(targetPath: string, cwd: string): string[] {
   return [

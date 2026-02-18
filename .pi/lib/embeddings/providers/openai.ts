@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/embeddings/providers/openai.ts
+ * role: OpenAI APIを使用した埋め込みベクトル生成プロバイダーの実装
+ * why: text-embedding-3-smallモデルによる埋め込み処理と、pi公式のAPIキー解決ロジックを提供するため
+ * related: .pi/lib/embeddings/types.ts, .pi/agent/auth.json
+ * public_api: getOpenAIKey, OpenAIEmbeddingProvider
+ * invariants: デフォルトモデルはtext-embedding-3-small、デフォルト次元数は1536
+ * side_effects: APIキー解決時にファイルシステム読み込みまたはシェルコマンド実行を行う
+ * failure_modes: auth.jsonの読み込み失敗、シェルコマンド実行エラー、APIキー未設定
+ * @abdd.explain
+ * overview: OpenAI APIを利用してテキストの埋め込みベクトルを生成し、認証情報を解決するモジュール
+ * what_it_does:
+ *   - auth.jsonまたは環境変数からOpenAI APIキーを解決する
+ *   - APIキー値がリテラル、環境変数参照、シェルコマンドの場合を判定し値を取得する
+ *   - OpenAI Embeddings APIへリクエストを送信しベクトルデータを返却する
+ * why_it_exists:
+ *   - アプリケーション共通の認証管理方式（pi公式）に従うため
+ *   - 特定のAIモデル（text-embedding-3-small）によるベクトル生成機能を抽象化するため
+ * scope:
+ *   in: 認証設定ファイルパス、環境変数、埋め込み生成対象のテキスト
+ *   out: 解決されたAPIキー文字列、数値配列の埋め込みベクトル
+ */
+
+/**
  * OpenAI Embedding Provider.
  * Implements embedding generation using OpenAI's text-embedding-3-small model.
  * 
@@ -96,10 +120,9 @@ function loadAuthConfig(): AuthConfig {
 }
 
 /**
- * Get OpenAI API key from auth.json or environment variable.
- * Resolution order (pi's official method):
- * 1. auth.json entry
- * 2. OPENAI_API_KEY environment variable
+ * OpenAI APIキーを取得
+ * @summary APIキー取得
+ * @returns {string | null} APIキー（見つからない場合はnull）
  */
 export function getOpenAIKey(): string | null {
   const auth = loadAuthConfig();
@@ -114,6 +137,13 @@ export function getOpenAIKey(): string | null {
 // Provider Implementation
 // ============================================================================
 
+/**
+ * OpenAI埋め込みプロバイダ
+ * @summary プロバイダ生成
+ * @param {string[]} texts - 入力テキストの配列
+ * @param {ProviderConfig} [config] - プロバイダ設定（オプション）
+ * @returns {Promise<(number[] | null)[]>} 埋め込みベクトルの配列
+ */
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   readonly id = "openai";
   readonly name = "OpenAI Embeddings";
@@ -127,10 +157,21 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     offlineCapable: false,
   };
 
+  /**
+   * 利用可能か確認
+   * @summary 利用可否確認
+   * @returns {Promise<boolean>} 利用可能な場合はtrue
+   */
   async isAvailable(): Promise<boolean> {
     return getOpenAIKey() !== null;
   }
 
+  /**
+   * OpenAI埋め込みを生成
+   * @summary 埋め込みベクトル生成
+   * @param {string} text - 入力テキスト
+   * @returns {Promise<number[] | null>} 埋め込みベクトルまたは失敗時はnull
+   */
   async generateEmbedding(text: string): Promise<number[] | null> {
     const apiKey = getOpenAIKey();
     if (!apiKey) {
@@ -161,6 +202,12 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     }
   }
 
+  /**
+   * @summary バッチ生成
+   * テキスト配列からベクトルをバッチ生成
+   * @param {string[]} texts 入力テキスト配列
+   * @returns {Promise<(number[] | null)[]>} ベクトル配列またはnull
+   */
   async generateEmbeddingsBatch(texts: string[]): Promise<(number[] | null)[]> {
     const apiKey = getOpenAIKey();
     if (!apiKey) {

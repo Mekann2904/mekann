@@ -1,4 +1,30 @@
 /**
+ * @abdd.meta
+ * path: .pi/lib/adaptive-penalty.ts
+ * role: 適応的ペナルティ制御のロジック実装と状態管理
+ * why: 動的な並列度調整のための共通部品として、サブエージェントとチーム間でコード重複を排除するため
+ * related: .pi/lib/agent-team.ts, .pi/lib/subagent.ts, .pi/lib/config.ts
+ * public_api: AdaptivePenaltyController, EnhancedPenaltyController, createAdaptivePenaltyController, getAdaptivePenaltyMode
+ * invariants: penalty値は常に0以上maxPenalty以下、reasonHistoryのサイズはhistorySize以下、updatedAtMsはモノトニック増加
+ * side_effects: グローバル変数cachedModeの更新、AdaptivePenaltyStateオブジェクトの内部変更
+ * failure_modes: 環境変数の不正値によるモード誤判定、履歴サイズ超過による古いデータの消失、減衰計算における数値精度の低下
+ * @abdd.explain
+ * overview: APIレート制限やタイムアウト等のエラー要因に基づき、システムの並列実行数を制御するためのペナルティ値を算出・管理するモジュール。
+ * what_it_does:
+ *   - ペナルティ値の増減（raise/lower）と時間経過による減衰（decay）を実行する
+ *   - エラー要因（PenaltyReason）ごとに重み付けを行い、ペナルティの影響度を調整する
+ *   - 線形・指数関数・ハイブリッドの減衰戦略を適用する
+ *   - 履歴（reasonHistory）と統計情報を記録・参照する
+ *   - 機能フラグ（PI_ADAPTIVE_PENALTY_MODE）によりレガシー/拡張モードを切り替える
+ * why_it_exists:
+ *   - 外部APIへの過負荷を防ぎ、レートリミット回避やリソース保護を行うため
+ *   - エラーの種類に応じて柔軟に並列度を動的調整するため
+ * scope:
+ *   in: 現在時刻, エラー発生の理由, 設定オプション（最大ペナルティ, 減衰時間など）
+ *   out: 制御された並列リミット値, 現在のペナルティ値, 理由別統計
+ */
+
+/**
  * Adaptive penalty controller for dynamic parallelism adjustment.
  * Shared between subagents and agent-teams to reduce code duplication.
  *
@@ -13,7 +39,9 @@
 // ============================================================================
 
 /**
- * Reason types for penalty adjustment.
+ * ペナルティ理由の型定義
+ * @summary ペナルティ理由
+ * @typedef {"rate_limit"|"timeout"|"capacity"|"schema_violation"} PenaltyReason
  */
 export type PenaltyReason = "rate_limit" | "timeout" | "capacity" | "schema_violation";
 
@@ -29,7 +57,9 @@ const DEFAULT_REASON_WEIGHTS: Record<PenaltyReason, number> = {
 };
 
 /**
- * Decay strategy options.
+ * 減衰戦略の種類。
+ * @summary 戦略を定義
+ * @returns 減衰戦略名。
  */
 export type DecayStrategy = "linear" | "exponential" | "hybrid";
 
@@ -37,6 +67,14 @@ export type DecayStrategy = "linear" | "exponential" | "hybrid";
 // Core Types
 // ============================================================================
 
+/**
+ * 適応型ペナルティの状態。
+ * @summary 状態を保持
+ * @property penalty 現在のペナルティ値。
+ * @property updatedAtMs 最終更新時刻。
+ * @property lastReason 最後の適用理由。
+ * @property reasonHistory 適用理由とタイムスタンプの履歴配列。
+ */
 export interface AdaptivePenaltyState {
   penalty: number;
   updatedAtMs: number;
@@ -44,6 +82,13 @@ export interface AdaptivePenaltyState {
   reasonHistory: Array<{ reason: PenaltyReason; timestamp: number }>;
 }
 
+/**
+ * 適応型ペナルティオプション。
+ * @summary 設定を保持
+ * @param isStable 安定フラグ。
+ * @param maxPenalty 最大ペナルティ値。
+ * @param decayMs 減衰までの時間（ミリ秒）。
+ */
 export interface AdaptivePenaltyOptions {
   isStable: boolean;
   maxPenalty: number;
@@ -51,7 +96,12 @@ export interface AdaptivePenaltyOptions {
 }
 
 /**
- * Enhanced penalty options with exponential decay and reason weights.
+ * 拡張ペナルティオプション。
+ * @summary オプションを定義
+ * @param decayStrategy 減衰戦略。
+ * @param exponentialBase 指数関数的減衰の基数（デフォルト: 0.5）。
+ * @param reasonWeights 理由ごとの重み。
+ * @param historySize 履歴サイズ。
  */
 export interface EnhancedPenaltyOptions extends AdaptivePenaltyOptions {
   decayStrategy?: DecayStrategy;
@@ -60,6 +110,10 @@ export interface EnhancedPenaltyOptions extends AdaptivePenaltyOptions {
   historySize?: number;            // Max history entries to keep (default: 100)
 }
 
+/**
+ * ペナルティ制御インターフェース。
+ * @summary ペナルティを制御
+ */
 export interface AdaptivePenaltyController {
   readonly state: AdaptivePenaltyState;
   decay: (nowMs?: number) => void;
@@ -70,7 +124,12 @@ export interface AdaptivePenaltyController {
 }
 
 /**
- * Enhanced penalty controller with additional capabilities.
+ * 拡張ペナルティ制御
+ * @summary ペナルティ制御
+ * @param raiseWithReason 理由を指定してペナルティを発生させる
+ * @param getReasonStats 理由ごとの統計情報を取得する
+ * @param getDecayStrategy 減衰戦略を取得する
+ * @returns void
  */
 export interface EnhancedPenaltyController extends AdaptivePenaltyController {
   raiseWithReason: (reason: PenaltyReason) => void;
@@ -85,12 +144,10 @@ export interface EnhancedPenaltyController extends AdaptivePenaltyController {
 let cachedMode: "legacy" | "enhanced" | undefined;
 
 /**
- * Get the current adaptive penalty mode.
- * Reads from PI_ADAPTIVE_PENALTY_MODE environment variable.
- *
- * MIGRATION COMPLETE: Default is now "enhanced" (v2.0.0+)
- * - "legacy": Use linear decay (+1/-1 steps) (deprecated)
- * - "enhanced": Use exponential decay and reason-based weights (default)
+ * アダプティブペナルティモード取得
+ * @summary モードを取得
+ * @param なし
+ * @returns "legacy" または "enhanced"
  */
 export function getAdaptivePenaltyMode(): "legacy" | "enhanced" {
   if (cachedMode !== undefined) {
@@ -104,7 +161,9 @@ export function getAdaptivePenaltyMode(): "legacy" | "enhanced" {
 }
 
 /**
- * Reset the cached mode (primarily for testing).
+ * @summary キャッシュをリセット
+ * アダプティブペナルティモードのキャッシュをリセットする
+ * @returns {void}
  */
 export function resetAdaptivePenaltyModeCache(): void {
   cachedMode = undefined;
@@ -114,6 +173,12 @@ export function resetAdaptivePenaltyModeCache(): void {
 // Legacy Controller (unchanged for backward compatibility)
 // ============================================================================
 
+/**
+ * アダプティブペナルティコントローラ作成
+ * @summary コントローラを作成
+ * @param options - コントローラの設定オプション
+ * @returns 作成されたアダプティブペナルティコントローラ
+ */
 export function createAdaptivePenaltyController(
   options: AdaptivePenaltyOptions
 ): AdaptivePenaltyController {
@@ -181,13 +246,11 @@ export function createAdaptivePenaltyController(
 // Enhanced Controller (P1-4)
 // ============================================================================
 
-/**
- * Create an enhanced adaptive penalty controller.
- * Supports exponential decay and reason-based weights.
- *
- * @param options - Enhanced penalty options
- * @returns Enhanced penalty controller
- */
+ /**
+  * 拡張アダプティブペナルティコントローラーを作成
+  * @param options - 拡張ペナルティのオプション
+  * @returns 拡張ペナルティコントローラー
+  */
 export function createEnhancedPenaltyController(
   options: EnhancedPenaltyOptions
 ): EnhancedPenaltyController {
@@ -311,11 +374,10 @@ export function createEnhancedPenaltyController(
 }
 
 /**
- * Create the appropriate penalty controller based on feature flag.
- * This is the recommended factory function for production use.
- *
- * @param options - Penalty options (enhanced options are optional)
- * @returns Appropriate penalty controller based on PI_ADAPTIVE_PENALTY_MODE
+ * ペナルティコントローラ生成
+ * @summary コントローラを生成
+ * @param options - ペナルティオプション
+ * @returns フラグに基づいたペナルティコントローラ
  */
 export function createAutoPenaltyController(
   options: AdaptivePenaltyOptions | EnhancedPenaltyOptions
