@@ -163,4 +163,4 @@ formatSemanticSearch(result: SemanticSearchOutput): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T07:17:30.288Z*
+*自動生成: 2026-02-18T07:48:44.616Z*

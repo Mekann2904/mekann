@@ -61,4 +61,4 @@ type RuntimeSnapshotProvider = () => IRuntimeSnapshot
 ランタイムスナップショットの提供関数
 
 ---
-*自動生成: 2026-02-18T07:17:30.454Z*
+*自動生成: 2026-02-18T07:48:44.997Z*

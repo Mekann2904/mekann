@@ -488,4 +488,4 @@ type TeamJudgeVerdict = "trusted" | "partial" | "untrusted"
 チーム審査の判定結果
 
 ---
-*自動生成: 2026-02-18T07:17:30.150Z*
+*自動生成: 2026-02-18T07:48:44.346Z*
