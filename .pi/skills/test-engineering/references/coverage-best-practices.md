@@ -241,23 +241,23 @@ Step 4: 優先順位付け
 ### 避けるべき実践
 
 ```
-❌ アンチパターン1: 数値の神格化
+アンチパターン1: 数値の神格化
 - 「100%達成」が目的化
 - 品質より数値達成を優先
 - チェックボックスとして扱う
 
-❌ アンチパターン2: 形式的なテスト
+アンチパターン2: 形式的なテスト
 test('add function', () => {
   add(1, 2);  // アサーションなし
 });
 
-❌ アンチパターン3: コピー＆ペースト
+アンチパターン3: コピー＆ペースト
 test('case 1', () => { expect(fn(1)).toBe(1); });
 test('case 2', () => { expect(fn(2)).toBe(2); });
 test('case 3', () => { expect(fn(3)).toBe(3); });
 // プロパティベーステストで置き換えるべき
 
-❌ アンチパターン4: 除外の濫用
+アンチパターン4: 除外の濫用
 // istanbul ignore next
 function importantFunction() { ... }
 ```
@@ -265,24 +265,24 @@ function importantFunction() { ... }
 ### 正しい実践
 
 ```
-✅ 正しい実践1: 未カバー部分の分析重視
+正しい実践1: 未カバー部分の分析重視
 - 数値より何がテストされていないか
 - リスクベースの判断
 
-✅ 正しい実践2: 意味のあるテスト
+正しい実践2: 意味のあるテスト
 test('add should sum two numbers', () => {
   expect(add(1, 2)).toBe(3);
   expect(add(-1, 1)).toBe(0);
   expect(add(0.1, 0.2)).toBeCloseTo(0.3);
 });
 
-✅ 正しい実践3: プロパティベーステスト
+正しい実践3: プロパティベーステスト
 fc.assert(fc.property(
   fc.integer(), fc.integer(),
   (a, b) => add(a, b) === a + b
 ));
 
-✅ 正しい実践4: 適切な除外
+正しい実践4: 適切な除外
 // istanbul ignore next - cannot test without hardware
 function hardwareSpecificCode() { ... }
 ```

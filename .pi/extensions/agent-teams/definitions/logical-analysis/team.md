@@ -2,7 +2,7 @@
 id: logical-analysis-team
 name: Logical Analysis Team
 description: 論理的テキスト分析専門チーム。学術論文、技術文書、仕様書、契約書など幅広いテキストを対象に、構造・概念・論証の3軸で体系的に分析。論理的整合性、概念的明確性、論証の妥当性を評価し、改善提案を提供。
-enabled: disabled
+enabled: enabled
 strategy: parallel
 skills:
   - logical-analysis

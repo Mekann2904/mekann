@@ -2,7 +2,7 @@
 id: verification-phase-team
 name: Verification Phase Team
 description: 他のチームやサブエージェントの出力を検証する品質保証チーム。Inspectorが不審なパターンを検出し、Challengerが積極的に欠陥を指摘する。論文「Large Language Model Reasoning Failures」のP0推奨事項に基づく。
-enabled: disabled
+enabled: enabled
 strategy: sequential
 skills:
   - code-review          # コードレビュー

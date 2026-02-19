@@ -2,7 +2,7 @@
 id: invariant-generation-team
 name: Invariant Generation Team
 description: spec.mdから形式仕様、インバリアント、テストコードを生成する専門チーム。Phase 1で仕様解析、Phase 2で形式仕様生成、Phase 3でRustコード生成、Phase 4で検証を行い、高品質な検証成果物を提供する。
-enabled: true
+enabled: enabled
 strategy: parallel
 skills:
   - invariant-generation    # チーム共通: インバリアント生成専門知識

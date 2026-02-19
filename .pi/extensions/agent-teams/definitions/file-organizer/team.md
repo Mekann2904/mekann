@@ -2,7 +2,7 @@
 id: file-organizer-team
 name: File Organizer Team
 description: ファイル・フォルダの整理に特化したタスクフォース。現状の構造を分析し、重複ファイルを検出して、論理的な整理計画を立案・実行する。Phase 1で現状分析と重複検出、Phase 2で整理計画策定、Phase 3で実行と検証を行い、四人で協調してデジタルワークスペースを整頓する。
-enabled: disabled
+enabled: enabled
 strategy: parallel
 members:
   - id: structure-analyzer

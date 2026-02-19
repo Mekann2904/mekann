@@ -2,7 +2,7 @@
 id: core-delivery-team
 name: Core Delivery Team
 description: 汎用的なコーディングタスクに対応するバランス型デリバリーフォース。調査、実装、レビューを一連のフローで行い、決定論的な成果物を確立した上で最終的な合意形成を行う。Phase 1で徹底調査、Phase 2で実装設計、Phase 3で品質レビューを行い、三者で協調して高品質な成果物を迅速に提供する。
-enabled: disabled
+enabled: enabled
 strategy: parallel
 skills:
   - code-search           # チーム共通: 高速コード検索

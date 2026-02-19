@@ -313,24 +313,24 @@ expect(mockFn.mock.calls).toEqual([
 ### 避けるべきこと
 
 ```typescript
-// ❌ 過度なモック化（実装詳細への依存）
+// 過度なモック化（実装詳細への依存）
 test('bad - testing implementation', () => {
   mockService.internalHelper.mockReturnValue('x');
   // 内部実装をテストしている
 });
 
-// ❌ モックの過剰な連鎖
+// モックの過剰な連鎖
 test('bad - mock chain', () => {
   mockA.getB().getC().getD().doSomething();
   // 脆弱なテスト
 });
 
-// ❌ テスト対象をモック化
+// テスト対象をモック化
 test('bad - mocking SUT', () => {
   const sut = jest.fn();  // テスト対象自体をモック化
 });
 
-// ✅ 適切なモック化
+// 適切なモック化
 test('good - testing behavior', () => {
   mockDependency.process.mockReturnValue(result);
   const output = sut.doSomething(input);

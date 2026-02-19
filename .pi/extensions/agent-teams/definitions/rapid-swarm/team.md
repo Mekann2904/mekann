@@ -2,7 +2,7 @@
 id: rapid-swarm-team
 name: Rapid Swarm Team
 description: スピード重視の並列探索タスクフォース。独立した視点から迅速に探索・分析を行い、複数の仮説を検証した上で最終的な統合計画を策定する。Phase 1でAPI・インターフェース分析、Phase 2でデータフロー・状態遷移分析、Phase 3で統合と実行計画を行い、協調して迅速な意思決定を支援する。
-enabled: disabled
+enabled: enabled
 strategy: parallel
 members:
   - id: swarm-01

@@ -173,7 +173,7 @@ async function main() {
     const errors = await validateAllMermaidDiagrams();
 
     if (errors.length > 0) {
-      console.log('\n⚠️  Mermaid errors detected. Please fix the generation logic.');
+      console.log('\n[WARNING] Mermaid errors detected. Please fix the generation logic.');
       process.exit(1);
     }
   }
@@ -1923,7 +1923,7 @@ async function validateAllMermaidDiagrams(): Promise<MermaidError[]> {
           diagram: block.code.substring(0, 100) + '...',
           error: validation.error || 'Unknown error',
         });
-        console.log(`  ❌ ${block.file}:${block.line} - ${validation.error}`);
+        console.log(`  [X] ${block.file}:${block.line} - ${validation.error}`);
       } else {
         validCount++;
       }
@@ -1936,16 +1936,16 @@ async function validateAllMermaidDiagrams(): Promise<MermaidError[]> {
     }
   }
 
-  console.log(`\n📊 Results: ${validCount}/${allBlocks.length} diagrams valid`);
+  console.log(`\n[Results] ${validCount}/${allBlocks.length} diagrams valid`);
 
   if (errors.length > 0) {
-    console.log(`\n❌ ${errors.length} errors found:\n`);
+    console.log(`\n[X] ${errors.length} errors found:\n`);
     for (const err of errors) {
       console.log(`  ${err.file}:${err.line}`);
       console.log(`    ${err.error}\n`);
     }
   } else {
-    console.log('\n✅ All Mermaid diagrams are valid!\n');
+    console.log('\n[OK] All Mermaid diagrams are valid!\n');
   }
 
   return errors;

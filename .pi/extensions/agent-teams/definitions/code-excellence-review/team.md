@@ -2,7 +2,7 @@
 id: code-excellence-review-team
 name: Code Excellence Review Team
 description: 包括的なコードレビュータスクフォース。可読性、エレガンス、保守性、長期的な運用可能性を評価し、競合する改善案を検証した上で最終的な合意形成を行う。Phase 1 で可読性レビュー、Phase 2 でアーキテクチャレビュー、Phase 3 で統合と優先付けを行い、三人で協調してコード品質を向上させる。
-enabled: disabled
+enabled: enabled
 strategy: parallel
 skills:
   - lint-analyzer         # チーム共通: Lint結果解析

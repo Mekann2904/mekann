@@ -171,24 +171,57 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
         updatedAt: nowIso,
       });
     } else if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(fullPath).isDirectory())) {
-      // Subdirectory: look for team.md, TEAM.md, and p*.md (phase files)
-      // 読み込み対象のパターン: team.md, TEAM.md, p1.md, p2.md, p3.md, ...
-      const subEntries = readdirSync(fullPath, { withFileTypes: true });
+      // Subdirectory: look for team.md/TEAM.md first, then p*.md (phase files)
+      // ルール: team.mdがある場合のみp*.mdを読み込む（team.mdが統合チームとして機能）
+      const teamMdLower = join(fullPath, "team.md");
+      const teamMdUpper = join(fullPath, "TEAM.md");
+      const teamMdPath = existsSync(teamMdLower) ? teamMdLower : (existsSync(teamMdUpper) ? teamMdUpper : null);
 
+      // team.md/TEAM.mdがない場合はp*.mdも読み込まない
+      if (!teamMdPath) {
+        continue;
+      }
+
+      // team.mdを読み込み
+      const parsed = parseTeamMarkdownFile(teamMdPath);
+      if (parsed) {
+        const { frontmatter } = parsed;
+        const members: TeamMember[] = frontmatter.members.map((m) => ({
+          id: m.id,
+          role: m.role,
+          description: m.description,
+          provider: m.provider,
+          model: m.model,
+          enabled: m.enabled ?? true,
+          skills: m.skills,
+        }));
+
+        teams.push({
+          id: frontmatter.id,
+          name: frontmatter.name,
+          description: frontmatter.description,
+          enabled: frontmatter.enabled,
+          skills: frontmatter.skills,
+          members,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        });
+      }
+
+      // team.mdがある場合のみ、同じディレクトリ内のp*.md（フェーズ別）も読み込み
+      const subEntries = readdirSync(fullPath, { withFileTypes: true });
       for (const subEntry of subEntries) {
         if (!subEntry.isFile()) continue;
         if (!subEntry.name.endsWith(".md")) continue;
 
-        const isTeamMd = subEntry.name.toLowerCase() === "team.md";
         const isPhaseMd = /^p\d+\.md$/i.test(subEntry.name);
-
-        if (!isTeamMd && !isPhaseMd) continue;
+        if (!isPhaseMd) continue;
 
         const mdPath = join(fullPath, subEntry.name);
-        const parsed = parseTeamMarkdownFile(mdPath);
-        if (!parsed) continue;
+        const phaseParsed = parseTeamMarkdownFile(mdPath);
+        if (!phaseParsed) continue;
 
-        const { frontmatter } = parsed;
+        const { frontmatter } = phaseParsed;
         const members: TeamMember[] = frontmatter.members.map((m) => ({
           id: m.id,
           role: m.role,

@@ -26,18 +26,18 @@ pi拡張機能コレクションのユーザーガイドです。
 |---------|------|------|
 | **question** | インタラクティブUIでユーザー選択 | [→](./02-question.md) |
 
-| **loop_run** | 自律ループ実行 | [→](./04-loop-run.md) ✅ |
-| **fzf** | Fuzzy finder統合 | [→](./05-fzf.md) ✅ |
-| **abbr** | 略語管理 | [→](./06-abbr.md) ✅ |
+| **loop_run** | 自律ループ実行 | [→](./04-loop-run.md) 必須 |
+| **fzf** | Fuzzy finder統合 | [→](./05-fzf.md) 必須 |
+| **abbr** | 略語管理 | [→](./06-abbr.md) 必須 |
 
 ## オーケストレーション
 
 | 拡張機能 | 説明 | ドキュメント |
 |---------|------|------|
-| **plan_*** | 計画管理とタスク追跡 | [→](./07-plan.md) ✅ |
-| **subagent_*** | サブエージェント | [→](./08-subagents.md) ✅ |
-| **agent_team_*** | エージェントチーム | [→](./09-agent-teams.md) ✅ |
-| **ul-dual-mode** | デュアルモード強制実行 | [→](./10-ul-dual-mode.md) ✅ |
+| **plan_*** | 計画管理とタスク追跡 | [→](./07-plan.md) 必須 |
+| **subagent_*** | サブエージェント | [→](./08-subagents.md) 必須 |
+| **agent_team_*** | エージェントチーム | [→](./09-agent-teams.md) 必須 |
+| **ul-dual-mode** | デュアルモード強制実行 | [→](./10-ul-dual-mode.md) 必須 |
 
 ## ユーティリティ
 

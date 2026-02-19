@@ -2,7 +2,7 @@
 id: garbage-collection-team
 name: Garbage Collection Team
 description: 技術的負債を特定・評価・解消する専門チーム。コード複雑度、テストカバレッジ、依存関係、ドキュメント鮮度などを包括的に分析し、優先度付けされた改善計画を策定。継続的なコードベース健全化を実現する。
-enabled: disabled
+enabled: enabled
 strategy: parallel
 skills:
   - harness-engineering    # ハーネスエンジニアリング
