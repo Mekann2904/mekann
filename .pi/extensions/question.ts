@@ -31,7 +31,7 @@
 
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Text, truncateToWidth, CURSOR_MARKER } from "@mariozechner/pi-tui";
+import { Text, truncateToWidth, wrapTextWithAnsi, CURSOR_MARKER } from "@mariozechner/pi-tui";
 import { matchesKey, Key } from "@mariozechner/pi-tui";
 
 // ============================================
@@ -118,31 +118,87 @@ async function askSingleQuestion(
 		if (state.customMode) {
 			// カスタム入力モード
 			add(theme.fg("accent", " ✎ 自由記述:"));
-			// 複数行対応：入力を行に分割して表示
+			// 複数行対応：入力を行に分割して表示（折り返し対応）
 			const inputLines = state.customInput.split("\n");
+			// 表示幅（先頭のスペース分を引く）
+			const contentWidth = width - 2;
+			
+			// 各論理行を折り返して表示用の行に変換
+			// wrappedLines: 折り返し後の各行の情報
+			// { text: string, logicalLine: number, startCol: number, endCol: number }
+			const wrappedLines: { text: string; logicalLine: number; startCol: number; endCol: number }[] = [];
+			let logicalCharOffset = 0; // 論理テキスト全体での文字オフセット
+			
+			for (let logicalLineIdx = 0; logicalLineIdx < inputLines.length; logicalLineIdx++) {
+				const logicalLine = inputLines[logicalLineIdx];
+				if (logicalLine.length === 0) {
+					// 空行
+					wrappedLines.push({
+						text: "",
+						logicalLine: logicalLineIdx,
+						startCol: 0,
+						endCol: 0
+					});
+				} else {
+					// 折り返し処理
+					const wrapped = wrapTextWithAnsi(logicalLine, contentWidth);
+					let colOffset = 0;
+					for (const wrappedLine of wrapped) {
+						wrappedLines.push({
+							text: wrappedLine,
+							logicalLine: logicalLineIdx,
+							startCol: colOffset,
+							endCol: colOffset + wrappedLine.length
+						});
+						colOffset += wrappedLine.length;
+					}
+				}
+				logicalCharOffset += logicalLine.length + 1; // +1 for \n
+			}
+			
+			// カーソル位置から、どの折り返し行にいるかを特定
+			// まずカーソルがどの論理行のどの位置にあるかを計算
+			let cursorLogicalLine = 0;
+			let cursorColInLogicalLine = 0;
 			let charCount = 0;
 			for (let i = 0; i < inputLines.length; i++) {
-				const line = inputLines[i];
-				// カーソルがこの行にあるかチェック
-				if (state.customCursor >= charCount && state.customCursor <= charCount + line.length) {
-					// カーソル位置に応じて表示
-					const cursorPosInLine = state.customCursor - charCount;
-					const beforeCursor = line.slice(0, cursorPosInLine);
-					const cursorChar = cursorPosInLine < line.length ? line[cursorPosInLine] : " ";
-					const afterCursor = line.slice(cursorPosInLine + 1);
-					// カーソル位置の文字を反転表示（CURSOR_MARKERでIME位置を設定）
-					// truncateToWidthを使わない（CURSOR_MARKERがゼロ幅なため）
+				if (state.customCursor <= charCount + inputLines[i].length) {
+					cursorLogicalLine = i;
+					cursorColInLogicalLine = state.customCursor - charCount;
+					break;
+				}
+				charCount += inputLines[i].length + 1;
+			}
+			
+			// 該当する折り返し行を探す
+			let cursorWrappedLineIdx = 0;
+			let cursorColInWrappedLine = cursorColInLogicalLine;
+			for (let i = 0; i < wrappedLines.length; i++) {
+				const wl = wrappedLines[i];
+				if (wl.logicalLine === cursorLogicalLine) {
+					if (cursorColInLogicalLine >= wl.startCol && cursorColInLogicalLine <= wl.endCol) {
+						cursorWrappedLineIdx = i;
+						cursorColInWrappedLine = cursorColInLogicalLine - wl.startCol;
+						break;
+					}
+				}
+			}
+			
+			// 各折り返し行を表示
+			for (let i = 0; i < wrappedLines.length; i++) {
+				const wl = wrappedLines[i];
+				if (i === cursorWrappedLineIdx) {
+					// カーソルがある行
+					const beforeCursor = wl.text.slice(0, cursorColInWrappedLine);
+					const cursorChar = cursorColInWrappedLine < wl.text.length ? wl.text[cursorColInWrappedLine] : " ";
+					const afterCursor = wl.text.slice(cursorColInWrappedLine + 1);
 					const cursorDisplay = CURSOR_MARKER + "\x1b[7m" + cursorChar + "\x1b[0m";
 					addCursorLine(" " + beforeCursor + cursorDisplay + afterCursor);
 				} else {
-					add(" " + line);
+					add(" " + wl.text);
 				}
-				charCount += line.length + 1; // +1 for \n
 			}
-			// カーソルが最後にある場合
-			if (state.customCursor === state.customInput.length && !state.customInput.endsWith("\n")) {
-				// 既に上で処理済み
-			}
+			
 			lines.push("");
 			add(theme.fg("dim", " Enter確定 • Shift+Enter改行 • Esc戻る • ←→移動 • ↑↓行移動 • Home/End先頭/末尾 • Del削除"));
 		} else {
@@ -607,8 +663,20 @@ export default function (pi: ExtensionAPI) {
 			if (!result.details || !result.details.answers || result.details.answers.length === 0) {
 				return new Text(theme.fg("warning", "キャンセル"), 0, 0);
 			}
-			const count = result.details.answers.length;
-			return new Text(theme.fg("success", "✓ ") + theme.fg("accent", `${count}件回答`), 0, 0);
+			const answers = result.details.answers as string[][];
+			// 複数回答の場合は各回答を表示
+			if (answers.length === 1) {
+				// 単一質問の場合は回答内容をそのまま表示
+				const answerText = answers[0].join(", ");
+				return new Text(theme.fg("success", "✓ ") + theme.fg("accent", answerText), 0, 0);
+			} else {
+				// 複数質問の場合は各回答を改行で表示
+				const lines = answers.map((ans, i) => {
+					const answerText = ans.join(", ");
+					return theme.fg("dim", `${i + 1}. `) + theme.fg("accent", answerText);
+				});
+				return new Text(theme.fg("success", "✓ ") + "回答:\n" + lines.join("\n"), 0, 0);
+			}
 		}
 	});
 
