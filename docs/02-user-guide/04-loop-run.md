@@ -4,7 +4,7 @@ category: user-guide
 audience: daily-user
 last_updated: 2026-02-11
 tags: [loop-run, orchestration, iteration]
-related: [../README.md, ./01-extensions.md, ./03-rsa-solve.md]
+related: [../README.md, ./01-extensions.md]
 ---
 
 # loop_run - 自律ループ実行
@@ -382,5 +382,5 @@ loop_run({
 ## 関連トピック
 
 - [拡張機能一覧](./01-extensions.md) - 全拡張機能の概要
-- [rsa_solve](./03-rsa-solve.md) - 推論スケーリング
+
 - [subagents](./08-subagents.md) - サブエージェントの委任

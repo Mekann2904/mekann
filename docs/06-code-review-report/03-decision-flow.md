@@ -2,7 +2,7 @@
 title: 判断基準と意思決定フロー
 category: reference
 audience: developer
-last_updated: 2026-02-17
+last_updated: 2026-02-19
 tags: [decision-flow, delegation, best-practices]
 related:
   - ./README.md

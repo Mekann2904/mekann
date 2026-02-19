@@ -68,7 +68,7 @@ pi remove https://github.com/Mekann2904/mekann
 | 拡張機能 | ファイル | 説明 | ドキュメント |
 |---------|---------|------|------------|
 | **question** | `question.ts` | インタラクティブUIでユーザー選択 | [→](docs/02-user-guide/02-question.md) |
-| **rsa_solve** | `rsa.ts` | 推論スケーリングとタスク分割 | [→](docs/02-user-guide/03-rsa-solve.md) |
+
 | **loop_run** | `loop.ts` | 自律ループ実行 | [→](docs/02-user-guide/04-loop-run.md) |
 | **fzf** | `fzf.ts` | Fuzzy finder統合 | [→](docs/02-user-guide/05-fzf.md) |
 | **abbr** | `abbr.ts` | 略語管理 | [→](docs/02-user-guide/06-abbr.md) |
@@ -141,46 +141,22 @@ pi remove https://github.com/Mekann2904/mekann
 
 このプロジェクトには、サブエージェントやチームメンバーに割り当て可能なスキル管理システムが含まれています。
 
-### 利用可能なスキル（35個）
+### 利用可能なスキル（12個）
 
 | カテゴリ | スキル | 説明 |
 |---------|--------|------|
-| **分析** | exploratory-data-analysis | 200+科学ファイル形式のEDA |
-| **研究** | research-data-analysis | Dask/Polars大規模データ処理 |
-| | research-literature | 文献検索・引用管理 |
-| | research-statistics | 統計解析・テスト |
-| | research-hypothesis | 仮説生成・検証 |
-| | research-critical | 批判的分析・バイアス検出 |
-| | research-time-series | 時系列解析 |
-| | research-simulation | シミュレーション・最適化 |
-| | research-visualization | 出版品質図表 |
-| | research-presentation | スライド・ポスター作成 |
-| | research-writing | 学術論文執筆 |
-| **ML** | research-ml-classical | 古典的MLアルゴリズム |
-| | research-ml-deep | PyTorch深層学習 |
-| | research-ml-reinforcement | 強化学習 |
-| **コード解析** | code-metrics | コードメトリクス計測 |
-| | code-search | コード検索・パターンマッチング |
-| | code-transform | コード変換・リファクタリング |
-| | dependency-mapper | 依存関係マッピング |
-| | diff-analyzer | 差分解析 |
-| | lint-analyzer | Lint解析・品質チェック |
-| | log-analyzer | ログ解析 |
-| **ドキュメント** | doc-generator | ドキュメント自動生成 |
-| **セキュリティ** | sast-analyzer | 静的アプリケーションセキュリティテスト |
-| | secret-detector | シークレット検出 |
-| | vuln-scanner | 脆弱性スキャン |
-| **ユーティリティ** | skill-creator | スキル作成支援 |
-| **操作** | git-workflow | Git操作・ブランチ管理 |
-| **分析** | logical-analysis | 論理的テキスト分析（学術・技術・ビジネス文書） |
-| | clean-architecture | アーキテクチャ設計・レビュー |
+| **開発手法** | abdd | 実態駆動開発（意図記述と実態記述の往復レビュー） |
+| **設計・レビュー** | clean-architecture | アーキテクチャ設計・レビュー |
 | | code-review | コードレビュー |
 | **エージェント** | agent-estimation | AIエージェント作業工数見積もり（ツール呼び出しラウンドベース） |
 | | alma-memory | ALMAベースのメモリ設計（セマンティック検索、継続的学習） |
 | | harness-engineering | ハーネスエンジニアリング（品質向上の手法論） |
+| | dynamic-tools | タスク実行中の動的ツール生成・実行・管理 |
+| **分析** | logical-analysis | 論理的テキスト分析（学術・技術・ビジネス文書） |
+| **操作** | git-workflow | Git操作・ブランチ管理 |
 | **検索** | search-tools | 高速コード検索ツール（file_candidates, code_search, sym_index, sym_find） |
-| **動的ツール** | dynamic-tools | タスク実行中の動的ツール生成・実行・管理 |
 | **形式手法** | invariant-generation | 形式仕様からインバリアント、テストコード自動生成（Quint、Rustマクロ、プロパティテスト、MBT） |
+| **テスト** | test-engineering | 包括的テスト戦略（単体〜E2E、プロパティベース、モデルベース） |
 
 ### スキル運用方針
 
@@ -197,7 +173,6 @@ mekann/
 ├── .pi/
 │   ├── extensions/          # 拡張機能の実装
 │   │   ├── question.ts      # インタラクティブUI
-│   │   ├── rsa.ts           # 推論スケーリング
 │   │   ├── loop.ts          # 自律ループ実行
 │   │   ├── fzf.ts           # Fuzzy finder統合
 │   │   ├── abbr.ts          # 略語管理
@@ -244,7 +219,6 @@ mekann/
 │   │   ├── README.md
 │   │   ├── 01-extensions.md
 │   │   ├── 02-question.md
-│   │   └── 03-rsa-solve.md
 │   ├── 03-development/      # 開発者ガイド
 │   │   ├── README.md
 │   │   └── 01-getting-started.md
@@ -314,7 +288,6 @@ mekann/
 | カテゴリ | コマンド | 説明 |
 |---------|---------|------|
 | **UI** | `question` | インタラクティブな質問UI |
-| **推論** | `rsa_solve` | 推論スケーリング |
 | **ループ** | `loop_run` | 自律ループ実行 |
 | **検索** | `fzf` | ファジーファインダー |
 | **略語** | `abbr` | 略語の管理 |
@@ -453,7 +426,6 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 ### 完全な拡張機能セット
 
 - **インタラクティブUI**: question, fzfによる対話的選択
-- **推論スケーリング**: rsa_solveによる反復的集約と品質向上
 - **自律実行**: loop_runによるタスクループ
 - **並列委任**: subagents, agent-teamsによるタスク分散
 - **可視化**: context-dashboard, agent-idle-indicatorによる状態監視

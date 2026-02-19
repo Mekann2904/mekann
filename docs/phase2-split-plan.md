@@ -1,3 +1,12 @@
+---
+title: Phase 2 大規模ファイル分割計画
+category: meta
+audience: contributor
+last_updated: 2026-02-17
+tags: [refactoring, file-split, architecture]
+related: [./06-code-review-report/02-architecture-diagram.md]
+---
+
 # Phase 2 大規模ファイル分割計画
 
 ## 概要

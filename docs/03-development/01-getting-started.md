@@ -28,7 +28,6 @@ mekann/
 ├── .pi/
 │   └── extensions/           # 拡張機能ファイル
 │       ├── question.ts
-│       ├── rsa-solve.ts
 │       └── ...
 └── docs/                    # ドキュメント
 ```
