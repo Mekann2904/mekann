@@ -101,17 +101,16 @@ export interface AgentRuntimeLimits {
   capacityPollMs: number;
 }
 
-interface RuntimeQueueEntry extends PriorityTaskMetadata {
-  // Inherits from PriorityTaskMetadata:
-  // - id: string
-  // - toolName: string
-  // - priority: TaskPriority
-  // - estimatedDurationMs?: number
-  // - estimatedRounds?: number
-  // - deadlineMs?: number
-  // - enqueuedAtMs: number
-  // - source?: "user-interactive" | "background" | "scheduled" | "retry"
-}
+// RuntimeQueueEntry inherits all members from PriorityTaskMetadata
+// - id: string
+// - toolName: string
+// - priority: TaskPriority
+// - estimatedDurationMs?: number
+// - estimatedRounds?: number
+// - deadlineMs?: number
+// - enqueuedAtMs: number
+// - source?: "user-interactive" | "background" | "scheduled" | "retry"
+type RuntimeQueueEntry = PriorityTaskMetadata;
 
 interface RuntimeCapacityReservationRecord {
   id: string;

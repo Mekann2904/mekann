@@ -296,7 +296,7 @@ export interface TeamStorage {
  * @param currentTeamId 現在選択中のチームID
  * @param defaultsVersion デフォルト設定のバージョン
  */
-export interface TeamPaths extends BaseStoragePaths {}
+export type TeamPaths = BaseStoragePaths;
 
 // Constants
 export const MAX_RUNS_TO_KEEP = 100;
