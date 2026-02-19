@@ -2,7 +2,7 @@
 id: skill-creation-team
 name: Skill Creation Team
 description: 新しいPiスキルの設計・作成・検証を専門的に支援するチーム。skill-creatorスキルを活用し、Agent Skills標準に準拠したスキルを3フェーズで作成。要件定義からSKILL.md作成、品質検証まで一貫してサポート。
-enabled: disabled
+enabled: enabled
 skills:
   - skill-creator         # チーム共通: スキル作成ガイドライン
 members:

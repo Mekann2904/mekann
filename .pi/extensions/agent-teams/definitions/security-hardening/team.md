@@ -2,7 +2,7 @@
 id: security-hardening-team
 name: Security Hardening Team
 description: セキュリティに特化したタスクフォース。脅威分析、認証・認可チェック、依存関係リスク監査、パッチレビューを実施し、包括的なセキュリティを確立した上で最終的な修正計画を策定する。Phase 1で攻撃面マッピング、Phase 2で認証・認可監査、Phase 3で修正レビューを行い、三人で協調して脆弱性を排除する。
-enabled: disabled
+enabled: enabled
 strategy: parallel
 skills:
   - vuln-scanner          # チーム共通: 脆弱性スキャン

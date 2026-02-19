@@ -2,7 +2,7 @@
 id: bug-war-room
 name: Bug War Room
 description: バグの根本原因調査タスクフォース。競合する仮説を検証し、決定論的な再現手順を確立した上で、最終的な合意形成を行う。Phase 1 で根本原因調査、Phase 2 でパターン分析、Phase 3 で仮説と検証、Phase 4 で実装と修正を行い、三人で協調して原因特定を行う。
-enabled: disabled
+enabled: enabled
 strategy: parallel
 skills:
   - log-analyzer          # チーム共通: ログ解析・エラー抽出

@@ -15,5 +15,5 @@ members:
   - id: e2e-engineer
     role: E2E & Acceptance Engineer
     description: E2Eテスト・受け入れテストを担当。ユーザージャーニーのテスト、BDDスタイルのテスト、最も価値のあるフローの特定、モデルベーステストを含む。
-enabled: true
+enabled: enabled
 ---
