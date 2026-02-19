@@ -31,17 +31,80 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync, spawn } from "node:child_process";
-import { Type } from "@sinclair/typebox";
+import { spawn } from "node:child_process";
+import { Type, Static } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import {
+	AbddError,
+	AbddErrorCodes,
+	DEFAULT_TIMEOUT_MS,
+	JSDOC_TIMEOUT_MS,
+	WORKFLOW_DEFAULT_TIMEOUT_MS,
+	validateFilePath,
+} from "../lib/abdd-types";
 
 // ============================================================================
-// Constants
+// Constants (local only, not duplicated from abdd-types.ts)
 // ============================================================================
 
 const ROOT_DIR = process.cwd();
 const SCRIPTS_DIR = path.join(ROOT_DIR, "scripts");
 const ABDD_DIR = path.join(ROOT_DIR, "ABDD");
+const EXTENSIONS_DIR = path.join(ROOT_DIR, ".pi", "extensions");
+
+// ============================================================================
+// Path Validation
+// ============================================================================
+
+// validateFilePath は abdd-types.ts からインポート
+
+// ============================================================================
+// TypeBox Parameter Types with Static inference
+// ============================================================================
+
+const AbddGenerateParams = Type.Object({
+	dryRun: Type.Optional(Type.Boolean({ description: "ドライラン" })),
+	verbose: Type.Optional(Type.Boolean({ description: "詳細ログ" })),
+});
+type AbddGenerateParamsType = Static<typeof AbddGenerateParams>;
+
+const AbddJsdocParams = Type.Object({
+	dryRun: Type.Optional(Type.Boolean({ description: "ドライラン" })),
+	check: Type.Optional(Type.Boolean({ description: "CI用チェック" })),
+	verbose: Type.Optional(Type.Boolean({ description: "詳細ログ" })),
+	limit: Type.Optional(Type.Number({ description: "処理上限" })),
+	batchSize: Type.Optional(Type.Number({ description: "バッチ処理サイズ" })),
+	file: Type.Optional(Type.String({ description: "特定ファイル" })),
+	regenerate: Type.Optional(Type.Boolean({ description: "再生成" })),
+	force: Type.Optional(Type.Boolean({ description: "強制再生成" })),
+	noCache: Type.Optional(Type.Boolean({ description: "キャッシュ不使用" })),
+	metrics: Type.Optional(Type.Boolean({ description: "品質メトリクス" })),
+});
+type AbddJsdocParamsType = Static<typeof AbddJsdocParams>;
+
+const AbddReviewParams = Type.Object({
+	date: Type.Optional(Type.String({ description: "レビュー日付（YYYY-MM-DD）" })),
+	showChecklist: Type.Optional(Type.Boolean({ description: "チェックリスト表示" })),
+	createRecord: Type.Optional(Type.Boolean({ description: "記録ファイル作成" })),
+});
+type AbddReviewParamsType = Static<typeof AbddReviewParams>;
+
+const AbddAnalyzeParams = Type.Object({
+	verbose: Type.Optional(Type.Boolean({ description: "詳細ログを出力" })),
+	checkInvariants: Type.Optional(Type.Boolean({ description: "不変条件チェックを実行（デフォルト: true）" })),
+	checkValues: Type.Optional(Type.Boolean({ description: "価値観チェックを実行（デフォルト: true）" })),
+	checkJSDoc: Type.Optional(Type.Boolean({ description: "JSDoc欠落チェックを実行（デフォルト: true）" })),
+});
+type AbddAnalyzeParamsType = Static<typeof AbddAnalyzeParams>;
+
+const AbddWorkflowParams = Type.Object({
+	mode: Type.Optional(Type.String({ description: "実行モード: fast（デフォルト）または strict" })),
+	dryRun: Type.Optional(Type.Boolean({ description: "ドライラン" })),
+	verbose: Type.Optional(Type.Boolean({ description: "詳細ログ" })),
+	timeoutMs: Type.Optional(Type.Number({ description: "各ステップのタイムアウト（ミリ秒、デフォルト: 300000 = 5分）" })),
+	continueOnError: Type.Optional(Type.Boolean({ description: "エラー時も続行する（デフォルト: true）" })),
+});
+type AbddWorkflowParamsType = Static<typeof AbddWorkflowParams>;
 
 // ============================================================================
 // Types for abdd_analyze
@@ -65,6 +128,86 @@ interface Divergence {
 	reason: string;
 }
 
+/** spawn実行結果 */
+interface SpawnResult {
+	success: boolean;
+	stdout: string;
+	stderr: string;
+	timedOut?: boolean;
+	exitCode?: number;
+}
+
+/**
+ * spawnを使用した安全なスクリプト実行関数
+ * execSync(args.join(" "))のコマンドインジェクション脆弱性を回避
+ */
+function runScriptAsync(
+	scriptPath: string,
+	args: string[],
+	options: { timeoutMs?: number; cwd?: string } = {}
+): Promise<SpawnResult> {
+	const { timeoutMs = DEFAULT_TIMEOUT_MS, cwd = ROOT_DIR } = options;
+
+	return new Promise((resolve) => {
+		if (!fs.existsSync(scriptPath)) {
+			resolve({
+				success: false,
+				stdout: "",
+				stderr: new AbddError(
+					`スクリプトが見つかりません: ${scriptPath}`,
+					AbddErrorCodes.SCRIPT_NOT_FOUND
+				).message,
+			});
+			return;
+		}
+
+		// shell: falseでコマンドインジェクションを防止
+		const fullArgs = ["tsx", scriptPath, ...args];
+		const childProcess = spawn("npx", fullArgs, {
+			cwd,
+			shell: false,
+			stdio: ["pipe", "pipe", "pipe"],
+		});
+
+		let stdout = "";
+		let stderr = "";
+		let timedOut = false;
+
+		const timeoutId = setTimeout(() => {
+			timedOut = true;
+			childProcess.kill("SIGTERM");
+		}, timeoutMs);
+
+		childProcess.stdout?.on("data", (data: Buffer) => {
+			stdout += data.toString();
+		});
+
+		childProcess.stderr?.on("data", (data: Buffer) => {
+			stderr += data.toString();
+		});
+
+		childProcess.on("close", (code) => {
+			clearTimeout(timeoutId);
+			resolve({
+				success: code === 0 && !timedOut,
+				stdout,
+				stderr,
+				timedOut,
+				exitCode: code ?? undefined,
+			});
+		});
+
+		childProcess.on("error", (error) => {
+			clearTimeout(timeoutId);
+			resolve({
+				success: false,
+				stdout,
+				stderr: error.message,
+			});
+		});
+	});
+}
+
 // ============================================================================
 // Extension
 // ============================================================================
@@ -82,50 +225,37 @@ export default function (pi: ExtensionAPI) {
 
 生成される図: クラス図、依存関係図、関数フロー図、シーケンス図
 前提条件: mmdc (Mermaid CLI) がインストールされていると厳密な図検証が可能`,
-		parameters: Type.Object({
-			dryRun: Type.Optional(Type.Boolean({ description: "ドライラン" })),
-			verbose: Type.Optional(Type.Boolean({ description: "詳細ログ" })),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		parameters: AbddGenerateParams,
+		async execute(_toolCallId, params: AbddGenerateParamsType, _signal, _onUpdate, _ctx) {
 			const scriptPath = path.join(SCRIPTS_DIR, "generate-abdd.ts");
-			const p = params as Record<string, unknown>;
 
-			if (!fs.existsSync(scriptPath)) {
+			// 引数を構築（安全に配列として渡す）
+			const args: string[] = [];
+			if (params.dryRun === true) args.push("--dry-run");
+			if (params.verbose === true) args.push("--verbose");
+
+			const result = await runScriptAsync(scriptPath, args, { timeoutMs: DEFAULT_TIMEOUT_MS });
+
+			if (!result.success) {
+				const errorMsg = result.timedOut
+					? `タイムアウト (${DEFAULT_TIMEOUT_MS / 1000}秒)`
+					: result.stderr || `終了コード: ${result.exitCode}`;
 				return {
-					content: [{ type: "text" as const, text: `エラー: スクリプトが見つかりません: ${scriptPath}` }],
-					details: { success: false, error: "Script not found" },
+					content: [{
+						type: "text" as const,
+						text: `エラー: ${errorMsg}\n\nヒント: mmdc (Mermaid CLI) がインストールされているか確認してください: npm install -g @mermaid-js/mermaid-cli`
+					}],
+					details: { success: false, error: errorMsg },
 				};
 			}
 
-			try {
-				const args = ["npx", "tsx", scriptPath];
-				// オプションを追加
-				if (p.dryRun === true) args.push("--dry-run");
-				if (p.verbose === true) args.push("--verbose");
-
-				const result = execSync(args.join(" "), {
-					cwd: ROOT_DIR,
-					encoding: "utf-8",
-					timeout: 120000,
-					stdio: ["pipe", "pipe", "pipe"],
-				});
-
-				return {
-					content: [{ type: "text" as const, text: `実態ドキュメントの生成が完了しました\n\n出力先: ${ABDD_DIR}\n\n${result}` }],
-					details: { success: true, output: result, outputDir: ABDD_DIR },
-				};
-			} catch (error) {
-				// stderrも含めてエラーメッセージを構築
-				let errorMessage = error instanceof Error ? error.message : String(error);
-				const execError = error as { stderr?: string; stdout?: string };
-				if (execError.stderr) {
-					errorMessage = `${errorMessage}\n\nstderr: ${execError.stderr}`;
-				}
-				return {
-					content: [{ type: "text" as const, text: `エラー: ${errorMessage}\n\nヒント: mmdc (Mermaid CLI) がインストールされているか確認してください: npm install -g @mermaid-js/mermaid-cli` }],
-					details: { success: false, error: errorMessage },
-				};
-			}
+			return {
+				content: [{
+					type: "text" as const,
+					text: `実態ドキュメントの生成が完了しました\n\n出力先: ${ABDD_DIR}\n\n${result.stdout}`
+				}],
+				details: { success: true, output: result.stdout, outputDir: ABDD_DIR },
+			};
 		},
 	});
 
@@ -138,73 +268,60 @@ export default function (pi: ExtensionAPI) {
 主な機能: エクスポート関数、クラス、インターフェース、型を対象
 CI用途: check: true でJSDocがない要素数を確認
 品質基準: 要約50文字以内、すべてのパラメータに@param、戻り値がある場合@returns`,
-		parameters: Type.Object({
-			dryRun: Type.Optional(Type.Boolean({ description: "ドライラン" })),
-			check: Type.Optional(Type.Boolean({ description: "CI用チェック" })),
-			verbose: Type.Optional(Type.Boolean({ description: "詳細ログ" })),
-			limit: Type.Optional(Type.Number({ description: "処理上限" })),
-			batchSize: Type.Optional(Type.Number({ description: "バッチ処理サイズ" })),
-			file: Type.Optional(Type.String({ description: "特定ファイル" })),
-			regenerate: Type.Optional(Type.Boolean({ description: "再生成" })),
-			force: Type.Optional(Type.Boolean({ description: "強制再生成" })),
-			noCache: Type.Optional(Type.Boolean({ description: "キャッシュ不使用" })),
-			metrics: Type.Optional(Type.Boolean({ description: "品質メトリクス" })),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+		parameters: AbddJsdocParams,
+		async execute(_toolCallId, params: AbddJsdocParamsType, _signal, _onUpdate, _ctx) {
 			const scriptPath = path.join(SCRIPTS_DIR, "add-jsdoc.ts");
-			const p = params as Record<string, unknown>;
 
-			if (!fs.existsSync(scriptPath)) {
-				return {
-					content: [{ type: "text" as const, text: `エラー: スクリプトが見つかりません: ${scriptPath}` }],
-					details: { success: false, error: "Script not found" },
-				};
+			// 引数を構築（安全に配列として渡す）
+			const args: string[] = [];
+			if (params.dryRun === true) args.push("--dry-run");
+			if (params.check === true) args.push("--check");
+			if (params.verbose === true) args.push("--verbose");
+			if (params.limit !== undefined) args.push("--limit", String(params.limit));
+			if (params.batchSize !== undefined) args.push("--batch-size", String(params.batchSize));
+			// パストラバーサル対策: fileパラメータを検証
+			if (params.file !== undefined) {
+				const validatedPath = validateFilePath(params.file, EXTENSIONS_DIR);
+				args.push("--file", validatedPath);
 			}
+			if (params.regenerate === true) args.push("--regenerate");
+			if (params.force === true) args.push("--force");
+			if (params.noCache === true) args.push("--no-cache");
+			if (params.metrics === true) args.push("--metrics");
 
-			try {
-				const args = ["npx", "tsx", scriptPath];
-				if (p.dryRun === true) args.push("--dry-run");
-				if (p.check === true) args.push("--check");
-				if (p.verbose === true) args.push("--verbose");
-				if (p.limit !== undefined) args.push("--limit", String(p.limit));
-				if (p.batchSize !== undefined) args.push("--batch-size", String(p.batchSize));
-				if (p.file !== undefined) args.push("--file", String(p.file));
-				if (p.regenerate === true) args.push("--regenerate");
-				if (p.force === true) args.push("--force");
-				if (p.noCache === true) args.push("--no-cache");
-				if (p.metrics === true) args.push("--metrics");
+			const result = await runScriptAsync(scriptPath, args, { timeoutMs: JSDOC_TIMEOUT_MS });
 
-				const result = execSync(args.join(" "), {
-					cwd: ROOT_DIR,
-					encoding: "utf-8",
-					timeout: 300000,
-					stdio: ["pipe", "pipe", "pipe"],
-				});
+			if (!result.success) {
+				const errorMsg = result.timedOut
+					? `タイムアウト (${JSDOC_TIMEOUT_MS / 1000}秒)`
+					: result.stderr || result.stdout || `終了コード: ${result.exitCode}`;
 
-				return {
-					content: [{ type: "text" as const, text: `JSDoc生成が完了しました\n\n${result}` }],
-					details: { success: true, output: result },
-				};
-			} catch (error) {
-				// stderrも含めてエラーメッセージを構築
-				let errorMessage = error instanceof Error ? error.message : String(error);
-				const execError = error as { stderr?: string; stdout?: string };
-				if (execError.stderr) {
-					errorMessage = `${errorMessage}\n\nstderr: ${execError.stderr}`;
-				}
-
-				if (p.check === true) {
+				if (params.check === true) {
 					return {
-						content: [{ type: "text" as const, text: `JSDocがない要素が見つかりました\n\n${errorMessage}\n\nヒント: npx tsx scripts/add-jsdoc.ts --dry-run で詳細を確認してください` }],
-						details: { success: false, error: "JSDoc missing", output: errorMessage },
+						content: [{
+							type: "text" as const,
+							text: `JSDocがない要素が見つかりました\n\n${errorMsg}\n\nヒント: npx tsx scripts/add-jsdoc.ts --dry-run で詳細を確認してください`
+						}],
+						details: { success: false, error: "JSDoc missing", output: errorMsg },
 					};
 				}
 
 				return {
-					content: [{ type: "text" as const, text: `エラー: ${errorMessage}\n\nヒント: APIキーが設定されているか確認してください（~/.pi/agent/auth.json）` }],
-					details: { success: false, error: errorMessage },
+					content: [{
+						type: "text" as const,
+						text: `エラー: ${errorMsg}\n\nヒント: APIキーが設定されているか確認してください（~/.pi/agent/auth.json）`
+					}],
+					details: { success: false, error: errorMsg },
 				};
 			}
+
+			return {
+				content: [{
+					type: "text" as const,
+					text: `JSDoc生成が完了しました\n\n${result.stdout}`
+				}],
+				details: { success: true, output: result.stdout },
+			};
 		},
 	});
 
@@ -216,16 +333,11 @@ CI用途: check: true でJSDocがない要素数を確認
 
 確認項目: philosophy.mdの価値観、spec.mdの不変条件、契約、境界条件
 レビュー記録: createRecord: true で ABDD/reviews/YYYY-MM-DD.md に記録を作成`,
-		parameters: Type.Object({
-			date: Type.Optional(Type.String({ description: "レビュー日付（YYYY-MM-DD）" })),
-			showChecklist: Type.Optional(Type.Boolean({ description: "チェックリスト表示" })),
-			createRecord: Type.Optional(Type.Boolean({ description: "記録ファイル作成" })),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const p = params as Record<string, unknown>;
-			const showChecklist = p.showChecklist !== false;
-			const createRecord = p.createRecord === true;
-			const dateStr = (p.date as string) || new Date().toISOString().split("T")[0];
+		parameters: AbddReviewParams,
+		async execute(_toolCallId, params: AbddReviewParamsType, _signal, _onUpdate, _ctx) {
+			const showChecklist = params.showChecklist !== false;
+			const createRecord = params.createRecord === true;
+			const dateStr = params.date || new Date().toISOString().split("T")[0];
 
 			const checklist = `# ABDD レビューチェックリスト (${dateStr})
 
@@ -355,18 +467,12 @@ CI用途: check: true でJSDocがない要素数を確認
 \`\`\`
 
 注意: 機械的検出のため偽陽性を含みます。人間による最終判断が必要。`,
-		parameters: Type.Object({
-			verbose: Type.Optional(Type.Boolean({ description: "詳細ログを出力" })),
-			checkInvariants: Type.Optional(Type.Boolean({ description: "不変条件チェックを実行（デフォルト: true）" })),
-			checkValues: Type.Optional(Type.Boolean({ description: "価値観チェックを実行（デフォルト: true）" })),
-			checkJSDoc: Type.Optional(Type.Boolean({ description: "JSDoc欠落チェックを実行（デフォルト: true）" })),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const p = params as Record<string, unknown>;
-			const verbose = p.verbose === true;
-			const checkInvariants = p.checkInvariants !== false;
-			const checkValues = p.checkValues !== false;
-			const checkJSDoc = p.checkJSDoc !== false;
+		parameters: AbddAnalyzeParams,
+		async execute(_toolCallId, params: AbddAnalyzeParamsType, _signal, _onUpdate, _ctx) {
+			const verbose = params.verbose === true;
+			const checkInvariants = params.checkInvariants !== false;
+			const checkValues = params.checkValues !== false;
+			const checkJSDoc = params.checkJSDoc !== false;
 
 			const divergences: Divergence[] = [];
 			const warnings: string[] = [];
@@ -503,16 +609,9 @@ fast（通常）: generate-abddのみ実行。日常運用向け。高速。
 strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → generate-abdd。PR前・大規模変更向け。
 
 注意: 各ステップにはタイムアウト（デフォルト5分）が設定されています。LLM応答がない場合は自動的に次のステップに進みます。`,
-		parameters: Type.Object({
-			mode: Type.Optional(Type.String({ description: "実行モード: fast（デフォルト）または strict" })),
-			dryRun: Type.Optional(Type.Boolean({ description: "ドライラン" })),
-			verbose: Type.Optional(Type.Boolean({ description: "詳細ログ" })),
-			timeoutMs: Type.Optional(Type.Number({ description: "各ステップのタイムアウト（ミリ秒、デフォルト: 300000 = 5分）" })),
-			continueOnError: Type.Optional(Type.Boolean({ description: "エラー時も続行する（デフォルト: true）" })),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const p = params as Record<string, unknown>;
-			const mode = (p.mode as string) || "fast";
+		parameters: AbddWorkflowParams,
+		async execute(_toolCallId, params: AbddWorkflowParamsType, _signal, _onUpdate, _ctx) {
+			const mode = params.mode || "fast";
 
 			if (mode !== "fast" && mode !== "strict") {
 				return {
@@ -521,10 +620,10 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
 				};
 			}
 
-			const dryRun = p.dryRun === true;
-			const verbose = p.verbose === true;
-			const timeoutMs = (p.timeoutMs as number) || 300000; // デフォルト5分
-			const continueOnError = p.continueOnError !== false; // デフォルトtrue
+			const dryRun = params.dryRun === true;
+			const verbose = params.verbose === true;
+			const timeoutMs = params.timeoutMs || WORKFLOW_DEFAULT_TIMEOUT_MS;
+			const continueOnError = params.continueOnError !== false;
 			const baseArgs: string[] = [];
 			if (dryRun) baseArgs.push("--dry-run");
 			if (verbose) baseArgs.push("--verbose");

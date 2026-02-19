@@ -5,71 +5,72 @@
  * TypeScriptソースファイルからAPIドキュメントとMermaid図を自動生成する
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, mkdtempSync, rmSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdtempSync, rmSync } from 'fs';
 import { join, relative, dirname, basename } from 'path';
-import { execSync, exec, spawn } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as ts from 'typescript';
 import * as os from 'os';
+import {
+	type FunctionInfo,
+	type ClassInfo,
+	type InterfaceInfo,
+	type TypeInfo,
+	type ImportBinding,
+	type ImportInfo,
+	type CallNode,
+	type ToolInfo,
+	type FileInfo,
+	type CrossFileCache,
+	type TypeCheckerContext,
+	type GeneratorContext,
+	type GeneratorOptions,
+	createGeneratorContext,
+	MERMAID_PARALLEL_LIMIT,
+	MAX_FILE_SIZE_MB,
+	DEFAULT_TIMEOUT_MS,
+} from '../.pi/lib/abdd-types.js';
+import {
+	collectTypeScriptFiles,
+	collectMarkdownFiles,
+	mkdirIfNotExists,
+} from './generate-abdd/file-utils.js';
+import {
+	sanitizeMermaidType,
+	sanitizeMermaidIdentifier,
+	extractMermaidBlocks,
+	validateMermaid,
+} from './generate-abdd/mermaid-gen.js';
 
 const execAsync = promisify(exec);
 
+/**
+ * コマンドが存在するかチェック（which/spawnを使用）
+ */
+async function commandExists(command: string): Promise<boolean> {
+	return new Promise((resolve) => {
+		const child = spawn(command, ["--version"], {
+			shell: true,
+			stdio: "pipe",
+		});
+		child.on("error", () => resolve(false));
+		child.on("close", (code) => resolve(code === 0));
+	});
+}
+
 // ============================================================================
-// Types
+// Local Types (not shared with abdd-types.ts)
 // ============================================================================
 
-interface FunctionInfo {
-  name: string;
-  signature: string;
-  line: number;
-  jsDoc?: string;
-  summary?: string;  // @summaryタグから抽出（シーケンス図用）
-  parameters: { name: string; type: string; optional: boolean }[];
-  returnType: string;
-  isAsync: boolean;
-  isExported: boolean;
+/** ToolInfoのAST用拡張プロパティ（ローカル定義） */
+interface ToolInfoWithAst extends ToolInfo {
+  executeExpr?: ts.Expression;       // execute関数のAST（PropertyAssignmentの場合）
+  executeMethodDecl?: ts.MethodDeclaration; // execute関数のAST（MethodDeclarationの場合）
 }
 
-interface ClassInfo {
-  name: string;
-  line: number;
-  jsDoc?: string;
-  methods: { name: string; signature: string; visibility: string }[];
-  properties: { name: string; type: string; visibility: string }[];
-  extends?: string;
-  implements: string[];
-  isExported: boolean;
-}
-
-interface InterfaceInfo {
-  name: string;
-  line: number;
-  jsDoc?: string;
-  properties: { name: string; type: string; optional: boolean }[];
-  methods: { name: string; signature: string }[];
-  extends: string[];
-  isExported: boolean;
-}
-
-interface TypeInfo {
-  name: string;
-  line: number;
-  jsDoc?: string;
-  definition: string;
-  isExported: boolean;
-}
-
-interface ImportBinding {
-  source: string;
-  localName: string;
-  importedName: string;
-  kind: 'named' | 'default' | 'namespace';
-}
-
-interface ImportInfo {
-  source: string;
-  bindings: ImportBinding[];
-}
+// ============================================================================
+// Helper Functions
+// ============================================================================
 
 /**
  * JSDocから@summaryタグを抽出
@@ -86,7 +87,7 @@ function extractSummary(jsDoc: string | undefined): string | undefined {
 function getJsDocText(node: ts.Node, sourceFile: ts.SourceFile): string | undefined {
   const jsDocs = ts.getJSDocCommentsAndTags(node);
   if (jsDocs.length === 0) return undefined;
-  
+
   // JSDoc全体をテキストとして取得
   return jsDocs.map(j => {
     if ('getText' in j && typeof j.getText === 'function') {
@@ -96,72 +97,21 @@ function getJsDocText(node: ts.Node, sourceFile: ts.SourceFile): string | undefi
   }).join('\n');
 }
 
-// ユーザーフロー生成用の型
-interface ToolInfo {
-  name: string;
-  description: string;
-  executeFunction: string;
-  line: number;
-  executeExpr?: ts.Expression;       // execute関数のAST（PropertyAssignmentの場合）
-  executeMethodDecl?: ts.MethodDeclaration; // execute関数のAST（MethodDeclarationの場合）
-  executeCalls?: CallNode[];         // execute関数内の呼び出し（事前抽出）
-}
+// ============================================================================
+// Constants
+// ============================================================================
 
-interface CallNode {
-  callee: string;
-  displayName?: string;
-  isAsync: boolean;
-  line: number;
-  /** 外部ファイルからインポートされた関数の場合、そのファイルパス */
-  importedFrom?: string;
-  /** importedFromに紐づくシンボル名 */
-  importedSymbol?: string;
-}
-
-/** クロスファイル追跡用のキャッシュ */
-interface CrossFileCache {
-  /** ファイルパス → FileInfo */
-  fileInfos: Map<string, FileInfo>;
-  /** 関数名 → { filePath, functionInfo } のマッピング（インポート解決用） */
-  functionLocations: Map<string, { filePath: string; info: FunctionInfo }>;
-}
-
-interface TypeCheckerContext {
-  program: ts.Program;
-  checker: ts.TypeChecker;
-  sourceFiles: Map<string, ts.SourceFile>;
-  compilerOptions: ts.CompilerOptions;
-}
-
-interface FileInfo {
-  path: string;
-  relativePath: string;
-  functions: FunctionInfo[];
-  classes: ClassInfo[];
-  interfaces: InterfaceInfo[];
-  types: TypeInfo[];
-  imports: ImportInfo[];
-  exports: string[];
-  // ユーザーフロー用
-  tools: ToolInfo[];
-  calls: Map<string, CallNode[]>;
-}
+const ROOT_DIR = process.cwd();
+const EXTENSIONS_DIR = join(ROOT_DIR, '.pi', 'extensions');
+const LIB_DIR = join(ROOT_DIR, '.pi', 'lib');
+const ABDD_DIR = join(ROOT_DIR, 'ABDD');
 
 // ============================================================================
 // Main
 // ============================================================================
 
-import { fileURLToPath } from 'url';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const ROOT_DIR = join(__dirname, '..');
-const EXTENSIONS_DIR = join(ROOT_DIR, '.pi/extensions');
-const LIB_DIR = join(ROOT_DIR, '.pi/lib');
-const ABDD_DIR = join(ROOT_DIR, 'ABDD');
-
 /** Mermaid検証の並列数（mmdcはPuppeteerを使用するため控えめに） */
-const MERMAID_PARALLEL_LIMIT = 4;
+const MERMAID_PARALLEL_LIMIT_LOCAL = MERMAID_PARALLEL_LIMIT;
 
 /**
  * コマンドライン引数をパースする
@@ -177,7 +127,9 @@ function parseArgs(args: string[]): { dryRun: boolean; verbose: boolean; file?: 
 async function main() {
   const args = process.argv.slice(2);
   const options = parseArgs(args);
-  globalOptions = options;
+
+  // コンテキストを初期化（ローカル変数として管理）
+  const ctx = createGeneratorContext(options);
 
   console.log('=== ABDD Documentation Generator ===\n');
 
@@ -195,7 +147,7 @@ async function main() {
   if (options.file) {
     console.log(`Processing single file: ${options.file}`);
     const fullPath = join(EXTENSIONS_DIR, options.file);
-    processFile(fullPath, EXTENSIONS_DIR, join(ABDD_DIR, '.pi/extensions'));
+    processFile(fullPath, EXTENSIONS_DIR, join(ABDD_DIR, '.pi/extensions'), ctx);
     console.log('\n=== Done ===');
     return;
   }
@@ -204,14 +156,14 @@ async function main() {
   console.log('Processing extensions...');
   const extensionFiles = collectTypeScriptFiles(EXTENSIONS_DIR);
   for (const file of extensionFiles) {
-    processFile(file, EXTENSIONS_DIR, join(ABDD_DIR, '.pi/extensions'));
+    processFile(file, EXTENSIONS_DIR, join(ABDD_DIR, '.pi/extensions'), ctx);
   }
 
   // Lib ファイルを処理
   console.log('Processing lib...');
   const libFiles = collectTypeScriptFiles(LIB_DIR);
   for (const file of libFiles) {
-    processFile(file, LIB_DIR, join(ABDD_DIR, '.pi/lib'));
+    processFile(file, LIB_DIR, join(ABDD_DIR, '.pi/lib'), ctx);
   }
 
   // Mermaid図を検証（dryRunの場合はスキップ）
@@ -229,25 +181,11 @@ async function main() {
   console.log('\n=== Done ===');
 }
 
-// ============================================================================
-// Global Options
-// ============================================================================
-
-let globalOptions = { dryRun: false, verbose: false };
-
-// クロスファイル追跡用のグローバルキャッシュ
-const crossFileCache: CrossFileCache = {
-  fileInfos: new Map(),
-  functionLocations: new Map(),
-};
-
-let typeCheckerContext: TypeCheckerContext | null = null;
-
 function normalizeFsPath(p: string): string {
   return p.replace(/\\/g, '/');
 }
 
-function buildTypeCheckerContext(): TypeCheckerContext | null {
+function buildTypeCheckerContext(ctx: GeneratorContext): TypeCheckerContext | null {
   try {
     const configCandidates = [
       join(ROOT_DIR, 'tsconfig-check.json'),
@@ -300,7 +238,7 @@ function buildTypeCheckerContext(): TypeCheckerContext | null {
       compilerOptions: program.getCompilerOptions(),
     };
   } catch (error) {
-    if (globalOptions.verbose) {
+    if (ctx.options.verbose) {
       const msg = error instanceof Error ? error.message : String(error);
       console.warn(`[TypeChecker] 初期化失敗: ${msg}`);
     }
@@ -308,35 +246,35 @@ function buildTypeCheckerContext(): TypeCheckerContext | null {
   }
 }
 
-function getTypeCheckerContext(): TypeCheckerContext | null {
-  if (typeCheckerContext !== null) return typeCheckerContext;
-  typeCheckerContext = buildTypeCheckerContext();
-  return typeCheckerContext;
+function getTypeCheckerContext(ctx: GeneratorContext): TypeCheckerContext | null {
+  if (ctx.typeChecker !== null) return ctx.typeChecker;
+  ctx.typeChecker = buildTypeCheckerContext(ctx);
+  return ctx.typeChecker;
 }
 
 // ============================================================================
 // File Processing
 // ============================================================================
 
-function processFile(filePath: string, baseDir: string, outputDir: string) {
+function processFile(filePath: string, baseDir: string, outputDir: string, ctx: GeneratorContext) {
   const relativePath = relative(baseDir, filePath);
   const outputName = relativePath.replace(/\.ts$/, '.md');
   const outputPath = join(outputDir, outputName);
 
-  if (globalOptions.verbose) {
+  if (ctx.options.verbose) {
     console.log(`  [解析中] ${relativePath}`);
   } else {
     console.log(`  ${relativePath}`);
   }
 
   // TypeScriptファイルを解析
-  const info = analyzeFile(filePath, baseDir);
+  const info = analyzeFile(filePath, baseDir, ctx);
 
   // Markdown を生成
-  const markdown = generateMarkdown(info);
+  const markdown = generateMarkdown(info, ctx);
 
-  if (globalOptions.dryRun) {
-    if (globalOptions.verbose) {
+  if (ctx.options.dryRun) {
+    if (ctx.options.verbose) {
       console.log(`    [ドライラン] ${outputPath} に書き込む予定（スキップ）`);
       console.log(`    --- 生成内容（先頭50行）---`);
       console.log(markdown.split('\n').slice(0, 50).join('\n'));
@@ -352,9 +290,9 @@ function processFile(filePath: string, baseDir: string, outputDir: string) {
   writeFileSync(outputPath, markdown, 'utf-8');
 }
 
-function analyzeFile(filePath: string, baseDir: string): FileInfo {
+function analyzeFile(filePath: string, baseDir: string, ctx: GeneratorContext): FileInfo {
   const sourceCode = readFileSync(filePath, 'utf-8');
-  const checkerCtx = getTypeCheckerContext();
+  const checkerCtx = getTypeCheckerContext(ctx);
   const checkerSourceFile = checkerCtx?.sourceFiles.get(normalizeFsPath(filePath));
   const sourceFile = checkerSourceFile || ts.createSourceFile(
     filePath,
@@ -557,15 +495,16 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
 
   visit(sourceFile);
 
-  // ツール登録を検出
-  const tools = detectToolRegistrations(sourceFile);
+  // ツール登録を検出（AST付き）
+  const toolsWithAst = detectToolRegistrationsWithAst(sourceFile);
 
   // 関数内の呼び出しを抽出（インポートされた関数も含む）
   const calls = extractAllCalls(
     sourceFile,
     functions,
     imports,
-    checkerCtx?.checker
+    checkerCtx?.checker,
+    ctx
   );
 
   // 関数名のセットを作成（インポートされた関数も含む）
@@ -576,14 +515,22 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
     }
   }
 
-  // 各ツールのexecute関数内の呼び出しを抽出
-  for (const tool of tools) {
+  // 各ツールのexecute関数内の呼び出しを抽出してToolInfoに変換
+  const tools: ToolInfo[] = toolsWithAst.map(tool => {
+    let executeCalls: CallNode[] | undefined;
     if (tool.executeExpr) {
-      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeExpr, functionNames, imports, checkerCtx?.checker);
+      executeCalls = extractCallsFromExecute(sourceFile, tool.executeExpr, functionNames, imports, checkerCtx?.checker, ctx);
     } else if (tool.executeMethodDecl) {
-      tool.executeCalls = extractCallsFromExecute(sourceFile, tool.executeMethodDecl, functionNames, imports, checkerCtx?.checker);
+      executeCalls = extractCallsFromExecute(sourceFile, tool.executeMethodDecl, functionNames, imports, checkerCtx?.checker, ctx);
     }
-  }
+    return {
+      name: tool.name,
+      description: tool.description,
+      executeFunction: tool.executeFunction,
+      line: tool.line,
+      executeCalls,
+    };
+  });
 
   return {
     path: filePath,
@@ -604,10 +551,11 @@ function analyzeFile(filePath: string, baseDir: string): FileInfo {
 // ============================================================================
 
 /**
- * pi.registerTool() で登録されたツールを検出する
+ * pi.registerTool() で登録されたツールを検出する（AST付き）
+ * 内部処理用にASTノードも保持
  */
-function detectToolRegistrations(sourceFile: ts.SourceFile): ToolInfo[] {
-  const tools: ToolInfo[] = [];
+function detectToolRegistrationsWithAst(sourceFile: ts.SourceFile): ToolInfoWithAst[] {
+  const tools: ToolInfoWithAst[] = [];
 
   function visit(node: ts.Node) {
     // pi.registerTool({ name: "...", description: "...", execute: ... })
@@ -621,12 +569,12 @@ function detectToolRegistrations(sourceFile: ts.SourceFile): ToolInfo[] {
           const nameProp = arg.properties.find(p =>
             ts.isPropertyAssignment(p) && p.name?.getText(sourceFile) === "name"
           );
-          
+
           // descriptionプロパティを探す
           const descProp = arg.properties.find(p =>
             ts.isPropertyAssignment(p) && p.name?.getText(sourceFile) === "description"
           );
-          
+
           // executeプロパティを探す（PropertyAssignment または MethodDeclaration）
           const executeProp = arg.properties.find(p => {
             const name = p.name?.getText(sourceFile);
@@ -638,9 +586,10 @@ function detectToolRegistrations(sourceFile: ts.SourceFile): ToolInfo[] {
             const descValue = descProp && ts.isPropertyAssignment(descProp)
               ? getStringLiteralValue(descProp.initializer) || ""
               : "";
-            
+
             let executeFn: string | undefined;
             let executeExpr: ts.Expression | undefined;
+            let executeMethodDecl: ts.MethodDeclaration | undefined;
 
             if (executeProp) {
               if (ts.isPropertyAssignment(executeProp)) {
@@ -649,9 +598,7 @@ function detectToolRegistrations(sourceFile: ts.SourceFile): ToolInfo[] {
               } else if (ts.isMethodDeclaration(executeProp)) {
                 // async execute(...) { ... } 形式
                 executeFn = "";
-                // MethodDeclarationの本体をFunctionExpressionとして扱う
-                // 実際には、メソッド本体を直接走査する
-                executeExpr = undefined; // MethodDeclarationはExpressionではない
+                executeMethodDecl = executeProp;
               }
             }
 
@@ -662,8 +609,7 @@ function detectToolRegistrations(sourceFile: ts.SourceFile): ToolInfo[] {
                 executeFunction: executeFn || "",
                 line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
                 executeExpr,
-                // MethodDeclarationの場合は直接ノードを保存
-                executeMethodDecl: (executeProp && ts.isMethodDeclaration(executeProp)) ? executeProp : undefined,
+                executeMethodDecl,
               });
             }
           }
@@ -674,6 +620,8 @@ function detectToolRegistrations(sourceFile: ts.SourceFile): ToolInfo[] {
   }
 
   visit(sourceFile);
+
+  // ToolInfoWithAst[]を返す（AST処理用）
   return tools;
 }
 
@@ -711,7 +659,8 @@ function extractFunctionName(expr: ts.Expression): string | null {
 function resolveImportedFunction(
   call: CallNode,
   imports: ImportInfo[],
-  currentFilePath: string
+  currentFilePath: string,
+  ctx: GeneratorContext
 ): { filePath?: string; symbol: string } {
   if (call.importedFrom) {
     return {
@@ -725,7 +674,7 @@ function resolveImportedFunction(
       if (binding.localName !== call.callee && binding.importedName !== call.callee) {
         continue;
       }
-      const resolvedPath = resolveImportSourcePath(binding.source, currentFilePath);
+      const resolvedPath = resolveImportSourcePath(binding.source, currentFilePath, ctx);
       const symbol = binding.kind === 'default'
         ? call.callee
         : (binding.importedName === '*' ? call.callee : binding.importedName);
@@ -739,10 +688,11 @@ function resolveImportedFunction(
  * 外部ファイルの関数情報を取得（キャッシュ付き）
  */
 function getExternalFileInfo(
-  filePath: string
+  filePath: string,
+  ctx: GeneratorContext
 ): { functions: FunctionInfo[]; calls: Map<string, CallNode[]>; imports: ImportInfo[] } | undefined {
   // キャッシュを確認
-  const cached = crossFileCache.fileInfos.get(filePath);
+  const cached = ctx.crossFileCache.fileInfos.get(filePath);
   if (cached) {
     return { functions: cached.functions, calls: cached.calls, imports: cached.imports };
   }
@@ -755,11 +705,11 @@ function getExternalFileInfo(
   try {
     // analyzeFileと同じ処理を行う（baseDirはdirnameを使用）
     const baseDir = dirname(filePath);
-    const info = analyzeFile(filePath, baseDir);
-    
+    const info = analyzeFile(filePath, baseDir, ctx);
+
     // キャッシュに保存
-    crossFileCache.fileInfos.set(filePath, info);
-    
+    ctx.crossFileCache.fileInfos.set(filePath, info);
+
     return { functions: info.functions, calls: info.calls, imports: info.imports };
   } catch {
     return undefined;
@@ -774,7 +724,8 @@ function extractAllCalls(
   sourceFile: ts.SourceFile,
   functions: FunctionInfo[],
   imports: ImportInfo[],
-  checker?: ts.TypeChecker
+  checker: ts.TypeChecker | undefined,
+  ctx: GeneratorContext
 ): Map<string, CallNode[]> {
   const calls = new Map<string, CallNode[]>();
   
@@ -794,7 +745,8 @@ function extractAllCalls(
             localFunctionNames,
             importLookup,
             currentFilePathFromSource(sourceFile),
-            checker
+            checker,
+            ctx
           );
           if (resolved) {
             funcCalls.push({
@@ -817,7 +769,8 @@ function extractAllCalls(
             localFunctionNames,
             importLookup,
             currentFilePathFromSource(sourceFile),
-            checker
+            checker,
+            ctx
           );
           if (resolved) {
             funcCalls.push({
@@ -869,7 +822,8 @@ function extractCallsFromExecute(
   executeExpr: ts.Expression | ts.MethodDeclaration,
   functionNames: Set<string>,
   imports: ImportInfo[],
-  checker?: ts.TypeChecker
+  checker: ts.TypeChecker | undefined,
+  ctx: GeneratorContext
 ): CallNode[] {
   const funcCalls: CallNode[] = [];
   const importLookup = buildImportLookup(imports);
@@ -892,7 +846,8 @@ function extractCallsFromExecute(
           functionNames,
           importLookup,
           currentFilePathFromSource(sourceFile),
-          checker
+          checker,
+          ctx
         );
         if (resolved) {
           funcCalls.push({
@@ -914,7 +869,8 @@ function extractCallsFromExecute(
           functionNames,
           importLookup,
           currentFilePathFromSource(sourceFile),
-          checker
+          checker,
+          ctx
         );
         if (resolved) {
           funcCalls.push({
@@ -959,11 +915,12 @@ function buildImportLookup(imports: ImportInfo[]): {
 /**
  * import sourceから実ファイルパスを推定する（ローカル import のみ）
  */
-function resolveImportSourcePath(source: string, currentFilePath: string): string | undefined {
+function resolveImportSourcePath(source: string, currentFilePath: string, ctx: GeneratorContext): string | undefined {
   if (!source.startsWith('.')) return undefined;
 
   // TypeScript公式のモジュール解決を優先（paths/baseUrl含む）
-  const compilerOptions = getTypeCheckerContext()?.compilerOptions;
+  const checkerCtx = getTypeCheckerContext(ctx);
+  const compilerOptions = checkerCtx?.compilerOptions;
   if (compilerOptions) {
     const resolved = ts.resolveModuleName(source, currentFilePath, compilerOptions, ts.sys);
     const resolvedFileName = resolved.resolvedModule?.resolvedFileName;
@@ -1028,7 +985,8 @@ function resolveCallTarget(
     namespaceByLocalName: Map<string, ImportBinding>;
   },
   currentFilePath: string,
-  checker?: ts.TypeChecker
+  checker: ts.TypeChecker | undefined,
+  ctx: GeneratorContext
 ): { callee: string; displayName: string; importedFrom?: string; importedSymbol?: string } | null {
   if (!expr) return null;
 
@@ -1052,7 +1010,7 @@ function resolveCallTarget(
     return {
       callee: binding.kind === 'named' ? binding.importedName : binding.localName,
       displayName: name,
-      importedFrom: resolveImportSourcePath(binding.source, currentFilePath),
+      importedFrom: resolveImportSourcePath(binding.source, currentFilePath, ctx),
       importedSymbol: binding.kind === 'named' ? binding.importedName : binding.importedName,
     };
   }
@@ -1066,7 +1024,7 @@ function resolveCallTarget(
       return {
         callee: propertyName,
         displayName: `${objectName}.${propertyName}`,
-        importedFrom: resolveImportSourcePath(namespaceBinding.source, currentFilePath),
+        importedFrom: resolveImportSourcePath(namespaceBinding.source, currentFilePath, ctx),
         importedSymbol: propertyName,
       };
     }
@@ -1190,7 +1148,8 @@ function generateUserSequence(
   calls: Map<string, CallNode[]>,
   imports: ImportInfo[],
   currentFilePath: string,
-  maxDepth: number = 4
+  maxDepth: number,
+  ctx: GeneratorContext
 ): string {
   const participants = new Map<string, string>();
   const steps: { from: string; to: string; action: string; isAsync: boolean }[] = [];
@@ -1265,9 +1224,9 @@ function generateUserSequence(
 
       // インポートされた関数の場合、外部ファイルから情報を取得
       if (!calleeInfo) {
-        const resolved = resolveImportedFunction(call, currentFileImports, currentFilePath);
+        const resolved = resolveImportedFunction(call, currentFileImports, currentFilePath, ctx);
         if (resolved.filePath) {
-          const externalInfo = getExternalFileInfo(resolved.filePath);
+          const externalInfo = getExternalFileInfo(resolved.filePath, ctx);
           if (externalInfo) {
             // 外部ファイルの関数情報を一時的にallFunctionsに追加
             for (const fn of externalInfo.functions) {
@@ -1385,7 +1344,7 @@ function generateUserSequence(
 /**
  * ユーザーフローセクションを生成
  */
-function generateUserFlowSection(info: FileInfo, currentFilePath: string): string {
+function generateUserFlowSection(info: FileInfo, currentFilePath: string, ctx: GeneratorContext): string {
   if (info.tools.length === 0) return "";
 
   let section = `## ユーザーフロー
@@ -1407,7 +1366,8 @@ function generateUserFlowSection(info: FileInfo, currentFilePath: string): strin
       info.calls, 
       info.imports,
       currentFilePath,
-      4 // maxDepth
+      4, // maxDepth
+      ctx
     );
 
     section += `### ${tool.name}
@@ -1434,7 +1394,7 @@ ${sequenceDiagram}
 // Markdown Generation
 // ============================================================================
 
-function generateMarkdown(info: FileInfo): string {
+function generateMarkdown(info: FileInfo, ctx: GeneratorContext): string {
   const date = new Date().toISOString().split('T')[0];
   const title = basename(info.relativePath).replace(/\.ts$/, '');
 
@@ -1513,7 +1473,7 @@ related: []
   md += '\n';
 
   // ユーザーフロー（ツールがある場合）
-  md += generateUserFlowSection(info, info.path);
+  md += generateUserFlowSection(info, info.path, ctx);
 
   // Mermaid図
   md += generateMermaidSection(info);
@@ -1641,55 +1601,8 @@ type ${t.name} = ${t.definition}
 }
 
 // ============================================================================
-// Mermaid Generation
+// Mermaid Generation (functions imported from ./generate-abdd/mermaid-gen.js)
 // ============================================================================
-
-function sanitizeMermaidType(type: string): string {
-  // 型をMermaidクラス図で表示可能な形式に短縮
-  let sanitized = type
-    .replace(/import\("[^"]+"\)\./g, '')
-    .replace(/\s+/g, '')
-    // 長い型を短縮
-    .substring(0, 20);
-
-  // 特殊文字を削除し、英数字とアンダースコアのみ残す
-  sanitized = sanitized.replace(/[^a-zA-Z0-9_]/g, '_');
-
-  // 連続するアンダースコアを1つに
-  sanitized = sanitized.replace(/_+/g, '_');
-
-  // 先頭と末尾のアンダースコアを削除
-  sanitized = sanitized.replace(/^_+|_+$/g, '');
-
-  // 先頭が数字の場合はアンダースコアを追加
-  if (/^[0-9]/.test(sanitized)) {
-    sanitized = 'T' + sanitized;
-  }
-
-  return sanitized || 'any';
-}
-
-function sanitizeMermaidIdentifier(name: string): string {
-  let sanitized = name.replace(/[^a-zA-Z0-9_]/g, '_');
-  // 連続するアンダースコアを1つに
-  sanitized = sanitized.replace(/_+/g, '_');
-  // 先頭と末尾のアンダースコアを削除
-  sanitized = sanitized.replace(/^_+|_+$/g, '');
-  // 先頭が数字の場合はプレフィックスを追加
-  if (/^[0-9]/.test(sanitized)) {
-    sanitized = 'N' + sanitized;
-  }
-  // 空の場合はプレースホルダー
-  sanitized = sanitized || 'Unknown';
-
-  // Mermaid予約語を回避
-  const reservedWords = ['loop', 'alt', 'opt', 'par', 'and', 'or', 'end', 'else', 'note', 'participant', 'actor', 'activate', 'deactivate'];
-  if (reservedWords.includes(sanitized.toLowerCase())) {
-    sanitized = 'M' + sanitized;
-  }
-
-  return sanitized;
-}
 
 function buildActualFunctionFlowDiagram(info: FileInfo, maxNodes: number = 24, maxEdges: number = 40, maxDepth: number = 5): string {
   const exportedRoots = info.functions.filter(f => f.isExported).map(f => f.name);
@@ -2038,76 +1951,15 @@ async function validateAllMermaidDiagrams(): Promise<MermaidError[]> {
   return errors;
 }
 
-function collectMarkdownFiles(dir: string): string[] {
-  const files: string[] = [];
-
-  function walk(path: string) {
-    const entries = readdirSync(path);
-    for (const entry of entries) {
-      const fullPath = join(path, entry);
-      const stat = statSync(fullPath);
-      if (stat.isDirectory()) {
-        walk(fullPath);
-      } else if (stat.isFile() && entry.endsWith('.md')) {
-        files.push(fullPath);
-      }
-    }
-  }
-
-  walk(dir);
-  return files;
-}
-
-function extractMermaidBlocks(content: string): { code: string; line: number }[] {
-  const blocks: { code: string; line: number }[] = [];
-  const lines = content.split('\n');
-
-  let inMermaid = false;
-  let currentBlock: string[] = [];
-  let startLine = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    if (line.trim() === '```mermaid') {
-      inMermaid = true;
-      startLine = i + 1;
-      currentBlock = [];
-    } else if (inMermaid && line.trim() === '```') {
-      inMermaid = false;
-      if (currentBlock.length > 0) {
-        blocks.push({
-          code: currentBlock.join('\n'),
-          line: startLine,
-        });
-      }
-    } else if (inMermaid) {
-      currentBlock.push(line);
-    }
-  }
-
-  return blocks;
-}
-
-function validateMermaid(code: string): { valid: boolean; error?: string } {
-  // mmdcがインストールされているかチェック
-  try {
-    execSync('which mmdc', { stdio: 'pipe' });
-  } catch {
-    // mmdcがない場合は簡易チェック
-    return validateMermaidSimple(code);
-  }
-
-  // 同期版は非推奨（並列検証にはvalidateMermaidAsyncを使用）
-  return validateMermaidSimple(code);
-}
+// Note: collectMarkdownFiles, extractMermaidBlocks, validateMermaid imported from ./generate-abdd/mermaid-gen.js
 
 /**
  * Mermaid図を非同期で検証（mmdc使用、タイムアウトなし）
+ * 注: 簡易検証はインポート済みのvalidateMermaidを使用
  */
 async function validateMermaidAsync(code: string): Promise<{ valid: boolean; error?: string }> {
-  // 簡易チェックを先に実行
-  const simpleResult = validateMermaidSimple(code);
+  // 簡易チェックを先に実行（インポート済みの関数を使用）
+  const simpleResult = validateMermaid(code);
   if (!simpleResult.valid) {
     return simpleResult;
   }
@@ -2166,44 +2018,7 @@ async function validateMermaidAsync(code: string): Promise<{ valid: boolean; err
   }
 }
 
-function validateMermaidSimple(code: string): { valid: boolean; error?: string } {
-  // 簡易的な構文チェック（mmdcがない場合）
-
-  // 空のブロック
-  if (!code.trim()) {
-    return { valid: false, error: 'Empty diagram' };
-  }
-
-  // 図の種類を判定
-  const firstLine = code.split('\n')[0].trim();
-
-  const validTypes = ['flowchart', 'graph', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram', 'gantt', 'pie', 'mindmap', 'timeline', 'quadrantChart', 'requirementDiagram', 'gitGraph'];
-
-  // 図の種類が正しいかチェック
-  const hasValidType = validTypes.some(type => firstLine.startsWith(type));
-
-  if (!hasValidType) {
-    return { valid: false, error: `Invalid diagram type: ${firstLine}` };
-  }
-
-  // 基本的な構文エラーチェック
-  const lines = code.split('\n');
-
-  // 未閉じの引用符チェック
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const doubleQuotes = (line.match(/"/g) || []).length;
-    if (doubleQuotes % 2 !== 0) {
-      // エスケープされた引用符を考慮
-      const escapedQuotes = (line.match(/\\"/g) || []).length;
-      if ((doubleQuotes - escapedQuotes) % 2 !== 0) {
-        return { valid: false, error: `Unmatched quotes on line ${i + 1}` };
-      }
-    }
-  }
-
-  return { valid: true };
-}
+// Note: validateMermaidSimple is imported from ./generate-abdd/mermaid-gen.js
 
 // ============================================================================
 // Utilities
@@ -2321,31 +2136,7 @@ function formatTypeForDisplay(typeStr: string): { display: string; isInlineObjec
   };
 }
 
-function collectTypeScriptFiles(dir: string): string[] {
-  const files: string[] = [];
-
-  function walk(path: string) {
-    const entries = readdirSync(path);
-    for (const entry of entries) {
-      const fullPath = join(path, entry);
-      const stat = statSync(fullPath);
-      if (stat.isDirectory() && entry !== 'node_modules' && entry !== 'dist') {
-        walk(fullPath);
-      } else if (stat.isFile() && (entry.endsWith('.ts') || entry.endsWith('.tsx')) && !entry.endsWith('.d.ts')) {
-        files.push(fullPath);
-      }
-    }
-  }
-
-  walk(dir);
-  return files;
-}
-
-function mkdirIfNotExists(dir: string) {
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
+// Note: collectTypeScriptFiles and mkdirIfNotExists are imported from ./generate-abdd/file-utils.js
 
 // Run
 main().catch(console.error);
