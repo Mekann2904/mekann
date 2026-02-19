@@ -65,7 +65,8 @@
       "./.pi/extensions/startup-context.ts",
       "./.pi/extensions/subagents.ts",
       "./.pi/extensions/ul-dual-mode.ts",
-      "./.pi/extensions/usage-tracker.ts"
+      "./.pi/extensions/usage-tracker.ts",
+      "./.pi/extensions/pi-ai-abort-fix.ts"
     ],
     "skills": [
       "./.pi/skills"

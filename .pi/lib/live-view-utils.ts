@@ -35,15 +35,56 @@
 export type LiveStatus = "pending" | "running" | "completed" | "failed";
 
 /**
- * @summary ステータス文字列取得
+ * ステータスグリフの設定
+ * @summary グリフと色の設定
+ */
+export interface StatusGlyphConfig {
+  glyph: string;
+  color: "dim" | "accent" | "success" | "error";
+}
+
+/** ステータスごとのグリフ設定 */
+const STATUS_GLYPHS: Record<LiveStatus, StatusGlyphConfig> = {
+  pending:   { glyph: "[ ]", color: "dim" },
+  running:   { glyph: "[>]", color: "accent" },
+  completed: { glyph: "[+]", color: "success" },
+  failed:    { glyph: "[x]", color: "error" },
+};
+
+/**
+ * @summary ステータスグリフ取得
  * @param status - 変換対象のステータス
- * @returns ステータスを表す2文字の文字列
+ * @returns ステータスを表す3文字のグリフ文字列
  */
 export function getLiveStatusGlyph(status: LiveStatus): string {
-  if (status === "completed") return "OK";
-  if (status === "failed") return "!!";
-  if (status === "running") return ">>";
-  return "..";
+  return STATUS_GLYPHS[status]?.glyph ?? "[?]";
+}
+
+/**
+ * @summary ステータス色取得
+ * @param status - 変換対象のステータス
+ * @returns テーマ色キー
+ */
+export function getLiveStatusColor(status: LiveStatus): "dim" | "accent" | "success" | "error" {
+  return STATUS_GLYPHS[status]?.color ?? "dim";
+}
+
+/**
+ * @summary アクティビティインジケータ取得
+ * @param hasOutput - 出力があるか
+ * @param hasError - エラーがあるか
+ * @param isRecent - 最近のアクティビティか
+ * @returns アクティビティ文字列（アクティブ時のみ、それ以外は空文字）
+ */
+export function getActivityIndicator(
+  hasOutput: boolean,
+  hasError: boolean,
+  isRecent: boolean,
+): string {
+  if (hasError) return "err!";
+  if (hasOutput && isRecent) return "out!";
+  if (hasOutput) return "out";
+  return "-";
 }
 
 /**

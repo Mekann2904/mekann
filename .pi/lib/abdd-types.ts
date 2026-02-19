@@ -265,7 +265,15 @@ export function extractErrorMessage(error: unknown): string {
 	if (error instanceof Error) {
 		return error.message;
 	}
-	return String(error);
+	try {
+		return String(error);
+	} catch {
+		try {
+			return JSON.stringify(error);
+		} catch {
+			return "[unstringifiable error]";
+		}
+	}
 }
 
 /**

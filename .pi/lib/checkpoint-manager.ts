@@ -220,6 +220,37 @@ function getCheckpointPath(dir: string, checkpointId: string): string {
 }
 
 /**
+ * Find latest checkpoint by task ID.
+ */
+function findLatestCheckpointByTaskId(
+  dir: string,
+  taskId: string,
+): Checkpoint | null {
+  if (!existsSync(dir)) {
+    return null;
+  }
+
+  const files = readdirSync(dir).filter((f) =>
+    f.endsWith(CHECKPOINT_FILE_EXTENSION),
+  );
+  const candidates: Checkpoint[] = [];
+
+  for (const file of files) {
+    const checkpoint = parseCheckpointFile(join(dir, file));
+    if (checkpoint && checkpoint.taskId === taskId) {
+      candidates.push(checkpoint);
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((a, b) => b.createdAt - a.createdAt);
+  return candidates[0];
+}
+
+/**
  * Parse checkpoint file.
  */
 function parseCheckpointFile(filePath: string): Checkpoint | null {
@@ -330,9 +361,11 @@ async function saveCheckpoint(
 
   const dir = managerState!.checkpointDir;
   const nowMs = Date.now();
+  const existingCheckpoint = findLatestCheckpointByTaskId(dir, checkpoint.taskId);
 
   const fullCheckpoint: Checkpoint = {
-    id: checkpoint.id ?? generateCheckpointId(checkpoint.taskId),
+    // Reuse existing checkpoint ID for idempotent upsert by taskId.
+    id: checkpoint.id ?? existingCheckpoint?.id ?? generateCheckpointId(checkpoint.taskId),
     taskId: checkpoint.taskId,
     source: checkpoint.source,
     provider: checkpoint.provider,

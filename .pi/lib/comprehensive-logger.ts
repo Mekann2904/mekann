@@ -133,6 +133,9 @@ export class ComprehensiveLogger {
         console.error('[comprehensive-logger] Flush error:', err);
       });
     }, this.config.flushIntervalMs);
+    if (this.flushTimer.unref) {
+      this.flushTimer.unref();
+    }
   }
   
   // ============================================

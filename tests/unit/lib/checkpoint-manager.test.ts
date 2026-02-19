@@ -603,3 +603,324 @@ describe("プロパティベーステスト", () => {
     );
   });
 });
+
+// ============================================================================
+// getCheckpointConfigFromEnv テスト
+// ============================================================================
+
+describe("getCheckpointConfigFromEnv", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    resetCheckpointManager();
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    resetCheckpointManager();
+    process.env = originalEnv;
+  });
+
+  it("環境変数なし_空の設定を返す", async () => {
+    const { getCheckpointConfigFromEnv } = await import("../../../.pi/lib/checkpoint-manager.js");
+    const config = getCheckpointConfigFromEnv();
+    expect(Object.keys(config).length).toBe(0);
+  });
+
+  it("PI_CHECKPOINT_DIR_設定される", async () => {
+    process.env.PI_CHECKPOINT_DIR = "/custom/checkpoints";
+    const { getCheckpointConfigFromEnv } = await import("../../../.pi/lib/checkpoint-manager.js");
+    const config = getCheckpointConfigFromEnv();
+    expect(config.checkpointDir).toBe("/custom/checkpoints");
+  });
+
+  it("PI_CHECKPOINT_TTL_MS_設定される", async () => {
+    process.env.PI_CHECKPOINT_TTL_MS = "3600000";
+    const { getCheckpointConfigFromEnv } = await import("../../../.pi/lib/checkpoint-manager.js");
+    const config = getCheckpointConfigFromEnv();
+    expect(config.defaultTtlMs).toBe(3600000);
+  });
+
+  it("PI_MAX_CHECKPOINTS_設定される", async () => {
+    process.env.PI_MAX_CHECKPOINTS = "50";
+    const { getCheckpointConfigFromEnv } = await import("../../../.pi/lib/checkpoint-manager.js");
+    const config = getCheckpointConfigFromEnv();
+    expect(config.maxCheckpoints).toBe(50);
+  });
+
+  it("PI_CHECKPOINT_CLEANUP_MS_設定される", async () => {
+    process.env.PI_CHECKPOINT_CLEANUP_MS = "1800000";
+    const { getCheckpointConfigFromEnv } = await import("../../../.pi/lib/checkpoint-manager.js");
+    const config = getCheckpointConfigFromEnv();
+    expect(config.cleanupIntervalMs).toBe(1800000);
+  });
+
+  it("無効なTTL値_無視される", async () => {
+    process.env.PI_CHECKPOINT_TTL_MS = "invalid";
+    const { getCheckpointConfigFromEnv } = await import("../../../.pi/lib/checkpoint-manager.js");
+    const config = getCheckpointConfigFromEnv();
+    expect(config.defaultTtlMs).toBeUndefined();
+  });
+
+  it("負の値_無視される", async () => {
+    process.env.PI_MAX_CHECKPOINTS = "-10";
+    const { getCheckpointConfigFromEnv } = await import("../../../.pi/lib/checkpoint-manager.js");
+    const config = getCheckpointConfigFromEnv();
+    expect(config.maxCheckpoints).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// maxCheckpoints制限テスト
+// ============================================================================
+
+describe("maxCheckpoints制限", () => {
+  let manager: ReturnType<typeof getCheckpointManager>;
+
+  beforeEach(() => {
+    cleanupTestDir();
+    resetCheckpointManager();
+    initCheckpointManager({
+      checkpointDir: TEST_CHECKPOINT_DIR,
+      maxCheckpoints: 3,
+    });
+    manager = getCheckpointManager();
+  });
+
+  afterEach(() => {
+    resetCheckpointManager();
+    cleanupTestDir();
+  });
+
+  it("上限超過_古いものから削除", async () => {
+    // Arrange - 4つのチェックポイントを作成（制限は3）
+    await manager.save({
+      taskId: "task-1",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "normal",
+      state: { order: 1 },
+      progress: 0.1,
+      ttlMs: 86400000,
+    });
+
+    // 少し待機して作成時間を変える
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await manager.save({
+      taskId: "task-2",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "normal",
+      state: { order: 2 },
+      progress: 0.2,
+      ttlMs: 86400000,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await manager.save({
+      taskId: "task-3",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "normal",
+      state: { order: 3 },
+      progress: 0.3,
+      ttlMs: 86400000,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await manager.save({
+      taskId: "task-4",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "normal",
+      state: { order: 4 },
+      progress: 0.4,
+      ttlMs: 86400000,
+    });
+
+    // Act
+    const stats = manager.getStats();
+
+    // Assert - 制限数以下になっている
+    expect(stats.totalCount).toBeLessThanOrEqual(3);
+  });
+});
+
+// ============================================================================
+// 優先度別統計テスト
+// ============================================================================
+
+describe("優先度別統計", () => {
+  let manager: ReturnType<typeof getCheckpointManager>;
+
+  beforeEach(() => {
+    cleanupTestDir();
+    initFreshManager();
+    manager = getCheckpointManager();
+  });
+
+  afterEach(() => {
+    resetCheckpointManager();
+    cleanupTestDir();
+  });
+
+  it("各優先度が正しくカウントされる", async () => {
+    // Arrange
+    const priorities: Array<"critical" | "high" | "normal" | "low" | "background"> =
+      ["critical", "high", "normal", "low", "background"];
+
+    for (const priority of priorities) {
+      await manager.save({
+        taskId: `task-${priority}`,
+        source: "subagent_run",
+        provider: "test",
+        model: "test",
+        priority,
+        state: {},
+        progress: 0.5,
+        ttlMs: 86400000,
+      });
+    }
+
+    // Act
+    const stats = manager.getStats();
+
+    // Assert
+    expect(stats.byPriority.critical).toBe(1);
+    expect(stats.byPriority.high).toBe(1);
+    expect(stats.byPriority.normal).toBe(1);
+    expect(stats.byPriority.low).toBe(1);
+    expect(stats.byPriority.background).toBe(1);
+  });
+});
+
+// ============================================================================
+// エッジケース
+// ============================================================================
+
+describe("エッジケース", () => {
+  let manager: ReturnType<typeof getCheckpointManager>;
+
+  beforeEach(() => {
+    cleanupTestDir();
+    initFreshManager();
+    manager = getCheckpointManager();
+  });
+
+  afterEach(() => {
+    resetCheckpointManager();
+    cleanupTestDir();
+  });
+
+  it("同じtaskIdで上書き保存", async () => {
+    // Arrange
+    await manager.save({
+      taskId: "same-task",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "normal",
+      state: { version: 1 },
+      progress: 0.5,
+      ttlMs: 86400000,
+    });
+
+    // Act - 同じtaskIdで再保存
+    await manager.save({
+      taskId: "same-task",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "high",
+      state: { version: 2 },
+      progress: 0.8,
+      ttlMs: 86400000,
+    });
+
+    // Assert - 最新のものが取得される
+    const loaded = await manager.load("same-task");
+    expect(loaded).not.toBeNull();
+    expect(loaded?.state).toEqual({ version: 2 });
+  });
+
+  it("複数のチェックポイント_同じtaskId", async () => {
+    // Arrange - 同じtaskIdで複数作成
+    await manager.save({
+      taskId: "multi-task",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "normal",
+      state: { attempt: 1 },
+      progress: 0.1,
+      ttlMs: 86400000,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await manager.save({
+      taskId: "multi-task",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "normal",
+      state: { attempt: 2 },
+      progress: 0.2,
+      ttlMs: 86400000,
+    });
+
+    // Act
+    const loaded = await manager.load("multi-task");
+
+    // Assert - 最新のものが返される
+    expect(loaded).not.toBeNull();
+    expect(loaded?.state).toEqual({ attempt: 2 });
+  });
+
+  it("存在しないタスクの削除_falseを返す", async () => {
+    const result = await manager.delete("nonexistent");
+    expect(result).toBe(false);
+  });
+
+  it("プログレス境界値_0と1", async () => {
+    // Act & Assert
+    const result0 = await manager.save({
+      taskId: "progress-0",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "normal",
+      state: {},
+      progress: 0,
+      ttlMs: 86400000,
+    });
+    expect(result0.success).toBe(true);
+
+    const result1 = await manager.save({
+      taskId: "progress-1",
+      source: "subagent_run",
+      provider: "test",
+      model: "test",
+      priority: "normal",
+      state: {},
+      progress: 1,
+      ttlMs: 86400000,
+    });
+    expect(result1.success).toBe(true);
+  });
+
+  it("空の状態で統計取得", () => {
+    const stats = manager.getStats();
+    expect(stats.totalCount).toBe(0);
+    expect(stats.expiredCount).toBe(0);
+    expect(stats.oldestCreatedAt).toBeNull();
+    expect(stats.newestCreatedAt).toBeNull();
+  });
+});

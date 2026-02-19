@@ -459,7 +459,12 @@ export function resolveLimits(
   const normalizedProvider = provider.toLowerCase();
   const normalizedModel = model.toLowerCase();
 
-  const providerConfig = config.providers[normalizedProvider];
+  const providerConfig = Object.prototype.hasOwnProperty.call(
+    config.providers,
+    normalizedProvider
+  )
+    ? config.providers[normalizedProvider]
+    : undefined;
 
   // Provider not found
   if (!providerConfig) {

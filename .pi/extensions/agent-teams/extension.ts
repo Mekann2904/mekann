@@ -202,8 +202,8 @@ import {
 
 // Import team types from lib (extracted for maintainability)
 // Note: Only types with matching structures are imported.
-// TeamNormalizedOutput, TeamParallelCapacityCandidate, TeamParallelCapacityResolution
-// have different implementations in this file (runtime-specific) vs lib (API-specific).
+// TeamNormalizedOutput (runtime-specific in member-execution.ts) vs TeamNormalizedOutputAPI (API-specific in lib/team-types.ts)
+// TeamParallelCapacityCandidate, TeamParallelCapacityResolution have different implementations similarly.
 import {
   type TeamLivePhase,
   type TeamLiveViewMode,

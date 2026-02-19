@@ -48,6 +48,12 @@ export interface HasId {
 }
 
 /**
+ * @summary HasIdのランタイムエクスポート
+ * @description バレルエクスポート検証用の値
+ */
+export const HasId = "HasId";
+
+/**
  * 実行記録のインターフェース
  * @summary 実行記録定義
  */

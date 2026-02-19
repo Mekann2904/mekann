@@ -56,6 +56,8 @@ const DEFAULT_LOCK_OPTIONS: Required<FileLockOptions> = {
   staleMs: 30_000,
 };
 
+let atomicWriteCounter = 0;
+
 /**
  * Check if efficient synchronous sleep is available.
  * SharedArrayBuffer + Atomics.wait is required for non-blocking sleep.
@@ -157,11 +159,13 @@ export function withFileLock<T>(
   const maxWaitMs = Math.max(0, Math.trunc(config.maxWaitMs));
   const pollMs = Math.max(1, Math.trunc(config.pollMs));
   const staleMs = Math.max(1_000, Math.trunc(config.staleMs));
-  const startedAtMs = Date.now();
+  const maxAttempts = Math.max(1, Math.ceil(maxWaitMs / pollMs) + 1);
+  let attempts = 0;
   let acquired = false;
   const canSleep = hasEfficientSyncSleep();
 
-  while (!acquired && Date.now() - startedAtMs <= maxWaitMs) {
+  while (!acquired && attempts < maxAttempts) {
+    attempts++;
     acquired = tryAcquireLock(lockFile);
     if (acquired) break;
     clearStaleLock(lockFile, staleMs);
@@ -169,20 +173,7 @@ export function withFileLock<T>(
     // If efficient sleep is unavailable, exit early to avoid CPU spin.
     // This provides a graceful degradation path for environments without SharedArrayBuffer.
     if (!canSleep) {
-      // Check if we've exceeded max wait time or should fail fast
-      const elapsedMs = Date.now() - startedAtMs;
-      if (elapsedMs >= maxWaitMs) {
-        break;
-      }
-      // Allow one immediate retry without sleep, then fail fast
-      // to prevent tight spin loops in constrained environments.
-      if (elapsedMs > 100) {
-        console.warn(
-          `[storage-lock] SharedArrayBuffer unavailable, failing fast after ${elapsedMs}ms to avoid CPU spin`
-        );
-        break;
-      }
-      // Immediate retry for the first ~100ms as a grace period
+      // Retry without sleep, bounded by maxAttempts.
       continue;
     }
 
@@ -215,7 +206,8 @@ export function withFileLock<T>(
  * @returns {void}
  */
 export function atomicWriteTextFile(filePath: string, content: string): void {
-  const tmpFile = `${filePath}.tmp-${process.pid}-${randomBytes(3).toString("hex")}`;
+  atomicWriteCounter = (atomicWriteCounter + 1) >>> 0;
+  const tmpFile = `${filePath}.tmp-${process.pid}-${randomBytes(3).toString("hex")}-${atomicWriteCounter}`;
   writeFileSync(tmpFile, content, "utf-8");
   try {
     renameSync(tmpFile, filePath);

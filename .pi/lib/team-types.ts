@@ -57,9 +57,9 @@ export type TeamLivePhase =
 /**
  * チームライブの表示モード
  * @summary 表示モード定義
- * @typedef {"list" | "detail" | "discussion"} TeamLiveViewMode
+ * @typedef {"list" | "detail" | "discussion" | "tree" | "timeline"} TeamLiveViewMode
  */
-export type TeamLiveViewMode = "list" | "detail" | "discussion";
+export type TeamLiveViewMode = "list" | "detail" | "discussion" | "tree" | "timeline";
 
 /**
  * アイテムのライブ状態を表す
@@ -212,10 +212,11 @@ export interface AgentTeamLiveMonitorController
 // ============================================================================
 
 /**
- * 正規化されたチーム出力を表します。
- * @summary 正規化チーム出力
+ * 正規化されたチーム出力を表します（API応答用）。
+ * runtime用のTeamNormalizedOutput（member-execution.ts）とは異なる構造です。
+ * @summary 正規化チーム出力（API用）
  */
-export interface TeamNormalizedOutput {
+export interface TeamNormalizedOutputAPI {
   /** Extracted summary */
   summary: string;
   /** Full output content */

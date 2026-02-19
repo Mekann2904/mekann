@@ -164,7 +164,7 @@ export {
   type TeamMonitorDiscussion,
   type TeamMonitorResource,
   type AgentTeamLiveMonitorController,
-  type TeamNormalizedOutput,
+  type TeamNormalizedOutputAPI,
   type TeamParallelCapacityCandidate,
   type TeamParallelCapacityResolution,
   type TeamFrontmatter,

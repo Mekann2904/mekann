@@ -59,7 +59,7 @@ interface DurationItem {
  * 継続時間をフォーマット
  * @summary 継続時間計算
  * @param item 期間アイテム
- * @returns フォーマット済み文字列
+ * @returns フォーマット済み文字列（秒数に応じて自動切り替え）
  */
 export function formatDurationMs(item: DurationItem): string {
   if (!item.startedAtMs) return "-";

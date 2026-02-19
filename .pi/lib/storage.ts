@@ -36,6 +36,7 @@
 
 // Storage base utilities (Layer 2)
 export {
+  HasId,
   type HasId,
   type BaseRunRecord,
   type BaseStoragePaths,

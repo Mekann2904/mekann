@@ -350,11 +350,12 @@ README、運用ランブック、例示、簡潔な変更サマリーのため�
 | `communicationRounds` | number | メンバー間のコミュニケーションラウンド数（Stable profile: 固定0） | 省略可 | 0 |
 | `failedMemberRetryRounds` | number | 失敗メンバーのリトライラウンド数（Stable profile: 固定0） | 省略可 | 0 |
 | `timeoutMs` | number | タイムアウト（ミリ秒、0で無制限） | 省略可 | 600000 (10分) |
+| `memberParallelLimit` | number | チーム内での並列実行メンバー数上限（省略時はランタイム容量管理が自動計算） | 省略可 | 自動計算 |
 | `retry` | object | リトライ設定 | 省略可 | - |
 
 #### 並列実行の制御（ランタイム管理）
 
-`memberParallelLimit` パラメータは削除されました。代わりに、ランタイム容量管理システムにより、以下の制限に基づいて並列度が自動的に調整されます：
+`memberParallelLimit` パラメータは明示的な指定も可能です。省略した場合、ランタイム容量管理システムにより、以下の制限に基づいて並列度が自動的に調整されます：
 
 - `maxParallelTeammatesPerTeam`: チームあたりの最大並列メンバー数
 - `maxTotalActiveLlm`: LLM実行数の合計上限
@@ -373,6 +374,7 @@ Stable プロファイルでは、`STABLE_MAX_ACTIVE_MEMBERS_PER_TEAM = 3` の�
 | `communicationRounds` | number | チームメンバー間の追加コミュニケーションラウンド数（Stable profile: 固定0） | 省略可 | 0 |
 | `failedMemberRetryRounds` | number | 各チームの失敗メンバーのリトライラウンド数（Stable profile: 固定0） | 省略可 | 0 |
 | `timeoutMs` | number | メンバー実行あたりのタイムアウト（ミリ秒、0で無制限） | 省略可 | 600000 (10分) |
+| `memberParallelLimit` | number | 各チーム内での並列実行メンバー数上限（省略時は自動計算） | 省略可 | 自動計算 |
 | `retry` | object | リトライ設定 | 省略可 | - |
 
 #### ランタイム並列制御
@@ -397,9 +399,9 @@ Stable プロファイルでは、`STABLE_MAX_ACTIVE_MEMBERS_PER_TEAM = 3` の�
 
 | パラメータ | 説明 | デフォルト（Stable プロファイル） |
 |-----------|------|--------------------------------|
-| `maxRetries` | 最大リトライ回数 | 4 |
-| `initialDelayMs` | 初期待機時間（ミリ秒） | 1000 |
-| `maxDelayMs` | 最大待機時間（ミリ秒） | 30000 |
+| `maxRetries` | 最大リトライ回数 | 2 |
+| `initialDelayMs` | 初期待機時間（ミリ秒） | 800 |
+| `maxDelayMs` | 最大待機時間（ミリ秒） | 10000 |
 | `multiplier` | バックオフ乗数 | 2 |
 | `jitter` | ジッターモード（`full`/`partial`/`none`） | `none` |
 
@@ -407,7 +409,7 @@ Stable プロファイルでは、`STABLE_MAX_ACTIVE_MEMBERS_PER_TEAM = 3` の�
 
 Stable プロファイルでは、429エラーを回避するため以下の追加設定が適用されます：
 
-- `maxRateLimitRetries`: 最大レート制限リトライ回数 = 6
+- `maxRateLimitRetries`: 最大レート制限リトライ回数 = 4
 - `maxRateLimitWaitMs`: 最大レート制限待機時間 = 90000ms (90秒)
 
 これにより、即時のレート制限エラーを防ぎつつ、適切な待機時間を確保します。

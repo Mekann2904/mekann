@@ -33,7 +33,7 @@ import { matchesKey, Key, truncateToWidth } from "@mariozechner/pi-tui";
 
 import { formatDurationMs, formatBytes, formatClockTime } from "../format-utils.js";
 import { computeLiveWindow } from "../agent-utils.js";
-import { getLiveStatusGlyph, isEnterInput, finalizeLiveLines } from "../live-view-utils.js";
+import { getLiveStatusGlyph, getLiveStatusColor, getActivityIndicator, isEnterInput, finalizeLiveLines } from "../live-view-utils.js";
 import { appendTail, countOccurrences, estimateLineCount, renderPreviewWithMarkdown } from "./tui-utils.js";
 
 // ============================================================================
@@ -56,7 +56,7 @@ export type LiveStreamView = "stdout" | "stderr";
  * ライブ表示モード種別
  * @summary モードを取得
  */
-export type LiveViewMode = "list" | "detail";
+export type LiveViewMode = "list" | "detail" | "tree" | "timeline";
 
 /**
  * ライブアイテムの基底データ定義
@@ -242,7 +242,7 @@ export interface LiveViewHeaderData {
 }
 
 /**
- * ヘッダー描画
+ * ヘッダー描画（コンパクト版）
  * @summary ヘッダー描画
  * @param data ヘッダー表示データ
  * @param width 描画幅
@@ -257,19 +257,20 @@ export function renderLiveViewHeader(
   const lines: string[] = [];
   const add = (line = "") => lines.push(truncateToWidth(line, width));
 
+  // タイトル行
   add(theme.bold(theme.fg("accent", `${data.title} [${data.mode}]`)));
-  add(
-    theme.fg(
-      "dim",
-      `running ${data.running}/${data.total} | completed ${data.completed} | failed ${data.failed} | updated ${formatClockTime(Date.now())}`,
-    ),
-  );
+
+  // ステータス行（コンパクト）
+  const runText = data.running > 0 ? theme.fg("accent", `Run:${data.running}`) : `Run:${data.running}`;
+  const doneText = data.completed > 0 ? theme.fg("success", `Done:${data.completed}`) : `Done:${data.completed}`;
+  const failText = data.failed > 0 ? theme.fg("error", `Fail:${data.failed}`) : `Fail:${data.failed}`;
+  add(`${runText}  ${doneText}  ${failText}`);
 
   return lines;
 }
 
 /**
- * キーボード操作のヒントを描画する
+ * キーボード操作のヒントを描画する（コンパクト版）
  * @summary キーボードヒント描画
  * @param width 表示幅
  * @param theme テーマ設定
@@ -279,23 +280,18 @@ export function renderListKeyboardHints(width: number, theme: any): string[] {
   const lines: string[] = [];
   const add = (line = "") => lines.push(truncateToWidth(line, width));
 
-  add(
-    theme.fg(
-      "dim",
-      "[j/k] move  [up/down] move  [g/G] jump  [enter] detail  [tab] stream  [q] close",
-    ),
-  );
+  add(theme.fg("dim", "[j/k] nav  [g/G] top/bot  [ret] detail  [q] quit"));
 
   return lines;
 }
 
- /**
-  * 詳細画面のキーボード操作ヒントを描画する
-  * @param width 画面幅
-  * @param theme テーマ設定
-  * @param extraKeys 追加キーのヒント
-  * @returns 描画用の文字列配列
-  */
+/**
+ * 詳細画面のキーボード操作ヒントを描画する（コンパクト版）
+ * @param width 画面幅
+ * @param theme テーマ設定
+ * @param extraKeys 追加キーのヒント
+ * @returns 描画用の文字列配列
+ */
 export function renderDetailKeyboardHints(
   width: number,
   theme: any,
@@ -304,8 +300,8 @@ export function renderDetailKeyboardHints(
   const lines: string[] = [];
   const add = (line = "") => lines.push(truncateToWidth(line, width));
 
-  const baseKeys = "[j/k] move target  [up/down] move  [g/G] jump  [tab] stdout/stderr";
-  const endKeys = "[b|esc] back  [q] close";
+  const baseKeys = "[j/k] nav  [tab] stream";
+  const endKeys = "[b] back  [q] quit";
   const fullHint = extraKeys
     ? `${baseKeys}  ${extraKeys}  ${endKeys}`
     : `${baseKeys}  ${endKeys}`;
@@ -356,16 +352,16 @@ export function renderListWindow<T>(
   return lines;
 }
 
- /**
-  * 単一のリストアイテム行を描画する
-  * @param item リストアイテム
-  * @param index インデックス
-  * @param isSelected 選択状態かどうか
-  * @param width 幅
-  * @param theme テーマ
-  * @param extraMeta 追加メタ情報
-  * @returns 描画された文字列
-  */
+/**
+ * 単一のリストアイテム行を描画する（コンパクト版）
+ * @param item リストアイテム
+ * @param index インデックス
+ * @param isSelected 選択状態かどうか
+ * @param width 幅
+ * @param theme テーマ
+ * @param extraMeta 追加メタ情報
+ * @returns 描画された文字列
+ */
 export function renderBaseListItemLine(
   item: BaseLiveItem & { name?: string },
   index: number,
@@ -376,20 +372,30 @@ export function renderBaseListItemLine(
 ): string {
   const prefix = isSelected ? ">" : " ";
   const glyph = getLiveStatusGlyph(item.status);
-  const statusText = item.status.padEnd(9, " ");
-  const base = `${prefix} [${glyph}] ${item.id}${item.name ? ` (${item.name})` : ""}`;
-  const outLines = getStreamLineCount(item, "stdout");
-  const errLines = getStreamLineCount(item, "stderr");
+  const glyphColor = getLiveStatusColor(item.status);
+  const displayName = item.name || item.id;
+  const elapsed = formatDurationMs(item);
 
-  const meta = [
-    statusText,
-    formatDurationMs(item),
-    `out:${formatBytes(item.stdoutBytes)}/${outLines}l`,
-    `err:${formatBytes(item.stderrBytes)}/${errLines}l`,
-    extraMeta,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  // アクティビティ判定
+  const hasOutput = item.stdoutBytes > 0;
+  const hasError = item.stderrBytes > 0;
+  const isRecent = item.lastChunkAtMs ? (Date.now() - item.lastChunkAtMs) < 2000 : false;
+  const activity = getActivityIndicator(hasOutput, hasError, isRecent);
+
+  // 色付きグリフ
+  const coloredGlyph = theme.fg(glyphColor, glyph);
+  const base = `${prefix} ${coloredGlyph} ${displayName}`;
+
+  // コンパクトなメタ情報: 経過時間 + アクティビティ + バイト数（エラー時のみ）
+  const metaParts = [elapsed, activity];
+  if (hasError) {
+    metaParts.push(`err:${formatBytes(item.stderrBytes)}`);
+  } else if (hasOutput) {
+    metaParts.push(formatBytes(item.stdoutBytes));
+  }
+  if (extraMeta) metaParts.push(extraMeta);
+
+  const meta = metaParts.join(" ");
 
   return `${isSelected ? theme.fg("accent", base) : base} ${theme.fg("dim", meta)}`;
 }
