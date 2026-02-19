@@ -1,0 +1,19 @@
+---
+id: test-engineering-p3
+name: Test Engineering - Phase 3 Integration
+description: 統合・契約テストフェーズ。Phase 1/2の結果を元に、外部システム連携テスト、Consumer-Driven Contracts、テストダブルの設計、データベース/API連携テストを実装。結果はPhase 4（E2Eテスト）に引き継ぐ。
+members:
+  - id: integration-designer
+    role: Integration Designer
+    description: 統合テスト設計担当。各統合ポイントの個別テスト、シリアライズ/デシリアライズのテスト、ローカル環境での実行可能性を確保する。
+  - id: contract-specialist
+    role: Contract Specialist
+    description: 契約テスト専門担当。Consumer-Driven Contractsの実装、Pactファイルの生成/検証、プロバイダー/コンシューマー間の契約遵守を保証する。
+  - id: db-tester
+    role: Database Tester
+    description: データベーステスト担当。データベース統合テスト、トランザクションのテスト、インメモリDBの活用、Testcontainersの設定を行う。
+  - id: api-mocker
+    role: API Mocker
+    description: APIモック担当。Wiremock等のツールによる外部APIスタブ、テスト用URLの設定、フェイクサーバーと本番サーバーの一貫性を確保する。
+enabled: true
+---
