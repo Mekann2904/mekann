@@ -67,10 +67,9 @@ function getGlobalTeamDefinitionsDir(): string {
 }
 
 function getBundledTeamDefinitionsDir(): string | undefined {
-  // 拡張機能ファイルの隣接ディレクトリに同梱された定義を優先候補に含める。
-  // これにより git package 経由の global install でも定義を見つけられる。
+  // 拡張機能ディレクトリ内のdefinitionsを参照
   if (typeof __dirname !== "string" || !__dirname) return undefined;
-  return join(__dirname, "..", "..", "agent-teams", "definitions");
+  return join(__dirname, "definitions");
 }
 
 function getCandidateTeamDefinitionsDirs(cwd: string): string[] {
