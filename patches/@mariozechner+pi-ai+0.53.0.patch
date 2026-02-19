@@ -1,8 +1,8 @@
 diff --git a/node_modules/@mariozechner/pi-ai/dist/providers/anthropic.js b/node_modules/@mariozechner/pi-ai/dist/providers/anthropic.js
-index 1954cc9..4fb4d01 100644
+index 0bf2b89..d04db2b 100644
 --- a/node_modules/@mariozechner/pi-ai/dist/providers/anthropic.js
 +++ b/node_modules/@mariozechner/pi-ai/dist/providers/anthropic.js
-@@ -662,6 +662,8 @@ function mapStopReason(reason) {
+@@ -694,6 +694,8 @@ function mapStopReason(reason) {
              return "stop"; // We don't supply stop sequences, so this should never happen
          case "sensitive": // Content flagged by safety filters (not yet in SDK types)
              return "error";
@@ -12,10 +12,10 @@ index 1954cc9..4fb4d01 100644
              // Handle unknown stop reasons gracefully (API may add new values)
              throw new Error(`Unhandled stop reason: ${reason}`);
 diff --git a/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js b/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js
-index 3b57cd2..44a73e6 100644
+index 8c97431..f53ee30 100644
 --- a/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js
 +++ b/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js
-@@ -663,6 +663,8 @@ function mapStopReason(reason) {
+@@ -645,6 +645,8 @@ function mapStopReason(reason) {
              return "toolUse";
          case "content_filter":
              return "error";
@@ -25,7 +25,7 @@ index 3b57cd2..44a73e6 100644
              const _exhaustive = reason;
              throw new Error(`Unhandled stop reason: ${_exhaustive}`);
 diff --git a/node_modules/@mariozechner/pi-ai/dist/providers/openai-responses-shared.js b/node_modules/@mariozechner/pi-ai/dist/providers/openai-responses-shared.js
-index e2c148c..9dfa5cf 100644
+index 00c5801..c38b8f4 100644
 --- a/node_modules/@mariozechner/pi-ai/dist/providers/openai-responses-shared.js
 +++ b/node_modules/@mariozechner/pi-ai/dist/providers/openai-responses-shared.js
 @@ -414,6 +414,8 @@ function mapStopReason(status) {
