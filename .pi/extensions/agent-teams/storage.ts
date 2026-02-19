@@ -302,8 +302,8 @@ export type TeamPaths = BaseStoragePaths;
 export const MAX_RUNS_TO_KEEP = 100;
 export const TEAM_DEFAULTS_VERSION = 3;
 
-// Use common path factory
-const getBasePaths = createPathsFactory("agent-teams");
+// Use common path factory (use .agent-teams-storage to avoid package manager scanning)
+const getBasePaths = createPathsFactory(".agent-teams-storage");
 export const getPaths = getBasePaths as (cwd: string) => TeamPaths;
 export const ensurePaths = createEnsurePaths(getPaths);
 

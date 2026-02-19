@@ -117,3 +117,4 @@ coverage/
 **/*.pem
 !**/public-key.pem
 philosophy.md
+.pi/.agent-teams-storage/
