@@ -28,6 +28,7 @@
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts
 
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -208,18 +209,43 @@ const getPackageRoot = (): string => {
 };
 
 /**
+ * Get global agent directory from environment variable.
+ */
+const getGlobalAgentDir = (): string => {
+  const raw = process.env.PI_CODING_AGENT_DIR;
+  if (!raw || !raw.trim()) {
+    return join(homedir(), ".pi", "agent");
+  }
+  const value = raw.trim();
+  if (value === "~") return homedir();
+  if (value.startsWith("~/")) return join(homedir(), value.slice(2));
+  return value;
+};
+
+/**
  * Skill search paths in priority order.
- * - .pi/lib/skills/: Team-specific skills (only loaded when explicitly assigned)
- * - .pi/skills/: Global skills (available to all agents)
- * 
- * Uses package-relative paths so skills work correctly regardless of where
- * the package is installed (e.g., via `pi install`).
+ * 1. Project skills (process.cwd()/.pi/skills, process.cwd()/.pi/lib/skills)
+ * 2. Global skills (~/.pi/agent/skills)
+ * 3. Package bundled skills (PACKAGE_ROOT/.pi/skills, PACKAGE_ROOT/.pi/lib/skills)
+ *
+ * This ensures skills are found regardless of where pi is executed from,
+ * while allowing project-level overrides.
  */
 const PACKAGE_ROOT = getPackageRoot();
-const TEAM_SKILL_PATHS = [
-  join(PACKAGE_ROOT, ".pi", "lib", "skills"),
-  join(PACKAGE_ROOT, ".pi", "skills"),
-];
+const getSkillSearchPaths = (): string[] => {
+  const cwd = process.cwd();
+  const globalDir = getGlobalAgentDir();
+  return [
+    // Project skills (highest priority)
+    join(cwd, ".pi", "lib", "skills"),
+    join(cwd, ".pi", "skills"),
+    // Global skills
+    join(globalDir, "skills"),
+    // Package bundled skills (fallback)
+    join(PACKAGE_ROOT, ".pi", "lib", "skills"),
+    join(PACKAGE_ROOT, ".pi", "skills"),
+  ];
+};
 
 /**
  * スキル名からファイル内容を読込
@@ -228,7 +254,8 @@ const TEAM_SKILL_PATHS = [
  * @returns スキルのファイル内容、またはnull
  */
 export function loadSkillContent(skillName: string): string | null {
-  for (const basePath of TEAM_SKILL_PATHS) {
+  const skillPaths = getSkillSearchPaths();
+  for (const basePath of skillPaths) {
     const skillPath = join(basePath, skillName, "SKILL.md");
     if (existsSync(skillPath)) {
       try {
