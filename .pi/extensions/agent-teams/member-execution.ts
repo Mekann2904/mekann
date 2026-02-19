@@ -28,7 +28,8 @@
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { TeamDefinition, TeamMember, TeamMemberResult } from "./storage";
 
@@ -194,13 +195,30 @@ export function formatTeamMemberSkillsSection(skills: string[] | undefined): str
 }
 
 /**
+ * Resolve package root directory relative to this file.
+ * This file is at: .pi/extensions/agent-teams/member-execution.ts
+ * Package root is: ../../../ (3 levels up)
+ */
+const getPackageRoot = (): string => {
+  // Use import.meta.url for ES Module compatibility
+  const currentFile = fileURLToPath(import.meta.url);
+  const currentDir = dirname(currentFile);
+  // .pi/extensions/agent-teams/ -> .pi/extensions/ -> .pi/ -> package-root/
+  return dirname(dirname(dirname(currentDir)));
+};
+
+/**
  * Skill search paths in priority order.
  * - .pi/lib/skills/: Team-specific skills (only loaded when explicitly assigned)
  * - .pi/skills/: Global skills (available to all agents)
+ * 
+ * Uses package-relative paths so skills work correctly regardless of where
+ * the package is installed (e.g., via `pi install`).
  */
+const PACKAGE_ROOT = getPackageRoot();
 const TEAM_SKILL_PATHS = [
-  join(process.cwd(), ".pi", "lib", "skills"),
-  join(process.cwd(), ".pi", "skills"),
+  join(PACKAGE_ROOT, ".pi", "lib", "skills"),
+  join(PACKAGE_ROOT, ".pi", "skills"),
 ];
 
 /**
