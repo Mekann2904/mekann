@@ -225,7 +225,7 @@ export function classifyTaskType(task: string, summary: string): TaskType {
 export function extractFiles(text: string): string[] {
   const filePatterns = [
     // File paths with extensions (handles commas, semicolons, parens, brackets around/before filenames)
-    /(?:^|[\s"'`(\[])([a-zA-Z0-9_\-./]+\.[a-zA-Z]{1,10})(?:[\s"'`,;:)\]]|$)/g,
+    /(?:^|[\s"'`(])([a-zA-Z0-9_\-./]+\.[a-zA-Z]{1,10})(?:[\s"'`,;:)\]]|$)/g,
     // Quoted paths
     /["'`]([^"'`]+\.[a-zA-Z]{1,10})["'`]/g,
   ];

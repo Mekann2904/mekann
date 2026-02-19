@@ -326,7 +326,7 @@ export function estimateTokens(text: string): number {
   const cjkChars = (text.match(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/g) || []).length;
   
   // Count code tokens (punctuation, operators)
-  const codeTokens = (text.match(/[{}()\[\];:,.<>=!&|+\-*/\\@#$%^~?]/g) || []).length;
+  const codeTokens = (text.match(/[{}()[\];:,.<>=!&|+\-*/\\@#$%^~?]/g) || []).length;
   
   // Combine estimates
   return Math.ceil(words + cjkChars * 0.5 + codeTokens * 0.3);
@@ -1193,7 +1193,7 @@ export function mergeContextItems(
   let mergedContent: string;
   
   switch (strategy) {
-    case "summarize":
+    case "summarize": {
       // Extract key information from each item
       const keyInfos = items.map(item => {
         const summary = summarizeItem(item);
@@ -1201,8 +1201,9 @@ export function mergeContextItems(
       });
       mergedContent = keyInfos.join("\n\n");
       break;
-      
-    case "priority-first":
+    }
+
+    case "priority-first": {
       // Sort by priority and take top items
       const sorted = [...items].sort((a, b) => {
         const priorities: ContextPriority[] = ["critical", "high", "medium", "low", "optional"];
@@ -1210,7 +1211,8 @@ export function mergeContextItems(
       });
       mergedContent = sorted.map(item => item.content).join("\n\n---\n\n");
       break;
-      
+    }
+
     case "concat":
     default:
       mergedContent = items.map(item => item.content).join("\n\n");

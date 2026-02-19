@@ -156,7 +156,7 @@ export interface SubagentStorage {
  * @summary パス定義
  * @returns {void}
  */
-export interface SubagentPaths extends BaseStoragePaths {}
+export type SubagentPaths = BaseStoragePaths;
 
 // Constants
 export const MAX_RUNS_TO_KEEP = 100;

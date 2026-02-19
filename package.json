@@ -9,17 +9,23 @@
     "@sinclair/typebox": "^0.32.0"
   },
   "devDependencies": {
+    "@eslint/compat": "^1.1.1",
+    "@eslint/js": "^9.22.0",
     "@mariozechner/pi-ai": "^0.53.0",
     "@mariozechner/pi-coding-agent": "^0.53.0",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "eslint": "^8.57.0",
-    "eslint-plugin-import": "^2.32.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-import": "^2.31.0",
     "fast-check": "^4.5.3",
+    "globals": "^16.0.0",
     "patch-package": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "minimatch": "^10.2.1",
+    "ajv": "^8.18.0"
   },
   "scripts": {
     "postinstall": "patch-package && ./scripts/patch-global-pi.sh",
@@ -29,8 +35,8 @@
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run tests/unit",
     "typecheck": "tsc --noEmit --project tsconfig-check.json",
-    "lint": "eslint .pi/extensions/*.ts .pi/lib/*.ts --max-warnings=0 --no-ignore",
-    "lint:fix": "eslint .pi/extensions/*.ts .pi/lib/*.ts --fix --no-ignore",
+    "lint": "eslint .pi/extensions .pi/lib --max-warnings=0",
+    "lint:fix": "eslint .pi/extensions .pi/lib --fix",
     "ci": "npm run typecheck && npm run lint && npm run test",
     "generate-abdd": "npx tsx scripts/generate-abdd.ts",
     "add-abdd-header": "npx tsx scripts/add-abdd-header.ts"
