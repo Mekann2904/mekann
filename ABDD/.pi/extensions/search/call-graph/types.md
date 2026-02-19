@@ -340,4 +340,4 @@ type CallGraphNodeKind = "function" | "method" | "arrow" | "const"
 呼び出し可能なシンボルの種類
 
 ---
-*自動生成: 2026-02-18T15:54:41.257Z*
+*自動生成: 2026-02-18T18:06:17.328Z*

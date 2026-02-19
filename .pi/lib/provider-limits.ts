@@ -76,31 +76,8 @@ export interface ModelTierLimits {
 }
 
 /**
- * /**
- * * プロバイダー別のモデル制限設定を管理するインターフェース
- * *
- * * @property version - 設定のバージョン番号
- * * @property lastUpdated - 最終更新日時（ISO 8601形式など）
- * * @property source - 設定元のソース（URLやファイルパスなど）
- * * @property providers - プロバイダー名をキーとする設定マップ
- * * @property providers[].displayName - プロバイダーの表示名
- * * @property providers[].documentation - ドキュメントURL（省略可）
- * * @property providers[].models - モデルパターンをキーとする制限設定
- * @example
- * const config: ProviderLimitsConfig = {
- *   version: 1,
- *   lastUpdated: "2024-01-15T00:00:00Z",
- *   source: "https://example.com/limits"
- * };
- */
-
-/**
+ * 制限設定形式
  * @summary 制限設定形式
- * 全プロバイダーの制限設定を表すインターフェースです。
- * @param version 設定のバージョン番号。
- * @param lastUpdated 最終更新日時。
- * @param source 設定の取得元URL。
- * @param providers プロバイダーごとの制限設定マップ。
  */
 export interface ProviderLimitsConfig {
   version: number;
@@ -118,13 +95,8 @@ export interface ProviderLimitsConfig {
 }
 
 /**
+ * モデル制限定義
  * @summary モデル制限定義
- * 特定のモデルと階層の制限値を定義します。
- * @param provider プロバイダー名。
- * @param model モデル名。
- * @param tier モデル階層。
- * @param rpm 1分あたりのリクエスト数。
- * @param tpm 1分あたりのトークン数。
  */
 export interface ResolvedModelLimits {
   provider: string;

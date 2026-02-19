@@ -53,8 +53,6 @@
 /**
  * pi標準エラーコード
  * @summary piエラーコード
- * @param エラーの種類を表す文字列リテラル
- * @returns エラーコードの型定義
  */
 export type PiErrorCode =
   | "UNKNOWN_ERROR"
@@ -75,9 +73,6 @@ export type PiErrorCode =
 /**
  * pi固有エラーを生成
  * @summary pi固有エラー生成
- * @param message エラーメッセージ
- * @param code エラーコード
- * @param options オプション設定
  */
 export class PiError extends Error {
   /** プログラムによる処理のためのエラーコード */
@@ -145,12 +140,6 @@ export class PiError extends Error {
 /**
  * ランタイム容量制限エラー
  * @summary ランタイム制限超過
- * @param message エラーメッセージ
- * @param options オプション設定
- * @param options.currentCount 現在のランタイム数
- * @param options.maxCount 最大ランタイム数
- * @param options.cause 原因となったエラー
- * @returns RuntimeLimitError
  */
 export class RuntimeLimitError extends PiError {
   /** 制限に達した時点の現在のランタイム数 */
@@ -192,8 +181,6 @@ export class RuntimeLimitError extends PiError {
 /**
  * キュー待機タイムアウト
  * @summary 待機タイムアウト
- * @param message エラーメッセージ
- * @param options 追加オプション（待機時間、最大待機時間、原因エラー）
  */
 export class RuntimeQueueWaitError extends PiError {
   /** 待機時間（ミリ秒） */
@@ -218,10 +205,10 @@ export class RuntimeQueueWaitError extends PiError {
     this.maxWaitMs = options?.maxWaitMs;
   }
 
-   /**
-    * エラー情報をJSON形式に変換する
-    * @returns JSONオブジェクト
-    */
+  /**
+   * エラー情報をJSON形式に変換する
+   * @returns JSONオブジェクト
+   */
   override toJSON(): Record<string, unknown> {
     return {
       ...super.toJSON(),
@@ -238,7 +225,6 @@ export class RuntimeQueueWaitError extends PiError {
 /**
  * スキーマ検証エラー
  * @summary スキーマ違反発生
- * @returns プロパティを含むオブジェクト
  */
 export class SchemaValidationError extends PiError {
   /** 検証エラーのリスト */
@@ -280,7 +266,6 @@ export class SchemaValidationError extends PiError {
 /**
  * 検証エラー
  * @summary 検証エラー発生
- * @returns プロパティを含むオブジェクト
  */
 export class ValidationError extends PiError {
   /** 検証に失敗したフィールド */
@@ -331,7 +316,6 @@ export class ValidationError extends PiError {
 /**
  * タイムアウトエラー
  * @summary タイムアウト発生
- * @returns プロパティを含むオブジェクト
  */
 export class TimeoutError extends PiError {
   /** 操作タイムアウト時間（ミリ秒） */
@@ -376,17 +360,6 @@ export class CancelledError extends PiError {
   constructor(
     message: string,
     options?: {
-/**
-       * エラー情報をJSON形式でシリアライズする
-       *
-       * 親クラスのtoJSON結果にreasonプロパティを追加して返します。
-       *
-       * @returns シリアライズされたエラー情報を含むオブジェクト
-       * @example
-       * const error = new CancelledError("操作がキャンセルされました", { reason: "user_cancelled" });
-       * const json = error.toJSON();
-       * // { name: "CancelledError", message: "...", reason: "user_cancelled", ... }
-       */
       reason?: string;
       cause?: Error;
     },
@@ -455,10 +428,6 @@ export class RateLimitError extends PiError {
 /**
  * キャパシティ超過時のエラーを表すクラス
  * @summary キャパシティエラー生成
- * @param {string} message エラーメッセージ
- * @param {Object} [options] 追加オプション
- * @param {string} [options.resource] リソース名
- * @param {Error} [options.cause] 原因となったエラー
  */
 export class CapacityError extends PiError {
   /** 容量を超過したリソース */
@@ -490,18 +459,6 @@ export class CapacityError extends PiError {
       resource: this.resource,
     };
   }
-/**
- * エラー情報をJSON形式で返す
- *
- * 親クラスのJSON出力に加え、コンテンツ（100文字で切り詰め）と
- * パース位置情報を含めます。
- *
- * @returns エラー情報を含むJSONオブジェクト
- * @example
- * const error = new ParsingError("パースエラー", { content: "long text...", position: 10 });
- * const json = error.toJSON();
- * // => { name: "ParsingError", message: "パースエラー", content: "long text...", position: 10, ... }
- */
 }
 
 // ============================================================================
@@ -511,10 +468,6 @@ export class CapacityError extends PiError {
 /**
  * パース処理中に発生したエラーを表すクラス
  * @summary パースエラー生成
- * @param {string} message エラーメッセージ
- * @param {Object} [options] 追加オプション
- * @param {string} [options.content] エラー対象のコンテンツ
- * @param {number} [options.position] エラー位置
  */
 export class ParsingError extends PiError {
   /** パースに失敗したコンテンツ */
@@ -564,13 +517,10 @@ export class ParsingError extends PiError {
  */
 export type ErrorSeverity = "low" | "medium" | "high" | "critical";
 
- /**
-  * エラーハンドリング用の追加コンテキスト。
-  * @param operation 失敗した操作
-  * @param component エラーが発生したコンポーネント
-  * @param metadata 追加のメタデータ
-  * @param timestamp タイムスタンプ
-  */
+/**
+ * エラーハンドリング用の追加コンテキスト
+ * @summary エラーコンテキスト
+ */
 export interface ErrorContext {
   /** 失敗した操作 */
   operation?: string;
@@ -584,10 +534,7 @@ export interface ErrorContext {
 
 /**
  * 実行エラーを生成
- * @class ExecutionError
  * @summary 実行エラー生成
- * @param message エラーメッセージ
- * @param options オプション設定
  */
 export class ExecutionError extends PiError {
   /** エラーの重要度 */

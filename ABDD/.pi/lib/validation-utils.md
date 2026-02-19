@@ -129,4 +129,4 @@ type BoundedIntegerResult = | { ok: true; value: number }
 整数値の範囲制限結果を表す型
 
 ---
-*自動生成: 2026-02-18T15:54:41.543Z*
+*自動生成: 2026-02-18T18:06:17.590Z*

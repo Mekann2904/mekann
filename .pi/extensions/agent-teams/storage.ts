@@ -78,16 +78,6 @@ export interface TeamMember {
   model?: string;
   enabled: boolean;
   skills?: string[];
-/**
- * /**
- * * チームメンバーの実行結果を表すインターフェース
- * *
- * * エージェントチームのメンバーがタスクを実行した際の結果情報を格納します。
- * * 成功時は出力内容、失敗時はエラー情報を含みます。
- * *
- * * @property memberId - メンバーの一意識別子
- * * @property role - メンバー
- */
 }
 
 /**
@@ -206,19 +196,6 @@ export interface DiscussionAnalysis {
  * @param confidence 確信度
  */
 export interface DiscussionReference {
-/**
-   * /**
-   * * チーム実行の記録を表すインターフェース
-   * *
-   * * チームによるタスク実行の詳細情報、通信状況、実行結果を含む。
-   * *
-   * * @property runId - 実行の一意識別子
-   * * @property teamId - チームの一意識別子
-   * * @property strategy - チームが採用した戦略
-   * * @property task - 実行されたタスクの内容
-   * * @property communicationRounds - 通信の総ラウンド数（省略可）
-   * * @property failedMemberRetryRounds - 失敗メ
-   */
   targetMemberId: string;
   targetClaimId?: string;
   stance: "agree" | "disagree" | "neutral" | "partial";

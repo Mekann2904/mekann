@@ -356,4 +356,4 @@ async isCallGraphIndexStale(cwd: string): Promise<boolean>
 **戻り値**: `Promise<boolean>`
 
 ---
-*自動生成: 2026-02-18T15:54:41.252Z*
+*自動生成: 2026-02-18T18:06:17.324Z*

@@ -147,12 +147,6 @@ export function resolveTeamMemberAggregateOutcome(memberResults: TeamMemberResul
   const failed = memberResults.filter((result) => result.status === "failed");
   if (failed.length === 0) {
     return {
-/**
-       * /**
-       * * チームの並列実行結果を集約し、全体の実行結果を解決する
-       * *
-       * * 複数チームの並列実
-       */
       outcomeCode: "SUCCESS",
       retryRecommended: false,
       failedMemberIds: [],
@@ -330,19 +324,6 @@ export function buildTeamResultText(input: {
   if (input.run.communicationLinks) {
     lines.push("Communication links:");
     for (const [memberId, partners] of Object.entries(input.run.communicationLinks)) {
-/**
-       * /**
-       * * 出力テキストから要約を抽出する
-       * *
-       * * "summary:" で始まる行を探し、その値を返します。
-       * * 見つからない場合は、最初の非空行を返します。
-       * *
-       * * @param output - 処理対象の出力テキスト
-       * * @returns 抽出された要約文字列
-       * * @example
-       * * const text = "summary: これは要約です";
-       * * const summary = extractSummary(text); // "これは要約です"
-       */
       lines.push(`- ${memberId} -> ${partners.join(", ") || "-"}`);
     }
   }

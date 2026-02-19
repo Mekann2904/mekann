@@ -48,23 +48,6 @@ import {
  */
 export interface SubagentParallelCapacityResolution {
   allowed: boolean;
-/**
-   * /**
-   * * サブエージェントの並列実行容量を解決する
-   * *
-   * * 要求された並列度に基づいて、利用可能な容量を探索し、
-   * * 並列実行のための容量予約を解決します。
-   * *
-   * * @param input - 容量解決の入力パラメータ
-   * * @param input.requestedParallelism - 要求する並列実行数
-   * * @param input.additionalRequests - 追加で必要なリクエスト数
-   * * @param input.maxWaitMs - 最大待機時間（ミリ秒）
-   * * @param input.pollIntervalMs - ポーリング間隔（ミリ秒）
-   * * @param input.signal - 処理を中断するためのAbortSignal
-   * * @returns 容量解決結果を含むPromise
-   * * @example
-   * * //
-   */
   requestedParallelism: number;
   appliedParallelism: number;
   reduced: boolean;

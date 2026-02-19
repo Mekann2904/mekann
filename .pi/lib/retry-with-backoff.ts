@@ -418,7 +418,20 @@ export function extractRetryStatusCode(error: unknown): number | undefined {
     }
   }
 
-  const message = error instanceof Error ? error.message : String(error || "");
+  // 安全な文字列変換: {toString: ...}のようなオブジェクトはString()でエラーになる
+  let message: string;
+  if (error instanceof Error) {
+    message = error.message;
+  } else if (typeof error === "object" && error !== null) {
+    try {
+      message = JSON.stringify(error);
+    } catch {
+      message = "[object Object]";
+    }
+  } else {
+    message = String(error || "");
+  }
+
   const codeMatch = message.match(/\b(429|401|403|5\d{2})\b/);
   if (codeMatch) {
     return Number(codeMatch[1]);

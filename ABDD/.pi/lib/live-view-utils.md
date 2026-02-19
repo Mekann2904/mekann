@@ -82,4 +82,4 @@ type LiveStatus = "pending" | "running" | "completed" | "failed"
 ライブビューのステータス型
 
 ---
-*自動生成: 2026-02-18T15:54:41.486Z*
+*自動生成: 2026-02-18T18:06:17.531Z*

@@ -474,4 +474,4 @@ type StanceClassificationMode = "disabled" | "heuristic" | "structured"
 分類モードの型定義
 
 ---
-*自動生成: 2026-02-18T15:54:41.493Z*
+*自動生成: 2026-02-18T18:06:17.537Z*

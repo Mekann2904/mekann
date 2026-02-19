@@ -56,6 +56,9 @@
       "./.pi/extensions/subagents.ts",
       "./.pi/extensions/ul-dual-mode.ts",
       "./.pi/extensions/usage-tracker.ts"
+    ],
+    "skills": [
+      "./.pi/skills"
     ]
   }
 }

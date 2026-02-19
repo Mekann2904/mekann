@@ -257,4 +257,4 @@ archiveOldLogs(daysToKeep: number, paths?: DynamicToolsPaths): { archived: numbe
 **戻り値**: `{ archived: number; error?: string }`
 
 ---
-*自動生成: 2026-02-18T15:54:41.468Z*
+*自動生成: 2026-02-18T18:06:17.513Z*

@@ -253,15 +253,6 @@ export function buildLoopCommandPreview(model: {
   id: string;
   thinkingLevel: ThinkingLevel;
 }): string {
-/**
-   * /**
-   * * ループ契約の出力文字列を解析して構造化データを返す
-   * *
-   * * 出力文字列からステータス、ゴール状態、証拠、引用、サマリー、次のアクション等を抽出し、
-   * * ParsedLoopContractオブジェクトとして構造化します。
-   * *
-   * * @param output - 解析対象の出力文字列（ループ実行結果を
-   */
   const parts = [
     "pi -p --no-extensions",
     `--provider ${model.provider}`,

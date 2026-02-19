@@ -44,6 +44,14 @@ import { getSchedulerAwareLimit, notifyScheduler429, notifySchedulerSuccess } fr
 import { retryWithBackoff, isRetryableError } from '../.pi/lib/retry-with-backoff';
 import { buildRateLimitKey } from '../.pi/lib/runtime-utils';
 import { getConcurrencyLimit } from '../.pi/lib/provider-limits';
+import {
+	QUALITY_SCORE_SUMMARY_LINE,
+	QUALITY_SCORE_PARAM_COVERAGE_MAX,
+	QUALITY_SCORE_NO_PARAMS,
+	QUALITY_SCORE_RETURNS,
+	QUALITY_SCORE_NO_RETURNS,
+	QUALITY_SCORE_MAX,
+} from '../.pi/lib/abdd-types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -868,31 +876,31 @@ function calculateQualityScore(jsDoc: string, element: ElementInfo): ElementQual
   // スコア計算（0-100）
   let score = 50; // ベーススコア
 
-  // 要約行がある (+10)
+  // 要約行がある (+QUALITY_SCORE_SUMMARY_LINE)
   const summaryLine = lines.find(l => l.trim() && !l.trim().startsWith('* @'));
   if (summaryLine && summaryLine.length > 5) {
-    score += 10;
+    score += QUALITY_SCORE_SUMMARY_LINE;
   }
 
-  // @paramカバレッジ (+20)
+  // @paramカバレッジ (+QUALITY_SCORE_PARAM_COVERAGE_MAX)
   if (expectedParamCount > 0) {
     const paramCoverageRatio = Math.min(paramCount / expectedParamCount, 1);
-    score += Math.floor(20 * paramCoverageRatio);
+    score += Math.floor(QUALITY_SCORE_PARAM_COVERAGE_MAX * paramCoverageRatio);
   } else if (paramCount === 0) {
-    score += 10; // パラメータなしの場合
+    score += QUALITY_SCORE_NO_PARAMS;
   }
 
-  // @returns (+20)
+  // @returns (+QUALITY_SCORE_RETURNS)
   if (expectsReturns) {
-    if (hasReturns) score += 20;
+    if (hasReturns) score += QUALITY_SCORE_RETURNS;
   } else {
-    score += 10; // 戻り値なしの場合
+    score += QUALITY_SCORE_NO_RETURNS;
   }
 
   return {
     elementName: element.name,
     elementType: element.type,
-    score: Math.min(100, score),
+    score: Math.min(QUALITY_SCORE_MAX, score),
     paramCount,
     expectedParamCount,
     hasReturns,

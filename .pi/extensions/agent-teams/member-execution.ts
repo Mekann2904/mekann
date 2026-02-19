@@ -28,7 +28,8 @@
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { TeamDefinition, TeamMember, TeamMemberResult } from "./storage";
 
@@ -194,13 +195,30 @@ export function formatTeamMemberSkillsSection(skills: string[] | undefined): str
 }
 
 /**
+ * Resolve package root directory relative to this file.
+ * This file is at: .pi/extensions/agent-teams/member-execution.ts
+ * Package root is: ../../../ (3 levels up)
+ */
+const getPackageRoot = (): string => {
+  // Use import.meta.url for ES Module compatibility
+  const currentFile = fileURLToPath(import.meta.url);
+  const currentDir = dirname(currentFile);
+  // .pi/extensions/agent-teams/ -> .pi/extensions/ -> .pi/ -> package-root/
+  return dirname(dirname(dirname(currentDir)));
+};
+
+/**
  * Skill search paths in priority order.
  * - .pi/lib/skills/: Team-specific skills (only loaded when explicitly assigned)
  * - .pi/skills/: Global skills (available to all agents)
+ * 
+ * Uses package-relative paths so skills work correctly regardless of where
+ * the package is installed (e.g., via `pi install`).
  */
+const PACKAGE_ROOT = getPackageRoot();
 const TEAM_SKILL_PATHS = [
-  join(process.cwd(), ".pi", "lib", "skills"),
-  join(process.cwd(), ".pi", "skills"),
+  join(PACKAGE_ROOT, ".pi", "lib", "skills"),
+  join(PACKAGE_ROOT, ".pi", "skills"),
 ];
 
 /**
@@ -246,27 +264,6 @@ export function buildSkillsSectionWithContent(skills: string[] | undefined): str
     } else {
       // Fallback: skill name only
       lines.push(`## ${skill}`);
-/**
-       * /**
-       * * チームメンバー用のプロンプトを構築する
-       * *
-       * * チーム定義、メンバー情報、タスク内容などを組み合わせて、
-       * * エージェントが実行するためのプロンプト文字列を生成します。
-       * *
-       * * @param input - プロンプト構築に必要な入力オブジェクト
-       * * @param input.team - チームの定義情報
-       * * @param input.member - 対象となるチームメンバーの情報
-       * * @param input.task - メンバーに割り当てるタスク内容
-       * * @param input.sharedContext - チーム全体で共有するコンテキスト（省略可）
-       * * @param input.phase - 実行フェーズ（"initial" または "communication"、省略時は "initial"）
-       * * @param input.communicationContext - コミュニケーションフェーズでの追加コンテキスト（省略可）
-       * * @returns 構築されたプロンプト文字列
-       * * @example
-       * * // 基本的な使用例
-       * * const prompt = buildTeamMemberPrompt({
-       * *   team: teamDefinition,
-       * *   member:
-       */
       lines.push("(スキル内容を読み込めませんでした)");
       lines.push("");
     }
@@ -346,12 +343,6 @@ export function buildTeamMemberPrompt(input: {
   lines.push("EVIDENCE: <根拠をカンマ区切り。可能なら file:line>");
   if (phase === "communication") {
     lines.push("DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>");
-/**
-   * /**
-   * * チームメンバーを実行し、タスク処理結果を返す
-   * *
-   * * 指定されたチーム定義とメンバー設定に基
-   */
   } else {
     lines.push("DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（コミュニケーションフェーズで必須）>");
   }

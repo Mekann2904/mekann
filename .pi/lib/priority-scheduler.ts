@@ -1,5 +1,4 @@
 /**
- * /**
  * @abdd.meta
  * path: .pi/lib/priority-scheduler.ts
  * role: タスクの優先度定義およびWFQ（Weighted Fair Queuing）スケジューリング用データ構造の定義モジュール
@@ -469,10 +468,10 @@ export class PriorityTaskQueue {
     return this.entries.length === 0;
   }
 
-   /**
-    * すべてのエントリを取得する
-    * @returns エントリの配列
-    */
+  /**
+   * すべてのエントリを取得する
+   * @returns エントリの配列
+   */
   getAll(): PriorityQueueEntry[] {
     return [...this.entries];
   }

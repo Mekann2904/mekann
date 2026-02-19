@@ -1,0 +1,19 @@
+---
+id: test-engineering-p4
+name: Test Engineering - Phase 4 E2E & Acceptance
+description: E2E・受け入れテストフェーズ。Phase 1/2/3の結果を元に、最も価値のあるユーザージャーニーのテスト、BDDスタイルの受け入れテスト、モデルベーステストを実装。包括的なテストポートフォリオを完成させる。
+members:
+  - id: journey-designer
+    role: User Journey Designer
+    description: ユーザージャーニー設計担当。最も価値のあるフローの特定、E2Eテストの最小化、下位層でカバー済み条件の除外、重要パスの定義を行う。
+  - id: e2e-implementer
+    role: E2E Implementer
+    description: E2E実装担当。Selenium/Playwright/Cypressの活用、ヘッドレスブラウザテスト、REST API E2Eテスト、フレーキーテストの回避を行う。
+  - id: bdd-specialist
+    role: BDD Specialist
+    description: BDD専門担当。Given-When-Thenによる受け入れテスト、ユーザー視点のテスト記述、Cucumber等のツール活用、機能テストと受け入れテストの明確化を行う。
+  - id: mbt-engineer
+    role: Model-Based Test Engineer
+    description: モデルベーステスト担当。状態遷移モデルの定義、アクション/事前条件/事後条件の設計、インバリアントの検証、テスト生成の自動化を行う。
+enabled: true
+---

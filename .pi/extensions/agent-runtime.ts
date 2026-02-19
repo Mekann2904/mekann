@@ -744,16 +744,6 @@ function updateReservationHeartbeat(
   if (!reservation) return undefined;
   const nowMs = Date.now();
   const normalizedTtlMs = normalizeReservationTtlMs(ttlMs);
-/**
-   * /**
-   * * ランタイムステータス行を整形して返す
-   * *
-   * * 現在のランタイムの状態（アクティブなLLM数、リクエスト数など）を
-   * * 人間が読みやすい形式の文字列として整形します。
-   * *
-   * * @param options - ステータス行のオプション（タイトルのカスタマイズなど）
-   * * @returns 整形されたステータス情報を含む文字列
-   */
   reservation.heartbeatAtMs = nowMs;
   reservation.expiresAtMs = nowMs + normalizedTtlMs;
   return reservation.expiresAtMs;

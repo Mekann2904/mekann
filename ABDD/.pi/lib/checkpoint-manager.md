@@ -518,4 +518,4 @@ type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background"
 チェックポイント優先度定義
 
 ---
-*自動生成: 2026-02-18T15:54:41.440Z*
+*自動生成: 2026-02-18T18:06:17.487Z*
