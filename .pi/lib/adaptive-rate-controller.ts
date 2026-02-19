@@ -592,7 +592,9 @@ export function resetAllLearnedLimits(): void {
  */
 export function setGlobalMultiplier(multiplier: number): void {
   const currentState = ensureState();
-  currentState.globalMultiplier = Math.max(0.1, Math.min(2.0, multiplier));
+  // NaN ガード: NaNの場合は1.0（デフォルト）に設定
+  const safeMultiplier = Number.isFinite(multiplier) ? multiplier : 1.0;
+  currentState.globalMultiplier = Math.max(0.1, Math.min(2.0, safeMultiplier));
   saveState();
 }
 
@@ -634,7 +636,12 @@ export function configureRecovery(options: {
 export function isRateLimitError(error: unknown): boolean {
   if (!error) return false;
 
-  const message = String(error).toLowerCase();
+  let message: string;
+  try {
+    message = String(error).toLowerCase();
+  } catch {
+    return false;
+  }
   const indicators = [
     "429",
     "rate limit",

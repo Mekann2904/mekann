@@ -40,6 +40,16 @@
  * @returns 有限数値またはundefined
  */
 export function toFiniteNumber(value: unknown): number | undefined {
+  // Handle arrays specially - single-element arrays can be converted
+  if (Array.isArray(value)) {
+    if (value.length === 0) return 0;
+    if (value.length === 1) return toFiniteNumber(value[0]);
+    return undefined; // Multi-element arrays are NaN
+  }
+  // Guard against objects with throwing/symbol toString (e.g., {toString: 0})
+  if (typeof value === "object" && value !== null) {
+    return undefined;
+  }
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : undefined;
 }
@@ -82,7 +92,12 @@ export function toBoundedInteger(
   max: number,
   field: string,
 ): BoundedIntegerResult {
-  const resolved = value === undefined ? fallback : Number(value);
+  let resolved: number;
+  try {
+    resolved = value === undefined ? fallback : Number(value);
+  } catch {
+    return { ok: false, error: `${field} must be an integer.` };
+  }
   if (!Number.isFinite(resolved) || !Number.isInteger(resolved)) {
     return { ok: false, error: `${field} must be an integer.` };
   }
@@ -101,6 +116,8 @@ export function toBoundedInteger(
  * @returns 範囲内に制限された整数値
  */
 export function clampInteger(value: number, min: number, max: number): number {
+  // NaNまたは非有限値の場合はminを返す
+  if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
@@ -110,8 +127,10 @@ export function clampInteger(value: number, min: number, max: number): number {
  * @param value - 入力値
  * @param min - 最小値
  * @param max - 最大値
- * @returns 範囲内に制限された整数値
+ * @returns 範囲内に制限された数値
  */
 export function clampFloat(value: number, min: number, max: number): number {
+  // NaNまたは非有限値の場合はminを返す
+  if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
 }

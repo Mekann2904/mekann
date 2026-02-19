@@ -40,6 +40,15 @@
  */
 export function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
+  // オブジェクトガード: {toString: ...}のようなオブジェクトはString()変換でエラーになる
+  if (typeof error === "object" && error !== null) {
+    // ErrorでないオブジェクトはJSON文字列化を試みる
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "[object Object]";
+    }
+  }
   return String(error);
 }
 
