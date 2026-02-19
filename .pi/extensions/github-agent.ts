@@ -22,7 +22,8 @@
  *   out: コマンド実行結果のテキストまたはエラーメッセージ
  */
 
-import * as path from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -30,6 +31,13 @@ import { Type, type Static } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 
 const execFileAsync = promisify(execFile);
+
+// Get directory of this file for resolving sibling resources
+// Works in both development and after pi install (jiti preserves import.meta.url)
+const getExtensionDir = (): string => {
+  const currentFile = fileURLToPath(import.meta.url);
+  return dirname(currentFile);
+};
 
 const GhAgentParams = Type.Object({
     command: StringEnum(["info", "tree", "read", "search"] as const),
@@ -51,7 +59,8 @@ export default function (pi: ExtensionAPI) {
         parameters: GhAgentParams,
         
         async execute(_toolCallId, params: GhAgentArgs) {
-            const scriptPath = path.resolve(__dirname, "github-agent/gh_agent.sh");
+            // Resolve script relative to this extension file
+            const scriptPath = resolve(getExtensionDir(), "github-agent", "gh_agent.sh");
             const cmdArgs: string[] = [params.command];
 
             // Validate and build arguments based on command
