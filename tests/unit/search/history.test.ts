@@ -2,7 +2,7 @@
  * Tests for Search History Management
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
 	SearchHistory,
 	DEFAULT_HISTORY_CONFIG,
@@ -20,6 +20,10 @@ describe("SearchHistory", () => {
 
 	beforeEach(() => {
 		history = new SearchHistory();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
 	});
 
 	describe("addHistoryEntry", () => {
@@ -49,27 +53,34 @@ describe("SearchHistory", () => {
 			expect(entry.results.length).toBe(3);
 		});
 
-		it("should add entries in reverse chronological order", async () => {
-			history.addHistoryEntry({
-				tool: "tool1",
-				params: {},
-				query: "query1",
-				results: [],
-			});
+		it("should add entries in reverse chronological order", () => {
+			// Arrange - フェイクタイマーを使用してタイムスタンプを制御
+			vi.useFakeTimers();
 
-			// Wait a tiny bit to ensure different timestamp
-			await new Promise((r) => setTimeout(r, 1));
+			try {
+				history.addHistoryEntry({
+					tool: "tool1",
+					params: {},
+					query: "query1",
+					results: [],
+				});
 
-			history.addHistoryEntry({
-				tool: "tool2",
-				params: {},
-				query: "query2",
-				results: [],
-			});
+				// 時間を進めて異なるタイムスタンプを保証
+				vi.advanceTimersByTime(1);
 
-			const entries = history.getAllEntries();
-			expect(entries[0].query).toBe("query2");
-			expect(entries[1].query).toBe("query1");
+				history.addHistoryEntry({
+					tool: "tool2",
+					params: {},
+					query: "query2",
+					results: [],
+				});
+
+				const entries = history.getAllEntries();
+				expect(entries[0].query).toBe("query2");
+				expect(entries[1].query).toBe("query1");
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 
 		it("should enforce max entries limit", () => {

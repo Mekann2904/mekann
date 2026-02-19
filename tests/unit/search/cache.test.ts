@@ -150,7 +150,15 @@ describe("SearchResultCache", () => {
 	});
 
 	describe("TTL expiration", () => {
-		it("should expire entries after TTL", async () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("should expire entries after TTL", () => {
 			cache = new SearchResultCache({ defaultTtl: 50 }); // 50ms TTL
 
 			cache.setCache("key", "value", 50);
@@ -158,29 +166,29 @@ describe("SearchResultCache", () => {
 			// Should exist immediately
 			expect(cache.getCached("key")).toBe("value");
 
-			// Wait for TTL
-			await new Promise((resolve) => setTimeout(resolve, 100));
+			// Advance time past TTL
+			vi.advanceTimersByTime(100);
 
 			// Should be expired
 			expect(cache.getCached("key")).toBeUndefined();
 		});
 
-		it("should use custom TTL", async () => {
+		it("should use custom TTL", () => {
 			cache = new SearchResultCache({ defaultTtl: 1000 });
 
 			cache.setCache("key", "value", 50); // Custom 50ms TTL
 
-			await new Promise((resolve) => setTimeout(resolve, 100));
+			vi.advanceTimersByTime(100);
 
 			expect(cache.getCached("key")).toBeUndefined();
 		});
 
-		it("should use default TTL when not specified", async () => {
+		it("should use default TTL when not specified", () => {
 			cache = new SearchResultCache({ defaultTtl: 50 });
 
 			cache.setCache("key", "value"); // Uses default TTL
 
-			await new Promise((resolve) => setTimeout(resolve, 100));
+			vi.advanceTimersByTime(100);
 
 			expect(cache.getCached("key")).toBeUndefined();
 		});
@@ -196,13 +204,18 @@ describe("SearchResultCache", () => {
 			expect(cache.has("missing")).toBe(false);
 		});
 
-		it("should return false for expired entries", async () => {
-			cache = new SearchResultCache({ defaultTtl: 50 });
-			cache.setCache("key", "value", 50);
+		it("should return false for expired entries", () => {
+			vi.useFakeTimers();
+			try {
+				cache = new SearchResultCache({ defaultTtl: 50 });
+				cache.setCache("key", "value", 50);
 
-			await new Promise((resolve) => setTimeout(resolve, 100));
+				vi.advanceTimersByTime(100);
 
-			expect(cache.has("key")).toBe(false);
+				expect(cache.has("key")).toBe(false);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 
