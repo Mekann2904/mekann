@@ -29,7 +29,8 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
 
@@ -43,8 +44,24 @@ import type { TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown } from 
 export type { TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown };
 
 // ============================================================================
-// Definition Loading
+// Path Resolution (works in both development and after pi install)
 // ============================================================================
+
+/**
+ * Get the directory containing this module.
+ * Works in both development and after pi install (jiti preserves import.meta.url).
+ */
+const getModuleDir = (): string => {
+  const currentFile = fileURLToPath(import.meta.url);
+  return dirname(currentFile);
+};
+
+/**
+ * Get the bundled team definitions directory.
+ * This is relative to this module file, not process.cwd().
+ * Path: .pi/extensions/agent-teams/definitions/ (sibling to this file)
+ */
+const BUNDLED_DEFINITIONS_DIR = join(getModuleDir(), "definitions");
 
 function getTeamDefinitionsDir(cwd: string): string {
   return join(cwd, ".pi", "agent-teams", "definitions");
@@ -66,25 +83,22 @@ function getGlobalTeamDefinitionsDir(): string {
   return join(getAgentBaseDirFromEnv(), "agent-teams", "definitions");
 }
 
-function getBundledTeamDefinitionsDir(cwd?: string): string | undefined {
-  // 拡張機能ディレクトリ内のdefinitionsを参照
-  // cwd から相対パスで検索（最も確実で移植性が高い）
-  try {
-    const effectiveCwd = cwd || process.cwd();
-    const relativeBundledDir = join(effectiveCwd, ".pi", "extensions", "agent-teams", "definitions");
-    if (existsSync(relativeBundledDir)) {
-      return relativeBundledDir;
-    }
-    return undefined;
-  } catch {
-    return undefined;
+/**
+ * Get the bundled team definitions directory.
+ * Uses import.meta.url for reliable path resolution regardless of cwd.
+ * Returns undefined if the bundled definitions directory doesn't exist.
+ */
+function getBundledTeamDefinitionsDir(): string | undefined {
+  if (existsSync(BUNDLED_DEFINITIONS_DIR)) {
+    return BUNDLED_DEFINITIONS_DIR;
   }
+  return undefined;
 }
 
 function getCandidateTeamDefinitionsDirs(cwd: string): string[] {
   const localDir = getTeamDefinitionsDir(cwd);
   const globalDir = getGlobalTeamDefinitionsDir();
-  const bundledDir = getBundledTeamDefinitionsDir(cwd);
+  const bundledDir = getBundledTeamDefinitionsDir();
   const candidates = [localDir, globalDir, bundledDir].filter((dir): dir is string => Boolean(dir));
   return Array.from(new Set(candidates));
 }
@@ -179,6 +193,7 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
 
       // team.md/TEAM.mdがない場合はp*.mdも読み込まない
       if (!teamMdPath) {
+        console.log(`[agent-teams] Skipping directory ${fullPath}: no team.md found`);
         continue;
       }
 
@@ -285,8 +300,10 @@ export function loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): Te
   }
 
   if (mergedTeams.size > 0) {
+    const enabledCount = Array.from(mergedTeams.values()).filter((t) => t.enabled === "enabled").length;
+    const disabledCount = Array.from(mergedTeams.values()).filter((t) => t.enabled === "disabled").length;
     console.log(
-      `[agent-teams] Loaded ${mergedTeams.size} teams from: ${loadedDirs.join(", ")}`,
+      `[agent-teams] Loaded ${mergedTeams.size} teams from: ${loadedDirs.join(", ")} (enabled: ${enabledCount}, disabled: ${disabledCount})`,
     );
     return Array.from(mergedTeams.values());
   }
