@@ -137,9 +137,10 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
   const entries = readdirSync(definitionsDir, { withFileTypes: true });
 
   for (const entry of entries) {
-    // Skip hidden directories and common ignore patterns
+    // Skip hidden directories, common ignore patterns, and template directories
     if (entry.name.startsWith(".")) continue;
     if (entry.name === "node_modules") continue;
+    if (entry.name.startsWith("_")) continue;  // _templates, _archived, etc.
 
     const fullPath = join(definitionsDir, entry.name);
 
@@ -170,13 +171,21 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
         updatedAt: nowIso,
       });
     } else if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(fullPath).isDirectory())) {
-      // Subdirectory: look for team.md (case-insensitive)
-      const teamMdLower = join(fullPath, "team.md");
-      const teamMdUpper = join(fullPath, "TEAM.md");
-      const teamMdPath = existsSync(teamMdLower) ? teamMdLower : (existsSync(teamMdUpper) ? teamMdUpper : null);
+      // Subdirectory: look for team.md, TEAM.md, and p*.md (phase files)
+      // 読み込み対象のパターン: team.md, TEAM.md, p1.md, p2.md, p3.md, ...
+      const subEntries = readdirSync(fullPath, { withFileTypes: true });
 
-      if (teamMdPath) {
-        const parsed = parseTeamMarkdownFile(teamMdPath);
+      for (const subEntry of subEntries) {
+        if (!subEntry.isFile()) continue;
+        if (!subEntry.name.endsWith(".md")) continue;
+
+        const isTeamMd = subEntry.name.toLowerCase() === "team.md";
+        const isPhaseMd = /^p\d+\.md$/i.test(subEntry.name);
+
+        if (!isTeamMd && !isPhaseMd) continue;
+
+        const mdPath = join(fullPath, subEntry.name);
+        const parsed = parseTeamMarkdownFile(mdPath);
         if (!parsed) continue;
 
         const { frontmatter } = parsed;
@@ -208,38 +217,51 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
 }
 
 /**
- * Markdownからチーム定義を読込
- * @summary Markdownから読込
+ * Markdownからチーム定義を読込（全ディレクトリ統合）
+ * @summary 全ディレクトリから統合
  * @param cwd カレントワーキングディレクトリ
  * @param nowIso 現在日時のISO形式文字列
- * @returns チーム定義の配列
+ * @returns 統合されたチーム定義の配列
+ * @description
+ * すべての候補ディレクトリ（ローカル > グローバル > バンドル）から
+ * チーム定義を読み込み、重複を排除して統合する。
+ * 優先順位が高い（先に読み込まれる）ディレクトリの定義が優先される。
  */
 export function loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): TeamDefinition[] {
   const candidates = getCandidateTeamDefinitionsDirs(cwd);
-  const missingDirs: string[] = [];
+  const mergedTeams = new Map<string, TeamDefinition>();
+  const loadedDirs: string[] = [];
 
-  for (let index = 0; index < candidates.length; index += 1) {
-    const definitionsDir = candidates[index];
+  // 優先順位の順にすべてのディレクトリから読み込み
+  // 後から読み込まれた定義は、同じIDが既に存在する場合はスキップされる
+  for (const definitionsDir of candidates) {
     if (!existsSync(definitionsDir)) {
-      missingDirs.push(definitionsDir);
       continue;
     }
 
     const teams = loadTeamDefinitionsFromDir(definitionsDir, nowIso);
     if (teams.length > 0) {
-      return teams;
+      loadedDirs.push(definitionsDir);
+      for (const team of teams) {
+        // 既に存在する場合はスキップ（優先順位が高い方が保持される）
+        if (!mergedTeams.has(team.id)) {
+          mergedTeams.set(team.id, team);
+        }
+      }
     }
   }
 
-  if (missingDirs.length === candidates.length) {
+  if (mergedTeams.size > 0) {
     console.log(
-      `[agent-teams] Team definitions directory not found: ${candidates.join(", ")}, will use fallback`,
+      `[agent-teams] Loaded ${mergedTeams.size} teams from: ${loadedDirs.join(", ")}`,
     );
-  } else {
-    console.log(
-      `[agent-teams] Team definitions found but no valid markdown loaded (${candidates.join(", ")}), will use fallback`,
-    );
+    return Array.from(mergedTeams.values());
   }
+
+  // どのディレクトリも存在しない場合
+  console.log(
+    `[agent-teams] Team definitions directory not found in any of: ${candidates.join(", ")}, will use fallback`,
+  );
   return [];
 }
 
