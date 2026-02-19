@@ -1,8 +1,8 @@
 diff --git a/node_modules/@mariozechner/pi-coding-agent/dist/core/auth-storage.js b/node_modules/@mariozechner/pi-coding-agent/dist/core/auth-storage.js
-index 1234567..abcdefg 100644
+index 07f39c4..15a1bf2 100644
 --- a/node_modules/@mariozechner/pi-coding-agent/dist/core/auth-storage.js
 +++ b/node_modules/@mariozechner/pi-coding-agent/dist/core/auth-storage.js
-@@ -33,7 +33,10 @@ export class FileAuthStorageBackend {
+@@ -33,7 +33,11 @@ export class FileAuthStorageBackend {
          this.ensureFileExists();
          let release;
          try {
@@ -16,10 +16,11 @@ index 1234567..abcdefg 100644
              const { result, next } = fn(current);
              if (next !== undefined) {
 diff --git a/node_modules/@mariozechner/pi-coding-agent/dist/core/settings-manager.js b/node_modules/@mariozechner/pi-coding-agent/dist/core/settings-manager.js
-index 1234567..abcdefg 100644
+index f4c5a63..ab96089 100644
 --- a/node_modules/@mariozechner/pi-coding-agent/dist/core/settings-manager.js
 +++ b/node_modules/@mariozechner/pi-coding-agent/dist/core/settings-manager.js
-@@ -42,7 +42,10 @@ export class FileSettingsStorage {
+@@ -42,7 +42,11 @@ export class FileSettingsStorage {
+         }
          let release;
          try {
 -            release = lockfile.lockSync(path, { realpath: false });
