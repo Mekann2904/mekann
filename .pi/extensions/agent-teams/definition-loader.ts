@@ -29,7 +29,8 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
 
@@ -66,16 +67,45 @@ function getGlobalTeamDefinitionsDir(): string {
   return join(getAgentBaseDirFromEnv(), "agent-teams", "definitions");
 }
 
-function getBundledTeamDefinitionsDir(): string | undefined {
+function getBundledTeamDefinitionsDir(cwd?: string): string | undefined {
   // 拡張機能ディレクトリ内のdefinitionsを参照
-  if (typeof __dirname !== "string" || !__dirname) return undefined;
-  return join(__dirname, "definitions");
+  // 複数の方法でパスを解決を試みる
+  try {
+    const effectiveCwd = cwd || process.cwd();
+
+    // 方法1: cwd から相対パスで拡張機能ディレクトリを探す（最も確実）
+    const relativeBundledDir = join(effectiveCwd, ".pi", "extensions", "agent-teams", "definitions");
+    if (existsSync(relativeBundledDir)) {
+      return relativeBundledDir;
+    }
+
+    // 方法2: import.meta.url から取得（ES modules）
+    if (typeof import.meta?.url === "string") {
+      const currentDir = dirname(fileURLToPath(import.meta.url));
+      const bundledDir = join(currentDir, "definitions");
+      if (existsSync(bundledDir)) {
+        return bundledDir;
+      }
+    }
+
+    // 方法3: __dirname (CommonJS 互換)
+    if (typeof __dirname === "string" && __dirname) {
+      const bundledDir = join(__dirname, "definitions");
+      if (existsSync(bundledDir)) {
+        return bundledDir;
+      }
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function getCandidateTeamDefinitionsDirs(cwd: string): string[] {
   const localDir = getTeamDefinitionsDir(cwd);
   const globalDir = getGlobalTeamDefinitionsDir();
-  const bundledDir = getBundledTeamDefinitionsDir();
+  const bundledDir = getBundledTeamDefinitionsDir(cwd);
   const candidates = [localDir, globalDir, bundledDir].filter((dir): dir is string => Boolean(dir));
   return Array.from(new Set(candidates));
 }
