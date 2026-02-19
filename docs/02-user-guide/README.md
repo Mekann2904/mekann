@@ -16,7 +16,7 @@ pi拡張機能コレクションのユーザーガイドです。
 ## 目次
 
 - [拡張機能一覧](./01-extensions.md) - 利用可能なすべての拡張機能
-- [コア拡張機能](#コア拡張機能) - question, rsa_solve, loop_run, fzf, abbr
+- [コア拡張機能](#コア拡張機能) - question, loop_run, fzf, abbr
 - [オーケストレーション](#オーケストレーション) - plan, subagents, agent-teams
 - [ユーティリティ](#ユーティリティ) - 使用状況の追跡、統計
 
@@ -25,7 +25,7 @@ pi拡張機能コレクションのユーザーガイドです。
 | 拡張機能 | 説明 | ドキュメント |
 |---------|------|------|
 | **question** | インタラクティブUIでユーザー選択 | [→](./02-question.md) |
-| **rsa_solve** | 推論スケーリング | [→](./03-rsa-solve.md) |
+
 | **loop_run** | 自律ループ実行 | [→](./04-loop-run.md) ✅ |
 | **fzf** | Fuzzy finder統合 | [→](./05-fzf.md) ✅ |
 | **abbr** | 略語管理 | [→](./06-abbr.md) ✅ |

@@ -34,7 +34,7 @@ related: [README.md, docs/05-meta/03-roadmap.md, docs/05-meta/04-development-wor
 
 | カテゴリ | 拡張機能 | 説明 |
 |---------|---------|------|
-| **コア** | question, rsa_solve, loop_run, fzf, abbr | UI、推論、自律ループ |
+| **コア** | question, loop_run, fzf, abbr | UI、自律ループ |
 | **オーケストレーション** | plan_*, subagent_*, agent_team_* | 計画管理、サブエージェント、チーム |
 | **可視化** | usage-tracker, context-dashboard, agent-idle-indicator | 使用状況監視 |
 | **実行制御** | agent-runtime.ts, concurrency.ts | ランタイム制御、並列制限 |

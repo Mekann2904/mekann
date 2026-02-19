@@ -47,7 +47,7 @@
       "./.pi/extensions/abdd.ts",
       "./.pi/extensions/agent-idle-indicator.ts",
       "./.pi/extensions/agent-runtime.ts",
-      "./.pi/extensions/agent-teams.ts",
+      "./.pi/extensions/agent-teams/extension.ts",
       "./.pi/extensions/agent-usage-tracker.ts",
       "./.pi/extensions/code-structure-analyzer/extension.ts",
       "./.pi/extensions/context-usage-dashboard.ts",

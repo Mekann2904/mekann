@@ -1,6 +1,6 @@
 /**
  * @abdd.meta
- * path: .pi/extensions/agent-teams.ts
+ * path: .pi/extensions/agent-teams/extension.ts
  * role: 多数決と並列実行によるエージェントチームの調整機能
  * why: 専門化されたチームメンバー間での能動的な並列協力を実現するため
  * related: .pi/extensions/agent-teams/storage.ts, .pi/extensions/agent-teams/judge.ts, .pi/extensions/subagents.ts, .pi/extensions/plan.ts
@@ -40,19 +40,19 @@ import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui
 
 
 // Import shared plan mode utilities
-import { ensureDir } from "../lib/fs-utils.js";
+import { ensureDir } from "../../lib/fs-utils.js";
 import {
   formatDurationMs,
   formatBytes,
   formatClockTime,
   normalizeForSingleLine,
-} from "../lib/format-utils.js";
+} from "../../lib/format-utils.js";
 import {
   getLiveStatusGlyph,
   isEnterInput,
   finalizeLiveLines,
   type LiveStatus,
-} from "../lib/live-view-utils.js";
+} from "../../lib/live-view-utils.js";
 import {
   toTailLines,
   looksLikeMarkdown,
@@ -62,33 +62,33 @@ import {
   renderPreviewWithMarkdown,
   LIVE_TAIL_LIMIT,
   LIVE_MARKDOWN_PREVIEW_MIN_WIDTH,
-} from "../lib/tui/tui-utils.js";
+} from "../../lib/tui/tui-utils.js";
 import {
   extractStatusCodeFromMessage,
   classifyPressureError,
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
   toErrorMessage,
-} from "../lib/error-utils.js";
-import { createRunId, computeLiveWindow } from "../lib/agent-utils.js";
+} from "../../lib/error-utils.js";
+import { createRunId, computeLiveWindow } from "../../lib/agent-utils.js";
 import {
   ThinkingLevel,
   RunOutcomeCode,
   RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
-} from "../lib/agent-types.js";
-import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
-import { validateTeamMemberOutput } from "../lib/output-validation.js";
-import { trimForError, buildRateLimitKey, buildTraceTaskId, createRetrySchema, toConcurrencyLimit } from "../lib/runtime-utils.js";
-import { resolveEffectiveTimeoutMs } from "../lib/runtime-error-builders.js";
-import { createChildAbortController } from "../lib/abort-utils";
+} from "../../lib/agent-types.js";
+import { computeModelTimeoutMs } from "../../lib/model-timeouts.js";
+import { validateTeamMemberOutput } from "../../lib/output-validation.js";
+import { trimForError, buildRateLimitKey, buildTraceTaskId, createRetrySchema, toConcurrencyLimit } from "../../lib/runtime-utils.js";
+import { resolveEffectiveTimeoutMs } from "../../lib/runtime-error-builders.js";
+import { createChildAbortController } from "../../lib/abort-utils";
 import {
   createAdaptivePenaltyController,
-} from "../lib/adaptive-penalty.js";
-import { SchemaValidationError, ValidationError } from "../lib/errors.js";
-import { getLogger } from "../lib/comprehensive-logger";
-import type { OperationType } from "../lib/comprehensive-logger-types";
-import { getCostEstimator, type ExecutionHistoryEntry, CostEstimator } from "../lib/cost-estimator";
+} from "../../lib/adaptive-penalty.js";
+import { SchemaValidationError, ValidationError } from "../../lib/errors.js";
+import { getLogger } from "../../lib/comprehensive-logger";
+import type { OperationType } from "../../lib/comprehensive-logger-types";
+import { getCostEstimator, type ExecutionHistoryEntry, CostEstimator } from "../../lib/cost-estimator";
 
 const logger = getLogger();
 import {
@@ -111,7 +111,7 @@ import {
   loadStorage,
   saveStorage,
   saveStorageWithPatterns,
-} from "./agent-teams/storage";
+} from "./storage";
 
 // Import judge module (extracted for SRP compliance)
 import {
@@ -125,7 +125,7 @@ import {
   computeProxyUncertainty,
   buildFallbackJudge,
   runFinalJudge,
-} from "./agent-teams/judge";
+} from "./judge";
 
 // Import communication module (extracted for SRP compliance)
 import {
@@ -150,7 +150,7 @@ import {
   detectPartnerReferencesV2,
   clearBeliefStateCache,
   type PartnerReferenceResultV2,
-} from "./agent-teams/communication";
+} from "./communication";
 
 // Import definition-loader module (extracted for SRP compliance)
 import {
@@ -160,14 +160,14 @@ import {
   createDefaultTeams,
   mergeDefaultTeam,
   ensureDefaults,
-} from "./agent-teams/definition-loader";
+} from "./definition-loader";
 
 // Import live-monitor module (extracted for SRP compliance)
 import {
   renderAgentTeamLiveView,
   createAgentTeamLiveMonitor,
   toTeamLiveItemKey,
-} from "./agent-teams/live-monitor";
+} from "./live-monitor";
 
 // Import member-execution module (extracted for SRP compliance)
 import {
@@ -180,7 +180,7 @@ import {
   buildSkillsSectionWithContent,
   buildTeamMemberPrompt,
   runMember,
-} from "./agent-teams/member-execution";
+} from "./member-execution";
 
 // Import parallel-execution module (extracted for SRP compliance)
 import {
@@ -189,7 +189,7 @@ import {
   buildMemberParallelCandidates,
   buildTeamAndMemberParallelCandidates,
   resolveTeamParallelCapacity,
-} from "./agent-teams/parallel-execution";
+} from "./parallel-execution";
 
 // Import result-aggregation module (extracted for SRP compliance)
 import {
@@ -198,7 +198,7 @@ import {
   resolveTeamMemberAggregateOutcome,
   resolveTeamParallelRunOutcome,
   buildTeamResultText,
-} from "./agent-teams/result-aggregation";
+} from "./result-aggregation";
 
 // Import team types from lib (extracted for maintainability)
 // Note: Only types with matching structures are imported.
@@ -219,16 +219,16 @@ import {
   type TeamMemberFrontmatter,
   type ParsedTeamMarkdown,
   type LiveStreamView,
-} from "../lib/team-types.js";
+} from "../../lib/team-types.js";
 
 // Local alias for backward compatibility (TeamLiveViewMode = LiveViewMode with "discussion")
 type LiveViewMode = TeamLiveViewMode;
 
 // Import PrintCommandResult from subagent-types (shared type)
-import { type PrintCommandResult } from "../lib/subagent-types.js";
+import { type PrintCommandResult } from "../../lib/subagent-types.js";
 
 // Re-export judge types for external use
-export type { TeamUncertaintyProxy } from "./agent-teams/judge";
+export type { TeamUncertaintyProxy } from "./judge";
 
 // Re-export definition-loader functions for external use (backward compatibility)
 export {
@@ -238,7 +238,7 @@ export {
   createDefaultTeams,
   mergeDefaultTeam,
   ensureDefaults,
-} from "./agent-teams/definition-loader";
+} from "./definition-loader";
 
 // Re-export member-execution functions for external use (backward compatibility)
 export {
@@ -251,7 +251,7 @@ export {
   buildSkillsSectionWithContent,
   buildTeamMemberPrompt,
   runMember,
-} from "./agent-teams/member-execution";
+} from "./member-execution";
 
 // Re-export parallel-execution functions for external use (backward compatibility)
 export {
@@ -260,7 +260,7 @@ export {
   buildMemberParallelCandidates,
   buildTeamAndMemberParallelCandidates,
   resolveTeamParallelCapacity,
-} from "./agent-teams/parallel-execution";
+} from "./parallel-execution";
 
 // Re-export result-aggregation functions for external use (backward compatibility)
 export {
@@ -269,7 +269,7 @@ export {
   resolveTeamMemberAggregateOutcome,
   resolveTeamParallelRunOutcome,
   buildTeamResultText,
-} from "./agent-teams/result-aggregation";
+} from "./result-aggregation";
 
 // Re-export types for external use
 export type {
@@ -317,28 +317,28 @@ import {
   STABLE_MAX_RATE_LIMIT_WAIT_MS,
   TEAM_MEMBER_CONFIG,
   buildFailureSummary as sharedBuildFailureSummary,
-} from "../lib/agent-common.js";
+} from "../../lib/agent-common.js";
 import {
   isRetryableTeamMemberError as sharedIsRetryableTeamMemberError,
   resolveTeamFailureOutcome as sharedResolveTeamFailureOutcome,
   resolveTeamMemberAggregateOutcome as sharedResolveTeamMemberAggregateOutcome,
   trimErrorMessage as sharedTrimErrorMessage,
   buildDiagnosticContext as sharedBuildDiagnosticContext,
-} from "../lib/agent-errors.js";
-import { runWithConcurrencyLimit } from "../lib/concurrency";
+} from "../../lib/agent-errors.js";
+import { runWithConcurrencyLimit } from "../../lib/concurrency";
 import {
   getTeamMemberExecutionRules,
-} from "../lib/execution-rules";
+} from "../../lib/execution-rules";
 import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
-} from "../lib/plan-mode-shared";
+} from "../../lib/plan-mode-shared";
 import {
   getRateLimitGateSnapshot,
   isRetryableError,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
-} from "../lib/retry-with-backoff";
+} from "../../lib/retry-with-backoff";
 
 import {
   formatRuntimeStatusLine,
@@ -350,17 +350,17 @@ import {
   tryReserveRuntimeCapacity,
   type RuntimeCapacityReservationLease,
   waitForRuntimeOrchestrationTurn,
-} from "./agent-runtime";
+} from "../agent-runtime";
 import {
   runPiPrintMode as sharedRunPiPrintMode,
   type PrintExecutorOptions,
-} from "./shared/pi-print-executor";
+} from "../shared/pi-print-executor";
 import {
   buildRuntimeLimitError,
   buildRuntimeQueueWaitError,
   startReservationHeartbeat,
   refreshRuntimeStatus as sharedRefreshRuntimeStatus,
-} from "./shared/runtime-helpers";
+} from "../shared/runtime-helpers";
 
 // Local aliases for backward compatibility
 const STABLE_AGENT_TEAM_RUNTIME = STABLE_RUNTIME_PROFILE;
@@ -381,7 +381,7 @@ const adaptivePenalty = createAdaptivePenaltyController({
 
 // Note: Live monitoring functions are imported from ./agent-teams/live-monitor.ts
 // Re-export for backward compatibility
-export { renderAgentTeamLiveView, createAgentTeamLiveMonitor } from "./agent-teams/live-monitor";
+export { renderAgentTeamLiveView, createAgentTeamLiveMonitor } from "./live-monitor";
 
 // Communication functions moved to ./agent-teams/communication.ts
 

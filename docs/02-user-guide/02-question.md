@@ -135,6 +135,4 @@ related: [./01-extensions.md, ./06-abbr.md]
 - [拡張機能一覧](./01-extensions.md) - すべての拡張機能
 - [abbr](./06-abbr.md) - 略語管理
 
-## 次のトピック
 
-[ → rsa_solve](./03-rsa-solve.md)

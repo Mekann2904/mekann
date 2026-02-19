@@ -130,7 +130,6 @@ pi
 
 ```
 質問機能が読み込まれました • 使用例: "質問して選択させて"
-RSA extension loaded (/rsa, rsa_solve)
 Loop extension loaded (/loop, loop_run)
 fzf統合拡張が読み込まれました
 Plan Extension loaded
