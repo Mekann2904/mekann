@@ -1,7 +1,7 @@
 ---
 id: template-team-guide
 name: Phase-Separated Team Template Guide
-description: フェーズ分割パターンのチーム作成ガイド。template-p1, template-p2, template-p3をコピーして新しいチームセットを作成する手順を説明。
+description: フェーズ分割パターンのチーム作成ガイド。team.md + p1/p2/p3の構造で新しいチームセットを作成する手順を説明。
 enabled: disabled
 members: []
 ---
@@ -11,6 +11,21 @@ members: []
 ## 概要
 
 このガイドは、フェーズ分割パターンでチームを作成するためのテンプレートと手順を説明します。
+
+## 重要: ディレクトリ構造ルール
+
+**team.md必須ルール:**
+- サブディレクトリに`team.md`（または`TEAM.md`）が存在する場合のみ、`p*.md`が読み込まれます
+- `team.md`がない場合、フェーズ別ファイル（p1.md等）は無視されます
+
+```
+definitions/
+├── [team-name]/
+│   ├── team.md     # 統合チーム（必須）
+│   ├── p1.md       # Phase 1チーム（team.mdがある場合のみ有効）
+│   ├── p2.md       # Phase 2チーム
+│   └── p3.md       # Phase 3チーム
+```
 
 ## フェーズ分割パターンとは
 
@@ -36,11 +51,12 @@ members: []
 
 ## テンプレートファイル
 
-| ファイル | 用途 |
-|---------|------|
-| `template-p1.md` | Phase 1用テンプレート |
-| `template-p2.md` | Phase 2用テンプレート |
-| `template-p3.md` | Phase 3用テンプレート |
+| ファイル | 用途 | 必須 |
+|---------|------|------|
+| `team.md` | 統合チーム定義 | **必須** |
+| `p1.md` | Phase 1用テンプレート | 任意 |
+| `p2.md` | Phase 2用テンプレート | 任意 |
+| `p3.md` | Phase 3用テンプレート | 任意 |
 
 ## 新規チーム作成手順
 
@@ -48,24 +64,53 @@ members: []
 
 例: `my-feature`
 
-### 2. 各フェーズのテンプレートをコピー
+### 2. ディレクトリを作成
 
 ```bash
-cp template-p1.md my-feature-p1.md
-cp template-p2.md my-feature-p2.md
-cp template-p3.md my-feature-p3.md
+mkdir .pi/extensions/agent-teams/definitions/my-feature
 ```
 
-### 3. 各ファイルを編集
+### 3. テンプレートをコピー
 
-#### my-feature-p1.md
+```bash
+# 統合チーム（必須）
+cp _templates/team.md my-feature/team.md
+
+# フェーズ別チーム（必要に応じて）
+cp _templates/p1.md my-feature/p1.md
+cp _templates/p2.md my-feature/p2.md
+cp _templates/p3.md my-feature/p3.md
+```
+
+### 4. team.mdを編集
+
+```yaml
+---
+id: my-feature-team
+name: "My Feature Team"
+description: "My Featureの実装を担当するチーム。Phase 1/2/3で構成。"
+enabled: enabled
+strategy: parallel
+skills:
+  - relevant-skill
+members:
+  - id: overview-member
+    role: Overview Member
+    description: "統合チームのメンバー"
+    enabled: true
+---
+```
+
+### 5. 各フェーズを編集
+
+#### my-feature/p1.md
 
 ```yaml
 ---
 id: my-feature-p1
 name: My Feature - Phase 1 [Name]
 description: "My Feature Phase 1: [フェーズ名]..."
-enabled: enabled  # 有効化
+enabled: enabled
 strategy: parallel
 members:
   - id: [適切なID]
@@ -74,7 +119,7 @@ members:
 ---
 ```
 
-#### my-feature-p2.md
+#### my-feature/p2.md
 
 ```yaml
 ---
@@ -85,7 +130,7 @@ enabled: enabled
 ---
 ```
 
-#### my-feature-p3.md
+#### my-feature/p3.md
 
 ```yaml
 ---
@@ -96,7 +141,7 @@ enabled: enabled
 ---
 ```
 
-### 4. 使い方
+### 6. 使い方
 
 ```javascript
 // Phase 1 → Phase 2 → Phase 3 の順次実行
@@ -120,8 +165,11 @@ const phase3 = await agent_team_run({
 
 | 要素 | 規則 | 例 |
 |-----|------|-----|
-| チームID | `[ベース名]-p[フェーズ番号]` | `core-delivery-p1` |
-| チーム名 | `[ベース名] - Phase N [フェーズ名]` | `Core Delivery - Phase 1 Investigation` |
+| ディレクトリ名 | `[ベース名]` | `core-delivery` |
+| 統合チームID | `[ベース名]-team` | `core-delivery-team` |
+| フェーズ別ID | `[ベース名]-p[フェーズ番号]` | `core-delivery-p1` |
+| 統合チーム名 | `[ベース名] Team` | `Core Delivery Team` |
+| フェーズ別名 | `[ベース名] - Phase N [フェーズ名]` | `Core Delivery - Phase 1 Investigation` |
 | メンバーID | `[役割を表す名]` | `research-primary` |
 
 ## 参考実装
@@ -135,37 +183,14 @@ const phase3 = await agent_team_run({
 | code-excellence | 3 | レビューフロー |
 | design-discovery | 3 | 設計フロー |
 
-## 警告信号 - プロセスの遵守を促す
+## よくある間違い
 
-以下のような考えが浮かんだら、それはSTOPのサイン:
-- 「このフェーズだけで十分だろう」
-- 「統合は後でやればいい」
-- 「どちらかの意見を採用しよう」
-- 「時間がないから並列分析を諦めよう」
-- 「この分析は明らかだから省略」
-
-**これらすべては: STOP。Phase 1に戻れ。**
-
-## 人間のパートナーの「やり方が間違っている」シグナル
-
-| シグナル | 意味 | 推奨アクション |
-|---------|------|---------------|
-| 「もう一方の視点はどうか？」 | 片方の分析に偏っている | 両方の視点を統合 |
-| 「これらは矛盾していないか？」 | 統合が不十分 | 統合プロセスを見直す |
-| 「前提条件は確認したか？」 | 前提が不明確 | 前提条件を検証 |
-| 「具体的なアクションは？」 | 実行可能でない | アクションプランを具体化 |
-| 「どちらが優先か？」 | 優先順位付けが不明確 | Critical/Should/Niceで分類 |
-
-## よくある言い辞
-
-| 言い辞 | 現実 | 正しいアプローチ |
-|-------|------|-----------------|
-| 「このフェーズだけで十分」 | 単一視点は盲点を生む | 複数視点を統合 |
-| 「統合は後で」 | 後では文脈を失う | 分析と同時に統合 |
-| 「どちらかを採用」 | 統合した最適解がある | 両方を統合 |
-| 「並列分析を諦めよう」 | 並列分析の価値は統合にある | 統合を怠らない |
-| 「この分析は明らか」 | 自明は主観 | 形式化して確認 |
-| 「前提確認の時間がない」 | 前提欠如は手戻りを生む | 前提を必ず確認 |
+| 間違い | 結果 | 正しい方法 |
+|-------|------|-----------|
+| team.mdを作成しない | p*.mdが読み込まれない | 必ずteam.mdを作成 |
+| enabled: disabledのまま | チームが表示されない | enabled: enabledに設定 |
+| IDにアンダースコア使用 | 一貫性がない | ハイフンを使用 |
+| フロントマターなし | パースエラー | ---で囲む |
 
 ## クイックリファレンス
 
