@@ -360,4 +360,4 @@ type TeamLiveViewMode = "list" | "detail" | "discussion"
 チームライブの表示モード
 
 ---
-*自動生成: 2026-02-18T15:54:41.533Z*
+*自動生成: 2026-02-18T18:06:17.581Z*

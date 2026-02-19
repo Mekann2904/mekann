@@ -430,4 +430,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 検証ポリシーのモード
 
 ---
-*自動生成: 2026-02-18T15:54:41.211Z*
+*自動生成: 2026-02-18T18:06:17.284Z*

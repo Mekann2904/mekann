@@ -250,12 +250,6 @@ export function renderSubagentLiveView(input: {
     input.height && input.height > 0
       ? Math.max(1, Math.min(LIVE_PREVIEW_LINE_LIMIT, input.height - lines.length - 1))
       : LIVE_PREVIEW_LINE_LIMIT;
-/**
-   * /**
-   * * サブエージェント用のライブモニターを作成する
-   * *
-   * * 指
-   */
   const preview = renderPreviewWithMarkdown(selectedTail, input.width, detailPreviewLimit);
   add(theme.fg("dim", `render mode: ${preview.renderedAsMarkdown ? "markdown" : "raw"}`));
   const previewLines = preview.lines;

@@ -66,7 +66,9 @@ function ensureCacheDir() {
 		if (!existsSync(dir)) {
 			mkdirSync(dir, { recursive: true });
 		}
-	} catch {}
+	} catch (error) {
+		console.debug("[usage-tracker] ensureCacheDir failed:", error instanceof Error ? error.message : String(error));
+	}
 }
 
 function loadCache(): CacheData | null {
@@ -74,7 +76,9 @@ function loadCache(): CacheData | null {
 		if (existsSync(CACHE_FILE)) {
 			return JSON.parse(readFileSync(CACHE_FILE, "utf-8"));
 		}
-	} catch {}
+	} catch (error) {
+		console.debug("[usage-tracker] loadCache failed:", error instanceof Error ? error.message : String(error));
+	}
 	return null;
 }
 
@@ -82,7 +86,9 @@ function saveCache(data: CacheData) {
 	try {
 		ensureCacheDir();
 		writeFileSync(CACHE_FILE, JSON.stringify(data));
-	} catch {}
+	} catch (error) {
+		console.debug("[usage-tracker] saveCache failed:", error instanceof Error ? error.message : String(error));
+	}
 }
 
 function mergeRecordToMap(target: Map<string, number>, source: Record<string, number>) {
@@ -118,9 +124,13 @@ function parseUsageFile(filePath: string): {
 					if (!byDateModel[date]) byDateModel[date] = {};
 					byDateModel[date][model] = (byDateModel[date][model] || 0) + cost;
 				}
-			} catch {}
+			} catch (e) {
+				// Skip malformed JSON lines (normal for partial writes)
+			}
 		}
-	} catch {}
+	} catch (e) {
+		console.debug("[usage-tracker] parseUsageFile failed:", { path: filePath, error: e });
+	}
 
 	return { byModel, byDate, byDateModel };
 }
@@ -150,7 +160,8 @@ function collectData(): {
 				let mtimeMs = 0;
 				try {
 					mtimeMs = statSync(filePath).mtimeMs;
-				} catch {
+				} catch (e) {
+					console.debug("[usage-tracker] statSync failed:", { path: filePath, error: e });
 					continue;
 				}
 
@@ -178,7 +189,9 @@ function collectData(): {
 				}
 			}
 		}
-	} catch {}
+	} catch (e) {
+		console.debug("[usage-tracker] collectData failed:", { error: e });
+	}
 
 	saveCache({ files: nextFiles });
 

@@ -57,25 +57,19 @@ export type EventType =
 
 /**
  * コンポーネント型
- * @summary コンポーネント種別を取得する
- * コンポーネントの種類を表す型定義です。
- * @returns {'extension' | 'subagent' | 'team' | 'skill' | 'tool'} コンポーネント種別
+ * @summary コンポーネント種別
  */
 export type ComponentType = 'extension' | 'subagent' | 'team' | 'skill' | 'tool';
 
 /**
  * ツール型
- * @summary ツール種別を取得する
- * ツールの種類を表す型定義です。
- * @returns {'builtin' | 'extension' | 'dynamic'} ツール種別
+ * @summary ツール種別
  */
 export type ToolType = 'builtin' | 'extension' | 'dynamic';
 
 /**
  * ステータス型
- * @summary ステータスを取得する
- * 処理状態を表す型定義です。
- * @returns {'pending' | 'running' | 'success' | 'failure' | ...'} 処理状態
+ * @summary 処理状態
  */
 export type Status = 'pending' | 'running' | 'success' | 'failure' | 'timeout' | 'partial' | 'cancelled';
 
@@ -181,15 +175,6 @@ export interface TaskEndEvent extends BaseEvent {
     status: Status;
     operationsCount: number;
     toolsCount: number;
-/**
-     * 操作の種類を表す型
-     *
-     * エージェントの実行モードを区別するための文字列リテラル型。
-     * サブエージェント実行、チーム実行、ループ実行、直接実行のいずれかを指定する。
-     *
-     * @example
-     * const operationType: OperationType = 'subagent_run';
-     */
     tokensUsed: number;
     filesCreated: string[];
     filesModified: string[];
@@ -200,10 +185,6 @@ export interface TaskEndEvent extends BaseEvent {
       eventId: string;
       message: string;
       type: string;
-/**
-     * /**
-     * * 操作終
-     */
     }>;
   };
 }
@@ -230,14 +211,6 @@ export interface OperationStartEvent extends BaseEvent {
     input: {
       task: string;
       params: Record<string, unknown>;
-/**
-     * /**
-     * * ツール呼び出しイベントを表すインターフェース
-     * *
-     * * ツールの実行に関する詳細情報を含むイベントデータ。
-     * * ツール名、タイプ、パラメータ、呼び出し元情報、環境情報を保持する。
-     * *
-     */
     };
     strategy?: string;
     retryConfig?: {
@@ -250,8 +223,6 @@ export interface OperationStartEvent extends BaseEvent {
 /**
  * 操作終了イベント
  * @summary 操作終了通知
- * @param eventType イベントタイプ
- * @param data 操作結果データ
  */
 export interface OperationEndEvent extends BaseEvent {
   eventType: 'operation_end';
@@ -259,25 +230,6 @@ export interface OperationEndEvent extends BaseEvent {
     durationMs: number;
     status: Status;
     tokensUsed: number;
-/**
-     * /**
-     * * LLMリクエストイベントの構造を定義するインターフェース
-     * *
-     * * LLMへのリクエストに関する情報を記録するイベント型。
-     * * プロバイダ、モデル、プロンプト情報、トークン設定などを含む。
-     * *
-     * * @property eventType - イベント種別（'llm_request'で固定）
-     * * @property data.provider - LLMプロバイダー名
-     * * @property data.model - 使用するモデル名
-     * * @property data.systemPromptLength - システムプロンプトの文字数
-     * * @property data.systemPromptHash - システムプロンプトのハッシュ値
-     * * @property data.userMessageCount - ユーザーメッセージの数
-     * * @property data.userMessageLength - ユーザーメッセージの総文字数
-     * * @property data.temperature - 生成の温度パラメータ（オプション）
-     * * @property data.maxTokens - 最大トークン数（オプション）
-     * * @property data.contextWindowUsed - 使用したコンテキストウィンドウサイズ
-     * * @property data
-     */
     outputLength: number;
     outputFile?: string;
     childOperations: number;
@@ -293,47 +245,10 @@ export interface OperationEndEvent extends BaseEvent {
 // ============================================
 // ツールイベント
 // ============================================
-/**
- * LLM API呼び出しエラーを表すイベントインターフェース
- *
- * BaseEventを継承し、LLMプロバイダーでのエラー発生時の詳細情報を格納する。
- * レート制限、タイムアウト、コンテキスト超過などのエラータイプを区別可能。
- *
- * @property eventType - イベント種別（固定値: 'llm_error'）
- * @property data.provider - LLMプロバイダー名
- * @property data.model - 使用モデル名
- * @property data.errorType - エラーの種類（rate_limit, timeout, context_too_long, api_error, unknown）
- * @property data.errorMessage - エラーメッセージ
- * @property data.retryAttempt - リトライ試行回数（省略可）
- */
-
-/**
- * ユーザー入力イベントを表すインターフェース
- *
- * BaseEventを継承し、ユーザーからの入力情報を格納する。
- * テキスト、音声、ファイルのいずれかの入力タイプをサポートする。
- *
- * @property eventType - イベント種別（'user_input'で固定）
- * @property data.input - ユーザーが入力した内容
- * @property data.inputType - 入力形式（'text' | 'voice' | 'file'）
- * @property data.metadata - オプションのメタ情報（入力ソースやタイムスタンプ）
- * @example
- * const event: UserInputEvent = {
- *   eventType: 'user_input',
- *   data: {
- *     input: 'こんにちは',
- *     inputType: 'text',
- *     metadata: { source: 'chat' }
- *   }
- * };
- */
 
 /**
  * ツール呼び出しイベント
  * @summary ツール呼び出し
- * @param eventType イベント種別
- * @param data ツール呼び出しデータ
- * @param data.toolName ツール名
  */
 export interface ToolCallEvent extends BaseEvent {
   eventType: 'tool_call';
@@ -356,8 +271,6 @@ export interface ToolCallEvent extends BaseEvent {
 /**
  * ツール実行結果イベント
  * @summary ツール結果返却
- * @param eventType イベントタイプ
- * @param data 実行結果データ
  */
 export interface ToolResultEvent extends BaseEvent {
   eventType: 'tool_result';
@@ -373,13 +286,11 @@ export interface ToolResultEvent extends BaseEvent {
     mimeType?: string;
   };
 }
-/**
- * ツール実行時のエラーイベントを表します。
- * @summary ツールエラー発生
- * @param eventType イベントの種類
- * @param data エラー詳細データ
- */
 
+/**
+ * ツール実行時のエラーイベント
+ * @summary ツールエラー発生
+ */
 export interface ToolErrorEvent extends BaseEvent {
   eventType: 'tool_error';
   data: {
@@ -390,21 +301,6 @@ export interface ToolErrorEvent extends BaseEvent {
     recoveryAttempted: boolean;
     recoveryMethod?: string;
     recoverySuccessful?: boolean;
-/**
-     * /**
-     * * ロガーの動作設定を定義するインターフェース
-     * *
-     * * ログ出力先、バッファリング、ローテーション、保持期間などの設定を管理します。
-     * *
-     * * @property logDir - ログファイルを保存するディレクトリパス
-     * * @property enabled - ログ出力の有効/無効フラグ
-     * * @property bufferSize - バッファサイズ（バイト単位）
-     * * @property flushIntervalMs - バッファフラッシュ間隔（ミリ秒）
-     * * @property maxFileSizeMB - ログファイルの最大サイズ（メガバイト）
-     * * @property retentionDays - ログファイルの保持期間（日数）
-     * * @property environment - 実行環境（development/production/test）
-     * * @property minLogLevel - 出力する最小ログレベル（
-     */
     params: Record<string, unknown>;
     partialOutput?: string;
   };
@@ -417,9 +313,6 @@ export interface ToolErrorEvent extends BaseEvent {
 /**
  * LLMリクエストイベント
  * @summary LLMリクエスト送信
- * @param eventType イベントタイプ
- * @param data リクエストデータ
- * @param data.provider プロバイダ名
  */
 export interface LLMRequestEvent extends BaseEvent {
   eventType: 'llm_request';
@@ -438,11 +331,8 @@ export interface LLMRequestEvent extends BaseEvent {
 }
 
 /**
+ * LLM応答イベント
  * @summary LLM応答通知
- * LLMの応答イベント
- * @param eventType イベントタイプ
- * @param data プロバイダー、モデル、トークン数、所要時間、停止理由、ツール呼び出し情報を含む応答データ
- * @returns LLMResponseEvent
  */
 export interface LLMResponseEvent extends BaseEvent {
   eventType: 'llm_response';
@@ -465,14 +355,6 @@ export interface LLMResponseEvent extends BaseEvent {
 /**
  * LLMエラー通知
  * @summary LLMエラー通知
- * @param eventType イベントの種類
- * @param data エラー詳細情報
- * @param data.provider プロバイダ名
- * @param data.model モデル名
- * @param data.errorType エラーの種類
- * @param data.errorMessage エラーメッセージ
- * @param data.retryAttempt リトライ回数
- * @param data.retryAfterMs リトライ待機時間
  */
 export interface LLMErrorEvent extends BaseEvent {
   eventType: 'llm_error';
@@ -493,8 +375,6 @@ export interface LLMErrorEvent extends BaseEvent {
 /**
  * ユーザー入力イベント
  * @summary 入力データ送信
- * @param eventType イベントの種類
- * @param data 入力データ（input, inputType, metadata）
  */
 export interface UserInputEvent extends BaseEvent {
   eventType: 'user_input';
@@ -511,8 +391,6 @@ export interface UserInputEvent extends BaseEvent {
 /**
  * フィードバック通知
  * @summary フィードバック通知
- * @param eventType イベントの種類
- * @param data フィードバックデータ
  */
 export interface UserFeedbackEvent extends BaseEvent {
   eventType: 'user_feedback';
@@ -530,13 +408,6 @@ export interface UserFeedbackEvent extends BaseEvent {
 /**
  * 設定読み込み通知
  * @summary 設定を読み込む
- * @param eventType イベントの種類
- * @param data 設定の詳細情報
- * - configType: 設定の種類
- * - configPath: 設定ファイルのパス
- * - configHash: 設定のハッシュ値
- * - keysLoaded: 読み込まれたキーのリスト
- * - overrides: 上書き設定
  */
 export interface ConfigLoadEvent extends BaseEvent {
   eventType: 'config_load';
@@ -552,9 +423,6 @@ export interface ConfigLoadEvent extends BaseEvent {
 /**
  * 状態変更イベント
  * @summary 状態変化通知
- * @param {string} eventType - イベント種別
- * @param {object} data - 変更詳細データ
- * @returns {void}
  */
 export interface StateChangeEvent extends BaseEvent {
   eventType: 'state_change';
@@ -575,9 +443,6 @@ export interface StateChangeEvent extends BaseEvent {
 /**
  * メトリクススナップショットイベント
  * @summary メトリクス通知
- * @param {string} eventType - イベント種別
- * @param {object} data - イベントデータ
- * @returns {void}
  */
 export interface MetricsSnapshotEvent extends BaseEvent {
   eventType: 'metrics_snapshot';
@@ -602,7 +467,6 @@ export interface MetricsSnapshotEvent extends BaseEvent {
 /**
  * ログイベントの統合型
  * @summary ログイベント定義
- * @returns {void}
  */
 export type LogEvent =
   | SessionStartEvent
@@ -630,12 +494,6 @@ export type LogEvent =
 /**
  * ロガー設定
  * @summary ロガー設定
- * @param {string} logDir - ログ出力ディレクトリ
- * @param {boolean} enabled - ログ出力有効フラグ
- * @param {number} bufferSize - バッファサイズ
- * @param {number} flushIntervalMs - フラッシュ間隔(ミリ秒)
- * @param {number} maxFileSizeMB - 最大ファイルサイズ(MB)
- * @returns {void}
  */
 export interface LoggerConfig {
   logDir: string;

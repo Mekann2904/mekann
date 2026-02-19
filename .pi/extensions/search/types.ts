@@ -126,15 +126,6 @@ export interface FileCandidatesInput {
 export interface FileCandidate {
   path: string;
   type: "file" | "dir";
-/**
- * /**
- * * コード検索の入力パラメータを定義するインターフェース
- * *
- * * @property pattern - 検索パターン（正規表現サポート）
- * * @property path - 検索対象パス
- * * @property type - ファイルタイプフィルタ（ts, js, pyなど）
- * * @property ignore
- */
 }
 
  /**
@@ -159,60 +150,21 @@ export interface CodeSearchInput {
   /** Search pattern (regex supported) */
   pattern: string;
   /** Search scope path */
-/**
-   * コード検索の一致結果を表すインターフェース
-   *
-   * @property file - 一致が見つかったファイルのパス
-   * @property line - 一致した行番号
-   * @property column - 一致した列番号（オプション）
-   * @property text - 一致したテキスト
-   * @property context - 前後のコンテキスト行（オプション）
-   */
   path?: string;
   /** File type filter (ts, js, py, etc.) */
   type?: string;
   /** Case-insensitive search */
-/**
-   * /**
-   * * コード検索の出力結果を表すインターフェース
-   * *
-   * * @property total - 検索に一致した総件数
-   * * @property truncated - �
-   */
   ignoreCase?: boolean;
   /** Literal search (disable regex) */
   literal?: boolean;
   /** Context lines before and after match */
   context?: number;
   /** Result limit (default: 50) */
-/**
-   * シンボルインデックス作成の入力パラメータ
-   *
-   * @property path - インデックス作成対象のパス
-   * @property force - 強制的に再生成するかどうか
-   * @property cwd - 作業ディレクトリ
-   */
   limit?: number;
   /** Exclusion patterns (e.g., ["node_modules", "dist"]). Empty array disables defaults. */
-/**
-   * シンボルインデックス作成の結果を表すインターフェース
-   *
-   * @property indexed - インデックス化されたシンボルの数
-   * @property outputPath - 生成されたインデックスファイルの出力パス
-   * @property error - エラーが発生した場合のエラーメッセージ
-   */
   exclude?: string[];
   /** Working directory */
   cwd?: string;
-/**
- * シンボル検索の入力パラメータを定義するインターフェース
- *
- * @property name - シンボル名のパターン
- * @property kind - シンボル種別フィルタ（function, class, variable など）
- * @property file - ファイルフィルタ
- * @property limit - 結果の最大件数（デフォルト: 50）
- * @property cwd - 作業ディレクトリ
- */
 }
 
 /**
@@ -227,23 +179,6 @@ export interface CodeSearchInput {
  */
 export interface CodeSearchMatch {
   file: string;
-/**
-   * /**
-   * * シンボルの定義情報を表すインターフェース
-   * *
-   * * コード内のシンボル（関数、クラス、変数など）の位置と詳細情報を保持する。
-   * *
-   * * @property name - シンボル名
-   * * @property kind - シンボルの種類（function, class, variable等）
-   * * @property file - 定義されているファイルパス
-   * * @property line - 定義行番号
-   * * @property signature - シグネチャ情報（省略可能）
-   * * @property scope - スコープ情報（省略可能）
-   * * @example
-   * * const symbol: SymbolDefinition = {
-   * *   name: 'myFunction',
-   * *   kind:
-   */
   line: number;
   column?: number;
   text: string;
@@ -296,39 +231,13 @@ export interface CodeSearchOutput {
  * @property command - 実行されたコマンド文字列
  * @example
  * try {
-/**
-  * 外部ツールの利用可否を表すインターフェース
-  *
-  * fd、rg、ctagsなどの外部CLIツールがシステムにインストールされているかどうかを示します。
-  *
-  * @property fd - fd（ファイル検索ツール）の利用可否
-  * @property rg - rg（ripgrep）の利用可否
-/**
-   * /**
-   * * ツールのバージョン情報を表す
-   * *
-   * * 検出されたツールの名前、バージョン、実行パスを保持します。
-   * *
-   * * @property name - ツール名
-   * * @property version - ツールのバージョン文字列
-   * *
-   */
-  * @property ctags - ctagsの利用可否
-  * @property ctagsJson - JSON出力対応のuniversal-ctagsの利用可否
-  * @example
-  * const availability: ToolAvailability = {
-  *   fd: true,
-  *   rg: true,
-  *   ctags: false,
-  *   ctagsJson: false
-  * };
-  */
  *   await executeCommand('grep');
  * } catch (error) {
  *   const cliError = error as CliError;
  *   console.error(`Command failed: ${cliError.command}`);
  *   console.error(`Exit code: ${cliError.code}`);
  * }
+ */
 /**
  * シンボルインデックス入力
  * @summary インデックス生成入力
@@ -377,12 +286,6 @@ export interface SymFindInput {
   /** Symbol name pattern */
   name?: string;
   /** Symbol kind filter (function, class, variable, etc.) */
-/**
-   * ripgrep検索終了メッセージを表すインターフェース
-   *
-   * 検索完了時に出力され、検索対象のパスと統計情報を含みます。
-   * 統計情報には経過時間、検索回数、マッチ数などが含まれます。
-   */
   kind?: string[];
   /** File filter */
   file?: string;

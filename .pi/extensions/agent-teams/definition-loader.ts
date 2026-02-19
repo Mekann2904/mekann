@@ -509,15 +509,6 @@ export function mergeDefaultTeam(existing: TeamDefinition, fallback: TeamDefinit
     };
   });
   const preservedExtraMembers = existing.members.filter((member) => {
-/**
-     * /**
-     * * チームストレージにデフォルトチームを確保・マージする
-     * *
-     * * 既存のチームとデフォルトチームをマージし、デフォルトチームの存在を保証します。
-     * * 非推奨のデフォルトチームIDは除外されます。
-     * *
-     * * @param storage - 既存の
-     */
     if (fallbackMemberIds.has(member.id)) return false;
     if (legacyDefaultIds.has(member.id)) return false;
     return true;

@@ -127,15 +127,6 @@ function tryAcquireLock(lockFile: string): boolean {
 
 function clearStaleLock(lockFile: string, staleMs: number): void {
   try {
-/**
-     * /**
-     * * ファイルロックを取得して関数を実行する
-     * *
-     * * 指定されたファイルに対してロックを取得し、ロック保持中に渡された関数を実行します。
-     * * 関数の実行完了後、ロックは自動的に解放されます。
-     * *
-     * * @param targetFile
-     */
     const ageMs = Date.now() - statSync(lockFile).mtimeMs;
     if (ageMs > staleMs) {
       unlinkSync(lockFile);

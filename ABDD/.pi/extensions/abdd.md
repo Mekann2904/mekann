@@ -18,9 +18,10 @@ related: []
 ```typescript
 // from 'node:fs': fs
 // from 'node:path': path
-// from 'node:child_process': execSync, spawn
-// from '@sinclair/typebox': Type
+// from 'node:child_process': spawn
+// from '@sinclair/typebox': Type, Static
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
+// ... and 1 more imports
 ```
 
 ## エクスポート一覧
@@ -43,13 +44,19 @@ sequenceDiagram
   participant System as System
   participant Internal as "Internal"
   participant Unresolved as "Unresolved"
+  participant Executor as "Executor"
 
   User->>System: abdd_generate
   System->>Internal: join
-  System->>Internal: existsSync
   System->>Unresolved: args.push (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Internal: execSync
-  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Executor: spawnを使用した安全なスクリプト実行関数
+  Executor->>Internal: existsSync
+  Executor->>Internal: spawn
+  Executor->>Internal: setTimeout
+  Executor->>Unresolved: childProcess.kill (node_modules/@types/node/child_process.d.ts)
+  Executor->>Unresolved: childProcess.stdout?.on (node_modules/@types/node/stream.d.ts)
+  Executor->>Unresolved: data.toString (node_modules/@types/node/buffer.d.ts)
+  Executor->>Internal: clearTimeout
   System-->>User: 結果
 
 ```
@@ -65,13 +72,24 @@ sequenceDiagram
   participant System as System
   participant Internal as "Internal"
   participant Unresolved as "Unresolved"
+  participant Judge as "Judge"
+  participant Executor as "Executor"
 
   User->>System: abdd_jsdoc
   System->>Internal: join
-  System->>Internal: existsSync
   System->>Unresolved: args.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Internal: execSync
+  System->>Judge: パストラバーサル攻撃を防ぐためのパス検証関数
+  Judge->>Judge: resolve
+  Judge->>Unresolved: resolved.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  System->>Executor: spawnを使用した安全なスクリプト実行関数
+  Executor->>Internal: existsSync
+  Executor->>Internal: spawn
+  Executor->>Internal: setTimeout
+  Executor->>Unresolved: childProcess.kill (node_modules/@types/node/child_process.d.ts)
+  Executor->>Unresolved: childProcess.stdout?.on (node_modules/@types/node/stream.d.ts)
+  Executor->>Unresolved: data.toString (node_modules/@types/node/buffer.d.ts)
+  Executor->>Internal: clearTimeout
   System-->>User: 結果
 
 ```
@@ -187,6 +205,14 @@ classDiagram
     +reality: file_string_text_st
     +reason: string
   }
+  class SpawnResult {
+    <<interface>>
+    +success: boolean
+    +stdout: string
+    +stderr: string
+    +timedOut: boolean
+    +exitCode: number
+  }
 ```
 
 ### 依存関係図
@@ -196,6 +222,10 @@ flowchart LR
   subgraph this[abdd]
     main[Main Module]
   end
+  subgraph local[ローカルモジュール]
+    abdd_types["abdd-types"]
+  end
+  main --> local
   subgraph external[外部ライブラリ]
     _sinclair["@sinclair"]
     _mariozechner["@mariozechner"]
@@ -204,6 +234,61 @@ flowchart LR
 ```
 
 ## 関数
+
+### validateFilePath
+
+```typescript
+validateFilePath(inputPath: string, baseDir: string): string
+```
+
+パストラバーサル攻撃を防ぐためのパス検証関数
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| inputPath | `string` | はい |
+| baseDir | `string` | はい |
+
+**戻り値**: `string`
+
+### isPathWithinBase
+
+```typescript
+isPathWithinBase(filePath: string, baseDir: string): boolean
+```
+
+ファイルパスがベースディレクトリ内にあるか検証
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| filePath | `string` | はい |
+| baseDir | `string` | はい |
+
+**戻り値**: `boolean`
+
+### runScriptAsync
+
+```typescript
+runScriptAsync(scriptPath: string, args: string[], options: { timeoutMs?: number; cwd?: string }): Promise<SpawnResult>
+```
+
+spawnを使用した安全なスクリプト実行関数
+execSync(args.join(" "))のコマンドインジェクション脆弱性を回避
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| scriptPath | `string` | はい |
+| args | `string[]` | はい |
+| options | `object` | はい |
+| &nbsp;&nbsp;↳ timeoutMs | `number` | いいえ |
+| &nbsp;&nbsp;↳ cwd | `string` | いいえ |
+
+**戻り値**: `Promise<SpawnResult>`
 
 ### runStepAsync
 
@@ -322,7 +407,51 @@ interface Divergence {
 
 乖離候補
 
+### SpawnResult
+
+```typescript
+interface SpawnResult {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  timedOut?: boolean;
+  exitCode?: number;
+}
+```
+
+spawn実行結果
+
 ## 型定義
+
+### AbddGenerateParamsType
+
+```typescript
+type AbddGenerateParamsType = Static<typeof AbddGenerateParams>
+```
+
+### AbddJsdocParamsType
+
+```typescript
+type AbddJsdocParamsType = Static<typeof AbddJsdocParams>
+```
+
+### AbddReviewParamsType
+
+```typescript
+type AbddReviewParamsType = Static<typeof AbddReviewParams>
+```
+
+### AbddAnalyzeParamsType
+
+```typescript
+type AbddAnalyzeParamsType = Static<typeof AbddAnalyzeParams>
+```
+
+### AbddWorkflowParamsType
+
+```typescript
+type AbddWorkflowParamsType = Static<typeof AbddWorkflowParams>
+```
 
 ### DivergenceType
 
@@ -341,4 +470,4 @@ type Severity = "low" | "medium" | "high"
 乖離重要度
 
 ---
-*自動生成: 2026-02-18T15:54:40.854Z*
+*自動生成: 2026-02-18T18:06:16.928Z*

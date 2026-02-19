@@ -28,7 +28,7 @@
 // Why: Enables task state persistence and recovery for preemption and resumption.
 // Related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -245,7 +245,7 @@ function isCheckpointExpired(checkpoint: Checkpoint, nowMs: number): boolean {
  */
 function getFileSizeBytes(filePath: string): number {
   try {
-    const stats = require("fs").statSync(filePath);
+    const stats = statSync(filePath);
     return stats.size ?? 0;
   } catch {
     return 0;

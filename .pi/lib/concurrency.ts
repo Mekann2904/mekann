@@ -49,6 +49,14 @@ interface WorkerResult<TResult> {
 function toPositiveLimit(limit: number, itemCount: number): number {
   const safeLimit = Number.isFinite(limit) ? Math.trunc(limit) : 1;
   return Math.max(1, Math.min(itemCount, safeLimit));
+}
+
+function ensureNotAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new Error("concurrency pool aborted");
+  }
+}
+
 /**
  * 指定した並行数制限で非同期タスクを実行する
  *
@@ -64,23 +72,6 @@ function toPositiveLimit(limit: number, itemCount: number): number {
  *   async (item) => item * 2,
  *   { signal: abortController.signal }
  * );
- */
-}
-
-function ensureNotAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw new Error("concurrency pool aborted");
-  }
-}
-
-/**
- * アイテムを並列処理する
- * @summary アイテム並列処理
- * @param items 処理対象のアイテム配列
- * @param limit 並列実行数の上限
- * @param worker 各アイテムに対する非同期処理関数
- * @param options 実行オプション（signal等）
- * @returns 処理結果の配列
  */
 export async function runWithConcurrencyLimit<TInput, TResult>(
   items: TInput[],

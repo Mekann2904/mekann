@@ -211,4 +211,4 @@ extractSummary(output: string): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T15:54:40.934Z*
+*自動生成: 2026-02-18T18:06:17.013Z*
