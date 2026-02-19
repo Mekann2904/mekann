@@ -27,7 +27,7 @@
 // Why: Separates definition loading logic from main agent-teams.ts for maintainability.
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -128,36 +128,71 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
   const entries = readdirSync(definitionsDir, { withFileTypes: true });
 
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    // Skip hidden directories and common ignore patterns
+    if (entry.name.startsWith(".")) continue;
+    if (entry.name === "node_modules") continue;
 
-    const filePath = join(definitionsDir, entry.name);
-    const parsed = parseTeamMarkdownFile(filePath);
+    const fullPath = join(definitionsDir, entry.name);
 
-    if (!parsed) continue;
+    if (entry.isFile() && entry.name.endsWith(".md")) {
+      // Direct .md file in definitions directory
+      const parsed = parseTeamMarkdownFile(fullPath);
+      if (!parsed) continue;
 
-    const { frontmatter } = parsed;
+      const { frontmatter } = parsed;
+      const members: TeamMember[] = frontmatter.members.map((m) => ({
+        id: m.id,
+        role: m.role,
+        description: m.description,
+        provider: m.provider,
+        model: m.model,
+        enabled: m.enabled ?? true,
+        skills: m.skills,
+      }));
 
-    // Convert members from frontmatter
-    const members: TeamMember[] = frontmatter.members.map((m) => ({
-      id: m.id,
-      role: m.role,
-      description: m.description,
-      provider: m.provider,
-      model: m.model,
-      enabled: m.enabled ?? true,
-      skills: m.skills,
-    }));
+      teams.push({
+        id: frontmatter.id,
+        name: frontmatter.name,
+        description: frontmatter.description,
+        enabled: frontmatter.enabled,
+        skills: frontmatter.skills,
+        members,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+    } else if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(fullPath).isDirectory())) {
+      // Subdirectory: look for team.md (case-insensitive)
+      const teamMdLower = join(fullPath, "team.md");
+      const teamMdUpper = join(fullPath, "TEAM.md");
+      const teamMdPath = existsSync(teamMdLower) ? teamMdLower : (existsSync(teamMdUpper) ? teamMdUpper : null);
 
-    teams.push({
-      id: frontmatter.id,
-      name: frontmatter.name,
-      description: frontmatter.description,
-      enabled: frontmatter.enabled,
-      skills: frontmatter.skills,
-      members,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    });
+      if (teamMdPath) {
+        const parsed = parseTeamMarkdownFile(teamMdPath);
+        if (!parsed) continue;
+
+        const { frontmatter } = parsed;
+        const members: TeamMember[] = frontmatter.members.map((m) => ({
+          id: m.id,
+          role: m.role,
+          description: m.description,
+          provider: m.provider,
+          model: m.model,
+          enabled: m.enabled ?? true,
+          skills: m.skills,
+        }));
+
+        teams.push({
+          id: frontmatter.id,
+          name: frontmatter.name,
+          description: frontmatter.description,
+          enabled: frontmatter.enabled,
+          skills: frontmatter.skills,
+          members,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        });
+      }
+    }
   }
 
   return teams;
