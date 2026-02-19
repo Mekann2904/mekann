@@ -385,14 +385,14 @@ interface SubagentRunRecord {
 
 | パラメータ | タイプ | 必須 | デフォルト | 説明 |
 |-----------|--------|------|-----------|------|
-| `id` | string | ❌ | nameから自動生成 | 一意のID（小文字ハイフン区切り） |
-| `name` | string | ✅ | - | 表示名 |
-| `description` | string | ✅ | - | このサブエージェントを使用する時期 |
-| `systemPrompt` | string | ✅ | - | このサブエージェントのコア命令プロンプト |
-| `skills` | string[] | ❌ | [] | 割り当てるスキルIDの配列 |
-| `provider` | string | ❌ | - | プロバイダの上書き |
-| `model` | string | ❌ | - | モデルの上書き |
-| `setCurrent` | boolean | ❌ | false | デフォルトサブエージェントに設定 |
+| `id` | string | 省略可 | nameから自動生成 | 一意のID（小文字ハイフン区切り） |
+| `name` | string | 必須 | - | 表示名 |
+| `description` | string | 必須 | - | このサブエージェントを使用する時期 |
+| `systemPrompt` | string | 必須 | - | このサブエージェントのコア命令プロンプト |
+| `skills` | string[] | 省略可 | [] | 割り当てるスキルIDの配列 |
+| `provider` | string | 省略可 | - | プロバイダの上書き |
+| `model` | string | 省略可 | - | モデルの上書き |
+| `setCurrent` | boolean | 省略可 | false | デフォルトサブエージェントに設定 |
 
 #### skills パラメータ
 
@@ -439,39 +439,39 @@ skill_status()
 
 | パラメータ | タイプ | 必須 | デフォルト | 説明 |
 |-----------|--------|------|-----------|------|
-| `subagentId` | string | ✅ | - | 対象サブエージェントID |
-| `enabled` | boolean | ❌ | - | 有効/無効の切り替え |
-| `setCurrent` | boolean | ❌ | - | デフォルトサブエージェントに設定 |
+| `subagentId` | string | 必須 | - | 対象サブエージェントID |
+| `enabled` | boolean | 省略可 | - | 有効/無効の切り替え |
+| `setCurrent` | boolean | 省略可 | - | デフォルトサブエージェントに設定 |
 
 ### subagent_run
 
 | パラメータ | タイプ | 必須 | デフォルト | 説明 |
 |-----------|--------|------|-----------|------|
-| `task` | string | ✅ | - | 委任されたタスク |
-| `subagentId` | string | ❌ | current agent | 対象サブエージェントID |
-| `extraContext` | string | ❌ | - | 追加のコンテキスト |
-| `timeoutMs` | number | ❌ | 600000 (10分) | タイムアウト（ミリ秒、0で無制限） |
-| `retry.maxRetries` | number | ❌ | 4 | 最大リトライ回数 |
-| `retry.initialDelayMs` | number | ❌ | 1000 | 初期バックオフ遅延（ms） |
-| `retry.maxDelayMs` | number | ❌ | 30000 | 最大バックオフ遅延（ms） |
-| `retry.multiplier` | number | ❌ | 2 | バックオフ乗数 |
-| `retry.jitter` | string | ❌ | "none" | ジッターモード（full/partial/none） |
+| `task` | string | 必須 | - | 委任されたタスク |
+| `subagentId` | string | 省略可 | current agent | 対象サブエージェントID |
+| `extraContext` | string | 省略可 | - | 追加のコンテキスト |
+| `timeoutMs` | number | 省略可 | 600000 (10分) | タイムアウト（ミリ秒、0で無制限） |
+| `retry.maxRetries` | number | 省略可 | 4 | 最大リトライ回数 |
+| `retry.initialDelayMs` | number | 省略可 | 1000 | 初期バックオフ遅延（ms） |
+| `retry.maxDelayMs` | number | 省略可 | 30000 | 最大バックオフ遅延（ms） |
+| `retry.multiplier` | number | 省略可 | 2 | バックオフ乗数 |
+| `retry.jitter` | string | 省略可 | "none" | ジッターモード（full/partial/none） |
 
 ### subagent_run_parallel
 
 | パラメータ | タイプ | 必須 | デフォルト | 説明 |
 |-----------|--------|------|-----------|------|
-| `task` | string | ✅ | - | 全ての選択されたサブエージェントに委任するタスク |
-| `subagentIds` | string[] | ❌ | 全有効エージェント | サブエージェントID配列 |
-| `extraContext` | string | ❌ | - | 追加の共有コンテキスト |
-| `timeoutMs` | number | ❌ | 600000 (10分) | タイムアウト（ミリ秒） |
-| `retry` | object | ❌ | - | リトライ設定（subagent_runと同じ） |
+| `task` | string | 必須 | - | 全ての選択されたサブエージェントに委任するタスク |
+| `subagentIds` | string[] | 省略可 | 全有効エージェント | サブエージェントID配列 |
+| `extraContext` | string | 省略可 | - | 追加の共有コンテキスト |
+| `timeoutMs` | number | 省略可 | 600000 (10分) | タイムアウト（ミリ秒） |
+| `retry` | object | 省略可 | - | リトライ設定（subagent_runと同じ） |
 
 ### subagent_runs
 
 | パラメータ | タイプ | 必須 | デフォルト | 説明 |
 |-----------|--------|------|-----------|------|
-| `limit` | number | ❌ | 10 | 表示する実行履歴の数（1〜50） |
+| `limit` | number | 省略可 | 10 | 表示する実行履歴の数（1〜50） |
 
 ---
 

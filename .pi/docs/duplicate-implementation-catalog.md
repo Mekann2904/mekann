@@ -390,7 +390,7 @@ function formatDurationMs(item: SubagentLiveItem): string {
 
 ### 1.11 toFiniteNumber (3箇所)
 
-**重要度:** 高 ⚠️
+**重要度:** 高 [WARNING]
 **影響:** 型不一致による潜在的なバグ
 
 #### コード定義（3種類の実装）
@@ -420,7 +420,7 @@ function toFiniteNumber(value: unknown): number {
 | `.pi/extensions/context-usage-dashboard.ts` | ~73 | `number` | `0` |
 | `.pi/lib/retry-with-backoff.ts` | ~46 | `number \| undefined` | `undefined` |
 
-**⚠️ 重要:** 戻り値型と失敗時挙動が不一致
+**[WARNING]重要:** 戻り値型と失敗時挙動が不一致
 
 #### 統合計画
 
@@ -434,7 +434,7 @@ function toFiniteNumber(value: unknown): number {
 
 ## 2. 類似実装 (Similar Implementations)
 
-### 2.1 toTailLines (2箇所) - ⚠️ 挙動差異あり
+### 2.1 toTailLines (2箇所) - [WARNING]挙動差異あり
 
 **重要度:** 高
 **影響:** ライブモニターの表示挙動に差異
@@ -680,8 +680,8 @@ function isTimeoutErrorMessage(error: unknown): boolean {
 
 | 優先度 | 重複実装 | 理由 |
 |--------|----------|------|
-| P0 | toTailLines | ⚠️ 挙動差異による表示不整合リスク |
-| P0 | toFiniteNumber | ⚠️ 型不一致による潜在的なバグ |
+| P0 | toTailLines | [WARNING]挙動差異による表示不整合リスク |
+| P0 | toFiniteNumber | [WARNING]型不一致による潜在的なバグ |
 | P1 | toErrorMessage | 呼び出し箇所が多い、変更影響が大きい |
 | P1 | ensureDir | 基本的なファイル操作、頻繁に使用 |
 | P2 | toBoundedInteger | バリデーション、複数箇所で使用 |

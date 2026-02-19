@@ -228,15 +228,15 @@ loop_run({
 
 | パラメータ | タイプ | 必須 | デフォルト | 説明 |
 |-----------|--------|------|-----------|------|
-| `task` | string | ✅ | - | 実行するタスクの説明 |
-| `maxIterations` | number | ❌ | 4 | 最大反復回数（1〜16） |
-| `timeoutMs` | number | ❌ | 120000 | 1反復あたりのタイムアウト（ms）（10,000〜600,000） |
-| `requireCitation` | boolean | ❌ | true | 参照文献提供時の引用を必須にするか |
-| `references` | string[] | ❌ | [] | 参照文献の配列（ファイルパス、URL、インラインテキスト） |
-| `refsFile` | string | ❌ | - | 1行1参照形式のファイルパス |
-| `verificationTimeoutMs` | number | ❌ | 60000 | 検証コマンドのタイムアウト（ms）（1,000〜120,000） |
-| `verifyCommand` | string | ❌ | - | 検証コマンド（例: `npm test`） |
-| `goal` | string | ❌ | - | 完了条件の明示的定義 |
+| `task` | string | 必須 | - | 実行するタスクの説明 |
+| `maxIterations` | number | 省略可 | 4 | 最大反復回数（1〜16） |
+| `timeoutMs` | number | 省略可 | 120000 | 1反復あたりのタイムアウト（ms）（10,000〜600,000） |
+| `requireCitation` | boolean | 省略可 | true | 参照文献提供時の引用を必須にするか |
+| `references` | string[] | 省略可 | [] | 参照文献の配列（ファイルパス、URL、インラインテキスト） |
+| `refsFile` | string | 省略可 | - | 1行1参照形式のファイルパス |
+| `verificationTimeoutMs` | number | 省略可 | 60000 | 検証コマンドのタイムアウト（ms）（1,000〜120,000） |
+| `verifyCommand` | string | 省略可 | - | 検証コマンド（例: `npm test`） |
+| `goal` | string | 省略可 | - | 完了条件の明示的定義 |
 
 ### コマンドラインオプション
 

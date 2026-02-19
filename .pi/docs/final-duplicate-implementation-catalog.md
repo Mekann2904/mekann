@@ -670,7 +670,7 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
 
 ### 2.1 toTailLines - 文字列を行に分割して制限
 
-**重要度:** 高 (P0) - ⚠️ 挙動差異あり
+**重要度:** 高 (P0) - [WARNING]挙動差異あり
 **影響範囲:** 2ファイル
 **推定削減行数:** 約10行
 
@@ -732,7 +732,7 @@ function toTailLines(tail: string, limit: number): string[] {
 
 ### 2.2 toFiniteNumber - 数値の有限性チェック
 
-**重要度:** 高 (P0) - ⚠️ 型不一致あり
+**重要度:** 高 (P0) - [WARNING]型不一致あり
 **影響範囲:** 3ファイル
 **推定削減行数:** 約9行
 
@@ -1142,8 +1142,8 @@ function saveStorage(cwd: string, storage: SubagentStorage): void {
 
 | 優先度 | 関数 | 理由 |
 |-------|------|------|
-| P0 | toTailLines | ⚠️ 挙動差異による表示不整合リスク |
-| P0 | toFiniteNumber | ⚠️ 型不一致による潜在的なバグ |
+| P0 | toTailLines | [WARNING]挙動差異による表示不整合リスク |
+| P0 | toFiniteNumber | [WARNING]型不一致による潜在的なバグ |
 | P1 | toErrorMessage | 4ファイルで使用される基礎ユーティリティ |
 | P1 | ensureDir | 3ファイルで使用される基本処理 |
 

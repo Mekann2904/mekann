@@ -73,9 +73,9 @@ Processing lib...
 
 === Validating Mermaid diagrams ===
 
-📊 Results: 24/24 diagrams valid
+[Results]Results: 24/24 diagrams valid
 
-✅ All Mermaid diagrams are valid!
+必須 All Mermaid diagrams are valid!
 
 === Done ===
 ```

@@ -322,35 +322,35 @@ README、運用ランブック、例示、簡潔な変更サマリーのため�
 
 | パラメータ | 型 | 説明 | 必須 |
 |-----------|----|------|------|
-| `id` | string | チームID（小文字ハイフン区切り、省略可） | ❌ |
-| `name` | string | チームの表示名 | ✅ |
-| `description` | string | このチームの最適な用途 | ✅ |
-| `members` | array | チームメンバーの配列 | ✅ |
-| `setCurrent` | boolean | 新しいチームをデフォルトに設定 | ❌ |
+| `id` | string | チームID（小文字ハイフン区切り、省略可） | 省略可 |
+| `name` | string | チームの表示名 | 必須 |
+| `description` | string | このチームの最適な用途 | 必須 |
+| `members` | array | チームメンバーの配列 | 必須 |
+| `setCurrent` | boolean | 新しいチームをデフォルトに設定 | 省略可 |
 
 #### membersパラメータ
 
 | パラメータ | 型 | 説明 | 必須 | デフォルト |
 |-----------|----|------|------|----------|
-| `id` | string | メンバーID | ✅ | - |
-| `role` | string | メンバーの役割名 | ✅ | - |
-| `description` | string | メンバーミッション | ✅ | - |
-| `provider` | string | プロバイダーの上書き | ❌ | - |
-| `model` | string | モデルの上書き | ❌ | - |
-| `enabled` | boolean | 有効状態 | ❌ | `true` |
+| `id` | string | メンバーID | 必須 | - |
+| `role` | string | メンバーの役割名 | 必須 | - |
+| `description` | string | メンバーミッション | 必須 | - |
+| `provider` | string | プロバイダーの上書き | 省略可 | - |
+| `model` | string | モデルの上書き | 省略可 | - |
+| `enabled` | boolean | 有効状態 | 省略可 | `true` |
 
 ### agent_team_run
 
 | パラメータ | 型 | 説明 | 必須 | デフォルト |
 |-----------|----|------|------|----------|
-| `teamId` | string | 対象チームID | ❌ | デフォルトチーム |
-| `task` | string | チームに委譲するタスク | ✅ | - |
-| `strategy` | string | 実行ストラテジ（`parallel`/`sequential`） | ❌ | `parallel` |
-| `sharedContext` | string | 全メンバーに共有するコンテキスト | ❌ | - |
-| `communicationRounds` | number | メンバー間のコミュニケーションラウンド数（Stable profile: 固定0） | ❌ | 0 |
-| `failedMemberRetryRounds` | number | 失敗メンバーのリトライラウンド数（Stable profile: 固定0） | ❌ | 0 |
-| `timeoutMs` | number | タイムアウト（ミリ秒、0で無制限） | ❌ | 600000 (10分) |
-| `retry` | object | リトライ設定 | ❌ | - |
+| `teamId` | string | 対象チームID | 省略可 | デフォルトチーム |
+| `task` | string | チームに委譲するタスク | 必須 | - |
+| `strategy` | string | 実行ストラテジ（`parallel`/`sequential`） | 省略可 | `parallel` |
+| `sharedContext` | string | 全メンバーに共有するコンテキスト | 省略可 | - |
+| `communicationRounds` | number | メンバー間のコミュニケーションラウンド数（Stable profile: 固定0） | 省略可 | 0 |
+| `failedMemberRetryRounds` | number | 失敗メンバーのリトライラウンド数（Stable profile: 固定0） | 省略可 | 0 |
+| `timeoutMs` | number | タイムアウト（ミリ秒、0で無制限） | 省略可 | 600000 (10分) |
+| `retry` | object | リトライ設定 | 省略可 | - |
 
 #### 並列実行の制御（ランタイム管理）
 
@@ -366,14 +366,14 @@ Stable プロファイルでは、`STABLE_MAX_ACTIVE_MEMBERS_PER_TEAM = 3` の�
 
 | パラメータ | 型 | 説明 | 必須 | デフォルト |
 |-----------|----|------|------|----------|
-| `teamIds` | string[] | 対象チームIDの配列（省略時は現在の有効チームのみ実行） | ❌ | デフォルトチーム |
-| `task` | string | 全選択チームに委譲するタスク | ✅ | - |
-| `strategy` | string | 各チームのメンバーストラテジ（`parallel`/`sequential`） | ❌ | `parallel` |
-| `sharedContext` | string | 全メンバーに共有するコンテキスト | ❌ | - |
-| `communicationRounds` | number | チームメンバー間の追加コミュニケーションラウンド数（Stable profile: 固定0） | ❌ | 0 |
-| `failedMemberRetryRounds` | number | 各チームの失敗メンバーのリトライラウンド数（Stable profile: 固定0） | ❌ | 0 |
-| `timeoutMs` | number | メンバー実行あたりのタイムアウト（ミリ秒、0で無制限） | ❌ | 600000 (10分) |
-| `retry` | object | リトライ設定 | ❌ | - |
+| `teamIds` | string[] | 対象チームIDの配列（省略時は現在の有効チームのみ実行） | 省略可 | デフォルトチーム |
+| `task` | string | 全選択チームに委譲するタスク | 必須 | - |
+| `strategy` | string | 各チームのメンバーストラテジ（`parallel`/`sequential`） | 省略可 | `parallel` |
+| `sharedContext` | string | 全メンバーに共有するコンテキスト | 省略可 | - |
+| `communicationRounds` | number | チームメンバー間の追加コミュニケーションラウンド数（Stable profile: 固定0） | 省略可 | 0 |
+| `failedMemberRetryRounds` | number | 各チームの失敗メンバーのリトライラウンド数（Stable profile: 固定0） | 省略可 | 0 |
+| `timeoutMs` | number | メンバー実行あたりのタイムアウト（ミリ秒、0で無制限） | 省略可 | 600000 (10分) |
+| `retry` | object | リトライ設定 | 省略可 | - |
 
 #### ランタイム並列制御
 
@@ -391,7 +391,7 @@ Stable プロファイルでは、`STABLE_MAX_ACTIVE_MEMBERS_PER_TEAM = 3` の�
 
 | パラメータ | 型 | 説明 | 必須 | デフォルト |
 |-----------|----|------|------|----------|
-| `limit` | number | 返す履歴の数 | ❌ | 10 |
+| `limit` | number | 返す履歴の数 | 省略可 | 10 |
 
 ### リトライ設定
 

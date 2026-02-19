@@ -143,8 +143,8 @@ interface PlanStep {
 
 | パラメータ | タイプ | 必須 | 説明 |
 |-----------|--------|------|------|
-| `name` | string | ✅ | プラン名 |
-| `description` | string | ❌ | プランの説明 |
+| `name` | string | 必須 | プラン名 |
+| `description` | string | 省略可 | プランの説明 |
 
 ### plan_list
 
@@ -154,43 +154,43 @@ interface PlanStep {
 
 | パラメータ | タイプ | 必須 | 説明 |
 |-----------|--------|------|------|
-| `planId` | string | ✅ | プランID |
+| `planId` | string | 必須 | プランID |
 
 ### plan_add_step
 
 | パラメータ | タイプ | 必須 | 説明 |
 |-----------|--------|------|------|
-| `planId` | string | ✅ | プランID |
-| `title` | string | ✅ | ステップタイトル |
-| `description` | string | ❌ | ステップの説明 |
-| `dependencies` | string[] | ❌ | 依存するステップID配列 |
+| `planId` | string | 必須 | プランID |
+| `title` | string | 必須 | ステップタイトル |
+| `description` | string | 省略可 | ステップの説明 |
+| `dependencies` | string[] | 省略可 | 依存するステップID配列 |
 
 ### plan_update_step
 
 | パラメータ | タイプ | 必須 | 説明 |
 |-----------|--------|------|------|
-| `planId` | string | ✅ | プランID |
-| `stepId` | string | ✅ | ステップID |
-| `status` | string | ✅ | ステータス（pending/in_progress/completed/blocked） |
+| `planId` | string | 必須 | プランID |
+| `stepId` | string | 必須 | ステップID |
+| `status` | string | 必須 | ステータス（pending/in_progress/completed/blocked） |
 
 ### plan_ready_steps
 
 | パラメータ | タイプ | 必須 | 説明 |
 |-----------|--------|------|------|
-| `planId` | string | ✅ | プランID |
+| `planId` | string | 必須 | プランID |
 
 ### plan_delete
 
 | パラメータ | タイプ | 必須 | 説明 |
 |-----------|--------|------|------|
-| `planId` | string | ✅ | プランID |
+| `planId` | string | 必須 | プランID |
 
 ### plan_update_status
 
 | パラメータ | タイプ | 必須 | 説明 |
 |-----------|--------|------|------|
-| `planId` | string | ✅ | プランID |
-| `status` | string | ✅ | プランステータス（draft/active/completed/cancelled） |
+| `planId` | string | 必須 | プランID |
+| `status` | string | 必須 | プランステータス（draft/active/completed/cancelled） |
 
 ---
 

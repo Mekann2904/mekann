@@ -142,7 +142,7 @@ git add --all README.md
 
 | パラメータ | 型 | 説明 | 必須 |
 |-----------|------|------|------|
-| `action` | string | アクション（`list`|`add`|`erase`|`rename`|`query`） | ✅ |
+| `action` | string | アクション（`list`|`add`|`erase`|`rename`|`query`） | 必須 |
 | `name` | string | 略語名 | `add`, `erase`, `rename`, `query` で必須 |
 | `expansion` | string | 展開文字列 | `add` で必須 |
 | `newName` | string | 新しい名前 | `rename` で必須 |

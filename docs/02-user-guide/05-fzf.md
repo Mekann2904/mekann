@@ -90,17 +90,17 @@ fzf({
 
 | パラメータ | タイプ | 必須 | デフォルト | 説明 |
 |-----------|--------|------|-----------|------|
-| `type` | enum | ✅ | - | 選択対象の種類（files/directories/list/git-files/git-branches） |
-| `mode` | enum | ❌ | "single" | 選択モード（single/multi） |
-| `items` | FzfItem[] | ❌ | - | type=listの場合のアイテム一覧 |
-| `itemsRaw` | string[] | ❌ | - | type=listの場合のシンプルな文字列配列 |
-| `pattern` | string | ❌ | - | ファイル/ディレクトリのフィルタパターン（glob形式） |
-| `recursive` | boolean | ❌ | true (files) / false (dirs) | 再帰的に検索するかどうか |
-| `useGitignore` | boolean | ❌ | true | .gitignoreに従ってファイルを除外する |
-| `prompt` | string | ❌ | "> " | fzfのプロンプト文字列 |
-| `preview` | string | ❌ | - | fzfのプレビューコマンド |
-| `header` | string | ❌ | - | fzfのヘッダー文字列 |
-| `cwd` | string | ❌ | プロジェクトルート | 作業ディレクトリ |
+| `type` | enum | 必須 | - | 選択対象の種類（files/directories/list/git-files/git-branches） |
+| `mode` | enum | 省略可 | "single" | 選択モード（single/multi） |
+| `items` | FzfItem[] | 省略可 | - | type=listの場合のアイテム一覧 |
+| `itemsRaw` | string[] | 省略可 | - | type=listの場合のシンプルな文字列配列 |
+| `pattern` | string | 省略可 | - | ファイル/ディレクトリのフィルタパターン（glob形式） |
+| `recursive` | boolean | 省略可 | true (files) / false (dirs) | 再帰的に検索するかどうか |
+| `useGitignore` | boolean | 省略可 | true | .gitignoreに従ってファイルを除外する |
+| `prompt` | string | 省略可 | "> " | fzfのプロンプト文字列 |
+| `preview` | string | 省略可 | - | fzfのプレビューコマンド |
+| `header` | string | 省略可 | - | fzfのヘッダー文字列 |
+| `cwd` | string | 省略可 | プロジェクトルート | 作業ディレクトリ |
 
 ### FzfItem 型
 
