@@ -478,12 +478,12 @@ runModelBasedTest(counterModel, {
 #### 低忠実度 vs 高忠実度テスト
 
 ```typescript
-// ❌ 低忠実度テスト: モックで置き換え
+// 低忠実度テスト: モックで置き換え
 const validator = mock(OrderValidator);
 const processor = mock(PaymentProcessor);
 const cart = new ShoppingCart(validator, processor);
 
-// ✅ 高忠実度テスト: 実際の実装またはフェイク
+// 高忠実度テスト: 実際の実装またはフェイク
 const validator = createValidator();  // 実際の実装
 const processor = new FakeProcessor();  // フェイク
 const cart = new ShoppingCart(validator, processor);
@@ -492,7 +492,7 @@ const cart = new ShoppingCart(validator, processor);
 #### モックが適切なケース
 
 ```typescript
-// ✅ モックが適切: 稀なエラー条件
+// モックが適切: 稀なエラー条件
 test('should handle timeout error', async () => {
   const mockApi = {
     fetch: jest.fn().mockRejectedValue(new TimeoutError())
@@ -505,7 +505,7 @@ test('should handle timeout error', async () => {
   expect(result.error.code).toBe('TIMEOUT');
 });
 
-// ❌ モックが不適切: 通常のビジネスロジック
+// モックが不適切: 通常のビジネスロジック
 // モックを使うと実際の実装のバグを検出できない
 ```
 
@@ -636,7 +636,7 @@ test('should fill order if enough inventory', () => {
 #### 問題のあるコード例
 
 ```typescript
-// ❌ サードパーティライブラリを直接モック化
+// サードパーティライブラリを直接モック化
 const mockSalaryProcessor = mock(SalaryProcessor);
 const mockTransactionStrategy = mock(TransactionStrategy);
 
@@ -669,17 +669,17 @@ when(mockSalaryProcessor.paySalary()).thenReturn('SUCCESS');
 #### 対策例
 
 ```typescript
-// ✅ 対策1: 実際の実装を使用
+// 対策1: 実際の実装を使用
 const processor = new SalaryProcessor();  // 実際の実装
 const service = new MyPaymentService(processor);
 expect(service.sendPayment()).toBe('SUCCESS');
 
-// ✅ 対策2: フェイク実装を使用
+// 対策2: フェイク実装を使用
 const fakeProcessor = new FakeSalaryProcessor();  // テスト用フェイク
 const service = new MyPaymentService(fakeProcessor);
 expect(service.sendPayment()).toBe('SUCCESS');
 
-// ✅ 対策3: ラッパークラスを作成
+// 対策3: ラッパークラスを作成
 // ラッパー（自分の型）
 class MySalaryProcessor {
   constructor(private library: SalaryProcessor) {}
@@ -797,7 +797,7 @@ test('MySalaryProcessor should delegate to library', () => {
 #### 原因：実装詳細への強い依存
 
 ```typescript
-// ❌ 実装詳細のテスト（偽陽性が高い）
+// 実装詳細のテスト（偽陽性が高い）
 test('should execute correct SQL', () => {
   const user = repository.getById(5);
   expect(repository.lastExecutedSql).toBe(
@@ -809,7 +809,7 @@ test('should execute correct SQL', () => {
 // - SELECT * FROM dbo.User WHERE UserID = 5
 // - SELECT UserID, Name, Email FROM dbo.[User] WHERE UserID = 5
 
-// ✅ 最終結果のテスト（偽陽性が低い）
+// 最終結果のテスト（偽陽性が低い）
 test('should return user by id', () => {
   const user = repository.getById(5);
   expect(user).toEqual({ id: 5, name: 'Expected Name' });
@@ -881,13 +881,13 @@ test('should return user by id', () => {
 ### 1. インフラストラクチャへの依存を避ける
 
 ```
-❌ 避けるべき依存:
+避けるべき依存:
 - データベース
 - ファイルシステム
 - ネットワーク
 - 外部API
 
-✅ 推奨:
+推奨:
 - 依存性注入を使用
 - ユニットテストと統合テストを別プロジェクトに
 - 明示的依存関係原則に従う
@@ -898,7 +898,7 @@ test('should return user by id', () => {
 テスト入力は、現在テストしている動作を検証するために必要な最小限の情報であるべき。
 
 ```typescript
-// ❌ 過剰なデータ
+// 過剰なデータ
 test('should calculate price', () => {
   const order = {
     id: 'ORDER-12345',
@@ -911,7 +911,7 @@ test('should calculate price', () => {
   expect(calculateTotal(order)).toBe(400);
 });
 
-// ✅ 最小限のデータ
+// 最小限のデータ
 test('should calculate total from items', () => {
   const order = { items: [{ price: 100, quantity: 2 }] };
   expect(calculateTotal(order)).toBe(200);
@@ -923,12 +923,12 @@ test('should calculate total from items', () => {
 コメントや説明なしにハードコードされた値は可読性を低下させる。
 
 ```typescript
-// ❌ マジックストリング
+// マジックストリング
 test('should throw on overflow', () => {
   expect(() => add('1001')).toThrow(OverflowError);
 });
 
-// ✅ 意図を明確化
+// 意図を明確化
 test('should throw when exceeding maximum sum', () => {
   const MAXIMUM_RESULT = '1001';
   expect(() => add(MAXIMUM_RESULT)).toThrow(OverflowError);
@@ -938,7 +938,7 @@ test('should throw when exceeding maximum sum', () => {
 ### 4. テストにロジックを記述しない
 
 ```
-❌ テスト内のロジック:
+テスト内のロジック:
 - 文字列の手動結合
 - if / while / for / switch
 - 条件分岐
@@ -950,7 +950,7 @@ test('should throw when exceeding maximum sum', () => {
 ```
 
 ```typescript
-// ❌ ロジックを含むテスト
+// ロジックを含むテスト
 test('should handle multiple numbers', () => {
   const testCases = ['0,0,0', '0,1,2', '1,2,3'];
   let expected = 0;
@@ -960,7 +960,7 @@ test('should handle multiple numbers', () => {
   });
 });
 
-// ✅ パラメータ化テスト
+// パラメータ化テスト
 test.each([
   ['0,0,0', 0],
   ['0,1,2', 3],
@@ -973,7 +973,7 @@ test.each([
 ### 5. Setup/Teardown よりヘルパーメソッド
 
 ```typescript
-// ❌ Setup属性の使用（暗黙的）
+// Setup属性の使用（暗黙的）
 let calculator: Calculator;
 
 beforeEach(() => {
@@ -984,7 +984,7 @@ test('should add numbers', () => {
   expect(calculator.add('0,1')).toBe(1);
 });
 
-// ✅ ヘルパーメソッド（明示的）
+// ヘルパーメソッド（明示的）
 test('should add numbers', () => {
   const calculator = createDefaultCalculator();
   expect(calculator.add('0,1')).toBe(1);
@@ -1003,7 +1003,7 @@ function createDefaultCalculator(): Calculator {
 ### 6. 単一Actタスク
 
 ```typescript
-// ❌ 複数のAct
+// 複数のAct
 test('should treat empty entries as zero', () => {
   const result1 = add('');
   const result2 = add(',');
@@ -1011,7 +1011,7 @@ test('should treat empty entries as zero', () => {
   expect(result2).toBe(0);
 });
 
-// ✅ パラメータ化で分離
+// パラメータ化で分離
 test.each([
   ['', 0],
   [',', 0],
@@ -1048,7 +1048,7 @@ class Parser {
   }
 }
 
-// ✅ 公開メソッドをテスト
+// 公開メソッドをテスト
 test('should trim whitespace from log line', () => {
   const parser = new Parser();
   expect(parser.parseLogLine(' a ')).toBe('a');
@@ -1060,7 +1060,7 @@ test('should trim whitespace from log line', () => {
 静的参照（`DateTime.now`等）はテスト困難。インターフェースでラップして制御可能にする。
 
 ```typescript
-// ❌ 静的参照（テスト困難）
+// 静的参照（テスト困難）
 getDiscountedPrice(price: number): number {
   if (DateTime.now.dayOfWeek === DayOfWeek.Tuesday) {
     return price / 2;
@@ -1068,7 +1068,7 @@ getDiscountedPrice(price: number): number {
   return price;
 }
 
-// ✅ シームパターン（インターフェースでラップ）
+// シームパターン（インターフェースでラップ）
 interface IDateTimeProvider {
   dayOfWeek(): DayOfWeek;
 }
@@ -1124,7 +1124,7 @@ test('should return half price on Tuesday', () => {
 #### 実装例
 
 ```typescript
-// ❌ テスト困難: UIにロジックが混在
+// テスト困難: UIにロジックが混在
 class UserForm {
   onSubmit() {
     const name = this.nameInput.value;
@@ -1141,7 +1141,7 @@ class UserForm {
   }
 }
 
-// ✅ 謙虚なオブジェクト: UIは最小限、ロジックは分離
+// 謙虚なオブジェクト: UIは最小限、ロジックは分離
 class UserForm {  // 謙虚なオブジェクト（ロジック最小）
   constructor(
     private validator: UserValidator,
@@ -1230,7 +1230,7 @@ test('should reject short name', () => {
 #### 実装例
 
 ```typescript
-// ❌ ビューにロジックが混在
+// ビューにロジックが混在
 class AlbumForm {
   onClassicalChanged() {
     // ビュー内で有効/無効を判断（テスト困難）
@@ -1238,7 +1238,7 @@ class AlbumForm {
   }
 }
 
-// ✅ プレゼンテーションモデル（テスト可能）
+// プレゼンテーションモデル（テスト可能）
 class AlbumPresentationModel {
   private _isClassical: boolean = false;
   private _composer: string = '';
@@ -1421,12 +1421,12 @@ test('should greet Alice Smith', () => {
 高いカバレッジが高品質なテストを保証しない：
 
 ```
-❌ 誤った安心感
+誤った安心感
 - 100%カバレッジでもエッジケース未テストの可能性
 - テストが実行されても、適切に検証されていない場合がある
 - 機械的なコピー＆ペーストで目標達成
 
-✅ 正しい理解
+正しい理解
 - カバレッジは「実行された」ことのみを保証
 - 「正しくテストされた」ことは保証しない
 - ミューテーションテストで品質を補完
@@ -1548,12 +1548,12 @@ test('should greet Alice Smith', () => {
 #### ゲートの運用原則
 
 ```
-✅ 推奨:
+推奨:
 - チームで約束を遵守
 - 適切な承認メカニズム
 - カバレッジ不足はチェックイン不可
 
-❌ 避けるべき:
+避けるべき:
 - チェックボックス化
 - 形式的な達成
 - 指標達成のプレッシャーによる品質低下
@@ -1638,12 +1638,12 @@ function add(a: number, b: number): number {
 #### 1. 再実行戦略
 
 ```
-✅ 有効な対策:
+有効な対策:
 - 失敗テストのみ選択再実行
 - 失敗時の自動再実行（最大3回等）
 - 「不安定テスト」としてマーク
 
-⚠️ 注意点:
+注意点:
 - 3回連続失敗で報告 → 真の問題も遅延検出
 - 例: 15分テスト × 3回 = 45分後に検出
 ```
@@ -1656,7 +1656,7 @@ function add(a: number, b: number): number {
 - 閾値超過でクリティカルパスから除外
 - バグレポート自動作成
 
-⚠️ リスク:
+リスク:
 - 実際のバグを隠蔽する可能性
 - レースコンディション等の問題が見逃される
 ```
@@ -1664,25 +1664,25 @@ function add(a: number, b: number): number {
 #### 3. 予防策（根本対策）
 
 ```typescript
-// ❌ 非決定的なコード
+// 非決定的なコード
 test('should process in order', () => {
   const items = Object.values(data);  // 順序保証なし
   expect(items[0]).toBe('first');
 });
 
-// ✅ 決定的なコード
+// 決定的なコード
 test('should process in order', () => {
   const items = Object.values(data).sort();  // 明示的ソート
   expect(items[0]).toBe('first');
 });
 
-// ❌ 時刻依存
+// 時刻依存
 test('should check time', () => {
   const now = new Date();  // 実行時刻に依存
   expect(isWorkingHour(now)).toBe(true);
 });
 
-// ✅ 時刻を注入
+// 時刻を注入
 test('should check time', () => {
   const fixedTime = new Date('2024-01-15T10:00:00');
   expect(isWorkingHour(fixedTime)).toBe(true);
@@ -1746,7 +1746,7 @@ AIエージェントによるコーディング支援が普及しているが、
 #### 重複テスト
 
 ```
-❌ AIがやりがちなこと:
+AIがやりがちなこと:
 - 既存テスト関数に追加せず、新規関数を作成
 - 他のテストでカバー済みの内容を再テスト
 - 必要以上に多くのアサーションを追加
@@ -1761,7 +1761,7 @@ AIエージェントによるコーディング支援が普及しているが、
 #### 対策
 
 ```typescript
-// ❌ AIが生成した重複テスト
+// AIが生成した重複テスト
 test('should return user name', () => {
   expect(user.name).toBe('John');
 });
@@ -1770,7 +1770,7 @@ test('should return user name correctly', () => {  // 重複
   expect(user.name).toBe('John');
 });
 
-// ✅ 既存テストに統合
+// 既存テストに統合
 test('should return user with correct properties', () => {
   expect(user.name).toBe('John');
   expect(user.email).toBe('john@example.com');

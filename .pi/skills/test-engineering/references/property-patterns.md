@@ -499,25 +499,25 @@ fc.assert(
 ### 避けるべきこと
 
 ```typescript
-// ❌ 弱いプロパティ（常に真）
+// 弱いプロパティ（常に真）
 fc.assert(fc.property(
   fc.integer(),
   (n) => n === n || n !== n  // 常に真
 ));
 
-// ❌ 実装をコピー
+// 実装をコピー
 fc.assert(fc.property(
   fc.array(fc.integer()),
   (arr) => sort(arr).equals(arr.slice().sort())  // 実装と同じロジック
 ));
 
-// ❌ 範囲が狭すぎる
+// 範囲が狭すぎる
 fc.assert(fc.property(
   fc.integer({ min: 0, max: 10 }),  // 範囲が狭い
   (n) => n >= 0
 ));
 
-// ✅ 有意義なプロパティ
+// 有意義なプロパティ
 fc.assert(fc.property(
   fc.integer(),
   (n) => Math.abs(n) >= 0 && Math.abs(n) <= Math.abs(n) + 1
