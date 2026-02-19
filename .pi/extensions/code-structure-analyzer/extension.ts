@@ -34,6 +34,7 @@ import { generateMermaidDiagrams, type DiagramOptions, type MermaidDiagrams } fr
 import { generateDocSections, type DocOptions, type DocSections } from './tools/generate-doc.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, relative, basename } from 'path';
+import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 
 // ============================================================================
 // Types
@@ -320,112 +321,106 @@ function computeHash(structure: StructureData): string {
 }
 
 // ============================================================================
-// Tool Definitions for Pi
-// ============================================================================
-
-export const tools = [
-  {
-    name: 'analyze_code_structure',
-    description: 'TypeScriptソースコードを解析し、構造データ、Mermaid図、ドキュメントセクションを生成する。ハイブリッドドキュメント生成のメインツール。',
-    parameters: {
-      type: 'object',
-      properties: {
-        target: {
-          type: 'string',
-          description: '解析対象のファイルまたはディレクトリパス',
-        },
-        outputDir: {
-          type: 'string',
-          description: '出力ディレクトリ（省略時は結果のみ返却）',
-        },
-        diagramTypes: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: ['flowchart', 'classDiagram', 'sequenceDiagram'],
-          },
-          description: '生成する図の種類（デフォルト: 全て）',
-        },
-        includeLLMContext: {
-          type: 'boolean',
-          description: 'LLM用コンテキストを含めるか（デフォルト: true）',
-        },
-      },
-      required: ['target'],
-    },
-    execute: analyzeCodeStructure,
-  },
-  {
-    name: 'extract_structure',
-    description: 'TypeScriptソースコードから構造データのみを抽出（軽量版）。AST解析結果をJSONで取得。',
-    parameters: {
-      type: 'object',
-      properties: {
-        target: {
-          type: 'string',
-          description: '解析対象のファイルまたはディレクトリパス',
-        },
-        exclude: {
-          type: 'array',
-          items: { type: 'string' },
-          description: '除外パターン（glob形式）',
-        },
-      },
-      required: ['target'],
-    },
-    execute: extractStructure,
-  },
-  {
-    name: 'generate_diagrams',
-    description: '構造データからMermaid図を生成。flowchart（依存関係）、classDiagram（クラス構造）、sequenceDiagram（呼び出しフロー）に対応。',
-    parameters: {
-      type: 'object',
-      properties: {
-        structure: {
-          type: 'object',
-          description: 'extract_structureで取得した構造データ',
-        },
-        types: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: ['flowchart', 'classDiagram', 'sequenceDiagram'],
-          },
-          description: '生成する図の種類',
-        },
-      },
-      required: ['structure'],
-    },
-    execute: generateDiagrams,
-  },
-  {
-    name: 'generate_markdown_doc',
-    description: '解析結果からMarkdown形式のドキュメントを生成。LLM解説用のプレースホルダを含むハイブリッド形式。',
-    parameters: {
-      type: 'object',
-      properties: {
-        result: {
-          type: 'object',
-          description: 'analyze_code_structureの結果',
-        },
-        outputPath: {
-          type: 'string',
-          description: '出力ファイルパス（省略時は結果のみ返却）',
-        },
-      },
-      required: ['result'],
-    },
-    execute: generateMarkdown,
-  },
-];
-
-// ============================================================================
 // Extension Definition
 // ============================================================================
 
-export default {
-  name: 'code-structure-analyzer',
-  version: '1.0.0',
-  description: '実装からドキュメントを自動生成するハイブリッドシステム。機械的生成（AST、Mermaid図）とLLM解説を融合。',
-  tools,
-};
+import { Type } from "@mariozechner/pi-ai";
+
+/**
+ * @summary 拡張機能登録関数
+ * @param pi Pi拡張API
+ */
+export default function registerCodeStructureAnalyzerExtension(pi: ExtensionAPI) {
+  // ツールを登録
+  pi.registerTool({
+    name: "analyze_code_structure",
+    label: "Analyze Code Structure",
+    description: "TypeScriptソースコードを解析し、構造データ、Mermaid図、ドキュメントセクションを生成する。ハイブリッドドキュメント生成のメインツール。",
+    parameters: Type.Object({
+      target: Type.String({ description: "解析対象のファイルまたはディレクトリパス" }),
+      outputDir: Type.Optional(Type.String({ description: "出力ディレクトリ（省略時は結果のみ返却）" })),
+      diagramTypes: Type.Optional(Type.Array(Type.Union([
+        Type.Literal("flowchart"),
+        Type.Literal("classDiagram"),
+        Type.Literal("sequenceDiagram"),
+      ]), { description: "生成する図の種類（デフォルト: 全て）" })),
+      includeLLMContext: Type.Optional(Type.Boolean({ description: "LLM用コンテキストを含めるか（デフォルト: true）" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const result = await analyzeCodeStructure({
+        target: params.target,
+        outputDir: params.outputDir,
+        diagramTypes: params.diagramTypes,
+        includeLLMContext: params.includeLLMContext,
+      });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "extract_structure",
+    label: "Extract Structure",
+    description: "TypeScriptソースコードから構造データのみを抽出（軽量版）。AST解析結果をJSONで取得。",
+    parameters: Type.Object({
+      target: Type.String({ description: "解析対象のファイルまたはディレクトリパス" }),
+      exclude: Type.Optional(Type.Array(Type.String(), { description: "除外パターン（glob形式）" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const result = await extractStructure({
+        target: params.target,
+        exclude: params.exclude,
+      });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "generate_diagrams",
+    label: "Generate Diagrams",
+    description: "構造データからMermaid図を生成。flowchart（依存関係）、classDiagram（クラス構造）、sequenceDiagram（呼び出しフロー）に対応。",
+    parameters: Type.Object({
+      structure: Type.Any({ description: "extract_structureで取得した構造データ" }),
+      types: Type.Optional(Type.Array(Type.Union([
+        Type.Literal("flowchart"),
+        Type.Literal("classDiagram"),
+        Type.Literal("sequenceDiagram"),
+      ]), { description: "生成する図の種類" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const result = await generateDiagrams({
+        structure: params.structure,
+        types: params.types,
+      });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "generate_markdown_doc",
+    label: "Generate Markdown Doc",
+    description: "解析結果からMarkdown形式のドキュメントを生成。LLM解説用のプレースホルダを含むハイブリッド形式。",
+    parameters: Type.Object({
+      result: Type.Any({ description: "analyze_code_structureの結果" }),
+      outputPath: Type.Optional(Type.String({ description: "出力ファイルパス（省略時は結果のみ返却）" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const markdown = await generateMarkdown({
+        result: params.result,
+        outputPath: params.outputPath,
+      });
+      return {
+        content: [{ type: "text" as const, text: markdown }],
+        details: { outputPath: params.outputPath },
+      };
+    },
+  });
+}
