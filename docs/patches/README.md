@@ -31,7 +31,8 @@ related: []
 
 | パッチ名 | 対象パッケージ | 説明 |
 |---------|--------------|------|
-| [pi-ai-abort-fix](./pi-ai-abort-fix.md) | @mariozechner/pi-ai@0.52.9 | "abort" stop reason対応 |
+| [pi-ai-abort-fix](./pi-ai-abort-fix.md) | @mariozechner/pi-ai@0.53.0 | "abort" stop reason対応 |
+| [pi-coding-agent-rate-limit-fix](./pi-coding-agent-rate-limit-fix.md) | @mariozechner/pi-coding-agent@0.53.0 | 429自動リトライ改善（拡張でランタイム適用） |
 
 ## patch-packageについて
 
