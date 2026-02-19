@@ -449,7 +449,7 @@ export function recordEvent(event: RateLimitEvent): void {
       limit.recoveryScheduled = false; // Reset recovery on new 429
 
       // Update historical data for predictive analysis
-      updateHistorical429s(limit);
+      updateHistorical429s(limit, event.provider, event.model);
 
       // If multiple consecutive 429s, be more aggressive
       if (limit.consecutive429Count >= 3) {
@@ -858,8 +858,11 @@ export function getPredictiveConcurrency(
 
 /**
  * Update historical 429 data (called on 429 events).
+ * @param limit - Learned limit object to update
+ * @param provider - Provider name for probability analysis
+ * @param model - Model name for probability analysis
  */
-function updateHistorical429s(limit: LearnedLimit): void {
+function updateHistorical429s(limit: LearnedLimit, provider: string, model: string): void {
   if (!limit.historical429s) {
     limit.historical429s = [];
   }
@@ -871,11 +874,8 @@ function updateHistorical429s(limit: LearnedLimit): void {
     limit.historical429s = limit.historical429s.slice(-50);
   }
 
-  // Update predicted probability
-  limit.predicted429Probability = analyze429Probability(
-    limit.originalConcurrency.toString(), // Dummy provider extraction
-    limit.originalConcurrency.toString()  // Dummy model extraction
-  );
+  // Update predicted probability with correct provider/model
+  limit.predicted429Probability = analyze429Probability(provider, model);
 }
 
 /**

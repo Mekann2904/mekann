@@ -53,6 +53,7 @@ import {
 } from "../../lib/plan-mode-shared";
 import { getTeamMemberExecutionRules } from "../../lib/execution-rules";
 import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from "../shared/pi-print-executor";
+import type { RetryWithBackoffOverrides } from "../../lib/retry-with-backoff.js";
 
 // ============================================================================
 // Types
@@ -430,7 +431,7 @@ export async function runMember(input: {
   communicationContext?: string;
   timeoutMs: number;
   cwd: string;
-  retryOverrides?: any;
+  retryOverrides?: RetryWithBackoffOverrides;
   fallbackProvider?: string;
   fallbackModel?: string;
   signal?: AbortSignal;

@@ -40,7 +40,7 @@
  * across all layers (stable/default profiles).
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync, openSync, closeSync, renameSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pid } from "node:process";
@@ -1200,12 +1200,31 @@ function tryAcquireLock(resource: string, ttlMs: number = LOCK_TIMEOUT_MS): Dist
       if (nowMs < existing.expiresAt) {
         return null; // Lock is still valid
       }
+      // Lock is expired - try to clean it up atomically
+      // Use renameSync to atomically move expired lock to temp file
+      const tempFile = `${lockFile}.cleanup.${nowMs}`;
+      try {
+        renameSync(lockFile, tempFile);
+        // Successfully moved, now delete the temp file
+        unlinkSync(tempFile);
+      } catch {
+        // Another process may have already cleaned it up or acquired it
+        // Fall through to atomic creation attempt
+      }
     } catch {
-      // Corrupted lock, proceed to acquire
+      // Corrupted lock, try to remove it atomically
+      const tempFile = `${lockFile}.cleanup.${nowMs}`;
+      try {
+        renameSync(lockFile, tempFile);
+        unlinkSync(tempFile);
+      } catch {
+        // Another process may have handled it
+      }
     }
   }
 
-  // Acquire lock
+  // Acquire lock atomically using O_EXCL (wx flag)
+  // This prevents TOCTOU race condition between check and acquire
   const lock: DistributedLock = {
     lockId,
     acquiredAt: nowMs,
@@ -1214,9 +1233,20 @@ function tryAcquireLock(resource: string, ttlMs: number = LOCK_TIMEOUT_MS): Dist
   };
 
   try {
-    writeFileSync(lockFile, JSON.stringify(lock, null, 2));
+    // Use 'wx' flag for atomic exclusive creation (fails if file exists)
+    const fd = openSync(lockFile, "wx");
+    const lockContent = JSON.stringify(lock, null, 2);
+    writeSync(fd, lockContent);
+    closeSync(fd);
     return lock;
-  } catch {
+  } catch (error: unknown) {
+    // File already exists - another instance acquired it first
+    // This is expected behavior, not an error
+    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    if (errorCode === "EEXIST") {
+      return null; // Another instance won the race
+    }
+    // Other errors (permissions, etc.)
     return null;
   }
 }

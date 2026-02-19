@@ -184,7 +184,15 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
         createdAt: nowIso,
         updatedAt: nowIso,
       });
-    } else if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(fullPath).isDirectory())) {
+    } else if (entry.isDirectory() || (entry.isSymbolicLink() && (() => {
+      // Handle broken symlinks gracefully - statSync throws ENOENT on dangling symlinks
+      try {
+        return statSync(fullPath).isDirectory();
+      } catch {
+        console.warn(`[agent-teams] Skipping broken symlink: ${fullPath}`);
+        return false;
+      }
+    })())) {
       // Subdirectory: look for team.md/TEAM.md first, then p*.md (phase files)
       // ルール: team.mdがある場合のみp*.mdを読み込む（team.mdが統合チームとして機能）
       const teamMdLower = join(fullPath, "team.md");

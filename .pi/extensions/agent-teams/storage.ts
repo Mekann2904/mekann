@@ -370,7 +370,9 @@ export function loadStorage(cwd: string): TeamStorage {
           : 0,
     };
     return storage;
-  } catch {
+  } catch (error) {
+    // Log the error for diagnostics instead of silently swallowing
+    logger.logError(error, { operation: "loadStorage", path: paths.storageFile });
     const fallback: TeamStorage = {
       teams: [],
       runs: [],
@@ -457,7 +459,7 @@ export async function saveStorageWithPatterns(
       }
     } catch (error) {
       // Don't fail the save if pattern extraction fails
-      console.error("Error extracting patterns from team run:", error);
+      logger.logError(error, { operation: "saveStorageWithPatterns" });
     }
   }
 }
