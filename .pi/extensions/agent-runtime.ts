@@ -29,6 +29,7 @@
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { randomBytes } from "node:crypto";
 
 import {
   getEffectiveLimit,
@@ -45,6 +46,7 @@ import {
   safeStealWork,
   enhancedHeartbeat,
 } from "../lib/cross-instance-coordinator";
+import * as crossInstanceCoordinator from "../lib/cross-instance-coordinator";
 import {
   broadcastQueueState,
   getWorkStealingSummary,
@@ -520,10 +522,20 @@ const MAX_RESERVATION_TTL_MS = 10 * 60 * 1_000;
 const BACKOFF_MAX_FACTOR = 8;
 const BACKOFF_JITTER_RATIO = 0.2;
 const STRICT_LIMITS_ENV = "PI_AGENT_RUNTIME_STRICT_LIMITS";
+let runtimeNowProvider: () => number = () => Date.now();
 let runtimeQueueSequence = 0;
 let runtimeReservationSequence = 0;
+const RUNTIME_INSTANCE_TOKEN = randomBytes(3).toString("hex");
 let runtimeReservationSweeper: NodeJS.Timeout | undefined;
 const runtimeCapacityEventTarget = new EventTarget();
+
+function runtimeNow(): number {
+  return runtimeNowProvider();
+}
+
+export function setRuntimeNowProvider(provider?: () => number): void {
+  runtimeNowProvider = provider ?? (() => Date.now());
+}
 
 /**
  * Get default reservation TTL from runtime config.
@@ -552,11 +564,59 @@ function resolveLimitFromEnv(envName: string, fallback: number, max = 64): numbe
   return normalizePositiveInt(raw, fallback, max);
 }
 
+function getLocalRuntimeUsage(runtime: AgentRuntimeState): {
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+} {
+  return {
+    totalActiveRequests:
+      Math.max(0, runtime.subagents.activeRunRequests) +
+      Math.max(0, runtime.teams.activeTeamRuns),
+    totalActiveLlm:
+      Math.max(0, runtime.subagents.activeAgents) +
+      Math.max(0, runtime.teams.activeTeammates),
+  };
+}
+
+function publishRuntimeUsageToCoordinator(): void {
+  const updateRuntimeUsage = (crossInstanceCoordinator as { updateRuntimeUsage?: (activeRequests: number, activeLlm: number) => void }).updateRuntimeUsage;
+  if (typeof updateRuntimeUsage !== "function") return;
+  const runtime = getSharedRuntimeState();
+  const usage = getLocalRuntimeUsage(runtime);
+  try {
+    updateRuntimeUsage(usage.totalActiveRequests, usage.totalActiveLlm);
+  } catch {
+    // ignore coordinator publish failures
+  }
+}
+
+function getClusterUsageSafe(localUsage: { totalActiveRequests: number; totalActiveLlm: number }): {
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+} {
+  const getClusterRuntimeUsage = (crossInstanceCoordinator as { getClusterRuntimeUsage?: () => { totalActiveRequests: number; totalActiveLlm: number } }).getClusterRuntimeUsage;
+  if (typeof getClusterRuntimeUsage !== "function") {
+    return localUsage;
+  }
+  try {
+    const cluster = getClusterRuntimeUsage();
+    const remoteRequests = Math.max(0, Math.trunc((cluster.totalActiveRequests || 0) - localUsage.totalActiveRequests));
+    const remoteLlm = Math.max(0, Math.trunc((cluster.totalActiveLlm || 0) - localUsage.totalActiveLlm));
+    return {
+      totalActiveRequests: localUsage.totalActiveRequests + remoteRequests,
+      totalActiveLlm: localUsage.totalActiveLlm + remoteLlm,
+    };
+  } catch {
+    return localUsage;
+  }
+}
+
 /**
  * 容量変更通知
  * @summary 容量変更を通知
  */
 export function notifyRuntimeCapacityChanged(): void {
+  publishRuntimeUsageToCoordinator();
   runtimeCapacityEventTarget.dispatchEvent(new Event("capacity-changed"));
 }
 
@@ -663,6 +723,12 @@ function ensureReservationSweeper(): void {
     cleanupExpiredReservations(runtime);
   }, sweepMs);
   runtimeReservationSweeper.unref?.();
+}
+
+export function stopRuntimeReservationSweeper(): void {
+  if (!runtimeReservationSweeper) return;
+  clearInterval(runtimeReservationSweeper);
+  runtimeReservationSweeper = undefined;
 }
 
 function createInitialRuntimeState(): AgentRuntimeState {
@@ -786,7 +852,7 @@ export function getSharedRuntimeState(): AgentRuntimeState {
   return runtimeStateProvider.getState();
 }
 
-function cleanupExpiredReservations(runtime: AgentRuntimeState, nowMs = Date.now()): number {
+function cleanupExpiredReservations(runtime: AgentRuntimeState, nowMs = runtimeNow()): number {
   const before = runtime.reservations.active.length;
   runtime.reservations.active = runtime.reservations.active.filter(
     (reservation) => reservation.expiresAtMs > nowMs,
@@ -806,7 +872,7 @@ function updateReservationHeartbeat(
   cleanupExpiredReservations(runtime);
   const reservation = runtime.reservations.active.find((item) => item.id === reservationId);
   if (!reservation) return undefined;
-  const nowMs = Date.now();
+  const nowMs = runtimeNow();
   const normalizedTtlMs = normalizeReservationTtlMs(ttlMs);
   reservation.heartbeatAtMs = nowMs;
   reservation.expiresAtMs = nowMs + normalizedTtlMs;
@@ -825,7 +891,7 @@ function consumeReservation(runtime: AgentRuntimeState, reservationId: string): 
   const reservation = runtime.reservations.active.find((item) => item.id === reservationId);
   if (!reservation) return false;
   if (reservation.consumedAtMs) return true;
-  reservation.consumedAtMs = Date.now();
+  reservation.consumedAtMs = runtimeNow();
   notifyRuntimeCapacityChanged();
   return true;
 }
@@ -843,6 +909,8 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
   const subagentActiveAgents = Math.max(0, runtime.subagents.activeAgents);
   const teamActiveRuns = Math.max(0, runtime.teams.activeTeamRuns);
   const teamActiveAgents = Math.max(0, runtime.teams.activeTeammates);
+  const localUsage = getLocalRuntimeUsage(runtime);
+  const clusterUsage = getClusterUsageSafe(localUsage);
 
   const reservations = runtime.reservations.active;
   let reservedRequests = 0;
@@ -880,8 +948,8 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
     activeOrchestrations,
     queuedOrchestrations,
     queuedTools,
-    totalActiveRequests: subagentActiveRequests + teamActiveRuns,
-    totalActiveLlm: subagentActiveAgents + teamActiveAgents,
+    totalActiveRequests: clusterUsage.totalActiveRequests,
+    totalActiveLlm: clusterUsage.totalActiveLlm,
     limitsVersion: runtime.limitsVersion,
     priorityStats,
     limits: {
@@ -951,7 +1019,7 @@ function sanitizePlannedCount(value: unknown): number {
 
 function createRuntimeQueueEntryId(): string {
   runtimeQueueSequence += 1;
-  return `queue-${Date.now()}-${runtimeQueueSequence}`;
+  return `queue-${process.pid}-${RUNTIME_INSTANCE_TOKEN}-${runtimeNow()}-${runtimeQueueSequence}`;
 }
 
 function clampPlannedCount(value: number): number {
@@ -967,7 +1035,7 @@ function toQueueClass(input: RuntimeDispatchPermitInput): RuntimeQueueClass {
 
 function createRuntimeReservationId(): string {
   runtimeReservationSequence += 1;
-  return `reservation-${Date.now()}-${runtimeReservationSequence}`;
+  return `reservation-${process.pid}-${RUNTIME_INSTANCE_TOKEN}-${runtimeNow()}-${runtimeReservationSequence}`;
 }
 
 function removeQueuedEntry(runtime: AgentRuntimeState, entryId: string): number {
@@ -1232,7 +1300,7 @@ export function tryReserveRuntimeCapacity(
     return check;
   }
 
-  const nowMs = Date.now();
+  const nowMs = runtimeNow();
   const reservation: RuntimeCapacityReservationRecord = {
     id: createRuntimeReservationId(),
     toolName: String(input.toolName || "unknown"),
@@ -1267,14 +1335,14 @@ export async function reserveRuntimeCapacity(
     snapshot.limits.capacityPollMs,
     60_000,
   );
-  const startedAt = Date.now();
+  const startedAt = runtimeNow();
   let attempts = 0;
   let latestCheck: RuntimeCapacityCheck & { reservation?: RuntimeCapacityReservationLease } =
     checkRuntimeCapacity(input);
 
   while (true) {
     attempts += 1;
-    const waitElapsedMs = Date.now() - startedAt;
+    const waitElapsedMs = runtimeNow() - startedAt;
     if (input.signal?.aborted) {
       return {
         ...latestCheck,
@@ -1290,7 +1358,7 @@ export async function reserveRuntimeCapacity(
     if (attempted.allowed && attempted.reservation) {
       return {
         ...attempted,
-        waitedMs: Date.now() - startedAt,
+        waitedMs: runtimeNow() - startedAt,
         attempts,
         timedOut: false,
         aborted: false,
@@ -1298,7 +1366,7 @@ export async function reserveRuntimeCapacity(
       };
     }
 
-    const waitedMs = Date.now() - startedAt;
+    const waitedMs = runtimeNow() - startedAt;
     if (waitedMs >= maxWaitMs) {
       return {
         ...attempted,
@@ -1317,7 +1385,7 @@ export async function reserveRuntimeCapacity(
       if (eventResult === "aborted") {
         return {
           ...attempted,
-          waitedMs: Date.now() - startedAt,
+          waitedMs: runtimeNow() - startedAt,
           attempts,
           timedOut: false,
           aborted: true,
@@ -1349,7 +1417,7 @@ export async function reserveRuntimeCapacity(
     } catch {
       return {
         ...attempted,
-        waitedMs: Date.now() - startedAt,
+        waitedMs: runtimeNow() - startedAt,
         attempts,
         timedOut: false,
         aborted: true,
@@ -1368,7 +1436,7 @@ async function schedulerBasedWait(
 ): Promise<RuntimeCapacityWaitResult> {
   const snapshot = getRuntimeSnapshot();
   const maxWaitMs = normalizePositiveInt(input.maxWaitMs, snapshot.limits.capacityWaitMs, 3_600_000);
-  const startedAt = Date.now();
+  const startedAt = runtimeNow();
   let attempts = 0;
 
   try {
@@ -1406,7 +1474,7 @@ async function schedulerBasedWait(
 
         // If not allowed, wait with backoff until capacity is available
         while (!check.allowed) {
-          const elapsedMs = Date.now() - startedAt;
+          const elapsedMs = runtimeNow() - startedAt;
           if (elapsedMs >= maxWaitMs) {
             break; // Will return timedOut result
           }
@@ -1445,14 +1513,14 @@ async function schedulerBasedWait(
       ...check,
       waitedMs: result.waitedMs,
       attempts,
-      timedOut: result.timedOut || (Date.now() - startedAt >= maxWaitMs && !check.allowed),
+      timedOut: result.timedOut || (runtimeNow() - startedAt >= maxWaitMs && !check.allowed),
     };
   } catch (error) {
     // Fallback to existing logic on scheduler error (graceful degradation)
     const check = checkRuntimeCapacity(input);
     return {
       ...check,
-      waitedMs: Date.now() - startedAt,
+      waitedMs: runtimeNow() - startedAt,
       attempts: Math.max(1, attempts),
       timedOut: false,
     };
@@ -1480,13 +1548,13 @@ export async function waitForRuntimeCapacity(
     snapshot.limits.capacityPollMs,
     60_000,
   );
-  const startedAt = Date.now();
+  const startedAt = runtimeNow();
   let attempts = 0;
 
   while (true) {
     attempts += 1;
     const check = checkRuntimeCapacity(input);
-    const waitedMs = Date.now() - startedAt;
+    const waitedMs = runtimeNow() - startedAt;
 
     if (check.allowed) {
       return {
@@ -1540,7 +1608,7 @@ export async function waitForRuntimeOrchestrationTurn(
   );
   const runtime = getSharedRuntimeState();
   const entryId = createRuntimeQueueEntryId();
-  const enqueuedAtMs = Date.now();
+  const enqueuedAtMs = runtimeNow();
 
   // Infer or use provided priority
   const priority = input.priority ?? inferPriority(input.toolName, {
@@ -1589,7 +1657,7 @@ export async function waitForRuntimeOrchestrationTurn(
 
   while (true) {
     attempts += 1;
-    const waitedMs = Date.now() - enqueuedAtMs;
+    const waitedMs = runtimeNow() - enqueuedAtMs;
     const index = runtime.queue.pending.findIndex((e) => e.id === entryId);
 
     if (index < 0) {
@@ -1647,7 +1715,7 @@ export async function waitForRuntimeOrchestrationTurn(
     }
 
     // Starvation prevention: promote long-waiting tasks
-    promoteStarvingEntries(runtime, Date.now());
+    promoteStarvingEntries(runtime, runtimeNow());
     for (const pending of runtime.queue.pending) {
       (pending as RuntimeQueueEntry & { skipCount?: number }).skipCount =
         ((pending as RuntimeQueueEntry & { skipCount?: number }).skipCount ?? 0) + 1;
@@ -1690,7 +1758,7 @@ export async function waitForRuntimeOrchestrationTurn(
         removeQueuedEntry(runtime, entryId);
         return {
           allowed: false,
-          waitedMs: Date.now() - enqueuedAtMs,
+          waitedMs: runtimeNow() - enqueuedAtMs,
           attempts,
           timedOut: false,
           aborted: true,
@@ -1711,7 +1779,7 @@ export async function waitForRuntimeOrchestrationTurn(
       removeQueuedEntry(runtime, entryId);
       return {
         allowed: false,
-        waitedMs: Date.now() - enqueuedAtMs,
+        waitedMs: runtimeNow() - enqueuedAtMs,
         attempts,
         timedOut: false,
         aborted: true,
@@ -1777,7 +1845,7 @@ export async function acquireRuntimeDispatchPermit(
 
   const runtime = getSharedRuntimeState();
   const entryId = createRuntimeQueueEntryId();
-  const enqueuedAtMs = Date.now();
+  const enqueuedAtMs = runtimeNow();
   const priority = input.priority ?? inferPriority(input.toolName, {
     isInteractive: input.source === "user-interactive",
     isBackground: input.source === "background",
@@ -1809,7 +1877,7 @@ export async function acquireRuntimeDispatchPermit(
 
   while (true) {
     attempts += 1;
-    const waitedMs = Date.now() - enqueuedAtMs;
+    const waitedMs = runtimeNow() - enqueuedAtMs;
     const index = runtime.queue.pending.findIndex((e) => e.id === entryId);
 
     if (index < 0) {
@@ -1897,7 +1965,7 @@ export async function acquireRuntimeDispatchPermit(
       }
     }
 
-    promoteStarvingEntries(runtime, Date.now());
+    promoteStarvingEntries(runtime, runtimeNow());
     for (const pending of runtime.queue.pending) {
       (pending as RuntimeQueueEntry & { skipCount?: number }).skipCount =
         ((pending as RuntimeQueueEntry & { skipCount?: number }).skipCount ?? 0) + 1;
@@ -1947,7 +2015,7 @@ export async function acquireRuntimeDispatchPermit(
         removeQueuedEntry(runtime, entryId);
         return {
           allowed: false,
-          waitedMs: Date.now() - enqueuedAtMs,
+          waitedMs: runtimeNow() - enqueuedAtMs,
           attempts,
           timedOut: false,
           aborted: true,
@@ -1971,7 +2039,7 @@ export async function acquireRuntimeDispatchPermit(
       removeQueuedEntry(runtime, entryId);
       return {
         allowed: false,
-        waitedMs: Date.now() - enqueuedAtMs,
+        waitedMs: runtimeNow() - enqueuedAtMs,
         attempts,
         timedOut: false,
         aborted: true,
@@ -2002,6 +2070,7 @@ export function resetRuntimeTransientState(): void {
   runtime.queue.lastDispatchedTenantKey = undefined;
   runtime.queue.consecutiveDispatchesByTenant = 0;
   runtime.reservations.active = [];
+  stopRuntimeReservationSweeper();
   notifyRuntimeCapacityChanged();
 }
 
@@ -2114,7 +2183,7 @@ export function broadcastCurrentQueueState(): void {
     pendingTaskCount: snapshot.queuedOrchestrations,
     activeOrchestrations: snapshot.activeOrchestrations,
     stealableEntries: snapshot.queuedTools.slice(0, 10).map((tool) => ({
-      id: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `entry-${runtimeNow()}-${Math.random().toString(36).slice(2, 8)}`,
       toolName: tool.split(":")[0],
       priority: tool.split(":")[1] ?? "normal",
       instanceId: "self",

@@ -36,7 +36,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { execSync } from "node:child_process";
 import type { EmbeddingProvider, ProviderCapabilities } from "../types.js";
 
 // ============================================================================
@@ -77,22 +76,16 @@ interface OpenAIEmbeddingResponse {
 // ============================================================================
 
 /**
- * Resolve a key value that may be a literal, env var reference, or shell command.
+ * Resolve a key value that may be a literal or env var reference.
  * This follows pi's official key resolution method.
  */
 function resolveKeyValue(key: string): string | null {
   if (!key) return null;
 
-  // Shell command execution: "!command"
+  // Security hardening:
+  // shell command resolution (!command) is disabled to avoid arbitrary command execution.
   if (key.startsWith("!")) {
-    try {
-      return execSync(key.slice(1), {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      }).trim();
-    } catch {
-      return null;
-    }
+    return null;
   }
 
   // Environment variable reference

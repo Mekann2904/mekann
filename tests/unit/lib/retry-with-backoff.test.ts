@@ -698,6 +698,16 @@ describe("getRateLimitGateSnapshot", () => {
       // Assert
       expect(snapshot.key).toBe("test-key");
     });
+
+    it("should_use_injected_now_for_untilMs", () => {
+      const key = "clock-test-key";
+      const fixedNow = 1_700_000_000_000;
+
+      const snapshot = getRateLimitGateSnapshot(key, { now: () => fixedNow });
+
+      expect(snapshot.untilMs).toBe(fixedNow);
+      expect(snapshot.waitMs).toBe(0);
+    });
   });
 
   describe("境界値", () => {

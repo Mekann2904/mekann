@@ -415,6 +415,12 @@ function refreshRuntimeStatus(ctx: any): void {
   );
 }
 
+function debugCostEstimation(scope: string, fields: Record<string, unknown>): void {
+  if (process.env.PI_DEBUG_COST_ESTIMATION !== "1") return;
+  const parts = Object.entries(fields).map(([key, value]) => `${key}=${String(value)}`);
+  console.error(`[cost-estimation] scope=${scope} ${parts.join(" ")}`);
+}
+
 function formatTeamList(storage: TeamStorage): string {
   if (storage.teams.length === 0) {
     return "No teams found.";
@@ -1250,6 +1256,16 @@ async function runTeamTask(input: {
  * @returns void
  */
 export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
+  function reportTeamExecutionFailure(scope: "agent_team_run" | "agent_team_run_parallel", teamId: string, errorMessage: string, ctx: any): void {
+    const message = `${scope} failed [${teamId}]: ${errorMessage}`;
+    ctx.ui.notify(message, "error");
+    pi.sendMessage({
+      customType: "agent-team-run-failed",
+      content: message,
+      display: true,
+    });
+  }
+
   // チーム一覧
   pi.registerTool({
     name: "agent_team_list",
@@ -1592,15 +1608,16 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       const adjustedTokens = Math.round(baseEstimate.estimatedTokens * teamSize);
       const adjustedDurationMs = Math.round(baseEstimate.estimatedDurationMs * (1 + communicationRounds * 0.3));
 
-      // Debug logging for cost estimation
-      if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
-        console.log(
-          `[CostEstimation] agent_team_run: team=${team.id} ` +
-          `base=(${baseEstimate.estimatedDurationMs}ms, ${baseEstimate.estimatedTokens}t) ` +
-          `adjusted=(${adjustedDurationMs}ms, ${adjustedTokens}t) ` +
-          `teamSize=${teamSize} rounds=${communicationRounds} method=${baseEstimate.method}`
-        );
-      }
+      debugCostEstimation("agent_team_run", {
+        team: team.id,
+        base_ms: baseEstimate.estimatedDurationMs,
+        base_tokens: baseEstimate.estimatedTokens,
+        adjusted_ms: adjustedDurationMs,
+        adjusted_tokens: adjustedTokens,
+        team_size: teamSize,
+        rounds: communicationRounds,
+        method: baseEstimate.method,
+      });
 
       const liveMonitor = createAgentTeamLiveMonitor(ctx, {
         title: `Agent Team Run (detailed live view: ${team.id})`,
@@ -1775,6 +1792,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           };
         } catch (error) {
           const errorMessage = toErrorMessage(error);
+          reportTeamExecutionFailure("agent_team_run", team.id, errorMessage, ctx);
           const pressure = classifyPressureError(errorMessage);
           if (pressure !== "other") {
             adaptivePenalty.raise(pressure);
@@ -2111,15 +2129,16 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         const adjustedTokens = Math.round(baseEstimate.estimatedTokens * totalMembers);
         const adjustedDurationMs = Math.round(baseEstimate.estimatedDurationMs * (1 + communicationRounds * 0.3));
 
-        // Debug logging for cost estimation
-        if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
-          console.log(
-            `[CostEstimation] agent_team_run_parallel: ` +
-            `base=(${baseEstimate.estimatedDurationMs}ms, ${baseEstimate.estimatedTokens}t) ` +
-            `adjusted=(${adjustedDurationMs}ms, ${adjustedTokens}t) ` +
-            `teams=${enabledTeams.length} totalMembers=${totalMembers} rounds=${communicationRounds} method=${baseEstimate.method}`
-          );
-        }
+        debugCostEstimation("agent_team_run_parallel", {
+          base_ms: baseEstimate.estimatedDurationMs,
+          base_tokens: baseEstimate.estimatedTokens,
+          adjusted_ms: adjustedDurationMs,
+          adjusted_tokens: adjustedTokens,
+          teams: enabledTeams.length,
+          total_members: totalMembers,
+          rounds: communicationRounds,
+          method: baseEstimate.method,
+        });
 
         try {
         // 予約は admission 制御のみ。開始後は active カウンタで実行中負荷を表現する。
@@ -2227,6 +2246,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               const startedAt = new Date().toISOString();
               const outputFile = join(ensurePaths(ctx.cwd).runsDir, `${runId}.json`);
               const message = toErrorMessage(error);
+              reportTeamExecutionFailure("agent_team_run_parallel", team.id, message, ctx);
               liveMonitor?.appendBroadcastEvent(
                 `team ${team.id}: run failed ${normalizeForSingleLine(message, 180)}`,
               );

@@ -23,6 +23,7 @@ vi.mock("node:fs", () => ({
   readFileSync: vi.fn(() => "{}"),
   writeFileSync: vi.fn(),
   unlinkSync: vi.fn(),
+  renameSync: vi.fn(),
   openSync: vi.fn(() => 1),
   closeSync: vi.fn(),
   writeSync: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock("./runtime-config.js", () => ({
 import {
   registerInstance,
   unregisterInstance,
+  setCoordinatorNowProvider,
   updateHeartbeat,
   cleanupDeadInstances,
   getActiveInstanceCount,
@@ -58,10 +60,12 @@ import {
   clearAllActiveModels,
   broadcastQueueState,
   getRemoteQueueStates,
+  getClusterRuntimeUsage,
   getWorkStealingSummary,
   isIdle,
   getStealingStats,
   resetStealingStats,
+  updateRuntimeUsage,
 } from "../../../.pi/lib/cross-instance-coordinator.js";
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
@@ -73,6 +77,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlink
 describe("cross-instance-coordinator", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setCoordinatorNowProvider();
     // テスト間でインスタンス状態をリセット
     try {
       unregisterInstance();
@@ -82,6 +87,7 @@ describe("cross-instance-coordinator", () => {
   });
 
   afterEach(() => {
+    setCoordinatorNowProvider();
     try {
       unregisterInstance();
     } catch {
@@ -514,6 +520,33 @@ describe("cross-instance-coordinator", () => {
       // Assert
       expect(result).toHaveLength(0);
     });
+
+    it("getRemoteQueueStates_heartbeatIntervalOverrideで古い状態を除外", () => {
+      // heartbeatIntervalMs=1000ms の場合、5秒前の更新は stale 扱い
+      unregisterInstance();
+      vi.mocked(existsSync).mockReturnValue(false);
+      const fixedNow = 1_700_000_005_000;
+      setCoordinatorNowProvider(() => fixedNow);
+      registerInstance("test-session", "/test/cwd", { heartbeatIntervalMs: 1000 });
+
+      vi.mocked(readdirSync).mockReturnValue(["remote-instance.json"] as any);
+      vi.mocked(readFileSync).mockImplementation((path: any) => {
+        const pathText = String(path);
+        if (pathText.includes("remote-instance.json")) {
+          return JSON.stringify({
+            instanceId: "remote-1",
+            timestamp: new Date(fixedNow - 5000).toISOString(),
+            pendingTaskCount: 3,
+            activeOrchestrations: 1,
+            stealableEntries: [],
+          });
+        }
+        return JSON.stringify({});
+      });
+
+      const result = getRemoteQueueStates();
+      expect(result).toHaveLength(0);
+    });
   });
 
   // ==========================================================================
@@ -528,6 +561,55 @@ describe("cross-instance-coordinator", () => {
       // Assert
       expect(result.remoteInstances).toBe(0);
       expect(result.totalPendingTasks).toBe(0);
+    });
+  });
+
+  describe("updateRuntimeUsage / getClusterRuntimeUsage", () => {
+    it("updateRuntimeUsage_書き込み呼び出し", () => {
+      vi.mocked(existsSync).mockReturnValue(false);
+      registerInstance("test-session", "/test/cwd");
+
+      updateRuntimeUsage(3, 2);
+
+      expect(writeFileSync).toHaveBeenCalled();
+    });
+
+    it("getClusterRuntimeUsage_集計返却", () => {
+      vi.mocked(existsSync).mockReturnValue(false);
+      registerInstance("test-session", "/test/cwd");
+      vi.mocked(readdirSync).mockReturnValue(["inst1.lock", "inst2.lock"] as any);
+      vi.mocked(readFileSync).mockImplementation((path: any) => {
+        const file = String(path);
+        if (file.includes("inst1.lock")) {
+          return JSON.stringify({
+            instanceId: "inst1",
+            pid: 1,
+            sessionId: "s1",
+            startedAt: new Date().toISOString(),
+            lastHeartbeat: new Date().toISOString(),
+            cwd: "/tmp",
+            activeModels: [],
+            activeRequestCount: 2,
+            activeLlmCount: 1,
+          });
+        }
+        return JSON.stringify({
+          instanceId: "inst2",
+          pid: 2,
+          sessionId: "s2",
+          startedAt: new Date().toISOString(),
+          lastHeartbeat: new Date().toISOString(),
+          cwd: "/tmp",
+          activeModels: [],
+          activeRequestCount: 4,
+          activeLlmCount: 3,
+        });
+      });
+
+      const usage = getClusterRuntimeUsage();
+      expect(usage.totalActiveRequests).toBe(6);
+      expect(usage.totalActiveLlm).toBe(4);
+      expect(usage.instanceCount).toBe(2);
     });
   });
 

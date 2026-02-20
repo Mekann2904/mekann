@@ -11,8 +11,9 @@ import {
 } from "vitest";
 import * as fc from "fast-check";
 import {
-  formatDuration,
+ formatDuration,
   formatDurationMs,
+  formatElapsedClock,
   formatBytes,
   formatClockTime,
   normalizeForSingleLine,
@@ -170,6 +171,33 @@ describe("formatDurationMs", () => {
 
     // Assert
     expect(result).toBe("0.0s");
+  });
+});
+
+// ============================================================================
+// formatElapsedClock テスト
+// ============================================================================
+
+describe("formatElapsedClock", () => {
+  it("formatElapsedClock_startedAtMsなし_ダッシュ返却", () => {
+    const result = formatElapsedClock({});
+    expect(result).toBe("-");
+  });
+
+  it("formatElapsedClock_65秒_00:01:05返却", () => {
+    const result = formatElapsedClock({
+      startedAtMs: 1000,
+      finishedAtMs: 66_000,
+    });
+    expect(result).toBe("00:01:05");
+  });
+
+  it("formatElapsedClock_1時間超え_時を含む", () => {
+    const result = formatElapsedClock({
+      startedAtMs: 1,
+      finishedAtMs: (2 * 3600 + 3 * 60 + 4) * 1000 + 1,
+    });
+    expect(result).toBe("02:03:04");
   });
 });
 

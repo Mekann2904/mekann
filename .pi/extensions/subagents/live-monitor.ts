@@ -28,17 +28,19 @@
 // Why: Separates live monitoring logic from main subagents.ts for maintainability.
 // Related: .pi/extensions/subagents.ts
 
-import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey } from "@mariozechner/pi-tui";
 
 import {
   formatDurationMs,
   formatBytes,
   formatClockTime,
+  formatElapsedClock,
 } from "../../lib/format-utils.js";
 import {
   appendTail,
   countOccurrences,
   estimateLineCount,
+  pushWrappedLine,
   renderPreviewWithMarkdown,
 } from "../../lib/tui/tui-utils.js";
 import {
@@ -90,7 +92,7 @@ function renderSubagentTreeView(
   theme: any,
 ): string[] {
   const lines: string[] = [];
-  const add = (line = "") => lines.push(truncateToWidth(line, width));
+  const add = (line = "") => pushWrappedLine(lines, line, width);
 
   // シンプルな縦型ツリー（サブエージェントは依存関係がないため）
   for (let i = 0; i < items.length; i++) {
@@ -100,7 +102,7 @@ function renderSubagentTreeView(
 
     const glyph = getLiveStatusGlyph(item.status);
     const glyphColor = getLiveStatusColor(item.status);
-    const elapsed = formatDurationMs(item);
+    const elapsed = formatElapsedClock(item);
 
     const hasOutput = item.stdoutBytes > 0;
     const hasError = item.stderrBytes > 0;
@@ -112,7 +114,9 @@ function renderSubagentTreeView(
 
     const coloredGlyph = theme.fg(glyphColor, glyph);
     const treeLine = `${treeChar}${coloredGlyph} ${item.name || item.id}`;
-    const meta = activity ? `${elapsed}  ${activity}  ${formatBytes(item.stdoutBytes)}` : `${elapsed}  ${formatBytes(item.stdoutBytes)}`;
+    const meta = activity
+      ? `${elapsed}  ${activity}  ${formatBytes(item.stdoutBytes)}`
+      : `${elapsed}  ${formatBytes(item.stdoutBytes)}`;
 
     // 選択行は全体を強調色で表示（プレフィックスなし）
     if (isSelected) {
@@ -135,7 +139,7 @@ function renderSubagentTimelineView(
   theme: any,
 ): string[] {
   const lines: string[] = [];
-  const add = (line = "") => lines.push(truncateToWidth(line, width));
+  const add = (line = "") => pushWrappedLine(lines, line, width);
 
   // イベント収集
   interface TimelineEvent {
@@ -251,7 +255,7 @@ export function renderSubagentLiveView(input: {
   theme: any;
 }): string[] {
   const lines: string[] = [];
-  const add = (line = "") => lines.push(truncateToWidth(line, input.width));
+  const add = (line = "") => pushWrappedLine(lines, line, input.width);
   const theme = input.theme;
   const items = input.items;
   const running = items.filter((item) => item.status === "running").length;

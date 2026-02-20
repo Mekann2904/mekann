@@ -99,6 +99,7 @@ export { ensureDir } from "./fs-utils.js";
 export {
   formatDuration,
   formatDurationMs,
+  formatElapsedClock,
   formatBytes,
   formatClockTime,
   normalizeForSingleLine,

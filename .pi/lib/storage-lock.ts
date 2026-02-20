@@ -31,6 +31,7 @@ import { randomBytes } from "node:crypto";
 import {
   closeSync,
   openSync,
+  readFileSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -128,9 +129,26 @@ function tryAcquireLock(lockFile: string): boolean {
 }
 
 function clearStaleLock(lockFile: string, staleMs: number): void {
+  const isLockOwnerDead = (): boolean => {
+    try {
+      const raw = readFileSync(lockFile, "utf-8").trim();
+      const [pidText] = raw.split(":", 1);
+      const pid = Number(pidText);
+      if (!Number.isInteger(pid) || pid <= 0) return false;
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch (error) {
+        return isNodeErrno(error, "ESRCH");
+      }
+    } catch {
+      return false;
+    }
+  };
+
   try {
     const ageMs = Date.now() - statSync(lockFile).mtimeMs;
-    if (ageMs > staleMs) {
+    if (ageMs > staleMs || isLockOwnerDead()) {
       unlinkSync(lockFile);
     }
   } catch {
@@ -158,7 +176,9 @@ export function withFileLock<T>(
   };
   const maxWaitMs = Math.max(0, Math.trunc(config.maxWaitMs));
   const pollMs = Math.max(1, Math.trunc(config.pollMs));
-  const staleMs = Math.max(1_000, Math.trunc(config.staleMs));
+  const requestedStaleMs = Math.max(1_000, Math.trunc(config.staleMs));
+  // Ensure stale cleanup has a chance to run before timeout.
+  const staleMs = maxWaitMs > 0 ? Math.min(requestedStaleMs, maxWaitMs) : requestedStaleMs;
   const maxAttempts = Math.max(1, Math.ceil(maxWaitMs / pollMs) + 1);
   let attempts = 0;
   let acquired = false;
@@ -170,11 +190,12 @@ export function withFileLock<T>(
     if (acquired) break;
     clearStaleLock(lockFile, staleMs);
 
-    // If efficient sleep is unavailable, exit early to avoid CPU spin.
-    // This provides a graceful degradation path for environments without SharedArrayBuffer.
+    // If efficient sleep is unavailable, do one last immediate retry then exit.
+    // This avoids a tight spin loop in environments without SharedArrayBuffer.
     if (!canSleep) {
-      // Retry without sleep, bounded by maxAttempts.
-      continue;
+      acquired = tryAcquireLock(lockFile);
+      if (acquired) break;
+      break;
     }
 
     const sleepOk = sleepSync(pollMs);

@@ -20,6 +20,7 @@ vi.mock("node:crypto", () => ({
 vi.mock("node:fs", () => ({
   closeSync: vi.fn(),
   openSync: vi.fn(() => 42),
+  readFileSync: vi.fn(() => "12345:1700000000000\n"),
   renameSync: vi.fn(),
   statSync: vi.fn(),
   unlinkSync: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock("node:fs", () => ({
 import {
   closeSync,
   openSync,
+  readFileSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -46,13 +48,17 @@ import {
 // ============================================================================
 
 describe("withFileLock", () => {
+  let processKillSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    processKillSpy = vi.spyOn(process, "kill").mockImplementation(() => true as never);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    processKillSpy.mockRestore();
   });
 
   it("withFileLock_基本_ロック取得と実行", () => {
@@ -175,6 +181,33 @@ describe("withFileLock", () => {
     expect(unlinkSync).toHaveBeenCalledWith(expect.stringContaining(".lock"));
   });
 
+  it("withFileLock_死活不明PIDロック_即時回収", () => {
+    const targetFile = "/test/storage.json";
+    let callCount = 0;
+    const error = new Error("EEXIST");
+    (error as any).code = "EEXIST";
+
+    vi.mocked(openSync).mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        throw error;
+      }
+      return 42;
+    });
+    vi.mocked(statSync).mockReturnValue({ mtimeMs: Date.now() } as any);
+    vi.mocked(readFileSync).mockReturnValue("999999:1700000000000\n" as any);
+    processKillSpy.mockImplementation(() => {
+      const dead = new Error("dead");
+      (dead as any).code = "ESRCH";
+      throw dead;
+    });
+
+    const result = withFileLock(targetFile, () => "done", { maxWaitMs: 1000, staleMs: 30_000 });
+
+    expect(result).toBe("done");
+    expect(unlinkSync).toHaveBeenCalledWith(expect.stringContaining(".lock"));
+  });
+
   it("withFileLock_ゼロ待機_即座失敗", () => {
     // Arrange
     const targetFile = "/test/storage.json";
@@ -188,6 +221,35 @@ describe("withFileLock", () => {
     expect(() =>
       withFileLock(targetFile, () => "never", { maxWaitMs: 0 })
     ).toThrow("file lock timeout");
+  });
+
+  it("withFileLock_SAB未対応_スピンせず失敗", () => {
+    const targetFile = "/test/storage.json";
+    const error = new Error("EEXIST");
+    (error as any).code = "EEXIST";
+    vi.mocked(openSync).mockImplementation(() => {
+      throw error;
+    });
+
+    const originalSharedArrayBuffer = globalThis.SharedArrayBuffer;
+    Object.defineProperty(globalThis, "SharedArrayBuffer", {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+
+    try {
+      expect(() =>
+        withFileLock(targetFile, () => "never", { maxWaitMs: 10_000, pollMs: 1 })
+      ).toThrow("file lock timeout");
+      expect(openSync).toHaveBeenCalledTimes(2);
+    } finally {
+      Object.defineProperty(globalThis, "SharedArrayBuffer", {
+        configurable: true,
+        writable: true,
+        value: originalSharedArrayBuffer,
+      });
+    }
   });
 });
 

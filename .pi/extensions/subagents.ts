@@ -268,6 +268,12 @@ function refreshRuntimeStatus(ctx: any): void {
   );
 }
 
+function debugCostEstimation(scope: string, fields: Record<string, unknown>): void {
+  if (process.env.PI_DEBUG_COST_ESTIMATION !== "1") return;
+  const parts = Object.entries(fields).map(([key, value]) => `${key}=${String(value)}`);
+  console.error(`[cost-estimation] scope=${scope} ${parts.join(" ")}`);
+}
+
 // Note: toRetryOverrides is kept locally because it checks STABLE_SUBAGENT_RUNTIME
 // which is specific to this module. The lib version does not have this check.
 function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
@@ -474,6 +480,16 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
  * @returns {void}
  */
 export default function registerSubagentExtension(pi: ExtensionAPI) {
+  function reportBackgroundJobFailure(jobId: string, errorMessage: string, ctx: any): void {
+    const message = `[${jobId}] ${errorMessage}`;
+    ctx.ui.notify(`Subagent background job failed: ${message}`, "error");
+    pi.sendMessage({
+      customType: "subagent-background-job-failed",
+      content: `Subagent background job failed: ${message}`,
+      display: true,
+    });
+  }
+
   // サブエージェント一覧
   pi.registerTool({
     name: "subagent_list",
@@ -670,12 +686,14 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             pollIntervalMs: queueSnapshot.limits.capacityPollMs,
           });
           if (!queueWait.allowed || !queueWait.lease) {
+            const errorMessage = buildRuntimeQueueWaitError("subagent_run", queueWait);
             updateBackgroundJob(job.jobId, (current) => ({
               ...current,
               status: "failed",
-              error: buildRuntimeQueueWaitError("subagent_run", queueWait),
+              error: errorMessage,
               finishedAt: new Date().toISOString(),
             }));
+            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
             logger.endOperation({
               status: "failure",
               tokensUsed: 0,
@@ -684,7 +702,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               toolCalls: 0,
               error: {
                 type: "queue_error",
-                message: buildRuntimeQueueWaitError("subagent_run", queueWait),
+                message: errorMessage,
                 stack: "",
               },
             });
@@ -702,15 +720,17 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           });
           if (!capacityCheck.allowed || !capacityCheck.reservation) {
             adaptivePenalty.raise("capacity");
+            const errorMessage = buildRuntimeLimitError("subagent_run", capacityCheck.reasons, {
+              waitedMs: capacityCheck.waitedMs,
+              timedOut: capacityCheck.timedOut,
+            });
             updateBackgroundJob(job.jobId, (current) => ({
               ...current,
               status: "failed",
-              error: buildRuntimeLimitError("subagent_run", capacityCheck.reasons, {
-                waitedMs: capacityCheck.waitedMs,
-                timedOut: capacityCheck.timedOut,
-              }),
+              error: errorMessage,
               finishedAt: new Date().toISOString(),
             }));
+            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
             logger.endOperation({
               status: "failure",
               tokensUsed: 0,
@@ -719,10 +739,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               toolCalls: 0,
               error: {
                 type: "capacity_error",
-                message: buildRuntimeLimitError("subagent_run", capacityCheck.reasons, {
-                  waitedMs: capacityCheck.waitedMs,
-                  timedOut: capacityCheck.timedOut,
-                }),
+                message: errorMessage,
                 stack: "",
               },
             });
@@ -744,13 +761,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             ctx.model?.id,
             params.task,
           );
-          if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
-            console.log(
-              `[CostEstimation] subagent_run: agent=${agent.id} ` +
-              `estimated=(${costEstimate.estimatedDurationMs}ms, ${costEstimate.estimatedTokens}t) ` +
-              `confidence=${costEstimate.confidence.toFixed(2)} method=${costEstimate.method}`,
-            );
-          }
+          debugCostEstimation("subagent_run", {
+            agent: agent.id,
+            estimated_ms: costEstimate.estimatedDurationMs,
+            estimated_tokens: costEstimate.estimatedTokens,
+            confidence: costEstimate.confidence.toFixed(2),
+            method: costEstimate.method,
+          });
 
           liveMonitor = createSubagentLiveMonitor(ctx, {
             title: `Subagent Run (background: ${job.jobId})`,
@@ -811,14 +828,16 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             if (pressureError !== "other") {
               adaptivePenalty.raise(pressureError);
             }
+            const errorMessage = result.runRecord.error || "subagent run failed";
             updateBackgroundJob(job.jobId, (current) => ({
               ...current,
               status: "failed",
               runIds: [result.runRecord.runId],
               summary: result.runRecord.summary,
-              error: result.runRecord.error,
+              error: errorMessage,
               finishedAt: new Date().toISOString(),
             }));
+            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
             logger.endOperation({
               status: "failure",
               tokensUsed: 0,
@@ -828,7 +847,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               toolCalls: 0,
               error: {
                 type: "subagent_error",
-                message: result.runRecord.error ?? "Unknown error",
+                message: errorMessage,
                 stack: "",
               },
             });
@@ -857,6 +876,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             error: toErrorMessage(error),
             finishedAt: new Date().toISOString(),
           }));
+          reportBackgroundJobFailure(job.jobId, toErrorMessage(error), ctx);
           logger.endOperation({
             status: "failure",
             tokensUsed: 0,
@@ -985,12 +1005,14 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             pollIntervalMs: queueSnapshot.limits.capacityPollMs,
           });
           if (!queueWait.allowed || !queueWait.lease) {
+            const errorMessage = buildRuntimeQueueWaitError("subagent_run_parallel", queueWait);
             updateBackgroundJob(job.jobId, (current) => ({
               ...current,
               status: "failed",
-              error: buildRuntimeQueueWaitError("subagent_run_parallel", queueWait),
+              error: errorMessage,
               finishedAt: new Date().toISOString(),
             }));
+            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
             logger.endOperation({
               status: "failure",
               tokensUsed: 0,
@@ -999,7 +1021,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               toolCalls: 0,
               error: {
                 type: "queue_error",
-                message: buildRuntimeQueueWaitError("subagent_run_parallel", queueWait),
+                message: errorMessage,
                 stack: "",
               },
             });
@@ -1042,6 +1064,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               error: errorText,
               finishedAt: new Date().toISOString(),
             }));
+            reportBackgroundJobFailure(job.jobId, errorText, ctx);
             logger.endOperation({
               status: "failure",
               tokensUsed: 0,
@@ -1072,14 +1095,14 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             ctx.model?.id,
             params.task,
           );
-          if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
-            console.log(
-              `[CostEstimation] subagent_run_parallel: ` +
-              `estimated=(${costEstimate.estimatedDurationMs}ms, ${costEstimate.estimatedTokens}t) ` +
-              `agents=${activeAgents.length} appliedParallelism=${parallelCapacity.appliedParallelism} ` +
-              `confidence=${costEstimate.confidence.toFixed(2)} method=${costEstimate.method}`,
-            );
-          }
+          debugCostEstimation("subagent_run_parallel", {
+            estimated_ms: costEstimate.estimatedDurationMs,
+            estimated_tokens: costEstimate.estimatedTokens,
+            agents: activeAgents.length,
+            applied_parallelism: parallelCapacity.appliedParallelism,
+            confidence: costEstimate.confidence.toFixed(2),
+            method: costEstimate.method,
+          });
 
           liveMonitor = createSubagentLiveMonitor(ctx, {
             title: `Subagent Run Parallel (background: ${job.jobId})`,
@@ -1146,14 +1169,18 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           const failed = results.filter((result) => result.runRecord.status === "failed");
           if (failed.length > 0) {
             adaptivePenalty.raise("rate_limit");
+            const errorMessage = failed
+              .map((result) => `${result.runRecord.agentId}:${result.runRecord.error}`)
+              .join(" | ");
             updateBackgroundJob(job.jobId, (current) => ({
               ...current,
               status: "failed",
               runIds: results.map((result) => result.runRecord.runId),
               summary: `${results.length - failed.length}/${results.length} completed`,
-              error: failed.map((result) => `${result.runRecord.agentId}:${result.runRecord.error}`).join(" | "),
+              error: errorMessage,
               finishedAt: new Date().toISOString(),
             }));
+            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
             logger.endOperation({
               status: "partial",
               tokensUsed: 0,
@@ -1185,6 +1212,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             error: toErrorMessage(error),
             finishedAt: new Date().toISOString(),
           }));
+          reportBackgroundJobFailure(job.jobId, toErrorMessage(error), ctx);
           logger.endOperation({
             status: "failure",
             tokensUsed: 0,

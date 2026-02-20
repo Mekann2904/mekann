@@ -74,6 +74,9 @@ export interface TeamNormalizedOutput {
   reason?: string;
 }
 
+const IDLE_TIMEOUT_RETRY_LIMIT = 1;
+const IDLE_TIMEOUT_RETRY_DELAY_MS = 1500;
+
 // ============================================================================
 // Output Normalization
 // ============================================================================
@@ -397,7 +400,21 @@ async function runPiPrintMode(input: {
   return sharedRunPiPrintMode({
     ...input,
     entityLabel: "agent team member",
+    noExtensions: false,
+    envOverrides: {
+      // Avoid recursive delegation prompt injection in child runs.
+      PI_SUBAGENT_PROACTIVE_PROMPT: "0",
+    },
   });
+}
+
+function isIdleTimeoutErrorMessage(message: string): boolean {
+  return /idle timeout after \d+ms of no output/i.test(message);
+}
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -455,15 +472,45 @@ export async function runMember(input: {
   input.onStart?.(input.member);
   try {
     try {
-      const result = await runPiPrintMode({
-        provider: input.member.provider ?? input.fallbackProvider,
-        model: input.member.model ?? input.fallbackModel,
-        prompt,
-        timeoutMs: input.timeoutMs,
-        signal: input.signal,
-        onTextDelta: (delta) => input.onTextDelta?.(input.member, delta),
-        onStderrChunk: (chunk) => input.onStderrChunk?.(input.member, chunk),
-      });
+      const provider = input.member.provider ?? input.fallbackProvider;
+      const model = input.member.model ?? input.fallbackModel;
+      let result: PrintCommandResult | undefined;
+      let lastErrorMessage = "";
+
+      for (let attempt = 0; attempt <= IDLE_TIMEOUT_RETRY_LIMIT; attempt += 1) {
+        try {
+          result = await runPiPrintMode({
+            provider,
+            model,
+            prompt,
+            timeoutMs: input.timeoutMs,
+            signal: input.signal,
+            onTextDelta: (delta) => input.onTextDelta?.(input.member, delta),
+            onStderrChunk: (chunk) => input.onStderrChunk?.(input.member, chunk),
+          });
+          break;
+        } catch (error) {
+          lastErrorMessage = toErrorMessage(error);
+          const shouldRetry =
+            attempt < IDLE_TIMEOUT_RETRY_LIMIT &&
+            isIdleTimeoutErrorMessage(lastErrorMessage) &&
+            !input.signal?.aborted;
+
+          if (!shouldRetry) {
+            throw error;
+          }
+
+          input.onEvent?.(
+            input.member,
+            `idle-timeout retry: attempt=${attempt + 1}/${IDLE_TIMEOUT_RETRY_LIMIT} provider=${provider || "(session-default)"} model=${model || "(session-default)"} timeoutMs=${input.timeoutMs}`,
+          );
+          await sleep(IDLE_TIMEOUT_RETRY_DELAY_MS);
+        }
+      }
+
+      if (!result) {
+        throw new Error(lastErrorMessage || "agent team member execution failed");
+      }
       const normalized = normalizeTeamMemberOutput(result.output);
       if (!normalized.ok) {
         throw new SchemaValidationError(`agent team member low-substance output: ${normalized.reason}`, {

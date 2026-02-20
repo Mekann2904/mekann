@@ -27,6 +27,7 @@
 // Description: Provides a shared concurrency-limited worker pool with abort-aware scheduling.
 // Why: Removes duplicated pool logic and avoids spawning extra work after cancellation.
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts
+import { createChildAbortController } from "./abort-utils";
 
 /**
  * 並列実行のオプション設定
@@ -34,6 +35,7 @@
  */
 export interface ConcurrencyRunOptions {
   signal?: AbortSignal;
+  abortOnError?: boolean;
 }
 
 /**
@@ -57,6 +59,10 @@ function ensureNotAborted(signal?: AbortSignal): void {
   }
 }
 
+function isPoolAbortError(error: unknown): boolean {
+  return error instanceof Error && error.message === "concurrency pool aborted";
+}
+
 /**
  * 指定した並行数制限で非同期タスクを実行する
  *
@@ -76,19 +82,27 @@ function ensureNotAborted(signal?: AbortSignal): void {
 export async function runWithConcurrencyLimit<TInput, TResult>(
   items: TInput[],
   limit: number,
-  worker: (item: TInput, index: number) => Promise<TResult>,
+  worker: (item: TInput, index: number, signal?: AbortSignal) => Promise<TResult>,
   options: ConcurrencyRunOptions = {},
 ): Promise<TResult[]> {
   if (items.length === 0) return [];
 
+  const abortOnError = options.abortOnError !== false;
   const normalizedLimit = toPositiveLimit(limit, items.length);
   const results: WorkerResult<TResult>[] = new Array(items.length);
   let cursor = 0;
   let firstError: unknown;
+  const { controller: poolAbortController, cleanup } = createChildAbortController(options.signal);
+  const effectiveSignal = poolAbortController.signal;
 
   const runWorker = async (): Promise<void> => {
     while (true) {
-      ensureNotAborted(options.signal);
+      try {
+        ensureNotAborted(effectiveSignal);
+      } catch (error) {
+        if (firstError !== undefined && isPoolAbortError(error)) return;
+        throw error;
+      }
       const currentIndex = cursor;
       cursor += 1;
       if (currentIndex >= items.length) {
@@ -96,38 +110,53 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
       }
 
       try {
-        const result = await worker(items[currentIndex], currentIndex);
+        const result = await worker(items[currentIndex], currentIndex, effectiveSignal);
         results[currentIndex] = { index: currentIndex, result };
       } catch (error) {
         // Capture the first error but continue processing to avoid dangling workers
         if (firstError === undefined) {
           firstError = error;
+          if (abortOnError) {
+            poolAbortController.abort();
+          }
         }
         results[currentIndex] = { index: currentIndex, error };
       }
 
-      ensureNotAborted(options.signal);
+      try {
+        ensureNotAborted(effectiveSignal);
+      } catch (error) {
+        if (firstError !== undefined && isPoolAbortError(error)) return;
+        throw error;
+      }
     }
   };
 
-  // Run all workers and wait for completion
-  await Promise.all(
-    Array.from({ length: normalizedLimit }, () => runWorker()),
-  );
-
-  ensureNotAborted(options.signal);
+  try {
+    // Run all workers and wait for completion
+    await Promise.all(
+      Array.from({ length: normalizedLimit }, () => runWorker()),
+    );
+  } finally {
+    cleanup();
+  }
 
   // If any worker failed, throw the first error encountered
   if (firstError !== undefined) {
     throw firstError;
   }
 
-  // Unwrap results, filtering out any undefined (should not happen at this point)
-  return results.map((item) => {
+  ensureNotAborted(effectiveSignal);
+
+  // Unwrap results with explicit guards for unexpected holes.
+  return results.map((item, index) => {
+    if (!item) {
+      throw new Error(`concurrency pool internal error: missing result at index ${index}`);
+    }
     if (item?.error) {
       // This should have been caught above, but handle defensively
       throw item.error;
     }
-    return item!.result as TResult;
+    return item.result as TResult;
   });
 }

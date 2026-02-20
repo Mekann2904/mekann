@@ -76,6 +76,8 @@ export interface InstanceInfo {
   lastHeartbeat: string;
   cwd: string;
   activeModels: ActiveModelInfo[];
+  activeRequestCount?: number;
+  activeLlmCount?: number;
   pendingTaskCount?: number;
   avgLatencyMs?: number;
   lastTaskCompletedAt?: string;
@@ -139,6 +141,15 @@ const CONFIG_FILE = join(COORDINATOR_DIR, "coordinator.json");
 // ============================================================================
 
 let state: CoordinatorInternalState | null = null;
+let coordinatorNowProvider: () => number = () => Date.now();
+
+function currentTimeMs(): number {
+  return coordinatorNowProvider();
+}
+
+export function setCoordinatorNowProvider(provider?: () => number): void {
+  coordinatorNowProvider = provider ?? (() => Date.now());
+}
 
 // ============================================================================
 // Utilities
@@ -153,8 +164,40 @@ function ensureDirs(): void {
   }
 }
 
+function logCoordinatorDebug(message: string, error?: unknown): void {
+  if (process.env.PI_DEBUG_COORDINATOR !== "1") return;
+  if (error instanceof Error) {
+    console.error(`[cross-instance-coordinator] ${message}: ${error.message}`);
+    return;
+  }
+  if (error !== undefined) {
+    console.error(`[cross-instance-coordinator] ${message}: ${String(error)}`);
+    return;
+  }
+  console.error(`[cross-instance-coordinator] ${message}`);
+}
+
+function writeTextFileAtomic(filePath: string, content: string): void {
+  const tmpPath = `${filePath}.tmp-${pid}-${currentTimeMs().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  writeFileSync(tmpPath, content, "utf-8");
+  try {
+    renameSync(tmpPath, filePath);
+  } catch (error) {
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      // ignore cleanup failures
+    }
+    throw error;
+  }
+}
+
+function writeJsonFileAtomic(filePath: string, payload: unknown): void {
+  writeTextFileAtomic(filePath, JSON.stringify(payload, null, 2));
+}
+
 function generateInstanceId(sessionId: string): string {
-  const timestamp = Date.now().toString(36);
+  const timestamp = currentTimeMs().toString(36);
   const randomSuffix = Math.random().toString(36).slice(2, 6);
   return `sess-${sessionId.slice(0, 8)}-pid${pid}-${timestamp}-${randomSuffix}`;
 }
@@ -189,6 +232,7 @@ function loadConfig(): CoordinatorConfig {
       };
     }
   } catch {
+    logCoordinatorDebug("loadConfig failed, using defaults");
     // ignore
   }
   return defaults;
@@ -244,7 +288,7 @@ export function registerInstance(
 
   // Write initial lock file
   const lockFile = join(INSTANCES_DIR, `${instanceId}.lock`);
-  writeFileSync(lockFile, JSON.stringify(info, null, 2));
+  writeJsonFileAtomic(lockFile, info);
 
   // Start heartbeat
   const heartbeatTimer = setInterval(() => {
@@ -303,8 +347,9 @@ export function updateHeartbeat(): void {
     const content = readFileSync(lockFile, "utf-8");
     const info = JSON.parse(content) as InstanceInfo;
     info.lastHeartbeat = new Date().toISOString();
-    writeFileSync(lockFile, JSON.stringify(info, null, 2));
+    writeJsonFileAtomic(lockFile, info);
   } catch {
+    logCoordinatorDebug("updateHeartbeat failed, recreating lock file");
     // If lock file is gone, recreate it preserving original startedAt
     ensureDirs();
     const info: InstanceInfo = {
@@ -317,7 +362,7 @@ export function updateHeartbeat(): void {
       activeModels: [],
     };
     const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
-    writeFileSync(lockFile, JSON.stringify(info, null, 2));
+    writeJsonFileAtomic(lockFile, info);
   }
 }
 
@@ -330,7 +375,7 @@ export function cleanupDeadInstances(): void {
   if (!state) return;
 
   ensureDirs();
-  const nowMs = Date.now();
+  const nowMs = currentTimeMs();
   const files = readdirSync(INSTANCES_DIR).filter((f) => f.endsWith(".lock"));
 
   for (const file of files) {
@@ -340,6 +385,7 @@ export function cleanupDeadInstances(): void {
       try {
         unlinkSync(join(INSTANCES_DIR, file));
       } catch {
+        logCoordinatorDebug(`cleanupDeadInstances failed to remove corrupted lock file ${file}`);
         // ignore
       }
       continue;
@@ -353,6 +399,7 @@ export function cleanupDeadInstances(): void {
       try {
         unlinkSync(join(INSTANCES_DIR, file));
       } catch {
+        logCoordinatorDebug(`cleanupDeadInstances failed to remove stale lock file ${file}`);
         // ignore
       }
     }
@@ -371,7 +418,7 @@ export function getActiveInstanceCount(): number {
   }
 
   ensureDirs();
-  const nowMs = Date.now();
+  const nowMs = currentTimeMs();
   const files = readdirSync(INSTANCES_DIR).filter((f) => f.endsWith(".lock"));
 
   let count = 0;
@@ -396,7 +443,7 @@ export function getActiveInstances(): InstanceInfo[] {
   }
 
   ensureDirs();
-  const nowMs = Date.now();
+  const nowMs = currentTimeMs();
   const files = readdirSync(INSTANCES_DIR).filter((f) => f.endsWith(".lock"));
 
   const instances: InstanceInfo[] = [];
@@ -571,10 +618,89 @@ export function updateWorkloadInfo(pendingTaskCount: number, avgLatencyMs?: numb
       }
     }
 
-    writeFileSync(lockFile, JSON.stringify(existing, null, 2), "utf-8");
+    writeJsonFileAtomic(lockFile, existing);
   } catch {
+    logCoordinatorDebug("updateWorkloadInfo write failed");
     // Ignore write errors in heartbeat
   }
+}
+
+/**
+ * ランタイム使用量を更新する
+ * @summary ランタイム使用量更新
+ * @param activeRequestCount 実行中リクエスト数
+ * @param activeLlmCount 実行中LLM数
+ */
+export function updateRuntimeUsage(activeRequestCount: number, activeLlmCount: number): void {
+  if (!state) return;
+
+  const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
+
+  try {
+    const nowIso = new Date().toISOString();
+    const next: InstanceInfo = {
+      instanceId: state.myInstanceId,
+      pid,
+      sessionId: state.mySessionId,
+      startedAt: state.myStartedAt,
+      lastHeartbeat: nowIso,
+      cwd: process.cwd(),
+      activeModels: [],
+      activeRequestCount: Math.max(0, Math.trunc(activeRequestCount || 0)),
+      activeLlmCount: Math.max(0, Math.trunc(activeLlmCount || 0)),
+    };
+
+    if (existsSync(lockFile)) {
+      try {
+        const content = readFileSync(lockFile, "utf-8");
+        const parsed = JSON.parse(content) as InstanceInfo;
+        next.activeModels = parsed.activeModels ?? [];
+        next.pendingTaskCount = parsed.pendingTaskCount;
+        next.avgLatencyMs = parsed.avgLatencyMs;
+        next.lastTaskCompletedAt = parsed.lastTaskCompletedAt;
+      } catch {
+        // ignore parse failures and overwrite with safe baseline
+      }
+    }
+
+    writeJsonFileAtomic(lockFile, next);
+  } catch {
+    logCoordinatorDebug("updateRuntimeUsage write failed");
+    // ignore write errors
+  }
+}
+
+/**
+ * クラスタ全体のランタイム使用量を取得する
+ * @summary クラスタ使用量取得
+ */
+export function getClusterRuntimeUsage(): {
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+  instanceCount: number;
+} {
+  if (!state) {
+    return {
+      totalActiveRequests: 0,
+      totalActiveLlm: 0,
+      instanceCount: 0,
+    };
+  }
+
+  const instances = getActiveInstances();
+  let totalActiveRequests = 0;
+  let totalActiveLlm = 0;
+
+  for (const instance of instances) {
+    totalActiveRequests += Math.max(0, Math.trunc(instance.activeRequestCount || 0));
+    totalActiveLlm += Math.max(0, Math.trunc(instance.activeLlmCount || 0));
+  }
+
+  return {
+    totalActiveRequests,
+    totalActiveLlm,
+    instanceCount: instances.length,
+  };
 }
 
 /**
@@ -595,7 +721,7 @@ export function getCoordinatorStatus(): {
       registered: false,
       myInstanceId: null,
       activeInstanceCount: 1,
-      myParallelLimit: DEFAULT_CONFIG.totalMaxLlm,
+      myParallelLimit: getRuntimeConfig().totalMaxLlm,
       config: null,
       instances: [],
     };
@@ -706,7 +832,7 @@ export function setActiveModel(provider: string, model: string): void {
     }
 
     info.lastHeartbeat = now;
-    writeFileSync(lockFile, JSON.stringify(info, null, 2));
+    writeJsonFileAtomic(lockFile, info);
   } catch {
     // ignore
   }
@@ -735,7 +861,7 @@ export function clearActiveModel(provider: string, model: string): void {
     );
 
     info.lastHeartbeat = new Date().toISOString();
-    writeFileSync(lockFile, JSON.stringify(info, null, 2));
+    writeJsonFileAtomic(lockFile, info);
   } catch {
     // ignore
   }
@@ -756,7 +882,7 @@ export function clearAllActiveModels(): void {
 
     info.activeModels = [];
     info.lastHeartbeat = new Date().toISOString();
-    writeFileSync(lockFile, JSON.stringify(info, null, 2));
+    writeJsonFileAtomic(lockFile, info);
   } catch {
     // ignore
   }
@@ -956,7 +1082,7 @@ export function broadcastQueueState(options: {
 
   const stateFile = join(QUEUE_STATE_DIR, `${state.myInstanceId}.json`);
   try {
-    writeFileSync(stateFile, JSON.stringify(queueState, null, 2));
+    writeJsonFileAtomic(stateFile, queueState);
   } catch {
     // Ignore write errors
   }
@@ -971,7 +1097,8 @@ export function getRemoteQueueStates(): BroadcastQueueState[] {
   if (!state) return [];
 
   ensureQueueStateDir();
-  const nowMs = Date.now();
+  const nowMs = currentTimeMs();
+  const maxAgeMs = Math.max(1, state.config.heartbeatIntervalMs * 2);
   const files = readdirSync(QUEUE_STATE_DIR).filter((f) => f.endsWith(".json"));
   const states: BroadcastQueueState[] = [];
 
@@ -982,7 +1109,7 @@ export function getRemoteQueueStates(): BroadcastQueueState[] {
 
       // Skip if too old (more than 2x heartbeat interval)
       const timestamp = new Date(parsed.timestamp).getTime();
-      if (nowMs - timestamp > DEFAULT_CONFIG.heartbeatIntervalMs * 2) {
+      if (nowMs - timestamp > maxAgeMs) {
         continue;
       }
 
@@ -993,6 +1120,7 @@ export function getRemoteQueueStates(): BroadcastQueueState[] {
 
       states.push(parsed);
     } catch {
+      logCoordinatorDebug(`getRemoteQueueStates failed to parse ${file}`);
       // Ignore parse errors
     }
   }
@@ -1124,8 +1252,8 @@ export function cleanupQueueStates(): void {
   if (!state) return;
 
   ensureQueueStateDir();
-  const nowMs = Date.now();
-  const maxAge = DEFAULT_CONFIG.heartbeatTimeoutMs;
+  const nowMs = currentTimeMs();
+  const maxAge = Math.max(1, state.config.heartbeatTimeoutMs);
   const files = readdirSync(QUEUE_STATE_DIR).filter((f) => f.endsWith(".json"));
 
   for (const file of files) {
@@ -1138,10 +1266,12 @@ export function cleanupQueueStates(): void {
         unlinkSync(join(QUEUE_STATE_DIR, file));
       }
     } catch {
+      logCoordinatorDebug(`cleanupQueueStates failed to parse ${file}, removing`);
       // Remove corrupted files
       try {
         unlinkSync(join(QUEUE_STATE_DIR, file));
       } catch {
+        logCoordinatorDebug(`cleanupQueueStates failed to remove ${file}`);
         // Ignore
       }
     }
@@ -1186,9 +1316,9 @@ function tryAcquireLock(resource: string, ttlMs: number = LOCK_TIMEOUT_MS): Dist
 
   ensureLockDir();
 
-  const lockId = `${state.myInstanceId}-${Date.now().toString(36)}`;
+  const lockId = `${state.myInstanceId}-${currentTimeMs().toString(36)}`;
   const lockFile = join(LOCK_DIR, `${resource.replace(/[:/]/g, "_")}.lock`);
-  const nowMs = Date.now();
+  const nowMs = currentTimeMs();
 
   // Check existing lock
   if (existsSync(lockFile)) {
@@ -1354,9 +1484,9 @@ export function findStealCandidate(): InstanceInfo | null {
     if ((inst.pendingTaskCount ?? 0) <= 2) return false;
 
     // Must be alive
-    const nowMs = Date.now();
+    const nowMs = currentTimeMs();
     const lastHeartbeat = new Date(inst.lastHeartbeat).getTime();
-    if (nowMs - lastHeartbeat > DEFAULT_CONFIG.heartbeatTimeoutMs) return false;
+    if (nowMs - lastHeartbeat > state!.config.heartbeatTimeoutMs) return false;
 
     return true;
   });
@@ -1394,11 +1524,11 @@ export async function safeStealWork(): Promise<StealableQueueEntry | null> {
     // Another instance is already stealing from this candidate
     stealingStats.totalAttempts++;
     stealingStats.failedAttempts++;
-    stealingStats.lastAttemptAt = Date.now();
+    stealingStats.lastAttemptAt = currentTimeMs();
     return null;
   }
 
-  const startTime = Date.now();
+  const startTime = currentTimeMs();
 
   try {
     stealingStats.totalAttempts++;
@@ -1409,9 +1539,9 @@ export async function safeStealWork(): Promise<StealableQueueEntry | null> {
 
     if (entry) {
       stealingStats.successfulSteals++;
-      stealingStats.lastSuccessAt = Date.now();
+      stealingStats.lastSuccessAt = currentTimeMs();
 
-      const latency = Date.now() - startTime;
+      const latency = currentTimeMs() - startTime;
       stealingStats.latencySamples.push(latency);
       if (stealingStats.latencySamples.length > 100) {
         stealingStats.latencySamples.shift();
@@ -1471,7 +1601,7 @@ export function resetStealingStats(): void {
 export function cleanupExpiredLocks(): void {
   ensureLockDir();
 
-  const nowMs = Date.now();
+  const nowMs = currentTimeMs();
   const files = readdirSync(LOCK_DIR).filter((f) => f.endsWith(".lock"));
 
   for (const file of files) {

@@ -218,6 +218,20 @@ describe("runWithConcurrencyLimit", () => {
   });
 
   describe("AbortSignal", () => {
+    it("should_pass_effective_signal_to_worker", async () => {
+      const items = [1];
+      let receivedSignal: AbortSignal | undefined;
+      const worker = vi.fn(async (_item: number, _index: number, signal?: AbortSignal) => {
+        receivedSignal = signal;
+        return 1;
+      });
+
+      await runWithConcurrencyLimit(items, 1, worker);
+
+      expect(receivedSignal).toBeInstanceOf(AbortSignal);
+      expect(receivedSignal?.aborted).toBe(false);
+    });
+
     it("should_throw_when_signal_already_aborted", async () => {
       // Arrange
       const items = [1, 2, 3];
@@ -253,6 +267,49 @@ describe("runWithConcurrencyLimit", () => {
       
       // 中断後は全アイテムが処理されない
       expect(callCount).toBeLessThan(items.length);
+    });
+
+    it("should_propagate_abort_to_sibling_workers_on_error", async () => {
+      const items = [1, 2, 3];
+      let abortedSeen = 0;
+
+      const worker = vi.fn(async (item: number, _index: number, signal?: AbortSignal) => {
+        if (item === 1) {
+          throw new Error("boom");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        if (signal?.aborted) {
+          abortedSeen += 1;
+        }
+        return item;
+      });
+
+      await expect(runWithConcurrencyLimit(items, 3, worker)).rejects.toThrow("boom");
+      expect(abortedSeen).toBeGreaterThan(0);
+    });
+
+    it("should_allow_opt_out_of_abort_on_error", async () => {
+      const items = [1, 2, 3];
+      let abortedSeen = 0;
+      let completedWorkers = 0;
+
+      const worker = vi.fn(async (item: number, _index: number, signal?: AbortSignal) => {
+        if (item === 1) {
+          throw new Error("boom");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        if (signal?.aborted) {
+          abortedSeen += 1;
+        }
+        completedWorkers += 1;
+        return item;
+      });
+
+      await expect(
+        runWithConcurrencyLimit(items, 3, worker, { abortOnError: false }),
+      ).rejects.toThrow("boom");
+      expect(abortedSeen).toBe(0);
+      expect(completedWorkers).toBe(2);
     });
   });
 

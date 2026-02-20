@@ -60,6 +60,10 @@ export interface PrintExecutorOptions {
   model?: string;
   /** Prompt to send to pi */
   prompt: string;
+  /** Whether to disable extensions in child pi process (default: true) */
+  noExtensions?: boolean;
+  /** Optional environment overrides for child process */
+  envOverrides?: NodeJS.ProcessEnv;
   /** Idle timeout in milliseconds - resets on each output chunk (0 = disabled, default: 300000) */
   timeoutMs: number;
   /** Optional abort signal for cancellation */
@@ -195,8 +199,13 @@ export async function runPiPrintMode(
     throw new Error(`${entityLabel} run aborted`);
   }
 
-  // Use JSON mode for streaming output
-  const args = ["--mode", "json", "-p", "--no-extensions"];
+  // Use JSON mode for streaming output.
+  // Keep extensions disabled by default for deterministic child behavior.
+  const disableExtensions = input.noExtensions ?? true;
+  const args = ["--mode", "json", "-p"];
+  if (disableExtensions) {
+    args.push("--no-extensions");
+  }
 
   if (input.provider) {
     args.push("--provider", input.provider);
@@ -224,7 +233,10 @@ export async function runPiPrintMode(
 
     const child = spawn("pi", args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env: {
+        ...process.env,
+        ...(input.envOverrides || {}),
+      },
     });
 
     const finish = (fn: () => void) => {

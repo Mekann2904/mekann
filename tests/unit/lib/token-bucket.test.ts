@@ -251,6 +251,16 @@ describe("TokenBucketRateLimiterImpl", () => {
 			expect(limiter.getStats().trackedModels).toBe(0);
 		});
 	});
+
+	describe("memory bounds", () => {
+		it("should_cap_tracked_buckets", () => {
+			for (let i = 0; i < 700; i += 1) {
+				limiter.canProceed(`provider-${i}`, `model-${i}`, 1);
+			}
+			const stats = limiter.getStats();
+			expect(stats.trackedModels).toBeLessThanOrEqual(512);
+		});
+	});
 });
 
 // ============================================================================

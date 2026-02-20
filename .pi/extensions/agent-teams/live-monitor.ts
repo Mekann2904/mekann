@@ -28,18 +28,20 @@
 // Why: Separates live monitoring logic from main agent-teams.ts for maintainability.
 // Related: .pi/extensions/agent-teams.ts
 
-import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey } from "@mariozechner/pi-tui";
 
 import {
   formatDurationMs,
   formatBytes,
   formatClockTime,
+  formatElapsedClock,
   normalizeForSingleLine,
 } from "../../lib/format-utils.js";
 import {
   appendTail,
   countOccurrences,
   estimateLineCount,
+  pushWrappedLine,
   renderPreviewWithMarkdown,
 } from "../../lib/tui/tui-utils.js";
 import {
@@ -85,6 +87,32 @@ interface TreeNode {
   item: TeamLiveItem;
   level: number;
   children: string[]; // member IDs
+}
+
+/**
+ * Parse "[hh:mm:ss] ..." style event lines.
+ * Accepts h:mm:ss and hh:mm:ss(.SSS) and normalizes to hh:mm:ss.
+ */
+function parseEventTimeLine(
+  eventLine: string,
+): { time: string; timeMs: number; rest: string } | null {
+  const match = eventLine.match(/^\[(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.+)$/);
+  if (!match) return null;
+
+  const hh = Number(match[1]);
+  const mm = Number(match[2]);
+  const ss = Number(match[3]);
+  const msRaw = match[4] ? Number(match[4].padEnd(3, "0")) : 0;
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || !Number.isFinite(ss) || !Number.isFinite(msRaw)) {
+    return null;
+  }
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59 || ss < 0 || ss > 59 || msRaw < 0 || msRaw > 999) {
+    return null;
+  }
+
+  const time = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+  const timeMs = (((hh * 60) + mm) * 60 + ss) * 1000 + msRaw;
+  return { time, timeMs, rest: match[5] };
 }
 
 /**
@@ -184,7 +212,7 @@ function renderTreeView(
   theme: any,
 ): string[] {
   const lines: string[] = [];
-  const add = (line = "") => lines.push(truncateToWidth(line, width));
+  const add = (line = "") => pushWrappedLine(lines, line, width);
 
   // レベル計算
   const levels = computeTreeLevels(items);
@@ -231,17 +259,20 @@ function renderTreeView(
     const prefix = getTreePrefix(level, isLast, parentContinues);
     const glyph = getLiveStatusGlyph(item.status);
     const glyphColor = getLiveStatusColor(item.status);
-    const elapsed = formatDurationMs(item);
+    const elapsed = formatElapsedClock(item);
 
     // アクティビティ
     const hasOutput = item.stdoutBytes > 0;
-    const hasError = item.stderrBytes > 0;
     const isRecent = item.lastChunkAtMs ? (Date.now() - item.lastChunkAtMs) < 2000 : false;
+    // stderr is often used for warnings/noise; keep err! for actual failures or recent stderr activity.
+    const hasError = item.status === "failed" || (item.stderrBytes > 0 && isRecent);
     const activity = getActivityIndicator(hasOutput, hasError, isRecent);
 
     const coloredGlyph = theme.fg(glyphColor, glyph);
     const treeLine = `${prefix}${coloredGlyph} ${item.label}`;
-    const meta = activity ? `${elapsed}  ${activity}  ${formatBytes(item.stdoutBytes)}` : `${elapsed}  ${formatBytes(item.stdoutBytes)}`;
+    const meta = activity
+      ? `${elapsed}  ${activity}  ${formatBytes(item.stdoutBytes)}`
+      : `${elapsed}  ${formatBytes(item.stdoutBytes)}`;
 
     // 選択行は全体を強調色で表示（プレフィックスなし）
     if (isSelected) {
@@ -265,7 +296,7 @@ function renderCommunicationEvents(
   theme: any,
 ): string[] {
   const lines: string[] = [];
-  const add = (line = "") => lines.push(truncateToWidth(line, width));
+  const add = (line = "") => pushWrappedLine(lines, line, width);
 
   // 全アイテムから最近のイベントを収集
   const allEvents: { time: string; from: string; to: string; msg: string }[] = [];
@@ -274,14 +305,13 @@ function renderCommunicationEvents(
     // イベント履歴から通信を抽出
     const recentEvents = item.events.slice(-5);
     for (const event of recentEvents) {
-      // パターン: [HH:MM:SS] from → to: message
-      const match = event.match(/\[(\d{2}:\d{2}:\d{2})\]\s*(.+)/);
-      if (match) {
+      const parsed = parseEventTimeLine(event);
+      if (parsed) {
         allEvents.push({
-          time: match[1],
+          time: parsed.time,
           from: item.label,
           to: item.partners[0] || "team",
-          msg: match[2].substring(0, 40),
+          msg: parsed.rest.substring(0, 40),
         });
       }
     }
@@ -311,7 +341,7 @@ function renderTimelineView(
   theme: any,
 ): string[] {
   const lines: string[] = [];
-  const add = (line = "") => lines.push(truncateToWidth(line, width));
+  const add = (line = "") => pushWrappedLine(lines, line, width);
 
   // 全イベントを収集してソート
   interface TimelineEvent {
@@ -327,14 +357,14 @@ function renderTimelineView(
 
   // グローバルイベントを追加
   for (const event of globalEvents) {
-    const match = event.match(/\[(\d{2}:\d{2}:\d{2})\]\s*(.+)/);
-    if (match) {
+    const parsed = parseEventTimeLine(event);
+    if (parsed) {
       allEvents.push({
-        time: match[1],
-        timeMs: 0,
+        time: parsed.time,
+        timeMs: parsed.timeMs,
         type: "event",
         agent: "team",
-        content: match[2].substring(0, 50),
+        content: parsed.rest.substring(0, 50),
       });
     }
   }
@@ -354,9 +384,9 @@ function renderTimelineView(
 
     // イベント履歴
     for (const event of item.events) {
-      const match = event.match(/\[(\d{2}:\d{2}:\d{2})\]\s*(.+)/);
-      if (match) {
-        const content = match[2];
+      const parsed = parseEventTimeLine(event);
+      if (parsed) {
+        const content = parsed.rest;
         let type: TimelineEvent["type"] = "msg";
         if (content.includes("DONE") || content.includes("completed")) {
           type = "done";
@@ -364,8 +394,8 @@ function renderTimelineView(
           type = "fail";
         }
         allEvents.push({
-          time: match[1],
-          timeMs: 0,
+          time: parsed.time,
+          timeMs: parsed.timeMs,
           type,
           agent: item.label,
           target: item.partners[0],
@@ -523,7 +553,7 @@ export function renderAgentTeamLiveView(input: {
   theme: any;
 }): string[] {
   const lines: string[] = [];
-  const add = (line = "") => lines.push(truncateToWidth(line, input.width));
+  const add = (line = "") => pushWrappedLine(lines, line, input.width);
   const theme = input.theme;
   const items = input.items;
   const running = items.filter((item) => item.status === "running").length;
