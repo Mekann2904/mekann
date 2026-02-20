@@ -121,9 +121,9 @@ const PROFILE_PRESETS: Record<RuntimeProfile, Omit<RuntimeConfig, "profile">> = 
     predictiveEnabled: true,
     heartbeatIntervalMs: 15_000,
     heartbeatTimeoutMs: 60_000,
-    recoveryIntervalMs: 5 * 60_000, // 5 minutes
-    reductionFactor: 0.7,
-    recoveryFactor: 1.1,
+    recoveryIntervalMs: 2 * 60_000, // 2 minutes (reduced from 5)
+    reductionFactor: 0.5, // 50% reduction on 429 (more aggressive)
+    recoveryFactor: 1.05, // 5% increase per recovery (slower recovery)
     maxConcurrentPerModel: 2,
     maxTotalConcurrent: 4,
     capacityWaitMs: 12_000,
@@ -140,9 +140,9 @@ const PROFILE_PRESETS: Record<RuntimeProfile, Omit<RuntimeConfig, "profile">> = 
     predictiveEnabled: true,
     heartbeatIntervalMs: 15_000,
     heartbeatTimeoutMs: 60_000,
-    recoveryIntervalMs: 5 * 60_000, // 5 minutes
-    reductionFactor: 0.7,
-    recoveryFactor: 1.1,
+    recoveryIntervalMs: 2 * 60_000, // 2 minutes (reduced from 5)
+    reductionFactor: 0.5, // 50% reduction on 429 (more aggressive)
+    recoveryFactor: 1.05, // 5% increase per recovery (slower recovery)
     maxConcurrentPerModel: 4,
     maxTotalConcurrent: 8,
     capacityWaitMs: 30_000,

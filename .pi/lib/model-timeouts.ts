@@ -135,7 +135,13 @@ export function computeModelTimeoutMs(
 
   // Apply thinking level multiplier
   const thinkingLevel = options?.thinkingLevel?.toLowerCase() ?? "medium";
-  const multiplier = THINKING_LEVEL_MULTIPLIERS[thinkingLevel] ?? 1.4;
+  const hasKnownThinkingLevel = Object.prototype.hasOwnProperty.call(
+    THINKING_LEVEL_MULTIPLIERS,
+    thinkingLevel,
+  );
+  const multiplier = hasKnownThinkingLevel
+    ? THINKING_LEVEL_MULTIPLIERS[thinkingLevel]
+    : 1.4;
 
   return Math.floor(baseTimeout * multiplier);
 }

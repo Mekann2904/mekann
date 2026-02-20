@@ -758,6 +758,7 @@ export function resolveVerificationConfig(): VerificationWorkflowConfig {
   if (envMode === "strict") {
     return {
       ...DEFAULT_VERIFICATION_CONFIG,
+      enabled: true,
       triggerModes: ["post-subagent", "post-team", "low-confidence", "high-stakes"],
       minConfidenceToSkipVerification: 0.95,
       fallbackBehavior: "block",
@@ -767,10 +768,11 @@ export function resolveVerificationConfig(): VerificationWorkflowConfig {
       },
     };
   }
-  
+
   if (envMode === "minimal") {
     return {
       ...DEFAULT_VERIFICATION_CONFIG,
+      enabled: true,
       triggerModes: ["high-stakes"],
       minConfidenceToSkipVerification: 0.7,
       fallbackBehavior: "warn",

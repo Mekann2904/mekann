@@ -182,7 +182,7 @@ function getDefaultState(): AdaptiveControllerState {
     reductionFactor: config.reductionFactor,
     recoveryFactor: config.recoveryFactor,
     predictiveEnabled: config.predictiveEnabled,
-    predictiveThreshold: 0.3, // Proactively throttle if >30% 429 probability
+    predictiveThreshold: 0.15, // Proactively throttle if >15% 429 probability (reduced from 0.3)
   };
 }
 
@@ -195,11 +195,11 @@ const DEFAULT_STATE: AdaptiveControllerState = {
   lastUpdated: new Date().toISOString(),
   limits: {},
   globalMultiplier: 1.0,
-  recoveryIntervalMs: 5 * 60 * 1000, // 5 minutes
-  reductionFactor: 0.7, // 30% reduction on 429
-  recoveryFactor: 1.1, // 10% increase per recovery
+  recoveryIntervalMs: 2 * 60 * 1000, // 2 minutes
+  reductionFactor: 0.5, // 50% reduction on 429
+  recoveryFactor: 1.05, // 5% increase per recovery
   predictiveEnabled: true,
-  predictiveThreshold: 0.3, // Proactively throttle if >30% 429 probability
+  predictiveThreshold: 0.15, // Proactively throttle if >15% 429 probability
 };
 
 const MIN_CONCURRENCY = 1;
@@ -438,7 +438,7 @@ export function recordEvent(event: RateLimitEvent): void {
 
   switch (event.type) {
     case "429": {
-      // Reduce concurrency
+      // Reduce concurrency aggressively
       const newConcurrency = clampConcurrency(
         Math.floor(limit.concurrency * currentState.reductionFactor)
       );
@@ -453,7 +453,12 @@ export function recordEvent(event: RateLimitEvent): void {
 
       // If multiple consecutive 429s, be more aggressive
       if (limit.consecutive429Count >= 3) {
+        // 3回以上連続429の場合、さらに50%削減
         limit.concurrency = clampConcurrency(Math.floor(limit.concurrency * 0.5));
+      }
+      if (limit.consecutive429Count >= 5) {
+        // 5回以上連続429の場合、最小値に
+        limit.concurrency = MIN_CONCURRENCY;
       }
 
       break;

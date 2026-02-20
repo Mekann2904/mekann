@@ -339,6 +339,20 @@ const BUILTIN_LIMITS: ProviderLimitsConfig = {
         },
       },
     },
+    // zai (GLM models) - very conservative defaults due to frequent 429 errors
+    zai: {
+      displayName: "z.ai (GLM)",
+      documentation: "https://z.ai/docs",
+      models: {
+        "glm-*": {
+          tiers: {
+            free: { rpm: 10, concurrency: 1, description: "Free tier - very limited" },
+            pro: { rpm: 30, concurrency: 2, description: "Pro tier" },
+          },
+          default: { rpm: 10, concurrency: 1, description: "Unknown tier - conservative" },
+        },
+      },
+    },
   },
 };
 

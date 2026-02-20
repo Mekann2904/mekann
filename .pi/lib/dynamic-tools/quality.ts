@@ -321,7 +321,7 @@ const QUALITY_PATTERNS: QualityPattern[] = [
     isPositive: false,
   },
   {
-    pattern: /await\s+[^;]+;\s*await\s+[^;]+;\s*await\s+[^;]+;/,
+    pattern: /(?:const|let|var)?\s*[^;\n]*await\s+[^;]+;\s*(?:const|let|var)?\s*[^;\n]*await\s+[^;]+;\s*(?:const|let|var)?\s*[^;\n]*await\s+[^;]+;/,
     category: "performance",
     severity: "medium",
     description: "逐次的なawaitが検出されました",

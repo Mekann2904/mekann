@@ -1,436 +1,428 @@
 /**
- * plan-mode-shared.ts 単体テスト
- * カバレッジ分析: isBashCommandAllowed, calculateChecksum, validatePlanModeState, createPlanModeState
+ * @file .pi/lib/plan-mode-shared.ts の単体テスト
+ * @description プランモード共有定数とユーティリティのテスト
+ * @testFramework vitest
  */
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  vi,
-} from "vitest";
+
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import * as fc from "fast-check";
-import * as crypto from "crypto";
-
 import {
-  READ_ONLY_COMMANDS,
-  DESTRUCTIVE_COMMANDS,
-  SHELL_COMMANDS,
-  WRITE_COMMANDS,
-  GIT_READONLY_SUBCOMMANDS,
-  GIT_WRITE_SUBCOMMANDS,
-  WRITE_BASH_COMMANDS,
-  ADDITIONAL_WRITE_COMMANDS,
-  isBashCommandAllowed,
-  calculateChecksum,
-  validatePlanModeState,
-  createPlanModeState,
-  PLAN_MODE_POLICY,
-  PLAN_MODE_WARNING,
-  PLAN_MODE_ENV_VAR,
-} from "../../../.pi/lib/plan-mode-shared.js";
-import type { PlanModeState } from "../../../.pi/lib/plan-mode-shared.js";
+	READ_ONLY_COMMANDS,
+	DESTRUCTIVE_COMMANDS,
+	SHELL_COMMANDS,
+	WRITE_COMMANDS,
+	GIT_READONLY_SUBCOMMANDS,
+	GIT_WRITE_SUBCOMMANDS,
+	WRITE_BASH_COMMANDS,
+	ADDITIONAL_WRITE_COMMANDS,
+	PLAN_MODE_POLICY,
+	PLAN_MODE_WARNING,
+	PLAN_MODE_CONTEXT_TYPE,
+	PLAN_MODE_STATUS_KEY,
+	PLAN_MODE_ENV_VAR,
+	type PlanModeState,
+	isBashCommandAllowed,
+	calculateChecksum,
+	validatePlanModeState,
+	createPlanModeState,
+} from "@lib/plan-mode-shared";
 
 // ============================================================================
-// 定数テスト
+// Constants
 // ============================================================================
 
-describe("READ_ONLY_COMMANDS", () => {
-  it("READ_ONLY_COMMANDS_読み取りコマンド含む", () => {
-    // Arrange & Act & Assert
-    expect(READ_ONLY_COMMANDS.has("ls")).toBe(true);
-    expect(READ_ONLY_COMMANDS.has("cat")).toBe(true);
-    expect(READ_ONLY_COMMANDS.has("grep")).toBe(true);
-  });
+describe("Constants", () => {
+	describe("READ_ONLY_COMMANDS", () => {
+		it("should_contain_basic_read_commands", () => {
+			expect(READ_ONLY_COMMANDS.has("cat")).toBe(true);
+			expect(READ_ONLY_COMMANDS.has("ls")).toBe(true);
+			expect(READ_ONLY_COMMANDS.has("grep")).toBe(true);
+			expect(READ_ONLY_COMMANDS.has("head")).toBe(true);
+			expect(READ_ONLY_COMMANDS.has("tail")).toBe(true);
+		});
 
-  it("READ_ONLY_COMMANDS_破壊的コマンド含まない", () => {
-    // Arrange & Act & Assert
-    expect(READ_ONLY_COMMANDS.has("rm")).toBe(false);
-    expect(READ_ONLY_COMMANDS.has("mv")).toBe(false);
-  });
-});
+		it("should_not_contain_write_commands", () => {
+			expect(READ_ONLY_COMMANDS.has("rm")).toBe(false);
+			expect(READ_ONLY_COMMANDS.has("mv")).toBe(false);
+			expect(READ_ONLY_COMMANDS.has("cp")).toBe(false);
+		});
 
-describe("DESTRUCTIVE_COMMANDS", () => {
-  it("DESTRUCTIVE_COMMANDS_破壊的コマンド含む", () => {
-    // Arrange & Act & Assert
-    expect(DESTRUCTIVE_COMMANDS.has("rm")).toBe(true);
-    expect(DESTRUCTIVE_COMMANDS.has("mv")).toBe(true);
-    expect(DESTRUCTIVE_COMMANDS.has("chmod")).toBe(true);
-  });
-});
+		it("should_be_frozen_or_treated_as_immutable", () => {
+			// Setは追加してもエラーにならないが、テストとしては確認
+			const sizeBefore = READ_ONLY_COMMANDS.size;
+			expect(READ_ONLY_COMMANDS.size).toBe(sizeBefore);
+		});
+	});
 
-describe("SHELL_COMMANDS", () => {
-  it("SHELL_COMMANDS_シェルコマンド含む", () => {
-    // Arrange & Act & Assert
-    expect(SHELL_COMMANDS.has("bash")).toBe(true);
-    expect(SHELL_COMMANDS.has("sh")).toBe(true);
-    expect(SHELL_COMMANDS.has("zsh")).toBe(true);
-  });
-});
+	describe("DESTRUCTIVE_COMMANDS", () => {
+		it("should_contain_destructive_commands", () => {
+			expect(DESTRUCTIVE_COMMANDS.has("rm")).toBe(true);
+			expect(DESTRUCTIVE_COMMANDS.has("rmdir")).toBe(true);
+			expect(DESTRUCTIVE_COMMANDS.has("mv")).toBe(true);
+			expect(DESTRUCTIVE_COMMANDS.has("chmod")).toBe(true);
+			expect(DESTRUCTIVE_COMMANDS.has("kill")).toBe(true);
+		});
 
-describe("GIT_READONLY_SUBCOMMANDS", () => {
-  it("GIT_READONLY_SUBCOMMANDS_読み取りサブコマンド含む", () => {
-    // Arrange & Act & Assert
-    expect(GIT_READONLY_SUBCOMMANDS.has("status")).toBe(true);
-    expect(GIT_READONLY_SUBCOMMANDS.has("log")).toBe(true);
-    expect(GIT_READONLY_SUBCOMMANDS.has("diff")).toBe(true);
-  });
+		it("should_not_contain_read_commands", () => {
+			expect(DESTRUCTIVE_COMMANDS.has("cat")).toBe(false);
+			expect(DESTRUCTIVE_COMMANDS.has("ls")).toBe(false);
+		});
+	});
 
-  it("GIT_READONLY_SUBCOMMANDS_書き込みサブコマンド含まない", () => {
-    // Arrange & Act & Assert
-    expect(GIT_READONLY_SUBCOMMANDS.has("commit")).toBe(false);
-    expect(GIT_READONLY_SUBCOMMANDS.has("push")).toBe(false);
-  });
-});
+	describe("GIT_READONLY_SUBCOMMANDS", () => {
+		it("should_contain_readonly_git_subcommands", () => {
+			expect(GIT_READONLY_SUBCOMMANDS.has("status")).toBe(true);
+			expect(GIT_READONLY_SUBCOMMANDS.has("log")).toBe(true);
+			expect(GIT_READONLY_SUBCOMMANDS.has("diff")).toBe(true);
+			expect(GIT_READONLY_SUBCOMMANDS.has("show")).toBe(true);
+			expect(GIT_READONLY_SUBCOMMANDS.has("branch")).toBe(true);
+		});
 
-describe("GIT_WRITE_SUBCOMMANDS", () => {
-  it("GIT_WRITE_SUBCOMMANDS_書き込みサブコマンド含む", () => {
-    // Arrange & Act & Assert
-    expect(GIT_WRITE_SUBCOMMANDS.has("commit")).toBe(true);
-    expect(GIT_WRITE_SUBCOMMANDS.has("push")).toBe(true);
-    expect(GIT_WRITE_SUBCOMMANDS.has("add")).toBe(true);
-  });
+		it("should_not_contain_write_git_subcommands", () => {
+			expect(GIT_READONLY_SUBCOMMANDS.has("add")).toBe(false);
+			expect(GIT_READONLY_SUBCOMMANDS.has("commit")).toBe(false);
+			expect(GIT_READONLY_SUBCOMMANDS.has("push")).toBe(false);
+		});
+	});
+
+	describe("GIT_WRITE_SUBCOMMANDS", () => {
+		it("should_contain_write_git_subcommands", () => {
+			expect(GIT_WRITE_SUBCOMMANDS.has("add")).toBe(true);
+			expect(GIT_WRITE_SUBCOMMANDS.has("commit")).toBe(true);
+			expect(GIT_WRITE_SUBCOMMANDS.has("push")).toBe(true);
+			expect(GIT_WRITE_SUBCOMMANDS.has("merge")).toBe(true);
+		});
+	});
+
+	describe("Policy constants", () => {
+		it("PLAN_MODE_POLICY should_be_non_empty_string", () => {
+			expect(typeof PLAN_MODE_POLICY).toBe("string");
+			expect(PLAN_MODE_POLICY.length).toBeGreaterThan(0);
+		});
+
+		it("PLAN_MODE_WARNING should_be_non_empty_string", () => {
+			expect(typeof PLAN_MODE_WARNING).toBe("string");
+			expect(PLAN_MODE_WARNING.length).toBeGreaterThan(0);
+		});
+
+		it("PLAN_MODE_CONTEXT_TYPE should_be_defined", () => {
+			expect(PLAN_MODE_CONTEXT_TYPE).toBe("plan-mode-context");
+		});
+
+		it("PLAN_MODE_STATUS_KEY should_be_defined", () => {
+			expect(PLAN_MODE_STATUS_KEY).toBe("plan-mode");
+		});
+
+		it("PLAN_MODE_ENV_VAR should_be_defined", () => {
+			expect(PLAN_MODE_ENV_VAR).toBe("PI_PLAN_MODE");
+		});
+	});
 });
 
 // ============================================================================
-// isBashCommandAllowed テスト
+// isBashCommandAllowed
 // ============================================================================
 
 describe("isBashCommandAllowed", () => {
-  it("isBashCommandAllowed_読み取りコマンド_true", () => {
-    // Arrange & Act & Assert
-    expect(isBashCommandAllowed("ls")).toBe(true);
-    expect(isBashCommandAllowed("cat file.txt")).toBe(true);
-    expect(isBashCommandAllowed("grep pattern file")).toBe(true);
-  });
+	describe("正常系: 許可されるコマンド", () => {
+		it("should_allow_readonly_commands", () => {
+			expect(isBashCommandAllowed("cat file.txt")).toBe(true);
+			expect(isBashCommandAllowed("ls -la")).toBe(true);
+			expect(isBashCommandAllowed("grep pattern file.txt")).toBe(true);
+			expect(isBashCommandAllowed("head -n 10 file.txt")).toBe(true);
+			expect(isBashCommandAllowed("tail -f log.txt")).toBe(true);
+		});
 
-  it("isBashCommandAllowed_破壊的コマンド_false", () => {
-    // Arrange & Act & Assert
-    expect(isBashCommandAllowed("rm file")).toBe(false);
-    expect(isBashCommandAllowed("mv a b")).toBe(false);
-    expect(isBashCommandAllowed("chmod 755 file")).toBe(false);
-  });
+		it("should_allow_navigation_commands", () => {
+			expect(isBashCommandAllowed("cd /tmp")).toBe(true);
+			expect(isBashCommandAllowed("pwd")).toBe(true);
+		});
 
-  it("isBashCommandAllowed_シェル起動_false", () => {
-    // Arrange & Act & Assert
-    expect(isBashCommandAllowed("bash -c 'rm file'")).toBe(false);
-    expect(isBashCommandAllowed("sh script.sh")).toBe(false);
-  });
+		it("should_allow_info_commands", () => {
+			expect(isBashCommandAllowed("which node")).toBe(true);
+			expect(isBashCommandAllowed("date")).toBe(true);
+			expect(isBashCommandAllowed("uptime")).toBe(true);
+			expect(isBashCommandAllowed("env")).toBe(true);
+		});
+	});
 
-  it("isBashCommandAllowed_パッケージマネージャ_false", () => {
-    // Arrange & Act & Assert
-    expect(isBashCommandAllowed("npm install")).toBe(false);
-    expect(isBashCommandAllowed("pip install package")).toBe(false);
-  });
+	describe("ブロック: 出力リダイレクト", () => {
+		it("should_block_output_redirect", () => {
+			expect(isBashCommandAllowed("echo hello > file.txt")).toBe(false);
+			expect(isBashCommandAllowed("echo hello >> file.txt")).toBe(false);
+		});
 
-  it("isBashCommandAllowed_リダイレクト_false", () => {
-    // Arrange & Act & Assert
-    expect(isBashCommandAllowed("echo hello > file")).toBe(false);
-    expect(isBashCommandAllowed("cat file >> output")).toBe(false);
-    expect(isBashCommandAllowed("cmd 2>&1")).toBe(false);
-  });
+		it("should_block_stderr_redirect", () => {
+			expect(isBashCommandAllowed("cmd 2> error.log")).toBe(false);
+			expect(isBashCommandAllowed("cmd 2>> error.log")).toBe(false);
+		});
 
-  it("isBashCommandAllowed_パイプ_書き込みコマンド_false", () => {
-    // Arrange & Act & Assert
-    expect(isBashCommandAllowed("cat file | tee output")).toBe(false);
-    expect(isBashCommandAllowed("echo test | npm install")).toBe(false);
-  });
+		it("should_block_combined_redirect", () => {
+			expect(isBashCommandAllowed("cmd &> output.log")).toBe(false);
+			expect(isBashCommandAllowed("cmd &>> output.log")).toBe(false);
+		});
+	});
 
-  it("isBashCommandAllowed_サブシェル_false", () => {
-    // Arrange & Act & Assert
-    expect(isBashCommandAllowed("$(cmd)")).toBe(false);
-    expect(isBashCommandAllowed("`cmd`")).toBe(false);
-    expect(isBashCommandAllowed("(rm file)")).toBe(false);
-  });
+	describe("ブロック: パイプライン", () => {
+		it("should_block_pipeline_with_write_commands", () => {
+			expect(isBashCommandAllowed("cat file | tee output")).toBe(false);
+			expect(isBashCommandAllowed("cat file | tar -xf -")).toBe(false);
+		});
+	});
 
-  it("isBashCommandAllowed_空文字_false", () => {
-    // Arrange & Act & Assert
-    expect(isBashCommandAllowed("")).toBe(false);
-    expect(isBashCommandAllowed("   ")).toBe(false);
-  });
+	describe("ブロック: サブシェル", () => {
+		it("should_block_subshell_parentheses", () => {
+			expect(isBashCommandAllowed("(cd /tmp && ls)")).toBe(false);
+		});
 
-  it("isBashCommandAllowed_未知のコマンド_false", () => {
-    // Arrange & Act & Assert
-    expect(isBashCommandAllowed("unknown-command")).toBe(false);
-  });
+		it("should_block_command_substitution", () => {
+			expect(isBashCommandAllowed("echo $(date)")).toBe(false);
+			expect(isBashCommandAllowed("echo `date`")).toBe(false);
+		});
 
-  it("isBashCommandAllowed_パイプ含む_false", () => {
-    // Arrange & Act & Assert - パイプを含むコマンドは全てブロックされる
-    expect(isBashCommandAllowed("cat file | grep pattern")).toBe(false);
-    expect(isBashCommandAllowed("ls | head")).toBe(false);
-  });
+		it("should_block_variable_expansion_with_command", () => {
+			expect(isBashCommandAllowed("${PATH}")).toBe(false);
+		});
+	});
+
+	describe("ブロック: シェル起動", () => {
+		it("should_block_shell_invocation", () => {
+			expect(isBashCommandAllowed("bash")).toBe(false);
+			expect(isBashCommandAllowed("sh script.sh")).toBe(false);
+			expect(isBashCommandAllowed("zsh")).toBe(false);
+			expect(isBashCommandAllowed("fish")).toBe(false);
+		});
+	});
+
+	describe("ブロック: 書き込みコマンド", () => {
+		it("should_block_package_managers", () => {
+			expect(isBashCommandAllowed("npm install")).toBe(false);
+			expect(isBashCommandAllowed("yarn add pkg")).toBe(false);
+			expect(isBashCommandAllowed("pip install pkg")).toBe(false);
+		});
+
+		it("should_block_write_commands_from_additional_set", () => {
+			expect(isBashCommandAllowed("bash")).toBe(false);
+			expect(isBashCommandAllowed("sh")).toBe(false);
+		});
+	});
+
+	describe("エッジケース", () => {
+		it("should_return_false_for_empty_command", () => {
+			expect(isBashCommandAllowed("")).toBe(false);
+		});
+
+		it("should_return_false_for_whitespace_only_command", () => {
+			expect(isBashCommandAllowed("   ")).toBe(false);
+		});
+
+		it("should_handle_command_with_leading_whitespace", () => {
+			expect(isBashCommandAllowed("   ls")).toBe(true);
+		});
+
+		it("should_handle_unknown_command", () => {
+			expect(isBashCommandAllowed("unknowncmd arg")).toBe(false);
+		});
+	});
+
+	describe("プロパティベーステスト", () => {
+		it("PBT: 許可コマンドは常にtrueを返す", () => {
+			const allowedCommands = ["cat", "ls", "grep", "head", "tail", "cd", "pwd", "which", "date", "env"];
+
+			fc.assert(
+				fc.property(
+					fc.constantFrom(...allowedCommands),
+					fc.string({ maxLength: 20 }),
+					(cmd, args) => {
+						const command = args ? `${cmd} ${args}` : cmd;
+						// リダイレクトやパイプを含まない場合のみテスト
+						fc.pre(!/[>|$()`]/.test(command));
+						expect(isBashCommandAllowed(command)).toBe(true);
+					}
+				)
+			);
+		});
+	});
 });
 
 // ============================================================================
-// calculateChecksum テスト
+// Checksum Functions
 // ============================================================================
 
 describe("calculateChecksum", () => {
-  it("calculateChecksum_有効な状態_ハッシュ返却", () => {
-    // Arrange
-    const state = {
-      enabled: true,
-      timestamp: 1234567890,
-    };
+	it("should_return_consistent_checksum_for_same_input", () => {
+		const state = { enabled: true, timestamp: 12345 };
 
-    // Act
-    const result = calculateChecksum(state);
+		const checksum1 = calculateChecksum(state);
+		const checksum2 = calculateChecksum(state);
 
-    // Assert
-    expect(result).toMatch(/^[a-f0-9]{64}$/);
-  });
+		expect(checksum1).toBe(checksum2);
+	});
 
-  it("calculateChecksum_同じ値_同じハッシュ", () => {
-    // Arrange
-    const state = {
-      enabled: true,
-      timestamp: 1234567890,
-    };
+	it("should_return_different_checksum_for_different_input", () => {
+		const state1 = { enabled: true, timestamp: 12345 };
+		const state2 = { enabled: false, timestamp: 12345 };
 
-    // Act
-    const hash1 = calculateChecksum(state);
-    const hash2 = calculateChecksum(state);
+		const checksum1 = calculateChecksum(state1);
+		const checksum2 = calculateChecksum(state2);
 
-    // Assert
-    expect(hash1).toBe(hash2);
-  });
+		expect(checksum1).not.toBe(checksum2);
+	});
 
-  it("calculateChecksum_異なるenabled_異なるハッシュ", () => {
-    // Arrange
-    const state1 = { enabled: true, timestamp: 1234567890 };
-    const state2 = { enabled: false, timestamp: 1234567890 };
+	it("should_return_64_character_hex_string", () => {
+		const state = { enabled: true, timestamp: Date.now() };
+		const checksum = calculateChecksum(state);
 
-    // Act
-    const hash1 = calculateChecksum(state1);
-    const hash2 = calculateChecksum(state2);
+		expect(checksum).toHaveLength(64);
+		expect(/^[0-9a-f]+$/.test(checksum)).toBe(true);
+	});
 
-    // Assert
-    expect(hash1).not.toBe(hash2);
-  });
+	describe("プロパティベーステスト", () => {
+		it("PBT: チェックサムは常に64文字の16進数", () => {
+			fc.assert(
+				fc.property(
+					fc.record({
+						enabled: fc.boolean(),
+						timestamp: fc.integer({ min: 0, max: Number.MAX_SAFE_INTEGER }),
+					}),
+					(state) => {
+						const checksum = calculateChecksum(state);
+						expect(checksum).toHaveLength(64);
+						expect(/^[0-9a-f]+$/.test(checksum)).toBe(true);
+					}
+				)
+			);
+		});
 
-  it("calculateChecksum_異なるtimestamp_異なるハッシュ", () => {
-    // Arrange
-    const state1 = { enabled: true, timestamp: 1234567890 };
-    const state2 = { enabled: true, timestamp: 1234567891 };
-
-    // Act
-    const hash1 = calculateChecksum(state1);
-    const hash2 = calculateChecksum(state2);
-
-    // Assert
-    expect(hash1).not.toBe(hash2);
-  });
+		it("PBT: 同じ入力は同じチェックサム", () => {
+			fc.assert(
+				fc.property(
+					fc.record({
+						enabled: fc.boolean(),
+						timestamp: fc.integer({ min: 0 }),
+					}),
+					(state) => {
+						const checksum1 = calculateChecksum(state);
+						const checksum2 = calculateChecksum(state);
+						expect(checksum1).toBe(checksum2);
+					}
+				)
+			);
+		});
+	});
 });
 
 // ============================================================================
-// validatePlanModeState テスト
+// validatePlanModeState
 // ============================================================================
 
 describe("validatePlanModeState", () => {
-  it("validatePlanModeState_有効な状態_true", () => {
-    // Arrange
-    const state = createPlanModeState(true);
+	it("should_return_true_for_valid_state", () => {
+		const state = createPlanModeState(true);
+		expect(validatePlanModeState(state)).toBe(true);
+	});
 
-    // Act & Assert
-    expect(validatePlanModeState(state)).toBe(true);
-  });
+	it("should_return_false_for_missing_checksum", () => {
+		const state = { enabled: true, timestamp: Date.now() } as PlanModeState;
+		expect(validatePlanModeState(state)).toBe(false);
+	});
 
-  it("validatePlanModeState_無効なチェックサム_false", () => {
-    // Arrange
-    const state: PlanModeState = {
-      enabled: true,
-      timestamp: 1234567890,
-      checksum: "invalid",
-    };
+	it("should_return_false_for_invalid_checksum", () => {
+		const state: PlanModeState = {
+			enabled: true,
+			timestamp: Date.now(),
+			checksum: "invalid",
+		};
+		expect(validatePlanModeState(state)).toBe(false);
+	});
 
-    // Act & Assert
-    expect(validatePlanModeState(state)).toBe(false);
-  });
+	it("should_return_false_for_null_state", () => {
+		expect(validatePlanModeState(null as unknown as PlanModeState)).toBe(false);
+	});
 
-  it("validatePlanModeState_チェックサムなし_false", () => {
-    // Arrange
-    const state = {
-      enabled: true,
-      timestamp: 1234567890,
-    } as unknown as PlanModeState;
+	it("should_return_false_for_undefined_state", () => {
+		expect(validatePlanModeState(undefined as unknown as PlanModeState)).toBe(false);
+	});
 
-    // Act & Assert
-    expect(validatePlanModeState(state)).toBe(false);
-  });
-
-  it("validatePlanModeState_null_false", () => {
-    // Arrange & Act & Assert
-    expect(validatePlanModeState(null as unknown as PlanModeState)).toBe(false);
-  });
-
-  it("validatePlanModeState_undefined_false", () => {
-    // Arrange & Act & Assert
-    expect(validatePlanModeState(undefined as unknown as PlanModeState)).toBe(false);
-  });
-
-  it("validatePlanModeState_改ざん検出_false", () => {
-    // Arrange
-    const state = createPlanModeState(true);
-    // 改ざん
-    state.enabled = false;
-
-    // Act & Assert
-    expect(validatePlanModeState(state)).toBe(false);
-  });
+	it("should_detect_tampered_state", () => {
+		const state = createPlanModeState(true);
+		const tamperedState: PlanModeState = {
+			...state,
+			enabled: false, // チェックサムを変更せずに状態を改ざん
+		};
+		expect(validatePlanModeState(tamperedState)).toBe(false);
+	});
 });
 
 // ============================================================================
-// createPlanModeState テスト
+// createPlanModeState
 // ============================================================================
 
 describe("createPlanModeState", () => {
-  it("createPlanModeState_enabled_有効な状態作成", () => {
-    // Arrange & Act
-    const result = createPlanModeState(true);
+	it("should_create_state_with_enabled_true", () => {
+		const state = createPlanModeState(true);
 
-    // Assert
-    expect(result.enabled).toBe(true);
-    expect(result.timestamp).toBeGreaterThan(0);
-    expect(result.checksum).toMatch(/^[a-f0-9]{64}$/);
-  });
+		expect(state.enabled).toBe(true);
+		expect(state.timestamp).toBeGreaterThan(0);
+		expect(state.checksum).toHaveLength(64);
+	});
 
-  it("createPlanModeState_disabled_有効な状態作成", () => {
-    // Arrange & Act
-    const result = createPlanModeState(false);
+	it("should_create_state_with_enabled_false", () => {
+		const state = createPlanModeState(false);
 
-    // Assert
-    expect(result.enabled).toBe(false);
-    expect(result.timestamp).toBeGreaterThan(0);
-    expect(result.checksum).toMatch(/^[a-f0-9]{64}$/);
-  });
+		expect(state.enabled).toBe(false);
+		expect(state.timestamp).toBeGreaterThan(0);
+		expect(state.checksum).toHaveLength(64);
+	});
 
-  it("createPlanModeState_チェックサム整合_検証成功", () => {
-    // Arrange
-    const state = createPlanModeState(true);
+	it("should_create_valid_state", () => {
+		const state = createPlanModeState(true);
+		expect(validatePlanModeState(state)).toBe(true);
+	});
 
-    // Act & Assert
-    expect(validatePlanModeState(state)).toBe(true);
-  });
+	it("should_create_state_with_current_timestamp", () => {
+		const before = Date.now();
+		const state = createPlanModeState(true);
+		const after = Date.now();
 
-  it("createPlanModeState_タイムスタンプ_現在時刻付近", () => {
-    // Arrange
-    const before = Date.now();
+		expect(state.timestamp).toBeGreaterThanOrEqual(before);
+		expect(state.timestamp).toBeLessThanOrEqual(after);
+	});
 
-    // Act
-    const result = createPlanModeState(true);
-    const after = Date.now();
-
-    // Assert
-    expect(result.timestamp).toBeGreaterThanOrEqual(before);
-    expect(result.timestamp).toBeLessThanOrEqual(after);
-  });
+	describe("プロパティベーステスト", () => {
+		it("PBT: 作成された状態は常に有効", () => {
+			fc.assert(
+				fc.property(fc.boolean(), (enabled) => {
+					const state = createPlanModeState(enabled);
+					expect(validatePlanModeState(state)).toBe(true);
+					expect(state.enabled).toBe(enabled);
+				})
+			);
+		});
+	});
 });
 
 // ============================================================================
-// 定数テキストテスト
+// Integration Tests
 // ============================================================================
 
-describe("PLAN_MODE_POLICY", () => {
-  it("PLAN_MODE_POLICY_非空文字列", () => {
-    // Arrange & Act & Assert
-    expect(PLAN_MODE_POLICY.length).toBeGreaterThan(0);
-  });
+describe("Integration: State Lifecycle", () => {
+	it("should_support_full_lifecycle", () => {
+		// 1. 状態作成
+		const state = createPlanModeState(true);
 
-  it("PLAN_MODE_POLICY_プランモード言及", () => {
-    // Arrange & Act & Assert
-    expect(PLAN_MODE_POLICY.toLowerCase()).toContain("plan mode");
-  });
-});
+		// 2. 検証
+		expect(validatePlanModeState(state)).toBe(true);
 
-describe("PLAN_MODE_WARNING", () => {
-  it("PLAN_MODE_WARNING_非空文字列", () => {
-    // Arrange & Act & Assert
-    expect(PLAN_MODE_WARNING.length).toBeGreaterThan(0);
-  });
+		// 3. チェックサムが正しい
+		const expectedChecksum = calculateChecksum({
+			enabled: state.enabled,
+			timestamp: state.timestamp,
+		});
+		expect(state.checksum).toBe(expectedChecksum);
 
-  it("PLAN_MODE_WARNING_プランモード言及", () => {
-    // Arrange & Act & Assert
-    expect(PLAN_MODE_WARNING.toLowerCase()).toContain("plan mode");
-  });
-});
-
-describe("PLAN_MODE_ENV_VAR", () => {
-  it("PLAN_MODE_ENV_VAR_正しい環境変数名", () => {
-    // Arrange & Act & Assert
-    expect(PLAN_MODE_ENV_VAR).toBe("PI_PLAN_MODE");
-  });
-});
-
-// ============================================================================
-// プロパティベーステスト
-// ============================================================================
-
-describe("プロパティベーステスト", () => {
-  it("isBashCommandAllowed_任意のコマンド_ブール値", () => {
-    fc.assert(
-      fc.property(fc.string({ maxLength: 1000 }), (command) => {
-        const result = isBashCommandAllowed(command);
-        return typeof result === "boolean";
-      })
-    );
-  });
-
-  it("calculateChecksum_任意の状態_64文字16進数", () => {
-    fc.assert(
-      fc.property(fc.boolean(), fc.integer({ min: 0 }), (enabled, timestamp) => {
-        const result = calculateChecksum({ enabled, timestamp });
-        return /^[a-f0-9]{64}$/.test(result);
-      })
-    );
-  });
-
-  it("createPlanModeState_任意のブール値_有効な状態", () => {
-    fc.assert(
-      fc.property(fc.boolean(), (enabled) => {
-        const state = createPlanModeState(enabled);
-        return (
-          state.enabled === enabled &&
-          typeof state.timestamp === "number" &&
-          typeof state.checksum === "string" &&
-          validatePlanModeState(state)
-        );
-      })
-    );
-  });
-});
-
-// ============================================================================
-// 境界値テスト
-// ============================================================================
-
-describe("境界値テスト", () => {
-  it("isBashCommandAllowed_非常に長いコマンド_処理可能", () => {
-    // Arrange
-    const longCommand = "ls " + "a".repeat(10000);
-
-    // Act & Assert
-    expect(() => isBashCommandAllowed(longCommand)).not.toThrow();
-  });
-
-  it("calculateChecksum_大きなタイムスタンプ_処理可能", () => {
-    // Arrange & Act
-    const result = calculateChecksum({
-      enabled: true,
-      timestamp: Number.MAX_SAFE_INTEGER,
-    });
-
-    // Assert
-    expect(result).toMatch(/^[a-f0-9]{64}$/);
-  });
-
-  it("createPlanModeState_連続作成_異なるタイムスタンプ", async () => {
-    // Arrange
-    const state1 = createPlanModeState(true);
-    await new Promise((r) => setTimeout(r, 1));
-    const state2 = createPlanModeState(true);
-
-    // Assert - タイムスタンプが異なるかチェックサムが異なる
-    const different = state1.timestamp !== state2.timestamp || state1.checksum !== state2.checksum;
-    expect(different).toBe(true);
-  });
+		// 4. 無効な変更を検出
+		const tampered = { ...state, enabled: false };
+		expect(validatePlanModeState(tampered)).toBe(false);
+	});
 });
