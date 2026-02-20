@@ -268,8 +268,19 @@ function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
   return `[UL_MODE] 委任優先で実行。${goalHint}\n\nタスク:\n${task}`;
 }
 
-// ポリシーキャッシュ（4通りの組み合わせのみ）
+// ポリシーキャッシュ（4通りの組み合わせのみ、防御的に上限設定）
+const MAX_UL_POLICY_CACHE_ENTRIES = 10;
 const ulPolicyCache = new Map<string, string>();
+
+function safeCacheSet(key: string, value: string): void {
+  if (ulPolicyCache.size >= MAX_UL_POLICY_CACHE_ENTRIES) {
+    const firstKey = ulPolicyCache.keys().next().value;
+    if (firstKey !== undefined) {
+      ulPolicyCache.delete(firstKey);
+    }
+  }
+  ulPolicyCache.set(key, value);
+}
 
 function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
   const key = `${sessionWide}:${goalLoopMode}`;
@@ -277,7 +288,7 @@ function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
   if (cached) return cached;
   
   const policy = buildUlPolicyString(sessionWide, goalLoopMode);
-  ulPolicyCache.set(key, policy);
+  safeCacheSet(key, policy);
   return policy;
 }
 
