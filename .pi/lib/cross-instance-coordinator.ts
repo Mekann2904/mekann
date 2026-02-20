@@ -129,7 +129,7 @@ function getDefaultConfig(): CoordinatorConfig {
  * @deprecated Use getRuntimeConfig() instead.
  */
 const DEFAULT_CONFIG: CoordinatorConfig = {
-  totalMaxLlm: 6,  // Will be overridden by runtime-config
+  totalMaxLlm: 12,  // Will be overridden by runtime-config
   heartbeatIntervalMs: 15_000,
   heartbeatTimeoutMs: 60_000,
 };

@@ -35,7 +35,7 @@ vi.mock("node:process", () => ({
 
 vi.mock("./runtime-config.js", () => ({
   getRuntimeConfig: vi.fn(() => ({
-    totalMaxLlm: 6,
+    totalMaxLlm: 12,
     heartbeatIntervalMs: 15000,
     heartbeatTimeoutMs: 60000,
   })),
@@ -367,7 +367,7 @@ describe("cross-instance-coordinator", () => {
       const result = getTotalMaxLlm();
 
       // Assert
-      expect(result).toBe(6); // runtime-configのデフォルト
+      expect(result).toBe(12); // runtime-configのデフォルト
     });
 
     it("getTotalMaxLlm_登録済み_設定値返却", () => {

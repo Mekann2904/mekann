@@ -130,7 +130,7 @@ const PROFILE_PRESETS: Record<RuntimeProfile, Omit<RuntimeConfig, "profile">> = 
     capacityPollMs: 100,
   },
   default: {
-    totalMaxLlm: 6,
+    totalMaxLlm: 12,
     totalMaxRequests: 6,
     maxParallelSubagents: 4,
     maxParallelTeams: 3,
