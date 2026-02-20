@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { visibleWidth } from "@mariozechner/pi-tui";
 
 import {
   looksLikeMarkdown,
@@ -52,5 +53,16 @@ describe("tui-utils markdown preview", () => {
     expect(out).toContain("fgh");
     expect(out.join("")).toContain("abcde");
     expect(out.join("")).toContain("fghij");
+  });
+
+  it("pushWrappedLine_OSC8混在でも幅超過しない", () => {
+    const out: string[] = [];
+    const osc8 = "\u001b]8;;\u0007";
+    const input = `${osc8}ID1308|Automation\tboolean (ind${osc8}`;
+    pushWrappedLine(out, input, 60);
+    expect(out.length).toBeGreaterThan(0);
+    for (const line of out) {
+      expect(visibleWidth(line)).toBeLessThanOrEqual(60);
+    }
   });
 });

@@ -40,6 +40,7 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { truncateToWidth } from "@mariozechner/pi-tui";
 
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
@@ -338,7 +339,8 @@ export default function (pi: ExtensionAPI) {
 				await ctx.ui.custom<void>((tui, theme, _kb, done) => ({
 						render: (w) => {
 					const lines: string[] = [];
-					const add = (s: string) => lines.push(s);
+					const safeWidth = Math.max(1, Number.isFinite(w) ? Math.trunc(w) : 1);
+					const add = (s: string) => lines.push(truncateToWidth(s, safeWidth));
 					const { byDate, byDateModel } = usage;
 					const range = summarizeRange(byDate, byDateModel, heatmapWeeks);
 					const byModel = range.byModel;
@@ -359,7 +361,7 @@ export default function (pi: ExtensionAPI) {
 						const name = model.split("/").pop()?.slice(0, 20) || model.slice(0, 20);
 						const pct = total > 0 ? cost / total : 0;
 						const share = `${(pct * 100).toFixed(1)}%`;
-						const barLen = Math.max(8, Math.min(18, w - 58));
+						const barLen = Math.max(4, Math.min(18, safeWidth - 58));
 						const filled = Math.round(pct * barLen);
 						const bar = theme.fg("accent", "#".repeat(filled)) + theme.fg("dim", "-".repeat(barLen - filled));
 						add(`${String(idx + 1).padStart(2)} ${name.padEnd(20)}  ${formatCost(cost).padStart(10)}  ${share.padStart(6)}  ${bar}`);

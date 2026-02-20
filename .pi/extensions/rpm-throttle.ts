@@ -11,12 +11,14 @@ import { detectTier, getRpmLimit } from "../lib/provider-limits.js";
 type BucketState = {
   requestStartsMs: number[];
   cooldownUntilMs: number;
+  lastAccessedMs: number;
 };
 
 const WINDOW_MS_DEFAULT = 60_000;
 const HEADROOM_FACTOR_DEFAULT = 0.7;
 const FALLBACK_429_COOLDOWN_MS = 15_000;
 const MAX_COOLDOWN_MS = 5 * 60_000;
+const MAX_STATE_AGE_MS = 15 * 60_1000; // 15 minutes
 
 const states = new Map<string, BucketState>();
 
@@ -42,12 +44,23 @@ function keyFor(provider: string, model: string): string {
   return `${provider.toLowerCase()}:${model.toLowerCase()}`;
 }
 
-function getOrCreateState(key: string): BucketState {
+function getOrCreateState(key: string, nowMs: number): BucketState {
   const current = states.get(key);
-  if (current) return current;
-  const created: BucketState = { requestStartsMs: [], cooldownUntilMs: 0 };
+  if (current) {
+    current.lastAccessedMs = nowMs;
+    return current;
+  }
+  const created: BucketState = { requestStartsMs: [], cooldownUntilMs: 0, lastAccessedMs: nowMs };
   states.set(key, created);
   return created;
+}
+
+function pruneStates(nowMs: number): void {
+  states.forEach((state, key) => {
+    if (nowMs - state.lastAccessedMs > MAX_STATE_AGE_MS) {
+      states.delete(key);
+    }
+  });
 }
 
 function pruneWindow(state: BucketState, nowMs: number, windowMs: number): void {
@@ -110,8 +123,9 @@ export default function registerRpmThrottleExtension(pi: ExtensionAPI): void {
     if (!provider || !model) return;
 
     const key = keyFor(provider, model);
-    const state = getOrCreateState(key);
     const now = Date.now();
+    pruneStates(now);
+    const state = getOrCreateState(key, now);
     const effectiveRpm = resolveEffectiveRpm(provider, model);
     const maxRequestsInWindow = Math.max(1, Math.floor((effectiveRpm * windowMs) / 60_000));
 
@@ -148,10 +162,12 @@ export default function registerRpmThrottleExtension(pi: ExtensionAPI): void {
     if (!errorMessage || !isRateLimitMessage(errorMessage)) return;
 
     const key = keyFor(provider, model);
-    const state = getOrCreateState(key);
+    const now = Date.now();
+    pruneStates(now);
+    const state = getOrCreateState(key, now);
     const retryAfterMs = extractRetryAfterMs(errorMessage) ?? FALLBACK_429_COOLDOWN_MS;
     const cooldownMs = Math.min(Math.max(retryAfterMs, FALLBACK_429_COOLDOWN_MS), MAX_COOLDOWN_MS);
-    state.cooldownUntilMs = Math.max(state.cooldownUntilMs, Date.now() + cooldownMs);
+    state.cooldownUntilMs = Math.max(state.cooldownUntilMs, now + cooldownMs);
 
     console.error(`[rpm-throttle] 429 cooldown=${cooldownMs}ms model=${provider}/${model}`);
   });

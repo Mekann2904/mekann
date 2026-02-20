@@ -33,7 +33,7 @@
  * Layer 0: No dependencies on other lib modules.
  */
 
-import { Markdown, type MarkdownTheme, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { Markdown, truncateToWidth, type MarkdownTheme, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 
 /** Default maximum length for tail content */
 export const LIVE_TAIL_LIMIT = 40_000;
@@ -199,7 +199,9 @@ export function pushWrappedLine(output: string[], line: string, width: number): 
       continue;
     }
     for (const wrappedLine of wrapped) {
-      output.push(wrappedLine);
+      // wrapTextWithAnsi だけでは OSC8 等を含む行で幅超過が残る場合がある。
+      // 最終段で必ず幅内に収めることで TUI クラッシュを防ぐ。
+      output.push(truncateToWidth(wrappedLine, safeWidth));
     }
   }
 }

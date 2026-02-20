@@ -31,7 +31,7 @@
  * to eliminate DRY violations with subagents/storage.ts.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, copyFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   createPathsFactory,
@@ -340,6 +340,40 @@ function mergeTeamStorageWithDisk(
 }
 
 /**
+ * 破損したストレージファイルのバックアップを作成
+ * @summary 破損バックアップ作成
+ * @param storageFile - 元のストレージファイルパス
+ * @param prefix - バックアップファイル名のプレフィックス
+ * @returns {string | null} バックアップファイルのパス、失敗時はnull
+ */
+function createCorruptedBackup(storageFile: string, prefix: string): string | null {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupFile = `${storageFile}.corrupted.${prefix}.${timestamp}.bak`;
+
+    // Get original file stats for logging
+    const stats = statSync(storageFile);
+    const sizeBytes = stats.size;
+
+    // Create backup copy
+    copyFileSync(storageFile, backupFile);
+
+    console.warn(
+      `[${prefix}] Created backup of corrupted storage: ${backupFile} (${sizeBytes} bytes)`,
+    );
+
+    return backupFile;
+  } catch (backupError) {
+    console.error(
+      `[${prefix}] Failed to create backup of corrupted storage: ${
+        backupError instanceof Error ? backupError.message : String(backupError)
+      }`,
+    );
+    return null;
+  }
+}
+
+/**
  * ストレージを読込
  * @summary ストレージ読込
  * @param cwd カレントワーキングディレクトリ
@@ -360,7 +394,8 @@ export function loadStorage(cwd: string): TeamStorage {
   }
 
   try {
-    const parsed = JSON.parse(readFileSync(paths.storageFile, "utf-8")) as Partial<TeamStorage>;
+    const rawContent = readFileSync(paths.storageFile, "utf-8");
+    const parsed = JSON.parse(rawContent) as Partial<TeamStorage>;
     const storage: TeamStorage = {
       teams: Array.isArray(parsed.teams) ? parsed.teams : [],
       runs: Array.isArray(parsed.runs) ? parsed.runs : [],
@@ -372,8 +407,16 @@ export function loadStorage(cwd: string): TeamStorage {
     };
     return storage;
   } catch (error) {
-    // Log the error for diagnostics instead of silently swallowing
-    console.warn("[agent-teams] loadStorage failed:", error);
+    // Create backup of corrupted file before overwriting
+    createCorruptedBackup(paths.storageFile, "agent-teams");
+
+    // Log warning about data loss with detailed error info
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[agent-teams] loadStorage: JSON parse failed, falling back to empty storage. ` +
+        `Backup saved. Error: ${errorMsg}`,
+    );
+
     const fallback: TeamStorage = {
       teams: [],
       runs: [],

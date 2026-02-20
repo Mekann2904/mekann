@@ -7,7 +7,7 @@
  * public_api: ActiveModelInfo, InstanceInfo, CoordinatorConfig, CoordinatorInternalState, getDefaultConfig
  * invariants: coordinator.jsonおよびインスタンスロックファイルは~/.pi/runtime/配下に存在する、設定値はgetRuntimeConfig()の値に依存する
  * side_effects: ~/.pi/runtime/配下のファイルシステム（ロックファイル、coordinator.json）の読み書き・削除を行う
- * failure_modes: ディレクトリアクセス権限不足によるロック取得失敗、プロセス強制終了時のロックファイル残存（ゾンビプロセス）、ファイルシステムI/Oエラー
+ * failure_modes: ディレクトリアクセス権限不足によるロック取得失敗、プロセス強制終了時のロックファイル残存（ゾンビプロセス）、ファイルシステムI/Oエラー、分散ロック競合時のリトライ上限超過
  * @abdd.explain
  * overview: ファイルベースのロック機構とハートビート監視を用いて、複数プロセス間でLLM使用状況を共有・制限するモジュール
  * what_it_does:
@@ -1265,80 +1265,121 @@ function ensureLockDir(): void {
 }
 
 /**
- * Try to acquire a distributed lock.
+ * Try to acquire a distributed lock with retry logic.
+ * Uses atomic O_EXCL (wx flag) to prevent TOCTOU race conditions.
  *
  * @param resource - Resource to lock (e.g., "steal:instance-id")
  * @param ttlMs - Lock TTL in milliseconds
+ * @param maxRetries - Maximum retry attempts on collision (default: 3)
  * @returns Lock object if acquired, null otherwise
  */
-function tryAcquireLock(resource: string, ttlMs: number = LOCK_TIMEOUT_MS): DistributedLock | null {
+function tryAcquireLock(
+  resource: string,
+  ttlMs: number = LOCK_TIMEOUT_MS,
+  maxRetries: number = 3,
+): DistributedLock | null {
   if (!state) return null;
 
   ensureLockDir();
 
   const lockId = `${state.myInstanceId}-${currentTimeMs().toString(36)}`;
   const lockFile = join(LOCK_DIR, `${resource.replace(/[:/]/g, "_")}.lock`);
-  const nowMs = currentTimeMs();
 
-  // Check existing lock
-  if (existsSync(lockFile)) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const nowMs = currentTimeMs();
+    const lock: DistributedLock = {
+      lockId,
+      acquiredAt: nowMs,
+      expiresAt: nowMs + ttlMs,
+      resource,
+    };
+
+    // ATOMIC ACQUISITION: Try to create lock file with wx flag (O_EXCL)
+    // This is the primary path - if file doesn't exist, we acquire atomically
     try {
-      const content = readFileSync(lockFile, "utf-8");
-      const existing = JSON.parse(content) as DistributedLock;
+      const fd = openSync(lockFile, "wx");
+      const lockContent = JSON.stringify(lock, null, 2);
+      writeSync(fd, lockContent);
+      closeSync(fd);
+      return lock;
+    } catch (error: unknown) {
+      const errorCode = (error as NodeJS.ErrnoException)?.code;
 
-      // Check if lock is expired
-      if (nowMs < existing.expiresAt) {
-        return null; // Lock is still valid
+      if (errorCode === "EEXIST") {
+        // File exists - check if we can clean up expired lock and retry
+        const cleaned = tryCleanupExpiredLock(lockFile, nowMs);
+        if (!cleaned) {
+          // Lock is still valid or cleanup failed, another instance holds it
+          return null;
+        }
+        // Lock was expired and cleaned up, retry acquisition
+        continue;
       }
-      // Lock is expired - try to clean it up atomically
-      // Use renameSync to atomically move expired lock to temp file
-      const tempFile = `${lockFile}.cleanup.${nowMs}`;
-      try {
-        renameSync(lockFile, tempFile);
-        // Successfully moved, now delete the temp file
-        unlinkSync(tempFile);
-      } catch {
-        // Another process may have already cleaned it up or acquired it
-        // Fall through to atomic creation attempt
-      }
-    } catch {
-      // Corrupted lock, try to remove it atomically
-      const tempFile = `${lockFile}.cleanup.${nowMs}`;
-      try {
-        renameSync(lockFile, tempFile);
-        unlinkSync(tempFile);
-      } catch {
-        // Another process may have handled it
-      }
+
+      // Other errors (permissions, disk full, etc.) - don't retry
+      return null;
     }
   }
 
-  // Acquire lock atomically using O_EXCL (wx flag)
-  // This prevents TOCTOU race condition between check and acquire
-  const lock: DistributedLock = {
-    lockId,
-    acquiredAt: nowMs,
-    expiresAt: nowMs + ttlMs,
-    resource,
-  };
+  // Exhausted retries
+  return null;
+}
 
+/**
+ * Attempt to clean up an expired lock file atomically.
+ * Returns true if lock was expired and cleaned up, false otherwise.
+ *
+ * @param lockFile - Path to lock file
+ * @param nowMs - Current timestamp in milliseconds
+ * @returns {boolean} true if lock was cleaned up, false if still valid or error
+ */
+function tryCleanupExpiredLock(lockFile: string, nowMs: number): boolean {
   try {
-    // Use 'wx' flag for atomic exclusive creation (fails if file exists)
-    const fd = openSync(lockFile, "wx");
-    const lockContent = JSON.stringify(lock, null, 2);
-    writeSync(fd, lockContent);
-    closeSync(fd);
-    return lock;
-  } catch (error: unknown) {
-    // File already exists - another instance acquired it first
-    // This is expected behavior, not an error
-    const errorCode = (error as NodeJS.ErrnoException)?.code;
-    if (errorCode === "EEXIST") {
-      return null; // Another instance won the race
+    const content = readFileSync(lockFile, "utf-8");
+    const existing = JSON.parse(content) as DistributedLock;
+
+    // Check if lock is still valid
+    if (nowMs < existing.expiresAt) {
+      return false; // Lock is still valid
     }
-    // Other errors (permissions, etc.)
-    return null;
+
+    // Lock is expired - try to clean it up atomically using rename
+    const tempFile = `${lockFile}.cleanup.${nowMs}`;
+    try {
+      renameSync(lockFile, tempFile);
+      unlinkSync(tempFile);
+      return true; // Successfully cleaned up
+    } catch {
+      // Another process may have already cleaned it up or acquired it
+      return false;
+    }
+  } catch {
+    // Corrupted lock file - try to clean up atomically
+    const tempFile = `${lockFile}.cleanup.${nowMs}`;
+    try {
+      renameSync(lockFile, tempFile);
+      unlinkSync(tempFile);
+      return true;
+    } catch {
+      // Another process may have handled it
+      return false;
+    }
   }
+}
+
+/**
+ * Acquire a distributed lock with automatic retry on collision.
+ * This is the recommended API for acquiring locks as it handles TOCTOU races.
+ *
+ * @param resource - Resource to lock (e.g., "steal:instance-id")
+ * @param ttlMs - Lock TTL in milliseconds
+ * @returns Lock object if acquired, null otherwise
+ */
+function acquireDistributedLock(
+  resource: string,
+  ttlMs: number = LOCK_TIMEOUT_MS,
+): DistributedLock | null {
+  return tryAcquireLock(resource, ttlMs, 3);
 }
 
 /**

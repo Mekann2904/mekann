@@ -7,7 +7,7 @@
  * public_api: RuntimeLimitErrorOptions, RuntimeQueueWaitInfo, buildRuntimeLimitError, buildRuntimeQueueWaitError, startReservationHeartbeat
  * invariants: buildRuntimeLimitErrorはgetRuntimeSnapshotから最新情報を取得する、startReservationHeartbeatは5秒間隔でheartbeatを実行する
  * side_effects: startReservationHeartbeatはタイマーを起動し、reservation.heartbeatを呼び出す
- * failure_modes: リソース取得失敗時、heartbeat呼び出し時の例外は握りつぶされる
+ * failure_modes: リソース取得失敗時、heartbeat呼び出し時の例外は連続3回で自動停止、FinalizationRegistryによるクリーンアップ保証
  * @abdd.explain
  * overview: エージェント実行時のリソース制限やオーケストレーションキューエラーを通知するためのユーティリティ。
  * what_it_does:
@@ -123,17 +123,67 @@ export function startReservationHeartbeat(
 ): () => void {
   // 期限切れによるゾンビ予約を防ぐため、実行中は定期的にTTLを延長する。
   const intervalMs = 5_000;
+  const maxConsecutiveErrors = 3;
+  let consecutiveErrors = 0;
+  let isStopped = false;
+  let registry: FinalizationRegistry<string> | null = null;
+
   const timer = setInterval(() => {
+    if (isStopped) return;
+
     try {
       reservation.heartbeat();
-    } catch {
-      // noop
+      consecutiveErrors = 0; // Reset on success
+    } catch (error) {
+      consecutiveErrors++;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+
+      console.warn(
+        `[runtime-helpers] heartbeat() failed (attempt ${consecutiveErrors}/${maxConsecutiveErrors}): ${errorMsg}`,
+      );
+
+      // Auto-stop on consecutive failures to prevent resource leak
+      if (consecutiveErrors >= maxConsecutiveErrors) {
+        console.error(
+          `[runtime-helpers] heartbeat() failed ${maxConsecutiveErrors} times consecutively. ` +
+            `Stopping heartbeat timer to prevent resource leak.`,
+        );
+        isStopped = true;
+        clearInterval(timer);
+      }
     }
   }, intervalMs);
+
   timer.unref?.();
-  return () => {
+
+  // Core cleanup function
+  const doCleanup = () => {
+    if (isStopped) return;
+    isStopped = true;
+    if (registry) {
+      registry.unregister(reservation);
+    }
     clearInterval(timer);
   };
+
+  // Use FinalizationRegistry to ensure cleanup if caller forgets to call stop function
+  // This is a safety net, not a replacement for explicit cleanup
+  if (typeof FinalizationRegistry !== "undefined") {
+    registry = new FinalizationRegistry((heldValue: string) => {
+      if (!isStopped) {
+        console.warn(
+          `[runtime-helpers] Reservation garbage collected without explicit cleanup. ` +
+            `Auto-stopping heartbeat timer (id: ${heldValue}).`,
+        );
+        doCleanup();
+      }
+    });
+
+    // Register the reservation for cleanup
+    registry.register(reservation, `heartbeat-${Date.now()}`, reservation);
+  }
+
+  return doCleanup;
 }
 
 /**
