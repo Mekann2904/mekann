@@ -205,6 +205,8 @@ const DEFAULT_STATE: AdaptiveControllerState = {
 
 const MIN_CONCURRENCY = 1;
 const MAX_CONCURRENCY = 16;
+const MAX_LEARNED_LIMITS = 512;
+const LEARNED_LIMIT_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const RECOVERY_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
 const STATE_LOCK_OPTIONS = {
@@ -278,6 +280,7 @@ function saveState(): void {
 function ensureState(): AdaptiveControllerState {
   if (!state) {
     state = loadState();
+    pruneLearnedLimits(state);
   }
   return state;
 }
@@ -286,8 +289,10 @@ function withStateWriteLock<T>(mutator: (draft: AdaptiveControllerState) => T): 
   try {
     return withFileLock(STATE_FILE, () => {
       const draft = loadState();
+      pruneLearnedLimits(draft);
       state = draft;
       const result = mutator(draft);
+      pruneLearnedLimits(draft);
       saveState();
       return result;
     }, STATE_LOCK_OPTIONS);
@@ -295,8 +300,10 @@ function withStateWriteLock<T>(mutator: (draft: AdaptiveControllerState) => T): 
     // Locking is best-effort. Fall back to local mutation so restricted
     // environments (tests/sandbox) keep working.
     const draft = loadState();
+    pruneLearnedLimits(draft);
     state = draft;
     const result = mutator(draft);
+    pruneLearnedLimits(draft);
     saveState();
     return result;
   }
@@ -304,6 +311,57 @@ function withStateWriteLock<T>(mutator: (draft: AdaptiveControllerState) => T): 
 
 function clampConcurrency(value: number): number {
   return Math.max(MIN_CONCURRENCY, Math.min(MAX_CONCURRENCY, Math.floor(value)));
+}
+
+function toTimestampMs(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value).getTime();
+  if (!Number.isFinite(parsed)) return undefined;
+  return parsed;
+}
+
+function getLimitActivityMs(limit: LearnedLimit): number {
+  const last429Ms = toTimestampMs(limit.last429At) ?? 0;
+  const lastSuccessMs = toTimestampMs(limit.lastSuccessAt) ?? 0;
+  return Math.max(last429Ms, lastSuccessMs);
+}
+
+function pruneLearnedLimits(currentState: AdaptiveControllerState, nowMs = Date.now()): void {
+  const entries = Object.entries(currentState.limits);
+  if (entries.length === 0) {
+    return;
+  }
+
+  for (const [key, limit] of entries) {
+    const isRecovering = limit.recoveryScheduled || limit.concurrency < limit.originalConcurrency;
+    if (isRecovering) continue;
+    const lastActivityMs = getLimitActivityMs(limit);
+    if (lastActivityMs > 0 && nowMs - lastActivityMs > LEARNED_LIMIT_STALE_MS) {
+      delete currentState.limits[key];
+    }
+  }
+
+  const afterTtlEntries = Object.entries(currentState.limits);
+  if (afterTtlEntries.length <= MAX_LEARNED_LIMITS) {
+    return;
+  }
+
+  const overflow = afterTtlEntries.length - MAX_LEARNED_LIMITS;
+  const byOldestActivity = afterTtlEntries
+    .map(([key, limit]) => {
+      const activityMs = getLimitActivityMs(limit);
+      return {
+        key,
+        // activity=0 (no history yet) should be treated as recent and pruned last.
+        activityMs: activityMs > 0 ? activityMs : Number.MAX_SAFE_INTEGER,
+      };
+    })
+    .sort((a, b) => a.activityMs - b.activityMs)
+    .slice(0, overflow);
+
+  for (const candidate of byOldestActivity) {
+    delete currentState.limits[candidate.key];
+  }
 }
 
 function scheduleRecovery(provider: string, model: string): void {

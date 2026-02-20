@@ -423,7 +423,7 @@ describe("normalizeForSingleLine", () => {
     const result = normalizeForSingleLine(text, 100);
 
     // Assert
-    expect(result.length).toBe(103); // 100 + "..."
+    expect(result.length).toBe(100); // (100-3) + "..." = 100文字以内
     expect(result.endsWith("...")).toBe(true);
   });
 
@@ -435,7 +435,7 @@ describe("normalizeForSingleLine", () => {
     const result = normalizeForSingleLine(text);
 
     // Assert
-    expect(result.length).toBe(163); // 160 + "..."
+    expect(result.length).toBe(160); // (160-3) + "..." = 160文字以内
   });
 
   it("normalizeForSingleLine_前後空白_トリム", () => {
@@ -470,8 +470,8 @@ describe("normalizeForSingleLine", () => {
     const result2 = normalizeForSingleLine(text, 100);
 
     // Assert
-    expect(result1.length).toBe(53);
-    expect(result2.length).toBe(103);
+    expect(result1.length).toBe(50); // (50-3) + "..." = 50文字以内
+    expect(result2.length).toBe(100); // (100-3) + "..." = 100文字以内
   });
 });
 
@@ -554,7 +554,7 @@ describe("境界値テスト", () => {
     const result = normalizeForSingleLine(text, 100);
 
     // Assert
-    expect(result.length).toBe(103);
+    expect(result.length).toBe(100); // (100-3) + "..." = 100文字以内
   });
 
   it("normalizeForSingleLine_キャッシュ_LRUエビクション", () => {

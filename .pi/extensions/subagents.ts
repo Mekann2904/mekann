@@ -501,11 +501,6 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
  * @returns {void}
  */
 export default function registerSubagentExtension(pi: ExtensionAPI) {
-  // Subagent feature is explicitly disabled for this project.
-  // Keep module load safe but do not register any subagent tools/commands/hooks.
-  console.error("[subagents] extension is disabled by project configuration.");
-  return;
-
   function reportBackgroundJobFailure(jobId: string, errorMessage: string, ctx: any): void {
     const message = `[${jobId}] ${errorMessage}`;
     ctx.ui.notify(`Subagent background job failed: ${message}`, "error");

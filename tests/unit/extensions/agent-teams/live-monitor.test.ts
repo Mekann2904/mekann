@@ -11,13 +11,13 @@ import {
   toTeamLiveItemKey,
   renderAgentTeamLiveView,
   createAgentTeamLiveMonitor,
-} from "../../../.pi/extensions/agent-teams/live-monitor";
+} from "../../../../.pi/extensions/agent-teams/live-monitor";
 import type {
   TeamLiveItem,
   TeamLiveViewMode,
   LiveStreamView,
   TeamQueueStatus,
-} from "../../../.pi/lib/team-types";
+} from "../../../../.pi/lib/team-types";
 
 // ============================================================================
 // テスト用ユーティリティ

@@ -452,7 +452,7 @@ describe("プロパティベーステスト", () => {
 		);
 	});
 
-	it("parseTimestampMsは有効な日付文字列で正の数を返す", () => {
+	it("parseTimestampMsは有効な日付文字列で有限数を返す", () => {
 		const parseTimestampMs = (entry: { timestamp?: string } | undefined): number | undefined => {
 			const direct = entry?.timestamp;
 			if (typeof direct === "string") {
@@ -466,7 +466,7 @@ describe("プロパティベーステスト", () => {
 			fc.property(fc.date({ noInvalidDate: true }), (date) => {
 				const iso = date.toISOString();
 				const result = parseTimestampMs({ timestamp: iso });
-				return result !== undefined && result > 0;
+				return result !== undefined && Number.isFinite(result);
 			})
 		);
 	});

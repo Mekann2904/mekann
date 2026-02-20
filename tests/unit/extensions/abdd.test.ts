@@ -111,7 +111,9 @@ describe("ABDDヘッダーパース", () => {
 
 			const meta: Record<string, string> = {};
 			metaMatch[1].split("\n").forEach((line) => {
-				const [key, ...values] = line.trim().split(":");
+				// 行頭の ` * ` を取り除く
+				const cleanLine = line.replace(/^\s*\*\s*/, "").trim();
+				const [key, ...values] = cleanLine.split(":");
 				if (key && values.length > 0) {
 					meta[key.trim()] = values.join(":").trim();
 				}
@@ -120,7 +122,9 @@ describe("ABDDヘッダーパース", () => {
 			const explain: Record<string, string> = {};
 			if (explainMatch) {
 				explainMatch[1].split("\n").forEach((line) => {
-					const [key, ...values] = line.trim().split(":");
+					// 行頭の ` * ` を取り除く
+					const cleanLine = line.replace(/^\s*\*\s*/, "").trim();
+					const [key, ...values] = cleanLine.split(":");
 					if (key && values.length > 0) {
 						explain[key.trim()] = values.join(":").trim();
 					}

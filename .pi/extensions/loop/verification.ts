@@ -40,6 +40,7 @@ import { toErrorMessage } from "../../lib/error-utils.js";
 // ============================================================================
 
 const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
+const MAX_CAPTURED_OUTPUT_BYTES = 64 * 1024;
 
 export const VERIFICATION_ALLOWLIST_ENV = "PI_LOOP_VERIFY_ALLOWLIST";
 export const VERIFICATION_ALLOWLIST_ADDITIONAL_ENV = "PI_LOOP_VERIFY_ALLOWLIST_ADDITIONAL";
@@ -62,6 +63,25 @@ export const DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES: string[][] = [
   ["go", "test"],
   ["cargo", "test"],
 ];
+
+function appendBoundedText(current: string, incoming: string, maxBytes: number): string {
+  const next = current + incoming;
+  if (Buffer.byteLength(next, "utf-8") <= maxBytes) {
+    return next;
+  }
+
+  // Keep only tail to cap memory footprint on verbose commands.
+  const target = maxBytes - 128;
+  if (target <= 0) {
+    return next.slice(-maxBytes);
+  }
+
+  let tail = next.slice(-Math.max(target, 1));
+  while (Buffer.byteLength(tail, "utf-8") > target && tail.length > 1) {
+    tail = tail.slice(1);
+  }
+  return `...[truncated]\n${tail}`;
+}
 
 // ============================================================================
 // Types
@@ -220,6 +240,7 @@ export async function runVerificationCommand(input: {
     let stderr = "";
     let timedOut = false;
     let settled = false;
+    let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 
     const child = spawn(parsedCommand.executable, parsedCommand.args, {
       cwd: input.cwd,
@@ -259,7 +280,7 @@ export async function runVerificationCommand(input: {
 
     const onAbort = () => {
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
       finish({
         passed: false,
         timedOut: false,
@@ -271,11 +292,15 @@ export async function runVerificationCommand(input: {
     const timeout = setTimeout(() => {
       timedOut = true;
       killSafely("SIGTERM");
-      setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
+      forceKillTimer = setTimeout(() => killSafely("SIGKILL"), GRACEFUL_SHUTDOWN_DELAY_MS);
     }, input.timeoutMs);
 
     const cleanup = () => {
       clearTimeout(timeout);
+      if (forceKillTimer) {
+        clearTimeout(forceKillTimer);
+        forceKillTimer = undefined;
+      }
       input.signal?.removeEventListener("abort", onAbort);
     };
 
@@ -283,12 +308,12 @@ export async function runVerificationCommand(input: {
 
     child.stdout.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
+      stdout = appendBoundedText(stdout, text, MAX_CAPTURED_OUTPUT_BYTES);
     });
 
     child.stderr.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
+      stderr = appendBoundedText(stderr, text, MAX_CAPTURED_OUTPUT_BYTES);
     });
 
     child.on("error", (error) => {

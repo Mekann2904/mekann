@@ -580,7 +580,12 @@ function getDefaultReservationTtlMs(): number {
 }
 
 function normalizePositiveInt(value: unknown, fallback: number, max = 64): number {
-  const parsed = Number(value);
+  let parsed: number;
+  try {
+    parsed = Number(value);
+  } catch {
+    return fallback;
+  }
   if (!Number.isFinite(parsed)) return fallback;
   if (parsed <= 0) return fallback;
   return Math.max(1, Math.min(max, Math.trunc(parsed)));
