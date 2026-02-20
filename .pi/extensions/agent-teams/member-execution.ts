@@ -282,8 +282,11 @@ export function loadSkillContent(skillName: string): string | null {
         // Extract content after frontmatter
         const frontmatterMatch = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
         return frontmatterMatch ? frontmatterMatch[1].trim() : content.trim();
-      } catch {
-        // Continue to next path on error
+      } catch (error) {
+        // エラーをログ記録して次のパスを試行
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[member-execution] スキル読み込みエラー: ${skillPath} - ${errorMessage}`);
+        continue;
       }
     }
   }
@@ -536,8 +539,9 @@ export async function runMember(input: {
             }
           }
 
+          // ループ完了後にcommandResultが未定義の場合は明示的にエラーをスロー
           if (!commandResult) {
-            throw new Error(lastErrorMessage || "agent team member execution failed");
+            throw new Error(lastErrorMessage || "agent team member execution failed after retries");
           }
           return commandResult;
         },

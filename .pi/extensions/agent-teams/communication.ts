@@ -638,22 +638,40 @@ export interface BeliefContradiction {
   description: string;
 }
 
-// Belief state cache for tracking across rounds
-const beliefStateCache = new Map<string, AgentBelief[]>();
+// Belief state cache for tracking across rounds (team-scoped to avoid race conditions)
+const beliefStateCacheByTeam = new Map<string, Map<string, AgentBelief[]>>();
+
+/**
+ * チームIDに対応する信念状態キャッシュを取得する
+ * @summary チーム別キャッシュ取得
+ * @param teamId チームID
+ * @returns チーム固有のキャッシュマップ
+ */
+function getTeamBeliefCache(teamId: string): Map<string, AgentBelief[]> {
+  let teamCache = beliefStateCacheByTeam.get(teamId);
+  if (!teamCache) {
+    teamCache = new Map<string, AgentBelief[]>();
+    beliefStateCacheByTeam.set(teamId, teamCache);
+  }
+  return teamCache;
+}
 
 /**
  * 信念状態を更新する
  * @summary 信念状態を更新
+ * @param teamId チームID（キャッシュ分離用）
  * @param memberId エージェントのメンバーID
  * @param output 生成された出力内容
  * @param round 現在のラウンド数
  * @returns 更新された信念状態の配列
  */
 export function updateBeliefState(
+  teamId: string,
   memberId: string,
   output: string,
   round: number,
 ): AgentBelief[] {
+  const teamCache = getTeamBeliefCache(teamId);
   const claim = extractField(output, "CLAIM") || "";
   const evidence = extractField(output, "EVIDENCE") || "";
   const confidenceStr = extractField(output, "CONFIDENCE") || "0.5";
@@ -669,23 +687,25 @@ export function updateBeliefState(
     timestamp: new Date().toISOString(),
   };
 
-  const existing = beliefStateCache.get(memberId) || [];
-  beliefStateCache.set(memberId, [...existing, state]);
+  const existing = teamCache.get(memberId) || [];
+  teamCache.set(memberId, [...existing, state]);
 
-  return beliefStateCache.get(memberId) || [];
+  return teamCache.get(memberId) || [];
 }
 
 /**
  * 信念サマリーを取得
  * @summary サマリー取得
+ * @param teamId チームID（キャッシュ分離用）
  * @param memberIds メンバーID配列
  * @returns サマリー文字列
  */
-export function getBeliefSummary(memberIds: string[]): string {
+export function getBeliefSummary(teamId: string, memberIds: string[]): string {
+  const teamCache = getTeamBeliefCache(teamId);
   const lines: string[] = ["【信念追跡 - 他エージェントの立場】"];
 
   for (const id of memberIds) {
-    const states = beliefStateCache.get(id) || [];
+    const states = teamCache.get(id) || [];
     const latest = states[states.length - 1];
     if (latest) {
       lines.push(
@@ -698,10 +718,15 @@ export function getBeliefSummary(memberIds: string[]): string {
 }
 
 /**
- * 信念状態キャッシュをクリア
+ * 信念状態キャッシュをクリア（チームID指定、または全クリア）
  * @summary キャッシュクリア
+ * @param teamId 省略時は全チームのキャッシュをクリア
  * @returns void
  */
-export function clearBeliefStateCache(): void {
-  beliefStateCache.clear();
+export function clearBeliefStateCache(teamId?: string): void {
+  if (teamId) {
+    beliefStateCacheByTeam.delete(teamId);
+  } else {
+    beliefStateCacheByTeam.clear();
+  }
 }

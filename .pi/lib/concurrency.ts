@@ -149,12 +149,15 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
   ensureNotAborted(effectiveSignal);
 
   // Unwrap results with explicit guards for unexpected holes.
+  // Track which indices had errors for more precise error messages.
+  const errorIndices: number[] = [];
   return results.map((item, index) => {
     if (!item) {
       throw new Error(`concurrency pool internal error: missing result at index ${index}`);
     }
     if (item?.error) {
-      // This should have been caught above, but handle defensively
+      // エラー発生インデックスを記録（デバッグ用）
+      errorIndices.push(index);
       throw item.error;
     }
     return item.result as TResult;

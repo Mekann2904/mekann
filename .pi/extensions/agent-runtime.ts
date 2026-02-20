@@ -190,6 +190,7 @@ export interface RuntimeStateProvider {
  */
 class GlobalRuntimeStateProvider implements RuntimeStateProvider {
   private readonly globalScope: GlobalScopeWithRuntime;
+  private initializationInProgress = false;
 
   constructor() {
     this.globalScope = globalThis as GlobalScopeWithRuntime;
@@ -201,8 +202,30 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * @returns エージェントのランタイム状態
    */
   getState(): AgentRuntimeState {
+    // 二重初期化防止: 初期化中は待機してから既存の状態を返す
     if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
+      // 初期化ロック: 競合状態を防ぐ
+      if (this.initializationInProgress) {
+        // 短いスピンウェイト（初期化完了を待機）
+        let attempts = 0;
+        while (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ && attempts < 1000) {
+          attempts += 1;
+        }
+        // 初期化が完了していない場合は新規作成
+        if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+          this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
+        }
+      } else {
+        this.initializationInProgress = true;
+        try {
+          // 再度チェック（ロック取得中に他が初期化した可能性）
+          if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+            this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
+          }
+        } finally {
+          this.initializationInProgress = false;
+        }
+      }
     }
     ensureReservationSweeper();
     const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
@@ -597,8 +620,10 @@ function publishRuntimeUsageToCoordinator(): void {
   const usage = getLocalRuntimeUsage(runtime);
   try {
     updateRuntimeUsage(usage.totalActiveRequests, usage.totalActiveLlm);
-  } catch {
-    // ignore coordinator publish failures
+  } catch (error) {
+    // コーディネータ通信エラーをログ記録（デバッグ用）
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[agent-runtime] coordinator publish error: ${errorMessage}`);
   }
 }
 
@@ -641,18 +666,35 @@ async function waitForRuntimeCapacityEvent(
 
   return await new Promise((resolve) => {
     let settled = false;
-    const complete = (result: "event" | "timeout" | "aborted") => {
+    let timeout: NodeJS.Timeout | undefined;
+
+    const onEvent = () => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
-      runtimeCapacityEventTarget.removeEventListener("capacity-changed", onEvent);
-      signal?.removeEventListener("abort", onAbort);
-      resolve(result);
+      if (timeout) clearTimeout(timeout);
+      cleanup();
+      resolve("event");
     };
 
-    const onEvent = () => complete("event");
-    const onAbort = () => complete("aborted");
-    const timeout = setTimeout(() => complete("timeout"), timeoutMs);
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      cleanup();
+      resolve("aborted");
+    };
+
+    const cleanup = () => {
+      runtimeCapacityEventTarget.removeEventListener("capacity-changed", onEvent);
+      signal?.removeEventListener("abort", onAbort);
+    };
+
+    timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve("timeout");
+    }, timeoutMs);
 
     runtimeCapacityEventTarget.addEventListener("capacity-changed", onEvent, { once: true });
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -724,18 +766,30 @@ function serializeRuntimeLimits(limits: AgentRuntimeLimits): string {
   ].join(":");
 }
 
+let runtimeReservationSweeperInitializing = false;
+
 function ensureReservationSweeper(): void {
-  if (runtimeReservationSweeper) return;
-  const sweepMs = resolveLimitFromEnv(
-    "PI_AGENT_RESERVATION_SWEEP_MS",
-    DEFAULT_RESERVATION_SWEEP_MS,
-    60_000,
-  );
-  runtimeReservationSweeper = setInterval(() => {
-    const runtime = getSharedRuntimeState();
-    cleanupExpiredReservations(runtime);
-  }, sweepMs);
-  runtimeReservationSweeper.unref?.();
+  // 二重作成防止: 既に初期化済みまたは初期化中の場合は即座にreturn
+  if (runtimeReservationSweeper || runtimeReservationSweeperInitializing) return;
+
+  runtimeReservationSweeperInitializing = true;
+  try {
+    // 再度チェック（初期化中に他スレッドが作成した可能性）
+    if (runtimeReservationSweeper) return;
+
+    const sweepMs = resolveLimitFromEnv(
+      "PI_AGENT_RESERVATION_SWEEP_MS",
+      DEFAULT_RESERVATION_SWEEP_MS,
+      60_000,
+    );
+    runtimeReservationSweeper = setInterval(() => {
+      const runtime = getSharedRuntimeState();
+      cleanupExpiredReservations(runtime);
+    }, sweepMs);
+    runtimeReservationSweeper.unref?.();
+  } finally {
+    runtimeReservationSweeperInitializing = false;
+  }
 }
 
 export function stopRuntimeReservationSweeper(): void {
@@ -1092,6 +1146,7 @@ function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry 
 
   for (let i = 0; i < runtime.queue.pending.length; i += 1) {
     const entry = runtime.queue.pending[i];
+    if (!entry) continue; // undefined チェック追加
     const classRank = getQueueClassRank(entry.queueClass ?? "standard");
     const priorityRank = getPriorityRank(entry.priority);
     const enqueuedAt = entry.enqueuedAtMs;
@@ -1109,16 +1164,15 @@ function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry 
   }
 
   if (evictionIndex < 0) return null;
-  const [evicted] = runtime.queue.pending.splice(evictionIndex, 1);
+  const evicted = runtime.queue.pending.splice(evictionIndex, 1)[0];
+  if (!evicted) return null; // undefined チェック追加
   runtime.queue.evictedEntries += 1;
-  if (evicted) {
-    logRuntimeQueueDebug(
-      `evicted id=${evicted.id} tool=${evicted.toolName} class=${evicted.queueClass} priority=${evicted.priority ?? "normal"} pending=${runtime.queue.pending.length} evictions_total=${runtime.queue.evictedEntries} limit=${maxPendingEntries}`,
-    );
-  }
+  logRuntimeQueueDebug(
+    `evicted id=${evicted.id} tool=${evicted.toolName} class=${evicted.queueClass} priority=${evicted.priority ?? "normal"} pending=${runtime.queue.pending.length} evictions_total=${runtime.queue.evictedEntries} limit=${maxPendingEntries}`,
+  );
   updatePriorityStats(runtime);
   notifyRuntimeCapacityChanged();
-  return evicted ?? null;
+  return evicted;
 }
 
 function toQueueClass(input: RuntimeDispatchPermitInput): RuntimeQueueClass {

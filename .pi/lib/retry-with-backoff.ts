@@ -162,6 +162,9 @@ const sharedRateLimitState: SharedRateLimitState = {
   entries: new Map<string, SharedRateLimitStateEntry>(),
 };
 
+// 操作中フラグ: 同一プロセス内での並列アクセスを防止
+let inMemoryRateLimitOperationInProgress = false;
+
 type PersistedRateLimitState = {
   version: number;
   updatedAt: string;
@@ -354,6 +357,7 @@ function mergeEntriesInPlace(
 }
 
 function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
+  // 同一プロセス内での並列アクセスを防止するフォールバック
   const fallback = () => {
     const localState = getSharedRateLimitState();
     pruneRateLimitState(nowMs, localState);
@@ -362,6 +366,12 @@ function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
     return result;
   };
 
+  // 既に操作中の場合は、フォールバックを実行して競合を回避
+  if (inMemoryRateLimitOperationInProgress) {
+    return fallback();
+  }
+
+  inMemoryRateLimitOperationInProgress = true;
   try {
     ensureRuntimeDir();
     return withFileLock(
@@ -379,6 +389,8 @@ function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
     );
   } catch {
     return fallback();
+  } finally {
+    inMemoryRateLimitOperationInProgress = false;
   }
 }
 
@@ -553,15 +565,31 @@ export function resolveRetryWithBackoffConfig(
  * @returns ステータスコード
  */
 export function extractRetryStatusCode(error: unknown): number | undefined {
-  if (error && typeof error === "object") {
-    const status = toFiniteNumber((error as { status?: unknown }).status);
-    if (status !== undefined) {
-      return clampInteger(status, 0, 999);
+  // null/undefinedの場合は早期リターン
+  if (error === null || error === undefined) {
+    return undefined;
+  }
+
+  // オブジェクト型の場合のみstatus/statusCodeをチェック
+  if (typeof error === "object" && !Array.isArray(error)) {
+    const errorObj = error as Record<string, unknown>;
+
+    // status プロパティの厳密な型チェック
+    if ("status" in errorObj) {
+      const status = errorObj.status;
+      // number型かつ有限値かつ正の整数のみ受け入れる
+      if (typeof status === "number" && Number.isFinite(status) && status >= 0 && Number.isInteger(status)) {
+        return clampInteger(status, 0, 999);
+      }
     }
 
-    const statusCode = toFiniteNumber((error as { statusCode?: unknown }).statusCode);
-    if (statusCode !== undefined) {
-      return clampInteger(statusCode, 0, 999);
+    // statusCode プロパティの厳密な型チェック
+    if ("statusCode" in errorObj) {
+      const statusCode = errorObj.statusCode;
+      // number型かつ有限値かつ正の整数のみ受け入れる
+      if (typeof statusCode === "number" && Number.isFinite(statusCode) && statusCode >= 0 && Number.isInteger(statusCode)) {
+        return clampInteger(statusCode, 0, 999);
+      }
     }
   }
 
