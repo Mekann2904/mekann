@@ -630,3 +630,285 @@ export function shouldRetryByClassification(
   if (policy.maxRounds === undefined) return true;
   return currentRound < policy.maxRounds;
 }
+
+// ============================================================================
+// Tool Criticality-Based Partial Failure Tolerance (Error Rate Improvement)
+// ============================================================================
+
+/**
+ * ツールの重要度レベル
+ * @summary ツール重要度レベル
+ */
+export type ToolCriticalityLevel = "critical" | "non-critical" | "informational";
+
+/**
+ * クリティカルなツール（失敗するとAgent Run全体が失敗）
+ * @summary クリティカルツール一覧
+ */
+const CRITICAL_TOOLS: ReadonlySet<string> = new Set([
+  "write",
+  "edit",
+  "agent_team_run",
+  "agent_team_run_parallel",
+  "subagent_run",
+  "subagent_run_parallel",
+  "create_tool",
+  "delete_dynamic_tool",
+]);
+
+/**
+ * 情報取得ツール（失敗しても警告のみ）
+ * @summary 情報取得ツール一覧
+ */
+const INFORMATIONAL_TOOLS: ReadonlySet<string> = new Set([
+  "read",
+  "bash",
+  "code_search",
+  "file_candidates",
+  "sym_find",
+  "sym_index",
+  "semantic_search",
+  "gh_agent",
+  "plan_list",
+  "plan_show",
+  "agent_usage_stats",
+]);
+
+/**
+ * ツール名から重要度を判定
+ * @summary ツール重要度判定
+ * @param toolName ツール名（例: "core:bash", "unknown:code_search"）
+ * @returns 重要度レベル
+ */
+export function getToolCriticality(toolName: string): ToolCriticalityLevel {
+  // ツール名を正規化（プレフィックスを除去）
+  const normalized = toolName.includes(":")
+    ? toolName.split(":").pop() ?? toolName
+    : toolName;
+
+  if (CRITICAL_TOOLS.has(normalized)) {
+    return "critical";
+  }
+
+  if (INFORMATIONAL_TOOLS.has(normalized)) {
+    return "informational";
+  }
+
+  return "non-critical";
+}
+
+/**
+ * ツール呼び出し結果
+ * @summary ツール呼び出し結果
+ */
+export interface ToolCallResult {
+  /** ツール名 */
+  toolName: string;
+  /** 実行状態 */
+  status: "ok" | "error";
+  /** エラーメッセージ（任意） */
+  errorMessage?: string;
+}
+
+/**
+ * Agent Run評価結果
+ * @summary Agent Run評価結果
+ */
+export interface AgentRunEvaluation {
+  /** 全体の状態 */
+  status: "ok" | "warning" | "error";
+  /** 失敗したツール数 */
+  failedCount: number;
+  /** クリティカルな失敗数 */
+  criticalFailureCount: number;
+  /** 警告数（非クリティカルな失敗） */
+  warningCount: number;
+  /** 総ツール呼び出し数 */
+  totalCount: number;
+  /** 評価メッセージ */
+  message: string;
+  /** Agent Run を失敗とすべきか */
+  shouldFail: boolean;
+}
+
+/**
+ * bash コマンドの exit code 1 が許容されるパターン
+ * @summary exit code 1 許容パターン
+ */
+const BASH_EXIT_ONE_PATTERNS = [
+  /^diff\s/,
+  /^grep\s/,
+  /^test\s/,
+  /^\[\s+.*\s+\]$/,
+  /^git\s+diff\s/,
+  /^comm\s/,
+  /^git\s+merge-base\s/,
+];
+
+/**
+ * bash エラーが許容されるか判定
+ * @summary bash エラー許容判定
+ * @param errorMessage エラーメッセージ
+ * @returns 許容される場合 true
+ */
+export function isBashErrorTolerated(errorMessage: string): boolean {
+  const lowerMessage = errorMessage.toLowerCase();
+
+  // exit code 1 は diff/grep 等では正常
+  if (/exited with code 1|exit code 1/.test(lowerMessage)) {
+    // 元のコマンドを推測して判定
+    for (const pattern of BASH_EXIT_ONE_PATTERNS) {
+      if (pattern.test(errorMessage)) {
+        return true;
+      }
+    }
+  }
+
+  // npm audit の warning は無視
+  if (/npm audit report|severity: moderate|severity: high/.test(lowerMessage)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 複数のツール呼び出し結果を評価して Agent Run 全体の状態を判定
+ * @summary Agent Run 結果評価
+ * @param results ツール呼び出し結果一覧
+ * @param totalToolCalls 総ツール呼び出し数
+ * @returns Agent Run 評価結果
+ */
+export function evaluateAgentRunOutcome(
+  results: ToolCallResult[],
+  totalToolCalls?: number,
+): AgentRunEvaluation {
+  const evaluated = results.map(r => {
+    const criticality = getToolCriticality(r.toolName);
+    const isError = r.status === "error";
+    const isTolerated = isError && r.toolName.includes("bash") && r.errorMessage
+      ? isBashErrorTolerated(r.errorMessage || "")
+      : false;
+
+    return {
+      ...r,
+      criticality,
+      isError,
+      isTolerated,
+      isCriticalFailure: isError && criticality === "critical" && !isTolerated,
+      isWarning: isError && criticality !== "critical" && !isTolerated,
+    };
+  });
+
+  const failedCount = evaluated.filter(r => r.isError && !r.isTolerated).length;
+  const criticalFailureCount = evaluated.filter(r => r.isCriticalFailure).length;
+  const warningCount = evaluated.filter(r => r.isWarning).length;
+  const toleratedCount = evaluated.filter(r => r.isTolerated).length;
+
+  // クリティカルな失敗がある場合のみ Agent Run を失敗とする
+  if (criticalFailureCount > 0) {
+    return {
+      status: "error",
+      failedCount,
+      criticalFailureCount,
+      warningCount,
+      totalCount: totalToolCalls ?? results.length,
+      message: `${criticalFailureCount} critical tool(s) failed (${failedCount} total failures)`,
+      shouldFail: true,
+    };
+  }
+
+  // 警告のみ（非クリティカルな失敗）
+  if (warningCount > 0 || toleratedCount > 0) {
+    const parts: string[] = [];
+    if (warningCount > 0) parts.push(`${warningCount} non-critical failure(s)`);
+    if (toleratedCount > 0) parts.push(`${toleratedCount} tolerated`);
+    return {
+      status: "warning",
+      failedCount,
+      criticalFailureCount: 0,
+      warningCount,
+      totalCount: totalToolCalls ?? results.length,
+      message: parts.join(", ") + " (ignored)",
+      shouldFail: false,
+    };
+  }
+
+  return {
+    status: "ok",
+    failedCount: 0,
+    criticalFailureCount: 0,
+    warningCount: 0,
+    totalCount: totalToolCalls ?? results.length,
+    message: "All tools completed successfully",
+    shouldFail: false,
+  };
+}
+
+/**
+ * エラーメッセージから失敗したツール数を抽出
+ * @summary 失敗ツール数抽出
+ * @param errorMessage エラーメッセージ（例: "3/17 tool calls failed"）
+ * @returns 失敗数と総数、または null
+ */
+export function parseToolFailureCount(errorMessage: string): { failed: number; total: number } | null {
+  const match = errorMessage.match(/(\d+)\/(\d+)\s+tool\s+calls?\s+failed/i);
+  if (match) {
+    return {
+      failed: parseInt(match[1], 10),
+      total: parseInt(match[2], 10),
+    };
+  }
+  return null;
+}
+
+/**
+ * エラーメッセージに基づいて Agent Run の失敗を再評価
+ * 現在の "X/Y tool calls failed" エラーをより詳細に分析
+ * @summary Agent Run 失敗再評価
+ * @param errorMessage エラーメッセージ
+ * @returns 再評価結果
+ */
+export function reevaluateAgentRunFailure(errorMessage: string): {
+  shouldDowngrade: boolean;
+  originalFailure: { failed: number; total: number } | null;
+  suggestedStatus: "ok" | "warning" | "error";
+} {
+  const parsed = parseToolFailureCount(errorMessage);
+
+  if (!parsed) {
+    return {
+      shouldDowngrade: false,
+      originalFailure: null,
+      suggestedStatus: "error",
+    };
+  }
+
+  const { failed, total } = parsed;
+  const failureRate = failed / total;
+
+  // 失敗率が10%以下なら警告に降格
+  // bash の exit code 1 等の誤検知が多いケースを想定
+  if (failureRate <= 0.1) {
+    return {
+      shouldDowngrade: true,
+      originalFailure: parsed,
+      suggestedStatus: "warning",
+    };
+  }
+
+  // 失敗率が20%以下で、かつ失敗数が3以下なら警告に降格
+  if (failureRate <= 0.2 && failed <= 3) {
+    return {
+      shouldDowngrade: true,
+      originalFailure: parsed,
+      suggestedStatus: "warning",
+    };
+  }
+
+  return {
+    shouldDowngrade: false,
+    originalFailure: parsed,
+    suggestedStatus: "error",
+  };
+}

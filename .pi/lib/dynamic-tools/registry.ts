@@ -925,7 +925,9 @@ export class DynamicToolRegistry {
         verificationStatus: tool.verificationStatus,
       },
       success: true,
-    }, this.paths).catch(() => {});
+    }, this.paths).catch((e) => {
+      console.debug("[dynamic-tools] Failed to log tool registration:", e);
+    });
 
     const warnings: string[] = [];
     if (safetyScore < 0.5) {
@@ -1044,7 +1046,9 @@ export class DynamicToolRegistry {
         deletedAt: new Date().toISOString(),
       },
       success: deleted,
-    }, this.paths).catch(() => {});
+    }, this.paths).catch((e) => {
+      console.debug("[dynamic-tools] Failed to log tool deletion:", e);
+    });
 
     return {
       success: deleted,

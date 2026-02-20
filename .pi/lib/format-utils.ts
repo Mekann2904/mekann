@@ -147,7 +147,7 @@ export function normalizeForSingleLine(input: string, maxLength = 160): string {
   } else if (normalized.length <= maxLength) {
     result = normalized;
   } else {
-    result = `${normalized.slice(0, maxLength)}...`;
+    result = `${normalized.slice(0, maxLength - 3)}...`;
   }
 
   // LRUエビクション

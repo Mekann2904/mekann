@@ -329,3 +329,37 @@ export {
   detectTier,
   formatLimitsSummary,
 } from "./provider-limits.js";
+
+// Tool Error Utilities (Layer 1 - Error Rate Improvement)
+export {
+  type ToolCriticality,
+  type ToolResultStatus,
+  type BaseToolResult,
+  type BashOptions,
+  type SafeBashResult,
+  type EditOptions,
+  type SafeEditResult,
+  type ReadOptions,
+  type SafeReadResult,
+  isExitOneAllowed,
+  safeBash,
+  findTextLine,
+  safeEdit,
+  findSimilarFiles,
+  safeRead,
+  getToolCriticality,
+  evaluateToolResult,
+  evaluateAgentRunResults,
+} from "./tool-error-utils.js";
+
+// Agent Error Extended Utilities (from agent-errors.ts)
+export {
+  type ToolCriticalityLevel,
+  type ToolCallResult,
+  type AgentRunEvaluation,
+  getToolCriticality,
+  isBashErrorTolerated,
+  evaluateAgentRunOutcome,
+  parseToolFailureCount,
+  reevaluateAgentRunFailure,
+} from "./agent-errors.js";

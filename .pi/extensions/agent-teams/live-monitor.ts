@@ -93,6 +93,25 @@ const LIVE_EVENT_TAIL_LIMIT = (() => {
 const LIVE_EVENT_INLINE_LINE_LIMIT = 8;
 const LIVE_EVENT_DETAIL_LINE_LIMIT = 28;
 
+// ポーリング間隔（ストリーミングがない期間もUIを更新して「動いている」ことを示す）
+const LIVE_POLL_INTERVAL_MS = (() => {
+  const envVal = process.env.PI_LIVE_POLL_INTERVAL_MS;
+  if (envVal !== undefined) {
+    const parsed = Number(envVal);
+    if (!Number.isFinite(parsed) || parsed < 100) {
+      console.warn(
+        `[agent-teams/live-monitor] Invalid PI_LIVE_POLL_INTERVAL_MS="${envVal}", using default 500`
+      );
+      return 500;
+    }
+    return Math.max(100, Math.min(5000, parsed));
+  }
+  return 500;
+})();
+
+// アクティビティアニメーション用のスピナー文字
+const SPINNER_FRAMES = ["|", "/", "-", "\\"];
+
 // ============================================================================
 // Tree View Utilities
 // ============================================================================
@@ -216,6 +235,19 @@ function getTreePrefix(level: number, isLast: boolean, parentContinues: boolean[
 }
 
 /**
+ * アクティビティスピナーを取得
+ * @summary スピナー取得
+ * @param isRunning 実行中かどうか
+ * @returns スピナー文字
+ */
+function getActivitySpinner(isRunning: boolean): string {
+  if (!isRunning) return "";
+  const now = Date.now();
+  const frameIndex = Math.floor(now / 200) % SPINNER_FRAMES.length;
+  return SPINNER_FRAMES[frameIndex];
+}
+
+/**
  * ツリービューを描画
  * @summary ツリービュー描画
  */
@@ -255,6 +287,7 @@ function renderTreeView(
     const level = levels.get(item.label) || 0;
     const originalIndex = items.findIndex(i => i.label === item.label);
     const isSelected = originalIndex === cursor;
+    const isRunning = item.status === "running";
 
     // このレベルで何番目か
     const drawn = drawnByLevel.get(level) || 0;
@@ -275,12 +308,23 @@ function renderTreeView(
     const glyphColor = getLiveStatusColor(item.status);
     const elapsed = formatElapsedClock(item);
 
-    // アクティビティ
+    // アクティビティ（スピナー付き）
     const hasOutput = item.stdoutBytes > 0;
     const isRecent = item.lastChunkAtMs ? (Date.now() - item.lastChunkAtMs) < 2000 : false;
     // stderr is often used for warnings/noise; keep err! for actual failures or recent stderr activity.
     const hasError = item.status === "failed" || (item.stderrBytes > 0 && isRecent);
-    const activity = getActivityIndicator(hasOutput, hasError, isRecent);
+    const activityBase = getActivityIndicator(hasOutput, hasError, isRecent);
+    const spinner = getActivitySpinner(isRunning);
+    
+    // 実行中で出力がない場合は「waiting...」を表示
+    let activity: string;
+    if (isRunning && !hasOutput && !activityBase) {
+      activity = spinner ? `${spinner} waiting...` : "waiting...";
+    } else if (spinner && activityBase) {
+      activity = `${spinner} ${activityBase}`;
+    } else {
+      activity = activityBase || (spinner ? spinner : "");
+    }
 
     const coloredGlyph = theme.fg(glyphColor, glyph);
     const treeLine = `${prefix}${coloredGlyph} ${item.label}`;
@@ -907,12 +951,47 @@ export function createAgentTeamLiveMonitor(
   let doneUi: (() => void) | undefined;
   let closed = false;
   let renderTimer: NodeJS.Timeout | undefined;
+  let pollTimer: NodeJS.Timeout | undefined;
 
   const clearRenderTimer = () => {
     if (renderTimer) {
       clearTimeout(renderTimer);
       renderTimer = undefined;
     }
+  };
+
+  const clearPollTimer = () => {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = undefined;
+    }
+  };
+
+  /**
+   * 実行中のアイテムがあるかチェック
+   */
+  const hasRunningItems = (): boolean => {
+    return items.some((item) => item.status === "running");
+  };
+
+  /**
+   * 定期ポーリングを開始（ストリーミングがない期間もUIを更新）
+   */
+  const startPolling = () => {
+    if (pollTimer || closed) return;
+    pollTimer = setInterval(() => {
+      if (closed) {
+        clearPollTimer();
+        return;
+      }
+      // 実行中のアイテムがある場合のみ更新
+      if (hasRunningItems()) {
+        queueRender();
+      } else {
+        // すべて完了したらポーリング停止
+        clearPollTimer();
+      }
+    }, LIVE_POLL_INTERVAL_MS);
   };
 
   const queueRender = () => {
@@ -930,6 +1009,7 @@ export function createAgentTeamLiveMonitor(
     if (closed) return;
     closed = true;
     clearRenderTimer();
+    clearPollTimer();
     doneUi?.();
   };
 
@@ -1060,6 +1140,7 @@ export function createAgentTeamLiveMonitor(
     .finally(() => {
       closed = true;
       clearRenderTimer();
+      clearPollTimer();
     });
 
   // 待機状態（内部変数）
@@ -1080,6 +1161,8 @@ export function createAgentTeamLiveMonitor(
       }
       item.startedAtMs = Date.now();
       pushLiveEvent(item, "member process started");
+      // 実行中アイテムが増えたのでポーリング開始
+      startPolling();
       queueRender();
     },
     markPhase: (itemKey: string, phase: TeamLivePhase, round?: number) => {

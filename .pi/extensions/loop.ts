@@ -42,7 +42,7 @@ import { Text } from "@mariozechner/pi-tui";
 
 import { formatDuration } from "../lib/format-utils.js";
 import { toErrorMessage } from "../lib/error-utils.js";
-import { toBoundedInteger } from "../lib/validation-utils.js";
+import { toBoundedInteger, toBoundedFloat } from "../lib/validation-utils.js";
 import { ThinkingLevel } from "../lib/agent-types.js";
 import { createRunId } from "../lib/agent-utils.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
@@ -915,7 +915,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       // Check for stagnation using semantic or exact matching
       if (input.config.enableSemanticStagnation) {
         // Semantic-based detection (requires embedding provider configured via /embedding)
-        const semanticThreshold = toBoundedInteger(
+        const semanticThreshold = toBoundedFloat(
           input.config.semanticRepetitionThreshold ?? 0.85,
           0.85,
           LIMITS.minSemanticRepetitionThreshold,
@@ -1122,7 +1122,7 @@ function normalizeLoopConfig(
       ? DEFAULT_CONFIG.enableSemanticStagnation
       : Boolean(overrides.enableSemanticStagnation);
 
-  const semanticRepetitionThreshold = toBoundedInteger(
+  const semanticRepetitionThreshold = toBoundedFloat(
     overrides.semanticRepetitionThreshold,
     DEFAULT_CONFIG.semanticRepetitionThreshold ?? 0.85,
     LIMITS.minSemanticRepetitionThreshold,

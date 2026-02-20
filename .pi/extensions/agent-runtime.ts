@@ -1200,14 +1200,15 @@ function promoteStarvingEntries(runtime: AgentRuntimeState, nowMs: number): void
   for (const entry of runtime.queue.pending) {
     const waitMs = nowMs - entry.enqueuedAtMs;
     const currentClass = ((entry as RuntimeQueueEntry & { queueClass?: RuntimeQueueClass }).queueClass ?? "standard");
-    if (waitMs > QUEUE_CLASS_PROMOTE_MS) {
+    const isBackgroundSource = entry.source === "background";
+    if (!isBackgroundSource && waitMs > QUEUE_CLASS_PROMOTE_MS) {
       const classIndex = queueClassOrder.indexOf(currentClass);
       if (classIndex >= 0 && classIndex < queueClassOrder.length - 1) {
         (entry as RuntimeQueueEntry & { queueClass?: RuntimeQueueClass }).queueClass = queueClassOrder[classIndex + 1];
         promoted = true;
       }
     }
-    if (waitMs > STARVATION_THRESHOLD_MS) {
+    if (!isBackgroundSource && waitMs > STARVATION_THRESHOLD_MS) {
       const currentIndex = priorityOrder.indexOf(entry.priority ?? "normal");
       if (currentIndex < priorityOrder.length - 1) {
         entry.priority = priorityOrder[currentIndex + 1];

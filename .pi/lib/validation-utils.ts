@@ -4,7 +4,7 @@
  * role: 数値検証・変換ユーティリティの集約モジュール
  * why: 複数の拡張機能間で重複していた実装（context-usage-dashboard.ts等）を一元管理し、コードの重複を排除するため
  * related: context-usage-dashboard.ts, agent-usage-tracker.ts, retry-with-backoff.ts, loop.ts
- * public_api: toFiniteNumber, toFiniteNumberWithDefault, toBoundedInteger, clampInteger, clampFloat, BoundedIntegerResult
+ * public_api: toFiniteNumber, toFiniteNumberWithDefault, toBoundedInteger, toBoundedFloat, clampInteger, clampFloat, BoundedIntegerResult, BoundedFloatResult
  * invariants: clampIntegerは整数を返す（Math.truncにより）, toFiniteNumberは有限数のみを変換する
  * side_effects: なし（純粋関数）
  * failure_modes: Number()変換による意図しない型強制（数値文字列等が変換される）
@@ -76,6 +76,15 @@ export type BoundedIntegerResult =
   | { ok: false; error: string };
 
 /**
+ * 浮動小数点数の範囲制限結果を表す型
+ * @summary 範囲制限結果の型
+ * @returns 成功時は値、失敗時はエラー情報
+ */
+export type BoundedFloatResult =
+  | { ok: true; value: number }
+  | { ok: false; error: string };
+
+/**
  * 整数値の検証と範囲制限を行う
  * @summary 整数値を検証・制限
  * @param value - 検証対象の値
@@ -100,6 +109,38 @@ export function toBoundedInteger(
   }
   if (!Number.isFinite(resolved) || !Number.isInteger(resolved)) {
     return { ok: false, error: `${field} must be an integer.` };
+  }
+  if (resolved < min || resolved > max) {
+    return { ok: false, error: `${field} must be in [${min}, ${max}].` };
+  }
+  return { ok: true, value: resolved };
+}
+
+/**
+ * 浮動小数点数の検証と範囲制限を行う
+ * @summary 浮動小数点数を検証・制限
+ * @param value - 検証対象の値
+ * @param fallback - 未定義時のフォールバック値
+ * @param min - 最小値
+ * @param max - 最大値
+ * @param field - フィールド名（エラーメッセージ用）
+ * @returns 検証結果を含むオブジェクト
+ */
+export function toBoundedFloat(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+  field: string,
+): BoundedFloatResult {
+  let resolved: number;
+  try {
+    resolved = value === undefined ? fallback : Number(value);
+  } catch {
+    return { ok: false, error: `${field} must be a number.` };
+  }
+  if (!Number.isFinite(resolved)) {
+    return { ok: false, error: `${field} must be a number.` };
   }
   if (resolved < min || resolved > max) {
     return { ok: false, error: `${field} must be in [${min}, ${max}].` };

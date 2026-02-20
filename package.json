@@ -63,7 +63,6 @@
       "./.pi/extensions/search/index.ts",
       "./.pi/extensions/skill-inspector.ts",
       "./.pi/extensions/startup-context.ts",
-      "./.pi/extensions/subagents.ts",
       "./.pi/extensions/rate-limit-retry-budget.ts",
       "./.pi/extensions/rpm-throttle.ts",
       "./.pi/extensions/ul-dual-mode.ts",

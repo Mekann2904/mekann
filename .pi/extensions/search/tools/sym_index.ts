@@ -649,7 +649,9 @@ async function writeShardedIndex(
 	const existingFiles = await readdir(shardDir).catch(() => []);
 	for (const file of existingFiles) {
 		if (file.startsWith("shard-") && file.endsWith(".jsonl")) {
-			await unlink(join(shardDir, file)).catch(() => {});
+			await unlink(join(shardDir, file)).catch((e) => {
+				console.debug("[sym_index] Failed to delete shard file:", file, e);
+			});
 		}
 	}
 

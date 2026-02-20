@@ -108,15 +108,13 @@ import {
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
 import {
+  acquireRuntimeDispatchPermit,
   formatRuntimeStatusLine,
   getRuntimeSnapshot,
   getSharedRuntimeState,
   notifyRuntimeCapacityChanged,
   resetRuntimeTransientState,
-  reserveRuntimeCapacity,
-  tryReserveRuntimeCapacity,
   type RuntimeCapacityReservationLease,
-  waitForRuntimeOrchestrationTurn,
 } from "./agent-runtime";
 
 // Import shared plan mode utilities
@@ -133,7 +131,6 @@ import {
 } from "./shared/pi-print-executor";
 import {
   buildRuntimeLimitError,
-  buildRuntimeQueueWaitError,
   startReservationHeartbeat,
   refreshRuntimeStatus as sharedRefreshRuntimeStatus,
 } from "./shared/runtime-helpers";
@@ -504,6 +501,11 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
  * @returns {void}
  */
 export default function registerSubagentExtension(pi: ExtensionAPI) {
+  // Subagent feature is explicitly disabled for this project.
+  // Keep module load safe but do not register any subagent tools/commands/hooks.
+  console.error("[subagents] extension is disabled by project configuration.");
+  return;
+
   function reportBackgroundJobFailure(jobId: string, errorMessage: string, ctx: any): void {
     const message = `[${jobId}] ${errorMessage}`;
     ctx.ui.notify(`Subagent background job failed: ${message}`, "error");
@@ -698,55 +700,29 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           },
         });
 
-        let queueLease: { release: () => void } | undefined;
         let capacityReservation: RuntimeCapacityReservationLease | undefined;
         let stopReservationHeartbeat: (() => void) | undefined;
         let liveMonitor: SubagentLiveMonitorController | undefined;
         try {
           const queueSnapshot = getRuntimeSnapshot();
-          const queueWait = await waitForRuntimeOrchestrationTurn({
+          const dispatchPermit = await acquireRuntimeDispatchPermit({
             toolName: "subagent_run",
+            candidate: {
+              additionalRequests: 1,
+              additionalLlm: 1,
+            },
+            tenantKey: agent.id,
+            source: "background",
+            estimatedDurationMs: 45_000,
+            estimatedRounds: 1,
             maxWaitMs: queueSnapshot.limits.capacityWaitMs,
             pollIntervalMs: queueSnapshot.limits.capacityPollMs,
+            signal: _signal,
           });
-          if (!queueWait.allowed || !queueWait.lease) {
-            const errorMessage = buildRuntimeQueueWaitError("subagent_run", queueWait);
-            updateBackgroundJob(job.jobId, (current) => ({
-              ...current,
-              status: "failed",
-              error: errorMessage,
-              finishedAt: new Date().toISOString(),
-            }));
-            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
-            logger.endOperation({
-              status: "failure",
-              tokensUsed: 0,
-              outputLength: 0,
-              childOperations: 0,
-              toolCalls: 0,
-              error: {
-                type: "queue_error",
-                message: errorMessage,
-                stack: "",
-              },
-            });
-            return;
-          }
-          queueLease = queueWait.lease;
-
-          const snapshot = getRuntimeSnapshot();
-          const capacityCheck = await reserveRuntimeCapacity({
-            toolName: "subagent_run",
-            additionalRequests: 1,
-            additionalLlm: 1,
-            maxWaitMs: snapshot.limits.capacityWaitMs,
-            pollIntervalMs: snapshot.limits.capacityPollMs,
-          });
-          if (!capacityCheck.allowed || !capacityCheck.reservation) {
-            adaptivePenalty.raise("capacity");
-            const errorMessage = buildRuntimeLimitError("subagent_run", capacityCheck.reasons, {
-              waitedMs: capacityCheck.waitedMs,
-              timedOut: capacityCheck.timedOut,
+          if (!dispatchPermit.allowed || !dispatchPermit.lease) {
+            const errorMessage = buildRuntimeLimitError("subagent_run", dispatchPermit.reasons, {
+              waitedMs: dispatchPermit.waitedMs,
+              timedOut: dispatchPermit.timedOut,
             });
             updateBackgroundJob(job.jobId, (current) => ({
               ...current,
@@ -769,8 +745,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             });
             return;
           }
-
-          capacityReservation = capacityCheck.reservation;
+          capacityReservation = dispatchPermit.lease;
           stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
           const timeoutMs = resolveEffectiveTimeoutMs(
@@ -921,7 +896,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           await liveMonitor?.wait();
           stopReservationHeartbeat?.();
           capacityReservation?.release();
-          queueLease?.release();
           refreshRuntimeStatus(ctx);
         }
       })().catch((error) => {
@@ -1019,42 +993,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           },
         );
 
-        let queueLease: { release: () => void } | undefined;
         let capacityReservation: RuntimeCapacityReservationLease | undefined;
         let stopReservationHeartbeat: (() => void) | undefined;
         let liveMonitor: SubagentLiveMonitorController | undefined;
         try {
-          const queueSnapshot = getRuntimeSnapshot();
-          const queueWait = await waitForRuntimeOrchestrationTurn({
-            toolName: "subagent_run_parallel",
-            maxWaitMs: queueSnapshot.limits.capacityWaitMs,
-            pollIntervalMs: queueSnapshot.limits.capacityPollMs,
-          });
-          if (!queueWait.allowed || !queueWait.lease) {
-            const errorMessage = buildRuntimeQueueWaitError("subagent_run_parallel", queueWait);
-            updateBackgroundJob(job.jobId, (current) => ({
-              ...current,
-              status: "failed",
-              error: errorMessage,
-              finishedAt: new Date().toISOString(),
-            }));
-            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
-            logger.endOperation({
-              status: "failure",
-              tokensUsed: 0,
-              outputLength: 0,
-              childOperations: 0,
-              toolCalls: 0,
-              error: {
-                type: "queue_error",
-                message: errorMessage,
-                stack: "",
-              },
-            });
-            return;
-          }
-          queueLease = queueWait.lease;
-
           const snapshot = getRuntimeSnapshot();
           const configuredParallelLimit = toConcurrencyLimit(
             snapshot.limits.maxParallelSubagentsPerRun,
@@ -1074,21 +1016,26 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             ),
           );
           const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
-          const parallelCapacity = await resolveSubagentParallelCapacity({
-            requestedParallelism: effectiveParallelism,
-            additionalRequests: 1,
+          const dispatchPermit = await acquireRuntimeDispatchPermit({
+            toolName: "subagent_run_parallel",
+            candidate: {
+              additionalRequests: 1,
+              additionalLlm: Math.max(1, effectiveParallelism),
+            },
+            tenantKey: activeAgents.map((entry) => entry.id).join(","),
+            source: "background",
+            estimatedDurationMs: 60_000,
+            estimatedRounds: Math.max(1, activeAgents.length),
             maxWaitMs: snapshot.limits.capacityWaitMs,
             pollIntervalMs: snapshot.limits.capacityPollMs,
+            signal: _signal,
           });
-          if (!parallelCapacity.allowed || !parallelCapacity.reservation) {
+          if (!dispatchPermit.allowed || !dispatchPermit.lease) {
             adaptivePenalty.raise("capacity");
-            const errorText =
-              !parallelCapacity.reservation
-                ? "subagent_run_parallel blocked: capacity reservation missing."
-                : buildRuntimeLimitError("subagent_run_parallel", parallelCapacity.reasons, {
-                    waitedMs: parallelCapacity.waitedMs,
-                    timedOut: parallelCapacity.timedOut,
-                  });
+            const errorText = buildRuntimeLimitError("subagent_run_parallel", dispatchPermit.reasons, {
+              waitedMs: dispatchPermit.waitedMs,
+              timedOut: dispatchPermit.timedOut,
+            });
             updateBackgroundJob(job.jobId, (current) => ({
               ...current,
               status: "failed",
@@ -1111,7 +1058,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             return;
           }
 
-          capacityReservation = parallelCapacity.reservation;
+          capacityReservation = dispatchPermit.lease;
           stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
           const timeoutMs = resolveEffectiveTimeoutMs(
@@ -1130,7 +1077,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             estimated_ms: costEstimate.estimatedDurationMs,
             estimated_tokens: costEstimate.estimatedTokens,
             agents: activeAgents.length,
-            applied_parallelism: parallelCapacity.appliedParallelism,
+            applied_parallelism: Math.max(1, effectiveParallelism),
             confidence: costEstimate.confidence.toFixed(2),
             method: costEstimate.method,
           });
@@ -1152,7 +1099,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
           const results = await runWithConcurrencyLimit(
             activeAgents,
-            parallelCapacity.appliedParallelism,
+            Math.max(1, effectiveParallelism),
             async (agent) => {
               const result = await runSubagentTask({
                 agent,
@@ -1199,7 +1146,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
           const failed = results.filter((result) => result.runRecord.status === "failed");
           if (failed.length > 0) {
-            adaptivePenalty.raise("rate_limit");
+            const pressureSignals = failed
+              .map((result) => classifyPressureError(result.runRecord.error || ""))
+              .filter((signal): signal is "rate_limit" | "capacity" => signal !== "other");
+            if (pressureSignals.length > 0) {
+              const hasRateLimit = pressureSignals.includes("rate_limit");
+              adaptivePenalty.raise(hasRateLimit ? "rate_limit" : "capacity");
+            }
             const errorMessage = failed
               .map((result) => `${result.runRecord.agentId}:${result.runRecord.error}`)
               .join(" | ");
@@ -1264,7 +1217,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           await liveMonitor?.wait();
           stopReservationHeartbeat?.();
           capacityReservation?.release();
-          queueLease?.release();
           refreshRuntimeStatus(ctx);
         }
       })().catch((error) => {

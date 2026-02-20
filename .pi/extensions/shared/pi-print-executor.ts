@@ -35,12 +35,257 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { detectTier, getRpmLimit } from "../../lib/provider-limits.js";
+import { withFileLock } from "../../lib/storage-lock.js";
 
 const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
 const MAX_CAPTURED_STDERR_CHARS = 128_000;
+const PRINT_THROTTLE_WINDOW_MS = 60_000;
+const PRINT_THROTTLE_HEADROOM_FACTOR = 0.7;
+const PRINT_THROTTLE_FALLBACK_COOLDOWN_MS = 15_000;
+const PRINT_THROTTLE_MAX_COOLDOWN_MS = 5 * 60_000;
+const PRINT_THROTTLE_MAX_STATE_AGE_MS = 15 * 60_000;
+const PRINT_THROTTLE_RUNTIME_DIR = join(homedir(), ".pi", "runtime");
+const PRINT_THROTTLE_STATE_FILE = join(PRINT_THROTTLE_RUNTIME_DIR, "pi-print-rpm-throttle-state.json");
+const PRINT_THROTTLE_FILE_LOCK_OPTIONS = {
+  maxWaitMs: 2_000,
+  pollMs: 25,
+  staleMs: 15_000,
+};
+const printThrottleStates = new Map<string, PrintThrottleBucketState>();
 
 /** Default idle timeout for subagent execution (5 minutes) */
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
+
+type PrintThrottleBucketState = {
+  requestStartsMs: number[];
+  cooldownUntilMs: number;
+  lastAccessedMs: number;
+};
+
+type PrintThrottleSharedStateRecord = {
+  version: number;
+  updatedAt: string;
+  states: Record<string, PrintThrottleBucketState>;
+};
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sleepWithAbort(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (delayMs <= 0) return;
+  if (signal?.aborted) throw new Error("pi print throttle aborted");
+  await Promise.race([
+    sleep(delayMs),
+    new Promise<void>((_, reject) => {
+      const onAbort = () => {
+        signal?.removeEventListener("abort", onAbort);
+        reject(new Error("pi print throttle aborted"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+    }),
+  ]);
+}
+
+function parseNumberEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseBooleanEnv(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  return raw === "1" || raw.toLowerCase() === "true";
+}
+
+function getPrintThrottleKey(provider: string, model: string): string {
+  return `${provider.toLowerCase()}:${model.toLowerCase()}`;
+}
+
+function ensurePrintThrottleRuntimeDir(): void {
+  if (!existsSync(PRINT_THROTTLE_RUNTIME_DIR)) {
+    mkdirSync(PRINT_THROTTLE_RUNTIME_DIR, { recursive: true });
+  }
+}
+
+function prunePrintThrottleWindow(state: PrintThrottleBucketState, nowMs: number, windowMs: number): void {
+  while (state.requestStartsMs.length > 0 && nowMs - state.requestStartsMs[0] >= windowMs) {
+    state.requestStartsMs.shift();
+  }
+}
+
+function prunePrintThrottleStates(nowMs: number): void {
+  for (const [key, state] of printThrottleStates.entries()) {
+    if (nowMs - state.lastAccessedMs > PRINT_THROTTLE_MAX_STATE_AGE_MS) {
+      printThrottleStates.delete(key);
+    }
+  }
+}
+
+function loadPrintThrottleStatesIntoMemory(nowMs: number): void {
+  try {
+    if (!existsSync(PRINT_THROTTLE_STATE_FILE)) return;
+    const raw = readFileSync(PRINT_THROTTLE_STATE_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<PrintThrottleSharedStateRecord>;
+    if (!parsed || typeof parsed !== "object" || !parsed.states || typeof parsed.states !== "object") {
+      return;
+    }
+    printThrottleStates.clear();
+    for (const [key, value] of Object.entries(parsed.states)) {
+      if (!value || typeof value !== "object") continue;
+      const starts = Array.isArray(value.requestStartsMs)
+        ? value.requestStartsMs.filter((candidate): candidate is number => Number.isFinite(candidate) && candidate > 0)
+        : [];
+      const cooldownUntilMs = Number.isFinite(value.cooldownUntilMs) ? value.cooldownUntilMs : 0;
+      const lastAccessedMs = Number.isFinite(value.lastAccessedMs) ? value.lastAccessedMs : nowMs;
+      printThrottleStates.set(key, {
+        requestStartsMs: starts,
+        cooldownUntilMs,
+        lastAccessedMs,
+      });
+    }
+  } catch {
+    // Ignore broken state files.
+  }
+}
+
+function savePrintThrottleStates(nowMs: number): void {
+  try {
+    ensurePrintThrottleRuntimeDir();
+    const payload: PrintThrottleSharedStateRecord = {
+      version: 1,
+      updatedAt: new Date(nowMs).toISOString(),
+      states: Object.fromEntries(printThrottleStates.entries()),
+    };
+    writeFileSync(PRINT_THROTTLE_STATE_FILE, JSON.stringify(payload, null, 2), "utf-8");
+  } catch {
+    // Best effort only.
+  }
+}
+
+function withPrintThrottleMutation<T>(nowMs: number, mutator: () => T): T {
+  const fallback = () => {
+    const result = mutator();
+    savePrintThrottleStates(nowMs);
+    return result;
+  };
+
+  try {
+    ensurePrintThrottleRuntimeDir();
+    return withFileLock(
+      PRINT_THROTTLE_STATE_FILE,
+      () => {
+        loadPrintThrottleStatesIntoMemory(nowMs);
+        const result = mutator();
+        savePrintThrottleStates(nowMs);
+        return result;
+      },
+      PRINT_THROTTLE_FILE_LOCK_OPTIONS,
+    );
+  } catch {
+    return fallback();
+  }
+}
+
+function resolveEffectivePrintRpm(provider: string, model: string): number {
+  const override = parseNumberEnv("PI_PRINT_RPM_THROTTLE_OVERRIDE", 0);
+  if (override > 0) return Math.max(1, Math.floor(override));
+  const tier = detectTier(provider, model);
+  const baseRpm = getRpmLimit(provider, model, tier);
+  const headroom = parseNumberEnv("PI_PRINT_RPM_THROTTLE_HEADROOM", PRINT_THROTTLE_HEADROOM_FACTOR);
+  return Math.max(1, Math.floor(baseRpm * Math.max(0.1, Math.min(1, headroom))));
+}
+
+function isRateLimitMessage(text: string): boolean {
+  return /429|rate.?limit|too many requests|quota exceeded/i.test(text);
+}
+
+function extractRetryAfterMs(text: string): number | undefined {
+  const sec = text.match(/retry[-\s]?after[^0-9]*(\d+)(?:\.\d+)?\s*(s|sec|secs|second|seconds)\b/i);
+  if (sec) return Math.max(0, Number(sec[1]) * 1000);
+  const ms = text.match(/retry[-\s]?after[^0-9]*(\d+)\s*(ms|msec|millisecond|milliseconds)\b/i);
+  if (ms) return Math.max(0, Number(ms[1]));
+  return undefined;
+}
+
+async function waitForPrintThrottleSlot(input: {
+  provider?: string;
+  model?: string;
+  signal?: AbortSignal;
+}): Promise<void> {
+  if (!input.provider || !input.model) return;
+  if (!parseBooleanEnv("PI_PRINT_RPM_THROTTLE_ENABLED", true)) return;
+  const windowMs = Math.max(1_000, parseNumberEnv("PI_PRINT_RPM_THROTTLE_WINDOW_MS", PRINT_THROTTLE_WINDOW_MS));
+  const effectiveRpm = resolveEffectivePrintRpm(input.provider, input.model);
+  const maxRequestsInWindow = Math.max(1, Math.floor((effectiveRpm * windowMs) / 60_000));
+  const key = getPrintThrottleKey(input.provider, input.model);
+
+  while (true) {
+    if (input.signal?.aborted) throw new Error("pi print throttle aborted");
+    const nowMs = Date.now();
+    const waitMs = withPrintThrottleMutation(nowMs, () => {
+      prunePrintThrottleStates(nowMs);
+      const current =
+        printThrottleStates.get(key) ?? {
+          requestStartsMs: [],
+          cooldownUntilMs: 0,
+          lastAccessedMs: nowMs,
+        };
+      current.lastAccessedMs = nowMs;
+      prunePrintThrottleWindow(current, nowMs, windowMs);
+      if (current.cooldownUntilMs > nowMs) {
+        printThrottleStates.set(key, current);
+        return current.cooldownUntilMs - nowMs;
+      }
+      if (current.requestStartsMs.length < maxRequestsInWindow) {
+        current.requestStartsMs.push(nowMs);
+        printThrottleStates.set(key, current);
+        return 0;
+      }
+      const earliest = current.requestStartsMs[0];
+      const wait = earliest ? Math.max(1, earliest + windowMs - nowMs) : 1;
+      printThrottleStates.set(key, current);
+      return wait;
+    });
+    if (waitMs <= 0) return;
+    await sleepWithAbort(waitMs, input.signal);
+  }
+}
+
+function recordPrintRateLimitCooldown(input: {
+  provider?: string;
+  model?: string;
+  stderr: string;
+}): void {
+  if (!input.provider || !input.model) return;
+  if (!isRateLimitMessage(input.stderr)) return;
+  const key = getPrintThrottleKey(input.provider, input.model);
+  const retryAfterMs = extractRetryAfterMs(input.stderr);
+  const cooldownMs = Math.max(
+    1_000,
+    Math.min(PRINT_THROTTLE_MAX_COOLDOWN_MS, retryAfterMs ?? PRINT_THROTTLE_FALLBACK_COOLDOWN_MS),
+  );
+  const nowMs = Date.now();
+  withPrintThrottleMutation(nowMs, () => {
+    prunePrintThrottleStates(nowMs);
+    const current =
+      printThrottleStates.get(key) ?? {
+        requestStartsMs: [],
+        cooldownUntilMs: 0,
+        lastAccessedMs: nowMs,
+      };
+    current.lastAccessedMs = nowMs;
+    current.cooldownUntilMs = Math.max(current.cooldownUntilMs, nowMs + cooldownMs);
+    printThrottleStates.set(key, current);
+  });
+}
 
 /**
  * 印刷実行オプション
@@ -208,6 +453,11 @@ export async function runPiPrintMode(
   if (input.signal?.aborted) {
     throw new Error(`${entityLabel} run aborted`);
   }
+  await waitForPrintThrottleSlot({
+    provider: input.provider,
+    model: input.model,
+    signal: input.signal,
+  });
 
   // Use JSON mode for streaming output.
   // Keep extensions disabled by default for deterministic child behavior.
@@ -371,6 +621,11 @@ export async function runPiPrintMode(
         }
 
         if (code !== 0) {
+          recordPrintRateLimitCooldown({
+            provider: input.provider,
+            model: input.model,
+            stderr,
+          });
           rejectPromise(new Error(stderr.trim() || `${entityLabel} exited with code ${code}`));
           return;
         }
@@ -459,6 +714,11 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
   if (signal?.aborted) {
     throw new Error(`${entityLabel} aborted`);
   }
+  await waitForPrintThrottleSlot({
+    provider: model.provider,
+    model: model.id,
+    signal,
+  });
 
   const args = [
     "--mode", "json",
@@ -609,6 +869,11 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
         }
 
         if (code !== 0) {
+          recordPrintRateLimitCooldown({
+            provider: model.provider,
+            model: model.id,
+            stderr,
+          });
           const message = stderr.trim() || `exit code ${code}`;
           rejectPromise(new Error(`pi --mode json failed: ${message}`));
           return;
