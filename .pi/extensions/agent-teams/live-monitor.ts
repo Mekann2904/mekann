@@ -75,7 +75,20 @@ export type { TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonito
 
 const LIVE_PREVIEW_LINE_LIMIT = 120;
 const LIVE_LIST_WINDOW_SIZE = 22;
-const LIVE_EVENT_TAIL_LIMIT = Math.max(60, Number(process.env.PI_LIVE_EVENT_TAIL_LIMIT) || 120);
+const LIVE_EVENT_TAIL_LIMIT = (() => {
+  const envVal = process.env.PI_LIVE_EVENT_TAIL_LIMIT;
+  if (envVal !== undefined) {
+    const parsed = Number(envVal);
+    if (!Number.isFinite(parsed) || parsed < 60) {
+      console.warn(
+        `[agent-teams/live-monitor] Invalid PI_LIVE_EVENT_TAIL_LIMIT="${envVal}", using default 120`
+      );
+      return 120;
+    }
+    return Math.max(60, parsed);
+  }
+  return 120;
+})();
 const LIVE_EVENT_INLINE_LINE_LIMIT = 8;
 const LIVE_EVENT_DETAIL_LINE_LIMIT = 28;
 

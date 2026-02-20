@@ -11,7 +11,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 type Replacement = {
   marker: string;
-  before: string;
+  beforeCandidates: string[];
   after: string;
 };
 
@@ -20,7 +20,10 @@ const TARGET_MODULE = "@mariozechner/pi-coding-agent/dist/core/agent-session.js"
 const REPLACEMENTS: Replacement[] = [
   {
     marker: "const rateLimitMaxRetries =",
-    before: "        if (this._retryAttempt > settings.maxRetries) {",
+    beforeCandidates: [
+      "        if (this._retryAttempt > settings.maxRetries) {",
+      "if (this._retryAttempt > settings.maxRetries) {",
+    ],
     after:
       "        const isRateLimitRetry = /rate.?limit|too many requests|429|quota exceeded/i.test(message.errorMessage || \"\");\n" +
       "        const configuredRateLimitRetries = Number.parseInt(process.env.PI_RATE_LIMIT_MAX_RETRIES ?? \"8\", 10);\n" +
@@ -33,7 +36,10 @@ const REPLACEMENTS: Replacement[] = [
   },
   {
     marker: "maxAttempts: rateLimitMaxRetries,",
-    before: "            maxAttempts: settings.maxRetries,",
+    beforeCandidates: [
+      "            maxAttempts: settings.maxRetries,",
+      "maxAttempts: settings.maxRetries,",
+    ],
     after: "            maxAttempts: rateLimitMaxRetries,",
   },
 ];
@@ -54,8 +60,15 @@ async function applyPatch(requireFn: NodeRequire): Promise<"patched" | "already"
     if (patched.includes(replacement.marker)) {
       continue;
     }
-    const next = patched.replace(replacement.before, replacement.after);
-    if (next === patched) {
+    let next = patched;
+    let replaced = false;
+    for (const before of replacement.beforeCandidates) {
+      if (!next.includes(before)) continue;
+      next = next.replace(before, replacement.after);
+      replaced = true;
+      break;
+    }
+    if (!replaced) {
       return "skip";
     }
     patched = next;

@@ -41,6 +41,10 @@ import {
   toErrorMessage,
 } from "../../lib/error-utils.js";
 import {
+  trimForError,
+  buildRateLimitKey,
+} from "../../lib/runtime-utils.js";
+import {
   type ThinkingLevel,
 } from "../../lib/agent-types.js";
 import {
@@ -53,7 +57,18 @@ import {
 } from "../../lib/plan-mode-shared";
 import { getTeamMemberExecutionRules } from "../../lib/execution-rules";
 import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from "../shared/pi-print-executor";
-import type { RetryWithBackoffOverrides } from "../../lib/retry-with-backoff.js";
+import {
+  retryWithBackoff,
+  getRateLimitGateSnapshot,
+  type RetryWithBackoffOverrides,
+} from "../../lib/retry-with-backoff.js";
+import {
+  STABLE_MAX_RETRIES,
+  STABLE_INITIAL_DELAY_MS,
+  STABLE_MAX_DELAY_MS,
+  STABLE_MAX_RATE_LIMIT_RETRIES,
+  STABLE_MAX_RATE_LIMIT_WAIT_MS,
+} from "../../lib/agent-common.js";
 
 // ============================================================================
 // Types
@@ -468,49 +483,93 @@ export async function runMember(input: {
   });
   const resolvedProvider = input.member.provider ?? input.fallbackProvider ?? "(session-default)";
   const resolvedModel = input.member.model ?? input.fallbackModel ?? "(session-default)";
+  const rateLimitKey = buildRateLimitKey(resolvedProvider, resolvedModel);
+  const retryOverrides: RetryWithBackoffOverrides = {
+    maxRetries: STABLE_MAX_RETRIES,
+    initialDelayMs: STABLE_INITIAL_DELAY_MS,
+    maxDelayMs: STABLE_MAX_DELAY_MS,
+    ...(input.retryOverrides ?? {}),
+  };
+  let retryCount = 0;
+  let lastRetryStatusCode: number | undefined;
+  let lastRetryMessage = "";
 
   input.onStart?.(input.member);
   try {
     try {
       const provider = input.member.provider ?? input.fallbackProvider;
       const model = input.member.model ?? input.fallbackModel;
-      let result: PrintCommandResult | undefined;
-      let lastErrorMessage = "";
+      let rateLimitGateLogged = false;
 
-      for (let attempt = 0; attempt <= IDLE_TIMEOUT_RETRY_LIMIT; attempt += 1) {
-        try {
-          result = await runPiPrintMode({
-            provider,
-            model,
-            prompt,
-            timeoutMs: input.timeoutMs,
-            signal: input.signal,
-            onTextDelta: (delta) => input.onTextDelta?.(input.member, delta),
-            onStderrChunk: (chunk) => input.onStderrChunk?.(input.member, chunk),
-          });
-          break;
-        } catch (error) {
-          lastErrorMessage = toErrorMessage(error);
-          const shouldRetry =
-            attempt < IDLE_TIMEOUT_RETRY_LIMIT &&
-            isIdleTimeoutErrorMessage(lastErrorMessage) &&
-            !input.signal?.aborted;
+      const result = await retryWithBackoff(
+        async () => {
+          let commandResult: PrintCommandResult | undefined;
+          let lastErrorMessage = "";
+          for (let attempt = 0; attempt <= IDLE_TIMEOUT_RETRY_LIMIT; attempt += 1) {
+            try {
+              commandResult = await runPiPrintMode({
+                provider,
+                model,
+                prompt,
+                timeoutMs: input.timeoutMs,
+                signal: input.signal,
+                onTextDelta: (delta) => input.onTextDelta?.(input.member, delta),
+                onStderrChunk: (chunk) => input.onStderrChunk?.(input.member, chunk),
+              });
+              break;
+            } catch (error) {
+              lastErrorMessage = toErrorMessage(error);
+              const shouldRetry =
+                attempt < IDLE_TIMEOUT_RETRY_LIMIT &&
+                isIdleTimeoutErrorMessage(lastErrorMessage) &&
+                !input.signal?.aborted;
 
-          if (!shouldRetry) {
-            throw error;
+              if (!shouldRetry) {
+                throw error;
+              }
+
+              input.onEvent?.(
+                input.member,
+                `idle-timeout retry: attempt=${attempt + 1}/${IDLE_TIMEOUT_RETRY_LIMIT} provider=${provider || "(session-default)"} model=${model || "(session-default)"} timeoutMs=${input.timeoutMs}`,
+              );
+              await sleep(IDLE_TIMEOUT_RETRY_DELAY_MS);
+            }
           }
 
-          input.onEvent?.(
-            input.member,
-            `idle-timeout retry: attempt=${attempt + 1}/${IDLE_TIMEOUT_RETRY_LIMIT} provider=${provider || "(session-default)"} model=${model || "(session-default)"} timeoutMs=${input.timeoutMs}`,
-          );
-          await sleep(IDLE_TIMEOUT_RETRY_DELAY_MS);
-        }
-      }
-
-      if (!result) {
-        throw new Error(lastErrorMessage || "agent team member execution failed");
-      }
+          if (!commandResult) {
+            throw new Error(lastErrorMessage || "agent team member execution failed");
+          }
+          return commandResult;
+        },
+        {
+          cwd: input.cwd,
+          overrides: retryOverrides,
+          signal: input.signal,
+          rateLimitKey,
+          maxRateLimitRetries: STABLE_MAX_RATE_LIMIT_RETRIES,
+          maxRateLimitWaitMs: STABLE_MAX_RATE_LIMIT_WAIT_MS,
+          onRateLimitWait: ({ waitMs, hits }) => {
+            if (rateLimitGateLogged) return;
+            rateLimitGateLogged = true;
+            input.onEvent?.(
+              input.member,
+              `rate-limit-gate wait=${waitMs}ms hits=${hits} provider=${resolvedProvider} model=${resolvedModel}`,
+            );
+          },
+          onRetry: ({ attempt, statusCode, error }) => {
+            retryCount = attempt;
+            lastRetryStatusCode = statusCode;
+            lastRetryMessage = trimForError(toErrorMessage(error), 160);
+            if (statusCode !== 429 || attempt === 1) {
+              const errorText = statusCode === 429 ? "rate limit" : lastRetryMessage;
+              input.onEvent?.(
+                input.member,
+                `retry attempt=${attempt} status=${statusCode ?? "-"} error=${errorText}`,
+              );
+            }
+          },
+        },
+      );
       const normalized = normalizeTeamMemberOutput(result.output);
       if (!normalized.ok) {
         throw new SchemaValidationError(`agent team member low-substance output: ${normalized.reason}`, {
@@ -544,9 +603,22 @@ export async function runMember(input: {
       };
     } catch (error) {
       const errorMessage = toErrorMessage(error);
+      const gateSnapshot = getRateLimitGateSnapshot(rateLimitKey);
+      const diagnostic = [
+        `provider=${resolvedProvider}`,
+        `model=${resolvedModel}`,
+        `retries=${retryCount}`,
+        lastRetryStatusCode !== undefined ? `last_status=${lastRetryStatusCode}` : "",
+        lastRetryMessage ? `last_retry_error=${lastRetryMessage}` : "",
+        `gate_wait_ms=${gateSnapshot.waitMs}`,
+        `gate_hits=${gateSnapshot.hits}`,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const detailedErrorMessage = diagnostic ? `${errorMessage} | ${diagnostic}` : errorMessage;
       input.onEvent?.(
         input.member,
-        `member run failed: ${normalizeForSingleLine(errorMessage, 180)}`,
+        `member run failed: ${normalizeForSingleLine(detailedErrorMessage, 180)}`,
       );
       return {
         memberId: input.member.id,
@@ -555,7 +627,7 @@ export async function runMember(input: {
         output: "",
         status: "failed",
         latencyMs: 0,
-        error: errorMessage,
+        error: detailedErrorMessage,
         diagnostics: {
           confidence: 0,
           evidenceCount: 0,

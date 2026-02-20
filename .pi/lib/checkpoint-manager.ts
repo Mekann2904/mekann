@@ -329,6 +329,7 @@ export function initCheckpointManager(
 export function getCheckpointManager(): {
   save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
   load: (taskId: string) => Promise<Checkpoint | null>;
+  loadById: (checkpointId: string) => Promise<Checkpoint | null>;
   delete: (taskId: string) => Promise<boolean>;
   listExpired: () => Promise<Checkpoint[]>;
   cleanup: () => Promise<number>;
@@ -341,6 +342,7 @@ export function getCheckpointManager(): {
   return {
     save: saveCheckpoint,
     load: loadCheckpoint,
+    loadById: loadCheckpointById,
     delete: deleteCheckpoint,
     listExpired: listExpiredCheckpoints,
     cleanup: cleanupExpiredCheckpoints,
@@ -437,6 +439,27 @@ async function loadCheckpoint(taskId: string): Promise<Checkpoint | null> {
   // Return the most recent checkpoint
   candidates.sort((a, b) => b.createdAt - a.createdAt);
   return candidates[0];
+}
+
+/**
+ * チェックポイントIDでチェックポイントをロードする
+ * @summary IDでチェックポイントを取得
+ * @param checkpointId - チェックポイントID
+ * @returns チェックポイントオブジェクト、見つからない場合はnull
+ */
+async function loadCheckpointById(checkpointId: string): Promise<Checkpoint | null> {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+
+  const dir = managerState!.checkpointDir;
+  const filePath = getCheckpointPath(dir, checkpointId);
+
+  if (!existsSync(filePath)) {
+    return null;
+  }
+
+  return parseCheckpointFile(filePath);
 }
 
 /**

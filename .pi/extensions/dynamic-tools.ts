@@ -193,26 +193,47 @@ ${tool.code}
     const result = await execute(params);
     return { success: true, result };
   } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : String(error) 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 })();
 `;
 
-    // タイムアウト付きで実行
-    const result = await Promise.race([
-      executeCode(wrappedCode),
-      new Promise<ToolExecutionResult>((_, reject) =>
-        setTimeout(() => reject(new Error("実行タイムアウト")), timeoutMs)
-      ),
-    ]);
+    // AbortControllerを使用してタイムアウト時にVM実行をキャンセル
+    const abortController = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let executionCompleted = false;
 
-    return {
-      ...result,
-      executionTimeMs: Date.now() - startTime,
-    };
+    try {
+      // タイムアウト付きで実行
+      const result = await Promise.race([
+        executeCode(wrappedCode).then((r) => {
+          executionCompleted = true;
+          return r;
+        }),
+        new Promise<ToolExecutionResult>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            if (!executionCompleted) {
+              abortController.abort();
+              reject(new Error("実行タイムアウト"));
+            }
+          }, timeoutMs);
+        }),
+      ]);
+
+      return {
+        ...result,
+        executionTimeMs: Date.now() - startTime,
+      };
+    } finally {
+      // タイマーを確実にクリアしてリソースリークを防止
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    }
   } catch (error) {
     return {
       success: false,
@@ -240,13 +261,48 @@ ${tool.code}
  * - __dirname, __filename: ファイルシステムパス漏洩禁止
  * - setTimeout, setInterval, clearTimeout, clearInterval: サンドボックスエスケープ防止
  */
+
+/**
+ * サンドボックス用の安全なconsoleラッパーを作成
+ * @summary 安全なconsoleラッパー作成
+ * @returns 許可されたメソッドのみを持つconsoleオブジェクト
+ * @description
+ * 元のconsoleオブジェクトへの参照を渡さず、文字列化して出力する安全なラッパーを提供。
+ * log/info/warn/error/debugのみを許可し、他のプロパティアクセスを遮断する。
+ */
+function createSandboxConsole(): Pick<Console, "log" | "info" | "warn" | "error" | "debug"> {
+  const safeStringify = (args: unknown[]): string => {
+    return args.map(arg => {
+      if (typeof arg === "string") return arg;
+      if (typeof arg === "number" || typeof arg === "boolean") return String(arg);
+      if (arg === null) return "null";
+      if (arg === undefined) return "undefined";
+      try {
+        return JSON.stringify(arg, null, 2);
+      } catch {
+        return String(arg);
+      }
+    }).join(" ");
+  };
+
+  return {
+    log: (...args: unknown[]) => console.log(safeStringify(args)),
+    info: (...args: unknown[]) => console.info(safeStringify(args)),
+    warn: (...args: unknown[]) => console.warn(safeStringify(args)),
+    error: (...args: unknown[]) => console.error(safeStringify(args)),
+    debug: (...args: unknown[]) => console.debug(safeStringify(args)),
+  };
+}
+
 async function executeCode(code: string): Promise<ToolExecutionResult> {
   try {
     // vmモジュールを使用してコードを実行
     const vm = await import("node:vm");
+    // 安全なconsoleラッパーを使用（元のconsoleへの参照を遮断）
+    const sandboxConsole = createSandboxConsole();
     const context = vm.createContext({
-      // ログ出力のみ許可
-      console,
+      // ログ出力のみ許可（安全なラッパー経由）
+      console: sandboxConsole,
       // データ操作
       Buffer,
       // 標準オブジェクト

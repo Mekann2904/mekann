@@ -49,6 +49,41 @@ const SESSIONS_ROOT = join(homedir(), ".pi/agent/sessions");
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const TOP_ROWS = 8;
 
+// Type definitions for loosely-typed session data
+interface SessionUsage {
+  totalTokens?: number;
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  cost?: { total?: number };
+}
+
+interface ContentBlock {
+  type: string;
+  text?: string;
+  thinking?: string;
+  name?: string;
+  arguments?: unknown;
+}
+
+interface SessionMessage {
+  role?: string;
+  content?: string | ContentBlock[];
+  command?: string;
+  output?: string;
+  summary?: string;
+  provider?: string;
+  model?: string;
+  usage?: SessionUsage;
+}
+
+interface SessionEntry {
+  type?: string;
+  message?: SessionMessage;
+  timestamp?: string | number;
+}
+
 interface CurrentSnapshot {
   usage: ContextUsage | undefined;
   freeTokens: number | null;
@@ -105,7 +140,7 @@ function getOrCreateToolStats(map: Map<string, ToolStats>, toolName: string): To
   return stats;
 }
 
-function toTotalUsageTokens(usage: any): number {
+function toTotalUsageTokens(usage: SessionUsage | undefined): number {
   if (!usage) return 0;
   const nativeTotal = toFiniteNumberWithDefault(usage.totalTokens);
   if (nativeTotal > 0) return nativeTotal;
@@ -133,7 +168,7 @@ function estimateUnknownTokens(value: unknown): number {
     let chars = 0;
     for (const block of value) {
       if (block && typeof block === "object" && "type" in block) {
-        const typedBlock: any = block;
+        const typedBlock = block as ContentBlock;
         if (typedBlock.type === "text" && typeof typedBlock.text === "string") {
           chars += typedBlock.text.length;
           continue;
@@ -151,7 +186,7 @@ function estimateUnknownTokens(value: unknown): number {
   return Math.ceil(safeStringify(value).length / 4);
 }
 
-function estimateMessageTokens(message: any): number {
+function estimateMessageTokens(message: SessionMessage | undefined): number {
   if (!message || typeof message !== "object") return 0;
 
   const role = message.role;
@@ -190,7 +225,7 @@ function estimateMessageTokens(message: any): number {
   return 0;
 }
 
-function extractToolCalls(message: any): string[] {
+function extractToolCalls(message: SessionMessage | undefined): string[] {
   if (!message || !Array.isArray(message.content)) return [];
   const names: string[] = [];
   for (const block of message.content) {
@@ -202,7 +237,7 @@ function extractToolCalls(message: any): string[] {
   return names;
 }
 
-function parseTimestampMs(entry: any): number | undefined {
+function parseTimestampMs(entry: SessionEntry | undefined): number | undefined {
   const direct = entry?.timestamp;
   if (typeof direct === "string") {
     const parsed = Date.parse(direct);
@@ -283,7 +318,7 @@ function collectCurrentSnapshot(ctx: ExtensionAPI["context"]): CurrentSnapshot {
 
   for (const entry of branchEntries) {
     if (entry.type === "message") {
-      const message: any = entry.message;
+      const message = entry.message as SessionMessage;
       const estimated = estimateMessageTokens(message);
 
       if (message?.role === "user" || message?.role === "bashExecution") {

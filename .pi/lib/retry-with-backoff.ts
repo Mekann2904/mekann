@@ -293,10 +293,18 @@ function enforceRateLimitEntryCap(state: SharedRateLimitState): void {
   const entries = Array.from(state.entries.entries())
     .sort((a, b) => a[1].updatedAtMs - b[1].updatedAtMs);
   const overflow = state.entries.size - MAX_RATE_LIMIT_ENTRIES;
+  const deletedKeys: string[] = [];
   for (let index = 0; index < overflow; index += 1) {
     const candidate = entries[index];
     if (!candidate) break;
     state.entries.delete(candidate[0]);
+    deletedKeys.push(candidate[0]);
+  }
+  if (deletedKeys.length > 0) {
+    console.warn(
+      `[retry-with-backoff] Rate limit entry cap (${MAX_RATE_LIMIT_ENTRIES}) exceeded. ` +
+        `Removed ${deletedKeys.length} oldest entries: ${deletedKeys.join(", ")}`
+    );
   }
 }
 

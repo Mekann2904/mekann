@@ -140,6 +140,7 @@ import {
 
 import { SchemaValidationError } from "../lib/errors.js";
 import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estimator";
+import { detectTier, getConcurrencyLimit } from "../lib/provider-limits";
 
 const logger = getLogger();
 import {
@@ -272,6 +273,29 @@ function debugCostEstimation(scope: string, fields: Record<string, unknown>): vo
   if (process.env.PI_DEBUG_COST_ESTIMATION !== "1") return;
   const parts = Object.entries(fields).map(([key, value]) => `${key}=${String(value)}`);
   console.error(`[cost-estimation] scope=${scope} ${parts.join(" ")}`);
+}
+
+function resolveProviderConcurrencyCap(
+  agents: SubagentDefinition[],
+  fallbackProvider?: string,
+  fallbackModel?: string,
+): number {
+  let cap = Number.POSITIVE_INFINITY;
+  for (const agent of agents) {
+    const provider = agent.provider ?? fallbackProvider;
+    const model = agent.model ?? fallbackModel;
+    if (!provider || !model) continue;
+    const tier = detectTier(provider, model);
+    const limit = getConcurrencyLimit(provider, model, tier);
+    if (Number.isFinite(limit) && limit > 0) {
+      cap = Math.min(cap, limit);
+    }
+  }
+
+  if (!Number.isFinite(cap) || cap <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.max(1, Math.trunc(cap));
 }
 
 // Note: toRetryOverrides is kept locally because it checks STABLE_SUBAGENT_RUNTIME
@@ -900,7 +924,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           queueLease?.release();
           refreshRuntimeStatus(ctx);
         }
-      })();
+      })().catch((error) => {
+        console.error("[subagent_run] Background job unhandled error:", error);
+      });
 
       return {
         content: [{ type: "text" as const, text: `subagent_run queued as background job: ${job.jobId}` }],
@@ -1040,6 +1066,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               configuredParallelLimit,
               activeAgents.length,
               Math.max(1, snapshot.limits.maxTotalActiveLlm),
+              resolveProviderConcurrencyCap(
+                activeAgents,
+                ctx.model?.provider,
+                ctx.model?.id,
+              ),
             ),
           );
           const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
@@ -1236,7 +1267,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           queueLease?.release();
           refreshRuntimeStatus(ctx);
         }
-      })();
+      })().catch((error) => {
+        console.error("[subagent_run_parallel] Background job unhandled error:", error);
+      });
 
       return {
         content: [{ type: "text" as const, text: `subagent_run_parallel queued as background job: ${job.jobId}` }],
