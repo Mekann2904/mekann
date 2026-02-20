@@ -37,6 +37,7 @@
 import { spawn } from "node:child_process";
 
 const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
+const MAX_CAPTURED_STDERR_CHARS = 128_000;
 
 /** Default idle timeout for subagent execution (5 minutes) */
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
@@ -98,6 +99,15 @@ function trimForError(text: string, maxLength = 200): string {
   const trimmed = text.trim();
   if (trimmed.length <= maxLength) return trimmed;
   return trimmed.slice(0, maxLength) + "...";
+}
+
+/**
+ * Append text with hard length cap to avoid RangeError from unbounded buffering.
+ */
+function appendWithCap(current: string, next: string, maxChars: number): string {
+  if (!next || current.length >= maxChars) return current;
+  const remaining = maxChars - current.length;
+  return current + next.slice(0, remaining);
 }
 
 /**
@@ -218,7 +228,6 @@ export async function runPiPrintMode(
   args.push(input.prompt);
 
   return await new Promise<PrintCommandResult>((resolvePromise, rejectPromise) => {
-    let stdout = "";
     let stderr = "";
     let textContent = "";
     let thinkingContent = "";
@@ -301,7 +310,6 @@ export async function runPiPrintMode(
 
     child.stdout.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
       input.onStdoutChunk?.(text);
 
       // Reset idle timeout on any output
@@ -344,7 +352,7 @@ export async function runPiPrintMode(
 
     child.stderr.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
+      stderr = appendWithCap(stderr, text, MAX_CAPTURED_STDERR_CHARS);
       input.onStderrChunk?.(text);
       if (timeoutEnabled) {
         resetIdleTimeout();
@@ -467,7 +475,6 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
   args.push(prompt);
 
   return await new Promise<string>((resolvePromise, rejectPromise) => {
-    let stdout = "";
     let stderr = "";
     let textContent = "";
     let thinkingContent = "";
@@ -545,7 +552,6 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
 
     child.stdout.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stdout += text;
       onChunk?.(text);
 
       if (timeoutEnabled) {
@@ -585,7 +591,7 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
 
     child.stderr.on("data", (chunk: Buffer | string) => {
       const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-      stderr += text;
+      stderr = appendWithCap(stderr, text, MAX_CAPTURED_STDERR_CHARS);
       if (timeoutEnabled) {
         resetIdleTimeout();
       }
