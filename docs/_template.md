@@ -2,9 +2,9 @@
 title: ページタイトル
 category: getting-started | user-guide | development | reference | meta
 audience: new-user | daily-user | developer | contributor
-last_updated: YYYY-MM-DD
+last_updated: 2026-02-17
 tags: []
-related: []
+related: [./page1.md, ./page2.md]
 ---
 
 # タイトル

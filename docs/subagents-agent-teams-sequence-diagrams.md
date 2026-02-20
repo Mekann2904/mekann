@@ -1,7 +1,7 @@
 ---
 title: Subagents と Agent Teams のシーケンス図
 category: development
-audience: [developer]
+audience: developer
 last_updated: 2026-02-17
 tags: [subagents, agent-teams, sequence-diagram, architecture]
 related: [../02-user-guide/08-subagents.md, ../02-user-guide/09-agent-teams.md]

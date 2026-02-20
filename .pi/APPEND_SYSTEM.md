@@ -66,6 +66,7 @@ The following file types are exempt from template requirements:
 | References | `references/*.md` | Reference materials |
 | Run logs | `runs/*.md`, `*.SUMMARY.md` | Auto-generated |
 | Changelog | `CHANGELOG.md` | Changelog format |
+| Patches | `docs/patches/*.md` | Patch documentation |
 
 **Template Rule**: Before creating any `.md` file not in the exceptions list, read `docs/_template.md` and apply its structure.
 

@@ -93,10 +93,10 @@ pi remove https://github.com/Mekann2904/mekann
 | **agent-idle-indicator** | `agent-idle-indicator.ts` | エージェント実行状態の表示 | [→](docs/02-user-guide/11-utilities.md) |
 | **kitty-status-integration** | `kitty-status-integration.ts` | kittyターミナル連携 | [→](docs/02-user-guide/11-utilities.md) |
 | **skill-inspector** | `skill-inspector.ts` | スキル割り当て状況の表示 | [→](docs/02-user-guide/11-utilities.md) |
-| **search** | `extensions/search/` | 高速コード検索（file_candidates, code_search, sym_index, sym_find） | 新規 |
-| **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | 新規 |
-| **invariant-pipeline** | `invariant-pipeline.ts` | 形式仕様からインバリアント、テストコード自動生成（generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver） | [→](docs/02-user-guide/12-invariant-pipeline.md) |
-| **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | 新規 |
+| **search** | `extensions/search/` | 高速コード検索（file_candidates, code_search, sym_index, sym_find） | [→](docs/02-user-guide/15-search-tools.md) |
+| **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | [→](docs/02-user-guide/01-extensions.md#動的ツール) |
+| **invariant-pipeline** | `invariant-pipeline.ts` | 形式仕様からインバリアント、テストコード自動生成（generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver） | [→](docs/02-user-guide/14-invariant-pipeline.md) |
+| **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | [→](docs/02-user-guide/01-extensions.md#スタートアップコンテキスト) |
 
 ### 共有ライブラリ
 

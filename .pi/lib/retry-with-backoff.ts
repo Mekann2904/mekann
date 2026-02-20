@@ -32,6 +32,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { recordTotalLimitObservation } from "./adaptive-total-limit.js";
 
 /**
  * リトライ時のジッターモード
@@ -625,6 +626,10 @@ export async function retryWithBackoff<T>(
         nowMs,
       );
       if (gate.waitMs > 0) {
+        recordTotalLimitObservation({
+          kind: "rate_limit",
+          waitMs: gate.waitMs,
+        });
         if (maxRateLimitWaitMs !== undefined && gate.waitMs > maxRateLimitWaitMs) {
           throw createRateLimitFastFailError(
             `gate_wait=${gate.waitMs}ms exceeds limit=${maxRateLimitWaitMs}ms key=${gate.key}`,
@@ -641,7 +646,13 @@ export async function retryWithBackoff<T>(
     }
 
     try {
+      const operationStartedAt = now();
       const result = await operation();
+      const operationLatencyMs = Math.max(0, now() - operationStartedAt);
+      recordTotalLimitObservation({
+        kind: "success",
+        latencyMs: operationLatencyMs,
+      });
       if (rateLimitKeys.length > 0) {
         for (const scopeKey of rateLimitKeys) {
           registerRateLimitGateSuccess(scopeKey, now);
@@ -650,6 +661,13 @@ export async function retryWithBackoff<T>(
       return result;
     } catch (error) {
       const statusCode = extractRetryStatusCode(error);
+      if (statusCode === 429) {
+        recordTotalLimitObservation({ kind: "rate_limit" });
+      } else {
+        recordTotalLimitObservation({
+          kind: statusCode === 408 ? "timeout" : "error",
+        });
+      }
       const retryable = options.shouldRetry
         ? options.shouldRetry(error, statusCode)
         : isRetryableError(error, statusCode);

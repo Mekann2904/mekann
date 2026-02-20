@@ -55,7 +55,8 @@ pi拡張機能コレクションのユーザーガイドです。
 | 拡張機能 | 説明 | ドキュメント |
 |---------|------|------|
 | **cross-instance-runtime** | クロスインスタンス協調・レート制限 | [→](./12-cross-instance-runtime.md) |
-| **search-tools** | 高速検索ツール群 | [→](./13-search-tools.md) |
+| **invariant-pipeline** | インバリアント生成パイプライン | [→](./14-invariant-pipeline.md) |
+| **search-tools** | 高速検索ツール群 | [→](./15-search-tools.md) |
 
 ## クイックスタート
 

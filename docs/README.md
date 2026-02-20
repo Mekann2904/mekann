@@ -40,7 +40,8 @@ pi拡張機能コレクションのドキュメントへようこそ。
 | [ul-dual-mode](./02-user-guide/10-ul-dual-mode.md) | デュアルモード | [完了] 完了 |
 | [ユーティリティ](./02-user-guide/11-utilities.md) | kitty統合などのユーティリティ | [完了] 完了 |
 | [cross-instance-runtime](./02-user-guide/12-cross-instance-runtime.md) | クロスインスタンス協調・レート制限 | [完了] 完了 |
-| [search-tools](./02-user-guide/13-search-tools.md) | 高速検索ツール群 | [完了] 完了 |
+| [invariant-pipeline](./02-user-guide/14-invariant-pipeline.md) | インバリアント生成パイプライン | [完了] 完了 |
+| [search-tools](./02-user-guide/15-search-tools.md) | 高速検索ツール群 | [完了] 完了 |
 
 ### 開発者ガイド
 

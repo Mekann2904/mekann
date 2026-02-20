@@ -48,6 +48,7 @@ import {
   getRuntimeConfig,
   type RuntimeConfig,
 } from "./runtime-config.js";
+import { getAdaptiveTotalMaxLlm } from "./adaptive-total-limit.js";
 
 // ============================================================================
 // Types
@@ -115,8 +116,9 @@ export interface CoordinatorInternalState {
  */
 function getDefaultConfig(): CoordinatorConfig {
   const runtimeConfig = getRuntimeConfig();
+  const adaptiveTotalMaxLlm = getAdaptiveTotalMaxLlm(runtimeConfig.totalMaxLlm);
   return {
-    totalMaxLlm: runtimeConfig.totalMaxLlm,
+    totalMaxLlm: adaptiveTotalMaxLlm,
     heartbeatIntervalMs: runtimeConfig.heartbeatIntervalMs,
     heartbeatTimeoutMs: runtimeConfig.heartbeatTimeoutMs,
   };

@@ -84,6 +84,7 @@ import {
   isStableProfile,
   type RuntimeConfig,
 } from "../lib/runtime-config";
+import { getAdaptiveTotalMaxLlm } from "../lib/adaptive-total-limit.js";
 
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
@@ -661,6 +662,7 @@ async function waitForRuntimeCapacityEvent(
 function createRuntimeLimits(): AgentRuntimeLimits {
   // Use centralized RuntimeConfig as the source of truth
   const config = getRuntimeConfig();
+  const adaptiveTotalMaxLlm = getAdaptiveTotalMaxLlm(config.totalMaxLlm);
 
   // Cross-instance coordination: if coordinator is initialized, use dynamic parallel limit
   // Priority: env var > coordinator > runtime-config
@@ -676,7 +678,7 @@ function createRuntimeLimits(): AgentRuntimeLimits {
 
   let effectiveTotalLlm = resolveLimitFromEnv(
     "PI_AGENT_MAX_TOTAL_LLM",
-    config.totalMaxLlm,
+    adaptiveTotalMaxLlm,
   );
 
   // Also adjust total LLM based on coordinator if env var is not set

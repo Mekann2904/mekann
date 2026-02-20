@@ -4,7 +4,7 @@ category: development
 audience: developer
 last_updated: 2026-02-18
 tags: [abdd, architecture, documentation]
-related: [philosophy.md, spec.md]
+related: [../../philosophy.md, ../../ABDD/spec.md]
 ---
 
 # ABDD統合設計書

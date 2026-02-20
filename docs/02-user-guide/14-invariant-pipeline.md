@@ -9,7 +9,7 @@ related: [08-subagents.md, 09-agent-teams.md]
 
 # Invariant Validation Pipeline
 
-> パンくず: [Home](../README.md) > [User Guide](./) > Invariant Validation Pipeline
+> パンくず: [Home](../../README.md) > [User Guide](../README.md) > Invariant Validation Pipeline
 
 ## 概要
 
