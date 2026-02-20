@@ -142,10 +142,13 @@ export function normalizeCommunicationRounds(
   fallback = DEFAULT_COMMUNICATION_ROUNDS,
   isStableRuntime = false,
 ): number {
-  if (isStableRuntime) return DEFAULT_COMMUNICATION_ROUNDS;
+  // Stable runtimeでもユーザー指定を尊重（最小1ラウンド保証）
+  // 以前は常にDEFAULT_COMMUNICATION_ROUNDS(1)を返していたが、これを緩和
   const resolved = value === undefined ? fallback : Number(value);
   if (!Number.isFinite(resolved)) return fallback;
-  return Math.max(0, Math.min(MAX_COMMUNICATION_ROUNDS, Math.trunc(resolved)));
+  // Stable runtimeでは最大MAX_COMMUNICATION_ROUNDSに制限
+  const maxRounds = isStableRuntime ? MAX_COMMUNICATION_ROUNDS : MAX_COMMUNICATION_ROUNDS;
+  return Math.max(0, Math.min(maxRounds, Math.trunc(resolved)));
 }
 
 /**
@@ -514,6 +517,17 @@ export function checkTermination(
   const missingElements: string[] = [];
   const suspiciousPatterns: string[] = [];
 
+  // Early return for empty results
+  if (results.length === 0) {
+    return {
+      canTerminate: false,
+      completionScore: 0,
+      missingElements: ["no results provided"],
+      suspiciousPatterns: [],
+      recommendation: "challenge",
+    };
+  }
+
   // Check 1: All results have SUMMARY field
   const missingSummaries = results.filter(
     (r) => !extractField(r.output, "SUMMARY") && r.status === "completed"
@@ -556,7 +570,8 @@ export function checkTermination(
 
   // Calculate completion score
   const totalChecks = 5;
-  const passedChecks = totalChecks - (missingElements.length + suspiciousPatterns.length) / 2;
+  const failedChecks = missingElements.length + suspiciousPatterns.length;
+  const passedChecks = Math.max(0, totalChecks - failedChecks);
   const completionScore = Math.max(0, Math.min(1, passedChecks / totalChecks));
 
   // Determine recommendation
@@ -569,8 +584,13 @@ export function checkTermination(
     recommendation = "extend";
   }
 
+  // Critical check: if SUMMARY or RESULT is missing, cannot terminate
+  const hasCriticalMissing = missingElements.some(elem =>
+    elem.includes("SUMMARY field") || elem.includes("RESULT field")
+  );
+
   return {
-    canTerminate: completionScore >= minCompletionScore && suspiciousPatterns.length === 0,
+    canTerminate: completionScore >= minCompletionScore && suspiciousPatterns.length === 0 && !hasCriticalMissing,
     completionScore,
     missingElements,
     suspiciousPatterns,

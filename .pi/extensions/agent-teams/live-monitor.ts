@@ -64,10 +64,11 @@ import {
   type TeamLiveViewMode,
   type AgentTeamLiveMonitorController,
   type LiveStreamView,
+  type TeamQueueStatus,
 } from "../../lib/team-types.js";
 
 // Re-export types for convenience
-export type { TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonitorController, LiveStreamView };
+export type { TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonitorController, LiveStreamView, TeamQueueStatus };
 
 // ============================================================================
 // Constants
@@ -299,7 +300,7 @@ function renderTreeView(
 }
 
 /**
- * 通信イベントを描画
+ * 通信イベントを描画（連携可視化を含む）
  * @summary 通信イベント描画
  */
 function renderCommunicationEvents(
@@ -330,13 +331,54 @@ function renderCommunicationEvents(
     }
   }
 
-  // 最新N件を表示
-  const recent = allEvents.slice(-limit);
+  // 最新N件を表示（制限を10に増加）
+  const effectiveLimit = Math.max(limit, 10);
+  const recent = allEvents.slice(-effectiveLimit);
   if (recent.length > 0) {
     add("");
     add(theme.fg("dim", "COMMUNICATION:"));
     for (const ev of recent) {
       add(theme.fg("dim", `  ${ev.time}  ${ev.from} → ${ev.to}: ${ev.msg}`));
+    }
+  }
+
+  // 連携可視化: DISCUSSIONセクションからの参照抽出
+  const referenceSummary: string[] = [];
+  for (const item of items) {
+    if (!item.discussionTail || item.discussionTail.length === 0) continue;
+    
+    // パートナーIDを抽出（partnersは "teamId/memberId" 形式）
+    const partnerLabels = item.partners;
+    if (partnerLabels.length === 0) continue;
+    
+    // DISCUSSION内で参照されているパートナーを検出
+    const referencedPartners: string[] = [];
+    const discussionLower = item.discussionTail.toLowerCase();
+    
+    for (const partnerLabel of partnerLabels) {
+      // パートナーのロール名やIDを検索
+      const partnerId = partnerLabel.split("/").pop() || partnerLabel;
+      if (discussionLower.includes(partnerId.toLowerCase()) || 
+          discussionLower.includes(partnerLabel.toLowerCase())) {
+        referencedPartners.push(partnerLabel);
+      }
+    }
+    
+    // 「合意」パターンも検出
+    const hasAgreement = /合意|agreement|consensus|一致/.test(item.discussionTail);
+    const hasDisagreement = /不同意|disagree|矛盾|conflict/.test(item.discussionTail);
+    
+    if (referencedPartners.length > 0) {
+      const status = hasAgreement ? "[合意]" : hasDisagreement ? "[検討中]" : "";
+      referenceSummary.push(`${item.label} → ${referencedPartners.join(", ")} ${status}`);
+    }
+  }
+  
+  if (referenceSummary.length > 0) {
+    add("");
+    add(theme.fg("accent", "COLLABORATION STATUS:"));
+    for (const ref of referenceSummary) {
+      add(theme.fg("success", `  ${ref}`));
     }
   }
 
@@ -564,6 +606,14 @@ export function renderAgentTeamLiveView(input: {
   width: number;
   height?: number;
   theme: any;
+  /** 待機状態情報（オプション） */
+  queueStatus?: {
+    isWaiting: boolean;
+    waitedMs?: number;
+    queuePosition?: number;
+    queuedAhead?: number;
+    estimatedWaitMs?: number;
+  };
 }): string[] {
   const lines: string[] = [];
   const add = (line = "") => pushWrappedLine(lines, line, input.width);
@@ -579,6 +629,25 @@ export function renderAgentTeamLiveView(input: {
   const doneText = completed > 0 ? theme.fg("success", `Done:${completed}`) : `Done:${completed}`;
   const failText = failed > 0 ? theme.fg("error", `Fail:${failed}`) : `Fail:${failed}`;
   add(`${runText}  ${doneText}  ${failText}`);
+  
+  // 待機状態表示
+  const queue = input.queueStatus;
+  if (queue?.isWaiting) {
+    const waitParts: string[] = [];
+    if (queue.queuePosition !== undefined) {
+      waitParts.push(`pos:${queue.queuePosition}`);
+    }
+    if (queue.waitedMs !== undefined) {
+      waitParts.push(`wait:${formatDurationMs({ startedAtMs: Date.now() - queue.waitedMs })}`);
+    }
+    if (queue.queuedAhead !== undefined && queue.queuedAhead > 0) {
+      waitParts.push(`ahead:${queue.queuedAhead}`);
+    }
+    if (waitParts.length > 0) {
+      add(theme.fg("warning", `QUEUE: ${waitParts.join(" | ")}`));
+    }
+  }
+  
   const globalEventLimit = input.mode === "detail" ? 8 : 4;
   const recentGlobalEvents = toEventTailLines(input.globalEvents, globalEventLimit);
   if (recentGlobalEvents.length > 0) {
@@ -885,6 +954,7 @@ export function createAgentTeamLiveMonitor(
             width,
             height: tui.terminal.rows,
             theme,
+            queueStatus,
           }),
         invalidate: () => {},
         handleInput: (rawInput: string) => {
@@ -992,6 +1062,14 @@ export function createAgentTeamLiveMonitor(
       clearRenderTimer();
     });
 
+  // 待機状態（内部変数）
+  let queueStatus: {
+    isWaiting: boolean;
+    waitedMs?: number;
+    queuePosition?: number;
+    queuedAhead?: number;
+  } | undefined;
+
   return {
     markStarted: (itemKey: string) => {
       const item = byKey.get(itemKey);
@@ -1065,6 +1143,17 @@ export function createAgentTeamLiveMonitor(
       item.discussionBytes += Buffer.byteLength(discussion, "utf-8");
       item.discussionNewlineCount += countOccurrences(discussion, "\n");
       item.discussionEndsWithNewline = discussion.endsWith("\n");
+      queueRender();
+    },
+    /** 待機状態を更新 */
+    updateQueueStatus: (status: {
+      isWaiting: boolean;
+      waitedMs?: number;
+      queuePosition?: number;
+      queuedAhead?: number;
+    }) => {
+      if (closed) return;
+      queueStatus = status;
       queueRender();
     },
     close,

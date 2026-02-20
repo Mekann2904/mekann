@@ -336,8 +336,8 @@ export function analyzeMemberOutput(output: string): TeamMemberResult["diagnosti
     "self-contradict",
     "contradict",
     "inconsistent",
-    "\u{7F3A}\u{76F8}", // 矛盾
-    "\u{81EA}\u{5DF1}\u{7F3A}\u{76F8}", // 自己矛盾
+    "\u{77DB}\u{76FE}", // 矛盾
+    "\u{81EA}\u{5DF1}\u{77DB}\u{76FE}", // 自己矛盾
   ]);
   const conflictSignals = countKeywordSignals(output, [
     "disagree",

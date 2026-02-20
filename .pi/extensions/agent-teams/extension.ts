@@ -494,7 +494,7 @@ function pickTeam(storage: TeamStorage, requestedId?: string): TeamDefinition | 
 
   if (storage.currentTeamId) {
     const current = storage.teams.find((team) => team.id === storage.currentTeamId);
-    if (current) return current;
+    if (current && current.enabled === "enabled") return current;
   }
 
   return storage.teams.find((team) => team.enabled === "enabled");
@@ -1646,6 +1646,16 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       liveMonitor?.appendBroadcastEvent(
         `runtime capacity granted: projected_requests=${dispatchPermit.projectedRequests} projected_llm=${dispatchPermit.projectedLlm}`,
       );
+
+      // 待機状態があった場合はUIに反映
+      if (dispatchPermit.waitedMs > 0 || (dispatchPermit.queuePosition && dispatchPermit.queuePosition > 0)) {
+        liveMonitor?.updateQueueStatus({
+          isWaiting: false, // 既に許可されたので待機終了
+          waitedMs: dispatchPermit.waitedMs,
+          queuePosition: dispatchPermit.queuePosition,
+          queuedAhead: dispatchPermit.queuedAhead,
+        });
+      }
 
       runtimeState.activeTeamRuns += 1;
       notifyRuntimeCapacityChanged();
