@@ -29,8 +29,8 @@
 import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 
-import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { parseFrontmatter } from "../lib/frontmatter.js";
 
 // ============================================================================
 // Types

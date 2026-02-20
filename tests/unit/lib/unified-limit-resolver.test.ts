@@ -23,6 +23,13 @@ vi.mock("../../../.pi/lib/adaptive-rate-controller.js", () => ({
     dataPoints: 10,
     lastUpdated: new Date().toISOString(),
   })),
+  getLearnedLimit: vi.fn(() => ({
+    historical429s: [],
+    successfulRequests: 100,
+    last429At: null,
+    learnedConcurrency: 4,
+    confidence: "medium" as const,
+  })),
 }));
 
 vi.mock("../../../.pi/lib/cross-instance-coordinator.js", () => ({

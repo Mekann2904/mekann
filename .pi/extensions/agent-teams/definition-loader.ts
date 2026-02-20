@@ -32,7 +32,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
+import { parseFrontmatter } from "../../lib/frontmatter.js";
 
 import type { TeamDefinition, TeamMember, TeamStorage } from "./storage";
 import { toId, TEAM_DEFAULTS_VERSION } from "./storage";

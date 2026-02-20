@@ -35,7 +35,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
-import { getMarkdownTheme, parseFrontmatter, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 

@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getRuntimeConfig } from "./runtime-config.js";
+import { withFileLock } from "./storage-lock.js";
 
 type ObservationKind = "success" | "rate_limit" | "timeout" | "error";
 
@@ -56,8 +57,14 @@ const LOW_RATE_LIMIT_RATIO = 0.005;
 const HIGH_TIMEOUT_RATIO = 0.02;
 const LOW_LATENCY_P95_MS = 45_000;
 const HIGH_WAIT_P95_MS = 2_000;
+const STATE_LOCK_OPTIONS = {
+  maxWaitMs: 2_000,
+  pollMs: 25,
+  staleMs: 15_000,
+};
 
 let stateCache: AdaptiveTotalLimitState | null = null;
+let persistenceFailed = false;
 let adaptiveNowProvider: () => number = () => Date.now();
 
 function nowMs(): number {
@@ -173,7 +180,13 @@ function safeParseState(raw: string): AdaptiveTotalLimitState | null {
 }
 
 function loadState(): AdaptiveTotalLimitState {
-  if (stateCache) return stateCache;
+  if (stateCache && persistenceFailed) {
+    return stateCache;
+  }
+
+  if (stateCache && !existsSync(STATE_FILE)) {
+    return stateCache;
+  }
 
   let loaded: AdaptiveTotalLimitState | null = null;
   try {
@@ -183,8 +196,9 @@ function loadState(): AdaptiveTotalLimitState {
   } catch {
     loaded = null;
   }
-  stateCache = loaded ?? createDefaultState(getDefaultBaseLimit());
-  return stateCache;
+  const resolved = loaded ?? createDefaultState(getDefaultBaseLimit());
+  stateCache = resolved;
+  return resolved;
 }
 
 function saveState(state: AdaptiveTotalLimitState): void {
@@ -192,8 +206,29 @@ function saveState(state: AdaptiveTotalLimitState): void {
     ensureRuntimeDir();
     state.lastUpdated = new Date().toISOString();
     writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+    persistenceFailed = false;
   } catch {
+    persistenceFailed = true;
     // Keep runtime resilient: learning is best-effort only.
+  }
+}
+
+function withStateWriteLock<T>(mutator: (draft: AdaptiveTotalLimitState) => T): T {
+  try {
+    return withFileLock(STATE_FILE, () => {
+      const draft = loadState();
+      stateCache = draft;
+      const result = mutator(draft);
+      saveState(draft);
+      return result;
+    }, STATE_LOCK_OPTIONS);
+  } catch {
+    // Keep learning best-effort in restricted environments.
+    const draft = loadState();
+    stateCache = draft;
+    const result = mutator(draft);
+    saveState(draft);
+    return result;
   }
 }
 
@@ -295,24 +330,24 @@ function toSafeObservation(observation: TotalLimitObservation, now: number): Obs
 
 export function recordTotalLimitObservation(observation: TotalLimitObservation, baseLimit?: number): void {
   if (!isAdaptiveEnabled()) return;
-  const state = loadState();
-  const now = nowMs();
-  updateBaseConstraints(state, baseLimit ?? state.baseLimit ?? getDefaultBaseLimit());
-  state.samples.push(toSafeObservation(observation, now));
-  state.samples = trimWindow(state.samples, now);
-  maybeRunDecision(state, now);
-  saveState(state);
+  withStateWriteLock((state) => {
+    const now = nowMs();
+    updateBaseConstraints(state, baseLimit ?? state.baseLimit ?? getDefaultBaseLimit());
+    state.samples.push(toSafeObservation(observation, now));
+    state.samples = trimWindow(state.samples, now);
+    maybeRunDecision(state, now);
+  });
 }
 
 export function getAdaptiveTotalMaxLlm(baseLimit: number): number {
   if (!isAdaptiveEnabled()) return clamp(baseLimit, 1, 64);
-  const state = loadState();
-  const now = nowMs();
-  updateBaseConstraints(state, baseLimit);
-  state.samples = trimWindow(state.samples, now);
-  maybeRunDecision(state, now);
-  saveState(state);
-  return clamp(state.learnedLimit, state.minLimit, state.hardMax);
+  return withStateWriteLock((state) => {
+    const now = nowMs();
+    updateBaseConstraints(state, baseLimit);
+    state.samples = trimWindow(state.samples, now);
+    maybeRunDecision(state, now);
+    return clamp(state.learnedLimit, state.minLimit, state.hardMax);
+  });
 }
 
 export function getAdaptiveTotalLimitSnapshot(): {
@@ -340,6 +375,7 @@ export function getAdaptiveTotalLimitSnapshot(): {
 // test helper
 export function __resetAdaptiveTotalLimitStateForTests(): void {
   stateCache = null;
+  persistenceFailed = false;
 }
 
 // test helper

@@ -30,9 +30,11 @@
 // Why: Keeps 429/5xx recovery policy in one place for subagents and agent teams.
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { recordTotalLimitObservation } from "./adaptive-total-limit.js";
+import { withFileLock } from "./storage-lock.js";
 
 /**
  * リトライ時のジッターモード
@@ -149,8 +151,21 @@ const MAX_RATE_LIMIT_GATE_DELAY_MS = 120_000;
 const RATE_LIMIT_GATE_TTL_MS = 10 * 60 * 1000;
 const MAX_RATE_LIMIT_ENTRIES = 64; // Prevent unbounded memory growth
 const GLOBAL_RATE_LIMIT_GATE_KEY = "__global_rate_limit__";
+const RUNTIME_DIR = join(homedir(), ".pi", "runtime");
+const RATE_LIMIT_STATE_FILE = join(RUNTIME_DIR, "retry-rate-limit-state.json");
+const RATE_LIMIT_STATE_LOCK_OPTIONS = {
+  maxWaitMs: 2_000,
+  pollMs: 25,
+  staleMs: 15_000,
+};
 const sharedRateLimitState: SharedRateLimitState = {
   entries: new Map<string, SharedRateLimitStateEntry>(),
+};
+
+type PersistedRateLimitState = {
+  version: number;
+  updatedAt: string;
+  entries: Record<string, SharedRateLimitStateEntry>;
 };
 
 function toFiniteNumber(value: unknown): number | undefined {
@@ -270,8 +285,104 @@ function getSharedRateLimitState(): SharedRateLimitState {
   return sharedRateLimitState;
 }
 
-function pruneRateLimitState(nowMs: number): void {
-  const state = getSharedRateLimitState();
+function ensureRuntimeDir(): void {
+  if (!existsSync(RUNTIME_DIR)) {
+    mkdirSync(RUNTIME_DIR, { recursive: true });
+  }
+}
+
+function readPersistedRateLimitState(nowMs: number): Map<string, SharedRateLimitStateEntry> {
+  try {
+    if (!existsSync(RATE_LIMIT_STATE_FILE)) {
+      return new Map();
+    }
+    const parsed = JSON.parse(readFileSync(RATE_LIMIT_STATE_FILE, "utf-8")) as Partial<PersistedRateLimitState>;
+    if (!parsed || typeof parsed !== "object" || !parsed.entries || typeof parsed.entries !== "object") {
+      return new Map();
+    }
+    const entries = new Map<string, SharedRateLimitStateEntry>();
+    for (const [key, value] of Object.entries(parsed.entries)) {
+      if (!value || typeof value !== "object") continue;
+      const untilMs = Math.trunc(Number(value.untilMs));
+      const hits = Math.trunc(Number(value.hits));
+      const updatedAtMs = Math.trunc(Number(value.updatedAtMs));
+      if (!Number.isFinite(untilMs) || !Number.isFinite(hits) || !Number.isFinite(updatedAtMs)) continue;
+      entries.set(key, {
+        untilMs: Math.max(0, untilMs),
+        hits: clampInteger(hits, 0, 8),
+        updatedAtMs: Math.max(0, updatedAtMs),
+      });
+    }
+    const persistedState: SharedRateLimitState = { entries };
+    pruneRateLimitState(nowMs, persistedState);
+    return persistedState.entries;
+  } catch {
+    return new Map();
+  }
+}
+
+function writePersistedRateLimitState(state: SharedRateLimitState): void {
+  try {
+    ensureRuntimeDir();
+    const payload: PersistedRateLimitState = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      entries: Object.fromEntries(state.entries.entries()),
+    };
+    writeFileSync(RATE_LIMIT_STATE_FILE, JSON.stringify(payload, null, 2), "utf-8");
+  } catch {
+    // Best effort only.
+  }
+}
+
+function mergeEntriesInPlace(
+  target: Map<string, SharedRateLimitStateEntry>,
+  incoming: Map<string, SharedRateLimitStateEntry>,
+): void {
+  for (const [key, entry] of incoming.entries()) {
+    const current = target.get(key);
+    if (!current) {
+      target.set(key, { ...entry });
+      continue;
+    }
+    target.set(key, {
+      untilMs: Math.max(current.untilMs, entry.untilMs),
+      hits: Math.max(current.hits, entry.hits),
+      updatedAtMs: Math.max(current.updatedAtMs, entry.updatedAtMs),
+    });
+  }
+}
+
+function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
+  const fallback = () => {
+    const localState = getSharedRateLimitState();
+    pruneRateLimitState(nowMs, localState);
+    const result = mutator();
+    writePersistedRateLimitState(localState);
+    return result;
+  };
+
+  try {
+    ensureRuntimeDir();
+    return withFileLock(
+      RATE_LIMIT_STATE_FILE,
+      () => {
+        const state = getSharedRateLimitState();
+        const persisted = readPersistedRateLimitState(nowMs);
+        mergeEntriesInPlace(state.entries, persisted);
+        pruneRateLimitState(nowMs, state);
+        const result = mutator();
+        writePersistedRateLimitState(state);
+        return result;
+      },
+      RATE_LIMIT_STATE_LOCK_OPTIONS,
+    );
+  } catch {
+    return fallback();
+  }
+}
+
+function pruneRateLimitState(nowMs: number, state: SharedRateLimitState = getSharedRateLimitState()): void {
 
   // First pass: remove expired entries based on TTL
   for (const [key, entry] of state.entries.entries()) {
@@ -321,22 +432,23 @@ export function getRateLimitGateSnapshot(
   const normalizedKey = normalizeRateLimitKey(key);
   const now = timeOptions.now ?? Date.now;
   const nowMs = now();
-  pruneRateLimitState(nowMs);
-  const entry = getSharedRateLimitState().entries.get(normalizedKey);
-  if (!entry) {
+  return withSharedRateLimitState(nowMs, () => {
+    const entry = getSharedRateLimitState().entries.get(normalizedKey);
+    if (!entry) {
+      return {
+        key: normalizedKey,
+        waitMs: 0,
+        hits: 0,
+        untilMs: nowMs,
+      };
+    }
     return {
       key: normalizedKey,
-      waitMs: 0,
-      hits: 0,
-      untilMs: nowMs,
+      waitMs: Math.max(0, entry.untilMs - nowMs),
+      hits: entry.hits,
+      untilMs: entry.untilMs,
     };
-  }
-  return {
-    key: normalizedKey,
-    waitMs: Math.max(0, entry.untilMs - nowMs),
-    hits: entry.hits,
-    untilMs: entry.untilMs,
-  };
+  });
 }
 
 function registerRateLimitGateHit(
@@ -346,57 +458,59 @@ function registerRateLimitGateHit(
 ): RateLimitGateSnapshot {
   const normalizedKey = normalizeRateLimitKey(key);
   const nowMs = now();
-  pruneRateLimitState(nowMs);
-  const state = getSharedRateLimitState();
-  const previous = state.entries.get(normalizedKey);
-  const nextHits = Math.min(8, (previous?.hits ?? 0) + 1);
-  const baseDelayMs = Math.max(
-    DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS,
-    Math.trunc(retryDelayMs || DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS),
-  );
-  const adaptiveDelayMs = Math.min(
-    MAX_RATE_LIMIT_GATE_DELAY_MS,
-    baseDelayMs * 2 ** Math.max(0, nextHits - 1),
-  );
-  const nextUntilMs = Math.max(previous?.untilMs ?? nowMs, nowMs + adaptiveDelayMs);
+  return withSharedRateLimitState(nowMs, () => {
+    const state = getSharedRateLimitState();
+    const previous = state.entries.get(normalizedKey);
+    const nextHits = Math.min(8, (previous?.hits ?? 0) + 1);
+    const baseDelayMs = Math.max(
+      DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS,
+      Math.trunc(retryDelayMs || DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS),
+    );
+    const adaptiveDelayMs = Math.min(
+      MAX_RATE_LIMIT_GATE_DELAY_MS,
+      baseDelayMs * 2 ** Math.max(0, nextHits - 1),
+    );
+    const nextUntilMs = Math.max(previous?.untilMs ?? nowMs, nowMs + adaptiveDelayMs);
 
-  state.entries.set(normalizedKey, {
-    untilMs: nextUntilMs,
-    hits: nextHits,
-    updatedAtMs: nowMs,
+    state.entries.set(normalizedKey, {
+      untilMs: nextUntilMs,
+      hits: nextHits,
+      updatedAtMs: nowMs,
+    });
+    enforceRateLimitEntryCap(state);
+
+    return {
+      key: normalizedKey,
+      waitMs: Math.max(0, nextUntilMs - nowMs),
+      hits: nextHits,
+      untilMs: nextUntilMs,
+    };
   });
-  enforceRateLimitEntryCap(state);
-
-  return {
-    key: normalizedKey,
-    waitMs: Math.max(0, nextUntilMs - nowMs),
-    hits: nextHits,
-    untilMs: nextUntilMs,
-  };
 }
 
 function registerRateLimitGateSuccess(key: string | undefined, now: () => number): void {
   const normalizedKey = normalizeRateLimitKey(key);
   const nowMs = now();
-  const state = getSharedRateLimitState();
-  pruneRateLimitState(nowMs);
-  const current = state.entries.get(normalizedKey);
-  if (!current) return;
+  withSharedRateLimitState(nowMs, () => {
+    const state = getSharedRateLimitState();
+    const current = state.entries.get(normalizedKey);
+    if (!current) return;
 
-  const nextHits = Math.max(0, current.hits - 1);
-  if (nextHits === 0) {
-    state.entries.delete(normalizedKey);
-    return;
-  }
+    const nextHits = Math.max(0, current.hits - 1);
+    if (nextHits === 0) {
+      state.entries.delete(normalizedKey);
+      return;
+    }
 
-  const nextUntilMs = Math.max(
-    nowMs,
-    Math.min(current.untilMs, nowMs + DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS),
-  );
-  state.entries.set(normalizedKey, {
-    untilMs: nextUntilMs,
-    hits: nextHits,
-    updatedAtMs: nowMs,
+    const nextUntilMs = Math.max(
+      nowMs,
+      Math.min(current.untilMs, nowMs + DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS),
+    );
+    state.entries.set(normalizedKey, {
+      untilMs: nextUntilMs,
+      hits: nextHits,
+      updatedAtMs: nowMs,
+    });
   });
 }
 

@@ -5,8 +5,12 @@
  * 関連: .pi/lib/provider-limits.ts, .pi/extensions/pi-coding-agent-rate-limit-fix.ts, package.json
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 import { detectTier, getRpmLimit } from "../lib/provider-limits.js";
+import { withFileLock } from "../lib/storage-lock.js";
 
 type BucketState = {
   requestStartsMs: number[];
@@ -18,9 +22,22 @@ const WINDOW_MS_DEFAULT = 60_000;
 const HEADROOM_FACTOR_DEFAULT = 0.7;
 const FALLBACK_429_COOLDOWN_MS = 15_000;
 const MAX_COOLDOWN_MS = 5 * 60_000;
-const MAX_STATE_AGE_MS = 15 * 60_1000; // 15 minutes
+const MAX_STATE_AGE_MS = 15 * 60_000; // 15 minutes
+const RUNTIME_DIR = join(homedir(), ".pi", "runtime");
+const SHARED_STATE_FILE = join(RUNTIME_DIR, "rpm-throttle-state.json");
+const FILE_LOCK_OPTIONS = {
+  maxWaitMs: 2_000,
+  pollMs: 25,
+  staleMs: 15_000,
+};
 
 const states = new Map<string, BucketState>();
+
+type SharedStateRecord = {
+  version: number;
+  updatedAt: string;
+  states: Record<string, BucketState>;
+};
 
 function sleep(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();
@@ -53,6 +70,77 @@ function getOrCreateState(key: string, nowMs: number): BucketState {
   const created: BucketState = { requestStartsMs: [], cooldownUntilMs: 0, lastAccessedMs: nowMs };
   states.set(key, created);
   return created;
+}
+
+function ensureRuntimeDir(): void {
+  if (!existsSync(RUNTIME_DIR)) {
+    mkdirSync(RUNTIME_DIR, { recursive: true });
+  }
+}
+
+function loadSharedStatesIntoMemory(nowMs: number): void {
+  try {
+    if (!existsSync(SHARED_STATE_FILE)) return;
+    const raw = readFileSync(SHARED_STATE_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<SharedStateRecord>;
+    if (!parsed || typeof parsed !== "object" || !parsed.states || typeof parsed.states !== "object") {
+      return;
+    }
+    states.clear();
+    for (const [key, value] of Object.entries(parsed.states)) {
+      if (!value || typeof value !== "object") continue;
+      const requestStartsMs = Array.isArray(value.requestStartsMs)
+        ? value.requestStartsMs.filter((v): v is number => Number.isFinite(v) && v > 0)
+        : [];
+      const cooldownUntilMs = Number.isFinite(value.cooldownUntilMs) ? value.cooldownUntilMs : 0;
+      const lastAccessedMs = Number.isFinite(value.lastAccessedMs) ? value.lastAccessedMs : nowMs;
+      states.set(key, {
+        requestStartsMs,
+        cooldownUntilMs,
+        lastAccessedMs,
+      });
+    }
+  } catch {
+    // Ignore broken state file.
+  }
+}
+
+function saveSharedStates(nowMs: number): void {
+  try {
+    ensureRuntimeDir();
+    const serialized: SharedStateRecord = {
+      version: 1,
+      updatedAt: new Date(nowMs).toISOString(),
+      states: Object.fromEntries(states.entries()),
+    };
+    writeFileSync(SHARED_STATE_FILE, JSON.stringify(serialized, null, 2), "utf-8");
+  } catch {
+    // Best effort only.
+  }
+}
+
+function withSharedStateMutation<T>(nowMs: number, mutator: () => T): T {
+  const localFallback = () => {
+    const result = mutator();
+    saveSharedStates(nowMs);
+    return result;
+  };
+
+  try {
+    ensureRuntimeDir();
+    return withFileLock(
+      SHARED_STATE_FILE,
+      () => {
+        loadSharedStatesIntoMemory(nowMs);
+        const result = mutator();
+        saveSharedStates(nowMs);
+        return result;
+      },
+      FILE_LOCK_OPTIONS,
+    );
+  } catch {
+    return localFallback();
+  }
 }
 
 function pruneStates(nowMs: number): void {
@@ -122,35 +210,40 @@ export default function registerRpmThrottleExtension(pi: ExtensionAPI): void {
     const model = ctx.model?.id;
     if (!provider || !model) return;
 
-    const key = keyFor(provider, model);
-    const now = Date.now();
-    pruneStates(now);
-    const state = getOrCreateState(key, now);
     const effectiveRpm = resolveEffectiveRpm(provider, model);
     const maxRequestsInWindow = Math.max(1, Math.floor((effectiveRpm * windowMs) / 60_000));
+    const key = keyFor(provider, model);
 
-    pruneWindow(state, now, windowMs);
+    while (true) {
+      const now = Date.now();
+      const waitMs = withSharedStateMutation(now, () => {
+        pruneStates(now);
+        const state = getOrCreateState(key, now);
+        pruneWindow(state, now, windowMs);
 
-    // 429直後の強制クールダウン
-    let waitMs = Math.max(0, state.cooldownUntilMs - now);
+        let requiredWaitMs = Math.max(0, state.cooldownUntilMs - now);
+        if (state.requestStartsMs.length >= maxRequestsInWindow) {
+          const oldest = state.requestStartsMs[0];
+          const rpmWait = Math.max(0, oldest + windowMs - now);
+          requiredWaitMs = Math.max(requiredWaitMs, rpmWait);
+        }
 
-    // RPM窓上限を超える場合は、最古エントリの窓明けまで待つ
-    if (state.requestStartsMs.length >= maxRequestsInWindow) {
-      const oldest = state.requestStartsMs[0];
-      const rpmWait = Math.max(0, oldest + windowMs - now);
-      waitMs = Math.max(waitMs, rpmWait);
-    }
+        if (requiredWaitMs === 0) {
+          state.requestStartsMs.push(now);
+          state.lastAccessedMs = now;
+        }
+        return requiredWaitMs;
+      });
 
-    if (waitMs > 0) {
+      if (waitMs <= 0) {
+        break;
+      }
+
       console.error(
-        `[rpm-throttle] wait=${waitMs}ms model=${provider}/${model} window_count=${state.requestStartsMs.length}/${maxRequestsInWindow}`,
+        `[rpm-throttle] wait=${waitMs}ms model=${provider}/${model} window_limit=${maxRequestsInWindow}`,
       );
       await sleep(waitMs);
     }
-
-    const startedAt = Date.now();
-    pruneWindow(state, startedAt, windowMs);
-    state.requestStartsMs.push(startedAt);
   });
 
   pi.on("agent_end", async (event, ctx) => {
@@ -163,11 +256,14 @@ export default function registerRpmThrottleExtension(pi: ExtensionAPI): void {
 
     const key = keyFor(provider, model);
     const now = Date.now();
-    pruneStates(now);
-    const state = getOrCreateState(key, now);
     const retryAfterMs = extractRetryAfterMs(errorMessage) ?? FALLBACK_429_COOLDOWN_MS;
     const cooldownMs = Math.min(Math.max(retryAfterMs, FALLBACK_429_COOLDOWN_MS), MAX_COOLDOWN_MS);
-    state.cooldownUntilMs = Math.max(state.cooldownUntilMs, now + cooldownMs);
+    withSharedStateMutation(now, () => {
+      pruneStates(now);
+      const state = getOrCreateState(key, now);
+      state.cooldownUntilMs = Math.max(state.cooldownUntilMs, now + cooldownMs);
+      state.lastAccessedMs = now;
+    });
 
     console.error(`[rpm-throttle] 429 cooldown=${cooldownMs}ms model=${provider}/${model}`);
   });

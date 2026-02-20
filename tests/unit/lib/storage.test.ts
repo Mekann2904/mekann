@@ -17,9 +17,7 @@ import * as storage from "../../../.pi/lib/storage.js";
 
 describe("storage.ts バレルエクスポート", () => {
   // Storage base utilities
-  it("storage-base_エクスポート_HasId", () => {
-    expect(storage).toHaveProperty("HasId");
-  });
+  // 注意: HasIdはTypeScriptのinterfaceであり、実行時には存在しないためテストをスキップ
 
   it("storage-base_エクスポート_createPathsFactory", () => {
     expect(storage).toHaveProperty("createPathsFactory");
