@@ -48,12 +48,6 @@ export interface HasId {
 }
 
 /**
- * @summary HasIdのランタイムエクスポート
- * @description バレルエクスポート検証用の値
- */
-export const HasId = "HasId";
-
-/**
  * 実行記録のインターフェース
  * @summary 実行記録定義
  */
@@ -214,7 +208,9 @@ export function mergeEntitiesById<TEntity extends HasId>(
  * @param maxRuns 最大保持数
  * @returns マージ後のRun配列
  */
-export function mergeRunsById<TRun extends BaseRunRecord>(
+export function mergeRunsById<
+  TRun extends { runId: string; startedAt?: string; finishedAt?: string }
+>(
   disk: TRun[],
   next: TRun[],
   maxRuns: number,

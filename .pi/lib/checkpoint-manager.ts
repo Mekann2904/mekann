@@ -732,11 +732,8 @@ export function getCheckpointConfigFromEnv(): Partial<CheckpointManagerConfig> {
   return config;
 }
 
-// Auto-initialize with environment config if not already initialized
-const state = managerState;
-if (!state?.initialized) {
-  const envConfig = getCheckpointConfigFromEnv();
-  if (Object.keys(envConfig).length > 0) {
-    initCheckpointManager(envConfig);
-  }
+// Auto-initialize when environment overrides are provided.
+const checkpointEnvConfig = getCheckpointConfigFromEnv();
+if (Object.keys(checkpointEnvConfig).length > 0) {
+  initCheckpointManager(checkpointEnvConfig);
 }

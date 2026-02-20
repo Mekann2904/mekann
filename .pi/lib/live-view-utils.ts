@@ -121,3 +121,42 @@ export function finalizeLiveLines(lines: string[], height?: number): string[] {
   }
   return padded;
 }
+
+/**
+ * 末尾の行を取得
+ * @summary 末尾行を取得
+ * @param tail - 処理対象の文字列
+ * @param limit - 取得する最大行数
+ * @returns 末尾の行の配列
+ */
+export function toTailLines(tail: string, limit: number): string[] {
+  const lines = tail
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd());
+  while (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  if (lines.length <= limit) return lines;
+  return lines.slice(lines.length - limit);
+}
+
+/**
+ * Markdownらしいテキストか判定する
+ * @summary Markdown判定
+ * @param input - 判定対象テキスト
+ * @returns Markdownの可能性が高い場合はtrue
+ */
+export function looksLikeMarkdown(input: string): boolean {
+  const text = String(input || "").trim();
+  if (!text) return false;
+  if (/^\s{0,3}#{1,6}\s+/m.test(text)) return true;
+  if (/^\s*[-*+]\s+/m.test(text)) return true;
+  if (/^\s*\d+\.\s+/m.test(text)) return true;
+  if (/```/.test(text)) return true;
+  if (/\[[^\]]+\]\([^)]+\)/.test(text)) return true;
+  if (/^\s*>\s+/m.test(text)) return true;
+  if (/^\s*\|.+\|\s*$/m.test(text)) return true;
+  if (/\*\*[^*]+\*\*/.test(text)) return true;
+  if (/`[^`]+`/.test(text)) return true;
+  return false;
+}

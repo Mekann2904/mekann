@@ -65,18 +65,18 @@ export default function (pi: ExtensionAPI) {
 
             // Validate and build arguments based on command
             if (params.command === "info") {
-                if (!params.repo) return { content: [{ type: "text", text: "Error: 'repo' argument is required for info command." }] };
+                if (!params.repo) return { content: [{ type: "text", text: "Error: 'repo' argument is required for info command." }], details: {} };
                 cmdArgs.push(params.repo);
             } else if (params.command === "tree") {
-                if (!params.repo) return { content: [{ type: "text", text: "Error: 'repo' argument is required for tree command." }] };
+                if (!params.repo) return { content: [{ type: "text", text: "Error: 'repo' argument is required for tree command." }], details: {} };
                 cmdArgs.push(params.repo);
                 if (params.path) cmdArgs.push(params.path);
             } else if (params.command === "read") {
-                if (!params.repo || !params.path) return { content: [{ type: "text", text: "Error: 'repo' and 'path' arguments are required for read command." }] };
+                if (!params.repo || !params.path) return { content: [{ type: "text", text: "Error: 'repo' and 'path' arguments are required for read command." }], details: {} };
                 cmdArgs.push(params.repo);
                 cmdArgs.push(params.path);
             } else if (params.command === "search") {
-                if (!params.query) return { content: [{ type: "text", text: "Error: 'query' argument is required for search command." }] };
+                if (!params.query) return { content: [{ type: "text", text: "Error: 'query' argument is required for search command." }], details: {} };
                 
                 if (params.search_type) cmdArgs.push("-t", params.search_type);
                 if (params.limit) cmdArgs.push("-l", String(params.limit));
@@ -95,16 +95,18 @@ export default function (pi: ExtensionAPI) {
                 
                 // Only include stderr if there is no stdout, or if it looks like an error
                 if (!output && stderr) {
-                     return { content: [{ type: "text", text: `Stderr: ${stderr}` }] };
+                     return { content: [{ type: "text", text: `Stderr: ${stderr}` }], details: {} };
                 }
                 
                 return {
-                    content: [{ type: "text", text: output.trim() || "No output." }]
+                    content: [{ type: "text", text: output.trim() || "No output." }],
+                    details: {},
                 };
             } catch (error: any) {
                 // execFile throws if exit code is non-zero
                 return {
-                    content: [{ type: "text", text: `Error executing gh_agent: ${error.message}\nStderr: ${error.stderr || ""}` }]
+                    content: [{ type: "text", text: `Error executing gh_agent: ${error.message}\nStderr: ${error.stderr || ""}` }],
+                    details: {},
                 };
             }
         }

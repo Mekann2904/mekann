@@ -196,6 +196,64 @@ function writeJsonFileAtomic(filePath: string, payload: unknown): void {
   writeTextFileAtomic(filePath, JSON.stringify(payload, null, 2));
 }
 
+function getMyLockFilePath(): string | null {
+  if (!state) return null;
+  return join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
+}
+
+function createDefaultMyInstanceInfo(): InstanceInfo | null {
+  if (!state) return null;
+  const nowIso = new Date().toISOString();
+  return {
+    instanceId: state.myInstanceId,
+    pid,
+    sessionId: state.mySessionId,
+    startedAt: state.myStartedAt,
+    lastHeartbeat: nowIso,
+    cwd: process.cwd(),
+    activeModels: [],
+  };
+}
+
+/**
+ * Patch my lock-file state in one place to reduce accidental field loss.
+ */
+function patchMyInstanceInfo(mutator: (info: InstanceInfo) => void): void {
+  if (!state) return;
+  ensureDirs();
+  const lockFile = getMyLockFilePath();
+  const fallback = createDefaultMyInstanceInfo();
+  if (!lockFile || !fallback) return;
+
+  let info: InstanceInfo = { ...fallback };
+
+  if (existsSync(lockFile)) {
+    try {
+      const content = readFileSync(lockFile, "utf-8");
+      const parsed = JSON.parse(content) as InstanceInfo;
+      info = { ...fallback, ...parsed };
+      info.activeModels = Array.isArray(parsed.activeModels) ? parsed.activeModels : [];
+    } catch {
+      // keep fallback state
+    }
+  }
+
+  try {
+    mutator(info);
+    info.instanceId = state.myInstanceId;
+    info.pid = pid;
+    info.sessionId = state.mySessionId;
+    info.startedAt = info.startedAt || state.myStartedAt;
+    info.cwd = info.cwd || process.cwd();
+    if (!Array.isArray(info.activeModels)) {
+      info.activeModels = [];
+    }
+    writeJsonFileAtomic(lockFile, info);
+  } catch {
+    logCoordinatorDebug("patchMyInstanceInfo write failed");
+  }
+}
+
 function generateInstanceId(sessionId: string): string {
   const timestamp = currentTimeMs().toString(36);
   const randomSuffix = Math.random().toString(36).slice(2, 6);
@@ -342,28 +400,9 @@ export function unregisterInstance(): void {
 export function updateHeartbeat(): void {
   if (!state) return;
 
-  try {
-    const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
-    const content = readFileSync(lockFile, "utf-8");
-    const info = JSON.parse(content) as InstanceInfo;
+  patchMyInstanceInfo((info) => {
     info.lastHeartbeat = new Date().toISOString();
-    writeJsonFileAtomic(lockFile, info);
-  } catch {
-    logCoordinatorDebug("updateHeartbeat failed, recreating lock file");
-    // If lock file is gone, recreate it preserving original startedAt
-    ensureDirs();
-    const info: InstanceInfo = {
-      instanceId: state.myInstanceId,
-      pid,
-      sessionId: state.mySessionId,
-      startedAt: state.myStartedAt,
-      lastHeartbeat: new Date().toISOString(),
-      cwd: process.cwd(),
-      activeModels: [],
-    };
-    const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
-    writeJsonFileAtomic(lockFile, info);
-  }
+  });
 }
 
 /**
@@ -585,44 +624,15 @@ export function updateWorkloadInfo(pendingTaskCount: number, avgLatencyMs?: numb
     return;
   }
 
-  const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
-
-  try {
-    const existing: InstanceInfo = {
-      instanceId: state.myInstanceId,
-      pid,
-      sessionId: state.mySessionId,
-      startedAt: state.myStartedAt,
-      lastHeartbeat: new Date().toISOString(),
-      cwd: process.cwd(),
-      activeModels: [], // Will be preserved if file exists
-      pendingTaskCount,
-      avgLatencyMs,
-      lastTaskCompletedAt: avgLatencyMs ? new Date().toISOString() : undefined,
-    };
-
-    // Preserve existing data
-    if (existsSync(lockFile)) {
-      try {
-        const content = readFileSync(lockFile, "utf-8");
-        const parsed = JSON.parse(content) as InstanceInfo;
-        existing.activeModels = parsed.activeModels ?? [];
-        if (!avgLatencyMs && parsed.avgLatencyMs) {
-          existing.avgLatencyMs = parsed.avgLatencyMs;
-        }
-        if (!existing.lastTaskCompletedAt && parsed.lastTaskCompletedAt) {
-          existing.lastTaskCompletedAt = parsed.lastTaskCompletedAt;
-        }
-      } catch {
-        // Ignore parse errors
-      }
+  const nowIso = new Date().toISOString();
+  patchMyInstanceInfo((info) => {
+    info.lastHeartbeat = nowIso;
+    info.pendingTaskCount = Math.max(0, Math.trunc(pendingTaskCount || 0));
+    if (avgLatencyMs !== undefined) {
+      info.avgLatencyMs = Math.max(0, Math.trunc(avgLatencyMs || 0));
+      info.lastTaskCompletedAt = nowIso;
     }
-
-    writeJsonFileAtomic(lockFile, existing);
-  } catch {
-    logCoordinatorDebug("updateWorkloadInfo write failed");
-    // Ignore write errors in heartbeat
-  }
+  });
 }
 
 /**
@@ -634,40 +644,11 @@ export function updateWorkloadInfo(pendingTaskCount: number, avgLatencyMs?: numb
 export function updateRuntimeUsage(activeRequestCount: number, activeLlmCount: number): void {
   if (!state) return;
 
-  const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
-
-  try {
-    const nowIso = new Date().toISOString();
-    const next: InstanceInfo = {
-      instanceId: state.myInstanceId,
-      pid,
-      sessionId: state.mySessionId,
-      startedAt: state.myStartedAt,
-      lastHeartbeat: nowIso,
-      cwd: process.cwd(),
-      activeModels: [],
-      activeRequestCount: Math.max(0, Math.trunc(activeRequestCount || 0)),
-      activeLlmCount: Math.max(0, Math.trunc(activeLlmCount || 0)),
-    };
-
-    if (existsSync(lockFile)) {
-      try {
-        const content = readFileSync(lockFile, "utf-8");
-        const parsed = JSON.parse(content) as InstanceInfo;
-        next.activeModels = parsed.activeModels ?? [];
-        next.pendingTaskCount = parsed.pendingTaskCount;
-        next.avgLatencyMs = parsed.avgLatencyMs;
-        next.lastTaskCompletedAt = parsed.lastTaskCompletedAt;
-      } catch {
-        // ignore parse failures and overwrite with safe baseline
-      }
-    }
-
-    writeJsonFileAtomic(lockFile, next);
-  } catch {
-    logCoordinatorDebug("updateRuntimeUsage write failed");
-    // ignore write errors
-  }
+  patchMyInstanceInfo((info) => {
+    info.lastHeartbeat = new Date().toISOString();
+    info.activeRequestCount = Math.max(0, Math.trunc(activeRequestCount || 0));
+    info.activeLlmCount = Math.max(0, Math.trunc(activeLlmCount || 0));
+  });
 }
 
 /**
@@ -809,11 +790,7 @@ export function getEnvOverrides(): Partial<CoordinatorConfig> {
 export function setActiveModel(provider: string, model: string): void {
   if (!state) return;
 
-  try {
-    const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
-    const content = readFileSync(lockFile, "utf-8");
-    const info = JSON.parse(content) as InstanceInfo;
-
+  patchMyInstanceInfo((info) => {
     const now = new Date().toISOString();
     const normalizedProvider = provider.toLowerCase();
     const normalizedModel = model.toLowerCase();
@@ -832,10 +809,7 @@ export function setActiveModel(provider: string, model: string): void {
     }
 
     info.lastHeartbeat = now;
-    writeJsonFileAtomic(lockFile, info);
-  } catch {
-    // ignore
-  }
+  });
 }
 
 /**
@@ -848,11 +822,7 @@ export function setActiveModel(provider: string, model: string): void {
 export function clearActiveModel(provider: string, model: string): void {
   if (!state) return;
 
-  try {
-    const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
-    const content = readFileSync(lockFile, "utf-8");
-    const info = JSON.parse(content) as InstanceInfo;
-
+  patchMyInstanceInfo((info) => {
     const normalizedProvider = provider.toLowerCase();
     const normalizedModel = model.toLowerCase();
 
@@ -861,10 +831,7 @@ export function clearActiveModel(provider: string, model: string): void {
     );
 
     info.lastHeartbeat = new Date().toISOString();
-    writeJsonFileAtomic(lockFile, info);
-  } catch {
-    // ignore
-  }
+  });
 }
 
 /**
@@ -875,17 +842,10 @@ export function clearActiveModel(provider: string, model: string): void {
 export function clearAllActiveModels(): void {
   if (!state) return;
 
-  try {
-    const lockFile = join(INSTANCES_DIR, `${state.myInstanceId}.lock`);
-    const content = readFileSync(lockFile, "utf-8");
-    const info = JSON.parse(content) as InstanceInfo;
-
+  patchMyInstanceInfo((info) => {
     info.activeModels = [];
     info.lastHeartbeat = new Date().toISOString();
-    writeJsonFileAtomic(lockFile, info);
-  } catch {
-    // ignore
-  }
+  });
 }
 
 /**

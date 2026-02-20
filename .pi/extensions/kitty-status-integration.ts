@@ -33,7 +33,7 @@
  * Linuxの通知: kittyのネイティブ通知
  */
 
-import { spawn, execSync } from "child_process";
+import { spawn } from "child_process";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -169,6 +169,39 @@ let currentTool: string | undefined;
 // 現在のターン数を追跡
 let turnCount = 0;
 
+function asToolResultMessage(raw: unknown): { role?: string; isError?: boolean } | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const maybe = raw as { role?: unknown; isError?: unknown };
+  return {
+    role: typeof maybe.role === "string" ? maybe.role : undefined,
+    isError: typeof maybe.isError === "boolean" ? maybe.isError : undefined,
+  };
+}
+
+function getToolResultStats(messages: unknown[]): { toolCount: number; hasError: boolean } {
+  let toolCount = 0;
+  let hasError = false;
+
+  for (const entry of messages) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const wrapped = entry as { message?: unknown; role?: unknown; isError?: unknown };
+    const candidate = asToolResultMessage(wrapped.message ?? wrapped);
+    if (candidate?.role !== "toolResult") {
+      continue;
+    }
+    toolCount += 1;
+    if (candidate.isError === true) {
+      hasError = true;
+    }
+  }
+
+  return { toolCount, hasError };
+}
+
 export default function (pi: ExtensionAPI) {
   // セッション開始時
   pi.on("session_start", async (_event, ctx) => {
@@ -195,18 +228,13 @@ export default function (pi: ExtensionAPI) {
     if (!isKitty()) return;
 
     // メッセージ数から実行されたツール数を推定
-    const toolCount = event.messages.filter(
-      m => m.type === "message" && m.message.role === "toolResult"
-    ).length;
+    const stats = getToolResultStats((event as any).messages ?? []);
+    const toolCount = stats.toolCount;
 
     const cwd = ctx.cwd.split("/").pop() || ctx.cwd;
 
     // エラー判定: toolResultにisErrorがあるか確認
-    const hasError = event.messages.some(
-      m => m.type === "message" && 
-           m.message.role === "toolResult" && 
-           m.message.isError === true
-    );
+    const hasError = stats.hasError;
 
     // 完了通知（エラー時は異なるサウンド）
     const statusText = hasError 

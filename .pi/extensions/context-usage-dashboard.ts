@@ -326,9 +326,10 @@ function collectCurrentSnapshot(ctx: ExtensionAPI["context"]): CurrentSnapshot {
     toolTokens.set(toolName, tokens * scale);
   }
 
+  const usageTokens = usage?.tokens ?? 0;
   return {
     usage,
-    freeTokens: usage ? Math.max(usage.contextWindow - usage.tokens, 0) : null,
+    freeTokens: usage ? Math.max(usage.contextWindow - usageTokens, 0) : null,
     referenceTotalTokens: referenceTotal,
     categoryTokens: {
       user: userTokens * scale,
@@ -481,10 +482,14 @@ function renderDashboard(theme: any, snapshot: DashboardSnapshot, width: number)
   const current = snapshot.current;
   add(theme.bold(theme.fg("accent", "Current Context")));
   if (current.usage) {
+    const usedTokens = current.usage.tokens ?? 0;
+    const usedPercent = current.usage.percent ?? 0;
+    const usageTokenMetric = current.usage.usageTokens ?? 0;
+    const trailingTokenMetric = current.usage.trailingTokens ?? 0;
     add(
-      `${theme.fg("text", "used")} ${theme.fg("success", formatTokens(current.usage.tokens))} / ${formatTokens(
+      `${theme.fg("text", "used")} ${theme.fg("success", formatTokens(usedTokens))} / ${formatTokens(
         current.usage.contextWindow,
-      )} (${formatPercent(current.usage.percent)})`,
+      )} (${formatPercent(usedPercent)})`,
     );
     add(
       `${theme.fg("text", "free")} ${theme.fg("success", formatTokens(current.freeTokens || 0))} tokens`,
@@ -492,7 +497,7 @@ function renderDashboard(theme: any, snapshot: DashboardSnapshot, width: number)
     add(
       theme.fg(
         "dim",
-        `usage=${formatTokens(current.usage.usageTokens)} trailing=${formatTokens(current.usage.trailingTokens)}`,
+        `usage=${formatTokens(usageTokenMetric)} trailing=${formatTokens(trailingTokenMetric)}`,
       ),
     );
   } else {

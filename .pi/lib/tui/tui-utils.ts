@@ -33,7 +33,7 @@
  * Layer 0: No dependencies on other lib modules.
  */
 
-import { Markdown, getMarkdownTheme, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { Markdown, type MarkdownTheme, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 
 /** Default maximum length for tail content */
 export const LIVE_TAIL_LIMIT = 40_000;
@@ -161,6 +161,26 @@ export interface MarkdownPreviewResult {
   renderedAsMarkdown: boolean;
 }
 
+function createMarkdownTheme(): MarkdownTheme {
+  const passthrough = (text: string): string => text;
+  return {
+    heading: passthrough,
+    link: passthrough,
+    linkUrl: passthrough,
+    code: passthrough,
+    codeBlock: passthrough,
+    codeBlockBorder: passthrough,
+    quote: passthrough,
+    quoteBorder: passthrough,
+    hr: passthrough,
+    listBullet: passthrough,
+    bold: passthrough,
+    italic: passthrough,
+    strikethrough: passthrough,
+    underline: passthrough,
+  };
+}
+
 /**
  * 1行テキストを幅に合わせて折り返し、出力配列へ追加する。
  * ANSIカラーコードを保持したまま折り返す。
@@ -207,7 +227,7 @@ export function renderPreviewWithMarkdown(
   }
 
   try {
-    const markdown = new Markdown(normalizedText, 0, 0, getMarkdownTheme());
+    const markdown = new Markdown(normalizedText, 0, 0, createMarkdownTheme());
     const rendered = markdown.render(Math.max(LIVE_MARKDOWN_PREVIEW_MIN_WIDTH, width));
     if (rendered.length === 0) {
       return { lines: toTailLines(normalizedText, maxLines), renderedAsMarkdown: false };

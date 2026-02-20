@@ -49,7 +49,7 @@ import { Container, Text, matchesKey } from "@mariozechner/pi-tui";
 function formatLinesWithNumbers(
 	lines: string[],
 	startLine: number,
-	theme: { fg: (color: string, text: string) => string }
+	theme: { fg: (color: any, text: string) => string }
 ): string[] {
 	const maxLineNum = startLine + lines.length - 1;
 	const width = maxLineNum.toString().length;
@@ -73,7 +73,7 @@ function createCodePanel(
 	code: string,
 	language: string | undefined,
 	filePath: string | undefined,
-	theme: { fg: (color: string, text: string) => string; bold: (text: string) => string }
+	theme: { fg: (color: any, text: string) => string; bold: (text: string) => string }
 ): Container {
 	const container = new Container();
 

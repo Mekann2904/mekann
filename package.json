@@ -6,7 +6,7 @@
     "node": ">=20.18.1"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.32.0"
+    "@sinclair/typebox": "^0.34.48"
   },
   "devDependencies": {
     "@eslint/compat": "^1.1.1",

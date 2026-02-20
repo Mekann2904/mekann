@@ -854,11 +854,8 @@ export function getMetricsConfigFromEnv(): Partial<MetricsCollectorConfig> {
   return config;
 }
 
-// Auto-initialize with environment config if not already initialized
-const state = collectorState;
-if (!state?.initialized) {
-  const envConfig = getMetricsConfigFromEnv();
-  if (Object.keys(envConfig).length > 0) {
-    initMetricsCollector(envConfig);
-  }
+// Auto-initialize when environment overrides are provided.
+const metricsEnvConfig = getMetricsConfigFromEnv();
+if (Object.keys(metricsEnvConfig).length > 0) {
+  initMetricsCollector(metricsEnvConfig);
 }

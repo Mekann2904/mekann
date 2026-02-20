@@ -112,7 +112,7 @@ function getCandidateTeamDefinitionsDirs(cwd: string): string[] {
 export function parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | null {
   try {
     const content = readFileSync(filePath, "utf-8");
-    const { frontmatter, body } = parseFrontmatter<TeamFrontmatter>(content);
+    const { frontmatter, body } = parseFrontmatter<Record<string, unknown> & TeamFrontmatter>(content);
 
     // Validate required fields
     if (!frontmatter.id || !frontmatter.name) {

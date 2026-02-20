@@ -852,7 +852,7 @@ export function createAgentTeamLiveMonitor(
   };
 
   const uiPromise = ctx.ui
-    .custom<void>((tui: any, theme: any, _keybindings: any, done: () => void) => {
+    .custom((tui: any, theme: any, _keybindings: any, done: () => void) => {
       doneUi = done;
       requestRender = () => {
         if (!closed) {

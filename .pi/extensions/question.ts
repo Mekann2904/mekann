@@ -52,6 +52,11 @@ interface QuestionInfo {
 }
 
 type Answer = string[];
+type QuestionCustomController = {
+	render: (w: number) => string[];
+	invalidate: () => void;
+	handleInput: (data: string) => void;
+};
 
 // ============================================
 // UIコンポーネント
@@ -240,15 +245,15 @@ async function askSingleQuestion(
 		return lines;
 	});
 
-	return ctx.ui.custom<Answer | null>((tui, theme, _kb, done) => {
+	return ctx.ui.custom((tui: any, theme: any, _kb: any, done: (value: Answer | null) => void): QuestionCustomController => {
 		// ブラケットペーストモードのバッファ
 		let pasteBuffer = "";
 		let isInPaste = false;
 
 		return {
-		render: (w) => renderer.render(w, theme),
+		render: (w: number) => renderer.render(w, theme),
 		invalidate: () => renderer.invalidate(),
-		handleInput: (data) => {
+		handleInput: (data: string) => {
 			const state = renderer.getState();
 
 			// ブラケットペーストモードの処理
@@ -507,10 +512,10 @@ async function showConfirmationScreen(
 
 	const totalOptions = 2 + Math.min(questions.length, 9);
 
-	return ctx.ui.custom<ConfirmAction>((tui, theme, _kb, done) => ({
-		render: (w) => renderer.render(w, theme),
+	return ctx.ui.custom((tui: any, theme: any, _kb: any, done: (value: ConfirmAction) => void): QuestionCustomController => ({
+		render: (w: number) => renderer.render(w, theme),
 		invalidate: () => renderer.invalidate(),
-		handleInput: (data) => {
+		handleInput: (data: string) => {
 			const state = renderer.getState();
 
 			if (matchesKey(data, Key.up)) {
@@ -660,10 +665,11 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderResult(result, _options, theme) {
-			if (!result.details || !result.details.answers || result.details.answers.length === 0) {
+			const details = (result as any).details as { answers?: string[][] } | undefined;
+			if (!details?.answers || details.answers.length === 0) {
 				return new Text(theme.fg("warning", "キャンセル"), 0, 0);
 			}
-			const answers = result.details.answers as string[][];
+			const answers = details.answers;
 			// 複数回答の場合は各回答を表示
 			if (answers.length === 1) {
 				// 単一質問の場合は回答内容をそのまま表示

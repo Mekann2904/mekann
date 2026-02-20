@@ -68,8 +68,8 @@ import {
 } from "../lib/dynamic-tools/quality.js";
 import type {
   DynamicToolDefinition,
-  ToolExecutionResult,
 } from "../lib/dynamic-tools/types.js";
+import type { ToolExecutionResult } from "../lib/dynamic-tools/registry.js";
 import { isHighStakesTask } from "../lib/verification-workflow.js";
 
 const logger = getLogger();
@@ -857,6 +857,7 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   // create_tool: 動的ツール生成
   pi.registerTool({
     name: "create_tool",
+    label: "create_tool",
     description: "動的ツールを生成します。TypeScriptコードを指定して新しいツールを作成します。",
     parameters: Type.Object({
       name: Type.String({ description: "ツール名（英字で始まり、英数字、アンダースコア、ハイフンのみ使用可能）" }),
@@ -896,6 +897,7 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   // run_dynamic_tool: 動的ツール実行
   pi.registerTool({
     name: "run_dynamic_tool",
+    label: "run_dynamic_tool",
     description: "登録済みの動的ツールを実行します。tool_idまたはtool_nameでツールを指定します。",
     parameters: Type.Object({
       tool_id: Type.Optional(Type.String({ description: "ツールID" })),
@@ -925,6 +927,7 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   // list_dynamic_tools: ツール一覧
   pi.registerTool({
     name: "list_dynamic_tools",
+    label: "list_dynamic_tools",
     description: "登録済みの動的ツール一覧を表示します。フィルタリングオプションを利用可能です。",
     parameters: Type.Object({
       name: Type.Optional(Type.String({ description: "名前でフィルタ（部分一致）" })),
@@ -945,6 +948,7 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   // delete_dynamic_tool: ツール削除
   pi.registerTool({
     name: "delete_dynamic_tool",
+    label: "delete_dynamic_tool",
     description: "登録済みの動的ツールを削除します。confirm: true で削除を確定します。",
     parameters: Type.Object({
       tool_id: Type.Optional(Type.String({ description: "ツールID" })),
@@ -973,6 +977,7 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   // tool_reflection: 反省とツール生成判定
   pi.registerTool({
     name: "tool_reflection",
+    label: "tool_reflection",
     description: "タスク実行後に反省を行い、ツール生成が推奨されるかを判定します。",
     parameters: Type.Object({
       task_description: Type.String({ description: "実行中のタスクの説明" }),

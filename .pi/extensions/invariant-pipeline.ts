@@ -42,6 +42,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { Type } from "@sinclair/typebox";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -1208,16 +1209,17 @@ export default (api: ExtensionAPI) => {
   // generate_from_spec tool
   api.registerTool({
     name: "generate_from_spec",
+    label: "generate_from_spec",
     description: "spec.mdからQuint形式仕様、TypeScriptバリデーション関数、fast-checkプロパティテスト、TypeScriptモデルベーステストドライバーを一括生成",
-    parameters: {
-      spec_path: { type: "string", description: "spec.mdファイルへのパス" },
-      output_dir: { type: "string", description: "出力ディレクトリ（デフォルト: spec_pathと同じディレクトリ）" },
-      module_name: { type: "string", description: "Quintモジュール名（デフォルト: specのタイトル）" },
-      struct_name: { type: "string", description: "TypeScriptクラス名（デフォルト: specのタイトル）" },
-      test_count: { type: "number", description: "プロパティテストのテスト数（デフォルト: 100）" },
-      max_steps: { type: "number", description: "MBTの最大ステップ数（デフォルト: 100）" },
-    },
-    handler: async (params: {
+    parameters: Type.Object({
+      spec_path: Type.String({ description: "spec.mdファイルへのパス" }),
+      output_dir: Type.Optional(Type.String({ description: "出力ディレクトリ（デフォルト: spec_pathと同じディレクトリ）" })),
+      module_name: Type.Optional(Type.String({ description: "Quintモジュール名（デフォルト: specのタイトル）" })),
+      struct_name: Type.Optional(Type.String({ description: "TypeScriptクラス名（デフォルト: specのタイトル）" })),
+      test_count: Type.Optional(Type.Number({ description: "プロパティテストのテスト数（デフォルト: 100）" })),
+      max_steps: Type.Optional(Type.Number({ description: "MBTの最大ステップ数（デフォルト: 100）" })),
+    }),
+    execute: async (_toolCallId: string, params: {
       spec_path: string;
       output_dir?: string;
       module_name?: string;
@@ -1307,17 +1309,19 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  });
+  } as any);
 
   // verify_quint_spec tool
   api.registerTool({
     name: "verify_quint_spec",
+    label: "verify_quint_spec",
     description: "Quint形式仕様を検証（構文チェック、インバリアントチェック）",
-    parameters: {
-      quint_path: { type: "string", description: "Quintファイルへのパス" },
-      check_invariants: { type: "boolean", description: "インバリアントをチェック" },
-    },
-    handler: async (params: VerifyQuintInput) => {
+    parameters: Type.Object({
+      quint_path: Type.String({ description: "Quintファイルへのパス" }),
+      check_invariants: Type.Optional(Type.Boolean({ description: "インバリアントをチェック" })),
+      check_liveness: Type.Optional(Type.Boolean({ description: "ライブネス性をチェック" })),
+    }),
+    execute: async (_toolCallId: string, params: VerifyQuintInput) => {
       try {
         if (!existsSync(params.quint_path)) {
           return {
@@ -1376,18 +1380,19 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  });
+  } as any);
 
   // generate_invariant_macros tool
   api.registerTool({
     name: "generate_invariant_macros",
+    label: "generate_invariant_macros",
     description: "spec.mdからTypeScriptインバリアントバリデーション関数を生成",
-    parameters: {
-      spec_path: { type: "string", description: "spec.mdファイルへのパス" },
-      output_path: { type: "string", description: "出力ファイルパス" },
-      struct_name: { type: "string", description: "TypeScriptモデル名" },
-    },
-    handler: async (params: GenerateMacrosInput) => {
+    parameters: Type.Object({
+      spec_path: Type.String({ description: "spec.mdファイルへのパス" }),
+      output_path: Type.Optional(Type.String({ description: "出力ファイルパス" })),
+      struct_name: Type.Optional(Type.String({ description: "TypeScriptモデル名" })),
+    }),
+    execute: async (_toolCallId: string, params: GenerateMacrosInput) => {
       try {
         if (!existsSync(params.spec_path)) {
           return {
@@ -1419,19 +1424,20 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  });
+  } as any);
 
   // generate_property_tests tool
   api.registerTool({
     name: "generate_property_tests",
+    label: "generate_property_tests",
     description: "spec.mdからfast-checkベースのプロパティテストを生成",
-    parameters: {
-      spec_path: { type: "string", description: "spec.mdファイルへのパス" },
-      output_path: { type: "string", description: "出力ファイルパス" },
-      struct_name: { type: "string", description: "テスト対象モデル名" },
-      test_count: { type: "number", description: "プロパティテストのテスト数（デフォルト: 100）" },
-    },
-    handler: async (params: GenerateTestsInput) => {
+    parameters: Type.Object({
+      spec_path: Type.String({ description: "spec.mdファイルへのパス" }),
+      output_path: Type.Optional(Type.String({ description: "出力ファイルパス" })),
+      struct_name: Type.Optional(Type.String({ description: "テスト対象モデル名" })),
+      test_count: Type.Optional(Type.Number({ description: "プロパティテストのテスト数（デフォルト: 100）" })),
+    }),
+    execute: async (_toolCallId: string, params: GenerateTestsInput) => {
       try {
         if (!existsSync(params.spec_path)) {
           return {
@@ -1464,19 +1470,20 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  });
+  } as any);
 
   // generate_mbt_driver tool
   api.registerTool({
     name: "generate_mbt_driver",
+    label: "generate_mbt_driver",
     description: "spec.mdからTypeScriptベースのモデルベーステストドライバーを生成",
-    parameters: {
-      spec_path: { type: "string", description: "spec.mdファイルへのパス" },
-      output_path: { type: "string", description: "出力ファイルパス" },
-      struct_name: { type: "string", description: "TypeScriptモデルクラス名" },
-      max_steps: { type: "number", description: "MBTの最大ステップ数（デフォルト: 100）" },
-    },
-    handler: async (params: GenerateMBTInput) => {
+    parameters: Type.Object({
+      spec_path: Type.String({ description: "spec.mdファイルへのパス" }),
+      output_path: Type.Optional(Type.String({ description: "出力ファイルパス" })),
+      struct_name: Type.Optional(Type.String({ description: "TypeScriptモデルクラス名" })),
+      max_steps: Type.Optional(Type.Number({ description: "MBTの最大ステップ数（デフォルト: 100）" })),
+    }),
+    execute: async (_toolCallId: string, params: GenerateMBTInput) => {
       try {
         if (!existsSync(params.spec_path)) {
           return {
@@ -1509,7 +1516,7 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  });
+  } as any);
 
   console.log("[invariant-pipeline] Extension loaded", {
     tools: ["generate_from_spec", "verify_quint_spec", "generate_invariant_macros", "generate_property_tests", "generate_mbt_driver"],

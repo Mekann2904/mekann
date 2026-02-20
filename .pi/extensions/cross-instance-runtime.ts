@@ -27,6 +27,7 @@
 // Why: Enables automatic parallelism adjustment based on active pi instance count.
 // Related: .pi/lib/cross-instance-coordinator.ts, .pi/lib/provider-limits.ts, .pi/lib/adaptive-rate-controller.ts
 
+import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import {
@@ -186,7 +187,7 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
     name: "pi_instance_status",
     label: "PI Instance Status",
     description: "Get current cross-instance coordinator status and parallelism allocation.",
-    parameters: {},
+    parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
       const status = getCoordinatorStatus();
       const runtime = getRuntimeSnapshot();
@@ -242,7 +243,7 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
       return new Text(theme.bold("pi_instance_status"), 0, 0);
     },
     renderResult(result, _options, theme) {
-      const status = result?.details?.coordinator;
+      const status = (result as any)?.details?.coordinator;
       if (!status) {
         return new Text(theme.fg("warning", "coordinator status unavailable"), 0, 0);
       }
@@ -262,15 +263,16 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
     name: "pi_model_limits",
     label: "PI Model Limits",
     description: "Get rate limits for a specific provider/model combination.",
-    parameters: {
-      provider: { type: "string", description: "Provider name (e.g., anthropic, openai)" },
-      model: { type: "string", description: "Model name (e.g., claude-sonnet-4-20250514)" },
-      tier: { type: "string", description: "Optional tier (e.g., pro, max, plus)" },
-    },
+    parameters: Type.Object({
+      provider: Type.String({ description: "Provider name (e.g., anthropic, openai)" }),
+      model: Type.String({ description: "Model name (e.g., claude-sonnet-4-20250514)" }),
+      tier: Type.Optional(Type.String({ description: "Optional tier (e.g., pro, max, plus)" })),
+    }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const provider = String(params.provider || "");
-      const model = String(params.model || "");
-      const tier = params.tier ? String(params.tier) : detectTier(provider, model);
+      const parsedParams = (params ?? {}) as { provider?: string; model?: string; tier?: string };
+      const provider = String(parsedParams.provider || "");
+      const model = String(parsedParams.model || "");
+      const tier = parsedParams.tier ? String(parsedParams.tier) : detectTier(provider, model);
 
       if (!provider || !model) {
         return {
@@ -324,7 +326,7 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
       return new Text(theme.bold("pi_model_limits ") + theme.fg("muted", preview), 0, 0);
     },
     renderResult(result, _options, theme) {
-      const resolved = result?.details?.resolved;
+      const resolved = (result as any)?.details?.resolved;
       if (!resolved) {
         return new Text(theme.fg("warning", "model limits unavailable"), 0, 0);
       }
@@ -339,7 +341,7 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
 
   // Event: Register instance on session start
   pi.on("session_start", async (event, ctx) => {
-    const sessionId = event.sessionId ?? ctx.sessionId ?? "unknown";
+    const sessionId = (event as any)?.sessionId ?? "unknown";
     const envOverrides = getEnvOverrides();
 
     registerInstance(sessionId, ctx.cwd, envOverrides);
@@ -383,7 +385,11 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
   pi.on("tool_result", async (event, ctx) => {
     if (!ctx.model) return;
 
-    const error = event?.error || event?.result?.error;
+    const eventPayload = event as any;
+    const error =
+      eventPayload?.error ||
+      eventPayload?.result?.error ||
+      (eventPayload?.isError ? eventPayload?.output ?? eventPayload?.message ?? "tool error" : undefined);
     if (error && isRateLimitError(error)) {
       record429(ctx.model.provider, ctx.model.id, String(error));
       ctx.ui.notify(

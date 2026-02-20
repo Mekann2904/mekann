@@ -211,7 +211,7 @@ export {
   type ActiveModelInfo,
   type InstanceInfo,
   type CoordinatorConfig,
-  type CoordinatorState,
+  type CoordinatorInternalState as CoordinatorState,
   type StealableQueueEntry,
   type BroadcastQueueState,
   registerInstance,

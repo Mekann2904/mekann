@@ -255,6 +255,7 @@ export interface TeamRunRecord {
   communicationLinks?: Record<string, string[]>;
   summary: string;
   status: "completed" | "failed";
+  error?: string;
   startedAt: string;
   finishedAt: string;
   memberCount: number;
@@ -372,7 +373,7 @@ export function loadStorage(cwd: string): TeamStorage {
     return storage;
   } catch (error) {
     // Log the error for diagnostics instead of silently swallowing
-    logger.logError(error, { operation: "loadStorage", path: paths.storageFile });
+    console.warn("[agent-teams] loadStorage failed:", error);
     const fallback: TeamStorage = {
       teams: [],
       runs: [],
@@ -459,7 +460,7 @@ export async function saveStorageWithPatterns(
       }
     } catch (error) {
       // Don't fail the save if pattern extraction fails
-      logger.logError(error, { operation: "saveStorageWithPatterns" });
+      console.warn("[agent-teams] saveStorageWithPatterns failed:", error);
     }
   }
 }

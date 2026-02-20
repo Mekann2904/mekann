@@ -158,7 +158,7 @@ function loadTeamDefinitions(): TeamWithSkills[] {
         continue;
       }
     } else {
-      const parsed = parseFrontmatter<TeamFrontmatter>(content);
+      const parsed = parseFrontmatter<Record<string, unknown> & TeamFrontmatter>(content);
       frontmatter = parsed.frontmatter;
     }
     
@@ -820,7 +820,7 @@ export default function (pi: ExtensionAPI) {
         content: [{ type: "text" as const, text: output }],
       };
     }
-  });
+  } as any);
 
   // Register /skill-status command
   pi.registerCommand("skill-status", {

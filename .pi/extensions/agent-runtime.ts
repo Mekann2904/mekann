@@ -138,6 +138,7 @@ interface AgentRuntimeState {
     pending: RuntimeQueueEntry[];
     lastDispatchedTenantKey?: string;
     consecutiveDispatchesByTenant: number;
+    evictedEntries: number;
     /** Priority queue statistics (updated on enqueue/dequeue) */
     priorityStats?: {
       critical: number;
@@ -263,6 +264,7 @@ export interface AgentRuntimeSnapshot {
   activeOrchestrations: number;
   queuedOrchestrations: number;
   queuedTools: string[];
+  queueEvictions: number;
   totalActiveRequests: number;
   totalActiveLlm: number;
   limits: AgentRuntimeLimits;
@@ -517,17 +519,26 @@ export interface RuntimeDispatchPermitResult {
 // Constants now come from centralized runtime-config
 const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 4;
 const DEFAULT_RESERVATION_SWEEP_MS = 5_000;
+const DEFAULT_MAX_PENDING_QUEUE_ENTRIES = 1_000;
 const MIN_RESERVATION_TTL_MS = 2_000;
 const MAX_RESERVATION_TTL_MS = 10 * 60 * 1_000;
 const BACKOFF_MAX_FACTOR = 8;
 const BACKOFF_JITTER_RATIO = 0.2;
 const STRICT_LIMITS_ENV = "PI_AGENT_RUNTIME_STRICT_LIMITS";
+const DEBUG_RUNTIME_QUEUE =
+  process.env.PI_DEBUG_RUNTIME_QUEUE === "1" ||
+  process.env.PI_DEBUG_RUNTIME === "1";
 let runtimeNowProvider: () => number = () => Date.now();
 let runtimeQueueSequence = 0;
 let runtimeReservationSequence = 0;
 const RUNTIME_INSTANCE_TOKEN = randomBytes(3).toString("hex");
 let runtimeReservationSweeper: NodeJS.Timeout | undefined;
 const runtimeCapacityEventTarget = new EventTarget();
+
+function logRuntimeQueueDebug(message: string): void {
+  if (!DEBUG_RUNTIME_QUEUE) return;
+  console.error(`[agent-runtime][queue] ${message}`);
+}
 
 function runtimeNow(): number {
   return runtimeNowProvider();
@@ -746,6 +757,7 @@ function createInitialRuntimeState(): AgentRuntimeState {
       activeOrchestrations: 0,
       pending: [],
       consecutiveDispatchesByTenant: 0,
+      evictedEntries: 0,
     },
     reservations: {
       active: [],
@@ -796,13 +808,21 @@ function ensureRuntimeStateShape(runtime: AgentRuntimeState): AgentRuntimeState 
     runtime.teams = { activeTeamRuns: 0, activeTeammates: 0 };
   }
   if (!runtime.queue) {
-    runtime.queue = { activeOrchestrations: 0, pending: [], consecutiveDispatchesByTenant: 0 };
+    runtime.queue = {
+      activeOrchestrations: 0,
+      pending: [],
+      consecutiveDispatchesByTenant: 0,
+      evictedEntries: 0,
+    };
   }
   if (!Array.isArray(runtime.queue.pending)) {
     runtime.queue.pending = [];
   }
   if (!Number.isFinite(runtime.queue.consecutiveDispatchesByTenant)) {
     runtime.queue.consecutiveDispatchesByTenant = 0;
+  }
+  if (!Number.isFinite(runtime.queue.evictedEntries)) {
+    runtime.queue.evictedEntries = 0;
   }
   if (!runtime.reservations) {
     runtime.reservations = { active: [] };
@@ -948,6 +968,7 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
     activeOrchestrations,
     queuedOrchestrations,
     queuedTools,
+    queueEvictions: Math.max(0, Math.trunc(runtime.queue.evictedEntries || 0)),
     totalActiveRequests: clusterUsage.totalActiveRequests,
     totalActiveLlm: clusterUsage.totalActiveLlm,
     limitsVersion: runtime.limitsVersion,
@@ -990,6 +1011,7 @@ export function formatRuntimeStatusLine(options: RuntimeStatusLineOptions = {}):
   lines.push(
     `- オーケストレーションキュー: active=${snapshot.activeOrchestrations}/${snapshot.limits.maxConcurrentOrchestrations}, queued=${snapshot.queuedOrchestrations}`,
   );
+  lines.push(`  - queue_evictions_total: ${snapshot.queueEvictions}`);
   if (snapshot.queuedTools.length > 0) {
     lines.push(`  - queued_tools: ${snapshot.queuedTools.join(", ")}`);
   }
@@ -1024,6 +1046,77 @@ function createRuntimeQueueEntryId(): string {
 
 function clampPlannedCount(value: number): number {
   return Math.max(0, Math.trunc(Number(value) || 0));
+}
+
+function getMaxPendingQueueEntries(): number {
+  return resolveLimitFromEnv(
+    "PI_AGENT_MAX_PENDING_QUEUE_ENTRIES",
+    DEFAULT_MAX_PENDING_QUEUE_ENTRIES,
+    100_000,
+  );
+}
+
+function getQueueClassRank(queueClass: RuntimeQueueClass): number {
+  if (queueClass === "interactive") return 3;
+  if (queueClass === "standard") return 2;
+  return 1; // batch
+}
+
+function getPriorityRank(priority: TaskPriority | undefined): number {
+  if (priority === "critical") return 5;
+  if (priority === "high") return 4;
+  if (priority === "normal") return 3;
+  if (priority === "low") return 2;
+  return 1; // background / undefined
+}
+
+/**
+ * Keep pending queue bounded to avoid unbounded memory growth.
+ * Eviction policy:
+ * 1) lower queue class first (batch < standard < interactive)
+ * 2) lower priority first (background < ... < critical)
+ * 3) older entries first (LRU-like by enqueue timestamp)
+ */
+function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null {
+  const maxPendingEntries = getMaxPendingQueueEntries();
+  if (runtime.queue.pending.length < maxPendingEntries) {
+    return null;
+  }
+
+  let evictionIndex = -1;
+  let minClassRank = Number.POSITIVE_INFINITY;
+  let minPriorityRank = Number.POSITIVE_INFINITY;
+  let oldestEnqueuedAt = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < runtime.queue.pending.length; i += 1) {
+    const entry = runtime.queue.pending[i];
+    const classRank = getQueueClassRank(entry.queueClass ?? "standard");
+    const priorityRank = getPriorityRank(entry.priority);
+    const enqueuedAt = entry.enqueuedAtMs;
+    const betterCandidate =
+      classRank < minClassRank ||
+      (classRank === minClassRank && priorityRank < minPriorityRank) ||
+      (classRank === minClassRank && priorityRank === minPriorityRank && enqueuedAt < oldestEnqueuedAt);
+
+    if (betterCandidate) {
+      evictionIndex = i;
+      minClassRank = classRank;
+      minPriorityRank = priorityRank;
+      oldestEnqueuedAt = enqueuedAt;
+    }
+  }
+
+  if (evictionIndex < 0) return null;
+  const [evicted] = runtime.queue.pending.splice(evictionIndex, 1);
+  runtime.queue.evictedEntries += 1;
+  if (evicted) {
+    logRuntimeQueueDebug(
+      `evicted id=${evicted.id} tool=${evicted.toolName} class=${evicted.queueClass} priority=${evicted.priority ?? "normal"} pending=${runtime.queue.pending.length} evictions_total=${runtime.queue.evictedEntries} limit=${maxPendingEntries}`,
+    );
+  }
+  updatePriorityStats(runtime);
+  notifyRuntimeCapacityChanged();
+  return evicted ?? null;
 }
 
 function toQueueClass(input: RuntimeDispatchPermitInput): RuntimeQueueClass {
@@ -1634,6 +1727,7 @@ export async function waitForRuntimeOrchestrationTurn(
     skipCount: 0,
   };
 
+  trimPendingQueueToLimit(runtime);
   runtime.queue.pending.push(entry);
 
   // Sort by priority (higher priority first)
@@ -1867,6 +1961,7 @@ export async function acquireRuntimeDispatchPermit(
     skipCount: 0,
   };
 
+  trimPendingQueueToLimit(runtime);
   runtime.queue.pending.push(entry);
   sortQueueByPriority(runtime);
   updatePriorityStats(runtime);
