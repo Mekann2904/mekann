@@ -199,9 +199,22 @@ export class SearchResultCache {
 	private config: CacheConfig;
 	private hits = 0;
 	private misses = 0;
+	/** LRU順序管理: 最も古いアクセスのキーが先頭 */
+	private accessOrder: string[] = [];
 
 	constructor(config: Partial<CacheConfig> = {}) {
 		this.config = { ...DEFAULT_CACHE_CONFIG, ...config };
+	}
+
+	/**
+	 * LRU順序を更新（アクセスされたキーを末尾に移動）
+	 */
+	private touchKey(key: string): void {
+		const idx = this.accessOrder.indexOf(key);
+		if (idx >= 0) {
+			this.accessOrder.splice(idx, 1);
+		}
+		this.accessOrder.push(key);
 	}
 
 	 /**
@@ -229,6 +242,8 @@ export class SearchResultCache {
 			return undefined;
 		}
 
+		// LRU: アクセスされたキーを末尾に移動
+		this.touchKey(key);
 		this.hits++;
 		return entry.result;
 	}
@@ -258,6 +273,8 @@ export class SearchResultCache {
 		};
 
 		this.cache.set(key, entry as CacheEntry<unknown>);
+		// LRU: 新しいキーを末尾に追加
+		this.touchKey(key);
 	}
 
 	/**
@@ -371,19 +388,12 @@ export class SearchResultCache {
 	}
 
 	/**
-	 * Evict the oldest entry.
+	 * Evict the oldest entry using LRU order.
+	 * O(1) operation using accessOrder array.
 	 */
 	private evictOldest(): void {
-		let oldestKey: string | undefined;
-		let oldestTime = Infinity;
-
-		for (const [key, entry] of this.cache) {
-			if (entry.timestamp < oldestTime) {
-				oldestTime = entry.timestamp;
-				oldestKey = key;
-			}
-		}
-
+		// LRU: 最も古いキー（accessOrderの先頭）を削除
+		const oldestKey = this.accessOrder.shift();
 		if (oldestKey) {
 			this.cache.delete(oldestKey);
 		}

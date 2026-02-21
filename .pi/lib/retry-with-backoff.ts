@@ -165,6 +165,34 @@ const sharedRateLimitState: SharedRateLimitState = {
 // 操作中フラグ: 同一プロセス内での並列アクセスを防止
 let inMemoryRateLimitOperationInProgress = false;
 
+// 最適化: ファイルからの読み込みを一度だけ行う（遅延初期化）
+let persistedStateLoaded = false;
+
+// 最適化: 書き込みをdebounce（最後の書き込みから500ms後に実行）
+let writeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const WRITE_DEBOUNCE_MS = 500;
+
+function scheduleWritePersistedState(): void {
+  if (writeDebounceTimer) {
+    clearTimeout(writeDebounceTimer);
+  }
+  writeDebounceTimer = setTimeout(() => {
+    writeDebounceTimer = null;
+    writePersistedRateLimitState(sharedRateLimitState);
+  }, WRITE_DEBOUNCE_MS);
+  // プロセス終了時にブロックしないようにunref
+  writeDebounceTimer.unref();
+}
+
+// プロセス終了時に確実に書き込む
+process.on("beforeExit", () => {
+  if (writeDebounceTimer) {
+    clearTimeout(writeDebounceTimer);
+    writeDebounceTimer = null;
+    writePersistedRateLimitState(sharedRateLimitState);
+  }
+});
+
 type PersistedRateLimitState = {
   version: number;
   updatedAt: string;
@@ -362,7 +390,8 @@ function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
     const localState = getSharedRateLimitState();
     pruneRateLimitState(nowMs, localState);
     const result = mutator();
-    writePersistedRateLimitState(localState);
+    // 最適化: debounce書き込み
+    scheduleWritePersistedState();
     return result;
   };
 
@@ -374,19 +403,23 @@ function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
   inMemoryRateLimitOperationInProgress = true;
   try {
     ensureRuntimeDir();
-    return withFileLock(
-      RATE_LIMIT_STATE_FILE,
-      () => {
-        const state = getSharedRateLimitState();
-        const persisted = readPersistedRateLimitState(nowMs);
-        mergeEntriesInPlace(state.entries, persisted);
-        pruneRateLimitState(nowMs, state);
-        const result = mutator();
-        writePersistedRateLimitState(state);
-        return result;
-      },
-      RATE_LIMIT_STATE_LOCK_OPTIONS,
-    );
+    
+    // 最適化: ファイルからの読み込みは一度だけ
+    if (!persistedStateLoaded) {
+      const state = getSharedRateLimitState();
+      const persisted = readPersistedRateLimitState(nowMs);
+      mergeEntriesInPlace(state.entries, persisted);
+      pruneRateLimitState(nowMs, state);
+      persistedStateLoaded = true;
+    }
+    
+    // メモリ上の状態で操作
+    const state = getSharedRateLimitState();
+    pruneRateLimitState(nowMs, state);
+    const result = mutator();
+    // 最適化: debounce書き込み
+    scheduleWritePersistedState();
+    return result;
   } catch {
     return fallback();
   } finally {

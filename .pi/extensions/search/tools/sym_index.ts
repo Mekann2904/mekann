@@ -44,6 +44,7 @@
 
 import { join, dirname, relative } from "node:path";
 import { mkdir, writeFile, readFile, access, stat, readdir, unlink } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
 import { execute, buildCtagsArgs, checkToolAvailability } from "../utils/cli.js";
 import {
@@ -139,11 +140,16 @@ function getShardPath(cwd: string, shardId: number): string {
 /**
  * Compute content hash for a file.
  * Uses MD5 for speed (not cryptographic security).
+ * ストリーミングハッシュを使用してメモリ効率を改善
  */
 async function computeFileHash(filePath: string): Promise<string> {
 	try {
-		const content = await readFile(filePath);
-		return createHash("md5").update(content).digest("hex");
+		const hash = createHash("md5");
+		const stream = createReadStream(filePath);
+		for await (const chunk of stream) {
+			hash.update(chunk);
+		}
+		return hash.digest("hex");
 	} catch {
 		return "";
 	}

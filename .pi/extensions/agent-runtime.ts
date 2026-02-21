@@ -1149,43 +1149,65 @@ function getPriorityRank(priority: TaskPriority | undefined): number {
  * 1) lower queue class first (batch < standard < interactive)
  * 2) lower priority first (background < ... < critical)
  * 3) older entries first (LRU-like by enqueue timestamp)
+ * 
+ * 最適化: 比較ロジックを簡素化し、早期終了を追加
  */
 function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null {
   const maxPendingEntries = getMaxPendingQueueEntries();
-  if (runtime.queue.pending.length < maxPendingEntries) {
+  const pending = runtime.queue.pending;
+  if (pending.length < maxPendingEntries) {
     return null;
   }
 
   let evictionIndex = -1;
-  let minClassRank = Number.POSITIVE_INFINITY;
-  let minPriorityRank = Number.POSITIVE_INFINITY;
-  let oldestEnqueuedAt = Number.POSITIVE_INFINITY;
+  let minScore = Number.POSITIVE_INFINITY;
 
-  for (let i = 0; i < runtime.queue.pending.length; i += 1) {
-    const entry = runtime.queue.pending[i];
-    if (!entry) continue; // undefined チェック追加
+  // 複合スコアを計算して一度の比較で判定
+  // スコア = classRank * 10000 + priorityRank * 100 + (now - enqueuedAt) / 1000
+  // 小さいスコア = 退避候補
+  const nowMs = runtimeNow();
+  
+  for (let i = 0; i < pending.length; i += 1) {
+    const entry = pending[i];
+    if (!entry) continue;
+    
     const classRank = getQueueClassRank(entry.queueClass ?? "standard");
     const priorityRank = getPriorityRank(entry.priority);
-    const enqueuedAt = entry.enqueuedAtMs;
-    const betterCandidate =
-      classRank < minClassRank ||
-      (classRank === minClassRank && priorityRank < minPriorityRank) ||
-      (classRank === minClassRank && priorityRank === minPriorityRank && enqueuedAt < oldestEnqueuedAt);
+    // 待機時間が長いほどスコアが下がる（退避されにくい）
+    const waitTimeBonus = Math.min((nowMs - entry.enqueuedAtMs) / 1000, 99);
+    
+    // スコア計算: classRankとpriorityRankが小さいほど退避候補
+    // waitTimeBonusは大きいほど待機時間が長いので退避されにくい
+    const score = classRank * 10000 + priorityRank * 100 - waitTimeBonus;
 
-    if (betterCandidate) {
+    if (score < minScore) {
+      minScore = score;
       evictionIndex = i;
-      minClassRank = classRank;
-      minPriorityRank = priorityRank;
-      oldestEnqueuedAt = enqueuedAt;
+      // バッチクラスかつバックグラウンド優先度のエントリは最も退避しやすい
+      // 早期終了: 最も退避しやすいエントリを見つけた場合
+      if (classRank === 1 && priorityRank === 1) {
+        // さらに古いエントリがないか確認（最大10件まで）
+        const remainingSearch = Math.min(10, pending.length - i - 1);
+        for (let j = i + 1; j < i + 1 + remainingSearch; j += 1) {
+          const nextEntry = pending[j];
+          if (!nextEntry) continue;
+          const nextClassRank = getQueueClassRank(nextEntry.queueClass ?? "standard");
+          const nextPriorityRank = getPriorityRank(nextEntry.priority);
+          if (nextClassRank === 1 && nextPriorityRank === 1 && nextEntry.enqueuedAtMs < entry.enqueuedAtMs) {
+            evictionIndex = j;
+          }
+        }
+        break; // 最適な候補を見つけたので早期終了
+      }
     }
   }
 
   if (evictionIndex < 0) return null;
-  const evicted = runtime.queue.pending.splice(evictionIndex, 1)[0];
-  if (!evicted) return null; // undefined チェック追加
+  const evicted = pending.splice(evictionIndex, 1)[0];
+  if (!evicted) return null;
   runtime.queue.evictedEntries += 1;
   logRuntimeQueueDebug(
-    `evicted id=${evicted.id} tool=${evicted.toolName} class=${evicted.queueClass} priority=${evicted.priority ?? "normal"} pending=${runtime.queue.pending.length} evictions_total=${runtime.queue.evictedEntries} limit=${maxPendingEntries}`,
+    `evicted id=${evicted.id} tool=${evicted.toolName} class=${evicted.queueClass} priority=${evicted.priority ?? "normal"} pending=${pending.length} evictions_total=${runtime.queue.evictedEntries} limit=${maxPendingEntries}`,
   );
   updatePriorityStats(runtime);
   notifyRuntimeCapacityChanged();
