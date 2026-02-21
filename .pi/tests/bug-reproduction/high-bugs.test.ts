@@ -207,6 +207,16 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
    * 注: registerRateLimitGateHit は内部関数のため、retryWithBackoffを使用
    */
 
+  beforeEach(async () => {
+    const { clearRateLimitState } = await import("../../lib/retry-with-backoff.js");
+    clearRateLimitState();
+  });
+
+  afterEach(async () => {
+    const { clearRateLimitState } = await import("../../lib/retry-with-backoff.js");
+    clearRateLimitState();
+  });
+
   it("should maintain consistency when multiple concurrent rate limit operations occur", async () => {
     const {
       retryWithBackoff,

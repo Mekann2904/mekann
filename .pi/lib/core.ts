@@ -43,6 +43,9 @@ export {
   type PressureErrorType,
 } from "./error-utils.js";
 
+// Retry utilities (Layer 0)
+export { isRetryableError } from "./retry-with-backoff.js";
+
 // Unified error classes (Layer 0)
 export {
   PiError,
@@ -60,7 +63,7 @@ export {
   StorageError,
   isPiError,
   hasErrorCode,
-  isRetryableError,
+  isPiErrorRetryable,
   toPiError,
   getErrorCode,
   isRetryableErrorCode,

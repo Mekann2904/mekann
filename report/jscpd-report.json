@@ -1,0 +1,5221 @@
+{
+  "statistics": {
+    "detectionDate": "2026-02-21T09:53:02.186Z",
+    "formats": {
+      "typescript": {
+        "sources": {
+          ".pi/lib/embeddings/providers/openai.ts": {
+            "lines": 245,
+            "tokens": 1299,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/tui/tui-utils.ts": {
+            "lines": 243,
+            "tokens": 1568,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 12,
+            "duplicatedTokens": 80,
+            "percentage": 4.94,
+            "percentageTokens": 5.1,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/tui/live-monitor-base.ts": {
+            "lines": 699,
+            "tokens": 4825,
+            "sources": 1,
+            "clones": 3,
+            "duplicatedLines": 46,
+            "duplicatedTokens": 514,
+            "percentage": 6.58,
+            "percentageTokens": 10.65,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/interfaces/runtime-snapshot.ts": {
+            "lines": 55,
+            "tokens": 75,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/embeddings/utils.ts": {
+            "lines": 272,
+            "tokens": 1644,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/embeddings/types.ts": {
+            "lines": 226,
+            "tokens": 569,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/embeddings/registry.ts": {
+            "lines": 343,
+            "tokens": 1682,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/embeddings/index.ts": {
+            "lines": 110,
+            "tokens": 294,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/dynamic-tools/types.ts": {
+            "lines": 669,
+            "tokens": 2415,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/dynamic-tools/safety.ts": {
+            "lines": 654,
+            "tokens": 3658,
+            "sources": 1,
+            "clones": 3,
+            "duplicatedLines": 22,
+            "duplicatedTokens": 286,
+            "percentage": 3.36,
+            "percentageTokens": 7.82,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/dynamic-tools/reflection.ts": {
+            "lines": 439,
+            "tokens": 2629,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/dynamic-tools/quality.ts": {
+            "lines": 761,
+            "tokens": 4853,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 12,
+            "duplicatedTokens": 94,
+            "percentage": 1.58,
+            "percentageTokens": 1.94,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/dynamic-tools/index.ts": {
+            "lines": 194,
+            "tokens": 590,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/dynamic-tools/audit.ts": {
+            "lines": 388,
+            "tokens": 2688,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/validation-utils.ts": {
+            "lines": 182,
+            "tokens": 1041,
+            "sources": 1,
+            "clones": 4,
+            "duplicatedLines": 42,
+            "duplicatedTokens": 360,
+            "percentage": 23.08,
+            "percentageTokens": 34.58,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/unified-limit-resolver.ts": {
+            "lines": 487,
+            "tokens": 2743,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/tool-error-utils.ts": {
+            "lines": 674,
+            "tokens": 4096,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/token-bucket.ts": {
+            "lines": 588,
+            "tokens": 3625,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/text-parsing.ts": {
+            "lines": 334,
+            "tokens": 1986,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 11,
+            "duplicatedTokens": 92,
+            "percentage": 3.29,
+            "percentageTokens": 4.63,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/team-types.ts": {
+            "lines": 319,
+            "tokens": 1161,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 21,
+            "duplicatedTokens": 104,
+            "percentage": 6.58,
+            "percentageTokens": 8.96,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/task-dependencies.ts": {
+            "lines": 655,
+            "tokens": 4344,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/subagent-types.ts": {
+            "lines": 211,
+            "tokens": 657,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 21,
+            "duplicatedTokens": 104,
+            "percentage": 9.95,
+            "percentageTokens": 15.83,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/structured-logger.ts": {
+            "lines": 714,
+            "tokens": 3525,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 20,
+            "duplicatedTokens": 244,
+            "percentage": 2.8,
+            "percentageTokens": 6.92,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/storage.ts": {
+            "lines": 151,
+            "tokens": 494,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/storage-lock.ts": {
+            "lines": 291,
+            "tokens": 1833,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/storage-base.ts": {
+            "lines": 534,
+            "tokens": 3344,
+            "sources": 1,
+            "clones": 6,
+            "duplicatedLines": 62,
+            "duplicatedTokens": 726,
+            "percentage": 11.61,
+            "percentageTokens": 21.71,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/skill-registry.ts": {
+            "lines": 674,
+            "tokens": 4445,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/semantic-repetition.ts": {
+            "lines": 469,
+            "tokens": 2585,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/semantic-memory.ts": {
+            "lines": 480,
+            "tokens": 2705,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/runtime-utils.ts": {
+            "lines": 160,
+            "tokens": 1004,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 14,
+            "duplicatedTokens": 242,
+            "percentage": 8.75,
+            "percentageTokens": 24.1,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/runtime-error-builders.ts": {
+            "lines": 71,
+            "tokens": 233,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/runtime-config.ts": {
+            "lines": 482,
+            "tokens": 3381,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/run-index.ts": {
+            "lines": 578,
+            "tokens": 3279,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 26,
+            "duplicatedTokens": 226,
+            "percentage": 4.5,
+            "percentageTokens": 6.89,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/retry-with-backoff.ts": {
+            "lines": 887,
+            "tokens": 7174,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/provider-limits.ts": {
+            "lines": 688,
+            "tokens": 5318,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 14,
+            "duplicatedTokens": 194,
+            "percentage": 2.03,
+            "percentageTokens": 3.65,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/process-utils.ts": {
+            "lines": 32,
+            "tokens": 17,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/priority-scheduler.ts": {
+            "lines": 605,
+            "tokens": 3820,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/plan-mode-shared.ts": {
+            "lines": 294,
+            "tokens": 1439,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/pi-coding-agent-compat.ts": {
+            "lines": 65,
+            "tokens": 403,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/pattern-extraction.ts": {
+            "lines": 657,
+            "tokens": 4373,
+            "sources": 1,
+            "clones": 6,
+            "duplicatedLines": 94,
+            "duplicatedTokens": 834,
+            "percentage": 14.31,
+            "percentageTokens": 19.07,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/output-validation.ts": {
+            "lines": 341,
+            "tokens": 2091,
+            "sources": 1,
+            "clones": 6,
+            "duplicatedLines": 146,
+            "duplicatedTokens": 1154,
+            "percentage": 42.82,
+            "percentageTokens": 55.19,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/output-schema.ts": {
+            "lines": 612,
+            "tokens": 3143,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 32,
+            "duplicatedTokens": 202,
+            "percentage": 5.23,
+            "percentageTokens": 6.43,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/model-timeouts.ts": {
+            "lines": 162,
+            "tokens": 699,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/metrics-collector.ts": {
+            "lines": 872,
+            "tokens": 6000,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/live-view-utils.ts": {
+            "lines": 161,
+            "tokens": 907,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 12,
+            "duplicatedTokens": 80,
+            "percentage": 7.45,
+            "percentageTokens": 8.82,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/intent-aware-limits.ts": {
+            "lines": 393,
+            "tokens": 1816,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/index.ts": {
+            "lines": 364,
+            "tokens": 1395,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/fs-utils.ts": {
+            "lines": 43,
+            "tokens": 75,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/frontmatter.ts": {
+            "lines": 37,
+            "tokens": 288,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/format-utils.ts": {
+            "lines": 162,
+            "tokens": 1019,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/execution-rules.ts": {
+            "lines": 681,
+            "tokens": 3308,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/errors.ts": {
+            "lines": 755,
+            "tokens": 3708,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/error-utils.ts": {
+            "lines": 123,
+            "tokens": 587,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/dynamic-parallelism.ts": {
+            "lines": 727,
+            "tokens": 4500,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/cost-estimator.ts": {
+            "lines": 330,
+            "tokens": 1680,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/core.ts": {
+            "lines": 105,
+            "tokens": 297,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/concurrency.ts": {
+            "lines": 164,
+            "tokens": 1009,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/comprehensive-logger.ts": {
+            "lines": 731,
+            "tokens": 4617,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/comprehensive-logger-types.ts": {
+            "lines": 506,
+            "tokens": 2402,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/comprehensive-logger-config.ts": {
+            "lines": 212,
+            "tokens": 1146,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/checkpoint-manager.ts": {
+            "lines": 861,
+            "tokens": 5349,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 28,
+            "duplicatedTokens": 230,
+            "percentage": 3.25,
+            "percentageTokens": 4.3,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/agent.ts": {
+            "lines": 199,
+            "tokens": 758,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/agent-utils.ts": {
+            "lines": 67,
+            "tokens": 390,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/agent-types.ts": {
+            "lines": 65,
+            "tokens": 128,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/agent-errors.ts": {
+            "lines": 913,
+            "tokens": 5205,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/agent-common.ts": {
+            "lines": 421,
+            "tokens": 1816,
+            "sources": 1,
+            "clones": 3,
+            "duplicatedLines": 51,
+            "duplicatedTokens": 349,
+            "percentage": 12.11,
+            "percentageTokens": 19.22,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/adaptive-total-limit.ts": {
+            "lines": 433,
+            "tokens": 4566,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/adaptive-penalty.ts": {
+            "lines": 391,
+            "tokens": 2477,
+            "sources": 1,
+            "clones": 4,
+            "duplicatedLines": 82,
+            "duplicatedTokens": 862,
+            "percentage": 20.97,
+            "percentageTokens": 34.8,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/abort-utils.ts": {
+            "lines": 89,
+            "tokens": 451,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/lib/abdd-types.ts": {
+            "lines": 505,
+            "tokens": 2528,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/utils/search-helpers.ts": {
+            "lines": 551,
+            "tokens": 2695,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/utils/output.ts": {
+            "lines": 912,
+            "tokens": 5274,
+            "sources": 1,
+            "clones": 4,
+            "duplicatedLines": 32,
+            "duplicatedTokens": 306,
+            "percentage": 3.51,
+            "percentageTokens": 5.8,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/utils/metrics.ts": {
+            "lines": 387,
+            "tokens": 1599,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/utils/history.ts": {
+            "lines": 410,
+            "tokens": 1933,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 12,
+            "duplicatedTokens": 146,
+            "percentage": 2.93,
+            "percentageTokens": 7.55,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/utils/errors.ts": {
+            "lines": 351,
+            "tokens": 1412,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/utils/constants.ts": {
+            "lines": 164,
+            "tokens": 368,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/utils/cli.ts": {
+            "lines": 388,
+            "tokens": 2465,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/utils/cache.ts": {
+            "lines": 500,
+            "tokens": 2452,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/tools/sym_index.ts": {
+            "lines": 855,
+            "tokens": 5667,
+            "sources": 1,
+            "clones": 4,
+            "duplicatedLines": 64,
+            "duplicatedTokens": 654,
+            "percentage": 7.49,
+            "percentageTokens": 11.54,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/tools/sym_find.ts": {
+            "lines": 286,
+            "tokens": 1875,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 17,
+            "duplicatedTokens": 127,
+            "percentage": 5.94,
+            "percentageTokens": 6.77,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/tools/semantic_search.ts": {
+            "lines": 251,
+            "tokens": 1506,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 14,
+            "duplicatedTokens": 123,
+            "percentage": 5.58,
+            "percentageTokens": 8.17,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/tools/semantic_index.ts": {
+            "lines": 445,
+            "tokens": 3069,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 14,
+            "duplicatedTokens": 123,
+            "percentage": 3.15,
+            "percentageTokens": 4.01,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/tools/file_candidates.ts": {
+            "lines": 284,
+            "tokens": 2001,
+            "sources": 1,
+            "clones": 3,
+            "duplicatedLines": 51,
+            "duplicatedTokens": 356,
+            "percentage": 17.96,
+            "percentageTokens": 17.79,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/tools/code_search.ts": {
+            "lines": 339,
+            "tokens": 2445,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 34,
+            "duplicatedTokens": 229,
+            "percentage": 10.03,
+            "percentageTokens": 9.37,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/tools/call_graph.ts": {
+            "lines": 386,
+            "tokens": 2520,
+            "sources": 1,
+            "clones": 6,
+            "duplicatedLines": 134,
+            "duplicatedTokens": 1190,
+            "percentage": 34.72,
+            "percentageTokens": 47.22,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/call-graph/types.ts": {
+            "lines": 321,
+            "tokens": 923,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/call-graph/query.ts": {
+            "lines": 390,
+            "tokens": 2744,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 30,
+            "duplicatedTokens": 228,
+            "percentage": 7.69,
+            "percentageTokens": 8.31,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/call-graph/index.ts": {
+            "lines": 65,
+            "tokens": 143,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/call-graph/builder.ts": {
+            "lines": 610,
+            "tokens": 3880,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 18,
+            "duplicatedTokens": 168,
+            "percentage": 2.95,
+            "percentageTokens": 4.33,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/code-structure-analyzer/tools/generate-doc.ts": {
+            "lines": 589,
+            "tokens": 4168,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 8,
+            "duplicatedTokens": 96,
+            "percentage": 1.36,
+            "percentageTokens": 2.3,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/code-structure-analyzer/tools/generate-diagrams.ts": {
+            "lines": 404,
+            "tokens": 3149,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 8,
+            "duplicatedTokens": 96,
+            "percentage": 1.98,
+            "percentageTokens": 3.05,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/code-structure-analyzer/tools/extract-structure.ts": {
+            "lines": 960,
+            "tokens": 6333,
+            "sources": 1,
+            "clones": 4,
+            "duplicatedLines": 24,
+            "duplicatedTokens": 442,
+            "percentage": 2.5,
+            "percentageTokens": 6.98,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/subagents/task-execution.ts": {
+            "lines": 642,
+            "tokens": 4346,
+            "sources": 1,
+            "clones": 7,
+            "duplicatedLines": 102,
+            "duplicatedTokens": 837,
+            "percentage": 15.89,
+            "percentageTokens": 19.26,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/subagents/storage.ts": {
+            "lines": 506,
+            "tokens": 2766,
+            "sources": 1,
+            "clones": 4,
+            "duplicatedLines": 86,
+            "duplicatedTokens": 511,
+            "percentage": 17,
+            "percentageTokens": 18.47,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/subagents/parallel-execution.ts": {
+            "lines": 152,
+            "tokens": 759,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 13,
+            "duplicatedTokens": 90,
+            "percentage": 8.55,
+            "percentageTokens": 11.86,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/subagents/live-monitor.ts": {
+            "lines": 708,
+            "tokens": 6217,
+            "sources": 1,
+            "clones": 3,
+            "duplicatedLines": 28,
+            "duplicatedTokens": 352,
+            "percentage": 3.95,
+            "percentageTokens": 5.66,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/shared/verification-hooks.ts": {
+            "lines": 531,
+            "tokens": 4139,
+            "sources": 1,
+            "clones": 4,
+            "duplicatedLines": 92,
+            "duplicatedTokens": 690,
+            "percentage": 17.33,
+            "percentageTokens": 16.67,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/shared/runtime-helpers.ts": {
+            "lines": 229,
+            "tokens": 1296,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/shared/pi-print-executor.ts": {
+            "lines": 895,
+            "tokens": 7518,
+            "sources": 1,
+            "clones": 12,
+            "duplicatedLines": 210,
+            "duplicatedTokens": 1998,
+            "percentage": 23.46,
+            "percentageTokens": 26.58,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/types.ts": {
+            "lines": 801,
+            "tokens": 2347,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/test-runner.ts": {
+            "lines": 700,
+            "tokens": 6776,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/search/index.ts": {
+            "lines": 662,
+            "tokens": 5258,
+            "sources": 1,
+            "clones": 24,
+            "duplicatedLines": 290,
+            "duplicatedTokens": 3078,
+            "percentage": 43.81,
+            "percentageTokens": 58.54,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/loop/verification.ts": {
+            "lines": 575,
+            "tokens": 3316,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/loop/ssrf-protection.ts": {
+            "lines": 188,
+            "tokens": 1017,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/loop/reference-loader.ts": {
+            "lines": 295,
+            "tokens": 2044,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/loop/iteration-builder.ts": {
+            "lines": 787,
+            "tokens": 5448,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/code-structure-analyzer/extension.ts": {
+            "lines": 425,
+            "tokens": 3006,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/team-helpers.ts": {
+            "lines": 74,
+            "tokens": 392,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/team-formatters.ts": {
+            "lines": 88,
+            "tokens": 589,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/storage.ts": {
+            "lines": 508,
+            "tokens": 2524,
+            "sources": 1,
+            "clones": 4,
+            "duplicatedLines": 86,
+            "duplicatedTokens": 511,
+            "percentage": 16.93,
+            "percentageTokens": 20.25,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/result-aggregation.ts": {
+            "lines": 409,
+            "tokens": 2790,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 27,
+            "duplicatedTokens": 270,
+            "percentage": 6.6,
+            "percentageTokens": 9.68,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/parallel-execution.ts": {
+            "lines": 252,
+            "tokens": 1381,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 13,
+            "duplicatedTokens": 90,
+            "percentage": 5.16,
+            "percentageTokens": 6.52,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/member-execution.ts": {
+            "lines": 672,
+            "tokens": 4936,
+            "sources": 1,
+            "clones": 7,
+            "duplicatedLines": 106,
+            "duplicatedTokens": 919,
+            "percentage": 15.77,
+            "percentageTokens": 18.62,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/judge.ts": {
+            "lines": 727,
+            "tokens": 5359,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 40,
+            "duplicatedTokens": 716,
+            "percentage": 5.5,
+            "percentageTokens": 13.36,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/index.ts": {
+            "lines": 7,
+            "tokens": 14,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/definition-loader.ts": {
+            "lines": 706,
+            "tokens": 5067,
+            "sources": 1,
+            "clones": 5,
+            "duplicatedLines": 102,
+            "duplicatedTokens": 883,
+            "percentage": 14.45,
+            "percentageTokens": 17.43,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-teams/communication.ts": {
+            "lines": 731,
+            "tokens": 4923,
+            "sources": 1,
+            "clones": 3,
+            "duplicatedLines": 21,
+            "duplicatedTokens": 286,
+            "percentage": 2.87,
+            "percentageTokens": 5.81,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/usage-tracker.ts": {
+            "lines": 426,
+            "tokens": 4744,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/ul-dual-mode.ts": {
+            "lines": 558,
+            "tokens": 4231,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 26,
+            "duplicatedTokens": 222,
+            "percentage": 4.66,
+            "percentageTokens": 5.25,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/startup-context.ts": {
+            "lines": 123,
+            "tokens": 584,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/skill-inspector.ts": {
+            "lines": 873,
+            "tokens": 8409,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 16,
+            "duplicatedTokens": 180,
+            "percentage": 1.83,
+            "percentageTokens": 2.14,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/rpm-throttle.ts": {
+            "lines": 269,
+            "tokens": 2844,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 32,
+            "duplicatedTokens": 332,
+            "percentage": 11.9,
+            "percentageTokens": 11.67,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/rate-limit-retry-budget.ts": {
+            "lines": 109,
+            "tokens": 756,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 11,
+            "duplicatedTokens": 100,
+            "percentage": 10.09,
+            "percentageTokens": 13.23,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/question.ts": {
+            "lines": 742,
+            "tokens": 7461,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 30,
+            "duplicatedTokens": 310,
+            "percentage": 4.04,
+            "percentageTokens": 4.15,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/plan.ts": {
+            "lines": 780,
+            "tokens": 6824,
+            "sources": 1,
+            "clones": 8,
+            "duplicatedLines": 98,
+            "duplicatedTokens": 856,
+            "percentage": 12.56,
+            "percentageTokens": 12.54,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/pi-coding-agent-rate-limit-fix.ts": {
+            "lines": 121,
+            "tokens": 790,
+            "sources": 1,
+            "clones": 3,
+            "duplicatedLines": 40,
+            "duplicatedTokens": 340,
+            "percentage": 33.06,
+            "percentageTokens": 43.04,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/pi-coding-agent-lock-fix.ts": {
+            "lines": 181,
+            "tokens": 1024,
+            "sources": 1,
+            "clones": 4,
+            "duplicatedLines": 73,
+            "duplicatedTokens": 594,
+            "percentage": 40.33,
+            "percentageTokens": 58.01,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/pi-ai-abort-fix.ts": {
+            "lines": 104,
+            "tokens": 648,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 44,
+            "duplicatedTokens": 354,
+            "percentage": 42.31,
+            "percentageTokens": 54.63,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/kitty-status-integration.ts": {
+            "lines": 414,
+            "tokens": 3279,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/github-agent.ts": {
+            "lines": 113,
+            "tokens": 1166,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/enhanced-read.ts": {
+            "lines": 347,
+            "tokens": 2322,
+            "sources": 1,
+            "clones": 2,
+            "duplicatedLines": 23,
+            "duplicatedTokens": 228,
+            "percentage": 6.63,
+            "percentageTokens": 9.82,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/cross-instance-runtime.ts": {
+            "lines": 471,
+            "tokens": 3998,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/context-usage-dashboard.ts": {
+            "lines": 657,
+            "tokens": 6708,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/code-viewer.ts": {
+            "lines": 263,
+            "tokens": 1733,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 17,
+            "duplicatedTokens": 142,
+            "percentage": 6.46,
+            "percentageTokens": 8.19,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/code-panel.ts": {
+            "lines": 255,
+            "tokens": 1716,
+            "sources": 1,
+            "clones": 1,
+            "duplicatedLines": 6,
+            "duplicatedTokens": 86,
+            "percentage": 2.35,
+            "percentageTokens": 5.01,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/append-system-loader.ts": {
+            "lines": 92,
+            "tokens": 516,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/agent-idle-indicator.ts": {
+            "lines": 98,
+            "tokens": 601,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          },
+          ".pi/extensions/abbr.ts": {
+            "lines": 794,
+            "tokens": 8332,
+            "sources": 1,
+            "clones": 0,
+            "duplicatedLines": 0,
+            "duplicatedTokens": 0,
+            "percentage": 0,
+            "percentageTokens": 0,
+            "newDuplicatedLines": 0,
+            "newClones": 0
+          }
+        },
+        "total": {
+          "lines": 57913,
+          "tokens": 373704,
+          "sources": 138,
+          "clones": 98,
+          "duplicatedLines": 1430,
+          "duplicatedTokens": 13118,
+          "percentage": 2.47,
+          "percentageTokens": 3.51,
+          "newDuplicatedLines": 0,
+          "newClones": 0
+        }
+      }
+    },
+    "total": {
+      "lines": 57913,
+      "tokens": 373704,
+      "sources": 138,
+      "clones": 98,
+      "duplicatedLines": 1430,
+      "duplicatedTokens": 13118,
+      "percentage": 2.47,
+      "percentageTokens": 3.51,
+      "newDuplicatedLines": 0,
+      "newClones": 0
+    }
+  },
+  "duplicates": [
+    {
+      "format": "typescript",
+      "lines": 18,
+      "fragment": "};\n  }\n\n  if (rawInput === \"j\" || matchesKey(rawInput, Key.down)) {\n    return { handled: true, cursorDelta: 1 };\n  }\n\n  if (rawInput === \"k\" || matchesKey(rawInput, Key.up)) {\n    return { handled: true, cursorDelta: -1 };\n  }\n\n  if (rawInput === \"g\") {\n    return { handled: true, cursorAbsolute: 0 };\n  }\n\n  if (rawInput === \"G\") {\n    return { handled: true, cursorAbsolute: -1 };\n  }",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/tui/live-monitor-base.ts",
+        "start": 607,
+        "end": 624,
+        "startLoc": {
+          "line": 607,
+          "column": 2,
+          "position": 4066
+        },
+        "endLoc": {
+          "line": 624,
+          "column": 2,
+          "position": 4240
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/tui/live-monitor-base.ts",
+        "start": 565,
+        "end": 581,
+        "startLoc": {
+          "line": 565,
+          "column": 2,
+          "position": 3686
+        },
+        "endLoc": {
+          "line": 581,
+          "column": 17,
+          "position": 3859
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 6,
+      "fragment": "pattern.flags + 'g');\n    const matches = Array.from(code.matchAll(regex));\n    for (const match of matches) {\n      const lineNum = findLineNumber(lines, match.index ?? 0);\n      const snippet = lines[lineNum - 1]?.trim() ?? \"\";\n      allowedOperations",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/dynamic-tools/safety.ts",
+        "start": 448,
+        "end": 453,
+        "startLoc": {
+          "line": 448,
+          "column": 2,
+          "position": 2204
+        },
+        "endLoc": {
+          "line": 453,
+          "column": 18,
+          "position": 2300
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/dynamic-tools/safety.ts",
+        "start": 413,
+        "end": 420,
+        "startLoc": {
+          "line": 413,
+          "column": 2,
+          "position": 1872
+        },
+        "endLoc": {
+          "line": 420,
+          "column": 19,
+          "position": 1971
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 13,
+      "fragment": ",\n    confidence,\n  };\n}\n\n/**\n * 行番号を検索\n */\nfunction findLineNumber(lines: string[], index: number): number {\n  let current = 0;\n  for (let i = 0; i < lines.length; i++) {\n    current += lines[i].length + 1;\n    if",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/dynamic-tools/quality.ts",
+        "start": 483,
+        "end": 495,
+        "startLoc": {
+          "line": 483,
+          "column": 13,
+          "position": 2739
+        },
+        "endLoc": {
+          "line": 495,
+          "column": 3,
+          "position": 2833
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/dynamic-tools/safety.ts",
+        "start": 507,
+        "end": 518,
+        "startLoc": {
+          "line": 507,
+          "column": 2,
+          "position": 2817
+        },
+        "endLoc": {
+          "line": 518,
+          "column": 18,
+          "position": 2910
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 16,
+      "fragment": "};\n  }\n  if (resolved < min || resolved > max) {\n    return { ok: false, error: `${field} must be in [${min}, ${max}].` };\n  }\n  return { ok: true, value: resolved };\n}\n\n/**\n * 整数値を指定範囲内に制限する\n * @summary 整数値を制限\n * @param value - 入力値\n * @param min - 最小値\n * @param max - 最大値\n * @returns 範囲内に制限された整数値\n */",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/validation-utils.ts",
+        "start": 143,
+        "end": 158,
+        "startLoc": {
+          "line": 143,
+          "column": 2,
+          "position": 732
+        },
+        "endLoc": {
+          "line": 158,
+          "column": 4,
+          "position": 815
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/validation-utils.ts",
+        "start": 111,
+        "end": 128,
+        "startLoc": {
+          "line": 111,
+          "column": 2,
+          "position": 493
+        },
+        "endLoc": {
+          "line": 128,
+          "column": 4,
+          "position": 576
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 7,
+      "fragment": "(value: number, min: number, max: number): number {\n  // NaNの場合はminを返す\n  if (Number.isNaN(value)) return min;\n  // 無限大の場合はmax、無限小の場合はminを返す\n  if (value === Infinity) return max;\n  if (value === -Infinity) return min;\n  return Math.min(max, Math.max(min, value",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/validation-utils.ts",
+        "start": 176,
+        "end": 182,
+        "startLoc": {
+          "line": 176,
+          "column": 11,
+          "position": 939
+        },
+        "endLoc": {
+          "line": 182,
+          "column": 6,
+          "position": 1036
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/validation-utils.ts",
+        "start": 159,
+        "end": 165,
+        "startLoc": {
+          "line": 159,
+          "column": 13,
+          "position": 822
+        },
+        "endLoc": {
+          "line": 165,
+          "column": 5,
+          "position": 919
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 22,
+      "fragment": ";\n  /** Execution summary */\n  summary?: string;\n  /** Error message if failed */\n  error?: string;\n  /** Recent stdout lines */\n  stdoutTail: string;\n  /** Recent stderr lines */\n  stderrTail: string;\n  /** Total stdout bytes */\n  stdoutBytes: number;\n  /** Total stderr bytes */\n  stderrBytes: number;\n  /** Newline count in stdout */\n  stdoutNewlineCount: number;\n  /** Newline count in stderr */\n  stderrNewlineCount: number;\n  /** Whether stdout ends with newline */\n  stdoutEndsWithNewline: boolean;\n  /** Whether stderr ends with newline */\n  stderrEndsWithNewline: boolean;\n}",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/subagent-types.ts",
+        "start": 76,
+        "end": 97,
+        "startLoc": {
+          "line": 76,
+          "column": 7,
+          "position": 167
+        },
+        "endLoc": {
+          "line": 97,
+          "column": 2,
+          "position": 271
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/team-types.ts",
+        "start": 106,
+        "end": 127,
+        "startLoc": {
+          "line": 106,
+          "column": 7,
+          "position": 311
+        },
+        "endLoc": {
+          "line": 127,
+          "column": 25,
+          "position": 416
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 11,
+      "fragment": "fn();\n      const durationMs = Date.now() - startTime;\n      this.log(\"INFO\", operation, message, metadata, undefined, durationMs);\n      return result;\n    } catch (error) {\n      const durationMs = Date.now() - startTime;\n      this.log(\"ERROR\", operation, `${message} (failed)`, metadata, error, durationMs);\n      throw error;\n    }\n  }\n}",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/structured-logger.ts",
+        "start": 476,
+        "end": 486,
+        "startLoc": {
+          "line": 476,
+          "column": 2,
+          "position": 2360
+        },
+        "endLoc": {
+          "line": 486,
+          "column": 2,
+          "position": 2482
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/structured-logger.ts",
+        "start": 448,
+        "end": 467,
+        "startLoc": {
+          "line": 448,
+          "column": 2,
+          "position": 2154
+        },
+        "endLoc": {
+          "line": 467,
+          "column": 6,
+          "position": 2278
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 9,
+      "fragment": ") {\n    if (!entity || typeof entity !== \"object\") continue;\n    if (typeof (entity as { id?: unknown }).id !== \"string\") continue;\n    const id = (entity as { id: string }).id.trim();\n    if (!id) continue;\n    byId.set(entity.id, entity);\n  }\n\n  return",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/storage-base.ts",
+        "start": 210,
+        "end": 218,
+        "startLoc": {
+          "line": 210,
+          "column": 5,
+          "position": 965
+        },
+        "endLoc": {
+          "line": 218,
+          "column": 7,
+          "position": 1081
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/storage-base.ts",
+        "start": 202,
+        "end": 210,
+        "startLoc": {
+          "line": 202,
+          "column": 5,
+          "position": 839
+        },
+        "endLoc": {
+          "line": 210,
+          "column": 4,
+          "position": 955
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 9,
+      "fragment": ") {\n    if (!run || typeof run !== \"object\") continue;\n    if (typeof (run as { runId?: unknown }).runId !== \"string\") continue;\n    const runId = (run as { runId: string }).runId.trim();\n    if (!runId) continue;\n    byId.set(run.runId, run);\n  }\n\n  return",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/storage-base.ts",
+        "start": 246,
+        "end": 254,
+        "startLoc": {
+          "line": 246,
+          "column": 5,
+          "position": 1330
+        },
+        "endLoc": {
+          "line": 254,
+          "column": 7,
+          "position": 1446
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/storage-base.ts",
+        "start": 238,
+        "end": 246,
+        "startLoc": {
+          "line": 238,
+          "column": 5,
+          "position": 1204
+        },
+        "endLoc": {
+          "line": 246,
+          "column": 4,
+          "position": 1320
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 16,
+      "fragment": "?: string;\n    defaultsVersion?: number;\n  },\n  defaultsVersion: number,\n  maxRuns: number,\n): typeof next {\n  let disk: Partial<typeof next> = {};\n  try {\n    if (existsSync(storageFile)) {\n      disk = JSON.parse(readFileSync(storageFile, \"utf-8\")) as Partial<typeof next>;\n    }\n  } catch {\n    disk = {};\n  }\n\n  const mergedTeams",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/storage-base.ts",
+        "start": 497,
+        "end": 512,
+        "startLoc": {
+          "line": 497,
+          "column": 14,
+          "position": 3021
+        },
+        "endLoc": {
+          "line": 512,
+          "column": 12,
+          "position": 3152
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/storage-base.ts",
+        "start": 443,
+        "end": 458,
+        "startLoc": {
+          "line": 443,
+          "column": 15,
+          "position": 2623
+        },
+        "endLoc": {
+          "line": 458,
+          "column": 13,
+          "position": 2754
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 8,
+      "fragment": "(value: unknown, fallback: number): number {\n  // オブジェクトガード: {toString: ...}のようなオブジェクトはNumber()変換でエラーになる\n  if (typeof value === \"object\" && value !== null) return fallback;\n  if (Array.isArray(value)) return fallback;\n\n  const resolved = value === undefined ? fallback : Number(value);\n  if (!Number.isFinite(resolved)) return fallback;\n  if (resolved <= 0) return fallback",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/runtime-utils.ts",
+        "start": 152,
+        "end": 159,
+        "startLoc": {
+          "line": 152,
+          "column": 19,
+          "position": 861
+        },
+        "endLoc": {
+          "line": 159,
+          "column": 9,
+          "position": 982
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/runtime-utils.ts",
+        "start": 85,
+        "end": 92,
+        "startLoc": {
+          "line": 85,
+          "column": 19,
+          "position": 293
+        },
+        "endLoc": {
+          "line": 92,
+          "column": 2,
+          "position": 414
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": "(run);\n        runs.push(indexed);\n\n        // Update keyword index\n        for (const kw of indexed.keywords) {\n          if (!keywordIndex[kw]) keywordIndex[kw] = [];\n          keywordIndex[kw].push(run.runId);\n        }\n\n        // Update task type index\n        taskTypeIndex[indexed.taskType].push(run.runId);\n      }\n    } catch (error) {\n      console.error(\"Error reading team storage:\"",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/run-index.ts",
+        "start": 386,
+        "end": 399,
+        "startLoc": {
+          "line": 386,
+          "column": 13,
+          "position": 2062
+        },
+        "endLoc": {
+          "line": 399,
+          "column": 30,
+          "position": 2175
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/run-index.ts",
+        "start": 362,
+        "end": 375,
+        "startLoc": {
+          "line": 362,
+          "column": 17,
+          "position": 1832
+        },
+        "endLoc": {
+          "line": 375,
+          "column": 34,
+          "position": 1945
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 8,
+      "fragment": ": {\n          tiers: {\n            free: { rpm: 30, tpm: 2000000, concurrency: 2 },\n            pro: { rpm: 4000, tpm: 8000000, concurrency: 10 },\n          },\n          default: { rpm: 30, tpm: 2000000, concurrency: 2 },\n        },\n      }",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/provider-limits.ts",
+        "start": 264,
+        "end": 271,
+        "startLoc": {
+          "line": 264,
+          "column": 20,
+          "position": 2239
+        },
+        "endLoc": {
+          "line": 271,
+          "column": 2,
+          "position": 2336
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/provider-limits.ts",
+        "start": 250,
+        "end": 257,
+        "startLoc": {
+          "line": 250,
+          "column": 20,
+          "position": 2043
+        },
+        "endLoc": {
+          "line": 257,
+          "column": 18,
+          "position": 2140
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 25,
+      "fragment": ",\n          task: run.task,\n          summary: run.summary,\n          status: run.status,\n          startedAt: run.startedAt,\n          finishedAt: run.finishedAt,\n          error: run.error,\n        });\n        if (pattern) {\n          // Check for similar existing pattern\n          let merged = false;\n          for (let i = 0; i < storage.patterns.length; i++) {\n            if (arePatternsSimilar(storage.patterns[i], pattern)) {\n              storage.patterns[i] = mergePatterns(storage.patterns[i], pattern);\n              merged = true;\n              break;\n            }\n          }\n          if (!merged) {\n            storage.patterns.push(pattern);\n          }\n        }\n      }\n    } catch (error) {\n      console.error(\"Error reading team storage for pattern extraction:\"",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/pattern-extraction.ts",
+        "start": 502,
+        "end": 526,
+        "startLoc": {
+          "line": 502,
+          "column": 7,
+          "position": 3182
+        },
+        "endLoc": {
+          "line": 526,
+          "column": 53,
+          "position": 3403
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/pattern-extraction.ts",
+        "start": 465,
+        "end": 489,
+        "startLoc": {
+          "line": 465,
+          "column": 8,
+          "position": 2825
+        },
+        "endLoc": {
+          "line": 489,
+          "column": 57,
+          "position": 3046
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 13,
+      "fragment": "}\n\n  // Rebuild task type index\n  storage.patternsByTaskType = {} as Record<TaskType, string[]>;\n  for (const pattern of storage.patterns) {\n    if (!storage.patternsByTaskType[pattern.taskType]) {\n      storage.patternsByTaskType[pattern.taskType] = [];\n    }\n    storage.patternsByTaskType[pattern.taskType].push(pattern.id);\n  }\n\n  savePatternStorage(cwd, storage);\n  return",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/pattern-extraction.ts",
+        "start": 528,
+        "end": 540,
+        "startLoc": {
+          "line": 528,
+          "column": 3,
+          "position": 3414
+        },
+        "endLoc": {
+          "line": 540,
+          "column": 7,
+          "position": 3529
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/pattern-extraction.ts",
+        "start": 433,
+        "end": 445,
+        "startLoc": {
+          "line": 433,
+          "column": 3,
+          "position": 2553
+        },
+        "endLoc": {
+          "line": 445,
+          "column": 2,
+          "position": 2667
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 19,
+      "fragment": ", ...options };\n  const trimmed = output.trim();\n\n  if (!trimmed) {\n    return { ok: false, reason: \"empty output\" };\n  }\n\n  if (trimmed.length < opts.minChars) {\n    return { ok: false, reason: `too short (${trimmed.length} chars)` };\n  }\n\n  const missingLabels = opts.requiredLabels.filter(\n    (label) => !new RegExp(`^\\\\s*${label}`, \"im\").test(trimmed),\n  );\n  if (missingLabels.length > 0) {\n    return { ok: false, reason: `missing labels: ${missingLabels.join(\", \")}` };\n  }\n\n  return",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/output-validation.ts",
+        "start": 148,
+        "end": 166,
+        "startLoc": {
+          "line": 148,
+          "column": 28,
+          "position": 774
+        },
+        "endLoc": {
+          "line": 166,
+          "column": 7,
+          "position": 970
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/output-validation.ts",
+        "start": 97,
+        "end": 115,
+        "startLoc": {
+          "line": 97,
+          "column": 25,
+          "position": 396
+        },
+        "endLoc": {
+          "line": 115,
+          "column": 3,
+          "position": 592
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 38,
+      "fragment": "(trimmed, mode);\n\n    // Record violations for analytics\n    for (const violation of schemaResult.violations) {\n      recordSchemaViolation(violation);\n    }\n  }\n\n  // Determine final result based on mode\n  if (mode === \"legacy\") {\n    return {\n      ok: legacyResult.ok,\n      reason: legacyResult.reason,\n      mode,\n      legacyOk: legacyResult.ok,\n      legacyReason: legacyResult.reason,\n      fallbackUsed: false,\n    };\n  }\n\n  if (mode === \"strict\") {\n    return {\n      ok: schemaResult!.ok,\n      reason: schemaResult!.reason,\n      mode,\n      legacyOk: legacyResult.ok,\n      legacyReason: legacyResult.reason,\n      schemaOk: schemaResult!.ok,\n      schemaReason: schemaResult!.reason,\n      schemaViolations: schemaResult!.violations,\n      fallbackUsed: false,\n    };\n  }\n\n  // Dual mode: use legacy for pass/fail, but report schema differences\n  const hasDifference = schemaResult && legacyResult.ok !== schemaResult.ok;\n  if (hasDifference) {\n    // Note: Using console.warn is intentional for development visibility",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/output-validation.ts",
+        "start": 287,
+        "end": 324,
+        "startLoc": {
+          "line": 287,
+          "column": 35,
+          "position": 1710
+        },
+        "endLoc": {
+          "line": 324,
+          "column": 70,
+          "position": 1969
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/output-validation.ts",
+        "start": 209,
+        "end": 246,
+        "startLoc": {
+          "line": 209,
+          "column": 33,
+          "position": 1199
+        },
+        "endLoc": {
+          "line": 246,
+          "column": 79,
+          "position": 1458
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 19,
+      "fragment": "// Note: Using console.warn is intentional for development visibility\n    // TODO: Replace with proper logging when logger module is available\n    console.warn(\n      `[output-validation] Validation difference detected: legacy=${legacyResult.ok}, schema=${schemaResult!.ok}`,\n    );\n  }\n\n  return {\n    ok: legacyResult.ok,\n    reason: legacyResult.reason,\n    mode,\n    legacyOk: legacyResult.ok,\n    legacyReason: legacyResult.reason,\n    schemaOk: schemaResult?.ok,\n    schemaReason: schemaResult?.reason,\n    schemaViolations: schemaResult?.violations,\n    fallbackUsed: false,\n  };\n}",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/output-validation.ts",
+        "start": 324,
+        "end": 342,
+        "startLoc": {
+          "line": 324,
+          "column": 5,
+          "position": 1969
+        },
+        "endLoc": {
+          "line": 342,
+          "column": 2,
+          "position": 2091
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/output-validation.ts",
+        "start": 247,
+        "end": 265,
+        "startLoc": {
+          "line": 247,
+          "column": 5,
+          "position": 1461
+        },
+        "endLoc": {
+          "line": 265,
+          "column": 2,
+          "position": 1583
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 17,
+      "fragment": ");\n\n  const ok = violations.length === 0;\n  const reason = ok\n    ? undefined\n    : `schema violations: ${violations.map((v) => `${v.field}:${v.violationType}`).join(\", \")}`;\n\n  return {\n    ok,\n    reason,\n    violations,\n    fallbackUsed: false,\n    parsed: ok ? parsed : undefined,\n  };\n}\n\n// ============================================================================",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/output-schema.ts",
+        "start": 538,
+        "end": 554,
+        "startLoc": {
+          "line": 538,
+          "column": 26,
+          "position": 2741
+        },
+        "endLoc": {
+          "line": 554,
+          "column": 80,
+          "position": 2842
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/output-schema.ts",
+        "start": 510,
+        "end": 532,
+        "startLoc": {
+          "line": 510,
+          "column": 23,
+          "position": 2578
+        },
+        "endLoc": {
+          "line": 532,
+          "column": 4,
+          "position": 2679
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 13,
+      "fragment": "while (lines.length > 0 && lines[lines.length - 1] === \"\") {\n    lines.pop();\n  }\n  if (lines.length <= limit) return lines;\n  return lines.slice(lines.length - limit);\n}\n\n/**\n * Markdownらしいテキストか判定する\n * @summary Markdown判定\n * @param input - 判定対象テキスト\n * @returns Markdownの可能性が高い場合はtrue\n */",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/live-view-utils.ts",
+        "start": 136,
+        "end": 148,
+        "startLoc": {
+          "line": 136,
+          "column": 3,
+          "position": 615
+        },
+        "endLoc": {
+          "line": 148,
+          "column": 4,
+          "position": 695
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/tui/tui-utils.ts",
+        "start": 83,
+        "end": 96,
+        "startLoc": {
+          "line": 83,
+          "column": 3,
+          "position": 296
+        },
+        "endLoc": {
+          "line": 96,
+          "column": 4,
+          "position": 376
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 15,
+      "fragment": ");\n  const candidates: Checkpoint[] = [];\n\n  for (const file of files) {\n    const checkpoint = parseCheckpointFile(join(dir, file));\n    if (checkpoint && checkpoint.taskId === taskId) {\n      candidates.push(checkpoint);\n    }\n  }\n\n  if (candidates.length === 0) {\n    return null;\n  }\n\n  // Return the most recent checkpoint and cache it",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/checkpoint-manager.ts",
+        "start": 517,
+        "end": 531,
+        "startLoc": {
+          "line": 517,
+          "column": 2,
+          "position": 3016
+        },
+        "endLoc": {
+          "line": 531,
+          "column": 50,
+          "position": 3131
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/checkpoint-manager.ts",
+        "start": 311,
+        "end": 325,
+        "startLoc": {
+          "line": 311,
+          "column": 3,
+          "position": 1553
+        },
+        "endLoc": {
+          "line": 325,
+          "column": 11,
+          "position": 1668
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 17,
+      "fragment": ";\n\n  const state: AdaptivePenaltyState = {\n    penalty: 0,\n    updatedAtMs: Date.now(),\n    reasonHistory: [],\n  };\n\n  const decay = (nowMs = Date.now()): void => {\n    if (isStable) return;\n    const elapsed = Math.max(0, nowMs - state.updatedAtMs);\n    if (state.penalty <= 0 || elapsed < decayMs) return;\n\n    const steps = Math.floor(elapsed / decayMs);\n    if (steps <= 0) return;\n\n    if",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/adaptive-penalty.ts",
+        "start": 271,
+        "end": 287,
+        "startLoc": {
+          "line": 271,
+          "column": 2,
+          "position": 1352
+        },
+        "endLoc": {
+          "line": 287,
+          "column": 3,
+          "position": 1518
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/adaptive-penalty.ts",
+        "start": 185,
+        "end": 199,
+        "startLoc": {
+          "line": 185,
+          "column": 8,
+          "position": 636
+        },
+        "endLoc": {
+          "line": 199,
+          "column": 6,
+          "position": 800
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 26,
+      "fragment": ");\n  };\n\n  const lower = (): void => {\n    if (isStable) return;\n    decay();\n    if (state.penalty <= 0) return;\n    state.penalty = Math.max(0, state.penalty - 1);\n    state.updatedAtMs = Date.now();\n  };\n\n  const get = (): number => {\n    if (isStable) return 0;\n    decay();\n    return state.penalty;\n  };\n\n  const applyLimit = (baseLimit: number): number => {\n    if (isStable) return Math.max(1, Math.trunc(baseLimit));\n    const penalty = get();\n    if (penalty <= 0) return baseLimit;\n    const divisor = penalty + 1;\n    return Math.max(1, Math.floor(baseLimit / divisor));\n  };\n\n  const",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/lib/adaptive-penalty.ts",
+        "start": 323,
+        "end": 348,
+        "startLoc": {
+          "line": 323,
+          "column": 7,
+          "position": 1932
+        },
+        "endLoc": {
+          "line": 348,
+          "column": 6,
+          "position": 2197
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/adaptive-penalty.ts",
+        "start": 210,
+        "end": 235,
+        "startLoc": {
+          "line": 210,
+          "column": 2,
+          "position": 930
+        },
+        "endLoc": {
+          "line": 235,
+          "column": 7,
+          "position": 1195
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 9,
+      "fragment": "): string {\n  const lines: string[] = [];\n\n  if (output.error) {\n    lines.push(`Error: ${output.error}`);\n    return lines.join(\"\\n\");\n  }\n\n  lines.push(`Found ${output.total} matches in ",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/utils/output.ts",
+        "start": 233,
+        "end": 241,
+        "startLoc": {
+          "line": 233,
+          "column": 17,
+          "position": 1276
+        },
+        "endLoc": {
+          "line": 241,
+          "column": 13,
+          "position": 1352
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/utils/output.ts",
+        "start": 125,
+        "end": 133,
+        "startLoc": {
+          "line": 125,
+          "column": 2,
+          "position": 443
+        },
+        "endLoc": {
+          "line": 133,
+          "column": 9,
+          "position": 519
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 9,
+      "fragment": ">): string {\n  const lines: string[] = [];\n\n  if (output.error) {\n    lines.push(`Error: ${output.error}`);\n    return lines.join(\"\\n\");\n  }\n\n  lines.push(`Found ${output.total} symbols",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/utils/output.ts",
+        "start": 372,
+        "end": 380,
+        "startLoc": {
+          "line": 372,
+          "column": 17,
+          "position": 2285
+        },
+        "endLoc": {
+          "line": 380,
+          "column": 9,
+          "position": 2362
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/utils/output.ts",
+        "start": 125,
+        "end": 133,
+        "startLoc": {
+          "line": 125,
+          "column": 14,
+          "position": 442
+        },
+        "endLoc": {
+          "line": 133,
+          "column": 9,
+          "position": 519
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 7,
+      "fragment": ".get(entry.query);\n\t\tif (existing) {\n\t\t\texisting.count++;\n\t\t\texisting.lastUsed = Math.max(existing.lastUsed, entry.timestamp);\n\t\t\texisting.wasAccepted = existing.wasAccepted || entry.accepted;\n\t\t} else {\n\t\t\tmap",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/utils/history.ts",
+        "start": 321,
+        "end": 327,
+        "startLoc": {
+          "line": 321,
+          "column": 4,
+          "position": 1434
+        },
+        "endLoc": {
+          "line": 327,
+          "column": 4,
+          "position": 1507
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/utils/history.ts",
+        "start": 195,
+        "end": 201,
+        "startLoc": {
+          "line": 195,
+          "column": 9,
+          "position": 592
+        },
+        "endLoc": {
+          "line": 201,
+          "column": 9,
+          "position": 665
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 15,
+      "fragment": ";\n\n\tconst result = await execute(\"ctags\", args, { cwd });\n\n\tif (result.code !== 0) {\n\t\tthrow executionError(\"ctags\", result.stderr);\n\t}\n\n\t// Parse JSONL output\n\tconst lines = result.stdout.trim().split(\"\\n\").filter(Boolean);\n\tconst entries: SymbolIndexEntry[] = [];\n\n\tfor (const line of lines) {\n\t\ttry {\n\t\t\tconst",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/tools/sym_index.ts",
+        "start": 532,
+        "end": 546,
+        "startLoc": {
+          "line": 532,
+          "column": 2,
+          "position": 3307
+        },
+        "endLoc": {
+          "line": 546,
+          "column": 6,
+          "position": 3436
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/tools/sym_index.ts",
+        "start": 484,
+        "end": 498,
+        "startLoc": {
+          "line": 484,
+          "column": 2,
+          "position": 2889
+        },
+        "endLoc": {
+          "line": 498,
+          "column": 53,
+          "position": 3018
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 19,
+      "fragment": "const raw = JSON.parse(line) as Record<string, unknown>;\n\t\t\tentries.push({\n\t\t\t\tname: String(raw.name || \"\"),\n\t\t\t\tkind: String(raw.kind || \"unknown\"),\n\t\t\t\tfile: String(raw.file || raw.path || \"\"),\n\t\t\t\tline: Number(raw.line || 0),\n\t\t\t\tsignature: raw.signature ? String(raw.signature) : undefined,\n\t\t\t\tscope: raw.scope ? String(raw.scope) : undefined,\n\t\t\t\tpattern: raw.pattern ? String(raw.pattern) : undefined,\n\t\t\t});\n\t\t} catch {\n\t\t\t// Skip malformed lines\n\t\t}\n\t}\n\n\treturn entries;\n}\n\n// ============================================",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/tools/sym_index.ts",
+        "start": 546,
+        "end": 564,
+        "startLoc": {
+          "line": 546,
+          "column": 4,
+          "position": 3436
+        },
+        "endLoc": {
+          "line": 564,
+          "column": 48,
+          "position": 3634
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/tools/sym_index.ts",
+        "start": 499,
+        "end": 519,
+        "startLoc": {
+          "line": 499,
+          "column": 4,
+          "position": 3021
+        },
+        "endLoc": {
+          "line": 519,
+          "column": 4,
+          "position": 3219
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 15,
+      "fragment": "{\n\tconst indexPath = getIndexPath(cwd);\n\tif (!existsSync(indexPath)) {\n\t\treturn [];\n\t}\n\n\tconst content = readFileSync(indexPath, \"utf-8\");\n\tconst lines = content.trim().split(\"\\n\");\n\n\treturn lines\n\t\t.filter((line) => line.trim())\n\t\t.map((line) => JSON.parse(line) as CodeEmbedding);\n}\n\nasync",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/tools/semantic_index.ts",
+        "start": 244,
+        "end": 258,
+        "startLoc": {
+          "line": 244,
+          "column": 2,
+          "position": 1510
+        },
+        "endLoc": {
+          "line": 258,
+          "column": 6,
+          "position": 1633
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/tools/semantic_search.ts",
+        "start": 72,
+        "end": 87,
+        "startLoc": {
+          "line": 72,
+          "column": 2,
+          "position": 183
+        },
+        "endLoc": {
+          "line": 87,
+          "column": 80,
+          "position": 307
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 18,
+      "fragment": "// 4. Generate hints\n\tconst hints = createSimpleHints(\n\t\tTOOL_NAME,\n\t\tresult.results.length,\n\t\tresult.truncated,\n\t\textractQuery(TOOL_NAME, params)\n\t);\n\n\t// 5. Record to history\n\thistory.addHistoryEntry({\n\t\ttool: TOOL_NAME,\n\t\tparams,\n\t\tquery: extractQuery(TOOL_NAME, params),\n\t\tresults: extractResultPaths(result.results).slice(0, 10),\n\t});\n\n\t// 6. Save to cache\n\tcache.setCache(cacheKey, { ...result, hints } as FileCandidatesOutput",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/tools/file_candidates.ts",
+        "start": 248,
+        "end": 265,
+        "startLoc": {
+          "line": 248,
+          "column": 2,
+          "position": 1784
+        },
+        "endLoc": {
+          "line": 265,
+          "column": 21,
+          "position": 1911
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/tools/sym_find.ts",
+        "start": 250,
+        "end": 267,
+        "startLoc": {
+          "line": 250,
+          "column": 2,
+          "position": 1658
+        },
+        "endLoc": {
+          "line": 267,
+          "column": 14,
+          "position": 1785
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": ">(cacheKey);\n\tif (cached) {\n\t\t// Record to history even on cache hit\n\t\thistory.addHistoryEntry({\n\t\t\ttool: TOOL_NAME,\n\t\t\tparams,\n\t\t\tquery: extractQuery(TOOL_NAME, params),\n\t\t\tresults: extractResultPaths(cached.results),\n\t\t});\n\t\treturn cached;\n\t}\n\n\t// 3. Execute search\n\tlet result: CodeSearchOutput",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/tools/code_search.ts",
+        "start": 263,
+        "end": 276,
+        "startLoc": {
+          "line": 263,
+          "column": 17,
+          "position": 1945
+        },
+        "endLoc": {
+          "line": 276,
+          "column": 17,
+          "position": 2030
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/tools/file_candidates.ts",
+        "start": 208,
+        "end": 221,
+        "startLoc": {
+          "line": 208,
+          "column": 21,
+          "position": 1498
+        },
+        "endLoc": {
+          "line": 221,
+          "column": 21,
+          "position": 1583
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 22,
+      "fragment": "(toolError.format());\n\t\t}\n\t}\n\n\t// 4. Generate hints\n\tconst hints = createSimpleHints(\n\t\tTOOL_NAME,\n\t\tresult.results.length,\n\t\tresult.truncated,\n\t\textractQuery(TOOL_NAME, params)\n\t);\n\n\t// 5. Record to history\n\thistory.addHistoryEntry({\n\t\ttool: TOOL_NAME,\n\t\tparams,\n\t\tquery: extractQuery(TOOL_NAME, params),\n\t\tresults: extractResultPaths(result.results).slice(0, 10),\n\t});\n\n\t// 6. Save to cache\n\tcache.setCache(cacheKey, { ...result, hints } as CodeSearchOutput",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/tools/code_search.ts",
+        "start": 299,
+        "end": 320,
+        "startLoc": {
+          "line": 299,
+          "column": 22,
+          "position": 2211
+        },
+        "endLoc": {
+          "line": 320,
+          "column": 17,
+          "position": 2355
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/tools/file_candidates.ts",
+        "start": 244,
+        "end": 267,
+        "startLoc": {
+          "line": 244,
+          "column": 2,
+          "position": 1767
+        },
+        "endLoc": {
+          "line": 267,
+          "column": 14,
+          "position": 1785
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 41,
+      "fragment": "> {\n\tif (!input.symbolName || input.symbolName.length === 0) {\n\t\treturn {\n\t\t\tsymbolName: \"\",\n\t\t\ttotal: 0,\n\t\t\ttruncated: false,\n\t\t\tresults: [],\n\t\t\terror: \"symbolName is required\",\n\t\t};\n\t}\n\n\ttry {\n\t\t// Ensure index exists\n\t\tlet index = await readCallGraphIndex(cwd);\n\t\tif (!index || (await isCallGraphIndexStale(cwd))) {\n\t\t\tconst result = await callGraphIndex({ force: false, cwd }, cwd);\n\t\t\tif (result.error) {\n\t\t\t\treturn {\n\t\t\t\t\tsymbolName: input.symbolName,\n\t\t\t\t\ttotal: 0,\n\t\t\t\t\ttruncated: false,\n\t\t\t\t\tresults: [],\n\t\t\t\t\terror: result.error,\n\t\t\t\t};\n\t\t\t}\n\t\t\tindex = await readCallGraphIndex(cwd);\n\t\t}\n\n\t\tif (!index) {\n\t\t\treturn {\n\t\t\t\tsymbolName: input.symbolName,\n\t\t\t\ttotal: 0,\n\t\t\t\ttruncated: false,\n\t\t\t\tresults: [],\n\t\t\t\terror: \"Failed to load call graph index\",\n\t\t\t};\n\t\t}\n\n\t\tconst depth = input.depth ?? 1;\n\t\tconst limit = input.limit ?? 50;\n\t\tconst results = findCallees",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/tools/call_graph.ts",
+        "start": 206,
+        "end": 246,
+        "startLoc": {
+          "line": 206,
+          "column": 18,
+          "position": 1132
+        },
+        "endLoc": {
+          "line": 246,
+          "column": 12,
+          "position": 1463
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/tools/call_graph.ts",
+        "start": 133,
+        "end": 173,
+        "startLoc": {
+          "line": 133,
+          "column": 18,
+          "position": 610
+        },
+        "endLoc": {
+          "line": 173,
+          "column": 12,
+          "position": 941
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 22,
+      "fragment": "(index, input.symbolName, depth, limit);\n\n\t\treturn {\n\t\t\tsymbolName: input.symbolName,\n\t\t\ttotal: results.length,\n\t\t\ttruncated: results.length >= limit,\n\t\t\tresults,\n\t\t};\n\t} catch (error) {\n\t\tconst message = error instanceof Error ? error.message : String(error);\n\t\treturn {\n\t\t\tsymbolName: input.symbolName,\n\t\t\ttotal: 0,\n\t\t\ttruncated: false,\n\t\t\tresults: [],\n\t\t\terror: message,\n\t\t};\n\t}\n}\n\n// ============================================\n// Output Formatting",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/tools/call_graph.ts",
+        "start": 246,
+        "end": 267,
+        "startLoc": {
+          "line": 246,
+          "column": 12,
+          "position": 1464
+        },
+        "endLoc": {
+          "line": 267,
+          "column": 21,
+          "position": 1618
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/tools/call_graph.ts",
+        "start": 173,
+        "end": 194,
+        "startLoc": {
+          "line": 173,
+          "column": 12,
+          "position": 942
+        },
+        "endLoc": {
+          "line": 194,
+          "column": 21,
+          "position": 1096
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 7,
+      "fragment": "${result.symbolName}\" (${result.total} found):`];\n\n\tfor (const item of result.results) {\n\t\tconst { node, depth, callSite, confidence } = item;\n\t\tconst depthIndent = \"  \".repeat(depth);\n\t\tconst confidenceStr = confidence < 0.8 ? ` (${(confidence * 100).toFixed(0)}%)` : \"\";\n\t\tconst external",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/tools/call_graph.ts",
+        "start": 338,
+        "end": 344,
+        "startLoc": {
+          "line": 338,
+          "column": 14,
+          "position": 2137
+        },
+        "endLoc": {
+          "line": 344,
+          "column": 9,
+          "position": 2247
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/tools/call_graph.ts",
+        "start": 302,
+        "end": 308,
+        "startLoc": {
+          "line": 302,
+          "column": 14,
+          "position": 1813
+        },
+        "endLoc": {
+          "line": 308,
+          "column": 9,
+          "position": 1923
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 16,
+      "fragment": "}\n\t\t}\n\t}\n\n\t// Sort by depth then by confidence\n\tconst sorted = Array.from(results.values());\n\tsorted.sort((a, b) => {\n\t\tif (a.depth !== b.depth) return a.depth - b.depth;\n\t\treturn b.confidence - a.confidence;\n\t});\n\n\treturn sorted.slice(0, limit);\n}\n\n// ============================================\n// Call Path Analysis",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/call-graph/query.ts",
+        "start": 248,
+        "end": 263,
+        "startLoc": {
+          "line": 248,
+          "column": 4,
+          "position": 1639
+        },
+        "endLoc": {
+          "line": 263,
+          "column": 22,
+          "position": 1753
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/call-graph/query.ts",
+        "start": 147,
+        "end": 162,
+        "startLoc": {
+          "line": 147,
+          "column": 4,
+          "position": 808
+        },
+        "endLoc": {
+          "line": 162,
+          "column": 16,
+          "position": 922
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 10,
+      "fragment": "});\n\tif (result.code !== 0) {\n\t\treturn [];\n\t}\n\n\tconst calls: DetectedCall[] = [];\n\tconst lines = result.stdout.trim().split(\"\\n\");\n\n\tfor (const line of lines) {\n\t\ttry",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/call-graph/builder.ts",
+        "start": 355,
+        "end": 364,
+        "startLoc": {
+          "line": 355,
+          "column": 2,
+          "position": 2042
+        },
+        "endLoc": {
+          "line": 364,
+          "column": 4,
+          "position": 2126
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/call-graph/builder.ts",
+        "start": 292,
+        "end": 301,
+        "startLoc": {
+          "line": 292,
+          "column": 2,
+          "position": 1581
+        },
+        "endLoc": {
+          "line": 301,
+          "column": 3,
+          "position": 1665
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 9,
+      "fragment": "const externalDeps = new Set<string>();\n  for (const imp of structure.imports) {\n    if (!imp.source.startsWith('.') && !imp.source.startsWith('node:')) {\n      externalDeps.add(imp.source);\n    }\n  }\n\n  if (externalDeps.size > 0) {\n    lines",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/code-structure-analyzer/tools/generate-diagrams.ts",
+        "start": 165,
+        "end": 173,
+        "startLoc": {
+          "line": 165,
+          "column": 3,
+          "position": 860
+        },
+        "endLoc": {
+          "line": 173,
+          "column": 6,
+          "position": 956
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/code-structure-analyzer/tools/generate-doc.ts",
+        "start": 251,
+        "end": 259,
+        "startLoc": {
+          "line": 251,
+          "column": 5,
+          "position": 1499
+        },
+        "endLoc": {
+          "line": 259,
+          "column": 4,
+          "position": 1595
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 6,
+      "fragment": ";\n  const jsDoc = extractJsDoc(node);\n  const parameters = extractParameters(node.parameters, sourceFile);\n  const returnType = node.type ? node.type.getText(sourceFile) : 'void';\n  const isAsync = node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;\n  const isStatic",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/code-structure-analyzer/tools/extract-structure.ts",
+        "start": 731,
+        "end": 736,
+        "startLoc": {
+          "line": 731,
+          "column": 2,
+          "position": 4092
+        },
+        "endLoc": {
+          "line": 736,
+          "column": 9,
+          "position": 4192
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/code-structure-analyzer/tools/extract-structure.ts",
+        "start": 602,
+        "end": 607,
+        "startLoc": {
+          "line": 602,
+          "column": 2,
+          "position": 2749
+        },
+        "endLoc": {
+          "line": 607,
+          "column": 11,
+          "position": 2849
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 8,
+      "fragment": ".getText(sourceFile);\n  const line = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;\n  const jsDoc = extractJsDoc(node);\n  const isExported = node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;\n\n  // 継承\n  const extendsClause = node.heritageClauses?.find(c => c.token === ts.SyntaxKind.ExtendsKeyword);\n  const extendsInterfaces",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/code-structure-analyzer/tools/extract-structure.ts",
+        "start": 785,
+        "end": 792,
+        "startLoc": {
+          "line": 785,
+          "column": 5,
+          "position": 4666
+        },
+        "endLoc": {
+          "line": 792,
+          "column": 18,
+          "position": 4787
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/code-structure-analyzer/tools/extract-structure.ts",
+        "start": 689,
+        "end": 696,
+        "startLoc": {
+          "line": 689,
+          "column": 2,
+          "position": 3658
+        },
+        "endLoc": {
+          "line": 696,
+          "column": 13,
+          "position": 3779
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 20,
+      "fragment": "(structured);\n  if (structuredQuality.ok) {\n    return {\n      ok: true,\n      output: structured,\n      degraded: true,\n      reason: quality.reason ?? \"normalized\",\n    };\n  }\n\n  return {\n    ok: false,\n    output: \"\",\n    degraded: false,\n    reason: quality.reason ?? structuredQuality.reason ?? \"normalization failed\",\n  };\n}\n\n// ============================================================================\n// Failure Resolution",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/subagents/task-execution.ts",
+        "start": 154,
+        "end": 173,
+        "startLoc": {
+          "line": 154,
+          "column": 23,
+          "position": 810
+        },
+        "endLoc": {
+          "line": 173,
+          "column": 22,
+          "position": 930
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/agent-common.ts",
+        "start": 356,
+        "end": 375,
+        "startLoc": {
+          "line": 356,
+          "column": 11,
+          "position": 1432
+        },
+        "endLoc": {
+          "line": 375,
+          "column": 21,
+          "position": 1552
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": "export function buildFailureSummary(message: string): string {\n  const lowered = message.toLowerCase();\n  if (lowered.includes(\"empty output\")) return \"(failed: empty output)\";\n  if (lowered.includes(\"timed out\") || lowered.includes(\"timeout\")) return \"(failed: timeout)\";\n  if (lowered.includes(\"rate limit\") || lowered.includes(\"429\")) return \"(failed: rate limit)\";\n  return \"(failed)\";\n}\n\n/**\n * エラー種別を判定する\n * @summary エラー種別を判定\n * @param error 判定対象のエラー\n * @returns エラー種別を示すシグナル\n */",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/subagents/task-execution.ts",
+        "start": 208,
+        "end": 221,
+        "startLoc": {
+          "line": 208,
+          "column": 1,
+          "position": 1056
+        },
+        "endLoc": {
+          "line": 221,
+          "column": 4,
+          "position": 1165
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/agent-common.ts",
+        "start": 398,
+        "end": 412,
+        "startLoc": {
+          "line": 398,
+          "column": 1,
+          "position": 1613
+        },
+        "endLoc": {
+          "line": 412,
+          "column": 4,
+          "position": 1722
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 12,
+      "fragment": "{\n        runId: run.runId,\n        agentId: run.agentId,\n        task: run.task,\n        summary: run.summary,\n        status: run.status,\n        startedAt: run.startedAt,\n        finishedAt: run.finishedAt,\n        error: run.error,\n      });\n\n      // Add to semantic memory if available",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/subagents/storage.ts",
+        "start": 486,
+        "end": 497,
+        "startLoc": {
+          "line": 486,
+          "column": 2,
+          "position": 2612
+        },
+        "endLoc": {
+          "line": 497,
+          "column": 39,
+          "position": 2693
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/pattern-extraction.ts",
+        "start": 463,
+        "end": 473,
+        "startLoc": {
+          "line": 463,
+          "column": 2,
+          "position": 2807
+        },
+        "endLoc": {
+          "line": 473,
+          "column": 3,
+          "position": 2887
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 9,
+      "fragment": "const previewStream: LiveStreamView =\n    selected.status === \"failed\" &&\n    input.stream === \"stdout\" &&\n    selected.stdoutBytes === 0 &&\n    selected.stderrBytes > 0\n      ? \"stderr\"\n      : input.stream;\n  const selectedTail = previewStream === \"stdout\" ? selected.stdoutTail : selected.stderrTail;\n  const selectedStreamBytes",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/subagents/live-monitor.ts",
+        "start": 400,
+        "end": 408,
+        "startLoc": {
+          "line": 400,
+          "column": 3,
+          "position": 3558
+        },
+        "endLoc": {
+          "line": 408,
+          "column": 20,
+          "position": 3651
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/live-monitor.ts",
+        "start": 341,
+        "end": 349,
+        "startLoc": {
+          "line": 341,
+          "column": 5,
+          "position": 2814
+        },
+        "endLoc": {
+          "line": 349,
+          "column": 19,
+          "position": 2907
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 13,
+      "fragment": "=== \"stdout\") {\n        item.stdoutTail = appendTail(item.stdoutTail, chunk);\n        item.stdoutBytes += Buffer.byteLength(chunk, \"utf-8\");\n        item.stdoutNewlineCount += countOccurrences(chunk, \"\\n\");\n        item.stdoutEndsWithNewline = chunk.endsWith(\"\\n\");\n      } else {\n        item.stderrTail = appendTail(item.stderrTail, chunk);\n        item.stderrBytes += Buffer.byteLength(chunk, \"utf-8\");\n        item.stderrNewlineCount += countOccurrences(chunk, \"\\n\");\n        item.stderrEndsWithNewline = chunk.endsWith(\"\\n\");\n      }\n      item.lastChunkAtMs = Date.now();\n      queueRender",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/subagents/live-monitor.ts",
+        "start": 681,
+        "end": 693,
+        "startLoc": {
+          "line": 681,
+          "column": 2,
+          "position": 5889
+        },
+        "endLoc": {
+          "line": 693,
+          "column": 12,
+          "position": 6055
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/tui/live-monitor-base.ts",
+        "start": 157,
+        "end": 169,
+        "startLoc": {
+          "line": 157,
+          "column": 2,
+          "position": 739
+        },
+        "endLoc": {
+          "line": 169,
+          "column": 2,
+          "position": 904
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 11,
+      "fragment": ";\n  },\n  runVerificationAgent: (agentId: string, prompt: string) => Promise<string>\n): Promise<VerificationHookResult> {\n  const config = resolveVerificationHookConfig();\n  \n  if (!config.enabled) {\n    return { triggered: false };\n  }\n\n  const _operationId = logger.startOperation(\"post_team_verification\"",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/shared/verification-hooks.ts",
+        "start": 252,
+        "end": 262,
+        "startLoc": {
+          "line": 252,
+          "column": 2,
+          "position": 1446
+        },
+        "endLoc": {
+          "line": 262,
+          "column": 25,
+          "position": 1540
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/shared/verification-hooks.ts",
+        "start": 125,
+        "end": 135,
+        "startLoc": {
+          "line": 125,
+          "column": 7,
+          "position": 449
+        },
+        "endLoc": {
+          "line": 135,
+          "column": 29,
+          "position": 543
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 37,
+      "fragment": ".length,\n      childOperations: (inspectorRun ? 1 : 0) + (challengerRun ? 1 : 0),\n      toolCalls: 0,\n    });\n\n    return {\n      triggered: true,\n      result,\n      inspectorRun,\n      challengerRun,\n    };\n  } catch (error) {\n    const errorMessage = error instanceof Error ? error.message : String(error);\n    logger.endOperation({\n      status: \"failure\",\n      tokensUsed: 0,\n      outputLength: 0,\n      childOperations: 0,\n      toolCalls: 0,\n      error: {\n        type: \"verification_error\",\n        message: errorMessage,\n        stack: error instanceof Error ? error.stack || \"\" : \"\",\n      },\n    });\n    return {\n      triggered: true,\n      error: `Verification failed: ${errorMessage}`,\n      inspectorRun,\n      challengerRun,\n    };\n  }\n}\n\n/**\n * チーム検証コンテキストを構築\n */",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/shared/verification-hooks.ts",
+        "start": 338,
+        "end": 374,
+        "startLoc": {
+          "line": 338,
+          "column": 17,
+          "position": 2147
+        },
+        "endLoc": {
+          "line": 374,
+          "column": 4,
+          "position": 2398
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/shared/verification-hooks.ts",
+        "start": 204,
+        "end": 245,
+        "startLoc": {
+          "line": 204,
+          "column": 7,
+          "position": 1128
+        },
+        "endLoc": {
+          "line": 245,
+          "column": 5,
+          "position": 1380
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 11,
+      "fragment": ">((resolvePromise, rejectPromise) => {\n    let stderr = \"\";\n    let textContent = \"\";\n    let thinkingContent = \"\";\n    let finalText = \"\";\n    let finalThinking = \"\";\n    let timedOut = false;\n    let settled = false;\n    let forceKillTimer: NodeJS.Timeout | undefined;\n    let idleTimeout: NodeJS.Timeout | undefined;\n    const idleTimeoutMs",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 737,
+        "end": 747,
+        "startLoc": {
+          "line": 737,
+          "column": 7,
+          "position": 6135
+        },
+        "endLoc": {
+          "line": 747,
+          "column": 14,
+          "position": 6251
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 480,
+        "end": 490,
+        "startLoc": {
+          "line": 480,
+          "column": 19,
+          "position": 4237
+        },
+        "endLoc": {
+          "line": 490,
+          "column": 10,
+          "position": 4353
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 41,
+      "fragment": ",\n    });\n\n    const finish = (fn: () => void) => {\n      if (settled) return;\n      settled = true;\n      cleanup();\n      fn();\n    };\n\n    const killSafely = (sig: NodeJS.Signals) => {\n      if (!child.killed) {\n        try {\n          child.kill(sig);\n        } catch {\n          // noop\n        }\n      }\n    };\n\n    const resetIdleTimeout = () => {\n      if (idleTimeout) {\n        clearTimeout(idleTimeout);\n      }\n      idleTimeout = setTimeout(() => {\n        timedOut = true;\n        killSafely(\"SIGTERM\");\n        if (forceKillTimer) {\n          clearTimeout(forceKillTimer);\n        }\n        forceKillTimer = setTimeout(() => killSafely(\"SIGKILL\"), GRACEFUL_SHUTDOWN_DELAY_MS);\n      }, idleTimeoutMs);\n    };\n\n    const onAbort = () => {\n      killSafely(\"SIGTERM\");\n      if (forceKillTimer) {\n        clearTimeout(forceKillTimer);\n      }\n      forceKillTimer = setTimeout(() => killSafely(\"SIGKILL\"), GRACEFUL_SHUTDOWN_DELAY_MS);\n      finish(() => rejectPromise(new Error(`${entityLabel} aborted`",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 751,
+        "end": 791,
+        "startLoc": {
+          "line": 751,
+          "column": 4,
+          "position": 6310
+        },
+        "endLoc": {
+          "line": 791,
+          "column": 10,
+          "position": 6639
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 498,
+        "end": 538,
+        "startLoc": {
+          "line": 498,
+          "column": 2,
+          "position": 4452
+        },
+        "endLoc": {
+          "line": 538,
+          "column": 14,
+          "position": 4781
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 12,
+      "fragment": "lineBuffer += text;\n      const lines = lineBuffer.split(\"\\n\");\n      lineBuffer = lines.pop() || \"\";\n\n      for (const line of lines) {\n        const trimmed = line.trim();\n        if (!trimmed) continue;\n\n        const parsed = parseJsonStreamLine(trimmed);\n        if (parsed?.type === \"text_delta\" && parsed.textDelta) {\n          textContent += parsed.textDelta;\n          onTextDelta",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 821,
+        "end": 832,
+        "startLoc": {
+          "line": 821,
+          "column": 7,
+          "position": 6872
+        },
+        "endLoc": {
+          "line": 832,
+          "column": 12,
+          "position": 6998
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 571,
+        "end": 582,
+        "startLoc": {
+          "line": 571,
+          "column": 7,
+          "position": 5031
+        },
+        "endLoc": {
+          "line": 582,
+          "column": 6,
+          "position": 5157
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 16,
+      "fragment": "if (parsed?.isEnd) {\n          const extracted = extractFinalText(trimmed);\n          if (extracted.text) {\n            finalText = extracted.text;\n          }\n          if (extracted.thinking) {\n            finalThinking = extracted.thinking;\n          }\n        }\n      }\n    });\n\n    child.stderr.on(\"data\", (chunk: Buffer | string) => {\n      const text = typeof chunk === \"string\" ? chunk : chunk.toString(\"utf-8\");\n      stderr = appendWithCap(stderr, text, MAX_CAPTURED_STDERR_CHARS);\n      if",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 840,
+        "end": 855,
+        "startLoc": {
+          "line": 840,
+          "column": 9,
+          "position": 7052
+        },
+        "endLoc": {
+          "line": 855,
+          "column": 3,
+          "position": 7208
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 591,
+        "end": 606,
+        "startLoc": {
+          "line": 591,
+          "column": 9,
+          "position": 5216
+        },
+        "endLoc": {
+          "line": 606,
+          "column": 6,
+          "position": 5372
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": ");\n      if (timeoutEnabled) {\n        resetIdleTimeout();\n      }\n    });\n\n    child.on(\"error\", (error) => {\n      finish(() => rejectPromise(error));\n    });\n\n    child.on(\"close\", (code) => {\n      finish(() => {\n        if (timedOut) {\n          rejectPromise(new Error(`pi --mode json idle timeout after ",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 854,
+        "end": 867,
+        "startLoc": {
+          "line": 854,
+          "column": 26,
+          "position": 7204
+        },
+        "endLoc": {
+          "line": 867,
+          "column": 36,
+          "position": 7310
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 606,
+        "end": 619,
+        "startLoc": {
+          "line": 606,
+          "column": 5,
+          "position": 5379
+        },
+        "endLoc": {
+          "line": 619,
+          "column": 2,
+          "position": 5485
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 10,
+      "fragment": "(result),\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t],\n\t\t\t\t\t\tdetails: result,\n\t\t\t\t\t};\n\t\t\t\t} catch (error) {\n\t\t\t\t\tconst errorMessage = error instanceof Error ? error.message : String(error);\n\t\t\t\t\treturn {\n\t\t\t\t\t\tcontent: [{ type: \"text\" as const, text: `Error: ${errorMessage}` }],\n\t\t\t\t\t\tdetails: { error: errorMessage, total: 0, truncated: false, summary",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 210,
+        "end": 219,
+        "startLoc": {
+          "line": 210,
+          "column": 17,
+          "position": 1381
+        },
+        "endLoc": {
+          "line": 219,
+          "column": 8,
+          "position": 1502
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 138,
+        "end": 147,
+        "startLoc": {
+          "line": 138,
+          "column": 21,
+          "position": 720
+        },
+        "endLoc": {
+          "line": 147,
+          "column": 8,
+          "position": 841
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 10,
+      "fragment": ",\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t],\n\t\t\t\t\t\tdetails: result,\n\t\t\t\t\t};\n\t\t\t\t} catch (error) {\n\t\t\t\t\tconst errorMessage = error instanceof Error ? error.message : String(error);\n\t\t\t\t\treturn {\n\t\t\t\t\t\tcontent: [{ type: \"text\" as const, text: `Error: ${errorMessage}` }],\n\t\t\t\t\t\tdetails: { error: errorMessage, indexed",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 263,
+        "end": 272,
+        "startLoc": {
+          "line": 263,
+          "column": 2,
+          "position": 1817
+        },
+        "endLoc": {
+          "line": 272,
+          "column": 8,
+          "position": 1923
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 138,
+        "end": 147,
+        "startLoc": {
+          "line": 138,
+          "column": 2,
+          "position": 723
+        },
+        "endLoc": {
+          "line": 147,
+          "column": 6,
+          "position": 829
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 11,
+      "fragment": "})\n\t\t\t\t),\n\t\t\t\tlimit: Type.Optional(\n\t\t\t\t\tType.Number({ description: \"Maximum results (default: 50)\" })\n\t\t\t\t),\n\t\t\t}),\n\n\t\t\tasync execute(_toolCallId, params, _signal, _onUpdate, ctx) {\n\t\t\t\tconst cwd = ctx?.cwd ?? process.cwd();\n\n\t\t\t\ttry",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 296,
+        "end": 306,
+        "startLoc": {
+          "line": 296,
+          "column": 2,
+          "position": 2089
+        },
+        "endLoc": {
+          "line": 306,
+          "column": 4,
+          "position": 2176
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 174,
+        "end": 184,
+        "startLoc": {
+          "line": 174,
+          "column": 2,
+          "position": 1063
+        },
+        "endLoc": {
+          "line": 184,
+          "column": 3,
+          "position": 1150
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 17,
+      "fragment": "(result),\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t],\n\t\t\t\t\t\tdetails: result,\n\t\t\t\t\t};\n\t\t\t\t} catch (error) {\n\t\t\t\t\tconst errorMessage = error instanceof Error ? error.message : String(error);\n\t\t\t\t\treturn {\n\t\t\t\t\t\tcontent: [{ type: \"text\" as const, text: `Error: ${errorMessage}` }],\n\t\t\t\t\t\tdetails: { error: errorMessage, total: 0, truncated: false, results: [] },\n\t\t\t\t\t};\n\t\t\t\t}\n\t\t\t},\n\t\t});\n\n\t\t// ============================================\n\t\t// Tool: call_graph_index",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 322,
+        "end": 338,
+        "startLoc": {
+          "line": 322,
+          "column": 14,
+          "position": 2277
+        },
+        "endLoc": {
+          "line": 338,
+          "column": 26,
+          "position": 2428
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 138,
+        "end": 154,
+        "startLoc": {
+          "line": 138,
+          "column": 21,
+          "position": 720
+        },
+        "endLoc": {
+          "line": 154,
+          "column": 21,
+          "position": 871
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 15,
+      "fragment": ",\n\t\t\tparameters: Type.Object({\n\t\t\t\tpath: Type.Optional(\n\t\t\t\t\tType.String({ description: \"Target path for indexing (default: project root)\" })\n\t\t\t\t),\n\t\t\t\tforce: Type.Optional(\n\t\t\t\t\tType.Boolean({ description: \"Force regeneration of index\" })\n\t\t\t\t),\n\t\t\t}),\n\n\t\t\tasync execute(_toolCallId, params, _signal, _onUpdate, ctx) {\n\t\t\t\tconst cwd = ctx?.cwd ?? process.cwd();\n\n\t\t\t\ttry {\n\t\t\t\t\tconst result = await callGraphIndex",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 344,
+        "end": 358,
+        "startLoc": {
+          "line": 344,
+          "column": 104,
+          "position": 2460
+        },
+        "endLoc": {
+          "line": 358,
+          "column": 15,
+          "position": 2593
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 232,
+        "end": 246,
+        "startLoc": {
+          "line": 232,
+          "column": 108,
+          "position": 1571
+        },
+        "endLoc": {
+          "line": 246,
+          "column": 9,
+          "position": 1704
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 10,
+      "fragment": "(result),\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t],\n\t\t\t\t\t\tdetails: result,\n\t\t\t\t\t};\n\t\t\t\t} catch (error) {\n\t\t\t\t\tconst errorMessage = error instanceof Error ? error.message : String(error);\n\t\t\t\t\treturn {\n\t\t\t\t\t\tcontent: [{ type: \"text\" as const, text: `Error: ${errorMessage}` }],\n\t\t\t\t\t\tdetails: { error: errorMessage, nodeCount",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 371,
+        "end": 380,
+        "startLoc": {
+          "line": 371,
+          "column": 21,
+          "position": 2663
+        },
+        "endLoc": {
+          "line": 380,
+          "column": 10,
+          "position": 2772
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 138,
+        "end": 147,
+        "startLoc": {
+          "line": 138,
+          "column": 21,
+          "position": 720
+        },
+        "endLoc": {
+          "line": 147,
+          "column": 6,
+          "position": 829
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 11,
+      "fragment": "})\n\t\t\t\t),\n\t\t\t\tlimit: Type.Optional(\n\t\t\t\t\tType.Number({ description: \"Maximum results (default: 50)\" })\n\t\t\t\t),\n\t\t\t}),\n\n\t\t\tasync execute(_toolCallId, params, _signal, _onUpdate, ctx) {\n\t\t\t\tconst cwd = ctx?.cwd ?? process.cwd();\n\n\t\t\t\tif (!params.symbolName",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 397,
+        "end": 407,
+        "startLoc": {
+          "line": 397,
+          "column": 2,
+          "position": 2897
+        },
+        "endLoc": {
+          "line": 407,
+          "column": 11,
+          "position": 2990
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 174,
+        "end": 184,
+        "startLoc": {
+          "line": 174,
+          "column": 2,
+          "position": 1063
+        },
+        "endLoc": {
+          "line": 184,
+          "column": 8,
+          "position": 1156
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 10,
+      "fragment": "(result),\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t],\n\t\t\t\t\t\tdetails: result,\n\t\t\t\t\t};\n\t\t\t\t} catch (error) {\n\t\t\t\t\tconst errorMessage = error instanceof Error ? error.message : String(error);\n\t\t\t\t\treturn {\n\t\t\t\t\t\tcontent: [{ type: \"text\" as const, text: `Error: ${errorMessage}` }],\n\t\t\t\t\t\tdetails: { error: errorMessage, symbolName",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 429,
+        "end": 438,
+        "startLoc": {
+          "line": 429,
+          "column": 14,
+          "position": 3178
+        },
+        "endLoc": {
+          "line": 438,
+          "column": 11,
+          "position": 3287
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 138,
+        "end": 147,
+        "startLoc": {
+          "line": 138,
+          "column": 21,
+          "position": 720
+        },
+        "endLoc": {
+          "line": 147,
+          "column": 6,
+          "position": 829
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 19,
+      "fragment": "})\n\t\t\t\t),\n\t\t\t\tlimit: Type.Optional(\n\t\t\t\t\tType.Number({ description: \"Maximum results (default: 50)\" })\n\t\t\t\t),\n\t\t\t}),\n\n\t\t\tasync execute(_toolCallId, params, _signal, _onUpdate, ctx) {\n\t\t\t\tconst cwd = ctx?.cwd ?? process.cwd();\n\n\t\t\t\tif (!params.symbolName || params.symbolName.length === 0) {\n\t\t\t\t\treturn {\n\t\t\t\t\t\tcontent: [{ type: \"text\" as const, text: \"Error: symbolName is required\" }],\n\t\t\t\t\t\tdetails: { error: \"symbolName is required\", symbolName: \"\", total: 0, truncated: false, results: [] },\n\t\t\t\t\t};\n\t\t\t\t}\n\n\t\t\t\ttry {\n\t\t\t\t\tconst result = await findCalleesTool",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 455,
+        "end": 473,
+        "startLoc": {
+          "line": 455,
+          "column": 2,
+          "position": 3421
+        },
+        "endLoc": {
+          "line": 473,
+          "column": 16,
+          "position": 3623
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 174,
+        "end": 415,
+        "startLoc": {
+          "line": 174,
+          "column": 2,
+          "position": 1063
+        },
+        "endLoc": {
+          "line": 415,
+          "column": 16,
+          "position": 3099
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 17,
+      "fragment": "(result),\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t],\n\t\t\t\t\t\tdetails: result,\n\t\t\t\t\t};\n\t\t\t\t} catch (error) {\n\t\t\t\t\tconst errorMessage = error instanceof Error ? error.message : String(error);\n\t\t\t\t\treturn {\n\t\t\t\t\t\tcontent: [{ type: \"text\" as const, text: `Error: ${errorMessage}` }],\n\t\t\t\t\t\tdetails: { error: errorMessage, symbolName: params.symbolName, total: 0, truncated: false, results: [] },\n\t\t\t\t\t};\n\t\t\t\t}\n\t\t\t},\n\t\t});\n\n\t\t// ============================================\n\t\t// Tool: semantic_index",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 487,
+        "end": 503,
+        "startLoc": {
+          "line": 487,
+          "column": 14,
+          "position": 3702
+        },
+        "endLoc": {
+          "line": 503,
+          "column": 24,
+          "position": 3861
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 138,
+        "end": 445,
+        "startLoc": {
+          "line": 138,
+          "column": 21,
+          "position": 720
+        },
+        "endLoc": {
+          "line": 445,
+          "column": 22,
+          "position": 3337
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 10,
+      "fragment": "${result.outputPath}`,\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t],\n\t\t\t\t\t\tdetails: result,\n\t\t\t\t\t};\n\t\t\t\t} catch (error) {\n\t\t\t\t\tconst errorMessage = error instanceof Error ? error.message : String(error);\n\t\t\t\t\treturn {\n\t\t\t\t\t\tcontent: [{ type: \"text\" as const, text: `Error: ${errorMessage}` }],\n\t\t\t\t\t\tdetails: { error: errorMessage, indexed: 0, files",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 554,
+        "end": 563,
+        "startLoc": {
+          "line": 554,
+          "column": 11,
+          "position": 4260
+        },
+        "endLoc": {
+          "line": 563,
+          "column": 6,
+          "position": 4378
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 263,
+        "end": 272,
+        "startLoc": {
+          "line": 263,
+          "column": 13,
+          "position": 1811
+        },
+        "endLoc": {
+          "line": 272,
+          "column": 11,
+          "position": 1929
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 17,
+      "fragment": "(result),\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t],\n\t\t\t\t\t\tdetails: result,\n\t\t\t\t\t};\n\t\t\t\t} catch (error) {\n\t\t\t\t\tconst errorMessage = error instanceof Error ? error.message : String(error);\n\t\t\t\t\treturn {\n\t\t\t\t\t\tcontent: [{ type: \"text\" as const, text: `Error: ${errorMessage}` }],\n\t\t\t\t\t\tdetails: { error: errorMessage, total: 0, truncated: false, results: [] },\n\t\t\t\t\t};\n\t\t\t\t}\n\t\t\t},\n\t\t});\n\n\t\t// ============================================\n\t\t// Session Start Notification",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 622,
+        "end": 638,
+        "startLoc": {
+          "line": 622,
+          "column": 21,
+          "position": 4884
+        },
+        "endLoc": {
+          "line": 638,
+          "column": 30,
+          "position": 5035
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/search/index.ts",
+        "start": 138,
+        "end": 154,
+        "startLoc": {
+          "line": 138,
+          "column": 21,
+          "position": 720
+        },
+        "endLoc": {
+          "line": 154,
+          "column": 21,
+          "position": 871
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 43,
+      "fragment": ";\n}\n\n/**\n * 破損したストレージファイルのバックアップを作成\n * @summary 破損バックアップ作成\n * @param storageFile - 元のストレージファイルパス\n * @param prefix - バックアップファイル名のプレフィックス\n * @returns {string | null} バックアップファイルのパス、失敗時はnull\n */\nfunction createCorruptedBackup(storageFile: string, prefix: string): string | null {\n  try {\n    const timestamp = new Date().toISOString().replace(/[:.]/g, \"-\");\n    const backupFile = `${storageFile}.corrupted.${prefix}.${timestamp}.bak`;\n\n    // Get original file stats for logging\n    const stats = statSync(storageFile);\n    const sizeBytes = stats.size;\n\n    // Create backup copy\n    copyFileSync(storageFile, backupFile);\n\n    console.warn(\n      `[${prefix}] Created backup of corrupted storage: ${backupFile} (${sizeBytes} bytes)`,\n    );\n\n    return backupFile;\n  } catch (backupError) {\n    console.error(\n      `[${prefix}] Failed to create backup of corrupted storage: ${\n        backupError instanceof Error ? backupError.message : String(backupError)\n      }`,\n    );\n    return null;\n  }\n}\n\n/**\n * ストレージを読込\n * @summary ストレージ読込\n * @param cwd カレントワーキングディレクトリ\n * @returns 読み込んだストレージデータ\n */",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/storage.ts",
+        "start": 339,
+        "end": 381,
+        "startLoc": {
+          "line": 339,
+          "column": 12,
+          "position": 1305
+        },
+        "endLoc": {
+          "line": 381,
+          "column": 4,
+          "position": 1527
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/storage.ts",
+        "start": 342,
+        "end": 384,
+        "startLoc": {
+          "line": 342,
+          "column": 16,
+          "position": 1579
+        },
+        "endLoc": {
+          "line": 384,
+          "column": 4,
+          "position": 1801
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 23,
+      "fragment": "(paths.storageFile, normalized);\n    const content = JSON.stringify(merged, null, 2);\n    atomicWriteTextFile(paths.storageFile, content);\n    \n    // 状態変更をログ記録\n    logger.logStateChange({\n      entityType: 'storage',\n      entityPath: paths.storageFile,\n      changeType: existsSync(paths.storageFile) ? 'update' : 'create',\n      afterContent: content,\n    });\n    \n    pruneRunArtifacts(paths, merged.runs);\n  });\n}\n\n/**\n * パターン付きで保存\n * @summary パターン付き保存\n * @param cwd カレントワーキングディレクトリ\n * @param storage 保存するストレージデータ\n * @returns Promiseを返す\n */",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/storage.ts",
+        "start": 446,
+        "end": 468,
+        "startLoc": {
+          "line": 446,
+          "column": 25,
+          "position": 2080
+        },
+        "endLoc": {
+          "line": 468,
+          "column": 4,
+          "position": 2205
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/storage.ts",
+        "start": 444,
+        "end": 466,
+        "startLoc": {
+          "line": 444,
+          "column": 29,
+          "position": 2322
+        },
+        "endLoc": {
+          "line": 466,
+          "column": 4,
+          "position": 2447
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 12,
+      "fragment": "{\n        runId: run.runId,\n        teamId: run.teamId,\n        task: run.task,\n        summary: run.summary,\n        status: run.status,\n        startedAt: run.startedAt,\n        finishedAt: run.finishedAt,\n        error: run.error,\n      });\n\n      // Add to semantic memory if available",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/storage.ts",
+        "start": 488,
+        "end": 499,
+        "startLoc": {
+          "line": 488,
+          "column": 2,
+          "position": 2370
+        },
+        "endLoc": {
+          "line": 499,
+          "column": 39,
+          "position": 2451
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/pattern-extraction.ts",
+        "start": 500,
+        "end": 510,
+        "startLoc": {
+          "line": 500,
+          "column": 2,
+          "position": 3164
+        },
+        "endLoc": {
+          "line": 510,
+          "column": 3,
+          "position": 3244
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 12,
+      "fragment": ",\n        task: run.task,\n        summary: run.summary,\n        status: run.status,\n        startedAt: run.startedAt,\n        finishedAt: run.finishedAt,\n        error: run.error,\n      });\n\n      // Add to semantic memory if available\n      if (isSemanticMemoryAvailable()) {\n        const indexedRun = indexTeamRun",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/storage.ts",
+        "start": 490,
+        "end": 501,
+        "startLoc": {
+          "line": 490,
+          "column": 7,
+          "position": 2388
+        },
+        "endLoc": {
+          "line": 501,
+          "column": 13,
+          "position": 2471
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/storage.ts",
+        "start": 488,
+        "end": 499,
+        "startLoc": {
+          "line": 488,
+          "column": 8,
+          "position": 2630
+        },
+        "endLoc": {
+          "line": 499,
+          "column": 17,
+          "position": 2713
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 12,
+      "fragment": "}\n  if (isTimeoutErrorMessage(error)) {\n    return { outcomeCode: \"TIMEOUT\", retryRecommended: true };\n  }\n\n  const pressure = classifyPressureError(error);\n  if (pressure !== \"other\") {\n    return { outcomeCode: \"RETRYABLE_FAILURE\", retryRecommended: true };\n  }\n\n  const statusCode = extractStatusCodeFromMessage(error);\n  if (isRetryableTeamMemberError",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/result-aggregation.ts",
+        "start": 116,
+        "end": 127,
+        "startLoc": {
+          "line": 116,
+          "column": 3,
+          "position": 343
+        },
+        "endLoc": {
+          "line": 127,
+          "column": 27,
+          "position": 446
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/task-execution.ts",
+        "start": 225,
+        "end": 236,
+        "startLoc": {
+          "line": 225,
+          "column": 3,
+          "position": 1216
+        },
+        "endLoc": {
+          "line": 236,
+          "column": 25,
+          "position": 1319
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": ",\n      reasons: waitResult.reasons,\n      waitedMs: waitResult.waitedMs,\n      timedOut: waitResult.timedOut,\n      aborted: waitResult.aborted,\n      attempts: immediateAttempts + waitResult.attempts,\n      projectedRequests: waitResult.projectedRequests,\n      projectedLlm: waitResult.projectedLlm,\n    };\n  }\n\n  return {\n    allowed: true,\n    requestedTeamParallelism",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/parallel-execution.ts",
+        "start": 224,
+        "end": 237,
+        "startLoc": {
+          "line": 224,
+          "column": 5,
+          "position": 1166
+        },
+        "endLoc": {
+          "line": 237,
+          "column": 25,
+          "position": 1256
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/parallel-execution.ts",
+        "start": 128,
+        "end": 141,
+        "startLoc": {
+          "line": 128,
+          "column": 2,
+          "position": 573
+        },
+        "endLoc": {
+          "line": 141,
+          "column": 21,
+          "position": 663
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 20,
+      "fragment": "(structured);\n  if (structuredQuality.ok) {\n    return {\n      ok: true,\n      output: structured,\n      degraded: true,\n      reason: quality.reason ?? \"normalized\",\n    };\n  }\n\n  return {\n    ok: false,\n    output: \"\",\n    degraded: false,\n    reason: quality.reason ?? structuredQuality.reason ?? \"normalization failed\",\n  };\n}\n\n// ============================================================================\n// Prompt Building",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/member-execution.ts",
+        "start": 149,
+        "end": 168,
+        "startLoc": {
+          "line": 149,
+          "column": 25,
+          "position": 832
+        },
+        "endLoc": {
+          "line": 168,
+          "column": 19,
+          "position": 952
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/agent-common.ts",
+        "start": 356,
+        "end": 375,
+        "startLoc": {
+          "line": 356,
+          "column": 11,
+          "position": 1432
+        },
+        "endLoc": {
+          "line": 375,
+          "column": 21,
+          "position": 1552
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 23,
+      "fragment": "export function mergeSkillArrays(base: string[] | undefined, override: string[] | undefined): string[] | undefined {\n  const hasBase = Array.isArray(base) && base.length > 0;\n  const hasOverride = Array.isArray(override) && override.length > 0;\n\n  if (!hasBase && !hasOverride) return undefined;\n  if (!hasBase) return override;\n  if (!hasOverride) return base;\n\n  const merged = [...base];\n  for (const skill of override) {\n    if (!merged.includes(skill)) {\n      merged.push(skill);\n    }\n  }\n  return merged;\n}\n\n /**\n  * チームメンバーの有効なスキルを解決する。\n  * @param team チーム定義\n  * @param member チームメンバー\n  * @returns マージされたスキルリスト\n  */",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/member-execution.ts",
+        "start": 177,
+        "end": 199,
+        "startLoc": {
+          "line": 177,
+          "column": 1,
+          "position": 960
+        },
+        "endLoc": {
+          "line": 199,
+          "column": 5,
+          "position": 1165
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/task-execution.ts",
+        "start": 253,
+        "end": 276,
+        "startLoc": {
+          "line": 253,
+          "column": 1,
+          "position": 1384
+        },
+        "endLoc": {
+          "line": 276,
+          "column": 4,
+          "position": 1588
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 10,
+      "fragment": "(skills: string[] | undefined): string | null {\n  if (!skills || skills.length === 0) return null;\n  return skills.map((skill) => `- ${skill}`).join(\"\\n\");\n}\n\n/**\n * Resolve package root directory relative to this file.\n * This file is at: .pi/extensions/agent-teams/member-execution.ts\n * Package root is: ../../../ (3 levels up)\n */",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/member-execution.ts",
+        "start": 212,
+        "end": 221,
+        "startLoc": {
+          "line": 212,
+          "column": 30,
+          "position": 1228
+        },
+        "endLoc": {
+          "line": 221,
+          "column": 4,
+          "position": 1302
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/task-execution.ts",
+        "start": 290,
+        "end": 303,
+        "startLoc": {
+          "line": 290,
+          "column": 20,
+          "position": 1651
+        },
+        "endLoc": {
+          "line": 303,
+          "column": 5,
+          "position": 1726
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 21,
+      "fragment": ");\n\n  return lines.join(\"\\n\");\n}\n\n// ============================================================================\n// Execution\n// ============================================================================\n\nasync function runPiPrintMode(input: {\n  provider?: string;\n  model?: string;\n  prompt: string;\n  timeoutMs: number;\n  signal?: AbortSignal;\n  onTextDelta?: (delta: string) => void;\n  onStderrChunk?: (chunk: string) => void;\n}): Promise<PrintCommandResult> {\n  return sharedRunPiPrintMode({\n    ...input,\n    entityLabel: \"agent team member\"",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/member-execution.ts",
+        "start": 400,
+        "end": 420,
+        "startLoc": {
+          "line": 400,
+          "column": 37,
+          "position": 2716
+        },
+        "endLoc": {
+          "line": 420,
+          "column": 20,
+          "position": 2851
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/task-execution.ts",
+        "start": 354,
+        "end": 374,
+        "startLoc": {
+          "line": 354,
+          "column": 44,
+          "position": 2172
+        },
+        "endLoc": {
+          "line": 374,
+          "column": 11,
+          "position": 2307
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 9,
+      "fragment": "= toErrorMessage(error);\n      const gateSnapshot = getRateLimitGateSnapshot(rateLimitKey);\n      const diagnostic = [\n        `provider=${resolvedProvider}`,\n        `model=${resolvedModel}`,\n        `retries=${retryCount}`,\n        lastRetryStatusCode !== undefined ? `last_status=${lastRetryStatusCode}` : \"\",\n        lastRetryMessage ? `last_retry_error=${lastRetryMessage}` : \"\",\n        `gate_wait_ms=",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/member-execution.ts",
+        "start": 614,
+        "end": 622,
+        "startLoc": {
+          "line": 614,
+          "column": 2,
+          "position": 4443
+        },
+        "endLoc": {
+          "line": 622,
+          "column": 15,
+          "position": 4534
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/subagents/task-execution.ts",
+        "start": 557,
+        "end": 566,
+        "startLoc": {
+          "line": 557,
+          "column": 2,
+          "position": 3735
+        },
+        "endLoc": {
+          "line": 566,
+          "column": 20,
+          "position": 3827
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 17,
+      "fragment": "function extractSummary(output: string): string {\n  const match = output.match(/^\\s*summary\\s*:\\s*(.+)$/im);\n  if (match?.[1]) {\n    return match[1].trim();\n  }\n\n  const firstLine = output\n    .split(/\\r?\\n/)\n    .map((line) => line.trim())\n    .find((line) => line.length > 0);\n\n  if (!firstLine) {\n    return \"(no summary)\";\n  }\n\n  return firstLine.length > 120 ? `${firstLine.slice(0, 120)}...` : firstLine;\n}",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/member-execution.ts",
+        "start": 657,
+        "end": 673,
+        "startLoc": {
+          "line": 657,
+          "column": 1,
+          "position": 4769
+        },
+        "endLoc": {
+          "line": 673,
+          "column": 2,
+          "position": 4936
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/agent-teams/result-aggregation.ts",
+        "start": 394,
+        "end": 410,
+        "startLoc": {
+          "line": 394,
+          "column": 2,
+          "position": 2623
+        },
+        "endLoc": {
+          "line": 410,
+          "column": 2,
+          "position": 2790
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 21,
+      "fragment": "{\n  const total = Math.max(1, memberResults.length);\n  const failedCount = memberResults.filter((result) => result.status === \"failed\").length;\n  const failedRatio = failedCount / total;\n\n  const confidences = memberResults.map((result) => result.diagnostics?.confidence ?? 0.5);\n  const meanConfidence = confidences.reduce((sum, value) => sum + value, 0) / total;\n  const lowConfidence = 1 - meanConfidence;\n\n  const noEvidenceRatio =\n    memberResults.filter((result) => (result.diagnostics?.evidenceCount ?? 0) <= 0).length / total;\n  const contradictionRatio =\n    memberResults.filter((result) => (result.diagnostics?.contradictionSignals ?? 0) > 0).length / total;\n  const conflictRatio =\n    memberResults.filter((result) => (result.diagnostics?.conflictSignals ?? 0) > 0).length / total;\n\n  const variance =\n    confidences.reduce((sum, value) => sum + (value - meanConfidence) ** 2, 0) / total;\n  const confidenceSpread = clampConfidence(Math.sqrt(Math.max(0, variance)) / 0.5);\n\n  // Compute uIntra with contribution breakdown",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/judge.ts",
+        "start": 418,
+        "end": 438,
+        "startLoc": {
+          "line": 418,
+          "column": 2,
+          "position": 2531
+        },
+        "endLoc": {
+          "line": 438,
+          "column": 46,
+          "position": 2889
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/agent-teams/judge.ts",
+        "start": 365,
+        "end": 385,
+        "startLoc": {
+          "line": 365,
+          "column": 2,
+          "position": 1859
+        },
+        "endLoc": {
+          "line": 385,
+          "column": 6,
+          "position": 2217
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 13,
+      "fragment": "{\n  const raw = process.env.PI_CODING_AGENT_DIR;\n  if (!raw || !raw.trim()) {\n    return join(homedir(), \".pi\", \"agent\");\n  }\n\n  const value = raw.trim();\n  if (value === \"~\") return homedir();\n  if (value.startsWith(\"~/\")) return join(homedir(), value.slice(2));\n  return value;\n}\n\nfunction",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/definition-loader.ts",
+        "start": 70,
+        "end": 82,
+        "startLoc": {
+          "line": 70,
+          "column": 2,
+          "position": 293
+        },
+        "endLoc": {
+          "line": 82,
+          "column": 9,
+          "position": 420
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/agent-teams/member-execution.ts",
+        "start": 233,
+        "end": 242,
+        "startLoc": {
+          "line": 233,
+          "column": 2,
+          "position": 1391
+        },
+        "endLoc": {
+          "line": 242,
+          "column": 2,
+          "position": 1515
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 24,
+      "fragment": "const { frontmatter } = parsed;\n        const members: TeamMember[] = frontmatter.members.map((m) => ({\n          id: m.id,\n          role: m.role,\n          description: m.description,\n          provider: m.provider,\n          model: m.model,\n          enabled: m.enabled ?? true,\n          skills: m.skills,\n        }));\n\n        teams.push({\n          id: frontmatter.id,\n          name: frontmatter.name,\n          description: frontmatter.description,\n          enabled: frontmatter.enabled,\n          skills: frontmatter.skills,\n          members,\n          createdAt: nowIso,\n          updatedAt: nowIso,\n        });\n      }\n\n      // team.mdがある場合のみ、同じディレクトリ内のp*.md（フェーズ別）も読み込み",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/definition-loader.ts",
+        "start": 211,
+        "end": 234,
+        "startLoc": {
+          "line": 211,
+          "column": 9,
+          "position": 1538
+        },
+        "endLoc": {
+          "line": 234,
+          "column": 46,
+          "position": 1733
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/agent-teams/definition-loader.ts",
+        "start": 166,
+        "end": 187,
+        "startLoc": {
+          "line": 166,
+          "column": 7,
+          "position": 1122
+        },
+        "endLoc": {
+          "line": 187,
+          "column": 5,
+          "position": 1315
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 23,
+      "fragment": ";\n        const members: TeamMember[] = frontmatter.members.map((m) => ({\n          id: m.id,\n          role: m.role,\n          description: m.description,\n          provider: m.provider,\n          model: m.model,\n          enabled: m.enabled ?? true,\n          skills: m.skills,\n        }));\n\n        teams.push({\n          id: frontmatter.id,\n          name: frontmatter.name,\n          description: frontmatter.description,\n          enabled: frontmatter.enabled,\n          skills: frontmatter.skills,\n          members,\n          createdAt: nowIso,\n          updatedAt: nowIso,\n        });\n      }\n    }",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/definition-loader.ts",
+        "start": 247,
+        "end": 269,
+        "startLoc": {
+          "line": 247,
+          "column": 12,
+          "position": 1891
+        },
+        "endLoc": {
+          "line": 269,
+          "column": 2,
+          "position": 2074
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/agent-teams/definition-loader.ts",
+        "start": 166,
+        "end": 187,
+        "startLoc": {
+          "line": 166,
+          "column": 7,
+          "position": 1133
+        },
+        "endLoc": {
+          "line": 187,
+          "column": 5,
+          "position": 1315
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 12,
+      "fragment": "export function extractField(output: string, name: string): string | undefined {\n  const escaped = name.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\");\n  const match = output.match(new RegExp(`^\\\\s*${escaped}\\\\s*:\\\\s*(.+)$`, \"im\"));\n  return match?.[1]?.trim();\n}\n\n /**\n  * チームメンバー向けの通信コンテキストを作成する\n  *\n  * @param input - チーム定義、メンバー情報、ラウンド数、パートナーID、コンテキストマップを含むパラメータ\n  * @returns フォーマットされた通信コンテキスト文字列\n  */",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/communication.ts",
+        "start": 384,
+        "end": 395,
+        "startLoc": {
+          "line": 384,
+          "column": 1,
+          "position": 2273
+        },
+        "endLoc": {
+          "line": 395,
+          "column": 5,
+          "position": 2365
+        }
+      },
+      "secondFile": {
+        "name": ".pi/lib/text-parsing.ts",
+        "start": 110,
+        "end": 122,
+        "startLoc": {
+          "line": 110,
+          "column": 1,
+          "position": 426
+        },
+        "endLoc": {
+          "line": 122,
+          "column": 4,
+          "position": 517
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 6,
+      "fragment": "const partner = memberById.get(partnerId);\n    const role = partner?.role?.toLowerCase() ?? \"\";\n    const idMatched = lowered.includes(partnerId.toLowerCase());\n    const roleMatched = role.length > 0 && lowered.includes(role);\n    if (idMatched || roleMatched) {\n      referencedPartners.push",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/agent-teams/communication.ts",
+        "start": 465,
+        "end": 470,
+        "startLoc": {
+          "line": 465,
+          "column": 5,
+          "position": 3061
+        },
+        "endLoc": {
+          "line": 470,
+          "column": 5,
+          "position": 3158
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/agent-teams/communication.ts",
+        "start": 354,
+        "end": 360,
+        "startLoc": {
+          "line": 354,
+          "column": 5,
+          "position": 2066
+        },
+        "endLoc": {
+          "line": 360,
+          "column": 4,
+          "position": 2164
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": "if (state.persistentUlMode) {\n      state.activeUlMode = true;\n      state.activeGoalLoopMode = false;\n      state.usedSubagentRun = false;\n      state.usedAgentTeamRun = false;\n      state.completedRecommendedSubagentPhase = false;\n      state.completedRecommendedTeamPhase = false;\n      state.completedRecommendedReviewerPhase = false;\n      refreshStatus(ctx);\n    } else {\n      resetState();\n      refreshStatus(ctx);\n    }\n  }",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/ul-dual-mode.ts",
+        "start": 521,
+        "end": 534,
+        "startLoc": {
+          "line": 521,
+          "column": 5,
+          "position": 3881
+        },
+        "endLoc": {
+          "line": 534,
+          "column": 2,
+          "position": 3992
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/ul-dual-mode.ts",
+        "start": 499,
+        "end": 512,
+        "startLoc": {
+          "line": 499,
+          "column": 7,
+          "position": 3710
+        },
+        "endLoc": {
+          "line": 512,
+          "column": 7,
+          "position": 3821
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 9,
+      "fragment": ".usedByMembers) {\n      if (!membersByTeam.has(m.teamId)) {\n        membersByTeam.set(m.teamId, []);\n      }\n      membersByTeam.get(m.teamId)!.push(m.memberId);\n    }\n    \n    for (const [teamId, members] of membersByTeam) {\n      lines.push(`    ",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/skill-inspector.ts",
+        "start": 724,
+        "end": 732,
+        "startLoc": {
+          "line": 724,
+          "column": 6,
+          "position": 6925
+        },
+        "endLoc": {
+          "line": 732,
+          "column": 6,
+          "position": 7015
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/skill-inspector.ts",
+        "start": 492,
+        "end": 499,
+        "startLoc": {
+          "line": 492,
+          "column": 11,
+          "position": 4500
+        },
+        "endLoc": {
+          "line": 499,
+          "column": 8,
+          "position": 4588
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 17,
+      "fragment": ");\n}\n\nfunction parseNumberEnv(name: string, fallback: number): number {\n  const raw = process.env[name];\n  if (!raw) return fallback;\n  const parsed = Number(raw);\n  return Number.isFinite(parsed) ? parsed : fallback;\n}\n\nfunction parseBooleanEnv(name: string, fallback: boolean): boolean {\n  const raw = process.env[name];\n  if (!raw) return fallback;\n  return raw === \"1\" || raw.toLowerCase() === \"true\";\n}\n\nfunction keyFor",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/rpm-throttle.ts",
+        "start": 44,
+        "end": 60,
+        "startLoc": {
+          "line": 44,
+          "column": 2,
+          "position": 377
+        },
+        "endLoc": {
+          "line": 60,
+          "column": 7,
+          "position": 543
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 92,
+        "end": 108,
+        "startLoc": {
+          "line": 92,
+          "column": 2,
+          "position": 582
+        },
+        "endLoc": {
+          "line": 108,
+          "column": 20,
+          "position": 748
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 17,
+      "fragment": "}\n\nfunction isRateLimitMessage(text: string): boolean {\n  return /429|rate.?limit|too many requests|quota exceeded/i.test(text);\n}\n\nfunction extractRetryAfterMs(text: string): number | undefined {\n  const sec = text.match(/retry[-\\s]?after[^0-9]*(\\d+)(?:\\.\\d+)?\\s*(s|sec|secs|second|seconds)\\b/i);\n  if (sec) return Math.max(0, Number(sec[1]) * 1000);\n\n  const ms = text.match(/retry[-\\s]?after[^0-9]*(\\d+)\\s*(ms|msec|millisecond|milliseconds)\\b/i);\n  if (ms) return Math.max(0, Number(ms[1]));\n\n  return undefined;\n}\n\nfunction",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/rpm-throttle.ts",
+        "start": 158,
+        "end": 174,
+        "startLoc": {
+          "line": 158,
+          "column": 1,
+          "position": 1519
+        },
+        "endLoc": {
+          "line": 174,
+          "column": 9,
+          "position": 1685
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/shared/pi-print-executor.ts",
+        "start": 204,
+        "end": 218,
+        "startLoc": {
+          "line": 204,
+          "column": 1,
+          "position": 1774
+        },
+        "endLoc": {
+          "line": 218,
+          "column": 6,
+          "position": 1938
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 16,
+      "fragment": "const lines = state.customInput.split(\"\\n\");\n\t\t\t\t\tlet charCount = 0;\n\t\t\t\t\tlet currentLineIndex = 0;\n\t\t\t\t\tlet currentCol = 0;\n\t\t\t\t\t\n\t\t\t\t\t// 現在のカーソル位置の行と列を特定\n\t\t\t\t\tfor (let i = 0; i < lines.length; i++) {\n\t\t\t\t\t\tif (state.customCursor <= charCount + lines[i].length) {\n\t\t\t\t\t\t\tcurrentLineIndex = i;\n\t\t\t\t\t\t\tcurrentCol = state.customCursor - charCount;\n\t\t\t\t\t\t\tbreak;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tcharCount += lines[i].length + 1;\n\t\t\t\t\t}\n\t\t\t\t\t\n\t\t\t\t\t// 下の行に移動",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/question.ts",
+        "start": 359,
+        "end": 374,
+        "startLoc": {
+          "line": 359,
+          "column": 6,
+          "position": 3450
+        },
+        "endLoc": {
+          "line": 374,
+          "column": 10,
+          "position": 3605
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/question.ts",
+        "start": 334,
+        "end": 349,
+        "startLoc": {
+          "line": 334,
+          "column": 6,
+          "position": 3152
+        },
+        "endLoc": {
+          "line": 349,
+          "column": 10,
+          "position": 3307
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 11,
+      "fragment": "const storage = loadStorage();\n\t\t\tconst plan = findPlanById(storage, params.planId);\n\n\t\t\tif (!plan) {\n\t\t\t\treturn {\n\t\t\t\t\tcontent: [{ type: \"text\", text: `Plan not found: ${params.planId}` }],\n\t\t\t\t\tdetails: {}\n\t\t\t\t};\n\t\t\t}\n\n\t\t\tconst",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/plan.ts",
+        "start": 497,
+        "end": 507,
+        "startLoc": {
+          "line": 497,
+          "column": 4,
+          "position": 4019
+        },
+        "endLoc": {
+          "line": 507,
+          "column": 6,
+          "position": 4108
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/plan.ts",
+        "start": 463,
+        "end": 473,
+        "startLoc": {
+          "line": 463,
+          "column": 4,
+          "position": 3634
+        },
+        "endLoc": {
+          "line": 473,
+          "column": 7,
+          "position": 3723
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": "},\n\t\t\t});\n\n\t\t\tconst storage = loadStorage();\n\t\t\tconst plan = findPlanById(storage, params.planId);\n\n\t\t\tif (!plan) {\n\t\t\t\treturn {\n\t\t\t\t\tcontent: [{ type: \"text\", text: `Plan not found: ${params.planId}` }],\n\t\t\t\t\tdetails: {}\n\t\t\t\t};\n\t\t\t}\n\n\t\t\tconst validStatuses",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/plan.ts",
+        "start": 538,
+        "end": 551,
+        "startLoc": {
+          "line": 538,
+          "column": 2,
+          "position": 4468
+        },
+        "endLoc": {
+          "line": 551,
+          "column": 14,
+          "position": 4569
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/plan.ts",
+        "start": 494,
+        "end": 507,
+        "startLoc": {
+          "line": 494,
+          "column": 2,
+          "position": 4009
+        },
+        "endLoc": {
+          "line": 507,
+          "column": 5,
+          "position": 4110
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": "}),\n\t\t}),\n\t\tasync execute(toolCallId, params, signal, onUpdate, ctx) {\n\t\t\tconst storage = loadStorage();\n\t\t\tconst plan = findPlanById(storage, params.planId);\n\n\t\t\tif (!plan) {\n\t\t\t\treturn {\n\t\t\t\t\tcontent: [{ type: \"text\", text: `Plan not found: ${params.planId}` }],\n\t\t\t\t\tdetails: {}\n\t\t\t\t};\n\t\t\t}\n\n\t\t\tconst readySteps",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/plan.ts",
+        "start": 592,
+        "end": 605,
+        "startLoc": {
+          "line": 592,
+          "column": 2,
+          "position": 4959
+        },
+        "endLoc": {
+          "line": 605,
+          "column": 11,
+          "position": 5082
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/plan.ts",
+        "start": 460,
+        "end": 507,
+        "startLoc": {
+          "line": 460,
+          "column": 2,
+          "position": 3602
+        },
+        "endLoc": {
+          "line": 507,
+          "column": 5,
+          "position": 4110
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": ", status: params.status },\n\t\t\t});\n\n\t\t\tconst storage = loadStorage();\n\t\t\tconst plan = findPlanById(storage, params.planId);\n\n\t\t\tif (!plan) {\n\t\t\t\treturn {\n\t\t\t\t\tcontent: [{ type: \"text\", text: `Plan not found: ${params.planId}` }],\n\t\t\t\t\tdetails: {}\n\t\t\t\t};\n\t\t\t}\n\n\t\t\tconst validStatuses = [\"draft\"",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/plan.ts",
+        "start": 683,
+        "end": 696,
+        "startLoc": {
+          "line": 683,
+          "column": 7,
+          "position": 5872
+        },
+        "endLoc": {
+          "line": 696,
+          "column": 8,
+          "position": 5987
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/plan.ts",
+        "start": 538,
+        "end": 551,
+        "startLoc": {
+          "line": 538,
+          "column": 7,
+          "position": 4459
+        },
+        "endLoc": {
+          "line": 551,
+          "column": 10,
+          "position": 4574
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 12,
+      "fragment": "{\n  let initialized = false;\n\n  pi.on(\"session_start\", async () => {\n    if (initialized) return;\n    initialized = true;\n\n    const requireFn = createRequire(import.meta.url);\n    let result: \"patched\" | \"already\" | \"skip\" = \"skip\";\n\n    try {\n      result = await patchFile",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/pi-coding-agent-rate-limit-fix.ts",
+        "start": 96,
+        "end": 107,
+        "startLoc": {
+          "line": 96,
+          "column": 2,
+          "position": 571
+        },
+        "endLoc": {
+          "line": 107,
+          "column": 10,
+          "position": 671
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/rate-limit-retry-budget.ts",
+        "start": 86,
+        "end": 97,
+        "startLoc": {
+          "line": 86,
+          "column": 2,
+          "position": 559
+        },
+        "endLoc": {
+          "line": 97,
+          "column": 11,
+          "position": 659
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 15,
+      "fragment": ";\n\nasync function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<\"patched\" | \"already\" | \"skip\"> {\n  let resolvedPath: string;\n  try {\n    resolvedPath = requireFn.resolve(target.modulePath);\n  } catch {\n    return \"skip\";\n  }\n\n  const source = await readFile(resolvedPath, \"utf-8\");\n  let patched = source;\n  let changed = false;\n\n  for (const repair",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/pi-coding-agent-lock-fix.ts",
+        "start": 106,
+        "end": 120,
+        "startLoc": {
+          "line": 106,
+          "column": 2,
+          "position": 401
+        },
+        "endLoc": {
+          "line": 120,
+          "column": 7,
+          "position": 529
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/pi-coding-agent-rate-limit-fix.ts",
+        "start": 62,
+        "end": 76,
+        "startLoc": {
+          "line": 62,
+          "column": 2,
+          "position": 288
+        },
+        "endLoc": {
+          "line": 76,
+          "column": 12,
+          "position": 416
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 16,
+      "fragment": ";\n  }\n\n  await writeFile(resolvedPath, patched, \"utf-8\");\n  return \"patched\";\n}\n\nexport default function (pi: ExtensionAPI) {\n  let initialized = false;\n\n  pi.on(\"session_start\", async () => {\n    if (initialized) return;\n    initialized = true;\n\n    const requireFn = createRequire(import.meta.url);\n    let patchedCount",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/pi-coding-agent-lock-fix.ts",
+        "start": 142,
+        "end": 157,
+        "startLoc": {
+          "line": 142,
+          "column": 7,
+          "position": 728
+        },
+        "endLoc": {
+          "line": 157,
+          "column": 13,
+          "position": 840
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/pi-coding-agent-rate-limit-fix.ts",
+        "start": 89,
+        "end": 104,
+        "startLoc": {
+          "line": 89,
+          "column": 10,
+          "position": 528
+        },
+        "endLoc": {
+          "line": 104,
+          "column": 7,
+          "position": 640
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 14,
+      "fragment": ",\n  },\n];\n\nasync function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<\"patched\" | \"already\" | \"skip\"> {\n  let resolvedPath: string;\n  try {\n    resolvedPath = requireFn.resolve(target.modulePath);\n  } catch {\n    return \"skip\";\n  }\n\n  const source = await readFile(resolvedPath, \"utf-8\");\n  if",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/pi-ai-abort-fix.ts",
+        "start": 50,
+        "end": 63,
+        "startLoc": {
+          "line": 50,
+          "column": 135,
+          "position": 205
+        },
+        "endLoc": {
+          "line": 63,
+          "column": 3,
+          "position": 314
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/pi-coding-agent-lock-fix.ts",
+        "start": 104,
+        "end": 73,
+        "startLoc": {
+          "line": 104,
+          "column": 2,
+          "position": 394
+        },
+        "endLoc": {
+          "line": 73,
+          "column": 4,
+          "position": 390
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 32,
+      "fragment": ") {\n    return \"skip\";\n  }\n\n  await writeFile(resolvedPath, patched, \"utf-8\");\n  return \"patched\";\n}\n\nexport default function (pi: ExtensionAPI) {\n  let initialized = false;\n\n  pi.on(\"session_start\", async () => {\n    if (initialized) return;\n    initialized = true;\n\n    const requireFn = createRequire(import.meta.url);\n    let patchedCount = 0;\n    let alreadyCount = 0;\n    let skipCount = 0;\n\n    for (const target of PATCH_TARGETS) {\n      try {\n        const result = await patchFile(requireFn, target);\n        if (result === \"patched\") patchedCount++;\n        else if (result === \"already\") alreadyCount++;\n        else skipCount++;\n      } catch {\n        skipCount++;\n      }\n    }\n\n    pi",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/pi-ai-abort-fix.ts",
+        "start": 68,
+        "end": 99,
+        "startLoc": {
+          "line": 68,
+          "column": 7,
+          "position": 370
+        },
+        "endLoc": {
+          "line": 99,
+          "column": 3,
+          "position": 615
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/pi-coding-agent-lock-fix.ts",
+        "start": 141,
+        "end": 172,
+        "startLoc": {
+          "line": 141,
+          "column": 8,
+          "position": 720
+        },
+        "endLoc": {
+          "line": 172,
+          "column": 3,
+          "position": 965
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 18,
+      "fragment": "): string {\n\tconst maxLineNum = startLine + lines.length - 1;\n\tconst width = maxLineNum.toString().length;\n\n\treturn lines\n\t\t.map((line, index) => {\n\t\t\tconst lineNum = (startLine + index).toString().padStart(width, \" \");\n\t\t\treturn `${lineNum} | ${line}`;\n\t\t})\n\t\t.join(\"\\n\");\n}\n\n/**\n * @summary 拡張機能のエントリポイント\n * @param pi - pi拡張API\n */\nexport default function (pi: ExtensionAPI): void {\n\t// view_code ツールを登録",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/code-viewer.ts",
+        "start": 63,
+        "end": 80,
+        "startLoc": {
+          "line": 63,
+          "column": 2,
+          "position": 231
+        },
+        "endLoc": {
+          "line": 80,
+          "column": 20,
+          "position": 373
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/enhanced-read.ts",
+        "start": 79,
+        "end": 96,
+        "startLoc": {
+          "line": 79,
+          "column": 7,
+          "position": 270
+        },
+        "endLoc": {
+          "line": 96,
+          "column": 24,
+          "position": 412
+        }
+      }
+    },
+    {
+      "format": "typescript",
+      "lines": 7,
+      "fragment": "{\n\tconst maxLineNum = startLine + lines.length - 1;\n\tconst width = maxLineNum.toString().length;\n\n\treturn lines.map((line, index) => {\n\t\tconst lineNum = (startLine + index).toString().padStart(width, \" \");\n\t\tconst",
+      "tokens": 0,
+      "firstFile": {
+        "name": ".pi/extensions/code-panel.ts",
+        "start": 53,
+        "end": 59,
+        "startLoc": {
+          "line": 53,
+          "column": 2,
+          "position": 129
+        },
+        "endLoc": {
+          "line": 59,
+          "column": 6,
+          "position": 215
+        }
+      },
+      "secondFile": {
+        "name": ".pi/extensions/enhanced-read.ts",
+        "start": 79,
+        "end": 86,
+        "startLoc": {
+          "line": 79,
+          "column": 2,
+          "position": 275
+        },
+        "endLoc": {
+          "line": 86,
+          "column": 7,
+          "position": 363
+        }
+      }
+    }
+  ]
+}

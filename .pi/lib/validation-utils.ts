@@ -63,7 +63,7 @@ export function toFiniteNumber(value: unknown): number | undefined {
  */
 export function toFiniteNumberWithDefault(value: unknown, fallback = 0): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  return fallback;
+  return Number.isFinite(fallback) ? fallback : 0;
 }
 
 /**

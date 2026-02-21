@@ -688,17 +688,19 @@ export function hasErrorCode(error: unknown, code: PiErrorCode): boolean {
 }
 
 /**
- * リトライ可能か判定
- * @summary リトライ可否判定
+ * PiErrorベースでリトライ可能か判定
+ * @summary PiErrorリトライ可否判定
  * @param error エラー对象
  * @returns リトライ可能な場合true
  */
-export function isRetryableError(error: unknown): boolean {
+export function isPiErrorRetryable(error: unknown): boolean {
   if (isPiError(error)) {
     return error.retryable;
   }
   return false;
 }
+
+export const isRetryableError = isPiErrorRetryable;
 
 /**
  * Piエラー変換

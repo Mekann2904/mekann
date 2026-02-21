@@ -918,10 +918,73 @@ vim .pi/agent-teams/definitions/core-delivery-team.md
 
 ---
 
+## コミュニケーションV2（実験的機能）
+
+コミュニケーションV2は、メンバー間のコミュニケーション精度を向上させるための実験的な機能です。Feature flagで有効化できます。
+
+### Feature Flags
+
+| 環境変数 | デフォルト | 説明 |
+|---------|----------|------|
+| `PI_COMMUNICATION_LINKS_V2` | `true` | 決定論的リンクマップ |
+| `PI_COMMUNICATION_CONTEXT_V2` | `true` | 厳格JSON形式のコンテキスト |
+| `PI_COMMUNICATION_REFERENCES_V3` | `true` | 構造化参照検出 |
+| `PI_COMMUNICATION_TERMINATION_V2` | `true` | ゲート＋重み付け終了判定 |
+
+### 無効化方法（従来の動作に戻す場合）
+
+```bash
+# V2機能を無効化（従来の動作）
+export PI_COMMUNICATION_LINKS_V2=false
+export PI_COMMUNICATION_CONTEXT_V2=false
+export PI_COMMUNICATION_REFERENCES_V3=false
+export PI_COMMUNICATION_TERMINATION_V2=false
+```
+
+### V2の主な変更点
+
+#### 1. 決定論的リンクマップ
+
+- 同一入力で常に同じパートナー選択結果
+- ラウンドごとのローテーション対応
+- アンカーメンバーの優先選択
+
+#### 2. 構造化参照トークン
+
+メンバー出力で使用可能な参照トークン：
+
+```
+REF(commId)           # パートナー参照
+CLAIM(commId:0)       # クレーム参照（インデックス付き）
+@commId               # メンション
+[commId:0]            # ブラケット形式
+```
+
+#### 3. 出力フォーマット要求
+
+```
+CITED: REF(x), CLAIM(x:y), ...   # 参照したパートナー
+STANCE: agree|disagree|neutral|unknown   # 姿勢
+COUNTEREXAMPLE: <反例>            # 自分の結論への反例
+```
+
+#### 4. 終了判定の二軸品質
+
+| 指標 | 重み | 説明 |
+|------|------|------|
+| カバレッジ | 30% | 何人のパートナーを参照したか |
+| 具体性 | 20% | 構造化トークンの使用率 |
+| 根拠数 | 20% | 平均根拠数 |
+| 信頼度整合 | 15% | 高信頼度で低根拠のペナルティ |
+| 姿勢明確性 | 15% | 明示的な姿勢表明率 |
+
+---
+
 ## バージョン履歴
 
 | バージョン | 日付 | 変更内容 |
 |----------|------|---------|
+| v0.3.0 | 2026-02-21 | コミュニケーションV2モジュール追加（決定論的リンク、構造化参照、二軸品質、ゲート＋重み付け終了判定） |
 | v0.2.0 | 2026-02-12 | Markdown外部化によるチーム定義、design-discovery-teamとfile-organizer-teamの追加、investigation-teamの完全削除、日本語化の完了、定義済みチーム数を7→9に更新 |
 | v0.1.0 | 2026-02-11 | チーム定義の更新、investigation-teamの廃止、メンバー数の最適化 |
 | v0.0.1 | 2026-02-10 | 初期リリース |

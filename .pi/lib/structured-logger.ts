@@ -210,10 +210,20 @@ export function formatError(error: Error | unknown): StructuredLogEntry["error"]
       stack: error.stack,
     };
   }
-  return {
-    name: "UnknownError",
-    message: String(error),
-  };
+  if (error === null) {
+    return { name: "UnknownError", message: "null" };
+  }
+  if (error === undefined) {
+    return { name: "UnknownError", message: "undefined" };
+  }
+  try {
+    return {
+      name: "UnknownError",
+      message: String(error),
+    };
+  } catch {
+    return { name: "UnknownError", message: "[unstringifiable error]" };
+  }
 }
 
 /**

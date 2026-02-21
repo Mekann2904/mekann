@@ -357,7 +357,7 @@ export {
   type ToolCriticalityLevel,
   type ToolCallResult,
   type AgentRunEvaluation,
-  getToolCriticality,
+  getToolCriticalityLevel,
   isBashErrorTolerated,
   evaluateAgentRunOutcome,
   parseToolFailureCount,

@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { detectTier, getRpmLimit } from "../lib/provider-limits.js";
+import { sleep } from "../lib/sleep-utils.js";
 import { withFileLock } from "../lib/storage-lock.js";
 
 type BucketState = {
@@ -38,11 +39,6 @@ type SharedStateRecord = {
   updatedAt: string;
   states: Record<string, BucketState>;
 };
-
-function sleep(ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function parseNumberEnv(name: string, fallback: number): number {
   const raw = process.env[name];

@@ -165,6 +165,43 @@ const sharedRateLimitState: SharedRateLimitState = {
 // 操作中フラグ: 同一プロセス内での並列アクセスを防止
 let inMemoryRateLimitOperationInProgress = false;
 
+export function clearRateLimitState(): void {
+  sharedRateLimitState.entries.clear();
+  persistedStateLoaded = false;
+  if (writeDebounceTimer) {
+    clearTimeout(writeDebounceTimer);
+    writeDebounceTimer = null;
+  }
+}
+
+// 最適化: ファイルからの読み込みを一度だけ行う（遅延初期化）
+let persistedStateLoaded = false;
+
+// 最適化: 書き込みをdebounce（最後の書き込みから500ms後に実行）
+let writeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const WRITE_DEBOUNCE_MS = 500;
+
+function scheduleWritePersistedState(): void {
+  if (writeDebounceTimer) {
+    clearTimeout(writeDebounceTimer);
+  }
+  writeDebounceTimer = setTimeout(() => {
+    writeDebounceTimer = null;
+    writePersistedRateLimitState(sharedRateLimitState);
+  }, WRITE_DEBOUNCE_MS);
+  // プロセス終了時にブロックしないようにunref
+  writeDebounceTimer.unref();
+}
+
+// プロセス終了時に確実に書き込む
+process.on("beforeExit", () => {
+  if (writeDebounceTimer) {
+    clearTimeout(writeDebounceTimer);
+    writeDebounceTimer = null;
+    writePersistedRateLimitState(sharedRateLimitState);
+  }
+});
+
 type PersistedRateLimitState = {
   version: number;
   updatedAt: string;
@@ -362,7 +399,8 @@ function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
     const localState = getSharedRateLimitState();
     pruneRateLimitState(nowMs, localState);
     const result = mutator();
-    writePersistedRateLimitState(localState);
+    // 最適化: debounce書き込み
+    scheduleWritePersistedState();
     return result;
   };
 
@@ -374,19 +412,23 @@ function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
   inMemoryRateLimitOperationInProgress = true;
   try {
     ensureRuntimeDir();
-    return withFileLock(
-      RATE_LIMIT_STATE_FILE,
-      () => {
-        const state = getSharedRateLimitState();
-        const persisted = readPersistedRateLimitState(nowMs);
-        mergeEntriesInPlace(state.entries, persisted);
-        pruneRateLimitState(nowMs, state);
-        const result = mutator();
-        writePersistedRateLimitState(state);
-        return result;
-      },
-      RATE_LIMIT_STATE_LOCK_OPTIONS,
-    );
+    
+    // 最適化: ファイルからの読み込みは一度だけ
+    if (!persistedStateLoaded) {
+      const state = getSharedRateLimitState();
+      const persisted = readPersistedRateLimitState(nowMs);
+      mergeEntriesInPlace(state.entries, persisted);
+      pruneRateLimitState(nowMs, state);
+      persistedStateLoaded = true;
+    }
+    
+    // メモリ上の状態で操作
+    const state = getSharedRateLimitState();
+    pruneRateLimitState(nowMs, state);
+    const result = mutator();
+    // 最適化: debounce書き込み
+    scheduleWritePersistedState();
+    return result;
   } catch {
     return fallback();
   } finally {
@@ -624,13 +666,13 @@ export function extractRetryStatusCode(error: unknown): number | undefined {
 }
 
 /**
- * エラーが再試行可能か判定
- * @summary 再試行可否判定
+ * ネットワークエラーが再試行可能か判定
+ * @summary ネットワークエラー再試行可否判定
  * @param error - 発生したエラー
  * @param statusCode - ステータスコード
  * @returns 再試行可能かどうか
  */
-export function isRetryableError(error: unknown, statusCode?: number): boolean {
+export function isNetworkErrorRetryable(error: unknown, statusCode?: number): boolean {
   const code = statusCode ?? extractRetryStatusCode(error);
   if (code === 429) return true;
   if (code !== undefined && code >= 500 && code <= 599) return true;
@@ -643,6 +685,8 @@ export function isRetryableError(error: unknown, statusCode?: number): boolean {
         : "";
   return /econnreset|etimedout|ehostunreach|enetunreach|enotfound|socket hang up|network error/i.test(message);
 }
+
+export const isRetryableError = isNetworkErrorRetryable;
 
 function applyJitter(delayMs: number, jitter: RetryJitterMode): number {
   if (delayMs <= 0) return 0;
@@ -812,7 +856,7 @@ export async function retryWithBackoff<T>(
       }
       const retryable = options.shouldRetry
         ? options.shouldRetry(error, statusCode)
-        : isRetryableError(error, statusCode);
+        : isNetworkErrorRetryable(error, statusCode);
 
       if (!retryable || attempt >= config.maxRetries) {
         throw error;

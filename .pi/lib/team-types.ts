@@ -32,6 +32,7 @@
  * Related: extensions/agent-teams.ts, extensions/agent-teams/storage.ts
  */
 
+import type { BaseLiveSnapshot } from "./live-types-base.js";
 import type { LiveStreamView } from "./tui/live-monitor-base.js";
 import type { LiveStatus } from "./live-view-utils.js";
 
@@ -81,25 +82,17 @@ export interface TeamQueueStatus {
  * @summary ライブ状態表現
  * @returns {void}
  */
-export interface TeamLiveItem {
+export interface TeamLiveItem extends BaseLiveSnapshot {
   /** Unique key: teamId/memberId */
   key: string;
   /** Display label */
   label: string;
   /** Communication partners (member IDs) */
   partners: string[];
-  /** Current execution status */
-  status: LiveStatus;
   /** Current execution phase */
   phase: TeamLivePhase;
   /** Communication round number (if in communication phase) */
   phaseRound?: number;
-  /** Execution start timestamp */
-  startedAtMs?: number;
-  /** Execution finish timestamp */
-  finishedAtMs?: number;
-  /** Last output chunk timestamp */
-  lastChunkAtMs?: number;
   /** Last event timestamp */
   lastEventAtMs?: number;
   /** Last event description */
@@ -108,22 +101,6 @@ export interface TeamLiveItem {
   summary?: string;
   /** Error message if failed */
   error?: string;
-  /** Recent stdout lines */
-  stdoutTail: string;
-  /** Recent stderr lines */
-  stderrTail: string;
-  /** Total stdout bytes */
-  stdoutBytes: number;
-  /** Total stderr bytes */
-  stderrBytes: number;
-  /** Newline count in stdout */
-  stdoutNewlineCount: number;
-  /** Newline count in stderr */
-  stderrNewlineCount: number;
-  /** Whether stdout ends with newline */
-  stdoutEndsWithNewline: boolean;
-  /** Whether stderr ends with newline */
-  stderrEndsWithNewline: boolean;
   /** Event log entries */
   events: string[];
   /** Discussion content tail */

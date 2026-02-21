@@ -120,7 +120,7 @@ import {
 // Import shared plan mode utilities
 import {
   getRateLimitGateSnapshot,
-  isRetryableError,
+  isNetworkErrorRetryable,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
 } from "../lib/retry-with-backoff";

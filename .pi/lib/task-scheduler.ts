@@ -895,8 +895,9 @@ class TaskSchedulerImpl {
           // Increment skip count and wait
           entry.skipCount++;
 
-          // Wait for event or poll
-          const waitResult = await this.waitForEvent(100, task.signal);
+          // イベント駆動でタスク完了を待機
+          // タイムアウトを1000msに延長し、ポーリング頻度を下げる
+          const waitResult = await this.waitForEvent(1000, task.signal);
           if (waitResult === "aborted") {
             this.removeFromQueue(queueKey, entry);
             resolve({

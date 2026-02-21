@@ -9,6 +9,7 @@
 |-----------|---------------|------------------|
 | Extension development | `.pi/lib/` + `docs/03-development/` | `README.md` |
 | Agent orchestration | `.pi/extensions/subagents.ts` | `docs/02-user-guide/08-subagents.md` |
+| Intent clarification | `.pi/lib/intent-mediator.ts` | `.pi/extensions/mediator.ts` |
 | Skill usage | `.pi/skills/*/SKILL.md` | `docs/02-user-guide/11-utilities.md` |
 | Code search | `.pi/extensions/search/` | `docs/02-user-guide/01-extensions.md` |
 | Dynamic tools | `.pi/extensions/dynamic-tools.ts` | `docs/02-user-guide/01-extensions.md` |
@@ -47,6 +48,9 @@ mekann/
 │   ├── agent-teams/          <-- Team definitions and runs
 │   ├── subagents/            <-- Subagent definitions and runs
 │   ├── memory/               <-- Semantic memory storage
+│   │   ├── confirmed-facts.json <-- Mediator confirmed facts
+│   │   ├── conversation-summary.md <-- Mediator conversation logs
+│   │   └── patterns.json     <-- Extracted patterns
 │   ├── agent-loop/           <-- Agent loop runs
 │   └── plans/                <-- Plan history
 ├── docs/
@@ -75,6 +79,8 @@ mekann/
 | abdd_jsdoc | `extensions/abdd.ts` | JSDoc auto-generation with LLM |
 | abdd_review | `extensions/abdd.ts` | Intent vs implementation gap analysis |
 | loop_run | `extensions/loop.ts` | Autonomous task loop execution |
+| mediator_interpret | `extensions/mediator.ts` | Intent clarification (arXiv:2602.07338v1) |
+| /mediator | `extensions/mediator.ts` | Mediator command interface |
 | subagent_* | `extensions/subagents.ts` | Sub-agent creation/execution |
 | agent_team_* | `extensions/agent-teams.ts` | Team orchestration |
 | plan_* | `extensions/plan.ts` | Plan management |

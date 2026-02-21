@@ -38,6 +38,7 @@ import {
   type RunOutcomeCode,
   type RunOutcomeSignal,
 } from "../../lib/agent-types.js";
+import { isRetryableTeamMemberError as isRetryableTeamMemberErrorLib } from "../../lib/agent-errors.js";
 
 import type { TeamMemberResult, TeamRunRecord, TeamDefinition, TeamCommunicationAuditEntry } from "./storage";
 
@@ -48,45 +49,8 @@ export type { RunOutcomeCode, RunOutcomeSignal };
 // Failure Resolution
 // ============================================================================
 
-/**
- * リトライ可能か判定
- * @summary リトライ可否判定
- * @param error 判定対象のエラー
- * @param statusCode HTTPステータスコード
- * @returns リトライ可能な場合はtrue
- */
-export function isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean {
-  const message = toErrorMessage(error).toLowerCase();
-  if (/429|rate\s*limit|too many requests/i.test(message)) {
-    return true;
-  }
-  if (/timeout|timed?\s*out/i.test(message)) {
-    return true;
-  }
-  if (/503|service unavailable|overloaded/i.test(message)) {
-    return true;
-  }
-/**
-   * チーム失敗時のエラーから実行結果シグナルを生成する
-   *
-   * エラーの種類（キャンセル、タイムアウト、プレッシャーエラー等）を判定し、
-   * 適切な結果コードと再試行推奨フラグを含むシグナルを返す。
-   *
-   * @param error - 処理対象のエラーオブジェクト
-   * @returns 結果コードと再試行推奨フラグを含む実行結果シグナル
-   * @example
-   * // タイムアウトエラーの処理
-   * const outcome = resolveTeamFailureOutcome(new Error("timeout"));
-   * // { outcomeCode: "TIMEOUT", retryRecommended: true }
-   */
-  if (/502|bad gateway/i.test(message)) {
-    return true;
-  }
-  if (/connection|network|econnrefused|econnreset/i.test(message)) {
-    return true;
-  }
-  return message.includes("agent team member returned empty output");
-}
+// Re-export isRetryableTeamMemberError from lib for backward compatibility
+export { isRetryableTeamMemberErrorLib as isRetryableTeamMemberError };
 
 /**
  * 失敗時の結果生成
@@ -97,22 +61,6 @@ export function isRetryableTeamMemberError(error: unknown, statusCode?: number):
 export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
   if (isCancelledErrorMessage(error)) {
     return { outcomeCode: "CANCELLED", retryRecommended: false };
-/**
-   * チームメンバーの結果を集約し、全体の実行結果を判定する
-   *
-   * メンバーごとの実行結果を分析し、成功・失敗の判定と失敗したメンバーIDを返却する。
-   * 全メンバーが成功した場合はSUCCESS、それ以外は失敗として扱う。
-   *
-   * @param memberResults - チームメンバーの実行結果の配列
-   * @returns 実行結果シグナルと失敗したメンバーIDの配列を含むオブジェクト
-   * @example
-   * // 全メンバーが成功した場合
-   * const results = resolveTeamMemberAggregateOutcome([
-   *   { status: "success", memberId: "agent1" },
-   *   { status: "success", memberId: "agent2" }
-   * ]);
-   * // results: { outcomeCode: "SUCCESS", retryRecommended: false, failedMemberIds: [] }
-   */
   }
   if (isTimeoutErrorMessage(error)) {
     return { outcomeCode: "TIMEOUT", retryRecommended: true };
@@ -124,7 +72,7 @@ export function resolveTeamFailureOutcome(error: unknown): RunOutcomeSignal {
   }
 
   const statusCode = extractStatusCodeFromMessage(error);
-  if (isRetryableTeamMemberError(error, statusCode)) {
+  if (isRetryableTeamMemberErrorLib(error, statusCode)) {
     return { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
   }
 

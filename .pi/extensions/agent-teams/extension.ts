@@ -262,6 +262,16 @@ export {
   buildTeamResultText,
 } from "./result-aggregation";
 
+// Re-export formatters for backward compatibility
+export { formatTeamList, formatRecentRuns, debugCostEstimation } from "./team-formatters.js";
+// Import formatters for internal use
+import { formatTeamList, formatRecentRuns, debugCostEstimation } from "./team-formatters.js";
+
+// Re-export helpers for backward compatibility
+export { pickTeam, pickDefaultParallelTeams } from "./team-helpers.js";
+// Import helpers for internal use
+import { pickTeam, pickDefaultParallelTeams } from "./team-helpers.js";
+
 // Re-export types for external use
 export type {
   TeamEnabledState,
@@ -339,7 +349,7 @@ import {
 } from "../../lib/plan-mode-shared";
 import {
   getRateLimitGateSnapshot,
-  isRetryableError,
+  isNetworkErrorRetryable,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
 } from "../../lib/retry-with-backoff";
@@ -361,6 +371,13 @@ import {
   startReservationHeartbeat,
   refreshRuntimeStatus as sharedRefreshRuntimeStatus,
 } from "../shared/runtime-helpers";
+import {
+  getCommunicationConfigV2,
+  createCommunicationLinksMapV2,
+  resolveUniqueCommIds,
+  createCommIdMaps,
+  type CommIdEntry,
+} from "./communication";
 
 // Local aliases for backward compatibility
 const STABLE_AGENT_TEAM_RUNTIME = STABLE_RUNTIME_PROFILE;
@@ -428,47 +445,6 @@ function refreshRuntimeStatus(ctx: any): void {
   );
 }
 
-function debugCostEstimation(scope: string, fields: Record<string, unknown>): void {
-  if (process.env.PI_DEBUG_COST_ESTIMATION !== "1") return;
-  const parts = Object.entries(fields).map(([key, value]) => `${key}=${String(value)}`);
-  console.error(`[cost-estimation] scope=${scope} ${parts.join(" ")}`);
-}
-
-function formatTeamList(storage: TeamStorage): string {
-  if (storage.teams.length === 0) {
-    return "No teams found.";
-  }
-
-  const lines: string[] = ["Agent teams:"];
-  for (const team of storage.teams) {
-    const marker = team.id === storage.currentTeamId ? "*" : " ";
-    lines.push(`${marker} ${team.id} (${team.enabled}) - ${team.name}`);
-    lines.push(`  ${team.description}`);
-    for (const member of team.members) {
-      lines.push(
-        `   - ${member.id} (${member.enabled ? "enabled" : "disabled"}) ${member.role}: ${member.description}`,
-      );
-    }
-  }
-  return lines.join("\n");
-}
-
-function formatRecentRuns(storage: TeamStorage, limit = 10): string {
-  const runs = storage.runs.slice(-limit).reverse();
-  if (runs.length === 0) {
-    return "No team runs yet.";
-  }
-
-  const lines: string[] = ["Recent team runs:"];
-  for (const run of runs) {
-    const judge = run.finalJudge ? ` | judge=${run.finalJudge.verdict}:${Math.round(run.finalJudge.confidence * 100)}%` : "";
-    lines.push(
-      `- ${run.runId} | ${run.teamId} | ${run.strategy} | ${run.status} | ${run.summary}${judge} | ${run.startedAt}`,
-    );
-  }
-  return lines.join("\n");
-}
-
 /**
  * Run pi-print mode for team member execution.
  */
@@ -485,40 +461,6 @@ async function runPiPrintMode(input: {
     ...input,
     entityLabel: "agent team member",
   });
-}
-
-function pickTeam(storage: TeamStorage, requestedId?: string): TeamDefinition | undefined {
-  if (requestedId) {
-    return storage.teams.find((team) => team.id === requestedId);
-  }
-
-  if (storage.currentTeamId) {
-    const current = storage.teams.find((team) => team.id === storage.currentTeamId);
-    if (current && current.enabled === "enabled") return current;
-  }
-
-  return storage.teams.find((team) => team.enabled === "enabled");
-}
-
-function pickDefaultParallelTeams(storage: TeamStorage): TeamDefinition[] {
-  const enabledTeams = storage.teams.filter((team) => team.enabled === "enabled");
-  if (enabledTeams.length === 0) return [];
-
-  const mode = String(process.env.PI_AGENT_TEAM_PARALLEL_DEFAULT || "current")
-    .trim()
-    .toLowerCase();
-  if (mode === "all") {
-    return enabledTeams;
-  }
-
-  const currentEnabled = storage.currentTeamId
-    ? enabledTeams.find((team) => team.id === storage.currentTeamId)
-    : undefined;
-  if (currentEnabled) {
-    return [currentEnabled];
-  }
-
-  return enabledTeams.slice(0, 1);
 }
 
 // Note: runMember is now imported from ./agent-teams/member-execution
@@ -1539,7 +1481,22 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         DEFAULT_FAILED_MEMBER_RETRY_ROUNDS,
         STABLE_AGENT_TEAM_RUNTIME,
       );
-      const communicationLinks = createCommunicationLinksMap(activeMembers);
+
+      // Use V2 links if feature flag is enabled
+      const commConfig = getCommunicationConfigV2();
+      let communicationLinks: Map<string, string[]>;
+      let commIdEntries: CommIdEntry[] = [];
+      
+      if (commConfig.linksV2) {
+        commIdEntries = resolveUniqueCommIds(activeMembers, team.id);
+        communicationLinks = createCommunicationLinksMapV2(activeMembers, {
+          round: 0,
+          seed: team.id,
+          strategy: "ring",
+        });
+      } else {
+        communicationLinks = createCommunicationLinksMap(activeMembers);
+      }
 
       const snapshot = getRuntimeSnapshot();
       const configuredMemberParallelLimit = toConcurrencyLimit(

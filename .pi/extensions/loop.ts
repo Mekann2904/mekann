@@ -43,6 +43,12 @@ import { Text } from "@mariozechner/pi-tui";
 import { formatDuration } from "../lib/format-utils.js";
 import { toErrorMessage } from "../lib/error-utils.js";
 import { toBoundedInteger, toBoundedFloat } from "../lib/validation-utils.js";
+import {
+  truncateTextWithMarker,
+  toPreview,
+  normalizeOptionalText,
+  throwIfAborted,
+} from "../lib/text-utils.js";
 import { ThinkingLevel } from "../lib/agent-types.js";
 import { createRunId } from "../lib/agent-utils.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
@@ -163,6 +169,10 @@ interface LoopConfig {
   enableSemanticStagnation?: boolean;
   /** Semantic similarity threshold for repetition detection (0-1, default: 0.85) */
   semanticRepetitionThreshold?: number;
+  /** Enable Mediator layer for intent clarification (arXiv:2602.07338v1) */
+  enableMediator?: boolean;
+  /** Auto-proceed threshold for Mediator (0-1, default: 0.8) */
+  mediatorAutoProceedThreshold?: number;
 }
 
 // Note: LoopReference is imported from ./loop/reference-loader.ts
@@ -213,6 +223,15 @@ interface LoopRunSummary {
     detected: boolean;
     averageSimilarity: number;
     method: "embedding" | "exact" | "unavailable";
+  };
+  /** Mediator phase result (if mediator enabled) */
+  mediator?: {
+    status: string;
+    confidence: number;
+    interpretation: string;
+    gapCount: number;
+    processingTimeMs: number;
+    taskClarified: boolean;
   };
 }
 
@@ -282,6 +301,8 @@ const DEFAULT_CONFIG: LoopConfig = {
   verificationTimeoutMs: STABLE_LOOP_PROFILE ? 60_000 : 120_000,
   enableSemanticStagnation: false,  // Opt-in feature
   semanticRepetitionThreshold: 0.85,
+  enableMediator: false,  // Opt-in feature (training-free intent clarification)
+  mediatorAutoProceedThreshold: 0.8,
 };
 
 const LIMITS = {
@@ -403,6 +424,18 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
           maximum: LIMITS.maxSemanticRepetitionThreshold,
         }),
       ),
+      enableMediator: Type.Optional(
+        Type.Boolean({
+          description: "Enable Mediator layer for intent clarification before loop execution (arXiv:2602.07338v1). Training-free intent reconstruction.",
+        }),
+      ),
+      mediatorAutoProceedThreshold: Type.Optional(
+        Type.Number({
+          description: "Auto-proceed threshold for Mediator (0-1, default: 0.8). Lower values trigger more clarification.",
+          minimum: 0.5,
+          maximum: 1.0,
+        }),
+      ),
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
@@ -428,6 +461,8 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
         requireCitation: params.requireCitation,
         enableSemanticStagnation: params.enableSemanticStagnation,
         semanticRepetitionThreshold: params.semanticRepetitionThreshold,
+        enableMediator: params.enableMediator,
+        mediatorAutoProceedThreshold: params.mediatorAutoProceedThreshold,
       });
 
       if (!normalized.ok) {
@@ -661,7 +696,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
             referenceWarnings: loadedReferences.warnings,
           },
         });
-        ctx.ui.notify("Loop run completed", "success");
+        ctx.ui.notify("Loop run completed", "info");
       } catch (error) {
         const message = toErrorMessage(error);
         pi.sendMessage({
@@ -719,6 +754,69 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     commandPreview: buildLoopCommandPreview(input.model),
   });
 
+  // Mediator phase: Clarify intent before starting iterations (arXiv:2602.07338v1)
+  let clarifiedTask = input.task;
+  let mediatorResult: {
+    status: string;
+    confidence: number;
+    interpretation: string;
+    gapCount: number;
+    processingTimeMs: number;
+  } | undefined;
+
+  if (input.config.enableMediator) {
+    const mediatorStartTime = Date.now();
+    try {
+      const { runMediatorPhase } = await import("../lib/mediator-integration.js");
+      const { createLlmCallFunction } = await import("../lib/mediator-integration.js");
+      
+      // Create LLM call function from loop's model
+      const llmCall = createLlmCallFunction(async (prompt: string, timeoutMs: number) => {
+        return callModelViaPi(input.model, prompt, timeoutMs, input.signal);
+      });
+
+      const result = await runMediatorPhase(
+        input.task,
+        {
+          enableMediator: true,
+          autoProceedThreshold: input.config.mediatorAutoProceedThreshold ?? 0.8,
+          maxClarificationRounds: 1,  // Single round for loop integration
+          historyDir: join(input.cwd, ".pi", "memory"),
+          debugMode: false,
+        },
+        llmCall,
+        undefined  // No question tool in loop context
+      );
+
+      if (result.success) {
+        clarifiedTask = result.clarifiedTask;
+        mediatorResult = {
+          status: result.mediatorOutput?.status ?? "unknown",
+          confidence: result.mediatorOutput?.confidence ?? 0,
+          interpretation: result.mediatorOutput?.interpretation ?? "",
+          gapCount: result.mediatorOutput?.gaps.length ?? 0,
+          processingTimeMs: result.processingTimeMs,
+        };
+
+        appendJsonl(logFile, {
+          type: "mediator_phase",
+          runId,
+          originalTask: input.task,
+          clarifiedTask,
+          mediatorResult,
+        });
+      }
+    } catch (error) {
+      // Mediator failure should not block the loop
+      const message = toErrorMessage(error);
+      appendJsonl(logFile, {
+        type: "mediator_error",
+        runId,
+        error: message,
+      });
+    }
+  }
+
   let previousOutput = "";
   let repeatedCount = 0;
   let consecutiveFailures = 0;
@@ -732,7 +830,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
   let intentClassification: IntentClassificationResult | undefined;
   if (input.config.enableSemanticStagnation) {
     intentClassification = classifyIntent({
-      task: input.task,
+      task: clarifiedTask,  // Use clarified task
       goal: input.goal,
       referenceCount: input.references.length,
     });
@@ -749,19 +847,19 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     throwIfAborted(input.signal);
 
     // Show what this iteration is trying to do so users can follow progress.
-    const focusPreview = buildIterationFocus(input.task, previousOutput, validationFeedback);
+    const focusPreview = buildIterationFocus(clarifiedTask, previousOutput, validationFeedback);
 
     input.onProgress?.({
       type: "iteration_start",
       iteration,
       maxIterations: input.config.maxIterations,
-      taskPreview: toPreview(input.task, 120),
+      taskPreview: toPreview(clarifiedTask, 120),
       focusPreview: toPreview(focusPreview, 140),
     });
 
     // Each iteration gets the previous output and validation feedback.
     const prompt = buildIterationPrompt({
-      task: input.task,
+      task: clarifiedTask,  // Use clarified task
       goal: input.goal,
       verificationCommand: input.verificationCommand,
       iteration,
@@ -1027,6 +1125,11 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       averageSimilarity,
       method: semanticStagnationStats.method,
     } : undefined,
+    // Mediator result (if enabled)
+    mediator: mediatorResult ? {
+      ...mediatorResult,
+      taskClarified: clarifiedTask !== input.task,
+    } : undefined,
   };
 
   const summaryPayload = {
@@ -1134,6 +1237,23 @@ function normalizeLoopConfig(
     ? semanticRepetitionThreshold.value
     : DEFAULT_CONFIG.semanticRepetitionThreshold ?? 0.85;
 
+  // Mediator settings
+  const enableMediator =
+    overrides.enableMediator === undefined
+      ? DEFAULT_CONFIG.enableMediator
+      : Boolean(overrides.enableMediator);
+
+  const mediatorAutoProceedThreshold = toBoundedFloat(
+    overrides.mediatorAutoProceedThreshold,
+    DEFAULT_CONFIG.mediatorAutoProceedThreshold ?? 0.8,
+    0.5,
+    1.0,
+    "mediatorAutoProceedThreshold",
+  );
+  const mediatorThresholdValue = mediatorAutoProceedThreshold.ok
+    ? mediatorAutoProceedThreshold.value
+    : DEFAULT_CONFIG.mediatorAutoProceedThreshold ?? 0.8;
+
   return {
     ok: true,
     config: {
@@ -1143,6 +1263,8 @@ function normalizeLoopConfig(
       verificationTimeoutMs: verificationTimeoutMs.value,
       enableSemanticStagnation,
       semanticRepetitionThreshold: thresholdValue,
+      enableMediator,
+      mediatorAutoProceedThreshold: mediatorThresholdValue,
     },
   };
 }
@@ -1528,6 +1650,14 @@ function formatLoopResultText(summary: LoopRunSummary, finalOutput: string, warn
     deterministicLines.push(`Verification command: ${summary.verificationCommand}`);
     deterministicLines.push(`Verification passed: ${summary.lastVerificationPassed ? "yes" : "no"}`);
   }
+  // Mediator info
+  const mediatorLines: string[] = [];
+  if (summary.mediator) {
+    mediatorLines.push(`Mediator: ${summary.mediator.status} (confidence: ${summary.mediator.confidence.toFixed(2)})`);
+    if (summary.mediator.taskClarified) {
+      mediatorLines.push(`Task clarified: yes`);
+    }
+  }
 
   return [
     headline,
@@ -1538,6 +1668,7 @@ function formatLoopResultText(summary: LoopRunSummary, finalOutput: string, warn
     `Completed: ${summary.completed ? "yes" : "no"} (${summary.stopReason})`,
     `References: ${summary.referenceCount}`,
     ...deterministicLines,
+    ...mediatorLines,
     `Log: ${summary.logFile}`,
     `Summary: ${summary.summaryFile}`,
     "",
@@ -1628,24 +1759,5 @@ function htmlToText(value: string): string {
   return withoutTags.replace(/\s+/g, " ").trim();
 }
 
-function truncateText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n...[truncated]`;
-}
-
-function toPreview(value: string, maxChars: number): string {
-  if (!value) return "";
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}...`;
-}
-
-function normalizeOptionalText(value: unknown): string | undefined {
-  const text = typeof value === "string" ? value.trim() : "";
-  return text ? text : undefined;
-}
-
-function throwIfAborted(signal: AbortSignal | undefined) {
-  if (signal?.aborted) {
-    throw new Error("loop aborted");
-  }
-}
+// Re-export truncateTextWithMarker as truncateText for backward compatibility within this module
+const truncateText = truncateTextWithMarker;

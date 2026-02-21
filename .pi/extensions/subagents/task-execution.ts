@@ -60,7 +60,7 @@ import {
 } from "../../lib/plan-mode-shared";
 import { getSubagentExecutionRules } from "../../lib/execution-rules";
 import {
-  isRetryableError,
+  isNetworkErrorRetryable,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
 } from "../../lib/retry-with-backoff";
@@ -181,7 +181,7 @@ export function normalizeSubagentOutput(output: string): SubagentExecutionResult
  * @returns リトライ可能な場合true
  */
 export function isRetryableSubagentError(error: unknown, statusCode?: number): boolean {
-  if (isRetryableError(error, statusCode)) {
+  if (isNetworkErrorRetryable(error, statusCode)) {
     return true;
   }
 

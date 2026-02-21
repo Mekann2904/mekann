@@ -41,7 +41,7 @@ import type { Model } from '@mariozechner/pi-ai';
 import { runWithConcurrencyLimit } from '../.pi/lib/concurrency';
 import { resolveUnifiedLimits, isSnapshotProviderInitialized } from '../.pi/lib/unified-limit-resolver';
 import { getSchedulerAwareLimit, notifyScheduler429, notifySchedulerSuccess } from '../.pi/lib/adaptive-rate-controller';
-import { retryWithBackoff, isRetryableError } from '../.pi/lib/retry-with-backoff';
+import { retryWithBackoff, isNetworkErrorRetryable } from '../.pi/lib/retry-with-backoff';
 import { buildRateLimitKey } from '../.pi/lib/runtime-utils';
 import { getConcurrencyLimit } from '../.pi/lib/provider-limits';
 import {
@@ -360,7 +360,7 @@ async function main() {
               () => generateJsDocBatch(model, apiKey, batchElements, options),
               {
                 rateLimitKey,
-                shouldRetry: isRetryableError,
+                shouldRetry: isNetworkErrorRetryable,
                 onRetry: ({ statusCode, error }) => {
                   if (statusCode === 429) {
                     notifyScheduler429(
@@ -551,7 +551,7 @@ async function generateJsDocWithQualityGate(
         () => generateJsDocIndividual(model, apiKey, element, options),
         {
           rateLimitKey,
-          shouldRetry: isRetryableError,
+          shouldRetry: isNetworkErrorRetryable,
           onRetry: ({ statusCode, error }) => {
             if (statusCode === 429) {
               notifyScheduler429(

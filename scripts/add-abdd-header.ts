@@ -15,7 +15,7 @@ import { streamSimple, getModel, type Context } from '@mariozechner/pi-ai';
 import type { Model } from '@mariozechner/pi-ai';
 
 import { runWithConcurrencyLimit } from '../.pi/lib/concurrency';
-import { retryWithBackoff, isRetryableError } from '../.pi/lib/retry-with-backoff';
+import { retryWithBackoff, isNetworkErrorRetryable } from '../.pi/lib/retry-with-backoff';
 import { buildRateLimitKey } from '../.pi/lib/runtime-utils';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -170,7 +170,7 @@ async function main() {
 
           const header = await retryWithBackoff(
             () => generateHeader(model, apiKey, file, options),
-            { rateLimitKey, shouldRetry: isRetryableError, maxRetries: 3 }
+            { rateLimitKey, shouldRetry: isNetworkErrorRetryable, maxRetries: 3 }
           );
 
           if (header && !options.noCache) {

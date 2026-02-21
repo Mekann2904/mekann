@@ -76,6 +76,8 @@ interface SessionMessage {
   provider?: string;
   model?: string;
   usage?: SessionUsage;
+  toolName?: string;
+  timestamp?: string | number;
 }
 
 interface SessionEntry {

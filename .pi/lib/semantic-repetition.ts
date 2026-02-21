@@ -111,6 +111,48 @@ export const DEFAULT_REPETITION_THRESHOLD = 0.85;
 export const DEFAULT_MAX_TEXT_LENGTH = 2000;
 
 // ============================================================================
+// Embedding Cache (最適化: 埋め込み結果をキャッシュしてAPI呼び出しを削減)
+// ============================================================================
+
+const EMBEDDING_CACHE_MAX_SIZE = 100;
+const embeddingCache = new Map<string, number[]>();
+const embeddingCacheOrder: string[] = [];
+
+function getCachedEmbedding(text: string): number[] | null {
+  const cached = embeddingCache.get(text);
+  if (cached) {
+    // LRU: アクセスされたエントリを末尾に移動
+    const idx = embeddingCacheOrder.indexOf(text);
+    if (idx >= 0) {
+      embeddingCacheOrder.splice(idx, 1);
+      embeddingCacheOrder.push(text);
+    }
+  }
+  return cached ?? null;
+}
+
+function setCachedEmbedding(text: string, embedding: number[]): void {
+  // 既存の場合は削除してから追加（LRU更新）
+  if (embeddingCache.has(text)) {
+    const idx = embeddingCacheOrder.indexOf(text);
+    if (idx >= 0) {
+      embeddingCacheOrder.splice(idx, 1);
+    }
+  }
+  
+  embeddingCache.set(text, embedding);
+  embeddingCacheOrder.push(text);
+  
+  // 最大エントリ数を超えた場合、最も古いエントリを削除
+  while (embeddingCacheOrder.length > EMBEDDING_CACHE_MAX_SIZE) {
+    const oldestKey = embeddingCacheOrder.shift();
+    if (oldestKey) {
+      embeddingCache.delete(oldestKey);
+    }
+  }
+}
+
+// ============================================================================
 // Core Functions
 // ============================================================================
 
@@ -175,10 +217,31 @@ export async function detectSemanticRepetition(
     };
   }
 
-  const [currentEmb, previousEmb] = await Promise.all([
-    generateEmbedding(normalizedCurrent),
-    generateEmbedding(normalizedPrevious),
-  ]);
+  // 最適化: キャッシュを確認してAPI呼び出しを削減
+  let currentEmb = getCachedEmbedding(normalizedCurrent);
+  let previousEmb = getCachedEmbedding(normalizedPrevious);
+  
+  // キャッシュにない埋め込みのみ生成
+  const embeddingsToGenerate: { key: string; index: number }[] = [];
+  if (!currentEmb) embeddingsToGenerate.push({ key: normalizedCurrent, index: 0 });
+  if (!previousEmb) embeddingsToGenerate.push({ key: normalizedPrevious, index: 1 });
+  
+  if (embeddingsToGenerate.length > 0) {
+    const newEmbeddings = await Promise.all(
+      embeddingsToGenerate.map(async ({ key }) => ({
+        key,
+        embedding: await generateEmbedding(key),
+      }))
+    );
+    
+    for (const { key, embedding } of newEmbeddings) {
+      if (embedding) {
+        setCachedEmbedding(key, embedding);
+        if (key === normalizedCurrent) currentEmb = embedding;
+        if (key === normalizedPrevious) previousEmb = embedding;
+      }
+    }
+  }
 
   if (!currentEmb || !previousEmb) {
     // エンベディング生成に失敗した場合は処理をスキップ

@@ -171,12 +171,88 @@ const CHECKPOINT_FILE_EXTENSION = ".checkpoint.json";
 // State
 // ============================================================================
 
+/** インメモリLRUキャッシュの最大エントリ数 */
+const CACHE_MAX_ENTRIES = 100;
+
 let managerState: {
   config: CheckpointManagerConfig;
   checkpointDir: string;
   cleanupTimer?: ReturnType<typeof setInterval>;
   initialized: boolean;
+  /** インメモリキャッシュ: taskId -> Checkpoint */
+  cache: Map<string, Checkpoint>;
+  /** キャッシュのLRU順序管理用キー配列 */
+  cacheOrder: string[];
 } | null = null;
+
+/**
+ * キャッシュからチェックポイントを取得
+ */
+function getFromCache(taskId: string): Checkpoint | null {
+  if (!managerState) return null;
+  const cached = managerState.cache.get(taskId);
+  if (cached) {
+    // LRU: アクセスされたエントリを末尾に移動
+    const idx = managerState.cacheOrder.indexOf(taskId);
+    if (idx >= 0) {
+      managerState.cacheOrder.splice(idx, 1);
+      managerState.cacheOrder.push(taskId);
+    }
+  }
+  return cached ?? null;
+}
+
+/**
+ * キャッシュからチェックポイントを削除
+ */
+function deleteFromCache(taskId: string): void {
+  if (!managerState) return;
+  if (managerState.cache.has(taskId)) {
+    managerState.cache.delete(taskId);
+    const idx = managerState.cacheOrder.indexOf(taskId);
+    if (idx >= 0) {
+      managerState.cacheOrder.splice(idx, 1);
+    }
+  }
+}
+
+/**
+ * キャッシュにチェックポイントを保存
+ */
+function setToCache(taskId: string, checkpoint: Checkpoint): void {
+  if (!managerState) return;
+  
+  // 既存の場合は削除してから追加（LRU更新）
+  if (managerState.cache.has(taskId)) {
+    const idx = managerState.cacheOrder.indexOf(taskId);
+    if (idx >= 0) {
+      managerState.cacheOrder.splice(idx, 1);
+    }
+  }
+  
+  managerState.cache.set(taskId, checkpoint);
+  managerState.cacheOrder.push(taskId);
+  
+  // 最大エントリ数を超えた場合、最も古いエントリを削除
+  while (managerState.cacheOrder.length > CACHE_MAX_ENTRIES) {
+    const oldestKey = managerState.cacheOrder.shift();
+    if (oldestKey) {
+      managerState.cache.delete(oldestKey);
+    }
+  }
+}
+
+/**
+ * キャッシュからチェックポイントを削除
+ */
+function removeFromCache(taskId: string): void {
+  if (!managerState) return;
+  managerState.cache.delete(taskId);
+  const idx = managerState.cacheOrder.indexOf(taskId);
+  if (idx >= 0) {
+    managerState.cacheOrder.splice(idx, 1);
+  }
+}
 
 // ============================================================================
 // Utilities
@@ -318,6 +394,8 @@ export function initCheckpointManager(
     checkpointDir,
     cleanupTimer,
     initialized: true,
+    cache: new Map(),
+    cacheOrder: [],
   };
 }
 
@@ -353,6 +431,7 @@ export function getCheckpointManager(): {
 /**
  * Save a checkpoint to disk.
  * Operation is idempotent - saving the same taskId overwrites the previous checkpoint.
+ * 保存成功時はキャッシュも更新
  */
 async function saveCheckpoint(
   checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }
@@ -363,7 +442,10 @@ async function saveCheckpoint(
 
   const dir = managerState!.checkpointDir;
   const nowMs = Date.now();
-  const existingCheckpoint = findLatestCheckpointByTaskId(dir, checkpoint.taskId);
+  
+  // キャッシュから既存のチェックポイントを確認
+  const cachedExisting = getFromCache(checkpoint.taskId);
+  const existingCheckpoint = cachedExisting ?? findLatestCheckpointByTaskId(dir, checkpoint.taskId);
 
   const fullCheckpoint: Checkpoint = {
     // Reuse existing checkpoint ID for idempotent upsert by taskId.
@@ -389,6 +471,9 @@ async function saveCheckpoint(
     // Write checkpoint file
     writeFileSync(filePath, JSON.stringify(fullCheckpoint, null, 2), "utf-8");
 
+    // キャッシュを更新
+    setToCache(fullCheckpoint.taskId, fullCheckpoint);
+
     // Enforce max checkpoints limit
     await enforceMaxCheckpoints();
 
@@ -410,10 +495,17 @@ async function saveCheckpoint(
 /**
  * Load a checkpoint by task ID.
  * Returns the most recent checkpoint for the given task.
+ * キャッシュを優先的に使用し、キャッシュミス時のみファイルから読み込む
  */
 async function loadCheckpoint(taskId: string): Promise<Checkpoint | null> {
   if (!managerState?.initialized) {
     initCheckpointManager();
+  }
+
+  // キャッシュから確認（O(1)）
+  const cached = getFromCache(taskId);
+  if (cached) {
+    return cached;
   }
 
   const dir = managerState!.checkpointDir;
@@ -436,9 +528,11 @@ async function loadCheckpoint(taskId: string): Promise<Checkpoint | null> {
     return null;
   }
 
-  // Return the most recent checkpoint
+  // Return the most recent checkpoint and cache it
   candidates.sort((a, b) => b.createdAt - a.createdAt);
-  return candidates[0];
+  const result = candidates[0];
+  setToCache(taskId, result);
+  return result;
 }
 
 /**
@@ -465,11 +559,15 @@ async function loadCheckpointById(checkpointId: string): Promise<Checkpoint | nu
 /**
  * Delete a checkpoint by task ID.
  * Removes all checkpoints associated with the task.
+ * キャッシュからも削除
  */
 async function deleteCheckpoint(taskId: string): Promise<boolean> {
   if (!managerState?.initialized) {
     initCheckpointManager();
   }
+
+  // キャッシュから削除
+  removeFromCache(taskId);
 
   const dir = managerState!.checkpointDir;
 
@@ -593,9 +691,11 @@ async function enforceMaxCheckpoints(): Promise<void> {
   // Remove oldest checkpoints
   const toRemove = checkpoints.slice(maxCheckpoints);
 
-  for (const { file } of toRemove) {
+  for (const { checkpoint, file } of toRemove) {
     try {
       unlinkSync(join(dir, file));
+      // キャッシュからも削除
+      deleteFromCache(checkpoint.taskId);
     } catch {
       // Ignore deletion errors
     }
