@@ -60,7 +60,7 @@ export {
   StorageError,
   isPiError,
   hasErrorCode,
-  isRetryableError,
+  isPiErrorRetryable,
   toPiError,
   getErrorCode,
   isRetryableErrorCode,

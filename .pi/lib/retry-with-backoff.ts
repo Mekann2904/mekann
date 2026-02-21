@@ -657,13 +657,13 @@ export function extractRetryStatusCode(error: unknown): number | undefined {
 }
 
 /**
- * エラーが再試行可能か判定
- * @summary 再試行可否判定
+ * ネットワークエラーが再試行可能か判定
+ * @summary ネットワークエラー再試行可否判定
  * @param error - 発生したエラー
  * @param statusCode - ステータスコード
  * @returns 再試行可能かどうか
  */
-export function isRetryableError(error: unknown, statusCode?: number): boolean {
+export function isNetworkErrorRetryable(error: unknown, statusCode?: number): boolean {
   const code = statusCode ?? extractRetryStatusCode(error);
   if (code === 429) return true;
   if (code !== undefined && code >= 500 && code <= 599) return true;
@@ -845,7 +845,7 @@ export async function retryWithBackoff<T>(
       }
       const retryable = options.shouldRetry
         ? options.shouldRetry(error, statusCode)
-        : isRetryableError(error, statusCode);
+        : isNetworkErrorRetryable(error, statusCode);
 
       if (!retryable || attempt >= config.maxRetries) {
         throw error;

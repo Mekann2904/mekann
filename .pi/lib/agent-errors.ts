@@ -687,7 +687,7 @@ const INFORMATIONAL_TOOLS: ReadonlySet<string> = new Set([
  * @param toolName ツール名（例: "core:bash", "unknown:code_search"）
  * @returns 重要度レベル
  */
-export function getToolCriticality(toolName: string): ToolCriticalityLevel {
+export function getToolCriticalityLevel(toolName: string): ToolCriticalityLevel {
   // ツール名を正規化（プレフィックスを除去）
   const normalized = toolName.includes(":")
     ? toolName.split(":").pop() ?? toolName
@@ -791,7 +791,7 @@ export function evaluateAgentRunOutcome(
   totalToolCalls?: number,
 ): AgentRunEvaluation {
   const evaluated = results.map(r => {
-    const criticality = getToolCriticality(r.toolName);
+    const criticality = getToolCriticalityLevel(r.toolName);
     const isError = r.status === "error";
     const isTolerated = isError && r.toolName.includes("bash") && r.errorMessage
       ? isBashErrorTolerated(r.errorMessage || "")

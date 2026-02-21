@@ -62,6 +62,7 @@ import {
   getRateLimitGateSnapshot,
   type RetryWithBackoffOverrides,
 } from "../../lib/retry-with-backoff.js";
+import { sleep } from "../../lib/sleep-utils.js";
 import {
   STABLE_MAX_RETRIES,
   STABLE_INITIAL_DELAY_MS,
@@ -433,11 +434,6 @@ async function runPiPrintMode(input: {
 
 function isIdleTimeoutErrorMessage(message: string): boolean {
   return /idle timeout after \d+ms of no output/i.test(message);
-}
-
-function sleep(ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**

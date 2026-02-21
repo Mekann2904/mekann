@@ -39,6 +39,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { detectTier, getRpmLimit } from "../../lib/provider-limits.js";
+import { sleep } from "../../lib/sleep-utils.js";
 import { withFileLock } from "../../lib/storage-lock.js";
 
 const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
@@ -71,11 +72,6 @@ type PrintThrottleSharedStateRecord = {
   updatedAt: string;
   states: Record<string, PrintThrottleBucketState>;
 };
-
-function sleep(ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function sleepWithAbort(delayMs: number, signal?: AbortSignal): Promise<void> {
   if (delayMs <= 0) return;

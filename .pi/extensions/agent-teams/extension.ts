@@ -349,7 +349,7 @@ import {
 } from "../../lib/plan-mode-shared";
 import {
   getRateLimitGateSnapshot,
-  isRetryableError,
+  isNetworkErrorRetryable,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
 } from "../../lib/retry-with-backoff";

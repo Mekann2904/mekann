@@ -33,6 +33,7 @@
  */
 
 import type { LiveStreamView, LiveViewMode } from "./tui/live-monitor-base.js";
+import type { BaseLiveSnapshot } from "./live-types-base.js";
 import type { LiveStatus } from "./live-view-utils.js";
 
 // Use LiveStatus from live-view-utils.ts for the canonical definition
@@ -61,39 +62,15 @@ export type SubagentLiveStreamView = LiveStreamView;
  * @summary エージェント項目定義
  * @returns なし
  */
-export interface SubagentLiveItem {
+export interface SubagentLiveItem extends BaseLiveSnapshot {
   /** Subagent ID */
   id: string;
   /** Subagent name */
   name: string;
-  /** Current execution status */
-  status: LiveStatus;
-  /** Execution start timestamp */
-  startedAtMs?: number;
-  /** Execution finish timestamp */
-  finishedAtMs?: number;
-  /** Last output chunk timestamp */
-  lastChunkAtMs?: number;
   /** Execution summary */
   summary?: string;
   /** Error message if failed */
   error?: string;
-  /** Recent stdout lines */
-  stdoutTail: string;
-  /** Recent stderr lines */
-  stderrTail: string;
-  /** Total stdout bytes */
-  stdoutBytes: number;
-  /** Total stderr bytes */
-  stderrBytes: number;
-  /** Newline count in stdout */
-  stdoutNewlineCount: number;
-  /** Newline count in stderr */
-  stderrNewlineCount: number;
-  /** Whether stdout ends with newline */
-  stdoutEndsWithNewline: boolean;
-  /** Whether stderr ends with newline */
-  stderrEndsWithNewline: boolean;
 }
 
 // ============================================================================
