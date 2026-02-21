@@ -262,6 +262,11 @@ export {
   buildTeamResultText,
 } from "./result-aggregation";
 
+// Re-export formatters for backward compatibility
+export { formatTeamList, formatRecentRuns, debugCostEstimation } from "./team-formatters.js";
+// Import formatters for internal use
+import { formatTeamList, formatRecentRuns, debugCostEstimation } from "./team-formatters.js";
+
 // Re-export types for external use
 export type {
   TeamEnabledState,
@@ -426,47 +431,6 @@ function refreshRuntimeStatus(ctx: any): void {
     "Sub",
     snapshot.subagentActiveAgents,
   );
-}
-
-function debugCostEstimation(scope: string, fields: Record<string, unknown>): void {
-  if (process.env.PI_DEBUG_COST_ESTIMATION !== "1") return;
-  const parts = Object.entries(fields).map(([key, value]) => `${key}=${String(value)}`);
-  console.error(`[cost-estimation] scope=${scope} ${parts.join(" ")}`);
-}
-
-function formatTeamList(storage: TeamStorage): string {
-  if (storage.teams.length === 0) {
-    return "No teams found.";
-  }
-
-  const lines: string[] = ["Agent teams:"];
-  for (const team of storage.teams) {
-    const marker = team.id === storage.currentTeamId ? "*" : " ";
-    lines.push(`${marker} ${team.id} (${team.enabled}) - ${team.name}`);
-    lines.push(`  ${team.description}`);
-    for (const member of team.members) {
-      lines.push(
-        `   - ${member.id} (${member.enabled ? "enabled" : "disabled"}) ${member.role}: ${member.description}`,
-      );
-    }
-  }
-  return lines.join("\n");
-}
-
-function formatRecentRuns(storage: TeamStorage, limit = 10): string {
-  const runs = storage.runs.slice(-limit).reverse();
-  if (runs.length === 0) {
-    return "No team runs yet.";
-  }
-
-  const lines: string[] = ["Recent team runs:"];
-  for (const run of runs) {
-    const judge = run.finalJudge ? ` | judge=${run.finalJudge.verdict}:${Math.round(run.finalJudge.confidence * 100)}%` : "";
-    lines.push(
-      `- ${run.runId} | ${run.teamId} | ${run.strategy} | ${run.status} | ${run.summary}${judge} | ${run.startedAt}`,
-    );
-  }
-  return lines.join("\n");
 }
 
 /**
