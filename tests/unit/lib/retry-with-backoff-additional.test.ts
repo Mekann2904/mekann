@@ -13,8 +13,17 @@ import {
   getRateLimitGateSnapshot,
   extractRetryStatusCode,
   isRetryableError,
+  clearRateLimitState,
   type RetryWithBackoffOptions,
 } from "../../../.pi/lib/retry-with-backoff.js";
+
+beforeEach(() => {
+  clearRateLimitState();
+});
+
+afterEach(() => {
+  clearRateLimitState();
+});
 
 // ============================================================================
 // テストユーティリティ
@@ -168,16 +177,17 @@ describe("retryWithBackoff - レート制限機能", () => {
 
     it("should_apply_rate_limit_to_all_keys", async () => {
       // Arrange
-      const snapshotBefore = getRateLimitGateSnapshot("test-key");
+      const key = `test-key-${Date.now()}-${Math.random()}`;
+      const snapshotBefore = getRateLimitGateSnapshot(key);
       expect(snapshotBefore.waitMs).toBe(0);
 
       // Act - 429エラーを発生させるテストは実際の実行が必要
       // ここではスナップショットの基本的な動作を確認
 
-      const snapshotAfter = getRateLimitGateSnapshot("test-key");
+      const snapshotAfter = getRateLimitGateSnapshot(key);
 
       // Assert
-      expect(snapshotAfter.key).toBe("test-key");
+      expect(snapshotAfter.key).toBe(key);
       expect(snapshotAfter).toHaveProperty("waitMs");
       expect(snapshotAfter).toHaveProperty("hits");
       expect(snapshotAfter).toHaveProperty("untilMs");

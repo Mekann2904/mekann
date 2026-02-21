@@ -13,9 +13,18 @@ import {
   computeBackoffDelayMs,
   retryWithBackoff,
   getRateLimitGateSnapshot,
+  clearRateLimitState,
   type RetryWithBackoffConfig,
   type RetryJitterMode,
 } from "../../../.pi/lib/retry-with-backoff.js";
+
+beforeEach(() => {
+  clearRateLimitState();
+});
+
+afterEach(() => {
+  clearRateLimitState();
+});
 
 // ============================================================================
 // resolveRetryWithBackoffConfig

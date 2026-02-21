@@ -700,6 +700,8 @@ export function isPiErrorRetryable(error: unknown): boolean {
   return false;
 }
 
+export const isRetryableError = isPiErrorRetryable;
+
 /**
  * Piエラー変換
  * @summary Piエラーに変換

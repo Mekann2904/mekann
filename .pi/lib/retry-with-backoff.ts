@@ -165,6 +165,15 @@ const sharedRateLimitState: SharedRateLimitState = {
 // 操作中フラグ: 同一プロセス内での並列アクセスを防止
 let inMemoryRateLimitOperationInProgress = false;
 
+export function clearRateLimitState(): void {
+  sharedRateLimitState.entries.clear();
+  persistedStateLoaded = false;
+  if (writeDebounceTimer) {
+    clearTimeout(writeDebounceTimer);
+    writeDebounceTimer = null;
+  }
+}
+
 // 最適化: ファイルからの読み込みを一度だけ行う（遅延初期化）
 let persistedStateLoaded = false;
 
@@ -676,6 +685,8 @@ export function isNetworkErrorRetryable(error: unknown, statusCode?: number): bo
         : "";
   return /econnreset|etimedout|ehostunreach|enetunreach|enotfound|socket hang up|network error/i.test(message);
 }
+
+export const isRetryableError = isNetworkErrorRetryable;
 
 function applyJitter(delayMs: number, jitter: RetryJitterMode): number {
   if (delayMs <= 0) return 0;
