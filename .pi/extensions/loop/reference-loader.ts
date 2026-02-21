@@ -32,6 +32,11 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
 import { toErrorMessage } from "../../lib/error-utils.js";
+import {
+  truncateTextWithMarker as truncateText,
+  toPreview,
+  throwIfAborted,
+} from "../../lib/text-utils.js";
 import { validateUrlForSsrf } from "./ssrf-protection";
 
 // ============================================================================
@@ -278,19 +283,3 @@ function htmlToText(value: string): string {
   return withoutTags.replace(/\s+/g, " ").trim();
 }
 
-function truncateText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n...[truncated]`;
-}
-
-function toPreview(value: string, maxChars: number): string {
-  if (!value) return "";
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}...`;
-}
-
-function throwIfAborted(signal: AbortSignal | undefined) {
-  if (signal?.aborted) {
-    throw new Error("loop aborted");
-  }
-}

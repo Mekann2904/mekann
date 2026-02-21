@@ -33,6 +33,7 @@
  */
 
 import type { StructureData, ClassInfo, FunctionInfo, ImportInfo } from './extract-structure.js';
+import { truncateText } from '../../../lib/text-utils.js';
 
 // ============================================================================
 // Types
@@ -381,11 +382,6 @@ function getVisibilitySymbol(visibility: 'public' | 'protected' | 'private'): st
     case 'protected': return '#';
     case 'public': return '+';
   }
-}
-
-function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength - 3) + '...';
 }
 
 function resolveImportPath(fromPath: string, importSource: string): string {

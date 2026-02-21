@@ -45,6 +45,10 @@ import type {
 } from "../types";
 import type { SearchMetrics } from "./metrics.js";
 import { DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT } from "./constants.js";
+import { truncateText } from "../../../lib/text-utils.js";
+
+// Re-export truncateText for backward compatibility
+export { truncateText };
 
 // ============================================
 // Result Truncation
@@ -472,20 +476,7 @@ export function escapeText(text: string): string {
 }
 
 /**
- * テキストを省略記号付きで切り詰める
- * @summary テキストを切り詰める
- * @param text 対象のテキスト
- * @param maxLength 最大長
- * @returns 切り詰められたテキスト
- */
-export function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  if (maxLength <= 3) return text.slice(0, maxLength);
-  return text.slice(0, maxLength - 3) + "...";
-}
-
- /**
-  * 絶対パスから相対パスを計算する
+ * 絶対パスから相対パスを計算する
   * @param absolute 絶対パス
   * @param cwd カレントワーキングディレクトリ
   * @returns 相対パス、または絶対パス

@@ -43,6 +43,12 @@ import { Text } from "@mariozechner/pi-tui";
 import { formatDuration } from "../lib/format-utils.js";
 import { toErrorMessage } from "../lib/error-utils.js";
 import { toBoundedInteger, toBoundedFloat } from "../lib/validation-utils.js";
+import {
+  truncateTextWithMarker,
+  toPreview,
+  normalizeOptionalText,
+  throwIfAborted,
+} from "../lib/text-utils.js";
 import { ThinkingLevel } from "../lib/agent-types.js";
 import { createRunId } from "../lib/agent-utils.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
@@ -1628,24 +1634,5 @@ function htmlToText(value: string): string {
   return withoutTags.replace(/\s+/g, " ").trim();
 }
 
-function truncateText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n...[truncated]`;
-}
-
-function toPreview(value: string, maxChars: number): string {
-  if (!value) return "";
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}...`;
-}
-
-function normalizeOptionalText(value: unknown): string | undefined {
-  const text = typeof value === "string" ? value.trim() : "";
-  return text ? text : undefined;
-}
-
-function throwIfAborted(signal: AbortSignal | undefined) {
-  if (signal?.aborted) {
-    throw new Error("loop aborted");
-  }
-}
+// Re-export truncateTextWithMarker as truncateText for backward compatibility within this module
+const truncateText = truncateTextWithMarker;

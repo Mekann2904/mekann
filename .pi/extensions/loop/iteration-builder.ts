@@ -28,6 +28,11 @@
 // Related: .pi/extensions/loop.ts
 
 import { ThinkingLevel } from "../../lib/agent-types.js";
+import {
+  truncateTextWithMarker as truncateText,
+  toPreview,
+  normalizeOptionalText,
+} from "../../lib/text-utils.js";
 import type { LoopReference } from "./reference-loader";
 
 // ============================================================================
@@ -759,22 +764,6 @@ function validationIssuePriority(issue: string): number {
   if (/goal_status|goal/i.test(issue)) return 2;
   if (/citation|reference/i.test(issue)) return 3;
   return 4;
-}
-
-function normalizeOptionalText(value: unknown): string | undefined {
-  const text = typeof value === "string" ? value.trim() : "";
-  return text ? text : undefined;
-}
-
-function truncateText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n...[truncated]`;
-}
-
-function toPreview(value: string, maxChars: number): string {
-  if (!value) return "";
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}...`;
 }
 
 /**

@@ -34,6 +34,10 @@ import { spawn } from "node:child_process";
 
 import { formatDuration } from "../../lib/format-utils.js";
 import { toErrorMessage } from "../../lib/error-utils.js";
+import {
+  truncateTextWithMarker as truncateText,
+  toPreview,
+} from "../../lib/text-utils.js";
 
 // ============================================================================
 // Constants
@@ -526,11 +530,6 @@ function formatAllowlistPreview(prefixes: string[][]): string {
 // Utilities
 // ============================================================================
 
-function truncateText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n...[truncated]`;
-}
-
 function redactSensitiveText(value: string): string {
   if (!value) return value;
 
@@ -567,10 +566,4 @@ export function buildVerificationValidationFeedback(result: LoopVerificationResu
     `Verification: passed=false timedOut=${result.timedOut ? "yes" : "no"} exit=${code} duration=${duration}.`,
     `Verification reason: ${compactReason}`,
   ];
-}
-
-function toPreview(value: string, maxChars: number): string {
-  if (!value) return "";
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}...`;
 }

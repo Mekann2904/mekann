@@ -176,6 +176,13 @@ const DEFAULT_RETRYABLE_PATTERNS: string[] = [
   "try again",
   "overloaded",
   "capacity exceeded",
+  "bad gateway",
+  "connection",
+  "econnrefused",
+  "econnreset",
+  "network",
+  "timeout",
+  "timed out",
 ];
 
 /**
