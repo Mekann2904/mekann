@@ -1022,6 +1022,16 @@ export function createAgentTeamLiveMonitor(
         }
       };
 
+      // 初期レンダリングとポーリング開始を即座に行う
+      // UIセットアップ完了後、メンバー実行開始を待たずにポーリングを開始
+      // これにより経過時間の秒数更新や状態表示が遅延なく行われる
+      setTimeout(() => {
+        if (!closed) {
+          queueRender();
+          startPolling();
+        }
+      }, 0);
+
       return {
         render: (width: number) =>
           renderAgentTeamLiveView({

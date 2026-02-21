@@ -77,6 +77,12 @@ export type { SubagentLiveItem, SubagentLiveMonitorController, LiveStreamView, L
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;
 
+// ポーリング間隔（ストリーミングがない期間もUIを更新して「動いている」ことを示す）
+const LIVE_POLL_INTERVAL_MS = 500;
+
+// アクティビティアニメーション用のスピナー文字
+const SPINNER_FRAMES = ["|", "/", "-", "\\"];
+
 // ============================================================================
 // Tree View Utilities
 // ============================================================================
@@ -99,6 +105,7 @@ function renderSubagentTreeView(
     const item = items[i];
     const isSelected = i === cursor;
     const isLast = i === items.length - 1;
+    const isRunning = item.status === "running";
 
     const glyph = getLiveStatusGlyph(item.status);
     const glyphColor = getLiveStatusColor(item.status);
@@ -107,7 +114,22 @@ function renderSubagentTreeView(
     const hasOutput = item.stdoutBytes > 0;
     const hasError = item.stderrBytes > 0;
     const isRecent = item.lastChunkAtMs ? (Date.now() - item.lastChunkAtMs) < 2000 : false;
-    const activity = getActivityIndicator(hasOutput, hasError, isRecent);
+    const activityBase = getActivityIndicator(hasOutput, hasError, isRecent);
+
+    // アクティビティスピナーを取得
+    const now = Date.now();
+    const frameIndex = Math.floor(now / 200) % SPINNER_FRAMES.length;
+    const spinner = isRunning ? SPINNER_FRAMES[frameIndex] : "";
+
+    // 実行中で出力がない場合は「waiting...」を表示
+    let activity: string;
+    if (isRunning && !hasOutput && !activityBase) {
+      activity = spinner ? `${spinner} waiting...` : "waiting...";
+    } else if (spinner && activityBase) {
+      activity = `${spinner} ${activityBase}`;
+    } else {
+      activity = activityBase || (spinner ? spinner : "");
+    }
 
     // ツリープレフィックス
     const treeChar = isLast ? "└── " : "├── ";
@@ -457,12 +479,47 @@ export function createSubagentLiveMonitor(
   let doneUi: (() => void) | undefined;
   let closed = false;
   let renderTimer: NodeJS.Timeout | undefined;
+  let pollTimer: NodeJS.Timeout | undefined;
 
   const clearRenderTimer = () => {
     if (renderTimer) {
       clearTimeout(renderTimer);
       renderTimer = undefined;
     }
+  };
+
+  const clearPollTimer = () => {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = undefined;
+    }
+  };
+
+  /**
+   * 実行中のアイテムがあるかチェック
+   */
+  const hasRunningItems = (): boolean => {
+    return items.some((item) => item.status === "running");
+  };
+
+  /**
+   * 定期ポーリングを開始（ストリーミングがない期間もUIを更新）
+   */
+  const startPolling = () => {
+    if (pollTimer || closed) return;
+    pollTimer = setInterval(() => {
+      if (closed) {
+        clearPollTimer();
+        return;
+      }
+      // 実行中のアイテムがある場合のみ更新
+      if (hasRunningItems()) {
+        queueRender();
+      } else {
+        // すべて完了したらポーリング停止
+        clearPollTimer();
+      }
+    }, LIVE_POLL_INTERVAL_MS);
   };
 
   const queueRender = () => {
@@ -480,6 +537,7 @@ export function createSubagentLiveMonitor(
     if (closed) return;
     closed = true;
     clearRenderTimer();
+    clearPollTimer();
     doneUi?.();
   };
 
@@ -491,6 +549,16 @@ export function createSubagentLiveMonitor(
           tui.requestRender();
         }
       };
+
+      // 初期レンダリングとポーリング開始を即座に行う
+      // UIセットアップ完了後、メンバー実行開始を待たずにポーリングを開始
+      // これにより経過時間の秒数更新や状態表示が遅延なく行われる
+      setTimeout(() => {
+        if (!closed) {
+          queueRender();
+          startPolling();
+        }
+      }, 0);
 
       return {
         render: (width: number) =>
@@ -596,6 +664,7 @@ export function createSubagentLiveMonitor(
     .finally(() => {
       closed = true;
       clearRenderTimer();
+      clearPollTimer();
     });
 
   return {
