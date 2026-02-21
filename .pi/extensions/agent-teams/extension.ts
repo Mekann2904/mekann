@@ -267,6 +267,11 @@ export { formatTeamList, formatRecentRuns, debugCostEstimation } from "./team-fo
 // Import formatters for internal use
 import { formatTeamList, formatRecentRuns, debugCostEstimation } from "./team-formatters.js";
 
+// Re-export helpers for backward compatibility
+export { pickTeam, pickDefaultParallelTeams } from "./team-helpers.js";
+// Import helpers for internal use
+import { pickTeam, pickDefaultParallelTeams } from "./team-helpers.js";
+
 // Re-export types for external use
 export type {
   TeamEnabledState,
@@ -449,40 +454,6 @@ async function runPiPrintMode(input: {
     ...input,
     entityLabel: "agent team member",
   });
-}
-
-function pickTeam(storage: TeamStorage, requestedId?: string): TeamDefinition | undefined {
-  if (requestedId) {
-    return storage.teams.find((team) => team.id === requestedId);
-  }
-
-  if (storage.currentTeamId) {
-    const current = storage.teams.find((team) => team.id === storage.currentTeamId);
-    if (current && current.enabled === "enabled") return current;
-  }
-
-  return storage.teams.find((team) => team.enabled === "enabled");
-}
-
-function pickDefaultParallelTeams(storage: TeamStorage): TeamDefinition[] {
-  const enabledTeams = storage.teams.filter((team) => team.enabled === "enabled");
-  if (enabledTeams.length === 0) return [];
-
-  const mode = String(process.env.PI_AGENT_TEAM_PARALLEL_DEFAULT || "current")
-    .trim()
-    .toLowerCase();
-  if (mode === "all") {
-    return enabledTeams;
-  }
-
-  const currentEnabled = storage.currentTeamId
-    ? enabledTeams.find((team) => team.id === storage.currentTeamId)
-    : undefined;
-  if (currentEnabled) {
-    return [currentEnabled];
-  }
-
-  return enabledTeams.slice(0, 1);
 }
 
 // Note: runMember is now imported from ./agent-teams/member-execution
