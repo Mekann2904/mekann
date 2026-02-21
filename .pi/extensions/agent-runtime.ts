@@ -56,14 +56,39 @@ import {
   getParallelism as getDynamicParallelism,
 } from "../lib/dynamic-parallelism";
 import {
-  TaskPriority,
   PriorityTaskQueue,
   inferPriority,
   comparePriority,
   formatPriorityQueueStats,
-  type PriorityTaskMetadata,
   type PriorityQueueEntry,
 } from "../lib/priority-scheduler";
+import type {
+  TaskPriority,
+  PriorityTaskMetadata,
+  AgentRuntimeLimits,
+  RuntimeQueueClass,
+  RuntimeQueueEntry,
+  RuntimeCapacityReservationRecord,
+  AgentRuntimeState,
+  GlobalScopeWithRuntime,
+  RuntimeStateProvider,
+  AgentRuntimeSnapshot,
+  RuntimeStatusLineOptions,
+  RuntimeCapacityCheckInput,
+  RuntimeCapacityCheck,
+  RuntimeCapacityWaitInput,
+  RuntimeCapacityWaitResult,
+  RuntimeCapacityReservationLease,
+  RuntimeCapacityReserveInput,
+  RuntimeCapacityReserveResult,
+  RuntimeOrchestrationWaitInput,
+  RuntimeOrchestrationLease,
+  RuntimeOrchestrationWaitResult,
+  RuntimeDispatchCandidate,
+  RuntimeDispatchPermitInput,
+  RuntimeDispatchPermitLease,
+  RuntimeDispatchPermitResult,
+} from "../lib/runtime-types";
 import {
   getConcurrencyLimit,
   resolveLimits,
@@ -101,85 +126,35 @@ import {
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
 
-/**
- * エージェント実行制限値
- * @summary 制限値定義
- */
-export interface AgentRuntimeLimits {
-  maxTotalActiveLlm: number;
-  maxTotalActiveRequests: number;
-  maxParallelSubagentsPerRun: number;
-  maxParallelTeamsPerRun: number;
-  maxParallelTeammatesPerTeam: number;
-  maxConcurrentOrchestrations: number;
-  capacityWaitMs: number;
-  capacityPollMs: number;
-}
-
-type RuntimeQueueClass = "interactive" | "standard" | "batch";
-// RuntimeQueueEntry extends priority metadata with scheduling-specific fields.
-interface RuntimeQueueEntry extends PriorityTaskMetadata {
-  queueClass: RuntimeQueueClass;
-  tenantKey: string;
-  additionalRequests: number;
-  additionalLlm: number;
-  skipCount: number;
-}
-
-interface RuntimeCapacityReservationRecord {
-  id: string;
-  toolName: string;
-  additionalRequests: number;
-  additionalLlm: number;
-  createdAtMs: number;
-  heartbeatAtMs: number;
-  expiresAtMs: number;
-  consumedAtMs?: number;
-}
-
-interface AgentRuntimeState {
-  subagents: {
-    activeRunRequests: number;
-    activeAgents: number;
-  };
-  teams: {
-    activeTeamRuns: number;
-    activeTeammates: number;
-  };
-  queue: {
-    activeOrchestrations: number;
-    pending: RuntimeQueueEntry[];
-    lastDispatchedTenantKey?: string;
-    consecutiveDispatchesByTenant: number;
-    evictedEntries: number;
-    /** Priority queue statistics (updated on enqueue/dequeue) */
-    priorityStats?: {
-      critical: number;
-      high: number;
-      normal: number;
-      low: number;
-      background: number;
-    };
-  };
-  reservations: {
-    active: RuntimeCapacityReservationRecord[];
-  };
-  limits: AgentRuntimeLimits;
-  limitsVersion: string;
-}
-
-type GlobalScopeWithRuntime = typeof globalThis & {
-  __PI_SHARED_AGENT_RUNTIME_STATE__?: AgentRuntimeState;
-};
-
-/**
- * ランタイム状態を提供
- * @summary 状態提供
- */
-export interface RuntimeStateProvider {
-  getState(): AgentRuntimeState;
-  resetState(): void;
-}
+// Re-export types from runtime-types for backward compatibility
+export type {
+  TaskPriority,
+  PriorityTaskMetadata,
+  AgentRuntimeLimits,
+  RuntimeQueueClass,
+  RuntimeQueueEntry,
+  RuntimeCapacityReservationRecord,
+  RuntimePriorityStats,
+  AgentRuntimeState,
+  GlobalScopeWithRuntime,
+  RuntimeStateProvider,
+  AgentRuntimeSnapshot,
+  RuntimeStatusLineOptions,
+  RuntimeCapacityCheckInput,
+  RuntimeCapacityCheck,
+  RuntimeCapacityWaitInput,
+  RuntimeCapacityWaitResult,
+  RuntimeCapacityReservationLease,
+  RuntimeCapacityReserveInput,
+  RuntimeCapacityReserveResult,
+  RuntimeOrchestrationWaitInput,
+  RuntimeOrchestrationLease,
+  RuntimeOrchestrationWaitResult,
+  RuntimeDispatchCandidate,
+  RuntimeDispatchPermitInput,
+  RuntimeDispatchPermitLease,
+  RuntimeDispatchPermitResult,
+} from "../lib/runtime-types";
 
 /**
 /**
@@ -289,268 +264,6 @@ export function getRuntimeStateProvider(): RuntimeStateProvider {
  * @summary プロバイダを取得
  * @returns ランタイム状態プロバイダインスタンス
  */
-export interface AgentRuntimeSnapshot {
-  subagentActiveRequests: number;
-  subagentActiveAgents: number;
-  teamActiveRuns: number;
-  teamActiveAgents: number;
-  reservedRequests: number;
-  reservedLlm: number;
-  activeReservations: number;
-  activeOrchestrations: number;
-  queuedOrchestrations: number;
-  queuedTools: string[];
-  queueEvictions: number;
-  totalActiveRequests: number;
-  totalActiveLlm: number;
-  limits: AgentRuntimeLimits;
-  limitsVersion: string;
-  /** Priority queue statistics */
-  priorityStats?: {
-    critical: number;
-    high: number;
-    normal: number;
-    low: number;
-    background: number;
-  };
-}
-
-/**
- * @summary ランタイムステータス設定
- * @param title ステータスラインのタイトル
- * @param storedRuns 保存済み実行数
- * @param adaptivePenalty 適応的ペナルティ値
- * @param adaptivePenaltyMax ペナルティの最大値
- * @returns ランタイムステータスラインのオプションオブジェクト
- */
-export interface RuntimeStatusLineOptions {
-  title?: string;
-  storedRuns?: number;
-/**
-   * 容量予約の試行結果を表すインターフェース
-   *
-   * 予約待機時間、試行回数、タイムアウト/中止状態、および予約リース情報を含む。
-   *
-   * @property waitedMs - 予約確定までの待機時間（ミリ秒）
-   * @property attempts - 予約試行回数
-   * @property timedOut - タイムアウトしたかどうか
-   * @property aborted - 中止されたかどうか
-   * @property reservation - 確保された予約リース（成功時のみ）
-   */
-  adaptivePenalty?: number;
-  adaptivePenaltyMax?: number;
-}
-
-/**
- * @summary 容量チェック入力
- * @param additionalRequests 追加リクエスト数
- * @param additionalLlm 追加LLM呼び出し数
- * @returns 定義済みのプロパティを持つオブジェクト型
- */
-export interface RuntimeCapacityCheckInput {
-  additionalRequests: number;
-  additionalLlm: number;
-}
-
-/**
- * @summary 容量チェック結果
- * @param allowed 実行許可フラグ
- * @param reasons 拒否理由のリスト
- * @param projectedRequests 予測リクエスト数
- * @param projectedLlm 予測LLM呼び出し数
- * @param snapshot 容量チェック時のスナップショット
- * @returns 定義済みのプロパティを持つオブジェクト型
- */
-export interface RuntimeCapacityCheck {
-  allowed: boolean;
-  reasons: string[];
-  projectedRequests: number;
-  projectedLlm: number;
-  /** Current runtime snapshot */
-  snapshot: AgentRuntimeSnapshot;
-}
-
-/**
- * @summary 容量待機入力
- * @param maxWaitMs - 最大待機時間（ミリ秒）
- * @param pollIntervalMs - ポーリング間隔（ミリ秒）
- * @param signal - 中断シグナル
- */
-
-export interface RuntimeCapacityWaitInput extends RuntimeCapacityCheckInput {
-  maxWaitMs?: number;
-  pollIntervalMs?: number;
-  signal?: AbortSignal;
-}
-
-/**
- * @summary 容量待機の結果
- * @param waitedMs - 待機時間（ミリ秒）
- * @param attempts - 試行回数
- * @param timedOut - タイムアウトしたかどうか
- */
-export interface RuntimeCapacityWaitResult extends RuntimeCapacityCheck {
-  waitedMs: number;
-  attempts: number;
-  timedOut: boolean;
-}
-
-/**
- * キャパシティ予約リース
- * @summary 予約リース
- * @interface RuntimeCapacityReservationLease
- */
-export interface RuntimeCapacityReservationLease {
-  id: string;
-  toolName: string;
-  additionalRequests: number;
-  additionalLlm: number;
-  expiresAtMs: number;
-  consume: () => void;
-  heartbeat: (ttlMs?: number) => void;
-  release: () => void;
-}
-
-/**
- * キャパシティ予約入力
- * @summary 予約入力
- * @param reservationTtlMs - 予約の有効期限（ミリ秒）
- * @param signal - 中断シグナル
- * @interface RuntimeCapacityReserveInput
- */
-export interface RuntimeCapacityReserveInput extends RuntimeCapacityCheckInput {
-  toolName?: string;
-  maxWaitMs?: number;
-  pollIntervalMs?: number;
-  reservationTtlMs?: number;
-  signal?: AbortSignal;
-}
-
-/**
- * キャパシティ予約結果
- * @summary 予約結果
- * @interface RuntimeCapacityReserveResult
- */
-export interface RuntimeCapacityReserveResult extends RuntimeCapacityCheck {
-  waitedMs: number;
-  attempts: number;
-  timedOut: boolean;
-  aborted: boolean;
-  reservation?: RuntimeCapacityReservationLease;
-}
-
-/**
- * オーケストレーションの待機入力
- * @summary 待機入力
- * @interface RuntimeOrchestrationWaitInput
- */
-export interface RuntimeOrchestrationWaitInput {
-  toolName: string;
-  /** Optional priority override. If not specified, inferred from toolName. */
-  priority?: TaskPriority;
-  /** Estimated duration in milliseconds (for SRT optimization). */
-  estimatedDurationMs?: number;
-  /** Estimated rounds from agent-estimation skill. */
-  estimatedRounds?: number;
-  /** Deadline timestamp in milliseconds. */
-  deadlineMs?: number;
-  /** Source context for priority inference. */
-  source?: PriorityTaskMetadata["source"];
-  maxWaitMs?: number;
-  pollIntervalMs?: number;
-  signal?: AbortSignal;
-}
-
-/**
- * オーケストレーションのリース情報
- * @summary リース情報
- * @interface RuntimeOrchestrationLease
- */
-export interface RuntimeOrchestrationLease {
-  id: string;
-  release: () => void;
-}
-
-/**
- * オーケストレーション待機結果
- * @summary 待機結果を表す
- * @property allowed 許可されたか
- * @property waitedMs 待機時間(ミリ秒)
- * @property attempts 試行回数
- * @property timedOut タイムアウトしたか
- * @property aborted 中断されたか
- */
-export interface RuntimeOrchestrationWaitResult {
-  allowed: boolean;
-  waitedMs: number;
-  attempts: number;
-  timedOut: boolean;
-  aborted: boolean;
-  queuePosition: number;
-  queuedAhead: number;
-  orchestrationId: string;
-  lease?: RuntimeOrchestrationLease;
-}
-
-/**
- * Dispatch candidate with resource requirements.
- */
-export interface RuntimeDispatchCandidate {
-  additionalRequests: number;
-  additionalLlm: number;
-}
-
-/**
- * Unified dispatch permit input.
- * Queue turn and capacity reservation are acquired together.
- */
-export interface RuntimeDispatchPermitInput {
-  toolName: string;
-  candidate: RuntimeDispatchCandidate;
-  source?: PriorityTaskMetadata["source"];
-  priority?: TaskPriority;
-  queueClass?: RuntimeQueueClass;
-  tenantKey?: string;
-  estimatedDurationMs?: number;
-  estimatedRounds?: number;
-  deadlineMs?: number;
-  maxWaitMs?: number;
-  pollIntervalMs?: number;
-  reservationTtlMs?: number;
-  signal?: AbortSignal;
-}
-
-/**
- * Combined lease for dispatch.
- */
-export interface RuntimeDispatchPermitLease {
-  id: string;
-  toolName: string;
-  additionalRequests: number;
-  additionalLlm: number;
-  expiresAtMs: number;
-  consume: () => void;
-  heartbeat: (ttlMs?: number) => void;
-  release: () => void;
-}
-
-/**
- * Unified dispatch permit result.
- */
-export interface RuntimeDispatchPermitResult {
-  allowed: boolean;
-  waitedMs: number;
-  attempts: number;
-  timedOut: boolean;
-  aborted: boolean;
-  queuePosition: number;
-  queuedAhead: number;
-  orchestrationId: string;
-  projectedRequests: number;
-  projectedLlm: number;
-  reasons: string[];
-  lease?: RuntimeDispatchPermitLease;
-}
 
 // Constants now come from centralized runtime-config
 const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 4;
