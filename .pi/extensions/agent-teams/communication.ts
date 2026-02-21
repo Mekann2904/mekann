@@ -45,6 +45,65 @@ import { extractDiscussionSection } from "./judge";
 // Re-export types needed by communication consumers
 export type { TeamMember, TeamMemberResult, TeamDefinition, ClaimReference };
 
+// Re-export V2 modules (Phase 1-4) with V2 suffix to avoid conflicts
+export {
+  getCommunicationConfig as getCommunicationConfigV2,
+  isCommunicationV2Enabled,
+  type CommunicationConfig,
+} from "./communication-config";
+
+export {
+  isSafeId,
+  generateCommId,
+  resolveUniqueCommIds,
+  createCommIdMaps,
+  stringToSeed,
+  combineSeed,
+  type CommIdEntry,
+} from "./communication-id";
+
+export {
+  createCommunicationLinksMap as createCommunicationLinksMapV2,
+  deterministicShuffle,
+  shouldPreferAnchorMember as shouldPreferAnchorMemberV2,
+  MAX_COMMUNICATION_PARTNERS as MAX_COMMUNICATION_PARTNERS_V2,
+  type CommunicationLinksOptions,
+  type TeamMemberLike,
+} from "./communication-links";
+
+export {
+  createCommunicationHistoryStore,
+  defaultSelectionStrategy,
+  adaptiveSelectionStrategy,
+  type CommunicationHistory,
+  type CommunicationHistoryStore,
+  type PartnerSelectionStrategy,
+} from "./communication-history";
+
+export {
+  detectPartnerReferencesV3,
+  extractField as extractFieldV2,
+  type PartnerReferenceResultV3,
+  type ClaimReferenceV3,
+} from "./communication-references";
+
+export {
+  buildCommunicationContextV2,
+  buildPrecomputedContextMap as buildPrecomputedContextMapV2,
+  summarizeForContext,
+  sanitizeForJson,
+  COMMUNICATION_CONTEXT_OTHER_LIMIT as COMMUNICATION_CONTEXT_OTHER_LIMIT_V2,
+  type CommunicationData,
+  type CommunicationPartner,
+  type CommunicationPartnerSummary,
+} from "./communication-context";
+
+export {
+  checkTerminationV2,
+  type TerminationCheckResultV2,
+  type TeamMemberResultLike,
+} from "./communication-termination";
+
 /**
  * メンバーの事前計算コンテキスト
  * @summary 事前計算コンテキスト保持

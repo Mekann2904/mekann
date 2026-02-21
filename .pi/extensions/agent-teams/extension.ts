@@ -371,6 +371,13 @@ import {
   startReservationHeartbeat,
   refreshRuntimeStatus as sharedRefreshRuntimeStatus,
 } from "../shared/runtime-helpers";
+import {
+  getCommunicationConfigV2,
+  createCommunicationLinksMapV2,
+  resolveUniqueCommIds,
+  createCommIdMaps,
+  type CommIdEntry,
+} from "./communication";
 
 // Local aliases for backward compatibility
 const STABLE_AGENT_TEAM_RUNTIME = STABLE_RUNTIME_PROFILE;
@@ -1474,7 +1481,22 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         DEFAULT_FAILED_MEMBER_RETRY_ROUNDS,
         STABLE_AGENT_TEAM_RUNTIME,
       );
-      const communicationLinks = createCommunicationLinksMap(activeMembers);
+
+      // Use V2 links if feature flag is enabled
+      const commConfig = getCommunicationConfigV2();
+      let communicationLinks: Map<string, string[]>;
+      let commIdEntries: CommIdEntry[] = [];
+      
+      if (commConfig.linksV2) {
+        commIdEntries = resolveUniqueCommIds(activeMembers, team.id);
+        communicationLinks = createCommunicationLinksMapV2(activeMembers, {
+          round: 0,
+          seed: team.id,
+          strategy: "ring",
+        });
+      } else {
+        communicationLinks = createCommunicationLinksMap(activeMembers);
+      }
 
       const snapshot = getRuntimeSnapshot();
       const configuredMemberParallelLimit = toConcurrencyLimit(
