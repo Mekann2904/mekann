@@ -207,6 +207,9 @@ const MIN_CONCURRENCY = 1;
 const MAX_CONCURRENCY = 16;
 const MAX_LEARNED_LIMITS = 512;
 const LEARNED_LIMIT_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_SUMMARY_LEARNED_LIMITS = 80;
+const VALID_PROVIDER_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const VALID_MODEL_RE = /^[a-z0-9][a-z0-9._/:-]{0,127}$/;
 
 const RECOVERY_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
 const STATE_LOCK_OPTIONS = {
@@ -229,6 +232,30 @@ let persistenceFailed = false;
 
 function buildKey(provider: string, model: string): string {
   return `${provider.toLowerCase()}:${model.toLowerCase()}`;
+}
+
+function normalizeProvider(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeModel(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function tryBuildKey(provider: string, model: string): string | null {
+  const normalizedProvider = normalizeProvider(provider);
+  const normalizedModel = normalizeModel(model);
+  if (!VALID_PROVIDER_RE.test(normalizedProvider)) return null;
+  if (!VALID_MODEL_RE.test(normalizedModel)) return null;
+  return buildKey(normalizedProvider, normalizedModel);
+}
+
+function isValidLearnedLimitKey(key: string): boolean {
+  const index = key.indexOf(":");
+  if (index <= 0 || index >= key.length - 1) return false;
+  const provider = key.slice(0, index);
+  const model = key.slice(index + 1);
+  return VALID_PROVIDER_RE.test(provider) && VALID_MODEL_RE.test(model);
 }
 
 function loadState(): AdaptiveControllerState {
@@ -332,6 +359,12 @@ function pruneLearnedLimits(currentState: AdaptiveControllerState, nowMs = Date.
     return;
   }
 
+  for (const [key] of entries) {
+    if (!isValidLearnedLimitKey(key)) {
+      delete currentState.limits[key];
+    }
+  }
+
   for (const [key, limit] of entries) {
     const isRecovering = limit.recoveryScheduled || limit.concurrency < limit.originalConcurrency;
     if (isRecovering) continue;
@@ -367,7 +400,8 @@ function pruneLearnedLimits(currentState: AdaptiveControllerState, nowMs = Date.
 function scheduleRecovery(provider: string, model: string): void {
   if (!state) return;
 
-  const key = buildKey(provider, model);
+  const key = tryBuildKey(provider, model);
+  if (!key) return;
   const limit = state.limits[key];
   if (!limit) return;
 
@@ -483,8 +517,11 @@ export function getEffectiveLimit(
   model: string,
   presetLimit: number
 ): number {
+  const key = tryBuildKey(provider, model);
+  if (!key) {
+    return clampConcurrency(presetLimit);
+  }
   const currentState = ensureState();
-  const key = buildKey(provider, model);
 
   // Check if we have a learned limit
   const learned = currentState.limits[key];
@@ -517,9 +554,12 @@ export function getEffectiveLimit(
  * @param event レート制限イベント
  */
 export function recordEvent(event: RateLimitEvent): void {
-  withStateWriteLock((currentState) => {
-    const key = buildKey(event.provider, event.model);
+  const key = tryBuildKey(event.provider, event.model);
+  if (!key) {
+    return;
+  }
 
+  withStateWriteLock((currentState) => {
     // Ensure entry exists
     if (!currentState.limits[key]) {
       currentState.limits[key] = {
@@ -643,8 +683,9 @@ export function getAdaptiveState(): AdaptiveControllerState {
  * @returns {LearnedLimit | undefined} 学習した制限オブジェクト
  */
 export function getLearnedLimit(provider: string, model: string): LearnedLimit | undefined {
+  const key = tryBuildKey(provider, model);
+  if (!key) return undefined;
   const currentState = ensureState();
-  const key = buildKey(provider, model);
   return currentState.limits[key] ? { ...currentState.limits[key] } : undefined;
 }
 
@@ -657,8 +698,9 @@ export function getLearnedLimit(provider: string, model: string): LearnedLimit |
  * @returns {void}
  */
 export function resetLearnedLimit(provider: string, model: string, newLimit?: number): void {
+  const key = tryBuildKey(provider, model);
+  if (!key) return;
   withStateWriteLock((currentState) => {
-    const key = buildKey(provider, model);
     if (!currentState.limits[key]) return;
     const limit = newLimit ?? currentState.limits[key].originalConcurrency;
     currentState.limits[key] = {
@@ -780,7 +822,12 @@ export function formatAdaptiveSummary(): string {
   if (Object.keys(currentState.limits).length === 0) {
     lines.push(`  (none yet)`);
   } else {
-    for (const [key, limit] of Object.entries(currentState.limits)) {
+    const entries = Object.entries(currentState.limits)
+      .filter(([key]) => isValidLearnedLimitKey(key))
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    const shown = entries.slice(0, MAX_SUMMARY_LEARNED_LIMITS);
+    const hidden = Math.max(0, entries.length - shown.length);
+    for (const [key, limit] of shown) {
       const status =
         limit.concurrency < limit.originalConcurrency
           ? `REDUCED (${limit.concurrency}/${limit.originalConcurrency})`
@@ -792,6 +839,9 @@ export function formatAdaptiveSummary(): string {
         ? `, 429_prob: ${(limit.predicted429Probability * 100).toFixed(1)}%`
         : "";
       lines.push(`  ${key}: ${status}, ${recent429}, total: ${limit.total429Count}${prediction}`);
+    }
+    if (hidden > 0) {
+      lines.push(`  ... ${hidden} entries hidden`);
     }
   }
 
@@ -810,8 +860,9 @@ export function formatAdaptiveSummary(): string {
  * @returns 429エラーの確率
  */
 export function analyze429Probability(provider: string, model: string): number {
+  const key = tryBuildKey(provider, model);
+  if (!key) return 0;
   const currentState = ensureState();
-  const key = buildKey(provider, model);
   const limit = currentState.limits[key];
 
   if (!limit || !limit.historical429s || limit.historical429s.length === 0) {
@@ -860,8 +911,18 @@ export function analyze429Probability(provider: string, model: string): number {
  * @returns 予測分析結果
  */
 export function getPredictiveAnalysis(provider: string, model: string): PredictiveAnalysis {
+  const key = tryBuildKey(provider, model);
+  if (!key) {
+    return {
+      provider,
+      model,
+      predicted429Probability: 0,
+      shouldProactivelyThrottle: false,
+      recommendedConcurrency: 4,
+      confidence: 0,
+    };
+  }
   const currentState = ensureState();
-  const key = buildKey(provider, model);
   const limit = currentState.limits[key];
 
   const probability = analyze429Probability(provider, model);

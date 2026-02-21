@@ -1459,6 +1459,22 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       retry: createRetrySchema(),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      if (String(process.env.PI_AGENT_TEAM_CHILD_RUN || "0") === "1") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "agent_team_run error: disabled in agent-team member child execution (recursion blocked).",
+            },
+          ],
+          details: {
+            error: "team_recursion_blocked",
+            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
       const storage = loadStorage(ctx.cwd);
       const team = pickTeam(storage, params.teamId);
       const retryOverrides = toRetryOverrides(params.retry);
@@ -1926,6 +1942,22 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       retry: createRetrySchema(),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      if (String(process.env.PI_AGENT_TEAM_CHILD_RUN || "0") === "1") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "agent_team_run_parallel error: disabled in agent-team member child execution (recursion blocked).",
+            },
+          ],
+          details: {
+            error: "team_recursion_blocked",
+            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
       const storage = loadStorage(ctx.cwd);
       const retryOverrides = toRetryOverrides(params.retry);
 

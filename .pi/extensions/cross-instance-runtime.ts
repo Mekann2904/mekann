@@ -39,6 +39,7 @@ import {
   isRateLimitError,
   getLearnedLimit,
   resetLearnedLimit,
+  resetAllLearnedLimits,
   formatAdaptiveSummary,
 } from "../lib/adaptive-rate-controller";
 import {
@@ -46,6 +47,7 @@ import {
   unregisterInstance,
   getCoordinatorStatus,
   getActiveInstanceCount,
+  getContendingInstanceCount,
   getMyParallelLimit,
   getEnvOverrides,
   setActiveModel,
@@ -62,6 +64,7 @@ import {
 } from "../lib/provider-limits";
 
 import { getRuntimeSnapshot, notifyRuntimeCapacityChanged } from "./agent-runtime";
+import { getAdaptiveTotalLimitSnapshot, resetAdaptiveTotalLimitState } from "../lib/adaptive-total-limit";
 
 const Text = require("@mariozechner/pi-tui").Text;
 
@@ -87,10 +90,15 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
       }
 
       const lines: string[] = [
-        `Active pi instances: ${status.activeInstanceCount}`,
+        `Active pi instances (sessions): ${status.activeInstanceCount}`,
+        `Contending instances (with runtime load): ${status.contendingInstanceCount}`,
         `My instance ID: ${status.myInstanceId}`,
         `My parallel limit: ${status.myParallelLimit}`,
         `Total max LLM: ${status.config?.totalMaxLlm ?? "N/A"}`,
+        "",
+        "Notes:",
+        "  - agent_team member child runs use --no-extensions and are NOT counted as pi instances.",
+        "  - parallel limit is distributed by contending instances (active load), not all idle sessions.",
         "",
         "Model usage across instances:",
       ];
@@ -110,7 +118,14 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
         const marker = isSelf ? " (self)" : "";
         const age = Math.round((Date.now() - new Date(inst.startedAt).getTime()) / 1000);
         const models = inst.activeModels.map((m) => m.model).join(", ") || "(none)";
-        lines.push(`  ${inst.instanceId.slice(0, 20)}... - age: ${age}s, models: ${models}${marker}`);
+        const activeRequests = Math.max(0, Math.trunc(inst.activeRequestCount || 0));
+        const activeLlm = Math.max(0, Math.trunc(inst.activeLlmCount || 0));
+        const pending = Math.max(0, Math.trunc(inst.pendingTaskCount || 0));
+        const contending = activeRequests > 0 || activeLlm > 0 || pending > 0 || inst.activeModels.length > 0;
+        const stateLabel = contending ? "busy" : "idle";
+        lines.push(
+          `  ${inst.instanceId.slice(0, 20)}... - age: ${age}s, models: ${models}, runtime(req=${activeRequests}, llm=${activeLlm}, pending=${pending}), state=${stateLabel}${marker}`,
+        );
       }
 
       pi.sendMessage({
@@ -156,6 +171,15 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
       lines.push("Adaptive Learning");
       lines.push("=================");
       lines.push(formatAdaptiveSummary());
+      const totalLimit = getAdaptiveTotalLimitSnapshot();
+      lines.push("");
+      lines.push("Adaptive Total Max LLM");
+      lines.push("======================");
+      lines.push(`enabled: ${totalLimit.enabled}`);
+      lines.push(`base_limit: ${totalLimit.baseLimit}`);
+      lines.push(`learned_limit: ${totalLimit.learnedLimit}`);
+      lines.push(`sample_count: ${totalLimit.sampleCount}`);
+      lines.push(`last_reason: ${totalLimit.lastReason}`);
 
       pi.sendMessage({
         customType: "pi-limits-info",
@@ -167,9 +191,18 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
 
   // Command: Reset learned limits
   pi.registerCommand("pi-limits-reset", {
-    description: "Reset learned rate limits",
+    description: "Reset learned rate limits (/pi-limits-reset <provider> <model> | /pi-limits-reset all)",
     handler: async (args, ctx) => {
       const parts = (args || "").trim().split(/\s+/);
+      if (parts.length === 1 && parts[0] === "all") {
+        resetAllLearnedLimits();
+        const total = resetAdaptiveTotalLimitState();
+        ctx.ui.notify(
+          `Reset all learned limits (adaptive-total learned=${total.learnedLimit}, base=${total.baseLimit})`,
+          "info",
+        );
+        return;
+      }
       const provider = parts[0];
       const model = parts[1];
 
@@ -177,7 +210,7 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
         resetLearnedLimit(provider, model);
         ctx.ui.notify(`Reset learned limits for ${provider}/${model}`, "info");
       } else {
-        ctx.ui.notify("Usage: /pi-limits-reset <provider> <model>", "warning");
+        ctx.ui.notify("Usage: /pi-limits-reset <provider> <model> | /pi-limits-reset all", "warning");
       }
     },
   });
@@ -284,7 +317,8 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
       const resolved = resolveLimits(provider, model, tier);
       const learned = getLearnedLimit(provider, model);
       const coordinatorStatus = getCoordinatorStatus();
-      const instanceCount = coordinatorStatus.registered ? getActiveInstanceCount() : 1;
+      const activeInstanceCount = coordinatorStatus.registered ? getActiveInstanceCount() : 1;
+      const contendingInstanceCount = coordinatorStatus.registered ? getContendingInstanceCount() : 1;
       const effectiveLimit = getEffectiveLimit(provider, model, resolved.concurrency);
       const modelInstanceLimit = getModelParallelLimit(provider, model, effectiveLimit);
 
@@ -305,7 +339,8 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
           : `  (using preset)`,
         ``,
         `Instance Distribution:`,
-        `  Active Instances: ${instanceCount}`,
+        `  Active Instances: ${activeInstanceCount}`,
+        `  Contending Instances: ${contendingInstanceCount}`,
         `  My Effective Limit: ${effectiveLimit}`,
         `  My Model-Specific Limit: ${modelInstanceLimit}`,
       ];
@@ -317,7 +352,8 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
           learned,
           effectiveLimit,
           modelInstanceLimit,
-          instanceCount,
+          activeInstanceCount,
+          contendingInstanceCount,
         },
       };
     },

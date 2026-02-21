@@ -11,6 +11,7 @@ export default defineConfig({
     alias: {
       '.pi': path.resolve(__dirname, '.pi'),
       '@lib': path.resolve(__dirname, '.pi/lib'),
+      '@ext': path.resolve(__dirname, '.pi/extensions'),
     },
     extensions: ['.ts', '.js', '.mjs'],
   },
@@ -20,15 +21,16 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.test.ts', '.pi/tests/**/*.test.ts'],
+    setupFiles: ['tests/setup-vitest.ts'],
     globals: true,
     // Low-memory profile:
     // - Run files serially.
-    // - Use a single forked worker to avoid multi-worker heap spikes.
+    // - Use a single thread worker to avoid multi-process Node forks.
     fileParallelism: false,
-    pool: 'forks',
+    pool: 'threads',
     poolOptions: {
-      forks: {
-        singleFork: true,
+      threads: {
+        singleThread: true,
       },
     },
     maxConcurrency: 1,

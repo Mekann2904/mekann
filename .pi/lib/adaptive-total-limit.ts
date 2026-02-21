@@ -254,6 +254,15 @@ function updateBaseConstraints(state: AdaptiveTotalLimitState, baseLimit: number
 function decideNextLimit(state: AdaptiveTotalLimitState, now: number): { next: number; reason: string; cooldownMs: number } {
   const samples = state.samples;
   if (samples.length < MIN_SAMPLE_COUNT) {
+    // Recover slowly toward base limit when there is no recent pressure signal.
+    const hasRecentPressure = samples.some((sample) => sample.kind === "rate_limit" || sample.kind === "timeout");
+    if (!hasRecentPressure && state.learnedLimit < state.baseLimit) {
+      return {
+        next: clamp(state.learnedLimit + 1, state.minLimit, state.hardMax),
+        reason: "insufficient_samples_recover",
+        cooldownMs: DECISION_COOLDOWN_MS,
+      };
+    }
     return { next: state.learnedLimit, reason: "insufficient_samples", cooldownMs: DECISION_COOLDOWN_MS };
   }
 
@@ -369,6 +378,47 @@ export function getAdaptiveTotalLimitSnapshot(): {
     minLimit: state.minLimit,
     sampleCount: state.samples.length,
     lastReason: state.lastReason,
+  };
+}
+
+/**
+ * Adaptive total limit state をリセットする。
+ * @summary 学習状態リセット
+ * @returns リセット後のスナップショット
+ */
+export function resetAdaptiveTotalLimitState(): {
+  enabled: boolean;
+  baseLimit: number;
+  learnedLimit: number;
+  hardMax: number;
+  minLimit: number;
+  sampleCount: number;
+  lastReason: string;
+} {
+  const enabled = isAdaptiveEnabled();
+  const baseLimit = getDefaultBaseLimit();
+  const fresh = createDefaultState(baseLimit);
+  withStateWriteLock((state) => {
+    state.version = fresh.version;
+    state.lastUpdated = fresh.lastUpdated;
+    state.baseLimit = fresh.baseLimit;
+    state.learnedLimit = fresh.learnedLimit;
+    state.hardMax = fresh.hardMax;
+    state.minLimit = fresh.minLimit;
+    state.lastDecisionAtMs = fresh.lastDecisionAtMs;
+    state.cooldownUntilMs = fresh.cooldownUntilMs;
+    state.lastReason = "manual_reset";
+    state.samples = [];
+  });
+  const next = loadState();
+  return {
+    enabled,
+    baseLimit: next.baseLimit,
+    learnedLimit: next.learnedLimit,
+    hardMax: next.hardMax,
+    minLimit: next.minLimit,
+    sampleCount: next.samples.length,
+    lastReason: next.lastReason,
   };
 }
 

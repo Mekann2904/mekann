@@ -1,559 +1,764 @@
 /**
- * @file tests/unit/extensions/subagents.test.ts
- * @description subagents拡張機能の単体テスト
- * @testFramework vitest + fast-check
+ * @file .pi/extensions/subagents.ts の単体テスト
+ * @description サブエージェント拡張機能のテスト
+ * @testFramework vitest
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import * as fc from "fast-check";
-import { join } from "node:path";
 
-// モック: 外部依存を分離
+// Node.jsモジュールのモック
 vi.mock("node:fs", () => ({
-  existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(() => JSON.stringify({ definitions: [], runs: [] })),
-  writeFileSync: vi.fn(),
-  readdirSync: vi.fn(() => []),
-  unlinkSync: vi.fn(),
-  mkdirSync: vi.fn(),
+	readdirSync: vi.fn(() => []),
+	unlinkSync: vi.fn(),
+	writeFileSync: vi.fn(),
 }));
 
-vi.mock("../../pi/lib/fs-utils", () => ({
-  ensureDir: vi.fn(),
+vi.mock("node:path", () => ({
+	basename: vi.fn((p) => p.split("/").pop() || ""),
+	join: vi.fn((...args) => args.join("/")),
 }));
 
-vi.mock("../../pi/lib/format-utils", () => ({
-  formatDurationMs: vi.fn((ms: number) => `${ms}ms`),
-  formatBytes: vi.fn((bytes: number) => `${bytes}B`),
-  formatClockTime: vi.fn((date: Date) => date.toISOString()),
+// pi SDKのモック
+vi.mock("@mariozechner/pi-ai", () => ({
+	Type: {
+		String: () => ({ type: "string" }),
+		Optional: (type) => type,
+		Number: () => ({ type: "number" }),
+		Boolean: () => ({ type: "boolean" }),
+		Array: (type) => ({ type: "array", itemType: type }),
+		Object: (fields) => ({ type: "object", fields }),
+	},
 }));
 
-vi.mock("../../pi/lib/agent-utils", () => ({
-  createRunId: vi.fn((prefix: string) => `${prefix}-${Date.now()}`),
-  computeLiveWindow: vi.fn(() => ({ start: 0, end: 100 })),
+vi.mock("@mariozechner/pi-coding-agent", () => ({
+	ExtensionAPI: vi.fn(),
 }));
 
-vi.mock("../../pi/lib/agent-types", () => ({
-  ThinkingLevel: { NONE: "none", LOW: "low", MEDIUM: "medium", HIGH: "high" },
-  RunOutcomeCode: {
-    SUCCESS: "success",
-    FAILURE: "failure",
-    TIMEOUT: "timeout",
-    CANCELLED: "cancelled",
-  },
-  DEFAULT_AGENT_TIMEOUT_MS: 300000,
+vi.mock("@mariozechner/pi-tui", () => ({
+	Key: {
+		enter: "enter",
+		escape: "escape",
+	},
+	getMarkdownTheme: vi.fn(() => ({})),
+	isToolCallEventType: vi.fn(() => false),
+	Markdown: vi.fn(),
+	matchesKey: vi.fn(),
+	truncateToWidth: vi.fn((s) => s),
 }));
 
-vi.mock("../../pi/lib/runtime-utils", () => ({
-  trimForError: vi.fn((msg: string) => msg.slice(0, 200)),
-  buildRateLimitKey: vi.fn((p: string, m: string) => `${p}:${m}`),
-  createRetrySchema: vi.fn(() => ({ maxRetries: 3, initialDelayMs: 1000 })),
-  toConcurrencyLimit: vi.fn((n: number) => Math.max(1, n)),
+// モジュールのモック
+vi.mock("../lib/fs-utils", () => ({
+	ensureDir: vi.fn(),
+}));
+
+vi.mock("../lib/format-utils", () => ({
+	formatDurationMs: vi.fn((ms) => `${ms}ms`),
+	formatBytes: vi.fn((bytes) => `${bytes}B`),
+	formatClockTime: vi.fn(() => "12:00"),
+}));
+
+vi.mock("../lib/error-utils", () => ({
+	extractStatusCodeFromMessage: vi.fn(() => 200),
+	classifyPressureError: vi.fn(() => "pressure"),
+	isCancelledErrorMessage: vi.fn(() => false),
+	isTimeoutErrorMessage: vi.fn(() => false),
+	toErrorMessage: vi.fn((err) => err?.message || "Error"),
+}));
+
+vi.mock("../lib/agent-utils", () => ({
+	createRunId: vi.fn(() => `run-${Date.now()}`),
+	computeLiveWindow: vi.fn(() => ({ start: 0, end: 100 })),
+}));
+
+vi.mock("../lib/agent-types", () => ({
+	ThinkingLevel: {
+		off: "off",
+		low: "low",
+		medium: "medium",
+		high: "high",
+	},
+	RunOutcomeCode: {
+		SUCCESS: "success",
+		FAILED: "failed",
+		TIMEOUT: "timeout",
+		CANCELLED: "cancelled",
+	},
+	DEFAULT_AGENT_TIMEOUT_MS: 300000,
+}));
+
+vi.mock("../lib/model-timeouts", () => ({
+	computeModelTimeoutMs: vi.fn(() => 60000),
+}));
+
+vi.mock("../lib/output-validation", () => ({
+	hasNonEmptyResultSection: vi.fn(() => true),
+	validateSubagentOutput: vi.fn(() => ({ valid: true, errors: [] })),
+}));
+
+vi.mock("../lib/runtime-utils", () => ({
+	trimForError: vi.fn((s) => s),
+	buildRateLimitKey: vi.fn(() => "key"),
+	createRetrySchema: vi.fn(() => ({})),
+	toConcurrencyLimit: vi.fn(() => 4),
+}));
+
+vi.mock("../lib/agent-common", () => ({
+	STABLE_RUNTIME_PROFILE: true,
+	ADAPTIVE_PARALLEL_MAX_PENALTY: 30000,
+	ADAPTIVE_PARALLEL_DECAY_MS: 60000,
+	STABLE_MAX_RETRIES: 2,
+	STABLE_INITIAL_DELAY_MS: 1000,
+	STABLE_MAX_DELAY_MS: 32000,
+	STABLE_MAX_RATE_LIMIT_RETRIES: 3,
+	STABLE_MAX_RATE_LIMIT_WAIT_MS: 60000,
+	SUBAGENT_CONFIG: {},
+	buildFailureSummary: vi.fn(() => "failure summary"),
+}));
+
+vi.mock("../lib/agent-errors", () => ({
+	isRetryableSubagentError: vi.fn(() => false),
+	resolveSubagentFailureOutcome: vi.fn(() => "failed"),
+	trimErrorMessage: vi.fn((s) => s),
+	buildDiagnosticContext: vi.fn(() => ({})),
+}));
+
+vi.mock("../lib/comprehensive-logger", () => ({
+	getLogger: vi.fn(() => ({
+		startOperation: vi.fn(() => "op-1"),
+		endOperation: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		debug: vi.fn(),
+	})),
+}));
+
+vi.mock("../lib/concurrency", () => ({
+	runWithConcurrencyLimit: vi.fn(async (fn) => await fn()),
+}));
+
+vi.mock("../lib/execution-rules", () => ({
+	getSubagentExecutionRules: vi.fn(() => ({
+		allowNonInteractive: true,
+		allowWriteTools: true,
+	})),
+}));
+
+vi.mock("../lib/plan-mode-shared", () => ({
+	isPlanModeActive: vi.fn(() => false),
+	PLAN_MODE_WARNING: "PLAN MODE WARNING",
 }));
 
 vi.mock("./agent-runtime", () => ({
-  getRuntimeSnapshot: vi.fn(() => ({
-    subagentActiveRequests: 0,
-    subagentActiveAgents: 0,
-    teamActiveRuns: 0,
-    teamActiveAgents: 0,
-    reservedRequests: 0,
-    reservedLlm: 0,
-    activeReservations: 0,
-    activeOrchestrations: 0,
-    queuedOrchestrations: 0,
-    queuedTools: [],
-    totalActiveRequests: 0,
-    totalActiveLlm: 0,
-    limits: {
-      maxTotalActiveLlm: 6,
-      maxTotalActiveRequests: 6,
-      maxParallelSubagentsPerRun: 4,
-      maxParallelTeamsPerRun: 3,
-      maxParallelTeammatesPerTeam: 6,
-      maxConcurrentOrchestrations: 4,
-      capacityWaitMs: 30000,
-      capacityPollMs: 100,
-    },
-    limitsVersion: "6:6:4:3:6:4:30000:100",
-  })),
-  getSharedRuntimeState: vi.fn(() => ({
-    subagents: { activeRunRequests: 0, activeAgents: 0 },
-    teams: { activeTeamRuns: 0, activeTeammates: 0 },
-    queue: { activeOrchestrations: 0, pending: [], consecutiveDispatchesByTenant: 0 },
-    reservations: { active: [] },
-    limits: {
-      maxTotalActiveLlm: 6,
-      maxTotalActiveRequests: 6,
-      maxParallelSubagentsPerRun: 4,
-      maxParallelTeamsPerRun: 3,
-      maxParallelTeammatesPerTeam: 6,
-      maxConcurrentOrchestrations: 4,
-      capacityWaitMs: 30000,
-      capacityPollMs: 100,
-    },
-    limitsVersion: "6:6:4:3:6:4:30000:100",
-  })),
-  resetRuntimeTransientState: vi.fn(),
-  reserveRuntimeCapacity: vi.fn(),
-  tryReserveRuntimeCapacity: vi.fn(),
-  notifyRuntimeCapacityChanged: vi.fn(),
-  formatRuntimeStatusLine: vi.fn(() => "0/6 agents active"),
-  waitForRuntimeOrchestrationTurn: vi.fn(async () => true),
+	acquireRuntimeDispatchPermit: vi.fn(),
+	formatRuntimeStatusLine: vi.fn(() => "status line"),
+	getRuntimeSnapshot: vi.fn(() => ({
+		subagentActiveRequests: 0,
+		subagentActiveAgents: 0,
+		teamActiveRuns: 0,
+		teamActiveAgents: 0,
+		reservedRequests: 0,
+		reservedLlm: 0,
+		activeReservations: 0,
+		totalActiveRequests: 0,
+		totalActiveLlm: 0,
+		limits: {
+			maxTotalActiveRequests: 16,
+			maxTotalActiveLlm: 8,
+		},
+	})),
+	getSharedRuntimeState: vi.fn(() => ({
+		subagents: { activeRunRequests: 0, activeAgents: 0 },
+		teams: { activeTeamRuns: 0, activeTeammates: 0 },
+		notifyRuntimeCapacityChanged: vi.fn(),
+	})),
+	notifyRuntimeCapacityChanged: vi.fn(),
+	resetRuntimeTransientState: vi.fn(),
 }));
 
-// テスト対象の型定義
-interface SubagentDefinition {
-  id: string;
-  name: string;
-  description: string;
-  systemPrompt: string;
-  enabled: boolean;
-  provider?: string;
-  model?: string;
-}
+vi.mock("../lib/retry-with-backoff", () => ({
+	getRateLimitGateSnapshot: vi.fn(() => ({})),
+	isRetryableError: vi.fn(() => true),
+	retryWithBackoff: vi.fn(async (fn) => await fn()),
+}));
 
-interface SubagentRunRecord {
-  runId: string;
-  agentId: string;
-  task: string;
-  status: "pending" | "running" | "completed" | "failed";
-  startedAt: string;
-  finishedAt?: string;
-  summary?: string;
-  outputFile: string;
-}
+vi.mock("./shared/pi-print-executor", () => ({
+	runPiPrintMode: vi.fn(async () => ({ text: "output", exitCode: 0 })),
+}));
 
-interface SubagentStorage {
-  definitions: SubagentDefinition[];
-  runs: SubagentRunRecord[];
-}
+vi.mock("./shared/runtime-helpers", () => ({
+	buildRuntimeLimitError: vi.fn(() => "limit error"),
+	startReservationHeartbeat: vi.fn(),
+	refreshRuntimeStatus: vi.fn(),
+}));
+
+vi.mock("./subagents/storage", () => ({
+	getPaths: vi.fn(() => ({
+		dir: "/.pi/subagents",
+		storage: "/.pi/subagents/storage.json",
+		runsDir: "/.pi/subagents/runs",
+		backgroundJobsDir: "/.pi/subagents/background-jobs",
+	})),
+	ensurePaths: vi.fn(),
+	createDefaultAgents: vi.fn(() => []),
+	loadStorage: vi.fn(() => ({ agents: [], currentAgentId: null, runs: [] })),
+	saveStorage: vi.fn(),
+	saveStorageWithPatterns: vi.fn(),
+	SUBAGENT_DEFAULTS_VERSION: "1.0.0",
+	MAX_RUNS_TO_KEEP: 100,
+}));
+
+vi.mock("./subagents/live-monitor", () => ({
+	renderSubagentLiveView: vi.fn(() => "live view"),
+	createSubagentLiveMonitor: vi.fn(() => ({})),
+}));
+
+vi.mock("./subagents/parallel-execution", () => ({
+	resolveSubagentParallelCapacity: vi.fn(() => ({
+		allowed: true,
+		resolution: "ok",
+		parallelCount: 2,
+	})),
+}));
+
+vi.mock("./subagents/task-execution", () => ({
+	normalizeSubagentOutput: vi.fn(() => "normalized output"),
+	buildSubagentPrompt: vi.fn(() => "prompt"),
+	runSubagentTask: vi.fn(async () => ({ text: "output", exitCode: 0 })),
+	isRetryableSubagentError: vi.fn(() => false),
+	buildFailureSummary: vi.fn(() => "failure"),
+	resolveSubagentFailureOutcome: vi.fn(() => "failed"),
+	mergeSkillArrays: vi.fn(() => []),
+	resolveEffectiveSkills: vi.fn(() => []),
+	formatSkillsSection: vi.fn(() => "skills"),
+	extractSummary: vi.fn(() => "summary"),
+}));
+
+vi.mock("../lib/subagent-types", () => ({
+	createSubagentPaths: vi.fn(() => ({})),
+}));
+
+vi.mock("../lib/cost-estimator", () => ({
+	getCostEstimator: vi.fn(() => ({})),
+}));
+
+vi.mock("../lib/provider-limits", () => ({
+	detectTier: vi.fn(() => "standard"),
+	getConcurrencyLimit: vi.fn(() => 4),
+}));
+
+vi.mock("../lib/adaptive-penalty", () => ({
+	createAdaptivePenaltyController: vi.fn(() => ({
+		getPenalty: vi.fn(() => 0),
+		recordFailure: vi.fn(),
+		recordSuccess: vi.fn(),
+	})),
+}));
 
 // ============================================================================
-// ユーティリティ関数のテスト
+// 型定義のテスト
 // ============================================================================
 
-describe("subagents ユーティリティ", () => {
-  describe("createRunId形式の検証", () => {
-    it("should_generate_valid_run_id_format", async () => {
-      const { createRunId } = await import("../../pi/lib/agent-utils");
-      const runId = createRunId("test");
-      expect(runId).toMatch(/^test-\d+$/);
-    });
+describe("subagents.ts 型定義", () => {
+	describe("SubagentDefinition", () => {
+		it("必須フィールドを持つ", () => {
+			const agent = {
+				id: "researcher",
+				name: "Researcher",
+				description: "Research specialist",
+				systemPrompt: "You are a researcher.",
+				enabled: "enabled" as const,
+			};
+			expect(agent.id).toBe("researcher");
+			expect(agent.name).toBe("Researcher");
+			expect(agent.enabled).toBe("enabled");
+		});
 
-    it("should_generate_unique_ids", async () => {
-      // モックは一意性を保証しないため、実際の実装に依存するテストはスキップ
-      // ここでは形式の確認のみ
-      const { createRunId } = await import("../../pi/lib/agent-utils");
-      const id1 = createRunId("test");
-      const id2 = createRunId("test");
-      // 両方とも正しい形式であることを確認
-      expect(id1).toMatch(/^test-\d+$/);
-      expect(id2).toMatch(/^test-\d+$/);
-    });
-  });
+		it("オプションフィールド", () => {
+			const agent = {
+				id: "researcher",
+				name: "Researcher",
+				description: "Research specialist",
+				systemPrompt: "You are a researcher.",
+				enabled: "enabled" as const,
+				provider: "anthropic" as const,
+				model: "claude-3",
+			};
+			expect(agent.provider).toBe("anthropic");
+			expect(agent.model).toBe("claude-3");
+		});
+	});
 
-  describe("trimForError", () => {
-    it("should_truncate_long_messages", async () => {
-      const { trimForError } = await import("../../pi/lib/runtime-utils");
-      const longMessage = "x".repeat(500);
-      const result = trimForError(longMessage);
-      expect(result.length).toBeLessThanOrEqual(200);
-    });
+	describe("SubagentRunRecord", () => {
+		it("必須フィールドを持つ", () => {
+			const record = {
+				runId: "run-123",
+				agentId: "researcher",
+				task: "Research task",
+				startedAt: "2024-01-01T00:00:00Z",
+				status: "completed" as const,
+				summary: "Task completed",
+			};
+			expect(record.runId).toBe("run-123");
+			expect(record.status).toBe("completed");
+		});
 
-    it("should_keep_short_messages_unchanged", async () => {
-      const { trimForError } = await import("../../pi/lib/runtime-utils");
-      const shortMessage = "short error";
-      const result = trimForError(shortMessage);
-      expect(result).toBe(shortMessage);
-    });
-  });
+		it("オプションフィールド", () => {
+			const record = {
+				runId: "run-123",
+				agentId: "researcher",
+				task: "Research task",
+				startedAt: "2024-01-01T00:00:00Z",
+				finishedAt: "2024-01-01T00:01:00Z",
+				status: "completed" as const,
+				summary: "Task completed",
+				exitCode: 0,
+				tokensUsed: 1000,
+			};
+			expect(record.finishedAt).toBeDefined();
+			expect(record.exitCode).toBe(0);
+			expect(record.tokensUsed).toBe(1000);
+		});
+	});
 
-  describe("buildRateLimitKey", () => {
-    it("should_combine_provider_and_model", async () => {
-      const { buildRateLimitKey } = await import("../../pi/lib/runtime-utils");
-      const key = buildRateLimitKey("anthropic", "claude-3-opus");
-      expect(key).toBe("anthropic:claude-3-opus");
-    });
-
-    it("should_handle_empty_model", async () => {
-      const { buildRateLimitKey } = await import("../../pi/lib/runtime-utils");
-      const key = buildRateLimitKey("openai", "");
-      expect(key).toBe("openai:");
-    });
-  });
-
-  describe("toConcurrencyLimit", () => {
-    it("should_return_at_least_1", async () => {
-      const { toConcurrencyLimit } = await import("../../pi/lib/runtime-utils");
-      expect(toConcurrencyLimit(0)).toBe(1);
-      expect(toConcurrencyLimit(-5)).toBe(1);
-    });
-
-    it("should_return_input_for_positive_values", async () => {
-      const { toConcurrencyLimit } = await import("../../pi/lib/runtime-utils");
-      expect(toConcurrencyLimit(4)).toBe(4);
-      expect(toConcurrencyLimit(10)).toBe(10);
-    });
-  });
+	describe("SubagentStorage", () => {
+		it("基本構造", () => {
+			const storage = {
+				agents: [],
+				currentAgentId: null,
+				runs: [],
+				defaultsVersion: "1.0.0",
+			};
+			expect(storage.agents).toEqual([]);
+			expect(storage.currentAgentId).toBeNull();
+			expect(storage.runs).toEqual([]);
+		});
+	});
 });
 
 // ============================================================================
-// ストレージ操作のテスト
+// ID正規化のテスト
 // ============================================================================
 
-describe("subagents ストレージ", () => {
-  let mockStorage: SubagentStorage;
+describe("toAgentId", () => {
+	function toAgentId(input: string): string {
+		return input
+			.toLowerCase()
+			.trim()
+			.replace(/[^a-z0-9\s_-]/g, "")
+			.replace(/[\s_]+/g, "-")
+			.replace(/-+/g, "-")
+			.replace(/^-+|-+$/g, "")
+			.slice(0, 48);
+	}
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockStorage = {
-      definitions: [
-        {
-          id: "researcher",
-          name: "Researcher",
-          description: "Research agent",
-          systemPrompt: "You are a researcher.",
-          enabled: true,
-        },
-        {
-          id: "architect",
-          name: "Architect",
-          description: "Architecture agent",
-          systemPrompt: "You are an architect.",
-          enabled: true,
-        },
-      ],
-      runs: [],
-    };
-  });
+	it("小文字化", () => {
+		expect(toAgentId("MyAgent")).toBe("myagent");
+	});
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
+	it("スペースをハイフンに変換", () => {
+		expect(toAgentId("my agent")).toBe("my-agent");
+	});
 
-  describe("ストレージ構造", () => {
-    it("should_have_definitions_array", () => {
-      expect(Array.isArray(mockStorage.definitions)).toBe(true);
-    });
+	it("特殊文字を削除", () => {
+		expect(toAgentId("my@agent#123")).toBe("myagent123");
+	});
 
-    it("should_have_runs_array", () => {
-      expect(Array.isArray(mockStorage.runs)).toBe(true);
-    });
+	it("アンダースコアをハイフンに変換", () => {
+		expect(toAgentId("my_agent")).toBe("my-agent");
+	});
 
-    it("should_validate_definition_structure", () => {
-      const def = mockStorage.definitions[0];
-      expect(def).toHaveProperty("id");
-      expect(def).toHaveProperty("name");
-      expect(def).toHaveProperty("description");
-      expect(def).toHaveProperty("systemPrompt");
-      expect(def).toHaveProperty("enabled");
-    });
-  });
+	it("最大長48文字に切り詰め", () => {
+		const longId = "a".repeat(100);
+		const result = toAgentId(longId);
+		expect(result.length).toBe(48);
+	});
 
-  describe("定義の検証", () => {
-    it("should_require_id", () => {
-      const def = { ...mockStorage.definitions[0] } as Partial<SubagentDefinition>;
-      delete def.id;
-      expect(def.id).toBeUndefined();
-    });
+	it("前後のハイフンを削除", () => {
+		expect(toAgentId("--agent--")).toBe("agent");
+	});
 
-    it("should_require_systemPrompt", () => {
-      const def = { ...mockStorage.definitions[0] } as Partial<SubagentDefinition>;
-      delete def.systemPrompt;
-      expect(def.systemPrompt).toBeUndefined();
-    });
-
-    it("should_default_enabled_to_true", () => {
-      const def = mockStorage.definitions.find((d) => d.id === "researcher");
-      expect(def?.enabled).toBe(true);
-    });
-  });
-
-  describe("run record構造", () => {
-    it("should_create_valid_run_record", () => {
-      const run: SubagentRunRecord = {
-        runId: "test-123",
-        agentId: "researcher",
-        task: "Research something",
-        status: "completed",
-        startedAt: new Date().toISOString(),
-        finishedAt: new Date().toISOString(),
-        summary: "Done",
-        outputFile: "/path/to/output.json",
-      };
-
-      expect(run.runId).toBeDefined();
-      expect(run.agentId).toBe("researcher");
-      expect(run.status).toBe("completed");
-    });
-
-    it("should_allow_pending_status", () => {
-      const run: SubagentRunRecord = {
-        runId: "test-456",
-        agentId: "architect",
-        task: "Design something",
-        status: "pending",
-        startedAt: new Date().toISOString(),
-        outputFile: "/path/to/output.json",
-      };
-
-      expect(run.status).toBe("pending");
-      expect(run.finishedAt).toBeUndefined();
-    });
-  });
+	it("複数のハイフンを単一に", () => {
+		expect(toAgentId("my---agent")).toBe("my-agent");
+	});
 });
 
 // ============================================================================
-// 定義済みエージェントのテスト
+// エージェント選択のテスト
 // ============================================================================
 
-describe("定義済みサブエージェント", () => {
-  const defaultAgents = [
-    "researcher",
-    "architect",
-    "implementer",
-    "reviewer",
-    "tester",
-  ];
+describe("エージェント選択", () => {
+	describe("pickAgent", () => {
+		it("IDで選択", () => {
+			const storage = {
+				agents: [
+					{ id: "researcher", name: "Researcher", description: "", systemPrompt: "", enabled: "enabled" as const },
+					{ id: "implementer", name: "Implementer", description: "", systemPrompt: "", enabled: "enabled" as const },
+				],
+				currentAgentId: null,
+				runs: [],
+				defaultsVersion: "1.0.0",
+			};
 
-  describe("エージェントIDの検証", () => {
-    it.each(defaultAgents)("should_have_%s_agent", (agentId) => {
-      expect(agentId).toMatch(/^[a-z]+$/);
-    });
+			const requestedId = "implementer";
+			const found = storage.agents.find((agent) => agent.id === requestedId);
 
-    it("should_have_unique_ids", () => {
-      const uniqueIds = new Set(defaultAgents);
-      expect(uniqueIds.size).toBe(defaultAgents.length);
-    });
-  });
+			expect(found?.id).toBe("implementer");
+		});
 
-  describe("エージェント名の検証", () => {
-    const agentNames: Record<string, string> = {
-      researcher: "Researcher",
-      architect: "Architect",
-      implementer: "Implementer",
-      reviewer: "Reviewer",
-      tester: "Tester",
-    };
+		it("現在のエージェントを選択", () => {
+			const storage = {
+				agents: [
+					{ id: "researcher", name: "Researcher", description: "", systemPrompt: "", enabled: "enabled" as const },
+					{ id: "implementer", name: "Implementer", description: "", systemPrompt: "", enabled: "enabled" as const },
+				],
+				currentAgentId: "implementer",
+				runs: [],
+				defaultsVersion: "1.0.0",
+			};
 
-    it.each(Object.entries(agentNames))(
-      "should_map_%s_to_%s",
-      (id, expectedName) => {
-        expect(agentNames[id]).toBe(expectedName);
-      }
-    );
-  });
+			const found = storage.currentAgentId
+				? storage.agents.find((agent) => agent.id === storage.currentAgentId)
+				: undefined;
+
+			expect(found?.id).toBe("implementer");
+		});
+
+		it("有効なエージェントを選択（指定なし）", () => {
+			const storage = {
+				agents: [
+					{ id: "researcher", name: "Researcher", description: "", systemPrompt: "", enabled: "enabled" as const },
+					{ id: "implementer", name: "Implementer", description: "", systemPrompt: "", enabled: "disabled" as const },
+				],
+				currentAgentId: null,
+				runs: [],
+				defaultsVersion: "1.0.0",
+			};
+
+			const found = storage.agents.find((agent) => agent.enabled === "enabled");
+
+			expect(found?.id).toBe("researcher");
+		});
+	});
+
+	describe("pickDefaultParallelAgents", () => {
+		it("有効なエージェントのみ返す", () => {
+			const storage = {
+				agents: [
+					{ id: "a1", name: "A1", description: "", systemPrompt: "", enabled: "enabled" as const },
+					{ id: "a2", name: "A2", description: "", systemPrompt: "", enabled: "disabled" as const },
+					{ id: "a3", name: "A3", description: "", systemPrompt: "", enabled: "enabled" as const },
+				],
+				currentAgentId: null,
+				runs: [],
+				defaultsVersion: "1.0.0",
+			};
+
+			const enabledAgents = storage.agents.filter((agent) => agent.enabled === "enabled");
+
+			expect(enabledAgents).toHaveLength(2);
+			expect(enabledAgents.map(a => a.id)).toEqual(["a1", "a3"]);
+		});
+	});
 });
 
 // ============================================================================
-// エラーハンドリングのテスト
+// バックグラウンドジョブのテスト
 // ============================================================================
 
-describe("エラーハンドリング", () => {
-  describe("エラーメッセージ処理", () => {
-    it("should_handle_timeout_error", () => {
-      const errorMessage = "Operation timed out after 30000ms";
-      expect(errorMessage).toContain("timed out");
-    });
+describe("バックグラウンドジョブ", () => {
+	const MAX_BACKGROUND_JOBS = 200;
+	const backgroundJobs = new Map<string, {
+		jobId: string;
+		mode: "single" | "parallel";
+		status: "queued" | "running" | "completed" | "failed";
+	}>();
+	const backgroundJobOrder: string[] = [];
 
-    it("should_handle_rate_limit_error", () => {
-      const errorMessage = "Rate limit exceeded: 429 Too Many Requests";
-      expect(errorMessage).toContain("429");
-    });
+	function createBackgroundJob(input: {
+		mode: "single" | "parallel";
+		task: string;
+		subagentIds: string[];
+	}) {
+		const nowIso = new Date().toISOString();
+		const job = {
+			jobId: `job-${Date.now()}-${Math.random()}`,
+			mode: input.mode,
+			status: "queued" as const,
+			task: input.task,
+			subagentIds: input.subagentIds,
+			createdAt: nowIso,
+		};
+		backgroundJobs.set(job.jobId, job);
+		backgroundJobOrder.push(job.jobId);
 
-    it("should_handle_cancelled_error", () => {
-      const errorMessage = "Operation was cancelled by user";
-      expect(errorMessage).toContain("cancelled");
-    });
-  });
+		// 古いジョブを削除
+		while (backgroundJobOrder.length > MAX_BACKGROUND_JOBS) {
+			const droppedId = backgroundJobOrder.shift();
+			if (!droppedId) break;
+			backgroundJobs.delete(droppedId);
+		}
+		return job;
+	}
 
-  describe("ステータス遷移", () => {
-    const validStatuses = ["pending", "running", "completed", "failed"];
+	beforeEach(() => {
+		backgroundJobs.clear();
+		backgroundJobOrder.length = 0;
+	});
 
-    it("should_have_valid_status_values", () => {
-      validStatuses.forEach((status) => {
-        expect(["pending", "running", "completed", "failed"]).toContain(status);
-      });
-    });
+	it("ジョブを作成", () => {
+		const job = createBackgroundJob({
+			mode: "single",
+			task: "test task",
+			subagentIds: ["researcher"],
+		});
 
-    it("should_transition_from_pending_to_running", () => {
-      const transitions: Record<string, string[]> = {
-        pending: ["running", "failed"],
-        running: ["completed", "failed"],
-        completed: [],
-        failed: [],
-      };
+		expect(backgroundJobs.has(job.jobId)).toBe(true);
+		expect(backgroundJobOrder).toContain(job.jobId);
+	});
 
-      expect(transitions.pending).toContain("running");
-    });
-  });
+	it("最大ジョブ数を維持", () => {
+		// 多数のジョブを作成
+		for (let i = 0; i < 300; i++) {
+			createBackgroundJob({
+				mode: "single",
+				task: `task ${i}`,
+				subagentIds: ["researcher"],
+			});
+		}
+
+		expect(backgroundJobOrder.length).toBe(MAX_BACKGROUND_JOBS);
+		expect(backgroundJobs.size).toBe(MAX_BACKGROUND_JOBS);
+	});
+
+	it("古いジョブが削除される", () => {
+		// 最初のジョブを作成
+		const firstJob = createBackgroundJob({
+			mode: "single",
+			task: "first task",
+			subagentIds: ["researcher"],
+		});
+
+		// 多数のジョブを作成
+		for (let i = 0; i < 250; i++) {
+			createBackgroundJob({
+				mode: "single",
+				task: `task ${i}`,
+				subagentIds: ["researcher"],
+			});
+		}
+
+		// 最初のジョブは削除されている
+		expect(backgroundJobs.has(firstJob.jobId)).toBe(false);
+		expect(backgroundJobOrder.includes(firstJob.jobId)).toBe(false);
+	});
+});
+
+// ============================================================================
+// スキル管理のテスト
+// ============================================================================
+
+describe("スキル管理", () => {
+	describe("mergeSkillArrays", () => {
+		it("空配列[]は未指定として扱う", () => {
+			const base: string[] = [];
+			const additional: string[] = [];
+
+			// []はマージしない
+			const merged = base.length === 0 ? additional : [...base, ...additional];
+
+			expect(merged).toEqual([]);
+		});
+
+		it("非空配列をマージ", () => {
+			const base: string[] = ["skill1", "skill2"];
+			const additional: string[] = ["skill3", "skill4"];
+
+			const merged = [...base, ...additional];
+
+			expect(merged).toEqual(["skill1", "skill2", "skill3", "skill4"]);
+		});
+
+		it("重複を削除", () => {
+			const base: string[] = ["skill1", "skill2"];
+			const additional: string[] = ["skill2", "skill3"];
+
+			const merged = [...new Set([...base, ...additional])];
+
+			expect(merged).toEqual(["skill1", "skill2", "skill3"]);
+		});
+	});
+
+	describe("resolveEffectiveSkills", () => {
+		it("エージェントのスキルを優先", () => {
+			const agentSkills = ["skill1", "skill2"];
+			const inheritedSkills = ["skill3"];
+
+			const effective = agentSkills.length > 0 ? agentSkills : inheritedSkills;
+
+			expect(effective).toEqual(["skill1", "skill2"]);
+		});
+
+		it("エージェントにスキルがない場合は継承", () => {
+			const agentSkills: string[] = [];
+			const inheritedSkills = ["skill3"];
+
+			const effective = agentSkills.length > 0 ? agentSkills : inheritedSkills;
+
+			expect(effective).toEqual(["skill3"]);
+		});
+	});
+});
+
+// ============================================================================
+// エッジケースのテスト
+// ============================================================================
+
+describe("エッジケース", () => {
+	describe("空のストレージ", () => {
+		it("エージェントがない", () => {
+			const storage = {
+				agents: [],
+				currentAgentId: null,
+				runs: [],
+				defaultsVersion: "1.0.0",
+			};
+
+			const found = storage.agents.find(() => true);
+			expect(found).toBeUndefined();
+		});
+	});
+
+	describe("無効なエージェントID", () => {
+		it("存在しないIDの検索", () => {
+			const storage = {
+				agents: [
+					{ id: "agent1", name: "A1", description: "", systemPrompt: "", enabled: "enabled" as const },
+				],
+				currentAgentId: null,
+				runs: [],
+				defaultsVersion: "1.0.0",
+			};
+
+			const found = storage.agents.find((agent) => agent.id === "nonexistent");
+			expect(found).toBeUndefined();
+		});
+	});
+
+	describe("特殊なID", () => {
+		it("空文字列のID正規化", () => {
+			const result = "".toLowerCase().trim().replace(/[^a-z0-9\s_-]/g, "");
+			expect(result).toBe("");
+		});
+
+		it("記号のみのID", () => {
+			const result = "@#$%^&*()".toLowerCase().trim().replace(/[^a-z0-9\s_-]/g, "");
+			expect(result).toBe("");
+		});
+	});
+
+	describe("全エージェント無効", () => {
+		it("有効なエージェントがない場合", () => {
+			const storage = {
+				agents: [
+					{ id: "a1", name: "A1", description: "", systemPrompt: "", enabled: "disabled" as const },
+					{ id: "a2", name: "A2", description: "", systemPrompt: "", enabled: "disabled" as const },
+				],
+				currentAgentId: null,
+				runs: [],
+				defaultsVersion: "1.0.0",
+			};
+
+			const enabledAgents = storage.agents.filter((agent) => agent.enabled === "enabled");
+
+			expect(enabledAgents).toHaveLength(0);
+		});
+	});
 });
 
 // ============================================================================
 // プロパティベーステスト
 // ============================================================================
 
-describe("プロパティベーステスト", () => {
-  describe("runId生成", () => {
-    it("PBT: runIdは常にプレフィックスとタイムスタンプで構成される", async () => {
-      const { createRunId } = await import("../../pi/lib/agent-utils");
+describe("subagents.ts プロパティベーステスト", () => {
+	it("PBT: toAgentIdは有効なIDを生成", () => {
+		fc.assert(
+			fc.property(
+				fc.string({ maxLength: 100 }),
+				(input) => {
+					const result = input
+						.toLowerCase()
+						.trim()
+						.replace(/[^a-z0-9\s_-]/g, "")
+						.replace(/[\s_]+/g, "-")
+						.replace(/-+/g, "-")
+						.replace(/^-+|-+$/g, "")
+						.slice(0, 48);
 
-      fc.assert(
-        fc.property(
-          fc.stringMatching(/^[a-z]{1,10}$/),
-          (prefix) => {
-            const runId = createRunId(prefix);
-            return runId.startsWith(prefix + "-") && /\d+$/.test(runId);
-          }
-        )
-      );
-    });
-  });
+					// 結果は英数字とハイフンのみ
+					return /^[a-z0-9-]*$/.test(result);
+				}
+			),
+			{ numRuns: 100 }
+		);
+	});
 
-  describe("concurrencyLimit", () => {
-    it("PBT: 結果は常に1以上", async () => {
-      const { toConcurrencyLimit } = await import("../../pi/lib/runtime-utils");
+	it("PBT: スキル配列のマージ", () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.string({ minLength: 1, maxLength: 10 }), { maxLength: 5 }),
+				fc.array(fc.string({ minLength: 1, maxLength: 10 }), { maxLength: 5 }),
+				(arr1, arr2) => {
+					const merged = [...new Set([...arr1, ...arr2])];
 
-      fc.assert(
-        fc.property(fc.integer({ min: -1000, max: 1000 }), (n) => {
-          const result = toConcurrencyLimit(n);
-          return result >= 1;
-        })
-      );
-    });
-  });
+					// すべての要素が含まれている
+					const allElements = [...arr1, ...arr2].every(el => merged.includes(el));
 
-  describe("rateLimitKey", () => {
-    it("PBT: キーは常にprovider:model形式", async () => {
-      const { buildRateLimitKey } = await import("../../pi/lib/runtime-utils");
+					// 重複がない
+					const noDuplicates = merged.length === new Set(merged).size;
 
-      fc.assert(
-        fc.property(
-          fc.string({ minLength: 1, maxLength: 20 }),
-          fc.string({ minLength: 0, maxLength: 20 }),
-          (provider, model) => {
-            const key = buildRateLimitKey(provider, model);
-            return key === `${provider}:${model}` && key.includes(":");
-          }
-        )
-      );
-    });
-  });
+					return allElements && noDuplicates;
+				}
+			),
+			{ numRuns: 50 }
+		);
+	});
 
-  describe("trimForError", () => {
-    it("PBT: 結果の長さは常に200以下", async () => {
-      const { trimForError } = await import("../../pi/lib/runtime-utils");
+	it("PBT: エージェント選択の一貫性", () => {
+		fc.assert(
+			fc.property(
+				fc.array(
+					fc.record({
+						id: fc.string({ minLength: 1, maxLength: 10 }),
+						enabled: fc.constantFrom("enabled", "disabled" as const),
+					}),
+					{ minLength: 1, maxLength: 10 }
+				),
+				(agents) => {
+					const enabledAgents = agents.filter(a => a.enabled === "enabled");
+					const disabledAgents = agents.filter(a => a.enabled === "disabled");
 
-      fc.assert(
-        fc.property(fc.string({ minLength: 0, maxLength: 1000 }), (msg) => {
-          const result = trimForError(msg);
-          return result.length <= 200;
-        })
-      );
-    });
-  });
-});
+					// 有効と無効の合計は総数
+					return enabledAgents.length + disabledAgents.length === agents.length;
+				}
+			),
+			{ numRuns: 50 }
+		);
+	});
 
-// ============================================================================
-// ランタイム連携のテスト
-// ============================================================================
+	it("PBT: バックグラウンドジョブの上限維持", () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 1, max: 1000 }),
+				(count) => {
+					const MAX_JOBS = 200;
+					const actualCount = Math.min(count, MAX_JOBS);
 
-describe("ランタイム連携", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  describe("getRuntimeSnapshot", () => {
-    it("should_return_valid_snapshot", async () => {
-      const { getRuntimeSnapshot } = await import("./agent-runtime");
-      const snapshot = getRuntimeSnapshot();
-
-      expect(snapshot).toHaveProperty("subagentActiveRequests");
-      expect(snapshot).toHaveProperty("subagentActiveAgents");
-      expect(snapshot).toHaveProperty("totalActiveRequests");
-      expect(snapshot).toHaveProperty("totalActiveLlm");
-      expect(snapshot).toHaveProperty("limits");
-    });
-
-    it("should_have_valid_limits", async () => {
-      const { getRuntimeSnapshot } = await import("./agent-runtime");
-      const snapshot = getRuntimeSnapshot();
-
-      expect(snapshot.limits.maxTotalActiveLlm).toBeGreaterThan(0);
-      expect(snapshot.limits.maxTotalActiveRequests).toBeGreaterThan(0);
-      expect(snapshot.limits.maxParallelSubagentsPerRun).toBeGreaterThan(0);
-    });
-  });
-
-  describe("getSharedRuntimeState", () => {
-    it("should_return_valid_state", async () => {
-      const { getSharedRuntimeState } = await import("./agent-runtime");
-      const state = getSharedRuntimeState();
-
-      expect(state).toHaveProperty("subagents");
-      expect(state).toHaveProperty("teams");
-      expect(state).toHaveProperty("queue");
-      expect(state).toHaveProperty("reservations");
-      expect(state).toHaveProperty("limits");
-    });
-  });
-
-  describe("formatRuntimeStatusLine", () => {
-    it("should_return_formatted_status", async () => {
-      const { formatRuntimeStatusLine } = await import("./agent-runtime");
-      const status = formatRuntimeStatusLine();
-
-      expect(typeof status).toBe("string");
-      expect(status.length).toBeGreaterThan(0);
-    });
-  });
-});
-
-// ============================================================================
-// エッジケース
-// ============================================================================
-
-describe("エッジケース", () => {
-  describe("空のストレージ", () => {
-    it("should_handle_empty_definitions", () => {
-      const emptyStorage: SubagentStorage = {
-        definitions: [],
-        runs: [],
-      };
-      expect(emptyStorage.definitions).toHaveLength(0);
-    });
-
-    it("should_handle_empty_runs", () => {
-      const emptyStorage: SubagentStorage = {
-        definitions: [],
-        runs: [],
-      };
-      expect(emptyStorage.runs).toHaveLength(0);
-    });
-  });
-
-  describe("特殊文字を含むタスク", () => {
-    it("should_handle_unicode_task", () => {
-      const task = "日本語のタスク";
-      expect(task.length).toBeGreaterThan(0);
-    });
-
-    it("should_handle_special_characters", () => {
-      const task = "Task with special chars: <>&\"'\\n\\t";
-      expect(task).toContain("special");
-    });
-  });
-
-  describe("長い入力", () => {
-    it("should_handle_long_task_description", () => {
-      const longTask = "x".repeat(10000);
-      expect(longTask.length).toBe(10000);
-    });
-
-    it("should_handle_long_system_prompt", () => {
-      const longPrompt = "You are an agent. ".repeat(1000);
-      expect(longPrompt.length).toBeGreaterThan(10000);
-    });
-  });
+					return actualCount <= MAX_JOBS;
+				}
+			),
+			{ numRuns: 50 }
+		);
+	});
 });

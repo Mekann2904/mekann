@@ -134,7 +134,15 @@ const DEFAULT_CONFIG: CoordinatorConfig = {
   heartbeatTimeoutMs: 60_000,
 };
 
-const COORDINATOR_DIR = join(homedir(), ".pi", "runtime");
+function resolveCoordinatorRuntimeDir(): string {
+  const raw = String(process.env.PI_RUNTIME_DIR || "").trim();
+  if (!raw) return join(homedir(), ".pi", "runtime");
+  if (raw === "~") return homedir();
+  if (raw.startsWith("~/")) return join(homedir(), raw.slice(2));
+  return raw;
+}
+
+const COORDINATOR_DIR = resolveCoordinatorRuntimeDir();
 const INSTANCES_DIR = join(COORDINATOR_DIR, "instances");
 const CONFIG_FILE = join(COORDINATOR_DIR, "coordinator.json");
 
@@ -272,7 +280,27 @@ function parseLockFile(filename: string): InstanceInfo | null {
   }
 }
 
+function isProcessAlive(processId: number): boolean {
+  if (!Number.isFinite(processId) || processId <= 0) return false;
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === "EPERM") return true;
+    return false;
+  }
+}
+
+function shouldCheckProcessLiveness(info: InstanceInfo): boolean {
+  const instanceId = String(info.instanceId || "");
+  return instanceId.includes("-pid");
+}
+
 function isInstanceAlive(info: InstanceInfo, nowMs: number, timeoutMs: number): boolean {
+  if (shouldCheckProcessLiveness(info) && !isProcessAlive(info.pid)) {
+    return false;
+  }
   const lastHeartbeat = new Date(info.lastHeartbeat).getTime();
   return nowMs - lastHeartbeat < timeoutMs;
 }
@@ -508,10 +536,37 @@ export function getMyParallelLimit(): number {
     return 1;
   }
 
-  const activeCount = getActiveInstanceCount();
-  const baseLimit = Math.max(1, Math.floor(state.config.totalMaxLlm / activeCount));
+  const contendingCount = getContendingInstanceCount();
+  const baseLimit = Math.max(1, Math.floor(state.config.totalMaxLlm / contendingCount));
 
   return baseLimit;
+}
+
+function isContendingInstance(info: InstanceInfo): boolean {
+  const activeModels = Array.isArray(info.activeModels) ? info.activeModels.length : 0;
+  const activeRequests = Math.max(0, Math.trunc(info.activeRequestCount || 0));
+  const activeLlm = Math.max(0, Math.trunc(info.activeLlmCount || 0));
+  const pendingTasks = Math.max(0, Math.trunc(info.pendingTaskCount || 0));
+  return activeModels > 0 || activeRequests > 0 || activeLlm > 0 || pendingTasks > 0;
+}
+
+/**
+ * 実際に負荷を持つインスタンス数を取得
+ * @summary 競合インスタンス数取得
+ * @returns {number} 競合中インスタンス数（最低1）
+ */
+export function getContendingInstanceCount(): number {
+  if (!state) {
+    return 1;
+  }
+
+  const instances = getActiveInstances();
+  const contending = instances.filter((inst) => isContendingInstance(inst));
+  const includesSelf = contending.some((inst) => inst.instanceId === state!.myInstanceId);
+  if (!includesSelf) {
+    return Math.max(1, contending.length + 1);
+  }
+  return Math.max(1, contending.length);
 }
 
 /**
@@ -695,6 +750,7 @@ export function getCoordinatorStatus(): {
   registered: boolean;
   myInstanceId: string | null;
   activeInstanceCount: number;
+  contendingInstanceCount: number;
   myParallelLimit: number;
   config: CoordinatorConfig | null;
   instances: InstanceInfo[];
@@ -704,6 +760,7 @@ export function getCoordinatorStatus(): {
       registered: false,
       myInstanceId: null,
       activeInstanceCount: 1,
+      contendingInstanceCount: 1,
       myParallelLimit: getRuntimeConfig().totalMaxLlm,
       config: null,
       instances: [],
@@ -711,12 +768,14 @@ export function getCoordinatorStatus(): {
   }
 
   const activeCount = getActiveInstanceCount();
+  const contendingCount = getContendingInstanceCount();
   const myLimit = getMyParallelLimit();
 
   return {
     registered: true,
     myInstanceId: state.myInstanceId,
     activeInstanceCount: activeCount,
+    contendingInstanceCount: contendingCount,
     myParallelLimit: myLimit,
     config: state.config,
     instances: getActiveInstances(),

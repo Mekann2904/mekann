@@ -282,3 +282,93 @@ describe("エッジケース", () => {
 		});
 	});
 });
+
+// ============================================================================
+// agent_end 通知レベル判定のテスト
+// ============================================================================
+
+describe("agent_end 通知レベル", () => {
+	const originalKittyWindowId = process.env.KITTY_WINDOW_ID;
+
+	beforeEach(() => {
+		process.env.KITTY_WINDOW_ID = "test-window";
+	});
+
+	afterEach(() => {
+		if (originalKittyWindowId === undefined) {
+			delete process.env.KITTY_WINDOW_ID;
+		} else {
+			process.env.KITTY_WINDOW_ID = originalKittyWindowId;
+		}
+	});
+
+	it("toolResultにエラーが含まれてもError通知ではなくWarning通知になる", async () => {
+		const handlers: Record<string, (event: any, ctx: any) => Promise<void> | void> = {};
+		const piMock = {
+			on: vi.fn((name: string, handler: (event: any, ctx: any) => Promise<void> | void) => {
+				handlers[name] = handler;
+			}),
+			registerCommand: vi.fn(),
+		};
+
+		kittyStatusIntegration(piMock as any);
+
+		const ctx = {
+			cwd: "/tmp/demo-project",
+			ui: { notify: vi.fn() },
+		};
+
+		await handlers.session_start({}, ctx);
+		await handlers.agent_start({}, ctx);
+		await handlers.agent_end(
+			{
+				messages: [
+					{ role: "toolResult", isError: false },
+					{ role: "toolResult", isError: true },
+					{ role: "toolResult", isError: false },
+					{ role: "toolResult", isError: false },
+				],
+			},
+			ctx,
+		);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Completed turn 1 (4 tools, 1 errors)",
+			"warning",
+		);
+	});
+
+	it("toolResultにエラーがなければSuccess通知になる", async () => {
+		const handlers: Record<string, (event: any, ctx: any) => Promise<void> | void> = {};
+		const piMock = {
+			on: vi.fn((name: string, handler: (event: any, ctx: any) => Promise<void> | void) => {
+				handlers[name] = handler;
+			}),
+			registerCommand: vi.fn(),
+		};
+
+		kittyStatusIntegration(piMock as any);
+
+		const ctx = {
+			cwd: "/tmp/demo-project",
+			ui: { notify: vi.fn() },
+		};
+
+		await handlers.session_start({}, ctx);
+		await handlers.agent_start({}, ctx);
+		await handlers.agent_end(
+			{
+				messages: [
+					{ role: "toolResult", isError: false },
+					{ role: "toolResult", isError: false },
+				],
+			},
+			ctx,
+		);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Completed turn 1 (2 tools)",
+			"success",
+		);
+	});
+});

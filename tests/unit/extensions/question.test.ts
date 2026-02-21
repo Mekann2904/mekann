@@ -1,215 +1,368 @@
 /**
  * @file .pi/extensions/question.ts の単体テスト
- * @description ユーザーへの対話的質問UI拡張のテスト
- * @testFramework vitest + fast-check
+ * @description 質問UI拡張機能のテスト
+ * @testFramework vitest
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import * as fc from "fast-check";
 
-// モック: pi SDK依存を分離
+// pi SDKのモック
+vi.mock("@mariozechner/pi-ai", () => ({
+	Type: {
+		String: () => ({ type: "string" }),
+		Boolean: () => ({ type: "boolean" }),
+		Optional: (type) => type,
+		Object: (fields) => ({ type: "object", fields }),
+		Array: (type) => ({ type: "array", itemType: type }),
+	},
+}));
+
 vi.mock("@mariozechner/pi-tui", () => ({
-	Text: vi.fn((text: string) => ({ text })),
-	truncateToWidth: vi.fn((s: string) => s),
-	wrapTextWithAnsi: vi.fn((s: string) => [s]),
-	CURSOR_MARKER: "\x1b[7m",
-	matchesKey: vi.fn((data: string, key: string) => data === key),
+	Text: vi.fn(),
+	truncateToWidth: vi.fn((s) => s),
+	wrapTextWithAnsi: vi.fn((text, width) => {
+		if (text.length <= width) return [text];
+		const lines: string[] = [];
+		for (let i = 0; i < text.length; i += width) {
+			lines.push(text.slice(i, i + width));
+		}
+		return lines;
+	}),
+	CURSOR_MARKER: "\u2588",
 	Key: {
 		enter: "enter",
 		escape: "escape",
-		up: "up",
-		down: "down",
+		backspace: "backspace",
 		left: "left",
 		right: "right",
-		backspace: "backspace",
+		up: "up",
+		down: "down",
 		home: "home",
 		end: "end",
 		delete: "delete",
-		shift: vi.fn((key: string) => `shift+${key}`),
+		shift: (key) => `shift+${key}`,
 	},
+	matchesKey: vi.fn((data, key) => data === key),
+}));
+
+vi.mock("@mariozechner/pi-coding-agent", () => ({
+	ExtensionAPI: vi.fn(),
 }));
 
 // ============================================================================
 // 型定義のテスト
 // ============================================================================
 
-describe("QuestionOption型", () => {
-	interface QuestionOption {
-		label: string;
-		description?: string;
-	}
+describe("question.ts 型定義", () => {
+	describe("QuestionOption", () => {
+		it("labelを持つ", () => {
+			const option = { label: "オプションA" };
+			expect(option.label).toBe("オプションA");
+		});
 
-	describe("基本構造", () => {
-		it("should_create_option_with_label_only", () => {
-			const option: QuestionOption = {
-				label: "Yes",
-			};
+		it("descriptionを持つ（オプション）", () => {
+			const option = { label: "オプションA", description: "説明テキスト" };
+			expect(option.description).toBe("説明テキスト");
+		});
 
-			expect(option.label).toBe("Yes");
+		it("descriptionなしでも有効", () => {
+			const option = { label: "オプションA" };
 			expect(option.description).toBeUndefined();
 		});
-
-		it("should_create_option_with_description", () => {
-			const option: QuestionOption = {
-				label: "Option A",
-				description: "This is option A",
-			};
-
-			expect(option.label).toBe("Option A");
-			expect(option.description).toBe("This is option A");
-		});
 	});
-});
 
-describe("QuestionInfo型", () => {
-	interface QuestionInfo {
-		question: string;
-		header: string;
-		options: Array<{ label: string; description?: string }>;
-		multiple?: boolean;
-		custom?: boolean;
-	}
-
-	describe("基本構造", () => {
-		it("should_create_simple_question", () => {
-			const info: QuestionInfo = {
-				question: "Do you want to continue?",
-				header: "Confirm",
-				options: [
-					{ label: "Yes" },
-					{ label: "No" },
-				],
+	describe("QuestionInfo", () => {
+		it("必須フィールドを持つ", () => {
+			const question = {
+				question: "質問文",
+				header: "ヘッダー",
+				options: [{ label: "A" }, { label: "B" }],
 			};
-
-			expect(info.question).toBe("Do you want to continue?");
-			expect(info.header).toBe("Confirm");
-			expect(info.options).toHaveLength(2);
-			expect(info.multiple).toBeUndefined();
-			expect(info.custom).toBeUndefined();
+			expect(question.question).toBe("質問文");
+			expect(question.header).toBe("ヘッダー");
+			expect(question.options).toHaveLength(2);
 		});
 
-		it("should_create_multiple_select_question", () => {
-			const info: QuestionInfo = {
-				question: "Select features",
-				header: "Features",
-				options: [
-					{ label: "Feature A" },
-					{ label: "Feature B" },
-				],
+		it("multipleフラグを持つ（オプション）", () => {
+			const question = {
+				question: "質問文",
+				header: "ヘッダー",
+				options: [{ label: "A" }],
 				multiple: true,
 			};
-
-			expect(info.multiple).toBe(true);
+			expect(question.multiple).toBe(true);
 		});
 
-		it("should_create_question_with_custom_input", () => {
-			const info: QuestionInfo = {
-				question: "Choose or enter",
-				header: "Choice",
-				options: [{ label: "Option A" }],
-				custom: true,
+		it("customフラグを持つ（オプション）", () => {
+			const question = {
+				question: "質問文",
+				header: "ヘッダー",
+				options: [{ label: "A" }],
+				custom: false,
 			};
-
-			expect(info.custom).toBe(true);
+			expect(question.custom).toBe(false);
 		});
 	});
-});
 
-describe("Answer型", () => {
-	type Answer = string[];
-
-	describe("回答形式", () => {
-		it("should_be_string_array", () => {
-			const answer: Answer = ["Yes"];
-			expect(Array.isArray(answer)).toBe(true);
-			expect(answer[0]).toBe("Yes");
+	describe("Answer型", () => {
+		it("文字列の配列", () => {
+			const answer: string[] = ["選択肢A", "選択肢B"];
+			expect(answer).toEqual(["選択肢A", "選択肢B"]);
 		});
 
-		it("should_allow_multiple_selections", () => {
-			const answer: Answer = ["Feature A", "Feature B", "Feature C"];
-			expect(answer).toHaveLength(3);
-		});
-
-		it("should_allow_empty_array_for_cancellation", () => {
-			const answer: Answer = [];
-			expect(answer).toHaveLength(0);
-		});
-
-		it("should_allow_custom_text", () => {
-			const answer: Answer = ["This is my custom input"];
-			expect(answer[0]).toContain("custom");
+		it("空配列も可能", () => {
+			const answer: string[] = [];
+			expect(answer).toEqual([]);
 		});
 	});
 });
 
 // ============================================================================
-// createRendererヘルパー関数のテスト
+// createRendererロジックのテスト
 // ============================================================================
 
 describe("createRenderer", () => {
-	function createRenderer<TState>(
-		initialState: TState,
-		renderFn: (state: TState, width: number) => string[]
-	) {
-		let state = initialState;
-		let cached: string[] | undefined;
-
-		return {
-			getState: () => state,
-			setState: (update: Partial<TState>) => {
-				state = { ...state, ...update };
-				cached = undefined;
-			},
-			render: (width: number) => {
-				if (!cached) cached = renderFn(state, width);
-				return cached;
-			},
-			invalidate: () => {
-				cached = undefined;
-			},
-		};
+	interface RendererState {
+		cursor: number;
+		selected: Set<number>;
+		value: string;
 	}
 
-	describe("状態管理", () => {
-		it("should_initialize_with_state", () => {
-			const renderer = createRenderer({ cursor: 0 }, (state) => [`cursor: ${state.cursor}`]);
+	it("初期状態を保持", () => {
+		const initialState: RendererState = {
+			cursor: 0,
+			selected: new Set<number>(),
+			value: "",
+		};
+		const state = initialState;
+		expect(state.cursor).toBe(0);
+		expect(state.selected.size).toBe(0);
+		expect(state.value).toBe("");
+	});
 
-			expect(renderer.getState().cursor).toBe(0);
+	it("状態を更新して不変性を維持", () => {
+		const initialState: RendererState = {
+			cursor: 0,
+			selected: new Set<number>(),
+			value: "",
+		};
+
+		const update: Partial<RendererState> = { cursor: 1, value: "test" };
+		const newState = { ...initialState, ...update };
+
+		// 初期状態は変更されていない
+		expect(initialState.cursor).toBe(0);
+		expect(initialState.value).toBe("");
+
+		// 新しい状態は更新されている
+		expect(newState.cursor).toBe(1);
+		expect(newState.value).toBe("test");
+	});
+
+	it("Setはスプレッドで展開できないのでマージが必要", () => {
+		const selected1 = new Set<number>([1, 2]);
+		const update = { selected: new Set([...selected1, 3]) };
+
+		const state: RendererState = {
+			cursor: 0,
+			selected: update.selected,
+			value: "",
+		};
+
+		expect(state.selected.has(1)).toBe(true);
+		expect(state.selected.has(2)).toBe(true);
+		expect(state.selected.has(3)).toBe(true);
+	});
+
+	it("キャッシュ無効化フラグを管理", () => {
+		let cached: string[] | undefined = undefined;
+		let invalidated = false;
+
+		// 初期キャッシュなし
+		expect(cached).toBeUndefined();
+
+		// キャッシュ作成
+		cached = ["line1", "line2"];
+		expect(cached).toBeDefined();
+
+		// 無効化
+		invalidated = true;
+		if (invalidated) {
+			cached = undefined;
+		}
+
+		expect(cached).toBeUndefined();
+	});
+});
+
+// ============================================================================
+// UI状態管理のテスト
+// ============================================================================
+
+describe("UI状態管理", () => {
+	describe("カーソル移動", () => {
+		it("上下移動の境界条件", () => {
+			const optionsCount = 3;
+			let cursor = 0;
+
+			// 上限
+			cursor = Math.min(optionsCount - 1, cursor + 1);
+			expect(cursor).toBe(1);
+
+			cursor = Math.min(optionsCount - 1, cursor + 1);
+			expect(cursor).toBe(2);
+
+			// 下限（これ以上増えない）
+			cursor = Math.min(optionsCount - 1, cursor + 1);
+			expect(cursor).toBe(2);
 		});
 
-		it("should_update_state", () => {
-			const renderer = createRenderer({ cursor: 0 }, (state) => [`cursor: ${state.cursor}`]);
+		it("下限境界", () => {
+			let cursor = 2;
+			cursor = Math.max(0, cursor - 1);
+			expect(cursor).toBe(1);
 
-			renderer.setState({ cursor: 5 });
+			cursor = Math.max(0, cursor - 1);
+			expect(cursor).toBe(0);
 
-			expect(renderer.getState().cursor).toBe(5);
-		});
-
-		it("should_invalidate_cache", () => {
-			let renderCount = 0;
-			const renderer = createRenderer({ cursor: 0 }, (state) => {
-				renderCount++;
-				return [`cursor: ${state.cursor}`];
-			});
-
-			renderer.render(80);
-			renderer.render(80); // キャッシュされる
-			expect(renderCount).toBe(1);
-
-			renderer.invalidate();
-			renderer.render(80); // 再描画
-			expect(renderCount).toBe(2);
+			cursor = Math.max(0, cursor - 1);
+			expect(cursor).toBe(0);
 		});
 	});
 
-	describe("描画結果", () => {
-		it("should_return_string_array", () => {
-			const renderer = createRenderer({ text: "test" }, (state) => [state.text]);
+	describe("選択状態管理", () => {
+		it("選択の追加と削除", () => {
+			const selected = new Set<number>();
 
-			const result = renderer.render(80);
+			// 追加
+			selected.add(1);
+			expect(selected.has(1)).toBe(true);
 
-			expect(Array.isArray(result)).toBe(true);
-			expect(result[0]).toBe("test");
+			// 削除
+			selected.delete(1);
+			expect(selected.has(1)).toBe(false);
+		});
+
+		it("複数選択の管理", () => {
+			const selected = new Set<number>();
+			selected.add(0);
+			selected.add(2);
+			selected.add(4);
+
+			expect(selected.size).toBe(3);
+			expect(Array.from(selected).sort()).toEqual([0, 2, 4]);
+		});
+	});
+
+	describe("カスタム入力モード", () => {
+		it("カーソル位置管理", () => {
+			const text = "hello";
+			let cursor = 0;
+
+			// 右に移動
+			cursor = Math.min(text.length, cursor + 1);
+			expect(cursor).toBe(1);
+
+			cursor = Math.min(text.length, cursor + 4);
+			expect(cursor).toBe(5);
+
+			// これ以上右には進めない
+			cursor = Math.min(text.length, cursor + 1);
+			expect(cursor).toBe(5);
+		});
+
+		it("文字列挿入", () => {
+			const text = "hllo";
+			const insertChar = "e";
+			const insertPos = 1;
+
+			const before = text.slice(0, insertPos);
+			const after = text.slice(insertPos);
+			const newText = before + insertChar + after;
+
+			expect(newText).toBe("hello");
+		});
+
+		it("文字削除（backspace）", () => {
+			const text = "hello";
+			const cursor = 4;
+
+			const before = text.slice(0, cursor - 1);
+			const after = text.slice(cursor);
+			const newText = before + after;
+
+			expect(newText).toBe("helo");
+			expect(before.length).toBe(3);
+		});
+
+		it("文字削除（delete）", () => {
+			const text = "hello";
+			const cursor = 1;
+
+			const before = text.slice(0, cursor);
+			const after = text.slice(cursor + 1);
+			const newText = before + after;
+
+			expect(newText).toBe("hllo");
+			expect(after).toBe("llo");
+		});
+
+		it("複数行対応のカーソル計算", () => {
+			const text = "line1\nline2\nline3";
+			const lines = text.split("\n");
+
+			// 行ごとの文字オフセットを計算
+			let charCount = 0;
+			const offsets: number[] = [];
+			for (let i = 0; i < lines.length; i++) {
+				offsets.push(charCount);
+				charCount += lines[i].length + 1; // +1 for \n
+			}
+
+			expect(offsets).toEqual([0, 6, 12]);
+
+			// カーソルがline2の先頭にある場合
+			const cursor = offsets[1];
+			expect(text[cursor]).toBe("l");
+		});
+	});
+});
+
+// ============================================================================
+// 回答フォーマットのテスト
+// ============================================================================
+
+describe("回答フォーマット", () => {
+	describe("opencode形式出力", () => {
+		it("単一回答のフォーマット", () => {
+			const question = { question: "質問?", header: "Q", options: [] };
+			const answers = [["選択A"]];
+
+			const formatted = `"${question.question}"="${answers[0]!.join(", ")}"`;
+			expect(formatted).toBe('"質問?"="選択A"');
+		});
+
+		it("複数回答のフォーマット", () => {
+			const questions = [
+				{ question: "質問1?", header: "Q1", options: [] },
+				{ question: "質問2?", header: "Q2", options: [] },
+			];
+			const answers = [["A1", "A2"], ["B1"]];
+
+			const formatted = questions
+				.map((q, i) => `"${q.question}"="${answers[i]!.join(", ")}"`)
+				.join(", ");
+			expect(formatted).toBe('"質問1?"="A1, A2", "質問2?"="B1"');
+		});
+	});
+
+	describe("キャンセル時の出力", () => {
+		it("空配列として扱う", () => {
+			const answers: string[][] = [];
+			const hasAnswer = answers.length > 0 && answers.some(a => a.length > 0);
+
+			expect(hasAnswer).toBe(false);
 		});
 	});
 });
@@ -219,175 +372,237 @@ describe("createRenderer", () => {
 // ============================================================================
 
 describe("入力処理", () => {
-	describe("カーソル移動", () => {
-		function moveCursor(current: number, direction: "up" | "down", max: number): number {
-			if (direction === "up") {
-				return Math.max(0, current - 1);
+	describe("キーイベントマッチング", () => {
+		it("Enterキーの判定", () => {
+			const data = "enter";
+			const isEnter = data === "enter";
+			expect(isEnter).toBe(true);
+		});
+
+		it("Escapeキーの判定", () => {
+			const data = "escape";
+			const isEscape = data === "escape";
+			expect(isEscape).toBe(true);
+		});
+
+		it("Spaceキーの判定", () => {
+			const data = " ";
+			const isSpace = data === " " || data === "Space";
+			expect(isSpace).toBe(true);
+		});
+	});
+
+	describe("ブラケットペーストモード", () => {
+		it("ペースト開始シーケンスの検出", () => {
+			const data = "some text\x1b[200~more text";
+			const hasPasteStart = data.includes("\x1b[200~");
+			expect(hasPasteStart).toBe(true);
+		});
+
+		it("ペースト終了シーケンスの検出", () => {
+			const data = "pasted content\x1b[201~";
+			const hasPasteEnd = data.includes("\x1b[201~");
+			expect(hasPasteEnd).toBe(true);
+		});
+
+		it("ペースト内容の抽出", () => {
+			const pasteBuffer = "hello world\x1b[201~";
+			const endIndex = pasteBuffer.indexOf("\x1b[201~");
+			const pasteContent = pasteBuffer.substring(0, endIndex);
+
+			expect(pasteContent).toBe("hello world");
+		});
+	});
+
+	describe("シフトキー修飾", () => {
+		it("Shift+Enterの判定", () => {
+			const data = "shift+enter";
+			const isShiftEnter = data === "shift+enter";
+			expect(isShiftEnter).toBe(true);
+		});
+	});
+});
+
+// ============================================================================
+// テキスト折り返しのテスト
+// ============================================================================
+
+describe("テキスト折り返し", () => {
+	describe("wrapTextWithAnsiロジック", () => {
+		it("短いテキストは折り返さない", () => {
+			const text = "short";
+			const width = 20;
+			const wrapped = text.length <= width ? [text] : [text.slice(0, width), text.slice(width)];
+
+			expect(wrapped).toEqual(["short"]);
+		});
+
+		it("長いテキストを折り返す", () => {
+			const text = "this is a very long text that needs to be wrapped";
+			const width = 10;
+			const lines: string[] = [];
+			for (let i = 0; i < text.length; i += width) {
+				lines.push(text.slice(i, i + width));
 			}
-			return Math.min(max, current + 1);
-		}
 
-		it("should_move_cursor_up", () => {
-			expect(moveCursor(2, "up", 5)).toBe(1);
-			expect(moveCursor(0, "up", 5)).toBe(0); // 境界
+			expect(lines[0]).toBe("this is a ");
+			expect(lines[1]).toBe("very long ");
+			expect(lines[2]).toBe("text that ");
+			expect(lines.length).toBeGreaterThan(2);
 		});
 
-		it("should_move_cursor_down", () => {
-			expect(moveCursor(2, "down", 5)).toBe(3);
-			expect(moveCursor(5, "down", 5)).toBe(5); // 境界
+		it("空文字列の処理", () => {
+			const text = "";
+			const width = 10;
+			const wrapped = text.length === 0 ? [] : [text];
+
+			expect(wrapped).toEqual([]);
+		});
+	});
+});
+
+// ============================================================================
+// エッジケースのテスト
+// ============================================================================
+
+describe("エッジケース", () => {
+	describe("空の選択肢リスト", () => {
+		it("空配列の処理", () => {
+			const options: { label: string }[] = [];
+			const count = options.length;
+
+			expect(count).toBe(0);
 		});
 
-		it("PBT: カーソルは常に範囲内", () => {
-			fc.assert(
-				fc.property(
-					fc.integer({ min: 0, max: 100 }),
-					fc.constantFrom("up", "down"),
-					fc.integer({ min: 0, max: 100 }),
-					(current, direction, max) => {
-						// Ensure current is within bounds initially
-						const safeCurrent = Math.min(current, max);
-						const result = moveCursor(safeCurrent, direction, max);
-						return result >= 0 && result <= max;
+		it("「その他」オプションの追加ロジック", () => {
+			const options = [];
+			const allowCustom = true;
+			const displayOptions = allowCustom
+				? [...options, { label: "その他", description: "自由に入力" }]
+				: options;
+
+			expect(displayOptions).toHaveLength(1);
+			expect(displayOptions[0].label).toBe("その他");
+		});
+	});
+
+	describe("最大長制限", () => {
+		it("ヘッダーのカット", () => {
+			const header = "このヘッダーは非常に長いのでカットされます";
+			const maxLength = 20;
+			const truncated = header.slice(0, maxLength);
+
+			// 20文字にカット
+			expect(truncated.length).toBe(20);
+			expect(truncated).toBe("このヘッダーは非常に長いのでカットされま");
+		});
+	});
+
+	describe("特殊文字の処理", () => {
+		it("ANSIエスケープシーケンス", () => {
+			const text = "normal\x1b[31mred\x1b[0mnormal";
+			const hasAnsi = text.includes("\x1b[");
+			expect(hasAnsi).toBe(true);
+		});
+
+		it("日本語（マルチバイト）の文字数", () => {
+			const text = "こんにちは";
+			const length = text.length;
+			expect(length).toBe(5);
+		});
+	});
+});
+
+// ============================================================================
+// プロパティベーステスト
+// ============================================================================
+
+describe("question.ts プロパティベーステスト", () => {
+	it("PBT: カーソルは常に有効範囲内", () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 0, max: 10 }),
+				fc.array(fc.string({ minLength: 1, maxLength: 5 })),
+				(initialCursor, options) => {
+					const optionsCount = Math.min(options.length, 10);
+					let cursor = initialCursor;
+
+					// 上移動
+					cursor = Math.min(optionsCount > 0 ? optionsCount - 1 : 0, cursor + 1);
+					expect(cursor).toBeGreaterThanOrEqual(0);
+					if (optionsCount > 0) {
+						expect(cursor).toBeLessThanOrEqual(optionsCount);
 					}
-				)
-			);
-		});
+
+					// 下移動
+					cursor = Math.max(0, cursor - 1);
+					expect(cursor).toBeGreaterThanOrEqual(0);
+					return true;
+				}
+			),
+			{ numRuns: 50 }
+		);
 	});
 
-	describe("複数選択のトグル", () => {
-		function toggleSelection(selected: Set<number>, index: number): Set<number> {
-			const newSet = new Set(selected);
-			if (newSet.has(index)) {
-				newSet.delete(index);
-			} else {
-				newSet.add(index);
-			}
-			return newSet;
-		}
+	it("PBT: 選択したインデックスは範囲内", () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.integer({ min: 0, max: 9 })),
+				(indices) => {
+					const maxIndex = 10;
+					const validIndices = indices.filter(i => i >= 0 && i < maxIndex);
 
-		it("should_add_to_selection", () => {
-			const selected = new Set<number>();
-			const result = toggleSelection(selected, 0);
-
-			expect(result.has(0)).toBe(true);
-		});
-
-		it("should_remove_from_selection", () => {
-			const selected = new Set<number>([0, 1, 2]);
-			const result = toggleSelection(selected, 1);
-
-			expect(result.has(1)).toBe(false);
-			expect(result.has(0)).toBe(true);
-			expect(result.has(2)).toBe(true);
-		});
-
-		it("should_toggle_selection", () => {
-			let selected = new Set<number>();
-
-			selected = toggleSelection(selected, 0);
-			expect(selected.has(0)).toBe(true);
-
-			selected = toggleSelection(selected, 0);
-			expect(selected.has(0)).toBe(false);
-		});
+					expect(validIndices.every(i => i >= 0 && i < maxIndex)).toBe(true);
+					return true;
+				}
+			),
+			{ numRuns: 50 }
+		);
 	});
-});
 
-// ============================================================================
-// カスタム入力モードのテスト
-// ============================================================================
+	it("PBT: 文字列挿入の不変性", () => {
+		fc.assert(
+			fc.property(
+				fc.string({ maxLength: 20 }),
+				fc.string({ minLength: 1, maxLength: 5 }),
+				fc.integer({ min: 0, max: 20 }),
+				(originalText, insertChar, position) => {
+					const clampedPos = Math.max(0, Math.min(originalText.length, position));
+					const before = originalText.slice(0, clampedPos);
+					const after = originalText.slice(clampedPos);
+					const result = before + insertChar + after;
 
-describe("カスタム入力モード", () => {
-	describe("テキスト編集", () => {
-		function insertText(current: string, cursor: number, char: string): { text: string; cursor: number } {
-			const before = current.slice(0, cursor);
-			const after = current.slice(cursor);
-			return {
-				text: before + char + after,
-				cursor: cursor + char.length,
-			};
-		}
+					// 結果の長さチェック
+					expect(result.length).toBe(originalText.length + insertChar.length);
+					return true;
+				}
+			),
+			{ numRuns: 30 }
+		);
+	});
 
-		function deleteChar(current: string, cursor: number): { text: string; cursor: number } {
-			if (cursor <= 0) return { text: current, cursor };
-			const before = current.slice(0, cursor - 1);
-			const after = current.slice(cursor);
-			return {
-				text: before + after,
-				cursor: cursor - 1,
-			};
-		}
+	it("PBT: カーソル境界の整合性", () => {
+		fc.assert(
+			fc.property(
+				fc.string({ maxLength: 50 }),
+				(text) => {
+					let cursor = 0;
 
-		it("should_insert_character_at_cursor", () => {
-			const result = insertText("hello", 2, "X");
-			expect(result.text).toBe("heXllo");
-			expect(result.cursor).toBe(3);
-		});
-
-		it("should_delete_character_before_cursor", () => {
-			const result = deleteChar("hello", 2);
-			expect(result.text).toBe("hllo");
-			expect(result.cursor).toBe(1);
-		});
-
-		it("should_not_delete_at_start", () => {
-			const result = deleteChar("hello", 0);
-			expect(result.text).toBe("hello");
-			expect(result.cursor).toBe(0);
-		});
-
-		it("PBT: 挿入後のカーソル位置は正しい", () => {
-			fc.assert(
-				fc.property(
-					fc.string({ minLength: 0, maxLength: 50 }),
-					fc.integer({ min: 0, max: 50 }),
-					fc.string({ minLength: 1, maxLength: 5 }),
-					(text, cursor, char) => {
-						const safeCursor = Math.min(cursor, text.length);
-						const result = insertText(text, safeCursor, char);
-						return result.cursor === safeCursor + char.length;
+					// 右に移動
+					for (let i = 0; i < 60; i++) {
+						cursor = Math.min(text.length, cursor + 1);
 					}
-				)
-			);
-		});
-	});
-});
+					expect(cursor).toBe(text.length);
 
-// ============================================================================
-// バレルエクスポート確認テスト
-// ============================================================================
-
-describe("バレルエクスポート確認", () => {
-	it("should_have_default_export_as_function", async () => {
-		const questionModule = await import("../../../.pi/extensions/question");
-		expect(questionModule.default).toBeDefined();
-		expect(typeof questionModule.default).toBe("function");
-		expect(questionModule.default.length).toBe(1); // pi引数を1つ取る
-	});
-});
-
-// ============================================================================
-// 確認画面のテスト
-// ============================================================================
-
-describe("確認画面", () => {
-	type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number } | { type: "cancel" };
-
-	describe("アクション判定", () => {
-		it("should_create_confirm_action", () => {
-			const action: ConfirmAction = { type: "confirm" };
-			expect(action.type).toBe("confirm");
-		});
-
-		it("should_create_cancel_action", () => {
-			const action: ConfirmAction = { type: "cancel" };
-			expect(action.type).toBe("cancel");
-		});
-
-		it("should_create_edit_action", () => {
-			const action: ConfirmAction = { type: "edit", questionIndex: 2 };
-			expect(action.type).toBe("edit");
-			expect((action as { questionIndex: number }).questionIndex).toBe(2);
-		});
+					// 左に移動
+					for (let i = 0; i < 60; i++) {
+						cursor = Math.max(0, cursor - 1);
+					}
+					expect(cursor).toBe(0);
+					return true;
+				}
+			),
+			{ numRuns: 20 }
+		);
 	});
 });

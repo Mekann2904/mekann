@@ -157,8 +157,11 @@ export function toBoundedFloat(
  * @returns 範囲内に制限された整数値
  */
 export function clampInteger(value: number, min: number, max: number): number {
-  // NaNまたは非有限値の場合はminを返す
-  if (!Number.isFinite(value)) return min;
+  // NaNの場合はminを返す
+  if (Number.isNaN(value)) return min;
+  // 無限大の場合はmax、無限小の場合はminを返す
+  if (value === Infinity) return max;
+  if (value === -Infinity) return min;
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
@@ -171,7 +174,10 @@ export function clampInteger(value: number, min: number, max: number): number {
  * @returns 範囲内に制限された数値
  */
 export function clampFloat(value: number, min: number, max: number): number {
-  // NaNまたは非有限値の場合はminを返す
-  if (!Number.isFinite(value)) return min;
+  // NaNの場合はminを返す
+  if (Number.isNaN(value)) return min;
+  // 無限大の場合はmax、無限小の場合はminを返す
+  if (value === Infinity) return max;
+  if (value === -Infinity) return min;
   return Math.min(max, Math.max(min, value));
 }

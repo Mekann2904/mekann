@@ -374,11 +374,23 @@ let cachedLimits: ProviderLimitsConfig | null = null;
 // ============================================================================
 
 function matchesPattern(model: string, pattern: string): boolean {
-  // Convert glob pattern to regex with proper escaping
-  // First escape all regex special characters
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  // Then convert glob wildcards to regex
-  const regexPattern = escaped.replace(/\\\*/g, ".*").replace(/\\\?/g, ".");
+  // Fast paths for exact/prefix compatibility.
+  if (pattern === model) return true;
+  if (model.startsWith(pattern) || pattern.startsWith(model)) return true;
+
+  // Convert glob pattern to regex safely.
+  // 1) Protect glob wildcards first
+  // 2) Escape regex metacharacters
+  // 3) Restore wildcards as regex fragments
+  const STAR_TOKEN = "__PI_GLOB_STAR__";
+  const QMARK_TOKEN = "__PI_GLOB_QMARK__";
+  const wildcardProtected = pattern
+    .replace(/\*/g, STAR_TOKEN)
+    .replace(/\?/g, QMARK_TOKEN);
+  const escaped = wildcardProtected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regexPattern = escaped
+    .replace(new RegExp(STAR_TOKEN, "g"), ".*")
+    .replace(new RegExp(QMARK_TOKEN, "g"), ".");
   const regex = new RegExp("^" + regexPattern + "$", "i");
   return regex.test(model);
 }

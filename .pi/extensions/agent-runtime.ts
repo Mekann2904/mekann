@@ -85,6 +85,18 @@ import {
   type RuntimeConfig,
 } from "../lib/runtime-config";
 import { getAdaptiveTotalMaxLlm } from "../lib/adaptive-total-limit.js";
+import {
+  getCheckpointManager,
+  initCheckpointManager,
+  getCheckpointConfigFromEnv,
+  type CheckpointStats,
+} from "../lib/checkpoint-manager";
+import {
+  getMetricsCollector,
+  initMetricsCollector,
+  getMetricsConfigFromEnv,
+  type SchedulerMetrics,
+} from "../lib/metrics-collector";
 
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
@@ -2375,9 +2387,6 @@ export function getCheckpointManagerInstance(): ReturnType<typeof import("../lib
   if (!ENABLE_CHECKPOINTS) return null;
 
   if (!_checkpointManager) {
-    const { getCheckpointManager, initCheckpointManager, getCheckpointConfigFromEnv } =
-      require("../lib/checkpoint-manager") as typeof import("../lib/checkpoint-manager");
-
     const envConfig = getCheckpointConfigFromEnv();
     initCheckpointManager(envConfig);
     _checkpointManager = getCheckpointManager();
@@ -2400,9 +2409,6 @@ export function getMetricsCollectorInstance(): ReturnType<typeof import("../lib/
   if (!ENABLE_METRICS) return null;
 
   if (!_metricsCollector) {
-    const { getMetricsCollector, initMetricsCollector, getMetricsConfigFromEnv } =
-      require("../lib/metrics-collector") as typeof import("../lib/metrics-collector");
-
     const envConfig = getMetricsConfigFromEnv();
     initMetricsCollector(envConfig);
     _metricsCollector = getMetricsCollector();
@@ -2473,7 +2479,7 @@ export function recordWorkStealEvent(sourceInstance: string, taskId: string): vo
  * @summary メトリクス取得
  * @returns 現在のスケジューラメトリクス、または null
  */
-export function getSchedulerMetrics(): import("../lib/metrics-collector").SchedulerMetrics | null {
+export function getSchedulerMetrics(): SchedulerMetrics | null {
   const collector = getMetricsCollectorInstance();
   if (collector) {
     return collector.getMetrics();
@@ -2485,7 +2491,7 @@ export function getSchedulerMetrics(): import("../lib/metrics-collector").Schedu
   * チェックポイント統計を取得する。
   * @returns チェックポイント統計情報、または取得できない場合はnull。
   */
-export function getCheckpointStats(): import("../lib/checkpoint-manager").CheckpointStats | null {
+export function getCheckpointStats(): CheckpointStats | null {
   const manager = getCheckpointManagerInstance();
   if (manager) {
     return manager.getStats();
@@ -2520,8 +2526,8 @@ export async function attemptWorkStealing(): Promise<import("../lib/cross-instan
  */
 export function getComprehensiveRuntimeStatus(): {
   runtime: AgentRuntimeSnapshot;
-  metrics: import("../lib/metrics-collector").SchedulerMetrics | null;
-  checkpoints: import("../lib/checkpoint-manager").CheckpointStats | null;
+  metrics: SchedulerMetrics | null;
+  checkpoints: CheckpointStats | null;
   stealing: import("../lib/cross-instance-coordinator").StealingStats | null;
   features: {
     preemption: boolean;

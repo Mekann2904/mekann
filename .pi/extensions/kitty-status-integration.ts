@@ -180,9 +180,9 @@ function asToolResultMessage(raw: unknown): { role?: string; isError?: boolean }
   };
 }
 
-function getToolResultStats(messages: unknown[]): { toolCount: number; hasError: boolean } {
+function getToolResultStats(messages: unknown[]): { toolCount: number; errorCount: number } {
   let toolCount = 0;
-  let hasError = false;
+  let errorCount = 0;
 
   for (const entry of messages) {
     if (!entry || typeof entry !== "object") {
@@ -195,11 +195,11 @@ function getToolResultStats(messages: unknown[]): { toolCount: number; hasError:
     }
     toolCount += 1;
     if (candidate.isError === true) {
-      hasError = true;
+      errorCount += 1;
     }
   }
 
-  return { toolCount, hasError };
+  return { toolCount, errorCount };
 }
 
 export default function (pi: ExtensionAPI) {
@@ -230,24 +230,28 @@ export default function (pi: ExtensionAPI) {
     // メッセージ数から実行されたツール数を推定
     const stats = getToolResultStats((event as any).messages ?? []);
     const toolCount = stats.toolCount;
+    const toolErrorCount = stats.errorCount;
 
     const cwd = ctx.cwd.split("/").pop() || ctx.cwd;
 
-    // エラー判定: toolResultにisErrorがあるか確認
-    const hasError = stats.hasError;
+    // ツールの部分失敗はwarning扱いにする（ターン全体失敗とは区別）
+    const hasToolError = toolErrorCount > 0;
 
-    // 完了通知（エラー時は異なるサウンド）
-    const statusText = hasError 
-      ? `✗ Error in ${cwd}` 
+    // 完了通知
+    const statusText = hasToolError
+      ? `! Done: ${toolCount} tool(s), ${toolErrorCount} error(s) in ${cwd}`
       : `✓ Done: ${toolCount} tool(s) in ${cwd}`;
-    notify(statusText, 0, "pi", hasError);
+    // 部分失敗はエラー音にしない（誤検知防止）
+    notify(statusText, 0, "pi", false);
 
     // タイトルを復元
     setWindow(`pi: ${cwd}`);
 
     ctx.ui.notify(
-      `Completed turn ${turnCount} (${toolCount} tools)`, 
-      hasError ? "error" : "success"
+      hasToolError
+        ? `Completed turn ${turnCount} (${toolCount} tools, ${toolErrorCount} errors)`
+        : `Completed turn ${turnCount} (${toolCount} tools)`,
+      hasToolError ? "warning" : "success"
     );
   });
 

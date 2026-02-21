@@ -418,10 +418,15 @@ async function runPiPrintMode(input: {
   return sharedRunPiPrintMode({
     ...input,
     entityLabel: "agent team member",
-    noExtensions: false,
+    // Team member child runs must stay isolated from extension side effects
+    // (e.g. cross-instance registration or proactive orchestration injection).
+    noExtensions: true,
     envOverrides: {
       // Avoid recursive delegation prompt injection in child runs.
       PI_SUBAGENT_PROACTIVE_PROMPT: "0",
+      PI_AGENT_TEAM_PROACTIVE_PROMPT: "0",
+      // Explicitly mark child member execution so team tools can reject recursion.
+      PI_AGENT_TEAM_CHILD_RUN: "1",
     },
   });
 }

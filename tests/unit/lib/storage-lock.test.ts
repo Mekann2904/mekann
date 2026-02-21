@@ -52,12 +52,10 @@ describe("withFileLock", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
     processKillSpy = vi.spyOn(process, "kill").mockImplementation(() => true as never);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     processKillSpy.mockRestore();
   });
 
