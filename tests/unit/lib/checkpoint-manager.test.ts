@@ -395,6 +395,7 @@ describe("getStats", () => {
   let manager: ReturnType<typeof getCheckpointManager>;
 
   beforeEach(() => {
+    resetCheckpointManager();
     cleanupTestDir();
     initFreshManager();
     manager = getCheckpointManager();
@@ -443,7 +444,7 @@ describe("getStats", () => {
     it("getStats_ソース別統計_正しく分類される", async () => {
       // Arrange
       await manager.save({
-        taskId: "subagent-task",
+        taskId: "stats-subagent-task",
         source: "subagent_run",
         provider: "anthropic",
         model: "claude-3-5-sonnet",
@@ -454,7 +455,7 @@ describe("getStats", () => {
       });
 
       await manager.save({
-        taskId: "team-task",
+        taskId: "stats-team-task",
         source: "agent_team_run",
         provider: "openai",
         model: "gpt-4",
@@ -917,7 +918,16 @@ describe("エッジケース", () => {
   });
 
   it("空の状態で統計取得", () => {
+    // Arrange - テスト前に完全にクリーンアップ
+    resetCheckpointManager();
+    cleanupTestDir();
+    initFreshManager();
+    const manager = getCheckpointManager();
+
+    // Act
     const stats = manager.getStats();
+
+    // Assert
     expect(stats.totalCount).toBe(0);
     expect(stats.expiredCount).toBe(0);
     expect(stats.oldestCreatedAt).toBeNull();

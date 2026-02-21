@@ -1,12 +1,12 @@
 // path: tests/setup-vitest.ts
-// what: Vitest全体の共通クリーンアップを定義する。
-// why: テスト実行時のランタイム隔離と、残留するタイマー/インスタンス状態の確実な解放のため。
+// what: Vitest全体の共通クリーンアップとデフォルトモック定義
+// why: テスト実行時のランタイム隔離と、残留するタイマー/インスタンス状態の確実な解放のため
 // related: vitest.config.ts, .pi/lib/cross-instance-coordinator.ts, .pi/extensions/agent-runtime.ts
 
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { afterAll, afterEach } from "vitest";
+import { afterAll, afterEach, vi } from "vitest";
 
 const VITEST_HOME = join(process.cwd(), ".tmp", "vitest-home");
 const VITEST_RUNTIME_DIR = join(VITEST_HOME, ".pi", "runtime");
@@ -14,6 +14,9 @@ const VITEST_RUNTIME_DIR = join(VITEST_HOME, ".pi", "runtime");
 process.env.HOME = VITEST_HOME;
 process.env.PI_RUNTIME_DIR = VITEST_RUNTIME_DIR;
 mkdirSync(VITEST_RUNTIME_DIR, { recursive: true });
+
+// デフォルトモック設定はテストファイル個別で行う
+// グローバルセットアップでは環境変数とクリーンアップのみを担当
 
 async function cleanupVitestRuntime(): Promise<void> {
   const [coordinator, runtime, adaptive] = await Promise.all([

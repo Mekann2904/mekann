@@ -39,6 +39,7 @@ vi.mock("../../../.pi/lib/cross-instance-coordinator", () => ({
 	})),
 	getActiveInstanceCount: vi.fn(() => 1),
 	getMyParallelLimit: vi.fn(() => 5),
+	isCoordinatorInitialized: vi.fn(() => false),
 	getEnvOverrides: vi.fn(() => ({})),
 	setActiveModel: vi.fn(),
 	clearActiveModel: vi.fn(),

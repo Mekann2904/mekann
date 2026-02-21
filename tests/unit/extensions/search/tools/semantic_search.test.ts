@@ -10,26 +10,26 @@ import { join } from "node:path";
 import type {
 	SemanticSearchInput,
 	CodeEmbedding,
-} from "../../../../.pi/extensions/search/types.ts";
+} from "@ext/search/types.ts";
 
 // モック化
 vi.mock("node:fs");
 vi.mock("node:path");
-vi.mock("../../../../.pi/extensions/search/utils/constants.js", () => ({
+vi.mock("@ext/search/utils/constants.js", () => ({
 	INDEX_DIR_NAME: ".pi/search",
 }));
 
-vi.mock("../../../../.pi/lib/embeddings/index.js", () => ({
+vi.mock("@lib/embeddings/index.js", () => ({
 	generateEmbedding: vi.fn(),
 }));
 
-vi.mock("../../../../.pi/lib/embeddings/utils.js", () => ({
+vi.mock("@lib/embeddings/utils.js", () => ({
 	cosineSimilarity: vi.fn(),
 }));
 
-import { semanticSearch, formatSemanticSearch } from "../../../../.pi/extensions/search/tools/semantic_search.ts";
-import { generateEmbedding } from "../../../../.pi/lib/embeddings/index.js";
-import { cosineSimilarity } from "../../../../.pi/lib/embeddings/utils.js";
+import { semanticSearch, formatSemanticSearch } from "@ext/search/tools/semantic_search.ts";
+import { generateEmbedding } from "@lib/embeddings/index.js";
+import { cosineSimilarity } from "@lib/embeddings/utils.js";
 
 describe("semantic_search", () => {
 	const mockCwd = "/test/project";

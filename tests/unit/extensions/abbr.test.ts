@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import * as fc from "fast-check";
 
 // Node.jsモジュールのモック
 vi.mock("node:fs", () => ({

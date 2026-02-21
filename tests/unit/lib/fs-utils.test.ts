@@ -179,32 +179,33 @@ describe("境界値テスト", () => {
 // ============================================================================
 
 describe("統合テスト", () => {
-  it("ensureDir_実ファイルシステム_存在確認", () => {
+  it("ensureDir_実ファイルシステム_存在確認", async () => {
     // このテストはモックを使用せず、実際のファイルシステムで動作確認する
     // テスト用一時ディレクトリを作成して検証
-    const { tmpdir } = require("node:os");
-    const { join } = require("node:path");
-    const { existsSync: realExistsSync, mkdirSync: realMkdirSync, rmdirSync: realRmdirSync } = require("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
 
     // モックを一時的にリセット
     vi.restoreAllMocks();
+    vi.resetModules();
 
     const testDir = join(tmpdir(), `fs-utils-test-${Date.now()}`);
 
     try {
       // Act - 実際のensureDirをインポートして使用
-      const { ensureDir: realEnsureDir } = require("../../../.pi/lib/fs-utils.js");
+      const { ensureDir: realEnsureDir } = await import("../../../.pi/lib/fs-utils.js");
       realEnsureDir(testDir);
 
       // Assert
-      expect(realExistsSync(testDir)).toBe(true);
+      expect(realFs.existsSync(testDir)).toBe(true);
 
       // Cleanup
-      realRmdirSync(testDir);
+      realFs.rmSync(testDir, { recursive: true, force: true });
     } catch {
       // テスト失敗時のクリーンアップ
       try {
-        realRmdirSync(testDir);
+        realFs.rmSync(testDir, { recursive: true, force: true });
       } catch {
         // ignore
       }

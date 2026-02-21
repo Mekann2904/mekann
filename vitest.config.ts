@@ -36,7 +36,16 @@ export default defineConfig({
     maxConcurrency: 1,
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text', 'json', 'html', 'lcov'],
+      include: [
+        '.pi/lib/**/*.ts',
+      ],
+      exclude: [
+        'node_modules/**',
+        'tests/**',
+        '.pi/tests/**',
+        'scripts/**',
+      ],
     },
   },
 });

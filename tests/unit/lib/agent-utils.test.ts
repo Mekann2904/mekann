@@ -32,8 +32,8 @@ describe("createRunId", () => {
 
     it("正しい形式を持つ", () => {
       const id = createRunId();
-      // 形式: YYYYMMDD-HHMMSS-xxxxxx (xxxxxx is hex suffix)
-      expect(id).toMatch(/^\d{8}-\d{6}-[a-f0-9]{6}$/);
+      // 形式: YYYY-MM-DD-HH-MM-SS-xxxxxx (xxxxxx is hex suffix)
+      expect(id).toMatch(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-[a-f0-9]{6}$/);
     });
 
     it("日付部分が現在日時と一致する", () => {
@@ -43,7 +43,7 @@ describe("createRunId", () => {
         now.getFullYear(),
         String(now.getMonth() + 1).padStart(2, "0"),
         String(now.getDate()).padStart(2, "0"),
-      ].join("");
+      ].join("-");
       expect(id.startsWith(expectedDate)).toBe(true);
     });
   });
@@ -68,21 +68,14 @@ describe("createRunId", () => {
     it("タイムスタンプ部分が正しい形式", () => {
       const id = createRunId();
       const parts = id.split("-");
-      expect(parts).toHaveLength(3);
-
-      // Date part: YYYYMMDD
-      expect(parts[0]).toMatch(/^\d{8}$/);
-
-      // Time part: HHMMSS
-      expect(parts[1]).toMatch(/^\d{6}$/);
-
-      // Suffix: hex (6 chars)
-      expect(parts[2]).toMatch(/^[a-f0-9]{6}$/);
+      expect(parts).toHaveLength(7);
+      expect(parts.slice(0, 6).join("-")).toMatch(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/);
+      expect(parts[6]).toMatch(/^[a-f0-9]{6}$/);
     });
 
     it("サフィックスが6文字の16進数", () => {
       const id = createRunId();
-      const suffix = id.split("-")[2];
+      const suffix = id.split("-")[6];
       expect(suffix).toMatch(/^[a-f0-9]{6}$/);
     });
   });
@@ -286,7 +279,7 @@ describe("プロパティベーステスト", () => {
       fc.assert(
         fc.property(fc.integer({ min: 0, max: 100 }), (seed) => {
           const id = createRunId();
-          expect(id).toMatch(/^\d{8}-\d{6}-[a-f0-9]{6}$/);
+          expect(id).toMatch(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-[a-f0-9]{6}$/);
         })
       );
     });

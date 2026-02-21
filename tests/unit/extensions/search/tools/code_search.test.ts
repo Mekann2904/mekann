@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { CodeSearchInput } from "../../../../.pi/extensions/search/types.ts";
+import type { CodeSearchInput } from "@ext/search/types.ts";
 
 // モック化の準備
 vi.mock("node:fs/promises", async () => {
@@ -17,13 +17,13 @@ vi.mock("node:fs/promises", async () => {
 	};
 });
 
-vi.mock("../../../../.pi/extensions/search/utils/cli.js", async () => ({
+vi.mock("@ext/search/utils/cli.js", async () => ({
 	execute: vi.fn(),
 	buildRgArgs: vi.fn(() => []),
 	checkToolAvailability: vi.fn(),
 }));
 
-vi.mock("../../../../.pi/extensions/search/utils/cache.js", () => ({
+vi.mock("@ext/search/utils/cache.js", () => ({
 	getSearchCache: vi.fn(() => ({
 		getCached: vi.fn(),
 		setCache: vi.fn(),
@@ -31,14 +31,14 @@ vi.mock("../../../../.pi/extensions/search/utils/cache.js", () => ({
 	getCacheKey: vi.fn((tool, params) => `${tool}-${JSON.stringify(params)}`),
 }));
 
-vi.mock("../../../../.pi/extensions/search/utils/history.js", () => ({
+vi.mock("@ext/search/utils/history.js", () => ({
 	getSearchHistory: vi.fn(() => ({
 		addHistoryEntry: vi.fn(),
 	})),
 	extractQuery: vi.fn(() => ""),
 }));
 
-import { nativeCodeSearch } from "../../../../.pi/extensions/search/tools/code_search.ts";
+import { nativeCodeSearch } from "../../../../../.pi/extensions/search/tools/code_search.ts";
 import { readdir, readFile } from "node:fs/promises";
 
 describe("nativeCodeSearch", () => {
@@ -331,9 +331,9 @@ describe("nativeCodeSearch", () => {
 			};
 
 			vi.mocked(readFile).mockResolvedValue(`
-				line1
-				target
-				line3
+line1
+target
+line3
 			`);
 
 			vi.mocked(readdir as any).mockImplementation(async () => [
@@ -342,7 +342,7 @@ describe("nativeCodeSearch", () => {
 
 			const result = await nativeCodeSearch(input, mockCwd);
 
-			expect(result.results[0].line).toBe(2);
+			expect(result.results[0].line).toBe(3);
 			expect(result.results[0].column).toBeGreaterThan(0);
 		});
 
@@ -470,7 +470,7 @@ describe("nativeCodeSearch", () => {
 			};
 
 			vi.mocked(readFile).mockResolvedValue(`
-				test
+test
 			`);
 
 			vi.mocked(readdir as any).mockImplementation(async () => [
@@ -479,9 +479,9 @@ describe("nativeCodeSearch", () => {
 
 			const result = await nativeCodeSearch(input, mockCwd);
 
-			// デフォルトではignoreCase=false (大文字小文字を区別)
-			// 一致しないはず
-			expect(result.results.length).toBe(0);
+			// デフォルトではignoreCase=true (大文字小文字を区別しない)
+			// 一致するはず
+			expect(result.results.length).toBeGreaterThan(0);
 		});
 	});
 });

@@ -29,6 +29,7 @@
 
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 
 import {
   initAdaptiveController,
@@ -65,8 +66,6 @@ import {
 
 import { getRuntimeSnapshot, notifyRuntimeCapacityChanged } from "./agent-runtime";
 import { getAdaptiveTotalLimitSnapshot, resetAdaptiveTotalLimitState } from "../lib/adaptive-total-limit";
-
-const Text = require("@mariozechner/pi-tui").Text;
 
 /**
  * クロスインスタンスランタイム拡張を登録

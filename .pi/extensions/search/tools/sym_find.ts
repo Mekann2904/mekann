@@ -42,6 +42,9 @@ import { getSearchHistory, extractQuery } from "../utils/history.js";
 
 /**
  * Escape regex special characters
+ * @summary 正規表現特殊文字をエスケープ
+ * @param str 入力文字列
+ * @returns エスケープされた文字列
  */
 function escapeRegex(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -49,17 +52,31 @@ function escapeRegex(str: string): string {
 
 /**
  * Convert wildcard pattern to regex
+ * @summary ワイルドカードパターンを正規表現に変換
+ * @param pattern ワイルドカードパターン
+ * @param exactMatch 完全一致モード（デフォルト: false）
+ * @returns 正規表現オブジェクト
  */
-function wildcardToRegex(pattern: string): RegExp {
+export function wildcardToRegex(pattern: string, exactMatch = false): RegExp {
 	const escaped = escapeRegex(pattern);
 	const regexStr = escaped.replace(/\\\*/g, ".*").replace(/\\\?/g, ".");
-	return new RegExp(`^${regexStr}$`, "i");
+
+	// ワイルドカードを含まない場合は部分一致モードにする
+	const hasWildcard = pattern.includes("*") || pattern.includes("?");
+	const anchorStart = exactMatch || hasWildcard ? "^" : ".*";
+	const anchorEnd = exactMatch || hasWildcard ? "$" : ".*";
+
+	return new RegExp(`${anchorStart}${regexStr}${anchorEnd}`, "i");
 }
 
 /**
  * Filter symbols by criteria
+ * @summary シンボルを条件でフィルタリング
+ * @param entries シンボルインデックスエントリの配列
+ * @param input 検索入力データ
+ * @returns フィルタリングされたシンボル定義の配列
  */
-function filterSymbols(
+export function filterSymbols(
 	entries: SymbolIndexEntry[],
 	input: SymFindInput
 ): SymbolDefinition[] {
@@ -110,8 +127,11 @@ function filterSymbols(
 
 /**
  * Sort symbols by relevance
+ * @summary シンボルを関連性でソート
+ * @param symbols シンボル定義の配列
+ * @param input 検索入力データ
  */
-function sortSymbols(symbols: SymbolDefinition[], input: SymFindInput): void {
+export function sortSymbols(symbols: SymbolDefinition[], input: SymFindInput): void {
 	symbols.sort((a, b) => {
 		// Exact name match priority
 		if (input.name) {

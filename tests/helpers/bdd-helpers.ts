@@ -25,16 +25,28 @@ interface ScenarioFunction {
 /**
  * BDDスタイルのテスト記述を管理するクラス
  * Given/When/Then形式のステップをチェーン可能にする
+ *
+ * 変数共有メカニズム:
+ * - stepData プロパティを使用してステップ間でデータを共有できます
+ * - GivenステップでstepDataに設定した値をWhen/Thenステップで参照できます
  */
 export class BDDContext {
 	private setupSteps: Array<{ description: string; fn: () => void | Promise<void> }> = [];
 	private executionSteps: Array<{ description: string; fn: () => void | Promise<void> }> = [];
 	private teardownSteps: Array<{ description: string; fn: () => void | Promise<void> }> = [];
+	private phase: "setup" | "execution" | "teardown" = "setup";
+
+	/**
+	 * ステップ間で共有されるデータ
+	 * Givenステップで値を設定し、When/Thenステップで参照できます
+	 */
+	public stepData: Record<string, unknown> = {};
 
 	/**
 	 * Givenステップ（事前条件の設定）
 	 */
 	given: StepFunction = (description, fn) => {
+		this.phase = "setup";
 		this.setupSteps.push({ description, fn });
 	};
 
@@ -42,6 +54,14 @@ export class BDDContext {
 	 * Andステップ（追加の事前条件）
 	 */
 	and: StepFunction = (description, fn) => {
+		if (this.phase === "execution") {
+			this.executionSteps.push({ description, fn });
+			return;
+		}
+		if (this.phase === "teardown") {
+			this.teardownSteps.push({ description, fn });
+			return;
+		}
 		this.setupSteps.push({ description, fn });
 	};
 
@@ -49,6 +69,7 @@ export class BDDContext {
 	 * Whenステップ（アクションの実行）
 	 */
 	when: StepFunction = (description, fn) => {
+		this.phase = "execution";
 		this.executionSteps.push({ description, fn });
 	};
 
@@ -56,6 +77,7 @@ export class BDDContext {
 	 * Thenステップ（結果の検証）
 	 */
 	then: StepFunction = (description, fn) => {
+		this.phase = "teardown";
 		this.teardownSteps.push({ description, fn });
 	};
 

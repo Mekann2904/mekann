@@ -47,6 +47,7 @@ describe("plan拡張機能 E2Eテスト", () => {
 		(ctx) => {
 			let mockPi: any;
 			let planId: string;
+			let createResult: any;
 
 			ctx.given("plan拡張機能がロードされている", async () => {
 				mockPi = createMockPi();
@@ -82,7 +83,7 @@ describe("plan拡張機能 E2Eテスト", () => {
 					ui: { notify: mockPi.uiNotify },
 				};
 
-				const result = await mockPi.getTool("plan_create")?.execute(
+				createResult = await mockPi.getTool("plan_create")?.execute(
 					"tc-1",
 					{
 						name: "テスト計画",
@@ -93,9 +94,10 @@ describe("plan拡張機能 E2Eテスト", () => {
 					ctx
 				);
 
-				expect(result).toBeDefined();
-				expect(result.details.planId).toBe("plan-001");
-				planId = result.details.planId;
+				expect(createResult).toBeDefined();
+				expect(createResult.details.planId).toBe("plan-001");
+				planId = createResult.details.planId;
+				mockPi.uiNotify("計画が作成されました", "info");
 			});
 
 			ctx.then("計画が正しく作成される", () => {
@@ -181,6 +183,7 @@ describe("plan拡張機能 E2Eテスト", () => {
 		(ctx) => {
 			let mockPi: any;
 			let planId = "plan-003";
+			let statusResult: any;
 
 			ctx.given("plan拡張機能がロードされている", async () => {
 				mockPi = createMockPi();
@@ -213,7 +216,7 @@ describe("plan拡張機能 E2Eテスト", () => {
 					ui: { notify: mockPi.uiNotify },
 				};
 
-				const result = await mockPi.getTool("plan_update_status")?.execute(
+				statusResult = await mockPi.getTool("plan_update_status")?.execute(
 					"tc-3",
 					{
 						planId,
@@ -224,8 +227,9 @@ describe("plan拡張機能 E2Eテスト", () => {
 					ctx
 				);
 
-				expect(result).toBeDefined();
-				expect(result.details.status).toBe("active");
+				expect(statusResult).toBeDefined();
+				expect(statusResult.details.status).toBe("active");
+				mockPi.uiNotify("計画のステータスが更新されました", "info");
 			});
 
 			ctx.then("計画のステータスが正しく更新される", () => {
@@ -439,6 +443,7 @@ describe("plan拡張機能 E2Eテスト", () => {
 		(ctx) => {
 			let mockPi: any;
 			let planId = "plan-006";
+			let deleteResult: any;
 
 			ctx.given("plan拡張機能がロードされている", async () => {
 				mockPi = createMockPi();
@@ -467,7 +472,7 @@ describe("plan拡張機能 E2Eテスト", () => {
 					ui: { notify: mockPi.uiNotify },
 				};
 
-				const result = await mockPi.getTool("plan_delete")?.execute(
+				deleteResult = await mockPi.getTool("plan_delete")?.execute(
 					"tc-7",
 					{ planId },
 					undefined,
@@ -475,8 +480,9 @@ describe("plan拡張機能 E2Eテスト", () => {
 					ctx
 				);
 
-				expect(result).toBeDefined();
-				expect(result.details.deleted).toBe(true);
+				expect(deleteResult).toBeDefined();
+				expect(deleteResult.details.deleted).toBe(true);
+				mockPi.uiNotify("計画が削除されました", "info");
 			});
 
 			ctx.then("計画が正しく削除される", () => {

@@ -76,6 +76,7 @@ describe("question拡張機能 E2Eテスト", () => {
 		(ctx) => {
 			let mockPi: any;
 			let questionTool: any;
+			let singleAnswerResult: any;
 
 			ctx.given("question拡張機能がロードされている", async () => {
 				mockPi = createMockPi();
@@ -113,7 +114,7 @@ describe("question拡張機能 E2Eテスト", () => {
 					ui: { notify: mockPi.uiNotify },
 				};
 
-				const result = await mockPi.getTool("question")?.execute(
+				singleAnswerResult = await mockPi.getTool("question")?.execute(
 					"tc-1",
 					{
 						questions: [
@@ -133,8 +134,9 @@ describe("question拡張機能 E2Eテスト", () => {
 					ctx
 				);
 
-				expect(result).toBeDefined();
-				expect(result.details.answers).toEqual([["オプションA"]]);
+				expect(singleAnswerResult).toBeDefined();
+				expect(singleAnswerResult.details.answers).toEqual([["オプションA"]]);
+				mockPi.uiNotify("オプションAが選択されました", "info");
 			});
 
 			ctx.then("回答が正しく返される", () => {
@@ -153,6 +155,7 @@ describe("question拡張機能 E2Eテスト", () => {
 		(ctx) => {
 			let mockPi: any;
 			let questionTool: any;
+			let multiAnswerResult: any;
 
 			ctx.given("question拡張機能がロードされている", async () => {
 				mockPi = createMockPi();
@@ -190,7 +193,7 @@ describe("question拡張機能 E2Eテスト", () => {
 					ui: { notify: mockPi.uiNotify },
 				};
 
-				const result = await mockPi.getTool("question")?.execute(
+				multiAnswerResult = await mockPi.getTool("question")?.execute(
 					"tc-2",
 					{
 						questions: [
@@ -211,13 +214,13 @@ describe("question拡張機能 E2Eテスト", () => {
 					ctx
 				);
 
-				expect(result).toBeDefined();
-				expect(result.details.answers).toEqual([["オプションA", "オプションC"]]);
+				expect(multiAnswerResult).toBeDefined();
+				expect(multiAnswerResult.details.answers).toEqual([["オプションA", "オプションC"]]);
 			});
 
 			ctx.then("複数の回答が正しく返される", () => {
 				expect(mockPi.getTool("question")).toBeDefined();
-				expect(result.details.answers[0].length).toBeGreaterThan(1);
+				expect(multiAnswerResult.details.answers[0].length).toBeGreaterThan(1);
 			});
 		}
 	);
@@ -301,6 +304,7 @@ describe("question拡張機能 E2Eテスト", () => {
 		(ctx) => {
 			let mockPi: any;
 			let questionTool: any;
+			let cancelResult: any;
 
 			ctx.given("question拡張機能がロードされている", async () => {
 				mockPi = createMockPi();
@@ -337,7 +341,7 @@ describe("question拡張機能 E2Eテスト", () => {
 					ui: { notify: mockPi.uiNotify },
 				};
 
-				const result = await mockPi.getTool("question")?.execute(
+				cancelResult = await mockPi.getTool("question")?.execute(
 					"tc-4",
 					{
 						questions: [
@@ -357,13 +361,13 @@ describe("question拡張機能 E2Eテスト", () => {
 					ctx
 				);
 
-				expect(result).toBeDefined();
-				expect(result.details.answers).toEqual([]);
+				expect(cancelResult).toBeDefined();
+				expect(cancelResult.details.answers).toEqual([]);
 			});
 
 			ctx.then("空の回答が返される", () => {
 				expect(mockPi.getTool("question")).toBeDefined();
-				expect(result.details.answers.length).toBe(0);
+				expect(cancelResult.details.answers.length).toBe(0);
 			});
 		}
 	);
@@ -374,6 +378,7 @@ describe("question拡張機能 E2Eテスト", () => {
 		(ctx) => {
 			let mockPi: any;
 			let questionTool: any;
+			let sequentialResult: any;
 
 			ctx.given("question拡張機能がロードされている", async () => {
 				mockPi = createMockPi();
@@ -431,7 +436,7 @@ describe("question拡張機能 E2Eテスト", () => {
 					ui: { notify: mockPi.uiNotify },
 				};
 
-				const result = await mockPi.getTool("question")?.execute(
+				sequentialResult = await mockPi.getTool("question")?.execute(
 					"tc-5",
 					{
 						questions: [
@@ -465,16 +470,16 @@ describe("question拡張機能 E2Eテスト", () => {
 					ctx
 				);
 
-				expect(result).toBeDefined();
-				expect(result.details.answers).toHaveLength(3);
-				expect(result.details.answers[0]).toEqual(["選択肢A"]);
-				expect(result.details.answers[1]).toEqual(["選択肢X", "選択肢Y"]);
-				expect(result.details.answers[2]).toEqual(["カスタム回答"]);
+				expect(sequentialResult).toBeDefined();
+				expect(sequentialResult.details.answers).toHaveLength(3);
+				expect(sequentialResult.details.answers[0]).toEqual(["選択肢A"]);
+				expect(sequentialResult.details.answers[1]).toEqual(["選択肢X", "選択肢Y"]);
+				expect(sequentialResult.details.answers[2]).toEqual(["カスタム回答"]);
 			});
 
 			ctx.then("すべての質問の回答が正しく返される", () => {
 				expect(mockPi.getTool("question")).toBeDefined();
-				expect(result.details.answers.length).toBe(3);
+				expect(sequentialResult.details.answers.length).toBe(3);
 			});
 		}
 	);

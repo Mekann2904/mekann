@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { existsSync, readFileSync, unlinkSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describeScenario, createMockPi, createTempDir, cleanupTempDir } from "../../helpers/bdd-helpers";
 
 // ============================================================================
@@ -71,8 +71,6 @@ function appendAuditLog(cwd: string, entry: any): void {
     ? readFileSync(logPath, "utf-8") + logLine
     : logLine;
 
-  const { dirname } = require("node:path");
-  const { writeFileSync, mkdirSync } = require("node:fs");
   mkdirSync(dirname(logPath), { recursive: true });
   writeFileSync(logPath, content, "utf-8");
 }

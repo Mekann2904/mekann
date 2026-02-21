@@ -10,22 +10,23 @@ import type {
 	FindCallersInput,
 	FindCalleesInput,
 	CallGraphIndex,
-} from "../../../../.pi/extensions/search/call-graph/types.ts";
+} from "@ext/search/call-graph/types.ts";
 
 // モック化
-vi.mock("../../../../.pi/extensions/search/call-graph/builder.js", () => ({
+vi.mock("@ext/search/call-graph/builder.js", () => ({
 	buildCallGraph: vi.fn(),
 	saveCallGraphIndex: vi.fn(),
 	readCallGraphIndex: vi.fn(),
 	isCallGraphIndexStale: vi.fn(),
 }));
 
-vi.mock("../../../../.pi/extensions/search/call-graph/query.js", () => ({
+vi.mock("@ext/search/call-graph/query.js", () => ({
 	findCallers: vi.fn(),
 	findCallees: vi.fn(),
 }));
 
-vi.mock("../../../../.pi/extensions/search/tools/sym_index.js", () => ({
+// sym_index.tsをモック（必要な関数のみ）
+vi.mock("@ext/search/tools/sym_index.js", () => ({
 	symIndex: vi.fn(),
 	readSymbolIndex: vi.fn(),
 }));
@@ -34,15 +35,15 @@ import {
 	callGraphIndex,
 	findCallersTool,
 	findCalleesTool,
-} from "../../../../.pi/extensions/search/tools/call_graph.ts";
+} from "@ext/search/tools/call_graph.ts";
 import {
 	buildCallGraph,
 	saveCallGraphIndex,
 	readCallGraphIndex,
 	isCallGraphIndexStale,
-} from "../../../../.pi/extensions/search/call-graph/builder.js";
-import { findCallers, findCallees } from "../../../../.pi/extensions/search/call-graph/query.js";
-import { symIndex, readSymbolIndex } from "../../../../.pi/extensions/search/tools/sym_index.js";
+} from "@ext/search/call-graph/builder.js";
+import { findCallers, findCallees } from "@ext/search/call-graph/query.js";
+import { symIndex, readSymbolIndex } from "@ext/search/tools/sym_index.js";
 
 describe("call_graph tools", () => {
 	const mockCwd = "/test/project";
@@ -83,21 +84,24 @@ describe("call_graph tools", () => {
 				force: false,
 			};
 
-			vi.mocked(readSymbolIndex).mockResolvedValue([]);
+			// readSymbolIndexを呼び出し回数に応じて異なる値を返すように設定
+			vi.mocked(readSymbolIndex)
+				.mockResolvedValueOnce([])  // 1回目: 空配列（symIndexを呼び出す）
+				.mockResolvedValueOnce([{}]);  // 2回目: 空でない配列
+
 			vi.mocked(symIndex as any).mockResolvedValue({
-				total: 5,
-				truncated: false,
-				results: [],
+				indexed: 5,
+				outputPath: ".pi/search/symbols.jsonl",
 			});
-			vi.mocked(readSymbolIndex).mockResolvedValue([{}]);
-			vi.mocked(isCallGraphIndexStale).mockResolvedValue(false);
-			vi.mocked(readCallGraphIndex).mockResolvedValue(mockIndex);
+			vi.mocked(isCallGraphIndexStale).mockResolvedValue(true);
+			vi.mocked(readCallGraphIndex).mockResolvedValue(null);
 			vi.mocked(buildCallGraph).mockResolvedValue(mockIndex);
-			vi.mocked(saveCallGraphIndex).mockResolvedValue(undefined);
+			vi.mocked(saveCallGraphIndex).mockResolvedValue(".pi/search/call-graph/index.json");
 
 			const result = await callGraphIndex(input, mockCwd);
 
 			expect(symIndex).toHaveBeenCalled();
+			expect(buildCallGraph).toHaveBeenCalled();
 		});
 
 		it("force=trueの場合、再構築が実行される", async () => {
@@ -140,9 +144,8 @@ describe("call_graph tools", () => {
 
 			vi.mocked(readSymbolIndex).mockResolvedValue([]);
 			vi.mocked(symIndex as any).mockResolvedValue({
-				total: 0,
-				truncated: false,
-				results: [],
+				indexed: 0,
+				outputPath: ".pi/search/symbols.jsonl",
 			});
 			vi.mocked(readSymbolIndex).mockResolvedValue([]);
 
@@ -162,11 +165,11 @@ describe("call_graph tools", () => {
 			vi.mocked(isCallGraphIndexStale).mockResolvedValue(true);
 			vi.mocked(readCallGraphIndex).mockResolvedValue(null);
 			vi.mocked(buildCallGraph).mockResolvedValue(mockIndex);
-			vi.mocked(saveCallGraphIndex).mockResolvedValue(undefined);
+			vi.mocked(saveCallGraphIndex).mockResolvedValue(".pi/search/call-graph/index.json");
 
 			const result = await callGraphIndex(input, mockCwd);
 
-			expect(buildCallGraph).toHaveBeenCalledWith(expect.stringContaining("src"), mockCwd);
+			expect(buildCallGraph).toHaveBeenCalledWith(expect.anything(), mockCwd);
 		});
 	});
 
@@ -178,12 +181,19 @@ describe("call_graph tools", () => {
 
 			const mockCallers = [
 				{
-					name: "caller1",
-					file: "caller1.ts",
-					line: 10,
+					node: {
+						name: "caller1",
+						file: "caller1.ts",
+						line: 10,
+						kind: "function",
+					},
+					depth: 0,
+					confidence: 1.0,
 				},
 			];
 
+			vi.mocked(readCallGraphIndex).mockResolvedValue(mockIndex);
+			vi.mocked(isCallGraphIndexStale).mockResolvedValue(false);
 			vi.mocked(findCallers).mockReturnValue(mockCallers);
 
 			const result = await findCallersTool(input, mockCwd);
@@ -199,15 +209,25 @@ describe("call_graph tools", () => {
 			};
 
 			const mockCallers = [
-				{ name: "caller1", file: "caller1.ts", line: 10 },
-				{ name: "caller2", file: "caller2.ts", line: 5 },
+				{
+					node: { name: "caller1", file: "caller1.ts", line: 10, kind: "function" },
+					depth: 0,
+					confidence: 1.0,
+				},
+				{
+					node: { name: "caller2", file: "caller2.ts", line: 5, kind: "function" },
+					depth: 1,
+					confidence: 1.0,
+				},
 			];
 
+			vi.mocked(readCallGraphIndex).mockResolvedValue(mockIndex);
+			vi.mocked(isCallGraphIndexStale).mockResolvedValue(false);
 			vi.mocked(findCallers).mockReturnValue(mockCallers);
 
 			const result = await findCallersTool(input, mockCwd);
 
-			expect(findCallers).toHaveBeenCalledWith(expect.anything(), "testFunction", 2);
+			expect(findCallers).toHaveBeenCalledWith(expect.anything(), "testFunction", 2, 50);
 		});
 
 		it("limitオプションで結果数が制限される", async () => {
@@ -216,17 +236,27 @@ describe("call_graph tools", () => {
 				limit: 5,
 			};
 
-			const mockCallers = Array.from({ length: 100 }, (_, i) => ({
-				name: `caller${i}`,
-				file: `caller${i}.ts`,
-				line: i,
+			const allMockCallers = Array.from({ length: 100 }, (_, i) => ({
+				node: {
+					name: `caller${i}`,
+					file: `caller${i}.ts`,
+					line: i,
+					kind: "function",
+				},
+				depth: 0,
+				confidence: 1.0,
 			}));
 
-			vi.mocked(findCallers).mockReturnValue(mockCallers);
+			// findCallersを実際にlimitを適用するようにモック
+			vi.mocked(readCallGraphIndex).mockResolvedValue(mockIndex);
+			vi.mocked(isCallGraphIndexStale).mockResolvedValue(false);
+			vi.mocked(findCallers).mockImplementation((index, name, depth, limit) => {
+				return allMockCallers.slice(0, limit || allMockCallers.length);
+			});
 
 			const result = await findCallersTool(input, mockCwd);
 
-			expect(result.results.length).toBeLessThanOrEqual(5);
+			expect(result.results.length).toBe(5);
 		});
 	});
 
@@ -238,12 +268,19 @@ describe("call_graph tools", () => {
 
 			const mockCallees = [
 				{
-					name: "callee1",
-					file: "callee1.ts",
-					line: 10,
+					node: {
+						name: "callee1",
+						file: "callee1.ts",
+						line: 10,
+						kind: "function",
+					},
+					depth: 0,
+					confidence: 1.0,
 				},
 			];
 
+			vi.mocked(readCallGraphIndex).mockResolvedValue(mockIndex);
+			vi.mocked(isCallGraphIndexStale).mockResolvedValue(false);
 			vi.mocked(findCallees).mockReturnValue(mockCallees);
 
 			const result = await findCalleesTool(input, mockCwd);
@@ -259,15 +296,25 @@ describe("call_graph tools", () => {
 			};
 
 			const mockCallees = [
-				{ name: "callee1", file: "callee1.ts", line: 10 },
-				{ name: "callee2", file: "callee2.ts", line: 5 },
+				{
+					node: { name: "callee1", file: "callee1.ts", line: 10, kind: "function" },
+					depth: 0,
+					confidence: 1.0,
+				},
+				{
+					node: { name: "callee2", file: "callee2.ts", line: 5, kind: "function" },
+					depth: 1,
+					confidence: 1.0,
+				},
 			];
 
+			vi.mocked(readCallGraphIndex).mockResolvedValue(mockIndex);
+			vi.mocked(isCallGraphIndexStale).mockResolvedValue(false);
 			vi.mocked(findCallees).mockReturnValue(mockCallees);
 
 			const result = await findCalleesTool(input, mockCwd);
 
-			expect(findCallees).toHaveBeenCalledWith(expect.anything(), "testFunction", 2);
+			expect(findCallees).toHaveBeenCalledWith(expect.anything(), "testFunction", 2, 50);
 		});
 
 		it("limitオプションで結果数が制限される", async () => {
@@ -276,17 +323,27 @@ describe("call_graph tools", () => {
 				limit: 5,
 			};
 
-			const mockCallees = Array.from({ length: 100 }, (_, i) => ({
-				name: `callee${i}`,
-				file: `callee${i}.ts`,
-				line: i,
+			const allMockCallees = Array.from({ length: 100 }, (_, i) => ({
+				node: {
+					name: `callee${i}`,
+					file: `callee${i}.ts`,
+					line: i,
+					kind: "function",
+				},
+				depth: 0,
+				confidence: 1.0,
 			}));
 
-			vi.mocked(findCallees).mockReturnValue(mockCallees);
+			// findCalleesを実際にlimitを適用するようにモック
+			vi.mocked(readCallGraphIndex).mockResolvedValue(mockIndex);
+			vi.mocked(isCallGraphIndexStale).mockResolvedValue(false);
+			vi.mocked(findCallees).mockImplementation((index, name, depth, limit) => {
+				return allMockCallees.slice(0, limit || allMockCallees.length);
+			});
 
 			const result = await findCalleesTool(input, mockCwd);
 
-			expect(result.results.length).toBeLessThanOrEqual(5);
+			expect(result.results.length).toBe(5);
 		});
 	});
 

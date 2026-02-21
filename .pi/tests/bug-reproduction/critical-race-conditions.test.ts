@@ -30,6 +30,8 @@ describe("Bug #1: retry-with-backoff.ts - sharedRateLimitState.entries Race Cond
 
     const key = "test-race-key-1";
     let callCount = 0;
+    // 既存の永続レート制限状態の影響で実時間待機しないように、論理時刻を固定する。
+    const fixedNow = () => Number.MAX_SAFE_INTEGER;
 
     // 429エラーを発生させるモックオペレーション
     const create429Operation = () => async () => {
@@ -45,6 +47,7 @@ describe("Bug #1: retry-with-backoff.ts - sharedRateLimitState.entries Race Cond
       retryWithBackoff(create429Operation(), {
         rateLimitKey: key,
         overrides: { maxRetries: 2, initialDelayMs: 100, maxDelayMs: 500 },
+        now: fixedNow,
       }).catch(() => "expected-failure")
     );
 

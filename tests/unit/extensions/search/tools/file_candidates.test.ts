@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { FileCandidatesInput } from "../../../../.pi/extensions/search/types.ts";
+import type { FileCandidatesInput } from "@ext/search/types.ts";
 
 // モック化の準備
 vi.mock("node:fs/promises", async () => {
@@ -17,13 +17,13 @@ vi.mock("node:fs/promises", async () => {
 	};
 });
 
-vi.mock("../../../../.pi/extensions/search/utils/cli.js", async () => ({
+vi.mock("@ext/search/utils/cli.js", async () => ({
 	execute: vi.fn(),
 	buildFdArgs: vi.fn(() => []),
 	checkToolAvailability: vi.fn(),
 }));
 
-vi.mock("../../../../.pi/extensions/search/utils/cache.js", () => ({
+vi.mock("@ext/search/utils/cache.js", () => ({
 	getSearchCache: vi.fn(() => ({
 		getCached: vi.fn(),
 		setCache: vi.fn(),
@@ -31,16 +31,16 @@ vi.mock("../../../../.pi/extensions/search/utils/cache.js", () => ({
 	getCacheKey: vi.fn((tool, params) => `${tool}-${JSON.stringify(params)}`),
 }));
 
-vi.mock("../../../../.pi/extensions/search/utils/history.js", () => ({
+vi.mock("@ext/search/utils/history.js", () => ({
 	getSearchHistory: vi.fn(() => ({
 		addHistoryEntry: vi.fn(),
 	})),
 	extractQuery: vi.fn(() => ""),
 }));
 
-import { fileCandidates } from "../../../../.pi/extensions/search/tools/file_candidates.ts";
+import { fileCandidates } from "@ext/search/tools/file_candidates.ts";
 import { readdir, stat } from "node:fs/promises";
-import { execute, checkToolAvailability } from "../../../../.pi/extensions/search/utils/cli.js";
+import { execute, checkToolAvailability } from "@ext/search/utils/cli.js";
 
 describe("file_candidates", () => {
 	const mockCwd = "/test/project";

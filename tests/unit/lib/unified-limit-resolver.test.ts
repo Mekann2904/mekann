@@ -35,6 +35,7 @@ vi.mock("../../../.pi/lib/adaptive-rate-controller.js", () => ({
 vi.mock("../../../.pi/lib/cross-instance-coordinator.js", () => ({
   getMyParallelLimit: vi.fn((_, __, limit) => limit),
   getModelParallelLimit: vi.fn((_, __, limit) => limit),
+  isCoordinatorInitialized: vi.fn(() => false),
   getCoordinatorStatus: vi.fn(() => ({
     activeInstanceCount: 1,
     registered: true,

@@ -34,8 +34,7 @@ vi.mock('../../../.pi/lib/storage-lock', async (importOriginal) => {
     }),
     atomicWriteTextFile: vi.fn((path, content) => {
       // writeFileSyncを呼び出してファイルを書き込む
-      const fs = require('node:fs');
-      fs.writeFileSync(path, content, 'utf-8');
+      writeFileSync(path, content, 'utf-8');
     }),
   };
 });

@@ -479,11 +479,14 @@ describe("Question UIステートマシンのMBT", () => {
 			fc.property(
 				fc.integer({ min: 2, max: 10 }),
 				fc.boolean(),
-				fc.array(fc.integer({ min: 0, max: optionsCount - 1 }), { minLength: 1, maxLength: 20 }),
+				fc.array(fc.integer(), { minLength: 1, maxLength: 20 }),
 				(optionsCount, allowMultiple, indices) => {
 					const machine = new QuestionUIStateMachine(optionsCount, allowMultiple, false);
 
-					for (const index of indices) {
+					// indicesをoptionsCountの範囲内にクランプ
+					const clampedIndices = indices.map(i => Math.min(Math.max(i, 0), optionsCount - 1));
+
+					for (const index of clampedIndices) {
 						// カーソルを移動して選択をトグル
 						for (let i = 0; i < index; i++) {
 							machine.cursorDown();

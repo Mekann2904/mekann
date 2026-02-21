@@ -5,31 +5,31 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { SymFindInput, SymbolIndexEntry } from "../../../../.pi/extensions/search/types.ts";
+import type { SymFindInput, SymbolIndexEntry } from "@ext/search/types.ts";
 
 // モック化
-vi.mock("../../../../.pi/extensions/search/tools/sym_index.js", async () => ({
+vi.mock("@ext/search/tools/sym_index.js", async () => ({
 	symIndex: vi.fn(),
 	readSymbolIndex: vi.fn(),
 }));
 
-vi.mock("../../../../.pi/extensions/search/utils/cache.js", () => ({
+vi.mock("@ext/search/utils/cache.js", () => ({
 	getSearchCache: vi.fn(() => ({
-		getCached: vi.fn(),
+		getCached: vi.fn(() => undefined),
 		setCache: vi.fn(),
 	})),
 	getCacheKey: vi.fn((tool, params) => `${tool}-${JSON.stringify(params)}`),
 }));
 
-vi.mock("../../../../.pi/extensions/search/utils/history.js", () => ({
+vi.mock("@ext/search/utils/history.js", () => ({
 	getSearchHistory: vi.fn(() => ({
 		addHistoryEntry: vi.fn(),
 	})),
 	extractQuery: vi.fn(() => ""),
 }));
 
-import { filterSymbols, sortSymbols, wildcardToRegex } from "../../../../.pi/extensions/search/tools/sym_find.ts";
-import { symIndex, readSymbolIndex } from "../../../../.pi/extensions/search/tools/sym_index.js";
+import { filterSymbols, sortSymbols, wildcardToRegex } from "../../../../../.pi/extensions/search/tools/sym_find.ts";
+import { symIndex, readSymbolIndex } from "../../../../../.pi/extensions/search/tools/sym_index.js";
 
 describe("sym_find", () => {
 	const mockEntries: SymbolIndexEntry[] = [
@@ -272,6 +272,7 @@ describe("sym_find", () => {
 	describe("symFind（メインエントリーポイント）", () => {
 		beforeEach(() => {
 			vi.clearAllMocks();
+			vi.resetModules();
 		});
 
 		it("インデックスが存在する場合、検索が実行される", async () => {
@@ -281,7 +282,7 @@ describe("sym_find", () => {
 
 			vi.mocked(readSymbolIndex).mockResolvedValue(mockEntries);
 
-			const { symFind } = await import("../../../../.pi/extensions/search/tools/sym_find.ts");
+			const { symFind } = await import("../../../../../.pi/extensions/search/tools/sym_find.ts");
 			const result = await symFind(input, "/test/cwd");
 
 			expect(result.results.length).toBeGreaterThan(0);
@@ -292,15 +293,18 @@ describe("sym_find", () => {
 				name: "test",
 			};
 
-			vi.mocked(readSymbolIndex).mockResolvedValue([]);
+			// First call returns empty (no index), second call returns entries
+			vi.mocked(readSymbolIndex)
+				.mockResolvedValueOnce([])
+				.mockResolvedValueOnce(mockEntries);
+
 			vi.mocked(symIndex as any).mockResolvedValue({
 				total: mockEntries.length,
 				truncated: false,
 				results: mockEntries,
 			});
-			vi.mocked(readSymbolIndex).mockResolvedValue(mockEntries);
 
-			const { symFind } = await import("../../../../.pi/extensions/search/tools/sym_find.ts");
+			const { symFind } = await import("../../../../../.pi/extensions/search/tools/sym_find.ts");
 			const result = await symFind(input, "/test/cwd");
 
 			expect(symIndex).toHaveBeenCalled();
@@ -314,7 +318,7 @@ describe("sym_find", () => {
 
 			vi.mocked(readSymbolIndex).mockResolvedValue(mockEntries);
 
-			const { symFind } = await import("../../../../.pi/extensions/search/tools/sym_find.ts");
+			const { symFind } = await import("../../../../../.pi/extensions/search/tools/sym_find.ts");
 			const result = await symFind(input, "/test/cwd");
 
 			expect(result.results.length).toBeLessThanOrEqual(2);
@@ -332,7 +336,7 @@ describe("sym_find", () => {
 				error: "Failed to generate index",
 			});
 
-			const { symFind } = await import("../../../../.pi/extensions/search/tools/sym_find.ts");
+			const { symFind } = await import("@ext/search/tools/sym_find.ts");
 			const result = await symFind(input, "/test/cwd");
 
 			expect(result.error).toBeDefined();

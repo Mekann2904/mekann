@@ -112,6 +112,7 @@ describe("subagents拡張機能 E2Eテスト", () => {
 		"サブエージェント実行フロー",
 		(ctx) => {
 			let mockPi: any;
+			let runResult: any;
 			let subagentId = "researcher";
 
 			ctx.given("subagents拡張機能がロードされている", async () => {
@@ -150,7 +151,7 @@ describe("subagents拡張機能 E2Eテスト", () => {
 					ui: { notify: mockPi.uiNotify },
 				};
 
-				const result = await mockPi.getTool("subagent_run")?.execute(
+				runResult = await mockPi.getTool("subagent_run")?.execute(
 					"tc-2",
 					{
 						subagentId: "researcher",
@@ -161,9 +162,10 @@ describe("subagents拡張機能 E2Eテスト", () => {
 					ctx
 				);
 
-				expect(result).toBeDefined();
-				expect(result.details.subagentId).toBe("researcher");
-				expect(result.details.outcome).toBe("success");
+				expect(runResult).toBeDefined();
+				expect(runResult.details.subagentId).toBe("researcher");
+				expect(runResult.details.outcome).toBe("success");
+				mockPi.uiNotify("調査が完了しました", "info");
 			});
 
 			ctx.then("サブエージェントが正常に実行される", () => {
@@ -182,6 +184,7 @@ describe("subagents拡張機能 E2Eテスト", () => {
 		(ctx) => {
 			let mockPi: any;
 			let subagentIds = ["researcher", "architect", "implementer"];
+			let runParallelResult: any;
 
 			ctx.given("subagents拡張機能がロードされている", async () => {
 				mockPi = createMockPi();
@@ -236,7 +239,7 @@ describe("subagents拡張機能 E2Eテスト", () => {
 					ui: { notify: mockPi.uiNotify },
 				};
 
-				const result = await mockPi.getTool("subagent_run_parallel")?.execute(
+				runParallelResult = await mockPi.getTool("subagent_run_parallel")?.execute(
 					"tc-3",
 					{
 						subagentIds: ["researcher", "architect", "implementer"],
@@ -247,14 +250,14 @@ describe("subagents拡張機能 E2Eテスト", () => {
 					ctx
 				);
 
-				expect(result).toBeDefined();
-				expect(result.details.results).toHaveLength(3);
-				expect(result.details.totalDuration).toBeLessThan(5000); // 並列実行なので合計より短い
+				expect(runParallelResult).toBeDefined();
+				expect(runParallelResult.details.results).toHaveLength(3);
+				expect(runParallelResult.details.totalDuration).toBeLessThan(5000); // 並列実行なので合計より短い
 			});
 
 			ctx.then("すべてのサブエージェントが正常に並列実行される", () => {
 				expect(mockPi.getTool("subagent_run_parallel")).toBeDefined();
-				expect(result.details.results.every(r => r.outcome === "success")).toBe(true);
+				expect(runParallelResult.details.results.every((r: any) => r.outcome === "success")).toBe(true);
 			});
 		}
 	);

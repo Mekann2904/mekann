@@ -216,9 +216,9 @@ describe("createRunId 統合テスト", () => {
     expect(id1).not.toBe(id2);
   });
 
-  it("正しい形式を持つ (YYYYMMDD-HHMMSS-xxxxxx)", () => {
+  it("正しい形式を持つ (YYYY-MM-DD-HH-MM-SS-xxxxxx)", () => {
     const id = createRunId();
-    expect(id).toMatch(/^\d{8}-\d{6}-[a-f0-9]{6}$/);
+    expect(id).toMatch(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-[a-f0-9]{6}$/);
   });
 
   it("100回生成で全て一意", () => {
@@ -735,7 +735,7 @@ describe("プロパティベーステスト", () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 100 }), () => {
         const id = createRunId();
-        return /^\d{8}-\d{6}-[a-f0-9]{6}$/.test(id);
+        return /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-[a-f0-9]{6}$/.test(id);
       })
     );
   });
