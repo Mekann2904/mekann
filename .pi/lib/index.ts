@@ -357,7 +357,7 @@ export {
   type ToolCriticalityLevel,
   type ToolCallResult,
   type AgentRunEvaluation,
-  getToolCriticality,
+  // getToolCriticality - already exported from tool-error-utils.js
   isBashErrorTolerated,
   evaluateAgentRunOutcome,
   parseToolFailureCount,
