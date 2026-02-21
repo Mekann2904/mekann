@@ -203,6 +203,20 @@ function getFromCache(taskId: string): Checkpoint | null {
 }
 
 /**
+ * キャッシュからチェックポイントを削除
+ */
+function deleteFromCache(taskId: string): void {
+  if (!managerState) return;
+  if (managerState.cache.has(taskId)) {
+    managerState.cache.delete(taskId);
+    const idx = managerState.cacheOrder.indexOf(taskId);
+    if (idx >= 0) {
+      managerState.cacheOrder.splice(idx, 1);
+    }
+  }
+}
+
+/**
  * キャッシュにチェックポイントを保存
  */
 function setToCache(taskId: string, checkpoint: Checkpoint): void {
@@ -677,9 +691,11 @@ async function enforceMaxCheckpoints(): Promise<void> {
   // Remove oldest checkpoints
   const toRemove = checkpoints.slice(maxCheckpoints);
 
-  for (const { file } of toRemove) {
+  for (const { checkpoint, file } of toRemove) {
     try {
       unlinkSync(join(dir, file));
+      // キャッシュからも削除
+      deleteFromCache(checkpoint.taskId);
     } catch {
       // Ignore deletion errors
     }

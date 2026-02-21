@@ -443,7 +443,7 @@ export function safeRead(options: ReadOptions): SafeReadResult {
 
   // 存在確認
   if (!existsSync(normalizedPath)) {
-    const similarFiles = findSimilar && findSimilar !== false
+    const similarFiles = findSimilar !== false
       ? findSimilarFiles(normalizedPath, searchBaseDir)
       : [];
 
