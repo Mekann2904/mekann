@@ -21,6 +21,8 @@
  *   in: なし
  *   out: 型定義、エラークラス
  */
+import { statSync } from "node:fs";
+import { resolve as resolvePath, sep as pathSep } from "node:path";
 
 // ============================================================================
 // Constants
@@ -265,7 +267,15 @@ export function extractErrorMessage(error: unknown): string {
 	if (error instanceof Error) {
 		return error.message;
 	}
-	return String(error);
+	try {
+		return String(error);
+	} catch {
+		try {
+			return JSON.stringify(error);
+		} catch {
+			return "[unstringifiable error]";
+		}
+	}
 }
 
 /**
@@ -276,10 +286,9 @@ export function extractErrorMessage(error: unknown): string {
  * @throws AbddError パストラバーサルが検出された場合
  */
 export function validateFilePath(inputPath: string, baseDir: string): string {
-	const path = require("path");
-	const resolved = path.resolve(baseDir, inputPath);
-	const normalizedBase = path.resolve(baseDir);
-	if (!resolved.startsWith(normalizedBase + path.sep) && resolved !== normalizedBase) {
+	const resolved = resolvePath(baseDir, inputPath);
+	const normalizedBase = resolvePath(baseDir);
+	if (!resolved.startsWith(normalizedBase + pathSep) && resolved !== normalizedBase) {
 		throw new AbddError(
 			`Path traversal detected: ${inputPath}`,
 			AbddErrorCodes.PATH_TRAVERSAL
@@ -295,8 +304,7 @@ export function validateFilePath(inputPath: string, baseDir: string): string {
  * @throws AbddError ファイルサイズが上限を超える場合
  */
 export function validateFileSize(filePath: string, maxSizeBytes: number = MAX_FILE_SIZE_BYTES): void {
-	const fs = require("fs");
-	const stats = fs.statSync(filePath);
+	const stats = statSync(filePath);
 	if (stats.size > maxSizeBytes) {
 		throw new AbddError(
 			`File too large: ${filePath} (${(stats.size / 1024 / 1024).toFixed(2)}MB > ${maxSizeBytes / 1024 / 1024}MB)`,

@@ -595,15 +595,16 @@ export class DynamicParallelismAdjuster {
   }
 
   private log(level: "debug" | "info" | "warn", message: string): void {
-    // Only log if debug mode is enabled
-    if (process.env.PI_DEBUG_DYNAMIC_PARALLELISM === "1" || level !== "debug") {
-      const prefix = `[DynamicParallelism]`;
-      if (level === "warn") {
-        console.warn(`${prefix} ${message}`);
-      } else {
-        console.log(`${prefix} ${message}`);
-      }
+    const debugEnabled = process.env.PI_DEBUG_DYNAMIC_PARALLELISM === "1";
+    // Keep default runs quiet to avoid noisy test output and slow CI logs.
+    if (!debugEnabled && level !== "warn") return;
+
+    const prefix = `[DynamicParallelism]`;
+    if (level === "warn") {
+      console.warn(`${prefix} ${message}`);
+      return;
     }
+    console.log(`${prefix} ${message}`);
   }
 }
 

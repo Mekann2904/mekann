@@ -7,7 +7,7 @@
  * public_api: FileLockOptions, tryAcquireLock, clearStaleLock, sleepSync
  * invariants: ロックファイルにはPIDとタイムスタンプが含まれる、ビジーウェイトは発生しない
  * side_effects: ファイルシステムへのロックファイル作成、更新、削除
- * failure_modes: SharedArrayBuffer未対応環境での即時リターン、ロック取得タイムアウト、EEXISTエラーによる取得失敗
+ * failure_modes: SharedArrayBuffer未対応環境では診断情報付きエラー、ロック取得タイムアウト、EEXISTエラーによる取得失敗
  * @abdd.explain
  * overview: Node.jsのfsモジュールを用いた同期排他制御ライブラリ
  * what_it_does:
@@ -31,6 +31,7 @@ import { randomBytes } from "node:crypto";
 import {
   closeSync,
   openSync,
+  readFileSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -56,6 +57,8 @@ const DEFAULT_LOCK_OPTIONS: Required<FileLockOptions> = {
   staleMs: 30_000,
 };
 
+let atomicWriteCounter = 0;
+
 /**
  * Check if efficient synchronous sleep is available.
  * SharedArrayBuffer + Atomics.wait is required for non-blocking sleep.
@@ -72,13 +75,16 @@ function hasEfficientSyncSleep(): boolean {
  * Synchronous sleep using Atomics.wait on SharedArrayBuffer.
  * Returns true if sleep was successful, false if efficient sleep is unavailable.
  * WARNING: Never uses busy-wait to avoid CPU spin.
+ * @param ms - ミリ秒単位の待機時間
+ * @returns {boolean} スリープ成功時true、失敗時false
  */
 function sleepSync(ms: number): boolean {
   if (ms <= 0) return true;
 
   if (!hasEfficientSyncSleep()) {
+    // SharedArrayBuffer not available (browser env, Node.js without --experimental-shared-memory, etc.)
     // Do NOT busy-wait. Return false to indicate sleep was not performed.
-    // Caller should handle this case (e.g., retry immediately or fail).
+    // Caller should handle this case (e.g., use reduced retry count or fail with clear message).
     return false;
   }
 
@@ -88,10 +94,50 @@ function sleepSync(ms: number): boolean {
     Atomics.wait(view, 0, 0, ms);
     return true;
   } catch {
-    // SharedArrayBuffer creation failed (e.g., security restrictions)
+    // SharedArrayBuffer creation failed (e.g., security restrictions, COOP/COEP headers missing)
     // Do NOT busy-wait. Return false.
     return false;
   }
+}
+
+/**
+ * SharedArrayBuffer利用可否の詳細情報を取得
+ * @summary 環境診断情報を返す
+ * @returns {object} 診断情報
+ */
+export function getSyncSleepDiagnostics(): {
+  hasSharedArrayBuffer: boolean;
+  hasAtomics: boolean;
+  hasAtomicsWait: boolean;
+  isAvailable: boolean;
+  reason: string;
+} {
+  const hasSharedArrayBuffer = typeof SharedArrayBuffer !== "undefined";
+  const hasAtomics = typeof Atomics !== "undefined";
+  const hasAtomicsWait = hasAtomics && typeof Atomics.wait === "function";
+  const isAvailable = hasSharedArrayBuffer && hasAtomicsWait;
+
+  let reason: string;
+  if (!hasSharedArrayBuffer) {
+    reason =
+      "SharedArrayBuffer is not defined. This environment does not support synchronous sleep. " +
+      "In Node.js, ensure no --no-experimental-shared-memory flag is used. " +
+      "In browsers, COOP/COEP headers are required.";
+  } else if (!hasAtomics) {
+    reason = "Atomics is not defined despite SharedArrayBuffer being available.";
+  } else if (!hasAtomicsWait) {
+    reason = "Atomics.wait is not available (possibly a Worker context without support).";
+  } else {
+    reason = "Synchronous sleep is available.";
+  }
+
+  return {
+    hasSharedArrayBuffer,
+    hasAtomics,
+    hasAtomicsWait,
+    isAvailable,
+    reason,
+  };
 }
 
 function isNodeErrno(error: unknown, code: string): boolean {
@@ -126,9 +172,26 @@ function tryAcquireLock(lockFile: string): boolean {
 }
 
 function clearStaleLock(lockFile: string, staleMs: number): void {
+  const isLockOwnerDead = (): boolean => {
+    try {
+      const raw = readFileSync(lockFile, "utf-8").trim();
+      const [pidText] = raw.split(":", 1);
+      const pid = Number(pidText);
+      if (!Number.isInteger(pid) || pid <= 0) return false;
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch (error) {
+        return isNodeErrno(error, "ESRCH");
+      }
+    } catch {
+      return false;
+    }
+  };
+
   try {
     const ageMs = Date.now() - statSync(lockFile).mtimeMs;
-    if (ageMs > staleMs) {
+    if (ageMs > staleMs || isLockOwnerDead()) {
       unlinkSync(lockFile);
     }
   } catch {
@@ -156,34 +219,26 @@ export function withFileLock<T>(
   };
   const maxWaitMs = Math.max(0, Math.trunc(config.maxWaitMs));
   const pollMs = Math.max(1, Math.trunc(config.pollMs));
-  const staleMs = Math.max(1_000, Math.trunc(config.staleMs));
-  const startedAtMs = Date.now();
+  const requestedStaleMs = Math.max(1_000, Math.trunc(config.staleMs));
+  // Ensure stale cleanup has a chance to run before timeout.
+  const staleMs = maxWaitMs > 0 ? Math.min(requestedStaleMs, maxWaitMs) : requestedStaleMs;
+  const maxAttempts = Math.max(1, Math.ceil(maxWaitMs / pollMs) + 1);
+  let attempts = 0;
   let acquired = false;
   const canSleep = hasEfficientSyncSleep();
 
-  while (!acquired && Date.now() - startedAtMs <= maxWaitMs) {
+  while (!acquired && attempts < maxAttempts) {
+    attempts++;
     acquired = tryAcquireLock(lockFile);
     if (acquired) break;
     clearStaleLock(lockFile, staleMs);
 
-    // If efficient sleep is unavailable, exit early to avoid CPU spin.
-    // This provides a graceful degradation path for environments without SharedArrayBuffer.
+    // If efficient sleep is unavailable, do one last immediate retry then exit.
+    // This avoids a tight spin loop in environments without SharedArrayBuffer.
     if (!canSleep) {
-      // Check if we've exceeded max wait time or should fail fast
-      const elapsedMs = Date.now() - startedAtMs;
-      if (elapsedMs >= maxWaitMs) {
-        break;
-      }
-      // Allow one immediate retry without sleep, then fail fast
-      // to prevent tight spin loops in constrained environments.
-      if (elapsedMs > 100) {
-        console.warn(
-          `[storage-lock] SharedArrayBuffer unavailable, failing fast after ${elapsedMs}ms to avoid CPU spin`
-        );
-        break;
-      }
-      // Immediate retry for the first ~100ms as a grace period
-      continue;
+      acquired = tryAcquireLock(lockFile);
+      if (acquired) break;
+      break;
     }
 
     const sleepOk = sleepSync(pollMs);
@@ -194,7 +249,13 @@ export function withFileLock<T>(
   }
 
   if (!acquired) {
-    throw new Error(`file lock timeout: ${lockFile}`);
+    const diag = getSyncSleepDiagnostics();
+    const envHint = !diag.isAvailable
+      ? ` (環境問題: ${diag.reason})`
+      : "";
+    throw new Error(
+      `file lock timeout: ${lockFile}${envHint} (attempts=${attempts}, maxWaitMs=${maxWaitMs})`,
+    );
   }
 
   try {
@@ -215,7 +276,8 @@ export function withFileLock<T>(
  * @returns {void}
  */
 export function atomicWriteTextFile(filePath: string, content: string): void {
-  const tmpFile = `${filePath}.tmp-${process.pid}-${randomBytes(3).toString("hex")}`;
+  atomicWriteCounter = (atomicWriteCounter + 1) >>> 0;
+  const tmpFile = `${filePath}.tmp-${process.pid}-${randomBytes(3).toString("hex")}-${atomicWriteCounter}`;
   writeFileSync(tmpFile, content, "utf-8");
   try {
     renameSync(tmpFile, filePath);

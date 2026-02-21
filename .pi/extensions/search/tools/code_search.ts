@@ -54,8 +54,12 @@ import { getSearchHistory, extractQuery } from "../utils/history.js";
 
 /**
  * Pure Node.js code search fallback
+ * @summary ネイティブコード検索
+ * @param input 検索入力データ
+ * @param cwd 作業ディレクトリパス
+ * @returns 検索結果データ
  */
-async function nativeCodeSearch(
+export async function nativeCodeSearch(
 	input: CodeSearchInput,
 	cwd: string
 ): Promise<CodeSearchOutput> {
@@ -141,13 +145,17 @@ async function nativeCodeSearch(
 	async function scanDir(dirPath: string): Promise<void> {
 		try {
 			const entries = await readdir(dirPath, { withFileTypes: true });
+			// Combine DEFAULT_EXCLUDES with input.exclude
+			const excludePatterns = input.exclude
+				? [...(DEFAULT_EXCLUDES as readonly string[]), ...input.exclude] as readonly string[]
+				: DEFAULT_EXCLUDES;
 
 			for (const entry of entries) {
 				if (results.length >= limit * 2) break;
 
-				// Skip hidden files and DEFAULT_EXCLUDES patterns
+				// Skip hidden files and exclude patterns
 				if (entry.name.startsWith(".")) continue;
-				if (shouldExclude(entry.name, DEFAULT_EXCLUDES)) continue;
+				if (shouldExclude(entry.name, excludePatterns)) continue;
 
 				const fullPath = join(dirPath, entry.name);
 

@@ -70,14 +70,12 @@ import { createRunId, computeLiveWindow } from "../lib/agent-utils.js";
 import {
   ThinkingLevel,
   RunOutcomeCode,
-  RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
 } from "../lib/agent-types.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
 import { hasNonEmptyResultSection, validateSubagentOutput } from "../lib/output-validation.js";
-import { trimForError, buildRateLimitKey, buildTraceTaskId, createRetrySchema, toConcurrencyLimit } from "../lib/runtime-utils.js";
+import { trimForError, buildRateLimitKey, createRetrySchema, toConcurrencyLimit } from "../lib/runtime-utils.js";
 import { resolveEffectiveTimeoutMs } from "../lib/runtime-error-builders.js";
-import { createChildAbortController } from "../lib/abort-utils";
 import {
   createAdaptivePenaltyController,
 } from "../lib/adaptive-penalty.js";
@@ -96,7 +94,6 @@ import {
 import {
   isRetryableSubagentError as sharedIsRetryableSubagentError,
   resolveSubagentFailureOutcome as sharedResolveSubagentFailureOutcome,
-  resolveSubagentParallelOutcome as sharedResolveSubagentParallelOutcome,
   trimErrorMessage as sharedTrimErrorMessage,
   buildDiagnosticContext as sharedBuildDiagnosticContext,
 } from "../lib/agent-errors.js";
@@ -111,15 +108,13 @@ import {
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
 import {
+  acquireRuntimeDispatchPermit,
   formatRuntimeStatusLine,
   getRuntimeSnapshot,
   getSharedRuntimeState,
   notifyRuntimeCapacityChanged,
   resetRuntimeTransientState,
-  reserveRuntimeCapacity,
-  tryReserveRuntimeCapacity,
   type RuntimeCapacityReservationLease,
-  waitForRuntimeOrchestrationTurn,
 } from "./agent-runtime";
 
 // Import shared plan mode utilities
@@ -136,13 +131,13 @@ import {
 } from "./shared/pi-print-executor";
 import {
   buildRuntimeLimitError,
-  buildRuntimeQueueWaitError,
   startReservationHeartbeat,
   refreshRuntimeStatus as sharedRefreshRuntimeStatus,
 } from "./shared/runtime-helpers";
 
 import { SchemaValidationError } from "../lib/errors.js";
 import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estimator";
+import { detectTier, getConcurrencyLimit } from "../lib/provider-limits";
 
 const logger = getLogger();
 import {
@@ -271,6 +266,35 @@ function refreshRuntimeStatus(ctx: any): void {
   );
 }
 
+function debugCostEstimation(scope: string, fields: Record<string, unknown>): void {
+  if (process.env.PI_DEBUG_COST_ESTIMATION !== "1") return;
+  const parts = Object.entries(fields).map(([key, value]) => `${key}=${String(value)}`);
+  console.error(`[cost-estimation] scope=${scope} ${parts.join(" ")}`);
+}
+
+function resolveProviderConcurrencyCap(
+  agents: SubagentDefinition[],
+  fallbackProvider?: string,
+  fallbackModel?: string,
+): number {
+  let cap = Number.POSITIVE_INFINITY;
+  for (const agent of agents) {
+    const provider = agent.provider ?? fallbackProvider;
+    const model = agent.model ?? fallbackModel;
+    if (!provider || !model) continue;
+    const tier = detectTier(provider, model);
+    const limit = getConcurrencyLimit(provider, model, tier);
+    if (Number.isFinite(limit) && limit > 0) {
+      cap = Math.min(cap, limit);
+    }
+  }
+
+  if (!Number.isFinite(cap) || cap <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.max(1, Math.trunc(cap));
+}
+
 // Note: toRetryOverrides is kept locally because it checks STABLE_SUBAGENT_RUNTIME
 // which is specific to this module. The lib version does not have this check.
 function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
@@ -327,6 +351,88 @@ function formatRecentRuns(storage: SubagentStorage, limit = 10): string {
   for (const run of runs) {
     lines.push(
       `- ${run.runId} | ${run.agentId} | ${run.status} | ${run.summary} | ${run.startedAt}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+type SubagentBackgroundJobStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed";
+
+interface SubagentBackgroundJob {
+  jobId: string;
+  mode: "single" | "parallel";
+  status: SubagentBackgroundJobStatus;
+  task: string;
+  subagentIds: string[];
+  runIds: string[];
+  summary?: string;
+  error?: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+}
+
+const MAX_BACKGROUND_JOBS = 200;
+const backgroundJobs = new Map<string, SubagentBackgroundJob>();
+const backgroundJobOrder: string[] = [];
+
+function createBackgroundJob(input: {
+  mode: "single" | "parallel";
+  task: string;
+  subagentIds: string[];
+}): SubagentBackgroundJob {
+  const nowIso = new Date().toISOString();
+  const job: SubagentBackgroundJob = {
+    jobId: createRunId(),
+    mode: input.mode,
+    status: "queued",
+    task: input.task,
+    subagentIds: input.subagentIds,
+    runIds: [],
+    createdAt: nowIso,
+  };
+  backgroundJobs.set(job.jobId, job);
+  backgroundJobOrder.push(job.jobId);
+  while (backgroundJobOrder.length > MAX_BACKGROUND_JOBS) {
+    const droppedId = backgroundJobOrder.shift();
+    if (!droppedId) break;
+    backgroundJobs.delete(droppedId);
+  }
+  return job;
+}
+
+function updateBackgroundJob(
+  jobId: string,
+  updater: (job: SubagentBackgroundJob) => SubagentBackgroundJob,
+): void {
+  const current = backgroundJobs.get(jobId);
+  if (!current) return;
+  backgroundJobs.set(jobId, updater(current));
+}
+
+function listBackgroundJobs(limit = 20): SubagentBackgroundJob[] {
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+  return backgroundJobOrder
+    .slice(-safeLimit)
+    .reverse()
+    .map((jobId) => backgroundJobs.get(jobId))
+    .filter((job): job is SubagentBackgroundJob => Boolean(job));
+}
+
+function formatBackgroundJobs(limit = 20): string {
+  const jobs = listBackgroundJobs(limit);
+  if (jobs.length === 0) {
+    return "No background subagent jobs yet.";
+  }
+  const lines = ["Recent subagent background jobs:"];
+  for (const job of jobs) {
+    const subject = job.subagentIds.join(", ");
+    lines.push(
+      `- ${job.jobId} | ${job.mode} | ${job.status} | agents=[${subject}] | ${job.summary ?? "(no summary)"}`,
     );
   }
   return lines.join("\n");
@@ -395,6 +501,16 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
  * @returns {void}
  */
 export default function registerSubagentExtension(pi: ExtensionAPI) {
+  function reportBackgroundJobFailure(jobId: string, errorMessage: string, ctx: any): void {
+    const message = `[${jobId}] ${errorMessage}`;
+    ctx.ui.notify(`Subagent background job failed: ${message}`, "error");
+    pi.sendMessage({
+      customType: "subagent-background-job-failed",
+      content: `Subagent background job failed: ${message}`,
+      display: true,
+    });
+  }
+
   // サブエージェント一覧
   pi.registerTool({
     name: "subagent_list",
@@ -534,7 +650,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
     }),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const storage = loadStorage(ctx.cwd);
       const agent = pickAgent(storage, params.subagentId);
       const retryOverrides = toRetryOverrides(params.retry);
@@ -562,217 +678,182 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         };
       }
 
-      // Logger: start operation tracking
-      const operationId = logger.startOperation("subagent_run" as OperationType, agent.id, {
+      const job = createBackgroundJob({
+        mode: "single",
         task: params.task,
-        params: {
-          subagentId: agent.id,
-          extraContext: params.extraContext,
-          timeoutMs: params.timeoutMs,
-        },
+        subagentIds: [agent.id],
       });
 
-      const queueSnapshot = getRuntimeSnapshot();
-      const queueWait = await waitForRuntimeOrchestrationTurn({
-        toolName: "subagent_run",
-        maxWaitMs: queueSnapshot.limits.capacityWaitMs,
-        pollIntervalMs: queueSnapshot.limits.capacityPollMs,
-        signal,
-      });
-      if (!queueWait.allowed || !queueWait.lease) {
-        const queueOutcome: RunOutcomeSignal = queueWait.aborted
-          ? { outcomeCode: "CANCELLED", retryRecommended: false }
-          : { outcomeCode: "TIMEOUT", retryRecommended: true };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: buildRuntimeQueueWaitError("subagent_run", queueWait),
-            },
-          ],
-          details: {
-            error: queueWait.aborted ? "runtime_queue_aborted" : "runtime_queue_timeout",
-            queuedAhead: queueWait.queuedAhead,
-            queuePosition: queueWait.queuePosition,
-            queueWaitedMs: queueWait.waitedMs,
-            queueAttempts: queueWait.attempts,
-            traceId: queueWait.orchestrationId,
-            outcomeCode: queueOutcome.outcomeCode,
-            retryRecommended: queueOutcome.retryRecommended,
+      void (async () => {
+        logger.startOperation("subagent_run" as OperationType, agent.id, {
+          task: params.task,
+          params: {
+            subagentId: agent.id,
+            extraContext: params.extraContext,
+            timeoutMs: params.timeoutMs,
+            backgroundJobId: job.jobId,
           },
-        };
-      }
-
-      const queueLease = queueWait.lease;
-      try {
-        const snapshot = getRuntimeSnapshot();
-        const capacityCheck = await reserveRuntimeCapacity({
-          toolName: "subagent_run",
-          additionalRequests: 1,
-          additionalLlm: 1,
-          maxWaitMs: snapshot.limits.capacityWaitMs,
-          pollIntervalMs: snapshot.limits.capacityPollMs,
-          signal,
         });
-        if (!capacityCheck.allowed || !capacityCheck.reservation) {
-          adaptivePenalty.raise("capacity");
-          const capacityOutcome: RunOutcomeSignal = capacityCheck.aborted
-            ? { outcomeCode: "CANCELLED", retryRecommended: false }
-            : capacityCheck.timedOut
-              ? { outcomeCode: "TIMEOUT", retryRecommended: true }
-              : { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: buildRuntimeLimitError("subagent_run", capacityCheck.reasons, {
-                  waitedMs: capacityCheck.waitedMs,
-                  timedOut: capacityCheck.timedOut,
-                }),
-              },
-            ],
-            details: {
-              error: "runtime_limit_reached",
-              reasons: capacityCheck.reasons,
-              projectedRequests: capacityCheck.projectedRequests,
-              projectedLlm: capacityCheck.projectedLlm,
-              waitedMs: capacityCheck.waitedMs,
-              timedOut: capacityCheck.timedOut,
-              aborted: capacityCheck.aborted,
-              adaptiveParallelPenalty: adaptivePenalty.get(),
-              queuedAhead: queueWait.queuedAhead,
-              queuePosition: queueWait.queuePosition,
-              queueWaitedMs: queueWait.waitedMs,
-              traceId: queueWait.orchestrationId,
-              outcomeCode: capacityOutcome.outcomeCode,
-              retryRecommended: capacityOutcome.retryRecommended,
-            },
-          };
-        }
-        const capacityReservation = capacityCheck.reservation;
-        const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
+        let capacityReservation: RuntimeCapacityReservationLease | undefined;
+        let stopReservationHeartbeat: (() => void) | undefined;
+        let liveMonitor: SubagentLiveMonitorController | undefined;
         try {
-          const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+          const queueSnapshot = getRuntimeSnapshot();
+          const dispatchPermit = await acquireRuntimeDispatchPermit({
+            toolName: "subagent_run",
+            candidate: {
+              additionalRequests: 1,
+              additionalLlm: 1,
+            },
+            tenantKey: agent.id,
+            source: "background",
+            estimatedDurationMs: 45_000,
+            estimatedRounds: 1,
+            maxWaitMs: queueSnapshot.limits.capacityWaitMs,
+            pollIntervalMs: queueSnapshot.limits.capacityPollMs,
+            signal: _signal,
+          });
+          if (!dispatchPermit.allowed || !dispatchPermit.lease) {
+            const errorMessage = buildRuntimeLimitError("subagent_run", dispatchPermit.reasons, {
+              waitedMs: dispatchPermit.waitedMs,
+              timedOut: dispatchPermit.timedOut,
+            });
+            updateBackgroundJob(job.jobId, (current) => ({
+              ...current,
+              status: "failed",
+              error: errorMessage,
+              finishedAt: new Date().toISOString(),
+            }));
+            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
+            logger.endOperation({
+              status: "failure",
+              tokensUsed: 0,
+              outputLength: 0,
+              childOperations: 0,
+              toolCalls: 0,
+              error: {
+                type: "capacity_error",
+                message: errorMessage,
+                stack: "",
+              },
+            });
+            return;
+          }
+          capacityReservation = dispatchPermit.lease;
+          stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
-          // Get cost estimate for subagent execution
+          const timeoutMs = resolveEffectiveTimeoutMs(
+            params.timeoutMs,
+            ctx.model?.id,
+            DEFAULT_AGENT_TIMEOUT_MS,
+          );
+
           const costEstimate = getCostEstimator().estimate(
             "subagent_run",
             ctx.model?.provider,
             ctx.model?.id,
-            params.task
+            params.task,
           );
+          debugCostEstimation("subagent_run", {
+            agent: agent.id,
+            estimated_ms: costEstimate.estimatedDurationMs,
+            estimated_tokens: costEstimate.estimatedTokens,
+            confidence: costEstimate.confidence.toFixed(2),
+            method: costEstimate.method,
+          });
 
-          // Debug logging for cost estimation
-          if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
-            console.log(
-              `[CostEstimation] subagent_run: agent=${agent.id} ` +
-              `estimated=(${costEstimate.estimatedDurationMs}ms, ${costEstimate.estimatedTokens}t) ` +
-              `confidence=${costEstimate.confidence.toFixed(2)} method=${costEstimate.method}`
-            );
-          }
-
-          const liveMonitor = createSubagentLiveMonitor(ctx, {
-            title: "Subagent Run (detailed live view)",
+          liveMonitor = createSubagentLiveMonitor(ctx, {
+            title: `Subagent Run (background: ${job.jobId})`,
             items: [{ id: agent.id, name: agent.name }],
           });
 
           runtimeState.activeRunRequests += 1;
           notifyRuntimeCapacityChanged();
           refreshRuntimeStatus(ctx);
-          // 予約は admission 制御のためだけに使い、開始後は active カウンタへ責務を移す。
           capacityReservation.consume();
-          try {
-            const result = await runSubagentTask({
-              agent,
-              task: params.task,
-              extraContext: params.extraContext,
-              timeoutMs,
-              cwd: ctx.cwd,
-              retryOverrides,
-              modelProvider: ctx.model?.provider,
-              modelId: ctx.model?.id,
-              signal,
-              onStart: () => {
-                liveMonitor?.markStarted(agent.id);
-                runtimeState.activeAgents += 1;
-                notifyRuntimeCapacityChanged();
-                refreshRuntimeStatus(ctx);
-              },
-              onEnd: () => {
-                runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
-                notifyRuntimeCapacityChanged();
-                refreshRuntimeStatus(ctx);
-              },
-              onTextDelta: (delta) => {
-                liveMonitor?.appendChunk(agent.id, "stdout", delta);
-              },
-              onStderrChunk: (chunk) => {
-                liveMonitor?.appendChunk(agent.id, "stderr", chunk);
+          updateBackgroundJob(job.jobId, (current) => ({
+            ...current,
+            status: "running",
+            startedAt: new Date().toISOString(),
+          }));
+
+          const result = await runSubagentTask({
+            agent,
+            task: params.task,
+            extraContext: params.extraContext,
+            timeoutMs,
+            cwd: ctx.cwd,
+            retryOverrides,
+            modelProvider: ctx.model?.provider,
+            modelId: ctx.model?.id,
+            onStart: () => {
+              liveMonitor?.markStarted(agent.id);
+              runtimeState.activeAgents += 1;
+              notifyRuntimeCapacityChanged();
+              refreshRuntimeStatus(ctx);
+            },
+            onEnd: () => {
+              runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
+              notifyRuntimeCapacityChanged();
+              refreshRuntimeStatus(ctx);
+            },
+            onTextDelta: (delta) => {
+              liveMonitor?.appendChunk(agent.id, "stdout", delta);
+            },
+            onStderrChunk: (chunk) => {
+              liveMonitor?.appendChunk(agent.id, "stderr", chunk);
+            },
+          });
+
+          liveMonitor?.markFinished(
+            agent.id,
+            result.runRecord.status,
+            result.runRecord.summary,
+            result.runRecord.error,
+          );
+
+          storage.runs.push(result.runRecord);
+          await saveStorageWithPatterns(ctx.cwd, storage);
+          pi.appendEntry("subagent-run", result.runRecord);
+
+          if (result.runRecord.status === "failed") {
+            const pressureError = classifyPressureError(result.runRecord.error || "");
+            if (pressureError !== "other") {
+              adaptivePenalty.raise(pressureError);
+            }
+            const errorMessage = result.runRecord.error || "subagent run failed";
+            updateBackgroundJob(job.jobId, (current) => ({
+              ...current,
+              status: "failed",
+              runIds: [result.runRecord.runId],
+              summary: result.runRecord.summary,
+              error: errorMessage,
+              finishedAt: new Date().toISOString(),
+            }));
+            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
+            logger.endOperation({
+              status: "failure",
+              tokensUsed: 0,
+              outputLength: result.output?.length ?? 0,
+              outputFile: result.runRecord.outputFile,
+              childOperations: 0,
+              toolCalls: 0,
+              error: {
+                type: "subagent_error",
+                message: errorMessage,
+                stack: "",
               },
             });
-            liveMonitor?.markFinished(
-              agent.id,
-              result.runRecord.status,
-              result.runRecord.summary,
-              result.runRecord.error,
-            );
-
-            storage.runs.push(result.runRecord);
-            // Use saveStorageWithPatterns for automatic pattern extraction
-            await saveStorageWithPatterns(ctx.cwd, storage);
-            pi.appendEntry("subagent-run", result.runRecord);
-
-            if (result.runRecord.status === "failed") {
-              const pressureError = classifyPressureError(result.runRecord.error || "");
-              if (pressureError !== "other") {
-                adaptivePenalty.raise(pressureError);
-              }
-              const failureOutcome = resolveSubagentFailureOutcome(
-                result.runRecord.error || result.runRecord.summary,
-              );
-              logger.endOperation({
-                status: "failure",
-                tokensUsed: 0,
-                outputLength: result.output?.length ?? 0,
-                outputFile: result.runRecord.outputFile,
-                childOperations: 0,
-                toolCalls: 0,
-                error: {
-                  type: "subagent_error",
-                  message: result.runRecord.error ?? "Unknown error",
-                  stack: "",
-                },
-              });
-              return {
-                content: [{ type: "text" as const, text: `subagent_run failed: ${result.runRecord.error}` }],
-                details: {
-                  error: result.runRecord.error,
-                  run: result.runRecord,
-                  traceId: queueWait.orchestrationId,
-                  taskId: buildTraceTaskId(queueWait.orchestrationId, result.runRecord.agentId, 0),
-                  adaptiveParallelPenalty: adaptivePenalty.get(),
-                  queuedAhead: queueWait.queuedAhead,
-                  queuePosition: queueWait.queuePosition,
-                  queueWaitedMs: queueWait.waitedMs,
-                  outcomeCode: failureOutcome.outcomeCode,
-                  retryRecommended: failureOutcome.retryRecommended,
-                },
-              };
-            }
-
+          } else {
             adaptivePenalty.lower();
-
-            const outputLines = [
-              `Subagent run completed: ${result.runRecord.runId}`,
-              `Subagent: ${agent.id} (${agent.name})`,
-              `Summary: ${result.runRecord.summary}`,
-              `Latency: ${result.runRecord.latencyMs}ms`,
-              `Output file: ${result.runRecord.outputFile}`,
-              "",
-              result.output,
-            ];
-
+            updateBackgroundJob(job.jobId, (current) => ({
+              ...current,
+              status: "completed",
+              runIds: [result.runRecord.runId],
+              summary: result.runRecord.summary,
+              finishedAt: new Date().toISOString(),
+            }));
             logger.endOperation({
               status: "success",
               tokensUsed: 0,
@@ -781,45 +862,52 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               childOperations: 0,
               toolCalls: 0,
             });
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: outputLines.join("\n"),
-                },
-              ],
-              details: {
-                run: result.runRecord,
-                subagent: {
-                  id: agent.id,
-                  name: agent.name,
-                },
-                traceId: queueWait.orchestrationId,
-                taskId: buildTraceTaskId(queueWait.orchestrationId, agent.id, 0),
-                output: result.output,
-                adaptiveParallelPenalty: adaptivePenalty.get(),
-                queuedAhead: queueWait.queuedAhead,
-                queuePosition: queueWait.queuePosition,
-                queueWaitedMs: queueWait.waitedMs,
-                outcomeCode: "SUCCESS" as RunOutcomeCode,
-                retryRecommended: false,
-              },
-            };
-          } finally {
-            runtimeState.activeRunRequests = Math.max(0, runtimeState.activeRunRequests - 1);
-            notifyRuntimeCapacityChanged();
-            refreshRuntimeStatus(ctx);
-            liveMonitor?.close();
-            await liveMonitor?.wait();
           }
+        } catch (error) {
+          updateBackgroundJob(job.jobId, (current) => ({
+            ...current,
+            status: "failed",
+            error: toErrorMessage(error),
+            finishedAt: new Date().toISOString(),
+          }));
+          reportBackgroundJobFailure(job.jobId, toErrorMessage(error), ctx);
+          logger.endOperation({
+            status: "failure",
+            tokensUsed: 0,
+            outputLength: 0,
+            childOperations: 0,
+            toolCalls: 0,
+            error: {
+              type: "subagent_error",
+              message: toErrorMessage(error),
+              stack: "",
+            },
+          });
         } finally {
-          stopReservationHeartbeat();
-          capacityReservation.release();
+          runtimeState.activeRunRequests = Math.max(0, runtimeState.activeRunRequests - 1);
+          notifyRuntimeCapacityChanged();
+          refreshRuntimeStatus(ctx);
+          liveMonitor?.close();
+          await liveMonitor?.wait();
+          stopReservationHeartbeat?.();
+          capacityReservation?.release();
+          refreshRuntimeStatus(ctx);
         }
-      } finally {
-        queueLease.release();
-        refreshRuntimeStatus(ctx);
-      }
+      })().catch((error) => {
+        console.error("[subagent_run] Background job unhandled error:", error);
+      });
+
+      return {
+        content: [{ type: "text" as const, text: `subagent_run queued as background job: ${job.jobId}` }],
+        details: {
+          jobId: job.jobId,
+          mode: "single",
+          status: "queued",
+          subagentId: agent.id,
+          outcomeCode: "SUCCESS" as RunOutcomeCode,
+          retryRecommended: false,
+        },
+      };
     },
   });
 
@@ -836,7 +924,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
     }),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const storage = loadStorage(ctx.cwd);
       const retryOverrides = toRetryOverrides(params.retry);
       const requestedIds = Array.isArray(params.subagentIds)
@@ -879,324 +967,268 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         };
       }
 
-      // Logger: start parallel operation tracking
-      const parallelOperationId = logger.startOperation("subagent_run_parallel" as OperationType, activeAgents.map(a => a.id).join(","), {
+      const job = createBackgroundJob({
+        mode: "parallel",
         task: params.task,
-        params: {
-          subagentIds: activeAgents.map(a => a.id),
-          extraContext: params.extraContext,
-          timeoutMs: params.timeoutMs,
-        },
+        subagentIds: activeAgents.map((agent) => agent.id),
       });
 
-      const queueSnapshot = getRuntimeSnapshot();
-      const queueWait = await waitForRuntimeOrchestrationTurn({
-        toolName: "subagent_run_parallel",
-        maxWaitMs: queueSnapshot.limits.capacityWaitMs,
-        pollIntervalMs: queueSnapshot.limits.capacityPollMs,
-        signal,
-      });
-      if (!queueWait.allowed || !queueWait.lease) {
-        const queueOutcome: RunOutcomeSignal = queueWait.aborted
-          ? { outcomeCode: "CANCELLED", retryRecommended: false }
-          : { outcomeCode: "TIMEOUT", retryRecommended: true };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: buildRuntimeQueueWaitError("subagent_run_parallel", queueWait),
+      void (async () => {
+        logger.startOperation(
+          "subagent_run_parallel" as OperationType,
+          activeAgents.map((agent) => agent.id).join(","),
+          {
+            task: params.task,
+            params: {
+              subagentIds: activeAgents.map((agent) => agent.id),
+              extraContext: params.extraContext,
+              timeoutMs: params.timeoutMs,
+              backgroundJobId: job.jobId,
             },
-          ],
-          details: {
-            error: queueWait.aborted ? "runtime_queue_aborted" : "runtime_queue_timeout",
-            queuedAhead: queueWait.queuedAhead,
-            queuePosition: queueWait.queuePosition,
-            queueWaitedMs: queueWait.waitedMs,
-            queueAttempts: queueWait.attempts,
-            traceId: queueWait.orchestrationId,
-            outcomeCode: queueOutcome.outcomeCode,
-            retryRecommended: queueOutcome.retryRecommended,
           },
-        };
-      }
-
-      const queueLease = queueWait.lease;
-      try {
-        const snapshot = getRuntimeSnapshot();
-        const configuredParallelLimit = toConcurrencyLimit(snapshot.limits.maxParallelSubagentsPerRun, 1);
-        const baselineParallelism = Math.max(
-          1,
-          Math.min(
-            configuredParallelLimit,
-            activeAgents.length,
-            Math.max(1, snapshot.limits.maxTotalActiveLlm),
-          ),
         );
-        const adaptivePenaltyBefore = adaptivePenalty.get();
-        const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
-        const parallelCapacity = await resolveSubagentParallelCapacity({
-          requestedParallelism: effectiveParallelism,
-          additionalRequests: 1,
-          maxWaitMs: snapshot.limits.capacityWaitMs,
-          pollIntervalMs: snapshot.limits.capacityPollMs,
-          signal,
-        });
-        if (!parallelCapacity.allowed) {
-          adaptivePenalty.raise("capacity");
-          const capacityOutcome: RunOutcomeSignal = parallelCapacity.aborted
-            ? { outcomeCode: "CANCELLED", retryRecommended: false }
-            : parallelCapacity.timedOut
-              ? { outcomeCode: "TIMEOUT", retryRecommended: true }
-              : { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: buildRuntimeLimitError("subagent_run_parallel", parallelCapacity.reasons, {
-                  waitedMs: parallelCapacity.waitedMs,
-                  timedOut: parallelCapacity.timedOut,
-                }),
-              },
-            ],
-            details: {
-              error: "runtime_limit_reached",
-              reasons: parallelCapacity.reasons,
-              projectedRequests: parallelCapacity.projectedRequests,
-              projectedLlm: parallelCapacity.projectedLlm,
-              waitedMs: parallelCapacity.waitedMs,
-              timedOut: parallelCapacity.timedOut,
-              aborted: parallelCapacity.aborted,
-              capacityAttempts: parallelCapacity.attempts,
-              configuredParallelLimit,
-              baselineParallelism,
-              requestedParallelism: parallelCapacity.requestedParallelism,
-              appliedParallelism: parallelCapacity.appliedParallelism,
-              parallelismReduced: parallelCapacity.reduced,
-              adaptivePenaltyBefore,
-              adaptivePenaltyAfter: adaptivePenalty.get(),
-              requestedSubagentCount: activeAgents.length,
-              queuedAhead: queueWait.queuedAhead,
-              queuePosition: queueWait.queuePosition,
-              queueWaitedMs: queueWait.waitedMs,
-              traceId: queueWait.orchestrationId,
-              outcomeCode: capacityOutcome.outcomeCode,
-              retryRecommended: capacityOutcome.retryRecommended,
-            },
-          };
-        }
-        if (!parallelCapacity.reservation) {
-          adaptivePenalty.raise("capacity");
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "subagent_run_parallel blocked: capacity reservation missing.",
-              },
-            ],
-            details: {
-              error: "runtime_reservation_missing",
-              requestedParallelism: parallelCapacity.requestedParallelism,
-              appliedParallelism: parallelCapacity.appliedParallelism,
-              queuedAhead: queueWait.queuedAhead,
-              queuePosition: queueWait.queuePosition,
-              queueWaitedMs: queueWait.waitedMs,
-              traceId: queueWait.orchestrationId,
-              outcomeCode: "RETRYABLE_FAILURE" as RunOutcomeCode,
-              retryRecommended: true,
-            },
-          };
-        }
-        const appliedParallelism = parallelCapacity.appliedParallelism;
-        const capacityReservation = parallelCapacity.reservation;
-        const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
+        let capacityReservation: RuntimeCapacityReservationLease | undefined;
+        let stopReservationHeartbeat: (() => void) | undefined;
+        let liveMonitor: SubagentLiveMonitorController | undefined;
         try {
-          const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+          const snapshot = getRuntimeSnapshot();
+          const configuredParallelLimit = toConcurrencyLimit(
+            snapshot.limits.maxParallelSubagentsPerRun,
+            1,
+          );
+          const baselineParallelism = Math.max(
+            1,
+            Math.min(
+              configuredParallelLimit,
+              activeAgents.length,
+              Math.max(1, snapshot.limits.maxTotalActiveLlm),
+              resolveProviderConcurrencyCap(
+                activeAgents,
+                ctx.model?.provider,
+                ctx.model?.id,
+              ),
+            ),
+          );
+          const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
+          const dispatchPermit = await acquireRuntimeDispatchPermit({
+            toolName: "subagent_run_parallel",
+            candidate: {
+              additionalRequests: 1,
+              additionalLlm: Math.max(1, effectiveParallelism),
+            },
+            tenantKey: activeAgents.map((entry) => entry.id).join(","),
+            source: "background",
+            estimatedDurationMs: 60_000,
+            estimatedRounds: Math.max(1, activeAgents.length),
+            maxWaitMs: snapshot.limits.capacityWaitMs,
+            pollIntervalMs: snapshot.limits.capacityPollMs,
+            signal: _signal,
+          });
+          if (!dispatchPermit.allowed || !dispatchPermit.lease) {
+            adaptivePenalty.raise("capacity");
+            const errorText = buildRuntimeLimitError("subagent_run_parallel", dispatchPermit.reasons, {
+              waitedMs: dispatchPermit.waitedMs,
+              timedOut: dispatchPermit.timedOut,
+            });
+            updateBackgroundJob(job.jobId, (current) => ({
+              ...current,
+              status: "failed",
+              error: errorText,
+              finishedAt: new Date().toISOString(),
+            }));
+            reportBackgroundJobFailure(job.jobId, errorText, ctx);
+            logger.endOperation({
+              status: "failure",
+              tokensUsed: 0,
+              outputLength: 0,
+              childOperations: 0,
+              toolCalls: 0,
+              error: {
+                type: "capacity_error",
+                message: errorText,
+                stack: "",
+              },
+            });
+            return;
+          }
 
-          // Get cost estimate for parallel subagent execution
+          capacityReservation = dispatchPermit.lease;
+          stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
+
+          const timeoutMs = resolveEffectiveTimeoutMs(
+            params.timeoutMs,
+            ctx.model?.id,
+            DEFAULT_AGENT_TIMEOUT_MS,
+          );
+
           const costEstimate = getCostEstimator().estimate(
             "subagent_run_parallel",
             ctx.model?.provider,
             ctx.model?.id,
-            params.task
+            params.task,
           );
+          debugCostEstimation("subagent_run_parallel", {
+            estimated_ms: costEstimate.estimatedDurationMs,
+            estimated_tokens: costEstimate.estimatedTokens,
+            agents: activeAgents.length,
+            applied_parallelism: Math.max(1, effectiveParallelism),
+            confidence: costEstimate.confidence.toFixed(2),
+            method: costEstimate.method,
+          });
 
-          // Debug logging for cost estimation
-          if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
-            console.log(
-              `[CostEstimation] subagent_run_parallel: ` +
-              `estimated=(${costEstimate.estimatedDurationMs}ms, ${costEstimate.estimatedTokens}t) ` +
-              `agents=${activeAgents.length} appliedParallelism=${appliedParallelism} ` +
-              `confidence=${costEstimate.confidence.toFixed(2)} method=${costEstimate.method}`
-            );
-          }
-
-          const liveMonitor = createSubagentLiveMonitor(ctx, {
-            title: `Subagent Run Parallel (detailed live view: ${activeAgents.length} agents)`,
+          liveMonitor = createSubagentLiveMonitor(ctx, {
+            title: `Subagent Run Parallel (background: ${job.jobId})`,
             items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
           });
 
           runtimeState.activeRunRequests += 1;
           notifyRuntimeCapacityChanged();
           refreshRuntimeStatus(ctx);
-          // 予約は admission 制御のためだけに使い、開始後は active カウンタへ責務を移す。
           capacityReservation.consume();
-          try {
-            const results = await runWithConcurrencyLimit(
-              activeAgents,
-              appliedParallelism,
-              async (agent) => {
-                // Create child AbortController to prevent MaxListenersExceededWarning
-                const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(signal);
-                try {
-                  const result = await runSubagentTask({
-                    agent,
-                    task: params.task,
-                    extraContext: params.extraContext,
-                    timeoutMs,
-                    cwd: ctx.cwd,
-                    retryOverrides,
-                    modelProvider: ctx.model?.provider,
-                    modelId: ctx.model?.id,
-                    signal: childController.signal,
-                  onStart: () => {
-                    liveMonitor?.markStarted(agent.id);
-                    runtimeState.activeAgents += 1;
-                    notifyRuntimeCapacityChanged();
-                    refreshRuntimeStatus(ctx);
-                  },
-                  onEnd: () => {
-                    runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
-                    notifyRuntimeCapacityChanged();
-                    refreshRuntimeStatus(ctx);
-                  },
-                  onTextDelta: (delta) => {
-                    liveMonitor?.appendChunk(agent.id, "stdout", delta);
-                  },
-                  onStderrChunk: (chunk) => {
-                    liveMonitor?.appendChunk(agent.id, "stderr", chunk);
-                  },
-                });
-                // 各サブエージェントの終了は、全体終了を待たずに即座に画面へ反映する。
-                liveMonitor?.markFinished(
-                  result.runRecord.agentId,
-                  result.runRecord.status,
-                  result.runRecord.summary,
-                  result.runRecord.error,
-                );
-                return result;
-                } finally {
-                  cleanupAbort();
-                }
-              },
-              { signal },
-            );
+          updateBackgroundJob(job.jobId, (current) => ({
+            ...current,
+            status: "running",
+            startedAt: new Date().toISOString(),
+          }));
 
-            for (const result of results) {
-              storage.runs.push(result.runRecord);
-              pi.appendEntry("subagent-run", result.runRecord);
-            }
-            // Use saveStorageWithPatterns for automatic pattern extraction
-            await saveStorageWithPatterns(ctx.cwd, storage);
-
-            const failed = results.filter((result) => result.runRecord.status === "failed");
-            const pressureFailures = failed.filter((result) => {
-              const pressure = classifyPressureError(result.runRecord.error || "");
-              return pressure !== "other";
-            }).length;
-            if (pressureFailures > 0) {
-              adaptivePenalty.raise("rate_limit");
-            } else {
-              adaptivePenalty.lower();
-            }
-            const parallelOutcome = sharedResolveSubagentParallelOutcome(results);
-            const adaptivePenaltyAfter = adaptivePenalty.get();
-            const lines: string[] = [];
-            lines.push(`Parallel subagent run completed (${results.length} agents).`);
-            lines.push(
-              `Applied parallel limit: ${appliedParallelism} concurrent subagents (requested=${effectiveParallelism}, baseline=${baselineParallelism}, adaptive_penalty=${adaptivePenaltyBefore}->${adaptivePenaltyAfter}).`,
-            );
-            if (parallelCapacity.reduced) {
-              lines.push(
-                `Parallelism was reduced to fit current runtime capacity (waited=${parallelCapacity.waitedMs}ms).`,
+          const results = await runWithConcurrencyLimit(
+            activeAgents,
+            Math.max(1, effectiveParallelism),
+            async (agent) => {
+              const result = await runSubagentTask({
+                agent,
+                task: params.task,
+                extraContext: params.extraContext,
+                timeoutMs,
+                cwd: ctx.cwd,
+                retryOverrides,
+                modelProvider: ctx.model?.provider,
+                modelId: ctx.model?.id,
+                onStart: () => {
+                  liveMonitor?.markStarted(agent.id);
+                  runtimeState.activeAgents += 1;
+                  notifyRuntimeCapacityChanged();
+                  refreshRuntimeStatus(ctx);
+                },
+                onEnd: () => {
+                  runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
+                  notifyRuntimeCapacityChanged();
+                  refreshRuntimeStatus(ctx);
+                },
+                onTextDelta: (delta) => {
+                  liveMonitor?.appendChunk(agent.id, "stdout", delta);
+                },
+                onStderrChunk: (chunk) => {
+                  liveMonitor?.appendChunk(agent.id, "stderr", chunk);
+                },
+              });
+              liveMonitor?.markFinished(
+                result.runRecord.agentId,
+                result.runRecord.status,
+                result.runRecord.summary,
+                result.runRecord.error,
               );
-            }
-            lines.push(
-              failed.length === 0
-                ? "All subagents completed successfully."
-                : `${results.length - failed.length}/${results.length} subagents completed (${failed.length} failed).`,
-            );
-            lines.push("");
-            lines.push("Results:");
+              return result;
+            },
+          );
 
-            for (const result of results) {
-              const run = result.runRecord;
-              const state = run.status === "completed" ? "ok" : "failed";
-              lines.push(`- ${run.agentId} [${state}] ${run.summary} (${run.outputFile})`);
-            }
+          for (const result of results) {
+            storage.runs.push(result.runRecord);
+            pi.appendEntry("subagent-run", result.runRecord);
+          }
+          await saveStorageWithPatterns(ctx.cwd, storage);
 
-            lines.push("");
-            lines.push("Detailed outputs:");
-            for (const result of results) {
-              lines.push(`\n### ${result.runRecord.agentId}`);
-              if (result.runRecord.status === "failed") {
-                lines.push(`FAILED: ${result.runRecord.error}`);
-              } else {
-                lines.push(result.output);
-              }
+          const failed = results.filter((result) => result.runRecord.status === "failed");
+          if (failed.length > 0) {
+            const pressureSignals = failed
+              .map((result) => classifyPressureError(result.runRecord.error || ""))
+              .filter((signal): signal is "rate_limit" | "capacity" => signal !== "other");
+            if (pressureSignals.length > 0) {
+              const hasRateLimit = pressureSignals.includes("rate_limit");
+              adaptivePenalty.raise(hasRateLimit ? "rate_limit" : "capacity");
             }
-
+            const errorMessage = failed
+              .map((result) => `${result.runRecord.agentId}:${result.runRecord.error}`)
+              .join(" | ");
+            updateBackgroundJob(job.jobId, (current) => ({
+              ...current,
+              status: "failed",
+              runIds: results.map((result) => result.runRecord.runId),
+              summary: `${results.length - failed.length}/${results.length} completed`,
+              error: errorMessage,
+              finishedAt: new Date().toISOString(),
+            }));
+            reportBackgroundJobFailure(job.jobId, errorMessage, ctx);
             logger.endOperation({
-              status: parallelOutcome.outcomeCode === "SUCCESS" ? "success" : "partial",
+              status: "partial",
               tokensUsed: 0,
-              outputLength: lines.join("\n").length,
+              outputLength: 0,
               childOperations: results.length,
               toolCalls: 0,
             });
-            return {
-              content: [{ type: "text" as const, text: lines.join("\n") }],
-              details: {
-                selectedSubagents: activeAgents.map((agent) => agent.id),
-                configuredParallelLimit,
-                baselineParallelism,
-                requestedParallelism: effectiveParallelism,
-                appliedParallelism,
-                parallelismReduced: parallelCapacity.reduced,
-                capacityWaitedMs: parallelCapacity.waitedMs,
-                adaptivePenaltyBefore,
-                adaptivePenaltyAfter,
-                pressureFailureCount: pressureFailures,
-                queuedAhead: queueWait.queuedAhead,
-                queuePosition: queueWait.queuePosition,
-                queueWaitedMs: queueWait.waitedMs,
-                traceId: queueWait.orchestrationId,
-                runs: results.map((result) => result.runRecord),
-                delegateTasks: results.map((result, index) => ({
-                  taskId: buildTraceTaskId(queueWait.orchestrationId, result.runRecord.agentId, index),
-                  delegateId: result.runRecord.agentId,
-                  runId: result.runRecord.runId,
-                  status: result.runRecord.status,
-                })),
-                failedSubagentIds: parallelOutcome.failedSubagentIds,
-                outcomeCode: parallelOutcome.outcomeCode,
-                retryRecommended: parallelOutcome.retryRecommended,
-              },
-            };
-          } finally {
-            runtimeState.activeRunRequests = Math.max(0, runtimeState.activeRunRequests - 1);
-            notifyRuntimeCapacityChanged();
-            refreshRuntimeStatus(ctx);
-            liveMonitor?.close();
-            await liveMonitor?.wait();
+          } else {
+            adaptivePenalty.lower();
+            updateBackgroundJob(job.jobId, (current) => ({
+              ...current,
+              status: "completed",
+              runIds: results.map((result) => result.runRecord.runId),
+              summary: `all ${results.length} subagents completed`,
+              finishedAt: new Date().toISOString(),
+            }));
+            logger.endOperation({
+              status: "success",
+              tokensUsed: 0,
+              outputLength: 0,
+              childOperations: results.length,
+              toolCalls: 0,
+            });
           }
+        } catch (error) {
+          updateBackgroundJob(job.jobId, (current) => ({
+            ...current,
+            status: "failed",
+            error: toErrorMessage(error),
+            finishedAt: new Date().toISOString(),
+          }));
+          reportBackgroundJobFailure(job.jobId, toErrorMessage(error), ctx);
+          logger.endOperation({
+            status: "failure",
+            tokensUsed: 0,
+            outputLength: 0,
+            childOperations: 0,
+            toolCalls: 0,
+            error: {
+              type: "subagent_parallel_error",
+              message: toErrorMessage(error),
+              stack: "",
+            },
+          });
         } finally {
-          stopReservationHeartbeat();
-          capacityReservation.release();
+          runtimeState.activeRunRequests = Math.max(0, runtimeState.activeRunRequests - 1);
+          notifyRuntimeCapacityChanged();
+          refreshRuntimeStatus(ctx);
+          liveMonitor?.close();
+          await liveMonitor?.wait();
+          stopReservationHeartbeat?.();
+          capacityReservation?.release();
+          refreshRuntimeStatus(ctx);
         }
-      } finally {
-        queueLease.release();
-        refreshRuntimeStatus(ctx);
-      }
+      })().catch((error) => {
+        console.error("[subagent_run_parallel] Background job unhandled error:", error);
+      });
+
+      return {
+        content: [{ type: "text" as const, text: `subagent_run_parallel queued as background job: ${job.jobId}` }],
+        details: {
+          jobId: job.jobId,
+          mode: "parallel",
+          status: "queued",
+          subagentIds: activeAgents.map((agent) => agent.id),
+          outcomeCode: "SUCCESS" as RunOutcomeCode,
+          retryRecommended: false,
+        },
+      };
     },
   });
 
@@ -1240,6 +1272,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           queuedTools: snapshot.queuedTools,
           adaptiveParallelPenalty: adaptivePenalty.get(),
           storedRunRecords: storage.runs.length,
+          backgroundJobs: {
+            total: backgroundJobOrder.length,
+            queued: listBackgroundJobs(100).filter((job) => job.status === "queued").length,
+            running: listBackgroundJobs(100).filter((job) => job.status === "running").length,
+          },
         },
       };
     },
@@ -1262,6 +1299,26 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         content: [{ type: "text" as const, text: formatRecentRuns(storage, limit) }],
         details: {
           runs: storage.runs.slice(-limit),
+        },
+      };
+    },
+  });
+
+  // バックグラウンドジョブ履歴
+  pi.registerTool({
+    name: "subagent_jobs",
+    label: "Subagent Jobs",
+    description: "Show recent subagent background jobs.",
+    parameters: Type.Object({
+      limit: Type.Optional(Type.Number({ description: "Number of jobs to return", minimum: 1, maximum: 100 })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const limitRaw = Number(params.limit ?? 20);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(100, Math.trunc(limitRaw))) : 20;
+      return {
+        content: [{ type: "text" as const, text: formatBackgroundJobs(limit) }],
+        details: {
+          jobs: listBackgroundJobs(limit),
         },
       };
     },
@@ -1339,7 +1396,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
     saveStorage(ctx.cwd, storage);
     resetRuntimeTransientState();
     refreshRuntimeStatus(ctx);
-    ctx.ui.notify("Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel)", "info");
+    ctx.ui.notify(
+      "Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel, subagent_jobs)",
+      "info",
+    );
   });
 
   // デフォルトでマルチエージェント委譲を積極化する。

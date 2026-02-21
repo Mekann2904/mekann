@@ -88,17 +88,24 @@ export interface ComputeModelTimeoutOptions {
  * @returns {number} 基本タイムアウト時間
  */
 export function getModelBaseTimeoutMs(modelId: string): number {
+  const normalizedModelId =
+    typeof modelId === "string" ? modelId.toLowerCase() : "";
+
   // Exact match
-  if (MODEL_TIMEOUT_BASE_MS[modelId]) {
-    return MODEL_TIMEOUT_BASE_MS[modelId];
+  if (
+    Object.prototype.hasOwnProperty.call(
+      MODEL_TIMEOUT_BASE_MS,
+      normalizedModelId
+    )
+  ) {
+    return MODEL_TIMEOUT_BASE_MS[normalizedModelId];
   }
 
   // Partial match (modelId contains pattern)
-  const normalizedId = modelId.toLowerCase();
   for (const [pattern, timeout] of Object.entries(MODEL_TIMEOUT_BASE_MS)) {
     if (pattern === "default") continue;
     const normalizedPattern = pattern.toLowerCase();
-    if (normalizedId.includes(normalizedPattern)) {
+    if (normalizedModelId.includes(normalizedPattern)) {
       return timeout;
     }
   }
@@ -128,7 +135,13 @@ export function computeModelTimeoutMs(
 
   // Apply thinking level multiplier
   const thinkingLevel = options?.thinkingLevel?.toLowerCase() ?? "medium";
-  const multiplier = THINKING_LEVEL_MULTIPLIERS[thinkingLevel] ?? 1.4;
+  const hasKnownThinkingLevel = Object.prototype.hasOwnProperty.call(
+    THINKING_LEVEL_MULTIPLIERS,
+    thinkingLevel,
+  );
+  const multiplier = hasKnownThinkingLevel
+    ? THINKING_LEVEL_MULTIPLIERS[thinkingLevel]
+    : 1.4;
 
   return Math.floor(baseTimeout * multiplier);
 }

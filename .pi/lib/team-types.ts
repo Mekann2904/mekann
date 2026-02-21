@@ -57,9 +57,24 @@ export type TeamLivePhase =
 /**
  * チームライブの表示モード
  * @summary 表示モード定義
- * @typedef {"list" | "detail" | "discussion"} TeamLiveViewMode
+ * @typedef {"list" | "detail" | "discussion" | "tree" | "timeline"} TeamLiveViewMode
  */
-export type TeamLiveViewMode = "list" | "detail" | "discussion";
+export type TeamLiveViewMode = "list" | "detail" | "discussion" | "tree" | "timeline";
+
+/**
+ * 待機状態情報
+ * @summary 待機状態表現
+ */
+export interface TeamQueueStatus {
+  /** 待機中かどうか */
+  isWaiting: boolean;
+  /** 待機時間（ミリ秒） */
+  waitedMs?: number;
+  /** キュー内の位置 */
+  queuePosition?: number;
+  /** 前方のキューアイテム数 */
+  queuedAhead?: number;
+}
 
 /**
  * アイテムのライブ状態を表す
@@ -187,6 +202,14 @@ export interface TeamMonitorDiscussion {
 }
 
 /**
+ * 待機状態を管理します。
+ * @summary 待機状態管理
+ */
+export interface TeamMonitorQueue {
+  updateQueueStatus: (status: TeamQueueStatus) => void;
+}
+
+/**
  * モニタリングリソースを管理します。
  * @summary 監視リソース
  */
@@ -205,6 +228,7 @@ export interface AgentTeamLiveMonitorController
     TeamMonitorEvents,
     TeamMonitorStream,
     TeamMonitorDiscussion,
+    TeamMonitorQueue,
     TeamMonitorResource {}
 
 // ============================================================================
@@ -212,10 +236,11 @@ export interface AgentTeamLiveMonitorController
 // ============================================================================
 
 /**
- * 正規化されたチーム出力を表します。
- * @summary 正規化チーム出力
+ * 正規化されたチーム出力を表します（API応答用）。
+ * runtime用のTeamNormalizedOutput（member-execution.ts）とは異なる構造です。
+ * @summary 正規化チーム出力（API用）
  */
-export interface TeamNormalizedOutput {
+export interface TeamNormalizedOutputAPI {
   /** Extracted summary */
   summary: string;
   /** Full output content */

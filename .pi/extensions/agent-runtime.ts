@@ -29,6 +29,7 @@
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { randomBytes } from "node:crypto";
 
 import {
   getEffectiveLimit,
@@ -45,6 +46,7 @@ import {
   safeStealWork,
   enhancedHeartbeat,
 } from "../lib/cross-instance-coordinator";
+import * as crossInstanceCoordinator from "../lib/cross-instance-coordinator";
 import {
   broadcastQueueState,
   getWorkStealingSummary,
@@ -82,6 +84,19 @@ import {
   isStableProfile,
   type RuntimeConfig,
 } from "../lib/runtime-config";
+import { getAdaptiveTotalMaxLlm } from "../lib/adaptive-total-limit.js";
+import {
+  getCheckpointManager,
+  initCheckpointManager,
+  getCheckpointConfigFromEnv,
+  type CheckpointStats,
+} from "../lib/checkpoint-manager";
+import {
+  getMetricsCollector,
+  initMetricsCollector,
+  getMetricsConfigFromEnv,
+  type SchedulerMetrics,
+} from "../lib/metrics-collector";
 
 // Feature flag for scheduler-based capacity management
 const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
@@ -101,16 +116,15 @@ export interface AgentRuntimeLimits {
   capacityPollMs: number;
 }
 
-// RuntimeQueueEntry inherits all members from PriorityTaskMetadata
-// - id: string
-// - toolName: string
-// - priority: TaskPriority
-// - estimatedDurationMs?: number
-// - estimatedRounds?: number
-// - deadlineMs?: number
-// - enqueuedAtMs: number
-// - source?: "user-interactive" | "background" | "scheduled" | "retry"
-type RuntimeQueueEntry = PriorityTaskMetadata;
+type RuntimeQueueClass = "interactive" | "standard" | "batch";
+// RuntimeQueueEntry extends priority metadata with scheduling-specific fields.
+interface RuntimeQueueEntry extends PriorityTaskMetadata {
+  queueClass: RuntimeQueueClass;
+  tenantKey: string;
+  additionalRequests: number;
+  additionalLlm: number;
+  skipCount: number;
+}
 
 interface RuntimeCapacityReservationRecord {
   id: string;
@@ -135,6 +149,9 @@ interface AgentRuntimeState {
   queue: {
     activeOrchestrations: number;
     pending: RuntimeQueueEntry[];
+    lastDispatchedTenantKey?: string;
+    consecutiveDispatchesByTenant: number;
+    evictedEntries: number;
     /** Priority queue statistics (updated on enqueue/dequeue) */
     priorityStats?: {
       critical: number;
@@ -185,6 +202,7 @@ export interface RuntimeStateProvider {
  */
 class GlobalRuntimeStateProvider implements RuntimeStateProvider {
   private readonly globalScope: GlobalScopeWithRuntime;
+  private initializationInProgress = false;
 
   constructor() {
     this.globalScope = globalThis as GlobalScopeWithRuntime;
@@ -196,8 +214,30 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * @returns エージェントのランタイム状態
    */
   getState(): AgentRuntimeState {
+    // 二重初期化防止: 初期化中は待機してから既存の状態を返す
     if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
+      // 初期化ロック: 競合状態を防ぐ
+      if (this.initializationInProgress) {
+        // 短いスピンウェイト（初期化完了を待機）
+        let attempts = 0;
+        while (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ && attempts < 1000) {
+          attempts += 1;
+        }
+        // 初期化が完了していない場合は新規作成
+        if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+          this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
+        }
+      } else {
+        this.initializationInProgress = true;
+        try {
+          // 再度チェック（ロック取得中に他が初期化した可能性）
+          if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+            this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
+          }
+        } finally {
+          this.initializationInProgress = false;
+        }
+      }
     }
     ensureReservationSweeper();
     const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
@@ -260,6 +300,7 @@ export interface AgentRuntimeSnapshot {
   activeOrchestrations: number;
   queuedOrchestrations: number;
   queuedTools: string[];
+  queueEvictions: number;
   totalActiveRequests: number;
   totalActiveLlm: number;
   limits: AgentRuntimeLimits;
@@ -451,18 +492,97 @@ export interface RuntimeOrchestrationWaitResult {
   lease?: RuntimeOrchestrationLease;
 }
 
+/**
+ * Dispatch candidate with resource requirements.
+ */
+export interface RuntimeDispatchCandidate {
+  additionalRequests: number;
+  additionalLlm: number;
+}
+
+/**
+ * Unified dispatch permit input.
+ * Queue turn and capacity reservation are acquired together.
+ */
+export interface RuntimeDispatchPermitInput {
+  toolName: string;
+  candidate: RuntimeDispatchCandidate;
+  source?: PriorityTaskMetadata["source"];
+  priority?: TaskPriority;
+  queueClass?: RuntimeQueueClass;
+  tenantKey?: string;
+  estimatedDurationMs?: number;
+  estimatedRounds?: number;
+  deadlineMs?: number;
+  maxWaitMs?: number;
+  pollIntervalMs?: number;
+  reservationTtlMs?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * Combined lease for dispatch.
+ */
+export interface RuntimeDispatchPermitLease {
+  id: string;
+  toolName: string;
+  additionalRequests: number;
+  additionalLlm: number;
+  expiresAtMs: number;
+  consume: () => void;
+  heartbeat: (ttlMs?: number) => void;
+  release: () => void;
+}
+
+/**
+ * Unified dispatch permit result.
+ */
+export interface RuntimeDispatchPermitResult {
+  allowed: boolean;
+  waitedMs: number;
+  attempts: number;
+  timedOut: boolean;
+  aborted: boolean;
+  queuePosition: number;
+  queuedAhead: number;
+  orchestrationId: string;
+  projectedRequests: number;
+  projectedLlm: number;
+  reasons: string[];
+  lease?: RuntimeDispatchPermitLease;
+}
+
 // Constants now come from centralized runtime-config
 const DEFAULT_MAX_CONCURRENT_ORCHESTRATIONS = 4;
 const DEFAULT_RESERVATION_SWEEP_MS = 5_000;
+const DEFAULT_MAX_PENDING_QUEUE_ENTRIES = 1_000;
 const MIN_RESERVATION_TTL_MS = 2_000;
 const MAX_RESERVATION_TTL_MS = 10 * 60 * 1_000;
 const BACKOFF_MAX_FACTOR = 8;
 const BACKOFF_JITTER_RATIO = 0.2;
 const STRICT_LIMITS_ENV = "PI_AGENT_RUNTIME_STRICT_LIMITS";
+const DEBUG_RUNTIME_QUEUE =
+  process.env.PI_DEBUG_RUNTIME_QUEUE === "1" ||
+  process.env.PI_DEBUG_RUNTIME === "1";
+let runtimeNowProvider: () => number = () => Date.now();
 let runtimeQueueSequence = 0;
 let runtimeReservationSequence = 0;
+const RUNTIME_INSTANCE_TOKEN = randomBytes(3).toString("hex");
 let runtimeReservationSweeper: NodeJS.Timeout | undefined;
 const runtimeCapacityEventTarget = new EventTarget();
+
+function logRuntimeQueueDebug(message: string): void {
+  if (!DEBUG_RUNTIME_QUEUE) return;
+  console.error(`[agent-runtime][queue] ${message}`);
+}
+
+function runtimeNow(): number {
+  return runtimeNowProvider();
+}
+
+export function setRuntimeNowProvider(provider?: () => number): void {
+  runtimeNowProvider = provider ?? (() => Date.now());
+}
 
 /**
  * Get default reservation TTL from runtime config.
@@ -472,7 +592,12 @@ function getDefaultReservationTtlMs(): number {
 }
 
 function normalizePositiveInt(value: unknown, fallback: number, max = 64): number {
-  const parsed = Number(value);
+  let parsed: number;
+  try {
+    parsed = Number(value);
+  } catch {
+    return fallback;
+  }
   if (!Number.isFinite(parsed)) return fallback;
   if (parsed <= 0) return fallback;
   return Math.max(1, Math.min(max, Math.trunc(parsed)));
@@ -491,11 +616,61 @@ function resolveLimitFromEnv(envName: string, fallback: number, max = 64): numbe
   return normalizePositiveInt(raw, fallback, max);
 }
 
+function getLocalRuntimeUsage(runtime: AgentRuntimeState): {
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+} {
+  return {
+    totalActiveRequests:
+      Math.max(0, runtime.subagents.activeRunRequests) +
+      Math.max(0, runtime.teams.activeTeamRuns),
+    totalActiveLlm:
+      Math.max(0, runtime.subagents.activeAgents) +
+      Math.max(0, runtime.teams.activeTeammates),
+  };
+}
+
+function publishRuntimeUsageToCoordinator(): void {
+  const updateRuntimeUsage = (crossInstanceCoordinator as { updateRuntimeUsage?: (activeRequests: number, activeLlm: number) => void }).updateRuntimeUsage;
+  if (typeof updateRuntimeUsage !== "function") return;
+  const runtime = getSharedRuntimeState();
+  const usage = getLocalRuntimeUsage(runtime);
+  try {
+    updateRuntimeUsage(usage.totalActiveRequests, usage.totalActiveLlm);
+  } catch (error) {
+    // コーディネータ通信エラーをログ記録（デバッグ用）
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[agent-runtime] coordinator publish error: ${errorMessage}`);
+  }
+}
+
+function getClusterUsageSafe(localUsage: { totalActiveRequests: number; totalActiveLlm: number }): {
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+} {
+  const getClusterRuntimeUsage = (crossInstanceCoordinator as { getClusterRuntimeUsage?: () => { totalActiveRequests: number; totalActiveLlm: number } }).getClusterRuntimeUsage;
+  if (typeof getClusterRuntimeUsage !== "function") {
+    return localUsage;
+  }
+  try {
+    const cluster = getClusterRuntimeUsage();
+    const remoteRequests = Math.max(0, Math.trunc((cluster.totalActiveRequests || 0) - localUsage.totalActiveRequests));
+    const remoteLlm = Math.max(0, Math.trunc((cluster.totalActiveLlm || 0) - localUsage.totalActiveLlm));
+    return {
+      totalActiveRequests: localUsage.totalActiveRequests + remoteRequests,
+      totalActiveLlm: localUsage.totalActiveLlm + remoteLlm,
+    };
+  } catch {
+    return localUsage;
+  }
+}
+
 /**
  * 容量変更通知
  * @summary 容量変更を通知
  */
 export function notifyRuntimeCapacityChanged(): void {
+  publishRuntimeUsageToCoordinator();
   runtimeCapacityEventTarget.dispatchEvent(new Event("capacity-changed"));
 }
 
@@ -508,18 +683,35 @@ async function waitForRuntimeCapacityEvent(
 
   return await new Promise((resolve) => {
     let settled = false;
-    const complete = (result: "event" | "timeout" | "aborted") => {
+    let timeout: NodeJS.Timeout | undefined;
+
+    const onEvent = () => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
-      runtimeCapacityEventTarget.removeEventListener("capacity-changed", onEvent);
-      signal?.removeEventListener("abort", onAbort);
-      resolve(result);
+      if (timeout) clearTimeout(timeout);
+      cleanup();
+      resolve("event");
     };
 
-    const onEvent = () => complete("event");
-    const onAbort = () => complete("aborted");
-    const timeout = setTimeout(() => complete("timeout"), timeoutMs);
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      cleanup();
+      resolve("aborted");
+    };
+
+    const cleanup = () => {
+      runtimeCapacityEventTarget.removeEventListener("capacity-changed", onEvent);
+      signal?.removeEventListener("abort", onAbort);
+    };
+
+    timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve("timeout");
+    }, timeoutMs);
 
     runtimeCapacityEventTarget.addEventListener("capacity-changed", onEvent, { once: true });
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -529,6 +721,7 @@ async function waitForRuntimeCapacityEvent(
 function createRuntimeLimits(): AgentRuntimeLimits {
   // Use centralized RuntimeConfig as the source of truth
   const config = getRuntimeConfig();
+  const adaptiveTotalMaxLlm = getAdaptiveTotalMaxLlm(config.totalMaxLlm);
 
   // Cross-instance coordination: if coordinator is initialized, use dynamic parallel limit
   // Priority: env var > coordinator > runtime-config
@@ -544,7 +737,7 @@ function createRuntimeLimits(): AgentRuntimeLimits {
 
   let effectiveTotalLlm = resolveLimitFromEnv(
     "PI_AGENT_MAX_TOTAL_LLM",
-    config.totalMaxLlm,
+    adaptiveTotalMaxLlm,
   );
 
   // Also adjust total LLM based on coordinator if env var is not set
@@ -590,18 +783,36 @@ function serializeRuntimeLimits(limits: AgentRuntimeLimits): string {
   ].join(":");
 }
 
+let runtimeReservationSweeperInitializing = false;
+
 function ensureReservationSweeper(): void {
-  if (runtimeReservationSweeper) return;
-  const sweepMs = resolveLimitFromEnv(
-    "PI_AGENT_RESERVATION_SWEEP_MS",
-    DEFAULT_RESERVATION_SWEEP_MS,
-    60_000,
-  );
-  runtimeReservationSweeper = setInterval(() => {
-    const runtime = getSharedRuntimeState();
-    cleanupExpiredReservations(runtime);
-  }, sweepMs);
-  runtimeReservationSweeper.unref?.();
+  // 二重作成防止: 既に初期化済みまたは初期化中の場合は即座にreturn
+  if (runtimeReservationSweeper || runtimeReservationSweeperInitializing) return;
+
+  runtimeReservationSweeperInitializing = true;
+  try {
+    // 再度チェック（初期化中に他スレッドが作成した可能性）
+    if (runtimeReservationSweeper) return;
+
+    const sweepMs = resolveLimitFromEnv(
+      "PI_AGENT_RESERVATION_SWEEP_MS",
+      DEFAULT_RESERVATION_SWEEP_MS,
+      60_000,
+    );
+    runtimeReservationSweeper = setInterval(() => {
+      const runtime = getSharedRuntimeState();
+      cleanupExpiredReservations(runtime);
+    }, sweepMs);
+    runtimeReservationSweeper.unref?.();
+  } finally {
+    runtimeReservationSweeperInitializing = false;
+  }
+}
+
+export function stopRuntimeReservationSweeper(): void {
+  if (!runtimeReservationSweeper) return;
+  clearInterval(runtimeReservationSweeper);
+  runtimeReservationSweeper = undefined;
 }
 
 function createInitialRuntimeState(): AgentRuntimeState {
@@ -618,6 +829,8 @@ function createInitialRuntimeState(): AgentRuntimeState {
     queue: {
       activeOrchestrations: 0,
       pending: [],
+      consecutiveDispatchesByTenant: 0,
+      evictedEntries: 0,
     },
     reservations: {
       active: [],
@@ -668,10 +881,21 @@ function ensureRuntimeStateShape(runtime: AgentRuntimeState): AgentRuntimeState 
     runtime.teams = { activeTeamRuns: 0, activeTeammates: 0 };
   }
   if (!runtime.queue) {
-    runtime.queue = { activeOrchestrations: 0, pending: [] };
+    runtime.queue = {
+      activeOrchestrations: 0,
+      pending: [],
+      consecutiveDispatchesByTenant: 0,
+      evictedEntries: 0,
+    };
   }
   if (!Array.isArray(runtime.queue.pending)) {
     runtime.queue.pending = [];
+  }
+  if (!Number.isFinite(runtime.queue.consecutiveDispatchesByTenant)) {
+    runtime.queue.consecutiveDispatchesByTenant = 0;
+  }
+  if (!Number.isFinite(runtime.queue.evictedEntries)) {
+    runtime.queue.evictedEntries = 0;
   }
   if (!runtime.reservations) {
     runtime.reservations = { active: [] };
@@ -721,7 +945,7 @@ export function getSharedRuntimeState(): AgentRuntimeState {
   return runtimeStateProvider.getState();
 }
 
-function cleanupExpiredReservations(runtime: AgentRuntimeState, nowMs = Date.now()): number {
+function cleanupExpiredReservations(runtime: AgentRuntimeState, nowMs = runtimeNow()): number {
   const before = runtime.reservations.active.length;
   runtime.reservations.active = runtime.reservations.active.filter(
     (reservation) => reservation.expiresAtMs > nowMs,
@@ -741,7 +965,7 @@ function updateReservationHeartbeat(
   cleanupExpiredReservations(runtime);
   const reservation = runtime.reservations.active.find((item) => item.id === reservationId);
   if (!reservation) return undefined;
-  const nowMs = Date.now();
+  const nowMs = runtimeNow();
   const normalizedTtlMs = normalizeReservationTtlMs(ttlMs);
   reservation.heartbeatAtMs = nowMs;
   reservation.expiresAtMs = nowMs + normalizedTtlMs;
@@ -760,7 +984,7 @@ function consumeReservation(runtime: AgentRuntimeState, reservationId: string): 
   const reservation = runtime.reservations.active.find((item) => item.id === reservationId);
   if (!reservation) return false;
   if (reservation.consumedAtMs) return true;
-  reservation.consumedAtMs = Date.now();
+  reservation.consumedAtMs = runtimeNow();
   notifyRuntimeCapacityChanged();
   return true;
 }
@@ -778,6 +1002,8 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
   const subagentActiveAgents = Math.max(0, runtime.subagents.activeAgents);
   const teamActiveRuns = Math.max(0, runtime.teams.activeTeamRuns);
   const teamActiveAgents = Math.max(0, runtime.teams.activeTeammates);
+  const localUsage = getLocalRuntimeUsage(runtime);
+  const clusterUsage = getClusterUsageSafe(localUsage);
 
   const reservations = runtime.reservations.active;
   let reservedRequests = 0;
@@ -815,8 +1041,9 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
     activeOrchestrations,
     queuedOrchestrations,
     queuedTools,
-    totalActiveRequests: subagentActiveRequests + teamActiveRuns,
-    totalActiveLlm: subagentActiveAgents + teamActiveAgents,
+    queueEvictions: Math.max(0, Math.trunc(runtime.queue.evictedEntries || 0)),
+    totalActiveRequests: clusterUsage.totalActiveRequests,
+    totalActiveLlm: clusterUsage.totalActiveLlm,
     limitsVersion: runtime.limitsVersion,
     priorityStats,
     limits: {
@@ -857,6 +1084,7 @@ export function formatRuntimeStatusLine(options: RuntimeStatusLineOptions = {}):
   lines.push(
     `- オーケストレーションキュー: active=${snapshot.activeOrchestrations}/${snapshot.limits.maxConcurrentOrchestrations}, queued=${snapshot.queuedOrchestrations}`,
   );
+  lines.push(`  - queue_evictions_total: ${snapshot.queueEvictions}`);
   if (snapshot.queuedTools.length > 0) {
     lines.push(`  - queued_tools: ${snapshot.queuedTools.join(", ")}`);
   }
@@ -886,12 +1114,94 @@ function sanitizePlannedCount(value: unknown): number {
 
 function createRuntimeQueueEntryId(): string {
   runtimeQueueSequence += 1;
-  return `queue-${Date.now()}-${runtimeQueueSequence}`;
+  return `queue-${process.pid}-${RUNTIME_INSTANCE_TOKEN}-${runtimeNow()}-${runtimeQueueSequence}`;
+}
+
+function clampPlannedCount(value: number): number {
+  return Math.max(0, Math.trunc(Number(value) || 0));
+}
+
+function getMaxPendingQueueEntries(): number {
+  return resolveLimitFromEnv(
+    "PI_AGENT_MAX_PENDING_QUEUE_ENTRIES",
+    DEFAULT_MAX_PENDING_QUEUE_ENTRIES,
+    100_000,
+  );
+}
+
+function getQueueClassRank(queueClass: RuntimeQueueClass): number {
+  if (queueClass === "interactive") return 3;
+  if (queueClass === "standard") return 2;
+  return 1; // batch
+}
+
+function getPriorityRank(priority: TaskPriority | undefined): number {
+  if (priority === "critical") return 5;
+  if (priority === "high") return 4;
+  if (priority === "normal") return 3;
+  if (priority === "low") return 2;
+  return 1; // background / undefined
+}
+
+/**
+ * Keep pending queue bounded to avoid unbounded memory growth.
+ * Eviction policy:
+ * 1) lower queue class first (batch < standard < interactive)
+ * 2) lower priority first (background < ... < critical)
+ * 3) older entries first (LRU-like by enqueue timestamp)
+ */
+function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null {
+  const maxPendingEntries = getMaxPendingQueueEntries();
+  if (runtime.queue.pending.length < maxPendingEntries) {
+    return null;
+  }
+
+  let evictionIndex = -1;
+  let minClassRank = Number.POSITIVE_INFINITY;
+  let minPriorityRank = Number.POSITIVE_INFINITY;
+  let oldestEnqueuedAt = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < runtime.queue.pending.length; i += 1) {
+    const entry = runtime.queue.pending[i];
+    if (!entry) continue; // undefined チェック追加
+    const classRank = getQueueClassRank(entry.queueClass ?? "standard");
+    const priorityRank = getPriorityRank(entry.priority);
+    const enqueuedAt = entry.enqueuedAtMs;
+    const betterCandidate =
+      classRank < minClassRank ||
+      (classRank === minClassRank && priorityRank < minPriorityRank) ||
+      (classRank === minClassRank && priorityRank === minPriorityRank && enqueuedAt < oldestEnqueuedAt);
+
+    if (betterCandidate) {
+      evictionIndex = i;
+      minClassRank = classRank;
+      minPriorityRank = priorityRank;
+      oldestEnqueuedAt = enqueuedAt;
+    }
+  }
+
+  if (evictionIndex < 0) return null;
+  const evicted = runtime.queue.pending.splice(evictionIndex, 1)[0];
+  if (!evicted) return null; // undefined チェック追加
+  runtime.queue.evictedEntries += 1;
+  logRuntimeQueueDebug(
+    `evicted id=${evicted.id} tool=${evicted.toolName} class=${evicted.queueClass} priority=${evicted.priority ?? "normal"} pending=${runtime.queue.pending.length} evictions_total=${runtime.queue.evictedEntries} limit=${maxPendingEntries}`,
+  );
+  updatePriorityStats(runtime);
+  notifyRuntimeCapacityChanged();
+  return evicted;
+}
+
+function toQueueClass(input: RuntimeDispatchPermitInput): RuntimeQueueClass {
+  if (input.queueClass) return input.queueClass;
+  if (input.source === "user-interactive" || input.toolName === "question") return "interactive";
+  if (input.source === "background") return "batch";
+  return "standard";
 }
 
 function createRuntimeReservationId(): string {
   runtimeReservationSequence += 1;
-  return `reservation-${Date.now()}-${runtimeReservationSequence}`;
+  return `reservation-${process.pid}-${RUNTIME_INSTANCE_TOKEN}-${runtimeNow()}-${runtimeReservationSequence}`;
 }
 
 function removeQueuedEntry(runtime: AgentRuntimeState, entryId: string): number {
@@ -908,19 +1218,30 @@ function removeQueuedEntry(runtime: AgentRuntimeState, entryId: string): number 
  * Sort queue entries by priority (higher priority first).
  */
 function sortQueueByPriority(runtime: AgentRuntimeState): void {
+  const queueClassOrder: Record<RuntimeQueueClass, number> = {
+    interactive: 0,
+    standard: 1,
+    batch: 2,
+  };
   runtime.queue.pending.sort((a, b) => {
+    const aClass = (a as RuntimeQueueEntry & { queueClass?: RuntimeQueueClass }).queueClass ?? "standard";
+    const bClass = (b as RuntimeQueueEntry & { queueClass?: RuntimeQueueClass }).queueClass ?? "standard";
+    const classDiff = queueClassOrder[aClass] - queueClassOrder[bClass];
+    if (classDiff !== 0) {
+      return classDiff;
+    }
     // Convert to PriorityQueueEntry format for comparison
     const entryA: PriorityQueueEntry = {
       ...a,
       virtualStartTime: 0,
       virtualFinishTime: 0,
-      skipCount: 0,
+      skipCount: (a as RuntimeQueueEntry & { skipCount?: number }).skipCount ?? 0,
     };
     const entryB: PriorityQueueEntry = {
       ...b,
       virtualStartTime: 0,
       virtualFinishTime: 0,
-      skipCount: 0,
+      skipCount: (b as RuntimeQueueEntry & { skipCount?: number }).skipCount ?? 0,
     };
     return comparePriority(entryA, entryB);
   });
@@ -942,15 +1263,27 @@ function updatePriorityStats(runtime: AgentRuntimeState): void {
  */
 function promoteStarvingEntries(runtime: AgentRuntimeState, nowMs: number): void {
   const STARVATION_THRESHOLD_MS = 60_000; // 1 minute
+  const QUEUE_CLASS_PROMOTE_MS = 20_000;
+  const queueClassOrder: RuntimeQueueClass[] = ["batch", "standard", "interactive"];
   const priorityOrder: TaskPriority[] = ["background", "low", "normal", "high", "critical"];
   let promoted = false;
 
   for (const entry of runtime.queue.pending) {
     const waitMs = nowMs - entry.enqueuedAtMs;
-    if (waitMs > STARVATION_THRESHOLD_MS) {
+    const currentClass = ((entry as RuntimeQueueEntry & { queueClass?: RuntimeQueueClass }).queueClass ?? "standard");
+    const isBackgroundSource = entry.source === "background";
+    if (!isBackgroundSource && waitMs > QUEUE_CLASS_PROMOTE_MS) {
+      const classIndex = queueClassOrder.indexOf(currentClass);
+      if (classIndex >= 0 && classIndex < queueClassOrder.length - 1) {
+        (entry as RuntimeQueueEntry & { queueClass?: RuntimeQueueClass }).queueClass = queueClassOrder[classIndex + 1];
+        promoted = true;
+      }
+    }
+    if (!isBackgroundSource && waitMs > STARVATION_THRESHOLD_MS) {
       const currentIndex = priorityOrder.indexOf(entry.priority ?? "normal");
       if (currentIndex < priorityOrder.length - 1) {
         entry.priority = priorityOrder[currentIndex + 1];
+        (entry as RuntimeQueueEntry & { skipCount?: number }).skipCount = 0;
         promoted = true;
       }
     }
@@ -997,6 +1330,40 @@ function createCapacityCheck(snapshot: AgentRuntimeSnapshot, input: RuntimeCapac
 export function checkRuntimeCapacity(input: RuntimeCapacityCheckInput): RuntimeCapacityCheck {
   const snapshot = getRuntimeSnapshot();
   return createCapacityCheck(snapshot, input);
+}
+
+function findDispatchableQueueEntry(
+  runtime: AgentRuntimeState,
+): RuntimeQueueEntry | undefined {
+  const MAX_CONSECUTIVE_SAME_TENANT = 2;
+  const hasAlternativeTenant = runtime.queue.pending.some((entry) => {
+    const tenant = ((entry as RuntimeQueueEntry & { tenantKey?: string }).tenantKey ?? "default");
+    return tenant !== runtime.queue.lastDispatchedTenantKey;
+  });
+
+  for (const entry of runtime.queue.pending) {
+    const additionalRequests = clampPlannedCount(
+      (entry as RuntimeQueueEntry & { additionalRequests?: number }).additionalRequests ?? 0,
+    );
+    const additionalLlm = clampPlannedCount(
+      (entry as RuntimeQueueEntry & { additionalLlm?: number }).additionalLlm ?? 0,
+    );
+    const check = checkRuntimeCapacity({ additionalRequests, additionalLlm });
+    if (!check.allowed) continue;
+
+    const tenant = ((entry as RuntimeQueueEntry & { tenantKey?: string }).tenantKey ?? "default");
+    const shouldThrottleTenant =
+      hasAlternativeTenant &&
+      runtime.queue.lastDispatchedTenantKey === tenant &&
+      runtime.queue.consecutiveDispatchesByTenant >= MAX_CONSECUTIVE_SAME_TENANT;
+    if (shouldThrottleTenant) {
+      continue;
+    }
+
+    return entry;
+  }
+
+  return undefined;
 }
 
 function wait(ms: number, signal?: AbortSignal): Promise<void> {
@@ -1100,7 +1467,7 @@ export function tryReserveRuntimeCapacity(
     return check;
   }
 
-  const nowMs = Date.now();
+  const nowMs = runtimeNow();
   const reservation: RuntimeCapacityReservationRecord = {
     id: createRuntimeReservationId(),
     toolName: String(input.toolName || "unknown"),
@@ -1135,14 +1502,14 @@ export async function reserveRuntimeCapacity(
     snapshot.limits.capacityPollMs,
     60_000,
   );
-  const startedAt = Date.now();
+  const startedAt = runtimeNow();
   let attempts = 0;
   let latestCheck: RuntimeCapacityCheck & { reservation?: RuntimeCapacityReservationLease } =
     checkRuntimeCapacity(input);
 
   while (true) {
     attempts += 1;
-    const waitElapsedMs = Date.now() - startedAt;
+    const waitElapsedMs = runtimeNow() - startedAt;
     if (input.signal?.aborted) {
       return {
         ...latestCheck,
@@ -1158,7 +1525,7 @@ export async function reserveRuntimeCapacity(
     if (attempted.allowed && attempted.reservation) {
       return {
         ...attempted,
-        waitedMs: Date.now() - startedAt,
+        waitedMs: runtimeNow() - startedAt,
         attempts,
         timedOut: false,
         aborted: false,
@@ -1166,7 +1533,7 @@ export async function reserveRuntimeCapacity(
       };
     }
 
-    const waitedMs = Date.now() - startedAt;
+    const waitedMs = runtimeNow() - startedAt;
     if (waitedMs >= maxWaitMs) {
       return {
         ...attempted,
@@ -1185,7 +1552,7 @@ export async function reserveRuntimeCapacity(
       if (eventResult === "aborted") {
         return {
           ...attempted,
-          waitedMs: Date.now() - startedAt,
+          waitedMs: runtimeNow() - startedAt,
           attempts,
           timedOut: false,
           aborted: true,
@@ -1217,7 +1584,7 @@ export async function reserveRuntimeCapacity(
     } catch {
       return {
         ...attempted,
-        waitedMs: Date.now() - startedAt,
+        waitedMs: runtimeNow() - startedAt,
         attempts,
         timedOut: false,
         aborted: true,
@@ -1236,7 +1603,7 @@ async function schedulerBasedWait(
 ): Promise<RuntimeCapacityWaitResult> {
   const snapshot = getRuntimeSnapshot();
   const maxWaitMs = normalizePositiveInt(input.maxWaitMs, snapshot.limits.capacityWaitMs, 3_600_000);
-  const startedAt = Date.now();
+  const startedAt = runtimeNow();
   let attempts = 0;
 
   try {
@@ -1274,7 +1641,7 @@ async function schedulerBasedWait(
 
         // If not allowed, wait with backoff until capacity is available
         while (!check.allowed) {
-          const elapsedMs = Date.now() - startedAt;
+          const elapsedMs = runtimeNow() - startedAt;
           if (elapsedMs >= maxWaitMs) {
             break; // Will return timedOut result
           }
@@ -1313,14 +1680,14 @@ async function schedulerBasedWait(
       ...check,
       waitedMs: result.waitedMs,
       attempts,
-      timedOut: result.timedOut || (Date.now() - startedAt >= maxWaitMs && !check.allowed),
+      timedOut: result.timedOut || (runtimeNow() - startedAt >= maxWaitMs && !check.allowed),
     };
   } catch (error) {
     // Fallback to existing logic on scheduler error (graceful degradation)
     const check = checkRuntimeCapacity(input);
     return {
       ...check,
-      waitedMs: Date.now() - startedAt,
+      waitedMs: runtimeNow() - startedAt,
       attempts: Math.max(1, attempts),
       timedOut: false,
     };
@@ -1348,13 +1715,13 @@ export async function waitForRuntimeCapacity(
     snapshot.limits.capacityPollMs,
     60_000,
   );
-  const startedAt = Date.now();
+  const startedAt = runtimeNow();
   let attempts = 0;
 
   while (true) {
     attempts += 1;
     const check = checkRuntimeCapacity(input);
-    const waitedMs = Date.now() - startedAt;
+    const waitedMs = runtimeNow() - startedAt;
 
     if (check.allowed) {
       return {
@@ -1408,7 +1775,7 @@ export async function waitForRuntimeOrchestrationTurn(
   );
   const runtime = getSharedRuntimeState();
   const entryId = createRuntimeQueueEntryId();
-  const enqueuedAtMs = Date.now();
+  const enqueuedAtMs = runtimeNow();
 
   // Infer or use provided priority
   const priority = input.priority ?? inferPriority(input.toolName, {
@@ -1427,8 +1794,14 @@ export async function waitForRuntimeOrchestrationTurn(
     estimatedRounds: input.estimatedRounds,
     deadlineMs: input.deadlineMs,
     source: input.source,
+    queueClass: input.source === "user-interactive" ? "interactive" : input.source === "background" ? "batch" : "standard",
+    tenantKey: "legacy",
+    additionalRequests: 0,
+    additionalLlm: 0,
+    skipCount: 0,
   };
 
+  trimPendingQueueToLimit(runtime);
   runtime.queue.pending.push(entry);
 
   // Sort by priority (higher priority first)
@@ -1452,7 +1825,7 @@ export async function waitForRuntimeOrchestrationTurn(
 
   while (true) {
     attempts += 1;
-    const waitedMs = Date.now() - enqueuedAtMs;
+    const waitedMs = runtimeNow() - enqueuedAtMs;
     const index = runtime.queue.pending.findIndex((e) => e.id === entryId);
 
     if (index < 0) {
@@ -1471,13 +1844,16 @@ export async function waitForRuntimeOrchestrationTurn(
     const queuePosition = index + 1;
 
     // Check if this task is at the front of the priority queue
+    const dispatchable = findDispatchableQueueEntry(runtime);
     const canStart =
-      index === 0 &&
+      dispatchable?.id === entryId &&
       runtime.queue.activeOrchestrations < runtime.limits.maxConcurrentOrchestrations;
 
     if (canStart) {
       removeQueuedEntry(runtime, entryId);
       runtime.queue.activeOrchestrations += 1;
+      runtime.queue.lastDispatchedTenantKey = "legacy";
+      runtime.queue.consecutiveDispatchesByTenant += 1;
       updatePriorityStats(runtime);
       notifyRuntimeCapacityChanged();
       let released = false;
@@ -1507,7 +1883,11 @@ export async function waitForRuntimeOrchestrationTurn(
     }
 
     // Starvation prevention: promote long-waiting tasks
-    promoteStarvingEntries(runtime, enqueuedAtMs);
+    promoteStarvingEntries(runtime, runtimeNow());
+    for (const pending of runtime.queue.pending) {
+      (pending as RuntimeQueueEntry & { skipCount?: number }).skipCount =
+        ((pending as RuntimeQueueEntry & { skipCount?: number }).skipCount ?? 0) + 1;
+    }
 
     if (input.signal?.aborted) {
       removeQueuedEntry(runtime, entryId);
@@ -1546,7 +1926,7 @@ export async function waitForRuntimeOrchestrationTurn(
         removeQueuedEntry(runtime, entryId);
         return {
           allowed: false,
-          waitedMs: Date.now() - enqueuedAtMs,
+          waitedMs: runtimeNow() - enqueuedAtMs,
           attempts,
           timedOut: false,
           aborted: true,
@@ -1567,13 +1947,277 @@ export async function waitForRuntimeOrchestrationTurn(
       removeQueuedEntry(runtime, entryId);
       return {
         allowed: false,
-        waitedMs: Date.now() - enqueuedAtMs,
+        waitedMs: runtimeNow() - enqueuedAtMs,
         attempts,
         timedOut: false,
         aborted: true,
         queuePosition,
         queuedAhead,
         orchestrationId: entryId,
+      };
+    }
+  }
+}
+
+/**
+ * Acquire queue turn and capacity reservation atomically.
+ */
+export async function acquireRuntimeDispatchPermit(
+  input: RuntimeDispatchPermitInput,
+): Promise<RuntimeDispatchPermitResult> {
+  const snapshot = getRuntimeSnapshot();
+  const maxWaitMs = normalizePositiveInt(input.maxWaitMs, snapshot.limits.capacityWaitMs, 3_600_000);
+  const pollIntervalMs = normalizePositiveInt(
+    input.pollIntervalMs,
+    snapshot.limits.capacityPollMs,
+    60_000,
+  );
+  const additionalRequests = clampPlannedCount(input.candidate.additionalRequests);
+  const additionalLlm = clampPlannedCount(input.candidate.additionalLlm);
+
+  // Admission control: requests that can never fit should fail fast.
+  if (additionalRequests > snapshot.limits.maxTotalActiveRequests) {
+    return {
+      allowed: false,
+      waitedMs: 0,
+      attempts: 1,
+      timedOut: false,
+      aborted: false,
+      queuePosition: 0,
+      queuedAhead: 0,
+      orchestrationId: createRuntimeQueueEntryId(),
+      projectedRequests: additionalRequests,
+      projectedLlm: additionalLlm,
+      reasons: [
+        `request上限超過(永続): requested=${additionalRequests}, limit=${snapshot.limits.maxTotalActiveRequests}`,
+      ],
+    };
+  }
+  if (additionalLlm > snapshot.limits.maxTotalActiveLlm) {
+    return {
+      allowed: false,
+      waitedMs: 0,
+      attempts: 1,
+      timedOut: false,
+      aborted: false,
+      queuePosition: 0,
+      queuedAhead: 0,
+      orchestrationId: createRuntimeQueueEntryId(),
+      projectedRequests: additionalRequests,
+      projectedLlm: additionalLlm,
+      reasons: [
+        `LLM上限超過(永続): requested=${additionalLlm}, limit=${snapshot.limits.maxTotalActiveLlm}`,
+      ],
+    };
+  }
+
+  const runtime = getSharedRuntimeState();
+  const entryId = createRuntimeQueueEntryId();
+  const enqueuedAtMs = runtimeNow();
+  const priority = input.priority ?? inferPriority(input.toolName, {
+    isInteractive: input.source === "user-interactive",
+    isBackground: input.source === "background",
+    isRetry: input.source === "retry",
+  });
+  const entry: RuntimeQueueEntry = {
+    id: entryId,
+    toolName: String(input.toolName || "unknown"),
+    priority,
+    enqueuedAtMs,
+    estimatedDurationMs: input.estimatedDurationMs,
+    estimatedRounds: input.estimatedRounds,
+    deadlineMs: input.deadlineMs,
+    source: input.source,
+    queueClass: toQueueClass(input),
+    tenantKey: String(input.tenantKey || input.toolName || "default"),
+    additionalRequests,
+    additionalLlm,
+    skipCount: 0,
+  };
+
+  trimPendingQueueToLimit(runtime);
+  runtime.queue.pending.push(entry);
+  sortQueueByPriority(runtime);
+  updatePriorityStats(runtime);
+  notifyRuntimeCapacityChanged();
+
+  const queuedAhead = Math.max(0, runtime.queue.pending.findIndex((e) => e.id === entryId));
+  let attempts = 0;
+
+  while (true) {
+    attempts += 1;
+    const waitedMs = runtimeNow() - enqueuedAtMs;
+    const index = runtime.queue.pending.findIndex((e) => e.id === entryId);
+
+    if (index < 0) {
+      return {
+        allowed: false,
+        waitedMs,
+        attempts,
+        timedOut: false,
+        aborted: false,
+        queuePosition: 0,
+        queuedAhead,
+        orchestrationId: entryId,
+        projectedRequests: 0,
+        projectedLlm: 0,
+        reasons: ["queue entry removed before dispatch"],
+      };
+    }
+
+    const queuePosition = index + 1;
+    const dispatchable = findDispatchableQueueEntry(runtime);
+    const canStart =
+      dispatchable?.id === entryId &&
+      runtime.queue.activeOrchestrations < runtime.limits.maxConcurrentOrchestrations;
+
+    if (canStart) {
+      const reservationAttempt = tryReserveRuntimeCapacity({
+        toolName: input.toolName,
+        additionalRequests,
+        additionalLlm,
+        reservationTtlMs: input.reservationTtlMs,
+      });
+      if (reservationAttempt.allowed && reservationAttempt.reservation) {
+        removeQueuedEntry(runtime, entryId);
+        runtime.queue.activeOrchestrations += 1;
+        const tenant = String((entry as RuntimeQueueEntry & { tenantKey?: string }).tenantKey || "default");
+        if (runtime.queue.lastDispatchedTenantKey === tenant) {
+          runtime.queue.consecutiveDispatchesByTenant += 1;
+        } else {
+          runtime.queue.lastDispatchedTenantKey = tenant;
+          runtime.queue.consecutiveDispatchesByTenant = 1;
+        }
+        notifyRuntimeCapacityChanged();
+
+        let released = false;
+        let consumed = false;
+        const lease: RuntimeDispatchPermitLease = {
+          id: entryId,
+          toolName: input.toolName,
+          additionalRequests,
+          additionalLlm,
+          get expiresAtMs() {
+            return reservationAttempt.reservation?.expiresAtMs ?? 0;
+          },
+          consume: () => {
+            if (consumed) return;
+            consumed = true;
+            reservationAttempt.reservation?.consume();
+          },
+          heartbeat: (ttlMs?: number) => {
+            reservationAttempt.reservation?.heartbeat(ttlMs);
+          },
+          release: () => {
+            if (released) return;
+            released = true;
+            runtime.queue.activeOrchestrations = Math.max(0, runtime.queue.activeOrchestrations - 1);
+            reservationAttempt.reservation?.release();
+            notifyRuntimeCapacityChanged();
+          },
+        };
+
+        return {
+          allowed: true,
+          waitedMs,
+          attempts,
+          timedOut: false,
+          aborted: false,
+          queuePosition: 1,
+          queuedAhead,
+          orchestrationId: entryId,
+          projectedRequests: reservationAttempt.projectedRequests,
+          projectedLlm: reservationAttempt.projectedLlm,
+          reasons: [],
+          lease,
+        };
+      }
+    }
+
+    promoteStarvingEntries(runtime, runtimeNow());
+    for (const pending of runtime.queue.pending) {
+      (pending as RuntimeQueueEntry & { skipCount?: number }).skipCount =
+        ((pending as RuntimeQueueEntry & { skipCount?: number }).skipCount ?? 0) + 1;
+    }
+
+    if (input.signal?.aborted) {
+      removeQueuedEntry(runtime, entryId);
+      return {
+        allowed: false,
+        waitedMs,
+        attempts,
+        timedOut: false,
+        aborted: true,
+        queuePosition,
+        queuedAhead,
+        orchestrationId: entryId,
+        projectedRequests: 0,
+        projectedLlm: 0,
+        reasons: ["dispatch aborted"],
+      };
+    }
+
+    if (waitedMs >= maxWaitMs) {
+      const capacityCheck = checkRuntimeCapacity({ additionalRequests, additionalLlm });
+      removeQueuedEntry(runtime, entryId);
+      return {
+        allowed: false,
+        waitedMs,
+        attempts,
+        timedOut: true,
+        aborted: false,
+        queuePosition,
+        queuedAhead,
+        orchestrationId: entryId,
+        projectedRequests: capacityCheck.projectedRequests,
+        projectedLlm: capacityCheck.projectedLlm,
+        reasons: capacityCheck.reasons.length > 0 ? capacityCheck.reasons : ["dispatch timed out"],
+      };
+    }
+
+    const remainingMs = Math.max(1, maxWaitMs - waitedMs);
+    try {
+      const backoffDelayMs = computeBackoffDelay(pollIntervalMs, attempts, remainingMs);
+      const eventWaitMs = Math.max(1, Math.min(backoffDelayMs, pollIntervalMs));
+      const eventResult = await waitForRuntimeCapacityEvent(eventWaitMs, input.signal);
+      if (eventResult === "aborted") {
+        removeQueuedEntry(runtime, entryId);
+        return {
+          allowed: false,
+          waitedMs: runtimeNow() - enqueuedAtMs,
+          attempts,
+          timedOut: false,
+          aborted: true,
+          queuePosition,
+          queuedAhead,
+          orchestrationId: entryId,
+          projectedRequests: 0,
+          projectedLlm: 0,
+          reasons: ["dispatch aborted"],
+        };
+      }
+      if (eventResult === "event") {
+        continue;
+      }
+
+      const remainingDelayMs = Math.max(0, backoffDelayMs - eventWaitMs);
+      if (remainingDelayMs > 0) {
+        await wait(remainingDelayMs, input.signal);
+      }
+    } catch {
+      removeQueuedEntry(runtime, entryId);
+      return {
+        allowed: false,
+        waitedMs: runtimeNow() - enqueuedAtMs,
+        attempts,
+        timedOut: false,
+        aborted: true,
+        queuePosition,
+        queuedAhead,
+        orchestrationId: entryId,
+        projectedRequests: 0,
+        projectedLlm: 0,
+        reasons: ["dispatch aborted"],
       };
     }
   }
@@ -1592,7 +2236,10 @@ export function resetRuntimeTransientState(): void {
   runtime.teams.activeTeammates = 0;
   runtime.queue.activeOrchestrations = 0;
   runtime.queue.pending = [];
+  runtime.queue.lastDispatchedTenantKey = undefined;
+  runtime.queue.consecutiveDispatchesByTenant = 0;
   runtime.reservations.active = [];
+  stopRuntimeReservationSweeper();
   notifyRuntimeCapacityChanged();
 }
 
@@ -1705,7 +2352,7 @@ export function broadcastCurrentQueueState(): void {
     pendingTaskCount: snapshot.queuedOrchestrations,
     activeOrchestrations: snapshot.activeOrchestrations,
     stealableEntries: snapshot.queuedTools.slice(0, 10).map((tool) => ({
-      id: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `entry-${runtimeNow()}-${Math.random().toString(36).slice(2, 8)}`,
       toolName: tool.split(":")[0],
       priority: tool.split(":")[1] ?? "normal",
       instanceId: "self",
@@ -1740,9 +2387,6 @@ export function getCheckpointManagerInstance(): ReturnType<typeof import("../lib
   if (!ENABLE_CHECKPOINTS) return null;
 
   if (!_checkpointManager) {
-    const { getCheckpointManager, initCheckpointManager, getCheckpointConfigFromEnv } =
-      require("../lib/checkpoint-manager") as typeof import("../lib/checkpoint-manager");
-
     const envConfig = getCheckpointConfigFromEnv();
     initCheckpointManager(envConfig);
     _checkpointManager = getCheckpointManager();
@@ -1765,9 +2409,6 @@ export function getMetricsCollectorInstance(): ReturnType<typeof import("../lib/
   if (!ENABLE_METRICS) return null;
 
   if (!_metricsCollector) {
-    const { getMetricsCollector, initMetricsCollector, getMetricsConfigFromEnv } =
-      require("../lib/metrics-collector") as typeof import("../lib/metrics-collector");
-
     const envConfig = getMetricsConfigFromEnv();
     initMetricsCollector(envConfig);
     _metricsCollector = getMetricsCollector();
@@ -1838,7 +2479,7 @@ export function recordWorkStealEvent(sourceInstance: string, taskId: string): vo
  * @summary メトリクス取得
  * @returns 現在のスケジューラメトリクス、または null
  */
-export function getSchedulerMetrics(): import("../lib/metrics-collector").SchedulerMetrics | null {
+export function getSchedulerMetrics(): SchedulerMetrics | null {
   const collector = getMetricsCollectorInstance();
   if (collector) {
     return collector.getMetrics();
@@ -1850,7 +2491,7 @@ export function getSchedulerMetrics(): import("../lib/metrics-collector").Schedu
   * チェックポイント統計を取得する。
   * @returns チェックポイント統計情報、または取得できない場合はnull。
   */
-export function getCheckpointStats(): import("../lib/checkpoint-manager").CheckpointStats | null {
+export function getCheckpointStats(): CheckpointStats | null {
   const manager = getCheckpointManagerInstance();
   if (manager) {
     return manager.getStats();
@@ -1885,8 +2526,8 @@ export async function attemptWorkStealing(): Promise<import("../lib/cross-instan
  */
 export function getComprehensiveRuntimeStatus(): {
   runtime: AgentRuntimeSnapshot;
-  metrics: import("../lib/metrics-collector").SchedulerMetrics | null;
-  checkpoints: import("../lib/checkpoint-manager").CheckpointStats | null;
+  metrics: SchedulerMetrics | null;
+  checkpoints: CheckpointStats | null;
   stealing: import("../lib/cross-instance-coordinator").StealingStats | null;
   features: {
     preemption: boolean;

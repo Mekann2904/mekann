@@ -32,7 +32,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parseFrontmatter } from "@mariozechner/pi-coding-agent";
+import { parseFrontmatter } from "../../lib/frontmatter.js";
 
 import type { TeamDefinition, TeamMember, TeamStorage } from "./storage";
 import { toId, TEAM_DEFAULTS_VERSION } from "./storage";
@@ -112,7 +112,7 @@ function getCandidateTeamDefinitionsDirs(cwd: string): string[] {
 export function parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | null {
   try {
     const content = readFileSync(filePath, "utf-8");
-    const { frontmatter, body } = parseFrontmatter<TeamFrontmatter>(content);
+    const { frontmatter, body } = parseFrontmatter<Record<string, unknown> & TeamFrontmatter>(content);
 
     // Validate required fields
     if (!frontmatter.id || !frontmatter.name) {
@@ -184,7 +184,15 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
         createdAt: nowIso,
         updatedAt: nowIso,
       });
-    } else if (entry.isDirectory() || (entry.isSymbolicLink() && statSync(fullPath).isDirectory())) {
+    } else if (entry.isDirectory() || (entry.isSymbolicLink() && (() => {
+      // Handle broken symlinks gracefully - statSync throws ENOENT on dangling symlinks
+      try {
+        return statSync(fullPath).isDirectory();
+      } catch {
+        console.warn(`[agent-teams] Skipping broken symlink: ${fullPath}`);
+        return false;
+      }
+    })())) {
       // Subdirectory: look for team.md/TEAM.md first, then p*.md (phase files)
       // ルール: team.mdがある場合のみp*.mdを読み込む（team.mdが統合チームとして機能）
       const teamMdLower = join(fullPath, "team.md");

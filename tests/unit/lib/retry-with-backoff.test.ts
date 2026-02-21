@@ -15,7 +15,7 @@ import {
   getRateLimitGateSnapshot,
   type RetryWithBackoffConfig,
   type RetryJitterMode,
-} from "@lib/retry-with-backoff";
+} from "../../../.pi/lib/retry-with-backoff.js";
 
 // ============================================================================
 // resolveRetryWithBackoffConfig
@@ -698,6 +698,16 @@ describe("getRateLimitGateSnapshot", () => {
       // Assert
       expect(snapshot.key).toBe("test-key");
     });
+
+    it("should_use_injected_now_for_untilMs", () => {
+      const key = "clock-test-key";
+      const fixedNow = 1_700_000_000_000;
+
+      const snapshot = getRateLimitGateSnapshot(key, { now: () => fixedNow });
+
+      expect(snapshot.untilMs).toBe(fixedNow);
+      expect(snapshot.waitMs).toBe(0);
+    });
   });
 
   describe("境界値", () => {
@@ -890,6 +900,218 @@ describe("retryWithBackoff", () => {
 
       // Assert
       expect(onRetry).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
+// ============================================================================
+// レート制限状態管理のプロパティベーステスト
+// ============================================================================
+
+describe("レート制限状態管理", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe("getRateLimitGateSnapshotの不変条件", () => {
+    it("getRateLimitGateSnapshot_常に有効なスナップショットを返す", () => {
+      fc.assert(
+        fc.property(
+          fc.option(fc.string({ minLength: 1, maxLength: 100 })),
+          (key) => {
+            const snapshot = getRateLimitGateSnapshot(key);
+
+            // 不変条件: すべてのフィールドが定義されている
+            return (
+              typeof snapshot.key === "string" &&
+              typeof snapshot.waitMs === "number" &&
+              typeof snapshot.hits === "number" &&
+              typeof snapshot.untilMs === "number" &&
+              snapshot.waitMs >= 0 &&
+              snapshot.hits >= 0 &&
+              snapshot.untilMs >= 0
+            );
+          }
+        )
+      );
+    });
+
+    it("getRateLimitGateSnapshot_キーの正規化不変条件", () => {
+      fc.assert(
+        fc.property(
+          fc.string({ minLength: 0, maxLength: 50 }).filter(s =>
+            !s.includes("\x00") && !s.includes("\n")
+          ),
+          (key) => {
+            const snapshot = getRateLimitGateSnapshot(key);
+
+            // 不変条件: キーは小文字の英数字とハイフンのみ
+            const normalizedKey = key.trim().toLowerCase();
+            const expectedKey = normalizedKey.length > 0 ? normalizedKey : "global";
+
+            return snapshot.key === expectedKey;
+          }
+        )
+      );
+    });
+
+    it("getRateLimitGateSnapshot_waitMsとuntilMsの整合性", () => {
+      fc.assert(
+        fc.property(
+          fc.option(fc.string({ minLength: 1, maxLength: 50 })),
+          fc.integer({ min: 0, max: 1000000000000 }),
+          (key, fixedNow) => {
+            const snapshot = getRateLimitGateSnapshot(key, {
+              now: () => fixedNow,
+            });
+
+            // 不変条件: waitMs = max(0, untilMs - now)
+            const expectedWaitMs = Math.max(0, snapshot.untilMs - fixedNow);
+
+            return snapshot.waitMs === expectedWaitMs;
+          }
+        )
+      );
+    });
+  });
+
+  describe("レート制限とリトライの相互作用", () => {
+    it("retryWithBackoff_レート制限待機が適用される", async () => {
+      // Arrange
+      vi.useRealTimers();
+      const onRetry = vi.fn();
+      const onRateLimitWait = vi.fn();
+      let callCount = 0;
+
+      const operation = async (): Promise<string> => {
+        callCount++;
+        if (callCount === 1) {
+          throw { status: 429 };
+        }
+        return "success";
+      };
+
+      const overrides = { maxRetries: 3, initialDelayMs: 100, jitter: "none" as const };
+
+      // Act
+      const result = await retryWithBackoff(operation, {
+        overrides,
+        rateLimitKey: "test-key",
+        onRetry,
+        onRateLimitWait,
+        maxRateLimitRetries: 5,
+      });
+
+      // Assert
+      expect(result).toBe("success");
+      expect(callCount).toBe(2);
+
+      // 429エラー時にレート制限待機がトリガーされる
+      expect(onRetry).toHaveBeenCalled();
+      vi.useFakeTimers();
+    });
+
+    it("retryWithBackoff_maxRateLimitWaitMsで打ち切られる", async () => {
+      // Arrange
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      let callCount = 0;
+
+      const operation = async (): Promise<string> => {
+        callCount++;
+        if (callCount <= 2) {
+          throw { status: 429 };
+        }
+        return "success";
+      };
+
+      const overrides = { maxRetries: 5, initialDelayMs: 10000, jitter: "none" as const };
+
+      // Act
+      const promise = retryWithBackoff(operation, {
+        overrides,
+        rateLimitKey: "long-wait-key",
+        maxRateLimitWaitMs: 1000,
+        signal: controller.signal,
+      });
+      // Attach catch handler immediately
+      promise.catch(() => {});
+      await vi.runAllTimersAsync();
+
+      // Assert - レート制限待機時間が制限を超えると失敗
+      await expect(promise).rejects.toThrow("rate limit fast-fail");
+      vi.useRealTimers();
+    });
+  });
+
+  describe("複数キーのレート制限管理", () => {
+    it("getRateLimitGateSnapshot_複数キーのスナップショットが独立", () => {
+      fc.assert(
+        fc.property(
+          fc.array(
+            fc.string({ minLength: 1, maxLength: 20 }).filter(s => /^[a-z0-9]+$/.test(s)),
+            { minLength: 1, maxLength: 5 }
+          ),
+          (keys) => {
+            const snapshots = new Map<string, ReturnType<typeof getRateLimitGateSnapshot>>();
+
+            // Act - 各キーのスナップショットを取得
+            for (const key of keys) {
+              const snapshot = getRateLimitGateSnapshot(key);
+              snapshots.set(key, snapshot);
+            }
+
+            // 不変条件: 異なるキーのスナップショットは独立している
+            for (const key1 of keys) {
+              for (const key2 of keys) {
+                if (key1 !== key2) {
+                  const snap1 = snapshots.get(key1);
+                  const snap2 = snapshots.get(key2);
+                  expect(snap1).toBeDefined();
+                  expect(snap2).toBeDefined();
+                  expect(snap1?.key).toBe(key1.toLowerCase());
+                  expect(snap2?.key).toBe(key2.toLowerCase());
+                }
+              }
+            }
+
+            return true;
+          }
+        )
+      );
+    });
+  });
+
+  describe("レート制限エントリ上限", () => {
+    it("retryWithBackoff_多数の異なるキーで使用_制限内で動作", async () => {
+      // Arrange
+      vi.useRealTimers();
+      const maxKeys = 50; // MAX_RATE_LIMIT_ENTRIES = 64
+      const promises: Promise<string>[] = [];
+
+      // Act - 異なるキーで並列実行
+      for (let i = 0; i < maxKeys; i++) {
+        const promise = retryWithBackoff(
+          async () => {
+            return `result-${i}`;
+          },
+          {
+            overrides: { maxRetries: 0 },
+            rateLimitKey: `key-${i}`,
+          }
+        );
+        promises.push(promise);
+      }
+
+      // Assert - 全て成功する
+      const results = await Promise.all(promises);
+      expect(results).toHaveLength(maxKeys);
+
+      vi.useFakeTimers();
     });
   });
 });

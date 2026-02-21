@@ -89,6 +89,10 @@ function hashString(str: string): string {
  * @returns {void}
  */
 export class ComprehensiveLogger {
+  private static readonly MAX_ACTIVE_OPERATIONS = 1024;
+  private static readonly MAX_ACTIVE_TASKS = 256;
+  private static readonly STALE_ACTIVE_MS = 60 * 60 * 1000;
+
   private config: LoggerConfig;
   private buffer: LogEvent[] = [];
   private sessionId: string;
@@ -133,6 +137,39 @@ export class ComprehensiveLogger {
         console.error('[comprehensive-logger] Flush error:', err);
       });
     }, this.config.flushIntervalMs);
+    if (this.flushTimer.unref) {
+      this.flushTimer.unref();
+    }
+  }
+
+  private trimOldestEntries<T>(map: Map<string, T>, maxSize: number): void {
+    if (map.size <= maxSize) return;
+    const overflow = map.size - maxSize;
+    const keys = Array.from(map.keys());
+    for (let index = 0; index < overflow; index += 1) {
+      const key = keys[index];
+      if (key) {
+        map.delete(key);
+      }
+    }
+  }
+
+  private pruneActiveTasks(now = performance.now()): void {
+    for (const [taskId, task] of this.activeTasks.entries()) {
+      if (now - task.startTime > ComprehensiveLogger.STALE_ACTIVE_MS) {
+        this.activeTasks.delete(taskId);
+      }
+    }
+    this.trimOldestEntries(this.activeTasks, ComprehensiveLogger.MAX_ACTIVE_TASKS);
+  }
+
+  private pruneActiveOperations(now = performance.now()): void {
+    for (const [operationId, operation] of this.activeOperations.entries()) {
+      if (now - operation.startTime > ComprehensiveLogger.STALE_ACTIVE_MS) {
+        this.activeOperations.delete(operationId);
+      }
+    }
+    this.trimOldestEntries(this.activeOperations, ComprehensiveLogger.MAX_ACTIVE_OPERATIONS);
   }
   
   // ============================================
@@ -178,6 +215,8 @@ export class ComprehensiveLogger {
     
     this.flush();
     this.stopFlushTimer();
+    this.activeTasks.clear();
+    this.activeOperations.clear();
   }
   
   // ============================================
@@ -195,6 +234,7 @@ export class ComprehensiveLogger {
     userInput: string,
     context: TaskStartEvent['data']['context']
   ): string {
+    this.pruneActiveTasks();
     this.currentTaskId = randomUUID();
     this.taskStartTime = performance.now();
     
@@ -232,7 +272,10 @@ export class ComprehensiveLogger {
       },
     } as TaskEndEvent);
 
-    this.activeTasks.delete(this.currentTaskId);
+    if (this.currentTaskId) {
+      this.activeTasks.delete(this.currentTaskId);
+    }
+    this.pruneActiveTasks();
     this.currentTaskId = '';
   }
   
@@ -258,6 +301,7 @@ export class ComprehensiveLogger {
       retryConfig?: OperationStartEvent['data']['retryConfig'];
     }
   ): string {
+    this.pruneActiveOperations();
     this.currentOperationId = randomUUID();
     this.operationStartTime = performance.now();
     
@@ -305,7 +349,10 @@ export class ComprehensiveLogger {
       },
     } as OperationEndEvent);
 
-    this.activeOperations.delete(this.currentOperationId);
+    if (this.currentOperationId) {
+      this.activeOperations.delete(this.currentOperationId);
+    }
+    this.pruneActiveOperations();
     this.currentOperationId = '';
   }
   

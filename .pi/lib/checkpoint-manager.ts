@@ -220,6 +220,37 @@ function getCheckpointPath(dir: string, checkpointId: string): string {
 }
 
 /**
+ * Find latest checkpoint by task ID.
+ */
+function findLatestCheckpointByTaskId(
+  dir: string,
+  taskId: string,
+): Checkpoint | null {
+  if (!existsSync(dir)) {
+    return null;
+  }
+
+  const files = readdirSync(dir).filter((f) =>
+    f.endsWith(CHECKPOINT_FILE_EXTENSION),
+  );
+  const candidates: Checkpoint[] = [];
+
+  for (const file of files) {
+    const checkpoint = parseCheckpointFile(join(dir, file));
+    if (checkpoint && checkpoint.taskId === taskId) {
+      candidates.push(checkpoint);
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((a, b) => b.createdAt - a.createdAt);
+  return candidates[0];
+}
+
+/**
  * Parse checkpoint file.
  */
 function parseCheckpointFile(filePath: string): Checkpoint | null {
@@ -298,6 +329,7 @@ export function initCheckpointManager(
 export function getCheckpointManager(): {
   save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
   load: (taskId: string) => Promise<Checkpoint | null>;
+  loadById: (checkpointId: string) => Promise<Checkpoint | null>;
   delete: (taskId: string) => Promise<boolean>;
   listExpired: () => Promise<Checkpoint[]>;
   cleanup: () => Promise<number>;
@@ -310,6 +342,7 @@ export function getCheckpointManager(): {
   return {
     save: saveCheckpoint,
     load: loadCheckpoint,
+    loadById: loadCheckpointById,
     delete: deleteCheckpoint,
     listExpired: listExpiredCheckpoints,
     cleanup: cleanupExpiredCheckpoints,
@@ -330,9 +363,11 @@ async function saveCheckpoint(
 
   const dir = managerState!.checkpointDir;
   const nowMs = Date.now();
+  const existingCheckpoint = findLatestCheckpointByTaskId(dir, checkpoint.taskId);
 
   const fullCheckpoint: Checkpoint = {
-    id: checkpoint.id ?? generateCheckpointId(checkpoint.taskId),
+    // Reuse existing checkpoint ID for idempotent upsert by taskId.
+    id: checkpoint.id ?? existingCheckpoint?.id ?? generateCheckpointId(checkpoint.taskId),
     taskId: checkpoint.taskId,
     source: checkpoint.source,
     provider: checkpoint.provider,
@@ -404,6 +439,27 @@ async function loadCheckpoint(taskId: string): Promise<Checkpoint | null> {
   // Return the most recent checkpoint
   candidates.sort((a, b) => b.createdAt - a.createdAt);
   return candidates[0];
+}
+
+/**
+ * チェックポイントIDでチェックポイントをロードする
+ * @summary IDでチェックポイントを取得
+ * @param checkpointId - チェックポイントID
+ * @returns チェックポイントオブジェクト、見つからない場合はnull
+ */
+async function loadCheckpointById(checkpointId: string): Promise<Checkpoint | null> {
+  if (!managerState?.initialized) {
+    initCheckpointManager();
+  }
+
+  const dir = managerState!.checkpointDir;
+  const filePath = getCheckpointPath(dir, checkpointId);
+
+  if (!existsSync(filePath)) {
+    return null;
+  }
+
+  return parseCheckpointFile(filePath);
 }
 
 /**
@@ -699,11 +755,8 @@ export function getCheckpointConfigFromEnv(): Partial<CheckpointManagerConfig> {
   return config;
 }
 
-// Auto-initialize with environment config if not already initialized
-const state = managerState;
-if (!state?.initialized) {
-  const envConfig = getCheckpointConfigFromEnv();
-  if (Object.keys(envConfig).length > 0) {
-    initCheckpointManager(envConfig);
-  }
+// Auto-initialize when environment overrides are provided.
+const checkpointEnvConfig = getCheckpointConfigFromEnv();
+if (Object.keys(checkpointEnvConfig).length > 0) {
+  initCheckpointManager(checkpointEnvConfig);
 }

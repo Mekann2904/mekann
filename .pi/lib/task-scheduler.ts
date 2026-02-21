@@ -166,29 +166,41 @@ export async function resumeFromCheckpoint<TResult = unknown>(
   execute: (checkpoint: Checkpoint) => Promise<TResult>
 ): Promise<TaskResult<TResult>> {
   const checkpointManager = getCheckpointManager();
-
-  // Load checkpoint (need to find by checkpoint ID)
-  // Note: load() takes taskId, so we need to find the checkpoint differently
-  // For now, we'll need to implement a separate loadById function or search
-
-  // This is a placeholder - full implementation would need checkpoint ID lookup
   const startTime = Date.now();
 
   try {
-    // Placeholder: In real implementation, load checkpoint by ID
-    // const checkpoint = await checkpointManager.loadById(checkpointId);
+    // チェックポイントIDで状態を復元
+    const checkpoint = await checkpointManager.loadById(checkpointId);
 
-    // For now, return a result indicating resumption is not fully implemented
+    if (!checkpoint) {
+      // 復元失敗時は警告ログを出力
+      console.warn(`[task-scheduler] Checkpoint not found: ${checkpointId}`);
+      return {
+        taskId: checkpointId,
+        success: false,
+        error: `Checkpoint not found: ${checkpointId}`,
+        waitedMs: 0,
+        executionMs: Date.now() - startTime,
+        timedOut: false,
+        aborted: false,
+      };
+    }
+
+    // 復元したチェックポイントを使って処理を再開
+    const result = await execute(checkpoint);
+
     return {
-      taskId: checkpointId,
-      success: false,
-      error: "Checkpoint resumption requires checkpoint ID lookup implementation",
+      taskId: checkpoint.taskId,
+      success: true,
+      result,
       waitedMs: 0,
       executionMs: Date.now() - startTime,
       timedOut: false,
       aborted: false,
     };
   } catch (error) {
+    // 復元または実行中のエラーを記録
+    console.warn(`[task-scheduler] Checkpoint resumption failed for ${checkpointId}:`, error instanceof Error ? error.message : String(error));
     return {
       taskId: checkpointId,
       success: false,

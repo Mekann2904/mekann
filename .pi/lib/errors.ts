@@ -710,7 +710,16 @@ export function toPiError(error: unknown): PiError {
   if (isPiError(error)) {
     return error;
   }
-  const message = error instanceof Error ? error.message : String(error);
+  let message: string;
+  if (error instanceof Error) {
+    message = error.message;
+  } else {
+    try {
+      message = String(error);
+    } catch {
+      message = "[unstringifiable error]";
+    }
+  }
   return new PiError(message, "UNKNOWN_ERROR", {
     cause: error instanceof Error ? error : undefined,
   });

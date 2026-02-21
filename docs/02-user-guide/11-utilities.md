@@ -715,3 +715,4 @@ Assignments:
 - [拡張機能一覧](./01-extensions.md) - 全拡張機能の概要
 - [subagents](./08-subagents.md) - サブエージェント
 - [agent-teams](./09-agent-teams.md) - エージェントチーム
+- [kitty-status-integration](../kitty-status-integration.md) - kittyターミナル連携の詳細

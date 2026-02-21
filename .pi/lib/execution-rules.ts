@@ -522,8 +522,22 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
   }
 
   const result = lines.join("\n");
-  executionRulesCache.set(cacheKey, result);
+  safeCacheSet(executionRulesCache, cacheKey, result);
   return result;
+}
+
+// キャッシュ管理定数（キー数は限定的だが防御的に設定）
+const MAX_CACHE_ENTRIES = 50;
+
+function safeCacheSet<K, V>(cache: Map<K, V>, key: K, value: V): void {
+  if (cache.size >= MAX_CACHE_ENTRIES) {
+    // 最も古いエントリを削除
+    const firstKey = cache.keys().next().value;
+    if (firstKey !== undefined) {
+      cache.delete(firstKey);
+    }
+  }
+  cache.set(key, value);
 }
 
 // サブエージェント用ルールのキャッシュ（複数パターン）
@@ -547,7 +561,7 @@ export function getSubagentExecutionRules(includeGuidelines = false): string {
     includeSelfVerification: true,
     includeWorkingMemoryGuidelines: includeGuidelines,
   });
-  subagentRulesCache.set(key, rules);
+  safeCacheSet(subagentRulesCache, key, rules);
   return rules;
 }
 
@@ -580,7 +594,7 @@ export function getTeamMemberExecutionRules(
     includeTerminationCheck: true,      // P0: タスク完了確認
     includeCompositionalInference: true, // P1: 構成推論サポート
   });
-  teamMemberRulesCache.set(key, rules);
+  safeCacheSet(teamMemberRulesCache, key, rules);
   return rules;
 }
 
@@ -606,7 +620,7 @@ export function getChallengerExecutionRules(includeGuidelines = false): string {
     includeChallengeRules: true,  // P0: 異議申し立てガイドライン
     includeWorkingMemoryGuidelines: includeGuidelines,
   });
-  challengerRulesCache.set(key, rules);
+  safeCacheSet(challengerRulesCache, key, rules);
   return rules;
 }
 
@@ -632,7 +646,7 @@ export function getInspectorExecutionRules(includeGuidelines = false): string {
     includeInspectionRules: true,  // P0: 検査ガイドライン
     includeWorkingMemoryGuidelines: includeGuidelines,
   });
-  inspectorRulesCache.set(key, rules);
+  safeCacheSet(inspectorRulesCache, key, rules);
   return rules;
 }
 
@@ -663,6 +677,6 @@ export function getVerificationWorkflowExecutionRules(
     includeVerificationWorkflow: true,
     includeWorkingMemoryGuidelines: includeGuidelines,
   });
-  verificationWorkflowRulesCache.set(key, rules);
+  safeCacheSet(verificationWorkflowRulesCache, key, rules);
   return rules;
 }

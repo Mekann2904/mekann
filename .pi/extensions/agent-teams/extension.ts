@@ -35,7 +35,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
-import { getMarkdownTheme, parseFrontmatter, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 
@@ -182,15 +182,6 @@ import {
   runMember,
 } from "./member-execution";
 
-// Import parallel-execution module (extracted for SRP compliance)
-import {
-  type TeamParallelCapacityCandidate,
-  type TeamParallelCapacityResolution,
-  buildMemberParallelCandidates,
-  buildTeamAndMemberParallelCandidates,
-  resolveTeamParallelCapacity,
-} from "./parallel-execution";
-
 // Import result-aggregation module (extracted for SRP compliance)
 import {
   isRetryableTeamMemberError,
@@ -202,8 +193,8 @@ import {
 
 // Import team types from lib (extracted for maintainability)
 // Note: Only types with matching structures are imported.
-// TeamNormalizedOutput, TeamParallelCapacityCandidate, TeamParallelCapacityResolution
-// have different implementations in this file (runtime-specific) vs lib (API-specific).
+// TeamNormalizedOutput (runtime-specific in member-execution.ts) vs TeamNormalizedOutputAPI (API-specific in lib/team-types.ts)
+// TeamParallelCapacityCandidate, TeamParallelCapacityResolution have different implementations similarly.
 import {
   type TeamLivePhase,
   type TeamLiveViewMode,
@@ -300,7 +291,20 @@ export type {
 const LIVE_PREVIEW_LINE_LIMIT = 120;
 const LIVE_LIST_WINDOW_SIZE = 22;
 // イベント配列サイズ（環境変数で上書き可能、デフォルトは120に削減）
-const LIVE_EVENT_TAIL_LIMIT = Math.max(60, Number(process.env.PI_LIVE_EVENT_TAIL_LIMIT) || 120);
+const LIVE_EVENT_TAIL_LIMIT = (() => {
+  const envVal = process.env.PI_LIVE_EVENT_TAIL_LIMIT;
+  if (envVal !== undefined) {
+    const parsed = Number(envVal);
+    if (!Number.isFinite(parsed) || parsed < 60) {
+      console.warn(
+        `[agent-teams/extension] Invalid PI_LIVE_EVENT_TAIL_LIMIT="${envVal}", using default 120`
+      );
+      return 120;
+    }
+    return Math.max(60, parsed);
+  }
+  return 120;
+})();
 const LIVE_EVENT_INLINE_LINE_LIMIT = 8;
 const LIVE_EVENT_DETAIL_LINE_LIMIT = 28;
 // Communication constants moved to ./agent-teams/communication.ts
@@ -341,15 +345,12 @@ import {
 } from "../../lib/retry-with-backoff";
 
 import {
+  acquireRuntimeDispatchPermit,
   formatRuntimeStatusLine,
   getRuntimeSnapshot,
   getSharedRuntimeState,
   notifyRuntimeCapacityChanged,
   resetRuntimeTransientState,
-  reserveRuntimeCapacity,
-  tryReserveRuntimeCapacity,
-  type RuntimeCapacityReservationLease,
-  waitForRuntimeOrchestrationTurn,
 } from "../agent-runtime";
 import {
   runPiPrintMode as sharedRunPiPrintMode,
@@ -357,7 +358,6 @@ import {
 } from "../shared/pi-print-executor";
 import {
   buildRuntimeLimitError,
-  buildRuntimeQueueWaitError,
   startReservationHeartbeat,
   refreshRuntimeStatus as sharedRefreshRuntimeStatus,
 } from "../shared/runtime-helpers";
@@ -410,10 +410,6 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
   };
 }
 
-// Note: TeamParallelCapacityCandidate, TeamParallelCapacityResolution,
-// buildMemberParallelCandidates, buildTeamAndMemberParallelCandidates,
-// resolveTeamParallelCapacity are imported from ./agent-teams/parallel-execution
-
 // Note: mergeDefaultTeam is now imported from ./agent-teams/definition-loader
 
 /**
@@ -430,6 +426,12 @@ function refreshRuntimeStatus(ctx: any): void {
     "Sub",
     snapshot.subagentActiveAgents,
   );
+}
+
+function debugCostEstimation(scope: string, fields: Record<string, unknown>): void {
+  if (process.env.PI_DEBUG_COST_ESTIMATION !== "1") return;
+  const parts = Object.entries(fields).map(([key, value]) => `${key}=${String(value)}`);
+  console.error(`[cost-estimation] scope=${scope} ${parts.join(" ")}`);
 }
 
 function formatTeamList(storage: TeamStorage): string {
@@ -492,7 +494,7 @@ function pickTeam(storage: TeamStorage, requestedId?: string): TeamDefinition | 
 
   if (storage.currentTeamId) {
     const current = storage.teams.find((team) => team.id === storage.currentTeamId);
-    if (current) return current;
+    if (current && current.enabled === "enabled") return current;
   }
 
   return storage.teams.find((team) => team.enabled === "enabled");
@@ -1267,6 +1269,16 @@ async function runTeamTask(input: {
  * @returns void
  */
 export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
+  function reportTeamExecutionFailure(scope: "agent_team_run" | "agent_team_run_parallel", teamId: string, errorMessage: string, ctx: any): void {
+    const message = `${scope} failed [${teamId}]: ${errorMessage}`;
+    ctx.ui.notify(message, "error");
+    pi.sendMessage({
+      customType: "agent-team-run-failed",
+      content: message,
+      display: true,
+    });
+  }
+
   // チーム一覧
   pi.registerTool({
     name: "agent_team_list",
@@ -1447,6 +1459,22 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       retry: createRetrySchema(),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      if (String(process.env.PI_AGENT_TEAM_CHILD_RUN || "0") === "1") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "agent_team_run error: disabled in agent-team member child execution (recursion blocked).",
+            },
+          ],
+          details: {
+            error: "team_recursion_blocked",
+            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
       const storage = loadStorage(ctx.cwd);
       const team = pickTeam(storage, params.teamId);
       const retryOverrides = toRetryOverrides(params.retry);
@@ -1499,39 +1527,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         },
       });
 
-      const queueSnapshot = getRuntimeSnapshot();
-      const queueWait = await waitForRuntimeOrchestrationTurn({
-        toolName: "agent_team_run",
-        maxWaitMs: queueSnapshot.limits.capacityWaitMs,
-        pollIntervalMs: queueSnapshot.limits.capacityPollMs,
-        signal,
-      });
-      if (!queueWait.allowed || !queueWait.lease) {
-        const queueOutcome: RunOutcomeSignal = queueWait.aborted
-          ? { outcomeCode: "CANCELLED", retryRecommended: false }
-          : { outcomeCode: "TIMEOUT", retryRecommended: true };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: buildRuntimeQueueWaitError("agent_team_run", queueWait),
-            },
-          ],
-          details: {
-            error: queueWait.aborted ? "runtime_queue_aborted" : "runtime_queue_timeout",
-            queuedAhead: queueWait.queuedAhead,
-            queuePosition: queueWait.queuePosition,
-            queueWaitedMs: queueWait.waitedMs,
-            queueAttempts: queueWait.attempts,
-            traceId: queueWait.orchestrationId,
-            outcomeCode: queueOutcome.outcomeCode,
-            retryRecommended: queueOutcome.retryRecommended,
-          },
-        };
-      }
-      const queueLease = queueWait.lease;
-
-      try {
       const strategy: TeamStrategy =
         String(params.strategy || "parallel").toLowerCase() === "sequential" ? "sequential" : "parallel";
       const communicationRounds = normalizeCommunicationRounds(
@@ -1567,145 +1562,138 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         strategy === "parallel"
           ? adaptivePenalty.applyLimit(baselineMemberParallelism)
           : 1;
-      const capacityResolution = await resolveTeamParallelCapacity({
-        requestedTeamParallelism: 1,
-        requestedMemberParallelism: effectiveMemberParallelism,
-        candidates: buildMemberParallelCandidates(effectiveMemberParallelism),
+      const dispatchPermit = await acquireRuntimeDispatchPermit({
         toolName: "agent_team_run",
+        candidate: {
+          additionalRequests: 1,
+          additionalLlm: Math.max(1, effectiveMemberParallelism),
+        },
+        tenantKey: team.id,
+        source: "scheduled",
+        estimatedDurationMs: Math.round(60_000 * (1 + communicationRounds * 0.3)),
+        estimatedRounds: Math.max(1, activeMembers.length + communicationRounds),
         maxWaitMs: snapshot.limits.capacityWaitMs,
         pollIntervalMs: snapshot.limits.capacityPollMs,
         signal,
       });
-      if (!capacityResolution.allowed) {
+      if (!dispatchPermit.allowed || !dispatchPermit.lease) {
         adaptivePenalty.raise("capacity");
-        const capacityOutcome: RunOutcomeSignal = capacityResolution.aborted
+        const capacityOutcome: RunOutcomeSignal = dispatchPermit.aborted
           ? { outcomeCode: "CANCELLED", retryRecommended: false }
-          : capacityResolution.timedOut
+          : dispatchPermit.timedOut
             ? { outcomeCode: "TIMEOUT", retryRecommended: true }
             : { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
         return {
           content: [
             {
               type: "text" as const,
-              text: buildRuntimeLimitError("agent_team_run", capacityResolution.reasons, {
-                waitedMs: capacityResolution.waitedMs,
-                timedOut: capacityResolution.timedOut,
+              text: buildRuntimeLimitError("agent_team_run", dispatchPermit.reasons, {
+                waitedMs: dispatchPermit.waitedMs,
+                timedOut: dispatchPermit.timedOut,
               }),
             },
           ],
           details: {
-            error: "runtime_limit_reached",
-            reasons: capacityResolution.reasons,
-            projectedRequests: capacityResolution.projectedRequests,
-            projectedLlm: capacityResolution.projectedLlm,
-            waitedMs: capacityResolution.waitedMs,
-            timedOut: capacityResolution.timedOut,
-            aborted: capacityResolution.aborted,
-            capacityAttempts: capacityResolution.attempts,
+            error: dispatchPermit.aborted ? "runtime_dispatch_aborted" : "runtime_dispatch_blocked",
+            reasons: dispatchPermit.reasons,
+            projectedRequests: dispatchPermit.projectedRequests,
+            projectedLlm: dispatchPermit.projectedLlm,
+            waitedMs: dispatchPermit.waitedMs,
+            timedOut: dispatchPermit.timedOut,
+            aborted: dispatchPermit.aborted,
+            capacityAttempts: dispatchPermit.attempts,
             configuredMemberParallelLimit,
             baselineMemberParallelism,
-            requestedMemberParallelism: capacityResolution.requestedMemberParallelism,
-            appliedMemberParallelism: capacityResolution.appliedMemberParallelism,
-            parallelismReduced: capacityResolution.reduced,
+            requestedMemberParallelism: effectiveMemberParallelism,
+            appliedMemberParallelism: effectiveMemberParallelism,
+            parallelismReduced: false,
             adaptivePenaltyBefore,
             adaptivePenaltyAfter: adaptivePenalty.get(),
             requestedMemberCount: activeMembers.length,
             failedMemberRetryRounds,
-            queuedAhead: queueWait.queuedAhead,
-            queuePosition: queueWait.queuePosition,
-            queueWaitedMs: queueWait.waitedMs,
-            traceId: queueWait.orchestrationId,
+            queuedAhead: dispatchPermit.queuedAhead,
+            queuePosition: dispatchPermit.queuePosition,
+            queueWaitedMs: dispatchPermit.waitedMs,
+            traceId: dispatchPermit.orchestrationId,
             outcomeCode: capacityOutcome.outcomeCode,
             retryRecommended: capacityOutcome.retryRecommended,
           },
         };
       }
-      if (!capacityResolution.reservation) {
-        adaptivePenalty.raise("capacity");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "agent_team_run blocked: capacity reservation missing.",
-            },
-          ],
-          details: {
-            error: "runtime_reservation_missing",
-            requestedMemberParallelism: capacityResolution.requestedMemberParallelism,
-            appliedMemberParallelism: capacityResolution.appliedMemberParallelism,
-            queuedAhead: queueWait.queuedAhead,
-            queuePosition: queueWait.queuePosition,
-            queueWaitedMs: queueWait.waitedMs,
-            traceId: queueWait.orchestrationId,
-            outcomeCode: "RETRYABLE_FAILURE" as RunOutcomeCode,
-            retryRecommended: true,
-          },
-        };
-      }
-      const appliedMemberParallelism = capacityResolution.appliedMemberParallelism;
-      const capacityReservation = capacityResolution.reservation;
+      const appliedMemberParallelism = effectiveMemberParallelism;
+      const capacityReservation = dispatchPermit.lease;
       const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
 
-      try {
-        const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+      const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
 
-        // Get cost estimate and adjust for team size and communication rounds
-        const baseEstimate = getCostEstimator().estimate(
-          "agent_team_run",
-          ctx.model?.provider,
-          ctx.model?.id,
-          params.task
-        );
-        const teamSize = activeMembers.length;
-        const adjustedTokens = Math.round(baseEstimate.estimatedTokens * teamSize);
-        const adjustedDurationMs = Math.round(baseEstimate.estimatedDurationMs * (1 + communicationRounds * 0.3));
+      // Get cost estimate and adjust for team size and communication rounds
+      const baseEstimate = getCostEstimator().estimate(
+        "agent_team_run",
+        ctx.model?.provider,
+        ctx.model?.id,
+        params.task
+      );
+      const teamSize = activeMembers.length;
+      const adjustedTokens = Math.round(baseEstimate.estimatedTokens * teamSize);
+      const adjustedDurationMs = Math.round(baseEstimate.estimatedDurationMs * (1 + communicationRounds * 0.3));
 
-        // Debug logging for cost estimation
-        if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
-          console.log(
-            `[CostEstimation] agent_team_run: team=${team.id} ` +
-            `base=(${baseEstimate.estimatedDurationMs}ms, ${baseEstimate.estimatedTokens}t) ` +
-            `adjusted=(${adjustedDurationMs}ms, ${adjustedTokens}t) ` +
-            `teamSize=${teamSize} rounds=${communicationRounds} method=${baseEstimate.method}`
-          );
-        }
+      debugCostEstimation("agent_team_run", {
+        team: team.id,
+        base_ms: baseEstimate.estimatedDurationMs,
+        base_tokens: baseEstimate.estimatedTokens,
+        adjusted_ms: adjustedDurationMs,
+        adjusted_tokens: adjustedTokens,
+        team_size: teamSize,
+        rounds: communicationRounds,
+        method: baseEstimate.method,
+      });
 
-        const liveMonitor = createAgentTeamLiveMonitor(ctx, {
-          title: `Agent Team Run (detailed live view: ${team.id})`,
-          items: activeMembers.map((member) => ({
-            key: toTeamLiveItemKey(team.id, member.id),
-            label: `${team.id}/${member.id} (${member.role})`,
-            partners: (communicationLinks.get(member.id) ?? []).map((partnerId) => `${team.id}/${partnerId}`),
-          })),
+      const liveMonitor = createAgentTeamLiveMonitor(ctx, {
+        title: `Agent Team Run (detailed live view: ${team.id})`,
+        items: activeMembers.map((member) => ({
+          key: toTeamLiveItemKey(team.id, member.id),
+          label: `${team.id}/${member.id} (${member.role})`,
+          partners: (communicationLinks.get(member.id) ?? []).map((partnerId) => `${team.id}/${partnerId}`),
+        })),
+      });
+      liveMonitor?.appendBroadcastEvent(
+        `orchestration prepared: team=${team.id} strategy=${strategy} member_parallel=${appliedMemberParallelism} requested_member_parallel=${effectiveMemberParallelism} baseline=${baselineMemberParallelism} adaptive_penalty=${adaptivePenaltyBefore} communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryRounds}`,
+      );
+      liveMonitor?.appendBroadcastEvent(
+        `runtime capacity granted: projected_requests=${dispatchPermit.projectedRequests} projected_llm=${dispatchPermit.projectedLlm}`,
+      );
+
+      // 待機状態があった場合はUIに反映
+      if (dispatchPermit.waitedMs > 0 || (dispatchPermit.queuePosition && dispatchPermit.queuePosition > 0)) {
+        liveMonitor?.updateQueueStatus({
+          isWaiting: false, // 既に許可されたので待機終了
+          waitedMs: dispatchPermit.waitedMs,
+          queuePosition: dispatchPermit.queuePosition,
+          queuedAhead: dispatchPermit.queuedAhead,
         });
-        liveMonitor?.appendBroadcastEvent(
-          `orchestration prepared: team=${team.id} strategy=${strategy} member_parallel=${appliedMemberParallelism} requested_member_parallel=${effectiveMemberParallelism} baseline=${baselineMemberParallelism} adaptive_penalty=${adaptivePenaltyBefore} communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryRounds}`,
-        );
-        liveMonitor?.appendBroadcastEvent(
-          `runtime capacity granted: projected_requests=${capacityResolution.projectedRequests} projected_llm=${capacityResolution.projectedLlm}`,
-        );
+      }
 
-        runtimeState.activeTeamRuns += 1;
+      runtimeState.activeTeamRuns += 1;
+      notifyRuntimeCapacityChanged();
+      refreshRuntimeStatus(ctx);
+      // 予約は admission 制御のみ。開始後は active カウンタで実行中負荷を表現する。
+      capacityReservation.consume();
+
+      const onMemberStart = (member: TeamMember) => {
+        const key = toTeamLiveItemKey(team.id, member.id);
+        liveMonitor?.markStarted(key);
+        liveMonitor?.appendEvent(key, "member process spawned");
+        runtimeState.activeTeammates += 1;
         notifyRuntimeCapacityChanged();
         refreshRuntimeStatus(ctx);
-        // 予約は admission 制御のみ。開始後は active カウンタで実行中負荷を表現する。
-        capacityReservation.consume();
+      };
 
-        const onMemberStart = (member: TeamMember) => {
-          const key = toTeamLiveItemKey(team.id, member.id);
-          liveMonitor?.markStarted(key);
-          liveMonitor?.appendEvent(key, "member process spawned");
-          runtimeState.activeTeammates += 1;
-          notifyRuntimeCapacityChanged();
-          refreshRuntimeStatus(ctx);
-        };
-
-        const onMemberEnd = (member: TeamMember) => {
-          liveMonitor?.appendEvent(toTeamLiveItemKey(team.id, member.id), "member process exited");
-          runtimeState.activeTeammates = Math.max(0, runtimeState.activeTeammates - 1);
-          notifyRuntimeCapacityChanged();
-          refreshRuntimeStatus(ctx);
-        };
+      const onMemberEnd = (member: TeamMember) => {
+        liveMonitor?.appendEvent(toTeamLiveItemKey(team.id, member.id), "member process exited");
+        runtimeState.activeTeammates = Math.max(0, runtimeState.activeTeammates - 1);
+        notifyRuntimeCapacityChanged();
+        refreshRuntimeStatus(ctx);
+      };
 
         try {
           const { runRecord, memberResults, communicationAudit } = await runTeamTask({
@@ -1814,16 +1802,16 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               baselineMemberParallelism,
               requestedMemberParallelism: effectiveMemberParallelism,
               appliedMemberParallelism,
-              parallelismReduced: capacityResolution.reduced,
-              capacityWaitedMs: capacityResolution.waitedMs,
+              parallelismReduced: false,
+              capacityWaitedMs: dispatchPermit.waitedMs,
               adaptivePenaltyBefore,
               adaptivePenaltyAfter,
               pressureFailureCount: pressureFailures,
-              queuedAhead: queueWait.queuedAhead,
-              queuePosition: queueWait.queuePosition,
-              queueWaitedMs: queueWait.waitedMs,
-              traceId: queueWait.orchestrationId,
-              teamTaskId: buildTraceTaskId(queueWait.orchestrationId, team.id, 0),
+              queuedAhead: dispatchPermit.queuedAhead,
+              queuePosition: dispatchPermit.queuePosition,
+              queueWaitedMs: dispatchPermit.waitedMs,
+              traceId: dispatchPermit.orchestrationId,
+              teamTaskId: buildTraceTaskId(dispatchPermit.orchestrationId, team.id, 0),
               communicationRounds,
               failedMemberRetryRounds,
               communicationLinks: Object.fromEntries(
@@ -1831,7 +1819,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               ),
               memberResults,
               memberTaskIds: memberResults.map((result, index) => ({
-                taskId: buildTraceTaskId(queueWait.orchestrationId, result.memberId, index),
+                taskId: buildTraceTaskId(dispatchPermit.orchestrationId, result.memberId, index),
                 delegateId: result.memberId,
                 status: result.status,
               })),
@@ -1843,6 +1831,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           };
         } catch (error) {
           const errorMessage = toErrorMessage(error);
+          reportTeamExecutionFailure("agent_team_run", team.id, errorMessage, ctx);
           const pressure = classifyPressureError(errorMessage);
           if (pressure !== "other") {
             adaptivePenalty.raise(pressure);
@@ -1895,16 +1884,16 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               baselineMemberParallelism,
               requestedMemberParallelism: effectiveMemberParallelism,
               appliedMemberParallelism,
-              parallelismReduced: capacityResolution.reduced,
-              capacityWaitedMs: capacityResolution.waitedMs,
+              parallelismReduced: false,
+              capacityWaitedMs: dispatchPermit.waitedMs,
               adaptivePenaltyBefore,
               adaptivePenaltyAfter,
               failedMemberRetryRounds,
-              queuedAhead: queueWait.queuedAhead,
-              queuePosition: queueWait.queuePosition,
-              queueWaitedMs: queueWait.waitedMs,
-              traceId: queueWait.orchestrationId,
-              teamTaskId: buildTraceTaskId(queueWait.orchestrationId, team.id, 0),
+              queuedAhead: dispatchPermit.queuedAhead,
+              queuePosition: dispatchPermit.queuePosition,
+              queueWaitedMs: dispatchPermit.waitedMs,
+              traceId: dispatchPermit.orchestrationId,
+              teamTaskId: buildTraceTaskId(dispatchPermit.orchestrationId, team.id, 0),
               finalJudge: {
                 verdict: fallbackJudge.verdict,
                 confidence: fallbackJudge.confidence,
@@ -1923,17 +1912,12 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           runtimeState.activeTeamRuns = Math.max(0, runtimeState.activeTeamRuns - 1);
           notifyRuntimeCapacityChanged();
           refreshRuntimeStatus(ctx);
+          stopReservationHeartbeat();
+          capacityReservation.release();
           await liveMonitor?.close?.();
           await liveMonitor?.wait();
         }
-      } finally {
-        stopReservationHeartbeat();
-        capacityReservation.release();
-      }
-      } finally {
-        queueLease.release();
-        refreshRuntimeStatus(ctx);
-      }
+      refreshRuntimeStatus(ctx);
     },
   });
 
@@ -1958,6 +1942,22 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       retry: createRetrySchema(),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      if (String(process.env.PI_AGENT_TEAM_CHILD_RUN || "0") === "1") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "agent_team_run_parallel error: disabled in agent-team member child execution (recursion blocked).",
+            },
+          ],
+          details: {
+            error: "team_recursion_blocked",
+            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
       const storage = loadStorage(ctx.cwd);
       const retryOverrides = toRetryOverrides(params.retry);
 
@@ -2013,39 +2013,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         },
       });
 
-      const queueSnapshot = getRuntimeSnapshot();
-      const queueWait = await waitForRuntimeOrchestrationTurn({
-        toolName: "agent_team_run_parallel",
-        maxWaitMs: queueSnapshot.limits.capacityWaitMs,
-        pollIntervalMs: queueSnapshot.limits.capacityPollMs,
-        signal,
-      });
-      if (!queueWait.allowed || !queueWait.lease) {
-        const queueOutcome: RunOutcomeSignal = queueWait.aborted
-          ? { outcomeCode: "CANCELLED", retryRecommended: false }
-          : { outcomeCode: "TIMEOUT", retryRecommended: true };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: buildRuntimeQueueWaitError("agent_team_run_parallel", queueWait),
-            },
-          ],
-          details: {
-            error: queueWait.aborted ? "runtime_queue_aborted" : "runtime_queue_timeout",
-            queuedAhead: queueWait.queuedAhead,
-            queuePosition: queueWait.queuePosition,
-            queueWaitedMs: queueWait.waitedMs,
-            queueAttempts: queueWait.attempts,
-            traceId: queueWait.orchestrationId,
-            outcomeCode: queueOutcome.outcomeCode,
-            retryRecommended: queueOutcome.retryRecommended,
-          },
-        };
-      }
-      const queueLease = queueWait.lease;
-
-      try {
       const strategy: TeamStrategy =
         String(params.strategy || "parallel").toLowerCase() === "sequential" ? "sequential" : "parallel";
       const communicationRounds = normalizeCommunicationRounds(
@@ -2098,93 +2065,71 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         strategy === "parallel"
           ? adaptivePenalty.applyLimit(baselineMemberParallelism)
           : 1;
-      const capacityResolution = await resolveTeamParallelCapacity({
-        requestedTeamParallelism: effectiveTeamParallelism,
-        requestedMemberParallelism: effectiveMemberParallelism,
-        candidates: buildTeamAndMemberParallelCandidates(
-          effectiveTeamParallelism,
-          effectiveMemberParallelism,
-        ),
+      const dispatchPermit = await acquireRuntimeDispatchPermit({
         toolName: "agent_team_run_parallel",
+        candidate: {
+          additionalRequests: Math.max(1, effectiveTeamParallelism),
+          additionalLlm: Math.max(1, effectiveTeamParallelism * effectiveMemberParallelism),
+        },
+        tenantKey: enabledTeams.map((team) => team.id).sort().join("+"),
+        source: "scheduled",
+        estimatedDurationMs: Math.round(90_000 * (1 + communicationRounds * 0.3)),
+        estimatedRounds: Math.max(1, enabledTeams.length * (1 + communicationRounds)),
         maxWaitMs: snapshot.limits.capacityWaitMs,
         pollIntervalMs: snapshot.limits.capacityPollMs,
         signal,
       });
-      if (!capacityResolution.allowed) {
+      if (!dispatchPermit.allowed || !dispatchPermit.lease) {
         adaptivePenalty.raise("capacity");
-        const capacityOutcome: RunOutcomeSignal = capacityResolution.aborted
+        const capacityOutcome: RunOutcomeSignal = dispatchPermit.aborted
           ? { outcomeCode: "CANCELLED", retryRecommended: false }
-          : capacityResolution.timedOut
+          : dispatchPermit.timedOut
             ? { outcomeCode: "TIMEOUT", retryRecommended: true }
             : { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
         return {
           content: [
             {
               type: "text" as const,
-              text: buildRuntimeLimitError("agent_team_run_parallel", capacityResolution.reasons, {
-                waitedMs: capacityResolution.waitedMs,
-                timedOut: capacityResolution.timedOut,
+              text: buildRuntimeLimitError("agent_team_run_parallel", dispatchPermit.reasons, {
+                waitedMs: dispatchPermit.waitedMs,
+                timedOut: dispatchPermit.timedOut,
               }),
             },
           ],
           details: {
-            error: "runtime_limit_reached",
-            reasons: capacityResolution.reasons,
-            projectedRequests: capacityResolution.projectedRequests,
-            projectedLlm: capacityResolution.projectedLlm,
-            waitedMs: capacityResolution.waitedMs,
-            timedOut: capacityResolution.timedOut,
-            aborted: capacityResolution.aborted,
-            capacityAttempts: capacityResolution.attempts,
+            error: dispatchPermit.aborted ? "runtime_dispatch_aborted" : "runtime_dispatch_blocked",
+            reasons: dispatchPermit.reasons,
+            projectedRequests: dispatchPermit.projectedRequests,
+            projectedLlm: dispatchPermit.projectedLlm,
+            waitedMs: dispatchPermit.waitedMs,
+            timedOut: dispatchPermit.timedOut,
+            aborted: dispatchPermit.aborted,
+            capacityAttempts: dispatchPermit.attempts,
             configuredTeamParallelLimit,
             configuredMemberParallelLimit,
             baselineTeamParallelism,
             baselineMemberParallelism,
-            requestedTeamParallelism: capacityResolution.requestedTeamParallelism,
-            requestedMemberParallelism: capacityResolution.requestedMemberParallelism,
-            appliedTeamParallelism: capacityResolution.appliedTeamParallelism,
-            appliedMemberParallelism: capacityResolution.appliedMemberParallelism,
-            parallelismReduced: capacityResolution.reduced,
+            requestedTeamParallelism: effectiveTeamParallelism,
+            requestedMemberParallelism: effectiveMemberParallelism,
+            appliedTeamParallelism: effectiveTeamParallelism,
+            appliedMemberParallelism: effectiveMemberParallelism,
+            parallelismReduced: false,
             adaptivePenaltyBefore,
             adaptivePenaltyAfter: adaptivePenalty.get(),
             requestedTeamCount: enabledTeams.length,
             failedMemberRetryRounds,
-            queuedAhead: queueWait.queuedAhead,
-            queuePosition: queueWait.queuePosition,
-            queueWaitedMs: queueWait.waitedMs,
-            traceId: queueWait.orchestrationId,
+            queuedAhead: dispatchPermit.queuedAhead,
+            queuePosition: dispatchPermit.queuePosition,
+            queueWaitedMs: dispatchPermit.waitedMs,
+            traceId: dispatchPermit.orchestrationId,
             outcomeCode: capacityOutcome.outcomeCode,
             retryRecommended: capacityOutcome.retryRecommended,
           },
         };
       }
-      if (!capacityResolution.reservation) {
-        adaptivePenalty.raise("capacity");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "agent_team_run_parallel blocked: capacity reservation missing.",
-            },
-          ],
-          details: {
-            error: "runtime_reservation_missing",
-            requestedTeamParallelism: capacityResolution.requestedTeamParallelism,
-            requestedMemberParallelism: capacityResolution.requestedMemberParallelism,
-            appliedTeamParallelism: capacityResolution.appliedTeamParallelism,
-            appliedMemberParallelism: capacityResolution.appliedMemberParallelism,
-            queuedAhead: queueWait.queuedAhead,
-            queuePosition: queueWait.queuePosition,
-            queueWaitedMs: queueWait.waitedMs,
-            traceId: queueWait.orchestrationId,
-            outcomeCode: "RETRYABLE_FAILURE" as RunOutcomeCode,
-            retryRecommended: true,
-          },
-        };
-      }
-      const appliedTeamParallelism = capacityResolution.appliedTeamParallelism;
-      const appliedMemberParallelism = capacityResolution.appliedMemberParallelism;
-      const capacityReservation = capacityResolution.reservation;
+      const appliedTeamParallelism = effectiveTeamParallelism;
+      const appliedMemberParallelism = effectiveMemberParallelism;
+      const capacityReservation = dispatchPermit.lease;
       const stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
       const appliedLlmBudgetPerTeam = Math.max(
         1,
@@ -2210,7 +2155,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           `parallel orchestration prepared: teams=${enabledTeams.length} team_parallel=${appliedTeamParallelism} requested_team_parallel=${effectiveTeamParallelism} (baseline=${baselineTeamParallelism}) teammate_parallel=${appliedMemberParallelism} requested_teammate_parallel=${effectiveMemberParallelism} (baseline=${baselineMemberParallelism}) adaptive_penalty=${adaptivePenaltyBefore} communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryRounds}`,
         );
         liveMonitor?.appendBroadcastEvent(
-          `runtime capacity granted: projected_requests=${capacityResolution.projectedRequests} projected_llm=${capacityResolution.projectedLlm}`,
+          `runtime capacity granted: projected_requests=${dispatchPermit.projectedRequests} projected_llm=${dispatchPermit.projectedLlm}`,
         );
 
         const onRuntimeMemberStart = () => {
@@ -2239,15 +2184,16 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         const adjustedTokens = Math.round(baseEstimate.estimatedTokens * totalMembers);
         const adjustedDurationMs = Math.round(baseEstimate.estimatedDurationMs * (1 + communicationRounds * 0.3));
 
-        // Debug logging for cost estimation
-        if (process.env.PI_DEBUG_COST_ESTIMATION === "1") {
-          console.log(
-            `[CostEstimation] agent_team_run_parallel: ` +
-            `base=(${baseEstimate.estimatedDurationMs}ms, ${baseEstimate.estimatedTokens}t) ` +
-            `adjusted=(${adjustedDurationMs}ms, ${adjustedTokens}t) ` +
-            `teams=${enabledTeams.length} totalMembers=${totalMembers} rounds=${communicationRounds} method=${baseEstimate.method}`
-          );
-        }
+        debugCostEstimation("agent_team_run_parallel", {
+          base_ms: baseEstimate.estimatedDurationMs,
+          base_tokens: baseEstimate.estimatedTokens,
+          adjusted_ms: adjustedDurationMs,
+          adjusted_tokens: adjustedTokens,
+          teams: enabledTeams.length,
+          total_members: totalMembers,
+          rounds: communicationRounds,
+          method: baseEstimate.method,
+        });
 
         try {
         // 予約は admission 制御のみ。開始後は active カウンタで実行中負荷を表現する。
@@ -2355,6 +2301,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               const startedAt = new Date().toISOString();
               const outputFile = join(ensurePaths(ctx.cwd).runsDir, `${runId}.json`);
               const message = toErrorMessage(error);
+              reportTeamExecutionFailure("agent_team_run_parallel", team.id, message, ctx);
               liveMonitor?.appendBroadcastEvent(
                 `team ${team.id}: run failed ${normalizeForSingleLine(message, 180)}`,
               );
@@ -2470,11 +2417,6 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         lines.push(
           `Applied limits: teams=${appliedTeamParallelism} concurrent (requested=${effectiveTeamParallelism}, baseline=${baselineTeamParallelism}), teammates/team=${appliedMemberParallelism} (requested=${effectiveMemberParallelism}, baseline=${baselineMemberParallelism}), adaptive_penalty=${adaptivePenaltyBefore}->${adaptivePenaltyAfter}.`,
         );
-        if (capacityResolution.reduced) {
-          lines.push(
-            `Parallelism was reduced to fit current runtime capacity (waited=${capacityResolution.waitedMs}ms).`,
-          );
-        }
         lines.push(`Failed-member retry rounds/team: ${failedMemberRetryRounds}`);
         lines.push(
           failed.length === 0
@@ -2522,17 +2464,17 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             requestedMemberParallelism: effectiveMemberParallelism,
             appliedTeamParallelism,
             appliedMemberParallelism,
-            parallelismReduced: capacityResolution.reduced,
-            capacityWaitedMs: capacityResolution.waitedMs,
+            parallelismReduced: false,
+            capacityWaitedMs: dispatchPermit.waitedMs,
             adaptivePenaltyBefore,
             adaptivePenaltyAfter,
             pressureFailureCount: pressureFailures,
-            queuedAhead: queueWait.queuedAhead,
-            queuePosition: queueWait.queuePosition,
-            queueWaitedMs: queueWait.waitedMs,
-            traceId: queueWait.orchestrationId,
+            queuedAhead: dispatchPermit.queuedAhead,
+            queuePosition: dispatchPermit.queuePosition,
+            queueWaitedMs: dispatchPermit.waitedMs,
+            traceId: dispatchPermit.orchestrationId,
             teamTaskIds: results.map((result, index) => ({
-              taskId: buildTraceTaskId(queueWait.orchestrationId, result.team.id, index),
+              taskId: buildTraceTaskId(dispatchPermit.orchestrationId, result.team.id, index),
               delegateId: result.team.id,
               runId: result.runRecord.runId,
               status: result.runRecord.status,
@@ -2545,7 +2487,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               run: result.runRecord,
               memberResults: result.memberResults,
               memberTaskIds: result.memberResults.map((memberResult, index) => ({
-                taskId: buildTraceTaskId(queueWait.orchestrationId, memberResult.memberId, index),
+                taskId: buildTraceTaskId(dispatchPermit.orchestrationId, memberResult.memberId, index),
                 delegateId: memberResult.memberId,
                 status: memberResult.status,
               })),
@@ -2566,10 +2508,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         stopReservationHeartbeat();
         capacityReservation.release();
       }
-      } finally {
-        queueLease.release();
-        refreshRuntimeStatus(ctx);
-      }
+      refreshRuntimeStatus(ctx);
     },
   });
 

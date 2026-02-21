@@ -3,6 +3,15 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@sinclair/typebox": [
+        "node_modules/@mariozechner/pi-ai/node_modules/@sinclair/typebox"
+      ],
+      "@sinclair/typebox/*": [
+        "node_modules/@mariozechner/pi-ai/node_modules/@sinclair/typebox/*"
+      ]
+    },
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,

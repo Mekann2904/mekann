@@ -473,6 +473,10 @@ function recordTaskCompletion(
   // Update counters
   collectorState.totalCompletions++;
   collectorState.completionEvents.push(event);
+  // Trim to WINDOW_SIZE to prevent unbounded growth
+  if (collectorState.completionEvents.length > WINDOW_SIZE) {
+    collectorState.completionEvents.shift();
+  }
 
   // Log to JSONL
   if (collectorState.config.enableLogging) {
@@ -497,6 +501,10 @@ function recordPreemption(taskId: string, reason: string): void {
   collectorState.window.preemptions++;
   collectorState.totalPreemptions++;
   collectorState.preemptionEvents.push(event);
+  // Trim to WINDOW_SIZE to prevent unbounded growth
+  if (collectorState.preemptionEvents.length > WINDOW_SIZE) {
+    collectorState.preemptionEvents.shift();
+  }
 
   // Log to JSONL
   if (collectorState.config.enableLogging) {
@@ -520,6 +528,10 @@ function recordWorkSteal(sourceInstance: string, taskId: string): void {
   collectorState.window.steals++;
   collectorState.totalSteals++;
   collectorState.stealEvents.push(event);
+  // Trim to WINDOW_SIZE to prevent unbounded growth
+  if (collectorState.stealEvents.length > WINDOW_SIZE) {
+    collectorState.stealEvents.shift();
+  }
   collectorState.successfulSteals++;
   collectorState.lastStealAt = event.timestamp;
 
@@ -854,11 +866,8 @@ export function getMetricsConfigFromEnv(): Partial<MetricsCollectorConfig> {
   return config;
 }
 
-// Auto-initialize with environment config if not already initialized
-const state = collectorState;
-if (!state?.initialized) {
-  const envConfig = getMetricsConfigFromEnv();
-  if (Object.keys(envConfig).length > 0) {
-    initMetricsCollector(envConfig);
-  }
+// Auto-initialize when environment overrides are provided.
+const metricsEnvConfig = getMetricsConfigFromEnv();
+if (Object.keys(metricsEnvConfig).length > 0) {
+  initMetricsCollector(metricsEnvConfig);
 }

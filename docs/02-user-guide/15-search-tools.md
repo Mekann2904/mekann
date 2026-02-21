@@ -4,12 +4,12 @@ category: user-guide
 audience: daily-user, developer
 last_updated: 2026-02-16
 tags: [search, code-search, symbol-index, file-candidates]
-related: [02-user-guide/01-extensions.md, skills/search-tools/SKILL.md]
+related: [01-extensions.md, ../../.pi/skills/search-tools/SKILL.md]
 ---
 
 # 検索ツール
 
-> パンくず: [Home](../README.md) > [User Guide](./) > 検索ツール
+> パンくず: [Home](../../README.md) > [User Guide](../README.md) > 検索ツール
 
 ## 概要
 

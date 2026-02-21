@@ -51,6 +51,8 @@ interface TokenBucketState {
   burstMultiplier: number;
   /** Current burst tokens used */
   burstTokensUsed: number;
+  /** Last access timestamp for eviction */
+  lastAccessMs: number;
 }
 
 /**
@@ -158,6 +160,8 @@ const MAX_TOKENS = 10000;
 const DEFAULT_429_RETRY_MS = 60_000; // 1 minute default retry
 const MAX_429_RETRY_MS = 10 * 60 * 1000; // 10 minutes max
 const BURST_COOLDOWN_MS = 60_000; // 1 minute burst cooldown
+const BUCKET_ENTRY_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_BUCKET_ENTRIES = 512;
 
 // ============================================================================
 // Token Bucket Implementation
@@ -188,6 +192,7 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
   canProceed(provider: string, model: string, tokensNeeded: number): number {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
+    this.touchState(state);
 
     // Check if blocked by 429
     const now = Date.now();
@@ -228,6 +233,7 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
   consume(provider: string, model: string, tokens: number): void {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
+    this.touchState(state);
 
     // Refill first
     this.refillTokens(state);
@@ -258,6 +264,7 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
   record429(provider: string, model: string, retryAfterMs?: number): void {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
+    this.touchState(state);
     const now = Date.now();
 
     // Set retry-after time
@@ -287,6 +294,7 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
   recordSuccess(provider: string, model: string): void {
     const key = this.getKey(provider, model);
     const state = this.getOrCreateState(key, provider, model);
+    this.touchState(state);
 
     // Gradually restore burst capacity
     state.burstTokensUsed = Math.max(0, state.burstTokensUsed - 1);
@@ -310,6 +318,7 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
    */
   getStats(): RateLimiterStats {
     const now = Date.now();
+    this.pruneBuckets(now);
     const trackedModels = this.buckets.size;
     const blockedModels: string[] = [];
     const lowCapacityModels: string[] = [];
@@ -418,8 +427,11 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
   }
 
   private getOrCreateState(key: string, provider: string, model: string): TokenBucketState {
+    const now = Date.now();
+    this.pruneBuckets(now);
     let state = this.buckets.get(key);
     if (!state) {
+      this.evictOverflowIfNeeded(now);
       const config = this.getConfig(provider, model);
       const tokensPerSecond = config.rpm / 60;
 
@@ -427,10 +439,11 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
         tokens: tokensPerSecond * 10, // Start with 10 seconds worth
         maxTokens: tokensPerSecond * 60, // 1 minute worth max
         refillRate: tokensPerSecond,
-        lastRefillMs: Date.now(),
+        lastRefillMs: now,
         retryAfterMs: 0,
         burstMultiplier: config.burstMultiplier,
         burstTokensUsed: 0,
+        lastAccessMs: now,
       };
 
       this.buckets.set(key, state);
@@ -451,6 +464,38 @@ class TokenBucketRateLimiterImpl implements TokenBucketRateLimiter {
     // Gradually reduce burst tokens used over time
     if (elapsedMs > BURST_COOLDOWN_MS) {
       state.burstTokensUsed = Math.max(0, state.burstTokensUsed - Math.floor(elapsedMs / BURST_COOLDOWN_MS));
+    }
+  }
+
+  private touchState(state: TokenBucketState): void {
+    state.lastAccessMs = Date.now();
+  }
+
+  private pruneBuckets(now: number): void {
+    for (const [key, state] of this.buckets.entries()) {
+      const isExpired = now - state.lastAccessMs > BUCKET_ENTRY_TTL_MS;
+      const isDormant = state.retryAfterMs <= now;
+      if (isExpired && isDormant) {
+        this.buckets.delete(key);
+      }
+    }
+    this.evictOverflowIfNeeded(now);
+  }
+
+  private evictOverflowIfNeeded(now: number): void {
+    if (this.buckets.size < MAX_BUCKET_ENTRIES) {
+      return;
+    }
+    let oldestKey: string | null = null;
+    let oldestAccessMs = Number.POSITIVE_INFINITY;
+    for (const [key, state] of this.buckets.entries()) {
+      if (state.lastAccessMs < oldestAccessMs) {
+        oldestAccessMs = state.lastAccessMs;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey && now - oldestAccessMs >= 0) {
+      this.buckets.delete(oldestKey);
     }
   }
 }

@@ -142,10 +142,13 @@ export function normalizeCommunicationRounds(
   fallback = DEFAULT_COMMUNICATION_ROUNDS,
   isStableRuntime = false,
 ): number {
-  if (isStableRuntime) return DEFAULT_COMMUNICATION_ROUNDS;
+  // Stable runtimeでもユーザー指定を尊重（最小1ラウンド保証）
+  // 以前は常にDEFAULT_COMMUNICATION_ROUNDS(1)を返していたが、これを緩和
   const resolved = value === undefined ? fallback : Number(value);
   if (!Number.isFinite(resolved)) return fallback;
-  return Math.max(0, Math.min(MAX_COMMUNICATION_ROUNDS, Math.trunc(resolved)));
+  // Stable runtimeでは最大MAX_COMMUNICATION_ROUNDSに制限
+  const maxRounds = isStableRuntime ? MAX_COMMUNICATION_ROUNDS : MAX_COMMUNICATION_ROUNDS;
+  return Math.max(0, Math.min(maxRounds, Math.trunc(resolved)));
 }
 
 /**
@@ -514,6 +517,17 @@ export function checkTermination(
   const missingElements: string[] = [];
   const suspiciousPatterns: string[] = [];
 
+  // Early return for empty results
+  if (results.length === 0) {
+    return {
+      canTerminate: false,
+      completionScore: 0,
+      missingElements: ["no results provided"],
+      suspiciousPatterns: [],
+      recommendation: "challenge",
+    };
+  }
+
   // Check 1: All results have SUMMARY field
   const missingSummaries = results.filter(
     (r) => !extractField(r.output, "SUMMARY") && r.status === "completed"
@@ -556,7 +570,8 @@ export function checkTermination(
 
   // Calculate completion score
   const totalChecks = 5;
-  const passedChecks = totalChecks - (missingElements.length + suspiciousPatterns.length) / 2;
+  const failedChecks = missingElements.length + suspiciousPatterns.length;
+  const passedChecks = Math.max(0, totalChecks - failedChecks);
   const completionScore = Math.max(0, Math.min(1, passedChecks / totalChecks));
 
   // Determine recommendation
@@ -569,8 +584,13 @@ export function checkTermination(
     recommendation = "extend";
   }
 
+  // Critical check: if SUMMARY or RESULT is missing, cannot terminate
+  const hasCriticalMissing = missingElements.some(elem =>
+    elem.includes("SUMMARY field") || elem.includes("RESULT field")
+  );
+
   return {
-    canTerminate: completionScore >= minCompletionScore && suspiciousPatterns.length === 0,
+    canTerminate: completionScore >= minCompletionScore && suspiciousPatterns.length === 0 && !hasCriticalMissing,
     completionScore,
     missingElements,
     suspiciousPatterns,
@@ -618,22 +638,40 @@ export interface BeliefContradiction {
   description: string;
 }
 
-// Belief state cache for tracking across rounds
-const beliefStateCache = new Map<string, AgentBelief[]>();
+// Belief state cache for tracking across rounds (team-scoped to avoid race conditions)
+const beliefStateCacheByTeam = new Map<string, Map<string, AgentBelief[]>>();
+
+/**
+ * チームIDに対応する信念状態キャッシュを取得する
+ * @summary チーム別キャッシュ取得
+ * @param teamId チームID
+ * @returns チーム固有のキャッシュマップ
+ */
+function getTeamBeliefCache(teamId: string): Map<string, AgentBelief[]> {
+  let teamCache = beliefStateCacheByTeam.get(teamId);
+  if (!teamCache) {
+    teamCache = new Map<string, AgentBelief[]>();
+    beliefStateCacheByTeam.set(teamId, teamCache);
+  }
+  return teamCache;
+}
 
 /**
  * 信念状態を更新する
  * @summary 信念状態を更新
+ * @param teamId チームID（キャッシュ分離用）
  * @param memberId エージェントのメンバーID
  * @param output 生成された出力内容
  * @param round 現在のラウンド数
  * @returns 更新された信念状態の配列
  */
 export function updateBeliefState(
+  teamId: string,
   memberId: string,
   output: string,
   round: number,
 ): AgentBelief[] {
+  const teamCache = getTeamBeliefCache(teamId);
   const claim = extractField(output, "CLAIM") || "";
   const evidence = extractField(output, "EVIDENCE") || "";
   const confidenceStr = extractField(output, "CONFIDENCE") || "0.5";
@@ -649,23 +687,25 @@ export function updateBeliefState(
     timestamp: new Date().toISOString(),
   };
 
-  const existing = beliefStateCache.get(memberId) || [];
-  beliefStateCache.set(memberId, [...existing, state]);
+  const existing = teamCache.get(memberId) || [];
+  teamCache.set(memberId, [...existing, state]);
 
-  return beliefStateCache.get(memberId) || [];
+  return teamCache.get(memberId) || [];
 }
 
 /**
  * 信念サマリーを取得
  * @summary サマリー取得
+ * @param teamId チームID（キャッシュ分離用）
  * @param memberIds メンバーID配列
  * @returns サマリー文字列
  */
-export function getBeliefSummary(memberIds: string[]): string {
+export function getBeliefSummary(teamId: string, memberIds: string[]): string {
+  const teamCache = getTeamBeliefCache(teamId);
   const lines: string[] = ["【信念追跡 - 他エージェントの立場】"];
 
   for (const id of memberIds) {
-    const states = beliefStateCache.get(id) || [];
+    const states = teamCache.get(id) || [];
     const latest = states[states.length - 1];
     if (latest) {
       lines.push(
@@ -678,10 +718,15 @@ export function getBeliefSummary(memberIds: string[]): string {
 }
 
 /**
- * 信念状態キャッシュをクリア
+ * 信念状態キャッシュをクリア（チームID指定、または全クリア）
  * @summary キャッシュクリア
+ * @param teamId 省略時は全チームのキャッシュをクリア
  * @returns void
  */
-export function clearBeliefStateCache(): void {
-  beliefStateCache.clear();
+export function clearBeliefStateCache(teamId?: string): void {
+  if (teamId) {
+    beliefStateCacheByTeam.delete(teamId);
+  } else {
+    beliefStateCacheByTeam.clear();
+  }
 }

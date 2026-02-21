@@ -4,7 +4,7 @@ category: development
 audience: developer
 last_updated: 2026-02-11
 tags: [api, reference]
-related: [../README.md, ./01-getting-started.md, ]
+related: [../README.md, ./01-getting-started.md]
 ---
 
 # APIリファレンス

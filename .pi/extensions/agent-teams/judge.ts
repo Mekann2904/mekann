@@ -42,6 +42,8 @@ import type {
   TeamMemberResult,
   TeamStrategy,
 } from "./storage";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve, isAbsolute } from "node:path";
 import {
   clampConfidence,
   parseUnitInterval,
@@ -148,14 +150,12 @@ export function getJudgeWeights(): JudgeWeightConfig {
   const weightsPath = process.env.PI_JUDGE_WEIGHTS_PATH;
   if (weightsPath) {
     try {
-      const fs = require("fs");
-      const path = require("path");
-      const absolutePath = path.isAbsolute(weightsPath)
+      const absolutePath = isAbsolute(weightsPath)
         ? weightsPath
-        : path.resolve(process.cwd(), weightsPath);
+        : resolve(process.cwd(), weightsPath);
 
-      if (fs.existsSync(absolutePath)) {
-        const content = fs.readFileSync(absolutePath, "utf-8");
+      if (existsSync(absolutePath)) {
+        const content = readFileSync(absolutePath, "utf-8");
         const loaded = JSON.parse(content) as Partial<JudgeWeightConfig>;
 
         // Merge with defaults to ensure all fields are present
@@ -336,8 +336,8 @@ export function analyzeMemberOutput(output: string): TeamMemberResult["diagnosti
     "self-contradict",
     "contradict",
     "inconsistent",
-    "\u{7F3A}\u{76F8}", // 矛盾
-    "\u{81EA}\u{5DF1}\u{7F3A}\u{76F8}", // 自己矛盾
+    "\u{77DB}\u{76FE}", // 矛盾
+    "\u{81EA}\u{5DF1}\u{77DB}\u{76FE}", // 自己矛盾
   ]);
   const conflictSignals = countKeywordSignals(output, [
     "disagree",

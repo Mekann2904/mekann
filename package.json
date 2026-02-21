@@ -6,13 +6,14 @@
     "node": ">=20.18.1"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.32.0"
+    "@sinclair/typebox": "^0.34.48"
   },
   "devDependencies": {
     "@eslint/compat": "^1.1.1",
     "@eslint/js": "^9.22.0",
     "@mariozechner/pi-ai": "^0.53.0",
     "@mariozechner/pi-coding-agent": "^0.53.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^9.39.2",
     "eslint-plugin-import": "^2.31.0",
     "fast-check": "^4.5.3",
@@ -34,6 +35,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run tests/unit",
+    "test:e2e": "vitest run tests/e2e",
+    "test:e2e:watch": "vitest tests/e2e",
+    "test:all": "vitest run",
     "typecheck": "tsc --noEmit --project tsconfig-check.json",
     "lint": "eslint .pi/extensions .pi/lib --max-warnings=0",
     "lint:fix": "eslint .pi/extensions .pi/lib --fix",
@@ -64,8 +68,13 @@
       "./.pi/extensions/skill-inspector.ts",
       "./.pi/extensions/startup-context.ts",
       "./.pi/extensions/subagents.ts",
+      "./.pi/extensions/rate-limit-retry-budget.ts",
+      "./.pi/extensions/rpm-throttle.ts",
       "./.pi/extensions/ul-dual-mode.ts",
-      "./.pi/extensions/usage-tracker.ts"
+      "./.pi/extensions/usage-tracker.ts",
+      "./.pi/extensions/pi-coding-agent-lock-fix.ts",
+      "./.pi/extensions/pi-coding-agent-rate-limit-fix.ts",
+      "./.pi/extensions/pi-ai-abort-fix.ts"
     ],
     "skills": [
       "./.pi/skills"

@@ -65,6 +65,13 @@ import {
   type RetryWithBackoffOverrides,
 } from "../../lib/retry-with-backoff";
 import { getRateLimitGateSnapshot } from "../../lib/retry-with-backoff";
+import {
+  STABLE_MAX_RETRIES,
+  STABLE_INITIAL_DELAY_MS,
+  STABLE_MAX_DELAY_MS,
+  STABLE_MAX_RATE_LIMIT_RETRIES,
+  STABLE_MAX_RATE_LIMIT_WAIT_MS,
+} from "../../lib/agent-common.js";
 import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from "../shared/pi-print-executor";
 
 import type { SubagentDefinition, SubagentRunRecord, SubagentPaths } from "./storage";
@@ -422,6 +429,13 @@ export async function runSubagentTask(input: {
   const resolvedProvider = input.agent.provider ?? input.modelProvider ?? "(session-default)";
   const resolvedModel = input.agent.model ?? input.modelId ?? "(session-default)";
   const rateLimitKey = buildRateLimitKey(resolvedProvider, resolvedModel);
+  // Stable retry defaults keep delegated runs resilient to transient 429/5xx.
+  const retryOverrides: RetryWithBackoffOverrides = {
+    maxRetries: STABLE_MAX_RETRIES,
+    initialDelayMs: STABLE_INITIAL_DELAY_MS,
+    maxDelayMs: STABLE_MAX_DELAY_MS,
+    ...(input.retryOverrides ?? {}),
+  };
   let retryCount = 0;
   let lastRetryStatusCode: number | undefined;
   let lastRetryMessage = "";
@@ -473,11 +487,11 @@ export async function runSubagentTask(input: {
         },
         {
           cwd: input.cwd,
-          overrides: input.retryOverrides,
+          overrides: retryOverrides,
           signal: input.signal,
           rateLimitKey,
-          maxRateLimitRetries: 3,
-          maxRateLimitWaitMs: 120000,
+          maxRateLimitRetries: STABLE_MAX_RATE_LIMIT_RETRIES,
+          maxRateLimitWaitMs: STABLE_MAX_RATE_LIMIT_WAIT_MS,
           onRateLimitWait: ({ waitMs, hits }) => {
             lastRateLimitWaitMs = waitMs;
             lastRateLimitHits = hits;

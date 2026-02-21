@@ -34,7 +34,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 const UL_PREFIX = /^\s*ul(?:\s+|$)/i;
 const STABLE_UL_PROFILE = true;
 const UL_REQUIRE_BOTH_ORCHESTRATIONS = false;  // 固定フェーズ解除: LLMの裁量で1〜Nフェーズ
-const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;  // reviewer必須（環境変数で上書き可）
+const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = false;  // サブエージェント廃止のため reviewer必須ガードは無効
 const UL_SKIP_REVIEWER_FOR_TRIVIAL = process.env.PI_UL_SKIP_REVIEWER_FOR_TRIVIAL !== "0";
 const UL_REVIEWER_MIN_TASK_LENGTH = 200;  // この文字数未満は小規模タスク扱い
 const UL_TRIVIAL_PATTERNS = [
@@ -102,11 +102,9 @@ function refreshStatus(ctx: any): void {
     return;
   }
 
-  const subagent = state.usedSubagentRun ? "✓" : "…";
   const team = state.usedAgentTeamRun ? "✓" : "…";
-  const reviewer = state.completedRecommendedReviewerPhase ? "✓" : "…";
   const loop = state.activeGoalLoopMode ? "✓" : "…";
-  ctx.ui.setStatus?.("ul-dual-mode", `UL mode | subagent:${subagent} team:${team} reviewer:${reviewer} loop:${loop}`);
+  ctx.ui.setStatus?.("ul-dual-mode", `UL mode | team:${team} loop:${loop}`);
 }
 
 // スロットリング用の状態
@@ -270,8 +268,19 @@ function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
   return `[UL_MODE] 委任優先で実行。${goalHint}\n\nタスク:\n${task}`;
 }
 
-// ポリシーキャッシュ（4通りの組み合わせのみ）
+// ポリシーキャッシュ（4通りの組み合わせのみ、防御的に上限設定）
+const MAX_UL_POLICY_CACHE_ENTRIES = 10;
 const ulPolicyCache = new Map<string, string>();
+
+function safeCacheSet(key: string, value: string): void {
+  if (ulPolicyCache.size >= MAX_UL_POLICY_CACHE_ENTRIES) {
+    const firstKey = ulPolicyCache.keys().next().value;
+    if (firstKey !== undefined) {
+      ulPolicyCache.delete(firstKey);
+    }
+  }
+  ulPolicyCache.set(key, value);
+}
 
 function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
   const key = `${sessionWide}:${goalLoopMode}`;
@@ -279,7 +288,7 @@ function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
   if (cached) return cached;
   
   const policy = buildUlPolicyString(sessionWide, goalLoopMode);
-  ulPolicyCache.set(key, policy);
+  safeCacheSet(key, policy);
   return policy;
 }
 
@@ -301,19 +310,17 @@ Loop rule (clear completion criteria detected):
 This ${scope} UL Adaptive Mode.
 
 Execution:
-- Use subagent_run_parallel / agent_team_run as needed.
+- Use agent_team_run / agent_team_run_parallel as needed.
 - Phase count: LLM discretion (1-N, optimize for task scale).
-- YOU MUST: subagent_run(subagentId: "reviewer") before marking complete.
 
 Patterns:
-1. Simple: single subagent_run or direct execution
-2. Multi-perspective: subagent_run_parallel(subagentIds: researcher, architect, implementer)
-3. Complex: agent_team_run(teamId: core-delivery-team, strategy: parallel)
+1. Simple: direct execution
+2. Multi-perspective: agent_team_run(teamId: core-delivery-team, strategy: parallel)
+3. Complex: agent_team_run_parallel(teamIds: [...], strategy: parallel)
 
 Rules:
 - ${loopSection}
 - Direct edits allowed for trivial changes.
-- Do not finish until reviewer has been called.
 ---`;
 }
 

@@ -35,7 +35,7 @@
  * - Format skill content for prompt injection
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -265,7 +265,7 @@ function discoverSkillsFromDir(
   }
 
   try {
-    const entries = require("fs").readdirSync(skillsDir, {
+    const entries = readdirSync(skillsDir, {
       withFileTypes: true,
     });
 
@@ -347,6 +347,48 @@ function buildSkillIndex(
 }
 
 /**
+ * Try resolving a skill directly from reference path candidates.
+ */
+function resolveSkillByReference(
+  reference: string,
+  options: ResolveSkillsOptions,
+): SkillDefinition | null {
+  const searchPaths = getSkillSearchPaths(options.cwd, options.agentDir);
+
+  if (options.skillPaths) {
+    for (const path of options.skillPaths) {
+      const resolved = path.startsWith("~")
+        ? join(homedir(), path.slice(1))
+        : path;
+      if (!searchPaths.includes(resolved)) {
+        searchPaths.push(resolved);
+      }
+    }
+  }
+
+  for (const skillsDir of searchPaths) {
+    const asDirectorySkill = join(skillsDir, reference, SKILL_FILE_NAME);
+    const asMarkdownSkill = join(skillsDir, reference);
+
+    if (existsSync(asDirectorySkill)) {
+      const loaded = loadSkillFromFile(asDirectorySkill, "project");
+      if (loaded.skill) {
+        return loaded.skill;
+      }
+    }
+
+    if (reference.endsWith(".md") && existsSync(asMarkdownSkill)) {
+      const loaded = loadSkillFromFile(asMarkdownSkill, "project");
+      if (loaded.skill) {
+        return loaded.skill;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Resolve skill content from file
  */
 function resolveSkillContent(skill: SkillDefinition): {
@@ -401,7 +443,8 @@ export function resolveSkills(
     }
 
     // Try to find skill by name
-    const skill = index.get(trimmedRef);
+    const skill =
+      index.get(trimmedRef) ?? resolveSkillByReference(trimmedRef, options);
 
     if (!skill) {
       warnings.push(`Skill not found: ${trimmedRef}`);

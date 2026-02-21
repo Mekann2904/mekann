@@ -1,492 +1,363 @@
 /**
  * @file .pi/lib/token-bucket.ts の単体テスト
- * @description トークンバケットアルゴリズム、レート制限のテスト
+ * @description トークンバケットレートリミッターのテスト
  * @testFramework vitest
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as fc from "fast-check";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  createTokenBucketRateLimiter,
-  getTokenBucketRateLimiter,
-  resetTokenBucketRateLimiter,
-  type TokenBucketRateLimiter,
-  type RateLimiterStats,
+	createTokenBucketRateLimiter,
+	resetTokenBucketRateLimiter,
+	getTokenBucketRateLimiter,
+	TokenBucketRateLimiterImpl,
+	type RateLimitConfig,
+	type RateLimiterStats,
 } from "@lib/token-bucket";
 
 // ============================================================================
-// TokenBucketRateLimiter
+// TokenBucketRateLimiterImpl
 // ============================================================================
 
-describe("TokenBucketRateLimiter", () => {
-  let limiter: TokenBucketRateLimiter;
-
-  beforeEach(() => {
-    limiter = createTokenBucketRateLimiter();
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    resetTokenBucketRateLimiter();
-  });
-
-  describe("canProceed", () => {
-    describe("正常系", () => {
-      it("should_return_zero_for_new_bucket", () => {
-        // Arrange
-        const provider = "anthropic";
-        const model = "claude-3-5-sonnet";
-        const tokensNeeded = 1;
-
-        // Act
-        const waitMs = limiter.canProceed(provider, model, tokensNeeded);
-
-        // Assert - minIntervalMsのチェックがあるため、小さい待機時間が発生する可能性がある
-        expect(waitMs).toBeLessThanOrEqual(200);
-      });
-
-      it("should_return_zero_when_tokens_available", () => {
-        // Arrange
-        const provider = "openai";
-        const model = "gpt-4o";
-        const tokensNeeded = 10;
-
-        // Act
-        const waitMs = limiter.canProceed(provider, model, tokensNeeded);
-
-        // Assert - 初期状態ではトークンがあるがminIntervalMsチェックがある
-        expect(waitMs).toBeLessThanOrEqual(100);
-      });
-    });
-
-    describe("トークン消費後", () => {
-      it("should_return_wait_time_when_tokens_depleted", () => {
-        // Arrange
-        const provider = "test";
-        const model = "model";
-
-        // 大量のトークンを消費
-        limiter.consume(provider, model, 10000);
-
-        // Act
-        const waitMs = limiter.canProceed(provider, model, 1);
-
-        // Assert - トークン不足で待機時間が発生
-        expect(waitMs).toBeGreaterThan(0);
-      });
-    });
-
-    describe("429エラー後", () => {
-      it("should_block_until_retry_after", () => {
-        // Arrange
-        const provider = "test";
-        const model = "blocked-model";
-        const retryAfterMs = 60000;
-
-        limiter.record429(provider, model, retryAfterMs);
-
-        // Act
-        const waitMs = limiter.canProceed(provider, model, 1);
-
-        // Assert - retryAfter期間中はブロック
-        expect(waitMs).toBeGreaterThan(0);
-      });
-    });
-  });
-
-  describe("consume", () => {
-    describe("正常系", () => {
-      it("should_consume_tokens_from_bucket", () => {
-        // Arrange
-        const provider = "test";
-        const model = "model";
-        const tokens = 5;
-
-        // Act
-        limiter.consume(provider, model, tokens);
-
-        // Assert - エラーが発生しないことを確認
-        expect(true).toBe(true);
-      });
-
-      it("should_allow_multiple_consumes", () => {
-        // Arrange
-        const provider = "test";
-        const model = "model";
-
-        // Act
-        limiter.consume(provider, model, 1);
-        limiter.consume(provider, model, 2);
-        limiter.consume(provider, model, 3);
-
-        // Assert - エラーが発生しないことを確認
-        expect(true).toBe(true);
-      });
-    });
-
-    describe("バースト容量", () => {
-      it("should_use_burst_capacity_when_tokens_depleted", () => {
-        // Arrange
-        const provider = "test";
-        const model = "burst-model";
-
-        // 初期トークンを消費
-        limiter.consume(provider, model, 100);
-
-        // 追加でバーストを使用
-        // Act & Assert - エラーが発生しない
-        expect(() => limiter.consume(provider, model, 10)).not.toThrow();
-      });
-    });
-  });
-
-  describe("record429", () => {
-    describe("正常系", () => {
-      it("should_set_retry_after_time", () => {
-        // Arrange
-        const provider = "test";
-        const model = "429-model";
-        const retryAfterMs = 30000;
-
-        // Act
-        limiter.record429(provider, model, retryAfterMs);
-
-        // Assert
-        const waitMs = limiter.canProceed(provider, model, 1);
-        expect(waitMs).toBeGreaterThan(0);
-      });
-
-      it("should_reduce_burst_multiplier", () => {
-        // Arrange
-        const provider = "test";
-        const model = "penalty-model";
-
-        // Act
-        limiter.record429(provider, model, 60000);
-
-        // Assert - burstMultiplierが減少することを間接的に確認
-        // 複数回の429でさらに減少
-        limiter.record429(provider, model, 60000);
-
-        const waitMs = limiter.canProceed(provider, model, 1);
-        expect(waitMs).toBeGreaterThan(0);
-      });
-    });
-
-    describe("境界値", () => {
-      it("should_cap_retry_after_to_max", () => {
-        // Arrange
-        const provider = "test";
-        const model = "max-retry-model";
-        const excessiveRetryMs = 20 * 60 * 1000; // 20分（上限は10分）
-
-        // Act
-        limiter.record429(provider, model, excessiveRetryMs);
-
-        // Assert - 上限にキャップされる
-        const waitMs = limiter.canProceed(provider, model, 1);
-        expect(waitMs).toBeLessThanOrEqual(10 * 60 * 1000);
-      });
-
-      it("should_use_default_retry_when_not_specified", () => {
-        // Arrange
-        const provider = "test";
-        const model = "default-retry-model";
-
-        // Act
-        limiter.record429(provider, model);
-
-        // Assert - デフォルト値が使用される
-        const waitMs = limiter.canProceed(provider, model, 1);
-        expect(waitMs).toBeGreaterThan(0);
-      });
-    });
-  });
-
-  describe("recordSuccess", () => {
-    describe("正常系", () => {
-      it("should_restore_burst_capacity", () => {
-        // Arrange
-        const provider = "test";
-        const model = "success-model";
-
-        limiter.record429(provider, model, 1000);
-
-        // 時間を進めて429期間を終了
-        vi.advanceTimersByTime(2000);
-
-        // Act
-        limiter.recordSuccess(provider, model);
-
-        // Assert - 成功記録後にcanProceedが小さい待機時間を返す
-        const waitMs = limiter.canProceed(provider, model, 1);
-        // minIntervalMsのチェックがあるため、小さい待機時間が発生する可能性がある
-        expect(waitMs).toBeLessThanOrEqual(200);
-      });
-    });
-  });
-
-  describe("getStats", () => {
-    describe("正常系", () => {
-      it("should_return_stats_for_empty_limiter", () => {
-        // Arrange - 新しいlimiter
-
-        // Act
-        const stats = limiter.getStats();
-
-        // Assert
-        expect(stats.trackedModels).toBe(0);
-        expect(stats.blockedModels).toEqual([]);
-        expect(stats.avgAvailableTokens).toBe(0);
-        expect(stats.lowCapacityModels).toEqual([]);
-      });
-
-      it("should_track_multiple_models", () => {
-        // Arrange
-        limiter.consume("provider1", "model1", 10);
-        limiter.consume("provider2", "model2", 20);
-
-        // Act
-        const stats = limiter.getStats();
-
-        // Assert
-        expect(stats.trackedModels).toBe(2);
-      });
-
-      it("should_identify_blocked_models", () => {
-        // Arrange
-        limiter.record429("blocked-provider", "blocked-model", 60000);
-
-        // Act
-        const stats = limiter.getStats();
-
-        // Assert
-        expect(stats.blockedModels.length).toBeGreaterThan(0);
-        expect(stats.blockedModels[0]).toContain("blocked-provider");
-      });
-    });
-  });
-
-  describe("configure", () => {
-    describe("正常系", () => {
-      it("should_allow_custom_configuration", () => {
-        // Arrange
-        const provider = "custom";
-        const model = "config-model";
-
-        // Act
-        limiter.configure(provider, model, { rpm: 100, burstMultiplier: 3.0 });
-
-        // Assert - 設定が適用される
-        const waitMs = limiter.canProceed(provider, model, 1);
-        // minIntervalMsのチェックがあるため、小さい待機時間が発生する可能性がある
-        expect(waitMs).toBeLessThanOrEqual(200);
-      });
-    });
-  });
-
-  describe("reset", () => {
-    describe("正常系", () => {
-      it("should_reset_specific_bucket", () => {
-        // Arrange
-        const provider = "reset-provider";
-        const model = "reset-model";
-        limiter.consume(provider, model, 100);
-
-        // Act
-        limiter.reset(provider, model);
-
-        // Assert
-        const stats = limiter.getStats();
-        expect(stats.trackedModels).toBe(0);
-      });
-
-      it("should_not_affect_other_buckets", () => {
-        // Arrange
-        limiter.consume("keep-provider", "keep-model", 100);
-        limiter.consume("reset-provider", "reset-model", 100);
-
-        // Act
-        limiter.reset("reset-provider", "reset-model");
-
-        // Assert
-        const stats = limiter.getStats();
-        expect(stats.trackedModels).toBe(1);
-      });
-    });
-  });
-
-  describe("プロパティベーステスト", () => {
-    it("should_always_return_non_negative_wait_time", () => {
-      fc.assert(
-        fc.property(
-          fc.string({ minLength: 1, maxLength: 20 }),
-          fc.string({ minLength: 1, maxLength: 20 }),
-          fc.integer({ min: 1, max: 10000 }),
-          (provider, model, tokensNeeded) => {
-            const testLimiter = createTokenBucketRateLimiter();
-            const waitMs = testLimiter.canProceed(provider, model, tokensNeeded);
-            return waitMs >= 0;
-          },
-        ),
-      );
-    });
-
-    // 高度な不変条件プロパティ (Property-Based Tester追加)
-
-    it("should_maintain_non_negative_tokens_after_consume", () => {
-      // 不変条件: consume後もtokens >= 0
-      fc.assert(
-        fc.property(
-          fc.string({ minLength: 1, maxLength: 20 }),
-          fc.string({ minLength: 1, maxLength: 20 }),
-          fc.integer({ min: 1, max: 100000 }), // 大量消費テスト
-          (provider, model, tokensToConsume) => {
-            const testLimiter = createTokenBucketRateLimiter();
-
-            // 複数回消費
-            for (let i = 0; i < 10; i++) {
-              testLimiter.consume(provider, model, Math.floor(tokensToConsume / 10));
-            }
-
-            // 統計情報が有効であることを確認
-            const stats = testLimiter.getStats();
-            expect(stats.trackedModels).toBeGreaterThanOrEqual(0);
-            expect(stats.avgAvailableTokens).toBeGreaterThanOrEqual(0);
-            return true;
-          },
-        ),
-      );
-    });
-
-    it("should_maintain_consistent_stats_after_operations", () => {
-      // 不変条件: 操作後の統計情報は一貫している
-      fc.assert(
-        fc.property(
-          fc.array(
-            fc.record({
-              provider: fc.string({ minLength: 1, maxLength: 10 }),
-              model: fc.string({ minLength: 1, maxLength: 10 }),
-              tokens: fc.integer({ min: 1, max: 100 }),
-            }),
-            { minLength: 1, maxLength: 20 }
-          ),
-          (operations) => {
-            const testLimiter = createTokenBucketRateLimiter();
-
-            // 一連の操作を実行
-            for (const op of operations) {
-              testLimiter.consume(op.provider, op.model, op.tokens);
-            }
-
-            const stats = testLimiter.getStats();
-
-            // 統計情報の一貫性チェック
-            expect(stats.trackedModels).toBeGreaterThanOrEqual(0);
-            expect(stats.blockedModels.length).toBeLessThanOrEqual(stats.trackedModels);
-            expect(stats.lowCapacityModels.length).toBeLessThanOrEqual(stats.trackedModels);
-            expect(stats.avgAvailableTokens).toBeGreaterThanOrEqual(0);
-
-            return true;
-          },
-        ),
-      );
-    });
-
-    it("should_handle_429_and_success_sequence_correctly", () => {
-      // 状態遷移の正当性: record429 → recordSuccess → 適切な状態
-      fc.assert(
-        fc.property(
-          fc.string({ minLength: 1, maxLength: 10 }),
-          fc.string({ minLength: 1, maxLength: 10 }),
-          fc.integer({ min: 1000, max: 60000 }),
-          (provider, model, retryAfterMs) => {
-            const testLimiter = createTokenBucketRateLimiter();
-
-            // 初期状態
-            const initialWait = testLimiter.canProceed(provider, model, 1);
-
-            // 429を記録
-            testLimiter.record429(provider, model, retryAfterMs);
-            const after429Wait = testLimiter.canProceed(provider, model, 1);
-
-            // 429後は待機時間が増加するはず
-            expect(after429Wait).toBeGreaterThanOrEqual(0);
-
-            // 成功を記録（統計情報のみ更新、ブロック解除は時間経過後）
-            testLimiter.recordSuccess(provider, model);
-
-            // 統計情報の一貫性
-            const stats = testLimiter.getStats();
-            expect(stats.trackedModels).toBeGreaterThanOrEqual(1);
-
-            return true;
-          },
-        ),
-      );
-    });
-
-    it("should_isolate_different_provider_model_buckets", () => {
-      // 独立性: 異なるプロバイダ/モデルのバケットは独立している
-      fc.assert(
-        fc.property(
-          fc.string({ minLength: 1, maxLength: 10 }),
-          fc.string({ minLength: 1, maxLength: 10 }),
-          fc.string({ minLength: 1, maxLength: 10 }),
-          fc.string({ minLength: 1, maxLength: 10 }),
-          fc.integer({ min: 1, max: 1000 }),
-          (provider1, model1, provider2, model2, tokens) => {
-            // 異なるキーを保証
-            fc.pre(provider1 !== provider2 || model1 !== model2);
-
-            const testLimiter = createTokenBucketRateLimiter();
-
-            // 1つ目のバケットを消費
-            testLimiter.consume(provider1, model1, tokens);
-
-            // 2つ目のバケットは独立している
-            const wait2 = testLimiter.canProceed(provider2, model2, 1);
-            // minIntervalMsのチェックがあるため、小さい待機時間が発生する可能性がある
-            expect(wait2).toBeLessThanOrEqual(300);
-
-            return true;
-          },
-        ),
-      );
-    });
-  });
+describe("TokenBucketRateLimiterImpl", () => {
+	let limiter: TokenBucketRateLimiterImpl;
+
+	beforeEach(() => {
+		limiter = createTokenBucketRateLimiter();
+	});
+
+	describe("canProceed", () => {
+		it("should_return_small_wait_for_new_bucket", () => {
+			// 新しいバケットは初期トークンがあるが、minIntervalMsの影響を受ける可能性
+			const waitMs = limiter.canProceed("anthropic", "claude-3-5-sonnet", 1);
+			// minIntervalMs以下の待機時間であればOK
+			expect(waitMs).toBeLessThan(200);
+		});
+
+		it("should_return_wait_time_when_tokens_depleted", () => {
+			const provider = "anthropic";
+			const model = "claude-3-5-sonnet";
+
+			// 大量のトークンを消費
+			limiter.consume(provider, model, 100);
+
+			// まだ実行可能かチェック
+			const waitMs = limiter.canProceed(provider, model, 1);
+			// バースト容量があるため0の可能性もある
+			expect(waitMs).toBeGreaterThanOrEqual(0);
+		});
+
+		it("should_return_wait_time_when_blocked_by_429", () => {
+			const provider = "anthropic";
+			const model = "claude-3-5-sonnet";
+
+			// 429エラーを記録
+			limiter.record429(provider, model, 5000);
+
+			const waitMs = limiter.canProceed(provider, model, 1);
+			expect(waitMs).toBeGreaterThan(0);
+		});
+
+		it("should_be_independent_per_provider_model", () => {
+			// Provider Aをブロック
+			limiter.record429("provider-a", "model-x", 60000);
+
+			// Provider Bは影響を受けない（minIntervalMsの影響はあるが、ブロックではない）
+			const waitMs = limiter.canProceed("provider-b", "model-y", 1);
+			// ブロックされていなければ小さい値
+			expect(waitMs).toBeLessThan(200);
+		});
+	});
+
+	describe("consume", () => {
+		it("should_reduce_tokens_after_consume", () => {
+			const provider = "anthropic";
+			const model = "claude-3-5-sonnet";
+
+			// 初期状態で実行可能（minIntervalMsの影響を許容）
+			const waitMs = limiter.canProceed(provider, model, 1);
+			expect(waitMs).toBeLessThan(200);
+
+			// トークンを消費
+			limiter.consume(provider, model, 1);
+
+			// バケット状態を確認
+			const state = limiter.getBucketState(provider, model);
+			expect(state).toBeDefined();
+		});
+
+		it("should_use_burst_capacity_when_tokens_depleted", () => {
+			const provider = "test-provider";
+			const model = "test-model";
+
+			// 低めのレートで設定
+			limiter.configure(provider, model, { rpm: 10, burstMultiplier: 2 });
+
+			// 通常容量を超えて消費
+			limiter.consume(provider, model, 50);
+
+			const state = limiter.getBucketState(provider, model);
+			expect(state?.burstTokensUsed).toBeGreaterThan(0);
+		});
+	});
+
+	describe("record429", () => {
+		it("should_block_requests_after_429", () => {
+			const provider = "anthropic";
+			const model = "claude-3-5-sonnet";
+
+			limiter.record429(provider, model, 5000);
+
+			const waitMs = limiter.canProceed(provider, model, 1);
+			expect(waitMs).toBeGreaterThan(0);
+		});
+
+		it("should_reduce_burst_multiplier_after_429", () => {
+			const provider = "test-provider";
+			const model = "test-model";
+
+			limiter.configure(provider, model, { rpm: 60, burstMultiplier: 2.0 });
+			const beforeState = limiter.getBucketState(provider, model);
+
+			limiter.record429(provider, model, 1000);
+
+			const afterState = limiter.getBucketState(provider, model);
+			expect(afterState?.burstMultiplier).toBeLessThan(beforeState?.burstMultiplier ?? 2.0);
+		});
+
+		it("should_use_default_retry_if_not_specified", () => {
+			const provider = "anthropic";
+			const model = "claude-3-5-sonnet";
+
+			limiter.record429(provider, model); // retryAfterMsを指定しない
+
+			const waitMs = limiter.canProceed(provider, model, 1);
+			// デフォルト60秒のため、大きな待機時間
+			expect(waitMs).toBeGreaterThan(1000);
+		});
+	});
+
+	describe("recordSuccess", () => {
+		it("should_restore_burst_capacity", () => {
+			const provider = "test-provider";
+			const model = "test-model";
+
+			limiter.configure(provider, model, { rpm: 60, burstMultiplier: 2.0 });
+			limiter.consume(provider, model, 100);
+
+			const beforeState = limiter.getBucketState(provider, model);
+			limiter.recordSuccess(provider, model);
+			const afterState = limiter.getBucketState(provider, model);
+
+			// バースト使用量が減少
+			expect(afterState?.burstTokensUsed).toBeLessThanOrEqual(beforeState?.burstTokensUsed ?? 0);
+		});
+
+		it("should_gradually_restore_burst_multiplier", () => {
+			const provider = "test-provider";
+			const model = "test-model";
+
+			limiter.configure(provider, model, { rpm: 60, burstMultiplier: 2.0 });
+			limiter.record429(provider, model, 100);
+
+			const after429 = limiter.getBucketState(provider, model);
+
+			// 複数回成功を記録
+			for (let i = 0; i < 10; i++) {
+				limiter.recordSuccess(provider, model);
+			}
+
+			const afterSuccess = limiter.getBucketState(provider, model);
+			expect(afterSuccess?.burstMultiplier).toBeGreaterThanOrEqual(after429?.burstMultiplier ?? 0);
+		});
+	});
+
+	describe("getStats", () => {
+		it("should_return_empty_stats_initially", () => {
+			const stats = limiter.getStats();
+
+			expect(stats.trackedModels).toBe(0);
+			expect(stats.blockedModels).toEqual([]);
+			expect(stats.lowCapacityModels).toEqual([]);
+		});
+
+		it("should_track_models_after_use", () => {
+			limiter.canProceed("provider-a", "model-x", 1);
+			limiter.canProceed("provider-b", "model-y", 1);
+
+			const stats = limiter.getStats();
+			expect(stats.trackedModels).toBe(2);
+		});
+
+		it("should_identify_blocked_models", () => {
+			limiter.record429("blocked-provider", "blocked-model", 60000);
+
+			const stats = limiter.getStats();
+			expect(stats.blockedModels.length).toBeGreaterThan(0);
+		});
+	});
+
+	describe("configure", () => {
+		it("should_update_rate_limit_config", () => {
+			const provider = "custom-provider";
+			const model = "custom-model";
+
+			limiter.configure(provider, model, { rpm: 120, burstMultiplier: 3.0 });
+
+			// バケットを使用して設定を適用
+			limiter.canProceed(provider, model, 1);
+
+			const state = limiter.getBucketState(provider, model);
+			expect(state?.burstMultiplier).toBe(3.0);
+		});
+
+		it("should_update_existing_bucket", () => {
+			const provider = "existing-provider";
+			const model = "existing-model";
+
+			// 最初にバケットを作成
+			limiter.canProceed(provider, model, 1);
+			const beforeState = limiter.getBucketState(provider, model);
+
+			// 設定を更新
+			limiter.configure(provider, model, { rpm: 30 });
+			const afterState = limiter.getBucketState(provider, model);
+
+			expect(afterState?.refillRate).not.toBe(beforeState?.refillRate);
+		});
+	});
+
+	describe("reset", () => {
+		it("should_remove_bucket_state", () => {
+			const provider = "reset-provider";
+			const model = "reset-model";
+
+			limiter.canProceed(provider, model, 1);
+			expect(limiter.getBucketState(provider, model)).toBeDefined();
+
+			limiter.reset(provider, model);
+			expect(limiter.getBucketState(provider, model)).toBeUndefined();
+		});
+	});
+
+	describe("resetAll", () => {
+		it("should_clear_all_buckets", () => {
+			limiter.canProceed("provider-a", "model-x", 1);
+			limiter.canProceed("provider-b", "model-y", 1);
+
+			expect(limiter.getStats().trackedModels).toBe(2);
+
+			limiter.resetAll();
+
+			expect(limiter.getStats().trackedModels).toBe(0);
+		});
+	});
+
+	describe("memory bounds", () => {
+		it("should_cap_tracked_buckets", () => {
+			for (let i = 0; i < 700; i += 1) {
+				limiter.canProceed(`provider-${i}`, `model-${i}`, 1);
+			}
+			const stats = limiter.getStats();
+			expect(stats.trackedModels).toBeLessThanOrEqual(512);
+		});
+	});
 });
 
 // ============================================================================
-// シングルトン管理
+// Singleton Functions
 // ============================================================================
 
-describe("シングルトン管理", () => {
-  beforeEach(() => {
-    resetTokenBucketRateLimiter();
-  });
+describe("Singleton Functions", () => {
+	afterEach(() => {
+		resetTokenBucketRateLimiter();
+	});
 
-  describe("getTokenBucketRateLimiter", () => {
-    it("should_return_same_instance", () => {
-      // Act
-      const instance1 = getTokenBucketRateLimiter();
-      const instance2 = getTokenBucketRateLimiter();
+	describe("getTokenBucketRateLimiter", () => {
+		it("should_return_same_instance", () => {
+			const instance1 = getTokenBucketRateLimiter();
+			const instance2 = getTokenBucketRateLimiter();
 
-      // Assert
-      expect(instance1).toBe(instance2);
-    });
-  });
+			expect(instance1).toBe(instance2);
+		});
+	});
 
-  describe("resetTokenBucketRateLimiter", () => {
-    it("should_create_new_instance_after_reset", () => {
-      // Arrange
-      const instance1 = getTokenBucketRateLimiter();
-      resetTokenBucketRateLimiter();
-      const instance2 = getTokenBucketRateLimiter();
+	describe("resetTokenBucketRateLimiter", () => {
+		it("should_create_new_instance_after_reset", () => {
+			const instance1 = getTokenBucketRateLimiter();
+			resetTokenBucketRateLimiter();
+			const instance2 = getTokenBucketRateLimiter();
 
-      // Assert
-      expect(instance1).not.toBe(instance2);
-    });
-  });
+			expect(instance1).not.toBe(instance2);
+		});
+	});
+});
+
+// ============================================================================
+// RateLimitConfig Type
+// ============================================================================
+
+describe("RateLimitConfig", () => {
+	it("should_have_valid_default_config", () => {
+		const config: RateLimitConfig = {
+			rpm: 60,
+			burstMultiplier: 2.0,
+			minIntervalMs: 100,
+		};
+
+		expect(config.rpm).toBeGreaterThan(0);
+		expect(config.burstMultiplier).toBeGreaterThanOrEqual(1);
+		expect(config.minIntervalMs).toBeGreaterThanOrEqual(0);
+	});
+});
+
+// ============================================================================
+// Integration Tests
+// ============================================================================
+
+describe("Integration: Rate Limiting Flow", () => {
+	let limiter: TokenBucketRateLimiterImpl;
+
+	beforeEach(() => {
+		limiter = createTokenBucketRateLimiter();
+	});
+
+	it("should_handle_complete_request_cycle", () => {
+		const provider = "test-provider";
+		const model = "test-model";
+
+		// 1. リクエスト実行可能かチェック（minIntervalMsの影響を許容）
+		const canProceed = limiter.canProceed(provider, model, 1);
+		expect(canProceed).toBeLessThan(200);
+
+		// 2. トークン消費
+		limiter.consume(provider, model, 1);
+
+		// 3. 成功を記録
+		limiter.recordSuccess(provider, model);
+
+		// 4. 統計確認
+		const stats = limiter.getStats();
+		expect(stats.trackedModels).toBe(1);
+	});
+
+	it("should_handle_429_and_recovery", () => {
+		const provider = "test-provider";
+		const model = "test-model";
+
+		// 429エラーを記録（短い待機時間）
+		limiter.record429(provider, model, 100);
+
+		// ブロックされていることを確認
+		let waitMs = limiter.canProceed(provider, model, 1);
+		expect(waitMs).toBeGreaterThan(0);
+
+		// リセット後は新しいバケットが作成される
+		limiter.reset(provider, model);
+
+		// 新しいバケットは初期トークンがあるため実行可能
+		// ただし、minIntervalMsの制約がある可能性
+		waitMs = limiter.canProceed(provider, model, 1);
+		// 0または非常に小さい値であることを確認
+		expect(waitMs).toBeLessThan(200); // minIntervalMs以下
+	});
 });

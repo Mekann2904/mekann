@@ -4,7 +4,7 @@ category: user-guide
 audience: daily-user, developer
 last_updated: 2026-02-16
 tags: [cross-instance, runtime, parallel, coordination]
-related: [02-user-guide/08-subagents.md, 02-user-guide/09-agent-teams.md]
+related: [./08-subagents.md, ./09-agent-teams.md]
 ---
 
 # クロスインスタンスランタイム
@@ -214,4 +214,4 @@ adaptivePenalty.lower(): void
 
 ## 次のトピック
 
-[→ 検索ツール](./13-search-tools.md)
+[→ 検索ツール](./15-search-tools.md)

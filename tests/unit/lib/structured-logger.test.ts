@@ -1,9 +1,12 @@
 /**
- * Unit tests for lib/structured-logger.ts
- * Tests structured logging utility functions and classes.
+ * path: tests/unit/lib/structured-logger.test.ts
+ * role: structured-logger のユニットテストを定義する
+ * why: ログ出力仕様と回帰を安全に検証する
+ * related: .pi/lib/structured-logger.ts, vitest.config.ts, tests/setup-vitest.ts
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import * as fc from "fast-check";
 import {
   StructuredLogger,
   ChildLogger,
@@ -347,6 +350,14 @@ describe("StructuredLogger", () => {
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
+  const mockWritableWrite = (...args: unknown[]): boolean => {
+    const callback = args.at(-1);
+    if (typeof callback === "function") {
+      callback();
+    }
+    return true;
+  };
+
   beforeEach(() => {
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -538,7 +549,9 @@ describe("StructuredLogger", () => {
 
   describe("output options", () => {
     it("should output to stdout when specified", () => {
-      const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const writeSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation((...args) => mockWritableWrite(...args));
       const logger = new StructuredLogger({ minLevel: "INFO", output: "stdout" });
 
       logger.info("testOp", "Test");
@@ -548,7 +561,9 @@ describe("StructuredLogger", () => {
     });
 
     it("should output to stderr when specified", () => {
-      const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const writeSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation((...args) => mockWritableWrite(...args));
       const logger = new StructuredLogger({ minLevel: "INFO", output: "stderr" });
 
       logger.info("testOp", "Test");
@@ -806,5 +821,238 @@ describe("Integration tests", () => {
     expect(entry2.timestamp).toBeDefined();
 
     consoleLogSpy.mockRestore();
+  });
+});
+
+// ============================================================================
+// プロパティベーステスト
+// ============================================================================
+
+describe("プロパティベーステスト", () => {
+  const validDateArb = fc
+    .date({ min: new Date("2000-01-01"), max: new Date("2030-12-31") })
+    .filter((date) => !Number.isNaN(date.getTime()));
+
+  const isoTimestampArb = validDateArb.map((date) => date.toISOString());
+
+  const metadataArb = fc.option(
+    fc.dictionary(fc.string({ minLength: 1, maxLength: 30 }), fc.jsonValue(), {
+      maxKeys: 8,
+    }),
+    { nil: undefined }
+  );
+
+  describe("shouldLogの推移性", () => {
+    it("shouldLog_ログレベルの推移性が成立する", () => {
+      const levels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
+
+      fc.assert(
+        fc.property(
+          fc.constantFrom(...levels),
+          fc.constantFrom(...levels),
+          (level, minLevel) => {
+            const result = shouldLog(level, minLevel);
+            const levelIndex = levels.indexOf(level);
+            const minLevelIndex = levels.indexOf(minLevel);
+
+            // 不変条件: shouldLogはレベルの優先順位に基づく
+            // levelのインデックスがminLevel以上ならtrue
+            const expected = levelIndex >= minLevelIndex;
+
+            return result === expected;
+          }
+        )
+      );
+    });
+
+    it("shouldLog_推移関係の推移性が成立する", () => {
+      const levels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
+
+      fc.assert(
+        fc.property(
+          fc.constantFrom(...levels),
+          fc.constantFrom(...levels),
+          (level1, minLevel) => {
+            // 不変条件: レベルA >= BかつB >= C なら A >= C
+            const levelIndex1 = levels.indexOf(level1);
+            const minLevelIndex = levels.indexOf(minLevel);
+
+            // level1 >= minLevel かつ minLevel >= DEBUG なら level1 >= DEBUG
+            if (levelIndex1 >= minLevelIndex && minLevelIndex >= 0) {
+              return shouldLog(level1, minLevel) === (levelIndex1 >= minLevelIndex);
+            }
+
+            return true;
+          }
+        )
+      );
+    });
+
+    it("shouldLog_反射性が成立する", () => {
+      fc.assert(
+        fc.property(
+          fc.constantFrom<LogLevel>("DEBUG", "INFO", "WARN", "ERROR"),
+          (level) => {
+            // 不変条件: shouldLog(level, level) === true
+            return shouldLog(level, level) === true;
+          }
+        )
+      );
+    });
+  });
+
+  describe("formatTimestampの形式一貫性", () => {
+    it("formatTimestamp_常に有効なISO8601形式を返す", () => {
+      fc.assert(
+        fc.property(
+          validDateArb,
+          (date) => {
+            const timestamp = formatTimestamp(date);
+
+            // 不変条件: ISO8601形式の正規表現に一致する
+            const iso8601Regex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+            return iso8601Regex.test(timestamp);
+          }
+        )
+      );
+    });
+
+    it("formatTimestamp_可逆性が成立する", () => {
+      fc.assert(
+        fc.property(
+          validDateArb,
+          (date) => {
+            const timestamp = formatTimestamp(date);
+            const parsedDate = new Date(timestamp);
+
+            // 不変条件: 元の日付と復元した日付が一致する
+            // ミリ秒単位で比較
+            return date.getTime() === parsedDate.getTime();
+          }
+        )
+      );
+    });
+
+    it("formatTimestamp_現在時刻で呼び出し_有効なISO8601形式を返す", () => {
+      fc.assert(
+        fc.property(fc.boolean(), (_) => {
+          // Arrange & Act - 引数なしで呼び出し
+          const timestamp = formatTimestamp();
+
+          // Assert - ISO8601形式の正規表現に一致する
+          const iso8601Regex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+          return iso8601Regex.test(timestamp);
+        })
+      );
+    });
+  });
+
+  describe("serializeLogEntryの不変条件", () => {
+    it("serializeLogEntry_シリアライズ後にパースして同じ構造", () => {
+      fc.assert(
+        fc.property(
+          fc.record({
+            timestamp: isoTimestampArb,
+            level: fc.constantFrom<LogLevel>("DEBUG", "INFO", "WARN", "ERROR"),
+            context: fc.string({ minLength: 1, maxLength: 50 }),
+            operation: fc.string({ minLength: 1, maxLength: 50 }),
+            message: fc.string({ minLength: 1, maxLength: 200 }),
+            metadata: metadataArb,
+            correlationId: fc.option(fc.string()),
+            durationMs: fc.option(fc.integer({ min: 0, max: 86400000 })),
+            error: fc.option(
+              fc.record({
+                name: fc.string(),
+                message: fc.string(),
+                stack: fc.option(fc.string()),
+              })
+            ),
+          }),
+          (entry) => {
+            const serialized = serializeLogEntry(entry);
+            const parsed = JSON.parse(serialized) as StructuredLogEntry;
+
+            // 不変条件: シリアライズ→パースで全ての必須フィールドが保持される
+            return (
+              parsed.timestamp === entry.timestamp &&
+              parsed.level === entry.level &&
+              parsed.context === entry.context &&
+              parsed.operation === entry.operation &&
+              parsed.message === entry.message
+            );
+          }
+        )
+      );
+    });
+
+    it("serializeLogEntry_有効なJSONを生成する", () => {
+      fc.assert(
+        fc.property(
+          fc.record({
+            timestamp: fc.string(),
+            level: fc.constantFrom<LogLevel>("DEBUG", "INFO", "WARN", "ERROR"),
+            context: fc.string(),
+            operation: fc.string(),
+            message: fc.string(),
+          }),
+          (entry) => {
+            const serialized = serializeLogEntry(entry);
+
+            // 不変条件: 有効なJSON文字列である
+            return (() => {
+              JSON.parse(serialized);
+              return true;
+            })();
+          }
+        )
+      );
+    });
+  });
+
+  describe("formatErrorの不変条件", () => {
+    it("formatError_常に有効なエラー構造を返す", () => {
+      fc.assert(
+        fc.property(fc.anything(), (error) => {
+          const formatted = formatError(error);
+
+          // 不変条件: 常にnameとmessageを持つ
+          return (
+            typeof formatted.name === "string" &&
+            typeof formatted.message === "string" &&
+            formatted.name.length > 0 &&
+            formatted.message.length >= 0
+          );
+        })
+      );
+    });
+
+    it("formatError_Errorオブジェクト_元の情報を保持", () => {
+      fc.assert(
+        fc.property(
+          fc.record({
+            name: fc.string({ minLength: 1, maxLength: 100 }),
+            message: fc.string(),
+            stack: fc.option(fc.string()),
+          }),
+          (errorData) => {
+            const error = new Error(errorData.message);
+            error.name = errorData.name;
+            if (errorData.stack !== undefined) {
+              error.stack = errorData.stack;
+            }
+
+            const formatted = formatError(error);
+
+            // 不変条件: 元のnameとmessageが保持される
+            return (
+              formatted.name === errorData.name &&
+              formatted.message === errorData.message
+            );
+          }
+        )
+      );
+    });
   });
 });

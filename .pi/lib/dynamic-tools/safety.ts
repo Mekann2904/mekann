@@ -210,6 +210,34 @@ const DANGEROUS_PATTERNS: DangerousPattern[] = [
     description: "動的コード実行が検出されました",
     suggestion: "evalの使用は避け、静的なコード解析を使用してください",
   },
+  {
+    pattern: /\b(?:window|globalThis|this)\s*\[\s*["'`]eval["'`]\s*\]/,
+    type: "eval-usage",
+    severity: "critical",
+    description: "間接的なeval参照が検出されました",
+    suggestion: "ブラケット記法を含むeval参照を禁止してください",
+  },
+  {
+    pattern: /\(\s*0\s*,\s*eval\s*\)\s*\(/,
+    type: "eval-usage",
+    severity: "critical",
+    description: "間接呼び出しによるeval実行が検出されました",
+    suggestion: "間接eval呼び出しを禁止してください",
+  },
+  {
+    pattern: /setTimeout\s*\(\s*["'`][\s\S]*?["'`]\s*,/,
+    type: "eval-usage",
+    severity: "high",
+    description: "setTimeoutの文字列実行が検出されました",
+    suggestion: "setTimeoutには関数を渡してください",
+  },
+  {
+    pattern: /setInterval\s*\(\s*["'`][\s\S]*?["'`]\s*,/,
+    type: "eval-usage",
+    severity: "high",
+    description: "setIntervalの文字列実行が検出されました",
+    suggestion: "setIntervalには関数を渡してください",
+  },
 
   // 環境変数アクセス
   {

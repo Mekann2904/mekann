@@ -36,6 +36,8 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
+import { Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import {
   type DynamicToolDefinition,
   type DynamicToolRegistrationRequest,
@@ -156,6 +158,62 @@ export interface RegisterToolResult {
 // ============================================================================
 
 const CWD = process.cwd();
+const ToolParameterDefinitionSchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  type: Type.Union([
+    Type.Literal("string"),
+    Type.Literal("number"),
+    Type.Literal("boolean"),
+    Type.Literal("object"),
+    Type.Literal("array"),
+  ]),
+  required: Type.Boolean(),
+  description: Type.String(),
+  default: Type.Optional(Type.Unknown()),
+  allowedValues: Type.Optional(Type.Array(Type.Unknown())),
+});
+
+const DynamicToolDefinitionSchema = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  name: Type.String({ minLength: 1 }),
+  description: Type.String(),
+  mode: Type.Union([
+    Type.Literal("bash"),
+    Type.Literal("function"),
+    Type.Literal("template"),
+    Type.Literal("skill"),
+  ]),
+  parameters: Type.Array(ToolParameterDefinitionSchema),
+  code: Type.String(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  createdFromTask: Type.Optional(Type.String()),
+  usageCount: Type.Number(),
+  lastUsedAt: Type.Optional(Type.String()),
+  confidenceScore: Type.Number(),
+  verificationStatus: Type.Union([
+    Type.Literal("unverified"),
+    Type.Literal("pending"),
+    Type.Literal("passed"),
+    Type.Literal("failed"),
+    Type.Literal("deprecated"),
+  ]),
+  tags: Type.Array(Type.String()),
+  createdBy: Type.String({ minLength: 1 }),
+});
+
+function parseDynamicToolDefinition(content: string): DynamicToolDefinition | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  if (!Value.Check(DynamicToolDefinitionSchema, parsed)) {
+    return null;
+  }
+  return parsed;
+}
 
 /**
  * パス設定を検証・反映
@@ -242,7 +300,7 @@ export function loadToolDefinition(
   }
   try {
     const content = readFileSync(toolFile, "utf-8");
-    return JSON.parse(content) as DynamicToolDefinition;
+    return parseDynamicToolDefinition(content);
   } catch {
     return null;
   }
@@ -268,7 +326,10 @@ export function loadToolDefinitionByName(
   for (const file of files) {
     try {
       const content = readFileSync(join(paths.toolsDir, file), "utf-8");
-      const tool = JSON.parse(content) as DynamicToolDefinition;
+      const tool = parseDynamicToolDefinition(content);
+      if (!tool) {
+        continue;
+      }
       if (tool.name === name) {
         return tool;
       }
@@ -318,7 +379,10 @@ export function loadAllToolDefinitions(
   for (const file of files) {
     try {
       const content = readFileSync(join(paths.toolsDir, file), "utf-8");
-      const tool = JSON.parse(content) as DynamicToolDefinition;
+      const tool = parseDynamicToolDefinition(content);
+      if (!tool) {
+        continue;
+      }
       tools.push(tool);
     } catch {
       // Skip invalid files
@@ -861,7 +925,9 @@ export class DynamicToolRegistry {
         verificationStatus: tool.verificationStatus,
       },
       success: true,
-    }, this.paths).catch(() => {});
+    }, this.paths).catch((e) => {
+      console.debug("[dynamic-tools] Failed to log tool registration:", e);
+    });
 
     const warnings: string[] = [];
     if (safetyScore < 0.5) {
@@ -980,7 +1046,9 @@ export class DynamicToolRegistry {
         deletedAt: new Date().toISOString(),
       },
       success: deleted,
-    }, this.paths).catch(() => {});
+    }, this.paths).catch((e) => {
+      console.debug("[dynamic-tools] Failed to log tool deletion:", e);
+    });
 
     return {
       success: deleted,

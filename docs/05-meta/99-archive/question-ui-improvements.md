@@ -1,7 +1,7 @@
 ---
 title: Question UI改善履歴
 category: meta
-audience: [contributor]
+audience: contributor
 last_updated: 2026-02-17
 tags: [archive]
 related: []

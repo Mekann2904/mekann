@@ -140,6 +140,8 @@ interface RuntimeState {
 
 const STATE_VERSION = 1;
 const MAX_EVENT_HISTORY = 5000;
+const MAX_PENDING_TOOLS = 2000;
+const PENDING_TOOL_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_RECENT_LIMIT = 20;
 const DEFAULT_TOP_LIMIT = 20;
 const ANALYTICS_DIR = join(".pi", "analytics");
@@ -236,8 +238,29 @@ function saveState(currentRuntime: RuntimeState): void {
   writeFileSync(currentRuntime.storageFile, JSON.stringify(currentRuntime.state, null, 2), "utf-8");
 }
 
+function prunePendingTools(currentRuntime: RuntimeState, nowMs = Date.now()): void {
+  for (const [toolCallId, pending] of currentRuntime.pendingTools.entries()) {
+    if (nowMs - pending.startedAtMs > PENDING_TOOL_TTL_MS) {
+      currentRuntime.pendingTools.delete(toolCallId);
+    }
+  }
+
+  if (currentRuntime.pendingTools.size <= MAX_PENDING_TOOLS) {
+    return;
+  }
+
+  const overflow = currentRuntime.pendingTools.size - MAX_PENDING_TOOLS;
+  const oldest = Array.from(currentRuntime.pendingTools.entries())
+    .sort((a, b) => a[1].startedAtMs - b[1].startedAtMs)
+    .slice(0, overflow);
+  for (const [toolCallId] of oldest) {
+    currentRuntime.pendingTools.delete(toolCallId);
+  }
+}
+
 function ensureRuntime(ctx: ExtensionAPI["context"]): RuntimeState {
   if (runtime && runtime.cwd === ctx.cwd) {
+    prunePendingTools(runtime);
     return runtime;
   }
 
@@ -785,6 +808,7 @@ function handleAgentUsageCommand(
 
 function recordToolCall(event: any, ctx: ExtensionAPI["context"]): void {
   const currentRuntime = ensureRuntime(ctx);
+  prunePendingTools(currentRuntime);
   const toolName = String(event?.toolName || "unknown_tool");
   const extension = resolveExtensionForTool(toolName, currentRuntime.catalog);
   const at = nowIso();
@@ -830,6 +854,7 @@ function recordToolCall(event: any, ctx: ExtensionAPI["context"]): void {
 
 function recordToolResult(event: any, ctx: ExtensionAPI["context"]): void {
   const currentRuntime = ensureRuntime(ctx);
+  prunePendingTools(currentRuntime);
   const toolCallId = String(event?.toolCallId || "").trim();
   const pending = toolCallId ? currentRuntime.pendingTools.get(toolCallId) : undefined;
   const toolName = pending?.toolName ?? String(event?.toolName || "unknown_tool");
@@ -939,6 +964,7 @@ export default function registerAgentUsageTracker(pi: ExtensionAPI) {
   // 起動時に初期化と通知を行う。
   pi.on("session_start", async (_event, ctx) => {
     const currentRuntime = ensureRuntime(ctx);
+    prunePendingTools(currentRuntime);
     saveState(currentRuntime);
     ctx.ui.notify("Agent usage tracker loaded (/agent-usage)", "info");
   });
@@ -965,6 +991,7 @@ export default function registerAgentUsageTracker(pi: ExtensionAPI) {
   // セッション終了時に最終保存する。
   pi.on("session_shutdown", async (_event, ctx) => {
     const currentRuntime = ensureRuntime(ctx);
+    prunePendingTools(currentRuntime);
     saveState(currentRuntime);
   });
 

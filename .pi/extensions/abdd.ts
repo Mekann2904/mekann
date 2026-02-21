@@ -51,6 +51,21 @@ const ROOT_DIR = process.cwd();
 const SCRIPTS_DIR = path.join(ROOT_DIR, "scripts");
 const ABDD_DIR = path.join(ROOT_DIR, "ABDD");
 const EXTENSIONS_DIR = path.join(ROOT_DIR, ".pi", "extensions");
+const MAX_SPAWN_STDIO_BYTES = 256 * 1024;
+
+function appendBoundedOutput(current: string, incoming: string, maxBytes: number): string {
+	const next = current + incoming;
+	if (Buffer.byteLength(next, "utf-8") <= maxBytes) {
+		return next;
+	}
+
+	const target = maxBytes - 128;
+	let tail = next.slice(-Math.max(target, 1));
+	while (Buffer.byteLength(tail, "utf-8") > target && tail.length > 1) {
+		tail = tail.slice(1);
+	}
+	return `...[truncated]\n${tail}`;
+}
 
 // ============================================================================
 // Path Validation
@@ -179,11 +194,11 @@ function runScriptAsync(
 		}, timeoutMs);
 
 		childProcess.stdout?.on("data", (data: Buffer) => {
-			stdout += data.toString();
+			stdout = appendBoundedOutput(stdout, data.toString(), MAX_SPAWN_STDIO_BYTES);
 		});
 
 		childProcess.stderr?.on("data", (data: Buffer) => {
-			stderr += data.toString();
+			stderr = appendBoundedOutput(stderr, data.toString(), MAX_SPAWN_STDIO_BYTES);
 		});
 
 		childProcess.on("close", (code) => {
@@ -662,11 +677,11 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
 					}, timeoutMs);
 
 					childProcess.stdout?.on("data", (data: Buffer) => {
-						stdout += data.toString();
+						stdout = appendBoundedOutput(stdout, data.toString(), MAX_SPAWN_STDIO_BYTES);
 					});
 
 					childProcess.stderr?.on("data", (data: Buffer) => {
-						stderr += data.toString();
+						stderr = appendBoundedOutput(stderr, data.toString(), MAX_SPAWN_STDIO_BYTES);
 					});
 
 					childProcess.on("close", (code) => {

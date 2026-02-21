@@ -27,6 +27,24 @@
  * Generic storage base module.
  * Provides common patterns for extension storage (subagents, agent-teams, etc.).
  * Eliminates DRY violations between similar storage implementations.
+ *
+ * DEPENDENCY GRAPH (to prevent circular dependencies):
+ * ============================================
+ * storage-base.ts
+ *   ├── fs-utils.ts (ensureDir)
+ *   └── storage-lock.ts (atomicWriteTextFile, withFileLock)
+ *
+ * storage-lock.ts
+ *   └── (no internal dependencies)
+ *
+ * CONSUMERS (import from storage-base.ts):
+ * - extensions/subagents/storage.ts
+ * - extensions/agent-teams/storage.ts
+ * - extensions/plan.ts
+ *
+ * IMPORTANT: Do not add imports from consumers back to this module
+ * to avoid circular dependencies. If extending, use dependency injection
+ * or callback patterns instead of direct imports.
  */
 
 import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
@@ -208,7 +226,9 @@ export function mergeEntitiesById<TEntity extends HasId>(
  * @param maxRuns 最大保持数
  * @returns マージ後のRun配列
  */
-export function mergeRunsById<TRun extends BaseRunRecord>(
+export function mergeRunsById<
+  TRun extends { runId: string; startedAt?: string; finishedAt?: string }
+>(
   disk: TRun[],
   next: TRun[],
   maxRuns: number,

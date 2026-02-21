@@ -33,13 +33,25 @@
  * Layer 0: No dependencies on other lib modules.
  */
 
-import { Markdown, getMarkdownTheme } from "@mariozechner/pi-tui";
+import { Markdown, truncateToWidth, type MarkdownTheme, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 
 /** Default maximum length for tail content */
 export const LIVE_TAIL_LIMIT = 40_000;
 
 /** Minimum width for markdown preview rendering */
 export const LIVE_MARKDOWN_PREVIEW_MIN_WIDTH = 24;
+
+/**
+ * ANSIエスケープや制御文字を除去してプレビュー描画を安定化させる。
+ * Markdownレンダラが制御シーケンスで失敗するケースを防ぐ。
+ */
+function sanitizePreviewText(input: string): string {
+  if (!input) return "";
+  // ANSI escape sequence
+  const withoutAnsi = input.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+  // 画面描画を崩す可能性がある制御文字を除去（改行・タブは保持）
+  return withoutAnsi.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "");
+}
 
 /**
  * チャンクを追加し長さ制御
@@ -117,10 +129,10 @@ export function estimateLineCount(bytes: number, newlineCount: number, endsWithN
  * @returns 推定された行数
  */
 export function looksLikeMarkdown(input: string): boolean {
-  const text = input.trim();
+  const text = sanitizePreviewText(input).trim();
   if (!text) return false;
   // Headers
-  if (/^#{1,6}\s+/m.test(text)) return true;
+  if (/^\s{0,3}#{1,6}\s+/m.test(text)) return true;
   // Unordered lists
   if (/^\s*[-*+]\s+/m.test(text)) return true;
   // Ordered lists
@@ -149,6 +161,51 @@ export interface MarkdownPreviewResult {
   renderedAsMarkdown: boolean;
 }
 
+function createMarkdownTheme(): MarkdownTheme {
+  const passthrough = (text: string): string => text;
+  return {
+    heading: passthrough,
+    link: passthrough,
+    linkUrl: passthrough,
+    code: passthrough,
+    codeBlock: passthrough,
+    codeBlockBorder: passthrough,
+    quote: passthrough,
+    quoteBorder: passthrough,
+    hr: passthrough,
+    listBullet: passthrough,
+    bold: passthrough,
+    italic: passthrough,
+    strikethrough: passthrough,
+    underline: passthrough,
+  };
+}
+
+/**
+ * 1行テキストを幅に合わせて折り返し、出力配列へ追加する。
+ * ANSIカラーコードを保持したまま折り返す。
+ */
+export function pushWrappedLine(output: string[], line: string, width: number): void {
+  const safeWidth = Math.max(1, Number.isFinite(width) ? Math.trunc(width) : 1);
+  const logicalLines = String(line ?? "").split(/\r?\n/);
+  for (const logicalLine of logicalLines) {
+    if (!logicalLine) {
+      output.push("");
+      continue;
+    }
+    const wrapped = wrapTextWithAnsi(logicalLine, safeWidth);
+    if (wrapped.length === 0) {
+      output.push("");
+      continue;
+    }
+    for (const wrappedLine of wrapped) {
+      // wrapTextWithAnsi だけでは OSC8 等を含む行で幅超過が残る場合がある。
+      // 最終段で必ず幅内に収めることで TUI クラッシュを防ぐ。
+      output.push(truncateToWidth(wrappedLine, safeWidth));
+    }
+  }
+}
+
 /**
  * Markdown形式で描画
  * @summary 描画を行う
@@ -162,25 +219,26 @@ export function renderPreviewWithMarkdown(
   width: number,
   maxLines: number,
 ): MarkdownPreviewResult {
-  if (!text.trim()) {
+  const normalizedText = sanitizePreviewText(text);
+  if (!normalizedText.trim()) {
     return { lines: [], renderedAsMarkdown: false };
   }
 
-  if (!looksLikeMarkdown(text)) {
-    return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
+  if (!looksLikeMarkdown(normalizedText)) {
+    return { lines: toTailLines(normalizedText, maxLines), renderedAsMarkdown: false };
   }
 
   try {
-    const markdown = new Markdown(text, 0, 0, getMarkdownTheme());
+    const markdown = new Markdown(normalizedText, 0, 0, createMarkdownTheme());
     const rendered = markdown.render(Math.max(LIVE_MARKDOWN_PREVIEW_MIN_WIDTH, width));
     if (rendered.length === 0) {
-      return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
+      return { lines: toTailLines(normalizedText, maxLines), renderedAsMarkdown: false };
     }
     if (rendered.length <= maxLines) {
       return { lines: rendered, renderedAsMarkdown: true };
     }
     return { lines: rendered.slice(rendered.length - maxLines), renderedAsMarkdown: true };
   } catch {
-    return { lines: toTailLines(text, maxLines), renderedAsMarkdown: false };
+    return { lines: toTailLines(normalizedText, maxLines), renderedAsMarkdown: false };
   }
 }

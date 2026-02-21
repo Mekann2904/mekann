@@ -32,7 +32,7 @@
  * to eliminate DRY violations with agent-teams/storage.ts.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, copyFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   createPathsFactory,
@@ -343,6 +343,40 @@ function mergeSubagentStorageWithDisk(
 }
 
 /**
+ * 破損したストレージファイルのバックアップを作成
+ * @summary 破損バックアップ作成
+ * @param storageFile - 元のストレージファイルパス
+ * @param prefix - バックアップファイル名のプレフィックス
+ * @returns {string | null} バックアップファイルのパス、失敗時はnull
+ */
+function createCorruptedBackup(storageFile: string, prefix: string): string | null {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupFile = `${storageFile}.corrupted.${prefix}.${timestamp}.bak`;
+
+    // Get original file stats for logging
+    const stats = statSync(storageFile);
+    const sizeBytes = stats.size;
+
+    // Create backup copy
+    copyFileSync(storageFile, backupFile);
+
+    console.warn(
+      `[${prefix}] Created backup of corrupted storage: ${backupFile} (${sizeBytes} bytes)`,
+    );
+
+    return backupFile;
+  } catch (backupError) {
+    console.error(
+      `[${prefix}] Failed to create backup of corrupted storage: ${
+        backupError instanceof Error ? backupError.message : String(backupError)
+      }`,
+    );
+    return null;
+  }
+}
+
+/**
  * ストレージを読み込み
  * @summary ストレージ読込
  * @param cwd - カレントワーキングディレクトリ
@@ -365,7 +399,8 @@ export function loadStorage(cwd: string): SubagentStorage {
   }
 
   try {
-    const parsed = JSON.parse(readFileSync(paths.storageFile, "utf-8")) as Partial<SubagentStorage>;
+    const rawContent = readFileSync(paths.storageFile, "utf-8");
+    const parsed = JSON.parse(rawContent) as Partial<SubagentStorage>;
     const storage: SubagentStorage = {
       agents: Array.isArray(parsed.agents) ? parsed.agents : [],
       runs: Array.isArray(parsed.runs) ? parsed.runs : [],
@@ -376,7 +411,16 @@ export function loadStorage(cwd: string): SubagentStorage {
           : 0,
     };
     return ensureDefaults(storage, nowIso);
-  } catch {
+  } catch (error) {
+    // Create backup of corrupted file before overwriting
+    createCorruptedBackup(paths.storageFile, "subagents");
+
+    // Log warning about data loss
+    console.warn(
+      `[subagents] loadStorage: JSON parse failed, falling back to empty storage. ` +
+        `Backup saved. Error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+
     saveStorage(cwd, fallback);
     return fallback;
   }

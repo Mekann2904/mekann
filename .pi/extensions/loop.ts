@@ -42,7 +42,7 @@ import { Text } from "@mariozechner/pi-tui";
 
 import { formatDuration } from "../lib/format-utils.js";
 import { toErrorMessage } from "../lib/error-utils.js";
-import { toBoundedInteger } from "../lib/validation-utils.js";
+import { toBoundedInteger, toBoundedFloat } from "../lib/validation-utils.js";
 import { ThinkingLevel } from "../lib/agent-types.js";
 import { createRunId } from "../lib/agent-utils.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
@@ -271,30 +271,6 @@ interface LoopActivityIndicator {
 
 // Note: LoopVerificationResult is imported from ./loop/verification.ts
 
-interface ParsedLoopContract {
-  status: LoopStatus;
-  goalStatus: LoopGoalStatus;
-  goalEvidence: string;
-  citations: string[];
-  summary: string;
-  nextActions: string[];
-  parseErrors: string[];
-  usedStructuredBlock: boolean;
-}
-
-type VerificationPolicyMode = "always" | "done_only" | "every_n";
-
-interface VerificationPolicyConfig {
-  mode: VerificationPolicyMode;
-  everyN: number;
-}
-
-interface ParsedVerificationCommand {
-  executable: string;
-  args: string[];
-  error?: string;
-}
-
 const STABLE_LOOP_PROFILE = true;
 
 // アイドルタイムアウト方式（pi-print-executor.ts）を使用
@@ -504,6 +480,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
             indicator.updateFromProgress(progress);
             onUpdate?.({
               content: [{ type: "text" as const, text: formatLoopProgress(progress) }],
+              details: {},
             });
           },
         });
@@ -564,7 +541,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
     },
 
     renderResult(result, _options, theme) {
-      const summary = result?.details?.summary as LoopRunSummary | undefined;
+      const summary = (result as any)?.details?.summary as LoopRunSummary | undefined;
       if (!summary) {
         return new Text(theme.fg("warning", "loop result unavailable"), 0, 0);
       }
@@ -938,13 +915,15 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       // Check for stagnation using semantic or exact matching
       if (input.config.enableSemanticStagnation) {
         // Semantic-based detection (requires embedding provider configured via /embedding)
-        const semanticThreshold = toBoundedInteger(
+        const semanticThreshold = toBoundedFloat(
           input.config.semanticRepetitionThreshold ?? 0.85,
+          0.85,
           LIMITS.minSemanticRepetitionThreshold,
-          LIMITS.maxSemanticRepetitionThreshold
+          LIMITS.maxSemanticRepetitionThreshold,
+          "semanticRepetitionThreshold",
         );
         const semanticResult = await detectSemanticRepetition(output, previousOutput, {
-          threshold: semanticThreshold,
+          threshold: semanticThreshold.ok ? semanticThreshold.value : 0.85,
           useEmbedding: true,
         });
         if (semanticResult.isRepeated) {
@@ -1143,9 +1122,9 @@ function normalizeLoopConfig(
       ? DEFAULT_CONFIG.enableSemanticStagnation
       : Boolean(overrides.enableSemanticStagnation);
 
-  const semanticRepetitionThreshold = toBoundedInteger(
+  const semanticRepetitionThreshold = toBoundedFloat(
     overrides.semanticRepetitionThreshold,
-    DEFAULT_CONFIG.semanticRepetitionThreshold,
+    DEFAULT_CONFIG.semanticRepetitionThreshold ?? 0.85,
     LIMITS.minSemanticRepetitionThreshold,
     LIMITS.maxSemanticRepetitionThreshold,
     "semanticRepetitionThreshold",
@@ -1153,7 +1132,7 @@ function normalizeLoopConfig(
   // semanticRepetitionThreshold uses default on error (not critical)
   const thresholdValue = semanticRepetitionThreshold.ok
     ? semanticRepetitionThreshold.value
-    : DEFAULT_CONFIG.semanticRepetitionThreshold;
+    : DEFAULT_CONFIG.semanticRepetitionThreshold ?? 0.85;
 
   return {
     ok: true,

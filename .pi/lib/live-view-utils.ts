@@ -35,15 +35,56 @@
 export type LiveStatus = "pending" | "running" | "completed" | "failed";
 
 /**
- * @summary ステータス文字列取得
+ * ステータスグリフの設定
+ * @summary グリフと色の設定
+ */
+export interface StatusGlyphConfig {
+  glyph: string;
+  color: "dim" | "accent" | "success" | "error";
+}
+
+/** ステータスごとのグリフ設定 */
+const STATUS_GLYPHS: Record<LiveStatus, StatusGlyphConfig> = {
+  pending:   { glyph: "[ ]", color: "dim" },
+  running:   { glyph: "[>]", color: "accent" },
+  completed: { glyph: "[+]", color: "success" },
+  failed:    { glyph: "[x]", color: "error" },
+};
+
+/**
+ * @summary ステータスグリフ取得
  * @param status - 変換対象のステータス
- * @returns ステータスを表す2文字の文字列
+ * @returns ステータスを表す3文字のグリフ文字列
  */
 export function getLiveStatusGlyph(status: LiveStatus): string {
-  if (status === "completed") return "OK";
-  if (status === "failed") return "!!";
-  if (status === "running") return ">>";
-  return "..";
+  return STATUS_GLYPHS[status]?.glyph ?? "[?]";
+}
+
+/**
+ * @summary ステータス色取得
+ * @param status - 変換対象のステータス
+ * @returns テーマ色キー
+ */
+export function getLiveStatusColor(status: LiveStatus): "dim" | "accent" | "success" | "error" {
+  return STATUS_GLYPHS[status]?.color ?? "dim";
+}
+
+/**
+ * @summary アクティビティインジケータ取得
+ * @param hasOutput - 出力があるか
+ * @param hasError - エラーがあるか
+ * @param isRecent - 最近のアクティビティか
+ * @returns アクティビティ文字列（アクティブ時のみ、それ以外は空文字）
+ */
+export function getActivityIndicator(
+  hasOutput: boolean,
+  hasError: boolean,
+  isRecent: boolean,
+): string {
+  if (hasError) return "err!";
+  if (hasOutput && isRecent) return "out!";
+  if (hasOutput) return "out";
+  return "-";
 }
 
 /**
@@ -79,4 +120,43 @@ export function finalizeLiveLines(lines: string[], height?: number): string[] {
     padded.push("");
   }
   return padded;
+}
+
+/**
+ * 末尾の行を取得
+ * @summary 末尾行を取得
+ * @param tail - 処理対象の文字列
+ * @param limit - 取得する最大行数
+ * @returns 末尾の行の配列
+ */
+export function toTailLines(tail: string, limit: number): string[] {
+  const lines = tail
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd());
+  while (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  if (lines.length <= limit) return lines;
+  return lines.slice(lines.length - limit);
+}
+
+/**
+ * Markdownらしいテキストか判定する
+ * @summary Markdown判定
+ * @param input - 判定対象テキスト
+ * @returns Markdownの可能性が高い場合はtrue
+ */
+export function looksLikeMarkdown(input: string): boolean {
+  const text = String(input || "").trim();
+  if (!text) return false;
+  if (/^\s{0,3}#{1,6}\s+/m.test(text)) return true;
+  if (/^\s*[-*+]\s+/m.test(text)) return true;
+  if (/^\s*\d+\.\s+/m.test(text)) return true;
+  if (/```/.test(text)) return true;
+  if (/\[[^\]]+\]\([^)]+\)/.test(text)) return true;
+  if (/^\s*>\s+/m.test(text)) return true;
+  if (/^\s*\|.+\|\s*$/m.test(text)) return true;
+  if (/\*\*[^*]+\*\*/.test(text)) return true;
+  if (/`[^`]+`/.test(text)) return true;
+  return false;
 }

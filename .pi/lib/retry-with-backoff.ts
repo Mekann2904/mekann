@@ -30,8 +30,11 @@
 // Why: Keeps 429/5xx recovery policy in one place for subagents and agent teams.
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { recordTotalLimitObservation } from "./adaptive-total-limit.js";
+import { withFileLock } from "./storage-lock.js";
 
 /**
  * リトライ時のジッターモード
@@ -83,6 +86,7 @@ interface RetryWithBackoffOptions {
   cwd?: string;
   overrides?: RetryWithBackoffOverrides;
   signal?: AbortSignal;
+  now?: () => number;
   rateLimitKey?: string;
   maxRateLimitRetries?: number;
   maxRateLimitWaitMs?: number;
@@ -129,6 +133,10 @@ export interface RateLimitWaitContext {
   untilMs: number;
 }
 
+interface RetryTimeOptions {
+  now?: () => number;
+}
+
 const DEFAULT_RETRY_WITH_BACKOFF_CONFIG: RetryWithBackoffConfig = {
   maxRetries: 0,
   initialDelayMs: 800,
@@ -143,8 +151,24 @@ const MAX_RATE_LIMIT_GATE_DELAY_MS = 120_000;
 const RATE_LIMIT_GATE_TTL_MS = 10 * 60 * 1000;
 const MAX_RATE_LIMIT_ENTRIES = 64; // Prevent unbounded memory growth
 const GLOBAL_RATE_LIMIT_GATE_KEY = "__global_rate_limit__";
+const RUNTIME_DIR = join(homedir(), ".pi", "runtime");
+const RATE_LIMIT_STATE_FILE = join(RUNTIME_DIR, "retry-rate-limit-state.json");
+const RATE_LIMIT_STATE_LOCK_OPTIONS = {
+  maxWaitMs: 2_000,
+  pollMs: 25,
+  staleMs: 15_000,
+};
 const sharedRateLimitState: SharedRateLimitState = {
   entries: new Map<string, SharedRateLimitStateEntry>(),
+};
+
+// 操作中フラグ: 同一プロセス内での並列アクセスを防止
+let inMemoryRateLimitOperationInProgress = false;
+
+type PersistedRateLimitState = {
+  version: number;
+  updatedAt: string;
+  entries: Record<string, SharedRateLimitStateEntry>;
 };
 
 function toFiniteNumber(value: unknown): number | undefined {
@@ -237,13 +261,13 @@ function createRateLimitKeyScope(rateLimitKey: string | undefined): string[] {
   return Array.from(keys);
 }
 
-function selectLongestRateLimitGate(gates: RateLimitGateSnapshot[]): RateLimitGateSnapshot {
+function selectLongestRateLimitGate(gates: RateLimitGateSnapshot[], nowMs: number): RateLimitGateSnapshot {
   if (gates.length === 0) {
     return {
       key: GLOBAL_RATE_LIMIT_GATE_KEY,
       waitMs: 0,
       hits: 0,
-      untilMs: Date.now(),
+      untilMs: nowMs,
     };
   }
 
@@ -264,8 +288,113 @@ function getSharedRateLimitState(): SharedRateLimitState {
   return sharedRateLimitState;
 }
 
-function pruneRateLimitState(nowMs = Date.now()): void {
-  const state = getSharedRateLimitState();
+function ensureRuntimeDir(): void {
+  if (!existsSync(RUNTIME_DIR)) {
+    mkdirSync(RUNTIME_DIR, { recursive: true });
+  }
+}
+
+function readPersistedRateLimitState(nowMs: number): Map<string, SharedRateLimitStateEntry> {
+  try {
+    if (!existsSync(RATE_LIMIT_STATE_FILE)) {
+      return new Map();
+    }
+    const parsed = JSON.parse(readFileSync(RATE_LIMIT_STATE_FILE, "utf-8")) as Partial<PersistedRateLimitState>;
+    if (!parsed || typeof parsed !== "object" || !parsed.entries || typeof parsed.entries !== "object") {
+      return new Map();
+    }
+    const entries = new Map<string, SharedRateLimitStateEntry>();
+    for (const [key, value] of Object.entries(parsed.entries)) {
+      if (!value || typeof value !== "object") continue;
+      const untilMs = Math.trunc(Number(value.untilMs));
+      const hits = Math.trunc(Number(value.hits));
+      const updatedAtMs = Math.trunc(Number(value.updatedAtMs));
+      if (!Number.isFinite(untilMs) || !Number.isFinite(hits) || !Number.isFinite(updatedAtMs)) continue;
+      entries.set(key, {
+        untilMs: Math.max(0, untilMs),
+        hits: clampInteger(hits, 0, 8),
+        updatedAtMs: Math.max(0, updatedAtMs),
+      });
+    }
+    const persistedState: SharedRateLimitState = { entries };
+    pruneRateLimitState(nowMs, persistedState);
+    return persistedState.entries;
+  } catch {
+    return new Map();
+  }
+}
+
+function writePersistedRateLimitState(state: SharedRateLimitState): void {
+  try {
+    ensureRuntimeDir();
+    const payload: PersistedRateLimitState = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      entries: Object.fromEntries(state.entries.entries()),
+    };
+    writeFileSync(RATE_LIMIT_STATE_FILE, JSON.stringify(payload, null, 2), "utf-8");
+  } catch {
+    // Best effort only.
+  }
+}
+
+function mergeEntriesInPlace(
+  target: Map<string, SharedRateLimitStateEntry>,
+  incoming: Map<string, SharedRateLimitStateEntry>,
+): void {
+  for (const [key, entry] of incoming.entries()) {
+    const current = target.get(key);
+    if (!current) {
+      target.set(key, { ...entry });
+      continue;
+    }
+    target.set(key, {
+      untilMs: Math.max(current.untilMs, entry.untilMs),
+      hits: Math.max(current.hits, entry.hits),
+      updatedAtMs: Math.max(current.updatedAtMs, entry.updatedAtMs),
+    });
+  }
+}
+
+function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
+  // 同一プロセス内での並列アクセスを防止するフォールバック
+  const fallback = () => {
+    const localState = getSharedRateLimitState();
+    pruneRateLimitState(nowMs, localState);
+    const result = mutator();
+    writePersistedRateLimitState(localState);
+    return result;
+  };
+
+  // 既に操作中の場合は、フォールバックを実行して競合を回避
+  if (inMemoryRateLimitOperationInProgress) {
+    return fallback();
+  }
+
+  inMemoryRateLimitOperationInProgress = true;
+  try {
+    ensureRuntimeDir();
+    return withFileLock(
+      RATE_LIMIT_STATE_FILE,
+      () => {
+        const state = getSharedRateLimitState();
+        const persisted = readPersistedRateLimitState(nowMs);
+        mergeEntriesInPlace(state.entries, persisted);
+        pruneRateLimitState(nowMs, state);
+        const result = mutator();
+        writePersistedRateLimitState(state);
+        return result;
+      },
+      RATE_LIMIT_STATE_LOCK_OPTIONS,
+    );
+  } catch {
+    return fallback();
+  } finally {
+    inMemoryRateLimitOperationInProgress = false;
+  }
+}
+
+function pruneRateLimitState(nowMs: number, state: SharedRateLimitState = getSharedRateLimitState()): void {
 
   // First pass: remove expired entries based on TTL
   for (const [key, entry] of state.entries.entries()) {
@@ -277,12 +406,29 @@ function pruneRateLimitState(nowMs = Date.now()): void {
   // Second pass: enforce max entries limit to prevent unbounded memory growth
   // Remove oldest entries (by updatedAtMs) when over limit
   if (state.entries.size > MAX_RATE_LIMIT_ENTRIES) {
-    const entries = Array.from(state.entries.entries())
-      .sort((a, b) => a[1].updatedAtMs - b[1].updatedAtMs);
-    const toRemove = entries.slice(0, state.entries.size - MAX_RATE_LIMIT_ENTRIES);
-    for (const [key] of toRemove) {
-      state.entries.delete(key);
-    }
+    enforceRateLimitEntryCap(state);
+  }
+}
+
+function enforceRateLimitEntryCap(state: SharedRateLimitState): void {
+  if (state.entries.size <= MAX_RATE_LIMIT_ENTRIES) {
+    return;
+  }
+  const entries = Array.from(state.entries.entries())
+    .sort((a, b) => a[1].updatedAtMs - b[1].updatedAtMs);
+  const overflow = state.entries.size - MAX_RATE_LIMIT_ENTRIES;
+  const deletedKeys: string[] = [];
+  for (let index = 0; index < overflow; index += 1) {
+    const candidate = entries[index];
+    if (!candidate) break;
+    state.entries.delete(candidate[0]);
+    deletedKeys.push(candidate[0]);
+  }
+  if (deletedKeys.length > 0) {
+    console.warn(
+      `[retry-with-backoff] Rate limit entry cap (${MAX_RATE_LIMIT_ENTRIES}) exceeded. ` +
+        `Removed ${deletedKeys.length} oldest entries: ${deletedKeys.join(", ")}`
+    );
   }
 }
 
@@ -291,79 +437,92 @@ function pruneRateLimitState(nowMs = Date.now()): void {
  * @param key 対象のキー
  * @returns 現在のレートリミット状態
  */
-export function getRateLimitGateSnapshot(key: string | undefined): RateLimitGateSnapshot {
+export function getRateLimitGateSnapshot(
+  key: string | undefined,
+  timeOptions: RetryTimeOptions = {},
+): RateLimitGateSnapshot {
   const normalizedKey = normalizeRateLimitKey(key);
-  const nowMs = Date.now();
-  pruneRateLimitState(nowMs);
-  const entry = getSharedRateLimitState().entries.get(normalizedKey);
-  if (!entry) {
+  const now = timeOptions.now ?? Date.now;
+  const nowMs = now();
+  return withSharedRateLimitState(nowMs, () => {
+    const entry = getSharedRateLimitState().entries.get(normalizedKey);
+    if (!entry) {
+      return {
+        key: normalizedKey,
+        waitMs: 0,
+        hits: 0,
+        untilMs: nowMs,
+      };
+    }
     return {
       key: normalizedKey,
-      waitMs: 0,
-      hits: 0,
-      untilMs: nowMs,
+      waitMs: Math.max(0, entry.untilMs - nowMs),
+      hits: entry.hits,
+      untilMs: entry.untilMs,
     };
-  }
-  return {
-    key: normalizedKey,
-    waitMs: Math.max(0, entry.untilMs - nowMs),
-    hits: entry.hits,
-    untilMs: entry.untilMs,
-  };
-}
-
-function registerRateLimitGateHit(key: string | undefined, retryDelayMs: number): RateLimitGateSnapshot {
-  const normalizedKey = normalizeRateLimitKey(key);
-  const nowMs = Date.now();
-  pruneRateLimitState(nowMs);
-  const state = getSharedRateLimitState();
-  const previous = state.entries.get(normalizedKey);
-  const nextHits = Math.min(8, (previous?.hits ?? 0) + 1);
-  const baseDelayMs = Math.max(
-    DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS,
-    Math.trunc(retryDelayMs || DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS),
-  );
-  const adaptiveDelayMs = Math.min(
-    MAX_RATE_LIMIT_GATE_DELAY_MS,
-    baseDelayMs * 2 ** Math.max(0, nextHits - 1),
-  );
-  const nextUntilMs = Math.max(previous?.untilMs ?? nowMs, nowMs + adaptiveDelayMs);
-
-  state.entries.set(normalizedKey, {
-    untilMs: nextUntilMs,
-    hits: nextHits,
-    updatedAtMs: nowMs,
   });
-
-  return {
-    key: normalizedKey,
-    waitMs: Math.max(0, nextUntilMs - nowMs),
-    hits: nextHits,
-    untilMs: nextUntilMs,
-  };
 }
 
-function registerRateLimitGateSuccess(key: string | undefined): void {
+function registerRateLimitGateHit(
+  key: string | undefined,
+  retryDelayMs: number,
+  now: () => number,
+): RateLimitGateSnapshot {
   const normalizedKey = normalizeRateLimitKey(key);
-  const nowMs = Date.now();
-  const state = getSharedRateLimitState();
-  const current = state.entries.get(normalizedKey);
-  if (!current) return;
+  const nowMs = now();
+  return withSharedRateLimitState(nowMs, () => {
+    const state = getSharedRateLimitState();
+    const previous = state.entries.get(normalizedKey);
+    const nextHits = Math.min(8, (previous?.hits ?? 0) + 1);
+    const baseDelayMs = Math.max(
+      DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS,
+      Math.trunc(retryDelayMs || DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS),
+    );
+    const adaptiveDelayMs = Math.min(
+      MAX_RATE_LIMIT_GATE_DELAY_MS,
+      baseDelayMs * 2 ** Math.max(0, nextHits - 1),
+    );
+    const nextUntilMs = Math.max(previous?.untilMs ?? nowMs, nowMs + adaptiveDelayMs);
 
-  const nextHits = Math.max(0, current.hits - 1);
-  if (nextHits === 0) {
-    state.entries.delete(normalizedKey);
-    return;
-  }
+    state.entries.set(normalizedKey, {
+      untilMs: nextUntilMs,
+      hits: nextHits,
+      updatedAtMs: nowMs,
+    });
+    enforceRateLimitEntryCap(state);
 
-  const nextUntilMs = Math.max(
-    nowMs,
-    Math.min(current.untilMs, nowMs + DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS),
-  );
-  state.entries.set(normalizedKey, {
-    untilMs: nextUntilMs,
-    hits: nextHits,
-    updatedAtMs: nowMs,
+    return {
+      key: normalizedKey,
+      waitMs: Math.max(0, nextUntilMs - nowMs),
+      hits: nextHits,
+      untilMs: nextUntilMs,
+    };
+  });
+}
+
+function registerRateLimitGateSuccess(key: string | undefined, now: () => number): void {
+  const normalizedKey = normalizeRateLimitKey(key);
+  const nowMs = now();
+  withSharedRateLimitState(nowMs, () => {
+    const state = getSharedRateLimitState();
+    const current = state.entries.get(normalizedKey);
+    if (!current) return;
+
+    const nextHits = Math.max(0, current.hits - 1);
+    if (nextHits === 0) {
+      state.entries.delete(normalizedKey);
+      return;
+    }
+
+    const nextUntilMs = Math.max(
+      nowMs,
+      Math.min(current.untilMs, nowMs + DEFAULT_RATE_LIMIT_GATE_BASE_DELAY_MS),
+    );
+    state.entries.set(normalizedKey, {
+      untilMs: nextUntilMs,
+      hits: nextHits,
+      updatedAtMs: nowMs,
+    });
   });
 }
 
@@ -406,15 +565,31 @@ export function resolveRetryWithBackoffConfig(
  * @returns ステータスコード
  */
 export function extractRetryStatusCode(error: unknown): number | undefined {
-  if (error && typeof error === "object") {
-    const status = toFiniteNumber((error as { status?: unknown }).status);
-    if (status !== undefined) {
-      return clampInteger(status, 0, 999);
+  // null/undefinedの場合は早期リターン
+  if (error === null || error === undefined) {
+    return undefined;
+  }
+
+  // オブジェクト型の場合のみstatus/statusCodeをチェック
+  if (typeof error === "object" && !Array.isArray(error)) {
+    const errorObj = error as Record<string, unknown>;
+
+    // status プロパティの厳密な型チェック
+    if ("status" in errorObj) {
+      const status = errorObj.status;
+      // number型かつ有限値かつ正の整数のみ受け入れる
+      if (typeof status === "number" && Number.isFinite(status) && status >= 0 && Number.isInteger(status)) {
+        return clampInteger(status, 0, 999);
+      }
     }
 
-    const statusCode = toFiniteNumber((error as { statusCode?: unknown }).statusCode);
-    if (statusCode !== undefined) {
-      return clampInteger(statusCode, 0, 999);
+    // statusCode プロパティの厳密な型チェック
+    if ("statusCode" in errorObj) {
+      const statusCode = errorObj.statusCode;
+      // number型かつ有限値かつ正の整数のみ受け入れる
+      if (typeof statusCode === "number" && Number.isFinite(statusCode) && statusCode >= 0 && Number.isInteger(statusCode)) {
+        return clampInteger(statusCode, 0, 999);
+      }
     }
   }
 
@@ -441,6 +616,10 @@ export function extractRetryStatusCode(error: unknown): number | undefined {
     return 429;
   }
 
+  if (/econnreset|etimedout|ehostunreach|enetunreach|enotfound|socket hang up|network error|temporar(y|ily) unavailable/i.test(message)) {
+    return 503;
+  }
+
   return undefined;
 }
 
@@ -454,7 +633,15 @@ export function extractRetryStatusCode(error: unknown): number | undefined {
 export function isRetryableError(error: unknown, statusCode?: number): boolean {
   const code = statusCode ?? extractRetryStatusCode(error);
   if (code === 429) return true;
-  return code !== undefined && code >= 500 && code <= 599;
+  if (code !== undefined && code >= 500 && code <= 599) return true;
+
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  return /econnreset|etimedout|ehostunreach|enetunreach|enotfound|socket hang up|network error/i.test(message);
 }
 
 function applyJitter(delayMs: number, jitter: RetryJitterMode): number {
@@ -551,6 +738,7 @@ export async function retryWithBackoff<T>(
   operation: () => Promise<T>,
   options: RetryWithBackoffOptions = {},
 ): Promise<T> {
+  const now = options.now ?? Date.now;
   const config = resolveRetryWithBackoffConfig(options.cwd, options.overrides);
   const maxRateLimitRetries = toOptionalNonNegativeInt(
     options.maxRateLimitRetries,
@@ -574,10 +762,16 @@ export async function retryWithBackoff<T>(
     }
 
     if (rateLimitKeys.length > 0) {
+      const nowMs = now();
       const gate = selectLongestRateLimitGate(
-        rateLimitKeys.map((scopeKey) => getRateLimitGateSnapshot(scopeKey)),
+        rateLimitKeys.map((scopeKey) => getRateLimitGateSnapshot(scopeKey, { now })),
+        nowMs,
       );
       if (gate.waitMs > 0) {
+        recordTotalLimitObservation({
+          kind: "rate_limit",
+          waitMs: gate.waitMs,
+        });
         if (maxRateLimitWaitMs !== undefined && gate.waitMs > maxRateLimitWaitMs) {
           throw createRateLimitFastFailError(
             `gate_wait=${gate.waitMs}ms exceeds limit=${maxRateLimitWaitMs}ms key=${gate.key}`,
@@ -594,15 +788,28 @@ export async function retryWithBackoff<T>(
     }
 
     try {
+      const operationStartedAt = now();
       const result = await operation();
+      const operationLatencyMs = Math.max(0, now() - operationStartedAt);
+      recordTotalLimitObservation({
+        kind: "success",
+        latencyMs: operationLatencyMs,
+      });
       if (rateLimitKeys.length > 0) {
         for (const scopeKey of rateLimitKeys) {
-          registerRateLimitGateSuccess(scopeKey);
+          registerRateLimitGateSuccess(scopeKey, now);
         }
       }
       return result;
     } catch (error) {
       const statusCode = extractRetryStatusCode(error);
+      if (statusCode === 429) {
+        recordTotalLimitObservation({ kind: "rate_limit" });
+      } else {
+        recordTotalLimitObservation({
+          kind: statusCode === 408 ? "timeout" : "error",
+        });
+      }
       const retryable = options.shouldRetry
         ? options.shouldRetry(error, statusCode)
         : isRetryableError(error, statusCode);
@@ -623,8 +830,10 @@ export async function retryWithBackoff<T>(
       attempt += 1;
       let delayMs = computeBackoffDelayMs(attempt, config);
       if (statusCode === 429 && rateLimitKeys.length > 0) {
+        const nowMs = now();
         const sharedGate = selectLongestRateLimitGate(
-          rateLimitKeys.map((scopeKey) => registerRateLimitGateHit(scopeKey, delayMs)),
+          rateLimitKeys.map((scopeKey) => registerRateLimitGateHit(scopeKey, delayMs, now)),
+          nowMs,
         );
         delayMs = Math.max(delayMs, sharedGate.waitMs);
         if (maxRateLimitWaitMs !== undefined && delayMs > maxRateLimitWaitMs) {

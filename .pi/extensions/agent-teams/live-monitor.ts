@@ -28,24 +28,28 @@
 // Why: Separates live monitoring logic from main agent-teams.ts for maintainability.
 // Related: .pi/extensions/agent-teams.ts
 
-import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey } from "@mariozechner/pi-tui";
 
 import {
   formatDurationMs,
   formatBytes,
   formatClockTime,
+  formatElapsedClock,
   normalizeForSingleLine,
 } from "../../lib/format-utils.js";
 import {
   appendTail,
   countOccurrences,
   estimateLineCount,
+  pushWrappedLine,
   renderPreviewWithMarkdown,
 } from "../../lib/tui/tui-utils.js";
 import {
   toTailLines,
   looksLikeMarkdown,
   getLiveStatusGlyph,
+  getLiveStatusColor,
+  getActivityIndicator,
   isEnterInput,
   finalizeLiveLines,
 } from "../../lib/live-view-utils.js";
@@ -60,10 +64,11 @@ import {
   type TeamLiveViewMode,
   type AgentTeamLiveMonitorController,
   type LiveStreamView,
+  type TeamQueueStatus,
 } from "../../lib/team-types.js";
 
 // Re-export types for convenience
-export type { TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonitorController, LiveStreamView };
+export type { TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonitorController, LiveStreamView, TeamQueueStatus };
 
 // ============================================================================
 // Constants
@@ -71,9 +76,518 @@ export type { TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonito
 
 const LIVE_PREVIEW_LINE_LIMIT = 120;
 const LIVE_LIST_WINDOW_SIZE = 22;
-const LIVE_EVENT_TAIL_LIMIT = Math.max(60, Number(process.env.PI_LIVE_EVENT_TAIL_LIMIT) || 120);
+const LIVE_EVENT_TAIL_LIMIT = (() => {
+  const envVal = process.env.PI_LIVE_EVENT_TAIL_LIMIT;
+  if (envVal !== undefined) {
+    const parsed = Number(envVal);
+    if (!Number.isFinite(parsed) || parsed < 60) {
+      console.warn(
+        `[agent-teams/live-monitor] Invalid PI_LIVE_EVENT_TAIL_LIMIT="${envVal}", using default 120`
+      );
+      return 120;
+    }
+    return Math.max(60, parsed);
+  }
+  return 120;
+})();
 const LIVE_EVENT_INLINE_LINE_LIMIT = 8;
 const LIVE_EVENT_DETAIL_LINE_LIMIT = 28;
+
+// ポーリング間隔（ストリーミングがない期間もUIを更新して「動いている」ことを示す）
+const LIVE_POLL_INTERVAL_MS = (() => {
+  const envVal = process.env.PI_LIVE_POLL_INTERVAL_MS;
+  if (envVal !== undefined) {
+    const parsed = Number(envVal);
+    if (!Number.isFinite(parsed) || parsed < 100) {
+      console.warn(
+        `[agent-teams/live-monitor] Invalid PI_LIVE_POLL_INTERVAL_MS="${envVal}", using default 500`
+      );
+      return 500;
+    }
+    return Math.max(100, Math.min(5000, parsed));
+  }
+  return 500;
+})();
+
+// アクティビティアニメーション用のスピナー文字
+const SPINNER_FRAMES = ["|", "/", "-", "\\"];
+
+// ============================================================================
+// Tree View Utilities
+// ============================================================================
+
+interface TreeNode {
+  item: TeamLiveItem;
+  level: number;
+  children: string[]; // member IDs
+}
+
+/**
+ * Parse "[hh:mm:ss] ..." style event lines.
+ * Accepts h:mm:ss and hh:mm:ss(.SSS) and normalizes to hh:mm:ss.
+ */
+function parseEventTimeLine(
+  eventLine: string,
+): { time: string; timeMs: number; rest: string } | null {
+  const match = eventLine.match(/^\[(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.+)$/);
+  if (!match) return null;
+
+  const hh = Number(match[1]);
+  const mm = Number(match[2]);
+  const ss = Number(match[3]);
+  const msRaw = match[4] ? Number(match[4].padEnd(3, "0")) : 0;
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || !Number.isFinite(ss) || !Number.isFinite(msRaw)) {
+    return null;
+  }
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59 || ss < 0 || ss > 59 || msRaw < 0 || msRaw > 999) {
+    return null;
+  }
+
+  const time = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+  const timeMs = (((hh * 60) + mm) * 60 + ss) * 1000 + msRaw;
+  return { time, timeMs, rest: match[5] };
+}
+
+/**
+ * アイテムのツリーレベルを計算
+ * @summary ツリーレベル計算
+ * @param items アイテム配列
+ * @returns アイテムID→レベルのマップ
+ */
+function computeTreeLevels(items: TeamLiveItem[]): Map<string, number> {
+  const levels = new Map<string, number>();
+  const labelToItem = new Map(items.map(i => [i.label, i]));
+
+  // partnersに基づいてレベルを計算
+  // 誰にも依存しない = レベル0
+  // AのpartnersにBがある = AはBより下（Bの完了を待つ可能性）
+
+  const visited = new Set<string>();
+
+  function getLevel(item: TeamLiveItem): number {
+    if (levels.has(item.label)) {
+      return levels.get(item.label)!;
+    }
+
+    // 循環参照防止
+    if (visited.has(item.label)) {
+      return 0;
+    }
+    visited.add(item.label);
+
+    // partnersが空 = ルート
+    if (!item.partners || item.partners.length === 0) {
+      levels.set(item.label, 0);
+      return 0;
+    }
+
+    // partnersの中で最も深いレベル + 1
+    let maxPartnerLevel = -1;
+    for (const partnerId of item.partners) {
+      const partner = labelToItem.get(partnerId);
+      if (partner) {
+        const partnerLevel = getLevel(partner);
+        maxPartnerLevel = Math.max(maxPartnerLevel, partnerLevel);
+      }
+    }
+
+    const level = maxPartnerLevel >= 0 ? maxPartnerLevel + 1 : 0;
+    levels.set(item.label, level);
+    return level;
+  }
+
+  for (const item of items) {
+    visited.clear();
+    getLevel(item);
+  }
+
+  return levels;
+}
+
+/**
+ * ツリーラインのプレフィックスを生成
+ * @summary ツリープレフィックス生成
+ * @param level レベル
+ * @param isLast 同じレベルで最後か
+ * @param parentContinues 親レベルが継続するか
+ * @returns プレフィックス文字列
+ */
+function getTreePrefix(level: number, isLast: boolean, parentContinues: boolean[]): string {
+  if (level === 0) {
+    return "*── ";
+  }
+
+  const parts: string[] = [];
+
+  // 親レベルの縦線
+  for (let i = 0; i < level; i++) {
+    if (i === level - 1) {
+      // 現在のレベル
+      parts.push(isLast ? "└── " : "├── ");
+    } else if (parentContinues[i]) {
+      parts.push("│   ");
+    } else {
+      parts.push("    ");
+    }
+  }
+
+  return parts.join("");
+}
+
+/**
+ * アクティビティスピナーを取得
+ * @summary スピナー取得
+ * @param isRunning 実行中かどうか
+ * @returns スピナー文字
+ */
+function getActivitySpinner(isRunning: boolean): string {
+  if (!isRunning) return "";
+  const now = Date.now();
+  const frameIndex = Math.floor(now / 200) % SPINNER_FRAMES.length;
+  return SPINNER_FRAMES[frameIndex];
+}
+
+/**
+ * ツリービューを描画
+ * @summary ツリービュー描画
+ */
+function renderTreeView(
+  items: TeamLiveItem[],
+  cursor: number,
+  width: number,
+  theme: any,
+): string[] {
+  const lines: string[] = [];
+  const add = (line = "") => pushWrappedLine(lines, line, width);
+
+  // レベル計算
+  const levels = computeTreeLevels(items);
+
+  // レベル順にソート（同じレベルは元の順序）
+  const sortedItems = [...items].sort((a, b) => {
+    const levelA = levels.get(a.label) || 0;
+    const levelB = levels.get(b.label) || 0;
+    return levelA - levelB;
+  });
+
+  // 各レベルにアイテムがあるか追跡
+  const levelHasMore = new Map<number, boolean>();
+  const itemsByLevel = new Map<number, number>();
+
+  for (const item of sortedItems) {
+    const level = levels.get(item.label) || 0;
+    itemsByLevel.set(level, (itemsByLevel.get(level) || 0) + 1);
+  }
+
+  const drawnByLevel = new Map<number, number>();
+
+  // ツリー描画
+  for (let idx = 0; idx < sortedItems.length; idx++) {
+    const item = sortedItems[idx];
+    const level = levels.get(item.label) || 0;
+    const originalIndex = items.findIndex(i => i.label === item.label);
+    const isSelected = originalIndex === cursor;
+    const isRunning = item.status === "running";
+
+    // このレベルで何番目か
+    const drawn = drawnByLevel.get(level) || 0;
+    drawnByLevel.set(level, drawn + 1);
+    const totalAtLevel = itemsByLevel.get(level) || 1;
+    const isLast = drawn >= totalAtLevel - 1;
+
+    // 親レベルが継続するか
+    const parentContinues: boolean[] = [];
+    for (let l = 0; l < level; l++) {
+      const drawnAtL = drawnByLevel.get(l) || 0;
+      const totalAtL = itemsByLevel.get(l) || 0;
+      parentContinues.push(drawnAtL < totalAtL);
+    }
+
+    const prefix = getTreePrefix(level, isLast, parentContinues);
+    const glyph = getLiveStatusGlyph(item.status);
+    const glyphColor = getLiveStatusColor(item.status);
+    const elapsed = formatElapsedClock(item);
+
+    // アクティビティ（スピナー付き）
+    const hasOutput = item.stdoutBytes > 0;
+    const isRecent = item.lastChunkAtMs ? (Date.now() - item.lastChunkAtMs) < 2000 : false;
+    // stderr is often used for warnings/noise; keep err! for actual failures or recent stderr activity.
+    const hasError = item.status === "failed" || (item.stderrBytes > 0 && isRecent);
+    const activityBase = getActivityIndicator(hasOutput, hasError, isRecent);
+    const spinner = getActivitySpinner(isRunning);
+    
+    // 実行中で出力がない場合は「waiting...」を表示
+    let activity: string;
+    if (isRunning && !hasOutput && !activityBase) {
+      activity = spinner ? `${spinner} waiting...` : "waiting...";
+    } else if (spinner && activityBase) {
+      activity = `${spinner} ${activityBase}`;
+    } else {
+      activity = activityBase || (spinner ? spinner : "");
+    }
+
+    const coloredGlyph = theme.fg(glyphColor, glyph);
+    const treeLine = `${prefix}${coloredGlyph} ${item.label}`;
+    const meta = activity
+      ? `${elapsed}  ${activity}  ${formatBytes(item.stdoutBytes)}`
+      : `${elapsed}  ${formatBytes(item.stdoutBytes)}`;
+
+    // 選択行は全体を強調色で表示（プレフィックスなし）
+    if (isSelected) {
+      add(theme.fg("accent", theme.bold(`${treeLine} ${meta}`)));
+    } else {
+      add(`${treeLine} ${theme.fg("dim", meta)}`);
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * 通信イベントを描画（連携可視化を含む）
+ * @summary 通信イベント描画
+ */
+function renderCommunicationEvents(
+  items: TeamLiveItem[],
+  limit: number,
+  width: number,
+  theme: any,
+): string[] {
+  const lines: string[] = [];
+  const add = (line = "") => pushWrappedLine(lines, line, width);
+
+  // 全アイテムから最近のイベントを収集
+  const allEvents: { time: string; from: string; to: string; msg: string }[] = [];
+
+  for (const item of items) {
+    // イベント履歴から通信を抽出
+    const recentEvents = item.events.slice(-5);
+    for (const event of recentEvents) {
+      const parsed = parseEventTimeLine(event);
+      if (parsed) {
+        allEvents.push({
+          time: parsed.time,
+          from: item.label,
+          to: item.partners[0] || "team",
+          msg: parsed.rest.substring(0, 40),
+        });
+      }
+    }
+  }
+
+  // 最新N件を表示（制限を10に増加）
+  const effectiveLimit = Math.max(limit, 10);
+  const recent = allEvents.slice(-effectiveLimit);
+  if (recent.length > 0) {
+    add("");
+    add(theme.fg("dim", "COMMUNICATION:"));
+    for (const ev of recent) {
+      add(theme.fg("dim", `  ${ev.time}  ${ev.from} → ${ev.to}: ${ev.msg}`));
+    }
+  }
+
+  // 連携可視化: DISCUSSIONセクションからの参照抽出
+  const referenceSummary: string[] = [];
+  for (const item of items) {
+    if (!item.discussionTail || item.discussionTail.length === 0) continue;
+    
+    // パートナーIDを抽出（partnersは "teamId/memberId" 形式）
+    const partnerLabels = item.partners;
+    if (partnerLabels.length === 0) continue;
+    
+    // DISCUSSION内で参照されているパートナーを検出
+    const referencedPartners: string[] = [];
+    const discussionLower = item.discussionTail.toLowerCase();
+    
+    for (const partnerLabel of partnerLabels) {
+      // パートナーのロール名やIDを検索
+      const partnerId = partnerLabel.split("/").pop() || partnerLabel;
+      if (discussionLower.includes(partnerId.toLowerCase()) || 
+          discussionLower.includes(partnerLabel.toLowerCase())) {
+        referencedPartners.push(partnerLabel);
+      }
+    }
+    
+    // 「合意」パターンも検出
+    const hasAgreement = /合意|agreement|consensus|一致/.test(item.discussionTail);
+    const hasDisagreement = /不同意|disagree|矛盾|conflict/.test(item.discussionTail);
+    
+    if (referencedPartners.length > 0) {
+      const status = hasAgreement ? "[合意]" : hasDisagreement ? "[検討中]" : "";
+      referenceSummary.push(`${item.label} → ${referencedPartners.join(", ")} ${status}`);
+    }
+  }
+  
+  if (referenceSummary.length > 0) {
+    add("");
+    add(theme.fg("accent", "COLLABORATION STATUS:"));
+    for (const ref of referenceSummary) {
+      add(theme.fg("success", `  ${ref}`));
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * タイムラインビューを描画
+ * @summary タイムライン描画
+ */
+function renderTimelineView(
+  items: TeamLiveItem[],
+  globalEvents: string[],
+  width: number,
+  theme: any,
+): string[] {
+  const lines: string[] = [];
+  const add = (line = "") => pushWrappedLine(lines, line, width);
+
+  // 全イベントを収集してソート
+  interface TimelineEvent {
+    time: string;
+    timeMs: number;
+    type: "start" | "done" | "fail" | "msg" | "event";
+    agent: string;
+    target?: string;
+    content: string;
+  }
+
+  const allEvents: TimelineEvent[] = [];
+
+  // グローバルイベントを追加
+  for (const event of globalEvents) {
+    const parsed = parseEventTimeLine(event);
+    if (parsed) {
+      allEvents.push({
+        time: parsed.time,
+        timeMs: parsed.timeMs,
+        type: "event",
+        agent: "team",
+        content: parsed.rest.substring(0, 50),
+      });
+    }
+  }
+
+  // 各エージェントのイベントを追加
+  for (const item of items) {
+    // 開始イベント
+    if (item.startedAtMs) {
+      allEvents.push({
+        time: formatClockTime(item.startedAtMs),
+        timeMs: item.startedAtMs,
+        type: "start",
+        agent: item.label,
+        content: "START",
+      });
+    }
+
+    // イベント履歴
+    for (const event of item.events) {
+      const parsed = parseEventTimeLine(event);
+      if (parsed) {
+        const content = parsed.rest;
+        let type: TimelineEvent["type"] = "msg";
+        if (content.includes("DONE") || content.includes("completed")) {
+          type = "done";
+        } else if (content.includes("FAIL") || content.includes("error")) {
+          type = "fail";
+        }
+        allEvents.push({
+          time: parsed.time,
+          timeMs: parsed.timeMs,
+          type,
+          agent: item.label,
+          target: item.partners[0],
+          content: content.substring(0, 45),
+        });
+      }
+    }
+
+    // 完了イベント
+    if (item.finishedAtMs && item.status !== "running") {
+      allEvents.push({
+        time: formatClockTime(item.finishedAtMs),
+        timeMs: item.finishedAtMs,
+        type: item.status === "failed" ? "fail" : "done",
+        agent: item.label,
+        content: item.status === "failed" ? `FAIL: ${item.error || "error"}` : "DONE",
+      });
+    }
+  }
+
+  // 時間順にソート（簡易的）
+  allEvents.sort((a, b) => {
+    if (a.timeMs && b.timeMs) return a.timeMs - b.timeMs;
+    return a.time.localeCompare(b.time);
+  });
+
+  // エージェントごとの色
+  const agentColors = ["accent", "success", "warning", "info"];
+  const agentColorMap = new Map<string, string>();
+  items.forEach((item, i) => {
+    agentColorMap.set(item.label, agentColors[i % agentColors.length]);
+  });
+
+  // アクティブなエージェントを追跡
+  const activeAgents = new Set<string>();
+
+  // タイムライン描画
+  const displayEvents = allEvents.slice(-30); // 最新30件
+
+  for (const ev of displayEvents) {
+    const agentColor = agentColorMap.get(ev.agent) || "dim";
+    const agentPrefix = theme.fg(agentColor, ev.agent.padEnd(12));
+
+    // イベントタイプに応じたアイコンと形式
+    let icon: string;
+    let content: string;
+    let contentColor = "dim";
+
+    switch (ev.type) {
+      case "start":
+        icon = "START";
+        content = ev.content;
+        activeAgents.add(ev.agent);
+        break;
+      case "done":
+        icon = "DONE";
+        content = ev.content;
+        contentColor = "success";
+        activeAgents.delete(ev.agent);
+        break;
+      case "fail":
+        icon = "FAIL";
+        content = ev.content;
+        contentColor = "error";
+        activeAgents.delete(ev.agent);
+        break;
+      case "msg":
+        icon = ">";
+        content = ev.target ? `→ ${ev.target}: ${ev.content}` : ev.content;
+        break;
+      default:
+        icon = "*";
+        content = ev.content;
+    }
+
+    const iconText = theme.fg(contentColor === "success" ? "success" : contentColor === "error" ? "error" : "dim", icon.padStart(5));
+    add(`${ev.time}  ${agentPrefix} ${iconText} ${theme.fg(contentColor, content)}`);
+  }
+
+  // 現在の状態
+  add("");
+  add(theme.fg("dim", "─── CURRENT STATE ───"));
+  for (const item of items) {
+    const isActive = activeAgents.has(item.label) || item.status === "running";
+    const glyph = getLiveStatusGlyph(item.status);
+    const glyphColor = getLiveStatusColor(item.status);
+    const status = isActive ? "active" : "idle";
+    const line = `${theme.fg(glyphColor, glyph)} ${item.label.padEnd(12)} ${theme.fg("dim", status)} ${formatDurationMs(item)}`;
+    add(line);
+  }
+
+  return lines;
+}
 
 // ============================================================================
 // Utilities
@@ -136,17 +650,48 @@ export function renderAgentTeamLiveView(input: {
   width: number;
   height?: number;
   theme: any;
+  /** 待機状態情報（オプション） */
+  queueStatus?: {
+    isWaiting: boolean;
+    waitedMs?: number;
+    queuePosition?: number;
+    queuedAhead?: number;
+    estimatedWaitMs?: number;
+  };
 }): string[] {
   const lines: string[] = [];
-  const add = (line = "") => lines.push(truncateToWidth(line, input.width));
+  const add = (line = "") => pushWrappedLine(lines, line, input.width);
   const theme = input.theme;
   const items = input.items;
   const running = items.filter((item) => item.status === "running").length;
   const completed = items.filter((item) => item.status === "completed").length;
   const failed = items.filter((item) => item.status === "failed").length;
 
+  // コンパクトなヘッダー
   add(theme.bold(theme.fg("accent", `${input.title} [${input.mode}]`)));
-  add(theme.fg("dim", `running ${running}/${items.length} | completed ${completed} | failed ${failed} | updated ${formatClockTime(Date.now())}`));
+  const runText = running > 0 ? theme.fg("accent", `Run:${running}`) : `Run:${running}`;
+  const doneText = completed > 0 ? theme.fg("success", `Done:${completed}`) : `Done:${completed}`;
+  const failText = failed > 0 ? theme.fg("error", `Fail:${failed}`) : `Fail:${failed}`;
+  add(`${runText}  ${doneText}  ${failText}`);
+  
+  // 待機状態表示
+  const queue = input.queueStatus;
+  if (queue?.isWaiting) {
+    const waitParts: string[] = [];
+    if (queue.queuePosition !== undefined) {
+      waitParts.push(`pos:${queue.queuePosition}`);
+    }
+    if (queue.waitedMs !== undefined) {
+      waitParts.push(`wait:${formatDurationMs({ startedAtMs: Date.now() - queue.waitedMs })}`);
+    }
+    if (queue.queuedAhead !== undefined && queue.queuedAhead > 0) {
+      waitParts.push(`ahead:${queue.queuedAhead}`);
+    }
+    if (waitParts.length > 0) {
+      add(theme.fg("warning", `QUEUE: ${waitParts.join(" | ")}`));
+    }
+  }
+  
   const globalEventLimit = input.mode === "detail" ? 8 : 4;
   const recentGlobalEvents = toEventTailLines(input.globalEvents, globalEventLimit);
   if (recentGlobalEvents.length > 0) {
@@ -158,7 +703,7 @@ export function renderAgentTeamLiveView(input: {
   }
 
   if (items.length === 0) {
-    add(theme.fg("dim", "[q] close"));
+    add(theme.fg("dim", "[q] quit"));
     add("");
     add(theme.fg("dim", "no running team members"));
     return finalizeLiveLines(lines, input.height);
@@ -178,104 +723,45 @@ export function renderAgentTeamLiveView(input: {
   );
 
   if (input.mode === "list") {
-    add(theme.fg("dim", "[j/k] move  [up/down] move  [g/G] jump  [enter] detail  [d] discussion  [tab] stream  [q] close"));
+    // ツリービューのキーボードヒント
+    add(theme.fg("dim", "[j/k] nav  [ret] detail  [d] disc  [t] time  [q] quit"));
     add("");
-    const range = computeLiveWindow(clampedCursor, items.length, LIVE_LIST_WINDOW_SIZE);
-    if (range.start > 0) {
-      add(theme.fg("dim", `... ${range.start} above ...`));
+
+    // ツリー形式でメンバーを描画
+    const treeLines = renderTreeView(items, clampedCursor, input.width, theme);
+    for (const line of treeLines) {
+      add(line);
     }
 
-    for (let index = range.start; index < range.end; index += 1) {
-      const item = items[index];
-      const isSelected = index === clampedCursor;
-      const prefix = isSelected ? ">" : " ";
-      const glyph = getLiveStatusGlyph(item.status);
-      const statusText = item.status.padEnd(9, " ");
-      const base = `${prefix} [${glyph}] ${item.label}`;
-      const outLines = estimateLineCount(item.stdoutBytes, item.stdoutNewlineCount, item.stdoutEndsWithNewline);
-      const errLines = estimateLineCount(item.stderrBytes, item.stderrNewlineCount, item.stderrEndsWithNewline);
-      const partnerPreview =
-        item.partners.length > 0
-          ? item.partners
-              .map((partner) => partner.split("/").pop() || partner)
-              .slice(0, 2)
-              .join(",")
-          : "-";
-      const partnerOverflow = item.partners.length > 2 ? `+${item.partners.length - 2}` : "";
-      const phaseText = formatLivePhase(item.phase, item.phaseRound);
-      const eventText = normalizeForSingleLine(item.lastEvent || "-", 42);
-      const meta = `${statusText} ${formatDurationMs(item)} phase:${phaseText} out:${formatBytes(item.stdoutBytes)}/${outLines}l err:${formatBytes(item.stderrBytes)}/${errLines}l link:${partnerPreview}${partnerOverflow} evt:${eventText}`;
-      add(`${isSelected ? theme.fg("accent", base) : base} ${theme.fg("dim", meta)}`);
-    }
-
-    if (range.end < items.length) {
-      add(theme.fg("dim", `... ${items.length - range.end} below ...`));
+    // 通信イベント表示
+    const commLines = renderCommunicationEvents(items, 5, input.width, theme);
+    for (const line of commLines) {
+      add(line);
     }
 
     add("");
-    add(
-      theme.fg(
-        "dim",
-        `selected ${clampedCursor + 1}/${items.length}: ${selected.label} | status:${selected.status} | phase:${formatLivePhase(selected.phase, selected.phaseRound)} | elapsed:${formatDurationMs(selected)} | last_event:${formatClockTime(selected.lastEventAtMs)}`,
-      ),
-    );
+    // 選択アイテム情報
+    const statusColor = selected.status === "failed" ? "error" : selected.status === "completed" ? "success" : "dim";
+    add(theme.fg("dim", `${selected.label} | ${theme.fg(statusColor, selected.status)} | ${formatLivePhase(selected.phase, selected.phaseRound)} | ${formatDurationMs(selected)}`));
 
-    const inlineMetadataLines = 8;
-    const inlineMinEventLines = 2;
     const inlineMinPreviewLines = 3;
     const height = input.height ?? 0;
     const remaining = height > 0 ? height - lines.length : 0;
-    const canShowInline =
-      height > 0 && remaining >= inlineMetadataLines + inlineMinEventLines + inlineMinPreviewLines;
+    const canShowInline = height > 0 && remaining >= inlineMinPreviewLines + 2;
 
     if (!canShowInline) {
-      add(theme.fg("dim", "press [enter] to open detailed output view"));
+      add(theme.fg("dim", "[ret] open detail"));
       return finalizeLiveLines(lines, input.height);
     }
 
+    // 簡易プレビュー
     const selectedTail = input.stream === "stdout" ? selected.stdoutTail : selected.stderrTail;
-    const availableAfterMetadata = Math.max(1, height - lines.length - inlineMetadataLines);
-    let inlineEventLimit = Math.max(
-      inlineMinEventLines,
-      Math.min(LIVE_EVENT_INLINE_LINE_LIMIT, Math.floor(availableAfterMetadata / 3)),
-    );
-    let inlinePreviewLimit = availableAfterMetadata - inlineEventLimit;
-    if (inlinePreviewLimit < inlineMinPreviewLines) {
-      const needed = inlineMinPreviewLines - inlinePreviewLimit;
-      inlineEventLimit = Math.max(inlineMinEventLines, inlineEventLimit - needed);
-      inlinePreviewLimit = availableAfterMetadata - inlineEventLimit;
-    }
-    inlinePreviewLimit = Math.max(
-      inlineMinPreviewLines,
-      Math.min(LIVE_PREVIEW_LINE_LIMIT, inlinePreviewLimit),
-    );
+    const inlinePreviewLimit = Math.max(inlineMinPreviewLines, Math.min(LIVE_PREVIEW_LINE_LIMIT, remaining - 2));
     const inlinePreview = renderPreviewWithMarkdown(selectedTail, input.width, inlinePreviewLimit);
-    const inlineEventLines = toEventTailLines(selected.events, inlineEventLimit);
-    const summaryText = selected.summary || "-";
-    const errorText = selected.error || "-";
-    const linksText = selected.partners.length > 0 ? selected.partners.join(", ") : "-";
-    add(theme.fg("dim", `inline detail (${input.stream}) | [tab] switch stream`));
-    add(
-      theme.fg(
-        "dim",
-        `phase: ${formatLivePhase(selected.phase, selected.phaseRound)} | last_event: ${formatClockTime(selected.lastEventAtMs)}`,
-      ),
-    );
-    add(theme.fg("dim", `links: ${linksText}`));
-    add(theme.fg("dim", `summary: ${summaryText}`));
-    add(theme.fg(selected.error ? "error" : "dim", `error: ${errorText}`));
-    add(theme.fg("dim", `render mode: ${inlinePreview.renderedAsMarkdown ? "markdown" : "raw"}`));
-    add(theme.fg("dim", `trace tail (${inlineEventLines.length}/${selected.events.length})`));
-    if (inlineEventLines.length === 0) {
-      add(theme.fg("dim", "(no events yet)"));
-    } else {
-      for (const eventLine of inlineEventLines) {
-        add(theme.fg("dim", eventLine));
-      }
-    }
-    add(theme.fg("dim", `output tail (${input.stream})`));
+
+    add(theme.fg("dim", `[${input.stream}] [tab] switch`));
     if (inlinePreview.lines.length === 0) {
-      add(theme.fg("dim", "(no output yet)"));
+      add(theme.fg("dim", "(no output)"));
     } else {
       for (const line of inlinePreview.lines) {
         add(line);
@@ -285,26 +771,16 @@ export function renderAgentTeamLiveView(input: {
   }
 
   if (input.mode === "discussion") {
-    add(theme.fg("dim", "[j/k] move target  [up/down] move  [g/G] jump  [b|esc] back  [q] close"));
+    // コンパクトなキーボードヒント
+    add(theme.fg("dim", "[t] timeline  [b] back  [q] quit"));
     add("");
-    add(theme.bold(theme.fg("accent", `DISCUSSION VIEW (${clampedCursor + 1}/${items.length})`)));
-    add(
-      theme.fg(
-        "dim",
-        `status:${selected.status} | phase:${formatLivePhase(selected.phase, selected.phaseRound)} | elapsed:${formatDurationMs(selected)}`,
-      ),
-    );
+    add(theme.bold(theme.fg("accent", `DISCUSSION (${clampedCursor + 1}/${items.length})`)));
+    const statusColor = selected.status === "failed" ? "error" : selected.status === "completed" ? "success" : "dim";
+    add(theme.fg("dim", `${selected.label} | ${theme.fg(statusColor, selected.status)} | ${formatLivePhase(selected.phase, selected.phaseRound)}`));
     add("");
 
     // Discussion tail display for selected member
-    add(
-      theme.bold(
-        theme.fg(
-          "accent",
-          `[${selected.label}] DISCUSSION section`,
-        ),
-      ),
-    );
+    add(theme.bold(theme.fg("accent", `[${selected.label}] DISCUSSION`)));
 
     const discussionLines = toTailLines(selected.discussionTail || "", LIVE_PREVIEW_LINE_LIMIT);
     if (discussionLines.length === 0) {
@@ -317,7 +793,7 @@ export function renderAgentTeamLiveView(input: {
     add("");
 
     // Show discussion summary for all members
-    add(theme.bold(theme.fg("accent", "Team Discussion Summary")));
+    add(theme.bold(theme.fg("accent", "Team Summary")));
     for (const item of items) {
       const hasDiscussion = (item.discussionTail || "").trim().length > 0;
       const prefix = item === selected ? "> " : "  ";
@@ -325,7 +801,7 @@ export function renderAgentTeamLiveView(input: {
       add(
         theme.fg(
           item === selected ? "accent" : "dim",
-          `${prefix}[${statusMarker}] ${item.label} (${formatBytes(item.discussionBytes)}B, ${item.discussionNewlineCount} lines)`,
+          `${prefix}[${statusMarker}] ${item.label} (${formatBytes(item.discussionBytes)}/${item.discussionNewlineCount}L)`,
         ),
       );
     }
@@ -333,25 +809,32 @@ export function renderAgentTeamLiveView(input: {
     return finalizeLiveLines(lines, input.height);
   }
 
+  // Timeline mode
+  if (input.mode === "timeline") {
+    add(theme.fg("dim", "[d] disc  [b] back  [q] quit"));
+    add("");
+
+    const timelineLines = renderTimelineView(items, input.globalEvents, input.width, theme);
+    for (const line of timelineLines) {
+      add(line);
+    }
+
+    return finalizeLiveLines(lines, input.height);
+  }
+
   // Detail mode
-  add(theme.fg("dim", "[j/k] move target  [up/down] move  [g/G] jump  [tab] stdout/stderr  [d] discussion  [b|esc] back  [q] close"));
+  add(theme.fg("dim", "[tab] stream  [d] disc  [t] timeline  [b] back  [q] quit"));
   add("");
-  add(theme.bold(theme.fg("accent", `selected ${clampedCursor + 1}/${items.length}: ${selected.label}`)));
+  add(theme.bold(theme.fg("accent", `${selected.label}`)));
   add(
     theme.fg(
       "dim",
       `status:${selected.status} | elapsed:${formatDurationMs(selected)} | started:${formatClockTime(selected.startedAtMs)} | last:${formatClockTime(selected.lastChunkAtMs)} | finished:${formatClockTime(selected.finishedAtMs)}`,
     ),
   );
-  add(
-    theme.fg(
-      "dim",
-      `phase:${formatLivePhase(selected.phase, selected.phaseRound)} | last_event:${formatClockTime(selected.lastEventAtMs)} | last_message:${normalizeForSingleLine(selected.lastEvent || "-", 72)}`,
-    ),
-  );
-  add(theme.fg("dim", `stdout ${formatBytes(selected.stdoutBytes)} (${selectedOutLines} lines)`));
-  add(theme.fg("dim", `stderr ${formatBytes(selected.stderrBytes)} (${selectedErrLines} lines)`));
-  add(theme.fg("dim", `links: ${selected.partners.length > 0 ? selected.partners.join(", ") : "-"}`));
+  const statusColor = selected.status === "failed" ? "error" : selected.status === "completed" ? "success" : "accent";
+  add(theme.fg("dim", `${theme.fg(statusColor, selected.status)} | ${formatLivePhase(selected.phase, selected.phaseRound)} | ${formatDurationMs(selected)}`));
+  add(theme.fg("dim", `out:${formatBytes(selected.stdoutBytes)}/${selectedOutLines}L | err:${formatBytes(selected.stderrBytes)}/${selectedErrLines}L`));
   if (selected.summary) {
     add(theme.fg("dim", `summary: ${selected.summary}`));
   }
@@ -468,12 +951,47 @@ export function createAgentTeamLiveMonitor(
   let doneUi: (() => void) | undefined;
   let closed = false;
   let renderTimer: NodeJS.Timeout | undefined;
+  let pollTimer: NodeJS.Timeout | undefined;
 
   const clearRenderTimer = () => {
     if (renderTimer) {
       clearTimeout(renderTimer);
       renderTimer = undefined;
     }
+  };
+
+  const clearPollTimer = () => {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = undefined;
+    }
+  };
+
+  /**
+   * 実行中のアイテムがあるかチェック
+   */
+  const hasRunningItems = (): boolean => {
+    return items.some((item) => item.status === "running");
+  };
+
+  /**
+   * 定期ポーリングを開始（ストリーミングがない期間もUIを更新）
+   */
+  const startPolling = () => {
+    if (pollTimer || closed) return;
+    pollTimer = setInterval(() => {
+      if (closed) {
+        clearPollTimer();
+        return;
+      }
+      // 実行中のアイテムがある場合のみ更新
+      if (hasRunningItems()) {
+        queueRender();
+      } else {
+        // すべて完了したらポーリング停止
+        clearPollTimer();
+      }
+    }, LIVE_POLL_INTERVAL_MS);
   };
 
   const queueRender = () => {
@@ -491,11 +1009,12 @@ export function createAgentTeamLiveMonitor(
     if (closed) return;
     closed = true;
     clearRenderTimer();
+    clearPollTimer();
     doneUi?.();
   };
 
   const uiPromise = ctx.ui
-    .custom<void>((tui: any, theme: any, _keybindings: any, done: () => void) => {
+    .custom((tui: any, theme: any, _keybindings: any, done: () => void) => {
       doneUi = done;
       requestRender = () => {
         if (!closed) {
@@ -515,6 +1034,7 @@ export function createAgentTeamLiveMonitor(
             width,
             height: tui.terminal.rows,
             theme,
+            queueStatus,
           }),
         invalidate: () => {},
         handleInput: (rawInput: string) => {
@@ -524,7 +1044,7 @@ export function createAgentTeamLiveMonitor(
           }
 
           if (matchesKey(rawInput, Key.escape)) {
-            if (mode === "detail" || mode === "discussion") {
+            if (mode === "detail" || mode === "discussion" || mode === "timeline") {
               mode = "list";
               queueRender();
               return;
@@ -575,6 +1095,30 @@ export function createAgentTeamLiveMonitor(
             return;
           }
 
+          if ((mode === "list" || mode === "detail" || mode === "discussion") && (rawInput === "t" || rawInput === "T")) {
+            mode = "timeline";
+            queueRender();
+            return;
+          }
+
+          if (mode === "timeline" && (rawInput === "b" || rawInput === "B")) {
+            mode = "list";
+            queueRender();
+            return;
+          }
+
+          if (mode === "timeline" && (rawInput === "d" || rawInput === "D")) {
+            mode = "discussion";
+            queueRender();
+            return;
+          }
+
+          if (mode === "timeline" && matchesKey(rawInput, Key.escape)) {
+            mode = "list";
+            queueRender();
+            return;
+          }
+
           if (rawInput === "\t" || rawInput === "tab") {
             stream = stream === "stdout" ? "stderr" : "stdout";
             queueRender();
@@ -596,7 +1140,16 @@ export function createAgentTeamLiveMonitor(
     .finally(() => {
       closed = true;
       clearRenderTimer();
+      clearPollTimer();
     });
+
+  // 待機状態（内部変数）
+  let queueStatus: {
+    isWaiting: boolean;
+    waitedMs?: number;
+    queuePosition?: number;
+    queuedAhead?: number;
+  } | undefined;
 
   return {
     markStarted: (itemKey: string) => {
@@ -608,6 +1161,8 @@ export function createAgentTeamLiveMonitor(
       }
       item.startedAtMs = Date.now();
       pushLiveEvent(item, "member process started");
+      // 実行中アイテムが増えたのでポーリング開始
+      startPolling();
       queueRender();
     },
     markPhase: (itemKey: string, phase: TeamLivePhase, round?: number) => {
@@ -671,6 +1226,17 @@ export function createAgentTeamLiveMonitor(
       item.discussionBytes += Buffer.byteLength(discussion, "utf-8");
       item.discussionNewlineCount += countOccurrences(discussion, "\n");
       item.discussionEndsWithNewline = discussion.endsWith("\n");
+      queueRender();
+    },
+    /** 待機状態を更新 */
+    updateQueueStatus: (status: {
+      isWaiting: boolean;
+      waitedMs?: number;
+      queuePosition?: number;
+      queuedAhead?: number;
+    }) => {
+      if (closed) return;
+      queueStatus = status;
       queueRender();
     },
     close,

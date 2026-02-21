@@ -339,6 +339,20 @@ const BUILTIN_LIMITS: ProviderLimitsConfig = {
         },
       },
     },
+    // zai (GLM models) - very conservative defaults due to frequent 429 errors
+    zai: {
+      displayName: "z.ai (GLM)",
+      documentation: "https://z.ai/docs",
+      models: {
+        "glm-*": {
+          tiers: {
+            free: { rpm: 10, concurrency: 1, description: "Free tier - very limited" },
+            pro: { rpm: 30, concurrency: 2, description: "Pro tier" },
+          },
+          default: { rpm: 10, concurrency: 1, description: "Unknown tier - conservative" },
+        },
+      },
+    },
   },
 };
 
@@ -360,11 +374,23 @@ let cachedLimits: ProviderLimitsConfig | null = null;
 // ============================================================================
 
 function matchesPattern(model: string, pattern: string): boolean {
-  // Convert glob pattern to regex with proper escaping
-  // First escape all regex special characters
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  // Then convert glob wildcards to regex
-  const regexPattern = escaped.replace(/\\\*/g, ".*").replace(/\\\?/g, ".");
+  // Fast paths for exact/prefix compatibility.
+  if (pattern === model) return true;
+  if (model.startsWith(pattern) || pattern.startsWith(model)) return true;
+
+  // Convert glob pattern to regex safely.
+  // 1) Protect glob wildcards first
+  // 2) Escape regex metacharacters
+  // 3) Restore wildcards as regex fragments
+  const STAR_TOKEN = "__PI_GLOB_STAR__";
+  const QMARK_TOKEN = "__PI_GLOB_QMARK__";
+  const wildcardProtected = pattern
+    .replace(/\*/g, STAR_TOKEN)
+    .replace(/\?/g, QMARK_TOKEN);
+  const escaped = wildcardProtected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regexPattern = escaped
+    .replace(new RegExp(STAR_TOKEN, "g"), ".*")
+    .replace(new RegExp(QMARK_TOKEN, "g"), ".");
   const regex = new RegExp("^" + regexPattern + "$", "i");
   return regex.test(model);
 }
@@ -459,7 +485,12 @@ export function resolveLimits(
   const normalizedProvider = provider.toLowerCase();
   const normalizedModel = model.toLowerCase();
 
-  const providerConfig = config.providers[normalizedProvider];
+  const providerConfig = Object.prototype.hasOwnProperty.call(
+    config.providers,
+    normalizedProvider
+  )
+    ? config.providers[normalizedProvider]
+    : undefined;
 
   // Provider not found
   if (!providerConfig) {

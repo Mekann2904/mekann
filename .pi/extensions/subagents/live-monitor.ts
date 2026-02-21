@@ -28,17 +28,19 @@
 // Why: Separates live monitoring logic from main subagents.ts for maintainability.
 // Related: .pi/extensions/subagents.ts
 
-import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey } from "@mariozechner/pi-tui";
 
 import {
   formatDurationMs,
   formatBytes,
   formatClockTime,
+  formatElapsedClock,
 } from "../../lib/format-utils.js";
 import {
   appendTail,
   countOccurrences,
   estimateLineCount,
+  pushWrappedLine,
   renderPreviewWithMarkdown,
 } from "../../lib/tui/tui-utils.js";
 import {
@@ -50,6 +52,8 @@ import {
 } from "../../lib/agent-utils.js";
 import {
   getLiveStatusGlyph,
+  getLiveStatusColor,
+  getActivityIndicator,
   isEnterInput,
   finalizeLiveLines,
   type LiveStatus,
@@ -72,6 +76,155 @@ export type { SubagentLiveItem, SubagentLiveMonitorController, LiveStreamView, L
 
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;
+
+// ============================================================================
+// Tree View Utilities
+// ============================================================================
+
+/**
+ * サブエージェントのツリービューを描画
+ * @summary ツリービュー描画
+ */
+function renderSubagentTreeView(
+  items: SubagentLiveItem[],
+  cursor: number,
+  width: number,
+  theme: any,
+): string[] {
+  const lines: string[] = [];
+  const add = (line = "") => pushWrappedLine(lines, line, width);
+
+  // シンプルな縦型ツリー（サブエージェントは依存関係がないため）
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const isSelected = i === cursor;
+    const isLast = i === items.length - 1;
+
+    const glyph = getLiveStatusGlyph(item.status);
+    const glyphColor = getLiveStatusColor(item.status);
+    const elapsed = formatElapsedClock(item);
+
+    const hasOutput = item.stdoutBytes > 0;
+    const hasError = item.stderrBytes > 0;
+    const isRecent = item.lastChunkAtMs ? (Date.now() - item.lastChunkAtMs) < 2000 : false;
+    const activity = getActivityIndicator(hasOutput, hasError, isRecent);
+
+    // ツリープレフィックス
+    const treeChar = isLast ? "└── " : "├── ";
+
+    const coloredGlyph = theme.fg(glyphColor, glyph);
+    const treeLine = `${treeChar}${coloredGlyph} ${item.name || item.id}`;
+    const meta = activity
+      ? `${elapsed}  ${activity}  ${formatBytes(item.stdoutBytes)}`
+      : `${elapsed}  ${formatBytes(item.stdoutBytes)}`;
+
+    // 選択行は全体を強調色で表示（プレフィックスなし）
+    if (isSelected) {
+      add(theme.fg("accent", theme.bold(`${treeLine} ${meta}`)));
+    } else {
+      add(`${treeLine} ${theme.fg("dim", meta)}`);
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * サブエージェントのタイムラインビューを描画
+ * @summary タイムライン描画
+ */
+function renderSubagentTimelineView(
+  items: SubagentLiveItem[],
+  width: number,
+  theme: any,
+): string[] {
+  const lines: string[] = [];
+  const add = (line = "") => pushWrappedLine(lines, line, width);
+
+  // イベント収集
+  interface TimelineEvent {
+    time: string;
+    agent: string;
+    type: "start" | "done" | "fail" | "output";
+    content: string;
+  }
+
+  const allEvents: TimelineEvent[] = [];
+
+  for (const item of items) {
+    // 開始
+    if (item.startedAtMs) {
+      allEvents.push({
+        time: formatClockTime(item.startedAtMs),
+        agent: item.name || item.id,
+        type: "start",
+        content: "START",
+      });
+    }
+
+    // 完了/失敗
+    if (item.finishedAtMs && item.status !== "running") {
+      allEvents.push({
+        time: formatClockTime(item.finishedAtMs),
+        agent: item.name || item.id,
+        type: item.status === "failed" ? "fail" : "done",
+        content: item.status === "failed" ? `FAIL: ${item.error || "error"}` : `DONE (${formatDurationMs(item)})`,
+      });
+    }
+  }
+
+  // 時間順ソート
+  allEvents.sort((a, b) => a.time.localeCompare(b.time));
+
+  // エージェントごとの色
+  const agentColors = ["accent", "success", "warning", "info"];
+  const agentColorMap = new Map<string, string>();
+  items.forEach((item, i) => {
+    agentColorMap.set(item.name || item.id, agentColors[i % agentColors.length]);
+  });
+
+  // タイムライン描画
+  const displayEvents = allEvents.slice(-25);
+
+  for (const ev of displayEvents) {
+    const agentColor = agentColorMap.get(ev.agent) || "dim";
+    const agentText = theme.fg(agentColor, ev.agent.padEnd(14));
+
+    let icon: string;
+    let contentColor = "dim";
+
+    switch (ev.type) {
+      case "start":
+        icon = "START";
+        break;
+      case "done":
+        icon = "DONE";
+        contentColor = "success";
+        break;
+      case "fail":
+        icon = "FAIL";
+        contentColor = "error";
+        break;
+      default:
+        icon = ">";
+    }
+
+    const iconText = theme.fg(contentColor, icon.padStart(5));
+    add(`${ev.time}  ${agentText} ${iconText} ${theme.fg(contentColor, ev.content)}`);
+  }
+
+  // 現在の状態
+  add("");
+  add(theme.fg("dim", "─── CURRENT ───"));
+  for (const item of items) {
+    const glyph = getLiveStatusGlyph(item.status);
+    const glyphColor = getLiveStatusColor(item.status);
+    const line = `${theme.fg(glyphColor, glyph)} ${(item.name || item.id).padEnd(14)} ${theme.fg("dim", item.status)} ${formatDurationMs(item)}`;
+    add(line);
+  }
+
+  return lines;
+}
 
 // ============================================================================
 // Live View Rendering
@@ -102,18 +255,22 @@ export function renderSubagentLiveView(input: {
   theme: any;
 }): string[] {
   const lines: string[] = [];
-  const add = (line = "") => lines.push(truncateToWidth(line, input.width));
+  const add = (line = "") => pushWrappedLine(lines, line, input.width);
   const theme = input.theme;
   const items = input.items;
   const running = items.filter((item) => item.status === "running").length;
   const completed = items.filter((item) => item.status === "completed").length;
   const failed = items.filter((item) => item.status === "failed").length;
 
+  // コンパクトなヘッダー
   add(theme.bold(theme.fg("accent", `${input.title} [${input.mode}]`)));
-  add(theme.fg("dim", `running ${running}/${items.length} | completed ${completed} | failed ${failed} | updated ${formatClockTime(Date.now())}`));
+  const runText = running > 0 ? theme.fg("accent", `Run:${running}`) : `Run:${running}`;
+  const doneText = completed > 0 ? theme.fg("success", `Done:${completed}`) : `Done:${completed}`;
+  const failText = failed > 0 ? theme.fg("error", `Fail:${failed}`) : `Fail:${failed}`;
+  add(`${runText}  ${doneText}  ${failText}`);
 
   if (items.length === 0) {
-    add(theme.fg("dim", "[q] close"));
+    add(theme.fg("dim", "[q] quit"));
     add("");
     add(theme.fg("dim", "no running subagents"));
     return finalizeLiveLines(lines, input.height);
@@ -133,46 +290,29 @@ export function renderSubagentLiveView(input: {
   );
 
   if (input.mode === "list") {
-    add(theme.fg("dim", "[j/k] move  [up/down] move  [g/G] jump  [enter] detail  [tab] stream  [q] close"));
+    // ツリービューのキーボードヒント
+    add(theme.fg("dim", "[j/k] nav  [ret] detail  [t] time  [q] quit"));
     add("");
-    const range = computeLiveWindow(clampedCursor, items.length, LIVE_LIST_WINDOW_SIZE);
-    if (range.start > 0) {
-      add(theme.fg("dim", `... ${range.start} above ...`));
-    }
 
-    for (let index = range.start; index < range.end; index += 1) {
-      const item = items[index];
-      const isSelected = index === clampedCursor;
-      const prefix = isSelected ? ">" : " ";
-      const glyph = getLiveStatusGlyph(item.status);
-      const statusText = item.status.padEnd(9, " ");
-      const base = `${prefix} [${glyph}] ${item.id} (${item.name})`;
-      const outLines = estimateLineCount(item.stdoutBytes, item.stdoutNewlineCount, item.stdoutEndsWithNewline);
-      const errLines = estimateLineCount(item.stderrBytes, item.stderrNewlineCount, item.stderrEndsWithNewline);
-      const meta = `${statusText} ${formatDurationMs(item)} out:${formatBytes(item.stdoutBytes)}/${outLines}l err:${formatBytes(item.stderrBytes)}/${errLines}l`;
-      add(`${isSelected ? theme.fg("accent", base) : base} ${theme.fg("dim", meta)}`);
-    }
-
-    if (range.end < items.length) {
-      add(theme.fg("dim", `... ${items.length - range.end} below ...`));
+    // ツリー形式でメンバーを描画
+    const treeLines = renderSubagentTreeView(items, clampedCursor, input.width, theme);
+    for (const line of treeLines) {
+      add(line);
     }
 
     add("");
-    add(
-      theme.fg(
-        "dim",
-        `selected ${clampedCursor + 1}/${items.length}: ${selected.id} (${selected.name}) | status:${selected.status} | elapsed:${formatDurationMs(selected)}`,
-      ),
-    );
+    // コンパクトな選択アイテム情報
+    const statusColor = selected.status === "failed" ? "error" : selected.status === "completed" ? "success" : "dim";
+    add(theme.fg("dim", `${selected.name} | ${theme.fg(statusColor, selected.status)} | ${formatDurationMs(selected)}`));
 
-    const inlineMetadataLines = 4;
+    const inlineMetadataLines = 3;
     const inlineMinPreviewLines = 3;
     const height = input.height ?? 0;
     const remaining = height > 0 ? height - lines.length : 0;
     const canShowInline = height > 0 && remaining >= inlineMetadataLines + inlineMinPreviewLines;
 
     if (!canShowInline) {
-      add(theme.fg("dim", "press [enter] to open detailed output view"));
+      add(theme.fg("dim", "[ret] open detail"));
       return finalizeLiveLines(lines, input.height);
     }
 
@@ -208,17 +348,26 @@ export function renderSubagentLiveView(input: {
     return finalizeLiveLines(lines, input.height);
   }
 
-  add(theme.fg("dim", "[j/k] move target  [up/down] move  [g/G] jump  [tab] stdout/stderr  [b|esc] back  [q] close"));
+  // Timeline mode
+  if (input.mode === "timeline") {
+    add(theme.fg("dim", "[b] back  [q] quit"));
+    add("");
+
+    const timelineLines = renderSubagentTimelineView(items, input.width, theme);
+    for (const line of timelineLines) {
+      add(line);
+    }
+
+    return finalizeLiveLines(lines, input.height);
+  }
+
+  // コンパクトな詳細モード
+  add(theme.fg("dim", "[tab] stream  [t] time  [b] back  [q] quit"));
   add("");
-  add(theme.bold(theme.fg("accent", `selected ${clampedCursor + 1}/${items.length}: ${selected.id} (${selected.name})`)));
-  add(
-    theme.fg(
-      "dim",
-      `status:${selected.status} | elapsed:${formatDurationMs(selected)} | started:${formatClockTime(selected.startedAtMs)} | last:${formatClockTime(selected.lastChunkAtMs)} | finished:${formatClockTime(selected.finishedAtMs)}`,
-    ),
-  );
-  add(theme.fg("dim", `stdout ${formatBytes(selected.stdoutBytes)} (${selectedOutLines} lines)`));
-  add(theme.fg("dim", `stderr ${formatBytes(selected.stderrBytes)} (${selectedErrLines} lines)`));
+  add(theme.bold(theme.fg("accent", `${selected.name}`)));
+  const statusColor = selected.status === "failed" ? "error" : selected.status === "completed" ? "success" : "accent";
+  add(theme.fg("dim", `status:${theme.fg(statusColor, selected.status)} | elapsed:${formatDurationMs(selected)}`));
+  add(theme.fg("dim", `out:${formatBytes(selected.stdoutBytes)}/${selectedOutLines}L | err:${formatBytes(selected.stderrBytes)}/${selectedErrLines}L`));
   if (selected.summary) {
     add(theme.fg("dim", `summary: ${selected.summary}`));
   }
@@ -335,7 +484,7 @@ export function createSubagentLiveMonitor(
   };
 
   const uiPromise = ctx.ui
-    .custom<void>((tui: any, theme: any, _keybindings: any, done: () => void) => {
+    .custom((tui: any, theme: any, _keybindings: any, done: () => void) => {
       doneUi = done;
       requestRender = () => {
         if (!closed) {
@@ -363,7 +512,7 @@ export function createSubagentLiveMonitor(
           }
 
           if (matchesKey(rawInput, Key.escape)) {
-            if (mode === "detail") {
+            if (mode === "detail" || mode === "timeline") {
               mode = "list";
               queueRender();
               return;
@@ -402,7 +551,25 @@ export function createSubagentLiveMonitor(
             return;
           }
 
+          if ((mode === "list" || mode === "detail") && (rawInput === "t" || rawInput === "T")) {
+            mode = "timeline";
+            queueRender();
+            return;
+          }
+
+          if (mode === "timeline" && (rawInput === "b" || rawInput === "B")) {
+            mode = "list";
+            queueRender();
+            return;
+          }
+
           if (mode === "detail" && (rawInput === "b" || rawInput === "B")) {
+            mode = "list";
+            queueRender();
+            return;
+          }
+
+          if (mode === "timeline" && matchesKey(rawInput, Key.escape)) {
             mode = "list";
             queueRender();
             return;

@@ -4,7 +4,7 @@
  * role: 数値・日時・文字列のフォーマット処理を行うユーティリティモジュール
  * why: 拡張機能間で重複していたフォーマット実装を統一し、コードの重複を排除するため
  * related: loop.ts, rsa.ts, agent-teams.ts, subagents.ts
- * public_api: formatDuration, formatDurationMs, formatBytes, formatClockTime, normalizeForSingleLine
+ * public_api: formatDuration, formatDurationMs, formatElapsedClock, formatBytes, formatClockTime, normalizeForSingleLine
  * invariants: 依存関係レイヤー0（他のlibモジュールへの依存なし）、バイト数や時間は負の値を0として扱う
  * side_effects: normalizeForSingleLineの呼び出し時に内部Mapキャッシュ（LRU）の状態が変更される
  * failure_modes: 無限大や非数を渡した場合のフォーマット結果、normalizeForSingleLineで巨大な文字列を扱った場合のメモリ消費
@@ -59,13 +59,30 @@ interface DurationItem {
  * 継続時間をフォーマット
  * @summary 継続時間計算
  * @param item 期間アイテム
- * @returns フォーマット済み文字列
+ * @returns フォーマット済み文字列（秒数に応じて自動切り替え）
  */
 export function formatDurationMs(item: DurationItem): string {
   if (!item.startedAtMs) return "-";
   const endMs = item.finishedAtMs ?? Date.now();
   const durationMs = Math.max(0, endMs - item.startedAtMs);
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+/**
+ * 継続時間を HH:mm:ss 形式でフォーマット
+ * @summary 継続時間を時分秒へ変換
+ * @param item 期間アイテム
+ * @returns HH:mm:ss 形式の文字列
+ */
+export function formatElapsedClock(item: DurationItem): string {
+  if (!item.startedAtMs) return "-";
+  const endMs = item.finishedAtMs ?? Date.now();
+  const durationMs = Math.max(0, endMs - item.startedAtMs);
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const hh = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
+  const ss = String(totalSeconds % 60).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
 }
 
 /**
@@ -130,7 +147,7 @@ export function normalizeForSingleLine(input: string, maxLength = 160): string {
   } else if (normalized.length <= maxLength) {
     result = normalized;
   } else {
-    result = `${normalized.slice(0, maxLength)}...`;
+    result = `${normalized.slice(0, maxLength - 3)}...`;
   }
 
   // LRUエビクション

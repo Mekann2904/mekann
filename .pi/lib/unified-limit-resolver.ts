@@ -49,6 +49,7 @@
 
 import {
   getEffectiveLimit,
+  getLearnedLimit,
   getPredictiveAnalysis,
   type PredictiveAnalysis,
 } from "./adaptive-rate-controller.js";
@@ -322,7 +323,8 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
     
     // 予測分析を取得
     const predictiveAnalysis = getPredictiveAnalysis(provider, model);
-    historical429s = predictiveAnalysis.historical429Count;
+    const learned = getLearnedLimit(provider, model);
+    historical429s = learned?.historical429s?.length ?? 0;
     predicted429Probability = predictiveAnalysis.predicted429Probability;
   }
   
@@ -369,8 +371,8 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
       concurrency: presetConcurrency,
       rpm: presetRpm,
       tpm: presetLimits.tpm,
-      source: presetLimits._sources?.concurrency || "builtin",
-      tier: presetLimits._tier || "default",
+      source: presetLimits.source || "builtin",
+      tier: presetLimits.tier || "default",
     },
     adaptive: {
       multiplier: adaptiveMultiplier,
@@ -404,7 +406,7 @@ export function resolveUnifiedLimits(input: UnifiedLimitInput): UnifiedLimitResu
     metadata: {
       provider,
       model,
-      tier: presetLimits._tier || "default",
+      tier: presetLimits.tier || "default",
       resolvedAt: new Date().toISOString(),
     },
   };

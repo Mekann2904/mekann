@@ -352,8 +352,9 @@ export function getEffectiveRepetitionThreshold(
   intent: TaskIntent
 ): number {
   const budget = INTENT_BUDGETS[intent];
+  const safeBaseThreshold = Number.isFinite(baseThreshold) ? baseThreshold : 0.5;
   // Higher tolerance = higher threshold before triggering early stop
-  return baseThreshold + (budget.repetitionTolerance - 0.5) * 0.2;
+  return safeBaseThreshold + (budget.repetitionTolerance - 0.5) * 0.2;
 }
 
 // ============================================================================

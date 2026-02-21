@@ -41,13 +41,14 @@
  * Uses centralized RuntimeConfig from runtime-config.ts for consistency.
  */
 
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   getRuntimeConfig,
   type RuntimeConfig,
 } from "./runtime-config.js";
+import { withFileLock } from "./storage-lock.js";
 
 // ============================================================================
 // Types
@@ -182,7 +183,7 @@ function getDefaultState(): AdaptiveControllerState {
     reductionFactor: config.reductionFactor,
     recoveryFactor: config.recoveryFactor,
     predictiveEnabled: config.predictiveEnabled,
-    predictiveThreshold: 0.3, // Proactively throttle if >30% 429 probability
+    predictiveThreshold: 0.15, // Proactively throttle if >15% 429 probability (reduced from 0.3)
   };
 }
 
@@ -195,17 +196,27 @@ const DEFAULT_STATE: AdaptiveControllerState = {
   lastUpdated: new Date().toISOString(),
   limits: {},
   globalMultiplier: 1.0,
-  recoveryIntervalMs: 5 * 60 * 1000, // 5 minutes
-  reductionFactor: 0.7, // 30% reduction on 429
-  recoveryFactor: 1.1, // 10% increase per recovery
+  recoveryIntervalMs: 2 * 60 * 1000, // 2 minutes
+  reductionFactor: 0.5, // 50% reduction on 429
+  recoveryFactor: 1.05, // 5% increase per recovery
   predictiveEnabled: true,
-  predictiveThreshold: 0.3, // Proactively throttle if >30% 429 probability
+  predictiveThreshold: 0.15, // Proactively throttle if >15% 429 probability
 };
 
 const MIN_CONCURRENCY = 1;
 const MAX_CONCURRENCY = 16;
+const MAX_LEARNED_LIMITS = 512;
+const LEARNED_LIMIT_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_SUMMARY_LEARNED_LIMITS = 80;
+const VALID_PROVIDER_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const VALID_MODEL_RE = /^[a-z0-9][a-z0-9._/:-]{0,127}$/;
 
 const RECOVERY_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
+const STATE_LOCK_OPTIONS = {
+  maxWaitMs: 2_000,
+  pollMs: 25,
+  staleMs: 15_000,
+};
 
 // ============================================================================
 // State
@@ -213,6 +224,7 @@ const RECOVERY_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
 
 let state: AdaptiveControllerState | null = null;
 let recoveryTimer: ReturnType<typeof setInterval> | null = null;
+let persistenceFailed = false;
 
 // ============================================================================
 // Utilities
@@ -222,7 +234,35 @@ function buildKey(provider: string, model: string): string {
   return `${provider.toLowerCase()}:${model.toLowerCase()}`;
 }
 
+function normalizeProvider(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeModel(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function tryBuildKey(provider: string, model: string): string | null {
+  const normalizedProvider = normalizeProvider(provider);
+  const normalizedModel = normalizeModel(model);
+  if (!VALID_PROVIDER_RE.test(normalizedProvider)) return null;
+  if (!VALID_MODEL_RE.test(normalizedModel)) return null;
+  return buildKey(normalizedProvider, normalizedModel);
+}
+
+function isValidLearnedLimitKey(key: string): boolean {
+  const index = key.indexOf(":");
+  if (index <= 0 || index >= key.length - 1) return false;
+  const provider = key.slice(0, index);
+  const model = key.slice(index + 1);
+  return VALID_PROVIDER_RE.test(provider) && VALID_MODEL_RE.test(model);
+}
+
 function loadState(): AdaptiveControllerState {
+  if (state && persistenceFailed) {
+    return state;
+  }
+
   const defaults = getDefaultState();
 
   try {
@@ -250,29 +290,118 @@ function loadState(): AdaptiveControllerState {
 function saveState(): void {
   if (!state) return;
 
-  if (!existsSync(RUNTIME_DIR)) {
-    mkdirSync(RUNTIME_DIR, { recursive: true });
-  }
+  try {
+    if (!existsSync(RUNTIME_DIR)) {
+      mkdirSync(RUNTIME_DIR, { recursive: true });
+    }
 
-  state.lastUpdated = new Date().toISOString();
-  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+    state.lastUpdated = new Date().toISOString();
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+    persistenceFailed = false;
+  } catch {
+    // Keep adaptive throttling alive even if persistence is unavailable.
+    persistenceFailed = true;
+  }
 }
 
 function ensureState(): AdaptiveControllerState {
   if (!state) {
     state = loadState();
+    pruneLearnedLimits(state);
   }
   return state;
+}
+
+function withStateWriteLock<T>(mutator: (draft: AdaptiveControllerState) => T): T {
+  try {
+    return withFileLock(STATE_FILE, () => {
+      const draft = loadState();
+      pruneLearnedLimits(draft);
+      state = draft;
+      const result = mutator(draft);
+      pruneLearnedLimits(draft);
+      saveState();
+      return result;
+    }, STATE_LOCK_OPTIONS);
+  } catch {
+    // Locking is best-effort. Fall back to local mutation so restricted
+    // environments (tests/sandbox) keep working.
+    const draft = loadState();
+    pruneLearnedLimits(draft);
+    state = draft;
+    const result = mutator(draft);
+    pruneLearnedLimits(draft);
+    saveState();
+    return result;
+  }
 }
 
 function clampConcurrency(value: number): number {
   return Math.max(MIN_CONCURRENCY, Math.min(MAX_CONCURRENCY, Math.floor(value)));
 }
 
+function toTimestampMs(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value).getTime();
+  if (!Number.isFinite(parsed)) return undefined;
+  return parsed;
+}
+
+function getLimitActivityMs(limit: LearnedLimit): number {
+  const last429Ms = toTimestampMs(limit.last429At) ?? 0;
+  const lastSuccessMs = toTimestampMs(limit.lastSuccessAt) ?? 0;
+  return Math.max(last429Ms, lastSuccessMs);
+}
+
+function pruneLearnedLimits(currentState: AdaptiveControllerState, nowMs = Date.now()): void {
+  const entries = Object.entries(currentState.limits);
+  if (entries.length === 0) {
+    return;
+  }
+
+  for (const [key] of entries) {
+    if (!isValidLearnedLimitKey(key)) {
+      delete currentState.limits[key];
+    }
+  }
+
+  for (const [key, limit] of entries) {
+    const isRecovering = limit.recoveryScheduled || limit.concurrency < limit.originalConcurrency;
+    if (isRecovering) continue;
+    const lastActivityMs = getLimitActivityMs(limit);
+    if (lastActivityMs > 0 && nowMs - lastActivityMs > LEARNED_LIMIT_STALE_MS) {
+      delete currentState.limits[key];
+    }
+  }
+
+  const afterTtlEntries = Object.entries(currentState.limits);
+  if (afterTtlEntries.length <= MAX_LEARNED_LIMITS) {
+    return;
+  }
+
+  const overflow = afterTtlEntries.length - MAX_LEARNED_LIMITS;
+  const byOldestActivity = afterTtlEntries
+    .map(([key, limit]) => {
+      const activityMs = getLimitActivityMs(limit);
+      return {
+        key,
+        // activity=0 (no history yet) should be treated as recent and pruned last.
+        activityMs: activityMs > 0 ? activityMs : Number.MAX_SAFE_INTEGER,
+      };
+    })
+    .sort((a, b) => a.activityMs - b.activityMs)
+    .slice(0, overflow);
+
+  for (const candidate of byOldestActivity) {
+    delete currentState.limits[candidate.key];
+  }
+}
+
 function scheduleRecovery(provider: string, model: string): void {
   if (!state) return;
 
-  const key = buildKey(provider, model);
+  const key = tryBuildKey(provider, model);
+  if (!key) return;
   const limit = state.limits[key];
   if (!limit) return;
 
@@ -283,60 +412,61 @@ function scheduleRecovery(provider: string, model: string): void {
   }
 
   limit.recoveryScheduled = true;
-  saveState();
 }
 
 function processRecovery(): void {
-  const currentState = ensureState();
-  let changed = false;
+  withStateWriteLock((currentState) => {
+    let changed = false;
 
-  const now = Date.now();
-  const recoveryIntervalMs = currentState.recoveryIntervalMs;
+    const now = Date.now();
+    const recoveryIntervalMs = currentState.recoveryIntervalMs;
 
-  for (const [key, limit] of Object.entries(currentState.limits)) {
-    // Skip if not scheduled for recovery
-    if (!limit.recoveryScheduled) continue;
+    for (const [, limit] of Object.entries(currentState.limits)) {
+      // Skip if not scheduled for recovery
+      if (!limit.recoveryScheduled) continue;
 
-    // Skip if below original
-    if (limit.concurrency >= limit.originalConcurrency) {
-      limit.recoveryScheduled = false;
-      continue;
-    }
-
-    // Check if enough time has passed since last 429
-    const last429 = limit.last429At ? new Date(limit.last429At).getTime() : 0;
-    if (now - last429 < recoveryIntervalMs) {
-      continue;
-    }
-
-    // Check if we've had recent successes
-    const lastSuccess = limit.lastSuccessAt ? new Date(limit.lastSuccessAt).getTime() : 0;
-    if (now - lastSuccess > recoveryIntervalMs) {
-      // No recent success, wait more
-      continue;
-    }
-
-    // Apply recovery
-    const newConcurrency = clampConcurrency(
-      Math.ceil(limit.concurrency * currentState.recoveryFactor)
-    );
-
-    if (newConcurrency > limit.concurrency) {
-      limit.concurrency = newConcurrency;
-      changed = true;
-
-      // Check if fully recovered
+      // Skip if below original
       if (limit.concurrency >= limit.originalConcurrency) {
-        limit.concurrency = limit.originalConcurrency;
         limit.recoveryScheduled = false;
-        limit.consecutive429Count = 0;
+        continue;
+      }
+
+      // Check if enough time has passed since last 429
+      const last429 = limit.last429At ? new Date(limit.last429At).getTime() : 0;
+      if (now - last429 < recoveryIntervalMs) {
+        continue;
+      }
+
+      // Check if we've had recent successes
+      const lastSuccess = limit.lastSuccessAt ? new Date(limit.lastSuccessAt).getTime() : 0;
+      if (now - lastSuccess > recoveryIntervalMs) {
+        // No recent success, wait more
+        continue;
+      }
+
+      // Apply recovery
+      const newConcurrency = clampConcurrency(
+        Math.ceil(limit.concurrency * currentState.recoveryFactor)
+      );
+
+      if (newConcurrency > limit.concurrency) {
+        limit.concurrency = newConcurrency;
+        changed = true;
+
+        // Check if fully recovered
+        if (limit.concurrency >= limit.originalConcurrency) {
+          limit.concurrency = limit.originalConcurrency;
+          limit.recoveryScheduled = false;
+          limit.consecutive429Count = 0;
+        }
       }
     }
-  }
 
-  if (changed) {
-    saveState();
-  }
+    if (!changed) {
+      // Keep the fast path cheap when no update was needed.
+      return;
+    }
+  });
 }
 
 // ============================================================================
@@ -371,6 +501,7 @@ export function shutdownAdaptiveController(): void {
     recoveryTimer = null;
   }
   state = null;
+  persistenceFailed = false;
 }
 
 /**
@@ -386,8 +517,11 @@ export function getEffectiveLimit(
   model: string,
   presetLimit: number
 ): number {
+  const key = tryBuildKey(provider, model);
+  if (!key) {
+    return clampConcurrency(presetLimit);
+  }
   const currentState = ensureState();
-  const key = buildKey(provider, model);
 
   // Check if we have a learned limit
   const learned = currentState.limits[key];
@@ -397,19 +531,21 @@ export function getEffectiveLimit(
     return clampConcurrency(adjusted);
   }
 
-  // Create initial entry with preset
-  currentState.limits[key] = {
-    concurrency: presetLimit,
-    originalConcurrency: presetLimit,
-    last429At: null,
-    consecutive429Count: 0,
-    total429Count: 0,
-    lastSuccessAt: null,
-    recoveryScheduled: false,
-  };
-  saveState();
-
-  return clampConcurrency(Math.floor(presetLimit * currentState.globalMultiplier));
+  // Create initial entry with preset atomically to avoid lost updates across instances.
+  return withStateWriteLock((draft) => {
+    if (!draft.limits[key]) {
+      draft.limits[key] = {
+        concurrency: presetLimit,
+        originalConcurrency: presetLimit,
+        last429At: null,
+        consecutive429Count: 0,
+        total429Count: 0,
+        lastSuccessAt: null,
+        recoveryScheduled: false,
+      };
+    }
+    return clampConcurrency(Math.floor(draft.limits[key].concurrency * draft.globalMultiplier));
+  });
 }
 
 /**
@@ -418,77 +554,84 @@ export function getEffectiveLimit(
  * @param event レート制限イベント
  */
 export function recordEvent(event: RateLimitEvent): void {
-  const currentState = ensureState();
-  const key = buildKey(event.provider, event.model);
-
-  // Ensure entry exists
-  if (!currentState.limits[key]) {
-    currentState.limits[key] = {
-      concurrency: 4, // Default, will be updated
-      originalConcurrency: 4,
-      last429At: null,
-      consecutive429Count: 0,
-      total429Count: 0,
-      lastSuccessAt: null,
-      recoveryScheduled: false,
-    };
+  const key = tryBuildKey(event.provider, event.model);
+  if (!key) {
+    return;
   }
 
-  const limit = currentState.limits[key];
-
-  switch (event.type) {
-    case "429": {
-      // Reduce concurrency
-      const newConcurrency = clampConcurrency(
-        Math.floor(limit.concurrency * currentState.reductionFactor)
-      );
-      limit.concurrency = newConcurrency;
-      limit.last429At = event.timestamp;
-      limit.consecutive429Count += 1;
-      limit.total429Count += 1;
-      limit.recoveryScheduled = false; // Reset recovery on new 429
-
-      // Update historical data for predictive analysis
-      updateHistorical429s(limit);
-
-      // If multiple consecutive 429s, be more aggressive
-      if (limit.consecutive429Count >= 3) {
-        limit.concurrency = clampConcurrency(Math.floor(limit.concurrency * 0.5));
-      }
-
-      break;
+  withStateWriteLock((currentState) => {
+    // Ensure entry exists
+    if (!currentState.limits[key]) {
+      currentState.limits[key] = {
+        concurrency: 4, // Default, will be updated
+        originalConcurrency: 4,
+        last429At: null,
+        consecutive429Count: 0,
+        total429Count: 0,
+        lastSuccessAt: null,
+        recoveryScheduled: false,
+      };
     }
 
-    case "success": {
-      limit.lastSuccessAt = event.timestamp;
-      // Reset consecutive count on success
-      limit.consecutive429Count = 0;
+    const limit = currentState.limits[key];
 
-      // Schedule recovery if below original
-      if (limit.concurrency < limit.originalConcurrency) {
-        scheduleRecovery(event.provider, event.model);
-      }
-      break;
-    }
-
-    case "timeout": {
-      // Timeout might indicate rate limiting without explicit 429
-      // Be conservative
-      if (limit.consecutive429Count > 0) {
-        limit.concurrency = clampConcurrency(
-          Math.floor(limit.concurrency * 0.9)
+    switch (event.type) {
+      case "429": {
+        // Reduce concurrency aggressively
+        const newConcurrency = clampConcurrency(
+          Math.floor(limit.concurrency * currentState.reductionFactor)
         );
+        limit.concurrency = newConcurrency;
+        limit.last429At = event.timestamp;
+        limit.consecutive429Count += 1;
+        limit.total429Count += 1;
+        limit.recoveryScheduled = false; // Reset recovery on new 429
+
+        // Update historical data for predictive analysis
+        updateHistorical429s(limit, event.provider, event.model);
+
+        // If multiple consecutive 429s, be more aggressive
+        if (limit.consecutive429Count >= 3) {
+          // 3回以上連続429の場合、さらに50%削減
+          limit.concurrency = clampConcurrency(Math.floor(limit.concurrency * 0.5));
+        }
+        if (limit.consecutive429Count >= 5) {
+          // 5回以上連続429の場合、最小値に
+          limit.concurrency = MIN_CONCURRENCY;
+        }
+
+        break;
       }
-      break;
-    }
 
-    case "error": {
-      // Non-rate-limit errors don't affect limits
-      break;
-    }
-  }
+      case "success": {
+        limit.lastSuccessAt = event.timestamp;
+        // Reset consecutive count on success
+        limit.consecutive429Count = 0;
 
-  saveState();
+        // Schedule recovery if below original
+        if (limit.concurrency < limit.originalConcurrency) {
+          scheduleRecovery(event.provider, event.model);
+        }
+        break;
+      }
+
+      case "timeout": {
+        // Timeout might indicate rate limiting without explicit 429
+        // Be conservative
+        if (limit.consecutive429Count > 0) {
+          limit.concurrency = clampConcurrency(
+            Math.floor(limit.concurrency * 0.9)
+          );
+        }
+        break;
+      }
+
+      case "error": {
+        // Non-rate-limit errors don't affect limits
+        break;
+      }
+    }
+  });
 }
 
 /**
@@ -540,8 +683,9 @@ export function getAdaptiveState(): AdaptiveControllerState {
  * @returns {LearnedLimit | undefined} 学習した制限オブジェクト
  */
 export function getLearnedLimit(provider: string, model: string): LearnedLimit | undefined {
+  const key = tryBuildKey(provider, model);
+  if (!key) return undefined;
   const currentState = ensureState();
-  const key = buildKey(provider, model);
   return currentState.limits[key] ? { ...currentState.limits[key] } : undefined;
 }
 
@@ -554,10 +698,10 @@ export function getLearnedLimit(provider: string, model: string): LearnedLimit |
  * @returns {void}
  */
 export function resetLearnedLimit(provider: string, model: string, newLimit?: number): void {
-  const currentState = ensureState();
-  const key = buildKey(provider, model);
-
-  if (currentState.limits[key]) {
+  const key = tryBuildKey(provider, model);
+  if (!key) return;
+  withStateWriteLock((currentState) => {
+    if (!currentState.limits[key]) return;
     const limit = newLimit ?? currentState.limits[key].originalConcurrency;
     currentState.limits[key] = {
       concurrency: limit,
@@ -568,8 +712,7 @@ export function resetLearnedLimit(provider: string, model: string, newLimit?: nu
       lastSuccessAt: null,
       recoveryScheduled: false,
     };
-    saveState();
-  }
+  });
 }
 
 /**
@@ -578,10 +721,10 @@ export function resetLearnedLimit(provider: string, model: string, newLimit?: nu
  * @returns {void}
  */
 export function resetAllLearnedLimits(): void {
-  const currentState = ensureState();
-  currentState.limits = {};
-  currentState.globalMultiplier = 1.0;
-  saveState();
+  withStateWriteLock((currentState) => {
+    currentState.limits = {};
+    currentState.globalMultiplier = 1.0;
+  });
 }
 
 /**
@@ -591,11 +734,11 @@ export function resetAllLearnedLimits(): void {
  * @returns {void}
  */
 export function setGlobalMultiplier(multiplier: number): void {
-  const currentState = ensureState();
-  // NaN ガード: NaNの場合は1.0（デフォルト）に設定
-  const safeMultiplier = Number.isFinite(multiplier) ? multiplier : 1.0;
-  currentState.globalMultiplier = Math.max(0.1, Math.min(2.0, safeMultiplier));
-  saveState();
+  withStateWriteLock((currentState) => {
+    // NaN ガード: NaNの場合は1.0（デフォルト）に設定
+    const safeMultiplier = Number.isFinite(multiplier) ? multiplier : 1.0;
+    currentState.globalMultiplier = Math.max(0.1, Math.min(2.0, safeMultiplier));
+  });
 }
 
 /**
@@ -612,19 +755,17 @@ export function configureRecovery(options: {
   reductionFactor?: number;
   recoveryFactor?: number;
 }): void {
-  const currentState = ensureState();
-
-  if (options.recoveryIntervalMs !== undefined) {
-    currentState.recoveryIntervalMs = Math.max(60_000, options.recoveryIntervalMs);
-  }
-  if (options.reductionFactor !== undefined) {
-    currentState.reductionFactor = Math.max(0.3, Math.min(0.9, options.reductionFactor));
-  }
-  if (options.recoveryFactor !== undefined) {
-    currentState.recoveryFactor = Math.max(1.0, Math.min(1.5, options.recoveryFactor));
-  }
-
-  saveState();
+  withStateWriteLock((currentState) => {
+    if (options.recoveryIntervalMs !== undefined) {
+      currentState.recoveryIntervalMs = Math.max(60_000, options.recoveryIntervalMs);
+    }
+    if (options.reductionFactor !== undefined) {
+      currentState.reductionFactor = Math.max(0.3, Math.min(0.9, options.reductionFactor));
+    }
+    if (options.recoveryFactor !== undefined) {
+      currentState.recoveryFactor = Math.max(1.0, Math.min(1.5, options.recoveryFactor));
+    }
+  });
 }
 
 /**
@@ -681,7 +822,12 @@ export function formatAdaptiveSummary(): string {
   if (Object.keys(currentState.limits).length === 0) {
     lines.push(`  (none yet)`);
   } else {
-    for (const [key, limit] of Object.entries(currentState.limits)) {
+    const entries = Object.entries(currentState.limits)
+      .filter(([key]) => isValidLearnedLimitKey(key))
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    const shown = entries.slice(0, MAX_SUMMARY_LEARNED_LIMITS);
+    const hidden = Math.max(0, entries.length - shown.length);
+    for (const [key, limit] of shown) {
       const status =
         limit.concurrency < limit.originalConcurrency
           ? `REDUCED (${limit.concurrency}/${limit.originalConcurrency})`
@@ -693,6 +839,9 @@ export function formatAdaptiveSummary(): string {
         ? `, 429_prob: ${(limit.predicted429Probability * 100).toFixed(1)}%`
         : "";
       lines.push(`  ${key}: ${status}, ${recent429}, total: ${limit.total429Count}${prediction}`);
+    }
+    if (hidden > 0) {
+      lines.push(`  ... ${hidden} entries hidden`);
     }
   }
 
@@ -711,8 +860,9 @@ export function formatAdaptiveSummary(): string {
  * @returns 429エラーの確率
  */
 export function analyze429Probability(provider: string, model: string): number {
+  const key = tryBuildKey(provider, model);
+  if (!key) return 0;
   const currentState = ensureState();
-  const key = buildKey(provider, model);
   const limit = currentState.limits[key];
 
   if (!limit || !limit.historical429s || limit.historical429s.length === 0) {
@@ -761,8 +911,18 @@ export function analyze429Probability(provider: string, model: string): number {
  * @returns 予測分析結果
  */
 export function getPredictiveAnalysis(provider: string, model: string): PredictiveAnalysis {
+  const key = tryBuildKey(provider, model);
+  if (!key) {
+    return {
+      provider,
+      model,
+      predicted429Probability: 0,
+      shouldProactivelyThrottle: false,
+      recommendedConcurrency: 4,
+      confidence: 0,
+    };
+  }
   const currentState = ensureState();
-  const key = buildKey(provider, model);
   const limit = currentState.limits[key];
 
   const probability = analyze429Probability(provider, model);
@@ -858,8 +1018,11 @@ export function getPredictiveConcurrency(
 
 /**
  * Update historical 429 data (called on 429 events).
+ * @param limit - Learned limit object to update
+ * @param provider - Provider name for probability analysis
+ * @param model - Model name for probability analysis
  */
-function updateHistorical429s(limit: LearnedLimit): void {
+function updateHistorical429s(limit: LearnedLimit, provider: string, model: string): void {
   if (!limit.historical429s) {
     limit.historical429s = [];
   }
@@ -871,11 +1034,8 @@ function updateHistorical429s(limit: LearnedLimit): void {
     limit.historical429s = limit.historical429s.slice(-50);
   }
 
-  // Update predicted probability
-  limit.predicted429Probability = analyze429Probability(
-    limit.originalConcurrency.toString(), // Dummy provider extraction
-    limit.originalConcurrency.toString()  // Dummy model extraction
-  );
+  // Update predicted probability with correct provider/model
+  limit.predicted429Probability = analyze429Probability(provider, model);
 }
 
 /**
@@ -885,9 +1045,9 @@ function updateHistorical429s(limit: LearnedLimit): void {
  * @returns なし
  */
 export function setPredictiveEnabled(enabled: boolean): void {
-  const currentState = ensureState();
-  currentState.predictiveEnabled = enabled;
-  saveState();
+  withStateWriteLock((currentState) => {
+    currentState.predictiveEnabled = enabled;
+  });
 }
 
 /**
@@ -897,9 +1057,9 @@ export function setPredictiveEnabled(enabled: boolean): void {
  * @returns なし
  */
 export function setPredictiveThreshold(threshold: number): void {
-  const currentState = ensureState();
-  currentState.predictiveThreshold = Math.max(0, Math.min(1, threshold));
-  saveState();
+  withStateWriteLock((currentState) => {
+    currentState.predictiveThreshold = Math.max(0, Math.min(1, threshold));
+  });
 }
 
 // ============================================================================

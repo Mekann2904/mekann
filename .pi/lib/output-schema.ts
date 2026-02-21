@@ -555,6 +555,9 @@ export function validateTeamMemberOutputWithSchema(
 // Violation Tracking (for analytics and debugging)
 // ============================================================================
 
+/** 上限エントリ数（防御的設定） */
+const MAX_VIOLATION_STATS_ENTRIES = 100;
+
 /**
  * Global violation counter for analytics.
  */
@@ -569,6 +572,16 @@ const violationStats: Map<string, number> = new Map();
 export function recordSchemaViolation(violation: SchemaViolation): void {
   const key = `${violation.field}:${violation.violationType}`;
   const current = violationStats.get(key) || 0;
+  
+  // 新規エントリの場合、上限チェック
+  if (current === 0 && violationStats.size >= MAX_VIOLATION_STATS_ENTRIES) {
+    // 最も古いエントリを削除
+    const firstKey = violationStats.keys().next().value;
+    if (firstKey !== undefined) {
+      violationStats.delete(firstKey);
+    }
+  }
+  
   violationStats.set(key, current + 1);
 }
 

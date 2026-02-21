@@ -13,9 +13,11 @@ import {
   toFiniteNumber,
   toFiniteNumberWithDefault,
   toBoundedInteger,
+  toBoundedFloat,
   clampInteger,
   clampFloat,
   type BoundedIntegerResult,
+  type BoundedFloatResult,
 } from "../../../.pi/lib/validation-utils.js";
 
 // ============================================================================
@@ -275,6 +277,22 @@ describe("toBoundedInteger", () => {
     // Assert
     expect(result.ok).toBe(false);
   });
+
+  it("toBoundedInteger_Symbol型_例外発生しエラー返却", () => {
+    // Arrange
+    const min = 0;
+    const max = 10;
+
+    // Act
+    const result = toBoundedInteger(Symbol("test"), 0, min, max, "field1");
+
+    // Assert - SymbolをNumber()に渡すとTypeErrorがスローされる
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("field1");
+      expect(result.error).toContain("integer");
+    }
+  });
 });
 
 // ============================================================================
@@ -321,6 +339,24 @@ describe("clampInteger", () => {
     expect(clampInteger(0, 5, 5)).toBe(5);
     expect(clampInteger(10, 5, 5)).toBe(5);
   });
+
+  it("clampInteger_NaN_最小値にクランプ", () => {
+    // Act & Assert
+    expect(clampInteger(NaN, 0, 10)).toBe(0);
+    expect(clampInteger(NaN, -10, 10)).toBe(-10);
+  });
+
+  it("clampInteger_Infinity_最大値にクランプ", () => {
+    // Act & Assert
+    expect(clampInteger(Infinity, 0, 10)).toBe(10);
+    expect(clampInteger(Infinity, -100, 100)).toBe(100);
+  });
+
+  it("clampInteger_NegativeInfinity_最小値にクランプ", () => {
+    // Act & Assert
+    expect(clampInteger(-Infinity, 0, 10)).toBe(0);
+    expect(clampInteger(-Infinity, -100, 100)).toBe(-100);
+  });
 });
 
 // ============================================================================
@@ -364,6 +400,271 @@ describe("clampFloat", () => {
     // Act & Assert
     expect(clampFloat(0.00001, 0, 1)).toBe(0.00001);
     expect(clampFloat(-0.00001, 0, 1)).toBe(0);
+  });
+
+  it("clampFloat_NaN_最小値にクランプ", () => {
+    // Act & Assert
+    expect(clampFloat(NaN, 0, 10)).toBe(0);
+    expect(clampFloat(NaN, -10, 10)).toBe(-10);
+  });
+
+  it("clampFloat_Infinity_最大値にクランプ", () => {
+    // Act & Assert
+    expect(clampFloat(Infinity, 0, 10)).toBe(10);
+    expect(clampFloat(Infinity, -100, 100)).toBe(100);
+  });
+
+  it("clampFloat_NegativeInfinity_最小値にクランプ", () => {
+    // Act & Assert
+    expect(clampFloat(-Infinity, 0, 10)).toBe(0);
+    expect(clampFloat(-Infinity, -100, 100)).toBe(-100);
+  });
+});
+
+// ============================================================================
+// toBoundedFloat テスト
+// ============================================================================
+
+describe("toBoundedFloat", () => {
+  it("toBoundedFloat_有効な浮動小数点数_成功結果返却", () => {
+    // Arrange
+    const value = 5.5;
+    const fallback = 0.0;
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat(value, fallback, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(5.5);
+    }
+  });
+
+  it("toBoundedFloat_undefined_フォールバック使用", () => {
+    // Arrange
+    const fallback = 5.0;
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat(undefined, fallback, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(5.0);
+    }
+  });
+
+  it("toBoundedFloat_最小値_成功", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat(0.0, 5.0, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(0.0);
+    }
+  });
+
+  it("toBoundedFloat_最大値_成功", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat(10.0, 5.0, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(10.0);
+    }
+  });
+
+  it("toBoundedFloat_範囲外_失敗", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result1 = toBoundedFloat(-1.0, 5.0, min, max, "test");
+    const result2 = toBoundedFloat(11.0, 5.0, min, max, "test");
+
+    // Assert
+    expect(result1.ok).toBe(false);
+    if (!result1.ok) {
+      expect(result1.error).toContain("test");
+      expect(result1.error).toContain("[0, 10]");
+    }
+
+    expect(result2.ok).toBe(false);
+    if (!result2.ok) {
+      expect(result2.error).toContain("test");
+    }
+  });
+
+  it("toBoundedFloat_NaN_失敗", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat(NaN, 5.0, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(false);
+  });
+
+  it("toBoundedFloat_Infinity_失敗", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result1 = toBoundedFloat(Infinity, 5.0, min, max, "test");
+    const result2 = toBoundedFloat(-Infinity, 5.0, min, max, "test");
+
+    // Assert
+    expect(result1.ok).toBe(false);
+    expect(result2.ok).toBe(false);
+  });
+
+  it("toBoundedFloat_文字列_数値なら成功", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat("5.5", 0.0, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(5.5);
+    }
+  });
+
+  it("toBoundedFloat_非数値文字列_失敗", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat("not a number", 0.0, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(false);
+  });
+
+  it("toBoundedFloat_整数文字列_成功", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat("5", 0.0, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(5.0);
+    }
+  });
+
+  it("toBoundedFloat_Symbol型_例外発生しエラー返却", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat(Symbol("test"), 0.0, min, max, "field1");
+
+    // Assert - SymbolをNumber()に渡すとTypeErrorがスローされる
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("field1");
+      expect(result.error).toContain("number");
+    }
+  });
+
+  it("toBoundedFloat_負の範囲_正しく処理", () => {
+    // Arrange
+    const min = -10.0;
+    const max = -1.0;
+
+    // Act
+    const result = toBoundedFloat(-5.5, 0.0, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(-5.5);
+    }
+  });
+
+  it("toBoundedFloat_オブジェクト_失敗", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat({}, 0.0, min, max, "test");
+
+    // Assert - Number({}) = NaN
+    expect(result.ok).toBe(false);
+  });
+
+  it("toBoundedFloat_null_失敗", () => {
+    // Arrange
+    const min = 0.0;
+    const max = 10.0;
+
+    // Act
+    const result = toBoundedFloat(null, 0.0, min, max, "test");
+
+    // Assert - Number(null) = 0 は有効
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(0.0);
+    }
+  });
+
+  it("toBoundedFloat_境界値_成功", () => {
+    const result1 = toBoundedFloat(0.0, 0.0, 0.0, 10.0, "test");
+    const result2 = toBoundedFloat(10.0, 0.0, 0.0, 10.0, "test");
+
+    expect(result1.ok).toBe(true);
+    expect(result2.ok).toBe(true);
+  });
+
+  it("toBoundedFloat_境界外_失敗", () => {
+    const result1 = toBoundedFloat(-0.1, 0.0, 0.0, 10.0, "test");
+    const result2 = toBoundedFloat(10.1, 0.0, 0.0, 10.0, "test");
+
+    expect(result1.ok).toBe(false);
+    expect(result2.ok).toBe(false);
+  });
+
+  it("toBoundedFloat_非常に小さい値_成功", () => {
+    const min = 0.0;
+    const max = 1.0;
+
+    // Act
+    const result = toBoundedFloat(0.000001, 0.0, min, max, "test");
+
+    // Assert
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toBe(0.000001);
+    }
   });
 });
 
@@ -442,6 +743,35 @@ describe("プロパティベーステスト", () => {
             expect(result.value).toBeGreaterThanOrEqual(safeMin);
             expect(result.value).toBeLessThanOrEqual(safeMax);
             expect(Number.isInteger(result.value)).toBe(true);
+          } else {
+            expect(typeof result.error).toBe("string");
+            expect(result.error.length).toBeGreaterThan(0);
+          }
+          return true;
+        }
+      )
+    );
+  });
+
+  it("toBoundedFloat_任意の入力_okなら範囲内の数値", () => {
+    fc.assert(
+      fc.property(
+        fc.anything(),
+        fc.double({ min: -100, max: 100, noNaN: true, noDefaultInfinity: true }),
+        fc.double({ min: -50, max: 0, noNaN: true, noDefaultInfinity: true }),
+        fc.double({ min: 0, max: 50, noNaN: true, noDefaultInfinity: true }),
+        fc.double({ min: 0, max: 50, noNaN: true, noDefaultInfinity: true }),
+        fc.string({ minLength: 1, maxLength: 20 }),
+        (value, fallback, min, max, field) => {
+          const safeMin = Math.min(min, max);
+          const safeMax = Math.max(min, max);
+
+          const result = toBoundedFloat(value, fallback, safeMin, safeMax, field);
+
+          if (result.ok) {
+            expect(result.value).toBeGreaterThanOrEqual(safeMin);
+            expect(result.value).toBeLessThanOrEqual(safeMax);
+            expect(Number.isFinite(result.value)).toBe(true);
           } else {
             expect(typeof result.error).toBe("string");
             expect(result.error.length).toBeGreaterThan(0);
@@ -593,6 +923,31 @@ describe("プロパティベーステスト", () => {
 
           const result = clampFloat(inRangeValue, safeMin, safeMax);
           expect(result).toBe(inRangeValue);
+          return true;
+        }
+      )
+    );
+  });
+
+  it("toBoundedFloat_境界保持_範囲内の値はそのまま", () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: -100, max: 100, noNaN: true }),
+        fc.double({ min: -100, max: 0, noNaN: true }),
+        fc.double({ min: 0, max: 100, noNaN: true }),
+        fc.string({ minLength: 1, maxLength: 20 }),
+        (value, min, max, field) => {
+          const safeMin = Math.min(min, max);
+          const safeMax = Math.max(min, max);
+
+          // 値を範囲内に調整
+          const inRangeValue = Math.max(safeMin, Math.min(safeMax, value));
+
+          const result = toBoundedFloat(inRangeValue, 0.0, safeMin, safeMax, field);
+          expect(result.ok).toBe(true);
+          if (result.ok) {
+            expect(result.value).toBe(inRangeValue);
+          }
           return true;
         }
       )

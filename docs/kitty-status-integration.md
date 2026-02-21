@@ -1,10 +1,10 @@
 ---
 title: Kitty Status Integration
 category: user-guide
-audience: [daily-user]
+audience: daily-user
 last_updated: 2026-02-17
 tags: [kitty, terminal, status, integration]
-related: [../02-user-guide/11-utilities.md]
+related: [./02-user-guide/11-utilities.md]
 ---
 
 # Kitty Status Integration
@@ -130,3 +130,7 @@ allow_remote_control yes
 ## ライセンス
 
 この拡張機能はpiの拡張機能として提供されます。
+
+## 関連トピック
+
+- [ユーティリティ](./02-user-guide/11-utilities.md) - 他のユーティリティ拡張機能

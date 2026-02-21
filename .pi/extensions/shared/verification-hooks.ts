@@ -413,17 +413,22 @@ function parseInspectorOutput(rawOutput: string): InspectorOutput {
   const recommendation = recommendationMatch?.[1]?.trim() || "No recommendation provided";
 
   // 検出パターンを抽出
-  const detectedPatterns = [];
+  const detectedPatterns: InspectorOutput["detectedPatterns"] = [];
   const patternRegex = /-\s*\[([^\]]+)\]:\s*(.+?)(?:\n-|\n\n|\n[A-Z]+:|$)/gis;
   let match;
   while ((match = patternRegex.exec(rawOutput)) !== null) {
     const pattern = match[1].toLowerCase().replace(/\s+/g, "-") as InspectorOutput["detectedPatterns"][0]["pattern"];
     const description = match[2].trim();
     
+    const severity: "low" | "medium" | "high" =
+      description.toLowerCase().includes("critical") || description.toLowerCase().includes("重大")
+        ? "high"
+        : "medium";
+
     detectedPatterns.push({
       pattern,
       location: "output",
-      severity: (description.toLowerCase().includes("critical") || description.toLowerCase().includes("重大")) ? "high" : "medium",
+      severity,
       description,
     });
   }
