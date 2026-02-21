@@ -567,7 +567,14 @@ const DEBUG_RUNTIME_QUEUE =
 let runtimeNowProvider: () => number = () => Date.now();
 let runtimeQueueSequence = 0;
 let runtimeReservationSequence = 0;
-const RUNTIME_INSTANCE_TOKEN = randomBytes(3).toString("hex");
+// Lazy-initialized runtime instance token to avoid crypto overhead at startup
+let _runtimeInstanceToken: string | undefined;
+function getRuntimeInstanceToken(): string {
+  if (!_runtimeInstanceToken) {
+    _runtimeInstanceToken = randomBytes(3).toString("hex");
+  }
+  return _runtimeInstanceToken;
+}
 let runtimeReservationSweeper: NodeJS.Timeout | undefined;
 const runtimeCapacityEventTarget = new EventTarget();
 
@@ -1114,7 +1121,7 @@ function sanitizePlannedCount(value: unknown): number {
 
 function createRuntimeQueueEntryId(): string {
   runtimeQueueSequence += 1;
-  return `queue-${process.pid}-${RUNTIME_INSTANCE_TOKEN}-${runtimeNow()}-${runtimeQueueSequence}`;
+  return `queue-${process.pid}-${getRuntimeInstanceToken()}-${runtimeNow()}-${runtimeQueueSequence}`;
 }
 
 function clampPlannedCount(value: number): number {
@@ -1223,7 +1230,7 @@ function toQueueClass(input: RuntimeDispatchPermitInput): RuntimeQueueClass {
 
 function createRuntimeReservationId(): string {
   runtimeReservationSequence += 1;
-  return `reservation-${process.pid}-${RUNTIME_INSTANCE_TOKEN}-${runtimeNow()}-${runtimeReservationSequence}`;
+  return `reservation-${process.pid}-${getRuntimeInstanceToken()}-${runtimeNow()}-${runtimeReservationSequence}`;
 }
 
 function removeQueuedEntry(runtime: AgentRuntimeState, entryId: string): number {

@@ -72,9 +72,23 @@ import { getAdaptiveTotalLimitSnapshot, resetAdaptiveTotalLimitState } from "../
  * @summary ランタイム拡張登録
  * @param pi 拡張APIインスタンス
  */
-export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) {
-  // Initialize adaptive controller at startup
+// Lazy initialization flag for adaptive controller
+let adaptiveControllerInitialized = false;
+
+/**
+ * Ensure adaptive controller is initialized (lazy on first session start).
+ * This defers file I/O from extension load time to first actual use.
+ */
+function ensureAdaptiveControllerInitialized(): void {
+  if (adaptiveControllerInitialized) return;
+  adaptiveControllerInitialized = true;
   initAdaptiveController();
+}
+
+export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) {
+  // NOTE: Adaptive controller initialization is deferred to session_start event
+  // to improve startup performance. Previously this was called synchronously
+  // at extension load time, causing blocking file I/O.
 
   // Command: Show cross-instance coordinator status
   pi.registerCommand("pi-instances", {
@@ -140,6 +154,9 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
   pi.registerCommand("pi-limits", {
     description: "Show provider/model rate limits",
     handler: async (args, ctx) => {
+      // Ensure adaptive controller is initialized before accessing its state
+      ensureAdaptiveControllerInitialized();
+
       const providers = listProviders();
       const lines: string[] = ["Provider Limits", "===============", ""];
 
@@ -221,6 +238,9 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
     description: "Get current cross-instance coordinator status and parallelism allocation.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      // Ensure adaptive controller is initialized
+      ensureAdaptiveControllerInitialized();
+
       const status = getCoordinatorStatus();
       const runtime = getRuntimeSnapshot();
       const modelUsage = getModelUsageSummary();
@@ -301,6 +321,9 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
       tier: Type.Optional(Type.String({ description: "Optional tier (e.g., pro, max, plus)" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      // Ensure adaptive controller is initialized
+      ensureAdaptiveControllerInitialized();
+
       const parsedParams = (params ?? {}) as { provider?: string; model?: string; tier?: string };
       const provider = String(parsedParams.provider || "");
       const model = String(parsedParams.model || "");
@@ -376,6 +399,9 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
 
   // Event: Register instance on session start
   pi.on("session_start", async (event, ctx) => {
+    // Lazy initialize adaptive controller on first session (not at extension load time)
+    ensureAdaptiveControllerInitialized();
+
     const sessionId = (event as any)?.sessionId ?? "unknown";
     const envOverrides = getEnvOverrides();
 
