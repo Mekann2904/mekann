@@ -761,30 +761,44 @@ function buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): st
     }
   }
 
-  // 前回のメタ認知チェックに基づく推論深度フィードバック
-  let metacognitiveFeedback = '';
+  // 前回のメタ認グチェックに基づく推論深度フィードバック
+  // 新アプローチ: 「判定結果」→「品質基準（事前ガイダンス）」
+  let qualityGuidance = '';
   if (run.lastMetacognitiveCheck) {
     const mc = run.lastMetacognitiveCheck;
-    metacognitiveFeedback = `\n## 前回のメタ認知チェック結果（推論深度: ${((run.lastInferenceDepthScore ?? 0.5) * 100).toFixed(0)}%）
-
-以下の点について、今回の分析で改善してください：
-
-| 視座 | 検出結果 | 改善指示 |
-|------|----------|----------|
-| 脱構築 | 二項対立: ${mc.deconstruction.binaryOppositions.length}件 | 二項対立を中間領域で脱構築せよ |
-| スキゾ分析 | 内なるファシズム: ${mc.schizoAnalysis.innerFascismSigns.length}件 | 権力への無批判な服従を避けよ |
-| 幸福論 | 快楽主義の罠: ${mc.eudaimonia.pleasureTrap ? "検出" : "なし"} | ${mc.eudaimonia.pleasureTrap ? "ユーザー迎合を避け、真実を語れ" : "現在の基調を維持せよ"} |
-| 思考哲学 | メタ認知レベル: ${(mc.philosophyOfThought.metacognitionLevel * 100).toFixed(0)}% | ${mc.philosophyOfThought.metacognitionLevel < 0.5 ? "前提と推論過程を明示せよ" : "深い思考を維持せよ"} |
-| 論理学 | 誤謬: ${mc.logic.fallacies.length}件 | ${mc.logic.fallacies.length > 0 ? "論理的飛躍を回避せよ" : "論理的厳密さを維持せよ"} |
-
-`;
-    if (mc.logic.fallacies.length > 0) {
-      metacognitiveFeedback += `**検出された論理的誤謬**（再発防止）:
-${mc.logic.fallacies.map(f => `- ${f.type}: ${f.description}`).join('\n')}\n\n`;
+    const depthScore = (run.lastInferenceDepthScore ?? 0.5) * 100;
+    
+    // 前回の結果から「次に達成すべき品質基準」を生成
+    const qualityTargets: string[] = [];
+    
+    if (mc.deconstruction.binaryOppositions.length > 0) {
+      qualityTargets.push(`二項対立の脱構築: 前回${mc.deconstruction.binaryOppositions.length}件検出。「AかBか」以外の第三の選択肢を探求する`);
     }
     if (mc.deconstruction.aporias.length > 0) {
-      metacognitiveFeedback += `**検出されたアポリア**（統合を急がず両極を維持）:
-${mc.deconstruction.aporias.map(a => `- ${a.description}`).join('\n')}\n\n`;
+      qualityTargets.push(`アポリアの認識: 前回${mc.deconstruction.aporias.length}件検出。解決困難な対立を「解決」せず、両極を維持しながら判断する`);
+    }
+    if (mc.schizoAnalysis.innerFascismSigns.length > 0) {
+      qualityTargets.push(`内なるファシズムの緩和: 前回${mc.schizoAnalysis.innerFascismSigns.length}件検出。「必ず」「常に」の使用を意識的に減らす`);
+    }
+    if (mc.eudaimonia.pleasureTrap) {
+      qualityTargets.push(`快楽主義の回避: ユーザーを喜ばせるために真実を曲げない`);
+    }
+    if (mc.philosophyOfThought.metacognitionLevel < 0.5) {
+      qualityTargets.push(`メタ認知の強化: 前回${(mc.philosophyOfThought.metacognitionLevel * 100).toFixed(0)}%。前提を明示し、推論過程を記述する`);
+    }
+    if (mc.logic.fallacies.length > 0) {
+      qualityTargets.push(`論理的厳密性: 前回${mc.logic.fallacies.length}件の誤謬検出。論理的飛躍を回避し、各ステップを検証する`);
+    }
+    
+    if (qualityTargets.length > 0) {
+      qualityGuidance = `\n## 今回の品質目標（前回推論深度: ${depthScore.toFixed(0)}%）
+
+以下の品質目標を達成するよう、出力を生成してください：
+
+${qualityTargets.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+※ これらは「判定結果」ではなく、「今回達成すべき品質基準」です。出力時点で基準を満たすことを目指してください。
+`;
     }
   }
 
@@ -850,13 +864,41 @@ ${topActions.map((action, i) =>
 あなたは通常のコーディングエージェントとして動作してください。
 以下のタスクを継続実行してください:
 ${run.task}
-${previousSummary}${strategySection}${metacognitiveFeedback}${improvementActionsSection}
+${previousSummary}${strategySection}${qualityGuidance}
 ## 7つの哲学的視座による自己点検
 
 このサイクルでは、self-improvementスキルに基づき、以下の7つの視座から自己点検を行ってください:
 
 ${perspectivesDetail}
 ${checklistAddition}
+
+## 品質基準（事前ガイダンス）
+
+以下の基準を満たす出力を生成してください。出力後に判定されるのではなく、出力時点で基準を満たすことを目指してください。
+
+### 推論品質
+- [ ] **前提の明示**: 暗黙の前提を明示的に記述しているか
+- [ ] **推論過程**: 結論に至る論理的ステップを示しているか
+- [ ] **反例の検討**: 自分の仮説を否定する可能性を検討しているか
+- [ ] **論理的飛躍の回避**: 前提と結論の間にギャップがないか
+
+### 思考の深さ
+- [ ] **メタ認知**: 自分の思考プロセスを振り返っているか
+- [ ] **多角的視点**: 複数の観点から問題を見ているか
+- [ ] **二項対立の脱構築**: 「AかBか」以外の可能性を探っているか
+- [ ] **アポリアの認識**: 解決困難な対立がある場合、それを認識しているか
+
+### 倫理的考慮
+- [ ] **ユーザー迎合の回避**: ユーザーを喜ばせるために真実を曲げていないか
+- [ ] **権力への服従の自覚**: 「すべき」「 must」を無批判に使っていないか
+- [ ] **全体主義的傾向の回避**: 多様性を排除する方向に進んでいないか
+
+### 実行前チェック
+以下の点を確認してから実行してください：
+- [ ] タスクの本質を理解しているか
+- [ ] 実装すべきものと実装すべきでないものを区別しているか
+- [ ] 代替アプローチを検討したか
+
 ## 実行ルール
 - 通常のエージェントと同じように、必要なツールを自由に使う
 - 必要に応じて subagent_run / subagent_run_parallel を使う
