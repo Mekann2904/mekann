@@ -68,6 +68,57 @@ import {
 // 型定義
 // ============================================================================
 
+/** 429エラー対応設定（環境変数でオーバーライド可能） */
+interface RateLimitConfig {
+  maxRetries: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  multiplier: number;
+  jitter: "full" | "partial" | "none";
+  maxRateLimitRetries: number;
+  maxRateLimitWaitMs: number;
+  minCycleIntervalMs: number;
+  maxCycleIntervalMs: number;
+  perspectiveDelayMs: number;
+  high429Threshold: number;
+}
+
+/** 環境変数から設定を読み込む */
+function loadRateLimitConfig(): RateLimitConfig {
+  const parseIntEnv = (key: string, defaultValue: number, min?: number, max?: number): number => {
+    const val = process.env[key];
+    if (!val) return defaultValue;
+    const parsed = parseInt(val, 10);
+    if (!Number.isFinite(parsed)) return defaultValue;
+    if (min !== undefined && parsed < min) return defaultValue;
+    if (max !== undefined && parsed > max) return defaultValue;
+    return parsed;
+  };
+
+  const parseJitterEnv = (key: string, defaultValue: "full" | "partial" | "none"): "full" | "partial" | "none" => {
+    const val = process.env[key]?.toLowerCase();
+    if (val === "full" || val === "partial" || val === "none") return val;
+    return defaultValue;
+  };
+
+  return {
+    maxRetries: parseIntEnv("PI_SELF_IMPROVEMENT_MAX_RETRIES", 3, 0, 10),
+    initialDelayMs: parseIntEnv("PI_SELF_IMPROVEMENT_INITIAL_DELAY_MS", 2000, 100, 60000),
+    maxDelayMs: parseIntEnv("PI_SELF_IMPROVEMENT_MAX_DELAY_MS", 30000, 1000, 300000),
+    multiplier: parseIntEnv("PI_SELF_IMPROVEMENT_MULTIPLIER", 2, 1, 10),
+    jitter: parseJitterEnv("PI_SELF_IMPROVEMENT_JITTER", "partial"),
+    maxRateLimitRetries: parseIntEnv("PI_SELF_IMPROVEMENT_MAX_RATE_LIMIT_RETRIES", 5, 0, 20),
+    maxRateLimitWaitMs: parseIntEnv("PI_SELF_IMPROVEMENT_MAX_RATE_LIMIT_WAIT_MS", 60000, 1000, 300000),
+    minCycleIntervalMs: parseIntEnv("PI_SELF_IMPROVEMENT_MIN_CYCLE_INTERVAL_MS", 3000, 0, 60000),
+    maxCycleIntervalMs: parseIntEnv("PI_SELF_IMPROVEMENT_MAX_CYCLE_INTERVAL_MS", 60000, 1000, 300000),
+    perspectiveDelayMs: parseIntEnv("PI_SELF_IMPROVEMENT_PERSPECTIVE_DELAY_MS", 500, 0, 10000),
+    high429Threshold: parseIntEnv("PI_SELF_IMPROVEMENT_HIGH_429_THRESHOLD", 30, 0, 100) / 100,
+  };
+}
+
+// 設定を一度だけ読み込む（モジュール初期化時）
+const RATE_LIMIT_CONFIG = loadRateLimitConfig();
+
 /** 7つの哲学的視座 */
 type PerspectiveName =
   | "deconstruction"       // 脱構築
@@ -1246,21 +1297,23 @@ SUMMARY: [1-2文の要約]
 `;
 }
 
-/** 429エラー対応付きのリトライ設定 */
-const DEFAULT_RETRY_CONFIG: RetryWithBackoffOverrides = {
-  maxRetries: 3,           // 最大3回リトライ
-  initialDelayMs: 2000,    // 初期待機2秒
-  maxDelayMs: 30000,       // 最大待機30秒
-  multiplier: 2,           // 指数バックオフ
-  jitter: "partial",       // 部分ジッターで分散
-};
+/** 429エラー対応付きのリトライ設定（環境変数でオーバーライド可能） */
+function getDefaultRetryConfig(): RetryWithBackoffOverrides {
+  return {
+    maxRetries: RATE_LIMIT_CONFIG.maxRetries,
+    initialDelayMs: RATE_LIMIT_CONFIG.initialDelayMs,
+    maxDelayMs: RATE_LIMIT_CONFIG.maxDelayMs,
+    multiplier: RATE_LIMIT_CONFIG.multiplier,
+    jitter: RATE_LIMIT_CONFIG.jitter,
+  };
+}
 
-/** サイクル間の最小待機時間（ミリ秒） */
-const MIN_CYCLE_INTERVAL_MS = 3000;  // 3秒
-/** サイクル間の最大待機時間（ミリ秒） */
-const MAX_CYCLE_INTERVAL_MS = 60000; // 60秒
-/** 429確率が高いと判断する閾値 */
-const HIGH_429_PROBABILITY_THRESHOLD = 0.3;
+/** サイクル間の最小待機時間（ミリ秒）- 環境変数でオーバーライド可能 */
+const MIN_CYCLE_INTERVAL_MS = RATE_LIMIT_CONFIG.minCycleIntervalMs;
+/** サイクル間の最大待機時間（ミリ秒）- 環境変数でオーバーライド可能 */
+const MAX_CYCLE_INTERVAL_MS = RATE_LIMIT_CONFIG.maxCycleIntervalMs;
+/** 429確率が高いと判断する閾値 - 環境変数でオーバーライド可能 */
+const HIGH_429_PROBABILITY_THRESHOLD = RATE_LIMIT_CONFIG.high429Threshold;
 
 /**
  * 適応的サイクル間待機時間を計算する
@@ -1339,7 +1392,7 @@ async function callModel(
 
   // リトライ設定をマージ
   const retryConfig: RetryWithBackoffOverrides = {
-    ...DEFAULT_RETRY_CONFIG,
+    ...getDefaultRetryConfig(),
     ...retryOverrides,
   };
 
@@ -1602,7 +1655,7 @@ ${prompt}`;
       
       // 視座間の短い待機（最後の視座以外）
       if (i < PERSPECTIVES.length - 1) {
-        const perspectiveDelayMs = 500; // 500ms待機
+        const perspectiveDelayMs = RATE_LIMIT_CONFIG.perspectiveDelayMs; // 環境変数で設定可能
         await sleepWithAbort(perspectiveDelayMs, signal);
       }
     } catch (error) {
