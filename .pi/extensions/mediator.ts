@@ -249,6 +249,11 @@ export default function registerMediatorExtension(pi: ExtensionAPI) {
           return;
         }
 
+        if (!parsed.task) {
+          ctx.ui.notify("mediator failed: no task provided", "error");
+          return;
+        }
+
         const sessionId = generateSessionId();
         const factsStore = loadConfirmedFacts(memoryDir);
         const llmCall = createLlmCallFromContext(ctx);

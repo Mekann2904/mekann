@@ -891,8 +891,9 @@ function calculateSelfReferenceConsistency(
  * 柔軟性を計算
  */
 function calculateFlexibility(patterns: CognitivePattern[]): number {
+  // 'creative'以外のパターンは柔軟性を低下させる
   const negativePatterns = patterns.filter(p =>
-    p.type !== 'creative' && p.type !== 'flexibility'
+    p.type !== 'creative'
   );
 
   if (negativePatterns.length === 0) return 0.8;

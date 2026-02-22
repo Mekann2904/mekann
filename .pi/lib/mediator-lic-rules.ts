@@ -159,7 +159,7 @@ const CONTEXT_IGNORATION_RULE: LiCDetectionRule = {
     // 確認済み事実からもキーワードを追加
     const factKeywords = confirmedFacts
       .slice(-5)
-      .flatMap((f) => extractImportantKeywords(f.content));
+      .flatMap((f) => extractImportantKeywords(f.value));
 
     const allKeywords = [...new Set([...importantKeywords, ...factKeywords])];
 
@@ -318,7 +318,7 @@ const TOPIC_DRIFT_RULE: LiCDetectionRule = {
     if (currentKeywords.length > 2 && overlap.length === 0) {
       // 確認済み事実との関連もチェック
       const factKeywords = confirmedFacts.flatMap((f) =>
-        extractImportantKeywords(f.content)
+        extractImportantKeywords(f.value)
       );
       const factOverlap = currentKeywords.filter((kw) =>
         factKeywords.some((fk) => fk.toLowerCase() === kw.toLowerCase())
