@@ -687,6 +687,120 @@ export function hasErrorCode(error: unknown, code: PiErrorCode): boolean {
   return isPiError(error) && error.code === code;
 }
 
+// ============================================================================
+// チーム定義エラー
+// ============================================================================
+
+/**
+ * チーム定義エラーの種別
+ */
+export type TeamDefinitionErrorCode =
+  | "TEAM_DEFINITION_NOT_FOUND"
+  | "TEAM_DEFINITION_PARSE_ERROR"
+  | "TEAM_DEFINITION_VALIDATION_ERROR"
+  | "TEAM_MEMBER_VALIDATION_ERROR"
+  | "TEAM_PHASE_RESOLUTION_ERROR";
+
+/**
+ * チーム定義の検証エラー詳細
+ */
+export interface TeamValidationDetail {
+  /** エラーが発生したフィールド */
+  field: string;
+  /** エラーメッセージ */
+  message: string;
+  /** 問題のある値 */
+  value?: unknown;
+}
+
+/**
+ * チーム定義関連エラー
+ * @summary チーム定義エラー生成
+ */
+export class TeamDefinitionError extends PiError {
+  /** チームID */
+  public readonly teamId?: string;
+  /** チーム定義ファイルパス */
+  public readonly filePath?: string;
+  /** エラー種別 */
+  public readonly errorType: TeamDefinitionErrorCode;
+  /** 検証エラーの詳細一覧 */
+  public readonly validationDetails?: TeamValidationDetail[];
+
+  constructor(
+    message: string,
+    errorType: TeamDefinitionErrorCode,
+    options?: {
+      teamId?: string;
+      filePath?: string;
+      validationDetails?: TeamValidationDetail[];
+      cause?: Error;
+    },
+  ) {
+    super(message, "VALIDATION_ERROR", {
+      retryable: false,
+      cause: options?.cause,
+    });
+    this.name = "TeamDefinitionError";
+    this.errorType = errorType;
+    this.teamId = options?.teamId;
+    this.filePath = options?.filePath;
+    this.validationDetails = options?.validationDetails;
+  }
+
+  /**
+   * JSON形式に変換
+   * @summary JSON形式変換
+   * @returns エラー情報オブジェクト
+   */
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      errorType: this.errorType,
+      teamId: this.teamId,
+      filePath: this.filePath,
+      validationDetails: this.validationDetails,
+    };
+  }
+
+  /**
+   * 人間が読める形式のエラーメッセージを生成
+   * @summary エラーメッセージ生成
+   * @returns フォーマット済みエラーメッセージ
+   */
+  toFormattedMessage(): string {
+    const parts = [this.message];
+
+    if (this.teamId) {
+      parts.push(`Team ID: ${this.teamId}`);
+    }
+    if (this.filePath) {
+      parts.push(`File: ${this.filePath}`);
+    }
+    if (this.validationDetails && this.validationDetails.length > 0) {
+      parts.push("Validation errors:");
+      for (const detail of this.validationDetails) {
+        parts.push(`  - ${detail.field}: ${detail.message}`);
+        if (detail.value !== undefined) {
+          parts.push(`    Value: ${JSON.stringify(detail.value)}`);
+        }
+      }
+    }
+
+    return parts.join("\n");
+  }
+}
+
+/**
+ * チーム定義エラーか判定
+ * @summary TeamDefinitionError型ガード
+ * @param error エラー对象
+ * @returns TeamDefinitionErrorの場合true
+ */
+export function isTeamDefinitionError(error: unknown): error is TeamDefinitionError {
+  return error instanceof TeamDefinitionError;
+}
+
 /**
  * PiErrorベースでリトライ可能か判定
  * @summary PiErrorリトライ可否判定

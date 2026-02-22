@@ -169,7 +169,9 @@ export function isBashCommandAllowed(command: string): boolean {
 
 	// 1. Block any form of output redirection
 	// >, >>, 2>, 2>>, &>, &>>
-	if (/[>|2>][>\s]|&>[>\s]|&>>/.test(trimmed)) {
+	// NOTE: Fixed regex - [>|2>] was incorrectly matching '2' as a character class
+	// instead of literal '2>'. Now uses non-capturing groups for proper matching.
+	if (/(?:2>|>)[>\s]|&>>|&>/.test(trimmed)) {
 		return false;
 	}
 

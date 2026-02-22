@@ -31,13 +31,14 @@
  * to eliminate DRY violations with subagents/storage.ts.
  */
 
-import { existsSync, readFileSync, copyFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createPathsFactory,
   createEnsurePaths,
   pruneRunArtifacts,
   mergeTeamStorageWithDisk as mergeStorageWithDiskCommon,
+  createCorruptedBackup,
   toId as toIdCommon,
   type BaseStoragePaths,
 } from "../../lib/storage-base.js";
@@ -78,6 +79,8 @@ export interface TeamMember {
   model?: string;
   enabled: boolean;
   skills?: string[];
+  /** 思考レベル（推論深度） */
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 }
 
 /**
@@ -89,6 +92,7 @@ export interface TeamMember {
  * @param enabled - チームの有効状態
  * @param members - チームメンバーのリスト
  * @param skills - チームが持つスキルのリスト（任意）
+ * @param thinkingLevel - チーム全体のデフォルト思考レベル（任意）
  * @param createdAt - 作成日時（ISO 8601形式）
  * @param updatedAt - 更新日時（ISO 8601形式）
  */
@@ -99,6 +103,8 @@ export interface TeamDefinition {
   enabled: TeamEnabledState;
   members: TeamMember[];
   skills?: string[];
+  /** チーム全体のデフォルト思考レベル（推論深度） */
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   createdAt: string;
   updatedAt: string;
 }
@@ -270,6 +276,13 @@ export interface TeamRunRecord {
     uSys: number;
     collapseSignals: string[];
   };
+  // ユーザビリティ改善: 完了状況の可視化
+  /** 達成した事項 */
+  achieved?: string[];
+  /** 残存する課題 */
+  remaining?: string[];
+  /** 成功基準（ユーザー期待値） */
+  successCriteria?: string[];
   // 相関IDフィールド（後方互換性のためオプション）
   correlationId?: string;
   parentEventId?: string;
@@ -337,40 +350,6 @@ function mergeTeamStorageWithDisk(
     TEAM_DEFAULTS_VERSION,
     MAX_RUNS_TO_KEEP,
   ) as TeamStorage;
-}
-
-/**
- * 破損したストレージファイルのバックアップを作成
- * @summary 破損バックアップ作成
- * @param storageFile - 元のストレージファイルパス
- * @param prefix - バックアップファイル名のプレフィックス
- * @returns {string | null} バックアップファイルのパス、失敗時はnull
- */
-function createCorruptedBackup(storageFile: string, prefix: string): string | null {
-  try {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backupFile = `${storageFile}.corrupted.${prefix}.${timestamp}.bak`;
-
-    // Get original file stats for logging
-    const stats = statSync(storageFile);
-    const sizeBytes = stats.size;
-
-    // Create backup copy
-    copyFileSync(storageFile, backupFile);
-
-    console.warn(
-      `[${prefix}] Created backup of corrupted storage: ${backupFile} (${sizeBytes} bytes)`,
-    );
-
-    return backupFile;
-  } catch (backupError) {
-    console.error(
-      `[${prefix}] Failed to create backup of corrupted storage: ${
-        backupError instanceof Error ? backupError.message : String(backupError)
-      }`,
-    );
-    return null;
-  }
 }
 
 /**

@@ -14,6 +14,10 @@ const SAFE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 const DEFAULT_COMM_ID_LENGTH = 8;
 const MAX_COMM_ID_LENGTH = 16;
 
+/**
+ * 通信IDエントリ
+ * @summary IDマッピング
+ */
 export interface CommIdEntry {
   memberId: string;
   commId: string;
@@ -23,6 +27,13 @@ export function isSafeId(id: string): boolean {
   return SAFE_ID_PATTERN.test(id);
 }
 
+/**
+ * 通信用IDを生成する
+ * @summary 安全な通信ID生成
+ * @param memberId メンバーID
+ * @param salt ソルト値（オプション）
+ * @returns 通信用ID
+ */
 export function generateCommId(memberId: string, salt = ""): string {
   if (SAFE_ID_PATTERN.test(memberId)) {
     return memberId;
@@ -32,6 +43,13 @@ export function generateCommId(memberId: string, salt = ""): string {
   return base32Encode(hash).slice(0, DEFAULT_COMM_ID_LENGTH);
 }
 
+/**
+ * メンバーから一意な通信IDを解決する
+ * @summary 一意通信ID解決
+ * @param members メンバーリスト
+ * @param salt ソルト値（オプション）
+ * @returns 通信IDエントリの配列
+ */
 export function resolveUniqueCommIds(
   members: { id: string }[],
   salt = ""

@@ -446,10 +446,14 @@ const DEFAULT_HYBRID_CONFIG: HybridSchedulerConfig = {
  * @param prefix IDの接頭辞
  * @returns 生成されたタスクID
  */
+let taskIdSequence = 0;
+
 export function createTaskId(prefix: string = "task"): string {
   const timestamp = Date.now().toString(36);
+  taskIdSequence = (taskIdSequence + 1) % 36 ** 4;
+  const sequence = taskIdSequence.toString(36).padStart(4, "0");
   const random = Math.random().toString(36).substring(2, 8);
-  return `${prefix}-${timestamp}-${random}`;
+  return `${prefix}-${timestamp}-${sequence}${random}`;
 }
 
 /**

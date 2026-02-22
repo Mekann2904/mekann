@@ -85,7 +85,11 @@ import { createChildAbortController } from "../../lib/abort-utils";
 import {
   createAdaptivePenaltyController,
 } from "../../lib/adaptive-penalty.js";
-import { SchemaValidationError, ValidationError } from "../../lib/errors.js";
+import {
+  SchemaValidationError,
+  ValidationError,
+  TeamDefinitionError,
+} from "../../lib/errors.js";
 import { getLogger } from "../../lib/comprehensive-logger";
 import type { OperationType } from "../../lib/comprehensive-logger-types";
 import { getCostEstimator, type ExecutionHistoryEntry, CostEstimator } from "../../lib/cost-estimator";
@@ -160,6 +164,8 @@ import {
   createDefaultTeams,
   mergeDefaultTeam,
   ensureDefaults,
+  validateTeamDefinition,
+  type TeamValidationError,
 } from "./definition-loader";
 
 // Import live-monitor module (extracted for SRP compliance)
@@ -190,6 +196,14 @@ import {
   resolveTeamParallelRunOutcome,
   buildTeamResultText,
 } from "./result-aggregation";
+
+// Import team-orchestrator module (extracted for SRP compliance)
+import {
+  runTeamTask,
+  shouldRetryFailedMemberResult,
+  type TeamTaskInput,
+  type TeamTaskResult,
+} from "./team-orchestrator.js";
 
 // Import team types from lib (extracted for maintainability)
 // Note: Only types with matching structures are imported.
@@ -229,6 +243,9 @@ export {
   createDefaultTeams,
   mergeDefaultTeam,
   ensureDefaults,
+  validateTeamFrontmatter,
+  validateTeamDefinition,
+  type TeamValidationError,
 } from "./definition-loader";
 
 // Re-export member-execution functions for external use (backward compatibility)
@@ -271,6 +288,14 @@ import { formatTeamList, formatRecentRuns, debugCostEstimation } from "./team-fo
 export { pickTeam, pickDefaultParallelTeams } from "./team-helpers.js";
 // Import helpers for internal use
 import { pickTeam, pickDefaultParallelTeams } from "./team-helpers.js";
+
+// Re-export team-orchestrator functions for backward compatibility
+export {
+  runTeamTask,
+  shouldRetryFailedMemberResult,
+  type TeamTaskInput,
+  type TeamTaskResult,
+} from "./team-orchestrator.js";
 
 // Re-export types for external use
 export type {
@@ -402,10 +427,7 @@ export { renderAgentTeamLiveView, createAgentTeamLiveMonitor } from "./live-moni
 
 // Communication functions moved to ./agent-teams/communication.ts
 
-// Local wrapper for shouldRetryFailedMemberResult that passes classifyPressureError
-function shouldRetryFailedMemberResult(result: TeamMemberResult, retryRound: number): boolean {
-  return shouldRetryFailedMemberResultBase(result, retryRound, classifyPressureError);
-}
+// Note: shouldRetryFailedMemberResult is now imported from ./team-orchestrator.ts
 
 // Note: toRetryOverrides is kept locally because it checks STABLE_AGENT_TEAM_RUNTIME
 // which is specific to this module. The lib version does not have this check.
@@ -464,745 +486,6 @@ async function runPiPrintMode(input: {
 }
 
 // Note: runMember is now imported from ./agent-teams/member-execution
-
-/**
- * @summary チームでタスクを実行
- * 
- * チームメンバーを並列または順次で実行し、コミュニケーションラウンドを処理する。
- * @param input - チーム定義、タスク、戦略、コールバック等を含む入力オブジェクト
- * @returns 実行記録、メンバー結果、コミュニケーション監査
- */
-async function runTeamTask(input: {
-  team: TeamDefinition;
-  task: string;
-  strategy: TeamStrategy;
-  memberParallelLimit?: number;
-  communicationRounds: number;
-  failedMemberRetryRounds?: number;
-  communicationLinks?: Map<string, string[]>;
-  sharedContext?: string;
-  timeoutMs: number;
-  cwd: string;
-  retryOverrides?: RetryWithBackoffOverrides;
-  fallbackProvider?: string;
-  fallbackModel?: string;
-  signal?: AbortSignal;
-  onMemberStart?: (member: TeamMember) => void;
-  onMemberEnd?: (member: TeamMember) => void;
-  onMemberTextDelta?: (member: TeamMember, delta: string) => void;
-  onMemberStderrChunk?: (member: TeamMember, chunk: string) => void;
-  onMemberResult?: (member: TeamMember, result: TeamMemberResult) => void;
-  onMemberPhase?: (member: TeamMember, phase: TeamLivePhase, round?: number) => void;
-  onMemberEvent?: (member: TeamMember, event: string) => void;
-  onTeamEvent?: (event: string) => void;
-}): Promise<{ runRecord: TeamRunRecord; memberResults: TeamMemberResult[]; communicationAudit: TeamCommunicationAuditEntry[] }> {
-  // Clear belief state cache at the start of each team execution to prevent state pollution
-  clearBeliefStateCache();
-
-  const enabledMembers = input.team.members.filter((member) => member.enabled);
-  if (enabledMembers.length === 0) {
-    throw new ValidationError(`no enabled members in team (${input.team.id})`, {
-      field: "team.members",
-      expected: "at least one enabled member",
-      actual: "0 enabled members",
-    });
-  }
-  // Execute all enabled members. Runtime safety is handled by memberParallelLimit.
-  const activeMembers = enabledMembers;
-
-  const runId = createRunId();
-  const startedAt = new Date().toISOString();
-  const paths = ensurePaths(input.cwd);
-  const outputFile = join(paths.runsDir, `${runId}.json`);
-  const communicationRounds =
-    activeMembers.length <= 1 ? 0 : normalizeCommunicationRounds(input.communicationRounds, DEFAULT_COMMUNICATION_ROUNDS, STABLE_AGENT_TEAM_RUNTIME);
-  const failedMemberRetryRounds =
-    activeMembers.length <= 1
-      ? 0
-      : normalizeFailedMemberRetryRounds(
-          input.failedMemberRetryRounds,
-          DEFAULT_FAILED_MEMBER_RETRY_ROUNDS,
-          STABLE_AGENT_TEAM_RUNTIME,
-        );
-  let failedMemberRetryApplied = 0;
-  const recoveredMembers = new Set<string>();
-  const communicationLinks = input.communicationLinks ?? createCommunicationLinksMap(activeMembers);
-  const activeMemberById = new Map(activeMembers.map((member) => [member.id, member]));
-  const memberById = new Map(input.team.members.map((member) => [member.id, member]));
-  const communicationAudit: TeamCommunicationAuditEntry[] = [];
-
-  input.onTeamEvent?.(
-    `team=${input.team.id} start strategy=${input.strategy} members=${activeMembers.length} communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryRounds}`,
-  );
-  const communicationPlanLine = activeMembers
-    .map((member) => `${member.id}->${(communicationLinks.get(member.id) ?? []).join(",") || "-"}`)
-    .join(" | ");
-  input.onTeamEvent?.(`communication links: ${normalizeForSingleLine(communicationPlanLine, 320)}`);
-  for (const member of activeMembers) {
-    const partners = communicationLinks.get(member.id) ?? [];
-    input.onMemberPhase?.(member, "queued");
-    input.onMemberEvent?.(
-      member,
-      `queued: partners=${partners.join(", ") || "-"} shared_context=${input.sharedContext?.trim() ? "yes" : "no"}`,
-    );
-  }
-
-  const emitResultEvent = (
-    member: TeamMember,
-    phaseLabel: string,
-    result: TeamMemberResult,
-  ) => {
-    // Emit compact machine-like telemetry so users can see internal progress directly.
-    const diagnostics = result.diagnostics
-      ? ` confidence=${result.diagnostics.confidence.toFixed(2)} evidence=${result.diagnostics.evidenceCount}`
-      : "";
-    input.onMemberEvent?.(
-      member,
-      `${phaseLabel} result: status=${result.status} latency=${result.latencyMs}ms summary=${normalizeForSingleLine(result.summary, 96)}${diagnostics}${result.error ? ` error=${normalizeForSingleLine(result.error, 120)}` : ""}`,
-    );
-  };
-
-  let memberResults: TeamMemberResult[] = [];
-  if (input.strategy === "parallel") {
-    const memberParallelLimit = toConcurrencyLimit(input.memberParallelLimit, activeMembers.length);
-    input.onTeamEvent?.(`initial phase start: strategy=parallel member_parallel_limit=${memberParallelLimit}`);
-    memberResults = await runWithConcurrencyLimit(
-      activeMembers,
-      memberParallelLimit,
-      async (member) => {
-        // Create child AbortController to prevent MaxListenersExceededWarning
-        const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
-        try {
-          input.onMemberPhase?.(member, "initial");
-          input.onMemberEvent?.(member, "initial phase: dispatching run");
-          const result = await runMember({
-            team: input.team,
-            member,
-            task: input.task,
-            sharedContext: input.sharedContext,
-            phase: "initial",
-            timeoutMs: input.timeoutMs,
-            cwd: input.cwd,
-            retryOverrides: input.retryOverrides,
-            fallbackProvider: input.fallbackProvider,
-            fallbackModel: input.fallbackModel,
-            signal: childController.signal,
-            onStart: input.onMemberStart,
-            onEnd: input.onMemberEnd,
-            onEvent: input.onMemberEvent,
-            onTextDelta: input.onMemberTextDelta,
-            onStderrChunk: input.onMemberStderrChunk,
-          });
-          emitResultEvent(member, "initial", result);
-          return result;
-        } finally {
-          cleanupAbort();
-        }
-      },
-      { signal: input.signal },
-    );
-    for (let index = 0; index < activeMembers.length; index += 1) {
-      const result = memberResults[index];
-      if (result) {
-        input.onMemberResult?.(activeMembers[index], result);
-      }
-    }
-    input.onTeamEvent?.(
-      `initial phase finished: success=${memberResults.filter((result) => result.status === "completed").length}/${memberResults.length}`,
-    );
-  } else {
-    input.onTeamEvent?.("initial phase start: strategy=sequential");
-    for (const member of activeMembers) {
-      input.onMemberPhase?.(member, "initial");
-      input.onMemberEvent?.(member, "initial phase: dispatching run");
-      const result = await runMember({
-        team: input.team,
-        member,
-        task: input.task,
-        sharedContext: input.sharedContext,
-        phase: "initial",
-        timeoutMs: input.timeoutMs,
-        cwd: input.cwd,
-        retryOverrides: input.retryOverrides,
-        fallbackProvider: input.fallbackProvider,
-        fallbackModel: input.fallbackModel,
-        signal: input.signal,
-        onStart: input.onMemberStart,
-        onEnd: input.onMemberEnd,
-        onEvent: input.onMemberEvent,
-        onTextDelta: input.onMemberTextDelta,
-        onStderrChunk: input.onMemberStderrChunk,
-      });
-      memberResults.push(result);
-      emitResultEvent(member, "initial", result);
-      input.onMemberResult?.(member, result);
-    }
-    input.onTeamEvent?.(
-      `initial phase finished: success=${memberResults.filter((result) => result.status === "completed").length}/${memberResults.length}`,
-    );
-  }
-
-  let canRunCommunication = memberResults.filter((result) => result.status === "completed").length >= 2;
-  for (let round = 1; round <= communicationRounds; round += 1) {
-    if (!canRunCommunication) {
-      input.onTeamEvent?.(
-        `communication round skipped: insufficient successful members (need>=2, have=${memberResults.filter((result) => result.status === "completed").length})`,
-      );
-      break;
-    }
-    input.onTeamEvent?.(`communication round ${round} start`);
-    const previousResults = memberResults;
-    const previousResultById = new Map(previousResults.map((result) => [result.memberId, result]));
-    const communicationMembers = activeMembers.filter(
-      (member) => previousResultById.get(member.id)?.status === "completed",
-    );
-    const skippedCommunicationMembers = activeMembers.filter(
-      (member) => !communicationMembers.some((candidate) => candidate.id === member.id),
-    );
-
-    if (skippedCommunicationMembers.length > 0) {
-      input.onTeamEvent?.(
-        `communication round ${round}: skipped_failed_members=${skippedCommunicationMembers
-          .map((member) => member.id)
-          .join(",")}`,
-      );
-      for (const member of skippedCommunicationMembers) {
-        input.onMemberEvent?.(
-          member,
-          `communication round ${round}: skipped (previous status=failed)`,
-        );
-      }
-    }
-
-    if (communicationMembers.length < 2) {
-      input.onTeamEvent?.(
-        `communication round ${round} skipped: insufficient successful members after filtering (need>=2, have=${communicationMembers.length})`,
-      );
-      canRunCommunication = false;
-      break;
-    }
-
-    const contextMap = buildPrecomputedContextMap(previousResults);
-
-    if (input.strategy === "parallel") {
-      const memberParallelLimit = toConcurrencyLimit(
-        input.memberParallelLimit,
-        communicationMembers.length,
-      );
-      input.onTeamEvent?.(
-        `communication round ${round}: strategy=parallel member_parallel_limit=${memberParallelLimit}`,
-      );
-      const roundResults = await runWithConcurrencyLimit(
-        communicationMembers,
-        memberParallelLimit,
-        async (member) => {
-          // Create child AbortController to prevent MaxListenersExceededWarning
-          const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
-          try {
-            const partnerIds = communicationLinks.get(member.id) ?? [];
-            const partnerSnapshots = partnerIds.map((partnerId) => {
-              const partnerResult = previousResults.find((result) => result.memberId === partnerId);
-              const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
-              return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
-            });
-            input.onMemberPhase?.(member, "communication", round);
-            input.onMemberEvent?.(
-              member,
-              `communication round ${round}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
-            );
-            const communicationContext = buildCommunicationContext({
-              team: input.team,
-              member,
-              round,
-              partnerIds,
-              contextMap,
-            });
-            input.onMemberEvent?.(
-              member,
-              `communication round ${round}: context_build=done size=${communicationContext.length}chars`,
-            );
-            input.onMemberEvent?.(
-              member,
-              `communication round ${round}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
-            );
-            input.onMemberEvent?.(
-              member,
-              `communication round ${round}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
-            );
-
-            const result = await runMember({
-              team: input.team,
-              member,
-              task: input.task,
-              sharedContext: input.sharedContext,
-              phase: "communication",
-              communicationContext,
-              timeoutMs: input.timeoutMs,
-              cwd: input.cwd,
-              retryOverrides: input.retryOverrides,
-              fallbackProvider: input.fallbackProvider,
-              fallbackModel: input.fallbackModel,
-              signal: childController.signal,
-              onStart: input.onMemberStart,
-              onEnd: input.onMemberEnd,
-              onEvent: input.onMemberEvent,
-              onTextDelta: input.onMemberTextDelta,
-              onStderrChunk: input.onMemberStderrChunk,
-            });
-            emitResultEvent(member, `communication#${round}`, result);
-            const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
-            communicationAudit.push({
-              round,
-              memberId: member.id,
-              role: member.role,
-              partnerIds: [...partnerIds],
-              referencedPartners: communicationReference.referencedPartners,
-              missingPartners: communicationReference.missingPartners,
-              contextPreview: normalizeForSingleLine(communicationContext, 200),
-              partnerSnapshots,
-              resultStatus: result.status,
-              claimReferences: communicationReference.claimReferences.length > 0
-                ? communicationReference.claimReferences
-                : undefined,
-            });
-            input.onMemberEvent?.(
-              member,
-              `communication round ${round}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
-            );
-            return result;
-          } finally {
-            cleanupAbort();
-          }
-        },
-        { signal: input.signal },
-      );
-      for (let index = 0; index < communicationMembers.length; index += 1) {
-        input.onMemberResult?.(communicationMembers[index], roundResults[index]);
-      }
-      const roundResultById = new Map(roundResults.map((result) => [result.memberId, result]));
-      memberResults = activeMembers.map((member) => {
-        const updated = roundResultById.get(member.id);
-        if (updated) return updated;
-        const previous = previousResultById.get(member.id);
-        if (previous) return previous;
-        return {
-          memberId: member.id,
-          role: member.role,
-          summary: "(failed)",
-          output: "",
-          status: "failed",
-          latencyMs: 0,
-          error: "member result missing after communication round",
-          diagnostics: {
-            confidence: 0,
-            evidenceCount: 0,
-            contradictionSignals: 0,
-            conflictSignals: 0,
-          },
-        };
-      });
-    } else {
-      const roundResults: TeamMemberResult[] = [];
-      for (const member of communicationMembers) {
-        const partnerIds = communicationLinks.get(member.id) ?? [];
-        const partnerSnapshots = partnerIds.map((partnerId) => {
-          const partnerResult = previousResults.find((result) => result.memberId === partnerId);
-          const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
-          return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
-        });
-        input.onMemberPhase?.(member, "communication", round);
-        input.onMemberEvent?.(
-          member,
-          `communication round ${round}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
-        );
-        const communicationContext = buildCommunicationContext({
-          team: input.team,
-          member,
-          round,
-          partnerIds,
-          contextMap,
-        });
-        input.onMemberEvent?.(
-          member,
-          `communication round ${round}: context_build=done size=${communicationContext.length}chars`,
-        );
-        input.onMemberEvent?.(
-          member,
-          `communication round ${round}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
-        );
-        input.onMemberEvent?.(
-          member,
-          `communication round ${round}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
-        );
-        const result = await runMember({
-          team: input.team,
-          member,
-          task: input.task,
-          sharedContext: input.sharedContext,
-          phase: "communication",
-          communicationContext,
-          timeoutMs: input.timeoutMs,
-          cwd: input.cwd,
-          retryOverrides: input.retryOverrides,
-          fallbackProvider: input.fallbackProvider,
-          fallbackModel: input.fallbackModel,
-          signal: input.signal,
-          onStart: input.onMemberStart,
-          onEnd: input.onMemberEnd,
-          onEvent: input.onMemberEvent,
-          onTextDelta: input.onMemberTextDelta,
-          onStderrChunk: input.onMemberStderrChunk,
-        });
-        roundResults.push(result);
-        emitResultEvent(member, `communication#${round}`, result);
-        const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
-        communicationAudit.push({
-          round,
-          memberId: member.id,
-          role: member.role,
-          partnerIds: [...partnerIds],
-          referencedPartners: communicationReference.referencedPartners,
-          missingPartners: communicationReference.missingPartners,
-          contextPreview: normalizeForSingleLine(communicationContext, 200),
-          partnerSnapshots,
-          resultStatus: result.status,
-          claimReferences: communicationReference.claimReferences.length > 0
-            ? communicationReference.claimReferences
-            : undefined,
-        });
-        input.onMemberEvent?.(
-          member,
-          `communication round ${round}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
-        );
-        input.onMemberResult?.(member, result);
-      }
-      const roundResultById = new Map(roundResults.map((result) => [result.memberId, result]));
-      memberResults = activeMembers.map((member) => {
-        const updated = roundResultById.get(member.id);
-        if (updated) return updated;
-        const previous = previousResultById.get(member.id);
-        if (previous) return previous;
-        return {
-          memberId: member.id,
-          role: member.role,
-          summary: "(failed)",
-          output: "",
-          status: "failed",
-          latencyMs: 0,
-          error: "member result missing after communication round",
-          diagnostics: {
-            confidence: 0,
-            evidenceCount: 0,
-            contradictionSignals: 0,
-            conflictSignals: 0,
-          },
-        };
-      });
-    }
-    const roundAuditEntries = communicationAudit.filter((entry) => entry.round === round);
-    const referencedCount = roundAuditEntries.filter((entry) => entry.referencedPartners.length > 0).length;
-    input.onTeamEvent?.(
-      `communication round ${round} evidence: referenced=${referencedCount}/${roundAuditEntries.length}`,
-    );
-    input.onTeamEvent?.(
-      `communication round ${round} finished: success=${memberResults.filter((result) => result.status === "completed").length}/${memberResults.length}`,
-    );
-    canRunCommunication = memberResults.filter((result) => result.status === "completed").length >= 2;
-  }
-
-  for (let retryRound = 1; retryRound <= failedMemberRetryRounds; retryRound += 1) {
-    const resultByIdBeforeRetry = new Map(memberResults.map((result) => [result.memberId, result]));
-    const failedMemberResults = memberResults.filter((result) => result.status === "failed");
-    if (failedMemberResults.length === 0) {
-      if (retryRound === 1) {
-        input.onTeamEvent?.("failed-member retry skipped: no failed members");
-      }
-      break;
-    }
-
-    const retryTargetIds = failedMemberResults
-      .filter((result) => shouldRetryFailedMemberResult(result, retryRound))
-      .map((result) => result.memberId);
-    const retryTargetMembers = retryTargetIds
-      .map((memberId) => activeMemberById.get(memberId))
-      .filter((member): member is TeamMember => Boolean(member));
-    const skippedFailedMemberIds = failedMemberResults
-      .map((result) => result.memberId)
-      .filter((memberId) => !retryTargetIds.includes(memberId));
-
-    if (retryTargetMembers.length === 0) {
-      input.onTeamEvent?.(
-        `failed-member retry round ${retryRound}/${failedMemberRetryRounds} skipped: no retry-eligible failures`,
-      );
-      continue;
-    }
-
-    failedMemberRetryApplied += 1;
-    const retryPhaseRound = communicationRounds + retryRound;
-    const previousResults = memberResults;
-    if (skippedFailedMemberIds.length > 0) {
-      input.onTeamEvent?.(
-        `failed-member retry round ${retryRound}: skipped_by_policy=${skippedFailedMemberIds.join(",")}`,
-      );
-    }
-    input.onTeamEvent?.(
-      `failed-member retry round ${retryRound}/${failedMemberRetryRounds} start: targets=${retryTargetMembers.map((member) => member.id).join(",")}`,
-    );
-
-    const contextMap = buildPrecomputedContextMap(previousResults);
-
-    /**
-     * @summary メンバーの再試行を実行
-     * 
-     * コミュニケーションパートナーの結果を参照しながらメンバーを実行する。
-     * @param member - 実行するチームメンバー
-     * @returns メンバーの実行結果
-     */
-    const runRetryMember = async (member: TeamMember): Promise<TeamMemberResult> => {
-      // Create child AbortController to prevent MaxListenersExceededWarning
-      const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(input.signal);
-      try {
-        const partnerIds = communicationLinks.get(member.id) ?? [];
-        const partnerSnapshots = partnerIds.map((partnerId) => {
-          const partnerResult = previousResults.find((result) => result.memberId === partnerId);
-          const claim = partnerResult ? extractField(partnerResult.output, "CLAIM") || "-" : "-";
-          return `${partnerId}:status=${partnerResult?.status || "unknown"} summary=${normalizeForSingleLine(partnerResult?.summary || "-", 70)} claim=${normalizeForSingleLine(claim, 70)}`;
-        });
-        input.onMemberPhase?.(member, "communication", retryPhaseRound);
-        input.onMemberEvent?.(
-          member,
-          `failed-member retry round ${retryRound}: partners=${partnerIds.join(", ") || "-"} context_build=start`,
-        );
-        const communicationContext = buildCommunicationContext({
-          team: input.team,
-          member,
-          round: retryPhaseRound,
-          partnerIds,
-          contextMap,
-        });
-        input.onMemberEvent?.(
-          member,
-          `failed-member retry round ${retryRound}: context_build=done size=${communicationContext.length}chars`,
-        );
-        input.onMemberEvent?.(
-          member,
-          `failed-member retry round ${retryRound}: partner_snapshots=${partnerSnapshots.join(" | ") || "-"}`,
-        );
-        input.onMemberEvent?.(
-          member,
-          `failed-member retry round ${retryRound}: context_preview=${normalizeForSingleLine(communicationContext, 200)}`,
-        );
-        const result = await runMember({
-          team: input.team,
-          member,
-          task: input.task,
-          sharedContext: input.sharedContext,
-          phase: "communication",
-          communicationContext,
-          timeoutMs: input.timeoutMs,
-          cwd: input.cwd,
-          retryOverrides: input.retryOverrides,
-          fallbackProvider: input.fallbackProvider,
-          fallbackModel: input.fallbackModel,
-          signal: childController.signal,
-          onStart: input.onMemberStart,
-          onEnd: input.onMemberEnd,
-          onEvent: input.onMemberEvent,
-          onTextDelta: input.onMemberTextDelta,
-          onStderrChunk: input.onMemberStderrChunk,
-        });
-        emitResultEvent(member, `failed-retry#${retryRound}`, result);
-        const communicationReference = detectPartnerReferencesV2(result.output, partnerIds, memberById);
-        communicationAudit.push({
-          round: retryPhaseRound,
-          memberId: member.id,
-          role: member.role,
-          partnerIds: [...partnerIds],
-          referencedPartners: communicationReference.referencedPartners,
-          missingPartners: communicationReference.missingPartners,
-          contextPreview: normalizeForSingleLine(communicationContext, 200),
-          partnerSnapshots,
-          resultStatus: result.status,
-          claimReferences: communicationReference.claimReferences.length > 0
-            ? communicationReference.claimReferences
-            : undefined,
-        });
-        input.onMemberEvent?.(
-          member,
-          `failed-member retry round ${retryRound}: referenced=${communicationReference.referencedPartners.join(", ") || "-"} missing=${communicationReference.missingPartners.join(", ") || "-"}`,
-        );
-        return result;
-      } finally {
-        cleanupAbort();
-      }
-    };
-
-    let retriedResults: TeamMemberResult[] = [];
-    if (input.strategy === "parallel") {
-      const memberParallelLimit = toConcurrencyLimit(input.memberParallelLimit, retryTargetMembers.length);
-      input.onTeamEvent?.(
-        `failed-member retry round ${retryRound}: strategy=parallel member_parallel_limit=${memberParallelLimit}`,
-      );
-      retriedResults = await runWithConcurrencyLimit(
-        retryTargetMembers,
-        memberParallelLimit,
-        async (member) => runRetryMember(member),
-        { signal: input.signal },
-      );
-    } else {
-      input.onTeamEvent?.(`failed-member retry round ${retryRound}: strategy=sequential`);
-      for (const member of retryTargetMembers) {
-        const result = await runRetryMember(member);
-        retriedResults.push(result);
-      }
-    }
-
-    const resultById = new Map(memberResults.map((result) => [result.memberId, result]));
-    for (let index = 0; index < retryTargetMembers.length; index += 1) {
-      const member = retryTargetMembers[index];
-      const retried = retriedResults[index];
-      const before = resultByIdBeforeRetry.get(member.id);
-      if (before?.status === "failed" && retried.status === "completed") {
-        recoveredMembers.add(member.id);
-      }
-      resultById.set(member.id, retried);
-      input.onMemberResult?.(member, retried);
-    }
-
-    memberResults = activeMembers.map((member) => {
-      const existing = resultById.get(member.id);
-      if (existing) return existing;
-      return {
-        memberId: member.id,
-        role: member.role,
-        summary: "(failed)",
-        output: "",
-        status: "failed",
-        latencyMs: 0,
-        error: "member result missing after retry",
-        diagnostics: {
-          confidence: 0,
-          evidenceCount: 0,
-          contradictionSignals: 0,
-          conflictSignals: 0,
-        },
-      };
-    });
-
-    const failedAfter = memberResults.filter((result) => result.status === "failed").length;
-    input.onTeamEvent?.(
-      `failed-member retry round ${retryRound} finished: failed_remaining=${failedAfter}/${memberResults.length} recovered_total=${recoveredMembers.size}`,
-    );
-  }
-
-  const failed = memberResults.filter((result) => result.status === "failed");
-  const communicationLinksRecord = Object.fromEntries(
-    activeMembers.map((member) => [member.id, communicationLinks.get(member.id) ?? []]),
-  );
-  const summary =
-    failed.length === 0
-      ? `${memberResults.length} teammates completed. communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}`
-      : `${memberResults.length - failed.length}/${memberResults.length} teammates completed (${failed.length} failed). communication_rounds=${communicationRounds} failed_member_retries=${failedMemberRetryApplied}/${failedMemberRetryRounds} recovered=${recoveredMembers.size}`;
-  const proxy = computeProxyUncertainty(memberResults);
-
-  const runRecord: TeamRunRecord = {
-    runId,
-    teamId: input.team.id,
-    strategy: input.strategy,
-    task: input.task,
-    communicationRounds,
-    failedMemberRetryRounds,
-    failedMemberRetryApplied,
-    recoveredMembers: Array.from(recoveredMembers),
-    communicationLinks: communicationLinksRecord,
-    summary,
-    status: failed.length === memberResults.length ? "failed" : "completed",
-    startedAt,
-    finishedAt: new Date().toISOString(),
-    memberCount: memberResults.length,
-    outputFile,
-  };
-
-  for (const member of activeMembers) {
-    input.onMemberPhase?.(member, "judge");
-    input.onMemberEvent?.(member, "final judge: waiting team-level verdict");
-  }
-  input.onTeamEvent?.("final judge start");
-
-  // チーム終了時に必ず最終判定を実行する（Stable profile では決定論的プロキシ判定）。
-  const finalJudge = await runFinalJudge({
-    team: input.team,
-    task: input.task,
-    strategy: input.strategy,
-    memberResults,
-    proxy,
-    timeoutMs: input.timeoutMs,
-    signal: input.signal,
-  });
-  input.onTeamEvent?.(
-    `final judge finished: verdict=${finalJudge.verdict} confidence=${Math.round(finalJudge.confidence * 100)}% u_sys=${finalJudge.uSys.toFixed(2)}`,
-  );
-  for (const member of activeMembers) {
-    input.onMemberEvent?.(
-      member,
-      `final judge verdict=${finalJudge.verdict} confidence=${Math.round(finalJudge.confidence * 100)}% next_step=${normalizeForSingleLine(finalJudge.nextStep, 120)}`,
-    );
-    input.onMemberPhase?.(member, "finished");
-  }
-  runRecord.finalJudge = {
-    verdict: finalJudge.verdict,
-    confidence: finalJudge.confidence,
-    reason: finalJudge.reason,
-    nextStep: finalJudge.nextStep,
-    uIntra: finalJudge.uIntra,
-    uInter: finalJudge.uInter,
-    uSys: finalJudge.uSys,
-    collapseSignals: finalJudge.collapseSignals,
-  };
-
-  // Record team execution for cost estimation learning
-  const totalLatencyMs = memberResults.reduce((sum, r) => sum + r.latencyMs, 0);
-  const executionEntry: ExecutionHistoryEntry = {
-    source: "agent_team_run",
-    provider: input.fallbackProvider ?? "(session-default)",
-    model: input.fallbackModel ?? "(session-default)",
-    taskDescription: input.task,
-    actualDurationMs: totalLatencyMs,
-    actualTokens: 0, // Token count not available from print mode
-    success: failed.length === 0,
-    timestamp: Date.now(),
-  };
-  try {
-    getCostEstimator().recordExecution(executionEntry);
-  } catch {
-    // Ignore errors in cost estimation recording
-  }
-
-  writeFileSync(
-    outputFile,
-    JSON.stringify(
-      {
-        run: runRecord,
-        team: input.team,
-        memberResults,
-        communicationAudit,
-        uncertaintyProxy: proxy,
-        finalJudge,
-        task: input.task,
-        sharedContext: input.sharedContext,
-      },
-      null,
-      2,
-    ),
-    "utf-8",
-  );
-
-  return {
-    runRecord,
-    memberResults,
-    communicationAudit,
-  };
-}
 
 /**
  * エージェントチーム拡張登録
@@ -1303,6 +586,24 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         updatedAt: nowIso,
       };
 
+      // バリデーションを実行
+      const validationErrors = validateTeamDefinition(team);
+      if (validationErrors.length > 0) {
+        const errorMessages = validationErrors.map((e: TeamValidationError) => `${e.field}: ${e.message}`);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `agent_team_create error: validation failed\n${errorMessages.join("\n")}`,
+            },
+          ],
+          details: {
+            error: "validation_failed",
+            violations: validationErrors,
+          },
+        };
+      }
+
       storage.teams.push(team);
       if (params.setCurrent) {
         storage.currentTeamId = team.id;
@@ -1338,8 +639,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
 
       if (!team) {
         return {
-          content: [{ type: "text" as const, text: `agent_team_configure error: not found (${params.teamId})` }],
-          details: { error: "not_found" },
+          content: [{ type: "text" as const, text: `agent_team_configure error: team not found (${params.teamId})` }],
+          details: { error: "team_not_found", teamId: params.teamId },
         };
       }
 
@@ -1354,10 +655,10 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             content: [
               {
                 type: "text" as const,
-                text: `agent_team_configure error: member not found (${params.memberId})`,
+                text: `agent_team_configure error: member not found (${params.memberId}) in team (${team.id})`,
               },
             ],
-            details: { error: "member_not_found" },
+            details: { error: "member_not_found", teamId: team.id, memberId: params.memberId },
           };
         }
         member.enabled = Boolean(params.memberEnabled);
@@ -1391,6 +692,9 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       teamId: Type.Optional(Type.String({ description: "Target team id (default current team)" })),
       strategy: Type.Optional(Type.String({ description: "parallel (default) or sequential" })),
       sharedContext: Type.Optional(Type.String({ description: "Shared instructions for all teammates" })),
+      successCriteria: Type.Optional(
+        Type.Array(Type.String(), { description: "Success criteria for the task (e.g., ['Tests pass', 'Documentation updated'])" }),
+      ),
       communicationRounds: Type.Optional(
         Type.Number({ description: "Additional communication rounds among teammates (stable profile: fixed 0)" }),
       ),
@@ -1653,7 +957,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       };
 
         try {
-          const { runRecord, memberResults, communicationAudit } = await runTeamTask({
+          const { runRecord, memberResults, communicationAudit, uncertaintyProxy, uncertaintyProxyExplanation } = await runTeamTask({
             team,
             task: params.task,
             strategy,
@@ -1662,6 +966,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             failedMemberRetryRounds,
             communicationLinks,
             sharedContext: params.sharedContext,
+            successCriteria: params.successCriteria,
             timeoutMs,
             cwd: ctx.cwd,
             retryOverrides,
@@ -1781,6 +1086,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
                 status: result.status,
               })),
               communicationAudit,
+              uncertaintyProxy,
+              uncertaintyProxyExplanation,
               failedMemberIds: teamOutcome.failedMemberIds,
               outcomeCode: teamOutcome.outcomeCode,
               retryRecommended: teamOutcome.retryRecommended,
@@ -1889,6 +1196,9 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       teamIds: Type.Optional(Type.Array(Type.String({ description: "Team id list" }))),
       strategy: Type.Optional(Type.String({ description: "Member strategy per team: parallel (default) or sequential" })),
       sharedContext: Type.Optional(Type.String({ description: "Shared instructions for all teammates" })),
+      successCriteria: Type.Optional(
+        Type.Array(Type.String(), { description: "Success criteria for the task (e.g., ['Tests pass', 'Documentation updated'])" }),
+      ),
       communicationRounds: Type.Optional(
         Type.Number({ description: "Additional communication rounds among teammates (stable profile: fixed 0)" }),
       ),
@@ -2182,7 +1492,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
               );
 
               try {
-                const { runRecord, memberResults, communicationAudit } = await runTeamTask({
+                const { runRecord, memberResults, communicationAudit, uncertaintyProxy, uncertaintyProxyExplanation } = await runTeamTask({
                   team,
                   task: params.task,
                   strategy,
@@ -2191,6 +1501,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
                   failedMemberRetryRounds,
                   communicationLinks,
                   sharedContext: params.sharedContext,
+                  successCriteria: params.successCriteria,
                   timeoutMs,
                   cwd: ctx.cwd,
                   retryOverrides,
@@ -2252,6 +1563,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
                 runRecord,
                 memberResults,
                 communicationAudit,
+                uncertaintyProxy,
+                uncertaintyProxyExplanation,
               };
             } catch (error) {
               const runId = createRunId();
@@ -2449,6 +1762,8 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
                 status: memberResult.status,
               })),
               communicationAudit: result.communicationAudit,
+              uncertaintyProxy: result.uncertaintyProxy,
+              uncertaintyProxyExplanation: result.uncertaintyProxyExplanation,
             })),
             failedTeamIds: parallelOutcome.failedTeamIds,
             partialTeamIds: parallelOutcome.partialTeamIds,

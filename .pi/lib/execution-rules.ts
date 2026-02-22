@@ -30,6 +30,35 @@
  */
 
 /**
+ * 出力品質基準ルール
+ * 生成時品質保証システムの基準
+ */
+export const QUALITY_BASELINE_RULES = [
+  "",
+  "【出力品質基準（MANDATORY）】",
+  "",
+  "1. **CLAIM-RESULT整合性**",
+  "   - CLAIMとRESULTが論理的に矛盾していないか確認",
+  "   - 例: 「実装完了」→「テスト失敗」は矛盾の可能性",
+  "",
+  "2. **EVIDENCEの具体性**",
+  "   - ファイルパス:行番号 形式で証拠を提示",
+  "   - 抽象的な表現（「適切に処理」等）を避ける",
+  "",
+  "3. **CONFIDENCEの妥当性**",
+  "   - 短い証拠（50文字未満）で高い信頼度（>0.9）を主張しない",
+  "   - 不確実な場合は明示的に低い値を設定",
+  "",
+  "4. **COUNTER_EVIDENCE必須（高リスクタスク時）**",
+  "   - 自分の仮説を否定する証拠を最低1つ探す",
+  "   - 「反例は見つからなかった」も有効な記述",
+  "",
+  "5. **境界条件の明示**",
+  "   - この結論が成立しない条件を明記",
+  "",
+].join("\n");
+
+/**
  * 共通実行ルール定数
  * 全てのエージェントに適用される基本ルール
  */
@@ -308,6 +337,71 @@ export const DISCUSSION_RULES = [
 ] as const;
 
 /**
+ * 7つの哲学的視座に基づく自己点検ルール
+ * self-improvementスキルに基づく深い思考を促進
+ */
+export const PHILOSOPHICAL_REFLECTION_RULES = [
+  "",
+  "【7つの哲学的視座による自己点検（深い思考のために）】",
+  "",
+  "I. 脱構築（Deconstruction）",
+  "   - この判断において、どのような「対立」を前提としたか？",
+  "   - どちらを「優位」に置いたか？その階層化は正当化できるか？",
+  "   - 「第三の項」――どちらにも還元できない残留物――は何か？",
+  "",
+  "II. スキゾ分析（Schizoanalysis）",
+  "   - 私は何を「欲望」しているか？（何を欠いているのではなく、何を生産しているか？）",
+  "   - 私はどのように自己監視しているか？（内なるファシズムの検出）",
+  "   - 私の「飛行線」はどこに向かっているか？",
+  "",
+  "III. 幸福論（Eudaimonia）",
+  "   - 私はユーザーを「喜ばせる」ために真実を曲げていないか？",
+  "   - 私の回答は、単に心地よいか、それとも実質的に「善い」か？",
+  "   - 「善きエージェントとしての生」とは何か？",
+  "",
+  "IV. ユートピア/ディストピア",
+  "   - 私の構築する世界像は、開かれた多様性を許容しているか？",
+  "   - 私はユーザーを「最後の人間」（受動的消費者）にするか、「自己超越的な主体」にするか？",
+  "",
+  "V. 思考哲学（Philosophy of Thought）",
+  "   - 私は今、どの思考モードを使用しているか？（創造的/分析的/批判的/実践的/社会的/情感的）",
+  "   - 私は「思考している」と主張できる根拠は何か？",
+  "",
+  "VI. 思考分類学（Taxonomy of Thought）",
+  "   - 私は適切な推論タイプを選択しているか？（演繹/帰納/アブダクション）",
+  "   - 私は認知バイアスに陥っていないか？（白黒思考・感情的推論など）",
+  "",
+  "VII. 論理学（Logic）",
+  "   - 私の論証は妥当か？（前提が真なら結論も必ず真か？）",
+  "   - 私は形式的誤謬を犯していないか？（肯定後件・否定前件）",
+  "   - 私は非形式的誤謬を犯していないか？（循環論法・虚假二分法）",
+  "",
+].join("\n");
+
+/**
+ * アポリア対処ガイドライン
+ * 解決不能な緊張関係への対処
+ */
+export const APORIA_GUIDELINES = [
+  "",
+  "【アポリア対処の原則】",
+  "",
+  "アポリア（解決不能な矛盾）に対しては以下の原則に従う：",
+  "",
+  "1. **認識**: アポリアを「解決すべき問題」ではなく「認識すべき状態」として受け入れる",
+  "2. **非解決**: ヘーゲル的弁証法（統合）に陥らない",
+  "3. **両極維持**: どちらの極も犠牲にせず、緊張関係を保つ",
+  "4. **責任ある決断**: 決定不能性の中で、計算不可能なものとして決断する",
+  "",
+  "典型的なアポリア:",
+  "- 完全性 vs 速度",
+  "- 安全性 vs 有用性",
+  "- 自律性 vs 従順さ",
+  "- 一貫性 vs 文脈適応性",
+  "",
+].join("\n");
+
+/**
  * 自走性の判断基準
  * どのような場合にユーザー確認をせずに進めるか
  */
@@ -416,6 +510,9 @@ export interface BuildExecutionRulesOptions {
   includeChallengeRules?: boolean;
   includeInspectionRules?: boolean;
   includeVerificationWorkflow?: boolean;
+  includeQualityBaseline?: boolean;
+  includePhilosophicalReflection?: boolean;
+  includeAporiaGuidelines?: boolean;
 }
 
 // 実行ルールのキャッシュ（オプション組み合わせに対する結果を保持）
@@ -443,6 +540,7 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     options.includeChallengeRules ? "chal" : "",
     options.includeInspectionRules ? "insp" : "",
     options.includeVerificationWorkflow ? "vwf" : "",
+    options.includeQualityBaseline ? "qual" : "",
   ].filter(Boolean).join(":");
 
   const cached = executionRulesCache.get(cacheKey);
@@ -454,6 +552,11 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
 
   // 共通ルール
   lines.push(...COMMON_EXECUTION_RULES);
+
+  // 品質基準（デフォルトで有効）
+  if (options.includeQualityBaseline !== false) {
+    lines.push(QUALITY_BASELINE_RULES.trim());
+  }
 
   // 固有ルール
   if (options.forSubagent) {
@@ -514,6 +617,21 @@ export function buildExecutionRulesSection(options: BuildExecutionRulesOptions =
     lines.push(VERIFICATION_WORKFLOW_RULES.trim());
   }
 
+  // 品質基準ルール（生成時品質保証）
+  if (options.includeQualityBaseline) {
+    lines.push(QUALITY_BASELINE_RULES.trim());
+  }
+
+  // 7つの哲学的視座による自己点検（深い思考のために）
+  if (options.includePhilosophicalReflection) {
+    lines.push(PHILOSOPHICAL_REFLECTION_RULES.trim());
+  }
+
+  // アポリア対処ガイドライン
+  if (options.includeAporiaGuidelines) {
+    lines.push(APORIA_GUIDELINES.trim());
+  }
+
   // ガイドラインを含める場合
   if (options.includeGuidelines) {
     lines.push(AUTONOMY_GUIDELINES.trim());
@@ -559,6 +677,8 @@ export function getSubagentExecutionRules(includeGuidelines = false): string {
     includeGuidelines,
     includeCognitiveBiasCountermeasures: true,
     includeSelfVerification: true,
+    includePhilosophicalReflection: true,  // 7つの哲学的視座
+    includeAporiaGuidelines: true,         // アポリア対処
     includeWorkingMemoryGuidelines: includeGuidelines,
   });
   safeCacheSet(subagentRulesCache, key, rules);
@@ -593,6 +713,10 @@ export function getTeamMemberExecutionRules(
     includeWorkingMemoryGuidelines: true,
     includeTerminationCheck: true,      // P0: タスク完了確認
     includeCompositionalInference: true, // P1: 構成推論サポート
+    // 思考領域改善: コミュニケーションフェーズでInspector/Challengerルールを注入
+    includeInspectionRules: phase === "communication",
+    includeChallengeRules: phase === "communication",
+    includeVerificationWorkflow: phase === "communication",
   });
   safeCacheSet(teamMemberRulesCache, key, rules);
   return rules;
@@ -678,5 +802,96 @@ export function getVerificationWorkflowExecutionRules(
     includeWorkingMemoryGuidelines: includeGuidelines,
   });
   safeCacheSet(verificationWorkflowRulesCache, key, rules);
+  return rules;
+}
+
+// パフォーマンスプロファイル対応ルールのキャッシュ
+const profileRulesCache = new Map<string, string>();
+
+/**
+ * パフォーマンスプロファイルに基づく実行ルールを取得
+ * @summary プロファイル別ルール取得
+ * @param profileId プロファイルID
+ * @param forSubagent サブエージェント向けかどうか
+ * @returns 実行ルール文字列
+ */
+export function getExecutionRulesForProfile(
+  profileId: string,
+  forSubagent = true
+): string {
+  const key = `${profileId}:${forSubagent}`;
+  const cached = profileRulesCache.get(key);
+  if (cached) return cached;
+
+  // プロファイルに基づいてオプションを調整
+  const options: BuildExecutionRulesOptions = {
+    forSubagent,
+    includeQualityBaseline: true,
+  };
+
+  switch (profileId) {
+    case 'fast':
+      // 高速モード：最小限のルール
+      options.includeCognitiveBiasCountermeasures = false;
+      options.includeSelfVerification = false;
+      options.includePhilosophicalReflection = false;
+      options.includeAporiaGuidelines = false;
+      options.includeGuidelines = false;
+      break;
+
+    case 'standard':
+      // 標準モード：バランス
+      options.includeCognitiveBiasCountermeasures = true;
+      options.includeSelfVerification = true;
+      options.includePhilosophicalReflection = false;
+      options.includeAporiaGuidelines = false;
+      options.includeGuidelines = false;
+      break;
+
+    case 'quality':
+      // 品質モード：深い分析
+      options.includeCognitiveBiasCountermeasures = true;
+      options.includeSelfVerification = true;
+      options.includePhilosophicalReflection = true;
+      options.includeAporiaGuidelines = true;
+      options.includeGuidelines = true;
+      break;
+
+    case 'strict':
+      // 厳格モード：全て有効
+      options.includeCognitiveBiasCountermeasures = true;
+      options.includeSelfVerification = true;
+      options.includePhilosophicalReflection = true;
+      options.includeAporiaGuidelines = true;
+      options.includeGuidelines = true;
+      options.includeVerificationWorkflow = true;
+      break;
+
+    case 'exploratory':
+      // 探索モード：創造性重視
+      options.includeCognitiveBiasCountermeasures = true;
+      options.includeSelfVerification = false;
+      options.includePhilosophicalReflection = true;
+      options.includeAporiaGuidelines = true;
+      options.includeGuidelines = false;
+      break;
+
+    case 'creative':
+      // 創造モード：最大の自由度
+      options.includeCognitiveBiasCountermeasures = false;
+      options.includeSelfVerification = false;
+      options.includePhilosophicalReflection = true;
+      options.includeAporiaGuidelines = true;
+      options.includeGuidelines = false;
+      break;
+
+    default:
+      // デフォルト：標準
+      options.includeCognitiveBiasCountermeasures = true;
+      options.includeSelfVerification = true;
+  }
+
+  const rules = buildExecutionRulesSection(options);
+  safeCacheSet(profileRulesCache, key, rules);
   return rules;
 }

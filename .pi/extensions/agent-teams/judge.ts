@@ -406,16 +406,88 @@ export function computeProxyUncertainty(memberResults: TeamMemberResult[]): Team
 }
 
 /**
+ * 重み設定の妥当性を検証する
+ * @summary 重み設定検証
+ * @param weights 検証対象の重み設定
+ * @returns 検証結果（true=有効、false=無効）
+ */
+function validateWeights(weights: JudgeWeightConfig): boolean {
+  if (!weights || typeof weights !== "object") return false;
+  if (!weights.intraWeights || !weights.interWeights || !weights.sysWeights) return false;
+  if (!weights.collapseThresholds) return false;
+
+  // Check all weight values are finite numbers in [0, 1]
+  const allWeights = [
+    ...Object.values(weights.intraWeights),
+    ...Object.values(weights.interWeights),
+    ...Object.values(weights.sysWeights),
+    ...Object.values(weights.collapseThresholds),
+  ];
+
+  for (const w of allWeights) {
+    if (typeof w !== "number" || !Number.isFinite(w) || w < 0 || w > 1) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * 不確実性と説明を計算
- * @summary 不確実性計算
- * @param memberResults チームメンバーの判定結果リスト
- * @param weights 判定の重み設定
+ * @summary 不確実性計算（エッジケース防御付き）
+ * @param memberResults チームメンバーの判定結果リスト（空配列許容）
+ * @param weights 判定の重み設定（無効な場合はデフォルト値を使用）
  * @returns 計算されたプロキシと判定理由
+ * @description
+ * - 空配列入力時は最大不確実性を返す
+ * - 無効なweights設定時はデフォルト値を使用し警告をreasoningChainに記録
+ * - すべての数値計算はNaN/Infinityに対して防御的
  */
 export function computeProxyUncertaintyWithExplainability(
   memberResults: TeamMemberResult[],
   weights: JudgeWeightConfig = getJudgeWeights(),
 ): { proxy: TeamUncertaintyProxy; explanation: JudgeExplanation } {
+  // Validate weights, fall back to defaults if invalid
+  const validWeights = validateWeights(weights) ? weights : DEFAULT_JUDGE_WEIGHTS;
+
+  // Handle empty input array explicitly
+  if (memberResults.length === 0) {
+    const emptyProxy: TeamUncertaintyProxy = {
+      uIntra: 1,
+      uInter: 1,
+      uSys: 1,
+      collapseSignals: ["no_member_results"],
+    };
+    const emptyExplanation: JudgeExplanation = {
+      inputs: {
+        failedRatio: 0,
+        lowConfidence: 0,
+        noEvidenceRatio: 0,
+        contradictionRatio: 0,
+        conflictRatio: 0,
+        confidenceSpread: 0,
+        total: 0,
+        failedCount: 0,
+      },
+      computation: {
+        uIntra: { value: 1, contributions: [] },
+        uInter: { value: 1, contributions: [] },
+        uSys: { value: 1, contributions: [] },
+      },
+      triggers: [
+        {
+          signal: "no_member_results",
+          actualValue: 0,
+          threshold: 0,
+          triggered: true,
+        },
+      ],
+      reasoningChain: ["No member results provided - returning maximum uncertainty"],
+    };
+    return { proxy: emptyProxy, explanation: emptyExplanation };
+  }
+
   const total = Math.max(1, memberResults.length);
   const failedCount = memberResults.filter((result) => result.status === "failed").length;
   const failedRatio = failedCount / total;
@@ -439,27 +511,27 @@ export function computeProxyUncertaintyWithExplainability(
   const uIntraContributions = [
     {
       factor: "failedRatio",
-      weight: weights.intraWeights.failedRatio,
+      weight: validWeights.intraWeights.failedRatio,
       value: failedRatio,
-      contribution: weights.intraWeights.failedRatio * failedRatio,
+      contribution: validWeights.intraWeights.failedRatio * failedRatio,
     },
     {
       factor: "lowConfidence",
-      weight: weights.intraWeights.lowConfidence,
+      weight: validWeights.intraWeights.lowConfidence,
       value: lowConfidence,
-      contribution: weights.intraWeights.lowConfidence * lowConfidence,
+      contribution: validWeights.intraWeights.lowConfidence * lowConfidence,
     },
     {
       factor: "noEvidenceRatio",
-      weight: weights.intraWeights.noEvidence,
+      weight: validWeights.intraWeights.noEvidence,
       value: noEvidenceRatio,
-      contribution: weights.intraWeights.noEvidence * noEvidenceRatio,
+      contribution: validWeights.intraWeights.noEvidence * noEvidenceRatio,
     },
     {
       factor: "contradictionRatio",
-      weight: weights.intraWeights.contradiction,
+      weight: validWeights.intraWeights.contradiction,
       value: contradictionRatio,
-      contribution: weights.intraWeights.contradiction * contradictionRatio,
+      contribution: validWeights.intraWeights.contradiction * contradictionRatio,
     },
   ];
   const uIntra = clampConfidence(uIntraContributions.reduce((sum, c) => sum + c.contribution, 0));
@@ -468,27 +540,27 @@ export function computeProxyUncertaintyWithExplainability(
   const uInterContributions = [
     {
       factor: "conflictRatio",
-      weight: weights.interWeights.conflictRatio,
+      weight: validWeights.interWeights.conflictRatio,
       value: conflictRatio,
-      contribution: weights.interWeights.conflictRatio * conflictRatio,
+      contribution: validWeights.interWeights.conflictRatio * conflictRatio,
     },
     {
       factor: "confidenceSpread",
-      weight: weights.interWeights.confidenceSpread,
+      weight: validWeights.interWeights.confidenceSpread,
       value: confidenceSpread,
-      contribution: weights.interWeights.confidenceSpread * confidenceSpread,
+      contribution: validWeights.interWeights.confidenceSpread * confidenceSpread,
     },
     {
       factor: "failedRatio",
-      weight: weights.interWeights.failedRatio,
+      weight: validWeights.interWeights.failedRatio,
       value: failedRatio,
-      contribution: weights.interWeights.failedRatio * failedRatio,
+      contribution: validWeights.interWeights.failedRatio * failedRatio,
     },
     {
       factor: "noEvidenceRatio",
-      weight: weights.interWeights.noEvidence,
+      weight: validWeights.interWeights.noEvidence,
       value: noEvidenceRatio,
-      contribution: weights.interWeights.noEvidence * noEvidenceRatio,
+      contribution: validWeights.interWeights.noEvidence * noEvidenceRatio,
     },
   ];
   const uInter = clampConfidence(uInterContributions.reduce((sum, c) => sum + c.contribution, 0));
@@ -497,21 +569,21 @@ export function computeProxyUncertaintyWithExplainability(
   const uSysContributions = [
     {
       factor: "uIntra",
-      weight: weights.sysWeights.uIntra,
+      weight: validWeights.sysWeights.uIntra,
       value: uIntra,
-      contribution: weights.sysWeights.uIntra * uIntra,
+      contribution: validWeights.sysWeights.uIntra * uIntra,
     },
     {
       factor: "uInter",
-      weight: weights.sysWeights.uInter,
+      weight: validWeights.sysWeights.uInter,
       value: uInter,
-      contribution: weights.sysWeights.uInter * uInter,
+      contribution: validWeights.sysWeights.uInter * uInter,
     },
     {
       factor: "failedRatio",
-      weight: weights.sysWeights.failedRatio,
+      weight: validWeights.sysWeights.failedRatio,
       value: failedRatio,
-      contribution: weights.sysWeights.failedRatio * failedRatio,
+      contribution: validWeights.sysWeights.failedRatio * failedRatio,
     },
   ];
   const uSys = clampConfidence(uSysContributions.reduce((sum, c) => sum + c.contribution, 0));
@@ -521,32 +593,32 @@ export function computeProxyUncertaintyWithExplainability(
     {
       signal: "high_intra_uncertainty",
       actualValue: uIntra,
-      threshold: weights.collapseThresholds.uIntra,
-      triggered: uIntra >= weights.collapseThresholds.uIntra,
+      threshold: validWeights.collapseThresholds.uIntra,
+      triggered: uIntra >= validWeights.collapseThresholds.uIntra,
     },
     {
       signal: "high_inter_disagreement",
       actualValue: uInter,
-      threshold: weights.collapseThresholds.uInter,
-      triggered: uInter >= weights.collapseThresholds.uInter,
+      threshold: validWeights.collapseThresholds.uInter,
+      triggered: uInter >= validWeights.collapseThresholds.uInter,
     },
     {
       signal: "high_system_uncertainty",
       actualValue: uSys,
-      threshold: weights.collapseThresholds.uSys,
-      triggered: uSys >= weights.collapseThresholds.uSys,
+      threshold: validWeights.collapseThresholds.uSys,
+      triggered: uSys >= validWeights.collapseThresholds.uSys,
     },
     {
       signal: "teammate_failures",
       actualValue: failedRatio,
-      threshold: weights.collapseThresholds.failedRatio,
-      triggered: failedRatio >= weights.collapseThresholds.failedRatio,
+      threshold: validWeights.collapseThresholds.failedRatio,
+      triggered: failedRatio >= validWeights.collapseThresholds.failedRatio,
     },
     {
       signal: "insufficient_evidence",
       actualValue: noEvidenceRatio,
-      threshold: weights.collapseThresholds.noEvidenceRatio,
-      triggered: noEvidenceRatio >= weights.collapseThresholds.noEvidenceRatio,
+      threshold: validWeights.collapseThresholds.noEvidenceRatio,
+      triggered: noEvidenceRatio >= validWeights.collapseThresholds.noEvidenceRatio,
     },
   ];
 
@@ -555,6 +627,12 @@ export function computeProxyUncertaintyWithExplainability(
   // Build reasoning chain
   const reasoningChain: string[] = [];
   reasoningChain.push(`Analyzed ${total} member outputs (${failedCount} failed)`);
+
+  // Add weights validation info if fallback was used
+  if (!validateWeights(weights)) {
+    reasoningChain.push("WARNING: Invalid weights config detected, using defaults");
+  }
+
   reasoningChain.push(`uIntra=${uIntra.toFixed(2)} = ${uIntraContributions.map((c) => `${c.weight}*${c.value.toFixed(2)}`).join(" + ")}`);
   reasoningChain.push(`uInter=${uInter.toFixed(2)} = ${uInterContributions.map((c) => `${c.weight}*${c.value.toFixed(2)}`).join(" + ")}`);
   reasoningChain.push(`uSys=${uSys.toFixed(2)} = ${uSysContributions.map((c) => `${c.weight}*${c.value.toFixed(2)}`).join(" + ")}`);

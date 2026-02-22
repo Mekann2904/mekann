@@ -805,6 +805,7 @@ describe("buildChallengerPrompt", () => {
 
 describe("DEFAULT_VERIFICATION_CONFIG", () => {
   it("should have expected default values", () => {
+    // 生成時品質保証への転換により検証システムを無効化
     expect(DEFAULT_VERIFICATION_CONFIG.enabled).toBe(false);
     expect(DEFAULT_VERIFICATION_CONFIG.triggerModes).toContain("post-subagent");
     expect(DEFAULT_VERIFICATION_CONFIG.triggerModes).toContain("low-confidence");

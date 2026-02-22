@@ -50,7 +50,7 @@ import {
 import {
   validateTeamMemberOutput,
 } from "../../lib/output-validation.js";
-import { SchemaValidationError } from "../../lib/errors.js";
+import { SchemaValidationError, ExecutionError } from "../../lib/errors.js";
 import {
   isPlanModeActive,
   PLAN_MODE_WARNING,
@@ -63,6 +63,7 @@ import {
   type RetryWithBackoffOverrides,
 } from "../../lib/retry-with-backoff.js";
 import { sleep } from "../../lib/sleep-utils.js";
+import { isHighStakesTask } from "../../lib/verification-workflow.js";
 import {
   STABLE_MAX_RETRIES,
   STABLE_INITIAL_DELAY_MS,
@@ -386,11 +387,46 @@ export function buildTeamMemberPrompt(input: {
   lines.push("");
   lines.push(getTeamMemberExecutionRules(phase, true));
 
+  // 思考領域改善: 高リスクタスクでは自動的にhighに昇格
+  const baseThinkingLevel = input.member.thinkingLevel ?? input.team.thinkingLevel ?? "medium";
+  const isHighStakes = isHighStakesTask(input.task);
+  const effectiveThinkingLevel = isHighStakes && (baseThinkingLevel === "medium" || baseThinkingLevel === "low" || baseThinkingLevel === "minimal")
+    ? "high"
+    : baseThinkingLevel;
+  
+  if (isHighStakes && effectiveThinkingLevel === "high") {
+    lines.push("");
+    lines.push("【高リスクタスク検出: 深い推論モード自動適用】");
+  }
+  
+  if (effectiveThinkingLevel === "high" || effectiveThinkingLevel === "xhigh") {
+    lines.push("");
+    lines.push("【深い推論モード】");
+    lines.push("以下の思考プロセスを厳格に実施せよ:");
+    lines.push("1. 反例探索: 自分の仮説を否定する証拠を最低1つ探せ");
+    lines.push("2. 認知バイアスチェック: 確認バイアス、アンカリング効果の影響を検査せよ");
+    lines.push("3. 多視点検討: 少なくとも2つの異なる視点から問題を捉え直せ");
+    lines.push("4. 境界条件テスト: 主張が成り立たない境界条件を明示せよ");
+    lines.push("5. COUNTER_EVIDENCE: <自分の結論と矛盾する証拠>を必ず記述せよ");
+  } else if (effectiveThinkingLevel === "low" || effectiveThinkingLevel === "minimal") {
+    lines.push("");
+    lines.push("【簡易推論モード】");
+    lines.push("- 標準的な分析プロセスで実施");
+    lines.push("- 主要な証拠を1つ以上提示");
+  }
+  // mediumの場合はデフォルト（特別な指示なし）
+
   lines.push("");
   lines.push("Output format (strict, labels must stay in English):");
   lines.push("SUMMARY: <日本語の短い要約>");
   lines.push("CLAIM: <日本語で1文の中核主張>");
   lines.push("EVIDENCE: <根拠をカンマ区切り。可能なら file:line>");
+  
+  // 思考領域改善: high/xhighモードでCOUNTER_EVIDENCEを必須化
+  if (effectiveThinkingLevel === "high" || effectiveThinkingLevel === "xhigh") {
+    lines.push("COUNTER_EVIDENCE: <自分の結論と矛盾する証拠。最低1つ必須>");
+  }
+  
   if (phase === "communication") {
     lines.push("DISCUSSION: <他のメンバーのoutputを参照し、同意点/不同意点を記述。合意形成時は「合意: [要約]」を明記（必須）>");
   } else {
@@ -542,7 +578,26 @@ export async function runMember(input: {
 
           // ループ完了後にcommandResultが未定義の場合は明示的にエラーをスロー
           if (!commandResult) {
-            throw new Error(lastErrorMessage || "agent team member execution failed after retries");
+            throw new ExecutionError(
+              `チームメンバー実行が再試行後に失敗しました (member=${input.member.id}, team=${input.team.id}, retries=${retryCount}): ${lastErrorMessage || "unknown error"}`,
+              {
+                severity: "high",
+                context: {
+                  operation: "team-member-execution",
+                  component: "agent-teams",
+                  metadata: {
+                    memberId: input.member.id,
+                    memberRole: input.member.role,
+                    teamId: input.team.id,
+                    provider: provider || "(session-default)",
+                    model: model || "(session-default)",
+                    retryCount,
+                    lastStatusCode: lastRetryStatusCode,
+                    lastError: lastRetryMessage,
+                  },
+                },
+              },
+            );
           }
           return commandResult;
         },

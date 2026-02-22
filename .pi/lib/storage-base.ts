@@ -423,6 +423,48 @@ export function toId(input: string): string {
 }
 
 // ============================================================================
+// Corrupted Backup Utilities
+// ============================================================================
+
+/**
+ * 破損したストレージファイルのバックアップを作成
+ * @summary 破損バックアップ作成
+ * @param storageFile - 元のストレージファイルパス
+ * @param prefix - バックアップファイル名のプレフィックス（ログ用）
+ * @returns バックアップファイルのパス、失敗時はnull
+ */
+export function createCorruptedBackup(
+  storageFile: string,
+  prefix: string,
+): string | null {
+  try {
+    const { copyFileSync, statSync } = require("node:fs");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupFile = `${storageFile}.corrupted.${prefix}.${timestamp}.bak`;
+
+    // Get original file stats for logging
+    const stats = statSync(storageFile);
+    const sizeBytes = stats.size;
+
+    // Create backup copy
+    copyFileSync(storageFile, backupFile);
+
+    console.warn(
+      `[${prefix}] Created backup of corrupted storage: ${backupFile} (${sizeBytes} bytes)`,
+    );
+
+    return backupFile;
+  } catch (backupError) {
+    console.error(
+      `[${prefix}] Failed to create backup of corrupted storage: ${
+        backupError instanceof Error ? backupError.message : String(backupError)
+      }`,
+    );
+    return null;
+  }
+}
+
+// ============================================================================
 // Subagent-specific Helpers
 // ============================================================================
 

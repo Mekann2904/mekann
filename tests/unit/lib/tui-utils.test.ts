@@ -39,6 +39,14 @@ describe("tui-utils markdown preview", () => {
     expect(result.lines.join("\n")).toContain("plaintext");
   });
 
+  it("renderPreviewWithMarkdown_日本語テキストを欠損させず保持する", () => {
+    const input = "これは日本語の出力です。\n次の行も表示されます。";
+    const result = renderPreviewWithMarkdown(input, 80, 10);
+    expect(result.renderedAsMarkdown).toBe(false);
+    expect(result.lines.join("\n")).toContain("これは日本語の出力です。");
+    expect(result.lines.join("\n")).toContain("次の行も表示されます。");
+  });
+
   it("pushWrappedLine_横幅を超える行を折り返す", () => {
     const out: string[] = [];
     pushWrappedLine(out, "abcdefghij", 4);

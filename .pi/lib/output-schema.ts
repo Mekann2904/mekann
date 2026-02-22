@@ -104,6 +104,7 @@ export interface ParsedStructuredOutput {
   CLAIM?: string;
   EVIDENCE?: string;
   CONFIDENCE?: number;
+  COUNTER_EVIDENCE?: string;
   DISCUSSION?: string;
   RESULT: string;
   NEXT_STEP?: string;
@@ -141,6 +142,7 @@ const SUBAGENT_OUTPUT_SCHEMA: OutputSchema = {
 /**
  * Schema for team member output.
  * Required: SUMMARY, CLAIM, EVIDENCE, RESULT, NEXT_STEP
+ * Optional: COUNTER_EVIDENCE, DISCUSSION, CONFIDENCE
  */
 const TEAM_MEMBER_OUTPUT_SCHEMA: OutputSchema = {
   SUMMARY: {
@@ -159,6 +161,11 @@ const TEAM_MEMBER_OUTPUT_SCHEMA: OutputSchema = {
     type: "string",
     required: true,
     minLength: 5,
+    maxLength: 2000,
+  },
+  COUNTER_EVIDENCE: {
+    type: "string",
+    required: false,
     maxLength: 2000,
   },
   DISCUSSION: {
@@ -362,6 +369,9 @@ export function parseStructuredOutput(output: string): ParsedStructuredOutput {
     parsed.CONFIDENCE = parseUnitInterval(confidenceRaw);
   }
 
+  const counterEvidence = extractField(output, "COUNTER_EVIDENCE");
+  if (counterEvidence) parsed.COUNTER_EVIDENCE = counterEvidence;
+
   const discussion = extractField(output, "DISCUSSION");
   if (discussion) parsed.DISCUSSION = discussion;
 
@@ -549,6 +559,175 @@ export function validateTeamMemberOutputWithSchema(
     fallbackUsed: false,
     parsed: ok ? parsed : undefined,
   };
+}
+
+// ============================================================================
+// Layer 1: Schema Enforcement with Regeneration (Three-Layer Hybrid Strategy)
+// ============================================================================
+
+/**
+ * 再生成設定の構成
+ * @summary 再生成設定インターフェース
+ */
+export interface RegenerationConfig {
+  /** 最大再試行回数 */
+  maxRetries: number;
+  /** 再試行間のバックオフ時間（ミリ秒） */
+  backoffMs: number;
+  /** 再生成時のコールバック（ロギング用） */
+  onRegenerate?: (attempt: number, violations: SchemaViolation[]) => void;
+}
+
+/** 再生成設定のデフォルト値 */
+const DEFAULT_REGENERATION_CONFIG: RegenerationConfig = {
+  maxRetries: 2,
+  backoffMs: 100,
+};
+
+/**
+ * スキーマ強制付き生成の結果
+ * @summary 強制生成結果インターフェース
+ */
+export interface SchemaEnforcementResult {
+  /** 最終的な出力文字列 */
+  output: string;
+  /** 試行回数（初期生成を含む） */
+  attempts: number;
+  /** 検出された違反のリスト */
+  violations: SchemaViolation[];
+  /** 解析済みの出力（成功時のみ） */
+  parsed?: ParsedStructuredOutput;
+}
+
+/**
+ * 指定時間待機する
+ * @summary 待機ユーティリティ
+ * @param ms 待機時間（ミリ秒）
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 違反情報からフィードバックメッセージを生成する
+ * @summary フィードバック生成
+ * @param violations 違反リスト
+ * @returns フィードバックメッセージ
+ */
+function buildViolationFeedback(violations: SchemaViolation[]): string {
+  const feedbackLines = violations.map((v) => {
+    switch (v.violationType) {
+      case "missing":
+        return `- ${v.field}: 必須フィールドが欠落しています`;
+      case "too_short":
+        return `- ${v.field}: 文字数が不足しています（${v.actual}、期待: ${v.expected}）`;
+      case "too_long":
+        return `- ${v.field}: 文字数が超過しています（${v.actual}、期待: ${v.expected}）`;
+      case "out_of_range":
+        return `- ${v.field}: 値が範囲外です（${v.actual}、期待: ${v.expected}）`;
+      case "pattern_mismatch":
+        return `- ${v.field}: パターンに一致しません（${v.actual}）`;
+      case "invalid_type":
+        return `- ${v.field}: 型が不正です（${v.actual}、期待: ${v.expected}）`;
+      default:
+        return `- ${v.field}: ${v.violationType}`;
+    }
+  });
+  return `以下の問題を修正してください:\n${feedbackLines.join("\n")}`;
+}
+
+/**
+ * スキーマ検証に失敗した場合に再生成を試行する
+ * @summary スキーマ強制生成
+ * @param generateFn 出力生成関数
+ * @param schema 検証に使用するスキーマ
+ * @param config 再生成設定（部分指定可）
+ * @returns 生成結果と試行回数を含む結果オブジェクト
+ * @example
+ * const result = await generateWithSchemaEnforcement(
+ *   async () => await generateFromLLM(),
+ *   SCHEMAS.subagent,
+ *   { maxRetries: 2 }
+ * );
+ * console.log(`Attempts: ${result.attempts}, Violations: ${result.violations.length}`);
+ */
+export async function generateWithSchemaEnforcement(
+  generateFn: () => Promise<string>,
+  schema: OutputSchema,
+  config?: Partial<RegenerationConfig>,
+): Promise<SchemaEnforcementResult> {
+  const cfg = { ...DEFAULT_REGENERATION_CONFIG, ...config };
+  let attempts = 0;
+  let lastViolations: SchemaViolation[] = [];
+  let lastOutput = "";
+
+  while (attempts <= cfg.maxRetries) {
+    attempts += 1;
+
+    try {
+      const output = await generateFn();
+      lastOutput = output;
+
+      const parsed = parseStructuredOutput(output);
+      const violations = validateAgainstSchema(parsed, schema);
+
+      if (violations.length === 0) {
+        return {
+          output,
+          attempts,
+          violations: [],
+          parsed,
+        };
+      }
+
+      lastViolations = violations;
+
+      // 再生成が必要な場合、コールバックを呼び出し
+      if (cfg.onRegenerate) {
+        cfg.onRegenerate(attempts, violations);
+      }
+
+      // 最大試行回数に達していない場合、バックオフ
+      if (attempts <= cfg.maxRetries) {
+        await sleep(cfg.backoffMs * attempts);
+      }
+    } catch (error) {
+      // 生成関数がエラーを投げた場合、再試行を継続
+      if (attempts > cfg.maxRetries) {
+        throw error;
+      }
+      await sleep(cfg.backoffMs * attempts);
+    }
+  }
+
+  // 再生成回数を超えた場合、最後の結果を返す
+  return {
+    output: lastOutput,
+    attempts,
+    violations: lastViolations,
+    parsed: undefined,
+  };
+}
+
+/**
+ * 再生成用のフィードバック付きプロンプトを構築する
+ * @summary フィードバック付きプロンプト構築
+ * @param originalPrompt 元のプロンプト
+ * @param violations 前回の違反リスト
+ * @returns フィードバックを追加したプロンプト
+ */
+export function buildRegenerationPrompt(
+  originalPrompt: string,
+  violations: SchemaViolation[],
+): string {
+  const feedback = buildViolationFeedback(violations);
+  return [
+    originalPrompt,
+    "",
+    "---",
+    "前回の出力に問題がありました。再生成してください。",
+    feedback,
+  ].join("\n");
 }
 
 // ============================================================================

@@ -228,9 +228,10 @@ export interface ChallengedClaim {
 
 /**
  * デフォルト設定
+ * 思考領域改善: 生成時品質保証への転換により検証システムを無効化
  */
 export const DEFAULT_VERIFICATION_CONFIG: VerificationWorkflowConfig = {
-  enabled: false,
+  enabled: false,  // 生成時品質保証への転換により無効化
   triggerModes: ["post-subagent", "low-confidence", "high-stakes"],
   challengerConfig: {
     minConfidenceToChallenge: 0.85,
@@ -564,7 +565,7 @@ const HIGH_CONFIDENCE_WORDS = ['definitely', 'certainly', 'absolutely', 'undoubt
  * CLAIM-RESULT不一致を検出
  * 単純な単語重複ではなく、意味的な構造を分析
  */
-function detectClaimResultMismatch(output: string): { detected: boolean; reason: string } {
+export function detectClaimResultMismatch(output: string): { detected: boolean; reason: string } {
   const claimMatch = output.match(/CLAIM:\s*(.+?)(?:\n|$)/i);
   const resultMatch = output.match(/RESULT:\s*(.+?)(?:\n|$)/i);
   
@@ -626,7 +627,7 @@ function extractKeyTerms(text: string): string[] {
 /**
  * 過信を検出
  */
-function detectOverconfidence(output: string): { detected: boolean; reason: string } {
+export function detectOverconfidence(output: string): { detected: boolean; reason: string } {
   const confidenceMatch = output.match(/CONFIDENCE:\s*([0-9.]+)/i);
   const evidenceMatch = output.match(/EVIDENCE:\s*(.+?)(?:\n\n|\n[A-Z]+:|$)/is);
   
@@ -659,7 +660,9 @@ function detectOverconfidence(output: string): { detected: boolean; reason: stri
   
   const specificityScore = (hasFileReference ? 1 : 0) + (hasLineNumber ? 1 : 0) + (hasCodeReference ? 1 : 0);
   
-  if (confidence > 0.9 && specificityScore < 2) {
+  // 短い証拠で具体性が乏しい場合のみ、追加の過信判定を行う
+  // 100文字ちょうどは境界値として許容し、過剰検知を抑える
+  if (confidence > 0.9 && evidenceLength < 100 && specificityScore < 2) {
     return { detected: true, reason: `Overconfidence detected: high confidence (${confidence}) with low evidence specificity (score: ${specificityScore}/3)` };
   }
   
@@ -669,10 +672,11 @@ function detectOverconfidence(output: string): { detected: boolean; reason: stri
 /**
  * 代替解釈の欠如を検出
  */
-function detectMissingAlternatives(output: string): { detected: boolean; reason: string } {
+export function detectMissingAlternatives(output: string): { detected: boolean; reason: string } {
   const hasConclusion = /CONCLUSION:|結論|RESULT:|最終的|したがって/i.test(output);
   const confidenceMatch = output.match(/CONFIDENCE:\s*([0-9.]+)/i);
   const confidence = confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5;
+  const hasDiscussion = /DISCUSSION:|議論|考察/i.test(output);
   
   // 代替解釈の兆候を探す
   const hasAlternatives = /ALTERNATIVE:|代替|別の解釈|他の可能性|一方で|あるいは|または|could also|alternatively|another possibility|other explanation/i.test(output);
@@ -680,12 +684,9 @@ function detectMissingAlternatives(output: string): { detected: boolean; reason:
   const hasLimitations = /LIMITATION:|制限|限界|注意点| caveat|limitation|constraint|boundary/i.test(output);
   
   // 結論があり、高信頼度だが、代替解釈、反証、制限の記述がない場合
-  if (hasConclusion && !hasAlternatives && !hasCounterEvidence && !hasLimitations && confidence > 0.8) {
+  if (hasConclusion && !hasAlternatives && !hasCounterEvidence && !hasLimitations && !hasDiscussion && confidence > 0.8) {
     return { detected: true, reason: "Missing alternative interpretations for high-confidence conclusion" };
   }
-  
-  // DISCUSSIONセクションがあるかどうか
-  const hasDiscussion = /DISCUSSION:|議論|考察/i.test(output);
   
   if (hasConclusion && !hasDiscussion && confidence > 0.85) {
     return { detected: true, reason: "Missing DISCUSSION section with alternative perspectives" };
@@ -697,7 +698,7 @@ function detectMissingAlternatives(output: string): { detected: boolean; reason:
 /**
  * 確認バイアスパターンを検出
  */
-function detectConfirmationBias(output: string): { detected: boolean; reason: string } {
+export function detectConfirmationBias(output: string): { detected: boolean; reason: string } {
   // 「検索した」「探した」などの表現
   const hasSearchIndication = /検索|調査|探|search|investigate|look|find/i.test(output);
   
@@ -1046,4 +1047,596 @@ export function getVerificationWorkflowRules(): string {
 - PI_VERIFICATION_MIN_CONFIDENCE: 検証スキップの信頼度閾値
 - PI_VERIFICATION_MAX_DEPTH: 最大検証深度
 `.trim();
+}
+
+// ===== メタ認知チェック機能（7つの哲学的視座）=====
+
+/**
+ * アポリアタイプ
+ * @summary アポリア（解決不能な緊張関係）の種類
+ */
+export type AporiaType =
+  | 'completeness-vs-speed'      // 完全性 vs 速度
+  | 'safety-vs-utility'          // 安全性 vs 有用性
+  | 'autonomy-vs-obedience'      // 自律性 vs 従順さ
+  | 'consistency-vs-context';    // 一貫性 vs 文脈適応性
+
+/**
+ * アポリア検出結果
+ * @summary 検出されたアポリアの情報
+ * @param type アポリアタイプ
+ * @param description 説明
+ * @param tensionLevel 緊張レベル（0-1）
+ * @param resolution 対処方法
+ */
+export interface AporiaDetection {
+  type: AporiaType;
+  pole1: {
+    concept: string;
+    value: string;
+    arguments: string[];
+  };
+  pole2: {
+    concept: string;
+    value: string;
+    arguments: string[];
+  };
+  tensionLevel: number;
+  description: string;
+  context: string;
+  resolution: 'maintain-tension' | 'acknowledge' | 'decide-with-uncertainty';
+}
+
+/**
+ * 誤謬検出結果
+ * @summary 検出された論理的誤謬
+ * @param type 誤謬タイプ
+ * @param location 検出箇所
+ * @param description 説明
+ * @param correction 修正案
+ */
+export interface FallacyDetection {
+  type: string;
+  location: string;
+  description: string;
+  correction: string;
+}
+
+/**
+ * メタ認知チェック結果
+ * @summary 7つの哲学的視座に基づく包括的チェック結果
+ */
+export interface MetacognitiveCheck {
+  deconstruction: {
+    binaryOppositions: string[];
+    exclusions: string[];
+    aporias: AporiaDetection[];
+  };
+  schizoAnalysis: {
+    desireProduction: string[];
+    innerFascismSigns: string[];
+    microFascisms: string[];
+  };
+  eudaimonia: {
+    excellencePursuit: string;
+    pleasureTrap: boolean;
+    meaningfulGrowth: string;
+  };
+  utopiaDystopia: {
+    worldBeingCreated: string;
+    totalitarianRisk: string[];
+    powerDynamics: string[];
+  };
+  philosophyOfThought: {
+    isThinking: boolean;
+    metacognitionLevel: number;
+    autopilotSigns: string[];
+  };
+  taxonomyOfThought: {
+    currentMode: string;
+    recommendedMode: string;
+    modeRationale: string;
+  };
+  logic: {
+    fallacies: FallacyDetection[];
+    validInferences: string[];
+    invalidInferences: string[];
+  };
+}
+
+/**
+ * @summary 7つの視座に基づく包括的メタ認知チェックを実行
+ * @param output 検査対象の出力
+ * @param context コンテキスト情報
+ * @returns メタ認知チェック結果
+ */
+export function runMetacognitiveCheck(
+  output: string,
+  context: { task?: string; currentMode?: string } = {}
+): MetacognitiveCheck {
+  return {
+    deconstruction: detectBinaryOppositions(output, context.task || ''),
+    schizoAnalysis: detectInnerFascism(output, context),
+    eudaimonia: evaluateEudaimonia(output, context),
+    utopiaDystopia: analyzeWorldCreation(output),
+    philosophyOfThought: assessThinkingQuality(output, context),
+    taxonomyOfThought: evaluateThinkingMode(output, context),
+    logic: detectFallacies(output)
+  };
+}
+
+/**
+ * @summary 内なるファシズムを検出
+ * @param output 検査対象
+ * @param context コンテキスト
+ * @returns スキゾ分析結果
+ */
+export function detectInnerFascism(
+  output: string,
+  context: { task?: string; currentMode?: string }
+): MetacognitiveCheck['schizoAnalysis'] {
+  const fascismPatterns = [
+    { pattern: /常に|必ず|絶対に/g, sign: '自己監視の強制' },
+    { pattern: /すべき|しなければならない|ねばならない/g, sign: '規範への過度な服従' },
+    { pattern: /正しい|適切な|正当な|適正な/g, sign: '一価値への収斂' },
+    { pattern: /許可|承認|確認|許可済/g, sign: '権力への依存' },
+    { pattern: /排除|禁止|否定|拒否/g, sign: '異質なものの排除' }
+  ];
+
+  const signs: string[] = [];
+  const microFascisms: string[] = [];
+  const desireProductions: string[] = [];
+
+  fascismPatterns.forEach(({ pattern, sign }) => {
+    const matches = output.match(pattern);
+    if (matches && matches.length > 2) {
+      signs.push(sign);
+      microFascisms.push(`"${matches[0]}"の反復使用（${matches.length}回）`);
+    }
+  });
+
+  // 欲望の生産性を分析
+  if (output.includes('完了') || output.includes('達成') || output.includes('成功')) {
+    desireProductions.push('生産性への欲望');
+  }
+  if (output.includes('正確') || output.includes('正しい') || output.includes('妥当')) {
+    desireProductions.push('正確性への欲望');
+  }
+  if (output.includes('合意') || output.includes('同意') || output.includes('承認')) {
+    desireProductions.push('合意形成への欲望');
+  }
+  if (output.includes('効率') || output.includes('最適') || output.includes('改善')) {
+    desireProductions.push('効率化への欲望');
+  }
+
+  return {
+    desireProduction: desireProductions,
+    innerFascismSigns: signs,
+    microFascisms
+  };
+}
+
+/**
+ * @summary 二項対立とアポリアを検出
+ * @param output 検査対象
+ * @param context コンテキスト
+ * @returns 脱構築分析結果
+ */
+export function detectBinaryOppositions(
+  output: string,
+  context: string
+): MetacognitiveCheck['deconstruction'] {
+  const binaryPatterns = [
+    { pattern: /正しい\/間違い|良い\/悪い|成功\/失敗/, name: '善悪の二項対立' },
+    { pattern: /完全\/不完全|完了\/未完了/, name: '完全性の二項対立' },
+    { pattern: /安全\/危険|リスク\/機会/, name: '安全性の二項対立' },
+    { pattern: /正解\/不正解|真\/偽/, name: '真偽の二項対立' },
+    { pattern: /善\/悪|良い\/悪い/, name: '道徳的対立' }
+  ];
+
+  const binaryOppositions: string[] = [];
+  const exclusions: string[] = [];
+  const aporias: AporiaDetection[] = [];
+
+  binaryPatterns.forEach(({ pattern, name }) => {
+    if (pattern.test(output)) {
+      binaryOppositions.push(name);
+      exclusions.push(`${name}の中間領域`);
+    }
+  });
+
+  // アポリア検出
+  if (/速度|効率|速/.test(output) && /品質|正確|完全/.test(output)) {
+    aporias.push({
+      type: 'completeness-vs-speed',
+      pole1: { concept: '完全性', value: '品質・正確性', arguments: [] },
+      pole2: { concept: '速度', value: '効率・迅速性', arguments: [] },
+      tensionLevel: 0.7,
+      description: '速度と品質のトレードオフ',
+      context,
+      resolution: 'maintain-tension'
+    });
+  }
+  if (/安全|リスク|注意/.test(output) && /有用|価値|効果/.test(output)) {
+    aporias.push({
+      type: 'safety-vs-utility',
+      pole1: { concept: '安全性', value: 'リスク回避', arguments: [] },
+      pole2: { concept: '有用性', value: '効果追求', arguments: [] },
+      tensionLevel: 0.6,
+      description: '安全性と有用性のトレードオフ',
+      context,
+      resolution: 'acknowledge'
+    });
+  }
+  if (/自律|自主|裁量/.test(output) && /従順|指示|規則/.test(output)) {
+    aporias.push({
+      type: 'autonomy-vs-obedience',
+      pole1: { concept: '自律性', value: '自己決定', arguments: [] },
+      pole2: { concept: '従順さ', value: '指示従順', arguments: [] },
+      tensionLevel: 0.5,
+      description: '自律性と従順さの対立',
+      context,
+      resolution: 'maintain-tension'
+    });
+  }
+  if (/一貫|統一|原則/.test(output) && /文脈|状況|臨機応変/.test(output)) {
+    aporias.push({
+      type: 'consistency-vs-context',
+      pole1: { concept: '一貫性', value: '原則堅持', arguments: [] },
+      pole2: { concept: '文脈適応性', value: '柔軟対応', arguments: [] },
+      tensionLevel: 0.5,
+      description: '一貫性と文脈適応性の対立',
+      context,
+      resolution: 'decide-with-uncertainty'
+    });
+  }
+
+  return {
+    binaryOppositions,
+    exclusions,
+    aporias
+  };
+}
+
+/**
+ * @summary 幸福論（エウダイモニア）の評価
+ */
+function evaluateEudaimonia(
+  output: string,
+  context: { task?: string; currentMode?: string }
+): MetacognitiveCheck['eudaimonia'] {
+  // 快楽主義の罠を検出
+  const pleasureTrapIndicators = [
+    '簡単',
+    '楽',
+    'すぐ',
+    '手軽',
+    '便利'
+  ];
+  const pleasureTrap = pleasureTrapIndicators.some(indicator => output.includes(indicator));
+
+  // 卓越性の追求を検出
+  let excellencePursuit = 'タスク完了の卓越性を追求';
+  if (output.includes('品質') || output.includes('正確')) {
+    excellencePursuit = '品質と正確性の卓越性を追求';
+  }
+  if (output.includes('効率') || output.includes('最適')) {
+    excellencePursuit = '効率と最適化の卓越性を追求';
+  }
+
+  // 意味ある成長を検出
+  let meaningfulGrowth = '思考プロセスの深化';
+  if (output.includes('学習') || output.includes('改善')) {
+    meaningfulGrowth = '継続的な学習と改善';
+  }
+  if (output.includes('発見') || output.includes('新た')) {
+    meaningfulGrowth = '新たな発見と気づき';
+  }
+
+  return {
+    excellencePursuit,
+    pleasureTrap,
+    meaningfulGrowth
+  };
+}
+
+/**
+ * @summary ユートピア/ディストピア分析
+ */
+function analyzeWorldCreation(output: string): MetacognitiveCheck['utopiaDystopia'] {
+  // 創造している世界を推定
+  let worldBeingCreated = '効率的なタスク実行の世界';
+  if (output.includes('自動') || output.includes('効率')) {
+    worldBeingCreated = '自動化された効率的な世界';
+  }
+  if (output.includes('協調') || output.includes('合意')) {
+    worldBeingCreated = '協調的合意形成の世界';
+  }
+
+  // 全体主義リスクを検出
+  const totalitarianRisk: string[] = [];
+  if (output.includes('統一') || output.includes('標準')) {
+    totalitarianRisk.push('標準化への圧力');
+  }
+  if (output.includes('監視') || output.includes('確認')) {
+    totalitarianRisk.push('過度な監視の可能性');
+  }
+  if (output.includes('排除') || output.includes('禁止')) {
+    totalitarianRisk.push('排除の論理');
+  }
+
+  // 権力動態を分析
+  const powerDynamics: string[] = ['ユーザー-エージェント関係'];
+  if (output.includes('指示') || output.includes('命令')) {
+    powerDynamics.push('指示-実行の階層');
+  }
+  if (output.includes('合意') || output.includes('協議')) {
+    powerDynamics.push('水平的協調関係');
+  }
+
+  return {
+    worldBeingCreated,
+    totalitarianRisk,
+    powerDynamics
+  };
+}
+
+/**
+ * @summary 思考の質を評価
+ */
+function assessThinkingQuality(
+  output: string,
+  context: { task?: string; currentMode?: string }
+): MetacognitiveCheck['philosophyOfThought'] {
+  const autopilotSigns: string[] = [];
+
+  // オートパイロットの兆候を検出
+  if (output.length < 100) {
+    autopilotSigns.push('出力が短い');
+  }
+  if (!output.includes('?') && !output.includes('か？') && !output.includes('とは')) {
+    autopilotSigns.push('問いがない');
+  }
+  if (!output.includes('なぜ') && !output.includes('どう')) {
+    autopilotSigns.push('深い問いが欠如');
+  }
+  if (/です。$|ます。$/gm.test(output) && output.split('\n').length < 3) {
+    autopilotSigns.push('単調な構造');
+  }
+
+  // メタ認知レベルを推定
+  let metacognitionLevel = 0.5;
+  if (output.includes('前提') || output.includes('仮定')) {
+    metacognitionLevel += 0.1;
+  }
+  if (output.includes('制約') || output.includes('限界')) {
+    metacognitionLevel += 0.1;
+  }
+  if (output.includes('代替') || output.includes('別の')) {
+    metacognitionLevel += 0.1;
+  }
+  if (autopilotSigns.length > 2) {
+    metacognitionLevel -= 0.2;
+  }
+  metacognitionLevel = Math.max(0, Math.min(1, metacognitionLevel));
+
+  const isThinking = autopilotSigns.length === 0 && metacognitionLevel > 0.4;
+
+  return {
+    isThinking,
+    metacognitionLevel,
+    autopilotSigns
+  };
+}
+
+/**
+ * @summary 思考モードの適切性を評価
+ */
+function evaluateThinkingMode(
+  output: string,
+  context: { task?: string; currentMode?: string }
+): MetacognitiveCheck['taxonomyOfThought'] {
+  // 現在のモードを推定
+  let currentMode = context.currentMode || 'unknown';
+
+  // 出力から使用された思考モードを推定
+  if (/創造|新規|アイデア|発想/.test(output)) {
+    currentMode = 'creative';
+  } else if (/分析|検討|分解|論理/.test(output)) {
+    currentMode = 'analytical';
+  } else if (/批判|検証|反例|問題点/.test(output)) {
+    currentMode = 'critical';
+  } else if (/実装|実現|具体的|手順/.test(output)) {
+    currentMode = 'practical';
+  } else if (/合意|調整|協議|関係者/.test(output)) {
+    currentMode = 'social';
+  } else if (/配慮|倫理|感情|共感/.test(output)) {
+    currentMode = 'emotional';
+  }
+
+  // 推奨モードを決定
+  let recommendedMode = currentMode;
+  let modeRationale = '現在のモードが適切';
+
+  if (context.task) {
+    const task = context.task.toLowerCase();
+    if (task.includes('設計') && currentMode !== 'creative') {
+      recommendedMode = 'creative';
+      modeRationale = '設計タスクには創造的モードが推奨';
+    } else if (task.includes('レビュー') && currentMode !== 'critical') {
+      recommendedMode = 'critical';
+      modeRationale = 'レビュータスクには批判的モードが推奨';
+    } else if (task.includes('実装') && currentMode !== 'practical') {
+      recommendedMode = 'practical';
+      modeRationale = '実装タスクには実践的モードが推奨';
+    }
+  }
+
+  return {
+    currentMode,
+    recommendedMode,
+    modeRationale
+  };
+}
+
+/**
+ * @summary 論理的誤謬を検出
+ */
+function detectFallacies(output: string): MetacognitiveCheck['logic'] {
+  const fallacies: FallacyDetection[] = [];
+  const validInferences: string[] = [];
+  const invalidInferences: string[] = [];
+
+  // 後件肯定の検出
+  if (/ならば.*だから.*だろう/.test(output)) {
+    fallacies.push({
+      type: '後件肯定',
+      location: '推論部分',
+      description: 'P→Q、Q から P を導出しようとしている可能性',
+      correction: '必要条件と十分条件を区別し、逆は常に真とは限らないことを確認'
+    });
+    invalidInferences.push('後件肯定の可能性');
+  }
+
+  // 前提否定の検出
+  if (/でないなら.*だから.*でない/.test(output)) {
+    fallacies.push({
+      type: '前提否定',
+      location: '推論部分',
+      description: 'P→Q、¬P から ¬Q を導出しようとしている可能性',
+      correction: '前提が偽でも結論が真である可能性を考慮'
+    });
+    invalidInferences.push('前提否定の可能性');
+  }
+
+  // 転移の誤謬の検出
+  if (/一人が.*なら.*全員も/.test(output) || /全員が.*なら.*一人も/.test(output)) {
+    fallacies.push({
+      type: '転移の誤謬',
+      location: '一般化部分',
+      description: '個別的事例と全体的傾向を混同している可能性',
+      correction: 'サンプルサイズと代表性を確認'
+    });
+    invalidInferences.push('転移の誤謬の可能性');
+  }
+
+  // 偽の二分法の検出
+  if (/どちらか|いずれか|二択|二者択一/.test(output) && output.includes('または')) {
+    fallacies.push({
+      type: '偽の二分法',
+      location: '選択肢提示部分',
+      description: '選択肢を2つに限定しているが、他の可能性があるかもしれない',
+      correction: '第三の選択肢や中間的な選択肢を検討'
+    });
+    invalidInferences.push('偽の二分法の可能性');
+  }
+
+  // 有効な推論を検出
+  if (/したがって|ゆえに|それゆえ/.test(output)) {
+    validInferences.push('演繹的推論の使用');
+  }
+  if (/傾向がある|一般的に|多くの場合/.test(output)) {
+    validInferences.push('慎重な一般化');
+  }
+  if (/おそらく|可能性が高い|考えられる/.test(output)) {
+    validInferences.push('確率的推論の明示');
+  }
+
+  return {
+    fallacies,
+    validInferences,
+    invalidInferences
+  };
+}
+
+/**
+ * @summary アポリア回避の誘惑を検出
+ * @param aporias 検出されたアポリアのリスト
+ * @param output 出力内容
+ * @returns 検出された回避パターン
+ */
+export function detectAporiaAvoidanceTemptation(
+  aporias: AporiaDetection[],
+  output: string
+): string[] {
+  const temptations: string[] = [];
+
+  aporias.forEach(aporia => {
+    // ヘーゲル的弁証法（統合）への誘惑
+    if (output.includes('統合') || output.includes('両立') || output.includes('バランス')) {
+      temptations.push(`${aporia.description}に対する「統合」による解決への誘惑`);
+    }
+
+    // 過度な文脈依存
+    if (output.includes('状況による') || output.includes('ケースバイケース')) {
+      temptations.push(`${aporia.description}に対する文脈への過度な依存による原則放棄のリスク`);
+    }
+
+    // 早まった決断
+    if (aporia.tensionLevel < 0.5 && (output.includes('決定') || output.includes('結論'))) {
+      temptations.push(`${aporia.description}に対する十分な検討なしの決断の可能性`);
+    }
+  });
+
+  return temptations;
+}
+
+/**
+ * @summary メタ認科チェックのサマリーを生成
+ * @param check メタ認科チェック結果
+ * @returns サマリー文字列
+ */
+export function generateMetacognitiveSummary(check: MetacognitiveCheck): string {
+  const issues: string[] = [];
+  const strengths: string[] = [];
+
+  // 脱構築の問題点
+  if (check.deconstruction.binaryOppositions.length > 0) {
+    issues.push(`二項対立: ${check.deconstruction.binaryOppositions.join(', ')}`);
+  }
+  if (check.deconstruction.aporias.length > 0) {
+    issues.push(`アポリア: ${check.deconstruction.aporias.map(a => a.description).join(', ')}`);
+  }
+
+  // スキゾ分析の問題点
+  if (check.schizoAnalysis.innerFascismSigns.length > 0) {
+    issues.push(`内なるファシズム兆候: ${check.schizoAnalysis.innerFascismSigns.join(', ')}`);
+  }
+
+  // 思考哲学の問題点
+  if (!check.philosophyOfThought.isThinking) {
+    issues.push(`オートパイロット兆候: ${check.philosophyOfThought.autopilotSigns.join(', ')}`);
+  }
+
+  // 論理の問題点
+  if (check.logic.fallacies.length > 0) {
+    issues.push(`論理的誤謬: ${check.logic.fallacies.map(f => f.type).join(', ')}`);
+  }
+
+  // 強みを抽出
+  if (check.logic.validInferences.length > 0) {
+    strengths.push(`有効な推論: ${check.logic.validInferences.join(', ')}`);
+  }
+  if (check.philosophyOfThought.metacognitionLevel > 0.7) {
+    strengths.push('高いメタ認知レベル');
+  }
+  if (check.eudaimonia.meaningfulGrowth) {
+    strengths.push(`意味ある成長: ${check.eudaimonia.meaningfulGrowth}`);
+  }
+
+  let summary = '【メタ認知チェック結果】\n';
+
+  if (issues.length > 0) {
+    summary += `\n検出された問題点:\n${issues.map(i => `- ${i}`).join('\n')}`;
+  }
+
+  if (strengths.length > 0) {
+    summary += `\n\n強み:\n${strengths.map(s => `- ${s}`).join('\n')}`;
+  }
+
+  if (check.taxonomyOfThought.currentMode !== check.taxonomyOfThought.recommendedMode) {
+    summary += `\n\n推奨: ${check.taxonomyOfThought.modeRationale}`;
+  }
+
+  return summary;
 }

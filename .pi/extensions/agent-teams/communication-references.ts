@@ -13,6 +13,10 @@
 import type { CommIdEntry } from "./communication-id";
 import { resolveUniqueCommIds } from "./communication-id";
 
+/**
+ * クレーム参照（V3）
+ * @summary クレーム参照
+ */
 export interface ClaimReferenceV3 {
   claimId: string;
   memberId: string;
@@ -22,6 +26,10 @@ export interface ClaimReferenceV3 {
   source: "explicit" | "inferred" | "default";
 }
 
+/**
+ * パートナー参照結果（V3）
+ * @summary 参照解析結果
+ */
 export interface PartnerReferenceResultV3 {
   referencedPartners: string[];
   missingPartners: string[];
@@ -81,6 +89,15 @@ function resetPattern(pattern: RegExp): void {
   pattern.lastIndex = 0;
 }
 
+/**
+ * パートナー参照を検出する（V3）
+ * @summary パートナー参照検出
+ * @param output 出力テキスト
+ * @param partnerCommIds パートナー通信ID
+ * @param commIdToMemberId 通信ID→メンバーIDマップ
+ * @param _memberIdToCommId メンバーID→通信IDマップ
+ * @returns 参照解析結果
+ */
 export function detectPartnerReferencesV3(
   output: string,
   partnerCommIds: string[],

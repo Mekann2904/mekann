@@ -178,23 +178,6 @@ export function resolveTeamParallelRunOutcome(
     if (failedTeamOutcome.retryRecommended || memberOutcome.retryRecommended) {
       retryableFailureCount += 1;
     }
-/**
-   * チーム実行結果のテキスト形式レポートを生成する
-   *
-   * @param input - チーム結果生成に必要な入力データ
-   * @param input.run - チーム実行レコード
-   * @param input.team - チーム定義情報
-   * @param input.memberResults - チームメンバーの実行結果一覧
-   * @param input.communicationAudit - コミュニケーション監査エントリ（省略可能）
-   * @returns フォーマットされたチーム結果テキスト
-   * @example
-   * // チーム実行結果のテキスト生成
-   * const resultText = buildTeamResultText({
-   *   run: teamRunRecord,
-   *   team: teamDefinition,
-   *   memberResults: results,
-   * });
-   */
   }
 
   const hasAnyFailure = failedTeamIds.length > 0 || partialTeamIds.length > 0;
@@ -308,6 +291,31 @@ export function buildTeamResultText(input: {
     lines.push(`Judge reason: ${input.run.finalJudge.reason}`);
     lines.push(`Judge next step: ${input.run.finalJudge.nextStep}`);
   }
+
+  // ユーザビリティ改善: 完了状況の可視化
+  if (input.run.achieved && input.run.achieved.length > 0) {
+    lines.push("");
+    lines.push("ACHIEVED:");
+    for (const item of input.run.achieved) {
+      lines.push(`  - ${item}`);
+    }
+  }
+  if (input.run.remaining && input.run.remaining.length > 0) {
+    lines.push("");
+    lines.push("REMAINING:");
+    for (const item of input.run.remaining) {
+      lines.push(`  - ${item}`);
+    }
+  }
+  if (input.run.successCriteria && input.run.successCriteria.length > 0) {
+    lines.push("");
+    lines.push("SUCCESS CRITERIA:");
+    for (const criterion of input.run.successCriteria) {
+      const isAchieved = input.run.achieved?.includes(criterion);
+      lines.push(`  ${isAchieved ? "[x]" : "[ ]"} ${criterion}`);
+    }
+  }
+
   lines.push("");
   lines.push("Member results:");
 

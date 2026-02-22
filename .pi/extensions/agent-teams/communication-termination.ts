@@ -19,6 +19,10 @@ const THRESHOLDS = {
 
 const MIN_COVERAGE = 0.6;
 
+/**
+ * 終了判定結果（V2）
+ * @summary 終了判定詳細
+ */
 export interface TerminationCheckResultV2 {
   canTerminate: boolean;
   recommendation: "proceed" | "extend" | "challenge";
@@ -50,6 +54,10 @@ export interface TerminationCheckResultV2 {
   };
 }
 
+/**
+ * チームメンバー結果（簡易版）
+ * @summary メンバー結果
+ */
 export interface TeamMemberResultLike {
   memberId: string;
   status: string;
@@ -60,6 +68,13 @@ export interface TeamMemberResultLike {
   };
 }
 
+/**
+ * 終了判定を行う（V2）
+ * @summary 終了条件チェック
+ * @param results メンバー結果リスト
+ * @param referenceResults 参照解析結果
+ * @returns 終了判定結果
+ */
 export function checkTerminationV2(
   results: TeamMemberResultLike[],
   referenceResults: PartnerReferenceResultV3[]
