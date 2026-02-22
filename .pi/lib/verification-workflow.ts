@@ -3035,25 +3035,48 @@ export function parseLLMVerificationResponse(
  * @summary 誤謬検出パターン
  */
 export const FALLACY_PATTERNS = [
-  // 後件肯定
+  // 後件肯定（日本語）
   { pattern: /もし.*ならば.*だから.*だろう/g, type: 'affirming-consequent', confidence: 0.4 },
+  { pattern: /もし.*なら?.*だから.*に違いない/g, type: 'affirming-consequent', confidence: 0.45 },
+  { pattern: /もし.*なら?.*したがって.*に違いない/g, type: 'affirming-consequent', confidence: 0.45 },
+  { pattern: /だから.*に違いない/g, type: 'affirming-consequent', confidence: 0.35 },
+  // 後件肯定（英語）
   { pattern: /if\s+.*?\s+then\s+.*?\s+so\s+.*?\s+(must|should)\s+be/gi, type: 'affirming-consequent', confidence: 0.4 },
+  { pattern: /if\s+.*?\s+therefore\s+.*?\s+must\s+be/gi, type: 'affirming-consequent', confidence: 0.4 },
   
-  // 循環論法
-  { pattern: /(.{5,})だから\1/g, type: 'circular-reasoning', confidence: 0.3 },
+  // 循環論法（日本語）
+  { pattern: /(.{5,})だから\1/g, type: 'circular-reasoning', confidence: 0.35 },
+  { pattern: /なぜなら、.*だからだ/g, type: 'circular-reasoning', confidence: 0.4 },
+  { pattern: /(.{5,})。なぜなら、\1/g, type: 'circular-reasoning', confidence: 0.45 },
+  // 循環論法（英語）
   { pattern: /(.{5,})\s+because\s+\1/gi, type: 'circular-reasoning', confidence: 0.3 },
+  { pattern: /because\s+it\s+is\s+true/gi, type: 'circular-reasoning', confidence: 0.35 },
   
-  // 偽の二分法
+  // 偽の二分法（日本語）
   { pattern: /(?:あるいは|または|or)[、,]?\s*(?:どちらか|either)/g, type: 'false-dichotomy', confidence: 0.35 },
+  { pattern: /.*か.*か、どちらかだ/g, type: 'false-dichotomy', confidence: 0.45 },
+  { pattern: /.*か.*かのどちらか/g, type: 'false-dichotomy', confidence: 0.4 },
+  { pattern: /.*か.*か、二択だ/g, type: 'false-dichotomy', confidence: 0.45 },
+  // 偽の二分法（英語）
   { pattern: /either\s+.*?\s+or\s+.*?(?:must|have\s+to)/gi, type: 'false-dichotomy', confidence: 0.35 },
+  { pattern: /either\s+.*?\s+or\s+.*?,?\s*(?:that's?\s+it|nothing\s+else)/gi, type: 'false-dichotomy', confidence: 0.45 },
   
-  // 滑り坂
+  // 滑り坂（日本語）
   { pattern: /そうすれば.*結局は.*だろう/g, type: 'slippery-slope', confidence: 0.3 },
+  { pattern: /そうすると.*最終的に.*なる/g, type: 'slippery-slope', confidence: 0.3 },
+  // 滑り坂（英語）
   { pattern: /if\s+.*?\s+then\s+eventually\s+.*?\s+will/gi, type: 'slippery-slope', confidence: 0.3 },
+  { pattern: /this\s+will\s+lead\s+to\s+.*?\s+which\s+will\s+lead\s+to/gi, type: 'slippery-slope', confidence: 0.35 },
   
-  // 急激な一般化
-  { pattern: /(?:すべて|全て|みんな).*?(?:だ|である|です)/g, type: 'hasty-generalization', confidence: 0.4 },
-  { pattern: /all\s+.*?\s+are\s+/gi, type: 'hasty-generalization', confidence: 0.4 }
+  // 急激な一般化（日本語）
+  { pattern: /(?:すべて|全て|みんな).*?(?:だ|である|です|だ\.|である\.|です\.)/g, type: 'hasty-generalization', confidence: 0.35 },
+  { pattern: /したがって、(?:すべて|全て|みんな)/g, type: 'hasty-generalization', confidence: 0.4 },
+  { pattern: /.*人.*不満.*したがって.*すべて/g, type: 'hasty-generalization', confidence: 0.4 },
+  { pattern: /少数の.*から.*すべて/g, type: 'hasty-generalization', confidence: 0.35 },
+  // 急激な一般化（英語）
+  { pattern: /all\s+.*?\s+are\s+/gi, type: 'hasty-generalization', confidence: 0.4 },
+  { pattern: /therefore,?\s+all\s+/gi, type: 'hasty-generalization', confidence: 0.45 },
+  { pattern: /everyone\s+(?:thinks|believes|wants)\s+/gi, type: 'hasty-generalization', confidence: 0.35 }
 ];
 
 /**
