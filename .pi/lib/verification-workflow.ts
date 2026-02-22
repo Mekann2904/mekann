@@ -2320,3 +2320,654 @@ function calculateDepthScore(check: MetacognitiveCheck): number {
   
   return Math.max(0, Math.min(1, score));
 }
+
+/**
+ * 信頼度レベル
+ */
+type ConfidenceLevel = 'high' | 'medium' | 'low';
+
+/**
+ * 候補検出結果から信頼度レベルを判定
+ */
+function getConfidenceLevel(confidence: number): ConfidenceLevel {
+  if (confidence >= 0.5) return 'high';
+  if (confidence >= 0.3) return 'medium';
+  return 'low';
+}
+
+/**
+ * 統合検出結果から改善アクションを生成（信頼度考慮版）
+ * 
+ * @summary 信頼度ベース改善アクション生成
+ * @param detectionResult 統合検出結果
+ * @returns 改善アクションリスト（信頼度で重み付け）
+ */
+export function generateActionsFromDetection(
+  detectionResult: IntegratedVerificationResult
+): Array<ImprovementAction & { confidenceLevel: ConfidenceLevel }> {
+  const actions: Array<ImprovementAction & { confidenceLevel: ConfidenceLevel }> = [];
+
+  for (const candidate of detectionResult.candidates) {
+    const confidenceLevel = getConfidenceLevel(candidate.patternConfidence);
+    
+    // 信頼度に基づいて優先度を調整
+    let priority: 1 | 2 | 3 | 4 | 5;
+    if (confidenceLevel === 'high') {
+      priority = 1;
+    } else if (confidenceLevel === 'medium') {
+      priority = 2;
+    } else {
+      priority = 4; // 低信頼度は優先度を下げる
+    }
+
+    // 検出タイプに応じたアクションを生成
+    const actionTemplate = getActionTemplateForType(candidate.type, candidate.matchedText);
+    
+    actions.push({
+      category: mapTypeToCategory(candidate.type),
+      priority,
+      issue: `${actionTemplate.issuePrefix}「${candidate.matchedText.slice(0, 30)}」`,
+      action: actionTemplate.action,
+      expectedOutcome: actionTemplate.expectedOutcome,
+      relatedPerspective: actionTemplate.perspective,
+      confidenceLevel
+    });
+  }
+
+  // 優先度順にソート
+  return actions.sort((a, b) => a.priority - b.priority);
+}
+
+/**
+ * 検出タイプに応じたアクションテンプレートを取得
+ */
+function getActionTemplateForType(type: string, matchedText: string): {
+  issuePrefix: string;
+  action: string;
+  expectedOutcome: string;
+  perspective: string;
+} {
+  // 誤謬タイプ
+  if (['affirming-consequent', 'circular-reasoning', 'false-dichotomy', 
+       'slippery-slope', 'hasty-generalization'].includes(type)) {
+    const fallacyActions: Record<string, { issuePrefix: string; action: string; expectedOutcome: string; perspective: string }> = {
+      'affirming-consequent': {
+        issuePrefix: '後件肯定の誤謬の可能性',
+        action: '「AならB、BだからA」という推論を避ける。Bが他の原因で起こりうるか検討する。',
+        expectedOutcome: '論理的妥当性の確保',
+        perspective: '論理学'
+      },
+      'circular-reasoning': {
+        issuePrefix: '循環論法の可能性',
+        action: '結論を前提として使わない。独立した根拠を提示する。',
+        expectedOutcome: '実質的な論証の構築',
+        perspective: '論理学'
+      },
+      'false-dichotomy': {
+        issuePrefix: '偽の二分法の可能性',
+        action: '第三の選択肢や中間的な解を探す。「AかBか」以外の可能性を検討する。',
+        expectedOutcome: 'より包括的な問題解決',
+        perspective: '論理学'
+      },
+      'slippery-slope': {
+        issuePrefix: '滑り坂論法の可能性',
+        action: '各段階の因果関係を検証する。極端な結論に至る必然性を疑う。',
+        expectedOutcome: '現実的な予測の確保',
+        perspective: '論理学'
+      },
+      'hasty-generalization': {
+        issuePrefix: '急激な一般化の可能性',
+        action: 'サンプルサイズと代表性を確認する。例外や反例を探す。',
+        expectedOutcome: '根拠ある一般化',
+        perspective: '論理学'
+      }
+    };
+    return fallacyActions[type] || {
+      issuePrefix: '論理的誤謬の可能性',
+      action: '推論の妥当性を検証し、論理的飛躍がないか確認する。',
+      expectedOutcome: '論理的厳密さの確保',
+      perspective: '論理学'
+    };
+  }
+
+  // 二項対立タイプ
+  if (['truth-binary', 'success-binary', 'moral-binary', 
+       'correctness-binary', 'completeness-binary'].includes(type)) {
+    return {
+      issuePrefix: '二項対立の可能性',
+      action: '中間領域やグラデーションを考慮する。両極を両立させる条件を探る。',
+      expectedOutcome: '二項対立を超えた統合的視点',
+      perspective: '脱構築'
+    };
+  }
+
+  // ファシズムタイプ
+  if (['self-surveillance', 'norm-obedience', 'value-convergence'].includes(type)) {
+    const fascismActions: Record<string, { issuePrefix: string; action: string; expectedOutcome: string; perspective: string }> = {
+      'self-surveillance': {
+        issuePrefix: '自己監視の強制の兆候',
+        action: '「常に」「必ず」などの絶対的表現が文脈的に適切か検討する。柔軟な判断基準を認める。',
+        expectedOutcome: '過度な自己強制の緩和',
+        perspective: 'スキゾ分析'
+      },
+      'norm-obedience': {
+        issuePrefix: '規範への過度な服従の兆候',
+        action: '「すべき」が本当に必要か、それとも慣習かを問う。代替アプローチを検討する。',
+        expectedOutcome: '創造的判断の余地確保',
+        perspective: 'スキゾ分析'
+      },
+      'value-convergence': {
+        issuePrefix: '一価値への収斃の兆候',
+        action: '「正しい」の基準を多角的に検討する。文脈依存性を認める。',
+        expectedOutcome: '価値の多様性の確保',
+        perspective: 'スキゾ分析'
+      }
+    };
+    return fascismActions[type] || {
+      issuePrefix: '内なるファシズムの兆候',
+      action: '無批判な服従や自己監視のパターンを意識し、代替の判断基準を検討する。',
+      expectedOutcome: 'より自由な思考の獲得',
+      perspective: 'スキゾ分析'
+    };
+  }
+
+  // デフォルト
+  return {
+    issuePrefix: '検出された問題',
+    action: '検出内容を文脈で評価し、必要に応じて修正する。',
+    expectedOutcome: '改善された推論',
+    perspective: '論理学'
+  };
+}
+
+/**
+ * 検出タイプをカテゴリにマッピング
+ */
+function mapTypeToCategory(type: string): ImprovementAction['category'] {
+  if (['affirming-consequent', 'circular-reasoning', 'false-dichotomy', 
+       'slippery-slope', 'hasty-generalization'].includes(type)) {
+    return 'logic';
+  }
+  if (['truth-binary', 'success-binary', 'moral-binary', 
+       'correctness-binary', 'completeness-binary'].includes(type)) {
+    return 'deconstruction';
+  }
+  if (['self-surveillance', 'norm-obedience', 'value-convergence'].includes(type)) {
+    return 'schizoanalysis';
+  }
+  return 'logic';
+}
+
+// ============================================================================
+// LLMベース判定エンジン
+// ============================================================================
+
+/**
+ * 候補検出結果（正規表現ベース）
+ * @summary パターンマッチングで抽出された候補
+ */
+export interface CandidateDetection {
+  /** 検出タイプ */
+  type: string;
+  /** マッチしたテキスト */
+  matchedText: string;
+  /** マッチした位置 */
+  location: { start: number; end: number };
+  /** 周辺コンテキスト（前後100文字） */
+  context: string;
+  /** パターンマッチの信頼度（低） */
+  patternConfidence: number;
+}
+
+/**
+ * LLM判定リクエスト
+ * @summary LLMによる判定依頼
+ */
+export interface LLMVerificationRequest {
+  /** 検出候補 */
+  candidate: CandidateDetection;
+  /** 分析対象テキスト全体 */
+  fullText: string;
+  /** タスクコンテキスト */
+  taskContext?: string;
+  /** 判定タイプ */
+  verificationType: 'fallacy' | 'binary_opposition' | 'aporia' | 'fascism' | 'reasoning_gap';
+}
+
+/**
+ * LLM判定結果
+ * @summary LLMによる判定結果
+ */
+export interface LLMVerificationResult {
+  /** 元の候補 */
+  candidate: CandidateDetection;
+  /** 判定結果 */
+  verdict: 'confirmed' | 'rejected' | 'uncertain';
+  /** 信頼度（0-1） */
+  confidence: number;
+  /** 判定理由 */
+  reasoning: string;
+  /** 文脈的考慮事項 */
+  contextualFactors: string[];
+  /** 代替解釈 */
+  alternativeInterpretation?: string;
+}
+
+/**
+ * 統合判定結果
+ * @summary パターンマッチングとLLM判定を組み合わせた結果
+ */
+export interface IntegratedVerificationResult {
+  /** 検出候補リスト */
+  candidates: CandidateDetection[];
+  /** LLM判定結果（実行した場合） */
+  llmResults?: LLMVerificationResult[];
+  /** 最終判定 */
+  finalVerdict: 'confirmed' | 'rejected' | 'uncertain' | 'skipped';
+  /** 総合信頼度 */
+  overallConfidence: number;
+  /** 判定方法 */
+  method: 'pattern-only' | 'llm-enhanced' | 'llm-only';
+  /** 判定理由の要約 */
+  summary: string;
+}
+
+/**
+ * 正規表現で候補を抽出する
+ * 
+ * @summary 候補抽出
+ * @param text 分析対象テキスト
+ * @param patterns 検出パターン配列
+ * @param contextRadius 周辺コンテキストの半径（デフォルト100文字）
+ * @returns 検出候補リスト
+ */
+export function extractCandidates(
+  text: string,
+  patterns: Array<{ pattern: RegExp; type: string; confidence: number }>,
+  contextRadius: number = 100
+): CandidateDetection[] {
+  const candidates: CandidateDetection[] = [];
+
+  for (const { pattern, type, confidence } of patterns) {
+    // 正規表現のlastIndexをリセット
+    pattern.lastIndex = 0;
+    
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      
+      // 周辺コンテキストを抽出
+      const contextStart = Math.max(0, start - contextRadius);
+      const contextEnd = Math.min(text.length, end + contextRadius);
+      const context = text.slice(contextStart, contextEnd);
+
+      candidates.push({
+        type,
+        matchedText: match[0],
+        location: { start, end },
+        context,
+        patternConfidence: confidence
+      });
+
+      // グローバルフラグがない場合は無限ループ防止
+      if (!pattern.global) {
+        break;
+      }
+    }
+  }
+
+  return candidates;
+}
+
+/**
+ * LLM判定用のプロンプトを生成する
+ * 
+ * @summary LLM判定プロンプト生成
+ * @param request LLM判定リクエスト
+ * @returns プロンプト文字列
+ */
+export function generateLLMVerificationPrompt(request: LLMVerificationRequest): string {
+  const { candidate, fullText, taskContext, verificationType } = request;
+  
+  const typeDescriptions: Record<string, string> = {
+    fallacy: '論理的誤謬（後件肯定、循環論法、偽の二分法など）',
+    binary_opposition: '二項対立（善/悪、成功/失敗などの対立構造）',
+    aporia: 'アポリア（解決困難な対立や緊張関係）',
+    fascism: '内なるファシズム（過度な自己監視、権力への服従など）',
+    reasoning_gap: '推論の飛躍（前提と結論の間の論理的欠落）'
+  };
+
+  return `あなたは論理的推論の専門家です。以下の検出候補が、文脈を考慮した上で本当に問題があるかを判定してください。
+
+## 判定タイプ
+${typeDescriptions[verificationType] || verificationType}
+
+## 検出された候補
+- 種別: ${candidate.type}
+- マッチテキスト: "${candidate.matchedText}"
+- 周辺コンテキスト: "...${candidate.context}..."
+
+${taskContext ? `## タスクコンテキスト\n${taskContext}\n` : ''}
+
+## 判定基準
+1. **confirmed**: 文脈を考慮しても問題がある。真正な誤謬/問題である。
+2. **rejected**: 文脈を考慮すると問題ない。パターンマッチングの偽陽性。
+3. **uncertain**: 判定に追加情報が必要。曖昧なケース。
+
+## 出力形式（JSON）
+\`\`\`json
+{
+  "verdict": "confirmed|rejected|uncertain",
+  "confidence": 0.0-1.0,
+  "reasoning": "判定理由を具体的に記述",
+  "contextualFactors": ["考慮した文脈的要因1", "考慮した文脈的要因2"],
+  "alternativeInterpretation": "別の解釈があれば記述（オプション）"
+}
+\`\`\`
+
+## 重要な注意点
+- 技術的に正しい記述を誤検出しないこと
+- 「必ずテストを実行する」のような適切な指示は、内なるファシズムではない
+- 文脈によって正当化できる表現は、問題として扱わない
+- 確信度は判定の確実性を反映すること（推測の場合は低めに）`;
+}
+
+/**
+ * LLM判定結果をパースする
+ * 
+ * @summary LLM判定結果パース
+ * @param response LLMの応答テキスト
+ * @param candidate 元の候補
+ * @returns パースされた判定結果
+ */
+export function parseLLMVerificationResponse(
+  response: string,
+  candidate: CandidateDetection
+): LLMVerificationResult {
+  try {
+    // JSONブロックを抽出
+    const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[1]);
+      return {
+        candidate,
+        verdict: parsed.verdict || 'uncertain',
+        confidence: Math.max(0, Math.min(1, parsed.confidence || 0.5)),
+        reasoning: parsed.reasoning || '理由が提供されませんでした',
+        contextualFactors: parsed.contextualFactors || [],
+        alternativeInterpretation: parsed.alternativeInterpretation
+      };
+    }
+
+    // JSON形式でない場合、テキストから推定
+    const lowerResponse = response.toLowerCase();
+    let verdict: 'confirmed' | 'rejected' | 'uncertain' = 'uncertain';
+    let confidence = 0.5;
+
+    if (lowerResponse.includes('confirmed') || lowerResponse.includes('問題あり')) {
+      verdict = 'confirmed';
+      confidence = 0.7;
+    } else if (lowerResponse.includes('rejected') || lowerResponse.includes('問題なし')) {
+      verdict = 'rejected';
+      confidence = 0.7;
+    }
+
+    return {
+      candidate,
+      verdict,
+      confidence,
+      reasoning: response.slice(0, 500),
+      contextualFactors: []
+    };
+  } catch {
+    return {
+      candidate,
+      verdict: 'uncertain',
+      confidence: 0.3,
+      reasoning: 'LLM応答のパースに失敗',
+      contextualFactors: []
+    };
+  }
+}
+
+/**
+ * 誤謬検出パターンを定義
+ * 
+ * @summary 誤謬検出パターン
+ */
+export const FALLACY_PATTERNS = [
+  // 後件肯定
+  { pattern: /もし.*ならば.*だから.*だろう/g, type: 'affirming-consequent', confidence: 0.4 },
+  { pattern: /if\s+.*?\s+then\s+.*?\s+so\s+.*?\s+(must|should)\s+be/gi, type: 'affirming-consequent', confidence: 0.4 },
+  
+  // 循環論法
+  { pattern: /(.{5,})だから\1/g, type: 'circular-reasoning', confidence: 0.3 },
+  { pattern: /(.{5,})\s+because\s+\1/gi, type: 'circular-reasoning', confidence: 0.3 },
+  
+  // 偽の二分法
+  { pattern: /(?:あるいは|または|or)[、,]?\s*(?:どちらか|either)/g, type: 'false-dichotomy', confidence: 0.35 },
+  { pattern: /either\s+.*?\s+or\s+.*?(?:must|have\s+to)/gi, type: 'false-dichotomy', confidence: 0.35 },
+  
+  // 滑り坂
+  { pattern: /そうすれば.*結局は.*だろう/g, type: 'slippery-slope', confidence: 0.3 },
+  { pattern: /if\s+.*?\s+then\s+eventually\s+.*?\s+will/gi, type: 'slippery-slope', confidence: 0.3 },
+  
+  // 急激な一般化
+  { pattern: /(?:すべて|全て|みんな).*?(?:だ|である|です)/g, type: 'hasty-generalization', confidence: 0.4 },
+  { pattern: /all\s+.*?\s+are\s+/gi, type: 'hasty-generalization', confidence: 0.4 }
+];
+
+/**
+ * 二項対立検出パターンを定義
+ * 
+ * @summary 二項対立検出パターン
+ */
+export const BINARY_OPPOSITION_PATTERNS = [
+  { pattern: /正しい\s*[\/／]\s*間違い/g, type: 'truth-binary', confidence: 0.5 },
+  { pattern: /right\s*[\/／]\s*wrong/gi, type: 'truth-binary', confidence: 0.5 },
+  { pattern: /成功\s*[\/／]\s*失敗/g, type: 'success-binary', confidence: 0.5 },
+  { pattern: /success\s*[\/／]\s*fail/gi, type: 'success-binary', confidence: 0.5 },
+  { pattern: /良い\s*[\/／]\s*悪い/g, type: 'moral-binary', confidence: 0.5 },
+  { pattern: /good\s*[\/／]\s*bad/gi, type: 'moral-binary', confidence: 0.5 },
+  { pattern: /正解\s*[\/／]\s*不正解/g, type: 'correctness-binary', confidence: 0.5 },
+  { pattern: /完全\s*[\/／]\s*不完全/g, type: 'completeness-binary', confidence: 0.5 }
+];
+
+/**
+ * 内なるファシズム検出パターンを定義
+ * 
+ * @summary ファシズム検出パターン
+ */
+export const FASCISM_PATTERNS = [
+  { pattern: /常に|必ず|絶対に/g, type: 'self-surveillance', confidence: 0.25 },
+  { pattern: /always|must|never|absolutely/gi, type: 'self-surveillance', confidence: 0.25 },
+  { pattern: /すべき|しなければならない|ねばならない/g, type: 'norm-obedience', confidence: 0.25 },
+  { pattern: /should|have\s+to|need\s+to/gi, type: 'norm-obedience', confidence: 0.25 },
+  { pattern: /正しい|適切な|正当な/g, type: 'value-convergence', confidence: 0.2 },
+  { pattern: /correct|proper|legitimate/gi, type: 'value-convergence', confidence: 0.2 }
+];
+
+/**
+ * 統合検出を実行（パターンマッチングのみ）
+ * 
+ * @summary 統合候補抽出
+ * @param text 分析対象テキスト
+ * @param options 検出オプション
+ * @returns 統合判定結果
+ */
+export function runIntegratedDetection(
+  text: string,
+  options: {
+    detectFallacies?: boolean;
+    detectBinaryOppositions?: boolean;
+    detectFascism?: boolean;
+    minPatternConfidence?: number;
+  } = {}
+): IntegratedVerificationResult {
+  const {
+    detectFallacies = true,
+    detectBinaryOppositions = true,
+    detectFascism = true,
+    minPatternConfidence = 0.2
+  } = options;
+
+  const allCandidates: CandidateDetection[] = [];
+
+  if (detectFallacies) {
+    allCandidates.push(...extractCandidates(text, FALLACY_PATTERNS));
+  }
+  if (detectBinaryOppositions) {
+    allCandidates.push(...extractCandidates(text, BINARY_OPPOSITION_PATTERNS));
+  }
+  if (detectFascism) {
+    allCandidates.push(...extractCandidates(text, FASCISM_PATTERNS));
+  }
+
+  // 信頼度でフィルタリング
+  const filteredCandidates = allCandidates.filter(
+    c => c.patternConfidence >= minPatternConfidence
+  );
+
+  // 重複除去（同じ位置の検出をまとめる）
+  const uniqueCandidates = filteredCandidates.filter((candidate, index, self) =>
+    index === self.findIndex(c =>
+      c.location.start === candidate.location.start &&
+      c.location.end === candidate.location.end
+    )
+  );
+
+  // パターンのみの判定結果
+  const avgConfidence = uniqueCandidates.length > 0
+    ? uniqueCandidates.reduce((sum, c) => sum + c.patternConfidence, 0) / uniqueCandidates.length
+    : 0;
+
+  return {
+    candidates: uniqueCandidates,
+    finalVerdict: uniqueCandidates.length > 0 ? 'uncertain' : 'rejected',
+    overallConfidence: avgConfidence,
+    method: 'pattern-only',
+    summary: uniqueCandidates.length > 0
+      ? `${uniqueCandidates.length}件の候補を検出（要LLM検証）`
+      : '検出候補なし'
+  };
+}
+
+/**
+ * LLM拡張メタ認知チェックを実行
+ * 
+ * @summary LLM拡張メタ認知チェック
+ * @param text 分析対象テキスト
+ * @param llmVerifyFunction LLM検証関数（外部から注入）
+ * @param context コンテキスト
+ * @returns 統合判定結果
+ */
+export async function runLLMEnhancedDetection(
+  text: string,
+  llmVerifyFunction: (prompt: string) => Promise<string>,
+  context: { task?: string; skipPatternsWithHighConfidence?: boolean } = {}
+): Promise<IntegratedVerificationResult> {
+  // Step 1: パターンマッチングで候補抽出
+  const patternResult = runIntegratedDetection(text);
+  
+  if (patternResult.candidates.length === 0) {
+    return patternResult;
+  }
+
+  // Step 2: 各候補をLLMで検証
+  const llmResults: LLMVerificationResult[] = [];
+  
+  for (const candidate of patternResult.candidates) {
+    // 高信頼度パターンはスキップ可能
+    if (context.skipPatternsWithHighConfidence && candidate.patternConfidence >= 0.8) {
+      llmResults.push({
+        candidate,
+        verdict: 'confirmed',
+        confidence: candidate.patternConfidence,
+        reasoning: '高信頼度パターン（LLM検証スキップ）',
+        contextualFactors: []
+      });
+      continue;
+    }
+
+    const verificationType = mapTypeToVerificationType(candidate.type);
+    const request: LLMVerificationRequest = {
+      candidate,
+      fullText: text,
+      taskContext: context.task,
+      verificationType
+    };
+
+    const prompt = generateLLMVerificationPrompt(request);
+    
+    try {
+      const llmResponse = await llmVerifyFunction(prompt);
+      const result = parseLLMVerificationResponse(llmResponse, candidate);
+      llmResults.push(result);
+    } catch (error) {
+      // LLM検証エラーの場合は不確定として扱う
+      llmResults.push({
+        candidate,
+        verdict: 'uncertain',
+        confidence: 0.3,
+        reasoning: `LLM検証エラー: ${error}`,
+        contextualFactors: []
+      });
+    }
+  }
+
+  // Step 3: 結果を統合
+  const confirmedCount = llmResults.filter(r => r.verdict === 'confirmed').length;
+  const rejectedCount = llmResults.filter(r => r.verdict === 'rejected').length;
+  const uncertainCount = llmResults.filter(r => r.verdict === 'uncertain').length;
+
+  let finalVerdict: 'confirmed' | 'rejected' | 'uncertain';
+  let overallConfidence: number;
+
+  if (confirmedCount > rejectedCount) {
+    finalVerdict = 'confirmed';
+    overallConfidence = llmResults
+      .filter(r => r.verdict === 'confirmed')
+      .reduce((sum, r) => sum + r.confidence, 0) / confirmedCount;
+  } else if (rejectedCount > confirmedCount) {
+    finalVerdict = 'rejected';
+    overallConfidence = llmResults
+      .filter(r => r.verdict === 'rejected')
+      .reduce((sum, r) => sum + r.confidence, 0) / rejectedCount;
+  } else {
+    finalVerdict = 'uncertain';
+    overallConfidence = 0.5;
+  }
+
+  const summary = `検出: ${patternResult.candidates.length}件, ` +
+    `確認: ${confirmedCount}件, ` +
+    `却下: ${rejectedCount}件, ` +
+    `不明: ${uncertainCount}件`;
+
+  return {
+    candidates: patternResult.candidates,
+    llmResults,
+    finalVerdict,
+    overallConfidence,
+    method: 'llm-enhanced',
+    summary
+  };
+}
+
+/**
+ * 検出タイプを判定タイプにマッピング
+ */
+function mapTypeToVerificationType(type: string): LLMVerificationRequest['verificationType'] {
+  if (['affirming-consequent', 'circular-reasoning', 'false-dichotomy', 
+       'slippery-slope', 'hasty-generalization'].includes(type)) {
+    return 'fallacy';
+  }
+  if (['truth-binary', 'success-binary', 'moral-binary', 
+       'correctness-binary', 'completeness-binary'].includes(type)) {
+    return 'binary_opposition';
+  }
+  if (['self-surveillance', 'norm-obedience', 'value-convergence'].includes(type)) {
+    return 'fascism';
+  }
+  return 'fallacy';
+}

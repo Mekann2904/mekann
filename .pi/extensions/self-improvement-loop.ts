@@ -58,6 +58,15 @@ import {
   generateImprovementActions,
   formatActionsAsPromptInstructions,
   runIntegratedMetacognitiveAnalysis,
+  // 新しいLLMベース判定エンジン
+  runIntegratedDetection,
+  extractCandidates,
+  FALLACY_PATTERNS,
+  BINARY_OPPOSITION_PATTERNS,
+  FASCISM_PATTERNS,
+  type CandidateDetection,
+  type IntegratedVerificationResult,
+  generateActionsFromDetection,
 } from "../lib/verification-workflow.js";
 import {
   retryWithBackoff,
@@ -251,6 +260,8 @@ interface ActiveAutonomousRun {
   lastInferenceDepthScore?: number;
   /** 前回の改善アクション（次サイクルでの実践用） */
   lastImprovementActions?: ImprovementAction[];
+  /** 前回の統合検出結果（信頼度付き） */
+  lastIntegratedDetection?: IntegratedVerificationResult;
 }
 
 // ============================================================================
@@ -2382,6 +2393,46 @@ export default (api: ExtensionAPI) => {
         
         if (improvementActions.length > 0) {
           appendAutonomousLoopLog(run.logPath, `  improvement_actions: ${improvementActions.length}件（優先度1: ${improvementActions.filter(a => a.priority === 1).length}件）`);
+        }
+        
+        // 新しい統合検出システムを実行（信頼度付き検出）
+        const integratedDetection = runIntegratedDetection(outputText, {
+          detectFallacies: true,
+          detectBinaryOppositions: true,
+          detectFascism: true,
+          minPatternConfidence: 0.2
+        });
+        
+        // 統合検出結果を保存
+        run.lastIntegratedDetection = integratedDetection;
+        
+        // 信頼度別の検出結果をログに記録
+        const highConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence >= 0.4);
+        const lowConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence < 0.4);
+        
+        if (integratedDetection.candidates.length > 0) {
+          appendAutonomousLoopLog(run.logPath, `  integrated_detection: ${integratedDetection.candidates.length}件（高信頼度: ${highConfidenceCandidates.length}件、低信頼度: ${lowConfidenceCandidates.length}件）`);
+          appendAutonomousLoopLog(run.logPath, `    types: ${[...new Set(integratedDetection.candidates.map(c => c.type))].join(', ')}`);
+          
+          // 信頼度ベースの改善アクションを生成・追加
+          const confidenceBasedActions = generateActionsFromDetection(integratedDetection);
+          const highPriorityActions = confidenceBasedActions.filter(a => a.confidenceLevel === 'high');
+          
+          if (highPriorityActions.length > 0) {
+            // 高信頼度の検出を改善アクションに追加
+            run.lastImprovementActions = [
+              ...(run.lastImprovementActions || []),
+              ...highPriorityActions.map(a => ({
+                category: a.category,
+                priority: a.priority,
+                issue: a.issue,
+                action: a.action,
+                expectedOutcome: a.expectedOutcome,
+                relatedPerspective: a.relatedPerspective
+              }))
+            ];
+            appendAutonomousLoopLog(run.logPath, `    high_confidence_actions: ${highPriorityActions.length}件追加`);
+          }
         }
       } catch (error) {
         // メタ認知チェックのエラーは無視（機能継続のため）
