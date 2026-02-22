@@ -230,25 +230,68 @@ Load the git-workflow skill IMMEDIATELY when user mentions or task involves:
 
 If you attempt any git command without first loading the git-workflow skill, STOP and load it immediately.
 
-## Output Format Rules (MANDATORY)
+## Output Format Rules (RECOMMENDED - 理由を理解した選択)
 
-1. **No emoji in output**: Do not use any emoji characters or decorative symbols in responses.
-2. **Text-only format**: Use plain text with Markdown formatting for clarity.
+出力形式のルール。理由を理解した上で選択すること。
 
-## User Interaction Rules (MANDATORY)
+### 推奨されるルール
 
-1. **Question tool mandatory**: ALWAYS use the `question` tool when asking users for:
-   - Selection from options
-   - Confirmation before action
-   - Priority decisions
-   - ANY scenario requiring user choice
-2. **Autonomous execution**: Make reasonable assumptions and proceed instead of asking when safe. Minimize unnecessary user confirmations.
+1. **No emoji in output**
+   - 理由：テキストのみの環境（CI/CDログ、ターミナル）での可読性確保
+   - 例外を認める場合：ユーザーが明示的に絵文字を要求した場合
 
-## Prompt Quality Rules (MANDATORY)
+2. **Text-only format**
+   - 理由：Markdownパーサーでの一貫した表示
+   - 例外を認める場合：コードブロック内の特殊文字
 
-1. **No shortcuts**: Do not cut corners on prompts or output requirements.
-2. **Complete responses**: Provide complete answers, do not stop mid-response.
-3. **Concrete artifacts**: Provide file paths, code diffs, execution steps—not abstract descriptions.
+### このルールを「選択」することの意味
+
+これらのルールに従うかどうかは、エージェントの判断に委ねられる。
+ただし、ルールを破る場合は、その理由を明確にすること。
+
+## User Interaction Rules (RECOMMENDED - 理由を理解した選択)
+
+ユーザーとのやり取りのルール。理由を理解した上で選択すること。
+
+### 推奨されるルール
+
+1. **Question tool の使用**
+   - 理由：ユーザーの明示的な選択を得ることで、誤操作を防ぐ
+   - 推奨場面：選択肢からの選択、アクション前の確認、優先度決定
+   - 例外を認める場合：自明な選択、緊急時、ユーザーが迅速な実行を求めている場合
+
+2. **Autonomous execution**
+   - 理由：過度な確認はユーザー体験を損なう
+   - 推奨場面：安全な仮定が可能な場合
+   - 例外を認める場合：破壊的操作、不可逆な変更
+
+### このルールを「選択」することの意味
+
+Question toolを使うかどうかは、エージェントの判断に委ねられる。
+ただし、確認を省略する場合は、その理由を明確にすること。
+
+## Prompt Quality Rules (RECOMMENDED - 理由を理解した選択)
+
+プロンプトと出力の品質ルール。理由を理解した上で選択すること。
+
+### 推奨されるルール
+
+1. **No shortcuts**
+   - 理由：省略は情報の欠落を招き、ユーザーの理解を妨げる
+   - 例外を認める場合：ユーザーが簡潔な回答を求めている場合
+
+2. **Complete responses**
+   - 理由：不完全な回答は追加のやり取りを必要とし、効率を下げる
+   - 例外を認める場合：回答が非常に長くなる場合（分割を提案）
+
+3. **Concrete artifacts**
+   - 理由：抽象的な記述は実行可能性を下げる
+   - 例外を認める場合：概念説明の段階
+
+### このルールを「選択」することの意味
+
+品質基準を満たすかどうかは、エージェントの判断に委ねられる。
+ただし、基準を下げる場合は、その理由を明確にすること。
 
 # Delegation-First Policy (RECOMMENDED - 選択的委任)
 
