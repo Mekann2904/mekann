@@ -506,7 +506,7 @@ function parsePerspectiveScores(output: string): ParsedPerspectiveScores | null 
 
   for (const { key, patterns: pats } of patterns) {
     for (const pat of pats) {
-      const regex = new RegExp(`${pat}[:\\s]+(\\d{1,3})`, 'i');
+      const regex = new RegExp(`${pat}[:\\s]+(-?\\d{1,3})`, 'i');
       const match = scoresText.match(regex);
       if (match) {
         const val = Math.min(100, Math.max(0, parseInt(match[1], 10)));
@@ -516,9 +516,17 @@ function parsePerspectiveScores(output: string): ParsedPerspectiveScores | null 
     }
   }
 
-  // 平均を計算
-  const values = Object.values(scores).filter(v => typeof v === 'number') as number[];
-  scores.average = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+  // 7つの視座の平均を計算（average自体は含めない）
+  const perspectiveValues = [
+    scores.deconstruction,
+    scores.schizoanalysis,
+    scores.eudaimonia,
+    scores.utopia_dystopia,
+    scores.thinking_philosophy,
+    scores.thinking_taxonomy,
+    scores.logic,
+  ];
+  scores.average = Math.round(perspectiveValues.reduce((a, b) => a + b, 0) / perspectiveValues.length);
 
   return scores;
 }
@@ -1088,6 +1096,55 @@ export default (api: ExtensionAPI) => {
     // 軌跡サマリーを取得
     const trajectorySummary = run.trajectoryTracker.getSummary();
     
+    // 視座スコアの統計を計算
+    let perspectiveStats = "";
+    if (run.perspectiveScoreHistory.length > 0) {
+      const avgScores = {
+        deconstruction: 0,
+        schizoanalysis: 0,
+        eudaimonia: 0,
+        utopia_dystopia: 0,
+        thinking_philosophy: 0,
+        thinking_taxonomy: 0,
+        logic: 0,
+        overall: 0,
+      };
+      
+      for (const scores of run.perspectiveScoreHistory) {
+        avgScores.deconstruction += scores.deconstruction;
+        avgScores.schizoanalysis += scores.schizoanalysis;
+        avgScores.eudaimonia += scores.eudaimonia;
+        avgScores.utopia_dystopia += scores.utopia_dystopia;
+        avgScores.thinking_philosophy += scores.thinking_philosophy;
+        avgScores.thinking_taxonomy += scores.thinking_taxonomy;
+        avgScores.logic += scores.logic;
+        avgScores.overall += scores.average;
+      }
+      
+      const n = run.perspectiveScoreHistory.length;
+      avgScores.deconstruction = Math.round(avgScores.deconstruction / n);
+      avgScores.schizoanalysis = Math.round(avgScores.schizoanalysis / n);
+      avgScores.eudaimonia = Math.round(avgScores.eudaimonia / n);
+      avgScores.utopia_dystopia = Math.round(avgScores.utopia_dystopia / n);
+      avgScores.thinking_philosophy = Math.round(avgScores.thinking_philosophy / n);
+      avgScores.thinking_taxonomy = Math.round(avgScores.thinking_taxonomy / n);
+      avgScores.logic = Math.round(avgScores.logic / n);
+      avgScores.overall = Math.round(avgScores.overall / n);
+      
+      perspectiveStats = `
+- 視座スコア平均:
+  - 脱構築: ${avgScores.deconstruction}
+  - スキゾ分析: ${avgScores.schizoanalysis}
+  - 幸福論: ${avgScores.eudaimonia}
+  - ユートピア/ディストピア: ${avgScores.utopia_dystopia}
+  - 思考哲学: ${avgScores.thinking_philosophy}
+  - 思考分類学: ${avgScores.thinking_taxonomy}
+  - 論理学: ${avgScores.logic}
+  - 総合: ${avgScores.overall}`;
+      
+      appendAutonomousLoopLog(run.logPath, `  perspective_avg: overall=${avgScores.overall}, deconstruction=${avgScores.deconstruction}, logic=${avgScores.logic}`);
+    }
+    
     appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} finished reason=${reason ?? "completed"}`);
     if (note) {
       appendAutonomousLoopLog(run.logPath, `  note: ${note}`);
@@ -1102,7 +1159,7 @@ export default (api: ExtensionAPI) => {
 - 総サイクル: ${run.cycle}
 - 停止理由: ${reason ?? "completed"}
 - 最終コミット: ${run.lastCommitHash ?? "なし"}
-- 停滞検出: ${trajectorySummary.repetitionCount}回の反復（平均類似度: ${(trajectorySummary.averageSimilarity * 100).toFixed(0)}%）
+- 停滞検出: ${trajectorySummary.repetitionCount}回の反復（平均類似度: ${(trajectorySummary.averageSimilarity * 100).toFixed(0)}%）${perspectiveStats}
 - ログ: \`${run.logPath}\``,
       display: true,
       details: {
@@ -1117,6 +1174,7 @@ export default (api: ExtensionAPI) => {
           averageSimilarity: trajectorySummary.averageSimilarity,
           isStuck: trajectorySummary.isStuck,
         },
+        perspectiveScoreCount: run.perspectiveScoreHistory.length,
       },
     }, { triggerTurn: false });
 
@@ -1180,7 +1238,7 @@ export default (api: ExtensionAPI) => {
     run.inFlightCycle = marker.cycle;
   });
 
-  api.on("agent_end", async (_event, ctx) => {
+  api.on("agent_end", async (event, ctx) => {
     const run = activeRun;
     if (!run) return;
     if (run.inFlightCycle === null) return;
@@ -1188,6 +1246,38 @@ export default (api: ExtensionAPI) => {
     const completedCycle = run.inFlightCycle;
     run.inFlightCycle = null;
     appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} completed cycle=${completedCycle}`);
+
+    // イベントから出力を取得して視座スコアをパース
+    const agentEndEvent = event as { messages?: Array<{ content?: string | Array<{ type?: string; text?: string }> }> };
+    const messages = agentEndEvent.messages ?? [];
+    const lastMessage = messages[messages.length - 1];
+    
+    let outputText = "";
+    if (lastMessage) {
+      if (typeof lastMessage.content === "string") {
+        outputText = lastMessage.content;
+      } else if (Array.isArray(lastMessage.content)) {
+        outputText = lastMessage.content
+          .filter((c): c is { type: string; text: string } => c.type === "text" && typeof c.text === "string")
+          .map((c) => c.text)
+          .join("\n");
+      }
+    }
+
+    // 視座スコアをパースして記録
+    if (outputText) {
+      const scores = parsePerspectiveScores(outputText);
+      if (scores) {
+        run.perspectiveScoreHistory.push(scores);
+        appendAutonomousLoopLog(run.logPath, `  perspective_scores: avg=${scores.average}, deconstruction=${scores.deconstruction}, logic=${scores.logic}`);
+      }
+
+      // NEXT_FOCUSを抽出してサマリーに追加
+      const nextFocus = parseNextFocus(outputText);
+      if (nextFocus) {
+        appendAutonomousLoopLog(run.logPath, `  next_focus: ${nextFocus.slice(0, 100)}...`);
+      }
+    }
 
     // サイクルサマリーを記録（次回のプロンプトで使用）
     run.cycleSummaries.push(`Cycle ${completedCycle}: 完了`);
