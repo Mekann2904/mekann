@@ -868,36 +868,42 @@ ${topActions.map((action, i) =>
 以下のタスクを継続実行してください:
 ${run.task}
 ${previousSummary}${strategySection}${qualityGuidance}${generateSuccessPatternsSection(run)}
-## 自己点検（簡潔な3つの問い）
+## 思考の枠組み（問いを立てよ）
 
-各サイクルで以下の問いに取り組んでください:
+**重要**: 以下の「問い」に答えるのではなく、あなた自身の問いを立ててください。
 
-1. **前提**: 私は何を「当然」としているか？（隠れた仮定を明示せよ）
-2. **反証**: 私の仮説を否定する証拠は何か？（最低1つ探せ）
-3. **影響**: この変更はどのような世界を創るか？（意図せぬ結果を考えよ）
+### 探求のための種となる問い
+- この問題の「本質」は何か？（症状ではなく）
+- なぜ従来のアプローチで解決できなかったのか？
+- 何を「不可能」と思い込んでいるか？
+- 逆に考えるとどうなるか？（逆向きの思考）
 
-## 出力テンプレート（推奨）
+### 思考を深めるためのガイド
+1. **理解**: 問題を自分の言葉で再記述せよ
+2. **探索**: 複数のアプローチを検討せよ
+3. **検証**: 自分の選択に対する反例を探せ
+4. **統合**: 検討結果を踏まえて判断せよ
+
+## 出力フォーマット
 
 \`\`\`
-## 前提
-- [前提1]
-- [前提2]
+## 問い
+[このサイクルで探求する問い]
+
+## 探求
+[複数のアプローチまたは視点]
 
 ## 実行
-[具体的なアクション]
+[選択したアプローチとその理由]
 
-## 反証検討
-[自分の仮説を否定する可能性または証拠]
-
-## 次のステップ
-[次にやるべきこと]
+## 反省
+[何を学んだか、何を見逃していたか]
 \`\`\`
 
 ## 実行ルール
-- 必要なツールを自由に使う
-- 変更は実際にファイルへ反映し、必要ならテストまで実行する
-- 変更は実際にファイルへ反映し、必要ならテストまで実行する
-- 自分の仮説を否定する証拠を最低1つ探すこと
+- ツールを自由に使う
+- ファイルに反映し、テストを実行する
+- 自分の仮説を否定する証拠を探す
 
 ## 出力形式
 
@@ -2446,40 +2452,47 @@ export default (api: ExtensionAPI) => {
         appendAutonomousLoopLog(run.logPath, `  next_focus: ${nextFocus.slice(0, 100)}...`);
       }
 
-      // メタ認知チェックを実行して推論深度を評価（次サイクルのフィードバック用）
-      // 【軽量化】スコアが高い場合は詳細な判定をスキップ
-      // プロンプトの事前ガイダンスで品質を担保するアプローチに移行
+      // 【思考哲学的アプローチ】
+      // 「測定」は「思考」を促さない。高スコア時は判定全体をスキップし、
+      // プロンプトの「問い」で思考を促すアプローチに移行。
       const currentScores = run.perspectiveScoreHistory[run.perspectiveScoreHistory.length - 1];
-      const shouldSkipDetailedCheck = currentScores && currentScores.average >= 75;
+      const shouldSkipAllChecks = currentScores && currentScores.average >= 75;
       
-      try {
-        const metacognitiveCheck = runMetacognitiveCheck(outputText, {
-          task: run.task,
-          currentMode: "self-improvement"
-        });
-        run.lastMetacognitiveCheck = metacognitiveCheck;
-        
-        // 推論深度スコアを計算
-        const depthScore = calculateMetacognitiveDepthScore(metacognitiveCheck);
-        run.lastInferenceDepthScore = depthScore;
-        
-        appendAutonomousLoopLog(run.logPath, `  inference_depth: ${(depthScore * 100).toFixed(0)}%, fallacies=${metacognitiveCheck.logic.fallacies.length}, aporias=${metacognitiveCheck.deconstruction.aporias.length}`);
-        
-        if (!shouldSkipDetailedCheck) {
-          // 改善アクションを生成して保存（次サイクルで実践）
+      if (shouldSkipAllChecks) {
+        // 高スコア時は判定を完全にスキップ
+        appendAutonomousLoopLog(run.logPath, `  check_mode: 問い中心（スコア良好のため判定スキップ）`);
+        run.lastMetacognitiveCheck = undefined;
+        run.lastInferenceDepthScore = undefined;
+        run.lastImprovementActions = [];
+        run.lastIntegratedDetection = undefined;
+      } else {
+        // 低スコア時のみ詳細な判定を実行
+        try {
+          const metacognitiveCheck = runMetacognitiveCheck(outputText, {
+            task: run.task,
+            currentMode: "self-improvement"
+          });
+          run.lastMetacognitiveCheck = metacognitiveCheck;
+          
+          const depthScore = calculateMetacognitiveDepthScore(metacognitiveCheck);
+          run.lastInferenceDepthScore = depthScore;
+          
+          appendAutonomousLoopLog(run.logPath, `  inference_depth: ${(depthScore * 100).toFixed(0)}%, fallacies=${metacognitiveCheck.logic.fallacies.length}, aporias=${metacognitiveCheck.deconstruction.aporias.length}`);
+          
+          // 改善アクションを生成
           const improvementActions = generateImprovementActions(metacognitiveCheck);
           run.lastImprovementActions = improvementActions;
           
           if (improvementActions.length > 0) {
-            appendAutonomousLoopLog(run.logPath, `  improvement_actions: ${improvementActions.length}件（優先度1: ${improvementActions.filter(a => a.priority === 1).length}件）`);
+            appendAutonomousLoopLog(run.logPath, `  improvement_actions: ${improvementActions.length}件`);
           }
           
-          // 新しい統合検出システムを実行（信頼度付き検出）
+          // 統合検出（高信頼度のみ）
           const integratedDetection = runIntegratedDetection(outputText, {
             detectFallacies: true,
             detectBinaryOppositions: true,
             detectFascism: true,
-            minPatternConfidence: 0.3, // 閾値を上げて偽陽性を減らす
+            minPatternConfidence: 0.5, // 高信頼度のみ
             applyFilter: true
           });
           
@@ -2488,71 +2501,35 @@ export default (api: ExtensionAPI) => {
           const highConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence >= 0.5);
           
           if (highConfidenceCandidates.length > 0) {
-            const confidenceBasedActions = generateActionsFromDetection(integratedDetection);
-            const highPriorityActions = confidenceBasedActions.filter(a => a.confidenceLevel === 'high');
-            
-            if (highPriorityActions.length > 0) {
-              run.lastImprovementActions = [
-                ...(run.lastImprovementActions || []),
-                ...highPriorityActions.map(a => ({
-                  category: a.category,
-                  priority: a.priority,
-                  issue: a.issue,
-                  action: a.action,
-                  expectedOutcome: a.expectedOutcome,
-                  relatedPerspective: a.relatedPerspective
-                }))
-              ];
-              appendAutonomousLoopLog(run.logPath, `    high_confidence_actions: ${highPriorityActions.length}件追加`);
-            }
+            appendAutonomousLoopLog(run.logPath, `  high_confidence_detections: ${highConfidenceCandidates.length}件`);
           }
-        } else {
-          appendAutonomousLoopLog(run.logPath, `  detailed_check_skipped: スコア良好のため軽量モード`);
+        } catch (error) {
+          console.warn(`[self-improvement-loop] Metacognitive check failed: ${toErrorMessage(error)}`);
         }
-      } catch (error) {
-        // メタ認知チェックのエラーは無視（機能継続のため）
-        console.warn(`[self-improvement-loop] Metacognitive check failed: ${toErrorMessage(error)}`);
       }
       
-      // 思考分類学に基づく分析を実行
-      try {
-        const thinkingAnalysis = runIntegratedThinkingAnalysis(outputText, {
-          task: run.task
-        });
-        
-        // 思考モード分析結果をログに記録
-        const { modeAnalysis, issues, recommendations, overallScore } = thinkingAnalysis;
-        
-        appendAutonomousLoopLog(run.logPath, `  thinking_mode:`);
-        appendAutonomousLoopLog(run.logPath, `    primary_hat: ${modeAnalysis.primaryHat} (${HAT_NAMES[modeAnalysis.primaryHat]})`);
-        appendAutonomousLoopLog(run.logPath, `    thinking_system: ${modeAnalysis.thinkingSystem}`);
-        appendAutonomousLoopLog(run.logPath, `    bloom_level: ${modeAnalysis.bloomLevel}`);
-        appendAutonomousLoopLog(run.logPath, `    scores: depth=${(modeAnalysis.depthScore * 100).toFixed(0)}%, diversity=${(modeAnalysis.diversityScore * 100).toFixed(0)}%, coherence=${(modeAnalysis.coherenceScore * 100).toFixed(0)}%`);
-        
-        if (issues.length > 0) {
-          appendAutonomousLoopLog(run.logPath, `    thinking_issues: ${issues.length}件`);
-          issues.forEach((issue, i) => {
-            appendAutonomousLoopLog(run.logPath, `      ${i + 1}. ${issue}`);
+      // 【思考哲学的アプローチ】
+      // 思考分類学の分析も高スコア時はスキップ
+      if (!shouldSkipAllChecks) {
+        try {
+          const thinkingAnalysis = runIntegratedThinkingAnalysis(outputText, {
+            task: run.task
           });
+          
+          const { modeAnalysis, issues, overallScore } = thinkingAnalysis;
+          
+          appendAutonomousLoopLog(run.logPath, `  thinking_mode:`);
+          appendAutonomousLoopLog(run.logPath, `    primary_hat: ${modeAnalysis.primaryHat} (${HAT_NAMES[modeAnalysis.primaryHat]})`);
+          appendAutonomousLoopLog(run.logPath, `    thinking_system: ${modeAnalysis.thinkingSystem}`);
+          appendAutonomousLoopLog(run.logPath, `    bloom_level: ${modeAnalysis.bloomLevel}`);
+          appendAutonomousLoopLog(run.logPath, `    scores: depth=${(modeAnalysis.depthScore * 100).toFixed(0)}%, diversity=${(modeAnalysis.diversityScore * 100).toFixed(0)}%, coherence=${(modeAnalysis.coherenceScore * 100).toFixed(0)}%`);
+          
+          if (issues.length > 0) {
+            appendAutonomousLoopLog(run.logPath, `    thinking_issues: ${issues.length}件`);
+          }
+        } catch (error) {
+          console.warn(`[self-improvement-loop] Thinking mode analysis failed: ${toErrorMessage(error)}`);
         }
-        
-        // 【軽量化】思考分類学の分析はログのみ（改善アクション生成は軽量モード時はスキップ）
-        if (!shouldSkipDetailedCheck && overallScore < 0.5 && recommendations.length > 0) {
-          run.lastImprovementActions = [
-            ...(run.lastImprovementActions || []),
-            ...recommendations.map((rec, i) => ({
-              category: 'taxonomy_of_thought' as const,
-              priority: 3 as const,
-              issue: `思考の質が不十分（${(overallScore * 100).toFixed(0)}%）`,
-              action: rec,
-              expectedOutcome: '思考の質と深さの向上',
-              relatedPerspective: '思考分類学'
-            }))
-          ];
-          appendAutonomousLoopLog(run.logPath, `    thinking_recommendations: ${recommendations.length}件追加`);
-        }
-      } catch (error) {
-        console.warn(`[self-improvement-loop] Thinking mode analysis failed: ${toErrorMessage(error)}`);
       }
     }
 
