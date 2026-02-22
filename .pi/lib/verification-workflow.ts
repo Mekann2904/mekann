@@ -1141,6 +1141,8 @@ export interface MetacognitiveCheck {
     fallacies: FallacyDetection[];
     validInferences: string[];
     invalidInferences: string[];
+    /** 推論チェーン解析結果 */
+    inferenceChain?: InferenceChain;
   };
 }
 
@@ -1154,6 +1156,9 @@ export function runMetacognitiveCheck(
   output: string,
   context: { task?: string; currentMode?: string } = {}
 ): MetacognitiveCheck {
+  const logicResult = detectFallacies(output);
+  const inferenceChain = parseInferenceChain(output);
+  
   return {
     deconstruction: detectBinaryOppositions(output, context.task || ''),
     schizoAnalysis: detectInnerFascism(output, context),
@@ -1161,7 +1166,10 @@ export function runMetacognitiveCheck(
     utopiaDystopia: analyzeWorldCreation(output),
     philosophyOfThought: assessThinkingQuality(output, context),
     taxonomyOfThought: evaluateThinkingMode(output, context),
-    logic: detectFallacies(output)
+    logic: {
+      ...logicResult,
+      inferenceChain
+    }
   };
 }
 
@@ -1480,48 +1488,134 @@ function evaluateThinkingMode(
 }
 
 /**
- * @summary 論理的誤謬を検出
+ * @summary 論理的誤謬を検出（多言語対応版）
  */
 function detectFallacies(output: string): MetacognitiveCheck['logic'] {
   const fallacies: FallacyDetection[] = [];
   const validInferences: string[] = [];
   const invalidInferences: string[] = [];
 
-  // 後件肯定の検出
-  if (/ならば.*だから.*だろう/.test(output)) {
-    fallacies.push({
-      type: '後件肯定',
-      location: '推論部分',
-      description: 'P→Q、Q から P を導出しようとしている可能性',
-      correction: '必要条件と十分条件を区別し、逆は常に真とは限らないことを確認'
-    });
-    invalidInferences.push('後件肯定の可能性');
+  // 多言語パターン定義
+  const patterns = {
+    // 後件肯定 (Affirming the Consequent)
+    affirmingConsequent: {
+      ja: [/ならば.*だから.*だろう/, /もし.*なら.*だから/],
+      en: [/if.*then.*because/i, /since.*therefore.*must/i, /implies.*so.*probably/i]
+    },
+    // 前提否定 (Denying the Antecedent)
+    denyingAntecedent: {
+      ja: [/でないなら.*だから.*でない/, /ではないので.*ではない/],
+      en: [/not.*so.*not/i, /since not.*therefore not/i]
+    },
+    // 転移の誤謬 (Hasty Generalization)
+    hastyGeneralization: {
+      ja: [/一人が.*なら.*全員も/, /全員が.*なら.*一人も/, /一つの例から.*一般/],
+      en: [/one.*so all/i, /everyone.*so one/i, /therefore always/i, /must be.*all/i]
+    },
+    // 偽の二分法 (False Dichotomy)
+    falseDichotomy: {
+      ja: [/どちらか|いずれか|二択|二者択一/],
+      en: [/either.*or/i, /only two/i, /no other choice/i, /must choose between/i]
+    },
+    // 循環論法 (Circular Reasoning)
+    circularReasoning: {
+      ja: [/なぜなら.*だから/, /理由は.*である/],
+      en: [/because.*therefore/i, /reason.*is that/i]
+    },
+    // 滑り坂 (Slippery Slope)
+    slipperySlope: {
+      ja: [/そうなれば.*結局/, /一歩踏み出せば.*最終的に/],
+      en: [/will lead to/i, /eventually.*will/i, /slippery slope/i]
+    },
+    // 稲妻の人 (Straw Man)
+    strawMan: {
+      ja: [/極端な.*言うなら/, /あたかも.*かのように/],
+      en: [/would have you believe/i, /so you're saying/i, /essentially claiming/i]
+    },
+    // 人身攻撃 (Ad Hominem)
+    adHominem: {
+      ja: [/個人的には.*信頼/, /人物として/],
+      en: [/personally.*don't trust/i, /as a person/i, /character.*questionable/i]
+    },
+    // 権威への訴え (Appeal to Authority)
+    appealToAuthority: {
+      ja: [/専門家が.*言う/, /権威.*によれば/],
+      en: [/experts say/i, /authority.*states/i, /according to.*expert/i]
+    },
+    // 感情への訴え (Appeal to Emotion)
+    appealToEmotion: {
+      ja: [/可哀想.*だから/, /悲しい.*だから/],
+      en: [/feel.*sorry/i, /heartbreaking.*so/i, /outrage.*therefore/i]
+    }
+  };
+
+  // 有効な推論パターン（多言語）
+  const validPatterns = {
+    deductive: {
+      ja: [/したがって|ゆえに|それゆえ|結論として/],
+      en: [/therefore/i, /thus/i, /hence/i, /consequently/i, /it follows that/i]
+    },
+    careful: {
+      ja: [/傾向がある|一般的に|多くの場合|傾向として/],
+      en: [/tend to/i, /generally/i, /in many cases/i, /typically/i, /often/i]
+    },
+    probabilistic: {
+      ja: [/おそらく|可能性が高い|考えられる|推測される/],
+      en: [/probably/i, /likely/i, /possibly/i, /may be/i, /suggests that/i]
+    },
+    evidence: {
+      ja: [/証拠に基づき|データから|検証結果/],
+      en: [/based on evidence/i, /data shows/i, /verified by/i, /according to data/i]
+    }
+  };
+
+  // 後件肯定の検出（多言語）
+  for (const pattern of [...patterns.affirmingConsequent.ja, ...patterns.affirmingConsequent.en]) {
+    if (pattern.test(output)) {
+      fallacies.push({
+        type: '後件肯定',
+        location: '推論部分',
+        description: 'P→Q、Q から P を導出しようとしている可能性（必要条件を十分条件と混同）',
+        correction: '必要条件と十分条件を区別し、逆は常に真とは限らないことを確認'
+      });
+      invalidInferences.push('後件肯定の可能性');
+      break;
+    }
   }
 
-  // 前提否定の検出
-  if (/でないなら.*だから.*でない/.test(output)) {
-    fallacies.push({
-      type: '前提否定',
-      location: '推論部分',
-      description: 'P→Q、¬P から ¬Q を導出しようとしている可能性',
-      correction: '前提が偽でも結論が真である可能性を考慮'
-    });
-    invalidInferences.push('前提否定の可能性');
+  // 前提否定の検出（多言語）
+  for (const pattern of [...patterns.denyingAntecedent.ja, ...patterns.denyingAntecedent.en]) {
+    if (pattern.test(output)) {
+      fallacies.push({
+        type: '前提否定',
+        location: '推論部分',
+        description: 'P→Q、¬P から ¬Q を導出しようとしている可能性',
+        correction: '前提が偽でも結論が真である可能性を考慮'
+      });
+      invalidInferences.push('前提否定の可能性');
+      break;
+    }
   }
 
-  // 転移の誤謬の検出
-  if (/一人が.*なら.*全員も/.test(output) || /全員が.*なら.*一人も/.test(output)) {
-    fallacies.push({
-      type: '転移の誤謬',
-      location: '一般化部分',
-      description: '個別的事例と全体的傾向を混同している可能性',
-      correction: 'サンプルサイズと代表性を確認'
-    });
-    invalidInferences.push('転移の誤謬の可能性');
+  // 転移の誤謬の検出（多言語）
+  for (const pattern of [...patterns.hastyGeneralization.ja, ...patterns.hastyGeneralization.en]) {
+    if (pattern.test(output)) {
+      fallacies.push({
+        type: '転移の誤謬',
+        location: '一般化部分',
+        description: '個別的事例と全体的傾向を混同している可能性',
+        correction: 'サンプルサイズと代表性を確認'
+      });
+      invalidInferences.push('転移の誤謬の可能性');
+      break;
+    }
   }
 
-  // 偽の二分法の検出
-  if (/どちらか|いずれか|二択|二者択一/.test(output) && output.includes('または')) {
+  // 偽の二分法の検出（多言語）
+  const hasFalseDichotomy = patterns.falseDichotomy.ja.some(p => p.test(output)) ||
+    patterns.falseDichotomy.en.some(p => p.test(output));
+  const hasOr = /または|or\b/i.test(output);
+  if (hasFalseDichotomy && hasOr) {
     fallacies.push({
       type: '偽の二分法',
       location: '選択肢提示部分',
@@ -1531,21 +1625,212 @@ function detectFallacies(output: string): MetacognitiveCheck['logic'] {
     invalidInferences.push('偽の二分法の可能性');
   }
 
-  // 有効な推論を検出
-  if (/したがって|ゆえに|それゆえ/.test(output)) {
-    validInferences.push('演繹的推論の使用');
+  // 循環論法の検出（多言語）
+  for (const pattern of [...patterns.circularReasoning.ja, ...patterns.circularReasoning.en]) {
+    if (pattern.test(output)) {
+      fallacies.push({
+        type: '循環論法',
+        location: '論証部分',
+        description: '結論を前提として使用している可能性',
+        correction: '論証を独立した前提から再構築する'
+      });
+      invalidInferences.push('循環論法の可能性');
+      break;
+    }
   }
-  if (/傾向がある|一般的に|多くの場合/.test(output)) {
-    validInferences.push('慎重な一般化');
+
+  // 滑り坂の検出（多言語）
+  for (const pattern of [...patterns.slipperySlope.ja, ...patterns.slipperySlope.en]) {
+    if (pattern.test(output)) {
+      fallacies.push({
+        type: '滑り坂',
+        location: '因果連鎖部分',
+        description: '極端な結果を予測し、中間段階の可能性を無視している',
+        correction: '各段階の因果関係を個別に検証する'
+      });
+      invalidInferences.push('滑り坂の可能性');
+      break;
+    }
   }
-  if (/おそらく|可能性が高い|考えられる/.test(output)) {
-    validInferences.push('確率的推論の明示');
+
+  // 有効な推論を検出（多言語）
+  for (const pattern of [...validPatterns.deductive.ja, ...validPatterns.deductive.en]) {
+    if (pattern.test(output)) {
+      validInferences.push('演繹的推論の使用');
+      break;
+    }
+  }
+  for (const pattern of [...validPatterns.careful.ja, ...validPatterns.careful.en]) {
+    if (pattern.test(output)) {
+      validInferences.push('慎重な一般化');
+      break;
+    }
+  }
+  for (const pattern of [...validPatterns.probabilistic.ja, ...validPatterns.probabilistic.en]) {
+    if (pattern.test(output)) {
+      validInferences.push('確率的推論の明示');
+      break;
+    }
+  }
+  for (const pattern of [...validPatterns.evidence.ja, ...validPatterns.evidence.en]) {
+    if (pattern.test(output)) {
+      validInferences.push('証拠に基づく推論');
+      break;
+    }
   }
 
   return {
     fallacies,
     validInferences,
     invalidInferences
+  };
+}
+
+/**
+ * 推論チェーンを表すインターフェース
+ * @summary 推論チェーン構造
+ */
+export interface InferenceChain {
+  /** 前提文 */
+  premises: string[];
+  /** 推論ステップ */
+  steps: InferenceStep[];
+  /** 結論文 */
+  conclusion: string;
+  /** チェーン全体の妥当性 */
+  validity: 'valid' | 'invalid' | 'uncertain';
+  /** 検出された論理的飛躍 */
+  gaps: string[];
+}
+
+/**
+ * 個別の推論ステップ
+ * @summary 推論ステップ
+ */
+export interface InferenceStep {
+  /** ステップ番号 */
+  stepNumber: number;
+  /** 入力（前提または前のステップの出力） */
+  input: string;
+  /** 推論タイプ */
+  inferenceType: 'deductive' | 'inductive' | 'abductive' | 'analogical' | 'unknown';
+  /** 出力 */
+  output: string;
+  /** 妥当性 */
+  isValid: boolean;
+  /** 根拠 */
+  justification?: string;
+}
+
+/**
+ * 推論チェーンを解析する
+ * @summary 推論チェーンを解析
+ * @param output 出力テキスト
+ * @returns 解析された推論チェーン
+ */
+export function parseInferenceChain(output: string): InferenceChain {
+  const premises: string[] = [];
+  const steps: InferenceStep[] = [];
+  const gaps: string[] = [];
+  let conclusion = '';
+  let validity: 'valid' | 'invalid' | 'uncertain' = 'uncertain';
+
+  // 前提を抽出するパターン
+  const premisePatterns = [
+    /(?:前提|仮定|仮に|assuming|given|suppose|premise)[:：]\s*(.+?)(?:\n|$)/gi,
+    /(?:もし|if)\s+(.+?)\s*(?:ならば|then)/gi,
+    /(?:当然|obviously|clearly|it is evident that)\s+(.+?)(?:\n|,|。|\.)/gi
+  ];
+
+  for (const pattern of premisePatterns) {
+    let match;
+    while ((match = pattern.exec(output)) !== null) {
+      if (match[1] && match[1].trim().length > 5) {
+        premises.push(match[1].trim());
+      }
+    }
+  }
+
+  // 結論を抽出するパターン
+  const conclusionPatterns = [
+    /(?:結論|結局|したがって|ゆえに|conclusion|therefore|thus|hence)[:：]?\s*(.+?)(?:\n\n|\n[A-Z]|$)/gi,
+    /(?:結果として|as a result|consequently)[:：]?\s*(.+?)(?:\n\n|\n[A-Z]|$)/gi
+  ];
+
+  for (const pattern of conclusionPatterns) {
+    let match;
+    while ((match = pattern.exec(output)) !== null) {
+      if (match[1] && match[1].trim().length > 5) {
+        conclusion = match[1].trim();
+        break;
+      }
+    }
+    if (conclusion) break;
+  }
+
+  // 推論ステップを抽出
+  const stepPatterns = [
+    /(\d+)[.．、)]\s*(.+?)(?=\d+[.．、)]|$)/g,
+    /(?:ステップ|step)\s*(\d+)[:：]?\s*(.+?)(?=ステップ|step|$)/gi
+  ];
+
+  let stepNumber = 1;
+  for (const pattern of stepPatterns) {
+    let match;
+    while ((match = pattern.exec(output)) !== null) {
+      const stepText = match[2]?.trim() ?? '';
+      if (stepText.length > 10) {
+        // 推論タイプを推定
+        let inferenceType: InferenceStep['inferenceType'] = 'unknown';
+        if (/(?:したがって|ゆえに|therefore|thus|hence)/i.test(stepText)) {
+          inferenceType = 'deductive';
+        } else if (/(?:おそらく|likely|probably|tends to)/i.test(stepText)) {
+          inferenceType = 'inductive';
+        } else if (/(?:恐らく|probably|might|could be because)/i.test(stepText)) {
+          inferenceType = 'abductive';
+        } else if (/(?:同様に|similarly|like|analogous)/i.test(stepText)) {
+          inferenceType = 'analogical';
+        }
+
+        steps.push({
+          stepNumber: stepNumber++,
+          input: '',
+          inferenceType,
+          output: stepText,
+          isValid: inferenceType === 'deductive' || inferenceType === 'unknown'
+        });
+      }
+    }
+  }
+
+  // 論理的飛躍を検出
+  if (premises.length > 0 && conclusion && steps.length === 0) {
+    gaps.push('前提から結論への推論ステップが明示されていない');
+    validity = 'uncertain';
+  }
+
+  if (steps.length > 1) {
+    for (let i = 1; i < steps.length; i++) {
+      if (!steps[i-1]?.output || steps[i]?.input === '') {
+        gaps.push(`ステップ${i}から${i+1}の間の論理的つながりが不明確`);
+      }
+    }
+  }
+
+  // 妥当性判定
+  const fallacies = detectFallacies(output);
+  if (fallacies.fallacies.length > 0) {
+    validity = 'invalid';
+  } else if (gaps.length === 0 && premises.length > 0 && conclusion) {
+    validity = 'valid';
+  }
+
+  return {
+    premises,
+    steps,
+    conclusion,
+    validity,
+    gaps
   };
 }
 

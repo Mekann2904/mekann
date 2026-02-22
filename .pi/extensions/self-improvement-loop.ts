@@ -1958,6 +1958,48 @@ function calculateInferenceDepthScore(
     score -= Math.min(fallacyCount * 0.08, 0.2);
   }
   
+  // 推論チェーンの評価（新機能）
+  if (check.logic.inferenceChain) {
+    const chain = check.logic.inferenceChain;
+    
+    // 前提が明示されている場合
+    if (chain.premises.length >= 2) {
+      score += 0.05;
+    }
+    
+    // 結論が明示されている場合
+    if (chain.conclusion && chain.conclusion.length > 10) {
+      score += 0.03;
+    }
+    
+    // 推論ステップが存在する場合
+    if (chain.steps.length >= 2) {
+      score += 0.05;
+    }
+    
+    // 妥当性判定
+    if (chain.validity === 'valid') {
+      score += 0.08;
+    } else if (chain.validity === 'invalid') {
+      score -= 0.1;
+    }
+    
+    // 論理的飛躍が検出された場合
+    if (chain.gaps.length > 0) {
+      score -= Math.min(chain.gaps.length * 0.05, 0.15);
+    }
+  }
+  
+  // 有効な推論パターンの検出
+  if (check.logic.validInferences.length > 0) {
+    score += Math.min(check.logic.validInferences.length * 0.03, 0.09);
+  }
+  
+  // 無効な推論パターンの検出
+  if (check.logic.invalidInferences.length > 0) {
+    score -= Math.min(check.logic.invalidInferences.length * 0.04, 0.12);
+  }
+  
   // 視座結果からの追加評価
   const avgFindingsPerPerspective = results.reduce((sum, r) => sum + r.findings.length, 0) / Math.max(results.length, 1);
   const avgQuestionsPerPerspective = results.reduce((sum, r) => sum + r.questions.length, 0) / Math.max(results.length, 1);
@@ -2036,6 +2078,38 @@ function calculateMetacognitiveDepthScore(check: MetacognitiveCheck): number {
   // 有効な推論があれば加点
   if (check.logic.validInferences.length > 0) {
     score += Math.min(check.logic.validInferences.length * 0.03, 0.09);
+  }
+  
+  // 推論チェーンの評価
+  if (check.logic.inferenceChain) {
+    const chain = check.logic.inferenceChain;
+    
+    // 明示的な前提
+    if (chain.premises.length >= 2) {
+      score += 0.05;
+    }
+    
+    // 明示的な結論
+    if (chain.conclusion && chain.conclusion.length > 10) {
+      score += 0.03;
+    }
+    
+    // 推論ステップの存在
+    if (chain.steps.length >= 2) {
+      score += 0.05;
+    }
+    
+    // 妥当性
+    if (chain.validity === 'valid') {
+      score += 0.08;
+    } else if (chain.validity === 'invalid') {
+      score -= 0.1;
+    }
+    
+    // 論理的飛躍
+    if (chain.gaps.length > 0) {
+      score -= Math.min(chain.gaps.length * 0.05, 0.15);
+    }
   }
   
   return Math.max(0, Math.min(1, score));
