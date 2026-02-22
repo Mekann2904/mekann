@@ -2168,11 +2168,48 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
       const stopPath = resolve(process.cwd(), config.stopSignalPath);
       const isStopRequested = checkStopSignal(config);
 
+      // レート制限状態を取得
+      let rateLimitStatus = "";
+      const rateLimitDetails: Record<string, unknown> = {};
+      
+      try {
+        if (activeRun) {
+          const rateSummary = getCombinedRateControlSummary(activeRun.model.provider, activeRun.model.id);
+          rateLimitStatus = `
+
+## レート制限状態
+- 適応制限: ${rateSummary.adaptiveLimit}
+- 元の制限: ${rateSummary.originalLimit}
+- 予測制限: ${rateSummary.predictiveLimit}
+- 429確率: ${(rateSummary.predicted429Probability * 100).toFixed(1)}%
+- スロットル推奨: ${rateSummary.shouldThrottle ? "あり" : "なし"}
+- 429回数: ${rateSummary.recent429Count}`;
+          
+          rateLimitDetails.rateControl = rateSummary;
+        }
+      } catch (e) {
+        rateLimitStatus = `
+
+## レート制限状態
+- 取得失敗: ${toErrorMessage(e)}`;
+      }
+
+      // 設定値を表示
+      const configStatus = `
+
+## 現在の設定
+- 最大リトライ: ${RATE_LIMIT_CONFIG.maxRetries}
+- 初期待機: ${RATE_LIMIT_CONFIG.initialDelayMs}ms
+- 最大待機: ${RATE_LIMIT_CONFIG.maxDelayMs}ms
+- サイクル間隔: ${RATE_LIMIT_CONFIG.minCycleIntervalMs}-${RATE_LIMIT_CONFIG.maxCycleIntervalMs}ms
+- 視座間待機: ${RATE_LIMIT_CONFIG.perspectiveDelayMs}ms
+- 429閾値: ${(RATE_LIMIT_CONFIG.high429Threshold * 100).toFixed(0)}%`;
+
       let statusText = `自己改善ループ状態
 
 停止信号: ${isStopRequested ? "あり" : "なし"}
 信号ファイル: ${stopPath}
-実行状態: ${activeRun ? `running (runId=${activeRun.runId}, cycle=${activeRun.cycle})` : "idle"}`;
+実行状態: ${activeRun ? `running (runId=${activeRun.runId}, cycle=${activeRun.cycle})` : "idle"}${rateLimitStatus}${configStatus}`;
 
       let details: Record<string, unknown> = {
         stopRequested: isStopRequested,
@@ -2181,6 +2218,8 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
         running: Boolean(activeRun),
         runId: activeRun?.runId,
         cycle: activeRun?.cycle,
+        config: RATE_LIMIT_CONFIG,
+        ...rateLimitDetails,
       };
 
       if (activeRun) {
@@ -2205,6 +2244,7 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
           },
           lastCommitHash: activeRun.lastCommitHash,
           logPath: activeRun.logPath,
+          model: activeRun.model,
         };
       }
 
