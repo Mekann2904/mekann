@@ -67,6 +67,7 @@ import {
   type CandidateDetection,
   type IntegratedVerificationResult,
   generateActionsFromDetection,
+  generateFilterStats,
 } from "../lib/verification-workflow.js";
 import {
   retryWithBackoff,
@@ -2400,19 +2401,28 @@ export default (api: ExtensionAPI) => {
           detectFallacies: true,
           detectBinaryOppositions: true,
           detectFascism: true,
-          minPatternConfidence: 0.2
+          minPatternConfidence: 0.2,
+          applyFilter: true // コンテキストフィルタを有効化
         });
         
         // 統合検出結果を保存
         run.lastIntegratedDetection = integratedDetection;
         
+        // フィルタリング統計を計算してログに記録
+        const filterStats = generateFilterStats(
+          integratedDetection.candidates.length + (integratedDetection.summary.match(/(\d+)件除外/)?.[1] ? parseInt(integratedDetection.summary.match(/(\d+)件除外/)![1]) : 0),
+          integratedDetection.candidates
+        );
+        
         // 信頼度別の検出結果をログに記録
-        const highConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence >= 0.4);
-        const lowConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence < 0.4);
+        const highConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence >= 0.5);
+        const mediumConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence >= 0.3 && c.patternConfidence < 0.5);
+        const lowConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence < 0.3);
         
         if (integratedDetection.candidates.length > 0) {
-          appendAutonomousLoopLog(run.logPath, `  integrated_detection: ${integratedDetection.candidates.length}件（高信頼度: ${highConfidenceCandidates.length}件、低信頼度: ${lowConfidenceCandidates.length}件）`);
-          appendAutonomousLoopLog(run.logPath, `    types: ${[...new Set(integratedDetection.candidates.map(c => c.type))].join(', ')}`);
+          appendAutonomousLoopLog(run.logPath, `  integrated_detection: ${integratedDetection.candidates.length}件（高: ${highConfidenceCandidates.length}, 中: ${mediumConfidenceCandidates.length}, 低: ${lowConfidenceCandidates.length}）`);
+          appendAutonomousLoopLog(run.logPath, `    summary: ${integratedDetection.summary}`);
+          appendAutonomousLoopLog(run.logPath, `    avg_confidence: ${(filterStats.avgConfidence * 100).toFixed(0)}%`);
           
           // 信頼度ベースの改善アクションを生成・追加
           const confidenceBasedActions = generateActionsFromDetection(integratedDetection);

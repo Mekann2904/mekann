@@ -2620,6 +2620,304 @@ export function extractCandidates(
   return candidates;
 }
 
+// ============================================================================
+// コンテキストフィルタ（偽陽性削減）
+// ============================================================================
+
+/**
+ * 除外ルールの定義
+ * @summary 技術的に正しい使用や無視すべきパターン
+ */
+interface ExclusionRule {
+  /** ルール名 */
+  name: string;
+  /** 適用対象の検出タイプ（ワイルドカード可） */
+  targetType: string;
+  /** 除外条件（正規表現） */
+  condition: RegExp;
+  /** 除外理由 */
+  reason: string;
+  /** 信頼度調整（完全除外なら0、部分的なら0-1） */
+  confidenceAdjustment: number;
+}
+
+/**
+ * 除外ルールリスト
+ * 
+ * これらは「技術的に正しい使用」や「文脈的に正当な表現」を除外するためのルール
+ */
+const EXCLUSION_RULES: ExclusionRule[] = [
+  // ========================================
+  // 内なるファシズム検出の除外ルール
+  // ========================================
+  
+  // 技術的な指示（テスト、初期化、検証など）
+  {
+    name: 'technical-test-instruction',
+    targetType: 'self-surveillance',
+    condition: /必ず.*テスト|テスト.*必ず|常に.*テスト|テスト.*常に/i,
+    reason: 'テスト実行の必須指示は技術的に正しい',
+    confidenceAdjustment: 0
+  },
+  {
+    name: 'technical-initialization',
+    targetType: 'self-surveillance',
+    condition: /必ず.*初期化|初期化.*必ず|常に.*初期化|必ず.*宣言|宣言.*必ず/i,
+    reason: '初期化の必須指示は技術的に正しい',
+    confidenceAdjustment: 0
+  },
+  {
+    name: 'technical-validation',
+    targetType: 'self-surveillance',
+    condition: /必ず.*検証|検証.*必ず|常に.*検証|必ず.*確認|確認.*必ず/i,
+    reason: '検証の必須指示は技術的に正しい',
+    confidenceAdjustment: 0
+  },
+  {
+    name: 'technical-error-handling',
+    targetType: 'self-surveillance',
+    condition: /必ず.*エラー|エラー.*必ず|常に.*エラー|必ず.*例外|例外.*必ず/i,
+    reason: 'エラー処理の必須指示は技術的に正しい',
+    confidenceAdjustment: 0
+  },
+  {
+    name: 'technical-cleanup',
+    targetType: 'self-surveillance',
+    condition: /必ず.*削除|削除.*必ず|常に.*削除|必ず.*解放|解放.*必ず/i,
+    reason: 'クリーンアップの必須指示は技術的に正しい',
+    confidenceAdjustment: 0
+  },
+  
+  // コード・設定・ドキュメント内の必須事項
+  {
+    name: 'config-required',
+    targetType: 'norm-obedience',
+    condition: /(設定|config|configuration).*すべき|すべき.*(設定|config)/i,
+    reason: '設定の推奨は技術的に正当',
+    confidenceAdjustment: 0
+  },
+  {
+    name: 'api-documentation',
+    targetType: 'norm-obedience',
+    condition: /(API|api).*すべき|すべき.*(API|api)|ドキュメント.*すべき|すべき.*ドキュメント/i,
+    reason: 'APIドキュメントの推奨は技術的に正当',
+    confidenceAdjustment: 0
+  },
+  
+  // ========================================
+  // 誤謬検出の除外ルール
+  // ========================================
+  
+  // 明示的な条件分岐（偽の二分法ではない）
+  {
+    name: 'explicit-branching',
+    targetType: 'false-dichotomy',
+    condition: /(if|もし|場合).*(else|それ以外|そうでなければ)/i,
+    reason: '明示的な条件分岐は偽の二分法ではない',
+    confidenceAdjustment: 0
+  },
+  
+  // 条件付きの一般化（急激な一般化ではない）
+  {
+    name: 'qualified-generalization',
+    targetType: 'hasty-generalization',
+    condition: /(一般的に|通常|多くの場合|大抵|often|usually|typically|generally)/i,
+    reason: '条件付きの一般化は急激な一般化ではない',
+    confidenceAdjustment: 0.3
+  },
+  
+  // ========================================
+  // 文脈による信頼度調整
+  // ========================================
+  
+  // コードブロック内の検出
+  {
+    name: 'in-code-block',
+    targetType: '*',
+    condition: /```[\s\S]{0,50}(常に|必ず|絶対に|should|must|always|never)[\s\S]{0,50}```/,
+    reason: 'コードブロック内の表現は文脈が異なる',
+    confidenceAdjustment: 0.3
+  },
+  
+  // 引用文内の検出
+  {
+    name: 'in-quote',
+    targetType: '*',
+    condition: /["「『]([^"」』]{0,100})(常に|必ず|絶対に|should|must|always)([^"」』]{0,100})["」』]/,
+    reason: '引用文内の表現は文脈が異なる',
+    confidenceAdjustment: 0.4
+  },
+  
+  // 否定形が続く場合
+  {
+    name: 'followed-by-negation',
+    targetType: '*',
+    condition: /(常に|必ず|絶対に|should|must|always).*(ではない|とは限らない|わけではない|not necessarily|doesn't mean)/i,
+    reason: '否定形が続く場合は対立を認識している',
+    confidenceAdjustment: 0
+  }
+];
+
+/**
+ * 文脈ブーストルールの定義
+ * @summary 検出の信頼度を上げる文脈条件
+ */
+interface ContextBoostRule {
+  /** ルール名 */
+  name: string;
+  /** 適用対象の検出タイプ */
+  targetType: string;
+  /** ブースト条件 */
+  condition: RegExp;
+  /** ブースト理由 */
+  reason: string;
+  /** 信頼度増加量 */
+  boost: number;
+}
+
+/**
+ * 文脈ブーストルールリスト
+ */
+const CONTEXT_BOOST_RULES: ContextBoostRule[] = [
+  // 根拠や理由を述べた後に断定がある場合
+  {
+    name: 'reason-then-assertion',
+    targetType: 'self-surveillance',
+    condition: /(理由|根拠|because|since|therefore).{0,50}(必ず|常に|絶対に|must|always|never)/i,
+    reason: '根拠に基づく断定は検討の結果',
+    boost: 0.2
+  },
+  
+  // 二項対立を自覚的に言及している場合
+  {
+    name: 'aware-of-binary',
+    targetType: '*',
+    condition: /(二項対立|binary|対立|opposition|トレードオフ|trade.off).{0,100}(成功\/失敗|善\/悪|正\/誤)/i,
+    reason: '二項対立を自覚的に言及している',
+    boost: 0.3
+  },
+  
+  // アポリアを自覚している場合
+  {
+    name: 'aware-of-aporia',
+    targetType: '*',
+    condition: /(アポリア|ジレンマ|dilemma|矛盾|contradiction|緊張|tension).{0,100}(速度|品質|効率|正確)/i,
+    reason: 'アポリアを自覚している',
+    boost: 0.3
+  },
+  
+  // 誤謬を回避しようとしている場合
+  {
+    name: 'avoiding-fallacy',
+    targetType: '*',
+    condition: /(誤謬|fallacy|論理的|logical|避ける|avoid|注意|caution).{0,100}(一般化|結論|推論)/i,
+    reason: '誤謬回避の意識がある',
+    boost: 0.2
+  }
+];
+
+/**
+ * 候補にコンテキストフィルタを適用する
+ * 
+ * @summary コンテキストフィルタ適用
+ * @param candidates 検出候補リスト
+ * @param fullText 全体テキスト
+ * @returns フィルタ適用後の候補リスト
+ */
+export function applyContextFilter(
+  candidates: CandidateDetection[],
+  fullText: string
+): CandidateDetection[] {
+  return candidates
+    .map(candidate => {
+      let adjustedConfidence = candidate.patternConfidence;
+      let excluded = false;
+      const appliedRules: string[] = [];
+      
+      // 除外ルールを適用
+      for (const rule of EXCLUSION_RULES) {
+        // ワイルドカードまたはタイプ一致をチェック
+        if (rule.targetType !== '*' && rule.targetType !== candidate.type) {
+          continue;
+        }
+        
+        // コンテキスト全体で条件をチェック
+        if (rule.condition.test(candidate.context) || rule.condition.test(fullText)) {
+          if (rule.confidenceAdjustment === 0) {
+            excluded = true;
+            appliedRules.push(`除外: ${rule.name} - ${rule.reason}`);
+            break;
+          } else {
+            adjustedConfidence *= rule.confidenceAdjustment;
+            appliedRules.push(`調整: ${rule.name} - ${rule.reason}`);
+          }
+        }
+      }
+      
+      // 除外された場合はスキップ
+      if (excluded) {
+        return null;
+      }
+      
+      // ブーストルールを適用
+      for (const rule of CONTEXT_BOOST_RULES) {
+        if (rule.targetType !== '*' && rule.targetType !== candidate.type) {
+          continue;
+        }
+        
+        if (rule.condition.test(candidate.context) || rule.condition.test(fullText)) {
+          adjustedConfidence = Math.min(1, adjustedConfidence + rule.boost);
+          appliedRules.push(`ブースト: ${rule.name} - ${rule.reason}`);
+        }
+      }
+      
+      return {
+        ...candidate,
+        patternConfidence: adjustedConfidence,
+        appliedRules
+      } as CandidateDetection & { appliedRules?: string[] };
+    })
+    .filter((c): c is CandidateDetection & { appliedRules?: string[] } => c !== null);
+}
+
+/**
+ * フィルタリング統計を生成
+ * 
+ * @summary フィルタリング統計
+ * @param original 元の候補数
+ * @param filtered フィルタ後の候補数
+ * @param candidates フィルタ後の候補リスト
+ * @returns 統計情報
+ */
+export function generateFilterStats(
+  original: number,
+  filtered: CandidateDetection[]
+): {
+  originalCount: number;
+  filteredCount: number;
+  excludedCount: number;
+  avgConfidence: number;
+  confidenceDistribution: { high: number; medium: number; low: number };
+} {
+  const avgConfidence = filtered.length > 0
+    ? filtered.reduce((sum, c) => sum + c.patternConfidence, 0) / filtered.length
+    : 0;
+  
+  const confidenceDistribution = {
+    high: filtered.filter(c => c.patternConfidence >= 0.5).length,
+    medium: filtered.filter(c => c.patternConfidence >= 0.3 && c.patternConfidence < 0.5).length,
+    low: filtered.filter(c => c.patternConfidence < 0.3).length
+  };
+  
+  return {
+    originalCount: original,
+    filteredCount: filtered.length,
+    excludedCount: original - filtered.length,
+    avgConfidence,
+    confidenceDistribution
+  };
+}
+
 /**
  * LLM判定用のプロンプトを生成する
  * 
@@ -2803,13 +3101,16 @@ export function runIntegratedDetection(
     detectBinaryOppositions?: boolean;
     detectFascism?: boolean;
     minPatternConfidence?: number;
+    /** コンテキストフィルタを適用するか */
+    applyFilter?: boolean;
   } = {}
 ): IntegratedVerificationResult {
   const {
     detectFallacies = true,
     detectBinaryOppositions = true,
     detectFascism = true,
-    minPatternConfidence = 0.2
+    minPatternConfidence = 0.2,
+    applyFilter = true
   } = options;
 
   const allCandidates: CandidateDetection[] = [];
@@ -2824,12 +3125,19 @@ export function runIntegratedDetection(
     allCandidates.push(...extractCandidates(text, FASCISM_PATTERNS));
   }
 
-  // 信頼度でフィルタリング
-  const filteredCandidates = allCandidates.filter(
+  // Step 1: コンテキストフィルタを適用
+  const afterContextFilter = applyFilter 
+    ? applyContextFilter(allCandidates, text)
+    : allCandidates;
+  
+  const filterStats = generateFilterStats(allCandidates.length, afterContextFilter);
+
+  // Step 2: 信頼度でフィルタリング
+  const filteredCandidates = afterContextFilter.filter(
     c => c.patternConfidence >= minPatternConfidence
   );
 
-  // 重複除去（同じ位置の検出をまとめる）
+  // Step 3: 重複除去（同じ位置の検出をまとめる）
   const uniqueCandidates = filteredCandidates.filter((candidate, index, self) =>
     index === self.findIndex(c =>
       c.location.start === candidate.location.start &&
@@ -2842,13 +3150,23 @@ export function runIntegratedDetection(
     ? uniqueCandidates.reduce((sum, c) => sum + c.patternConfidence, 0) / uniqueCandidates.length
     : 0;
 
+  // 詳細なサマリーを生成
+  const summaryParts: string[] = [];
+  if (uniqueCandidates.length > 0) {
+    summaryParts.push(`${uniqueCandidates.length}件の候補`);
+    if (filterStats.excludedCount > 0) {
+      summaryParts.push(`(${filterStats.excludedCount}件除外)`);
+    }
+    summaryParts.push(`高信頼度: ${filterStats.confidenceDistribution.high}件`);
+  }
+
   return {
     candidates: uniqueCandidates,
     finalVerdict: uniqueCandidates.length > 0 ? 'uncertain' : 'rejected',
     overallConfidence: avgConfidence,
     method: 'pattern-only',
     summary: uniqueCandidates.length > 0
-      ? `${uniqueCandidates.length}件の候補を検出（要LLM検証）`
+      ? summaryParts.join(', ')
       : '検出候補なし'
   };
 }
