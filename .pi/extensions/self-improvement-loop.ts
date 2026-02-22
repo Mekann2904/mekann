@@ -3,15 +3,16 @@
  * path: .pi/extensions/self-improvement-loop.ts
  * role: 7つの哲学的視座に基づく自己改善ループモードを提供する拡張機能
  * why: エージェントが継続的に自己改善を行い、認知バイアスを検出し、批判的思考を実践するため
- * related: .pi/skills/self-improvement/SKILL.md, .pi/extensions/loop.ts, .pi/skills/git-workflow/SKILL.md
- * public_api: self_improvement_loop ツール、停止信号管理、ログ生成
- * invariants: ユーザー停止信号は即座に尊重、各サイクル完了時にGit管理を実施、未完了タスクは安全に終了
- * side_effects: ファイルシステムへのログ書き込み、Git操作、ファイル編集
- * failure_modes: 停止信号の検出遅延、Gitコンフリクト、リソース枯渇
+ * related: .pi/skills/self-improvement/SKILL.md, .pi/extensions/loop.ts, .pi/lib/semantic-repetition.ts
+ * public_api: self_improvement_loop ツール、self_improvement_stop ツール、self_improvement_status ツール、停止信号管理、ログ生成
+ * invariants: ユーザー停止信号は即座に尊重、各サイクル完了時にGit管理を実施、セマンティック反復検出で停滞を防止、未完了タスクは安全に終了
+ * side_effects: ファイルシステムへのログ書き込み、Git操作、ファイル編集、埋め込みAPI呼び出し（停滞検出時）
+ * failure_modes: 停止信号の検出遅延、Gitコンフリクト、リソース枯渇、埋め込みAPI利用不可時の停滞検出無効化
  * @abdd.explain
- * overview: 7つの哲学的視座（脱構築、スキゾ分析、幸福論、ユートピア/ディストピア論、思考哲学、思考分類学、論理学）を循環的に適用し、終わりなき自己改善を実践する
+ * overview: 7つの哲学的視座（脱構築、スキゾ分析、幸福論、ユートピア/ディストピア論、思考哲学、思考分類学、論理学）を統合的に適用し、終わりなき自己改善を実践する
  * what_it_does:
- *   - 各サイクルで7つの視座を順次適用し、自己分析と改善を実施
+ *   - 各サイクルで7つの視座を統合的に適用し、自己分析と改善を実施
+ *   - セマンティック反復検出により停滞を自動検出して早期停止
  *   - ユーザーからの停止要求を検出し、現在のタスクを完了してから安全に停止
  *   - 各サイクル完了時にGitコミットを作成
  *   - 作業ログをMarkdown形式で自動生成
@@ -19,9 +20,10 @@
  *   - エージェントが単なるタスク実行者を超え、自己批判的で成長し続ける存在になるため
  *   - 認知バイアスの検出と是正を自動化するため
  *   - 哲学的深度を持った思考プロセスを維持するため
+ *   - 無限ループに陥ることを防ぐため
  * scope:
  *   in: ユーザーの初期タスク、停止信号、自己改善スキル定義
- *   out: 改善されたコード/ドキュメント、Git履歴、作業ログ、分析レポート
+ *   out: 改善されたコード/ドキュメント、Git履歴、作業ログ、分析レポート、軌跡統計
  */
 
 // File: .pi/extensions/self-improvement-loop.ts
@@ -947,10 +949,15 @@ export default (api: ExtensionAPI) => {
     if (!run) return;
 
     run.stopReason = reason;
+    
+    // 軌跡サマリーを取得
+    const trajectorySummary = run.trajectoryTracker.getSummary();
+    
     appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} finished reason=${reason ?? "completed"}`);
     if (note) {
       appendAutonomousLoopLog(run.logPath, `  note: ${note}`);
     }
+    appendAutonomousLoopLog(run.logPath, `  stats: cycles=${run.cycle}, avgSimilarity=${trajectorySummary.averageSimilarity.toFixed(2)}, repetitions=${trajectorySummary.repetitionCount}`);
 
     api.sendMessage({
       customType: "self-improvement-loop-result",
@@ -960,6 +967,7 @@ export default (api: ExtensionAPI) => {
 - 総サイクル: ${run.cycle}
 - 停止理由: ${reason ?? "completed"}
 - 最終コミット: ${run.lastCommitHash ?? "なし"}
+- 停滞検出: ${trajectorySummary.repetitionCount}回の反復（平均類似度: ${(trajectorySummary.averageSimilarity * 100).toFixed(0)}%）
 - ログ: \`${run.logPath}\``,
       display: true,
       details: {
@@ -968,6 +976,12 @@ export default (api: ExtensionAPI) => {
         stopReason: reason,
         lastCommitHash: run.lastCommitHash,
         logPath: run.logPath,
+        trajectoryStats: {
+          totalSteps: trajectorySummary.totalSteps,
+          repetitionCount: trajectorySummary.repetitionCount,
+          averageSimilarity: trajectorySummary.averageSimilarity,
+          isStuck: trajectorySummary.isStuck,
+        },
       },
     }, { triggerTurn: false });
 
@@ -1039,6 +1053,14 @@ export default (api: ExtensionAPI) => {
     run.inFlightCycle = null;
     appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} completed cycle=${completedCycle}`);
 
+    // サイクルサマリーを記録（次回のプロンプトで使用）
+    run.cycleSummaries.push(`Cycle ${completedCycle}: 完了`);
+
+    // 軌跡トラッカーに記録
+    run.trajectoryTracker.recordStep(`Cycle ${completedCycle} completed`).catch(() => {
+      // 埋め込み生成エラーは無視
+    });
+
     if (run.autoCommit) {
       const commitMessage = `feat(self-improvement-loop): cycle ${completedCycle}
 
@@ -1049,6 +1071,8 @@ model: ${run.model.provider}/${run.model.id}`;
       if (hash) {
         run.lastCommitHash = hash;
         appendAutonomousLoopLog(run.logPath, `  commit: ${hash}`);
+        // サマリーを更新
+        run.cycleSummaries[run.cycleSummaries.length - 1] = `Cycle ${completedCycle}: 完了 (commit: ${hash})`;
       }
     }
 
@@ -1193,24 +1217,53 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
       const stopPath = resolve(process.cwd(), config.stopSignalPath);
       const isStopRequested = checkStopSignal(config);
 
-      const text = `自己改善ループ状態
+      let statusText = `自己改善ループ状態
 
 停止信号: ${isStopRequested ? "あり" : "なし"}
 信号ファイル: ${stopPath}
-実行状態: ${activeRun ? `running (runId=${activeRun.runId}, cycle=${activeRun.cycle})` : "idle"}
+実行状態: ${activeRun ? `running (runId=${activeRun.runId}, cycle=${activeRun.cycle})` : "idle"}`;
+
+      let details: Record<string, unknown> = {
+        stopRequested: isStopRequested,
+        stopSignalPath: stopPath,
+        logDir: resolve(process.cwd(), config.logDir),
+        running: Boolean(activeRun),
+        runId: activeRun?.runId,
+        cycle: activeRun?.cycle,
+      };
+
+      if (activeRun) {
+        const trajectorySummary = activeRun.trajectoryTracker.getSummary();
+        statusText += `
+
+## 軌跡統計
+- 総ステップ: ${trajectorySummary.totalSteps}
+- 反復検出: ${trajectorySummary.repetitionCount}回
+- 平均類似度: ${(trajectorySummary.averageSimilarity * 100).toFixed(0)}%
+- トレンド: ${trajectorySummary.similarityTrend}
+- 停滞状態: ${trajectorySummary.isStuck ? "あり" : "なし"}`;
+        
+        details = {
+          ...details,
+          trajectoryStats: {
+            totalSteps: trajectorySummary.totalSteps,
+            repetitionCount: trajectorySummary.repetitionCount,
+            averageSimilarity: trajectorySummary.averageSimilarity,
+            similarityTrend: trajectorySummary.similarityTrend,
+            isStuck: trajectorySummary.isStuck,
+          },
+          lastCommitHash: activeRun.lastCommitHash,
+          logPath: activeRun.logPath,
+        };
+      }
+
+      statusText += `
 
 停止するには: self_improvement_stop ツールを実行`;
 
       return {
-        content: [{ type: "text" as const, text }],
-        details: {
-          stopRequested: isStopRequested,
-          stopSignalPath: stopPath,
-          logDir: resolve(process.cwd(), config.logDir),
-          running: Boolean(activeRun),
-          runId: activeRun?.runId,
-          cycle: activeRun?.cycle,
-        },
+        content: [{ type: "text" as const, text: statusText }],
+        details,
       };
     },
   } as any);

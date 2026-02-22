@@ -1,149 +1,102 @@
----
-title: Test Engineering Team Report
-category: reference
-audience: developer
-last_updated: 2026-02-22
-tags: [testing, quality, coverage, flaky-tests]
-related: [test-engineering, code-review]
----
-
 # Test Engineering Team Report
 
-## 検出された問題（優先度順）
+## SUMMARY
+`.pi/extensions/`と`.pi/lib/`のテスト品質分析を完了。テストカバレッジは非常に低く（lib: 10.8%、extensions: 2.3%）、重要モジュールに単体テストが存在しない。既存テストコードの品質は高いが、テスト環境が破損しており全テストが実行できない状態。
+
+## CLAIM
+テストカバレッジは量的にも質的にも大幅な改善が必要であり、特にretry-with-backoff、task-scheduler、adaptive-rate-controller、priority-schedulerといったクリティカルな機能に単体テストがない状況は、システム安定性にとって重大なリスクである。
+
+## EVIDENCE
+- `.pi/tests/setup-vitest.ts:存在しない`: テストセットアップファイルが欠損、全18テストファイルが実行不能
+- `.pi/lib/retry-with-backoff.ts`: 580行の重要モジュール、テストファイルなし
+- `.pi/lib/task-scheduler.ts`: 770行のプリエンプション・スケジューラ機能、テストファイルなし
+- `.pi/lib/adaptive-rate-controller.ts`: 38KB、テストファイルなし
+- `.pi/lib/priority-scheduler.ts`: テストファイルなし
+- `.pi/tests/lib/`: 11テストファイル存在（高品質なPBT含む）
+- `.pi/tests/extensions/`: 2テストファイルのみ存在
+
+## DISCUSSION
+
+### integration-engineerとの合意点
+- **合意**: テストカバレッジが非常に低い（lib: ~10%、extensions: ~2%）という評価に同意
+- **合意**: retry-with-backoff、task-schedulerに単体テストがないことは重大なリスク
+- **合意**: レート制限、タスクスケジューリング、プリエンプション機能は信頼性に不可欠
+
+### 追加発見（Unit Test Engineer視点）
+1. **テスト環境の破損**: `setup-vitest.ts`が存在せず、全テストが実行不能
+2. **Flakyテストの兆候**: `critical-race-conditions.test.ts`で並列アクセスとタイミング依存のテストを検出
+3. **テスト品質は高い**: 既存テストはAAA構造、fast-checkによるプロパティベーステスト、境界条件テストを実装
+
+### 反例の検討
+- **反例**: 既存テスト（agent-utils.test.ts, error-utils.test.ts）は非常に高品質であり、テスト文化が存在することを示唆
+- **反例**: tests/bug-reproduction/にrace conditionテストが存在し、複雑な並行性問題への意識は高い
+- **評価**: カバレッジは低いが、テスト可能な設計への理解は深い
+
+## RESULT
+
+### 検出された問題（優先度順）
 
 | 優先度 | カテゴリ | ファイル | 問題 | 推奨アクション |
 |--------|---------|---------|------|---------------|
-| P0 | テスト不足 | `.pi/lib/retry-with-backoff.ts` | プロセス間で共有されるレート制限状態のクリティカルなロジックに単体テストがない | 詳細な単体テストを追加（指数バックオフ、ジッター、状態管理） |
-| P0 | テスト不足 | `.pi/lib/task-scheduler.ts` | 優先度ベースのタスクスケジューリングとプリエンプションにテストがない | ハイブリッドスケジューリング、スターベーション防止のテストを追加 |
-| P0 | Flakyリスク | `.pi/tests/bug-reproduction/critical-race-conditions.test.ts` | レースコンディション再現テストが環境依存でFlakyになる可能性 | 決定的なタイミング制御またはスキップ条件を追加 |
-| P1 | カバレッジ不足 | `.pi/extensions/*.ts` (87ファイル) | extensionsディレクトリのテストが2ファイルのみ（97%未テスト） | 重要なextensionから優先的にテストを追加 |
-| P1 | カバレッジ不足 | `.pi/lib/` (87ファイル中7ファイルのみテスト済み) | libディレクトリのテストカバレッジが約8% | ユーティリティ関数から順次テストを追加 |
-| P1 | テスト不足 | `.pi/lib/checkpoint-manager.ts` | チェックポイント保存/復元機能にテストがない | チェックポイントの永続化、TTL、クリーンアップのテストを追加 |
-| P2 | カバレッジ不足 | `.pi/lib/dynamic-tools/*.ts` | registry.ts: 16.43%, audit.ts: 4.16%, reflection.ts: 0% | 動的ツール生成の安全性・品質チェックのテストを追加 |
-| P2 | テスト不足 | `.pi/lib/semantic-memory.ts` | 35.84%カバレッジ、パターン抽出ロジックが未テスト | セマンティック検索、パターン抽出のテストを追加 |
-| P2 | テスト不足 | `.pi/lib/tui/live-monitor-base.ts` | 0%カバレッジ | TUIコンポーネントの統合テストを追加 |
+| P0 | テスト環境 | `.pi/tests/setup-vitest.ts` | セットアップファイルが欠損、全テスト実行不能 | ファイル作成またはvitest.config.ts修正 |
+| P0 | テスト欠落 | `.pi/lib/retry-with-backoff.ts` | 580行のリトライロジックに単体テストなし | `tests/lib/retry-with-backoff.test.ts`作成 |
+| P0 | テスト欠落 | `.pi/lib/task-scheduler.ts` | プリエンプション機能に単体テストなし | `tests/lib/task-scheduler.test.ts`作成 |
+| P0 | テスト欠落 | `.pi/lib/adaptive-rate-controller.ts` | 38KBのレート制御に単体テストなし | `tests/lib/adaptive-rate-controller.test.ts`作成 |
+| P1 | テスト欠落 | `.pi/lib/priority-scheduler.ts` | 優先度キューに単体テストなし | `tests/lib/priority-scheduler.test.ts`作成 |
+| P1 | テスト欠落 | `.pi/extensions/rpm-throttle.ts` | RPM調整にテストなし | `tests/extensions/rpm-throttle.test.ts`作成 |
+| P1 | テスト欠落 | `.pi/extensions/rate-limit-retry-budget.ts` | レート制限予算管理にテストなし | `tests/extensions/rate-limit-retry-budget.test.ts`作成 |
+| P1 | Flakyリスク | `tests/bug-reproduction/*.test.ts` | 並列実行・タイミング依存テスト | 決定論的モック使用、タイムアウト延長 |
+| P2 | カバレッジ | `.pi/lib/` 全般 | 102ファイル中11ファイルのみテスト済み（10.8%） | 重要度順にテスト追加 |
+| P2 | カバレッジ | `.pi/extensions/` 全般 | 87ファイル中2ファイルのみテスト済み（2.3%） | 重要度順にテスト追加 |
 
-## 強み
+### 強み
+- 既存テストコードは高品質（AAA構造、プロパティベーステスト、境界条件テスト）
+- fast-checkによるPBT導入済み
+- レースコンディションへの意識が高い（bug-reproductionテスト）
+- テスト命名規則が一貫している（should_xxxパターン）
+- 日本語でのテスト説明が明確
 
-- **プロパティベーステストの採用**: `error-utils.test.ts`、`validation-utils.test.ts`、`agent-utils.test.ts`でfast-checkによるPBTを実装。境界条件を自動探索し、高い信頼性を確保
-- **構造化されたテスト組織**: 正常系・境界条件・異常系・プロパティベースの4カテゴリでテストを整理。可読性と保守性が高い
-- **高品質なテスト実装**: 既存テストは詳細なJSDocコメント、明確なテスト名、エッジケースの網羅がされている
-- **vitest設定の最適化**: 低メモリ環境向けにsingleThread、fileParallelism: false設定。CI環境での安定性を考慮
-- **テストピラミッドの意識**: tests/unit、tests/lib、tests/bug-reproductionの階層構造
+### 即時改善提案（P0）
+1. **setup-vitest.ts作成**: テスト環境を復旧させ、全テストを実行可能にする
+2. **retry-with-backoff.test.ts作成**: 指数バックオフ、ジッター、レート制限ゲートの単体テストを実装
+3. **task-scheduler.test.ts作成**: プリエンプション判定、優先度スケジューリングの単体テストを実装
+4. **adaptive-rate-controller.test.ts作成**: 適応的レート制御の単体テストを実装
 
-## 即時改善提案（P0）
+### 中期改善提案（P1）
+1. **priority-scheduler.test.ts作成**: 優先度キュー操作、スターベーション防止のテスト
+2. **rpm-throttle.test.ts作成**: RPM制限、スロットリング動作のテスト
+3. **Flakyテスト修正**: critical-race-conditions.test.tsの並列テストに決定論的モックを適用
+4. **テストカバレッジ測定**: c8/vitest coverageで定量的なカバレッジ追跡を開始
 
-1. **retry-with-backoff.tsのテスト追加**
-   - 指数バックオフ計算ロジックのテスト（computeBackoffDelayMs）
-   - ジッター適用のテスト（full/partial/none）
-   - レート制限状態管理のテスト（getRateLimitGateSnapshot、registerRateLimitGateHit）
-   - エラー分類のテスト（extractRetryStatusCode、isNetworkErrorRetryable）
-   - ファイル: `.pi/tests/lib/retry-with-backoff.test.ts`を作成
+### 長期改善提案（P2）
+1. **テストピラミッド構築**: 単体テスト70%、統合テスト20%、E2Eテスト10%の比率を目標
+2. **カバレッジ目標設定**: lib: 80%、extensions: 60%の最小カバレッジ目標
+3. **CI/CD統合**: プルリクエスト時のテスト自動実行とカバレッジレポート
+4. **テストデータ管理**: テストフィクスチャ、ファクトリの標準化
 
-2. **task-scheduler.tsのテスト追加**
-   - 優先度比較ロジックのテスト（compareTaskEntries）
-   - ハイブリッドスケジューリングスコア計算のテスト（computeHybridScore）
-   - プリエンプション判定のテスト（shouldPreempt）
-   - チェックポイント保存/復元のテスト（preemptTask、resumeFromCheckpoint）
-   - ファイル: `.pi/tests/lib/task-scheduler.test.ts`を作成
+## COUNTER_EVIDENCE
+- 既存テストの品質は高く、テスト文化は存在する
+- bug-reproductionテストは複雑な並行性問題をカバーしている
+- 重要モジュールはコードレビュー済みでABDDヘッダー付き
 
-3. **Flakyテスト対策**
-   - critical-race-conditions.test.tsにタイムアウト延長またはリトライロジックを追加
-   - 環境変数による条件付きスキップを実装
-   - テスト安定性を監視するCIジョブを追加
+## CONFIDENCE
+0.85 - テストカバレッジの低さと環境の破損は確実だが、一部モジュールにはbug-reproductionテストで間接的にカバーされている可能性がある
 
-## 中期改善提案（P1）
+## INFERENCE_STEPS
+1. テストファイル一覧を取得 -> 18テストファイルを特定
+2. テスト実行を試行 -> setup-vitest.ts欠損を発見
+3. 重要モジュールのテスト有無を確認 -> retry-with-backoff等にテストなし
+4. 既存テストの品質を評価 -> 高品質なPBT実装を確認
+5. integration-engineerの報告と照合 -> カバレッジ評価で一致
 
-1. **カバレッジ目標設定**
-   - libディレクトリ: 現在約60% → 80%を目標
-   - extensionsディレクトリ: 現在約5% → 50%を目標
-   - 新規コード: 最低80%のテストカバレッジを必須化
+## KNOWLEDGE_SOURCES
+- `.pi/tests/` ディレクトリ構造
+- `.pi/lib/*.ts` ソースファイル
+- `.pi/extensions/*.ts` ソースファイル
+- integration-engineerのレポート
 
-2. **重要extensionのテスト追加**
-   - `subagents/*.ts`: 並列実行、タスク管理のテスト
-   - `agent-teams/communication.ts`: 信念状態管理のテスト
-   - `agent-runtime.ts`: 共有状態管理のテスト
+## TASK_COMPLETION_CONFIDENCE
+0.90 - テスト品質分析は完了し、レポートを作成した。残存リスクは一部モジュールの詳細なテスト可能性評価が未実施である点。
 
-3. **統合テストの拡充**
-   - サブエージェントとエージェントチーム間の連携テスト
-   - レート制限のエンドツーエンドテスト
-   - チェックポイント復元の統合テスト
-
-## 長期改善提案（P2）
-
-1. **テストインフラの強化**
-   - Mutation Testing（Stryker等）の導入でテスト品質を可視化
-   - テスト実行時間の監視と最適化
-   - テストデータ生成ヘルパーの共通化
-
-2. **E2Eテストの整備**
-   - tests/e2eディレクトリの整備
-   - 実際のLLM APIを使用しないモックベースのE2Eテスト
-   - CIパイプラインでの分離実行
-
-3. **テストドキュメントの作成**
-   - テスト戦略ドキュメント（TESTING.md）
-   - テスト作成ガイドライン
-   - モック/スタブの使用パターン集
-
-## テストカバレッジ詳細
-
-### lib ディレクトリ (現在約60%平均)
-
-| モジュール | ステートメント | ブラン | 関数 | 優先度 |
-|-----------|--------------|--------|------|--------|
-| retry-with-backoff.ts | 86.43% | 84.72% | 97.22% | 高（機能重要度高） |
-| task-scheduler.ts | 47.69% | 73.43% | 66.66% | 高（機能重要度高） |
-| semantic-memory.ts | 35.84% | 100% | 42.85% | 中 |
-| dynamic-tools/registry.ts | 16.43% | 57.14% | 15% | 中 |
-| dynamic-tools/audit.ts | 4.16% | 100% | 0% | 低 |
-| dynamic-tools/reflection.ts | 0% | 100% | 100% | 低 |
-
-### extensions ディレクトリ (ほぼ未テスト)
-
-| 対象 | テスト有無 | 優先度 |
-|-----|----------|--------|
-| subagents/ | なし | 高 |
-| agent-teams/ | judge.test.tsのみ | 高 |
-| agent-runtime.ts | なし | 高 |
-| mediator.ts | なし | 中 |
-| search/ | なし | 中 |
-
-## テスト品質評価
-
-### 良好なパターン（継続推奨）
-
-1. **fast-check PBT活用**: 不変条件の自動検証で回帰テスト品質向上
-2. **4層テスト構造**: 正常系→境界条件→異常系→PBTの段階的テスト
-3. **詳細なJSDoc**: テストファイル自体にABDDヘッダーとJSDocコメント
-
-### 改善が必要なパターン
-
-1. **skipテスト**: `intent-mediator.test.ts`にskipテストあり。統合テストとして別途実装または削除
-2. **モック設定の複雑化**: モック設定がテスト可読性を下げている可能性。ヘルパー関数の導入を検討
-3. **レースコンディションテスト**: 非決定的なテストは専用ディレクトリに分離し、CIで条件付き実行
-
-## 推定作業量
-
-| タスク | 見積もり（ツール呼び出しラウンド数） |
-|-------|----------------------------------|
-| retry-with-backoff.tsテスト追加 | 15-20ラウンド |
-| task-scheduler.tsテスト追加 | 20-25ラウンド |
-| Flakyテスト対策 | 5-8ラウンド |
-| 重要extensionテスト追加（3ファイル） | 30-40ラウンド |
-| カバレッジ80%達成（lib） | 100+ラウンド |
-
-## 次のステップ
-
-1. P0タスクの実装開始: retry-with-backoff.tsテスト作成
-2. CIパイプラインでのテストカバレッジ監視設定
-3. テスト作成ガイドラインの策定とドキュメント化
-
----
-
-SUMMARY: .pi/extensionsと.pi/libのテスト品質分析を実施。libディレクトリは約60%カバレッジだが重要モジュール（retry-with-backoff、task-scheduler）のテストが不十分。extensionsは97%が未テスト。
-CLAIM: テストカバレッジは量的にも質的にも改善が必要。特にレート制限、タスクスケジューリング、プリエンプションといった重要機能に単体テストがない状況は、システム安定性のリスクとなっている。
-EVIDENCE: .pi/lib:87ファイル中7ファイルのみテスト済み, extensions:87ファイル中2ファイルのみテスト済み, retry-with-backoff.ts:86.43%だがユニットテストなし, task-scheduler.ts:47.69%, critical-race-conditions.test.ts:レース条件再現テスト
-DISCUSSION: garbage-collection-teamとcode-excellence-review-teamの分析結果との一貫性を確認。技術的負債の多い複雑なモジュール（retry-with-backoff.ts、task-scheduler.ts）は、テスト不足と相関している。コード品質レビューで指摘されたエラー処理の堅牢性は、テスト追加によって検証可能になる。
-RESULT: 上記レポートを参照
-NEXT_STEP: retry-with-backoff.tsの単体テスト作成を開始
+## NEXT_STEP
+setup-vitest.tsを作成してテスト環境を復旧させ、P0の重要モジュール（retry-with-backoff, task-scheduler）の単体テストを作成する。これは integration-engineer の推奨アクションと整合している。

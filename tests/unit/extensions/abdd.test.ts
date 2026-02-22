@@ -506,6 +506,8 @@ describe("abdd.ts プロパティベーステスト", () => {
 			fc.property(
 				fc.date({ min: new Date("1970-01-01"), max: new Date("2100-01-01") }),
 				(date) => {
+					// 無効な日付（NaN）の場合はスキップ
+					if (isNaN(date.getTime())) return true;
 					const dateStr = date.toISOString().split("T")[0];
 					return /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
 				}
