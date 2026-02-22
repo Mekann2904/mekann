@@ -49,6 +49,20 @@ import {
   getRecommendedAction,
   type SemanticRepetitionResult,
 } from "../lib/semantic-repetition.js";
+import {
+  retryWithBackoff,
+  extractRetryStatusCode,
+  isRetryableError,
+  type RetryWithBackoffOverrides,
+} from "../lib/retry-with-backoff.js";
+import {
+  record429,
+  recordSuccess,
+  getSchedulerAwareLimit,
+  getPredictiveAnalysis,
+  isRateLimitError as isAdaptiveRateLimitError,
+  getCombinedRateControlSummary,
+} from "../lib/adaptive-rate-controller.js";
 
 // ============================================================================
 // 型定義
@@ -1232,11 +1246,90 @@ SUMMARY: [1-2文の要約]
 `;
 }
 
+/** 429エラー対応付きのリトライ設定 */
+const DEFAULT_RETRY_CONFIG: RetryWithBackoffOverrides = {
+  maxRetries: 3,           // 最大3回リトライ
+  initialDelayMs: 2000,    // 初期待機2秒
+  maxDelayMs: 30000,       // 最大待機30秒
+  multiplier: 2,           // 指数バックオフ
+  jitter: "partial",       // 部分ジッターで分散
+};
+
+/** サイクル間の最小待機時間（ミリ秒） */
+const MIN_CYCLE_INTERVAL_MS = 3000;  // 3秒
+/** サイクル間の最大待機時間（ミリ秒） */
+const MAX_CYCLE_INTERVAL_MS = 60000; // 60秒
+/** 429確率が高いと判断する閾値 */
+const HIGH_429_PROBABILITY_THRESHOLD = 0.3;
+
+/**
+ * 適応的サイクル間待機時間を計算する
+ * 429確率とレート制限状態に基づいて動的に調整
+ */
+function computeAdaptiveCycleDelay(model: SelfImprovementModel): number {
+  try {
+    const summary = getCombinedRateControlSummary(model.provider, model.id);
+    const analysis = getPredictiveAnalysis(model.provider, model.id);
+    
+    // ベース待機時間
+    let delayMs = MIN_CYCLE_INTERVAL_MS;
+    
+    // 429確率が高い場合は待機時間を増加
+    if (summary.shouldThrottle || analysis.predicted429Probability > HIGH_429_PROBABILITY_THRESHOLD) {
+      const probabilityFactor = 1 + analysis.predicted429Probability * 3; // 最大4倍
+      delayMs = Math.floor(delayMs * probabilityFactor);
+      console.log(`[self-improvement-loop] High 429 probability (${(analysis.predicted429Probability * 100).toFixed(0)}%), increasing delay to ${delayMs}ms`);
+    }
+    
+    // 連続429エラーがある場合はさらに増加
+    if (summary.recent429Count > 0) {
+      const penalty = Math.min(summary.recent429Count * 5000, 30000); // 1回につき5秒増、最大30秒
+      delayMs += penalty;
+      console.log(`[self-improvement-loop] Recent 429 count (${summary.recent429Count}), adding ${penalty}ms penalty`);
+    }
+    
+    // 制限値が元より低い場合（回復中）は保守的に
+    if (summary.adaptiveLimit < summary.originalLimit) {
+      const limitRatio = summary.adaptiveLimit / summary.originalLimit;
+      delayMs = Math.floor(delayMs / limitRatio); // 制限が低いほど待機を長く
+    }
+    
+    return Math.min(delayMs, MAX_CYCLE_INTERVAL_MS);
+  } catch (error) {
+    // エラー時はデフォルト値を返す
+    console.warn(`[self-improvement-loop] Failed to compute adaptive delay: ${toErrorMessage(error)}`);
+    return MIN_CYCLE_INTERVAL_MS;
+  }
+}
+
+/**
+ * 指定ミリ秒待機する（AbortSignal対応）
+ */
+async function sleepWithAbort(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (delayMs <= 0) return;
+  if (signal?.aborted) return;
+  
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new Error("Aborted during sleep"));
+    };
+    
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 async function callModel(
   prompt: string,
   model: SelfImprovementModel,
   baseTimeoutMs: number = 120000,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  retryOverrides?: RetryWithBackoffOverrides
 ): Promise<string> {
   // モデルと思考レベルに応じたタイムアウトを計算
   const effectiveTimeoutMs = computeModelTimeoutMs(model.id, {
@@ -1244,25 +1337,80 @@ async function callModel(
     thinkingLevel: model.thinkingLevel,
   });
 
+  // リトライ設定をマージ
+  const retryConfig: RetryWithBackoffOverrides = {
+    ...DEFAULT_RETRY_CONFIG,
+    ...retryOverrides,
+  };
+
   console.log(`[self-improvement-loop] Calling model ${model.provider}/${model.id} with timeout ${effectiveTimeoutMs}ms (thinking: ${model.thinkingLevel})`);
 
+  // retryWithBackoffでラップして429対応
   try {
-    const result = await sharedCallModelViaPi({
-      model: {
-        provider: model.provider,
-        id: model.id,
-        thinkingLevel: model.thinkingLevel,
+    const result = await retryWithBackoff(
+      async () => {
+        const innerResult = await sharedCallModelViaPi({
+          model: {
+            provider: model.provider,
+            id: model.id,
+            thinkingLevel: model.thinkingLevel,
+          },
+          prompt,
+          timeoutMs: effectiveTimeoutMs,
+          signal,
+          entityLabel: "self-improvement-loop",
+        });
+        
+        // 成功時にadaptive-rate-controllerへ通知
+        recordSuccess(model.provider, model.id);
+        
+        return innerResult;
       },
-      prompt,
-      timeoutMs: effectiveTimeoutMs,
-      signal,
-      entityLabel: "self-improvement-loop",
-    });
+      {
+        signal,
+        overrides: retryConfig,
+        rateLimitKey: `${model.provider}:${model.id}`,
+        maxRateLimitRetries: 5, // 429エラー時は最大5回リトライ
+        maxRateLimitWaitMs: 60000, // 最大60秒待機
+        shouldRetry: (error: unknown, statusCode?: number) => {
+          // 429エラーまたは5xxサーバーエラーはリトライ
+          if (statusCode === 429) return true;
+          if (statusCode !== undefined && statusCode >= 500 && statusCode < 600) return true;
+          // ネットワークエラーもリトライ
+          if (isRetryableError(error) || isAdaptiveRateLimitError(error)) return true;
+          // タイムアウトもリトライ
+          const msg = toErrorMessage(error).toLowerCase();
+          if (msg.includes("timeout") || msg.includes("etimedout")) return true;
+          return false;
+        },
+        onRetry: (context) => {
+          console.warn(`[self-improvement-loop] Retrying (${context.attempt}/${context.maxRetries}) after ${context.delayMs}ms, status=${context.statusCode}`);
+          
+          // 429エラー時にadaptive-rate-controllerへ通知
+          if (context.statusCode === 429) {
+            record429(model.provider, model.id, `Retry attempt ${context.attempt}`);
+          }
+        },
+        onRateLimitWait: (context) => {
+          console.log(`[self-improvement-loop] Rate limit gate: waiting ${context.waitMs}ms (hits=${context.hits}, key=${context.key})`);
+        },
+      }
+    );
+    
     console.log(`[self-improvement-loop] Model call succeeded, output length: ${result.length}`);
     return result;
   } catch (error) {
     const errorMessage = toErrorMessage(error);
-    console.error(`[self-improvement-loop] Model call failed (${model.provider}/${model.id}): ${errorMessage}`);
+    const statusCode = extractRetryStatusCode(error);
+    
+    // 429エラー時は特別なログ
+    if (statusCode === 429 || isRetryableError(error)) {
+      console.error(`[self-improvement-loop] Rate limit error (${model.provider}/${model.id}): ${errorMessage}`);
+      record429(model.provider, model.id, errorMessage);
+    } else {
+      console.error(`[self-improvement-loop] Model call failed (${model.provider}/${model.id}): ${errorMessage}`);
+    }
+    
     throw error;
   }
 }
@@ -1367,10 +1515,25 @@ async function runSelfImprovementLoop(
       }
 
       console.log(`[self-improvement-loop] Cycle ${state.currentCycle} completed. Score: ${(avgScore * 100).toFixed(0)}%`);
+      
+      // 適応的サイクル間待機（429エラー防止）
+      if (state.currentCycle < config.maxCycles && !state.stopRequested) {
+        const adaptiveDelayMs = computeAdaptiveCycleDelay(model);
+        if (adaptiveDelayMs > 0) {
+          console.log(`[self-improvement-loop] Waiting ${adaptiveDelayMs}ms before next cycle (adaptive throttling)`);
+          await sleepWithAbort(adaptiveDelayMs, signal);
+        }
+      }
     }
   } catch (error) {
-    state.stopReason = "error";
-    console.error(`[self-improvement-loop] Error: ${toErrorMessage(error)}`);
+    if (toErrorMessage(error).includes("Aborted")) {
+      state.stopRequested = true;
+      state.stopReason = "user_request";
+      console.log(`[self-improvement-loop] Aborted during cycle`);
+    } else {
+      state.stopReason = "error";
+      console.error(`[self-improvement-loop] Error: ${toErrorMessage(error)}`);
+    }
   }
 
   // 最終ログを記録
@@ -1436,8 +1599,26 @@ ${prompt}`;
       allImprovements.push(...result.improvements);
 
       console.log(`[self-improvement-loop] Cycle ${state.currentCycle}: ${perspective.displayName} (${(result.score * 100).toFixed(0)}%)`);
+      
+      // 視座間の短い待機（最後の視座以外）
+      if (i < PERSPECTIVES.length - 1) {
+        const perspectiveDelayMs = 500; // 500ms待機
+        await sleepWithAbort(perspectiveDelayMs, signal);
+      }
     } catch (error) {
+      // 429エラーかどうかをチェック
+      const statusCode = extractRetryStatusCode(error);
+      const is429 = statusCode === 429 || isAdaptiveRateLimitError(error) || 
+                    (toErrorMessage(error).toLowerCase().includes("rate limit"));
+      
       console.error(`[self-improvement-loop] Perspective ${perspective.displayName} failed: ${toErrorMessage(error)}`);
+      
+      // 429エラー時は少し長く待機してから次へ
+      if (is429) {
+        console.warn(`[self-improvement-loop] Rate limit detected, waiting 3 seconds before continuing...`);
+        await sleepWithAbort(3000, signal).catch(() => {});
+      }
+      
       // エラー時はデフォルトスコアで続行
       const errorResult: PerspectiveResult = {
         perspective: perspective.name,
