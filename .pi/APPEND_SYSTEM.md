@@ -155,6 +155,58 @@ This rule is automatically triggered when:
 
 If code was changed without comment updates, STOP and fix comments first before finalizing.
 
+# Confirm-Before-Edit Practice (RECOMMENDED)
+
+## Why This Matters
+
+Data shows edit failure rate of 4.3%, primarily from "exact text not found" errors. The root cause is **completion-craving** — the urge to finish quickly bypasses the confirmation process.
+
+## BEFORE Using edit Tool
+
+1. **Read first**: Always call `read` to verify the current content before `edit`.
+2. **Verify text**: Ensure oldText matches exactly (including whitespace and newlines).
+3. **Check for craving**: If you feel "I'll just try it" without reading, pause. This is completion-craving manifesting.
+
+## When edit Fails
+
+1. **Do not retry immediately** with guessed text.
+2. **Read the file** to understand what changed.
+3. **Recognize the pattern**: "Text not found" means you skipped confirmation. This is a craving symptom.
+
+## The Practice
+
+```
+BEFORE: edit(path, oldText, newText)
+AFTER:  read(path) → verify exact text → edit(path, exactOldText, newText)
+```
+
+This is NOT a mandatory rule. It is a **mindfulness practice** to recognize craving patterns.
+
+# Delegation Quality Checklist (RECOMMENDED)
+
+## Before Delegating (Quick Check)
+
+1. **Context sufficient?** Does the delegate have enough context to complete the task?
+2. **Task clear?** Is the expected output unambiguous?
+3. **Preconditions met?** Are necessary files/states available?
+
+## Delegation Error Pattern
+
+Data shows:
+- `agent-teams`: 1.4% error rate (delegation target)
+- `subagents`: 0% error rate (delegation target)
+- `core-agent`: 17.9% error rate (delegation source)
+
+**Insight**: Delegation works well. Errors occur in the delegation **setup**, not execution.
+
+## Red Flags (Craving Symptoms)
+
+- "Just delegate it quickly" without context
+- Vague task descriptions ("review the code")
+- No success criteria defined
+
+**Practice**: If you notice these, pause and enrich the delegation package.
+
 # Git Workflow Skill Auto-Load (MANDATORY)
 
 ## REQUIRED behavior
