@@ -274,6 +274,47 @@ function generateSuggestions(dimensions: Record<DelegationDimension, number>): s
 }
 
 /**
+ * 測定不可能な価値の保護警告を生成
+ * @summary 測定不可能な価値警告
+ * @param overall 総合スコア
+ * @returns 警告メッセージのリスト
+ */
+export function generateUnmeasurableWarnings(overall: number): string[] {
+  const warnings: string[] = [];
+
+  // 高スコアの場合の警告（内なるファシズムのリスク）
+  if (overall >= 80) {
+    warnings.push("【参考】高スコアは「正しい委任」を保証しません。測定不可能な要素（信頼、創造性、文脈）も同等に重要です。");
+    warnings.push("【参考】このスコアを「目標」とせず、「参考値」として扱ってください。スコア追求が新たな「正しさ」の強制になる可能性があります。");
+  }
+
+  // 中程度のスコアの場合の警告
+  if (overall >= 60 && overall < 80) {
+    warnings.push("【参考】スコアは改善のヒントであり、委任を禁止するものではありません。直感や経験も尊重してください。");
+  }
+
+  return warnings;
+}
+
+/**
+ * 委任品質スコアを「保護的」に計算
+ * @summary 保護的品質スコア計算
+ * @param input 委任の入力パラメータ
+ * @returns 品質スコアと改善提案（警告を含む）
+ */
+export function calculateProtectedDelegationScore(
+  input: DelegationQualityInput
+): DelegationQualityScore & { unmeasurableWarnings: string[] } {
+  const baseScore = calculateDelegationScore(input);
+  const unmeasurableWarnings = generateUnmeasurableWarnings(baseScore.overall);
+
+  return {
+    ...baseScore,
+    unmeasurableWarnings,
+  };
+}
+
+/**
  * 推定成功率を計算
  * @summary 成功率推定
  * @param overall 総合スコア

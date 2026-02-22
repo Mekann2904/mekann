@@ -4,6 +4,7 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateDelegationScore,
+  calculateProtectedDelegationScore,
   DelegationQualityTracker,
   type DelegationQualityInput,
 } from "../lib/delegation-quality";
@@ -125,6 +126,36 @@ describe("委任品質スコア", () => {
       const result = calculateDelegationScore(input);
 
       expect(result.estimatedSuccessRate).toBeLessThan(60);
+    });
+  });
+
+  describe("測定不可能な価値の保護", () => {
+    it("高スコアには測定不可能な価値の警告が含まれる", () => {
+      const input: DelegationQualityInput = {
+        taskDescription: "明確な動詞と範囲を指定して分析せよ。出力形式はリスト形式。",
+        sharedContext: "十分な長さのコンテキスト情報を提供します。関連ファイル: file1.ts, file2.ts, file3.ts",
+        successCriteria: ["完了条件1", "完了条件2", "完了条件3"],
+        targetId: "test-team",
+        availableResources: ["resource1", "resource2", "resource3", "resource4", "resource5"],
+      };
+
+      const result = calculateProtectedDelegationScore(input);
+
+      // 高スコアの場合、警告が含まれる
+      expect(result.unmeasurableWarnings.length).toBeGreaterThan(0);
+      expect(result.unmeasurableWarnings[0]).toContain("参考");
+    });
+
+    it("低スコアには警告が少ないまたはなし", () => {
+      const input: DelegationQualityInput = {
+        taskDescription: "短い",
+        targetId: "test-team",
+      };
+
+      const result = calculateProtectedDelegationScore(input);
+
+      // 低スコアの場合、警告は少ない
+      expect(result.unmeasurableWarnings.length).toBe(0);
     });
   });
 });
