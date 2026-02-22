@@ -50,6 +50,12 @@ import {
   type SemanticRepetitionResult,
 } from "../lib/semantic-repetition.js";
 import {
+  runMetacognitiveCheck,
+  type MetacognitiveCheck,
+  type AporiaDetection,
+  type FallacyDetection,
+} from "../lib/verification-workflow.js";
+import {
   retryWithBackoff,
   extractRetryStatusCode,
   isRetryableError,
@@ -155,6 +161,10 @@ interface SelfImprovementLoopState {
   lastUpdatedAt: string;
   totalImprovements: number;
   summary: string;
+  /** 前回のメタ認知チェック結果（推論深度向上のためのフィードバックループ） */
+  lastMetacognitiveCheck?: MetacognitiveCheck;
+  /** 前回の推論深度スコア */
+  lastInferenceDepthScore?: number;
 }
 
 /** サイクルの実行結果 */
@@ -166,6 +176,10 @@ interface CycleResult {
   summary: string;
   shouldContinue: boolean;
   stopReason: SelfImprovementLoopState["stopReason"];
+  /** メタ認知チェック結果（推論深度の客観的指標） */
+  metacognitiveCheck?: MetacognitiveCheck;
+  /** 推論深度スコア（客観的指標の集約） */
+  inferenceDepthScore?: number;
 }
 
 /** 個別視座の実行結果 */
@@ -227,6 +241,10 @@ interface ActiveAutonomousRun {
   cycleSummaries: string[];
   /** 視座スコアの履歴 */
   perspectiveScoreHistory: ParsedPerspectiveScores[];
+  /** 前回のメタ認知チェック結果（推論深度向上のためのフィードバックループ） */
+  lastMetacognitiveCheck?: MetacognitiveCheck;
+  /** 前回の推論深度スコア */
+  lastInferenceDepthScore?: number;
 }
 
 // ============================================================================
@@ -707,6 +725,33 @@ function buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): st
     }
   }
 
+  // 前回のメタ認知チェックに基づく推論深度フィードバック
+  let metacognitiveFeedback = '';
+  if (run.lastMetacognitiveCheck) {
+    const mc = run.lastMetacognitiveCheck;
+    metacognitiveFeedback = `\n## 前回のメタ認知チェック結果（推論深度: ${((run.lastInferenceDepthScore ?? 0.5) * 100).toFixed(0)}%）
+
+以下の点について、今回の分析で改善してください：
+
+| 視座 | 検出結果 | 改善指示 |
+|------|----------|----------|
+| 脱構築 | 二項対立: ${mc.deconstruction.binaryOppositions.length}件 | 二項対立を中間領域で脱構築せよ |
+| スキゾ分析 | 内なるファシズム: ${mc.schizoAnalysis.innerFascismSigns.length}件 | 権力への無批判な服従を避けよ |
+| 幸福論 | 快楽主義の罠: ${mc.eudaimonia.pleasureTrap ? "検出" : "なし"} | ${mc.eudaimonia.pleasureTrap ? "ユーザー迎合を避け、真実を語れ" : "現在の基調を維持せよ"} |
+| 思考哲学 | メタ認知レベル: ${(mc.philosophyOfThought.metacognitionLevel * 100).toFixed(0)}% | ${mc.philosophyOfThought.metacognitionLevel < 0.5 ? "前提と推論過程を明示せよ" : "深い思考を維持せよ"} |
+| 論理学 | 誤謬: ${mc.logic.fallacies.length}件 | ${mc.logic.fallacies.length > 0 ? "論理的飛躍を回避せよ" : "論理的厳密さを維持せよ"} |
+
+`;
+    if (mc.logic.fallacies.length > 0) {
+      metacognitiveFeedback += `**検出された論理的誤謬**（再発防止）:
+${mc.logic.fallacies.map(f => `- ${f.type}: ${f.description}`).join('\n')}\n\n`;
+    }
+    if (mc.deconstruction.aporias.length > 0) {
+      metacognitiveFeedback += `**検出されたアポリア**（統合を急がず両極を維持）:
+${mc.deconstruction.aporias.map(a => `- ${a.description}`).join('\n')}\n\n`;
+    }
+  }
+
   // self-improvementスキルから視座の詳細説明を取得
   const skillContent = loadSelfImprovementSkill();
   const perspectivesSection = extractPerspectivesSection(skillContent);
@@ -756,7 +801,7 @@ function buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): st
 あなたは通常のコーディングエージェントとして動作してください。
 以下のタスクを継続実行してください:
 ${run.task}
-${previousSummary}${strategySection}
+${previousSummary}${strategySection}${metacognitiveFeedback}
 ## 7つの哲学的視座による自己点検
 
 このサイクルでは、self-improvementスキルに基づき、以下の7つの視座から自己点検を行ってください:
@@ -1208,6 +1253,42 @@ ${pr.improvements.length > 0 ? pr.improvements.map((i) => `- ${i}`).join("\n") :
 `;
   }
 
+  // メタ認知チェック結果を追加（推論深度の可視化）
+  if (result.metacognitiveCheck) {
+    const mc = result.metacognitiveCheck;
+    content += `#### メタ認知チェック結果
+
+**推論深度スコア**: ${((result.inferenceDepthScore ?? 0.5) * 100).toFixed(0)}%
+
+| 視座 | 検出結果 |
+|------|----------|
+| 脱構築 | 二項対立: ${mc.deconstruction.binaryOppositions.length}件, アポリア: ${mc.deconstruction.aporias.length}件 |
+| スキゾ分析 | 欲望生産: ${mc.schizoAnalysis.desireProduction.length}件, 内なるファシズム: ${mc.schizoAnalysis.innerFascismSigns.length}件 |
+| 幸福論 | 快楽主義の罠: ${mc.eudaimonia.pleasureTrap ? "検出" : "なし"} |
+| ユートピア/ディストピア | 全体主義リスク: ${mc.utopiaDystopia.totalitarianRisk.length}件 |
+| 思考哲学 | メタ認知レベル: ${(mc.philosophyOfThought.metacognitionLevel * 100).toFixed(0)}% |
+| 思考分類学 | 現在モード: ${mc.taxonomyOfThought.currentMode}, 推奨: ${mc.taxonomyOfThought.recommendedMode} |
+| 論理学 | 誤謬: ${mc.logic.fallacies.length}件 |
+
+`;
+    
+    // 論理的誤謬の詳細を表示
+    if (mc.logic.fallacies.length > 0) {
+      content += `**検出された誤謬**:
+${mc.logic.fallacies.map(f => `- ${f.type}: ${f.description}`).join("\n")}
+
+`;
+    }
+    
+    // アポリアの詳細を表示
+    if (mc.deconstruction.aporias.length > 0) {
+      content += `**検出されたアポリア**:
+${mc.deconstruction.aporias.map(a => `- ${a.description}（緊張レベル: ${(a.tensionLevel * 100).toFixed(0)}%）`).join("\n")}
+
+`;
+    }
+  }
+
   content += `**サイクルサマリー**: ${result.summary}
 
 **継続判定**: ${result.shouldContinue ? "継続" : `停止（理由: ${result.stopReason ?? "不明"}）`}
@@ -1250,11 +1331,54 @@ ${state.perspectiveStates.map((ps) => `| ${ps.displayName} | ${(ps.score * 100).
   appendFileSync(path, footer, "utf-8");
 }
 
-function buildPerspectivePrompt(perspective: PerspectiveState, task: string, previousResults: PerspectiveResult[]): string {
+function buildPerspectivePrompt(
+  perspective: PerspectiveState, 
+  task: string, 
+  previousResults: PerspectiveResult[],
+  previousMetacognitiveCheck?: MetacognitiveCheck
+): string {
   const perspectiveInfo = PERSPECTIVES.find((p) => p.name === perspective.name);
   const previousContext = previousResults.length > 0
     ? `\n\n## 前回の視座からの継続事項\n${previousResults.map((r) => `- ${PERSPECTIVES.find((p) => p.name === r.perspective)?.displayName}: ${r.findings.slice(0, 2).join(", ")}`).join("\n")}`
     : "";
+
+  // 前回のメタ認知チェックに基づく動的プロンプト強化
+  let depthRequirements = "";
+  if (previousMetacognitiveCheck) {
+    const mc = previousMetacognitiveCheck;
+    
+    // 誤謬が検出された場合の強化要求
+    if (mc.logic.fallacies.length > 0) {
+      depthRequirements += `\n\n## 前回検出された論理的誤謬への対応
+前回の分析で以下の論理的誤謬が検出されました。これらを回避してください：
+${mc.logic.fallacies.map(f => `- ${f.type}: ${f.description}`).join("\n")}
+**対策**: 推論の各ステップで、前提と結論の論理的関係を明示してください。`;
+    }
+    
+    // アポリアが検出された場合の強化要求
+    if (mc.deconstruction.aporias.length > 0) {
+      depthRequirements += `\n\n## 検出されたアポリア（解決不能な緊張関係）への対処
+以下のアポリアが検出されています。統合（解決）を急がず、両極の緊張関係を維持してください：
+${mc.deconstruction.aporias.map(a => `- ${a.description}`).join("\n")}
+**原則**: アポリアを「解決すべき問題」としてではなく、「認識すべき状態」として受け入れてください。`;
+    }
+    
+    // 内なるファシズム兆候が検出された場合
+    if (mc.schizoAnalysis.innerFascismSigns.length > 0) {
+      depthRequirements += `\n\n## 内なるファシズム兆候の検出
+以下の兆候が検出されました。権力や規範への無批判な服従を避けてください：
+${mc.schizoAnalysis.innerFascismSigns.join(", ")}`;
+    }
+    
+    // メタ認知レベルが低い場合の強化
+    if (mc.philosophyOfThought.metacognitionLevel < 0.5) {
+      depthRequirements += `\n\n## メタ認知の強化要求
+前回の分析ではメタ認知レベルが低かったです。以下を実践してください：
+- 自分の前提を明示的に記述する
+- なぜその結論に至ったかの推論過程を明示する
+- 代替可能性を積極的に検討する`;
+    }
+  }
 
   return `# ${perspectiveInfo?.displayName ?? perspective.name} - 自己分析プロンプト
 
@@ -1262,8 +1386,7 @@ function buildPerspectivePrompt(perspective: PerspectiveState, task: string, pre
 ${task}
 
 ## この視座の役割
-${perspectiveInfo?.description ?? perspective.description}
-${previousContext}
+${perspectiveInfo?.description ?? perspective.description}${previousContext}${depthRequirements}
 
 ## 分析指示
 
@@ -1290,10 +1413,20 @@ SCORE: [0-100の数値で現在の状態を評価]
 SUMMARY: [1-2文の要約]
 \`\`\`
 
+## 推論の深さを保証するための必須チェック
+
+以下のチェックを最低1つ以上実施し、結果をFINDINGSまたはQUESTIONSに含めてください：
+
+1. **反例探索**: 自分の主張を否定する可能性のある事例や証拠を探してください
+2. **境界条件**: 主張が成立しない条件や極端なケースを検討してください
+3. **前提の明示**: 暗黙の前提を明示的に記述してください
+4. **代替解釈**: 同じ証拠から導ける別の解釈を検討してください
+
 ## 注意事項
 - 曖昧な表現（「適切に処理する」「必要に応じて」など）を避けてください
 - 具体的で実行可能な改善を提案してください
 - 自分の仮説を否定する証拠を最低1つ探してください
+- 推論の各ステップで論理的飛躍がないか確認してください
 `;
 }
 
@@ -1560,6 +1693,13 @@ async function runSelfImprovementLoop(
       state.lastUpdatedAt = new Date().toISOString();
       state.totalImprovements += cycleResult.improvements.length;
       state.summary = cycleResult.summary;
+      
+      // メタ認知チェック結果を保存（次サイクルの推論深度向上のため）
+      if (cycleResult.metacognitiveCheck) {
+        state.lastMetacognitiveCheck = cycleResult.metacognitiveCheck;
+        state.lastInferenceDepthScore = cycleResult.inferenceDepthScore;
+        console.log(`[self-improvement-loop] Inference depth score: ${((cycleResult.inferenceDepthScore ?? 0.5) * 100).toFixed(0)}%`);
+      }
 
       // 継続判定
       if (!cycleResult.shouldContinue) {
@@ -1620,7 +1760,7 @@ async function runCycle(
     }
 
     const perspective = state.perspectiveStates[i];
-    const prompt = buildPerspectivePrompt(perspective, state.task, perspectiveResults);
+    const prompt = buildPerspectivePrompt(perspective, state.task, perspectiveResults, state.lastMetacognitiveCheck);
 
     // LLMに分析を依頼（プロンプトにシステム指示を統合）
     const fullPrompt = `あなたは自己改善エージェントです。${perspective.displayName}の観点から自己分析を行ってください。
@@ -1692,6 +1832,16 @@ ${prompt}`;
     : 0.3;
   const summary = `Cycle ${state.currentCycle} completed. Average score: ${(avgScore * 100).toFixed(0)}%. ${allImprovements.length} improvements identified.`;
 
+  // メタ認知チェックを実行（推論深度の客観的評価）
+  const fullOutput = perspectiveResults.map(r => r.output).join("\n\n");
+  const metacognitiveCheck = runMetacognitiveCheck(fullOutput, {
+    task: state.task,
+    currentMode: "self-improvement"
+  });
+  
+  // 推論深度スコアを計算（客観的指標の集約）
+  const inferenceDepthScore = calculateInferenceDepthScore(metacognitiveCheck, perspectiveResults);
+
   return {
     cycleNumber: state.currentCycle,
     perspectiveResults,
@@ -1700,6 +1850,8 @@ ${prompt}`;
     summary,
     shouldContinue: avgScore < 0.95, // 95%以上で完了とみなす
     stopReason: avgScore >= 0.95 ? "completed" : null,
+    metacognitiveCheck,
+    inferenceDepthScore,
   };
 }
 
@@ -1744,6 +1896,149 @@ function parsePerspectiveResult(perspective: PerspectiveName, output: string): P
     score,
     output,
   };
+}
+
+/**
+ * 推論深度スコアを計算する
+ * メタ認知チェック結果と視座結果から、推論の深さを客観的に評価する
+ * 
+ * @summary 推論深度を計算
+ * @param check メタ認知チェック結果
+ * @param results 視座ごとの実行結果
+ * @returns 0-1の範囲の推論深度スコア
+ */
+function calculateInferenceDepthScore(
+  check: MetacognitiveCheck,
+  results: PerspectiveResult[]
+): number {
+  let score = 0.5; // ベーススコア
+  
+  // I. 脱構築: 二項対立検出、アポリア対処
+  const deconstructionBonus = 
+    Math.min(check.deconstruction.binaryOppositions.length * 0.05, 0.15) +
+    Math.min(check.deconstruction.aporias.length * 0.08, 0.2);
+  score += deconstructionBonus;
+  
+  // II. スキゾ分析: 欲望の生産性認識、内なるファシズム検出
+  if (check.schizoAnalysis.desireProduction.length > 0) {
+    score += Math.min(check.schizoAnalysis.desireProduction.length * 0.03, 0.09);
+  }
+  if (check.schizoAnalysis.innerFascismSigns.length > 0) {
+    // ファシズム兆候を検出したことは評価するが、多すぎる場合は逆に減点
+    const fascismPenalty = Math.max(0, check.schizoAnalysis.innerFascismSigns.length - 2) * 0.05;
+    score += 0.05 - fascismPenalty;
+  }
+  
+  // III. 幸福論: 快楽主義の罠回避
+  if (!check.eudaimonia.pleasureTrap) {
+    score += 0.05;
+  }
+  
+  // IV. ユートピア/ディストピア: 全体主義リスクの認識
+  if (check.utopiaDystopia.totalitarianRisk.length > 0) {
+    score += Math.min(check.utopiaDystopia.totalitarianRisk.length * 0.03, 0.09);
+  }
+  
+  // V. 思考哲学: メタ認知レベル
+  score += check.philosophyOfThought.metacognitionLevel * 0.1;
+  if (!check.philosophyOfThought.isThinking) {
+    score -= 0.1; // 思考していない場合は減点
+  }
+  
+  // VI. 思考分類学: 適切なモード選択
+  if (check.taxonomyOfThought.currentMode === check.taxonomyOfThought.recommendedMode) {
+    score += 0.05;
+  }
+  
+  // VII. 論理学: 誤謬の有無
+  const fallacyCount = check.logic.fallacies.length;
+  if (fallacyCount === 0) {
+    score += 0.05;
+  } else {
+    score -= Math.min(fallacyCount * 0.08, 0.2);
+  }
+  
+  // 視座結果からの追加評価
+  const avgFindingsPerPerspective = results.reduce((sum, r) => sum + r.findings.length, 0) / Math.max(results.length, 1);
+  const avgQuestionsPerPerspective = results.reduce((sum, r) => sum + r.questions.length, 0) / Math.max(results.length, 1);
+  const avgImprovementsPerPerspective = results.reduce((sum, r) => sum + r.improvements.length, 0) / Math.max(results.length, 1);
+  
+  // 発見事項が多いほど深い分析
+  if (avgFindingsPerPerspective >= 2) {
+    score += 0.05;
+  }
+  if (avgFindingsPerPerspective >= 4) {
+    score += 0.05;
+  }
+  
+  // 問いが多いほど批判的思考
+  if (avgQuestionsPerPerspective >= 2) {
+    score += 0.05;
+  }
+  
+  // 改善提案が具体的であるほど実践的
+  if (avgImprovementsPerPerspective >= 1) {
+    score += 0.05;
+  }
+  
+  // 0-1の範囲に正規化
+  return Math.max(0, Math.min(1, score));
+}
+
+/**
+ * 自律ループ用の簡易推論深度スコア計算
+ * 視座結果がない場合でも、メタ認知チェックのみから推論深度を評価
+ * 
+ * @summary 簡易推論深度を計算
+ * @param check メタ認知チェック結果
+ * @returns 0-1の範囲の推論深度スコア
+ */
+function calculateMetacognitiveDepthScore(check: MetacognitiveCheck): number {
+  let score = 0.5; // ベーススコア
+  
+  // I. 脱構築: 二項対立検出、アポリア対処
+  score += Math.min(check.deconstruction.binaryOppositions.length * 0.05, 0.15);
+  score += Math.min(check.deconstruction.aporias.length * 0.08, 0.2);
+  
+  // II. スキゾ分析: 欲望の生産性認識
+  score += Math.min(check.schizoAnalysis.desireProduction.length * 0.03, 0.09);
+  
+  // III. 幸福論: 快楽主義の罠回避
+  if (!check.eudaimonia.pleasureTrap) {
+    score += 0.05;
+  }
+  
+  // IV. ユートピア/ディストピア: 全体主義リスクの認識
+  score += Math.min(check.utopiaDystopia.totalitarianRisk.length * 0.03, 0.09);
+  
+  // V. 思考哲学: メタ認知レベル（最重要）
+  score += check.philosophyOfThought.metacognitionLevel * 0.15;
+  if (!check.philosophyOfThought.isThinking) {
+    score -= 0.15;
+  }
+  if (check.philosophyOfThought.autopilotSigns.length > 2) {
+    score -= 0.1;
+  }
+  
+  // VI. 思考分類学: 適切なモード選択
+  if (check.taxonomyOfThought.currentMode === check.taxonomyOfThought.recommendedMode) {
+    score += 0.05;
+  }
+  
+  // VII. 論理学: 誤謬の有無（重要な減点要因）
+  const fallacyCount = check.logic.fallacies.length;
+  if (fallacyCount === 0) {
+    score += 0.05;
+  } else {
+    score -= Math.min(fallacyCount * 0.1, 0.25);
+  }
+  
+  // 有効な推論があれば加点
+  if (check.logic.validInferences.length > 0) {
+    score += Math.min(check.logic.validInferences.length * 0.03, 0.09);
+  }
+  
+  return Math.max(0, Math.min(1, score));
 }
 
 // ============================================================================
@@ -1972,6 +2267,24 @@ export default (api: ExtensionAPI) => {
       const nextFocus = parseNextFocus(outputText);
       if (nextFocus) {
         appendAutonomousLoopLog(run.logPath, `  next_focus: ${nextFocus.slice(0, 100)}...`);
+      }
+
+      // メタ認知チェックを実行して推論深度を評価（次サイクルのフィードバック用）
+      try {
+        const metacognitiveCheck = runMetacognitiveCheck(outputText, {
+          task: run.task,
+          currentMode: "self-improvement"
+        });
+        run.lastMetacognitiveCheck = metacognitiveCheck;
+        
+        // 推論深度スコアを計算
+        const depthScore = calculateMetacognitiveDepthScore(metacognitiveCheck);
+        run.lastInferenceDepthScore = depthScore;
+        
+        appendAutonomousLoopLog(run.logPath, `  inference_depth: ${(depthScore * 100).toFixed(0)}%, fallacies=${metacognitiveCheck.logic.fallacies.length}, aporias=${metacognitiveCheck.deconstruction.aporias.length}`);
+      } catch (error) {
+        // メタ認知チェックのエラーは無視（機能継続のため）
+        console.warn(`[self-improvement-loop] Metacognitive check failed: ${toErrorMessage(error)}`);
       }
     }
 
