@@ -11,8 +11,8 @@ import {
   DEFAULT_BOND_CONFIG,
   type BondDiagnostics,
   type BondAnalysisConfig,
-} from "../../../.pi/extensions/agent-teams/bond-integration.js";
-import type { TeamMemberResult } from "../../../.pi/extensions/agent-teams/storage.js";
+} from "../../../../.pi/extensions/agent-teams/bond-integration.js";
+import type { TeamMemberResult } from "../../../../.pi/extensions/agent-teams/storage.js";
 
 describe("bond-integration", () => {
   const createMockResult = (

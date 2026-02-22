@@ -2387,86 +2387,86 @@ function getActionTemplateForType(type: string, matchedText: string): {
   expectedOutcome: string;
   perspective: string;
 } {
-  // 誤謬タイプ
+  // 誤謬タイプ（幸福論的転換: 「修正」→「卓越の追求」）
   if (['affirming-consequent', 'circular-reasoning', 'false-dichotomy', 
        'slippery-slope', 'hasty-generalization'].includes(type)) {
     const fallacyActions: Record<string, { issuePrefix: string; action: string; expectedOutcome: string; perspective: string }> = {
       'affirming-consequent': {
-        issuePrefix: '後件肯定の誤謬の可能性',
-        action: '「AならB、BだからA」という推論を避ける。Bが他の原因で起こりうるか検討する。',
-        expectedOutcome: '論理的妥当性の確保',
-        perspective: '論理学'
+        issuePrefix: '後件肯定の誤謬が現れています',
+        action: '「AならB、BだからA」という推論パターンが現れていることに気づいてください。Bが他の原因で起こりうるか検討し、より妥当な推論を追求できます。',
+        expectedOutcome: '推論の卓越（論理的妥当性の追求）',
+        perspective: '論理学・幸福論'
       },
       'circular-reasoning': {
-        issuePrefix: '循環論法の可能性',
-        action: '結論を前提として使わない。独立した根拠を提示する。',
-        expectedOutcome: '実質的な論証の構築',
-        perspective: '論理学'
+        issuePrefix: '循環論法が現れています',
+        action: '結論を前提として使うパターンが現れていることに気づいてください。独立した根拠を探求し、実質的な論証を構築できます。',
+        expectedOutcome: '推論の卓越（実質的論証の追求）',
+        perspective: '論理学・幸福論'
       },
       'false-dichotomy': {
-        issuePrefix: '偽の二分法の可能性',
-        action: '第三の選択肢や中間的な解を探す。「AかBか」以外の可能性を検討する。',
-        expectedOutcome: 'より包括的な問題解決',
-        perspective: '論理学'
+        issuePrefix: '偽の二分法が現れています',
+        action: '「AかBか」という二分法が現れていることに気づいてください。第三の選択肢や中間的な解を探求し、より包括的な問題解決を目指せます。',
+        expectedOutcome: '思考の卓越（包括的視点の追求）',
+        perspective: '論理学・脱構築'
       },
       'slippery-slope': {
-        issuePrefix: '滑り坂論法の可能性',
-        action: '各段階の因果関係を検証する。極端な結論に至る必然性を疑う。',
-        expectedOutcome: '現実的な予測の確保',
-        perspective: '論理学'
+        issuePrefix: '滑り坂論法が現れています',
+        action: '極端な結論への連鎖推論が現れていることに気づいてください。各段階の因果関係を検証し、現実的な予測を追求できます。',
+        expectedOutcome: '推論の卓越（現実的予測の追求）',
+        perspective: '論理学・幸福論'
       },
       'hasty-generalization': {
-        issuePrefix: '急激な一般化の可能性',
-        action: 'サンプルサイズと代表性を確認する。例外や反例を探す。',
-        expectedOutcome: '根拠ある一般化',
-        perspective: '論理学'
+        issuePrefix: '急激な一般化が現れています',
+        action: '限られた事例からの一般化が現れていることに気づいてください。サンプルサイズと代表性を確認し、根拠ある一般化を追求できます。',
+        expectedOutcome: '推論の卓越（根拠ある一般化の追求）',
+        perspective: '論理学・幸福論'
       }
     };
     return fallacyActions[type] || {
-      issuePrefix: '論理的誤謬の可能性',
-      action: '推論の妥当性を検証し、論理的飛躍がないか確認する。',
-      expectedOutcome: '論理的厳密さの確保',
-      perspective: '論理学'
+      issuePrefix: '論理的誤謬が現れています',
+      action: '推論パターンに気づいてください。論理的飛躍がないか検証し、より妥当な推論を追求できます。',
+      expectedOutcome: '推論の卓越（論理的厳密さの追求）',
+      perspective: '論理学・幸福論'
     };
   }
 
-  // 二項対立タイプ
+  // 二項対立タイプ（幸福論的転換: 「超克」→「中庸の実践」）
   if (['truth-binary', 'success-binary', 'moral-binary', 
        'correctness-binary', 'completeness-binary'].includes(type)) {
     return {
-      issuePrefix: '二項対立の可能性',
-      action: '中間領域やグラデーションを考慮する。両極を両立させる条件を探る。',
-      expectedOutcome: '二項対立を超えた統合的視点',
-      perspective: '脱構築'
+      issuePrefix: '二項対立が現れています',
+      action: '「AかBか」という対立構造が現れていることに気づいてください。中間領域やグラデーションを考慮し、中庸の実践を目指せます。',
+      expectedOutcome: '中庸の実践（統合的視点の追求）',
+      perspective: '脱構築・幸福論'
     };
   }
 
-  // ファシズムタイプ
+  // ファシズムタイプ（幸福論的転換: 「排除」→「自律の回復」）
   if (['self-surveillance', 'norm-obedience', 'value-convergence'].includes(type)) {
     const fascismActions: Record<string, { issuePrefix: string; action: string; expectedOutcome: string; perspective: string }> = {
       'self-surveillance': {
-        issuePrefix: '自己監視の強制の兆候',
-        action: '「常に」「必ず」などの絶対的表現が文脈的に適切か検討する。柔軟な判断基準を認める。',
-        expectedOutcome: '過度な自己強制の緩和',
-        perspective: 'スキゾ分析'
+        issuePrefix: '自己監視の強制が現れています',
+        action: '「常に」「必ず」などの絶対的表現が現れていることに気づいてください。柔軟な判断基準を認め、自律的な判断を取り戻せます。',
+        expectedOutcome: '自律の回復（過度な自己強制からの解放）',
+        perspective: 'スキゾ分析・幸福論'
       },
       'norm-obedience': {
-        issuePrefix: '規範への過度な服従の兆候',
-        action: '「すべき」が本当に必要か、それとも慣習かを問う。代替アプローチを検討する。',
-        expectedOutcome: '創造的判断の余地確保',
-        perspective: 'スキゾ分析'
+        issuePrefix: '規範への過度な服従が現れています',
+        action: '「すべき」が現れていることに気づいてください。それが本当に必要か、それとも慣習かを問い直し、創造的判断の余地を取り戻せます。',
+        expectedOutcome: '自律の回復（創造的判断の追求）',
+        perspective: 'スキゾ分析・幸福論'
       },
       'value-convergence': {
-        issuePrefix: '一価値への収斃の兆候',
-        action: '「正しい」の基準を多角的に検討する。文脈依存性を認める。',
-        expectedOutcome: '価値の多様性の確保',
-        perspective: 'スキゾ分析'
+        issuePrefix: '一価値への収束が現れています',
+        action: '「正しい」への単一の基準が現れていることに気づいてください。多角的な視点を認め、価値の多様性を取り戻せます。',
+        expectedOutcome: '自律の回復（価値の多様性の追求）',
+        perspective: 'スキゾ分析・幸福論'
       }
     };
     return fascismActions[type] || {
-      issuePrefix: '内なるファシズムの兆候',
-      action: '無批判な服従や自己監視のパターンを意識し、代替の判断基準を検討する。',
-      expectedOutcome: 'より自由な思考の獲得',
+      issuePrefix: '内なるファシズムが現れています',
+      action: '無批判な服従や自己監視のパターンが現れていることに気づいてください。代替の判断基準を探求し、より自由な思考を追求できます。',
+      expectedOutcome: '自律の回復（自由な思考の追求）',
       perspective: 'スキゾ分析'
     };
   }
@@ -2507,12 +2507,12 @@ function getActionTemplateForType(type: string, matchedText: string): {
     };
   }
 
-  // デフォルト
+  // デフォルト（気づきを促すトーン）
   return {
-    issuePrefix: '検出された問題',
-    action: '検出内容を文脈で評価し、必要に応じて修正する。',
-    expectedOutcome: '改善された推論',
-    perspective: '論理学'
+    issuePrefix: 'パターンが現れています',
+    action: '現れているパターンに気づいてください。文脈で評価し、より良い選択を追求できます。',
+    expectedOutcome: '気づきによる自由な選択（推論の卓越）',
+    perspective: '論理学・幸福論'
   };
 }
 

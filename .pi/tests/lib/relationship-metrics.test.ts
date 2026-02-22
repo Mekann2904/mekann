@@ -11,7 +11,7 @@ import {
 	type TriangularTheoryScores,
 	type MotivationBalanceScores,
 	type LoveType,
-} from "../lib/relationship-metrics.js";
+} from "../../lib/relationship-metrics.js";
 
 describe("relationship-metrics", () => {
 	describe("evaluateTriangularTheory", () => {
@@ -31,9 +31,9 @@ describe("relationship-metrics", () => {
 
 		it("should use default values for undefined", () => {
 			const result = evaluateTriangularTheory(undefined as any, undefined as any, undefined as any);
-			expect(result.intimacy).toBe(0);
-			expect(result.passion).toBe(0);
-			expect(result.commitment).toBe(0);
+			expect(result.intimacy).toBe(0.5);
+			expect(result.passion).toBe(0.5);
+			expect(result.commitment).toBe(0.5);
 		});
 	});
 
@@ -198,7 +198,7 @@ describe("relationship-metrics", () => {
 		});
 	});
 
-	describe("generateRecommendations", () => => {
+	describe("generateRecommendations", () => {
 		it("should generate recommendations for low intimacy", () => {
 			const triangular: TriangularTheoryScores = {
 				intimacy: 0.3,

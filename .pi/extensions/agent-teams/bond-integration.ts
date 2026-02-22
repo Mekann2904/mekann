@@ -29,9 +29,6 @@ import {
   generateBondReport,
   type BondEvaluationResult,
 } from "../../lib/reasoning-bonds-evaluator.js";
-import { getLogger } from "../../lib/comprehensive-logger";
-
-const logger = getLogger();
 
 /**
  * ボンド分析の設定
@@ -182,7 +179,7 @@ export function augmentDiagnosticsWithBondAnalysis(
     const detailedReport = config.verbose ? generateBondReport(evaluation) : undefined;
 
     if (config.verbose && warnings.length > 0) {
-      logger.warn("Bond analysis warnings", {
+      console.warn("[bond-analysis] Warnings:", {
         warnings,
         stabilityScore: evaluation.stabilityScore,
         overallAssessment: evaluation.overallAssessment,
@@ -200,7 +197,7 @@ export function augmentDiagnosticsWithBondAnalysis(
       detailedReport,
     };
   } catch (error) {
-    logger.error("Bond analysis failed", { error });
+    console.error("[bond-analysis] Analysis failed:", error);
     return {
       analyzed: false,
       stabilityScore: 0,

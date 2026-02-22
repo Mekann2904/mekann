@@ -64,6 +64,8 @@ export interface RelationshipScore {
 	loveType: LoveType;
 	/** 改善推奨事項 */
 	recommendations: string[];
+	/** 測定可能性の警告（スキゾ分析的視点） */
+	measurabilityWarnings?: MeasurabilityWarning[];
 }
 
 /**
@@ -79,6 +81,11 @@ export type LoveType =
 	| "companionate"
 	| "fatuous"
 	| "consummate";
+
+import {
+	createMeasurabilityWarning,
+	type MeasurabilityWarning,
+} from "./relationship-unmeasurables.js";
 
 /** 閾値: この値以上で「あり」と判定 */
 const THRESHOLD = 0.5;
@@ -133,10 +140,11 @@ export function evaluateTriangularTheory(
 	creativity: number,
 	consistency: number,
 ): TriangularTheoryScores {
+	const defaultValue = 0.5;
 	return {
-		intimacy: Math.max(0, Math.min(1, context)),
-		passion: Math.max(0, Math.min(1, creativity)),
-		commitment: Math.max(0, Math.min(1, consistency)),
+		intimacy: Math.max(0, Math.min(1, context ?? defaultValue)),
+		passion: Math.max(0, Math.min(1, creativity ?? defaultValue)),
+		commitment: Math.max(0, Math.min(1, consistency ?? defaultValue)),
 	};
 }
 
@@ -306,11 +314,14 @@ export function evaluateRelationship(input: {
 
 	const recommendations = generateRecommendations(triangular, motivation);
 
+	const measurabilityWarnings = createMeasurabilityWarning(overall);
+
 	return {
 		triangular,
 		motivation,
 		overall,
 		loveType,
 		recommendations,
+		measurabilityWarnings,
 	};
 }
