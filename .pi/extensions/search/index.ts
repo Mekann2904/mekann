@@ -65,6 +65,7 @@ import {
 	formatCodeSearch,
 	formatSymbols,
 } from "./utils/output.js";
+import { MAX_CODE_SEARCH_LIMIT, MAX_CODE_SEARCH_CONTEXT } from "./utils/constants.js";
 
 // ============================================
 // Extension Registration
@@ -171,10 +172,18 @@ export default function (pi: ExtensionAPI) {
 					Type.Boolean({ description: "Treat pattern as literal string" })
 				),
 				context: Type.Optional(
-					Type.Number({ description: "Number of context lines around matches" })
+					Type.Number({
+						description: `Number of context lines around matches (max: ${MAX_CODE_SEARCH_CONTEXT})`,
+						minimum: 0,
+						maximum: MAX_CODE_SEARCH_CONTEXT,
+					})
 				),
 				limit: Type.Optional(
-					Type.Number({ description: "Maximum results (default: 50)" })
+					Type.Number({
+						description: `Maximum results (default: 50, max: ${MAX_CODE_SEARCH_LIMIT})`,
+						minimum: 1,
+						maximum: MAX_CODE_SEARCH_LIMIT,
+					})
 				),
 			}),
 

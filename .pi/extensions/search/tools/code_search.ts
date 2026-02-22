@@ -44,9 +44,40 @@ import {
 	createSimpleHints,
 } from "../utils/output.js";
 import { SearchToolError, isSearchToolError, getErrorMessage, parameterError } from "../utils/errors.js";
-import { DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_EXCLUDES } from "../utils/constants.js";
+import {
+	DEFAULT_CODE_SEARCH_LIMIT,
+	DEFAULT_IGNORE_CASE,
+	DEFAULT_EXCLUDES,
+	MAX_CODE_SEARCH_LIMIT,
+	MAX_CODE_SEARCH_CONTEXT,
+} from "../utils/constants.js";
 import { getSearchCache, getCacheKey } from "../utils/cache.js";
 import { getSearchHistory, extractQuery } from "../utils/history.js";
+
+/**
+ * Clamp code_search input values to safe bounds.
+ * This prevents oversized responses that can bloat model context.
+ */
+function normalizeCodeSearchInput(input: CodeSearchInput): CodeSearchInput {
+	const limit = Math.max(
+		1,
+		Math.min(
+			MAX_CODE_SEARCH_LIMIT,
+			Math.floor(input.limit ?? DEFAULT_CODE_SEARCH_LIMIT)
+		)
+	);
+
+	const context = Math.max(
+		0,
+		Math.min(MAX_CODE_SEARCH_CONTEXT, Math.floor(input.context ?? 0))
+	);
+
+	return {
+		...input,
+		limit,
+		context,
+	};
+}
 
 // ============================================
 // Native Fallback Implementation
@@ -63,23 +94,24 @@ export async function nativeCodeSearch(
 	input: CodeSearchInput,
 	cwd: string
 ): Promise<CodeSearchOutput> {
+	const safeInput = normalizeCodeSearchInput(input);
 	const { readdir, readFile } = await import("node:fs/promises");
 	const { join, relative } = await import("node:path");
 
 	const results: CodeSearchMatch[] = [];
-	const limit = input.limit ?? DEFAULT_CODE_SEARCH_LIMIT;
-	const ignoreCase = input.ignoreCase ?? DEFAULT_IGNORE_CASE;
+	const limit = safeInput.limit ?? DEFAULT_CODE_SEARCH_LIMIT;
+	const ignoreCase = safeInput.ignoreCase ?? DEFAULT_IGNORE_CASE;
 	const summary = new Map<string, number>();
 
 	// Build regex pattern
 	let pattern: RegExp;
 	try {
 		const flags = ignoreCase ? "gi" : "g";
-		if (input.literal) {
-			const escaped = input.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		if (safeInput.literal) {
+			const escaped = safeInput.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 			pattern = new RegExp(escaped, flags);
 		} else {
-			pattern = new RegExp(input.pattern, flags);
+			pattern = new RegExp(safeInput.pattern, flags);
 		}
 	} catch (e) {
 		return createCodeSearchError(`Invalid pattern: ${e}`);
@@ -106,9 +138,9 @@ export async function nativeCodeSearch(
 					};
 
 					// Context lines
-					if (input.context && input.context > 0) {
-						const start = Math.max(0, i - input.context);
-						const end = Math.min(lines.length - 1, i + input.context);
+					if (safeInput.context && safeInput.context > 0) {
+						const start = Math.max(0, i - safeInput.context);
+						const end = Math.min(lines.length - 1, i + safeInput.context);
 						result.context = lines.slice(start, end + 1).map((l) => l.trimEnd());
 					}
 
@@ -146,8 +178,8 @@ export async function nativeCodeSearch(
 		try {
 			const entries = await readdir(dirPath, { withFileTypes: true });
 			// Combine DEFAULT_EXCLUDES with input.exclude
-			const excludePatterns = input.exclude
-				? [...(DEFAULT_EXCLUDES as readonly string[]), ...input.exclude] as readonly string[]
+			const excludePatterns = safeInput.exclude
+				? [...(DEFAULT_EXCLUDES as readonly string[]), ...safeInput.exclude] as readonly string[]
 				: DEFAULT_EXCLUDES;
 
 			for (const entry of entries) {
@@ -161,9 +193,9 @@ export async function nativeCodeSearch(
 
 				if (entry.isFile()) {
 					// Type filter
-					if (input.type) {
+					if (safeInput.type) {
 						const ext = entry.name.split(".").pop()?.toLowerCase();
-						if (ext !== input.type.toLowerCase()) continue;
+						if (ext !== safeInput.type.toLowerCase()) continue;
 					}
 
 					await searchFile(fullPath);
@@ -176,7 +208,7 @@ export async function nativeCodeSearch(
 		}
 	}
 
-	const searchPath = input.path ? join(cwd, input.path) : cwd;
+	const searchPath = safeInput.path ? join(cwd, safeInput.path) : cwd;
 	await scanDir(searchPath);
 
 	const truncated = truncateResults(results, limit);
@@ -199,8 +231,9 @@ async function useRgCommand(
 	input: CodeSearchInput,
 	cwd: string
 ): Promise<CodeSearchOutput> {
-	const args = buildRgArgs(input);
-	const limit = input.limit ?? DEFAULT_CODE_SEARCH_LIMIT;
+	const safeInput = normalizeCodeSearchInput(input);
+	const args = buildRgArgs(safeInput);
+	const limit = safeInput.limit ?? DEFAULT_CODE_SEARCH_LIMIT;
 
 	const result = await execute("rg", args, { cwd });
 
@@ -209,7 +242,7 @@ async function useRgCommand(
 		throw new Error(`rg command failed: ${result.stderr}`);
 	}
 
-	const { matches, summary } = parseRgOutput(result.stdout, input.context ?? 0);
+	const { matches, summary } = parseRgOutput(result.stdout, safeInput.context ?? 0);
 	const truncated = truncateResults(matches, limit);
 
 	return {
@@ -246,7 +279,9 @@ export async function codeSearch(
 	input: CodeSearchInput,
 	cwd: string
 ): Promise<CodeSearchOutput> {
-	if (!input.pattern || input.pattern.length === 0) {
+	const safeInput = normalizeCodeSearchInput(input);
+
+	if (!safeInput.pattern || safeInput.pattern.length === 0) {
 		throw parameterError("pattern", "Search pattern is required", "Provide a search pattern");
 	}
 
@@ -254,10 +289,10 @@ export async function codeSearch(
 	const history = getSearchHistory();
 	const TOOL_NAME = "code_search";
 	const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for code search
-	const params = input as unknown as Record<string, unknown>;
+	const params = safeInput as unknown as Record<string, unknown>;
 
 	// 1. Generate cache key
-	const cacheKey = getCacheKey(TOOL_NAME, { ...input, cwd });
+	const cacheKey = getCacheKey(TOOL_NAME, { ...safeInput, cwd });
 
 	// 2. Check cache
 	const cached = cache.getCached<CodeSearchOutput>(cacheKey);
@@ -278,9 +313,9 @@ export async function codeSearch(
 		const availability = await checkToolAvailability();
 
 		if (availability.rg) {
-			result = await useRgCommand({ ...input, cwd }, cwd);
+			result = await useRgCommand({ ...safeInput, cwd }, cwd);
 		} else {
-			result = await nativeCodeSearch(input, cwd);
+			result = await nativeCodeSearch(safeInput, cwd);
 		}
 	} catch (error) {
 		// Wrap error in SearchToolError if not already
@@ -294,7 +329,7 @@ export async function codeSearch(
 
 		// Fallback to native on error
 		try {
-			result = await nativeCodeSearch(input, cwd);
+			result = await nativeCodeSearch(safeInput, cwd);
 		} catch (nativeError) {
 			return createCodeSearchError(toolError.format());
 		}

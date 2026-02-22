@@ -93,6 +93,18 @@ export const DEFAULT_LIMIT = 100;
 export const DEFAULT_CODE_SEARCH_LIMIT = 50;
 
 /**
+ * Hard cap for code_search result limit.
+ * Prevents oversized tool responses that can exhaust model context.
+ */
+export const MAX_CODE_SEARCH_LIMIT = 80;
+
+/**
+ * Hard cap for context lines before/after each match in code_search.
+ * Keeps each match payload small even when users request large context.
+ */
+export const MAX_CODE_SEARCH_CONTEXT = 3;
+
+/**
  * Default result limit for symbol search operations.
  */
 export const DEFAULT_SYMBOL_LIMIT = 50;
