@@ -68,6 +68,10 @@ import {
   type IntegratedVerificationResult,
   generateActionsFromDetection,
   generateFilterStats,
+  // 思考分類学
+  analyzeThinkingMode,
+  runIntegratedThinkingAnalysis,
+  type ThinkingModeAnalysis,
 } from "../lib/verification-workflow.js";
 import {
   retryWithBackoff,
@@ -83,6 +87,20 @@ import {
   isRateLimitError as isAdaptiveRateLimitError,
   getCombinedRateControlSummary,
 } from "../lib/adaptive-rate-controller.js";
+
+// ============================================================================
+// 定数
+// ============================================================================
+
+/** 思考帽子の名称マッピング */
+const HAT_NAMES: Record<string, string> = {
+  white: '事実・情報',
+  red: '感情・直感',
+  black: '批判・リスク',
+  yellow: '利点・肯定的',
+  green: '創造・アイデア',
+  blue: 'メタ認知・プロセス'
+};
 
 // ============================================================================
 // 型定義
@@ -2447,6 +2465,47 @@ export default (api: ExtensionAPI) => {
       } catch (error) {
         // メタ認知チェックのエラーは無視（機能継続のため）
         console.warn(`[self-improvement-loop] Metacognitive check failed: ${toErrorMessage(error)}`);
+      }
+      
+      // 思考分類学に基づく分析を実行
+      try {
+        const thinkingAnalysis = runIntegratedThinkingAnalysis(outputText, {
+          task: run.task
+        });
+        
+        // 思考モード分析結果をログに記録
+        const { modeAnalysis, issues, recommendations, overallScore } = thinkingAnalysis;
+        
+        appendAutonomousLoopLog(run.logPath, `  thinking_mode:`);
+        appendAutonomousLoopLog(run.logPath, `    primary_hat: ${modeAnalysis.primaryHat} (${HAT_NAMES[modeAnalysis.primaryHat]})`);
+        appendAutonomousLoopLog(run.logPath, `    thinking_system: ${modeAnalysis.thinkingSystem}`);
+        appendAutonomousLoopLog(run.logPath, `    bloom_level: ${modeAnalysis.bloomLevel}`);
+        appendAutonomousLoopLog(run.logPath, `    scores: depth=${(modeAnalysis.depthScore * 100).toFixed(0)}%, diversity=${(modeAnalysis.diversityScore * 100).toFixed(0)}%, coherence=${(modeAnalysis.coherenceScore * 100).toFixed(0)}%`);
+        
+        if (issues.length > 0) {
+          appendAutonomousLoopLog(run.logPath, `    thinking_issues: ${issues.length}件`);
+          issues.forEach((issue, i) => {
+            appendAutonomousLoopLog(run.logPath, `      ${i + 1}. ${issue}`);
+          });
+        }
+        
+        // 思考の質が低い場合は改善アクションに追加
+        if (overallScore < 0.5 && recommendations.length > 0) {
+          run.lastImprovementActions = [
+            ...(run.lastImprovementActions || []),
+            ...recommendations.map((rec, i) => ({
+              category: 'taxonomy_of_thought' as const,
+              priority: 3 as const,
+              issue: `思考の質が不十分（${(overallScore * 100).toFixed(0)}%）`,
+              action: rec,
+              expectedOutcome: '思考の質と深さの向上',
+              relatedPerspective: '思考分類学'
+            }))
+          ];
+          appendAutonomousLoopLog(run.logPath, `    thinking_recommendations: ${recommendations.length}件追加`);
+        }
+      } catch (error) {
+        console.warn(`[self-improvement-loop] Thinking mode analysis failed: ${toErrorMessage(error)}`);
       }
     }
 
