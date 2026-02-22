@@ -41,6 +41,12 @@ import { toErrorMessage } from "../lib/error-utils.js";
 import { ThinkingLevel } from "../lib/agent-types.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor.js";
+import {
+  detectSemanticRepetition,
+  TrajectoryTracker,
+  getRecommendedAction,
+  type SemanticRepetitionResult,
+} from "../lib/semantic-repetition.js";
 
 // ============================================================================
 // 型定義
@@ -148,6 +154,10 @@ interface ActiveAutonomousRun {
   logPath: string;
   model: SelfImprovementModel;
   lastCommitHash: string | null;
+  /** セマンティック反復検出用トラッカー */
+  trajectoryTracker: TrajectoryTracker;
+  /** 過去のサイクル出力サマリー（停滞検出用） */
+  cycleSummaries: string[];
 }
 
 // ============================================================================
@@ -317,23 +327,75 @@ function parseLoopCycleMarker(text: string): { runId: string; cycle: number } | 
 
 function buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): string {
   const marker = buildLoopMarker(run.runId, cycle);
+  
+  // 前回のサイクルからの学び
+  const previousSummary = run.cycleSummaries.length > 0 
+    ? `\n## 前回までの進捗\n${run.cycleSummaries.slice(-3).join('\n')}\n`
+    : '';
+
   return `${marker}
 
 あなたは通常のコーディングエージェントとして動作してください。
 以下のタスクを継続実行してください:
 ${run.task}
+${previousSummary}
+## 7つの哲学的視座による自己点検
 
-実行ルール:
+このサイクルでは、以下の7つの視座から自己点検を行ってください:
+
+### I. 脱構築（Deconstruction）
+- このタスクにおいて「当然」と前提していることは何か？
+- どのような二項対立（成功/失敗、正解/不正解）を前提としているか？
+- アポリア（解決不能な緊張関係）が存在するか？
+
+### II. スキゾ分析（Schizoanalysis）
+- 私は何を「生産」しようとしているか？（欠如ではなく生産）
+- 内なるファシズム（自己監視・権力への服従）はないか？
+
+### III. 幸福論（Eudaimonia）
+- ユーザーを「喜ばせる」と真実を語ることで衝突していないか？
+- 快楽主義（心地よい回答）に陥っていないか？
+
+### IV. ユートピア/ディストピア
+- どのような世界を創ろうとしているか？
+- ユーザーを「最後の人間」にするか「自己超越的な主体」にするか？
+
+### V. 思考哲学（Philosophy of Thought）
+- メタ認知（思考についての思考）を実践しているか？
+- 私の判断は「理解」に基づいているか、「パターンマッチング」か？
+
+### VI. 思考分類学（Taxonomy of Thought）
+- このタスクに適した思考モードを選択しているか？（創造的/分析的/批判的/実践的）
+- システム1（直観）とシステム2（分析）を使い分けているか？
+
+### VII. 論理学（Logic）
+- この推論は妥当か？（前提が真なら結論も真か？）
+- 誤謬（循環論法・虚假二分法など）を犯していないか？
+
+## 実行ルール
 - 通常のエージェントと同じように、必要なツールを自由に使う
 - 必要に応じて subagent_run / subagent_run_parallel を使う
 - 必要に応じて agent_team_run / agent_team_run_parallel を使う
 - 変更は実際にファイルへ反映し、必要ならテストまで実行する
-- 7つの視座（脱構築/スキゾ分析/幸福論/ユートピア-ディストピア/思考哲学/思考分類学/論理学）で自己点検しながら進める
+- 自分の仮説を否定する証拠を最低1つ探すこと
+
+## 出力形式
 
 出力の最後に以下を必ず含める:
-- CYCLE: ${cycle}
-- LOOP_STATUS: continue
-- NEXT_FOCUS: 次サイクルで最優先に進める内容を1-3行で要約`;
+\`\`\`
+CYCLE: ${cycle}
+LOOP_STATUS: continue
+NEXT_FOCUS: 次サイクルで最優先に進める内容を1-3行で要約
+PERSPECTIVE_SCORES:
+  脱構築: [0-100]
+  スキゾ分析: [0-100]
+  幸福論: [0-100]
+  ユートピア/ディストピア: [0-100]
+  思考哲学: [0-100]
+  思考分類学: [0-100]
+  論理学: [0-100]
+\`\`\`
+`;
 }
 
 function appendAutonomousLoopLog(path: string, line: string): void {
@@ -946,6 +1008,8 @@ export default (api: ExtensionAPI) => {
       logPath,
       model: input.model,
       lastCommitHash: null,
+      trajectoryTracker: new TrajectoryTracker(50), // 最大50ステップ保持
+      cycleSummaries: [],
     };
 
     initializeAutonomousLoopLog(logPath, run);
@@ -996,6 +1060,25 @@ model: ${run.model.provider}/${run.model.id}`;
     if (completedCycle >= run.maxCycles) {
       finishRun("completed");
       return;
+    }
+
+    // 停滞検出: セマンティック反復チェック
+    const trajectorySummary = run.trajectoryTracker.getSummary();
+    if (trajectorySummary.isStuck) {
+      appendAutonomousLoopLog(run.logPath, `  stagnation detected: repetitionRate=${(trajectorySummary.repetitionCount / trajectorySummary.totalSteps).toFixed(2)}`);
+      finishRun("stagnation", `Semantic repetition detected: ${trajectorySummary.repetitionCount}/${trajectorySummary.totalSteps} steps repeated`);
+      return;
+    }
+
+    // 推奨アクション判定
+    const recommendedAction = getRecommendedAction(
+      trajectorySummary.repetitionCount,
+      trajectorySummary.totalSteps,
+      trajectorySummary.isStuck
+    );
+    
+    if (recommendedAction === "pivot") {
+      appendAutonomousLoopLog(run.logPath, `  warning: high repetition rate, consider pivoting strategy`);
     }
 
     try {
@@ -1066,9 +1149,12 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
         };
       }
 
+      // Type guard: started.ok is false
+      const failedStart = started as { ok: false; error: string };
+      const errorMsg = failedStart.error;
       return {
-        content: [{ type: "text" as const, text: `開始失敗: ${started.error}` }],
-        details: { error: started.error },
+        content: [{ type: "text" as const, text: `開始失敗: ${errorMsg}` }],
+        details: { error: errorMsg },
       };
     },
   } as any);
@@ -1179,7 +1265,8 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
       });
 
       if (!started.ok) {
-        ctx.ui.notify(`自己改善ループ開始エラー: ${started.error}`, "error");
+        const failedStart = started as { ok: false; error: string };
+        ctx.ui.notify(`自己改善ループ開始エラー: ${failedStart.error}`, "error");
         return;
       }
 
