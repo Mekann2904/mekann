@@ -66,6 +66,7 @@ import {
   isTimeoutErrorMessage,
   toErrorMessage,
 } from "../lib/error-utils.js";
+import { setupGlobalErrorHandlers } from "../lib/global-error-handler.js";
 import { createRunId, computeLiveWindow } from "../lib/agent-utils.js";
 import {
   ThinkingLevel,
@@ -492,6 +493,9 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
  * @returns {void}
  */
 export default function registerSubagentExtension(pi: ExtensionAPI) {
+  // グローバルエラーハンドラを設定（一度だけ）
+  setupGlobalErrorHandlers();
+
   function reportBackgroundJobFailure(jobId: string, errorMessage: string, ctx: any): void {
     const message = `[${jobId}] ${errorMessage}`;
     ctx.ui.notify(`Subagent background job failed: ${message}`, "error");

@@ -25,7 +25,7 @@ import {
   type TeamFinalJudge,
   type JudgeExplanation,
   type JudgeWeightConfig,
-} from '.pi/extensions/agent-teams/judge.ts';
+} from '.pi/extensions/agent-teams/judge.js';
 
 import { createTestMemberResult } from './mocks';
 

@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { CodeSearchInput } from "@ext/search/types.ts";
+import type { CodeSearchInput } from "@ext/search/types.js";
 
 // モック化の準備
 vi.mock("node:fs/promises", async () => {
@@ -38,11 +38,11 @@ vi.mock("@ext/search/utils/history.js", () => ({
 	extractQuery: vi.fn(() => ""),
 }));
 
-import { nativeCodeSearch } from "../../../../../.pi/extensions/search/tools/code_search.ts";
+import { nativeCodeSearch } from "../../../../../.pi/extensions/search/tools/code_search.js";
 import {
 	MAX_CODE_SEARCH_CONTEXT,
 	MAX_CODE_SEARCH_LIMIT,
-} from "../../../../../.pi/extensions/search/utils/constants.ts";
+} from "../../../../../.pi/extensions/search/utils/constants.js";
 import { readdir, readFile } from "node:fs/promises";
 
 describe("nativeCodeSearch", () => {

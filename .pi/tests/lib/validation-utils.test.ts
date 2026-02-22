@@ -17,7 +17,7 @@ import {
 	clampFloat,
 	type BoundedIntegerResult,
 	type BoundedFloatResult,
-} from "../../lib/validation-utils.ts";
+} from "../../lib/validation-utils.js";
 
 // ============================================================================
 // toFiniteNumber
@@ -289,7 +289,7 @@ describe("toBoundedInteger", () => {
 					fc.integer({ min: 0, max: 100 }),
 					(value) => {
 						const result = toBoundedInteger(value, 10, 0, 100, "field");
-						return result.ok === true && (result as { ok: true }).value === value;
+						return result.ok === true && (result as { ok: true; value: number }).value === value;
 					},
 				),
 				{ numRuns: 100 },
@@ -401,7 +401,7 @@ describe("toBoundedFloat", () => {
 			fc.assert(
 				fc.property(fc.float({ min: 0, max: 100, noNaN: true }), (value) => {
 					const result = toBoundedFloat(value, 10, 0, 100, "field");
-					return result.ok === true && (result as { ok: true }).value === value;
+					return result.ok === true && (result as { ok: true; value: number }).value === value;
 				}),
 				{ numRuns: 100 },
 			);

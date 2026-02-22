@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { FileCandidatesInput } from "@ext/search/types.ts";
+import type { FileCandidatesInput } from "@ext/search/types.js";
 
 // モック化の準備
 vi.mock("node:fs/promises", async () => {
@@ -38,7 +38,7 @@ vi.mock("@ext/search/utils/history.js", () => ({
 	extractQuery: vi.fn(() => ""),
 }));
 
-import { fileCandidates } from "@ext/search/tools/file_candidates.ts";
+import { fileCandidates } from "@ext/search/tools/file_candidates.js";
 import { readdir, stat } from "node:fs/promises";
 import { execute, checkToolAvailability } from "@ext/search/utils/cli.js";
 

@@ -29,7 +29,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeFileSync, readFileSync, existsSync, unlinkSync, rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { withFileLock, atomicWriteTextFile, getSyncSleepDiagnostics } from '../../.pi/lib/storage-lock.ts';
+import { withFileLock, atomicWriteTextFile, getSyncSleepDiagnostics } from '../../.pi/lib/storage-lock.js';
 
 // ============================================================================
 // テストユーティリティ

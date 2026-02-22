@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 
 // モジュールをインポート
-import * as utils from "../../../lib/embeddings/utils.ts";
+import * as utils from "../../../lib/embeddings/utils.js";
 
 // ============================================================================
 // コサイン類似度

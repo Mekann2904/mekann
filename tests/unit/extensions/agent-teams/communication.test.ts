@@ -32,7 +32,7 @@ import {
   type PrecomputedMemberContext,
   type PartnerReferenceResultV2,
   type TerminationCheckResult,
-} from '.pi/extensions/agent-teams/communication.ts';
+} from '.pi/extensions/agent-teams/communication.js';
 
 import { createTestMember, createTestMemberResult, createTestTeam } from './mocks';
 

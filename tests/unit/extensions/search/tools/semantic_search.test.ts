@@ -10,7 +10,7 @@ import { join } from "node:path";
 import type {
 	SemanticSearchInput,
 	CodeEmbedding,
-} from "@ext/search/types.ts";
+} from "@ext/search/types.js";
 
 // モック化
 vi.mock("node:fs");
@@ -27,7 +27,7 @@ vi.mock("@lib/embeddings/utils.js", () => ({
 	cosineSimilarity: vi.fn(),
 }));
 
-import { semanticSearch, formatSemanticSearch } from "@ext/search/tools/semantic_search.ts";
+import { semanticSearch, formatSemanticSearch } from "@ext/search/tools/semantic_search.js";
 import { generateEmbedding } from "@lib/embeddings/index.js";
 import { cosineSimilarity } from "@lib/embeddings/utils.js";
 

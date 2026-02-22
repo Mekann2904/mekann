@@ -10,7 +10,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 // モジュールをインポート
-import { ensureDir } from "../../lib/fs-utils.ts";
+import { ensureDir } from "../../lib/fs-utils.js";
 
 // ============================================================================
 // テスト用一時ディレクトリ

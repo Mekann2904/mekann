@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { SymFindInput, SymbolIndexEntry } from "@ext/search/types.ts";
+import type { SymFindInput, SymbolIndexEntry } from "@ext/search/types.js";
 
 // モック化
 vi.mock("@ext/search/tools/sym_index.js", async () => ({
@@ -28,7 +28,7 @@ vi.mock("@ext/search/utils/history.js", () => ({
 	extractQuery: vi.fn(() => ""),
 }));
 
-import { filterSymbols, sortSymbols, wildcardToRegex } from "../../../../../.pi/extensions/search/tools/sym_find.ts";
+import { filterSymbols, sortSymbols, wildcardToRegex } from "../../../../../.pi/extensions/search/tools/sym_find.js";
 import { symIndex, readSymbolIndex } from "../../../../../.pi/extensions/search/tools/sym_index.js";
 
 describe("sym_find", () => {
@@ -282,7 +282,7 @@ describe("sym_find", () => {
 
 			vi.mocked(readSymbolIndex).mockResolvedValue(mockEntries);
 
-			const { symFind } = await import("../../../../../.pi/extensions/search/tools/sym_find.ts");
+			const { symFind } = await import("../../../../../.pi/extensions/search/tools/sym_find.js");
 			const result = await symFind(input, "/test/cwd");
 
 			expect(result.results.length).toBeGreaterThan(0);
@@ -304,7 +304,7 @@ describe("sym_find", () => {
 				results: mockEntries,
 			});
 
-			const { symFind } = await import("../../../../../.pi/extensions/search/tools/sym_find.ts");
+			const { symFind } = await import("../../../../../.pi/extensions/search/tools/sym_find.js");
 			const result = await symFind(input, "/test/cwd");
 
 			expect(symIndex).toHaveBeenCalled();
@@ -318,7 +318,7 @@ describe("sym_find", () => {
 
 			vi.mocked(readSymbolIndex).mockResolvedValue(mockEntries);
 
-			const { symFind } = await import("../../../../../.pi/extensions/search/tools/sym_find.ts");
+			const { symFind } = await import("../../../../../.pi/extensions/search/tools/sym_find.js");
 			const result = await symFind(input, "/test/cwd");
 
 			expect(result.results.length).toBeLessThanOrEqual(2);
@@ -336,7 +336,7 @@ describe("sym_find", () => {
 				error: "Failed to generate index",
 			});
 
-			const { symFind } = await import("@ext/search/tools/sym_find.ts");
+			const { symFind } = await import("@ext/search/tools/sym_find.js");
 			const result = await symFind(input, "/test/cwd");
 
 			expect(result.error).toBeDefined();

@@ -17,7 +17,7 @@ import {
   mergeDefaultTeam,
   ensureDefaults,
   type ParsedTeamMarkdown,
-} from '.pi/extensions/agent-teams/definition-loader.ts';
+} from '.pi/extensions/agent-teams/definition-loader.js';
 
 import { createTestTeam, testIsoTime } from './mocks';
 
