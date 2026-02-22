@@ -2447,6 +2447,11 @@ export default (api: ExtensionAPI) => {
       }
 
       // メタ認知チェックを実行して推論深度を評価（次サイクルのフィードバック用）
+      // 【軽量化】スコアが高い場合は詳細な判定をスキップ
+      // プロンプトの事前ガイダンスで品質を担保するアプローチに移行
+      const currentScores = run.perspectiveScoreHistory[run.perspectiveScoreHistory.length - 1];
+      const shouldSkipDetailedCheck = currentScores && currentScores.average >= 75;
+      
       try {
         const metacognitiveCheck = runMetacognitiveCheck(outputText, {
           task: run.task,
@@ -2460,61 +2465,49 @@ export default (api: ExtensionAPI) => {
         
         appendAutonomousLoopLog(run.logPath, `  inference_depth: ${(depthScore * 100).toFixed(0)}%, fallacies=${metacognitiveCheck.logic.fallacies.length}, aporias=${metacognitiveCheck.deconstruction.aporias.length}`);
         
-        // 改善アクションを生成して保存（次サイクルで実践）
-        const improvementActions = generateImprovementActions(metacognitiveCheck);
-        run.lastImprovementActions = improvementActions;
-        
-        if (improvementActions.length > 0) {
-          appendAutonomousLoopLog(run.logPath, `  improvement_actions: ${improvementActions.length}件（優先度1: ${improvementActions.filter(a => a.priority === 1).length}件）`);
-        }
-        
-        // 新しい統合検出システムを実行（信頼度付き検出）
-        const integratedDetection = runIntegratedDetection(outputText, {
-          detectFallacies: true,
-          detectBinaryOppositions: true,
-          detectFascism: true,
-          minPatternConfidence: 0.2,
-          applyFilter: true // コンテキストフィルタを有効化
-        });
-        
-        // 統合検出結果を保存
-        run.lastIntegratedDetection = integratedDetection;
-        
-        // フィルタリング統計を計算してログに記録
-        const filterStats = generateFilterStats(
-          integratedDetection.candidates.length + (integratedDetection.summary.match(/(\d+)件除外/)?.[1] ? parseInt(integratedDetection.summary.match(/(\d+)件除外/)![1]) : 0),
-          integratedDetection.candidates
-        );
-        
-        // 信頼度別の検出結果をログに記録
-        const highConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence >= 0.5);
-        const mediumConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence >= 0.3 && c.patternConfidence < 0.5);
-        const lowConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence < 0.3);
-        
-        if (integratedDetection.candidates.length > 0) {
-          appendAutonomousLoopLog(run.logPath, `  integrated_detection: ${integratedDetection.candidates.length}件（高: ${highConfidenceCandidates.length}, 中: ${mediumConfidenceCandidates.length}, 低: ${lowConfidenceCandidates.length}）`);
-          appendAutonomousLoopLog(run.logPath, `    summary: ${integratedDetection.summary}`);
-          appendAutonomousLoopLog(run.logPath, `    avg_confidence: ${(filterStats.avgConfidence * 100).toFixed(0)}%`);
+        if (!shouldSkipDetailedCheck) {
+          // 改善アクションを生成して保存（次サイクルで実践）
+          const improvementActions = generateImprovementActions(metacognitiveCheck);
+          run.lastImprovementActions = improvementActions;
           
-          // 信頼度ベースの改善アクションを生成・追加
-          const confidenceBasedActions = generateActionsFromDetection(integratedDetection);
-          const highPriorityActions = confidenceBasedActions.filter(a => a.confidenceLevel === 'high');
-          
-          if (highPriorityActions.length > 0) {
-            // 高信頼度の検出を改善アクションに追加
-            run.lastImprovementActions = [
-              ...(run.lastImprovementActions || []),
-              ...highPriorityActions.map(a => ({
-                category: a.category,
-                priority: a.priority,
-                issue: a.issue,
-                action: a.action,
-                expectedOutcome: a.expectedOutcome,
-                relatedPerspective: a.relatedPerspective
-              }))
-            ];
-            appendAutonomousLoopLog(run.logPath, `    high_confidence_actions: ${highPriorityActions.length}件追加`);
+          if (improvementActions.length > 0) {
+            appendAutonomousLoopLog(run.logPath, `  improvement_actions: ${improvementActions.length}件（優先度1: ${improvementActions.filter(a => a.priority === 1).length}件）`);
           }
+          
+          // 新しい統合検出システムを実行（信頼度付き検出）
+          const integratedDetection = runIntegratedDetection(outputText, {
+            detectFallacies: true,
+            detectBinaryOppositions: true,
+            detectFascism: true,
+            minPatternConfidence: 0.3, // 閾値を上げて偽陽性を減らす
+            applyFilter: true
+          });
+          
+          run.lastIntegratedDetection = integratedDetection;
+          
+          const highConfidenceCandidates = integratedDetection.candidates.filter(c => c.patternConfidence >= 0.5);
+          
+          if (highConfidenceCandidates.length > 0) {
+            const confidenceBasedActions = generateActionsFromDetection(integratedDetection);
+            const highPriorityActions = confidenceBasedActions.filter(a => a.confidenceLevel === 'high');
+            
+            if (highPriorityActions.length > 0) {
+              run.lastImprovementActions = [
+                ...(run.lastImprovementActions || []),
+                ...highPriorityActions.map(a => ({
+                  category: a.category,
+                  priority: a.priority,
+                  issue: a.issue,
+                  action: a.action,
+                  expectedOutcome: a.expectedOutcome,
+                  relatedPerspective: a.relatedPerspective
+                }))
+              ];
+              appendAutonomousLoopLog(run.logPath, `    high_confidence_actions: ${highPriorityActions.length}件追加`);
+            }
+          }
+        } else {
+          appendAutonomousLoopLog(run.logPath, `  detailed_check_skipped: スコア良好のため軽量モード`);
         }
       } catch (error) {
         // メタ認知チェックのエラーは無視（機能継続のため）
@@ -2543,8 +2536,8 @@ export default (api: ExtensionAPI) => {
           });
         }
         
-        // 思考の質が低い場合は改善アクションに追加
-        if (overallScore < 0.5 && recommendations.length > 0) {
+        // 【軽量化】思考分類学の分析はログのみ（改善アクション生成は軽量モード時はスキップ）
+        if (!shouldSkipDetailedCheck && overallScore < 0.5 && recommendations.length > 0) {
           run.lastImprovementActions = [
             ...(run.lastImprovementActions || []),
             ...recommendations.map((rec, i) => ({
