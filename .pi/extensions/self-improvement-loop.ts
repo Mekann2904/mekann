@@ -160,6 +160,8 @@ interface ActiveAutonomousRun {
   trajectoryTracker: TrajectoryTracker;
   /** 過去のサイクル出力サマリー（停滞検出用） */
   cycleSummaries: string[];
+  /** 視座スコアの履歴 */
+  perspectiveScoreHistory: ParsedPerspectiveScores[];
 }
 
 // ============================================================================
@@ -327,6 +329,45 @@ function parseLoopCycleMarker(text: string): { runId: string; cycle: number } | 
   return { runId: match[1], cycle };
 }
 
+/** 視座スコア履歴と推奨アクションに基づいて戦略ヒントを生成 */
+function generateStrategyHint(
+  run: ActiveAutonomousRun,
+  recommendedAction: "continue" | "pivot" | "early_stop"
+): string | null {
+  const history = run.perspectiveScoreHistory;
+  if (history.length === 0) return null;
+
+  const latest = history[history.length - 1];
+  if (!latest) return null;
+
+  // 最もスコアが低い視座を特定
+  const scores: { name: string; score: number }[] = [
+    { name: "脱構築", score: latest.deconstruction },
+    { name: "スキゾ分析", score: latest.schizoanalysis },
+    { name: "幸福論", score: latest.eudaimonia },
+    { name: "ユートピア/ディストピア", score: latest.utopia_dystopia },
+    { name: "思考哲学", score: latest.thinking_philosophy },
+    { name: "思考分類学", score: latest.thinking_taxonomy },
+    { name: "論理学", score: latest.logic },
+  ];
+
+  scores.sort((a, b) => a.score - b.score);
+  const lowest = scores[0];
+  const secondLowest = scores[1];
+
+  let hint = "";
+
+  if (recommendedAction === "pivot") {
+    hint = `反復パターンを検知。アプローチを変更してください。「${lowest?.name ?? ''}」の視座（スコア: ${lowest?.score ?? 0}）を重点的に適用し、新しい視点から問題に取り組んでください。`;
+  } else if (lowest && lowest.score < 50) {
+    hint = `「${lowest.name}」の視座が弱い（スコア: ${lowest.score}）。この視座を強化し、${secondLowest ? `「${secondLowest.name}」（スコア: ${secondLowest.score}）と組み合わせて` : ''}深い分析を行ってください。`;
+  } else if (latest.average < 60) {
+    hint = `全体的な視座スコアが低い（平均: ${latest.average}）。7つの視座をバランスよく適用し、包括的な自己分析を行ってください。`;
+  }
+
+  return hint || null;
+}
+
 function buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): string {
   const marker = buildLoopMarker(run.runId, cycle);
   
@@ -335,12 +376,30 @@ function buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): st
     ? `\n## 前回までの進捗\n${run.cycleSummaries.slice(-3).join('\n')}\n`
     : '';
 
+  // 視座スコア履歴から戦略ヒントを生成
+  let strategySection = '';
+  if (run.perspectiveScoreHistory.length > 0) {
+    const latest = run.perspectiveScoreHistory[run.perspectiveScoreHistory.length - 1];
+    if (latest) {
+      const trajectorySummary = run.trajectoryTracker.getSummary();
+      const recommendedAction = getRecommendedAction(
+        trajectorySummary.repetitionCount,
+        trajectorySummary.totalSteps,
+        trajectorySummary.isStuck
+      );
+      const hint = generateStrategyHint(run, recommendedAction);
+      if (hint) {
+        strategySection = `\n## 戦略的指示\n${hint}\n`;
+      }
+    }
+  }
+
   return `${marker}
 
 あなたは通常のコーディングエージェントとして動作してください。
 以下のタスクを継続実行してください:
 ${run.task}
-${previousSummary}
+${previousSummary}${strategySection}
 ## 7つの哲学的視座による自己点検
 
 このサイクルでは、以下の7つの視座から自己点検を行ってください:
@@ -398,6 +457,82 @@ PERSPECTIVE_SCORES:
   論理学: [0-100]
 \`\`\`
 `;
+}
+
+/** 視座スコアのパース結果 */
+interface ParsedPerspectiveScores {
+  deconstruction: number;
+  schizoanalysis: number;
+  eudaimonia: number;
+  utopia_dystopia: number;
+  thinking_philosophy: number;
+  thinking_taxonomy: number;
+  logic: number;
+  average: number;
+}
+
+/** LLM出力から視座スコアをパースする */
+function parsePerspectiveScores(output: string): ParsedPerspectiveScores | null {
+  const defaults: ParsedPerspectiveScores = {
+    deconstruction: 50,
+    schizoanalysis: 50,
+    eudaimonia: 50,
+    utopia_dystopia: 50,
+    thinking_philosophy: 50,
+    thinking_taxonomy: 50,
+    logic: 50,
+    average: 50,
+  };
+
+  // PERSPECTIVE_SCORESセクションを探す
+  const scoresMatch = output.match(/PERSPECTIVE_SCORES:\s*([\s\S]*?)(?=\n```|\n## |$)/i);
+  if (!scoresMatch) return null;
+
+  const scoresText = scoresMatch[1];
+  if (!scoresText) return null;
+
+  const scores = { ...defaults };
+  
+  // 各視座のスコアを抽出
+  const patterns: { key: keyof Omit<ParsedPerspectiveScores, 'average'>; patterns: string[] }[] = [
+    { key: 'deconstruction', patterns: ['脱構築', 'deconstruction'] },
+    { key: 'schizoanalysis', patterns: ['スキゾ分析', 'schizoanalysis'] },
+    { key: 'eudaimonia', patterns: ['幸福論', 'eudaimonia'] },
+    { key: 'utopia_dystopia', patterns: ['ユートピア/ディストピア', 'utopia', 'dystopia'] },
+    { key: 'thinking_philosophy', patterns: ['思考哲学', 'philosophy'] },
+    { key: 'thinking_taxonomy', patterns: ['思考分類学', 'taxonomy'] },
+    { key: 'logic', patterns: ['論理学', 'logic'] },
+  ];
+
+  for (const { key, patterns: pats } of patterns) {
+    for (const pat of pats) {
+      const regex = new RegExp(`${pat}[:\\s]+(\\d{1,3})`, 'i');
+      const match = scoresText.match(regex);
+      if (match) {
+        const val = Math.min(100, Math.max(0, parseInt(match[1], 10)));
+        scores[key] = val;
+        break;
+      }
+    }
+  }
+
+  // 平均を計算
+  const values = Object.values(scores).filter(v => typeof v === 'number') as number[];
+  scores.average = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+
+  return scores;
+}
+
+/** LLM出力からNEXT_FOCUSを抽出する */
+function parseNextFocus(output: string): string | null {
+  const match = output.match(/NEXT_FOCUS[:\s]+([\s\S]+?)(?=\n```|\n[A-Z_]+:|$)/i);
+  return match ? match[1]?.trim() ?? null : null;
+}
+
+/** LLM出力からLOOP_STATUSを抽出する */
+function parseLoopStatus(output: string): "continue" | "done" | null {
+  const match = output.match(/LOOP_STATUS[:\s]+(continue|done)/i);
+  return match ? (match[1]?.toLowerCase() as "continue" | "done") : null;
 }
 
 function appendAutonomousLoopLog(path: string, line: string): void {
@@ -1024,6 +1159,7 @@ export default (api: ExtensionAPI) => {
       lastCommitHash: null,
       trajectoryTracker: new TrajectoryTracker(50), // 最大50ステップ保持
       cycleSummaries: [],
+      perspectiveScoreHistory: [],
     };
 
     initializeAutonomousLoopLog(logPath, run);
@@ -1102,7 +1238,13 @@ model: ${run.model.provider}/${run.model.id}`;
     );
     
     if (recommendedAction === "pivot") {
-      appendAutonomousLoopLog(run.logPath, `  warning: high repetition rate, consider pivoting strategy`);
+      appendAutonomousLoopLog(run.logPath, `  warning: high repetition rate, pivoting strategy recommended`);
+    }
+
+    // 視座スコア履歴に基づく戦略調整
+    const strategyHint = generateStrategyHint(run, recommendedAction);
+    if (strategyHint) {
+      appendAutonomousLoopLog(run.logPath, `  strategy: ${strategyHint.slice(0, 100)}...`);
     }
 
     try {
