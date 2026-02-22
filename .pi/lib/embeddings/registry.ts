@@ -47,7 +47,7 @@ const CONFIG_FILE_PATH = join(homedir(), ".pi", "agent", "embedding-config.json"
 const DEFAULT_CONFIG: EmbeddingModuleConfig = {
   version: 1,
   defaultProvider: null,
-  fallbackOrder: ["openai", "local", "mock"],
+  fallbackOrder: ["openai", "local"],
 };
 
 // ============================================================================

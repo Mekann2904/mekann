@@ -52,6 +52,10 @@ import {
 } from "../../lib/output-validation.js";
 import { SchemaValidationError, ExecutionError } from "../../lib/errors.js";
 import {
+  findRelevantPatterns,
+  type ExtractedPattern,
+} from "../../lib/pattern-extraction.js";
+import {
   isPlanModeActive,
   PLAN_MODE_WARNING,
 } from "../../lib/plan-mode-shared";
@@ -362,6 +366,7 @@ export function buildTeamMemberPrompt(input: {
   sharedContext?: string;
   phase?: "initial" | "communication";
   communicationContext?: string;
+  relevantPatterns?: ExtractedPattern[];
 }): string {
   const lines: string[] = [];
 
@@ -397,6 +402,37 @@ export function buildTeamMemberPrompt(input: {
     lines.push("");
     lines.push("連携コンテキスト:");
     lines.push(input.communicationContext.trim());
+  }
+
+  // Add relevant patterns from past executions as dialogue partners (not constraints)
+  // This promotes deterritorialization (creative reconfiguration) rather than stagnation
+  if (input.relevantPatterns && input.relevantPatterns.length > 0) {
+    lines.push("");
+    lines.push("過去の実行パターン（対話相手、制約ではない）:");
+    const successPatterns = input.relevantPatterns.filter(p => p.patternType === "success");
+    const failurePatterns = input.relevantPatterns.filter(p => p.patternType === "failure");
+    const approachPatterns = input.relevantPatterns.filter(p => p.patternType === "approach");
+
+    if (successPatterns.length > 0) {
+      lines.push("以前に成功したアプローチ:");
+      for (const p of successPatterns.slice(0, 2)) {
+        lines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 80)}`);
+      }
+    }
+    if (failurePatterns.length > 0) {
+      lines.push("以前に課題があったアプローチ:");
+      for (const p of failurePatterns.slice(0, 2)) {
+        lines.push(`- ${p.description.slice(0, 70)}`);
+      }
+    }
+    if (approachPatterns.length > 0) {
+      lines.push("関連するアプローチ:");
+      for (const p of approachPatterns.slice(0, 2)) {
+        lines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 70)}`);
+      }
+    }
+    lines.push("");
+    lines.push("考慮事項: これらのパターンは今回のタスクに適用できるか？できない場合、なぜ？新しいアプローチが必要か？");
   }
 
   // Inject plan mode warning if active
@@ -534,6 +570,14 @@ export async function runMember(input: {
   onTextDelta?: (member: TeamMember, delta: string) => void;
   onStderrChunk?: (member: TeamMember, chunk: string) => void;
 }): Promise<TeamMemberResult> {
+  // Load relevant patterns from past executions for memory-guided execution
+  let relevantPatterns: ExtractedPattern[] = [];
+  try {
+    relevantPatterns = findRelevantPatterns(input.cwd, input.task, 5);
+  } catch {
+    // Pattern loading failure should not block execution
+  }
+
   const prompt = buildTeamMemberPrompt({
     team: input.team,
     member: input.member,
@@ -541,6 +585,8 @@ export async function runMember(input: {
     sharedContext: input.sharedContext,
     phase: input.phase,
     communicationContext: input.communicationContext,
+    relevantPatterns,
+
   });
   const resolvedProvider = input.member.provider ?? input.fallbackProvider ?? "(session-default)";
   const resolvedModel = input.member.model ?? input.fallbackModel ?? "(session-default)";

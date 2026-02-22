@@ -198,7 +198,10 @@ function createMetaCognitiveAporia(): Aporia {
         whyFalse: '無意識的に監視構造を再生産し続ける'
       }
     ],
-    tensionToHold: '評価の有用性を活用しつつ、その有害性を常に意識し続ける。解決を求めず、緊張関係を生きる。',
+    // [アポリア内のアポリア] 「常に意識し続ける」という態度は、「監視」と「気づき」の境界にある。
+    // 義務として解釈されれば監視的、態度として解釈されれば気づき促進的。
+    // この緊張関係自体を認識し、解決を求めない。
+    tensionToHold: '評価の有用性を活用しつつ、その有害性への気づきを保つ。解決を求めず、緊張関係を生きる。',
     recognizedAt: new Date().toISOString(),
     state: 'recognized'
   };

@@ -54,6 +54,10 @@ import {
   validateSubagentOutput,
 } from "../../lib/output-validation.js";
 import {
+  findRelevantPatterns,
+  type ExtractedPattern,
+} from "../../lib/pattern-extraction.js";
+import {
   type SchemaViolation,
   type RegenerationConfig,
   SCHEMAS,
@@ -457,6 +461,7 @@ export function buildSubagentPrompt(input: {
   enforcePlanMode?: boolean;
   parentSkills?: string[];
   profileId?: string;
+  relevantPatterns?: ExtractedPattern[];
 }): string {
   // タスクに基づいてプロファイルを自動選択
   const profile = input.profileId 
@@ -488,6 +493,37 @@ export function buildSubagentPrompt(input: {
     lines.push("");
     lines.push("Extra context:");
     lines.push(input.extraContext.trim());
+  }
+
+  // Add relevant patterns from past executions as dialogue partners (not constraints)
+  // This promotes deterritorialization (creative reconfiguration) rather than stagnation
+  if (input.relevantPatterns && input.relevantPatterns.length > 0) {
+    lines.push("");
+    lines.push("Patterns from past executions (dialogue partners, not constraints):");
+    const successPatterns = input.relevantPatterns.filter(p => p.patternType === "success");
+    const failurePatterns = input.relevantPatterns.filter(p => p.patternType === "failure");
+    const approachPatterns = input.relevantPatterns.filter(p => p.patternType === "approach");
+
+    if (successPatterns.length > 0) {
+      lines.push("Previously successful:");
+      for (const p of successPatterns.slice(0, 2)) {
+        lines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 80)}`);
+      }
+    }
+    if (failurePatterns.length > 0) {
+      lines.push("Previously challenging:");
+      for (const p of failurePatterns.slice(0, 2)) {
+        lines.push(`- ${p.description.slice(0, 70)}`);
+      }
+    }
+    if (approachPatterns.length > 0) {
+      lines.push("Relevant approaches:");
+      for (const p of approachPatterns.slice(0, 2)) {
+        lines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 70)}`);
+      }
+    }
+    lines.push("");
+    lines.push("Consider: Do these patterns apply to THIS task? If not, why? What NEW approach might be needed?");
   }
 
   // Subagent plan mode enforcement
@@ -575,12 +611,21 @@ export async function runSubagentTask(input: {
   // Check if plan mode is active (via environment variable set by plan.ts)
   const planModeActive = isPlanModeActive();
 
+  // Load relevant patterns from past executions for memory-guided execution
+  let relevantPatterns: ExtractedPattern[] = [];
+  try {
+    relevantPatterns = findRelevantPatterns(input.cwd, input.task, 5);
+  } catch {
+    // Pattern loading failure should not block execution
+  }
+
   const prompt = buildSubagentPrompt({
     agent: input.agent,
     task: input.task,
     extraContext: input.extraContext,
     enforcePlanMode: planModeActive,
     parentSkills: input.parentSkills,
+    relevantPatterns,
   });
   const resolvedProvider = input.agent.provider ?? input.modelProvider ?? "(session-default)";
   const resolvedModel = input.agent.model ?? input.modelId ?? "(session-default)";

@@ -74,6 +74,29 @@ describe("inquiry-prompt-builder", () => {
 			// アポリアの認識が条件に含まれている
 			expect(prompt).toContain("アポリア");
 		});
+
+		it("規範の自覚を促す内容が含まれる", () => {
+			const prompt = buildInquiryPrompt({
+				taskDescription: "テスト",
+			});
+
+			// 「このモード自体の規範性」について言及している
+			expect(prompt).toContain("規範");
+			// 「脱出の許可」について言及している
+			expect(prompt).toContain("やめる");
+			// 「メタ問い」について言及している
+			expect(prompt).toContain("なぜ私は");
+		});
+
+		it("停止条件が含まれる", () => {
+			const prompt = buildInquiryPrompt({
+				taskDescription: "テスト",
+			});
+
+			expect(prompt).toContain("停止条件");
+			expect(prompt).toContain("限界的効用");
+			expect(prompt).toContain("強迫");
+		});
 	});
 
 	describe("buildAporiaPrompt", () => {

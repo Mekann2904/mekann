@@ -88,24 +88,33 @@ function tokenize(text: string): string[] {
   // Lowercase and extract words/characters
   const normalized = text.toLowerCase();
   
-  // Split by whitespace and punctuation
+  // Split by whitespace and punctuation (ASCII only for compatibility)
   const tokens = normalized
-    .split(/[\s\p{P}\p{S}]+/u)
+    .split(/[\s.,!?;:'"()\[\]{}<>@#$%^&*+=|\\/_~`-]+/)
     .filter(t => t.length > 0 && !STOP_WORDS.has(t));
   
   // For Japanese: also include character n-grams
   const ngrams: string[] = [];
   for (let i = 0; i < normalized.length; i++) {
     const char = normalized[i];
-    // Include CJK characters as individual tokens
-    if (/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(char)) {
+    // Include CJK characters as individual tokens (check code point ranges)
+    const codePoint = char.charCodeAt(0);
+    const isHiragana = codePoint >= 0x3040 && codePoint <= 0x309F;
+    const isKatakana = codePoint >= 0x30A0 && codePoint <= 0x30FF;
+    const isKanji = codePoint >= 0x4E00 && codePoint <= 0x9FAF;
+    
+    if (isHiragana || isKatakana || isKanji) {
       if (!STOP_WORDS.has(char)) {
         ngrams.push(char);
       }
       // Add bigrams for Japanese
       if (i < normalized.length - 1) {
         const bigram = normalized.slice(i, i + 2);
-        if (/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(bigram)) {
+        const cp2 = bigram.charCodeAt(1);
+        const isHiragana2 = cp2 >= 0x3040 && cp2 <= 0x309F;
+        const isKatakana2 = cp2 >= 0x30A0 && cp2 <= 0x30FF;
+        const isKanji2 = cp2 >= 0x4E00 && cp2 <= 0x9FAF;
+        if (isHiragana2 || isKatakana2 || isKanji2) {
           ngrams.push(bigram);
         }
       }
@@ -230,7 +239,8 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     for (const text of texts) {
       const tokens = tokenize(text);
       const uniqueTerms = new Set(tokens);
-      for (const term of uniqueTerms) {
+      // Use Array.from for ES5 compatibility
+      for (const term of Array.from(uniqueTerms)) {
         this.documentFrequency[term] = (this.documentFrequency[term] || 0) + 1;
       }
       this.documentCount++;
