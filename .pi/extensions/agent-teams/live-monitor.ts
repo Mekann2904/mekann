@@ -975,6 +975,15 @@ export function createAgentTeamLiveMonitor(
   };
 
   /**
+   * 動的更新が必要な状態かを判定する。
+   * - 実行中メンバーがいる
+   * - キュー待機中で待機表示を更新したい
+   */
+  const hasDynamicState = (): boolean => {
+    return hasRunningItems() || Boolean(queueStatus?.isWaiting);
+  };
+
+  /**
    * 定期ポーリングを開始（ストリーミングがない期間もUIを更新）
    */
   const startPolling = () => {
@@ -984,11 +993,11 @@ export function createAgentTeamLiveMonitor(
         clearPollTimer();
         return;
       }
-      // 実行中のアイテムがある場合のみ更新
-      if (hasRunningItems()) {
+      // 動的状態（実行中 / 待機中）の場合のみ更新
+      if (hasDynamicState()) {
         queueRender();
       } else {
-        // すべて完了したらポーリング停止
+        // 動的状態がなくなったらポーリング停止
         clearPollTimer();
       }
     }, LIVE_POLL_INTERVAL_MS);
@@ -1166,6 +1175,10 @@ export function createAgentTeamLiveMonitor(
       const item = byKey.get(itemKey);
       if (!item || closed) return;
       item.status = "running";
+      // 再実行時に古い完了状態が残ると経過時間が停止して見えるため初期化する
+      item.finishedAtMs = undefined;
+      item.summary = undefined;
+      item.error = undefined;
       if (item.phase === "queued") {
         item.phase = "initial";
       }
@@ -1180,6 +1193,14 @@ export function createAgentTeamLiveMonitor(
       if (!item || closed) return;
       item.phase = phase;
       item.phaseRound = round;
+      if (phase === "queued") {
+        // 次フェーズ待機時は再開待ち状態として表示をリセットする
+        item.status = "pending";
+        item.startedAtMs = undefined;
+        item.finishedAtMs = undefined;
+        item.summary = undefined;
+        item.error = undefined;
+      }
       pushLiveEvent(item, `phase=${formatLivePhase(phase, round)}`);
       queueRender();
     },
@@ -1247,6 +1268,11 @@ export function createAgentTeamLiveMonitor(
     }) => {
       if (closed) return;
       queueStatus = status;
+      if (status.isWaiting) {
+        startPolling();
+      } else if (!hasRunningItems()) {
+        clearPollTimer();
+      }
       queueRender();
     },
     close,
