@@ -660,7 +660,9 @@ export function detectOverconfidence(output: string): { detected: boolean; reaso
   
   const specificityScore = (hasFileReference ? 1 : 0) + (hasLineNumber ? 1 : 0) + (hasCodeReference ? 1 : 0);
   
-  if (confidence > 0.9 && specificityScore < 2) {
+  // 短い証拠で具体性が乏しい場合のみ、追加の過信判定を行う
+  // 100文字ちょうどは境界値として許容し、過剰検知を抑える
+  if (confidence > 0.9 && evidenceLength < 100 && specificityScore < 2) {
     return { detected: true, reason: `Overconfidence detected: high confidence (${confidence}) with low evidence specificity (score: ${specificityScore}/3)` };
   }
   
@@ -674,6 +676,7 @@ export function detectMissingAlternatives(output: string): { detected: boolean; 
   const hasConclusion = /CONCLUSION:|結論|RESULT:|最終的|したがって/i.test(output);
   const confidenceMatch = output.match(/CONFIDENCE:\s*([0-9.]+)/i);
   const confidence = confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5;
+  const hasDiscussion = /DISCUSSION:|議論|考察/i.test(output);
   
   // 代替解釈の兆候を探す
   const hasAlternatives = /ALTERNATIVE:|代替|別の解釈|他の可能性|一方で|あるいは|または|could also|alternatively|another possibility|other explanation/i.test(output);
@@ -681,12 +684,9 @@ export function detectMissingAlternatives(output: string): { detected: boolean; 
   const hasLimitations = /LIMITATION:|制限|限界|注意点| caveat|limitation|constraint|boundary/i.test(output);
   
   // 結論があり、高信頼度だが、代替解釈、反証、制限の記述がない場合
-  if (hasConclusion && !hasAlternatives && !hasCounterEvidence && !hasLimitations && confidence > 0.8) {
+  if (hasConclusion && !hasAlternatives && !hasCounterEvidence && !hasLimitations && !hasDiscussion && confidence > 0.8) {
     return { detected: true, reason: "Missing alternative interpretations for high-confidence conclusion" };
   }
-  
-  // DISCUSSIONセクションがあるかどうか
-  const hasDiscussion = /DISCUSSION:|議論|考察/i.test(output);
   
   if (hasConclusion && !hasDiscussion && confidence > 0.85) {
     return { detected: true, reason: "Missing DISCUSSION section with alternative perspectives" };
