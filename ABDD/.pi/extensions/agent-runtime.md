@@ -2,7 +2,7 @@
 title: agent-runtime
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -17,11 +17,11 @@ related: []
 
 ```typescript
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from 'node:crypto': randomBytes
 // from '../lib/adaptive-rate-controller': getEffectiveLimit, getSchedulerAwareLimit
 // from '../lib/cross-instance-coordinator': getMyParallelLimit, isCoordinatorInitialized, getModelParallelLimit, ...
-// from '../lib/cross-instance-coordinator': broadcastQueueState, getWorkStealingSummary
-// from '../lib/dynamic-parallelism': getParallelismAdjuster, getDynamicParallelism
-// ... and 5 more imports
+// from '../lib/cross-instance-coordinator': crossInstanceCoordinator
+// ... and 11 more imports
 ```
 
 ## エクスポート一覧
@@ -30,7 +30,9 @@ related: []
 |------|------|------|
 | 関数 | `setRuntimeStateProvider` | ランタイムステータスラインの表示オプション |
 | 関数 | `getRuntimeStateProvider` | プロバイダを設定 |
+| 関数 | `setRuntimeNowProvider` | - |
 | 関数 | `notifyRuntimeCapacityChanged` | 容量変更通知 |
+| 関数 | `stopRuntimeReservationSweeper` | - |
 | 関数 | `getSharedRuntimeState` | 共有ランタイム状態取得 |
 | 関数 | `getRuntimeSnapshot` | ランタイムスナップショット取得 |
 | 関数 | `formatRuntimeStatusLine` | ステータス行を生成 |
@@ -39,6 +41,7 @@ related: []
 | 関数 | `reserveRuntimeCapacity` | ランタイム容量を予約する |
 | 関数 | `waitForRuntimeCapacity` | ランタイム容量が利用可能になるまで待機する |
 | 関数 | `waitForRuntimeOrchestrationTurn` | ランタイムのオーケストレーション実行を待機する |
+| 関数 | `acquireRuntimeDispatchPermit` | Acquire queue turn and capacity reservation atomic |
 | 関数 | `resetRuntimeTransientState` | 一時状態をリセット |
 | 関数 | `getModelAwareParallelLimit` | 並列制限数を取得 |
 | 関数 | `shouldAllowParallelForModel` | 並列実行許可判定 |
@@ -55,20 +58,6 @@ related: []
 | 関数 | `getComprehensiveRuntimeStatus` | ランタイム包括ステータス取得 |
 | 関数 | `formatComprehensiveRuntimeStatus` | ランタイム状態を整形 |
 | 関数 | `registerAgentRuntimeExtension` | エージェントランタイム拡張を登録する |
-| インターフェース | `AgentRuntimeLimits` | エージェント実行制限値 |
-| インターフェース | `RuntimeStateProvider` | ランタイム状態を提供 |
-| インターフェース | `AgentRuntimeSnapshot` | プロバイダを取得 |
-| インターフェース | `RuntimeStatusLineOptions` | - |
-| インターフェース | `RuntimeCapacityCheckInput` | - |
-| インターフェース | `RuntimeCapacityCheck` | - |
-| インターフェース | `RuntimeCapacityWaitInput` | - |
-| インターフェース | `RuntimeCapacityWaitResult` | - |
-| インターフェース | `RuntimeCapacityReservationLease` | キャパシティ予約リース |
-| インターフェース | `RuntimeCapacityReserveInput` | キャパシティ予約入力 |
-| インターフェース | `RuntimeCapacityReserveResult` | キャパシティ予約結果 |
-| インターフェース | `RuntimeOrchestrationWaitInput` | オーケストレーションの待機入力 |
-| インターフェース | `RuntimeOrchestrationLease` | オーケストレーションのリース情報 |
-| インターフェース | `RuntimeOrchestrationWaitResult` | オーケストレーション待機結果 |
 
 ## 図解
 
@@ -78,123 +67,9 @@ related: []
 classDiagram
   class GlobalRuntimeStateProvider {
     -globalScope: GlobalScopeWithRunti
+    -initializationInProgress: any
     +getState()
     +resetState()
-  }
-  class AgentRuntimeLimits {
-    <<interface>>
-    +maxTotalActiveLlm: number
-    +maxTotalActiveRequests: number
-    +maxParallelSubagentsPerRun: number
-    +maxParallelTeamsPerRun: number
-    +maxParallelTeammatesPerTeam: number
-  }
-  class RuntimeQueueEntry {
-    <<interface>>
-  }
-  class RuntimeCapacityReservationRecord {
-    <<interface>>
-    +id: string
-    +toolName: string
-    +additionalRequests: number
-    +additionalLlm: number
-    +createdAtMs: number
-  }
-  class AgentRuntimeState {
-    <<interface>>
-    +subagents: activeRunRequests_n
-    +teams: activeTeamRuns_numb
-    +queue: activeOrchestration
-    +reservations: active_RuntimeCapac
-    +limits: AgentRuntimeLimits
-  }
-  class RuntimeStateProvider {
-    <<interface>>
-  }
-  class AgentRuntimeSnapshot {
-    <<interface>>
-    +subagentActiveRequests: number
-    +subagentActiveAgents: number
-    +teamActiveRuns: number
-    +teamActiveAgents: number
-    +reservedRequests: number
-  }
-  class RuntimeStatusLineOptions {
-    <<interface>>
-    +title: string
-    +storedRuns: number
-    +adaptivePenalty: number
-    +adaptivePenaltyMax: number
-  }
-  class RuntimeCapacityCheckInput {
-    <<interface>>
-    +additionalRequests: number
-    +additionalLlm: number
-  }
-  class RuntimeCapacityCheck {
-    <<interface>>
-    +allowed: boolean
-    +reasons: string
-    +projectedRequests: number
-    +projectedLlm: number
-    +snapshot: AgentRuntimeSnapshot
-  }
-  class RuntimeCapacityWaitInput {
-    <<interface>>
-    +maxWaitMs: number
-    +pollIntervalMs: number
-    +signal: AbortSignal
-  }
-  class RuntimeCapacityWaitResult {
-    <<interface>>
-    +waitedMs: number
-    +attempts: number
-    +timedOut: boolean
-  }
-  class RuntimeCapacityReservationLease {
-    <<interface>>
-    +id: string
-    +toolName: string
-    +additionalRequests: number
-    +additionalLlm: number
-    +expiresAtMs: number
-  }
-  class RuntimeCapacityReserveInput {
-    <<interface>>
-    +toolName: string
-    +maxWaitMs: number
-    +pollIntervalMs: number
-    +reservationTtlMs: number
-    +signal: AbortSignal
-  }
-  class RuntimeCapacityReserveResult {
-    <<interface>>
-    +waitedMs: number
-    +attempts: number
-    +timedOut: boolean
-    +aborted: boolean
-    +reservation: RuntimeCapacityReser
-  }
-  class RuntimeOrchestrationWaitInput {
-    <<interface>>
-    +toolName: string
-    +priority: TaskPriority
-    +estimatedDurationMs: number
-    +estimatedRounds: number
-    +deadlineMs: number
-  }
-  class RuntimeOrchestrationLease {
-    <<interface>>
-    +id: string
-    +release: void
-  }
-  class RuntimeOrchestrationWaitResult {
-    <<interface>>
-    +allowed: boolean
-    +waitedMs: number
-    +attempts: number
-    +timedOut: boolean
-    +aborted: boolean
   }
 ```
 
@@ -209,8 +84,8 @@ flowchart LR
     adaptive_rate_controller["adaptive-rate-controller"]
     cross_instance_coordinator["cross-instance-coordinator"]
     cross_instance_coordinator["cross-instance-coordinator"]
+    cross_instance_coordinator["cross-instance-coordinator"]
     dynamic_parallelism["dynamic-parallelism"]
-    priority_scheduler["priority-scheduler"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -228,36 +103,39 @@ flowchart TD
   computeBackoffDelay["computeBackoffDelay()"]
   createCapacityCheck["createCapacityCheck()"]
   createReservationLease["createReservationLease()"]
-  createRuntimeQueueEntryId["createRuntimeQueueEntryId()"]
   createRuntimeReservationId["createRuntimeReservationId()"]
   formatRuntimeStatusLine["formatRuntimeStatusLine()"]
+  getClusterUsageSafe["getClusterUsageSafe()"]
+  getLocalRuntimeUsage["getLocalRuntimeUsage()"]
   getRuntimeSnapshot["getRuntimeSnapshot()"]
   getRuntimeStateProvider["getRuntimeStateProvider()"]
   getSharedRuntimeState["getSharedRuntimeState()"]
   normalizePositiveInt["normalizePositiveInt()"]
   normalizeReservationTtlMs["normalizeReservationTtlMs()"]
   notifyRuntimeCapacityChanged["notifyRuntimeCapacityChanged()"]
+  publishRuntimeUsageToCoordinator["publishRuntimeUsageToCoordinator()"]
   reserveRuntimeCapacity["reserveRuntimeCapacity()"]
+  runtimeNow["runtimeNow()"]
   sanitizePlannedCount["sanitizePlannedCount()"]
-  schedulerBasedWait["schedulerBasedWait()"]
+  setRuntimeNowProvider["setRuntimeNowProvider()"]
   setRuntimeStateProvider["setRuntimeStateProvider()"]
-  sortQueueByPriority["sortQueueByPriority()"]
+  stopRuntimeReservationSweeper["stopRuntimeReservationSweeper()"]
   tryReserveRuntimeCapacity["tryReserveRuntimeCapacity()"]
-  wait["wait()"]
-  waitForRuntimeCapacity["waitForRuntimeCapacity()"]
   waitForRuntimeCapacityEvent["waitForRuntimeCapacityEvent()"]
-  waitForRuntimeOrchestrationTurn["waitForRuntimeOrchestrationTurn()"]
   checkRuntimeCapacity --> createCapacityCheck
   checkRuntimeCapacity --> getRuntimeSnapshot
   formatRuntimeStatusLine --> getRuntimeSnapshot
   getRuntimeSnapshot --> cleanupExpiredReservations
+  getRuntimeSnapshot --> getClusterUsageSafe
+  getRuntimeSnapshot --> getLocalRuntimeUsage
   getRuntimeSnapshot --> getSharedRuntimeState
+  notifyRuntimeCapacityChanged --> publishRuntimeUsageToCoordinator
   reserveRuntimeCapacity --> checkRuntimeCapacity
   reserveRuntimeCapacity --> computeBackoffDelay
   reserveRuntimeCapacity --> getRuntimeSnapshot
   reserveRuntimeCapacity --> normalizePositiveInt
+  reserveRuntimeCapacity --> runtimeNow
   reserveRuntimeCapacity --> tryReserveRuntimeCapacity
-  reserveRuntimeCapacity --> wait
   reserveRuntimeCapacity --> waitForRuntimeCapacityEvent
   tryReserveRuntimeCapacity --> cleanupExpiredReservations
   tryReserveRuntimeCapacity --> createCapacityCheck
@@ -267,19 +145,8 @@ flowchart TD
   tryReserveRuntimeCapacity --> getSharedRuntimeState
   tryReserveRuntimeCapacity --> normalizeReservationTtlMs
   tryReserveRuntimeCapacity --> notifyRuntimeCapacityChanged
+  tryReserveRuntimeCapacity --> runtimeNow
   tryReserveRuntimeCapacity --> sanitizePlannedCount
-  waitForRuntimeCapacity --> checkRuntimeCapacity
-  waitForRuntimeCapacity --> computeBackoffDelay
-  waitForRuntimeCapacity --> getRuntimeSnapshot
-  waitForRuntimeCapacity --> normalizePositiveInt
-  waitForRuntimeCapacity --> schedulerBasedWait
-  waitForRuntimeCapacity --> wait
-  waitForRuntimeCapacity --> waitForRuntimeCapacityEvent
-  waitForRuntimeOrchestrationTurn --> createRuntimeQueueEntryId
-  waitForRuntimeOrchestrationTurn --> getRuntimeSnapshot
-  waitForRuntimeOrchestrationTurn --> getSharedRuntimeState
-  waitForRuntimeOrchestrationTurn --> normalizePositiveInt
-  waitForRuntimeOrchestrationTurn --> sortQueueByPriority
 ```
 
 ### シーケンス図
@@ -331,6 +198,58 @@ getRuntimeStateProvider(): RuntimeStateProvider
 プロバイダを設定
 
 **戻り値**: `RuntimeStateProvider`
+
+### runtimeNowProvider
+
+```typescript
+runtimeNowProvider(): void
+```
+
+**戻り値**: `void`
+
+### getRuntimeInstanceToken
+
+```typescript
+getRuntimeInstanceToken(): string
+```
+
+**戻り値**: `string`
+
+### logRuntimeQueueDebug
+
+```typescript
+logRuntimeQueueDebug(message: string): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| message | `string` | はい |
+
+**戻り値**: `void`
+
+### runtimeNow
+
+```typescript
+runtimeNow(): number
+```
+
+**戻り値**: `number`
+
+### setRuntimeNowProvider
+
+```typescript
+setRuntimeNowProvider(provider?: () => number): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `() => number` | いいえ |
+
+**戻り値**: `void`
 
 ### getDefaultReservationTtlMs
 
@@ -388,6 +307,56 @@ resolveLimitFromEnv(envName: string, fallback: number, max: any): number
 
 **戻り値**: `number`
 
+### getLocalRuntimeUsage
+
+```typescript
+getLocalRuntimeUsage(runtime: AgentRuntimeState): {
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+}
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| runtime | `AgentRuntimeState` | はい |
+
+**戻り値**: `{
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+}`
+
+### publishRuntimeUsageToCoordinator
+
+```typescript
+publishRuntimeUsageToCoordinator(): void
+```
+
+**戻り値**: `void`
+
+### getClusterUsageSafe
+
+```typescript
+getClusterUsageSafe(localUsage: { totalActiveRequests: number; totalActiveLlm: number }): {
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+}
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| localUsage | `object` | はい |
+| &nbsp;&nbsp;↳ totalActiveRequests | `number` | はい |
+| &nbsp;&nbsp;↳ totalActiveLlm | `number` | はい |
+
+**戻り値**: `{
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+}`
+
 ### notifyRuntimeCapacityChanged
 
 ```typescript
@@ -413,20 +382,6 @@ async waitForRuntimeCapacityEvent(timeoutMs: number, signal?: AbortSignal): Prom
 
 **戻り値**: `Promise<"event" | "timeout" | "aborted">`
 
-### complete
-
-```typescript
-complete(result: "event" | "timeout" | "aborted"): void
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| result | `"event" | "timeout" | "aborted"` | はい |
-
-**戻り値**: `void`
-
 ### onEvent
 
 ```typescript
@@ -439,6 +394,14 @@ onEvent(): void
 
 ```typescript
 onAbort(): void
+```
+
+**戻り値**: `void`
+
+### cleanup
+
+```typescript
+cleanup(): void
 ```
 
 **戻り値**: `void`
@@ -469,6 +432,14 @@ serializeRuntimeLimits(limits: AgentRuntimeLimits): string
 
 ```typescript
 ensureReservationSweeper(): void
+```
+
+**戻り値**: `void`
+
+### stopRuntimeReservationSweeper
+
+```typescript
+stopRuntimeReservationSweeper(): void
 ```
 
 **戻り値**: `void`
@@ -650,6 +621,92 @@ createRuntimeQueueEntryId(): string
 
 **戻り値**: `string`
 
+### clampPlannedCount
+
+```typescript
+clampPlannedCount(value: number): number
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `number` | はい |
+
+**戻り値**: `number`
+
+### getMaxPendingQueueEntries
+
+```typescript
+getMaxPendingQueueEntries(): number
+```
+
+**戻り値**: `number`
+
+### getQueueClassRank
+
+```typescript
+getQueueClassRank(queueClass: RuntimeQueueClass): number
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| queueClass | `RuntimeQueueClass` | はい |
+
+**戻り値**: `number`
+
+### getPriorityRank
+
+```typescript
+getPriorityRank(priority: TaskPriority | undefined): number
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| priority | `TaskPriority | undefined` | はい |
+
+**戻り値**: `number`
+
+### trimPendingQueueToLimit
+
+```typescript
+trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null
+```
+
+Keep pending queue bounded to avoid unbounded memory growth.
+Eviction policy:
+1) lower queue class first (batch < standard < interactive)
+2) lower priority first (background < ... < critical)
+3) older entries first (LRU-like by enqueue timestamp)
+
+最適化: 比較ロジックを簡素化し、早期終了を追加
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| runtime | `AgentRuntimeState` | はい |
+
+**戻り値**: `RuntimeQueueEntry | null`
+
+### toQueueClass
+
+```typescript
+toQueueClass(input: RuntimeDispatchPermitInput): RuntimeQueueClass
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `RuntimeDispatchPermitInput` | はい |
+
+**戻り値**: `RuntimeQueueClass`
+
 ### createRuntimeReservationId
 
 ```typescript
@@ -752,6 +809,20 @@ checkRuntimeCapacity(input: RuntimeCapacityCheckInput): RuntimeCapacityCheck
 | input | `RuntimeCapacityCheckInput` | はい |
 
 **戻り値**: `RuntimeCapacityCheck`
+
+### findDispatchableQueueEntry
+
+```typescript
+findDispatchableQueueEntry(runtime: AgentRuntimeState): RuntimeQueueEntry | undefined
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| runtime | `AgentRuntimeState` | はい |
+
+**戻り値**: `RuntimeQueueEntry | undefined`
 
 ### wait
 
@@ -887,6 +958,22 @@ async waitForRuntimeOrchestrationTurn(input: RuntimeOrchestrationWaitInput): Pro
 | input | `RuntimeOrchestrationWaitInput` | はい |
 
 **戻り値**: `Promise<RuntimeOrchestrationWaitResult>`
+
+### acquireRuntimeDispatchPermit
+
+```typescript
+async acquireRuntimeDispatchPermit(input: RuntimeDispatchPermitInput): Promise<RuntimeDispatchPermitResult>
+```
+
+Acquire queue turn and capacity reservation atomically.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `RuntimeDispatchPermitInput` | はい |
+
+**戻り値**: `Promise<RuntimeDispatchPermitResult>`
 
 ### resetRuntimeTransientState
 
@@ -1042,22 +1129,22 @@ recordWorkStealEvent(sourceInstance: string, taskId: string): void
 ### getSchedulerMetrics
 
 ```typescript
-getSchedulerMetrics(): import("../lib/metrics-collector").SchedulerMetrics | null
+getSchedulerMetrics(): SchedulerMetrics | null
 ```
 
 メトリクスを取得
 
-**戻り値**: `import("../lib/metrics-collector").SchedulerMetrics | null`
+**戻り値**: `SchedulerMetrics | null`
 
 ### getCheckpointStats
 
 ```typescript
-getCheckpointStats(): import("../lib/checkpoint-manager").CheckpointStats | null
+getCheckpointStats(): CheckpointStats | null
 ```
 
 チェックポイント統計を取得する。
 
-**戻り値**: `import("../lib/checkpoint-manager").CheckpointStats | null`
+**戻り値**: `CheckpointStats | null`
 
 ### attemptWorkStealing
 
@@ -1074,8 +1161,8 @@ async attemptWorkStealing(): Promise<import("../lib/cross-instance-coordinator")
 ```typescript
 getComprehensiveRuntimeStatus(): {
   runtime: AgentRuntimeSnapshot;
-  metrics: import("../lib/metrics-collector").SchedulerMetrics | null;
-  checkpoints: import("../lib/checkpoint-manager").CheckpointStats | null;
+  metrics: SchedulerMetrics | null;
+  checkpoints: CheckpointStats | null;
   stealing: import("../lib/cross-instance-coordinator").StealingStats | null;
   features: {
     preemption: boolean;
@@ -1090,8 +1177,8 @@ getComprehensiveRuntimeStatus(): {
 
 **戻り値**: `{
   runtime: AgentRuntimeSnapshot;
-  metrics: import("../lib/metrics-collector").SchedulerMetrics | null;
-  checkpoints: import("../lib/checkpoint-manager").CheckpointStats | null;
+  metrics: SchedulerMetrics | null;
+  checkpoints: CheckpointStats | null;
   stealing: import("../lib/cross-instance-coordinator").StealingStats | null;
   features: {
     preemption: boolean;
@@ -1140,6 +1227,7 @@ globalThisを使用してプロセス全体で状態を共有する
 | 名前 | 型 | 可視性 |
 |------|-----|--------|
 | globalScope | `GlobalScopeWithRuntime` | private |
+| initializationInProgress | `any` | private |
 
 **メソッド**
 
@@ -1148,273 +1236,5 @@ globalThisを使用してプロセス全体で状態を共有する
 | getState | `getState(): AgentRuntimeState` |
 | resetState | `resetState(): void` |
 
-## インターフェース
-
-### AgentRuntimeLimits
-
-```typescript
-interface AgentRuntimeLimits {
-  maxTotalActiveLlm: number;
-  maxTotalActiveRequests: number;
-  maxParallelSubagentsPerRun: number;
-  maxParallelTeamsPerRun: number;
-  maxParallelTeammatesPerTeam: number;
-  maxConcurrentOrchestrations: number;
-  capacityWaitMs: number;
-  capacityPollMs: number;
-}
-```
-
-エージェント実行制限値
-
-### RuntimeQueueEntry
-
-```typescript
-interface RuntimeQueueEntry {
-}
-```
-
-### RuntimeCapacityReservationRecord
-
-```typescript
-interface RuntimeCapacityReservationRecord {
-  id: string;
-  toolName: string;
-  additionalRequests: number;
-  additionalLlm: number;
-  createdAtMs: number;
-  heartbeatAtMs: number;
-  expiresAtMs: number;
-  consumedAtMs?: number;
-}
-```
-
-### AgentRuntimeState
-
-```typescript
-interface AgentRuntimeState {
-  subagents: {
-    activeRunRequests: number;
-    activeAgents: number;
-  };
-  teams: {
-    activeTeamRuns: number;
-    activeTeammates: number;
-  };
-  queue: {
-    activeOrchestrations: number;
-    pending: RuntimeQueueEntry[];
-    /** Priority queue statistics (updated on enqueue/dequeue) */
-    priorityStats?: {
-      critical: number;
-      high: number;
-      normal: number;
-      low: number;
-      background: number;
-    };
-  };
-  reservations: {
-    active: RuntimeCapacityReservationRecord[];
-  };
-  limits: AgentRuntimeLimits;
-  limitsVersion: string;
-}
-```
-
-### RuntimeStateProvider
-
-```typescript
-interface RuntimeStateProvider {
-  getState();
-  resetState();
-}
-```
-
-ランタイム状態を提供
-
-### AgentRuntimeSnapshot
-
-```typescript
-interface AgentRuntimeSnapshot {
-  subagentActiveRequests: number;
-  subagentActiveAgents: number;
-  teamActiveRuns: number;
-  teamActiveAgents: number;
-  reservedRequests: number;
-  reservedLlm: number;
-  activeReservations: number;
-  activeOrchestrations: number;
-  queuedOrchestrations: number;
-  queuedTools: string[];
-  totalActiveRequests: number;
-  totalActiveLlm: number;
-  limits: AgentRuntimeLimits;
-  limitsVersion: string;
-  priorityStats?: {
-    critical: number;
-    high: number;
-    normal: number;
-    low: number;
-    background: number;
-  };
-}
-```
-
-プロバイダを取得
-
-### RuntimeStatusLineOptions
-
-```typescript
-interface RuntimeStatusLineOptions {
-  title?: string;
-  storedRuns?: number;
-  adaptivePenalty?: number;
-  adaptivePenaltyMax?: number;
-}
-```
-
-### RuntimeCapacityCheckInput
-
-```typescript
-interface RuntimeCapacityCheckInput {
-  additionalRequests: number;
-  additionalLlm: number;
-}
-```
-
-### RuntimeCapacityCheck
-
-```typescript
-interface RuntimeCapacityCheck {
-  allowed: boolean;
-  reasons: string[];
-  projectedRequests: number;
-  projectedLlm: number;
-  snapshot: AgentRuntimeSnapshot;
-}
-```
-
-### RuntimeCapacityWaitInput
-
-```typescript
-interface RuntimeCapacityWaitInput {
-  maxWaitMs?: number;
-  pollIntervalMs?: number;
-  signal?: AbortSignal;
-}
-```
-
-### RuntimeCapacityWaitResult
-
-```typescript
-interface RuntimeCapacityWaitResult {
-  waitedMs: number;
-  attempts: number;
-  timedOut: boolean;
-}
-```
-
-### RuntimeCapacityReservationLease
-
-```typescript
-interface RuntimeCapacityReservationLease {
-  id: string;
-  toolName: string;
-  additionalRequests: number;
-  additionalLlm: number;
-  expiresAtMs: number;
-  consume: () => void;
-  heartbeat: (ttlMs?: number) => void;
-  release: () => void;
-}
-```
-
-キャパシティ予約リース
-
-### RuntimeCapacityReserveInput
-
-```typescript
-interface RuntimeCapacityReserveInput {
-  toolName?: string;
-  maxWaitMs?: number;
-  pollIntervalMs?: number;
-  reservationTtlMs?: number;
-  signal?: AbortSignal;
-}
-```
-
-キャパシティ予約入力
-
-### RuntimeCapacityReserveResult
-
-```typescript
-interface RuntimeCapacityReserveResult {
-  waitedMs: number;
-  attempts: number;
-  timedOut: boolean;
-  aborted: boolean;
-  reservation?: RuntimeCapacityReservationLease;
-}
-```
-
-キャパシティ予約結果
-
-### RuntimeOrchestrationWaitInput
-
-```typescript
-interface RuntimeOrchestrationWaitInput {
-  toolName: string;
-  priority?: TaskPriority;
-  estimatedDurationMs?: number;
-  estimatedRounds?: number;
-  deadlineMs?: number;
-  source?: PriorityTaskMetadata["source"];
-  maxWaitMs?: number;
-  pollIntervalMs?: number;
-  signal?: AbortSignal;
-}
-```
-
-オーケストレーションの待機入力
-
-### RuntimeOrchestrationLease
-
-```typescript
-interface RuntimeOrchestrationLease {
-  id: string;
-  release: () => void;
-}
-```
-
-オーケストレーションのリース情報
-
-### RuntimeOrchestrationWaitResult
-
-```typescript
-interface RuntimeOrchestrationWaitResult {
-  allowed: boolean;
-  waitedMs: number;
-  attempts: number;
-  timedOut: boolean;
-  aborted: boolean;
-  queuePosition: number;
-  queuedAhead: number;
-  orchestrationId: string;
-  lease?: RuntimeOrchestrationLease;
-}
-```
-
-オーケストレーション待機結果
-
-## 型定義
-
-### GlobalScopeWithRuntime
-
-```typescript
-type GlobalScopeWithRuntime = typeof globalThis & {
-  __PI_SHARED_AGENT_RUNTIME_STATE__?: AgentRuntimeState;
-}
-```
-
 ---
-*自動生成: 2026-02-18T18:06:16.954Z*
+*自動生成: 2026-02-22T19:26:59.827Z*

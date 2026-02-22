@@ -2,7 +2,7 @@
 title: abdd-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -13,23 +13,31 @@ related: []
 
 `abdd-types` モジュールのAPIリファレンス。
 
+## インポート
+
+```typescript
+// from 'node:fs': statSync
+// from 'node:path': resolvePath, pathSep
+```
+
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `createGeneratorContext` | ジェネレーターコンテキストを作成 |
-| クラス | `AbddError` | ABDDカスタムエラー |
+| 関数 | `extractErrorMessage` | エラーオブジェクトからメッセージを抽出 |
+| 関数 | `validateFilePath` | パストラバーサル攻撃を防ぐためのパス検証 |
+| 関数 | `validateFileSize` | ファイルサイズが上限内かチェック |
+| 関数 | `isValidDateString` | 日付文字列（YYYY-MM-DD）のバリデーション |
+| 関数 | `sanitizeDateString` | 日付文字列を安全にサニタイズ |
+| 関数 | `createGeneratorContext` | ジェネレータコンテキストを作成 |
+| クラス | `AbddError` | ABDDカスタムエラークラス |
 | インターフェース | `AbddOptions` | ABDDツール共通オプション |
-| インターフェース | `JSDocOptions` | JSDoc生成オプション |
-| インターフェース | `WorkflowOptions` | ワークフロー実行オプション |
-| インターフェース | `CacheEntry` | JSDocキャッシュエントリ |
-| インターフェース | `CacheData` | キャッシュデータ構造 |
+| インターフェース | `CacheEntry` | キャッシュエントリ |
 | インターフェース | `SourceReference` | ソース参照 |
-| インターフェース | `RealityReference` | 実態参照（ファイル情報付き） |
-| インターフェース | `Divergence` | 乖離候補 |
+| インターフェース | `Divergence` | 乖離情報 |
+| インターフェース | `DivergenceSummary` | 乖離分析サマリー |
 | インターフェース | `DivergenceAnalysisResult` | 乖離分析結果 |
-| インターフェース | `ScriptResult` | スクリプト実行結果 |
-| インターフェース | `StepResult` | ステップ実行結果 |
+| インターフェース | `SpawnResult` | spawn実行結果 |
 | インターフェース | `FunctionInfo` | 関数情報 |
 | インターフェース | `ClassInfo` | クラス情報 |
 | インターフェース | `InterfaceInfo` | インターフェース情報 |
@@ -37,16 +45,15 @@ related: []
 | インターフェース | `ImportBinding` | インポートバインディング |
 | インターフェース | `ImportInfo` | インポート情報 |
 | インターフェース | `CallNode` | 呼び出しノード |
-| インターフェース | `ToolInfo` | ツール情報（ユーザーフロー生成用） |
-| インターフェース | `FileInfo` | ファイル情報 |
-| インターフェース | `CrossFileCache` | クロスファイル追跡用キャッシュ |
-| インターフェース | `TypeCheckerContext` | 型チェッカーコンテキスト |
-| インターフェース | `GeneratorContext` | ジェネレーターコンテキスト（グローバル状態を置き換える） |
-| インターフェース | `GeneratorOptions` | ジェネレーターオプション |
-| 型 | `WorkflowMode` | ABDDワークフローモード |
+| インターフェース | `ToolInfo` | ツール情報 |
+| インターフェース | `FileInfo` | ファイル情報（generate-abdd用） |
+| インターフェース | `CrossFileCache` | クロスファイルキャッシュ |
+| インターフェース | `TypeCheckerContext` | TypeCheckerコンテキスト |
+| インターフェース | `GeneratorOptions` | ジェネレータオプション |
+| インターフェース | `GeneratorContext` | ジェネレータコンテキスト |
+| 型 | `AbddErrorCode` | - |
 | 型 | `DivergenceType` | 乖離タイプ |
 | 型 | `Severity` | 乖離重要度 |
-| 型 | `AbddErrorCode` | - |
 
 ## 図解
 
@@ -55,6 +62,8 @@ related: []
 ```mermaid
 classDiagram
   class AbddError {
+    +toJSON()
+    +toUserMessage()
   }
   Error <|-- AbddError
   class AbddOptions {
@@ -65,20 +74,6 @@ classDiagram
     +limit: number
     +regenerate: boolean
   }
-  class JSDocOptions {
-    <<interface>>
-    +check: boolean
-    +batchSize: number
-    +metrics: boolean
-  }
-  class WorkflowOptions {
-    <<interface>>
-    +mode: WorkflowMode
-    +dryRun: boolean
-    +verbose: boolean
-    +timeoutMs: number
-    +continueOnError: boolean
-  }
   class CacheEntry {
     <<interface>>
     +key: string
@@ -87,19 +82,9 @@ classDiagram
     +createdAt: number
     +modelId: string
   }
-  class CacheData {
-    <<interface>>
-    +version: number
-    +entries: CacheEntry
-  }
   class SourceReference {
     <<interface>>
     +source: string
-    +text: string
-  }
-  class RealityReference {
-    <<interface>>
-    +file: string
     +text: string
   }
   class Divergence {
@@ -107,29 +92,30 @@ classDiagram
     +type: DivergenceType
     +severity: Severity
     +intention: SourceReference
-    +reality: RealityReference
+    +reality: SourceReference
     +reason: string
+  }
+  class DivergenceSummary {
+    <<interface>>
+    +total: number
+    +high: number
+    +medium: number
+    +low: number
   }
   class DivergenceAnalysisResult {
     <<interface>>
+    +success: boolean
     +divergences: Divergence
-    +summary: total_number_high_n
+    +summary: DivergenceSummary
     +warnings: string
   }
-  class ScriptResult {
+  class SpawnResult {
     <<interface>>
     +success: boolean
-    +output: string
-    +error: string
-    +outputDir: string
-    +recordPath: string
-  }
-  class StepResult {
-    <<interface>>
-    +step: string
-    +success: boolean
-    +output: string
+    +stdout: string
+    +stderr: string
     +timedOut: boolean
+    +exitCode: number
   }
   class FunctionInfo {
     <<interface>>
@@ -177,19 +163,19 @@ classDiagram
   }
   class CallNode {
     <<interface>>
-    +callee: string
-    +displayName: string
-    +isAsync: boolean
+    +name: string
     +line: number
-    +importedFrom: string
+    +signature: string
+    +targetFile: string
+    +targetFunction: string
   }
   class ToolInfo {
     <<interface>>
     +name: string
+    +label: string
     +description: string
-    +executeFunction: string
     +line: number
-    +executeCalls: CallNode
+    +parameters: string
   }
   class FileInfo {
     <<interface>>
@@ -202,14 +188,19 @@ classDiagram
   class CrossFileCache {
     <<interface>>
     +fileInfos: Map_string_FileInfo
-    +functionLocations: Map_string_filePath
+    +exportMap: Map_string_file_str
   }
   class TypeCheckerContext {
     <<interface>>
-    +program: Program
-    +checker: TypeChecker
-    +sourceFiles: Map_string_SourceFil
-    +compilerOptions: CompilerOptions
+    +program: unknown
+    +checker: unknown
+    +sourceFiles: Map_string_unknown
+  }
+  class GeneratorOptions {
+    <<interface>>
+    +dryRun: boolean
+    +verbose: boolean
+    +file: string
   }
   class GeneratorContext {
     <<interface>>
@@ -217,29 +208,133 @@ classDiagram
     +crossFileCache: CrossFileCache
     +typeChecker: TypeCheckerContext_n
   }
-  class GeneratorOptions {
-    <<interface>>
-    +dryRun: boolean
-    +verbose: boolean
-  }
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  createGeneratorContext["createGeneratorContext()"]
+  extractErrorMessage["extractErrorMessage()"]
+  isValidDateString["isValidDateString()"]
+  sanitizeDateString["sanitizeDateString()"]
+  validateFilePath["validateFilePath()"]
+  validateFileSize["validateFileSize()"]
+  sanitizeDateString --> isValidDateString
+```
+
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant abdd_types as "abdd-types"
+
+  Caller->>abdd_types: extractErrorMessage()
+  abdd_types-->>Caller: string
+
+  Caller->>abdd_types: validateFilePath()
+  abdd_types-->>Caller: string
 ```
 
 ## 関数
 
-### createGeneratorContext
+### extractErrorMessage
 
 ```typescript
-createGeneratorContext(options: Partial<GeneratorOptions>): GeneratorContext
+extractErrorMessage(error: unknown): string
 ```
 
-ジェネレーターコンテキストを作成
-グローバル可変状態の代わりに使用
+エラーオブジェクトからメッセージを抽出
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| options | `Partial<GeneratorOptions>` | はい |
+| error | `unknown` | はい |
+
+**戻り値**: `string`
+
+### validateFilePath
+
+```typescript
+validateFilePath(inputPath: string, baseDir: string): string
+```
+
+パストラバーサル攻撃を防ぐためのパス検証
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| inputPath | `string` | はい |
+| baseDir | `string` | はい |
+
+**戻り値**: `string`
+
+### validateFileSize
+
+```typescript
+validateFileSize(filePath: string, maxSizeBytes: number): void
+```
+
+ファイルサイズが上限内かチェック
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| filePath | `string` | はい |
+| maxSizeBytes | `number` | はい |
+
+**戻り値**: `void`
+
+### isValidDateString
+
+```typescript
+isValidDateString(dateStr: string): boolean
+```
+
+日付文字列（YYYY-MM-DD）のバリデーション
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| dateStr | `string` | はい |
+
+**戻り値**: `boolean`
+
+### sanitizeDateString
+
+```typescript
+sanitizeDateString(input: string): string
+```
+
+日付文字列を安全にサニタイズ
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `string` | はい |
+
+**戻り値**: `string`
+
+### createGeneratorContext
+
+```typescript
+createGeneratorContext(options: GeneratorOptions): GeneratorContext
+```
+
+ジェネレータコンテキストを作成
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| options | `GeneratorOptions` | はい |
 
 **戻り値**: `GeneratorContext`
 
@@ -247,9 +342,17 @@ createGeneratorContext(options: Partial<GeneratorOptions>): GeneratorContext
 
 ### AbddError
 
-ABDDカスタムエラー
+ABDDカスタムエラークラス
+エラーハンドリングを統一し、エラー分類を明確化する
 
 **継承**: `Error`
+
+**メソッド**
+
+| 名前 | シグネチャ |
+|------|------------|
+| toJSON | `toJSON(): Record<string, unknown>` |
+| toUserMessage | `toUserMessage(): string` |
 
 ## インターフェース
 
@@ -269,32 +372,6 @@ interface AbddOptions {
 
 ABDDツール共通オプション
 
-### JSDocOptions
-
-```typescript
-interface JSDocOptions {
-  check?: boolean;
-  batchSize?: number;
-  metrics?: boolean;
-}
-```
-
-JSDoc生成オプション
-
-### WorkflowOptions
-
-```typescript
-interface WorkflowOptions {
-  mode?: WorkflowMode;
-  dryRun?: boolean;
-  verbose?: boolean;
-  timeoutMs?: number;
-  continueOnError?: boolean;
-}
-```
-
-ワークフロー実行オプション
-
 ### CacheEntry
 
 ```typescript
@@ -307,18 +384,7 @@ interface CacheEntry {
 }
 ```
 
-JSDocキャッシュエントリ
-
-### CacheData
-
-```typescript
-interface CacheData {
-  version: number;
-  entries: CacheEntry[];
-}
-```
-
-キャッシュデータ構造
+キャッシュエントリ
 
 ### SourceReference
 
@@ -331,17 +397,6 @@ interface SourceReference {
 
 ソース参照
 
-### RealityReference
-
-```typescript
-interface RealityReference {
-  file: string;
-  text: string;
-}
-```
-
-実態参照（ファイル情報付き）
-
 ### Divergence
 
 ```typescript
@@ -349,64 +404,52 @@ interface Divergence {
   type: DivergenceType;
   severity: Severity;
   intention: SourceReference;
-  reality: RealityReference;
+  reality: SourceReference;
   reason: string;
 }
 ```
 
-乖離候補
+乖離情報
+
+### DivergenceSummary
+
+```typescript
+interface DivergenceSummary {
+  total: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+```
+
+乖離分析サマリー
 
 ### DivergenceAnalysisResult
 
 ```typescript
 interface DivergenceAnalysisResult {
+  success: boolean;
   divergences: Divergence[];
-  summary: {
-		total: number;
-		high: number;
-		medium: number;
-		low: number;
-	};
+  summary: DivergenceSummary;
   warnings: string[];
 }
 ```
 
 乖離分析結果
 
-### ScriptResult
+### SpawnResult
 
 ```typescript
-interface ScriptResult {
+interface SpawnResult {
   success: boolean;
-  output: string;
-  error?: string;
-  outputDir?: string;
-  recordPath?: string;
-  checklist?: string;
-  divergences?: Divergence[];
-  summary?: DivergenceAnalysisResult["summary"];
-  warnings?: string[];
+  stdout: string;
+  stderr: string;
   timedOut?: boolean;
-  mode?: WorkflowMode;
-  results?: StepResult[];
-  timeoutMs?: number;
+  exitCode?: number;
 }
 ```
 
-スクリプト実行結果
-
-### StepResult
-
-```typescript
-interface StepResult {
-  step: string;
-  success: boolean;
-  output: string;
-  timedOut?: boolean;
-}
-```
-
-ステップ実行結果
+spawn実行結果
 
 ### FunctionInfo
 
@@ -501,12 +544,11 @@ interface ImportInfo {
 
 ```typescript
 interface CallNode {
-  callee: string;
-  displayName?: string;
-  isAsync: boolean;
+  name: string;
   line: number;
-  importedFrom?: string;
-  importedSymbol?: string;
+  signature?: string;
+  targetFile?: string;
+  targetFunction?: string;
 }
 ```
 
@@ -517,14 +559,15 @@ interface CallNode {
 ```typescript
 interface ToolInfo {
   name: string;
+  label: string;
   description: string;
-  executeFunction: string;
   line: number;
-  executeCalls?: CallNode[];
+  parameters?: string;
+  returnType?: string;
 }
 ```
 
-ツール情報（ユーザーフロー生成用）
+ツール情報
 
 ### FileInfo
 
@@ -539,35 +582,46 @@ interface FileInfo {
   imports: ImportInfo[];
   exports: string[];
   tools: ToolInfo[];
-  calls: Map<string, CallNode[]>;
+  calls: CallNode[];
 }
 ```
 
-ファイル情報
+ファイル情報（generate-abdd用）
 
 ### CrossFileCache
 
 ```typescript
 interface CrossFileCache {
   fileInfos: Map<string, FileInfo>;
-  functionLocations: Map<string, { filePath: string; info: FunctionInfo }>;
+  exportMap: Map<string, { file: string; type: "function" | "class" | "interface" | "type" }>;
 }
 ```
 
-クロスファイル追跡用キャッシュ
+クロスファイルキャッシュ
 
 ### TypeCheckerContext
 
 ```typescript
 interface TypeCheckerContext {
-  program: import("typescript").Program;
-  checker: import("typescript").TypeChecker;
-  sourceFiles: Map<string, import("typescript").SourceFile>;
-  compilerOptions: import("typescript").CompilerOptions;
+  program: unknown;
+  checker: unknown;
+  sourceFiles: Map<string, unknown>;
 }
 ```
 
-型チェッカーコンテキスト
+TypeCheckerコンテキスト
+
+### GeneratorOptions
+
+```typescript
+interface GeneratorOptions {
+  dryRun: boolean;
+  verbose: boolean;
+  file?: string;
+}
+```
+
+ジェネレータオプション
 
 ### GeneratorContext
 
@@ -579,33 +633,23 @@ interface GeneratorContext {
 }
 ```
 
-ジェネレーターコンテキスト（グローバル状態を置き換える）
-
-### GeneratorOptions
-
-```typescript
-interface GeneratorOptions {
-  dryRun: boolean;
-  verbose: boolean;
-}
-```
-
-ジェネレーターオプション
+ジェネレータコンテキスト
 
 ## 型定義
 
-### WorkflowMode
+### AbddErrorCode
 
 ```typescript
-type WorkflowMode = "fast" | "strict"
+type AbddErrorCode = typeof AbddErrorCodes[keyof typeof AbddErrorCodes]
 ```
-
-ABDDワークフローモード
 
 ### DivergenceType
 
 ```typescript
-type DivergenceType = "value_mismatch" | "invariant_violation" | "contract_breach" | "missing_jsdoc"
+type DivergenceType = | "value_mismatch"
+	| "invariant_violation"
+	| "contract_breach"
+	| "missing_jsdoc"
 ```
 
 乖離タイプ
@@ -618,11 +662,5 @@ type Severity = "low" | "medium" | "high"
 
 乖離重要度
 
-### AbddErrorCode
-
-```typescript
-type AbddErrorCode = (typeof AbddErrorCodes)[keyof typeof AbddErrorCodes]
-```
-
 ---
-*自動生成: 2026-02-18T18:06:17.474Z*
+*自動生成: 2026-02-22T19:27:00.540Z*

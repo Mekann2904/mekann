@@ -2,7 +2,7 @@
 title: extension
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -21,6 +21,7 @@ related: []
 // from './tools/generate-doc.js': generateDocSections, DocOptions, DocSections
 // from 'fs': readFileSync, writeFileSync, existsSync, ...
 // from 'path': join, relative, basename
+// ... and 2 more imports
 ```
 
 ## エクスポート一覧
@@ -31,8 +32,127 @@ related: []
 | 関数 | `extractStructure` | 構造を抽出 |
 | 関数 | `generateDiagrams` | ダイアグラム生成 |
 | 関数 | `generateMarkdown` | Markdownを生成 |
+| 関数 | `registerCodeStructureAnalyzerExtension` | - |
 | インターフェース | `AnalyzeOptions` | 解析オプション定義 |
 | インターフェース | `AnalysisResult` | 解析結果インターフェース |
+
+## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+### analyze_code_structure
+
+TypeScriptソースコードを解析し、構造データ、Mermaid図、ドキュメントセクションを生成する。ハイブリッドドキュメント生成のメインツール。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Internal as "Internal"
+  participant Unresolved as "Unresolved"
+
+  User->>System: TypeScriptソースコードを解析し、構造データ、Mermaid図、ドキュメントセクションを生成する。ハイブリ...
+  System->>Internal: コード構造解析
+  Internal->>Internal: 構造抽出を実行
+  Internal->>Internal: collectTypeScriptFiles
+  Internal->>Internal: analyzeFile
+  Internal->>Unresolved: fileStructures.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: fileStructures.flatMap (node_modules/typescript/lib/lib.es2019.array.d.ts)
+  Internal->>Internal: buildDependencyGraph
+  Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: 構造データからMermaid図を生成する
+  Internal->>Internal: generateFlowchart
+  Internal->>Internal: generateClassDiagram
+  Internal->>Internal: generateSequenceDiagram
+  Internal->>Internal: ドキュメント生成
+  Internal->>Internal: generateTitle
+  Internal->>Internal: generateOverview
+  Internal->>Internal: generateAPIReference
+  Internal->>Internal: generateStructureSection
+  Internal->>Internal: generateDiagramsSection
+  Internal->>Internal: generateLLMContext
+  Internal->>Internal: 構造データのハッシュを計算（ドリフト検出用）
+  Internal->>Unresolved: require (node_modules/@types/node/module.d.ts)
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: structure.functions.map (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### extract_structure
+
+TypeScriptソースコードから構造データのみを抽出（軽量版）。AST解析結果をJSONで取得。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Internal as "Internal"
+  participant Unresolved as "Unresolved"
+
+  User->>System: TypeScriptソースコードから構造データのみを抽出（軽量版）。AST解析結果をJSONで取得。
+  System->>Internal: 構造抽出
+  Internal->>Internal: 構造抽出を実行
+  Internal->>Internal: collectTypeScriptFiles
+  Internal->>Internal: analyzeFile
+  Internal->>Unresolved: fileStructures.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: fileStructures.flatMap (node_modules/typescript/lib/lib.es2019.array.d.ts)
+  Internal->>Internal: buildDependencyGraph
+  Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### generate_diagrams
+
+構造データからMermaid図を生成。flowchart（依存関係）、classDiagram（クラス構造）、sequenceDiagram（呼び出しフロー）に対応。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Internal as "Internal"
+  participant Unresolved as "Unresolved"
+
+  User->>System: 構造データからMermaid図を生成。flowchart（依存関係）、classDiagram（クラス構造）、se...
+  System->>Internal: ダイアグラム生成
+  Internal->>Internal: 構造データからMermaid図を生成する
+  Internal->>Internal: generateFlowchart
+  Internal->>Internal: generateClassDiagram
+  Internal->>Internal: generateSequenceDiagram
+  System->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### generate_markdown_doc
+
+解析結果からMarkdown形式のドキュメントを生成。LLM解説用のプレースホルダを含むハイブリッド形式。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Internal as "Internal"
+  participant Unresolved as "Unresolved"
+  participant Storage as "Storage"
+
+  User->>System: 解析結果からMarkdown形式のドキュメントを生成。LLM解説用のプレースホルダを含むハイブリッド形式。
+  System->>Internal: Markdown生成
+  Internal->>Unresolved: result.metadata.analyzedAt.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: result.metadata.fileHash.substring (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: join
+  Internal->>Internal: existsSync
+  Internal->>Internal: mkdirSync
+  Internal->>Storage: writeFileSync
+  System-->>User: 結果
+
+```
 
 ## 図解
 
@@ -73,6 +193,8 @@ flowchart LR
   subgraph external[外部ライブラリ]
     fs["fs"]
     path["path"]
+    _mariozechner["@mariozechner"]
+    _mariozechner["@mariozechner"]
   end
   main --> external
 ```
@@ -86,7 +208,12 @@ flowchart TD
   extractStructure["extractStructure()"]
   generateDiagrams["generateDiagrams()"]
   generateMarkdown["generateMarkdown()"]
+  registerCodeStructureAnalyzerExtension["registerCodeStructureAnalyzerExtension()"]
   analyzeCodeStructure --> computeHash
+  registerCodeStructureAnalyzerExtension --> analyzeCodeStructure
+  registerCodeStructureAnalyzerExtension --> extractStructure
+  registerCodeStructureAnalyzerExtension --> generateDiagrams
+  registerCodeStructureAnalyzerExtension --> generateMarkdown
 ```
 
 ### シーケンス図
@@ -98,6 +225,7 @@ sequenceDiagram
   participant extension as "extension"
   participant fs as "fs"
   participant path as "path"
+  participant mariozechner as "@mariozechner"
   participant extract_structure as "extract-structure"
   participant generate_diagrams as "generate-diagrams"
 
@@ -223,6 +351,20 @@ computeHash(structure: StructureData): string
 
 **戻り値**: `string`
 
+### registerCodeStructureAnalyzerExtension
+
+```typescript
+registerCodeStructureAnalyzerExtension(pi: ExtensionAPI): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| pi | `ExtensionAPI` | はい |
+
+**戻り値**: `void`
+
 ## インターフェース
 
 ### AnalyzeOptions
@@ -264,4 +406,4 @@ interface AnalysisResult {
 解析結果インターフェース
 
 ---
-*自動生成: 2026-02-18T18:06:17.166Z*
+*自動生成: 2026-02-22T19:27:00.162Z*

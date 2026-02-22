@@ -2,7 +2,7 @@
 title: usage-tracker
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -20,8 +20,8 @@ related: []
 // from 'node:os': homedir
 // from 'node:path': join, dirname
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
-// from '../lib/comprehensive-logger': getLogger
-// ... and 1 more imports
+// from '@mariozechner/pi-tui': truncateToWidth
+// ... and 2 more imports
 ```
 
 ## エクスポート一覧
@@ -61,6 +61,7 @@ flowchart LR
   end
   main --> local
   subgraph external[外部ライブラリ]
+    _mariozechner["@mariozechner"]
     _mariozechner["@mariozechner"]
   end
   main --> external
@@ -248,4 +249,4 @@ interface CacheData {
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.471Z*
+*自動生成: 2026-02-22T19:27:00.534Z*

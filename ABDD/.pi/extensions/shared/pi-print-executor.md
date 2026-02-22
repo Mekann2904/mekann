@@ -2,7 +2,7 @@
 title: pi-print-executor
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -17,6 +17,11 @@ related: []
 
 ```typescript
 // from 'node:child_process': spawn
+// from 'node:fs': existsSync, mkdirSync, readFileSync, ...
+// from 'node:os': homedir
+// from 'node:path': join
+// from '../../lib/provider-limits.js': detectTier, getRpmLimit
+// ... and 2 more imports
 ```
 
 ## エクスポート一覧
@@ -42,7 +47,7 @@ classDiagram
     +provider: string
     +model: string
     +prompt: string
-    +timeoutMs: number
+    +noExtensions: boolean
   }
   class PrintCommandResult {
     <<interface>>
@@ -65,39 +70,86 @@ classDiagram
   }
 ```
 
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[pi-print-executor]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    provider_limits["provider-limits"]
+    sleep_utils["sleep-utils"]
+    storage_lock["storage-lock"]
+  end
+  main --> local
+```
+
 ### 関数フロー
 
 ```mermaid
 flowchart TD
+  appendWithCap["appendWithCap()"]
   callModelViaPi["callModelViaPi()"]
   cleanup["cleanup()"]
   combineTextAndThinking["combineTextAndThinking()"]
   extractFinalText["extractFinalText()"]
+  extractRetryAfterMs["extractRetryAfterMs()"]
   finish["finish()"]
   formatThinkingBlock["formatThinkingBlock()"]
+  getPrintThrottleKey["getPrintThrottleKey()"]
+  isRateLimitMessage["isRateLimitMessage()"]
   killSafely["killSafely()"]
+  parseBooleanEnv["parseBooleanEnv()"]
   parseJsonStreamLine["parseJsonStreamLine()"]
+  parseNumberEnv["parseNumberEnv()"]
+  prunePrintThrottleStates["prunePrintThrottleStates()"]
+  prunePrintThrottleWindow["prunePrintThrottleWindow()"]
+  recordPrintRateLimitCooldown["recordPrintRateLimitCooldown()"]
   resetIdleTimeout["resetIdleTimeout()"]
+  resolveEffectivePrintRpm["resolveEffectivePrintRpm()"]
   runPiPrintMode["runPiPrintMode()"]
+  sleepWithAbort["sleepWithAbort()"]
   trimForError["trimForError()"]
+  waitForPrintThrottleSlot["waitForPrintThrottleSlot()"]
+  withPrintThrottleMutation["withPrintThrottleMutation()"]
+  callModelViaPi --> appendWithCap
   callModelViaPi --> cleanup
   callModelViaPi --> combineTextAndThinking
   callModelViaPi --> extractFinalText
   callModelViaPi --> finish
   callModelViaPi --> killSafely
   callModelViaPi --> parseJsonStreamLine
+  callModelViaPi --> recordPrintRateLimitCooldown
   callModelViaPi --> resetIdleTimeout
+  callModelViaPi --> waitForPrintThrottleSlot
   combineTextAndThinking --> formatThinkingBlock
   finish --> cleanup
+  recordPrintRateLimitCooldown --> extractRetryAfterMs
+  recordPrintRateLimitCooldown --> getPrintThrottleKey
+  recordPrintRateLimitCooldown --> isRateLimitMessage
+  recordPrintRateLimitCooldown --> prunePrintThrottleStates
+  recordPrintRateLimitCooldown --> withPrintThrottleMutation
   resetIdleTimeout --> killSafely
+  runPiPrintMode --> appendWithCap
   runPiPrintMode --> cleanup
   runPiPrintMode --> combineTextAndThinking
   runPiPrintMode --> extractFinalText
   runPiPrintMode --> finish
   runPiPrintMode --> killSafely
   runPiPrintMode --> parseJsonStreamLine
+  runPiPrintMode --> recordPrintRateLimitCooldown
   runPiPrintMode --> resetIdleTimeout
   runPiPrintMode --> trimForError
+  runPiPrintMode --> waitForPrintThrottleSlot
+  waitForPrintThrottleSlot --> getPrintThrottleKey
+  waitForPrintThrottleSlot --> parseBooleanEnv
+  waitForPrintThrottleSlot --> parseNumberEnv
+  waitForPrintThrottleSlot --> prunePrintThrottleStates
+  waitForPrintThrottleSlot --> prunePrintThrottleWindow
+  waitForPrintThrottleSlot --> resolveEffectivePrintRpm
+  waitForPrintThrottleSlot --> sleepWithAbort
+  waitForPrintThrottleSlot --> withPrintThrottleMutation
 ```
 
 ### シーケンス図
@@ -107,10 +159,14 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant pi_print_executor as "pi-print-executor"
+  participant provider_limits as "provider-limits"
+  participant sleep_utils as "sleep-utils"
 
   Caller->>pi_print_executor: runPiPrintMode()
   activate pi_print_executor
   Note over pi_print_executor: 非同期処理開始
+  pi_print_executor->>provider_limits: 内部関数呼び出し
+  provider_limits-->>pi_print_executor: 結果
   deactivate pi_print_executor
   pi_print_executor-->>Caller: Promise_PrintCommand
 
@@ -121,6 +177,248 @@ sequenceDiagram
 ```
 
 ## 関数
+
+### sleepWithAbort
+
+```typescript
+async sleepWithAbort(delayMs: number, signal?: AbortSignal): Promise<void>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| delayMs | `number` | はい |
+| signal | `AbortSignal` | いいえ |
+
+**戻り値**: `Promise<void>`
+
+### onAbort
+
+```typescript
+onAbort(): void
+```
+
+**戻り値**: `void`
+
+### parseNumberEnv
+
+```typescript
+parseNumberEnv(name: string, fallback: number): number
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| name | `string` | はい |
+| fallback | `number` | はい |
+
+**戻り値**: `number`
+
+### parseBooleanEnv
+
+```typescript
+parseBooleanEnv(name: string, fallback: boolean): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| name | `string` | はい |
+| fallback | `boolean` | はい |
+
+**戻り値**: `boolean`
+
+### getPrintThrottleKey
+
+```typescript
+getPrintThrottleKey(provider: string, model: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `string` | はい |
+| model | `string` | はい |
+
+**戻り値**: `string`
+
+### ensurePrintThrottleRuntimeDir
+
+```typescript
+ensurePrintThrottleRuntimeDir(): void
+```
+
+**戻り値**: `void`
+
+### prunePrintThrottleWindow
+
+```typescript
+prunePrintThrottleWindow(state: PrintThrottleBucketState, nowMs: number, windowMs: number): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| state | `PrintThrottleBucketState` | はい |
+| nowMs | `number` | はい |
+| windowMs | `number` | はい |
+
+**戻り値**: `void`
+
+### prunePrintThrottleStates
+
+```typescript
+prunePrintThrottleStates(nowMs: number): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nowMs | `number` | はい |
+
+**戻り値**: `void`
+
+### loadPrintThrottleStatesIntoMemory
+
+```typescript
+loadPrintThrottleStatesIntoMemory(nowMs: number): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nowMs | `number` | はい |
+
+**戻り値**: `void`
+
+### savePrintThrottleStates
+
+```typescript
+savePrintThrottleStates(nowMs: number): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nowMs | `number` | はい |
+
+**戻り値**: `void`
+
+### withPrintThrottleMutation
+
+```typescript
+withPrintThrottleMutation(nowMs: number, mutator: () => T): T
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nowMs | `number` | はい |
+| mutator | `() => T` | はい |
+
+**戻り値**: `T`
+
+### fallback
+
+```typescript
+fallback(): void
+```
+
+**戻り値**: `void`
+
+### resolveEffectivePrintRpm
+
+```typescript
+resolveEffectivePrintRpm(provider: string, model: string): number
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `string` | はい |
+| model | `string` | はい |
+
+**戻り値**: `number`
+
+### isRateLimitMessage
+
+```typescript
+isRateLimitMessage(text: string): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `boolean`
+
+### extractRetryAfterMs
+
+```typescript
+extractRetryAfterMs(text: string): number | undefined
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `number | undefined`
+
+### waitForPrintThrottleSlot
+
+```typescript
+async waitForPrintThrottleSlot(input: {
+  provider?: string;
+  model?: string;
+  signal?: AbortSignal;
+}): Promise<void>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | いいえ |
+| &nbsp;&nbsp;↳ model | `string` | いいえ |
+| &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
+
+**戻り値**: `Promise<void>`
+
+### recordPrintRateLimitCooldown
+
+```typescript
+recordPrintRateLimitCooldown(input: {
+  provider?: string;
+  model?: string;
+  stderr: string;
+}): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `object` | はい |
+| &nbsp;&nbsp;↳ provider | `string` | いいえ |
+| &nbsp;&nbsp;↳ model | `string` | いいえ |
+| &nbsp;&nbsp;↳ stderr | `string` | はい |
+
+**戻り値**: `void`
 
 ### trimForError
 
@@ -136,6 +434,24 @@ Trims error messages to a reasonable length for display.
 |------|-----|------|
 | text | `string` | はい |
 | maxLength | `any` | はい |
+
+**戻り値**: `string`
+
+### appendWithCap
+
+```typescript
+appendWithCap(current: string, next: string, maxChars: number): string
+```
+
+Append text with hard length cap to avoid RangeError from unbounded buffering.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| current | `string` | はい |
+| next | `string` | はい |
+| maxChars | `number` | はい |
 
 **戻り値**: `string`
 
@@ -351,6 +667,8 @@ interface PrintExecutorOptions {
   provider?: string;
   model?: string;
   prompt: string;
+  noExtensions?: boolean;
+  envOverrides?: NodeJS.ProcessEnv;
   timeoutMs: number;
   signal?: AbortSignal;
   onStdoutChunk?: (chunk: string) => void;
@@ -401,5 +719,27 @@ interface CallModelViaPiOptions {
 
 PI呼び出しオプション
 
+## 型定義
+
+### PrintThrottleBucketState
+
+```typescript
+type PrintThrottleBucketState = {
+  requestStartsMs: number[];
+  cooldownUntilMs: number;
+  lastAccessedMs: number;
+}
+```
+
+### PrintThrottleSharedStateRecord
+
+```typescript
+type PrintThrottleSharedStateRecord = {
+  version: number;
+  updatedAt: string;
+  states: Record<string, PrintThrottleBucketState>;
+}
+```
+
 ---
-*自動生成: 2026-02-18T18:06:17.406Z*
+*自動生成: 2026-02-22T19:27:00.469Z*

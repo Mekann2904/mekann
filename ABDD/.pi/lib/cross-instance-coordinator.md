@@ -2,7 +2,7 @@
 title: cross-instance-coordinator
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -21,12 +21,14 @@ related: []
 // from 'node:path': join
 // from 'node:process': pid
 // from './runtime-config.js': getRuntimeConfig, RuntimeConfig
+// ... and 1 more imports
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `setCoordinatorNowProvider` | - |
 | 関数 | `registerInstance` | インスタンスを登録してハートビートを開始する |
 | 関数 | `unregisterInstance` | 自身のインスタンス登録を解除 |
 | 関数 | `updateHeartbeat` | ハートビート時刻を更新 |
@@ -34,10 +36,13 @@ related: []
 | 関数 | `getActiveInstanceCount` | アクティブなインスタンス数を取得 |
 | 関数 | `getActiveInstances` | アクティブなインスタンス情報一覧を取得 |
 | 関数 | `getMyParallelLimit` | 自身の並列実行数の上限を取得する |
+| 関数 | `getContendingInstanceCount` | 実際に負荷を持つインスタンス数を取得 |
 | 関数 | `getDynamicParallelLimit` | 動的並列数の上限を計算する |
 | 関数 | `shouldAttemptWorkStealing` | ワークスチーリングを試行すべきか判定する |
 | 関数 | `getWorkStealingCandidates` | ワークスチーリングの候補を取得する |
 | 関数 | `updateWorkloadInfo` | ワークロード情報を更新する |
+| 関数 | `updateRuntimeUsage` | ランタイム使用量を更新する |
+| 関数 | `getClusterRuntimeUsage` | クラスタ全体のランタイム使用量を取得する |
 | 関数 | `getCoordinatorStatus` | コーディネーター詳細を取得 |
 | 関数 | `isCoordinatorInitialized` | コーディネータ初期化確認 |
 | 関数 | `getTotalMaxLlm` | - |
@@ -153,6 +158,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     runtime_config["runtime-config"]
+    adaptive_total_limit["adaptive-total-limit"]
   end
   main --> local
 ```
@@ -162,52 +168,57 @@ flowchart LR
 ```mermaid
 flowchart TD
   cleanupDeadInstances["cleanupDeadInstances()"]
-  clearActiveModel["clearActiveModel()"]
-  clearAllActiveModels["clearAllActiveModels()"]
+  currentTimeMs["currentTimeMs()"]
   ensureDirs["ensureDirs()"]
   generateInstanceId["generateInstanceId()"]
   getActiveInstanceCount["getActiveInstanceCount()"]
   getActiveInstances["getActiveInstances()"]
-  getActiveInstancesForModel["getActiveInstancesForModel()"]
-  getCoordinatorStatus["getCoordinatorStatus()"]
+  getContendingInstanceCount["getContendingInstanceCount()"]
   getDynamicParallelLimit["getDynamicParallelLimit()"]
-  getEnvOverrides["getEnvOverrides()"]
   getMyParallelLimit["getMyParallelLimit()"]
-  getTotalMaxLlm["getTotalMaxLlm()"]
   getWorkStealingCandidates["getWorkStealingCandidates()"]
-  isCoordinatorInitialized["isCoordinatorInitialized()"]
+  isContendingInstance["isContendingInstance()"]
   isInstanceAlive["isInstanceAlive()"]
   loadConfig["loadConfig()"]
+  logCoordinatorDebug["logCoordinatorDebug()"]
   parseLockFile["parseLockFile()"]
+  patchMyInstanceInfo["patchMyInstanceInfo()"]
   registerInstance["registerInstance()"]
-  setActiveModel["setActiveModel()"]
+  setCoordinatorNowProvider["setCoordinatorNowProvider()"]
   shouldAttemptWorkStealing["shouldAttemptWorkStealing()"]
   unregisterInstance["unregisterInstance()"]
   updateHeartbeat["updateHeartbeat()"]
+  updateRuntimeUsage["updateRuntimeUsage()"]
   updateWorkloadInfo["updateWorkloadInfo()"]
+  writeJsonFileAtomic["writeJsonFileAtomic()"]
+  cleanupDeadInstances --> currentTimeMs
   cleanupDeadInstances --> ensureDirs
   cleanupDeadInstances --> isInstanceAlive
+  cleanupDeadInstances --> logCoordinatorDebug
   cleanupDeadInstances --> parseLockFile
+  getActiveInstanceCount --> currentTimeMs
   getActiveInstanceCount --> ensureDirs
   getActiveInstanceCount --> isInstanceAlive
   getActiveInstanceCount --> parseLockFile
+  getActiveInstances --> currentTimeMs
   getActiveInstances --> ensureDirs
   getActiveInstances --> isInstanceAlive
   getActiveInstances --> parseLockFile
-  getActiveInstancesForModel --> getActiveInstances
-  getCoordinatorStatus --> getActiveInstanceCount
-  getCoordinatorStatus --> getActiveInstances
-  getCoordinatorStatus --> getMyParallelLimit
+  getContendingInstanceCount --> getActiveInstances
+  getContendingInstanceCount --> isContendingInstance
   getDynamicParallelLimit --> getActiveInstances
-  getMyParallelLimit --> getActiveInstanceCount
+  getMyParallelLimit --> getContendingInstanceCount
   getWorkStealingCandidates --> getActiveInstances
   registerInstance --> cleanupDeadInstances
   registerInstance --> ensureDirs
   registerInstance --> generateInstanceId
   registerInstance --> loadConfig
   registerInstance --> updateHeartbeat
+  registerInstance --> writeJsonFileAtomic
   shouldAttemptWorkStealing --> getActiveInstances
-  updateHeartbeat --> ensureDirs
+  updateHeartbeat --> patchMyInstanceInfo
+  updateRuntimeUsage --> patchMyInstanceInfo
+  updateWorkloadInfo --> patchMyInstanceInfo
 ```
 
 ### シーケンス図
@@ -218,13 +229,14 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant cross_instance_coordinator as "cross-instance-coordinator"
   participant runtime_config as "runtime-config"
+  participant adaptive_total_limit as "adaptive-total-limit"
 
-  Caller->>cross_instance_coordinator: registerInstance()
+  Caller->>cross_instance_coordinator: setCoordinatorNowProvider()
   cross_instance_coordinator->>runtime_config: 内部関数呼び出し
   runtime_config-->>cross_instance_coordinator: 結果
   cross_instance_coordinator-->>Caller: void
 
-  Caller->>cross_instance_coordinator: unregisterInstance()
+  Caller->>cross_instance_coordinator: registerInstance()
   cross_instance_coordinator-->>Caller: void
 ```
 
@@ -241,11 +253,126 @@ This ensures consistency with other layers.
 
 **戻り値**: `CoordinatorConfig`
 
+### resolveCoordinatorRuntimeDir
+
+```typescript
+resolveCoordinatorRuntimeDir(): string
+```
+
+**戻り値**: `string`
+
+### coordinatorNowProvider
+
+```typescript
+coordinatorNowProvider(): void
+```
+
+**戻り値**: `void`
+
+### currentTimeMs
+
+```typescript
+currentTimeMs(): number
+```
+
+**戻り値**: `number`
+
+### setCoordinatorNowProvider
+
+```typescript
+setCoordinatorNowProvider(provider?: () => number): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `() => number` | いいえ |
+
+**戻り値**: `void`
+
 ### ensureDirs
 
 ```typescript
 ensureDirs(): void
 ```
+
+**戻り値**: `void`
+
+### logCoordinatorDebug
+
+```typescript
+logCoordinatorDebug(message: string, error?: unknown): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| message | `string` | はい |
+| error | `unknown` | いいえ |
+
+**戻り値**: `void`
+
+### writeTextFileAtomic
+
+```typescript
+writeTextFileAtomic(filePath: string, content: string): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| filePath | `string` | はい |
+| content | `string` | はい |
+
+**戻り値**: `void`
+
+### writeJsonFileAtomic
+
+```typescript
+writeJsonFileAtomic(filePath: string, payload: unknown): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| filePath | `string` | はい |
+| payload | `unknown` | はい |
+
+**戻り値**: `void`
+
+### getMyLockFilePath
+
+```typescript
+getMyLockFilePath(): string | null
+```
+
+**戻り値**: `string | null`
+
+### createDefaultMyInstanceInfo
+
+```typescript
+createDefaultMyInstanceInfo(): InstanceInfo | null
+```
+
+**戻り値**: `InstanceInfo | null`
+
+### patchMyInstanceInfo
+
+```typescript
+patchMyInstanceInfo(mutator: (info: InstanceInfo) => void): void
+```
+
+Patch my lock-file state in one place to reduce accidental field loss.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| mutator | `(info: InstanceInfo) => void` | はい |
 
 **戻り値**: `void`
 
@@ -276,6 +403,34 @@ parseLockFile(filename: string): InstanceInfo | null
 | filename | `string` | はい |
 
 **戻り値**: `InstanceInfo | null`
+
+### isProcessAlive
+
+```typescript
+isProcessAlive(processId: number): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| processId | `number` | はい |
+
+**戻り値**: `boolean`
+
+### shouldCheckProcessLiveness
+
+```typescript
+shouldCheckProcessLiveness(info: InstanceInfo): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| info | `InstanceInfo` | はい |
+
+**戻り値**: `boolean`
 
 ### isInstanceAlive
 
@@ -379,6 +534,30 @@ getMyParallelLimit(): number
 
 **戻り値**: `number`
 
+### isContendingInstance
+
+```typescript
+isContendingInstance(info: InstanceInfo): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| info | `InstanceInfo` | はい |
+
+**戻り値**: `boolean`
+
+### getContendingInstanceCount
+
+```typescript
+getContendingInstanceCount(): number
+```
+
+実際に負荷を持つインスタンス数を取得
+
+**戻り値**: `number`
+
 ### getDynamicParallelLimit
 
 ```typescript
@@ -438,6 +617,41 @@ updateWorkloadInfo(pendingTaskCount: number, avgLatencyMs?: number): void
 
 **戻り値**: `void`
 
+### updateRuntimeUsage
+
+```typescript
+updateRuntimeUsage(activeRequestCount: number, activeLlmCount: number): void
+```
+
+ランタイム使用量を更新する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| activeRequestCount | `number` | はい |
+| activeLlmCount | `number` | はい |
+
+**戻り値**: `void`
+
+### getClusterRuntimeUsage
+
+```typescript
+getClusterRuntimeUsage(): {
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+  instanceCount: number;
+}
+```
+
+クラスタ全体のランタイム使用量を取得する
+
+**戻り値**: `{
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+  instanceCount: number;
+}`
+
 ### getCoordinatorStatus
 
 ```typescript
@@ -445,6 +659,7 @@ getCoordinatorStatus(): {
   registered: boolean;
   myInstanceId: string | null;
   activeInstanceCount: number;
+  contendingInstanceCount: number;
   myParallelLimit: number;
   config: CoordinatorConfig | null;
   instances: InstanceInfo[];
@@ -457,6 +672,7 @@ getCoordinatorStatus(): {
   registered: boolean;
   myInstanceId: string | null;
   activeInstanceCount: number;
+  contendingInstanceCount: number;
   myParallelLimit: number;
   config: CoordinatorConfig | null;
   instances: InstanceInfo[];
@@ -720,10 +936,48 @@ Ensure lock directory exists.
 ### tryAcquireLock
 
 ```typescript
-tryAcquireLock(resource: string, ttlMs: number): DistributedLock | null
+tryAcquireLock(resource: string, ttlMs: number, maxRetries: number): DistributedLock | null
 ```
 
-Try to acquire a distributed lock.
+Try to acquire a distributed lock with retry logic.
+Uses atomic O_EXCL (wx flag) to prevent TOCTOU race conditions.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| resource | `string` | はい |
+| ttlMs | `number` | はい |
+| maxRetries | `number` | はい |
+
+**戻り値**: `DistributedLock | null`
+
+### tryCleanupExpiredLock
+
+```typescript
+tryCleanupExpiredLock(lockFile: string, nowMs: number): boolean
+```
+
+Attempt to clean up an expired lock file atomically.
+Returns true if lock was expired and cleaned up, false otherwise.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| lockFile | `string` | はい |
+| nowMs | `number` | はい |
+
+**戻り値**: `boolean`
+
+### acquireDistributedLock
+
+```typescript
+acquireDistributedLock(resource: string, ttlMs: number): DistributedLock | null
+```
+
+Acquire a distributed lock with automatic retry on collision.
+This is the recommended API for acquiring locks as it handles TOCTOU races.
 
 **パラメータ**
 
@@ -845,6 +1099,8 @@ interface InstanceInfo {
   lastHeartbeat: string;
   cwd: string;
   activeModels: ActiveModelInfo[];
+  activeRequestCount?: number;
+  activeLlmCount?: number;
   pendingTaskCount?: number;
   avgLatencyMs?: number;
   lastTaskCompletedAt?: string;
@@ -955,4 +1211,4 @@ interface StealingStatsInternal {
 Stealing statistics tracking (internal).
 
 ---
-*自動生成: 2026-02-18T18:06:17.507Z*
+*自動生成: 2026-02-22T19:27:00.593Z*

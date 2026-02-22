@@ -2,7 +2,7 @@
 title: task-scheduler
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -29,7 +29,7 @@ related: []
 | 関数 | `shouldPreempt` | 実行中タスクを割り込むか判定 |
 | 関数 | `preemptTask` | - |
 | 関数 | `resumeFromCheckpoint` | - |
-| 関数 | `createTaskId` | タスクIDを生成する |
+| 関数 | `createTaskId` | - |
 | 関数 | `getScheduler` | スケジューラを取得する |
 | 関数 | `createScheduler` | スケジューラを作成する |
 | 関数 | `resetScheduler` | シングルトンのスケジューラーをリセットする |
@@ -231,8 +231,6 @@ Get default scheduler config from centralized RuntimeConfig.
 ```typescript
 createTaskId(prefix: string): string
 ```
-
-タスクIDを生成する
 
 **パラメータ**
 
@@ -588,4 +586,4 @@ type TaskSource = | "subagent_run"
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.580Z*
+*自動生成: 2026-02-22T19:27:00.732Z*

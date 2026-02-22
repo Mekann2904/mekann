@@ -2,7 +2,7 @@
 title: live-monitor-base
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -19,7 +19,7 @@ related: []
 // from '@mariozechner/pi-tui': matchesKey, Key, truncateToWidth
 // from '../format-utils.js': formatDurationMs, formatBytes, formatClockTime
 // from '../agent-utils.js': computeLiveWindow
-// from '../live-view-utils.js': getLiveStatusGlyph, isEnterInput, finalizeLiveLines
+// from '../live-view-utils.js': getLiveStatusGlyph, getLiveStatusColor, getActivityIndicator, ...
 // from './tui-utils.js': appendTail, countOccurrences, estimateLineCount, ...
 ```
 
@@ -32,11 +32,11 @@ related: []
 | 関数 | `getStreamTail` | ビューモードとストリームに基づいて末尾を取得 |
 | 関数 | `getStreamBytes` | バイト数を取得する |
 | 関数 | `getStreamLineCount` | 行数を取得する |
-| 関数 | `renderLiveViewHeader` | ヘッダー描画 |
-| 関数 | `renderListKeyboardHints` | キーボード操作のヒントを描画する |
-| 関数 | `renderDetailKeyboardHints` | 詳細画面のキーボード操作ヒントを描画する |
+| 関数 | `renderLiveViewHeader` | ヘッダー描画（コンパクト版） |
+| 関数 | `renderListKeyboardHints` | キーボード操作のヒントを描画する（コンパクト版） |
+| 関数 | `renderDetailKeyboardHints` | 詳細画面のキーボード操作ヒントを描画する（コンパクト版） |
 | 関数 | `renderListWindow` | リストを描画 |
-| 関数 | `renderBaseListItemLine` | 単一のリストアイテム行を描画する |
+| 関数 | `renderBaseListItemLine` | 単一のリストアイテム行を描画する（コンパクト版） |
 | 関数 | `renderSelectedItemSummary` | 選択中アイテムの概要を描画する |
 | 関数 | `renderDetailHeader` | 選択アイテムの詳細ヘッダーを描画する |
 | 関数 | `renderStreamOutput` | ストリーム出力セクションを描画する |
@@ -146,7 +146,6 @@ flowchart TD
   renderSelectedItemSummary["renderSelectedItemSummary()"]
   renderStreamOutput["renderStreamOutput()"]
   getStreamLineCount --> getStreamBytes
-  renderBaseListItemLine --> getStreamLineCount
   renderDetailHeader --> add
   renderDetailKeyboardHints --> add
   renderListKeyboardHints --> add
@@ -275,7 +274,7 @@ getStreamLineCount(item: BaseLiveItem, stream: LiveStreamView): number
 renderLiveViewHeader(data: LiveViewHeaderData, width: number, theme: any): string[]
 ```
 
-ヘッダー描画
+ヘッダー描画（コンパクト版）
 
 **パラメータ**
 
@@ -307,7 +306,7 @@ add(line: any): void
 renderListKeyboardHints(width: number, theme: any): string[]
 ```
 
-キーボード操作のヒントを描画する
+キーボード操作のヒントを描画する（コンパクト版）
 
 **パラメータ**
 
@@ -338,7 +337,7 @@ add(line: any): void
 renderDetailKeyboardHints(width: number, theme: any, extraKeys?: string): string[]
 ```
 
-詳細画面のキーボード操作ヒントを描画する
+詳細画面のキーボード操作ヒントを描画する（コンパクト版）
 
 **パラメータ**
 
@@ -405,7 +404,7 @@ add(line: any): void
 renderBaseListItemLine(item: BaseLiveItem & { name?: string }, index: number, isSelected: boolean, width: number, theme: any, extraMeta?: string): string
 ```
 
-単一のリストアイテム行を描画する
+単一のリストアイテム行を描画する（コンパクト版）
 
 **パラメータ**
 
@@ -709,10 +708,10 @@ type LiveStreamView = "stdout" | "stderr"
 ### LiveViewMode
 
 ```typescript
-type LiveViewMode = "list" | "detail"
+type LiveViewMode = "list" | "detail" | "tree" | "timeline"
 ```
 
 ライブ表示モード種別
 
 ---
-*自動生成: 2026-02-18T18:06:17.586Z*
+*自動生成: 2026-02-22T19:27:00.742Z*

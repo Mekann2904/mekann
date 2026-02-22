@@ -2,7 +2,7 @@
 title: member-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -17,11 +17,11 @@ related: []
 
 ```typescript
 // from 'node:fs': existsSync, readFileSync
-// from 'node:path': join
+// from 'node:os': homedir
+// from 'node:path': dirname, join
+// from 'node:url': fileURLToPath
 // from './storage': TeamDefinition, TeamMember, TeamMemberResult
-// from '../../lib/format-utils.js': normalizeForSingleLine
-// from '../../lib/error-utils.js': toErrorMessage
-// ... and 6 more imports
+// ... and 13 more imports
 ```
 
 ## エクスポート一覧
@@ -64,8 +64,8 @@ flowchart LR
     storage["storage"]
     format_utils["format-utils"]
     error_utils["error-utils"]
+    runtime_utils["runtime-utils"]
     agent_types["agent-types"]
-    output_validation["output-validation"]
   end
   main --> local
 ```
@@ -76,8 +76,12 @@ flowchart LR
 flowchart TD
   buildSkillsSectionWithContent["buildSkillsSectionWithContent()"]
   buildTeamMemberPrompt["buildTeamMemberPrompt()"]
+  extractFieldIfExists["extractFieldIfExists()"]
   extractSummary["extractSummary()"]
   formatTeamMemberSkillsSection["formatTeamMemberSkillsSection()"]
+  getGlobalAgentDir["getGlobalAgentDir()"]
+  getSkillSearchPaths["getSkillSearchPaths()"]
+  isIdleTimeoutErrorMessage["isIdleTimeoutErrorMessage()"]
   loadSkillContent["loadSkillContent()"]
   mergeSkillArrays["mergeSkillArrays()"]
   normalizeTeamMemberOutput["normalizeTeamMemberOutput()"]
@@ -88,10 +92,14 @@ flowchart TD
   buildSkillsSectionWithContent --> loadSkillContent
   buildTeamMemberPrompt --> buildSkillsSectionWithContent
   buildTeamMemberPrompt --> resolveEffectiveTeamMemberSkills
+  getSkillSearchPaths --> getGlobalAgentDir
+  loadSkillContent --> getSkillSearchPaths
+  normalizeTeamMemberOutput --> extractFieldIfExists
   normalizeTeamMemberOutput --> pickTeamFieldCandidate
   resolveEffectiveTeamMemberSkills --> mergeSkillArrays
   runMember --> buildTeamMemberPrompt
   runMember --> extractSummary
+  runMember --> isIdleTimeoutErrorMessage
   runMember --> normalizeTeamMemberOutput
   runMember --> runPiPrintMode
   runPiPrintMode --> runPiPrintMode
@@ -152,6 +160,23 @@ normalizeTeamMemberOutput(output: string): TeamNormalizedOutput
 
 **戻り値**: `TeamNormalizedOutput`
 
+### extractFieldIfExists
+
+```typescript
+extractFieldIfExists(output: string, fieldName: string): string | null
+```
+
+出力から特定のフィールド値を抽出（存在する場合）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+| fieldName | `string` | はい |
+
+**戻り値**: `string | null`
+
 ### mergeSkillArrays
 
 ```typescript
@@ -201,6 +226,36 @@ formatTeamMemberSkillsSection(skills: string[] | undefined): string | null
 | skills | `string[] | undefined` | はい |
 
 **戻り値**: `string | null`
+
+### getPackageRoot
+
+```typescript
+getPackageRoot(): string
+```
+
+Resolve package root directory relative to this file.
+This file is at: .pi/extensions/agent-teams/member-execution.ts
+Package root is: ../../../ (3 levels up)
+
+**戻り値**: `string`
+
+### getGlobalAgentDir
+
+```typescript
+getGlobalAgentDir(): string
+```
+
+Get global agent directory from environment variable.
+
+**戻り値**: `string`
+
+### getSkillSearchPaths
+
+```typescript
+getSkillSearchPaths(): string[]
+```
+
+**戻り値**: `string[]`
 
 ### loadSkillContent
 
@@ -291,6 +346,20 @@ async runPiPrintMode(input: {
 
 **戻り値**: `Promise<PrintCommandResult>`
 
+### isIdleTimeoutErrorMessage
+
+```typescript
+isIdleTimeoutErrorMessage(message: string): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| message | `string` | はい |
+
+**戻り値**: `boolean`
+
 ### runMember
 
 ```typescript
@@ -303,7 +372,7 @@ async runMember(input: {
   communicationContext?: string;
   timeoutMs: number;
   cwd: string;
-  retryOverrides?: any;
+  retryOverrides?: RetryWithBackoffOverrides;
   fallbackProvider?: string;
   fallbackModel?: string;
   signal?: AbortSignal;
@@ -330,7 +399,7 @@ async runMember(input: {
 | &nbsp;&nbsp;↳ communicationContext | `string` | いいえ |
 | &nbsp;&nbsp;↳ timeoutMs | `number` | はい |
 | &nbsp;&nbsp;↳ cwd | `string` | はい |
-| &nbsp;&nbsp;↳ retryOverrides | `any` | いいえ |
+| &nbsp;&nbsp;↳ retryOverrides | `RetryWithBackoffOverrides` | いいえ |
 | &nbsp;&nbsp;↳ fallbackProvider | `string` | いいえ |
 | &nbsp;&nbsp;↳ fallbackModel | `string` | いいえ |
 | &nbsp;&nbsp;↳ signal | `AbortSignal` | いいえ |
@@ -368,4 +437,4 @@ interface TeamNormalizedOutput {
 チーム実行結果の正規化出力
 
 ---
-*自動生成: 2026-02-18T18:06:17.008Z*
+*自動生成: 2026-02-22T19:27:00.118Z*

@@ -2,7 +2,7 @@
 title: sym_find
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -28,6 +28,9 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `wildcardToRegex` | Convert wildcard pattern to regex |
+| 関数 | `filterSymbols` | Filter symbols by criteria |
+| 関数 | `sortSymbols` | Sort symbols by relevance |
 | 関数 | `symFind` | シンボル検索を行う |
 
 ## 図解
@@ -76,13 +79,13 @@ sequenceDiagram
   participant types as "types"
   participant output as "output"
 
-  Caller->>sym_find: symFind()
-  activate sym_find
-  Note over sym_find: 非同期処理開始
+  Caller->>sym_find: wildcardToRegex()
   sym_find->>types: 内部関数呼び出し
   types-->>sym_find: 結果
-  deactivate sym_find
-  sym_find-->>Caller: Promise_SymFindOutpu
+  sym_find-->>Caller: RegExp
+
+  Caller->>sym_find: filterSymbols()
+  sym_find-->>Caller: SymbolDefinition
 ```
 
 ## 関数
@@ -106,7 +109,7 @@ Escape regex special characters
 ### wildcardToRegex
 
 ```typescript
-wildcardToRegex(pattern: string): RegExp
+wildcardToRegex(pattern: string, exactMatch: any): RegExp
 ```
 
 Convert wildcard pattern to regex
@@ -116,6 +119,7 @@ Convert wildcard pattern to regex
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | pattern | `string` | はい |
+| exactMatch | `any` | はい |
 
 **戻り値**: `RegExp`
 
@@ -187,4 +191,4 @@ async symFind(input: SymFindInput, cwd: string): Promise<SymFindOutput>
 **戻り値**: `Promise<SymFindOutput>`
 
 ---
-*自動生成: 2026-02-18T18:06:17.389Z*
+*自動生成: 2026-02-22T19:27:00.432Z*

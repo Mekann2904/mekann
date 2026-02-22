@@ -2,7 +2,7 @@
 title: storage-base
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -36,6 +36,7 @@ related: []
 | 関数 | `createStorageLoader` | ストレージローダー関数を作成する。 |
 | 関数 | `createStorageSaver` | ストレージ保存用関数を作成する |
 | 関数 | `toId` | IDを生成する |
+| 関数 | `createCorruptedBackup` | 破損したストレージファイルのバックアップを作成 |
 | 関数 | `mergeSubagentStorageWithDisk` | サブエージェントストレージとディスク状態をマージ |
 | 関数 | `mergeTeamStorageWithDisk` | チームストレージとディスクの状態をマージする。 |
 | インターフェース | `HasId` | - |
@@ -111,6 +112,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  createCorruptedBackup["createCorruptedBackup()"]
   createEnsurePaths["createEnsurePaths()"]
   createPathsFactory["createPathsFactory()"]
   createStorageLoader["createStorageLoader()"]
@@ -322,6 +324,23 @@ IDを生成する
 
 **戻り値**: `string`
 
+### createCorruptedBackup
+
+```typescript
+createCorruptedBackup(storageFile: string, prefix: string): string | null
+```
+
+破損したストレージファイルのバックアップを作成
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| storageFile | `string` | はい |
+| prefix | `string` | はい |
+
+**戻り値**: `string | null`
+
 ### mergeSubagentStorageWithDisk
 
 ```typescript
@@ -456,4 +475,4 @@ interface CreateStorageSaverOptions {
 ストレージ保存用オプション
 
 ---
-*自動生成: 2026-02-18T18:06:17.570Z*
+*自動生成: 2026-02-22T19:27:00.724Z*

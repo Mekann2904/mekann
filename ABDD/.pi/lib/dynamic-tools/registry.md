@@ -2,7 +2,7 @@
 title: registry
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -19,9 +19,9 @@ related: []
 // from 'node:fs': existsSync, mkdirSync, readFileSync, ...
 // from 'node:path': join, basename
 // from 'node:crypto': createHash
-// from './types.js': DynamicToolDefinition, DynamicToolRegistrationRequest, DynamicToolRegistrationResult, ...
-// from './safety.js': quickSafetyCheck, analyzeCodeSafety
-// ... and 2 more imports
+// from '@sinclair/typebox': Type
+// from '@sinclair/typebox/value': Value
+// ... and 4 more imports
 ```
 
 ## エクスポート一覧
@@ -127,6 +127,11 @@ flowchart LR
     audit["audit"]
   end
   main --> local
+  subgraph external[外部ライブラリ]
+    _sinclair["@sinclair"]
+    _sinclair["@sinclair"]
+  end
+  main --> external
 ```
 
 ### 関数フロー
@@ -143,6 +148,7 @@ flowchart TD
   loadAllToolDefinitions["loadAllToolDefinitions()"]
   loadToolDefinition["loadToolDefinition()"]
   loadToolDefinitionByName["loadToolDefinitionByName()"]
+  parseDynamicToolDefinition["parseDynamicToolDefinition()"]
   recommendToolsForTask["recommendToolsForTask()"]
   registerDynamicTool["registerDynamicTool()"]
   resetRegistry["resetRegistry()"]
@@ -154,6 +160,9 @@ flowchart TD
   deleteDynamicTool --> deleteToolDefinition
   deleteDynamicTool --> resolveToolDefinition
   listDynamicTools --> loadAllToolDefinitions
+  loadAllToolDefinitions --> parseDynamicToolDefinition
+  loadToolDefinition --> parseDynamicToolDefinition
+  loadToolDefinitionByName --> parseDynamicToolDefinition
   recommendToolsForTask --> loadAllToolDefinitions
   registerDynamicTool --> ensureDynamicToolsPaths
   registerDynamicTool --> generateToolId
@@ -175,10 +184,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant registry as "registry"
+  participant sinclair as "@sinclair"
   participant types as "types"
   participant safety as "safety"
 
   Caller->>registry: ensureDynamicToolsPaths()
+  registry->>sinclair: API呼び出し
+  sinclair-->>registry: レスポンス
   registry->>types: 内部関数呼び出し
   types-->>registry: 結果
   registry-->>Caller: void
@@ -188,6 +200,20 @@ sequenceDiagram
 ```
 
 ## 関数
+
+### parseDynamicToolDefinition
+
+```typescript
+parseDynamicToolDefinition(content: string): DynamicToolDefinition | null
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| content | `string` | はい |
+
+**戻り値**: `DynamicToolDefinition | null`
 
 ### ensureDynamicToolsPaths
 
@@ -594,4 +620,4 @@ interface RegisterToolResult {
 ツール登録結果
 
 ---
-*自動生成: 2026-02-18T18:06:17.519Z*
+*自動生成: 2026-02-22T19:27:00.613Z*

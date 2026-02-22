@@ -2,7 +2,7 @@
 title: agent-errors
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -43,10 +43,18 @@ related: []
 | 関数 | `buildDiagnosticContext` | 診断コンテキスト構築 |
 | 関数 | `classifyFailureType` | エラー情報を解析して失敗分類を決定 |
 | 関数 | `shouldRetryByClassification` | 分類結果に基づきリトライ可否を判定 |
+| 関数 | `getToolCriticalityLevel` | ツール名から重要度を判定 |
+| 関数 | `isBashErrorTolerated` | bash エラーが許容されるか判定 |
+| 関数 | `evaluateAgentRunOutcome` | 複数のツール呼び出し結果を評価して Agent Run 全体の状態を判定 |
+| 関数 | `parseToolFailureCount` | エラーメッセージから失敗したツール数を抽出 |
+| 関数 | `reevaluateAgentRunFailure` | エラーメッセージに基づいて Agent Run の失敗を再評価 |
 | インターフェース | `ExtendedOutcomeSignal` | 拡張実行結果シグナル |
 | インターフェース | `EntityResultItem` | チーム失敗時の結果解決 |
+| インターフェース | `ToolCallResult` | ツール呼び出し結果 |
+| インターフェース | `AgentRunEvaluation` | Agent Run評価結果 |
 | 型 | `ExtendedOutcomeCode` | 拡張実行結果コード |
 | 型 | `FailureClassification` | リトライ判定用の標準化された失敗分類 |
+| 型 | `ToolCriticalityLevel` | ツールの重要度レベル |
 
 ## 図解
 
@@ -67,6 +75,20 @@ classDiagram
     +error: string
     +summary: string
     +entityId: string
+  }
+  class ToolCallResult {
+    <<interface>>
+    +toolName: string
+    +status: ok_error
+    +errorMessage: string
+  }
+  class AgentRunEvaluation {
+    <<interface>>
+    +status: ok_warning_erro
+    +failedCount: number
+    +criticalFailureCount: number
+    +warningCount: number
+    +totalCount: number
   }
 ```
 
@@ -93,10 +115,15 @@ flowchart TD
   buildDiagnosticContext["buildDiagnosticContext()"]
   classifyFailureType["classifyFailureType()"]
   classifySemanticError["classifySemanticError()"]
+  evaluateAgentRunOutcome["evaluateAgentRunOutcome()"]
   getRetryablePatterns["getRetryablePatterns()"]
+  getToolCriticalityLevel["getToolCriticalityLevel()"]
+  isBashErrorTolerated["isBashErrorTolerated()"]
   isRetryableEntityError["isRetryableEntityError()"]
   isRetryableSubagentError["isRetryableSubagentError()"]
   isRetryableTeamMemberError["isRetryableTeamMemberError()"]
+  parseToolFailureCount["parseToolFailureCount()"]
+  reevaluateAgentRunFailure["reevaluateAgentRunFailure()"]
   resetRetryablePatternsCache["resetRetryablePatternsCache()"]
   resolveAggregateOutcome["resolveAggregateOutcome()"]
   resolveExtendedFailureOutcome["resolveExtendedFailureOutcome()"]
@@ -108,9 +135,12 @@ flowchart TD
   shouldRetryByClassification["shouldRetryByClassification()"]
   trimErrorMessage["trimErrorMessage()"]
   buildDiagnosticContext --> trimErrorMessage
+  evaluateAgentRunOutcome --> getToolCriticalityLevel
+  evaluateAgentRunOutcome --> isBashErrorTolerated
   isRetryableEntityError --> getRetryablePatterns
   isRetryableSubagentError --> isRetryableEntityError
   isRetryableTeamMemberError --> isRetryableEntityError
+  reevaluateAgentRunFailure --> parseToolFailureCount
   resolveExtendedFailureOutcome --> classifySemanticError
   resolveExtendedFailureOutcome --> resolveFailureOutcome
   resolveFailureOutcome --> isRetryableEntityError
@@ -446,6 +476,96 @@ shouldRetryByClassification(classification: FailureClassification, currentRound:
 
 **戻り値**: `boolean`
 
+### getToolCriticalityLevel
+
+```typescript
+getToolCriticalityLevel(toolName: string): ToolCriticalityLevel
+```
+
+ツール名から重要度を判定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| toolName | `string` | はい |
+
+**戻り値**: `ToolCriticalityLevel`
+
+### isBashErrorTolerated
+
+```typescript
+isBashErrorTolerated(errorMessage: string): boolean
+```
+
+bash エラーが許容されるか判定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| errorMessage | `string` | はい |
+
+**戻り値**: `boolean`
+
+### evaluateAgentRunOutcome
+
+```typescript
+evaluateAgentRunOutcome(results: ToolCallResult[], totalToolCalls?: number): AgentRunEvaluation
+```
+
+複数のツール呼び出し結果を評価して Agent Run 全体の状態を判定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| results | `ToolCallResult[]` | はい |
+| totalToolCalls | `number` | いいえ |
+
+**戻り値**: `AgentRunEvaluation`
+
+### parseToolFailureCount
+
+```typescript
+parseToolFailureCount(errorMessage: string): { failed: number; total: number } | null
+```
+
+エラーメッセージから失敗したツール数を抽出
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| errorMessage | `string` | はい |
+
+**戻り値**: `{ failed: number; total: number } | null`
+
+### reevaluateAgentRunFailure
+
+```typescript
+reevaluateAgentRunFailure(errorMessage: string): {
+  shouldDowngrade: boolean;
+  originalFailure: { failed: number; total: number } | null;
+  suggestedStatus: "ok" | "warning" | "error";
+}
+```
+
+エラーメッセージに基づいて Agent Run の失敗を再評価
+現在の "X/Y tool calls failed" エラーをより詳細に分析
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| errorMessage | `string` | はい |
+
+**戻り値**: `{
+  shouldDowngrade: boolean;
+  originalFailure: { failed: number; total: number } | null;
+  suggestedStatus: "ok" | "warning" | "error";
+}`
+
 ## インターフェース
 
 ### ExtendedOutcomeSignal
@@ -474,6 +594,34 @@ interface EntityResultItem {
 
 チーム失敗時の結果解決
 
+### ToolCallResult
+
+```typescript
+interface ToolCallResult {
+  toolName: string;
+  status: "ok" | "error";
+  errorMessage?: string;
+}
+```
+
+ツール呼び出し結果
+
+### AgentRunEvaluation
+
+```typescript
+interface AgentRunEvaluation {
+  status: "ok" | "warning" | "error";
+  failedCount: number;
+  criticalFailureCount: number;
+  warningCount: number;
+  totalCount: number;
+  message: string;
+  shouldFail: boolean;
+}
+```
+
+Agent Run評価結果
+
 ## 型定義
 
 ### ExtendedOutcomeCode
@@ -501,5 +649,13 @@ type FailureClassification = | "rate_limit"   // HTTP 429 - backoffで処理
 
 リトライ判定用の標準化された失敗分類
 
+### ToolCriticalityLevel
+
+```typescript
+type ToolCriticalityLevel = "critical" | "non-critical" | "informational"
+```
+
+ツールの重要度レベル
+
 ---
-*自動生成: 2026-02-18T18:06:17.482Z*
+*自動生成: 2026-02-22T19:27:00.552Z*

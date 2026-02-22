@@ -2,7 +2,7 @@
 title: semantic-memory
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -430,4 +430,4 @@ interface SemanticSearchResult {
 セマンティック検索の結果
 
 ---
-*自動生成: 2026-02-18T18:06:17.561Z*
+*自動生成: 2026-02-22T19:27:00.717Z*

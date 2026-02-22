@@ -2,7 +2,7 @@
 title: comprehensive-logger
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -39,16 +39,16 @@ related: []
 ```mermaid
 classDiagram
   class ComprehensiveLogger {
+    -MAX_ACTIVE_OPERATIONS: any
+    -MAX_ACTIVE_TASKS: any
+    -STALE_ACTIVE_MS: any
     -config: LoggerConfig
     -buffer: LogEvent
-    -sessionId: string
-    -currentTaskId: string
-    -currentOperationId: string
     -ensureLogDir()
     -startFlushTimer()
-    +startSession()
-    +endSession()
-    +startTask()
+    -trimOldestEntries()
+    -pruneActiveTasks()
+    -pruneActiveOperations()
   }
 ```
 
@@ -160,6 +160,9 @@ resetLogger(): void
 
 | 名前 | 型 | 可視性 |
 |------|-----|--------|
+| MAX_ACTIVE_OPERATIONS | `any` | private |
+| MAX_ACTIVE_TASKS | `any` | private |
+| STALE_ACTIVE_MS | `any` | private |
 | config | `LoggerConfig` | private |
 | buffer | `LogEvent[]` | private |
 | sessionId | `string` | private |
@@ -182,6 +185,9 @@ resetLogger(): void
 |------|------------|
 | ensureLogDir | `ensureLogDir(): Promise<void>` |
 | startFlushTimer | `startFlushTimer(): void` |
+| trimOldestEntries | `trimOldestEntries(map, maxSize): void` |
+| pruneActiveTasks | `pruneActiveTasks(now): void` |
+| pruneActiveOperations | `pruneActiveOperations(now): void` |
 | startSession | `startSession(data): string` |
 | endSession | `endSession(exitReason): void` |
 | startTask | `startTask(userInput, context): string` |
@@ -192,12 +198,6 @@ resetLogger(): void
 | logToolResult | `logToolResult(toolName, result): void` |
 | logToolError | `logToolError(toolName, error): void` |
 | logLLMRequest | `logLLMRequest(data): string` |
-| getSessionId | `getSessionId(): string` |
-| getCurrentTaskId | `getCurrentTaskId(): string | undefined` |
-| getCurrentOperationId | `getCurrentOperationId(): string | undefined` |
-| getEventCount | `getEventCount(): number` |
-| getErrorCount | `getErrorCount(): number` |
-| getTotalTokens | `getTotalTokens(): number` |
 | logLLMResponse | `logLLMResponse(data): void` |
 | logStateChange | `logStateChange(data): void` |
 | logMetricsSnapshot | `logMetricsSnapshot(data): void` |
@@ -213,4 +213,4 @@ resetLogger(): void
 | getTotalTokens | `getTotalTokens(): number` |
 
 ---
-*自動生成: 2026-02-18T18:06:17.492Z*
+*自動生成: 2026-02-22T19:27:00.572Z*

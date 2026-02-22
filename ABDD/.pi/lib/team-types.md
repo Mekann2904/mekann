@@ -2,7 +2,7 @@
 title: team-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -16,6 +16,7 @@ related: []
 ## インポート
 
 ```typescript
+// from './live-types-base.js': BaseLiveSnapshot
 // from './tui/live-monitor-base.js': LiveStreamView
 // from './live-view-utils.js': LiveStatus
 ```
@@ -24,15 +25,17 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| インターフェース | `TeamQueueStatus` | 待機状態情報 |
 | インターフェース | `TeamLiveItem` | アイテムのライブ状態を表す |
 | インターフェース | `TeamMonitorLifecycle` | ライフサイクル情報を保持する |
 | インターフェース | `TeamMonitorPhase` | 開始または終了をマークする |
 | インターフェース | `TeamMonitorEvents` | 実行フェーズを操作する |
 | インターフェース | `TeamMonitorStream` | チャンクを追加する |
 | インターフェース | `TeamMonitorDiscussion` | チームの議論ログを管理します。 |
+| インターフェース | `TeamMonitorQueue` | 待機状態を管理します。 |
 | インターフェース | `TeamMonitorResource` | モニタリングリソースを管理します。 |
 | インターフェース | `AgentTeamLiveMonitorController` | エージェントチームのライブモニタリングを制御します。 |
-| インターフェース | `TeamNormalizedOutput` | 正規化されたチーム出力を表します。 |
+| インターフェース | `TeamNormalizedOutputAPI` | 正規化されたチーム出力を表します（API応答用）。 |
 | インターフェース | `TeamParallelCapacityCandidate` | チーム並列容量候補を表します。 |
 | インターフェース | `TeamParallelCapacityResolution` | 並列容量の解決結果 |
 | インターフェース | `TeamFrontmatter` | チームのフロントマター |
@@ -47,13 +50,20 @@ related: []
 
 ```mermaid
 classDiagram
+  class TeamQueueStatus {
+    <<interface>>
+    +isWaiting: boolean
+    +waitedMs: number
+    +queuePosition: number
+    +queuedAhead: number
+  }
   class TeamLiveItem {
     <<interface>>
     +key: string
     +label: string
     +partners: string
-    +status: LiveStatus
     +phase: TeamLivePhase
+    +phaseRound: number
   }
   class TeamMonitorLifecycle {
     <<interface>>
@@ -77,6 +87,10 @@ classDiagram
     <<interface>>
     +appendDiscussion: itemKey_string_disc
   }
+  class TeamMonitorQueue {
+    <<interface>>
+    +updateQueueStatus: status_TeamQueueSta
+  }
   class TeamMonitorResource {
     <<interface>>
     +close: void
@@ -85,7 +99,7 @@ classDiagram
   class AgentTeamLiveMonitorController {
     <<interface>>
   }
-  class TeamNormalizedOutput {
+  class TeamNormalizedOutputAPI {
     <<interface>>
     +summary: string
     +output: string
@@ -136,6 +150,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
+    live_types_base["live-types-base"]
     live_monitor_base["live-monitor-base"]
     live_view_utils["live-view-utils"]
   end
@@ -144,6 +159,19 @@ flowchart LR
 
 ## インターフェース
 
+### TeamQueueStatus
+
+```typescript
+interface TeamQueueStatus {
+  isWaiting: boolean;
+  waitedMs?: number;
+  queuePosition?: number;
+  queuedAhead?: number;
+}
+```
+
+待機状態情報
+
 ### TeamLiveItem
 
 ```typescript
@@ -151,24 +179,12 @@ interface TeamLiveItem {
   key: string;
   label: string;
   partners: string[];
-  status: LiveStatus;
   phase: TeamLivePhase;
   phaseRound?: number;
-  startedAtMs?: number;
-  finishedAtMs?: number;
-  lastChunkAtMs?: number;
   lastEventAtMs?: number;
   lastEvent?: string;
   summary?: string;
   error?: string;
-  stdoutTail: string;
-  stderrTail: string;
-  stdoutBytes: number;
-  stderrBytes: number;
-  stdoutNewlineCount: number;
-  stderrNewlineCount: number;
-  stdoutEndsWithNewline: boolean;
-  stderrEndsWithNewline: boolean;
   events: string[];
   discussionTail: string;
   discussionBytes: number;
@@ -236,6 +252,16 @@ interface TeamMonitorDiscussion {
 
 チームの議論ログを管理します。
 
+### TeamMonitorQueue
+
+```typescript
+interface TeamMonitorQueue {
+  updateQueueStatus: (status: TeamQueueStatus) => void;
+}
+```
+
+待機状態を管理します。
+
 ### TeamMonitorResource
 
 ```typescript
@@ -256,10 +282,10 @@ interface AgentTeamLiveMonitorController {
 
 エージェントチームのライブモニタリングを制御します。
 
-### TeamNormalizedOutput
+### TeamNormalizedOutputAPI
 
 ```typescript
-interface TeamNormalizedOutput {
+interface TeamNormalizedOutputAPI {
   summary: string;
   output: string;
   evidenceCount: number;
@@ -267,7 +293,8 @@ interface TeamNormalizedOutput {
 }
 ```
 
-正規化されたチーム出力を表します。
+正規化されたチーム出力を表します（API応答用）。
+runtime用のTeamNormalizedOutput（member-execution.ts）とは異なる構造です。
 
 ### TeamParallelCapacityCandidate
 
@@ -354,10 +381,10 @@ type TeamLivePhase = | "queued"
 ### TeamLiveViewMode
 
 ```typescript
-type TeamLiveViewMode = "list" | "detail" | "discussion"
+type TeamLiveViewMode = "list" | "detail" | "discussion" | "tree" | "timeline"
 ```
 
 チームライブの表示モード
 
 ---
-*自動生成: 2026-02-18T18:06:17.581Z*
+*自動生成: 2026-02-22T19:27:00.732Z*

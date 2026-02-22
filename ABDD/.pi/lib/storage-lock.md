@@ -2,7 +2,7 @@
 title: storage-lock
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -17,13 +17,14 @@ related: []
 
 ```typescript
 // from 'node:crypto': randomBytes
-// from 'node:fs': closeSync, openSync, renameSync, ...
+// from 'node:fs': closeSync, openSync, readFileSync, ...
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `getSyncSleepDiagnostics` | SharedArrayBuffer利用可否の詳細情報を取得 |
 | 関数 | `withFileLock` | - |
 | 関数 | `atomicWriteTextFile` | - |
 | インターフェース | `FileLockOptions` | - |
@@ -48,14 +49,20 @@ classDiagram
 flowchart TD
   atomicWriteTextFile["atomicWriteTextFile()"]
   clearStaleLock["clearStaleLock()"]
+  getSyncSleepDiagnostics["getSyncSleepDiagnostics()"]
   hasEfficientSyncSleep["hasEfficientSyncSleep()"]
+  isLockOwnerDead["isLockOwnerDead()"]
   isNodeErrno["isNodeErrno()"]
   sleepSync["sleepSync()"]
   tryAcquireLock["tryAcquireLock()"]
   withFileLock["withFileLock()"]
+  clearStaleLock --> isLockOwnerDead
+  clearStaleLock --> isNodeErrno
+  isLockOwnerDead --> isNodeErrno
   sleepSync --> hasEfficientSyncSleep
   tryAcquireLock --> isNodeErrno
   withFileLock --> clearStaleLock
+  withFileLock --> getSyncSleepDiagnostics
   withFileLock --> hasEfficientSyncSleep
   withFileLock --> sleepSync
   withFileLock --> tryAcquireLock
@@ -69,11 +76,11 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant storage_lock as "storage-lock"
 
+  Caller->>storage_lock: getSyncSleepDiagnostics()
+  storage_lock-->>Caller: hasSharedArrayBuffe
+
   Caller->>storage_lock: withFileLock()
   storage_lock-->>Caller: T
-
-  Caller->>storage_lock: atomicWriteTextFile()
-  storage_lock-->>Caller: void
 ```
 
 ## 関数
@@ -106,6 +113,28 @@ WARNING: Never uses busy-wait to avoid CPU spin.
 | ms | `number` | はい |
 
 **戻り値**: `boolean`
+
+### getSyncSleepDiagnostics
+
+```typescript
+getSyncSleepDiagnostics(): {
+  hasSharedArrayBuffer: boolean;
+  hasAtomics: boolean;
+  hasAtomicsWait: boolean;
+  isAvailable: boolean;
+  reason: string;
+}
+```
+
+SharedArrayBuffer利用可否の詳細情報を取得
+
+**戻り値**: `{
+  hasSharedArrayBuffer: boolean;
+  hasAtomics: boolean;
+  hasAtomicsWait: boolean;
+  isAvailable: boolean;
+  reason: string;
+}`
 
 ### isNodeErrno
 
@@ -151,6 +180,14 @@ clearStaleLock(lockFile: string, staleMs: number): void
 
 **戻り値**: `void`
 
+### isLockOwnerDead
+
+```typescript
+isLockOwnerDead(): boolean
+```
+
+**戻り値**: `boolean`
+
 ### withFileLock
 
 ```typescript
@@ -195,4 +232,4 @@ interface FileLockOptions {
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.571Z*
+*自動生成: 2026-02-22T19:27:00.724Z*

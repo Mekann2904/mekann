@@ -198,4 +198,4 @@ type LogFunction = (message: string, ...args: unknown[]) => void
 ログ出力関数の型
 
 ---
-*自動生成: 2026-02-22T18:55:28.911Z*
+*自動生成: 2026-02-22T19:27:00.638Z*

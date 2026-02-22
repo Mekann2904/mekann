@@ -2,7 +2,7 @@
 title: definition-loader
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -16,26 +16,41 @@ related: []
 ## インポート
 
 ```typescript
-// from 'node:fs': existsSync, readdirSync, readFileSync
+// from 'node:fs': existsSync, readdirSync, readFileSync, ...
 // from 'node:os': homedir
-// from 'node:path': basename, join
-// from '@mariozechner/pi-coding-agent': parseFrontmatter
-// from './storage': TeamDefinition, TeamMember, TeamStorage
-// ... and 2 more imports
+// from 'node:path': dirname, join
+// from 'node:url': fileURLToPath
+// from '../../lib/frontmatter.js': parseFrontmatter
+// ... and 3 more imports
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `validateTeamFrontmatter` | チームフロントマターをバリデーション |
+| 関数 | `validateTeamDefinition` | TeamDefinitionオブジェクトをバリデーション |
 | 関数 | `parseTeamMarkdownFile` | チームMarkdownファイルをパース |
 | 関数 | `loadTeamDefinitionsFromDir` | ディレクトリからチーム定義を読込 |
-| 関数 | `loadTeamDefinitionsFromMarkdown` | Markdownからチーム定義を読込 |
+| 関数 | `loadTeamDefinitionsFromMarkdown` | Markdownからチーム定義を読込（全ディレクトリ統合） |
 | 関数 | `createDefaultTeams` | デフォルトチーム定義を生成 |
 | 関数 | `mergeDefaultTeam` | デフォルトチーム定義を統合 |
 | 関数 | `ensureDefaults` | デフォルト設定を適用 |
+| インターフェース | `TeamValidationError` | チーム定義のバリデーションエラー |
 
 ## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class TeamValidationError {
+    <<interface>>
+    +field: string
+    +message: string
+    +value: unknown
+  }
+```
 
 ### 依存関係図
 
@@ -45,15 +60,12 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
+    frontmatter["frontmatter"]
     storage["storage"]
     storage["storage"]
     team_types["team-types"]
   end
   main --> local
-  subgraph external[外部ライブラリ]
-    _mariozechner["@mariozechner"]
-  end
-  main --> external
 ```
 
 ### 関数フロー
@@ -71,8 +83,11 @@ flowchart TD
   getTeamDefinitionsDir["getTeamDefinitionsDir()"]
   loadTeamDefinitionsFromDir["loadTeamDefinitionsFromDir()"]
   loadTeamDefinitionsFromMarkdown["loadTeamDefinitionsFromMarkdown()"]
+  logValidationErrors["logValidationErrors()"]
   mergeDefaultTeam["mergeDefaultTeam()"]
   parseTeamMarkdownFile["parseTeamMarkdownFile()"]
+  validateTeamDefinition["validateTeamDefinition()"]
+  validateTeamFrontmatter["validateTeamFrontmatter()"]
   createDefaultTeams --> getHardcodedDefaultTeams
   createDefaultTeams --> loadTeamDefinitionsFromMarkdown
   ensureDefaults --> createDefaultTeams
@@ -85,6 +100,8 @@ flowchart TD
   loadTeamDefinitionsFromDir --> parseTeamMarkdownFile
   loadTeamDefinitionsFromMarkdown --> getCandidateTeamDefinitionsDirs
   loadTeamDefinitionsFromMarkdown --> loadTeamDefinitionsFromDir
+  parseTeamMarkdownFile --> logValidationErrors
+  parseTeamMarkdownFile --> validateTeamFrontmatter
 ```
 
 ### シーケンス図
@@ -94,22 +111,80 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant definition_loader as "definition-loader"
-  participant mariozechner as "@mariozechner"
-  participant storage as "storage"
+  participant frontmatter as "frontmatter"
   participant storage as "storage"
 
-  Caller->>definition_loader: parseTeamMarkdownFile()
-  definition_loader->>mariozechner: API呼び出し
-  mariozechner-->>definition_loader: レスポンス
-  definition_loader->>storage: 内部関数呼び出し
-  storage-->>definition_loader: 結果
-  definition_loader-->>Caller: ParsedTeamMarkdown_n
+  Caller->>definition_loader: validateTeamFrontmatter()
+  definition_loader->>frontmatter: 内部関数呼び出し
+  frontmatter-->>definition_loader: 結果
+  definition_loader-->>Caller: TeamValidationError
 
-  Caller->>definition_loader: loadTeamDefinitionsFromDir()
-  definition_loader-->>Caller: TeamDefinition
+  Caller->>definition_loader: validateTeamDefinition()
+  definition_loader-->>Caller: TeamValidationError
 ```
 
 ## 関数
+
+### validateTeamFrontmatter
+
+```typescript
+validateTeamFrontmatter(frontmatter: Partial<TeamFrontmatter>, filePath: string): TeamValidationError[]
+```
+
+チームフロントマターをバリデーション
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| frontmatter | `Partial<TeamFrontmatter>` | はい |
+| filePath | `string` | はい |
+
+**戻り値**: `TeamValidationError[]`
+
+### validateTeamDefinition
+
+```typescript
+validateTeamDefinition(team: Partial<TeamDefinition>): TeamValidationError[]
+```
+
+TeamDefinitionオブジェクトをバリデーション
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| team | `Partial<TeamDefinition>` | はい |
+
+**戻り値**: `TeamValidationError[]`
+
+### logValidationErrors
+
+```typescript
+logValidationErrors(errors: TeamValidationError[], filePath: string): void
+```
+
+バリデーションエラーを警告ログに変換
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| errors | `TeamValidationError[]` | はい |
+| filePath | `string` | はい |
+
+**戻り値**: `void`
+
+### getModuleDir
+
+```typescript
+getModuleDir(): string
+```
+
+Get the directory containing this module.
+Works in both development and after pi install (jiti preserves import.meta.url).
+
+**戻り値**: `string`
 
 ### getTeamDefinitionsDir
 
@@ -146,6 +221,10 @@ getGlobalTeamDefinitionsDir(): string
 ```typescript
 getBundledTeamDefinitionsDir(): string | undefined
 ```
+
+Get the bundled team definitions directory.
+Uses import.meta.url for reliable path resolution regardless of cwd.
+Returns undefined if the bundled definitions directory doesn't exist.
 
 **戻り値**: `string | undefined`
 
@@ -202,7 +281,7 @@ loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: string): TeamDefiniti
 loadTeamDefinitionsFromMarkdown(cwd: string, nowIso: string): TeamDefinition[]
 ```
 
-Markdownからチーム定義を読込
+Markdownからチーム定義を読込（全ディレクトリ統合）
 
 **パラメータ**
 
@@ -297,5 +376,19 @@ ensureDefaults(storage: TeamStorage, nowIso: string, cwd?: string): TeamStorage
 
 **戻り値**: `TeamStorage`
 
+## インターフェース
+
+### TeamValidationError
+
+```typescript
+interface TeamValidationError {
+  field: string;
+  message: string;
+  value?: unknown;
+}
+```
+
+チーム定義のバリデーションエラー
+
 ---
-*自動生成: 2026-02-18T18:06:16.981Z*
+*自動生成: 2026-02-22T19:26:59.880Z*

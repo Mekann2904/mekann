@@ -603,4 +603,4 @@ type GlobalScopeWithRuntime = typeof globalThis & {
 グローバルスコープ拡張型
 
 ---
-*自動生成: 2026-02-22T18:55:28.991Z*
+*自動生成: 2026-02-22T19:27:00.706Z*

@@ -2,7 +2,7 @@
 title: github-agent
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -16,12 +16,12 @@ related: []
 ## インポート
 
 ```typescript
-// from 'node:path': path
+// from 'node:path': dirname, resolve
+// from 'node:url': fileURLToPath
 // from 'node:child_process': execFile
 // from 'node:util': promisify
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
-// from '@sinclair/typebox': Type, Static
-// ... and 1 more imports
+// ... and 2 more imports
 ```
 
 ## エクスポート一覧
@@ -43,10 +43,15 @@ sequenceDiagram
   actor User as ユーザー
   participant System as System
   participant Judge as "Judge"
+  participant Internal as "Internal"
+  participant Storage as "Storage"
   participant Unresolved as "Unresolved"
 
   User->>System: GitHub repository exploration tool. Supports info, tree, ...
   System->>Judge: resolve
+  System->>Internal: getExtensionDir
+  Internal->>Storage: fileURLToPath
+  Internal->>Internal: dirname
   System->>Unresolved: cmdArgs.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: output.trim (node_modules/typescript/lib/lib.es5.d.ts)
@@ -71,6 +76,16 @@ flowchart LR
   main --> external
 ```
 
+## 関数
+
+### getExtensionDir
+
+```typescript
+getExtensionDir(): string
+```
+
+**戻り値**: `string`
+
 ## 型定義
 
 ### GhAgentArgs
@@ -80,4 +95,4 @@ type GhAgentArgs = Static<typeof GhAgentParams>
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.246Z*
+*自動生成: 2026-02-22T19:27:00.261Z*

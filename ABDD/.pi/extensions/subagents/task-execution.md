@@ -2,7 +2,7 @@
 title: task-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -21,14 +21,17 @@ related: []
 // from '../../lib/runtime-utils.js': trimForError, buildRateLimitKey
 // from '../../lib/error-utils.js': toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, ...
 // from '../../lib/agent-utils.js': createRunId
-// ... and 10 more imports
+// ... and 14 more imports
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `isHighRiskTask` | 高リスクタスク判定 |
 | 関数 | `normalizeSubagentOutput` | 出力を正規化する |
+| 関数 | `processOutputWithThreeLayerPipeline` | 出力をThree-Layer Hybrid Strategyで処理する |
+| 関数 | `ensureOutputStructure` | 出力が最小構造を満たしているかを確認し、必要に応じてLayer 3を適用する |
 | 関数 | `isRetryableSubagentError` | リトライ可能か判定する |
 | 関数 | `isEmptyOutputFailureMessage` | 空出力エラーか判定する |
 | 関数 | `buildFailureSummary` | エラー概要を作成する |
@@ -40,6 +43,7 @@ related: []
 | 関数 | `runSubagentTask` | サブエージェントタスク実行 |
 | 関数 | `extractSummary` | 要約を抽出 |
 | インターフェース | `SubagentExecutionResult` | サブエージェントの実行結果 |
+| インターフェース | `ThreeLayerPipelineResult` | Three-Layer Pipeline の処理結果 |
 
 ## 図解
 
@@ -53,6 +57,14 @@ classDiagram
     +output: string
     +degraded: boolean
     +reason: string
+  }
+  class ThreeLayerPipelineResult {
+    <<interface>>
+    +output: string
+    +ok: boolean
+    +degraded: boolean
+    +appliedLayer: number
+    +violations: SchemaViolation
   }
 ```
 
@@ -77,23 +89,30 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  applyLayerThreeTemplate["applyLayerThreeTemplate()"]
   buildFailureSummary["buildFailureSummary()"]
   buildSubagentPrompt["buildSubagentPrompt()"]
   emitStderrChunk["emitStderrChunk()"]
+  ensureOutputStructure["ensureOutputStructure()"]
   extractSummary["extractSummary()"]
   formatSkillsSection["formatSkillsSection()"]
   isEmptyOutputFailureMessage["isEmptyOutputFailureMessage()"]
+  isHighRiskTask["isHighRiskTask()"]
   isRetryableSubagentError["isRetryableSubagentError()"]
   mergeSkillArrays["mergeSkillArrays()"]
   normalizeSubagentOutput["normalizeSubagentOutput()"]
   pickSubagentSummaryCandidate["pickSubagentSummaryCandidate()"]
+  processOutputWithThreeLayerPipeline["processOutputWithThreeLayerPipeline()"]
   resolveEffectiveSkills["resolveEffectiveSkills()"]
   resolveSubagentFailureOutcome["resolveSubagentFailureOutcome()"]
   runPiPrintMode["runPiPrintMode()"]
   runSubagentTask["runSubagentTask()"]
   buildSubagentPrompt --> formatSkillsSection
+  buildSubagentPrompt --> isHighRiskTask
   buildSubagentPrompt --> resolveEffectiveSkills
+  ensureOutputStructure --> processOutputWithThreeLayerPipeline
   normalizeSubagentOutput --> pickSubagentSummaryCandidate
+  processOutputWithThreeLayerPipeline --> applyLayerThreeTemplate
   resolveEffectiveSkills --> mergeSkillArrays
   resolveSubagentFailureOutcome --> isRetryableSubagentError
   runPiPrintMode --> runPiPrintMode
@@ -101,8 +120,10 @@ flowchart TD
   runSubagentTask --> buildSubagentPrompt
   runSubagentTask --> emitStderrChunk
   runSubagentTask --> extractSummary
+  runSubagentTask --> isHighRiskTask
   runSubagentTask --> isRetryableSubagentError
   runSubagentTask --> normalizeSubagentOutput
+  runSubagentTask --> processOutputWithThreeLayerPipeline
   runSubagentTask --> runPiPrintMode
 ```
 
@@ -116,16 +137,32 @@ sequenceDiagram
   participant runtime_utils as "runtime-utils"
   participant error_utils as "error-utils"
 
-  Caller->>task_execution: normalizeSubagentOutput()
+  Caller->>task_execution: isHighRiskTask()
   task_execution->>runtime_utils: 内部関数呼び出し
   runtime_utils-->>task_execution: 結果
-  task_execution-->>Caller: SubagentExecutionRes
-
-  Caller->>task_execution: isRetryableSubagentError()
   task_execution-->>Caller: boolean
+
+  Caller->>task_execution: normalizeSubagentOutput()
+  task_execution-->>Caller: SubagentExecutionRes
 ```
 
 ## 関数
+
+### isHighRiskTask
+
+```typescript
+isHighRiskTask(task: string): boolean
+```
+
+高リスクタスク判定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+
+**戻り値**: `boolean`
 
 ### pickSubagentSummaryCandidate
 
@@ -159,6 +196,55 @@ normalizeSubagentOutput(output: string): SubagentExecutionResult
 | output | `string` | はい |
 
 **戻り値**: `SubagentExecutionResult`
+
+### applyLayerThreeTemplate
+
+```typescript
+applyLayerThreeTemplate(rawOutput: string, violations: SchemaViolation[]): ThreeLayerPipelineResult
+```
+
+Layer 3（機械的テンプレート適用）を適用する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| rawOutput | `string` | はい |
+| violations | `SchemaViolation[]` | はい |
+
+**戻り値**: `ThreeLayerPipelineResult`
+
+### processOutputWithThreeLayerPipeline
+
+```typescript
+processOutputWithThreeLayerPipeline(rawOutput: string): ThreeLayerPipelineResult
+```
+
+出力をThree-Layer Hybrid Strategyで処理する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| rawOutput | `string` | はい |
+
+**戻り値**: `ThreeLayerPipelineResult`
+
+### ensureOutputStructure
+
+```typescript
+ensureOutputStructure(output: string): ThreeLayerPipelineResult
+```
+
+出力が最小構造を満たしているかを確認し、必要に応じてLayer 3を適用する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string` | はい |
+
+**戻り値**: `ThreeLayerPipelineResult`
 
 ### isRetryableSubagentError
 
@@ -282,6 +368,7 @@ buildSubagentPrompt(input: {
   extraContext?: string;
   enforcePlanMode?: boolean;
   parentSkills?: string[];
+  profileId?: string;
 }): string
 ```
 
@@ -297,6 +384,7 @@ buildSubagentPrompt(input: {
 | &nbsp;&nbsp;↳ extraContext | `string` | いいえ |
 | &nbsp;&nbsp;↳ enforcePlanMode | `boolean` | いいえ |
 | &nbsp;&nbsp;↳ parentSkills | `string[]` | いいえ |
+| &nbsp;&nbsp;↳ profileId | `string` | いいえ |
 
 **戻り値**: `string`
 
@@ -415,5 +503,20 @@ interface SubagentExecutionResult {
 
 サブエージェントの実行結果
 
+### ThreeLayerPipelineResult
+
+```typescript
+interface ThreeLayerPipelineResult {
+  output: string;
+  ok: boolean;
+  degraded: boolean;
+  appliedLayer: number;
+  violations: SchemaViolation[];
+  reason?: string;
+}
+```
+
+Three-Layer Pipeline の処理結果
+
 ---
-*自動生成: 2026-02-18T18:06:17.431Z*
+*自動生成: 2026-02-22T19:27:00.495Z*

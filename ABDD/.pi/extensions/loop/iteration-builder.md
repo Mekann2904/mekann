@@ -2,7 +2,7 @@
 title: iteration-builder
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -17,6 +17,7 @@ related: []
 
 ```typescript
 // from '../../lib/agent-types.js': ThinkingLevel
+// from '../../lib/text-utils.js': truncateText, toPreview, normalizeOptionalText
 // from './reference-loader': LoopReference
 ```
 
@@ -66,6 +67,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     agent_types["agent-types"]
+    text_utils["text-utils"]
     reference_loader["reference-loader"]
   end
   main --> local
@@ -75,6 +77,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  buildDoneDeclarationFeedback["buildDoneDeclarationFeedback()"]
   buildIterationFailureOutput["buildIterationFailureOutput()"]
   buildIterationFocus["buildIterationFocus()"]
   buildIterationPrompt["buildIterationPrompt()"]
@@ -88,7 +91,6 @@ flowchart TD
   extractTaggedBlock["extractTaggedBlock()"]
   normalizeCitationList["normalizeCitationList()"]
   normalizeLoopStatus["normalizeLoopStatus()"]
-  normalizeOptionalText["normalizeOptionalText()"]
   normalizeStringArray["normalizeStringArray()"]
   normalizeValidationFeedback["normalizeValidationFeedback()"]
   normalizeValidationIssue["normalizeValidationIssue()"]
@@ -97,20 +99,19 @@ flowchart TD
   parseLoopJsonObject["parseLoopJsonObject()"]
   parseLoopStatus["parseLoopStatus()"]
   parseStructuredLoopGoalStatus["parseStructuredLoopGoalStatus()"]
-  truncateText["truncateText()"]
   validateIteration["validateIteration()"]
+  validationIssuePriority["validationIssuePriority()"]
   buildIterationFocus --> extractNextStepLine
   buildIterationPrompt --> buildReferencePack
-  buildIterationPrompt --> truncateText
   extractLoopResultBody --> extractTaggedBlock
   normalizeValidationFeedback --> normalizeValidationIssue
+  normalizeValidationFeedback --> validationIssuePriority
   parseLoopContract --> extractCitations
   parseLoopContract --> extractGoalEvidence
   parseLoopContract --> extractNextStepLine
   parseLoopContract --> extractSummaryLine
   parseLoopContract --> normalizeCitationList
   parseLoopContract --> normalizeLoopStatus
-  parseLoopContract --> normalizeOptionalText
   parseLoopContract --> normalizeStringArray
   parseLoopContract --> parseLoopGoalStatus
   parseLoopContract --> parseLoopJsonObject
@@ -126,7 +127,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant iteration_builder as "iteration-builder"
   participant agent_types as "agent-types"
-  participant reference_loader as "reference-loader"
+  participant text_utils as "text-utils"
 
   Caller->>iteration_builder: buildIterationPrompt()
   iteration_builder->>agent_types: 内部関数呼び出し
@@ -581,50 +582,6 @@ validationIssuePriority(issue: string): number
 
 **戻り値**: `number`
 
-### normalizeOptionalText
-
-```typescript
-normalizeOptionalText(value: unknown): string | undefined
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `unknown` | はい |
-
-**戻り値**: `string | undefined`
-
-### truncateText
-
-```typescript
-truncateText(value: string, maxChars: number): string
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `string` | はい |
-| maxChars | `number` | はい |
-
-**戻り値**: `string`
-
-### toPreview
-
-```typescript
-toPreview(value: string, maxChars: number): string
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `string` | はい |
-| maxChars | `number` | はい |
-
-**戻り値**: `string`
-
 ### normalizeLoopOutput
 
 ```typescript
@@ -679,4 +636,4 @@ type LoopGoalStatus = "met" | "not_met" | "unknown"
 ループの状態を表す型
 
 ---
-*自動生成: 2026-02-18T18:06:17.273Z*
+*自動生成: 2026-02-22T19:27:00.298Z*

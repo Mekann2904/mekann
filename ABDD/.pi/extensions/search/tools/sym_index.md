@@ -2,7 +2,7 @@
 title: sym_index
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -18,10 +18,10 @@ related: []
 ```typescript
 // from 'node:path': join, dirname, relative
 // from 'node:fs/promises': mkdir, writeFile, readFile, ...
+// from 'node:fs': createReadStream
 // from 'node:crypto': createHash
 // from '../utils/cli.js': execute, buildCtagsArgs, checkToolAvailability
-// from '../utils/constants.js': INDEX_DIR_NAME, SYMBOL_INDEX_FILE, INDEX_META_FILE, ...
-// ... and 2 more imports
+// ... and 3 more imports
 ```
 
 ## エクスポート一覧
@@ -266,6 +266,7 @@ async computeFileHash(filePath: string): Promise<string>
 
 Compute content hash for a file.
 Uses MD5 for speed (not cryptographic security).
+ストリーミングハッシュを使用してメモリ効率を改善
 
 **パラメータ**
 
@@ -693,4 +694,4 @@ interface LegacyIndexMeta {
 Legacy index metadata structure
 
 ---
-*自動生成: 2026-02-18T18:06:17.392Z*
+*自動生成: 2026-02-22T19:27:00.435Z*

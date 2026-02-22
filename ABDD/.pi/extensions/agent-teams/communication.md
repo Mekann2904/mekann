@@ -2,7 +2,7 @@
 title: communication
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -42,7 +42,7 @@ related: []
 | 関数 | `checkTermination` | タスクの終了条件を判定する |
 | 関数 | `updateBeliefState` | 信念状態を更新する |
 | 関数 | `getBeliefSummary` | 信念サマリーを取得 |
-| 関数 | `clearBeliefStateCache` | 信念状態キャッシュをクリア |
+| 関数 | `clearBeliefStateCache` | 信念状態キャッシュをクリア（チームID指定、または全クリア） |
 | インターフェース | `PrecomputedMemberContext` | メンバーの事前計算コンテキスト |
 | インターフェース | `PartnerReferenceResultV2` | パートナー参照結果(V2) |
 | インターフェース | `TerminationCheckResult` | 終了判定結果を表すインターフェース |
@@ -127,6 +127,7 @@ flowchart TD
   detectPartnerReferencesV2["detectPartnerReferencesV2()"]
   extractField["extractField()"]
   getBeliefSummary["getBeliefSummary()"]
+  getTeamBeliefCache["getTeamBeliefCache()"]
   normalizeCommunicationRounds["normalizeCommunicationRounds()"]
   normalizeFailedMemberRetryRounds["normalizeFailedMemberRetryRounds()"]
   sanitizeCommunicationSnippet["sanitizeCommunicationSnippet()"]
@@ -137,7 +138,9 @@ flowchart TD
   buildPrecomputedContextMap --> sanitizeCommunicationSnippet
   checkTermination --> extractField
   createCommunicationLinksMap --> addLink
+  getBeliefSummary --> getTeamBeliefCache
   updateBeliefState --> extractField
+  updateBeliefState --> getTeamBeliefCache
 ```
 
 ### シーケンス図
@@ -396,10 +399,26 @@ checkTermination(task: string, results: TeamMemberResult[], minCompletionScore: 
 
 **戻り値**: `TerminationCheckResult`
 
+### getTeamBeliefCache
+
+```typescript
+getTeamBeliefCache(teamId: string): Map<string, AgentBelief[]>
+```
+
+チームIDに対応する信念状態キャッシュを取得する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| teamId | `string` | はい |
+
+**戻り値**: `Map<string, AgentBelief[]>`
+
 ### updateBeliefState
 
 ```typescript
-updateBeliefState(memberId: string, output: string, round: number): AgentBelief[]
+updateBeliefState(teamId: string, memberId: string, output: string, round: number): AgentBelief[]
 ```
 
 信念状態を更新する
@@ -408,6 +427,7 @@ updateBeliefState(memberId: string, output: string, round: number): AgentBelief[
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
+| teamId | `string` | はい |
 | memberId | `string` | はい |
 | output | `string` | はい |
 | round | `number` | はい |
@@ -417,7 +437,7 @@ updateBeliefState(memberId: string, output: string, round: number): AgentBelief[
 ### getBeliefSummary
 
 ```typescript
-getBeliefSummary(memberIds: string[]): string
+getBeliefSummary(teamId: string, memberIds: string[]): string
 ```
 
 信念サマリーを取得
@@ -426,6 +446,7 @@ getBeliefSummary(memberIds: string[]): string
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
+| teamId | `string` | はい |
 | memberIds | `string[]` | はい |
 
 **戻り値**: `string`
@@ -433,10 +454,16 @@ getBeliefSummary(memberIds: string[]): string
 ### clearBeliefStateCache
 
 ```typescript
-clearBeliefStateCache(): void
+clearBeliefStateCache(teamId?: string): void
 ```
 
-信念状態キャッシュをクリア
+信念状態キャッシュをクリア（チームID指定、または全クリア）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| teamId | `string` | いいえ |
 
 **戻り値**: `void`
 
@@ -514,4 +541,4 @@ interface BeliefContradiction {
 信念の矛盾を定義するインターフェース
 
 ---
-*自動生成: 2026-02-18T18:06:16.970Z*
+*自動生成: 2026-02-22T19:26:59.866Z*

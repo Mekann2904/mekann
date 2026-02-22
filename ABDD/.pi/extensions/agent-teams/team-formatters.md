@@ -113,4 +113,4 @@ formatRecentRuns(storage: TeamStorage, limit: any): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-22T18:55:28.329Z*
+*自動生成: 2026-02-22T19:27:00.121Z*

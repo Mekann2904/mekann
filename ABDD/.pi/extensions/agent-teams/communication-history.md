@@ -103,4 +103,4 @@ interface PartnerSelectionStrategy {
 ```
 
 ---
-*自動生成: 2026-02-22T18:55:28.014Z*
+*自動生成: 2026-02-22T19:26:59.840Z*

@@ -2,7 +2,7 @@
 title: provider-limits
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -38,8 +38,8 @@ related: []
 | 関数 | `formatLimitsSummary` | 制限サマリを生成 |
 | インターフェース | `ModelLimits` | - |
 | インターフェース | `ModelTierLimits` | - |
-| インターフェース | `ProviderLimitsConfig` | - |
-| インターフェース | `ResolvedModelLimits` | - |
+| インターフェース | `ProviderLimitsConfig` | 制限設定形式 |
+| インターフェース | `ResolvedModelLimits` | モデル制限定義 |
 
 ## 図解
 
@@ -358,6 +358,8 @@ interface ProviderLimitsConfig {
 }
 ```
 
+制限設定形式
+
 ### ResolvedModelLimits
 
 ```typescript
@@ -372,5 +374,7 @@ interface ResolvedModelLimits {
 }
 ```
 
+モデル制限定義
+
 ---
-*自動生成: 2026-02-18T18:06:17.548Z*
+*自動生成: 2026-02-22T19:27:00.690Z*

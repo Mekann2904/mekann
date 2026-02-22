@@ -2,7 +2,7 @@
 title: live-monitor
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -16,8 +16,8 @@ related: []
 ## インポート
 
 ```typescript
-// from '@mariozechner/pi-tui': Key, matchesKey, truncateToWidth
-// from '../../lib/format-utils.js': formatDurationMs, formatBytes, formatClockTime
+// from '@mariozechner/pi-tui': Key, matchesKey
+// from '../../lib/format-utils.js': formatDurationMs, formatBytes, formatClockTime, ...
 // from '../../lib/tui/tui-utils.js': appendTail, countOccurrences, estimateLineCount, ...
 // from '../../lib/live-view-utils.js': toTailLines, looksLikeMarkdown
 // from '../../lib/agent-utils.js': computeLiveWindow
@@ -32,6 +32,19 @@ related: []
 | 関数 | `createSubagentLiveMonitor` | ライブ監視コントローラ作成 |
 
 ## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class TimelineEvent {
+    <<interface>>
+    +time: string
+    +agent: string
+    +type: start_done_fail
+    +content: string
+  }
+```
 
 ### 依存関係図
 
@@ -59,17 +72,33 @@ flowchart LR
 ```mermaid
 flowchart TD
   add["add()"]
+  clearPollTimer["clearPollTimer()"]
   clearRenderTimer["clearRenderTimer()"]
   close["close()"]
   createSubagentLiveMonitor["createSubagentLiveMonitor()"]
+  hasRunningItems["hasRunningItems()"]
   queueRender["queueRender()"]
   renderSubagentLiveView["renderSubagentLiveView()"]
+  renderSubagentTimelineView["renderSubagentTimelineView()"]
+  renderSubagentTreeView["renderSubagentTreeView()"]
+  startPolling["startPolling()"]
+  close --> clearPollTimer
   close --> clearRenderTimer
+  createSubagentLiveMonitor --> clearPollTimer
   createSubagentLiveMonitor --> clearRenderTimer
   createSubagentLiveMonitor --> close
+  createSubagentLiveMonitor --> hasRunningItems
   createSubagentLiveMonitor --> queueRender
   createSubagentLiveMonitor --> renderSubagentLiveView
+  createSubagentLiveMonitor --> startPolling
   renderSubagentLiveView --> add
+  renderSubagentLiveView --> renderSubagentTimelineView
+  renderSubagentLiveView --> renderSubagentTreeView
+  renderSubagentTimelineView --> add
+  renderSubagentTreeView --> add
+  startPolling --> clearPollTimer
+  startPolling --> hasRunningItems
+  startPolling --> queueRender
 ```
 
 ### シーケンス図
@@ -95,6 +124,71 @@ sequenceDiagram
 ```
 
 ## 関数
+
+### renderSubagentTreeView
+
+```typescript
+renderSubagentTreeView(items: SubagentLiveItem[], cursor: number, width: number, theme: any): string[]
+```
+
+サブエージェントのツリービューを描画
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| items | `SubagentLiveItem[]` | はい |
+| cursor | `number` | はい |
+| width | `number` | はい |
+| theme | `any` | はい |
+
+**戻り値**: `string[]`
+
+### add
+
+```typescript
+add(line: any): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| line | `any` | はい |
+
+**戻り値**: `void`
+
+### renderSubagentTimelineView
+
+```typescript
+renderSubagentTimelineView(items: SubagentLiveItem[], width: number, theme: any): string[]
+```
+
+サブエージェントのタイムラインビューを描画
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| items | `SubagentLiveItem[]` | はい |
+| width | `number` | はい |
+| theme | `any` | はい |
+
+**戻り値**: `string[]`
+
+### add
+
+```typescript
+add(line: any): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| line | `any` | はい |
+
+**戻り値**: `void`
 
 ### renderSubagentLiveView
 
@@ -173,6 +267,34 @@ clearRenderTimer(): void
 
 **戻り値**: `void`
 
+### clearPollTimer
+
+```typescript
+clearPollTimer(): void
+```
+
+**戻り値**: `void`
+
+### hasRunningItems
+
+```typescript
+hasRunningItems(): boolean
+```
+
+実行中のアイテムがあるかチェック
+
+**戻り値**: `boolean`
+
+### startPolling
+
+```typescript
+startPolling(): void
+```
+
+定期ポーリングを開始（ストリーミングがない期間もUIを更新）
+
+**戻り値**: `void`
+
 ### queueRender
 
 ```typescript
@@ -189,5 +311,18 @@ close(): void
 
 **戻り値**: `void`
 
+## インターフェース
+
+### TimelineEvent
+
+```typescript
+interface TimelineEvent {
+  time: string;
+  agent: string;
+  type: "start" | "done" | "fail" | "output";
+  content: string;
+}
+```
+
 ---
-*自動生成: 2026-02-18T18:06:17.425Z*
+*自動生成: 2026-02-22T19:27:00.488Z*

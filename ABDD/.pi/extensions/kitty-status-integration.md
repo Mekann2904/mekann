@@ -2,7 +2,7 @@
 title: kitty-status-integration
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-// from 'child_process': spawn, execSync
+// from 'child_process': spawn
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
 
@@ -162,6 +162,34 @@ restoreTitle(): void
 
 **戻り値**: `void`
 
+### asToolResultMessage
+
+```typescript
+asToolResultMessage(raw: unknown): { role?: string; isError?: boolean } | null
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| raw | `unknown` | はい |
+
+**戻り値**: `{ role?: string; isError?: boolean } | null`
+
+### getToolResultStats
+
+```typescript
+getToolResultStats(messages: unknown[]): { toolCount: number; errorCount: number }
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| messages | `unknown[]` | はい |
+
+**戻り値**: `{ toolCount: number; errorCount: number }`
+
 ## インターフェース
 
 ### NotificationOptions
@@ -177,4 +205,4 @@ interface NotificationOptions {
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.267Z*
+*自動生成: 2026-02-22T19:27:00.290Z*

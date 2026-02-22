@@ -2,7 +2,7 @@
 title: execution-rules
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -23,6 +23,7 @@ related: []
 | 関数 | `getChallengerExecutionRules` | チャレンジャールールを取得 |
 | 関数 | `getInspectorExecutionRules` | - |
 | 関数 | `getVerificationWorkflowExecutionRules` | - |
+| 関数 | `getExecutionRulesForProfile` | パフォーマンスプロファイルに基づく実行ルールを取得 |
 | インターフェース | `BuildExecutionRulesOptions` | 実行ルールの構築オプション |
 
 ## 図解
@@ -47,15 +48,25 @@ classDiagram
 flowchart TD
   buildExecutionRulesSection["buildExecutionRulesSection()"]
   getChallengerExecutionRules["getChallengerExecutionRules()"]
+  getExecutionRulesForProfile["getExecutionRulesForProfile()"]
   getInspectorExecutionRules["getInspectorExecutionRules()"]
   getSubagentExecutionRules["getSubagentExecutionRules()"]
   getTeamMemberExecutionRules["getTeamMemberExecutionRules()"]
   getVerificationWorkflowExecutionRules["getVerificationWorkflowExecutionRules()"]
+  safeCacheSet["safeCacheSet()"]
+  buildExecutionRulesSection --> safeCacheSet
   getChallengerExecutionRules --> buildExecutionRulesSection
+  getChallengerExecutionRules --> safeCacheSet
+  getExecutionRulesForProfile --> buildExecutionRulesSection
+  getExecutionRulesForProfile --> safeCacheSet
   getInspectorExecutionRules --> buildExecutionRulesSection
+  getInspectorExecutionRules --> safeCacheSet
   getSubagentExecutionRules --> buildExecutionRulesSection
+  getSubagentExecutionRules --> safeCacheSet
   getTeamMemberExecutionRules --> buildExecutionRulesSection
+  getTeamMemberExecutionRules --> safeCacheSet
   getVerificationWorkflowExecutionRules --> buildExecutionRulesSection
+  getVerificationWorkflowExecutionRules --> safeCacheSet
 ```
 
 ## 関数
@@ -75,6 +86,22 @@ buildExecutionRulesSection(options: BuildExecutionRulesOptions): string
 | options | `BuildExecutionRulesOptions` | はい |
 
 **戻り値**: `string`
+
+### safeCacheSet
+
+```typescript
+safeCacheSet(cache: Map<K, V>, key: K, value: V): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cache | `Map<K, V>` | はい |
+| key | `K` | はい |
+| value | `V` | はい |
+
+**戻り値**: `void`
 
 ### getSubagentExecutionRules
 
@@ -154,6 +181,23 @@ getVerificationWorkflowExecutionRules(phase: "inspector" | "challenger" | "both"
 
 **戻り値**: `string`
 
+### getExecutionRulesForProfile
+
+```typescript
+getExecutionRulesForProfile(profileId: string, forSubagent: any): string
+```
+
+パフォーマンスプロファイルに基づく実行ルールを取得
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| profileId | `string` | はい |
+| forSubagent | `any` | はい |
+
+**戻り値**: `string`
+
 ## インターフェース
 
 ### BuildExecutionRulesOptions
@@ -173,10 +217,13 @@ interface BuildExecutionRulesOptions {
   includeChallengeRules?: boolean;
   includeInspectionRules?: boolean;
   includeVerificationWorkflow?: boolean;
+  includeQualityBaseline?: boolean;
+  includePhilosophicalReflection?: boolean;
+  includeAporiaGuidelines?: boolean;
 }
 ```
 
 実行ルールの構築オプション
 
 ---
-*自動生成: 2026-02-18T18:06:17.529Z*
+*自動生成: 2026-02-22T19:27:00.624Z*

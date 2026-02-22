@@ -2,7 +2,7 @@
 title: loop
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from 'node:dns/promises': dnsLookup
 // from 'node:fs': appendFileSync, existsSync, mkdirSync, ...
 // from 'node:path': basename, isAbsolute, join, ...
-// ... and 19 more imports
+// ... and 20 more imports
 ```
 
 ## エクスポート一覧
@@ -59,6 +59,7 @@ sequenceDiagram
   Internal->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: Boolean (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: 浮動小数点数を検証・制限
   System->>Storage: 参照読込
   Storage->>Internal: normalizeRefSpec
   Internal->>Unresolved: trimmed.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
@@ -70,25 +71,26 @@ sequenceDiagram
   Storage->>Storage: readFileSync
   Storage->>Unresolved: raw.split (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Internal: メッセージを文字列化
-  Storage->>Internal: throwIfAborted
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Internal: 中断状態をチェック
   Storage->>Internal: loadSingleReference
-  Storage->>Executor: truncateText
+  Storage->>Executor: 切り捨てマーカー付きで切り詰める
   Storage->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: pi.getThinkingLevel (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
   System->>Executor: startLoopActivityIndicator
   Executor->>Internal: render
   Executor->>Internal: setInterval
-  Executor->>Internal: toPreview
+  Executor->>Internal: プレビュー形式に変換
   Executor->>Internal: ミリ秒変換
   Internal->>Unresolved: Math.round (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: (ms / 1000).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: clearInterval
   System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
-  System->>Internal: normalizeOptionalText
+  System->>Internal: optionalテキストを正規化
   System->>Executor: runLoop
   Executor->>Executor: 一意な実行IDを生成します。
-  Executor->>Unresolved: [     now.getFullYear(),     String(now.getMonth() + 1).padStart(2, '0'),     String(now.getDate()).padStart(2, '0'),     '-',     String(now.getHours()).padStart(2, '0'),     String(now.getMinutes()).padStart(2, '0'),     String(now.getSeconds()).padStart(2, '0'),   ].join (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: [     String(now.getFullYear()),     String(now.getMonth() + 1).padStart(2, '0'),     String(now.getDate()).padStart(2, '0'),     String(now.getHours()).padStart(2, '0'),     String(now.getMinutes()).padStart(2, '0'),     String(now.getSeconds()).padStart(2, '0'),   ].join (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: now.getFullYear (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: String(now.getMonth() + 1).padStart (node_modules/typescript/lib/lib.es2017.string.d.ts)
   Executor->>Unresolved: now.getMonth (node_modules/typescript/lib/lib.es5.d.ts)
@@ -104,16 +106,17 @@ sequenceDiagram
   Internal->>Storage: ロック取得実行
   Storage->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  Storage->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: Math.ceil (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Internal: hasEfficientSyncSleep
   Storage->>Internal: tryAcquireLock
   Storage->>Internal: clearStaleLock
-  Storage->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Internal: sleepSync
+  Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
   Internal->>Storage: appendFileSync
-  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: ループコマンドのプレビュー文字列を生成する
+  Executor->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>LLM: callModelViaPi
   Executor->>Judge: ポリシー設定解決
   Judge->>Unresolved: String(process.env[VERIFICATION_POLICY_ENV] || '')     .trim()     .toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: 意図を分類
@@ -125,8 +128,8 @@ sequenceDiagram
   Internal->>Internal: buildReferencePack
   Executor->>Internal: モデル別タイムアウト
   Internal->>Internal: getModelBaseTimeoutMs
+  Internal->>Unresolved: Object.prototype.hasOwnProperty.call (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>LLM: callModelViaPi
   Executor->>Internal: 契約解析
   Internal->>Internal: parseLoopStatus
   Internal->>Internal: parseLoopGoalStatus
@@ -157,6 +160,7 @@ sequenceDiagram
   Executor->>Internal: removeEventListener
   Executor->>Internal: addEventListener
   Executor->>Unresolved: child.stdout.on (node_modules/@types/node/stream.d.ts)
+  Executor->>Internal: appendBoundedText
   Executor->>Internal: フィードバック生成
   Internal->>Unresolved: reason.replace (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: フィードバックを構築
@@ -170,8 +174,10 @@ sequenceDiagram
   Executor->>Internal: 重複を検出
   Internal->>Internal: normalizeText
   Internal->>Internal: プロバイダ取得
+  Internal->>Internal: getCachedEmbedding
   Internal->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Internal->>Internal: ベクトル生成
+  Internal->>Internal: setCachedEmbedding
   Internal->>Internal: コサイン類似度計算
   Internal->>Unresolved: Math.sqrt (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: 出力を正規化
@@ -256,25 +262,6 @@ classDiagram
     +updateFromProgress: progress_LoopProgre
     +stop: void
   }
-  class ParsedLoopContract {
-    <<interface>>
-    +status: LoopStatus
-    +goalStatus: LoopGoalStatus
-    +goalEvidence: string
-    +citations: string
-    +summary: string
-  }
-  class VerificationPolicyConfig {
-    <<interface>>
-    +mode: VerificationPolicyMo
-    +everyN: number
-  }
-  class ParsedVerificationCommand {
-    <<interface>>
-    +executable: string
-    +args: string
-    +error: string
-  }
 ```
 
 ### 依存関係図
@@ -288,8 +275,8 @@ flowchart LR
     format_utils["format-utils"]
     error_utils["error-utils"]
     validation_utils["validation-utils"]
+    text_utils["text-utils"]
     agent_types["agent-types"]
-    agent_utils["agent-utils"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -310,39 +297,30 @@ flowchart TD
   formatLoopResultText["formatLoopResultText()"]
   formatLoopSummary["formatLoopSummary()"]
   normalizeLoopConfig["normalizeLoopConfig()"]
-  normalizeOptionalText["normalizeOptionalText()"]
   parseLoopCommand["parseLoopCommand()"]
   readLatestSummary["readLatestSummary()"]
   registerLoopExtension["registerLoopExtension()"]
   render["render()"]
   runLoop["runLoop()"]
   startLoopActivityIndicator["startLoopActivityIndicator()"]
-  throwIfAborted["throwIfAborted()"]
-  toPreview["toPreview()"]
   tokenizeArgs["tokenizeArgs()"]
   withArgError["withArgError()"]
   writeLatestSummarySnapshot["writeLatestSummarySnapshot()"]
   callModelViaPi --> callModelViaPi
-  parseLoopCommand --> normalizeOptionalText
   parseLoopCommand --> tokenizeArgs
   parseLoopCommand --> withArgError
   registerLoopExtension --> formatLoopProgress
   registerLoopExtension --> formatLoopResultText
   registerLoopExtension --> formatLoopSummary
   registerLoopExtension --> normalizeLoopConfig
-  registerLoopExtension --> normalizeOptionalText
   registerLoopExtension --> parseLoopCommand
   registerLoopExtension --> readLatestSummary
   registerLoopExtension --> runLoop
   registerLoopExtension --> startLoopActivityIndicator
   runLoop --> appendJsonl
   runLoop --> callModelViaPi
-  runLoop --> throwIfAborted
-  runLoop --> toPreview
   runLoop --> writeLatestSummarySnapshot
   startLoopActivityIndicator --> render
-  startLoopActivityIndicator --> toPreview
-  withArgError --> normalizeOptionalText
 ```
 
 ### シーケンス図
@@ -654,64 +632,6 @@ htmlToText(value: string): string
 
 **戻り値**: `string`
 
-### truncateText
-
-```typescript
-truncateText(value: string, maxChars: number): string
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `string` | はい |
-| maxChars | `number` | はい |
-
-**戻り値**: `string`
-
-### toPreview
-
-```typescript
-toPreview(value: string, maxChars: number): string
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `string` | はい |
-| maxChars | `number` | はい |
-
-**戻り値**: `string`
-
-### normalizeOptionalText
-
-```typescript
-normalizeOptionalText(value: unknown): string | undefined
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `unknown` | はい |
-
-**戻り値**: `string | undefined`
-
-### throwIfAborted
-
-```typescript
-throwIfAborted(signal: AbortSignal | undefined): void
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| signal | `AbortSignal | undefined` | はい |
-
-**戻り値**: `void`
-
 ## インターフェース
 
 ### LoopConfig
@@ -724,6 +644,8 @@ interface LoopConfig {
   verificationTimeoutMs: number;
   enableSemanticStagnation?: boolean;
   semanticRepetitionThreshold?: number;
+  enableMediator?: boolean;
+  mediatorAutoProceedThreshold?: number;
 }
 ```
 
@@ -778,6 +700,14 @@ interface LoopRunSummary {
     detected: boolean;
     averageSimilarity: number;
     method: "embedding" | "exact" | "unavailable";
+  };
+  mediator?: {
+    status: string;
+    confidence: number;
+    interpretation: string;
+    gapCount: number;
+    processingTimeMs: number;
+    taskClarified: boolean;
   };
 }
 ```
@@ -853,47 +783,5 @@ interface LoopActivityIndicator {
 }
 ```
 
-### ParsedLoopContract
-
-```typescript
-interface ParsedLoopContract {
-  status: LoopStatus;
-  goalStatus: LoopGoalStatus;
-  goalEvidence: string;
-  citations: string[];
-  summary: string;
-  nextActions: string[];
-  parseErrors: string[];
-  usedStructuredBlock: boolean;
-}
-```
-
-### VerificationPolicyConfig
-
-```typescript
-interface VerificationPolicyConfig {
-  mode: VerificationPolicyMode;
-  everyN: number;
-}
-```
-
-### ParsedVerificationCommand
-
-```typescript
-interface ParsedVerificationCommand {
-  executable: string;
-  args: string[];
-  error?: string;
-}
-```
-
-## 型定義
-
-### VerificationPolicyMode
-
-```typescript
-type VerificationPolicyMode = "always" | "done_only" | "every_n"
-```
-
 ---
-*自動生成: 2026-02-18T18:06:17.306Z*
+*自動生成: 2026-02-22T19:27:00.338Z*

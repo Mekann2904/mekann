@@ -62,4 +62,4 @@ and the original content as body so callers can continue safely.
 **戻り値**: `{ frontmatter: TFrontmatter; body: string }`
 
 ---
-*自動生成: 2026-02-22T18:55:28.908Z*
+*自動生成: 2026-02-22T19:27:00.637Z*

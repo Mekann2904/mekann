@@ -2,7 +2,7 @@
 title: invariant-pipeline
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -18,6 +18,7 @@ related: []
 ```typescript
 // from 'node:fs': readFileSync, writeFileSync, existsSync, ...
 // from 'node:path': join, dirname
+// from '@sinclair/typebox': Type
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
 
@@ -25,30 +26,6 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-
-## ユーザーフロー
-
-このモジュールが提供するツールと、その実行フローを示します。
-
-### generate_from_spec
-
-spec.mdからQuint形式仕様、TypeScriptバリデーション関数、fast-checkプロパティテスト、TypeScriptモデルベーステストドライバーを一括生成
-
-### verify_quint_spec
-
-Quint形式仕様を検証（構文チェック、インバリアントチェック）
-
-### generate_invariant_macros
-
-spec.mdからTypeScriptインバリアントバリデーション関数を生成
-
-### generate_property_tests
-
-spec.mdからfast-checkベースのプロパティテストを生成
-
-### generate_mbt_driver
-
-spec.mdからTypeScriptベースのモデルベーステストドライバーを生成
 
 ## 図解
 
@@ -134,6 +111,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph external[外部ライブラリ]
+    _sinclair["@sinclair"]
     _mariozechner["@mariozechner"]
   end
   main --> external
@@ -569,4 +547,4 @@ interface GenerateMBTInput {
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.264Z*
+*自動生成: 2026-02-22T19:27:00.286Z*

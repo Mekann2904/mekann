@@ -2,7 +2,7 @@
 title: context-usage-dashboard
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -35,6 +35,36 @@ related: []
 
 ```mermaid
 classDiagram
+  class SessionUsage {
+    <<interface>>
+    +totalTokens: number
+    +input: number
+    +output: number
+    +cacheRead: number
+    +cacheWrite: number
+  }
+  class ContentBlock {
+    <<interface>>
+    +type: string
+    +text: string
+    +thinking: string
+    +name: string
+    +arguments: unknown
+  }
+  class SessionMessage {
+    <<interface>>
+    +role: string
+    +content: string_ContentBlock
+    +command: string
+    +output: string
+    +summary: string
+  }
+  class SessionEntry {
+    <<interface>>
+    +type: string
+    +message: SessionMessage
+    +timestamp: string_number
+  }
   class CurrentSnapshot {
     <<interface>>
     +usage: ContextUsage_undefin
@@ -119,14 +149,14 @@ getOrCreateToolStats(map: Map<string, ToolStats>, toolName: string): ToolStats
 ### toTotalUsageTokens
 
 ```typescript
-toTotalUsageTokens(usage: any): number
+toTotalUsageTokens(usage: SessionUsage | undefined): number
 ```
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| usage | `any` | はい |
+| usage | `SessionUsage | undefined` | はい |
 
 **戻り値**: `number`
 
@@ -161,42 +191,42 @@ estimateUnknownTokens(value: unknown): number
 ### estimateMessageTokens
 
 ```typescript
-estimateMessageTokens(message: any): number
+estimateMessageTokens(message: SessionMessage | undefined): number
 ```
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| message | `any` | はい |
+| message | `SessionMessage | undefined` | はい |
 
 **戻り値**: `number`
 
 ### extractToolCalls
 
 ```typescript
-extractToolCalls(message: any): string[]
+extractToolCalls(message: SessionMessage | undefined): string[]
 ```
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| message | `any` | はい |
+| message | `SessionMessage | undefined` | はい |
 
 **戻り値**: `string[]`
 
 ### parseTimestampMs
 
 ```typescript
-parseTimestampMs(entry: any): number | undefined
+parseTimestampMs(entry: SessionEntry | undefined): number | undefined
 ```
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| entry | `any` | はい |
+| entry | `SessionEntry | undefined` | はい |
 
 **戻り値**: `number | undefined`
 
@@ -387,6 +417,58 @@ add(line: any): void
 
 ## インターフェース
 
+### SessionUsage
+
+```typescript
+interface SessionUsage {
+  totalTokens?: number;
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  cost?: { total?: number };
+}
+```
+
+### ContentBlock
+
+```typescript
+interface ContentBlock {
+  type: string;
+  text?: string;
+  thinking?: string;
+  name?: string;
+  arguments?: unknown;
+}
+```
+
+### SessionMessage
+
+```typescript
+interface SessionMessage {
+  role?: string;
+  content?: string | ContentBlock[];
+  command?: string;
+  output?: string;
+  summary?: string;
+  provider?: string;
+  model?: string;
+  usage?: SessionUsage;
+  toolName?: string;
+  timestamp?: string | number;
+}
+```
+
+### SessionEntry
+
+```typescript
+interface SessionEntry {
+  type?: string;
+  message?: SessionMessage;
+  timestamp?: string | number;
+}
+```
+
 ### CurrentSnapshot
 
 ```typescript
@@ -446,4 +528,4 @@ interface DashboardSnapshot {
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.197Z*
+*自動生成: 2026-02-22T19:27:00.175Z*

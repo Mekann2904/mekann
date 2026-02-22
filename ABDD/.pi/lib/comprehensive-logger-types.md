@@ -2,7 +2,7 @@
 title: comprehensive-logger-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -26,9 +26,9 @@ related: []
 | インターフェース | `OperationEndEvent` | 操作終了イベント |
 | インターフェース | `ToolCallEvent` | ツール呼び出しイベント |
 | インターフェース | `ToolResultEvent` | ツール実行結果イベント |
-| インターフェース | `ToolErrorEvent` | ツール実行時のエラーイベントを表します。 |
+| インターフェース | `ToolErrorEvent` | ツール実行時のエラーイベント |
 | インターフェース | `LLMRequestEvent` | LLMリクエストイベント |
-| インターフェース | `LLMResponseEvent` | - |
+| インターフェース | `LLMResponseEvent` | LLM応答イベント |
 | インターフェース | `LLMErrorEvent` | LLMエラー通知 |
 | インターフェース | `UserInputEvent` | ユーザー入力イベント |
 | インターフェース | `UserFeedbackEvent` | フィードバック通知 |
@@ -242,15 +242,6 @@ interface TaskEndEvent {
     status: Status;
     operationsCount: number;
     toolsCount: number;
-/**
-     * 操作の種類を表す型
-     *
-     * エージェントの実行モードを区別するための文字列リテラル型。
-     * サブエージェント実行、チーム実行、ループ実行、直接実行のいずれかを指定する。
-     *
-     * @example
-     * const operationType: OperationType = 'subagent_run';
-     */
     tokensUsed: number;
     filesCreated: string[];
     filesModified: string[];
@@ -261,10 +252,6 @@ interface TaskEndEvent {
       eventId: string;
       message: string;
       type: string;
-/**
-     * /**
-     * * 操作終
-     */
     }>;
   };
 }
@@ -283,14 +270,6 @@ interface OperationStartEvent {
     input: {
       task: string;
       params: Record<string, unknown>;
-/**
-     * /**
-     * * ツール呼び出しイベントを表すインターフェース
-     * *
-     * * ツールの実行に関する詳細情報を含むイベントデータ。
-     * * ツール名、タイプ、パラメータ、呼び出し元情報、環境情報を保持する。
-     * *
-     */
     };
     strategy?: string;
     retryConfig?: {
@@ -312,25 +291,6 @@ interface OperationEndEvent {
     durationMs: number;
     status: Status;
     tokensUsed: number;
-/**
-     * /**
-     * * LLMリクエストイベントの構造を定義するインターフェース
-     * *
-     * * LLMへのリクエストに関する情報を記録するイベント型。
-     * * プロバイダ、モデル、プロンプト情報、トークン設定などを含む。
-     * *
-     * * @property eventType - イベント種別（'llm_request'で固定）
-     * * @property data.provider - LLMプロバイダー名
-     * * @property data.model - 使用するモデル名
-     * * @property data.systemPromptLength - システムプロンプトの文字数
-     * * @property data.systemPromptHash - システムプロンプトのハッシュ値
-     * * @property data.userMessageCount - ユーザーメッセージの数
-     * * @property data.userMessageLength - ユーザーメッセージの総文字数
-     * * @property data.temperature - 生成の温度パラメータ（オプション）
-     * * @property data.maxTokens - 最大トークン数（オプション）
-     * * @property data.contextWindowUsed - 使用したコンテキストウィンドウサイズ
-     * * @property data
-     */
     outputLength: number;
     outputFile?: string;
     childOperations: number;
@@ -404,28 +364,13 @@ interface ToolErrorEvent {
     recoveryAttempted: boolean;
     recoveryMethod?: string;
     recoverySuccessful?: boolean;
-/**
-     * /**
-     * * ロガーの動作設定を定義するインターフェース
-     * *
-     * * ログ出力先、バッファリング、ローテーション、保持期間などの設定を管理します。
-     * *
-     * * @property logDir - ログファイルを保存するディレクトリパス
-     * * @property enabled - ログ出力の有効/無効フラグ
-     * * @property bufferSize - バッファサイズ（バイト単位）
-     * * @property flushIntervalMs - バッファフラッシュ間隔（ミリ秒）
-     * * @property maxFileSizeMB - ログファイルの最大サイズ（メガバイト）
-     * * @property retentionDays - ログファイルの保持期間（日数）
-     * * @property environment - 実行環境（development/production/test）
-     * * @property minLogLevel - 出力する最小ログレベル（
-     */
     params: Record<string, unknown>;
     partialOutput?: string;
   };
 }
 ```
 
-ツール実行時のエラーイベントを表します。
+ツール実行時のエラーイベント
 
 ### LLMRequestEvent
 
@@ -470,6 +415,8 @@ interface LLMResponseEvent {
   };
 }
 ```
+
+LLM応答イベント
 
 ### LLMErrorEvent
 
@@ -687,4 +634,4 @@ type LogEvent = | SessionStartEvent
 ログイベントの統合型
 
 ---
-*自動生成: 2026-02-18T18:06:17.490Z*
+*自動生成: 2026-02-22T19:27:00.569Z*

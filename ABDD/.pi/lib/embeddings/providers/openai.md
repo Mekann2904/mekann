@@ -2,7 +2,7 @@
 title: openai
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-22
 tags: [auto-generated]
 related: []
 ---
@@ -19,7 +19,6 @@ related: []
 // from 'node:fs': existsSync, readFileSync
 // from 'node:path': join
 // from 'node:os': homedir
-// from 'node:child_process': execSync
 // from '../types.js': EmbeddingProvider, ProviderCapabilities
 ```
 
@@ -89,7 +88,7 @@ flowchart TD
 resolveKeyValue(key: string): string | null
 ```
 
-Resolve a key value that may be a literal, env var reference, or shell command.
+Resolve a key value that may be a literal or env var reference.
 This follows pi's official key resolution method.
 
 **パラメータ**
@@ -171,4 +170,4 @@ interface OpenAIEmbeddingResponse {
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.523Z*
+*自動生成: 2026-02-22T19:27:00.616Z*
