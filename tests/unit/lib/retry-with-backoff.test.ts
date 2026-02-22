@@ -991,7 +991,7 @@ describe("レート制限状態管理", () => {
   describe("レート制限とリトライの相互作用", () => {
     it("retryWithBackoff_レート制限待機が適用される", async () => {
       // Arrange
-      vi.useRealTimers();
+      vi.useFakeTimers();
       const onRetry = vi.fn();
       const onRateLimitWait = vi.fn();
       let callCount = 0;
@@ -1007,13 +1007,16 @@ describe("レート制限状態管理", () => {
       const overrides = { maxRetries: 3, initialDelayMs: 100, jitter: "none" as const };
 
       // Act
-      const result = await retryWithBackoff(operation, {
+      const promise = retryWithBackoff(operation, {
         overrides,
         rateLimitKey: "test-key",
         onRetry,
         onRateLimitWait,
         maxRateLimitRetries: 5,
+        maxRateLimitWaitMs: 120000,
       });
+      await vi.runAllTimersAsync();
+      const result = await promise;
 
       // Assert
       expect(result).toBe("success");
@@ -1021,7 +1024,6 @@ describe("レート制限状態管理", () => {
 
       // 429エラー時にレート制限待機がトリガーされる
       expect(onRetry).toHaveBeenCalled();
-      vi.useFakeTimers();
     });
 
     it("retryWithBackoff_maxRateLimitWaitMsで打ち切られる", async () => {
@@ -1053,7 +1055,6 @@ describe("レート制限状態管理", () => {
 
       // Assert - レート制限待機時間が制限を超えると失敗
       await expect(promise).rejects.toThrow("rate limit fast-fail");
-      vi.useRealTimers();
     });
   });
 
@@ -1098,7 +1099,7 @@ describe("レート制限状態管理", () => {
   describe("レート制限エントリ上限", () => {
     it("retryWithBackoff_多数の異なるキーで使用_制限内で動作", async () => {
       // Arrange
-      vi.useRealTimers();
+      vi.useFakeTimers();
       const maxKeys = 50; // MAX_RATE_LIMIT_ENTRIES = 64
       const promises: Promise<string>[] = [];
 
@@ -1117,10 +1118,10 @@ describe("レート制限状態管理", () => {
       }
 
       // Assert - 全て成功する
-      const results = await Promise.all(promises);
+      const resultsPromise = Promise.all(promises);
+      await vi.runAllTimersAsync();
+      const results = await resultsPromise;
       expect(results).toHaveLength(maxKeys);
-
-      vi.useFakeTimers();
     });
   });
 });

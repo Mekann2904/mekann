@@ -14,6 +14,10 @@ import { combineSeed, stringToSeed } from "./communication-id";
 
 export const MAX_COMMUNICATION_PARTNERS = 3;
 
+/**
+ * 通信リンクオプション
+ * @summary リンク設定
+ */
 export interface CommunicationLinksOptions {
   round?: number;
   seed?: number | string;
@@ -39,6 +43,13 @@ export function shouldPreferAnchorMember(member: { id: string; role?: string }):
   );
 }
 
+/**
+ * 通信リンクマップを作成する
+ * @summary リンクマップ生成
+ * @param members メンバーリスト
+ * @param options リンクオプション
+ * @returns メンバーID→パートナーIDリストのマップ
+ */
 export function createCommunicationLinksMap(
   members: TeamMemberLike[],
   options?: CommunicationLinksOptions
@@ -134,6 +145,13 @@ function selectPartnersDeterministic(
   return combined.slice(0, maxPartners);
 }
 
+/**
+ * 決定論的シャッフルを行う
+ * @summary 決定論的配列シャッフル
+ * @param array シャッフル対象配列
+ * @param seed シード値
+ * @returns シャッフル済み配列
+ */
 export function deterministicShuffle<T>(array: T[], seed: number): T[] {
   const result = [...array];
   let s = seed;

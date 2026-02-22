@@ -10,6 +10,10 @@
  * failure_modes: なし
  */
 
+/**
+ * 通信履歴エントリ
+ * @summary 通信履歴記録
+ */
 export interface CommunicationHistory {
   round: number;
   memberId: string;
@@ -24,6 +28,10 @@ export interface CommunicationHistory {
   };
 }
 
+/**
+ * 通信履歴ストアインターフェース
+ * @summary 履歴ストアAPI
+ */
 export interface CommunicationHistoryStore {
   add(entry: CommunicationHistory): void;
   getByMember(memberId: string): CommunicationHistory[];
@@ -34,6 +42,11 @@ export interface CommunicationHistoryStore {
   clear(): void;
 }
 
+/**
+ * 通信履歴ストアを作成する
+ * @summary 履歴ストア生成
+ * @returns 通信履歴ストアインスタンス
+ */
 export function createCommunicationHistoryStore(): CommunicationHistoryStore {
   const entries: CommunicationHistory[] = [];
 

@@ -16,6 +16,10 @@ import { extractField } from "./communication-references";
 
 export const COMMUNICATION_CONTEXT_OTHER_LIMIT = 4;
 
+/**
+ * 通信パートナー情報
+ * @summary パートナー詳細
+ */
 export interface CommunicationPartner {
   memberId: string;
   commId: string;
@@ -27,12 +31,20 @@ export interface CommunicationPartner {
   evidenceCount?: number;
 }
 
+/**
+ * 通信パートナーの要約情報
+ * @summary パートナー要約
+ */
 export interface CommunicationPartnerSummary {
   memberId: string;
   commId: string;
   summary: string;
 }
 
+/**
+ * 通信データ構造
+ * @summary 通信データJSON
+ */
 export interface CommunicationData {
   round: number;
   teamId: string;
@@ -42,6 +54,10 @@ export interface CommunicationData {
   others?: CommunicationPartnerSummary[];
 }
 
+/**
+ * 事前計算済みメンバーコンテキスト
+ * @summary 事前計算コンテキスト
+ */
 export interface PrecomputedMemberContext {
   memberId: string;
   role: string;
@@ -52,6 +68,13 @@ export interface PrecomputedMemberContext {
   evidenceCount?: number;
 }
 
+/**
+ * テキストを指定文字数に要約する
+ * @summary テキストを要約
+ * @param text 要約対象のテキスト
+ * @param maxChars 最大文字数
+ * @returns 要約されたテキスト
+ */
 export function summarizeForContext(text: string, maxChars: number): string {
   if (!text) return "";
   if (text.length <= maxChars) return text;
@@ -112,6 +135,12 @@ function calculateRelevanceScore(
   return score;
 }
 
+/**
+ * V2通信コンテキストを構築する
+ * @summary JSON形式コンテキスト構築
+ * @param input チーム定義、メンバー、ラウンド、パートナーID、コンテキストマップ
+ * @returns フォーマット済み通信コンテキスト文字列
+ */
 export function buildCommunicationContextV2(input: {
   team: TeamDefinition;
   member: TeamMember;

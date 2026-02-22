@@ -78,7 +78,7 @@ describe("retryWithBackoff - レート制限機能", () => {
         overrides,
         onRateLimitWait,
         maxRateLimitRetries: 2,
-        maxRateLimitWaitMs: 10000,
+        maxRateLimitWaitMs: 120000,
         rateLimitKey: "test-key",
       });
       await vi.runAllTimersAsync();

@@ -363,3 +363,119 @@ export {
   parseToolFailureCount,
   reevaluateAgentRunFailure,
 } from "./agent-errors.js";
+
+// ============================================================================
+// Philosophical Self-Improvement Modules (Layer 2 - Self-Improvement)
+// These modules implement the philosophical foundations for agent self-improvement.
+// ============================================================================
+
+// Aporetic Reasoning - Aporia Coexistence Reasoning
+export {
+  type AporiaDetection,
+  type AporiaResolution,
+  type AporiaPole,
+  type AporeticBeliefState,
+  type BalanceUpdate,
+  type ParetoOptimalSolution,
+  type AporeticInferenceResult,
+  type AporeticReasoningEngine,
+  type AporeticEngineConfig,
+  createAporeticEngine,
+  createInitialBeliefState,
+  updateBeliefState,
+  performAporeticInference,
+  integrateResolution,
+  paretoFrontToVisualization,
+  generateEngineReport as generateAporeticEngineReport,
+} from "./aporetic-reasoning.js";
+
+// Creative Destruction - Self-Premise Destruction Mechanism
+export {
+  type Premise,
+  type PremiseType,
+  type DestructionMethod,
+  type DestructionResult,
+  type ReconstructedView,
+  type DestructionChain,
+  type ParetoOptimalDestruction,
+  type CreativeDestructionEngine,
+  type CreativeDestructionConfig,
+  createCreativeDestructionEngine,
+  registerPremise,
+  performDestruction,
+  performChainDestruction,
+  optimizeDestruction,
+  getDestructionMethods,
+  getRecommendedMethod,
+  generateDestructionReport,
+  resetEngine as resetCreativeDestructionEngine,
+} from "./creative-destruction.js";
+
+// Hyper Metacognition - Meta-Metacognition Engine
+export {
+  type MetacognitiveLayer,
+  type HyperMetacognitiveState,
+  type CognitivePattern,
+  type ImprovementRecommendation,
+  type BayesianMetaBelief,
+  type HyperMetacognitionEngine,
+  type HyperMetacognitionConfig,
+  createHyperMetacognitionEngine,
+  performHyperMetacognition,
+  deepenMetacognition,
+  updateMetaBelief,
+  getThinkingQualityAssessment,
+  generateMetacognitionReport,
+  generateEngineReport as generateHyperMetacognitionEngineReport,
+} from "./hyper-metacognition.js";
+
+// Non-Linear Thought - Non-Linear Thought Generator
+export {
+  type ThoughtSeed,
+  type SeedType,
+  type Association,
+  type AssociationType,
+  type AssociationChain,
+  type ConvergencePoint,
+  type EmergentInsight,
+  type InsightKind,
+  type InsightEvaluation,
+  type NonLinearThoughtParameters,
+  type NonLinearThoughtEngine,
+  type NonLinearThoughtConfig,
+  createNonLinearThoughtEngine,
+  registerSeed,
+  generateNonLinearThoughts,
+  generateParallelThoughts,
+  optimizeAssociation,
+  getParetoOptimalInsights,
+  extractSeedsFromText,
+  generateNonLinearThoughtReport,
+  resetEngine as resetNonLinearThoughtEngine,
+} from "./nonlinear-thought.js";
+
+// Belief Updater - Bayesian Belief Update System (Foundation for Philosophical Modules)
+export {
+  type Distribution,
+  type Evidence,
+  type EvidenceType,
+  type BayesianBelief,
+  type BayesianUpdateOptions,
+  createPrior,
+  normalizeDistribution,
+  updateBelief,
+  updateWithMultipleEvidence,
+  createBayesianBelief,
+  updateBayesianBelief,
+  getMostProbable,
+  calculateEntropy,
+  getMaxEntropy,
+  evaluateBeliefStrength,
+  createThinkingModeBelief,
+  createThinkingPhaseBelief,
+  createEvidence,
+  distributionToJSON,
+  distributionFromJSON,
+  klDivergence,
+  summarizeDistribution,
+} from "./belief-updater.js";

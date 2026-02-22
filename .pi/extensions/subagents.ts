@@ -198,24 +198,15 @@ import {
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;
 
-// Use unified stable runtime constants from lib/agent-common.ts
-
-// Local aliases for backward compatibility
-const STABLE_SUBAGENT_RUNTIME = STABLE_RUNTIME_PROFILE;
-const ADAPTIVE_PARALLEL_MAX_PENALTY = SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY;
-const ADAPTIVE_PARALLEL_DECAY_MS = SHARED_ADAPTIVE_PARALLEL_DECAY_MS;
-const STABLE_SUBAGENT_MAX_RETRIES = STABLE_MAX_RETRIES;
-const STABLE_SUBAGENT_INITIAL_DELAY_MS = STABLE_INITIAL_DELAY_MS;
-const STABLE_SUBAGENT_MAX_DELAY_MS = STABLE_MAX_DELAY_MS;
-const STABLE_SUBAGENT_MAX_RATE_LIMIT_RETRIES = STABLE_MAX_RATE_LIMIT_RETRIES;
-const STABLE_SUBAGENT_MAX_RATE_LIMIT_WAIT_MS = STABLE_MAX_RATE_LIMIT_WAIT_MS;
+// Use unified stable runtime constants directly from lib/agent-common.ts
+// (Local aliases removed for DRY compliance)
 
 const runtimeState = getSharedRuntimeState().subagents;
 
 const adaptivePenalty = createAdaptivePenaltyController({
-  isStable: STABLE_SUBAGENT_RUNTIME,
-  maxPenalty: ADAPTIVE_PARALLEL_MAX_PENALTY,
-  decayMs: ADAPTIVE_PARALLEL_DECAY_MS,
+  isStable: STABLE_RUNTIME_PROFILE,
+  maxPenalty: SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,
+  decayMs: SHARED_ADAPTIVE_PARALLEL_DECAY_MS,
 });
 
 // Note: SubagentLiveItem and monitor interfaces are imported from lib/subagent-types.ts
@@ -295,11 +286,11 @@ function resolveProviderConcurrencyCap(
   return Math.max(1, Math.trunc(cap));
 }
 
-// Note: toRetryOverrides is kept locally because it checks STABLE_SUBAGENT_RUNTIME
+// Note: toRetryOverrides is kept locally because it checks STABLE_RUNTIME_PROFILE
 // which is specific to this module. The lib version does not have this check.
 function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined {
   // Stable profile: reject ad-hoc retry tuning to keep behavior deterministic.
-  if (STABLE_SUBAGENT_RUNTIME) return undefined;
+  if (STABLE_RUNTIME_PROFILE) return undefined;
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
   const jitter =
@@ -1248,7 +1239,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             text: formatRuntimeStatusLine({
               storedRuns: storage.runs.length,
               adaptivePenalty: adaptivePenalty.get(),
-              adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
+              adaptivePenaltyMax: SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,
             }),
           },
         ],
@@ -1352,7 +1343,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           content: formatRuntimeStatusLine({
             storedRuns: storage.runs.length,
             adaptivePenalty: adaptivePenalty.get(),
-            adaptivePenaltyMax: ADAPTIVE_PARALLEL_MAX_PENALTY,
+            adaptivePenaltyMax: SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,
           }),
           display: true,
         });

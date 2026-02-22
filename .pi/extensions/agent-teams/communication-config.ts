@@ -10,6 +10,10 @@
  * failure_modes: なし
  */
 
+/**
+ * コミュニケーション機能の設定
+ * @summary 機能フラグ設定
+ */
 export interface CommunicationConfig {
   linksV2: boolean;
   contextV2: boolean;
@@ -24,6 +28,11 @@ const DEFAULTS: CommunicationConfig = {
   terminationV2: true,
 };
 
+/**
+ * コミュニケーション設定を取得する
+ * @summary 設定を環境変数から取得
+ * @returns 現在のコミュニケーション設定
+ */
 export function getCommunicationConfig(): CommunicationConfig {
   return {
     linksV2: parseEnvBool("PI_COMMUNICATION_LINKS_V2", DEFAULTS.linksV2),

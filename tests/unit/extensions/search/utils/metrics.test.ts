@@ -38,6 +38,10 @@ import {
   ExtendedSearchMetrics,
 } from '@ext/search/utils/metrics';
 
+beforeEach(() => {
+  vi.useRealTimers();
+});
+
 describe('MetricsCollector', () => {
   describe('constructor', () => {
     it('正常系: ツール名を設定してインスタンスを生成できる', () => {

@@ -44,6 +44,191 @@ import type { TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown } from 
 export type { TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown };
 
 // ============================================================================
+// Team Definition Validation
+// ============================================================================
+
+/**
+ * チーム定義のバリデーションエラー
+ * @summary バリデーションエラー定義
+ */
+export interface TeamValidationError {
+  /** エラーが発生したフィールド */
+  field: string;
+  /** エラーメッセージ */
+  message: string;
+  /** 実際の値（オプション） */
+  value?: unknown;
+}
+
+/**
+ * チーム定義の必須フィールド
+ */
+const REQUIRED_TEAM_FIELDS = ["id", "name"] as const;
+const REQUIRED_MEMBER_FIELDS = ["id", "role", "description"] as const;
+
+/**
+ * チームフロントマターをバリデーション
+ * @summary フロントマター検証
+ * @param frontmatter 検証対象のフロントマター
+ * @param filePath ファイルパス（エラー表示用）
+ * @returns バリデーションエラーの配列（空の場合は有効）
+ */
+export function validateTeamFrontmatter(
+  frontmatter: Partial<TeamFrontmatter>,
+  filePath: string,
+): TeamValidationError[] {
+  const errors: TeamValidationError[] = [];
+
+  // 必須フィールドのチェック
+  for (const field of REQUIRED_TEAM_FIELDS) {
+    if (!frontmatter[field]) {
+      errors.push({
+        field,
+        message: `Required field '${field}' is missing`,
+        value: frontmatter[field],
+      });
+    }
+  }
+
+  // ID形式のチェック（英小文字、数字、ハイフンのみ）
+  if (frontmatter.id && !/^[a-z0-9-]+$/.test(frontmatter.id)) {
+    errors.push({
+      field: "id",
+      message: "Team ID must contain only lowercase letters, numbers, and hyphens",
+      value: frontmatter.id,
+    });
+  }
+
+  // enabledフィールドのバリデーション
+  if (
+    frontmatter.enabled &&
+    frontmatter.enabled !== "enabled" &&
+    frontmatter.enabled !== "disabled"
+  ) {
+    errors.push({
+      field: "enabled",
+      message: "Enabled must be 'enabled' or 'disabled'",
+      value: frontmatter.enabled,
+    });
+  }
+
+  // メンバーのバリデーション
+  if (!frontmatter.members || frontmatter.members.length === 0) {
+    errors.push({
+      field: "members",
+      message: "At least one member is required",
+      value: frontmatter.members,
+    });
+  } else {
+    for (let i = 0; i < frontmatter.members.length; i += 1) {
+      const member = frontmatter.members[i];
+      for (const field of REQUIRED_MEMBER_FIELDS) {
+        if (!member[field]) {
+          errors.push({
+            field: `members[${i}].${field}`,
+            message: `Required member field '${field}' is missing`,
+            value: member[field],
+          });
+        }
+      }
+      // メンバーID形式のチェック
+      if (member.id && !/^[a-z0-9-]+$/.test(member.id)) {
+        errors.push({
+          field: `members[${i}].id`,
+          message: "Member ID must contain only lowercase letters, numbers, and hyphens",
+          value: member.id,
+        });
+      }
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * TeamDefinitionオブジェクトをバリデーション
+ * @summary チーム定義オブジェクト検証
+ * @param team 検証対象のチーム定義
+ * @returns バリデーションエラーの配列（空の場合は有効）
+ */
+export function validateTeamDefinition(team: Partial<TeamDefinition>): TeamValidationError[] {
+  const errors: TeamValidationError[] = [];
+
+  // 必須フィールドのチェック
+  if (!team.id) {
+    errors.push({ field: "id", message: "Required field 'id' is missing" });
+  } else if (!/^[a-z0-9-]+$/.test(team.id)) {
+    errors.push({
+      field: "id",
+      message: "Team ID must contain only lowercase letters, numbers, and hyphens",
+      value: team.id,
+    });
+  }
+
+  if (!team.name) {
+    errors.push({ field: "name", message: "Required field 'name' is missing" });
+  }
+
+  // enabledフィールドのバリデーション
+  if (team.enabled && team.enabled !== "enabled" && team.enabled !== "disabled") {
+    errors.push({
+      field: "enabled",
+      message: "Enabled must be 'enabled' or 'disabled'",
+      value: team.enabled,
+    });
+  }
+
+  // メンバーのバリデーション
+  if (!team.members || team.members.length === 0) {
+    errors.push({
+      field: "members",
+      message: "At least one member is required",
+      value: team.members,
+    });
+  } else {
+    for (let i = 0; i < team.members.length; i += 1) {
+      const member = team.members[i];
+      if (!member.id) {
+        errors.push({
+          field: `members[${i}].id`,
+          message: "Required member field 'id' is missing",
+        });
+      } else if (!/^[a-z0-9-]+$/.test(member.id)) {
+        errors.push({
+          field: `members[${i}].id`,
+          message: "Member ID must contain only lowercase letters, numbers, and hyphens",
+          value: member.id,
+        });
+      }
+      if (!member.role) {
+        errors.push({
+          field: `members[${i}].role`,
+          message: "Required member field 'role' is missing",
+        });
+      }
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * バリデーションエラーを警告ログに変換
+ * @summary エラーを警告に変換
+ * @param errors バリデーションエラーの配列
+ * @param filePath ファイルパス
+ */
+function logValidationErrors(errors: TeamValidationError[], filePath: string): void {
+  for (const error of errors) {
+    console.warn(
+      `[agent-teams] Validation error in ${filePath}: ${error.field} - ${error.message}${
+        error.value !== undefined ? ` (got: ${JSON.stringify(error.value)})` : ""
+      }`
+    );
+  }
+}
+
+// ============================================================================
 // Path Resolution (works in both development and after pi install)
 // ============================================================================
 
@@ -114,27 +299,35 @@ export function parseTeamMarkdownFile(filePath: string): ParsedTeamMarkdown | nu
     const content = readFileSync(filePath, "utf-8");
     const { frontmatter, body } = parseFrontmatter<Record<string, unknown> & TeamFrontmatter>(content);
 
-    // Validate required fields
-    if (!frontmatter.id || !frontmatter.name) {
-      console.warn(`[agent-teams] Invalid team frontmatter: ${filePath} (missing id or name)`);
+    // 統一バリデーションを実行
+    const validationErrors = validateTeamFrontmatter(frontmatter, filePath);
+
+    // 必須フィールドエラーがある場合はnullを返す
+    const criticalErrors = validationErrors.filter(
+      (e) => e.field === "id" || e.field === "name" || e.field === "members"
+    );
+    if (criticalErrors.length > 0) {
+      logValidationErrors(criticalErrors, filePath);
       return null;
     }
 
-    // Validate enabled field
+    // 警告レベルのエラーはログ出力のみ（enabledフィールドの自動修正など）
+    const warningErrors = validationErrors.filter(
+      (e) => e.field !== "id" && e.field !== "name" && e.field !== "members"
+    );
+    if (warningErrors.length > 0) {
+      logValidationErrors(warningErrors, filePath);
+    }
+
+    // enabledフィールドの自動修正
     if (frontmatter.enabled && frontmatter.enabled !== "enabled" && frontmatter.enabled !== "disabled") {
-      console.warn(`[agent-teams] Invalid enabled value: ${frontmatter.enabled} in ${filePath}, defaulting to enabled`);
       frontmatter.enabled = "enabled";
-    }
-
-    // Ensure members array exists
-    if (!frontmatter.members || frontmatter.members.length === 0) {
-      console.warn(`[agent-teams] No members defined in ${filePath}`);
-      return null;
     }
 
     return { frontmatter, content: body.trim(), filePath };
   } catch (error) {
-    console.warn(`[agent-teams] Failed to parse ${filePath}:`, error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn(`[agent-teams] Failed to parse ${filePath}: ${errorMessage}`);
     return null;
   }
 }

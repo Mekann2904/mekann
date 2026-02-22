@@ -53,12 +53,25 @@ import {
 import {
   validateSubagentOutput,
 } from "../../lib/output-validation.js";
+import {
+  type SchemaViolation,
+  type RegenerationConfig,
+  SCHEMAS,
+  validateSubagentOutputWithSchema,
+  generateWithSchemaEnforcement,
+  buildRegenerationPrompt,
+} from "../../lib/output-schema.js";
+import {
+  applyOutputTemplate,
+  hasMinimumStructure,
+} from "../../lib/output-template.js";
 import { SchemaValidationError } from "../../lib/errors.js";
 import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
 } from "../../lib/plan-mode-shared";
-import { getSubagentExecutionRules } from "../../lib/execution-rules";
+import { getSubagentExecutionRules, getExecutionRulesForProfile } from "../../lib/execution-rules";
+import { getProfileForTask, type PerformanceProfile } from "../../lib/performance-profiles";
 import {
   isNetworkErrorRetryable,
   retryWithBackoff,
@@ -79,6 +92,31 @@ import { ensurePaths } from "./storage";
 
 // Re-export types
 export type { RunOutcomeCode, RunOutcomeSignal };
+
+// ============================================================================
+// High-Risk Task Detection (Ralph Wiggum Loop)
+// ============================================================================
+
+/**
+ * 高リスクタスクのパターン
+ * Ralph Wiggum Loop（自己修正ループ）をトリガーする危険な操作のキーワード
+ */
+const HIGH_RISK_PATTERNS: RegExp[] = [
+  /削除/i, /delete/i, /remove/i,
+  /本番/i, /production/i, /prod/i,
+  /セキュリティ/i, /security/i, /auth/i,
+  /権限/i, /permission/i, /privilege/i,
+];
+
+/**
+ * 高リスクタスク判定
+ * @summary リスク判定（Ralph Wiggum Loop用）
+ * @param task タスク内容
+ * @returns 高リスクの場合はtrue
+ */
+export function isHighRiskTask(task: string): boolean {
+  return HIGH_RISK_PATTERNS.some(pattern => pattern.test(task));
+}
 
 // ============================================================================
 // Types
@@ -167,6 +205,116 @@ export function normalizeSubagentOutput(output: string): SubagentExecutionResult
     degraded: false,
     reason: quality.reason ?? structuredQuality.reason ?? "normalization failed",
   };
+}
+
+// ============================================================================
+// Three-Layer Hybrid Strategy Pipeline
+// ============================================================================
+
+/**
+ * Three-Layer Pipeline の処理結果
+ * @summary 3層パイプライン結果インターフェース
+ */
+export interface ThreeLayerPipelineResult {
+  /** 処理後の出力文字列 */
+  output: string;
+  /** パイプライン全体が成功したか */
+  ok: boolean;
+  /** 品質低下フラグ（テンプレート適用等） */
+  degraded: boolean;
+  /** 使用されたレイヤー（1-3） */
+  appliedLayer: number;
+  /** 検出された違反リスト */
+  violations: SchemaViolation[];
+  /** 失敗理由（ある場合） */
+  reason?: string;
+}
+
+/**
+ * Layer 3（機械的テンプレート適用）を適用する
+ * @summary Layer 3 適用
+ * @param rawOutput 生の出力
+ * @param violations 違反リスト
+ * @returns パイプライン結果
+ */
+function applyLayerThreeTemplate(
+  rawOutput: string,
+  violations: SchemaViolation[],
+): ThreeLayerPipelineResult {
+  const templateResult = applyOutputTemplate(rawOutput, violations);
+  return {
+    output: templateResult.formatted,
+    ok: true,
+    degraded: true,
+    appliedLayer: 3,
+    violations,
+    reason: templateResult.filledFields.length > 0
+      ? `Layer 3 template applied: filled ${templateResult.filledFields.join(", ")}`
+      : undefined,
+  };
+}
+
+/**
+ * 出力をThree-Layer Hybrid Strategyで処理する
+ * @summary 3層ハイブリッド戦略パイプライン
+ * @param rawOutput 生の出力文字列
+ * @returns パイプライン処理結果
+ * @description
+ * Layer 1: 構造化出力強制（再生成）は呼び出し元で実施
+ * Layer 2: 生成時品質保証（QUALITY_BASELINE_RULES）はプロンプトに組み込み済み
+ * Layer 3: 機械的テンプレート適用をこの関数で実施
+ */
+export function processOutputWithThreeLayerPipeline(
+  rawOutput: string,
+): ThreeLayerPipelineResult {
+  const trimmed = rawOutput.trim();
+
+  // 空出力チェック
+  if (!trimmed) {
+    // Layer 3: 空出力に対して最小テンプレートを適用
+    return applyLayerThreeTemplate("", [
+      { field: "SUMMARY", violationType: "missing", expected: "required field" },
+      { field: "RESULT", violationType: "missing", expected: "required field" },
+    ]);
+  }
+
+  // Layer 2 スキーマ検証
+  const schemaResult = validateSubagentOutputWithSchema(trimmed);
+
+  if (schemaResult.ok && schemaResult.parsed) {
+    return {
+      output: trimmed,
+      ok: true,
+      degraded: false,
+      appliedLayer: 2,
+      violations: [],
+    };
+  }
+
+  // Layer 3: テンプレート適用
+  return applyLayerThreeTemplate(trimmed, schemaResult.violations);
+}
+
+/**
+ * 出力が最小構造を満たしているかを確認し、必要に応じてLayer 3を適用する
+ * @summary 出力検証とLayer 3適用
+ * @param output 出力文字列
+ * @returns 処理結果
+ */
+export function ensureOutputStructure(output: string): ThreeLayerPipelineResult {
+  if (hasMinimumStructure(output)) {
+    const schemaResult = validateSubagentOutputWithSchema(output);
+    if (schemaResult.ok) {
+      return {
+        output,
+        ok: true,
+        degraded: false,
+        appliedLayer: 0, // 処理不要
+        violations: [],
+      };
+    }
+  }
+  return processOutputWithThreeLayerPipeline(output);
 }
 
 // ============================================================================
@@ -299,6 +447,7 @@ export function formatSkillsSection(skills: string[] | undefined): string | null
   * @param input.extraContext 追加のコンテキスト
   * @param input.enforcePlanMode プランモードを強制するか
   * @param input.parentSkills 親エージェントのスキルリスト
+  * @param input.profileId パフォーマンスプロファイルID（省略時は自動選択）
   * @returns 構築されたプロンプト文字列
   */
 export function buildSubagentPrompt(input: {
@@ -307,7 +456,14 @@ export function buildSubagentPrompt(input: {
   extraContext?: string;
   enforcePlanMode?: boolean;
   parentSkills?: string[];
+  profileId?: string;
 }): string {
+  // タスクに基づいてプロファイルを自動選択
+  const profile = input.profileId 
+    ? undefined 
+    : getProfileForTask(input.task, { isHighRisk: isHighRiskTask(input.task) });
+  const effectiveProfileId = input.profileId ?? profile?.id ?? 'standard';
+  
   const lines: string[] = [];
   lines.push(`You are running as delegated subagent: ${input.agent.name} (${input.agent.id}).`);
   lines.push(`Role description: ${input.agent.description}`);
@@ -341,7 +497,7 @@ export function buildSubagentPrompt(input: {
   }
 
   lines.push("");
-  lines.push(getSubagentExecutionRules(true));
+  lines.push(getExecutionRulesForProfile(effectiveProfileId, true));
 
   lines.push("");
   lines.push("Output format (strict):");
@@ -457,8 +613,59 @@ export async function runSubagentTask(input: {
   input.onStart?.();
   try {
     try {
+      // Layer 1統合: 高リスクタスクの場合のみ再生成メカニズムを使用
+      const useLayer1Enforcement = isHighRiskTask(input.task);
+
       const commandResult = await retryWithBackoff(
         async () => {
+          if (useLayer1Enforcement) {
+            // Layer 1: 構造化出力強制（再生成メカニズム）
+            const enforcementResult = await generateWithSchemaEnforcement(
+              async () => {
+                const result = await runPiPrintMode({
+                  provider: input.agent.provider ?? input.modelProvider,
+                  model: input.agent.model ?? input.modelId,
+                  prompt,
+                  timeoutMs: input.timeoutMs,
+                  signal: input.signal,
+                  onTextDelta: input.onTextDelta,
+                  onStderrChunk: emitStderrChunk,
+                });
+                return result.output;
+              },
+              SCHEMAS.subagent,
+              {
+                maxRetries: 2,
+                backoffMs: 500,
+                onRegenerate: (attempt, violations) => {
+                  emitStderrChunk(
+                    `[layer1] schema enforcement: attempt=${attempt} violations=${violations.length}\n`,
+                  );
+                },
+              },
+            );
+
+            if (enforcementResult.attempts > 1) {
+              emitStderrChunk(
+                `[layer1] regeneration completed: attempts=${enforcementResult.attempts}\n`,
+              );
+            }
+
+            // Layer 3: テンプレート適用（フォールバック）
+            const pipelineResult = processOutputWithThreeLayerPipeline(enforcementResult.output);
+            if (pipelineResult.degraded) {
+              emitStderrChunk(
+                `[layer3] template applied: ${pipelineResult.reason || "format-mismatch"}\n`,
+              );
+            }
+
+            return {
+              output: pipelineResult.output,
+              latencyMs: 0, // Layer 1使用時は正確なレイテンシー計測が困難
+            };
+          }
+
+          // 通常タスク: 既存のフロー（Layer 3のみ）
           const result = await runPiPrintMode({
             provider: input.agent.provider ?? input.modelProvider,
             model: input.agent.model ?? input.modelId,
@@ -533,6 +740,29 @@ export async function runSubagentTask(input: {
         latencyMs: commandResult.latencyMs,
         outputFile,
       };
+
+      // 思考領域改善: サブエージェント実行後の簡易検証（同期）
+      // 高リスクタスク時のみ検証を実行（Ralph Wiggum Loopの条件付き適用）
+      if (isHighRiskTask(input.task)) {
+        try {
+          const { simpleVerificationHook } = await import("../../lib/verification-simple.js");
+          const verificationResult = await simpleVerificationHook(
+            commandResult.output,
+            0.7, // デフォルト信頼度
+            {
+              agentId: input.agent.id,
+              task: input.task,
+              triggerMode: "post-subagent",
+            }
+          );
+          if (verificationResult.triggered && verificationResult.result) {
+            // eslint-disable-next-line no-console
+            console.log(`[RalphWiggum] ${input.agent.id}: ${verificationResult.result.issues.length} issues, verdict=${verificationResult.result.verdict}`);
+          }
+        } catch {
+          // 検証フックエラーは無視して処理を継続
+        }
+      }
 
       writeFileSync(
         outputFile,

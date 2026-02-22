@@ -32,13 +32,14 @@
  * to eliminate DRY violations with agent-teams/storage.ts.
  */
 
-import { existsSync, readFileSync, copyFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createPathsFactory,
   createEnsurePaths,
   pruneRunArtifacts,
   mergeSubagentStorageWithDisk as mergeStorageWithDiskCommon,
+  createCorruptedBackup,
   type BaseStoragePaths,
 } from "../../lib/storage-base.js";
 import { atomicWriteTextFile, withFileLock } from "../../lib/storage-lock.js";
@@ -340,40 +341,6 @@ function mergeSubagentStorageWithDisk(
     SUBAGENT_DEFAULTS_VERSION,
     MAX_RUNS_TO_KEEP,
   ) as SubagentStorage;
-}
-
-/**
- * 破損したストレージファイルのバックアップを作成
- * @summary 破損バックアップ作成
- * @param storageFile - 元のストレージファイルパス
- * @param prefix - バックアップファイル名のプレフィックス
- * @returns {string | null} バックアップファイルのパス、失敗時はnull
- */
-function createCorruptedBackup(storageFile: string, prefix: string): string | null {
-  try {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backupFile = `${storageFile}.corrupted.${prefix}.${timestamp}.bak`;
-
-    // Get original file stats for logging
-    const stats = statSync(storageFile);
-    const sizeBytes = stats.size;
-
-    // Create backup copy
-    copyFileSync(storageFile, backupFile);
-
-    console.warn(
-      `[${prefix}] Created backup of corrupted storage: ${backupFile} (${sizeBytes} bytes)`,
-    );
-
-    return backupFile;
-  } catch (backupError) {
-    console.error(
-      `[${prefix}] Failed to create backup of corrupted storage: ${
-        backupError instanceof Error ? backupError.message : String(backupError)
-      }`,
-    );
-    return null;
-  }
 }
 
 /**
