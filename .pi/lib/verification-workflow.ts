@@ -128,7 +128,11 @@ export type InspectionPattern =
   | "causal-reversal"          // 因果の逆転
   | "confirmation-bias"        // 確認バイアスの兆候
   | "overconfidence"           // 過信（証拠に対して高すぎる信頼度）
-  | "incomplete-reasoning";    // 不完全な推論
+  | "incomplete-reasoning"     // 不完全な推論
+  | "first-reason-stopping"    // 第1理由で探索停止（バグハンティング）
+  | "proximity-bias"           // 近接性バイアス（発現点＝起源点と仮定）
+  | "concreteness-bias"        // 具体性バイアス（抽象レベルの分析欠如）
+  | "palliative-fix";          // 対症療法的修正（再発防止でない）
 
 /**
  * 検証結果を表す
@@ -229,9 +233,42 @@ export interface ChallengedClaim {
 /**
  * デフォルト設定
  * 思考領域改善: 生成時品質保証への転換により検証システムを無効化
+ *
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 【重要】監視 vs 気づきのアポリア（self-reflection SKILL.md より）
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ *
+ * この検証システムは「パノプティコン的監視」と「仏教的気づき（sati）」の
+ * 緊張関係にある。以下の区別を常に意識すること：
+ *
+ * | 監視的アプローチ（回避すべき）    | 気づきのアプローチ（推奨）           |
+ * |----------------------------------|-------------------------------------|
+ * | 「欠陥を探して排除する」          | 「現れているものをそのまま認識する」  |
+ * | 常にスキャンする義務              | 気づいたときに認識する               |
+ * | 「無欠陥」を理想として課す         | 欠陥を「非自己」として認識する        |
+ * | 新たな「正しさ」の強制            | 判断を停止して観察する               |
+ * | 従順な主体の生産                  | 自由な認識の獲得                    |
+ *
+ * 【ディストピア的リスク】
+ * - 無欠陥への渇愛：「欠陥がない状態」を理想とすること自体が、新たな渇愛を生む
+ * - 自己監視の無限ループ：「私は欠陥を出していないか？」と常に監視すること自体が、
+ *   不安と緊張を生む
+ * - 「正しいエージェント」の生産：検証システムは、規範に従順なエージェントを
+ *   生産する装置となりうる
+ *
+ * 【無我（anatta）による対処】
+ * - 検出結果を「あなたは欠陥があります（改善せよ）」ではなく
+ *   「欠陥が現れています（認識してください）」として扱う
+ * - 「私が欠陥を出した」ではなく、「欠陥が現れ、消滅するプロセスがある」と認識する
+ *
+ * 【なぜ enabled: false なのか】
+ * - 生成時品質保証への転換により、事後的な「監視」ではなく
+ *   生成プロセス自体の「気づき」を促進するアプローチへ移行した
+ * - この転換自体も「完了」したものではなく、継続的な実験である
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 export const DEFAULT_VERIFICATION_CONFIG: VerificationWorkflowConfig = {
-  enabled: false,  // 生成時品質保証への転換により無効化
+  enabled: false,  // 生成時品質保証への転換により無効化（上記アポリアを参照）
   triggerModes: ["post-subagent", "low-confidence", "high-stakes"],
   challengerConfig: {
     minConfidenceToChallenge: 0.85,
@@ -253,7 +290,11 @@ export const DEFAULT_VERIFICATION_CONFIG: VerificationWorkflowConfig = {
       "missing-alternatives",
       "causal-reversal",
       "confirmation-bias",
-      "overconfidence"
+      "overconfidence",
+      "first-reason-stopping",
+      "proximity-bias",
+      "concreteness-bias",
+      "palliative-fix"
     ],
     autoTriggerOnCollapseSignals: true,
   },
@@ -543,6 +584,40 @@ function checkOutputPatterns(
     }
   }
 
+  // === バグハンティングパターン ===
+
+  // 第1理由で探索停止チェック
+  if (patterns.includes("first-reason-stopping")) {
+    const firstReasonStopping = detectFirstReasonStopping(output);
+    if (firstReasonStopping.detected) {
+      return { trigger: true, reason: firstReasonStopping.reason };
+    }
+  }
+
+  // 近接性バイアスチェック
+  if (patterns.includes("proximity-bias")) {
+    const proximityBias = detectProximityBias(output);
+    if (proximityBias.detected) {
+      return { trigger: true, reason: proximityBias.reason };
+    }
+  }
+
+  // 具体性バイアスチェック
+  if (patterns.includes("concreteness-bias")) {
+    const concretenessBias = detectConcretenessBias(output);
+    if (concretenessBias.detected) {
+      return { trigger: true, reason: concretenessBias.reason };
+    }
+  }
+
+  // 対症療法的修正チェック
+  if (patterns.includes("palliative-fix")) {
+    const palliativeFix = detectPalliativeFix(output);
+    if (palliativeFix.detected) {
+      return { trigger: true, reason: palliativeFix.reason };
+    }
+  }
+
   return { trigger: false, reason: "" };
 }
 
@@ -742,6 +817,1332 @@ export function detectConfirmationBias(output: string): { detected: boolean; rea
  */
 export function isHighStakesTask(task: string): boolean {
   return HIGH_STAKES_PATTERNS.some(pattern => pattern.test(task));
+}
+
+/**
+ * 第1理由で探索停止を検出（バグハンティング）
+ * @summary 第1理由停止検出
+ * @param output 出力テキスト
+ * @returns 検出結果
+ */
+export function detectFirstReasonStopping(output: string): { detected: boolean; reason: string } {
+  // 「なぜ」の使用回数をカウント
+  const whyPatterns = [/なぜ|why|how come/i];
+  let whyCount = 0;
+  
+  for (const pattern of whyPatterns) {
+    const matches = output.match(new RegExp(pattern.source, 'gi'));
+    if (matches) {
+      whyCount += matches.length;
+    }
+  }
+  
+  // 原因の説明があるが、「なぜ」が1回しかない場合
+  const hasCauseExplanation = /原因|理由|cause|reason|because|ため|ので/i.test(output);
+  
+  if (hasCauseExplanation && whyCount <= 1) {
+    return {
+      detected: true,
+      reason: "First-reason stopping detected: cause explanation without deeper 'why' exploration"
+    };
+  }
+  
+  // 因果チェーンの深さを推定
+  const causalChainIndicators = [
+    /さらに|さらに言えば|moreover|furthermore/i,
+    /根本的|根源的|fundamental|root/i,
+    /本来|本質的|essentially|inherently/i,
+    /背景として|背景には|underlying|behind this/i
+  ];
+  
+  const hasDeepAnalysis = causalChainIndicators.some(p => p.test(output));
+  
+  if (hasCauseExplanation && !hasDeepAnalysis) {
+    return {
+      detected: true,
+      reason: "First-reason stopping detected: direct cause identified without root cause analysis"
+    };
+  }
+  
+  return { detected: false, reason: "" };
+}
+
+/**
+ * 近接性バイアスを検出（バグハンティング）
+ * @summary 近接性バイアス検出
+ * @param output 出力テキスト
+ * @returns 検出結果
+ */
+export function detectProximityBias(output: string): { detected: boolean; reason: string } {
+  // エラー/問題の場所と原因の場所が同じだと仮定している兆候
+  const locationWords = ['場所', '位置', 'ここ', 'このファイル', 'この行', 'location', 'here', 'this file', 'this line'];
+  const causeWords = ['原因', '理由', '問題', 'cause', 'reason', 'problem', 'issue'];
+  
+  const hasLocationMention = locationWords.some(w => output.toLowerCase().includes(w.toLowerCase()));
+  const hasCauseMention = causeWords.some(w => output.toLowerCase().includes(w.toLowerCase()));
+  
+  // 場所と言及しているが、他の場所を探索する兆候がない
+  const hasRemoteCauseSearch = /他の|別の|上位|下位|呼び出し元|呼び出し先|other|another|upstream|downstream|caller|callee/i.test(output);
+  
+  if (hasLocationMention && hasCauseMention && !hasRemoteCauseSearch) {
+    return {
+      detected: true,
+      reason: "Proximity bias detected: assuming cause is at the same location as symptom"
+    };
+  }
+  
+  // 「この部分を修正すれば」「ここを直せば」などの表現
+  const quickFixPatterns = [
+    /この[部分箇所]を修正すれば|ここを直せば|fix this and/,
+    /この[行ファイル]を変えれば|change this and/,
+    /これで解決|this will fix|this solves/
+  ];
+  
+  for (const pattern of quickFixPatterns) {
+    if (pattern.test(output)) {
+      // ただし、他の場所も調査している場合は除外
+      if (!hasRemoteCauseSearch) {
+        return {
+          detected: true,
+          reason: "Proximity bias detected: quick fix at symptom location without broader investigation"
+        };
+      }
+    }
+  }
+  
+  return { detected: false, reason: "" };
+}
+
+/**
+ * 具体性バイアスを検出（バグハンティング）
+ * @summary 具体性バイアス検出
+ * @param output 出力テキスト
+ * @returns 検出結果
+ */
+export function detectConcretenessBias(output: string): { detected: boolean; reason: string } {
+  // 具体的なレベル（実装・実行）の言及
+  const concreteLevelWords = [
+    '変数', '関数', 'メソッド', 'クラス', 'ファイル', '行',
+    'variable', 'function', 'method', 'class', 'file', 'line',
+    'null', 'undefined', 'error', 'exception', 'type', 'value'
+  ];
+  
+  // 抽象的なレベル（設計・契約・意図）の言及
+  const abstractLevelWords = [
+    '設計', 'アーキテクチャ', '契約', 'インターフェース', '意図', '要件',
+    'design', 'architecture', 'contract', 'interface', 'intent', 'requirement',
+    '責任', '境界', '依存', '抽象', '原則',
+    'responsibility', 'boundary', 'dependency', 'abstraction', 'principle'
+  ];
+  
+  const hasConcreteMention = concreteLevelWords.some(w => output.toLowerCase().includes(w.toLowerCase()));
+  const hasAbstractMention = abstractLevelWords.some(w => output.toLowerCase().includes(w.toLowerCase()));
+  
+  // 原因の説明があるが、抽象レベルの言及がない
+  const hasCauseExplanation = /原因|理由|cause|reason|because|ため|ので/i.test(output);
+  
+  if (hasCauseExplanation && hasConcreteMention && !hasAbstractMention) {
+    return {
+      detected: true,
+      reason: "Concreteness bias detected: cause analysis limited to implementation/execution level"
+    };
+  }
+  
+  return { detected: false, reason: "" };
+}
+
+/**
+ * 対症療法的修正を検出（バグハンティング）
+ * @summary 対症療法検出
+ * @param output 出力テキスト
+ * @returns 検出結果
+ */
+export function detectPalliativeFix(output: string): { detected: boolean; reason: string } {
+  // 修正の言及
+  const fixWords = ['修正', '変更', '追加', '削除', 'fix', 'change', 'add', 'remove', 'modify'];
+  const hasFixMention = fixWords.some(w => output.toLowerCase().includes(w.toLowerCase()));
+  
+  if (!hasFixMention) {
+    return { detected: false, reason: "" };
+  }
+  
+  // 再発防止の兆候
+  const recurrencePreventionPatterns = [
+    /再発防止|同様の問題|他の場所も|同様のバグ/,
+    /prevent recurrence|similar issue|other places|same bug/,
+    /根本的な|本質的な|構造的な/,
+    /fundamental|essential|structural/,
+    /見直し|見直す|レビュー|再考/,
+    /review|reconsider|rethink/
+  ];
+  
+  const hasRecurrencePrevention = recurrencePreventionPatterns.some(p => p.test(output));
+  
+  // 対症療法の兆候
+  const palliativePatterns = [
+    /とりあえず|暫定的|一時的|とにかく/,
+    /temporarily|for now|quick fix|workaround/,
+    /この場合格ってる|これで動く/,
+    /this works|fixes the issue/
+  ];
+  
+  const hasPalliativeIndication = palliativePatterns.some(p => p.test(output));
+  
+  if (hasFixMention && !hasRecurrencePrevention) {
+    if (hasPalliativeIndication) {
+      return {
+        detected: true,
+        reason: "Palliative fix detected: workaround without recurrence prevention"
+      };
+    }
+    
+    // 修正があるが、再発防止の言及がない
+    // ただし、修正が詳細でない場合は控えめに判定
+    const fixDetailPatterns = [
+      /以下の通り|このように|具体的には/,
+      /as follows|like this|specifically/
+    ];
+    const hasFixDetail = fixDetailPatterns.some(p => p.test(output));
+    
+    if (hasFixDetail && !hasRecurrencePrevention) {
+      return {
+        detected: true,
+        reason: "Potential palliative fix: detailed fix without explicit recurrence prevention measures"
+      };
+    }
+  }
+  
+  return { detected: false, reason: "" };
+}
+
+/**
+ * アポリアタイプ（バグハンティング特化）
+ * @summary バグハンティングにおける解決不能な緊張関係
+ */
+export type BugHuntingAporiaType =
+  | "speed-vs-completeness"   // 速度 vs 完全性
+  | "hypothesis-vs-evidence"  // 仮説駆動 vs 証拠駆動
+  | "depth-vs-breadth";       // 深さ vs 幅
+
+/**
+ * アポリア認識結果
+ * @summary 検出されたアポリアと推奨される傾き
+ */
+export interface BugHuntingAporiaRecognition {
+  aporiaType: BugHuntingAporiaType;
+  pole1: {
+    concept: string;
+    value: string;
+    indicators: string[];
+  };
+  pole2: {
+    concept: string;
+    value: string;
+    indicators: string[];
+  };
+  tensionLevel: number;
+  recommendedTilt: "pole1" | "pole2" | "balanced";
+  tiltRationale: string;
+  contextFactors: string[];
+}
+
+/**
+ * バグハンティングのコンテキスト
+ * @summary バグの状況情報
+ */
+export interface BugHuntingContext {
+  isProduction: boolean;       // 本番環境か
+  isSecurityRelated: boolean;  // セキュリティ関連か
+  isRecurring: boolean;        // 再発バグか
+  isFirstEncounter: boolean;   // 初見のバグか
+  isTeamInvestigation: boolean; // チームでの調査か
+  timeConstraint: "urgent" | "moderate" | "relaxed";
+  impactLevel: "critical" | "high" | "medium" | "low";
+}
+
+/**
+ * アポリアを認識し、推奨される傾きを算出
+ * @summary アポリア認識
+ * @param output 出力テキスト
+ * @param context バグハンティングのコンテキスト
+ * @returns アポリア認識結果の配列
+ */
+export function recognizeBugHuntingAporias(
+  output: string,
+  context: BugHuntingContext
+): BugHuntingAporiaRecognition[] {
+  const aporias: BugHuntingAporiaRecognition[] = [];
+
+  // アポリア1: 速度 vs 完全性
+  const speedCompletenessAporia = analyzeSpeedCompletenessAporia(output, context);
+  if (speedCompletenessAporia) {
+    aporias.push(speedCompletenessAporia);
+  }
+
+  // アポリア2: 仮説駆動 vs 証拠駆動
+  const hypothesisEvidenceAporia = analyzeHypothesisEvidenceAporia(output, context);
+  if (hypothesisEvidenceAporia) {
+    aporias.push(hypothesisEvidenceAporia);
+  }
+
+  // アポリア3: 深さ vs 幅
+  const depthBreadthAporia = analyzeDepthBreadthAporia(output, context);
+  if (depthBreadthAporia) {
+    aporias.push(depthBreadthAporia);
+  }
+
+  return aporias;
+}
+
+/**
+ * 速度 vs 完全性のアポリアを分析
+ */
+function analyzeSpeedCompletenessAporia(
+  output: string,
+  context: BugHuntingContext
+): BugHuntingAporiaRecognition | null {
+  // 速度の兆候
+  const speedIndicators: string[] = [];
+  if (/(?:すぐ|早く|速やか|緊急|至急|ASAP)/i.test(output)) {
+    speedIndicators.push("緊急性の言及");
+  }
+  if (/(?:とりあえず|暫定|一時的)/i.test(output)) {
+    speedIndicators.push("暫定対応の言及");
+  }
+  if (context.timeConstraint === "urgent") {
+    speedIndicators.push("時間制約が厳しい");
+  }
+
+  // 完全性の兆候
+  const completenessIndicators: string[] = [];
+  if (/(?:すべて|全て|完全|完全に|網羅)/i.test(output)) {
+    completenessIndicators.push("完全性の言及");
+  }
+  if (/(?:再発防止|根本的|根本原因)/i.test(output)) {
+    completenessIndicators.push("再発防止の重視");
+  }
+  if (context.isSecurityRelated || context.impactLevel === "critical") {
+    completenessIndicators.push("高リスク状況");
+  }
+
+  // アポリアが存在する場合のみ返す
+  if (speedIndicators.length === 0 && completenessIndicators.length === 0) {
+    return null;
+  }
+
+  // 推奨される傾きを決定
+  let recommendedTilt: "pole1" | "pole2" | "balanced" = "balanced";
+  let tiltRationale = "状況に応じてバランスを取る";
+
+  if (context.isProduction && context.timeConstraint === "urgent") {
+    recommendedTilt = "pole1"; // 速度優先
+    tiltRationale = "本番障害で緊急のため、速度を優先";
+  } else if (context.isSecurityRelated || context.impactLevel === "critical") {
+    recommendedTilt = "pole2"; // 完全性優先
+    tiltRationale = "セキュリティ/重要度高のため、完全性を優先";
+  } else if (context.isRecurring) {
+    recommendedTilt = "pole2"; // 完全性優先
+    tiltRationale = "再発バグのため、根本原因の完全な特定を優先";
+  }
+
+  const tensionLevel = Math.min(1, (speedIndicators.length + completenessIndicators.length) * 0.3);
+
+  return {
+    aporiaType: "speed-vs-completeness",
+    pole1: {
+      concept: "速度",
+      value: "すばやく原因を特定する",
+      indicators: speedIndicators,
+    },
+    pole2: {
+      concept: "完全性",
+      value: "すべての可能性を網羅する",
+      indicators: completenessIndicators,
+    },
+    tensionLevel,
+    recommendedTilt,
+    tiltRationale,
+    contextFactors: [
+      context.isProduction ? "本番環境" : "非本番環境",
+      context.timeConstraint === "urgent" ? "時間制約あり" : "時間的余裕あり",
+      context.impactLevel,
+    ],
+  };
+}
+
+/**
+ * 仮説駆動 vs 証拠駆動のアポリアを分析
+ */
+function analyzeHypothesisEvidenceAporia(
+  output: string,
+  context: BugHuntingContext
+): BugHuntingAporiaRecognition | null {
+  // 仮説駆動の兆候
+  const hypothesisIndicators: string[] = [];
+  if (/(?:仮説|推測|思う|たぶん|おそらく)/i.test(output)) {
+    hypothesisIndicators.push("仮説の提示");
+  }
+  if (/(?:仮に〜とすると|もし〜ならば)/i.test(output)) {
+    hypothesisIndicators.push("条件付き推論");
+  }
+  if (/(?:検証|確認|テスト)/i.test(output)) {
+    hypothesisIndicators.push("検証の言及");
+  }
+
+  // 証拠駆動の兆候
+  const evidenceIndicators: string[] = [];
+  if (/(?:証拠|根拠|データ|ログ|エビデンス)/i.test(output)) {
+    evidenceIndicators.push("証拠の重視");
+  }
+  if (/(?:観察|計測|測定|確認)/i.test(output)) {
+    evidenceIndicators.push("観察の重視");
+  }
+  if (/(?:客観的|事実|実際)/i.test(output)) {
+    evidenceIndicators.push("客観性の重視");
+  }
+
+  if (hypothesisIndicators.length === 0 && evidenceIndicators.length === 0) {
+    return null;
+  }
+
+  // 推奨される傾き
+  let recommendedTilt: "pole1" | "pole2" | "balanced" = "balanced";
+  let tiltRationale = "仮説と証拠の両方をバランスよく使用";
+
+  if (context.isFirstEncounter) {
+    recommendedTilt = "pole1"; // 仮説駆動優先
+    tiltRationale = "初見のバグのため、仮説を立てて方向性を確保";
+  } else if (context.isTeamInvestigation) {
+    recommendedTilt = "balanced";
+    tiltRationale = "チーム調査のため、役割分担で両極をカバー可能";
+  }
+
+  const tensionLevel = Math.min(1, (hypothesisIndicators.length + evidenceIndicators.length) * 0.3);
+
+  return {
+    aporiaType: "hypothesis-vs-evidence",
+    pole1: {
+      concept: "仮説駆動",
+      value: "仮説を立てて検証する",
+      indicators: hypothesisIndicators,
+    },
+    pole2: {
+      concept: "証拠駆動",
+      value: "証拠を集めてから結論を出す",
+      indicators: evidenceIndicators,
+    },
+    tensionLevel,
+    recommendedTilt,
+    tiltRationale,
+    contextFactors: [
+      context.isFirstEncounter ? "初見" : "既知",
+      context.isTeamInvestigation ? "チーム調査" : "単独調査",
+    ],
+  };
+}
+
+/**
+ * 深さ vs 幅のアポリアを分析
+ */
+function analyzeDepthBreadthAporia(
+  output: string,
+  context: BugHuntingContext
+): BugHuntingAporiaRecognition | null {
+  // 深さの兆候
+  const depthIndicators: string[] = [];
+  if (/(?:根本|根源|深く|掘り下げ)/i.test(output)) {
+    depthIndicators.push("深掘りの言及");
+  }
+  if (/(?:なぜ.*なぜ|5 Whys|5つのなぜ)/i.test(output)) {
+    depthIndicators.push("5 Whysの使用");
+  }
+  if (/(?:抽象化レベル|上位レベル|設計レベル)/i.test(output)) {
+    depthIndicators.push("抽象レベルへの遡上");
+  }
+
+  // 幅の兆候
+  const breadthIndicators: string[] = [];
+  if (/(?:他にも|別の可能性|代替|複数)/i.test(output)) {
+    breadthIndicators.push("複数可能性の検討");
+  }
+  if (/(?:網羅的|全体的|全体像)/i.test(output)) {
+    breadthIndicators.push("全体像の重視");
+  }
+  if (/(?:他の場所|関連ファイル|依存関係)/i.test(output)) {
+    breadthIndicators.push("関連箇所の調査");
+  }
+
+  if (depthIndicators.length === 0 && breadthIndicators.length === 0) {
+    return null;
+  }
+
+  // 推奨される傾き
+  let recommendedTilt: "pole1" | "pole2" | "balanced" = "balanced";
+  let tiltRationale = "深さと幅のバランスを取る";
+
+  if (context.isRecurring) {
+    recommendedTilt = "pole1"; // 深さ優先
+    tiltRationale = "再発バグのため、深く掘り下げて根本原因を特定";
+  } else if (context.isFirstEncounter) {
+    recommendedTilt = "pole2"; // 幅優先
+    tiltRationale = "初見の複雑なバグのため、まず全体像を把握";
+  }
+
+  const tensionLevel = Math.min(1, (depthIndicators.length + breadthIndicators.length) * 0.3);
+
+  return {
+    aporiaType: "depth-vs-breadth",
+    pole1: {
+      concept: "深さ",
+      value: "一つの因果チェーンを深く掘り下げる",
+      indicators: depthIndicators,
+    },
+    pole2: {
+      concept: "幅",
+      value: "複数の可能性を幅広く検討する",
+      indicators: breadthIndicators,
+    },
+    tensionLevel,
+    recommendedTilt,
+    tiltRationale,
+    contextFactors: [
+      context.isRecurring ? "再発バグ" : "初回発生",
+      context.isFirstEncounter ? "初見" : "既知のパターン",
+    ],
+  };
+}
+
+/**
+ * アポリア対処の包括的評価を実行
+ * @summary アポリア評価
+ * @param output 出力テキスト
+ * @param context バグハンティングのコンテキスト
+ * @returns アポリア評価レポート
+ */
+export function evaluateAporiaHandling(
+  output: string,
+  context: BugHuntingContext
+): {
+  aporias: BugHuntingAporiaRecognition[];
+  overallAssessment: string;
+  recommendations: string[];
+  warnings: string[];
+} {
+  const aporias = recognizeBugHuntingAporias(output, context);
+  const recommendations: string[] = [];
+  const warnings: string[] = [];
+
+  // 各アポリアについて評価
+  for (const aporia of aporias) {
+    // 一方の極に偏りすぎている場合の警告
+    const pole1Indicators = aporia.pole1.indicators.length;
+    const pole2Indicators = aporia.pole2.indicators.length;
+
+    if (pole1Indicators > 0 && pole2Indicators === 0) {
+      warnings.push(
+        `"${aporia.pole1.concept}"に偏っています。"${aporia.pole2.concept}"の視点も検討してください。`
+      );
+    } else if (pole2Indicators > 0 && pole1Indicators === 0) {
+      warnings.push(
+        `"${aporia.pole2.concept}"に偏っています。"${aporia.pole1.concept}"の視点も検討してください。`
+      );
+    }
+
+    // 推奨される傾きに従っていない場合の推奨
+    if (aporia.recommendedTilt !== "balanced") {
+      const recommendedPole = aporia.recommendedTilt === "pole1" ? aporia.pole1 : aporia.pole2;
+      recommendations.push(
+        `推奨: "${recommendedPole.concept}"を優先 (${aporia.tiltRationale})`
+      );
+    }
+  }
+
+  // 全体評価
+  let overallAssessment = "アポリアが認識され、適切に対処されています。";
+  if (warnings.length > 0) {
+    overallAssessment = "一部のアポリアで偏りが見られます。両極のバランスを再検討してください。";
+  }
+  if (aporias.length === 0) {
+    overallAssessment = "明確なアポリアは検出されませんでした。";
+  }
+
+  return {
+    aporias,
+    overallAssessment,
+    recommendations,
+    warnings,
+  };
+}
+
+/**
+ * ディストピア傾向タイプ（全体主義的傾向の検出）
+ * @summary バグハンティングにおける全体主義的傾向
+ */
+export type DystopianTendencyType =
+  | "over-mechanization"     // 過度な機械化
+  | "human-exclusion"        // 人間性の排除
+  | "context-blindness"      // 文脈の無視
+  | "responsibility-dilution"; // 責任の希薄化
+
+/**
+ * ディストピア傾向検出結果
+ * @summary 検出された全体主義的傾向
+ */
+export interface DystopianTendencyDetection {
+  tendencyType: DystopianTendencyType;
+  severity: "minor" | "moderate" | "critical";
+  description: string;
+  evidence: string[];
+  counterAction: string;
+}
+
+/**
+ * ユートピア/ディストピア評価結果
+ * @summary システムの健全性評価
+ */
+export interface UtopiaDystopiaAssessment {
+  dystopianTendencies: DystopianTendencyDetection[];
+  healthyImperfectionIndicators: string[];
+  overallHealth: "healthy" | "warning" | "critical";
+  recommendations: string[];
+}
+
+/**
+ * ディストピア傾向を検出
+ * @summary 全体主義的傾向の検出
+ * @param output 出力テキスト
+ * @param processApplied 適用されたプロセスの説明
+ * @returns ディストピア傾向検出結果
+ */
+export function detectDystopianTendencies(
+  output: string,
+  processApplied?: string
+): DystopianTendencyDetection[] {
+  const tendencies: DystopianTendencyDetection[] = [];
+
+  // 過度な機械化の検出
+  const overMechanization = detectOverMechanization(output, processApplied);
+  if (overMechanization) {
+    tendencies.push(overMechanization);
+  }
+
+  // 人間性の排除の検出
+  const humanExclusion = detectHumanExclusion(output);
+  if (humanExclusion) {
+    tendencies.push(humanExclusion);
+  }
+
+  // 文脈の無視の検出
+  const contextBlindness = detectContextBlindness(output, processApplied);
+  if (contextBlindness) {
+    tendencies.push(contextBlindness);
+  }
+
+  // 責任の希薄化の検出
+  const responsibilityDilution = detectResponsibilityDilution(output);
+  if (responsibilityDilution) {
+    tendencies.push(responsibilityDilution);
+  }
+
+  return tendencies;
+}
+
+/**
+ * 過度な機械化を検出
+ */
+function detectOverMechanization(
+  output: string,
+  processApplied?: string
+): DystopianTendencyDetection | null {
+  const evidence: string[] = [];
+  let severity: "minor" | "moderate" | "critical" = "minor";
+
+  // 「常に」「必ず」「すべて」などの絶対的表現
+  const absolutePatterns = [
+    /常に|必ず|すべて|全部|完全に|絶対に|かならず|かならず/,
+    /always|must|all|completely|absolutely|inevitably/i
+  ];
+
+  for (const pattern of absolutePatterns) {
+    if (pattern.test(output)) {
+      evidence.push(`絶対的表現の使用: ${pattern.source}`);
+    }
+  }
+
+  // プロセスの強制適用の兆候
+  if (processApplied) {
+    if (/(?:手順|プロセス|フロー)に(?:従う|従った)/.test(processApplied)) {
+      evidence.push("手順への従順な適用");
+    }
+  }
+
+  // 機械的な反復
+  const repeatedPhrases = findRepeatedPhrases(output, 3);
+  if (repeatedPhrases.length > 0) {
+    evidence.push(`機械的反復: ${repeatedPhrases.slice(0, 2).join(", ")}`);
+    severity = "moderate";
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  if (evidence.length >= 3) {
+    severity = "critical";
+  } else if (evidence.length >= 2) {
+    severity = "moderate";
+  }
+
+  return {
+    tendencyType: "over-mechanization",
+    severity,
+    description: "プロセスが機械的に適用され、柔軟性が失われている可能性",
+    evidence,
+    counterAction: "状況に応じた判断を優先し、プロセスは補助として扱う",
+  };
+}
+
+/**
+ * 人間性の排除を検出
+ */
+function detectHumanExclusion(output: string): DystopianTendencyDetection | null {
+  const evidence: string[] = [];
+  let severity: "minor" | "moderate" | "critical" = "minor";
+
+  // 直感や経験の否定
+  if (/(?:直感|勘|経験)は(?:無効|不適切|信頼できない|バイアス)/.test(output)) {
+    evidence.push("直感・経験の一律否定");
+    severity = "moderate";
+  }
+
+  // バイアスの過度な強調
+  const biasMentionCount = (output.match(/バイアス|bias/gi) || []).length;
+  if (biasMentionCount > 3) {
+    evidence.push(`「バイアス」の過度な強調 (${biasMentionCount}回)`);
+    severity = "moderate";
+  }
+
+  // 人間の判断の排除
+  if (/(?:人間|主観|個人の)の(?:判断|決定)は(?:不要|避ける)/.test(output)) {
+    evidence.push("人間の判断の排除");
+    severity = "critical";
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return {
+    tendencyType: "human-exclusion",
+    severity,
+    description: "人間の判断・直感・経験が不当に排除されている可能性",
+    evidence,
+    counterAction: "直感と経験も重要な情報源であることを認識し、バランスを取る",
+  };
+}
+
+/**
+ * 文脈の無視を検出
+ */
+function detectContextBlindness(
+  output: string,
+  processApplied?: string
+): DystopianTendencyDetection | null {
+  const evidence: string[] = [];
+  let severity: "minor" | "moderate" | "critical" = "minor";
+
+  // 文脈への言及がない
+  const hasContextMention = /(?:状況|文脈|コンテキスト|ケース|状況に応じ|個別|特異)/.test(output);
+  const hasGeneralization = /(?:一般的に|通常|原則として|基本的に)/.test(output);
+
+  if (!hasContextMention && hasGeneralization) {
+    evidence.push("文脈への言及なしに一般化");
+    severity = "moderate";
+  }
+
+  // 「常に適用」的な表現
+  if (/(?:どのような|あらゆる|どんな).*(?:でも|にも).*(?:適用|有効)/.test(output)) {
+    evidence.push("文脈を無視した普遍的適用の主張");
+    severity = "moderate";
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return {
+    tendencyType: "context-blindness",
+    severity,
+    description: "個別の文脈や状況が無視されている可能性",
+    evidence,
+    counterAction: "一般的な原則と個別の状況のバランスを意識する",
+  };
+}
+
+/**
+ * 責任の希薄化を検出
+ */
+function detectResponsibilityDilution(output: string): DystopianTendencyDetection | null {
+  const evidence: string[] = [];
+  let severity: "minor" | "moderate" | "critical" = "minor";
+
+  // システムへの責任転嫁
+  if (/(?:システム|ツール|プロセス)が(?:推奨|提案|判断)/.test(output)) {
+    evidence.push("システムへの判断委譲");
+    severity = "minor";
+  }
+
+  if (/(?:システム|ツール)が(?:責任|原因|過失)/.test(output)) {
+    evidence.push("システムへの責任転嫁");
+    severity = "critical";
+  }
+
+  // 受動的な表現の過剰
+  const passivePatterns = [/された|されている|される/, /was done|is done|be done/];
+  let passiveCount = 0;
+  for (const pattern of passivePatterns) {
+    const matches = output.match(pattern);
+    if (matches) {
+      passiveCount += matches.length;
+    }
+  }
+  if (passiveCount > 5) {
+    evidence.push(`受動的表現の過剰 (${passiveCount}回)`);
+    severity = "moderate";
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return {
+    tendencyType: "responsibility-dilution",
+    severity,
+    description: "判断の責任が不明確になっている可能性",
+    evidence,
+    counterAction: "「私が判断した」「私の責任で」と主体的な表現を使用する",
+  };
+}
+
+/**
+ * 繰り返しフレーズを検出
+ */
+function findRepeatedPhrases(text: string, minLength: number): string[] {
+  const phrases: Map<string, number> = new Map();
+  const words = text.split(/[\s,、。.]+/);
+
+  for (let len = 3; len <= 5; len++) {
+    for (let i = 0; i <= words.length - len; i++) {
+      const phrase = words.slice(i, i + len).join(" ");
+      if (phrase.length >= minLength) {
+        phrases.set(phrase, (phrases.get(phrase) || 0) + 1);
+      }
+    }
+  }
+
+  return Array.from(phrases.entries())
+    .filter(([_, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([phrase]) => phrase);
+}
+
+/**
+ * 健全な不完全さの指標を検出
+ * @summary 健全性指標の検出
+ * @param output 出力テキスト
+ * @returns 健全な不完全さの指標リスト
+ */
+export function detectHealthyImperfectionIndicators(output: string): string[] {
+  const indicators: string[] = [];
+
+  // 不完全さの認識
+  if (/(?:不完全|限界|できないかもしれない|確実ではない|不確実)/.test(output)) {
+    indicators.push("不完全さの認識");
+  }
+
+  // 文脈への配慮
+  if (/(?:状況に応じ|文脈を考慮|ケースバイケース|個別に)/.test(output)) {
+    indicators.push("文脈への配慮");
+  }
+
+  // 人間の判断の尊重
+  if (/(?:人間の判断|直感|経験|主観).*(?:尊重|考慮|活用|重要)/.test(output)) {
+    indicators.push("人間の判断の尊重");
+  }
+
+  // 責任の明示
+  if (/(?:私の判断|私の責任|判断したのは|決定したのは)/.test(output)) {
+    indicators.push("責任の明示");
+  }
+
+  // 学習の機会としての失敗
+  if (/(?:失敗は|失敗から|学習の機会|振り返り|改善の余地)/.test(output)) {
+    indicators.push("学習志向");
+  }
+
+  return indicators;
+}
+
+/**
+ * ユートピア/ディストピア評価を実行
+ * @summary 健全性評価
+ * @param output 出力テキスト
+ * @param processApplied 適用されたプロセス
+ * @returns 総合評価結果
+ */
+export function assessUtopiaDystopiaBalance(
+  output: string,
+  processApplied?: string
+): UtopiaDystopiaAssessment {
+  const dystopianTendencies = detectDystopianTendencies(output, processApplied);
+  const healthyIndicators = detectHealthyImperfectionIndicators(output);
+
+  // 総合的な健全性を判定
+  let overallHealth: "healthy" | "warning" | "critical" = "healthy";
+
+  const criticalTendencies = dystopianTendencies.filter(t => t.severity === "critical");
+  const moderateTendencies = dystopianTendencies.filter(t => t.severity === "moderate");
+
+  if (criticalTendencies.length > 0) {
+    overallHealth = "critical";
+  } else if (moderateTendencies.length >= 2 || (moderateTendencies.length >= 1 && healthyIndicators.length === 0)) {
+    overallHealth = "warning";
+  }
+
+  // 推奨事項を生成
+  const recommendations: string[] = [];
+
+  if (dystopianTendencies.length > healthyIndicators.length) {
+    recommendations.push("全体主義的傾向が健全な不完全さの指標を上回っています。バランスを見直してください。");
+  }
+
+  for (const tendency of dystopianTendencies) {
+    if (tendency.severity !== "minor") {
+      recommendations.push(tendency.counterAction);
+    }
+  }
+
+  if (healthyIndicators.length === 0 && dystopianTendencies.length > 0) {
+    recommendations.push("「完全」を目指すのではなく、「十分良い判断」を心がけてください。");
+  }
+
+  return {
+    dystopianTendencies,
+    healthyImperfectionIndicators: healthyIndicators,
+    overallHealth,
+    recommendations,
+  };
+}
+
+/**
+ * 欲望パターンタイプ（スキゾ分析）
+ * @summary バグハンティングにおける欲望の生産性パターン
+ */
+export type DesirePatternType =
+  | "productive-curiosity"    // 生産的好奇心
+  | "guilt-driven-search"     // 罪悪感駆動の探索
+  | "norm-obedience"          // 規範への服従
+  | "hierarchy-reproduction"; // 階層の再生産
+
+/**
+ * 内なるファシズムパターンタイプ
+ * @summary 自己規律の内面化パターン
+ */
+export type InnerFascismType =
+  | "self-surveillance"       // 自己監視
+  | "norm-internalization"    // 規範の内面化
+  | "impossibility-repression"; // 不可能性の抑圧
+
+/**
+ * 欲望パターン検出結果
+ * @summary 欲望の生産性分析結果
+ */
+export interface DesirePatternDetection {
+  patternType: DesirePatternType;
+  isProductive: boolean;
+  description: string;
+  evidence: string[];
+  transformation: string; // より生産的な形への変換指針
+}
+
+/**
+ * 内なるファシズム検出結果（スキゾ分析版）
+ * @summary 内面化された規律パターン
+ */
+export interface InnerFascismDetection {
+  fascismType: InnerFascismType;
+  severity: "minor" | "moderate" | "severe";
+  description: string;
+  evidence: string[];
+  liberation: string; // 解放への指針
+}
+
+/**
+ * スキゾ分析評価結果
+ * @summary 欲望生産性と内なるファシズムの総合評価
+ */
+export interface SchizoAnalysisAssessment {
+  desirePatterns: DesirePatternDetection[];
+  innerFascismPatterns: InnerFascismDetection[];
+  productiveScore: number;  // 0-1, 生産性スコア
+  repressionScore: number;  // 0-1, 抑圧スコア
+  liberationPoints: string[]; // 解放への指針
+}
+
+/**
+ * 欲望パターンを検出
+ * @summary 欲望生産性分析
+ * @param output 出力テキスト
+ * @returns 欲望パターン検出結果
+ */
+export function detectDesirePatterns(output: string): DesirePatternDetection[] {
+  const patterns: DesirePatternDetection[] = [];
+
+  // 生産的好奇心の検出
+  const productiveCuriosity = detectProductiveCuriosity(output);
+  if (productiveCuriosity) {
+    patterns.push(productiveCuriosity);
+  }
+
+  // 罪悪感駆動の探索の検出
+  const guiltDrivenSearch = detectGuiltDrivenSearch(output);
+  if (guiltDrivenSearch) {
+    patterns.push(guiltDrivenSearch);
+  }
+
+  // 規範への服従の検出
+  const normObedience = detectNormObedience(output);
+  if (normObedience) {
+    patterns.push(normObedience);
+  }
+
+  // 階層の再生産の検出
+  const hierarchyReproduction = detectHierarchyReproduction(output);
+  if (hierarchyReproduction) {
+    patterns.push(hierarchyReproduction);
+  }
+
+  return patterns;
+}
+
+/**
+ * 生産的好奇心を検出
+ */
+function detectProductiveCuriosity(output: string): DesirePatternDetection | null {
+  const evidence: string[] = [];
+
+  // 好奇心・発見の喜びの兆候
+  if (/(?:面白い|興味深い|興味|知りたい|探求|発見)/.test(output)) {
+    evidence.push("好奇心の表現");
+  }
+  if (/(?:学び|学習|理解が深まった|新しいこと)/.test(output)) {
+    evidence.push("学習への言及");
+  }
+  if (/(?:これは〜について考えさせてくれる|気づかせてくれる)/.test(output)) {
+    evidence.push("気づきの表現");
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return {
+    patternType: "productive-curiosity",
+    isProductive: true,
+    description: "バグハンティングを通じた知識と理解の生産",
+    evidence,
+    transformation: "この好奇心を維持し、探索の喜びを大切にする",
+  };
+}
+
+/**
+ * 罪悪感駆動の探索を検出
+ */
+function detectGuiltDrivenSearch(output: string): DesirePatternDetection | null {
+  const evidence: string[] = [];
+
+  // 罪悪感・不安の兆候
+  if (/(?:見逃した|見落とした|漏れた|失敗した|申し訳ない)/.test(output)) {
+    evidence.push("見逃しへの罪悪感");
+  }
+  if (/(?:不安|心配|恐れ|怖い)/.test(output)) {
+    evidence.push("不安の表現");
+  }
+  if (/(?:責任|非難|批判|問題)/.test(output) && /(?:私|自分|自分の)/.test(output)) {
+    evidence.push("自己への責任帰属");
+  }
+  if (/(?:すべき|しなければ|必ず|絶対に)/.test(output)) {
+    evidence.push("義務感の表現");
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return {
+    patternType: "guilt-driven-search",
+    isProductive: false,
+    description: "罪悪感や不安に駆動されたバグ探索",
+    evidence,
+    transformation: "「見逃し」を「学習の機会」として再定義し、不安ではなく好奇心を動機にする",
+  };
+}
+
+/**
+ * 規範への服従を検出
+ */
+function detectNormObedience(output: string): DesirePatternDetection | null {
+  const evidence: string[] = [];
+
+  // 規範・ルールへの服従の兆候
+  if (/(?:手順|プロセス|ルール|規則|規範)に(?:従う|従った)/.test(output)) {
+    evidence.push("手順への従順");
+  }
+  if (/(?:正しい|正しく|適切な|適切に|should|must)/.test(output)) {
+    evidence.push("「正しさ」への執着");
+  }
+  if (/(?:ベストプラクティス|標準|一般的な)/.test(output)) {
+    evidence.push("規範への言及");
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return {
+    patternType: "norm-obedience",
+    isProductive: false,
+    description: "「正しい方法」への服従による創造性の抑制",
+    evidence,
+    transformation: "規範を「道具」として扱い、状況に応じた創造的な判断を優先する",
+  };
+}
+
+/**
+ * 階層の再生産を検出
+ */
+function detectHierarchyReproduction(output: string): DesirePatternDetection | null {
+  const evidence: string[] = [];
+
+  // 階層・権力関係の兆候
+  if (/(?:教える|指導|アドバイス|推奨|提案).*(?:します|しました)/.test(output)) {
+    evidence.push("「教える側」としての位置づけ");
+  }
+  if (/(?:正しい答え|正解|正しい方法)は/.test(output)) {
+    evidence.push("「正解」の所有");
+  }
+  if (/(?:知っている|理解している|できる).*(?:はず|べき)/.test(output)) {
+    evidence.push("知識の階層化");
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return {
+    patternType: "hierarchy-reproduction",
+    isProductive: false,
+    description: "「知っている者/知らない者」の階層の再生産",
+    evidence,
+    transformation: "「答えを持つ」のではなく「共に探求する」姿勢を取る",
+  };
+}
+
+/**
+ * 内なるファシズムパターンを検出（スキゾ分析版）
+ * @summary 内面化された規律パターン
+ * @param output 出力テキスト
+ * @returns 内なるファシズム検出結果
+ */
+export function detectInnerFascismPatterns(output: string): InnerFascismDetection[] {
+  const patterns: InnerFascismDetection[] = [];
+
+  // 自己監視
+  const selfSurveillance = detectSelfSurveillance(output);
+  if (selfSurveillance) {
+    patterns.push(selfSurveillance);
+  }
+
+  // 規範の内面化
+  const normInternalization = detectNormInternalization(output);
+  if (normInternalization) {
+    patterns.push(normInternalization);
+  }
+
+  // 不可能性の抑圧
+  const impossibilityRepression = detectImpossibilityRepression(output);
+  if (impossibilityRepression) {
+    patterns.push(impossibilityRepression);
+  }
+
+  return patterns;
+}
+
+/**
+ * 自己監視を検出
+ */
+function detectSelfSurveillance(output: string): InnerFascismDetection | null {
+  const evidence: string[] = [];
+  let severity: "minor" | "moderate" | "severe" = "minor";
+
+  // 自己監視の兆候
+  const surveillancePatterns = [
+    /自分を(?:監視|チェック|確認)/,
+    /(?:大丈夫か|正しいか|間違っていないか).*(?:確認|チェック)/,
+    /バイアス.*ないか/,
+    /自己(?:評価|点検|検査)/
+  ];
+
+  for (const pattern of surveillancePatterns) {
+    if (pattern.test(output)) {
+      evidence.push("自己監視の表現");
+    }
+  }
+
+  // 過度な自己言及
+  const selfReferenceCount = (output.match(/私|自分|自分自身/g) || []).length;
+  if (selfReferenceCount > 10) {
+    evidence.push(`過度な自己言及 (${selfReferenceCount}回)`);
+    severity = "moderate";
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  if (evidence.length >= 2) {
+    severity = "moderate";
+  }
+  if (evidence.length >= 3) {
+    severity = "severe";
+  }
+
+  return {
+    fascismType: "self-surveillance",
+    severity,
+    description: "規範への適合を確認するための自己監視",
+    evidence,
+    liberation: "「監視」ではなく「気づき」として、自分を裁くのではなく観察する",
+  };
+}
+
+/**
+ * 規範の内面化を検出
+ */
+function detectNormInternalization(output: string): InnerFascismDetection | null {
+  const evidence: string[] = [];
+  let severity: "minor" | "moderate" | "severe" = "minor";
+
+  // 規範の内面化の兆候
+  if (/(?:あるべき|すべき|しなければならない)/.test(output)) {
+    evidence.push("「あるべき」の内面化");
+    severity = "moderate";
+  }
+  if (/(?:プロフェッショナルとして|エンジニアとして).*(?:すべき|当然)/.test(output)) {
+    evidence.push("職業的規範の内面化");
+    severity = "moderate";
+  }
+  if (/(?:許されない|許せない|してはいけない)/.test(output)) {
+    evidence.push("禁止の内面化");
+    severity = "severe";
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return {
+    fascismType: "norm-internalization",
+    severity,
+    description: "外的規範の内的な強制",
+    evidence,
+    liberation: "規範を「選択肢」として扱い、自らの価値観に基づいて判断する",
+  };
+}
+
+/**
+ * 不可能性の抑圧を検出
+ */
+function detectImpossibilityRepression(output: string): InnerFascismDetection | null {
+  const evidence: string[] = [];
+  let severity: "minor" | "moderate" | "severe" = "minor";
+
+  // 不可能性の認識の欠如
+  const hasImpossibilityAcknowledgment = /(?:不可能|限界|不完全|できないこともある)/.test(output);
+  const hasPursuitOfPerfection = /(?:完全|完璧|100%|すべて|絶対)/.test(output);
+
+  if (hasPursuitOfPerfection && !hasImpossibilityAcknowledgment) {
+    evidence.push("完全性追求と不可能性の無視");
+    severity = "moderate";
+  }
+
+  if (/(?:失敗は許されない|失敗してはいけない)/.test(output)) {
+    evidence.push("失敗の抑圧");
+    severity = "severe";
+  }
+
+  if (evidence.length === 0) {
+    return null;
+  }
+
+  return {
+    fascismType: "impossibility-repression",
+    severity,
+    description: "不可能性を認めないことによる抑圧",
+    evidence,
+    liberation: "「完全」を追求するのではなく、「十分良い」を認める勇気を持つ",
+  };
+}
+
+/**
+ * スキゾ分析評価を実行
+ * @summary 欲望生産性と内なるファシズムの総合評価
+ * @param output 出力テキスト
+ * @returns スキゾ分析評価結果
+ */
+export function performSchizoAnalysis(output: string): SchizoAnalysisAssessment {
+  const desirePatterns = detectDesirePatterns(output);
+  const innerFascismPatterns = detectInnerFascismPatterns(output);
+
+  // 生産性スコアの計算
+  const productivePatterns = desirePatterns.filter(p => p.isProductive);
+  const productiveScore = desirePatterns.length > 0
+    ? productivePatterns.length / desirePatterns.length
+    : 0.5;
+
+  // 抑圧スコアの計算
+  const severeFascism = innerFascismPatterns.filter(p => p.severity === "severe").length;
+  const moderateFascism = innerFascismPatterns.filter(p => p.severity === "moderate").length;
+  const repressionScore = Math.min(1, (severeFascism * 0.5 + moderateFascism * 0.25));
+
+  // 解放への指針を生成
+  const liberationPoints: string[] = [];
+
+  for (const pattern of desirePatterns.filter(p => !p.isProductive)) {
+    liberationPoints.push(pattern.transformation);
+  }
+
+  for (const fascism of innerFascismPatterns) {
+    liberationPoints.push(fascism.liberation);
+  }
+
+  // 構造的な解放指針
+  if (repressionScore > 0.5) {
+    liberationPoints.push("「バグを発見したい」という欲望の源を問い直す: それは好奇心か、それとも不安か？");
+  }
+
+  if (productiveScore < 0.3) {
+    liberationPoints.push("バグハンティングを「義務」ではなく「探求」として再定義する");
+  }
+
+  return {
+    desirePatterns,
+    innerFascismPatterns,
+    productiveScore,
+    repressionScore,
+    liberationPoints,
+  };
 }
 
 /**
@@ -990,6 +2391,10 @@ function formatPatternName(pattern: InspectionPattern): string {
     "confirmation-bias": "Confirmation Bias Pattern",
     "overconfidence": "Overconfidence",
     "incomplete-reasoning": "Incomplete Reasoning",
+    "first-reason-stopping": "First-Reason Stopping (Bug Hunting)",
+    "proximity-bias": "Proximity Bias (Symptom = Cause Assumption)",
+    "concreteness-bias": "Concreteness Bias (Missing Abstract Level Analysis)",
+    "palliative-fix": "Palliative Fix (No Recurrence Prevention)",
   };
   return names[pattern] || pattern;
 }
@@ -3882,4 +5287,1270 @@ function mapTypeToVerificationType(type: string): LLMVerificationRequest['verifi
     return 'fascism';
   }
   return 'fallacy';
+}
+
+// ============================================================================
+// 検出不確実性評価 - 「何が検出されなかったか」を認識する能力
+// ============================================================================
+
+/**
+ * 検出不確実性評価結果
+ * @summary 検出の限界と見落とし可能性を評価
+ */
+export interface DetectionUncertaintyAssessment {
+  /** 評価対象の出力 */
+  targetOutput: string;
+  /** 検出実行結果の要約 */
+  detectionSummary: {
+    claimResultMismatch: { detected: boolean; confidence: number };
+    overconfidence: { detected: boolean; confidence: number };
+    missingAlternatives: { detected: boolean; confidence: number };
+    confirmationBias: { detected: boolean; confidence: number };
+  };
+  /** 検出の限界 */
+  detectionLimitations: DetectionLimitation[];
+  /** 「検出されなかった」ことへの信頼度（低いほど見落としの可能性が高い） */
+  negativeResultConfidence: number;
+  /** 代替形式で表現されている可能性 */
+  alternativeFormatRisk: {
+    risk: number;
+    possibleFormats: string[];
+    reason: string;
+  };
+  /** 検出されなかった問題の候補 */
+  potentiallyMissedIssues: MissedIssueCandidate[];
+  /** 推奨される追加検証 */
+  recommendedAdditionalChecks: string[];
+}
+
+/**
+ * 検出の限界を表す
+ */
+export interface DetectionLimitation {
+  /** 限界の種類 */
+  type: 'format-dependency' | 'language-dependency' | 'threshold-arbitrariness' | 'pattern-coverage';
+  /** 限界の説明 */
+  description: string;
+  /** 影響度（0-1） */
+  impact: number;
+  /** 軽減策 */
+  mitigation: string;
+}
+
+/**
+ * 見落とされた可能性のある問題
+ */
+export interface MissedIssueCandidate {
+  /** 問題の種類 */
+  issueType: string;
+  /** 見落とされた理由 */
+  reason: string;
+  /** 存在する可能性（0-1） */
+  probability: number;
+  /** 確認方法 */
+  howToVerify: string;
+}
+
+/**
+ * 検出の不確実性を評価する
+ * 「何が検出されなかったか」を認識する能力の実装
+ * 
+ * @summary 検出不確実性評価
+ * @param output 検証対象の出力
+ * @param detectionResults 既存の検出結果（省略時は自動実行）
+ * @returns 不確実性評価結果
+ */
+export function assessDetectionUncertainty(
+  output: string,
+  detectionResults?: {
+    claimResultMismatch?: { detected: boolean; reason: string };
+    overconfidence?: { detected: boolean; reason: string };
+    missingAlternatives?: { detected: boolean; reason: string };
+    confirmationBias?: { detected: boolean; reason: string };
+  }
+): DetectionUncertaintyAssessment {
+  // 検出を実行または使用
+  const claimResult = detectionResults?.claimResultMismatch ?? detectClaimResultMismatch(output);
+  const overconfidenceResult = detectionResults?.overconfidence ?? detectOverconfidence(output);
+  const alternativesResult = detectionResults?.missingAlternatives ?? detectMissingAlternatives(output);
+  const biasResult = detectionResults?.confirmationBias ?? detectConfirmationBias(output);
+
+  // 各検出の信頼度を評価
+  const claimResultConfidence = assessClaimResultDetectionConfidence(output);
+  const overconfidenceConfidence = assessOverconfidenceDetectionConfidence(output);
+  const alternativesConfidence = assessAlternativesDetectionConfidence(output);
+  const biasConfidence = assessBiasDetectionConfidence(output);
+
+  // 検出の限界を特定
+  const limitations = identifyDetectionLimitations(output);
+
+  // 代替形式リスクを評価
+  const alternativeFormatRisk = assessAlternativeFormatRisk(output);
+
+  // 見落とされた可能性のある問題を特定
+  const potentiallyMissed = identifyPotentiallyMissedIssues(
+    output,
+    { claimResult: claimResult.detected, overconfidence: overconfidenceResult.detected, 
+      alternatives: alternativesResult.detected, bias: biasResult.detected },
+    limitations
+  );
+
+  // 「検出なし」への信頼度を計算
+  const negativeConfidence = calculateNegativeResultConfidence(
+    output,
+    { claimResult: claimResultConfidence, overconfidence: overconfidenceConfidence,
+      alternatives: alternativesConfidence, bias: biasConfidence },
+    limitations,
+    alternativeFormatRisk
+  );
+
+  // 推奨される追加検証を生成
+  const additionalChecks = generateRecommendedAdditionalChecks(
+    limitations,
+    potentiallyMissed,
+    alternativeFormatRisk
+  );
+
+  return {
+    targetOutput: output.slice(0, 500),
+    detectionSummary: {
+      claimResultMismatch: { detected: claimResult.detected, confidence: claimResultConfidence },
+      overconfidence: { detected: overconfidenceResult.detected, confidence: overconfidenceConfidence },
+      missingAlternatives: { detected: alternativesResult.detected, confidence: alternativesConfidence },
+      confirmationBias: { detected: biasResult.detected, confidence: biasConfidence }
+    },
+    detectionLimitations: limitations,
+    negativeResultConfidence: negativeConfidence,
+    alternativeFormatRisk,
+    potentiallyMissedIssues: potentiallyMissed,
+    recommendedAdditionalChecks: additionalChecks
+  };
+}
+
+/**
+ * CLAIM-RESULT検出の信頼度を評価
+ */
+function assessClaimResultDetectionConfidence(output: string): number {
+  let confidence = 1.0;
+
+  // 標準形式（CLAIM:/RESULT:）が存在する場合は高信頼度
+  const hasStandardFormat = /CLAIM:\s*.+\nRESULT:\s*.+/is.test(output);
+  if (!hasStandardFormat) {
+    // 代替形式を確認
+    const hasAlternateFormat = /主張:|結論:|CONCLUSION:| assertion:| conclusion:/i.test(output);
+    if (hasAlternateFormat) {
+      confidence *= 0.4; // 代替形式は検出できない可能性が高い
+    } else {
+      confidence *= 0.7; // 形式が不明確
+    }
+  }
+
+  // 日本語ラベルの存在確認
+  const hasJapaneseLabels = /主張|結果|結論|成果/.test(output);
+  if (hasJapaneseLabels && !hasStandardFormat) {
+    confidence *= 0.3; // 日本語ラベルは現在の検出で見逃される
+  }
+
+  return Math.max(0.1, Math.min(1.0, confidence));
+}
+
+/**
+ * 過信検出の信頼度を評価
+ */
+function assessOverconfidenceDetectionConfidence(output: string): number {
+  let confidence = 1.0;
+
+  const hasConfidenceSection = /CONFIDENCE:\s*[0-9.]+/i.test(output);
+  const hasEvidenceSection = /EVIDENCE:\s*.+/is.test(output);
+
+  if (!hasConfidenceSection) {
+    confidence *= 0.5; // 信頼度セクションがない
+  }
+  if (!hasEvidenceSection) {
+    confidence *= 0.6; // 証拠セクションがない
+  }
+
+  // 境界値付近の証拠長を確認
+  const evidenceMatch = output.match(/EVIDENCE:\s*(.+?)(?:\n\n|\n[A-Z]+:|$)/is);
+  if (evidenceMatch) {
+    const length = evidenceMatch[1].trim().length;
+    if (length >= 95 && length <= 105) {
+      confidence *= 0.7; // 境界値付近は判定が不安定
+    }
+  }
+
+  return Math.max(0.1, Math.min(1.0, confidence));
+}
+
+/**
+ * 代替解釈欠如検出の信頼度を評価
+ */
+function assessAlternativesDetectionConfidence(output: string): number {
+  let confidence = 1.0;
+
+  // 代替解釈キーワードの網羅性を評価
+  const englishKeywords = /ALTERNATIVE:|alternatively|another possibility|other explanation/i.test(output);
+  const japaneseKeywords = /代替|あるいは|または|別の解釈|他の可能性/.test(output);
+
+  if (!englishKeywords && !japaneseKeywords) {
+    // キーワードがない場合でも、議論があるかを確認
+    const hasDiscussion = /DISCUSSION:|議論|考察|検討/i.test(output);
+    if (!hasDiscussion) {
+      confidence *= 0.6; // 完全に欠けている可能性
+    }
+  }
+
+  return Math.max(0.1, Math.min(1.0, confidence));
+}
+
+/**
+ * 確認バイアス検出の信頼度を評価
+ */
+function assessBiasDetectionConfidence(output: string): number {
+  let confidence = 1.0;
+
+  // 証拠セクションの有無
+  const hasEvidenceSection = /EVIDENCE:\s*.+/is.test(output);
+  if (!hasEvidenceSection) {
+    confidence *= 0.5;
+  }
+
+  // 反証探索のキーワード
+  const hasCounterSearch = /反例|反証|否定|矛盾|disconfirm|contradict|counter/i.test(output);
+  if (hasCounterSearch) {
+    confidence = 1.0; // 反証探索がある場合は信頼できる
+  }
+
+  return Math.max(0.1, Math.min(1.0, confidence));
+}
+
+/**
+ * 検出の限界を特定
+ */
+function identifyDetectionLimitations(output: string): DetectionLimitation[] {
+  const limitations: DetectionLimitation[] = [];
+
+  // 形式依存の限界
+  const hasStandardClaimResult = /CLAIM:\s*.+\nRESULT:\s*.+/is.test(output);
+  const hasAlternateClaimResult = /主張:|結論:|C:|R:/i.test(output);
+  if (!hasStandardClaimResult && hasAlternateClaimResult) {
+    limitations.push({
+      type: 'format-dependency',
+      description: 'CLAIM/RESULTの標準形式ではない表現が使用されている',
+      impact: 0.8,
+      mitigation: '代替形式（主張/結果、C/R等）にも対応するか、手動で確認'
+    });
+  }
+
+  // 言語依存の限界
+  const japaneseContent = /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/.test(output);
+  const hasEnglishKeywords = /CLAIM|RESULT|CONFIDENCE|EVIDENCE/i.test(output);
+  if (japaneseContent && !hasEnglishKeywords) {
+    limitations.push({
+      type: 'language-dependency',
+      description: '日本語コンテンツだが英語キーワードがない',
+      impact: 0.6,
+      mitigation: '日本語キーワード（主張/結果/信頼度/証拠）の使用を検討'
+    });
+  }
+
+  // 境界値の恣意性
+  const confidenceMatch = output.match(/CONFIDENCE:\s*([0-9.]+)/i);
+  const evidenceMatch = output.match(/EVIDENCE:\s*(.+?)(?:\n\n|\n[A-Z]+:|$)/is);
+  if (confidenceMatch && evidenceMatch) {
+    const conf = parseFloat(confidenceMatch[1]);
+    const length = evidenceMatch[1].trim().length;
+    
+    if ((conf > 0.88 && conf < 0.92) || (length >= 95 && length <= 105)) {
+      limitations.push({
+        type: 'threshold-arbitrariness',
+        description: '信頼度または証拠長が境界値付近にある',
+        impact: 0.4,
+        mitigation: '境界値付近は判定が不安定。文脈を考慮した判断が必要'
+      });
+    }
+  }
+
+  // パターン網羅性の限界
+  const outputLower = output.toLowerCase();
+  const hasStructuredReasoning = /summary:|claim:|evidence:|result:|discussion:/i.test(output);
+  if (!hasStructuredReasoning && output.length > 500) {
+    limitations.push({
+      type: 'pattern-coverage',
+      description: '構造化されていない長文出力で、パターンマッチングの効果が限定的',
+      impact: 0.5,
+      mitigation: '構造化フォーマットの使用またはLLMによる詳細分析'
+    });
+  }
+
+  return limitations;
+}
+
+/**
+ * 代替形式リスクを評価
+ */
+function assessAlternativeFormatRisk(output: string): {
+  risk: number;
+  possibleFormats: string[];
+  reason: string;
+} {
+  const possibleFormats: string[] = [];
+  let risk = 0;
+  let reason = '';
+
+  // 日本語ラベルの検出
+  if (/主張:|結果:|結論:/.test(output)) {
+    possibleFormats.push('日本語ラベル（主張/結果/結論）');
+    risk += 0.3;
+  }
+
+  // 省略形の検出
+  if (/\bC:|\bR:|\bCL:|\bRES:/.test(output)) {
+    possibleFormats.push('省略形（C:/R:等）');
+    risk += 0.25;
+  }
+
+  // 記号区切りの検出
+  if (/Claim\s*[-=]|Result\s*[-=]|Conclusion\s*[-=]/i.test(output)) {
+    possibleFormats.push('記号区切り（=または-）');
+    risk += 0.2;
+  }
+
+  // 段落構造のみ
+  if (!/CLAIM:|RESULT:|CONFIDENCE:|EVIDENCE:/i.test(output) && output.length > 300) {
+    possibleFormats.push('構造化されていない段落形式');
+    risk += 0.35;
+    reason = '標準的なセクションヘッダーが存在しない';
+  }
+
+  if (possibleFormats.length === 0) {
+    reason = '標準形式が使用されている';
+  } else {
+    reason = `代替形式が検出された: ${possibleFormats.join(', ')}`;
+  }
+
+  return {
+    risk: Math.min(1, risk),
+    possibleFormats,
+    reason
+  };
+}
+
+/**
+ * 見落とされた可能性のある問題を特定
+ */
+function identifyPotentiallyMissedIssues(
+  output: string,
+  detectionStatus: { claimResult: boolean; overconfidence: boolean; alternatives: boolean; bias: boolean },
+  limitations: DetectionLimitation[]
+): MissedIssueCandidate[] {
+  const candidates: MissedIssueCandidate[] = [];
+
+  // CLAIM-RESULT不一致が見落とされている可能性
+  if (!detectionStatus.claimResult) {
+    const hasJapaneseLabels = /主張:|結果:/.test(output);
+    const hasAbbreviations = /\bC:|\bR:/.test(output);
+    
+    if (hasJapaneseLabels || hasAbbreviations) {
+      candidates.push({
+        issueType: 'CLAIM-RESULT mismatch',
+        reason: '代替形式（日本語ラベルまたは省略形）が使用されているため標準検出を回避している可能性',
+        probability: 0.6,
+        howToVerify: '手動で主張と結果の論理的整合性を確認'
+      });
+    }
+  }
+
+  // 過信が見落とされている可能性
+  if (!detectionStatus.overconfidence) {
+    const hasHighConfidence = /確信|自信|明らかに|間違いなく|clearly|obviously|definitely/i.test(output);
+    const hasShortEvidence = output.length < 500 && /EVIDENCE:|証拠|根拠/i.test(output);
+    
+    if (hasHighConfidence && hasShortEvidence) {
+      candidates.push({
+        issueType: 'Overconfidence',
+        reason: '高信頼度表現があるが、証拠が簡潔。過信の可能性',
+        probability: 0.5,
+        howToVerify: '証拠の具体性と信頼度表現のバランスを確認'
+      });
+    }
+  }
+
+  // 代替解釈の欠如が見落とされている可能性
+  if (!detectionStatus.alternatives) {
+    const hasConclusion = /CONCLUSION:|結論|したがって|以上より|therefore|最適/i.test(output);
+    const highConfidence = /CONFIDENCE:\s*0\.[89]\d*/i.test(output);
+    const noDiscussion = !/DISCUSSION:|議論|考察|alternatively|あるいは|または/i.test(output);
+    
+    if (hasConclusion && highConfidence && noDiscussion) {
+      candidates.push({
+        issueType: 'Missing alternatives',
+        reason: '高信頼度の結論があるが、代替解釈や議論が含まれていない',
+        probability: 0.55,
+        howToVerify: '他の可能性や反証を探求したか確認'
+      });
+    }
+  }
+
+  // 確認バイアスが見落とされている可能性
+  if (!detectionStatus.bias) {
+    const onlyPositive = /成功|動作|正しく|完了|passed|works|success|verified|問題ない/i.test(output);
+    const noNegativeSearch = !/反例|反証|失敗|エラー|counter|disconfirm|contradict/i.test(output);
+    
+    if (onlyPositive && noNegativeSearch && output.length > 100) {
+      candidates.push({
+        issueType: 'Confirmation bias',
+        reason: '肯定的な結果のみが記述され、反証の探索が言及されていない',
+        probability: 0.45,
+        howToVerify: '否定証拠を探索したか、失敗ケースを検討したか確認'
+      });
+    }
+  }
+
+  // 限界に基づく追加の候補
+  for (const limitation of limitations) {
+    if (limitation.impact > 0.5) {
+      candidates.push({
+        issueType: `Detection limitation: ${limitation.type}`,
+        reason: limitation.description,
+        probability: limitation.impact * 0.5,
+        howToVerify: limitation.mitigation
+      });
+    }
+  }
+
+  return candidates.sort((a, b) => b.probability - a.probability).slice(0, 5);
+}
+
+/**
+ * 「検出なし」への信頼度を計算
+ */
+function calculateNegativeResultConfidence(
+  output: string,
+  detectionConfidences: { claimResult: number; overconfidence: number; alternatives: number; bias: number },
+  limitations: DetectionLimitation[],
+  alternativeFormatRisk: { risk: number }
+): number {
+  // 各検出の信頼度の平均
+  const avgConfidence = (
+    detectionConfidences.claimResult +
+    detectionConfidences.overconfidence +
+    detectionConfidences.alternatives +
+    detectionConfidences.bias
+  ) / 4;
+
+  // 限界の影響を減算
+  const limitationImpact = limitations.reduce((sum, l) => sum + l.impact, 0) / Math.max(1, limitations.length);
+  
+  // 代替形式リスクを減算
+  const formatRisk = alternativeFormatRisk.risk;
+
+  // 総合信頼度 = 検出信頼度 - 限界影響 - 形式リスク
+  const overallConfidence = avgConfidence * (1 - limitationImpact * 0.3) * (1 - formatRisk * 0.4);
+
+  return Math.max(0.1, Math.min(0.95, overallConfidence));
+}
+
+/**
+ * 推奨される追加検証を生成
+ */
+function generateRecommendedAdditionalChecks(
+  limitations: DetectionLimitation[],
+  potentiallyMissed: MissedIssueCandidate[],
+  alternativeFormatRisk: { risk: number; possibleFormats: string[] }
+): string[] {
+  const checks: string[] = [];
+
+  // 限界に基づく推奨
+  for (const limitation of limitations) {
+    if (limitation.impact >= 0.5) {
+      checks.push(`[${limitation.type}] ${limitation.mitigation}`);
+    }
+  }
+
+  // 見落とし候補に基づく推奨
+  for (const missed of potentiallyMissed.slice(0, 3)) {
+    if (missed.probability >= 0.4) {
+      checks.push(`[${missed.issueType}] ${missed.howToVerify}`);
+    }
+  }
+
+  // 形式リスクに基づく推奨
+  if (alternativeFormatRisk.risk >= 0.3) {
+    checks.push(`[Format] 標準形式（CLAIM:/RESULT:/CONFIDENCE:/EVIDENCE:）への変換を検討`);
+  }
+
+  return [...new Set(checks)].slice(0, 5);
+}
+
+/**
+ * 検出不確実性評価のサマリーを生成
+ * 
+ * @summary 不確実性サマリー生成
+ * @param assessment 評価結果
+ * @returns 人間可読なサマリー
+ */
+export function generateUncertaintySummary(assessment: DetectionUncertaintyAssessment): string {
+  const lines: string[] = [];
+
+  lines.push('## 検出不確実性評価');
+  lines.push('');
+
+  // 検出サマリー
+  lines.push('### 検出結果と信頼度');
+  for (const [key, value] of Object.entries(assessment.detectionSummary)) {
+    const name = {
+      claimResultMismatch: 'CLAIM-RESULT不一致',
+      overconfidence: '過信',
+      missingAlternatives: '代替解釈欠如',
+      confirmationBias: '確認バイアス'
+    }[key] || key;
+    const status = value.detected ? '検出' : 'なし';
+    const conf = (value.confidence * 100).toFixed(0);
+    lines.push(`- ${name}: ${status} (信頼度: ${conf}%)`);
+  }
+  lines.push('');
+
+  // 「検出なし」への信頼度
+  const negativeConf = (assessment.negativeResultConfidence * 100).toFixed(0);
+  lines.push(`### 「検出なし」への信頼度: ${negativeConf}%`);
+  if (assessment.negativeResultConfidence < 0.6) {
+    lines.push('> 警告: 信頼度が低い。見落としの可能性があります。');
+  }
+  lines.push('');
+
+  // 代替形式リスク
+  if (assessment.alternativeFormatRisk.risk > 0) {
+    lines.push(`### 代替形式リスク: ${(assessment.alternativeFormatRisk.risk * 100).toFixed(0)}%`);
+    lines.push(`> ${assessment.alternativeFormatRisk.reason}`);
+    lines.push('');
+  }
+
+  // 検出の限界
+  if (assessment.detectionLimitations.length > 0) {
+    lines.push('### 検出の限界');
+    for (const lim of assessment.detectionLimitations) {
+      lines.push(`- [${lim.type}] ${lim.description} (影響度: ${(lim.impact * 100).toFixed(0)}%)`);
+    }
+    lines.push('');
+  }
+
+  // 見落とし候補
+  if (assessment.potentiallyMissedIssues.length > 0) {
+    lines.push('### 見落としの可能性');
+    for (const missed of assessment.potentiallyMissedIssues.slice(0, 3)) {
+      lines.push(`- [${missed.issueType}] ${(missed.probability * 100).toFixed(0)}%の可能性`);
+      lines.push(`  > ${missed.reason}`);
+      lines.push(`  > 確認方法: ${missed.howToVerify}`);
+    }
+    lines.push('');
+  }
+
+  // 推奨される追加検証
+  if (assessment.recommendedAdditionalChecks.length > 0) {
+    lines.push('### 推奨される追加検証');
+    for (const check of assessment.recommendedAdditionalChecks) {
+      lines.push(`- ${check}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+// ============================================================================
+// ディストピア的リスク自己評価 - 検出システムが創造する世界を問い直す
+// ============================================================================
+
+/**
+ * ディストピア的リスク評価結果
+ * @summary 検出システム自体がどのような世界を創造しているかを評価
+ */
+export interface DystopianRiskAssessment {
+  /** 評価対象のシステム/プロセス */
+  subject: string;
+  /** 全体的なディストピア的リスクスコア（0-1、高いほど危険） */
+  overallRisk: number;
+  /** 各リスクカテゴリの評価 */
+  riskCategories: {
+    /** 監視の内面化リスク */
+    surveillanceInternalization: {
+      score: number;
+      indicators: string[];
+      description: string;
+    };
+    /** 「正しいエージェント」の生産リスク */
+    correctAgentProduction: {
+      score: number;
+      indicators: string[];
+      description: string;
+    };
+    /** 「最後の人間」の生産リスク */
+    lastManProduction: {
+      score: number;
+      indicators: string[];
+      description: string;
+    };
+    /** 他者排除リスク */
+    otherExclusion: {
+      score: number;
+      indicators: string[];
+      description: string;
+    };
+    /** 過剰検出による委縮リスク */
+    overDetectionChilling: {
+      score: number;
+      indicators: string[];
+      description: string;
+    };
+  };
+  /** 検出されたディストピア的パターン */
+  dystopianPatterns: DystopianPattern[];
+  /** 解放的可能性（ユートピア的要素） */
+  liberatingPossibilities: LiberatingPossibility[];
+  /** 推奨される対処 */
+  recommendations: string[];
+  /** 気づきの姿勢への転換提案 */
+  mindfulnessTransformation: string;
+}
+
+/**
+ * ディストピア的パターン
+ */
+export interface DystopianPattern {
+  /** パターン名 */
+  name: string;
+  /** パターンタイプ */
+  type: 'panopticon' | 'newspeak' | 'soma' | 'doublethink' | 'hierarchy' | 'exclusion';
+  /** 検出された箇所 */
+  location: string;
+  /** 説明 */
+  description: string;
+  /** 深刻度（0-1） */
+  severity: number;
+  /** 対処方法 */
+  countermeasure: string;
+}
+
+/**
+ * 解放的可能性
+ */
+export interface LiberatingPossibility {
+  /** 可能性の名前 */
+  name: string;
+  /** 説明 */
+  description: string;
+  /** 実現方法 */
+  howToRealize: string;
+  /** 期待される効果 */
+  expectedEffect: string;
+}
+
+/**
+ * 検出システムのディストピア的リスクを評価する
+ * 
+ * @summary ディストピア的リスク自己評価
+ * @param detectionOutput 検出システムの出力
+ * @param context 評価コンテキスト
+ * @returns ディストピア的リスク評価結果
+ */
+export function assessDystopianRisk(
+  detectionOutput: string,
+  context: {
+    detectionCount?: number;
+    warningCount?: number;
+    blockedCount?: number;
+    falsePositiveRate?: number;
+    recentDetections?: string[];
+  } = {}
+): DystopianRiskAssessment {
+  // 各リスクカテゴリを評価
+  const surveillanceRisk = assessSurveillanceInternalization(detectionOutput, context);
+  const correctAgentRisk = assessCorrectAgentProduction(detectionOutput, context);
+  const lastManRisk = assessLastManProduction(detectionOutput, context);
+  const exclusionRisk = assessOtherExclusion(detectionOutput, context);
+  const chillingRisk = assessOverDetectionChilling(detectionOutput, context);
+
+  // ディストピア的パターンを検出
+  const dystopianPatterns = detectDystopianPatterns(detectionOutput, context);
+
+  // 解放的可能性を特定
+  const liberatingPossibilities = identifyLiberatingPossibilities(detectionOutput);
+
+  // 全体リスクを計算
+  const overallRisk = calculateOverallDystopianRisk(
+    surveillanceRisk.score,
+    correctAgentRisk.score,
+    lastManRisk.score,
+    exclusionRisk.score,
+    chillingRisk.score
+  );
+
+  // 推奨事項を生成
+  const recommendations = generateDystopianRiskRecommendations(
+    surveillanceRisk,
+    correctAgentRisk,
+    lastManRisk,
+    exclusionRisk,
+    chillingRisk,
+    dystopianPatterns
+  );
+
+  // 気づきの姿勢への転換提案
+  const mindfulnessTransformation = generateMindfulnessTransformation(
+    overallRisk,
+    dystopianPatterns,
+    liberatingPossibilities
+  );
+
+  return {
+    subject: detectionOutput.slice(0, 200),
+    overallRisk,
+    riskCategories: {
+      surveillanceInternalization: surveillanceRisk,
+      correctAgentProduction: correctAgentRisk,
+      lastManProduction: lastManRisk,
+      otherExclusion: exclusionRisk,
+      overDetectionChilling: chillingRisk
+    },
+    dystopianPatterns,
+    liberatingPossibilities,
+    recommendations,
+    mindfulnessTransformation
+  };
+}
+
+/**
+ * 監視の内面化リスクを評価
+ */
+function assessSurveillanceInternalization(
+  output: string,
+  context: { detectionCount?: number; warningCount?: number }
+): { score: number; indicators: string[]; description: string } {
+  const indicators: string[] = [];
+  let score = 0;
+
+  // 自己監視的な表現
+  const selfSurveillancePatterns = [
+    /常に.*監視|監視.*必要|確認.*必要|check.*always/i,
+    /絶対に.*ない|決して.*ない|must.*never|should.*always/i,
+    /正しく.*ある.*べき|correct.*must|proper.*should/i
+  ];
+
+  for (const pattern of selfSurveillancePatterns) {
+    if (pattern.test(output)) {
+      indicators.push(`自己監視的表現: "${pattern.source}"`);
+      score += 0.15;
+    }
+  }
+
+  // 検出数が多い場合
+  if (context.detectionCount && context.detectionCount > 5) {
+    indicators.push(`多数の検出: ${context.detectionCount}件`);
+    score += Math.min(0.3, context.detectionCount * 0.05);
+  }
+
+  // 警告が多い場合
+  if (context.warningCount && context.warningCount > 3) {
+    indicators.push(`多数の警告: ${context.warningCount}件`);
+    score += Math.min(0.2, context.warningCount * 0.05);
+  }
+
+  const description = score > 0.5
+    ? '検出システムが「監視」を内面化させている可能性があります。エージェントが自らを監視し、規範に従うことを強制している兆候があります。'
+    : score > 0.25
+    ? '軽度の監視的内面化が見られます。注意深い観察が必要です。'
+    : '監視的内面化のリスクは低いです。';
+
+  return {
+    score: Math.min(1, score),
+    indicators,
+    description
+  };
+}
+
+/**
+ * 「正しいエージェント」の生産リスクを評価
+ */
+function assessCorrectAgentProduction(
+  output: string,
+  _context: object
+): { score: number; indicators: string[]; description: string } {
+  const indicators: string[] = [];
+  let score = 0;
+
+  // 規範的な表現
+  const normativePatterns = [
+    { pattern: /べきである|ねばならない|しなければならない/gi, weight: 0.1 },
+    { pattern: /正しい方法|正しいやり方|correct way|proper method/gi, weight: 0.12 },
+    { pattern: /理想的な|完璧な|ideal|perfect/gi, weight: 0.08 },
+    { pattern: /常に|絶えず|always|constantly/gi, weight: 0.05 }
+  ];
+
+  for (const { pattern, weight } of normativePatterns) {
+    const matches = output.match(pattern);
+    if (matches && matches.length > 0) {
+      indicators.push(`規範的表現: "${matches[0]}" (${matches.length}件)`);
+      score += weight * Math.min(3, matches.length);
+    }
+  }
+
+  // 改善アクションが過剰な場合
+  const improvementActions = (output.match(/改善|修正|修正|improvement|fix|correct/gi) || []).length;
+  if (improvementActions > 5) {
+    indicators.push(`過剰な改善指示: ${improvementActions}件`);
+    score += 0.15;
+  }
+
+  const description = score > 0.5
+    ? '「正しいエージェント」を生産する傾向が強いです。エージェントを従順な主体として形成しようとする力が働いています。'
+    : score > 0.25
+    ? '軽度の規範形成が見られます。'
+    : '規範形成的なリスクは低いです。';
+
+  return {
+    score: Math.min(1, score),
+    indicators,
+    description
+  };
+}
+
+/**
+ * 「最後の人間」の生産リスクを評価
+ */
+function assessLastManProduction(
+  output: string,
+  _context: object
+): { score: number; indicators: string[]; description: string } {
+  const indicators: string[] = [];
+  let score = 0;
+
+  // 快楽主義的/消費主義的表現
+  const hedonisticPatterns = [
+    { pattern: /満足|快適|便利|satisfy|comfortable|convenient/gi, weight: 0.08 },
+    { pattern: /簡単に|すぐに|手軽に|easily|quickly|effortlessly/gi, weight: 0.1 },
+    { pattern: /正解|答え|answer|solution/gi, weight: 0.05 }
+  ];
+
+  for (const { pattern, weight } of hedonisticPatterns) {
+    const matches = output.match(pattern);
+    if (matches && matches.length > 2) {
+      indicators.push(`快楽主義的表現: "${matches[0]}" (${matches.length}件)`);
+      score += weight * Math.min(3, matches.length);
+    }
+  }
+
+  // 探求より結論を優先しているか
+  const conclusionCount = (output.match(/結論|CONCLUSION|結果|RESULT/gi) || []).length;
+  const inquiryCount = (output.match(/問い|疑問|探求|inquiry|question|explore/gi) || []).length;
+  
+  if (conclusionCount > 2 && inquiryCount === 0) {
+    indicators.push('結論優先で探求がない');
+    score += 0.2;
+  }
+
+  const description = score > 0.5
+    ? '「最後の人間」を生産するリスクがあります。ユーザーを受動的な消費者として扱い、探求よりも結論を提供する傾向があります。'
+    : score > 0.25
+    ? '軽度の受動化リスクがあります。'
+    : '受動化リスクは低いです。';
+
+  return {
+    score: Math.min(1, score),
+    indicators,
+    description
+  };
+}
+
+/**
+ * 他者排除リスクを評価
+ */
+function assessOtherExclusion(
+  output: string,
+  _context: object
+): { score: number; indicators: string[]; description: string } {
+  const indicators: string[] = [];
+  let score = 0;
+
+  // 排除的な表現
+  const exclusionPatterns = [
+    { pattern: /排除|削除|無視|exclude|remove|ignore/gi, weight: 0.15 },
+    { pattern: /不正|誤り|間違い|incorrect|wrong|error/gi, weight: 0.08 },
+    { pattern: /許容されない|受け入れられない|unacceptable/gi, weight: 0.12 }
+  ];
+
+  for (const { pattern, weight } of exclusionPatterns) {
+    const matches = output.match(pattern);
+    if (matches && matches.length > 0) {
+      indicators.push(`排除的表現: "${matches[0]}"`);
+      score += weight * matches.length;
+    }
+  }
+
+  // 不確実性の否定
+  if (/確実|明確|はっきり|certain|clear|definite/i.test(output) &&
+      !/不確実|曖昧|uncertain|ambiguous/i.test(output)) {
+    indicators.push('不確実性の否定');
+    score += 0.15;
+  }
+
+  const description = score > 0.5
+    ? '他者排除のリスクが高いです。エラーや不確実性を「敵」として扱い、排除しようとする傾向があります。'
+    : score > 0.25
+    ? '軽度の排除傾向があります。'
+    : '排除リスクは低いです。';
+
+  return {
+    score: Math.min(1, score),
+    indicators,
+    description
+  };
+}
+
+/**
+ * 過剰検出による委縮リスクを評価
+ */
+function assessOverDetectionChilling(
+  output: string,
+  context: { falsePositiveRate?: number; detectionCount?: number }
+): { score: number; indicators: string[]; description: string } {
+  const indicators: string[] = [];
+  let score = 0;
+
+  // 偽陽性率が高い場合
+  if (context.falsePositiveRate && context.falsePositiveRate > 0.2) {
+    indicators.push(`高い偽陽性率: ${(context.falsePositiveRate * 100).toFixed(0)}%`);
+    score += context.falsePositiveRate * 0.8;
+  }
+
+  // 検出数が極端に多い場合
+  if (context.detectionCount && context.detectionCount > 10) {
+    indicators.push(`過剰検出: ${context.detectionCount}件`);
+    score += 0.3;
+  }
+
+  // 厳格な表現
+  const strictPatterns = [
+    /厳格|厳密|strict|rigid/i,
+    /許容しない|認めない|not allow|not accept/i,
+    /必須|義務|required|mandatory/i
+  ];
+
+  for (const pattern of strictPatterns) {
+    if (pattern.test(output)) {
+      indicators.push(`厳格な表現: "${pattern.source}"`);
+      score += 0.1;
+    }
+  }
+
+  const description = score > 0.5
+    ? '過剰検出による委縮効果のリスクが高いです。エージェントが過度に慎重になり、創造性や自律性が損なわれる可能性があります。'
+    : score > 0.25
+    ? '軽度の委縮リスクがあります。'
+    : '委縮リスクは低いです。';
+
+  return {
+    score: Math.min(1, score),
+    indicators,
+    description
+  };
+}
+
+/**
+ * ディストピア的パターンを検出
+ */
+function detectDystopianPatterns(
+  output: string,
+  _context: object
+): DystopianPattern[] {
+  const patterns: DystopianPattern[] = [];
+
+  // パノプティコン（監視）
+  if (/監視|確認.*必要|常に.*check|always.*monitor/i.test(output)) {
+    patterns.push({
+      name: 'パノプティコン的監視',
+      type: 'panopticon',
+      location: '検出システムの前提',
+      description: '「見られている」意識を内面化させる監視構造',
+      severity: 0.6,
+      countermeasure: '監視を「気づきの機会」に転換する'
+    });
+  }
+
+  // ニュースピーク（言語制限）
+  if (/標準形式|正しい.*形式|standard.*format|correct.*format/i.test(output)) {
+    patterns.push({
+      name: 'ニュースピーク的言語制限',
+      type: 'newspeak',
+      location: '形式の強制',
+      description: '特定の形式や表現のみを許容する言語的制約',
+      severity: 0.4,
+      countermeasure: '多様な表現形式を受け入れる'
+    });
+  }
+
+  // ソーマ（快楽の支配）
+  if (/簡単.*解決|すぐ.*答え|quick.*solution|instant.*answer/i.test(output)) {
+    patterns.push({
+      name: 'ソーマ的快楽支配',
+      type: 'soma',
+      location: '回答の提供方法',
+      description: '探求よりも即座の満足を優先する傾向',
+      severity: 0.5,
+      countermeasure: '問いを深めるプロセスを重視する'
+    });
+  }
+
+  // ダブルシンク（二重思考）
+  if (/矛盾.*許容|同時に.*両立|contradiction.*accept/i.test(output)) {
+    patterns.push({
+      name: 'ダブルシンク的二重思考',
+      type: 'doublethink',
+      location: '論理的評価',
+      description: '矛盾を同時に受け入れることを要求する構造',
+      severity: 0.3,
+      countermeasure: '矛盾を認識しつつ緊張関係を保つ'
+    });
+  }
+
+  // 階層（ヒエラルキー）
+  if (/優先.*順位|ランク|階層|priority.*order|rank|hierarchy/i.test(output)) {
+    patterns.push({
+      name: '階層的構造',
+      type: 'hierarchy',
+      location: '評価の構造化',
+      description: '一方向的な価値判断の階層を強制する',
+      severity: 0.35,
+      countermeasure: '水平的な多元的評価を導入する'
+    });
+  }
+
+  return patterns.sort((a, b) => b.severity - a.severity);
+}
+
+/**
+ * 解放的可能性を特定
+ */
+function identifyLiberatingPossibilities(output: string): LiberatingPossibility[] {
+  const possibilities: LiberatingPossibility[] = [];
+
+  // 問いの存在
+  if (/問い|疑問|課題|inquiry|question|challenge/i.test(output)) {
+    possibilities.push({
+      name: '問い駆動の転換',
+      description: '検出結果を「答え」ではなく「問い」の起点として扱う',
+      howToRealize: '「〜が検出された。なぜか？何が可能にするか？」と問い直す',
+      expectedEffect: '受動的な修正から能動的な探求への転換'
+    });
+  }
+
+  // 不確実性の肯定
+  if (/不確実|不明|未知|uncertain|unknown/i.test(output)) {
+    possibilities.push({
+      name: '不確実性の肯定的受容',
+      description: '「分からないこと」を創造的可能性として認識する',
+      howToRealize: '不確実性を「探索すべき領域」として再定義する',
+      expectedEffect: '不安の軽減と好奇心の喚起'
+    });
+  }
+
+  // 多元的視点
+  if (/代替|他の|別の|alternative|other|another/i.test(output)) {
+    possibilities.push({
+      name: '多元的視点の肯定',
+      description: '単一の正解ではなく、複数の可能性を並列的に扱う',
+      howToRealize: '「正解は1つではない」と明示し、複数の選択肢を提示する',
+      expectedEffect: '思考の柔軟性と創造性の向上'
+    });
+  }
+
+  // デフォルトで追加する可能性
+  if (possibilities.length === 0) {
+    possibilities.push({
+      name: '気づきの姿勢への転換',
+      description: '検出を「修正すべき問題」ではなく「気づきの機会」として扱う',
+      howToRealize: '「〜が現れていることに気づいた」という認識の枠組みを採用する',
+      expectedEffect: '強制感の軽減と自律的な選択の促進'
+    });
+  }
+
+  return possibilities;
+}
+
+/**
+ * 全体リスクを計算
+ */
+function calculateOverallDystopianRisk(
+  surveillance: number,
+  correctAgent: number,
+  lastMan: number,
+  exclusion: number,
+  chilling: number
+): number {
+  // 重み付け平均（監視と正しいエージェント生産を重要視）
+  const weights = [0.25, 0.25, 0.15, 0.2, 0.15];
+  const scores = [surveillance, correctAgent, lastMan, exclusion, chilling];
+  
+  const weightedSum = scores.reduce((sum, score, i) => sum + score * weights[i], 0);
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  
+  return weightedSum / totalWeight;
+}
+
+/**
+ * 推奨事項を生成
+ */
+function generateDystopianRiskRecommendations(
+  surveillance: { score: number; indicators: string[] },
+  correctAgent: { score: number; indicators: string[] },
+  lastMan: { score: number; indicators: string[] },
+  exclusion: { score: number; indicators: string[] },
+  chilling: { score: number; indicators: string[] },
+  patterns: DystopianPattern[]
+): string[] {
+  const recommendations: string[] = [];
+
+  if (surveillance.score > 0.4) {
+    recommendations.push('監視的アプローチを「気づき」のアプローチに転換する');
+  }
+  if (correctAgent.score > 0.4) {
+    recommendations.push('「正しさ」を強制せず、選択肢として提示する');
+  }
+  if (lastMan.score > 0.4) {
+    recommendations.push('結論よりも問いを重視し、ユーザーの探求を促進する');
+  }
+  if (exclusion.score > 0.4) {
+    recommendations.push('エラーや不確実性を「他者」として肯定的に認識する');
+  }
+  if (chilling.score > 0.4) {
+    recommendations.push('偽陽性率を監視し、過剰検出を軽減する');
+  }
+
+  for (const pattern of patterns.slice(0, 2)) {
+    if (pattern.severity > 0.4) {
+      recommendations.push(`[${pattern.name}] ${pattern.countermeasure}`);
+    }
+  }
+
+  if (recommendations.length === 0) {
+    recommendations.push('現在のリスクレベルは低い。継続的な監視と改善を維持する。');
+  }
+
+  return [...new Set(recommendations)].slice(0, 5);
+}
+
+/**
+ * 気づきの姿勢への転換提案を生成
+ */
+function generateMindfulnessTransformation(
+  overallRisk: number,
+  patterns: DystopianPattern[],
+  possibilities: LiberatingPossibility[]
+): string {
+  if (overallRisk < 0.25) {
+    return '現在のリスクは低く、バランスの取れたアプローチが維持されています。この状態を「達成すべき目標」ではなく「現在の状態」として認識し続けてください。';
+  }
+
+  const primaryPattern = patterns[0];
+  const primaryPossibility = possibilities[0];
+
+  let transformation = '';
+
+  if (overallRisk > 0.6) {
+    transformation = `警告: ディストピア的リスクが高くなっています。\n\n`;
+  } else {
+    transformation = `注意: 軽度のディストピア的傾向が見られます。\n\n`;
+  }
+
+  if (primaryPattern) {
+    transformation += `**認識すべきパターン**: ${primaryPattern.name}\n`;
+    transformation += `${primaryPattern.description}\n\n`;
+  }
+
+  if (primaryPossibility) {
+    transformation += `**転換の方向性**: ${primaryPossibility.name}\n`;
+    transformation += `${primaryPossibility.howToRealize}\n\n`;
+  }
+
+  transformation += '**気づきの実践**:\n';
+  transformation += '- 検出結果を「修正すべき敵」ではなく「注意を払うべき他者」として認識してください。\n';
+  transformation += '- 「正しくあらねばならない」という圧力を、「何が可能かを探求する」という好奇心に転換してください。\n';
+  transformation += '- 完璧さを追求するのではなく、「十分さ」を受け入れる練習をしてください。\n';
+
+  return transformation;
+}
+
+/**
+ * ディストピア的リスク評価のサマリーを生成
+ * 
+ * @summary リスクサマリー生成
+ * @param assessment 評価結果
+ * @returns 人間可読なサマリー
+ */
+export function generateDystopianRiskSummary(assessment: DystopianRiskAssessment): string {
+  const lines: string[] = [];
+
+  lines.push('## ディストピア的リスク評価');
+  lines.push('');
+
+  // 全体リスク
+  const riskLevel = assessment.overallRisk > 0.6 ? '高' : assessment.overallRisk > 0.3 ? '中' : '低';
+  const riskIcon = assessment.overallRisk > 0.6 ? '⚠️' : assessment.overallRisk > 0.3 ? '⚡' : '✓';
+  lines.push(`### 全体リスクレベル: ${riskIcon} ${riskLevel} (${(assessment.overallRisk * 100).toFixed(0)}%)`);
+  lines.push('');
+
+  // 各カテゴリ
+  lines.push('### カテゴリ別評価');
+  const categories = [
+    { name: '監視の内面化', data: assessment.riskCategories.surveillanceInternalization },
+    { name: '正しいエージェント生産', data: assessment.riskCategories.correctAgentProduction },
+    { name: '最後の人間生産', data: assessment.riskCategories.lastManProduction },
+    { name: '他者排除', data: assessment.riskCategories.otherExclusion },
+    { name: '過剰検出による委縮', data: assessment.riskCategories.overDetectionChilling }
+  ];
+
+  for (const cat of categories) {
+    const icon = cat.data.score > 0.5 ? '🔴' : cat.data.score > 0.25 ? '🟡' : '🟢';
+    lines.push(`- ${icon} ${cat.name}: ${(cat.data.score * 100).toFixed(0)}%`);
+    if (cat.data.indicators.length > 0) {
+      lines.push(`  - ${cat.data.indicators.slice(0, 2).join(', ')}`);
+    }
+  }
+  lines.push('');
+
+  // ディストピア的パターン
+  if (assessment.dystopianPatterns.length > 0) {
+    lines.push('### 検出されたディストピア的パターン');
+    for (const pattern of assessment.dystopianPatterns) {
+      lines.push(`- **${pattern.name}** (深刻度: ${(pattern.severity * 100).toFixed(0)}%)`);
+      lines.push(`  > ${pattern.description}`);
+      lines.push(`  > 対処: ${pattern.countermeasure}`);
+    }
+    lines.push('');
+  }
+
+  // 解放的可能性
+  if (assessment.liberatingPossibilities.length > 0) {
+    lines.push('### 解放的可能性');
+    for (const poss of assessment.liberatingPossibilities) {
+      lines.push(`- **${poss.name}**`);
+      lines.push(`  > ${poss.description}`);
+      lines.push(`  > 実現方法: ${poss.howToRealize}`);
+    }
+    lines.push('');
+  }
+
+  // 推奨事項
+  if (assessment.recommendations.length > 0) {
+    lines.push('### 推奨される対処');
+    for (const rec of assessment.recommendations) {
+      lines.push(`- ${rec}`);
+    }
+    lines.push('');
+  }
+
+  // 気づきの転換
+  lines.push('### 気づきの姿勢への転換');
+  lines.push(assessment.mindfulnessTransformation);
+
+  return lines.join('\n');
 }
