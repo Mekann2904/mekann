@@ -49,8 +49,9 @@ function sanitizePreviewText(input: string): string {
   if (!input) return "";
   // ANSI escape sequence
   const withoutAnsi = input.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
-  // 画面描画を崩す可能性がある制御文字を除去（改行・タブは保持）
-  return withoutAnsi.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "");
+  // 画面描画を崩す制御文字のみ除去（改行・タブとUnicode文字は保持）
+  // C0/C1 制御文字を除去し、非ASCII（例: 日本語）を消さないようにする。
+  return withoutAnsi.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "");
 }
 
 /**
