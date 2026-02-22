@@ -39,6 +39,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { formatDurationMs, formatClockTime } from "../lib/format-utils.js";
 import { toErrorMessage } from "../lib/error-utils.js";
 import { ThinkingLevel } from "../lib/agent-types.js";
+import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor.js";
 
 // ============================================================================
@@ -127,6 +128,28 @@ interface SelfImprovementLoopParams {
   auto_commit?: boolean;
 }
 
+interface SelfImprovementModel {
+  provider: string;
+  id: string;
+  thinkingLevel: ThinkingLevel;
+}
+
+/** 自律ループ実行中のランタイム状態 */
+interface ActiveAutonomousRun {
+  runId: string;
+  task: string;
+  startedAt: string;
+  maxCycles: number;
+  autoCommit: boolean;
+  cycle: number;
+  inFlightCycle: number | null;
+  stopRequested: boolean;
+  stopReason: SelfImprovementLoopState["stopReason"];
+  logPath: string;
+  model: SelfImprovementModel;
+  lastCommitHash: string | null;
+}
+
 // ============================================================================
 // 定数
 // ============================================================================
@@ -177,6 +200,14 @@ const DEFAULT_CONFIG: Required<SelfImprovementLoopConfig> = {
   stagnationThreshold: 0.85,
   maxStagnationCount: 3,
 };
+
+const DEFAULT_MODEL: SelfImprovementModel = {
+  provider: "anthropic",
+  id: "claude-sonnet-4-20250514",
+  thinkingLevel: "medium" as ThinkingLevel,
+};
+
+const LOOP_MARKER_PREFIX = "[[SELF_IMPROVEMENT_LOOP";
 
 // ============================================================================
 // ユーティリティ関数
@@ -240,6 +271,93 @@ function clearStopSignal(config: Required<SelfImprovementLoopConfig>): void {
       // ignore
     }
   }
+}
+
+function parseModelFromEnv(): Pick<SelfImprovementModel, "provider" | "id"> | null {
+  const raw = process.env.PI_CURRENT_MODEL?.trim();
+  if (!raw) return null;
+
+  const parts = raw.split(":");
+  if (parts.length !== 2) return null;
+
+  const provider = parts[0]?.trim();
+  const id = parts[1]?.trim();
+  if (!provider || !id) return null;
+
+  return { provider, id };
+}
+
+function resolveActiveModel(ctx?: unknown): SelfImprovementModel {
+  const maybeCtx = ctx as { model?: { provider?: string; id?: string } } | undefined;
+  const provider = maybeCtx?.model?.provider?.trim();
+  const id = maybeCtx?.model?.id?.trim();
+  if (provider && id) {
+    return { provider, id, thinkingLevel: DEFAULT_MODEL.thinkingLevel };
+  }
+
+  const envModel = parseModelFromEnv();
+  if (envModel) {
+    return { ...envModel, thinkingLevel: DEFAULT_MODEL.thinkingLevel };
+  }
+
+  return DEFAULT_MODEL;
+}
+
+function buildLoopMarker(runId: string, cycle: number): string {
+  return `${LOOP_MARKER_PREFIX}:${runId}:CYCLE:${cycle}]]`;
+}
+
+function parseLoopCycleMarker(text: string): { runId: string; cycle: number } | null {
+  const match = text.match(/\[\[SELF_IMPROVEMENT_LOOP:([a-zA-Z0-9_-]+):CYCLE:(\d+)\]\]/);
+  if (!match) return null;
+  const cycle = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(cycle) || cycle < 1) return null;
+  return { runId: match[1], cycle };
+}
+
+function buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): string {
+  const marker = buildLoopMarker(run.runId, cycle);
+  return `${marker}
+
+あなたは通常のコーディングエージェントとして動作してください。
+以下のタスクを継続実行してください:
+${run.task}
+
+実行ルール:
+- 通常のエージェントと同じように、必要なツールを自由に使う
+- 必要に応じて subagent_run / subagent_run_parallel を使う
+- 必要に応じて agent_team_run / agent_team_run_parallel を使う
+- 変更は実際にファイルへ反映し、必要ならテストまで実行する
+- 7つの視座（脱構築/スキゾ分析/幸福論/ユートピア-ディストピア/思考哲学/思考分類学/論理学）で自己点検しながら進める
+
+出力の最後に以下を必ず含める:
+- CYCLE: ${cycle}
+- LOOP_STATUS: continue
+- NEXT_FOCUS: 次サイクルで最優先に進める内容を1-3行で要約`;
+}
+
+function appendAutonomousLoopLog(path: string, line: string): void {
+  appendFileSync(path, `${line}\n`, "utf-8");
+}
+
+function initializeAutonomousLoopLog(path: string, run: ActiveAutonomousRun): void {
+  const content = `# Self Improvement Autonomous Loop
+
+- Run ID: ${run.runId}
+- Started At: ${run.startedAt}
+- Task: ${run.task}
+- Max Cycles: ${run.maxCycles === Infinity ? "Infinity" : run.maxCycles}
+- Auto Commit: ${run.autoCommit ? "true" : "false"}
+- Model: ${run.model.provider}/${run.model.id}
+
+## Timeline
+`;
+  writeFileSync(path, content, "utf-8");
+}
+
+function extractInputText(event: unknown): string {
+  const maybeEvent = event as { text?: string };
+  return typeof maybeEvent?.text === "string" ? maybeEvent.text : "";
 }
 
 async function runGitCommand(args: string[], cwd: string): Promise<{ stdout: string; stderr: string; code: number }> {
@@ -450,21 +568,37 @@ SUMMARY: [1-2文の要約]
 `;
 }
 
-async function callModel(prompt: string, systemPrompt: string, timeoutMs: number = 120000): Promise<string> {
+async function callModel(
+  prompt: string,
+  model: SelfImprovementModel,
+  baseTimeoutMs: number = 120000,
+  signal?: AbortSignal
+): Promise<string> {
+  // モデルと思考レベルに応じたタイムアウトを計算
+  const effectiveTimeoutMs = computeModelTimeoutMs(model.id, {
+    userTimeoutMs: baseTimeoutMs,
+    thinkingLevel: model.thinkingLevel,
+  });
+
+  console.log(`[self-improvement-loop] Calling model ${model.provider}/${model.id} with timeout ${effectiveTimeoutMs}ms (thinking: ${model.thinkingLevel})`);
+
   try {
     const result = await sharedCallModelViaPi({
       model: {
-        provider: "anthropic",
-        id: "claude-sonnet-4-20250514",
-        thinkingLevel: "medium" as ThinkingLevel,
+        provider: model.provider,
+        id: model.id,
+        thinkingLevel: model.thinkingLevel,
       },
-      prompt: `${systemPrompt}\n\n---\n\n${prompt}`,
-      timeoutMs,
+      prompt,
+      timeoutMs: effectiveTimeoutMs,
+      signal,
       entityLabel: "self-improvement-loop",
     });
+    console.log(`[self-improvement-loop] Model call succeeded, output length: ${result.length}`);
     return result;
   } catch (error) {
-    console.error(`[self-improvement-loop] Model call failed: ${toErrorMessage(error)}`);
+    const errorMessage = toErrorMessage(error);
+    console.error(`[self-improvement-loop] Model call failed (${model.provider}/${model.id}): ${errorMessage}`);
     throw error;
   }
 }
@@ -475,7 +609,9 @@ async function callModel(prompt: string, systemPrompt: string, timeoutMs: number
 
 async function runSelfImprovementLoop(
   task: string,
-  config: Required<SelfImprovementLoopConfig>
+  config: Required<SelfImprovementLoopConfig>,
+  model: SelfImprovementModel,
+  signal?: AbortSignal
 ): Promise<SelfImprovementLoopState> {
   const state = initializeLoopState(task);
 
@@ -490,6 +626,14 @@ async function runSelfImprovementLoop(
 
   try {
     while (!state.stopRequested && state.currentCycle < config.maxCycles) {
+      // 中断シグナルをチェック
+      if (signal?.aborted) {
+        state.stopRequested = true;
+        state.stopReason = "user_request";
+        console.log(`[self-improvement-loop] Abort signal detected: runId=${state.runId}`);
+        break;
+      }
+      
       // 停止信号をチェック
       if (checkStopSignal(config)) {
         state.stopRequested = true;
@@ -499,7 +643,7 @@ async function runSelfImprovementLoop(
       }
 
       state.currentCycle++;
-      const cycleResult = await runCycle(state, config);
+      const cycleResult = await runCycle(state, config, model, signal);
 
       // 停滞検出
       const avgScore = cycleResult.perspectiveResults.reduce((sum, r) => sum + r.score, 0) / 7;
@@ -571,45 +715,78 @@ Run ID: ${state.runId}`;
 
 async function runCycle(
   state: SelfImprovementLoopState,
-  config: Required<SelfImprovementLoopConfig>
+  config: Required<SelfImprovementLoopConfig>,
+  model: SelfImprovementModel,
+  signal?: AbortSignal
 ): Promise<CycleResult> {
+  console.log(`[self-improvement-loop] runCycle START: cycle=${state.currentCycle}, model=${model.provider}/${model.id}`);
+  
   const perspectiveResults: PerspectiveResult[] = [];
   const allImprovements: string[] = [];
 
   // 7つの視座を順次適用
   for (let i = 0; i < PERSPECTIVES.length; i++) {
+    console.log(`[self-improvement-loop] Processing perspective ${i + 1}/${PERSPECTIVES.length}: ${PERSPECTIVES[i].displayName}`);
+    
+    // 中断シグナルをチェック
+    if (signal?.aborted) {
+      console.log(`[self-improvement-loop] Cycle ${state.currentCycle} aborted at perspective ${i}`);
+      break;
+    }
+
     const perspective = state.perspectiveStates[i];
     const prompt = buildPerspectivePrompt(perspective, state.task, perspectiveResults);
 
-    // LLMに分析を依頼
-    const systemPrompt = `あなたは自己改善エージェントです。${perspective.displayName}の観点から自己分析を行ってください。
+    // LLMに分析を依頼（プロンプトにシステム指示を統合）
+    const fullPrompt = `あなたは自己改善エージェントです。${perspective.displayName}の観点から自己分析を行ってください。
 
 重要なルール:
 - 日本語で回答してください
 - 具体的で実行可能な改善を提案してください
 - 曖昧な表現を避けてください
-- 自分の仮説を否定する証拠を探してください`;
+- 自分の仮説を否定する証拠を探してください
 
-    const output = await callModel(prompt, systemPrompt);
+---
 
-    // レスポンスをパース
-    const result = parsePerspectiveResult(perspective.name, output);
-    perspectiveResults.push(result);
+${prompt}`;
 
-    // 状態を更新
-    perspective.lastAppliedAt = new Date().toISOString();
-    perspective.findings.push(...result.findings);
-    perspective.questions.push(...result.questions);
-    perspective.improvements.push(...result.improvements);
-    perspective.score = result.score;
+    try {
+      const output = await callModel(fullPrompt, model, 300000, signal);
 
-    allImprovements.push(...result.improvements);
+      // レスポンスをパース
+      const result = parsePerspectiveResult(perspective.name, output);
+      perspectiveResults.push(result);
 
-    console.log(`[self-improvement-loop] Cycle ${state.currentCycle}: ${perspective.displayName} (${(result.score * 100).toFixed(0)}%)`);
+      // 状態を更新
+      perspective.lastAppliedAt = new Date().toISOString();
+      perspective.findings.push(...result.findings);
+      perspective.questions.push(...result.questions);
+      perspective.improvements.push(...result.improvements);
+      perspective.score = result.score;
+
+      allImprovements.push(...result.improvements);
+
+      console.log(`[self-improvement-loop] Cycle ${state.currentCycle}: ${perspective.displayName} (${(result.score * 100).toFixed(0)}%)`);
+    } catch (error) {
+      console.error(`[self-improvement-loop] Perspective ${perspective.displayName} failed: ${toErrorMessage(error)}`);
+      // エラー時はデフォルトスコアで続行
+      const errorResult: PerspectiveResult = {
+        perspective: perspective.name,
+        findings: [],
+        questions: [],
+        improvements: [],
+        score: 0.3,
+        output: `エラー: ${toErrorMessage(error)}`,
+      };
+      perspectiveResults.push(errorResult);
+      perspective.score = 0.3;
+    }
   }
 
   // サイクルのサマリーを生成
-  const avgScore = perspectiveResults.reduce((sum, r) => sum + r.score, 0) / 7;
+  const avgScore = perspectiveResults.length > 0
+    ? perspectiveResults.reduce((sum, r) => sum + r.score, 0) / perspectiveResults.length
+    : 0.3;
   const summary = `Cycle ${state.currentCycle} completed. Average score: ${(avgScore * 100).toFixed(0)}%. ${allImprovements.length} improvements identified.`;
 
   return {
@@ -672,68 +849,227 @@ function parsePerspectiveResult(perspective: PerspectiveName, output: string): P
 
 export default (api: ExtensionAPI) => {
   console.log("[self-improvement-loop] Extension loading...");
+  let activeRun: ActiveAutonomousRun | null = null;
+
+  function resolveStopPath(): string {
+    return resolve(process.cwd(), DEFAULT_CONFIG.stopSignalPath);
+  }
+
+  function requestStop(): string {
+    const stopPath = resolveStopPath();
+    mkdirSync(resolve(process.cwd(), DEFAULT_CONFIG.logDir), { recursive: true });
+    writeFileSync(stopPath, "STOP", "utf-8");
+    if (activeRun) {
+      activeRun.stopRequested = true;
+      activeRun.stopReason = "user_request";
+    }
+    return stopPath;
+  }
+
+  function dispatchNextCycle(run: ActiveAutonomousRun, deliverAs?: "followUp"): void {
+    const nextCycle = run.cycle + 1;
+    run.cycle = nextCycle;
+
+    const prompt = buildAutonomousCyclePrompt(run, nextCycle);
+    if (deliverAs) {
+      api.sendUserMessage(prompt, { deliverAs });
+    } else {
+      api.sendUserMessage(prompt);
+    }
+
+    appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} dispatched cycle=${nextCycle}`);
+  }
+
+  function finishRun(reason: SelfImprovementLoopState["stopReason"], note?: string): void {
+    const run = activeRun;
+    if (!run) return;
+
+    run.stopReason = reason;
+    appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} finished reason=${reason ?? "completed"}`);
+    if (note) {
+      appendAutonomousLoopLog(run.logPath, `  note: ${note}`);
+    }
+
+    api.sendMessage({
+      customType: "self-improvement-loop-result",
+      content: `## 自己改善ループ停止
+
+- 実行ID: \`${run.runId}\`
+- 総サイクル: ${run.cycle}
+- 停止理由: ${reason ?? "completed"}
+- 最終コミット: ${run.lastCommitHash ?? "なし"}
+- ログ: \`${run.logPath}\``,
+      display: true,
+      details: {
+        runId: run.runId,
+        cycles: run.cycle,
+        stopReason: reason,
+        lastCommitHash: run.lastCommitHash,
+        logPath: run.logPath,
+      },
+    }, { triggerTurn: false });
+
+    clearStopSignal(DEFAULT_CONFIG);
+    activeRun = null;
+  }
+
+  function startAutonomousLoop(input: {
+    task: string;
+    maxCycles: number;
+    autoCommit: boolean;
+    model: SelfImprovementModel;
+    deliverAs?: "followUp";
+  }): { ok: true; run: ActiveAutonomousRun } | { ok: false; error: string } {
+    if (activeRun) {
+      return { ok: false, error: `既に実行中です（runId=${activeRun.runId}）` };
+    }
+
+    const task = input.task.trim();
+    if (!task) {
+      return { ok: false, error: "task は必須です。" };
+    }
+
+    clearStopSignal(DEFAULT_CONFIG);
+
+    const runId = createRunId();
+    const logPath = createLogFilePath(DEFAULT_CONFIG, runId);
+    const run: ActiveAutonomousRun = {
+      runId,
+      task,
+      startedAt: new Date().toISOString(),
+      maxCycles: input.maxCycles,
+      autoCommit: input.autoCommit,
+      cycle: 0,
+      inFlightCycle: null,
+      stopRequested: false,
+      stopReason: null,
+      logPath,
+      model: input.model,
+      lastCommitHash: null,
+    };
+
+    initializeAutonomousLoopLog(logPath, run);
+    appendAutonomousLoopLog(logPath, `- ${new Date().toISOString()} started`);
+
+    activeRun = run;
+    dispatchNextCycle(run, input.deliverAs);
+    return { ok: true, run };
+  }
+
+  api.on("input", async (event, _ctx) => {
+    const run = activeRun;
+    if (!run || event.source !== "extension") return;
+    const marker = parseLoopCycleMarker(extractInputText(event));
+    if (!marker) return;
+    if (marker.runId !== run.runId) return;
+    if (marker.cycle > run.cycle) return;
+    run.inFlightCycle = marker.cycle;
+  });
+
+  api.on("agent_end", async (_event, ctx) => {
+    const run = activeRun;
+    if (!run) return;
+    if (run.inFlightCycle === null) return;
+
+    const completedCycle = run.inFlightCycle;
+    run.inFlightCycle = null;
+    appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} completed cycle=${completedCycle}`);
+
+    if (run.autoCommit) {
+      const commitMessage = `feat(self-improvement-loop): cycle ${completedCycle}
+
+runId: ${run.runId}
+task: ${run.task}
+model: ${run.model.provider}/${run.model.id}`;
+      const hash = await createGitCommit(commitMessage, process.cwd());
+      if (hash) {
+        run.lastCommitHash = hash;
+        appendAutonomousLoopLog(run.logPath, `  commit: ${hash}`);
+      }
+    }
+
+    if (checkStopSignal(DEFAULT_CONFIG) || run.stopRequested) {
+      finishRun(run.stopReason ?? "user_request");
+      return;
+    }
+
+    if (completedCycle >= run.maxCycles) {
+      finishRun("completed");
+      return;
+    }
+
+    try {
+      dispatchNextCycle(run, ctx.isIdle() ? undefined : "followUp");
+    } catch (error) {
+      finishRun("error", toErrorMessage(error));
+    }
+  });
 
   // self_improvement_loop ツールを登録
   api.registerTool({
     name: "self_improvement_loop",
     label: "self_improvement_loop",
-    description: "7つの哲学的視座に基づく自己改善ループを実行。ユーザーが停止するまで継続的に自己改善を行う。",
+    description: "通常エージェントをサイクル実行し続ける自己改善ループを開始する。停止信号まで継続する。",
     parameters: Type.Object({
       task: Type.String({
         description: "自己改善の対象となるタスクまたは目標",
       }),
       max_cycles: Type.Optional(Type.Number({
-        description: "最大サイクル数（省略時は無制限）",
+        description: "最大サイクル数（省略時は実質無制限）",
         minimum: 1,
-        maximum: 100,
+        maximum: 1000000,
       })),
       auto_commit: Type.Optional(Type.Boolean({
         description: "各サイクル完了時に自動的にGitコミットを作成するか（デフォルト: true）",
       })),
     }),
-    execute: async (_toolCallId: string, params: SelfImprovementLoopParams) => {
-      const config: Required<SelfImprovementLoopConfig> = {
-        ...DEFAULT_CONFIG,
-        maxCycles: params.max_cycles ?? DEFAULT_CONFIG.maxCycles,
-        autoCommit: params.auto_commit ?? DEFAULT_CONFIG.autoCommit,
-      };
-
-      try {
-        const state = await runSelfImprovementLoop(params.task, config);
-        const logPath = createLogFilePath(config, state.runId);
-
-        const text = `自己改善ループ完了
-
-実行ID: ${state.runId}
-総サイクル数: ${state.currentCycle}
-総改善数: ${state.totalImprovements}
-停止理由: ${state.stopReason ?? "完了"}
-最終コミット: ${state.lastCommitHash ?? "なし"}
-
-ログファイル: ${logPath}
-
-## 最終サマリー
-${state.summary}
-
-## 視座別スコア
-${state.perspectiveStates.map((ps) => `- ${ps.displayName}: ${(ps.score * 100).toFixed(0)}%`).join("\n")}`;
-
+    execute: async (_toolCallId: string, params: SelfImprovementLoopParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: any) => {
+      if (signal?.aborted) {
         return {
-          content: [{ type: "text" as const, text }],
-          details: {
-            runId: state.runId,
-            cycles: state.currentCycle,
-            improvements: state.totalImprovements,
-            stopReason: state.stopReason,
-            logFile: logPath,
-          },
-        };
-      } catch (error) {
-        return {
-          content: [{ type: "text" as const, text: `エラー: ${toErrorMessage(error)}` }],
-          details: { error: toErrorMessage(error) },
+          content: [{ type: "text" as const, text: "開始前に中断されました。" }],
+          details: { error: "aborted_before_start" },
         };
       }
+
+      if (!ctx?.model) {
+        return {
+          content: [{ type: "text" as const, text: "self_improvement_loop error: no active model." }],
+          details: { error: "missing_model" },
+        };
+      }
+
+      const model = resolveActiveModel(ctx);
+      const started = startAutonomousLoop({
+        task: params.task,
+        maxCycles: params.max_cycles ?? 1_000_000,
+        autoCommit: params.auto_commit ?? DEFAULT_CONFIG.autoCommit,
+        model,
+        deliverAs: ctx?.isIdle?.() ? undefined : "followUp",
+      });
+
+      if (started.ok) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: `自己改善ループを開始しました。
+runId: ${started.run.runId}
+maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCycles}
+モデル: ${started.run.model.provider}/${started.run.model.id}
+ログ: ${started.run.logPath}`,
+          }],
+          details: {
+            runId: started.run.runId,
+            startedAt: started.run.startedAt,
+            maxCycles: started.run.maxCycles,
+            logFile: started.run.logPath,
+          },
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: `開始失敗: ${started.error}` }],
+        details: { error: started.error },
+      };
     },
   } as any);
 
@@ -744,13 +1080,8 @@ ${state.perspectiveStates.map((ps) => `- ${ps.displayName}: ${(ps.score * 100).t
     description: "実行中の自己改善ループを停止する。現在のサイクルを完了してから安全に停止する。",
     parameters: Type.Object({}),
     execute: async () => {
-      const config = DEFAULT_CONFIG;
-      const stopPath = resolve(process.cwd(), config.stopSignalPath);
-
       try {
-        // 停止信号ファイルを作成
-        mkdirSync(resolve(process.cwd(), config.logDir), { recursive: true });
-        writeFileSync(stopPath, "STOP", "utf-8");
+        const stopPath = requestStop();
 
         return {
           content: [{ type: "text" as const, text: "停止信号を送信しました。現在のサイクルを完了してから安全に停止します。" }],
@@ -780,6 +1111,7 @@ ${state.perspectiveStates.map((ps) => `- ${ps.displayName}: ${(ps.score * 100).t
 
 停止信号: ${isStopRequested ? "あり" : "なし"}
 信号ファイル: ${stopPath}
+実行状態: ${activeRun ? `running (runId=${activeRun.runId}, cycle=${activeRun.cycle})` : "idle"}
 
 停止するには: self_improvement_stop ツールを実行`;
 
@@ -789,6 +1121,9 @@ ${state.perspectiveStates.map((ps) => `- ${ps.displayName}: ${(ps.score * 100).t
           stopRequested: isStopRequested,
           stopSignalPath: stopPath,
           logDir: resolve(process.cwd(), config.logDir),
+          running: Boolean(activeRun),
+          runId: activeRun?.runId,
+          cycle: activeRun?.cycle,
         },
       };
     },
@@ -809,7 +1144,7 @@ ${state.perspectiveStates.map((ps) => `- ${ps.displayName}: ${(ps.score * 100).t
       for (const part of parts) {
         if (part.startsWith("--max-cycles=")) {
           const val = parseInt(part.split("=")[1], 10);
-          if (!isNaN(val) && val >= 1 && val <= 100) {
+          if (!isNaN(val) && val >= 1 && val <= 1000000) {
             maxCycles = val;
           }
         } else if (part !== "") {
@@ -822,52 +1157,33 @@ ${state.perspectiveStates.map((ps) => `- ${ps.displayName}: ${(ps.score * 100).t
         return;
       }
 
+      if (activeRun) {
+        ctx.ui.notify(`既に自己改善ループが実行中です（runId=${activeRun.runId}）`, "warning");
+        return;
+      }
+
       if (!ctx.model) {
         ctx.ui.notify("自己改善ループの開始に失敗: アクティブなモデルがありません", "error");
         return;
       }
 
       ctx.ui.notify(`自己改善ループを開始します: "${task.slice(0, 50)}${task.length > 50 ? "..." : ""}"`, "info");
+      const model = resolveActiveModel(ctx);
 
-      // ツールを実行
-      const config: Required<SelfImprovementLoopConfig> = {
-        ...DEFAULT_CONFIG,
-        maxCycles: maxCycles ?? DEFAULT_CONFIG.maxCycles,
+      const started = startAutonomousLoop({
+        task,
+        maxCycles: maxCycles ?? 1_000_000,
         autoCommit: DEFAULT_CONFIG.autoCommit,
-      };
+        model,
+        deliverAs: ctx.isIdle() ? undefined : "followUp",
+      });
 
-      try {
-        const state = await runSelfImprovementLoop(task, config);
-        const logPath = createLogFilePath(config, state.runId);
-
-        api.sendMessage({
-          customType: "self-improvement-loop-result",
-          content: `## 自己改善ループ完了
-
-実行ID: \`${state.runId}\`
-総サイクル数: ${state.currentCycle}
-総改善数: ${state.totalImprovements}
-停止理由: ${state.stopReason ?? "完了"}
-最終コミット: ${state.lastCommitHash ?? "なし"}
-ログファイル: \`${logPath}\`
-
-### 最終サマリー
-${state.summary}
-
-### 視座別スコア
-${state.perspectiveStates.map((ps) => `- **${ps.displayName}**: ${(ps.score * 100).toFixed(0)}%`).join("\n")}`,
-          display: true,
-          details: {
-            runId: state.runId,
-            cycles: state.currentCycle,
-            improvements: state.totalImprovements,
-            stopReason: state.stopReason,
-            logFile: logPath,
-          },
-        });
-      } catch (error) {
-        ctx.ui.notify(`自己改善ループでエラーが発生しました: ${toErrorMessage(error)}`, "error");
+      if (!started.ok) {
+        ctx.ui.notify(`自己改善ループ開始エラー: ${started.error}`, "error");
+        return;
       }
+
+      ctx.ui.notify(`自己改善ループ開始: runId=${started.run.runId}`, "info");
     },
   });
 
@@ -875,12 +1191,8 @@ ${state.perspectiveStates.map((ps) => `- **${ps.displayName}**: ${(ps.score * 10
   api.registerCommand("self-improvement-stop", {
     description: "実行中の自己改善ループを停止",
     handler: async (_args: string, ctx) => {
-      const config = DEFAULT_CONFIG;
-      const stopPath = resolve(process.cwd(), config.stopSignalPath);
-
       try {
-        mkdirSync(resolve(process.cwd(), config.logDir), { recursive: true });
-        writeFileSync(stopPath, "STOP", "utf-8");
+        requestStop();
 
         ctx.ui.notify("停止信号を送信しました。現在のサイクルを完了してから安全に停止します。", "info");
       } catch (error) {
@@ -905,6 +1217,8 @@ ${state.perspectiveStates.map((ps) => `- **${ps.displayName}**: ${(ps.score * 10
 - **停止信号**: ${isStopRequested ? "あり" : "なし"}
 - **信号ファイル**: \`${stopPath}\`
 - **ログディレクトリ**: \`${logDir}\`
+- **実行状態**: ${activeRun ? `running (\`${activeRun.runId}\`)` : "idle"}
+- **現在サイクル**: ${activeRun?.cycle ?? 0}
 
 停止するには: \`/self-improvement-stop\` コマンドを実行`,
         display: true,
@@ -912,6 +1226,9 @@ ${state.perspectiveStates.map((ps) => `- **${ps.displayName}**: ${(ps.score * 10
           stopRequested: isStopRequested,
           stopSignalPath: stopPath,
           logDir,
+          running: Boolean(activeRun),
+          runId: activeRun?.runId,
+          cycle: activeRun?.cycle,
         },
       });
     },

@@ -132,38 +132,59 @@ export function normalizeTeamMemberOutput(output: string): TeamNormalizedOutput 
     return { ok: false, output: "", degraded: false, reason: "empty output" };
   }
 
+  // 最小限の文字数チェック（10文字以上あれば処理を続ける）
+  if (trimmed.length < 10) {
+    return { ok: false, output: "", degraded: false, reason: `too short (${trimmed.length} chars)` };
+  }
+
   const quality = validateTeamMemberOutput(trimmed);
   if (quality.ok) {
     return { ok: true, output: trimmed, degraded: false };
   }
 
-  const summary = pickTeamFieldCandidate(trimmed, 100);
-  const claim = pickTeamFieldCandidate(trimmed, 120);
-  const evidence = "not-provided";
+  // 正規化を試みる - より堅牢な実装
+  const summary = extractFieldIfExists(trimmed, "SUMMARY") ?? pickTeamFieldCandidate(trimmed, 100);
+  const claim = extractFieldIfExists(trimmed, "CLAIM") ?? pickTeamFieldCandidate(trimmed, 120);
+  const evidence = extractFieldIfExists(trimmed, "EVIDENCE") ?? "not-provided";
+  const nextStep = extractFieldIfExists(trimmed, "NEXT_STEP") ?? "none";
+
   const structured = [
     `SUMMARY: ${summary}`,
     `CLAIM: ${claim}`,
     `EVIDENCE: ${evidence}`,
     "RESULT:",
     trimmed,
-    "NEXT_STEP: none",
+    `NEXT_STEP: ${nextStep}`,
   ].join("\n");
-  const structuredQuality = validateTeamMemberOutput(structured);
-  if (structuredQuality.ok) {
-    return {
-      ok: true,
-      output: structured,
-      degraded: true,
-      reason: quality.reason ?? "normalized",
-    };
-  }
 
+  // 正規化された出力は常に受け入れる（graceful degradation）
+  // これにより、LLMが期待通りの形式で出力しなかった場合でも、
+  // 有用な情報を失わずに処理を継続できる
   return {
-    ok: false,
-    output: "",
-    degraded: false,
-    reason: quality.reason ?? structuredQuality.reason ?? "normalization failed",
+    ok: true,
+    output: structured,
+    degraded: true,
+    reason: quality.reason ?? "normalized",
   };
+}
+
+/**
+ * 出力から特定のフィールド値を抽出（存在する場合）
+ * @summary フィールド抽出
+ * @param output 出力テキスト
+ * @param fieldName フィールド名（SUMMARY, CLAIM等）
+ * @returns フィールド値、または null
+ */
+function extractFieldIfExists(output: string, fieldName: string): string | null {
+  const regex = new RegExp(`^\\s*${fieldName}\\s*:\\s*(.+)$`, "im");
+  const match = output.match(regex);
+  if (match?.[1]) {
+    const value = match[1].trim();
+    // 次のフィールドラベルで終了
+    const endMatch = value.match(/^(.+?)(?:\s*[A-Z_]+\s*:|$)/s);
+    return endMatch ? endMatch[1].trim() : value;
+  }
+  return null;
 }
 
 // ============================================================================

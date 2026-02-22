@@ -62,6 +62,7 @@
       "./.pi/extensions/invariant-pipeline.ts",
       "./.pi/extensions/kitty-status-integration.ts",
       "./.pi/extensions/loop.ts",
+      "./.pi/extensions/self-improvement-loop.ts",
       "./.pi/extensions/plan.ts",
       "./.pi/extensions/question.ts",
       "./.pi/extensions/search/index.ts",
