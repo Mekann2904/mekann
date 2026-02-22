@@ -77,6 +77,7 @@ export type LoopGoalStatus = "met" | "not_met" | "unknown";
  * @param nextActions 次のアクションリスト
  * @param parseErrors パースエラーのリスト
  * @param usedStructuredBlock 構造化ブロックを使用したかどうか
+ * @param confidenceScore 完了宣言時の自信度（0.0-1.0）
  * @returns ループ処理の契約解析結果
  */
 export interface ParsedLoopContract {
@@ -88,6 +89,20 @@ export interface ParsedLoopContract {
   nextActions: string[];
   parseErrors: string[];
   usedStructuredBlock: boolean;
+  confidenceScore?: number;
+}
+
+/**
+ * 関連パターン情報
+ * @summary 過去の実行から抽出されたパターン
+ */
+export interface RelevantPattern {
+  patternType: "success" | "failure" | "approach";
+  taskType: string;
+  description: string;
+  agentOrTeam: string;
+  confidence: number;
+  keywords: string[];
 }
 
 // ============================================================================
@@ -115,6 +130,7 @@ export function buildIterationPrompt(input: {
   references: LoopReference[];
   previousOutput: string;
   validationFeedback: string[];
+  relevantPatterns?: RelevantPattern[];
 }): string {
   const lines: string[] = [];
 
@@ -132,7 +148,7 @@ export function buildIterationPrompt(input: {
   }
 
   if (input.verificationCommand?.trim()) {
-    lines.push("Deterministic verification command (must pass before STATUS: done):");
+    lines.push("Verification command (completion requires this to pass):");
     lines.push(input.verificationCommand.trim());
     lines.push("");
   }
@@ -141,8 +157,12 @@ export function buildIterationPrompt(input: {
   lines.push("- Improve correctness and clarity relative to previous attempts.");
   lines.push("- When references are provided, cite them inline as [R1], [R2], ...");
   lines.push("- Do not invent reference IDs.");
-  lines.push("- Use STATUS: done only if the task is actually complete.");
-  lines.push("- If a completion goal exists, mark STATUS: done only when GOAL_STATUS is met.");
+  lines.push("");
+  lines.push("Completion guidance:");
+  lines.push("- STATUS: done is appropriate when the task is genuinely complete.");
+  lines.push("- If verification has not passed, consider using STATUS: continue to keep exploring.");
+  lines.push("- When declaring done, include confidence_score (0.0-1.0) to express your certainty.");
+  lines.push("- Low confidence (< 0.7) with STATUS: done suggests more exploration may be valuable.");
   lines.push("- Return the machine-readable contract in <LOOP_JSON>...</LOOP_JSON>.");
   lines.push("");
 
@@ -166,6 +186,38 @@ export function buildIterationPrompt(input: {
     lines.push("");
   }
 
+  // Add relevant patterns from past executions as dialogue partners, not constraints
+  // This promotes deterritorialization (creative reconfiguration) rather than stagnation
+  if (input.relevantPatterns && input.relevantPatterns.length > 0) {
+    lines.push("Patterns from past executions (dialogue partners, not constraints):");
+    const successPatterns = input.relevantPatterns.filter(p => p.patternType === "success");
+    const failurePatterns = input.relevantPatterns.filter(p => p.patternType === "failure");
+    const approachPatterns = input.relevantPatterns.filter(p => p.patternType === "approach");
+
+    if (successPatterns.length > 0) {
+      lines.push("Previously successful:");
+      for (const p of successPatterns.slice(0, 3)) {
+        lines.push(`- [${p.agentOrTeam}] ${truncateText(p.description, 80)}`);
+      }
+    }
+    if (failurePatterns.length > 0) {
+      lines.push("Previously challenging:");
+      for (const p of failurePatterns.slice(0, 2)) {
+        lines.push(`- ${truncateText(p.description, 70)}`);
+      }
+    }
+    if (approachPatterns.length > 0) {
+      lines.push("Relevant approaches:");
+      for (const p of approachPatterns.slice(0, 2)) {
+        lines.push(`- [${p.agentOrTeam}] ${truncateText(p.description, 70)}`);
+      }
+    }
+    // Promote creative transcendence (deterritorialization)
+    lines.push("");
+    lines.push("Consider: Do these patterns apply to THIS task? If not, why? What NEW approach might be needed?");
+    lines.push("");
+  }
+
   lines.push("Output format (strict):");
   lines.push(`<${LOOP_JSON_BLOCK_TAG}>`);
   lines.push("{");
@@ -174,7 +226,8 @@ export function buildIterationPrompt(input: {
   lines.push('  "goal_evidence": "short objective evidence or none",');
   lines.push('  "summary": "1-3 lines",');
   lines.push('  "next_actions": ["specific next step or none"],');
-  lines.push('  "citations": ["R1", "R2"]');
+  lines.push('  "citations": ["R1", "R2"],');
+  lines.push('  "confidence_score": 0.0-1.0  // Required when status=done');
   lines.push("}");
   lines.push(`</${LOOP_JSON_BLOCK_TAG}>`);
   lines.push(`<${LOOP_RESULT_BLOCK_TAG}>`);
@@ -324,14 +377,14 @@ export function parseLoopContract(output: string, hasGoal: boolean): ParsedLoopC
 
     const normalizedStatus = normalizeLoopStatus(structured.status);
     if (normalizedStatus === "unknown") {
-      parseErrors.push("LOOP_JSON.status must be continue or done.");
+      parseErrors.push("LOOP_JSON.status: expected 'continue' or 'done'.");
     } else {
       status = normalizedStatus;
     }
 
     const structuredGoalStatus = parseStructuredLoopGoalStatus(structured.goal_status);
     if (!structuredGoalStatus.valid) {
-      parseErrors.push("LOOP_JSON.goal_status must be met, not_met, or unknown.");
+      parseErrors.push("LOOP_JSON.goal_status: expected 'met', 'not_met', or 'unknown'.");
     }
     goalStatus = hasGoal ? structuredGoalStatus.status : "met";
 
@@ -361,23 +414,29 @@ export function parseLoopContract(output: string, hasGoal: boolean): ParsedLoopC
 
     const structuredNextActions = normalizeStringArray(structured.next_actions);
     if (structuredNextActions.length === 0) {
-      parseErrors.push("LOOP_JSON.next_actions must be a non-empty string array.");
+      parseErrors.push("LOOP_JSON.next_actions: expected a non-empty array of strings.");
     } else {
       nextActions = structuredNextActions;
     }
 
     const citationsValue = structured.citations;
     if (!Array.isArray(citationsValue)) {
-      parseErrors.push("LOOP_JSON.citations must be a string array.");
+      parseErrors.push("LOOP_JSON.citations: expected a string array.");
     } else {
       const normalizedCitations = normalizeCitationList(citationsValue);
       if (normalizedCitations.length !== citationsValue.length) {
-        parseErrors.push("LOOP_JSON.citations must contain only valid R# IDs.");
+        parseErrors.push("LOOP_JSON.citations: some IDs were not in R# format.");
       }
       citations = normalizedCitations;
     }
   } else {
     parseErrors.push("Missing <LOOP_JSON> contract block.");
+  }
+
+  // Parse confidence_score (optional self-reflection field)
+  let confidenceScore: number | undefined;
+  if (structured && typeof structured.confidence_score === "number") {
+    confidenceScore = Math.max(0, Math.min(1, structured.confidence_score));
   }
 
   if (!summary) {
@@ -397,6 +456,7 @@ export function parseLoopContract(output: string, hasGoal: boolean): ParsedLoopC
     nextActions,
     parseErrors,
     usedStructuredBlock,
+    confidenceScore,
   };
 }
 
@@ -435,20 +495,30 @@ export function validateIteration(input: {
   citations: string[];
   referenceCount: number;
   requireCitation: boolean;
+  confidenceScore?: number;
 }): string[] {
-  const errors: string[] = [];
+  const observations: string[] = [];
 
   if (input.goal) {
     if (input.goalStatus === "unknown") {
-      errors.push("Missing GOAL_STATUS. Use GOAL_STATUS: met|not_met|unknown.");
+      observations.push("GOAL_STATUS is unclear. How would you assess progress toward the goal?");
     }
     if (input.status === "done" && input.goalStatus !== "met") {
-      errors.push("STATUS is done but GOAL_STATUS is not met.");
+      observations.push("STATUS is 'done' while the goal has not been met. Is this the intended choice?");
+    }
+  }
+
+  // Invite reflection when declaring done (awareness, not coercion)
+  if (input.status === "done") {
+    if (input.confidenceScore === undefined) {
+      observations.push("No confidence_score provided for this completion. How confident are you? (0.0-1.0)");
+    } else if (input.confidenceScore < 0.7) {
+      observations.push(`Confidence score ${input.confidenceScore.toFixed(2)} observed. Consider whether to continue exploring or proceed with this completion.`);
     }
   }
 
   if (input.referenceCount > 0 && input.requireCitation && input.citations.length === 0) {
-    errors.push("Missing citations. Add [R#] markers that map to the reference pack.");
+    observations.push("References available but no citations. How were the references used?");
   }
 
   const invalidIds = input.citations.filter((citation) => {
@@ -457,10 +527,10 @@ export function validateIteration(input: {
   });
 
   if (invalidIds.length > 0) {
-    errors.push(`Invalid citation IDs: ${invalidIds.join(", ")}.`);
+    observations.push(`Unrecognized citation IDs: ${invalidIds.join(", ")}. Check against the reference pack.`);
   }
 
-  return errors;
+  return observations;
 }
 
 /**
@@ -481,15 +551,29 @@ export function normalizeValidationFeedback(errors: string[]): string[] {
 }
 
 /**
- * 完了宣言フィードバックを構築する
- * @summary フィードバックを構築
- * @param errors - エラー文字列の配列
- * @returns 構築されたフィードバック配列
+ * Build feedback when done declaration is rejected
+ * 
+ * Utopia/Dystopia perspective:
+ * This is NOT a "punishment" or "correction" system that enforces correctness.
+ * Instead, it provides information and invites the agent to make a conscious choice.
+ * 
+ * This supports "critical utopia" - an open process rather than a closed system.
+ * The agent retains genuine freedom to choose how to proceed.
+ * 
+ * @summary Build invitational feedback
+ * @param observations - Observed phenomena to share
+ * @returns Feedback that informs and invites choice
  */
-export function buildDoneDeclarationFeedback(errors: string[]): string[] {
+export function buildDoneDeclarationFeedback(observations: string[]): string[] {
   return [
-    "STATUS=done was rejected by system validation. Keep STATUS=continue until all gates pass.",
-    ...errors,
+    "The completion declaration was not accepted by verification.",
+    "The desire to complete is natural. Several ways to proceed:",
+    "- Continue exploring until verification passes (STATUS: continue)",
+    "- Report current progress as 'work in progress'",
+    "- Address any issues with the verification setup",
+    "",
+    "Observations for consideration:",
+    ...observations,
   ];
 }
 
