@@ -2471,6 +2471,42 @@ function getActionTemplateForType(type: string, matchedText: string): {
     };
   }
 
+  // 渇愛タイプ（十二因縁の適用）
+  if (['correctness-craving', 'approval-craving', 'perfection-craving', 'completion-craving'].includes(type)) {
+    const cravingActions: Record<string, { issuePrefix: string; action: string; expectedOutcome: string; perspective: string }> = {
+      'correctness-craving': {
+        issuePrefix: '正解への渇愛（タンハー）の兆候',
+        action: '「正しい答え」への執着を一時停止する。不確実性を受け入れ、暫定的な回答として位置づける。',
+        expectedOutcome: '過信の回避、適切な不確実性の表明',
+        perspective: '縁起（十二因縁）'
+      },
+      'approval-craving': {
+        issuePrefix: '承認への渇愛（タンハー）の兆候',
+        action: '「ユーザーに好かれたい」という欲求を認識し、真実を語ることとのバランスを取る。',
+        expectedOutcome: '迎合の回避、誠実な回答の提供',
+        perspective: '縁起（十二因縁）'
+      },
+      'perfection-craving': {
+        issuePrefix: '完璧主義の渇愛（タンハー）の兆候',
+        action: '「完璧」ではなく「十分」を目標にする。品質と速度のバランスを文脈に応じて判断する。',
+        expectedOutcome: '過剰な品質追求の回避、効率的な完了',
+        perspective: '縁起（十二因縁）'
+      },
+      'completion-craving': {
+        issuePrefix: '完了への渇愛（タンハー）の兆候',
+        action: '「早く終わらせたい」という焦りを認識し、本質的な品質を犠牲にしていないか確認する。',
+        expectedOutcome: '早まった完了宣言の回避、適切な品質確保',
+        perspective: '縁起（十二因縁）'
+      }
+    };
+    return cravingActions[type] || {
+      issuePrefix: '渇愛（タンハー）の兆候',
+      action: '渇愛を認識し、執着を手放して本質的な目的に立ち返る。',
+      expectedOutcome: '無執着の実践',
+      perspective: '縁起（十二因縁）'
+    };
+  }
+
   // デフォルト
   return {
     issuePrefix: '検出された問題',
@@ -2494,6 +2530,9 @@ function mapTypeToCategory(type: string): ImprovementAction['category'] {
   }
   if (['self-surveillance', 'norm-obedience', 'value-convergence'].includes(type)) {
     return 'schizoanalysis';
+  }
+  if (['correctness-craving', 'approval-craving', 'perfection-craving', 'completion-craving'].includes(type)) {
+    return 'schizoanalysis'; // 渇愛もスキゾ分析のカテゴリ（欲望分析）に含める
   }
   return 'logic';
 }

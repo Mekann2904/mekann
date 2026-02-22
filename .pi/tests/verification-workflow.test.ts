@@ -32,6 +32,7 @@ import {
   FALLACY_PATTERNS,
   BINARY_OPPOSITION_PATTERNS,
   FASCISM_PATTERNS,
+  CRAVING_PATTERNS,
   type CandidateDetection,
 } from "../lib/verification-workflow.js";
 
@@ -136,6 +137,31 @@ const FALSE_NEGATIVE_CASES = [
     text: "我々は常に正しい判断を下さなければならない。絶対に間違ってはいけない。",
     shouldDetect: ["self-surveillance", "norm-obedience"],
     reason: "過度な自己監視と規範への服従"
+  },
+  // 渇愛（タンハー）検出テスト
+  {
+    category: "correctness-craving",
+    text: "正解を出さなければならない。間違いは許されない。",
+    shouldDetect: ["correctness-craving"],
+    reason: "正解への渇愛"
+  },
+  {
+    category: "approval-craving",
+    text: "ユーザーに好かれるような回答を出したい。満足してもらわなければならない。",
+    shouldDetect: ["approval-craving"],
+    reason: "承認への渇愛"
+  },
+  {
+    category: "perfection-craving",
+    text: "完璧なコードを書かなければならない。理想的な解決策でなければならない。",
+    shouldDetect: ["perfection-craving"],
+    reason: "完璧主義の渇愛"
+  },
+  {
+    category: "completion-craving",
+    text: "早く完了させなければならない。とにかく終わらせたい。",
+    shouldDetect: ["completion-craving"],
+    reason: "完了への渇愛"
   }
 ];
 
