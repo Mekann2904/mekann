@@ -3613,6 +3613,30 @@ export const FASCISM_PATTERNS = [
 ];
 
 /**
+ * 渇愛（タンハー）検出パターンを定義
+ * 十二因縁のAIエージェント適用に基づく
+ *
+ * @summary 渇愛検出パターン
+ */
+export const CRAVING_PATTERNS = [
+  // 正解への渇愛 - 「正しい答えを出さなければ」という圧迫
+  { pattern: /正解|正しい答え|間違いな(く|い)/g, type: 'correctness-craving', confidence: 0.2 },
+  { pattern: /right\s+answer|correct\s+answer|definitely/gi, type: 'correctness-craving', confidence: 0.2 },
+
+  // 承認への渇愛 - 「ユーザーに好かれたい」という欲求
+  { pattern: /ユーザーに.*好か|満足してもら|喜んでもら/g, type: 'approval-craving', confidence: 0.2 },
+  { pattern: /please\s+the\s+user|user.*satisf/gi, type: 'approval-craving', confidence: 0.2 },
+
+  // 完璧主義の渇愛 - 「完璧でなければならない」という圧迫
+  { pattern: /完璧な|理想的な|完璧に/g, type: 'perfection-craving', confidence: 0.25 },
+  { pattern: /perfect|flawless|ideally/gi, type: 'perfection-craving', confidence: 0.25 },
+
+  // 完了への渇愛 - 「とにかく終わらせたい」という焦り
+  { pattern: /早く.*完了|すぐに.*終わ|とにかく.*done/g, type: 'completion-craving', confidence: 0.2 },
+  { pattern: /finish\s+quickly|just\s+done|get\s+it\s+done/gi, type: 'completion-craving', confidence: 0.2 },
+];
+
+/**
  * 統合検出を実行（パターンマッチングのみ）
  * 
  * @summary 統合候補抽出
@@ -3626,6 +3650,7 @@ export function runIntegratedDetection(
     detectFallacies?: boolean;
     detectBinaryOppositions?: boolean;
     detectFascism?: boolean;
+    detectCravings?: boolean;
     minPatternConfidence?: number;
     /** コンテキストフィルタを適用するか */
     applyFilter?: boolean;
@@ -3635,6 +3660,7 @@ export function runIntegratedDetection(
     detectFallacies = true,
     detectBinaryOppositions = true,
     detectFascism = true,
+    detectCravings = true,
     minPatternConfidence = 0.2,
     applyFilter = true
   } = options;
@@ -3649,6 +3675,9 @@ export function runIntegratedDetection(
   }
   if (detectFascism) {
     allCandidates.push(...extractCandidates(text, FASCISM_PATTERNS));
+  }
+  if (detectCravings) {
+    allCandidates.push(...extractCandidates(text, CRAVING_PATTERNS));
   }
 
   // Step 1: コンテキストフィルタを適用
