@@ -224,8 +224,12 @@ const DEFAULT_MODEL: SelfImprovementModel = {
 /** git-workflowスキルのパス */
 const GIT_WORKFLOW_SKILL_PATH = ".pi/skills/git-workflow/SKILL.md";
 
+/** self-improvementスキルのパス */
+const SELF_IMPROVEMENT_SKILL_PATH = ".pi/skills/self-improvement/SKILL.md";
+
 /** スキル内容のキャッシュ */
 let cachedGitWorkflowSkill: string | null = null;
+let cachedSelfImprovementSkill: string | null = null;
 
 const LOOP_MARKER_PREFIX = "[[SELF_IMPROVEMENT_LOOP";
 
@@ -256,6 +260,70 @@ function loadGitWorkflowSkill(): string {
     console.warn(`[self-improvement-loop] Failed to load git-workflow skill: ${toErrorMessage(error)}`);
     return "";
   }
+}
+
+/**
+ * self-improvementスキルを読み込む
+ * キャッシュ機能付きで、複数回呼び出し時はキャッシュを返す
+ */
+function loadSelfImprovementSkill(): string {
+  if (cachedSelfImprovementSkill) {
+    return cachedSelfImprovementSkill;
+  }
+
+  const skillPath = resolve(process.cwd(), SELF_IMPROVEMENT_SKILL_PATH);
+  if (!existsSync(skillPath)) {
+    console.warn(`[self-improvement-loop] self-improvement skill not found at ${skillPath}`);
+    return "";
+  }
+
+  try {
+    cachedSelfImprovementSkill = readFileSync(skillPath, "utf-8");
+    console.log(`[self-improvement-loop] Loaded self-improvement skill (${cachedSelfImprovementSkill.length} bytes)`);
+    return cachedSelfImprovementSkill;
+  } catch (error) {
+    console.warn(`[self-improvement-loop] Failed to load self-improvement skill: ${toErrorMessage(error)}`);
+    return "";
+  }
+}
+
+/**
+ * self-improvementスキルから7つの視座の説明セクションを抽出する
+ */
+function extractPerspectivesSection(skillContent: string): string {
+  // "## 7つの哲学的視座" から次の "## " までを抽出
+  const startIndex = skillContent.indexOf("## 7つの哲学的視座");
+  if (startIndex === -1) {
+    return "";
+  }
+
+  const nextSectionStart = skillContent.indexOf("\n## ", startIndex + 10);
+  if (nextSectionStart === -1) {
+    return skillContent.slice(startIndex);
+  }
+
+  return skillContent.slice(startIndex, nextSectionStart);
+}
+
+/**
+ * self-improvementスキルから自己点検チェックリストを抽出する
+ */
+function extractChecklistSection(skillContent: string): string {
+  // "## 自己点検チェックリスト" または "### 自己点検チェックリスト" を探す
+  const patterns = ["## 自己点検チェックリスト", "### 自己点検チェックリスト", "## 自己点検", "### 自己点検"];
+  
+  for (const pattern of patterns) {
+    const startIndex = skillContent.indexOf(pattern);
+    if (startIndex !== -1) {
+      const nextSectionStart = skillContent.indexOf("\n## ", startIndex + pattern.length);
+      if (nextSectionStart === -1) {
+        return skillContent.slice(startIndex);
+      }
+      return skillContent.slice(startIndex, nextSectionStart);
+    }
+  }
+
+  return "";
 }
 
 /**
@@ -574,16 +642,15 @@ function buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): st
     }
   }
 
-  return `${marker}
+  // self-improvementスキルから視座の詳細説明を取得
+  const skillContent = loadSelfImprovementSkill();
+  const perspectivesSection = extractPerspectivesSection(skillContent);
+  const checklistSection = extractChecklistSection(skillContent);
 
-あなたは通常のコーディングエージェントとして動作してください。
-以下のタスクを継続実行してください:
-${run.task}
-${previousSummary}${strategySection}
-## 7つの哲学的視座による自己点検
-
-このサイクルでは、以下の7つの視座から自己点検を行ってください:
-
+  // スキルに基づく視座の詳細（フォールバック付き）
+  const perspectivesDetail = perspectivesSection 
+    ? `\n${perspectivesSection}\n`
+    : `
 ### I. 脱構築（Deconstruction）
 - このタスクにおいて「当然」と前提していることは何か？
 - どのような二項対立（成功/失敗、正解/不正解）を前提としているか？
@@ -612,7 +679,25 @@ ${previousSummary}${strategySection}
 ### VII. 論理学（Logic）
 - この推論は妥当か？（前提が真なら結論も真か？）
 - 誤謬（循環論法・虚假二分法など）を犯していないか？
+`;
 
+  // チェックリストセクション（あれば追加）
+  const checklistAddition = checklistSection 
+    ? `\n## 自己点検チェックリスト\n${checklistSection}\n`
+    : '';
+
+  return `${marker}
+
+あなたは通常のコーディングエージェントとして動作してください。
+以下のタスクを継続実行してください:
+${run.task}
+${previousSummary}${strategySection}
+## 7つの哲学的視座による自己点検
+
+このサイクルでは、self-improvementスキルに基づき、以下の7つの視座から自己点検を行ってください:
+
+${perspectivesDetail}
+${checklistAddition}
 ## 実行ルール
 - 通常のエージェントと同じように、必要なツールを自由に使う
 - 必要に応じて subagent_run / subagent_run_parallel を使う
