@@ -281,6 +281,20 @@ interface ActiveAutonomousRun {
   lastImprovementActions?: ImprovementAction[];
   /** 前回の統合検出結果（信頼度付き） */
   lastIntegratedDetection?: IntegratedVerificationResult;
+  /** 成功したサイクルのパターン（高スコアの例） */
+  successfulPatterns: SuccessfulPattern[];
+}
+
+/** 成功パターンの記録 */
+interface SuccessfulPattern {
+  /** サイクル番号 */
+  cycle: number;
+  /** 平均視座スコア */
+  averageScore: number;
+  /** 実行したアクションの要約 */
+  actionSummary: string;
+  /** 適用した視座 */
+  appliedPerspectives: string[];
 }
 
 // ============================================================================
@@ -735,6 +749,37 @@ function generateStrategyHint(
   return hint || null;
 }
 
+/** 成功パターンセクションを生成 */
+function generateSuccessPatternsSection(run: ActiveAutonomousRun): string {
+  if (run.successfulPatterns.length === 0) {
+    return '';
+  }
+  
+  // 高スコアのパターンを最大3つ表示
+  const topPatterns = run.successfulPatterns
+    .filter(p => p.averageScore >= 75)
+    .sort((a, b) => b.averageScore - a.averageScore)
+    .slice(0, 3);
+  
+  if (topPatterns.length === 0) {
+    return '';
+  }
+  
+  return `
+## 過去の成功パターン（参考）
+
+以下のアプローチが効果的でした：
+
+${topPatterns.map((p, i) => 
+  `${i + 1}. [Cycle ${p.cycle}] スコア: ${p.averageScore}%
+   - アクション: ${p.actionSummary}
+   - 焦点とした視座: ${p.appliedPerspectives.join(', ')}`
+).join('\n\n')}
+
+※ 過去の成功を再現するのではなく、現在の状況に適応させることが重要です。
+`;
+}
+
 function buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): string {
   const marker = buildLoopMarker(run.runId, cycle);
   
@@ -864,7 +909,7 @@ ${topActions.map((action, i) =>
 あなたは通常のコーディングエージェントとして動作してください。
 以下のタスクを継続実行してください:
 ${run.task}
-${previousSummary}${strategySection}${qualityGuidance}
+${previousSummary}${strategySection}${qualityGuidance}${generateSuccessPatternsSection(run)}
 ## 7つの哲学的視座による自己点検
 
 このサイクルでは、self-improvementスキルに基づき、以下の7つの視座から自己点検を行ってください:
@@ -874,32 +919,44 @@ ${checklistAddition}
 
 ## 品質基準（事前ガイダンス）
 
-**3つの核心基準**を出力時に満たすことを目指してください：
+**良い出力の例**（この形式に近づける）:
 
-### 1. 推論の明示性
-- 前提を明示する（「前提として〜」と書く）
-- 推論過程を示す（「したがって」「なぜなら」を使う）
-- 結論への論理的道筋を示す
+```
+## 前提
+- [前提1: 明示的な仮定]
+- [前提2: コンテキスト情報]
 
-### 2. 批判的思考
-- 自分の仮説を否定する可能性を検討する
-- 代替アプローチを検討する
-- 「もちろん」「当然」を避け、理由を述べる
+## 分析
+[推論過程を段階的に記述]
+1. なぜこのアプローチを選んだか: [理由]
+2. 代替案として検討したもの: [代替アプローチ]
+3. この選択のリスク: [潜在的問題]
 
-### 3. 倫理的意識
-- ユーザー迎合せず真実を述べる
-- 「べき」「must」を無批判に使わない
-- 多様な選択肢を排除しない
+## 反証の検討
+[自分の仮説を否定する証拠または可能性]
+- [反証1]
 
-## 出力前の自己検証（重要）
+## 結論
+[前提と分析に基づく結論]
+```
 
-出力を完了する前に、以下の3点を自問してください：
+**悪い出力の例**（これを避ける）:
 
-1. **前提は明示したか？** - 暗黙の前提を書き出したか
-2. **反例を探したか？** - 自分の仮説を否定する証拠を最低1つ探したか
-3. **論理は妥当か？** - 前提から結論への飛躍がないか
+```
+[悪い例1: 理由なしの結論]
+「この実装が良いです。」
 
-※ これらは「事後判定される」のではなく、「あなたが自ら確認する」ものです。
+[悪い例2: ユーザー迎合]
+「ユーザーの言う通りにします。」
+
+[悪い例3: 当然視]
+「もちろん、これは正しいアプローチです。」
+```
+
+**出力前チェック**（3秒考えて）:
+1. 前提を書いたか？
+2. 代替案を検討したか？
+3. 反証を探したか？
 
 ## 実行ルール
 - 通常のエージェントと同じように、必要なツールを自由に使う
@@ -2376,6 +2433,7 @@ export default (api: ExtensionAPI) => {
       trajectoryTracker: new TrajectoryTracker(50), // 最大50ステップ保持
       cycleSummaries: [],
       perspectiveScoreHistory: [],
+      successfulPatterns: [],
     };
 
     initializeAutonomousLoopLog(logPath, run);
@@ -2428,6 +2486,24 @@ export default (api: ExtensionAPI) => {
       if (scores) {
         run.perspectiveScoreHistory.push(scores);
         appendAutonomousLoopLog(run.logPath, `  perspective_scores: avg=${scores.average}, deconstruction=${scores.deconstruction}, logic=${scores.logic}`);
+        
+        // 高スコアの場合、成功パターンとして記録
+        if (scores.average >= 75) {
+          const nextFocus = parseNextFocus(outputText) || '';
+          const lowScores = [
+            scores.deconstruction < 70 ? '脱構築' : null,
+            scores.logic < 70 ? '論理学' : null,
+          ].filter(Boolean) as string[];
+          
+          run.successfulPatterns.push({
+            cycle: completedCycle,
+            averageScore: scores.average,
+            actionSummary: nextFocus.slice(0, 100),
+            appliedPerspectives: lowScores.length > 0 ? lowScores : ['バランス型']
+          });
+          
+          appendAutonomousLoopLog(run.logPath, `  success_pattern_recorded: avg=${scores.average}`);
+        }
       }
 
       // NEXT_FOCUSを抽出してサマリーに追加
