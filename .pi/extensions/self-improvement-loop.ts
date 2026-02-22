@@ -221,11 +221,191 @@ const DEFAULT_MODEL: SelfImprovementModel = {
   thinkingLevel: "medium" as ThinkingLevel,
 };
 
+/** git-workflowスキルのパス */
+const GIT_WORKFLOW_SKILL_PATH = ".pi/skills/git-workflow/SKILL.md";
+
+/** スキル内容のキャッシュ */
+let cachedGitWorkflowSkill: string | null = null;
+
 const LOOP_MARKER_PREFIX = "[[SELF_IMPROVEMENT_LOOP";
 
 // ============================================================================
 // ユーティリティ関数
 // ============================================================================
+
+/**
+ * git-workflowスキルを読み込む
+ * キャッシュ機能付きで、複数回呼び出し時はキャッシュを返す
+ */
+function loadGitWorkflowSkill(): string {
+  if (cachedGitWorkflowSkill) {
+    return cachedGitWorkflowSkill;
+  }
+
+  const skillPath = resolve(process.cwd(), GIT_WORKFLOW_SKILL_PATH);
+  if (!existsSync(skillPath)) {
+    console.warn(`[self-improvement-loop] git-workflow skill not found at ${skillPath}`);
+    return "";
+  }
+
+  try {
+    cachedGitWorkflowSkill = readFileSync(skillPath, "utf-8");
+    console.log(`[self-improvement-loop] Loaded git-workflow skill (${cachedGitWorkflowSkill.length} bytes)`);
+    return cachedGitWorkflowSkill;
+  } catch (error) {
+    console.warn(`[self-improvement-loop] Failed to load git-workflow skill: ${toErrorMessage(error)}`);
+    return "";
+  }
+}
+
+/**
+ * 変更差分の詳細を取得する
+ * コミットメッセージ生成のために変更内容を分析する
+ */
+async function getDiffSummary(cwd: string): Promise<{ stats: string; changes: string }> {
+  // 統計情報
+  const statsResult = await runGitCommand(["diff", "--stat"], cwd);
+  const stats = statsResult.stdout.trim();
+
+  // 変更内容のサマリー（最初の100行程度）
+  const diffResult = await runGitCommand(["diff"], cwd);
+  const diffLines = diffResult.stdout.split("\n").slice(0, 100);
+  
+  // ファイルごとの変更タイプを抽出
+  const changesResult = await runGitCommand(["status", "--short"], cwd);
+  const changes = changesResult.stdout.trim();
+
+  return { stats, changes };
+}
+
+/**
+ * LLMがgit-workflowスキルに準拠したコミットメッセージを生成する
+ * 
+ * スキル準拠ルール:
+ * - 日本語で詳細に書く
+ * - Body（本文）を必ず書く
+ * - Type: feat, fix, docs, refactor, test, chore, perf, ci
+ */
+async function generateCommitMessage(
+  cycleNumber: number,
+  runId: string,
+  taskSummary: string,
+  diffSummary: { stats: string; changes: string },
+  perspectiveResults: Array<{ perspective: string; score: number; improvements: string[] }>,
+  model: SelfImprovementModel
+): Promise<string> {
+  // git-workflowスキルを読み込み
+  const skillContent = loadGitWorkflowSkill();
+  
+  // スキルからコミットメッセージ規約セクションを抽出
+  const commitGuideSection = skillContent.includes("## コミットメッセージ規約")
+    ? skillContent.slice(
+        skillContent.indexOf("## コミットメッセージ規約"),
+        skillContent.indexOf("## ", skillContent.indexOf("## コミットメッセージ規約") + 10) !== -1
+          ? skillContent.indexOf("## ", skillContent.indexOf("## コミットメッセージ規約") + 10)
+          : skillContent.length
+      )
+    : "";
+
+  const prompt = `あなたはgit-workflowスキルに準拠したコミットメッセージを生成するアシスタントです。
+以下のルールと情報に基づいて、日本語でコミットメッセージを生成してください。
+
+## git-workflowスキルのコミットメッセージ規約
+
+${commitGuideSection || `
+### 基本方針
+- 絵文字は使用しない
+- 日本語で詳細に書く（絶対必須）
+- Body（本文）を必ず書く
+
+### フォーマット
+<Type>[(scope)]: <Title>
+
+<Body>
+
+### Type一覧
+- feat: ユーザー向けの機能追加・変更
+- fix: ユーザー向けの不具合修正
+- docs: ドキュメント更新
+- refactor: リファクタリング
+- test: テストコード追加・修正
+- chore: プロダクション影響のない修正
+- perf: パフォーマンス改善
+- ci: CI設定の変更
+
+### タイトルのルール
+- 現在形で書く
+- 50文字以内
+- 具体的に
+
+### Bodyのルール（重要）
+1. What（何を）: どのような変更をしたか
+2. Why（なぜ）: なぜこの変更が必要だったか
+3. How（どう）: どのように実装したか
+4. テスト方法: どうテストしたか
+5. 影響範囲: 他に影響する部分はあるか
+`}
+
+---
+
+## 変更内容
+
+### 変更統計
+\`\`\`
+${diffSummary.stats || "（変更なし）"}
+\`\`\`
+
+### 変更ファイル一覧
+\`\`\`
+${diffSummary.changes || "（なし）"}
+\`\`\`
+
+## 自己改善ループのコンテキスト
+
+- サイクル番号: ${cycleNumber}
+- 実行ID: ${runId}
+- タスクサマリー: ${taskSummary}
+
+### 視座別スコアと改善
+${perspectiveResults.map(r => {
+  const p = PERSPECTIVES.find(p => p.name === r.perspective);
+  return `- ${p?.displayName ?? r.perspective}: ${(r.score * 100).toFixed(0)}%\n  改善: ${r.improvements.slice(0, 2).join(", ") || "なし"}`;
+}).join("\n")}
+
+---
+
+## 指示
+
+上記の情報に基づいて、git-workflowスキルに準拠したコミットメッセージを生成してください。
+出力はコミットメッセージのみとしてください（コードブロックや説明文は不要）。
+
+重要:
+- Typeは変更内容に応じて適切に選択（自己改善による修正ならrefactorやfix、機能追加ならfeat）
+- scopeは "self-improvement-loop" を使用
+- 日本語で書く
+- Bodyを必ず含める`;
+
+  try {
+    const generatedMessage = await callModel(prompt, model, 60000);
+    return generatedMessage.trim();
+  } catch (error) {
+    console.warn(`[self-improvement-loop] Failed to generate commit message: ${toErrorMessage(error)}`);
+    
+    // フォールバック: 日本語のシンプルなメッセージ
+    return `chore(self-improvement-loop): サイクル${cycleNumber}の自己改善を実施する
+
+## 変更内容
+自己改善ループのサイクル${cycleNumber}で実施した変更を反映する。
+
+## コンテキスト
+- 実行ID: ${runId}
+- 視座スコア平均: ${perspectiveResults.length > 0 
+    ? (perspectiveResults.reduce((sum, r) => sum + r.score, 0) / perspectiveResults.length * 100).toFixed(0) + "%"
+    : "不明"}
+
+runId: ${runId}`;
+  }
+}
 
 function createRunId(): string {
   const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
@@ -586,21 +766,126 @@ async function runGitCommand(args: string[], cwd: string): Promise<{ stdout: str
   });
 }
 
+/**
+ * 変更されたファイル一覧を取得する
+ * git-workflowスキル準拠: 自分が編集したファイルのみをステージングするため
+ */
+async function getChangedFiles(cwd: string): Promise<string[]> {
+  const result = await runGitCommand(["status", "--porcelain"], cwd);
+  if (result.code !== 0) {
+    return [];
+  }
+
+  const files: string[] = [];
+  for (const line of result.stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // XY PATH形式（X=インデックス、Y=作業ツリーの状態）
+    // M = 修正、A = 追加、D = 削除、? = 未追跡
+    const match = trimmed.match(/^[MADRC?!\s]{2}\s+(.+)$/);
+    if (match && match[1]) {
+      const filePath = match[1].trim();
+      // リネームの場合は "old -> new" 形式になるので new を取得
+      const actualPath = filePath.includes(" -> ") 
+        ? filePath.split(" -> ")[1] 
+        : filePath;
+      if (actualPath) {
+        files.push(actualPath);
+      }
+    }
+  }
+
+  return files;
+}
+
+/**
+ * 除外すべきファイルパターン
+ * git-workflowスキル準拠: 機密情報、ビルド成果物、キャッシュを除外
+ */
+const EXCLUDE_PATTERNS = [
+  /\.env$/,
+  /\.env\./,
+  /credentials/i,
+  /secrets?\.json$/i,
+  /node_modules\//,
+  /dist\//,
+  /build\//,
+  /\.cache\//,
+  /\.log$/,
+  /package-lock\.json$/,
+  /yarn\.lock$/,
+  /pnpm-lock\.yaml$/,
+];
+
+/**
+ * ファイルがステージング対象かどうかを判定
+ */
+function shouldStageFile(filePath: string): boolean {
+  for (const pattern of EXCLUDE_PATTERNS) {
+    if (pattern.test(filePath)) {
+      console.log(`[self-improvement-loop] Excluding file from staging: ${filePath}`);
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * git-workflowスキル準拠のコミット作成
+ * 
+ * ルール:
+ * - git add -A / git add . は使用せず、変更ファイルを個別にステージング
+ * - コミットメッセージは日本語
+ * - 機密情報・ビルド成果物は除外
+ */
 async function createGitCommit(message: string, cwd: string): Promise<string | null> {
   try {
-    // Stage all changes
-    await runGitCommand(["add", "-A"], cwd);
+    // 変更ファイル一覧を取得
+    const changedFiles = await getChangedFiles(cwd);
+    
+    if (changedFiles.length === 0) {
+      console.log("[self-improvement-loop] No changes to commit");
+      return null;
+    }
 
-    // Create commit
+    // 除外パターンを適用してステージング対象を絞り込み
+    const filesToStage = changedFiles.filter(shouldStageFile);
+    
+    if (filesToStage.length === 0) {
+      console.log("[self-improvement-loop] All changed files are excluded from staging");
+      return null;
+    }
+
+    console.log(`[self-improvement-loop] Staging ${filesToStage.length} files: ${filesToStage.slice(0, 5).join(", ")}${filesToStage.length > 5 ? "..." : ""}`);
+
+    // 個別にファイルをステージング（git add -A を使用しない）
+    for (const file of filesToStage) {
+      const addResult = await runGitCommand(["add", file], cwd);
+      if (addResult.code !== 0) {
+        console.warn(`[self-improvement-loop] Failed to stage ${file}: ${addResult.stderr}`);
+      }
+    }
+
+    // ステージング内容を確認
+    const stagedResult = await runGitCommand(["diff", "--staged", "--stat"], cwd);
+    if (stagedResult.stdout.trim().length === 0) {
+      console.log("[self-improvement-loop] No staged changes after filtering");
+      return null;
+    }
+
+    // コミット作成
     const result = await runGitCommand(["commit", "-m", message], cwd);
 
     if (result.code === 0) {
-      // Get commit hash
+      // コミットハッシュを取得
       const hashResult = await runGitCommand(["rev-parse", "HEAD"], cwd);
-      return hashResult.stdout.trim().slice(0, 7);
+      const hash = hashResult.stdout.trim().slice(0, 7);
+      console.log(`[self-improvement-loop] Commit created: ${hash}`);
+      return hash;
     }
 
-    // No changes to commit
+    // 変更なしエラー
     if (result.stderr.includes("nothing to commit")) {
       return null;
     }
@@ -610,6 +895,93 @@ async function createGitCommit(message: string, cwd: string): Promise<string | n
   } catch (error) {
     console.error(`[self-improvement-loop] Git operation failed: ${toErrorMessage(error)}`);
     return null;
+  }
+}
+
+/**
+ * LLMがコミットメッセージを生成してコミットを作成する
+ * git-workflowスキル準拠
+ */
+interface CommitContext {
+  cycleNumber: number;
+  runId: string;
+  taskSummary: string;
+  perspectiveResults: Array<{ perspective: string; score: number; improvements: string[] }>;
+}
+
+async function createGitCommitWithLLM(
+  cwd: string,
+  context: CommitContext,
+  model: SelfImprovementModel
+): Promise<{ hash: string | null; message: string }> {
+  try {
+    // 変更ファイル一覧を取得
+    const changedFiles = await getChangedFiles(cwd);
+    
+    if (changedFiles.length === 0) {
+      console.log("[self-improvement-loop] No changes to commit");
+      return { hash: null, message: "" };
+    }
+
+    // 除外パターンを適用してステージング対象を絞り込み
+    const filesToStage = changedFiles.filter(shouldStageFile);
+    
+    if (filesToStage.length === 0) {
+      console.log("[self-improvement-loop] All changed files are excluded from staging");
+      return { hash: null, message: "" };
+    }
+
+    console.log(`[self-improvement-loop] Staging ${filesToStage.length} files: ${filesToStage.slice(0, 5).join(", ")}${filesToStage.length > 5 ? "..." : ""}`);
+
+    // 個別にファイルをステージング（git add -A を使用しない）
+    for (const file of filesToStage) {
+      const addResult = await runGitCommand(["add", file], cwd);
+      if (addResult.code !== 0) {
+        console.warn(`[self-improvement-loop] Failed to stage ${file}: ${addResult.stderr}`);
+      }
+    }
+
+    // ステージング内容を確認
+    const stagedResult = await runGitCommand(["diff", "--staged", "--stat"], cwd);
+    if (stagedResult.stdout.trim().length === 0) {
+      console.log("[self-improvement-loop] No staged changes after filtering");
+      return { hash: null, message: "" };
+    }
+
+    // 変更差分を取得してLLMにコミットメッセージを生成させる
+    const diffSummary = await getDiffSummary(cwd);
+    const commitMessage = await generateCommitMessage(
+      context.cycleNumber,
+      context.runId,
+      context.taskSummary,
+      diffSummary,
+      context.perspectiveResults,
+      model
+    );
+
+    console.log(`[self-improvement-loop] Generated commit message:\n${commitMessage.split("\n")[0]}`);
+
+    // コミット作成
+    const result = await runGitCommand(["commit", "-m", commitMessage], cwd);
+
+    if (result.code === 0) {
+      // コミットハッシュを取得
+      const hashResult = await runGitCommand(["rev-parse", "HEAD"], cwd);
+      const hash = hashResult.stdout.trim().slice(0, 7);
+      console.log(`[self-improvement-loop] Commit created: ${hash}`);
+      return { hash, message: commitMessage };
+    }
+
+    // 変更なしエラー
+    if (result.stderr.includes("nothing to commit")) {
+      return { hash: null, message: "" };
+    }
+
+    console.warn(`[self-improvement-loop] Git commit warning: ${result.stderr}`);
+    return { hash: null, message: commitMessage };
+  } catch (error) {
+    console.error(`[self-improvement-loop] Git operation failed: ${toErrorMessage(error)}`);
+    return { hash: null, message: "" };
   }
 }
 
@@ -876,20 +1248,25 @@ async function runSelfImprovementLoop(
       // ログに記録
       appendCycleLog(logPath, state, cycleResult);
 
-      // Git管理
+      // Git管理（LLMがコミットメッセージを生成）
       if (config.autoCommit && cycleResult.improvements.length > 0) {
-        const commitMessage = `feat(self-improvement): cycle ${state.currentCycle} - ${cycleResult.improvements.length} improvements
-
-${cycleResult.summary}
-
-Perspectives applied:
-${cycleResult.perspectiveResults.map((r) => `- ${PERSPECTIVES.find((p) => p.name === r.perspective)?.displayName}: ${(r.score * 100).toFixed(0)}%`).join("\n")}
-
-Run ID: ${state.runId}`;
-        const commitHash = await createGitCommit(commitMessage, process.cwd());
-        if (commitHash) {
-          state.lastCommitHash = commitHash;
-          cycleResult.commitHash = commitHash;
+        const { hash, message } = await createGitCommitWithLLM(
+          process.cwd(),
+          {
+            cycleNumber: state.currentCycle,
+            runId: state.runId,
+            taskSummary: cycleResult.summary,
+            perspectiveResults: cycleResult.perspectiveResults.map(r => ({
+              perspective: r.perspective,
+              score: r.score,
+              improvements: r.improvements,
+            })),
+          },
+          model
+        );
+        if (hash) {
+          state.lastCommitHash = hash;
+          cycleResult.commitHash = hash;
         }
       }
 
@@ -1288,12 +1665,35 @@ export default (api: ExtensionAPI) => {
     });
 
     if (run.autoCommit) {
-      const commitMessage = `feat(self-improvement-loop): cycle ${completedCycle}
+      // 視座スコア履歴から最新の結果を取得（なければ空配列）
+      const latestScores = run.perspectiveScoreHistory.length > 0
+        ? run.perspectiveScoreHistory[run.perspectiveScoreHistory.length - 1]
+        : null;
 
-runId: ${run.runId}
-task: ${run.task}
-model: ${run.model.provider}/${run.model.id}`;
-      const hash = await createGitCommit(commitMessage, process.cwd());
+      const perspectiveResults = latestScores
+        ? [
+            { perspective: "deconstruction", score: latestScores.deconstruction / 100, improvements: [] },
+            { perspective: "schizoanalysis", score: latestScores.schizoanalysis / 100, improvements: [] },
+            { perspective: "eudaimonia", score: latestScores.eudaimonia / 100, improvements: [] },
+            { perspective: "utopia_dystopia", score: latestScores.utopia_dystopia / 100, improvements: [] },
+            { perspective: "thinking_philosophy", score: latestScores.thinking_philosophy / 100, improvements: [] },
+            { perspective: "thinking_taxonomy", score: latestScores.thinking_taxonomy / 100, improvements: [] },
+            { perspective: "logic", score: latestScores.logic / 100, improvements: [] },
+          ]
+        : [];
+
+      // LLMがgit-workflowスキル準拠のコミットメッセージを生成
+      const { hash, message } = await createGitCommitWithLLM(
+        process.cwd(),
+        {
+          cycleNumber: completedCycle,
+          runId: run.runId,
+          taskSummary: run.task,
+          perspectiveResults,
+        },
+        run.model
+      );
+
       if (hash) {
         run.lastCommitHash = hash;
         appendAutonomousLoopLog(run.logPath, `  commit: ${hash}`);
