@@ -2023,3 +2023,300 @@ export function generateMetacognitiveSummary(check: MetacognitiveCheck): string 
 
   return summary;
 }
+
+/**
+ * 改善アクションを表すインターフェース
+ * @summary 改善アクション定義
+ */
+export interface ImprovementAction {
+  /** アクションのカテゴリ */
+  category: 'deconstruction' | 'schizoanalysis' | 'eudaimonia' | 'utopia_dystopia' | 
+            'philosophy_of_thought' | 'taxonomy_of_thought' | 'logic';
+  /** 優先度（1-5、1が最高） */
+  priority: 1 | 2 | 3 | 4 | 5;
+  /** 問題の説明 */
+  issue: string;
+  /** 具体的な改善アクション */
+  action: string;
+  /** 期待される効果 */
+  expectedOutcome: string;
+  /** 関連する視座 */
+  relatedPerspective: string;
+}
+
+/**
+ * メタ認知チェック結果から改善アクションを生成する
+ * 
+ * @summary 改善アクション生成
+ * @param check メタ認知チェック結果
+ * @returns 優先度順の改善アクションリスト
+ */
+export function generateImprovementActions(check: MetacognitiveCheck): ImprovementAction[] {
+  const actions: ImprovementAction[] = [];
+
+  // I. 脱構築: 二項対立の脱構築アクション
+  for (const binary of check.deconstruction.binaryOppositions) {
+    actions.push({
+      category: 'deconstruction',
+      priority: 2,
+      issue: `二項対立「${binary}」が検出された`,
+      action: `「${binary}」の中間領域や第三の選択肢を探求する。両極を両立させる条件を検討する。`,
+      expectedOutcome: '二項対立を超えた統合的解決の発見',
+      relatedPerspective: '脱構築'
+    });
+  }
+
+  // アポリア対処アクション
+  for (const aporia of check.deconstruction.aporias) {
+    const priority: 1 | 2 | 3 | 4 | 5 = aporia.tensionLevel > 0.7 ? 1 : 2;
+    actions.push({
+      category: 'deconstruction',
+      priority,
+      issue: `アポリア「${aporia.description}」が存在する`,
+      action: `このアポリアを「解決すべき問題」ではなく「認識すべき状態」として受け入れる。` +
+              `${aporia.pole1.concept}と${aporia.pole2.concept}の両極を維持しながら、文脈に応じて判断する。`,
+      expectedOutcome: 'アポリアとの生産的な共存',
+      relatedPerspective: '脱構築'
+    });
+  }
+
+  // II. スキゾ分析: 内なるファシズムへの対処
+  for (const sign of check.schizoAnalysis.innerFascismSigns) {
+    actions.push({
+      category: 'schizoanalysis',
+      priority: 2,
+      issue: `内なるファシズム兆候「${sign}」が検出された`,
+      action: `「${sign}」のパターンを意識的に緩和する。代替表現や柔軟な判断基準を導入する。`,
+      expectedOutcome: 'より自由で創造的な思考の獲得',
+      relatedPerspective: 'スキゾ分析'
+    });
+  }
+
+  // III. 幸福論: 快楽主義の罠
+  if (check.eudaimonia.pleasureTrap) {
+    actions.push({
+      category: 'eudaimonia',
+      priority: 3,
+      issue: '快楽主義の罠（簡単・手軽な解決への誘惑）が検出された',
+      action: '長期的な価値と成長を優先する。困難でも本質的な解決を追求する。',
+      expectedOutcome: '持続可能で意味のある成果の達成',
+      relatedPerspective: '幸福論'
+    });
+  }
+
+  // IV. ユートピア/ディストピア: 全体主義リスク
+  for (const risk of check.utopiaDystopia.totalitarianRisk) {
+    actions.push({
+      category: 'utopia_dystopia',
+      priority: 3,
+      issue: `全体主義リスク「${risk}」が検出された`,
+      action: `多様性と個別性を尊重する判断を意識する。「${risk}」の傾向を緩和する仕組みを検討する。`,
+      expectedOutcome: '開かれた柔軟なシステムの維持',
+      relatedPerspective: 'ユートピア/ディストピア'
+    });
+  }
+
+  // V. 思考哲学: オートパイロット兆候
+  for (const sign of check.philosophyOfThought.autopilotSigns) {
+    actions.push({
+      category: 'philosophy_of_thought',
+      priority: 1,
+      issue: `オートパイロット兆候「${sign}」が検出された`,
+      action: `意識的に「${sign}」の逆を行う。前提を明示し、推論過程を記述する。メタ認知を実践する。`,
+      expectedOutcome: '深い思考と批判的判断の回復',
+      relatedPerspective: '思考哲学'
+    });
+  }
+
+  // 低メタ認知レベル
+  if (check.philosophyOfThought.metacognitionLevel < 0.5) {
+    actions.push({
+      category: 'philosophy_of_thought',
+      priority: 1,
+      issue: `メタ認知レベルが低い（${(check.philosophyOfThought.metacognitionLevel * 100).toFixed(0)}%）`,
+      action: '以下を実践する：(1) 暗黙の前提を明示 (2) 推論の各ステップを検証 (3) 反例を積極的に探索',
+      expectedOutcome: 'メタ認知レベルの向上と思考の深化',
+      relatedPerspective: '思考哲学'
+    });
+  }
+
+  // VI. 思考分類学: 不適切な思考モード
+  if (check.taxonomyOfThought.currentMode !== check.taxonomyOfThought.recommendedMode) {
+    actions.push({
+      category: 'taxonomy_of_thought',
+      priority: 3,
+      issue: `思考モードが不適切（現在: ${check.taxonomyOfThought.currentMode}, 推奨: ${check.taxonomyOfThought.recommendedMode}）`,
+      action: `${check.taxonomyOfThought.modeRationale}。意識的に${check.taxonomyOfThought.recommendedMode}モードに切り替える。`,
+      expectedOutcome: 'タスクに適した思考アプローチの適用',
+      relatedPerspective: '思考分類学'
+    });
+  }
+
+  // VII. 論理学: 誤謬への対処
+  for (const fallacy of check.logic.fallacies) {
+    actions.push({
+      category: 'logic',
+      priority: 1,
+      issue: `論理的誤謬「${fallacy.type}」が検出された: ${fallacy.description}`,
+      action: fallacy.correction,
+      expectedOutcome: '論理的妥当性の確保',
+      relatedPerspective: '論理学'
+    });
+  }
+
+  // 推論チェーンの問題
+  if (check.logic.inferenceChain) {
+    const chain = check.logic.inferenceChain;
+    
+    if (chain.gaps.length > 0) {
+      for (const gap of chain.gaps) {
+        actions.push({
+          category: 'logic',
+          priority: 2,
+          issue: `推論の飛躍: ${gap}`,
+          action: '前提と結論をつなぐ中間ステップを明示する。各ステップの論理的妥当性を検証する。',
+          expectedOutcome: '論理的飞躍の解消',
+          relatedPerspective: '論理学'
+        });
+      }
+    }
+    
+    if (chain.validity === 'invalid') {
+      actions.push({
+        category: 'logic',
+        priority: 1,
+        issue: '推論チェーンが無効と判定された',
+        action: '推論全体を再構築する。各前提が結論を導くか検証する。代替の推論経路を検討する。',
+        expectedOutcome: '有効な推論の構築',
+        relatedPerspective: '論理学'
+      });
+    }
+  }
+
+  // 優先度順にソート
+  return actions.sort((a, b) => a.priority - b.priority);
+}
+
+/**
+ * 改善アクションを実行可能なプロンプト指示に変換する
+ * 
+ * @summary プロンプト指示生成
+ * @param actions 改善アクションリスト
+ * @param maxActions 最大アクション数（デフォルト: 5）
+ * @returns プロンプトに追加可能な指示文字列
+ */
+export function formatActionsAsPromptInstructions(
+  actions: ImprovementAction[],
+  maxActions: number = 5
+): string {
+  const topActions = actions.slice(0, maxActions);
+  
+  if (topActions.length === 0) {
+    return '';
+  }
+
+  const instructions = topActions.map((action, index) => 
+    `${index + 1}. 【${action.relatedPerspective}】${action.action}`
+  );
+
+  return `## 推論改善指示
+
+以下の改善アクションを実践してください：
+
+${instructions.join('\n')}
+
+これらは、前回の分析で検出された問題に対処するための具体的な指示です。`;
+}
+
+/**
+ * メタ認知チェックと改善アクションを統合的に実行
+ * 
+ * @summary 統合メタ認知分析
+ * @param output 分析対象の出力
+ * @param context コンテキスト情報
+ * @returns メタ認知チェック結果、改善アクション、プロンプト指示を含む統合結果
+ */
+export function runIntegratedMetacognitiveAnalysis(
+  output: string,
+  context: { task?: string; currentMode?: string } = {}
+): {
+  check: MetacognitiveCheck;
+  actions: ImprovementAction[];
+  promptInstructions: string;
+  summary: string;
+  depthScore: number;
+} {
+  // メタ認知チェックを実行
+  const check = runMetacognitiveCheck(output, context);
+  
+  // 改善アクションを生成
+  const actions = generateImprovementActions(check);
+  
+  // プロンプト指示を生成
+  const promptInstructions = formatActionsAsPromptInstructions(actions);
+  
+  // サマリーを生成
+  const summary = generateMetacognitiveSummary(check);
+  
+  // 推論深度スコアを計算
+  const depthScore = calculateDepthScore(check);
+  
+  return {
+    check,
+    actions,
+    promptInstructions,
+    summary,
+    depthScore
+  };
+}
+
+/**
+ * 推論深度スコアを計算（内部関数）
+ */
+function calculateDepthScore(check: MetacognitiveCheck): number {
+  let score = 0.5;
+  
+  // 二項対立の認識 = 深い思考の証
+  score += Math.min(check.deconstruction.binaryOppositions.length * 0.05, 0.15);
+  
+  // アポリアの認識 = 複雑さの受容
+  score += Math.min(check.deconstruction.aporias.length * 0.08, 0.2);
+  
+  // 欲望の自己認識
+  score += Math.min(check.schizoAnalysis.desireProduction.length * 0.03, 0.09);
+  
+  // 快楽主義の罠を回避している
+  if (!check.eudaimonia.pleasureTrap) {
+    score += 0.05;
+  }
+  
+  // リスク認識
+  score += Math.min(check.utopiaDystopia.totalitarianRisk.length * 0.03, 0.09);
+  
+  // メタ認知レベル（最重要）
+  score += check.philosophyOfThought.metacognitionLevel * 0.15;
+  
+  // 思考モードの適切性
+  if (check.taxonomyOfThought.currentMode === check.taxonomyOfThought.recommendedMode) {
+    score += 0.05;
+  }
+  
+  // 誤謬の不在
+  if (check.logic.fallacies.length === 0) {
+    score += 0.05;
+  } else {
+    score -= Math.min(check.logic.fallacies.length * 0.1, 0.25);
+  }
+  
+  // 推論チェーンの品質
+  if (check.logic.inferenceChain) {
+    if (check.logic.inferenceChain.validity === 'valid') {
+      score += 0.1;
+    }
+    if (check.logic.inferenceChain.gaps.length === 0) {
+      score += 0.05;
+    }
+  }
+  
+  return Math.max(0, Math.min(1, score));
+}

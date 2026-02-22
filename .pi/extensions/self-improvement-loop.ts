@@ -54,6 +54,10 @@ import {
   type MetacognitiveCheck,
   type AporiaDetection,
   type FallacyDetection,
+  type ImprovementAction,
+  generateImprovementActions,
+  formatActionsAsPromptInstructions,
+  runIntegratedMetacognitiveAnalysis,
 } from "../lib/verification-workflow.js";
 import {
   retryWithBackoff,
@@ -245,6 +249,8 @@ interface ActiveAutonomousRun {
   lastMetacognitiveCheck?: MetacognitiveCheck;
   /** 前回の推論深度スコア */
   lastInferenceDepthScore?: number;
+  /** 前回の改善アクション（次サイクルでの実践用） */
+  lastImprovementActions?: ImprovementAction[];
 }
 
 // ============================================================================
@@ -752,6 +758,19 @@ ${mc.deconstruction.aporias.map(a => `- ${a.description}`).join('\n')}\n\n`;
     }
   }
 
+  // 改善アクションを含める（優先度順に最大5件）
+  let improvementActionsSection = '';
+  if (run.lastImprovementActions && run.lastImprovementActions.length > 0) {
+    const topActions = run.lastImprovementActions.slice(0, 5);
+    improvementActionsSection = `\n## 次の改善アクション（優先度順）
+
+以下のアクションを今回の分析で実践してください：
+
+${topActions.map((action, i) => 
+  `${i + 1}. **【${action.relatedPerspective}】** ${action.action}\n   - 問題: ${action.issue}\n   - 期待効果: ${action.expectedOutcome}`
+).join('\n\n')}\n\n`;
+  }
+
   // self-improvementスキルから視座の詳細説明を取得
   const skillContent = loadSelfImprovementSkill();
   const perspectivesSection = extractPerspectivesSection(skillContent);
@@ -801,7 +820,7 @@ ${mc.deconstruction.aporias.map(a => `- ${a.description}`).join('\n')}\n\n`;
 あなたは通常のコーディングエージェントとして動作してください。
 以下のタスクを継続実行してください:
 ${run.task}
-${previousSummary}${strategySection}${metacognitiveFeedback}
+${previousSummary}${strategySection}${metacognitiveFeedback}${improvementActionsSection}
 ## 7つの哲学的視座による自己点検
 
 このサイクルでは、self-improvementスキルに基づき、以下の7つの視座から自己点検を行ってください:
@@ -2356,6 +2375,14 @@ export default (api: ExtensionAPI) => {
         run.lastInferenceDepthScore = depthScore;
         
         appendAutonomousLoopLog(run.logPath, `  inference_depth: ${(depthScore * 100).toFixed(0)}%, fallacies=${metacognitiveCheck.logic.fallacies.length}, aporias=${metacognitiveCheck.deconstruction.aporias.length}`);
+        
+        // 改善アクションを生成して保存（次サイクルで実践）
+        const improvementActions = generateImprovementActions(metacognitiveCheck);
+        run.lastImprovementActions = improvementActions;
+        
+        if (improvementActions.length > 0) {
+          appendAutonomousLoopLog(run.logPath, `  improvement_actions: ${improvementActions.length}件（優先度1: ${improvementActions.filter(a => a.priority === 1).length}件）`);
+        }
       } catch (error) {
         // メタ認知チェックのエラーは無視（機能継続のため）
         console.warn(`[self-improvement-loop] Metacognitive check failed: ${toErrorMessage(error)}`);
