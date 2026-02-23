@@ -511,12 +511,12 @@ export function registerPremise(
   solidity: number = 0.5
 ): Premise {
   const id = `premise-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
+
   const premise: Premise = {
     id,
     content,
     type,
-    solidity: Math.max(0, Math.min(1, solidity)),
+    solidity: Number.isNaN(solidity) ? 0.5 : Math.max(0, Math.min(1, solidity)),
     dependencies: [],
     derivedConclusions: [],
     confidence: 0.5,

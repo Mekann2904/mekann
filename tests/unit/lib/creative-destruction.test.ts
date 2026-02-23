@@ -383,7 +383,7 @@ describe("creative-destruction.ts", () => {
         fc.property(
           fc.string({ minLength: 1, maxLength: 100 }),
           fc.constantFrom("epistemic", "normative", "ontological", "methodological", "contextual", "implicit"),
-          fc.float({ min: 0, max: 1 }),
+          fc.double({ min: 0, max: 1, noNaN: true }),
           (content, type, solidity) => {
             // Act
             const premise = registerPremise(engine, content, type, solidity);
@@ -403,7 +403,7 @@ describe("creative-destruction.ts", () => {
         fc.property(
           fc.string({ minLength: 1 }),
           fc.constantFrom("epistemic", "normative", "ontological"),
-          fc.float({ min: Math.fround(0.1), max: Math.fround(1) }),
+          fc.double({ min: 0.1, max: 1, noNaN: true }),
           (content, type, solidity) => {
             // Arrange
             const premise = registerPremise(engine, content, type, solidity);
