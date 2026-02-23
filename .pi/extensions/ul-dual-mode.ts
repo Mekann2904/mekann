@@ -107,17 +107,90 @@ function refreshStatus(ctx: any): void {
   ctx.ui.setStatus?.("ul-dual-mode", `UL mode | team:${team} loop:${loop}`);
 }
 
-// スロットリング用の状態
+// 適応的スロットリング用の定数と状態
+const MIN_REFRESH_STATUS_THROTTLE_MS = 100;
+const MAX_REFRESH_STATUS_THROTTLE_MS = 1000;
+const LOW_LOAD_THRESHOLD = 2;
+const HIGH_LOAD_THRESHOLD = 8;
+
 let lastRefreshStatusMs = 0;
-const REFRESH_STATUS_THROTTLE_MS = 300;  // 300ms間隔でスロットリング
+let adaptiveThrottleMs = MIN_REFRESH_STATUS_THROTTLE_MS;
+let cachedRuntimeSnapshot: { totalActiveLlm: number; limits: { maxTotalActiveLlm: number } } | null = null;
+let lastSnapshotTime = 0;
+const SNAPSHOT_CACHE_TTL_MS = 50;  // 50ms間スナップショットをキャッシュ
 
 /**
- * スロットリング付きのrefreshStatus。
- * 短時間での連続呼び出しを防ぎ、UI更新のオーバーヘッドを削減する。
+ * ランタイムスナップショットを取得（キャッシュ付き）
+ * getRuntimeSnapshot() の呼び出しコストを削減するため、短期間はキャッシュを返す
+ */
+function getCachedRuntimeSnapshot(): { totalActiveLlm: number; limits: { maxTotalActiveLlm: number } } {
+  const now = Date.now();
+  if (cachedRuntimeSnapshot && (now - lastSnapshotTime) < SNAPSHOT_CACHE_TTL_MS) {
+    return cachedRuntimeSnapshot;
+  }
+
+  // Dynamic import to avoid circular dependency
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getRuntimeSnapshot } = require("./agent-runtime") as typeof import("./agent-runtime");
+    const snapshot = getRuntimeSnapshot();
+    cachedRuntimeSnapshot = {
+      totalActiveLlm: snapshot.totalActiveLlm,
+      limits: {
+        maxTotalActiveLlm: snapshot.limits.maxTotalActiveLlm,
+      },
+    };
+    lastSnapshotTime = now;
+    return cachedRuntimeSnapshot;
+  } catch {
+    // Fallback if getRuntimeSnapshot is not available
+    return {
+      totalActiveLlm: 0,
+      limits: { maxTotalActiveLlm: 10 },
+    };
+  }
+}
+
+/**
+ * 負荷に応じた適応的スロットリング間隔を計算する
+ * 低負荷時は最小間隔、高負荷時は最大間隔、中間は線形補間
+ */
+function getAdaptiveThrottleMs(): number {
+  const snapshot = getCachedRuntimeSnapshot();
+  const activeLlm = snapshot.totalActiveLlm;
+  const maxLlm = snapshot.limits.maxTotalActiveLlm;
+
+  if (maxLlm <= 0) {
+    return MIN_REFRESH_STATUS_THROTTLE_MS;
+  }
+
+  if (activeLlm < LOW_LOAD_THRESHOLD) {
+    return MIN_REFRESH_STATUS_THROTTLE_MS;
+  }
+
+  if (activeLlm > HIGH_LOAD_THRESHOLD) {
+    return MAX_REFRESH_STATUS_THROTTLE_MS;
+  }
+
+  const load = activeLlm / maxLlm;
+  return Math.min(
+    MAX_REFRESH_STATUS_THROTTLE_MS,
+    Math.max(
+      MIN_REFRESH_STATUS_THROTTLE_MS,
+      Math.trunc(MIN_REFRESH_STATUS_THROTTLE_MS + load * (MAX_REFRESH_STATUS_THROTTLE_MS - MIN_REFRESH_STATUS_THROTTLE_MS))
+    )
+  );
+}
+
+/**
+ * 適応的スロットリング付きのrefreshStatus。
+ * 負荷に応じてスロットリング間隔を動的に調整し、UI更新のオーバーヘッドを削減する。
  */
 function refreshStatusThrottled(ctx: any): void {
   const now = Date.now();
-  if (now - lastRefreshStatusMs < REFRESH_STATUS_THROTTLE_MS) {
+  adaptiveThrottleMs = getAdaptiveThrottleMs();
+
+  if (now - lastRefreshStatusMs < adaptiveThrottleMs) {
     return;  // スロットリング
   }
   lastRefreshStatusMs = now;
@@ -272,21 +345,75 @@ function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
 const MAX_UL_POLICY_CACHE_ENTRIES = 10;
 const ulPolicyCache = new Map<string, string>();
 
-function safeCacheSet(key: string, value: string): void {
-  if (ulPolicyCache.size >= MAX_UL_POLICY_CACHE_ENTRIES) {
-    const firstKey = ulPolicyCache.keys().next().value;
-    if (firstKey !== undefined) {
-      ulPolicyCache.delete(firstKey);
+/**
+ * LRUキャッシュの実装
+ * アクセス順序を管理し、上限超過時に最も古いエントリを削除
+ */
+class LRUCache<K, V> {
+  private cache = new Map<K, { value: V; lastAccess: number }>();
+  private accessOrder: K[] = [];
+
+  constructor(private maxSize: number) {}
+
+  get(key: K): V | undefined {
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+
+    // アクセス順序を更新
+    entry.lastAccess = Date.now();
+    this.updateAccessOrder(key);
+
+    return entry.value;
+  }
+
+  set(key: K, value: V): void {
+    if (this.cache.has(key)) {
+      this.updateAccessOrder(key);
+    } else {
+      this.accessOrder.push(key);
+    }
+
+    this.cache.set(key, { value, lastAccess: Date.now() });
+
+    // 上限超過時は最も古いエントリを削除
+    while (this.cache.size > this.maxSize) {
+      const oldestKey = this.accessOrder.shift();
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
     }
   }
-  ulPolicyCache.set(key, value);
+
+  private updateAccessOrder(key: K): void {
+    const index = this.accessOrder.indexOf(key);
+    if (index !== -1) {
+      this.accessOrder.splice(index, 1);
+    }
+    this.accessOrder.push(key);
+  }
+
+  clear(): void {
+    this.cache.clear();
+    this.accessOrder = [];
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+}
+
+// ポリシーキャッシュをLRU化（従来のMapから移行）
+const ulPolicyLRUCache = new LRUCache<string, string>(MAX_UL_POLICY_CACHE_ENTRIES);
+
+function safeCacheSet(key: string, value: string): void {
+  ulPolicyLRUCache.set(key, value);
 }
 
 function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
   const key = `${sessionWide}:${goalLoopMode}`;
-  const cached = ulPolicyCache.get(key);
+  const cached = ulPolicyLRUCache.get(key);
   if (cached) return cached;
-  
+
   const policy = buildUlPolicyString(sessionWide, goalLoopMode);
   safeCacheSet(key, policy);
   return policy;
@@ -295,7 +422,7 @@ function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
 function buildUlPolicyString(sessionWide: boolean, goalLoopMode: boolean): string {
   const mode = sessionWide ? "UL SESSION" : "UL";
   const scope = sessionWide ? "session is in" : "turn is in";
-  
+
   const loopSection = goalLoopMode
     ? `
 Loop rule (clear completion criteria detected):
@@ -322,6 +449,38 @@ Rules:
 - ${loopSection}
 - Direct edits allowed for trivial changes.
 ---`;
+}
+
+/**
+ * トークン効率的な内部通信フォーマット
+ * エージェント間通信では英語・構造化フォーマットを使用し、トークン消費を削減する
+ */
+export const TOKEN_EFFICIENT_FORMAT = `
+OUTPUT MODE: INTERNAL
+- Language: English for all inter-agent communication
+- Format: [CLAIM] 1-sentence | [EVIDENCE] - item (file:line) | [CONFIDENCE] 0.0-1.0 | [ACTION] next|done
+- Max: 300 tokens per response
+- Japanese only for final user-facing synthesis
+`;
+
+/**
+ * タスクにトークン効率化コンテキストを追加する
+ * @summary トークン効率化コンテキスト追加
+ * @param task - 元のタスク
+ * @param isInternal - 内部通信かどうか
+ * @returns 拡張されたタスク
+ */
+export function enhanceTaskWithTokenEfficiency(
+  task: string,
+  isInternal: boolean = true,
+): string {
+  if (!isInternal) {
+    return task;
+  }
+
+  return `${task}
+
+${TOKEN_EFFICIENT_FORMAT}`;
 }
 
 /**

@@ -31,6 +31,9 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import * as fs from "fs";
 import * as path from "path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { promises as fsPromises } from "fs";
+import { estimateTaskComplexity, type TaskComplexity } from "../lib/agent-utils";
 
 // ワークフローのフェーズ
 type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "completed" | "aborted";
@@ -40,6 +43,8 @@ interface WorkflowState {
   taskId: string;
   taskDescription: string;
   phase: WorkflowPhase;
+  phases: WorkflowPhase[];  // 動的に決定されたフェーズ一覧
+  phaseIndex: number;       // 現在のフェーズインデックス
   createdAt: string;
   updatedAt: string;
   approvedPhases: string[];
@@ -53,6 +58,85 @@ const TEMPLATES_DIR = path.join(WORKFLOW_DIR, "templates");
 
 // 現在のワークフロー状態（セッション内）
 let currentWorkflow: WorkflowState | null = null;
+
+/**
+ * タスクが明確なゴールを持つかどうかを判定する
+ * 明確なゴールがある場合は、planフェーズを省略できる可能性がある
+ * @summary 明確なゴール判定
+ * @param task - タスク文字列
+ * @returns 明確なゴールがあるかどうか
+ */
+function looksLikeClearGoalTask(task: string): boolean {
+  const normalized = String(task || "").trim().toLowerCase();
+
+  // 明確なゴールを示すパターン
+  const clearGoalPatterns = [
+    /^add\s+/i,           // "add feature X"
+    /^fix\s+/i,           // "fix bug in Y"
+    /^update\s+/i,        // "update component Z"
+    /^implement\s+/i,     // "implement API endpoint"
+    /^create\s+/i,        // "create new module"
+    /^refactor\s+/i,      // "refactor function"
+    /^remove\s+/i,        // "remove deprecated code"
+    /^rename\s+/i,        // "rename variable"
+  ];
+
+  // 曖昧なゴールを示すパターン
+  const ambiguousPatterns = [
+    /^investigate\s+/i,   // "investigate performance"
+    /^analyze\s+/i,       // "analyze architecture"
+    /^review\s+/i,        // "review codebase"
+    /^improve\s+/i,       // "improve performance" (何をどう改善するか不明)
+    /^optimize\s+/i,      // "optimize query" (具体的な目標が不明)
+    /^\?/,                // 疑問符開始
+    /^how\s+/i,           // "how to..."
+    /^what\s+/i,          // "what is..."
+  ];
+
+  if (ambiguousPatterns.some((p) => p.test(normalized))) {
+    return false;
+  }
+
+  if (clearGoalPatterns.some((p) => p.test(normalized))) {
+    return true;
+  }
+
+  // デフォルト: 明確でないと仮定
+  return false;
+}
+
+/**
+ * タスク規模に基づいてフェーズ構成を決定する
+ * 小規模タスクはフェーズを削減し、大規模タスクは全フェーズを実行
+ * @summary 動的フェーズ決定
+ * @param task - タスク文字列
+ * @returns フェーズの配列
+ */
+export function determineWorkflowPhases(task: string): WorkflowPhase[] {
+  const complexity = estimateTaskComplexity(task);
+  const hasClearGoal = looksLikeClearGoalTask(task);
+
+  switch (complexity) {
+    case "low":
+      if (hasClearGoal) {
+        // 小規模かつ明確なタスク: research + implement のみ
+        return ["research", "implement", "completed"];
+      }
+      // 小規模だが不明確: plan を含める
+      return ["research", "plan", "implement", "completed"];
+
+    case "medium":
+      // 中規模: annotate は省略可能
+      if (hasClearGoal) {
+        return ["research", "plan", "implement", "completed"];
+      }
+      return ["research", "plan", "annotate", "implement", "completed"];
+
+    case "high":
+      // 大規模: すべてのフェーズを実行
+      return ["research", "plan", "annotate", "implement", "completed"];
+  }
+}
 
 /**
  * タスクIDを生成する
@@ -76,12 +160,26 @@ function getTaskDir(taskId: string): string {
 function saveState(state: WorkflowState): void {
   const taskDir = getTaskDir(state.taskId);
   const statusPath = path.join(taskDir, "status.json");
-  
+
   if (!fs.existsSync(taskDir)) {
     fs.mkdirSync(taskDir, { recursive: true });
   }
-  
+
   fs.writeFileSync(statusPath, JSON.stringify(state, null, 2), "utf-8");
+}
+
+/**
+ * 状態を非同期で保存する
+ * 大量のタスクがある場合のI/Oボトルネック削減とメインスレッドのブロック回避
+ * @summary 非同期状態保存
+ * @param state - ワークフロー状態
+ */
+async function saveStateAsync(state: WorkflowState): Promise<void> {
+  const taskDir = getTaskDir(state.taskId);
+  const statusPath = path.join(taskDir, "status.json");
+
+  await fsPromises.mkdir(taskDir, { recursive: true });
+  await fsPromises.writeFile(statusPath, JSON.stringify(state, null, 2), "utf-8");
 }
 
 /**
@@ -92,6 +190,22 @@ function loadState(taskId: string): WorkflowState | null {
   try {
     const content = fs.readFileSync(statusPath, "utf-8");
     return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 状態を非同期で読み込む
+ * @summary 非同期状態読み込み
+ * @param taskId - タスクID
+ * @returns ワークフロー状態（存在しない場合はnull）
+ */
+async function loadStateAsync(taskId: string): Promise<WorkflowState | null> {
+  const statusPath = path.join(getTaskDir(taskId), "status.json");
+  try {
+    const content = await fsPromises.readFile(statusPath, "utf-8");
+    return JSON.parse(content) as WorkflowState;
   } catch {
     return null;
   }
@@ -156,15 +270,13 @@ function readPlanFile(taskId: string): string {
  * フェーズを進める
  */
 function advancePhase(state: WorkflowState): WorkflowPhase {
-  const phases: WorkflowPhase[] = ["research", "plan", "annotate", "implement", "completed"];
-  const currentIndex = phases.indexOf(state.phase);
-  
-  if (currentIndex < phases.length - 1) {
-    state.phase = phases[currentIndex + 1];
+  if (state.phaseIndex < state.phases.length - 1) {
+    state.phaseIndex++;
+    state.phase = state.phases[state.phaseIndex];
     state.updatedAt = new Date().toISOString();
     saveState(state);
   }
-  
+
   return state.phase;
 }
 
@@ -218,33 +330,41 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const { task } = params;
-      
+
       if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
         return makeResult(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId}, phase: ${currentWorkflow.phase})\nまず ul_workflow_status で確認するか ul_workflow_abort で中止してください。`, { error: "workflow_already_active" });
       }
-      
+
       const taskId = generateTaskId(task);
       const now = new Date().toISOString();
-      
+
+      // タスク規模に基づいてフェーズ構成を動的に決定
+      const phases = determineWorkflowPhases(task);
+
       currentWorkflow = {
         taskId,
         taskDescription: task,
-        phase: "research",
+        phase: phases[0],
+        phases,
+        phaseIndex: 0,
         createdAt: now,
         updatedAt: now,
         approvedPhases: [],
         annotationCount: 0,
       };
-      
+
       createTaskFile(taskId, task);
       saveState(currentWorkflow);
-      
+
+      const phaseDescriptions = phases.map((p) => p.toUpperCase()).join(" -> ");
+
       return makeResult(`ワークフローを開始しました。
 
 Task ID: ${taskId}
 説明: ${task}
 
-フェーズ: RESEARCH
+フェーズ構成: ${phaseDescriptions}
+現在のフェーズ: ${phases[0].toUpperCase()}
 
 次のステップ:
 1. researcher サブエージェントが調査を実行します
@@ -253,7 +373,7 @@ Task ID: ${taskId}
 
 調査を実行するには:
   ul_workflow_research({ task: "${task}", task_id: "${taskId}" })
-`, { taskId, phase: "research" });
+`, { taskId, phase: phases[0], phases });
     },
   });
 
@@ -271,7 +391,7 @@ Task ID: ${taskId}
   ul_workflow_start({ task: "タスク説明" })
 `, { active: false });
       }
-      
+
       const phaseDescriptions: Record<WorkflowPhase, string> = {
         idle: "待機中",
         research: "調査フェーズ - コードベースの深い理解",
@@ -281,36 +401,49 @@ Task ID: ${taskId}
         completed: "完了",
         aborted: "中止",
       };
-      
+
       const planAnnotations = currentWorkflow.phase === "annotate" || currentWorkflow.phase === "implement"
         ? extractAnnotations(readPlanFile(currentWorkflow.taskId))
         : [];
-      
+
+      const workflow = currentWorkflow;  // Capture for closure
+
+      const phasesDisplay = workflow.phases
+        .map((p, i) => {
+          const marker = i === workflow.phaseIndex ? ">" : " ";
+          const check = workflow.approvedPhases.includes(p) ? "x" : " ";
+          return `${marker} [${check}] ${p.toUpperCase()}`;
+        })
+        .join("\n");
+
       let text = `ワークフローステータス
 
-Task ID: ${currentWorkflow.taskId}
-説明: ${currentWorkflow.taskDescription}
-作成日時: ${currentWorkflow.createdAt}
-更新日時: ${currentWorkflow.updatedAt}
+Task ID: ${workflow.taskId}
+説明: ${workflow.taskDescription}
+作成日時: ${workflow.createdAt}
+更新日時: ${workflow.updatedAt}
 
-現在のフェーズ: ${currentWorkflow.phase.toUpperCase()}
-  ${phaseDescriptions[currentWorkflow.phase]}
+フェーズ構成:
+${phasesDisplay}
 
-承認済みフェーズ: ${currentWorkflow.approvedPhases.join(", ") || "なし"}
+現在のフェーズ: ${workflow.phase.toUpperCase()}
+  ${phaseDescriptions[workflow.phase]}
+
+承認済みフェーズ: ${workflow.approvedPhases.join(", ") || "なし"}
 注釈数: ${planAnnotations.length}
 
 ファイル:
-  - task.md: .pi/ul-workflow/tasks/${currentWorkflow.taskId}/task.md
-  - research.md: .pi/ul-workflow/tasks/${currentWorkflow.taskId}/research.md
-  - plan.md: .pi/ul-workflow/tasks/${currentWorkflow.taskId}/plan.md
-  - status.json: .pi/ul-workflow/tasks/${currentWorkflow.taskId}/status.json
+  - task.md: .pi/ul-workflow/tasks/${workflow.taskId}/task.md
+  - research.md: .pi/ul-workflow/tasks/${workflow.taskId}/research.md
+  - plan.md: .pi/ul-workflow/tasks/${workflow.taskId}/plan.md
+  - status.json: .pi/ul-workflow/tasks/${workflow.taskId}/status.json
 `;
 
       if (planAnnotations.length > 0) {
         text += `\n注釈一覧:\n${planAnnotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}\n`;
       }
 
-      if (currentWorkflow.phase === "annotate") {
+      if (workflow.phase === "annotate") {
         text += `
 次のステップ:
 1. plan.md をエディタで開いて注釈を追加してください
@@ -319,8 +452,8 @@ Task ID: ${currentWorkflow.taskId}
 3. 満足したら ul_workflow_approve で実装フェーズへ
 `;
       }
-      
-      return makeResult(text, { taskId: currentWorkflow.taskId, phase: currentWorkflow.phase });
+
+      return makeResult(text, { taskId: workflow.taskId, phase: workflow.phase, phases: workflow.phases });
     },
   });
 
@@ -660,29 +793,35 @@ subagent_run(
         ctx.ui.notify("タスク説明を入力してください: /ul-workflow-start <task>", "warning");
         return;
       }
-      
+
       if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
         ctx.ui.notify(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId})`, "warning");
         return;
       }
-      
+
       const taskId = generateTaskId(task);
       const now = new Date().toISOString();
-      
+
+      // タスク規模に基づいてフェーズ構成を動的に決定
+      const phases = determineWorkflowPhases(task);
+
       currentWorkflow = {
         taskId,
         taskDescription: task,
-        phase: "research",
+        phase: phases[0],
+        phases,
+        phaseIndex: 0,
         createdAt: now,
         updatedAt: now,
         approvedPhases: [],
         annotationCount: 0,
       };
-      
+
       createTaskFile(taskId, task);
       saveState(currentWorkflow);
-      
-      ctx.ui.notify(`ワークフロー開始: ${taskId}\nフェーズ: RESEARCH`, "info");
+
+      const phaseStr = phases.map((p) => p.toUpperCase()).join(" -> ");
+      ctx.ui.notify(`ワークフロー開始: ${taskId}\nフェーズ: ${phaseStr}`, "info");
     },
   });
 
@@ -693,7 +832,11 @@ subagent_run(
         ctx.ui.notify("アクティブなワークフローはありません", "info");
         return;
       }
-      ctx.ui.notify(`Task: ${currentWorkflow.taskId}\nPhase: ${currentWorkflow.phase.toUpperCase()}\nApproved: ${currentWorkflow.approvedPhases.join(", ") || "none"}`, "info");
+      const workflow = currentWorkflow;
+      const phaseStr = workflow.phases
+        .map((p, i) => (i === workflow.phaseIndex ? `[${p.toUpperCase()}]` : p.toUpperCase()))
+        .join(" -> ");
+      ctx.ui.notify(`Task: ${workflow.taskId}\nPhases: ${phaseStr}\nApproved: ${workflow.approvedPhases.join(", ") || "none"}`, "info");
     },
   });
 
