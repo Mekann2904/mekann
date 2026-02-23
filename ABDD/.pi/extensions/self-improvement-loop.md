@@ -2,7 +2,7 @@
 title: self-improvement-loop
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -124,6 +124,7 @@ classDiagram
     +runId: string
     +taskSummary: string
     +perspectiveResults: Array_perspective_s
+    +filesChangedBeforeCycle: Set_string
   }
 ```
 
@@ -277,18 +278,32 @@ async getDiffSummary(cwd: string): Promise<{ stats: string; changes: string }>
 
 **戻り値**: `Promise<{ stats: string; changes: string }>`
 
+### createFallbackCommitMessage
+
+```typescript
+createFallbackCommitMessage(cycleNumber: number, runId: string, perspectiveResults: Array<{ perspective: string; score: number; improvements: string[] }>): string
+```
+
+フォールバック用コミットメッセージを生成
+LLM生成が失敗した場合に使用する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| cycleNumber | `number` | はい |
+| runId | `string` | はい |
+| perspectiveResults | `Array<{ perspective: string; score: number; imp...` | はい |
+
+**戻り値**: `string`
+
 ### generateCommitMessage
 
 ```typescript
 async generateCommitMessage(cycleNumber: number, runId: string, taskSummary: string, diffSummary: { stats: string; changes: string }, perspectiveResults: Array<{ perspective: string; score: number; improvements: string[] }>, model: SelfImprovementModel): Promise<string>
 ```
 
-LLMがgit-workflowスキルに準拠したコミットメッセージを生成する
-
-スキル準拠ルール:
-- 日本語で詳細に書く
-- Body（本文）を必ず書く
-- Type: feat, fix, docs, refactor, test, chore, perf, ci
+git-workflowスキル準拠のコミットメッセージを生成
 
 **パラメータ**
 
@@ -602,6 +617,40 @@ shouldStageFile(filePath: string): boolean
 
 **戻り値**: `boolean`
 
+### generateGitignorePattern
+
+```typescript
+generateGitignorePattern(filePath: string): string | null
+```
+
+除外パターンに対応する.gitignoreエントリを生成
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| filePath | `string` | はい |
+
+**戻り値**: `string | null`
+
+### addToGitignore
+
+```typescript
+async addToGitignore(patterns: Set<string>, cwd: string): Promise<boolean>
+```
+
+.gitignoreにパターンを自動追加する
+人間の手を使わずに除外パターンを.gitignoreに反映
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| patterns | `Set<string>` | はい |
+| cwd | `string` | はい |
+
+**戻り値**: `Promise<boolean>`
+
 ### createGitCommit
 
 ```typescript
@@ -627,7 +676,7 @@ git-workflowスキル準拠のコミット作成
 ### createGitCommitWithLLM
 
 ```typescript
-async createGitCommitWithLLM(cwd: string, context: CommitContext, model: SelfImprovementModel): Promise<{ hash: string | null; message: string }>
+async createGitCommitWithLLM(cwd: string, context: CommitContext, model: SelfImprovementModel): Promise<{ hash: string | null; message: string; excludedFiles: string[] }>
 ```
 
 **パラメータ**
@@ -638,7 +687,7 @@ async createGitCommitWithLLM(cwd: string, context: CommitContext, model: SelfImp
 | context | `CommitContext` | はい |
 | model | `SelfImprovementModel` | はい |
 
-**戻り値**: `Promise<{ hash: string | null; message: string }>`
+**戻り値**: `Promise<{ hash: string | null; message: string; excludedFiles: string[] }>`
 
 ### ensureLogDir
 
@@ -905,7 +954,7 @@ requestStop(): string
 ### dispatchNextCycle
 
 ```typescript
-dispatchNextCycle(run: ActiveAutonomousRun, deliverAs?: "followUp"): void
+async dispatchNextCycle(run: ActiveAutonomousRun, deliverAs?: "followUp"): Promise<void>
 ```
 
 **パラメータ**
@@ -915,7 +964,7 @@ dispatchNextCycle(run: ActiveAutonomousRun, deliverAs?: "followUp"): void
 | run | `ActiveAutonomousRun` | はい |
 | deliverAs | `"followUp"` | いいえ |
 
-**戻り値**: `void`
+**戻り値**: `Promise<void>`
 
 ### finishRun
 
@@ -1012,6 +1061,8 @@ interface SelfImprovementLoopState {
   lastUpdatedAt: string;
   totalImprovements: number;
   summary: string;
+  filesChangedBeforeCycle: Set<string>;
+  gitignorePatternsToAdd: Set<string>;
   lastMetacognitiveCheck?: MetacognitiveCheck;
   lastInferenceDepthScore?: number;
 }
@@ -1113,6 +1164,8 @@ interface ActiveAutonomousRun {
   lastImprovementActions?: ImprovementAction[];
   lastIntegratedDetection?: IntegratedVerificationResult;
   successfulPatterns: SuccessfulPattern[];
+  filesChangedBeforeCycle: Set<string>;
+  gitignorePatternsToAdd: Set<string>;
 }
 ```
 
@@ -1156,6 +1209,8 @@ interface CommitContext {
   runId: string;
   taskSummary: string;
   perspectiveResults: Array<{ perspective: string; score: number; improvements: string[] }>;
+  filesChangedBeforeCycle: Set<string>;
+  gitignorePatternsToAdd: Set<string>;
 }
 ```
 
@@ -1179,4 +1234,4 @@ type PerspectiveName = | "deconstruction"       // 脱構築
 7つの哲学的視座
 
 ---
-*自動生成: 2026-02-22T19:27:00.463Z*
+*自動生成: 2026-02-23T06:29:42.169Z*

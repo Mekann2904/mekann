@@ -2,7 +2,7 @@
 title: extension
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -211,7 +211,7 @@ sequenceDiagram
   Judge->>Unresolved: usedCommIds.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Judge->>Unresolved: entries.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: リンクマップ生成
-  Internal->>Internal: stringToSeed
+  Internal->>Internal: 文字列をシード値化
   Internal->>Internal: createStableHash
   Internal->>Unresolved: members.map (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: buildCandidates
@@ -337,6 +337,11 @@ sequenceDiagram
   Runtime->>Internal: runWorker
   Team->>Internal: createChildAbort
   Team->>Team: タスクを実行
+  Team->>Internal: 関連パターンを検索
+  Internal->>Internal: loadPatternStorage
+  Internal->>Internal: キーワード抽出
+  Internal->>Internal: タスク分類
+  Internal->>Unresolved: scored     .filter((s) => s.score > 0)     .sort (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Internal: buildTeamMemberPrompt
   Team->>Runtime: レート制限キー生成
   Team->>Internal: バックオフ再試行実行
@@ -348,7 +353,7 @@ sequenceDiagram
   Internal->>Internal: createAbortError
   Internal->>Internal: selectLongestRateLimitGate
   Internal->>Internal: getRateLimitGateSnapshot
-  Internal->>Runtime: recordTotalLimitObservation
+  Internal->>Runtime: 観測データを記録
   Internal->>Internal: createRateLimitFastFailError
   Internal->>Internal: sleepWithAbort
   Internal->>Internal: registerRateLimitGateSuccess
@@ -388,7 +393,6 @@ sequenceDiagram
   System->>Team: メンバー統合判定
   Team->>Internal: resolveTeamFailureOutcome
   System->>Team: チーム結果構築
-  Team->>Unresolved: (input.communicationAudit ?? [])       .slice()       .sort (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: left.memberId.localeCompare (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
   System->>Internal: トレースIDを生成
@@ -574,6 +578,11 @@ sequenceDiagram
   Team->>Unresolved: result.diagnostics.confidence.toFixed (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Internal: createChildAbort
   Team->>Team: タスクを実行
+  Team->>Internal: 関連パターンを検索
+  Internal->>Internal: loadPatternStorage
+  Internal->>Internal: キーワード抽出
+  Internal->>Internal: タスク分類
+  Internal->>Unresolved: patternKeywords.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Team->>Internal: buildTeamMemberPrompt
   Team->>Runtime: レート制限キー生成
   Team->>Internal: バックオフ再試行実行
@@ -585,7 +594,7 @@ sequenceDiagram
   Internal->>Internal: createAbortError
   Internal->>Internal: selectLongestRateLimitGate
   Internal->>Internal: getRateLimitGateSnapshot
-  Internal->>Runtime: recordTotalLimitObservation
+  Internal->>Runtime: 観測データを記録
   Internal->>Internal: createRateLimitFastFailError
   Internal->>Internal: sleepWithAbort
   Internal->>Internal: registerRateLimitGateSuccess
@@ -944,4 +953,4 @@ type LiveViewMode = TeamLiveViewMode
 ```
 
 ---
-*自動生成: 2026-02-22T19:27:00.106Z*
+*自動生成: 2026-02-23T06:29:41.836Z*

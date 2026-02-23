@@ -2,7 +2,7 @@
 title: retry-with-backoff
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -27,7 +27,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `clearRateLimitState` | - |
+| 関数 | `clearRateLimitState` | 状態をクリアする |
 | 関数 | `getRateLimitGateSnapshot` | - |
 | 関数 | `resolveRetryWithBackoffConfig` | 再試行設定の解決とマージ |
 | 関数 | `extractRetryStatusCode` | エラーからステータスコード抽出 |
@@ -196,6 +196,8 @@ sequenceDiagram
 ```typescript
 clearRateLimitState(): void
 ```
+
+状態をクリアする
 
 **戻り値**: `void`
 
@@ -798,4 +800,4 @@ type PersistedRateLimitState = {
 ```
 
 ---
-*自動生成: 2026-02-22T19:27:00.698Z*
+*自動生成: 2026-02-23T06:29:42.402Z*

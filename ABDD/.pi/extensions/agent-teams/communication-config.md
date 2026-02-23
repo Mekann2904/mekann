@@ -2,7 +2,7 @@
 title: communication-config
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -18,7 +18,7 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `getCommunicationConfig` | コミュニケーション設定を取得する |
-| 関数 | `isCommunicationV2Enabled` | - |
+| 関数 | `isCommunicationV2Enabled` | コミュニケーションV2有効判定 |
 | インターフェース | `CommunicationConfig` | コミュニケーション機能の設定 |
 
 ## 図解
@@ -80,6 +80,8 @@ parseEnvBool(key: string, fallback: boolean): boolean
 isCommunicationV2Enabled(): boolean
 ```
 
+コミュニケーションV2有効判定
+
 **戻り値**: `boolean`
 
 ## インターフェース
@@ -98,4 +100,4 @@ interface CommunicationConfig {
 コミュニケーション機能の設定
 
 ---
-*自動生成: 2026-02-22T19:26:59.832Z*
+*自動生成: 2026-02-23T06:29:41.538Z*

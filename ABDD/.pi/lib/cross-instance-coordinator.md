@@ -2,7 +2,7 @@
 title: cross-instance-coordinator
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `setCoordinatorNowProvider` | - |
+| 関数 | `setCoordinatorNowProvider` | 現在時刻取得関数を設定 |
 | 関数 | `registerInstance` | インスタンスを登録してハートビートを開始する |
 | 関数 | `unregisterInstance` | 自身のインスタンス登録を解除 |
 | 関数 | `updateHeartbeat` | ハートビート時刻を更新 |
@@ -282,6 +282,8 @@ currentTimeMs(): number
 ```typescript
 setCoordinatorNowProvider(provider?: () => number): void
 ```
+
+現在時刻取得関数を設定
 
 **パラメータ**
 
@@ -1211,4 +1213,4 @@ interface StealingStatsInternal {
 Stealing statistics tracking (internal).
 
 ---
-*自動生成: 2026-02-22T19:27:00.593Z*
+*自動生成: 2026-02-23T06:29:42.297Z*

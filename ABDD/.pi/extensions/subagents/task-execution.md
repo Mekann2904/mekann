@@ -2,7 +2,7 @@
 title: task-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from '../../lib/runtime-utils.js': trimForError, buildRateLimitKey
 // from '../../lib/error-utils.js': toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, ...
 // from '../../lib/agent-utils.js': createRunId
-// ... and 14 more imports
+// ... and 15 more imports
 ```
 
 ## エクスポート一覧
@@ -369,6 +369,7 @@ buildSubagentPrompt(input: {
   enforcePlanMode?: boolean;
   parentSkills?: string[];
   profileId?: string;
+  relevantPatterns?: ExtractedPattern[];
 }): string
 ```
 
@@ -385,6 +386,7 @@ buildSubagentPrompt(input: {
 | &nbsp;&nbsp;↳ enforcePlanMode | `boolean` | いいえ |
 | &nbsp;&nbsp;↳ parentSkills | `string[]` | いいえ |
 | &nbsp;&nbsp;↳ profileId | `string` | いいえ |
+| &nbsp;&nbsp;↳ relevantPatterns | `ExtractedPattern[]` | いいえ |
 
 **戻り値**: `string`
 
@@ -519,4 +521,4 @@ interface ThreeLayerPipelineResult {
 Three-Layer Pipeline の処理結果
 
 ---
-*自動生成: 2026-02-22T19:27:00.495Z*
+*自動生成: 2026-02-23T06:29:42.202Z*

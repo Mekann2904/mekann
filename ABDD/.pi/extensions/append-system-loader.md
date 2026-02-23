@@ -2,7 +2,7 @@
 title: append-system-loader
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -63,4 +63,4 @@ APPEND_SYSTEM.mdの内容を読み込む
 **戻り値**: `string | null`
 
 ---
-*自動生成: 2026-02-22T19:27:00.138Z*
+*自動生成: 2026-02-23T06:29:41.866Z*

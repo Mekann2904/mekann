@@ -2,7 +2,7 @@
 title: cross-instance-runtime
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerCrossInstanceRuntimeExtension` | - |
+| 関数 | `registerCrossInstanceRuntimeExtension` | 拡張機能を登録 |
 
 ## ユーザーフロー
 
@@ -203,6 +203,8 @@ This defers file I/O from extension load time to first actual use.
 registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 ```
 
+拡張機能を登録
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -212,4 +214,4 @@ registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-22T19:27:00.216Z*
+*自動生成: 2026-02-23T06:29:41.929Z*

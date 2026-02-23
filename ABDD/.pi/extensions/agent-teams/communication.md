@@ -2,7 +2,7 @@
 title: communication
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -541,4 +541,4 @@ interface BeliefContradiction {
 信念の矛盾を定義するインターフェース
 
 ---
-*自動生成: 2026-02-22T19:26:59.866Z*
+*自動生成: 2026-02-23T06:29:41.581Z*

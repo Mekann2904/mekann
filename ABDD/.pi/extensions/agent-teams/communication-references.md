@@ -2,7 +2,7 @@
 title: communication-references
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -25,8 +25,8 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `detectPartnerReferencesV3` | パートナー参照を検出する（V3） |
-| 関数 | `extractField` | - |
-| 関数 | `buildCommIdEntriesFromMembers` | - |
+| 関数 | `extractField` | 出力からフィールド抽出 |
+| 関数 | `buildCommIdEntriesFromMembers` | 通信IDエントリ作成 |
 | インターフェース | `ClaimReferenceV3` | クレーム参照（V3） |
 | インターフェース | `PartnerReferenceResultV3` | パートナー参照結果（V3） |
 
@@ -188,6 +188,8 @@ detectStance(output: string, targetId: string): { stance: "agree" | "disagree" |
 extractField(output: string, name: string): string | undefined
 ```
 
+出力からフィールド抽出
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -202,6 +204,8 @@ extractField(output: string, name: string): string | undefined
 ```typescript
 buildCommIdEntriesFromMembers(members: { id: string }[], salt: any): CommIdEntry[]
 ```
+
+通信IDエントリ作成
 
 **パラメータ**
 
@@ -259,4 +263,4 @@ interface PartnerReferenceResultV3 {
 パートナー参照結果（V3）
 
 ---
-*自動生成: 2026-02-22T19:26:59.848Z*
+*自動生成: 2026-02-23T06:29:41.558Z*

@@ -2,7 +2,7 @@
 title: nonlinear-thought
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -775,4 +775,4 @@ type InsightKind = | 'connection'     // 新しい接続
 洞察の種類
 
 ---
-*自動生成: 2026-02-22T19:27:00.676Z*
+*自動生成: 2026-02-23T06:29:42.376Z*

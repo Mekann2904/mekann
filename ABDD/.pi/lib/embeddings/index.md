@@ -2,7 +2,7 @@
 title: index
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -18,6 +18,7 @@ related: []
 ```typescript
 // from './registry.js': embeddingRegistry
 // from './providers/openai.js': openAIEmbeddingProvider
+// from './providers/local.js': createLocalEmbeddingProvider
 ```
 
 ## エクスポート一覧
@@ -39,6 +40,7 @@ flowchart LR
   subgraph local[ローカルモジュール]
     registry["registry"]
     openai["openai"]
+    local["local"]
   end
   main --> local
 ```
@@ -84,4 +86,4 @@ initializeEmbeddingModuleSync(): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-22T19:27:00.615Z*
+*自動生成: 2026-02-23T06:29:42.318Z*

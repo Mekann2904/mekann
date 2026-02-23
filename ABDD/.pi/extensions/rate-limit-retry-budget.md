@@ -2,7 +2,7 @@
 title: rate-limit-retry-budget
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -25,7 +25,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerRateLimitRetryBudgetExtension` | - |
+| 関数 | `registerRateLimitRetryBudgetExtension` | リトライ予算拡張登録 |
 
 ## 図解
 
@@ -88,6 +88,8 @@ async applyPatch(requireFn: NodeRequire): Promise<"patched" | "already" | "skip"
 registerRateLimitRetryBudgetExtension(pi: ExtensionAPI): void
 ```
 
+リトライ予算拡張登録
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -109,4 +111,4 @@ type Replacement = {
 ```
 
 ---
-*自動生成: 2026-02-22T19:27:00.368Z*
+*自動生成: 2026-02-23T06:29:42.085Z*

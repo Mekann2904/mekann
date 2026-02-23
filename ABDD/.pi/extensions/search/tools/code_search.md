@@ -2,7 +2,7 @@
 title: code_search
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -233,4 +233,4 @@ async codeSearch(input: CodeSearchInput, cwd: string): Promise<CodeSearchOutput>
 **戻り値**: `Promise<CodeSearchOutput>`
 
 ---
-*自動生成: 2026-02-22T19:27:00.428Z*
+*自動生成: 2026-02-23T06:29:42.135Z*

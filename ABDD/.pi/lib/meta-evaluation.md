@@ -2,7 +2,7 @@
 title: meta-evaluation
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -240,4 +240,4 @@ type MetaBiasType = | 'quantification_reduction'   // 量への還元：複雑�
 評価システムのバイアス種類
 
 ---
-*自動生成: 2026-02-22T19:27:00.665Z*
+*自動生成: 2026-02-23T06:29:42.367Z*

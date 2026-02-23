@@ -2,7 +2,7 @@
 title: self-awareness-integration
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -17,7 +17,7 @@ related: []
 
 ```typescript
 // from './consciousness-spectrum.js': ConsciousnessState, getConsciousnessReport
-// from './perspective-scorer.js': PerspectiveScores, scorePerspectives
+// from './perspective-scorer.js': PerspectiveScores, scoreAllPerspectives
 // from './aporia-awareness.js': AporiaState, getAporiaReport, createInitialAporiaState
 // from './creative-transcendence.js': TranscendenceState, getTranscendenceReport, createInitialTranscendenceState, ...
 ```
@@ -379,4 +379,4 @@ interface RecommendedAction {
 推奨アクション
 
 ---
-*自動生成: 2026-02-22T19:27:00.713Z*
+*自動生成: 2026-02-23T06:29:42.409Z*

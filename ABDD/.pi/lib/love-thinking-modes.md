@@ -2,7 +2,7 @@
 title: love-thinking-modes
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -203,4 +203,4 @@ type ThinkingMode = | "white" // 事実・情報重視
 状況に応じて適切な思考モードを選択・切り替える能力が重要。
 
 ---
-*自動生成: 2026-02-22T19:27:00.656Z*
+*自動生成: 2026-02-23T06:29:42.359Z*

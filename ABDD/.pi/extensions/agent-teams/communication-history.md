@@ -2,7 +2,7 @@
 title: communication-history
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -20,7 +20,7 @@ related: []
 | 関数 | `createCommunicationHistoryStore` | 通信履歴ストアを作成する |
 | インターフェース | `CommunicationHistory` | 通信履歴エントリ |
 | インターフェース | `CommunicationHistoryStore` | 通信履歴ストアインターフェース |
-| インターフェース | `PartnerSelectionStrategy` | - |
+| インターフェース | `PartnerSelectionStrategy` | パートナー選択戦略 |
 
 ## 図解
 
@@ -102,5 +102,7 @@ interface PartnerSelectionStrategy {
 }
 ```
 
+パートナー選択戦略
+
 ---
-*自動生成: 2026-02-22T19:26:59.840Z*
+*自動生成: 2026-02-23T06:29:41.548Z*

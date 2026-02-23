@@ -2,7 +2,7 @@
 title: team-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -387,4 +387,4 @@ type TeamLiveViewMode = "list" | "detail" | "discussion" | "tree" | "timeline"
 チームライブの表示モード
 
 ---
-*自動生成: 2026-02-22T19:27:00.732Z*
+*自動生成: 2026-02-23T06:29:42.427Z*

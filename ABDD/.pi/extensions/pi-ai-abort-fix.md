@@ -2,7 +2,7 @@
 title: pi-ai-abort-fix
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -18,7 +18,10 @@ related: []
 ```typescript
 // from 'node:fs/promises': readFile, writeFile
 // from 'node:module': createRequire
-// from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from 'node:path': dirname, join
+// from 'node:fs': existsSync
+// from 'node:os': homedir
+// ... and 1 more imports
 ```
 
 ## エクスポート一覧
@@ -69,6 +72,113 @@ async patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<"patched" 
 
 **戻り値**: `Promise<"patched" | "already" | "skip">`
 
+### patchResolvedFilePath
+
+```typescript
+async patchResolvedFilePath(path: string, target: PatchTarget): Promise<"patched" | "already" | "skip">
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| path | `string` | はい |
+| target | `PatchTarget` | はい |
+
+**戻り値**: `Promise<"patched" | "already" | "skip">`
+
+### uniqueNonEmpty
+
+```typescript
+uniqueNonEmpty(values: Array<string | undefined>): string[]
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| values | `Array<string | undefined>` | はい |
+
+**戻り値**: `string[]`
+
+### safeCreateRequire
+
+```typescript
+safeCreateRequire(basePath: string): NodeRequire | undefined
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| basePath | `string` | はい |
+
+**戻り値**: `NodeRequire | undefined`
+
+### collectResolverBases
+
+```typescript
+collectResolverBases(requireFn: NodeRequire): string[]
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| requireFn | `NodeRequire` | はい |
+
+**戻り値**: `string[]`
+
+### collectResolvers
+
+```typescript
+collectResolvers(requireFn: NodeRequire): NodeRequire[]
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| requireFn | `NodeRequire` | はい |
+
+**戻り値**: `NodeRequire[]`
+
+### listDirsSafe
+
+```typescript
+async listDirsSafe(path: string): Promise<string[]>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| path | `string` | はい |
+
+**戻り値**: `Promise<string[]>`
+
+### collectDirectNodeModulesRoots
+
+```typescript
+async collectDirectNodeModulesRoots(): Promise<string[]>
+```
+
+**戻り値**: `Promise<string[]>`
+
+### resolveCandidatePiAiProviderPaths
+
+```typescript
+resolveCandidatePiAiProviderPaths(root: string): string[]
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| root | `string` | はい |
+
+**戻り値**: `string[]`
+
 ## 型定義
 
 ### PatchTarget
@@ -83,4 +193,4 @@ type PatchTarget = {
 ```
 
 ---
-*自動生成: 2026-02-22T19:27:00.354Z*
+*自動生成: 2026-02-23T06:29:42.072Z*

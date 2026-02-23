@@ -2,7 +2,7 @@
 title: abdd-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -51,7 +51,7 @@ related: []
 | インターフェース | `TypeCheckerContext` | TypeCheckerコンテキスト |
 | インターフェース | `GeneratorOptions` | ジェネレータオプション |
 | インターフェース | `GeneratorContext` | ジェネレータコンテキスト |
-| 型 | `AbddErrorCode` | - |
+| 型 | `AbddErrorCode` | エラーコード型定義 |
 | 型 | `DivergenceType` | 乖離タイプ |
 | 型 | `Severity` | 乖離重要度 |
 
@@ -201,6 +201,7 @@ classDiagram
     +dryRun: boolean
     +verbose: boolean
     +file: string
+    +skipMermaidValidation: boolean
   }
   class GeneratorContext {
     <<interface>>
@@ -618,6 +619,7 @@ interface GeneratorOptions {
   dryRun: boolean;
   verbose: boolean;
   file?: string;
+  skipMermaidValidation?: boolean;
 }
 ```
 
@@ -643,6 +645,8 @@ interface GeneratorContext {
 type AbddErrorCode = typeof AbddErrorCodes[keyof typeof AbddErrorCodes]
 ```
 
+エラーコード型定義
+
 ### DivergenceType
 
 ```typescript
@@ -663,4 +667,4 @@ type Severity = "low" | "medium" | "high"
 乖離重要度
 
 ---
-*自動生成: 2026-02-22T19:27:00.540Z*
+*自動生成: 2026-02-23T06:29:42.245Z*

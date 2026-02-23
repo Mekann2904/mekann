@@ -2,7 +2,7 @@
 title: ABDDインデックス
 category: abdd
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [abdd, index, as-built]
 related: [philosophy.md, spec.md]
 ---

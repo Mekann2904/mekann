@@ -2,7 +2,7 @@
 title: member-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from 'node:path': dirname, join
 // from 'node:url': fileURLToPath
 // from './storage': TeamDefinition, TeamMember, TeamMemberResult
-// ... and 13 more imports
+// ... and 14 more imports
 ```
 
 ## エクスポート一覧
@@ -299,6 +299,7 @@ buildTeamMemberPrompt(input: {
   sharedContext?: string;
   phase?: "initial" | "communication";
   communicationContext?: string;
+  relevantPatterns?: ExtractedPattern[];
 }): string
 ```
 
@@ -315,6 +316,7 @@ buildTeamMemberPrompt(input: {
 | &nbsp;&nbsp;↳ sharedContext | `string` | いいえ |
 | &nbsp;&nbsp;↳ phase | `"initial" | "communication"` | いいえ |
 | &nbsp;&nbsp;↳ communicationContext | `string` | いいえ |
+| &nbsp;&nbsp;↳ relevantPatterns | `ExtractedPattern[]` | いいえ |
 
 **戻り値**: `string`
 
@@ -437,4 +439,4 @@ interface TeamNormalizedOutput {
 チーム実行結果の正規化出力
 
 ---
-*自動生成: 2026-02-22T19:27:00.118Z*
+*自動生成: 2026-02-23T06:29:41.848Z*

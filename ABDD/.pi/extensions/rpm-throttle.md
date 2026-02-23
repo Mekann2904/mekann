@@ -2,7 +2,7 @@
 title: rpm-throttle
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerRpmThrottleExtension` | - |
+| 関数 | `registerRpmThrottleExtension` | RPMスロットル拡張登録 |
 
 ## 図解
 
@@ -305,6 +305,8 @@ findLastAssistantError(messages: unknown): string | undefined
 registerRpmThrottleExtension(pi: ExtensionAPI): void
 ```
 
+RPMスロットル拡張登録
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -336,4 +338,4 @@ type SharedStateRecord = {
 ```
 
 ---
-*自動生成: 2026-02-22T19:27:00.371Z*
+*自動生成: 2026-02-23T06:29:42.087Z*

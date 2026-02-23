@@ -2,7 +2,7 @@
 title: pi-print-executor
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -96,9 +96,9 @@ flowchart TD
   extractFinalText["extractFinalText()"]
   extractRetryAfterMs["extractRetryAfterMs()"]
   finish["finish()"]
-  formatThinkingBlock["formatThinkingBlock()"]
   getPrintThrottleKey["getPrintThrottleKey()"]
   isRateLimitMessage["isRateLimitMessage()"]
+  isUnhandledAbortStopReasonMessage["isUnhandledAbortStopReasonMessage()"]
   killSafely["killSafely()"]
   parseBooleanEnv["parseBooleanEnv()"]
   parseJsonStreamLine["parseJsonStreamLine()"]
@@ -118,24 +118,23 @@ flowchart TD
   callModelViaPi --> combineTextAndThinking
   callModelViaPi --> extractFinalText
   callModelViaPi --> finish
+  callModelViaPi --> isUnhandledAbortStopReasonMessage
   callModelViaPi --> killSafely
   callModelViaPi --> parseJsonStreamLine
   callModelViaPi --> recordPrintRateLimitCooldown
   callModelViaPi --> resetIdleTimeout
   callModelViaPi --> waitForPrintThrottleSlot
-  combineTextAndThinking --> formatThinkingBlock
   finish --> cleanup
   recordPrintRateLimitCooldown --> extractRetryAfterMs
   recordPrintRateLimitCooldown --> getPrintThrottleKey
   recordPrintRateLimitCooldown --> isRateLimitMessage
-  recordPrintRateLimitCooldown --> prunePrintThrottleStates
-  recordPrintRateLimitCooldown --> withPrintThrottleMutation
   resetIdleTimeout --> killSafely
   runPiPrintMode --> appendWithCap
   runPiPrintMode --> cleanup
   runPiPrintMode --> combineTextAndThinking
   runPiPrintMode --> extractFinalText
   runPiPrintMode --> finish
+  runPiPrintMode --> isUnhandledAbortStopReasonMessage
   runPiPrintMode --> killSafely
   runPiPrintMode --> parseJsonStreamLine
   runPiPrintMode --> recordPrintRateLimitCooldown
@@ -354,6 +353,20 @@ resolveEffectivePrintRpm(provider: string, model: string): number
 
 ```typescript
 isRateLimitMessage(text: string): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `boolean`
+
+### isUnhandledAbortStopReasonMessage
+
+```typescript
+isUnhandledAbortStopReasonMessage(text: string): boolean
 ```
 
 **パラメータ**
@@ -742,4 +755,4 @@ type PrintThrottleSharedStateRecord = {
 ```
 
 ---
-*自動生成: 2026-02-22T19:27:00.469Z*
+*自動生成: 2026-02-23T06:29:42.176Z*

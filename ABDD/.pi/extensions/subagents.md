@@ -2,7 +2,7 @@
 title: subagents
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -295,6 +295,16 @@ sequenceDiagram
   Team->>Internal: プランモード判定
   Internal->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
   Internal->>Internal: validatePlanModeState
+  Team->>Internal: 関連パターンを検索
+  Internal->>Internal: loadPatternStorage
+  Internal->>Internal: キーワード抽出
+  Internal->>Unresolved: text.match (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: stopWords.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: keywords.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Internal: タスク分類
+  Internal->>Unresolved: keywords.reduce (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: scored     .filter((s) => s.score > 0)     .sort (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Internal: buildSubagentPrompt
   Team->>Runtime: レート制限キー生成
   Team->>Unresolved: /429|rate\s*limit|too many requests/i.test (node_modules/typescript/lib/lib.es5.d.ts)
@@ -309,7 +319,7 @@ sequenceDiagram
   Internal->>Internal: createAbortError
   Internal->>Internal: selectLongestRateLimitGate
   Internal->>Internal: getRateLimitGateSnapshot
-  Internal->>Runtime: recordTotalLimitObservation
+  Internal->>Runtime: 観測データを記録
   Runtime->>Internal: isAdaptiveEnabled
   Runtime->>Internal: withStateWriteLock
   Runtime->>Internal: nowMs
@@ -352,6 +362,7 @@ sequenceDiagram
   Internal->>Internal: raiseWithReason
   System->>Internal: lower
   Internal->>Internal: decay
+  System->>Unresolved: ctx.ui.notify (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
   System-->>User: 結果
 
 ```
@@ -521,6 +532,15 @@ sequenceDiagram
   Team->>Internal: プランモード判定
   Internal->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
   Internal->>Internal: validatePlanModeState
+  Team->>Internal: 関連パターンを検索
+  Internal->>Internal: loadPatternStorage
+  Internal->>Internal: キーワード抽出
+  Internal->>Unresolved: text.match (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: stopWords.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: keywords.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Internal: タスク分類
+  Internal->>Unresolved: keywords.reduce (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: scored     .filter((s) => s.score > 0)     .sort (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Internal: buildSubagentPrompt
   Team->>Runtime: レート制限キー生成
   Team->>Unresolved: /429|rate\s*limit|too many requests/i.test (node_modules/typescript/lib/lib.es5.d.ts)
@@ -534,7 +554,7 @@ sequenceDiagram
   Internal->>Internal: createAbortError
   Internal->>Internal: selectLongestRateLimitGate
   Internal->>Internal: getRateLimitGateSnapshot
-  Internal->>Runtime: recordTotalLimitObservation
+  Internal->>Runtime: 観測データを記録
   Runtime->>Internal: isAdaptiveEnabled
   Runtime->>Internal: withStateWriteLock
   Runtime->>Internal: nowMs
@@ -575,6 +595,7 @@ sequenceDiagram
   Internal->>Internal: extractStatusCodeFromMessage
   System->>Internal: lower
   Internal->>Internal: decay
+  System->>Unresolved: ctx.ui.notify (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
   System-->>User: 結果
 
 ```
@@ -1099,4 +1120,4 @@ type SubagentBackgroundJobStatus = | "queued"
 ```
 
 ---
-*自動生成: 2026-02-22T19:27:00.522Z*
+*自動生成: 2026-02-23T06:29:42.229Z*

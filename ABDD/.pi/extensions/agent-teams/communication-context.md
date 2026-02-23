@@ -2,7 +2,7 @@
 title: communication-context
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -27,8 +27,8 @@ related: []
 |------|------|------|
 | 関数 | `summarizeForContext` | テキストを指定文字数に要約する |
 | 関数 | `buildCommunicationContextV2` | V2通信コンテキストを構築する |
-| 関数 | `buildPrecomputedContextMap` | - |
-| 関数 | `sanitizeForJson` | - |
+| 関数 | `buildPrecomputedContextMap` | メンバー結果からコンテキストマップを作成 |
+| 関数 | `sanitizeForJson` | JSON用文字列をサニタイズ |
 | インターフェース | `CommunicationPartner` | 通信パートナー情報 |
 | インターフェース | `CommunicationPartnerSummary` | 通信パートナーの要約情報 |
 | インターフェース | `CommunicationData` | 通信データ構造 |
@@ -227,6 +227,8 @@ buildPrecomputedContextMap(results: Array<{
   }>): Map<string, PrecomputedMemberContext>
 ```
 
+メンバー結果からコンテキストマップを作成
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -242,6 +244,8 @@ buildPrecomputedContextMap(results: Array<{
 ```typescript
 sanitizeForJson(text: string): string
 ```
+
+JSON用文字列をサニタイズ
 
 **パラメータ**
 
@@ -314,4 +318,4 @@ interface PrecomputedMemberContext {
 事前計算済みメンバーコンテキスト
 
 ---
-*自動生成: 2026-02-22T19:26:59.838Z*
+*自動生成: 2026-02-23T06:29:41.543Z*

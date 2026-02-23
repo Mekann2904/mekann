@@ -2,7 +2,7 @@
 title: communication-links
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -23,11 +23,11 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `shouldPreferAnchorMember` | - |
+| 関数 | `shouldPreferAnchorMember` | アンカー優先判定 |
 | 関数 | `createCommunicationLinksMap` | 通信リンクマップを作成する |
 | 関数 | `deterministicShuffle` | 決定論的シャッフルを行う |
 | インターフェース | `CommunicationLinksOptions` | 通信リンクオプション |
-| インターフェース | `TeamMemberLike` | - |
+| インターフェース | `TeamMemberLike` | チームメンバー型定義 |
 
 ## 図解
 
@@ -104,6 +104,8 @@ sequenceDiagram
 ```typescript
 shouldPreferAnchorMember(member: { id: string; role?: string }): boolean
 ```
+
+アンカー優先判定
 
 **パラメータ**
 
@@ -236,5 +238,7 @@ interface TeamMemberLike {
 }
 ```
 
+チームメンバー型定義
+
 ---
-*自動生成: 2026-02-22T19:26:59.845Z*
+*自動生成: 2026-02-23T06:29:41.553Z*

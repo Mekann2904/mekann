@@ -2,7 +2,7 @@
 title: loop
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from 'node:dns/promises': dnsLookup
 // from 'node:fs': appendFileSync, existsSync, mkdirSync, ...
 // from 'node:path': basename, isAbsolute, join, ...
-// ... and 20 more imports
+// ... and 21 more imports
 ```
 
 ## エクスポート一覧
@@ -122,6 +122,19 @@ sequenceDiagram
   Executor->>Internal: 意図を分類
   Internal->>Unresolved: Object.entries (node_modules/typescript/lib/lib.es2017.object.d.ts)
   Internal->>Unresolved: regex.test (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: 関連パターンを検索
+  Internal->>Internal: loadPatternStorage
+  Internal->>Internal: キーワード抽出
+  Internal->>Unresolved: text.match (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: stopWords.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: keywords.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Internal: タスク分類
+  Internal->>Unresolved: keywords.reduce (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: text.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: storage.patterns.map (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: taskKeywords.filter (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: scored     .filter((s) => s.score > 0)     .sort (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: 反復フォーカスを構築
   Internal->>Internal: extractNextStepLine
   Executor->>Internal: プロンプト生成
@@ -142,7 +155,6 @@ sequenceDiagram
   Internal->>Internal: normalizeStringArray
   Internal->>Internal: normalizeCitationList
   Executor->>Judge: 入力値検証
-  Judge->>Unresolved: input.citations.filter (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Executor: 実行可否判定
   Executor->>Executor: 検証コマンドを実行する
   Executor->>Internal: parseVerificationCommand
@@ -163,12 +175,9 @@ sequenceDiagram
   Executor->>Internal: appendBoundedText
   Executor->>Internal: フィードバック生成
   Internal->>Unresolved: reason.replace (node_modules/typescript/lib/lib.es5.d.ts)
-  Executor->>Internal: フィードバックを構築
+  Executor->>Internal: Build invitational feedback
   Executor->>Internal: フィードバック正規化
-  Internal->>Unresolved: errors     .map (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: normalizeValidationIssue
-  Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  Internal->>Unresolved: unique.sort (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: validationIssuePriority
   Executor->>Internal: 失敗出力生成
   Executor->>Internal: 重複を検出
@@ -182,7 +191,9 @@ sequenceDiagram
   Internal->>Unresolved: Math.sqrt (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: 出力を正規化
   Executor->>Internal: 予算を取得
-  Executor->>Unresolved: semanticStagnationStats.similarities.reduce (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: 十分条件を評価する
+  Internal->>Unresolved: recentOutputs.every (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.abs (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: 結果本文抽出
   Internal->>Internal: extractTaggedBlock
   Executor->>Storage: テキスト書込
@@ -218,6 +229,14 @@ classDiagram
     +status: LoopStatus
     +goalStatus: LoopGoalStatus
     +goalEvidence: string
+  }
+  class SufficiencyAssessment {
+    <<interface>>
+    +outputStability: boolean
+    +diminishingReturns: boolean
+    +stableIterationCount: number
+    +assessmentReason: string
+    +overallSufficient: boolean
   }
   class LoopRunSummary {
     <<interface>>
@@ -292,6 +311,7 @@ flowchart LR
 ```mermaid
 flowchart TD
   appendJsonl["appendJsonl()"]
+  assessSufficiency["assessSufficiency()"]
   callModelViaPi["callModelViaPi()"]
   formatLoopProgress["formatLoopProgress()"]
   formatLoopResultText["formatLoopResultText()"]
@@ -318,6 +338,7 @@ flowchart TD
   registerLoopExtension --> runLoop
   registerLoopExtension --> startLoopActivityIndicator
   runLoop --> appendJsonl
+  runLoop --> assessSufficiency
   runLoop --> callModelViaPi
   runLoop --> writeLatestSummarySnapshot
   startLoopActivityIndicator --> render
@@ -632,6 +653,28 @@ htmlToText(value: string): string
 
 **戻り値**: `string`
 
+### assessSufficiency
+
+```typescript
+assessSufficiency(iterations: LoopIterationResult[], maxIterations: number): SufficiencyAssessment
+```
+
+十分条件を評価する
+
+self-reflectionスキルの「自己改善の十分条件」に基づき、
+ループの終了時に「十分」かどうかを評価する。
+この評価は**参考情報**であり、停止条件としては使用されない。
+ユーザーが判断するための情報を提供する。
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| iterations | `LoopIterationResult[]` | はい |
+| maxIterations | `number` | はい |
+
+**戻り値**: `SufficiencyAssessment`
+
 ## インターフェース
 
 ### LoopConfig
@@ -664,6 +707,21 @@ interface LoopIterationResult {
   output: string;
 }
 ```
+
+### SufficiencyAssessment
+
+```typescript
+interface SufficiencyAssessment {
+  outputStability: boolean;
+  diminishingReturns: boolean;
+  stableIterationCount: number;
+  assessmentReason: string;
+  overallSufficient: boolean;
+}
+```
+
+十分条件の評価結果
+self-reflectionスキルの「自己改善の十分条件」に基づく
 
 ### LoopRunSummary
 
@@ -709,6 +767,7 @@ interface LoopRunSummary {
     processingTimeMs: number;
     taskClarified: boolean;
   };
+  sufficiencyAssessment?: SufficiencyAssessment;
 }
 ```
 
@@ -784,4 +843,4 @@ interface LoopActivityIndicator {
 ```
 
 ---
-*自動生成: 2026-02-22T19:27:00.338Z*
+*自動生成: 2026-02-23T06:29:42.055Z*

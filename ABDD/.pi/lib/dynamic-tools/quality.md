@@ -2,7 +2,7 @@
 title: quality
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -388,4 +388,4 @@ interface QualityPattern {
 品質パターンの定義
 
 ---
-*自動生成: 2026-02-22T19:27:00.609Z*
+*自動生成: 2026-02-23T06:29:42.312Z*

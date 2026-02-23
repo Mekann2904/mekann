@@ -2,7 +2,7 @@
 title: safety
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -243,4 +243,4 @@ type SafetyAnalysisIssueType = | "file-system-write"
 安全解析の種別
 
 ---
-*自動生成: 2026-02-22T19:27:00.614Z*
+*自動生成: 2026-02-23T06:29:42.317Z*

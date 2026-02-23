@@ -2,7 +2,7 @@
 title: communication-id
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -17,12 +17,12 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `isSafeId` | - |
+| 関数 | `isSafeId` | 安全なIDか判定 |
 | 関数 | `generateCommId` | 通信用IDを生成する |
 | 関数 | `resolveUniqueCommIds` | メンバーから一意な通信IDを解決する |
-| 関数 | `createCommIdMaps` | - |
-| 関数 | `stringToSeed` | - |
-| 関数 | `combineSeed` | - |
+| 関数 | `createCommIdMaps` | 通信IDマップを作成 |
+| 関数 | `stringToSeed` | 文字列をシード値へ変換 |
+| 関数 | `combineSeed` | シード値を結合 |
 | インターフェース | `CommIdEntry` | 通信IDエントリ |
 
 ## 図解
@@ -66,6 +66,8 @@ flowchart TD
 ```typescript
 isSafeId(id: string): boolean
 ```
+
+安全なIDか判定
 
 **パラメータ**
 
@@ -117,6 +119,8 @@ createCommIdMaps(entries: CommIdEntry[]): {
   commIdToMemberId: Map<string, string>;
 }
 ```
+
+通信IDマップを作成
 
 **パラメータ**
 
@@ -177,6 +181,8 @@ base32Encode(n: number): string
 stringToSeed(input: string): number
 ```
 
+文字列をシード値へ変換
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -190,6 +196,8 @@ stringToSeed(input: string): number
 ```typescript
 combineSeed(base: number, memberId: string, round: number): number
 ```
+
+シード値を結合
 
 **パラメータ**
 
@@ -215,4 +223,4 @@ interface CommIdEntry {
 通信IDエントリ
 
 ---
-*自動生成: 2026-02-22T19:26:59.841Z*
+*自動生成: 2026-02-23T06:29:41.549Z*

@@ -2,7 +2,7 @@
 title: adaptive-total-limit
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -27,13 +27,13 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `recordTotalLimitObservation` | - |
-| 関数 | `getAdaptiveTotalMaxLlm` | - |
-| 関数 | `getAdaptiveTotalLimitSnapshot` | - |
+| 関数 | `recordTotalLimitObservation` | 制限値の観測データを記録 |
+| 関数 | `getAdaptiveTotalMaxLlm` | 適応制限の最大値を取得 |
+| 関数 | `getAdaptiveTotalLimitSnapshot` | 現在の適応制限スナップショットを取得 |
 | 関数 | `resetAdaptiveTotalLimitState` | Adaptive total limit state をリセットする。 |
-| 関数 | `__resetAdaptiveTotalLimitStateForTests` | - |
-| 関数 | `__setAdaptiveTotalLimitNowProviderForTests` | - |
-| インターフェース | `TotalLimitObservation` | - |
+| 関数 | `__resetAdaptiveTotalLimitStateForTests` | 適応制限状態リセット |
+| 関数 | `__setAdaptiveTotalLimitNowProviderForTests` | テスト用現在時刻設定 |
+| インターフェース | `TotalLimitObservation` | 制限値の観測データインターフェース |
 
 ## 図解
 
@@ -437,6 +437,8 @@ toSafeObservation(observation: TotalLimitObservation, now: number): ObservationS
 recordTotalLimitObservation(observation: TotalLimitObservation, baseLimit?: number): void
 ```
 
+制限値の観測データを記録
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -451,6 +453,8 @@ recordTotalLimitObservation(observation: TotalLimitObservation, baseLimit?: numb
 ```typescript
 getAdaptiveTotalMaxLlm(baseLimit: number): number
 ```
+
+適応制限の最大値を取得
 
 **パラメータ**
 
@@ -473,6 +477,8 @@ getAdaptiveTotalLimitSnapshot(): {
   lastReason: string;
 }
 ```
+
+現在の適応制限スナップショットを取得
 
 **戻り値**: `{
   enabled: boolean;
@@ -516,6 +522,8 @@ Adaptive total limit state をリセットする。
 __resetAdaptiveTotalLimitStateForTests(): void
 ```
 
+適応制限状態リセット
+
 **戻り値**: `void`
 
 ### __setAdaptiveTotalLimitNowProviderForTests
@@ -523,6 +531,8 @@ __resetAdaptiveTotalLimitStateForTests(): void
 ```typescript
 __setAdaptiveTotalLimitNowProviderForTests(provider?: () => number): void
 ```
+
+テスト用現在時刻設定
 
 **パラメータ**
 
@@ -544,6 +554,8 @@ interface TotalLimitObservation {
   timestampMs?: number;
 }
 ```
+
+制限値の観測データインターフェース
 
 ### ObservationSample
 
@@ -582,4 +594,4 @@ type ObservationKind = "success" | "rate_limit" | "timeout" | "error"
 ```
 
 ---
-*自動生成: 2026-02-22T19:27:00.547Z*
+*自動生成: 2026-02-23T06:29:42.251Z*

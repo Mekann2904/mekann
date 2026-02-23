@@ -2,7 +2,7 @@
 title: types
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -811,4 +811,4 @@ type IndexManifest = Record<string, ManifestEntry>
 インデックスマニフェスト型
 
 ---
-*自動生成: 2026-02-22T19:27:00.436Z*
+*自動生成: 2026-02-23T06:29:42.141Z*

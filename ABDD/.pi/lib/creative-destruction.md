@@ -2,7 +2,7 @@
 title: creative-destruction
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -520,4 +520,4 @@ type PremiseType = | 'epistemic'      // 認識論的前提（「我思う、ゆ
 前提タイプ
 
 ---
-*自動生成: 2026-02-22T19:27:00.586Z*
+*自動生成: 2026-02-23T06:29:42.289Z*

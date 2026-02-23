@@ -2,7 +2,7 @@
 title: output
 category: api-reference
 audience: developer
-last_updated: 2026-02-22
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -629,4 +629,4 @@ type SuggestedNextAction = | "refine_pattern"      // Pattern too broad, narrow 
 エージェント向けの推奨次回アクション
 
 ---
-*自動生成: 2026-02-22T19:27:00.443Z*
+*自動生成: 2026-02-23T06:29:42.147Z*
