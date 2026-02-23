@@ -88,6 +88,16 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
   if (items.length === 0) return [];
 
   const abortOnError = options.abortOnError !== false;
+
+  // Bug #6 warning: abortOnErrorの動作説明（大量アイテム時の警告）
+  if (abortOnError && items.length > 5) {
+    console.warn(
+      "[concurrency] abortOnError=true with",
+      items.length,
+      "items - Workers continue after first error (Bug #6)"
+    );
+  }
+
   const normalizedLimit = toPositiveLimit(limit, items.length);
   const results: WorkerResult<TResult>[] = new Array(items.length);
   let cursor = 0;

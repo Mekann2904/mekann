@@ -90,6 +90,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | [→](docs/02-user-guide/01-extensions.md#動的ツール) |
 | **invariant-pipeline** | `invariant-pipeline.ts` | 形式仕様からインバリアント、テストコード自動生成（generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver） | [→](docs/02-user-guide/14-invariant-pipeline.md) |
 | **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | [→](docs/02-user-guide/01-extensions.md#スタートアップコンテキスト) |
+| **self-improvement-reflection** | `self-improvement-reflection.ts` | 自己改善データ基盤（データ収集、分析、哲学的考察、アクション可能な洞察） | [→](.pi/docs/self-improvement-data-platform.md) |
 
 ### 共有ライブラリ
 
@@ -117,6 +118,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **storage-base** | `lib/storage-base.ts` | ストレージベース |
 | **tui-utils** | `lib/tui-utils.ts` | TUIユーティリティ |
 | **validation-utils** | `lib/validation-utils.ts` | バリデーションユーティリティ |
+| **self-improvement-data-platform** | `lib/self-improvement-data-platform.ts` | 自己改善データ基盤（3層アーキテクチャ：データ・分析・気づき）（新規） |
 | **comprehensive-logger** | `lib/comprehensive-logger.ts` | 包括的ログ収集（構造化ログ、ストリーミング、設定可能な出力） |
 | **verification-workflow** | `lib/verification-workflow.ts` | Inspector/Challenger検証メカニズム（LLM出力品質検証） |
 | **context-engineering** | `lib/context-engineering.ts` | コンテキストエンジニアリング（プロンプト最適化） |
@@ -325,6 +327,7 @@ mekann/
 | | `tool_reflection` | 実行後の反省とツール生成判定 |
 | **クロスインスタンス** | `pi_instance_status` | 複数piインスタンスの状態確認 |
 | | `pi_model_limits` | プロバイダー/モデル別レート制限確認 |
+| **自己改善** | `self_reflect` | 自己改善データ基盤による振り返り（summary, insights, generate, perspectives, analyze） |
 | **ユーティリティ** | `agent_usage_stats` | 拡張機能使用統計 |
 | | `context-usage` | コンテキスト使用量表示 |
 | | `skill_status` | スキル割り当て状況表示 |
