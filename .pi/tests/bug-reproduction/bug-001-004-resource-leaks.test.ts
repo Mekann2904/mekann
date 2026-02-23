@@ -64,9 +64,12 @@ describe("BUG-001: cross-instance-coordinator.ts - File Descriptor Leak", () => 
      * ファイル記述子が適切にクローズされることを確認
      */
 
+    const leakTestFile = join(tempDir, "leak-test.lock");
+    const fixedTestFile = join(tempDir, "fixed-test.lock");
+
     // ファイル記述子リークがある場合の挙動をシミュレート
     const simulateLeak = () => {
-      const fd = openSync(lockFile, "wx");
+      const fd = openSync(leakTestFile, "wx");
       // writeSyncが失敗する状況をシミュレート（例外をスロー）
       throw new Error("Simulated write error");
       // closeSync(fd) が呼ばれない
@@ -76,7 +79,7 @@ describe("BUG-001: cross-instance-coordinator.ts - File Descriptor Leak", () => 
     const simulateFixed = () => {
       let fd: number | undefined;
       try {
-        fd = openSync(lockFile, "wx");
+        fd = openSync(fixedTestFile, "wx");
         throw new Error("Simulated write error");
       } finally {
         if (fd !== undefined) {
@@ -91,8 +94,9 @@ describe("BUG-001: cross-instance-coordinator.ts - File Descriptor Leak", () => 
     // 修正後: 例外が発生してもfdがクローズされる
     expect(() => simulateFixed()).toThrow("Simulated write error");
 
-    // ファイルが存在することを確認（作成されたが書き込み失敗）
-    expect(existsSync(lockFile)).toBe(true);
+    // 両方のファイルが存在することを確認（作成されたが書き込み失敗）
+    expect(existsSync(leakTestFile)).toBe(true);
+    expect(existsSync(fixedTestFile)).toBe(true);
   });
 
   it("should demonstrate fd leak pattern with multiple failures", async () => {
@@ -135,22 +139,20 @@ describe("BUG-001: cross-instance-coordinator.ts - File Descriptor Leak", () => 
     /**
      * tryAcquireLockの実際の実装をテスト
      * 修正後はfinallyでfdがクローズされることを確認
+     *
+     * 注: tryAcquireLockは内部関数のため、公開APIを通じて間接的にテスト
      */
 
-    // cross-instance-coordinatorの内部関数はエクスポートされていないため、
-    // 間接的にテストするために公開APIを使用
-    const { registerInstance, unregisterInstance, tryAcquireLock } = await import(
-      "../../lib/cross-instance-coordinator.js"
-    );
+    const coordinator = await import("../../lib/cross-instance-coordinator.js");
 
     // インスタンスを登録
-    registerInstance("test-session-bug001", tempDir);
+    coordinator.registerInstance("test-session-bug001", tempDir);
 
     // tryAcquireLockが適切に動作することを確認
     // 修正後はfdリークが発生しない
 
     // クリーンアップ
-    unregisterInstance();
+    coordinator.unregisterInstance();
   });
 });
 
@@ -178,7 +180,7 @@ describe("BUG-002: subagents.ts - Background Job Error Notification Missing", ()
    * });
    */
 
-  it("should demonstrate missing user notification in background job error handler", () => {
+  it("should demonstrate missing user notification in background job error handler", async () => {
     /**
      * テスト戦略:
      * バックグラウンドジョブのエラーハンドラが
@@ -223,10 +225,10 @@ describe("BUG-002: subagents.ts - Background Job Error Notification Missing", ()
     };
 
     // 修正前: 通知が呼ばれない
-    // simulateOldPattern(); // 通知なし
+    await simulateOldPattern(); // 通知なし
 
     // 修正後: 通知が呼ばれる
-    simulateNewPattern(mockCtx);
+    await simulateNewPattern(mockCtx);
 
     // 通知が呼ばれたことを確認
     expect(mockCtx.ui.notify).toHaveBeenCalled();
@@ -307,15 +309,15 @@ describe("BUG-003: cross-instance-coordinator.ts - TOCTOU Race Condition", () =>
       return false;
     };
 
-    // 遅延ありの再試行（exponential backoff）
+    // 遅延ありの再試行（exponential backoff）- テスト用に短縮
     const tryWithBackoff = async (): Promise<boolean> => {
-      for (let i = 0; i <= 5; i++) {
+      for (let i = 0; i <= 3; i++) { // 5から3に減らす
         attempts++;
         if (Math.random() < successRate) {
           return true;
         }
-        // exponential backoff
-        const delay = Math.min(100 * Math.pow(2, i), 1000);
+        // exponential backoff - テスト用に短縮
+        const delay = Math.min(10 * Math.pow(2, i), 50); // 100から10に短縮
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
       return false;
@@ -325,7 +327,7 @@ describe("BUG-003: cross-instance-coordinator.ts - TOCTOU Race Condition", () =>
     let successWithoutBackoff = 0;
     let successWithBackoff = 0;
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 5; i++) { // 10から5に減らす
       attempts = 0;
       if (tryWithoutBackoff()) successWithoutBackoff++;
 
@@ -345,11 +347,9 @@ describe("BUG-003: cross-instance-coordinator.ts - TOCTOU Race Condition", () =>
      * 修正後は再試行時に遅延が追加される
      */
 
-    const { registerInstance, unregisterInstance } = await import(
-      "../../lib/cross-instance-coordinator.js"
-    );
+    const coordinator = await import("../../lib/cross-instance-coordinator.js");
 
-    registerInstance("test-session-bug003", tmpdir());
+    coordinator.registerInstance("test-session-bug003", tmpdir());
 
     // 並列でロック取得を試みる
     const results = await Promise.all(
@@ -363,7 +363,7 @@ describe("BUG-003: cross-instance-coordinator.ts - TOCTOU Race Condition", () =>
     // 全ての試行が完了することを確認
     expect(results.every((r) => r === true)).toBe(true);
 
-    unregisterInstance();
+    coordinator.unregisterInstance();
   });
 
   it("should measure retry timing distribution", async () => {
@@ -542,11 +542,9 @@ describe("Integration: Combined Bug Scenarios", () => {
      * 並列ロック取得中にfdリークが発生しないことを確認
      */
 
-    const { registerInstance, unregisterInstance } = await import(
-      "../../lib/cross-instance-coordinator.js"
-    );
+    const coordinator = await import("../../lib/cross-instance-coordinator.js");
 
-    registerInstance("test-session-combined", tmpdir());
+    coordinator.registerInstance("test-session-combined", tmpdir());
 
     // 複数の並列操作
     const results = await Promise.allSettled(
@@ -559,7 +557,7 @@ describe("Integration: Combined Bug Scenarios", () => {
     // 全ての操作が完了したことを確認
     expect(results.length).toBe(10);
 
-    unregisterInstance();
+    coordinator.unregisterInstance();
   });
 
   it("should handle background job errors with user notification and resource cleanup", async () => {

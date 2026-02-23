@@ -1357,11 +1357,11 @@ function tryAcquireLock(
 
     // ATOMIC ACQUISITION: Try to create lock file with wx flag (O_EXCL)
     // This is the primary path - if file doesn't exist, we acquire atomically
+    let fd: number | undefined;
     try {
-      const fd = openSync(lockFile, "wx");
+      fd = openSync(lockFile, "wx");
       const lockContent = JSON.stringify(lock, null, 2);
       writeSync(fd, lockContent);
-      closeSync(fd);
       return lock;
     } catch (error: unknown) {
       const errorCode = (error as NodeJS.ErrnoException)?.code;
@@ -1374,11 +1374,24 @@ function tryAcquireLock(
           return null;
         }
         // Lock was expired and cleaned up, retry acquisition
+        // Add exponential backoff delay to reduce TOCTOU race condition
+        if (attempt < maxRetries) {
+          const delayMs = Math.min(10 * Math.pow(2, attempt), 100);
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+        }
         continue;
       }
 
       // Other errors (permissions, disk full, etc.) - don't retry
       return null;
+    } finally {
+      if (fd !== undefined) {
+        try {
+          closeSync(fd);
+        } catch {
+          // Ignore close errors
+        }
+      }
     }
   }
 

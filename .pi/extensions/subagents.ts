@@ -890,6 +890,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         }
       })().catch((error) => {
         console.error("[subagent_run] Background job unhandled error:", error);
+        // ユーザーへの通知を追加 (BUG-002修正)
+        try {
+          ctx.ui.notify(`サブエージェントで予期しないエラーが発生しました: ${toErrorMessage(error)}`, "error");
+        } catch {
+          // 通知失敗時は無視（コンソールログ済み）
+        }
       });
 
       return {
@@ -1211,6 +1217,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         }
       })().catch((error) => {
         console.error("[subagent_run_parallel] Background job unhandled error:", error);
+        // ユーザーへの通知を追加 (BUG-002修正)
+        try {
+          ctx.ui.notify(`サブエージェント並列実行で予期しないエラーが発生しました: ${toErrorMessage(error)}`, "error");
+        } catch {
+          // 通知失敗時は無視（コンソールログ済み）
+        }
       });
 
       return {
