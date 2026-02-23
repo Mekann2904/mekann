@@ -1,20 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/love-thinking-modes.ts
- * role: 愛を理解するための思考モード切替機構
- * why: 「愛」は単一の思考モードでは理解できない。分析的思考だけでなく、感情的・創造的・批判的・楽観的・管理的思考を統合する必要がある。思考分類学の視点から、6つの思考帽をAIエージェントの文脈に適用し、「愛」を多面的に捉えるためのフレームワークを提供する。
- * related: relationship-metrics.ts, relationship-unmeasurables.ts, love-ethics-extension.md, self-improvement
- * public_api: ThinkingMode, LoveThinkingResult, analyzeWithSixHats, detectThinkingBias
- * invariants: 各思考モードは等しく重要である（優劣はない）
- * side_effects: なし（純粋関数）
- * failure_modes: なし
- *
+ * role: 愛の思考分析のための定数・型定義ライブラリ
+ * why: 6つの思考帽モデルに基づき、愛の多面的な分析結果を型安全に扱うため
+ * related: .pi/lib/love-thinking-core.ts, .pi/services/thinking-engine.ts
+ * public_api: ThinkingMode, THINKING_MODES, ThinkingInsight, LoveThinkingResult
+ * invariants: THINKING_MODESのキーは必ずThinkingMode型の6種類に対応する
+ * side_effects: なし（純粋な定義ファイル）
+ * failure_modes: 定義されたモードと分析結果の型が一致しない場合、型エラーが発生する
  * @abdd.explain
- * overview: 6つの思考帽に基づく「愛」の多面的分析フレームワーク
- * what_it_does: 異なる思考モードから「愛」を捉え直し、単一の視点に固執することを防ぐ
- * why_it_exists: 従来の実装は分析的思考（システム2）に偏っていた。直観・感情・創造性を含む多様な思考モードを統合するため
- * scope(in): RelationshipScore, 文脈情報
- * scope(out): LoveThinkingResult（各思考モードからの洞察の統合）
+ * overview: エドワード・デボノの6つの思考帽モデルを用いて、愛の概念を多角的に分析するためのデータ構造を定義する。
+ * what_it_does:
+ *   - 6種類の思考モード（白・赤・黒・黄・緑・青）の文字列リテラル型を定義する
+ *   - 各モードの名前、説明、焦点問い、認知スタイル、システムタイプを定数オブジェクトとして提供する
+ *   - 各モードによる「愛」の洞察を表すインターフェースThinkingInsightを定義する
+ *   - 6つのモードごとの洞察リストを含む分析結果LoveThinkingResultを定義する
+ * why_it_exists:
+ *   - 単一の視点ではなく、認知的スタイルやシステムタイプ（システム1/2）を考慮した包括的な分析を行うため
+ *   - プロンプトエンジニアリングや分析ロジックにおいて、統一された思考スキーマを適用するため
+ * scope:
+ *   in: 外部からの定数インポート、型定義の利用
+ *   out: 思考モードの定義データ、分析結果の型構造
  */
 
 /**

@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/mediator-lic-rules.ts
- * role: ルールベースのLiC（Lost in Context）検出エンジン
- * why: LLM呼び出しを減らし、高速なLiC検出を提供するため。論文Section 4.5の知見をルール化
- * related: ./mediator-types.ts, ./intent-mediator.ts
- * public_api: detectLicIndicators, LiCDetectionRule, LIC_DETECTION_RULES
- * invariants: 各ルールは副作用を持たない純粋関数である
+ * role: LiC（Lost in Context）検出エンジンの定義および実装
+ * why: 学習不要で高速なルールベースの検出を行い、文脈喪失をリアルタイムで特定するため
+ * related: .pi/lib/mediator-types.js, paper Section 4.5
+ * public_api: LiCDetectionRule, DetectionContext, LiCDetectionResult
+ * invariants: 検出関数は常にnullまたはLiCDetectionResultを返す, confidenceは0.0から1.0の範囲
  * side_effects: なし
- * failure_modes: 過検出（false positive）のリスク、文脈依存の誤判定
+ * failure_modes: 正規表現パターンが文脈に合致しない場合の見逃し, 確認済み事実の解釈誤り
  * @abdd.explain
- * overview: LLMを使用せずにLost in Context兆候を検出するルールベースエンジン。論文の知見を軽量なヒューリスティックとして実装する
+ * overview: 会話履歴や確認済み事実を入力とし、LiC兆候をパターンマッチングで検出するルールセット。
  * what_it_does:
- *   - 汎用応答パターンの検出
- *   - 文脈無視の検出
- *   - 前提不一致の検出
- *   - 過度な確認要求の検出
+ *   - LiC検出ルール（LiCDetectionRule）のインターフェース定義
+ *   - 汎用応答パターン検出（GENERIC_RESPONSE_RULE）の実装
+ *   - 文脈無視検出ロジックの実装構造
  * why_it_exists:
- *   - LLM呼び出しのオーバーヘッドを削減するため
- *   - 高速なリアルタイム検出を可能にするため
+ *   - 機械学習モデルを用いずに軽量に文脈喪失を検知するため
+ *   - ルールベースで動作の根拠（説明）を明確にするため
  * scope:
- *   in: エージェント応答、会話履歴、確認済み事実
- *   out: 検出されたLiC兆候のリスト
+ *   in: MediatorContext(会話履歴, 確認済み事実等)
+ *   out: LiCDetectionResult(検出の有無, 信頼度, 推奨対処)
  */
 
 /**

@@ -1,20 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/nonlinear-thought.ts
- * role: 非線形思考生成器
- * why: 論理の飛躍を許容し、創発的な洞察を生成する思考モードを提供
- * related: hyper-metacognition.ts, creative-destruction.ts, thinking-process.ts
- * public_api: NonLinearThoughtEngine, ThoughtSeed, AssociationChain, generateNonLinearThoughts, optimizeAssociation
- * invariants: 連想は論理的接続を必要としない
- * side_effects: なし
- * failure_modes: 完全にランダムな連想、有用性の欠如
+ * role: 非線形思考プロセスのデータ構造定義
+ * why: 思考シード、連想、連想チェーンの型を厳密に定義し、システム内での不整合を防ぐため
+ * related: ./belief-updater.ts, ./insight-generator.ts, ./memory-associator.ts
+ * public_api: ThoughtSeed, Association, AssociationChain, ConvergencePoint, SeedType, AssociationType
+ * invariants:
+ *   - ThoughtSeedのemotionalValenceは-1から1の範囲
+ *   - AssociationのstrengthとsemanticDistanceは0から1の範囲
+ *   - AssociationChainのdiversityは0から1の範囲
+ * side_effects: なし（純粋な型定義）
+ * failure_modes: 型定義と実行時データの不一致、数値範囲の制約違反
  * @abdd.explain
- * overview: 確率的サンプリングと意味的距離に基づく連想生成システム
- * what_it_does: 連想チェーンの生成、収束点の特定、創発的洞察の抽出
- * why_it_exists: 純粋に論理的な思考では到達できない洞察を可能にするため
+ * overview: 非線形思考をモデル化するためのインターフェースと型エイリアスの集合
+ * what_it_does:
+ *   - 思考の起点となるシード（ThoughtSeed）の構造を定義する
+ *   - シードから派生する連想（Association）の属性を規定する
+ *   - 連想のシーケンスであるチェーン（AssociationChain）とその収束点（ConvergencePoint）を表現する
+ * why_it_exists:
+ *   - 人間の連想思考のような非線形なプロセスを構造化されたデータとして扱うため
+ *   - 感情価や抽象度、驚き度などの定量的な指標を思考モデルに組み込むため
  * scope:
- *   in: 思考の種（シード）、連想の深さ、コンテキスト
- *   out: 連想チェーン、収束点、評価された洞察
+ *   in: なし
+ *   out: ThoughtSeed, Association, AssociationChain, ConvergencePointインターフェースと関連する型
  */
 
 import type { Distribution } from './belief-updater.js';

@@ -1,27 +1,29 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/extension.ts
- * role: 多数決と並列実行によるエージェントチームの調整機能
- * why: 専門化されたチームメンバー間での能動的な並列協力を実現するため
- * related: .pi/extensions/agent-teams/storage.ts, .pi/extensions/agent-teams/judge.ts, .pi/extensions/subagents.ts, .pi/extensions/plan.ts
- * public_api: チーム定義、ストレージ管理、コミュニケーション、審判ロジックの型とヘルパー関数
- * invariants: チーム実行IDは一意、判定信頼度は0〜1の範囲、コミュニケーションラウンド数は上限以内
- * side_effects: ファイルシステムへの実行記録書き込み、標準出力へのライブログ表示、ロガーへの出力
- * failure_modes: スキーマ検証エラー、メンバー出力のタイムアウト、審判ロジックの失敗、ファイル書き込みエラー
+ * role: 複数のエージェントで構成されるチームの定義、実行、監視、結果の永続化を行う拡張機能の実装
+ * why: 専門化されたロールを持つエージェント間で並列かつ協調的なタスク実行を可能にするため
+ * related: .pi/extensions/agent-teams/judge.ts, .pi/extensions/agent-teams/storage.ts, .pi/extensions/subagents.ts, .pi/extensions/plan.ts
+ * public_api: TeamDefinition, TeamMemberResult, TeamRunRecord, createRunId
+ * invariants: チーム実行IDは一意である、通信ラウンド数は最大値を超えない、リトライ回数は制限内である
+ * side_effects: ファイルシステムへのチーム定義と実行履歴の書き込み、ログ出力、外部モデルAPIの呼び出し
+ * failure_modes: API通信エラー、スキーマ検証失敗、タイムアウト、ディスク容量不足、循環的な通信による無限ループ
  * @abdd.explain
- * overview: 複数のエージェント（チームメンバー）を定義し、タスクを並列実行させ、通信ラウンドや審判（Judge）を介して結果を統合・評価する機能を提供する拡張モジュール。
+ * overview: マルチエージェントシステムのオーケストレーションを提供する。チーム定義のロード、メンバー間の通信調整、審査（Judge）による合意形成、実行結果の追跡と保存を行う。
  * what_it_does:
- *   - チーム定義（構成員、役割、審判設定）の管理とストレージへの永続化
- *   - チームメンバーのタスク並列実行と結果の検証
- *   - メンバー間のコミュニケーションコンテキスト共有と再試行制御
- *   - 出力に基づいた審判（Judge）による信頼度判定と最終結果の選定
- *   - 実行履歴の保存と管理（古い履歴のローテーション）
+ *   - チーム定義ファイルの読み込みと検証
+ *   - 各メンバーの並列実行と出力の検証
+ *   - メンバー間のコミュニケーション（議論）フェーズの管理
+ *   - 最終審査（Judge）による合意形成と不確実性の評価
+ *   - 実行結果のシリアライズとファイルシステムへの保存
+ *   - コスト見積もりと実行ログの記録
  * why_it_exists:
- *   - 単一エージェントでは到達できない、専門領域ごとの意見の収集と多数決による精度向上を実現するため
- *   - 並列実行によるタスク完了の高速化と、多角的な視点からの議論・検証を行うため
+ *   - 単一のエージェントでは対応困難な複雑なタスクを分担するため
+ *   - 異なる視点を持つエージェントが議論することで回答の精度を高めるため
+ *   - 並列実行によるタスク完了時間の短縮を図るため
  * scope:
- *   in: チーム定義、タスクプロンプト、実行設定（タイムアウト、通信ラウンド数など）
- *   out: 各メンバーの実行結果、審判による最終判定結果、実行ログと統計情報
+ *   in: ExtensionAPI（システムコンテキスト）、TeamDefinition（チーム設定）、ユーザー入力
+ *   out: TeamRunRecord（実行結果）、TUI表示、ファイルシステム更新、APIリクエスト
  */
 
 // File: .pi/extensions/agent-teams.ts

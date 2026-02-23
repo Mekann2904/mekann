@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/code_search.ts
- * role: コード検索ツールの実装とフォールバック処理
- * why: ripgrepによる高速検索と、利用不可時のネイティブNode.js実装を提供するため
- * related: .pi/extensions/search/utils/cli.js, .pi/extensions/search/types.js, .pi/extensions/search/utils/output.js, .pi/extensions/search/utils/cache.js
- * public_api: nativeCodeSearch(input, cwd)
- * invariants: 検索結果はlimitで指定された数（またはデフォルト値）を上限とする、正規表現フラグはignoreCaseオプションに依存する
- * side_effects: ファイルシステムの読み取りを行う、キャッシュと履歴へのアクセスを行う
- * failure_modes: 無効な正規表現パターン、ファイルの読み取りエラー（スキップされる）、プロセス実行の失敗
+ * role: コード検索ツールの実装およびripgrepが利用不可の場合のフォールバック処理
+ * why: 高速なコード検索を提供し、環境依存しない検索機能を保証するため
+ * related: .pi/extensions/search/types.js, .pi/extensions/search/utils/cli.js, .pi/extensions/search/utils/output.js
+ * public_api: nativeCodeSearch, normalizeCodeSearchInput
+ * invariants: 検索結果の件数(limit)と行数(context)は定義された最大値以下、正規表現パターンは事前に検証される
+ * side_effects: ファイルシステムの読み取り、結果に応じたエラーオブジェクトの生成
+ * failure_modes: 無効な正規表現パターン、ファイルシステム読み取りエラー、制限値超過による結果の途切れ
  * @abdd.explain
- * overview: ripgrepを使用した高速コード検索と、環境依存しない純粋なNode.js実装によるフォールバック機能を提供するモジュール。
+ * overview: ripgrepを利用した高速コード検索と、それが利用できない場合のNode.jsネイティブ実装によるフォールバックを提供するモジュール
  * what_it_does:
- *   - ripgrep（rg）コマンドを実行し、JSON出力を解析して検索結果を返す
- *   - ripgrepが利用できない場合、Node.jsのfsモジュールを使用してファイルを走査し検索する
- *   - 正規表現パターンのコンパイルと、除外パターン（globおよび完全一致）によるフィルタリングを行う
- *   - 検索結果の要約と、上限制限（limit）に基づく切り捨て処理を行う
+ *   - 入力パラメータの制限値とコンテキスト行数を安全な範囲に正規化する
+ *   - ripgrepが利用可能な場合、外部プロセスとして検索を実行する
+ *   - ripgrepが利用不可の場合、Node.jsのfsモジュールでファイルを走査し正規表現マッチングを行う
+ *   - マッチした行のパス、行番号、カラム位置、周辺コンテキストを含む結果を生成する
  * why_it_exists:
- *   - 外部ツールへの依存を最小限にしつつ、高速な検索パフォーマンスを実現するため
- *   - 実行環境によってripgrepがインストールされていない場合でも検索機能を担保するため
+ *   - 外部ツールへの依存を最小限にしつつ、大規模コードベースでの検索パフォーマンスを維持するため
+ *   - 実行環境によってripgrepがインストールされていない場合でも検索機能を利用可能にするため
  * scope:
- *   in: 検索パターン、オプション（大文字小文字の区別、リミット、除外パターン等）、カレントワーキングディレクトリ
- *   out: 検索一致の配列（CodeSearchMatch）、検索の要約（CodeSearchSummary）、またはエラーオブジェクト
+ *   in: 検索パターン、パス、オプション(大文字小文字区別、リテラル検索、リミット、コンテキスト行数)
+ *   out: 検索結果の配列、またはエラー情報を含む検索出力オブジェクト
  */
 
 /**

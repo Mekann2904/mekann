@@ -1,38 +1,18 @@
 /**
- * @abdd.meta
- * path: tests/unit/lib/mediator-types.test.ts
- * role: mediator-types.tsのユニットテスト
- * why: Mediator層の型定義とユーティリティ関数の正確性を保証するため
- * related: .pi/lib/mediator-types.ts
- * public_api: テストケースの実行
- * invariants: なし
- * side_effects: なし（テストのみ）
- * failure_modes: テスト失敗は型定義または関数の不具合を示す
- * @abdd.explain
- * overview: mediator-types.tsの型ガード、ユーティリティ関数、定数を検証するテストスイート
- * what_it_does:
- *   - Confidence型の範囲検証
- *   - SessionId/Timestamp生成関数のテスト
- *   - StructuredIntent関連関数のテスト
- *   - 定数の値確認
- * why_it_exists:
- *   - Mediator層の基盤となる型と関数の品質を保証するため
- * scope:
- *   in: mediator-types.ts
- *   out: テスト結果とカバレッジレポート
+ * mediator-types.ts の単体テスト
+ *
+ * テスト対象:
+ * - generateSessionId: セッションID生成
+ * - getCurrentTimestamp: タイムスタンプ取得
+ * - isConfidenceAboveThreshold: 信頼度チェック
+ * - createEmptyStructuredIntent: 空の構造化意図作成
+ * - structuredIntentToPrompt: 構造化意図のプロンプト変換
+ * - DEFAULT_MEDIATOR_CONFIG: デフォルト設定
  */
 
 import { describe, it, expect } from "vitest";
+import * as fc from "fast-check";
 import {
-  type Confidence,
-  type InformationGapType,
-  type MessageRole,
-  type ActionType,
-  type MediatorStatus,
-  type MediatorAction,
-  type IntentCategory,
-  type QuestionType,
-  type LiCIndicatorType,
   generateSessionId,
   getCurrentTimestamp,
   isConfidenceAboveThreshold,
@@ -42,191 +22,23 @@ import {
   LOW_CONFIDENCE_THRESHOLD,
   LIC_CONFIDENCE_THRESHOLD,
   MAX_CLARIFICATION_QUESTIONS,
+  type StructuredIntent,
+  type Confidence,
 } from "../../../.pi/lib/mediator-types.js";
 
-// ============================================================================
-// 型定義テスト
-// ============================================================================
-
 describe("mediator-types.ts", () => {
-  describe("基本型の境界値テスト", () => {
-    it("Confidenceは0.0から1.0の範囲を受け入れる", () => {
-      // Arrange
-      const validLow: Confidence = 0.0;
-      const validMid: Confidence = 0.5;
-      const validHigh: Confidence = 1.0;
-
-      // Assert
-      expect(validLow).toBe(0.0);
-      expect(validMid).toBe(0.5);
-      expect(validHigh).toBe(1.0);
-    });
-
-    it("InformationGapTypeは全ての期待される値を持つ", () => {
-      // Arrange
-      const expectedTypes: InformationGapType[] = [
-        "ambiguous_reference",
-        "missing_target",
-        "unclear_action",
-        "missing_constraints",
-        "unclear_success_criteria",
-        "context_mismatch",
-        "implicit_assumption",
-      ];
-
-      // Assert
-      expectedTypes.forEach((type) => {
-        expect(typeof type).toBe("string");
-      });
-      expect(expectedTypes.length).toBe(7);
-    });
-
-    it("MessageRoleは全ての期待される値を持つ", () => {
-      // Arrange
-      const expectedRoles: MessageRole[] = [
-        "user",
-        "assistant",
-        "mediator",
-        "system",
-      ];
-
-      // Assert
-      expectedRoles.forEach((role) => {
-        expect(typeof role).toBe("string");
-      });
-      expect(expectedRoles.length).toBe(4);
-    });
-
-    it("ActionTypeは全ての期待される値を持つ", () => {
-      // Arrange
-      const expectedTypes: ActionType[] = [
-        "create",
-        "modify",
-        "delete",
-        "query",
-        "analyze",
-        "execute",
-        "debug",
-        "document",
-        "test",
-        "refactor",
-        "review",
-        "unknown",
-      ];
-
-      // Assert
-      expectedTypes.forEach((type) => {
-        expect(typeof type).toBe("string");
-      });
-      expect(expectedTypes.length).toBe(12);
-    });
-
-    it("MediatorStatusは全ての期待される値を持つ", () => {
-      // Arrange
-      const expectedStatuses: MediatorStatus[] = [
-        "ready",
-        "needs_clarification",
-        "needs_confirmation",
-        "ambiguous",
-        "error",
-      ];
-
-      // Assert
-      expectedStatuses.forEach((status) => {
-        expect(typeof status).toBe("string");
-      });
-      expect(expectedStatuses.length).toBe(5);
-    });
-
-    it("MediatorActionは全ての期待される値を持つ", () => {
-      // Arrange
-      const expectedActions: MediatorAction[] = [
-        "proceed",
-        "clarify_first",
-        "confirm_interpretation",
-        "request_context",
-        "flag_lic",
-        "abort",
-      ];
-
-      // Assert
-      expectedActions.forEach((action) => {
-        expect(typeof action).toBe("string");
-      });
-      expect(expectedActions.length).toBe(6);
-    });
-
-    it("IntentCategoryは全ての期待される値を持つ", () => {
-      // Arrange
-      const expectedCategories: IntentCategory[] = [
-        "task_execution",
-        "information_request",
-        "clarification",
-        "correction",
-        "continuation",
-        "context_switch",
-        "termination",
-        "ambiguous",
-      ];
-
-      // Assert
-      expectedCategories.forEach((category) => {
-        expect(typeof category).toBe("string");
-      });
-      expect(expectedCategories.length).toBe(8);
-    });
-
-    it("QuestionTypeは全ての期待される値を持つ", () => {
-      // Arrange
-      const expectedTypes: QuestionType[] = [
-        "single_choice",
-        "multiple_choice",
-        "text_input",
-        "confirmation",
-        "ranking",
-      ];
-
-      // Assert
-      expectedTypes.forEach((type) => {
-        expect(typeof type).toBe("string");
-      });
-      expect(expectedTypes.length).toBe(5);
-    });
-
-    it("LiCIndicatorTypeは全ての期待される値を持つ", () => {
-      // Arrange
-      const expectedTypes: LiCIndicatorType[] = [
-        "generic_response",
-        "context_ignore",
-        "premise_mismatch",
-        "repetition",
-        "topic_drift",
-        "confirmation_overload",
-        "assumption_conflict",
-      ];
-
-      // Assert
-      expectedTypes.forEach((type) => {
-        expect(typeof type).toBe("string");
-      });
-      expect(expectedTypes.length).toBe(7);
-    });
-  });
-
-  // ============================================================================
-  // ユーティリティ関数テスト
-  // ============================================================================
-
   describe("generateSessionId", () => {
-    it("セッションIDが生成される", () => {
+    it("セッションIDを生成する", () => {
       // Act
       const sessionId = generateSessionId();
 
       // Assert
-      expect(sessionId).toMatch(/^session-\d{14}-[a-z0-9]{4}$/);
+      expect(sessionId).toBeDefined();
+      expect(typeof sessionId).toBe("string");
+      expect(sessionId.length).toBeGreaterThan(0);
     });
 
-    it("複数回呼び出すと異なるIDが生成される", () => {
+    it("生成されるIDは一意である", () => {
       // Act
       const id1 = generateSessionId();
       const id2 = generateSessionId();
@@ -235,42 +47,28 @@ describe("mediator-types.ts", () => {
       expect(id1).not.toBe(id2);
     });
 
-    it("タイムスタンプ部分はISO形式と一致する", () => {
-      // Arrange
-      const beforeTime = new Date();
-      const sessionId = generateSessionId();
-      const afterTime = new Date();
-
+    it("形式は session-TIMESTAMP-RANDOM である", () => {
       // Act
-      const timestampMatch = sessionId.match(/^session-(\d{14})-/);
-      const timestampStr = timestampMatch?.[1];
+      const sessionId = generateSessionId();
 
       // Assert
-      expect(timestampStr).toBeDefined();
-      if (timestampStr) {
-        // YYYYMMDDHHmmss形式をパース
-        const year = parseInt(timestampStr.slice(0, 4));
-        const month = parseInt(timestampStr.slice(4, 6)) - 1;
-        const day = parseInt(timestampStr.slice(6, 8));
-        const hour = parseInt(timestampStr.slice(8, 10));
-        const minute = parseInt(timestampStr.slice(10, 12));
-        const second = parseInt(timestampStr.slice(12, 14));
+      expect(sessionId).toMatch(/^session-\d{14}-[a-z0-9]{4}$/);
+    });
 
-        const generatedTime = new Date(year, month, day, hour, minute, second);
-
-        // 前後1分以内であることを確認
-        expect(generatedTime.getTime()).toBeGreaterThanOrEqual(
-          beforeTime.getTime() - 60000
-        );
-        expect(generatedTime.getTime()).toBeLessThanOrEqual(
-          afterTime.getTime() + 60000
-        );
+    it("複数回呼び出しても異なるIDを生成する", () => {
+      // Act
+      const ids = new Set<string>();
+      for (let i = 0; i < 100; i++) {
+        ids.add(generateSessionId());
       }
+
+      // Assert
+      expect(ids.size).toBe(100);
     });
   });
 
   describe("getCurrentTimestamp", () => {
-    it("ISO 8601形式のタイムスタンプが返される", () => {
+    it("ISO 8601形式のタイムスタンプを返す", () => {
       // Act
       const timestamp = getCurrentTimestamp();
 
@@ -278,34 +76,22 @@ describe("mediator-types.ts", () => {
       expect(timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     });
 
-    it("現在時刻と概ね一致する", () => {
+    it("現在時刻に近い値を返す", () => {
       // Arrange
-      const beforeTime = new Date();
+      const before = new Date().toISOString();
 
       // Act
       const timestamp = getCurrentTimestamp();
-      const parsedTime = new Date(timestamp);
 
       // Assert
-      const diffMs = Math.abs(parsedTime.getTime() - beforeTime.getTime());
-      expect(diffMs).toBeLessThan(1000); // 1秒以内の誤差
+      const after = new Date().toISOString();
+      expect(timestamp >= before).toBe(true);
+      expect(timestamp <= after).toBe(true);
     });
   });
 
   describe("isConfidenceAboveThreshold", () => {
-    it("信頼度が閾値と等しい場合trueを返す", () => {
-      // Arrange
-      const confidence = 0.7;
-      const threshold = 0.7;
-
-      // Act
-      const result = isConfidenceAboveThreshold(confidence, threshold);
-
-      // Assert
-      expect(result).toBe(true);
-    });
-
-    it("信頼度が閾値より高い場合trueを返す", () => {
+    it("閾値以上の信頼度でtrueを返す", () => {
       // Arrange
       const confidence = 0.8;
       const threshold = 0.7;
@@ -317,9 +103,9 @@ describe("mediator-types.ts", () => {
       expect(result).toBe(true);
     });
 
-    it("信頼度が閾値より低い場合falseを返す", () => {
+    it("閾値未満の信頼度でfalseを返す", () => {
       // Arrange
-      const confidence = 0.6;
+      const confidence = 0.5;
       const threshold = 0.7;
 
       // Act
@@ -329,95 +115,130 @@ describe("mediator-types.ts", () => {
       expect(result).toBe(false);
     });
 
-    it("閾値が省略された場合デフォルト値0.7を使用する", () => {
+    it("閾値と等しい場合はtrueを返す", () => {
       // Arrange
-      const confidenceAbove = 0.71;
-      const confidenceBelow = 0.69;
+      const confidence = 0.7;
+      const threshold = 0.7;
 
       // Act
-      const resultAbove = isConfidenceAboveThreshold(confidenceAbove);
-      const resultBelow = isConfidenceAboveThreshold(confidenceBelow);
-
-      // Assert
-      expect(resultAbove).toBe(true);
-      expect(resultBelow).toBe(false);
-    });
-
-    it("境界値: 信頼度0.0と閾値0.0", () => {
-      // Act
-      const result = isConfidenceAboveThreshold(0.0, 0.0);
+      const result = isConfidenceAboveThreshold(confidence, threshold);
 
       // Assert
       expect(result).toBe(true);
     });
 
-    it("境界値: 信頼度1.0と閾値1.0", () => {
+    it("デフォルト閾値は0.7", () => {
+      // Arrange
+      const confidence = 0.69;
+
       // Act
-      const result = isConfidenceAboveThreshold(1.0, 1.0);
+      const result = isConfidenceAboveThreshold(confidence);
 
       // Assert
-      expect(result).toBe(true);
+      expect(result).toBe(false);
+    });
+
+    describe("境界値テスト", () => {
+      it("信頼度0.0でfalse", () => {
+        expect(isConfidenceAboveThreshold(0, 0.5)).toBe(false);
+      });
+
+      it("信頼度1.0でtrue", () => {
+        expect(isConfidenceAboveThreshold(1, 0.5)).toBe(true);
+      });
+
+      it("閾値0.0の場合は常にtrue", () => {
+        expect(isConfidenceAboveThreshold(0, 0)).toBe(true);
+        expect(isConfidenceAboveThreshold(0.5, 0)).toBe(true);
+      });
+
+      it("閾値1.0の場合は信頼度1.0のみtrue", () => {
+        expect(isConfidenceAboveThreshold(0.99, 1)).toBe(false);
+        expect(isConfidenceAboveThreshold(1, 1)).toBe(true);
+      });
     });
   });
 
   describe("createEmptyStructuredIntent", () => {
-    it("空のStructuredIntentが作成される", () => {
+    it("空の構造化意図を作成する", () => {
       // Arrange
-      const originalInput = "テスト入力";
+      const input = "テスト入力";
 
       // Act
-      const intent = createEmptyStructuredIntent(originalInput);
+      const intent = createEmptyStructuredIntent(input);
 
       // Assert
       expect(intent.target.scope).toBe("unknown");
       expect(intent.action.type).toBe("unknown");
-      expect(intent.action.description).toBe("未確定");
+      expect(intent.confidence).toBe(0);
+      expect(intent.clarificationNeeded).toBe(true);
+    });
+
+    it("元の入力を保持する", () => {
+      // Arrange
+      const input = "これを修正して";
+
+      // Act
+      const intent = createEmptyStructuredIntent(input);
+
+      // Assert
+      expect(intent.originalInput).toBe(input);
+    });
+
+    it("制約条件は空配列", () => {
+      // Arrange
+      const input = "テスト";
+
+      // Act
+      const intent = createEmptyStructuredIntent(input);
+
+      // Assert
       expect(intent.constraints.mustPreserve).toEqual([]);
       expect(intent.constraints.mustSatisfy).toEqual([]);
       expect(intent.constraints.avoid).toEqual([]);
       expect(intent.constraints.assumptions).toEqual([]);
-      expect(intent.successCriteria.criteria).toEqual([]);
-      expect(intent.confidence).toBe(0);
-      expect(intent.clarificationNeeded).toBe(true);
-      expect(intent.originalInput).toBe(originalInput);
-      expect(intent.interpretationBasis).toEqual([]);
     });
 
-    it("originalInputが正しく設定される", () => {
+    it("成功基準は空配列", () => {
       // Arrange
-      const originalInput = "あのファイルを修正して";
+      const input = "テスト";
 
       // Act
-      const intent = createEmptyStructuredIntent(originalInput);
+      const intent = createEmptyStructuredIntent(input);
 
       // Assert
-      expect(intent.originalInput).toBe(originalInput);
+      expect(intent.successCriteria.criteria).toEqual([]);
+    });
+
+    it("解釈の根拠は空配列", () => {
+      // Arrange
+      const input = "テスト";
+
+      // Act
+      const intent = createEmptyStructuredIntent(input);
+
+      // Assert
+      expect(intent.interpretationBasis).toEqual([]);
     });
   });
 
   describe("structuredIntentToPrompt", () => {
-    it("完全なStructuredIntentをプロンプトに変換する", () => {
+    it("基本的な構造化意図をプロンプトに変換する", () => {
       // Arrange
-      const intent = createEmptyStructuredIntent("テスト");
-      intent.target = {
-        files: ["test.ts"],
-        modules: ["testModule"],
-        functions: ["testFunc"],
-        scope: "テストスコープ",
-      };
-      intent.action = {
-        type: "modify",
-        description: "テストアクション",
-        steps: ["ステップ1", "ステップ2"],
-      };
-      intent.constraints = {
-        mustPreserve: ["既存機能"],
-        mustSatisfy: ["テスト条件"],
-        avoid: ["破壊的変更"],
-        assumptions: [],
-      };
-      intent.successCriteria = {
-        criteria: ["成功基準1", "成功基準2"],
+      const intent: StructuredIntent = {
+        target: { scope: "ファイル修正" },
+        action: { type: "modify", description: "バグ修正" },
+        constraints: {
+          mustPreserve: [],
+          mustSatisfy: [],
+          avoid: [],
+          assumptions: [],
+        },
+        successCriteria: { criteria: ["テストが通る"] },
+        confidence: 0.8,
+        clarificationNeeded: false,
+        originalInput: "修正して",
+        interpretationBasis: [],
       };
 
       // Act
@@ -425,124 +246,213 @@ describe("mediator-types.ts", () => {
 
       // Assert
       expect(prompt).toContain("## ターゲット");
-      expect(prompt).toContain("- ファイル: test.ts");
-      expect(prompt).toContain("- モジュール: testModule");
-      expect(prompt).toContain("- 関数: testFunc");
       expect(prompt).toContain("## アクション");
-      expect(prompt).toContain("- 種別: modify");
+      expect(prompt).toContain("## 成功基準");
+      expect(prompt).toContain("ファイル修正");
+      expect(prompt).toContain("modify");
+      expect(prompt).toContain("バグ修正");
+    });
+
+    it("ファイル情報を含む場合", () => {
+      // Arrange
+      const intent: StructuredIntent = {
+        target: {
+          scope: "特定ファイル",
+          files: ["src/main.ts", "src/utils.ts"],
+        },
+        action: { type: "create", description: "新規作成" },
+        constraints: {
+          mustPreserve: [],
+          mustSatisfy: [],
+          avoid: [],
+          assumptions: [],
+        },
+        successCriteria: { criteria: [] },
+        confidence: 0.9,
+        clarificationNeeded: false,
+        originalInput: "作成して",
+        interpretationBasis: [],
+      };
+
+      // Act
+      const prompt = structuredIntentToPrompt(intent);
+
+      // Assert
+      expect(prompt).toContain("src/main.ts");
+      expect(prompt).toContain("src/utils.ts");
+    });
+
+    it("制約条件を含む場合", () => {
+      // Arrange
+      const intent: StructuredIntent = {
+        target: { scope: "リファクタリング" },
+        action: { type: "refactor", description: "コード整理" },
+        constraints: {
+          mustPreserve: ["既存API"],
+          mustSatisfy: ["テスト維持"],
+          avoid: ["破壊的変更"],
+          assumptions: [],
+        },
+        successCriteria: { criteria: ["テスト通過"] },
+        confidence: 0.7,
+        clarificationNeeded: false,
+        originalInput: "リファクタリングして",
+        interpretationBasis: [],
+      };
+
+      // Act
+      const prompt = structuredIntentToPrompt(intent);
+
+      // Assert
       expect(prompt).toContain("## 制約条件");
-      expect(prompt).toContain("- 維持: 既存機能");
-      expect(prompt).toContain("## 成功基準");
+      expect(prompt).toContain("既存API");
+      expect(prompt).toContain("テスト維持");
+      expect(prompt).toContain("破壊的変更");
     });
 
-    it("最小限のStructuredIntentをプロンプトに変換する", () => {
+    it("実行ステップを含む場合", () => {
       // Arrange
-      const intent = createEmptyStructuredIntent("最小限の入力");
+      const intent: StructuredIntent = {
+        target: { scope: "修正" },
+        action: {
+          type: "modify",
+          description: "修正",
+          steps: ["ファイルを開く", "コードを修正", "テストを実行"],
+        },
+        constraints: {
+          mustPreserve: [],
+          mustSatisfy: [],
+          avoid: [],
+          assumptions: [],
+        },
+        successCriteria: { criteria: [] },
+        confidence: 0.8,
+        clarificationNeeded: false,
+        originalInput: "修正して",
+        interpretationBasis: [],
+      };
 
       // Act
       const prompt = structuredIntentToPrompt(intent);
 
       // Assert
-      expect(prompt).toContain("## ターゲット");
-      expect(prompt).toContain("## アクション");
-      expect(prompt).toContain("## 成功基準");
-      // 制約条件は空の場合表示されない
-      expect(prompt).not.toContain("## 制約条件");
-    });
-
-    it("日本語が正しく処理される", () => {
-      // Arrange
-      const intent = createEmptyStructuredIntent("日本語テスト");
-      intent.target.scope = "日本語スコープ";
-      intent.action.description = "日本語のアクション説明";
-
-      // Act
-      const prompt = structuredIntentToPrompt(intent);
-
-      // Assert
-      expect(prompt).toContain("日本語スコープ");
-      expect(prompt).toContain("日本語のアクション説明");
+      expect(prompt).toContain("- ステップ:");
+      expect(prompt).toContain("1. ファイルを開く");
+      expect(prompt).toContain("2. コードを修正");
+      expect(prompt).toContain("3. テストを実行");
     });
   });
 
-  // ============================================================================
-  // 定数テスト
-  // ============================================================================
-
-  describe("定数", () => {
-    it("DEFAULT_MEDIATOR_CONFIGの値が期待通り", () => {
+  describe("DEFAULT_MEDIATOR_CONFIG", () => {
+    it("デフォルト設定が正しく定義されている", () => {
       // Assert
       expect(DEFAULT_MEDIATOR_CONFIG.enableQuestioning).toBe(true);
       expect(DEFAULT_MEDIATOR_CONFIG.maxQuestionsPerTurn).toBe(3);
       expect(DEFAULT_MEDIATOR_CONFIG.confidenceThreshold).toBe(0.7);
       expect(DEFAULT_MEDIATOR_CONFIG.historyDir).toBe(".pi/memory");
       expect(DEFAULT_MEDIATOR_CONFIG.enableLicDetection).toBe(true);
-      expect(DEFAULT_MEDIATOR_CONFIG.debugMode).toBe(false);
     });
+  });
 
-    it("LOW_CONFIDENCE_THRESHOLDの値が期待通り", () => {
-      // Assert
+  describe("定数", () => {
+    it("LOW_CONFIDENCE_THRESHOLDが正しい", () => {
       expect(LOW_CONFIDENCE_THRESHOLD).toBe(0.6);
     });
 
-    it("LIC_CONFIDENCE_THRESHOLDの値が期待通り", () => {
-      // Assert
+    it("LIC_CONFIDENCE_THRESHOLDが正しい", () => {
       expect(LIC_CONFIDENCE_THRESHOLD).toBe(0.7);
     });
 
-    it("MAX_CLARIFICATION_QUESTIONSの値が期待通り", () => {
-      // Assert
+    it("MAX_CLARIFICATION_QUESTIONSが正しい", () => {
       expect(MAX_CLARIFICATION_QUESTIONS).toBe(3);
     });
   });
 
-  // ============================================================================
-  // プロパティベーステスト
-  // ============================================================================
-
   describe("プロパティベーステスト", () => {
-    it("generateSessionIdは常に一意のIDを生成する", () => {
-      // Arrange
-      const ids = new Set<string>();
-      const iterations = 100;
+    it("generateSessionIdは常に有効な形式", () => {
+      fc.assert(
+        fc.property(fc.integer(0, 100), (n) => {
+          // Act
+          const id = generateSessionId();
 
-      // Act
-      for (let i = 0; i < iterations; i++) {
-        ids.add(generateSessionId());
-      }
-
-      // Assert
-      expect(ids.size).toBe(iterations);
+          // Assert
+          expect(id).toMatch(/^session-\d{14}-[a-z0-9]{4}$/);
+        })
+      );
     });
 
-    it("getCurrentTimestampは常に有効なISO形式を返す", () => {
-      // Arrange
-      const iterations = 100;
-      const isoRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    it("isConfidenceAboveThresholdは任意の信頼度と閾値で一貫した結果", () => {
+      fc.assert(
+        fc.property(
+          fc.float({ min: 0, max: 1 }),
+          fc.float({ min: 0, max: 1 }),
+          (confidence, threshold) => {
+            // Act
+            const result = isConfidenceAboveThreshold(confidence, threshold);
 
-      // Act & Assert
-      for (let i = 0; i < iterations; i++) {
-        const timestamp = getCurrentTimestamp();
-        expect(timestamp).toMatch(isoRegex);
-        // 有効な日時としてパースできることを確認
-        expect(() => new Date(timestamp)).not.toThrow();
-      }
+            // Assert
+            expect(result).toBe(confidence >= threshold);
+          }
+        )
+      );
     });
 
-    it("isConfidenceAboveThresholdは冪等である", () => {
-      // Arrange
-      const testCases = [
-        { confidence: 0.0, threshold: 0.5 },
-        { confidence: 0.5, threshold: 0.5 },
-        { confidence: 1.0, threshold: 0.5 },
-      ];
+    it("createEmptyStructuredIntentは任意の入力で有効な構造を返す", () => {
+      fc.assert(
+        fc.property(fc.string(), (input) => {
+          // Act
+          const intent = createEmptyStructuredIntent(input);
 
-      // Act & Assert
-      testCases.forEach(({ confidence, threshold }) => {
-        const result1 = isConfidenceAboveThreshold(confidence, threshold);
-        const result2 = isConfidenceAboveThreshold(confidence, threshold);
-        expect(result1).toBe(result2);
-      });
+          // Assert
+          expect(intent.originalInput).toBe(input);
+          expect(intent.confidence).toBe(0);
+          expect(intent.clarificationNeeded).toBe(true);
+          expect(intent.action.type).toBe("unknown");
+        })
+      );
+    });
+
+    it("structuredIntentToPromptは有効な文字列を返す", () => {
+      fc.assert(
+        fc.property(
+          fc.record({
+            target: fc.record({
+              scope: fc.string(),
+              files: fc.option(fc.array(fc.string())),
+              modules: fc.option(fc.array(fc.string())),
+              functions: fc.option(fc.array(fc.string())),
+            }),
+            action: fc.record({
+              type: fc.constantFrom("create", "modify", "delete", "query", "unknown"),
+              description: fc.string(),
+              steps: fc.option(fc.array(fc.string())),
+            }),
+            constraints: fc.record({
+              mustPreserve: fc.array(fc.string()),
+              mustSatisfy: fc.array(fc.string()),
+              avoid: fc.array(fc.string()),
+              assumptions: fc.array(fc.string()),
+            }),
+            successCriteria: fc.record({
+              criteria: fc.array(fc.string()),
+            }),
+            confidence: fc.float({ min: 0, max: 1 }),
+            clarificationNeeded: fc.boolean(),
+            originalInput: fc.string(),
+            interpretationBasis: fc.array(fc.string()),
+          }),
+          (intent) => {
+            // Act
+            const prompt = structuredIntentToPrompt(intent as StructuredIntent);
+
+            // Assert
+            expect(typeof prompt).toBe("string");
+            expect(prompt.length).toBeGreaterThan(0);
+            expect(prompt).toContain("## ターゲット");
+            expect(prompt).toContain("## アクション");
+          }
+        )
+      );
     });
   });
 });

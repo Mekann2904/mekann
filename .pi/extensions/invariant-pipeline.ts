@@ -1,27 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/invariant-pipeline.ts
- * role: spec.mdからQuint仕様、TypeScriptインバリアント、PBT、MBTドライバーを自動生成するパイプライン拡張
- * why: 形式仕様と実装コードの整合性を担保し、検証可能なテストアーティファクトを自動生成するため
- * related: @mariozechner/pi-coding-agent, spec.md, fast-check, Quint
- * public_api: generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver
- * invariants: 生成されるTypeScriptバリデーションコードは、定義された仕様の不変条件と矛盾しない
- * side_effects: ファイルシステムへの成果物書き出し（Quintファイル、TSマクロ、テストコード、MBTドライバー）
- * failure_modes: spec.mdのパースエラー、Quint検証の失敗、出力ディレクトリのアクセス権限エラー
+ * role: spec.mdからQuint形式仕様、TypeScriptインバリアント、PBT、MBTコードを生成するパイプライン拡張機能
+ * why: 仕様書から実装コードと検証コードを一貫して自動生成し、開発サイクルを効率化するため
+ * related: @mariozechner/pi-coding-agent, spec.md, quint, fast-check
+ * public_api: parseSpecMarkdown, generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver
+ * invariants: 入力spec.mdは定義されたMarkdownセクション構造に従う, 出力ファイルパスは有効なファイルシステムパスである
+ * side_effects: ファイルシステムへの読み書き(writeFileSync, readFileSync), ディレクトリの作成(mkdirSync)
+ * failure_modes: spec.mdの形式が不正な場合はパースエラー, Quintインストール未時は検証失敗, ファイル書き込み権限がない場合は出力失敗
  * @abdd.explain
- * overview: Invariant Validation Pipeline拡張機能として、仕様記述から検証可能なアーティファクトを生成する
+ * overview: 自然言語仕様(spec.md)を解析し、形式仕様(Quint)、型検証マクロ、プロパティベーステスト、モデルベーステストドライバーを生成するツールチェーン
  * what_it_does:
- *   - spec.mdをパースしてParsedSpecオブジェクトを構築する
- *   - Quint形式の形式仕様を生成・検証する
- *   - TypeScriptのインバリアントバリデーションマクロを生成する
- *   - fast-checkを用いたプロパティベーステストを生成する
- *   - モデルベーステストドライバーを生成する
+ *   - Markdown形式の仕様書をパースしてParsedSpecオブジェクトを構築する
+ *   - パース結果をもとにQuint形式の形式仕様記述を出力する
+ *   - TypeScriptで実行可能なインバリアント検証マクロを生成する
+ *   - fast-checkを利用したプロパティベーステストコードを生成する
+ *   - モデルベーステストのドライバーコードを生成する
  * why_it_exists:
- *   - 手作業での仕様とコードの同期を省くため
- *   - 形式検証と実行可能テストの両方を簡単に利用可能にするため
+ *   - 仕様駆動開発を支援し、仕様と実装の乖離を防ぐため
+ *   - 手動でのテストコード記述負荷を削減するため
+ *   - 形式検証と動的テストを統合した品質保証プロセスを実現するため
  * scope:
- *   in: spec.md（Markdown形式の仕様定義）
- *   out: Quint仕様ファイル、TypeScriptマクロファイル、テストコードファイル、MBTドライバーファイル
+ *   in: Markdown形式の仕様定義ファイル(spec.md), 生成オプション(出力パス, テスト数など)
+ *   out: Quint仕様ファイル(.qnt), TypeScriptインバリアントファイル, テストファイル, MBTドライバーファイル
  */
 
 /**

@@ -1,25 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/global-error-handler.ts
- * role: グローバルエラーハンドラの設定と管理
- * why: 未処理のPromise拒否と未捕捉例外を適切に処理し、プロセスクラッシュを防ぐため
- * related: ./errors.ts, ./comprehensive-logger.ts
- * public_api: setupGlobalErrorHandlers, teardownGlobalErrorHandlers, isGlobalErrorHandlerSetup
- * invariants: グローバルハンドラは一度だけ設定される
- * side_effects: process.on/off でイベントリスナーを登録/削除
- * failure_modes: 既にハンドラが設定されている場合は警告のみ
+ * role: グローバルエラーハンドラ設定モジュール
+ * why: 未処理のPromise拒否や未捕捉例外によるプロセスの異常終了やログ欠落を防ぐため
+ * related: .pi/lib/error-utils.ts
+ * public_api: setupGlobalErrorHandlers
+ * invariants: setupGlobalErrorHandlersは1回のみ実行可能
+ * side_effects: process.onによりイベントリスナーを登録、exitOnUncaughtがtrueの場合プロセスを終了する
+ * failure_modes: 複数回呼び出し時の二重登録、exitOnUncaught無効化による整合性不能な状態での継続
  * @abdd.explain
- * overview: Node.jsプロセスのグローバルエラーハンドリングを提供
+ * overview: Node.jsプロセス全体のエラーを捕捉し、ログ出力やプロセス終了を制御する仕組みを提供する
  * what_it_does:
- *   - unhandledRejectionの捕捉とログ出力
- *   - uncaughtExceptionの捕捉とログ出力
- *   - グレースフルシャットダウンの支援
+ *   - unhandledRejectionイベントを捕捉し、エラーメッセージとスタックトレースを出力する
+ *   - uncaughtExceptionイベントを捕捉し、エラーメッセージとスタックトレースを出力する
+ *   - uncaughtException発生時、オプションに基づいてプロセスを終了する
+ *   - キャンセル扱いすべきエラーメッセージの場合、処理をスキップする
+ *   - 外部からロガー関数を差し替え可能にする
  * why_it_exists:
- *   - システム安定性を確保するため
- *   - 予期しないエラーによるプロセスクラッシュを防ぐため
+ *   - すべての非同期処理で個別にcatchを実装する負荷を軽減するため
+ *   - 回復不能なエラー発生時のプロセス状態をクリアにするため
+ *   - エラー発生場所を特定するための統一的なログ出力を行うため
  * scope:
- *   in: なし
- *   out: グローバルエラーハンドラの設定/解除関数
+ *   in: GlobalErrorHandlerOptions（ロガー、終了フラグ、終了コード）
+ *   out: 標準エラー出力またはカスタムロガー、プロセス終了シグナル
  */
 
 import { isCancelledErrorMessage, toErrorMessage } from "./error-utils.js";

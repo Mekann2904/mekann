@@ -1,28 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/reasoning-bonds.ts
- * role: Long CoTの分子構造モデルに基づく推論ボンド分析ライブラリ
- * why: 論文「The Molecular Structure of Thought」の概念を委任システムに適用し、推論構造の安定性を分析・改善するため
- * related: .pi/extensions/agent-teams/communication.ts, .pi/extensions/agent-teams/judge.ts, .pi/lib/text-parsing.ts
- * public_api: ReasoningBond, BondTransitionGraph, analyzeBondDistribution, computeEntropyConvergence, detectStructuralChaos
- * invariants: ボンド遷移確率の合計は1.0、エントロピーは非負、構造安定性スコアは0-1の範囲
- * side_effects: なし（純粋計算関数のみ）
- * failure_modes: 無効な入力データに対するフォールバック処理、空データの境界処理
+ * role: 推論プロセスの構造的状態を表現する型定義と、テキストからの状態推論を行うユーティリティ
+ * why: 推論の動的変化（探索と検証の振動など）を論理的結合モデルとして形式化し、システムの制御や分析に利用するため
+ * related: .pi/lib/bond-metrics.ts, .pi/core/reasoning-engine.ts
+ * public_api: ReasoningBondType, ReasoningBond, BondTransitionGraph, EntropyConvergenceMetrics, StructuralChaosDetection, DEFAULT_BONDS, inferBondType
+ * invariants: energyは低いほど強い結合を表す、distanceは意味空間上的な距離を表す、推論結果は定義された4つの型のいずれかにマッピングされる
+ * side_effects: なし（純粋な型定義とテキスト解析関数）
+ * failure_modes: キーワード辞書に含まれないテキスト入力に対して意図しないボンドタイプを返す可能性
  * @abdd.explain
- * overview: Long Chain-of-Thought推論を「分子的構造」としてモデル化し、3つのボンド（Deep Reasoning、Self-Reflection、Self-Exploration）の遷移パターンと構造安定性を分析する
+ * overview: 論文の分子構造モデルに基づき、AIの推論プロセスを「ボンド（結合）」として抽象化したデータモデルを定義するモジュール
  * what_it_does:
- *   - 推論ボンド（Deep Reasoning、Self-Reflection、Self-Exploration、Normal Operation）の分類
- *   - 遷移確率グラフの構築と比較
- *   - エントロピー収束速度の計算
- *   - 構造的カオス（異なる安定構造の競合）の検出
- *   - メタ認知振動パターンの分析
+ *   - 推論の状態を4つの種類（deep-reasoning, self-reflection, self-exploration, normal-operation）で定義する
+ *   - 各状態の物理的特性（エネルギー、距離）を定数として管理する
+ *   - 出力テキストのキーワードパターンに基づき、現在の推論状態（ボンドタイプ）を推論する
  * why_it_exists:
- *   - 委任フローの品質を「構造安定性」という観点から評価・改善するため
- *   - 複数の委任戦略を混在させた際の「構造的カオス」を回避するため
- *   - エントロピー収束速度を指標として、効果的な委任パターンを特定するため
+ *   - 推論のメタ認知状態を可視化し、プロセスの安定性や収束性を評価するため
+ *   - 構造的カオスや振動パターンを検出し、システム制御のフックとするため
  * scope:
- *   in: チームメンバーの実行結果、通信履歴、不確実性スコアの推移
- *   out: ボンド分布、遷移確率グラフ、エントロピー収束メトリクス、構造安定性評価
+ *   in: 推論出力テキスト（文字列）
+ *   out: 推論されたボンド型、または定義された構造的インターフェース
  */
 
 /**

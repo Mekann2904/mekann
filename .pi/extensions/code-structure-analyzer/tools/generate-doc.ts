@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/code-structure-analyzer/tools/generate-doc.ts
- * role: ドキュメントセクション生成エンジン
- * why: コード構造データと図解データから、LLM解説用プレースホルダを含む構造化ドキュメントを作成するため
- * related: ./extract-structure.js, ./generate-diagrams.js
+ * role: ドキュメントセクション生成器
+ * why: コード構造データとMermaid図から統一的なドキュメント形式を作成するため
+ * related: extract-structure.ts, generate-diagrams.ts
  * public_api: generateDocSections
- * invariants: 入力構造データに基づきタイトルと概要を生成する、LLMコンテキストはオプション指定時のみ生成する
- * side_effects: ファイルシステムへの直接書き込みは行わない（データ生成のみ）
- * failure_modes: テンプレートファイルの不存在、構造データのフォーマット不一致
+ * invariants: 構造データと図データは整合している、各セクションの出力形式は一定
+ * side_effects: ファイルシステムへの書き込みは行わない（データ生成のみ）
+ * failure_modes: 構造データが不足している場合にセクション生成が不完全になる、オプション設定により出力内容が変動する
  * @abdd.explain
- * overview: 解析されたコード構造とMermaid図から、統合された技術ドキュメントの各セクション文字列を生成するモジュール。
+ * overview: コードの静的解析結果と可視化図を元に、タイトル、概要、APIリファレンス等のドキュメント構成要素を生成するモジュール。
  * what_it_does:
- *   - 構造データからタイトル、概要、APIリファレンスセクションを生成する
- *   - Mermaid図を基に図解セクションを生成する
- *   - オプションに応じてLLMが解説生成に使用するためのコンテキストデータ（要約、主要要素リスト）を生成する
+ *   - StructureDataとMermaidDiagramsを受け取り、DocSectionsオブジェクトを生成する
+ *   - 概要、構造、API、図解セクションのテキストを作成する
+ *   - オプションに応じてLLM用コンテキストデータ（サマリーや主要構成要素）を生成する
  * why_it_exists:
- *   - コード解析と可視化の結果を、人間およびAIが参照可能なドキュメント形式に変換するため
- *   - LLMによる高精度な解説生成のための構造化データを提供するため
+ *   - 自動ドキュメント生成システムにおける出力フォーマットの標準化を図るため
+ *   - 人間向けのドキュメントとLLM向けのコンテキストを同一プロセスで作成するため
  * scope:
- *   in: コード構造データ, Mermaid図データ, 生成オプション
- *   out: ドキュメントセクションオブジェクト, LLMコンテキスト
+ *   in: 解析済みの構造データ(StructureData)、生成済みの図データ(MermaidDiagrams)、生成オプション(DocOptions)
+ *   out: ドキュメント各セクションを含むDocSectionsオブジェクト
  */
 
 /**

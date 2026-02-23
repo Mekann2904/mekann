@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/meta-evaluation.ts
- * role: 評価システム自体のバイアスと限界を認識するメタ評価モジュール
- * why: 評価システムが自分自身を評価できないという再帰的問題に対処するため
- * related: .pi/lib/aporia-awareness.ts, .pi/lib/perspective-scorer.ts, .pi/lib/consciousness-spectrum.ts
- * public_api: MetaEvaluationResult, evaluateEvaluationSystem, getMetaBiasReport
- * invariants: メタ評価は「正解」ではなく「認識の限界」を明らかにする
- * side_effects: なし（純粋な分析関数）
- * failure_modes: メタ評価自体の過信（無限後退の無視）
+ * role: 評価システムのバイアス定義およびメタ評価結果の生成
+ * why: 数値化や測定が招く論理的矛盾や哲学的制約を明示し、システム出力の盲点を特定するため
+ * related: .pi/lib/aporia-awareness.ts, .pi/lib/consciousness-spectrum.ts, .pi/lib/perspective-scorer.ts
+ * public_api: MetaBiasType, MetaBias, MetaEvaluationResult, KNOWN_META_BIASES, evaluateConsciousnessSpectrum
+ * invariants: KNOWN_META_BIASESの各エントリはtype, name, description, mitigationStrategy, severityを持つ
+ * side_effects: なし
+ * failure_modes: 評価対象システムの実装とバイアス定義が乖離した場合、メタ評価の指針が無効になる
  * @abdd.explain
- * overview: 評価システム（perspective-scorer, consciousness-spectrum等）自体が持つバイアス、限界、前提を認識し、その「信頼度」を適切にコンテキスト化する。
+ * overview: 評価システム自体に内在するバイアスを定義し、特定のシステム（例: consciousness-spectrum）に対してメタ評価を実行するモジュール
  * what_it_does:
- *   - 評価システムの前提を明示化
- *   - 測定不能なものを特定
- *   - 自己言及的パラドックスを認識
- *   - 「評価」そのものの価値を問い直す
+ *   - 量への還元や測定パラドックスなど、評価プロセスの制約を型定義する
+ *   - 既知のメタバイアス定義を定数として提供する
+ *   - 対象システムの抱えるバイアス、測定不可能な側面、暗黙の前提を列挙した結果を生成する
  * why_it_exists:
- *   - 評価システムへの無批判な信頼を防ぐため
- *   - 「測定」が「価値」を損なうリスクを認識するため
- *   - ハワソン効果（測定されることによる振る舞いの変化）を意識するため
+ *   - 「測定できないもの」や「測定が対象を変える」効果をシステム内部で扱う必要があるため
+ *   - 数値的出力への過度な依存を防ぎ、適切な使用範囲を示唆するため
  * scope:
- *   in: 評価システムの設計、出力、使用状況
- *   out: バイアス認識、測定限界、アポリアの統合
+ *   in: 評価対象となるシステムの識別子、およびAporia状態への参照
+ *   out: バイアスリスト、測定不可能な側面、推奨・非推奨の使用方法を含むメタ評価結果
  */
 
 import {

@@ -1,27 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/mediator-prompt.ts
- * role: Mediator層のプロンプトテンプレートモジュール
- * why: 論文Section 4のMediator-Assistantアーキテクチャに基づき、意図明確化のためのプロンプトを生成する
- * related: .pi/lib/intent-mediator.ts, .pi/lib/mediator-types.ts
- * public_api: MEDIATOR_SYSTEM_PROMPT, buildInterpretationPrompt, buildClarificationPrompt, buildStructuringPrompt, LIC_DETECTION_PROMPT
- * invariants: プロンプトは論文のEquation (5)に従い履歴ℋを含む
- * side_effects: なし（純粋なテンプレート生成）
- * failure_modes: テンプレート変数の欠落、フォーマット崩れ
+ * role: Mediatorシステムのプロンプト定義および生成機能の提供
+ * why: LLMに対して一貫した「意図の仲介」動作をさせ、ユーザー入力を実行可能な指示に変換するため
+ * related: ./mediator-types.ts
+ * public_api: MEDIATOR_SYSTEM_PROMPT, buildInterpretationPrompt, InterpretationPromptInput
+ * invariants:
+ * - プロンプトには必ず「意図推論と実行の分離」「training-free」の原則が含まれる
+ * - buildInterpretationPromptの出力は、システムプロンプトの原則に従う形式を含む
+ * side_effects: なし（純粋な文字列生成）
+ * failure_modes:
+ * - 入力履歴が空の場合、文脈不足による解釈の精度低下
+ * - taskContextまたはuserMessageが空文字列の場合、プロンプトの不完全化
  * @abdd.explain
- * overview: MediatorがLLMを使用して意図を解釈・明確化するためのプロンプトテンプレートを提供
+ * overview: 「Intent Mediator」のシステムプロンプト定数と、対話文脈に基づいた解釈用プロンプトを動的に構築する関数を提供するモジュール。
  * what_it_does:
- *   - システムプロンプトの定義
- *   - 意図解釈用プロンプトの構築
- *   - 明確化質問生成用プロンプトの構築
- *   - 構造化指示生成用プロンプトの構築
- *   - LiC検出用プロンプトの構築
+ *   - Mediatorの役割定義（意図推論、情報統合、曖昧さの明確化、training-free）を含むシステムプロンプトを保持する
+ *   - 会話履歴、確認済み事実、タスクコンテキスト、ユーザー入力を結合し、LLMに入力する解釈プロンプトを生成する
  * why_it_exists:
- *   - 論文のMediatorパターンをtraining-freeで実現するため
- *   - 一貫性のあるプロンプトフォーマットを保証するため
+ *   - プロンプトエンジニアリングのロジックをコードベースに集約し、メンテナンス性を高めるため
+ *   - 会話履歴や確認済み事実といった動的なコンテキストをプロンプトに埋め込む必要があるため
  * scope:
- *   in: ユーザー入力、会話履歴、確認済み事実
- *   out: LLMに送信するプロンプト文字列
+ *   in: InterpretationPromptInput（会話履歴、確認済み事実、タスクコンテキスト、ユーザーメッセージ）
+ *   out: LLMへの入力として使用可能なプロンプト文字列
  */
 
 import {

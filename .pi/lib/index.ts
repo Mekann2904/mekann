@@ -1,24 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/index.ts
- * role: 非推奨の集約エントリーポイント
- * why: コード移行期間中の後方互換性維持のため
- * related: lib/core.ts, lib/agent.ts, lib/storage.ts
- * public_api: core, agent, storage, tui, skill-registry等の全再エクスポート
- * invariants: コメントで@deprecatedが付与されている
- * side_effects: モジュール解析時に依存ファイルを読み込む
- * failure_modes: 移行完了後の削除漏れによる循環参照リスク
+ * role: 非推奨のバレルエクスポートファイル（下位互換用）
+ * why: 移行期間中の旧コードとの互換性を維持するため
+ * related: .pi/lib/core.ts, .pi/lib/agent.ts, .pi/lib/storage.ts, docs/architecture.md
+ * public_api: core.ts, agent.ts, storage.ts, tui/live-monitor-base.ts, skill-registry.ts, semantic-repetition.ts, intent-aware-limits.ts の全エクスポート
+ * invariants: ファイル構造変更時は本ファイルのエクスポート元も更新する
+ * side_effects: なし（静的エクスポートのみ）
+ * failure_modes: モジュール解決エラー、循環依存、将来のバージョンでの削除によるビルドエラー
  * @abdd.explain
- * overview: 個別のエントリーポイントへ再エクスポートを行う廃止予定のバレルファイル
+ * overview: 中核モジュールと追加ユーティリティを再エクスポートする非推奨の集約ポイント
  * what_it_does:
- *   - core.ts, agent.ts, storage.ts, tui等のモジュールを再エクスポートする
- *   - 移行ガイドへ誘導する警告を出力する
+ *   - core.ts, agent.ts, storage.ts の全シンボルを再エクスポートする
+ *   - TUIライブ監視、スキルレジストリ、意味論反復検知などの追加ユーティリティを再エクスポートする
+ *   - 新規コードのインポートを防ぐものではなく、移行过渡期の補助となる
  * why_it_exists:
- *   - 個別インポートへの移行を促進するため
- *   - 既存コードの破壊的変更を防ぐため
+ *   - ファイル分割（focused entry points）への移行を円滑に行うため
+ *   - 既存コードの破壊的変更を回避するため
  * scope:
- *   in: コードベース全体のモジュール
- *   out: このファイルをインポートする呼び出し元
+ *   in: 各子モジュールからのエクスポート定義
+ *   out: 外部モジュールへの統一されたインターフェース提供（非推奨）
  */
 
 /**

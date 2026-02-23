@@ -95,9 +95,12 @@ describe("self-improvement-cycle", () => {
   });
 
   describe("updateCycle", () => {
-    it("サイクルを更新する", () => {
+    it("サイクルを更新する", async () => {
       // Arrange
       const cycle = createCycle({ cycleNumber: 1, focusArea: "テスト" });
+
+      // 少し待機してupdatedAtが変わるようにする
+      await new Promise(r => setTimeout(r, 10));
 
       // Act
       const updated = updateCycle(cycle, {

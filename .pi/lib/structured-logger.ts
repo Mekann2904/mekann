@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/structured-logger.ts
- * role: ログ出力の統一フォーマット管理
- * why: ログレベル、コンテキスト、操作名を含む一貫性のあるログ生成をシステム全体に提供するため
- * related: .pi/lib/subagents.ts, .pi/lib/scheduler.ts, .pi/lib/storage.ts
- * public_api: LogLevel, LogContext, StructuredLogEntry, StructuredLoggerOptions, StructuredLogger class
- * invariants: 出力レベルは現在の最小ログレベル以上であること、タイムスタンプはISO8601形式であること
- * side_effects: コンソールへの出力、標準出力/標準エラーへの書き込み
- * failure_modes: 指定された出力先への書き込み失敗、無効なログレベル指定時の振る舞い未定義
+ * role: ログ出力の標準化および一元管理を行うユーティリティ
+ * why: アプリケーション全体でログフォーマットと出力制御（レベル、フィルタリング）を統一し、監視とデバッグの効率を向上させるため
+ * related: .pi/lib/types.ts, .pi/lib/config.ts, .pi/core/agent.ts
+ * public_api: type LogLevel, type LogContext, interface StructuredLogEntry, interface StructuredLoggerOptions
+ * invariants: タイムスタンプはISO8601形式、ログレベルは定義された優先順位に従う、構造化データはJSONまたは整形テキストで出力
+ * side_effects: console/stdout/stderrへの文字列出力、グローバルな最小ログレベルのキャッシュ状態変更
+ * failure_modes: 指定されたログレベルが閾値未満の場合は出力されない、出力先への書き込みエラーは捕捉されない
  * @abdd.explain
- * overview: 構造化されたログエントリを生成・出力するユーティリティ実装。
+ * overview: ログレベル、コンテキスト、メタデータを含む構造化ログを生成し、Feature Flagによる出力制御を行うロガー実装。
  * what_it_does:
- *   - LogLevel、LogContext、StructuredLogEntry、StructuredLoggerOptionsの型定義を提供する
- *   - 機能フラグ（PI_LOG_LEVEL）に基づき出力する最小ログレベルを動的に決定する
- *   - ログメッセージにタイムスタンプ、コンテキスト、相関ID、エラー情報等を付与して構造化する
+ *   - DEBUG, INFO, WARN, ERROR のレベル別ログ出力制御
+ *   - タイムスタンプ、相関ID、実行時間、エラー情報を含む構造化ログエントリの生成
+ *   - JSON形式または可読性のあるテキスト形式での出力切り替え
+ *   - Feature Flag (PI_LOG_LEVEL) による動的な最小ログレベルの設定
  * why_it_exists:
- *   - デバッグおよび監視のために、システム全体で統一されたフォーマットにより可視性を確保するため
- *   - JSONフォーマット選択や出力先切り替えなど、ログ出力の柔軟性を確保するため
+ *   - 分散環境や複雑なシステムにおけるログの検索性と解析可能性を確保するため
+ *   - 開発環境と本番環境でログの出力量を容易に切り替えるため
  * scope:
- *   in: 機能フラグ（PI_LOG_LEVEL）、ログレベル、コンテキスト、メタデータ、出力先設定
- *   out: 標準出力、標準エラー出力、コンソールへのフォーマット済みログ文字列
+ *   in: LogLevel, LogContext, operation名, 任意のメタデータオブジェクト, エラーオブジェクト
+ *   out: コンソールまたは標準出力への形式化されたログ文字列
  */
 
 /**

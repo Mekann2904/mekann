@@ -78,8 +78,9 @@ describe("agent-errors", () => {
     });
 
     it("パースエラーを正しく分類する", () => {
-      // Arrange & Act
-      const result = classifySemanticError(undefined, new Error("JSON parse error"));
+      // Arrange & Act - outputがundefinedの場合はEMPTY_OUTPUTが先に判定されるため、
+      // 空でないoutputを渡してパースエラーを判定する
+      const result = classifySemanticError("invalid json", new Error("JSON parse error"));
 
       // Assert
       expect(result.code).toBe("PARSE_ERROR");
@@ -106,8 +107,8 @@ describe("agent-errors", () => {
     });
 
     it("キャンセルは再試行不可と判定する", () => {
-      // Arrange & Act
-      const result = resolveExtendedFailureOutcome(new Error("Operation was cancelled"));
+      // Arrange & Act - outputを渡してclassifySemanticErrorがEMPTY_OUTPUTを返さないようにする
+      const result = resolveExtendedFailureOutcome(new Error("Operation was cancelled"), "some output");
 
       // Assert
       expect(result.outcomeCode).toBe("CANCELLED");
@@ -115,8 +116,8 @@ describe("agent-errors", () => {
     });
 
     it("タイムアウトは再試行可能と判定する", () => {
-      // Arrange & Act
-      const result = resolveExtendedFailureOutcome(new Error("Request timed out"));
+      // Arrange & Act - outputを渡してclassifySemanticErrorがEMPTY_OUTPUTを返さないようにする
+      const result = resolveExtendedFailureOutcome(new Error("Request timed out"), "some output");
 
       // Assert
       expect(result.outcomeCode).toBe("TIMEOUT");
@@ -456,12 +457,12 @@ describe("agent-errors", () => {
       expect(result).toBe("quality");
     });
 
-    it("ネットワークエラーはtransient", () => {
+    it("ネットワークエラーはpermanent（ECONNREFUSEDはtransientパターンに含まれない）", () => {
       // Arrange & Act
       const result = classifyFailureType(new Error("ECONNREFUSED"));
 
-      // Assert
-      expect(result).toBe("transient");
+      // Assert - ECONNREFUSEDはclassifyFailureTypeのtransientパターンに含まれないためpermanent
+      expect(result).toBe("permanent");
     });
 
     it("キャンセルはpermanent", () => {

@@ -1,27 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/index.ts
- * role: 検索機能の拡張登録エントリーポイント
- * why: fd, ripgrep, ctagsを用いた高速なファイル検索、コード検索、シンボル検索、および意味検索をエージェントに提供するため
- * related: .pi/extensions/search/tools/file_candidates.ts, .pi/extensions/search/tools/code_search.ts, .pi/extensions/search/tools/call_graph.ts, .pi/extensions/search/tools/semantic_search.ts
+ * role: PI Coding Agent向け検索拡張機能のエントリーポイント
+ * why: ファイル列挙、コード検索、シンボル検索、意味検索など、プロジェクトコードの高速な検索機能をエージェントに提供するため
+ * related: .pi/extensions/search/tools/file_candidates.ts, .pi/extensions/search/tools/code_search.ts, .pi/extensions/search/tools/semantic_search.ts
  * public_api: file_candidates, code_search, sym_index, sym_find, call_graph_index, find_callers, find_callees, semantic_index, semantic_search
- * invariants: 実行にはExtensionAPIインスタンスが必要、ツールごとの戻り値はフォーマット済み文字列と詳細オブジェクトを含む構造体
- * side_effects: 外部コマンド(fd, rg, ctags)のプロセス生成、標準出力へのエラーログ出力
- * failure_modes: 必要な外部コマンドがインストールされていない場合のエラー、無効な正規表現やパス指定による実行時エラー
+ * invariants: piオブジェクトがnullの場合は登録処理を中断する
+ * side_effects: なし
+ * failure_modes: 必要なCLIツールがインストールされていない場合、またはファイルシステムアクセス権限がない場合にエラーが発生する
  * @abdd.explain
- * overview: PI Coding Agentに対して、ソースコードの静的解析と検索を行うツール群を登録するモジュール
+ * overview: fd, ripgrep, ctagsなどのCLIツールをラップし、ファイルシステム上のソースコードに対する多様な検索手段を提供する拡張機能
  * what_it_does:
- *   - 高速ファイル列挙ツール(fd)とコードパターン検索ツール(ripgrep)の登録
- *   - ctagsを利用したシンボル定義のインデックス作成と検索機能の提供
- *   - 呼び出し関係(call graph)のインデックス作成、呼び出し元/呼び出し先の検索
- *   - ベクトル埋め込みを用いた意味的インデックス作成と自然言語検索の実行
- *   - 外部コマンドの有無チェックと実行結果のフォーマット
+ *   - 拡張機能の初期化および各種ツールの登録を行う
+ *   - ファイルパスに基づくファイル・ディレクトリの列挙(file_candidates)
+ *   - 正規表現によるコードパターンの検索(code_search)
+ *   - ctagsを用いたシンボル定義のインデックス化と検索(sym_index, sym_find)
+ *   - ripgrepを用いた呼び出し関係グラフの生成と解析(call_graph_index, find_callers, find_callees)
+ *   - ベクトル埋め込みを用いた意味的なコード検索(semantic_index, semantic_search)
  * why_it_exists:
- *   - エージェントがプロジェクト内のファイルやコード構造を迅速に把握・移動するため
- *   - テキストマッチングだけでなく、意味理解や構造依存の検索ニーズに対応するため
+ *   - エージェントがコードベースを迅速に理解・ナビゲートするために高性能な検索ツールが必要なため
+ *   - 構造的な検索（シンボル、呼び出し関係）と意味的な検索（ベクトル）の両方をサポートするため
  * scope:
- *   in: ExtensionAPIオブジェクト、各ツールのクエリパラメータ
- *   out: 登録されたツールオブジェクト、ツール実行結果としてのテキストメッセージおよび詳細データオブジェクト
+ *   in: PI Coding AgentのExtensionAPIオブジェクト
+ *   out: 検索ツール群を登録済みのExtensionAPIオブジェクト
  */
 
 /**

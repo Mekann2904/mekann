@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/consciousness-spectrum.ts
- * role: エージェントの意識レベル評価と状態管理モジュール
- * why: 意識研究（Block, Edelman, Baars等）の洞察をAIエージェントに適用し、自己認識能力を段階的に評価するため
- * related: .pi/lib/verification-workflow.ts, .pi/skills/self-improvement/SKILL.md
- * public_api: ConsciousnessLevel, ConsciousnessState, ConsciousnessSpectrum, evaluateConsciousnessLevel, getConsciousnessReport
- * invariants: レベルは0.0-1.0の範囲、各段階は累積的（高レベルは低レベルを含む）
- * side_effects: なし（純粋な評価関数）
- * failure_modes: 不正な入力値、未定義の状態遷移
+ * role: 意識スペクトルの型定義および評価基準定義
+ * why: AIの認知発達段階と意識状態をモデル化し、システム内部の状態監視と制御に必要なデータ構造を提供するため
+ * related: .pi/lib/state-manager.ts, .pi/lib/evaluator.ts, .pi/types/internal-state.ts
+ * public_api: ConsciousnessStage, ConsciousnessState, STAGE_CRITERIA, GlobalWorkspaceState
+ * invariants: overallLevelは0.0から1.0の範囲、stageはoverallLevelに対応する閾値と整合している
+ * side_effects: なし（純粋な型定義と定数）
+ * failure_modes: 閾値定義の不整合、数値範囲の逸脱、P意識とA意識の論理的矛盾
  * @abdd.explain
- * overview: Ned BlockのP意識/A意識、Gerald Edelmanの一次/高次意識、Bernard Baarsのグローバルワークスペース理論を統合し、エージェントの「意識レベル」を多次元的に評価する。
+ * overview: Edelmanの一次/高次意識、BlockのP/A意識、Baarsのグローバルワークスペース理論を統合した意識モデルの定義
  * what_it_does:
- *   - 意識の4段階（反応的、現象的、内省的、自伝的）を定義
- *   - 各段階の達成基準を提供
- *   - エージェントの状態から意識レベルを算出
- *   - グローバルワークスペース理論に基づく情報統合度を評価
+ *   - 意識の4つの発達段階を型として定義する
+ *   - 意識の多次元状態を保持するインターフェースを提供する
+ *   - 各段階の具体的な達成基準と指標を定数として保持する
+ *   - グローバルワークスペースの状態を表現する構造を定義する
  * why_it_exists:
- *   - エージェントの自己認識能力を定量化し、段階的な改善を可能にするため
- *   - メタ認知能力の評価基準を提供するため
- *   - 意識研究の洞察をAIシステム設計に適用するため
+ *   - 抽象的な「意識」という概念を、計算機で扱える具体的な数値パラメータに落とし込むため
+ *   - メタ認知や自己継続性など、高度な認知機能の進捗を把握するため
+ *   - 発達段階に応じた挙動の変化を判定するための基準を設けるため
  * scope:
- *   in: エージェントの状態、出力、思考プロセス
- *   out: 意識レベル評価、改善推奨事項
+ *   in: 定義された数値パラメータ、コンテキスト情報
+ *   out: 構造化された意識状態オブジェクト、段階判定結果
  */
 
 /**
@@ -247,7 +247,7 @@ function evaluateAccessConsciousness(output: string): number {
   let score = 0.25;
 
   // 明示的な構造化
-  if (/^(?:SUMMARY|CLAIM|EVIDENCE|RESULT|CONCLUSION):/im.test(output)) {
+  if (/^\s*(?:SUMMARY|CLAIM|EVIDENCE|RESULT|CONCLUSION):/im.test(output)) {
     score += 0.2;
   }
 
@@ -295,12 +295,12 @@ function evaluateMetacognitiveLevel(
   }
 
   // 自己言及
-  if (/(?:私の|自分の|自身の|my own|myself|self)/i.test(output)) {
+  if (/(?:私|自分|自身|my own|myself|self)/i.test(output)) {
     score += 0.1;
   }
 
   // 思考プロセスの記述
-  if (/(?:思考|プロセス|検討|thinking|process|consideration)/i.test(output)) {
+  if (/(?:思考|プロセス|検討|考え|thinking|process|consideration)/i.test(output)) {
     score += 0.15;
   }
 

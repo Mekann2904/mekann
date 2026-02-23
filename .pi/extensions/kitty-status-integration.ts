@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/kitty-status-integration.ts
- * role: kittyターミナル統合エクステンション
- * why: piの作業状態をkittyのウィンドウタイトルや通知システムへ連携するため
+ * role: kittyターミナル連携拡張
+ * why: piの作業進捗をkittyのウィンドウタイトルや通知システムへ即時反映するため
  * related: @mariozechner/pi-coding-agent, child_process
- * public_api: setWindow, notify
- * invariants: kitty以外のターミナルでは標準出力へのエスケープシーケンス出力と通知発火を行わない
- * side_effects: プロセス標準出力への書き込み、osascript/afplayプロセスの生成
- * failure_modes: 外部コマンド(osascript, afplay)の実行失敗時はエラーをログ出力して処理を継続する
+ * public_api: notify, setWindow, export default function(api)
+ * invariants: process.env.KITTY_WINDOW_IDが存在する場合のみkittyコマンドを出力する
+ * side_effects: stdoutへのエスケープシーケンス出力、osascript/afplayプロセスの生成
+ * failure_modes: 通知コマンドの実行エラー（捕捉してログ出力のみ）、KITTY_WINDOW_ID未定義時の機能無効化
  * @abdd.explain
- * overview: kittyのshell integrationを利用し、piのエージェント状態可視化と通知を行う
+ * overview: piエージェントのイベントをフックし、kittyターミナルのUI要素（タイトル、通知）を制御する
  * what_it_does:
- *   - kittyのウィンドウタイトルとタブ名をエスケープシーケンスで設定する
- *   - macOSではAppleScriptとafplayを用いて通知とシステムサウンドを再生する
- *   - Linuxではkittyネイティブ通知を表示する
- *   - 実行環境がkittyかどうかを環境変数KITTY_WINDOW_IDで判定する
+ *   - kittyのOSCコマンドを使用してウィンドウタイトルおよびタブ名を変更する
+ *   - macOSではosascript経由で通知センターへ通知を送信する
+ *   - macOSではafplayコマンドでシステムサウンドを再生する
+ *   - Linuxではkittyのネイティブ通知機能を使用する
  * why_it_exists:
- *   - ユーザーがターミナル操作中にpiの状態を非干渉で把握するため
- *   - プラットフォームごとの最適な通知手段（macOS通知センター、kitty通知）を提供するため
+ *   - ターミナル離れていてもエージェントの完了やエラーを認知可能にする
+ *   - 現在のタスク状態をウィンドウタイトルで常時表示する
  * scope:
- *   in: piのExtensionAPIコールバック、通知設定オブジェクト
- *   out: 標準出力(ESCシーケンス)、OSの通知サブシステム、サウンド再生プロセス
+ *   in: ExtensionAPI(pi-coreからのイベント), プラットフォーム情報, 環境変数
+ *   out: 標準出力へのエスケープシーケンス, 外部プロセス(osascript/afplay)の実行
  */
 
 /**

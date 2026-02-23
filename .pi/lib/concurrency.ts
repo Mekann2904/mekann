@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/concurrency.ts
- * role: 並列実行数を制限する非同期タスクプールの実装
- * why: 重複するプールロジックを排除し、キャンセル後の余計なタスク起動を防ぐため
+ * role: 並列実行数制限付きワーカープール
+ * why: 重複するプールロジックを削除し、キャンセル後の余分なタスク生成を防ぐため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts
  * public_api: runWithConcurrencyLimit, ConcurrencyRunOptions
- * invariants: limitは常に1以上の整数に正規化される、results配列のインデックスはitemsの順序と一致する、いずれかのワーカーが失敗した場合最初のエラーが再スローされる
- * side_effects: AbortSignalによる中断時、即座にErrorをスローして処理を停止する
- * failure_modes: limitが非数または無限大の場合は1にフォールバックする、空配列が渡されると即座に空配列を返す
+ * invariants: limitは常に1以上でitemCount以下に正規化される
+ * side_effects: abortOnError時、最初のエラー発生でプール全体を中止する
+ * failure_modes: signalが中断状態の場合即座にエラー終了する
  * @abdd.explain
- * overview: アイテム配列を指定された最大並列数で処理し、すべての完了を待機して結果を返すユーティリティ
+ * overview: 指定した上限数で非同期タスクを並列実行し、中断信号とエラー制御を提供する
  * what_it_does:
- *   - 入力limitを正の整数（1以上、items.length以下）に正規化する
- *   - 指定された数のワーカーを起動し、アイテムを順次消費してworker関数を実行する
- *   - AbortSignalの状態を監視し、中断要求があれば処理を停止する
- *   - 最初に発生したエラーを保持し、すべての処理完了後に再スローする
+ *   - アイテム配列と同時実行数を受け取り、制限内でワーカーを実行する
+ *   - AbortSignalによるキャンセルと中止通知伝播を行う
+ *   - 最初のエラーを保持し、abortOnError設定に基づいて処理を打ち切る
+ *   - 全タスクの完了を待機し、結果配列またはエラーを返す
  * why_it_exists:
- *   - サブエージェントやチーム実行など、複数箇所で必要となる並列処理ロジックを共通化するため
- *   - 並列数制御と中止処理を一箇所に集約し、不整合やリソースリークを防ぐため
+ *   - 複数箇所（subagents, agent-teams等）で必要となる並列実行処理を共通化する
+ *   - キャンセル処理の不整合を防ぎ、リソースリーク（ダングリングワーカー）を回避する
  * scope:
- *   in: アイテム配列、並列数、処理関数、中断シグナル
- *   out: 処理結果の配列（入力順）または最初のエラー
+ *   in: アイテム配列、同時実行数、ワーカー関数、実行オプション
+ *   out: 各アイテムの処理結果配列、または最初に発生したエラー
  */
 
 // File: .pi/lib/concurrency.ts

@@ -1,27 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/semantic-memory.ts
- * role: セマンティック検索（意味検索）およびベクトル埋め込みの管理モジュール
- * why: 過去の実行履歴に対しベクトル検索を行い、類似タスクを特定するため
- * related: .pi/lib/embeddings/index.ts, .pi/lib/run-index.ts, .pi/lib/storage-lock.ts, .pi/lib/fs-utils.ts
- * public_api: generateEmbedding, generateEmbeddingsBatch, isSemanticMemoryAvailable, findNearestNeighbors
- * invariants: SemanticMemoryStorageは常に固定のモデル名と次元数を持つ
- * side_effects: ファイルシステムへの埋め込みデータの読み書き、外部埋め込みプロバイダへのAPIリクエスト
- * failure_modes: 外部API通信エラー、埋め込み生成時のメモリ不足、ディスクIOエラー
+ * role: 実行履歴に対するセマンティック検索機能を提供するモジュール
+ * why: ベクトル埋め込みを用いて「類似タスクの検索」を実現するため
+ * related: .pi/lib/embeddings/index.ts, .pi/lib/run-index.ts, .pi/lib/storage-lock.ts
+ * public_api: RunEmbedding, SemanticMemoryStorage, SemanticSearchResult, generateEmbedding, findNearestNeighbors
+ * invariants: ベクトルの次元数は1536固定
+ * side_effects: ディスク上のセマンティックメモリストレージファイルへの書き込み
+ * failure_modes: 埋め込み生成プロバイダの未構成、ディスクIOエラー、無効なベクトル形式
  * @abdd.explain
- * overview: 実行履歴の埋め込みベクトルを生成・永続化し、類似度計算による検索機能を提供する。外部プロバイダとの連携はembeddingsモジュールに委譲する。
+ * overview: 実行履歴のインデックスとベクトル埋め込みを組み合わせ、意味的な類似性に基づいた検索を行う
  * what_it_does:
- *   - テキストから埋め込みベクトルを生成する（単一およびバッチ）
- *   - 実行履歴のインデックスと埋め込みベクトルを紐付けて管理する
- *   - クエリベクトルに対するk近傍探索を行う
- *   - セマンティックメモリストレージを読み書きする
+ *   - テキストから埋め込みベクトルを生成またはバッチ生成する
+ *   - クエリベクトルに対してコサイン類似度を用いた最近傍探索を行う
+ *   - 実行履歴と埋め込みデータを関連付けて検索結果を返す
+ *   - 埋め込みデータの永続化とバージョン管理を行う
  * why_it_exists:
- *   - 「類似のタスクを探す」機能を実現するため
- *   - ベクトル類似度に基づく高度な検索を可能にするため
- *   - 埋め込み生成ロジックと検索ロジックを分離して依存関係を整理するため
+ *   - キーワード検索では抽出できない、意図や文脈が似通った過去のタスクを特定するため
+ *   - 過去の実行結果を再利用して効率化を図るため
  * scope:
- *   in: 実行ID、検索クエリテキスト、埋め込み対象テキスト、実行インデックス
- *   out: 類似度スコア付きの検索結果、埋め込みベクトル、メモリの利用可否状態
+ *   in: テキスト、実行インデックス、埋め込みプロバイダ設定
+ *   out: 埋め込みベクトル、類似度スコアを含む検索結果
  */
 
 /**

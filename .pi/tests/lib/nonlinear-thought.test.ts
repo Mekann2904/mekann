@@ -10,44 +10,19 @@ import {
   type Association,
   type AssociationChain,
   type NonLinearThoughtEngine,
-  createThoughtSeed,
+  type InsightKind,
   createNonLinearThoughtEngine,
-  generateAssociation,
-  generateAssociationChain,
-  findConvergencePoint,
-  evaluateInsight,
-  extractEmergentInsights,
+  registerSeed,
+  generateNonLinearThoughts,
+  generateParallelThoughts,
+  optimizeAssociation,
+  getParetoOptimalInsights,
+  generateNonLinearThoughtReport,
+  resetEngine,
+  extractSeedsFromText,
 } from "../../lib/nonlinear-thought.js";
 
 describe("nonlinear-thought", () => {
-  describe("createThoughtSeed", () => {
-    it("思考の種を作成する", () => {
-      // Arrange & Act
-      const seed = createThoughtSeed("テスト概念", "concept");
-
-      // Assert
-      expect(seed.id).toBeDefined();
-      expect(seed.content).toBe("テスト概念");
-      expect(seed.type).toBe("concept");
-      expect(seed.emotionalValence).toBeGreaterThanOrEqual(-1);
-      expect(seed.emotionalValence).toBeLessThanOrEqual(1);
-    });
-
-    it("オプションパラメータを設定できる", () => {
-      // Arrange & Act
-      const seed = createThoughtSeed("テスト", "metaphor", {
-        emotionalValence: 0.5,
-        abstractionLevel: 0.8,
-        relatedConcepts: ["関連1", "関連2"],
-      });
-
-      // Assert
-      expect(seed.emotionalValence).toBe(0.5);
-      expect(seed.abstractionLevel).toBe(0.8);
-      expect(seed.relatedConcepts).toEqual(["関連1", "関連2"]);
-    });
-  });
-
   describe("createNonLinearThoughtEngine", () => {
     it("エンジンを作成する", () => {
       // Arrange & Act
@@ -57,162 +32,326 @@ describe("nonlinear-thought", () => {
       expect(engine.seeds.size).toBe(0);
       expect(engine.chains).toEqual([]);
       expect(engine.insights).toEqual([]);
+      expect(engine.convergencePoints).toEqual([]);
     });
 
-    it("初期シードを設定できる", () => {
+    it("デフォルト設定が適用される", () => {
+      // Arrange & Act
+      const engine = createNonLinearThoughtEngine();
+
+      // Assert
+      expect(engine.config.defaultParameters.maxDepth).toBe(5);
+      expect(engine.config.defaultParameters.breadth).toBe(3);
+      expect(engine.config.minInsightQuality).toBe(0.5);
+    });
+
+    it("カスタム設定を適用できる", () => {
+      // Arrange & Act
+      const engine = createNonLinearThoughtEngine({
+        minInsightQuality: 0.7,
+        parallelChains: 5,
+      });
+
+      // Assert
+      expect(engine.config.minInsightQuality).toBe(0.7);
+      expect(engine.config.parallelChains).toBe(5);
+    });
+  });
+
+  describe("registerSeed", () => {
+    it("思考の種を登録する", () => {
       // Arrange
-      const seeds = [
-        createThoughtSeed("シード1", "concept"),
-        createThoughtSeed("シード2", "question"),
-      ];
+      const engine = createNonLinearThoughtEngine();
 
       // Act
-      const engine = createNonLinearThoughtEngine({ initialSeeds: seeds });
+      const seed = registerSeed(engine, "テスト概念", "concept");
+
+      // Assert
+      expect(seed.id).toBeDefined();
+      expect(seed.content).toBe("テスト概念");
+      expect(seed.type).toBe("concept");
+      expect(seed.emotionalValence).toBeGreaterThanOrEqual(-1);
+      expect(seed.emotionalValence).toBeLessThanOrEqual(1);
+    });
+
+    it("デフォルトタイプはconcept", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+
+      // Act
+      const seed = registerSeed(engine, "テスト");
+
+      // Assert
+      expect(seed.type).toBe("concept");
+    });
+
+    it("登録されたシードはエンジンに保存される", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+
+      // Act
+      registerSeed(engine, "シード1");
+      registerSeed(engine, "シード2");
 
       // Assert
       expect(engine.seeds.size).toBe(2);
     });
-  });
 
-  describe("generateAssociation", () => {
-    it("連想を生成する", () => {
+    it("活性化強度は初期値1.0", () => {
       // Arrange
-      const seed = createThoughtSeed("木", "concept");
       const engine = createNonLinearThoughtEngine();
 
       // Act
-      const association = generateAssociation(seed, engine);
+      const seed = registerSeed(engine, "テスト");
 
       // Assert
-      expect(association).toBeDefined();
-      expect(association.content).toBeDefined();
-      expect(association.type).toBeDefined();
-      expect(association.strength).toBeGreaterThanOrEqual(0);
-      expect(association.strength).toBeLessThanOrEqual(1);
+      expect(seed.activationStrength).toBe(1.0);
     });
 
-    it("連想タイプは有効な値", () => {
+    it("抽象度は初期値0.5", () => {
       // Arrange
-      const seed = createThoughtSeed("テスト", "concept");
       const engine = createNonLinearThoughtEngine();
 
       // Act
-      const association = generateAssociation(seed, engine);
+      const seed = registerSeed(engine, "テスト");
 
       // Assert
-      const validTypes = ["semantic", "phonetic", "visual", "emotional", "temporal", "spatial", "metaphorical", "random"];
-      expect(validTypes).toContain(association.type);
+      expect(seed.abstractionLevel).toBe(0.5);
     });
   });
 
-  describe("generateAssociationChain", () => {
+  describe("generateNonLinearThoughts", () => {
     it("連想チェーンを生成する", () => {
       // Arrange
-      const seed = createThoughtSeed("海", "concept");
       const engine = createNonLinearThoughtEngine();
+      registerSeed(engine, "思考");
 
       // Act
-      const chain = generateAssociationChain(seed, engine, 3);
+      const chain = generateNonLinearThoughts(engine);
 
       // Assert
-      expect(chain.associations.length).toBeLessThanOrEqual(3);
-      expect(chain.startingSeed.id).toBe(seed.id);
+      expect(chain).toBeDefined();
+      expect(chain.id).toBeDefined();
+      expect(chain.seed).toBeDefined();
+      expect(chain.associations).toBeDefined();
     });
 
-    it("深さ0は空のチェーンを返す", () => {
+    it("チェーンはエンジンに保存される", () => {
       // Arrange
-      const seed = createThoughtSeed("テスト", "concept");
       const engine = createNonLinearThoughtEngine();
+      registerSeed(engine, "思考");
 
       // Act
-      const chain = generateAssociationChain(seed, engine, 0);
-
-      // Assert
-      expect(chain.associations.length).toBe(0);
-    });
-
-    it("チェーンは履歴に追加される", () => {
-      // Arrange
-      const seed = createThoughtSeed("テスト", "concept");
-      const engine = createNonLinearThoughtEngine();
-
-      // Act
-      generateAssociationChain(seed, engine, 2);
+      generateNonLinearThoughts(engine);
 
       // Assert
       expect(engine.chains.length).toBe(1);
     });
-  });
 
-  describe("findConvergencePoint", () => {
-    it("複数のチェーンから収束点を見つける", () => {
+    it("統計情報が更新される", () => {
       // Arrange
       const engine = createNonLinearThoughtEngine();
-      const seed1 = createThoughtSeed("スタート1", "concept");
-      const seed2 = createThoughtSeed("スタート2", "concept");
-
-      const chain1 = generateAssociationChain(seed1, engine, 3);
-      const chain2 = generateAssociationChain(seed2, engine, 3);
+      registerSeed(engine, "思考");
 
       // Act
-      const convergence = findConvergencePoint([chain1, chain2], engine);
+      generateNonLinearThoughts(engine);
 
       // Assert
-      // 収束点が見つかる場合と見つからない場合がある
-      if (convergence) {
-        expect(convergence.content).toBeDefined();
-        expect(convergence.confidence).toBeGreaterThanOrEqual(0);
-      }
+      expect(engine.statistics.totalChains).toBe(1);
+    });
+
+    it("シードIDを指定して生成できる", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      const seed = registerSeed(engine, "創造");
+
+      // Act
+      const chain = generateNonLinearThoughts(engine, seed.id);
+
+      // Assert
+      expect(chain.seed.id).toBe(seed.id);
+    });
+
+    it("シードがない場合はデフォルトシードが作成される", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+
+      // Act
+      const chain = generateNonLinearThoughts(engine);
+
+      // Assert
+      expect(chain.seed.content).toBe("思考");
+      expect(engine.seeds.size).toBe(1);
+    });
+
+    it("パラメータをカスタマイズできる", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      registerSeed(engine, "思考");
+
+      // Act
+      const chain = generateNonLinearThoughts(engine, undefined, {
+        maxDepth: 2,
+        breadth: 2,
+      });
+
+      // Assert
+      expect(chain.associations.length).toBeLessThanOrEqual(2);
     });
   });
 
-  describe("evaluateInsight", () => {
-    it("洞察を評価する", () => {
+  describe("generateParallelThoughts", () => {
+    it("複数のチェーンを並列生成する", () => {
       // Arrange
-      const insight = "新しい視点: つながりが見えた";
       const engine = createNonLinearThoughtEngine();
+      const seed1 = registerSeed(engine, "思考");
+      const seed2 = registerSeed(engine, "創造");
 
       // Act
-      const score = evaluateInsight(insight, engine);
+      const chains = generateParallelThoughts(engine, [seed1.id, seed2.id]);
 
       // Assert
-      expect(score.novelty).toBeGreaterThanOrEqual(0);
-      expect(score.novelty).toBeLessThanOrEqual(1);
-      expect(score.relevance).toBeGreaterThanOrEqual(0);
-      expect(score.relevance).toBeLessThanOrEqual(1);
-      expect(score.overallScore).toBeGreaterThanOrEqual(0);
-      expect(score.overallScore).toBeLessThanOrEqual(1);
+      expect(chains.length).toBe(2);
+    });
+
+    it("各チェーンは異なるシードから開始する", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      const seed1 = registerSeed(engine, "思考");
+      const seed2 = registerSeed(engine, "創造");
+
+      // Act
+      const chains = generateParallelThoughts(engine, [seed1.id, seed2.id]);
+
+      // Assert
+      expect(chains[0].seed.id).toBe(seed1.id);
+      expect(chains[1].seed.id).toBe(seed2.id);
     });
   });
 
-  describe("extractEmergentInsights", () => {
-    it("チェーンから洞察を抽出する", () => {
+  describe("optimizeAssociation", () => {
+    it("最適化されたパラメータを返す", () => {
       // Arrange
       const engine = createNonLinearThoughtEngine();
-      const seed = createThoughtSeed("探索", "question");
-      const chain = generateAssociationChain(seed, engine, 3);
 
       // Act
-      const insights = extractEmergentInsights([chain], engine);
+      const params = optimizeAssociation(engine, "connection");
 
       // Assert
-      expect(Array.isArray(insights)).toBe(true);
+      expect(params.maxDepth).toBeGreaterThan(0);
+      expect(params.breadth).toBeGreaterThan(0);
+      expect(params.randomnessWeight).toBeGreaterThanOrEqual(0);
+      expect(params.randomnessWeight).toBeLessThanOrEqual(1);
     });
 
-    it("複数のチェーンから洞察を抽出する", () => {
+    it("成功した洞察がない場合はデフォルトパラメータを返す", () => {
       // Arrange
       const engine = createNonLinearThoughtEngine();
-      const seed1 = createThoughtSeed("問い1", "question");
-      const seed2 = createThoughtSeed("問い2", "question");
-
-      const chain1 = generateAssociationChain(seed1, engine, 3);
-      const chain2 = generateAssociationChain(seed2, engine, 3);
 
       // Act
-      const insights = extractEmergentInsights([chain1, chain2], engine);
+      const params = optimizeAssociation(engine);
 
       // Assert
-      expect(Array.isArray(insights)).toBe(true);
+      expect(params.maxDepth).toBe(5);
+      expect(params.breadth).toBe(3);
+    });
+  });
+
+  describe("getParetoOptimalInsights", () => {
+    it("パレート最適な洞察を返す", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      registerSeed(engine, "思考");
+
+      // Act
+      generateNonLinearThoughts(engine);
+      const optimal = getParetoOptimalInsights(engine);
+
+      // Assert
+      expect(Array.isArray(optimal)).toBe(true);
+    });
+
+    it("洞察がない場合は空配列を返す", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+
+      // Act
+      const optimal = getParetoOptimalInsights(engine);
+
+      // Assert
+      expect(optimal).toEqual([]);
+    });
+  });
+
+  describe("generateNonLinearThoughtReport", () => {
+    it("レポートを生成する", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+
+      // Act
+      const report = generateNonLinearThoughtReport(engine);
+
+      // Assert
+      expect(report).toContain("非線形思考エンジン レポート");
+      expect(report).toContain("統計情報");
+    });
+
+    it("洞察がある場合は洞察情報を含む", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      registerSeed(engine, "思考");
+      generateNonLinearThoughts(engine);
+
+      // Act
+      const report = generateNonLinearThoughtReport(engine);
+
+      // Assert
+      expect(report).toContain("総チェーン数: 1");
+    });
+  });
+
+  describe("resetEngine", () => {
+    it("エンジンをリセットする", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      registerSeed(engine, "思考");
+      generateNonLinearThoughts(engine);
+
+      // Act
+      resetEngine(engine);
+
+      // Assert
+      expect(engine.seeds.size).toBe(0);
+      expect(engine.chains).toEqual([]);
+      expect(engine.insights).toEqual([]);
+      expect(engine.statistics.totalChains).toBe(0);
+    });
+  });
+
+  describe("extractSeedsFromText", () => {
+    it("テキストからシードを抽出する", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      const text = "思考とは何か？創造の本質を探る。";
+
+      // Act
+      const seeds = extractSeedsFromText(engine, text);
+
+      // Assert
+      expect(seeds.length).toBeGreaterThan(0);
+    });
+
+    it("問いを抽出する", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      const text = "これは問いでしょうか？もう一つの問い？";
+
+      // Act
+      const seeds = extractSeedsFromText(engine, text);
+
+      // Assert
+      const questionSeeds = seeds.filter(s => s.type === "question");
+      expect(questionSeeds.length).toBeGreaterThan(0);
     });
   });
 
@@ -229,53 +368,75 @@ describe("nonlinear-thought", () => {
         "memory",
         "random",
       ];
+      const engine = createNonLinearThoughtEngine();
 
       // Act & Assert
       types.forEach((type) => {
-        const seed = createThoughtSeed("テスト", type);
+        const seed = registerSeed(engine, "テスト", type);
         expect(seed.type).toBe(type);
       });
     });
   });
 
-  describe("活性化強度", () => {
-    it("活性化強度は0-1の範囲", () => {
-      // Arrange & Act
-      const seed = createThoughtSeed("テスト", "concept");
+  describe("連想チェーンの統計", () => {
+    it("統計情報が正しく計算される", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      registerSeed(engine, "思考");
+
+      // Act
+      const chain = generateNonLinearThoughts(engine);
 
       // Assert
-      expect(seed.activationStrength).toBeGreaterThanOrEqual(0);
-      expect(seed.activationStrength).toBeLessThanOrEqual(1);
+      expect(chain.statistics.totalLength).toBe(chain.associations.length);
+      expect(chain.statistics.averageStrength).toBeGreaterThanOrEqual(0);
+      expect(chain.statistics.averageSurprise).toBeGreaterThanOrEqual(0);
+    });
+
+    it("タイプ分布が記録される", () => {
+      // Arrange
+      const engine = createNonLinearThoughtEngine();
+      registerSeed(engine, "思考");
+
+      // Act
+      const chain = generateNonLinearThoughts(engine);
+
+      // Assert
+      expect(chain.statistics.typeDistribution).toBeDefined();
+      expect(chain.statistics.typeDistribution.semantic).toBeDefined();
     });
   });
 
-  describe("連想の意味的距離", () => {
-    it("意味的距離は0-1の範囲", () => {
+  describe("多様性スコア", () => {
+    it("多様性は0-1の範囲", () => {
       // Arrange
-      const seed = createThoughtSeed("テスト", "concept");
       const engine = createNonLinearThoughtEngine();
+      registerSeed(engine, "思考");
 
       // Act
-      const association = generateAssociation(seed, engine);
+      const chain = generateNonLinearThoughts(engine);
 
       // Assert
-      expect(association.semanticDistance).toBeGreaterThanOrEqual(0);
-      expect(association.semanticDistance).toBeLessThanOrEqual(1);
+      expect(chain.diversity).toBeGreaterThanOrEqual(0);
+      expect(chain.diversity).toBeLessThanOrEqual(1);
     });
   });
 
-  describe("驚き度", () => {
-    it("驚き度は0-1の範囲", () => {
+  describe("洞察の種類", () => {
+    it("すべての洞察種類が有効", () => {
       // Arrange
-      const seed = createThoughtSeed("テスト", "concept");
-      const engine = createNonLinearThoughtEngine();
+      const kinds: InsightKind[] = [
+        "connection",
+        "pattern",
+        "analogy",
+        "reframe",
+        "synthesis",
+        "question",
+        "contradiction",
+      ];
 
-      // Act
-      const association = generateAssociation(seed, engine);
-
-      // Assert
-      expect(association.surpriseLevel).toBeGreaterThanOrEqual(0);
-      expect(association.surpriseLevel).toBeLessThanOrEqual(1);
+      // Act & Assert - 型チェック
+      expect(kinds.length).toBe(7);
     });
   });
 });

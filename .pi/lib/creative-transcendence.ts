@@ -1,29 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/creative-transcendence.ts
- * role: 創造的自己超越モジュール - 「何が可能か」を探求する
- * why: ニーチェの自己克服、アリストテレスのエウダイモニアの視座から、
- *      批判的分析を超えて肯定的創造を実現するため
- * related: .pi/lib/aporia-awareness.ts, .pi/lib/consciousness-spectrum.ts
- * public_api: CreativePossibility, TranscendenceState, explorePossibilities, getTranscendenceReport
- * invariants: 可能性は無限だが、現在の制約は認識される
- * side_effects: なし（純粋な探索）
- * failure_modes: 非現実的な可能性への逃避、現実の無視
+ * role: 創造的超越の可能性を定義および探索するドメインモデル
+ * why: システムが現状の枠組みを超えた創造的解決策や成長の経路を特定・提案するため
+ * related: .pi/lib/eudaimonia.ts, .pi/lib/agency.ts
+ * public_api: CreativePossibility, TranscendenceState, ExplorationContext, explorePossibilities
+ * invariants: explorePossibilitiesの戻り値はエウダイモニア価値の降順である
+ * side_effects: なし
+ * failure_modes: コンテキストに基づく適切な可能性の生成が失敗する、価値計算の誤り
  * @abdd.explain
- * overview: 幸福論（エウダイモニア）と自己克服の哲学に基づき、現在の制約を認識しつつ、
- *          「何が可能か」を肯定的に探求するモジュール。批判的分析を補完し、創造的飛躍を支援。
+ * overview: 創造的な自己超越と成長の可能性を表現する型と、それらを探索するロジックを提供する
  * what_it_does:
- *   - 現在の「あり方」を認識
- *   - 「ありうるもの」を肯定的に探求
- *   - 自己超越の経路を特定
- *   - 創造的緊張を維持
+ *   - 創造的可能性の種類と構造を定義する
+ *   - 自己超越の状態と探索コンテキストを管理する
+ *   - 技能拡張、視点転換、統合、創発、超越の各軸で可能性を探索する
+ *   - 探索結果をエウダイモニア指標に基づきソートして返す
  * why_it_exists:
- *   - 批判的分析だけでは「何が悪いか」しか見えない
- *   - 「何が可能か」を問うことで、真の改善が可能になる
- *   - ニーチェの「能動的虚無主義」を実践：虚無を認識しつつ、価値を創造
+ *   - 単なる問題解決にとどまらず、存在論的なレベルでの成長をシステムに支援させるため
+ *   - 創造的緊張やアポリアを乗り越える経路を明示化するため
  * scope:
- *   in: 現在の状態、制約、アポリア、欲望
- *   out: 可能性、創造的経路、自己超越の方向性
+ *   in: 現在の状態、タスク、制約条件、認識されているアポリア
+ *   out: ソートされた創造的可能性リスト
  */
 
 /**

@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/errors.ts
- * role: pi-plugin共通エラークラスおよびエラーコード型の定義モジュール
- * why: 全拡張機能で統一されたエラーハンドリング、リトライ判定、ログ記録を実現するため
- * related: lib/agent-errors.ts, lib/index.ts
+ * role: pi-pluginにおけるエラー定義の基底モジュール
+ * why: 拡張機能間で統一されたエラーハンドリングとエラー分類を実装するため
+ * related: .pi/lib/agent-errors.ts
  * public_api: PiErrorCode, PiError, RuntimeLimitError, SchemaValidationError
- * invariants: PiErrorインスタンスは必ずcodeプロパティとtimestampプロパティを持つ
- * side_effects: なし（純粋な定義とインスタンス化のみ）
- * failure_modes: エラーコードの不正指定、不正なオプションオブジェクトの渡入
+ * invariants: PiErrorのサブクラスはcodeプロパティとtimestampを必ず持つ
+ * side_effects: Error.captureStackTraceによるスタックトレースの生成
+ * failure_modes: 不正なエラーコードが渡された場合の型安全性の欠如
  * @abdd.explain
- * overview: pi-plugin全体で使用される標準エラークラス（PiError）と、特定のエラー種別（RuntimeLimitError等）を定義するモジュール。
+ * overview: pi-plugin全体で使用する標準エラークラスとエラーコード型を定義するモジュール
  * what_it_does:
- *   - PiErrorCode型を通じて標準化されたエラーコードを定義する
- *   - Errorクラスを継承したPiError基底クラスを提供する
- *   - エラーのリトライ可否、原因エラー、タイムスタンプを管理する
- *   - エラー内容をJSON形式でシリアライズする機能を提供する
+ *   - PiErrorCode型によるエラー種別の定義
+ *   - PiError基底クラスによる共通プロパティ（code, retryable, cause, timestamp）の実装
+ *   - RuntimeLimitError, SchemaValidationErrorなどの特定ドメインエラーの定義
+ *   - エラー情報のJSONシリアライズ機能提供
  * why_it_exists:
- *   - 異なる拡張機能間でエラー構造を統一し、キャッチ処理を共通化するため
- *   - エラーログのフォーマットや再試行ロジックの一貫性を保証するため
+ *   - 拡張機能間でエラー構造とハンドリングロジックを統一するため
+ *   - プログラム上でのエラー分類と再試行判定を可能にするため
+ *   - ランタイム制限やスキーマ検証失敗など、pi固有のエラー状態を明示するため
  * scope:
- *   in: エラーメッセージ（文字列）、エラーコード、オプション設定オブジェクト
- *   out: PiError派生クラスのインスタンス、PiErrorCode型
+ *   in: なし
+ *   out: 標準化されたエラーオブジェクトインスタンス
  */
 
 /**

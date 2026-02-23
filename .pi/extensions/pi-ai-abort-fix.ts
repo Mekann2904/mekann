@@ -1,4 +1,28 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/pi-ai-abort-fix.ts
+ * role: pi-aiランタイム互換性パッチ適用モジュール
+ * why: 実行中のpi本体が古い場合、pi-aiパッケージ内のJSファイルに対してabort stop reason変換処理を動的に追加するため
+ * related: docs/patches/pi-ai-abort-fix.md, .pi/lib/error-utils.ts, package.json
+ * public_api: default function
+ * invariants: セッション開始時に1回だけ適用を試みる
+ * side_effects: node_modules内のpi-ai配布JSファイルを直接書き換える
+ * failure_modes: 置換対象コード（before文字列）が変更されている場合、パッチが適用されない
+ * @abdd.explain
+ * overview: pi-aiパッケージの配布JSファイルに対し、abort終了理由を変換するケース文を追加するパッチ処理を実装する。
+ * what_it_does:
+ *   - 複数のプロバイダ（Google, Anthropic, OpenAI）JSファイル内のswitch文にabortケースを追加する
+ *   - ファイル読み込み、文字列置換、書き込みを実行し、既適用かどうかを判定する
+ *   - require解決のベースパスを収集し、パッチ対象ファイルのパスを特定する
+ * why_it_exists:
+ *   - pi本体の更新を待たずに、古い環境でもabort機能を利用可能にするため
+ *   - ユーザー環境のnode_modules directlyを修正することで、即座に動作を変化させるため
+ * scope:
+ *   in: なし（ファイルシステムとモジュール解決情報のみを使用）
+ *   out: pi-aiパッケージ内のJSファイル変更、またはステータスログ
+ */
+
+/**
  * .pi/extensions/pi-ai-abort-fix.ts
  * pi-aiのstop reason変換にabort対応を追加するランタイム互換パッチ実装。
  * 原則は上流更新で解消するが、古いpi本体実行環境でのみ必要時に適用する。

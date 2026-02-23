@@ -1,24 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/interfaces/runtime-snapshot.ts
- * role: ランタイム状態の抽象化インターフェースおよびその取得関数の型定義
- * why: DIP（依存性逆転の原則）に従い、lib/モジュールがextensions/の具象実装に依存せず抽象に依存するため
+ * role: 実行時状態のデータコントラクトおよび取得関数の型定義
+ * why: lib/モジュールがextensions/の具象実装に依存せず、依存関係逆転の原則（DIP）を遵守するため
  * related: lib/unified-limit-resolver.ts, extensions/agent-runtime.ts
  * public_api: IRuntimeSnapshot, RuntimeSnapshotProvider
- * invariants: 各カウントプロパティ（totalActiveLlm, totalActiveRequestsなど）は常に0以上の整数
- * side_effects: なし（インターフェースと型エイリアスのみ）
- * failure_modes: Providerが不正な値（負数など）を返した場合、呼び出し元のリミット制御ロジックが誤動作する
+ * invariants: 各カウント値（totalActiveLlm, totalActiveRequests, subagentActiveCount, teamActiveCount）は0以上の整数
+ * side_effects: なし（純粋なインターフェース定義と型エイリアス）
+ * failure_modes: なし
  * @abdd.explain
- * overview: システム全体のアクティブな処理数とエージェント数を表現するデータ構造と、それを提供する関数の型定義
+ * overview: エージェントやチームの現在の稼働状況を表すスナップショットのインターフェースと、それを取得する関数の型定義
  * what_it_does:
- *   - LLM操作、リクエスト、サブエージェント、チームエージェントの各アクティブ数を保持するIRuntimeSnapshotインターフェースを定義する
+ *   - LLM操作数、リクエスト数、サブエージェント数、チーム数を保持するIRuntimeSnapshotインターフェースを定義する
  *   - IRuntimeSnapshotを返すRuntimeSnapshotProvider型を定義する
  * why_it_exists:
- *   - Clean Architecture適用のため、lib/レイヤーが実装詳細に依存せず、ランタイム状態のスナップショットを取得できるようにする
- *   - アクティブリソースの集計方法を隠蔽し、リミット解決ロジックと切り離すため
+ *   - lib/レイヤーがextensions/レイヤーの詳細に依存しないようにするため（Clean Architecture）
+ *   - 実行時リソースの状態を共通の形式で取り扱うため
  * scope:
  *   in: なし
- *   out: IRuntimeSnapshot型のオブジェクト、RuntimeSnapshotProvider型
+ *   out: 状態を表す数値プロパティを持つオブジェクト
  */
 
 /**

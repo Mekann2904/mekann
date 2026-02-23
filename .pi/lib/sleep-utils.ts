@@ -1,23 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/sleep-utils.ts
- * role: 非同期スリープユーティリティの共通実装
- * why: 複数のモジュールで重複定義されているsleep関数を一元管理し、保守性を向上させるため
- * related: .pi/extensions/rpm-throttle.ts, .pi/extensions/shared/pi-print-executor.ts, .pi/extensions/agent-teams/member-execution.ts
- * public_api: sleep
- * invariants: 0以下の引数は即座に解決される
- * side_effects: なし（Promiseベースの非同期待機のみ）
- * failure_modes: なし
+ * role: 汎用非同期待機機能の提供
+ * why: 複数モジュールで共通利用する待機処理を一箇所に集約するため
+ * related: .pi/lib/async-utils.ts, .pi/lib/time-helper.ts, .pi/lib/test-utils.ts
+ * public_api: sleep(ms: number): Promise<void>
+ * invariants: msが0以下の場合、即座に解決されるPromiseを返す
+ * side_effects: なし（タイマー設定のみ）
+ * failure_modes: なし（引数が数値であれば実行時エラーは発生しない）
  * @abdd.explain
- * overview: 指定ミリ秒だけ非同期で待機するユーティリティ関数
+ * overview: 指定したミリ秒間処理を停止する非同期関数を提供するモジュール
  * what_it_does:
- *   - 指定されたミリ秒数だけ実行を一時停止する
- *   - 0以下の値が渡された場合は即座に解決する
+ *   - 指定ミリ秒待機後に解決されるPromiseを返す
+ *   - 0以下の値が指定された場合は即座に解決する
  * why_it_exists:
- *   - rpm-throttle, pi-print-executor, member-executionで重複定義されていたsleep関数を共通化する
+ *   - setTimeoutをPromiseでラップし、async/await構文で簡潔に記述するため
+ *   - 待機ロジックを共通化し、コードの重複を防ぐため
  * scope:
- *   in: 待機時間（ミリ秒）
- *   out: 待機完了後に解決されるPromise
+ *   in: number型の待機時間（ミリ秒）
+ *   out: void型で解決されるPromise
  */
 
 /**

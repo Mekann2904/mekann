@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/output-template.ts
- * role: 構造化出力のテンプレート適用とデフォルト値補完を担当する
- * why: スキーマ検証に失敗した出力に対し、機械的にテンプレートを適用して最低限の構造を保証するため
+ * role: 出力構造の正規化モジュール
+ * why: スキーマ検証失敗時の出力に対して、最小限の構造整合性を保証するため
  * related: .pi/lib/output-schema.ts, .pi/lib/task-execution.ts
- * public_api: applyOutputTemplate, NormalizedOutput, DEFAULT_OUTPUT_VALUES
- * invariants: 必須フィールド（SUMMARY, RESULT, NEXT_STEP）は常に非null値を持つ
+ * public_api: NormalizedOutput, TemplateApplicationResult, DEFAULT_OUTPUT_VALUES, applyOutputTemplate
+ * invariants: NormalizedOutputの必須フィールドSUMMARY, RESULT, NEXT_STEPは常に非null文字列、CONFIDENCEは常に数値
  * side_effects: なし
- * failure_modes: 入力が完全に解析不能な場合、デフォルト値のみの最小構造を返す
+ * failure_modes: 不正な型のrawOutput入力、未定義のviolations参照
  * @abdd.explain
- * overview: Layer 3（機械的テンプレート適用）の実装モジュール
+ * overview: スキーマ違反を含む生の出力文字列に対し、デフォルト値を適用してダウンストリーム処理に耐えられる構造へ変換する
  * what_it_does:
- *   - スキーマ違反を含む出力に対し、デフォルト値を補完して正規化する
- *   - 必須フィールドの欠落を防ぎ、ダウンストリーム処理の安定性を確保する
- *   - 違反情報に基づき、どのフィールドが補完されたかを追跡する
+ *   - SchemaViolationリストから欠落フィールドを特定する
+ *   - 空値または欠落している必須フィールドにDEFAULT_OUTPUT_VALUESを適用する
+ *   - ParsedStructuredOutputを拡張したNormalizedOutputインターフェースを提供する
+ *   - 適用履歴と補完されたフィールドの一覧を返す
  * why_it_exists:
- *   - Layer 1（再生成）とLayer 2（品質保証）で処理できなかった出力の最終防衛ラインとして
- *   - 完全に無効な出力でも、処理継続可能な最小限の構造を提供するため
+ *   - LLM等の出力がスキーマに厳密に従わない場合でも処理を継続するため
+ *   - プログラム的な補完処理により、人間による修正の手間を減らすため
+ *   - アプリケーション実行時エラーを防ぐため
  * scope:
  *   in: 生の出力文字列、スキーマ違反リスト
- *   out: 正規化された出力オブジェクト、補完されたフィールドの記録
+ *   out: 正規化された出力オブジェクト、フォーマット済み文字列、補完メタデータ
  */
 
 /**

@@ -2,24 +2,24 @@
  * @abdd.meta
  * path: .pi/lib/embeddings/utils.ts
  * role: ベクトル演算ユーティリティ
- * why: 埋め込みベクトルの類似度計算や幾何学的操作を行うための基礎的な数学関数を提供する
+ * why: 埋め込みベクトルの類似度計算、距離算出、および線形代数演算を行うため
  * related: .pi/lib/embeddings/types.js
  * public_api: cosineSimilarity, euclideanDistance, normalizeVector, addVectors, subtractVectors, scaleVector, meanVector
- * invariants: 入力ベクトルの次元数は演算間で一致する必要がある、ゼロベクトルの正規化はゼロベクトルを返す
+ * invariants: すべての関数は入力ベクトルの次元数が一致することを前提とする（結果として次元数は変わらない）
  * side_effects: なし（純粋関数）
- * failure_modes: 次元数不一致による計算結果の0またはInfinity、次元数不一致によるError例外、空配列によるnull返却
+ * failure_modes: 次元数不一致時に0またはInfinityを返す関数、またはErrorを投げる関数が存在する
  * @abdd.explain
- * overview: ベクトル解析のための共通数学関数セット
+ * overview: 埋め込みベクトル処理に必要な数学的演算（距離、正規化、四則演算）を提供するモジュール
  * what_it_does:
- *   - 2ベクトル間のコサイン類似度とユークリッド距離を算出
- *   - ベクトルのL2正規化、加算、減算、スカラー倍を実行
- *   - 複数ベクトルの平均ベクトルを生成
+ *   - 2つのベクトル間のコサイン類似度またはユークリッド距離を計算する
+ *   - ベクトルのL2正規化を行う
+ *   - ベクトル同士の加算・減算、およびスカラー倍を行う
+ *   - ベクトル集合から平均ベクトルを算出する
  * why_it_exists:
- *   - 検索アルゴリズムやデータ処理におけるベクトル操作のロジックを共通化する
- *   - 数値計算の実装詳細を隠蔽し、呼び出し元の複雑さを低減する
+ *   - ベクトル検索や類似度計算のロジックを共通化し再利用可能にするため
  * scope:
  *   in: 数値配列（ベクトル）、スカラー値
- *   out: 類似度スコア、距離、演算後の数値配列、またはnull
+ * out: 数値、数値配列、またはnull
  */
 
 /**

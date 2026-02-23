@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/skill-registry.ts
- * role: スキル定義の解決、マージ、およびコンテンツ読み込みを担当するモジュール
- * why: エージェントやチームに適用されるスキルのセットを、継承ルールに基づいて構築・管理するため
- * related: .pi/types/skill.ts, .pi/core/skill-system.ts
+ * role: スキル定義の検索、解決、継承マージを行うモジュール
+ * why: サブエージェントやチームのスキルセットを管理・統合するために
+ * related: .pi/lib/core-types.ts, .pi/lib/file-utils.ts
  * public_api: SkillDefinition, SkillReference, ResolvedSkill, ResolveSkillsOptions, SkillMergeConfig, ResolveSkillsResult
- * invariants: 解決済みスキル（ResolvedSkill）は必ずcontentプロパティを持ち、filePathは絶対パスである
- * side_effects: ファイルシステムからのスキルファイル（SKILL.md）読み込み
- * failure_modes: スキルファイルが見つからない、読み込み権限がない、循環参照、マージ戦略の競合
+ * invariants: スキルファイル名は常にSKILL.md、スキル検索はcwdとagentDirの双方を対象
+ * side_effects: ファイルシステムからの読み取りを行う
+ * failure_modes: スキルファイルが見つからない、ファイル読み取りエラー、循環参照（設計上回避されるべき）
  * @abdd.explain
- * overview: pi-coreのスキルシステムと連携し、ローカルまたはグローバルなスキル定義を検索、読み込み、親子関係でのマージを行うレジストリ実装
+ * overview: スキルのロード、名前解決、および継承ルールに基づいたマージ処理を提供する
  * what_it_does:
- *   - 環境変数やデフォルト設定に基づき、スキルの検索パスを決定する
- *   - SkillReferenceから実際のファイルパスを解決し、ファイルシステムからコンテンツを読み込む
- *   - 親スキル（チーム共通など）と子スキル（メンバー固有）のマージ設定に従い、最終的なスキルリストを生成する
- *   - マージ戦略（replace/merge）を適用し、スキル継承のロジックを処理する
- *   - 解決結果として、スキルリストと共にエラー・警告情報を返す
+ *   - SKILL.mdの定義に基づいてスキルメタデータを読み込む
+ *   - 指定されたパスまたはグローバルディレクトリからスキルを検索・解決する
+ *   - 親（チーム共通）と子（メンバー固有）のスキルをマージ戦略に従って統合する
  * why_it_exists:
- *   - サブエージェントやエージェントチームに対して、柔軟かつ一貫性のあるスキル管理機能を提供するため
- *   - 複数のソースからスキルを収集し、継承ルールに基づいてプロンプト生成用に整形する必要があるため
+ *   - エージェントの挙動を定義するスキルを動的に構成するため
+ *   - チームと個人のスキルセットを継承モデルで管理するため
  * scope:
- *   in: スキル名/ID、作業ディレクトリ、エージェントディレクトリ、マージ設定
- *   out: 読み込み済みの解決済みスキルリスト、処理中のエラーおよび警告メッセージ
+ *   in: スキル参照（文字列）、解決オプション（パス、マージ戦略）
+ *   out: 解決済みスキル（ResolvedSkill）、結果レポート（ResolveSkillsResult）
  */
 
 /**

@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/task-scheduler.ts
- * role: 優先度ベースのタスクスケジューラおよびプリエンプション機能の提供
- * why: プロバイダやモデルごとのキュー管理を行い、イベント駆動で高優先度タスクによる低優先度タスクの割り込みを実現するため
+ * role: 優先度ベースのタスクスケジューラおよびプリエンプション（実行中タスクの先取り）制御
+ * why: プロバイダーやモデルごとのキューマネジメントにより、優先度順の効率的なタスク実行と動的なリソース配分を実現するため
  * related: .pi/lib/priority-scheduler.ts, .pi/lib/checkpoint-manager.ts, .pi/extensions/agent-runtime.ts, .pi/lib/token-bucket.ts
  * public_api: PREEMPTION_MATRIX, shouldPreempt, preemptTask
- * invariants: プリエンプションは環境変数PI_ENABLE_PREEMPTIONがfalseの場合は無効化される、同一優先度のタスクは相互にプリエンプションしない
- * side_effects: preemptTask実行時、CheckpointManagerへの状態保存およびタスクへのAbortSignal通知を行う
- * failure_modes: タスクがアクティブ実行中に見つからない場合、チェックポイントの保存に失敗した場合
+ * invariants: PREEMPTION_MATRIXに基づき優先度の低いタスクのみが割り込み対象となる
+ * side_effects: タスクのAbortSignalへの通知、CheckpointManagerへの状態保存、アクティブ実行リストの更新
+ * failure_modes: 環境変数によりプリエンプションが無効化される、チェックポイント保存失敗時はプリエンプション完了とみなされない
  * @abdd.explain
- * overview: 優先度順位付けに基づくタスク実行の制御、プリエンプション行列による割り込み可否の判定、実行中タスクの一時停止とチェックポイント作成を行うモジュール
+ * overview: プロバイダーやモデルごとのキューマネジメントを持ち、優先度順の効率的なタスク実行と動的なリソース配分を行う
  * what_it_does:
- *   - PREEMPTION_MATRIXによる優先度間の割り込みルール定義
- *   - 実行中タスクと到着タスクの優先度比較に基づくshouldPreempt判定
- *   - preemptTaskによるタスク中断、状態のシリアライズ、およびCheckpointManagerへの保存
+ *   - 実行中タスクと割り込みタスクの優先度を比較し、プリエンプションの可否を判定する
+ *   - 実行中タスクの中断指示を行い、状態をチェックポイントとして保存する
+ *   - 環境変数に基づいてプリエンプション機能の有効・無効を切り替える
  * why_it_exists:
- *   - リソース効率を最大化するため、重要度（優先度）に応じた動的なタスク実行順序制御を行う
- *   - 割り込み発生時にタスク状態を永続化し、後で再開可能にするチェックポイント機構を提供する
+ *   - 重要度の高いタスクを優先的に実行し、システムの応答性を確保するため
+ *   - 実行中の処理を安全に中断し、後から再開可能な状態を維持するため
  * scope:
- *   in: TaskPriority, ScheduledTask, チェックポイント保存用のstate/progress/reason
- *   out: プリエンプション可否(boolean), PreemptionResult(success/error/checkpointId)
+ *   in: TaskPriority, ScheduledTask, taskId, reason, state, progress, 環境変数(PI_ENABLE_PREEMPTION)
+ *   out: PreemptionResult, boolean(shouldPreempt)
  */
 
 // File: .pi/lib/task-scheduler.ts
@@ -448,6 +448,12 @@ const DEFAULT_HYBRID_CONFIG: HybridSchedulerConfig = {
  */
 let taskIdSequence = 0;
 
+/**
+ * タスクIDを生成する
+ * @summary IDを生成する
+ * @param {string} prefix - プレフィックス
+ * @returns {string} 生成されたタスクID
+ */
 export function createTaskId(prefix: string = "task"): string {
   const timestamp = Date.now().toString(36);
   taskIdSequence = (taskIdSequence + 1) % 36 ** 4;

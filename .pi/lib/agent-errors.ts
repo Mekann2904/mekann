@@ -2,24 +2,26 @@
  * @abdd.meta
  * path: .pi/lib/agent-errors.ts
  * role: エラー分類および実行結果解決モジュール
- * why: サブエージェントおよびチームメンバーの実行結果に対し、統一的なエラー分類とスキーマ違反・低品質出力などの意味論的エラー検出を行うため
- * related: ./error-utils.ts, ./agent-types.ts, ./agent-common.ts
+ * why: サブエージェントおよびチームメンバーの実行結果に対して、スキーマ違反や内容不足などのセマンティックなエラー分類と統一的な結果解決を提供するため
+ * related: ./agent-types.ts, ./error-utils.ts, ./agent-common.ts
  * public_api: ExtendedOutcomeCode, ExtendedOutcomeSignal, classifySemanticError, resolveExtendedFailureOutcome
- * invariants: ExtendedOutcomeSignalのoutcomeCodeはExtendedOutcomeCode型に含まれる値のみをとる
- * side_effects: なし（純粋な関数と型定義のみ）
- * failure_modes: 分類ロジックがエラーメッセージのキーワードに依存するため、予期しないメッセージ形式の場合は分類がnullになる
+ * invariants: 分類関数は入力エラーメッセージまたは出力文字列に基づいてnullまたは特定のExtendedOutcomeCodeを返す
+ * side_effects: なし（純粋な関数と型定義のみで構成される）
+ * failure_modes: 不正なエラーオブジェクト形式、未知のエラーメッセージパターン（nullを返す）
  * @abdd.explain
- * overview: Layer 1に位置し、共通のエラーユーティリティとエージェント型定義を利用して、実行時の出力内容とエラーオブジェクトから意味論的なエラーを分類・解決するモジュール。
+ * overview: Layer 1のエラーハンドリングユーティリティ。基礎的なエラーユーティリティを拡張し、出力内容の検証や構文解析エラーを含む実行結果の分類を行う。
  * what_it_does:
- *   - RunOutcomeCodeを拡張したExtendedOutcomeCode（SCHEMA_VIOLATION, LOW_SUBSTANCE等）を定義する
- *   - 出力文字列やエラーメッセージのパターンマッチングにより、意味論的なエラーを特定する
- *   - エラーと出力内容に基づき、詳細なエラー情報を含むExtendedOutcomeSignalを生成する
+ *   - SCHEMA_VIOLATION, LOW_SUBSTANCE, EMPTY_OUTPUTなどを含む拡張実行結果コードを定義する
+ *   - 出力文字列とエラーオブジェクトからセマンティックエラーを分類する
+ *   - エラー情報を拡張実行結果シグナル（ExtendedOutcomeSignal）に解決する
+ *   - 構文解析エラーや内容不足を検出する
  * why_it_exists:
- *   - 従来のステータスコードだけでは表現できない、スキーマ違反や中身のない出力などの品質問題を検知するため
- *   - サブエージェントとチームメンバーの実行結果ハンドリングを共通化し、集約結果の生成（failedEntityIdsなど）を容易にするため
+ *   - 標準的なエラーコードだけでは表現できない、出力内容の質や形式の問題を区別するため
+ *   - エージェント実行の失敗理由を詳細に追跡し、ハンドリングを改善するため
+ *   - サブエージェントとチームメンバーで共通のエラー処理基盤を提供するため
  * scope:
- *   in: エラーオブジェクト（unknown）、出力文字列（string）、エンティティ設定（EntityConfig）
- *   out: 拡張された実行結果コード、エラー詳細配列、結果シグナル（ExtendedOutcomeSignal）
+ *   in: 未知のエラーオブジェクト, 出力文字列, エンティティ設定
+ *   out: 拡張実行結果コード, 拡張実行結果シグナル
  */
 
 /**

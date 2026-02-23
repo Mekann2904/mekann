@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop/iteration-builder.ts
- * role: ループ拡張におけるイテレーションプロンプトの構築と、応答からループ契約の解析を行うモジュール
- * why: LLMへの指示を一貫して生成し、構造化された応答をプログラムaticallyに解釈してループ制御を行うため
- * related: .pi/extensions/loop.ts, .pi/extensions/loop/reference-loader.ts, .pi/lib/agent-types.js
- * public_api: buildIterationPrompt, parseLoopContract, ParsedLoopContract, LoopStatus, LoopGoalStatus
- * invariants: プロンプトは常に現在のイテレーション数と最大数を含む、パースは構造化ブロックまたは正規表現パターンに依存する
- * side_effects: なし（純粋な関数と型定義）
- * failure_modes: 構造化ブロックのJSON形式が不正な場合のパース失敗、正規表現によるフォールバック時の抽出漏れ
+ * role: ループ処理におけるプロンプト構築および契約の構文解析モジュール
+ * why: エージェントへの反復指示生成と、実行結果のステータス解析を分離して責務を明確化するため
+ * related: .pi/extensions/loop.ts, .pi/extensions/loop/reference-loader.ts, ../../lib/agent-types.ts, ../../lib/text-utils.ts
+ * public_api: buildIterationPrompt, parseLoopContract, LOOP_JSON_BLOCK_TAG, LOOP_RESULT_BLOCK_TAG, ParsedLoopContract
+ * invariants: プロンプト生成時は文字数制限を厳守する、契約解析時は未知のステータスはunknownとして扱う
+ * side_effects: なし（純粋な関数と定数のエクスポートのみ）
+ * failure_modes: 構造化ブロックの欠損による解析失敗、フォーマット不一致によるパースエラー蓄積
  * @abdd.explain
- * overview: 自動品質改善ループのためのプロンプト生成と、LLM応答からのステータス解析を担当する。
+ * overview: ループ拡張機能のイテレーション制御において、エージェントへの指示プロンプトを組み立て、出力結果から機械可読な契約を解析するモジュールです。
  * what_it_does:
- *   - タスク、目標、検証コマンド、参照情報を含むイテレーション用プロンプトを文字列構築する
- *   - LLM応答から機械可読な契約データをパースし、ステータス、目標達成状況、次のアクション等を抽出する
- *   - 前回の出力やフィードバックを要約し、プロンプト内で制限を遵守して参照する
+ *   - タスク、目標、参照情報、フィードバックを含む反復実行用プロンプトを構築する
+ *   - 前回の出力やフィードバックを要約し、トークン制限内でプロンプトに埋め込む
+ *   - エージェント出力からステータスや次のアクションを含む契約オブジェクトを解析する
+ *   - 過去の成功・失敗パターンに基づく文脈をプロンプトに追加する
  * why_it_exists:
- *   - ループ処理の進行状況と終了条件を判断するために、LLMとのやり取りを構造化する必要があるため
- *   - プロンプトの一部（参照やフィードバック）に対し、トークン量や長さの制限を厳密に適用するため
+ *   - 反復的な品質改善プロセスにおける指示の標準化と自動化を図るため
+ *   - 構造化されたデータブロックを介してエージェントとシステム間の通信を厳密化するため
+ *   - パターン学習に基づく効率的なループ制御を実現するため
  * scope:
- *   in: タスク定義、目標、検証コマンド、イテレーション回数、参照データリスト、前回の出力、検証フィードバック
- *   out: LLMへ送信するプロンプト文字列、または解析済みのループ契約オブジェクト（ParsedLoopContract）
+ *   in: タスク定義、参照データ、前回の出力履歴、検証フィードバック、関連パターン
+ *   out: エージェント用プロンプト文字列、解析済みループ契約オブジェクト
  */
 
 // File: .pi/extensions/loop/iteration-builder.ts

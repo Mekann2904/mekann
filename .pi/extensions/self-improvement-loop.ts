@@ -1,29 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/self-improvement-loop.ts
- * role: 7つの哲学的視座に基づく自己改善ループモードを提供する拡張機能
- * why: エージェントが継続的に自己改善を行い、認知バイアスを検出し、批判的思考を実践するため
- * related: .pi/skills/self-improvement/SKILL.md, .pi/extensions/loop.ts, .pi/lib/semantic-repetition.ts
- * public_api: self_improvement_loop ツール、self_improvement_stop ツール、self_improvement_status ツール、停止信号管理、ログ生成
- * invariants: ユーザー停止信号は即座に尊重、各サイクル完了時にGit管理を実施、セマンティック反復検出で停滞を防止、未完了タスクは安全に終了
- * side_effects: ファイルシステムへのログ書き込み、Git操作、ファイル編集、埋め込みAPI呼び出し（停滞検出時）
- * failure_modes: 停止信号の検出遅延、Gitコンフリクト、リソース枯渇、埋め込みAPI利用不可時の停滞検出無効化
+ * role: 自己改善ループ処理の制御と実行
+ * why: 7つの哲学的視点に基づき、LLMの出力を分析・検証・改善することで、継続的な品質向上と思考の解体を行うため
+ * related: .pi/lib/verification-workflow.ts, .pi/lib/semantic-repetition.ts, .pi/extensions/shared/pi-print-executor.ts, .pi/lib/adaptive-rate-controller.ts
+ * public_api: selfImprovementLoop (ExtensionAPI経由で公開される想定)
+ * invariants: 1サイクルごとに必ずメタ認知チェックまたは統合検証が実行される, リトライは最大再試行回数以内に収まる
+ * side_effects: ファイルシステムへのログ出力, 外部LLM APIの呼び出し, プロセスの生成と実行
+ * failure_modes: LM APIのレート制限(429エラー), タイムアウト, セマンティックな再帰の検出失敗, メタ認知的アポリアの解決不能
  * @abdd.explain
- * overview: 7つの哲学的視座（脱構築、スキゾ分析、幸福論、ユートピア/ディストピア論、思考哲学、思考分類学、論理学）を統合的に適用し、終わりなき自己改善を実践する
+ * overview: 7つの視点（6つの帽子含む）を用いた思考ループを実行し、LLMのプロセスを動的に修正・改善する拡張機能
  * what_it_does:
- *   - 各サイクルで7つの視座を統合的に適用し、自己分析と改善を実施
- *   - セマンティック反復検出により停滞を自動検出して早期停止
- *   - ユーザーからの停止要求を検出し、現在のタスクを完了してから安全に停止
- *   - 各サイクル完了時にGitコミットを作成
- *   - 作業ログをMarkdown形式で自動生成
+ *   - 7つの哲学的視点による思考プロセスの分割と適用
+ *   - メタ認知チェック、誤謬検出、セマンティックな反復の検出
+ *   - 検出された問題に基づく改善アクションの生成と適用
+ *   - レート制限とエラー発生時の指数バックオフによるリトライ制御
+ *   - 思考モードの分類と統合的分析の実行
  * why_it_exists:
- *   - エージェントが単なるタスク実行者を超え、自己批判的で成長し続ける存在になるため
- *   - 認知バイアスの検出と是正を自動化するため
- *   - 哲学的深度を持った思考プロセスを維持するため
- *   - 無限ループに陥ることを防ぐため
+ *   - 単一の視点に依存せず、多角的な批判的思考を通じてAIの出力精度を高める
+ *   - 反復的なループや論理的誤謬を自律的に検出・修正し、自己修正能力を向上させる
+ *   - 外部APIの不安定性に対して堅牢な処理を実現する
  * scope:
- *   in: ユーザーの初期タスク、停止信号、自己改善スキル定義
- *   out: 改善されたコード/ドキュメント、Git履歴、作業ログ、分析レポート、軌跡統計
+ *   in: ExtensionAPI (context, model, prompt), RateLimitConfig, 検証ワークフロー設定
+ *   out: 改善されたLLMレスポンス, 検証ログ, 分析結果
  */
 
 // File: .pi/extensions/self-improvement-loop.ts

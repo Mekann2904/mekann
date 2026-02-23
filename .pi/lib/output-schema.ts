@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/output-schema.ts
- * role: 出力スキーマ定義と検証ロジックの実装
- * why: サブエージェントおよびチームメンバーの出力に対し、JSON Schemaライクな構造チェックと制約検証を行うため
+ * role: サブエージェントおよびチームメンバーの出力構造定義と検証
+ * why: 構造化された出力データの整合性を保証し、JSON Schema風のバリデーションを提供するため
  * related: .pi/lib/text-parsing.ts, .pi/lib/output-validation.ts, .pi/lib/agent-teams/judge.ts
  * public_api: SchemaValidationMode, SchemaValidationResult, SchemaViolation, ParsedStructuredOutput
- * invariants: SchemaFieldのtypeは"string"|"number"|"string[]"のいずれかである
- * side_effects: なし
- * failure_modes: スキーマ定義と入力データの型不一致により検証例外が発生する
+ * invariants: SchemaValidationModeは "legacy" | "dual" | "strict" のいずれかであること
+ * side_effects: なし（純粋な定義と型エクスポート）
+ * failure_modes: スキーマ定義と実データの型不一致、正規表現パターンのコンパイルエラー
  * @abdd.explain
- * overview: 構造化出力のスキーマ定義およびその検証結果を表す型を提供するモジュール
+ * overview: エージェントの出力形式を型定義およびスキーマ定義として管理し、検証機能を提供するモジュール。
  * what_it_does:
- *   - SchemaValidationModeで検証モードを定義する
- *   - SchemaFieldおよびOutputSchemaで検証ルールを定義する
- *   - SchemaValidationResultで検証成功/失敗の詳細を保持する
- *   - ParsedStructuredOutputで解析済みの出力データ構造を規定する
+ *   - SchemaValidationMode, SchemaValidationResultなどの型を定義する
+ *   - SUBAGENT_OUTPUT_SCHEMAやチームメンバー用のスキーマ定義を公開する
+ *   - text-parsing.tsからユーティリティ関数をインポートして処理で利用する
  * why_it_exists:
- *   - 正規表現検証に加え、フィールドの型や長さなどの構造的制約を適用するため
- *   - 検証結果とエラー理由を呼び出し元に明確に伝達するため
- *   - 機能フラグ（PI_OUTPUT_SCHEMA_MODE）によるモード切替を型システムでサポートするため
+ *   - エージェント間のデータインターフェースを統一し、信頼性を高めるため
+ *   - 正規表現ベースの検証から構造化スキーマ検証への移行を管理するため
  * scope:
- *   in: text-parsing.tsからのユーティリティ関数、出力検証の設定
- *   out: スキーマ型定義、検証結果インターフェース、サブエージェント出力用スキーマ定数
+ *   in: text-parsing.tsからのユーティリティ関数
+ *   out: 型定義、検証結果インターフェース、定数されたスキーマオブジェクト
  */
 
 /**

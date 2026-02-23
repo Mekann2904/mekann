@@ -1,27 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/aporia-awareness.ts
- * role: アポリア（解決不能な矛盾）認識と保持モジュール
- * why: ヘーゲル的弁証法（統合）への陥落を避け、解決不能な緊張関係を認識し続けるため
- * related: .pi/lib/consciousness-spectrum.ts, .pi/skills/self-improvement/SKILL.md
- * public_api: Aporia, AporiaType, detectAporia, holdAporia, AporiaState
- * invariants: アポリアは「解決」されない、「保持」される
- * side_effects: なし（認識と保持のみ）
- * failure_modes: 偽の解決（統合）、回避、無視
+ * role: アポリア（解決不能な矛盾）の定義と検出を行うモジュール
+ * why: 相反する価値観や認識の対立を明示化し、安易な解決を避けて緊張関係を維持するため
+ * related: .pi/lib/aporia-handler.ts, .pi/lib/decision-engine.ts, .pi/types/core.ts
+ * public_api: Aporia, AporiaState, detectAporia(text)
+ * invariants: AporiaTypeは5種類の定義のみ、awarenessDepthは0.0から1.0の範囲
+ * side_effects: なし（純粋なデータ定義と検出関数）
+ * failure_modes: 正規表現パターンにマッチしないアポリアの検出漏れ、テキストの文脈無視による誤検出
  * @abdd.explain
- * overview: デリダの脱構築思想に基づき、解決不能な二項対立（アポリア）を認識し、保持し続ける機能を提供。ヘーゲル的弁証法（正・反・合）による「統合」を回避。
+ * overview: 倫理的・認識論的・実践的な解決不能な矛盾（アポリア）を型定義し、テキストからパターンマッチングで検出する機能を提供する。
  * what_it_does:
- *   - アポリアの検出（解決不能な二項対立）
- *   - 偽の解決（統合、回避、無視）の防止
- *   - 緊張関係の維持
- *   - 「決定不能性」の中での決断の支援
+ *   - Aporia, FalseResolution, AporiaState の型定義
+ *   - アポリアの種別（AporiaType）の定義
+ *   - あらかじめ定義された正規表現パターン（APORIA_PATTERNS）によるテキスト解析
+ *   - detectAporia 関数によるアポリアオブジェクトの生成
  * why_it_exists:
- *   - AIエージェントが「解決」を急ぐことで、重要な対立を消失させることを防ぐため
- *   - 複雑な状況において、単純な答えを避けるため
- *   - 倫理的・哲学的葛藤を適切に扱うため
+ *   - AIエージェントや意思決定システムにおける「トレードオフ」や「パラドックス」を構造的に扱うため
+ *   - 矛絡の解消を急ぐのではなく、緊張関係を「保持」する状態を管理するため
  * scope:
- *   in: 対立する価値、原則、判断
- *   out: アポリア認識、保持すべき緊張関係、決断の性質
+ *   in: 検索対象の文字列
+ *   out: 検出されたAporiaオブジェクトの配列、または型定義情報
  */
 
 /**

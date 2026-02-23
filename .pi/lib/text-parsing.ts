@@ -1,30 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/text-parsing.ts
- * role: 構造化テキスト出力のパース・正規化・ID生成を行う共有ユーティリティ
- * why: モジュール間の循環依存を回避するために機能を抽出して配置するため
- * related: .pi/lib/judge.ts, .pi/lib/output-schema.ts, .pi/lib/output-validation.ts
+ * role: 構造化テキスト処理における汎用的なパーサーとユーティリティの提供
+ * why: モジュール間の循環依存を回避するため、共通処理を独立させた
+ * related: judge.ts, output-schema.ts, output-validation.ts
  * public_api: clampConfidence, generateClaimId, generateEvidenceId, parseUnitInterval, extractField, extractMultilineField
- * invariants:
- *   - clampConfidenceは必ず0以上1以下の数値を返す
- *   - 生成されるIDは一意かつ指定されたフォーマットに従う
+ * invariants: 数値は必ず0.0から1.0の範囲に収まる、生成IDは一意である、正規表現は特定のキーワードで停止する
  * side_effects: なし（純粋関数）
- * failure_modes:
- *   - 不正な数値形式や空文字列に対してundefinedまたはデフォルト値を返す
- *   - フィールド抽出時にパターンマッチが失敗すると空文字またはundefinedを返す
+ * failure_modes: 無効な数値フォーマットでundefinedを返す、フィールド名が見つからず空文字またはundefinedを返す、IDの衝突（確率論的）
  * @abdd.explain
- * overview: 構造化された出力処理において、信頼度の正規化、一意ID生成、テキストフィールド抽出を行うヘルパー関数群
+ * overview: LLM等の構造化出力テキストから、数値やフィールドを抽出・正規化するライブラリ
  * what_it_does:
- *   - 信頼度を0.0〜1.0の範囲に丸める
- *   - タイムスタンプと乱数を含む一意のClaim IDとEvidence IDを生成する
- *   - 文字列から小数またはパーセント表記を数値に変換する
- *   - 構造化テキストから指定されたフィールド名の値を抽出する（単一行および複数行対応）
+ *   - 信頼度を0.0〜1.0の範囲に正規化する（clampConfidence, parseUnitInterval）
+ *   - クレームとエビデンス用の一意なIDを生成する
+ *   - テキストから特定の名前を持つ単一行または複数行フィールドを抽出する
  * why_it_exists:
- *   - 評価ロジックやバリデーション機能からパース処理を分離し、コードの重複と依存関係の複雑化を防ぐため
- *   - 構造化通信におけるID生成と値の正規化処理を標準化するため
+ *   - 評価ロジック（judge）とスキーマ定義（schema）の間で共通利用されるため
+ *   - テキスト解析の実装詳細を集約し、循環依存を解消するため
  * scope:
- *   in: 生のテキスト文字列、数値、フォーマット指定
- *   out: 正規化された数値、一意ID文字列、抽出されたテキスト、またはundefined/空文字
+ *   in: 生の文字列、数値、フィールド名
+ * out: 範囲内数値、一意ID文字列、抽出されたフィールド値文字列
  */
 
 /**

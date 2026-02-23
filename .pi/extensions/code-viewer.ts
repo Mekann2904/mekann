@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/code-viewer.ts
- * role: コードビューアツールを提供する拡張機能
- * why: エージェントがシンタックスハイライト付きでコードを表示し、可読性を向上させるため
- * related: @mariozechner/pi-ai, @mariozechner/pi-coding-agent, @mariozechner/pi-tui
- * public_api: view_code ツール
- * invariants: ファイルパスまたはコード文字列のいずれかが指定される必要がある
- * side_effects: ファイルシステムからの読み取り（pathパラメータ使用時）
- * failure_modes: ファイルが存在しない、読み取り権限がない、言語検出に失敗
+ * role: 拡張機能モジュール
+ * why: シンタックスハイライトと行番号付きでコードを表示する機能を提供するため
+ * related: @mariozechner/pi-coding-agent, @mariozechner/pi-tui, node:fs
+ * public_api: view_codeツール
+ * invariants: pathとcodeパラメータのいずれか一方のみが必須、出力コードには行番号が付与される
+ * side_effects: ファイルシステムからの読み取り
+ * failure_modes: ファイルが存在しない場合、パラメータが不足している場合、文字コード読み取りエラー
  * @abdd.explain
- * overview: シンタックスハイライトと行番号付きでコードを表示するツールを提供する
+ * overview: コードビューア拡張機能の実装
  * what_it_does:
- *   - ファイルパスからコードを読み込み、言語を自動検出してハイライト表示する
- *   - 直接コード文字列を指定して、任意の言語でハイライト表示する
- *   - 行番号を付与してコードを見やすくフォーマットする
+ *   - view_codeツールを登録する
+ *   - ファイルパスからコードを読み込み、言語を自動検出する
+ *   - 直接指定されたコードスニペットに対してシンタックスハイライトを適用する
+ *   - コードに行番号を付与してフォーマットする
  * why_it_exists:
- *   - エージェントがコードスニペットをユーザーに見やすく提示するため
- *   - シンタックスハイライトによる可読性向上を実現するため
+ *   - エージェントに対してファイル内容やコードスニペットを視覚的に確認させるため
+ *   - 行番号表示によりコード参照を容易にするため
  * scope:
- *   in: ExtensionAPI, ファイルパスまたはコード文字列、言語指定
- *   out: ハイライト付きコード表示
+ *   in: path(ファイルパス), code(コード文字列), language(言語指定)
+ *   out: Text形式でフォーマットされたコード文字列、またはエラーメッセージ
  */
 
 /**

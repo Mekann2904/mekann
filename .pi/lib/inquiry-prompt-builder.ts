@@ -1,16 +1,25 @@
 /**
  * @abdd.meta
- * @path .pi/lib/inquiry-prompt-builder.ts
- * @role 問い駆動型探求のプロンプトを生成するビルダー
- * @why ユーザーが問い駆動型探求モードを使用する際に、プロンプトに追加する内容を生成する
- * @related lib/inquiry-driven-exploration.ts, lib/inquiry-library.ts, skills/inquiry-exploration/SKILL.md
- * @public_api buildInquiryPrompt, InquiryPromptOptions
- * @invariants
- *   - 生成されるプロンプトは「完了」を強制しない
- *   - アポリアを「解決」ではなく「認識」するよう促す
- *   - 反例の検討を促す
- * @side_effects なし
- * @failure_modes なし
+ * path: .pi/lib/inquiry-prompt-builder.ts
+ * role: 問い駆動型プロンプト生成器
+ * why: タスクを「解決」ではなく「問いを深めるプロセス」として定義するLLM向けのシステムプロンプトを作成するため
+ * related: ./inquiry-library.ts, ./index.ts
+ * public_api: buildInquiryPrompt(options: InquiryPromptOptions): string
+ * invariants: 出力は必ず「問い」「探求」「実行」のセクション構造を含む, オプションが未指定の場合はデフォルト値(minCycles=3, requiredDepth="structural")を使用する
+ * side_effects: getInquiryLibrary()による静的な問いデータの参照, テンプレートリテラルによる文字列の構築
+ * failure_modes: recommendedCategoriesに一致する問いが見つからない場合(空配列になる), taskDescriptionが欠如している場合の挙動未定義
+ * @abdd.explain
+ * overview: 問い駆動型探求のためのLLMシステムプロンプトを動的に生成するファクトリー関数とオプション定義。
+ * what_it_does:
+ *   - 受け取ったタスク説明とオプションに基づき、哲学的・構造的な探求を促すプロンプトテキストを構築する
+ *   - 指定されたカテゴリ、あるいはタスク内容に基づき推奨される問いのパターン(inquiry-library)を選択・埋め込みする
+ *   - 最小サイクル数や深度要件、停止条件を含めた具体的な実行ガイドラインを出力に含める
+ * why_it_exists:
+ *   - LMに対し単なる問題解決ではなく、前提の脱構築やアポリアの認識を含めた深い思考を強制するために
+ *   - 探求プロセス自体の強迫性をメタ認知させ、自律的な停止判断を可能にするため
+ * scope:
+ *   in: タスク説明文字列, 推奨カテゴリリスト, サイクル数, 深度レベル, 追加指示
+ * out: Markdown形式のシステムプロンプト文字列
  */
 
 import { getInquiryLibrary, type InquiryCategory } from "./inquiry-library.js";

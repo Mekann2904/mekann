@@ -1,28 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop.ts
- * role: ループ実行機能の拡張および検証・参照読み込みサブモジュールのエントリポイント
- * why: モデルの反復実行、引用チェック、検証コマンドの統合、再現可能な実行ログを実現するため
+ * role: Autonomous loop runner extension with reference grounding
+ * why: Enables repeated model iterations with citation checks and reproducible run logs
  * related: README.md, .pi/extensions/rsa.ts, .pi/extensions/question.ts
- * public_api: loadReferences, fetchTextFromUrl, runVerificationCommand, buildIterationPrompt, parseLoopContract
- * invariants: SSRF保護ルールによりプライベートIPやブロック済みホストへのアクセスは拒否される、検証ポリシーは環境変数またはデフォルト設定に基づいて解決される
- * side_effects: ファイルシステムへのログ書き込み、外部URLへのHTTPリクエスト、検証コマンドのプロセス起動
- * failure_modes: DNS解決の失敗、参照のロード失敗、検証コマンドの実行エラー、またはセマンティックな重複検出によるループ停止
+ * public_api: executeLoop, loadReferences, runVerificationCommand, parseLoopContract
+ * invariants: Reference integrity maintained during execution, SSRF protection enforced for network access, verification policies respected
+ * side_effects: Writes execution logs to filesystem, executes system commands via verification policy, spawns child processes for model calls
+ * failure_modes: Model timeout, semantic repetition detection, network fetch failure, command execution rejection by policy
  * @abdd.explain
- * overview: piエージェントのための自律的ループランナーを提供し、参照に基づく実行と検証プロセスを管理する
+ * overview: 認証参照に基づき、検証ポリシーと反復実行を管理する自律型ループランナー拡張機能
  * what_it_does:
- *   - 反復的なモデル実行プロセスを管理し、引用チェックを実施する
- *   - 外部参照をロードし、SSRF保護を適用して安全にURLからテキストを取得する
- *   - 環境変数に基づいて検証ポリシーを解決し、検証コマンドを実行またはスキップする
- *   - セマンティックな重複を検出し、ループの停止条件を判断する
- *   - 実行ログをファイルに出力し、プロセスの再現性を確保する
+ *   - ループ契約を解析し、検証ポリシーに基づくコマンド実行を行う
+ *   - 参照ファイルまたはURLからコンテキストを読み込み、SSRF保護を適用する
+ *   - セマンティックな繰り返しを検出し、反復ごとの出力をログに記録する
+ *   - パターン抽出と意図分類に基づき、ループの焦点と制限を調整する
  * why_it_exists:
- *   - 反復タスクにおいて外部コンテキストとの整合性を検証しつつ進行する必要があるため
- *   - セキュリティ（SSRF対策）と検証の柔軟性を両立するため
- *   - 実行の進捗と結果を永続化し、デバッグや監査を可能にするため
+ *   - 反復的なモデル処理において、引用チェックと再現可能な実行ログを保証するため
+ *   - 外部リソースへのアクセスとコマンド実行を安全なポリシー下で統合するため
+ *   - 実行の停滞や無限ループを検知し、健全性を維持するため
  * scope:
- *   in: 拡張API、ユーザー定義のループ設定、環境変数（検証ポリシーなど）
- *   out: モデル呼び出しの実行、検証コマンドの実行結果、ログファイル、参照データの読み込み結果
+ *   in: ParsedLoopContract, VerificationPolicyConfig, array of LoopReference (files or URLs)
+ *   out: LoopStatus, Run logs written to disk, Verification command results
  */
 
 // File: .pi/extensions/loop.ts

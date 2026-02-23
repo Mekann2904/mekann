@@ -1,27 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/execution-rules.ts
- * role: LLMエージェントの振る舞いを制御するシステムプロンプト定数の集約モジュール
- * why: 複数のエージェントやサブエージェントに対し、統一的かつ論理的な推論・実行基準を提供するため
- * related: .pi/lib/agent.ts, .pi/lib/tools.ts, .pi/prompts/system-prompt.ts
- * public_api: COMMON_EXECUTION_RULES, SUBAGENT_SPECIFIC_RULES, COGNITIVE_BIAS_COUNTERMEASURES, SELF_VERIFICATION_RULES, WORKING_MEMORY_GUIDELINES, TERMINATION_CHECK_RULES
- * invariants: すべての定数は `as const` で定義され、変更不可である
- * side_effects: なし
- * failure_modes: 定数の読み込みに失敗した場合、プロンプト生成が不完全になる
+ * role: エージェントおよびサブエージェントの実行ポリシー定義
+ * why: 生成品質の保証、認知バイアスの抑制、出力フォーマットの一貫性維持
+ * related: .pi/lib/agent-core.ts, .pi/lib/validation.ts, .pi/prompts/system-prompt.ts
+ * public_api: QUALITY_BASELINE_RULES, COMMON_EXECUTION_RULES, SUBAGENT_SPECIFIC_RULES, COGNITIVE_BIAS_COUNTERMEASURES, SELF_VERIFICATION_RULES, WORKING_MEMORY_GUIDELINES
+ * invariants: 各定数配列は文字列リテラルで構成される、品質基準ルールは「CLAIM-RESULT整合性」「EVIDENCEの具体性」等の固定項目を含む
+ * side_effects: なし（定数定義のみ）
+ * failure_modes: ルール定義と実際のプロンプト生成ロジックの不一致、ルールの過剰指定によるLLM応答性能の低下
  * @abdd.explain
- * overview: エージェントの生成出力の品質担保、論理的誤謬の回避、タスク遂行プロセスの標準化を目的としたルールセットを定義する
+ * overview: エージェントシステム全体に適用される品質基準、行動規範、および推論プロセスの制御ルールを静的に定義するモジュール
  * what_it_does:
- *   - エージェント共通の出力フォーマット（絵文字禁止など）とツール使用規約を定義する
- *   - 認知バイアス（確認バイアス、アンカリングなど）への具体的な対策手順を提示する
- *   - 自己矛盾の有無や証拠の妥当性を検証するチェックリストを提供する
- *   - 複雑なタスクにおける作業記憶の管理方法と推論のステップ化を指示する
- *   - タスク完了前に達成状況を確認する終了チェック基準を設ける
+ *   - 出力品質の基準（CLAIMとRESULTの整合性、EVIDENCEの具体性、CONFIDENCEの妥当性）を定義する
+ *   - 全エージェント共通のフォーマットルール（絵文字禁止、questionツール使用）を規定する
+ *   - 認知バイアス（確認バイアス、アンカリング等）の対策手順を具体的に列挙する
+ *   - 出力前の自己検証チェックリスト（自己矛盾、証拠評価）を提供する
+ *   - 作業記憶の管理方針を定義する
  * why_it_exists:
- *   - LLM特有の推論失敗（論文「Large Language Model Reasoning Failures」）を軽減するため
- *   - ユーザーとの対話およびコード生成の一貫性を維持するため
+ *   - LLM特有の推論失敗（ハルシネーション、バイアス）を論文に基づく明示的なルールで軽減するため
+ *   - エージェント間での出力品質や動作の一貫性をプログラム的に保証するため
+ *   - ユーザーへの不要な負担を減らし、自律的なタスク実行を促進するため
  * scope:
- *   in: 外部プロンプト定義ファイルやエージェント設定
- *   out: 文字列配列、または改行結合された文字列としてのプロンプト指示
+ *   in: なし（外部入力に依存しない純粋な定義）
+ *   out: プロンプト構築用の文字列定数配列
  */
 
 /**

@@ -1,20 +1,25 @@
 /**
  * @abdd.meta
- * @path .pi/lib/inquiry-driven-exploration.ts
- * @role 問い駆動型探求モードのコアエンジン
- * @why 「完了への渇愛」を「探求への好奇心」へ転換するため
- * @related lib/aporia-tracker.ts, lib/inquiry-library.ts, skills/self-improvement/SKILL.md
- * @public_api InquiryDrivenExploration, ExplorationPhase, InquiryCycle
- * @invariants
- *   - 各サイクルは「問い」から始まり「新たな問い」で終わる
- *   - アポリアは「解決」されず「記録」される
- *   - 完了は「答えの発見」ではなく「探求の深化」と定義される
- * @side_effects
- *   - ファイルシステムへの探求ログ書き込み
- *   - アポリア追跡システムへの記録
- * @failure_modes
- *   - 探求が無限ループに陥る → maxCyclesで制限
- *   - 問いが抽象的すぎる → 具体化プロンプトで誘導
+ * path: .pi/lib/inquiry-driven-exploration.ts
+ * role: 問い駆動型探求プロセスの状態と構造を定義する型定義ファイル
+ * why: 探求の段階、問いの深度、反例、統合、アポリアなどの概念を型として体系化するため
+ * related: .pi/lib/exploration-manager.ts, .pi/lib/types.ts
+ * public_api: ExplorationPhase, InquiryDepth, Inquiry, Approach, CounterExample, Integration, Aporia, InquiryCycle
+ * invariants: Approach.confidenceは0.0-1.0の範囲、CounterExample.strengthは0.0-1.0の範囲、Aporia.polesは長さ2の配列
+ * side_effects: なし（純粋な型定義）
+ * failure_modes: 型の不整合が発生した場合コンパイルエラーとなる
+ * @abdd.explain
+ * overview: 「完了」ではなく「問いを深めるプロセス」としての探求をモデル化した型定義集合
+ * what_it_does:
+ *   - 探求の5つの段階を定義する
+ *   - 問いの深度レベルを分類する
+ *   - 問い、アプローチ、反例、統合、アポリア、サイクルのデータ構造を規定する
+ * why_it_exists:
+ *   - 哲学的探求プロセスをシステム上で扱うために
+ *   - 構造的な不確実性やアポリア（解決不能な緊張関係）を表現するため
+ * scope:
+ *   in: なし
+ *   out: 探求プロセスに関連するすべてのインターフェースと型別名
  */
 
 /**
@@ -358,7 +363,7 @@ export class InquiryDrivenExploration {
 				currentPhase: "initial_inquiry",
 				learnings: [],
 				startedAt: new Date().toISOString(),
-				updatedAtAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
 			};
 
 			this.state.currentCycle = newCycle;

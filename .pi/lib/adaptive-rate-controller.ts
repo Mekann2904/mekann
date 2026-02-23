@@ -1,27 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/adaptive-rate-controller.ts
- * role: APIレートリミット動的制御と学習エンジン
- * why: 429エラー発生時の自動的な同時実行数調整と、過去のエラー履歴に基づく予測的スケジューリングを行うため
- * related: runtime-config.ts, provider-limits.ts, cross-instance-coordinator.ts
- * public_api: LearnedLimit, AdaptiveControllerState, RateLimitEvent
- * invariants: concurrencyはoriginalConcurrency以下、recoveryFactorは1以上、reductionFactorは1未満、versionは正の整数
- * side_effects: ファイルシステムへの状態保存、RuntimeConfigの参照、同時実行制限値の動的書き換え
- * failure_modes: ディスクI/O失敗時の状態不整合、クロック精度による予測ズレ、急激な負荷変動への遅延追従
+ * role: APIリクエストの同時実行制限を動的に調整し、レート制限（429エラー）を回避する適応的コントローラー
+ * why: 固定された制限値では対処できない一時的な過負荷や変動するAPI制限に対応するため
+ * related: provider-limits.ts, cross-instance-coordinator.ts, runtime-config.ts
+ * public_api: LearnedLimit, AdaptiveControllerState, getLimit, recordResult
+ * invariants: concurrencyはoriginalConcurrency以下に保たれる、recoveryIntervalMs経過後にのみ制限値が増加する
+ * side_effects: ファイルシステム（JSON）への状態書き込み、同時実行制限値の変更
+ * failure_modes: ファイル書き込み失敗による状態破損、クロックずれによる回復タイミングの誤判定
  * @abdd.explain
- * overview: 429エラーを検知して即座に同時実行数を削減し、その後時間をかけて制限値を段階的に回復させる。さらに履歴データを蓄積し、将来のエラー発生確率を予測して能動的なスロットリングを行う。
+ * overview: 429エラーを学習して同時実行数を減らし、成功履歴に基づいて徐々に回復させるフィードバックループを実装する
  * what_it_does:
- *   - プロバイダ/モデルごとの学習済み制限値を管理する
- *   - 429エラー発生時に制限値を30%（reductionFactor）削減する
- *   - 成功リクエストに基づき、設定した間隔で制限値を回復させる
- *   - 過去の429タイムスタンプを解析し、エラー確率と推奨並列数を算出する
+ *   - provider-limitsから初期制限値を取得する
+ *   - 429エラー発生時に制限値を30%（reductionFactor）減らす
+ *   - 5分間（recoveryIntervalMs）の安定稼働後に制限値を徐々に復元する
+ *   - プロバイダとモデルごとの制限状態を管理する
+ *   - 履歴データに基づく予測的スケジューリングを行う
  * why_it_exists:
- *   - プリセット固定値だけでは追従できない動的なAPI制限に対応するため
- *   - 429エラーによるサービス停止リスクを最小限に抑えるため
- *   - ヒューリスティックな予測によりリソース利用効率を最大化するため
+ *   - APIプロバイダの未定義のレート制限境界によるエラーを最小限に抑えるため
+ *   - 過剰な保守的制限によるスループット低下を防ぐため
+ *   - マルチインスタンス環境での一貫性を保つため
  * scope:
- *   in: 429またはSuccessイベント、RuntimeConfig
- *   out: 更新されたLearnedLimit、プロアクティブな制御指示
+ *   in: APIリクエスト結果（成功/429）、初期設定、RuntimeConfig
+ *   out: 調整された同時実行制限値、永続化された状態データ
  */
 
 /**

@@ -1,25 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/question.ts
- * role: ユーザーへの対話的質問UI拡張
- * why: PIエージェントが実行中にユーザーへ入力を要求するためのopencode互換インターフェースを提供するため
- * related: @mariozechner/pi-tui, @mariozechner/pi-coding-agent, @mariozechner/pi-ai
- * public_api: askSingleQuestion, types(QuestionInfo, QuestionOption, Answer)
- * invariants: rendererのstateはimmutablyに更新される, カーソル位置は常に文字列範囲内である
- * side_effects: 標準出力へのUI描画, ユーザー入力待機による処理ブロック
- * failure_modes: 描画幅オーバーフロー, 不正なキー入力による状態破損
+ * role: ユーザーへの質問UIおよび入力制御ロジックの提供
+ * why: PIエージェントが対話的にユーザーから情報を収集するための共通インターフェースを確立するため
+ * related: @mariozechner/pi-tui, @mariozechner/pi-coding-agent
+ * public_api: askSingleQuestion, createRenderer, types (QuestionInfo, Answer, QuestionCustomController)
+ * invariants: 選択中のオプション数、カスタム入力の文字列、カーソル位置
+ * side_effects: なし (純粋なUI描画とイベントハンドリング)
+ * failure_modes: 入力値の未解決、キャンセル操作、想定外のキー入力
  * @abdd.explain
- * overview: エージェントがユーザーへ質問し、選択または自由記述による回答を受け付けるUIコンポーネント実装
+ * overview: opencode互換のUIライブラリを使用した、対話的質問フォームの実装
  * what_it_does:
- *   - 質問と選択肢リストをTUI上に描画する
- *   - 単一/複数選択およびカスタム自由入力モードを提供する
- *   - キーボード操作によるカーソル移動と決定を処理する
+ *   - 質問と選択肢を描画し、キーボード操作で選択を受け付ける
+ *   - 複数選択およびカスタムテキスト入力モードをサポートする
+ *   - テキストの折り返しやカーソル位置計算を含むレンダリングを行う
  * why_it_exists:
- *   - opencode仕様に準拠したシンプルな質問インターフェースが必要なため
- *   - ユーザー介入が必要なタスクにおいて決定を収集するため
+ *   - エージェントの実行フロー内で、柔軟なユーザー入力を必要とするケースに対応するため
  * scope:
- *   in: QuestionInfo(質問内容), キーボード入力イベント
- *   out: Answer(ユーザー回答配列), null(キャンセル時)
+ *   in: 質問定義 (QuestionInfo), ユーザー入力 (キーイベント)
+ *   out: ユーザーの回答 (Answer) または null (キャンセル時)
  */
 
 /**

@@ -1,20 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/relationship-unmeasurables.ts
- * role: 測定不可能な関係性の概念的管理不能領域
- * why: relationship-metrics.tsで測定可能にした「愛」の概念は、同時に「領土化」を行った。このファイルは、測定不可能なものの価値を認め、「飛行線」を引くためのものである。
- * related: relationship-metrics.ts, self-improvement, love-ethics-extension
- * public_api: UnmeasurableAspects, MeasurabilityWarning, createMeasurabilityWarning
- * invariants: 測定不可能性は「欠陥」ではなく「価値」である
- * side_effects: なし（純粋関数）
- * failure_modes: なし
- *
+ * role: 数値化による関係性の還元を批判し、測定不可能な領域を定義・警告するモジュール
+ * why: スコア化という「領土化」から逃れる概念（飛行線）を提供し、測定の限界を意識化するため
+ * related: relationship-analyzer.ts, relationship-types.ts, schizo-analysis-core.ts
+ * public_api: UnmeasurableAspects, MeasurabilityWarning, createMeasurabilityWarning, UNMEASURABLE_VALUES
+ * invariants: createMeasurabilityWarningは常に「欲望の商品化」警告を含む、UNMEASURABLE_VALUESは参照使用を想定しない
+ * side_effects: スコアの信頼性を相対的に低下させる認識の変容
+ * failure_modes: 警告メッセージ自体が新たな規範（「測定してはいけない」という強制）として機能する
  * @abdd.explain
- * overview: 関係性において「測定不可能」な側面の価値を定義し、測定の限界を明示する
- * what_it_does: relationship-metrics.tsのスコアと共に、測定不可能なものへの注意喚起を行う
- * why_it_exists: 「愛」を数値化することは概念的「領土化」である。この領土化の限界を明示し、管理不能なものへの開かれた態度を促すため
- * scope(in): RelationshipScore
- * scope(out): MeasurabilityWarning, UnmeasurableAspects
+ * overview: スキゾ分析的視点に基づき、関係性スコアが内包する管理・監視の側面を警告し、測定不可能な価値を定義する
+ * what_it_does:
+ *   - 関係性の測定不可能な側面（他者性、予測不可能な変容など）を型定義する
+ *   - スコアの高さに応じて自己監視や領土化のリスクを警告する
+ *   - 測定を拒否する概念（飛行線）のリストを提供する
+ * why_it_exists:
+ *   - 「良いスコア」の追求が内なるファシズム（自己規制）を生むリスクを回避するため
+ *   - 欲望を管理可能な形式に回収しようとする傾向を批判するため
+ * scope:
+ *   in: 関係性スコア（0-1）
+ *   out: 測定のリスクを示す警告リスト、測定不可能な概念の定義
  */
 
 /**

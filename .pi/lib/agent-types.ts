@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/agent-types.ts
- * role: エージェントに関する型定義と定数の共有モジュール
- * why: 重複する型定義を集約し、異なる拡張機能間での一貫性を保つため
+ * role: エージェントシステムにおける共有型定義と定数の管理
+ * why: 異なる拡張機能間で重複していた型定義を統一し、保守性と一貫性を確保するため
  * related: .pi/extensions/loop.ts, .pi/extensions/rsa.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
  * public_api: ThinkingLevel, RunOutcomeCode, RunOutcomeSignal, DEFAULT_AGENT_TIMEOUT_MS
- * invariants: RunOutcomeCodeはいずれかの文字列リテラルに一致する、DEFAULT_AGENT_TIMEOUT_MSは10分のミリ秒数である
- * side_effects: なし
+ * invariants: RunOutcomeCodeは定義された6つのリテラル文字列のいずれかである、RunOutcomeSignalのretryRecommendedはoutcomeCodeに基づくブール値である
+ * side_effects: なし（純粋な型定数と型定義）
  * failure_modes: なし
  * @abdd.explain
- * overview: モジュール間で重複していたエージェントの型（思考レベル、実行結果コード等）と定数を定義するファイル
+ * overview: エージェントの実行制御や結果判定に必要な列挙型、インターフェース、定数を集約した定義ファイル
  * what_it_does:
- *   - モデルの推論レベルを表すThinkingLevel型を定義する
- *   - エージェントの実行結果コードRunOutcomeCodeを定義する
- *   - 実行結果コードと再試行推奨フラグを持つRunOutcomeSignalインターフェースを定義する
- *   - エージェント操作のデフォルトタイムアウト時間DEFAULT_AGENT_TIMEOUT_MSを定義する
+ *   - 推論レベル（ThinkingLevel）を表す型を定義する
+ *   - 実行結果のステータス（RunOutcomeCode）と構造化されたシグナル（RunOutcomeSignal）の型を定義する
+ *   - エージェント操作のデフォルトタイムアウト時間（10分）を定数として提供する
  * why_it_exists:
- *   - loop.tsやrsa.tsなど複数のファイルで同じ型定義が重複していたため、保守性と一貫性を向上させるため
+ *   - .pi/extensions配下の複数のモジュールで重複していた定義を一箇所にまとめるため
+ *   - 型の変更を一元化し、将来的なバグのリスクを減らすため
  * scope:
- *   in: なし
- * out: ThinkingLevel, RunOutcomeCode, RunOutcomeSignal, DEFAULT_AGENT_TIMEOUT_MS
+ *   in: 外部モジュールからのインポートなし
+ *   out: ループ処理、RSA認証、サブエージェント、エージェントチーム機能への型エクスポート
  */
 
 /**

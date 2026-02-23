@@ -1,18 +1,25 @@
 /**
  * @abdd.meta
- * @path .pi/lib/aporia-tracker.ts
- * @role アポリア（解決不能な緊張関係）を追跡・管理するシステム
- * @why アポリアを「解決」するのではなく「生きる」ための支援を行う
- * @related lib/inquiry-driven-exploration.ts, skills/self-improvement/SKILL.md
- * @public_api AporiaTracker, TrackedAporia, AporiaDecision
- * @invariants
- *   - アポリアは「解決」されず「記録」される
- *   - 過去の判断は「間違い」としてではなく「文脈依存的決断」として扱われる
- *   - ヘーゲル的弁証法（統合）への退行を防ぐ
- * @side_effects
- *   - ファイルシステムへのアポリアログ書き込み
- * @failure_modes
- *   - アポリアの過剰蓄積 → 定期的な整理
+ * path: .pi/lib/aporia-tracker.ts
+ * role: 解決不能な緊張関係（アポリア）を永続化・追跡・管理するシステム
+ * why: アポリアを「解決」せず継続的に観察し、弁証法的な統合への誤りを防ぐため
+ * related: .pi/aporia-tracker/aporiae.json, .pi/lib/types.ts
+ * public_api: AporiaTracker, TrackedAporia, AporiaDecision, AporiaStatus
+ * invariants: Aporiaは解決不能として扱われる、決断履歴は不変である
+ * side_effects: ファイルシステムへのJSONファイル読み書き
+ * failure_modes: ストレージディレクトリへのアクセス権限不足、JSONのパースエラー
+ * @abdd.explain
+ * overview: 解決不能な緊張関係（アポリア）の状態変化と決断履歴を記録し、管理するクラスと定義
+ * what_it_does:
+ *   - アポリアの定義（二項対立、正当性、解決不能性）を保持する
+ *   - 決断の履歴（選択、確信度、リスク、結果）を記録する
+ *   - ストレージへ永続化し、初期化時に復元する
+ * why_it_exists:
+ *   - 一時的な解決策を「普遍の解」として錯覚することを防ぐため
+ *   - 過去の決断とその結果を照合し、意思決定の質を向上させるため
+ * scope:
+ *   in: 設定オブジェクト、アポリア定義データ、決断記録
+ *   out: アポリアの状態、決断履歴、ファイルシステムへのJSON出力
  */
 
 import * as fs from "fs";

@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/history.ts
- * role: 検索履歴のデータ構造定義およびデフォルト設定の提供
- * why: 過去の検索クエリと結果を追跡し、サジェスト機能や関連性分析の基盤データを維持するため
- * related: .pi/extensions/search/utils/manager.ts, .pi/extensions/search/utils/suggest.ts, .pi/extensions/search/index.ts
+ * role: 検索履歴のデータモデルと設定定義
+ * why: 検索履歴の構造、保存制限、候補生成の基礎となる型情報を提供するため
+ * related: .pi/extensions/search/utils/historyManager.ts, .pi/extensions/search/index.ts
  * public_api: SearchHistoryEntry, HistoryConfig, QuerySuggestion, DEFAULT_HISTORY_CONFIG
- * invariants: SearchHistoryEntryのresultsは配列長制限を持つ, timestampは数値型である
- * side_effects: なし（定数と型定義のみ）
- * failure_modes: なし
+ * invariants: results配列はmaxResultsPerEntry以下の長さ, timestampはDate.now()由来の数値
+ * side_effects: なし（純粋な型定義と定数エクスポート）
+ * failure_modes: なし（実行時ロジックを持たないため）
  * @abdd.explain
- * overview: 検索履歴を表現するインターフェースと、その管理設定を定義するモジュール
+ * overview: 検索履歴管理機能におけるデータ構造とデフォルト設定を定義するモジュール
  * what_it_does:
- *   - 検索履歴1件分のデータ構造 SearchHistoryEntry を定義する
- *   - 履歴管理の設定項目 HistoryConfig を定義する
- *   - クエリサジェスト生成用のデータ構造 QuerySuggestion を定義する
- *   - デフォルトの設定値 DEFAULT_HISTORY_CONFIG をエクスポートする
+ *   - 検索履歴エントリ（SearchHistoryEntry）の型定義
+ *   - 履歴保持設定（HistoryConfig）の型定義
+ *   - クエリ候補（QuerySuggestion）の型定義
+ *   - デフォルト設定値（DEFAULT_HISTORY_CONFIG）のエクスポート
  * why_it_exists:
- *   - 履歴データの型安全性を保証するため
- *   - 履歴保持の上限設定などを一箇所で管理するため
- *   - 検索機能間でデータ構造を共有するため
+ *   - 履歴データの構造を一元管理し、型安全を担保するため
+ *   - 履歴の容量制限（maxEntries, maxResultsPerEntry）を定義するため
+ *   - クエリサジェスト機能で使用するデータ形式を統一するため
  * scope:
  *   in: なし
- *   out: TypeScriptインターフェースと定数オブジェクト
+ *   out: SearchHistoryEntry, HistoryConfig, QuerySuggestion, DEFAULT_HISTORY_CONFIG
  */
 
 /**

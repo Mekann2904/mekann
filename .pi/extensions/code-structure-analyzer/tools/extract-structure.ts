@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/code-structure-analyzer/tools/extract-structure.ts
- * role: TypeScriptコードの静的解析と構造抽出ツール
- * why: ASTを走査し、関数やクラスの定義情報を抽出してコードベースの構造を可視化するため
- * related: typescript, fs, path, minimatch
+ * role: TypeScript AST構造抽出ツール
+ * why: ソースコードからクラス、関数、メソッドの定義情報とJSDocをプログラム的に収集するため
+ * related: .pi/extensions/code-structure-analyzer/index.ts, typescript, minimatch
  * public_api: ExtractOptions, FunctionInfo, ParameterInfo, ClassInfo, MethodInfo
- * invariants: ASTノードはTypeScript Compiler APIによって正しくパースされている
- * side_effects: ファイルシステムからの読み取りのみを行い、ファイルやディレクトリの変更は行わない
- * failure_modes: 構文的に無効なTypeScriptファイルのパース失敗、ファイルアクセス権限エラー、不正なパス指定
+ * invariants: 抽出結果はTypeScriptコンパイラAPIの解析結果と一致する
+ * side_effects: ファイルシステムの読み取りを行う
+ * failure_modes: 不正なTypeScript構文、ファイル権限エラー、読み込みエラー
  * @abdd.explain
- * overview: TypeScript Compiler APIを利用してソースコードを解析し、関数やクラスなどの構造情報をオブジェクトとして出力するモジュール
+ * overview: TypeScript Compiler APIを利用し、指定パス内のソースコードを解析して構造情報を出力するモジュール
  * what_it_does:
- *   - 指定されたパスのファイルまたはディレクトリをスキャンする
- *   - 除外パターン（glob形式）に基づき対象外をフィルタリングする
- *   - ASTを走査して関数・クラス・メソッド・プロパティのメタデータを抽出する
- *   - JSDocコメント、シグネチャ、可視性、型情報を収集する
+ *   - ターゲットパス（ファイルまたはディレクトリ）を走査する
+ *   - globパターンに基づきファイルを除外する
+ *   - クラス、関数、メソッド、プロパティ、パラメータのメタデータを抽出する
+ *   - JSDocコメント、シグネチャ、可視性、非同期フラグ等を取得する
  * why_it_exists:
- *   - コードベース全体の構造把握を自動化するため
- *   - ドキュメント生成や依存関係解析の基盤データを提供するため
+ *   - コードベースの静的解析を自動化する
+ *   - ドキュメント生成や依存関係分析の基盤データを提供する
  * scope:
- *   in: 解析対象のファイルパスまたはディレクトリパス、除外パターン配列
- *   out: 関数情報またはクラス情報を含む構造化データオブジェクトの配列
+ *   in: 解析対象のファイルパス文字列、除外パターン配列
+ *   out: クラス情報・関数情報を含む構造化データオブジェクト
  */
 
 /**

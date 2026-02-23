@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/task-dependencies.ts
- * role: タスク依存関係グラフのデータ構造と操作ロジックを管理する
- * why: DAG（有向非巡回グラフ）に基づくタスクスケジューリングにおいて、タスク間の実行順序と依存状態を管理するため
+ * role: DAG形式のタスクスケジューリングにおける依存関係グラフの管理
+ * why: タスク間の依存順序を制御し、先行タスクの完了を待機するスケジューリングを実現するため
  * related: .pi/lib/priority-scheduler.ts, .pi/extensions/agent-runtime.ts
- * public_api: TaskDependencyGraph, TaskDependencyNode, TaskDependencyStatus, AddTaskOptions, CycleDetectionResult
- * invariants: グラフは循環を持たない、依存先タスクは必ずグラフ内に存在する、タスクのステータスは依存タスクの完了と共に遷移する
- * side_effects: addTask実行時に依存先タスクのdependentsセットを更新する、タスク状態変化時にreadyQueueを更新する
- * failure_modes: 重複IDによる追加エラー、存在しない依存先IDの指定エラー、循環依存の発生（ロジック上）
+ * public_api: TaskDependencyGraph, TaskDependencyNode, AddTaskOptions, TaskDependencyStatus, CycleDetectionResult
+ * invariants: 依存関係は常にDAG（有向非巡回グラフ）を維持する
+ * side_effects: なし
+ * failure_modes: 重複IDによる追加エラー、存在しない依存先の指定エラー、循環依存の形成
  * @abdd.explain
- * overview: タスクノードとその有向辺を管理し、依存関係を解決して実行可能タスクを特定するグラフ構造を提供する
+ * overview: タスクノードとその依存関係を管理するグラフ構造を提供し、実行可能タスクの特定と状態遷移を行う
  * what_it_does:
- *   - タスクノードの追加と依存関係の登録
- *   - 依存タスクの存在確認と整合性チェック
- *   - 全依存関係が満たされたタスクの実行可能（ready）状態への遷移
- *   - 実行可能タスクIDのキューイング管理
+ *   - タスクノードの生成と登録、IDの重複チェック
+ *   - 依存関係の接続と整合性チェック
+ *   - 循環依存の検出
+ *   - タスク状態（pending, ready, running, completed等）の管理
+ *   - 実行可能タスクのキューイング
  * why_it_exists:
- *   - 並列実行可能なタスクを効率的に特定するため
- *   - タスク間の完了待ちロジックを集約し、スケジューラの責務を分離するため
+ *   - 複雑なタスク間の前後関係を正確に管理するため
+ *   - 依存関係に基づいた並列実行の効率化を図るため
  * scope:
- *   in: タスクID、タスク名、優先度、推定実行時間、依存先タスクIDリスト
- * out: タスクノードの状態、実行可能タスクIDのキュー、依存関係の接続情報
+ *   in: タスクID、追加オプション（名前、優先度、推定時間、依存リスト）
+ *   out: タスクノードの状態、依存関係グラフ構造、実行可能タスクIDのリスト
  */
 
 // File: .pi/lib/task-dependencies.ts

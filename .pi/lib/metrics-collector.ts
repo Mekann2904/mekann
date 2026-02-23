@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/metrics-collector.ts
- * role: スケジューラーのパフォーマンスデータの収集、JSONL形式での永続化、および履歴データの集計を行うモジュール
- * why: タスクスケジューラの動作状況を可視化し、パフォーマンス最適化のための定量的な指標を提供するため
+ * role: スケジューラの動作指標を収集・集計し、JSONL形式で永続化するライブラリ
+ * why: タスクスケジューラのパフォーマンス可観測性を確保し、最適化のためのデータを提供するため
  * related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
- * public_api: SchedulerMetrics, TaskCompletionEvent, PreemptionEvent, WorkStealEvent, MetricsSummary
- * invariants: JSONLファイルは1行ごとに有効なJSONオブジェクトであること、ファイル操作は同期的に行われること
- * side_effects: ホームディレクトリ配下の`.pi/metrics`ディレクトリへのファイル作成、追記、読み取り、削除
- * failure_modes: ファイルシステムへの書き込み権限がない場合、ディレクトリ作成が失敗する場合、JSONLファイルが破損している場合
+ * public_api: SchedulerMetrics, TaskCompletionEvent, PreemptionEvent, WorkStealEvent, MetricsSummary インターフェース
+ * invariants: タイムスタンプはミリ秒単位のエポック時間、ファイル操作は同期的に実行
+ * side_effects: ログファイルの作成、追記、読み込み、削除によるファイルシステムの状態変更
+ * failure_modes: ディスク容量不足による書き込み失敗、ログファイルの破損による集計エラー
  * @abdd.explain
- * overview: タスク実行の待機時間、成功率、プリエンプションなどのイベントを記録し、統計情報を算出する機能を提供する
+ * overview: タスクスケジューラのパフォーマンスメトリクスを記録・集計・管理するモジュール
  * what_it_does:
- *   - タスク完了、プリエンプション、ワークスティールの各イベントをJSONL形式でファイルシステムに永続化する
- *   - 記録された生データから特定期間の統計サマリー（平均値、パーセンタイル、スループット等）を算出する
- *   - 古いメトリクスファイルを削除し、ディスク容量を管理する
+ *   - タスク完了、プリエンプション、ワークスチールなどのイベントを定義・記録する
+ *   - キューの深さ、待機時間、スループットなどのSchedulerMetricsを算出する
+ *   - 指定された期間のMetricsSummaryを集計する
+ *   - イベントデータをJSONL形式でローカルファイルシステムへ永続化する
  * why_it_exists:
- *   - スケジューラのスループットやレイテンシの変動を監視するため
- *   - ボトルネック特定や設定チューニングのために履歴データを解析するため
+ *   - スケジューラのボトルネックを特定するため
+ *   - タスクの待機時間や実行時間の傾向を分析するため
+ *   - システムの信頼性と効率を監視するため
  * scope:
- *   in: スケジューラからの生イベントデータ（待機時間、実行結果など）
- *   out: 集計された統計サマリー（MetricsSummaryインターフェース）
+ *   in: タスクイベントデータ（完了、プリエンプション、スチール）、集計対象の期間
+ *   out: JSONL形式のログファイル、スケジューラ指標、期間サマリー
  */
 
 // File: .pi/lib/metrics-collector.ts

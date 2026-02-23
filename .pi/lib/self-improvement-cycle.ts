@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/self-improvement-cycle.ts
- * role: 自己改善サイクルの管理と追跡モジュール
- * why: 継続的な自己改善プロセスを体系化し、進捗を追跡可能にするため
- * related: .pi/lib/consciousness-spectrum.ts, .pi/lib/perspective-scorer.ts
- * public_api: SelfImprovementCycle, CycleStatus, createCycle, updateCycle, getCycleReport
- * invariants: サイクルIDは一意、サイクルは作成順に番号が付与される
- * side_effects: なし（ステートレスな計算モジュール）
- * failure_modes: 不正なサイクル状態遷移
+ * role: 自己改善サイクルの状態管理と初期化ロジックの定義
+ * why: 改善サイクルの進行状況、意識状態、視座スコアを統合的に管理し、次のアクションへの判断材料を提供するため
+ * related: ./consciousness-spectrum.js, ./perspective-scorer.js
+ * public_api: createCycle, SelfImprovementCycle, CycleAction, CreateCycleParams
+ * invariants: cycleNumberは正の整数、idは一意、statusは遷移順序に従う、timestampはISO 8601形式
+ * side_effects: なし（純粋なデータ生成）
+ * failure_modes: 不正なcycleNumber指定、スコアリング関数の異常終了、context構造の不整合
  * @abdd.explain
- * overview: 自己改善ループ（SELF_IMPROVEMENT_LOOP）の各サイクルを管理し、進捗と改善傾向を追跡する。
+ * overview: AIの自己改善プロセスにおける1サイクル分の状態、アクション履歴、評価結果を保持するデータモデルと、そのインスタンスを生成する関数を定義する。
  * what_it_does:
- *   - サイクルの作成と初期化
- *   - 7つの視座スコアの記録
- *   - 意識レベルの追跡
- *   - 改善傾向の分析
- *   - サイクルレポートの生成
+ *   - サイクルのステータス（初期化、分析、実装、検証、完了、失敗）を定義する
+ *   - 視座スコアと意識状態を保持し、改善優先順位を計算する
+ *   - 前回サイクルの情報を引き継ぎ、時系列連続性を管理する
+ *   - 指定されたパラメータと初期出力に基づいて新しいサイクルオブジェクトを生成する
  * why_it_exists:
- *   - 自己改善の進捗を体系的に追跡するため
- *   - サイクル間の変化を測定するため
- *   - 長期的な改善傾向を可視化するため
+ *   - 改善プロセスの進捗を追跡し、再現性のある反復処理を行うため
+ *   - 内部状態の変化（意識レベルや視座の変化）を構造化されたデータとして記録するため
+ *   - メタ認知的マーカーなどの文脈情報を次サイクルへ引き継ぐため
+ * scope:
+ *   in: サイクル番号、フォーカス領域、前回サイクル、初期出力文字列、文脈オブジェクト
+ *   out: 初期化済みのSelfImprovementCycleオブジェクト
  */
 
 import {

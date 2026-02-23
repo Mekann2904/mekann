@@ -392,52 +392,92 @@ describe("mediator-history", () => {
   });
 
   describe("pruneOldFacts", () => {
-    it("古い事実を削除できる", async () => {
-      // Arrange
-      appendFact(tempDir, {
-        key: "new-fact",
-        value: "new",
-        context: "Test",
-        sessionId: "session-1",
-      });
+    it("古い事実を削除できる", () => {
+      // Arrange - 過去の日付で事実を作成
+      const pastDate = new Date();
+      pastDate.setDate(pastDate.getDate() - 10);  // 10日前
+      const store: ConfirmedFactsStore = {
+        facts: [
+          {
+            id: "fact-old",
+            key: "old-fact",
+            value: "old",
+            context: "Test",
+            confirmedAt: pastDate.toISOString(),
+            sessionId: "session-1",
+          },
+        ],
+        userPreferences: {},
+        lastUpdatedAt: pastDate.toISOString(),
+      };
+      fs.writeFileSync(
+        path.join(tempDir, HISTORY_FILES.confirmedFacts),
+        JSON.stringify(store)
+      );
 
-      // Act - 0日で全てアーカイブ
-      const removed = pruneOldFacts(tempDir, 0);
+      // Act - 5日より古いものを削除
+      const removed = pruneOldFacts(tempDir, 5);
 
       // Assert
       expect(removed).toBe(1);
-      const store = loadConfirmedFacts(tempDir);
-      expect(store.facts.length).toBe(0);
+      const loadedStore = loadConfirmedFacts(tempDir);
+      expect(loadedStore.facts.length).toBe(0);
     });
 
     it("保持期間内の事実は削除されない", () => {
-      // Arrange
-      appendFact(tempDir, {
-        key: "recent-fact",
-        value: "recent",
-        context: "Test",
-        sessionId: "session-1",
-      });
+      // Arrange - 過去の日付で事実を作成（しかし保持期間内）
+      const recentDate = new Date();
+      recentDate.setDate(recentDate.getDate() - 5);  // 5日前
+      const store: ConfirmedFactsStore = {
+        facts: [
+          {
+            id: "fact-recent",
+            key: "recent-fact",
+            value: "recent",
+            context: "Test",
+            confirmedAt: recentDate.toISOString(),
+            sessionId: "session-1",
+          },
+        ],
+        userPreferences: {},
+        lastUpdatedAt: recentDate.toISOString(),
+      };
+      fs.writeFileSync(
+        path.join(tempDir, HISTORY_FILES.confirmedFacts),
+        JSON.stringify(store)
+      );
 
-      // Act - 30日保持
+      // Act - 30日保持（5日前の事実は保持される）
       const removed = pruneOldFacts(tempDir, 30);
 
       // Assert
       expect(removed).toBe(0);
-      const store = loadConfirmedFacts(tempDir);
-      expect(store.facts.length).toBe(1);
+      const loadedStore = loadConfirmedFacts(tempDir);
+      expect(loadedStore.facts.length).toBe(1);
     });
   });
 
   describe("exportHistory", () => {
     it("全履歴をエクスポートできる", () => {
-      // Arrange
-      appendFact(tempDir, {
-        key: "fact-1",
-        value: "value-1",
-        context: "Test",
-        sessionId: "session-1",
-      });
+      // Arrange - 明示的にストアを作成
+      const store: ConfirmedFactsStore = {
+        facts: [
+          {
+            id: "fact-1",
+            key: "fact-1",
+            value: "value-1",
+            context: "Test",
+            confirmedAt: new Date().toISOString(),
+            sessionId: "session-1",
+          },
+        ],
+        userPreferences: {},
+        lastUpdatedAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(
+        path.join(tempDir, HISTORY_FILES.confirmedFacts),
+        JSON.stringify(store)
+      );
       saveConversationSummary(tempDir, "# Summary");
 
       // Act
@@ -452,13 +492,25 @@ describe("mediator-history", () => {
 
   describe("getHistoryStats", () => {
     it("履歴の統計情報を取得できる", () => {
-      // Arrange
-      appendFact(tempDir, {
-        key: "fact-1",
-        value: "value-1",
-        context: "Test",
-        sessionId: "session-1",
-      });
+      // Arrange - 明示的にストアを作成
+      const store: ConfirmedFactsStore = {
+        facts: [
+          {
+            id: "fact-1",
+            key: "fact-1",
+            value: "value-1",
+            context: "Test",
+            confirmedAt: new Date().toISOString(),
+            sessionId: "session-1",
+          },
+        ],
+        userPreferences: {},
+        lastUpdatedAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(
+        path.join(tempDir, HISTORY_FILES.confirmedFacts),
+        JSON.stringify(store)
+      );
       saveConversationSummary(tempDir, "# Summary");
 
       // Act
@@ -472,7 +524,18 @@ describe("mediator-history", () => {
     });
 
     it("空の履歴の統計情報", () => {
-      // Arrange & Act
+      // Arrange - 明示的に空のストアを作成してファイルを初期化
+      const emptyStore: ConfirmedFactsStore = {
+        facts: [],
+        userPreferences: {},
+        lastUpdatedAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(
+        path.join(tempDir, HISTORY_FILES.confirmedFacts),
+        JSON.stringify(emptyStore)
+      );
+
+      // Act
       const stats = getHistoryStats(tempDir);
 
       // Assert

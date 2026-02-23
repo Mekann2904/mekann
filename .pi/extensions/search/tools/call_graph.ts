@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/call_graph.ts
- * role: 呼び出しグラフインデックスの作成・更新および、呼び出し元・呼び出し先の検索ツールを提供する
- * why: コード解析において関数間の参照関係を追跡可能にするため
- * related: ../call-graph/types.js, ../call-graph/builder.js, ../call-graph/query.js, sym_index.ts
- * public_api: callGraphIndex, findCallersTool, findCalleesTool
- * invariants: シンボルインデックスが存在しない場合は生成を試みる、インデックスが古い場合は再構築する
- * side_effects: ファイルシステム（.pi/search/call-graph/index.json）への書き込み、ctagsの実行
- * failure_modes: シンボルが見つからない、インデックス読み取りエラー、ctags実行エラー
+ * role: 呼び出しグラフの生成、永続化、検索機能を提供するツールセット
+ * why: コード解析のためのシンボル間の依存関係を可視化し、定義元と参照元の追跡を可能にするため
+ * related: .pi/extensions/search/tools/sym_index.ts, .pi/extensions/search/call-graph/builder.js, .pi/extensions/search/call-graph/query.js, .pi/extensions/search/call-graph/types.ts
+ * public_api: callGraphIndex, findCallersTool
+ * invariants: シンボル索引が存在しない場合は先に生成される、索引が有効な場合は再生成をスキップする
+ * side_effects: ディスク上の呼び出しグラフ索引ファイル(.pi/search/call-graph/index.json)を作成または更新する
+ * failure_modes: シンボル索引が見つからない、索引作成中のエラー、必須パラメータの欠如
  * @abdd.explain
- * overview: 呼び出しグラフ（Call Graph）に関するインデックス化と検索機能を集約したツールセット
+ * overview: 呼び出しグラフを構築して索引化し、特定のシンボルの呼び出し元や呼び出し先を問い合わせる機能を外部に提供するアダプタ層
  * what_it_does:
- *   - 呼び出しグラフインデックスの生成、更新、およびキャッシュ管理
- *   - シンボルインデックスの事前チェックおよび不足時の自動生成
- *   - 指定シンボルの呼び出し元（Callers）の検索
- *   - 指定シンボルの呼び出し先（Callees）の検索
+ *   - シンボル索引の存在確認と必要に応じた生成
+ *   - 呼び出しグラフ索引の鮮度判定と再構築
+ *   - グラフデータのJSON形式での保存
+ *   - 指定されたシンボル名に基づく呼び出し元の検索
  * why_it_exists:
- *   - 関数の依存関係や影響範囲を可視化・分析するため
- *   - 静的解析によるリファクタリング支援やコード理解を促進するため
+ *   - コードベースの静的解析ツールとしての機能統一
+ *   - 高頻度な問い合わせに対して事前計算されたグラフ構造を利用するため
+ *   - シンボル検索と呼び出し関係検索のワークフローを連携させるため
  * scope:
- *   in: 検索クエリ、パス設定、再構築フラグ、カレントワーキングディレクトリ
- *   out: インデックスメタデータ、検索結果リスト、エラーメッセージ
+ *   in: プロジェクトのパス、作業ディレクトリ、検索対象のシンボル名、再構築フラグ
+ * out: ノード数、エッジ数、出力パス、検索結果リスト、エラーメッセージ
  */
 
 /**

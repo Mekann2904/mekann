@@ -1,24 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/runtime-config.ts
- * role: ランタイム設定の型定義およびプロファイルプリセットの管理
- * why: 全レイヤーで一貫した設定を維持し、設定の漂流を防止するため
- * related: .pi/lib/unified-limit-resolver.ts, .pi/extensions/agent-runtime.ts, .pi/lib/adaptive-rate-controller.ts, .pi/lib/cross-instance-coordinator.ts
- * public_api: RuntimeProfile, RuntimeConfig, PROFILE_PRESETS
- * invariants: プロファイル設定はRuntimeConfig型の構造に準拠する、数値設定は各プロファイルの目的に応じた範囲内である
- * side_effects: なし（静的な定義と定数のみ）
- * failure_modes: 不正なプロファイルキーが指定された場合の参照エラー、設定値の型不一致
+ * role: 全レイヤー共通のランタイム設定を定義するシングルソースオブトゥルース
+ * why: プロバイダー制限、レート制御、スケジューラ間で設定値が不整合になるのを防ぐため
+ * related: lib/unified-limit-resolver.ts, extensions/agent-runtime.ts, lib/adaptive-rate-controller.ts, lib/task-scheduler.ts
+ * public_api: RuntimeProfile, RuntimeConfig
+ * invariants: totalMaxLlm/totalMaxRequestsはシステム全体の上限を表す、数値パラメータは0より大きい
+ * side_effects: なし
+ * failure_modes: プリセット定義値が不足している場合の型エラー
  * @abdd.explain
- * overview: 実行時の動作制御（並列数、レート制御、スケジューリング等）の集中管理定義
+ * overview: stableまたはdefaultのプロファイルに基づき、システム全体の並列数やタイムアウト値を管理する定数セット
  * what_it_does:
- *   - ランタイムプロファイル（stable, default）と設定インターフェースを定義する
- *   - 各プロファイルに応じた設定のプリセット（定数）を提供する
+ *   - RuntimeProfileとRuntimeConfigインターフェースを定義する
+ *   - プロファイル種別ごとのプリセット値（PROFILE_PRESETS）を保持する
+ *   - LLM/リクエスト上限、並列実行数、インターバル設定を提供する
  * why_it_exists:
- *   - 複数のレイヤー間で設定が乖離しないよう、設定値のSingle Source of Truthを提供する
- *   - 信頼性重視（stable）とバランス型（default）の運用モードを明確に切り替えるため
+ *   - レート制限やタスク分散のアルゴリズムで共通の設定値を参照するため
+ *   - 安定環境と通常環境でパラメータを切り替えるため
  * scope:
  *   in: なし
- *   out: RuntimeConfig型オブジェクト、プロファイルプリセット設定
+ *   out: 設定値のオブジェクト及び型定義
  */
 
 /**

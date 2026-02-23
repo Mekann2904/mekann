@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/embeddings/providers/local.ts
- * role: オフラインで動作するローカル埋め込みプロバイダー（TF-IDFベース）
- * why: OPENAI_API_KEYなしでセマンティック検索を可能にするため
- * related: .pi/lib/embeddings/types.ts, .pi/lib/embeddings/registry.ts
- * public_api: LocalEmbeddingProvider, createLocalEmbeddingProvider
- * invariants: 常にオフライン動作可能(offlineCapable=true)、次元数は固定(1000)
+ * role: ローカルTF-IDF埋め込みプロバイダー実装
+ * why: 外部APIやネットワーク接続を必要とせず、プライベートかつオフライン環境で埋め込みベクトルを生成するため
+ * related: ../types.js, base.ts, registry.ts
+ * public_api: tokenize, computeTermFrequency
+ * invariants: ストップワードはトークン化結果から除外される、TF値は常に文書長で正規化される、日本語文字はユニグラムおよびバイグラムとして扱われる
  * side_effects: なし（純粋な計算処理）
- * failure_modes: 空文字列入力時は空配列を返す
+ * failure_modes: 未定義の文字コード範囲の文字はトークン化されない、空文字列またはストップワードのみの入力は空のベクトルになる
  * @abdd.explain
- * overview: TF-IDF（Term Frequency-Inverse Document Frequency）ベースのローカル埋め込みプロバイダー
+ * overview: TF-IDFアルゴリズムを用いた外部APIレスの埋め込み生成処理
  * what_it_does:
- *   - 外部APIを使用せずにテキストから埋め込みベクトルを生成
- *   - 単語の出現頻度と重要度に基づくベクトル表現を構築
- *   - オフライン環境でもセマンティック検索を可能にする
+ *   - テキストをトークン化し、英語の単語分割と日本語の文字N-gram（Uni/Bi-gram）を生成する
+ *   - ストップワード（英語/日本語）を除外し、小文字化と正規化を行う
+ *   - 用語頻度（TF）を計算し、文書長で正規化する
  * why_it_exists:
- *   - OPENAI_API_KEYなしでセマンティック検索を利用可能にするため
- *   - プライバシー要件で外部APIを使用できない環境での代替手段を提供するため
- *   - 開発・テスト環境での手軽な埋め込み生成を実現するため
+ *   - 開発環境やプライバシーが重視される環境において、外部サービスへの依存を排除するため
+ *   - 軽量な埋め込み処理をローカルで完結させるため
  * scope:
- *   in: テキスト文字列（単一またはバッチ）
- *   out: 埋め込みベクトル（数値配列）
+ *   in: 生のテキスト文字列
+ *   out: 用語頻度を含む計算済みデータ構造
  */
 
 /**

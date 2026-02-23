@@ -1,29 +1,29 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/startup-context.ts
- * role: セッション開始時に動的コンテキストを注入するエージェント拡張機能
- * why: エージェントがプロジェクトの現在の状態、最近の変更、全体的な構造を即座に理解するため
- * related: @mariozechner/pi-coding-agent, README.md, git log
- * public_api: default function(pi: ExtensionAPI): void
- * invariants: コンテキスト注入はセッション内の最初のプロンプトのみ実行される
- * side_effects: エージェントのシステムプロンプトを書き換える（TUIには表示されない）
- * failure_modes: gitコマンド実行失敗時はコミットログをスキップ、README読み込み失敗時は該当ファイルをスキップ
+ * role: セッション開始時のシステムプロンプト拡張モジュール
+ * why: AIエージェントが現在のリポジトリ状態を認識するための動的コンテキスト（Git履歴、ドキュメント等）を自動的に注入するため
+ * related: @mariozechner/pi-coding-agent, node:child_process, node:fs
+ * public_api: 関数 (pi: ExtensionAPI) => void
+ * invariants: セッション開始時に `isFirstPrompt` はtrueであり、`before_agent_start` イベント時に1回のみコンテキストが注入される
+ * side_effects: システムプロンプトの書き換え、ファイルシステム読み込み、子プロセス実行
+ * failure_modes: Gitコマンド実行時のタイムアウト、READMEファイルの読み取り失敗、非Gitリポジトリ環境でのエラー（いずれも無視して処理続行）
  * @abdd.explain
- * overview: セッション開始時にGitログ、README、作業ディレクトリ情報を収集し、システムプロンプトに追加してエージェントに提供するモジュール
+ * overview: セッションの最初のプロンプト送信前に、Gitの最近のコミットログとREADME.mdの内容をシステムプロンプトへ追記するエクステンション
  * what_it_does:
- *   - セッション開始時フラグをリセットする
- *   - 最初のエージェント起動直前にシステムプロンプトへコンテキストを挿入する
+ *   - `session_start` イベントで初回フラグを立てる
+ *   - `before_agent_start` イベントで初回のみ以下の処理を実行する
  *   - カレントワーキングディレクトリのパスを取得する
- *   - 直近10件のGitコミットメッセージ（タイトルのみ）を取得する
- *   - README.md（または類似ファイル名）の内容を取得する
- *   - 各情報に利用ガイダンスを付与してシステムプロンプトに連結する
+ *   - `git log` を実行し直近10件のコミットメッセージを取得する
+ *   - README.md（大文字小文字の変化を含む）の内容を読み込む
+ *   - 収集した情報を整形し、イベントの `systemPrompt` に結合して返す
  * why_it_exists:
- *   - エージェントが開発履歴を把握し、最近の変更を壊さずに修正できるようにするため
- *   - プロジェクトの設定や構造に関するドキュメント（README）を参照可能にするため
- *   - ファイル操作の基準となるパスを明確にするため
+ *   - プロジェクトの全体像（README）と最近の変更（Git Log）をエージェントに即座に伝えるため
+ *   - ユーザーが毎回手動でコンテキストを貼り付ける手間を削減するため
+ *   - エージェントのファイル操作パス解釈を正確にするため
  * scope:
- *   in: ExtensionAPIのイベントフック(session_start, before_agent_start)
- *   out: 追加されたコンテキストを含む修正済みシステムプロンプト文字列
+ *   in: ExtensionAPIイベントオブジェクト, コンテキストオブジェクト
+ *   out: systemPromptが追記されたイベントオブジェクト
  */
 
 /**

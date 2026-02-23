@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/search-helpers.ts
- * role: 検索結果の統一フォーマット定義および統合・ランク付けユーティリティの提供
- * why: 複数の検索ツール（コード検索、シンボル検索など）の結果形式を統一し、重複排除や関連度スコアリングを行うため
- * related: ../types, search-provider.ts, ranking-engine.ts
+ * role: 検索結果の統合・ランク付け・重複排除を行うユーティリティ
+ * why: 複数の検索ツールから異なる形式で返却される結果を統一し、関連順に並べ替えて提示するため
+ * related: ../types, search-core.ts, result-merger.ts
  * public_api: UnifiedSearchResult, MergeOptions, RankOptions
- * invariants: UnifiedSearchResultのscoreは数値、sourcesは配列、typeはリテラルのいずれかである
- * side_effects: なし（純粋なデータ構造と型定義）
- * failure_modes: 不正な型パラメータ渡しによる型エラー、スコア計算時の数値オーバーフロー
+ * invariants: UnifiedSearchResultのscoreは数値、fileは必須、sourcesは文字列配列
+ * side_effects: なし（純粋関数として機能）
+ * failure_modes: 不正なスコア値によるランク付け崩壊、重複排除ロジックの不整合
  * @abdd.explain
- * overview: 複数の検索ツールから得られる結果を統一的に扱うための型定義と、それらをマージ・ランク付けするための設定インターフェースを提供するモジュール。
+ * overview: 異なる検索ツールの結果をマージし、一意の統一フォーマットでスコアリングするための型定義とヘルパー関数
  * what_it_does:
- *   - 全ツール共通の検索結果形式 UnifiedSearchResult を定義する
- *   - 結果のマージ動作を制御する MergeOptions を定義する
- *   - 検索結果のランク付け動作を制御する RankOptions を定義する
+ *   - 複数の検索ソースからの結果を UnifiedSearchResult インターフェースに正規化する
+ *   - MergeOptions に基づき、マルチソースでのヒットをスコアに反映する
+ *   - RankOptions を用い、クエリとの完全一致・部分一致・パス一致に基づき結果を並べ替える
+ *   - ファイル、マッチ、シンボルといった異なる種類の結果を共通の構造で扱う
  * why_it_exists:
- *   - 異なる検索バックエンド間で結果形式の違いを吸収し、統一されたハンドリングを可能にするため
- *   - 重複排除や複数ソースによるブーストなど、高度な検索結果合成処理の構成を明確にするため
+ *   - 検索ツールごとに異なるレスポンス形式を吸収し、UI層での表示処理を単純化するため
+ *   - 複数の検索エンジンを利用した場合の精度向上（重複排除・スコア強化）を実現するため
  * scope:
- *   in: 外部からの型定義のインポート、マージ・ランク付けの設定値
- *   out: 検索結果統合用の型定義
+ *   in: 検索ツールからの生データ（CodeSearchMatch, SymbolDefinition, FileCandidate等）、マージ/ランク付けオプション
+ *   out: 統一された UnifiedSearchResult の配列
  */
 
 /**

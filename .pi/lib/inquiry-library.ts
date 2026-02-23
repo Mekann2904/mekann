@@ -1,16 +1,26 @@
 /**
  * @abdd.meta
- * @path .pi/lib/inquiry-library.ts
- * @role 問いの種（シード）を提供するライブラリ
- * @why エージェントが問いを立てる際の参考となる「問いのパターン」を提供するため
- * @related lib/inquiry-driven-exploration.ts, skills/self-improvement/SKILL.md
- * @public_api InquiryLibrary, InquirySeed, InquiryPattern
- * @invariants
- *   - 問いは「答え」を前提としない
- *   - 問いは深い探求を促す
- *   - 問いは除外された可能性を意識させる
- * @side_effects なし（読み取り専用）
- * @failure_modes なし
+ * path: .pi/lib/inquiry-library.ts
+ * role: 問いの種（InquirySeed）の定義と、それらを検索・推奨する機能を提供するライブラリ
+ * why: エージェントが深い探求を行うための多様な問いのパターンを体系化し、状況に応じて適切な問いを選択可能にするため
+ * related: ./inquiry-driven-exploration.ts
+ * public_api: InquirySeed, InquiryCategory, InquiryLibrary, getSeedsByCategory, getSeedsByDepth, getAllSeeds, getRandomSeed, getRecommendedSeeds
+ * invariants: seedsはInquiryCategoryをキーとするMap構造を保持する, getRecommendedSeedsのスコアリングはexamplesとtendsToExcludeに依存する
+ * side_effects: getRandomSeedは外部乱数に依存するため状態に依存した結果を返す, それ以外のメソッドは状態変更を行わない
+ * failure_modes: 指定されたカテゴリに種が存在しない場合は空配列を返す, getRecommendedSeedsはスコアが同点の場合の順序が保証されない
+ * @abdd.explain
+ * overview: 問いを立てるためのテンプレート（種）を管理し、カテゴリ、深度、コンテキストに基づいて問いを提案するクラスと型定義の集合
+ * what_it_does:
+ *   - 問いのパターン、思考タイプ、深度、除外傾向を含むInquirySeedインターフェースを定義する
+ *   - InquiryCategoryによる分類、InquiryDepthによるフィルタリング、全件取得を行う
+ *   - 指定されたカテゴリまたは全体からランダムに問いを抽出する
+ *   - 入力されたコンテキスト文字列とキーワードを比較し、関連性が高い問いをスコアリングして推奨する
+ * why_it_exists:
+ *   - 単なる回答生成ではなく、探求のプロセスを深めるための質問生成を支援するため
+ *   - 特定の文脈に合わせて最適な問いのパターンを動的に選択するため
+ * scope:
+ *   in: InquiryCategory, InquiryDepth, string(コンテキスト), number(最大結果数)
+ *   out: InquirySeed, InquirySeed[], InquiryCategory
  */
 
 import type { InquiryDepth } from "./inquiry-driven-exploration";

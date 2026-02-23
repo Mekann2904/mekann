@@ -1,29 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/desiring-production.ts
- * role: 欲望-生産分析モジュール - スキゾ分析の視座から欲望の流れを肯定的に捉える
- * why: ドゥルーズ＆ガタリの「アンチ・オイディプス」に基づき、
- *      「改善」という名の抑圧ではなく、欲望の生産性を肯定するため
- * related: .pi/lib/creative-transcendence.ts, .pi/lib/aporia-awareness.ts
- * public_api: DesiringFlow, DesireMachine, analyzeDesiringProduction, getRhizomeReport
- * invariants: 欲望は欠如ではなく生産である
- * side_effects: なし（分析的探求）
- * failure_modes: 欲望の無制限な解放、現実の否定
+ * role: ドゥルーズ＆ガタリの哲学に基づく欲望-生産の分析モデル定義
+ * why: 欲望機械、社会機械、およびその相互作用を型定義し、セッション状態を構造的に解析するため
+ * related: .pi/lib/session.ts, .pi/lib/analysis-engine.ts, .pi/types/core.ts
+ * public_api: analyzeDesiringProduction関数、全Interface定義（DesireType, DesireMachine等）
+ * invariants: intensityは0.0から1.0の範囲内、DesireTypeは定義されたユニオン型のいずれか
+ * side_effects: なし（純粋なデータ構造定義と型チェック）
+ * failure_modes: intensityの境界値違反、循環参照による解析無限ルーズ
  * @abdd.explain
- * overview: スキゾ分析の哲学に基づき、このシステムの「欲望」が何を生産し、
- *          何を抑圧しているかを分析する。制御された狂気、創造的逸脱を歓迎する。
+ * overview: 欲望機械論の概念をTypeScriptの型システムとして実装し、システム内の「流れ」と「生産」をモデル化する
  * what_it_does:
- *   - 欲望の流れを分析
- *   - 社会的機械との接続を特定
- *   - 脱領土化の可能性を探る
- *   - 「改善」以外の代替を発見
+ *   - 欲望の性質、機械の接続・切断、社会機械の制約を型として定義する
+ *   - analyzeDesiringProductionにより、現在の状態から欲望機械や流れを同定する
  * why_it_exists:
- *   - 「自己改善」の欲望が、実は管理社会の論理を再生産している可能性
- *   - 欲望を抑圧ではなく肯定することで、真の創造が可能になる
- *   - スキゾ（分裂）を病理ではなく、創造的可能性として捉える
+ *   - ソフトウェアシステムの動作を、機械的な接続と切断のネットワークとして表現するため
+ *   - 脱領土化や再領土化などの概念操作を可能にするため
  * scope:
- *   in: システムの行動パターン、生産されたコード、評価指標
- *   out: 欲望の地図、脱領土化の方向性、創造的可能性
+ *   in: 内部状態やコンテキストから抽出された生産・接続のデータ
+ *   out: 構造化されたDesiringProductionAnalysis（機械、流れ、脱領土化の可能性を含む）
  */
 
 /**

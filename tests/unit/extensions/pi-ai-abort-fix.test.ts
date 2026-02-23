@@ -50,6 +50,12 @@ describe("PATCH_TARGETS定義", () => {
 
 	const PATCH_TARGETS: PatchTarget[] = [
 		{
+			modulePath: "@mariozechner/pi-ai/dist/providers/google-shared.js",
+			marker: 'case "abort":',
+			before: '        case FinishReason.NO_IMAGE:\n            return "error";',
+			after: '        case FinishReason.NO_IMAGE:\n            return "error";\n        case "abort":\n            return "aborted";',
+		},
+		{
 			modulePath: "@mariozechner/pi-ai/dist/providers/anthropic.js",
 			marker: 'case "abort":',
 			before: '        case "sensitive": // Content flagged by safety filters (not yet in SDK types)\n            return "error";',
@@ -69,8 +75,8 @@ describe("PATCH_TARGETS定義", () => {
 		},
 	];
 
-	it("3つのパッチターゲットが定義されている", () => {
-		expect(PATCH_TARGETS).toHaveLength(3);
+	it("4つのパッチターゲットが定義されている", () => {
+		expect(PATCH_TARGETS).toHaveLength(4);
 	});
 
 	it("全てのターゲットが正しいmarkerを持つ", () => {
@@ -93,20 +99,26 @@ describe("PATCH_TARGETS定義", () => {
 	});
 
 	describe("パス先の検証", () => {
-		it("anthropic.jsへのパスが正しい", () => {
+		it("google-shared.jsへのパスが正しい", () => {
 			expect(PATCH_TARGETS[0].modulePath).toBe(
+				"@mariozechner/pi-ai/dist/providers/google-shared.js"
+			);
+		});
+
+		it("anthropic.jsへのパスが正しい", () => {
+			expect(PATCH_TARGETS[1].modulePath).toBe(
 				"@mariozechner/pi-ai/dist/providers/anthropic.js"
 			);
 		});
 
 		it("openai-completions.jsへのパスが正しい", () => {
-			expect(PATCH_TARGETS[1].modulePath).toBe(
+			expect(PATCH_TARGETS[2].modulePath).toBe(
 				"@mariozechner/pi-ai/dist/providers/openai-completions.js"
 			);
 		});
 
 		it("openai-responses-shared.jsへのパスが正しい", () => {
-			expect(PATCH_TARGETS[2].modulePath).toBe(
+			expect(PATCH_TARGETS[3].modulePath).toBe(
 				"@mariozechner/pi-ai/dist/providers/openai-responses-shared.js"
 			);
 		});

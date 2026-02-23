@@ -1,24 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/code-structure-analyzer/extension.ts
- * role: コード構造解析のエントリポイントおよびオーケストレータ
- * why: AST抽出、図生成、ドキュメント作成という複数のフェーズを統一的なインターフェースで実行するため
- * related: ./tools/extract-structure.js, ./tools/generate-diagrams.js, ./tools/generate-doc.js
+ * role: コード構造解析拡張機能のエントリーポイントおよびオーケストレーター
+ * why: 実装からAST、Mermaid図、ドキュメントを統合的に生成し、開発とドキュメント作成のギャップを埋めるため
+ * related: ./tools/extract-structure.js, ./tools/generate-diagrams.js, ./tools/generate-doc.js, @mariozechner/pi-coding-agent
  * public_api: AnalyzeOptions, AnalysisResult, analyzeCodeStructure
- * invariants: 出力ディレクトリが指定された場合、そこにファイルが生成される
- * side_effects: ファイルシステムへの書き込み（オプション）およびファイルの読み取り
- * failure_modes: 対象パスが存在しない、読み取り権限がない、構文解析エラー
+ * invariants: 出力ディレクトリが未指定の場合はデフォルト動作へ委譲, LLMコンテキストフラグが未指定の場合はtrueを適用
+ * side_effects: ファイルシステムへの読み取りおよび書き込み（出力ディレクトリ作成を含む）
+ * failure_modes: 対象パスが存在しない場合、AST解析エラー、ディレクトリ作成権限不足
  * @abdd.explain
- * overview: 実装からドキュメントを自動生成するハイブリッドシステムのメインモジュール
+ * overview: AST抽出、Mermaid図生成、ドキュメントセクション生成の3フェーズで構成されるコード解析パイプラインを定義する
  * what_it_does:
- *   - AST抽出、Mermaid図生成、ドキュメントセクション生成の各フェーズを順次実行する
- *   - 解析結果（構造、図、ドキュメント、メタデータ）を統合されたオブジェクトとして返す
+ *   - AnalyzeOptionsに基づいて対象コードの構造データ（StructureData）を抽出する
+ *   - 構造データから指定された種類のMermaid図（Flowchart, Class, Sequence）を生成する
+ *   - 構造データとテンプレートを元にドキュメントセクションを生成する
  * why_it_exists:
- *   - 機械的生成とLLM解説を組み合わせた品質の高いドキュメント生成プロセスを提供する
- *   - ユーザーに対し、詳細な設定を意識せずに一連の解析処理を実行するAPIを提供する
+ *   - コードの静的解析結果を可視化およびドキュメント化するプロセスを自動化する
+ *   - 機械的生成とLLMによる解説を組み合わせたハイブリッドなドキュメント生成システムを実現する
  * scope:
- *   in: AnalyzeOptions (対象パス、出力設定、図の種類)
- *   out: AnalysisResult (構造データ、Mermaid図、ドキュメントセクション、メタデータ)
+ *   in: AnalyzeOptions（対象パス、図種別、テンプレートパス、除外パターン）
+ *   out: AnalysisResult（構造データ、Mermaid図、ドキュメントセクション、メタデータ）
  */
 
 /**

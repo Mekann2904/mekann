@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/reasoning-bonds-evaluator.ts
- * role: チーム実行結果に対する推論ボンド分析評価器
- * why: 委任フローの構造安定性を評価し、論文「The Molecular Structure of Thought」の知見を適用するため
- * related: .pi/lib/reasoning-bonds.ts, .pi/extensions/agent-teams/judge.ts, .pi/extensions/agent-teams/communication.ts
- * public_api: BondEvaluationResult, evaluateTeamBonds, generateBondReport, BOND_OPTIMAL_RANGES
- * invariants: スコアは0-1の範囲、評価は純粋関数
- * side_effects: なし
- * failure_modes: 空データに対する境界処理
+ * role: チームの推論ボンド状態を集計し、構造的健全性と振動パターンを評価するアナライザ
+ * why: 多数のエージェント出力からチーム全体の認知的安定性を定量的に判断し、改善策を導出するため
+ * related: .pi/lib/reasoning-bonds.ts, .pi/lib/executor.ts
+ * public_api: evaluateTeamBonds, BOND_OPTIMAL_RANGES, BondEvaluationResult, TeamMemberResultForBond
+ * invariants: evaluateTeamBondsは完了した出力のみを対象にする、安定性スコアは0から1の範囲である
+ * side_effects: なし（純粋な計算と集計）
+ * failure_modes: 入力が全て失敗（status != completed）の場合、空配列による除算エラーを防ぐためtotalBondsを1として扱う
  * @abdd.explain
- * overview: チーム実行結果を推論ボンド（分子構造）の観点から評価し、構造安定性・エントロピー収束・構造的カオスを検出する
+ * overview: エージェントの出力テキストと信頼度に基づき、ボンド分布、エントロピー収束、メタ認知振動を分析するモジュール
  * what_it_does:
- *   - チームメンバーの出力からボンド遷移グラフを構築
- *   - エントロピー収束速度とメタ認知振動パターンを分析
- *   - 構造安定性スコアを計算
- *   - 改善推奨事項を生成
+ *   - チームメンバーの出力をボンドタイプ（深層推論、自己反省等）に分類し、分布を算出する
+ *   - 信頼度をエントロピー（不確実性）系列に変換し、収束メトリクスを計算する
+ *   - ボンド遷移グラフと過去のグラフを比較し、構造的類似度と安定性スコアを導出する
+ *   - 最適範囲（BOND_OPTIMAL_RANGES）との乖離を判定し、全体的評価と推奨事項を生成する
  * why_it_exists:
- *   - 委任フローの品質を「分子構造の安定性」という観点から定量的に評価するため
- *   - 論文の知見（高速エントロピー収束、構造的競合の回避）を実践に適用するため
+ *   - 個々のエージェントの状態だけでなく、チームとしての認知的バランスが最適かどうかを可視化する必要があるため
+ *   - 認知プロセスが収束しているか、あるいはカオス状態に陥っていないかを検知するため
  * scope:
- *   in: チームメンバーの実行結果（出力、不確実性スコア）
- *   out: ボンド評価結果、改善推奨事項、構造安定性レポート
+ *   in: チームメンバーの実行結果リスト（出力、信頼度、ステータス）、オプションの過去遷移グラフ
+ *   out: ボンド分布の健全性、構造安定性スコア、振動パターン、全体評価を含む評価結果オブジェクト
  */
 
 import {

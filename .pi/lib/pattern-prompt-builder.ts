@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/pattern-prompt-builder.ts
- * role: パターン参照をプロンプトに組み込むための共通ビルダー関数
- * why: loop.ts, agent-teams, subagentsでの重複コードを削減し、一貫性を確保するため
- * related: .pi/lib/pattern-extraction.ts, .pi/extensions/loop/iteration-builder.ts
- * public_api: buildPatternsPromptSection, formatPatternForPrompt, RelevantPattern
- * invariants: パターンは常に「対話相手」として提示され、「制約」として提示されない
- * side_effects: なし（純粋な関数）
- * failure_modes: 空のパターン配列の場合は空文字列を返す
+ * role: プロンプト用パターン情報のフォーマットとセクション構築
+ * why: 抽出されたパターン情報をLLMプロンプトで利用可能な形式に統一し、制約ではなく対話相手として扱う文脈を提供するため
+ * related: .pi/lib/pattern-extraction.ts
+ * public_api: RelevantPattern, PromptLanguage, toRelevantPattern, formatPatternForPrompt, buildPatternsPromptSection
+ * invariants: 出力テキストはMAX_PATTERN_DESCRIPTION_LENGTH以内に切り詰められる, セクション見出しは「対話相手、制約ではない」ことを強調する
+ * side_effects: なし
+ * failure_modes: 入力配列がundefinedまたは空の場合は空文字列を返す
  * @abdd.explain
- * overview: 過去の実行パターンをプロンプトに組み込むための統一的なフォーマッタ
+ * overview: 過去の実行パターンをプロンプトに埋め込むための文字列生成モジュール
  * what_it_does:
- *   - パターンを成功/失敗/アプローチに分類して整形
- *   - 日本語/英語の両方に対応
- *   - 脱構築的アプローチ（対話相手としての提示）を適用
+ *   - 抽出されたパターンをプロンプト用の簡易構造体(RelevantPattern)に変換する
+ *   - パターン説明文を文字数制限に従って切り詰める
+ *   - パターン種別ごとに分類し、プロンプトセクション文字列を構築する
  * why_it_exists:
- *   - 3つの実行パス（loop, agent-teams, subagents）でのコード重複を削減
- *   - パターン提示の一貫性を確保
- *   - 「制約」ではなく「対話相手」という設計思想を統一
+ *   - パターン情報の表示形式を標準化し、プロンプト設計の一貫性を保つため
+ *   - パターンをLLMへの「対話相手」として提示し、過度な制約として認識させないようにするため
  * scope:
- *   in: ExtractedPattern配列、言語設定
- *   out: 整形されたプロンプト文字列
+ *   in: ExtractedPattern(またはRelevantPattern)配列, 言語設定
+ *   out: プロンプト埋め込み用のフォーマット済み文字列
  */
 
 /**

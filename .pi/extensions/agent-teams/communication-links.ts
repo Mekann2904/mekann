@@ -1,13 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/communication-links.ts
- * role: チームメンバー間の通信リンク管理（決定論的ローテーション）
- * why: 再現可能で公平なパートナー選択を実現するため
- * related: .pi/extensions/agent-teams/communication.ts, communication-id.ts
- * public_api: CommunicationLinksOptions, createCommunicationLinksMap, deterministicShuffle
- * invariants: 同一入力で同一出力、アンカーは優先的に含まれる、自己リンクなし
- * side_effects: なし
- * failure_modes: なし
+ * role: チーム内メンバー間の通信リンク（対話相手）の決定ロジックを提供する
+ * why: エージェント間の対話構造（リング、スター、フル）を制御し、特定ロールを優先する接続を形成するため
+ * related: ./communication-id, ./agent-teams.ts
+ * public_api: MAX_COMMUNICATION_PARTNERS, CommunicationLinksOptions, TeamMemberLike, shouldPreferAnchorMember, createCommunicationLinksMap
+ * invariants: 返されるMapのキーは引数membersのすべてのIDを含む, リンク相手は常に引数members内のIDである, リンク数はMAX_COMMUNICATION_PARTNERSを超えない
+ * side_effects: なし（純粋関数）
+ * failure_modes: membersが空の場合は空のMapを返す, 重複IDが含まれる場合の動作は未定義
+ * @abdd.explain
+ * overview: メンバーリストと戦略に基づき、各メンバーが通信すべき相手のリストを決定するモジュール
+ * what_it_does:
+ *   - メンバーID、ラウンド数、シード値を用いて、決定論的に通信相手を選択する
+ *   - リング、スター、フルの3種類のトポロジー戦略に基づき候補を生成する
+ *   - reviewやjudgeなどの役割を持つメンバー（アンカー）を通信相手として優先的に追加する
+ * why_it_exists:
+ *   - マルチエージェント環境における通信経路の制御を一元化するため
+ *   - ラウンドやシード値によって再現可能なコミュニケーションパターンを生成するため
+ * scope:
+ *   in: メンバー定義リスト、戦略設定、乱数シード、ラウンド数
+ *   out: メンバーIDをキーとした通信相手IDリストのMap
  */
 
 import { combineSeed, stringToSeed } from "./communication-id";
@@ -24,11 +36,21 @@ export interface CommunicationLinksOptions {
   strategy?: "ring" | "star" | "full";
 }
 
+/**
+ * チームメンバー型定義
+ * @summary メンバー型定義
+ */
 export interface TeamMemberLike {
   id: string;
   role?: string;
 }
 
+/**
+ * アンカー優先判定
+ * @summary アンカー優先判定
+ * @param member チームメンバー情報
+ * @returns アンカー優先ならtrue
+ */
 export function shouldPreferAnchorMember(member: { id: string; role?: string }): boolean {
   const id = member.id.toLowerCase();
   const role = (member.role || "").toLowerCase();

@@ -1,20 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/learnable-mode-selector.ts
- * role: 学習可能な思考モード選択器
- * why: 静的なルールベース選択から、経験に基づく動的選択へ移行する
- * related: thinking-process.ts, belief-updater.ts, experience-replay.ts
- * public_api: LearnableModeSelector, createLearnableSelector, selectMode, updatePriors, ModeSelectionResult
- * invariants: 選択確率は常に正規化済み、選択は必ず1つのモードを返す
- * side_effects: なし（状態はImmutable）
- * failure_modes: コンテキスト情報不足による低品質選択
+ * role: ベイズ更新に基づき動的に思考モードを選択・学習するステートフルセレクタ
+ * why: 静的ルールだけでなく過去の履歴とフィードバックから最適な思考モードを導出するため
+ * related: ./thinking-process.ts, ./belief-updater.ts
+ * public_api: createLearnableSelector, selectMode, provideFeedback, extractFeatures (推測), LearnableModeSelector interface
+ * invariants: modeBeliefの確率総和は1.0, learningRateは0から1の間, selectionHistoryとfeedbackHistoryは不変(追加のみ)
+ * side_effects: 内部のmodeBelief, phaseBeliefs, selectionHistory, feedbackHistoryを更新する
+ * failure_modes: 学習率が高すぎる場合の過学習、探索率設定による非最適解の定着、エントロピー計算の数値エラー
  * @abdd.explain
- * overview: ベイズ更新による学習可能な思考モード選択システム
- * what_it_does: コンテキストに基づき思考モードを選択し、結果から学習して選択精度を向上
- * why_it_exists: 静的ルールの限界を超え、経験からの継続的改善を可能にする
+ * overview: 思考モードの選択をベイズ推論により最適化し、フィードバックを通じて適応的に改善する仕組みを提供する
+ * what_it_does:
+ *   - 思考モードとフェーズに対する確率的信念を管理する
+ *   - コンテキスト特徴量に基づき、信念分布と探索率を考慮してモードを選択する
+ *   - 選択結果に対するフィードバックを受け取り、事後分布を更新して学習する
+ *   - 履歴と信頼度を含む選択結果を返す
+ * why_it_exists:
+ *   - 状況に応じた最適な思考モードの自動選択を実現するため
+ *   - 静的なルールベースでは対応できない動的な環境や個人差に適応するため
+ *   - 試行錯誤を通じた意思決定プロセスの改善を支援するため
  * scope:
- *   in: 思考コンテキスト、フィードバック、履歴
- *   out: 選択された思考モード、選択信頼度
+ *   in: 初期事前分布、学習率、探索率、思考コンテキスト、選択フィードバック
+ *   out: モード選択結果、選択時の確率分布、更新された内部状態
  */
 
 import {

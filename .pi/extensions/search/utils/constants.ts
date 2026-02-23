@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/constants.ts
- * role: 検索拡張機能における定数値の定義および型情報のエクスポート
- * why: 検索機能全体で共通利用される設定値（除外パターン、リミット、パス等）を一元管理し、整合性を維持するため
- * related: .pi/extensions/search/indexer/index.ts, .pi/extensions/search/tools/search.ts, .pi/extensions/search/types.ts
- * public_api: DEFAULT_EXCLUDES, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_MAX_DEPTH, INDEX_DIR_NAME, SYMBOL_INDEX_FILE, INDEX_META_FILE, INDEX_MANIFEST_FILE, SHARD_DIR_NAME, DefaultExclude
- * invariants: DEFAULT_EXCLUDESは読み取り専用(as const)であり要素の変更不可
- * side_effects: なし（純粋な定数定義）
+ * role: 検索機能拡張におけるシステム設定と制限値の定義
+ * why: 検索ロジック全体で一貫したデフォルト挙動と安全制約を保証するため
+ * related: .pi/extensions/search/utils/indexer.ts, .pi/extensions/search/tools/codeSearch.ts, .pi/extensions/search/tools/fileSearch.ts
+ * public_api: DEFAULT_EXCLUDES, DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE, INDEX_DIR_NAME
+ * invariants: DEFAULT_CODE_SEARCH_LIMITはMAX_CODE_SEARCH_LIMIT以下である
+ * side_effects: なし（定数エクスポートのみ）
  * failure_modes: なし
  * @abdd.explain
- * overview: 検索ツールおよびインデクサで使用される除外パス、検索上限、インデックスファイル名などの設定定数を集約したモジュール
+ * overview: 検索ツール共通の除外パターン、結果数制限、インデックス設定を集中管理する定数ファイル
  * what_it_does:
- *   - 検索対象から除外するデフォルトのディレクトリやファイルパターン（node_modules等）を定義する
- *   - 検索結果、コード検索、シンボル検索ごとのデフォルト件数上限を定義する
- *   - 大文字小文字の区別設定や検索深度の制限を定義する
- *   - インデックスの保存先ディレクトリ名やファイル名を定義する
+ *   - node_modulesやdistなど、検索対象から除外するデフォルトのパス・パターンを定義する
+ *   - 一般検索、コード検索、シンボル検索それぞれのデフォルト結果数と上限値を設定する
+ *   - 大文字小文字の区別有無、検索深度、インデックス格納ディレクトリ名などを定義する
  * why_it_exists:
- *   - 設定値を分散させず、コードベース全体で挙動の一貫性を保つため
- *   - マジックナンバーを排除し、可読性と保守性を向上させるため
+ *   - 設定値を分散させず、マジックナンバーを排除して保守性を高めるため
+ *   - 検索パフォーマンスとモデルコンテキスト消費を防ぐための制限を一元的に適用するため
  * scope:
- *   in: なし
- *   out: 検索設定に関するプリミティブ値、配列、およびリテラル型のユニオン型
+ *   in: 外部モジュールからのインポートなし（純粋な定数定義）
+ *   out: 検索ユーティリティ、ツール実装ファイルへ設定値をエクスポート
  */
 
 /**

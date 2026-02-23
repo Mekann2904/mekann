@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-parallelism.ts
- * role: プロバイダ/モデルごとの並列度をエラー率と回復状態に基づき動的に調整する
- * why: 429エラーやタイムアウト発生時に負荷を低減し、安定性とリソース効率を維持するため
- * related: .pi/lib/task-scheduler.ts, .pi/lib/cross-instance-coordinator.ts, .pi/lib/adaptive-rate-controller.ts
- * public_api: DynamicAdjusterConfig, ParallelismConfig, ProviderHealth
- * invariants: currentParallelismはminParallelism以上maxParallelism以下
- * side_effects: プロバイダの並列度設定を更新し、外部のcross-instance-coordinatorへ状態を通知
- * failure_modes: 調整ロジックの失敗、外部連携タイムアウト、不正な設定値による範囲違反
+ * role: エラー率や回復状況に基づき、プロバイダー/モデルごとの並列度を動的に調整するコンポーネント
+ * why: API制限（429）やタイムアウト発生時にリクエスト数を抑制し、システム安定性を確保するため
+ * related: ./task-scheduler, ./cross-instance-coordinator, ./adaptive-rate-controller
+ * public_api: ParallelismConfig, ProviderHealth, DynamicAdjusterConfig, ErrorEvent
+ * invariants: 並列度は minParallelism 以上 maxParallelism 以下であること
+ * side_effects: プロバイダー/モデルごとの並列度設定値（currentParallelism）を更新する
+ * failure_modes: 調整頻度が高すぎる場合の不安定な振る舞い、急激なトラヒック増加に対する反応遅延
  * @abdd.explain
- * overview: 個別のプロバイダとモデルに対して、エラー発生時の並列度低減と時間経過による漸次的な回復を行う。
+ * overview: エラー種別（429、timeout等）に応じたルールに基づいて並列度を自動調整し、クロスインスタンス間での調整結果を統合する機能を提供する。
  * what_it_does:
- *   - 429エラー発生時に並列度を30%低減する
- *   - タイムアウト発生時に並列度を10%低減する
- *   - 回復間隔ごとに並列度を10%増加させる
- *   - インスタンス間の調整係数を反映して最終的な並列度を決定する
+ *   - プロバイダー/モデルごとの現在の並列度と健全性ステータスを管理する
+ *   - 429エラー発生時に並列度を30%減算する（reductionOn429）
+ *   - タイムアウト発生時に並列度を10%減算する（reductionOnTimeout）
+ *   - 回復間隔ごとに並列度を10%増加させる（increaseOnRecovery）
+ *   - 直近のエラー履歴と応答時間を記録し、推奨バックオフ時間を算出する
  * why_it_exists:
- *   - APIレート制限（429）や応答遅延に対してシステム全体の可用性を保つため
- *   - 静的な並列度設定では対応できない変動する負荷状況に適応するため
+ *   - 外部APIのレートリミット制約下で、リクエストスループットを最大化するため
+ *   - 一時的な障害によるエラーの連鎖を防止し、自己復旧能力を向上させるため
  * scope:
- *   in: エラーイベント、応答時間、設定パラメータ、インスタンス間調整係数
- *   out: 調整後の並列度、正常性ステータス、推奨バックオフ時間
+ *   in: 基本並列度、エラーイベント、応答時間、クロスインスタンス係数
+ *   out: 調整後の並列度、健全性フラグ、推奨バックオフ時間
  */
 
 /**

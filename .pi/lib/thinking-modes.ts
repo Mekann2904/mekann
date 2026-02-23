@@ -1,16 +1,25 @@
 /**
  * @abdd.meta
- * @path .pi/lib/thinking-modes.ts
- * @role 思考モードの定義と管理
- * @why エージェントが「今、どの思考モードを使っているか」を自覚し、必要に応じて切り替えるため
- * @related lib/inquiry-driven-exploration.ts, skills/inquiry-exploration/SKILL.md
- * @public_api ThinkingMode, ThinkingModeSelector, THINKING_MODES
- * @invariants
- *   - どの思考モードも「正しい」ものではない
- *   - 思考モードの選択は文脈依存である
- *   - 「メタ認知」モードは他のモードを観察するが、優位ではない
- * @side_effects なし
- * @failure_modes なし
+ * path: .pi/lib/thinking-modes.ts
+ * role: 思考プロセスの分類と定義を管理する型定義および定数モジュール
+ * why: システムの意思決定や推論において、認知バイアスを制御し適切な思考アプローチを選択するために
+ * related: .pi/lib/core.ts, .pi/lib/agent.ts
+ * public_api: ThinkingModeType, ThinkingMode, THINKING_MODES
+ * invariants: THINKING_MODESの全キーはThinkingModeTypeの値と一致する
+ * side_effects: なし（純粋な定義と定数）
+ * failure_modes: modeの定義に不足がある場合、実行時のモード切替で意図しない挙動が発生する
+ * @abdd.explain
+ * overview: カーネマン、ド・ボノ、ブルームの理論を統合した思考モードの静的データモデル
+ * what_it_does:
+ *   - 6種類の思考モード（直観、分析、創造、批判、実践、メタ認知）を型として定義する
+ *   - 各モードの特性（名称、説明、適合状況、罠、関連理論）をThinkingModeインターフェースで規定する
+ *   - THINKING_MODES定数により、具体的なモード設定を静的に参照可能にする
+ * why_it_exists:
+ *   - 認知プロセスを明示的に切り替え、文脈に応じた最適な思考を適用するため
+ *   - 特定のモードに固有のバイアス（罠）を認識させ、リスクを低減するため
+ * scope:
+ *   in: なし（外部入力に依存しない静的データ）
+ *   out: ThinkingModeType型の文字列リテラル、ThinkingModeインターフェース、THINKING_MODESオブジェクト
  */
 
 /**

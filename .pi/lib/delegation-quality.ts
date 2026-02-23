@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/delegation-quality.ts
- * role: 委任品質スコア計算・追跡モジュール
- * why: 委任の成功/失敗パターンを形式的に表現し、測定可能にするため
- * related: .pi/lib/agent-teams/extension.ts, .pi/lib/execution-rules.ts
- * public_api: DelegationQualityScore, calculateDelegationScore, DelegationQualityTracker
- * invariants: スコアは0-100の範囲内
- * side_effects: ファイルへのログ出力（オプション）
- * failure_modes: 不正な入力値、ログ書き込み失敗
+ * role: 委任品質計算エンジン
+ * why: タスクの明確性やコンテキストなど5次元から委任の成功確率を定量的に評価し、改善提案を提示するため
+ * related: .pi/lib/delegation-manager.ts, .pi/lib/agent-pool.ts
+ * public_api: DelegationQualityScore, DelegationQualityInput, calculateDelegationScore
+ * invariants: overallスコアは0-100の範囲内、各次元スコアは0-100の範囲内
+ * side_effects: なし（純粋関数）
+ * failure_modes: 入力文字列が短すぎる場合に低スコアを返す、正規表現パターンに合致しない指標は評価されない
  * @abdd.explain
- * overview: 委任の品質を5つの次元で評価し、スコア化する。成功パターンと失敗パターンの差異を可視化し、委任前の品質チェックに活用する。
+ * overview: タスク定義の入力から、明確性、コンテキスト、前提条件、成功基準、リソースの5次元でスコアリングし、加重平均で総合品質と成功率を算出するモジュール
  * what_it_does:
- *   - 5つの品質次元（明確性、コンテキスト、前提条件、成功基準、リソース）を評価
- *   - 過去の成功/失敗データに基づく重み付け
- *   - 委任前チェックリストの自動生成
+ *   - タスク記述やコンテキストを正規表現パターンで解析し各次元のスコアを算出する
+ *   - 次元の重み付け（clarity 0.30, context 0.25 など）に基づき総合スコアを計算する
+ *   - 総合スコアが60点未満の場合に高リスクフラグを立てる
+ *   - 経験的モデルに基づき推定成功率を算出する
  * why_it_exists:
- *   - 委任エラーの18%がセットアップの不備に起因
- *   - 成功パターン（self-improvement-deep-dive: 100%）と失敗パターンの差異を形式化する必要
+ *   - 委任タスクの不備を検知し、実行前に品質を保証するため
+ *   - 定量的なフィードバックによってタスク定義の改善を促すため
  * scope:
- *   in: タスク記述、チーム/サブエージェント定義、利用可能なコンテキスト
- *   out: 品質スコア、改善提案、チェックリスト
+ *   in: タスク記述、共有コンテキスト、成功基準、ターゲットID、利用可能リソース
+ *   out: 総合スコア、各次元スコア、改善提案リスト、高リスク判定、推定成功率
  */
 
 /**

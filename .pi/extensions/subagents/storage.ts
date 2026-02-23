@@ -1,27 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/subagents/storage.ts
- * role: サブエージェントの定義および実行記録の永続化を管理するモジュール
- * why: agent-teams/storage.ts とのコード重複（DRY違反）を解消し、共通ストレージユーティリティを利用して保守性を向上させるため
- * related: .pi/lib/storage-base.ts, .pi/lib/storage-lock.ts, .pi/extensions/subagents/index.ts
- * public_api: SubagentDefinition, SubagentRunRecord, SubagentStorage, AgentEnabledState
- * invariants: SubagentDefinition.idは一意である、SubagentRunRecord.runIdは一意である、createdAtおよびupdatedAtはISO 8601形式である
- * side_effects: ファイルシステムへの読み書き、実行アーティファクトの削除、ファイルロックの取得と解放
- * failure_modes: ファイル書き込み時のIOエラー、パス解決の失敗、無効なJSONデータの読み込み、ロック競合によるタイムアウト
+ * role: サブエージェント定義と実行記録の永続化を行うモジュール
+ * why: agent-teams/storage.tsとのコード重複を排除し、共通ストレージユーティリティを利用するため
+ * related: ../../lib/storage-base.ts, ../../lib/storage-lock.ts, ../../lib/comprehensive-logger.ts
+ * public_api: type AgentEnabledState, interface SubagentDefinition, interface SubagentRunRecord
+ * invariants: SubagentDefinitionには一意なidとISO 8601形式の日時が含まれる
+ * side_effects: ファイルシステムへの読み書き、ファイルロックの取得と解放
+ * failure_modes: ファイルの破損時はバックアップを作成、書き込み失敗時はエラーを記録
  * @abdd.explain
- * overview: サブエージェントの定義と実行履歴をJSONファイルとして保存・読み込みするためのデータアクセス層を提供する。共通ロジックはstorage-base.tsに委譲する。
+ * overview: サブエージェントのメタデータと実行履歴を管理するストレージ層の実装
  * what_it_does:
- *   - サブエージェント定義および実行記録の型定義をエクスポートする
- *   - ディスク上のストレージパスを解決し生成する
- *   - サブエージェントの設定と実行記録をマージして取得する
- *   - 古い実行アーティファクトを整理・削除する
+ *   - SubagentDefinition（定義）とSubagentRunRecord（実行記録）の型定義をエクスポートする
+ *   - 共通ストレージユーティリティ（storage-base.ts）を用いてデータの永続化を行う
+ *   - アトミックな書き込みとファイルロックを利用してデータの一貫性を保つ
  * why_it_exists:
- *   - サブエージェントの状態を永続化し、再起動後も利用可能にするため
- *   - 他のストレージ実装とロジックを共通化し、重複コードを排除するため
- *   - アクセス時に整合性を保ちつつ安全にファイル操作を行うため
+ *   - エージェント定義と実行履歴を永続化するために
+ *   - 重複コード（DRY違反）を解消し、ストレージロジックを共通化するために
+ *   - ファイル操作の競合を防ぎ、データ破損リスクを低減するために
  * scope:
- *   in: サブエージェントID、ルートディレクトリパス、実行記録フィルタ条件
- *   out: SubagentStorageオブジェクト、ファイルシステムへの永続化結果
+ *   in: なし（外部依存としてstorage-base.ts, storage-lock.tsを使用）
+ *   out: SubagentDefinition, SubagentRunRecord, AgentEnabledState
  */
 
 /**

@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/verification-workflow.ts
- * role: 検証ワークフロー用の型定義と設定モジュール
- * why: Inspector/Challengerエージェントによる自動検証メカニズムの構造と動作を静的に保証するため
- * related: .pi/lib/agents.ts, .pi/lib/config.ts
- * public_api: VerificationWorkflowConfig, VerificationResult, VerificationTriggerMode, FallbackBehavior, ChallengerConfig, InspectorConfig, ChallengeCategory, InspectionPattern, SuspicionThreshold, VerificationVerdict
- * invariants: VerificationResultのfinalVerdictがpass系の場合、requiresReRunはfalseである必要がある
- * side_effects: なし（純粋な型定義とインターフェース）
- * failure_modes: 設定値の論理矛盾（例：閾値設定の不整合）、検証深度のオーバーフロー
+ * role: 検証ワークフローの設定とデータ構造定義モジュール
+ * why: Inspector/ChallengerエージェントによるLLM推論の自動検証メカニズムを実装するため
+ * related: .pi/lib/agents.ts, .pi/types/verification.ts
+ * public_api: VerificationWorkflowConfig, VerificationTriggerMode, FallbackBehavior, ChallengerConfig, ChallengeCategory, InspectorConfig, SuspicionThreshold, InspectionPattern
+ * invariants: enabledはboolean, minConfidenceToSkipVerificationは0〜1の範囲を想定, requiredFlawsは0以上の整数
+ * side_effects: なし（設定および型定義のみ）
+ * failure_modes: 閾値設定の不正、トリガーモードの未定義、カテゴリ指定の不整合
  * @abdd.explain
- * overview: 論文「Large Language Model Reasoning Failures」のP0推奨事項に基づき、LLMの出力をInspectorとChallengerが監査・挑戦する仕組みを定義する。
+ * overview: 論文「Large Language Model Reasoning Failures」のP0推奨事項に基づき、エージェント出力の自動検証を行うための構造定義
  * what_it_does:
- *   - 検証のトリガー条件（実行タイミング、信頼度、リスク）を定義する
- *   - Challengerによる論理的欠陥の発見設定とInspectorによる監査パターンを構造化する
- *   - 検証結果の判定（Pass/Warning/Review）と再実行の要否を決定するデータ構造を提供する
- *   - 検証失敗時のフォールバック動作を定義する
+ *   - 検証ワークフローの全体設定を管理する
+ *   - チャレンジャー（欠陥指摘）およびインスペクター（バイアス検出）の詳細設定を定義する
+ *   - 検証トリガー条件、フォールバック動作、検出パターン等の型を提供する
  * why_it_exists:
- *   - 複雑な推論チェーンにおけるLLMのハルシネーションや論理的飛躍をシステム的に検知するため
- *   - 検証プロセスの挙動を型安全に設定し、実行時の挙動不整合を防ぐため
+ *   - LLMの推論失敗モード（論理的欠陥、確認バイアス等）をシステム的に検知・緩和するため
+ *   - 検証プロセスの挙動を設定ファイルで柔軟に制御可能にするため
  * scope:
  *   in: なし
- *   out: ワークフロー制御用の型定義、設定インターフェース
+ *   out: 検証ワークフロー実行エンジン
  */
 
 /**

@@ -1,27 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/token-bucket.ts
- * role: トークンバケットアルゴリズムによるプロバイダ/モデル単位のレート制限実装
- * why: LLM API呼び出しにおいてRPM制限とバースト許容を両立するため
+ * role: LLM API呼び出しのためのトークンバケット方式レート制限器
+ * why: APIプロバイダーごとのRPM制限とバースト許容量を管理し、429エラーを回避するため
  * related: .pi/lib/task-scheduler.ts, .pi/lib/adaptive-rate-controller.ts
  * public_api: TokenBucketRateLimiter, RateLimitConfig, RateLimiterStats
- * invariants: tokens <= maxTokens + (burstMultiplier * maxTokens), tokens >= 0
- * side_effects: 内部状態（トークン残高、再試行時刻）を変更する
- * failure_modes: 設定より大きいRPM要求、429エラーによるリミット超過
+ * invariants: トークン残量は常に0以上maxTokens以下、refillRateは正の値、lastRefillMsは単調増加
+ * side_effects: 429記録時にバースト倍率の減算と再試行待機時間の設定、統計情報の更新
+ * failure_modes: 補填計算でのシステム時計巻き戻り、refillRate=0によるトークン枯渇、負値のリクエスト消費
  * @abdd.explain
- * overview: プロバイダとモデルごとのバケットを管理し、経過時間に応じたトークン補充と消費を行う
+ * overview: プロバイダー/モデル単位でトークンバケットアルゴリズムを実装し、RPM制限とバースト許容を制御するモジュール
  * what_it_does:
- *   - canProceed: リクエスト実行可否と待機時間を計算する
- *   - consume: 指定量のトークンを消費しバースト枠を利用する
- *   - record429: 429エラーを受信し再試行時刻を設定する
- *   - recordSuccess: 成功時の統計情報を更新する
- *   - getStats: 現在の追跡数やブロック状況を返す
+ *   - 経過時間に応じたトークン補填と容量上限の適用
+ *   - リクエスト実行可否判定と待機時間の算出
+ *   - トークン消費と成功/失敗履歴の記録
+ *   - 429エラー発生時のretryAfter反映と制限調整
+ *   - 追跡中モデル数やブロック状況などの統計情報提供
  * why_it_exists:
- *   - プロバイダごとのRPM制限を遵守するため
- *   - 瞬時トラヒック（バースト）を許容しつつ長期的なレートを抑えるため
+ *   - 突発的なトラフィック（バースト）を許容しつつ長期的な平均レートを遵守するため
+ *   - APIプロバイダーごとの異なる制限戦略（RPM、バースト倍率、最小間隔）を適用するため
+ *   - サーバー側からの429応答を受動的に検知して制限レートを動的に調整するため
  * scope:
- *   in: プロバイダ名、モデル名、消費トークン数、再試行待機時間
- *   out: 待機時間、統計情報（追跡数、ブロック済みモデル、平均トークン残高）
+ *   in: プロバイダー名、モデル名、消費トークン数、設定オブジェクト
+ *   out: 待機時間（ミリ秒）、統計情報オブジェクト、内部状態の更新
  */
 
 // File: .pi/lib/token-bucket.ts

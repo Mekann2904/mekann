@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/tool-error-utils.ts
- * role: ツール実行エラーの改善版ユーティリティ
- * why: bash/edit/readツールのエラー判定を改善し、誤検知を減らすため
- * related: lib/errors.ts, lib/agent-errors.ts
- * public_api: BashOptions, SafeBashResult, safeBash, EditOptions, SafeEditResult, safeEdit, ReadOptions, SafeReadResult, safeRead, ToolCriticality, evaluateToolResult
- * invariants: 各関数は一貫した戻り値構造を返す
- * side_effects: ファイルシステム操作（safeRead, safeEdit）
- * failure_modes: ファイル不存在、権限不足、テキスト不一致
+ * role: 外部コマンド(bash)実行のラッパーおよびエラーハンドリング定義
+ * why: 子プロセス実行における終了コードの判定ロジックを共通化し、diffやgrep等の特別な挙動を一元管理するため
+ * related: .pi/lib/tool-executor.ts, .pi/types/tools.ts
+ * public_api: ToolCriticality, ToolResultStatus, BaseToolResult, BashOptions, SafeBashResult, isExitOneAllowed, safeBash
+ * invariants: 終了コード0は常に成功、isExitOneAllowed判定時にコマンド文字列はtrimされている
+ * side_effects: execSyncによる同期プロセス生成、標準入出力の読み取り
+ * failure_modes: タイムアウトによる例外、許可されない終了コードの返却、コマンド実行時のOSエラー
  * @abdd.explain
- * overview: コアツール（bash, edit, read）のエラー処理を改善し、誤検知を減らしてAgent Run失敗率を下げるためのユーティリティ。
+ * overview: Bash実行の安全性を高め、ツール固有の終了コード挙動を吸収するユーティリティモジュール
  * what_it_does:
- *   - bash: exit code判定の改善、期待される終了コードを指定可能に
- *   - edit: 自動リトライ、テキスト不一致時の代替提案
- *   - read: パス検証、存在確認、類似ファイル提案
- *   - ツール重要度判定: クリティカル/非クリティカルの分類
+ *   - diff/grep/test等の「差分がある」「未検出」時に終了コード1を返すコマンドを検出する
+ *   - 実行オプションに基づき、許容された終了コード以外の場合にエラー判定を行う
+ *   - 同期実行の結果を構造化されたSafeBashResultオブジェクトとして返却する
  * why_it_exists:
- *   - 現在のエラー率21.1%の多くが誤検知（bash exit code 1等）
- *   - Agent Runの部分的失敗を許容し、過剰なエラー判定を防ぐため
+ *   - LLMツール実行時に、コマンドの成否判定を誤らないようにするため
+ *   - 終了コード1をエラーとするか否かの判定ロジックを複数箇所に散らばらせないため
  * scope:
- *   in: ツール実行パラメータ、オプション設定
- *   out: 統一された結果構造（status, isCritical, suggestions等）
+ *   in: BashOptions(コマンド文字列、タイムアウト、許可コード)、環境変数、作業ディレクトリ
+ *   out: SafeBashResult(標準出力、標準エラー、終了ステータス、エラー詳細)
  */
 
 import { existsSync, statSync, readdirSync, readFileSync, writeFileSync } from "fs";

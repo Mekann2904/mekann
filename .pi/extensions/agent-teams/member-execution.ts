@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/member-execution.ts
- * role: チームメンバーの出力正規化ロジックの実装
- * why: メインファイルから分離し、責務を明確にして保守性を向上させるため
- * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, ../../lib/output-validation.ts, ../../lib/agent-types.ts
- * public_api: normalizeTeamMemberOutput, type TeamNormalizedOutput
- * invariants: 出力正規化の際は validateTeamMemberOutput を通じて品質検証を行う
- * side_effects: ファイルシステムへのアクセスなし（純粋な関数処理）
- * failure_modes: 正規化に失敗した場合、ok: false の結果を返す
+ * role: チームメンバーの実行ロジックと出力正規化
+ * why: agent-teams.tsから分離し、メンバー実行の責務を分離して保守性を高めるため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, ../../lib/output-validation.ts, ../../lib/execution-rules.ts
+ * public_api: normalizeTeamMemberOutput, TeamNormalizedOutput
+ * invariants: 出力が10文字未満の場合はok: false, 品質検証エラー時はok: false
+ * side_effects: なし（純粋な関数と型定義）
+ * failure_modes: 入力文字列が空の場合、文字数が不足している場合
  * @abdd.explain
- * overview: エージェントチームメンバーの実行結果出力を、システムで扱いやすい形式に整形・正規化するモジュール。
+ * overview: エージェントチームにおける個別メンバーの実行処理および、その出力結果の正規化・検証を行うモジュール。
  * what_it_does:
- *   - 入力文字列をバリデーションし、必要に応じて構造化フォーマット（SUMMARY, CLAIM等）に変換する
- *   - 変換された出力が有効かどうか検証し、成功/失敗/縮退モードのフラグを返す
- *   - 無効な出力から有用なテキスト候補を抽出して代替構造を生成する
+ *   - メンバーからの出力テキストを正規化（TeamNormalizedOutput型へ変換）
+ *   - 出力の文字数チェックおよび品質検証（validateTeamMemberOutput）
+ *   - 不構造化テキストからのフィールド候補抽出（pickTeamFieldCandidate）
  * why_it_exists:
- *   - LLMからの出力形式を統一し、ダウンストリーム処理でのエラーを防ぐため
- *   - 複雑な正規化ロジックを agent-teams.ts 本体から分離してモジュール性を高めるため
+ *   - メインのチーム制御ロジックからメンバー実行の詳細を分離するため
+ *   - 出力形式を統一し、後続プロセスでの扱いやすさを確保するため
  * scope:
- *   in: 生のテキスト出力（TeamMemberResult.output相当）
- *   out: 検証済みの正規化済み文字列、またはエラー理由を含むステータスオブジェクト
+ *   in: メンバーからの生の出力文字列（string）
+ *   out: 正規化された実行結果（TeamNormalizedOutput）
  */
 
 // File: .pi/extensions/agent-teams/member-execution.ts

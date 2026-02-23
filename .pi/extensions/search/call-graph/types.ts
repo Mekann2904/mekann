@@ -1,29 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/call-graph/types.ts
- * role: コールグラフ解析システムの型定義
- * why: ripgrepと正規表現を用いたコールグラフ構築において、ノード、エッジ、インデックスのデータ構造を統一するため
+ * role: コールグラフ分析システムのデータ構造定義
+ * why: ripgrepによる簡易的な呼び出し関係分析において、関数定義（ノード）と呼び出し関係（エッジ）を型安全に扱うため
  * related: .pi/extensions/search/call-graph/index.ts, .pi/extensions/search/call-graph/parser.ts
- * public_api: CallGraphNode, CallGraphEdge, CallGraphNodeKind, CallGraphMetadata
- * invariants:
- *   - CallGraphNode.idは "file:line:name" の形式を持つ
- *   - confidenceは0.0から1.0の範囲の数値である
+ * public_api: CallGraphNode, CallGraphEdge, CallSite, CallGraphIndex, CallGraphMetadata
+ * invariants: CallGraphEdge.confidenceは0.0から1.0の範囲内、CallGraphNode.idは "file:line:name" 形式のユニーク文字列
  * side_effects: なし（純粋な型定義）
- * failure_modes:
- *   - id形式が不正な場合、ノードの紐付けが失敗する
- *   - confidenceスコアが低い場合、誤った呼び出し関係を参照する可能性がある
+ * failure_modes: なし（型定義のみのため実行時エラーは発生しない）
  * @abdd.explain
- * overview: ripgrepベースのコールグラフ解析システムにおける主要なデータ構造を定義するファイル
+ * overview: ripgrepベースのコールグラフ分析システムで使用される、ノード、エッジ、インデックスの型定義集
  * what_it_does:
- *   - 関数・メソッド定義を表すCallGraphNodeインターフェースを提供する
- *   - 呼び出し関係とその位置・信頼度を表すCallGraphEdgeインターフェースを提供する
- *   - インデックス全体のメタデータを管理するCallGraphMetadataインターフェースを提供する
+ *   - 関数やメソッドなどの呼び出し可能な単位を表すCallGraphNodeを定義
+ *   - 呼び出し元から呼び出し先への関係と位置情報を持つCallGraphEdgeを定義
+ *   - グラフ全体の構造と統計情報を持つCallGraphIndexを定義
  * why_it_exists:
- *   - パーサーとインデックス間でデータ構造を共有し、型安全性を保証するため
- *   - AST解析よりも軽量な正規表現ベースの解析結果を表現するため
+ *   - 正規表現ベースの解析結果を共通の構造で表現し、他のモジュールで利用可能にする
+ *   - 解析手法（ripgrep）と信頼度スコアの仕様を明確化する
  * scope:
  *   in: なし
- *   out: コールグラフ生成・解析機能全体
+ *   out: 関数定義リスト、呼び出し関係リスト、メタデータ構造
  */
 
 /**

@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/parallel-execution.ts
- * role: エージェントチームの並列実行容量解決およびリソース確保を行うモジュール
- * why: 並列実行ロジックを分離し、メインのagent-teams.tsの保守性を向上させるため
+ * role: エージェントチームの並列実行容量の候補生成と解決を行うモジュール
+ * why: agent-teams.tsから並列実行ロジックを分離し、保守性を向上させるため
  * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-runtime.ts
- * public_api: TeamParallelCapacityCandidate, TeamParallelCapacityResolution, buildMemberParallelCandidates, buildTeamAndMemberParallelCandidates, resolveTeamParallelCapacity
- * invariants: 候補生成時の並列度は1以上の整数であること、解決結果のapplied値はrequested値以下であること
- * side_effects: agent-runtime.tsの関数を呼び出し、リソース予約を変更する
- * failure_modes: リソース不足による容量確保の失敗、タイムアウトによる中断
+ * public_api: buildMemberParallelCandidates, buildTeamAndMemberParallelCandidates, TeamParallelCapacityCandidate, TeamParallelCapacityResolution
+ * invariants: 候補リストは要求された並列数から1へ降順で生成される、teamParallelismとmemberParallelismは1以上の整数である
+ * side_effects: agent-runtimeからの容量予約関数呼び出しによるリソース確保
+ * failure_modes: 容量不足による並列数の減少、予約処理のタイムアウト、リクエストの中止
  * @abdd.explain
- * overview: エージェントチームの並列度に基づいて、実行に必要な容量の候補リストを作成し、利用可能なリソースを確保する
+ * overview: チームおよびメンバーの並列実行容量を計算し、利用可能な容量候補を生成・解決する機能を提供する
  * what_it_does:
- *   - メンバー単位、チーム・メンバー単位の並列実行容量候補を生成する
- *   - 要求された並列度をもとに、利用可能な容量を探索・予約する
- *   - 予約結果（許可可否、削減の有無、待機時間など）を返す
+ *   - 要求された並列数に基づき、チームとメンバーの組み合わせ候補リストを降順で作成する
+ *   - ランタイム容量予約APIと連携し、利用可能な並列度を解決する
+ *   - 容量不足の場合は並列数を段階的に削減した候補を検証する
  * why_it_exists:
- *   - チームおよびメンバーの並列処理に必要なリソース量を計算・管理するため
- *   - リソース競合時に並列度を調整し、システム安定性を保つため
+ *   - エージェントチームの実行負荷をシステム全体のリソース容量に制限するため
+ *   - 複雑な並列数計算ロジックを単一責任のモジュールとして分離するため
+ *   - リソース競合時のスケジューリング（待機、削減、タイムアウト）を管理するため
  * scope:
- *   in: 要求するチーム並列度、メンバー並列度、最大待機時間
- *   out: 並列実行容量の解決結果、確保されたリソース予約リース
+ *   in: 要求チーム並列数、要求メンバー並列数
+ *   out: 許可された並列度、適用された並列度、予約リース、試行回数、待機時間を含む解決結果
  */
 
 // File: .pi/extensions/agent-teams/parallel-execution.ts

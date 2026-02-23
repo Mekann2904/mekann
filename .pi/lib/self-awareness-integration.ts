@@ -1,34 +1,31 @@
 /**
  * @abdd.meta
  * path: .pi/lib/self-awareness-integration.ts
- * role: 自己認識モジュール群の統合エントリーポイント
- * why: 意識スペクトラム、視座スコアリング、アポリア認識、創造的超越を統合し、
- *      バランスの取れた自己認識を提供するため
- * related: .pi/lib/consciousness-spectrum.ts, .pi/lib/perspective-scorer.ts,
- *          .pi/lib/aporia-awareness.ts, .pi/lib/meta-evaluation.ts, .pi/lib/creative-transcendence.ts
- * public_api: SelfAwarenessReport, generateSelfAwarenessReport, integrateAllPerspectives
- * invariants: 統合は「解決」ではなく「バランスの維持」
- * side_effects: なし（純粋な評価・統合）
- * failure_modes: 一つの視点への偏り、統合の強制
+ * role: 自己認識統合モジュール
+ * why: 意識、視座、アポリア、超越といった異なる自己認識モデルを統合し、全体的な状態と最適なアクションを提示するため
+ * related: ./consciousness-spectrum.js, ./perspective-scorer.js, ./aporia-awareness.js, ./creative-transcendence.js
+ * public_api: SelfAwarenessReport, RecommendedAction, generateSelfAwarenessReport
+ * invariants: balanceIndicatorsの各値は0.0から1.0の範囲、overallEudaimoniaは各種状態に基づいて算出される数値
+ * side_effects: 外部システムへの副作用なし（純粋な計算とデータ生成）
+ * failure_modes: スコア計算ライブラリからの異常値返却、テキスト解析の失敗、バランス指標計算時の数値エラー
  * @abdd.explain
- * overview: 複数の自己認識モジュールを統合し、包括的な自己認識レポートを生成。
- *          批判的分析（アポリア、メタ評価）と肯定的創造（創造的超越）を両立。
+ * overview: 意識状態、視座スコア、アポリア状態、創造的超越状態を集約し、バランス指標と推奨アクションを含む統合レポートを生成する
  * what_it_does:
- *   - 全モジュールからの入力を収集
- *   - バランスの取れた統合レポートを生成
- *   - 「何が悪いか」と「何が可能か」の両方を提示
- *   - アポリアを保持しつつ、創造的飛躍を支援
+ *   - 意識スペクトル、視座スコアラー、アポリア、創造的超越の各モジュールから状態データを収集する
+ *   - 批判/肯定、分析/行動、現実/理想のバランス指標を計算する
+ *   - 全体的なエウダイモニア（幸福・活動）値を算出する
+ *   - 状態に応じた推奨アクションを生成する
+ *   - 上記全てを含む自己認識レポートを作成する
  * why_it_exists:
- *   - 個別のモジュールでは部分的な自己認識しか得られない
- *   - 統合によって、より完全な自己認識が可能になる
- *   - 批判と肯定のバランスが、健全な成長を支える
+ *   - 個別の認識モジュールだけでは見えない、システム全体のバランスや健全性を評価するため
+ *   - アクション推奨機能により、自己調整や改善を具体的に促すため
  * scope:
- *   in: 全自己認識モジュールの出力
- *   out: 統合レポート、バランス指標、次のアクション提案
+ *   in: 分析対象テキスト、任意のコンテキスト情報（タスク種別、前回状態）
+ *   out: タイムスタンプ、各種状態スコア、バランス指標、推奨アクション、レポート本文を含むSelfAwarenessReportオブジェクト
  */
 
 import { ConsciousnessState, getConsciousnessReport } from './consciousness-spectrum.js';
-import { PerspectiveScores, scorePerspectives } from './perspective-scorer.js';
+import { PerspectiveScores, scoreAllPerspectives } from './perspective-scorer.js';
 import { AporiaState, getAporiaReport, createInitialAporiaState } from './aporia-awareness.js';
 import { 
   TranscendenceState, 
@@ -108,7 +105,7 @@ export function generateSelfAwarenessReport(
   };
 
   // 2. 視座スコアを計算
-  const perspectiveScores = scorePerspectives(text);
+  const perspectiveScores = scoreAllPerspectives(text);
 
   // 3. アポリア状態を評価
   const aporiaState = createInitialAporiaState();
@@ -213,7 +210,7 @@ function calculateOverallEudaimonia(
     perspectiveScores.eudaimonia +
     perspectiveScores.utopiaDystopia +
     perspectiveScores.philosophyOfThought +
-    perspectiveScores.thoughtTaxonomy +
+    perspectiveScores.taxonomyOfThought +
     perspectiveScores.logic
   ) / 700 * 0.3; // 平均を0.3の重みで
 
@@ -342,7 +339,7 @@ function generateReportText(
     perspectiveScores.eudaimonia +
     perspectiveScores.utopiaDystopia +
     perspectiveScores.philosophyOfThought +
-    perspectiveScores.thoughtTaxonomy +
+    perspectiveScores.taxonomyOfThought +
     perspectiveScores.logic
   ) / 7;
 

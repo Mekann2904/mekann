@@ -1,32 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/semantic_search.ts
- * role: ベクトル類似度に基づくコード意味検索ツール
- * why: 事前構築されたインデックスを利用し、自然語クエリやコード断片に対して意味的に近いコード箇所を特定するため
- * related: .pi/extensions/search/types.ts, .pi/extensions/search/utils/constants.ts, .pi/lib/embeddings/utils.ts
+ * role: 意味的コード検索エグゼキューター
+ * why: ベクトル類似度に基づき、キーワードのみでは発見困難なコード断片を検索するため
+ * related: ../types.js, ../utils/constants.js, ../../../lib/embeddings/utils.js
  * public_api: semanticSearch(input, cwd): Promise<SemanticSearchOutput>
- * invariants:
- *   - 入力クエリは空文字ではない
- *   - topKは正の整数である
- *   - thresholdは0以上1以下である
- *   - インデックスファイルが存在しない場合、空の配列を返す
- * side_effects: ファイルシステムからインデックスファイルを読み込む
- * failure_modes:
- *   - インデックスファイルが破損している場合、JSON.parseで例外が発生する
- *   - クエリベクトルの生成失敗（呼び出し元依存）
+ * invariants: 入力クエリは空文字ではない、検索対象インデックスは有効なJSONL形式である
+ * side_effects: ファイルシステムからのインデックス読み込み（readFileSync）
+ * failure_modes: インデックスファイル不在、JSONパースエラー、空のクエリ入力時は空リスト返却
  * @abdd.explain
- * overview: ディスク上のセマンティックインデックスを読み込み、クエリベクトルとコード埋め込みのコサイン類似度を計算して上位k件を返すモジュール
+ * overview: 事前に構築されたベクトルインデックスを用い、コサイン類似度による上位k件の検索を行う
  * what_it_does:
- *   - semantic-index.jsonlファイルの読み込みとパース
- *   - クエリ埋め込みとインデックス内の埋め込みのコサイン類似度計算
- *   - 類似度によるフィルタリングと降順ソート
- *   - 指定された件数（topK）への結果切り詰め
+ *   - ディスクからsemantic-index.jsonlを読み込みCodeEmbedding配列を生成する
+ *   - クエリベクトルと各コード埋め込みのコサイン類似度を計算する
+ *   - 類似度が閾値以上の結果を類似度降順にソートし、上位k件を返却する
  * why_it_exists:
- *   - キーワード一致のみでは検出できない、意味的に関連するコードの発見を支援するため
- *   - 大規模なコードベースにおいて、特定の機能や実装パターンを素早く特定するため
+ *   - テキストマッチングでは不可能な「意味」に基づくコード検索を提供するため
+ *   - 大規模なコードベースにおいて、関連する実装の特定を効率化するため
  * scope:
- *   in: SemanticSearchInput(クエリ、topK、閾値、フィルタ条件)、作業ディレクトリパス
- *   out: SemanticSearchOutput(ヒット数、切り詰めフラグ、検索結果リスト、エラー情報)
+ *   in: 検索クエリ、取得件数(topK)、類似度閾値、フィルタ条件
+ *   out: 検索ヒット数、切り捨てフラグ、検索結果リスト(パス、スコア等含む)、エラーメッセージ
  */
 
 /**

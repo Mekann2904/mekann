@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/team-types.ts
- * role: チーム監視と並列実行調整用の型定義コレクション
- * why: agent-teams.tsから型を分離し、保守性と依存の明確化を確保するため
- * related: extensions/agent-teams.ts, extensions/agent-teams/storage.ts, .pi/lib/tui/live-monitor-base.ts, .pi/lib/live-view-utils.ts
- * public_api: TeamLivePhase, TeamLiveViewMode, TeamLiveItem, TeamMonitorLifecycle, LiveStreamView
- * invariants: TeamLiveItemのkeyは「teamId/memberId」形式
- * side_effects: なし（純粋な型定義と再エクスポートのみ）
- * failure_modes: なし（実行時ロジックを含まない）
+ * role: チーム監視および並列実行調整用の型定義集
+ * why: agent-teams.ts から定義を分離し、保守性と再利用性を向上させるため
+ * related: extensions/agent-teams.ts, extensions/agent-teams/storage.ts, ./live-types-base.js, ./tui/live-monitor-base.js
+ * public_api: TeamLivePhase, TeamLiveViewMode, TeamQueueStatus, TeamLiveItem, TeamMonitorLifecycle, TeamMonitorPhase
+ * invariants: TeamLiveItem.keyは一意の識別子である、TeamLivePhaseは定義された順序に従う
+ * side_effects: なし（純粋な型定義）
+ * failure_modes: 型定義の不整合によるコンパイルエラー、循環参照
  * @abdd.explain
- * overview: チームの実行フェーズ、TUI用ライブアイテム、ライフサイクル操作のインターフェースを定義する
+ * overview: チームのライブ監視システムと並列実行調整に使用される型定義を集約したモジュール
  * what_it_does:
- *   - 実行フェーズ（queued, communication, judge等）とビューモードの型を定義する
- *   - チームメンバーの実行状態、ログ、議論内容を保持するTeamLiveItemインターフェースを提供する
- *   - インターフェース分離原則に基づき、開始/完了操作のみを扱うTeamMonitorLifecycleを定義する
+ *   - チームライブのフェーズ（queued, initialなど）と表示モードを定義する
+ *   - チームキューの待機状態を表すTeamQueueStatusを提供する
+ *   - 実行中のアイテムのスナップショットであるTeamLiveItemを定義する
+ *   - ライフサイクル管理とフェーズ管理のためのインターフェースを提供する
  * why_it_exists:
- *   - チーム監視システムと並列実行調整で共有される型情報を一元管理するため
- *   - 監視機能のみを必要とするクライアントに対し、不要な依存を排除するため
+ *   - 監視システムと実行調整ロジック間で共有されるデータ構造を一元管理するため
+ *   - implementation detailsから型定義を分離し、依存関係を整理するため
  * scope:
- *   in: LiveStreamView, LiveStatusの各種型
- *   out: チーム実行状態、監視インターフェース、TUI描画用の各種型
+ *   in: BaseLiveSnapshot, LiveStreamView, LiveStatus (インポート)
+ *   out: TeamLivePhase, TeamLiveViewMode, TeamQueueStatus, TeamLiveItem, TeamMonitorLifecycle, TeamMonitorPhase
  */
 
 /**

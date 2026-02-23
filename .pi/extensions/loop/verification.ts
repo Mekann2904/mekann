@@ -1,28 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop/verification.ts
- * role: ループ拡張機能における検証コマンドの実行と設定管理
- * why: 決定的な検証コマンドの実行を処理し、許可リストベースのセキュリティと実行ポリシー制御を提供するため
- * related: .pi/extensions/loop.ts, ../../lib/format-utils.js, ../../lib/error-utils.js
- * public_api: LoopVerificationResult, ParsedVerificationCommand, VerificationPolicyConfig, executeVerification, parseVerificationCommand, DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES
- * invariants: 検証実行は許可リストのプレフィックス一致を必須とする、結果オブジェクトは成功/失敗/タイムアウトのいずれかの状態を持つ
- * side_effects: 子プロセスの生成、標準入出力の読み取り、環境変数の参照
- * failure_modes: 許可リスト不一致による実行拒否、コマンドパースエラー、子プロセスの起動失敗またはタイムアウト
+ * role: ループ検証コマンドの実行および結果の集約
+ * why: ループ処理中に外部検証コマンド（テスト等）を安全かつ確定的に実行し、その結果をシステムに通知するため
+ * related: .pi/extensions/loop.ts, .pi/lib/error-utils.ts, .pi/lib/text-utils.ts
+ * public_api: LoopVerificationResult, ParsedVerificationCommand, VerificationPolicyConfig, DEFAULT_VERIFICATION_ALLOWLIST_PREFIXES
+ * invariants: 捕捉される出力はMAX_CAPTURED_OUTPUTLIST_BYTES(64KB)を超えない
+ * side_effects: 外部プロセスを生成し、実行ファイルシステムに対してコマンドを実行する
+ * failure_modes: コマンド実行のタイムアウト、許可リストによる実行拒否、標準出力の切り詰め
  * @abdd.explain
- * overview: ループ処理内での検証コマンド（テスト等）を安全に実行するためのモジュール。コマンド文字列のパース、許可リスト（Allowlist）によるセキュリティチェック、実行ポリシー（頻度やタイミング）の制御を行う。
+ * overview: ループ拡張機能における検証ステップの実行ロジックを提供するモジュール
  * what_it_does:
- *   - 検証コマンド文字列を実行可能ファイルと引数にパースする
- *   - 事前定義された許可リストと照合し、一致する場合のみ実行を許可する
- *   - 子プロセスとして検証コマンドを実行し、終了コード、標準出力、実行時間を収集する
- *   - 環境変数や設定に基づいて検証の実行ポリシー（毎回、完了時のみ、N回ごと）を決定する
- *   - デフォルトの許可リストとしてnpm, pnpm, yarn, vitest等の主要なテストコマンドを提供する
+ *   - 外部プロセスとして検証コマンドを生成・実行する
+ *   - 実行許可リスト（Allowlist）に基づいたセキュリティチェックを行う
+ *   - 標準出力・標準エラー出力をサイズ制限付きで捕捉する
+ *   - 実行結果（終了コード、所要時間、出力内容）を集約して返却する
  * why_it_exists:
- *   - CI/CDや開発ループにおいて、ビルドと検証を自動的に連携させるため
- *   - 任意のコマンド実行によるセキュリティリスクを許可リストで軽減するため
- *   - 検証の実行頻度を制御し、リソース消費を最適化するため
+ *   - 自動化されたワークフローにおいて、開発者定義のテスト等をループ処理内で確実に実行する必要があるため
+ *   - 任意コマンドの実行リスクを軽減するため、明示的な許可リスト制御を行うため
+ *   - 冗長な出力によるメモリ消費を抑止し、結果を安定して扱うため
  * scope:
- *   in: 検証コマンド文字列、環境変数（PI_LOOP_VERIFY_*）、実行ポリシー設定
- *   out: 検証実行結果（成否、時間、ログ）、パースエラー情報
+ *   in: 検証コマンド文字列、環境変数によるポリシー設定、許可リスト定義
+ *   out: コマンドの実行成否、終了コード、切り詰められた出力ログ、実行時間
  */
 
 // File: .pi/extensions/loop/verification.ts

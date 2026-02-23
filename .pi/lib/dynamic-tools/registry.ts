@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-tools/registry.ts
- * role: ツールの登録・管理・永続化を担当するレジストリ
- * why: 動的ツールの定義を集約し、ファイルシステムへの保存と検索機能を提供するため
- * related: .pi/lib/dynamic-tools/types.ts, .pi/lib/dynamic-tools/safety.ts, .pi/lib/dynamic-tools/quality.js, .pi/lib/dynamic-tools/audit.ts
- * public_api: DynamicToolRegistryクラス, RegisterToolOptions, RegisterToolResult, ToolParameterSchema
- * invariants: ツールIDは一意である必要がある, ツール定義はTypeScriptの型定義と整合している必要がある
- * side_effects: ファイルシステムへのツール定義の書き込み・読み取り・削除, 監査ログの記録
- * failure_modes: ファイルシステムへのアクセス権限がない場合に書き込み/読み取りが失敗する, セーフティチェックまたは品質チェックに合格しないツールは登録が拒否される
+ * role: 動的ツールの定義、検証、登録、および永続化を管理するレジストリ
+ * why: ユーザー定義コードを安全かつ検証済みの状態でシステムに統合し、再利用可能なツールとして維持するため
+ * related: .pi/lib/dynamic-tools/types.js, .pi/lib/dynamic-tools/safety.js, .pi/lib/dynamic-tools/quality.js, .pi/lib/dynamic-tools/audit.js
+ * public_api: DynamicToolRegistryクラス, registerTool, listTools, executeTool, removeTool, verifyTool
+ * invariants: ツールIDは一意である, 登録済みツールの定義ファイルはディスク上と同期している, 検証済みツールのみが実行可能
+ * side_effects: ファイルシステムへのツール定義JSONの書き込み、監査ログの記録
+ * failure_modes: コードの静的解析による検証失敗、ディスクI/Oエラーによる登録/取得失敗、実行時のインタプリタエラー
  * @abdd.explain
- * overview: 動的ツールのライフサイクルを管理し、オブジェクト指向APIと関数ベースAPIの両方を提供するシステム
+ * overview: 動的ツール生成システムにおける中央集権的な管理機能を提供し、ツールのライフサイクル（登録・検索・実行・削除）と安全性を担保する
  * what_it_does:
- *   - ツールのメタデータ（名前、説明、コード、パラメータ、タグなど）を受け付けて登録する
- *   - 登録済みツールをファイルシステムに永続化し、起動時に復元する
- *   - 指定された条件に基づいてツールを検索・一覧表示する
- *   - セーフティチェックとコード品質評価を行い、ツールの実行可能性を判定する
+ *   - ツールの定義コードとパラメータスキーマを検証・登録する
+ *   - 登録されたツールのメタデータを検索・一覧表示する
+ *   - ツールを実行し、その結果と実行時間を返す
+ *   - ツールの定義ファイルをディスク上で作成・更新・削除する
  * why_it_exists:
- *   - 実行時に動的に追加されるツールを一元的に管理する必要があるため
- *   - ツールの再利用性を高めるために永続化機能が必要なため
- *   - 安全性を担保するために登録時にコード検証を行う必要があるため
+ *   - 実行コードとシステム設定を分離し、動的な拡張を可能にするため
+ *   - 安全性チェックと品質評価を登録フローに強制するため
+ *   - ツールの永続化と監査ログによる運用管理を行うため
  * scope:
- *   in: ツール定義（コード、パラメータ）、登録オプション、検索条件、システムパス設定
- *   out: ツール登録結果、ツール実行結果、ツール一覧、検証ステータス、監査ログ
+ *   in: ツール定義（名前、説明、コード、スキーマ）、登録・検索・実行リクエスト
+ *   out: 登録結果（ツールID）、ツールリスト、実行結果、検証ステータス
  */
 
 /**

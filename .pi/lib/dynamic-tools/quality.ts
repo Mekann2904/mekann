@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-tools/quality.ts
- * role: 品質メトリクス定義およびデータ構造の提供
- * why: 生成されたツールの品質評価、実行計測、使用統計を共通フォーマットで扱うため
- * related: .pi/lib/dynamic-tools/analyzer.ts, .pi/lib/dynamic-tools/reporter.ts, .pi/lib/dynamic-tools/collector.ts
+ * role: ツールの品質スコア算出と実行統計の集計を行うモジュール
+ * why: 生成されたツールの信頼性とパフォーマンスを定量化し、改善サイクルを回すため
+ * related: .pi/lib/dynamic-tools/types.ts, .pi/lib/dynamic-tools/analyzer.ts
  * public_api: QualityAssessment, CategoryScores, QualityIssue, ExecutionMetrics, ToolUsageStatistics
- * invariants: scoreは0.0以上1.0以下、severityはhigh/medium/lowのいずれか
+ * invariants: QualityAssessmentのscoreは0.0から1.0の範囲である、CategoryScoresの各値は0.0から1.0の範囲である
  * side_effects: なし（純粋な型定義）
- * failure_modes: なし（型定義のみのため実行時エラーは発生しない）
+ * failure_modes: スコア範囲違反、数値型の欠損
  * @abdd.explain
- * overview: 生成ツールの品質評価および実行パフォーマンスに関するデータ構造を定義するモジュール
+ * overview: ツールの静的品質評価と動的実行メトリクスを管理するためのデータ構造定義
  * what_it_does:
- *   - 品質スコアとカテゴリ別評価を格納する型（QualityAssessment, CategoryScores）を定義
- *   - 検出された問題と改善提案を表す型（QualityIssue）を定義
- *   - 実行時間やメモリ使用量などの計測データを格納する型（ExecutionMetrics）を定義
- *   - ツールの使用頻度や成功率を集計する型（ToolUsageStatistics）を定義
+ *   - 品質スコアとカテゴリ別評価（可読性、エラーハンドリング等）を定義する
+ *   - 品質課題の重大度と位置情報を保持する
+ *   - 実行時間やメモリ使用量などの動的メトリクスを記録する
+ *   - ツールの使用統計と成功率、品質トレンドを集計する
  * why_it_exists:
- *   - 品質評価基準を型システムで明示し、評価ロジックの一貫性を担保するため
- *   - 計測データを構造化し、分析・レポート生成機能への入力として利用するため
+ *   - ツール生成の評価基準を統一するため
+ *   - 実行パフォーマンスと品質の相関を分析するため
  * scope:
- *   in: なし（定義のみ）
- *   out: 品質評価、実行メトリクス、統計情報に関するインターフェース定義
+ *   in: なし
+ * out: 品質評価結果、実行メトリクス、使用統計の型定義
  */
 
 /**

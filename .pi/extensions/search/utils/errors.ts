@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/errors.ts
- * role: 検索拡張機能のエラー定義と構造化エラーオブジェクトの生成
- * why: エラーをカテゴリ分類し、回復ヒントを付与することで検索ツール全体のエラーハンドリングとユーザーガイダンスを統一するため
- * related: .pi/extensions/search/utils/index.ts, .pi/extensions/search/tools/grep.ts, .pi/extensions/search/tools/ls.ts
+ * role: 検索機能における例外型定義および生成ファクトリ
+ * why: 検索ツール固有のエラー分類と復旧ヒントを一元化し、エラーハンドリングとユーザー案内を標準化するため
+ * related: .pi/extensions/search/tools/base.ts, .pi/extensions/search/utils/logger.ts, .pi/extensions/search/index.ts
  * public_api: SearchErrorCategory, SearchToolError, dependencyError
- * invariants: SearchToolErrorインスタンスは必ずカテゴリを持ち、メッセージは空ではない
+ * invariants: SearchToolErrorのcategoryプロパティは必ずSearchErrorCategoryのリテラル値を含む
  * side_effects: なし
- * failure_modes: 不正なカテゴリが渡された場合の動作は未定義
+ * failure_modes: 不正なカテゴリが渡された場合の挙動はTypeScriptの型チェックに依存する
  * @abdd.explain
- * overview: 検索ツールで発生するエラーを型安全に扱い、プログラム上のハンドリングとユーザーへのフィードバックを容易にするモジュール
+ * overview: 検索拡張機能専用のエラークラス、列挙型、および生成ヘルパーを定義するモジュール
  * what_it_does:
- *   - エラーを6種類のカテゴリ（依存関係、パラメータ、実行、タイムアウト、インデックス、ファイルシステム）で分類する型定義
- *   - カテゴリ、回復ヒント、原因エラーを保持する `SearchToolError` クラスを提供
- *   - ユーザー向けフォーマットやJSONシリアライズ機能を備える
- *   - 特定のエラー状況に応じたインスタンスを生成するファクトリ関数を提供
+ *   - エラーを6つのカテゴリ（dependency, parameter, execution, timeout, index, filesystem）に分類する型定義を提供する
+ *   - エラーメッセージ、復旧提案、原因エラーを保持するSearchToolErrorクラスを定義する
+ *   - エラーの整形出力やJSONシリアライズ機能を実装する
+ *   - 特定のエラーパターンを生成するファクトリ関数（dependencyError等）を提供する
  * why_it_exists:
- *   - 外部ツールやファイルシステム操作などの失敗要因を明確に区別し、適切なリカバリーを提示するため
- *   - エラー構造を標準化し、呼び出し元での捕捉と表示処理を単純化するため
+ *   - 標準のErrorオブジェクトでは不十分な検索ツール固有の文脈（外部ツールの欠如など）を明確にするため
+ *   - ユーザーへの復旧提案（recovery）をエラー構造に含めることでUXを向上させるため
+ *   - プログラム上でのエラー分類処理を容易にするため
  * scope:
- *   in: ツール名、エラーメッセージ、回復ヒント、元のエラーオブジェクト
- *   out: 構造化されたSearchToolErrorインスタンス
+ *   in: エラーメッセージ文字列、カテゴリ種別、復旧ヒント、原因エラーオブジェクト
+ *   out: SearchToolErrorインスタンス、フォーマット済み文字列、JSONシリアライズオブジェクト
  */
 
 /**

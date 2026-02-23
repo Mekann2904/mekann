@@ -1,27 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/perspective-scorer.ts
- * role: 7つの哲学的視座に基づく定量的評価モジュール
- * why: 自己改善プロセスを数値化し、継続的な改善の追跡を可能にするため
- * related: .pi/lib/consciousness-spectrum.ts, .pi/lib/verification-workflow.ts, .pi/skills/self-improvement/SKILL.md
- * public_api: PerspectiveScores, scoreAllPerspectives, getPerspectiveReport, getImprovementPriority
- * invariants: 各スコアは0-100の範囲、合計スコアは0-700の範囲
- * side_effects: なし（純粋な評価関数）
- * failure_modes: 不正な入力値、未定義の分析パターン
+ * role: テキストまたは思考の7つの哲学的視座に基づく評価基準の定義と管理
+ * why: 特定の視座からの深さや多面性をスコアリング可能にするため
+ * related: .pi/lib/consciousness-spectrum.ts
+ * public_api: Perspective, PERSPECTIVE_NAMES, PerspectiveCriteria, PERSPECTIVE_CRITERIA
+ * invariants: PERSPECTIVE_CRITERIAのキーはPerspective型の全ての値を含む
+ * side_effects: なし（データ定義のみ）
+ * failure_modes: 正規表現パターンの誤定義による誤検知、重複ポイントの計算ロジック不在による集計漏れ
  * @abdd.explain
- * overview: デリダの脱構築、ドゥルーズ＆ガタリのスキゾ分析、アリストテレス/ニーチェの幸福論、ユートピア/ディストピア研究、思考哲学、思考分類学、論理学の7つの視座を数値化して評価する。
+ * overview: 7つの哲学的視座（脱構築、スキゾ分析等）ごとの評価基準とポイント設定を保持する定数オブジェクトを定義する
  * what_it_does:
- *   - 各視座の評価基準を定義
- *   - エージェントの出力から各視座のスコアを算出
- *   - 改善の優先順位を提示
- *   - 総合的な視座レポートを生成
+ *   - 視座タイプと日本語名のマッピングを提供する
+ *   - 各視座の評価指標と正負のスコアリングルール（正規表現とポイント）を定義する
  * why_it_exists:
- *   - 自己改善の進捗を定量的に追跡するため
- *   - 弱点領域を特定し、重点的な改善を可能にするため
- *   - 7つの視座のバランスの取れた発展を促進するため
+ *   - テキスト分析における哲学的解釈の一貫性を担保するため
+ *   - 定量的なスコアリングを通じて思考の多様性を可視化するため
  * scope:
- *   in: エージェントの出力、思考プロセス、判断根拠
- *   out: 視座別スコア、改善推奨事項、優先順位
+ *   in: なし（静的データ）
+ *   out: 評価基準インターフェースと定数オブジェクト
  */
 
 import {

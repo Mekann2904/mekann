@@ -1,23 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/call-graph/query.ts
- * role: コールグラフの検索ロジックを提供するモジュール
- * why: ノードID、シンボル名、ファイルパスによるノード特定、および呼び出し元の探索を集約するため
- * related: .pi/extensions/search/call-graph/types.ts, .pi/extensions/search/call-graph/index.ts
+ * role: コールグラフの検索クエリモジュール
+ * why: 呼び出し元・呼び出し先の特定や、特定のシンボル・ファイルに紐づくノードの抽出を行うため
+ * related: ./types.js, ../index.ts
  * public_api: findNodesByName, findNodeById, findNodesByFile, findCallers
- * invariants: findCallersはキューが空になるか結果数がlimitに達するまで実行される
- * side_effects: なし（純粋な関数型プログラミング）
- * failure_modes: 指定されたdepthやlimitが過度に大きい場合、探索完了までに時間がかかる
+ * invariants: index引数は有効なコールグラフ構造を持つ, depthとlimitは0以上の整数
+ * side_effects: なし (純粋な関数)
+ * failure_modes: 不正なindex構造による参照エラー, ノードIDの重複による探索漏れ
  * @abdd.explain
- * overview: コールグラフ構造に対する各種クエリ（検索・探索）機能を実装する
+ * overview: コールグラフインデックスに対する検索機能を提供する
  * what_it_does:
- *   - 名前、ID、ファイルパスによるノードの抽出
- *   - 指定シンボルの呼び出し元を幅優先探索で特定し、チェーンと信頼度を計算
+ *   - シンボル名、ノードID、ファイルパスによるノード検索
+ *   - 指定シンボルの呼び出し元を再帰的に検索
+ *   - 検索結果に信頼度スコアと呼び出し位置情報を付与
  * why_it_exists:
- *   - コード解析機能において、特定の関数やファイルの関連性を動的に調査する必要があるため
+ *   - コードの依存関係を分析可能にするため
+ *   - 特定の関数がどこから呼ばれているかを追跡するため
+ *   - IDEや解析ツールでシンボルの定義・参照ジャンプを実現するため
  * scope:
- *   in: CallGraphIndex（ノードとエッジの集合）、検索条件（名前、ID、パス、深さ、上限数）
- *   out: 一致するノード、または呼び出しチェーン情報を含む結果配列
+ *   in: CallGraphIndex, 検索条件(名前/ID/パス), 深さ, 上限数
+ * out: 該当ノードの配列, または呼び出しチェーンの結果配列
  */
 
 /**

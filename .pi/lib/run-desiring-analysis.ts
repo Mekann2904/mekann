@@ -1,13 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/run-desiring-analysis.ts
- * role: 欲望-生産分析の実行スクリプト
- * why: スキゾ分析的診断を実際に実行し、結果を確認するため
+ * role: デシア-プロダクション（欲望-生産）分析の結果を整形し、コンソールに出力するスクリプト
+ * why: 分析ロジックと出力処理を分離し、スキゾ分析の診断結果を可視化するため
  * related: .pi/lib/desiring-production.ts
  * public_api: runDesiringAnalysis
- * invariants: 分析結果をそのまま受け入れる
- * side_effects: なし
- * failure_modes: 過度な自己否定
+ * invariants: analyzeDesiringProductionがオブジェクトを返すこと、console.logが利用可能であること
+ * side_effects: 標準出力へのログ書き込み
+ * failure_modes: analyzeDesiringProductionが例外を投げた場合の出力停止、console出力の文字化け（環境依存）
+ * @abdd.explain
+ * overview: 欲望機械や流れの状態、および脱領土化の可能性を計算し、そのサマリーをレポートとして出力する
+ * what_it_does:
+ *   - 欲望-生産分析を実行し、機械数や流れの本数などを集計する
+ *   - 強度が低い欲望機械（抑圧されているもの）を抽出して表示する
+ *   - 阻害されている流れとその阻害者を表示する
+ *   - 強度が最も高い脱領土化の可能性を特定して表示する
+ *   - 仮説を否定する証拠を検索し、修正された理解を表示する
+ * why_it_exists:
+ *   - 分析結果を人間が読みやすい形式で直ちに確認するため
+ *   - デバッグや現在のシステム状態の把握を容易にするため
+ * scope:
+ *   in: なし（依存先モジュールからのデータ取得のみ）
+ *   out: 標準出力へのフォーマットされた文字列（診断レポート）
  */
 
 import {

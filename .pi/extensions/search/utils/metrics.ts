@@ -1,24 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/metrics.ts
- * role: 検索パフォーマンスの計測と記録を行うデータ構造およびコレクタ
- * why: 検索操作の実行時間、インデックス効率、結果数などを監視・デバッグするため
- * related: .pi/extensions/search/core/index.ts, .pi/extensions/search/adapter/cli.ts, .pi/extensions/search/ui/result-view.ts
+ * role: 検索操作のパフォーマンスメトリクス定義と収集ロジックの提供
+ * why: 検索処理の監視、デバッグ、およびユーザーへのフィードバック機能を実現するため
+ * related: .pi/extensions/search/services/searchHandler.ts, .pi/extensions/search/components/statusBar.ts, .pi/extensions/search/types/index.ts
  * public_api: SearchMetrics, ExtendedSearchMetrics, MetricsCollector
- * invariants: durationMsは0以上、filesSearchedは0以上、indexHitRateは0.0から1.0の範囲
- * side_effects: なし（データ保持と計測のみ）
- * failure_modes: performance.now()が利用できない環境、メトリクス収集中の算術エラー
+ * invariants: durationMsは0以上、indexHitRateは0.0〜1.0の範囲、returnedResultsはtotalResults以下
+ * side_effects: performance.now()による時刻計測、インスタンス内のプロパティ更新
+ * failure_modes: performance.now()が未実装環境での動作未定義、範囲外の値設定によるロジック破綻
  * @abdd.explain
- * overview: 検索操作のパフォーマンス指標を定義するインターフェースと、時間計測を行うクラスを提供する
+ * overview: 検索処理の実行時間やファイル数などの統計情報を管理する型と、計測を行うクラスを定義するモジュール
  * what_it_does:
- *   - SearchMetricsおよびExtendedSearchMetricsで検索結果の統計情報を型定義する
- *   - MetricsCollectorで開始時刻の記録、経過時間の計測、ファイル数やヒット率の設定を行う
+ *   - SearchMetricsおよびExtendedSearchMetricsインターフェースを定義する
+ *   - MetricsCollectorクラスで経過時間、検索ファイル数、インデックス命中率を記録する
+ *   - ビルダーパターンのようにメトリクス値を設定し、計測結果を生成する
  * why_it_exists:
- *   - 検索処理のボトルネックを特定し、パフォーマンス改善に役立てるため
- *   - ユーザーに対して検索効率（インデックス利用状況など）をフィードバックするため
+ *   - 検索機能のパフォーマンスボトルネックを特定するため
+ *   - 外部CLIツールと内部処理の時間を区別して計測するため
  * scope:
- *   in: ツール名、計測対象ファイル数、インデックスヒット率、CLI/解析の所要時間
- *   out: 検索操作全体および各フェーズの実行時間、結果件数、切り捨てフラグを含むメトリクスオブジェクト
+ *   in: ツール名、検索ファイル数、インデックス命中率
+ * out: 計測開始からの経過時間を含むメトリクスオブジェクト
  */
 
 /**

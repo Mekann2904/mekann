@@ -1,20 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/relationship-metrics.ts
- * role: 関係性評価指標ライブラリ
- * why: 抽象的な「愛」の概念を具体的な測定可能な指標に変換する
- * related: self-improvement, love-ethics-extension, verification-workflow
- * public_api: RelationshipMetrics, evaluateTriangularTheory, evaluateMotivationBalance, RelationshipScore
- * invariants: スコアは0-1の範囲、重みの合計は1
- * side_effects: なし（純粋関数）
- * failure_modes: 入力が空の場合、デフォルト値を返す
- *
+ * role: 関係性評価モデルの定義とスコア算出
+ * why: エージェントとタスク/プロジェクト間の関係性を定量化・分類し、状態を可視化するため
+ * related: ./relationship-unmeasurables.js, ./relationship-types.ts
+ * public_api: TriangularTheoryScores, MotivationBalanceScores, RelationshipScore, classifyLoveType, LOVE_TYPE_DESCRIPTIONS
+ * invariants: THRESHOLDは0.5固定, LoveTypeは8種類のいずれか1つ, overallは0-1の範囲
+ * side_effects: なし（純粋な関数と定義のみ）
+ * failure_modes: 入力スコアがNaNや数値以外の場合, スコアが閾値付近で不安定な場合
  * @abdd.explain
- * overview: エージェント-ユーザー関係の質を測定するための指標ライブラリ
- * what_it_does: 三角理論と動機付けバランスに基づいて関係性スコアを計算
- * why_it_exists: 抽象的な「愛の倫理」概念を、実践的で測定可能な指標に変換するため
- * scope(in): タスク履歴、対話コンテキスト、評価データ
- * scope(out): 関係性スコア、改善推奨事項
+ * overview: スターンバーグの愛の三角理論とギリシャ哲学の愛の形態に基づき、関係性スコアを構造化・分類するモジュール。
+ * what_it_does:
+ *   - 親密さ・情熱・献身の3要素から愛の形態を分類する
+ *   - 6種類の動機付けバランス（ストルゲ、フィリア等）を定義する
+ *   - 各愛の形態に対する日本語の説明と警告を提供する
+ * why_it_exists:
+ *   - 定性的な関係性を指標化してシステム上で扱えるようにする
+ *   - 「理想的な状態」という概念的なアポリア（緊張関係）を言語化・記録する
+ * scope:
+ *   in: 数値化された親密さ・情熱・献身スコア
+ *   out: 愛の形態分類, 総合スコア, 説明文, 推奨事項, 測定警告
  */
 
 /**

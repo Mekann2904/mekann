@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/abdd.ts
- * role: ABDDツール統合拡張機能
- * why: コード解析によるドキュメント自動生成とコードの乖離検知を行うため
- * related: scripts/generate-abdd.ts, @mariozechner/pi-coding-agent
- * public_api: abdd_generate, abdd_jsdoc
- * invariants: 実行にはNode.js環境とscriptsディレクトリ配下のスクリプトが存在すること
- * side_effects: ファイルシステムへの書き込み（ドキュメント生成、JSDoc挿入）、外部プロセス（npx tsx）の実行
- * failure_modes: スクリプトファイル不在、タイムアウト(120秒)、Mermaid CLI未インストールによる図検証エラー
+ * role: ABDDツール統合エントリーポイント
+ * why: 実態コードとの乖離確認、JSDoc生成、ワークフロー実行を行うPI拡張機能として
+ * related: .pi/extensions/abdd-types.ts, scripts/generate_abdd.ts, scripts/jsdoc_generator.ts
+ * public_api: AbddGenerateParams, AbddJsdocParams, AbddReviewParams, AbddAnalyzeParams, AbddWorkflowParams
+ * invariants: スクリプトディレクトリとABDDディレクトリはROOT_DIR配下に存在する, spawn出力はMAX_SPAWN_STDIO_BYTES以内に収まる
+ * side_effects: ファイルシステムへの読み書き、外部プロセス(spawn)の実行
+ * failure_modes: スクリプトファイル不在による実行失敗, タイムアウトによるプロセス強制終了, バッファ上限超過による出力の欠落
  * @abdd.explain
- * overview: PIエージェント上でABDD（As-Built Driven Development）の各種ツールを実行するためのインターフェース定義
+ * overview: ABDDツールセットのメイン拡張機能。外部スクリプトの実行管理とパラメータ定義を担当する。
  * what_it_does:
- *   - abdd_generate: TypeScriptファイルを解析し、Mermaid図付きのAPIリファレンス（実態ドキュメント）を生成する
- *   - abdd_jsdoc: LLMを使用してソースコードに日本語JSDocを自動生成または挿入する
- *   - スクリプト実行の引数制御（dryRun, verbose, checkモードなど）と結果のハンドリングを行う
+ *   - 実態ドキュメント生成スクリプト、JSDoc生成スクリプト、レビュー・分析ツールのパラメータ定義
+ *   - 外部Nodeプロセスの起動と標準入出力のバッファリング
+ *   - ワークフロー実行の設定管理（タイムアウト、エラー時挙動など）
+ *   - 乖離分析の型定義（Divergence, Severity）
  * why_it_exists:
- *   - 開発プロセスにおけるドキュメント作成とコード注釈の手間を自動化により削減するため
- *   - ドキュメントと実装コードの整合性を維持・確認する仕組みを提供するため
+ *   - PIエージェントからABDDツール群を統一的に呼び出すため
+ *   - プロセス実行時のリソース制限とエラーハンドリングを集約するため
  * scope:
- *   in: ツール実行パラメータ（dryRun, check, verbose等のフラグ）
- *   out: 標準出力への実行結果ログ、ファイルシステムへのMarkdown/TSファイル出力
+ *   in: ExtensionAPI経由のコマンド呼び出し、TypeBoxスキーマ定義
+ *   out: 標準出力への結果返却、AbddError例外のスロー
  */
 
 /**

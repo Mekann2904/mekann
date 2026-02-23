@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/bond-integration.ts
- * role: 推論ボンド分析とJudgeシステムの統合モジュール
- * why: チーム実行後の判定プロセスに「構造安定性」の評価を追加するため
- * related: .pi/extensions/agent-teams/judge.ts, .pi/lib/reasoning-bonds-evaluator.ts, .pi/extensions/agent-teams/storage.ts
- * public_api: augmentDiagnosticsWithBondAnalysis, BOND_ANALYSIS_ENABLED
- * invariants: ボンド分析は既存の判定プロセスに影響を与えない（補完的）
- * side_effects: なし（純粋計算関数のみ）
- * failure_modes: ボンド分析に失敗した場合は診断情報に追加せずスキップ
+ * role: チーム実行結果に対するボンド分析機能の統合と設定管理
+ * why: エージェント間の結合関係やシステム安定性を客観的に評価し、診断情報を拡張するため
+ * related: ./storage.js, ../../lib/reasoning-bonds-evaluator.js
+ * public_api: BondAnalysisConfig, DEFAULT_BOND_CONFIG, getBondConfig, BondDiagnostics, augmentDiagnosticsWithBondAnalysis
+ * invariants: config.enabledがfalseの場合、analyzedはfalseになる。warningsとrecommendationsは常に配列である。
+ * side_effects: 環境変数を読み込む。外部の評価ロジックを実行する。システム状態には書き込まない。
+ * failure_modes: 環境変数の不正値（数値変換エラー）、評価ロジックでの例外、完了メンバーが0件の場合のデータ不足
  * @abdd.explain
- * overview: Judgeシステムの判定プロセスに推論ボンド分析を統合し、チーム実行結果の「構造安定性」を評価する
+ * overview: チームメンバーの実行結果を入力とし、ボンド分析エンジンを呼び出して安定性スコアや推奨事項を含む診断情報を生成するモジュール。
  * what_it_does:
- *   - チームメンバーの実行結果に対してボンド分析を実行
- *   - 分析結果を診断情報（diagnostics）に追加
- *   - 構造的カオスの警告を生成
- *   - Judge判定時の補足情報としてボンド評価レポートを提供
+ *   - 環境変数またはデフォルト値からボンド分析の設定（有効化、閾値など）を解決する
+ *   - 状態がcompletedのメンバー結果を抽出し、ボンド評価用のデータ形式に変換する
+ *   - 分析有効時は評価ロジックを実行し、無効時は固定のデフォルト値を返す
+ *   - 設定された閾値に基づいて警告や推奨事項を含む診断オブジェクトを構築する
  * why_it_exists:
- *   - 既存のJudge判定（不確実性ベース）に「構造安定性」という新しい評価軸を追加するため
- *   - 論文「The Molecular Structure of Thought」の知見を実際のシステムに適用するため
+ *   - エージェント間の連携品質を定量化し、チーム全体の健全性を可視化する
+ *   - 分析ロジック（reasoning-bonds-evaluator）をチームシステムへ疎結合に統合する
+ *   - 実行環境に応じて分析挙動を環境変数で制御可能にする
  * scope:
- *   in: チームメンバーの実行結果（TeamMemberResult[]）
- *   out: 拡張された診断情報、ボンド評価結果、警告メッセージ
+ *   in: TeamMemberResultの配列、分析設定オブジェクトまたは環境変数
+ *   out: BondDiagnostics（安定性スコア、評価、警告、推奨事項を含む）
  */
 
 import type { TeamMemberResult } from "./storage.js";

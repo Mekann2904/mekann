@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/storage.ts
- * role: エージェントチームの定義および実行記録の永続化処理
- * why: チーム設定と履歴をファイルシステムで管理し、他のストレージ実装とロジックを共通化するため
- * related: .pi/extensions/subagents/storage.ts, .pi/lib/storage-base.ts, .pi/lib/storage-lock.ts
+ * role: エージェントチームの定義および実行レコードに関する永続化処理と、ファイルシステム上のパス操作
+ * why: subagents/storage.ts とのコード重複（DRY違反）を解消し、共通ストレージユーティリティ（lib/storage-base.ts）を活用して一貫性を確保するため
+ * related: ../../lib/storage-base.ts, ../../lib/storage-lock.ts, ../../lib/comprehensive-logger.ts
  * public_api: TeamDefinition, TeamMember, TeamMemberResult, TeamEnabledState, TeamStrategy, TeamJudgeVerdict
- * invariants: チームIDは一意、updatedAtは更新時常に最新、enabledは定義ごとに保持
- * side_effects: ファイルシステムへの書き込み、アーティファクトファイルの削除
- * failure_modes: ファイル書き込み権限なし、JSONパースエラー、ID衝突
+ * invariants: チームIDは一意である、日時はISO 8601形式である、思考レベルは定義されたいずれかの値である
+ * side_effects: チーム定義ファイルの読み書き、実行記録の作成、破損したファイルのバックアップ生成、ファイルのロック取得
+ * failure_modes: ファイルシステムアクセス権限の欠如、JSONパースエラー、ファイル破損時のデータ欠損、競合するファイルアクセスによるロック待機
  * @abdd.explain
- * overview: エージェントチームの設定定義と実行結果をJSONファイルで永続化するモジュール
+ * overview: エージェントチームの構成定義（TeamDefinition）と実行結果（TeamMemberResult等）を管理し、ファイルシステムへの保存・読み込み・パス解決を行うモジュール。
  * what_it_does:
- *   - TeamDefinitionおよびTeamMemberResultの型定義とエクスポート
- *   - lib/storage-baseの共通ユーティリティを利用したパス生成、データ結合、ID生成
- *   - チーム設定ファイルの読み書きおよびロック機制による競合回避
- *   - 実行アーティファクトの整理と不要ファイルの削除
+ *   - lib/storage-base.ts から共通関数（パス生成、マージ、ID生成、バックアップ作成など）をインポートして利用する
+ *   - チーム定義、メンバー情報、実行戦略、審査結果などの型定義を公開する
+ *   - 永続化のためにファイルロックとアトミック書き込みを行う
  * why_it_exists:
- *   - subagents/storage.tsとの重複実装（DRY違反）を解消するため
- *   - チームの状態管理をファイルベースで一貫して行うため
+ *   - エージェントチーム機能において、設定と実行履歴を安定的に保持するため
+ *   - 既存のsubagents/storage.tsと重複するロジックを共通化し、保守性を向上させるため
  * scope:
- *   in: チーム定義オブジェクト、実行結果オブジェクト、ストレージパス
- *   out: JSON形式の設定ファイル、実行ログ、アーティファクトファイル
+ *   in: チーム設定情報、実行結果データ、ファイルシステムパス
+ *   out: チーム定義オブジェクト、実行記録オブジェクト、ファイルシステム上のJSONファイル、バックアップファイル
  */
 
 /**

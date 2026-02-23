@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/pi-coding-agent-lock-fix.ts
+ * role: ランタイムパッチ実装
+ * why: pi-coding-agentのファイルロック競合による処理停止を回避し、ロックエラー時に警告を表示して続行させるため
+ * related: scripts/patch-global-pi.sh, .pi/extensions/pi-coding-agent-rate-limit-fix.ts, package.json
+ * public_api: patchFile
+ * invariants: 変更対象はnode_modules内の特定パスである、ELOCKED時のみロックをスキップする
+ * side_effects: node_modules内のソースコードを書き換える、標準エラー出力に警告を出力する
+ * failure_modes: 対象モジュールが存在しない場合スキップする、リトライ設定等の既存パッチと干渍する場合は修正処理が失敗する
+ * @abdd.explain
+ * overview: pi-coding-agentのロック機設定を動的書き換えし、競合時の挙動を「待機リトライ」から「警告出力＆ロックなし継続」へ変更する非推奨のパッチ処理
+ * what_it_does:
+ *   - settings-manager.jsおよびauth-storage.jsのロック取得ロジックを検索する
+ *   - リトライ設定の削除（repairs）と、ロック失敗時のtry-catchブロック追加（steps）をソースコードに適用する
+ *   - ELOCKEDエラー発生時、標準エラー出力へ警告を出力し、処理を続行する
+ *   - 対象ファイルが見つからない場合は処理をスキップする
+ * why_it_exists:
+ *   - エージェント同時実行時等にロックファイル競合が発生し、プロセスが停止する問題を緩和するため
+ *   - 依存物を直接改変しない運用への統一に伴い、現在は本実装は無効化され履歴として保持されている
+ * scope:
+ *   in: PATCH_TARGETS定数（モジュールパス、検索文字列、置換ルール）
+ *   out: パッチ適用済みのnode_modules内ファイル、コンソール警告メッセージ
+ */
+
+/**
  * .pi/extensions/pi-coding-agent-lock-fix.ts
  * pi-coding-agentのlock問題を緩和する旧ランタイムパッチ実装（現在は既定で無効）。
  * no patch方針により本実装は非推奨で、依存物を直接改変しない運用に統一するため履歴として保持する。

@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/validation-utils.ts
- * role: 数値検証・変換ユーティリティの集約モジュール
- * why: 複数の拡張機能間で重複していた実装（context-usage-dashboard.ts等）を一元管理し、コードの重複を排除するため
+ * role: 数値変換・検証ユーティリティ
+ * why: 各拡張機能で重複していた実装を一箇所に集約し、メンテナンス性を向上させるため
  * related: context-usage-dashboard.ts, agent-usage-tracker.ts, retry-with-backoff.ts, loop.ts
- * public_api: toFiniteNumber, toFiniteNumberWithDefault, toBoundedInteger, toBoundedFloat, clampInteger, clampFloat, BoundedIntegerResult, BoundedFloatResult
- * invariants: clampIntegerは整数を返す（Math.truncにより）, toFiniteNumberは有限数のみを変換する
- * side_effects: なし（純粋関数）
- * failure_modes: Number()変換による意図しない型強制（数値文字列等が変換される）
+ * public_api: toFiniteNumber, toFiniteNumberWithDefault, toBoundedInteger, toBoundedFloat, BoundedIntegerResult, BoundedFloatResult
+ * invariants: 数値変換は厳密な型チェックを行い、無効値はundefinedまたはエラーオブジェクトとして返却する
+ * side_effects: なし
+ * failure_modes: 変換対象がオブジェクトの変換エラー、数値への変換失敗、指定範囲外の値によるバリデーション失敗
  * @abdd.explain
- * overview: 拡張機能間で共有される数値検証および型変換処理を提供するライブラリ
+ * overview: 不明な値を安全に数値へ変換し、整数・浮動小数点数ごとに範囲検証を行うライブラリ
  * what_it_does:
- *   - unknown型の値を有限数またはデフォルト値に変換する
- *   - 整数値が指定範囲内に収まるか検証する
- *   - 数値を指定範囲内に収める（クランプ処理）
- *   - 浮動小数点数を指定範囲内に収める
+ *   - unknown型の値を有限数値に変換する
+ *   - 整数および浮動小数点数に対して最小値・最大値の範囲チェックを行う
+ *   - 単一要素の配列を要素の値として展開して変換する
+ *   - バリデーション結果を成功・失敗を表す共用型で返却する
  * why_it_exists:
- *   - バリデーション処理の重複を排除し、メンテナンス性を向上させる
- *   - 型安全な数値変換ロジックを再利用可能にする
+ *   - 複数のモジュールで実装が分散していたため、共通ロジックとして抽出したため
+ *   - 外部入力や設定値の数値化処理において、型安全性を確保する必要があったため
  * scope:
- *   in: unknown型の任意の値, 数値, 数値変換可能な文字列, 範囲定義(min/max)
- *   out: number | undefined, BoundedIntegerResult型の検証結果オブジェクト, 範囲制限された数値
+ *   in: unknown型の値、フォールバック値、数値範囲、フィールド名
+ *   out: 有限数値、またはエラーメッセージを含む結果オブジェクト
  */
 
 /**

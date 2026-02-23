@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/embeddings/registry.ts
- * role: 埋め込みプロバイダーの管理と設定の永続化を行うレジストリ
- * why: プロバイダーの登録、状態監視、設定管理を一元化するため
- * related: .pi/lib/embeddings/types.ts, node:fs, node:path, node:os
- * public_api: EmbeddingProviderRegistry, register, unregister, get, getAll, getAvailable, getAllStatus
+ * role: Embeddingプロバイダーの登録、管理、および状態監視を行うレジストリ
+ * why: 複数の埋め込みプロバイダーを統一的に管理し、利用可否判定や状態取得の窓口を提供するため
+ * related: .pi/lib/embeddings/types.ts, .pi/lib/embeddings/index.ts
+ * public_api: register, unregister, get, getAll, getAvailable, getAllStatus
  * invariants: プロバイダーIDは一意である必要がある
- * side_effects: 設定ファイルの読み書きによるファイルシステムの変更
- * failure_modes: 設定ファイルの破損、読み書き権限の欠如、無効なプロバイダーIDの指定
+ * side_effects: ファイルシステムへの設定ファイルの読み書き（コンストラクタ時）
+ * failure_modes: 設定ファイルの読み込みエラー、プロバイダーIDの重複
  * @abdd.explain
- * overview: 埋め込みベクトル生成プロバイダーを管理するクラスと、その設定をJSONファイルで永続化する機能を提供する
+ * overview: EmbeddingプロバイダーをMap構造で保持し、登録・削除・検索・ステータス確認機能を提供するクラス
  * what_it_does:
- *   - プロバイダーの登録、解除、取得、一覧取得を行う
- *   - プロバイダーの利用可否を判定し、ステータス一覧を生成する
- *   - 設定ファイル(~/.pi/agent/embedding-config.json)の読み込みとデフォルト値の適用を行う
+ *   - プロバイダーの登録と削除
+ *   - IDまたは一覧によるプロバイダーの取得
+ *   - 利用可能なプロバイダーのフィルタリング
+ *   - 全プロバイダーの状態（設定、モデル、可用性等）の取得
  * why_it_exists:
- *   - 複数の埋め込みプロバイダー（OpenAI, Local, Mock等）を統一的なインターフェースで利用可能にするため
- *   - 実行時に利用可能なプロバイダーを動的に把握する仕組みを提供するため
- *   - ユーザー環境ごとの設定を永続化し、デフォルトプロバイダーなどを管理するため
+ *   - 実行時にプロバイダーを動的に追加・切り替えるため
+ *   - プロバイダーの状態を一元管理し、可用性に応じたルーティング判断を下すため
  * scope:
- *   in: プロバイダーインスタンス、プロバイダーID、ファイルシステムパス
- *   out: プロバイダーインスタンス、利用可能プロバイダーリスト、プロバイダーステータスリスト
+ *   in: EmbeddingProviderオブジェクト、プロバイダーID
+ *   out: 登録済みプロバイダー、利用可能プロバイダーのリスト、プロバイダーの状態リスト
  */
 
 /**

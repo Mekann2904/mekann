@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/semantic_index.ts
- * role: ソースコードのベクトル検索インデックスを作成するツール
- * why: コードの意味的検索を可能にするため、ファイルをチャンク化してベクトル埋め込みを生成・永続化する
- * related: .pi/extensions/search/types.js, .pi/extensions/search/utils/constants.js, .pi/extensions/search/tools/embeddings.ts
- * public_api: semantic_index (SemanticIndexInput): Promise<SemanticIndexOutput>
- * invariants: 出力ディレクトリ構造はINDEX_DIR_NAMEに依存する、チャンクIDはファイルパスと行番号から一意に決まる
- * side_effects: ファイルシステムへのインデックスファイル(semantic-index.jsonl, semantic-meta.json)の書き込み、インデックスディレクトリの作成
- * failure_modes: ファイル読み込み権限不足、埋め込み生成APIの失敗、ディスク容量不足
+ * role: コードの意味的検索のための埋め込みベクトルインデックス生成ツール
+ * why: ファイルシステム上のコードをベクトル化し、類似度検索を可能にするため
+ * related: .pi/extensions/search/types.ts, .pi/extensions/search/utils/constants.ts, .pi/extensions/embeddings/index.ts
+ * public_api: semantic_index関数
+ * invariants: インデックスファイルはJSONL形式、チャンク識別子は一意、メタデータはJSON形式
+ * side_effects: ディレクトリの作成、インデックスファイルおよびメタデータファイルの書き込み、標準出力へのログ
+ * failure_modes: ファイル読み込みエラー、埋め込み生成エラー、ディスク容量不足、権限エラー
  * @abdd.explain
- * overview: 指定されたディレクトリ内のコードファイルを収集・分割し、ベクトル埋め込みを生成してセマンティックインデックスを構築するツール
+ * overview: 指定ディレクトリ内のコードファイルを収集し、チャンク分割後に埋め込みベクトルを生成してインデックスファイルへ永続化する
  * what_it_does:
- *   - 対象ディレクトリから拡張子に基づいてファイルを再帰的に収集する
- *   - コードを行単位のチャンク（オーバーラップあり）に分割し、IDと言語情報を付与する
- *   - 各チャックのベクトル埋め込みを生成し、JSONL形式で保存する
- *   - インデックスのメタデータ（ハッシュ、設定など）を管理する
+ *   - ディレクトリを再帰的に走査し、対象拡張子のファイルを収集する
+ *   - コードを固定サイズのチャンク（重複あり）に分割する
+ *   - チャンクの内容を基に埋め込みベクトルを生成する
+ *   - 生成したベクトルとメタデータをファイルシステムへ保存する
  * why_it_exists:
- *   - LLMによるコード解析や検索において、ファイル単位よりもチャンク単位の方が精度が高いため
- *   - 埋め込み計算のコストを削減するため、差分更新やキャッシュ機構が必要なため
+ *   - テキスト一致だけでないコードの意味的検索を実現するため
+ *   - 大規模なコードベースに対する効率的な類似度検索を提供するため
  * scope:
- *   in: SemanticIndexInput (path, extensions, excludes, force, chunkSize, overlap)
- *   out: SemanticIndexOutput (status, stats, meta)
+ *   in: 対象ディレクトリパス、除外パターン、チャンクサイズ設定
+ *   out: 埋め込みベクトルを含むJSONLファイル、検索メタデータを含むJSONファイル
  */
 
 /**

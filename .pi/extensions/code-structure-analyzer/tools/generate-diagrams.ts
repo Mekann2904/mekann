@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/code-structure-analyzer/tools/generate-diagrams.ts
- * role: コード構造データからMermaid図（フローチャート、クラス図、シーケンス図）の文字列を生成する
- * why: 構造解析の結果を可視化し、コードベースの依存関係や構造の理解を容易にするため
- * related: .pi/extensions/code-structure-analyzer/tools/extract-structure.js
- * public_api: generateMermaidDiagrams, DiagramOptions, MermaidDiagrams
- * invariants: 出力される図の文字列は有効なMermaid構文である
- * side_effects: ファイルシステムやグローバル状態を変更しない（純粋な変換）
- * failure_modes: 構造データに循環参照や不正な文字列が含まれる場合、生成されるMermaid構文が崩れる可能性がある
+ * role: コード構造解析データに基づきMermaid形式の図を生成するジェネレーター
+ * why: 可視化による依存関係、クラス構造、呼び出しフローの理解を容易にするため
+ * related: .pi/extensions/code-structure-analyzer/tools/extract-structure.ts, ../../../lib/text-utils.ts
+ * public_api: generateMermaidDiagrams
+ * invariants: 出力される図IDは連番かつ一意、ディレクトリパスは階層構造を維持、ラベルはサニタイズされる
+ * side_effects: ファイルシステムや外部プロセスへのアクセスは行わない
+ * failure_modes: オプションで指定されていない図種は生成されない、循環参照がある場合の描画崩れ
  * @abdd.explain
- * overview: 解析されたコード構造を受け取り、指定された種類のMermaid図を生成するスクリプト
+ * overview: 解析済みの構造データを受け取り、依存関係図、クラス図、シーケンス図のMermaidコード文字列を生成するモジュール
  * what_it_does:
- *   - ディレクトリ構造に基づきファイルをグループ化したフローチャートを生成する
- *   - クラスの定義情報からクラス図を生成する
- *   - 呼び出し関係からシーケンス図を生成する
- *   - Mermaidのラベルとして使用できない文字をサニタイズする
+ *   - 構造データを走査し、ファイルのディレクトリ構造に基づいたグループ化（サブグラフ）を行う
+ *   - 指定された種類に応じてflowchart、classDiagram、sequenceDiagramの定義文字列を構築する
+ *   - ノードIDの採番とラベルのサニタイズ処理を行い、Mermaid記法として正当な形式を出力する
  * why_it_exists:
- *   - テキストベースの構造解析データを、人間が直感的に理解できる図形へ変換するため
- *   - ドキュメント生成ツールやIDE拡張機能のビジュアライザ機能を提供するため
+ *   - テキストベースの解析結果を視覚的な図表に変換し、コードベースの全体像を直感的に把握するため
+ *   - 複雑な依存関係やモジュール間のつながりをドキュメントとして自動生成するため
  * scope:
- *   in: StructureData（解析済みのファイル・クラス・関数情報）、DiagramOptions（生成オプション）
- *   out: MermaidDiagrams（Mermaid構文文字列を含むオブジェクト）
+ *   in: 解析対象の構造データ(StructureData)、生成オプション(種類と位置情報フラグ)
+ * out: Mermaid記法による図定義文字列を持つオブジェクト(MermaidDiagrams)
  */
 
 /**

@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/shared/pi-print-executor.ts
- * role: piコマンドのJSONストリーミング実行を管理するエグゼキューター
- * why: subagents.tsとagent-teams.ts間で一貫したプロセス実行とアイドルタイムアウト検出を実現するため
- * related: .pi/extensions/shared/subagents.ts, .pi/extensions/shared/agent-teams.ts
- * public_api: executePrintCommand関数, PrintExecutorOptionsインターフェース, PrintCommandResultインターフェース
- * invariants: タイムアウト期間中に出力がなければプロセスを終了する, agent_endまたはmessage_endを受信すると実行完了とみなす
- * side_effects: 外部プロセスを生成する, 標準出力・標準エラーをリアルタイムで処理する
- * failure_modes: プロセスが応答しない場合のタイムアウト, JSONパースエラーによる行の無視, シグナルによる中断時の強制終了
+ * role: プロセス実行とスロットリング制御
+ * why: subagents.tsとagent-teams.ts間で一貫した実行ロジックを提供するため
+ * related: .pi/extensions/shared/subagents.ts, .pi/extensions/shared/agent-teams.ts, .pi/lib/provider-limits.js
+ * public_api: executePrint関数（エクスポートされる想定）、スロットリング制御ロジック
+ * invariants: PRINT_THROTTLE_STATE_FILEはJSON形式、requestStartsMsは昇順、nowMsは現在時刻（ms）
+ * side_effects: 子プロセスの生成と終了、ファイルシステム（throttle state）の読み書き、標準入出力のパイプ
+ * failure_modes: プロセスの応答停止（アイドルタイムアウト）、ファイルロック競合、不正なステートファイル形式、スロットリング超過
  * @abdd.explain
- * overview: pi --mode json を使用した外部プロセスの実行ラッパー
+ * overview: 外部プロセス（`pi --mode json`）を実行し、ストリーミング出力とRPM制限（Throttle）を管理する共有モジュール。
  * what_it_does:
- *   - piプロセスを生成し、stdout/stderrのストリームを監視する
- *   - JSON行をパースし、text_deltaとthinking_deltaを抽出する
- *   - 出力ごとにタイマーをリセットし、アイドル状態を検出してタイムアウトする
- *   - AbortSignalを使用してプロセスをキャンセルする
+ *   - 子プロセスを生成し、text_deltaイベントをリアルタイムに受信して監視する
+ *   - プロバイダとモデルごとのRPM制限に基づき、実行頻度を調整（クールダウン/待機）する
+ *   - ファイルロックを用いて複数プロセス間でスロットリング状態を共有する
+ *   - アイドルタイムアウト検出により、長時間思考するモデルでも正しく終了判定を行う
  * why_it_exists:
- *   - GLM-5など推論時間が長いモデルに対応するため
- *   - 複数の呼び出し元で一貫した実行ロジックを再利用するため
- *   - 出力がない場合のみタイムアウトすることで、正確な応答待機を行うため
+ *   - エージェントとチームで同じ実行基盤を再利用し、挙動を統一するため
+ *   - API制限（RPM）を守りながらプロセスを効率的にスケジュールするため
+ *   - プロセスが応答しない状況を検知してリソースリークを防ぐため
  * scope:
- *   in: プロンプト、プロバイダー/モデル設定、タイムアウト時間、AbortSignal
- *   out: 生成されたテキスト、実行時間、ストリーミングイベント
+ *   in: 実行コマンド引数、プロバイダ情報、環境変数、AbortSignal
+ *   out: 子プロセスの標準出力、プロセス終了コード、エラー stderr
  */
 
 /**

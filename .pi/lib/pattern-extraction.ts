@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/pattern-extraction.ts
- * role: 実行履歴から再利用可能なパターン（成功、失敗、アプローチ）を抽出・管理するモジュール
- * why: 過去の実行データから知識を獲得し、将来のタスク実行の効率と成功率を向上させるため
- * related: .pi/lib/run-index.ts, .pi/lib/storage-lock.ts, .pi/lib/fs-utils.js
- * public_api: ExtractedPattern, PatternStorage, RunData, PATTERN_STORAGE_VERSION
- * invariants: patternTypeはsuccess/failure/approachのいずれかである、RunDataのstatusはcompleted/failedのいずれかである
- * side_effects: ファイルシステムへのパターン情報書き込み
- * failure_modes: 履歴ファイルの読み取りエラー、無効なJSONデータ、書き込み時の競合
+ * role: 実行履歴から再利用可能なパターンを抽出・管理するモジュール
+ * why: 過去の成功・失敗・アプローチを学習し、今後のタスク実行の効率と精度を向上させるため
+ * related: .pi/lib/run-index.ts, .pi/lib/storage-lock.ts
+ * public_api: ExtractedPattern, PatternExample, PatternStorage, RunData
+ * invariants: PATTERN_STORAGE_VERSIONは1固定, PatternStorageのpatternsとpatternsByTaskTypeは整合している
+ * side_effects: ファイルシステムへのパターンデータの読み書き
+ * failure_modes: 履歴ファイルの破損, 不正な形式のRunData入力, ストレージ書き込み時の競合
  * @abdd.explain
- * overview: 実行履歴を解析してパターンを抽出し、PatternStorage形式で永続化するモジュール
+ * overview: 実行履歴を解析して、成功・失敗・アプローチごとのパターンを抽出し、永続化する。
  * what_it_does:
- *   - RunDataからキーワードやファイル情報を抽出する
- *   - 成功/失敗の指標に基づいてパターンを分類する
- *   - 抽出したパターンを集約し、ストレージへ書き出す
- *   - タスク種類ごとにパターンをインデックス化する
+ *   - タスクの種類、キーワード、関連ファイル、ステータスに基づいてパターンを特定する
+ *   - 抽出したパターンをバージョン管理されたストレージ構造で保存する
+ *   - 成功指標（SUCCESS_INDICATORS）を定義し、判定ロジックを提供する
  * why_it_exists:
- *   - 過去の成功事例や失敗事例を形式知化するため
- *   - 類似タスクにおけるエージェントの推論精度を向上させるため
- *   - 頻出するアプローチを特定して再利用するため
+ *   - 過去の実行データから知識を獲得し、再利用するため
+ *   - 定型的なタスクやエラー傾向を自動的に把握するため
  * scope:
- *   in: 実行履歴データ（RunData）、サマリー文字列、ステータス
- *   out: ExtractedPatternオブジェクト、PatternStorage JSONファイル
+ *   in: RunData（実行ID、タスク内容、サマリー、ステータス、日時など）
+ *   out: ExtractedPatternを含むPatternStorage（JSON形式）
  */
 
 /**

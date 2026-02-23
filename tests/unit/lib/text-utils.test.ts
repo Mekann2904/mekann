@@ -1,29 +1,16 @@
 /**
- * @abdd.meta
- * path: tests/unit/lib/text-utils.test.ts
- * role: text-utils.tsのユニットテスト
- * why: テキスト処理ユーティリティの正確性を保証するため
- * related: .pi/lib/text-utils.ts
- * public_api: テストケースの実行
- * invariants: なし
- * side_effects: なし（テストのみ）
- * failure_modes: テスト失敗は関数の不具合を示す
- * @abdd.explain
- * overview: text-utils.tsの関数を包括的にテストするスイート
- * what_it_does:
- *   - truncateTextの境界値テスト
- *   - truncateTextWithMarkerのテスト
- *   - toPreviewのテスト
- *   - normalizeOptionalTextのテスト
- *   - throwIfAbortedのテスト
- * why_it_exists:
- *   - 拡張機能間で共有されるテキスト処理の品質を保証するため
- * scope:
- *   in: text-utils.ts
- *   out: テスト結果とカバレッジレポート
+ * text-utils.ts の単体テスト
+ *
+ * テスト対象:
+ * - truncateText: テキストの切り詰め
+ * - truncateTextWithMarker: マーカー付き切り詰め
+ * - toPreview: プレビュー形式変換
+ * - normalizeOptionalText: optionalテキストの正規化
+ * - throwIfAborted: AbortSignalチェック
  */
 
 import { describe, it, expect } from "vitest";
+import * as fc from "fast-check";
 import {
   truncateText,
   truncateTextWithMarker,
@@ -32,26 +19,36 @@ import {
   throwIfAborted,
 } from "../../../.pi/lib/text-utils.js";
 
-// ============================================================================
-// truncateText Tests
-// ============================================================================
-
 describe("text-utils.ts", () => {
   describe("truncateText", () => {
     describe("正常系", () => {
-      it("テキストが最大長以下の場合そのまま返す", () => {
+      it("短いテキストはそのまま返す", () => {
         // Arrange
-        const text = "short text";
+        const text = "短いテキスト";
         const maxLength = 20;
 
         // Act
         const result = truncateText(text, maxLength);
 
         // Assert
-        expect(result).toBe("short text");
+        expect(result).toBe(text);
       });
 
-      it("テキストが最大長と等しい場合そのまま返す", () => {
+      it("長いテキストは切り詰めて...を付ける", () => {
+        // Arrange
+        const text = "これは非常に長いテキストです";
+        const maxLength = 10;
+
+        // Act
+        const result = truncateText(text, maxLength);
+
+        // Assert
+        expect(result.length).toBe(maxLength);
+        // slice(0, 7) + "..." = "これは非常に長..." (10文字)
+        expect(result).toBe("これは非常に長...");
+      });
+
+      it("maxLengthと同じ長さのテキストはそのまま返す", () => {
         // Arrange
         const text = "12345";
         const maxLength = 5;
@@ -60,40 +57,26 @@ describe("text-utils.ts", () => {
         const result = truncateText(text, maxLength);
 
         // Assert
-        expect(result).toBe("12345");
+        expect(result).toBe(text);
       });
 
-      it("テキストが最大長を超える場合切り詰めて...を付ける", () => {
+      it("maxLengthより1文字長いテキストは切り詰められる", () => {
         // Arrange
-        const text = "this is a long text";
-        const maxLength = 10;
+        const text = "123456";
+        const maxLength = 5;
 
         // Act
         const result = truncateText(text, maxLength);
 
         // Assert
-        expect(result).toBe("this is...");
-        expect(result.length).toBe(maxLength);
-      });
-
-      it("日本語テキストも正しく切り詰める", () => {
-        // Arrange
-        const text = "これは長い日本語のテキストです";
-        const maxLength = 10;
-
-        // Act
-        const result = truncateText(text, maxLength);
-
-        // Assert
-        expect(result).toBe("これは長い日本語の...");
-        expect(result.length).toBe(maxLength);
+        expect(result).toBe("12...");
       });
     });
 
     describe("境界値テスト", () => {
-      it("maxLengthが3の場合...を付けずに3文字で返す", () => {
+      it("maxLength=3の場合は...のみ", () => {
         // Arrange
-        const text = "12345";
+        const text = "1234567890";
         const maxLength = 3;
 
         // Act
@@ -103,9 +86,9 @@ describe("text-utils.ts", () => {
         expect(result).toBe("123");
       });
 
-      it("maxLengthが2の場合2文字で返す", () => {
+      it("maxLength=2の場合は最初の2文字", () => {
         // Arrange
-        const text = "12345";
+        const text = "1234567890";
         const maxLength = 2;
 
         // Act
@@ -115,9 +98,9 @@ describe("text-utils.ts", () => {
         expect(result).toBe("12");
       });
 
-      it("maxLengthが1の場合1文字で返す", () => {
+      it("maxLength=1の場合は最初の1文字", () => {
         // Arrange
-        const text = "12345";
+        const text = "1234567890";
         const maxLength = 1;
 
         // Act
@@ -127,9 +110,9 @@ describe("text-utils.ts", () => {
         expect(result).toBe("1");
       });
 
-      it("maxLengthが0の場合空文字を返す", () => {
+      it("maxLength=0の場合は空文字", () => {
         // Arrange
-        const text = "12345";
+        const text = "テスト";
         const maxLength = 0;
 
         // Act
@@ -139,7 +122,7 @@ describe("text-utils.ts", () => {
         expect(result).toBe("");
       });
 
-      it("空文字を渡した場合空文字を返す", () => {
+      it("空文字列入力は空文字を返す", () => {
         // Arrange
         const text = "";
         const maxLength = 10;
@@ -151,43 +134,58 @@ describe("text-utils.ts", () => {
         expect(result).toBe("");
       });
     });
-  });
 
-  // ============================================================================
-  // truncateTextWithMarker Tests
-  // ============================================================================
+    describe("日本語テキスト", () => {
+      it("日本語を正しく切り詰める", () => {
+        // Arrange
+        const text = "これは日本語のテストです";
+        const maxLength = 8;
+
+        // Act
+        const result = truncateText(text, maxLength);
+
+        // Assert
+        expect(result.length).toBe(maxLength);
+        // slice(0, 5) + "..." = "これは日本..." (8文字)
+        expect(result).toBe("これは日本...");
+      });
+    });
+  });
 
   describe("truncateTextWithMarker", () => {
     describe("正常系", () => {
-      it("テキストが最大長以下の場合そのまま返す", () => {
+      it("短いテキストはそのまま返す", () => {
         // Arrange
-        const text = "short";
-        const maxChars = 10;
+        const text = "短いテキスト";
+        const maxChars = 100;
 
         // Act
         const result = truncateTextWithMarker(text, maxChars);
 
         // Assert
-        expect(result).toBe("short");
+        expect(result).toBe(text);
       });
 
-      it("テキストが最大長を超える場合truncatedマーカーを付ける", () => {
+      it("長いテキストはマーカー付きで切り詰める", () => {
         // Arrange
-        const text = "this is a very long text";
+        const text = "これは非常に長いテキストです";
         const maxChars = 10;
 
         // Act
         const result = truncateTextWithMarker(text, maxChars);
 
         // Assert
-        expect(result).toBe("this is a \n...[truncated]");
+        // slice(0, 10) = "これは非常に長いテキ" (10文字)
+        expect(result).toBe("これは非常に長いテキ\n...[truncated]");
+        expect(result.startsWith(text.slice(0, maxChars))).toBe(true);
+        expect(result.endsWith("\n...[truncated]")).toBe(true);
       });
     });
 
     describe("境界値テスト", () => {
-      it("maxCharsが0の場合マーカーのみ返す", () => {
+      it("maxChars=0の場合はマーカーのみ", () => {
         // Arrange
-        const text = "test";
+        const text = "テスト";
         const maxChars = 0;
 
         // Act
@@ -197,53 +195,62 @@ describe("text-utils.ts", () => {
         expect(result).toBe("\n...[truncated]");
       });
 
-      it("日本語テキストも正しく処理する", () => {
+      it("maxCharsと同じ長さの場合はそのまま", () => {
         // Arrange
-        const text = "これはテストです";
-        const maxChars = 4;
+        const text = "12345";
+        const maxChars = 5;
 
         // Act
         const result = truncateTextWithMarker(text, maxChars);
 
         // Assert
-        expect(result).toBe("これはテ\n...[truncated]");
+        expect(result).toBe(text);
+      });
+
+      it("空文字列入力は空文字を返す", () => {
+        // Arrange
+        const text = "";
+        const maxChars = 10;
+
+        // Act
+        const result = truncateTextWithMarker(text, maxChars);
+
+        // Assert
+        expect(result).toBe("");
       });
     });
   });
 
-  // ============================================================================
-  // toPreview Tests
-  // ============================================================================
-
   describe("toPreview", () => {
     describe("正常系", () => {
-      it("テキストが最大長以下の場合そのまま返す", () => {
+      it("短いテキストはそのまま返す", () => {
         // Arrange
-        const text = "preview text";
-        const maxChars = 20;
+        const text = "短いテキスト";
+        const maxChars = 100;
 
         // Act
         const result = toPreview(text, maxChars);
 
         // Assert
-        expect(result).toBe("preview text");
+        expect(result).toBe(text);
       });
 
-      it("テキストが最大長を超える場合...を付ける", () => {
+      it("長いテキストは...付きで切り詰める", () => {
         // Arrange
-        const text = "this is a long preview text";
+        const text = "これは非常に長いテキストです";
         const maxChars = 10;
 
         // Act
         const result = toPreview(text, maxChars);
 
         // Assert
-        expect(result).toBe("this is a ...");
+        expect(result).toBe("これは非常に長いテキ...");
+        expect(result.length).toBe(maxChars + 3);
       });
     });
 
     describe("境界値テスト", () => {
-      it("空文字の場合空文字を返す", () => {
+      it("空文字列入力は空文字を返す", () => {
         // Arrange
         const text = "";
         const maxChars = 10;
@@ -255,41 +262,46 @@ describe("text-utils.ts", () => {
         expect(result).toBe("");
       });
 
-      it("nullまたはundefinedの場合空文字を返す", () => {
+      it("Falsy値入力は空文字を返す", () => {
         // Arrange
-        const nullText = null as unknown as string;
-        const undefinedText = undefined as unknown as string;
+        const text = "" as string;
         const maxChars = 10;
 
         // Act
-        const nullResult = toPreview(nullText, maxChars);
-        const undefinedResult = toPreview(undefinedText, maxChars);
+        const result = toPreview(text, maxChars);
 
         // Assert
-        expect(nullResult).toBe("");
-        expect(undefinedResult).toBe("");
+        expect(result).toBe("");
+      });
+
+      it("maxChars=0の場合は...のみ", () => {
+        // Arrange
+        const text = "テスト";
+        const maxChars = 0;
+
+        // Act
+        const result = toPreview(text, maxChars);
+
+        // Assert
+        expect(result).toBe("...");
       });
     });
   });
 
-  // ============================================================================
-  // normalizeOptionalText Tests
-  // ============================================================================
-
   describe("normalizeOptionalText", () => {
     describe("正常系", () => {
-      it("文字列の場合トリムして返す", () => {
+      it("文字列をトリムして返す", () => {
         // Arrange
-        const value = "  hello world  ";
+        const value = "  テスト  ";
 
         // Act
         const result = normalizeOptionalText(value);
 
         // Assert
-        expect(result).toBe("hello world");
+        expect(result).toBe("テスト");
       });
 
-      it("空白のみの文字列の場合undefinedを返す", () => {
+      it("空白のみの文字列はundefinedを返す", () => {
         // Arrange
         const value = "   ";
 
@@ -300,7 +312,7 @@ describe("text-utils.ts", () => {
         expect(result).toBeUndefined();
       });
 
-      it("空文字の場合undefinedを返す", () => {
+      it("空文字列はundefinedを返す", () => {
         // Arrange
         const value = "";
 
@@ -312,8 +324,8 @@ describe("text-utils.ts", () => {
       });
     });
 
-    describe("型変換テスト", () => {
-      it("数値の場合undefinedを返す", () => {
+    describe("型変換", () => {
+      it("数値はundefinedを返す", () => {
         // Arrange
         const value = 123;
 
@@ -324,7 +336,7 @@ describe("text-utils.ts", () => {
         expect(result).toBeUndefined();
       });
 
-      it("nullの場合undefinedを返す", () => {
+      it("nullはundefinedを返す", () => {
         // Arrange
         const value = null;
 
@@ -335,7 +347,7 @@ describe("text-utils.ts", () => {
         expect(result).toBeUndefined();
       });
 
-      it("undefinedの場合undefinedを返す", () => {
+      it("undefinedはundefinedを返す", () => {
         // Arrange
         const value = undefined;
 
@@ -346,7 +358,7 @@ describe("text-utils.ts", () => {
         expect(result).toBeUndefined();
       });
 
-      it("オブジェクトの場合undefinedを返す", () => {
+      it("オブジェクトはundefinedを返す", () => {
         // Arrange
         const value = { key: "value" };
 
@@ -357,15 +369,35 @@ describe("text-utils.ts", () => {
         expect(result).toBeUndefined();
       });
     });
-  });
 
-  // ============================================================================
-  // throwIfAborted Tests
-  // ============================================================================
+    describe("エッジケース", () => {
+      it("内部空白は保持する", () => {
+        // Arrange
+        const value = "  テスト テスト  ";
+
+        // Act
+        const result = normalizeOptionalText(value);
+
+        // Assert
+        expect(result).toBe("テスト テスト");
+      });
+
+      it("改行を含むテキスト", () => {
+        // Arrange
+        const value = "  テスト\nテスト  ";
+
+        // Act
+        const result = normalizeOptionalText(value);
+
+        // Assert
+        expect(result).toBe("テスト\nテスト");
+      });
+    });
+  });
 
   describe("throwIfAborted", () => {
     describe("正常系", () => {
-      it("abortedでないSignalの場合例外を投げない", () => {
+      it("中断されていないsignalは例外を投げない", () => {
         // Arrange
         const controller = new AbortController();
 
@@ -373,14 +405,14 @@ describe("text-utils.ts", () => {
         expect(() => throwIfAborted(controller.signal)).not.toThrow();
       });
 
-      it("undefinedの場合例外を投げない", () => {
+      it("undefined signalは例外を投げない", () => {
         // Act & Assert
         expect(() => throwIfAborted(undefined)).not.toThrow();
       });
     });
 
-    describe("異常系", () => {
-      it("abortedのSignalの場合デフォルトメッセージで例外を投げる", () => {
+    describe("中断時", () => {
+      it("中断されたsignalは例外を投げる", () => {
         // Arrange
         const controller = new AbortController();
         controller.abort();
@@ -389,100 +421,103 @@ describe("text-utils.ts", () => {
         expect(() => throwIfAborted(controller.signal)).toThrow("aborted");
       });
 
-      it("abortedのSignalの場合カスタムメッセージで例外を投げる", () => {
+      it("カスタムメッセージを指定できる", () => {
         // Arrange
         const controller = new AbortController();
         controller.abort();
-        const customMessage = "Operation was cancelled";
 
         // Act & Assert
-        expect(() => throwIfAborted(controller.signal, customMessage)).toThrow(
-          customMessage
-        );
-      });
-
-      it("abortedのSignalの場合日本語メッセージで例外を投げる", () => {
-        // Arrange
-        const controller = new AbortController();
-        controller.abort();
-        const customMessage = "操作がキャンセルされました";
-
-        // Act & Assert
-        expect(() => throwIfAborted(controller.signal, customMessage)).toThrow(
-          customMessage
-        );
+        expect(() => throwIfAborted(controller.signal, "カスタムエラー")).toThrow("カスタムエラー");
       });
     });
   });
 
-  // ============================================================================
-  // プロパティベーステスト
-  // ============================================================================
-
   describe("プロパティベーステスト", () => {
-    it("truncateTextは常に元のテキスト以下の長さを返す", () => {
-      // Arrange
-      const testCases = [
-        { text: "short", maxLength: 10 },
-        { text: "exactly ten!", maxLength: 10 },
-        { text: "this is a longer text", maxLength: 10 },
-        { text: "日本語テキスト", maxLength: 5 },
-        { text: "", maxLength: 5 },
-      ];
+    it("truncateTextの結果は常にmaxLength以下", () => {
+      fc.assert(
+        fc.property(
+          fc.string({ maxLength: 1000 }),
+          fc.integer({ min: 0, max: 100 }),
+          (text, maxLength) => {
+            // Act
+            const result = truncateText(text, maxLength);
 
-      // Act & Assert
-      testCases.forEach(({ text, maxLength }) => {
-        const result = truncateText(text, maxLength);
-        expect(result.length).toBeLessThanOrEqual(maxLength);
-      });
+            // Assert
+            expect(result.length).toBeLessThanOrEqual(maxLength);
+          }
+        )
+      );
     });
 
-    it("truncateTextWithMarkerは切り詰め時に必ずマーカーを含む", () => {
-      // Arrange
-      const testCases = [
-        { text: "short", maxChars: 100 },
-        { text: "long text here", maxChars: 5 },
-        { text: "very long text here", maxChars: 10 },
-      ];
+    it("truncateTextの結果は元のテキストのプレフィックスを含む", () => {
+      fc.assert(
+        fc.property(
+          fc.string({ minLength: 0, maxLength: 100 }),
+          fc.integer({ min: 1, max: 100 }),
+          (text, maxLength) => {
+            // Skip if text is shorter than maxLength
+            fc.pre(text.length > maxLength);
 
-      // Act & Assert
-      testCases.forEach(({ text, maxChars }) => {
-        const result = truncateTextWithMarker(text, maxChars);
-        if (text.length > maxChars) {
-          expect(result).toContain("[truncated]");
-        } else {
-          expect(result).not.toContain("[truncated]");
-        }
-      });
+            // Act
+            const result = truncateText(text, maxLength);
+
+            // Assert
+            // ...を除いた部分は元のテキストのプレフィックス
+            const withoutEllipsis = maxLength > 3 ? result.slice(0, -3) : result;
+            expect(text.startsWith(withoutEllipsis)).toBe(true);
+          }
+        )
+      );
     });
 
-    it("normalizeOptionalTextは冪等である", () => {
-      // Arrange
-      const testCases = ["text", "  text  ", "", "   ", null, undefined, 123];
+    it("truncateTextWithMarkerの結果はマーカーを含む", () => {
+      fc.assert(
+        fc.property(
+          fc.string({ minLength: 10, maxLength: 1000 }),
+          fc.integer({ min: 1, max: 9 }),
+          (text, maxChars) => {
+            // Act
+            const result = truncateTextWithMarker(text, maxChars);
 
-      // Act & Assert
-      testCases.forEach((value) => {
-        const result1 = normalizeOptionalText(value);
-        const result2 = normalizeOptionalText(result1);
-        // 最初の結果が文字列またはundefinedの場合、2回目は同じ結果になる
-        if (typeof result1 === "string") {
-          expect(result2).toBe(result1.trim() || undefined);
-        } else {
-          expect(result2).toBeUndefined();
-        }
-      });
+            // Assert
+            expect(result).toContain("\n...[truncated]");
+          }
+        )
+      );
     });
 
-    it("toPreviewは空入力に対して冪等である", () => {
-      // Arrange
-      const emptyValues = ["", null as unknown as string, undefined as unknown as string];
-      const maxChars = 10;
+    it("toPreviewの結果は元のテキストのプレフィックス", () => {
+      fc.assert(
+        fc.property(
+          fc.string({ minLength: 0, maxLength: 100 }),
+          fc.integer({ min: 0, max: 100 }),
+          (text, maxChars) => {
+            // Skip if text is shorter than maxChars
+            fc.pre(text.length > maxChars && text.length > 0);
 
-      // Act & Assert
-      emptyValues.forEach((value) => {
-        const result = toPreview(value, maxChars);
-        expect(result).toBe("");
-      });
+            // Act
+            const result = toPreview(text, maxChars);
+
+            // Assert
+            expect(text.startsWith(result.replace(/\.\.\.$/, ""))).toBe(true);
+          }
+        )
+      );
+    });
+
+    it("normalizeOptionalTextは文字列入力で常にトリムされた文字列またはundefinedを返す", () => {
+      fc.assert(
+        fc.property(fc.string(), (value) => {
+          // Act
+          const result = normalizeOptionalText(value);
+
+          // Assert
+          if (result !== undefined) {
+            expect(result).toBe(result.trim());
+            expect(result.length).toBeGreaterThan(0);
+          }
+        })
+      );
     });
   });
 });

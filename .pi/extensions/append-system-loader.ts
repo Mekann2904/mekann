@@ -1,23 +1,34 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/append-system-loader.ts
- * role: パッケージバンドルのAPPEND_SYSTEM.mdをシステムプロンプトに注入
- * why: pi install後、パッケージ内の.pi/APPEND_SYSTEM.mdが自動読み込みされないため
- * related: .pi/APPEND_SYSTEM.md, @mariozechner/pi-coding-agent
- * public_api: default (extension factory)
- * invariants: APPEND_SYSTEM.mdが存在する場合のみ処理を実行
- * side_effects: before_agent_startイベントでシステムプロンプトを変更
- * failure_modes: ファイル読み込みエラー時は警告ログを出力して処理をスキップ
+ * role: APPEND_SYSTEM.mdの内容をロードし、エージェントのシステムプロンプトへ注入するエクステンション
+ * why: プロジェクト固有の指示やルールをAPPEND_SYSTEM.mdで一元管理し、エージェントの起動時に動的に適用するため
+ * related: @mariozechner/pi-coding-agent, .pi/APPEND_SYSTEM.md
+ * public_api: loadAppendSystemContent(), default extension function
+ * invariants:
+ *   - APPEND_SYSTEM.mdのパスはパッケージルートからの相対パスで固定される
+ *   - システムプロンプトへの追加はプロセスごとに1回のみ行われる（マーカーによる重複チェック）
+ *   - ファイル内容はプロセス内でキャッシュされ、再読み込みされない
+ * side_effects:
+ *   - ファイルシステムへの読み取りアクセスが発生する
+ *   - 標準出力（console.log/warn）へのログ出力が行われる
+ *   - エージェントのsystemPromptを書き換える
+ * failure_modes:
+ *   - APPEND_SYSTEM.mdが存在しない場合、何もせず処理を終了する
+ *   - ファイル読み込みに失敗した場合、警告を出力し処理を終了する
  * @abdd.explain
- * overview: パッケージバンドルされたAPPEND_SYSTEM.mdの内容を、pi起動時にシステムプロンプトへ追加する拡張機能
+ * overview: .pi/APPEND_SYSTEM.md という静的ファイルを読み込み、その内容をPIエージェントのシステムプロンプト末尾に自動的に付加するエクステンション実装。
  * what_it_does:
- *   - 拡張機能と同じパッケージルートにある.pi/APPEND_SYSTEM.mdを検出
- *   - before_agent_startイベントでシステムプロンプト末尾に内容を追加
+ *   - パッケージルートディレクトリを算出する
+ *   - .pi/APPEND_SYSTEM.md の存在確認と内容読み取りを行い、メモリ上にキャッシュする
+ *   - before_agent_startイベントフックを利用して、システムプロンプトにファイル内容を追加する
+ *   - 追加時に重複を防ぐため、HTMLコメント形式のマーカーで既存プロンプトをチェックする
  * why_it_exists:
- *   - pi install後、パッケージ内のAPPEND_SYSTEM.mdが自動読み込みされない問題を回避
+ *   - システムプロンプトをコードベースに含めることで、設定のバージョン管理と共有を容易にする
+ *   - エージェントの挙動をプロジェクトディレクトリ内のファイル制御下に置くため
  * scope:
- *   in: なし（ファイルパスは自動解決）
- *   out: システムプロンプトへのテキスト追加
+ *   in: .pi/APPEND_SYSTEM.md (ファイルパス), @mariozechner/pi-coding-agent (ExtensionAPI)
+ *   out: 更新されたシステムプロンプト (systemPrompt), コンソールログ
  */
 
 import { existsSync, readFileSync } from "node:fs";
