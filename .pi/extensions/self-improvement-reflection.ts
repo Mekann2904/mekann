@@ -393,8 +393,25 @@ export default function registerSelfImprovementReflection(pi: ExtensionAPI) {
       dataView.usageStats;
 
     if (hasData) {
+      // 監視的な通知ではなく、気づきを促す穏やかなメッセージ
       ctx.ui.notify(
-        `Self-improvement data platform loaded. Use '/self-reflect' to explore your data.`,
+        `Self-improvement data available. Use '/self-reflect' or '/self-dashboard' when curious.`,
+        "info"
+      );
+    }
+  });
+
+  // ツール実行回数に基づく気づきの機会（強制ではなく提案）
+  let toolCallCount = 0;
+  const REFLECTION_SUGGESTION_THRESHOLD = 100;
+
+  pi.on("tool_result", async (_event, ctx) => {
+    toolCallCount++;
+
+    // 閾値に達したら気づきを促す（ただし強制しない）
+    if (toolCallCount === REFLECTION_SUGGESTION_THRESHOLD) {
+      ctx.ui.notify(
+        `${toolCallCount} tool calls completed. Consider '/self-reflect' when ready for a pause.`,
         "info"
       );
     }

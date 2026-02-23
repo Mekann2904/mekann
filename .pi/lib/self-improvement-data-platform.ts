@@ -497,10 +497,14 @@ function analyzeFailurePatterns(
     .sort((a, b) => b.frequency - a.frequency);
 
   for (const pattern of recurringFailures) {
+    // タイトルをより具体的にする（キーワードを含める）
+    const keywordsStr = pattern.keywords.slice(0, 3).join(", ");
+    const titleSuffix = keywordsStr ? ` (${keywordsStr})` : "";
+    
     results.push({
       timestamp: dataView.timestamp,
       category: "risk",
-      title: `繰り返し失敗パターン: ${pattern.taskType}`,
+      title: `失敗パターン: ${pattern.taskType}${titleSuffix}`,
       description: pattern.description,
       evidence: [
         {
@@ -648,7 +652,7 @@ export function generatePhilosophicalReflections(
     if (mostUsed) {
       reflections.push({
         perspective: "schizoanalysis",
-        question: "拡張機能「${mostUsed.extension}」の頻繁な使用は何を欲望しているか？",
+        question: `拡張機能「${mostUsed.extension}」の頻繁な使用は何を欲望しているか？`,
         observation:
           `「${mostUsed.extension}」が最も頻繁に使用されている。この使用は効率化への欲望か、それとも他のアプローチへの探索を避ける「反動的」な投資か？`,
         implication:

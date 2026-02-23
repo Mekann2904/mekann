@@ -91,6 +91,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **invariant-pipeline** | `invariant-pipeline.ts` | 形式仕様からインバリアント、テストコード自動生成（generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver） | [→](docs/02-user-guide/14-invariant-pipeline.md) |
 | **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | [→](docs/02-user-guide/01-extensions.md#スタートアップコンテキスト) |
 | **self-improvement-reflection** | `self-improvement-reflection.ts` | 自己改善データ基盤（データ収集、分析、哲学的考察、アクション可能な洞察） | [→](.pi/docs/self-improvement-data-platform.md) |
+| **self-improvement-dashboard** | `self-improvement-dashboard.ts` | 自己改善データのTUI可視化ダッシュボード | [→](.pi/docs/self-improvement-data-platform.md) |
 
 ### 共有ライブラリ
 
