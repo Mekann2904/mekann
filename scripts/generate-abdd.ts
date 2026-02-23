@@ -116,11 +116,12 @@ const MERMAID_PARALLEL_LIMIT_LOCAL = MERMAID_PARALLEL_LIMIT;
 /**
  * コマンドライン引数をパースする
  */
-function parseArgs(args: string[]): { dryRun: boolean; verbose: boolean; file?: string } {
+function parseArgs(args: string[]): { dryRun: boolean; verbose: boolean; file?: string; skipMermaidValidation: boolean } {
   return {
     dryRun: args.includes('--dry-run'),
     verbose: args.includes('--verbose') || args.includes('-v'),
     file: args.find(a => a.startsWith('--file='))?.split('=')[1],
+    skipMermaidValidation: args.includes('--skip-mermaid-validation'),
   };
 }
 
@@ -166,9 +167,10 @@ async function main() {
     processFile(file, LIB_DIR, join(ABDD_DIR, '.pi/lib'), ctx);
   }
 
-  // Mermaid図を検証（dryRunの場合はスキップ）
-  if (options.dryRun) {
-    console.log('\nドライランのため、Mermaid検証をスキップします');
+  // Mermaid図を検証（dryRunまたはskipMermaidValidationの場合はスキップ）
+  if (options.dryRun || options.skipMermaidValidation) {
+    const reason = options.dryRun ? 'ドライラン' : 'skip-mermaid-validationオプション';
+    console.log(`\n${reason}のため、Mermaid検証をスキップします`);
   } else {
     const errors = await validateAllMermaidDiagrams();
 

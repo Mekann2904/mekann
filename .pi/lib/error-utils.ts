@@ -99,6 +99,7 @@ export function isCancelledErrorMessage(error: unknown): boolean {
   const message = toErrorMessage(error).toLowerCase();
   return (
     message.includes("aborted") ||
+    message.includes("unhandled stop reason") ||
     message.includes("stop reason: abort") ||
     message.includes("cancelled") ||
     message.includes("canceled") ||
