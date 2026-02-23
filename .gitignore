@@ -55,6 +55,10 @@ coverage/
 .pi/plans/storage.json
 .pi/logs/
 
+# UL Workflow runtime data (task files generated during workflow execution)
+.pi/ul-workflow/tasks/*
+!.pi/ul-workflow/tasks/.gitkeep
+
 # Self-improvement loop runtime data
 .pi/self-improvement-loop/
 
