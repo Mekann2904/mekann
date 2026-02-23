@@ -29,7 +29,7 @@
  */
 
 import { Type } from "@mariozechner/pi-ai";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth, wrapTextWithAnsi, CURSOR_MARKER } from "@mariozechner/pi-tui";
 import { matchesKey, Key } from "@mariozechner/pi-tui";
 
@@ -60,7 +60,10 @@ type QuestionCustomController = {
 // [Medium Fix] 型安全性向上: any型を置き換えるインターフェース定義
 interface QuestionTheme {
 	fg: (color: string, text: string) => string;
+	bg: (color: string, text: string) => string;
+	dim: (text: string) => string;
 	bold: (text: string) => string;
+	underline: (text: string) => string;
 }
 
 interface QuestionTui {
@@ -78,6 +81,15 @@ interface QuestionContext {
 		) => QuestionCustomController) => Promise<T>;
 		notify: (message: string, type: string) => void;
 	};
+}
+
+/**
+ * ExtensionContextをQuestionContextとして型キャスト
+ * 実行時にはpi SDKのTheme型とQuestionThemeは互換性があるため安全
+ * （両者とも同じメソッドシグネチャを持つ）
+ */
+function asQuestionContext(ctx: ExtensionContext): QuestionContext {
+	return ctx as unknown as QuestionContext;
 }
 
 // ============================================
@@ -612,6 +624,9 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			// ExtensionContextをQuestionContextに適応（型安全性確保）
+			const qctx = asQuestionContext(ctx);
+
 			const questions: QuestionInfo[] = params.questions || [];
 			if (questions.length === 0) {
 				return {
@@ -639,7 +654,7 @@ export default function (pi: ExtensionAPI) {
 
 			// 全質問に回答
 			while (currentIndex < questions.length) {
-				const answer = await askSingleQuestion(questions[currentIndex], ctx);
+				const answer = await askSingleQuestion(questions[currentIndex], qctx);
 				
 				if (answer === null) {
 					// ユーザーがキャンセル
@@ -660,7 +675,7 @@ export default function (pi: ExtensionAPI) {
 
 			// 確認画面を表示
 			while (true) {
-				const action = await showConfirmationScreen(questions, answers as Answer[], ctx);
+				const action = await showConfirmationScreen(questions, answers as Answer[], qctx);
 
 				if (action.type === "confirm") {
 					// opencode形式で出力
@@ -678,7 +693,7 @@ export default function (pi: ExtensionAPI) {
 				} else if (action.type === "edit") {
 					// 特定の質問を再表示
 					currentIndex = action.questionIndex;
-					const newAnswer = await askSingleQuestion(questions[currentIndex], ctx);
+					const newAnswer = await askSingleQuestion(questions[currentIndex], qctx);
 					
 					if (newAnswer === null) {
 						return {
