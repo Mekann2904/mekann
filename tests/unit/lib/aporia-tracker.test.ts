@@ -561,8 +561,8 @@ describe("aporia-tracker.ts", () => {
   });
 
   describe("プロパティベーステスト", () => {
-    it("任意の正当なパラメータでregisterAporiaが成功する", () => {
-      fc.assert(
+    it("任意の正当なパラメータでregisterAporiaが成功する", async () => {
+      await fc.assert(
         fc.asyncProperty(
           fc.record({
             name: fc.string({ minLength: 1, maxLength: 100 }),
@@ -595,10 +595,10 @@ describe("aporia-tracker.ts", () => {
       );
     });
 
-    it("決断の確信度は0.0-1.0の範囲", () => {
-      fc.assert(
+    it("決断の確信度は0.0-1.0の範囲", async () => {
+      await fc.assert(
         fc.asyncProperty(
-          fc.float({ min: 0, max: 1 }),
+          fc.float({ min: 0, max: 1, noNaN: true, noDefaultInfinity: true }),
           async (confidence) => {
             // Arrange
             const aporia = await tracker.registerAporia({
