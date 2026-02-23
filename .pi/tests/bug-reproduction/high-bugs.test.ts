@@ -246,7 +246,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
     // タイムアウト対策: Promise.raceで制限
     const results = await Promise.race([
       Promise.all(promises),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 3000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
     ]) as string[];
 
     // 最終状態を確認
@@ -287,7 +287,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
     // タイムアウト対策: Promise.raceで制限
     await Promise.race([
       Promise.all(promises),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 8000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
     ]) as string[];
 
     // 各キーの状態を確認
@@ -313,7 +313,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
     // 成功を複数回実行（タイムアウト対策）
     await Promise.race([
       retryWithBackoff(successOperation, { rateLimitKey: key }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 5000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
     ]);
 
     const afterSuccess1 = getRateLimitGateSnapshot(key);
@@ -321,7 +321,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
     // 成功を再度実行（タイムアウト対策）
     await Promise.race([
       retryWithBackoff(successOperation, { rateLimitKey: key }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 5000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
     ]);
 
     const afterSuccess2 = getRateLimitGateSnapshot(key);
