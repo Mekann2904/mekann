@@ -1,8 +1,8 @@
 /**
  * .pi/extensions/pi-coding-agent-rate-limit-fix.ts
- * pi-coding-agentの429自動リトライ挙動を起動時に補正する。
- * patch-packageに依存せず、拡張として恒久運用するために存在する。
- * 関連: .pi/extensions/pi-ai-abort-fix.ts, node_modules/@mariozechner/pi-coding-agent/dist/core/agent-session.js, package.json
+ * pi-coding-agentの429自動リトライ挙動を補正する旧ランタイムパッチ実装（現在は既定で無効）。
+ * no patch方針により本実装は非推奨で、node_modules改変を避ける運用に統一するため履歴として保持する。
+ * 関連: .pi/extensions/rate-limit-retry-budget.ts, node_modules/@mariozechner/pi-coding-agent/dist/core/agent-session.js, package.json
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";

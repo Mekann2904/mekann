@@ -1,14 +1,14 @@
 /**
  * .pi/extensions/pi-ai-abort-fix.ts
- * pi-aiのstop reason変換にabort対応を追加する。
- * upstream修正までの暫定回避として存在する。
- * 関連: docs/patches/pi-ai-abort-fix.md, patches/@mariozechner+pi-ai+0.53.0.patch, package.json
+ * pi-aiのstop reason変換にabort対応を追加する旧ランタイムパッチ実装（現在は既定で無効）。
+ * no patch方針により本実装は非推奨で、例外経路のハンドリングで代替するために履歴として保持する。
+ * 関連: docs/patches/pi-ai-abort-fix.md, .pi/lib/error-utils.ts, package.json
  */
 /**
  * @abdd.meta
  * path: .pi/extensions/pi-ai-abort-fix.ts
- * role: pi-ai runtime patch
- * why: zaiプロバイダー等が返す"abort" stop reasonを処理するため
+ * role: deprecated pi-ai runtime patch
+ * why: 過去互換のために保持するが、現在はno patch方針で非推奨
  * related: docs/patches/pi-ai-abort-fix.md
  * public_api: default function
  * invariants: セッション開始時に1回だけパッチ適用

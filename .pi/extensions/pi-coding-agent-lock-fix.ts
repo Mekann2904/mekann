@@ -1,7 +1,7 @@
 /**
  * .pi/extensions/pi-coding-agent-lock-fix.ts
- * pi-coding-agentのsettings/authロック失敗を起動時に自動で緩和するランタイムパッチ。
- * npm installを待たずに、セッション開始時点で修正を反映するために存在する。
+ * pi-coding-agentのlock問題を緩和する旧ランタイムパッチ実装（現在は既定で無効）。
+ * no patch方針により本実装は非推奨で、依存物を直接改変しない運用に統一するため履歴として保持する。
  * 関連ファイル: scripts/patch-global-pi.sh, .pi/extensions/pi-coding-agent-rate-limit-fix.ts, package.json
  */
 import { readFile, writeFile } from "node:fs/promises";

@@ -1,7 +1,7 @@
 #!/bin/bash
 # scripts/patch-global-pi.sh
-# グローバルにインストールされたpi-coding-agentへロック回避パッチを適用する。
-# 異なるNode配布先（Homebrew/NVM）でも同じ修正を確実に当てるために存在する。
+# グローバルにインストールされたpi-coding-agentへパッチを適用する旧スクリプト（現在は既定で無効）。
+# no patch方針により非推奨とし、グローバル配布物を直接改変しない運用へ移行したため履歴として保持する。
 # 関連ファイル: .pi/extensions/pi-coding-agent-lock-fix.ts, package.json, docs/04-reference/03-troubleshooting.md
 
 set -e

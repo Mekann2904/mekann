@@ -1,7 +1,7 @@
 /**
  * .pi/extensions/rate-limit-retry-budget.ts
- * 429系エラー時のみ自動リトライ上限を拡張し、途中停止を減らす。
- * 通常エラーのリトライ予算は維持し、過剰再試行を避けるために存在する。
+ * 429系のリトライ予算を拡張する旧ランタイムパッチ実装（現在は既定で無効）。
+ * no patch方針により本実装は非推奨で、依存物の直接改変を避けるため履歴として保持する。
  * 関連: .pi/extensions/pi-coding-agent-rate-limit-fix.ts, .pi/extensions/rpm-throttle.ts, package.json
  */
 import { readFile, writeFile } from "node:fs/promises";
