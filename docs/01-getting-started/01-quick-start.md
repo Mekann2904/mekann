@@ -23,9 +23,6 @@ node --version  # v20.18.1以上が必要
 
 # piの確認
 pi --version
-
-# fzfの確認
-which fzf
 ```
 
 すべてがインストールされている場合は、[初回ステップ](./03-first-steps.md)へ進んでください。
@@ -38,25 +35,7 @@ which fzf
 npm install -g @mariozechner/pi-coding-agent
 ```
 
-### Step 2: fzfのインストール
-
-**macOS:**
-```bash
-brew install fzf
-```
-
-**Linux:**
-```bash
-sudo apt-get install fzf  # Ubuntu/Debian
-sudo dnf install fzf      # Fedora
-```
-
-**Windows:**
-```powershell
-scoop install fzf
-```
-
-### Step 3: mekann のインストール
+### Step 2: mekann のインストール
 
 ```bash
 pi install https://github.com/Mekann2904/mekann

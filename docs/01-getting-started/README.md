@@ -33,12 +33,7 @@ pi拡張機能コレクションを始めるためのガイドです。
    npm install -g @mariozechner/pi-coding-agent
    ```
 
-2. **fzfのインストール**
-   ```bash
-   brew install fzf  # macOS
-   ```
-
-3. **プロジェクトのセットアップ**
+2. **プロジェクトのセットアップ**
    ```bash
    pi install https://github.com/Mekann2904/mekann
    ```
