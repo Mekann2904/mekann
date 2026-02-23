@@ -18,6 +18,8 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -80,33 +82,105 @@ async function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<"
   return "patched";
 }
 
+function uniqueNonEmpty(values: Array<string | undefined>): string[] {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function safeCreateRequire(basePath: string): NodeRequire | undefined {
+  try {
+    return createRequire(basePath);
+  } catch {
+    return undefined;
+  }
+}
+
+function collectResolverBases(requireFn: NodeRequire): string[] {
+  const bases: string[] = [];
+  bases.push(import.meta.url);
+  bases.push(join(process.cwd(), "package.json"));
+
+  const argv1 = String(process.argv?.[1] || "");
+  if (argv1) {
+    const argv1Dir = dirname(argv1);
+    bases.push(join(argv1Dir, "package.json"));
+    bases.push(join(argv1Dir, "..", "package.json"));
+  }
+
+  try {
+    const codingAgentPkg = requireFn.resolve("@mariozechner/pi-coding-agent/package.json");
+    const codingAgentDir = dirname(codingAgentPkg);
+    bases.push(codingAgentPkg);
+    bases.push(join(codingAgentDir, "..", "..", "package.json"));
+    bases.push(join(codingAgentDir, "..", "package.json"));
+  } catch {
+    // ignore
+  }
+
+  try {
+    const piAiPkg = requireFn.resolve("@mariozechner/pi-ai/package.json");
+    const piAiDir = dirname(piAiPkg);
+    bases.push(piAiPkg);
+    bases.push(join(piAiDir, "..", "..", "package.json"));
+    bases.push(join(piAiDir, "..", "package.json"));
+  } catch {
+    // ignore
+  }
+
+  return uniqueNonEmpty(
+    bases.filter((candidate) => {
+      if (candidate.startsWith("file:")) return true;
+      return existsSync(candidate);
+    }),
+  );
+}
+
+function collectResolvers(requireFn: NodeRequire): NodeRequire[] {
+  const resolvers: NodeRequire[] = [requireFn];
+  for (const base of collectResolverBases(requireFn)) {
+    const resolver = safeCreateRequire(base);
+    if (resolver) resolvers.push(resolver);
+  }
+  return [...new Set(resolvers)];
+}
+
 export default function (pi: ExtensionAPI) {
   let initialized = false;
 
-  pi.on("session_start", async () => {
+  pi.on("session_start", async (_event, ctx) => {
     if (initialized) return;
     initialized = true;
 
     const requireFn = createRequire(import.meta.url);
+    const resolvers = collectResolvers(requireFn);
     let patchedCount = 0;
     let alreadyCount = 0;
     let skipCount = 0;
 
-    for (const target of PATCH_TARGETS) {
-      try {
-        const result = await patchFile(requireFn, target);
-        if (result === "patched") patchedCount++;
-        else if (result === "already") alreadyCount++;
-        else skipCount++;
-      } catch {
-        skipCount++;
+    for (const resolver of resolvers) {
+      for (const target of PATCH_TARGETS) {
+        try {
+          const result = await patchFile(resolver, target);
+          if (result === "patched") patchedCount++;
+          else if (result === "already") alreadyCount++;
+          else skipCount++;
+        } catch {
+          skipCount++;
+        }
       }
+    }
+
+    if (ctx?.hasUI && ctx?.ui) {
+      ctx.ui.notify(
+        `pi-ai-abort-fix: patched=${patchedCount}, already=${alreadyCount}, skip=${skipCount}`,
+        patchedCount > 0 ? "warning" : "info",
+      );
     }
 
     pi.events.emit("pi-ai-abort-fix:status", {
       patchedCount,
       alreadyCount,
       skipCount,
+      resolverCount: resolvers.length,
     });
   });
 }
