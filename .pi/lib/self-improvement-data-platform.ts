@@ -987,7 +987,10 @@ export function generatePhilosophicalReflections(
 // ============================================================================
 
 /**
- * アクション可能な洞察を生成する
+ * 問い志向の洞察を生成する（スキゾ分析のアプローチ）
+ * 
+ * 「すべきこと」ではなく「問うべきこと」を生成する。
+ * これは「反動的」な修正志向から「革命的」な探求志向への転換である。
  */
 function generateActionableInsights(
   analyses: AnalysisResult[],
@@ -995,23 +998,78 @@ function generateActionableInsights(
 ): InsightReport["actionableInsights"] {
   const insights: InsightReport["actionableInsights"] = [];
 
-  // Critical/Highの分析結果から即時アクションを生成
+  // 問い志向のテンプレート（スキゾ分析の応用）
+  const questionTemplates = {
+    risk: [
+      "この現象は何を教えているか？",
+      "この「失敗」から何を創造できるか？",
+      "このパターンをどう肯定的に捉え直せるか？",
+    ],
+    pattern: [
+      "この成功は何に依存しているか？",
+      "このパターンをどう変奏できるか？",
+      "この成功は何を隠しているか？",
+    ],
+    learning: [
+      "ここから何が芽生えつつあるか？",
+      "この学びをどう他に接続できるか？",
+    ],
+    opportunity: [
+      "この「未使用」は何を示唆しているか？",
+      "ここで何が可能になりつつあるか？",
+    ],
+    anomaly: [
+      "この異常は何を告げているか？",
+      "この「ずれ」から何が見えるか？",
+    ],
+    efficiency: [
+      "この状況で何が「十分」か？",
+      "どこに「無駄」ではなく「余地」があるか？",
+    ],
+    reliability: [
+      "この「不安定さ」は何を要求しているか？",
+      "どうすれば「信頼」ではなく「強靭さ」を生めるか？",
+    ],
+    trend: [
+      "この流れはどこへ向かっているか？",
+      "この傾向をどう加速または転換できるか？",
+    ],
+    quality: [
+      "ここで「品質」とは何か？",
+      "何が「十分」で何が「過剰」か？",
+    ],
+    performance: [
+      "何が「速さ」を可能にしているか？",
+      "どこに「待つ」ことの価値があるか？",
+    ],
+  };
+
+  // 分析結果から問いを生成
   for (const analysis of analyses) {
-    if (analysis.severity === "critical" || analysis.severity === "high") {
-      insights.push({
-        insight: `${analysis.title}に対処する`,
-        rationale: analysis.description,
-        priority: analysis.severity === "critical" ? "immediate" : "short_term",
-        estimatedEffort: "medium",
-      });
-    }
+    const templates = questionTemplates[analysis.category as keyof typeof questionTemplates] || [
+      "この観察から何が見えてくるか？",
+    ];
+    const question = templates[Math.floor(Math.random() * templates.length)];
+
+    // 「対処」ではなく「問い」を生成
+    insights.push({
+      insight: `【問い】${analysis.title}について：${question}`,
+      rationale: analysis.description,
+      priority:
+        analysis.severity === "critical"
+          ? "immediate"
+          : analysis.severity === "high"
+            ? "short_term"
+            : "medium_term",
+      estimatedEffort: "low", // 問いを立てることの「努力」は低い
+    });
   }
 
-  // 哲学的考察からアクションを生成
+  // 哲学的考察からの問いを追加（重複を避ける）
   for (const reflection of reflections) {
     if (reflection.suggestedAction) {
       insights.push({
-        insight: reflection.suggestedAction,
+        insight: `【問い】${reflection.question}`,
         rationale: `${PHILOSOPHICAL_PERSPECTIVES[reflection.perspective].name}: ${reflection.observation}`,
         priority: "medium_term",
         estimatedEffort: "low",
@@ -1019,11 +1077,17 @@ function generateActionableInsights(
     }
   }
 
-  return insights;
+  // 重複を削除
+  const uniqueInsights = insights.filter(
+    (insight, index, self) =>
+      index === self.findIndex((i) => i.insight === insight.insight)
+  );
+
+  return uniqueInsights;
 }
 
 /**
- * メトリクスを計算する
+ * メトリクスを計算する（スキゾ分析的指標を含む）
  */
 function calculateMetrics(
   dataView: IntegratedDataView,
@@ -1053,6 +1117,46 @@ function calculateMetrics(
     dataQualityScore,
     analysisCoverage,
     insightActionability,
+  };
+}
+
+/**
+ * スキゾ分析的メトリクスを計算する
+ */
+function calculateSchizoMetrics(
+  analyses: AnalysisResult[],
+  insights: InsightReport["actionableInsights"]
+): {
+  reactivityScore: number; // 反動度（0-1）
+  creativityScore: number; // 革命度（0-1）
+  affirmationScore: number; // 肯定度（0-1）
+} {
+  // 反動度：失敗・リスクへの焦点
+  const riskAnalyses = analyses.filter(
+    (a) => a.category === "risk" || a.category === "anomaly"
+  ).length;
+  const reactivityScore = analyses.length > 0 ? riskAnalyses / analyses.length : 0;
+
+  // 革命度：問い志向の洞察
+  const questionInsights = insights.filter((i) =>
+    i.insight.includes("【問い】")
+  ).length;
+  const creativityScore = insights.length > 0 ? questionInsights / insights.length : 0;
+
+  // 肯定度：成功・学習・機会への焦点
+  const affirmativeAnalyses = analyses.filter(
+    (a) =>
+      a.category === "pattern" ||
+      a.category === "learning" ||
+      a.category === "opportunity"
+  ).length;
+  const affirmationScore =
+    analyses.length > 0 ? affirmativeAnalyses / analyses.length : 0;
+
+  return {
+    reactivityScore,
+    creativityScore,
+    affirmationScore,
   };
 }
 
@@ -1185,6 +1289,32 @@ export function formatInsightReportAsText(report: InsightReport): string {
   );
   lines.push(
     `- Insight Actionability: ${(report.metrics.insightActionability * 100).toFixed(0)}%`
+  );
+  lines.push("");
+
+  // スキゾ分析的メトリクス（新しいセクション）
+  const schizoMetrics = calculateSchizoMetrics(
+    report.analyses,
+    report.actionableInsights
+  );
+  lines.push(`## Schizoanalytic Metrics`);
+  lines.push(
+    `- Reactivity Score (反動度): ${(schizoMetrics.reactivityScore * 100).toFixed(0)}%`
+  );
+  lines.push(
+    `  - Lower is better: focus on creation, not correction`
+  );
+  lines.push(
+    `- Creativity Score (革命度): ${(schizoMetrics.creativityScore * 100).toFixed(0)}%`
+  );
+  lines.push(
+    `  - Higher is better: questions over prescriptions`
+  );
+  lines.push(
+    `- Affirmation Score (肯定度): ${(schizoMetrics.affirmationScore * 100).toFixed(0)}%`
+  );
+  lines.push(
+    `  - Higher is better: success and opportunities over failures`
   );
   lines.push("");
 
