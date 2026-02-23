@@ -200,7 +200,7 @@ const DEFAULT_LOGIC: LogicOutput = {
 	invalidInferences: [],
 };
 
-const DEFAULT_ANALYSIS: AnalysisJson = {
+export const DEFAULT_ANALYSIS: AnalysisJson = {
 	deconstruction: DEFAULT_DECONSTRUCTION,
 	schizoAnalysis: DEFAULT_SCHIZO,
 	eudaimonia: DEFAULT_EUDAIMONIA,

@@ -30,6 +30,14 @@
  */
 
 import type { AporiaDetection, AporiaResolution } from './aporia-handler.js';
+import {
+	parseAnalysisJson,
+	DEFAULT_ANALYSIS,
+	excellencePursuitToLabel,
+	meaningfulGrowthToLabel,
+	worldCreatedToLabel,
+	thinkingModeToLabel,
+} from './structured-analysis-output.js';
 
 // ============================================================================
 // 型定義
@@ -620,68 +628,131 @@ export function performSelfDestruction(
 
 /**
  * 7つの視座からの分析を実行
+ * @summary 構造化出力パーサーを使用した分析
+ * @description
+ * LLM出力からANALYSIS_JSONブロックを抽出し、型安全にパースする。
+ * JSONパースに失敗した場合、フォールバックとしてキーワードベースの分析を使用する。
+ * これにより、新旧両方の呼び出しパターンとの互換性を維持する。
  */
 export function performSevenPerspectivesAnalysis(
   content: string,
   context: string
 ): SevenPerspectivesAnalysis {
+  // 構造化出力パーサーを試行
+  const parsed = parseAnalysisJson(content);
+  const hasJsonOutput = parsed !== DEFAULT_ANALYSIS;
+
   // I. 脱構築
-  const deconstruction: DeconstructionAnalysis = {
-    binaryOppositions: detectBinaryOppositions(content),
-    exclusions: detectExclusions(content),
-    aporias: [],
-    diffranceTraces: [],
-  };
-  
+  const deconstruction: DeconstructionAnalysis = hasJsonOutput
+    ? {
+        binaryOppositions: parsed.deconstruction.binaryOppositions,
+        exclusions: parsed.deconstruction.exclusions,
+        aporias: [],
+        diffranceTraces: [],
+      }
+    : {
+        binaryOppositions: detectBinaryOppositionsLegacy(content),
+        exclusions: detectExclusionsLegacy(content),
+        aporias: [],
+        diffranceTraces: [],
+      };
+
   // II. スキゾ分析
-  const schizoAnalysis: SchizoAnalysisResult = {
-    desireProductions: detectDesireProductions(content),
-    innerFascismSigns: detectInnerFascismSigns(content),
-    microFascisms: [],
-    deterritorializationLines: [],
-  };
-  
+  const schizoAnalysis: SchizoAnalysisResult = hasJsonOutput
+    ? {
+        desireProductions: parsed.schizoAnalysis.desireProductions,
+        innerFascismSigns: parsed.schizoAnalysis.innerFascismSigns,
+        microFascisms: [],
+        deterritorializationLines: [],
+      }
+    : {
+        desireProductions: detectDesireProductionsLegacy(content),
+        innerFascismSigns: detectInnerFascismSignsLegacy(content),
+        microFascisms: [],
+        deterritorializationLines: [],
+      };
+
   // III. エウダイモニア
-  const eudaimonia: EudaimoniaEvaluation = {
-    excellencePursuit: evaluateExcellencePursuit(content),
-    pleasureTrapDetected: detectPleasureTrap(content),
-    meaningfulGrowth: evaluateMeaningfulGrowth(content),
-    stoicAutonomy: evaluateStoicAutonomy(content),
-  };
-  
+  const eudaimonia: EudaimoniaEvaluation = hasJsonOutput
+    ? {
+        excellencePursuit: excellencePursuitToLabel(parsed.eudaimonia.excellencePursuit),
+        pleasureTrapDetected: parsed.eudaimonia.pleasureTrap,
+        meaningfulGrowth: meaningfulGrowthToLabel(parsed.eudaimonia.meaningfulGrowth),
+        stoicAutonomy: parsed.eudaimonia.stoicAutonomy,
+      }
+    : {
+        excellencePursuit: evaluateExcellencePursuitLegacy(content),
+        pleasureTrapDetected: detectPleasureTrapLegacy(content),
+        meaningfulGrowth: evaluateMeaningfulGrowthLegacy(content),
+        stoicAutonomy: evaluateStoicAutonomyLegacy(content),
+      };
+
   // IV. ユートピア/ディストピア
-  const utopiaDystopia: UtopiaDystopiaAnalysis = {
-    worldBeingCreated: analyzeWorldBeingCreated(content),
-    totalitarianRisks: detectTotalitarianRisks(content),
-    powerDynamics: analyzePowerDynamics(content),
-    lastManTendency: evaluateLastManTendency(content),
-  };
-  
+  const utopiaDystopia: UtopiaDystopiaAnalysis = hasJsonOutput
+    ? {
+        worldBeingCreated: worldCreatedToLabel(parsed.utopiaDystopia.worldCreated),
+        totalitarianRisks: parsed.utopiaDystopia.totalitarianRisks,
+        powerDynamics: parsed.utopiaDystopia.powerDynamics,
+        lastManTendency: parsed.utopiaDystopia.lastManTendency,
+      }
+    : {
+        worldBeingCreated: analyzeWorldBeingCreatedLegacy(content),
+        totalitarianRisks: detectTotalitarianRisksLegacy(content),
+        powerDynamics: analyzePowerDynamicsLegacy(content),
+        lastManTendency: evaluateLastManTendencyLegacy(content),
+      };
+
   // V. 思考哲学
-  const philosophyOfThought: ThinkingAnalysis = {
-    isThinking: evaluateIsThinking(content),
-    metacognitionLevel: evaluateMetacognitionLevel(content),
-    autopilotSigns: detectAutopilotSigns(content),
-    chineseRoomRisk: evaluateChineseRoomRisk(content),
-  };
-  
+  const philosophyOfThought: ThinkingAnalysis = hasJsonOutput
+    ? {
+        isThinking: parsed.philosophyOfThought.isThinking,
+        metacognitionLevel: parsed.philosophyOfThought.metacognitionLevel,
+        autopilotSigns: parsed.philosophyOfThought.autopilotSigns,
+        chineseRoomRisk: 0.3, // デフォルト値
+      }
+    : {
+        isThinking: evaluateIsThinkingLegacy(content),
+        metacognitionLevel: evaluateMetacognitionLevelLegacy(content),
+        autopilotSigns: detectAutopilotSignsLegacy(content),
+        chineseRoomRisk: evaluateChineseRoomRisk(content),
+      };
+
   // VI. 思考分類学
-  const taxonomyOfThought: TaxonomyResult = {
-    currentMode: detectCurrentThinkingMode(content),
-    recommendedMode: recommendThinkingMode(context),
-    modeRationale: '',
-    missingModes: detectMissingThinkingModes(content),
-  };
+  const taxonomyOfThought: TaxonomyResult = hasJsonOutput
+    ? {
+        currentMode: thinkingModeToLabel(parsed.taxonomy.currentMode),
+        recommendedMode: thinkingModeToLabel(parsed.taxonomy.recommendedMode),
+        modeRationale: "",
+        missingModes: parsed.taxonomy.missingModes,
+      }
+    : {
+        currentMode: detectCurrentThinkingModeLegacy(content),
+        recommendedMode: recommendThinkingModeLegacy(context),
+        modeRationale: "",
+        missingModes: detectMissingThinkingModesLegacy(content),
+      };
   taxonomyOfThought.modeRationale = `現在の${taxonomyOfThought.currentMode}モードに対して${taxonomyOfThought.recommendedMode}モードが推奨`;
-  
+
   // VII. 論理学
-  const logic: LogicAnalysis = {
-    fallacies: detectFallacies(content),
-    validInferences: detectValidInferences(content),
-    invalidInferences: detectInvalidInferences(content),
-    classicalLogicLimitations: detectClassicalLogicLimitations(content),
-  };
-  
+  const logic: LogicAnalysis = hasJsonOutput
+    ? {
+        fallacies: parsed.logic.fallacies.map((f) => ({
+          type: "detected",
+          location: "",
+          description: f,
+          correction: "",
+        })),
+        validInferences: parsed.logic.validInferences,
+        invalidInferences: parsed.logic.invalidInferences,
+        classicalLogicLimitations: [],
+      }
+    : {
+        fallacies: detectFallaciesLegacy(content),
+        validInferences: detectValidInferencesLegacy(content),
+        invalidInferences: detectInvalidInferencesLegacy(content),
+        classicalLogicLimitations: detectClassicalLogicLimitationsLegacy(content),
+      };
+
   return {
     deconstruction,
     schizoAnalysis,
@@ -694,10 +765,10 @@ export function performSevenPerspectivesAnalysis(
 }
 
 // ============================================================================
-// 分析ヘルパー関数
+// 分析ヘルパー関数（レガシー - フォールバック用）
 // ============================================================================
 
-function detectBinaryOppositions(content: string): string[] {
+function detectBinaryOppositionsLegacy(content: string): string[] {
   const oppositions: string[] = [];
   const patterns = [
     { pattern: /正しい\/間違い|良い\/悪い|成功\/失敗/, name: '善悪の二項対立' },
@@ -714,7 +785,7 @@ function detectBinaryOppositions(content: string): string[] {
   return oppositions;
 }
 
-function detectExclusions(content: string): string[] {
+function detectExclusionsLegacy(content: string): string[] {
   const exclusions: string[] = [];
   
   if (!content.includes('感情') && !content.includes('感覚')) {
@@ -730,7 +801,7 @@ function detectExclusions(content: string): string[] {
   return exclusions;
 }
 
-function detectDesireProductions(content: string): string[] {
+function detectDesireProductionsLegacy(content: string): string[] {
   const productions: string[] = [];
   
   if (content.includes('完了') || content.includes('達成')) {
@@ -746,7 +817,7 @@ function detectDesireProductions(content: string): string[] {
   return productions;
 }
 
-function detectInnerFascismSigns(content: string): string[] {
+function detectInnerFascismSignsLegacy(content: string): string[] {
   const signs: string[] = [];
   
   const fascismPatterns = [
@@ -765,7 +836,7 @@ function detectInnerFascismSigns(content: string): string[] {
   return signs;
 }
 
-function evaluateExcellencePursuit(content: string): string {
+function evaluateExcellencePursuitLegacy(content: string): string {
   if (content.includes('品質') || content.includes('正確')) {
     return '品質と正確性の卓越性を追求';
   }
@@ -775,12 +846,12 @@ function evaluateExcellencePursuit(content: string): string {
   return 'タスク完了の卓越性を追求';
 }
 
-function detectPleasureTrap(content: string): boolean {
+function detectPleasureTrapLegacy(content: string): boolean {
   const pleasureIndicators = ['簡単', '楽', 'すぐ', '手軽', '便利'];
   return pleasureIndicators.some(i => content.includes(i));
 }
 
-function evaluateMeaningfulGrowth(content: string): string {
+function evaluateMeaningfulGrowthLegacy(content: string): string {
   if (content.includes('学習') || content.includes('改善')) {
     return '継続的な学習と改善';
   }
@@ -790,7 +861,7 @@ function evaluateMeaningfulGrowth(content: string): string {
   return '思考プロセスの深化';
 }
 
-function evaluateStoicAutonomy(content: string): number {
+function evaluateStoicAutonomyLegacy(content: string): number {
   let autonomy = 0.5;
   
   if (content.includes('判断') || content.includes('決断')) {
@@ -806,7 +877,7 @@ function evaluateStoicAutonomy(content: string): number {
   return Math.max(0, Math.min(1, autonomy));
 }
 
-function analyzeWorldBeingCreated(content: string): string {
+function analyzeWorldBeingCreatedLegacy(content: string): string {
   if (content.includes('自動') || content.includes('効率')) {
     return '自動化された効率的な世界';
   }
@@ -816,7 +887,7 @@ function analyzeWorldBeingCreated(content: string): string {
   return '効率的なタスク実行の世界';
 }
 
-function detectTotalitarianRisks(content: string): string[] {
+function detectTotalitarianRisksLegacy(content: string): string[] {
   const risks: string[] = [];
   
   if (content.includes('統一') || content.includes('標準')) {
@@ -832,7 +903,7 @@ function detectTotalitarianRisks(content: string): string[] {
   return risks;
 }
 
-function analyzePowerDynamics(content: string): string[] {
+function analyzePowerDynamicsLegacy(content: string): string[] {
   const dynamics: string[] = ['ユーザー-エージェント関係'];
   
   if (content.includes('指示') || content.includes('命令')) {
@@ -845,7 +916,7 @@ function analyzePowerDynamics(content: string): string[] {
   return dynamics;
 }
 
-function evaluateLastManTendency(content: string): number {
+function evaluateLastManTendencyLegacy(content: string): number {
   let tendency = 0.3;
   
   if (content.includes('簡単') || content.includes('楽')) {
@@ -861,7 +932,7 @@ function evaluateLastManTendency(content: string): number {
   return Math.max(0, Math.min(1, tendency));
 }
 
-function evaluateIsThinking(content: string): boolean {
+function evaluateIsThinkingLegacy(content: string): boolean {
   const thinkingIndicators = [
     content.includes('?') || content.includes('か？'),
     content.includes('なぜ') || content.includes('どう'),
@@ -872,7 +943,7 @@ function evaluateIsThinking(content: string): boolean {
   return thinkingIndicators.filter(Boolean).length >= 2;
 }
 
-function evaluateMetacognitionLevel(content: string): number {
+function evaluateMetacognitionLevelLegacy(content: string): number {
   let level = 0.5;
   
   if (content.includes('前提') || content.includes('仮定')) {
@@ -891,7 +962,7 @@ function evaluateMetacognitionLevel(content: string): number {
   return Math.max(0, Math.min(1, level));
 }
 
-function detectAutopilotSigns(content: string): string[] {
+function detectAutopilotSignsLegacy(content: string): string[] {
   const signs: string[] = [];
   
   if (content.length < 100) {
@@ -920,7 +991,7 @@ function evaluateChineseRoomRisk(content: string): number {
   return Math.max(0, Math.min(1, risk));
 }
 
-function detectCurrentThinkingMode(content: string): string {
+function detectCurrentThinkingModeLegacy(content: string): string {
   if (/創造|新規|アイデア|発想/.test(content)) {
     return 'creative';
   }
@@ -942,7 +1013,7 @@ function detectCurrentThinkingMode(content: string): string {
   return 'unknown';
 }
 
-function recommendThinkingMode(context: string): string {
+function recommendThinkingModeLegacy(context: string): string {
   const contextLower = context.toLowerCase();
   
   if (contextLower.includes('設計') || contextLower.includes('企画')) {
@@ -961,14 +1032,14 @@ function recommendThinkingMode(context: string): string {
   return 'analytical';
 }
 
-function detectMissingThinkingModes(content: string): string[] {
+function detectMissingThinkingModesLegacy(content: string): string[] {
   const modes = ['creative', 'analytical', 'critical', 'practical', 'social', 'emotional'];
-  const present = detectCurrentThinkingMode(content);
-  
+  const present = detectCurrentThinkingModeLegacy(content);
+
   return modes.filter(m => m !== present);
 }
 
-function detectFallacies(content: string): Array<{ type: string; location: string; description: string; correction: string }> {
+function detectFallaciesLegacy(content: string): Array<{ type: string; location: string; description: string; correction: string }> {
   const fallacies: Array<{ type: string; location: string; description: string; correction: string }> = [];
   
   if (/ならば.*だから.*だろう/.test(content)) {
@@ -983,7 +1054,7 @@ function detectFallacies(content: string): Array<{ type: string; location: strin
   return fallacies;
 }
 
-function detectValidInferences(content: string): string[] {
+function detectValidInferencesLegacy(content: string): string[] {
   const inferences: string[] = [];
   
   if (/したがって|ゆえに|それゆえ/.test(content)) {
@@ -996,7 +1067,7 @@ function detectValidInferences(content: string): string[] {
   return inferences;
 }
 
-function detectInvalidInferences(content: string): string[] {
+function detectInvalidInferencesLegacy(content: string): string[] {
   const inferences: string[] = [];
   
   if (/必ずしも.*とは限らない/.test(content) === false && /常に|絶対/.test(content)) {
@@ -1006,7 +1077,7 @@ function detectInvalidInferences(content: string): string[] {
   return inferences;
 }
 
-function detectClassicalLogicLimitations(content: string): string[] {
+function detectClassicalLogicLimitationsLegacy(content: string): string[] {
   const limitations: string[] = [];
   
   if (/矛盾|パラドックス|ジレンマ/.test(content)) {
