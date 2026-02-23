@@ -197,14 +197,18 @@ function scheduleWritePersistedState(): void {
   writeDebounceTimer.unref();
 }
 
-// プロセス終了時に確実に書き込む
-process.on("beforeExit", () => {
-  if (writeDebounceTimer) {
-    clearTimeout(writeDebounceTimer);
-    writeDebounceTimer = null;
-    writePersistedRateLimitState(sharedRateLimitState);
-  }
-});
+// プロセス終了時に確実に書き込む（重複登録を防ぐ）
+let beforeExitHandlerRegistered = false;
+if (!beforeExitHandlerRegistered) {
+  beforeExitHandlerRegistered = true;
+  process.on("beforeExit", () => {
+    if (writeDebounceTimer) {
+      clearTimeout(writeDebounceTimer);
+      writeDebounceTimer = null;
+      writePersistedRateLimitState(sharedRateLimitState);
+    }
+  });
+}
 
 type PersistedRateLimitState = {
   version: number;

@@ -356,7 +356,7 @@ export default function registerSelfImprovementDashboard(pi: ExtensionAPI) {
       const operationId = logger.startOperation(
         "direct" as OperationType,
         "self_dashboard",
-        { task: "自己改善データダッシュボードの表示" }
+        { task: "自己改善データダッシュボードの表示", params: {} }
       );
 
       try {

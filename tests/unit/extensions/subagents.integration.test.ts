@@ -68,11 +68,12 @@ describe("subagents extension integration", () => {
   it("registers core subagent tools", () => {
     const toolNames = Array.from(pi.tools.keys());
     expect(toolNames).toContain("subagent_list");
+    expect(toolNames).toContain("subagent_create");
+    expect(toolNames).toContain("subagent_configure");
     expect(toolNames).toContain("subagent_run");
     expect(toolNames).toContain("subagent_run_parallel");
     expect(toolNames).toContain("subagent_status");
     expect(toolNames).toContain("subagent_runs");
-    expect(toolNames).toContain("subagent_jobs");
   });
 
   it("subagent_list returns persisted default agents", async () => {
@@ -93,8 +94,8 @@ describe("subagents extension integration", () => {
     expect(existsSync(join(testCwd, ".pi", "subagents", "storage.json"))).toBe(true);
   });
 
-  it("subagent_jobs returns empty state before background execution", async () => {
-    const tool = pi.tools.get("subagent_jobs");
+  it("subagent_status returns empty state before execution", async () => {
+    const tool = pi.tools.get("subagent_status");
     expect(tool).toBeDefined();
 
     const ctx = {
@@ -102,11 +103,11 @@ describe("subagents extension integration", () => {
       model: undefined,
       ui: { notify: pi.uiNotify },
     };
-    const result = await tool!.execute("tc-2", { limit: 10 }, undefined, undefined, ctx);
+    const result = await tool!.execute("tc-2", {}, undefined, undefined, ctx);
 
-    expect(result.content[0].text).toContain("No background subagent jobs yet.");
-    expect(Array.isArray(result.details.jobs)).toBe(true);
-    expect(result.details.jobs).toHaveLength(0);
+    expect(result.content[0].text).toContain("active");
+    expect(typeof result.details.activeRunRequests).toBe("number");
+    expect(typeof result.details.activeAgents).toBe("number");
   });
 
   it("session_start initializes storage and emits load notification", async () => {
@@ -120,7 +121,7 @@ describe("subagents extension integration", () => {
 
     expect(existsSync(join(testCwd, ".pi", "subagents", "storage.json"))).toBe(true);
     expect(pi.uiNotify).toHaveBeenCalledWith(
-      "Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel, subagent_jobs)",
+      "Subagent extension loaded (subagent_list, subagent_run, subagent_run_parallel)",
       "info",
     );
   });

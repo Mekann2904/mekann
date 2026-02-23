@@ -432,10 +432,10 @@ export function buildTeamMemberPrompt(input: {
     lines.push(input.task);
     
     // Minimal skills section
-    const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member);
+    const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member) ?? [];
     if (effectiveSkills.length > 0) {
       lines.push("");
-      lines.push(`Skills: ${effectiveSkills.map(s => s.name).join(", ")}`);
+      lines.push(`Skills: ${effectiveSkills.map(s => typeof s === 'string' ? s : s).join(", ")}`);
     }
     
     // Communication context (compact)
@@ -490,7 +490,7 @@ export function buildTeamMemberPrompt(input: {
   lines.push(`現在フェーズ: ${phaseLabel}`);
 
   // Resolve and include skills (team common + member individual)
-  const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member);
+  const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member) ?? [];
   const skillsSection = buildSkillsSectionWithContent(effectiveSkills);
   if (skillsSection) {
     lines.push("");

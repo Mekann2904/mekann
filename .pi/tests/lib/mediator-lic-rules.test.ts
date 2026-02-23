@@ -7,6 +7,7 @@ import { describe, it, expect } from "vitest";
 import {
   type DetectionContext,
   type LiCDetectionRule,
+  type ConfirmedFact,
   LIC_DETECTION_RULES,
   detectLicIndicators,
   filterHighConfidenceIndicators,
@@ -16,6 +17,23 @@ import {
 // ============================================================================
 // Test Helpers
 // ============================================================================
+
+let factCounter = 0;
+
+/**
+ * テスト用のConfirmedFactを作成
+ */
+function createFact(key: string, value: string): ConfirmedFact {
+  factCounter += 1;
+  return {
+    id: `fact-${factCounter}`,
+    key,
+    value,
+    context: "test context",
+    confirmedAt: new Date().toISOString(),
+    sessionId: "test-session",
+  };
+}
 
 /**
  * デフォルトの検出コンテキストを作成
@@ -71,7 +89,7 @@ describe("detectLicIndicators", () => {
       // Arrange
       const context = createDefaultContext({
         agentResponse: "申し訳ありませんが、ご質問の内容を理解できませんでした。",
-        confirmedFacts: [{ key: "topic", value: "TypeScript", confirmedAt: new Date().toISOString() }],
+        confirmedFacts: [createFact("topic", "TypeScript")],
       });
 
       // Act
@@ -89,8 +107,8 @@ describe("detectLicIndicators", () => {
       const context = createDefaultContext({
         agentResponse: "もう少し詳しく教えていただけますか。",
         confirmedFacts: [
-          { key: "topic", value: "React hooks", confirmedAt: new Date().toISOString() },
-          { key: "goal", value: "カスタムフックの作成", confirmedAt: new Date().toISOString() },
+          createFact("topic", "React hooks"),
+          createFact("goal", "カスタムフックの作成"),
         ],
       });
 

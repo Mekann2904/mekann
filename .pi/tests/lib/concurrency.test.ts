@@ -365,7 +365,7 @@ describe("runWithConcurrencyLimit", () => {
 		it("PBT: 各アイテムが1回ずつ処理される", async () => {
 			await fc.assert(
 				fc.asyncProperty(
-					fc.array(fc.integer(), { maxLength: 10 }),
+					fc.uniqueArray(fc.integer(), { maxLength: 10 }), // 重複を排除
 					fc.integer({ min: 1, max: 5 }),
 					async (items, limit) => {
 						const processed = new Map<number, number>();

@@ -519,10 +519,10 @@ export function buildSubagentPrompt(input: {
     lines.push(input.task);
     
     // Minimal skills
-    const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills);
+    const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
     if (effectiveSkills.length > 0) {
       lines.push("");
-      lines.push(`Skills: ${effectiveSkills.map(s => s.name).join(", ")}`);
+      lines.push(`Skills: ${effectiveSkills.map(s => typeof s === 'string' ? s : s).join(", ")}`);
     }
     
     // CRITICAL output format at the END
@@ -563,7 +563,7 @@ export function buildSubagentPrompt(input: {
   lines.push(input.agent.systemPrompt);
 
   // Resolve and include skills
-  const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills);
+  const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills) ?? [];
   const skillsSection = formatSkillsSection(effectiveSkills);
   if (skillsSection) {
     lines.push("");

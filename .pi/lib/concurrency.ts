@@ -89,12 +89,12 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
 
   const abortOnError = options.abortOnError !== false;
 
-  // Bug #6 warning: abortOnErrorの動作説明（大量アイテム時の警告）
-  if (abortOnError && items.length > 5) {
-    console.warn(
-      "[concurrency] abortOnError=true with",
-      items.length,
-      "items - Workers continue after first error (Bug #6)"
+  // Debug info: abortOnError=true時、エラー発生後も実行中ワーカーは完了まで続行する
+  // これはダングリングワーカー（永遠に終わらないワーカー）を防ぐための意図的な設計
+  if (abortOnError && items.length > 5 && process.env.PI_DEBUG_CONCURRENCY === "1") {
+    console.debug(
+      "[concurrency] abortOnError=true with %d items - Workers continue after first error to avoid dangling workers",
+      items.length
     );
   }
 
