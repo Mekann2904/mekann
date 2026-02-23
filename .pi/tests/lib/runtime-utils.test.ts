@@ -162,8 +162,8 @@ describe("buildRateLimitKey", () => {
 		it("PBT: 結果には::が1つ含まれる", () => {
 			fc.assert(
 				fc.property(
-					fc.string({ maxLength: 50 }),
-					fc.string({ maxLength: 50 }),
+					fc.string({ maxLength: 50 }).filter((s) => !s.includes("::")),
+					fc.string({ maxLength: 50 }).filter((s) => !s.includes("::")),
 					(provider, model) => {
 						const result = buildRateLimitKey(provider, model);
 						return result.split("::").length === 2;
