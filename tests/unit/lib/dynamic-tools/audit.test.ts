@@ -37,7 +37,7 @@ describe("dynamic-tools/audit.ts", () => {
     // テスト用のパスを設定
     testPaths = {
       toolsDir: path.join(TEST_DIR, "tools"),
-      registryFile: path.join(TEST_DIR, "registry.json"),
+      skillsDir: path.join(TEST_DIR, "skills"),
       auditLogFile: path.join(TEST_DIR, "audit.log"),
       metricsFile: path.join(TEST_DIR, "metrics.json"),
     };
@@ -59,7 +59,7 @@ describe("dynamic-tools/audit.ts", () => {
     it("監査ログを記録する", async () => {
       // Arrange
       const entry = {
-        action: "create" as AuditAction,
+        action: "tool.create" as AuditAction,
         toolId: "test-tool-1",
         toolName: "Test Tool",
         actor: "test-user",
@@ -74,14 +74,14 @@ describe("dynamic-tools/audit.ts", () => {
       expect(result.id).toBeDefined();
       expect(result.id).toMatch(/^audit_/);
       expect(result.timestamp).toBeDefined();
-      expect(result.action).toBe("create");
+      expect(result.action).toBe("tool.create");
       expect(result.success).toBe(true);
     });
 
     it("失敗ログを記録する", async () => {
       // Arrange
       const entry = {
-        action: "execute" as AuditAction,
+        action: "tool.run" as AuditAction,
         toolId: "test-tool-2",
         actor: "test-user",
         details: {},
@@ -100,7 +100,7 @@ describe("dynamic-tools/audit.ts", () => {
     it("タイムスタンプがISO 8601形式である", async () => {
       // Arrange
       const entry = {
-        action: "update" as AuditAction,
+        action: "tool.update" as AuditAction,
         actor: "system",
         details: {},
         success: true,
@@ -116,7 +116,7 @@ describe("dynamic-tools/audit.ts", () => {
     it("一意のIDを生成する", async () => {
       // Arrange
       const entry = {
-        action: "create" as AuditAction,
+        action: "tool.create" as AuditAction,
         actor: "test",
         details: {},
         success: true,
@@ -143,7 +143,7 @@ describe("dynamic-tools/audit.ts", () => {
     it("記録したログを読み込める", async () => {
       // Arrange
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "tool-1",
         actor: "user",
         details: {},
@@ -161,14 +161,14 @@ describe("dynamic-tools/audit.ts", () => {
     it("toolIdでフィルタリングできる", async () => {
       // Arrange
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "tool-A",
         actor: "user",
         details: {},
         success: true,
       }, testPaths);
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "tool-B",
         actor: "user",
         details: {},
@@ -186,31 +186,31 @@ describe("dynamic-tools/audit.ts", () => {
     it("actionでフィルタリングできる", async () => {
       // Arrange
       await logAudit({
-        action: "create",
+        action: "tool.create",
         actor: "user",
         details: {},
         success: true,
       }, testPaths);
       await logAudit({
-        action: "delete",
+        action: "tool.delete",
         actor: "user",
         details: {},
         success: true,
       }, testPaths);
 
       // Act
-      const result = readAuditLog({ action: "delete" }, testPaths);
+      const result = readAuditLog({ action: "tool.delete" }, testPaths);
 
       // Assert
       expect(result.length).toBe(1);
-      expect(result[0].action).toBe("delete");
+      expect(result[0].action).toBe("tool.delete");
     });
 
     it("limitで件数を制限できる", async () => {
       // Arrange
       for (let i = 0; i < 5; i++) {
         await logAudit({
-          action: "create",
+          action: "tool.create",
           actor: "user",
           details: { index: i },
           success: true,
@@ -228,7 +228,7 @@ describe("dynamic-tools/audit.ts", () => {
       // Arrange
       const before = new Date(Date.now() - 10000);
       await logAudit({
-        action: "create",
+        action: "tool.create",
         actor: "user",
         details: {},
         success: true,
@@ -244,14 +244,14 @@ describe("dynamic-tools/audit.ts", () => {
     it("新しい順にソートされる", async () => {
       // Arrange
       await logAudit({
-        action: "create",
+        action: "tool.create",
         actor: "user",
         details: { order: 1 },
         success: true,
       }, testPaths);
       await new Promise(r => setTimeout(r, 10));
       await logAudit({
-        action: "create",
+        action: "tool.create",
         actor: "user",
         details: { order: 2 },
         success: true,
@@ -270,14 +270,14 @@ describe("dynamic-tools/audit.ts", () => {
     it("特定ツールの履歴を取得する", async () => {
       // Arrange
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "target-tool",
         actor: "user",
         details: {},
         success: true,
       }, testPaths);
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "other-tool",
         actor: "user",
         details: {},
@@ -298,7 +298,7 @@ describe("dynamic-tools/audit.ts", () => {
       // Arrange
       const since = new Date(Date.now() - 10000);
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "tool-1",
         toolName: "Tool 1",
         actor: "user",
@@ -306,7 +306,7 @@ describe("dynamic-tools/audit.ts", () => {
         success: true,
       }, testPaths);
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "tool-1",
         toolName: "Tool 1",
         actor: "user",
@@ -314,7 +314,7 @@ describe("dynamic-tools/audit.ts", () => {
         success: false,
       }, testPaths);
       await logAudit({
-        action: "execute",
+        action: "tool.run",
         toolId: "tool-2",
         toolName: "Tool 2",
         actor: "user",
@@ -329,15 +329,15 @@ describe("dynamic-tools/audit.ts", () => {
       expect(stats.totalActions).toBe(3);
       expect(stats.successfulActions).toBe(2);
       expect(stats.failedActions).toBe(1);
-      expect(stats.actionsByType.create).toBe(2);
-      expect(stats.actionsByType.execute).toBe(1);
+      expect(stats.actionsByType["tool.create"]).toBe(2);
+      expect(stats.actionsByType["tool.run"]).toBe(1);
     });
 
     it("トップツールを計算する", async () => {
       // Arrange
       const since = new Date(Date.now() - 10000);
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "popular-tool",
         toolName: "Popular",
         actor: "user",
@@ -345,7 +345,7 @@ describe("dynamic-tools/audit.ts", () => {
         success: true,
       }, testPaths);
       await logAudit({
-        action: "execute",
+        action: "tool.run",
         toolId: "popular-tool",
         toolName: "Popular",
         actor: "user",
@@ -353,7 +353,7 @@ describe("dynamic-tools/audit.ts", () => {
         success: true,
       }, testPaths);
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "rare-tool",
         toolName: "Rare",
         actor: "user",
@@ -377,7 +377,7 @@ describe("dynamic-tools/audit.ts", () => {
       const entry: AuditLogEntry = {
         id: "test-id",
         timestamp: "2024-01-01T12:00:00.000Z",
-        action: "create",
+        action: "tool.create",
         toolName: "Test Tool",
         actor: "user",
         details: {},
@@ -389,7 +389,7 @@ describe("dynamic-tools/audit.ts", () => {
 
       // Assert
       expect(result).toContain("[OK]");
-      expect(result).toContain("create");
+      expect(result).toContain("tool.create");
       expect(result).toContain("Test Tool");
     });
 
@@ -398,7 +398,7 @@ describe("dynamic-tools/audit.ts", () => {
       const entry: AuditLogEntry = {
         id: "test-id",
         timestamp: "2024-01-01T12:00:00.000Z",
-        action: "execute",
+        action: "tool.run",
         actor: "user",
         details: {},
         success: false,
@@ -418,7 +418,7 @@ describe("dynamic-tools/audit.ts", () => {
       const entry: AuditLogEntry = {
         id: "test-id",
         timestamp: "2024-01-01T12:00:00.000Z",
-        action: "create",
+        action: "tool.create",
         actor: "system",
         details: {},
         success: true,
@@ -437,7 +437,7 @@ describe("dynamic-tools/audit.ts", () => {
       // Arrange
       const since = new Date(Date.now() - 10000);
       await logAudit({
-        action: "create",
+        action: "tool.create",
         toolId: "tool-1",
         toolName: "Tool 1",
         actor: "user",
@@ -459,7 +459,7 @@ describe("dynamic-tools/audit.ts", () => {
     it("古いログをアーカイブする", async () => {
       // Arrange
       await logAudit({
-        action: "create",
+        action: "tool.create",
         actor: "user",
         details: {},
         success: true,
@@ -494,7 +494,7 @@ describe("dynamic-tools/audit.ts", () => {
       fc.assert(
         fc.asyncProperty(
           fc.record({
-            action: fc.constantFrom("create", "execute", "update", "delete", "disable"),
+            action: fc.constantFrom("tool.create", "tool.run", "tool.update", "tool.delete", "tool.delete"),
             toolId: fc.option(fc.string({ minLength: 1, maxLength: 50 })),
             toolName: fc.option(fc.string({ minLength: 1, maxLength: 50 })),
             actor: fc.string({ minLength: 1, maxLength: 50 }),
@@ -527,7 +527,7 @@ describe("dynamic-tools/audit.ts", () => {
       await fc.assert(
         fc.asyncProperty(
           fc.record({
-            action: fc.constantFrom("create", "execute"),
+            action: fc.constantFrom("tool.create", "tool.run"),
             actor: fc.string({ minLength: 1 }),
             success: fc.boolean(),
           }),
