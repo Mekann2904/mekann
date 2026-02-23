@@ -67,7 +67,7 @@ import {
   type RetryWithBackoffOverrides,
 } from "../../lib/retry-with-backoff.js";
 import { sleep } from "../../lib/sleep-utils.js";
-import { isHighStakesTask } from "../../lib/verification-workflow.js";
+import { isHighStakesTask } from "../../lib/verification-high-stakes.js";
 import {
   STABLE_MAX_RETRIES,
   STABLE_INITIAL_DELAY_MS,

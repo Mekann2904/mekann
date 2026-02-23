@@ -70,7 +70,7 @@ import type {
   DynamicToolDefinition,
 } from "../lib/dynamic-tools/types.js";
 import type { ToolExecutionResult } from "../lib/dynamic-tools/registry.js";
-import { isHighStakesTask } from "../lib/verification-workflow.js";
+import { isHighStakesTask } from "../lib/verification-high-stakes.js";
 
 const logger = getLogger();
 
