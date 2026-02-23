@@ -359,6 +359,53 @@ export function buildSkillsSectionWithContent(skills: string[] | undefined): str
  * @param input.communicationContext コミュニケーションコンテキスト
  * @returns 構築されたプロンプト文字列
  */
+
+// ============================================================================
+// Directive Parsing for Token Efficiency
+// ============================================================================
+
+/**
+ * プロンプトディレクティブ
+ * @summary 出力モード等の制御ディレクティブ
+ */
+interface PromptDirective {
+  outputMode: "internal" | "user-facing";
+  language: "english" | "japanese";
+  maxTokens: number;
+  format: "structured" | "detailed";
+}
+
+/**
+ * sharedContextからディレクティブを解析
+ * @summary ディレクティブ解析
+ * @param sharedContext 共有コンテキスト文字列
+ * @returns 解析されたディレクティブ
+ */
+function parseDirectives(sharedContext?: string): PromptDirective {
+  const ctx = sharedContext ?? "";
+  const isInternal = ctx.includes("OUTPUT MODE: INTERNAL");
+  
+  if (isInternal) {
+    // Extract max tokens if specified
+    const maxTokensMatch = ctx.match(/Max:\s*(\d+)\s*tokens/i);
+    const maxTokens = maxTokensMatch ? parseInt(maxTokensMatch[1], 10) : 300;
+    
+    return {
+      outputMode: "internal",
+      language: "english",
+      maxTokens: Math.max(100, Math.min(1000, maxTokens)),
+      format: "structured",
+    };
+  }
+  
+  return {
+    outputMode: "user-facing",
+    language: "japanese",
+    maxTokens: 0, // no limit
+    format: "detailed",
+  };
+}
+
 export function buildTeamMemberPrompt(input: {
   team: TeamDefinition;
   member: TeamMember;
@@ -369,8 +416,71 @@ export function buildTeamMemberPrompt(input: {
   relevantPatterns?: ExtractedPattern[];
 }): string {
   const lines: string[] = [];
-
   const phase = input.phase ?? "initial";
+  
+  // Parse directives from sharedContext
+  const directives = parseDirectives(input.sharedContext);
+  const isInternal = directives.outputMode === "internal";
+
+  // INTERNAL mode: Build English prompt with strict output control
+  if (isInternal) {
+    lines.push(`You are a member of agent team "${input.team.id}".`);
+    lines.push(`Role: ${input.member.role}`);
+    lines.push(`Mission: ${input.member.description}`);
+    lines.push("");
+    lines.push("TASK:");
+    lines.push(input.task);
+    
+    // Minimal skills section
+    const effectiveSkills = resolveEffectiveTeamMemberSkills(input.team, input.member);
+    if (effectiveSkills.length > 0) {
+      lines.push("");
+      lines.push(`Skills: ${effectiveSkills.map(s => s.name).join(", ")}`);
+    }
+    
+    // Communication context (compact)
+    if (input.communicationContext?.trim()) {
+      lines.push("");
+      lines.push("TEAMMATE OUTPUTS:");
+      // Truncate to essential info
+      const compactContext = input.communicationContext
+        .split("\n")
+        .slice(0, 20)
+        .join("\n");
+      lines.push(compactContext);
+    }
+    
+    // CRITICAL: Output format at the END with maximum priority
+    lines.push("");
+    lines.push("=".repeat(60));
+    lines.push("CRITICAL OUTPUT REQUIREMENTS (STRICT COMPLIANCE):");
+    lines.push("=".repeat(60));
+    lines.push(`MAX TOKENS: ${directives.maxTokens}`);
+    lines.push("LANGUAGE: English ONLY (no Japanese)");
+    lines.push("FORMAT: Structured, concise, no verbosity");
+    lines.push("");
+    lines.push("REQUIRED OUTPUT STRUCTURE:");
+    lines.push("[CLAIM] <one sentence assertion>");
+    lines.push("[EVIDENCE]");
+    lines.push("- <evidence 1> (file:line if applicable)");
+    lines.push("- <evidence 2> (file:line if applicable)");
+    lines.push("[CONFIDENCE] <0.0 to 1.0>");
+    lines.push("[ACTION] <next step OR done>");
+    if (phase === "communication") {
+      lines.push("[DISCUSSION] <brief reference to teammates>");
+    }
+    lines.push("");
+    lines.push("PROHIBITED:");
+    lines.push("- Japanese text");
+    lines.push("- Long explanations");
+    lines.push("- Thinking blocks");
+    lines.push("- Verbose summaries");
+    lines.push("=".repeat(60));
+    
+    return lines.join("\n");
+  }
+
+  // USER-FACING mode: Original Japanese detailed prompt
   const phaseLabel = phase === "initial" ? "初期検討" : "コミュニケーション";
 
   lines.push(`あなたはエージェントチーム ${input.team.name} (${input.team.id}) のメンバーです。`);
@@ -444,7 +554,11 @@ export function buildTeamMemberPrompt(input: {
   lines.push("");
   lines.push(getTeamMemberExecutionRules(phase, true));
 
+  // Token efficiency mode: detect OUTPUT MODE: INTERNAL in sharedContext
+  const isInternalMode = input.sharedContext?.includes("OUTPUT MODE: INTERNAL") ?? false;
+
   // 思考領域改善: 高リスクタスクでは自動的にhighに昇格
+  // Note: INTERNAL mode already returned earlier, this is USER-FACING only
   const baseThinkingLevel = input.member.thinkingLevel ?? input.team.thinkingLevel ?? "medium";
   const isHighStakes = isHighStakesTask(input.task);
   const effectiveThinkingLevel = isHighStakes && (baseThinkingLevel === "medium" || baseThinkingLevel === "low" || baseThinkingLevel === "minimal")
@@ -473,6 +587,7 @@ export function buildTeamMemberPrompt(input: {
   }
   // mediumの場合はデフォルト（特別な指示なし）
 
+  // USER-FACING output format (Japanese detailed)
   lines.push("");
   lines.push("Output format (strict, labels must stay in English):");
   lines.push("SUMMARY: <日本語の短い要約>");

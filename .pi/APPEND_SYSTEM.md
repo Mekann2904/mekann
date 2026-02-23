@@ -780,3 +780,98 @@ Cycle 1-3で行った「MANDATORY → RECOMMENDED」転換の推論には、以�
 2. **分析**: なぜ誤りが生じたかを分析（根本原因の特定）
 3. **修正**: 推論を修正し、再検証する
 4. **記録**: 誤りと修正を記録し、再発を防ぐ
+
+# Token Efficiency Template (RECOMMENDED)
+
+Agent team/subagent実行時のトークン消費を削減するためのsharedContextテンプレート。
+
+## 問題
+
+- 日本語は1文字あたり2〜4トークン消費（英語の3〜5倍）
+- エージェント間の内部処理に長文の日本語出力は不要
+- トークンコストが不必要に増大
+
+## 解決策
+
+内部処理は英語・簡潔・構造化、ユーザーへの最終出力のみ日本語・詳細。
+
+## 使用方法
+
+`agent_team_run` または `subagent_run` 実行時に以下を `sharedContext` として指定：
+
+```
+OUTPUT MODE: INTERNAL
+- Language: English for all inter-agent communication
+- Format: [CLAIM] 1-sentence | [EVIDENCE] - item (file:line) | [CONFIDENCE] 0.0-1.0 | [ACTION] next|done
+- Max: 300 tokens per response
+- Japanese only for final user-facing synthesis
+```
+
+## 具体的な使用例
+
+```typescript
+// agent_team_run の場合
+agent_team_run({
+  task: "Analyze authentication flow for security vulnerabilities",
+  teamIds: ["security-hardening-p1", "security-hardening-p2"],
+  sharedContext: `OUTPUT MODE: INTERNAL
+- Language: English for all inter-agent communication
+- Format: [CLAIM] 1-sentence | [EVIDENCE] - item (file:line) | [CONFIDENCE] 0.0-1.0 | [ACTION] next|done
+- Max: 300 tokens per response
+- Japanese only for final user-facing synthesis`,
+  strategy: "parallel"
+})
+
+// subagent_run_parallel の場合
+subagent_run_parallel({
+  task: "Review code quality across modules",
+  subagentIds: ["code-reviewer", "architect", "security-reviewer"],
+  extraContext: `OUTPUT MODE: INTERNAL
+- Language: English
+- Format: [CLAIM]|[EVIDENCE]|[CONFIDENCE]|[ACTION]
+- Max: 300 tokens`
+})
+```
+
+## 効果試算
+
+| 項目 | 修正前 | 修正後 | 削減率 |
+|------|--------|--------|--------|
+| 1メンバー出力 | ~1000 tokens | ~200 tokens | 80% |
+| 4メンバー並列実行 | 4000 tokens | 800 tokens | 80% |
+| コスト (Claude Sonnet $3/$15 per 1M) | $0.048 | $0.0096 | $0.0384/実行 |
+
+## 出力フォーマット詳細
+
+### 内部通信フォーマット（英語・構造化）
+
+```
+[CLAIM] <1文の主張>
+[EVIDENCE]
+- <証拠1> (file:line)
+- <証拠2> (file:line)
+[CONFIDENCE] <0.0-1.0>
+[ACTION] <next|done>
+```
+
+### ユーザー提示フォーマット（日本語・詳細）
+
+最終的な統合結果のみ日本語で出力。構造は維持するが、説明を追加：
+
+```
+## 要約
+<日本語で詳細に説明>
+
+## 詳細
+<日本語で展開>
+
+## 次のアクション
+<具体的な手順>
+```
+
+## 適用判定
+
+| 出力先 | 言語 | 形式 | トークン上限 |
+|--------|------|------|-------------|
+| エージェント間 | 英語 | 構造化 | 300 |
+| ユーザーへ | 日本語 | 詳細 | 制限なし |

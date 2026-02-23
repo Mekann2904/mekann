@@ -454,6 +454,48 @@ export function formatSkillsSection(skills: string[] | undefined): string | null
   * @param input.profileId パフォーマンスプロファイルID（省略時は自動選択）
   * @returns 構築されたプロンプト文字列
   */
+
+// ============================================================================
+// Directive Parsing for Token Efficiency (shared with agent-teams)
+// ============================================================================
+
+/**
+ * サブエージェント用ディレクティブ
+ */
+interface SubagentDirective {
+  outputMode: "internal" | "user-facing";
+  language: "english" | "japanese";
+  maxTokens: number;
+  format: "structured" | "detailed";
+}
+
+/**
+ * extraContextからディレクティブを解析
+ */
+function parseSubagentDirectives(extraContext?: string): SubagentDirective {
+  const ctx = extraContext ?? "";
+  const isInternal = ctx.includes("OUTPUT MODE: INTERNAL");
+  
+  if (isInternal) {
+    const maxTokensMatch = ctx.match(/Max:\s*(\d+)\s*tokens/i);
+    const maxTokens = maxTokensMatch ? parseInt(maxTokensMatch[1], 10) : 300;
+    
+    return {
+      outputMode: "internal",
+      language: "english",
+      maxTokens: Math.max(100, Math.min(1000, maxTokens)),
+      format: "structured",
+    };
+  }
+  
+  return {
+    outputMode: "user-facing",
+    language: "japanese",
+    maxTokens: 0,
+    format: "detailed",
+  };
+}
+
 export function buildSubagentPrompt(input: {
   agent: SubagentDefinition;
   task: string;
@@ -463,6 +505,50 @@ export function buildSubagentPrompt(input: {
   profileId?: string;
   relevantPatterns?: ExtractedPattern[];
 }): string {
+  // Parse directives from extraContext
+  const directives = parseSubagentDirectives(input.extraContext);
+  const isInternal = directives.outputMode === "internal";
+
+  // INTERNAL mode: Build compact English prompt
+  if (isInternal) {
+    const lines: string[] = [];
+    lines.push(`Subagent: ${input.agent.id}`);
+    lines.push(`Role: ${input.agent.description}`);
+    lines.push("");
+    lines.push("TASK:");
+    lines.push(input.task);
+    
+    // Minimal skills
+    const effectiveSkills = resolveEffectiveSkills(input.agent, input.parentSkills);
+    if (effectiveSkills.length > 0) {
+      lines.push("");
+      lines.push(`Skills: ${effectiveSkills.map(s => s.name).join(", ")}`);
+    }
+    
+    // CRITICAL output format at the END
+    lines.push("");
+    lines.push("=".repeat(60));
+    lines.push("CRITICAL OUTPUT REQUIREMENTS (STRICT COMPLIANCE):");
+    lines.push("=".repeat(60));
+    lines.push(`MAX TOKENS: ${directives.maxTokens}`);
+    lines.push("LANGUAGE: English ONLY");
+    lines.push("FORMAT: Structured, concise");
+    lines.push("");
+    lines.push("REQUIRED OUTPUT:");
+    lines.push("[CLAIM] <one sentence>");
+    lines.push("[EVIDENCE]");
+    lines.push("- <item 1>");
+    lines.push("- <item 2>");
+    lines.push("[CONFIDENCE] <0.0-1.0>");
+    lines.push("[ACTION] <next|done>");
+    lines.push("");
+    lines.push("PROHIBITED: Japanese, long explanations, thinking blocks");
+    lines.push("=".repeat(60));
+    
+    return lines.join("\n");
+  }
+
+  // USER-FACING mode: Original detailed prompt
   // タスクに基づいてプロファイルを自動選択
   const profile = input.profileId 
     ? undefined 
