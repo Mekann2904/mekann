@@ -39,7 +39,7 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { formatDurationMs, formatClockTime } from "../lib/format-utils.js";
-import { toErrorMessage } from "../lib/error-utils.js";
+import { toErrorMessage, isCancelledErrorMessage } from "../lib/error-utils.js";
 import { ThinkingLevel } from "../lib/agent-types.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor.js";
@@ -1723,6 +1723,7 @@ async function callModel(
         maxRateLimitRetries: 5, // 429エラー時は最大5回リトライ
         maxRateLimitWaitMs: 60000, // 最大60秒待機
         shouldRetry: (error: unknown, statusCode?: number) => {
+          if (isCancelledErrorMessage(error)) return false;
           // 429エラーまたは5xxサーバーエラーはリトライ
           if (statusCode === 429) return true;
           if (statusCode !== undefined && statusCode >= 500 && statusCode < 600) return true;
@@ -1883,7 +1884,7 @@ async function runSelfImprovementLoop(
       }
     }
   } catch (error) {
-    if (toErrorMessage(error).includes("Aborted")) {
+    if (isCancelledErrorMessage(error) || toErrorMessage(error).includes("Aborted")) {
       state.stopRequested = true;
       state.stopReason = "user_request";
       console.log(`[self-improvement-loop] Aborted during cycle`);
