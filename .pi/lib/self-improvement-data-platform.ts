@@ -363,23 +363,35 @@ function analyzeErrorRateAnomalies(
 
   const { errorRate, topExtensions } = dataView.usageStats;
 
-  // 全体のエラー率が高い場合
-  if (errorRate > 0.1) {
-    results.push({
-      timestamp: dataView.timestamp,
-      category: "anomaly",
-      title: "高エラー率の検出",
-      description: `全体のエラー率が${(errorRate * 100).toFixed(1)}%と高くなっています。`,
-      evidence: [
-        {
-          source: "usage_stats",
-          data: `error_rate=${errorRate.toFixed(4)}`,
-        },
-      ],
-      confidence: 0.9,
-      severity: errorRate > 0.2 ? "critical" : "high",
-    });
+  // エラー率に基づいた観察（常に情報を提供）
+  let description: string;
+  let severity: InsightSeverity;
+
+  if (errorRate > 0.15) {
+    description = `全体のエラー率が${(errorRate * 100).toFixed(1)}%と高めです。注目すべき現象が観察されました。`;
+    severity = "high";
+  } else if (errorRate > 0.05) {
+    description = `全体のエラー率は${(errorRate * 100).toFixed(1)}%です。いくつかの現象が観察されました。`;
+    severity = "medium";
+  } else {
+    description = `全体のエラー率は${(errorRate * 100).toFixed(1)}%です。安定した状態が観察されています。`;
+    severity = "low";
   }
+
+  results.push({
+    timestamp: dataView.timestamp,
+    category: "anomaly",
+    title: "エラー率の観察",
+    description,
+    evidence: [
+      {
+        source: "usage_stats",
+        data: `error_rate=${errorRate.toFixed(4)}`,
+      },
+    ],
+    confidence: 0.7,
+    severity,
+  });
 
   // 特定の拡張機能でエラー率が高い場合
   for (const ext of topExtensions) {
@@ -416,21 +428,36 @@ function analyzeContextUsage(
 
   const avgRatio = dataView.usageStats.avgContextRatio;
 
-  // コンテキスト占有率が高い場合
-  if (avgRatio > 0.7) {
+  // コンテキスト占有率に基づいた観察（閾値を下げてより多くの気づきを提供）
+  if (avgRatio > 0.3) {
+    // 30%以上で観察
+    let description: string;
+    let severity: InsightSeverity;
+
+    if (avgRatio > 0.85) {
+      description = `平均コンテキスト占有率が${(avgRatio * 100).toFixed(1)}%と非常に高くなっています。コンテキストオーバーフローのリスクがあります。`;
+      severity = "high";
+    } else if (avgRatio > 0.7) {
+      description = `平均コンテキスト占有率が${(avgRatio * 100).toFixed(1)}%と高めです。大きなタスクでは注意が必要です。`;
+      severity = "medium";
+    } else {
+      description = `平均コンテキスト占有率は${(avgRatio * 100).toFixed(1)}%です。現在のところ問題ありません。`;
+      severity = "low";
+    }
+
     results.push({
       timestamp: dataView.timestamp,
       category: "efficiency",
-      title: "コンテキスト占有率が高い",
-      description: `平均コンテキスト占有率が${(avgRatio * 100).toFixed(1)}%と高くなっています。コンテキストオーバーフローのリスクがあります。`,
+      title: "コンテキスト使用状況の観察",
+      description,
       evidence: [
         {
           source: "usage_stats",
           data: `avg_context_ratio=${avgRatio.toFixed(4)}`,
         },
       ],
-      confidence: 0.8,
-      severity: avgRatio > 0.85 ? "high" : "medium",
+      confidence: 0.75,
+      severity,
     });
   }
 
@@ -445,23 +472,58 @@ function analyzeSuccessPatterns(
 ): AnalysisResult[] {
   const results: AnalysisResult[] = [];
 
-  if (!dataView.patterns?.patterns) return results;
+  if (!dataView.patterns?.patterns) {
+    results.push({
+      timestamp: dataView.timestamp,
+      category: "pattern",
+      title: "パターンデータの観察",
+      description:
+        "パターンデータ（patterns.json）がありません。タスクを実行すると、成功・失敗パターンが蓄積されます。",
+      evidence: [{ source: "pattern_extraction", data: "patterns_count=0" }],
+      confidence: 0.5,
+      severity: "low",
+    });
+    return results;
+  }
 
   const successPatterns = dataView.patterns.patterns.filter(
     (p) => p.patternType === "success"
   );
 
-  // 高頻度の成功パターンを特定
+  // 成功パターンがない場合
+  if (successPatterns.length === 0) {
+    results.push({
+      timestamp: dataView.timestamp,
+      category: "pattern",
+      title: "成功パターンの観察",
+      description:
+        "成功パターンがまだ蓄積されていません。タスクを完了させると、成功パターンが記録されます。",
+      evidence: [
+        {
+          source: "pattern_extraction",
+          data: "success_patterns_count=0",
+        },
+      ],
+      confidence: 0.5,
+      severity: "low",
+    });
+    return results;
+  }
+
+  // 高頻度の成功パターンを特定（条件を緩和してより多くのポジティブな観察を提供）
   const highFreqPatterns = successPatterns
-    .filter((p) => p.frequency >= 3 && p.confidence >= 0.7)
+    .filter((p) => p.frequency >= 2 && p.confidence >= 0.5)
     .sort((a, b) => b.frequency - a.frequency)
     .slice(0, 5);
 
   for (const pattern of highFreqPatterns) {
+    // 成功パターンから学びを抽出
+    const keywordsStr = pattern.keywords.slice(0, 3).join(", ");
+    
     results.push({
       timestamp: dataView.timestamp,
       category: "pattern",
-      title: `成功パターン: ${pattern.taskType}`,
+      title: `成功パターン: ${pattern.taskType} (${keywordsStr})`,
       description: pattern.description,
       evidence: [
         {
@@ -470,7 +532,7 @@ function analyzeSuccessPatterns(
         },
       ],
       confidence: pattern.confidence,
-      severity: "low",
+      severity: "low", // 成功パターンは常に低重要度（観察として）
     });
   }
 
@@ -559,7 +621,7 @@ function analyzeTaskTypeTrends(
         timestamp: dataView.timestamp,
         category: "trend",
         title: `タスクタイプ「${taskType}」の失敗率高`,
-        description: `タスクタイプ「${taskType}」の失敗率が${(failRate * 100).toFixed(1)}%と高くなっています。アプローチの見直しが必要かもしれません。`,
+        description: `タスクタイプ「${taskType}」の失敗率が${(failRate * 100).toFixed(1)}%です。アプローチを見直す機会かもしれません。`,
         evidence: [
           {
             source: "run_index",
@@ -570,6 +632,25 @@ function analyzeTaskTypeTrends(
         severity: failRate > 0.5 ? "high" : "medium",
       });
     }
+  }
+
+  // データがない場合のフォールバック観察
+  if (results.length === 0 && taskTypeStats.size === 0) {
+    results.push({
+      timestamp: dataView.timestamp,
+      category: "trend",
+      title: "実行履歴データの観察",
+      description:
+        "実行履歴（run-index）にデータがありません。サブエージェントやエージェントチームを実行すると、トレンド分析が可能になります。",
+      evidence: [
+        {
+          source: "run_index",
+          data: "runs_count=0",
+        },
+      ],
+      confidence: 0.5,
+      severity: "low",
+    });
   }
 
   return results;
@@ -599,7 +680,14 @@ export function runAllAnalyses(
   // タスクタイプトレンド
   allResults.push(...analyzeTaskTypeTrends(dataView));
 
-  // 重要度でソートし、上限まで切り詰める
+  // カテゴリのバランスを考慮して選択する
+  // 各カテゴリから最大3件を選び、残りを重要度で埋める
+  const maxPerCategory = 3;
+  const categoryCounts = new Map<string, number>();
+  const balancedResults: AnalysisResult[] = [];
+  const remainingResults: AnalysisResult[] = [];
+
+  // 重要度でソート
   const severityOrder: Record<InsightSeverity, number> = {
     critical: 0,
     high: 1,
@@ -613,7 +701,24 @@ export function runAllAnalyses(
       b.confidence - a.confidence
   );
 
-  return allResults.slice(0, config.maxInsightsPerReport);
+  // カテゴリバランスを考慮して選択
+  for (const result of allResults) {
+    const count = categoryCounts.get(result.category) || 0;
+    if (count < maxPerCategory) {
+      balancedResults.push(result);
+      categoryCounts.set(result.category, count + 1);
+    } else {
+      remainingResults.push(result);
+    }
+  }
+
+  // 残りのスロットを重要度順で埋める
+  const remaining = config.maxInsightsPerReport - balancedResults.length;
+  if (remaining > 0) {
+    balancedResults.push(...remainingResults.slice(0, remaining));
+  }
+
+  return balancedResults;
 }
 
 // ============================================================================
