@@ -1,14 +1,14 @@
 /**
  * .pi/extensions/pi-ai-abort-fix.ts
- * pi-aiのstop reason変換にabort対応を追加する旧ランタイムパッチ実装（現在は既定で無効）。
- * no patch方針により本実装は非推奨で、例外経路のハンドリングで代替するために履歴として保持する。
+ * pi-aiのstop reason変換にabort対応を追加するランタイム互換パッチ実装。
+ * 原則は上流更新で解消するが、古いpi本体実行環境でのみ必要時に適用する。
  * 関連: docs/patches/pi-ai-abort-fix.md, .pi/lib/error-utils.ts, package.json
  */
 /**
  * @abdd.meta
  * path: .pi/extensions/pi-ai-abort-fix.ts
- * role: deprecated pi-ai runtime patch
- * why: 過去互換のために保持するが、現在はno patch方針で非推奨
+ * role: pi-ai runtime compatibility patch
+ * why: 実行中pi本体が古い場合にのみabort stop reason未対応を補正する
  * related: docs/patches/pi-ai-abort-fix.md
  * public_api: default function
  * invariants: セッション開始時に1回だけパッチ適用
@@ -29,6 +29,13 @@ type PatchTarget = {
 };
 
 const PATCH_TARGETS: PatchTarget[] = [
+  {
+    modulePath: "@mariozechner/pi-ai/dist/providers/google-shared.js",
+    marker: 'case "abort":',
+    before: '        case FinishReason.NO_IMAGE:\n            return "error";',
+    after:
+      '        case FinishReason.NO_IMAGE:\n            return "error";\n        case "abort":\n            return "aborted";',
+  },
   {
     modulePath: "@mariozechner/pi-ai/dist/providers/anthropic.js",
     marker: 'case "abort":',
