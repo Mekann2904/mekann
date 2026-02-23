@@ -657,6 +657,142 @@ function analyzeTaskTypeTrends(
 }
 
 /**
+ * 学習機会を分析する（思考分類学の視点から）
+ */
+function analyzeLearningOpportunities(
+  dataView: IntegratedDataView
+): AnalysisResult[] {
+  const results: AnalysisResult[] = [];
+
+  if (!dataView.patterns?.patterns) return results;
+
+  const successPatterns = dataView.patterns.patterns.filter(
+    (p) => p.patternType === "success"
+  );
+  const failurePatterns = dataView.patterns.patterns.filter(
+    (p) => p.patternType === "failure"
+  );
+
+  // 成功パターンから学びを抽出
+  if (successPatterns.length > 10) {
+    // 高信頼度の成功パターンから学びを特定
+    const highConfidenceSuccess = successPatterns.filter(
+      (p) => p.confidence >= 0.8 && p.frequency >= 3
+    );
+
+    if (highConfidenceSuccess.length > 0) {
+      // タスクタイプごとにグループ化
+      const byTaskType = new Map<string, number>();
+      for (const p of highConfidenceSuccess) {
+        byTaskType.set(p.taskType, (byTaskType.get(p.taskType) || 0) + 1);
+      }
+
+      const topTaskType = [...byTaskType.entries()].sort(
+        (a, b) => b[1] - a[1]
+      )[0];
+
+      if (topTaskType) {
+        results.push({
+          timestamp: dataView.timestamp,
+          category: "learning",
+          title: `学習の成果: ${topTaskType[0]}`,
+          description: `${topTaskType[0]}タスクで${topTaskType[1]}個の高信頼度成功パターンが蓄積されています。この領域でのアプローチが定着しています。`,
+          evidence: [
+            {
+              source: "pattern_extraction",
+              data: `task_type=${topTaskType[0]}, high_confidence_patterns=${topTaskType[1]}`,
+            },
+          ],
+          confidence: 0.75,
+          severity: "low",
+        });
+      }
+    }
+  }
+
+  // 失敗パターンから学ぶべき教訓
+  if (failurePatterns.length > 0) {
+    const recurringFailures = failurePatterns.filter((p) => p.frequency >= 2);
+    if (recurringFailures.length > 0) {
+      results.push({
+        timestamp: dataView.timestamp,
+        category: "learning",
+        title: `学習の機会: 繰り返し失敗パターンの分析`,
+        description: `${recurringFailures.length}個の繰り返し失敗パターンがあります。これらから「何を避けるべきか」を学ぶ機会です。`,
+        evidence: [
+          {
+            source: "pattern_extraction",
+            data: `recurring_failures=${recurringFailures.length}`,
+          },
+        ],
+        confidence: 0.7,
+        severity: "medium",
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * 改善の機会を分析する（思考分類学の視点から）
+ */
+function analyzeImprovementOpportunities(
+  dataView: IntegratedDataView
+): AnalysisResult[] {
+  const results: AnalysisResult[] = [];
+
+  // 使用統計から機会を特定
+  if (dataView.usageStats) {
+    // 使用頻度の低い拡張機能（機会）
+    const lowUsageExtensions = dataView.usageStats.topExtensions.filter(
+      (e) => e.calls < 5 && e.calls > 0
+    );
+
+    if (lowUsageExtensions.length > 0) {
+      results.push({
+        timestamp: dataView.timestamp,
+        category: "opportunity",
+        title: `探索の機会: 使用頻度の低い機能`,
+        description: `${lowUsageExtensions.length}個の拡張機能が低使用率です。これらは「まだ活用されていない可能性」を示しています。`,
+        evidence: [
+          {
+            source: "usage_stats",
+            data: `low_usage_extensions=${lowUsageExtensions.length}`,
+          },
+        ],
+        confidence: 0.6,
+        severity: "low",
+      });
+    }
+
+    // エラー率が低いが使用頻度が高い拡張機能（成功事例）
+    const successfulExtensions = dataView.usageStats.topExtensions.filter(
+      (e) => e.calls > 50 && e.errorRate < 0.05
+    );
+
+    if (successfulExtensions.length > 0) {
+      results.push({
+        timestamp: dataView.timestamp,
+        category: "opportunity",
+        title: `成功事例の活用機会`,
+        description: `${successfulExtensions.length}個の拡張機能が高使用率・低エラー率です。これらのアプローチを他の領域にも適用できる可能性があります。`,
+        evidence: [
+          {
+            source: "usage_stats",
+            data: `successful_extensions=${successfulExtensions.length}`,
+          },
+        ],
+        confidence: 0.7,
+        severity: "low",
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
  * 全ての分析を実行する
  */
 export function runAllAnalyses(
@@ -679,6 +815,12 @@ export function runAllAnalyses(
 
   // タスクタイプトレンド
   allResults.push(...analyzeTaskTypeTrends(dataView));
+
+  // 学習機会の分析
+  allResults.push(...analyzeLearningOpportunities(dataView));
+
+  // 改善の機会の分析
+  allResults.push(...analyzeImprovementOpportunities(dataView));
 
   // カテゴリのバランスを考慮して選択する
   // 各カテゴリから最大3件を選び、残りを重要度で埋める
