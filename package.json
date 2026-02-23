@@ -27,7 +27,7 @@
     "ajv": "^8.18.0"
   },
   "scripts": {
-    "postinstall": "patch-package && ./scripts/patch-global-pi.sh",
+    "postinstall": "echo \"postinstall patching disabled\"",
     "build": "vitest run",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -67,13 +67,9 @@
       "./.pi/extensions/skill-inspector.ts",
       "./.pi/extensions/startup-context.ts",
       "./.pi/extensions/subagents.ts",
-      "./.pi/extensions/rate-limit-retry-budget.ts",
       "./.pi/extensions/rpm-throttle.ts",
       "./.pi/extensions/ul-dual-mode.ts",
-      "./.pi/extensions/usage-tracker.ts",
-      "./.pi/extensions/pi-coding-agent-lock-fix.ts",
-      "./.pi/extensions/pi-coding-agent-rate-limit-fix.ts",
-      "./.pi/extensions/pi-ai-abort-fix.ts"
+      "./.pi/extensions/usage-tracker.ts"
     ],
     "skills": [
       "./.pi/skills"
