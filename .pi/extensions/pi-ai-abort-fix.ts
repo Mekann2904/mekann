@@ -56,6 +56,7 @@ type PatchTarget = {
 };
 
 const PATCH_TARGETS: PatchTarget[] = [
+  // abortケースの追加パッチ
   {
     modulePath: "@mariozechner/pi-ai/dist/providers/google-shared.js",
     marker: 'case "abort":',
@@ -82,6 +83,31 @@ const PATCH_TARGETS: PatchTarget[] = [
     before: '        case "failed":\n        case "cancelled":\n            return "error";',
     after:
       '        case "failed":\n        case "cancelled":\n            return "error";\n        case "abort":\n            return "aborted";',
+  },
+  // 未知のstop reasonを安全に処理するフォールバックパッチ
+  {
+    modulePath: "@mariozechner/pi-ai/dist/providers/google-shared.js",
+    marker: '// Fallback for unknown stop reasons',
+    before: '        default: {\n            const _exhaustive = reason;\n            throw new Error(`Unhandled stop reason: ${_exhaustive}`);\n        }',
+    after: '        default:\n            // Fallback for unknown stop reasons\n            return "error";',
+  },
+  {
+    modulePath: "@mariozechner/pi-ai/dist/providers/anthropic.js",
+    marker: '// Fallback for unknown stop reasons',
+    before: '        default:\n            // Handle unknown stop reasons gracefully (API may add new values)\n            throw new Error(`Unhandled stop reason: ${reason}`);',
+    after: '        default:\n            // Fallback for unknown stop reasons\n            return "error";',
+  },
+  {
+    modulePath: "@mariozechner/pi-ai/dist/providers/openai-completions.js",
+    marker: '// Fallback for unknown stop reasons',
+    before: '        default: {\n            const _exhaustive = reason;\n            throw new Error(`Unhandled stop reason: ${_exhaustive}`);\n        }',
+    after: '        default:\n            // Fallback for unknown stop reasons\n            return "error";',
+  },
+  {
+    modulePath: "@mariozechner/pi-ai/dist/providers/openai-responses-shared.js",
+    marker: '// Fallback for unknown stop reasons',
+    before: '        default: {\n            const _exhaustive = status;\n            throw new Error(`Unhandled stop reason: ${_exhaustive}`);\n        }',
+    after: '        default:\n            // Fallback for unknown stop reasons\n            return "error";',
   },
 ];
 

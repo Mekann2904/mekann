@@ -1,0 +1,7510 @@
+[
+  {
+    "id": "aporia_1771830187431_ydq335s",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.5032461608120427e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187440_1zx591w",
+        "timestamp": "2026-02-23T07:03:07.440Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.431Z",
+    "updatedAt": "2026-02-23T07:03:07.440Z"
+  },
+  {
+    "id": "aporia_1771830187440_325onhn",
+    "name": "&x",
+    "poles": {
+      "first": {
+        "label": "y\"",
+        "description": "%"
+      },
+      "second": {
+        "label": "valueOf",
+        "description": "7-"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "E,",
+        "FZ<g/EX",
+        "mbT<I",
+        " ",
+        "BR&)L",
+        "d~ww'22x",
+        "$A}2\\Z*U6",
+        "N@",
+        "h"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "ref",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "\" ",
+    "tags": [
+      "H_"
+    ],
+    "createdAt": "2026-02-23T07:03:07.440Z",
+    "updatedAt": "2026-02-23T07:03:07.440Z"
+  },
+  {
+    "id": "aporia_1771830187440_n8kv78q",
+    "name": "8Jf%ta/'\\E",
+    "poles": {
+      "first": {
+        "label": "X$SlE",
+        "description": "$&y&,<mv"
+      },
+      "second": {
+        "label": "v\"&[{.!Px!QD",
+        "description": "B!"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "mb|0",
+        "mJ",
+        "",
+        "~Mq",
+        "_F+XFK'a,s",
+        ":+b|_]Z\\ug",
+        "ruq!95",
+        "$7.*~E",
+        "",
+        "o"
+      ],
+      "forSecond": [
+        "%7"
+      ]
+    },
+    "whyUnresolvable": "#%#",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "Jql*K%OL]\"1q",
+    "tags": [
+      "zSh~yqD,0N",
+      "w+R3e#3UE+",
+      "Ph[$~:-2oeb"
+    ],
+    "createdAt": "2026-02-23T07:03:07.440Z",
+    "updatedAt": "2026-02-23T07:03:07.440Z"
+  },
+  {
+    "id": "aporia_1771830187443_2i8iyhx",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.9999990463256836,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187444_v2job8i",
+        "timestamp": "2026-02-23T07:03:07.444Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.443Z",
+    "updatedAt": "2026-02-23T07:03:07.444Z"
+  },
+  {
+    "id": "aporia_1771830187443_6cclyes",
+    "name": ",f)e'",
+    "poles": {
+      "first": {
+        "label": "[\"P",
+        "description": "ksD"
+      },
+      "second": {
+        "label": "g",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "0",
+        "[h)'(",
+        "-HL",
+        "4`Cb`,"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "]Jw\"&)8",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "^ W^%ap",
+    "tags": [
+      "iBFhy]$",
+      "XOB+H`9R",
+      "umh\"%H?A&ZX.",
+      "KHz\\C",
+      "V=o#]je",
+      "C69F&9UzL",
+      "2%~",
+      ">/^y*C0o",
+      "_o("
+    ],
+    "createdAt": "2026-02-23T07:03:07.443Z",
+    "updatedAt": "2026-02-23T07:03:07.443Z"
+  },
+  {
+    "id": "aporia_1771830187444_kutzmop",
+    "name": "!c",
+    "poles": {
+      "first": {
+        "label": "g",
+        "description": "4)x{Fm"
+      },
+      "second": {
+        "label": "gw",
+        "description": "toString"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "'2Hd",
+        "aC&#pUJ-y8",
+        "<J",
+        "Bt}",
+        "j70`JGzA}",
+        "8*4"
+      ],
+      "forSecond": [
+        "?4\"S,pso",
+        ";}uIDRg\"",
+        "mr'w",
+        "!>t0PLe",
+        "",
+        "'d"
+      ]
+    },
+    "whyUnresolvable": "$!!B",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "# iG",
+    "tags": [
+      "g_U*h}y%`h)4",
+      "vby"
+    ],
+    "createdAt": "2026-02-23T07:03:07.444Z",
+    "updatedAt": "2026-02-23T07:03:07.444Z"
+  },
+  {
+    "id": "aporia_1771830187444_4g758g4",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.8216880036222622e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187445_0w5b28p",
+        "timestamp": "2026-02-23T07:03:07.445Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.444Z",
+    "updatedAt": "2026-02-23T07:03:07.445Z"
+  },
+  {
+    "id": "aporia_1771830187444_9colhvx",
+    "name": "&,8%m}z",
+    "poles": {
+      "first": {
+        "label": "Ud}b`N]Atp,",
+        "description": "_"
+      },
+      "second": {
+        "label": "B0dKUt",
+        "description": "%"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "ta:x{",
+        "kDH_F6jWI",
+        "?l]W}r`MC\\",
+        "<|6",
+        "`U'Pn6^",
+        "]j",
+        "/:j+\\m1pOW",
+        "",
+        "t*'Q[/4Fb"
+      ],
+      "forSecond": [
+        "",
+        "J@PU^[",
+        "24O",
+        "H.RL(MLi>"
+      ]
+    },
+    "whyUnresolvable": "key",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "1Qbp!k6A'eh}",
+    "tags": [
+      "I@x?`"
+    ],
+    "createdAt": "2026-02-23T07:03:07.444Z",
+    "updatedAt": "2026-02-23T07:03:07.444Z"
+  },
+  {
+    "id": "aporia_1771830187445_nd7xm2h",
+    "name": ">",
+    "poles": {
+      "first": {
+        "label": "\",~",
+        "description": ""
+      },
+      "second": {
+        "label": "wYxpkVo",
+        "description": "BIZ2^\"|}&"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "MaXlS}"
+      ],
+      "forSecond": [
+        "3%w>"
+      ]
+    },
+    "whyUnresolvable": "]&",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "$!{plonst",
+    "tags": [
+      "j^}Ys_Ug",
+      "jJjne",
+      "?B&s3y3Bl[%e",
+      "cBv",
+      "__{"
+    ],
+    "createdAt": "2026-02-23T07:03:07.445Z",
+    "updatedAt": "2026-02-23T07:03:07.445Z"
+  },
+  {
+    "id": "aporia_1771830187445_adc3wd3",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.4572372033107437e-19,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187448_h3yx4ho",
+        "timestamp": "2026-02-23T07:03:07.448Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.445Z",
+    "updatedAt": "2026-02-23T07:03:07.448Z"
+  },
+  {
+    "id": "aporia_1771830187448_j57o4fs",
+    "name": "xyvj",
+    "poles": {
+      "first": {
+        "label": "!",
+        "description": "6 \"V}O"
+      },
+      "second": {
+        "label": "name",
+        "description": "8upe_"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "ka_/03y",
+        "D("
+      ],
+      "forSecond": [
+        "\\~#HADe"
+      ]
+    },
+    "whyUnresolvable": "qWH>PiAB{",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "mGz\"Jv \\mav",
+    "tags": [
+      "&P;5gx"
+    ],
+    "createdAt": "2026-02-23T07:03:07.448Z",
+    "updatedAt": "2026-02-23T07:03:07.448Z"
+  },
+  {
+    "id": "aporia_1771830187449_uo9hyug",
+    "name": "1",
+    "poles": {
+      "first": {
+        "label": "WY0TSREoQ",
+        "description": "o"
+      },
+      "second": {
+        "label": "&",
+        "description": "D?ndyNxE"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "va",
+        "0Y%s-O"
+      ],
+      "forSecond": [
+        "covn :c[h",
+        " ^N<V`7%~",
+        "WK<{f!&h0",
+        "Z8oyB=F",
+        "?=]6dWyAk",
+        "/(.",
+        ";R!a!5$",
+        "w@|p)y#",
+        "K"
+      ]
+    },
+    "whyUnresolvable": "&x",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "c8{$j&}s\"A|",
+    "tags": [
+      "=/*sC!mHdK",
+      "DOqb/9&t2U"
+    ],
+    "createdAt": "2026-02-23T07:03:07.449Z",
+    "updatedAt": "2026-02-23T07:03:07.449Z"
+  },
+  {
+    "id": "aporia_1771830187449_0wip2az",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 8.578142125631634e-20,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187449_tuijbd9",
+        "timestamp": "2026-02-23T07:03:07.449Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.449Z",
+    "updatedAt": "2026-02-23T07:03:07.449Z"
+  },
+  {
+    "id": "aporia_1771830187449_j3up4ii",
+    "name": "t\\RgK9;",
+    "poles": {
+      "first": {
+        "label": "cLg<MdZ=X ",
+        "description": ""
+      },
+      "second": {
+        "label": "(Xr",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "5+",
+        "#-#%{yra!%",
+        "3",
+        "E>tug@t",
+        "\"k",
+        "!_U$:Mg\"5",
+        "#$&AWw",
+        " iap",
+        "xK|&`%"
+      ],
+      "forSecond": [
+        "p06tVr",
+        "",
+        "!",
+        "WGB)y^uj0",
+        "Gv6;N&E_",
+        "h3",
+        "",
+        "sv>9Fy,OpL",
+        "k",
+        "s"
+      ]
+    },
+    "whyUnresolvable": "=*9Ijvb",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "LnameeGett",
+    "tags": [
+      "q9M"
+    ],
+    "createdAt": "2026-02-23T07:03:07.449Z",
+    "updatedAt": "2026-02-23T07:03:07.449Z"
+  },
+  {
+    "id": "aporia_1771830187450_x4lrt3o",
+    "name": "3H},Z;z!Xx]",
+    "poles": {
+      "first": {
+        "label": "#3",
+        "description": ""
+      },
+      "second": {
+        "label": "k#$N)!v1",
+        "description": "I;VIqg:|"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "55pG",
+        "'sPR%96",
+        "",
+        "22p|4c5+",
+        "2A",
+        "%rKRH:"
+      ],
+      "forSecond": [
+        "M12",
+        "p-Nw:,,",
+        "T[/%8",
+        "",
+        "xb]",
+        "+m,[MD$o.4",
+        "4"
+      ]
+    },
+    "whyUnresolvable": "FP|:nXPk[",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "x6Cd@",
+    "tags": [
+      "v?4pD@I",
+      "W-V v[KA",
+      "|",
+      "^\"&Bj",
+      "Wvv X~D]bs"
+    ],
+    "createdAt": "2026-02-23T07:03:07.450Z",
+    "updatedAt": "2026-02-23T07:03:07.450Z"
+  },
+  {
+    "id": "aporia_1771830187450_31bou3h",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.2611686178923354e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187451_fss19ep",
+        "timestamp": "2026-02-23T07:03:07.451Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.450Z",
+    "updatedAt": "2026-02-23T07:03:07.451Z"
+  },
+  {
+    "id": "aporia_1771830187451_659a6ow",
+    "name": "bnu",
+    "poles": {
+      "first": {
+        "label": "CZ+xVcVu ",
+        "description": "D"
+      },
+      "second": {
+        "label": "#bz`cRrg",
+        "description": "$s#VQ#j;"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "]j)B#z"
+      ],
+      "forSecond": [
+        "_*",
+        "Js>m!",
+        "e",
+        "^#a>^RT:~"
+      ]
+    },
+    "whyUnresolvable": "#<J$zC4\\ q+w",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "tHU_",
+    "tags": [
+      "KcZa5C{",
+      "y\"l?",
+      "?I1xN4"
+    ],
+    "createdAt": "2026-02-23T07:03:07.451Z",
+    "updatedAt": "2026-02-23T07:03:07.451Z"
+  },
+  {
+    "id": "aporia_1771830187453_kco330e",
+    "name": ",",
+    "poles": {
+      "first": {
+        "label": " &\"#",
+        "description": "B,Lk"
+      },
+      "second": {
+        "label": "_/[0",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "b"
+      ],
+      "forSecond": [
+        "T!lV%Bo!",
+        "dh/I9wV",
+        "+",
+        "B%teC",
+        "",
+        "",
+        "KesO6",
+        "l!Nkb(@(",
+        "}y?E(=-#M"
+      ]
+    },
+    "whyUnresolvable": "le7se#",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "4nbT5",
+    "tags": [
+      "@e^''BC,8-",
+      "IBi%%",
+      "2]::WCO\\-Ms",
+      "p/G",
+      "V\\(7qwLJ5b",
+      "Hnd4SQs%=\\O",
+      "@d\\v>PnR&3An",
+      "\"@w\"Vvbcgpz",
+      "YeW",
+      "3R)=T,"
+    ],
+    "createdAt": "2026-02-23T07:03:07.453Z",
+    "updatedAt": "2026-02-23T07:03:07.453Z"
+  },
+  {
+    "id": "aporia_1771830187453_6pb310u",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 9.628522978921694e-11,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187453_ltha2b5",
+        "timestamp": "2026-02-23T07:03:07.453Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.453Z",
+    "updatedAt": "2026-02-23T07:03:07.453Z"
+  },
+  {
+    "id": "aporia_1771830187453_dqozcc8",
+    "name": "D.@}Ahex=J/P",
+    "poles": {
+      "first": {
+        "label": "$Rpl5k]I",
+        "description": ":~x"
+      },
+      "second": {
+        "label": "`plFj1bS",
+        "description": "~*Mu+Du"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "Pg}D",
+        "VLU:7V",
+        "WZ9.G#aNaO"
+      ],
+      "forSecond": [
+        "",
+        "",
+        ">zm",
+        "GK%|w;5",
+        "Oq_*",
+        "-m*B7k0"
+      ]
+    },
+    "whyUnresolvable": "FVH",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "~?z",
+    "tags": [
+      "kgL&a()R",
+      ">04}0-*:6H",
+      "4em",
+      "fZW7898@ B;Y",
+      "QOovFH3",
+      "&)j9",
+      "P_>j_\\e6XNA>",
+      ")s&1e8m]>]r",
+      "j"
+    ],
+    "createdAt": "2026-02-23T07:03:07.453Z",
+    "updatedAt": "2026-02-23T07:03:07.453Z"
+  },
+  {
+    "id": "aporia_1771830187454_hfu6u1q",
+    "name": "tfkV",
+    "poles": {
+      "first": {
+        "label": "WrfvO{",
+        "description": "z|A$"
+      },
+      "second": {
+        "label": "?Z\\G|KY39",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "`,u@Kd"
+      ],
+      "forSecond": [
+        "by-qQZ.n",
+        ".wm4K?_kUT",
+        "J#C",
+        "`DLL/H[wk3",
+        " ",
+        "f!",
+        "!",
+        "#%GTH",
+        "$!&#&%CO"
+      ]
+    },
+    "whyUnresolvable": "a",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "9T,\\`%rp;ag",
+    "tags": [
+      "(w4=(s",
+      "hwm",
+      "1",
+      "v9d",
+      "tDMH0Av",
+      "i^",
+      "NZ3qQrnrN,3",
+      "wZ",
+      "}Aax^"
+    ],
+    "createdAt": "2026-02-23T07:03:07.454Z",
+    "updatedAt": "2026-02-23T07:03:07.454Z"
+  },
+  {
+    "id": "aporia_1771830187454_e5ckfl2",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.240262831410087e-16,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187455_08bb6ec",
+        "timestamp": "2026-02-23T07:03:07.455Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.454Z",
+    "updatedAt": "2026-02-23T07:03:07.455Z"
+  },
+  {
+    "id": "aporia_1771830187454_h8zs01b",
+    "name": "MbnP{$",
+    "poles": {
+      "first": {
+        "label": "9v<V#wZ",
+        "description": "3.<"
+      },
+      "second": {
+        "label": "KFpM0I?",
+        "description": "X%#"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "%W>B9",
+        "&<MVKUPe",
+        "arguments"
+      ],
+      "forSecond": [
+        "*`"
+      ]
+    },
+    "whyUnresolvable": "0%OcP^c",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "/>eh4@",
+    "tags": [
+      "nx43I]V",
+      ":MK)",
+      ")l^f!32UREj",
+      "Ln<z)g'D",
+      "6Ii_>I",
+      "=LFn",
+      "Y^0t%~#q;&n"
+    ],
+    "createdAt": "2026-02-23T07:03:07.454Z",
+    "updatedAt": "2026-02-23T07:03:07.454Z"
+  },
+  {
+    "id": "aporia_1771830187457_kjp07q9",
+    "name": "uPoTlt}u_T~7",
+    "poles": {
+      "first": {
+        "label": "&yXZ",
+        "description": "|[C"
+      },
+      "second": {
+        "label": "RkG'7",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "b-ad(",
+        "P",
+        ".S_)1)<A",
+        "/$O9k'w:25",
+        "U\"U4Ov",
+        "_q_qQ|",
+        "Ve?",
+        "+#by=",
+        ";q]~-",
+        "j!P"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "QB%'7tJcMh",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "8",
+    "tags": [
+      "'\"$FH%$%\"\"",
+      "7o)",
+      "_"
+    ],
+    "createdAt": "2026-02-23T07:03:07.457Z",
+    "updatedAt": "2026-02-23T07:03:07.457Z"
+  },
+  {
+    "id": "aporia_1771830187457_ti65994",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.075032063369008e-9,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187458_z85c15i",
+        "timestamp": "2026-02-23T07:03:07.458Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.457Z",
+    "updatedAt": "2026-02-23T07:03:07.458Z"
+  },
+  {
+    "id": "aporia_1771830187457_krmosmm",
+    "name": "i#B]m,O",
+    "poles": {
+      "first": {
+        "label": "m8%N",
+        "description": "}}"
+      },
+      "second": {
+        "label": "[2$zP3UYW",
+        "description": "I#"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "!.x#v7GW}",
+        "'?",
+        "G'j",
+        "~"
+      ]
+    },
+    "whyUnresolvable": "K#,xMU",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "l{Q#a]w:",
+    "tags": [
+      ".u^~b]BS"
+    ],
+    "createdAt": "2026-02-23T07:03:07.457Z",
+    "updatedAt": "2026-02-23T07:03:07.457Z"
+  },
+  {
+    "id": "aporia_1771830187458_yvtaklz",
+    "name": "Y11 AWmz",
+    "poles": {
+      "first": {
+        "label": "% ",
+        "description": "490DZ$;"
+      },
+      "second": {
+        "label": "P7Xa",
+        "description": "|"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "ls"
+      ],
+      "forSecond": [
+        "5Nj",
+        ".5JZe.F<,R",
+        "scl,Q~j"
+      ]
+    },
+    "whyUnresolvable": "vO_<-m\\",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "<8l:",
+    "tags": [
+      "p",
+      "FA",
+      "cl375",
+      ")%&62 ",
+      "TCbind#: "
+    ],
+    "createdAt": "2026-02-23T07:03:07.458Z",
+    "updatedAt": "2026-02-23T07:03:07.458Z"
+  },
+  {
+    "id": "aporia_1771830187458_zjx3ajy",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.9999989867210388,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187459_2uyv9b8",
+        "timestamp": "2026-02-23T07:03:07.459Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.458Z",
+    "updatedAt": "2026-02-23T07:03:07.459Z"
+  },
+  {
+    "id": "aporia_1771830187459_bou2tdh",
+    "name": "oinhasOwnPr",
+    "poles": {
+      "first": {
+        "label": "Si,8",
+        "description": "h"
+      },
+      "second": {
+        "label": "s/6U",
+        "description": ".)`S%_"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "_i",
+        "",
+        "",
+        "ODu",
+        "@v$`hf<",
+        "Ex>"
+      ]
+    },
+    "whyUnresolvable": "-0{",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "^W",
+    "tags": [
+      "NU<mXa.)f",
+      "-!gZ5",
+      "id+@%",
+      ",CE;jK}O/4`",
+      "vz<q0nDs+p:/",
+      "E1C(Q"
+    ],
+    "createdAt": "2026-02-23T07:03:07.459Z",
+    "updatedAt": "2026-02-23T07:03:07.459Z"
+  },
+  {
+    "id": "aporia_1771830187459_51uvpe2",
+    "name": "bind",
+    "poles": {
+      "first": {
+        "label": "% e/9\\",
+        "description": "l1_U#9] [V"
+      },
+      "second": {
+        "label": ":Ld}r?W<l",
+        "description": "call"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "~:[Hn4eg",
+        "@&"
+      ],
+      "forSecond": [
+        "``fo6",
+        ",",
+        "#(fz#"
+      ]
+    },
+    "whyUnresolvable": "w6e2NUtRd5",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": ".d L",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.459Z",
+    "updatedAt": "2026-02-23T07:03:07.459Z"
+  },
+  {
+    "id": "aporia_1771830187460_dlr3jxb",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.2420775429197073e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187467_mvg6loj",
+        "timestamp": "2026-02-23T07:03:07.467Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.460Z",
+    "updatedAt": "2026-02-23T07:03:07.467Z"
+  },
+  {
+    "id": "aporia_1771830187460_5sgg6v1",
+    "name": "S",
+    "poles": {
+      "first": {
+        "label": ";\"iqX\\-",
+        "description": "b%#(*wM"
+      },
+      "second": {
+        "label": "Gsp<u<:m",
+        "description": " e"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "KPq",
+        "#Z"
+      ],
+      "forSecond": [
+        "=",
+        "Rv/%:I;wE",
+        "H6Rp!M&b#o"
+      ]
+    },
+    "whyUnresolvable": "b/>k``yq+w",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "#",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.460Z",
+    "updatedAt": "2026-02-23T07:03:07.460Z"
+  },
+  {
+    "id": "aporia_1771830187471_lqlamq0",
+    "name": "[8bN,9Ct(%.",
+    "poles": {
+      "first": {
+        "label": "oe1-up",
+        "description": ""
+      },
+      "second": {
+        "label": "lP",
+        "description": "length\"cal"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "VgQ|kC&",
+        ",",
+        "`y",
+        "R<+g_FF$$",
+        "\\?V=y",
+        "~`Qo d",
+        "\\S2c^"
+      ],
+      "forSecond": [
+        "u",
+        "u",
+        "\"! [sY",
+        "0G%Ir+j",
+        "",
+        "t^#^/7].*"
+      ]
+    },
+    "whyUnresolvable": "rf7IE*TG",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "Yb",
+    "tags": [
+      "@4q",
+      "U"
+    ],
+    "createdAt": "2026-02-23T07:03:07.471Z",
+    "updatedAt": "2026-02-23T07:03:07.471Z"
+  },
+  {
+    "id": "aporia_1771830187473_517b78k",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.5855571156307988e-11,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187567_9typtb6",
+        "timestamp": "2026-02-23T07:03:07.567Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.473Z",
+    "updatedAt": "2026-02-23T07:03:07.567Z"
+  },
+  {
+    "id": "aporia_1771830187474_grp9pzf",
+    "name": "L0f#v! )L",
+    "poles": {
+      "first": {
+        "label": "%BH-Ycc",
+        "description": "u!:&8/"
+      },
+      "second": {
+        "label": "e",
+        "description": "h"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "|xi",
+        "OQ\\IQ/p",
+        "WSd^eL[eW@",
+        ">&{~4",
+        "#4",
+        "",
+        "",
+        ":fv",
+        "1-:"
+      ],
+      "forSecond": [
+        "5",
+        "j",
+        "eRU\"P36]",
+        "<&",
+        "<rkzk~L.",
+        "*",
+        "v\\M/{|0",
+        ""
+      ]
+    },
+    "whyUnresolvable": "v",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "$\" ",
+    "tags": [
+      "S)ydRh",
+      "]\")I,*fHR",
+      "Wh0+7*[s&",
+      "B:fJ",
+      "K+#HY",
+      "XVk#<Fa",
+      "fq",
+      "U>yz5D~1JY",
+      "C5F\""
+    ],
+    "createdAt": "2026-02-23T07:03:07.474Z",
+    "updatedAt": "2026-02-23T07:03:07.474Z"
+  },
+  {
+    "id": "aporia_1771830187576_ao7du2x",
+    "name": "vgQ4\\Zzf?UZX",
+    "poles": {
+      "first": {
+        "label": "'",
+        "description": "SzL;\""
+      },
+      "second": {
+        "label": "<3_",
+        "description": "Yv"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "\\*",
+        "1`*Y66B(w%",
+        "#`;}*.vb",
+        "x/[*I4Yrt!",
+        "3y4e/j8XYy"
+      ]
+    },
+    "whyUnresolvable": "a1",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "val",
+    "tags": [
+      "/K}hG^",
+      "#!~"
+    ],
+    "createdAt": "2026-02-23T07:03:07.576Z",
+    "updatedAt": "2026-02-23T07:03:07.576Z"
+  },
+  {
+    "id": "aporia_1771830187578_2fssth4",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.958909175689248e-15,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187579_2xyolrk",
+        "timestamp": "2026-02-23T07:03:07.579Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.578Z",
+    "updatedAt": "2026-02-23T07:03:07.579Z"
+  },
+  {
+    "id": "aporia_1771830187578_z0xf64b",
+    "name": "-8lDx,8m",
+    "poles": {
+      "first": {
+        "label": "vou IJ-f<-MN",
+        "description": "W"
+      },
+      "second": {
+        "label": " fAT|nC?8muG",
+        "description": "F"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "?mSh?r21"
+      ],
+      "forSecond": [
+        "{syd"
+      ]
+    },
+    "whyUnresolvable": "x-<T5F.#",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "df",
+    "tags": [
+      "^!mDf%",
+      "%[2>^"
+    ],
+    "createdAt": "2026-02-23T07:03:07.578Z",
+    "updatedAt": "2026-02-23T07:03:07.578Z"
+  },
+  {
+    "id": "aporia_1771830187579_bmf3d4s",
+    "name": "Mapply",
+    "poles": {
+      "first": {
+        "label": "_LPjrIU}c=hP",
+        "description": "<^ev!"
+      },
+      "second": {
+        "label": "Pm$\"%@lV",
+        "description": "dT{Lx$ ,T"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "otocaleSt",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "'?sW&#_WtE",
+    "tags": [
+      "'G\"L;mc]kWl+",
+      "bef>e'U~9",
+      "~|"
+    ],
+    "createdAt": "2026-02-23T07:03:07.579Z",
+    "updatedAt": "2026-02-23T07:03:07.579Z"
+  },
+  {
+    "id": "aporia_1771830187580_gldw1xf",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.9999997019767761,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187583_1fp0xnp",
+        "timestamp": "2026-02-23T07:03:07.583Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.580Z",
+    "updatedAt": "2026-02-23T07:03:07.583Z"
+  },
+  {
+    "id": "aporia_1771830187582_ndoq7wz",
+    "name": "djAL$C%QY",
+    "poles": {
+      "first": {
+        "label": " !$Vpr&Cref_",
+        "description": "VertyIsEnu"
+      },
+      "second": {
+        "label": "h",
+        "description": "/OgUb1~"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "J#qZe7G"
+      ]
+    },
+    "whyUnresolvable": "QRMc&D-Kuo",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "Y,a|?0>3",
+    "tags": [
+      "r{Feq5"
+    ],
+    "createdAt": "2026-02-23T07:03:07.582Z",
+    "updatedAt": "2026-02-23T07:03:07.582Z"
+  },
+  {
+    "id": "aporia_1771830187583_5gai58r",
+    "name": "O3",
+    "poles": {
+      "first": {
+        "label": "e7Jc fWI*RV",
+        "description": "L)XR$GDvGz"
+      },
+      "second": {
+        "label": "0RF|lG$o",
+        "description": "*&P)1"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "mgD@;'",
+        "A'*N~GxE",
+        "%{<VQ_N&Ql",
+        "",
+        ":",
+        "-^t"
+      ]
+    },
+    "whyUnresolvable": "NMt",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "(uZC61pTAsl9",
+    "tags": [
+      "FNt_T}fpxvtW"
+    ],
+    "createdAt": "2026-02-23T07:03:07.583Z",
+    "updatedAt": "2026-02-23T07:03:07.583Z"
+  },
+  {
+    "id": "aporia_1771830187583_ptfw75v",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 6.963621346223192e-11,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187585_9tw8h1s",
+        "timestamp": "2026-02-23T07:03:07.585Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.583Z",
+    "updatedAt": "2026-02-23T07:03:07.585Z"
+  },
+  {
+    "id": "aporia_1771830187585_pqu2bgy",
+    "name": "p!\"dB}M!TH",
+    "poles": {
+      "first": {
+        "label": "5!QRO7\"",
+        "description": "T=Gwzn&`S*"
+      },
+      "second": {
+        "label": ".!t&",
+        "description": " "
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "G9JWhD}1",
+        "Y"
+      ],
+      "forSecond": [
+        "$|k31O",
+        "9C*^'7qdS",
+        "24`x8-CV,",
+        "M3Rz|`=oa",
+        "!",
+        "wwgVqqn;",
+        "S~!,b0M~",
+        "9c-+]"
+      ]
+    },
+    "whyUnresolvable": "f2}I:18F1GE",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "Xvt",
+    "tags": [
+      "s^PuU_-cD",
+      "kC r",
+      "DJOI_Ti(",
+      "SCA$2NJwsox$",
+      "j|U8vZ:`"
+    ],
+    "createdAt": "2026-02-23T07:03:07.585Z",
+    "updatedAt": "2026-02-23T07:03:07.585Z"
+  },
+  {
+    "id": "aporia_1771830187586_i683sfr",
+    "name": "ln",
+    "poles": {
+      "first": {
+        "label": "*#49 )DIKDs",
+        "description": ""
+      },
+      "second": {
+        "label": "s g/d21",
+        "description": ":n$G&#F$b["
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "D_;o:",
+        "&",
+        "",
+        "!T",
+        "",
+        "hE$0&$",
+        "_",
+        "9length1__",
+        "#Hn#r$)"
+      ],
+      "forSecond": [
+        "",
+        "'J8H*R7_"
+      ]
+    },
+    "whyUnresolvable": "~M!",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "3",
+    "tags": [
+      "j"
+    ],
+    "createdAt": "2026-02-23T07:03:07.586Z",
+    "updatedAt": "2026-02-23T07:03:07.586Z"
+  },
+  {
+    "id": "aporia_1771830187588_zq7xr18",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.0828566215145976e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187589_dwikxqc",
+        "timestamp": "2026-02-23T07:03:07.589Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.588Z",
+    "updatedAt": "2026-02-23T07:03:07.589Z"
+  },
+  {
+    "id": "aporia_1771830187588_f3iavlf",
+    "name": "i7p5",
+    "poles": {
+      "first": {
+        "label": "La\"hm",
+        "description": "ZtGg;"
+      },
+      "second": {
+        "label": "l6Mwps^*MP",
+        "description": "T/"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "valueOf"
+      ],
+      "forSecond": [
+        "96z\\{;p[$U"
+      ]
+    },
+    "whyUnresolvable": "<(",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "#b03.C",
+    "tags": [
+      "M9U",
+      "5r/}eiGN=c<",
+      "'`lNF}t",
+      ">$9[jd\\YUG:",
+      "+-f#"
+    ],
+    "createdAt": "2026-02-23T07:03:07.588Z",
+    "updatedAt": "2026-02-23T07:03:07.588Z"
+  },
+  {
+    "id": "aporia_1771830187590_94tcyeb",
+    "name": "=`h;WEH",
+    "poles": {
+      "first": {
+        "label": "fBc",
+        "description": "%Fr_"
+      },
+      "second": {
+        "label": "$lWWroB0]t,",
+        "description": ";P2j"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "Bgc<5#",
+        "$key ",
+        "!Km",
+        "length",
+        "xC;$8&A",
+        "",
+        ">"
+      ]
+    },
+    "whyUnresolvable": "8/(!9",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": ".9sY.c|-",
+    "tags": [
+      "Cn=H~C|B(J"
+    ],
+    "createdAt": "2026-02-23T07:03:07.590Z",
+    "updatedAt": "2026-02-23T07:03:07.590Z"
+  },
+  {
+    "id": "aporia_1771830187590_rqlab9q",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 5.634253156718675e-33,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187591_4n46kx5",
+        "timestamp": "2026-02-23T07:03:07.591Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.590Z",
+    "updatedAt": "2026-02-23T07:03:07.591Z"
+  },
+  {
+    "id": "aporia_1771830187591_2dgdedq",
+    "name": "~'Kk",
+    "poles": {
+      "first": {
+        "label": "IrOthVc7{",
+        "description": "toString"
+      },
+      "second": {
+        "label": "0|",
+        "description": "LtcqcV!qP"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "$#\\ook"
+      ]
+    },
+    "whyUnresolvable": "#z% WIsd",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "}",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.591Z",
+    "updatedAt": "2026-02-23T07:03:07.591Z"
+  },
+  {
+    "id": "aporia_1771830187592_oq2i5vy",
+    "name": "&#\"",
+    "poles": {
+      "first": {
+        "label": "=",
+        "description": "Q7 >"
+      },
+      "second": {
+        "label": "FH",
+        "description": "|\"2"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "0N3[\"$[mgn",
+        "_?OQvJ^8",
+        "e=Z<hrv",
+        "zGu"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "?Ta@]F0piwl?",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": ";",
+    "tags": [
+      "Am_'],E",
+      "p(",
+      "5V"
+    ],
+    "createdAt": "2026-02-23T07:03:07.592Z",
+    "updatedAt": "2026-02-23T07:03:07.592Z"
+  },
+  {
+    "id": "aporia_1771830187592_ca6qizk",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.0000015135907460717135,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187593_8cb1btz",
+        "timestamp": "2026-02-23T07:03:07.593Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.592Z",
+    "updatedAt": "2026-02-23T07:03:07.593Z"
+  },
+  {
+    "id": "aporia_1771830187593_mzcamc1",
+    "name": "fyvoM@x",
+    "poles": {
+      "first": {
+        "label": "SUAeOXt",
+        "description": "X7l3QWf037"
+      },
+      "second": {
+        "label": "&7$+",
+        "description": "\"%6"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "t#wt{n#6",
+        ",K~>*",
+        "\"sb;\"Eo\"u",
+        "KGo )Vbk",
+        "U/1",
+        "is",
+        "hO}",
+        "apply",
+        "zL{4%8y!"
+      ],
+      "forSecond": [
+        "\"dF`"
+      ]
+    },
+    "whyUnresolvable": "0lP'9S|4",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "#\"z{",
+    "tags": [
+      "jWdoB-F^f",
+      "aM1bx}<3WT",
+      "+Moy3Z%0x",
+      "As^;'~:8\"=",
+      "wyg4np?6",
+      "0e-% )\")unL",
+      "@8Johf`zR"
+    ],
+    "createdAt": "2026-02-23T07:03:07.593Z",
+    "updatedAt": "2026-02-23T07:03:07.593Z"
+  },
+  {
+    "id": "aporia_1771830187594_otm291e",
+    "name": "|,\"L8|",
+    "poles": {
+      "first": {
+        "label": "iQkPHQ",
+        "description": "}\"]prot"
+      },
+      "second": {
+        "label": ";~S?B=@s",
+        "description": "4"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "@Yam1s",
+        "&",
+        "2{Dz3",
+        ";VST9m",
+        "TW|L72"
+      ],
+      "forSecond": [
+        "3R26;",
+        "{wzOlhUu",
+        "+",
+        "__look",
+        "TF",
+        "",
+        "'ZdvW96",
+        "nS+f9s`,?6",
+        ""
+      ]
+    },
+    "whyUnresolvable": "T=OQto:hasO",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "8 prot",
+    "tags": [
+      "{XFwN~FyPf",
+      "5EW!sX]/B|!"
+    ],
+    "createdAt": "2026-02-23T07:03:07.594Z",
+    "updatedAt": "2026-02-23T07:03:07.594Z"
+  },
+  {
+    "id": "aporia_1771830187594_9dhkvgb",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 8.407790785948902e-45,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187595_sed8snh",
+        "timestamp": "2026-02-23T07:03:07.595Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.594Z",
+    "updatedAt": "2026-02-23T07:03:07.595Z"
+  },
+  {
+    "id": "aporia_1771830187595_bbvmj90",
+    "name": "N3iy]z>2",
+    "poles": {
+      "first": {
+        "label": "T>i4X}%FP",
+        "description": " $B%z7\"Wo"
+      },
+      "second": {
+        "label": "y4|",
+        "description": ",'}{u"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "g8 HBL^^0",
+        "",
+        "Mm",
+        "{3{5MQi",
+        "5J$(g1 ",
+        "d=OB{"
+      ],
+      "forSecond": [
+        "}S##y|}",
+        "1=w4"
+      ]
+    },
+    "whyUnresolvable": "iA",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "#yBE*NzX",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.595Z",
+    "updatedAt": "2026-02-23T07:03:07.595Z"
+  },
+  {
+    "id": "aporia_1771830187596_k4p0xan",
+    "name": "o(dq?",
+    "poles": {
+      "first": {
+        "label": "9%y",
+        "description": "name"
+      },
+      "second": {
+        "label": "A2K LWs7t",
+        "description": "jh2<"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "l4-@Nz",
+        "pcQsD",
+        "Gd%<-*R<",
+        "l~;XW1IJ",
+        "",
+        ".puv.B"
+      ]
+    },
+    "whyUnresolvable": "rF f",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "oh%%|",
+    "tags": [
+      "%Z",
+      "W_",
+      "-]ih!_!Y",
+      "A",
+      "Z8REk4;*4Zac"
+    ],
+    "createdAt": "2026-02-23T07:03:07.596Z",
+    "updatedAt": "2026-02-23T07:03:07.596Z"
+  },
+  {
+    "id": "aporia_1771830187596_ea9gxuu",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 5.605193857299268e-45,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187598_l4j5ef3",
+        "timestamp": "2026-02-23T07:03:07.598Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.596Z",
+    "updatedAt": "2026-02-23T07:03:07.598Z"
+  },
+  {
+    "id": "aporia_1771830187598_mmvijrl",
+    "name": "I^J*P",
+    "poles": {
+      "first": {
+        "label": "8!{G",
+        "description": "<Es6{"
+      },
+      "second": {
+        "label": "Al=m}-M\\l|wF",
+        "description": " "
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "L`e2B]5sh,",
+        "WI=$|M,&a",
+        "",
+        "8Xs",
+        "J",
+        "{'am?FFW"
+      ],
+      "forSecond": [
+        "%T",
+        "(1?]b9w[",
+        "bAtVms !",
+        "q"
+      ]
+    },
+    "whyUnresolvable": "|5}fX#Y#MEN",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "9:._lG3NGa",
+    "tags": [
+      "}",
+      "t!HC",
+      "xEFK)",
+      "aINQ",
+      "'B$#P:W(NF",
+      "+'=vUds"
+    ],
+    "createdAt": "2026-02-23T07:03:07.598Z",
+    "updatedAt": "2026-02-23T07:03:07.598Z"
+  },
+  {
+    "id": "aporia_1771830187599_mdtvmxw",
+    "name": "L{M.-K0",
+    "poles": {
+      "first": {
+        "label": "}M",
+        "description": "Hd"
+      },
+      "second": {
+        "label": "Gb-|u!!#m}E",
+        "description": "$v"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "*",
+        "B0s",
+        "h5=\\=Ea-ic",
+        "uL>&2,",
+        "A#:y?",
+        ").}*",
+        "",
+        "/9",
+        "G"
+      ],
+      "forSecond": [
+        "DJVoX\\",
+        "X_"
+      ]
+    },
+    "whyUnresolvable": "y%m0@kj)QJX",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "%o0%v1I",
+    "tags": [
+      "MM5eyNYjsT/",
+      "L<",
+      "x]`]",
+      "vg"
+    ],
+    "createdAt": "2026-02-23T07:03:07.599Z",
+    "updatedAt": "2026-02-23T07:03:07.599Z"
+  },
+  {
+    "id": "aporia_1771830187599_p4gitir",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 4.622067094059758e-19,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187601_8empnf2",
+        "timestamp": "2026-02-23T07:03:07.601Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.599Z",
+    "updatedAt": "2026-02-23T07:03:07.601Z"
+  },
+  {
+    "id": "aporia_1771830187600_7vhalb9",
+    "name": "ut\\aC@y3,,5",
+    "poles": {
+      "first": {
+        "label": "3tR",
+        "description": "HNa|"
+      },
+      "second": {
+        "label": "cZ^qt<.#",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "m.&K`wOdS",
+        "zr",
+        "c8$*1@",
+        "&x!Z-~",
+        "L!u (",
+        "t"
+      ],
+      "forSecond": [
+        "9]|R,"
+      ]
+    },
+    "whyUnresolvable": "eRi{#%=#`7-<",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "WuD\" {",
+    "tags": [
+      "?]:j5i3&/{1",
+      "?c%Ll3ua\"{K",
+      "H5o~{/"
+    ],
+    "createdAt": "2026-02-23T07:03:07.600Z",
+    "updatedAt": "2026-02-23T07:03:07.600Z"
+  },
+  {
+    "id": "aporia_1771830187601_l3sf4bz",
+    "name": "A",
+    "poles": {
+      "first": {
+        "label": "{F1|?,.Ul",
+        "description": "#<bC|2%n\"c"
+      },
+      "second": {
+        "label": ")`9zH[\\",
+        "description": "Q7m]p?Q"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "8+l<`%[sHu"
+      ],
+      "forSecond": [
+        "iXRhq7S*",
+        "0AvOym",
+        "",
+        "O%5o,-!_:",
+        "T"
+      ]
+    },
+    "whyUnresolvable": "|`Vs^,?s",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "valueOf",
+    "tags": [
+      "W3b=",
+      "k&",
+      "/+T[P`"
+    ],
+    "createdAt": "2026-02-23T07:03:07.601Z",
+    "updatedAt": "2026-02-23T07:03:07.601Z"
+  },
+  {
+    "id": "aporia_1771830187602_kmqfiwn",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.2420775429197073e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187603_h16imm9",
+        "timestamp": "2026-02-23T07:03:07.603Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.602Z",
+    "updatedAt": "2026-02-23T07:03:07.603Z"
+  },
+  {
+    "id": "aporia_1771830187602_ghl9cuu",
+    "name": "Buor'ip!^",
+    "poles": {
+      "first": {
+        "label": "91h!y8!",
+        "description": "-u"
+      },
+      "second": {
+        "label": "+#",
+        "description": "V$"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "\"dB~k",
+        "D%XCEIY",
+        "",
+        "%7!E",
+        "sp&gET(w",
+        "#call!app",
+        "",
+        "Lkc",
+        "",
+        ".&@W]"
+      ],
+      "forSecond": [
+        "yG}%vS_",
+        "C",
+        "T\"`",
+        ":0|Vcv0X",
+        "8",
+        "Z+",
+        "qap"
+      ]
+    },
+    "whyUnresolvable": "HRE",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "r`mFx=n",
+    "tags": [
+      "m28gxY#/",
+      "8:\"E",
+      "p \"Sy",
+      "Vf]}F'cV,4~h"
+    ],
+    "createdAt": "2026-02-23T07:03:07.602Z",
+    "updatedAt": "2026-02-23T07:03:07.602Z"
+  },
+  {
+    "id": "aporia_1771830187603_q5kbniz",
+    "name": "/",
+    "poles": {
+      "first": {
+        "label": "P4.-~%ci<",
+        "description": "6W$EGc&T]"
+      },
+      "second": {
+        "label": "nKnRL",
+        "description": "5\"$"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        ">1aF-J2%",
+        "X~!:K $K",
+        "Lkxqz%S",
+        "T",
+        "!;COt=`g",
+        ""
+      ],
+      "forSecond": [
+        "x~:",
+        "ZbPUR",
+        "[8\\kW}rF;",
+        "!T!{D`kq"
+      ]
+    },
+    "whyUnresolvable": "key",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "d&~C'D5u",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.603Z",
+    "updatedAt": "2026-02-23T07:03:07.603Z"
+  },
+  {
+    "id": "aporia_1771830187604_ksy00np",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.802596928649634e-45,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187606_cc9def4",
+        "timestamp": "2026-02-23T07:03:07.606Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.604Z",
+    "updatedAt": "2026-02-23T07:03:07.606Z"
+  },
+  {
+    "id": "aporia_1771830187605_grqxsef",
+    "name": "(gxgV%B7a?f",
+    "poles": {
+      "first": {
+        "label": "}#",
+        "description": ""
+      },
+      "second": {
+        "label": "x>9",
+        "description": "rx`p"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "b%F,",
+        "QX"
+      ],
+      "forSecond": [
+        ".ihF'",
+        "'##<jdK",
+        "'E5'y",
+        "ZP{?m6",
+        "{qsOdXe|wf"
+      ]
+    },
+    "whyUnresolvable": "}9G?d[",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "# .\"",
+    "tags": [
+      "Jenf[,`=v",
+      "$_S4uXC!<m"
+    ],
+    "createdAt": "2026-02-23T07:03:07.605Z",
+    "updatedAt": "2026-02-23T07:03:07.605Z"
+  },
+  {
+    "id": "aporia_1771830187606_6mb8rbr",
+    "name": "3Ekd[@\" {",
+    "poles": {
+      "first": {
+        "label": "WpAW!a1",
+        "description": "CA@G[H"
+      },
+      "second": {
+        "label": "m{Ju(l*%",
+        "description": ")DCk;*Vc_"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "Y!B;Z<d^+Q",
+        "Z$",
+        "",
+        "t;viyd",
+        "G@",
+        "TW",
+        "z"
+      ],
+      "forSecond": [
+        "L`O"
+      ]
+    },
+    "whyUnresolvable": "valueOf",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "~~",
+    "tags": [
+      "~D]F"
+    ],
+    "createdAt": "2026-02-23T07:03:07.606Z",
+    "updatedAt": "2026-02-23T07:03:07.606Z"
+  },
+  {
+    "id": "aporia_1771830187607_7fsvdni",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.005637457128614187,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187609_nhzrjlx",
+        "timestamp": "2026-02-23T07:03:07.609Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.607Z",
+    "updatedAt": "2026-02-23T07:03:07.609Z"
+  },
+  {
+    "id": "aporia_1771830187608_8ayatac",
+    "name": "&.",
+    "poles": {
+      "first": {
+        "label": "d^!g9%fhi*o",
+        "description": "ref"
+      },
+      "second": {
+        "label": "MUzoNQc",
+        "description": "&ONa"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "V_,]{j3TS+",
+        "|RX\"x",
+        "g^i\\23#",
+        "+xV3sQ]",
+        "x"
+      ],
+      "forSecond": [
+        "",
+        "",
+        "-Q_a",
+        "pxBk^\\y"
+      ]
+    },
+    "whyUnresolvable": "3#eb\\",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "Ze",
+    "tags": [
+      "v-g[",
+      "?C!crM:!",
+      "E6HAtL]M",
+      "\"B4W"
+    ],
+    "createdAt": "2026-02-23T07:03:07.608Z",
+    "updatedAt": "2026-02-23T07:03:07.608Z"
+  },
+  {
+    "id": "aporia_1771830187610_cmoqs7w",
+    "name": "cCzI",
+    "poles": {
+      "first": {
+        "label": "6",
+        "description": "eU}@D*D"
+      },
+      "second": {
+        "label": "^(&-a0.cIdVB",
+        "description": "&;"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "M",
+        "l  FhvE@",
+        ":T6oB",
+        "d8p",
+        "t]fb7S"
+      ],
+      "forSecond": [
+        "NpZ]Tcv",
+        "ZfT",
+        "\"Th",
+        "tSZ_ufJ@",
+        "",
+        "SiUK2",
+        "UHr\"SM",
+        "]*3",
+        "\\D{rB~b;"
+      ]
+    },
+    "whyUnresolvable": "x|",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "M[[k<f7bZBM%",
+    "tags": [
+      "yi0nf8ZrX",
+      "w;Sf\\[`}",
+      "p0=TNP<?Z1(",
+      "B",
+      "#]|%'q&k\""
+    ],
+    "createdAt": "2026-02-23T07:03:07.610Z",
+    "updatedAt": "2026-02-23T07:03:07.610Z"
+  },
+  {
+    "id": "aporia_1771830187611_iaqeb9k",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.4259408363429454e-28,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187613_uvw0w9v",
+        "timestamp": "2026-02-23T07:03:07.613Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.611Z",
+    "updatedAt": "2026-02-23T07:03:07.613Z"
+  },
+  {
+    "id": "aporia_1771830187612_ay2oo93",
+    "name": "76!GC|#\"$t",
+    "poles": {
+      "first": {
+        "label": "/",
+        "description": "]KJVf"
+      },
+      "second": {
+        "label": "key",
+        "description": "@\\1"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "\\9u@Ado",
+        "!=",
+        "J,"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "&SM2Lz/;L",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "*%>\"8E ]N\"[%",
+    "tags": [
+      "'Zu",
+      "[Y@6D]~'",
+      "-GS:|",
+      "a{",
+      "`RI]"
+    ],
+    "createdAt": "2026-02-23T07:03:07.612Z",
+    "updatedAt": "2026-02-23T07:03:07.612Z"
+  },
+  {
+    "id": "aporia_1771830187613_89fghup",
+    "name": "6im\\Z:rMJi",
+    "poles": {
+      "first": {
+        "label": "fj=L7X1U7%",
+        "description": ",K- t/"
+      },
+      "second": {
+        "label": "b? EK[h@m\\AC",
+        "description": "c,\"T) ~"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "qhT?JL",
+        "T<|"
+      ],
+      "forSecond": [
+        "TtOj",
+        "Gb",
+        ""
+      ]
+    },
+    "whyUnresolvable": "um9M0dF",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "7Y{#u~|H",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.613Z",
+    "updatedAt": "2026-02-23T07:03:07.613Z"
+  },
+  {
+    "id": "aporia_1771830187614_4vqn1c5",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 4.780293399288413e-26,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187615_we7agr7",
+        "timestamp": "2026-02-23T07:03:07.615Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.614Z",
+    "updatedAt": "2026-02-23T07:03:07.615Z"
+  },
+  {
+    "id": "aporia_1771830187615_8irj1a0",
+    "name": "/FBP!{HE^uw",
+    "poles": {
+      "first": {
+        "label": "&&|ij_%krJ",
+        "description": "Lzn"
+      },
+      "second": {
+        "label": "~e<'YiJ",
+        "description": "U*"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "",
+        "j",
+        "dmIb!",
+        "uMj,aF",
+        "?Qc!",
+        "@6"
+      ],
+      "forSecond": [
+        "f",
+        "xRxv"
+      ]
+    },
+    "whyUnresolvable": "bind",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "j]]5{",
+    "tags": [
+      "[eAWO-\"0oGa"
+    ],
+    "createdAt": "2026-02-23T07:03:07.615Z",
+    "updatedAt": "2026-02-23T07:03:07.615Z"
+  },
+  {
+    "id": "aporia_1771830187616_nhnfere",
+    "name": "3G+",
+    "poles": {
+      "first": {
+        "label": "FigOL\\XG}{",
+        "description": "{,<n\""
+      },
+      "second": {
+        "label": "])0-",
+        "description": "^m$!Pn  $~"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "{vH'+(R>",
+        "5",
+        "MxFE,gK6",
+        "",
+        "",
+        "S",
+        "nX}5Y,wV2:"
+      ],
+      "forSecond": [
+        "K1l1[|^.",
+        "SrI$3:I?:*",
+        "Zq|d",
+        "T]ms",
+        "_~sV",
+        "2AC&SO`t(",
+        "q",
+        "$@{:or?TD"
+      ]
+    },
+    "whyUnresolvable": "caleSt",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "qg",
+    "tags": [
+      "}N#OO>#{/z!"
+    ],
+    "createdAt": "2026-02-23T07:03:07.616Z",
+    "updatedAt": "2026-02-23T07:03:07.616Z"
+  },
+  {
+    "id": "aporia_1771830187616_o07smtu",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.000022347268895828165,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187621_szcj9pk",
+        "timestamp": "2026-02-23T07:03:07.621Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.616Z",
+    "updatedAt": "2026-02-23T07:03:07.621Z"
+  },
+  {
+    "id": "aporia_1771830187621_o14tywh",
+    "name": "valueOf",
+    "poles": {
+      "first": {
+        "label": "hr",
+        "description": "$3@8-yE"
+      },
+      "second": {
+        "label": "gZ",
+        "description": "4jQ||xe6"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "n!7K(8%o",
+        "ue",
+        "3N&|8q)e",
+        "*Nd^]Ca",
+        "kM(<\\M",
+        "`a5$`mg'D",
+        "\\Y"
+      ]
+    },
+    "whyUnresolvable": "uq",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "%F",
+    "tags": [
+      "\"N",
+      "nP/s'I(\\I.n"
+    ],
+    "createdAt": "2026-02-23T07:03:07.621Z",
+    "updatedAt": "2026-02-23T07:03:07.621Z"
+  },
+  {
+    "id": "aporia_1771830187622_3jf0750",
+    "name": "9",
+    "poles": {
+      "first": {
+        "label": "}bZK",
+        "description": "$."
+      },
+      "second": {
+        "label": "g*~=O",
+        "description": "C-.1IT"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "Sn\\{l",
+        "h[*Pl",
+        "",
+        "rmW]:c",
+        "7JN^C65T",
+        "@EB",
+        "8",
+        ":|h>;i"
+      ],
+      "forSecond": [
+        "hGLu^p",
+        "PCEv4",
+        "nft{",
+        "EEQ-!",
+        "|=]vP"
+      ]
+    },
+    "whyUnresolvable": "!",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "Y[XyhI",
+    "tags": [
+      ".4yIZO",
+      "hYK.w:",
+      "Q0is+R)1+fA",
+      "R;'r",
+      "<Q*S\"\\#EeBP",
+      "-+",
+      "Ls(nP|hq",
+      "Y(R5GF-{1",
+      "rkV",
+      "X6`\\S"
+    ],
+    "createdAt": "2026-02-23T07:03:07.622Z",
+    "updatedAt": "2026-02-23T07:03:07.622Z"
+  },
+  {
+    "id": "aporia_1771830187623_kvzz872",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.990484147785077e-37,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187797_a3q3n16",
+        "timestamp": "2026-02-23T07:03:07.797Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.623Z",
+    "updatedAt": "2026-02-23T07:03:07.797Z"
+  },
+  {
+    "id": "aporia_1771830187792_d7ynx25",
+    "name": "constructor",
+    "poles": {
+      "first": {
+        "label": "3eV`Ag",
+        "description": "+2.$?"
+      },
+      "second": {
+        "label": "&|o?SZH%u",
+        "description": "nY5"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "25<r1r&vA",
+        "BkmHm;<",
+        "x`Lz",
+        "B!~`'R^"
+      ],
+      "forSecond": [
+        "#u/I",
+        "<^o@?J$(",
+        "kY7",
+        "ox4BO,",
+        "b7M4",
+        "GON/}!-Fs="
+      ]
+    },
+    "whyUnresolvable": "keyrg__lo",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "8`t$fOa#",
+    "tags": [
+      "mb^p!2'kWo4k",
+      "PmPqN"
+    ],
+    "createdAt": "2026-02-23T07:03:07.792Z",
+    "updatedAt": "2026-02-23T07:03:07.792Z"
+  },
+  {
+    "id": "aporia_1771830187798_7n7qd4q",
+    "name": "9s-\"_Jq",
+    "poles": {
+      "first": {
+        "label": "7Xzprref!W-n",
+        "description": "h)-xe:\"Y8"
+      },
+      "second": {
+        "label": ")MX;Ah]>-",
+        "description": "v#"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "7R*\"xiq)e=",
+        "+L>8+",
+        "Tu{eb^3*w",
+        ",mF"
+      ],
+      "forSecond": [
+        "\\0/2Y4w)",
+        ".Xx5tD6",
+        "3ovZU_&eF]",
+        "vOV;Dh(",
+        "[ne<iBk-Q",
+        "G}",
+        "]$p%!hN>",
+        "Qf}#0",
+        "`Egt2H"
+      ]
+    },
+    "whyUnresolvable": "c=[^",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "PO<",
+    "tags": [
+      "iK",
+      "KNjKh\"v",
+      "krML]&n}",
+      "arguments",
+      "E-HpM&/`EOi,",
+      "8gOI*ohC@."
+    ],
+    "createdAt": "2026-02-23T07:03:07.798Z",
+    "updatedAt": "2026-02-23T07:03:07.798Z"
+  },
+  {
+    "id": "aporia_1771830187799_v1u4zcg",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.590991005535665e-26,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187800_a1ny1mh",
+        "timestamp": "2026-02-23T07:03:07.800Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.799Z",
+    "updatedAt": "2026-02-23T07:03:07.800Z"
+  },
+  {
+    "id": "aporia_1771830187800_eyx9c9z",
+    "name": "j:]]A)%5q",
+    "poles": {
+      "first": {
+        "label": "4Mr3fQQNZD#&",
+        "description": "d"
+      },
+      "second": {
+        "label": "xi)k8Ol`~Mi",
+        "description": "5"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "MtDv",
+        "ux8v"
+      ],
+      "forSecond": [
+        "EKfUE",
+        "(V{VgO:s3",
+        "@<?\\~k@"
+      ]
+    },
+    "whyUnresolvable": "DDqI+tG",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "H:)jP.rS\\PmY",
+    "tags": [
+      "$,vTTFgo3>)?",
+      "!hA:",
+      "o.%u",
+      "Mel\"Nr&zUjna",
+      "j",
+      "c6tz+#"
+    ],
+    "createdAt": "2026-02-23T07:03:07.800Z",
+    "updatedAt": "2026-02-23T07:03:07.800Z"
+  },
+  {
+    "id": "aporia_1771830187801_zvle4gv",
+    "name": "^,:\\y7um",
+    "poles": {
+      "first": {
+        "label": "E,is",
+        "description": "Sk.%uaZ#"
+      },
+      "second": {
+        "label": "ca:",
+        "description": "4_2k?m4;!H"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "$DU=K",
+        "F~>",
+        "",
+        "d=cV3",
+        "_^H",
+        "T>k."
+      ],
+      "forSecond": [
+        "",
+        "FVO*M|/!-c",
+        "Qa=ok",
+        "Zyin5QAp~",
+        "S-z%!=i(|"
+      ]
+    },
+    "whyUnresolvable": "`8*",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "be",
+    "tags": [
+      "ua%Ep",
+      "Ng;[~)fhE",
+      "W<\"~.VOJ\\+$/",
+      "S]S.;J"
+    ],
+    "createdAt": "2026-02-23T07:03:07.801Z",
+    "updatedAt": "2026-02-23T07:03:07.801Z"
+  },
+  {
+    "id": "aporia_1771830187802_wbi3zy4",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 7.006492321624085e-45,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187804_toy3fj2",
+        "timestamp": "2026-02-23T07:03:07.804Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.802Z",
+    "updatedAt": "2026-02-23T07:03:07.804Z"
+  },
+  {
+    "id": "aporia_1771830187803_o6rgrfc",
+    "name": "-Afeol0Kv",
+    "poles": {
+      "first": {
+        "label": "UKV*$_ep\\",
+        "description": "Q<SR|er"
+      },
+      "second": {
+        "label": "mBw; ",
+        "description": ". !vX:ytn^"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "R#^S@eq/%",
+        "L[",
+        "jxeppM{S-J",
+        "\"~{X,R2",
+        "',81x>f+e",
+        "R't7LoX]*",
+        "N~",
+        "yY",
+        "OZ!Z\"r`{3v"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "Jf\\vy-\"!* u",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "{^JJ\"}))d_}",
+    "tags": [
+      "R3tv+#",
+      "T?h`$",
+      "f&3[=0=vf/`",
+      "%",
+      "6",
+      "'8Ka*h0[9:ek",
+      "Hd*tcTi",
+      "p\\e& 1?}(4TI",
+      "i,Hs?O"
+    ],
+    "createdAt": "2026-02-23T07:03:07.803Z",
+    "updatedAt": "2026-02-23T07:03:07.803Z"
+  },
+  {
+    "id": "aporia_1771830187806_bdlby52",
+    "name": " =XCuQ",
+    "poles": {
+      "first": {
+        "label": ")#J+;h )jf",
+        "description": "-"
+      },
+      "second": {
+        "label": "9}Y",
+        "description": "Yp3/1\\]$"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "=!\"",
+        "",
+        "V",
+        "5cEV,U\"3"
+      ],
+      "forSecond": [
+        "z",
+        "+`",
+        "w$]g?N>}",
+        "4'}O!",
+        "/4daA~MYM"
+      ]
+    },
+    "whyUnresolvable": "F@%%z%",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "N`xZ0){^j3",
+    "tags": [
+      "\\",
+      "]v",
+      "N",
+      "XG*(86g",
+      "*P+=GiyVL&",
+      "DZ=4X|s",
+      "I(Yj}2?$"
+    ],
+    "createdAt": "2026-02-23T07:03:07.806Z",
+    "updatedAt": "2026-02-23T07:03:07.806Z"
+  },
+  {
+    "id": "aporia_1771830187808_bdiy758",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.8953717604355577e-24,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187812_xr2ceka",
+        "timestamp": "2026-02-23T07:03:07.812Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.808Z",
+    "updatedAt": "2026-02-23T07:03:07.812Z"
+  },
+  {
+    "id": "aporia_1771830187810_tsebvpe",
+    "name": "envP6zT/",
+    "poles": {
+      "first": {
+        "label": "L$j@tu3w",
+        "description": "bh|bBa=d8"
+      },
+      "second": {
+        "label": "!Q&B{@$",
+        "description": "|Jlct$|%w$"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "\\g~",
+        "&*"
+      ],
+      "forSecond": [
+        "<+kJ",
+        "i",
+        "V5!\\GPT",
+        "| G3.^",
+        "]mrn_lSu&",
+        "jW]&<",
+        "$Gk~3*7 !o",
+        "2"
+      ]
+    },
+    "whyUnresolvable": "G^2hdzyVy ",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "t0%BJUC",
+    "tags": [
+      "m5FK/+KQVVLN",
+      "]/c8E",
+      "}\"k"
+    ],
+    "createdAt": "2026-02-23T07:03:07.810Z",
+    "updatedAt": "2026-02-23T07:03:07.810Z"
+  },
+  {
+    "id": "aporia_1771830187813_5xgvqs5",
+    "name": "X=ky<H|yLz",
+    "poles": {
+      "first": {
+        "label": "S$ gf",
+        "description": "xWQ;"
+      },
+      "second": {
+        "label": "YF%7",
+        "description": "4ZL>InY\\7"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "'Ow.Z.\\1"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "__de",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "2",
+    "tags": [
+      "DM",
+      ".^v?A`%\"|",
+      "A6:TKYtxI{=F",
+      "F0V]2I^2v",
+      "D 8_c[s!K!h",
+      "jq6"
+    ],
+    "createdAt": "2026-02-23T07:03:07.813Z",
+    "updatedAt": "2026-02-23T07:03:07.813Z"
+  },
+  {
+    "id": "aporia_1771830187815_3mdjjzb",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.344417380526077e-27,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187968_4t12q7u",
+        "timestamp": "2026-02-23T07:03:07.968Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.815Z",
+    "updatedAt": "2026-02-23T07:03:07.968Z"
+  },
+  {
+    "id": "aporia_1771830187817_o6j5w9a",
+    "name": "^8[d#+u.^!Z'",
+    "poles": {
+      "first": {
+        "label": "#\\;%arg",
+        "description": "\""
+      },
+      "second": {
+        "label": "%",
+        "description": "F"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "",
+        "nZ]bx+.H",
+        "+",
+        ":y",
+        "<IGuH_4H",
+        ""
+      ],
+      "forSecond": [
+        "i@gU\"",
+        "jf-m",
+        "*ldS>ZnJ",
+        "`Su,';2WR",
+        "ctt&# #s}$",
+        "0l*B0b"
+      ]
+    },
+    "whyUnresolvable": "}E))C?o",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "Y7",
+    "tags": [
+      "![.a!5[t "
+    ],
+    "createdAt": "2026-02-23T07:03:07.817Z",
+    "updatedAt": "2026-02-23T07:03:07.817Z"
+  },
+  {
+    "id": "aporia_1771830187972_hs1jr9d",
+    "name": "QV!",
+    "poles": {
+      "first": {
+        "label": "m",
+        "description": "aH8+2nG:"
+      },
+      "second": {
+        "label": " kAQza",
+        "description": "GSR5YD!"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "X=}",
+        "Rpn",
+        "];",
+        "wdE]",
+        "",
+        "}tgALeF",
+        ",5LpE2x90l"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "N*,-MKT",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "6",
+    "tags": [
+      "3v$h",
+      "d&oS"
+    ],
+    "createdAt": "2026-02-23T07:03:07.972Z",
+    "updatedAt": "2026-02-23T07:03:07.972Z"
+  },
+  {
+    "id": "aporia_1771830187974_m5mkqm4",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 9.917727446587254e-13,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830187998_o2mneaf",
+        "timestamp": "2026-02-23T07:03:07.998Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:07.974Z",
+    "updatedAt": "2026-02-23T07:03:07.998Z"
+  },
+  {
+    "id": "aporia_1771830187991_n81tld4",
+    "name": "0}4`c PU'o3I",
+    "poles": {
+      "first": {
+        "label": "{D!w",
+        "description": "zz$!&Ly$$\\"
+      },
+      "second": {
+        "label": "Uconstructo",
+        "description": "U"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "UB^`g2{B",
+        "yI",
+        "wb%)|"
+      ],
+      "forSecond": [
+        "",
+        "<G",
+        ".",
+        "",
+        "}y5N[4"
+      ]
+    },
+    "whyUnresolvable": "%oFN",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": ":Aj",
+    "tags": [
+      "qLMz__defi",
+      "2icg:",
+      "h%79YCkP&Zv{"
+    ],
+    "createdAt": "2026-02-23T07:03:07.991Z",
+    "updatedAt": "2026-02-23T07:03:07.991Z"
+  },
+  {
+    "id": "aporia_1771830188004_8958coj",
+    "name": "#ThiSN>\\BO,U",
+    "poles": {
+      "first": {
+        "label": "rgD;K~>",
+        "description": "z42KSA.@4"
+      },
+      "second": {
+        "label": "X.{}YlA",
+        "description": "c!=-KbUR'5"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "Td wX7)",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "}!>ye%s\"C!",
+    "tags": [
+      "[t_mFO9%",
+      "!n"
+    ],
+    "createdAt": "2026-02-23T07:03:08.004Z",
+    "updatedAt": "2026-02-23T07:03:08.004Z"
+  },
+  {
+    "id": "aporia_1771830188007_gujjx8c",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 9.510048314527796e-33,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188013_eabgovx",
+        "timestamp": "2026-02-23T07:03:08.013Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.007Z",
+    "updatedAt": "2026-02-23T07:03:08.013Z"
+  },
+  {
+    "id": "aporia_1771830188009_1wrkmj4",
+    "name": "~u",
+    "poles": {
+      "first": {
+        "label": ")&1?/FL{Ec0t",
+        "description": "qB2%"
+      },
+      "second": {
+        "label": "a",
+        "description": "^p;^W"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "R&J@V",
+        "`j,[oBP]",
+        "!Y2a",
+        "|C",
+        ".MA&Me/",
+        "b8.D",
+        "d/czyZ6o-"
+      ],
+      "forSecond": [
+        "EY",
+        "[Ssh[E"
+      ]
+    },
+    "whyUnresolvable": "z,<>H",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": ">%vnWi",
+    "tags": [
+      "_",
+      "@\\a1|TEna,",
+      "+*kj",
+      "|B",
+      "\"LZ6yf?",
+      "Of;R5f/<`Ls ",
+      "$Z*b4 l-!->d",
+      "4\\z5L~\\j&1!"
+    ],
+    "createdAt": "2026-02-23T07:03:08.009Z",
+    "updatedAt": "2026-02-23T07:03:08.009Z"
+  },
+  {
+    "id": "aporia_1771830188114_tq9qsq6",
+    "name": "B'",
+    "poles": {
+      "first": {
+        "label": "xr8c<9u{~9m",
+        "description": "-j\\f]#"
+      },
+      "second": {
+        "label": "(",
+        "description": "key"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "I+YQ&IsaSe",
+        "w<u27'",
+        "s@3",
+        "5Ud9K;.8%'",
+        "fNq",
+        "j",
+        "ov{J#",
+        "~V",
+        "1"
+      ],
+      "forSecond": [
+        ".)t*0$",
+        "ze\"",
+        "",
+        "w^3LK.m",
+        "v''(O^n",
+        "B2<#Zd^F,",
+        "HVC",
+        "OG+28",
+        "(6_d],9l"
+      ]
+    },
+    "whyUnresolvable": "{oEappssAi",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "GR%WNU:F9z",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.114Z",
+    "updatedAt": "2026-02-23T07:03:08.114Z"
+  },
+  {
+    "id": "aporia_1771830188115_e28o6fu",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.4074490461979394e-9,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188118_7qfpiaz",
+        "timestamp": "2026-02-23T07:03:08.118Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.115Z",
+    "updatedAt": "2026-02-23T07:03:08.118Z"
+  },
+  {
+    "id": "aporia_1771830188117_bi8k7qz",
+    "name": "e^H+2:",
+    "poles": {
+      "first": {
+        "label": "|x",
+        "description": "@=d n"
+      },
+      "second": {
+        "label": "D!co",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        ")o"
+      ],
+      "forSecond": [
+        "n\"wh",
+        "v#m",
+        "`2I%T",
+        "sDyp#B'I",
+        "f]w&HD+",
+        "#%Rhq.PK",
+        "Np<bVF9o)6",
+        "a)oV",
+        "V",
+        "Y"
+      ]
+    },
+    "whyUnresolvable": "#to",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "88/yjuEd",
+    "tags": [
+      "vF:b3F6o|",
+      "k6!zG",
+      "p",
+      "6y/}a",
+      "!T8o"
+    ],
+    "createdAt": "2026-02-23T07:03:08.117Z",
+    "updatedAt": "2026-02-23T07:03:08.117Z"
+  },
+  {
+    "id": "aporia_1771830188119_txm9wb3",
+    "name": "SF+k}$E=pH",
+    "poles": {
+      "first": {
+        "label": "`Ji",
+        "description": "apply"
+      },
+      "second": {
+        "label": "`^vug[F",
+        "description": "Yk"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "z[rZ(\\R>w",
+        "1? /af#sZS",
+        "+o",
+        "]Vzw",
+        ";FQrZ",
+        "C0nGQ",
+        "`d5"
+      ],
+      "forSecond": [
+        "MC'KzH",
+        "y",
+        "\\hEln0d.z",
+        "v*s5H",
+        "",
+        "pgp#&/",
+        ")AW",
+        "OB!.-+!a",
+        "L~x9M"
+      ]
+    },
+    "whyUnresolvable": "JH",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "2a,g837cU=",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.119Z",
+    "updatedAt": "2026-02-23T07:03:08.119Z"
+  },
+  {
+    "id": "aporia_1771830188120_yso2oeu",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 5.6251146319033496e-14,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188121_d6qaqkq",
+        "timestamp": "2026-02-23T07:03:08.121Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.120Z",
+    "updatedAt": "2026-02-23T07:03:08.121Z"
+  },
+  {
+    "id": "aporia_1771830188121_n719p7u",
+    "name": "Xtu",
+    "poles": {
+      "first": {
+        "label": "{\"G+:JKF{",
+        "description": "hFjZ<"
+      },
+      "second": {
+        "label": "+*oU+0\"m.)",
+        "description": "=oFl9Un{8J"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "zkNIpFa|'q",
+        "x6",
+        "",
+        "Ej",
+        "3zl8Tp-{,",
+        "L)Vpw,X4C-",
+        "\"qGL6uG",
+        "}v&e:u,;$",
+        "([N,_"
+      ],
+      "forSecond": [
+        "6'0bO/E",
+        "lO<ZQ-U4A",
+        "d&M"
+      ]
+    },
+    "whyUnresolvable": "!c",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "$m \"2ueYK:yg",
+    "tags": [
+      "O,:QVe8",
+      "Dp2#?pSt6WQr",
+      "Z",
+      "[XV?[",
+      ",#7g",
+      "(Glj?q@SY",
+      "/"
+    ],
+    "createdAt": "2026-02-23T07:03:08.121Z",
+    "updatedAt": "2026-02-23T07:03:08.121Z"
+  },
+  {
+    "id": "aporia_1771830188122_e79z9s4",
+    "name": "fLU0V{",
+    "poles": {
+      "first": {
+        "label": "Uy4l5",
+        "description": "z;"
+      },
+      "second": {
+        "label": "!X",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "?y' Wtc",
+        "{RuBK"
+      ],
+      "forSecond": [
+        "`p>G%I=qQ",
+        "zLN",
+        "qLH\"G",
+        "zt ?`",
+        "g",
+        "",
+        "6sb"
+      ]
+    },
+    "whyUnresolvable": "ajP_u6sc3<~",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "}'CjwRc&",
+    "tags": [
+      "inLLt(v^nDGQ"
+    ],
+    "createdAt": "2026-02-23T07:03:08.122Z",
+    "updatedAt": "2026-02-23T07:03:08.122Z"
+  },
+  {
+    "id": "aporia_1771830188123_us22kl7",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.929463004981315e-11,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188125_a03yqph",
+        "timestamp": "2026-02-23T07:03:08.125Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.123Z",
+    "updatedAt": "2026-02-23T07:03:08.125Z"
+  },
+  {
+    "id": "aporia_1771830188124_5rstn1g",
+    "name": "4}0C$B",
+    "poles": {
+      "first": {
+        "label": "l4w?cVO$2",
+        "description": "["
+      },
+      "second": {
+        "label": "co",
+        "description": " f$\\7"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "HN_?",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "zx`WT",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.124Z",
+    "updatedAt": "2026-02-23T07:03:08.124Z"
+  },
+  {
+    "id": "aporia_1771830188126_4dz0sv2",
+    "name": "^x",
+    "poles": {
+      "first": {
+        "label": "nI32<Q]",
+        "description": ""
+      },
+      "second": {
+        "label": "#_",
+        "description": "2N"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "50_c`cQ"
+      ],
+      "forSecond": [
+        "4",
+        "]9`:r8K",
+        ".zs.QsYR",
+        "bP@rQb",
+        "1S.a@z<7",
+        "$Ao[gE",
+        "7*`)eEnxp"
+      ]
+    },
+    "whyUnresolvable": "h9|_\\%`.+$",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "l][%0VA7Ai",
+    "tags": [
+      "?CMS w.v?",
+      "apply"
+    ],
+    "createdAt": "2026-02-23T07:03:08.126Z",
+    "updatedAt": "2026-02-23T07:03:08.126Z"
+  },
+  {
+    "id": "aporia_1771830188127_1nu6j6n",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 4.70786662998677e-33,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188129_1wk9303",
+        "timestamp": "2026-02-23T07:03:08.129Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.127Z",
+    "updatedAt": "2026-02-23T07:03:08.129Z"
+  },
+  {
+    "id": "aporia_1771830188128_gjy76y7",
+    "name": "\\51/O.4}",
+    "poles": {
+      "first": {
+        "label": "7K4ah",
+        "description": "bV"
+      },
+      "second": {
+        "label": " ",
+        "description": "[%$"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "=E7g_p&d:",
+        "e{;M7H",
+        "sb2oem",
+        "eYFGIP[hn%",
+        "4V+CEWB#",
+        "251A"
+      ],
+      "forSecond": [
+        "[",
+        "",
+        "3',d{cT",
+        "?qHJt|0",
+        "O?aj3B`,T"
+      ]
+    },
+    "whyUnresolvable": "\\6P",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "1:/x<",
+    "tags": [
+      "D\"5{yJ%=",
+      "y|}",
+      "t7JvqY1];|WP",
+      "8cCbHt[=",
+      "I:`m|I*Q6B",
+      "'!U@ps78@;^",
+      "l!N/+z>drJ2",
+      ";VuDPn",
+      "YIh}?"
+    ],
+    "createdAt": "2026-02-23T07:03:08.128Z",
+    "updatedAt": "2026-02-23T07:03:08.128Z"
+  },
+  {
+    "id": "aporia_1771830188130_6q1li3q",
+    "name": " 5D#ltMuT]L5",
+    "poles": {
+      "first": {
+        "label": "L/uWo&WR>",
+        "description": "\"{#,%y$X"
+      },
+      "second": {
+        "label": "4NBNmn",
+        "description": "hI"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "PBl(ig",
+        "z@W)5d\\y",
+        "zYk98^"
+      ],
+      "forSecond": [
+        ")8Bkc/ZX~Z",
+        "iG",
+        "t),$6",
+        "d?H"
+      ]
+    },
+    "whyUnresolvable": ";<z|mS'_XC",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "-}{ D",
+    "tags": [
+      "ws0*C",
+      "6vr{34WGQ",
+      "R\"|t{zko@c:W",
+      "V@xB",
+      "!^x",
+      "UT^i$D_*P"
+    ],
+    "createdAt": "2026-02-23T07:03:08.130Z",
+    "updatedAt": "2026-02-23T07:03:08.130Z"
+  },
+  {
+    "id": "aporia_1771830188133_7ad32v5",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.6433760072445244e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188137_ngxrmuo",
+        "timestamp": "2026-02-23T07:03:08.137Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.133Z",
+    "updatedAt": "2026-02-23T07:03:08.137Z"
+  },
+  {
+    "id": "aporia_1771830188135_u3r2kzj",
+    "name": "510:Nv^u'w$",
+    "poles": {
+      "first": {
+        "label": "O0+",
+        "description": ""
+      },
+      "second": {
+        "label": "L[H^cHuLM~k:",
+        "description": "c "
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "]<AV)}qmm",
+        ">5zD v",
+        "ihVvgaV",
+        "@r-38rE[",
+        "-(hB#\\:",
+        "u",
+        "ui$TO`t\"\""
+      ],
+      "forSecond": [
+        "]",
+        "yXuL|j",
+        "c>i'",
+        "",
+        "f$t",
+        "ZD0(0",
+        "4d@CqtY.y"
+      ]
+    },
+    "whyUnresolvable": "2?.J15@61kQ",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "mB",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.135Z",
+    "updatedAt": "2026-02-23T07:03:08.135Z"
+  },
+  {
+    "id": "aporia_1771830188138_reex5cp",
+    "name": "Nh",
+    "poles": {
+      "first": {
+        "label": ",la-}BBSe",
+        "description": "T~\"!BIVE]"
+      },
+      "second": {
+        "label": "qUS:G0U/p~!*",
+        "description": "!g&H|"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "u",
+        "}i,?vyqBO",
+        ",!qh",
+        "'",
+        "",
+        "?\"y$",
+        "):7j",
+        "T\"+|Y",
+        "Q|>*$P"
+      ]
+    },
+    "whyUnresolvable": "<q0!#)ALi",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": " __defineSe",
+    "tags": [
+      "}1\"M",
+      "t24ZB",
+      "\"9.iT0Gux",
+      "uuJRq+`W ",
+      "^LtI*y\\r{2v",
+      "`Ym!fg=9yndT",
+      "m_!(z_rOw@",
+      "=ISN,",
+      "e7AEu"
+    ],
+    "createdAt": "2026-02-23T07:03:08.138Z",
+    "updatedAt": "2026-02-23T07:03:08.138Z"
+  },
+  {
+    "id": "aporia_1771830188221_n56rqds",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.7516333228560984e-32,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188224_k1pjlf0",
+        "timestamp": "2026-02-23T07:03:08.224Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.221Z",
+    "updatedAt": "2026-02-23T07:03:08.224Z"
+  },
+  {
+    "id": "aporia_1771830188223_qsociwo",
+    "name": "q18|N",
+    "poles": {
+      "first": {
+        "label": "EbHi",
+        "description": "rT"
+      },
+      "second": {
+        "label": "#{G8\"&Nfo&",
+        "description": "Vs0"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "C[,^9:,(i",
+        "_",
+        ".|qRut5jO",
+        "Ly@d",
+        "2tMM/^",
+        "zHb",
+        "Dz1l _zV7T",
+        "l1DEk",
+        ""
+      ],
+      "forSecond": [
+        "Mq1i",
+        "2p{!|swQ",
+        "yy9|]",
+        "\\(t'51::!",
+        "YqN@",
+        "a\"7U`/CP}x",
+        "5l?BeU",
+        "Par^1e*|"
+      ]
+    },
+    "whyUnresolvable": ";Ir ?Z9k~:m",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "x~@8`SCz",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.223Z",
+    "updatedAt": "2026-02-23T07:03:08.223Z"
+  },
+  {
+    "id": "aporia_1771830188225_xxxelc7",
+    "name": "npmC@Uhnn<",
+    "poles": {
+      "first": {
+        "label": "MMn'OE}",
+        "description": "_4s&og"
+      },
+      "second": {
+        "label": "iiz>",
+        "description": "_y;6'iufx"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "&_",
+        "e^X%?\\3Xw]",
+        "key",
+        ""
+      ],
+      "forSecond": [
+        "f&",
+        "Y\\T}",
+        "\\Z;LG/'-1",
+        "lYx4",
+        "XucR57^",
+        "2",
+        "%$<",
+        "xS~",
+        "_WEl"
+      ]
+    },
+    "whyUnresolvable": "K'pF33Xa",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "@M0W`",
+    "tags": [
+      "}O",
+      "~C_",
+      " vY`<,VS?"
+    ],
+    "createdAt": "2026-02-23T07:03:08.225Z",
+    "updatedAt": "2026-02-23T07:03:08.225Z"
+  },
+  {
+    "id": "aporia_1771830188226_ztds5iy",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.8149598490779795e-10,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188228_pc4bhr5",
+        "timestamp": "2026-02-23T07:03:08.228Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.226Z",
+    "updatedAt": "2026-02-23T07:03:08.228Z"
+  },
+  {
+    "id": "aporia_1771830188227_beojddh",
+    "name": "L",
+    "poles": {
+      "first": {
+        "label": "2B?.+d",
+        "description": "Zk|+Dk"
+      },
+      "second": {
+        "label": "WyzBhkh",
+        "description": "zF\""
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "v6|",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "N",
+    "tags": [
+      "1"
+    ],
+    "createdAt": "2026-02-23T07:03:08.227Z",
+    "updatedAt": "2026-02-23T07:03:08.227Z"
+  },
+  {
+    "id": "aporia_1771830188229_kb09tqq",
+    "name": "tvQmn",
+    "poles": {
+      "first": {
+        "label": "w",
+        "description": ""
+      },
+      "second": {
+        "label": "6M?\"]",
+        "description": " IX!x"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "$wd8%_b%>q",
+        "0",
+        "4$fig!",
+        "hb'#",
+        "1aJfr%"
+      ],
+      "forSecond": [
+        "7$d'L]O4F",
+        "Q^uR7P@zx-",
+        "",
+        "a,",
+        "vxX7[6U",
+        "",
+        "+d",
+        "BG j\\"
+      ]
+    },
+    "whyUnresolvable": "x",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "{0Z[",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.229Z",
+    "updatedAt": "2026-02-23T07:03:08.229Z"
+  },
+  {
+    "id": "aporia_1771830188230_8bebnv6",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.224050367475577e-19,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188232_vjeion2",
+        "timestamp": "2026-02-23T07:03:08.232Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.230Z",
+    "updatedAt": "2026-02-23T07:03:08.232Z"
+  },
+  {
+    "id": "aporia_1771830188231_y0lpphm",
+    "name": "\"1gp|pnp1Bvu",
+    "poles": {
+      "first": {
+        "label": "&rh*v!#",
+        "description": "(5"
+      },
+      "second": {
+        "label": "Kk",
+        "description": "$Z@dnY"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "03iYu]|[r",
+        "W",
+        "6mq'",
+        "Dz9N3sr",
+        "V)SbP:]",
+        "k`L%Sx~[O",
+        "R`r0."
+      ],
+      "forSecond": [
+        "-_i"
+      ]
+    },
+    "whyUnresolvable": "rSVQZx",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "lj",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.231Z",
+    "updatedAt": "2026-02-23T07:03:08.231Z"
+  },
+  {
+    "id": "aporia_1771830188233_exzfom5",
+    "name": "\"",
+    "poles": {
+      "first": {
+        "label": "E(As",
+        "description": ""
+      },
+      "second": {
+        "label": ")",
+        "description": ",=p3!Z~n"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "_h",
+        "%3n: "
+      ],
+      "forSecond": [
+        "hf.\";n)\\S|",
+        "5\"\\`VCc",
+        "Z",
+        "2O+wky9MG"
+      ]
+    },
+    "whyUnresolvable": "N;[l#I2Eq",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "=gYTt",
+    "tags": [
+      "PWH",
+      "?*@",
+      "rb6#K\":^u8G",
+      "=|1X;v!/QGj",
+      "\\?=AK)yG!5Or",
+      "}'VeZU>x~JQ."
+    ],
+    "createdAt": "2026-02-23T07:03:08.233Z",
+    "updatedAt": "2026-02-23T07:03:08.233Z"
+  },
+  {
+    "id": "aporia_1771830188233_1ug8n07",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.3810890240706433e-17,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188235_kk3bhhw",
+        "timestamp": "2026-02-23T07:03:08.235Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.233Z",
+    "updatedAt": "2026-02-23T07:03:08.235Z"
+  },
+  {
+    "id": "aporia_1771830188234_rhal09f",
+    "name": "3xX0)|z>wy[_",
+    "poles": {
+      "first": {
+        "label": "2\"z#F&$i}",
+        "description": "|QbIH{a;"
+      },
+      "second": {
+        "label": "?",
+        "description": "feJ&ipB:*e"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "\\{3//Zk\"!r",
+        "A6{SO",
+        "*Hf)~",
+        "E}zT@.Zi`"
+      ],
+      "forSecond": [
+        "O<:m,N[(\\",
+        "@k7n ua",
+        "",
+        "}Py'^\\#aX",
+        "B"
+      ]
+    },
+    "whyUnresolvable": "3",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "y@",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.234Z",
+    "updatedAt": "2026-02-23T07:03:08.234Z"
+  },
+  {
+    "id": "aporia_1771830188238_uq9ug3v",
+    "name": "i+^g3}Y_8",
+    "poles": {
+      "first": {
+        "label": ":HYs=$cU3",
+        "description": "{"
+      },
+      "second": {
+        "label": "FUP",
+        "description": "T1"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "@Wus|F="
+      ]
+    },
+    "whyUnresolvable": "qxL$+08x'",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "w",
+    "tags": [
+      "mnA3m}w\\Q+-F",
+      "?stFE Pk$E"
+    ],
+    "createdAt": "2026-02-23T07:03:08.238Z",
+    "updatedAt": "2026-02-23T07:03:08.238Z"
+  },
+  {
+    "id": "aporia_1771830188238_9bswepl",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 9.735458017988618e-23,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188240_vxdkx60",
+        "timestamp": "2026-02-23T07:03:08.240Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.238Z",
+    "updatedAt": "2026-02-23T07:03:08.240Z"
+  },
+  {
+    "id": "aporia_1771830188240_lklakf1",
+    "name": "M+t-w(A}",
+    "poles": {
+      "first": {
+        "label": "|Lk",
+        "description": "97>s'YRP'"
+      },
+      "second": {
+        "label": "}T}$at.RLHu(",
+        "description": "B\\"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "!zjX9",
+        "p:ahG0",
+        "[ZlZzz"
+      ],
+      "forSecond": [
+        "",
+        "0K4y$ ",
+        "}_i:r",
+        "ou",
+        "N8x_(",
+        "fF4N|-l",
+        "% `r"
+      ]
+    },
+    "whyUnresolvable": "1P_ l",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "t!H",
+    "tags": [
+      "]x/Y/DJb;_e",
+      "~6uj 9",
+      "toString",
+      "R8]Y_",
+      "j{W",
+      "#|",
+      "\",\"",
+      "jnr.N=PY",
+      "}&M8",
+      "&applywnProp"
+    ],
+    "createdAt": "2026-02-23T07:03:08.240Z",
+    "updatedAt": "2026-02-23T07:03:08.240Z"
+  },
+  {
+    "id": "aporia_1771830188241_xx0fwar",
+    "name": "To4<$l+D.|C",
+    "poles": {
+      "first": {
+        "label": ".",
+        "description": "CtoLoc"
+      },
+      "second": {
+        "label": ")E",
+        "description": "MHB"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "",
+        "e@G",
+        "rdPCkJ",
+        "",
+        "3u\\V<^k_Nt",
+        "e",
+        "3\\Rp@",
+        "P["
+      ],
+      "forSecond": [
+        "O-6J,3+K"
+      ]
+    },
+    "whyUnresolvable": "M$}",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "QI5=",
+    "tags": [
+      "^vI",
+      "K5g",
+      "%=m!\\`",
+      "`L'K=utwE'n"
+    ],
+    "createdAt": "2026-02-23T07:03:08.241Z",
+    "updatedAt": "2026-02-23T07:03:08.241Z"
+  },
+  {
+    "id": "aporia_1771830188242_m2tsxmy",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.48132608753699e-21,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188244_vnodpzg",
+        "timestamp": "2026-02-23T07:03:08.244Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.242Z",
+    "updatedAt": "2026-02-23T07:03:08.244Z"
+  },
+  {
+    "id": "aporia_1771830188243_dqk3x5g",
+    "name": "kx?",
+    "poles": {
+      "first": {
+        "label": "-^KX@S<~,|?",
+        "description": "Y{WR"
+      },
+      "second": {
+        "label": "x%%",
+        "description": "5Spb"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "7W^vd^F/qR",
+        "U",
+        "d\\]",
+        "I8VC6:6\"y$",
+        "xkVbcLj",
+        "b,,Ne*SC,"
+      ],
+      "forSecond": [
+        "Lt05",
+        "lT+?",
+        "Q'1|}",
+        "DOi}GGQZ",
+        "U7G{\\Td",
+        " q|iGR."
+      ]
+    },
+    "whyUnresolvable": "l=$I",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": ";q;3ZnOTh]I",
+    "tags": [
+      "7N^e.`YcM]j",
+      "zq#5z$%$<&",
+      "0z:"
+    ],
+    "createdAt": "2026-02-23T07:03:08.243Z",
+    "updatedAt": "2026-02-23T07:03:08.243Z"
+  },
+  {
+    "id": "aporia_1771830188245_la9xb04",
+    "name": " ",
+    "poles": {
+      "first": {
+        "label": ":Q*dG}",
+        "description": "L!aE#!v\"n "
+      },
+      "second": {
+        "label": "$%n60Z",
+        "description": "e2&$xo\""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "ee",
+        ">Te[fJN'2u",
+        ")Qp&",
+        "Z%",
+        "/9SMrPX3",
+        ""
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "zxTQv.",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "bj^",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.245Z",
+    "updatedAt": "2026-02-23T07:03:08.245Z"
+  },
+  {
+    "id": "aporia_1771830188246_50mb30w",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.9999984502792358,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188248_ri6lpxi",
+        "timestamp": "2026-02-23T07:03:08.248Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.246Z",
+    "updatedAt": "2026-02-23T07:03:08.248Z"
+  },
+  {
+    "id": "aporia_1771830188247_99yojzj",
+    "name": "Y",
+    "poles": {
+      "first": {
+        "label": "]",
+        "description": "$"
+      },
+      "second": {
+        "label": "}&",
+        "description": "E-2J:U&I"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "z)\\Xg(<%t@",
+        "b\\pb1",
+        "fBawo&V(="
+      ],
+      "forSecond": [
+        ";V/j !oe3",
+        "p&_2",
+        "B\\",
+        "#CnzVH}WC!",
+        "`G[CxH\\"
+      ]
+    },
+    "whyUnresolvable": "0$t<Olo'J",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "rzYxOKxWJ",
+    "tags": [
+      "AI",
+      "&P}=]L,!by&"
+    ],
+    "createdAt": "2026-02-23T07:03:08.247Z",
+    "updatedAt": "2026-02-23T07:03:08.247Z"
+  },
+  {
+    "id": "aporia_1771830188249_fp6bck2",
+    "name": "sw{~Zb",
+    "poles": {
+      "first": {
+        "label": "ref",
+        "description": ",DJR"
+      },
+      "second": {
+        "label": "||HlS?8@2!w9",
+        "description": "c)"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "xm8mS0\\^M",
+        "Ez",
+        "d}:KGn!.t",
+        "#G)D",
+        "u#+*",
+        "c",
+        "al?#_",
+        "!+|__de",
+        " F",
+        ",MB)"
+      ]
+    },
+    "whyUnresolvable": "|CuJ S$",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "valueOf",
+    "tags": [
+      "?Nx^h+",
+      "CHoG`adlr",
+      "j58v<*D",
+      "yX",
+      "S",
+      "tC&tc"
+    ],
+    "createdAt": "2026-02-23T07:03:08.249Z",
+    "updatedAt": "2026-02-23T07:03:08.249Z"
+  },
+  {
+    "id": "aporia_1771830188252_4aloim1",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.9563027951159998e-16,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188261_iw29ygb",
+        "timestamp": "2026-02-23T07:03:08.261Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.252Z",
+    "updatedAt": "2026-02-23T07:03:08.261Z"
+  },
+  {
+    "id": "aporia_1771830188259_x72y7qm",
+    "name": "tb6!{)|b7zzg",
+    "poles": {
+      "first": {
+        "label": "b2,tCF*I",
+        "description": "valueOf"
+      },
+      "second": {
+        "label": "P$tt",
+        "description": "/"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "lYd/p",
+        "$",
+        "i:}As[1k",
+        "Q",
+        "",
+        "<R-68\"",
+        ">Zs}",
+        "g3",
+        "a+A\"zPP",
+        "*mw4Q!%SJ"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "dkqB;4\\>xbk$",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "[eOS:1dWt",
+    "tags": [
+      "r2A{=Dl\"f|",
+      "y",
+      "#1o-:)g",
+      "&wyT",
+      "\"BG<3B% =q?C",
+      "~xOC_{6:>DB"
+    ],
+    "createdAt": "2026-02-23T07:03:08.259Z",
+    "updatedAt": "2026-02-23T07:03:08.259Z"
+  },
+  {
+    "id": "aporia_1771830188267_4mn4n7d",
+    "name": "tV7).-k_p6P",
+    "poles": {
+      "first": {
+        "label": "O|z",
+        "description": "a$\"B& As"
+      },
+      "second": {
+        "label": "%p!n~d",
+        "description": "cw%xjL}QK}"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "np&p#Ve&7O",
+        "B1R!cCS1N",
+        "*9Qa4H+ h",
+        "W(EUT@4f",
+        " G",
+        "8",
+        "D",
+        "602Qd~",
+        "'VaaZp9UD"
+      ],
+      "forSecond": []
+    },
+    "whyUnresolvable": "&V) ",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "K(Vy",
+    "tags": [
+      "hqU<5_",
+      "I",
+      "GRA",
+      "Uiy.pJhD",
+      ";vJc{SbcAE",
+      "sl$)v-",
+      "ZxZ6",
+      "#Eiu\\Bmf`fv"
+    ],
+    "createdAt": "2026-02-23T07:03:08.267Z",
+    "updatedAt": "2026-02-23T07:03:08.267Z"
+  },
+  {
+    "id": "aporia_1771830188269_k24qx9g",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.632209986029538e-29,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188272_8p66fhg",
+        "timestamp": "2026-02-23T07:03:08.272Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.269Z",
+    "updatedAt": "2026-02-23T07:03:08.272Z"
+  },
+  {
+    "id": "aporia_1771830188270_aivn0us",
+    "name": "0r",
+    "poles": {
+      "first": {
+        "label": "UmSx(",
+        "description": "L?,a%GC&PF"
+      },
+      "second": {
+        "label": "y",
+        "description": "]!l,*HIb"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "#`K&1",
+        "` ",
+        "L",
+        "^F Lpc?`uH",
+        "B",
+        "'&W?B?F3;c",
+        "T",
+        "p",
+        ","
+      ],
+      "forSecond": [
+        ";BR]n>X",
+        "1dMz"
+      ]
+    },
+    "whyUnresolvable": "O*#j^Aa",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "8^hqK`Bt9",
+    "tags": [
+      "Pnbot.QHse",
+      "<U6mY,`xB:h"
+    ],
+    "createdAt": "2026-02-23T07:03:08.270Z",
+    "updatedAt": "2026-02-23T07:03:08.270Z"
+  },
+  {
+    "id": "aporia_1771830188273_216yzll",
+    "name": "}/2Z9x",
+    "poles": {
+      "first": {
+        "label": "&#[I6n>",
+        "description": "q"
+      },
+      "second": {
+        "label": "t",
+        "description": "z"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "",
+        "",
+        "rY|cF#Yavd",
+        "~[^8Vm",
+        "0ku-"
+      ]
+    },
+    "whyUnresolvable": "l2",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "=7||s$Rc",
+    "tags": [
+      "O",
+      "PR#/F!#|+"
+    ],
+    "createdAt": "2026-02-23T07:03:08.273Z",
+    "updatedAt": "2026-02-23T07:03:08.273Z"
+  },
+  {
+    "id": "aporia_1771830188550_rga4y04",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.377138308162586e-32,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188557_362t6r0",
+        "timestamp": "2026-02-23T07:03:08.557Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.550Z",
+    "updatedAt": "2026-02-23T07:03:08.557Z"
+  },
+  {
+    "id": "aporia_1771830188555_j757wcn",
+    "name": "&",
+    "poles": {
+      "first": {
+        "label": "n.1+86ry&c",
+        "description": "\\'\"4HA.\""
+      },
+      "second": {
+        "label": "ar",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "zNpgx|",
+        "",
+        "/",
+        "j,",
+        "2G",
+        "b9\\",
+        "%I,'M#E7i"
+      ],
+      "forSecond": [
+        ";-",
+        "f+b8P{9*)",
+        "UZ",
+        "`H"
+      ]
+    },
+    "whyUnresolvable": "Et",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "@.|tsemnL",
+    "tags": [
+      "'",
+      "\\[lAU}tROcM"
+    ],
+    "createdAt": "2026-02-23T07:03:08.555Z",
+    "updatedAt": "2026-02-23T07:03:08.555Z"
+  },
+  {
+    "id": "aporia_1771830188558_f5tkrkf",
+    "name": "o{b\\vA",
+    "poles": {
+      "first": {
+        "label": "}uf>",
+        "description": "9"
+      },
+      "second": {
+        "label": ";r0lmYDB",
+        "description": "nG?"
+      }
+    },
+    "justifications": {
+      "forFirst": [
+        "$",
+        "length",
+        "=L28a\"a",
+        "'",
+        "_Vv8j",
+        "%=rV8g1",
+        "c^",
+        ""
+      ],
+      "forSecond": [
+        "C",
+        "O,3d1iY;7$",
+        "Qo4~! 1}&",
+        "5#`d$p0O",
+        "cZ`N4Y",
+        ""
+      ]
+    },
+    "whyUnresolvable": "Fs8WBfjk,=",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "zf#_0d zJ!{",
+    "tags": [
+      "V dE",
+      "7j",
+      "@ d.V4{7m",
+      "Kk28[|*X~9ef",
+      "fwQE,fa;D",
+      "+`dfp7G^')2",
+      "Z]H7=",
+      "L42dP,(?`o*5"
+    ],
+    "createdAt": "2026-02-23T07:03:08.558Z",
+    "updatedAt": "2026-02-23T07:03:08.558Z"
+  },
+  {
+    "id": "aporia_1771830188559_fs8jthx",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.09720154851675034,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188562_h3vcdpu",
+        "timestamp": "2026-02-23T07:03:08.562Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.559Z",
+    "updatedAt": "2026-02-23T07:03:08.562Z"
+  },
+  {
+    "id": "aporia_1771830188561_p9vo4ml",
+    "name": "F",
+    "poles": {
+      "first": {
+        "label": "L",
+        "description": "s"
+      },
+      "second": {
+        "label": "![Cac",
+        "description": ""
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": [
+        "++'P\\&",
+        "EW$tpM9c?"
+      ]
+    },
+    "whyUnresolvable": "z]'Crx+",
+    "decisionHistory": [],
+    "status": "active",
+    "discoveryContext": "c7",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.561Z",
+    "updatedAt": "2026-02-23T07:03:08.561Z"
+  },
+  {
+    "id": "aporia_1771830188564_f5end2i",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.0516768796831646e-38,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188565_1yjtr19",
+        "timestamp": "2026-02-23T07:03:08.565Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.564Z",
+    "updatedAt": "2026-02-23T07:03:08.565Z"
+  },
+  {
+    "id": "aporia_1771830188567_lt1tbti",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.00023206454352475703,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188572_9zzelu7",
+        "timestamp": "2026-02-23T07:03:08.572Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.567Z",
+    "updatedAt": "2026-02-23T07:03:08.572Z"
+  },
+  {
+    "id": "aporia_1771830188574_as8nmct",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.0000029341438221308636,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188576_yopw0co",
+        "timestamp": "2026-02-23T07:03:08.576Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.574Z",
+    "updatedAt": "2026-02-23T07:03:08.576Z"
+  },
+  {
+    "id": "aporia_1771830188580_rukdgak",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 7.855195605088738e-8,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188671_8od34la",
+        "timestamp": "2026-02-23T07:03:08.671Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.580Z",
+    "updatedAt": "2026-02-23T07:03:08.671Z"
+  },
+  {
+    "id": "aporia_1771830188673_asfsqsg",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 9.80908925027372e-45,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188674_6p1wc8a",
+        "timestamp": "2026-02-23T07:03:08.674Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.673Z",
+    "updatedAt": "2026-02-23T07:03:08.674Z"
+  },
+  {
+    "id": "aporia_1771830188676_o54akml",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.8216880036222622e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188677_kxqnz6n",
+        "timestamp": "2026-02-23T07:03:08.677Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.676Z",
+    "updatedAt": "2026-02-23T07:03:08.677Z"
+  },
+  {
+    "id": "aporia_1771830188678_3pvuby4",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.298879111216754e-38,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188682_avxahsh",
+        "timestamp": "2026-02-23T07:03:08.682Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.678Z",
+    "updatedAt": "2026-02-23T07:03:08.682Z"
+  },
+  {
+    "id": "aporia_1771830188685_9o25h2p",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.9999997019767761,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188686_fvv5z1a",
+        "timestamp": "2026-02-23T07:03:08.686Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.685Z",
+    "updatedAt": "2026-02-23T07:03:08.686Z"
+  },
+  {
+    "id": "aporia_1771830188688_6d9kncn",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.5223372357846707e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188771_fvs40ye",
+        "timestamp": "2026-02-23T07:03:08.771Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.688Z",
+    "updatedAt": "2026-02-23T07:03:08.771Z"
+  },
+  {
+    "id": "aporia_1771830188775_tf93qfr",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.9971192047041783e-32,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188777_eq8wfyg",
+        "timestamp": "2026-02-23T07:03:08.777Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.775Z",
+    "updatedAt": "2026-02-23T07:03:08.777Z"
+  },
+  {
+    "id": "aporia_1771830188779_imbg30u",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 6.109274197640957e-11,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188780_j3uebpl",
+        "timestamp": "2026-02-23T07:03:08.780Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.779Z",
+    "updatedAt": "2026-02-23T07:03:08.780Z"
+  },
+  {
+    "id": "aporia_1771830188782_yrreiy1",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.094538686292288e-38,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188784_bzsqsuw",
+        "timestamp": "2026-02-23T07:03:08.784Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.782Z",
+    "updatedAt": "2026-02-23T07:03:08.784Z"
+  },
+  {
+    "id": "aporia_1771830188786_bkf265y",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.6865495779014395e-35,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188792_442sjdn",
+        "timestamp": "2026-02-23T07:03:08.792Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.786Z",
+    "updatedAt": "2026-02-23T07:03:08.792Z"
+  },
+  {
+    "id": "aporia_1771830188798_z7jd5t8",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 6.609003929147225e-34,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188800_imacuks",
+        "timestamp": "2026-02-23T07:03:08.800Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.798Z",
+    "updatedAt": "2026-02-23T07:03:08.800Z"
+  },
+  {
+    "id": "aporia_1771830188803_6s54tb7",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.5906468810454886e-13,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188896_q9em7gj",
+        "timestamp": "2026-02-23T07:03:08.896Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.803Z",
+    "updatedAt": "2026-02-23T07:03:08.896Z"
+  },
+  {
+    "id": "aporia_1771830188900_rjtssbz",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.242699266971567e-27,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188901_v0o8y0p",
+        "timestamp": "2026-02-23T07:03:08.901Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.900Z",
+    "updatedAt": "2026-02-23T07:03:08.901Z"
+  },
+  {
+    "id": "aporia_1771830188903_4ms648f",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.9999991655349731,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188905_mvsnu94",
+        "timestamp": "2026-02-23T07:03:08.905Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.903Z",
+    "updatedAt": "2026-02-23T07:03:08.905Z"
+  },
+  {
+    "id": "aporia_1771830188906_db0ik7j",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.924680011807885e-18,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188908_lwxdofd",
+        "timestamp": "2026-02-23T07:03:08.908Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.906Z",
+    "updatedAt": "2026-02-23T07:03:08.908Z"
+  },
+  {
+    "id": "aporia_1771830188909_z5vx9kl",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 4.183912652665425e-37,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188911_gjezbvc",
+        "timestamp": "2026-02-23T07:03:08.911Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.909Z",
+    "updatedAt": "2026-02-23T07:03:08.911Z"
+  },
+  {
+    "id": "aporia_1771830188912_zmqmb15",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.3332949942732433e-23,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188914_u6s08xa",
+        "timestamp": "2026-02-23T07:03:08.914Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.912Z",
+    "updatedAt": "2026-02-23T07:03:08.914Z"
+  },
+  {
+    "id": "aporia_1771830188916_oec63da",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 7.006492321624085e-45,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188919_8qzkmxv",
+        "timestamp": "2026-02-23T07:03:08.919Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.916Z",
+    "updatedAt": "2026-02-23T07:03:08.919Z"
+  },
+  {
+    "id": "aporia_1771830188921_9hm9g32",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 4.9523882299978554e-17,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830188928_lme6uj0",
+        "timestamp": "2026-02-23T07:03:08.928Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.921Z",
+    "updatedAt": "2026-02-23T07:03:08.928Z"
+  },
+  {
+    "id": "aporia_1771830188930_m5rrpej",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.9999998211860657,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189088_th3mpr5",
+        "timestamp": "2026-02-23T07:03:09.088Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:08.930Z",
+    "updatedAt": "2026-02-23T07:03:09.088Z"
+  },
+  {
+    "id": "aporia_1771830189091_34uifwi",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.9999994039535522,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189093_60tux47",
+        "timestamp": "2026-02-23T07:03:09.093Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.091Z",
+    "updatedAt": "2026-02-23T07:03:09.093Z"
+  },
+  {
+    "id": "aporia_1771830189094_ad1800x",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 1.7145006662162683e-37,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189095_gvj52fu",
+        "timestamp": "2026-02-23T07:03:09.095Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.094Z",
+    "updatedAt": "2026-02-23T07:03:09.095Z"
+  },
+  {
+    "id": "aporia_1771830189097_jw2c8n6",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.000005314399004419101,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189098_7wwpvfo",
+        "timestamp": "2026-02-23T07:03:09.098Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.097Z",
+    "updatedAt": "2026-02-23T07:03:09.098Z"
+  },
+  {
+    "id": "aporia_1771830189100_vjmmh6f",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 4.1109921082834755e-34,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189101_9g61jya",
+        "timestamp": "2026-02-23T07:03:09.101Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.100Z",
+    "updatedAt": "2026-02-23T07:03:09.101Z"
+  },
+  {
+    "id": "aporia_1771830189102_9ue1sus",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 7.006492321624085e-45,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189103_x17wpbs",
+        "timestamp": "2026-02-23T07:03:09.103Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.102Z",
+    "updatedAt": "2026-02-23T07:03:09.103Z"
+  },
+  {
+    "id": "aporia_1771830189107_alqycdn",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.7301018238067627,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189110_x8e67vh",
+        "timestamp": "2026-02-23T07:03:09.110Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.107Z",
+    "updatedAt": "2026-02-23T07:03:09.110Z"
+  },
+  {
+    "id": "aporia_1771830189112_pvef4d5",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.802596928649634e-45,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189117_w3u8wb5",
+        "timestamp": "2026-02-23T07:03:09.117Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.112Z",
+    "updatedAt": "2026-02-23T07:03:09.117Z"
+  },
+  {
+    "id": "aporia_1771830189154_tjuskzg",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 6.88449408592362e-10,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189157_3x98usp",
+        "timestamp": "2026-02-23T07:03:09.157Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.154Z",
+    "updatedAt": "2026-02-23T07:03:09.157Z"
+  },
+  {
+    "id": "aporia_1771830189158_1232xs8",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 5.112057423781136e-32,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189159_1q7m42z",
+        "timestamp": "2026-02-23T07:03:09.159Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.158Z",
+    "updatedAt": "2026-02-23T07:03:09.159Z"
+  },
+  {
+    "id": "aporia_1771830189161_1flb7qo",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.802596928649634e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189162_odvqk3b",
+        "timestamp": "2026-02-23T07:03:09.162Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.161Z",
+    "updatedAt": "2026-02-23T07:03:09.162Z"
+  },
+  {
+    "id": "aporia_1771830189166_4aanu6g",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 6.156449181339809e-24,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189168_96krqdq",
+        "timestamp": "2026-02-23T07:03:09.168Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.166Z",
+    "updatedAt": "2026-02-23T07:03:09.168Z"
+  },
+  {
+    "id": "aporia_1771830189170_1y4ohm6",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.00036045900196768343,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189256_jjou5eo",
+        "timestamp": "2026-02-23T07:03:09.256Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.170Z",
+    "updatedAt": "2026-02-23T07:03:09.256Z"
+  },
+  {
+    "id": "aporia_1771830189298_pv51g0c",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.363116314379561e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189299_21ysbkq",
+        "timestamp": "2026-02-23T07:03:09.299Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.298Z",
+    "updatedAt": "2026-02-23T07:03:09.299Z"
+  },
+  {
+    "id": "aporia_1771830189301_4syhds7",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 6.332754149001846e-18,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189302_i5bvxdf",
+        "timestamp": "2026-02-23T07:03:09.302Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.301Z",
+    "updatedAt": "2026-02-23T07:03:09.302Z"
+  },
+  {
+    "id": "aporia_1771830189303_8xm0mpz",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.363116314379561e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189304_rbs94gd",
+        "timestamp": "2026-02-23T07:03:09.304Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.303Z",
+    "updatedAt": "2026-02-23T07:03:09.304Z"
+  },
+  {
+    "id": "aporia_1771830189306_1i3e9iw",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.9999986290931702,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189307_dvi49ri",
+        "timestamp": "2026-02-23T07:03:09.307Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.306Z",
+    "updatedAt": "2026-02-23T07:03:09.307Z"
+  },
+  {
+    "id": "aporia_1771830189308_212jw17",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.2229864679470793e-44,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189309_7tm0plo",
+        "timestamp": "2026-02-23T07:03:09.309Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.308Z",
+    "updatedAt": "2026-02-23T07:03:09.309Z"
+  },
+  {
+    "id": "aporia_1771830189310_sroxw5p",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.0341428465676242e-15,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189311_sxbcyo6",
+        "timestamp": "2026-02-23T07:03:09.311Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.310Z",
+    "updatedAt": "2026-02-23T07:03:09.311Z"
+  },
+  {
+    "id": "aporia_1771830189314_a2jex7u",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 9.905307179076725e-17,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189316_8szqjl6",
+        "timestamp": "2026-02-23T07:03:09.316Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.314Z",
+    "updatedAt": "2026-02-23T07:03:09.316Z"
+  },
+  {
+    "id": "aporia_1771830189319_roikfqw",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.00002694466274988372,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189325_jlatksz",
+        "timestamp": "2026-02-23T07:03:09.325Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.319Z",
+    "updatedAt": "2026-02-23T07:03:09.325Z"
+  },
+  {
+    "id": "aporia_1771830189327_ur04csd",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 3.476584022571067e-31,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189407_xv2jzlp",
+        "timestamp": "2026-02-23T07:03:09.407Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.327Z",
+    "updatedAt": "2026-02-23T07:03:09.407Z"
+  },
+  {
+    "id": "aporia_1771830189410_3zdug5a",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 4.203895392974451e-45,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189411_14n8ual",
+        "timestamp": "2026-02-23T07:03:09.411Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.410Z",
+    "updatedAt": "2026-02-23T07:03:09.411Z"
+  },
+  {
+    "id": "aporia_1771830189413_wedatrr",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 2.1454705259559224e-23,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189414_gfvq393",
+        "timestamp": "2026-02-23T07:03:09.414Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.413Z",
+    "updatedAt": "2026-02-23T07:03:09.414Z"
+  },
+  {
+    "id": "aporia_1771830189416_pjoj5ky",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 0.1245858296751976,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189418_ard2nol",
+        "timestamp": "2026-02-23T07:03:09.418Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.416Z",
+    "updatedAt": "2026-02-23T07:03:09.418Z"
+  },
+  {
+    "id": "aporia_1771830189421_i9hmodf",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 7.712420924121943e-9,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189424_uvlkuo0",
+        "timestamp": "2026-02-23T07:03:09.424Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.421Z",
+    "updatedAt": "2026-02-23T07:03:09.424Z"
+  },
+  {
+    "id": "aporia_1771830189425_hspf18s",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 4.46929036002075e-8,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189460_pfs7gtn",
+        "timestamp": "2026-02-23T07:03:09.460Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.425Z",
+    "updatedAt": "2026-02-23T07:03:09.460Z"
+  },
+  {
+    "id": "aporia_1771830189461_2koz1w3",
+    "name": "PBTテスト",
+    "poles": {
+      "first": {
+        "label": "A",
+        "description": "A"
+      },
+      "second": {
+        "label": "B",
+        "description": "B"
+      }
+    },
+    "justifications": {
+      "forFirst": [],
+      "forSecond": []
+    },
+    "whyUnresolvable": "理由",
+    "decisionHistory": [
+      {
+        "context": "テスト",
+        "chosenPole": 0,
+        "reason": "テスト",
+        "confidence": 4.2399593381901264e-24,
+        "acknowledgedAsTentative": true,
+        "anticipatedRisks": [],
+        "id": "decision_1771830189462_v1wjyup",
+        "timestamp": "2026-02-23T07:03:09.462Z"
+      }
+    ],
+    "status": "active",
+    "discoveryContext": "テスト",
+    "tags": [],
+    "createdAt": "2026-02-23T07:03:09.461Z",
+    "updatedAt": "2026-02-23T07:03:09.462Z"
+  }
+]
