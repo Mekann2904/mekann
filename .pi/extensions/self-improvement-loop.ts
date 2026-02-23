@@ -283,6 +283,8 @@ interface ActiveAutonomousRun {
   lastIntegratedDetection?: IntegratedVerificationResult;
   /** 成功したサイクルのパターン（高スコアの例） */
   successfulPatterns: SuccessfulPattern[];
+  /** 現在のサイクルで操作したファイル（git addの対象） */
+  operatedFilesInCycle: Set<string>;
 }
 
 /** 成功パターンの記録 */
@@ -487,6 +489,43 @@ async function getDiffSummary(cwd: string): Promise<{ stats: string; changes: st
  * - Body（本文）を必ず書く
  * - Type: feat, fix, docs, refactor, test, chore, perf, ci
  */
+/**
+ * フォールバック用コミットメッセージを生成
+ * LLM生成が失敗した場合に使用する
+ */
+function createFallbackCommitMessage(
+  cycleNumber: number,
+  runId: string,
+  perspectiveResults: Array<{ perspective: string; score: number; improvements: string[] }>
+): string {
+  const avgScore = perspectiveResults.length > 0
+    ? (perspectiveResults.reduce((sum, r) => sum + r.score, 0) / perspectiveResults.length * 100).toFixed(0)
+    : "不明";
+
+  return `chore(self-improvement-loop): サイクル${cycleNumber}の自己改善を実施する
+
+## 変更内容
+自己改善ループのサイクル${cycleNumber}で実施した変更を反映する。
+
+## コンテキスト
+- 実行ID: ${runId}
+- 視座スコア平均: ${avgScore}%
+
+runId: ${runId}`;
+}
+
+/**
+ * git-workflowスキル準拠のコミットメッセージを生成
+ * 
+ * @summary コミットメッセージを生成
+ * @param cycleNumber サイクル番号
+ * @param runId 実行ID
+ * @param taskSummary タスクサマリー
+ * @param diffSummary 変更差分サマリー
+ * @param perspectiveResults 視座別結果
+ * @param model モデル情報
+ * @returns 生成されたコミットメッセージ
+ */
 async function generateCommitMessage(
   cycleNumber: number,
   runId: string,
@@ -588,7 +627,42 @@ ${perspectiveResults.map(r => {
 
   try {
     const generatedMessage = await callModel(prompt, model, 60000);
-    return generatedMessage.trim();
+    
+    // [Thinking]プレフィックスを除去（Claudeのextended thinking出力対策）
+    let cleanedMessage = generatedMessage.trim();
+    
+    // 複数行の場合、各行を処理
+    const lines = cleanedMessage.split('\n');
+    const cleanedLines: string[] = [];
+    let foundValidStart = false;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      // [Thinking]で始まる行をスキップ
+      if (trimmedLine.startsWith('[Thinking]') || trimmedLine.startsWith('[ thinking]')) {
+        continue;
+      }
+      // 有効なコミットメッセージの開始を見つけた（Type: で始まる行）
+      if (!foundValidStart && (
+        /^(feat|fix|docs|refactor|test|chore|perf|ci)(\([^)]+\))?:/.test(trimmedLine)
+      )) {
+        foundValidStart = true;
+      }
+      // 有効な開始以降、または空行は保持
+      if (foundValidStart || trimmedLine === '') {
+        cleanedLines.push(line);
+      }
+    }
+    
+    cleanedMessage = cleanedLines.join('\n').trim();
+    
+    // まだ有効なフォーマットでない場合はフォールバックを使用
+    if (!foundValidStart) {
+      console.warn(`[self-improvement-loop] Generated message does not match commit format, using fallback`);
+      return createFallbackCommitMessage(cycleNumber, runId, perspectiveResults);
+    }
+    
+    return cleanedMessage;
   } catch (error) {
     console.warn(`[self-improvement-loop] Failed to generate commit message: ${toErrorMessage(error)}`);
     
@@ -2374,6 +2448,7 @@ export default (api: ExtensionAPI) => {
       cycleSummaries: [],
       perspectiveScoreHistory: [],
       successfulPatterns: [],
+      operatedFilesInCycle: new Set<string>(),
     };
 
     initializeAutonomousLoopLog(logPath, run);
