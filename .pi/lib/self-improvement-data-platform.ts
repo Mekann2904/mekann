@@ -1107,9 +1107,13 @@ export function generatePlatformSummary(cwd: string): string {
     const completed = dataView.runIndex.runs.filter(
       (r) => r.status === "completed"
     ).length;
-    lines.push(`- Run Index: ${runs} runs (${completed} completed)`);
+    if (runs === 0) {
+      lines.push(`- Run Index: Ready (will accumulate when using subagents/teams)`);
+    } else {
+      lines.push(`- Run Index: ${runs} runs (${completed} completed)`);
+    }
   } else {
-    lines.push(`- Run Index: No data`);
+    lines.push(`- Run Index: Not initialized`);
   }
 
   // パターン
@@ -1144,6 +1148,29 @@ export function generatePlatformSummary(cwd: string): string {
   } else {
     lines.push(`- Usage Stats: No data`);
   }
+
+  // 次のステップ（ユーザー体験向上）
+  lines.push("");
+  lines.push("## Available Actions");
+  lines.push("- `/self-reflect insights` - View latest insight report");
+  lines.push("- `/self-reflect generate` - Generate new insight report");
+  lines.push("- `/self-dashboard` - Visual exploration of data");
+  lines.push("- `/self-reflect analyze perspective:deconstruction` - Deep philosophical reflection");
+
+  // 思考モードのガイド（思考分類学の応用）
+  lines.push("");
+  lines.push("## Thinking Mode Guide (Taxonomy of Thought)");
+  if (dataView.usageStats && dataView.usageStats.errorRate > 0.1) {
+    lines.push("- **Black Hat (Critical)**: High error rate observed. Consider risk analysis.");
+  }
+  if (dataView.patterns && dataView.patterns.patterns.filter(p => p.patternType === "success").length > 50) {
+    lines.push("- **Yellow Hat (Optimistic)**: Many success patterns available. Leverage them.");
+  }
+  if (dataView.usageStats && dataView.usageStats.avgContextRatio && dataView.usageStats.avgContextRatio > 0.7) {
+    lines.push("- **Blue Hat (Process)**: High context usage. Consider breaking down tasks.");
+  }
+  lines.push("- **Green Hat (Creative)**: Try new approaches when patterns don't fit.");
+  lines.push("- **Red Hat (Intuitive)**: Trust your gut feeling about what matters.");
 
   return lines.join("\n");
 }
