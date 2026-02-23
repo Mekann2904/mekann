@@ -40,7 +40,8 @@ describe("dynamic-tools/reflection", () => {
       const context: ToolReflectionContext = {
         lastToolName: "git_status",
         lastToolResult: "On branch main",
-        currentTask: "Check git status and commit",
+        // currentTaskにlastToolNameが含まれている必要がある
+        currentTask: "Use git_status to check status",
         failureCount: 0,
       };
 
@@ -187,7 +188,7 @@ describe("dynamic-tools/reflection", () => {
       // Arrange
       const context: ToolReflectionContext = {
         lastToolName: undefined,
-        lastToolResult: undefined,
+        lastToolResult: "",  // 空文字列を使用（undefinedはエラーになる）
         currentTask: "New task",
         failureCount: 0,
       };

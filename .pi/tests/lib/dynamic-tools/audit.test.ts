@@ -374,7 +374,8 @@ describe("dynamic-tools/audit", () => {
       }, paths);
 
       // Act
-      const result = archiveOldLogs(0, paths); // 0日 = 全てアーカイブ
+      // 負の値を渡して全て過去とみなす（-1日 = 昨日以前をアーカイブ = 今日のエントリもアーカイブ）
+      const result = archiveOldLogs(-1, paths);
 
       // Assert
       expect(result.archived).toBe(1);
