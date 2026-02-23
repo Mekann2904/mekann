@@ -203,6 +203,10 @@ function isRateLimitMessage(text: string): boolean {
   return /429|rate.?limit|too many requests|quota exceeded/i.test(text);
 }
 
+function isUnhandledAbortStopReasonMessage(text: string): boolean {
+  return /unhandled stop reason:\s*abort/i.test(text);
+}
+
 function extractRetryAfterMs(text: string): number | undefined {
   const sec = text.match(/retry[-\s]?after[^0-9]*(\d+)(?:\.\d+)?\s*(s|sec|secs|second|seconds)\b/i);
   if (sec) return Math.max(0, Number(sec[1]) * 1000);
@@ -622,7 +626,12 @@ export async function runPiPrintMode(
             model: input.model,
             stderr,
           });
-          rejectPromise(new Error(stderr.trim() || `${entityLabel} exited with code ${code}`));
+          const errorMessage = stderr.trim() || `${entityLabel} exited with code ${code}`;
+          if (isUnhandledAbortStopReasonMessage(errorMessage)) {
+            rejectPromise(new Error(`${entityLabel} run aborted`));
+            return;
+          }
+          rejectPromise(new Error(errorMessage));
           return;
         }
 
@@ -871,6 +880,10 @@ export async function callModelViaPi(options: CallModelViaPiOptions): Promise<st
             stderr,
           });
           const message = stderr.trim() || `exit code ${code}`;
+          if (isUnhandledAbortStopReasonMessage(message)) {
+            rejectPromise(new Error(`${entityLabel} aborted`));
+            return;
+          }
           rejectPromise(new Error(`pi --mode json failed: ${message}`));
           return;
         }
