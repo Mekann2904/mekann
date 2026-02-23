@@ -179,6 +179,28 @@ function makeResult(text: string, details: Record<string, unknown> = {}): AgentT
 }
 
 /**
+ * ユーザー確認が必要な結果を作成するヘルパー関数
+ */
+function makeResultWithQuestion(
+  text: string,
+  questionData: {
+    question: string;
+    header: string;
+    options: Array<{ label: string; description: string }>;
+  },
+  details: Record<string, unknown> = {}
+): AgentToolResult<unknown> {
+  return {
+    content: [{ type: "text", text }],
+    details: {
+      ...details,
+      askUser: true,
+      question: questionData,
+    },
+  };
+}
+
+/**
  * 拡張機能を登録
  * @summary UL Workflow拡張を登録
  * @param pi - 拡張機能APIインターフェース

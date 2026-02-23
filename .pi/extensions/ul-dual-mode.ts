@@ -455,9 +455,18 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     }
 
     if (UL_SUBCOMMANDS.approve.test(rawText)) {
+      // 現在のフェーズに応じた質問を生成
+      const questionText = `現在のフェーズを承認して次に進みますか？`;
+      
       return {
         action: "transform" as const,
-        text: `以下のツールを呼び出して現在のフェーズを承認してください:
+        text: `まず、以下の質問を使ってユーザーに確認してください:
+
+\`\`\`json
+{ "tool": "question", "arguments": { "questions": [{ "question": "${questionText}", "header": "承認確認", "options": [{ "label": "Yes", "description": "承認して次のフェーズへ" }, { "label": "No", "description": "キャンセル" }] }] } }
+\`\`\`
+
+ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
 
 \`\`\`json
 { "tool": "ul_workflow_approve", "arguments": {} }
@@ -470,7 +479,13 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     if (UL_SUBCOMMANDS.annotate.test(rawText)) {
       return {
         action: "transform" as const,
-        text: `以下のツールを呼び出してplan.mdの注釈を適用してください:
+        text: `まず、以下の質問を使ってユーザーに確認してください:
+
+\`\`\`json
+{ "tool": "question", "arguments": { "questions": [{ "question": "plan.mdの注釈を適用しますか？", "header": "注釈適用", "options": [{ "label": "Yes", "description": "注釈を検出・適用" }, { "label": "No", "description": "キャンセル" }] }] } }
+\`\`\`
+
+ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
 
 \`\`\`json
 { "tool": "ul_workflow_annotate", "arguments": {} }
@@ -483,7 +498,13 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     if (UL_SUBCOMMANDS.abort.test(rawText)) {
       return {
         action: "transform" as const,
-        text: `以下のツールを呼び出してワークフローを中止してください:
+        text: `まず、以下の質問を使ってユーザーに確認してください:
+
+\`\`\`json
+{ "tool": "question", "arguments": { "questions": [{ "question": "本当にワークフローを中止しますか？\\n中止すると、現在の進捗が中断されます。", "header": "中止確認", "options": [{ "label": "Yes", "description": "中止する" }, { "label": "No", "description": "キャンセル" }] }] } }
+\`\`\`
+
+ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
 
 \`\`\`json
 { "tool": "ul_workflow_abort", "arguments": {} }
@@ -518,7 +539,13 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
     return {
       action: "transform" as const,
-      text: `以下のツールを呼び出してワークフローを開始してください:
+      text: `まず、以下の質問を使ってユーザーに確認してください:
+
+\`\`\`json
+{ "tool": "question", "arguments": { "questions": [{ "question": "以下のタスクでResearch-Plan-Annotate-Implementワークフローを開始しますか？\\n\\nタスク: ${taskText.replace(/"/g, '\\"')}\\n\\nワークフローのフェーズ:\\n1. RESEARCH: コードベースの調査\\n2. PLAN: 実装計画の作成\\n3. ANNOTATE: ユーザーによる計画レビュー\\n4. IMPLEMENT: コード実装", "header": "ワークフロー開始", "options": [{ "label": "Yes", "description": "ワークフローを開始" }, { "label": "No", "description": "キャンセル" }] }] } }
+\`\`\`
+
+ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
 
 \`\`\`json
 { "tool": "ul_workflow_start", "arguments": { "task": "${taskText.replace(/"/g, '\\"')}" } }
@@ -526,12 +553,12 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
 ワークフローが開始されたら、次のステップを指示通りに実行してください:
 1. ul_workflow_research で調査フェーズを実行
-2. ul_workflow_approve で調査を承認
+2. ul_workflow_approve で調査を承認（ユーザー確認必須）
 3. ul_workflow_plan で計画フェーズを実行
-4. ul_workflow_approve で計画を承認
+4. ul_workflow_approve で計画を承認（ユーザー確認必須）
 5. plan.mdに注釈を追加（ユーザーが行う）
-6. ul_workflow_annotate で注釈を適用
-7. ul_workflow_approve で注釈フェーズを承認
+6. ul_workflow_annotate で注釈を適用（ユーザー確認必須）
+7. ul_workflow_approve で注釈フェーズを承認（ユーザー確認必須）
 8. ul_workflow_implement で実装フェーズを実行
 9. ul_workflow_approve で完了
 
