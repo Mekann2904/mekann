@@ -193,6 +193,10 @@ interface SelfImprovementLoopState {
   lastUpdatedAt: string;
   totalImprovements: number;
   summary: string;
+  /** サイクル開始時に既に変更されていたファイル一覧 */
+  filesChangedBeforeCycle: Set<string>;
+  /** 自動追加する.gitignoreパターン */
+  gitignorePatternsToAdd: Set<string>;
   /** 前回のメタ認知チェック結果（推論深度向上のためのフィードバックループ） */
   lastMetacognitiveCheck?: MetacognitiveCheck;
   /** 前回の推論深度スコア */
@@ -283,8 +287,10 @@ interface ActiveAutonomousRun {
   lastIntegratedDetection?: IntegratedVerificationResult;
   /** 成功したサイクルのパターン（高スコアの例） */
   successfulPatterns: SuccessfulPattern[];
-  /** 現在のサイクルで操作したファイル（git addの対象） */
-  operatedFilesInCycle: Set<string>;
+  /** サイクル開始時に既に変更されていたファイル一覧 */
+  filesChangedBeforeCycle: Set<string>;
+  /** 自動追加すべき.gitignoreパターン（検出された除外対象） */
+  gitignorePatternsToAdd: Set<string>;
 }
 
 /** 成功パターンの記録 */
@@ -715,6 +721,8 @@ function initializeLoopState(task: string): SelfImprovementLoopState {
     lastUpdatedAt: new Date().toISOString(),
     totalImprovements: 0,
     summary: "",
+    filesChangedBeforeCycle: new Set<string>(),
+    gitignorePatternsToAdd: new Set<string>(),
   };
 }
 
@@ -1191,6 +1199,88 @@ function shouldStageFile(filePath: string): boolean {
 }
 
 /**
+ * 除外パターンに対応する.gitignoreエントリを生成
+ * 
+ * @summary .gitignoreパターンを生成
+ * @param filePath 除外対象のファイルパス
+ * @returns .gitignoreに追加すべきパターン
+ */
+function generateGitignorePattern(filePath: string): string | null {
+  // 環境変数ファイル
+  if (/\.env$/.test(filePath) || /\.env\./.test(filePath)) {
+    return ".env*";
+  }
+  // 認証情報ファイル
+  if (/credentials/i.test(filePath) || /secrets?\.json$/i.test(filePath)) {
+    return "*.credentials.json\n*secrets.json";
+  }
+  // ログファイル
+  if (/\.log$/.test(filePath)) {
+    return "*.log";
+  }
+  // キャッシュディレクトリ
+  if (/\.cache\//.test(filePath)) {
+    return ".cache/";
+  }
+  // それ以外はファイル自体を追加
+  return null;
+}
+
+/**
+ * .gitignoreにパターンを自動追加する
+ * 人間の手を使わずに除外パターンを.gitignoreに反映
+ * 
+ * @summary .gitignoreにパターンを追加
+ * @param patterns 追加するパターンのSet
+ * @param cwd 作業ディレクトリ
+ * @returns 追加したかどうか
+ */
+async function addToGitignore(patterns: Set<string>, cwd: string): Promise<boolean> {
+  if (patterns.size === 0) return false;
+  
+  const gitignorePath = join(cwd, ".gitignore");
+  let existingContent = "";
+  
+  // 既存の.gitignoreを読み込む
+  if (existsSync(gitignorePath)) {
+    try {
+      existingContent = readFileSync(gitignorePath, "utf-8");
+    } catch (error) {
+      console.warn(`[self-improvement-loop] Failed to read .gitignore: ${toErrorMessage(error)}`);
+      return false;
+    }
+  }
+  
+  const existingLines = new Set(
+    existingContent.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"))
+  );
+  
+  // 新しいパターンのみを抽出
+  const newPatterns = Array.from(patterns).filter(p => !existingLines.has(p));
+  
+  if (newPatterns.length === 0) {
+    console.log("[self-improvement-loop] All patterns already in .gitignore");
+    return false;
+  }
+  
+  // .gitignoreに追加
+  const headerComment = "\n# Auto-added by self-improvement-loop\n";
+  const newContent = existingContent + 
+    (existingContent.endsWith("\n") ? "" : "\n") +
+    headerComment +
+    newPatterns.join("\n") + "\n";
+  
+  try {
+    writeFileSync(gitignorePath, newContent, "utf-8");
+    console.log(`[self-improvement-loop] Added ${newPatterns.length} patterns to .gitignore: ${newPatterns.slice(0, 3).join(", ")}${newPatterns.length > 3 ? "..." : ""}`);
+    return true;
+  } catch (error) {
+    console.error(`[self-improvement-loop] Failed to update .gitignore: ${toErrorMessage(error)}`);
+    return false;
+  }
+}
+
+/**
  * git-workflowスキル準拠のコミット作成
  * 
  * ルール:
@@ -1266,28 +1356,53 @@ interface CommitContext {
   runId: string;
   taskSummary: string;
   perspectiveResults: Array<{ perspective: string; score: number; improvements: string[] }>;
+  /** サイクル開始時に既に変更されていたファイル一覧 */
+  filesChangedBeforeCycle: Set<string>;
+  /** 自動追加する.gitignoreパターン（参照渡しで更新） */
+  gitignorePatternsToAdd: Set<string>;
 }
 
 async function createGitCommitWithLLM(
   cwd: string,
   context: CommitContext,
   model: SelfImprovementModel
-): Promise<{ hash: string | null; message: string }> {
+): Promise<{ hash: string | null; message: string; excludedFiles: string[] }> {
+  const excludedFiles: string[] = [];
+  
   try {
-    // 変更ファイル一覧を取得
-    const changedFiles = await getChangedFiles(cwd);
+    // 現在の変更ファイル一覧を取得
+    const currentChangedFiles = await getChangedFiles(cwd);
     
-    if (changedFiles.length === 0) {
-      console.log("[self-improvement-loop] No changes to commit");
-      return { hash: null, message: "" };
+    // 「このサイクルで新たに変更されたファイル」のみを抽出
+    const newChangedFiles = currentChangedFiles.filter(
+      file => !context.filesChangedBeforeCycle.has(file)
+    );
+    
+    if (newChangedFiles.length === 0) {
+      console.log("[self-improvement-loop] No new changes in this cycle to commit");
+      return { hash: null, message: "", excludedFiles };
     }
-
+    
+    console.log(`[self-improvement-loop] New files changed in cycle: ${newChangedFiles.length} (total changed: ${currentChangedFiles.length})`);
+    
     // 除外パターンを適用してステージング対象を絞り込み
-    const filesToStage = changedFiles.filter(shouldStageFile);
+    const filesToStage: string[] = [];
+    for (const file of newChangedFiles) {
+      if (shouldStageFile(file)) {
+        filesToStage.push(file);
+      } else {
+        excludedFiles.push(file);
+        // .gitignoreに追加すべきパターンを生成
+        const gitignorePattern = generateGitignorePattern(file);
+        if (gitignorePattern) {
+          context.gitignorePatternsToAdd.add(gitignorePattern);
+        }
+      }
+    }
     
     if (filesToStage.length === 0) {
-      console.log("[self-improvement-loop] All changed files are excluded from staging");
-      return { hash: null, message: "" };
+      console.log("[self-improvement-loop] All new changed files are excluded from staging");
+      return { hash: null, message: "", excludedFiles };
     }
 
     console.log(`[self-improvement-loop] Staging ${filesToStage.length} files: ${filesToStage.slice(0, 5).join(", ")}${filesToStage.length > 5 ? "..." : ""}`);
@@ -1304,7 +1419,7 @@ async function createGitCommitWithLLM(
     const stagedResult = await runGitCommand(["diff", "--staged", "--stat"], cwd);
     if (stagedResult.stdout.trim().length === 0) {
       console.log("[self-improvement-loop] No staged changes after filtering");
-      return { hash: null, message: "" };
+      return { hash: null, message: "", excludedFiles };
     }
 
     // 変更差分を取得してLLMにコミットメッセージを生成させる
@@ -1328,19 +1443,19 @@ async function createGitCommitWithLLM(
       const hashResult = await runGitCommand(["rev-parse", "HEAD"], cwd);
       const hash = hashResult.stdout.trim().slice(0, 7);
       console.log(`[self-improvement-loop] Commit created: ${hash}`);
-      return { hash, message: commitMessage };
+      return { hash, message: commitMessage, excludedFiles };
     }
 
     // 変更なしエラー
     if (result.stderr.includes("nothing to commit")) {
-      return { hash: null, message: "" };
+      return { hash: null, message: "", excludedFiles };
     }
 
     console.warn(`[self-improvement-loop] Git commit warning: ${result.stderr}`);
-    return { hash: null, message: commitMessage };
+    return { hash: null, message: commitMessage, excludedFiles };
   } catch (error) {
     console.error(`[self-improvement-loop] Git operation failed: ${toErrorMessage(error)}`);
-    return { hash: null, message: "" };
+    return { hash: null, message: "", excludedFiles };
   }
 }
 
@@ -1806,6 +1921,17 @@ async function runSelfImprovementLoop(
       }
 
       state.currentCycle++;
+      
+      // サイクル開始時の変更ファイル一覧を記録
+      try {
+        const currentChangedFiles = await getChangedFiles(process.cwd());
+        state.filesChangedBeforeCycle = new Set(currentChangedFiles);
+        console.log(`[self-improvement-loop] Cycle ${state.currentCycle} starting with ${currentChangedFiles.length} pre-existing changes`);
+      } catch (error) {
+        console.warn(`[self-improvement-loop] Failed to get pre-cycle changes: ${toErrorMessage(error)}`);
+        state.filesChangedBeforeCycle = new Set();
+      }
+      
       const cycleResult = await runCycle(state, config, model, signal);
 
       // 停滞検出
@@ -1834,7 +1960,7 @@ async function runSelfImprovementLoop(
 
       // Git管理（LLMがコミットメッセージを生成）
       if (config.autoCommit && cycleResult.improvements.length > 0) {
-        const { hash, message } = await createGitCommitWithLLM(
+        const { hash, message, excludedFiles } = await createGitCommitWithLLM(
           process.cwd(),
           {
             cycleNumber: state.currentCycle,
@@ -1845,9 +1971,30 @@ async function runSelfImprovementLoop(
               score: r.score,
               improvements: r.improvements,
             })),
+            filesChangedBeforeCycle: state.filesChangedBeforeCycle,
+            gitignorePatternsToAdd: state.gitignorePatternsToAdd,
           },
           model
         );
+        
+        // 除外されたファイルがあれば.gitignoreに自動追加
+        if (excludedFiles.length > 0 && state.gitignorePatternsToAdd.size > 0) {
+          const addedToGitignore = await addToGitignore(state.gitignorePatternsToAdd, process.cwd());
+          if (addedToGitignore) {
+            // .gitignore自体もステージングしてコミット
+            await runGitCommand(["add", ".gitignore"], process.cwd());
+            await runGitCommand(
+              ["commit", "-m", `chore(self-improvement-loop): .gitignoreに除外パターンを追加
+
+サイクル${state.currentCycle}で検出された除外対象ファイルを.gitignoreに追加。
+
+runId: ${state.runId}`],
+              process.cwd()
+            );
+            state.gitignorePatternsToAdd.clear();
+          }
+        }
+        
         if (hash) {
           state.lastCommitHash = hash;
           cycleResult.commitHash = hash;
@@ -2303,9 +2450,20 @@ export default (api: ExtensionAPI) => {
     return stopPath;
   }
 
-  function dispatchNextCycle(run: ActiveAutonomousRun, deliverAs?: "followUp"): void {
+  async function dispatchNextCycle(run: ActiveAutonomousRun, deliverAs?: "followUp"): Promise<void> {
     const nextCycle = run.cycle + 1;
     run.cycle = nextCycle;
+
+    // サイクル開始時の変更ファイル一覧を記録
+    // （このサイクルで新たに変更されたファイルのみをコミットするため）
+    try {
+      const currentChangedFiles = await getChangedFiles(process.cwd());
+      run.filesChangedBeforeCycle = new Set(currentChangedFiles);
+      console.log(`[self-improvement-loop] Cycle ${nextCycle} starting with ${currentChangedFiles.length} pre-existing changes`);
+    } catch (error) {
+      console.warn(`[self-improvement-loop] Failed to get pre-cycle changes: ${toErrorMessage(error)}`);
+      run.filesChangedBeforeCycle = new Set();
+    }
 
     const prompt = buildAutonomousCyclePrompt(run, nextCycle);
     if (deliverAs) {
@@ -2449,14 +2607,18 @@ export default (api: ExtensionAPI) => {
       cycleSummaries: [],
       perspectiveScoreHistory: [],
       successfulPatterns: [],
-      operatedFilesInCycle: new Set<string>(),
+      filesChangedBeforeCycle: new Set<string>(), // 初期化時は空
+      gitignorePatternsToAdd: new Set<string>(),
     };
 
     initializeAutonomousLoopLog(logPath, run);
     appendAutonomousLoopLog(logPath, `- ${new Date().toISOString()} started`);
 
     activeRun = run;
-    dispatchNextCycle(run, input.deliverAs);
+    // 非同期でサイクルを開始（変更ファイル一覧の取得を待つ必要がある）
+    dispatchNextCycle(run, input.deliverAs).catch(error => {
+      console.error(`[self-improvement-loop] Failed to dispatch first cycle: ${toErrorMessage(error)}`);
+    });
     return { ok: true, run };
   }
 
@@ -2636,16 +2798,44 @@ export default (api: ExtensionAPI) => {
         : [];
 
       // LLMがgit-workflowスキル準拠のコミットメッセージを生成
-      const { hash, message } = await createGitCommitWithLLM(
+      // このサイクルで新たに変更されたファイルのみをコミット
+      const { hash, message, excludedFiles } = await createGitCommitWithLLM(
         process.cwd(),
         {
           cycleNumber: completedCycle,
           runId: run.runId,
           taskSummary: run.task,
           perspectiveResults,
+          filesChangedBeforeCycle: run.filesChangedBeforeCycle,
+          gitignorePatternsToAdd: run.gitignorePatternsToAdd,
         },
         run.model
       );
+
+      // 除外されたファイルがあれば.gitignoreに自動追加
+      if (excludedFiles.length > 0 && run.gitignorePatternsToAdd.size > 0) {
+        appendAutonomousLoopLog(run.logPath, `  excluded_files: ${excludedFiles.length}件`);
+        
+        const addedToGitignore = await addToGitignore(run.gitignorePatternsToAdd, process.cwd());
+        if (addedToGitignore) {
+          appendAutonomousLoopLog(run.logPath, `  gitignore_updated: ${run.gitignorePatternsToAdd.size}パターン追加`);
+          // .gitignore自体もステージングしてコミット
+          await runGitCommand(["add", ".gitignore"], process.cwd());
+          const gitignoreCommitResult = await runGitCommand(
+            ["commit", "-m", `chore(self-improvement-loop): .gitignoreに除外パターンを追加
+
+サイクル${completedCycle}で検出された除外対象ファイルを.gitignoreに追加。
+
+runId: ${run.runId}`],
+            process.cwd()
+          );
+          if (gitignoreCommitResult.code === 0) {
+            console.log(`[self-improvement-loop] .gitignore updated and committed`);
+          }
+          // パターンをクリア
+          run.gitignorePatternsToAdd.clear();
+        }
+      }
 
       if (hash) {
         run.lastCommitHash = hash;
@@ -2691,7 +2881,10 @@ export default (api: ExtensionAPI) => {
     }
 
     try {
-      dispatchNextCycle(run, ctx.isIdle() ? undefined : "followUp");
+      dispatchNextCycle(run, ctx.isIdle() ? undefined : "followUp").catch(error => {
+        console.error(`[self-improvement-loop] Failed to dispatch next cycle: ${toErrorMessage(error)}`);
+        finishRun("error", toErrorMessage(error));
+      });
     } catch (error) {
       finishRun("error", toErrorMessage(error));
     }
