@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/semantic-repetition.ts
- * role: 連続する出力間の意味的類似度を検出し、停滞状態を特定するモジュール
- * why: "Agentic Search in the Wild" に基づき、軌跡の32.15%で発生する繰り返しパターンを検出して早期停止を判断するため
- * related: .pi/lib/embeddings/index.ts, .pi/lib/trajectory.ts, .pi/config.ts
- * public_api: detectSemanticRepetition, SemanticRepetitionResult, SemanticRepetitionOptions, TrajectorySummary
- * invariants: 類似度スコアは0.0から1.0の範囲、maxTextLength超過のテキストは比較前に切り詰められる
- * side_effects: 外部API（埋め込みプロバイダ）を呼び出す可能性がある
- * failure_modes: OPENAI_API_KEY未設定時は埋め込み検出がスキップされる、空文字入力時は類似度0扱い
+ * role: 意味的重複検出モジュール
+ * why: エージェントの出力が停止しループ状態に陥ったかを検出し、無駄な計算資源の消費を防ぐため
+ * related: .pi/lib/embeddings/index.ts
+ * public_api: SemanticRepetitionResult, SemanticRepetitionOptions, TrajectorySummary, DEFAULT_REPETITION_THRESHOLD, DEFAULT_MAX_TEXT_LENGTH
+ * invariants: similarityスコアは0.0から1.0の範囲である、埋め込みキャッシュは最大100件までである
+ * side_effects: なし（キャッシュはモジュール内のMapに閉じている）
+ * failure_modes: OpenAI APIキー未設定時は埋め込み検出が使用できない、テキスト長が制限を超えると切り詰めが発生する
  * @abdd.explain
- * overview: 埋め込みベースまたは完全一致による類似度計算を行い、エージェントの出力がループ（停滞）しているか判定する
+ * overview: "Agentic Search in the Wild" に基づき、連続する出力の意味的類似性を計測して探索の停滞を検出するモジュール。
  * what_it_does:
- *   - 現在と直前の出力テキストを正規化し、指定最大長に切り詰める
- *   - 完全一致チェック（高速パス）または埋め込みコサイン類似度計算を実行する
- *   - 類似度スコアと閾値に基づき、isRepeatedフラグを返す
+ *   - 連続するテキスト間のコサイン類似度を計算する
+ *   - 設定された閾値を超える場合、重複とみなす
+ *   - 埋め込み計算結果をLRUキャッシュで保持しAPIコストを削減する
  * why_it_exists:
- *   - 学習論文で指摘された、思考ループによる計算資源の無駄を防ぐ
- *   - 意味的に同じ出力が繰り返される「停滞」状態をプログラム的に検知する
+ *   - 32.15%の軌跡で重複パターンが見られるという研究知見に基づき、早期停止の判断材料を提供する
+ *   - 探索のループ状態を自動的に特定するため
  * scope:
- *   in: 現在の文字列、直前の文字列、検出オプション（閾値、埋め込み利用有無、最大長）
- *   out: 繰り返し判定、類似度スコア、使用された検出手法
+ *   in: 比較対象のテキスト文字列、検出オプション（閾値、API使用有無）
+ *   out: 重複の有無、類似度スコア、検出手法
  */
 
 /**

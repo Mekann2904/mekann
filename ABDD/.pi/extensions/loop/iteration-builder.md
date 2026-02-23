@@ -2,7 +2,7 @@
 title: iteration-builder
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -17,6 +17,7 @@ related: []
 
 ```typescript
 // from '../../lib/agent-types.js': ThinkingLevel
+// from '../../lib/text-utils.js': truncateText, toPreview, normalizeOptionalText
 // from './reference-loader': LoopReference
 ```
 
@@ -33,11 +34,12 @@ related: []
 | 関数 | `extractLoopResultBody` | ループ結果の本文を抽出 |
 | 関数 | `validateIteration` | 入力値を検証してエラーを返す |
 | 関数 | `normalizeValidationFeedback` | 検証フィードバックを正規化 |
-| 関数 | `buildDoneDeclarationFeedback` | 完了宣言フィードバックを構築する |
+| 関数 | `buildDoneDeclarationFeedback` | Build feedback when done declaration is rejected |
 | 関数 | `extractNextStepLine` | 次のステップ行を抽出する |
 | 関数 | `extractSummaryLine` | 要約行を抽出する |
 | 関数 | `normalizeLoopOutput` | 出力文字を正規化する |
 | インターフェース | `ParsedLoopContract` | ループ契約解析結果 |
+| インターフェース | `RelevantPattern` | 関連パターン情報 |
 | 型 | `LoopStatus` | ループの進行状態を表す型 |
 | 型 | `LoopGoalStatus` | ループの状態を表す型 |
 
@@ -55,6 +57,14 @@ classDiagram
     +citations: string
     +summary: string
   }
+  class RelevantPattern {
+    <<interface>>
+    +patternType: success_failure
+    +taskType: string
+    +description: string
+    +agentOrTeam: string
+    +confidence: number
+  }
 ```
 
 ### 依存関係図
@@ -66,6 +76,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     agent_types["agent-types"]
+    text_utils["text-utils"]
     reference_loader["reference-loader"]
   end
   main --> local
@@ -75,6 +86,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  buildDoneDeclarationFeedback["buildDoneDeclarationFeedback()"]
   buildIterationFailureOutput["buildIterationFailureOutput()"]
   buildIterationFocus["buildIterationFocus()"]
   buildIterationPrompt["buildIterationPrompt()"]
@@ -88,7 +100,6 @@ flowchart TD
   extractTaggedBlock["extractTaggedBlock()"]
   normalizeCitationList["normalizeCitationList()"]
   normalizeLoopStatus["normalizeLoopStatus()"]
-  normalizeOptionalText["normalizeOptionalText()"]
   normalizeStringArray["normalizeStringArray()"]
   normalizeValidationFeedback["normalizeValidationFeedback()"]
   normalizeValidationIssue["normalizeValidationIssue()"]
@@ -97,20 +108,19 @@ flowchart TD
   parseLoopJsonObject["parseLoopJsonObject()"]
   parseLoopStatus["parseLoopStatus()"]
   parseStructuredLoopGoalStatus["parseStructuredLoopGoalStatus()"]
-  truncateText["truncateText()"]
   validateIteration["validateIteration()"]
+  validationIssuePriority["validationIssuePriority()"]
   buildIterationFocus --> extractNextStepLine
   buildIterationPrompt --> buildReferencePack
-  buildIterationPrompt --> truncateText
   extractLoopResultBody --> extractTaggedBlock
   normalizeValidationFeedback --> normalizeValidationIssue
+  normalizeValidationFeedback --> validationIssuePriority
   parseLoopContract --> extractCitations
   parseLoopContract --> extractGoalEvidence
   parseLoopContract --> extractNextStepLine
   parseLoopContract --> extractSummaryLine
   parseLoopContract --> normalizeCitationList
   parseLoopContract --> normalizeLoopStatus
-  parseLoopContract --> normalizeOptionalText
   parseLoopContract --> normalizeStringArray
   parseLoopContract --> parseLoopGoalStatus
   parseLoopContract --> parseLoopJsonObject
@@ -126,7 +136,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant iteration_builder as "iteration-builder"
   participant agent_types as "agent-types"
-  participant reference_loader as "reference-loader"
+  participant text_utils as "text-utils"
 
   Caller->>iteration_builder: buildIterationPrompt()
   iteration_builder->>agent_types: 内部関数呼び出し
@@ -151,6 +161,7 @@ buildIterationPrompt(input: {
   references: LoopReference[];
   previousOutput: string;
   validationFeedback: string[];
+  relevantPatterns?: RelevantPattern[];
 }): string
 ```
 
@@ -167,6 +178,7 @@ buildIterationPrompt(input: {
 | &nbsp;&nbsp;↳ references | `LoopReference[]` | はい |
 | &nbsp;&nbsp;↳ previousOutput | `string` | はい |
 | &nbsp;&nbsp;↳ validationFeedback | `string[]` | はい |
+| &nbsp;&nbsp;↳ relevantPatterns | `RelevantPattern[]` | いいえ |
 
 **戻り値**: `string`
 
@@ -286,6 +298,7 @@ validateIteration(input: {
   citations: string[];
   referenceCount: number;
   requireCitation: boolean;
+  confidenceScore?: number;
 }): string[]
 ```
 
@@ -302,6 +315,7 @@ validateIteration(input: {
 | &nbsp;&nbsp;↳ citations | `string[]` | はい |
 | &nbsp;&nbsp;↳ referenceCount | `number` | はい |
 | &nbsp;&nbsp;↳ requireCitation | `boolean` | はい |
+| &nbsp;&nbsp;↳ confidenceScore | `number` | いいえ |
 
 **戻り値**: `string[]`
 
@@ -324,16 +338,23 @@ normalizeValidationFeedback(errors: string[]): string[]
 ### buildDoneDeclarationFeedback
 
 ```typescript
-buildDoneDeclarationFeedback(errors: string[]): string[]
+buildDoneDeclarationFeedback(observations: string[]): string[]
 ```
 
-完了宣言フィードバックを構築する
+Build feedback when done declaration is rejected
+
+Utopia/Dystopia perspective:
+This is NOT a "punishment" or "correction" system that enforces correctness.
+Instead, it provides information and invites the agent to make a conscious choice.
+
+This supports "critical utopia" - an open process rather than a closed system.
+The agent retains genuine freedom to choose how to proceed.
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| errors | `string[]` | はい |
+| observations | `string[]` | はい |
 
 **戻り値**: `string[]`
 
@@ -581,50 +602,6 @@ validationIssuePriority(issue: string): number
 
 **戻り値**: `number`
 
-### normalizeOptionalText
-
-```typescript
-normalizeOptionalText(value: unknown): string | undefined
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `unknown` | はい |
-
-**戻り値**: `string | undefined`
-
-### truncateText
-
-```typescript
-truncateText(value: string, maxChars: number): string
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `string` | はい |
-| maxChars | `number` | はい |
-
-**戻り値**: `string`
-
-### toPreview
-
-```typescript
-toPreview(value: string, maxChars: number): string
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `string` | はい |
-| maxChars | `number` | はい |
-
-**戻り値**: `string`
-
 ### normalizeLoopOutput
 
 ```typescript
@@ -655,10 +632,26 @@ interface ParsedLoopContract {
   nextActions: string[];
   parseErrors: string[];
   usedStructuredBlock: boolean;
+  confidenceScore?: number;
 }
 ```
 
 ループ契約解析結果
+
+### RelevantPattern
+
+```typescript
+interface RelevantPattern {
+  patternType: "success" | "failure" | "approach";
+  taskType: string;
+  description: string;
+  agentOrTeam: string;
+  confidence: number;
+  keywords: string[];
+}
+```
+
+関連パターン情報
 
 ## 型定義
 
@@ -679,4 +672,4 @@ type LoopGoalStatus = "met" | "not_met" | "unknown"
 ループの状態を表す型
 
 ---
-*自動生成: 2026-02-18T18:06:17.273Z*
+*自動生成: 2026-02-23T06:29:42.020Z*

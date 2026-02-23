@@ -1,4 +1,29 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/rpm-throttle.ts
+ * role: リクエスト頻度制御エクステンション
+ * why: 通常ターンのLLM呼び出しに対し、RPM（Requests Per Minute）超過によるHTTP 429エラーを抑制するため
+ * related: .pi/lib/provider-limits.ts, .pi/extensions/pi-coding-agent-rate-limit-fix.ts
+ * public_api: before_agent_startフックを介したリクエスト実行許可の制御
+ * invariants: requestStartsMsは昇順、cooldownUntilMsは現在時刻以降または過去、状態はプロセス間でファイル共有される
+ * side_effects: ~/.pi/runtime/rpm-throttle-state.json の読み書き、プロセスの待機（sleep）
+ * failure_modes: ファイルロック取得時のタイムアウト、状態ファイルの破損（無視して動作続行）
+ * @abdd.explain
+ * overview: プロバイダごとのRPM制限に基づき、移動平均スロットルと動的クールダウンを適用する拡張機能
+ * what_it_does:
+ *   - before_agent_startフックでリクエスト許可判定を実行し、必要に応じて待機または429エラーを返す
+ *   - 直近1分間のリクエスト時刻（requestStartsMs）を追跴し、制限を超過した場合に待機時間を計算する
+ *   - 429エラー発生時に指数関数的なバックオフでクールダウン期間を設定し、リクエストを一時停止する
+ *   - ファイルロックを用いて複数プロセス間でスロットル状態を共有する
+ * why_it_exists:
+ *   - APIプロバイダのRPM制限を遵守し、エージェントの実行安定性を向上させるため
+ *   - 429エラーの連鎖を防ぎ、効率的なリクエストスケジューリングを実現するため
+ * scope:
+ *   in: ExtensionAPI（コンテキスト）, 環境変数（設定値）, 外部ファイル（状態）
+ *   out: リクエストの一時停止, 共有状態ファイルの更新, 429エラーのシミュレーション
+ */
+
+/**
  * .pi/extensions/rpm-throttle.ts
  * 通常ターンのLLM呼び出しに対して、RPM主因の429を減らすためのスロットリングを提供する。
  * before_agent_startで1分窓のリクエスト数を制御し、429検知時は追加クールダウンを適用する。
@@ -195,6 +220,12 @@ function findLastAssistantError(messages: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * RPMスロットル拡張登録
+ * @summary スロットル拡張登録
+ * @param pi 拡張API
+ * @returns なし
+ */
 export default function registerRpmThrottleExtension(pi: ExtensionAPI): void {
   const enabled = parseBooleanEnv("PI_RPM_THROTTLE_ENABLED", true);
   if (!enabled) return;

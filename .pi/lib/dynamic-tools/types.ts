@@ -1,29 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-tools/types.ts
- * role: 動的ツールシステムのデータ構造定義
- * why: ツール定義、パス設定、実行モードなどの型情報を一元管理するため
- * related: .pi/lib/dynamic-tools/executor.ts, .pi/lib/dynamic-tools/generator.ts
- * public_api: DynamicToolsPaths, DynamicToolDefinition, ToolParameterDefinition, DynamicToolMode, getDynamicToolsPaths
- * invariants:
- *   - confidenceScoreは0以上1以下の範囲
- *   - pathsの各フィールドは絶対パス文字列
- * side_effects: getDynamicToolsPaths関数呼び出し時にプロセスの作業ディレクトリを参照
- * failure_modes:
- *   - ディレクトリ構造の変更によりgetDynamicToolsPathsが無効なパスを返す
- *   - 不正な型が使用された場合の実行時エラー
+ * role: 動的ツールシステムの型定義とパス設定定義
+ * why: Live-SWE-agent統合におけるツール定義、実行モード、検証状態、格納パスのデータ構造を一元管理するため
+ * related: .pi/lib/dynamic-tools/executor.ts, .pi/lib/dynamic-tools/manager.ts, .pi/lib/dynamic-tools/storage.ts
+ * public_api: DynamicToolsPaths, getDynamicToolsPaths, DynamicToolMode, ToolParameterDefinition, DynamicToolDefinition, VerificationStatus
+ * invariants: DynamicToolDefinitionのconfidenceScoreは0以上1以下、IDは一意、verificationStatusは定義済みのいずれか
+ * side_effects: なし（純粋な型定義とパス生成関数のみ）
+ * failure_modes: getDynamicToolsPaths実行時のCWD権限エラー、パス文字列の不正
  * @abdd.explain
- * overview: Live-SWE-agent統合における動的ツール生成・管理システムで使用されるTypeScriptの型定義およびパス設定ユーティリティを提供する。
+ * overview: 動的ツール生成システムの共通データ構造とファイルシステム上のパス配置を定義するモジュール
  * what_it_does:
- *   - 動的ツールの構造（ID、パラメータ、実行コード等）を定義する
- *   - ツールの保存先パスやログファイルパスを定義・取得する
- *   - 実行モードや検証状態などの列挙型を定義する
+ *   - ツール保存先、スキル保存先、監査ログ等のファイルパスを定義・生成する
+ *   - ツールの実行モード（bash, function, template, skill）を型定義する
+ *   - ツールのパラメータ構造（名前、型、必須、制約）を定義する
+ *   - ツールのメタデータ（作成者、使用回数、信頼度スコア、検証状態）を定義する
  * why_it_exists:
- *   - 動的ツール生成システム全体でデータ構造の一貫性を保つため
- *   - 実装と型定義を分離し、保守性と再利用性を高めるため
+ *   - ツール定義の構造を静的に検証し、型安全性を保証するため
+ *   - 動的生成されるコードとシステム間で共通のインターフェースを確立するため
+ *   - パス設定を集中管理し、ハードコードによるバグを防ぐため
  * scope:
- *   in: なし
- *   out: DynamicToolsPathsインターフェース、DynamicToolDefinitionインターフェース等の型情報
+ *   in: process.cwd() (カレントワーキングディレクトリ)
+ *   out: DynamicToolsPathsオブジェクト、各種TypeScript型エイリアス、インターフェース
  */
 
 /**

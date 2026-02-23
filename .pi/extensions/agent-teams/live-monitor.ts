@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/live-monitor.ts
- * role: エージェントチーム実行のライブ監視UIおよび制御ロジックの実装
- * why: ライブ監視の責務をメインのagent-teams.tsから分離し、保守性を向上させるため
- * related: .pi/extensions/agent-teams.ts, .pi/lib/team-types.ts, .pi/lib/live-view-utils.ts, .pi/lib/agent-utils.ts
- * public_api: renderAgentTeamLiveView, toTeamLiveItemKey, type TeamLivePhase, type TeamLiveItem, type AgentTeamLiveMonitorController
- * invariants: イベント履歴はLIVE_EVENT_TAIL_LIMITで固定長管理される、すべての出力文字列は単一行に正規化される
- * side_effects: なし（純粋な描画・変換関数とエクスポートのみ）
- * failure_modes: イベントログの長さが制限を超えた場合に古いログが破棄される、フォーマット処理に失敗するとプレビューが崩れる可能性がある
+ * role: エージェントチームの実行状態を監視し、TUI（Terminal User Interface）でリアルタイムに可視化するモジュール
+ * why: 監視ロジックをメインファイルから分離し、保守性と責任の分離を確保するため
+ * related: .pi/extensions/agent-teams.ts, ../../lib/team-types.js, ../../lib/live-view-utils.js, ../../lib/agent-utils.js
+ * public_api: TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonitorController, LiveStreamView, TeamQueueStatus
+ * invariants: イベント行のタイムスタンプは正規表現で厳密にパースされる、環境変数による設定値は数値範囲検証が行われる
+ * side_effects: 標準出力へのTUI描画、標準エラー出力への環境変数無効時の警告出力、setIntervalによる定期的なUI更新スケジュール設定
+ * failure_modes: 無効な環境変数によるデフォルト値へのフォールバック、タイムスタンプパース失敗によるnull返却
  * @abdd.explain
- * overview: エージェントチームの実行状態を可視化するためのUI描画、イベント管理、およびユーティリティ関数を提供するモジュール
+ * overview: エージェントチームのライブ実行データをTUIコンポーネントとして描画・制御する機能を提供する
  * what_it_does:
- *   - エージェントチームのライブアイテム（TeamLiveItem）のイベントログを整形・格納する
- *   - チームIDとメンバーIDから一意のキー文字列を生成する
- *   - ライブストリーム、イベント、カーソル位置、テーマ設定に基づいて監視画面の文字列配列を描画する
- *   - チームの実行フェーズ（communication, judge, finished等）を文字列ラベルに変換する
+ *   - チーム実行のフェーズ、アイテム、キュー状態を管理する型定義の再エクスポート
+ *   - ライブイベントの表示上限やポーリング間隔を環境変数またはデフォルト値で定数化
+ *   - イベントログのタイムスタンプ "[hh:mm:ss]" をパースし、正規化して構造化データへ変換する
+ *   - TUI描画に必要なツリービューユーティリティやウィンドウ計算ロジックの提供
+ *   - アクティビティインジケーター（スピナー）のアニメーションフレーム定義
  * why_it_exists:
- *   - agent-teams.tsの複雑さを軽減し、UIロジックの変更を分離するため
- *   - ライブ監視に特化した定数（行数制限、ウィンドウサイズなど）を一元管理するため
+ *   - 複雑なTUI描画ロジックをチームの制御ロジックから分離し、コードの見通しを良くするため
+ *   - リアルタイムフィードバックにより、ユーザーがエージェントの動作状況を直感的に把握できるようにするため
  * scope:
- *   in: チーム実行イベント（生文字列）、現在のステータス情報、表示設定（幅、高さ、テーマ）、ユーザー操作（カーソル、モード）
- *   out: 画面描画用の文字列配列、整形済みイベントログ、フェーズ表示文字列、型定義
+ *   in: 環境変数（PI_LIVE_EVENT_TAIL_LIMIT, PI_LIVE_POLL_INTERVAL_MS）、TeamLiveItemなどの状態データ
+ *   out: 標準出力へのUI描画データ、コンソールへの警告ログ、スケジュールされたタイマーID
  */
 
 // File: .pi/extensions/agent-teams/live-monitor.ts
@@ -975,6 +976,15 @@ export function createAgentTeamLiveMonitor(
   };
 
   /**
+   * 動的更新が必要な状態かを判定する。
+   * - 実行中メンバーがいる
+   * - キュー待機中で待機表示を更新したい
+   */
+  const hasDynamicState = (): boolean => {
+    return hasRunningItems() || Boolean(queueStatus?.isWaiting);
+  };
+
+  /**
    * 定期ポーリングを開始（ストリーミングがない期間もUIを更新）
    */
   const startPolling = () => {
@@ -984,11 +994,11 @@ export function createAgentTeamLiveMonitor(
         clearPollTimer();
         return;
       }
-      // 実行中のアイテムがある場合のみ更新
-      if (hasRunningItems()) {
+      // 動的状態（実行中 / 待機中）の場合のみ更新
+      if (hasDynamicState()) {
         queueRender();
       } else {
-        // すべて完了したらポーリング停止
+        // 動的状態がなくなったらポーリング停止
         clearPollTimer();
       }
     }, LIVE_POLL_INTERVAL_MS);
@@ -1166,6 +1176,10 @@ export function createAgentTeamLiveMonitor(
       const item = byKey.get(itemKey);
       if (!item || closed) return;
       item.status = "running";
+      // 再実行時に古い完了状態が残ると経過時間が停止して見えるため初期化する
+      item.finishedAtMs = undefined;
+      item.summary = undefined;
+      item.error = undefined;
       if (item.phase === "queued") {
         item.phase = "initial";
       }
@@ -1180,6 +1194,14 @@ export function createAgentTeamLiveMonitor(
       if (!item || closed) return;
       item.phase = phase;
       item.phaseRound = round;
+      if (phase === "queued") {
+        // 次フェーズ待機時は再開待ち状態として表示をリセットする
+        item.status = "pending";
+        item.startedAtMs = undefined;
+        item.finishedAtMs = undefined;
+        item.summary = undefined;
+        item.error = undefined;
+      }
       pushLiveEvent(item, `phase=${formatLivePhase(phase, round)}`);
       queueRender();
     },
@@ -1247,6 +1269,11 @@ export function createAgentTeamLiveMonitor(
     }) => {
       if (closed) return;
       queueStatus = status;
+      if (status.isWaiting) {
+        startPolling();
+      } else if (!hasRunningItems()) {
+        clearPollTimer();
+      }
       queueRender();
     },
     close,

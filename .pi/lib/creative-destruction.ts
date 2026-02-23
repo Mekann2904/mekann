@@ -1,20 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/creative-destruction.ts
- * role: 自己前提破壊メカニズム（創造的破壊）
- * why: 自身の前提を意図的に破壊し、新たな視点を創発する能力を提供
- * related: aporetic-reasoning.ts, belief-updater.ts, thinking-process.ts
- * public_api: CreativeDestructionEngine, Premise, DestructionResult, performDestruction, optimizeDestruction
- * invariants: 破壊は常に再構築とセットで行われる
- * side_effects: なし
- * failure_modes: 無意味な破壊の連鎖、再構築不能な破壊
+ * role: 前提の破壊と再構築プロセスを定義するモジュール
+ * why: 既存の思考や前提を哲学的に解体し、新たな視点を創出するため
+ * related: ./belief-updater.ts
+ * public_api: Premise, DestructionMethod, DestructionResult, ReconstructedView, DestructionChain
+ * invariants: solidityは0-1の範囲である、depthは0-1の範囲である
+ * side_effects: なし（純粋な型定義とロジックの記述）
+ * failure_modes: 破壊条件が適用されない場合、再構築不能な状態
  * @abdd.explain
- * overview: ニーチェ的「永劫回帰」とドゥルーズ的「差異と反復」に基づく自己変容システム
- * what_it_does: 前提の検出、破壊方法の選択、パレート最適な再構築
- * why_it_exists: 固定観念から脱却し、創造的思考を可能にするため
+ * overview: 思考の前提を破壊し再構築するメカニズムの型定義とインターフェース
+ * what_it_does:
+ *   - 前提の構造と信頼度を定義する
+ *   - 破壊の方法と結果のデータ構造を規定する
+ *   - 破壊後の視点再構築とチェーンの履歴を管理する
+ * why_it_exists:
+ *   - 暗黙的な前提を可視化し分析するため
+ *   - 論理的な飛躍やクリエイティブな発想を生成するため
  * scope:
- *   in: 前提のリスト、破壊の深さ、コンテキスト
- *   out: 破壊結果、再構築された視点、パレートフロント
+ *   in: belief-updaterからのDistribution型
+ *   out: 前提破壊および再構築に関するすべての型定義
  */
 
 import type { Distribution } from './belief-updater.js';
@@ -506,12 +511,12 @@ export function registerPremise(
   solidity: number = 0.5
 ): Premise {
   const id = `premise-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
+
   const premise: Premise = {
     id,
     content,
     type,
-    solidity: Math.max(0, Math.min(1, solidity)),
+    solidity: Number.isNaN(solidity) ? 0.5 : Math.max(0, Math.min(1, solidity)),
     dependencies: [],
     derivedConclusions: [],
     confidence: 0.5,

@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/sym_find.ts
- * role: シンボル定義の検索ツール
- * why: ctags生成インデックスからのシンボル検索、正規表現によるフィルタリング、関連性によるソートを行うため
- * related: .pi/extensions/search/tools/sym_index.ts, .pi/extensions/search/types.ts, .pi/extensions/search/utils/output.ts
- * public_api: filterSymbols, sortSymbols, wildcardToRegex
- * invariants: nameRegexは有効なRegExpオブジェクト、kind比較はすべて小文字で行われる
- * side_effects: なし（引数の配列を直接ソート・加工する）
- * failure_modes: 無効な正規表現パターンによるエラー、入力エントリの不正な形式による処理不全
+ * role: シンボル定義のフィルタリングおよびソート機能の実装
+ * why: ctagsインデックスに対し、名前や種別による効率的な検索・抽出を行うため
+ * related: ../types.js, ./sym_index.js, ../utils/output.js, ../utils/errors.js
+ * public_api: wildcardToRegex, filterSymbols, sortSymbols
+ * invariants: 正規表現変換時の特殊文字はエスケープされる、ソートは副作用を伴わず配列を直接操作する
+ * side_effects: 引数で渡された配列（sortSymbolsの第1引数）の順序が変更される
+ * failure_modes: 不正な正規表現パターンによる実行時エラー、定義されていない種別によるフィルタリング漏れ
  * @abdd.explain
- * overview: ctags生成インデックスに対するシンボル検索ロジックの実装
+ * overview: ctagsが生成したインデックスエントリに対して、ワイルドカードパターンや種別を用いたフィルタリングと、関連性に基づくソートを提供するモジュールである。
  * what_it_does:
- *   - ワイルドカードパターンを正規表現に変換する
- *   - 名前、種類、ファイルパスを基準にシンボルをフィルタリングする
- *   - 完全一致優先、種類優先度、ファイルパス順で結果をソートする
+ *   - ワイルドカード（*, ?）を含むパターン文字列を正規表現オブジェクトに変換する
+ *   - シンボル名、種別、ファイルパスを条件としてインデックスエントリをフィルタリングする
+ *   - 検索クエリへの一致度（完全一致優先）や種別に基づき、シンボル定義の配列をソートする
  * why_it_exists:
- *   - ユーザー提供の検索条件（ワイルドカード等）をインデックス問い合わせに適用するため
- *   - 検索結果の関連性と可読性を高めるため
+ *   - ユーザーの検索意图を柔軟なパターンマッチングで表現し、検索精度を高めるため
+ *   - 大量のシンボル定義の中から関連性の高い結果を順序良く提示するため
+ *   - ファイル間の依存関係を分離し、検索ロジックを再利用可能にするため
  * scope:
- *   in: SymFindInput（検索条件）、SymbolIndexEntry[]（インデックスデータ）
- *   out: SymbolDefinition[]（フィルタ・ソート済みのシンボル定義リスト）
+ *   in: 検索クエリ（SymFindInput）、シンボルインデックスエントリ配列
+ *   out: フィルタリングおよびソート済みのシンボル定義配列、または正規表現オブジェクト
  */
 
 /**

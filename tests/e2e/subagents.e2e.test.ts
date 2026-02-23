@@ -14,9 +14,9 @@ vi.mock("@mariozechner/pi-ai", () => ({
 	Type: {
 		String: () => ({ type: "string" }),
 		Boolean: () => ({ type: "boolean" }),
-		Optional: (type) => type,
-		Object: (fields) => ({ type: "object", fields }),
-		Array: (type) => ({ type: "array", itemType: type }),
+		Optional: (type: any) => type,
+		Object: (fields: any) => ({ type: "object", fields }),
+		Array: (type: any) => ({ type: "array", itemType: type }),
 	},
 }));
 

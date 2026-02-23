@@ -2,7 +2,7 @@
 title: agent-usage-tracker
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -45,6 +45,7 @@ sequenceDiagram
   participant System as System
   participant Unresolved as "Unresolved"
   participant Runtime as "Runtime"
+  participant Executor as "Executor"
   participant Storage as "Storage"
   participant Internal as "Internal"
   participant Judge as "Judge"
@@ -52,6 +53,13 @@ sequenceDiagram
   User->>System: Read/reset/export extension usage stats including per-fea...
   System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
   System->>Runtime: ensureRuntime
+  Runtime->>Executor: prunePendingTools
+  Executor->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: currentRuntime.pendingTools.entries (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
+  Executor->>Unresolved: currentRuntime.pendingTools.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Executor->>Unresolved: Array.from(currentRuntime.pendingTools.entries())     .sort((a, b) => a[1].startedAtMs - b[1].startedAtMs)     .slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: Array.from(currentRuntime.pendingTools.entries())     .sort (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Runtime->>Storage: getStorageFile
   Storage->>Internal: join
   Storage->>Internal: ディレクトリを生成
@@ -64,7 +72,6 @@ sequenceDiagram
   Storage->>Storage: readFileSync
   Storage->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
-  Storage->>Unresolved: parsed.events.slice (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Internal: discoverFeatureCatalog
   Internal->>Storage: readdirSync
   Internal->>Unresolved: fileName.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
@@ -74,7 +81,6 @@ sequenceDiagram
   Internal->>Unresolved: source.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: probe.match (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: match[1].trim (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Internal: extractRegisteredCommandNames
   Internal->>Unresolved: matcher.exec (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: currentRuntime.pendingTools.clear (node_modules/typescript/lib/lib.es2015.collection.d.ts)
@@ -98,7 +104,6 @@ sequenceDiagram
   Internal->>Unresolved: (value * 100).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.round (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: buildSummaryReport
-  Internal->>Unresolved: Object.values(state.features).sort (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Object.values (node_modules/typescript/lib/lib.es2017.object.d.ts)
   Internal->>Internal: aggregateByExtension
   Internal->>Unresolved: map.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
@@ -210,7 +215,6 @@ flowchart TD
   discoverFeatureCatalog["discoverFeatureCatalog()"]
   ensureRuntime["ensureRuntime()"]
   exportState["exportState()"]
-  extractToolErrorMessage["extractToolErrorMessage()"]
   getStorageFile["getStorageFile()"]
   handleAgentUsageCommand["handleAgentUsageCommand()"]
   loadState["loadState()"]
@@ -218,6 +222,7 @@ flowchart TD
   nowIso["nowIso()"]
   parsePositiveInt["parsePositiveInt()"]
   previewInput["previewInput()"]
+  prunePendingTools["prunePendingTools()"]
   readContextSnapshot["readContextSnapshot()"]
   recordAgentEnd["recordAgentEnd()"]
   recordAgentStart["recordAgentStart()"]
@@ -230,16 +235,17 @@ flowchart TD
   ensureRuntime --> discoverFeatureCatalog
   ensureRuntime --> getStorageFile
   ensureRuntime --> loadState
+  ensureRuntime --> prunePendingTools
   recordToolCall --> appendEvent
   recordToolCall --> ensureRuntime
   recordToolCall --> markFeatureCall
   recordToolCall --> nowIso
   recordToolCall --> previewInput
+  recordToolCall --> prunePendingTools
   recordToolCall --> readContextSnapshot
   recordToolCall --> resolveExtensionForTool
   recordToolResult --> ensureRuntime
-  recordToolResult --> extractToolErrorMessage
-  recordToolResult --> nowIso
+  recordToolResult --> prunePendingTools
   recordToolResult --> resolveExtensionForTool
   recordToolResult --> toFeatureKey
   registerAgentUsageTracker --> buildRecentReport
@@ -249,6 +255,7 @@ flowchart TD
   registerAgentUsageTracker --> exportState
   registerAgentUsageTracker --> handleAgentUsageCommand
   registerAgentUsageTracker --> parsePositiveInt
+  registerAgentUsageTracker --> prunePendingTools
   registerAgentUsageTracker --> recordAgentEnd
   registerAgentUsageTracker --> recordAgentStart
   registerAgentUsageTracker --> recordToolCall
@@ -320,6 +327,21 @@ saveState(currentRuntime: RuntimeState): void
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | currentRuntime | `RuntimeState` | はい |
+
+**戻り値**: `void`
+
+### prunePendingTools
+
+```typescript
+prunePendingTools(currentRuntime: RuntimeState, nowMs: any): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| currentRuntime | `RuntimeState` | はい |
+| nowMs | `any` | はい |
 
 **戻り値**: `void`
 
@@ -931,4 +953,4 @@ type EventStatus = "ok" | "error"
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.163Z*
+*自動生成: 2026-02-23T06:29:41.865Z*

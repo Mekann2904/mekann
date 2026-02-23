@@ -49,6 +49,13 @@ describe("PATCH_TARGETS定義", () => {
 	}
 
 	const PATCH_TARGETS: PatchTarget[] = [
+		// abortケースの追加パッチ
+		{
+			modulePath: "@mariozechner/pi-ai/dist/providers/google-shared.js",
+			marker: 'case "abort":',
+			before: '        case FinishReason.NO_IMAGE:\n            return "error";',
+			after: '        case FinishReason.NO_IMAGE:\n            return "error";\n        case "abort":\n            return "aborted";',
+		},
 		{
 			modulePath: "@mariozechner/pi-ai/dist/providers/anthropic.js",
 			marker: 'case "abort":',
@@ -67,46 +74,104 @@ describe("PATCH_TARGETS定義", () => {
 			before: '        case "failed":\n        case "cancelled":\n            return "error";',
 			after: '        case "failed":\n        case "cancelled":\n            return "error";\n        case "abort":\n            return "aborted";',
 		},
+		// 未知のstop reasonを安全に処理するフォールバックパッチ
+		{
+			modulePath: "@mariozechner/pi-ai/dist/providers/google-shared.js",
+			marker: '// Fallback for unknown stop reasons',
+			before: '        default: {\n            const _exhaustive = reason;\n            throw new Error(`Unhandled stop reason: ${_exhaustive}`);\n        }',
+			after: '        default:\n            // Fallback for unknown stop reasons\n            return "error";',
+		},
+		{
+			modulePath: "@mariozechner/pi-ai/dist/providers/anthropic.js",
+			marker: '// Fallback for unknown stop reasons',
+			before: '        default:\n            // Handle unknown stop reasons gracefully (API may add new values)\n            throw new Error(`Unhandled stop reason: ${reason}`);',
+			after: '        default:\n            // Fallback for unknown stop reasons\n            return "error";',
+		},
+		{
+			modulePath: "@mariozechner/pi-ai/dist/providers/openai-completions.js",
+			marker: '// Fallback for unknown stop reasons',
+			before: '        default: {\n            const _exhaustive = reason;\n            throw new Error(`Unhandled stop reason: ${_exhaustive}`);\n        }',
+			after: '        default:\n            // Fallback for unknown stop reasons\n            return "error";',
+		},
+		{
+			modulePath: "@mariozechner/pi-ai/dist/providers/openai-responses-shared.js",
+			marker: '// Fallback for unknown stop reasons',
+			before: '        default: {\n            const _exhaustive = status;\n            throw new Error(`Unhandled stop reason: ${_exhaustive}`);\n        }',
+			after: '        default:\n            // Fallback for unknown stop reasons\n            return "error";',
+		},
 	];
 
-	it("3つのパッチターゲットが定義されている", () => {
-		expect(PATCH_TARGETS).toHaveLength(3);
+	it("8つのパッチターゲットが定義されている", () => {
+		expect(PATCH_TARGETS).toHaveLength(8);
 	});
 
-	it("全てのターゲットが正しいmarkerを持つ", () => {
-		for (const target of PATCH_TARGETS) {
-			expect(target.marker).toBe('case "abort":');
-		}
+	describe("abortケース追加パッチ", () => {
+		const abortTargets = PATCH_TARGETS.slice(0, 4);
+
+		it("全てのabortターゲットが正しいmarkerを持つ", () => {
+			for (const target of abortTargets) {
+				expect(target.marker).toBe('case "abort":');
+			}
+		});
+
+		it("全てのabortターゲットがafterにabortケースを含む", () => {
+			for (const target of abortTargets) {
+				expect(target.after).toContain('case "abort":');
+				expect(target.after).toContain('return "aborted"');
+			}
+		});
+
+		it("beforeにはabortケースが含まれない", () => {
+			for (const target of abortTargets) {
+				expect(target.before).not.toContain('case "abort":');
+			}
+		});
 	});
 
-	it("全てのターゲットがafterにabortケースを含む", () => {
-		for (const target of PATCH_TARGETS) {
-			expect(target.after).toContain('case "abort":');
-			expect(target.after).toContain('return "aborted"');
-		}
-	});
+	describe("フォールバックパッチ", () => {
+		const fallbackTargets = PATCH_TARGETS.slice(4, 8);
 
-	it("beforeにはabortケースが含まれない", () => {
-		for (const target of PATCH_TARGETS) {
-			expect(target.before).not.toContain('case "abort":');
-		}
+		it("全てのフォールバックターゲットが正しいmarkerを持つ", () => {
+			for (const target of fallbackTargets) {
+				expect(target.marker).toBe('// Fallback for unknown stop reasons');
+			}
+		});
+
+		it("全てのフォールバックターゲットがafterにreturn errorを含む", () => {
+			for (const target of fallbackTargets) {
+				expect(target.after).toContain('return "error"');
+				expect(target.after).not.toContain('throw new Error');
+			}
+		});
+
+		it("beforeにはthrowが含まれる", () => {
+			for (const target of fallbackTargets) {
+				expect(target.before).toContain('throw new Error');
+			}
+		});
 	});
 
 	describe("パス先の検証", () => {
-		it("anthropic.jsへのパスが正しい", () => {
+		it("google-shared.jsへのパスが正しい", () => {
 			expect(PATCH_TARGETS[0].modulePath).toBe(
+				"@mariozechner/pi-ai/dist/providers/google-shared.js"
+			);
+		});
+
+		it("anthropic.jsへのパスが正しい", () => {
+			expect(PATCH_TARGETS[1].modulePath).toBe(
 				"@mariozechner/pi-ai/dist/providers/anthropic.js"
 			);
 		});
 
 		it("openai-completions.jsへのパスが正しい", () => {
-			expect(PATCH_TARGETS[1].modulePath).toBe(
+			expect(PATCH_TARGETS[2].modulePath).toBe(
 				"@mariozechner/pi-ai/dist/providers/openai-completions.js"
 			);
 		});
 
 		it("openai-responses-shared.jsへのパスが正しい", () => {
-			expect(PATCH_TARGETS[2].modulePath).toBe(
+			expect(PATCH_TARGETS[3].modulePath).toBe(
 				"@mariozechner/pi-ai/dist/providers/openai-responses-shared.js"
 			);
 		});

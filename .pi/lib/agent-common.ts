@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/agent-common.ts
- * role: エージェント実行における共通設定定数および型定義の提供
- * why: subagents.tsとagent-teams.ts間でのコード重複を排除し、設定の一貫性を維持するため
+ * role: サブエージェントおよびチームメンバー実行のための共通定数・型定義・ユーティリティの提供
+ * why: subagents.tsとagent-teams.ts間でコードを重複させず、実行プロファイルや設定を一元管理するため
  * related: .pi/lib/subagents.ts, .pi/lib/agent-teams.ts, .pi/lib/validation-utils.js
- * public_api: STABLE_RUNTIME_PROFILE, ADAPTIVE_PARALLEL_MAX_PENALTY, STABLE_MAX_RETRIES, EntityConfig, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG, EntityType
- * invariants: STABLE_RUNTIME_PROFILEがtrueの場合、ADAPTIVE_PARALLEL_MAX_PENALTYは0である
- * side_effects: なし（定数および型定義のみ）
+ * public_api: EntityType, EntityConfig, STABLE_RUNTIME_PROFILE, SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG, 各種定数
+ * invariants: STABLE_RUNTIME_PROFILEがtrueの場合、ADAPTIVE_PARALLEL_MAX_PENALTYは0となる
+ * side_effects: なし
  * failure_modes: なし
  * @abdd.explain
- * overview: サブエージェントおよびチームメンバーの実行に必要な共通ユーティリティ、実行プロファイル設定、リトライ戦略、エンティティ設定を集約したモジュール。
+ * overview: エージェント実行（サブエージェント/チームメンバー）に共通する定数設定、型定義、および実行プロファイルを管理するモジュール
  * what_it_does:
- *   - 安定した実行プロファイル（STABLE_RUNTIME_PROFILE）および適応的並列性制御の定数を定義する
- *   - リトライ最大回数、バックオフ時間、レート制限待ち時間などの実行パラメータを提供する
- *   - サブエージェントとチームメンバーを区別するEntityType型およびEntityConfigインターフェースを定義する
- *   - デフォルトのエンティティ設定（SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG）をエクスポートする
+ *   - 安定した実行プロファイル（STABLE_RUNTIME_PROFILE）に基づくリトライ・並列処理パラメータの提供
+ *   - エンティティ種別（EntityType）と設定（EntityConfig）の型定義
+ *   - サブエージェントとチームメンバーのデフォルト設定定数のエクスポート
  * why_it_exists:
- *   - subagents.tsとagent-teams.tsで同一の設定値やロジックが重複するのを防ぐため
- *   - 実行環境（安定版/開発版）に応じた挙動を一箇所で制御し、予測可能性を確保するため
+ *   - 実行時の挙動を決定する設定値を複数のファイルで重複定義することを避けるため
+ *   - 本番環境での信頼性確保と開発モードでの挙動を切り替えるためのフラグ管理が必要なため
+ *   - エンティティごとの設定差分を明確にし、型安全に取り扱うため
  * scope:
- *   in: 外部設定値（環境変数等は使用せず定数として定義）、validation-utilsからの数値変換ユーティリティ
- *   out: 実行制御用定数、エンティティ型定義、設定オブジェクト
+ *   in: validation-utils.js
+ *   out: 定数、型定数、インターフェース定義
  */
 
 /**

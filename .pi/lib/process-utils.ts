@@ -1,24 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/process-utils.ts
- * role: プロセス終了待機時間の定数定義
- * why: SIGTERM送信後のSIGKILL送信タイミングを統一するため
- * related: process-manager.ts, shutdown-handler.ts
+ * role: プロセス終了の猶予時間定数の提供元
+ * why: プロセスの強制終了（SIGKILL）を送信するまでの待ち時間を一元管理するため
+ * related: .pi/lib/process.ts, .pi/lib/server.ts
  * public_api: GRACEFUL_SHUTDOWN_DELAY_MS
  * invariants: GRACEFUL_SHUTDOWN_DELAY_MSは正の整数である
  * side_effects: なし
- * failure_modes: 設定値がシステム制限を超える場合、タイムアウト処理が期待通り動作しない可能性がある
+ * failure_modes: 定数の値が変更されると、シャットダウン挙動が変化する
  * @abdd.explain
- * overview: グレースフルシャットダウン処理における強制終了までの待機時間を定義するモジュール
+ * overview: グレースフルシャットダウン処理向けのユーティリティ定数
  * what_it_does:
- *   - GRACEFUL_SHUTDOWN_DELAY_MS 定数をエクスポートする
- *   - SIGTERM送信からSIGKILL送信までの遅延時間（2000ms）を提供する
+ *   - SIGKILL送信前の待ち時間をミリ秒単位で定義する
+ *   - タイムアウト値を定数としてエクスポートする
  * why_it_exists:
- *   - プロセス終了待機時間をハードコーディングから分離し、一元管理するため
- *   - シャットダウン挙動の一貫性を保証するため
+ *   - マジックナンバーを排除し、設定を一箇所に集約するため
+ *   - シャットダウン挙動の調整を容易にするため
  * scope:
  *   in: なし
- *   out: 数値型の定数（ミリ秒単位）
+ *   out: number (GRACEFUL_SHUTDOWN_DELAY_MS)
  */
 
 /**

@@ -2,7 +2,7 @@
 title: agent-common
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -303,4 +303,4 @@ type EntityType = "subagent" | "team-member"
 エンティティの種別
 
 ---
-*自動生成: 2026-02-18T18:06:17.480Z*
+*自動生成: 2026-02-23T06:29:42.252Z*

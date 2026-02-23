@@ -91,19 +91,21 @@ import {
 
 function createMockAporia(): AporiaDetection {
   return {
-    type: 'value-conflict',
+    type: 'completeness-vs-speed',
     description: '完全性と速度のトレードオフ',
     tensionLevel: 0.7,
     pole1: {
       concept: '完全性',
       value: '品質を最大化する',
+      arguments: [],
     },
     pole2: {
       concept: '速度',
       value: '効率を最大化する',
+      arguments: [],
     },
     context: '開発プロジェクト',
-    detectedAt: new Date(),
+    resolution: 'maintain-tension',
   };
 }
 
@@ -688,13 +690,13 @@ describe("Inter-Module Integration", () => {
 
     // 破壊結果からアポリア推論へ
     const aporia: AporiaDetection = {
-      type: 'value-conflict',
+      type: 'completeness-vs-speed',
       description: destruction!.remnants[0],
       tensionLevel: destruction!.depth,
-      pole1: { concept: '完全性', value: '品質' },
-      pole2: { concept: '速度', value: '効率' },
+      pole1: { concept: '完全性', value: '品質', arguments: [] },
+      pole2: { concept: '速度', value: '効率', arguments: [] },
       context: '破壊から生成',
-      detectedAt: new Date(),
+      resolution: 'maintain-tension',
     };
 
     const result = performAporeticInference(aporiaEngine, aporia, []);

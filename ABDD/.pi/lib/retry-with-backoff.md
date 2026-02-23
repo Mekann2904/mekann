@@ -2,7 +2,7 @@
 title: retry-with-backoff
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -16,18 +16,22 @@ related: []
 ## インポート
 
 ```typescript
-// from 'node:fs': existsSync, readFileSync
+// from 'node:fs': existsSync, mkdirSync, readFileSync, ...
+// from 'node:os': homedir
 // from 'node:path': join
+// from './adaptive-total-limit.js': recordTotalLimitObservation
+// from './storage-lock.js': withFileLock
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `clearRateLimitState` | 状態をクリアする |
 | 関数 | `getRateLimitGateSnapshot` | - |
 | 関数 | `resolveRetryWithBackoffConfig` | 再試行設定の解決とマージ |
 | 関数 | `extractRetryStatusCode` | エラーからステータスコード抽出 |
-| 関数 | `isRetryableError` | エラーが再試行可能か判定 |
+| 関数 | `isNetworkErrorRetryable` | ネットワークエラーが再試行可能か判定 |
 | 関数 | `computeBackoffDelayMs` | バックオフ遅延時間計算 |
 | 関数 | `retryWithBackoff` | 指数関数的バックオフで再試行 |
 | インターフェース | `RetryWithBackoffConfig` | リトライ設定を定義 |
@@ -64,8 +68,8 @@ classDiagram
     +cwd: string
     +overrides: RetryWithBackoffOver
     +signal: AbortSignal
+    +now: number
     +rateLimitKey: string
-    +maxRateLimitRetries: number
   }
   class SharedRateLimitStateEntry {
     <<interface>>
@@ -91,6 +95,24 @@ classDiagram
     +hits: number
     +untilMs: number
   }
+  class RetryTimeOptions {
+    <<interface>>
+    +now: number
+  }
+```
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[retry-with-backoff]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    adaptive_total_limit["adaptive-total-limit"]
+    storage_lock["storage-lock"]
+  end
+  main --> local
 ```
 
 ### 関数フロー
@@ -98,8 +120,8 @@ classDiagram
 ```mermaid
 flowchart TD
   applyJitter["applyJitter()"]
-  clampFloat["clampFloat()"]
   clampInteger["clampInteger()"]
+  clearRateLimitState["clearRateLimitState()"]
   computeBackoffDelayMs["computeBackoffDelayMs()"]
   createAbortError["createAbortError()"]
   createRateLimitFastFailError["createRateLimitFastFailError()"]
@@ -107,7 +129,7 @@ flowchart TD
   extractRetryStatusCode["extractRetryStatusCode()"]
   getRateLimitGateSnapshot["getRateLimitGateSnapshot()"]
   getSharedRateLimitState["getSharedRateLimitState()"]
-  isRetryableError["isRetryableError()"]
+  isNetworkErrorRetryable["isNetworkErrorRetryable()"]
   normalizeRateLimitKey["normalizeRateLimitKey()"]
   pruneRateLimitState["pruneRateLimitState()"]
   readConfigOverrides["readConfigOverrides()"]
@@ -118,18 +140,15 @@ flowchart TD
   sanitizeOverrides["sanitizeOverrides()"]
   selectLongestRateLimitGate["selectLongestRateLimitGate()"]
   sleepWithAbort["sleepWithAbort()"]
-  toFiniteNumber["toFiniteNumber()"]
   toOptionalNonNegativeInt["toOptionalNonNegativeInt()"]
   toOptionalPositiveInt["toOptionalPositiveInt()"]
+  withSharedRateLimitState["withSharedRateLimitState()"]
   computeBackoffDelayMs --> applyJitter
   extractRetryStatusCode --> clampInteger
-  extractRetryStatusCode --> toFiniteNumber
   getRateLimitGateSnapshot --> getSharedRateLimitState
   getRateLimitGateSnapshot --> normalizeRateLimitKey
-  getRateLimitGateSnapshot --> pruneRateLimitState
-  isRetryableError --> extractRetryStatusCode
-  pruneRateLimitState --> getSharedRateLimitState
-  readConfigOverrides --> sanitizeOverrides
+  getRateLimitGateSnapshot --> withSharedRateLimitState
+  isNetworkErrorRetryable --> extractRetryStatusCode
   resolveRetryWithBackoffConfig --> readConfigOverrides
   resolveRetryWithBackoffConfig --> sanitizeOverrides
   retryWithBackoff --> computeBackoffDelayMs
@@ -138,7 +157,7 @@ flowchart TD
   retryWithBackoff --> createRateLimitKeyScope
   retryWithBackoff --> extractRetryStatusCode
   retryWithBackoff --> getRateLimitGateSnapshot
-  retryWithBackoff --> isRetryableError
+  retryWithBackoff --> isNetworkErrorRetryable
   retryWithBackoff --> normalizeRateLimitKey
   retryWithBackoff --> registerRateLimitGateHit
   retryWithBackoff --> registerRateLimitGateSuccess
@@ -147,9 +166,8 @@ flowchart TD
   retryWithBackoff --> sleepWithAbort
   retryWithBackoff --> toOptionalNonNegativeInt
   retryWithBackoff --> toOptionalPositiveInt
-  sanitizeOverrides --> clampFloat
-  sanitizeOverrides --> clampInteger
-  sanitizeOverrides --> toFiniteNumber
+  withSharedRateLimitState --> getSharedRateLimitState
+  withSharedRateLimitState --> pruneRateLimitState
 ```
 
 ### シーケンス図
@@ -159,15 +177,37 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant retry_with_backoff as "retry-with-backoff"
+  participant adaptive_total_limit as "adaptive-total-limit"
+  participant storage_lock as "storage-lock"
+
+  Caller->>retry_with_backoff: clearRateLimitState()
+  retry_with_backoff->>adaptive_total_limit: 内部関数呼び出し
+  adaptive_total_limit-->>retry_with_backoff: 結果
+  retry_with_backoff-->>Caller: void
 
   Caller->>retry_with_backoff: getRateLimitGateSnapshot()
   retry_with_backoff-->>Caller: RateLimitGateSnapsho
-
-  Caller->>retry_with_backoff: resolveRetryWithBackoffConfig()
-  retry_with_backoff-->>Caller: RetryWithBackoffConf
 ```
 
 ## 関数
+
+### clearRateLimitState
+
+```typescript
+clearRateLimitState(): void
+```
+
+状態をクリアする
+
+**戻り値**: `void`
+
+### scheduleWritePersistedState
+
+```typescript
+scheduleWritePersistedState(): void
+```
+
+**戻り値**: `void`
 
 ### toFiniteNumber
 
@@ -288,7 +328,7 @@ createRateLimitKeyScope(rateLimitKey: string | undefined): string[]
 ### selectLongestRateLimitGate
 
 ```typescript
-selectLongestRateLimitGate(gates: RateLimitGateSnapshot[]): RateLimitGateSnapshot
+selectLongestRateLimitGate(gates: RateLimitGateSnapshot[], nowMs: number): RateLimitGateSnapshot
 ```
 
 **パラメータ**
@@ -296,6 +336,7 @@ selectLongestRateLimitGate(gates: RateLimitGateSnapshot[]): RateLimitGateSnapsho
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | gates | `RateLimitGateSnapshot[]` | はい |
+| nowMs | `number` | はい |
 
 **戻り値**: `RateLimitGateSnapshot`
 
@@ -307,24 +348,113 @@ getSharedRateLimitState(): SharedRateLimitState
 
 **戻り値**: `SharedRateLimitState`
 
-### pruneRateLimitState
+### ensureRuntimeDir
 
 ```typescript
-pruneRateLimitState(nowMs: any): void
+ensureRuntimeDir(): void
+```
+
+**戻り値**: `void`
+
+### readPersistedRateLimitState
+
+```typescript
+readPersistedRateLimitState(nowMs: number): Map<string, SharedRateLimitStateEntry>
 ```
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| nowMs | `any` | はい |
+| nowMs | `number` | はい |
+
+**戻り値**: `Map<string, SharedRateLimitStateEntry>`
+
+### writePersistedRateLimitState
+
+```typescript
+writePersistedRateLimitState(state: SharedRateLimitState): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| state | `SharedRateLimitState` | はい |
+
+**戻り値**: `void`
+
+### mergeEntriesInPlace
+
+```typescript
+mergeEntriesInPlace(target: Map<string, SharedRateLimitStateEntry>, incoming: Map<string, SharedRateLimitStateEntry>): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| target | `Map<string, SharedRateLimitStateEntry>` | はい |
+| incoming | `Map<string, SharedRateLimitStateEntry>` | はい |
+
+**戻り値**: `void`
+
+### withSharedRateLimitState
+
+```typescript
+withSharedRateLimitState(nowMs: number, mutator: () => T): T
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nowMs | `number` | はい |
+| mutator | `() => T` | はい |
+
+**戻り値**: `T`
+
+### fallback
+
+```typescript
+fallback(): void
+```
+
+**戻り値**: `void`
+
+### pruneRateLimitState
+
+```typescript
+pruneRateLimitState(nowMs: number, state: SharedRateLimitState): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| nowMs | `number` | はい |
+| state | `SharedRateLimitState` | はい |
+
+**戻り値**: `void`
+
+### enforceRateLimitEntryCap
+
+```typescript
+enforceRateLimitEntryCap(state: SharedRateLimitState): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| state | `SharedRateLimitState` | はい |
 
 **戻り値**: `void`
 
 ### getRateLimitGateSnapshot
 
 ```typescript
-getRateLimitGateSnapshot(key: string | undefined): RateLimitGateSnapshot
+getRateLimitGateSnapshot(key: string | undefined, timeOptions: RetryTimeOptions): RateLimitGateSnapshot
 ```
 
 **パラメータ**
@@ -332,13 +462,14 @@ getRateLimitGateSnapshot(key: string | undefined): RateLimitGateSnapshot
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | key | `string | undefined` | はい |
+| timeOptions | `RetryTimeOptions` | はい |
 
 **戻り値**: `RateLimitGateSnapshot`
 
 ### registerRateLimitGateHit
 
 ```typescript
-registerRateLimitGateHit(key: string | undefined, retryDelayMs: number): RateLimitGateSnapshot
+registerRateLimitGateHit(key: string | undefined, retryDelayMs: number, now: () => number): RateLimitGateSnapshot
 ```
 
 **パラメータ**
@@ -347,13 +478,14 @@ registerRateLimitGateHit(key: string | undefined, retryDelayMs: number): RateLim
 |------|-----|------|
 | key | `string | undefined` | はい |
 | retryDelayMs | `number` | はい |
+| now | `() => number` | はい |
 
 **戻り値**: `RateLimitGateSnapshot`
 
 ### registerRateLimitGateSuccess
 
 ```typescript
-registerRateLimitGateSuccess(key: string | undefined): void
+registerRateLimitGateSuccess(key: string | undefined, now: () => number): void
 ```
 
 **パラメータ**
@@ -361,6 +493,7 @@ registerRateLimitGateSuccess(key: string | undefined): void
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | key | `string | undefined` | はい |
+| now | `() => number` | はい |
 
 **戻り値**: `void`
 
@@ -397,13 +530,13 @@ extractRetryStatusCode(error: unknown): number | undefined
 
 **戻り値**: `number | undefined`
 
-### isRetryableError
+### isNetworkErrorRetryable
 
 ```typescript
-isRetryableError(error: unknown, statusCode?: number): boolean
+isNetworkErrorRetryable(error: unknown, statusCode?: number): boolean
 ```
 
-エラーが再試行可能か判定
+ネットワークエラーが再試行可能か判定
 
 **パラメータ**
 
@@ -582,6 +715,7 @@ interface RetryWithBackoffOptions {
   cwd?: string;
   overrides?: RetryWithBackoffOverrides;
   signal?: AbortSignal;
+  now?: () => number;
   rateLimitKey?: string;
   maxRateLimitRetries?: number;
   maxRateLimitWaitMs?: number;
@@ -631,6 +765,14 @@ interface RateLimitWaitContext {
 }
 ```
 
+### RetryTimeOptions
+
+```typescript
+interface RetryTimeOptions {
+  now?: () => number;
+}
+```
+
 ## 型定義
 
 ### RetryJitterMode
@@ -647,5 +789,15 @@ type RetryJitterMode = "full" | "partial" | "none"
 type RetryWithBackoffOverrides = Partial<RetryWithBackoffConfig>
 ```
 
+### PersistedRateLimitState
+
+```typescript
+type PersistedRateLimitState = {
+  version: number;
+  updatedAt: string;
+  entries: Record<string, SharedRateLimitStateEntry>;
+}
+```
+
 ---
-*自動生成: 2026-02-18T18:06:17.549Z*
+*自動生成: 2026-02-23T06:29:42.402Z*

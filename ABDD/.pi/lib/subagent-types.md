@@ -2,7 +2,7 @@
 title: subagent-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -17,6 +17,7 @@ related: []
 
 ```typescript
 // from './tui/live-monitor-base.js': LiveStreamView, LiveViewMode
+// from './live-types-base.js': BaseLiveSnapshot
 // from './live-view-utils.js': LiveStatus
 ```
 
@@ -46,9 +47,8 @@ classDiagram
     <<interface>>
     +id: string
     +name: string
-    +status: LiveStatus
-    +startedAtMs: number
-    +finishedAtMs: number
+    +summary: string
+    +error: string
   }
   class SubagentMonitorLifecycle {
     <<interface>>
@@ -103,6 +103,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     live_monitor_base["live-monitor-base"]
+    live_types_base["live-types-base"]
     live_view_utils["live-view-utils"]
   end
   main --> local
@@ -116,20 +117,8 @@ flowchart LR
 interface SubagentLiveItem {
   id: string;
   name: string;
-  status: LiveStatus;
-  startedAtMs?: number;
-  finishedAtMs?: number;
-  lastChunkAtMs?: number;
   summary?: string;
   error?: string;
-  stdoutTail: string;
-  stderrTail: string;
-  stdoutBytes: number;
-  stderrBytes: number;
-  stdoutNewlineCount: number;
-  stderrNewlineCount: number;
-  stdoutEndsWithNewline: boolean;
-  stderrEndsWithNewline: boolean;
 }
 ```
 
@@ -249,4 +238,4 @@ type SubagentLiveStreamView = LiveStreamView
 ライブストリームビューの別名
 
 ---
-*自動生成: 2026-02-18T18:06:17.574Z*
+*自動生成: 2026-02-23T06:29:42.421Z*

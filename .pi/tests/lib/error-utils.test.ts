@@ -15,7 +15,7 @@ import {
 	isCancelledErrorMessage,
 	isTimeoutErrorMessage,
 	type PressureErrorType,
-} from "../../lib/error-utils.ts";
+} from "../../lib/error-utils.js";
 
 // ============================================================================
 // toErrorMessage

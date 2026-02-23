@@ -1,20 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/performance-profiles.ts
- * role: エージェントのパフォーマンスプロファイル管理モジュール
- * why: タスクタイプに応じて検証・委任・自己点検のレベルを動的に調整し、パフォーマンスを最大化するため
- * related: execution-rules.ts, verification-workflow.ts, task-execution.ts
- * public_api: PerformanceProfile, getProfileForTask, applyProfile, PROFILE_PRESETS
- * invariants: プロファイルは必ず1つ選択される
- * side_effects: なし
- * failure_modes: 不正なタスクタイプ分類
+ * role: パフォーマンス設定とタスク分類の型定義およびプリセット管理
+ * why: タスクの複雑度や性質に応じた処理モード（検証レベル、反復回数等）を動的に切り替えるため
+ * related: .pi/lib/task-planner.ts, .pi/lib/core-executor.ts, .pi/config/agent-config.ts
+ * public_api: PerformanceProfile, TaskType, TaskClassification, PROFILE_PRESETS
+ * invariants: PROFILE_PRESETSの各エントリはPerformanceProfileインターフェースを満たす, metacognitiveDepthは0以上5以下
+ * side_effects: なし（純粋な定数と型定義）
+ * failure_modes: 不正なprofileIdによる参照エラー, 数値パラメータの範囲外指定による動作不良
  * @abdd.explain
- * overview: タスクタイプに応じたパフォーマンスプロファイルを選択・適用する
- * what_it_does: タスク分類、プロファイル選択、検証レベル調整
- * why_it_exists: 全タスクで同じ検証レベルを適用するオーバーヘッドを削減するため
+ * overview: 処理の強度や品質レベルを定義するプロファイル、タスクタイプの列挙型、および既定プロファイルセットを提供するモジュール。
+ * what_it_does:
+ *   - 検証レベル、委任閾値、メタ認知深度等を含むPerformanceProfileインターフェースを定義する
+ *   - タスクの性質（trivial, creative等）を表すTaskType型とTaskClassification結果インターフェースを定義する
+ *   - fast, standard, quality, strictという4つの事前定義プロファイル（PROFILE_PRESETS）を公開する
+ * why_it_exists:
+ *   - 単一の実行ロジックを、タスク難易度や重要度に応じて最適化された複数のモードで運用するため
+ *   - コード上で動作パラメータをハードコーディングせず、設定として一元管理するため
  * scope:
- *   in: タスク内容、コンテキスト情報
- *   out: 選択されたプロファイル、調整された設定
+ *   in: 外部からのプロファイル選択、タスク分類結果の参照
+ *   out: 型定義、既定プロファイルオブジェクト
  */
 
 /**
@@ -303,13 +308,24 @@ export function classifyTask(task: string, context?: {
   }
 
   // 最高スコアのタイプを選択
+  // 同点の場合の優先順位（高リスクなものを優先）
+  const typePriority: TaskType[] = ['critical', 'complex', 'moderate', 'simple', 'trivial', 'exploratory', 'creative'];
+
   let maxScore = 0;
   let selectedType: TaskType = 'moderate';  // デフォルト
 
-  for (const [type, score] of Object.entries(scores)) {
+  // まず最大スコアを特定
+  for (const score of Object.values(scores)) {
     if (score > maxScore) {
       maxScore = score;
-      selectedType = type as TaskType;
+    }
+  }
+
+  // 同点の場合は優先順位に従って選択
+  for (const type of typePriority) {
+    if (scores[type] === maxScore && maxScore > 0) {
+      selectedType = type;
+      break;
     }
   }
 

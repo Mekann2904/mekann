@@ -1,8 +1,32 @@
 /**
+ * @abdd.meta
+ * path: .pi/extensions/pi-coding-agent-rate-limit-fix.ts
+ * role: 旧ランタイムパッチ実装（非推奨・現在は無効）
+ * why: 履歴として保持するため（no patch方針とnode_modules改変回避運用への統一のため）
+ * related: .pi/extensions/rate-limit-retry-budget.ts, node_modules/@mariozechner/pi-coding-agent/dist/core/agent-session.js, package.json
+ * public_api: export default function(pi: ExtensionAPI): void
+ * invariants: PATCH_TARGET定数は変更されない, patchFile関数はsession_start時の1回のみ実行される
+ * side_effects: node_modules内のagent-session.jsファイル内容を書き換える, 標準エラー出力へログを出力する
+ * failure_modes: 対象ファイル解決失敗時はスキップされる, 置換対象文字列の不一致によりパッチが適用されない場合がある
+ * @abdd.explain
+ * overview: pi-coding-agentの429自動リトライ挙動を補正するため、node_modules内のコードを文字列置換により書き換えるランタイムパッチ。
+ * what_it_does:
+ *   - セッション開始時にagent-session.jsを読み込み、定義された置換ルールに基づきソースコードを書き換える
+ *   - レートリミットエラーの判定条件を厳密化し、Retry-Afterヘッダーの待機時間を抽出するロジックを追加する
+ *   - レートリミット発生時のストリーク回数に応じたクールダウン機構と指数バックオフの待機時間計算を修正する
+ * why_it_exists:
+ *   - ライブラリ本体のリトライロジック不足を補うための過去の実装であるが、現在は運用方針変更により非推奨となっている
+ *   - node_modules改変を避ける方針に移行したため、今後の使用意図はなく実装履歴として残されている
+ * scope:
+ *   in: ExtensionAPI (セッション開始イベント)
+ *   out: agent-session.jsへのファイル書き込み, ステータスイベントの発行, コンソールログ
+ */
+
+/**
  * .pi/extensions/pi-coding-agent-rate-limit-fix.ts
- * pi-coding-agentの429自動リトライ挙動を起動時に補正する。
- * patch-packageに依存せず、拡張として恒久運用するために存在する。
- * 関連: .pi/extensions/pi-ai-abort-fix.ts, node_modules/@mariozechner/pi-coding-agent/dist/core/agent-session.js, package.json
+ * pi-coding-agentの429自動リトライ挙動を補正する旧ランタイムパッチ実装（現在は既定で無効）。
+ * no patch方針により本実装は非推奨で、node_modules改変を避ける運用に統一するため履歴として保持する。
+ * 関連: .pi/extensions/rate-limit-retry-budget.ts, node_modules/@mariozechner/pi-coding-agent/dist/core/agent-session.js, package.json
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";

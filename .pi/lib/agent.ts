@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/agent.ts
- * role: エージェント、サブエージェント、チームに関連する全ての型定数とユーティリティ関数の集約エントリポイント
- * why: 個別のモジュールファイルを直接インポートせず、単一のパスから必要な機能をインポートするため
- * related: .pi/lib/agent-types.js, .pi/lib/agent-utils.js, .pi/lib/agent-common.js, .pi/lib/agent-errors.js
- * public_api: ThinkingLevel, createRunId, computeLiveWindow, resolveTimeoutWithEnv, isRetryableEntityError, getModelBaseTimeoutMs, createAdaptivePenaltyController, validateSubagentOutput
- * invariants: このファイル自体にはロジック実装を持たず、全てのエクスポートはLayer 1の各モジュールから再エクスポートされる
- * side_effects: なし（定数と型、純粋関数のみを提供）
- * failure_modes: 元のモジュールで型定義または実装が欠落している場合、インポート時にコンパイルエラーが発生する
+ * role: エージェント関連モジュールの統合エントリーポイント
+ * why: 関連する型、定数、ユーティリティを単一のパスからインポート可能にするため
+ * related: ./agent-types.ts, ./agent-utils.ts, ./agent-common.ts, ./agent-errors.ts
+ * public_api: createRunId, computeLiveWindow, isRetryableEntityError, getModelBaseTimeoutMs, createAdaptivePenaltyController
+ * invariants: 全てのエクスポートはLayer 1のモジュールから再エクスポートされる
+ * side_effects: なし（純粋な再エクスポートのみ）
+ * failure_modes: 元ファイルの読み込みエラー、または循環参照によるインポート失敗
  * @abdd.explain
- * overview: エージェントシステムの構成要素をまとめるバレルファイル（Barrel file）
+ * overview: エージェント、サブエージェント、チームに関連する全ての型とユーティリティを集約したバレルファイル
  * what_it_does:
- *   - 型定義（ThinkingLevel, RunOutcomeCodeなど）を再エクスポートする
- *   - ランタイム設定定数（タイムアウト、再試行回数など）を再エクスポートする
- *   - ユーティリティ関数（ID生成、バリデーション、エラー処理など）を再エクスポートする
+ *   - 型定義の再エクスポート
+ *   - 実行ユーティリティの再エクスポート
+ *   - エラー処理・検証ユーティリティの再エクスポート
+ *   - タイムアウト・ペナルティ制御ロジックの再エクスポート
  * why_it_exists:
- *   - インポートパスの整理と階層化を行い、利用者が必要な機能を簡単に見つけられるようにするため
- *   - lib以下の実装詳細を隠蔽し、公開APIの一貫性を保つため
+ *   - インポート元で複雑なパス指定を不要にするため
+ *   - lib全体をインポートせずに機能単位で読み込むため
  * scope:
- *   in: なし（このファイルは他のモジュールに依存するのみ）
- *   out: エージェント実行、設定、エラーハンドリング、バリデーションに関連する全ての公開型と関数
+ *   in: ./agent-types.js, ./agent-utils.js, ./agent-common.js などLayer 1モジュール群
+ *   out: Agent実装クラス、ツールキット、テストコード
  */
 
 /**

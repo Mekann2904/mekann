@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/intent-aware-limits.ts
- * role: タスクの意図分類とそれに基づくリソース配分ポリシーを定義するモジュール
- * why: タスクの特性（宣言的・手順的・推論的）に応じて反復回数やタイムアウトを最適化するため
- * related: .pi/lib/execution-planner.ts, .pi/lib/search-engine.ts
+ * role: 意図に応じたリソース制限ポリシーを定義および提供するモジュール
+ * why: タスクの意図（宣言的・手続き的・推論的）に基づき、反復回数やタイムアウト等の計算リソースを適応的に制御するため
+ * related: .pi/lib/search-agent.ts, .pi/lib/execution-planner.ts, .pi/config/resource-limits.ts
  * public_api: TaskIntent, IntentBudget, IntentClassificationInput, IntentClassificationResult, INTENT_BUDGETS
- * invariants: IntentBudgetの各乗数は正の数である、maxIterationsは0以上である
- * side_effects: なし（純粋な定義と定数のエクスポート）
- * failure_modes: タスク説明が曖昧な場合の意図誤判定、未知のタスクタイプへの対応漏れ
+ * invariants: INTENT_BUDGETSの各エントリはmaxIterations, timeoutMultiplier, parallelismMultiplier, repetitionToleranceを必ず含む
+ * side_effects: なし（純粋な定数および型定義）
+ * failure_modes: 意図分類の誤判定による不適切なリソース割り当て、未知の意図タイプへの対応不可
  * @abdd.explain
- * overview: 論文 "Agentic Search in the Wild" に基づき、タスクの意図を3種類に分類し、それぞれに最適な計算リソース（反復回数、並列度、タイムアウト）を割り当てる設定を提供する
+ * overview: タスクの種別に応じてリソース配分を最適化するための型、定数、インターフェースを提供する
  * what_it_does:
- *   - TaskIntent型と分類用インターフェースを定義する
- *   - 意図の種類ごとに推奨リソース設定（INTENT_BUDGETS）を保持する
- *   - 分類パターン（INTENT_PATTERNS）を保持する
+ *   - TaskIntent型（declarative, procedural, reasoning）を定義する
+ *   - 各意図に対応したリソース設定（IntentBudget）をINTENT_BUDGETSとして定数化する
+ *   - 意図分類の入力と出力形式をインターフェースとして規定する
  * why_it_exists:
- *   - 単一のリソース制限では、反復の多い事実探索と複雑な推論タスクの両方に対応できないため
- *   - 意図に応じて早期収束させるか深く探索させるかを制御し、効率と精度を両立するため
+ *   - 検索タスクの特性（反復率、意味的ドリフトなど）に合わせて計算コストを最適化するため
+ *   - "Agentic Search in the Wild" 論文の知見に基づき、意図別に異なる制限値を適用するため
  * scope:
- *   in: タスクの説明、目標基準、参照リソース数
- *   out: 意図分類結果および推奨される予算設定
+ *   in: 意図分類のためのタスク記述、目標基準、参照資料数
+ *   out: 意図タイプ、信頼度、推奨リソース設定を含む分類結果と定義済みの予算プロファイル
  */
 
 /**

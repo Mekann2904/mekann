@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/mediator-types.ts
- * role: Mediator層の型定義モジュール
- * why: 論文「Intent Mismatch」のEquation (3)/(5)に基づき、意図推論と実行の分離を実現するための型を定義する
- * related: .pi/lib/intent-mediator.ts, .pi/lib/mediator-history.ts, .pi/lib/mediator-prompt.ts
- * public_api: MediatorInput, MediatorOutput, StructuredIntent, InformationGap, ConversationHistory, ConfirmedFact
- * invariants: confidenceは0.0-1.0の範囲、InformationGapのtypeは定義済みの値のみ
+ * role: 型定義モジュール
+ * why: Mediator層のデータ構造と情報ギャップ検出のための型を統一管理するため
+ * related: mediator-core.ts, session-manager.ts, conversation-handler.ts, gap-analyzer.ts
+ * public_api: SessionId, Confidence, Timestamp, InformationGapType, InformationGap, GapCandidate, MessageRole, Message
+ * invariants: Confidenceは0.0から1.0の範囲、TimestampはISO 8601形式、InformationGapのseverityはlow/medium/highのいずれか
  * side_effects: なし（純粋な型定義）
- * failure_modes: 型の不整合、必須フィールドの欠落
+ * failure_modes: 型定義と実装の不一致による実行時エラー
  * @abdd.explain
- * overview: Mediator層で使用される全ての型定義を提供する
+ * overview: Mediator層における対話管理、意図推論、情報ギャップ検出に必要な型を定義するモジュール
  * what_it_does:
- *   - ユーザー入力とコンテキストを表すMediatorInput型
- *   - Mediatorの出力結果を表すMediatorOutput型
- *   - 構造化された意図を表すStructuredIntent型
- *   - 情報不足箇所を表すInformationGap型
- *   - 会話履歴と確認済み事実の型
+ *   - セッション、信頼度、時刻などの基本型を定義する
+ *   - ユーザー入力の不足情報を分類するInformationGap型を定義する
+ *   - 会話履歴を構築するためのMessage型を定義する
  * why_it_exists:
- *   - 論文の意図推論（Equation 3）と再構築（Equation 5）を型システムで表現するため
- *   - training-freeな実装において、明確な型契約を定義するため
+ *   - 意図推論と実行の分離（Equation 3）および文脈再構築（Equation 5）に基づくアーキテクチャを型で保証するため
+ *   - Information Gap理論に基づく対話処理の型安全性を確保するため
  * scope:
  *   in: なし
- *   out: 型定義のエクスポート
+ *   out: Mediator層全体で使用される共用型とインターフェース
  */
 
 /**

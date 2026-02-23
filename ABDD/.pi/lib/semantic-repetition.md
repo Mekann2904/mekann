@@ -2,7 +2,7 @@
 title: semantic-repetition
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -86,10 +86,14 @@ flowchart LR
 flowchart TD
   detectSemanticRepetition["detectSemanticRepetition()"]
   detectSemanticRepetitionFromEmbeddings["detectSemanticRepetitionFromEmbeddings()"]
+  getCachedEmbedding["getCachedEmbedding()"]
   getRecommendedAction["getRecommendedAction()"]
   isSemanticRepetitionAvailable["isSemanticRepetitionAvailable()"]
   normalizeText["normalizeText()"]
+  setCachedEmbedding["setCachedEmbedding()"]
+  detectSemanticRepetition --> getCachedEmbedding
   detectSemanticRepetition --> normalizeText
+  detectSemanticRepetition --> setCachedEmbedding
 ```
 
 ### シーケンス図
@@ -114,6 +118,35 @@ sequenceDiagram
 ```
 
 ## 関数
+
+### getCachedEmbedding
+
+```typescript
+getCachedEmbedding(text: string): number[] | null
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `number[] | null`
+
+### setCachedEmbedding
+
+```typescript
+setCachedEmbedding(text: string, embedding: number[]): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+| embedding | `number[]` | はい |
+
+**戻り値**: `void`
 
 ### detectSemanticRepetition
 
@@ -262,4 +295,4 @@ interface TrajectorySummary {
 軌跡の要約情報を表すインターフェース
 
 ---
-*自動生成: 2026-02-18T18:06:17.561Z*
+*自動生成: 2026-02-23T06:29:42.414Z*

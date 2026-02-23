@@ -1,20 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/experience-replay.ts
- * role: 経験再生システム
- * why: 過去の思考セッションから学習し、類似状況での意思決定を改善する
- * related: thinking-process.ts, belief-updater.ts, learnable-mode-selector.ts
- * public_api: ExperienceReplay, ThinkingSession, SimilarExperience, createExperienceReplay, store, retrieve, learn
- * invariants: セッションIDは一意、タイムスタンプは昇順
- * side_effects: なし（状態はImmutable）
- * failure_modes: 類似検索の精度低下、メモリ使用量増大
+ * role: 思考セッションの記録・検索・パターン抽出に関する型定義モジュール
+ * why: 過去の思考プロセスを蓄積し、類似事例の検索や学習済みパターンの再利用を可能にするため
+ * related: .pi/lib/thinking-process.ts, .pi/lib/aporia-handler.ts, .pi/lib/learnable-mode-selector.ts
+ * public_api: ThinkingSession, SessionOutcome, SessionMetadata, SimilarExperience, LearnedPattern, PatternType, PatternCondition
+ * invariants: SessionOutcomeのeffectivenessは数値, SessionMetadataのdurationはミリ秒, SimilarExperienceのsimilarityは0-1の範囲
+ * side_effects: なし（型定義のみ）
+ * failure_modes: なし（型定義のみ）
  * @abdd.explain
- * overview: 強化学習におけるExperience Replayを思考プロセスに適用したシステム
- * what_it_does: 思考セッションの保存、類似検索、パターン学習、推奨生成
- * why_it_exists: 経験から学習し、同様の状況でより良い判断を行うため
+ * overview: 思考セッション、類似経験、学習済みパターンのデータ構造を定義する
+ * what_it_does:
+ *   - 思考セッションの履歴、結果、メタデータを保持する構造を定義する
+ *   - 過去のセッションとの類似度や適用性を表す構造を定義する
+ *   - 条件と推奨アクションを持つ学習済みパターンの構造を定義する
+ * why_it_exists:
+ *   - 思考プロセスの再利用と評価を可能にするため
+ *   - アポリア対処やモード選択などのパターンを体系化するため
  * scope:
- *   in: 思考セッション、コンテキスト、アウトカム
- *   out: 類似経験、学習済みパターン、推奨事項
+ *   in: 思考プロセス、アポリア検出、モード選択結果
+ *   out: 経験の検索、パターンの適用判定、学習データの管理
  */
 
 import {

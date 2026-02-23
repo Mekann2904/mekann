@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/adaptive-penalty.ts
- * role: 適応的ペナルティ制御のロジック実装と状態管理
- * why: 動的な並列度調整のための共通部品として、サブエージェントとチーム間でコード重複を排除するため
- * related: .pi/lib/agent-team.ts, .pi/lib/subagent.ts, .pi/lib/config.ts
- * public_api: AdaptivePenaltyController, EnhancedPenaltyController, createAdaptivePenaltyController, getAdaptivePenaltyMode
- * invariants: penalty値は常に0以上maxPenalty以下、reasonHistoryのサイズはhistorySize以下、updatedAtMsはモノトニック増加
- * side_effects: グローバル変数cachedModeの更新、AdaptivePenaltyStateオブジェクトの内部変更
- * failure_modes: 環境変数の不正値によるモード誤判定、履歴サイズ超過による古いデータの消失、減衰計算における数値精度の低下
+ * role: 動的な並列性調整を行う適応型ペナルティ制御ロジック
+ * why: エラー発生時の負荷抑制と回復時の性能向上を両立するため
+ * related: subagent-controller, agent-team-coordinator, rate-limiter, config-manager
+ * public_api: AdaptivePenaltyState, AdaptivePenaltyOptions, EnhancedPenaltyOptions, AdaptivePenaltyController, EnhancedPenaltyController
+ * invariants: penalty値は常に0以上maxPenalty以下, updatedAtMsは単調増加
+ * side_effects: 外部へのI/Oは発生しない（状態更新と計算のみ）
+ * failure_modes: 負のペナルティ値の混入、最大値超過、タイムスタンプの巻き戻り
  * @abdd.explain
- * overview: APIレート制限やタイムアウト等のエラー要因に基づき、システムの並列実行数を制御するためのペナルティ値を算出・管理するモジュール。
+ * overview: 動的並列度制御のためのペナルティ計算および状態管理モジュール。従来の線形減衰に加え、指数関数的減衰と理由別加重をサポートする拡張モード（P1-4）を実装する。
  * what_it_does:
- *   - ペナルティ値の増減（raise/lower）と時間経過による減衰（decay）を実行する
- *   - エラー要因（PenaltyReason）ごとに重み付けを行い、ペナルティの影響度を調整する
- *   - 線形・指数関数・ハイブリッドの減衰戦略を適用する
- *   - 履歴（reasonHistory）と統計情報を記録・参照する
- *   - 機能フラグ（PI_ADAPTIVE_PENALTY_MODE）によりレガシー/拡張モードを切り替える
+ *   - ペナルティ値の加算（raise）、減算（lower）、時間経過による減衰（decay）を計算する
+ *   - 理由（rate_limit, timeout等）に応じた加重ペナルティを適用する
+ *   - 現在のペナルティ値に基づき、ベースLimitに制限を適用した値を算出する（applyLimit）
+ *   - Feature Flag（PI_ADAPTIVE_PENALTY_MODE）により、legacyモードとenhancedモードを切り替える
  * why_it_exists:
- *   - 外部APIへの過負荷を防ぎ、レートリミット回避やリソース保護を行うため
- *   - エラーの種類に応じて柔軟に並列度を動的調整するため
+ *   - サブエージェントとエージェントチーム間で並列性制御ロジックを共通化し重複を排除するため
+ *   - エラーの種類に応じたきめ細やかな並列度調整（理由別加重）を実現するため
+ *   - 状態復帰の速度を戦略（減衰アルゴリズム）によって制御可能にするため
  * scope:
- *   in: 現在時刻, エラー発生の理由, 設定オプション（最大ペナルティ, 減衰時間など）
- *   out: 制御された並列リミット値, 現在のペナルティ値, 理由別統計
+ *   in: 現在時刻, 並列度のベースLimit, 増減指示と理由
+ *   out: 制限適用後の並列度Limit, 現在のペナルティ値, 理由ごとの統計情報
  */
 
 /**

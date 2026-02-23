@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/ul-dual-mode.ts
- * role: 高品質実行モードとセッション永続化機能の拡張
- * why: 効率的かつ高品質な実行と、柔軟なフェーズ数制御、必須レビュアによる品質ゲートを可能にするため
+ * role: "ul" prefix mode and session-wide persistent UL mode controller
+ * why: Enables efficient execution with flexible phase counts and conditional reviewer quality gates
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, docs/extensions.md
- * public_api: `state` オブジェクト、`persistState`、`resetState`、`refreshStatus`、`extractTextWithoutUlPrefix`、`looksLikeClearGoalTask`、`isTrivialTask`
- * invariants: `UL_PREFIX` は先頭の空白を許容する正規表現である、`state.persistentUlMode` はセッションを通じて維持される
- * side_effects: UIステータスの更新、PIログへの状態追加
- * failure_modes: 環境変数 `PI_UL_SKIP_REVIEWER_FOR_TRIVIAL` の設定ミスによるレビュースキップ、UI更新のスロットリングによる表示遅延
+ * public_api: Extension init function via `registerExtension`
+ * invariants: UL_PREFIX must match start of command for prefix activation; state flags reflect actual execution history
+ * side_effects: Updates `ul-mode-state` entry in session history; modifies UI status label
+ * failure_modes: Reviewer skip occurs if task length threshold misconfigured; status update may fail if UI context missing
  * @abdd.explain
- * overview: "ul"プレフィックスモードの追加と、セッション全体で継続するULモードを適用的委譲機能付きで提供する拡張機能
+ * overview: Prefix-triggered mode ("ul") or persistent mode for adaptive orchestration and delegation
  * what_it_does:
- *   - "ul"プレフィックスの検出と除去
- *   - セッション永続化モードとステータス管理
- *   - サブエージェント/チーム実行ツールの使用状況追跡
- *   - 小規模タスク判定とレビュースキップ制御
- *   - UIステータス表示とスロットリング制御
+ *   - Activates UL mode on "ul" prefix or persistent state
+ *   - Delegates tasks to subagents or agent teams (researcher, architect, implementer)
+ *   - Skips reviewer phase for trivial tasks based on patterns or length
+ *   - Throttles UI status updates to reduce overhead
  * why_it_exists:
- *   - LLMの裁量で1〜Nフェーズを実行可能にし、固定フェーズ制限を解除するため
- *   - 高品質な実行結果を保証するためにレビュアプロセスを強制するため
+ *   - Provide high-quality execution with flexible LLM-driven phase counts
+ *   - Reduce overhead on small tasks via conditional reviewer gating
+ *   - Maintain session-wide state for complex workflows
  * scope:
- *   in: ユーザー入力テキスト、環境変数
- *   out: UIステータス、状態ログ、ツール利用フラグ
+ *   in: User text input, execution tool usage (subagent_run, agent_team_run), environment variables
+ *   out: Tool invocations, UI status updates, session history entries
  */
 
 // File: .pi/extensions/ul-dual-mode.ts

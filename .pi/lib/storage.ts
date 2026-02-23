@@ -1,27 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/storage.ts
- * role: ストレージ・メモリ・埋め込み機能のエクスポート集約モジュール
- * why: lib配下の個別モジュールをインポートせず、単一のエントリポイントから関連機能を利用するため
- * related: .pi/lib/storage-base.ts, .pi/lib/run-index.ts, .pi/lib/pattern-extraction.ts
- * public_api: ストレージ基底ユーティリティ、実行インデックス、パターン抽出、セマンティックメモリ、埋め込みプロバイダ関連の型・関数
- * invariants: エクスポートされるシンボルは各ソースファイルから直接再エクスポートされる
- * side_effects: なし（純粋なエクスポート集約）
- * failure_modes: 依存モジュールで型エラーまたは循環参照が発生した場合にコンパイルが失敗する
+ * role: ストレージ関連機能の集約エントリーポイント
+ * why: ストレージ、メモリ、埋め込み（Embedding）関連のモジュールを一箇所からインポート可能にするため
+ * related: .pi/lib/storage-base.js, .pi/lib/run-index.js, .pi/lib/pattern-extraction.js, .pi/lib/semantic-memory.js
+ * public_api: エクスポートされる全ての型、ユーティリティ関数、レジストリクラス（HasId, BaseRunRecord, buildRunIndex, generateEmbedding, EmbeddingProviderRegistry等）
+ * invariants: エクスポートされるモジュールのバージョン定数（RUN_INDEX_VERSION等）と実装の整合性
+ * side_effects: なし（純粋な再エクスポート）
+ * failure_modes: 依存モジュールでの循環参照、型定義の不一致
  * @abdd.explain
- * overview: 実行履歴の管理、検索、パターン抽出、およびベクトル埋め込みに関連するモジュールを一箇所に集約するバレルファイル。
+ * overview: ストレージ基底機能、実行履歴インデックス、パターン抽出、意味的メモリ、埋め込みプロバイダを統合するバレルファイル。
  * what_it_does:
- *   - ストレージ基底型・関数の再エクスポート
- *   - 実行インデックス作成・検索機能の再エクスポート
- *   - パターン抽出・ストレージ機能の再エクスポート
- *   - セマンティックメモリ（埋め込み）機能の再エクスポート
- *   - 埋め込みプロバイダインターフェースとレジストリの再エクスポート
+ *   - storage-base.js, run-index.js, pattern-extraction.js, semantic-memory.js, embeddingsモジュールから選択的APIを再エクスポートする
+ *   - ALMAインスパイアの履歴インデキシング、OpenAI Embeddingsを用いた意味的検索、パターン抽出機能へのアクセスを提供する
  * why_it_exists:
- *   - 利用者が個別のモジュールパスを覚える負担を軽減するため
- *   - lib配下すべてをインポートせず、必要なストレージ機能群のみを選択的にロードするため
+ *   - 利用者が個々のモジュールパスを意識せず、`.pi/lib/storage` から必要な機能をインポートできるようにするため
+ *   - 関連するストレージ機能のインターフェースを整理し、依存関係を明確にするため
  * scope:
- *   in: なし（内部実装を持たない）
- *   out: ストレージ、インデックス、パターン、セマンティックメモリ、埋め込みプロバイダに関連するすべての公開API
+ *   in: なし（外部依存なし）
+ *   out: ストレージ、インデックス、パターン、エンベディングに関する型定義と操作関数
  */
 
 /**

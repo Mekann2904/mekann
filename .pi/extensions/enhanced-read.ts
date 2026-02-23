@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/enhanced-read.ts
- * role: シンタックスハイライトと行番号付きのファイル読み込みツールを提供する拡張機能
- * why: エージェントがコードファイルを可読性高く表示し、範囲指定読み込みを可能にするため
- * related: @mariozechner/pi-ai, @mariozechner/pi-coding-agent, @mariozechner/pi-tui, code-viewer.ts
- * public_api: enhanced_read ツール
- * invariants: パスは必須、offset/limit はオプション（デフォルトで全行表示）
+ * role: ツール拡張機能
+ * why: 構文ハイライトと行番号、範囲指定機能を備えたファイル読み込み機能を提供するため
+ * related: @mariozechner/pi-coding-agent, node:fs
+ * public_api: enhanced_read
+ * invariants: offset は1以上、limit は指定時1以上、startLine は offset 値、endLine は startLine + 表示行数 - 1
  * side_effects: ファイルシステムからの読み取り
- * failure_modes: ファイルが存在しない、読み取り権限がない、言語検出に失敗、無効なoffset/limit値
+ * failure_modes: ファイル不存在、範囲外の offset/limit 指定、ファイル読み込みエラー
  * @abdd.explain
- * overview: ファイルをシンタックスハイライト、行番号付きで表示し、範囲指定読み込みをサポートするツール
+ * overview: 指定されたファイルパスの内容を読み込み、行番号と構文ハイライトを付与して返す拡張機能。
  * what_it_does:
- *   - ファイルパスからコードを読み込み、言語を自動検出してハイライト表示する
- *   - offset で開始行、limit で最大行数を指定可能
- *   - 行番号を付与してコードを見やすくフォーマットする
- *   - 総行数と現在の範囲（開始行〜終了行）を表示する
+ *   - パラメータに基づきファイルの一部、または全体を非同期で読み込む
+ *   - 開始行（offset）と最大行数（limit）による範囲指定を適用する
+ *   - 行番号をフォーマットし、コードの言語を判定して構文ハイライトを適用する
+ *   - 読み込み結果と共に詳細情報（パス、行数、言語など）を返す
  * why_it_exists:
- *   - 既存の read ツールにハイライトと範囲指定機能を追加した拡張版を提供するため
- *   - 大きなファイルの部分的な読み込みを可能にするため
+ *   - 大きなファイルを効率的に確認するために部分的な読み込みを可能にする
+ *   - コードの可読性を向上させるためにハイライトと行番号を付与する
  * scope:
- *   in: ExtensionAPI, ファイルパス, offset（開始行）, limit（最大行数）
- *   out: ハイライト付きコード表示、範囲情報、総行数
+ *   in: path（文字列）, offset（数値, 省略可）, limit（数値, 省略可）
+ *   out: 構文ハイライトされたテキスト, EnhancedReadDetails メタデータ
  */
 
 /**

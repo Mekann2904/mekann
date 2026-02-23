@@ -1,20 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/hyper-metacognition.ts
- * role: 超メタ認知エンジン
- * why: メタ認知そのものをメタ認知する再帰的構造を提供し、認知の限界を認識する
- * related: thinking-process.ts, aporetic-reasoning.ts, creative-destruction.ts
- * public_api: HyperMetacognitionEngine, MetacognitiveLayer, performHyperMetacognition, MetaMetaState
- * invariants: 無限後退を認識しつつ、実用的な停止点を設定する
- * side_effects: なし
- * failure_modes: 形式化への回帰、無限ループ
+ * role: 認知プロセスの多階層モデル化とメタ分析を行う型定義モジュール
+ * why: 自己言及的な思考の形式化、無限後退の検知、形式化リスクの定量化を行うため
+ * related: ./belief-updater.js, ./creative-destruction.js
+ * public_api: MetacognitiveLayer, HyperMetacognitiveState, CognitivePattern, ImprovementRecommendation, BayesianMetaBelief
+ * invariants: 層番号は0〜3の整数、信頼度・評価指標は0〜1の範囲
+ * side_effects: なし（型定義のみ）
+ * failure_modes: 階層間の矛盾、深すぎる再帰によるスタックオーバーフロー（実装時）、信頼度の計算ロジック不在による整合性喪失
  * @abdd.explain
- * overview: 多層的なメタ認知構造により、思考の質を深層から評価・改善する
- * what_it_does: 4層構造のメタ認知、自己参照的評価、形式化リスク検出
- * why_it_exists: 単層のメタ認知では捉えられない認知の限界を可視化するため
+ * overview: 思考を4層（直接思考、メタ認知、超メタ認知、限界認識）に階層化し、自己評価とパターン検出を行うためのデータ構造を定義する
+ * what_it_does:
+ *   - メタ認知の階層構造を表現するインターフェースを定義する
+ *   - 認知プロセスの統合評価（思考の質、形式化リスク、自己参照の一貫性）を保持する構造を提供する
+ *   - 認知バイアスや改善推奨をパターンとして記述する型を定義する
+ *   - 確率論的な自己評価（ベイズ的メタ信念）の構造を定義する
+ * why_it_exists:
+ *   - 思考プロセスを客観的に監視・評価する仕組みを提供するため
+ *   - 形式化による過度な硬化や無限後退を防ぐ止まり（停止点）を明示するため
+ *   - 認知の限界と改善点をシステム的に特定するため
  * scope:
- *   in: 思考内容、現在の認知状態
- *   out: 多層メタ認知状態、改善推奨、形式化リスク
+ *   in: 信念分布、証拠、前提
+ *   out: メタ認知状態、認知パターン、改善推奨、メタ信念
  */
 
 import type { Distribution, Evidence } from './belief-updater.js';
@@ -891,8 +898,9 @@ function calculateSelfReferenceConsistency(
  * 柔軟性を計算
  */
 function calculateFlexibility(patterns: CognitivePattern[]): number {
+  // 'creative'以外のパターンは柔軟性を低下させる
   const negativePatterns = patterns.filter(p =>
-    p.type !== 'creative' && p.type !== 'flexibility'
+    p.type !== 'creative'
   );
 
   if (negativePatterns.length === 0) return 0.8;

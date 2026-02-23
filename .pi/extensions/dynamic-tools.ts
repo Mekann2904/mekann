@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/dynamic-tools.ts
- * role: Live-SWE-agentの動的ツール生成と実行を制御する拡張機能
- * why: エージェントがタスク実行中に必要な機能を自己生成・実行可能にし、柔軟な問題解決を実現するため
- * related: lib/dynamic-tools/safety.ts, lib/dynamic-tools/registry.js, lib/verification-workflow.js
+ * role: Live-SWE-agent統合における動的ツールの生成・実行・管理インターフェース
+ * why: タスク実行中に必要な機能を動的かつ安全に拡張し、自己反省に基づくツール生成を可能にするため
+ * related: lib/dynamic-tools/safety.ts, lib/dynamic-tools/registry.js, lib/verification-workflow.js, lib/agent-common
  * public_api: create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection
- * invariants: ツールコードはVMコンテキストで実行され、requireやprocessへのアクセスは禁止される
- * side_effects: ファイルシステムへの監査ログ(dynamic-tools-audit.jsonl)の追記
- * failure_modes: 安全性チェック失敗による実行拒否、VM実行時のタイムアウト、コード品質スコア低下による登録拒否
+ * invariants: ツール実行はVMコンテキスト内で行われること、外部モジュール・環境変数へのアクセスが禁止されていること
+ * side_effects: ファイルシステムへの監査ログ（.pi/logs/dynamic-tools-audit.jsonl）への追記、ツールレジストリの状態変更
+ * failure_modes: 安全性チェック失敗による作成拒否、VM実行時のタイムアウト、パラメータ型不一致による実行エラー
  * @abdd.explain
- * overview: エージェントのタスク進行に応じてJavaScriptツールを動的に生成・検証・実行し、実行結果を記録・反省するインターフェース
+ * overview: Live-SWE-agentエージェント向けの拡張機能であり、定義されたコードに基づきツールを動的に生成・管理・実行する。安全性解析と品質評価を組み込み、セキュアな実行環境を提供する。
  * what_it_does:
- *   - ツール定義を登録し、安全性と品質をスキャンする
- *   - VMコンテキスト内で動的ツールを実行し、結果を返す
- *   - 登録済みツールの一覧表示と削除を行う
- *   - 実行結果に基づきツールの再生成要否を判定する
- *   - 全操作の監査ログをJSONL形式でファイルに出力する
+ *   - create_tool: ユーザー定義のコードとパラメータ定義から新しい動的ツールを登録する
+ *   - run_dynamic_tool: 指定されたツールIDまたは名前でツールをVM上で実行する
+ *   - list_dynamic_tools: 条件に応じて登録済みツールの一覧を取得する
+ *   - delete_dynamic_tool: 指定したツールをレジストリから削除する
+ *   - tool_reflection: タスクの結果に基づきツール生成の必要性を判断する
  * why_it_exists:
- *   - 事前定義されたツールだけでは対応しきれない特定のタスク要件に対応するため
- *   - 安全なサンドボックス環境でコード実行を許可しつつ、システムへの不正アクセスを防ぐため
+ *   - 事前定義されたツールだけでは対応できない動的なタスク要件に対応するため
+ *   - セキュリティリスク（外部アクセス等）を排除した安全なコード実行環境を提供するため
  * scope:
- *   in: ツール定義、実行パラメータ、タスク記述、前回の実行結果
- *   out: ツール実行結果、品質スコア、監査ログエントリ、ツール一覧
+ *   in: ツール定義（コード、パラメータ）、実行指示、フィルタ条件
+ *   out: 実行結果、ツール一覧、監査ログエントリ
  */
 
 /**

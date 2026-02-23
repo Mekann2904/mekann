@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/error-utils.ts
- * role: エラー処理の共通ユーティリティ実装
- * why: agent-teams.ts, subagents.ts, loop.ts, rsa.ts に存在していた重複実装を統一し、保守性を向上させるため
+ * role: エラー解析・分類ユーティリティ
+ * why: 複数の拡張機能に散在していた重複実装を集約し、エラーハンドリングの統一性と保守性を向上させるため
  * related: agent-teams.ts, subagents.ts, loop.ts, rsa.ts
  * public_api: toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, isCancelledErrorMessage, isTimeoutErrorMessage
- * invariants: エラーメッセージ文字列化処理は null や undefined を含む unknown 型を正しく文字列に変換する
- * side_effects: なし
- * failure_modes: 正規表現によるステータスコード抽出において、メッセージ内の意図しない数値をステータスコードとして誤認する可能性がある
+ * invariants: 全関数はunknown型を受け取り、例外を投げずに安全に値を返す
+ * side_effects: なし（純粋関数）
+ * failure_modes: オブジェクトのJSON.stringify失敗時に"[object Object]"を返す
  * @abdd.explain
- * overview: 拡張機能間で共有されるエラー処理ユーティリティ
+ * overview: 拡張機能間で共有されるエラーハンドリングの共通ライブラリ
  * what_it_does:
- *   - unknown 型のエラーを文字列メッセージに正規化する
- *   - エラーメッセージからHTTPステータスコード（4xx, 5xx）を抽出する
- *   - エラーをレートリミット、タイムアウト、容量超過などの圧力カテゴリに分類する
- *   - エラーメッセージに基づき、キャンセルやタイムアウトの発生を判定する
+ *   - エラーオブジェクトから文字列表現を抽出する
+ *   - メッセージ内のステータスコード（4xx, 5xx）を抽出する
+ *   - エラーをレート制限、タイムアウト、容量超過、その他に分類する
+ *   - キャンセルやタイムアウトによるエラーかを判定する
  * why_it_exists:
- *   - エラー判定ロジックの重複を排除し、コードベースの一貫性を保つため
- *   - 外部APIや実行環境からのエラー応答を統一的な基準でハンドリングするため
+ *   - agent-teams.ts, subagents.ts, loop.ts, rsa.ts に存在していた重複コードを排除するため
+ *   - エラー判定ロジックを一箇所に集約し、バグ修正や判定条件の追加を容易にするため
  * scope:
- *   in: unknown 型のエラーオブジェクト、エラーメッセージ文字列
- *   out: 文字列、数値、判定結果、または分類タイプ
+ *   in: エラーオブジェクト（unknown型）
+ *   out: 文字列、数値、ブール値、または列挙型
  */
 
 /**
@@ -99,6 +99,8 @@ export function isCancelledErrorMessage(error: unknown): boolean {
   const message = toErrorMessage(error).toLowerCase();
   return (
     message.includes("aborted") ||
+    message.includes("unhandled stop reason") ||
+    message.includes("stop reason: abort") ||
     message.includes("cancelled") ||
     message.includes("canceled") ||
     message.includes("中断") ||

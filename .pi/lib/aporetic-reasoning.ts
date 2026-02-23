@@ -1,20 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/aporetic-reasoning.ts
- * role: アポリア共生型推論モジュール
- * why: 「答えのない問題」に対して、解決ではなく共生を可能にする確率論的推論を提供
- * related: aporia-handler.ts, belief-updater.ts, deep-exploration.ts
- * public_api: AporeticReasoningEngine, createAporeticEngine, performAporeticInference, AporeticBeliefState
- * invariants: アポリアは統合されない、両極の信念が維持される
- * side_effects: なし
- * failure_modes: ヘーゲル的統合への回帰、決断の回避
+ * role: アポリア（両立不可能な価値観の葛藤）を論理的な矛盾として解消せず、両者の緊張関係を維持したまま共生させるための推論エンジンとデータ構造を定義する
+ * why: 矛盾する信念を統合する「誘惑」に抵抗し、多目的最適化（パレート最適）に基づいた責任ある決定を下すため
+ * related: ./aporia-handler.js, ./belief-updater.js
+ * public_api: AporiaPole, AporeticBeliefState, ParetoOptimalSolution, AporeticInferenceResult, AporeticReasoningEngine
+ * invariants: AporeticBeliefStateのtensionIntensityは0から1の間、pole1とpole2は競合する価値観を表す、balancePointは-1から1の間
+ * side_effects: 信念分布の更新、バランス点のシフト、統計情報の蓄積
+ * failure_modes: 爆発原理の回避失敗、パレート解の不存在、信念分布の正規化エラー
  * @abdd.explain
- * overview: ベイズ推論と準矛盾論理を統合し、アポリアと共生しながら推論を行う
- * what_it_does: 両極の信念を同時維持、不確実性の定量化、責任ある決断の支援
- * why_it_exists: 古典論理では扱えない矛盾を含んだ推論を可能にするため
+ * overview: アポリアを構成する二つの極の信念を保持し、緊張関係下で最適なバランス点を探索する共生型推論システム
+ * what_it_does:
+ *   - 2つの対立する信念の強度と緊張度を管理する
+ *   - 証拠に基づいてバランス点と不確実性を更新する
+ *   - パレート最適解を導出し、トレードオフを伴う決定を提示する
+ *   - 矛盾の安易な統合や回避を防ぐガード条件を維持する
+ * why_it_exists:
+ *   - 矛盾を解決するのではなく、その中で最善の選択を行う哲学的アプローチを実装するため
+ *   - 爆発原理（矛盾から任意の結論が導かれる）を回避しつつ推論を行うため
+ *   - 複雑な意思決定におけるリスクとトレードオフを明示化するため
  * scope:
- *   in: アポリア、証拠、現在の信念状態
- *   out: 更新された信念、パレート最適な決断候補
+ *   in: アポリア検出結果、証拠、信念更新パラメータ
+ *   out: 更新された信念状態、パレート最適解のリスト、推奨決断と警告
  */
 
 import type { AporiaDetection, AporiaResolution } from './aporia-handler.js';

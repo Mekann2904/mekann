@@ -2,7 +2,7 @@
 title: skill-inspector
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -18,75 +18,14 @@ related: []
 ```typescript
 // from 'node:fs': readdirSync, existsSync, readFileSync
 // from 'node:path': join, basename
-// from '@mariozechner/pi-coding-agent': parseFrontmatter
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from '../lib/frontmatter.js': parseFrontmatter
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-
-## ユーザーフロー
-
-このモジュールが提供するツールと、その実行フローを示します。
-
-### skill_status
-
-Show skill assignment status. Use to see which skills are available, which teams use which skills, and which members have skill assignments.
-
-```mermaid
-sequenceDiagram
-  autonumber
-  actor User as ユーザー
-  participant System as System
-  participant Storage as "Storage"
-  participant Internal as "Internal"
-  participant Unresolved as "Unresolved"
-  participant Team as "Team"
-
-  User->>System: Show skill assignment status. Use to see which skills are...
-  System->>Storage: loadAvailableSkills
-  Storage->>Internal: join
-  Storage->>Internal: existsSync
-  Storage->>Storage: readdirSync
-  Storage->>Unresolved: entry.isDirectory (node_modules/@types/node/fs.d.ts)
-  Storage->>Storage: readFileSync
-  Storage->>Unresolved: parseFrontmatter (node_modules/@mariozechner/pi-coding-agent/dist/utils/frontmatter.d.ts)
-  Storage->>Unresolved: skills.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
-  System->>Team: loadTeamDefinitions
-  Team->>Unresolved: readdirSync(teamsDir).filter (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Unresolved: f.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  Team->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Unresolved: basename(file, '.md').replace (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Internal: basename
-  Team->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Unresolved: members.push (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Unresolved: loadedTeams.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
-  Team->>Unresolved: members.some (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Unresolved: loadedTeams.values (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
-  System->>Internal: calculateSkillUsage
-  Internal->>Unresolved: skill.usedByTeams.includes (node_modules/typescript/lib/lib.es2016.array.include.d.ts)
-  System->>Internal: formatSkillsOverview
-  Internal->>Unresolved: [...skills.entries()].sort (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Unresolved: skills.entries (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
-  Internal->>Unresolved: a[0].localeCompare (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Unresolved: skill.description.slice (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Unresolved: membersByTeam.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
-  Internal->>Unresolved: '─'.repeat (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  System->>Team: formatTeamsView
-  System->>Unresolved: teams.map (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Unresolved: teams.find (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  System->>Team: formatTeamDetail
-  Team->>Unresolved: team.name.toUpperCase().padEnd (node_modules/typescript/lib/lib.es2017.string.d.ts)
-  Team->>Unresolved: team.name.toUpperCase (node_modules/typescript/lib/lib.es5.d.ts)
-  Team->>Unresolved: allSkills.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
-  System->>Unresolved: skills.keys (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
-  System->>Internal: formatSkillDetail
-  Internal->>Unresolved: skill.description.split (node_modules/typescript/lib/lib.es5.d.ts)
-  System-->>User: 結果
-
-```
 
 ## 図解
 
@@ -139,8 +78,11 @@ flowchart LR
   subgraph this[skill-inspector]
     main[Main Module]
   end
+  subgraph local[ローカルモジュール]
+    frontmatter["frontmatter"]
+  end
+  main --> local
   subgraph external[外部ライブラリ]
-    _mariozechner["@mariozechner"]
     _mariozechner["@mariozechner"]
   end
   main --> external
@@ -384,4 +326,4 @@ interface TeamFrontmatter {
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.421Z*
+*自動生成: 2026-02-23T06:29:42.188Z*

@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/checkpoint-manager.ts
- * role: 長時間実行タスクの状態永続化管理、TTLベースの自動クリーニング実行、割り込み時のチェックポイント操作提供
- * why: タスクの先取りと再開を可能にするため、状態永続化とリカバリ機能を提供する
+ * role: 長時間実行タスクのチェックポイント保存、復旧、有効期限管理を行う永続化レイヤー
+ * why: タスクの中断と再開、優先度に基づくリソース管理、TTLによる古いデータの自動削除を実現するため
  * related: .pi/lib/task-scheduler.ts, .pi/extensions/agent-runtime.ts
- * public_api: Checkpoint, CheckpointSource, CheckpointPriority, CheckpointSaveResult, PreemptionResult, CheckpointManagerConfig, CheckpointManager class
- * invariants: チェックポイントIDは一意、ttlMsおよびcreatedAtに基づき有効期限を判定、maxCheckimitsを超える場合古いものから削除
- * side_effects: ファイルシステムへのチェックポイントファイル作成、更新、削除、checkpointDirディレクトリの初期化
- * failure_modes: ディスク容量不足による書き込み失敗、ファイル権限エラーによるIO例外、JSONシリアライズ失敗、設定値の不正（負のTTLなど）
+ * public_api: Checkpoint, CheckpointSaveResult, PreemptionResult, CheckpointManagerConfig, CheckpointManager
+ * invariants: チェックポイントIDは一意である、stateはJSONシリアライズ可能である、createdAtとttlMsにより有効期限が決まる
+ * side_effects: ファイルシステムへのデータ書き込み、チェックポイントファイルの作成および削除
+ * failure_modes: ディスク容量不足による保存失敗、JSONパースエラー、ファイルシステム権限エラー
  * @abdd.explain
- * overview: TTL（Time-to-Live）に基づいて有効期限を管理するチェックポイントシステム。ファイルシステムをストレージとして利用し、タスクの状態保存、復元、自動クリーンアップを行う。
+ * overview: TTLおよび優先度管理機能を持つチェックポイントのファイルシステムへの永続化および復元機構
  * what_it_does:
- *   - チェックポイントデータの構造定義（ID, タスクID, 優先度, 進捗, 状態など）
- *   - 設定（保存先ディレクトリ, デフォルトTTL, 最大保持数, クリーンアップ間隔）の管理
- *   - 指定されたTTLに従った期限切れチェックポイントの自動削除
- *   - 保存操作と割り込み操作の結果型定義
+ *   - タスク状態（state）をJSONとしてファイルに保存する
+ *   - TTLに基づいて期限切れのチェックポイントを自動削除する
+ *   - 保存数上限に達した場合、優先度と作成日時に基づいて削除対象を選定する
+ *   - 中断ポイントからのタスク再開を可能にする
  * why_it_exists:
- *   - 実行時間の長いタスクにおいて、予期せぬ中断やシステムによる先取りからタスク状態を保護するため
- *   - 中断地点からタスクを再開し、計算リソースの再利用を効率化するため
+ *   - プロセスの中断やプリエンプション後にタスク状態を復元するため
+ *   - ディスク容量を管理し、古いデータを自動的にクリーンアップするため
+ *   - 複数の並列タスクやエージェントチームの状態を一貫して管理するため
  * scope:
- *   in: タスクID, ソース種別, プロバイダ/モデル情報, 優先度, シリアライズ可能な状態オブジェクト, 設定値
- *   out: ファイルシステム上のチェックポイントJSONファイル, 統計情報, 操作結果（成功/失敗）
+ *   in: タスクID、状態データ、TTL、優先度、メタデータ
+ *   out: シリアライズされたJSONファイル、チェックポイント統計情報
  */
 
 // File: .pi/lib/checkpoint-manager.ts

@@ -1,26 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/abdd-types.ts
- * role: ABDD拡張機能の共通型定義・エラークラス
- * why: 複数のABDDスクリプト・拡張機能間で型定義とエラーハンドリングを統一するため
- * related: .pi/extensions/abdd.ts, scripts/add-jsdoc.ts, scripts/add-abdd-header.ts
- * public_api: AbddOptions, CacheEntry, Divergence, AbddError, AbddErrorCodes
- * invariants: なし
- * side_effects: なし
+ * role: ツール全体の設定定数、エラーハンドリング構造、および共通オプションの型定義を管理するモジュール
+ * why: 定数値の中央管理、型安全性の確保、エラー発生時のユーザー通知とログ出力形式の統一、および実装間でのインターフェース整合性維持のため
+ * related: generate-abdd.ts, main.ts, utils.ts
+ * public_api: AbddOptions, AbddError, AbddErrorCodes, DEFAULT_TIMEOUT_MS, MAX_FILE_SIZE_BYTES
+ * invariants: AbddErrorCodeはAbddErrorCodesの値のみ取りうる、定数値は実行中に変更されない
+ * side_effects: なし（純粋な定数・型・クラス定義）
+ * failure_modes: エラーコード定義の追加漏れ、定数値の過不足によるタイムアウトやリソース制限の不整合
  * @abdd.explain
- * overview: ABDD関連ツールの共通型定義とエラーハンドリングを提供するライブラリ
+ * overview: ABDDツールの基盤となるデータ構造と静的な設定値を集約したTypeScript定義ファイル
  * what_it_does:
- *   - ABDDツール共通のオプション型定義
- *   - キャッシュエントリ型定義
- *   - 乖離検出関連の型定義
- *   - カスタムエラークラス（AbddError）
+ *   - タイムアウト時間やファイルサイズ上限などの実行パラメータを定数として提供
+ *   - AbddErrorクラスとエラーコード定数を通じて、標準化された例外処理とユーザー向けメッセージ生成機能を実装
+ *   - ドライランや詳細ログ出力など、ツール全体で共通して使用されるオプションの型を定義
  * why_it_exists:
- *   - 型定義の重複を排除し、保守性を向上させるため
- *   - エラーハンドリングを統一し、デバッグを容易にするため
+ *   - マジックナンバーの排除と定義の一元管理により、設定の変更と保守性を向上させるため
+ *   - 異常系処理を型システムで補足し、エラー内容をプログラムおよびユーザーの双方に分かりやすく伝えるため
+ *   - 複数のスクリプト間でデータ構造と型定義を共有し、実装の一貫性を保証するため
  * scope:
- *   in: なし
- *   out: 型定義、エラークラス
+ *   in: 外部モジュールからの定数・型・クラスのインポート要求
+ *   out: ツール全体で参照される定数値、エラー処理クラス、共通オプション型定義
  */
+
 import { statSync } from "node:fs";
 import { resolve as resolvePath, sep as pathSep } from "node:path";
 
@@ -78,6 +80,11 @@ export const AbddErrorCodes = {
 	VALIDATION_ERROR: "VALIDATION_ERROR",
 } as const;
 
+/**
+ * エラーコード型定義
+ * @summary エラーコード型
+ * @returns なし
+ */
 export type AbddErrorCode = typeof AbddErrorCodes[keyof typeof AbddErrorCodes];
 
 /**
@@ -480,6 +487,7 @@ export interface GeneratorOptions {
 	dryRun: boolean;
 	verbose: boolean;
 	file?: string;
+	skipMermaidValidation?: boolean;
 }
 
 /**

@@ -2,7 +2,7 @@
 title: output
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -19,6 +19,7 @@ related: []
 // from '../types': SearchResponse, FileCandidate, CodeSearchMatch, ...
 // from './metrics.js': SearchMetrics
 // from './constants.js': DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT
+// from '../../../lib/text-utils.js': truncateText
 ```
 
 ## エクスポート一覧
@@ -39,7 +40,6 @@ related: []
 | 関数 | `createCodeSearchError` | エラーを作成する |
 | 関数 | `formatError` | エラー文字列を生成 |
 | 関数 | `escapeText` | 特殊文字をエスケープする |
-| 関数 | `truncateText` | テキストを省略記号付きで切り詰める |
 | 関数 | `relativePath` | 絶対パスから相対パスを計算する |
 | 関数 | `enhanceOutput` | 拡張出力を生成 |
 | 関数 | `suggestNextAction` | 次のアクションを決定 |
@@ -92,6 +92,7 @@ flowchart LR
     types["types"]
     metrics["metrics"]
     constants["constants"]
+    text_utils["text-utils"]
   end
   main --> local
 ```
@@ -109,8 +110,10 @@ flowchart TD
   enhanceOutput["enhanceOutput()"]
   escapeText["escapeText()"]
   formatCodeSearch["formatCodeSearch()"]
+  formatEnhancedOutput["formatEnhancedOutput()"]
   formatError["formatError()"]
   formatFileCandidates["formatFileCandidates()"]
+  formatSuggestedAction["formatSuggestedAction()"]
   formatSymbols["formatSymbols()"]
   generateRelatedQueries["generateRelatedQueries()"]
   getAlternativeTools["getAlternativeTools()"]
@@ -123,7 +126,6 @@ flowchart TD
   summarizeResults["summarizeResults()"]
   truncateHead["truncateHead()"]
   truncateResults["truncateResults()"]
-  truncateText["truncateText()"]
   createHints --> calculateConfidence
   createHints --> getAlternativeTools
   createHints --> suggestNextAction
@@ -131,6 +133,7 @@ flowchart TD
   createSimpleHints --> generateRelatedQueries
   createSimpleHints --> getAlternativeTools
   enhanceOutput --> calculateConfidence
+  formatEnhancedOutput --> formatSuggestedAction
 ```
 
 ### シーケンス図
@@ -383,23 +386,6 @@ escapeText(text: string): string
 
 **戻り値**: `string`
 
-### truncateText
-
-```typescript
-truncateText(text: string, maxLength: number): string
-```
-
-テキストを省略記号付きで切り詰める
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| text | `string` | はい |
-| maxLength | `number` | はい |
-
-**戻り値**: `string`
-
 ### relativePath
 
 ```typescript
@@ -643,4 +629,4 @@ type SuggestedNextAction = | "refine_pattern"      // Pattern too broad, narrow 
 エージェント向けの推奨次回アクション
 
 ---
-*自動生成: 2026-02-18T18:06:17.399Z*
+*自動生成: 2026-02-23T06:29:42.147Z*

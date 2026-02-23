@@ -2,7 +2,7 @@
 title: reflection
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -244,4 +244,4 @@ shouldTriggerReflection(context: Partial<ToolReflectionContext>): boolean
 **戻り値**: `boolean`
 
 ---
-*自動生成: 2026-02-18T18:06:17.517Z*
+*自動生成: 2026-02-23T06:29:42.314Z*

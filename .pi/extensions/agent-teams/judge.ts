@@ -1,27 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/judge.ts
- * role: チーム実行結果の不確実性計算と最終判定を行うモジュール
- * why: SRP準拠のため判定ロジックを分離し、重み付け設定の拡張性と判断根拠の説明可能性を確保するため
- * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/text-parsing.ts
- * public_api: JudgeWeightConfig, DEFAULT_JUDGE_WEIGHTS, getJudgeWeights, computeProxyUncertaintyWithExplainability (実装コードにあるため推測含む), type exports (TeamDefinition等), utility exports (clampConfidence等)
- * invariants: 内部・相互・システムの各重みは合計が1.0になる構造を維持する, しきい値は0.0から1.0の範囲内である
- * side_effects: 外部からカスタム重み設定を読み込み、モジュール内キャッシュ `customWeights` を更新する
- * failure_modes: 重み設定の整合性が取れない場合の計算結果の不正、キャッシュされた設定と実行環境の不整合
+ * role: エージェントチームの不確実性計算および最終判定ロジックを提供する
+ * why: SRP（単一責任の原則）遵守のためにagent-teams.tsから分離、P0-3改善としての説明性追加と重み設定の外部化を行うため
+ * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, ../../lib/text-parsing.js
+ * public_api: JudgeWeightConfig, DEFAULT_JUDGE_WEIGHTS, getJudgeWeights, TeamDefinition, TeamFinalJudge, TeamMemberResult, TeamStrategy, clampConfidence, parseUnitInterval, extractField, countKeywordSignals
+ * invariants: 不確実性スコアは0以上1以下である、重み設定はキャッシュにより同時に単一のインスタンスが使用される
+ * side_effects: ファイルシステムからの重み設定読み込み（キャッシュ変数 `customWeights` の書き換え）
+ * failure_modes: 不正な重み設定ファイルが読み込まれた場合のデフォルト値へのフォールバック、キャッシュの不整合
  * @abdd.explain
- * overview: エージェントチームの実行結果に対し、設定可能な重み付けに基づいて不確実性を算出し、最終的な成功/失敗の判定を行うモジュールです。
+ * overview: エージェントチームの実行結果に対する評価（判定）を行うモジュール。メンバー間・メンバー内の一貫性チェックと、システム的な失敗率に基づいて最終的な不確実性（Uncertainty）を算出する。
  * what_it_does:
- *   - TeamMemberResult, TeamStrategy, TeamDefinition 等の型定義を再エクスポートする
- *   - clampConfidence, parseUnitInterval 等のテキスト解析ユーティリティを再エクスポートする
- *   - 判定重み設定 (JudgeWeightConfig) を定義し、デフォルト値 (DEFAULT_JUDGE_WEIGHTS) を提供する
- *   - カスタム重み設定のキャッシュ管理および取得機能 (getJudgeWeights) を提供する
- *   - 内部・相互・システムレベルの指標に基づき、不確実性と判定結果を算出する (実装詳細は後続コード)
+ *   - 内的一貫性（失敗比率、低信頼度、根拠なし、矛盾）と外的一貫性（競合比率、信頼度のばらつき）に基づく不確実性スコアの計算
+ *   - JudgeWeightConfigによる重み付けパラメータの管理と、デフォルト設定または外部ファイルからの設定読み込み
+ *   - text-parsing.jsからのユーティリティ関数とstorage.tsからの型定義の再エクスポート
  * why_it_exists:
- *   - 複雑な判定ロジックを単一責任原則 (SRP) に基づいて分離し、コードの保守性を向上させるため
- *   - 判定基準の重み付けを外部設定可能にし、柔軟性と説明可能性を高めるため
+ *   - agent-teams.tsの肥大化を防ぎ、判定ロジックの責任を分離するため
+ *   - 判定基準の透明性を高め、重み設定を動的に変更可能にするため
+ *   - P0-3要件に基づき、判定プロセスの説明可能性（Explainability）を提供するため
  * scope:
- *   in: エージェントチームの実行結果、判定重み設定、環境変数やファイルからのカスタム設定
- *   out: 不確実性スコア、最終判定結果、判定根拠の詳細情報
+ *   in: TeamDefinition, TeamMemberResult, JudgeWeightConfig（デフォルトまたは外部）
+ *   out: 計算された不確実性スコア、最終判定結果、詳細な説明情報
  */
 
 /**

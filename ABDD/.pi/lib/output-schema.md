@@ -2,7 +2,7 @@
 title: output-schema
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -35,12 +35,16 @@ related: []
 | 関数 | `parseStructuredOutput` | 構造化出力を解析 |
 | 関数 | `validateSubagentOutputWithSchema` | サブエージェント出力を検証 |
 | 関数 | `validateTeamMemberOutputWithSchema` | チームメンバー出力を検証 |
+| 関数 | `generateWithSchemaEnforcement` | スキーマ検証に失敗した場合に再生成を試行する |
+| 関数 | `buildRegenerationPrompt` | 再生成用のフィードバック付きプロンプトを構築する |
 | 関数 | `recordSchemaViolation` | スキーマ違反を記録 |
 | 関数 | `getSchemaViolationStats` | 違反統計を取得 |
 | 関数 | `resetSchemaViolationStats` | 違反統計をリセット |
 | インターフェース | `SchemaValidationResult` | スキーマ検証の実行結果 |
 | インターフェース | `SchemaViolation` | スキーマ違反の詳細情報 |
 | インターフェース | `ParsedStructuredOutput` | 構造化出力の解析結果 |
+| インターフェース | `RegenerationConfig` | 再生成設定の構成 |
+| インターフェース | `SchemaEnforcementResult` | スキーマ強制付き生成の結果 |
 | 型 | `SchemaValidationMode` | スキーマ検証モード定義 |
 | 型 | `CommunicationIdMode` | 通信IDモードの型定義 |
 | 型 | `StanceClassificationMode` | 分類モードの型定義 |
@@ -83,7 +87,20 @@ classDiagram
     +CLAIM: string
     +EVIDENCE: string
     +CONFIDENCE: number
-    +DISCUSSION: string
+    +COUNTER_EVIDENCE: string
+  }
+  class RegenerationConfig {
+    <<interface>>
+    +maxRetries: number
+    +backoffMs: number
+    +onRegenerate: attempt_number_viol
+  }
+  class SchemaEnforcementResult {
+    <<interface>>
+    +output: string
+    +attempts: number
+    +violations: SchemaViolation
+    +parsed: ParsedStructuredOutp
   }
 ```
 
@@ -104,6 +121,9 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  buildRegenerationPrompt["buildRegenerationPrompt()"]
+  buildViolationFeedback["buildViolationFeedback()"]
+  generateWithSchemaEnforcement["generateWithSchemaEnforcement()"]
   getCommunicationIdMode["getCommunicationIdMode()"]
   getSchemaValidationMode["getSchemaValidationMode()"]
   getSchemaViolationStats["getSchemaViolationStats()"]
@@ -117,10 +137,15 @@ flowchart TD
   setCommunicationIdMode["setCommunicationIdMode()"]
   setSchemaValidationMode["setSchemaValidationMode()"]
   setStanceClassificationMode["setStanceClassificationMode()"]
+  sleep["sleep()"]
   validateAgainstSchema["validateAgainstSchema()"]
   validateField["validateField()"]
   validateSubagentOutputWithSchema["validateSubagentOutputWithSchema()"]
   validateTeamMemberOutputWithSchema["validateTeamMemberOutputWithSchema()"]
+  buildRegenerationPrompt --> buildViolationFeedback
+  generateWithSchemaEnforcement --> parseStructuredOutput
+  generateWithSchemaEnforcement --> sleep
+  generateWithSchemaEnforcement --> validateAgainstSchema
   validateAgainstSchema --> validateField
   validateSubagentOutputWithSchema --> getSchemaValidationMode
   validateSubagentOutputWithSchema --> parseStructuredOutput
@@ -341,6 +366,73 @@ validateTeamMemberOutputWithSchema(output: string, mode: SchemaValidationMode): 
 
 **戻り値**: `SchemaValidationResult`
 
+### sleep
+
+```typescript
+sleep(ms: number): Promise<void>
+```
+
+指定時間待機する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| ms | `number` | はい |
+
+**戻り値**: `Promise<void>`
+
+### buildViolationFeedback
+
+```typescript
+buildViolationFeedback(violations: SchemaViolation[]): string
+```
+
+違反情報からフィードバックメッセージを生成する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| violations | `SchemaViolation[]` | はい |
+
+**戻り値**: `string`
+
+### generateWithSchemaEnforcement
+
+```typescript
+async generateWithSchemaEnforcement(generateFn: () => Promise<string>, schema: OutputSchema, config?: Partial<RegenerationConfig>): Promise<SchemaEnforcementResult>
+```
+
+スキーマ検証に失敗した場合に再生成を試行する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| generateFn | `() => Promise<string>` | はい |
+| schema | `OutputSchema` | はい |
+| config | `Partial<RegenerationConfig>` | いいえ |
+
+**戻り値**: `Promise<SchemaEnforcementResult>`
+
+### buildRegenerationPrompt
+
+```typescript
+buildRegenerationPrompt(originalPrompt: string, violations: SchemaViolation[]): string
+```
+
+再生成用のフィードバック付きプロンプトを構築する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| originalPrompt | `string` | はい |
+| violations | `SchemaViolation[]` | はい |
+
+**戻り値**: `string`
+
 ### recordSchemaViolation
 
 ```typescript
@@ -439,6 +531,7 @@ interface ParsedStructuredOutput {
   CLAIM?: string;
   EVIDENCE?: string;
   CONFIDENCE?: number;
+  COUNTER_EVIDENCE?: string;
   DISCUSSION?: string;
   RESULT: string;
   NEXT_STEP?: string;
@@ -446,6 +539,31 @@ interface ParsedStructuredOutput {
 ```
 
 構造化出力の解析結果
+
+### RegenerationConfig
+
+```typescript
+interface RegenerationConfig {
+  maxRetries: number;
+  backoffMs: number;
+  onRegenerate?: (attempt: number, violations: SchemaViolation[]) => void;
+}
+```
+
+再生成設定の構成
+
+### SchemaEnforcementResult
+
+```typescript
+interface SchemaEnforcementResult {
+  output: string;
+  attempts: number;
+  violations: SchemaViolation[];
+  parsed?: ParsedStructuredOutput;
+}
+```
+
+スキーマ強制付き生成の結果
 
 ## 型定義
 
@@ -474,4 +592,4 @@ type StanceClassificationMode = "disabled" | "heuristic" | "structured"
 分類モードの型定義
 
 ---
-*自動生成: 2026-02-18T18:06:17.537Z*
+*自動生成: 2026-02-23T06:29:42.377Z*

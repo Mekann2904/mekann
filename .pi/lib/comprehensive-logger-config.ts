@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/comprehensive-logger-config.ts
- * role: ロガー設定の定義、環境変数からの上書きロード、および入力値検証を行うコンフィグレーションモジュール
- * why: ログシステムの振る舞い（出力先、バッファサイズ、保持期間など）を一元管理し、実行環境（開発・本番）に応じて柔軟に変更するため
+ * role: ロガーの設定定数、環境変数からの読み込み、および設定バリデーションを提供する
+ * why: ログ出力の振る舞いを環境ごとに制御し、設定ミスによるエラーを防ぐため
  * related: .pi/lib/comprehensive-logger-types.ts
  * public_api: DEFAULT_CONFIG, loadConfigFromEnv, validateConfig
- * invariants: config.bufferSizeは1以上、config.flushIntervalMsは100ms以上、maxFileSizeMBおよびretentionDaysは1以上
- * side_effects: process.envからの読み取りによる設定値の書き換え（loadConfigFromEnv関数）
- * failure_modes: 環境変数の型変換失敗（parseIntなど）、不正な環境名やログレベルの指定による検証エラー
+ * invariants: bufferSize, flushIntervalMs, maxFileSizeMB, retentionDays は正の整数である必要がある
+ * side_effects: 環境変数 process.env の値に基づいて設定オブジェクトを変更する
+ * failure_modes: 環境変数の型変換失敗（parseInt等）、許容範囲外の値によるバリデーションエラー
  * @abdd.explain
- * overview: ログ出力に関する設定値のデフォルト定義、環境変数による動的設定、および設定値の整合性チェック機能を提供する
+ * overview: 包括的ログ収集システムの設定値を管理し、環境変数による上書きと妥当性チェックを行うモジュール
  * what_it_does:
- *   - LoggerConfig型のデフォルト値（DEFAULT_CONFIG）を定義する
- *   - 環境変数（PI_LOG_*）を読み込み、型変換して設定を上書きする
- *   - 設定オブジェクトのバリデーションを行い、エラー詳細を返す
+ *   - デフォルト設定値（LoggerConfig）を定義する
+ *   - 環境変数（PI_LOG_*）を解析し、設定値にマージする
+ *   - 設定値が制約（最小値や許容リスト）を満たしているか検証する
  * why_it_exists:
- *   - ログ出力制御をハードコードから分離し、環境ごとのチューニングを可能にする
- *   - 設定ミス（負のバッファサイズや無効な文字列など）を早期に検出する
+ *   - ハードコードされた設定を避け、環境差異を吸収するため
+ *   - 不正な設定が実行時にエラーを引き起こすのを防ぐため
  * scope:
- *   in: 環境変数 (process.env)、ベース設定オブジェクト (LoggerConfig)
- *   out: 環境変数でマージされた設定オブジェクト、バリデーション結果
+ *   in: process.env, ベースとなる設定オブジェクト
+ *   out: 環境変数がマージされた設定オブジェクト、バリデーション結果
  */
 
 /**

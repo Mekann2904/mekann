@@ -1,13 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/communication-context.ts
- * role: コミュニケーションコンテキストの生成（V2：厳格JSON形式）
- * why: 機械可読性と安全性を向上させるため
- * related: .pi/extensions/agent-teams/communication.ts, communication-id.ts, communication-references.ts
- * public_api: CommunicationData, buildCommunicationContextV2, summarizeForContext
- * invariants: データ領域は有効なJSON
- * side_effects: なし
- * failure_modes: なし
+ * role: 通信コンテキストデータの型定義および要約・選択ロジックの実装
+ * why: エージェント間通信において、相手の情報や文脈をデータサイズ制限内で効率的に管理・伝達するため
+ * related: ./communication-id.ts, ./storage.ts, ./communication-references.ts
+ * public_api: CommunicationPartner, CommunicationPartnerSummary, CommunicationData, PrecomputedMemberContext, summarizeForContext
+ * invariants: summarized textはmaxChars以下, CommunicationPartnerの必須フィールドは欠損しない
+ * side_effects: なし（純粋関数と型定義のみ）
+ * failure_modes: 文の区切り文字が含まれないテキストの不正な切り捨て、mentionedIdsの重複による選択ロジックの破綻
+ * @abdd.explain
+ * overview: 通信に必要なパートナー情報やデータ構造を定義し、テキスト要約および関連メンバーの選択アルゴリズムを提供するモジュール
+ * what_it_does:
+ *   - パートナー情報や要約、全体的な通信データ構造をインターフェースとして定義する
+ *   - 入力テキストを指定された最大文字数で文単位に要約する
+ *   - 既存メンバー以外から関連スコアに基づき、代表メンバーを最大limit件まで選択する
+ * why_it_exists:
+ *   - LLMや通信チャネルへの入力サイズを制限しつつ、意思決定に必要な情報を保持するため
+ *   - 失敗したメンバーや確信度の低いメンバーなど、特定の条件のメンバーを優先的に抽出するため
+ * scope:
+ *   in: 生のメンバーデータ、要約対象テキスト、最大文字数、関連性評価基準
+ *   out: 型定義された通信データ構造、要約された文字列、選別されたメンバー要約リスト
  */
 
 import type { CommIdEntry } from "./communication-id";
@@ -230,6 +242,12 @@ function buildInstructions(): string[] {
   ];
 }
 
+/**
+ * メンバー結果からコンテキストマップを作成
+ * @summary コンテキストマップ構築
+ * @param results - メンバーIDやロールを含む結果配列
+ * @returns メンバーIDをキーとした事前計算済みコンテキストのマップ
+ */
 export function buildPrecomputedContextMap(
   results: Array<{
     memberId: string;
@@ -263,6 +281,12 @@ export function buildPrecomputedContextMap(
   return map;
 }
 
+/**
+ * JSON用文字列をサニタイズ
+ * @summary 制御文字を削除
+ * @param text - 処理対象の文字列
+ * @returns サニタイズされた文字列
+ */
 export function sanitizeForJson(text: string): string {
   return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }

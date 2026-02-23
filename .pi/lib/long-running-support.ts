@@ -1,20 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/long-running-support.ts
- * role: 長時間思考セッション管理モジュール
- * why: エージェントが長時間自律的に思考を継続し、停滞を検出・回復する
- * related: thinking-process.ts, metacognition.ts
- * public_api: ThinkingSession, manageThinkingSession, checkThinkingStagnation, injectCreativeDisruption
- * invariants: セッションIDは一意、タイムスタンプは昇順
- * side_effects: セッション状態の永続化（将来実装予定）
- * failure_modes: セッション損失、停滞検出の誤検出
+ * role: 長時間実行される思考セッションのライフサイクル、状態管理、および停滞打破（創造的攪乱）を担当するモジュール
+ * why: 単一のタスクに対して長時間にわたり思考プロセスを続ける際、ループや停滞を防ぎ、効率的に解に至るための仕組みが必要なため
+ * related: ./thinking-process.ts, ./session-store.ts
+ * public_api: manageThinkingSession, ThinkingSession, StagnationCheck, CreativeDisruption, SessionManager
+ * invariants: session.lastUpdateTimeは更新時常に最新時刻になる、session.historyは思考順序を保持する、stagnationCountは0以上の整数
+ * side_effects: generateSessionIdによるID生成、セッション状態の更新履歴の保持、攪乱によるモードやフェーズの変更
+ * failure_modes: 無限ループによるリソース枯渇、stagnationThreshold設定値による過剰な攪乱または検出漏れ、ID衝突
  * @abdd.explain
- * overview: 思考セッションの開始から終了までを管理し、停滞検出と創造的攪乱を提供
- * what_it_does: セッション管理、停滞検出、攪乱注入、状態復元
- * why_it_exists: 長時間タスクでの思考品質維持と自走能力向上のため
+ * overview: 思考プロセスの進行状況を追跡し、停滞を検出した場合は「創造的攪乱」を注入して解決策の探索を継続させるセッションマネージャーを提供する。
+ * what_it_does:
+ *   - 思考セッションの初期化および状態（ID, 時刻, フェーズ, 履歴）の管理
+ *   - 思考ステップの追加と最終更新時刻の記録
+ *   - 停滞検出ロジック（重複、進捗なしなど）の実行と判定
+ *   - モード切り替えやランダムな注入による停滞の打破
+ *   - セッションの完了およびサマリの生成
+ * why_it_exists:
+ *   - 長時間の思考処理において、特定の思考モードやフェーズに固執することを防ぐため
+ *   - 探索の多様性を保ちながら一貫したセッション管理を行うため
  * scope:
- *   in: タスク情報、思考履歴
- *   out: セッション状態、攪乱提案
+ *   in: タスク内容文字列、初期設定（フェーズ、モード、閾値）、思考ステップ履歴
+ *   out: 更新されたセッション状態、停滞判定結果、生成された攪乱内容、セッションサマリ文字列
  */
 
 import { ThinkingMode, ThinkingPhase, ThinkingStep, selectThinkingMode } from './thinking-process';

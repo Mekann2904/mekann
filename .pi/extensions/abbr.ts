@@ -1,24 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/abbr.ts
- * role: Fish shell風略語展開機能の拡張
- * why: ユーザーが短いエイリアスを入力するだけで、コマンドや定型文を素早く展開・入力するため
- * related: @mariozechner/pi-ai, @mariozechner/pi-coding-agent, @mariozechner/pi-tui
- * public_api: export interface Abbreviation, /abbr <action> コマンド群
- * invariants: 略語名は一意である必要がある、設定ファイルは ~/.pi/abbr.json に保存される
- * side_effects: ファイルシステムへの設定ファイルの書き込み、ExtensionContextへの状態保存
- * failure_modes: 設定ファイルの破損、読み書き権限の欠如、JSONパースエラー
+ * role: 略語（Abbreviation）の定義、永続化、および入力時の自動展開を行う拡張機能
+ * why: ユーザーが短いコマンドエイリアスを入力するだけで、事前に登録された長いコマンドを自動的に補完・展開するため
+ * related: @mariozechner/pi-coding-agent, @mariozechner/pi-tui, @mariozechner/pi-ai, node:fs
+ * public_api: export interface Abbreviation
+ * invariants: 略語名は一意である必要がある、CONFIG_FILEはJSON形式である
+ * side_effects: ~/.pi/abbr.json へのファイル書き込み、piInstanceのエントリ更新
+ * failure_modes: 設定ファイルの読み書き権限がない、JSONパースエラー、piInstanceが設定される前の永続化呼び出し
  * @abdd.explain
- * overview: 入力フィールドでの略語展開と、略語管理のためのCLIコマンドを提供する
+ * overview: Fish shellライクな略語展開機能を提供し、入力された短い文字列をコマンド送信前に定義済みの文字列へ置換する
  * what_it_does:
- *   - 略語と展開後の文字列のペアを追加・一覧・削除・名前変更・検索する
- *   - 入力の先頭単語が登録された略語と一致する場合、空白入力時に展開文字列へ置換する
- *   - 略語データを ~/.pi/abbr.json およびエージェントの状態として永続化する
+ *   - ~/.pi/abbr.jsonへの略語データのロードと保存
+ *   - /abbr add/list/erase/rename/query コマンドによる定義管理
+ *   - 入力フィールドでの略語検出と展開処理
+ *   - ExtensionAPIへの状態同期
  * why_it_exists:
- *   - 頻繁に使用する長いコマンドや定型入力を省略し、操作効率を向上させるため
+ *   - 頻繁に使用する長いコマンドや定型入力を短縮し、操作効率を向上させるため
+ *   - シェルのエイリアス機能のようにインタラクティブな入力補完を実現するため
  * scope:
- *   in: ExtensionAPI, ExtensionContext, ユーザー入力文字列
- *   out: 展開後のコマンド文字列、状態管理用エントリ
+ *   in: ユーザー入力文字列、/abbrコマンド引数、設定ファイル
+ *   out: エージェントへ送信される展開後の文字列、TUI表示、設定ファイル更新
  */
 
 /**

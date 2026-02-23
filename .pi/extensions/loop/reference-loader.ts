@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop/reference-loader.ts
- * role: ループ拡張機能における参照データの読み込みと正規化を行うローダー
- * why: 外部ファイル、URL、インラインテキストから参照コンテンツを取得し、文字数制限やSSRF対策を適用して安全に利用するため
- * related: .pi/extensions/loop.ts, .pi/extensions/loop/ssrf-protection.ts
+ * role: 外部参照データの取得、解析、および整形を行うローダー
+ * why: ループ処理においてファイル、URL、テキストからの参照データを統一的かつ安全に読み込むため
+ * related: .pi/extensions/loop.ts, .pi/extensions/loop/ssrf-protection.ts, ../../lib/text-utils.ts
  * public_api: loadReferences, LoopReference, LoadedReferenceResult
- * invariants: 参照IDはR1からの連番となる、総文字数はmaxReferenceCharsTotalを超えない
- * side_effects: ファイルシステムからの読み込み、HTTPリクエストの発行
- * failure_modes: ファイル読み込みエラー、ネットワークエラー、文字数制限超過によるデータ切り捨て
+ * invariants: 参照データのIDはR1から始まる連番、総文字数はmaxReferenceCharsTotal以下、各参照はmaxReferenceCharsPerItem以下
+ * side_effects: ファイルシステムからの読み込み、HTTPリクエストの送信
+ * failure_modes: ファイル読み込みエラー、URLアクセス失敗、文字数制限超過によるデータ切り捨て
  * @abdd.explain
- * overview: 参照指定（パス、URL、テキスト）を解釈し、内容を取得して`LoopReference`オブジェクトのリストとして返すモジュール。
+ * overview: 入力された参照定義（パス、URL、文字列）を解決し、内容とメタデータを抽出して上限値内に収めたデータ構造を返すモジュール
  * what_it_does:
- *   - refs配列およびrefsFileで指定された参照仕様をパースする
- *   - ファイルパス、URL、インラインテキストを識別してコンテンツを読み込む
- *   - 読み込んだコンテンツの文字数をチェックし、制限を超過する場合は切り捨てる
- *   - SSRF（Server-Side Request Forgery）対策としてURLを検証する
+ *   - 参照定義の正規化とリスト化
+ *   - ファイルパスの解決と内容の読み込み
+ *   - URLからのコンテンツ取得（SSRF保護付き）
+ *   - コンテンツのトリミング（文字数制限）とID付与
  * why_it_exists:
- *   - ループ処理内で複数のソースから参照データを統一的に扱う必要があるため
- *   - 外部リソースへのアクセスにおけるセキュリティリスクを軽減するため
+ *   - 外部リソースへのアクセスを一元管理し、安全性とリソース消費を制御するため
+ *   - 異なるソース（ファイル、URL等）からのデータを統一的な形式で扱うため
  * scope:
- *   in: 参照文字列の配列、参照ファイルパス、作業ディレクトリ(cwd)
- *   out: 読み込み済みの参照配列と処理中に発生した警告リスト
+ *   in: 参照定義リスト、参照ファイルパス、作業ディレクトリ、AbortSignal
+ *   out: 整形済み参照データリスト（LoopReference）、警告メッセージリスト
  */
 
 // File: .pi/extensions/loop/reference-loader.ts

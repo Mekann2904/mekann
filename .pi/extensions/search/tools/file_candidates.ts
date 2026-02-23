@@ -1,28 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/tools/file_candidates.ts
- * role: 高速ファイル列挙ツール
- * why: fdコマンドを優先し、利用不可環境ではNode.jsネイティブ実装へフォールバックすることで、検索機能の可用性と速度を両立するため
- * related: ../utils/cli.js, ../types.js, ../utils/output.js, ../utils/errors.js
- * public_api: nativeFileCandidates (export via index.ts implied), shouldExclude (internal helper)
- * invariants: excludeパターンに一致するパスは結果に含まれない、hiddenファイル(先頭.)は無視される、結果数はlimitを超えない
- * side_effects: ファイルシステムへの読み取りアクセスが発生する
- * failure_modes: fdコマンドがインストールされていない場合、ファイルシステムアクセス権限がない場合、正規表現パターンが無効な場合
+ * role: 高速なファイル・ディレクトリ列挙ツールの実装
+ * why: fdコマンドによる高速検索を提供しつつ、環境依存を排除するためのNode.jsネイティブ実装をフォールバックとして用意するため
+ * related: ../types.js, ../utils/cli.js, ../utils/output.js
+ * public_api: nativeFileCandidates（fd呼び出しロジックはこのファイル内で完結）
+ * invariants: 結果は常にlimit件以下に収まる、パスはcwdからの相対パスである、除外パターンは常に適用される
+ * side_effects: ファイルシステムへの読み取りアクセス（readdir/stat）、外部プロセス(fd)の実行
+ * failure_modes: fdコマンド未インストール時はネイティブ実行に移行、権限不足のディレクトリはスキップ、正規表現パースエラー時は例外
  * @abdd.explain
- * overview: 外部コマンドfdを使用した高速なファイル候補列挙と、Node.jsのみで動作するネイティブフォールバック処理を実装するモジュール
+ * overview: fdコマンドまたはNode.js原生APIを使用して、指定条件に基づきファイル・ディレクトリの候補リストを生成するツール
  * what_it_does:
- *   - fdコマンドの引数を構築し、実行結果をパースしてFileCandidateオブジェクトの配列に変換する
- *   - fdが利用できない場合、fs.readdirを用いた再帰的ディレクトリ走査によりファイル候補を収集する
- *   - 拡張子、パターン、タイプ、最大深さ、除外リストに基づき候補をフィルタリングする
- *   - 結果数が制限を超過する場合、リストを切り詰める
- *   - キャッシュと履歴の管理を支援するユーティリティ関数を呼び出す
+ *   - fdコマンドが利用可能な場合は外部コマンド経由で高速にファイル列挙を行う
+ *   - fdが利用できない場合はnativeFileCandidates関数でfs.readdirを用いた再帰スキャンを行う
+ *   - グロブパターン、拡張子、タイプ（file/dir）によるフィルタリングを行う
+ *   - DEFAULT_EXCLUDESに基づき不要なファイル（.min.js等）を除外する
  * why_it_exists:
- *   - fdコマンドは高速だが環境依存であるため、すべての環境で動作させる代替手段が必要
- *   - 検索APIの要件に応じて柔軟なフィルタリング（拡張子、globパターン等）を提供する
- *   - パフォーマンスと信頼性のバランスを取るため
+ *   - 大規模なリポジトリにおいて、検索パフォーマンスを確保するため
+ *   - 外部ツールへの依存なしで動作させるための堅牢性を確保するため
  * scope:
- *   in: FileCandidatesInput (query, limit, exclude, type, extension, pattern, maxDepth), cwd (current working directory)
- *   out: FileCandidatesOutput (candidates array, hints, truncated flag)
+ *   in: 検索パス、フィルタ条件（pattern, extension, type）、上限数（limit）、最大深さ（maxDepth）
+ *   out: フィルタリングされたファイル・ディレクトリのリスト（FileCandidate[]）
  */
 
 /**

@@ -10,7 +10,7 @@ import type {
 	FindCallersInput,
 	FindCalleesInput,
 	CallGraphIndex,
-} from "@ext/search/call-graph/types.ts";
+} from "@ext/search/call-graph/types.js";
 
 // モック化
 vi.mock("@ext/search/call-graph/builder.js", () => ({
@@ -35,7 +35,7 @@ import {
 	callGraphIndex,
 	findCallersTool,
 	findCalleesTool,
-} from "@ext/search/tools/call_graph.ts";
+} from "@ext/search/tools/call_graph.js";
 import {
 	buildCallGraph,
 	saveCallGraphIndex,

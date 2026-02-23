@@ -2,7 +2,7 @@
 title: reference-loader
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -19,6 +19,7 @@ related: []
 // from 'node:fs': existsSync, readFileSync, statSync
 // from 'node:path': basename, isAbsolute, join, ...
 // from '../../lib/error-utils.js': toErrorMessage
+// from '../../lib/text-utils.js': truncateText, toPreview, throwIfAborted
 // from './ssrf-protection': validateUrlForSsrf
 ```
 
@@ -60,6 +61,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     error_utils["error-utils"]
+    text_utils["text-utils"]
     ssrf_protection["ssrf-protection"]
   end
   main --> local
@@ -77,20 +79,14 @@ flowchart TD
   looksLikeUrl["looksLikeUrl()"]
   normalizeRefSpec["normalizeRefSpec()"]
   resolvePath["resolvePath()"]
-  throwIfAborted["throwIfAborted()"]
-  toPreview["toPreview()"]
-  truncateText["truncateText()"]
   fetchTextFromUrl --> htmlToText
   fetchTextFromUrl --> looksLikeHtml
   loadReferences --> loadSingleReference
   loadReferences --> normalizeRefSpec
   loadReferences --> resolvePath
-  loadReferences --> throwIfAborted
-  loadReferences --> truncateText
   loadSingleReference --> fetchTextFromUrl
   loadSingleReference --> looksLikeUrl
   loadSingleReference --> resolvePath
-  loadSingleReference --> toPreview
 ```
 
 ### シーケンス図
@@ -101,7 +97,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant reference_loader as "reference-loader"
   participant error_utils as "error-utils"
-  participant ssrf_protection as "ssrf-protection"
+  participant text_utils as "text-utils"
 
   Caller->>reference_loader: loadReferences()
   activate reference_loader
@@ -255,50 +251,6 @@ htmlToText(value: string): string
 
 **戻り値**: `string`
 
-### truncateText
-
-```typescript
-truncateText(value: string, maxChars: number): string
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `string` | はい |
-| maxChars | `number` | はい |
-
-**戻り値**: `string`
-
-### toPreview
-
-```typescript
-toPreview(value: string, maxChars: number): string
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| value | `string` | はい |
-| maxChars | `number` | はい |
-
-**戻り値**: `string`
-
-### throwIfAborted
-
-```typescript
-throwIfAborted(signal: AbortSignal | undefined): void
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| signal | `AbortSignal | undefined` | はい |
-
-**戻り値**: `void`
-
 ## インターフェース
 
 ### LoopReference
@@ -326,4 +278,4 @@ interface LoadedReferenceResult {
 参照読み込みの結果を表すインターフェース
 
 ---
-*自動生成: 2026-02-18T18:06:17.279Z*
+*自動生成: 2026-02-23T06:29:42.022Z*

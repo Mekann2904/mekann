@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop/ssrf-protection.ts
- * role: SSRF防御ユーティリティ
- * why: Server-Side Request Forgery (SSRF) 攻撃を防止し、プライベート/内部ネットワークへの不正アクセスをブロックするため
+ * role: URL検証およびSSRF対策ユーティリティ
+ * why: Server-Side Request Forgery (SSRF) を防止し、プライベート/内部ネットワークへのアクセスをブロックするため
  * related: .pi/extensions/loop.ts, .pi/extensions/loop/reference-loader.ts
  * public_api: isBlockedHostname, isPrivateOrReservedIP
- * invariants: 入力文字列は trim および toLowerCase により正規化されて判定される
- * side_effects: 外部DNS問い合わせ (dnsLookup) をインポートしているが、本ファイル内のエクスポート関数は同期的に計算のみを行う
- * failure_modes: 不正なIPアドレス形式、無効なホスト名文字列が入力された場合の挙動は個別の関数実装に依存する
+ * invariants: ホスト名・IPアドレスの判定ロジックは常にコード内の定義およびRFC準拠の範囲内で実行される
+ * side_effects: なし
+ * failure_modes: 無効なIPアドレス形式の入力、正規表現パターンとの不一致による誤判定
  * @abdd.explain
- * overview: URL検証におけるSSRF対策のため、ホスト名とIPアドレスがプライベート or 内部ネットワークに属するかを判定するモジュール
+ * overview: 指定されたホスト名やIPアドレスが、ローカルホスト、プライベートIP、内部ドメイン、または予約済みアドレスかどうかを判定する検証モジュール。
  * what_it_does:
- *   - ブロック対象のホスト名パターン（localhost等）に基づきホスト名を検証する
- *   - IPアドレスがIPv4のプライベート範囲、予約済み範囲、またはIPv6のループバック/リンクローカル/ユニークローカルかを判定する
- *   - IPv4マッピングされたIPv6アドレスをIPv4として扱い判定する
+ *   - 正規表現パターンリストを用い、localhostや.local等の危険なホスト名を検出する
+ *   - IPv4/IPv6アドレスの解析を行い、プライベート範囲（10.0.0.0/8等）や予約済み範囲を特定する
+ *   - IPv4マッピングされたIPv6アドレスの抽出と判定を行う
  * why_it_exists:
- *   - 外部リソース取得時に、攻撃者が内部システムへアクセスするリスクを排除するため
- *   - loop拡張機能において、安全な外部参照のみを許可するため
+ *   - ユーザー指定のURLを処理する際、内部リソースへの不正アクセス（SSRF）を防ぐセキュリティ層として機能するため
+ *   - 外部参照の読み込み機能において、安全な宛先のみに通信を制限するため
  * scope:
- *   in: ホスト名文字列、IPアドレス文字列
- *   out: ブロック対象か否かを示す真偽値 (boolean)
+ *   in: 検証対象のホスト名文字列、IPアドレス文字列
+ *   out: ブロック対象かどうかを示す真偽値（true: ブロック対象/プライベート, false: 安全）
  */
 
 // File: .pi/extensions/loop/ssrf-protection.ts

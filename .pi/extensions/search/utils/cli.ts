@@ -2,32 +2,25 @@
  * @abdd.meta
  * path: .pi/extensions/search/utils/cli.ts
  * role: 外部プロセス実行ラッパー
- * why: タイムアウト、出力サイズ制限、中止シグナル、エラーハンドリングを統一的に管理するため
- * related: .pi/extensions/search/types.ts, .pi/extensions/search/utils/constants.ts
+ * why: タイムアウト、中断信号、出力サイズ制限、エラー処理を統一的に管理するため
+ * related: .pi/extensions/search/types, .pi/extensions/search/utils/constants
  * public_api: execute
- * invariants:
- * - Promiseは必ず解決され、rejectされない
- * - 出力サイズがmaxOutputSizeを超える場合、切り詰められる
- * - プロセス終了時にタイマーとシグナルリスナーはクリアされる
- * side_effects: 子プロセスの生成と終了、環境変数のマージ、プロセスへのシグナル送信(SIGTERM)
- * failure_modes:
- * - コマンドが見つからない場合
- * - タイムアウト発生による強制終了
- * - AbortSignalによる中断
- * - 出力バッファ制限超過によるデータ欠落
+ * invariants: タイムアウトまたはサイズ制限を超過した場合、プロセスは必ずSIGTERMで終了される
+ * side_effects: 子プロセスの生成と終了、プロセス環境変数への書き込み、システムシグナルの監視
+ * failure_modes: コマンド不在、権限不足、シグナルによる強制終了、出力バッファオーバーフロー
  * @abdd.explain
- * overview: Node.jsのspawnをラップし、タイムアウトや出力制限などの安全機材を備えたCLI実行機能を提供する
+ * overview: Node.jsのspawnをラップし、安全かつ制御可能なCLIコマンド実行環境を提供する
  * what_it_does:
- *   - 指定されたコマンドと引数で子プロセスを生成し、標準出力・標準エラーを収集する
- *   - タイムアウト時間経過時、またはAbortSignal発火時にSIGTERMを送信しプロセスを終了する
- *   - stdoutとstderrのサイズが上限を超えた場合、それ以上の書き込みを停止する
- *   - プロセスの終了コード、出力内容、中断状態などを含むCliResultオブジェクトを返す
+ *   - コマンドを指定された作業ディレクトリと環境変数で実行する
+ *   - 標準出力・標準エラーの収集量をmaxOutputSizeで制限する
+ *   - timeout時間経過またはAbortSignal受信によりプロセスを強制終了する
+ *   - 終了コード、出力内容、タイムアウト/強制終了フラグを含む結果オブジェクトを返す
  * why_it_exists:
- *   - 生のchild_process.spawnを使用すると、タイムアウト処理やリソース管理が複雑化するため
- *   - 検索ツール等で想定外の長時間実行や大量出力を防ぐ安全策が共通的に必要なため
+ *   - 外部ツール（検索コマンド等）の実行において、ハングアップやメモリ過大消費を防ぐため
+ *   - 呼び出し元で個別に実装するよりも、一貫したエラーハンドリングとリソース管理を提供するため
  * scope:
- *   in: コマンド文字列、引数配列、実行オプション(cwd, timeout, signal, maxOutputSize, env)
- *   out: 終了コード、標準出力、標準エラー出力、タイムアウトフラグ、キルフラグを含む結果オブジェクト
+ *   in: コマンド文字列、引数リスト、実行オプション（cwd, timeout, signal, maxOutputSize, env）
+ *   out: 実行結果を表すPromise<CliResult>（code, stdout, stderr, timedOut, killed, truncated）
  */
 
 /**

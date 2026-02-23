@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/code-panel.ts
- * role: オーバーレイパネルでコードを表示するコマンドを提供する拡張機能
- * why: エージェントがモダンなサイドパネルUIでコードをハイライト表示するため
- * related: @mariozechner/pi-ai, @mariozechner/pi-coding-agent, @mariozechner/pi-tui, code-viewer.ts
- * public_api: /code-panel コマンド
- * invariants: なし
- * side_effects: なし（読み取り専用）
- * failure_modes: コードまたはファイルパスが無効
+ * role: コード表示UI拡張
+ * why: ユーザーが指定したコードまたはファイルの内容を、行番号とシンタックスハイライト付きのサイドパネルで即座に確認するため
+ * related: @mariozechner/pi-coding-agent, @mariozechner/pi-tui, node:fs
+ * public_api: formatLinesWithNumbers, createCodePanel, default(ExtensionAPI)
+ * invariants: codeパネルの最大表示行数は30行、行番号は1から開始
+ * side_effects: なし
+ * failure_modes: 指定されたファイルが存在しない場合の処理は未定義、シンタックスハイライトライブラリのエラーは呼び出し元に伝播
  * @abdd.explain
- * overview: オーバーレイパネルでシンタックスハイライト付きのコードを表示するコマンドを提供する
+ * overview: `/code-panel` コマンドを提供し、コードまたはファイルパスを受け取ってサイドパネルに表示する拡張機能
  * what_it_does:
- *   - コード文字列またはファイルパスを受け取り、オーバーレイパネルで表示する
- *   - シンタックスハイライトと行番号を適用
- *   - ESC または q キーでパネルを閉じる
+ *   - コマンド引数から直接コード文字列、またはファイルパスを受け取る
+ *   - 指定された言語（または拡張子から推測した言語）でシンタックスハイライトを適用する
+ *   - コードを行番号付きでフォーマットし、Containerコンポーネントとして描画する
+ *   - 表示行数が30行を超える場合、残りの行を省略して表示する
  * why_it_exists:
- *   - モダンなオーバーレイUI体験を提供するため
- *   - コードを見やすくハイライト表示するため
+ *   - メインコンソール画面から離れることなく、コードの内容を補助的な領域で確認するため
+ *   - ファイルシステム上のコードと、生成されたコードスニペットの両方を同形式で表示するため
  * scope:
- *   in: ExtensionAPI, コード文字列/ファイルパス, 言語
- *   out: オーバーレイパネルでのハイライト付きコード表示
+ *   in: ExtensionAPI, コマンド引数(code, path, language)
+ *   out: オーバーレイ用Containerコンポーネント
  */
 
 /**

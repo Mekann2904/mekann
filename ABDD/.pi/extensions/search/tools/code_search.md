@@ -2,7 +2,7 @@
 title: code_search
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -20,7 +20,7 @@ related: []
 // from '../types.js': CodeSearchInput, CodeSearchOutput, CodeSearchMatch, ...
 // from '../utils/output.js': truncateResults, parseRgOutput, summarizeResults, ...
 // from '../utils/errors.js': SearchToolError, isSearchToolError, getErrorMessage, ...
-// from '../utils/constants.js': DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_EXCLUDES
+// from '../utils/constants.js': DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_IGNORE_CASE, DEFAULT_EXCLUDES, ...
 // ... and 2 more imports
 ```
 
@@ -28,6 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `nativeCodeSearch` | Pure Node.js code search fallback |
 | 関数 | `codeSearch` | コードを検索 |
 
 ## 図解
@@ -56,19 +57,23 @@ flowchart TD
   codeSearch["codeSearch()"]
   extractResultPaths["extractResultPaths()"]
   nativeCodeSearch["nativeCodeSearch()"]
+  normalizeCodeSearchInput["normalizeCodeSearchInput()"]
   scanDir["scanDir()"]
   searchFile["searchFile()"]
   shouldExclude["shouldExclude()"]
   useRgCommand["useRgCommand()"]
   codeSearch --> extractResultPaths
   codeSearch --> nativeCodeSearch
+  codeSearch --> normalizeCodeSearchInput
   codeSearch --> useRgCommand
+  nativeCodeSearch --> normalizeCodeSearchInput
   nativeCodeSearch --> scanDir
   nativeCodeSearch --> searchFile
   nativeCodeSearch --> shouldExclude
   scanDir --> scanDir
   scanDir --> searchFile
   scanDir --> shouldExclude
+  useRgCommand --> normalizeCodeSearchInput
 ```
 
 ### シーケンス図
@@ -81,16 +86,38 @@ sequenceDiagram
   participant cli as "cli"
   participant types as "types"
 
-  Caller->>code_search: codeSearch()
+  Caller->>code_search: nativeCodeSearch()
   activate code_search
   Note over code_search: 非同期処理開始
   code_search->>cli: 内部関数呼び出し
   cli-->>code_search: 結果
   deactivate code_search
   code_search-->>Caller: Promise_CodeSearchOu
+
+  Caller->>code_search: codeSearch()
+  activate code_search
+  code_search-->>Caller: Promise_CodeSearchOu
+  deactivate code_search
 ```
 
 ## 関数
+
+### normalizeCodeSearchInput
+
+```typescript
+normalizeCodeSearchInput(input: CodeSearchInput): CodeSearchInput
+```
+
+Clamp code_search input values to safe bounds.
+This prevents oversized responses that can bloat model context.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `CodeSearchInput` | はい |
+
+**戻り値**: `CodeSearchInput`
 
 ### nativeCodeSearch
 
@@ -206,4 +233,4 @@ async codeSearch(input: CodeSearchInput, cwd: string): Promise<CodeSearchOutput>
 **戻り値**: `Promise<CodeSearchOutput>`
 
 ---
-*自動生成: 2026-02-18T18:06:17.385Z*
+*自動生成: 2026-02-23T06:29:42.135Z*

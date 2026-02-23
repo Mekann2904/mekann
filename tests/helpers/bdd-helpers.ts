@@ -4,7 +4,7 @@
  * @testFramework vitest
  */
 
-import { beforeEach, afterEach } from "vitest";
+import { beforeEach, afterEach, describe, it, vi } from "vitest";
 
 // ============================================================================
 // Type Definitions

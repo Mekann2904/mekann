@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/shared/verification-hooks.ts
- * role: 検証フックのエントリーポイントおよび設定解決モジュール
- * why: 論文「Large Language Model Reasoning Failures」の推奨事項に基づき、サブエージェント実行後の出力を自動検証するため
+ * role: サブエージェント実行後の自動検証フックのエントリポイント
+ * why: 論文「Large Language Model Reasoning Failures」の推奨事項に基づき、出力の信頼性を保証するため
  * related: .pi/lib/verification-workflow.js, .pi/lib/comprehensive-logger.js
- * public_api: VerificationHookConfig, VerificationHookResult, resolveVerificationHookConfig, postSubagentVerificationHook
- * invariants: resolveVerificationHookConfigの返すenabledはmodeに依存する、logResultsは環境変数PI_VERIFICATION_LOGに依存する
- * side_effects: 環境変数を読み込む、ロガーを通じて操作ログを出力する
- * failure_modes: 環境変数の未定義によるデフォルト設定の適用、runVerificationAgent関数の実行失敗
+ * public_api: resolveVerificationHookConfig, postSubagentVerificationHook, VerificationHookConfig, VerificationHookResult
+ * invariants: モードが'disabled'の場合、検証は実行されない; minimalモードではチャレンジャーは実行されない
+ * side_effects: 検証エージェントの実行呼び出し、検証結果のログ出力
+ * failure_modes: 検証エージェントの呼び出し失敗、設定の誤った解決
  * @abdd.explain
- * overview: サブエージェント出力に対する検証プロセスのトリガーと制御を行う
+ * overview: 環境変数と実行コンテキストに基づいて検証フックの有効無効を制御し、必要に応じて検証エージェント（検査官・チャレンジャー）を起動する
  * what_it_does:
- *   - 環境変数に基づき検証フックの有効/無効やモードを解決する
- *   - サブエージェント実行後の出力と信頼度を受け取り、検証の要否を判定する
- *   - インスペクタおよびチャレンジャーの実行制御を行う
- *   - 検証結果をログに記録する
+ *   - 環境変数から検証動作モード（disabled, minimal, auto, strict）を解決する
+ *   - サブエージェントの出力と信頼度に基づき、検証実行の可否を判定する
+ *   - 検証実行のトリガー判定を行い、検証コンテキストを構築する
  * why_it_exists:
- *   - LLMの推論失敗を検知し、出力の信頼性を高めるため
- *   - 高リスクタスクにおける出力安全性を確保するため
- *   - 検証プロセスを環境設定により柔軟に制御可能にするため
+ *   - 検証ワークフローを外部環境設定（環境変数）で柔軟に制御するため
+ *   - サブエージェントによる生成物に対して自動的に品質チェックを行うため
  * scope:
- *   in: 環境変数(PI_VERIFICATION_WORKFLOW_MODE, PI_VERIFICATION_LOG)、サブエージェントの出力文字列、信頼度数値、コンテキスト
- *   out: 解決された設定オブジェクト、検証実行の有無、検証結果オブジェクト
+ *   in: 環境変数(PI_VERIFICATION_WORKFLOW_MODE, PI_VERIFICATION_LOG)、サブエージェントの出力・信頼度・ID・タスク内容
+ *   out: 検証フックの実行結果、検証エージェントへのプロンプト、操作ログ
  */
 
 /**

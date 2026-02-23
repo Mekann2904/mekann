@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/priority-scheduler.ts
- * role: タスクの優先度定義およびWFQ（Weighted Fair Queuing）スケジューリング用データ構造の定義モジュール
- * why: エージェントおよびチームのタスク実行順序を制御し、重要度に応じたリソース配分を行うため
+ * role: タスクの優先度定義および重み付け公平キューイング（WFQ）によるスケジューリング機能と、タスク実行コストのラウンド推論機能を提供するライブラリ
+ * why: サブエージェントやエージェントチームに対して、優先度を考慮したタスク実行順序の制御とリソース配分を実現するため
  * related: .pi/extensions/agent-runtime.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
- * public_api: TaskPriority, PRIORITY_WEIGHTS, PRIORITY_VALUES, PriorityTaskMetadata, PriorityQueueEntry, TaskType, TaskComplexity, EstimationContext
- * invariants: PRIORITY_VALUESの数値が高いほど優先度が高い、PRIORITY_WEIGHTSの数値が高いほど実行頻度の重みが大きい
- * side_effects: なし（純粋な定義と型エクスポート）
- * failure_modes: タイプ定義の不整合による実行時エラー、優先度定義の不正によるスケジューリングロジックの破綻
+ * public_api: TaskPriority, PRIORITY_WEIGHTS, PRIORITY_VALUES, PriorityTaskMetadata, PriorityQueueEntry, TaskType, TaskComplexity, EstimationContext, RoundEstimation
+ * invariants: PRIORITY_WEIGHTSの値は正の整数である、TaskPriorityの定義順位とPRIORITY_VALUESの数値大小は一致する
+ * side_effects: なし（純粋な型定義および定数定義、インターフェース定義）
+ * failure_modes: 推定コンテキストに不明なツール名が渡された場合の挙動、予測外の実行時間による優先度逆転のリスク
  * @abdd.explain
- * overview: サブエージェントやエージェントチーム向けの優先度ベースのタスクスケジューリングにおいて使用される型、定数、インターフェースを定義する。
+ * overview: タスクの重要度（critical, high, normal, low, background）に基づき、WFQアルゴリズム用の重み付けや数値比較を行う定数と型を定義する。また、タスクの種類や複雑さに基づいて実行コスト（ラウンド数）を見積もるための型を提供する。
  * what_it_does:
- *   - 5段階の優先度レベルと、その重み付け・比較値を定数として提供する
- *   - タスクのメタデータ（ID、推定時間、期限など）を格納するインターフェースを定義する
- *   - WFQアルゴリズム用の仮想開始・終了時刻やスタベーション検出用カウンタを含むキューエントリを定義する
- *   - ラウンド推定（SRT最適化）のためのタスクタイプ、複雑度、推定コンテキストの型を定義する
+ *   - 優先度レベルに対応する重み（WFQ用）と数値（比較用）のマッピングを定義する
+ *   - タスクのメタデータ（ID、優先度、推定時間、期限など）とキューエントリ（仮想開始・終了時間、スキップ回数）の構造を規定する
+ *   - タスクの種類（read, bash, subagent等）と複雑さ、および推定結果の型を定義する
  * why_it_exists:
- *   - タスクの重要度や緊急度に応じて実行順序を動的に変更する仕組みを提供するため
- *   - 複数のエージェントやチームが競合する環境において、公平かつ効率的なリソース配分を実現するため
- *   - 実行コストや複雑度を見積もり、スケジューリング判断に活用するためのデータ構造を標準化するため
+ *   - エージェントシステムにおいて緊急度や重要度に応じた適切なタスク処理順序を保証するため
+ *   - タスクの実行コストを事前に概算し、スケジューリングの効率化やリソース管理を行うため
  * scope:
  *   in: なし
- *   out: 優先度定数、タスクメタデータ型、キューエントリ型、推定用型定義
+ *   out: 優先度定数、タスクおよび推定に関連するTypeScriptの型エクスポート
  */
 
 // File: .pi/lib/priority-scheduler.ts

@@ -2,7 +2,7 @@
 title: adaptive-rate-controller
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -16,10 +16,11 @@ related: []
 ## インポート
 
 ```typescript
-// from 'node:fs': readFileSync, existsSync, writeFileSync, ...
+// from 'node:fs': readFileSync, existsSync, mkdirSync, ...
 // from 'node:os': homedir
 // from 'node:path': join
 // from './runtime-config.js': getRuntimeConfig, RuntimeConfig
+// from './storage-lock.js': withFileLock
 ```
 
 ## エクスポート一覧
@@ -105,6 +106,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     runtime_config["runtime-config"]
+    storage_lock["storage-lock"]
   end
   main --> local
 ```
@@ -114,7 +116,6 @@ flowchart LR
 ```mermaid
 flowchart TD
   analyze429Probability["analyze429Probability()"]
-  buildKey["buildKey()"]
   clampConcurrency["clampConcurrency()"]
   configureRecovery["configureRecovery()"]
   ensureState["ensureState()"]
@@ -122,9 +123,9 @@ flowchart TD
   getAdaptiveState["getAdaptiveState()"]
   getEffectiveLimit["getEffectiveLimit()"]
   getLearnedLimit["getLearnedLimit()"]
-  getPredictiveAnalysis["getPredictiveAnalysis()"]
   initAdaptiveController["initAdaptiveController()"]
   isRateLimitError["isRateLimitError()"]
+  isValidLearnedLimitKey["isValidLearnedLimitKey()"]
   loadState["loadState()"]
   processRecovery["processRecovery()"]
   record429["record429()"]
@@ -132,41 +133,36 @@ flowchart TD
   recordSuccess["recordSuccess()"]
   resetAllLearnedLimits["resetAllLearnedLimits()"]
   resetLearnedLimit["resetLearnedLimit()"]
-  saveState["saveState()"]
   scheduleRecovery["scheduleRecovery()"]
   setGlobalMultiplier["setGlobalMultiplier()"]
   shutdownAdaptiveController["shutdownAdaptiveController()"]
+  tryBuildKey["tryBuildKey()"]
   updateHistorical429s["updateHistorical429s()"]
-  analyze429Probability --> buildKey
-  analyze429Probability --> ensureState
-  configureRecovery --> ensureState
-  configureRecovery --> saveState
+  withStateWriteLock["withStateWriteLock()"]
+  analyze429Probability --> tryBuildKey
+  configureRecovery --> withStateWriteLock
   formatAdaptiveSummary --> ensureState
+  formatAdaptiveSummary --> isValidLearnedLimitKey
   getAdaptiveState --> ensureState
-  getEffectiveLimit --> buildKey
   getEffectiveLimit --> clampConcurrency
   getEffectiveLimit --> ensureState
-  getEffectiveLimit --> saveState
-  getLearnedLimit --> buildKey
+  getEffectiveLimit --> tryBuildKey
+  getEffectiveLimit --> withStateWriteLock
   getLearnedLimit --> ensureState
-  getPredictiveAnalysis --> ensureState
+  getLearnedLimit --> tryBuildKey
   initAdaptiveController --> loadState
   initAdaptiveController --> processRecovery
   record429 --> recordEvent
-  recordEvent --> buildKey
   recordEvent --> clampConcurrency
-  recordEvent --> ensureState
-  recordEvent --> saveState
   recordEvent --> scheduleRecovery
+  recordEvent --> tryBuildKey
   recordEvent --> updateHistorical429s
+  recordEvent --> withStateWriteLock
   recordSuccess --> recordEvent
-  resetAllLearnedLimits --> ensureState
-  resetAllLearnedLimits --> saveState
-  resetLearnedLimit --> buildKey
-  resetLearnedLimit --> ensureState
-  resetLearnedLimit --> saveState
-  setGlobalMultiplier --> ensureState
-  setGlobalMultiplier --> saveState
+  resetAllLearnedLimits --> withStateWriteLock
+  resetLearnedLimit --> tryBuildKey
+  resetLearnedLimit --> withStateWriteLock
+  setGlobalMultiplier --> withStateWriteLock
 ```
 
 ### シーケンス図
@@ -177,6 +173,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant adaptive_rate_controller as "adaptive-rate-controller"
   participant runtime_config as "runtime-config"
+  participant storage_lock as "storage-lock"
 
   Caller->>adaptive_rate_controller: initAdaptiveController()
   adaptive_rate_controller->>runtime_config: 内部関数呼び出し
@@ -214,6 +211,63 @@ buildKey(provider: string, model: string): string
 
 **戻り値**: `string`
 
+### normalizeProvider
+
+```typescript
+normalizeProvider(value: unknown): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+
+**戻り値**: `string`
+
+### normalizeModel
+
+```typescript
+normalizeModel(value: unknown): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+
+**戻り値**: `string`
+
+### tryBuildKey
+
+```typescript
+tryBuildKey(provider: string, model: string): string | null
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| provider | `string` | はい |
+| model | `string` | はい |
+
+**戻り値**: `string | null`
+
+### isValidLearnedLimitKey
+
+```typescript
+isValidLearnedLimitKey(key: string): boolean
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| key | `string` | はい |
+
+**戻り値**: `boolean`
+
 ### loadState
 
 ```typescript
@@ -238,6 +292,20 @@ ensureState(): AdaptiveControllerState
 
 **戻り値**: `AdaptiveControllerState`
 
+### withStateWriteLock
+
+```typescript
+withStateWriteLock(mutator: (draft: AdaptiveControllerState) => T): T
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| mutator | `(draft: AdaptiveControllerState) => T` | はい |
+
+**戻り値**: `T`
+
 ### clampConcurrency
 
 ```typescript
@@ -251,6 +319,49 @@ clampConcurrency(value: number): number
 | value | `number` | はい |
 
 **戻り値**: `number`
+
+### toTimestampMs
+
+```typescript
+toTimestampMs(value: string | null | undefined): number | undefined
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `string | null | undefined` | はい |
+
+**戻り値**: `number | undefined`
+
+### getLimitActivityMs
+
+```typescript
+getLimitActivityMs(limit: LearnedLimit): number
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| limit | `LearnedLimit` | はい |
+
+**戻り値**: `number`
+
+### pruneLearnedLimits
+
+```typescript
+pruneLearnedLimits(currentState: AdaptiveControllerState, nowMs: any): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| currentState | `AdaptiveControllerState` | はい |
+| nowMs | `any` | はい |
+
+**戻り値**: `void`
 
 ### scheduleRecovery
 
@@ -556,7 +667,7 @@ getPredictiveConcurrency(provider: string, model: string, currentConcurrency: nu
 ### updateHistorical429s
 
 ```typescript
-updateHistorical429s(limit: LearnedLimit): void
+updateHistorical429s(limit: LearnedLimit, provider: string, model: string): void
 ```
 
 Update historical 429 data (called on 429 events).
@@ -566,6 +677,8 @@ Update historical 429 data (called on 429 events).
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | limit | `LearnedLimit` | はい |
+| provider | `string` | はい |
+| model | `string` | はい |
 
 **戻り値**: `void`
 
@@ -774,4 +887,4 @@ interface PredictiveAnalysis {
 予測分析結果を保持
 
 ---
-*自動生成: 2026-02-18T18:06:17.478Z*
+*自動生成: 2026-02-23T06:29:42.249Z*

@@ -1,27 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/cache.ts
- * role: 検索ツールの結果を保持するTTLベースのキャッシュ機構
- * why: 検索処理の重複実行を防ぎ、パフォーマンスと応答速度を向上させるため
- * related: .pi/extensions/search/index.ts, .pi/extensions/search/types.ts
- * public_api: CacheEntry, CacheConfig, CacheStats, DEFAULT_CACHE_CONFIG, getCacheKey
- * invariants: エントリはtimestamp+ttlに基づき有効期限切れ判定される, キーはツール名とパラメータから決定的に生成される
- * side_effects: なし（純粋なデータ構造とユーティリティ）
- * failure_modes: 有効期限切れのデータが読み出される, maxEntries超過による古いデータの排除, params順序差によるキー不一致
+ * role: 検索結果のキャッシュ機構を提供するユーティリティ
+ * why: 検索ツールの実行結果を一時保存し、再計算を回避してパフォーマンスを向上させるため
+ * related: .pi/extensions/search/index.ts, .pi/extensions/search/tool.ts, .pi/extensions/search/types.ts
+ * public_api: CacheEntry, CacheConfig, CacheStats, DEFAULT_CACHE_CONFIG
+ * invariants: maxEntriesを超えるエントリは保存されない、TTL経過したエントリは無効
+ * side_effects: なし（純粋なキャッシュロジック）
+ * failure_modes: メモリ枯渇、TTL設定ミスによるキャッシュの肥大化、キー衝突による誤ったヒット
  * @abdd.explain
- * overview: 検索結果のキャッシュエントリ、設定、統計情報の型定義およびキャッシュキー生成機能を提供するモジュール
+ * overview: TTLベースの有効期限切れとパターンベースの無効化を持つ、型安全な検索結果キャッシュシステム
  * what_it_does:
- *   - キャッシュエントリの構造をタイムスタンプ、TTL、パラメータ、結果で定義する
- *   - キャッシュの動作設定（TTL、最大数、有効無効）と統計情報（ヒット率等）の型を定義する
- *   - デフォルト設定（TTL5分、最大200エントリ）を提供する
- *   - ツール名とパラメータオブジェクトから一意なキャッシュキー文字列を生成する
+ *   - キャッシュエントリの型定義とデフォルト設定を提供する
+ *   - TTL、最大エントリ数、有効フラグを管理する構造を持つ
+ *   - キャッシュの統計情報（ヒット率など）を追跡する構造を定義する
+ *   - ツール名とパラメータから一意のキャッシュキーを生成する
  * why_it_exists:
- *   - 検索結果の構造と有効期限管理を型安全に扱うため
- *   - キャッシュの振る舞いを設定可能にし、異なる環境や要件に対応するため
- *   - パラメータの順序に依存しない安定したキー生成を共通化するため
+ *   - 高コストな検索処理の重複実行を防ぐため
+ *   - ユーザー体験の応答速度を向上させるため
+ *   - 検索結果の一貫性を管理するため
  * scope:
- *   in: なし
- *   out: TypeScript型定義, 設定定数, キー生成文字列
+ *   in: CacheConfig（設定）、ツール名、パラメータ
+ *   out: キャッシュされた結果、統計情報、生成されたキー
  */
 
 /**

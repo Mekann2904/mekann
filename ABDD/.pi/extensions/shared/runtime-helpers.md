@@ -2,7 +2,7 @@
 title: runtime-helpers
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -62,6 +62,18 @@ flowchart LR
     agent_runtime["agent-runtime"]
   end
   main --> local
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  buildRuntimeLimitError["buildRuntimeLimitError()"]
+  buildRuntimeQueueWaitError["buildRuntimeQueueWaitError()"]
+  doCleanup["doCleanup()"]
+  refreshRuntimeStatus["refreshRuntimeStatus()"]
+  startReservationHeartbeat["startReservationHeartbeat()"]
+  startReservationHeartbeat --> doCleanup
 ```
 
 ### シーケンス図
@@ -135,6 +147,14 @@ startReservationHeartbeat(reservation: RuntimeCapacityReservationLease): () => v
 
 **戻り値**: `() => void`
 
+### doCleanup
+
+```typescript
+doCleanup(): void
+```
+
+**戻り値**: `void`
+
 ### refreshRuntimeStatus
 
 ```typescript
@@ -185,4 +205,4 @@ interface RuntimeQueueWaitInfo {
 実行時キューウェイト情報
 
 ---
-*自動生成: 2026-02-18T18:06:17.406Z*
+*自動生成: 2026-02-23T06:29:42.177Z*

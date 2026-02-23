@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/verification-simple.ts
- * role: 同期検証モジュール（検証ワークフローの簡易実装）
- * why: 1924行の検証コードが実質ダミー実装だったため、静的パターン検出のみで即座に効果を得る
- * related: .pi/lib/verification-workflow.ts, .pi/extensions/agent-teams/team-orchestrator.ts, .pi/extensions/subagents/task-execution.ts
- * public_api: verifyOutput, simpleVerificationHook, SimpleVerificationResult
- * invariants: 検出関数は同期的に実行、外部依存なし
+ * role: 出力の簡易検証エンジン
+ * why: CLAIM-RESULT不一致や過信など、論理的な不整合や認知バイアスを低コストで検出するため
+ * related: .pi/lib/verification-workflow.js, .pi/lib/verification-types.ts
+ * public_api: verifyOutput, SimpleVerificationResult, SimpleVerificationConfig
+ * invariants: confidenceAdjustmentは初期値1.0であり、問題検出時は1.0未満になる
  * side_effects: なし（純粋関数）
- * failure_modes: 検出関数例外時はpassを返す
+ * failure_modes: 入力が空文字の場合は検証スキップ、検出ロジックの誤検知により信頼度が過度に低下する
  * @abdd.explain
- * overview: verification-workflow.tsの検出関数を直接呼び出す簡易検証モジュール
+ * overview: 設定されたルールに基づいてテキスト出力を検証し、問題の有無と信頼度調整係数を返す
  * what_it_does:
- *   - CLAIM-RESULT不一致、過信、代替解釈欠如、確認バイアスを検出
- *   - 同期的に実行され、外部エージェントを必要としない
- *   - 検証結果に基づいて信頼度を調整
+ *   - 信頼度が閾値以上かつ高リスクタスクでない場合、検証をスキップする
+ *   - CLAIM-RESULT不一致、過信、代替解釈欠如、確認バイアスを検出する
+ *   - 検出された問題の重大度に応じて信頼度調整係数を減算する
  * why_it_exists:
- *   - 910行の検証フックが実質ダミー実装だったため
- *   - 即座に使用可能な検証機能を提供するため
+ *   - 重厚なワークフローを実行する前に、軽量なフィルタリングを行うため
+ *   - 明らかな論理破綻やリスクを即座に特定して出力品質を担保するため
  * scope:
- *   in: 出力文字列、信頼度、コンテキスト
- *   out: 検証結果（triggered, issues, verdict）
+ *   in: 検証対象テキスト、現在の信頼度、検証コンテキスト、検証設定
+ *   out: 検証フラグ、問題リスト、判定結果、信頼度調整係数、トリガー理由
  */
 
 import {

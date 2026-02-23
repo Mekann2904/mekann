@@ -1,20 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/text-utils.ts
- * role: 文字列処理ユーティリティ関数を集約する共通モジュール
- * why: 複数モジュールで重複していた文字列処理関数を一元管理し、保守性を向上させるため
- * related: .pi/extensions/loop.ts, .pi/extensions/loop/iteration-builder.ts, .pi/extensions/loop/verification.ts, .pi/extensions/loop/reference-loader.ts, .pi/extensions/search/utils/output.ts
+ * role: 拡張機能間で共通利用されるテキスト処理ユーティリティ
+ * why: 重複する実装を一箇所に集約し、コードの重複を排除するため
+ * related: .pi/lib/loop.ts, .pi/lib/search/utils/output.ts, .pi/lib/code-structure-analyzer/tools/generate-diagrams.ts
  * public_api: truncateText, truncateTextWithMarker, toPreview, normalizeOptionalText, throwIfAborted
- * invariants: すべての関数は純粋関数（throwIfAbortedを除く）
- * side_effects: throwIfAbortedのみ例外を投げる可能性あり
- * failure_modes: maxCharsが負の値の場合の挙動は未定義
+ * invariants: truncateTextはmaxLengthが3以下の場合、"..."を付けずに指定長で切り詰める
+ * side_effects: なし（純粋関数）
+ * failure_modes: maxLengthに負数が渡された場合の挙動は型定義上制約されない
  * @abdd.explain
- * overview: テキストの切り詰め、プレビュー生成、正規化、中断チェックを行うユーティリティ関数群
- * what_it_does: 各関数は単一責任で、副作用を持たない（throwIfAbortedを除く）
- * why_it_exists: 複数モジュールでの重複解消と、一貫したテキスト処理の提供
+ * overview: 文字列の切り詰め、正規化、AbortSignalのチェックを行う純粋関数群。
+ * what_it_does:
+ *   - 文字列を指定長に切り詰める（truncateText, truncateTextWithMarker, toPreview）
+ *   - optionalな文字列をトリムしてundefinedに変換する（normalizeOptionalText）
+ *   - AbortSignalの中断状態を確認し例外を投げる（throwIfAborted）
+ * why_it_exists:
+ *   - loop.tsやsearch/utils/output.tsなどに散在していた重複コードを削除するため
  * scope:
- *   in: 文字列、文字数制限、AbortSignal
- *   out: 加工された文字列、または例外
+ *   in: string, number, AbortSignal
+ *   out: string, string | undefined, void
  */
 
 /**

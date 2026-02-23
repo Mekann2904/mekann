@@ -1,13 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/communication-termination.ts
- * role: コミュニケーション終了判定（V2：ゲート＋重み付け）
- * why: より精度の高い終了判定を実現するため
- * related: .pi/extensions/agent-teams/communication.ts, communication-references.ts
- * public_api: TerminationCheckResultV2, checkTerminationV2
- * invariants: スコアは0-100の範囲
+ * role: チーム協議の終了可否と推奨アクションを判定するロジック
+ * why: 不完全な状態や低品質な結果での誤った終了を防ぐため
+ * related: ./communication-references, ./agent-teams-types
+ * public_api: checkTerminationV2, TerminationCheckResultV2, TeamMemberResultLike
+ * invariants: score.totalは各スコアの合計値, recommendationはTHRESHOLDSに基づき決定
  * side_effects: なし
- * failure_modes: なし
+ * failure_modes: referenceResultsが空の場合スコア計算が0になる, 意図しない文字列パースによる誤判定
+ * @abdd.explain
+ * overview: チームメンバーの出力結果と参照解析結果に基づき、協議終了条件を満たしているかをスコアリングとゲートチェックで判定する関数群。
+ * what_it_does:
+ *   - メンバーの結果ステータス（失敗率、RESULTタグの有無）を集計し前提条件（Gate）を満たすか検証する
+ *   - カバレッジ、特異性、エビデンス数、信頼度の一致、スタンスの明確さから総合スコアを算出する
+ *   - スコアと閾値（proceed: 80, extend: 50）に基づき "proceed", "extend", "challenge" のいずれかを推奨する
+ *   - 判定に至った理由（減点要因）をdeductionsとして記録する
+ * why_it_exists:
+ *   - 定量的な指標と定型的なチェックルストを組み合わせ、終了判定の品質と透明性を担保するため
+ *   - 高信頼度だがエビデンスが不足しているケースなど、危険な状態を検出して防止するため
+ * scope:
+ *   in: チームメンバーの実行結果リストと参照解析結果リスト
+ *   out: 終了可否、推奨アクション、スコア内訳、ゲート通過状況、減点事由を含む判定結果オブジェクト
  */
 
 import type { PartnerReferenceResultV3 } from "./communication-references";

@@ -1,20 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/__tests__/data-dictionary.ts
- * role: 自己改善深化フェーズ4モジュールのデータ辞書
- * why: データ整合性とメタデータ管理の責任を持つData Stewardとして、型定義の一貫性と不変条件を文書化
+ * role: テストデータおよび型定義の共通仕様書
+ * why: モジュール間で統一されたデータ構造と不変条件を定義し、実装とテストの整合性を保証するため
  * related: aporetic-reasoning.ts, creative-destruction.ts, hyper-metacognition.ts, nonlinear-thought.ts
- * public_api: DATA_DICTIONARY, validateDataIntegrity, DataType
- * invariants: データ辞書は実装と一貫している必要がある
- * side_effects: なし
- * failure_modes: 実装との乖離
+ * public_api: DataCategory, DataField, DataStructure, DataFlow, DATA_DICTIONARY
+ * invariants: DataStructureごとに定義された制約（beliefStrengthの範囲、必須フィールドの存在など）を満たすこと
+ * side_effects: なし（定数および型定義のみ）
+ * failure_modes: 定義された不変条件と矛盾するデータを使用した場合、テストまたは実行時エラーが発生する
  * @abdd.explain
- * overview: 4つの哲学的モジュールのデータ構造を定義し、整合性検証を提供
- * what_it_does: 型定義、不変条件、整合性チェック、メタデータ管理
- * why_it_exists: データの品質と一貫性を保証するため
+ * overview: 4つのモジュール（aporetic-reasoning, creative-destruction, hyper-metacognition, nonlinear-thought）間で扱うデータ構造、フィールド定義、およびモジュール間のデータフローを網羅的に定義したリポジトリ
+ * what_it_does:
+ *   - データ型カテゴリ（state, config, input等）の定義
+ *   - 各データ構造が持つフィールド名、型、必須要件、許容範囲の宣言
+ *   - データ構造ごとの不変条件と関連構造の明示
+ *   - モジュール間のデータフローと変換要件の定義
+ *   - 具体的な構造定義リスト（DATA_DICTIONARY）の提供
+ * why_it_exists:
+ *   - 複数モジュールにまたがるデータ定義を一元管理し、重複や矛盾を防ぐため
+ *   - テストコードにおける期待値（Expected Value）のソースとして機能するため
+ *   - エンジン内のデータフローと制約をドキュメントとして可視化するため
  * scope:
- *   in: 4つのモジュールの型定義
- *   out: データ辞書、整合性検証関数
+ *   in: ファイルシステムから静的に読み込まれる定義情報
+ * out: テストファイルや実装モジュールへの型情報とデータ定義の参照
  */
 
 // ============================================================================

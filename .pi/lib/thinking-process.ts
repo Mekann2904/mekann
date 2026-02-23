@@ -1,20 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/thinking-process.ts
- * role: 思考プロセス可視化・管理モジュール
- * why: エージェントの思考モード選択と深化プロセスを構造化し、質の高い推論を支援
- * related: metacognition.ts, verification-workflow.ts, self-improvement/SKILL.md
- * public_api: ThinkingMode, ThinkingPhase, thinkDeeper, selectThinkingMode, ThinkingContext, ThinkingStep
- * invariants: 思考モードは必ず1つ選択される、フェーズは順序通り進行
- * side_effects: なし（純粋関数）
- * failure_modes: 不正なモード組み合わせ、無限ループ
+ * role: 思考プロセスの状態管理と型定義モジュール
+ * why: 多角的な思考アプローチと問題解決プロセスの段階的進行を型安全に管理するため
+ * related: .pi/lib/agent.ts, .pi/lib/memory.ts
+ * public_api: ThinkingMode, ThinkingPhase, ThinkingContext, ThinkingStep, ThinkDeeperOptions
+ * invariants: phaseはPHASE_ORDERに従って進行する, confidenceは0から1の範囲である
+ * side_effects: なし（純粋な型定義と定数のエクスポート）
+ * failure_modes: 不正なモード遷移の定義, 深度や閾値の範囲外指定
  * @abdd.explain
- * overview: 6つの思考モードと4つの思考フェーズを定義し、段階的思考深化を提供
- * what_it_does: 状況に応じた思考モード選択、思考プロセスの構造化、深化支援
- * why_it_exists: 表面的な推論を防ぎ、深い思考を促進するため
+ * overview: ド・ボノの思考帽とブルームの分類学に基づき、思考モードとプロセスの構造を定義する
+ * what_it_does:
+ *   - 6種の思考モードと4種の思考フェーズを定義する
+ *   - 思考の履歴と現在の状態を保持するインターフェースを提供する
+ *   - モード切り替えや深化処理のための設定と定数を管理する
+ * why_it_exists:
+ *   - AIの思考プロセスを多角的かつ段階的に制御する構造が必要なため
+ *   - 思考の多様性と論理的な進行を保証するため
  * scope:
- *   in: 思考コンテキスト、タスク情報
- *   out: 選択された思考モード、深化された思考結果
+ *   in: なし
+ *   out: 思考プロセスに関連するすべての型と定数
  */
 
 /**

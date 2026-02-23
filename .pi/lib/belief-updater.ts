@@ -1,20 +1,35 @@
 /**
  * @abdd.meta
  * path: .pi/lib/belief-updater.ts
- * role: ベイズ信念更新モジュール
- * why: 確率論的推論により、証拠に基づく信念の更新を可能にする
- * related: thinking-process.ts, learnable-mode-selector.ts, experience-replay.ts
- * public_api: Distribution, Evidence, BayesianBelief, updateBelief, createPrior, normalizeDistribution
- * invariants: 確率の総和は1.0、分布は正規化済み
- * side_effects: なし
- * failure_modes: ゼロ除算、数値アンダーフロー
+ * role: ベイズ推論に基づく信念状態と確率分布の管理モジュール
+ * why: 証拠に基づく動的な仮説評価と、確率的な意思決定支援を行うため
+ * related: .pi/lib/thinking-process.ts, .pi/lib/policy-engine.ts
+ * public_api: Distribution, Evidence, BayesianBelief, BayesianUpdateOptions, createPrior
+ * invariants:
+ *   - Distributionの全確率値は正規化時に総和1となる
+ *   - Evidence.strengthは0から1の範囲内である
+ *   - probabilitiesマップのキーは仮説名と一致する
+ * side_effects:
+ *   - 呼出元が保持するDistributionオブジェクトの状態更新
+ *   - 新しいDistributionオブジェクトの生成
+ * failure_modes:
+ *   - 総和が0の確率分布によるゼロ除算（smoothingFactorで回避）
+ *   - maxEvidenceAgeを超過した証拠の誤用
+ *   - 不正な証拠タイプによる尤度計算エラー
  * @abdd.explain
- * overview: ベイズ更新アルゴリズムによる信念管理システム
- * what_it_does: 事前分布に証拠を適用し事後分布を計算、信念の不確実性を定量化
- * why_it_exists: 確定的な推論から確率論的推論への移行を可能にする
+ * overview: 離散確率分布とベイズ更新を通じて、仮説の事前確率を事後確率へと逐次更新する機能を提供する。
+ * what_it_does:
+ *   - 離散確率分布（Distribution）を作成・正規化する
+ *   - 観測・推論・フィードバックなどの証拠（Evidence）を定義・保持する
+ *   - 事前分布、尤度、事後分布を含む信念状態（BayesianBelief）を管理する
+ *   - ベイズ更新の動作を制御するオプション（BayesianUpdateOptions）を提供する
+ *   - 一様分布または指定された初期確率に基づき事前分布を生成する
+ * why_it_exists:
+ *   - エージェントの意思決定プロセスにおいて、不確実性下での仮説評価を数理的に扱う必要があるため
+ *   - 新しい証拠の入手に応じて信念状態を動的に修正し、適応的な行動を実現するため
  * scope:
- *   in: 事前分布、証拠、尤度関数
- *   out: 事後分布、更新された信念
+ *   in: 仮説リスト、初期確率マップ、更新オプション、証拠データ
+ *   out: 正規化された確率分布を持つDistributionオブジェクト、更新されたBayesianBeliefオブジェクト
  */
 
 import { ThinkingMode, ThinkingPhase } from './thinking-process';

@@ -1,27 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/model-timeouts.ts
- * role: モデル固有のタイムアウト定数と計算ロジックの提供
- * why: モデルごとの処理速度差や思考レベルによる負荷変動に応じた適切な待機時間を設定するため
- * related: .pi/lib/model-loader.ts, .pi/lib/api-client.ts
- * public_api: MODEL_TIMEOUT_BASE_MS, THINKING_LEVEL_MULTIPLIERS, ComputeModelTimeoutOptions, getModelBaseTimeoutMs, computeModelTimeoutMs, computeProgressiveTimeoutMs
- * invariants: 返り値は常にミリ秒単位の整数、userTimeoutMsが0より大きい場合はそれを優先して返す
+ * role: モデル別タイムアウト設定の定義および適切なタイムアウト時間の計算
+ * why: モデルごとの処理速度差や思考レベルによる負荷変動に応じて、LLMリクエストの最適な待機時間を動的に決定するため
+ * related: .pi/lib/executor.ts, .pi/lib/model-config.ts
+ * public_api: MODEL_TIMEOUT_BASE_MS, THINKING_LEVEL_MULTIPLIERS, ComputeModelTimeoutOptions, getModelBaseTimeoutMs, computeModelTimeoutMs
+ * invariants: computeModelTimeoutMsの戻り値は正の整数、userTimeoutMsが0より大きい場合はその値が優先される
  * side_effects: なし
- * failure_modes: 該当するモデルがない場合はdefaultの値を使用する、未知の思考レベルはmediumとして扱う
+ * failure_modes: 指定されたmodelIdが既知のパターンに一致しない場合、デフォルト値(240秒)が返却される
  * @abdd.explain
- * overview: モデルIDと思考レベルに基づいて、APIリクエストのタイムアウト時間を動的に計算するモジュール。
+ * overview: モデルIDに基づく基本タイムアウト定義と、思考レベルに応じた乗数を用いた実行タイムアウトの計算モジュール
  * what_it_does:
- *   - モデルIDに対応する基本タイムアウト値を取得・検索する（部分一致を含む）
- *   - 思考レベルに応じた乗数を基本タイムアウトに適用する
- *   - 再試行回数に応じてタイムアウトを最大2倍まで段階的に増加させる
- *   - ユーザー指定のタイムアウトがある場合はシステム計算値よりも優先する
+ *   - モデルIDごとの基本タイムアウト時間(ミリ秒)を定義・参照する
+ *   - 思考レベル(thinkingLevel)に応じた時間乗数を定義する
+ *   - モデルIDとオプション(ユーザー指定、思考レベル)を受け取り、最終的なタイムアウト時間を計算する
  * why_it_exists:
- *   - 高遅延モデル（GLMなど）で処理打ち切りを防ぐため
- *   - 高速モデルの応答性を維持しつつ、ULモードの効率を最適化するため
- *   - 再試行時の一時的な負荷上昇や遅延に対応するため
+ *   - 処理の遅いモデルはタイムアウトまでの時間を長く、高速モデルは短く設定し、効率化を図るため
+ *   - 思考レベルの高まりに伴う処理時間の増加を考慮し、過度な早期終了を防ぐため
  * scope:
- *   in: モデル識別子（文字列）、ユーザー指定タイムアウト、思考レベル、試行回数
- *   out: 計算されたタイムアウト時間（ミリ秒単位の整数）
+ *   in: モデルID文字列、オプション(ユーザー指定タイムアウト数値、思考レベル文字列)
+ *   out: 計算されたタイムアウト時間(ミリ秒、整数)
  */
 
 /**

@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/comprehensive-logger-types.ts
- * role: 包括的ログ収集システムのデータ構造定義
- * why: セッション、タスク、ツール、LLM操作などシステム全体のイベントを統一的な形式で記録するため
- * related: .pi/lib/comprehensive-logger.ts, .pi/lib/session-manager.ts
+ * role: ロガー共通型定義
+ * why: ロギングシステム全体で使用するイベントデータ構造と列挙型を一元管理するため
+ * related: .pi/lib/comprehensive-logger.ts, .pi/lib/logger-writer.ts, .pi/lib/event-emitter.ts
  * public_api: EventType, ComponentType, ToolType, Status, BaseEvent, SessionStartEvent, SessionEndEvent
- * invariants: すべてのイベントはBaseEventを継承し、一意なeventIdとナノ秒精度のtimestampを持つ
- * side_effects: なし（型定義のみ）
- * failure_modes: なし（型定義のみ）
+ * invariants: BaseEventは全イベントの共通祖先であり、eventIdとtimestampを必ず持つ
+ * side_effects: なし（純粋な型定義ファイル）
+ * failure_modes: 型定義の不整合により実行時エラーが発生する
  * @abdd.explain
- * overview: ログシステムで扱うイベントの種別、ステータス、階層構造を定義する型宣言ファイル
+ * overview: ロギングシステムで扱うイベントの種別、ステータス、および基本データ構造を定義するTypeScriptモジュール
  * what_it_does:
- *   - ライフサイクル、ツール、LLM、ユーザー、システム操作など14種類のEventTypeを定義する
- *   - イベントの共通フィールド（ID、相関ID、タイムスタンプ、コンポーネント情報）を持つBaseEventを定義する
- *   - SessionStartEventなど、具体的なイベントのペイロード構造を定義する
+ *   - ライフサイクル、ツール、LLM操作などのイベント種別（EventType）を定義する
+ *   - コンポーネント、ツール、ステータスの分類型を定義する
+ *   - 全イベントに共通するBaseEventインターフェースを定義する
+ *   - セション開始および終了イベントの具体的なデータ構造を定義する
  * why_it_exists:
- *   - 分散したシステムコンポーネント間でログのデータ形式を統一し、追跡可能性を確保するため
- *   - セッション、タスク、オペレーションの親子関係を明確にするため
+ *   - ログデータの構造を型安全に保証し、実装ミスを防ぐため
+ *   - 異なるモジュール間でイベントのスキーマを共有するため
  * scope:
  *   in: なし
- *   out: 全てのログ出力クラス、イベント監視クラス
+ *   out: イベント型、インターフェース、列挙型のエクスポート
  */
 
 /**

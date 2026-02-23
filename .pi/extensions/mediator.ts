@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/mediator.ts
- * role: Mediator機能の拡張エントリポイント
- * why: 論文「Intent Mismatch」に基づくMediator-Assistantアーキテクチャをpiに統合する
- * related: .pi/lib/intent-mediator.ts, .pi/extensions/loop.ts
- * public_api: registerMediatorExtension
- * invariants: training-free（パラメータ更新なし）、履歴は.pi/memory/に永続化
- * side_effects: 履歴ファイルの読み書き、LLM API呼び出し
- * failure_modes: LLM APIエラー、履歴ファイルの破損
+ * role: Mediator拡張のエントリーポイントおよびツール定義
+ * why: LLMエージェントに対してメディエータ層を提供し、ユーザー入力の解釈と確認質問生成機能を追加するため
+ * related: .pi/lib/intent-mediator.js, .pi/lib/mediator-types.js, .pi/lib/mediator-history.js
+ * public_api: registerMediatorExtension関数
+ * invariants: ツール名はmediator_interpret、userInputパラメータは必須、実行にはファイルシステム上の.pi/memoryディレクトリ構造を必要とする
+ * side_effects: .pi/memoryディレクトリ内の確認済み事実ファクスの読み書き、LLMモデルの呼び出し
+ * failure_modes: LLM呼び出しの失敗、メモリディレクトリへのアクセス権限不足、必須パラメータの欠如
  * @abdd.explain
- * overview: Mediator機能をpiに登録する拡張モジュール
+ * overview: PIエージェントシステムにMediator機能を統合し、ユーザー入力の解釈と意図の明確化を行うツールを登録するモジュール
  * what_it_does:
- *   - /mediatorコマンドの登録
- *   - mediator_interpretツールの登録
- *   - セッション開始時の履歴読み込み
+ *   - ExtensionAPIを通じてmediator_interpretツールを登録する
+ *   - ユーザー入力と会話履歴に基づき、LLMを用いて入力解釈を行う
+ *   - 情報の不足を検出し、明確化のための質問（Mediator Questions）を生成する
+ *   - セッションIDの生成と確認済み事実の管理を行う
  * why_it_exists:
- *   - ユーザーが明示的にMediatorを呼び出せるようにするため
- *   - loop_runとの連携を可能にするため
+ *   - マルチターン会話における意図乖離（LiC現象）を防止するため
+ *   - ユーザーの要求を正確に把握するための構造的な対話フレームワークを提供するため
+ *   - エージェントの行動前に入力の妥当性をチェックし、実行効率を向上させるため
  * scope:
- *   in: 拡張API
- *   out: コマンドとツールの登録
+ *   in: ExtensionAPI、ユーザー入力文字列、オプションの設定
+ *   out: LLMへのプロンプト、解釈結果、確認質問リスト、メモリファイルへの書き込み
  */
 
 import { Type } from "@mariozechner/pi-ai";
@@ -246,6 +248,11 @@ export default function registerMediatorExtension(pi: ExtensionAPI) {
       if (parsed.mode === "interpret") {
         if (!ctx.model) {
           ctx.ui.notify("mediator failed: no active model", "error");
+          return;
+        }
+
+        if (!parsed.task) {
+          ctx.ui.notify("mediator failed: no task provided", "error");
           return;
         }
 

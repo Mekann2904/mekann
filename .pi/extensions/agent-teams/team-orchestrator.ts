@@ -1,25 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/team-orchestrator.ts
- * role: チームタスク実行のオーケストレーション機能
- * why: extension.tsから中核的なチーム実行ロジックを分離し、テスト可能性と保守性を向上させるため
- * related: .pi/extensions/agent-teams/extension.ts, .pi/extensions/agent-teams/member-execution.ts, .pi/extensions/agent-teams/communication.ts
- * public_api: runTeamTask, TeamTaskInput, TeamTaskResult
- * invariants: チーム実行IDは一意、判定信頼度は0〜1の範囲
- * side_effects: ファイルシステムへの実行記録書き込み、コスト見積もり記録
- * failure_modes: メンバー実行タイムアウト、ストレージ書き込みエラー
+ * role: チームエージェントのタスク実行フロー全体のオーケストレーションおよび進行状況管理
+ * why: 複数の自律エージェント（メンバー）の並列実行、通信ラウンド制御、失敗時の再試行、最終判定を一元的に管理するため
+ * related: .pi/extensions/agent-teams/member-execution.ts, .pi/extensions/agent-teams/storage.ts, .pi/extensions/agent-teams/judge.ts, .pi/lib/cost-estimator.ts
+ * public_api: runTeamTask
+ * invariants: 実行中のラウンド数はcommunicationRounds以下、メンバーの状態は遷移規則に従う、進行中のタスクはタイムアウトまたはシグナルにより中止される
+ * side_effects: ファイルシステムへの実行記録書き出し、ロガーへの出力、外部プロセスの生成と制御
+ * failure_modes: タイムアウト、中断シグナル受信、メンバー全員の実行失敗、最終判定による不一致
  * @abdd.explain
- * overview: チームメンバーの並列/順次実行、コミュニケーションラウンド処理、最終判定を行うオーケストレーター。
+ * overview: TeamTaskInputに基づき、定義されたチームメンバーを並列またはシーケンシャルに起動し、通信ラウンドを経て最終結果を導出するコーディネーター
  * what_it_does:
- *   - チームメンバーの初期フェーズ実行（並列/順次）
- *   - コミュニケーションラウンドでのメンバー間情報共有
- *   - 失敗メンバーの再試行処理
- *   - 最終判定（Judge）の実行と結果記録
+ *   - チーム定義と戦略に基づいてメンバーの実行順序と通信経路を構築する
+ *   - runMemberを用いて各メンバーのタスクを実行し、並列度制限と再試行ロジックを適用する
+ *   - 通信ラウンドごとにコンテキストを更新し、メンバー間の情報共有を管理する
+ *   - 指定されたラウンド終了後、runFinalJudgeを用いて結果の整合性と品質を評価し、不確実性を算出する
+ *   - 実行履歴、コスト、監査ログを記録し、結果をTeamTaskResultとして返却する
  * why_it_exists:
- *   - extension.tsの巨大化を解消し、チーム実行ロジックを独立してテスト可能にするため
+ *   - 単一エージェントでは解決が困難な複雑なタスクを、役割分担と協議により解決するため
+ *   - 実行の並列化と再試行による信頼性向上と、明確な成功基準による品質保証を行うため
+ *   - 実行プロセス全体の監視とログ記録により、デバッグとコスト管理を容易にするため
  * scope:
- *   in: チーム定義、タスク、戦略、コールバック
- *   out: 実行記録、メンバー結果、コミュニケーション監査
+ *   in: TeamDefinition, Task, Strategy, Configuration(Timeouts, Retry, Parallelism)
+ *   out: TeamTaskResult(Results, AuditLog, UncertaintyProxy)
  */
 
 import { writeFileSync } from "node:fs";

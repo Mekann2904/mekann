@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/cross-instance-runtime.ts
- * role: PIライフサイクルとクロスインスタンス調整の統合拡張
- * why: 複数のPIインスタンス間でリソース使用量を調整し、並列処理制限を動的に変更するため
+ * role: クロスインスタンス協調とレート制御のランタイム拡張
+ * why: 複数のPIインスタンス間でリソースを競合させず、並列処理数とAPIレート制限を動的に調整するため
  * related: .pi/lib/cross-instance-coordinator.ts, .pi/lib/adaptive-rate-controller.ts, .pi/lib/provider-limits.ts
- * public_api: registerCrossInstanceRuntimeExtension, pi-instancesコマンド, pi-limitsコマンド
- * invariants: 拡張ロード時にAdaptiveControllerが初期化されている
- * side_effects: コマンド実行時、UI通知及びカスタムメッセージの送信を行う
- * failure_modes: コーディネータ未初期化時はコマンド実行が警告終了する
+ * public_api: registerCrossInstanceRuntimeExtension
+ * invariants: アダプティブコントローラーの初期化は初回セッション開始まで遅延される
+ * side_effects: インスタンス登録解除、レート制限状態のファイル永続化、容量変更通知の発火
+ * failure_modes: コーディネーター初期化失敗、ファイルI/Oロック、インスタンスID競合
  * @abdd.explain
- * overview: 複数のPIエージェントインスタンス間での並列性制御とレートリミット管理を行うランタイム拡張
+ * overview: 複数のPIプロセスが同時に実行される環境において、インスタンス数と負荷に応じて並列性を制御し、API制限（429等）を回避する機能を拡張APIとして登録する。
  * what_it_does:
- *   - 起動時にAdaptiveRateControllerを初期化する
- *   - `pi-instances`コマンドを提供し、アクティブなインスタンス数と並列性割り当て状況を表示する
- *   - `pi-limits`コマンドを提供し、プロバイダやモデルごとのレートリミット設定を表示する
+ *   - インスタンスの登録・登録解除と並列制限の配布管理
+ *   - API呼び出し結果（成功/429）に基づく動的レート制御
+ *   - 容量変動時のランタイム通知
+ *   - 現在のインスタンス状態とモデル使用状況の表示
  * why_it_exists:
- *   - 複数のインスタンスが同一プロバイダへアクセスする際、全体の制限を超えないよう調整するため
- *   - 実行中のインスタンス数に基づいて並列処理数を動的に最適化するため
+ *   - 複数インスタンスからのAPIアクセスがプロバイダ制限を超過することを防ぐため
+ *   - システム全体のスループットを維持しつつプロバイダの制約を遵守するため
+ *   - 起動時の同期I/Oを回避しパフォーマンスを向上させるため
  * scope:
- *   in: ExtensionAPI, 環境変数(PI_CURRENT_MODEL)
- *   out: UI通知, カスタムメッセージ, コンソール出力
+ *   in: ExtensionAPI, ランタイムスナップショット, ユーザーコマンド
+ *   out: UI通知, インスタンスステータス表示, アダプティブ制御パラメータの更新
  */
 
 // File: .pi/extensions/cross-instance-runtime.ts
@@ -85,6 +87,11 @@ function ensureAdaptiveControllerInitialized(): void {
   initAdaptiveController();
 }
 
+/**
+ * 拡張機能を登録
+ * @summary 機能登録
+ * @param pi 拡張APIインスタンス
+ */
 export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) {
   // NOTE: Adaptive controller initialization is deferred to session_start event
   // to improve startup performance. Previously this was called synchronously

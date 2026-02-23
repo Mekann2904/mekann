@@ -4,7 +4,7 @@
  * @testFramework vitest + fast-check
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
 import * as fc from "fast-check";
 import * as fs from "node:fs";
 import * as path from "node:path";

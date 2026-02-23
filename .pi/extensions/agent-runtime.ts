@@ -1,26 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-runtime.ts
- * role: エージェントのランタイムリソース制御と共有状態管理を行う拡張機能
- * why: サブエージェントとエージェントチーム間で一貫したリアルタイムのリソースビューを維持するため
- * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/lib/cross-instance-coordinator.ts, .pi/lib/task-scheduler.ts
- * public_api: AgentRuntimeLimits, RuntimeQueueEntry, RuntimeCapacityReservationRecord, AgentRuntimeState
- * invariants: アクティブLLM数およびリクエスト数はmaxTotalActiveLlm/maxTotalActiveRequestsを超えない
- * side_effects: キューへのタスク追加、リソース確保・解放、スケジューラへの状態通知
- * failure_modes: リソース枯渇によるタスクブロック、スケジューラ通信エラーによる不整合、ハートビートタイムアウトによる予約解除
+ * role: サブエージェントおよびエージェントチーム全体で共有するランタイムカウンタとリソース管理機能の拡張実装
+ * why: アクティブなLLMワーカーとリクエストの一貫性のあるリアルタイムビューを維持するため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, README.md
+ * public_api: AgentRuntimeState, RuntimeCapacityCheck, RuntimeCapacityReserve, RuntimeDispatchPermit, getCheckpointManager, getMetricsCollector
+ * invariants: USE_SCHEDULERフラグに基づき実行パスが分岐する、リソース制限は動的かつ適応的に解決される
+ * side_effects: ランタイムスナップショットプロバイダーの設定、チェックポイントマネージャーとメトリクスコレクターの初期化
+ * failure_modes: 環境変数の誤設定による機能フラグの不整合、外部依存モジュールの初期化失敗
  * @abdd.explain
- * overview: 分散環境におけるLLMワーカーとリクエストのリアルタイム監視および制限管理機能を提供する
+ * overview: リソース制限、スケジューリング、優先度キュー、およびワークスチーリングを統合し、エージェント実行環境の状態と容量を管理する
  * what_it_does:
- *   - グローバルなリソース制限（AgentRuntimeLimits）の定義と適用
- *   - タスクの優先度キュー管理とキュー統計の記録
- *   - クロスインスタンスコーディネータ、動的並列度、レート制御との連携
- *   - ランタイムスナップショットの提供
+ *   - 優先度タスクキューや並列性制御を含むスケジューラ機能を提供する
+ *   - グローバルなリソース制限（レート制限、並列数）を動的に解決し、適用する
+ *   - チェックポイント管理とメトリクス収集の初期化インターフェースを公開する
+ *   - クロスインスタンス間の調整を行い、容量予約やディスパッチ許可を管理する
+ *   - ランタイムの状態スナップショットを外部から取得可能にするプロバイダーを設定する
  * why_it_exists:
- *   - 複数のサブエージェントやチームが並列実行される際のリソース競合を防ぐため
- *   - システム全体のスループットを最大化しつつ、プロバイダ制限を守るため
+ *   - 複数のサブエージェントやチーム間で一貫したリソースビューと制御を行う必要があるため
+ *   - 動的な負荷状況に応じてLLMの呼び出し並列数をリアルタイムに最適化するため
+ *   - 実行状態の永続化（チェックポイント）と監視（メトリクス）をシステム全体で統一するため
  * scope:
- *   in: タスクメタデータ、優先度、ランタイム設定、スケジューラフラグ
- *   out: リソース確保状態、キュー統計、容量予約記録、スケジューラ通知
+ *   in: 環境変数、プロバイダー設定、現在のリソース使用状況、タスクの優先度メタデータ
+ *   out: ランタイム状態スナップショット、容量予約リース、ディスパッチ許可、収集されたメトリクス
  */
 
 // File: .pi/extensions/agent-runtime.ts
@@ -300,6 +302,12 @@ function runtimeNow(): number {
   return runtimeNowProvider();
 }
 
+/**
+ * 現在時刻取得関数を設定
+ * @summary 時刻取得関数を設定
+ * @param provider 現在時刻を返す関数（省略時はDate.now）
+ * @returns なし
+ */
 export function setRuntimeNowProvider(provider?: () => number): void {
   runtimeNowProvider = provider ?? (() => Date.now());
 }
@@ -529,6 +537,12 @@ function ensureReservationSweeper(): void {
   }
 }
 
+/**
+ * リザベーション停止
+ * リザベーションの定期実行を停止します。
+ * @summary 定期実行停止
+ * @returns {void} なし
+ */
 export function stopRuntimeReservationSweeper(): void {
   if (!runtimeReservationSweeper) return;
   clearInterval(runtimeReservationSweeper);

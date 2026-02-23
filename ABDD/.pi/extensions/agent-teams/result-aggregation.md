@@ -2,7 +2,7 @@
 title: result-aggregation
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -18,6 +18,7 @@ related: []
 ```typescript
 // from '../../lib/error-utils.js': toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, ...
 // from '../../lib/agent-types.js': RunOutcomeCode, RunOutcomeSignal
+// from '../../lib/agent-errors.js': isRetryableTeamMemberErrorLib
 // from './storage': TeamMemberResult, TeamRunRecord, TeamDefinition, ...
 ```
 
@@ -25,7 +26,6 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `isRetryableTeamMemberError` | リトライ可能か判定 |
 | 関数 | `resolveTeamFailureOutcome` | 失敗時の結果生成 |
 | 関数 | `resolveTeamMemberAggregateOutcome` | メンバー結果の統合判定 |
 | 関数 | `resolveTeamParallelRunOutcome` | 並列実行結果の判定 |
@@ -44,6 +44,7 @@ flowchart LR
   subgraph local[ローカルモジュール]
     error_utils["error-utils"]
     agent_types["agent-types"]
+    agent_errors["agent-errors"]
     storage["storage"]
   end
   main --> local
@@ -55,11 +56,9 @@ flowchart LR
 flowchart TD
   buildTeamResultText["buildTeamResultText()"]
   extractSummary["extractSummary()"]
-  isRetryableTeamMemberError["isRetryableTeamMemberError()"]
   resolveTeamFailureOutcome["resolveTeamFailureOutcome()"]
   resolveTeamMemberAggregateOutcome["resolveTeamMemberAggregateOutcome()"]
   resolveTeamParallelRunOutcome["resolveTeamParallelRunOutcome()"]
-  resolveTeamFailureOutcome --> isRetryableTeamMemberError
   resolveTeamMemberAggregateOutcome --> resolveTeamFailureOutcome
   resolveTeamParallelRunOutcome --> resolveTeamFailureOutcome
   resolveTeamParallelRunOutcome --> resolveTeamMemberAggregateOutcome
@@ -75,33 +74,16 @@ sequenceDiagram
   participant error_utils as "error-utils"
   participant agent_types as "agent-types"
 
-  Caller->>result_aggregation: isRetryableTeamMemberError()
+  Caller->>result_aggregation: resolveTeamFailureOutcome()
   result_aggregation->>error_utils: 内部関数呼び出し
   error_utils-->>result_aggregation: 結果
-  result_aggregation-->>Caller: boolean
-
-  Caller->>result_aggregation: resolveTeamFailureOutcome()
   result_aggregation-->>Caller: RunOutcomeSignal
+
+  Caller->>result_aggregation: resolveTeamMemberAggregateOutcome()
+  result_aggregation-->>Caller: RunOutcomeSignal_fa
 ```
 
 ## 関数
-
-### isRetryableTeamMemberError
-
-```typescript
-isRetryableTeamMemberError(error: unknown, statusCode?: number): boolean
-```
-
-リトライ可能か判定
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| error | `unknown` | はい |
-| statusCode | `number` | いいえ |
-
-**戻り値**: `boolean`
 
 ### resolveTeamFailureOutcome
 
@@ -211,4 +193,4 @@ extractSummary(output: string): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-18T18:06:17.013Z*
+*自動生成: 2026-02-23T06:29:41.850Z*

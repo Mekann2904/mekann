@@ -1,27 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/intent-mediator.ts
- * role: Mediator層のメインロジックモジュール
- * why: 論文のMediator-Assistantアーキテクチャを実装し、意図推論と実行の分離を実現する
- * related: .pi/lib/mediator-types.ts, .pi/lib/mediator-history.ts, .pi/lib/mediator-prompt.ts
- * public_api: mediate, mediateWithAnswers, createMediatorSession, MediatorSession
- * invariants: training-free（パラメータ更新なし）、履歴はインコンテキストのみ使用
- * side_effects: 履歴ファイルへの読み書き、LLM APIの呼び出し
- * failure_modes: LLM APIエラー、履歴ファイルの破損、タイムアウト
+ * role: ユーザー入力の意図を解釈し、明確化および構造化を行うMediatorセッションのオーケストレーター
+ * why: LLMを活用した対話的なフィルタリング処理を実装し、入力の正確性と完全性を保証するため
+ * related: mediator-types.ts, mediator-history.ts, mediator-prompt.ts
+ * public_api: mediate, type LlmCallFunction, interface MediatorSession
+ * invariants: MediatorSessionのstatusはステートマシンに従って遷移する
+ * side_effects: 履歴ディレクトリへの事実(facts)の書き込み、要約セクションの追加
+ * failure_modes: LLM呼び出しのタイムアウト、無効な出力形式によるパースエラー
  * @abdd.explain
- * overview: ユーザー入力を解釈・明確化し、構造化された指示を生成するMediatorのメインロジック
+ * overview: Mediatorパターンに基づき、ユーザー入力に対して解釈、明確化、構造化のプロセスを適用する
  * what_it_does:
- *   - ユーザー入力の意図を解釈（LLM使用）
- *   - 情報ギャップを検出
- *   - Questionツールで人間に確認
- *   - 構造化された指示を生成
- *   - 履歴の読み込み・保存
+ *   - 履歴データの読み込みとユーザー入力へのエンリッチ
+ *   - LLMによる入力の解釈と情報ギャップの検出
+ *   - 必要に応じた質問生成と回答の処理
+ *   - 最終的な構造化指示（StructuredIntent）の生成
+ *   - セッションの状態管理と処理時間の計測
  * why_it_exists:
- *   - 論文のEquation (3)/(5)に基づき意図推論と実行を分離するため
- *   - LiC現象を防ぐための仲介層を提供するため
+ *   - 曖昧なユーザー指示を、実行可能な構造化データへ変換するため
+ *   - 過去の事実を参照しつつ、不足情報を対話的に補完するため
+ *   - LLMとのやり取りを標準化されたフローで管理するため
  * scope:
- *   in: ユーザー入力、会話履歴、確認済み事実
- *   out: MediatorOutput（解釈、ギャップ、質問、構造化指示）
+ *   in: ユーザー入力文字列、設定情報、LLM呼び出し関数
+ *   out: 解釈結果、構造化された指示、セッションの状態遷移履歴
  */
 
 import { join } from "node:path";

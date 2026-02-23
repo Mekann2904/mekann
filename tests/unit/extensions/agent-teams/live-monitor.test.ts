@@ -979,6 +979,65 @@ describe("createAgentTeamLiveMonitor", () => {
       expect(() => controller?.close()).not.toThrow();
       expect(() => controller?.close()).not.toThrow(); // 2回目
     });
+
+    it("markStarted_再実行時_完了状態をクリアして経過時間が再開する", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+
+      let uiHandle: { render: (width: number) => string[] } | undefined;
+      mockCustom.mockImplementation((handler: Function) => {
+        const tui = { requestRender: vi.fn(), terminal: { rows: 24 } };
+        const theme = createMockTheme();
+        uiHandle = handler(tui, theme, {}, vi.fn());
+        return Promise.resolve();
+      });
+
+      const controller = createAgentTeamLiveMonitor(mockCtx, {
+        title: "Test",
+        items: [{ key: "team-1/member-1", label: "member-1" }],
+      });
+
+      // 1回目の実行
+      controller?.markStarted("team-1/member-1");
+      vi.advanceTimersByTime(2000);
+      controller?.markFinished("team-1/member-1", "failed", "(failed)", "boom");
+
+      // 2回目の実行（ここでfinishedAtをクリアできないと時間が00:00:00のまま固まる）
+      vi.advanceTimersByTime(1000);
+      controller?.markStarted("team-1/member-1");
+      vi.advanceTimersByTime(2000);
+
+      const lines = uiHandle?.render(120) ?? [];
+      expect(lines.some((line) => line.includes("00:00:02"))).toBe(true);
+      expect(lines.some((line) => line.includes("running"))).toBe(true);
+
+      vi.useRealTimers();
+    });
+
+    it("markPhase_queued_待機状態へ戻して古い失敗表示をクリアする", async () => {
+      let uiHandle: { render: (width: number) => string[]; handleInput: (key: string) => void } | undefined;
+      mockCustom.mockImplementation((handler: Function) => {
+        const tui = { requestRender: vi.fn(), terminal: { rows: 24 } };
+        const theme = createMockTheme();
+        uiHandle = handler(tui, theme, {}, vi.fn());
+        return Promise.resolve();
+      });
+
+      const controller = createAgentTeamLiveMonitor(mockCtx, {
+        title: "Test",
+        items: [{ key: "team-1/member-1", label: "member-1" }],
+      });
+
+      controller?.markStarted("team-1/member-1");
+      controller?.markFinished("team-1/member-1", "failed", "(failed)", "boom");
+      controller?.markPhase("team-1/member-1", "queued");
+
+      // detail表示に切り替えて、error表示が残っていないことを確認
+      uiHandle?.handleInput("\n");
+      const lines = uiHandle?.render(120) ?? [];
+      expect(lines.some((line) => line.includes("pending"))).toBe(true);
+      expect(lines.some((line) => line.includes("error: boom"))).toBe(false);
+    });
   });
 
   describe("close後の操作", () => {

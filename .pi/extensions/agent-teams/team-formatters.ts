@@ -1,24 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/team-formatters.ts
- * role: チーム関連のフォーマット関数群
- * why: extension.tsからフォーマット関数を分離し、単一責任原則を満たす
- * related: [extension.ts, storage.ts]
- * public_api: [formatTeamList, formatRecentRuns, debugCostEstimation]
- * invariants:
- *   - 純粋関数（副作用なし）
- *   - TeamStorage型に依存
- * side_effects: なし
- * failure_modes: なし
- *
+ * role: チーム情報の整形とデバッグログ出力を行うユーティリティ
+ * why: チーム一覧や実行履歴を人間が読みやすい形式で可視化し、コスト推定のデバッグ情報を出力するため
+ * related: .pi/extensions/agent-teams/storage.js, .pi/extensions/agent-teams/index.ts
+ * public_api: debugCostEstimation, formatTeamList, formatRecentRuns
+ * invariants: formatTeamListはストレージのteams配列の順序を維持する、formatRecentRunsは新しい実行履歴を上に表示する
+ * side_effects: debugCostEstimation実行時に環境変数が有効な場合、標準エラー出力にログを出力する
+ * failure_modes: ストレージ内のデータ構造が想定と異なる場合、不正なフォーマットで出力される可能性がある
  * @abdd.explain
- * overview: エージェントチームのフォーマット関数を提供
- * what_it_does: チーム一覧、実行履歴の表示用文字列を生成
- * why_it_exists: extension.tsの責務を軽減し、フォーマットロジックを集約
- * scope(in):
- *   - TeamStorage型
- * scope(out):
- *   - フォーマット済み文字列
+ * overview: TeamStorageのデータを表示用文字列に変換する関数群と、デバッグ用ログ出力関数を提供するモジュール
+ * what_it_does:
+ *   - 環境変数に基づきコスト推計ログを標準エラー出力へ出力する
+ *   - チーム一覧、メンバー、状態を整形した文字列を生成する
+ *   - 直近のチーム実行履歴を指定件数分、整形して文字列を生成する
+ * why_it_exists:
+ *   - エージェントチームの状態をCLIやログで確認しやすくするため
+ *   - 実行履歴の結果や判定を追跡可能にするため
+ *   - デバッグフラグによる詳細なログ出力を制御するため
+ * scope:
+ *   in: TeamStorageオブジェクト、スコープ名、ログフィールド、表示件数リミット
+ *   out: 整形された文字列、標準エラー出力へのログ出力
  */
 
 import type { TeamStorage } from "./storage.js";

@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/core.ts
- * role: 依存関係のないレイヤー0ユーティリティのエントリーポイント
- * why: ライブラリの基盤機能を独立して提供し、他モジュールからの再利用を可能にするため
- * related: .pi/lib/error-utils.js, .pi/lib/errors.js, .pi/lib/tui/tui-utils.js, .pi/lib/validation-utils.js
- * public_api: エラー処理関数(toErrorMessage等), 統一エラークラス(PiError等), TUIユーティリティ(appendTail等), 検証・フォーマット・ファイルシステム関連関数
- * invariants: エクスポートされるモジュールは相互または上位レイヤーに依存しない
- * side_effects: なし(純粋な再エクスポート)
- * failure_modes: 子モジュールの読み込み失敗時、または循環依存発生時に初期化エラー
+ * role: レイヤー0ユーティリティの集約モジュール
+ * why: 外部依存を持たない基盤機能を単一のエントリーポイントで提供するため
+ * related: .pi/lib/errors.js, .pi/lib/error-utils.js, .pi/lib/retry-with-backoff.js
+ * public_api: toErrorMessage, PiError, isRetryableError, appendTail, toFiniteNumber, ensureDir, formatDuration
+ * invariants: エクスポートされる関数・クラスは外部依存を持たない
+ * side_effects: なし（純粋な関数エクスポート）
+ * failure_modes: モジュールインポート時の依存ファイル不存在エラー
  * @abdd.explain
- * overview: .piライブラリの基盤となる汎用ツール集を集約したファイル
+ * overview: 外部レイヤーへの依存がゼロの基盤ユーティリティを再エクスポートするモジュール。
  * what_it_does:
- *   - エラー判定、分類、統一エラークラス定義のエクスポート
- *   - TUI表示、文字数カウント、Markdown判定などの表示関連機能のエクスポート
- *   - 数値の丸め、範囲チェック、型保証などの検証機能のエクスポート
- *   - ディレクトリ作成、時間・バイト単位のフォーマット機能のエクスポート
+ *   - エラー処理、分類、検証ユーティリティを提供する
+ *   - リトライ判断ロジックを提供する
+ *   - 統一エラークラス群を提供する
+ *   - TUI表示、ファイルシステム操作、数値検証、フォーマット処理を提供する
  * why_it_exists:
- *   - アプリケーション全体で共通して使用する低レベルな操作を一箇所にまとめるため
- *   - 外部ライブラリへの依存なしに利用可能な機能セットを提供するため
+ *   - ライブラリの基盤機能を依存関係なく独立して利用可能にするため
+ *   - 利用者に対して簡潔なインポートパスを提供するため
  * scope:
- *   in: なし(定義済みモジュールの参照のみ)
- *   out: エラー処理、TUI、バリデーション、ファイルシステム、フォーマット処理を行う関数と型
+ *   in: なし（各ユーティリティモジュールからのエクスポート定義）
+ *   out: エラー処理、リトライ、バリデーション、TUI、FS、フォーマット機能
  */
 
 /**

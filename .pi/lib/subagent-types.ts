@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/subagent-types.ts
- * role: サブエージェントのライブ監視システムおよび並列実行調整に使用される型定義
+ * role: Subagent監視・並列実行に関わる型定義の集約モジュール
  * why: subagents.tsから型定義を分離し、保守性と依存関係の明確化を図るため
- * related: ./tui/live-monitor-base.ts, ./live-view-utils.ts, extensions/subagents.ts, extensions/subagents/storage.ts
- * public_api: SubagentLiveItem, SubagentMonitorLifecycle, SubagentMonitorStream, SubagentMonitorResource
- * invariants: LiveStatusはlive-view-utils.tsの正規定義を使用する
+ * related: extensions/subagents.ts, extensions/subagents/storage.ts, ./tui/live-monitor-base.js, ./live-types-base.js
+ * public_api: SubagentLiveViewMode, SubagentLiveStreamView, SubagentLiveItem, SubagentMonitorLifecycle, SubagentMonitorStream, SubagentMonitorResource, SubagentLiveMonitorController, SubagentNormalizedOutput
+ * invariants: SubagentLiveItemはBaseLiveSnapshotを継承し、一意のidを持つ
  * side_effects: なし（型定義のみ）
- * failure_modes: なし
+ * failure_modes: なし（型定義のみ）
  * @abdd.explain
- * overview: サブエージェントの実行状態、ライフサイクル、ストリーム出力、リソース管理に関する型定義を集約したモジュール
+ * overview: サブエージェントのライブ監視システムおよび並列実行調整に使用される型定義を管理する
  * what_it_does:
- *   - SubagentLiveItemにて、ID、ステータス、タイムスタンプ、標準出力バイト数等の実行状態を定義する
- *   - SubagentMonitorLifecycle、SubagentMonitorStream、SubagentMonitorResourceにて、監視機能をInterface Segregation Principle（ISP）に基づき分割定義する
- *   - LiveStreamViewおよびLiveViewModeの型エイリアスを提供し、意味の明確化を図る
+ *   - ライブ監視用の表示モードおよびストリームビューの型エイリアスを定義する
+ *   - 実行中のサブエージェント状態を表すSubagentLiveItemインターフェースを提供する
+ *   - ライフサイクル管理、ストリーム監視、リソース管理の各インターフェースを定義する
+ *   - サブエージェントの出力正規化データおよび並列実行情報の型を定義する
  * why_it_exists:
- *   - subagents.tsから型定義を抽出し、コードベースのモジュール化と保守性を向上させるため
- *   - ライブ監視システムと並列実行調整の間で共有されるデータ構造を一元管理するため
+ *   - 監視および実行制御に関する型を一箇所にまとめ、コードの重複を排除するため
+ *   - 関連モジュール間での型整合性を保証するため
  * scope:
- *   in: ./tui/live-monitor-base.ts (LiveStreamView, LiveViewMode), ./live-view-utils.ts (LiveStatus)
- * out: サブエージェント監視・制御ロジックを実装するモジュール
+ *   in: ./tui/live-monitor-base.js, ./live-types-base.js, ./live-view-utils.js
+ *   out: extensions/subagents.ts, extensions/subagents/storage.ts (監視・実行システム)
  */
 
 /**

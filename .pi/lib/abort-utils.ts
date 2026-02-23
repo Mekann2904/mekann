@@ -1,29 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/abort-utils.ts
- * role: AbortSignalの階層管理とリスナー累積の防止ユーティリティ
- * why: 複数の非同期操作が同一のAbortSignalを共有する際に、Node.jsのMaxListenersExceededWarningを回避するため
+ * role: AbortController階層管理ユーティリティ
+ * why: 複数の非同期操作が同一のAbortSignalを共有する際、`MaxListenersExceededWarning`を防止するため
  * related: .pi/lib/concurrency.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
  * public_api: createChildAbortController, createChildAbortControllers
- * invariants:
- * - 返されるcleanup関数を実行すると、親シグナルへのイベントリスナー登録が解除される
- * - 親シグナルが中止状態の場合、生成される子コントローラも即座に中止状態になる
- * side_effects:
- * - 親シグナルに'abort'イベントリスナーを一時的に追加する
- * failure_modes:
- * - cleanup呼び出し忘れによる親シグナルへのリスナー残留（メモリリーク）
+ * invariants: 親シグナルが中止済みの場合、子コントローラは即座に中止状態となる
+ * side_effects: 親AbortSignalへのイベントリスナー追加、コントローラの中止実行
+ * failure_modes: リスナー解除漏れによるメモリリーク（cleanup未実行時）
  * @abdd.explain
- * overview: 親AbortSignalに連動する子AbortControllerを生成し、リスナーの集中を防ぐモジュール
+ * overview: 親AbortSignalに連動する子AbortControllerを作成・管理し、イベントリスナー数の爆発を防ぐ
  * what_it_does:
- * - 親シグナルに連動して中止する単一の子AbortControllerを作成する
- * - 親シグナルに連動する複数の子AbortControllerを一括作成する
- * - 親子間のイベントリスナー接続を解除するcleanup関数を提供する
+ *   - 親シグナルに連動する単一または複数の子AbortControllerを作成する
+ *   - 親シグナルが中止されると、連動する子コントローラを中止する
+ *   - 親シグナルへのリスナー登録を解除するクリーンアップ関数を提供する
+ *   - 親シグナルが既に中止済みの場合、子コントローラを即座に中止状態にする
  * why_it_exists:
- * - 同一のAbortSignalに多数のリスナーを登録すると、MaxListenersExceededWarningが発生するため
- * - 並列実行やサブエージェント管理など、複数の非同期タスクで安全に中止制御を行うため
+ *   - 多数の非同期処理で親シグナルを直接監視すると、Node.jsのイベントリスナー上限に達するため
+ *   - 中止ロジックを共通化し、リソースリークを防ぐため
  * scope:
- * in: 親AbortSignal（省略可）、作成数（createChildAbortControllers）
- * out: AbortControllerインスタンス（または配列）とcleanup関数を持つオブジェクト
+ *   in: 親AbortSignal（省略可）、作成数（複数の場合）
+ *   out: 子AbortController、全リスナー解除と子コントローラ中止を行う関数
  */
 
 // File: .pi/lib/abort-utils.ts

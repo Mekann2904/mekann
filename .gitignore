@@ -55,6 +55,9 @@ coverage/
 .pi/plans/storage.json
 .pi/logs/
 
+# Self-improvement loop runtime data
+.pi/self-improvement-loop/
+
 # Dynamic skills (generated at runtime)
 .pi/skills/dynamic/
 

@@ -1,26 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/mediator-integration.ts
- * role: Mediator層とloop_runの統合モジュール
- * why: 論文のMediator-Assistantアーキテクチャをpiのループ実行に統合し、マルチターン会話での意図乖離を防ぐ
- * related: .pi/lib/intent-mediator.ts, .pi/extensions/loop.ts
- * public_api: runMediatorPhase, integrateWithLoopRun, MediatorLoopConfig
- * invariants: training-free、履歴は.pi/memory/に永続化
- * side_effects: 履歴ファイルの読み書き、LLM API呼び出し、Questionツールによる対話
- * failure_modes: LLM APIエラー、ユーザーが質問に回答しない、タイムアウト
+ * role: MediatorとLoopの統合レイヤー
+ * why: ユーザータスクの実行前にMediatorによる明確化を行い、loop_runへ引き渡すタスク品質を担保するため
+ * related: .pi/lib/mediator-types.ts, .pi/lib/intent-mediator.ts, .pi/lib/mediator-history.ts
+ * public_api: MediatorLoopConfig, MediatorPhaseResult, executeMediatorPhase
+ * invariants: MediatorPhaseResult.successがfalseの場合、clarifiedTaskは元のタスクを保持する
+ * side_effects: appendFactおよびappendSummarySectionによる履歴ファイルの書き込み
+ * failure_modes: LLM呼び出しの失敗、最大ラウンド超過による明確化打ち切り、履歴ディレクトリへのアクセスエラー
  * @abdd.explain
- * overview: Mediatorをloop_runの初回反復前に挿入し、ユーザー意図を明確化してからタスクを実行
+ * overview: loop_run開始前のMediatorフェーズ全体の制御、設定管理、および履歴との連携を行う
  * what_it_does:
- *   - ユーザー入力をMediatorで解釈
- *   - 情報ギャップがある場合はQuestionツールで明確化
- *   - 構造化された意図をloop_runに渡す
- *   - 明確化結果を履歴に保存
+ *   - MediatorLoopConfigの定義とデフォルト値の提供
+ *   - ユーザーへの質問（QuestionTool）および回答収集プロセスの管理
+ *   - mediate/mediateWithAnswersを使用した意図の解釈と明確化
+ *   - 確定した事実の履歴ファイルへの保存と要約セクションの追加
+ *   - MediatorPhaseResultとして処理結果の構築
  * why_it_exists:
- *   - 論文のLiC（Lost in Conversation）現象を防ぐため
- *   - タスク開始前に意図を明確にし、後の反復での乖離を防ぐため
+ *   - Mediatorコア（intent-mediator）とシステム全体の実行フローを疎結合に保つため
+ *   - 構造化された意図と事実を永続化し、セッションを跨いだ文脈を維持するため
+ *   - 明確化プロセスの閾値やラウンド数等の挙動を設定可能にするため
  * scope:
- *   in: ユーザータスク、loop_runの設定
- *   out: 明確化されたタスク、Mediatorの出力、統合設定
+ *   in: ユーザータスク文字列, MediatorLoopConfig, LLM呼び出し関数, QuestionTool
+ *   out: MediatorPhaseResult(成功判定, 明確化済みタスク, 構造化意図)
  */
 
 import {

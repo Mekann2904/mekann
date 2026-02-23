@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { CodeSearchInput } from "@ext/search/types.ts";
+import type { CodeSearchInput } from "@ext/search/types.js";
 
 // モック化の準備
 vi.mock("node:fs/promises", async () => {
@@ -38,7 +38,11 @@ vi.mock("@ext/search/utils/history.js", () => ({
 	extractQuery: vi.fn(() => ""),
 }));
 
-import { nativeCodeSearch } from "../../../../../.pi/extensions/search/tools/code_search.ts";
+import { nativeCodeSearch } from "../../../../../.pi/extensions/search/tools/code_search.js";
+import {
+	MAX_CODE_SEARCH_CONTEXT,
+	MAX_CODE_SEARCH_LIMIT,
+} from "../../../../../.pi/extensions/search/utils/constants.js";
 import { readdir, readFile } from "node:fs/promises";
 
 describe("nativeCodeSearch", () => {
@@ -242,6 +246,33 @@ describe("nativeCodeSearch", () => {
 
 			expect(result.results[0].context).toBeUndefined();
 		});
+
+		it("過大なcontextが指定されても上限でクランプされる", async () => {
+			const input: CodeSearchInput = {
+				pattern: "target",
+				context: 999,
+			};
+
+			vi.mocked(readFile).mockResolvedValue([
+				"line1",
+				"line2",
+				"line3",
+				"target",
+				"line5",
+				"line6",
+				"line7",
+			].join("\n"));
+
+			vi.mocked(readdir as any).mockImplementation(async () => [
+				{ name: "file.ts", isFile: () => true, isDirectory: () => false },
+			]);
+
+			const result = await nativeCodeSearch(input, mockCwd);
+			const maxContextLength = MAX_CODE_SEARCH_CONTEXT * 2 + 1;
+
+			expect(result.results[0].context).toBeDefined();
+			expect(result.results[0].context!.length).toBeLessThanOrEqual(maxContextLength);
+		});
 	});
 
 	describe("limitによる切り捨て", () => {
@@ -279,6 +310,25 @@ describe("nativeCodeSearch", () => {
 
 			const result = await nativeCodeSearch(input, mockCwd);
 
+			expect(result.truncated).toBe(true);
+		});
+
+		it("過大なlimitが指定されても上限でクランプされる", async () => {
+			const input: CodeSearchInput = {
+				pattern: "match",
+				limit: 10_000,
+			};
+
+			const lines = Array.from({ length: MAX_CODE_SEARCH_LIMIT * 4 }, (_, i) => `match ${i}`).join("\n");
+			vi.mocked(readFile).mockResolvedValue(lines);
+
+			vi.mocked(readdir as any).mockImplementation(async () => [
+				{ name: "file.ts", isFile: () => true, isDirectory: () => false },
+			]);
+
+			const result = await nativeCodeSearch(input, mockCwd);
+
+			expect(result.results.length).toBeLessThanOrEqual(MAX_CODE_SEARCH_LIMIT);
 			expect(result.truncated).toBe(true);
 		});
 	});

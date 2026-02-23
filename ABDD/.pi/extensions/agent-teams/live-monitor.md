@@ -2,7 +2,7 @@
 title: live-monitor
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-// from '@mariozechner/pi-tui': Key, matchesKey, truncateToWidth
+// from '@mariozechner/pi-tui': Key, matchesKey
 // from '../../lib/format-utils.js': formatDurationMs, formatBytes, formatClockTime, ...
 // from '../../lib/tui/tui-utils.js': appendTail, countOccurrences, estimateLineCount, ...
 // from '../../lib/live-view-utils.js': toTailLines, looksLikeMarkdown, getLiveStatusGlyph, ...
@@ -33,6 +33,26 @@ related: []
 | 関数 | `createAgentTeamLiveMonitor` | ライブ監視を生成 |
 
 ## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class TreeNode {
+    <<interface>>
+    +item: TeamLiveItem
+    +level: number
+    +children: string
+  }
+  class TimelineEvent {
+    <<interface>>
+    +time: string
+    +timeMs: number
+    +type: start_done_fail
+    +agent: string
+    +target: string
+  }
+```
 
 ### 依存関係図
 
@@ -60,25 +80,61 @@ flowchart LR
 ```mermaid
 flowchart TD
   add["add()"]
+  clearPollTimer["clearPollTimer()"]
   clearRenderTimer["clearRenderTimer()"]
   close["close()"]
+  computeTreeLevels["computeTreeLevels()"]
   createAgentTeamLiveMonitor["createAgentTeamLiveMonitor()"]
   formatLivePhase["formatLivePhase()"]
+  getActivitySpinner["getActivitySpinner()"]
+  getLevel["getLevel()"]
+  getTreePrefix["getTreePrefix()"]
+  hasDynamicState["hasDynamicState()"]
+  hasRunningItems["hasRunningItems()"]
+  parseEventTimeLine["parseEventTimeLine()"]
   pushLiveEvent["pushLiveEvent()"]
   queueRender["queueRender()"]
   renderAgentTeamLiveView["renderAgentTeamLiveView()"]
+  renderCommunicationEvents["renderCommunicationEvents()"]
+  renderTimelineView["renderTimelineView()"]
+  renderTreeView["renderTreeView()"]
+  startPolling["startPolling()"]
   toEventTailLines["toEventTailLines()"]
   toTeamLiveItemKey["toTeamLiveItemKey()"]
+  close --> clearPollTimer
   close --> clearRenderTimer
+  computeTreeLevels --> add
+  computeTreeLevels --> getLevel
+  createAgentTeamLiveMonitor --> clearPollTimer
   createAgentTeamLiveMonitor --> clearRenderTimer
   createAgentTeamLiveMonitor --> close
   createAgentTeamLiveMonitor --> formatLivePhase
+  createAgentTeamLiveMonitor --> hasDynamicState
+  createAgentTeamLiveMonitor --> hasRunningItems
   createAgentTeamLiveMonitor --> pushLiveEvent
   createAgentTeamLiveMonitor --> queueRender
   createAgentTeamLiveMonitor --> renderAgentTeamLiveView
+  createAgentTeamLiveMonitor --> startPolling
+  getLevel --> add
+  getLevel --> getLevel
+  hasDynamicState --> hasRunningItems
   renderAgentTeamLiveView --> add
   renderAgentTeamLiveView --> formatLivePhase
+  renderAgentTeamLiveView --> renderCommunicationEvents
+  renderAgentTeamLiveView --> renderTimelineView
+  renderAgentTeamLiveView --> renderTreeView
   renderAgentTeamLiveView --> toEventTailLines
+  renderCommunicationEvents --> add
+  renderCommunicationEvents --> parseEventTimeLine
+  renderTimelineView --> add
+  renderTimelineView --> parseEventTimeLine
+  renderTreeView --> add
+  renderTreeView --> computeTreeLevels
+  renderTreeView --> getActivitySpinner
+  renderTreeView --> getTreePrefix
+  startPolling --> clearPollTimer
+  startPolling --> hasDynamicState
+  startPolling --> queueRender
 ```
 
 ### シーケンス図
@@ -104,6 +160,186 @@ sequenceDiagram
 ```
 
 ## 関数
+
+### parseEventTimeLine
+
+```typescript
+parseEventTimeLine(eventLine: string): { time: string; timeMs: number; rest: string } | null
+```
+
+Parse "[hh:mm:ss] ..." style event lines.
+Accepts h:mm:ss and hh:mm:ss(.SSS) and normalizes to hh:mm:ss.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| eventLine | `string` | はい |
+
+**戻り値**: `{ time: string; timeMs: number; rest: string } | null`
+
+### computeTreeLevels
+
+```typescript
+computeTreeLevels(items: TeamLiveItem[]): Map<string, number>
+```
+
+アイテムのツリーレベルを計算
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| items | `TeamLiveItem[]` | はい |
+
+**戻り値**: `Map<string, number>`
+
+### getLevel
+
+```typescript
+getLevel(item: TeamLiveItem): number
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| item | `TeamLiveItem` | はい |
+
+**戻り値**: `number`
+
+### getTreePrefix
+
+```typescript
+getTreePrefix(level: number, isLast: boolean, parentContinues: boolean[]): string
+```
+
+ツリーラインのプレフィックスを生成
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| level | `number` | はい |
+| isLast | `boolean` | はい |
+| parentContinues | `boolean[]` | はい |
+
+**戻り値**: `string`
+
+### getActivitySpinner
+
+```typescript
+getActivitySpinner(isRunning: boolean): string
+```
+
+アクティビティスピナーを取得
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| isRunning | `boolean` | はい |
+
+**戻り値**: `string`
+
+### renderTreeView
+
+```typescript
+renderTreeView(items: TeamLiveItem[], cursor: number, width: number, theme: any): string[]
+```
+
+ツリービューを描画
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| items | `TeamLiveItem[]` | はい |
+| cursor | `number` | はい |
+| width | `number` | はい |
+| theme | `any` | はい |
+
+**戻り値**: `string[]`
+
+### add
+
+```typescript
+add(line: any): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| line | `any` | はい |
+
+**戻り値**: `void`
+
+### renderCommunicationEvents
+
+```typescript
+renderCommunicationEvents(items: TeamLiveItem[], limit: number, width: number, theme: any): string[]
+```
+
+通信イベントを描画（連携可視化を含む）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| items | `TeamLiveItem[]` | はい |
+| limit | `number` | はい |
+| width | `number` | はい |
+| theme | `any` | はい |
+
+**戻り値**: `string[]`
+
+### add
+
+```typescript
+add(line: any): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| line | `any` | はい |
+
+**戻り値**: `void`
+
+### renderTimelineView
+
+```typescript
+renderTimelineView(items: TeamLiveItem[], globalEvents: string[], width: number, theme: any): string[]
+```
+
+タイムラインビューを描画
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| items | `TeamLiveItem[]` | はい |
+| globalEvents | `string[]` | はい |
+| width | `number` | はい |
+| theme | `any` | はい |
+
+**戻り値**: `string[]`
+
+### add
+
+```typescript
+add(line: any): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| line | `any` | はい |
+
+**戻り値**: `void`
 
 ### formatLivePhase
 
@@ -180,6 +416,14 @@ renderAgentTeamLiveView(input: {
   width: number;
   height?: number;
   theme: any;
+  /** 待機状態情報（オプション） */
+  queueStatus?: {
+    isWaiting: boolean;
+    waitedMs?: number;
+    queuePosition?: number;
+    queuedAhead?: number;
+    estimatedWaitMs?: number;
+  };
 }): string[]
 ```
 
@@ -199,6 +443,7 @@ renderAgentTeamLiveView(input: {
 | &nbsp;&nbsp;↳ width | `number` | はい |
 | &nbsp;&nbsp;↳ height | `number` | いいえ |
 | &nbsp;&nbsp;↳ theme | `any` | はい |
+| &nbsp;&nbsp;↳ queueStatus | `{    isWaiting: boolean;    waitedMs?: number;    queuePosition?: number;    queuedAhead?: number;    estimatedWaitMs?: number;  }` | いいえ |
 
 **戻り値**: `string[]`
 
@@ -246,6 +491,46 @@ clearRenderTimer(): void
 
 **戻り値**: `void`
 
+### clearPollTimer
+
+```typescript
+clearPollTimer(): void
+```
+
+**戻り値**: `void`
+
+### hasRunningItems
+
+```typescript
+hasRunningItems(): boolean
+```
+
+実行中のアイテムがあるかチェック
+
+**戻り値**: `boolean`
+
+### hasDynamicState
+
+```typescript
+hasDynamicState(): boolean
+```
+
+動的更新が必要な状態かを判定する。
+- 実行中メンバーがいる
+- キュー待機中で待機表示を更新したい
+
+**戻り値**: `boolean`
+
+### startPolling
+
+```typescript
+startPolling(): void
+```
+
+定期ポーリングを開始（ストリーミングがない期間もUIを更新）
+
+**戻り値**: `void`
+
 ### queueRender
 
 ```typescript
@@ -262,5 +547,30 @@ close(): void
 
 **戻り値**: `void`
 
+## インターフェース
+
+### TreeNode
+
+```typescript
+interface TreeNode {
+  item: TeamLiveItem;
+  level: number;
+  children: string[];
+}
+```
+
+### TimelineEvent
+
+```typescript
+interface TimelineEvent {
+  time: string;
+  timeMs: number;
+  type: "start" | "done" | "fail" | "msg" | "event";
+  agent: string;
+  target?: string;
+  content: string;
+}
+```
+
 ---
-*自動生成: 2026-02-18T18:06:17.003Z*
+*自動生成: 2026-02-23T06:29:41.845Z*

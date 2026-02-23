@@ -2,7 +2,7 @@
 title: ul-dual-mode
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -59,10 +59,12 @@ flowchart TD
   refreshStatusThrottled["refreshStatusThrottled()"]
   registerUlDualModeExtension["registerUlDualModeExtension()"]
   resetState["resetState()"]
+  safeCacheSet["safeCacheSet()"]
   shouldRequireReviewer["shouldRequireReviewer()"]
   toObjectLike["toObjectLike()"]
   getMissingRequirements --> shouldRequireReviewer
   getUlPolicy --> buildUlPolicyString
+  getUlPolicy --> safeCacheSet
   isRecommendedReviewerCall --> normalizeId
   isRecommendedReviewerCall --> parseToolInput
   parseToolInput --> toObjectLike
@@ -319,6 +321,21 @@ buildUlTransformedInput(task: string, goalLoopMode: boolean): string
 
 **戻り値**: `string`
 
+### safeCacheSet
+
+```typescript
+safeCacheSet(key: string, value: string): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| key | `string` | はい |
+| value | `string` | はい |
+
+**戻り値**: `void`
+
 ### getUlPolicy
 
 ```typescript
@@ -366,4 +383,4 @@ registerUlDualModeExtension(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-18T18:06:17.466Z*
+*自動生成: 2026-02-23T06:29:42.233Z*

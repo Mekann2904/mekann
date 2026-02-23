@@ -101,19 +101,21 @@ function createTestContext(task: string = "テストタスク"): ThinkingContext
 
 function createTestAporia(): AporiaDetection {
   return {
-    type: 'value-conflict',
+    type: 'completeness-vs-speed',
     description: '完全性と速度のトレードオフ',
     tensionLevel: 0.7,
     pole1: {
       concept: '完全性',
       value: '品質を最大化する',
+      arguments: [],
     },
     pole2: {
       concept: '速度',
       value: '素早くリリースする',
+      arguments: [],
     },
     context: '開発プロジェクト',
-    detectedAt: new Date(),
+    resolution: 'maintain-tension',
   };
 }
 
@@ -237,7 +239,7 @@ describe("統合: aporetic-reasoning + creative-destruction", () => {
       const aporia = createTestAporia();
       const beliefState = createInitialBeliefState(aporia);
 
-      const result = performAporeticInference(aporiaEngine, beliefState, []);
+      const result = performAporeticInference(aporiaEngine, aporia, []);
 
       expect(result.paretoFront).toBeDefined();
       expect(result.paretoFront.length).toBeGreaterThanOrEqual(0);
@@ -420,6 +422,7 @@ describe("エッジケース", () => {
 
     it("空の証拠リストで更新できる", () => {
       const prior = createPrior(
+        ["h1", "h2"],
         new Map([
           ["h1", 0.5],
           ["h2", 0.5],
@@ -441,6 +444,7 @@ describe("エッジケース", () => {
   describe("極端な値", () => {
     it("確率0の仮説を含む分布", () => {
       const prior = createPrior(
+        ["h1", "h2"],
         new Map([
           ["h1", 0.0],
           ["h2", 1.0],
@@ -453,13 +457,13 @@ describe("エッジケース", () => {
 
     it("極めて高い緊張レベルのアポリア", () => {
       const aporia: AporiaDetection = {
-        type: 'value-conflict',
+        type: 'completeness-vs-speed',
         description: '極端な対立',
         tensionLevel: 1.0,
-        pole1: { concept: 'A', value: 'a' },
-        pole2: { concept: 'B', value: 'b' },
+        pole1: { concept: 'A', value: 'a', arguments: [] },
+        pole2: { concept: 'B', value: 'b', arguments: [] },
         context: 'テスト',
-        detectedAt: new Date(),
+        resolution: 'maintain-tension',
       };
 
       const state = createInitialBeliefState(aporia);
@@ -512,6 +516,7 @@ describe("エッジケース", () => {
   describe("数値的安定性", () => {
     it("エントロピー計算が数値的に安定", () => {
       const distribution = createPrior(
+        ["h1", "h2"],
         new Map([
           ["h1", 0.5],
           ["h2", 0.5],
@@ -551,8 +556,7 @@ describe("パフォーマンス", () => {
     const startTime = Date.now();
 
     for (let i = 0; i < 10; i++) {
-      const beliefState = createInitialBeliefState(aporia);
-      performAporeticInference(engine, beliefState, []);
+      performAporeticInference(engine, aporia, []);
     }
 
     const duration = Date.now() - startTime;

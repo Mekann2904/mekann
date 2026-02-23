@@ -61,7 +61,7 @@ import {
   type ClaimReference,
   type DiscussionAnalysis,
   type TeamCommunicationAuditEntry,
-} from '.pi/extensions/agent-teams/storage.ts';
+} from '.pi/extensions/agent-teams/storage.js';
 
 import {
   createTestTeam,

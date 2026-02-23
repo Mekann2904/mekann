@@ -391,7 +391,8 @@ describe("findExpansion", () => {
 					fc.string({ minLength: 1, maxLength: 10 }),
 					fc.string({ minLength: 1, maxLength: 10 }),
 					(input, registered) => {
-						fc.pre(input !== registered);
+						const normalizedFirstWord = input.trim().split(/\s/)[0];
+						fc.pre(normalizedFirstWord !== registered);
 
 						// Arrange
 						const map = new Map<string, Abbreviation>();

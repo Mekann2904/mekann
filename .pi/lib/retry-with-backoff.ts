@@ -1,28 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/retry-with-backoff.ts
- * role: 指数バックオフとジッターを含むリトライ処理およびレート制限管理の実装
- * why: LLMの一時的な障害（429/5xxエラー）からの回復ポリシーを一元管理し、サブエージェントやエージェントチーム間で再利用するため
+ * role: 一時的なLLMエラーに対処するための、指数バックオフとジッターを含むリトライロジックの共通実装
+ * why: 429/5xxエラーからの回復ポリシーを単一の場所に集約し、サブエージェントとエージェントチームで再利用するため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json
- * public_api: RetryWithBackoffConfig, RetryWithBackoffOverrides, RetryAttemptContext, RateLimitGateSnapshot, RateLimitWaitContext
- * invariants: maxRetries, initialDelayMs, maxDelayMs, multiplierは0以上の数値、delayMsはmaxDelayMs以下に収束する
- * side_effects: プロセス全体で共有されるMapオブジェクト(sharedRateLimitState.entries)の状態を変更する
- * failure_modes: リトライ回数超過による処理中断、AbortSignalによる強制停止、レート制限エントリ上限(Max 64)到達時の挙動
+ * public_api: RetryJitterMode, RetryWithBackoffConfig, RetryWithBackoffOverrides, RetryAttemptContext, RateLimitGateSnapshot, RateLimitWaitContext
+ * invariants: リトライ遅延はinitialDelayMs以上maxDelayMs以下である。待機時間の計算にはnow()関数の結果を使用する。
+ * side_effects: ファイルシステム（readFileSync, writeFileSync, mkdirSync）へのアクセスとファイルロックを行う。レートリimit状態を永続化する。
+ * failure_modes: 設定値が不正な場合の挙動未定義、ファイルシステムへのアクセス権限がない場合のエラー、AbortSignalによる操作の中断。
  * @abdd.explain
- * overview: 外部API呼び出しなどに対して、指数バックオフおよびジッター機能を提供し、429エラー等のレート制限に対するグローバルな待機管理を行うライブラリ
+ * overview: LLM API等における一時的な障害やレート制限（429/5xx）に対し、指数バックオフおよびジッター機能を提供し、安定的な通信を実現するモジュール。リトライ設定のオーバーライドや、共有状態に基づくレートリimit制御も行う。
  * what_it_does:
- *   - 指数バックオフアルゴリズムに基づく遅延時間の計算
- *   - full/partial/noneのモードを持つジッターの適用
- *   - レート制限状態の共有管理と有効期限(TTL)に基づく自動クリーンアップ
- *   - リトライ時のフック(onRetry, shouldRetry)による挙動のカスタマイズ
- *   - AbortSignalに対応したキャンセル処理
+ *   - 指数バックオフアルゴリズムによる待機時間の計算とジッター（full/partial/none）の適用
+ *   - ファイルロックを用いたレートリimit状態の永続化と共有
+ *   - AbortSignalによるリトライ処理のキャンセル対応
+ *   - リトライ判定ロジック（shouldRetry）とコールバック（onRetry, onRateLimitWait）の実行
  * why_it_exists:
- *   - 分散したリトライロジックを統一し、メンテナンス性を向上させるため
- *   - 過負荷状態でのAPI呼び出しを抑制し、安定性を確保するため
- *   - 複数のエージェント間でレート制限状態を共有し、全体のリクエストレートを適切に制御するため
+ *   - 外部API呼び出しにおいて、ネットワークの一時的な障害や制限を透過的にハンドリングするため
+ *   - サブエージェントやエージェントチーム間でリトライ戦略の一貫性を保つため
+ *   - 分散環境でのレートリimit回避のためにプロセス間で状態を共有するため
  * scope:
- *   in: 設定オブジェクト(RetryWithBackoffOptions)、エラー情報、AbortSignal
- *   out: リトライの実行、レート制限待機、コールバック関数の呼び出し、共有状態の更新
+ *   in: RetryWithBackoffOptions, RetryWithBackoffConfig, レートリimit状態ファイル, AbortSignal
+ *   out: リトライ回数, 待機時間, エラー内容, 更新されたレートリimit状態
  */
 
 // File: .pi/lib/retry-with-backoff.ts
@@ -165,6 +164,11 @@ const sharedRateLimitState: SharedRateLimitState = {
 // 操作中フラグ: 同一プロセス内での並列アクセスを防止
 let inMemoryRateLimitOperationInProgress = false;
 
+/**
+ * 状態をクリアする
+ * @summary 状態を初期化
+ * @returns {void}
+ */
 export function clearRateLimitState(): void {
   sharedRateLimitState.entries.clear();
   persistedStateLoaded = false;

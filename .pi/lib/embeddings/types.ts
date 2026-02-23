@@ -1,25 +1,32 @@
 /**
  * @abdd.meta
  * path: .pi/lib/embeddings/types.ts
- * role: エンベディングプロバイダーとモジュール設定の型定義
- * why: プロバイダー実装のインターフェース統一、設定データの型安全性確保
- * related: .pi/lib/embeddings/provider.ts, .pi/lib/embeddings/openai.ts, .pi/lib/embeddings/module.ts
+ * role: エンベディングプロバイダーとモジュールの設定および能力を定義する型宣言ファイル
+ * why: エンベディング機能の実装と利用において、データ構造と契約を統一するため
+ * related: .pi/lib/embeddings/index.ts, .pi/lib/embeddings/openai.ts, .pi/lib/embeddings/local.ts, .pi/config.ts
  * public_api: ProviderCapabilities, EmbeddingProvider, ProviderConfig, EmbeddingModuleConfig
- * invariants: capabilities.dimensions は正の整数, fallbackOrder は空でない配列
- * side_effects: なし（純粋な型定義）
- * failure_modes: 型定義不整合による実行時エラー
+ * invariants:
+ *   - EmbeddingProviderのcapabilities.dimensionsは生成されるベクトルの次元数と一致する
+ *   - generateEmbeddingsBatchの戻り値配列長は入力textsの配列長と一致する
+ *   - generateEmbeddingがnullを返す場合、プロバイダーは処理に失敗している
+ * side_effects: なし（型定義のみ）
+ * failure_modes:
+ *   - プロバイダー実装がインターフェースの契約（戻り値型や次元数）を満たさない場合
+ *   - maxTokensやmaxBatchSizeの設定がプロバイダーの実際の制限を超えている場合
  * @abdd.explain
- * overview: エンベディング機能に関する共通インターフェースと設定型を定義する
+ * overview: エンベディング生成機能（OpenAI等）共通のデータ型とインターフェースを定義
  * what_it_does:
- *   - プロバイダーの能力制限と実装要件を定義 (EmbeddingProvider, ProviderCapabilities)
- *   - モジュール全体の初期化設定とプロバイダー選択ロジック用データ構造を定義 (EmbeddingModuleConfig)
- *   - 単一プロバイダー設定スキーマを定義 (ProviderConfig)
+ *   - プロバイダーの処理能力（トークン数、次元数、バッチ対応）を型定義する
+ *   - プロバイダー実装が満たすべきインターフェース（生成、初期化、破棄）を規定する
+ *   - プロバイダー選択およびオプション設定の構造を定義する
+ *   - モジュール全体の設定構造（バージョン、デフォルトプロバイダー）を定義する
  * why_it_exists:
- *   - 異なるエンベディングプロバイダー（OpenAI, Local, Mock等）を同一インターフェースで扱うため
- *   - 設定ファイルや依存性注入における型安全性を担保するため
+ *   - 異なるエンベディングプロバイダー（OpenAI、ローカル等）を同一インターフェースで扱うため
+ *   - 型安全性を保証し、実装時のミス（次元数不一致など）を防ぐため
+ *   - 設定値の構造を明確にし、外部設定ファイル等との連携を容易にするため
  * scope:
- *   in: 外部からのプロバイダー実装、設定オブジェクト
- *   out: TypeScript型情報
+ *   in: なし
+ *   out: ProviderCapabilities, EmbeddingProvider, ProviderConfig, EmbeddingModuleConfig
  */
 
 /**

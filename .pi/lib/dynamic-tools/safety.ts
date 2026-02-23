@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-tools/safety.ts
- * role: 生成コードの静的解析による安全性評価と危険操作の検出
- * why: コード生成による意図しない破壊的操作やセキュリティリスクを実行前に防止するため
- * related: .pi/lib/dynamic-tools/types.ts, .pi/lib/dynamic-tools/executor.ts, .pi/lib/dynamic-tools/config.ts
- * public_api: SafetyAnalysisResult, SafetyAnalysisIssue, SafetyAnalysisIssueType
- * invariants: SafetyAnalysisResultのscoreは0.0以上1.0以下、DANGEROUS_PATTERNSは不変
- * side_effects: なし（純粋な解析モジュール）
- * failure_modes: 不正な正規表現による解析エラー、未知のパターンの見逃し
+ * role: 生成コードの静的解析を行う安全性評価モジュール
+ * why: 危険な操作（ファイル削除、プロセス実行など）を検出し、コード実行前のセキュリティチェックを提供するため
+ * related: .pi/lib/dynamic-tools/executor.ts, .pi/lib/core/config.ts
+ * public_api: SafetyAnalysisResult, SafetyAnalysisIssue, SafetyAnalysisIssueType, DANGEROUS_PATTERNS
+ * invariants: 安全スコアは0.0から1.0の範囲内、重大度はcritical/high/medium/lowのいずれか
+ * side_effects: なし（純粋な解析ロジック）
+ * failure_modes: 正規表現パターンの誤検知、複雑なコード構造の見落とし
  * @abdd.explain
- * overview: 生成されたコードに対して定義された危険パターン（正規表現）を適用し、安全性スコアと問題リストを算出するモジュール
+ * overview: 正規表現ベースのパターンマッチングにより、ソースコード内の潜在的なセキュリティリスクを特定するモジュール。
  * what_it_does:
- *   - ファイルシステム削除、プロセス実行、ネットワークアクセス等の危険パターンを照合
- *   - 検出された問題の重大度、種類、位置、修正提案を含む詳細を生成
- *   - 許可操作と禁止操作のリストを作成
- *   - 0.0-1.0の安全性スコアと信頼度を計算
+ *   - 定義された危険パターン（ファイルシステム操作、コマンド注入、eval使用など）とコードを照合する
+ *   - 検出された問題の重大度、種類、位置情報を含む解析結果を生成する
+ *   - 安全スコアの算出と修正提案の提示を行う
  * why_it_exists:
- *   - 自動生成コードに含まれる破壊的コマンド（rm -rf等）や外部通信を検閲するため
- *   - 実行環境のセキュリティを維持しつつ動的なコード生成を可能にするため
+ *   - 自動生成されたコードがシステムに悪影響を与える操作を含まないことを保証する
+ *   - ファイル削除やプロセス生成といった破壊的操作を実行前に検閲する
  * scope:
- *   in: 解析対象のソースコード文字列
- *   out: SafetyAnalysisResultオブジェクト（スコア、問題リスト、推奨事項）
+ *   in: 正規表現パターン定義リスト、解析対象の文字列コード
+ *   out: 安全スコア、問題リスト、許可/ブロック操作一覧を含む解析結果オブジェクト
  */
 
 /**

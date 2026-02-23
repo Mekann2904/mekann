@@ -1,26 +1,33 @@
 /**
  * @abdd.meta
  * path: .pi/lib/context-engineering.ts
- * role: コンテキストウィンドウの最適化とトークン管理を行うモジュール
- * why: LLMの推論失敗を防ぐため、論文に基づき効率的なコンテキスト管理と要約戦略を実装する
- * related: .pi/lib/context-manager.ts, .pi/types/context.ts, .pi/config/model-settings.ts
- * public_api: ContextPriority, ContextItem, ContextCategory, ContextWindowConfig, OptimizedContext, TrimmedItem, SemanticBoundary
- * invariants: ContextItemのidは一意である、priorityWeightsの合計が正である、tokenEstimateは0以上である
- * side_effects: 外部システムからのコンテキスト取得を伴わない、データの変換とフィルタリングのみを行う
- * failure_modes: トークン見積もりの誤差によるbudget超過、要約機能による情報欠落のリスク
+ * role: コンテキストウィンドウ管理とチャンキング戦略の最適化モジュール
+ * why: LLMの推論能力を最大化するため、論文「Large Language Model Reasoning Failures」のP1推奨事項に基づき、トークン制約下で最適なコンテキスト構成を維持するため
+ * related: .pi/lib/context-window.ts, .pi/lib/memory-manager.ts, .pi/types/context.types.ts
+ * public_api: ContextItem, ContextPriority, ContextCategory, ContextWindowConfig, OptimizedContext, TrimmedItem, SemanticBoundary
+ * invariants:
+ *   - OptimizedContextのtotalTokensはbudget以下である
+ *   - priorityWeightsは正の数である
+ *   - TrimmedItemのpreservedTokensはoriginalTokens以下である
+ * side_effects:
+ *   - トークン予算超過時の低優先度アイテム削除
+ *   - カテゴリ制限に基づくコンテンツの除外
+ * failure_modes:
+ *   - トークン見積もりの大幅なズレによるバジェット超過
+ *   - 全アイテムが削除されるコンテキスト枯渇
+ *   - サマリー生成による重要情報の喪失
  * @abdd.explain
- * overview: LLMのコンテキストウィンドウ管理を最適化し、重要度とカテゴリに基づいたトークン配分を行う定義と戦略を提供する
+ * overview: コンテキストアイテムの定義、優先度制御、トークン管理を行い、LLMへの入力コンテキストを構造化・最適化する
  * what_it_does:
- *   - コンテキストアイテムに優先度とカテゴリを定義する
- *   - コンテキストウィンドウの設定（上限、重み、要約有無）を管理する
- *   - 最適化結果の構造（トリミング情報、利用率など）を定義する
- *   - 意味的チャンキングの境界構造を定義する
+ *   - コンテキストの優先度、カテゴリ、トークン推定値を定義する
+ *   - 最適化されたコンテキストセットとトリムされたアイテムの履歴を管理する
+ *   - 意味的な境界情報を定義してチャンキング戦略を支援する
  * why_it_exists:
- *   - コンテキストウィンドウの制限を超過した際の情報損失を最小化する
- *   - 重要な情報を維持しつつ、トークン使用効率を最大化する
+ *   - 有限のコンテキストウィンドウ内で、推論に必要な情報を確実に維持するため
+ *   - 重要度に基づく動的なコンテキストフィルタリングを実現するため
  * scope:
- *   in: コンテキスト設定値、トークン見積もりデータ、優先度ルール
- *   out: 最適化されたコンテキスト構造、トリミングレポート、境界情報
+ *   in: コンテキスト設定、優先度重み、生コンテンツ
+ * out: トークン制約内で最適化されたコンテキストコレクション
  */
 
 /**

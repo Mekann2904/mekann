@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/shared/runtime-helpers.ts
- * role: ランタイム制限・キュー待機のエラーメッセージ生成と、リソース予約維持機能の提供
- * why: subagents.tsとagent-teams.tsでランタイム動作を一貫させるため
- * related: ../agent-runtime.js, subagents.ts, agent-teams.ts
- * public_api: RuntimeLimitErrorOptions, RuntimeQueueWaitInfo, buildRuntimeLimitError, buildRuntimeQueueWaitError, startReservationHeartbeat
- * invariants: buildRuntimeLimitErrorはgetRuntimeSnapshotから最新情報を取得する、startReservationHeartbeatは5秒間隔でheartbeatを実行する
- * side_effects: startReservationHeartbeatはタイマーを起動し、reservation.heartbeatを呼び出す
- * failure_modes: リソース取得失敗時、heartbeat呼び出し時の例外は連続3回で自動停止、FinalizationRegistryによるクリーンアップ保証
+ * role: ランタイム制限エラーの生成およびリソース予約ライフサイクルの管理
+ * why: エージェントとチーム全体で一貫したランタイム挙動とエラーメッセージを提供するため
+ * related: agent-runtime.ts, subagents.ts, agent-teams.ts
+ * public_api: buildRuntimeLimitError, buildRuntimeQueueWaitError, startReservationHeartbeat
+ * invariants: startReservationHeartbeat は返却された関数を実行するまで5秒間隔で処理を継続する
+ * side_effects: getRuntimeSnapshot による状態読み取り, reservation.heartbeat によるリースTTL更新, console.warn によるログ出力
+ * failure_modes: ハートビート連続失敗による停止予兆, スナップショット取得不可による情報欠落
  * @abdd.explain
- * overview: エージェント実行時のリソース制限やオーケストレーションキューエラーを通知するためのユーティリティ。
+ * overview: ランタイムのリソース制限超過時のエラーメッセージ構築と、予約リースの有効期限延長（ハートビート）を行うユーティリティ群
  * what_it_does:
- *   - 現在のリソース使用状況と制限値を含むエラーメッセージを生成する
- *   - キュー待機状況（待ち時間、順位、試行回数）を含むエラーメッセージを生成する
- *   - リソース予約を維持するための定期的ハートビートタイマーを開始・停止する
+ *   - アクティブリクエスト数やLLM利用数に基づく制限エラーメッセージを生成する
+ *   - オーケストレーションキューの待機状況に基づくブロックエラーメッセージを生成する
+ *   - 定期的なハートビート呼び出しによりリソース予約の期限切れ（ゾンビ化）を防ぐ
+ *   - ハートビートの連続失敗を検出し、警告ログを出力する
  * why_it_exists:
- *   - 複数のエージェント種別（subagents, agent-teams）間でエラーハンドリングロジックを共通化するため
- *   - リソース枯渇時やキュー拥堵時にユーザーへ復旧手順を明示するため
- *   - 期限切れによるリソース予約の消失を防ぐため
+ *   - subagents.ts と agent-teams.ts で共通のエラー発生ロジックを利用するため
+ *   - 実行制限やキュー待機の理由をユーザーに明確に提示するため
+ *   - 長時間実行タスクにおけるリソース予約の有効性を維持するため
  * scope:
- *   in: ツール名、理由配列、待機情報、予約リースオブジェクト
- * out: フォーマットされたエラーメッセージ文字列、タイマー停止用クリーンアップ関数
+ *   in: ツール名, エラー理由, 待機情報, 予約リースオブジェクト
+ *   out: 整形されたエラーメッセージ文字列, ハートビート停止関数
  */
 
 /**

@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/utils/output.ts
- * role: 検索ツールの出力整形・フォーマットユーティリティ
- * why: 検索コマンド（fd, ripgrep等）の生データを統一的な構造（SearchResponse等）に変換し、結果の切り詰めやテキストフォーマットを行うため
- * related: ../types.ts, ./constants.ts, ./metrics.ts
- * public_api: truncateResults, truncateHead, parseFdOutput, formatFileCandidates
- * invariants: 結果の配列長がlimitを超える場合のみtruncatedがtrue、totalは元の配列長を保持
- * side_effects: なし（純粋関数）
- * failure_modes: 標準出力のフォーマットが想定と異なる場合、不正なパスが含まれる場合
+ * role: 検索結果の整形・省略・テキスト解析処理を行うユーティリティ
+ * why: 検索ツール間で出力形式を統一し、大量データの表示制御と可読性向上を実現するため
+ * related: .pi/extensions/search/utils/types.ts, .pi/extensions/search/utils/constants.ts, .pi/extensions/search/utils/metrics.js, .pi/lib/text-utils.ts
+ * public_api: truncateResults, truncateHead, parseFdOutput, formatFileCandidates, truncateText
+ * invariants: 結果数が制限値を超える場合、必ずtotalとtruncatedフラグが設定される。空文字列入力時はparseFdOutputが空配列を返す。
+ * side_effects: なし（純粋な関数群）
+ * failure_modes: 不正な改行コードを含む入力によるparseFdOutputのパース失敗
  * @abdd.explain
- * overview: 検索結果のフィルタリング、構造化、および文字列表現への変換を行うモジュール
+ * overview: 検索ツール（fd, ripgrep等）の出力データを加工し、統一フォーマットで出力・省略する機能を提供する。
  * what_it_does:
- *   - 検索結果の配列を最大数で切り詰め、総数と切り詰められたかどうかのメタデータを付与
- *   - fdコマンドなどの標準出力文字列をFileCandidateオブジェクトの配列に変換
- *   - FileCandidateの検索結果を、種別（[D]/[F]）と共に可読性の高い文字列にフォーマット
+ *   - 検索結果の配列を指定件数で切り捨てる（truncateResults, truncateHead）
+ *   - 標準出力文字列を解析し、FileCandidateオブジェクト配列に変換する（parseFdOutput）
+ *   - FileCandidateの検索レスポンスを見やすい文字列形式に整形する（formatFileCandidates）
+ *   - テキストの切り詰め機能を再エクスポートする（truncateText）
  * why_it_exists:
- *   - 異なる検索ツールの出力形式を吸収し、システム内で統一的なデータ構造を利用するため
- *   - 大量の検索結果による出力の溢れやリソース消費を防ぐため
- *   - ユーザーやエージェント向けに見やすい検索結果を提供するため
+ *   - 複数の検索ロジック間で出力形式の一貫性を保つため
+ *   - 画面表示やログ出力におけるデータ量の制御を容易にするため
+ *   - 生のテキスト出力を構造化データとして扱うため
  * scope:
- *   in: 生の検索結果（文字列、配列）、制限数、ファイル種別
- *   out: SearchResponse型オブジェクト、FileCandidate配列、整形された文字列
+ *   in: 検索結果配列、標準出力文字列、制限数、ファイルタイプ
+ *   out: SearchResponse<T>構造体, FileCandidate[], 整形済み文字列
  */
 
 /**

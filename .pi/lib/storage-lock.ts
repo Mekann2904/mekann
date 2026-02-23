@@ -2,24 +2,24 @@
  * @abdd.meta
  * path: .pi/lib/storage-lock.ts
  * role: 同期ファイルロックおよびアトミック書き込み機構の提供
- * why: 並列エージェント実行時におけるストレージファイルの書き込み競合とデータ破損を防ぐため
+ * why: 並列なエージェント実行時におけるストレージファイルへの競合書き込みを防ぐため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/extensions/plan.ts
- * public_api: FileLockOptions, tryAcquireLock, clearStaleLock, sleepSync
- * invariants: ロックファイルにはPIDとタイムスタンプが含まれる、ビジーウェイトは発生しない
- * side_effects: ファイルシステムへのロックファイル作成、更新、削除
- * failure_modes: SharedArrayBuffer未対応環境では診断情報付きエラー、ロック取得タイムアウト、EEXISTエラーによる取得失敗
+ * public_api: FileLockOptions, getSyncSleepDiagnostics
+ * invariants: SharedArrayBuffer未対応環境ではCPUスピン（busy-wait）を行わない
+ * side_effects: ファイルシステムへのロックファイル作成、リネーム、削除
+ * failure_modes: SharedArrayBuffer未使用時の即時リターン、最大待機時間超過時の失敗
  * @abdd.explain
- * overview: Node.jsのfsモジュールを用いた同期排他制御ライブラリ
+ * overview: Node.jsのfsモジュールを用いた同期ロックとアトミックなファイル更新を行うユーティリティ
  * what_it_does:
- *   - Atomics.waitを用いた同期スリープの提供（利用可能な場合）
- *   - 排他的フラグ（wx）を用いたロックファイルのアトミックな作成
- *   - 経過時間に基づく陳腐化したロックファイルの自動削除
+ *   - Atomics.waitを用いた効率的な同期スリープ（SharedArrayBuffer利用時）
+ *   - 実行環境の同期スリープ対応可否の診断
+ *   - ファイルロックおよびアトミック書き込みの実行補助
  * why_it_exists:
- *   - マルチプロセス環境での同時書き込みによるレコードの破壊を回避する必要性
- *   - プロセスが異常終了した際のロック解放（stale lock）を取り扱う必要性
+ *   - 並列処理においてレコードの破損を防ぐデータ整合性維持のため
+ *   - 環境制約（セキュリティヘッダー等）によるSharedArrayBufferの非利用ケースに対応するため
  * scope:
- *   in: FileLockOptions, ロックファイルパス, 対象ファイルパス
- *   out: ロック取得成否, スリープ成否, ファイルシステム状態の変更
+ *   in: ロック設定オプション、ファイルパス、書き込みデータ
+ *   out: ロック取得成否、診断情報、書き込み完了状態
  */
 
 // File: .pi/lib/storage-lock.ts

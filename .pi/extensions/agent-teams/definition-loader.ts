@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/definition-loader.ts
- * role: Markdownファイルからのチーム定義の読み込みとパース処理
- * why: 定義読み込みロジックをメインファイルから分離し、保守性を高めるため
+ * role: チーム定義Markdownのパースおよびバリデーション実行
+ * why: メインロジックから定義読み込み処理を分離し、保守性と責任範囲を明確化するため
  * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/lib/team-types.ts
- * public_api: parseTeamMarkdownFile, loadTeamDefinitionsFromDir
- * invariants: 読み込むMarkdownファイルにはidとnameを含む有効なYAMLフロントマターが存在する
- * side_effects: ファイルシステムからファイルを読み込み、標準出力に警告ログを出力する
- * failure_modes: ファイル読み込みエラー、パースエラー、必須フィールド欠損時にnullを返すか警告を出力する
+ * public_api: validateTeamFrontmatter, TeamValidationError, TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown
+ * invariants: Team IDは英小文字・数字・ハイフンのみ、Member IDは英小文字・数字・ハイフンのみ
+ * side_effects: なし（純粋なバリデーション関数）
+ * failure_modes: 不正なID形式、必須フィールド欠如、メンバー定義の欠如によるエラー配列の返却
  * @abdd.explain
- * overview: ローカル、グローバル、バンドルされたディレクトリからチーム定義ファイルを検出し、解析するモジュール
+ * overview: Markdownファイルから読み込まれたチーム定義（フロントマター）の構造チェックを行う
  * what_it_does:
- *   - 環境変数やパスに基づき、チーム定義ファイルの格納候補ディレクトリを決定する
- *   - MarkdownファイルのYAMLフロントマターをパースし、TeamFrontmatterオブジェクトを生成する
- *   - 必須フィールドの有効性チェックを行い、無効な場合は警告を出力して処理をスキップする
+ *   - TeamFrontmatterオブジェクトを受け取り、必須フィールドの存在チェックを行う
+ *   - チームIDとメンバーIDの書式（英小文字・数字・ハイフン）を検証する
+ *   - enabledフィールドの値が 'enabled' または 'disabled' であるか検証する
+ *   - メンバー配列の各要素について、必須フィールドとID形式を検証する
+ *   - 検証結果をTeamValidationError配列として返す（空配列なら有効）
  * why_it_exists:
- *   - ファイルシステムへのアクセスとデータ解析の責務を明確に分離するため
- *   - チーム定義の取得元（ローカル/グローバル）の違いを抽象化するため
+ *   - ファイルシステムから読み込んだデータの整合性を保証するため
+ *   - 実行時エラーを防ぎ、早期に定義ミスを検知するため
  * scope:
- *   in: チーム定義が含まれるディレクトリパス、現在日時（ISO文字列）
- *   out: パースされたチーム定義オブジェクトの配列、または単一のパース結果
+ *   in: Partial<TeamFrontmatter>, string (filePath)
+ *   out: TeamValidationError[]
  */
 
 // File: .pi/extensions/agent-teams/definition-loader.ts

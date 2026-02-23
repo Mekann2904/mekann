@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/cost-estimator.ts
- * role: タスク実行のコストと所要時間を推定し、履歴データに基づいて精度を向上させるエスティメータ
- * why: 正確なタスクスケジューリングとリソース配分の決定を、トークン消費量と実行時間の予測によってサポートするため
+ * role: タスクスケジューリングのためのコスト（実行時間とトークン消費量）推定エンジン
+ * why: 過去の実績とデフォルト値に基づき、精度の高いスケジューリング判定を可能にするため
  * related: .pi/lib/task-scheduler.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
- * public_api: CostEstimation, ExecutionHistoryEntry, SourceStatistics, CostEstimatorConfig, estimateCost, recordExecution
- * invariants: confidence は 0.0 から 1.0 の範囲内, historicalWeight は 0.0 から 1.0 の範囲内
- * side_effects: なし（推定ロジック自体は純粋だが、履歴記録インターフェースは外部ストレージへの副作用を想定）
- * failure_modes: 履歴データ不足によるフォールバック、過去の異常値による平均値の歪み
+ * public_api: CostEstimationMethod, CostEstimation, ExecutionHistoryEntry, SourceStatistics, CostEstimatorConfig
+ * invariants: confidenceは0.0から1.0の範囲, durationとtokensは正の数, successRateは0.0から1.0の範囲
+ * side_effects: 履歴データの記録・更新による統計情報の変化
+ * failure_modes: 履歴データ不足時はデフォルト値にフォールバック, 不正な入力値による推論誤差
  * @abdd.explain
- * overview: タスクのソース種別に応じたデフォルト推定値と、過去の実行履歴に基づく統計情報を組み合わせてコストを算出するモジュール
+ * overview: タスクソースや種別に応じて、実行時間とトークン消費量を見積もる機能を提供する。履歴データが蓄積されると、デフォルト値と実績値を加重平均して推定精度を向上させる。
  * what_it_does:
- *   - ソース種別（subagent, teamなど）ごとのデフォルト実行時間・トークン消費量を定義
- *   - 過去の実行記録を集計し、平均・最小・最大・成功率などの統計情報を生成
- *   - 統計情報とデフォルト値を統合して、推定コストと信頼度を算出
+ *   - TaskSourceに応じたデフォルトコスト（時間・トークン）を定義・提供
+ *   - ExecutionHistoryEntryを受け付け、SourceStatisticsを算出・更新
+ *   - CostEstimationMethodに基づき、最適なコスト推定値を算出
+ *   - 推定結果にメソッド種別と信頼度（confidence）を付与
  * why_it_exists:
- *   - 一定量の実行履歴が蓄積された環境で、スケジューリング精度を統計的に向上させるため
- *   - 履歴データがない場合のために、事前定義された合理的な初期値を提供するため
+ *   - タスクの実行時間とコストを事前に予測し、リソース配分を最適化するため
+ *   - 学習機能（historical）による推定の精度向上を実現するため
  * scope:
- *   in: タスクのソース種別、実行履歴データ、設定値（最小実行回数、重み付けなど）
- *   out: 推定実行時間、推定トークン消費量、信頼度、および統計情報の集計結果
+ *   in: TaskSource, 過去の実行履歴(ExecutionHistoryEntry), 設定値(CostEstimatorConfig)
+ *   out: コスト推定結果(CostEstimation), ソース別統計情報(SourceStatistics)
  */
 
 // File: .pi/lib/cost-estimator.ts

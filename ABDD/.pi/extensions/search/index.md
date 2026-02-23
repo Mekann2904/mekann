@@ -2,7 +2,7 @@
 title: index
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from '@mariozechner/pi-ai': StringEnum
 // from './tools/file_candidates.js': fileCandidates
 // from './tools/code_search.js': codeSearch
-// ... and 7 more imports
+// ... and 8 more imports
 ```
 
 ## エクスポート一覧
@@ -103,6 +103,7 @@ sequenceDiagram
   User->>System: Search code patterns using ripgrep (rg) with regex suppor...
   System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
   System->>Internal: コード検索
+  Internal->>Internal: normalizeCodeSearchInput
   Internal->>Internal: パラメータエラー生成
   Internal->>Internal: グローバルキャッシュインスタンスを取得する。
   Internal->>Internal: 検索履歴取得
@@ -539,4 +540,4 @@ flowchart LR
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.375Z*
+*自動生成: 2026-02-23T06:29:42.127Z*

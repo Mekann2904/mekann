@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/communication.ts
- * role: チームメンバー間の通信ラウンドロジックとコンテキスト構築を管理する
- * why: agent-teams.ts から分離し、保守性と単一責任の原則（SRP）を遵守するため
- * related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, ../../lib/format-utils.js, ../../lib/text-parsing.ts
- * public_api: buildPrecomputedContextMap, normalizeCommunicationRounds, DEFAULT_COMMUNICATION_ROUNDS, MAX_COMMUNICATION_ROUNDS
- * invariants: 通信ラウンド数は0以上MAX_COMMUNICATION_ROUNDS以下である、コンテキストフィールドの文字数はCOMMUNICATION_CONTEXT_FIELD_LIMIT以下に制限される
- * side_effects: なし（純粋関数と定数定義のみ）
- * failure_modes: 無効なラウンド数入力はフォールバック値に置換される、出力解析に失敗したフィールドはデフォルト文字列に置換される
+ * role: チーム内のエージェント間通信およびラウンドロジックのオーケストレーションモジュール
+ * why: agent-teams.tsから責務を分離し、保守性とSRP（単一責任の原則）への準拠を向上させるため
+ * related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, .pi/extensions/agent-teams/communication-config.ts, .pi/extensions/agent-teams/communication-context.ts
+ * public_api: buildPrecomputedContextMap, re-exported types (TeamMember, TeamDefinition, etc.), re-exported V2 modules (communication-config, communication-id, etc.)
+ * invariants: PrecomputedMemberContextの各フィールドは必ず文字列を持つ、サマリーと主張が欠損している場合はデフォルト文字列が代入される
+ * side_effects: なし（純粋な関数とデータ構造のエクスポート）
+ * failure_modes: 入力結果リストに不正なデータが含まれる場合、サニタイズ処理により欠損値がデフォルト値に置換される
  * @abdd.explain
- * overview: エージェントチーム内でのメンバー間通信に関する定数、型定義、およびユーティリティ関数を提供する
+ * overview: エージェントチーム内の通信フェーズにおける設定生成、ID管理、履歴管理、コンテキスト構築、および終了判定の機能を集約したモジュール
  * what_it_does:
- *   - チームメンバーの実行結果から、IDや主張（claim）を含む事前計算済みコンテキストマップを構築する
- *   - 通信ラウンド数の入力値を検証し、許容範囲内に正規化する
- *   - 通信コンテキストにおける文字数制限や最大ラウンド数などの定数を定義する
+ *   - サブモジュール（V2系）の型定義と関数を再エクスポートする
+ *   - TeamMemberResultからメンバーごとの事前計算コンテキスト（サマリー、主張など）を生成・マッピングする
+ *   - コンテキスト構築に必要なユーティリティ（参照抽出、フィールド抽出など）を提供する
  * why_it_exists:
- *   - 複雑な通信ロジックをメインのオーケストレーションファイルから分離して責務を明確にする
- *   - 通信パラメータの検証とサニタイズを一元化し、プロンプトインジェクションや無限ループを防ぐ
+ *   - 複雑な通信ロジックを機能単位で分割し、依存関係を明確にするため
+ *   - agent-teams.tsの肥大化を防ぎ、特定の通信フェーズ処理（履歴、リンク、IDなど）をカプセル化するため
  * scope:
- *   in: TeamMemberResult（実行結果）、通信ラウンド数の生値
- *   out: PrecomputedMemberContext（メンバー情報）、正規化されたラウンド数、通信定数
+ *   in: TeamMemberResultのリスト、V2通信設定、チーム定義
+ *   out: 事前計算済みコンテキストマップ、通信ID、履歴ストア、終了判定結果
  */
 
 // File: .pi/extensions/agent-teams/communication.ts

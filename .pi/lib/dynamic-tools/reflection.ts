@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dynamic-tools/reflection.ts
- * role: ツール実行履歴の分析と新規ツール生成の要否判定を行うリフレクションエンジン
- * why: 繰り返される操作パターンを検出し、動的なツール生成トリガーとして機能させるため
+ * role: ツール実行履歴の分析と動的ツール生成の判定エンジン
+ * why: 繰り返し操作を自動検出し、効率化のために新規ツール生成の要否を決定するため
  * related: .pi/lib/dynamic-tools/types.ts, .pi/lib/dynamic-tools/registry.ts
  * public_api: detectRepetitivePattern, shouldCreateNewTool
- * invariants: detectRepetitivePatternは引数のコンテキストに基づきパターン文字列を返す、shouldCreateNewToolはToolReflectionResult構造を返す
+ * invariants: detectRepetitivePatternはコンテキスト情報に基づき検出結果を返す, shouldCreateNewToolはToolReflectionResult型の結果を返す
  * side_effects: なし（純粋な判定ロジック）
- * failure_modes: コンテキスト不足による判定ロジックのスキップ、正規表現マッチの失敗
+ * failure_modes: コンテキストデータが不足している場合に判定が不正確になる可能性がある, コマンドパターンの正規表現が特定の形式のみに依存する
  * @abdd.explain
- * overview: ツール実行後の文脈から反復パターンを抽出し、効率化のために新たなツール定義を生成すべきか判定するモジュール
+ * overview: ツールの実行結果と現在のタスクを解析し、無駄な反復を特定して新ツールの生成を提案する機能を提供する
  * what_it_does:
- *   - コンテキスト内の直近ツール名とタスクから反復使用パターンを検出する
- *   - ツール実行結果からBashコマンドパターン（git, npm等）を抽出する
- *   - 検出されたパターンに基づき、ツール生成フラグと提案ツール情報を含む判定結果を出力する
+ *   - 同一ツールの連続使用や類似Bashコマンドの繰り返しを検出する
+ *   - 検出されたパターンに基づき、ツール化すべきかどうかを判定する
+ *   - ツール生成が必要と判断された場合、提案内容と理由を含む結果を生成する
  * why_it_exists:
- *   - 手作業での反復操作を自動化し、開発効率を向上させるため
- *   - 既存ツールでは対応しきれない動的なニーズに対応するため
+ *   - 手動での定型作業を減らし、システムの運用効率を向上させるため
+ *   - 反復的なオペレーションを抽象化し、再利用可能なツールとして自動的に定義するため
  * scope:
- *   in: ToolReflectionContext（ツール名、実行結果、現在のタスク、失敗回数）
- *   out: パターン検出結果オブジェクト または ToolReflectionResult（判定結果と提案ツール定義）
+ *   in: ToolReflectionContext（直近のツール名、実行結果、現在のタスク、失敗回数）
+ *   out: パターン検出結果、またはツール生成判定結果（ToolReflectionResult）
  */
 
 /**

@@ -428,6 +428,17 @@ describe("isCancelledErrorMessage", () => {
     expect(result).toBe(true);
   });
 
+  it("isCancelledErrorMessage_unhandled stop reason abort_true返却", () => {
+    // Arrange
+    const error = new Error("Error: Unhandled stop reason: abort");
+
+    // Act
+    const result = isCancelledErrorMessage(error);
+
+    // Assert
+    expect(result).toBe(true);
+  });
+
   it("isCancelledErrorMessage_中断含有_true返却（日本語）", () => {
     // Arrange
     const error = new Error("処理が中断されました");

@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/live-view-utils.ts
- * role: ライブビュー（TUI）の表示補助と入力判定を行うユーティリティモジュール
- * why: サブエージェントやチームの状態表示、およびユーザー入力処理の共通ロジックを集約するため
- * related: .pi/lib/live-view-renderer.ts, .pi/lib/subagent.ts
- * public_api: LiveStatus, getLiveStatusGlyph, isEnterInput, finalizeLiveLines
- * invariants: getLiveStatusGlyphは必ず2文字の文字列を返す、finalizeLiveLinesは戻り値の長さがheightと一致する（height指定時）
- * side_effects: なし（純粋関数）
- * failure_modes: finalizeLiveLinesでheightが負数の場合は何もしない、isEnterInputで想定外の制御文字が来るとfalseを返す
+ * role: LiveView用ユーティリティおよびUI定義
+ * why: サブエージェントやエージェントチームのTUIにおけるライブステータス表示と入力処理を共通化するため
+ * related: .pi/lib/live-view-renderer.ts, .pi/components/terminal.tsx, .pi/agents/base-agent.ts
+ * public_api: LiveStatus, StatusGlyphConfig, getLiveStatusGlyph, getLiveStatusColor, getActivityIndicator, isEnterInput, finalizeLiveLines, toTailLines
+ * invariants: getLiveStatusGlyphは常に3文字の文字列を返す、finalizeLiveLinesの出力配列長は引数height以下または元の配列長と一致する
+ * side_effects: なし（純粋関数と定数エクスポートのみ）
+ * failure_modes: 不正なLiveStatusが渡された場合のデフォルト値返却、heightに負数を渡した際の挙動
  * @abdd.explain
- * overview: TUIにおけるステータスグリフ変換、Enterキー判定、表示行の高さ調整を行う
+ * overview: TUI（テキストユーザーインターフェース）でのライブステータス表示に関する型定義、定数、および文字列操作ユーティリティを提供するモジュール
  * what_it_does:
- *   - 実行状態（pending/running/completed/failed）に対応する2文字のグリフ文字列を返す
- *   - 改行文字や"enter"文字列をEnterキー入力として判定する
- *   - 指定された高さに合わせて行数を切り詰め、または空行で埋める
+ *   - ステータス（pending, running等）に対応するグリフと色の定義マッピング
+ *   - ステータスやアクティビティ状態に基づくUI文字列の生成
+ *   - キー入力（Enterキー）の判定処理
+ *   - 表示行数に合わせた配列のカット（切り捨て）およびパディング処理
  * why_it_exists:
- *   - ライブビュー描画ロジックからステータス表現や入力処理を分離し、コードの可読性と再利用性を高めるため
- *   - 複数箇所で同様の行整形処理が発生するのを防ぐため
+ *   - ライブビューの描画ロジックからステータス表現やフォーマット処理を分離し、再利用性を高めるため
+ *   - UI表示用のデータ整形処理を一箇所に集約し、実装の一貫性を保つため
  * scope:
- *   in: ステータス列挙型、生の入力文字列、整形対象の文字列配列、高さ数値
- *   out: グリフ文字列、判定結果の真偽値、高さ固定された文字列配列
+ *   in: ステータス列挙、入力文字列、行データ配列、高さ数値
+ *   out: グリフ文字列、色キー、判定結果、整形後の文字列配列
  */
 
 /**

@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/subagents/task-execution.ts
- * role: サブエージェントのタスク実行および出力正規化を担当する
- * why: メインのサブエージェントロジックから実行詳細を分離し、保守性を向上させるため
- * related: .pi/extensions/subagents.ts, .pi/extensions/subagents/storage.ts, ../../lib/output-validation.ts, ../../lib/agent-types.js
- * public_api: SubagentExecutionResult, normalizeSubagentOutput
- * invariants: 出力はvalidateSubagentOutputによる検証を経るか、構造化フォーマットに整形される
- * side_effects: ファイルシステムへの書き込みを伴う処理を含む（writeFileSyncインポート）
- * failure_modes: 検証失敗時の出力整形、空の出力、空文字トリムエラー
+ * role: サブエージェントのタスク実行および出力処理の制御
+ * why: メインファイルから実行ロジックを分離し、保守性を高めるため
+ * related: .pi/extensions/subagents.ts, .pi/extensions/subagents/storage.ts, ../../lib/output-schema.js, ../../lib/output-validation.js
+ * public_api: isHighRiskTask, SubagentExecutionResult
+ * invariants: 高リスクタスクは定義されたパターンに基づき判定される
+ * side_effects: ファイルシステムへの書き込み (writeFileSync)
+ * failure_modes: ネットワークエラー, スキーマ検証失敗, タイムアウト, レート制限超過
  * @abdd.explain
- * overview: サブエージェントの実行結果を扱うロジックを集約したモジュール
+ * overview: サブエージェントによるタスク実行の主要なロジック、出力正規化、スキーマ適用、リトライ制御を担当するモジュール。
  * what_it_does:
- *   - SubagentExecutionResult型の定義
- *   - 出力文字列の正規化および検証
- *   - 不正な出力に対する構造化フォーマット（SUMMARY, RESULT, NEXT_STEP）への変換
- *   - 関連する型（RunOutcomeCode等）の再エクスポート
+ *   - タスク内容のリスク判定（Ralph Wiggum Loopトリガー）
+ *   - 出力のスキーマ検証および強制適用
+ *   - エラー分類とリトライ処理（バックオフ、レートリミット）
+ *   - 実行結果のファイル保存
  * why_it_exists:
- *   - タスク実行の詳細を分割してコードベースを整理するため
- *   - 出力形式の統一および品質検証を行うため
+ *   - タスク実行の複雑さを分離してコードベースを整理するため
+ *   - 安全な実行と堅牢なエラーハンドリングを実装するため
  * scope:
- *   in: 生の出力文字列
- *   out: 正規化された実行結果オブジェクト（SubagentExecutionResult）
+ *   in: タスク文字列, 実行設定, 実行ルール, パフォーマンスプロファイル
+ *   out: 実行結果文字列, 成功/失敗ステータス, エラー理由, ファイルシステムへのレコード保存
  */
 
 // File: .pi/extensions/subagents/task-execution.ts
@@ -53,6 +53,10 @@ import {
 import {
   validateSubagentOutput,
 } from "../../lib/output-validation.js";
+import {
+  findRelevantPatterns,
+  type ExtractedPattern,
+} from "../../lib/pattern-extraction.js";
 import {
   type SchemaViolation,
   type RegenerationConfig,
@@ -457,6 +461,7 @@ export function buildSubagentPrompt(input: {
   enforcePlanMode?: boolean;
   parentSkills?: string[];
   profileId?: string;
+  relevantPatterns?: ExtractedPattern[];
 }): string {
   // タスクに基づいてプロファイルを自動選択
   const profile = input.profileId 
@@ -488,6 +493,37 @@ export function buildSubagentPrompt(input: {
     lines.push("");
     lines.push("Extra context:");
     lines.push(input.extraContext.trim());
+  }
+
+  // Add relevant patterns from past executions as dialogue partners (not constraints)
+  // This promotes deterritorialization (creative reconfiguration) rather than stagnation
+  if (input.relevantPatterns && input.relevantPatterns.length > 0) {
+    lines.push("");
+    lines.push("Patterns from past executions (dialogue partners, not constraints):");
+    const successPatterns = input.relevantPatterns.filter(p => p.patternType === "success");
+    const failurePatterns = input.relevantPatterns.filter(p => p.patternType === "failure");
+    const approachPatterns = input.relevantPatterns.filter(p => p.patternType === "approach");
+
+    if (successPatterns.length > 0) {
+      lines.push("Previously successful:");
+      for (const p of successPatterns.slice(0, 2)) {
+        lines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 80)}`);
+      }
+    }
+    if (failurePatterns.length > 0) {
+      lines.push("Previously challenging:");
+      for (const p of failurePatterns.slice(0, 2)) {
+        lines.push(`- ${p.description.slice(0, 70)}`);
+      }
+    }
+    if (approachPatterns.length > 0) {
+      lines.push("Relevant approaches:");
+      for (const p of approachPatterns.slice(0, 2)) {
+        lines.push(`- [${p.agentOrTeam}] ${p.description.slice(0, 70)}`);
+      }
+    }
+    lines.push("");
+    lines.push("Consider: Do these patterns apply to THIS task? If not, why? What NEW approach might be needed?");
   }
 
   // Subagent plan mode enforcement
@@ -575,12 +611,21 @@ export async function runSubagentTask(input: {
   // Check if plan mode is active (via environment variable set by plan.ts)
   const planModeActive = isPlanModeActive();
 
+  // Load relevant patterns from past executions for memory-guided execution
+  let relevantPatterns: ExtractedPattern[] = [];
+  try {
+    relevantPatterns = findRelevantPatterns(input.cwd, input.task, 5);
+  } catch {
+    // Pattern loading failure should not block execution
+  }
+
   const prompt = buildSubagentPrompt({
     agent: input.agent,
     task: input.task,
     extraContext: input.extraContext,
     enforcePlanMode: planModeActive,
     parentSkills: input.parentSkills,
+    relevantPatterns,
   });
   const resolvedProvider = input.agent.provider ?? input.modelProvider ?? "(session-default)";
   const resolvedModel = input.agent.model ?? input.modelId ?? "(session-default)";

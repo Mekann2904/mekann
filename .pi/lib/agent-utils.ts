@@ -1,24 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/agent-utils.ts
- * role: エージェント実行に関する共通ユーティリティモジュール
- * why: 実装が重複していたID生成およびウィンドウ計算ロジックを集約し、保守性を向上させるため
+ * role: エージェント機能で利用される共通ユーティリティの集約モジュール
+ * why: 実装の重複を排除し、メンテナンス性を向上させるため
  * related: .pi/extensions/loop.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
  * public_api: createRunId, computeLiveWindow
- * invariants: createRunIdは常に一意な文字列を返す, computeLiveWindowのstartは0以上end以下である
- * side_effects: なし（参照透過性がある）
- * failure_modes: computeLiveWindowに負数やNaNが渡された場合の挙動は未定義
+ * invariants: createRunIdは常に一意な文字列を返す、computeLiveWindowの戻り値範囲は0以上total以下
+ * side_effects: なし（純粋関数）
+ * failure_modes: randomBytesの失敗（システムエラー）、引数が数値以外の場合の型エラー
  * @abdd.explain
- * overview: エージェントのセッション識別とUI表示範囲計算のためのヘルパー関数群
+ * overview: 実行ID生成とUI表示範囲計算機能を提供する共有ライブラリ
  * what_it_does:
- *   - 日時と乱数による一意な実行ID文字列を生成する
- *   - 総アイテム数とカーソル位置に基づき、スライディングウィンドウの開始・終了インデックスを計算する
+ *   - 日時と乱数を組み合わせた一意な実行IDを生成する
+ *   - カーソル位置に基づき、リスト表示の開始位置と終了位置をスライディングウィンドウ形式で算出する
  * why_it_exists:
- *   - 複数の拡張機能（loop, subagents, agent-teams）で重複していたコードを削除するため
- *   - ID生成ロジックやスクロール表示ロジックの変更を一箇所で行うため
+ *   - 複数の拡張機能（loop, subagents, agent-teams）に存在していた重複コードを削減するため
+ *   - ID生成ロジックや表示計算ロジックの修正を一箇所で完結させるため
  * scope:
- *   in: 日時データ、乱数生成器、カーソル位置、総アイテム数、最大行数
- *   out: 実行ID文字列、インデックス範囲オブジェクト
+ *   in: 日時情報（createRunId）、カーソル位置・総数・最大行数（computeLiveWindow）
+ *   out: 一意ID文字列、または計算された表示範囲オブジェクト（start/end）
  */
 
 /**

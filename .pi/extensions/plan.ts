@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/plan.ts
- * role: タスク計画の作成、管理、実行を行う拡張機能
- * why: 構造化されたステップ実行によるタスク計画管理を可能にするため
- * related: .pi/extensions/loop.ts, README.md
- * public_api: createPlan, updatePlan, deletePlan, getPlan, executePlan, cancelPlan
- * invariants: 計画データは.json形式で永続化される、planIdSequenceは単調増加する、ステータスは定義済みの値のみ
- * side_effects: .pi/plans/storage.json への書き込み、ファイルシステムへのディレクトリ作成、グローバルステート(planModeEnabled)の変更
- * failure_modes: storage.jsonの破損、ディスクI/Oエラー、不正なステータス遷移
+ * role: プラン（作業計画）の作成、管理、実行機能を提供する拡張モジュール
+ * why: 構造化されたタスク計画とステップ実行の管理を可能にするため
+ * related: README.md, .pi/extensions/loop.ts, .pi/lib/plan-mode-shared.ts, .pi/lib/comprehensive-logger.ts
+ * public_api: createPlan, ensurePlanDir, loadStorage, saveStorage, Plan, PlanStep
+ * invariants: storage.jsonは常に有効なJSON形式、PlanStepのstatusは列挙値のいずれか、planIdSequenceは単調増加
+ * side_effects: .pi/plans/storage.json への読み書き、.pi/plans ディレクトリの作成
+ * failure_modes: ディレクトリ作成権限がない場合、storage.jsonの破損によるパースエラー、ディスク容量不足
  * @abdd.explain
- * overview: 計画（Plan）およびステップ（PlanStep）の定義、永続化処理、状態管理を提供する
+ * overview: プラン管理機能の追加により、タスクの段階的計画と実行状態の追跡を行う
  * what_it_does:
- *   - .pi/plans ディレクトリと storage.json への計画データ保存・読み込み
- *   - 一意のID生成と計画オブジェクトの作成
- *   - plan-mode-shared からの定数・ユーティリティの統合
+ *   - .pi/plans/storage.json へのプランデータの永続化
+ *   - PlanおよびPlanStepインターフェースに基づく構造管理
+ *   - プランIDの生成とステータス管理（pending, in_progress, completed, blocked）
+ *   - plan-mode-shared.tsと連携したモード管理の状態操作
  * why_it_exists:
- *   - 複数ステップにまたがるタスクの進捗管理と追跡を行うため
- *   - エージェントによる計画的な動作を担保するため
+ *   - 複雑なタスクを分割して管理するため
+ *   - 作業の進捗を可視化し、実行履歴を残すため
  * scope:
- *   in: 拡張機能API, AgentMessage
- *   out: PlanStorage形式のJSONファイル, ログ出力
+ *   in: Plan名、説明、ステップ定義、外部からのAPI呼び出し
+ *   out: storage.jsonへの更新、ロガーへの操作出力、AgentMessage形式の応答
  */
 
 // File: .pi/extensions/plan.ts

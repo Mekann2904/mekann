@@ -1,27 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/search/call-graph/builder.ts
- * role: コールグラフの構築とインデックスの永続化を担当するモジュール
- * why: ripgrepとctagsを利用した静的解析により、関数呼び出し関係を可視化し、コード探索を支援するため
- * related: .pi/extensions/search/call-graph/types.ts, .pi/extensions/search/utils/cli.ts, .pi/extensions/search/tools/sym_index.ts, .pi/extensions/search/utils/constants.ts
- * public_api: getCallGraphDir, getCallGraphIndexPath, mapKind
- * invariants: インデックスのバージョンは1である、コールグラフディレクトリは.pi/search/call-graph配下である
- * side_effects: ファイルシステムへのディレクトリ作成およびJSONファイルの書き込み
- * failure_modes: ripgrepまたはctagsの実行失敗、ctagsの出力形式の変更、パーミッションエラーによる書き込み失敗
+ * role: コールグラフ構築エンジン
+ * why: ripgrepとctagsのシンボルインデックスを利用し、コードの呼び出し関係と信頼度スコアを含むコールグラフを生成するため
+ * related: .pi/extensions/search/call-graph/types.ts, .pi/extensions/search/utils/cli.js, .pi/extensions/search/tools/sym_index.js
+ * public_api: CallGraphIndex, CallGraphNode, mapKind
+ * invariants: 出力されるJSONのバージョンは常にINDEX_VERSION(1)である
+ * side_effects: .pi/search/call-graph/index.json の読み書きを行う
+ * failure_modes: ripgrep/ctagsの実行失敗、シンボルインデックスの破損、ファイルシステム権限エラー
  * @abdd.explain
- * overview: ripgrepによるテキスト検索とctagsによるシンボル定義を組み合わせ、関数呼び出しノードとエッジを持つコールグラフを構築する
+ * overview: 外部ツール(ripgrep/ctags)と静的解析を組み合わせ、関数定義と呼び出し箇所のマッピングを行い、信頼度付きコールグラフデータベースを構築するモジュール。
  * what_it_does:
- *   - ctagsの出力から関数定義を抽出し、ノードとしてマッピングする
- *   - 正規表現ベースのパターンマッチングで呼び出しを検出し、信頼度スコアを付与する
- *   - コールグラフのメタデータと構造をJSONファイルに永続化する
- *   - 一般的な関数名（get, handle等）を検出対象から除外してノイズを低減する
+ *   - ctagsの出力をパースし、関数定義ノードを作成する
+ *   - 正規表現による呼び出し検出と信頼度スコアリングを行う
+ *   - 結果をJSONファイルとして `.pi/search/call-graph/index.json` に保存する
+ *   - 一般的な名前(get, initなど)による誤検知を低減するフィルタリングを行う
  * why_it_exists:
- *   - コードの依存関係を把握するための構造的なデータを提供する
- *   - 定義と呼び出しの対応付けを自動化し、リファクタリングや影響分析を効率化する
- *   - 外部ツール（ripgrep, ctags）の統合インターフェースとして機能する
+ *   - テキストベースの検索だけでなく、関数間の依存関係を可視化するため
+ *   - ソースコードの静的解析を行い、影響範囲調査などの高度な検索機能を提供するため
  * scope:
- *   in: ctagsが出力するシンボルインデックス、ripgrepの検索結果、作業ディレクトリパス
- *   out: 関数定義リスト、検出された呼び出しリスト、コールグラフインデックスJSON
+ *   in: ctagsシンボルデータ、ripgrep検索結果、プロジェクトのソースコード
+ *   out: 関数ノードとエッジ、信頼度スコアを含む CallGraphIndex JSONファイル
  */
 
 /**

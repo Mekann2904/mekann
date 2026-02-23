@@ -12,9 +12,9 @@ vi.mock("@mariozechner/pi-ai", () => ({
 	Type: {
 		String: () => ({ type: "string" }),
 		Boolean: () => ({ type: "boolean" }),
-		Optional: (type) => type,
-		Object: (fields) => ({ type: "object", fields }),
-		Array: (type) => ({ type: "array", itemType: type }),
+		Optional: (type: any) => type,
+		Object: (fields: any) => ({ type: "object", fields }),
+		Array: (type: any) => ({ type: "array", itemType: type }),
 	},
 }));
 
@@ -41,9 +41,9 @@ vi.mock("@mariozechner/pi-tui", () => ({
 		home: "home",
 		end: "end",
 		delete: "delete",
-		shift: (key) => `shift+${key}`,
+		shift: (key: any) => `shift+${key}`,
 	},
-	matchesKey: vi.fn((data, key) => data === key),
+	matchesKey: vi.fn((data: any, key: any) => data === key),
 }));
 
 vi.mock("@mariozechner/pi-coding-agent", () => ({

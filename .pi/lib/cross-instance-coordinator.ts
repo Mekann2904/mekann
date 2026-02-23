@@ -1,25 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/cross-instance-coordinator.ts
- * role: 複数のPIインスタンス間でLLM並列実行数を調整し、リソース競合を防ぐコーディネーター
- * why: 全インスタンス合計のLLM実行数を制限し、APIレート制限超過やリソース枯渇を回避するため
- * related: runtime-config.ts, node:fs, node:os, node:process
- * public_api: ActiveModelInfo, InstanceInfo, CoordinatorConfig, CoordinatorInternalState, getDefaultConfig
- * invariants: coordinator.jsonおよびインスタンスロックファイルは~/.pi/runtime/配下に存在する、設定値はgetRuntimeConfig()の値に依存する
- * side_effects: ~/.pi/runtime/配下のファイルシステム（ロックファイル、coordinator.json）の読み書き・削除を行う
- * failure_modes: ディレクトリアクセス権限不足によるロック取得失敗、プロセス強制終了時のロックファイル残存（ゾンビプロセス）、ファイルシステムI/Oエラー、分散ロック競合時のリトライ上限超過
+ * role: 複数のpiインスタンス間でLLM並列数制限を調整するコーディネータ
+ * why: プロセス間でリソース競合を防ぎ、全体の並列数を適切に管理するため
+ * related: .pi/lib/runtime-config.ts, .pi/lib/adaptive-total-limit.ts
+ * public_api: ActiveModelInfo, InstanceInfo, CoordinatorConfig, CoordinatorInternalState
+ * invariants: totalMaxLlmはgetRuntimeConfigおよびadaptiveTotal-limitの計算結果に依存する
+ * side_effects: ~/.pi/runtime/ディレクトリへのファイル作成、更新、削除を行う
+ * failure_modes: ディレクトリ権限がない場合、またはファイルロック取得に失敗した場合に動作しない
  * @abdd.explain
- * overview: ファイルベースのロック機構とハートビート監視を用いて、複数プロセス間でLLM使用状況を共有・制限するモジュール
+ * overview: ファイルベースのロックとハートビートを使用し、複数インスタンスの生存状態と負荷状況を管理する
  * what_it_does:
- *   - ActiveModelInfo, InstanceInfoなどを通じてインスタンスおよびアクティブモデルの状態を定義・管理する
- *   - getDefaultConfig()により、runtime-config.tsから一元管理された設定（totalMaxLlm等）を取得する
- *   - ~/.pi/runtime/配下のロックファイルとメタデータを操作し、インスタンス間の調整を行う基盤を提供する
+ *   - 設定値をruntime-config.tsから集約し、デフォルト設定を生成する
+ *   - ランタイムディレクトリのパスを解決する
  * why_it_exists:
- *   - 複数のインスタンスが同時にLLMを実行する環境において、システム全体の負荷を適切に管理する必要があるため
- *   - 個別の設定ではなくRuntimeConfigを参照することで、設定の一貫性を保証するため
+ *   - インスタンス間の設定の一貫性を保つため
+ *   - 実行環境（stable/default）に応じて柔軟に振る舞うため
  * scope:
- *   in: RuntimeConfig (totalMaxLlm, heartbeatIntervalMs, heartbeatTimeoutMs)
- *   out: ファイルシステム上のインスタンスロックファイルおよび状態ファイル
+ *   in: 環境変数PI_RUNTIME_DIR, RuntimeConfig, getAdaptiveTotalLlm
+ * out: CoordinatorConfig, ランタイムディレクトリパス
  */
 
 /**
@@ -157,6 +156,12 @@ function currentTimeMs(): number {
   return coordinatorNowProvider();
 }
 
+/**
+ * 現在時刻取得関数を設定
+ * @summary 現在時刻関数を設定
+ * @param {(() => number) | undefined} provider - 現在時刻を返す関数（未指定でリセット）
+ * @returns {void}
+ */
 export function setCoordinatorNowProvider(provider?: () => number): void {
   coordinatorNowProvider = provider ?? (() => Date.now());
 }
@@ -1357,11 +1362,11 @@ function tryAcquireLock(
 
     // ATOMIC ACQUISITION: Try to create lock file with wx flag (O_EXCL)
     // This is the primary path - if file doesn't exist, we acquire atomically
+    let fd: number | undefined;
     try {
-      const fd = openSync(lockFile, "wx");
+      fd = openSync(lockFile, "wx");
       const lockContent = JSON.stringify(lock, null, 2);
       writeSync(fd, lockContent);
-      closeSync(fd);
       return lock;
     } catch (error: unknown) {
       const errorCode = (error as NodeJS.ErrnoException)?.code;
@@ -1374,11 +1379,24 @@ function tryAcquireLock(
           return null;
         }
         // Lock was expired and cleaned up, retry acquisition
+        // Add exponential backoff delay to reduce TOCTOU race condition
+        if (attempt < maxRetries) {
+          const delayMs = Math.min(10 * Math.pow(2, attempt), 100);
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+        }
         continue;
       }
 
       // Other errors (permissions, disk full, etc.) - don't retry
       return null;
+    } finally {
+      if (fd !== undefined) {
+        try {
+          closeSync(fd);
+        } catch {
+          // Ignore close errors
+        }
+      }
     }
   }
 

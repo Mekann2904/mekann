@@ -2,7 +2,7 @@
 title: dynamic-tools
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from '@mariozechner/pi-ai': Type
 // from '@mariozechner/pi-coding-agent': ExtensionAPI, ToolResultEvent
 // from '../lib/comprehensive-logger': getLogger
-// ... and 6 more imports
+// ... and 7 more imports
 ```
 
 ## エクスポート一覧
@@ -126,11 +126,15 @@ sequenceDiagram
   Judge->>Unresolved: pattern.pattern.test (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: Promise.race (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
-  Executor->>Executor: コードを実行
+  Executor->>Unresolved: executeCode(wrappedCode).then (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Executor: executeCode
+  Executor->>Internal: 安全なconsoleラッパー作成
   Executor->>Internal: createContext
   Executor->>Executor: runInContext
   Executor->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Internal: setTimeout
+  Executor->>Unresolved: abortController.abort (node_modules/typescript/lib/lib.dom.d.ts)
+  Executor->>Internal: clearTimeout
   Executor->>Unresolved: registry.recordUsage (.pi/lib/dynamic-tools/registry.ts)
   Executor->>Internal: メトリクス記録
   Internal->>Unresolved: usageStatistics.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
@@ -303,6 +307,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  createSandboxConsole["createSandboxConsole()"]
   executeCode["executeCode()"]
   executeDynamicTool["executeDynamicTool()"]
   getAuditLogPath["getAuditLogPath()"]
@@ -312,7 +317,10 @@ flowchart TD
   handleRunDynamicTool["handleRunDynamicTool()"]
   handleToolReflection["handleToolReflection()"]
   registerDynamicToolsExtension["registerDynamicToolsExtension()"]
+  safeStringify["safeStringify()"]
   writeAuditLog["writeAuditLog()"]
+  createSandboxConsole --> safeStringify
+  executeCode --> createSandboxConsole
   executeDynamicTool --> executeCode
   handleCreateTool --> writeAuditLog
   handleDeleteDynamicTool --> writeAuditLog
@@ -403,28 +411,35 @@ async executeDynamicTool(tool: DynamicToolDefinition, params: Record<string, unk
 
 **戻り値**: `Promise<ToolExecutionResult>`
 
+### createSandboxConsole
+
+```typescript
+createSandboxConsole(): Pick<Console, "log" | "info" | "warn" | "error" | "debug">
+```
+
+サンドボックス用の安全なconsoleラッパーを作成
+
+**戻り値**: `Pick<Console, "log" | "info" | "warn" | "error" | "debug">`
+
+### safeStringify
+
+```typescript
+safeStringify(args: unknown[]): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| args | `unknown[]` | はい |
+
+**戻り値**: `string`
+
 ### executeCode
 
 ```typescript
 async executeCode(code: string): Promise<ToolExecutionResult>
 ```
-
-コードを実行
-セキュリティ: VMコンテキストからrequire, process, タイマーを削除し
-外部モジュールアクセス、プロセス操作、サンドボックスエスケープを制限
-
-利用可能なグローバルオブジェクト:
-- console, Buffer
-- 標準オブジェクト: Promise, JSON, Object, Array, String, Number, Boolean, Date, Math
-- エラークラス: Error, TypeError, RangeError, SyntaxError
-- URL関連: URL, URLSearchParams
-
-利用不可（セキュリティ制約）:
-- require: 外部モジュールアクセス禁止
-- process: 環境変数・プロセス情報アクセス禁止
-- global, globalThis: グローバルスコープ汚染禁止
-- __dirname, __filename: ファイルシステムパス漏洩禁止
-- setTimeout, setInterval, clearTimeout, clearInterval: サンドボックスエスケープ防止
 
 **パラメータ**
 
@@ -596,4 +611,4 @@ interface ToolReflectionInput {
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.245Z*
+*自動生成: 2026-02-23T06:29:41.980Z*

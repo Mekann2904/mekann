@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/runtime-error-builders.ts
- * role: タイムアウト時間の解決と統一
- * why: subagents.ts と agent-teams.ts で一貫したタイムアウト挙動を保証するため
- * related: ./runtime-utils.js, ./model-timeouts.js, ./subagents.ts, ./agent-teams.ts
+ * role: タイムアウト時間の決定ロジックを提供するモジュール
+ * why: ユーザー指定、モデル特性、デフォルト値の優先順位を一貫して管理するため
+ * related: runtime-utils.ts, model-timeouts.ts, subagents.ts, agent-teams.ts
  * public_api: resolveEffectiveTimeoutMs
- * invariants: 戻り値は0以上の数値
+ * invariants: 0以上の数値を返す
  * side_effects: なし
- * failure_modes: 不正な型が入力された場合の挙動は依存関数に依存する
+ * failure_modes: 不正な形式のuserTimeoutMs入力によりnormalizeTimeoutMs内部で例外が発生する可能性がある
  * @abdd.explain
- * overview: ユーザー指定、モデル固有、デフォルトの各タイムアウト値を受け取り、最適な有効時間を決定するモジュール。
+ * overview: 複数のタイムアウト候補（ユーザー指定、モデル別デフォルト、フォールバック）から、実行時に使用する最大の時間を決定する
  * what_it_does:
- *   - ユーザー指定タイムアウトとモデル固有タイムアウトを正規化して取得する
- *   - 両方が正の値の場合、大きい方を優先して採用する
- *   - いずれも指定がない場合、フォールバック値を返す
+ *   - ユーザー指定のタイムアウト値を正規化する
+ *   - モデルIDに基づいてモデル固有のタイムアウトを取得する
+ *   - ユーザー指定とモデル固有のタイムアウトのうち大きい方を選択する
+ *   - いずれも未設定の場合はフォールバック値を返す
  * why_it_exists:
- *   - 処理速度の異なる複数のモデルに対し、十分な実行時間を確保するため
- *   - タイムアウト計算ロジックを共通化し、コード重複を排除するため
+ *   - サブエージェントとエージェントチーム間で一貫したタイムアウト挙動を保証するため
+ *   - 処理速度の遅いモデルに対して十分な実行時間を確保するため
  * scope:
- *   in: ユーザー指定値(unknown), モデルID(string|undefined), フォールバック値(number)
- *   out: 決定されたタイムアウト時間(ミリ秒)
+ *   in: ユーザー指定のタイムアウト値、モデルID、フォールバック数値
+ *   out: 決定されたタイムアウト時間（ミリ秒）
  */
 
 /**

@@ -1,27 +1,29 @@
 /**
  * @abdd.meta
  * path: .pi/lib/tui/tui-utils.ts
- * role: 拡張機能間で共有されるTUI関連のユーティリティ関数と定数
- * why: agent-teams.ts と subagents.ts に存在する重複実装を集約し、コードの重複を排除するため
- * related: @mariozechner/pi-tui, .pi/lib/tui/agent-teams.ts, .pi/lib/tui/subagents.ts
- * public_api: LIVE_TAIL_LIMIT, LIVE_MARKDOWN_PREVIEW_MIN_WIDTH, appendTail, toTailLines, countOccurrences, estimateLineCount, looksLikeMarkdown, MarkdownPreviewResult
- * invariants: appendTailは常にmaxLength以下の文字列を返す, estimateLineCountはbytesが0以下のとき0を返す
- * side_effects: なし（すべて純粋関数）
- * failure_modes: appendTailでmaxLengthが負の値の場合空文字列になる可能性がある, looksLikeMarkdownは複雑な構造の誤判定をする可能性がある
+ * role: TUI共通ユーティリティ実装モジュール
+ * why: 拡張機能間で重複していたTUI処理（agent-teams.ts, subagents.ts）を統一し、コード重複を排除するため
+ * related: agent-teams.ts, subagents.ts
+ * public_api: appendTail, toTailLines, countOccurrences, estimateLineCount, looksLikeMarkdown, LIVE_TAIL_LIMIT, LIVE_MARKDOWN_PREVIEW_MIN_WIDTH
+ * invariants: 出力文字列はANSIエスケープや制御文字によって描画が崩れない形式であること
+ * side_effects: なし（純粋関数と定数定義のみ）
+ * failure_modes: 不正なサロゲートペアを含む文字列を処理した場合、length計算やスライスが不正になる可能性がある
  * @abdd.explain
- * overview: TUI出力の制御、整形、検出を行うステートレスなユーティリティ集
+ * overview: TUI（Terminal User Interface）で共通利用される文字列整形、Markdown判定、長さ制御などのユーティリティ関数集
  * what_it_does:
- *   - appendTail: 文字列結合によるバッファリングと最大長制限
- *   - toTailLines: 末尾空白除去と最大行数制限による行配列化
- *   - countOccurrences: 特定文字列の出現回数カウント
- *   - estimateLineCount: バイト数と改行数からの行数推定
- *   - looksLikeMarkdown: 文字列パターンによるMarkdown形式判定
+ *   - ログやテキストの末尾への追加と最大長による切り捨て（appendTail）
+ *   - 文字列の末尾N行の抽出（toTailLines）
+ *   - 特定文字列の出現回数カウント（countOccurrences）
+ *   - バイト数と改行コードからの概算行数計算（estimateLineCount）
+ *   - 文字列のMarkdownフォーマット判定（looksLikeMarkdown）
+ *   - Markdownレンダリング向けの制御文字除去（sanitizePreviewText）
  * why_it_exists:
- *   - エージェントとサブエージェントのTUI実装で共通利用される文字列処理を一箇所にまとめる
- *   - 重複コードを削減し、メンテナンス性を向上させる
+ *   - 複数の拡張機能で散らばっていた同一ロジックを一箇所に集約し、保守性を向上させるため
+ *   - ターミナル描画に特化したテキスト処理（制御文字除去等）を安全に行うため
+ *   - 他のlibモジュールへの依存を含めないLayer 0レイヤーとして設計されているため
  * scope:
- *   in: 文字列(生データ), 数値(制限値/カウント), 真理値(フラグ)
- *   out: 加工・整形後の文字列, 行配列, 数値推定値, 判定結果
+ *   in: 生の文字列データ（ログ、Markdownテキスト）、最大長、行数制限、バイト数
+ *   out: 整形済み文字列、行配列、数値（カウント、行数）、真偽値（Markdown判定）
  */
 
 /**

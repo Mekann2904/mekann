@@ -2,7 +2,7 @@
 title: abdd
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -55,6 +55,10 @@ sequenceDiagram
   Executor->>Internal: setTimeout
   Executor->>Unresolved: childProcess.kill (node_modules/@types/node/child_process.d.ts)
   Executor->>Unresolved: childProcess.stdout?.on (node_modules/@types/node/stream.d.ts)
+  Executor->>Internal: appendBoundedOutput
+  Internal->>Unresolved: Buffer.byteLength (node_modules/@types/node/buffer.d.ts)
+  Internal->>Unresolved: next.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: data.toString (node_modules/@types/node/buffer.d.ts)
   Executor->>Internal: clearTimeout
   System-->>User: 結果
@@ -79,7 +83,7 @@ sequenceDiagram
   System->>Internal: join
   System->>Unresolved: args.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Judge: パストラバーサル攻撃を防ぐためのパス検証関数
+  System->>Judge: パストラバーサル攻撃を防ぐためのパス検証
   Judge->>Judge: resolve
   Judge->>Unresolved: resolved.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System->>Executor: spawnを使用した安全なスクリプト実行関数
@@ -88,6 +92,10 @@ sequenceDiagram
   Executor->>Internal: setTimeout
   Executor->>Unresolved: childProcess.kill (node_modules/@types/node/child_process.d.ts)
   Executor->>Unresolved: childProcess.stdout?.on (node_modules/@types/node/stream.d.ts)
+  Executor->>Internal: appendBoundedOutput
+  Internal->>Unresolved: Buffer.byteLength (node_modules/@types/node/buffer.d.ts)
+  Internal->>Unresolved: next.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Executor->>Unresolved: data.toString (node_modules/@types/node/buffer.d.ts)
   Executor->>Internal: clearTimeout
   System-->>User: 結果
@@ -182,6 +190,9 @@ sequenceDiagram
   System->>Unresolved: childProcess.kill (node_modules/@types/node/child_process.d.ts)
   System->>Unresolved: stdout.slice (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: childProcess.stdout?.on (node_modules/@types/node/stream.d.ts)
+  System->>Internal: appendBoundedOutput
+  Internal->>Unresolved: Buffer.byteLength (node_modules/@types/node/buffer.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: data.toString (node_modules/@types/node/buffer.d.ts)
   System->>Internal: clearTimeout
   System->>Executor: runStepAsync
@@ -235,39 +246,21 @@ flowchart LR
 
 ## 関数
 
-### validateFilePath
+### appendBoundedOutput
 
 ```typescript
-validateFilePath(inputPath: string, baseDir: string): string
+appendBoundedOutput(current: string, incoming: string, maxBytes: number): string
 ```
-
-パストラバーサル攻撃を防ぐためのパス検証関数
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| inputPath | `string` | はい |
-| baseDir | `string` | はい |
+| current | `string` | はい |
+| incoming | `string` | はい |
+| maxBytes | `number` | はい |
 
 **戻り値**: `string`
-
-### isPathWithinBase
-
-```typescript
-isPathWithinBase(filePath: string, baseDir: string): boolean
-```
-
-ファイルパスがベースディレクトリ内にあるか検証
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| filePath | `string` | はい |
-| baseDir | `string` | はい |
-
-**戻り値**: `boolean`
 
 ### runScriptAsync
 
@@ -470,4 +463,4 @@ type Severity = "low" | "medium" | "high"
 乖離重要度
 
 ---
-*自動生成: 2026-02-18T18:06:16.928Z*
+*自動生成: 2026-02-23T06:29:41.505Z*

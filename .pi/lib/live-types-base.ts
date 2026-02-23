@@ -1,20 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/live-types-base.ts
- * role: ライブ監視スナップショットの共通基底型
- * why: SubagentLiveItemとTeamLiveItemの共通フィールドを一元管理し、型の一貫性を保つため
- * related: .pi/lib/subagent-types.ts, .pi/lib/team-types.ts, .pi/lib/live-view-utils.ts
- * public_api: BaseLiveSnapshot
- * invariants: すべてのフィールドは読み取り専用
+ * role: SubagentとTeamのライブ監視で共有する基底型定義
+ * why: SubagentLiveItemとTeamLiveItem間の重複を排除し、共通インターフェースを提供するため
+ * related: ./live-view-utils.js
+ * public_api: BaseLiveSnapshot, LiveStatus
+ * invariants: statusはLiveStatus型である, stdoutTailとstderrTailは文字列である, バイト数と改行数は0以上である
  * side_effects: なし（型定義のみ）
- * failure_modes: なし
+ * failure_modes: なし（型定義のみ）
  * @abdd.explain
- * overview: エージェント実行のライブ監視に共通する状態フィールドを定義
- * what_it_does: stdout/stderrの追跡、タイムスタンプ管理の共通インターフェースを提供
- * why_it_exists: subagent/team間の型重複を解消し、保守性を向上させる
+ * overview: ライブ監視スナップショットの共通基底インターフェースを定義するモジュール
+ * what_it_does:
+ *   - 実行ステータスやタイムスタンプ（開始、終了、最終チャンク）を定義する
+ *   - 標準出力・標準エラー出力のテキスト末尾、バイト数、改行数、改行終端判定を定義する
+ *   - LiveStatus型を再エクスポートする
+ * why_it_exists:
+ *   - 複数のエンティティ（Subagent, Team）で同じ監視データ構造を利用するため
+ *   - 型定義を一箇所に集約し、保守性を向上させるため
  * scope:
- *   in: なし（型定義のみ）
- *   out: 基底インターフェース
+ *   in: ./live-view-utils.js (LiveStatus型)
+ *   out: BaseLiveSnapshot, LiveStatus
  */
 
 /**

@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/embeddings/providers/openai.ts
- * role: OpenAI APIを使用した埋め込みベクトル生成プロバイダーの実装
- * why: text-embedding-3-smallモデルによる埋め込み処理と、pi公式のAPIキー解決ロジックを提供するため
- * related: .pi/lib/embeddings/types.ts, .pi/agent/auth.json
- * public_api: getOpenAIKey, OpenAIEmbeddingProvider
- * invariants: デフォルトモデルはtext-embedding-3-small、デフォルト次元数は1536
- * side_effects: APIキー解決時にファイルシステム読み込みまたはシェルコマンド実行を行う
- * failure_modes: auth.jsonの読み込み失敗、シェルコマンド実行エラー、APIキー未設定
+ * role: OpenAI APIを利用した埋め込みベクトル生成プロバイダの実装
+ * why: piシステム内でOpenAIのtext-embedding-3-smallモデルを通じてテキストをベクトル化するため
+ * related: ../types.js, .pi/agent/auth.json
+ * public_api: OpenAIEmbeddingProvider class, getOpenAIKey function
+ * invariants: text-embedding-3-smallモデルを使用する、APIキーはauth.jsonまたは環境変数から取得する、シェルコマンドによるキー解決を無効化する
+ * side_effects: ファイルシステム(~/.pi/agent/auth.json)への読み取りアクセス、外部API(OpenAI)へのHTTPリクエスト
+ * failure_modes: APIキー不在、ネットワークエラー、APIレートリミット、auth.jsonのJSONパースエラー
  * @abdd.explain
- * overview: OpenAI APIを利用してテキストの埋め込みベクトルを生成し、認証情報を解決するモジュール
+ * overview: OpenAI APIクライアントのラッパーであり、埋め込みベクトル生成とAPIキー管理を担当する
  * what_it_does:
- *   - auth.jsonまたは環境変数からOpenAI APIキーを解決する
- *   - APIキー値がリテラル、環境変数参照、シェルコマンドの場合を判定し値を取得する
- *   - OpenAI Embeddings APIへリクエストを送信しベクトルデータを返却する
+ *   - ~/.pi/agent/auth.jsonおよび環境変数からAPIキーを解決する
+ *   - シェルコマンド(!command)によるキー解決をセキュリティ上の理由で無効化する
+ *   - text-embedding-3-smallモデルを使用してテキストの配列をベクトル化する
  * why_it_exists:
- *   - アプリケーション共通の認証管理方式（pi公式）に従うため
- *   - 特定のAIモデル（text-embedding-3-small）によるベクトル生成機能を抽象化するため
+ *   - OpenAIのモデルを利用した標準的な埋め込み処理を提供するため
+ *   - piプロジェクト固有の認証構成(auth.json)を統一的に扱うため
  * scope:
- *   in: 認証設定ファイルパス、環境変数、埋め込み生成対象のテキスト
- *   out: 解決されたAPIキー文字列、数値配列の埋め込みベクトル
+ *   in: 認証設定ファイルパス、環境変数、入力テキスト配列
+ *   out: 埋め込みベクトル数値配列、APIキー文字列、またはエラー時のnull
  */
 
 /**

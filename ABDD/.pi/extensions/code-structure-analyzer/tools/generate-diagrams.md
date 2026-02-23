@@ -2,7 +2,7 @@
 title: generate-diagrams
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -17,6 +17,7 @@ related: []
 
 ```typescript
 // from './extract-structure.js': StructureData, ClassInfo, FunctionInfo, ...
+// from '../../../lib/text-utils.js': truncateText
 ```
 
 ## エクスポート一覧
@@ -55,6 +56,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     extract_structure["extract-structure"]
+    text_utils["text-utils"]
   end
   main --> local
 ```
@@ -73,12 +75,10 @@ flowchart TD
   sanitizeIdentifier["sanitizeIdentifier()"]
   sanitizeLabel["sanitizeLabel()"]
   sanitizeType["sanitizeType()"]
-  truncateText["truncateText()"]
   generateClassDiagram --> getVisibilitySymbol
   generateClassDiagram --> join
   generateClassDiagram --> sanitizeIdentifier
   generateClassDiagram --> sanitizeType
-  generateClassDiagram --> truncateText
   generateFlowchart --> join
   generateFlowchart --> sanitizeLabel
   generateMermaidDiagrams --> generateClassDiagram
@@ -208,21 +208,6 @@ getVisibilitySymbol(visibility: 'public' | 'protected' | 'private'): string
 
 **戻り値**: `string`
 
-### truncateText
-
-```typescript
-truncateText(text: string, maxLength: number): string
-```
-
-**パラメータ**
-
-| 名前 | 型 | 必須 |
-|------|-----|------|
-| text | `string` | はい |
-| maxLength | `number` | はい |
-
-**戻り値**: `string`
-
 ### resolveImportPath
 
 ```typescript
@@ -278,4 +263,4 @@ interface MermaidDiagrams {
 Mermaid図の出力結果
 
 ---
-*自動生成: 2026-02-18T18:06:17.182Z*
+*自動生成: 2026-02-23T06:29:41.891Z*

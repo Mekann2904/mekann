@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/provider-limits.ts
- * role: 各プロバイダーおよびモデルのAPIレート制限と同時実行数を定義・管理する静的設定モジュール
- * why: 公式ドキュメントに基づいた制限値を集中管理し、API実行時のリミット超過エラーを防止するため
- * related: .pi/lib/provider.ts, .pi/lib/api-client.ts
- * public_api: ModelLimits, ModelTierLimits, ProviderLimitsConfig, ResolvedModelLimits, 定数RUNTIME_DIR, USER_LIMITS_FILE
- * invariants: rpmとconcurrencyは正の整数、tpmは未定義または正の整数
- * side_effects: ファイルシステムへの読み書き（readFileSync, writeFileSync）
- * failure_modes: 設定ファイルのフォーマット不正、JSONパースエラー、ファイルシステムアクセス権限エラー
+ * role: プロバイダーのレート制限と同時実行制限を定義・管理するレジストリ
+ * why: API提供元の仕様に基づき、リクエスト制限を一律に管理し、制限超過によるエラーを防ぐため
+ * related: .pi/lib/provider.ts, .pi/lib/request-queue.ts
+ * public_api: ModelLimits, ModelTierLimits, ProviderLimitsConfig, ResolvedModelLimits
+ * invariants: BUILTIN_LIMITSのversionは固定値、設定ファイルはJSON形式である
+ * side_effects: ユーザーランタイムディレクトリ(~/.pi/runtime)への設定ファイル読み書き
+ * failure_modes: 設定ファイルの存在しない場合、JSONパースエラー、ディレクトリ作成権限不足
  * @abdd.explain
- * overview: 公式ドキュメントおよびコミュニティの知見に基づき、プロバイダーごとのレート制限（RPM, TPM）と並行数制限を定義したレジストリ。
+ * overview: 各プロバイダーおよびモデルごとのRPM/TPM/同時実行数の制限値を定義し、ユーザー設定で上書き可能にするモジュール。
  * what_it_does:
- *   - ModelLimits, ModelTierLimits, ProviderLimitsConfigなどの制限設定を表すインターフェースを定義する
- *   - 組み込みの制限設定を静的データとして保持する
- *   - ユーザー設定ファイルの保存パス（~/.pi/runtime/provider-limits.json）を定義する
- *   - 設定ファイルの読み込み・書き込み・ディレクトリ作成を行うユーティリティ機能を提供する
+ *   - Anthropic, OpenAI, Googleなど各プロバイダの制限値をBUILTIN_LIMITSとして定義する
+ *   - ユーザー設定ファイル(~/.pi/runtime/provider-limits.json)の存在確認と読み込みを行う
+ *   - ModelLimits, ModelTierLimitsなどの制限設定に関連する型をエクスポートする
  * why_it_exists:
- *   - 複数のAIプロバイダー（Anthropic, OpenAI, Googleなど）の異なる制限仕様を一元管理する
- *   - API呼び出しにおいて、プロバイダー側の制限を超過してリクエスト拒否やエラーが発生するのを防ぐ
+ *   - 公式ドキュメントに基づく制限値をコードベースに一元化するため
+ *   - アカウントティア(Pro/Maxなど)に応じた柔軟な制限設定を可能にするため
  * scope:
- *   in: 定義された制限値、読み込まれたJSON設定ファイル
- *   out: 制限値の解決結果（ResolvedModelLimits）、ファイルシステムへの設定書き込み
+ *   in: プロバイダー名、モデル名、ティア名、ユーザー設定ファイルパス
+ *   out: 汎用的な制限設定インターフェース(ModelLimits等)
  */
 
 /**

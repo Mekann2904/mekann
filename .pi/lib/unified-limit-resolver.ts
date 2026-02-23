@@ -1,26 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/unified-limit-resolver.ts
- * role: 5層の並列数制限計算を統合し、単一のインターフェースを提供するFacade
- * why: プリセット、適応学習、分散、ランタイム、スケジューリングという異なる制約レイヤーを集約し、一貫したAPIで並列数を解決するため
- * related: provider-limits.ts, adaptive-rate-controller.ts, cross-instance-coordinator.ts, runtime-config.ts
- * public_api: resolveUnifiedLimits, type UnifiedLimitInput, type LimitBreakdown
- * invariants: 返り値のeffectiveConcurrencyは常に全レイヤーの制約を満たす最小値である、snapshot provider未注入時はデフォルト値と警告ログを使用する
- * side_effects: なし（純粋な計算と統合ロジックのみ）
- * failure_modes: 依存モジュールからの値取得失敗、スナップショットプロバイダーの未注入による設定不備
+ * role: 5層の並列数制限計算を統合し、単一インターフェースを提供するFacade
+ * why: プリセット、学習、分散、ランタイム制約を統合し、リミット計算の複雑さを隠蔽するため
+ * related: adaptive-rate-controller.ts, cross-instance-coordinator.ts, provider-limits.ts, runtime-config.ts
+ * public_api: UnifiedLimitInput, UnifiedLimitResult, LimitBreakdown
+ * invariants: Layer 1〜5の順序で計算を行う、スナップショット未注入時はデフォルト値を使用する
+ * side_effects: 計算処理自体に副作用はないが、警告ログを出力する場合がある
+ * failure_modes: スナップショットプロバイダ未注入、依存モジュールの計算エラー、設定不整合
  * @abdd.explain
- * overview: provider-limits, adaptive-rate-controller, cross-instance-coordinator, runtime-config, task-schedulerの5層から制限値を収集・統合し、最終的な有効並列数を算出する
+ * overview: 5層（プリセット、適応、分散、ランタイム、スケジューリング）の制約条件を統合し、最終的な並列数とRPMを算出するモジュール
  * what_it_does:
- *   - 入力プロバイダー/モデル/優先度に基づき各レイヤーの制限値を収集する
- *   - 各レイヤーの内訳を含む統合結果を生成する
- *   - 最も制約となる要因と理由を特定する
+ *   - プロバイダ・モデル・ティアなどの入力からプリセット制限（Layer 1）を取得する
+ *   - 過去の429エラーに基づく適応的調整（Layer 2）を適用する
+ *   - インスタンス間の負荷分散（Layer 3）を考慮してシェアを計算する
+ *   - ランタイム制約（Layer 4）と現在のリソース使用状況を反映する
+ *   - 各層の計算結果と最終リミットをUnifiedLimitResultとして出力する
  * why_it_exists:
- *   - 複雑な多層アーキテクチャにおける制限計算の複雑度を隠蔽するため
- *   - 初期化順序や依存関係を正しく管理して一貫した結果を返すため
- *   - デバッグ用に制約のボトルネックを特定する情報を提供するため
+ *   - 分散された制限ロジックを1箇所に集約し、利用者側の実装負荷を軽減するため
+ *   - リミット決定における一貫した初期化順序と計算順序を保証するため
  * scope:
- *   in: UnifiedLimitInput (provider, model, tier, operationType, priority)
- *   out: UnifiedLimitResult (effectiveConcurrency, effectiveRpm, breakdown, limitingFactor)
+ *   in: プロバイダ名、モデル名、ティア、操作種別、優先度
+ *   out: 有効並列数、有効RPM、各レイヤーの内訳情報
  */
 
 /**

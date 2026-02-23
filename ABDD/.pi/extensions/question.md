@@ -2,7 +2,7 @@
 title: question
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -18,7 +18,7 @@ related: []
 ```typescript
 // from '@mariozechner/pi-ai': Type
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
-// from '@mariozechner/pi-tui': Text, truncateToWidth, CURSOR_MARKER
+// from '@mariozechner/pi-tui': Text, truncateToWidth, wrapTextWithAnsi, ...
 // from '@mariozechner/pi-tui': matchesKey, Key
 ```
 
@@ -53,18 +53,21 @@ sequenceDiagram
   Internal->>Internal: add
   Internal->>Unresolved: '─'.repeat (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: state.customInput.split (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Unresolved: line.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: wrapTextWithAnsi
+  Internal->>Unresolved: wl.text.slice (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: addCursorLine
-  Internal->>Unresolved: state.customInput.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: state.selected.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: data.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: data.replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: pasteBuffer.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: pasteBuffer.substring (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Unresolved: pasteContent.replace(/\r\n/g, '\n').replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: matchesKey
   Internal->>Unresolved: Key.shift (node_modules/@mariozechner/pi-tui/dist/keys.d.ts)
   Internal->>Unresolved: state.customInput.trim (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: data.charCodeAt (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: data.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: newSelected.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: state.selected.forEach (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   System->>Internal: showConfirmationScreen
@@ -245,6 +248,16 @@ interface QuestionInfo {
 type Answer = string[]
 ```
 
+### QuestionCustomController
+
+```typescript
+type QuestionCustomController = {
+	render: (w: number) => string[];
+	invalidate: () => void;
+	handleInput: (data: string) => void;
+}
+```
+
 ### ConfirmAction
 
 ```typescript
@@ -252,4 +265,4 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.318Z*
+*自動生成: 2026-02-23T06:29:42.084Z*

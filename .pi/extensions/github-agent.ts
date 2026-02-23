@@ -1,25 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/github-agent.ts
- * role: GitHub操作ツールのアダプタ
- * why: LLMエージェントからGitHubリポジトリの情報取得、ファイル閲覧、検索を行うためのインターフェースを提供する
- * related: .pi/extensions/github-agent/gh_agent.sh, node:child_process, @mariozechner/pi-coding-agent
- * public_api: execute(_toolCallId, params: GhAgentArgs)
- * invariants: params.commandは["info", "tree", "read", "search"]のいずれかである、shellスクリプトは実行可能である
- * side_effects: 外部プロセス(gh_agent.sh)を実行する、GitHub APIへのリクエストが発生する
- * failure_modes: 必須パラメータ不足によるエラー、shellスクリプト実行失敗、ネットワークエラー、GitHub APIレートリミット
+ * role: PIエージェントのためのGitHub操作ツール拡張
+ * why: GitHub CLIを介してリポジトリ情報の取得、ファイルツリー閲覧、コンテンツ読み取り、コード検索を行う機能を提供するため
+ * related: .pi/extensions/github-agent/gh_agent.sh, @mariozechner/pi-coding-agent
+ * public_api: registerTool (name: "gh_agent", parameters: GhAgentParams)
+ * invariants: scriptPathは現在のファイル位置からの相対パスで解決される, コマンド種別に応じた必須パラメータが検証される
+ * side_effects: 外部プロセス(gh_agent.sh)の実行, ファイルシステムへのアクセス(スクリプト呼び出し)
+ * failure_modes: 必須パラメータ欠如によるエラー返却, スクリプト実行失敗(non-zero exit), スクリプト実行時の例外キャッチ
  * @abdd.explain
- * overview: GitHub CLIまたはAPIをラップするシェルスクリプトを呼び出し、リポジトリ探索機能を提供する拡張機能
+ * overview: GitHubリポジトリの探索と操作を行うためのシェルスクリプトリレー機能
  * what_it_does:
- *   - info, tree, read, searchコマンドのパラメータ検証と引数構築を行う
- *   - gh_agent.shを子プロセスとして実行し、標準出力を戻り値として返す
- *   - 実行時のエラーを捕捉し、エラーメッセージをフォーマットする
+ *   - GitHubリポジトリのメタデータ取得
+ *   - ディレクトリツリーおよびファイル内容の取得
+ *   - コード、イシュー、リポジトリの検索
+ *   - 外部シェルスクリプト(gh_agent.sh)への引数バリデーションと実行
  * why_it_exists:
- *   - GitHub上のコードベースをエージェントが探索可能にする
- *   - シェルスクリプトによる実装詳細(TypeScriptへの直接的な依存)を隠蔽する
+ *   - AIエージェントからGitHubデータへアクセスするための標準化されたインターフェースを提供する
+ *   - 複雑なGitHub CLI操作をカプセル化し、TypeBoxを通じて型安全な呼び出しを可能にする
  * scope:
- *   in: コマンド種別、リポジトリ指定、パス、検索クエリ、フィルタオプション
- *   out: コマンド実行結果のテキストまたはエラーメッセージ
+ *   in: TypeBoxで定義されたGhAgentParams (command, repo, path, query, search_type, limit, extension)
+ *   out: テキスト形式の実行結果 または エラーメッセージ
  */
 
 import { dirname, resolve } from "node:path";

@@ -1,0 +1,94 @@
+---
+title: pi-coding-agent-rate-limit-fix
+category: api-reference
+audience: developer
+last_updated: 2026-02-23
+tags: [auto-generated]
+related: []
+---
+
+# pi-coding-agent-rate-limit-fix
+
+## 概要
+
+`pi-coding-agent-rate-limit-fix` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+// from 'node:fs/promises': readFile, writeFile
+// from 'node:module': createRequire
+// from '@mariozechner/pi-coding-agent': ExtensionAPI
+```
+
+## エクスポート一覧
+
+| 種別 | 名前 | 説明 |
+|------|------|------|
+
+## 図解
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[pi-coding-agent-rate-limit-fix]
+    main[Main Module]
+  end
+  subgraph external[外部ライブラリ]
+    _mariozechner["@mariozechner"]
+  end
+  main --> external
+```
+
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant pi_coding_agent_rate_limit_fix as "pi-coding-agent-rate-limit-fix"
+  participant mariozechner as "@mariozechner"
+
+```
+
+## 関数
+
+### patchFile
+
+```typescript
+async patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<"patched" | "already" | "skip">
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| requireFn | `NodeRequire` | はい |
+| target | `PatchTarget` | はい |
+
+**戻り値**: `Promise<"patched" | "already" | "skip">`
+
+## 型定義
+
+### Replacement
+
+```typescript
+type Replacement = {
+  marker: string;
+  before: string;
+  after: string;
+}
+```
+
+### PatchTarget
+
+```typescript
+type PatchTarget = {
+  modulePath: string;
+  replacements: Replacement[];
+}
+```
+
+---
+*自動生成: 2026-02-23T06:29:42.073Z*

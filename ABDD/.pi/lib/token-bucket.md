@@ -2,7 +2,7 @@
 title: token-bucket
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -127,6 +127,9 @@ Token bucket rate limiter with RPM support and burst tolerance.
 | getConfig | `getConfig(provider, model): RateLimitConfig` |
 | getOrCreateState | `getOrCreateState(key, provider, model): TokenBucketState` |
 | refillTokens | `refillTokens(state): void` |
+| touchState | `touchState(state): void` |
+| pruneBuckets | `pruneBuckets(now): void` |
+| evictOverflowIfNeeded | `evictOverflowIfNeeded(now): void` |
 
 ## インターフェース
 
@@ -141,6 +144,7 @@ interface TokenBucketState {
   retryAfterMs: number;
   burstMultiplier: number;
   burstTokensUsed: number;
+  lastAccessMs: number;
 }
 ```
 
@@ -180,4 +184,4 @@ interface TokenBucketRateLimiter {
 ```
 
 ---
-*自動生成: 2026-02-18T18:06:17.583Z*
+*自動生成: 2026-02-23T06:29:42.431Z*

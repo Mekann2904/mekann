@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/subagents/live-monitor.ts
- * role: サブエージェント実行のライブ監視UI描画および型定義の再エクスポート
- * why: メインのsubagents.tsから監視ロジックを分離し、保守性を高めるため
- * related: .pi/extensions/subagents.ts, ../../lib/subagent-types.ts, ../../lib/live-view-utils.ts, ../../lib/tui/tui-utils.ts
- * public_api: renderSubagentLiveView
- * invariants: itemsはSubagentLiveItemの配列である、cursorはitemsのインデックス範囲内に収まる
- * side_effects: なし（純粋な描画関数）
- * failure_modes: 不正なcursor値によるインデックスエラー、幅/高さの計算誤差による描画崩れ
+ * role: サブエージェント実行のライブ監視UI描画ロジック
+ * why: メインのsubagents.tsから監視ロジックを分離し、保守性を向上させるため
+ * related: .pi/extensions/subagents.ts, .pi/lib/subagent-types.ts, .pi/lib/live-view-utils.ts
+ * public_api: renderSubagentTreeView, SubagentLiveItem, SubagentLiveMonitorController
+ * invariants: UI更新はLIVE_POLL_INTERVAL_MS(500ms)ごと、プレビューはLIVE_PREVIEW_LINE_LIMIT(36行)制限
+ * side_effects: なし（純粋なUI描画関数とエクスポート定義）
+ * failure_modes: ステータス判定に失敗するとアイコン/色が正しく表示されない、幅計算ミスでレイアウトが崩れる
  * @abdd.explain
- * overview: サブエージェントの実行状態をリストまたはストリームモードで可視化するTUIコンポーネントを提供する
+ * overview: サブエージェントの実行状態をツリービューで可視化し、アクティビティインジケーターとログプレビューを提供する
  * what_it_does:
- *   - サブエージェントの状態（running, completed, failed）を集計し、ステータスバーを表示する
- *   - カーソル位置に基づいたウィンドウ計算を行い、アイテム一覧を描画する
- *   - ライブストリームビューおよびプレビューのフォーマットを行う
- *   - 必要な型定義を再エクスポートする
+ *   - サブエージェントのリストをツリー構造（├──, └──）で描画する
+ *   - ステータス（実行中/完了等）に応じたグリフと色を適用する
+ *   - 実行中の場合はスピナーアニメーションと出力バイト数を表示する
+ *   - フォーマットユーティリティ（時間、バイト数）を用いてメタデータを整形する
  * why_it_exists:
- *   - 実行中のサブエージェントの進捗と出力をリアルタイムに確認するため
- *   - コードベースのモジュール分割を行い、責任範囲を明確にするため
+ *   - サブエージェントの進捗をリアルタイムに確認するインターフェースを提供するため
+ *   - 複雑なUI描画ロジックをメイン処理から分離して責務を分けるため
  * scope:
- *   in: SubagentLiveItem配列、現在のカーソル位置、表示モード、ビュー設定、テーマ
- *   out: TUI描画用の文字列配列
+ *   in: サブエージェントのリスト状態、カーソル位置、描画幅、テーマ設定
+ *   out: 描画用の文字列配列、各種型定義（SubagentLiveItem等）
  */
 
 // File: .pi/extensions/subagents/live-monitor.ts

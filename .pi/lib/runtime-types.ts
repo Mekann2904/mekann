@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/runtime-types.ts
- * role: エージェントランタイムの型定義を一元管理するモジュール
- * why: agent-runtime.tsから型定義を分離し、再利用性と保守性を向上させるため
+ * role: エージェントランタイムの型定義集約モジュール
+ * why: agent-runtime.tsから抽出した型定義を一元管理し、再利用性と保守性を向上させるため
  * related: .pi/extensions/agent-runtime.ts, .pi/lib/priority-scheduler.ts
- * public_api: AgentRuntimeLimits, RuntimeStateProvider, AgentRuntimeSnapshot, RuntimeCapacityCheck, RuntimeDispatchPermitResult
- * invariants: すべての型定義は純粋なTypeScript型のみ（ランタイム値に依存しない）
+ * public_api: AgentRuntimeLimits, RuntimeQueueEntry, RuntimeCapacityReservationRecord, AgentRuntimeState, GlobalScopeWithRuntime, RuntimeStateProvider, TaskPriority, PriorityTaskMetadata
+ * invariants: RuntimeQueueEntryはPriorityTaskMetadataを継承し、優先度情報を含む; AgentRuntimeStateは全サブシステム(subagents, teams, queue, reservations)の現在値を保持する
  * side_effects: なし（純粋な型定義モジュール）
- * failure_modes: なし
+ * failure_modes: 型定義と実装の不整合によるランタイムエラー、GlobalScopeWithRuntimeの型アサーション失敗
  * @abdd.explain
- * overview: エージェント実行ランタイムの型定義を集約したモジュール
+ * overview: エージェント実行環境におけるリソース制限、キュー管理、状態監視、および容量予約に関するデータ構造を定義する
  * what_it_does:
- *   - AgentRuntimeLimits, AgentRuntimeState等の状態型を定義
- *   - RuntimeCapacityCheck, RuntimeDispatchPermitResult等の操作型を定義
- *   - PriorityTaskMetadata, TaskPriorityを再エクスポート
+ *   - TaskPriorityやPriorityTaskMetadataを再エクスポートする
+ *   - エージェントの並列実行数や待機時間などの制限値を定義する
+ *   - 優先度キューのエントリ、容量予約、統計情報の型を定義する
+ *   - ランタイム全体の状態（サブエージェント、チーム、キュー、予約）を表す型を定義する
+ *   - globalThisへランタイム状態を格納するための型拡張を定義する
  * why_it_exists:
- *   - 単一ファイルの肥大化を防ぎ、型定義を独立して管理するため
- *   - 他モジュールからの型参照を容易にするため
+ *   - ランタイムの複雑な状態管理に関する型情報を単一のソースにまとめるため
+ *   - 型の変更を一箇所で行い、関連モジュールへ波及させるため
  * scope:
- *   in: なし（純粋な型定義）
- *   out: エクスポートされた型定義
+ *   in: なし（依存なし、priority-schedulerからの型インポートのみ）
+ * out: エージェントランタイム実装モジュール、スケジューラ、状態へアクセスするクライアントコード
  */
 
 // File: .pi/lib/runtime-types.ts

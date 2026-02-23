@@ -1,9 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/adaptive-total-limit.ts
- * role: クラスタ全体のTotal max LLMを観測ベースで自動調整する学習コントローラー
- * why: 固定上限では負荷変動に追従できないため、429率と遅延を使って安全に上限を最適化する
- * related: .pi/lib/retry-with-backoff.ts, .pi/lib/runtime-config.ts, .pi/lib/cross-instance-coordinator.ts, .pi/extensions/agent-runtime.ts
+ * role: LLM並列数の動的制御と状態永続化
+ * why: APIレート制限やタイムアウト等の過去の観測結果に基づき、システム負荷と安定性を最適化するため
+ * related: .pi/lib/runtime-config.js, .pi/lib/storage-lock.js
+ * public_api: recordObservation, getCurrentLimit, getHardLimit
+ * invariants: learnedLimitはminLimit以上hardMax以下、samplesは最新の順に保持、状態更新はファイルロック内で実行
+ * side_effects: ファイルシステム(.pi/runtime/adaptive-total-limit.json)への書き込み
+ * failure_modes: ファイル書き込み失敗時は状態更新をスキップし永続化フラグを無効化
+ * @abdd.explain
+ * overview: 観測データ（成功、レート制限、エラー等）を収集・分析し、LLMの同時実行数を動的に調整するモジュール。
+ * what_it_does:
+ *   - 観測サンプルを蓄積し、一定間隔またはサンプル数に基づいて制限値を再計算する
+ *   - 再計算結果をJSONファイルに永続化し、プロセス再起動後に状態を復元する
+ *   - 環境変数または設定に基づき、制限値の下限・上限を動的に解決する
+ * why_it_exists:
+ *   - 固定の制限値では過負荷によるエラー増加や、過小設定によるスループット低下を防げないため
+ *   - 履歴に基づいた適応的な制御により、安定性と効率のバランスを維持するため
+ * scope:
+ *   in: 環境変数、実行設定、観測結果
+ *   out: 現在の制限値、状態ファイル
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -14,6 +30,10 @@ import { withFileLock } from "./storage-lock.js";
 
 type ObservationKind = "success" | "rate_limit" | "timeout" | "error";
 
+/**
+ * 制限値の観測データインターフェース
+ * @summary 観測データ定義
+ */
 export interface TotalLimitObservation {
   kind: ObservationKind;
   latencyMs?: number;
@@ -337,6 +357,13 @@ function toSafeObservation(observation: TotalLimitObservation, now: number): Obs
   return { kind, latencyMs, waitMs, timestampMs };
 }
 
+/**
+ * 制限値の観測データを記録
+ * @summary 観測データを記録
+ * @param {TotalLimitObservation} observation - 観測データ（種別、レイテンシ等）
+ * @param {number} [baseLimit] - 基準となる制限値（省略可）
+ * @returns {void}
+ */
 export function recordTotalLimitObservation(observation: TotalLimitObservation, baseLimit?: number): void {
   if (!isAdaptiveEnabled()) return;
   withStateWriteLock((state) => {
@@ -348,6 +375,12 @@ export function recordTotalLimitObservation(observation: TotalLimitObservation, 
   });
 }
 
+/**
+ * 適応制限の最大値を取得
+ * @summary 適応制限最大値取得
+ * @param {number} baseLimit - 基準となる制限値
+ * @returns {number} 適応制御された最大LLM数
+ */
 export function getAdaptiveTotalMaxLlm(baseLimit: number): number {
   if (!isAdaptiveEnabled()) return clamp(baseLimit, 1, 64);
   return withStateWriteLock((state) => {
@@ -359,6 +392,11 @@ export function getAdaptiveTotalMaxLlm(baseLimit: number): number {
   });
 }
 
+/**
+ * 現在の適応制限スナップショットを取得
+ * @summary 適応制限スナップショット取得
+ * @returns {enabled: boolean, baseLimit: number, learnedLimit: number, hardMax: number, minLimit: number, sampleCount: number, lastReason: string} 現在の適応制限設定と状態
+ */
 export function getAdaptiveTotalLimitSnapshot(): {
   enabled: boolean;
   baseLimit: number;
@@ -423,12 +461,23 @@ export function resetAdaptiveTotalLimitState(): {
 }
 
 // test helper
+/**
+ * 適応制限状態リセット
+ * @summary 状態をリセット
+ * @returns なし
+ */
 export function __resetAdaptiveTotalLimitStateForTests(): void {
   stateCache = null;
   persistenceFailed = false;
 }
 
 // test helper
+/**
+ * テスト用現在時刻設定
+ * @summary 現在時刻を設定
+ * @param provider 時間提供関数
+ * @returns なし
+ */
 export function __setAdaptiveTotalLimitNowProviderForTests(provider?: () => number): void {
   adaptiveNowProvider = provider ?? (() => Date.now());
 }

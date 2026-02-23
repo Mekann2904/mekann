@@ -1,20 +1,32 @@
 /**
  * @abdd.meta
  * path: .pi/lib/deep-exploration.ts
- * role: 深層探求システム - 「答えのない問題」への対処を支援
- * why: 現状の思考・推論システムの根本的限界を超えるため
- * related: thinking-process.ts, aporia-handler.ts, self-improvement/SKILL.md
- * public_api: DeepExplorationSession, performDeepExploration, MetaMetacognitiveState, NonLinearThought, ParaconsistentState
- * invariants: セッションは「完了」しない、答えは「提供」されない
- * side_effects: なし（純粋な分析機能）
- * failure_modes: 形式化への回帰、答えへの誘惑
+ * role: 高度な認知プロセス（メタ認知、非線形思考、矛盾許容）のためのデータ構造定義
+ * why: 直線的な論理推論では捉えきれない認知のダイナミクスや、自己言及的な分析状態を型安全に表現するため
+ * related: ./aporia-handler.ts, ./cognition-core.ts, ./dialectic-engine.ts
+ * public_api: MetaMetacognitiveState, NonLinearThought, Contradiction, ParaconsistentState, SelfDestructionResult
+ * invariants:
+ *   - MetaMetacognitiveState.layer0は必ず存在する
+ *   - NonLinearThought.associationsのstrengthは0以上1以下
+ *   - Contradictionのstateはactive, acknowledged, productiveのいずれか
+ * side_effects: なし（純粋な型定義ファイル）
+ * failure_modes:
+ *   - 層構造の整合性が取れない状態でのMetaMetacognitiveStateの構築
+ *   - 矛盾状態がexplosionGuardsを超えて論理爆発を起こす設計ミス
  * @abdd.explain
- * overview: 7つの哲学的視座を統合し、現状の思考・推論システムの限界を超える探求を支援
- * what_it_does: 超メタ認知、非線形思考、矛盾維持推論、自己前提破壊
- * why_it_exists: 「答えのない問題」に対して、「解決」ではなく「共生」を可能にするため
+ * overview: AIの深層探索を行うための複雑な認知状態をモデル化した型定義集合
+ * what_it_does:
+ *   - 思考の思考を再帰的に観測するMetaMetacognitiveStateを定義する
+ *   - 論理的飛躍や連想を表すNonLinearThoughtを構造化する
+ *   - 矛盾を許容し活用するParaconsistentStateの状態を保持する
+ *   - 自己の前提を破壊するプロセスの結果SelfDestructionResultを記録する
+ * why_it_exists:
+ *   - 単一の正解に至る直線的推論だけでなく、発散的・弁証法的なプロセスをシステム化するため
+ *   - 認知バイアスや形式化のリスクを明示的に型レベルで扱うため
+ *   - アポリア（思考の行き詰まり）や矛盾を、エラーではなく進化の入り口として扱うため
  * scope:
- *   in: 探求の対象、現在の思考状態
- *   out: 探求の状態、次の方向（答えではない）
+ *   in: 認知プロセスの内部状態、連想チェーン、矛盾のリスト、前提破壊ログ
+ *   out: 上記状態を操作するロジック（このファイルには含まず、利用側で実装）
  */
 
 import type { AporiaDetection, AporiaResolution } from './aporia-handler.js';

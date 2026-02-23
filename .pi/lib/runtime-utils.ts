@@ -1,27 +1,35 @@
 /**
  * @abdd.meta
  * path: .pi/lib/runtime-utils.ts
- * role: サブエージェントおよびエージェントチーム実行のためのランタイムユーティリティ
- * why: タイムアウト、リトライ、同時実行制御、ID生成、エラー整形など、実行時に必要となる共通処理を一箇所に集約し再利用性と信頼性を確保するため
+ * role: ランタイムユーティリティ
+ * why: サブエージェントおよびエージェントチームの実行において、データ変換、設定正規化、ID生成などの共通処理を提供するため
  * related: ./retry-with-backoff.js, @mariozechner/pi-ai
- * public_api: trimForError, buildRateLimitKey, buildTraceTaskId, normalizeTimeoutMs, createRetrySchema, toRetryOverrides, toConcurrencyLimit
- * invariants: すべての数値変換関数は0以上の整数を返す、文字列キー生成は小文字化・正規化された空白を使用する
+ * public_api: trimForError, buildRateLimitKey, buildTraceTaskId, normalizeTimeoutMs, createRetrySchema, toRetryOverrides
+ * invariants:
+ *   - trimForErrorの出力は空白が正規化され、最大長を超える場合は末尾が"..."で終わる
+ *   - buildRateLimitKeyの出力は小文字に変換され、"::"で連結される
+ *   - buildTraceTaskIdのシーケンス番号は0以上の整数となる
+ *   - normalizeTimeoutMsの出力は1以上の整数または0となる
  * side_effects: なし
- * failure_modes: 不正な型入力によるフォールバック値の使用、数値変換時の精度消失
+ * failure_modes:
+ *   - normalizeTimeoutMs: オブジェクトや配列が渡された場合、fallback値が返る
+ *   - toRetryOverrides: 不正な型が渡された場合、undefinedが返る
  * @abdd.explain
- * overview: エージェントシステムの実行制御に関連する補助関数群を提供するモジュール。
+ * overview: エージェント実行環境で利用される文字列操作、ID生成、タイムアウト設定、リトライスキーマ定義を行う純粋関数の集合
  * what_it_does:
- *   - エラーメッセージの空白正規化と文字数制限による整形
- *   - プロバイダとモデル名に基づくレート制限キーの生成
- *   - トレースID、デリゲートID、シーケンス番号による一意タスクIDの生成
- *   - 任意の入力値からのタイムアウトミリ秒と同時実行数の正規化
- *   - TypeBoxによるリトライ設定スキーマの定義と、生オブジェクトから型安全なオプションへの変換
+ *   - エラーメッセージの文字列を正規化・切断する
+ *   - プロバイダとモデル名からレート制限キーを生成する
+ *   - トレースIDとデリゲートIDから一意のタスクIDを生成する
+ *   - 任意の入力値を数値（ミリ秒）に正規化する
+ *   - リトライ設定の型定義スキーマを生成する
+ *   - リトライ設定のオブジェクトを型安全な形式に変換する
  * why_it_exists:
- *   - ランタイム設定の検証と正規化ロジックを共通化し、実装の重複を防ぐため
- *   - 外部入力の型安全性を保証し、実行時エラーを未然に防ぐため
+ *   - 実行時のエラーハンドリングとロギングのフォーマットを統一するため
+ *   - 外部入力や設定値を安全な内部形式に変換するため
+ *   - ランタイムの挙動を制御するパラメータ（タイムアウト、リトライ）を検証・生成するため
  * scope:
- *   in: 生の文字列、数値、不明型のオブジェクト
- *   out: 正規化された文字列、数値、TypeBoxスキーマ、型定義されたオプションオブジェクト
+ *   in: 文字列、数値、unknown型の設定値、ID構成要素
+ * out: 整形済み文字列、正規化された数値、型定義オブジェクト、設定オブジェクト
  */
 
 /**

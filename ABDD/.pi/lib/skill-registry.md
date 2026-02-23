@@ -2,7 +2,7 @@
 title: skill-registry
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-// from 'node:fs': existsSync, readFileSync
+// from 'node:fs': existsSync, readFileSync, readdirSync
 // from 'node:os': homedir
 // from 'node:path': dirname, join
 ```
@@ -93,6 +93,7 @@ flowchart TD
   mergeSkillArrays["mergeSkillArrays()"]
   mergeSkills["mergeSkills()"]
   parseSkillFrontmatter["parseSkillFrontmatter()"]
+  resolveSkillByReference["resolveSkillByReference()"]
   resolveSkillContent["resolveSkillContent()"]
   resolveSkills["resolveSkills()"]
   validateSkillReferences["validateSkillReferences()"]
@@ -107,7 +108,10 @@ flowchart TD
   loadSkillsForAgent --> mergeSkillArrays
   loadSkillsForAgent --> resolveSkills
   mergeSkills --> resolveSkills
+  resolveSkillByReference --> getSkillSearchPaths
+  resolveSkillByReference --> loadSkillFromFile
   resolveSkills --> buildSkillIndex
+  resolveSkills --> resolveSkillByReference
   resolveSkills --> resolveSkillContent
   validateSkillReferences --> buildSkillIndex
 ```
@@ -229,6 +233,23 @@ Build a skill index for fast lookup
 | additionalPaths | `string[]` | いいえ |
 
 **戻り値**: `Map<string, SkillDefinition>`
+
+### resolveSkillByReference
+
+```typescript
+resolveSkillByReference(reference: string, options: ResolveSkillsOptions): SkillDefinition | null
+```
+
+Try resolving a skill directly from reference path candidates.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| reference | `string` | はい |
+| options | `ResolveSkillsOptions` | はい |
+
+**戻り値**: `SkillDefinition | null`
 
 ### resolveSkillContent
 
@@ -456,4 +477,4 @@ type SkillReference = string
 スキル参照
 
 ---
-*自動生成: 2026-02-18T18:06:17.567Z*
+*自動生成: 2026-02-23T06:29:42.417Z*

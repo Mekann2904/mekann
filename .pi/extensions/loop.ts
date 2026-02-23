@@ -1,28 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/loop.ts
- * role: ループ実行機能の拡張および検証・参照読み込みサブモジュールのエントリポイント
- * why: モデルの反復実行、引用チェック、検証コマンドの統合、再現可能な実行ログを実現するため
+ * role: Autonomous loop runner extension with reference grounding
+ * why: Enables repeated model iterations with citation checks and reproducible run logs
  * related: README.md, .pi/extensions/rsa.ts, .pi/extensions/question.ts
- * public_api: loadReferences, fetchTextFromUrl, runVerificationCommand, buildIterationPrompt, parseLoopContract
- * invariants: SSRF保護ルールによりプライベートIPやブロック済みホストへのアクセスは拒否される、検証ポリシーは環境変数またはデフォルト設定に基づいて解決される
- * side_effects: ファイルシステムへのログ書き込み、外部URLへのHTTPリクエスト、検証コマンドのプロセス起動
- * failure_modes: DNS解決の失敗、参照のロード失敗、検証コマンドの実行エラー、またはセマンティックな重複検出によるループ停止
+ * public_api: executeLoop, loadReferences, runVerificationCommand, parseLoopContract
+ * invariants: Reference integrity maintained during execution, SSRF protection enforced for network access, verification policies respected
+ * side_effects: Writes execution logs to filesystem, executes system commands via verification policy, spawns child processes for model calls
+ * failure_modes: Model timeout, semantic repetition detection, network fetch failure, command execution rejection by policy
  * @abdd.explain
- * overview: piエージェントのための自律的ループランナーを提供し、参照に基づく実行と検証プロセスを管理する
+ * overview: 認証参照に基づき、検証ポリシーと反復実行を管理する自律型ループランナー拡張機能
  * what_it_does:
- *   - 反復的なモデル実行プロセスを管理し、引用チェックを実施する
- *   - 外部参照をロードし、SSRF保護を適用して安全にURLからテキストを取得する
- *   - 環境変数に基づいて検証ポリシーを解決し、検証コマンドを実行またはスキップする
- *   - セマンティックな重複を検出し、ループの停止条件を判断する
- *   - 実行ログをファイルに出力し、プロセスの再現性を確保する
+ *   - ループ契約を解析し、検証ポリシーに基づくコマンド実行を行う
+ *   - 参照ファイルまたはURLからコンテキストを読み込み、SSRF保護を適用する
+ *   - セマンティックな繰り返しを検出し、反復ごとの出力をログに記録する
+ *   - パターン抽出と意図分類に基づき、ループの焦点と制限を調整する
  * why_it_exists:
- *   - 反復タスクにおいて外部コンテキストとの整合性を検証しつつ進行する必要があるため
- *   - セキュリティ（SSRF対策）と検証の柔軟性を両立するため
- *   - 実行の進捗と結果を永続化し、デバッグや監査を可能にするため
+ *   - 反復的なモデル処理において、引用チェックと再現可能な実行ログを保証するため
+ *   - 外部リソースへのアクセスとコマンド実行を安全なポリシー下で統合するため
+ *   - 実行の停滞や無限ループを検知し、健全性を維持するため
  * scope:
- *   in: 拡張API、ユーザー定義のループ設定、環境変数（検証ポリシーなど）
- *   out: モデル呼び出しの実行、検証コマンドの実行結果、ログファイル、参照データの読み込み結果
+ *   in: ParsedLoopContract, VerificationPolicyConfig, array of LoopReference (files or URLs)
+ *   out: LoopStatus, Run logs written to disk, Verification command results
  */
 
 // File: .pi/extensions/loop.ts
@@ -67,6 +66,12 @@ import {
   type SemanticRepetitionResult,
 } from "../lib/semantic-repetition";
 import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
+import {
+  findRelevantPatterns,
+  getTopSuccessPatterns,
+  getFailurePatternsToAvoid,
+  type ExtractedPattern,
+} from "../lib/pattern-extraction";
 
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 
@@ -108,6 +113,7 @@ import {
   type LoopStatus,
   type LoopGoalStatus,
   type ParsedLoopContract,
+  type RelevantPattern,
   buildIterationPrompt,
   buildReferencePack,
   buildIterationFocus,
@@ -189,6 +195,23 @@ interface LoopIterationResult {
   output: string;
 }
 
+/**
+ * 十分条件の評価結果
+ * self-reflectionスキルの「自己改善の十分条件」に基づく
+ */
+interface SufficiencyAssessment {
+  /** 変動の安定性: 直近N回のイテレーションで出力が安定しているか */
+  outputStability: boolean;
+  /** 限界的効用: さらなる改善のコストが効果を上回る可能性 */
+  diminishingReturns: boolean;
+  /** 安定した連続イテレーション数 */
+  stableIterationCount: number;
+  /** 評価の根拠 */
+  assessmentReason: string;
+  /** 全体的な「十分」判定（参考情報、停止条件ではない） */
+  overallSufficient: boolean;
+}
+
 interface LoopRunSummary {
   runId: string;
   startedAt: string;
@@ -233,6 +256,8 @@ interface LoopRunSummary {
     processingTimeMs: number;
     taskClarified: boolean;
   };
+  /** Sufficiency assessment based on self-reflection skill criteria */
+  sufficiencyAssessment?: SufficiencyAssessment;
 }
 
 interface LoopRunOutput {
@@ -836,6 +861,37 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     });
   }
 
+  // Load relevant patterns from past executions for memory-guided execution
+  let relevantPatterns: RelevantPattern[] = [];
+  try {
+    const rawPatterns = findRelevantPatterns(input.cwd, clarifiedTask, 5);
+    relevantPatterns = rawPatterns.map(p => ({
+      patternType: p.patternType,
+      taskType: p.taskType,
+      description: p.description,
+      agentOrTeam: p.agentOrTeam,
+      confidence: p.confidence,
+      keywords: p.keywords,
+    }));
+    
+    if (relevantPatterns.length > 0) {
+      appendJsonl(logFile, {
+        type: "patterns_loaded",
+        runId,
+        patternCount: relevantPatterns.length,
+        patternTypes: relevantPatterns.map(p => p.patternType),
+      });
+    }
+  } catch (error) {
+    // Pattern loading failure should not block the loop
+    const message = toErrorMessage(error);
+    appendJsonl(logFile, {
+      type: "patterns_error",
+      runId,
+      error: message,
+    });
+  }
+
   // Track semantic stagnation statistics
   const semanticStagnationStats = {
     detected: false,
@@ -858,6 +914,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     });
 
     // Each iteration gets the previous output and validation feedback.
+    // On first iteration, also include relevant patterns from past executions.
     const prompt = buildIterationPrompt({
       task: clarifiedTask,  // Use clarified task
       goal: input.goal,
@@ -867,6 +924,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       references: input.references,
       previousOutput,
       validationFeedback,
+      relevantPatterns: iteration === 1 ? relevantPatterns : undefined,  // Only on first iteration
     });
 
     const started = Date.now();
@@ -906,6 +964,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
           citations,
           referenceCount: input.references.length,
           requireCitation: input.config.requireCitation,
+          confidenceScore: parsedContract.confidenceScore,
         }),
       ];
 
@@ -1094,6 +1153,9 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
     ? semanticStagnationStats.similarities.reduce((a, b) => a + b, 0) / semanticStagnationStats.similarities.length
     : 0;
 
+  // Assess sufficiency based on self-reflection skill criteria
+  const sufficiencyAssessment = assessSufficiency(iterations, input.config.maxIterations);
+
   const summary: LoopRunSummary = {
     runId,
     startedAt,
@@ -1130,6 +1192,8 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
       ...mediatorResult,
       taskClarified: clarifiedTask !== input.task,
     } : undefined,
+    // Sufficiency assessment (always computed for user reference)
+    sufficiencyAssessment,
   };
 
   const summaryPayload = {
@@ -1659,6 +1723,16 @@ function formatLoopResultText(summary: LoopRunSummary, finalOutput: string, warn
     }
   }
 
+  // Sufficiency assessment info
+  const sufficiencyLines: string[] = [];
+  if (summary.sufficiencyAssessment) {
+    const sa = summary.sufficiencyAssessment;
+    sufficiencyLines.push("Sufficiency assessment:");
+    sufficiencyLines.push(`  Overall sufficient: ${sa.overallSufficient ? "yes" : "no"}`);
+    sufficiencyLines.push(`  Output stability: ${sa.outputStability ? "stable" : "unstable"} (${sa.stableIterationCount} consecutive)`);
+    sufficiencyLines.push(`  Reason: ${sa.assessmentReason}`);
+  }
+
   return [
     headline,
     `Run ID: ${summary.runId}`,
@@ -1669,6 +1743,7 @@ function formatLoopResultText(summary: LoopRunSummary, finalOutput: string, warn
     `References: ${summary.referenceCount}`,
     ...deterministicLines,
     ...mediatorLines,
+    ...sufficiencyLines,
     `Log: ${summary.logFile}`,
     `Summary: ${summary.summaryFile}`,
     "",
@@ -1761,3 +1836,89 @@ function htmlToText(value: string): string {
 
 // Re-export truncateTextWithMarker as truncateText for backward compatibility within this module
 const truncateText = truncateTextWithMarker;
+
+/**
+ * 十分条件を評価する
+ * 
+ * self-reflectionスキルの「自己改善の十分条件」に基づき、
+ * ループの終了時に「十分」かどうかを評価する。
+ * この評価は**参考情報**であり、停止条件としては使用されない。
+ * ユーザーが判断するための情報を提供する。
+ * 
+ * @param iterations - ループのイテレーション結果
+ * @param maxIterations - 最大イテレーション数
+ * @returns 十分条件の評価結果
+ */
+function assessSufficiency(
+  iterations: LoopIterationResult[],
+  maxIterations: number
+): SufficiencyAssessment {
+  const SUFFICIENCY_CONFIG = {
+    /** 安定と見なすための連続イテレーション数 */
+    requiredStableIterations: 3,
+    /** 出力が「変化なし」と見なす文字数の閾値 */
+    outputStabilityThreshold: 100,
+    /** 限界的効用が逆転したと見なすイテレーション数比率 */
+    diminishingReturnRatio: 0.7,
+  };
+
+  // 1. 変動の安定性: 直近N回のイテレーションで出力が安定しているか
+  let stableIterationCount = 0;
+  let outputStability = false;
+  
+  if (iterations.length >= SUFFICIENCY_CONFIG.requiredStableIterations) {
+    const recentOutputs = iterations
+      .slice(-SUFFICIENCY_CONFIG.requiredStableIterations)
+      .map((it) => normalizeLoopOutput(it.output));
+    
+    // すべての出力が類似しているかチェック
+    const firstOutput = recentOutputs[0] || "";
+    outputStability = recentOutputs.every(
+      (output) => Math.abs(output.length - firstOutput.length) < SUFFICIENCY_CONFIG.outputStabilityThreshold
+    );
+    
+    if (outputStability) {
+      stableIterationCount = SUFFICIENCY_CONFIG.requiredStableIterations;
+    }
+  }
+
+  // 2. 限界的効用の逆転: イテレーション数が閾値を超えているか
+  const iterationRatio = iterations.length / maxIterations;
+  const diminishingReturns = iterationRatio >= SUFFICIENCY_CONFIG.diminishingReturnRatio;
+
+  // 3. 全体的な「十分」判定
+  const reasons: string[] = [];
+  
+  if (outputStability) {
+    reasons.push(`出力が${stableIterationCount}回連続で安定`);
+  }
+  if (diminishingReturns) {
+    reasons.push(`イテレーション使用率${(iterationRatio * 100).toFixed(0)}%で限界的効用逆転の可能性`);
+  }
+  if (iterations.length >= maxIterations) {
+    reasons.push("最大イテレーションに到達");
+  }
+
+  // ゴールステータスの傾向
+  const recentGoalStatuses = iterations
+    .slice(-3)
+    .map((it) => it.goalStatus);
+  const allRecentGoalsMet = recentGoalStatuses.every((s) => s === "met");
+  if (allRecentGoalsMet && recentGoalStatuses.length > 0) {
+    reasons.push("直近のゴール評価がすべてmet");
+  }
+
+  const overallSufficient = outputStability && (diminishingReturns || allRecentGoalsMet);
+
+  const assessmentReason = reasons.length > 0
+    ? reasons.join("; ")
+    : "まだ十分条件が満たされていない";
+
+  return {
+    outputStability,
+    diminishingReturns,
+    stableIterationCount,
+    assessmentReason,
+    overallSufficient,
+  };
+}

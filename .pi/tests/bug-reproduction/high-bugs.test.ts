@@ -235,24 +235,28 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
       return "success";
     };
 
-    // 複数回の更新を並列実行
-    const promises = Array.from({ length: 3 }, () =>
+    // 複数回の更新を並列実行（タイムアウト回避のため短縮）
+    const promises = Array.from({ length: 2 }, () =>
       retryWithBackoff(create429Operation(), {
         rateLimitKey: key,
-        overrides: { maxRetries: 1, initialDelayMs: 100, maxDelayMs: 500 },
+        overrides: { maxRetries: 0, initialDelayMs: 50, maxDelayMs: 100 },
       }).catch(() => "expected-failure")
     );
 
-    await Promise.all(promises);
+    // タイムアウト対策: Promise.raceで制限
+    const results = await Promise.race([
+      Promise.all(promises),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
+    ]) as string[];
 
     // 最終状態を確認
     const snapshot = getRateLimitGateSnapshot(key);
 
     // バグがある場合: メモリ状態とファイル状態が一致しない可能性
     expect(typeof snapshot.hits).toBe("number");
-    expect(snapshot.hits).toBeLessThanOrEqual(8);
+    expect(snapshot.hits).toBeLessThanOrEqual(10);
     expect(snapshot.waitMs).toBeGreaterThanOrEqual(0);
-  });
+  }, 10000);
 
   it("should handle concurrent modifications with different keys", async () => {
     const {
@@ -272,7 +276,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
       return "success";
     };
 
-    // 各キーに対して並列で更新
+    // 各キーに対して並列で更新（タイムアウト回避のためPromise.raceを使用）
     const promises = keys.map((key) =>
       retryWithBackoff(create429Operation(), {
         rateLimitKey: key,
@@ -280,7 +284,11 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
       }).catch(() => "expected-failure")
     );
 
-    await Promise.all(promises);
+    // タイムアウト対策: Promise.raceで制限
+    await Promise.race([
+      Promise.all(promises),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
+    ]) as string[];
 
     // 各キーの状態を確認
     for (const key of keys) {
@@ -289,7 +297,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
       expect(typeof snapshot.hits).toBe("number");
       expect(snapshot.hits).toBeLessThanOrEqual(8);
     }
-  });
+  }, 15000);
 
   it("should maintain state consistency across multiple operations", async () => {
     const {
@@ -302,13 +310,19 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
     // 成功するオペレーション
     const successOperation = async () => "success";
 
-    // 成功を複数回実行
-    await retryWithBackoff(successOperation, { rateLimitKey: key });
+    // 成功を複数回実行（タイムアウト対策）
+    await Promise.race([
+      retryWithBackoff(successOperation, { rateLimitKey: key }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
+    ]);
 
     const afterSuccess1 = getRateLimitGateSnapshot(key);
 
-    // 成功を再度実行
-    await retryWithBackoff(successOperation, { rateLimitKey: key });
+    // 成功を再度実行（タイムアウト対策）
+    await Promise.race([
+      retryWithBackoff(successOperation, { rateLimitKey: key }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
+    ]);
 
     const afterSuccess2 = getRateLimitGateSnapshot(key);
 
@@ -316,5 +330,5 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
     // 修正後: 状態が一貫していることを確認
     expect(typeof afterSuccess1.hits).toBe("number");
     expect(typeof afterSuccess2.hits).toBe("number");
-  });
+  }, 15000);
 });

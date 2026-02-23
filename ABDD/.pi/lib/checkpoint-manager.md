@@ -2,7 +2,7 @@
 title: checkpoint-manager
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -131,6 +131,71 @@ sequenceDiagram
 
 ## 関数
 
+### getFromCache
+
+```typescript
+getFromCache(taskId: string): Checkpoint | null
+```
+
+キャッシュからチェックポイントを取得
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| taskId | `string` | はい |
+
+**戻り値**: `Checkpoint | null`
+
+### deleteFromCache
+
+```typescript
+deleteFromCache(taskId: string): void
+```
+
+キャッシュからチェックポイントを削除
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| taskId | `string` | はい |
+
+**戻り値**: `void`
+
+### setToCache
+
+```typescript
+setToCache(taskId: string, checkpoint: Checkpoint): void
+```
+
+キャッシュにチェックポイントを保存
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| taskId | `string` | はい |
+| checkpoint | `Checkpoint` | はい |
+
+**戻り値**: `void`
+
+### removeFromCache
+
+```typescript
+removeFromCache(taskId: string): void
+```
+
+キャッシュからチェックポイントを削除
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| taskId | `string` | はい |
+
+**戻り値**: `void`
+
 ### resolveCheckpointDir
 
 ```typescript
@@ -196,6 +261,23 @@ Get checkpoint file path from checkpoint ID.
 | checkpointId | `string` | はい |
 
 **戻り値**: `string`
+
+### findLatestCheckpointByTaskId
+
+```typescript
+findLatestCheckpointByTaskId(dir: string, taskId: string): Checkpoint | null
+```
+
+Find latest checkpoint by task ID.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| dir | `string` | はい |
+| taskId | `string` | はい |
+
+**戻り値**: `Checkpoint | null`
 
 ### parseCheckpointFile
 
@@ -268,6 +350,7 @@ initCheckpointManager(configOverrides?: Partial<CheckpointManagerConfig>): void
 getCheckpointManager(): {
   save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
   load: (taskId: string) => Promise<Checkpoint | null>;
+  loadById: (checkpointId: string) => Promise<Checkpoint | null>;
   delete: (taskId: string) => Promise<boolean>;
   listExpired: () => Promise<Checkpoint[]>;
   cleanup: () => Promise<number>;
@@ -280,6 +363,7 @@ getCheckpointManager(): {
 **戻り値**: `{
   save: (checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: string }) => Promise<CheckpointSaveResult>;
   load: (taskId: string) => Promise<Checkpoint | null>;
+  loadById: (checkpointId: string) => Promise<Checkpoint | null>;
   delete: (taskId: string) => Promise<boolean>;
   listExpired: () => Promise<Checkpoint[]>;
   cleanup: () => Promise<number>;
@@ -294,6 +378,7 @@ async saveCheckpoint(checkpoint: Omit<Checkpoint, "id" | "createdAt"> & { id?: s
 
 Save a checkpoint to disk.
 Operation is idempotent - saving the same taskId overwrites the previous checkpoint.
+保存成功時はキャッシュも更新
 
 **パラメータ**
 
@@ -311,12 +396,29 @@ async loadCheckpoint(taskId: string): Promise<Checkpoint | null>
 
 Load a checkpoint by task ID.
 Returns the most recent checkpoint for the given task.
+キャッシュを優先的に使用し、キャッシュミス時のみファイルから読み込む
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | taskId | `string` | はい |
+
+**戻り値**: `Promise<Checkpoint | null>`
+
+### loadCheckpointById
+
+```typescript
+async loadCheckpointById(checkpointId: string): Promise<Checkpoint | null>
+```
+
+チェックポイントIDでチェックポイントをロードする
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| checkpointId | `string` | はい |
 
 **戻り値**: `Promise<Checkpoint | null>`
 
@@ -328,6 +430,7 @@ async deleteCheckpoint(taskId: string): Promise<boolean>
 
 Delete a checkpoint by task ID.
 Removes all checkpoints associated with the task.
+キャッシュからも削除
 
 **パラメータ**
 
@@ -518,4 +621,4 @@ type CheckpointPriority = "critical" | "high" | "normal" | "low" | "background"
 チェックポイント優先度定義
 
 ---
-*自動生成: 2026-02-18T18:06:17.487Z*
+*自動生成: 2026-02-23T06:29:42.272Z*

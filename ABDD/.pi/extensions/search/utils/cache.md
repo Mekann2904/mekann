@@ -2,7 +2,7 @@
 title: cache
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -38,11 +38,12 @@ classDiagram
     -config: CacheConfig
     -hits: any
     -misses: any
+    -accessOrder: string
+    -touchKey()
     +getCached()
     +setCache()
     +has()
     +invalidateCache()
-    +invalidateTool()
   }
   class CacheEntry {
     <<interface>>
@@ -205,11 +206,13 @@ getOrComputeSync(tool: string, params: Record<string, unknown>, factory: () => T
 | config | `CacheConfig` | private |
 | hits | `any` | private |
 | misses | `any` | private |
+| accessOrder | `string[]` | private |
 
 **メソッド**
 
 | 名前 | シグネチャ |
 |------|------------|
+| touchKey | `touchKey(key): void` |
 | getCached | `getCached(key): T | undefined` |
 | setCache | `setCache(key, result, ttl, params): void` |
 | has | `has(key): boolean` |
@@ -263,4 +266,4 @@ interface CacheStats {
 キャッシュ統計情報を定義
 
 ---
-*自動生成: 2026-02-18T18:06:17.394Z*
+*自動生成: 2026-02-23T06:29:42.142Z*

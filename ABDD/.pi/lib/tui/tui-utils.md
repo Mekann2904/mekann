@@ -2,7 +2,7 @@
 title: tui-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -16,7 +16,7 @@ related: []
 ## インポート
 
 ```typescript
-// from '@mariozechner/pi-tui': Markdown, getMarkdownTheme
+// from '@mariozechner/pi-tui': Markdown, truncateToWidth, MarkdownTheme, ...
 ```
 
 ## エクスポート一覧
@@ -28,6 +28,7 @@ related: []
 | 関数 | `countOccurrences` | 出現回数を数える |
 | 関数 | `estimateLineCount` | 行数を推定する |
 | 関数 | `looksLikeMarkdown` | 行数を推定する |
+| 関数 | `pushWrappedLine` | 1行テキストを幅に合わせて折り返し、出力配列へ追加する。 |
 | 関数 | `renderPreviewWithMarkdown` | Markdown形式で描画 |
 | インターフェース | `MarkdownPreviewResult` | Markdown描画結果 |
 
@@ -63,11 +64,17 @@ flowchart LR
 flowchart TD
   appendTail["appendTail()"]
   countOccurrences["countOccurrences()"]
+  createMarkdownTheme["createMarkdownTheme()"]
   estimateLineCount["estimateLineCount()"]
   looksLikeMarkdown["looksLikeMarkdown()"]
+  pushWrappedLine["pushWrappedLine()"]
   renderPreviewWithMarkdown["renderPreviewWithMarkdown()"]
+  sanitizePreviewText["sanitizePreviewText()"]
   toTailLines["toTailLines()"]
+  looksLikeMarkdown --> sanitizePreviewText
+  renderPreviewWithMarkdown --> createMarkdownTheme
   renderPreviewWithMarkdown --> looksLikeMarkdown
+  renderPreviewWithMarkdown --> sanitizePreviewText
   renderPreviewWithMarkdown --> toTailLines
 ```
 
@@ -90,6 +97,23 @@ sequenceDiagram
 ```
 
 ## 関数
+
+### sanitizePreviewText
+
+```typescript
+sanitizePreviewText(input: string): string
+```
+
+ANSIエスケープや制御文字を除去してプレビュー描画を安定化させる。
+Markdownレンダラが制御シーケンスで失敗するケースを防ぐ。
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| input | `string` | はい |
+
+**戻り値**: `string`
 
 ### appendTail
 
@@ -177,6 +201,47 @@ looksLikeMarkdown(input: string): boolean
 
 **戻り値**: `boolean`
 
+### createMarkdownTheme
+
+```typescript
+createMarkdownTheme(): MarkdownTheme
+```
+
+**戻り値**: `MarkdownTheme`
+
+### passthrough
+
+```typescript
+passthrough(text: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `string`
+
+### pushWrappedLine
+
+```typescript
+pushWrappedLine(output: string[], line: string, width: number): void
+```
+
+1行テキストを幅に合わせて折り返し、出力配列へ追加する。
+ANSIカラーコードを保持したまま折り返す。
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| output | `string[]` | はい |
+| line | `string` | はい |
+| width | `number` | はい |
+
+**戻り値**: `void`
+
 ### renderPreviewWithMarkdown
 
 ```typescript
@@ -209,4 +274,4 @@ interface MarkdownPreviewResult {
 Markdown描画結果
 
 ---
-*自動生成: 2026-02-18T18:06:17.586Z*
+*自動生成: 2026-02-23T06:29:42.437Z*

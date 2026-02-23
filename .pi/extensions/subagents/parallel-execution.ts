@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/subagents/parallel-execution.ts
- * role: サブエージェントの並列実行容量を確保・解決するモジュール
- * why: 並列実行ロジックをメインファイルから分離し、保守性を向上させるため
+ * role: サブエージェントの並列実行容量を解決し、リソース予約を管理する
+ * why: メインファイル（subagents.ts）から並列実行ロジックを分離し、保守性を向上させるため
  * related: .pi/extensions/subagents.ts, .pi/extensions/agent-runtime.ts
  * public_api: SubagentParallelCapacityResolution, resolveSubagentParallelCapacity
- * invariants: appliedParallelismは常に1以上、requestedParallelismは1以上に丸められる
- * side_effects: ランタイム容量のリソース予約を行う
- * failure_modes: 容量不足による並列度低下、最大待機時間経過によるタイムアウト、シグナルによる中断
+ * invariants: requestedParallelismは1以上の整数に丸められる, appliedParallelismは1以上
+ * side_effects: agent-runtimeのリソース予約（CapacityReservationLease）を確保または解放する
+ * failure_modes: リソース枯渇による許可拒否, タイムアウト, シグナルによる中断
  * @abdd.explain
- * overview: サブエージェントの並列実行に必要なリソース容量の確保と、その解決結果を管理する
+ * overview: サブエージェントの並列実行に必要なリソース容量を計算・確保し、即時実行可能か待機が必要かを判定するモジュール
  * what_it_does:
- *   - 要求された並列度に基づき、即座に利用可能な容量を探索して予約を試行する
- *   - 即時確保できない場合、最小限の容量（並列度1）の確保を待機する
- *   - タイムアウトや中断シグナルに応じて、確保状況を判定して結果を返す
+ *   - リクエストされた並列数に基づき、即時実行可能な容量を降順で探索して確保を試みる
+ *   - 即時確保ができない場合、並列数1の最小枠で待機し、リソースが空くまで予約を試行する
+ *   - 最大待機時間、ポーリング間隔、中断シグナルを制御し、結果を詳細なレポートとして返す
+ *   - agent-runtimeの`tryReserveRuntimeCapacity`および`reserveRuntimeCapacity`を呼び出す
  * why_it_exists:
- *   - 並列処理数を動的に制御し、システムリソースの過負荷を防ぐため
- *   - 容量確保の複雑なロジックを単一の責務として分離するため
+ *   - 並列処理のリソース競合を制御し、システム全体の安定性を保つため
+ *   - 容量確保ロジックを集中化し、複雑な条件分岐や待機処理を共通化するため
+ *   - 即時実行と遅延実行の戦略を明確に分離し、エラーハンドリングを統一するため
  * scope:
- *   in: 要求並列度、追加リクエスト数、待機設定、中断シグナル
- *   out: 許可可否、適用並列度、待機時間、予約リース
+ *   in: requestedParallelism, additionalRequests, maxWaitMs, pollIntervalMs, signal
+ *   out: SubagentParallelCapacityResolution (allowed, appliedParallelism, reservation, etc.)
  */
 
 // File: .pi/extensions/subagents/parallel-execution.ts

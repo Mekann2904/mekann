@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/storage-base.ts
- * role: サブエージェントやエージェントチーム等の拡張ストレージにおける共通基底実装を提供するモジュール
- * why: 類似するストレージ実装間でのDRY原則違反を排除し、再利用性を高めるため
- * related: ./fs-utils.ts, ./storage-lock.ts
- * public_api: HasId, BaseRunRecord, BaseStoragePaths, BaseStorage, createPathsFactory, createEnsurePaths, pruneRunArtifacts
- * invariants: BaseStoragePaths.baseDirとrunsDirは必ず存在する, TDefinitionはHasIdを継承する
- * side_effects: ディレクトリの作成、実行アーティファクトのファイル削除
- * failure_modes: ファイルシステムへの書き込み権限がない場合、またはパスが無効な場合にエラーが発生する
+ * role: 拡張機能（サブエージェントやエージェントチーム等）のストレージ実装における共通基底モジュール
+ * why: 同様のストレージ実装間で発生するDRY違反を排除し、循環依存を回避して一貫したパス生成・ファイル管理を行うため
+ * related: .pi/lib/fs-utils.ts, .pi/lib/storage-lock.ts, extensions/subagents/storage.ts, extensions/agent-teams/storage.ts
+ * public_api: createPathsFactory, createEnsurePaths, BaseStorage, BaseStoragePaths, BaseRunRecord, HasId
+ * invariants: ディレクトリ構造は `.pi/{subdir}/runs` および `.pi/{subdir}/storage.json` に基づく
+ * side_effects: ディレクトリの作成（ensureDir）、ファイルの読み書きおよびロック取得
+ * failure_modes: ディレクトリ作成権限がない場合、ファイルロックが取得できない場合、循環依存が発生した場合
  * @abdd.explain
- * overview: 拡張ストレージ（subagents, agent-teamsなど）で使用される汎用的なデータ型、パス生成、初期化、および実行アーティファクトの整理機能を提供する。
+ * overview: ストレージパスの生成、ディレクトリ初期化、およびジェネリックな型定義を提供する基底モジュール
  * what_it_does:
- *   - IDを持つエンティティ定義と実行記録を管理するための基本型を定義する
- *   - サブディレクトリ構造(.pi/{subdir}/runs)を持つパスを生成するファクトリ関数を提供する
- *   - 必要なディレクトリ構造を確保する関数を提供する
- *   - 実行記録に基づいて古いアーティファクトを削除する機能を提供する
+ *   - 指定されたサブディレクトリ名に基づき、`.pi` 配下のパス構造を生成する
+ *   - 必要なディレクトリを確保するパス生成関数を作成する
+ *   - IDを持つエンティティ、実行記録、ストレージ構造の型を定義する
+ *   - fs-utilsおよびstorage-lockと連携してファイル操作を安全に行う
  * why_it_exists:
- *   - 複数のストレージ実装（SubagentStorageやAgentTeamStorageなど）間で重複するコードを集約するため
- *   - 一貫したファイルシステムレイアウトとデータ構造を保証するため
+ *   - 複数の拡張機能で重複するストレージロジックを共通化して保守性を高めるため
+ *   - モジュール間の循環依存を防止し、依存グラフを明確に管理するため
  * scope:
- *   in: サブディレクトリ名(subdir)、現在のワーキングディレクトリ(cwd)
- *   out: 規定されたディレクトリ構造、定義および実行記録の型定義、アーティファクト削除の副作用
+ *   in: サブディレクトリ名、現在作業中のディレクトリパス
+ *   out: ディレクトリ構造を持つパスオブジェクト、定義された型情報、初期化されたファイルシステム状態
  */
 
 /**

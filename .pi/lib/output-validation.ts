@@ -1,25 +1,27 @@
 /**
  * @abdd.meta
  * path: .pi/lib/output-validation.ts
- * role: 構造化された出力形式への準拠を検証するバリデーター
- * why: サブエージェントおよびチームメンバーの出力がフォーマット要件を満たしていることを保証するため
- * related: .pi/lib/output-schema.ts, .pi/lib/subagent-executor.ts, .pi/lib/team-executor.ts
+ * role: サブエージェントおよびチームメンバーの出力文字列に対する構造バリデーションを行うユーティリティ
+ * why: 出力形式の一貫性を担保し、後続処理でのエラーを防止するため
+ * related: .pi/lib/output-schema.ts
  * public_api: hasNonEmptyResultSection, validateSubagentOutput, validateTeamMemberOutput, SubagentValidationOptions, TeamMemberValidationOptions
- * invariants: 必須ラベル（SUMMARY等）は大文字小文字を区別せず検出される
- * side_effects: スキーマ検証モードが有効な場合、違反記録関数（recordSchemaViolation）を呼び出す
- * failure_modes: 必須ラベル欠如、RESULTセクションの空欄、文字数不足、スキーマ違反
+ * invariants: 必須ラベルがすべて存在する場合にのみtrueを返す、RESULTセクションの内容が空の場合はfalseを返す
+ * side_effects: なし（純粋な関数）
+ * failure_modes: 必須ラベルの欠如、文字数不足、RESULTセクションの欠損または空欄
  * @abdd.explain
- * overview: サブエージェントとチームメンバーの出力テキストに対し、正規表現およびオプションでJSONスキーマを用いた構文検証を行うモジュール
+ * overview: 構造化された出力フォーマットへの準拠を確認する正規表現ベースのバリデータ
  * what_it_does:
- *   - RESULTセクションの内容有無を確認する
- *   - 最小文字数および必須ラベルの存在を検証する
- *   - 機能フラグに基づきレガシー検証、デュアル検証、厳格検証を切り替える
+ *   - RESULTセクションに空でない内容が含まれるか判定する
+ *   - 文字数が最小要件を満たすか判定する
+ *   - 事前に定義された必須ラベル（SUMMARY, RESULT等）の存在を正規表現で検証する
+ *   - サブエージェントとチームメンバーで異なるバリデーションルールを適用する
  * why_it_exists:
- *   - エージェントの出力フォーマットを統一し、ダウンストリーム処理の安定性を確保する
- *   - スキーマ検証（P0-1改善）により構造的な整合性を強化する
+ *   - エージェントの出力品質を保証する
+ *   - 不正な形式によるパースエラーを回避する
+ *   - PI_OUTPUT_SCHEMA_MODE機能フラグによる移行期間の運用をサポートする
  * scope:
- *   in: 検証対象の文字列（output）、検証オプション（minChars, requiredLabels）
- *   out: 検証結果（ok: boolean, reason: string）
+ *   in: 検証対象の文字列、オプション設定（最小文字数、必須ラベルリスト）
+ *   out: バリデーション結果（真偽値）と失敗理由の文字列
  */
 
 /**

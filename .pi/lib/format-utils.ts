@@ -1,27 +1,24 @@
 /**
  * @abdd.meta
  * path: .pi/lib/format-utils.ts
- * role: 数値・日時・文字列のフォーマット処理を行うユーティリティモジュール
- * why: 拡張機能間で重複していたフォーマット実装を統一し、コードの重複を排除するため
+ * role: 数値、時間、文字列のフォーマット処理を提供するユーティリティモジュール
+ * why: loop.ts, rsa.ts, agent-teams.ts, subagents.ts に分散していた重複実装を排除し、依存関係のない基礎レイヤー (Layer 0) として共通化するため
  * related: loop.ts, rsa.ts, agent-teams.ts, subagents.ts
  * public_api: formatDuration, formatDurationMs, formatElapsedClock, formatBytes, formatClockTime, normalizeForSingleLine
- * invariants: 依存関係レイヤー0（他のlibモジュールへの依存なし）、バイト数や時間は負の値を0として扱う
- * side_effects: normalizeForSingleLineの呼び出し時に内部Mapキャッシュ（LRU）の状態が変更される
- * failure_modes: 無限大や非数を渡した場合のフォーマット結果、normalizeForSingleLineで巨大な文字列を扱った場合のメモリ消費
+ * invariants: formatDurationは負の数を0msとして扱う, formatDurationMs/formatElapsedClockはstartedAtMsがない場合"-"を返す, formatBytesは整数部のみを扱う, normalizeForSingleLineはキャッシュサイズ256を維持する
+ * side_effects: normalizeForSingleLineが内部LRUキャッシュ(Map)を更新する
+ * failure_modes: formatDurationに非数値を渡した場合"0ms"となる, normalizeForSingleLineでメモリ枯渇時にキャッシュが効かない
  * @abdd.explain
- * overview: 時間、容量、時刻、文字列のデータ表示用文字列への変換を行う静的関数群を提供する
+ * overview: 拡張機能間で共有されるフォーマット処理を集約した依存関係なしのモジュール
  * what_it_does:
- *   - ミリ秒を "500ms" や "1.50s" 形式に変換する
- *   - 開始・終了時刻から経過時間を "1.5s" 形式で算出する
- *   - バイト数を "512B", "1.5KB" などの人間が読みやすい単位に変換する
- *   - タイムスタンプを "HH:mm:ss" 形式の時刻文字列に変換する
- *   - 文字列の空白を圧縮し、指定長で切り詰めて単一行化する（LRUキャッシュを使用）
+ *   - ミリ秒、経過時間、バイト数、時刻を読みやすい文字列に変換する
+ *   - 文字列の空白を圧縮し単一行に正規化する（LRUキャッシュ付き）
  * why_it_exists:
- *   - loop.ts, rsa.ts, agent-teams.ts, subagents.ts に散在していた重複コードを一箇所に集約する
- *   - フォーマットロジックの修正や調整を一箇所で完結させるため
+ *   - 複数ファイルで重複していたフォーマットロジックを一箇所にまとめるため
+ *   - フォーマット処理に対する他モジュールの依存を断ち切るため
  * scope:
- *   in: 数値（時間/バイト）、タイムスタンプ、任意の文字列、オプションの最大長
- *   out: 画面表示用に整形された文字列
+ *   in: 数値(時間/バイト数), DurationItem(開始/終了時刻), 文字列
+ *   out: フォーマット済み文字列
  */
 
 /**

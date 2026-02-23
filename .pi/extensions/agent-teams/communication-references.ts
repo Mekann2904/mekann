@@ -1,13 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/communication-references.ts
- * role: メンバー出力からのパートナー参照検出（V3）
- * why: 構造化トークンと安定境界検出で精度を向上させるため
- * related: .pi/extensions/agent-teams/communication.ts, communication-id.ts
- * public_api: PartnerReferenceResultV3, detectPartnerReferencesV3, ClaimReferenceV3
- * invariants: coverage と specificity が 0-1 の範囲
- * side_effects: なし
- * failure_modes: なし
+ * role: エージェント間のやり取りにおける参照関係とスタンス（賛成・反対）の解析
+ * why: 出力テキストに含まれる他のエージェントへの言及やクレーム参照を抽出し、対話の構造と品質を定量化するため
+ * related: ./communication-id.ts
+ * public_api: ClaimReferenceV3, PartnerReferenceResultV3, detectPartnerReferencesV3
+ * invariants: PartnerReferenceResultV3のcoverage.ratioはcount/totalに等しい
+ * side_effects: RegExpオブジェクトのlastIndexをリセットする（内部状態の変更）
+ * failure_modes: 正規表現のパターンがテキスト構造と一致しない場合、参照が抽出されない
+ * @abdd.explain
+ * overview: 出力テキストから特定のトークン形式（REF, CLAIM, @mention）を用いたエージェント参照を検出し、定量的な指標とクレーム参照リストを生成するモジュール
+ * what_it_does:
+ *   - REF(), CLAIM(), []の構文とメンション（@）の正規表現マッチングを実行する
+ *   - 通信ID（commId）からメンバーID（memberId）への解決と参照カウントを行う
+ *   - 参照カバレッジ（coverage）、特異性（specificity）、品質スコア（overallQuality）を計算する
+ *   - クレーム参照ごとにスタンス（agree/disagree等）を推論してリスト化する
+ * why_it_exists:
+ *   - マルチエージェントシステムにおいて、誰が誰の発言を参照・評価しているかを可視化する必要があるため
+ *   - 構造化された参照と非構造化の言及を区別し、対話の厳密性を評価するため
+ * scope:
+ *   in: 解析対象のテキスト（output）、通信IDリスト、ID間のマッピング情報
+ *   out: 参照されたメンバーID、不足しているメンバー、クレーム参照詳細、各種スコアを含む解析結果オブジェクト
  */
 
 import type { CommIdEntry } from "./communication-id";
@@ -252,12 +265,26 @@ function detectStance(
   return { stance: "unknown", confidence: 0, source: "default" };
 }
 
+/**
+ * 出力からフィールド抽出
+ * @summary フィールド抽出
+ * @param output 対象文字列
+ * @param name フィールド名
+ * @returns 抽出された値
+ */
 export function extractField(output: string, name: string): string | undefined {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = output.match(new RegExp(`^\\s*${escaped}\\s*:\\s*(.+)$`, "im"));
   return match?.[1]?.trim();
 }
 
+/**
+ * 通信IDエントリ作成
+ * @summary IDエントリ作成
+ * @param members メンバー配列
+ * @param salt ソルト値
+ * @returns 通信IDエントリ配列
+ */
 export function buildCommIdEntriesFromMembers(
   members: { id: string }[],
   salt = ""

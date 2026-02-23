@@ -2,7 +2,7 @@
 title: format-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -19,6 +19,7 @@ related: []
 |------|------|------|
 | 関数 | `formatDuration` | ミリ秒を時間文字列へ |
 | 関数 | `formatDurationMs` | 継続時間をフォーマット |
+| 関数 | `formatElapsedClock` | 継続時間を HH:mm:ss 形式でフォーマット |
 | 関数 | `formatBytes` | バイト数をフォーマット |
 | 関数 | `formatClockTime` | 時刻をフォーマット |
 | 関数 | `normalizeForSingleLine` | 単一行文字列を正規化 |
@@ -61,6 +62,22 @@ formatDurationMs(item: DurationItem): string
 ```
 
 継続時間をフォーマット
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| item | `DurationItem` | はい |
+
+**戻り値**: `string`
+
+### formatElapsedClock
+
+```typescript
+formatElapsedClock(item: DurationItem): string
+```
+
+継続時間を HH:mm:ss 形式でフォーマット
 
 **パラメータ**
 
@@ -133,4 +150,4 @@ interface DurationItem {
 Item with start and finish timestamps for duration calculation.
 
 ---
-*自動生成: 2026-02-18T18:06:17.529Z*
+*自動生成: 2026-02-23T06:29:42.335Z*

@@ -624,44 +624,44 @@ describe("analyzeMemberOutput", () => {
     const output = "SUMMARY: Test\nCONFIDENCE: 0.75";
     const diagnostics = analyzeMemberOutput(output);
 
-    expect(diagnostics.confidence).toBe(0.75);
+    expect(diagnostics!.confidence).toBe(0.75);
   });
 
   it("should default to 0.5 confidence when not found", () => {
     const output = "SUMMARY: Test without confidence";
     const diagnostics = analyzeMemberOutput(output);
 
-    expect(diagnostics.confidence).toBe(0.5);
+    expect(diagnostics!.confidence).toBe(0.5);
   });
 
   it("should count evidence signals", () => {
     const output = "EVIDENCE: file1.ts:10, file2.ts:20, file3.ts:30";
     const diagnostics = analyzeMemberOutput(output);
 
-    expect(diagnostics.evidenceCount).toBeGreaterThan(0);
+    expect(diagnostics!.evidenceCount).toBeGreaterThan(0);
   });
 
   it("should detect contradiction signals", () => {
     const output = "RESULT: This is self-contradictory and inconsistent";
     const diagnostics = analyzeMemberOutput(output);
 
-    expect(diagnostics.contradictionSignals).toBeGreaterThan(0);
+    expect(diagnostics!.contradictionSignals).toBeGreaterThan(0);
   });
 
   it("should detect conflict signals", () => {
     const output = "DISCUSSION: I disagree with member-2's claim";
     const diagnostics = analyzeMemberOutput(output);
 
-    expect(diagnostics.conflictSignals).toBeGreaterThan(0);
+    expect(diagnostics!.conflictSignals).toBeGreaterThan(0);
   });
 
   it("should handle empty output", () => {
     const diagnostics = analyzeMemberOutput("");
 
-    expect(diagnostics.confidence).toBe(0.5);
-    expect(diagnostics.evidenceCount).toBe(0);
-    expect(diagnostics.contradictionSignals).toBe(0);
-    expect(diagnostics.conflictSignals).toBe(0);
+    expect(diagnostics!.confidence).toBe(0.5);
+    expect(diagnostics!.evidenceCount).toBe(0);
+    expect(diagnostics!.contradictionSignals).toBe(0);
+    expect(diagnostics!.conflictSignals).toBe(0);
   });
 });
 

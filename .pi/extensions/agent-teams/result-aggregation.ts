@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/agent-teams/result-aggregation.ts
- * role: エージェントチームの実行結果集約およびエラー分類ロジックの提供
- * why: メインロジックから結果処理を分離し、保守性を確保するため
+ * role: チームおよびメンバーの実行結果集計と状態判定
+ * why: agent-teams.tsから結果処理ロジックを分離し、保守性と可読性を向上させるため
  * related: .pi/extensions/agent-teams.ts, .pi/extensions/agent-teams/storage.ts, ../../lib/error-utils.js
- * public_api: isRetryableTeamMemberError, resolveTeamFailureOutcome, resolveTeamMemberAggregateOutcome, type RunOutcomeCode, type RunOutcomeSignal
- * invariants: RunOutcomeSignalは必ずoutcomeCodeとretryRecommendedを含む
- * side_effects: なし（純粋関数）
- * failure_modes: 不正なエラーオブジェクトが渡された場合の分類ロジックの誤動作
+ * public_api: resolveTeamFailureOutcome, resolveTeamMemberAggregateOutcome, resolveTeamParallelRunOutcome, RunOutcomeCode, RunOutcomeSignal, isRetryableTeamMemberError
+ * invariants: 結果コードはRunOutcomeCodeのいずれかである、retryRecommendedはエラー分類に基づくブール値である
+ * side_effects: なし（純粋な関数）
+ * failure_modes: error分類ロジックの変更による結果不一致、未知のエラータイプの誤判定
  * @abdd.explain
- * overview: エージェントチームの実行結果を集約し、エラーの種別に応じて再試行可否や結果コードを判定するモジュール
+ * overview: エージェントチームの実行結果を集計し、成功・失敗・部分的成功などの状態コードを決定するモジュール
  * what_it_does:
- *   - エラーメッセージやステータスコードに基づき、再試行可能か否かを判定する
- *   - エラーの内容（キャンセル、タイムアウト、プレッシャー、再試行可能/不可能な失敗）を解析し、RunOutcomeSignalを生成する
- *   - 複数のチームメンバーの実行結果を集約し、全体の成否と失敗メンバーを特定する
+ *   - エラー内容に基づき再試行可能かどうかを判定し、実行結果コード（SUCCESS, RETRYABLE_FAILURE等）を決定する
+ *   - 複数のメンバー結果を統合し、チーム全体の最終結果と失敗メンバーIDリストを生成する
+ *   - 並列実行された複数チームの結果を集計する
  * why_it_exists:
- *   - 結果処理ロジックを一元化し、エージェントチームの振る舞いを一貫させるため
- *   - 複雑なエラー分類条件をユーティリティとして切り出し、メインフローの可読性を向上させるため
+ *   - 複雑な結果判定ロジックをメインのフローから分離して単一責任にする
+ *   - エラー分類と結果集計のロジックを再利用可能にする
  * scope:
- *   in: エラーオブジェクト、ステータスコード、チームメンバーの実行結果配列
- *   out: 再試行可否フラグ、結果コード、失敗メンバーIDリストを含む実行結果シグナル
+ *   in: エラーオブジェクト、メンバー実行結果リスト、チーム定義、実行記録
+ *   out: 実行結果コード、再試行推奨フラグ、失敗メンバーIDリストを含むRunOutcomeSignalオブジェクト
  */
 
 // File: .pi/extensions/agent-teams/result-aggregation.ts

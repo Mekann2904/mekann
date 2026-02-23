@@ -2,7 +2,7 @@
 title: judge
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -17,6 +17,8 @@ related: []
 
 ```typescript
 // from './storage': TeamDefinition, TeamFinalJudge, TeamMemberResult, ...
+// from 'node:fs': existsSync, readFileSync
+// from 'node:path': resolve, isAbsolute
 // from '../../lib/text-parsing.js': clampConfidence, parseUnitInterval, extractField, ...
 ```
 
@@ -98,9 +100,11 @@ flowchart TD
   resetJudgeWeights["resetJudgeWeights()"]
   runFinalJudge["runFinalJudge()"]
   setJudgeWeights["setJudgeWeights()"]
+  validateWeights["validateWeights()"]
   analyzeMemberOutput --> countEvidenceSignals
   buildFallbackJudge --> computeProxyUncertainty
   computeProxyUncertaintyWithExplainability --> getJudgeWeights
+  computeProxyUncertaintyWithExplainability --> validateWeights
   runFinalJudge --> buildFallbackJudge
 ```
 
@@ -222,6 +226,22 @@ computeProxyUncertainty(memberResults: TeamMemberResult[]): TeamUncertaintyProxy
 | memberResults | `TeamMemberResult[]` | はい |
 
 **戻り値**: `TeamUncertaintyProxy`
+
+### validateWeights
+
+```typescript
+validateWeights(weights: JudgeWeightConfig): boolean
+```
+
+重み設定の妥当性を検証する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| weights | `JudgeWeightConfig` | はい |
+
+**戻り値**: `boolean`
 
 ### computeProxyUncertaintyWithExplainability
 
@@ -400,4 +420,4 @@ interface TeamUncertaintyProxy {
 チームの不確実性を表現
 
 ---
-*自動生成: 2026-02-18T18:06:16.989Z*
+*自動生成: 2026-02-23T06:29:41.838Z*

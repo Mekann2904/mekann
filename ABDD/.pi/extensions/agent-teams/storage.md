@@ -2,7 +2,7 @@
 title: storage
 category: api-reference
 audience: developer
-last_updated: 2026-02-18
+last_updated: 2026-02-23
 tags: [auto-generated]
 related: []
 ---
@@ -41,10 +41,10 @@ related: []
 | インターフェース | `TeamCommunicationAuditEntry` | 通信監査エントリ |
 | インターフェース | `TeamRunRecord` | チーム実行記録 |
 | インターフェース | `TeamStorage` | チームストレージ定義 |
-| インターフェース | `TeamPaths` | チームパス定義 |
 | 型 | `TeamEnabledState` | チームの有効状態を表す型 |
 | 型 | `TeamStrategy` | チームの実行戦略を表す型 |
 | 型 | `TeamJudgeVerdict` | チーム審査の判定結果 |
+| 型 | `TeamPaths` | チームパス定義 |
 
 ## 図解
 
@@ -127,9 +127,6 @@ classDiagram
     +runs: TeamRunRecord
     +currentTeamId: string
     +defaultsVersion: number
-  }
-  class TeamPaths {
-    <<interface>>
   }
 ```
 
@@ -282,6 +279,7 @@ interface TeamMember {
   model?: string;
   enabled: boolean;
   skills?: string[];
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 }
 ```
 
@@ -297,6 +295,7 @@ interface TeamDefinition {
   enabled: TeamEnabledState;
   members: TeamMember[];
   skills?: string[];
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   createdAt: string;
   updatedAt: string;
 }
@@ -417,6 +416,7 @@ interface TeamRunRecord {
   communicationLinks?: Record<string, string[]>;
   summary: string;
   status: "completed" | "failed";
+  error?: string;
   startedAt: string;
   finishedAt: string;
   memberCount: number;
@@ -431,6 +431,9 @@ interface TeamRunRecord {
     uSys: number;
     collapseSignals: string[];
   };
+  achieved?: string[];
+  remaining?: string[];
+  successCriteria?: string[];
   correlationId?: string;
   parentEventId?: string;
 }
@@ -450,15 +453,6 @@ interface TeamStorage {
 ```
 
 チームストレージ定義
-
-### TeamPaths
-
-```typescript
-interface TeamPaths {
-}
-```
-
-チームパス定義
 
 ## 型定義
 
@@ -486,5 +480,13 @@ type TeamJudgeVerdict = "trusted" | "partial" | "untrusted"
 
 チーム審査の判定結果
 
+### TeamPaths
+
+```typescript
+type TeamPaths = BaseStoragePaths
+```
+
+チームパス定義
+
 ---
-*自動生成: 2026-02-18T18:06:17.014Z*
+*自動生成: 2026-02-23T06:29:41.851Z*

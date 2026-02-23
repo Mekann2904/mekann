@@ -1,26 +1,25 @@
 /**
  * @abdd.meta
  * path: .pi/lib/mediator-history.ts
- * role: Mediator層の履歴管理モジュール
- * why: セッションをまたいだ確認済み事実と会話要約の永続化・読み込みを実現するため
- * related: .pi/lib/mediator-types.ts, .pi/lib/intent-mediator.ts
- * public_api: loadConfirmedFacts, saveConfirmedFacts, loadConversationSummary, saveConversationSummary, appendFact, findFactByKey
- * invariants: ファイルロックによる排他制御、JSONの妥当性検証
- * side_effects: ファイルシステムへの読み書き
- * failure_modes: ファイル不存在、パースエラー、ロック競合
+ * role: 確認済み事実の永続化管理
+ * why: メモリディレクトリ上のJSONファイルへの読み書き、タイムスタンプ更新、ディレクトリ作成を担当するため
+ * related: .pi/lib/mediator-types.ts, .pi/lib/storage-lock.ts
+ * public_api: loadConfirmedFacts, saveConfirmedFacts, appendFact, HISTORY_FILES
+ * invariants: 保存時にlastUpdatedAtは現在時刻に更新される、キーが重複する事実は上書きされる
+ * side_effects: ディレクトリが存在しない場合は作成する、ファイルシステムへの書き込みを行う
+ * failure_modes: JSONパース失敗、ファイル書き込み権限エラー、ディレクトリ作成失敗時にデフォルト値またはエラー返却
  * @abdd.explain
- * overview: Mediator層で使用する履歴データの永続化と読み込みを管理する
+ * overview: 確認済み事実(ConfirmedFactsStore)をファイルシステムに保存・復元するモジュール
  * what_it_does:
- *   - confirmed-facts.jsonの読み書き
- *   - conversation-summary.mdの読み書き
- *   - 確認済み事実の追加・検索
- *   - ファイルロックによる排他制御
+ *   - confirmed-facts.jsonからのストアデータの読み込みとバリデーション
+ *   - ストアデータのJSONシリアライズとファイル書き込み
+ *   - 新規事実の追加および既存事実の更新
  * why_it_exists:
- *   - 論文の履歴ℋを永続化し、セッション間で活用するため
- *   - training-freeな実装において、履歴をプロンプトに注入するため
+ *   - アプリケーション再起動後にユーザーの設定や確認済み事実を保持するため
+ *   - ファイルアクセス時の排他制理やエラーハンドリングを共通化するため
  * scope:
- *   in: .pi/memory/ディレクトリパス
- *   out: 履歴データの読み込み結果、保存操作の結果
+ *   in: メモリディレクトリパス、確認済み事実ストア、追加対象の事実データ
+ *   out: 確認済み事実ストア、書き込み成功可否の真偽値
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

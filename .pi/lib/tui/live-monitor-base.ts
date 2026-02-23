@@ -1,26 +1,26 @@
 /**
  * @abdd.meta
  * path: .pi/lib/tui/live-monitor-base.ts
- * role: ライブモニタービューの基底実装
- * why: 複数のライブ監視（サブエージェント、エージェントチーム等）間でのコード重複を排除し、共通パターンを提供するため
- * related: ../agent-utils.js, ../live-view-utils.js, ./tui-utils.ts, @mariozechner/pi-tui
- * public_api: BaseLiveItem, BaseLiveMonitorController, LiveMonitorFactoryOptions, createLiveMonitorFactory
- * invariants: BaseLiveItemの各フィールドは状態遷移に応じて一貫して更新される、stdout/stderrのバイト数と改行数はチャンク追加時に計算される
- * side_effects: なし（純粋なロジックと型定義、ファクトリ関数のみを提供）
- * failure_modes: チャンク追加時の文字数計算の誤り、ステータス更新の不整合、外部依存（@mariozechner/pi-tui）の変更によるビルドエラー
+ * role: ライブモニタUIの基底モジュールおよび汎用ユーティリティ定義
+ * why: サブエージェントやエージェントチームなど、類似するライブモニタ実装間でのコード重複（DRY違反）を排除するため
+ * related: ../format-utils.js, ../live-view-utils.js, ./tui-utils.ts
+ * public_api: BaseLiveItem, BaseLiveMonitorController, createBaseLiveItem, appendChunk
+ * invariants: BaseLiveItemのidは一意、バイト数と改行数はチャンク追加時に累積される、statusは遷移する
+ * side_effects: なし（純粋なデータ型定義とファクトリ/ユーティリティ関数）
+ * failure_modes: 不正なステータス遷移、数値オーバーフロー（極端に長い出力時）
  * @abdd.explain
- * overview: サブエージェントやエージェントチームなど、異なる実装間で共通利用されるライブ監視機能の基底モジュール。データ構造、状態管理、ビューモードの切り替え、TUI描画ロジックを包含する。
+ * overview: ライブ監視ビューに共通するデータ構造、型定義、および基本処理ロジックを提供する基底モジュール
  * what_it_does:
- *   - ライブアイテムの状態（pending, running等）と出力（stdout/stderr）を管理する型定義を提供
- *   - ライブモニターの生成と制御を行うファクトリ関数（createLiveMonitorFactory）をエクスポート
- *   - キー入力処理、リスト/詳細ビューの切り替え、プレビュー描画などの共通TUIロジックを実装
- *   - フォーマットユーティリティ（時間、バイト数）を利用して画面表示を整形
+ *   - ライブアイテムの状態や出力ストリームを管理するための型定義（BaseLiveItem, LiveItemStatus等）
+ *   - ライブモニタのライフサイクル操作を定義するインターフェース（BaseLiveMonitorController）
+ *   - ライブアイテムの生成およびチャンクリッチ（stdout/stderr）の追加処理
+ *   - ストリームデータの解析（バイト数、改行数、末尾改行フラグの計算）
  * why_it_exists:
- *   - 類似するライブモニター実装間でDRY原則に違反する重複コードを削除するため
- *   - 新しい監視対象（エージェント等）を追加する際の実装コストを削減するため
+ *   - 複数の種類（サブエージェント、チーム等）のライブビューで共通利用されるロジックを一箇所に集約するため
+ *   - UI描画ロジックとデータ管理ロジックを分離し、再利用性を高めるため
  * scope:
- *   in: TUIライブラリ（@mariozechner/pi-tui）、内部フォーマットユーティリティ
- *   out: ライブモニターインスタンス、制御コントローラ、基底型インターフェース
+ *   in: チャンク文字列、ストリーム種別、アイテムID、ステータス更新情報
+ *   out: 更新されたBaseLiveItemインスタンス、フォーマットされた文字列
  */
 
 /**

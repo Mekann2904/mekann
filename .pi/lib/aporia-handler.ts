@@ -1,20 +1,28 @@
 /**
  * @abdd.meta
  * path: .pi/lib/aporia-handler.ts
- * role: アポリア（解決不能な緊張関係）対処モジュール
- * why: 解決不能な矛盾を「解決」するのではなく、適切に対処する能力を提供
- * related: verification-workflow.ts, thinking-process.ts, self-improvement/SKILL.md
- * public_api: AporiaType, detectAporia, handleAporia, AporiaResolution, detectAvoidanceTemptation, AporiaDetection
- * invariants: アポリアは統合されない、両極が維持される
+ * role: 定義ファイル
+ * why: アポリア（解決不能な緊張関係）のデータ構造とパターンマッチングの基盤を提供するため
+ * related: .pi/lib/aporia-detector.ts, .pi/lib/aporia-resolver.ts, .pi/types/core.ts
+ * public_api: AporiaType, AporiaDetection, AporiaResolution, ResolutionStrategy, ResolutionContext, APORIA_PATTERNS
+ * invariants: tensionLevelは0-1の範囲である
  * side_effects: なし
- * failure_modes: 不適切な統合への誘惑、決断の回避
+ * failure_modes: 正規表現パターンが不正な文字列をマッチする、緊張レベルの計算ロジックが未定義
  * @abdd.explain
- * overview: アポリアの検出と、統合ではなく両極維持による対処を提供
- * what_it_does: アポリア検出、対処戦略の選択、責任ある決断の支援
- * why_it_exists: ヘーゲル的弁証法への抵抗と、決定不能性の中での決断を可能にするため
+ * overview: アポリア（意思決定におけるジレンマ）を検出・対処するための型定義、インターフェース、および正規表現パターンを集約したモジュールである。
+ * what_it_does:
+ *   - アポリアの種類（完全性vs速度など）を列挙型AporiaTypeとして定義する
+ *   - 検出結果と対処結果の構造をAporiaDetectionとAporiaResolutionインターフェースで規定する
+ *   - 対処戦略の適用条件と実行ロジックの型をResolutionStrategyとして定義する
+ *   - 対処時の状況情報（緊急度、可逆性など）をResolutionContextで保持する
+ *   - テキスト分析によるアポリア検出に使用する正規表現パターンをAPORIA_PATTERNS定数として管理する
+ * why_it_exists:
+ *   - 意思決定プロセスにおける内在的な矛盾や緊張関係を形式化するため
+ *   - 矛盾する要件のトレードオフを可視化し、対処戦略を適用可能にするため
+ *   - 検出ロジックと対処ロジック間で共有されるデータモデルを一元管理するため
  * scope:
- *   in: テキスト、コンテキスト、矛盾情報
- *   out: アポリア検出結果、対処戦略
+ *   in: なし（純粋な定義と定数のエクスポート）
+ * out: アポリア関連の型定義、検出パターン定数
  */
 
 /**

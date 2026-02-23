@@ -15,7 +15,7 @@ import {
 	formatBytes,
 	formatClockTime,
 	normalizeForSingleLine,
-} from "../../lib/format-utils.ts";
+} from "../../lib/format-utils.js";
 
 // ============================================================================
 // formatDuration
@@ -170,7 +170,7 @@ describe("formatDurationMs", () => {
 			fc.assert(
 				fc.property(
 					fc.integer({ min: 0, max: Date.now() }),
-					fc.option(fc.integer({ min: 0, max: Date.now() })),
+					fc.option(fc.integer({ min: 0, max: Date.now() }), { nil: undefined }),
 					(startedAtMs, finishedAtMs) => {
 						const item = { startedAtMs, finishedAtMs };
 						const result = formatDurationMs(item);
@@ -257,7 +257,7 @@ describe("formatElapsedClock", () => {
 			fc.assert(
 				fc.property(
 					fc.integer({ min: 0, max: Date.now() }),
-					fc.option(fc.integer({ min: 0, max: Date.now() })),
+					fc.option(fc.integer({ min: 0, max: Date.now() }), { nil: undefined }),
 					(startedAtMs, finishedAtMs) => {
 						const item = { startedAtMs, finishedAtMs };
 						const result = formatElapsedClock(item);
@@ -397,7 +397,7 @@ describe("formatClockTime", () => {
 	describe("プロパティベーステスト", () => {
 		it("PBT: 結果は常にHH:MM:SS形式またはダッシュである", () => {
 			fc.assert(
-				fc.property(fc.option(fc.integer({ min: 0, max: Date.now() * 2 })), (timestamp) => {
+				fc.property(fc.option(fc.integer({ min: 0, max: Date.now() * 2 }), { nil: undefined }), (timestamp) => {
 					const result = formatClockTime(timestamp);
 					return result === "-" || /^\d{2}:\d{2}:\d{2}$/.test(result);
 				}),
