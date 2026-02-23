@@ -22,7 +22,7 @@
  *   out: グローバルエラーハンドラの設定/解除関数
  */
 
-import { toErrorMessage } from "./error-utils.js";
+import { isCancelledErrorMessage, toErrorMessage } from "./error-utils.js";
 
 /** グローバルエラーハンドラが設定されているかどうか */
 let isSetup = false;
@@ -59,6 +59,11 @@ export interface GlobalErrorHandlerOptions {
  * @summary 未処理のPromise拒否を捕捉する
  */
 function handleUnhandledRejection(reason: unknown, _promise: Promise<unknown>): void {
+  if (isCancelledErrorMessage(reason)) {
+    logger("Unhandled Promise Rejection detected but ignored as cancellation: %s", toErrorMessage(reason));
+    return;
+  }
+
   const errorMessage = toErrorMessage(reason);
   logger("Unhandled Promise Rejection detected: %s", errorMessage);
 
@@ -77,6 +82,11 @@ function handleUnhandledRejection(reason: unknown, _promise: Promise<unknown>): 
  * @summary 未捕捉の例外を捕捉する
  */
 function handleUncaughtException(error: Error, origin: NodeJS.UncaughtExceptionOrigin): void {
+  if (isCancelledErrorMessage(error)) {
+    logger("Uncaught Exception detected but ignored as cancellation (origin: %s): %s", origin, toErrorMessage(error));
+    return;
+  }
+
   const errorMessage = toErrorMessage(error);
   logger("Uncaught Exception detected (origin: %s): %s", origin, errorMessage);
 
@@ -114,6 +124,10 @@ export function setupGlobalErrorHandlers(options: GlobalErrorHandlerOptions = {}
 
   // uncaughtExceptionハンドラを設定
   exceptionHandler = (error, origin) => {
+    if (isCancelledErrorMessage(error)) {
+      handleUncaughtException(error, origin);
+      return;
+    }
     handleUncaughtException(error, origin);
     if (exitOnUncaught) {
       logger("Exiting due to uncaught exception with code %d", exitCode);
