@@ -20,6 +20,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -79,6 +80,19 @@ async function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<"
   }
 
   await writeFile(resolvedPath, patched, "utf-8");
+  return "patched";
+}
+
+async function patchResolvedFilePath(path: string, target: PatchTarget): Promise<"patched" | "already" | "skip"> {
+  const source = await readFile(path, "utf-8");
+  if (source.includes(target.marker)) {
+    return "already";
+  }
+  const patched = source.replace(target.before, target.after);
+  if (patched === source) {
+    return "skip";
+  }
+  await writeFile(path, patched, "utf-8");
   return "patched";
 }
 
@@ -143,6 +157,55 @@ function collectResolvers(requireFn: NodeRequire): NodeRequire[] {
   return [...new Set(resolvers)];
 }
 
+async function listDirsSafe(path: string): Promise<string[]> {
+  try {
+    const entries = await (await import("node:fs/promises")).readdir(path, { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => join(path, entry.name));
+  } catch {
+    return [];
+  }
+}
+
+async function collectDirectNodeModulesRoots(): Promise<string[]> {
+  const roots = new Set<string>();
+
+  const cwd = process.cwd();
+  roots.add(cwd);
+  if (process.argv?.[1]) {
+    roots.add(dirname(process.argv[1]));
+  }
+
+  const home = homedir();
+  roots.add(join(home, ".npm-global"));
+  roots.add("/opt/homebrew/lib");
+  roots.add("/usr/local/lib");
+
+  // nvm install roots: ~/.config/nvm/versions/node/<ver>/lib
+  const nvmVersionsDir = join(home, ".config", "nvm", "versions", "node");
+  const versionDirs = await listDirsSafe(nvmVersionsDir);
+  for (const versionDir of versionDirs) {
+    roots.add(join(versionDir, "lib"));
+  }
+
+  return [...roots];
+}
+
+function resolveCandidatePiAiProviderPaths(root: string): string[] {
+  const baseCandidates = [
+    join(root, "node_modules", "@mariozechner", "pi-ai", "dist", "providers"),
+    join(root, "node_modules", "@mariozechner", "pi-coding-agent", "node_modules", "@mariozechner", "pi-ai", "dist", "providers"),
+  ];
+
+  const files = ["google-shared.js", "anthropic.js", "openai-completions.js", "openai-responses-shared.js"];
+  const paths: string[] = [];
+  for (const dir of baseCandidates) {
+    for (const file of files) {
+      paths.push(join(dir, file));
+    }
+  }
+  return paths;
+}
+
 export default function (pi: ExtensionAPI) {
   let initialized = false;
 
@@ -152,6 +215,10 @@ export default function (pi: ExtensionAPI) {
 
     const requireFn = createRequire(import.meta.url);
     const resolvers = collectResolvers(requireFn);
+    const directRoots = await collectDirectNodeModulesRoots();
+    const directPaths = uniqueNonEmpty(
+      directRoots.flatMap((root) => resolveCandidatePiAiProviderPaths(root)).filter((path) => existsSync(path)),
+    );
     let patchedCount = 0;
     let alreadyCount = 0;
     let skipCount = 0;
@@ -169,9 +236,26 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
+    const directTargetByName = new Map<string, PatchTarget>(
+      PATCH_TARGETS.map((target) => [target.modulePath.split("/").pop() || "", target]),
+    );
+    for (const path of directPaths) {
+      const name = path.split("/").pop() || "";
+      const target = directTargetByName.get(name);
+      if (!target) continue;
+      try {
+        const result = await patchResolvedFilePath(path, target);
+        if (result === "patched") patchedCount++;
+        else if (result === "already") alreadyCount++;
+        else skipCount++;
+      } catch {
+        skipCount++;
+      }
+    }
+
     if (ctx?.hasUI && ctx?.ui) {
       ctx.ui.notify(
-        `pi-ai-abort-fix: patched=${patchedCount}, already=${alreadyCount}, skip=${skipCount}`,
+        `pi-ai-abort-fix: patched=${patchedCount}, already=${alreadyCount}, skip=${skipCount}, directPaths=${directPaths.length}`,
         patchedCount > 0 ? "warning" : "info",
       );
     }
@@ -181,6 +265,7 @@ export default function (pi: ExtensionAPI) {
       alreadyCount,
       skipCount,
       resolverCount: resolvers.length,
+      directPathsCount: directPaths.length,
     });
   });
 }
