@@ -81,6 +81,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **subagent_*** | `subagents.ts` | サブエージェントの作成・実行 | [→](docs/02-user-guide/08-subagents.md) |
 | **agent_team_*** | `agent-teams.ts` | エージェントチームの作成・実行 | [→](docs/02-user-guide/09-agent-teams.md) |
 | **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
+| **ul-workflow** | `ul-workflow.ts` | Research-Plan-Annotate-Implement ワークフロー（計画承認必須） | [→](docs/02-user-guide/16-ul-workflow.md) |
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | 新規 |
 
 ### ユーティリティ
@@ -180,6 +181,7 @@ mekann/
 │   │   ├── subagents.ts     # サブエージェント
 │   │   ├── agent-teams.ts   # エージェントチーム
 │   │   ├── ul-dual-mode.ts  # デュアルモード
+│   │   ├── ul-workflow.ts   # Research-Plan-Annotate-Implement ワークフロー
 │   │   ├── agent-runtime.ts # ランタイム制御（カウンタ共有）
 │   │   ├── usage-tracker.ts # LLM使用状況追跡
 │   │   ├── agent-usage-tracker.ts
@@ -314,6 +316,15 @@ mekann/
 | | `agent_team_status` | 実行中のチーム状態 |
 | | `agent_team_runs` | 実行履歴の表示 |
 | **UL Dual-Orchestration** | `ulmode` | UL Dual-Orchestrationモードの切り替え |
+| **UL Workflow** | `ul_workflow_start` | Research-Plan-Annotate-Implement ワークフロー開始 |
+| | `ul_workflow_status` | ワークフローステータス表示 |
+| | `ul_workflow_approve` | 現在のフェーズを承認 |
+| | `ul_workflow_annotate` | plan.mdの注釈を適用 |
+| | `ul_workflow_abort` | ワークフロー中止 |
+| | `ul_workflow_resume` | 中止したワークフローを再開 |
+| **ULプレフィックス** | `ul <task>` | ワークフローモードで実行 |
+| | `ul fast <task>` | 高速委任モードで実行 |
+| | `ul status` / `approve` / `annotate` / `abort` | ワークフロー操作 |
 | **検索** | `file_candidates` | ファイル候補検索（あいまい検索） |
 | | `code_search` | コード内容の全文検索 |
 | | `sym_index` | シンボルインデックス構築 |

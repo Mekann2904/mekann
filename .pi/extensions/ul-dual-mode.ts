@@ -367,6 +367,17 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     },
   });
 
+  // サブコマンドパターン
+  const UL_SUBCOMMANDS = {
+    fast: /^\s*ul\s+fast\s+/i,
+    workflow: /^\s*ul\s+workflow\s+/i,
+    status: /^\s*ul\s+status\s*$/i,
+    approve: /^\s*ul\s+approve\s*$/i,
+    annotate: /^\s*ul\s+annotate\s*$/i,
+    abort: /^\s*ul\s+abort\s*$/i,
+    resume: /^\s*ul\s+resume\s+/i,
+  };
+
   // 入力先頭が "ul" のときだけ、次の1プロンプトをULモードにする。
   pi.on("input", async (event, ctx) => {
     if (event.source === "extension") {
@@ -395,31 +406,136 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       return { action: "continue" as const };
     }
 
+    // サブコマンド判定
     const transformed = extractTextWithoutUlPrefix(rawText);
     if (!transformed.trim()) {
       state.pendingUlMode = false;
       state.pendingGoalLoopMode = false;
       if (ctx?.hasUI && ctx?.ui) {
-        ctx.ui.notify("`ul` の後に実行内容を入力してください。", "warning");
+        ctx.ui.notify("`ul` の後に実行内容を入力してください。\n使い方: ul <task> | ul fast <task> | ul status | ul approve | ul annotate | ul abort", "warning");
       }
       return { action: "handled" as const };
     }
 
-    state.pendingUlMode = true;
-    state.pendingGoalLoopMode = looksLikeClearGoalTask(transformed);
-    state.currentTask = transformed;  // タスクを保存（reviewer要否判定用）
+    // ul fast <task> → 既存の委任モード
+    if (UL_SUBCOMMANDS.fast.test(rawText)) {
+      const task = rawText.replace(UL_SUBCOMMANDS.fast, "").trim();
+      state.pendingUlMode = true;
+      state.pendingGoalLoopMode = looksLikeClearGoalTask(task);
+      state.currentTask = task;
+      
+      if (ctx?.hasUI && ctx?.ui) {
+        ctx.ui.notify("UL Fast モード: 委任優先で実行します。", "info");
+      }
+      
+      return {
+        action: "transform" as const,
+        text: buildUlTransformedInput(task, state.pendingGoalLoopMode),
+      };
+    }
+
+    // ul workflow <task> または ul <task> → ワークフローモード
+    let taskText = transformed;
+    if (UL_SUBCOMMANDS.workflow.test(rawText)) {
+      taskText = rawText.replace(UL_SUBCOMMANDS.workflow, "").trim();
+    }
     
-    // 小規模タスクの場合は通知を変更
-    const reviewerHint = shouldRequireReviewer(transformed) ? "（完了前にreviewer必須）" : "（小規模タスク）";
+    // コマンド系（status, approve, annotate, abort）
+    if (UL_SUBCOMMANDS.status.test(rawText)) {
+      return {
+        action: "transform" as const,
+        text: `以下のツールを呼び出してワークフローのステータスを表示してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_status", "arguments": {} }
+\`\`\`
+
+ステータスを確認し、ユーザーに結果を報告してください。`,
+      };
+    }
+
+    if (UL_SUBCOMMANDS.approve.test(rawText)) {
+      return {
+        action: "transform" as const,
+        text: `以下のツールを呼び出して現在のフェーズを承認してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_approve", "arguments": {} }
+\`\`\`
+
+承認結果をユーザーに報告してください。`,
+      };
+    }
+
+    if (UL_SUBCOMMANDS.annotate.test(rawText)) {
+      return {
+        action: "transform" as const,
+        text: `以下のツールを呼び出してplan.mdの注釈を適用してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_annotate", "arguments": {} }
+\`\`\`
+
+注釈の検出結果をユーザーに報告してください。`,
+      };
+    }
+
+    if (UL_SUBCOMMANDS.abort.test(rawText)) {
+      return {
+        action: "transform" as const,
+        text: `以下のツールを呼び出してワークフローを中止してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_abort", "arguments": {} }
+\`\`\`
+
+中止結果をユーザーに報告してください。`,
+      };
+    }
+
+    if (UL_SUBCOMMANDS.resume.test(rawText)) {
+      const taskId = rawText.replace(UL_SUBCOMMANDS.resume, "").trim();
+      return {
+        action: "transform" as const,
+        text: `以下のツールを呼び出してワークフローを再開してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_resume", "arguments": { "task_id": "${taskId}" } }
+\`\`\`
+
+再開結果をユーザーに報告してください。`,
+      };
+    }
+
+    // デフォルト: ul <task> → ワークフローモード
+    state.pendingUlMode = false;  // ワークフローモードでは委任モードを使わない
+    state.pendingGoalLoopMode = false;
+    state.currentTask = taskText;
+
     if (ctx?.hasUI && ctx?.ui) {
-      const modeHint = state.pendingGoalLoopMode ? " + loop完了条件モード" : "";
-      const notifyText = `ULモード: 委任優先で効率的に実行します${reviewerHint}${modeHint}。`;
-      ctx.ui.notify(notifyText, "info");
+      ctx.ui.notify("UL Workflow モード: Research-Plan-Annotate-Implement ワークフローを開始します。", "info");
     }
 
     return {
       action: "transform" as const,
-      text: buildUlTransformedInput(transformed, state.pendingGoalLoopMode),
+      text: `以下のツールを呼び出してワークフローを開始してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_start", "arguments": { "task": "${taskText.replace(/"/g, '\\"')}" } }
+\`\`\`
+
+ワークフローが開始されたら、次のステップを指示通りに実行してください:
+1. ul_workflow_research で調査フェーズを実行
+2. ul_workflow_approve で調査を承認
+3. ul_workflow_plan で計画フェーズを実行
+4. ul_workflow_approve で計画を承認
+5. plan.mdに注釈を追加（ユーザーが行う）
+6. ul_workflow_annotate で注釈を適用
+7. ul_workflow_approve で注釈フェーズを承認
+8. ul_workflow_implement で実装フェーズを実行
+9. ul_workflow_approve で完了
+
+各ステップでユーザーに進捗を報告し、承認を求めてください。`,
     };
   });
 
