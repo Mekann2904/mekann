@@ -35,6 +35,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promises as fsPromises } from "fs";
 import { randomBytes } from "node:crypto";
 import { estimateTaskComplexity, type TaskComplexity } from "../lib/agent-utils";
+import { withFileLock, atomicWriteTextFile } from "../lib/storage-lock";
 
 // ワークフローのフェーズ
 type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "completed" | "aborted";
@@ -50,14 +51,74 @@ interface WorkflowState {
   updatedAt: string;
   approvedPhases: string[];
   annotationCount: number;
+  ownerInstanceId: string;  // {sessionId}-{pid} format for multi-instance safety
+}
+
+// Active workflow registry for cross-instance coordination
+interface ActiveWorkflowRegistry {
+  activeTaskId: string | null;
+  ownerInstanceId: string | null;
+  updatedAt: string;
 }
 
 // ディレクトリパス
 const WORKFLOW_DIR = ".pi/ul-workflow";
 const TASKS_DIR = path.join(WORKFLOW_DIR, "tasks");
 const TEMPLATES_DIR = path.join(WORKFLOW_DIR, "templates");
+const ACTIVE_FILE = path.join(WORKFLOW_DIR, "active.json");
 
-// 現在のワークフロー状態（セッション内）
+// Generate unique instance ID matching cross-instance coordinator format
+function getInstanceId(): string {
+  return `${process.env.PI_SESSION_ID || "default"}-${process.pid}`;
+}
+
+// File-based workflow access (replaces memory variable)
+function getCurrentWorkflow(): WorkflowState | null {
+  try {
+    if (!fs.existsSync(ACTIVE_FILE)) return null;
+    const raw = readFileSync(ACTIVE_FILE, "utf-8");
+    const registry: ActiveWorkflowRegistry = JSON.parse(raw);
+    if (!registry.activeTaskId) return null;
+    return loadState(registry.activeTaskId);
+  } catch {
+    return null;
+  }
+}
+
+function setCurrentWorkflow(state: WorkflowState | null): void {
+  if (!fs.existsSync(WORKFLOW_DIR)) {
+    fs.mkdirSync(WORKFLOW_DIR, { recursive: true });
+  }
+
+  const registry: ActiveWorkflowRegistry = state ? {
+    activeTaskId: state.taskId,
+    ownerInstanceId: state.ownerInstanceId,
+    updatedAt: new Date().toISOString(),
+  } : {
+    activeTaskId: null,
+    ownerInstanceId: null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(registry, null, 2));
+}
+
+// Ownership check helper
+function checkOwnership(state: WorkflowState | null): { owned: boolean; error?: string } {
+  const instanceId = getInstanceId();
+  if (!state) {
+    return { owned: false, error: "no_active_workflow" };
+  }
+  if (state.ownerInstanceId !== instanceId) {
+    return {
+      owned: false,
+      error: `workflow_owned_by_other: ${state.ownerInstanceId} (current: ${instanceId})`
+    };
+  }
+  return { owned: true };
+}
+
+// 現在のワークフロー状態（セッション内）- DEPRECATED: Use getCurrentWorkflow()
 let currentWorkflow: WorkflowState | null = null;
 
 /**
@@ -194,11 +255,12 @@ function saveState(state: WorkflowState): void {
   const taskDir = getTaskDir(state.taskId);
   const statusPath = path.join(taskDir, "status.json");
 
-  if (!fs.existsSync(taskDir)) {
-    fs.mkdirSync(taskDir, { recursive: true });
-  }
-
-  fs.writeFileSync(statusPath, JSON.stringify(state, null, 2), "utf-8");
+  withFileLock(statusPath, () => {
+    if (!fs.existsSync(taskDir)) {
+      fs.mkdirSync(taskDir, { recursive: true });
+    }
+    atomicWriteTextFile(statusPath, JSON.stringify(state, null, 2));
+  });
 }
 
 /**
@@ -364,6 +426,7 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const { task } = params;
+      const instanceId = getInstanceId();
 
       // BEGIN FIX: BUG-001 空タスク検証
       const trimmedTask = String(task || "").trim();
@@ -376,8 +439,19 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
       }
       // END FIX
 
-      if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
-        return makeResult(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId}, phase: ${currentWorkflow.phase})\nまず ul_workflow_status で確認するか ul_workflow_abort で中止してください。`, { error: "workflow_already_active" });
+      // Check for existing active workflow using file-based access
+      const existingWorkflow = getCurrentWorkflow();
+      if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
+        const ownership = checkOwnership(existingWorkflow);
+        if (!ownership.owned) {
+          return makeResult(
+            `エラー: 他のpiインスタンスがワークフローを実行中です。\n` +
+            `所有者: ${existingWorkflow.ownerInstanceId}\n` +
+            `Task ID: ${existingWorkflow.taskId}\n` +
+            `現在のインスタンス: ${instanceId}`,
+            { error: ownership.error }
+          );
+        }
       }
 
       const taskId = generateTaskId(trimmedTask);
@@ -396,10 +470,12 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
         updatedAt: now,
         approvedPhases: [],
         annotationCount: 0,
+        ownerInstanceId: instanceId,
       };
 
       createTaskFile(taskId, trimmedTask);
       saveState(currentWorkflow);
+      setCurrentWorkflow(currentWorkflow);
 
       const phaseDescriptions = phases.map((p) => p.toUpperCase()).join(" -> ");
 
@@ -432,6 +508,7 @@ Task ID: ${taskId}
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { task } = params;
+      const instanceId = getInstanceId();
       const trimmedTask = String(task || "").trim();
 
       if (!trimmedTask) {
@@ -442,8 +519,16 @@ Task ID: ${taskId}
         return makeResult(`エラー: タスク説明が短すぎます（現在: ${trimmedTask.length}文字）。`, { error: "task_too_short", length: trimmedTask.length });
       }
 
-      if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
-        return makeResult(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId})\nまず ul_workflow_abort で中止してください。`, { error: "workflow_already_active" });
+      // Check for existing active workflow using file-based access
+      const existingWorkflow = getCurrentWorkflow();
+      if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
+        const ownership = checkOwnership(existingWorkflow);
+        if (!ownership.owned) {
+          return makeResult(
+            `エラー: 他のpiインスタンスがワークフローを実行中です。\n所有者: ${existingWorkflow.ownerInstanceId}`,
+            { error: ownership.error }
+          );
+        }
       }
 
       const taskId = generateTaskId(trimmedTask);
@@ -462,10 +547,12 @@ Task ID: ${taskId}
         updatedAt: now,
         approvedPhases: [],
         annotationCount: 0,
+        ownerInstanceId: instanceId,
       };
 
       createTaskFile(taskId, trimmedTask);
       saveState(currentWorkflow);
+      setCurrentWorkflow(currentWorkflow);
 
       const researchPath = path.join(getTaskDir(taskId), "research.md");
       const planPath = path.join(getTaskDir(taskId), "plan.md");
@@ -566,7 +653,8 @@ ul_workflow_confirm_plan()
     description: "現在のワークフローステータスを表示",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
-      if (!currentWorkflow) {
+      const workflow = getCurrentWorkflow();
+      if (!workflow) {
         return makeResult(`アクティブなワークフローはありません。
 
 新しいワークフローを開始するには:
@@ -584,11 +672,9 @@ ul_workflow_confirm_plan()
         aborted: "中止",
       };
 
-      const planAnnotations = currentWorkflow.phase === "annotate" || currentWorkflow.phase === "implement"
-        ? extractAnnotations(readPlanFile(currentWorkflow.taskId))
+      const planAnnotations = workflow.phase === "annotate" || workflow.phase === "implement"
+        ? extractAnnotations(readPlanFile(workflow.taskId))
         : [];
-
-      const workflow = currentWorkflow;  // Capture for closure
 
       const phasesDisplay = workflow.phases
         .map((p, i) => {
@@ -604,6 +690,7 @@ Task ID: ${workflow.taskId}
 説明: ${workflow.taskDescription}
 作成日時: ${workflow.createdAt}
 更新日時: ${workflow.updatedAt}
+所有者: ${workflow.ownerInstanceId || "unknown"}
 
 フェーズ構成:
 ${phasesDisplay}
@@ -646,8 +733,14 @@ ${phasesDisplay}
     description: "現在のフェーズを承認して次へ進む",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      const currentWorkflow = getCurrentWorkflow();
       if (!currentWorkflow) {
         return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const ownership = checkOwnership(currentWorkflow);
+      if (!ownership.owned) {
+        return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。\n所有者: ${currentWorkflow.ownerInstanceId}`, { error: ownership.error });
       }
       
       if (currentWorkflow.phase === "completed" || currentWorkflow.phase === "aborted") {
@@ -690,6 +783,10 @@ ${phasesDisplay}
       } else if (nextPhase === "completed") {
         text += `\nワークフローが完了しました。\n`;
       }
+
+      // Sync to file
+      saveState(currentWorkflow);
+      setCurrentWorkflow(currentWorkflow);
       
       return makeResult(text, { taskId: currentWorkflow.taskId, previousPhase, nextPhase });
     },
@@ -702,8 +799,14 @@ ${phasesDisplay}
     description: "plan.mdの注釈を検出・適用",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      const currentWorkflow = getCurrentWorkflow();
       if (!currentWorkflow) {
         return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const ownership = checkOwnership(currentWorkflow);
+      if (!ownership.owned) {
+        return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
       
       if (currentWorkflow.phase !== "annotate" && currentWorkflow.phase !== "plan") {
@@ -735,6 +838,7 @@ plan.md に注釈を追加してください:
       currentWorkflow.annotationCount = annotations.length;
       currentWorkflow.updatedAt = new Date().toISOString();
       saveState(currentWorkflow);
+      setCurrentWorkflow(currentWorkflow);
       
       return makeResult(`${annotations.length} 件の注釈を検出しました。
 
@@ -757,8 +861,14 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
     description: "plan.mdを表示して実行の確認を求める",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      const currentWorkflow = getCurrentWorkflow();
       if (!currentWorkflow) {
         return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const ownership = checkOwnership(currentWorkflow);
+      if (!ownership.owned) {
+        return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
       if (currentWorkflow.phase !== "plan") {
@@ -810,8 +920,14 @@ ${planContent}
     description: "plan.mdに基づいて実装フェーズを実行",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const currentWorkflow = getCurrentWorkflow();
       if (!currentWorkflow) {
         return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const ownership = checkOwnership(currentWorkflow);
+      if (!ownership.owned) {
+        return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
       if (currentWorkflow.phase !== "plan") {
@@ -827,6 +943,7 @@ ${planContent}
       currentWorkflow.phaseIndex = 2;
       currentWorkflow.updatedAt = new Date().toISOString();
       saveState(currentWorkflow);
+      setCurrentWorkflow(currentWorkflow);
 
       // runSubagent APIが利用可能な場合は自動実行
       if (ctx.runSubagent) {
@@ -843,6 +960,7 @@ ${planContent}
           currentWorkflow.phaseIndex = 3;
           currentWorkflow.updatedAt = new Date().toISOString();
           saveState(currentWorkflow);
+          setCurrentWorkflow(null);  // Clear active registry
 
           return makeResult(`## 実装完了
 
@@ -879,8 +997,14 @@ subagent_run({
       modifications: Type.String({ description: "修正内容" }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const currentWorkflow = getCurrentWorkflow();
       if (!currentWorkflow) {
         return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const ownership = checkOwnership(currentWorkflow);
+      if (!ownership.owned) {
+        return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
 
       if (currentWorkflow.phase !== "plan") {
@@ -900,6 +1024,7 @@ subagent_run({
       currentWorkflow.annotationCount++;
       currentWorkflow.updatedAt = new Date().toISOString();
       saveState(currentWorkflow);
+      setCurrentWorkflow(currentWorkflow);
 
       // runSubagent APIが利用可能な場合は自動実行
       if (ctx.runSubagent) {
@@ -966,16 +1091,21 @@ subagent_run({
     description: "ワークフローを中止",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      const currentWorkflow = getCurrentWorkflow();
       if (!currentWorkflow) {
         return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const ownership = checkOwnership(currentWorkflow);
+      if (!ownership.owned) {
+        return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
       }
       
       const taskId = currentWorkflow.taskId;
       currentWorkflow.phase = "aborted";
       currentWorkflow.updatedAt = new Date().toISOString();
       saveState(currentWorkflow);
-      
-      currentWorkflow = null;
+      setCurrentWorkflow(null);  // Clear active registry
       
       return makeResult(`ワークフローを中止しました。
 
@@ -1001,17 +1131,24 @@ Task ID: ${taskId}
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const { task_id } = params;
-      
-      if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
-        return makeResult(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId})`, { error: "workflow_already_active" });
+      const instanceId = getInstanceId();
+
+      // Check for existing active workflow using file-based access
+      const existingWorkflow = getCurrentWorkflow();
+      if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
+        return makeResult(`エラー: すでにアクティブなワークフローがあります (taskId: ${existingWorkflow.taskId})`, { error: "workflow_already_active" });
       }
       
       const state = loadState(task_id);
       if (!state) {
         return makeResult(`エラー: タスク ${task_id} が見つかりません。`, { error: "task_not_found" });
       }
-      
-      currentWorkflow = state;
+
+      // Update ownership to current instance
+      state.ownerInstanceId = instanceId;
+      state.updatedAt = new Date().toISOString();
+      saveState(state);
+      setCurrentWorkflow(state);
       
       return makeResult(`ワークフローを再開しました。
 
@@ -1035,7 +1172,8 @@ Task ID: ${state.taskId}
       task_id: Type.Optional(Type.String({ description: "タスクID（省略時は現在のワークフローを使用）" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const taskId = params.task_id || currentWorkflow?.taskId;
+      const workflow = getCurrentWorkflow();
+      const taskId = params.task_id || workflow?.taskId;
       if (!taskId) {
         return makeResult("エラー: task_id が指定されていません。", { error: "no_task_id" });
       }
@@ -1084,17 +1222,23 @@ subagent_run(
       task_id: Type.Optional(Type.String({ description: "タスクID（省略時は現在のワークフローを使用）" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const taskId = params.task_id || currentWorkflow?.taskId;
+      const workflow = getCurrentWorkflow();
+      const taskId = params.task_id || workflow?.taskId;
       if (!taskId) {
         return makeResult("エラー: task_id が指定されていません。", { error: "no_task_id" });
       }
 
-      if (currentWorkflow) {
-        currentWorkflow.phase = "plan";
-        currentWorkflow.phaseIndex = 1;
-        currentWorkflow.approvedPhases.push("research");
-        currentWorkflow.updatedAt = new Date().toISOString();
-        saveState(currentWorkflow);
+      if (workflow) {
+        const ownership = checkOwnership(workflow);
+        if (!ownership.owned) {
+          return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
+        }
+        workflow.phase = "plan";
+        workflow.phaseIndex = 1;
+        workflow.approvedPhases.push("research");
+        workflow.updatedAt = new Date().toISOString();
+        saveState(workflow);
+        setCurrentWorkflow(workflow);
       }
 
       const researchPath = path.join(getTaskDir(taskId), "research.md");
@@ -1148,15 +1292,23 @@ subagent_run(
       task_id: Type.Optional(Type.String({ description: "タスクID（省略時は現在のワークフローを使用）" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const taskId = params.task_id || currentWorkflow?.taskId;
+      const workflow = getCurrentWorkflow();
+      const taskId = params.task_id || workflow?.taskId;
       if (!taskId) {
         return makeResult("エラー: task_id が指定されていません。", { error: "no_task_id" });
       }
+
+      if (workflow) {
+        const ownership = checkOwnership(workflow);
+        if (!ownership.owned) {
+          return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
+        }
+      }
       
-      if (!currentWorkflow?.approvedPhases.includes("annotate")) {
+      if (!workflow?.approvedPhases.includes("annotate")) {
         return makeResult(`エラー: annotate フェーズが承認されていません。
 
-現在の承認済みフェーズ: ${currentWorkflow?.approvedPhases.join(", ") || "なし"}
+現在の承認済みフェーズ: ${workflow?.approvedPhases.join(", ") || "なし"}
 
 実装の前に:
 1. ul_workflow_approve() で plan フェーズを承認
@@ -1203,13 +1355,15 @@ subagent_run(
     description: "UL Workflow Modeを開始（従来のスタイル）",
     handler: async (args, ctx) => {
       const task = args.trim();
+      const instanceId = getInstanceId();
       if (!task) {
         ctx.ui.notify("タスク説明を入力してください: /ul-workflow-start <task>", "warning");
         return;
       }
 
-      if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
-        ctx.ui.notify(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId})`, "warning");
+      const existingWorkflow = getCurrentWorkflow();
+      if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
+        ctx.ui.notify(`エラー: すでにアクティブなワークフローがあります (taskId: ${existingWorkflow.taskId})`, "warning");
         return;
       }
 
@@ -1219,7 +1373,7 @@ subagent_run(
       // タスク規模に基づいてフェーズ構成を動的に決定
       const phases = determineWorkflowPhases(task);
 
-      currentWorkflow = {
+      const workflow: WorkflowState = {
         taskId,
         taskDescription: task,
         phase: phases[0],
@@ -1229,10 +1383,12 @@ subagent_run(
         updatedAt: now,
         approvedPhases: [],
         annotationCount: 0,
+        ownerInstanceId: instanceId,
       };
 
       createTaskFile(taskId, task);
-      saveState(currentWorkflow);
+      saveState(workflow);
+      setCurrentWorkflow(workflow);
 
       const phaseStr = phases.map((p) => p.toUpperCase()).join(" -> ");
       ctx.ui.notify(`ワークフロー開始: ${taskId}\nフェーズ: ${phaseStr}`, "info");
@@ -1248,8 +1404,9 @@ subagent_run(
         return;
       }
 
-      if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
-        ctx.ui.notify(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId})\nまず /ul-workflow-abort で中止してください`, "warning");
+      const existingWorkflow = getCurrentWorkflow();
+      if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
+        ctx.ui.notify(`エラー: すでにアクティブなワークフローがあります (taskId: ${existingWorkflow.taskId})\nまず /ul-workflow-abort で中止してください`, "warning");
         return;
       }
 
@@ -1260,11 +1417,11 @@ subagent_run(
   pi.registerCommand("ul-workflow-status", {
     description: "ワークフローのステータスを表示",
     handler: async (_args, ctx) => {
-      if (!currentWorkflow) {
+      const workflow = getCurrentWorkflow();
+      if (!workflow) {
         ctx.ui.notify("アクティブなワークフローはありません", "info");
         return;
       }
-      const workflow = currentWorkflow;
       const phaseStr = workflow.phases
         .map((p, i) => (i === workflow.phaseIndex ? `[${p.toUpperCase()}]` : p.toUpperCase()))
         .join(" -> ");
@@ -1275,19 +1432,22 @@ subagent_run(
   pi.registerCommand("ul-workflow-approve", {
     description: "現在のフェーズを承認",
     handler: async (_args, ctx) => {
-      if (!currentWorkflow) {
+      const workflow = getCurrentWorkflow();
+      if (!workflow) {
         ctx.ui.notify("エラー: アクティブなワークフローがありません", "warning");
         return;
       }
       
-      if (currentWorkflow.phase === "completed" || currentWorkflow.phase === "aborted") {
-        ctx.ui.notify(`エラー: ワークフローは既に${currentWorkflow.phase === "completed" ? "完了" : "中止"}しています`, "warning");
+      if (workflow.phase === "completed" || workflow.phase === "aborted") {
+        ctx.ui.notify(`エラー: ワークフローは既に${workflow.phase === "completed" ? "完了" : "中止"}しています`, "warning");
         return;
       }
       
-      const previousPhase = currentWorkflow.phase;
-      currentWorkflow.approvedPhases.push(previousPhase);
-      const nextPhase = advancePhase(currentWorkflow);
+      const previousPhase = workflow.phase;
+      workflow.approvedPhases.push(previousPhase);
+      const nextPhase = advancePhase(workflow);
+      saveState(workflow);
+      setCurrentWorkflow(workflow);
       
       ctx.ui.notify(`${previousPhase.toUpperCase()} 承認 → ${nextPhase.toUpperCase()}`, "info");
     },
@@ -1296,21 +1456,23 @@ subagent_run(
   pi.registerCommand("ul-workflow-annotate", {
     description: "plan.mdの注釈を適用",
     handler: async (_args, ctx) => {
-      if (!currentWorkflow) {
+      const workflow = getCurrentWorkflow();
+      if (!workflow) {
         ctx.ui.notify("エラー: アクティブなワークフローがありません", "warning");
         return;
       }
       
-      const planContent = readPlanFile(currentWorkflow.taskId);
+      const planContent = readPlanFile(workflow.taskId);
       if (!planContent) {
         ctx.ui.notify("エラー: plan.md が見つかりません", "warning");
         return;
       }
       
       const annotations = extractAnnotations(planContent);
-      currentWorkflow.annotationCount = annotations.length;
-      currentWorkflow.updatedAt = new Date().toISOString();
-      saveState(currentWorkflow);
+      workflow.annotationCount = annotations.length;
+      workflow.updatedAt = new Date().toISOString();
+      saveState(workflow);
+      setCurrentWorkflow(workflow);
       
       ctx.ui.notify(`${annotations.length} 件の注釈を検出`, "info");
     },
@@ -1319,16 +1481,17 @@ subagent_run(
   pi.registerCommand("ul-workflow-abort", {
     description: "ワークフローを中止",
     handler: async (_args, ctx) => {
-      if (!currentWorkflow) {
+      const workflow = getCurrentWorkflow();
+      if (!workflow) {
         ctx.ui.notify("エラー: アクティブなワークフローがありません", "warning");
         return;
       }
       
-      const taskId = currentWorkflow.taskId;
-      currentWorkflow.phase = "aborted";
-      currentWorkflow.updatedAt = new Date().toISOString();
-      saveState(currentWorkflow);
-      currentWorkflow = null;
+      const taskId = workflow.taskId;
+      workflow.phase = "aborted";
+      workflow.updatedAt = new Date().toISOString();
+      saveState(workflow);
+      setCurrentWorkflow(null);
       
       ctx.ui.notify(`ワークフロー中止: ${taskId}`, "info");
     },
