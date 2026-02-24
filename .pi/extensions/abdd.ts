@@ -1088,6 +1088,7 @@ interface ASTDetectionResult {
 
 /** 禁止パターン定義（AST検出用） */
 const AST_PROHIBITION_PATTERNS: ASTDetectionPattern[] = [
+	// Git関連
 	{
 		type: "value_mismatch",
 		severity: "high",
@@ -1108,6 +1109,57 @@ const AST_PROHIBITION_PATTERNS: ASTDetectionPattern[] = [
 		pattern: /\bgit\s+add\s+--all\b/,
 		description: "git add --all の使用",
 		philosophyRef: "git add --allの安易な使用は禁止",
+	},
+	// セキュリティ関連
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\bpassword\s*[:=]\s*["'][^"']+["']/i,
+		description: "パスワードのハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\bapi[_-]?key\s*[:=]\s*["'][^"']+["']/i,
+		description: "APIキーのハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\bsecret[_-]?key\s*[:=]\s*["'][^"']+["']/i,
+		description: "シークレットキーのハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\bprivate[_-]?key\s*[:=]\s*["']-----BEGIN/i,
+		description: "秘密鍵のハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\btoken\s*[:=]\s*["'][a-zA-Z0-9_-]{20,}["']/i,
+		description: "トークンのハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	// 危険な関数
+	{
+		type: "value_mismatch",
+		severity: "medium",
+		pattern: /\beval\s*\(/,
+		description: "eval()の使用",
+		philosophyRef: "evalの使用はセキュリティリスクがあるため避ける",
+	},
+	{
+		type: "value_mismatch",
+		severity: "medium",
+		pattern: /\bFunction\s*\(/,
+		description: "Function()コンストラクタの使用",
+		philosophyRef: "動的コード生成はセキュリティリスクがあるため避ける",
 	},
 ];
 
@@ -1140,9 +1192,16 @@ const TEST_FUNCTION_PATTERNS = [
 /**
  * ASTベースの乖離検出器
  * ソースコードを直接AST解析し、価値観・不変条件の違反を高精度で検出する
+ * 
+ * データフロー解析により、変数経由の実行も検出可能:
+ * - const cmd = "git add ."; execSync(cmd); → 検出可能
+ * - const flag = "."; execSync(`git add ${flag}`); → 部分検出
  */
 export class ASTDivergenceDetector {
 	private divergences: ASTDetectionResult[] = [];
+	
+	/** 変数の値を追跡するマップ（スコープ単位） */
+	private variableValues: Map<string, string> = new Map();
 
 	/**
 	 * ファイルを解析して乖離を検出
@@ -1162,6 +1221,7 @@ export class ASTDivergenceDetector {
 		);
 
 		this.divergences = [];
+		this.variableValues = new Map(); // ファイルごとにリセット
 		this.visitNode(sourceFile, sourceFile, this.createInitialContext(sourceFile));
 		return this.divergences;
 	}
@@ -1208,12 +1268,14 @@ export class ASTDivergenceDetector {
 		// コンテキストを更新
 		const updatedContext = this.updateContext(node, context);
 
-		// ノードタイプ別の検出
-		// 注: StringLiteral/TemplateLiteralはcheckCallExpression内のcheckCommandArgumentで処理
+		// ノードタイプ別の処理
 		if (ts.isCallExpression(node)) {
 			this.checkCallExpression(node, sourceFile, updatedContext);
 		} else if (ts.isPropertyAssignment(node)) {
 			this.checkPropertyAssignment(node, sourceFile, updatedContext);
+		} else if (ts.isVariableDeclaration(node)) {
+			// 変数宣言を追跡（データフロー解析）
+			this.trackVariableDeclaration(node);
 		}
 
 		// 子ノードを再帰的に訪問
@@ -1350,13 +1412,123 @@ export class ASTDivergenceDetector {
 		context: ASTNodeContext
 	): void {
 		if (ts.isStringLiteral(arg)) {
+			// 直接文字列リテラル
 			this.checkStringForPatterns(arg.text, arg, sourceFile, context);
 		} else if (ts.isNoSubstitutionTemplateLiteral(arg)) {
+			// テンプレートリテラル（変数なし）
 			this.checkStringForPatterns(arg.text, arg, sourceFile, context);
 		} else if (ts.isTemplateExpression(arg)) {
-			// テンプレート式の場合はhead部分をチェック
-			this.checkStringForPatterns(arg.head.text, arg, sourceFile, context);
+			// テンプレート式（変数展開あり）
+			const resolvedText = this.resolveTemplateExpression(arg);
+			this.checkStringForPatterns(resolvedText, arg, sourceFile, context);
+		} else if (ts.isIdentifier(arg)) {
+			// 変数参照 → データフロー解析で解決
+			const resolvedValue = this.resolveVariable(arg.text);
+			if (resolvedValue) {
+				this.checkStringForPatterns(resolvedValue, arg, sourceFile, context);
+			}
+		} else if (ts.isPropertyAccessExpression(arg)) {
+			// オブジェクトプロパティアクセス (例: commands.stage)
+			const resolvedValue = this.resolvePropertyAccess(arg);
+			if (resolvedValue) {
+				this.checkStringForPatterns(resolvedValue, arg, sourceFile, context);
+			}
 		}
+	}
+
+	/**
+	 * 変数宣言を追跡（データフロー解析）
+	 */
+	private trackVariableDeclaration(node: ts.VariableDeclaration): void {
+		if (!node.name || !ts.isIdentifier(node.name)) return;
+
+		const varName = node.name.text;
+		const initializer = node.initializer;
+		if (!initializer) return;
+
+		// 文字列リテラルの場合
+		if (ts.isStringLiteral(initializer)) {
+			this.variableValues.set(varName, initializer.text);
+			return;
+		}
+
+		// テンプレートリテラルの場合
+		if (ts.isNoSubstitutionTemplateLiteral(initializer)) {
+			this.variableValues.set(varName, initializer.text);
+			return;
+		}
+
+		// テンプレート式の場合（部分的に追跡）
+		if (ts.isTemplateExpression(initializer)) {
+			const resolvedText = this.resolveTemplateExpression(initializer);
+			this.variableValues.set(varName, resolvedText);
+			return;
+		}
+
+		// 他の変数への参照の場合
+		if (ts.isIdentifier(initializer)) {
+			const resolvedValue = this.variableValues.get(initializer.text);
+			if (resolvedValue) {
+				this.variableValues.set(varName, resolvedValue);
+			}
+		}
+	}
+
+	/**
+	 * 変数の値を解決
+	 */
+	private resolveVariable(varName: string): string | undefined {
+		return this.variableValues.get(varName);
+	}
+
+	/**
+	 * テンプレート式を解決（変数展開を試みる）
+	 */
+	private resolveTemplateExpression(node: ts.TemplateExpression): string {
+		let result = node.head.text;
+
+		for (const span of node.templateSpans) {
+			const expr = span.expression;
+			let resolvedValue = "";
+
+			if (ts.isIdentifier(expr)) {
+				resolvedValue = this.variableValues.get(expr.text) || `\${${expr.text}}`;
+			} else if (ts.isStringLiteral(expr)) {
+				resolvedValue = expr.text;
+			} else if (ts.isPropertyAccessExpression(expr)) {
+				resolvedValue = this.resolvePropertyAccess(expr) || `\${${expr.getText()}}`;
+			} else {
+				resolvedValue = `\${${expr.getText()}}`;
+			}
+
+			result += resolvedValue + span.literal.text;
+		}
+
+		return result;
+	}
+
+	/**
+	 * プロパティアクセスを解決 (例: obj.prop)
+	 */
+	private resolvePropertyAccess(node: ts.PropertyAccessExpression): string | undefined {
+		// obj.prop の形式のみサポート
+		if (!ts.isIdentifier(node.expression)) return undefined;
+
+		const objName = node.expression.text;
+		const propName = node.name.text;
+
+		// オブジェクト変数の値を取得（例: "stage:git add ."のような形式で保存されている場合）
+		const objValue = this.variableValues.get(objName);
+		if (!objValue) return undefined;
+
+		// 簡易的な解析: "propName:value" の形式を探す
+		const propPattern = new RegExp(`${propName}\\s*:\\s*["']?([^,"'}]+)["']?`);
+		const match = objValue.match(propPattern);
+		if (match) {
+			return match[1].trim();
+		}
+
+		return undefined;
 	}
 
 	/**
@@ -1403,13 +1575,37 @@ export class ASTDivergenceDetector {
 		sourceFile: ts.SourceFile,
 		context: ASTNodeContext
 	): void {
-		const propName = (node.name as ts.Identifier)?.text;
+		const initializer = node.initializer;
 
-		// command, cmd, script などのプロパティ名をチェック
-		if (["command", "cmd", "script", "exec"].includes(propName)) {
-			if (ts.isStringLiteral(node.initializer)) {
+		// 文字列リテラルの場合 - すべてのプロパティをチェック
+		if (ts.isStringLiteral(initializer)) {
+			this.checkStringForPatterns(
+				initializer.text,
+				node,
+				sourceFile,
+				context
+			);
+			return;
+		}
+
+		// テンプレートリテラルの場合
+		if (ts.isTemplateExpression(initializer)) {
+			const resolvedText = this.resolveTemplateExpression(initializer);
+			this.checkStringForPatterns(
+				resolvedText,
+				node,
+				sourceFile,
+				context
+			);
+			return;
+		}
+
+		// 他の変数への参照の場合
+		if (ts.isIdentifier(initializer)) {
+			const resolvedValue = this.resolveVariable(initializer.text);
+			if (resolvedValue) {
 				this.checkStringForPatterns(
-					node.initializer.text,
+					resolvedValue,
 					node,
 					sourceFile,
 					context
