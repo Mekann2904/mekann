@@ -18,6 +18,223 @@
 
 ---
 
+# UL Mode Guideline (RECOMMENDED)
+
+`ul <task>` で呼び出される委任モード。調査・計画・実装を自律的に行う。
+
+## 基本原則
+
+> **エージェントにコードを書かせる前に、必ず文章化された計画をレビュー・承認する**
+
+## フロー
+
+```
+Research → Plan → [ユーザーレビュー] → Implement
+```
+
+---
+
+## 第1段階：Research（調査）
+
+コードベースの該当部分を**徹底的に**理解する。調査結果は必ず `research.md` に記述する。
+
+### アクション
+
+```
+subagent_run({
+  subagentId: "researcher",
+  task: "このフォルダの内容を徹底的に調査し、その仕組み、機能、およびすべての仕様を深く理解してください。調査が完了したら、得られた知見と学習内容を詳細にまとめたレポートを「research.md」ファイルに作成してください。"
+})
+```
+
+### 重要な表現
+
+- **「深く」**
+- **「詳細にわたって」**
+- **「複雑な部分まで」**
+- **「すべてを徹底的に」**
+
+これらの言葉がないと、表面的な読み取りしか行わない。
+
+### research.mdの目的
+
+- ユーザーのレビュー用資料
+- エージェントがシステムを正しく理解しているか確認
+- 誤解があれば計画段階前に修正
+
+---
+
+## 第2段階：Plan（計画策定）
+
+詳細な実装計画を `plan.md` に作成する。
+
+### アクション
+
+```
+subagent_run({
+  subagentId: "architect",
+  task: "以下のタスクの詳細な実装計画をplan.mdに作成してください。コードスニペットも必ず含めてください。\n\nタスク: <task>"
+})
+```
+
+### plan.mdの内容
+
+- アプローチ方法の詳細な説明
+- 実際の変更内容を示すコードスニペット
+- 変更対象となるファイルパス
+- 考慮事項やトレードオフの分析
+
+### plan.mdの構造
+
+```markdown
+# 実装計画: <タスク名>
+
+## 目的
+<何を実現するか>
+
+## 変更内容
+1. <ファイルA>: <変更内容>
+   ```typescript
+   // コードスニペット
+   ```
+
+## 手順
+1. <手順1>
+2. <手順2>
+
+## 考慮事項
+- <考慮事項1>
+- <トレードオフ>
+
+## Todo
+- [ ] <タスク1>
+- [ ] <タスク2>
+```
+
+---
+
+## 第3段階：Annotation Cycle（ユーザーレビュー）
+
+**ここはユーザーが主導する。エージェントは待機。**
+
+ユーザーがplan.mdをエディタで開き、インライン注釈を追加する。
+
+### 注釈の例
+
+```markdown
+<!-- NOTE: use drizzle:generate for migrations, not raw SQL -->
+
+<!-- NOTE: no — this should be a PATCH, not a PUT -->
+
+<!-- NOTE: remove this section entirely, we don't need caching here -->
+
+<!-- NOTE: the queue consumer already handles retries, so this retry logic is redundant -->
+```
+
+### ユーザーが満足するまで繰り返し
+
+1. ユーザーが注釈を追加
+2. エージェントがplan.mdを更新
+3. ユーザーが再レビュー
+4. 満足したら実装へ
+
+**「don't implement yet」ガードが必須**
+
+---
+
+## 第4段階：Todo List（タスクリスト）
+
+実装前に詳細なタスクリストをplan.mdに追加する。
+
+### アクション
+
+```
+plan.mdに詳細なTodoリストを追加してください。すべてのフェーズと個別のタスクを含めてください。まだ実装しないでください。
+```
+
+### Todo Listの目的
+
+- 実装中の進捗トラッカー
+- 完了したタスクをマークしていく
+
+---
+
+## 第5段階：Implement（実装）
+
+計画に従って機械的に実装する。
+
+### アクション（単一エージェント）
+
+```
+subagent_run({
+  subagentId: "implementer",
+  task: "plan.mdのすべてを実装してください。タスクまたはフェーズが完了したらplan.md内で完了済みとしてマークしてください。すべてのタスクとフェーズが完了するまで作業を停止しないでください。不要なコメントやJSDocを追加しないでください。anyやunknown型を使用しないでください。常に型チェックを実行して新しい問題を発生させていないことを確認してください。"
+})
+```
+
+### アクション（エージェントチーム - 並列実行）
+
+複数の独立したタスクがある場合、エージェントチームで並列実行できる。
+
+```
+agent_team_run({
+  teamId: "core-delivery-team",
+  task: "plan.mdの以下のタスクを並列で実装してください: <タスク>",
+  strategy: "parallel"
+})
+```
+
+または
+
+```
+subagent_run_parallel({
+  subagentIds: ["implementer", "code-reviewer"],
+  task: "plan.mdを実装し、品質を確認してください"
+})
+```
+
+### エージェントチームを使用する場面
+
+| 場面 | 推奨 |
+|------|------|
+| 単一ファイルの変更 | `subagent_run({ subagentId: "implementer" })` |
+| 複数の独立したファイル変更 | `agent_team_run_parallel` |
+| 実装 + レビューを同時 | `subagent_run_parallel(["implementer", "code-reviewer"])` |
+| フロントエンド + バックエンド同時 | `agent_team_run_parallel` |
+
+### 実装の原則
+
+- *「implement it all」*: planのすべてを実行、チェリーピックしない
+- *「mark it as completed」*: planが進捗の信頼できる情報源
+- *「do not stop until completed」*: 確認のために途中で停止しない
+- *「no unnecessary comments」*: コードをクリーンに保つ
+- *「no any or unknown」*: 厳密な型付けを維持
+- *「continuously run typecheck」*: 問題を早期に発見
+
+**実装は機械的であるべき。創造的な作業は計画段階で完了している。**
+
+---
+
+## 判断の指針
+
+| 状況 | フロー |
+|------|--------|
+| 重要な実装 | Research → Plan → Annotation Cycle → Todo → Implement |
+| 中程度の実装 | Research → Plan → [確認] → Implement |
+| 軽微な修正 | 直接編集（plan省略可） |
+| 調査のみ | Research → 報告 |
+
+---
+
+## 注意事項
+
+- これは**ガイドライン**であり、強制ではない
+- Annotation Cycleは**ユーザーが主導**する
+- 「don't implement yet」ガードを守る
+- 行き詰まったらユーザーに状況を報告し、指示を仰ぐ
+
+---
+
 # Protected Files (DO NOT DELETE)
 
 These files are **system-critical** and must NOT be deleted, renamed, or moved by any agent, subagent, or team:

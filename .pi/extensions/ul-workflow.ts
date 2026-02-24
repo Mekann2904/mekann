@@ -140,6 +140,36 @@ export function determineWorkflowPhases(task: string): WorkflowPhase[] {
 }
 
 /**
+ * サブエージェント委任指示を生成するヘルパー（簡潔版）
+ * @summary サブエージェント委任指示生成
+ * @param subagentId - サブエージェントID
+ * @param task - タスク内容（簡潔）
+ * @param outputPath - 出力ファイルパス
+ * @returns subagent_run呼び出し指示
+ */
+function generateSubagentInstructionSimple(
+  subagentId: string,
+  task: string,
+  outputPath: string
+): string {
+  return `subagent_run({ subagentId: "${subagentId}", task: "${task.replace(/"/g, '\\"')}" }) → ${outputPath}`;
+}
+
+/**
+ * WorkflowRunResult - ul_workflow_runの実行結果
+ */
+interface WorkflowRunResult {
+  taskId: string;
+  phase: WorkflowPhase;
+  planContent?: string;
+  needsConfirmation: boolean;
+  nextAction?: {
+    tool: string;
+    description: string;
+  };
+}
+
+/**
  * タスクIDを生成する
  * BUG-003 FIX: ランダムサフィックス追加で衝突回避
  */
@@ -392,6 +422,143 @@ Task ID: ${taskId}
     },
   });
 
+  // ワンフロー実行ツール（新規）
+  pi.registerTool({
+    name: "ul_workflow_run",
+    label: "Run UL Workflow",
+    description: "Research-Plan-Implementを自動実行。plan確認のみインタラクティブ",
+    parameters: Type.Object({
+      task: Type.String({ description: "実行するタスク" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { task } = params;
+      const trimmedTask = String(task || "").trim();
+
+      if (!trimmedTask) {
+        return makeResult("エラー: タスク説明を入力してください。", { error: "empty_task" });
+      }
+
+      if (trimmedTask.length < 5) {
+        return makeResult(`エラー: タスク説明が短すぎます（現在: ${trimmedTask.length}文字）。`, { error: "task_too_short", length: trimmedTask.length });
+      }
+
+      if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
+        return makeResult(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId})\nまず ul_workflow_abort で中止してください。`, { error: "workflow_already_active" });
+      }
+
+      const taskId = generateTaskId(trimmedTask);
+      const now = new Date().toISOString();
+
+      // 固定フェーズ: research → plan → implement
+      const phases: WorkflowPhase[] = ["research", "plan", "implement", "completed"];
+
+      currentWorkflow = {
+        taskId,
+        taskDescription: trimmedTask,
+        phase: "research",
+        phases,
+        phaseIndex: 0,
+        createdAt: now,
+        updatedAt: now,
+        approvedPhases: [],
+        annotationCount: 0,
+      };
+
+      createTaskFile(taskId, trimmedTask);
+      saveState(currentWorkflow);
+
+      const researchPath = path.join(getTaskDir(taskId), "research.md");
+      const planPath = path.join(getTaskDir(taskId), "plan.md");
+
+      // runSubagent APIが利用可能な場合は自動実行
+      if (ctx.runSubagent) {
+        try {
+          // Researchフェーズ実行
+          await ctx.runSubagent({
+            subagentId: "researcher",
+            task: `調査タスク: ${trimmedTask}\n\n保存先: ${researchPath}`,
+            extraContext: "詳細に調査し、research.mdを作成してください。"
+          });
+
+          // Planフェーズ実行
+          await ctx.runSubagent({
+            subagentId: "architect",
+            task: `計画作成: ${trimmedTask}\n\n事前調査: ${researchPath}\n保存先: ${planPath}`,
+            extraContext: "plan.mdを作成してください。"
+          });
+
+          // Plan完了、確認待ち
+          currentWorkflow.approvedPhases.push("research", "plan");
+          currentWorkflow.phase = "plan";
+          currentWorkflow.phaseIndex = 1;
+          currentWorkflow.updatedAt = new Date().toISOString();
+          saveState(currentWorkflow);
+
+          const planContent = readPlanFile(taskId);
+
+          return {
+            content: [{ type: "text", text: `## Plan作成完了
+
+Task: ${trimmedTask}
+
+\`\`\`markdown
+${planContent}
+\`\`\`
+` }],
+            details: {
+              taskId,
+              phase: "plan",
+              autoExecute: true,
+              askUser: true,
+              question: {
+                question: "この計画で実行しますか？",
+                header: "Plan確認",
+                options: [
+                  { label: "実行", description: "このまま実装を開始" },
+                  { label: "修正", description: "修正内容を記述" }
+                ],
+                multiple: false,
+                custom: true
+              }
+            }
+          };
+        } catch (error) {
+          return makeResult(`エラー: サブエージェント実行中にエラーが発生しました。\n\n${error}`, { error: "subagent_error", details: String(error) });
+        }
+      }
+
+      // runSubagent APIが利用できない場合は簡潔な指示生成モード
+      return makeResult(`## UL Workflow開始
+
+Task: ${trimmedTask}
+ID: ${taskId}
+
+### 手順1: Research
+\`\`\`
+subagent_run({
+  subagentId: "researcher",
+  task: "調査: ${trimmedTask.replace(/"/g, '\\"')}",
+  extraContext: "結果を ${researchPath} に保存"
+})
+\`\`\`
+
+### 手順2: Plan（Research完了後）
+\`\`\`
+subagent_run({
+  subagentId: "architect",
+  task: "計画作成: ${trimmedTask.replace(/"/g, '\\"')}",
+  extraContext: "事前調査: ${researchPath}, 結果を ${planPath} に保存"
+})
+\`\`\`
+
+### 手順3: Plan確認（Plan完了後）
+\`\`\`
+ul_workflow_confirm_plan()
+\`\`\`
+`, { taskId, phase: "research", nextPhase: "plan" });
+    },
+  });
+
   // ステータス表示ツール
   pi.registerTool({
     name: "ul_workflow_status",
@@ -583,6 +750,215 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
     },
   });
 
+  // Plan確認ツール（新規）
+  pi.registerTool({
+    name: "ul_workflow_confirm_plan",
+    label: "Confirm Plan",
+    description: "plan.mdを表示して実行の確認を求める",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      if (!currentWorkflow) {
+        return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      if (currentWorkflow.phase !== "plan") {
+        return makeResult(`エラー: planフェーズではありません（現在: ${currentWorkflow.phase}）`, { error: "wrong_phase" });
+      }
+
+      const planPath = path.join(getTaskDir(currentWorkflow.taskId), "plan.md");
+      let planContent = "";
+      try {
+        planContent = fs.readFileSync(planPath, "utf-8");
+      } catch {
+        return makeResult("エラー: plan.mdが見つかりません。先にplanフェーズを完了してください。", { error: "plan_not_found" });
+      }
+
+      const taskId = currentWorkflow.taskId;
+
+      return {
+        content: [{ type: "text", text: `## Plan確認
+
+Task: ${currentWorkflow.taskDescription}
+
+\`\`\`markdown
+${planContent}
+\`\`\`
+` }],
+        details: {
+          taskId,
+          phase: "plan",
+          askUser: true,
+          question: {
+            question: "この計画で実行しますか？",
+            header: "Plan確認",
+            options: [
+              { label: "実行", description: "このまま実装を開始" },
+              { label: "修正", description: "修正内容を記述" }
+            ],
+            multiple: false,
+            custom: true
+          }
+        }
+      };
+    },
+  });
+
+  // Plan実行ツール（新規）
+  pi.registerTool({
+    name: "ul_workflow_execute_plan",
+    label: "Execute Plan",
+    description: "plan.mdに基づいて実装フェーズを実行",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      if (!currentWorkflow) {
+        return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      if (currentWorkflow.phase !== "plan") {
+        return makeResult(`エラー: planフェーズではありません（現在: ${currentWorkflow.phase}）`, { error: "wrong_phase" });
+      }
+
+      const taskId = currentWorkflow.taskId;
+      const planPath = path.join(getTaskDir(taskId), "plan.md");
+
+      // フェーズを進める
+      currentWorkflow.approvedPhases.push("plan");
+      currentWorkflow.phase = "implement";
+      currentWorkflow.phaseIndex = 2;
+      currentWorkflow.updatedAt = new Date().toISOString();
+      saveState(currentWorkflow);
+
+      // runSubagent APIが利用可能な場合は自動実行
+      if (ctx.runSubagent) {
+        try {
+          const implementResult = await ctx.runSubagent({
+            subagentId: "implementer",
+            task: `plan.mdを実装: ${planPath}`,
+            extraContext: "機械的に実装してください。"
+          });
+
+          // 完了
+          currentWorkflow.approvedPhases.push("implement");
+          currentWorkflow.phase = "completed";
+          currentWorkflow.phaseIndex = 3;
+          currentWorkflow.updatedAt = new Date().toISOString();
+          saveState(currentWorkflow);
+
+          return makeResult(`## 実装完了
+
+Task ID: ${taskId}
+
+ワークフローが完了しました。`, { taskId, phase: "completed" });
+        } catch (error) {
+          return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error) });
+        }
+      }
+
+      // runSubagent APIが利用できない場合は簡潔な指示生成モード
+      return makeResult(`## 実装フェーズ開始
+
+\`\`\`
+subagent_run({
+  subagentId: "implementer",
+  task: "plan.mdを実装: ${planPath}",
+  extraContext: "機械的に実装してください。"
+})
+\`\`\`
+
+完了後: ワークフロー完了
+`, { taskId, phase: "implement" });
+    },
+  });
+
+  // Plan修正ツール（新規）
+  pi.registerTool({
+    name: "ul_workflow_modify_plan",
+    label: "Modify Plan",
+    description: "plan.mdを修正する",
+    parameters: Type.Object({
+      modifications: Type.String({ description: "修正内容" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!currentWorkflow) {
+        return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      if (currentWorkflow.phase !== "plan") {
+        return makeResult(`エラー: planフェーズではありません（現在: ${currentWorkflow.phase}）`, { error: "wrong_phase" });
+      }
+
+      const { modifications } = params;
+      const trimmedModifications = String(modifications || "").trim();
+
+      if (!trimmedModifications) {
+        return makeResult("エラー: 修正内容を入力してください。", { error: "empty_modifications" });
+      }
+
+      const taskId = currentWorkflow.taskId;
+      const planPath = path.join(getTaskDir(taskId), "plan.md");
+
+      currentWorkflow.annotationCount++;
+      currentWorkflow.updatedAt = new Date().toISOString();
+      saveState(currentWorkflow);
+
+      // runSubagent APIが利用可能な場合は自動実行
+      if (ctx.runSubagent) {
+        try {
+          await ctx.runSubagent({
+            subagentId: "architect",
+            task: `plan.md修正: ${trimmedModifications}\n\nファイル: ${planPath}`,
+            extraContext: "既存の内容を尊重しつつ修正してください。"
+          });
+
+          const planContent = readPlanFile(taskId);
+
+          return {
+            content: [{ type: "text", text: `## Plan修正完了
+
+修正: ${trimmedModifications}
+
+\`\`\`markdown
+${planContent}
+\`\`\`
+` }],
+            details: {
+              taskId,
+              phase: "plan",
+              autoExecute: true,
+              askUser: true,
+              question: {
+                question: "この計画で実行しますか？",
+                header: "Plan確認",
+                options: [
+                  { label: "実行", description: "このまま実装を開始" },
+                  { label: "修正", description: "追加の修正内容を記述" }
+                ],
+                multiple: false,
+                custom: true
+              }
+            }
+          };
+        } catch (error) {
+          return makeResult(`エラー: plan修正中にエラーが発生しました。\n\n${error}`, { error: "modify_error", details: String(error) });
+        }
+      }
+
+      // runSubagent APIが利用できない場合は簡潔な指示生成モード
+      return makeResult(`## Plan修正
+
+\`\`\`
+subagent_run({
+  subagentId: "architect",
+  task: "plan.md修正: ${trimmedModifications.replace(/"/g, '\\"')}",
+  extraContext: "ファイル: ${planPath}"
+})
+\`\`\`
+
+修正後: \`ul_workflow_confirm_plan()\` で確認
+`, { taskId, modificationCount: currentWorkflow.annotationCount });
+    },
+  });
+
   // 中止ツール
   pi.registerTool({
     name: "ul_workflow_abort",
@@ -712,9 +1088,17 @@ subagent_run(
       if (!taskId) {
         return makeResult("エラー: task_id が指定されていません。", { error: "no_task_id" });
       }
-      
+
+      if (currentWorkflow) {
+        currentWorkflow.phase = "plan";
+        currentWorkflow.phaseIndex = 1;
+        currentWorkflow.approvedPhases.push("research");
+        currentWorkflow.updatedAt = new Date().toISOString();
+        saveState(currentWorkflow);
+      }
+
       const researchPath = path.join(getTaskDir(taskId), "research.md");
-      
+
       return makeResult(`計画フェーズの実行指示
 
 Task ID: ${taskId}
@@ -725,7 +1109,7 @@ Task ID: ${taskId}
 \`\`\`
 subagent_run(
   subagentId: "architect",
-  task: "以下のタスクの詳細な実装計画を作成し、plan.mdを生成してください。
+  task: """以下のタスクの詳細な実装計画を作成し、plan.mdを生成してください。
 
 タスク: ${params.task}
 
@@ -744,13 +1128,13 @@ subagent_run(
 - research.md の内容を十分に参照してください
 - 既存のコードパターンを尊重してください
 - コードスニペットは実際の変更を反映してください
-",
+""",
   extraContext: "plan.md はユーザーのレビュー対象です。後で注釈が追加されることを想定して構造化してください。"
 )
 \`\`\`
 
 計画作成完了後:
-  ul_workflow_approve() で注釈フェーズへ
+  ul_workflow_confirm_plan() でplanを確認してください
 `, { taskId, phase: "plan" });
     },
   });
@@ -816,7 +1200,7 @@ subagent_run(
 
   // スラッシュコマンド
   pi.registerCommand("ul-workflow-start", {
-    description: "UL Workflow Modeを開始",
+    description: "UL Workflow Modeを開始（従来のスタイル）",
     handler: async (args, ctx) => {
       const task = args.trim();
       if (!task) {
@@ -852,6 +1236,24 @@ subagent_run(
 
       const phaseStr = phases.map((p) => p.toUpperCase()).join(" -> ");
       ctx.ui.notify(`ワークフロー開始: ${taskId}\nフェーズ: ${phaseStr}`, "info");
+    },
+  });
+
+  pi.registerCommand("ul-workflow-run", {
+    description: "UL Workflowを実行（推奨: Research-Plan-Implement自動）",
+    handler: async (args, ctx) => {
+      const task = args.trim();
+      if (!task) {
+        ctx.ui.notify("タスク説明を入力してください: /ul-workflow-run <task>", "warning");
+        return;
+      }
+
+      if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
+        ctx.ui.notify(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId})\nまず /ul-workflow-abort で中止してください`, "warning");
+        return;
+      }
+
+      ctx.ui.notify("ul_workflow_runツールを呼び出してください:\n\nul_workflow_run({ task: \"<task>\" })", "info");
     },
   });
 
