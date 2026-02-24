@@ -51,6 +51,9 @@ import {
   type RunOutcomeSignal,
 } from "../../lib/agent-types.js";
 import {
+  reevaluateAgentRunFailure,
+} from "../../lib/agent-errors.js";
+import {
   validateSubagentOutput,
 } from "../../lib/output-validation.js";
 import {
@@ -917,6 +920,21 @@ export async function runSubagentTask(input: {
     } catch (error) {
       let message = toErrorMessage(error);
 
+      // エラー再評価: ツール呼び出しの部分的失敗を適切に処理
+      const reevaluation = reevaluateAgentRunFailure(message);
+      let effectiveStatus: "completed" | "failed" = "failed";
+      let effectiveSummary = buildFailureSummary(message);
+
+      if (reevaluation.shouldDowngrade && reevaluation.originalFailure) {
+        // 失敗率が低い場合は警告として扱い、ステータスを completed にする
+        const { failed, total } = reevaluation.originalFailure;
+        emitStderrChunk(
+          `[error-reeval] downgraded: ${failed}/${total} tool calls failed (${((failed / total) * 100).toFixed(1)}%) -> warning\n`,
+        );
+        effectiveStatus = "completed";
+        effectiveSummary = `Completed with ${failed} non-critical tool failure(s) (ignored)`;
+      }
+
       const gateSnapshot = getRateLimitGateSnapshot(rateLimitKey);
       const diagnostic = [
         `provider=${resolvedProvider}`,
@@ -940,13 +958,13 @@ export async function runSubagentTask(input: {
         runId,
         agentId: input.agent.id,
         task: input.task,
-        summary: buildFailureSummary(message),
-        status: "failed",
+        summary: effectiveSummary,
+        status: effectiveStatus,
         startedAt,
         finishedAt,
         latencyMs: Math.max(0, Date.now() - startedAtMs),
         outputFile,
-        error: message,
+        error: effectiveStatus === "failed" ? message : undefined,
       };
 
       writeFileSync(
