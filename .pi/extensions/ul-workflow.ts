@@ -38,7 +38,7 @@ import { estimateTaskComplexity, type TaskComplexity } from "../lib/agent-utils"
 import { withFileLock, atomicWriteTextFile } from "../lib/storage-lock";
 
 // ワークフローのフェーズ
-type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "completed" | "aborted";
+type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "review" | "completed" | "aborted";
 
 // ワークフロー状態
 interface WorkflowState {
@@ -168,6 +168,21 @@ function looksLikeClearGoalTask(task: string): boolean {
 }
 
 /**
+ * 実行戦略の種類
+ */
+export type ExecutionStrategy = "simple" | "dag" | "full-workflow";
+
+/**
+ * 実行戦略決定結果
+ */
+export interface ExecutionStrategyResult {
+  strategy: ExecutionStrategy;
+  phases: WorkflowPhase[];
+  useDag: boolean;
+  reason: string;
+}
+
+/**
  * タスク規模に基づいてフェーズ構成を決定する
  * 小規模タスクはフェーズを削減し、大規模タスクは全フェーズを実行
  * @summary 動的フェーズ決定
@@ -198,6 +213,82 @@ export function determineWorkflowPhases(task: string): WorkflowPhase[] {
       // 大規模: すべてのフェーズを実行
       return ["research", "plan", "annotate", "implement", "completed"];
   }
+}
+
+/**
+ * タスクの複雑度に基づいて実行戦略を決定する
+ * 高複雑度タスクではDAG実行を推奨
+ * @summary 実行戦略決定
+ * @param task - タスク文字列
+ * @returns 実行戦略結果
+ */
+export function determineExecutionStrategy(task: string): ExecutionStrategyResult {
+  const complexity = estimateTaskComplexity(task);
+  const signals = analyzeDagSignals(task);
+
+  switch (complexity) {
+    case "low":
+      return {
+        strategy: "simple",
+        phases: ["implement", "completed"],
+        useDag: false,
+        reason: "Low complexity task - simple execution sufficient",
+      };
+
+    case "medium":
+      if (signals.hasExplicitSteps || signals.hasMultipleFiles || signals.needsResearch) {
+        return {
+          strategy: "dag",
+          phases: ["research", "plan", "implement", "completed"],
+          useDag: true,
+          reason: "Medium complexity with multiple components - DAG execution recommended",
+        };
+      }
+      return {
+        strategy: "simple",
+        phases: ["research", "plan", "implement", "completed"],
+        useDag: false,
+        reason: "Medium complexity but straightforward - simple execution",
+      };
+
+    case "high":
+      // HIGH COMPLEXITY -> DAG EXECUTION
+      return {
+        strategy: "dag",
+        phases: ["research", "plan", "implement", "review", "completed"],
+        useDag: true,
+        reason: "High complexity task - DAG-based parallel execution for efficiency",
+      };
+  }
+}
+
+/**
+ * DAG生成用のタスク信号分析（簡易版）
+ * @summary DAG信号分析
+ * @param task - タスク文字列
+ * @returns 分析結果
+ */
+function analyzeDagSignals(task: string): {
+  hasExplicitSteps: boolean;
+  hasMultipleFiles: boolean;
+  needsResearch: boolean;
+} {
+  const normalized = task.trim();
+  const lowerTask = normalized.toLowerCase();
+
+  const stepPatterns = [
+    /first.*then/i,
+    /after.*implement/i,
+    /\d+\.\s/,
+    /まず.*それから/,
+    /実装.*後/,
+  ];
+
+  const hasExplicitSteps = stepPatterns.some((p) => p.test(normalized));
+  const hasMultipleFiles = /multiple|several|複数|いくつか/i.test(normalized);
+  const needsResearch = /investigate|analyze|調査|分析|確認/i.test(normalized);
+
+  return { hasExplicitSteps, hasMultipleFiles, needsResearch };
 }
 
 /**
@@ -668,6 +759,7 @@ ul_workflow_confirm_plan()
         plan: "計画フェーズ - 詳細な実装計画の作成",
         annotate: "注釈フェーズ - ユーザーによる計画のレビューと修正",
         implement: "実装フェーズ - 計画に基づくコード実装",
+        review: "レビューフェーズ - 実装の品質確認",
         completed: "完了",
         aborted: "中止",
       };
@@ -1347,6 +1439,105 @@ subagent_run(
 実装完了後:
   ul_workflow_approve() でワークフロー完了
 `, { taskId, phase: "implement" });
+    },
+  });
+
+  // DAG-based UL workflow execution
+  pi.registerTool({
+    name: "ul_workflow_dag",
+    label: "Run UL Workflow with DAG",
+    description: "Execute high-complexity task using DAG-based parallel execution. Automatically generates DAG and executes with dependency-aware parallelism.",
+    parameters: Type.Object({
+      task: Type.String({ description: "Task to execute" }),
+      maxConcurrency: Type.Optional(Type.Number({ description: "Max parallel tasks (default: 3)" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { generateDagFromTask } = await import("../lib/dag-generator.js");
+      const { determineExecutionStrategy } = await import("./ul-workflow.js");
+
+      // Determine execution strategy
+      const strategy = determineExecutionStrategy(params.task);
+
+      if (!strategy.useDag) {
+        // Fall back to simple execution for low/medium complexity
+        return {
+          content: [{
+            type: "text" as const,
+            text: `Task complexity suggests simple execution. Use ul_workflow_run instead.\n\nReason: ${strategy.reason}\n\nSuggested phases: ${strategy.phases.join(" -> ")}`,
+          }],
+          details: {
+            strategy: strategy.strategy,
+            phases: strategy.phases,
+            useDag: false,
+          },
+        };
+      }
+
+      // Generate DAG plan
+      let plan;
+      try {
+        plan = await generateDagFromTask(params.task, {
+          maxDepth: 4,
+          maxTasks: 10,
+        });
+      } catch (genError) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: `Failed to generate DAG: ${genError}\n\nFalling back to ul_workflow_run recommended.`,
+          }],
+          details: {
+            error: "dag_generation_failed",
+            outcomeCode: "NONRETRYABLE_FAILURE" as const,
+          },
+        };
+      }
+
+      // Build execution summary
+      const taskSummary = plan.tasks.map((t) => {
+        const deps = t.dependencies.length > 0 ? ` (deps: ${t.dependencies.join(", ")})` : "";
+        const agent = t.assignedAgent ? ` [${t.assignedAgent}]` : "";
+        return `  - ${t.id}${agent}${deps}: ${t.description.slice(0, 60)}...`;
+      }).join("\n");
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: `DAG-based UL Workflow Execution
+
+Task: ${params.task}
+Strategy: ${strategy.strategy}
+Reason: ${strategy.reason}
+
+Generated DAG (${plan.tasks.length} tasks, max depth: ${plan.metadata.maxDepth}):
+${taskSummary}
+
+Execute with:
+\`\`\`
+subagent_run_dag({
+  task: "${params.task.replace(/"/g, '\\"')}",
+  maxConcurrency: ${params.maxConcurrency ?? 3}
+})
+\`\`\`
+
+Or call directly:
+\`\`\`
+ctx.callTool("subagent_run_dag", {
+  task: "${params.task.replace(/"/g, '\\"')}",
+  plan: ${JSON.stringify(plan)},
+  maxConcurrency: ${params.maxConcurrency ?? 3}
+})
+\`\`\`
+`,
+        }],
+        details: {
+          strategy: strategy.strategy,
+          planId: plan.id,
+          taskCount: plan.tasks.length,
+          maxDepth: plan.metadata.maxDepth,
+          useDag: true,
+        },
+      };
     },
   });
 

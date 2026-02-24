@@ -248,6 +248,7 @@ import {
   executeDag,
   buildSubagentPrompt,
 } from "../lib/dag-executor.js";
+import { generateDagFromTask, DagGenerationError } from "../lib/dag-generator.js";
 
 // Import types from lib/subagent-types.ts
 import {
@@ -306,6 +307,69 @@ export {
 // renderSubagentLiveView, createSubagentLiveMonitor -> ./subagents/live-monitor.ts
 // resolveSubagentParallelCapacity -> ./subagents/parallel-execution.ts
 // normalizeSubagentOutput, buildSubagentPrompt, runSubagentTask -> ./subagents/task-execution.ts
+
+/**
+ * Infer dependencies between subagents for DAG-based execution
+ * @summary サブエージェント依存関係推論
+ * @param agents - 選択されたエージェント
+ * @param task - タスク記述
+ * @returns 推論された依存関係
+ */
+function inferSubagentDependencies(
+  agents: SubagentDefinition[],
+  task: string,
+): { hasDependencies: boolean; dependencies: Map<string, string[]>; description: string } {
+  const deps = new Map<string, string[]>();
+  const agentIds = new Set(agents.map((a) => a.id));
+  const descriptions: string[] = [];
+
+  // Rule 1: Research → Implementation dependency
+  const hasResearcher = agentIds.has("researcher");
+  const hasImplementer = agentIds.has("implementer") || Array.from(agentIds).some((id) => id.startsWith("implement"));
+
+  if (hasResearcher && hasImplementer) {
+    const implAgents = Array.from(agentIds).filter((id) => id === "implementer" || id.startsWith("implement"));
+    implAgents.forEach((id) => {
+      deps.set(id, ["researcher"]);
+    });
+    descriptions.push("researcher -> implementer (research informs implementation)");
+  }
+
+  // Rule 2: Implementation → Review dependency
+  const hasReviewer = agentIds.has("reviewer") || agentIds.has("code-reviewer");
+  if (hasImplementer && hasReviewer) {
+    const implAgents = Array.from(agentIds).filter((id) => id === "implementer" || id.startsWith("implement"));
+    const reviewAgent = agentIds.has("reviewer") ? "reviewer" : "code-reviewer";
+    deps.set(reviewAgent, implAgents);
+    descriptions.push("implementer -> reviewer (review requires implementation)");
+  }
+
+  // Rule 3: Implementation → Test dependency
+  const hasTester = agentIds.has("tester");
+  if (hasImplementer && hasTester) {
+    const implAgents = Array.from(agentIds).filter((id) => id === "implementer" || id.startsWith("implement"));
+    deps.set("tester", implAgents);
+    descriptions.push("implementer -> tester (tests require implementation)");
+  }
+
+  // Rule 4: Architect → Implementation dependency
+  const hasArchitect = agentIds.has("architect");
+  if (hasArchitect && hasImplementer) {
+    const implAgents = Array.from(agentIds).filter((id) => id === "implementer" || id.startsWith("implement"));
+    implAgents.forEach((id) => {
+      const existing = deps.get(id) || [];
+      deps.set(id, [...existing, "architect"]);
+    });
+    descriptions.push("architect -> implementer (design guides implementation)");
+  }
+
+  const hasDependencies = deps.size > 0;
+  const description = hasDependencies
+    ? descriptions.map((d, i) => `  ${i + 1}. ${d}`).join("\n")
+    : "No dependencies detected";
+
+  return { hasDependencies, dependencies: deps, description };
+}
 
 /**
  * Refresh runtime status display in the UI with subagent-specific parameters.
@@ -1042,6 +1106,39 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
         });
 
+        // Dependency inference for parallel execution
+        const inferredDeps = inferSubagentDependencies(activeAgents, params.task);
+        if (inferredDeps.hasDependencies) {
+          // Has dependencies - recommend DAG execution instead
+          return {
+            content: [{
+              type: "text" as const,
+              text: `subagent_run_parallel: Detected dependencies between subagents.
+
+Detected dependencies:
+${inferredDeps.description}
+
+Recommendation: Use subagent_run_dag for dependency-aware execution:
+
+\`\`\`
+subagent_run_dag({
+  task: "${params.task.replace(/"/g, '\\"')}",
+  maxConcurrency: ${Math.max(1, effectiveParallelism)}
+})
+\`\`\`
+
+This will automatically generate a DAG and execute with proper dependency ordering.
+Alternatively, provide an explicit plan parameter to subagent_run_dag.
+`,
+            }],
+            details: {
+              inferredDependencies: inferredDeps.dependencies,
+              recommendation: "use_subagent_run_dag",
+              outcomeCode: "SUCCESS" as RunOutcomeCode,
+            },
+          };
+        }
+
         runtimeState.activeRunRequests += 1;
         notifyRuntimeCapacityChanged();
         refreshRuntimeStatus(ctx);
@@ -1222,7 +1319,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
     name: "subagent_run_dag",
     label: "Subagent Run DAG",
     description:
-      "Run tasks with dependency-aware parallel execution. Decomposes a task into a DAG of subtasks and executes them in parallel where dependencies allow.",
+      "Run tasks with dependency-aware parallel execution. Decomposes a task into a DAG of subtasks and executes them in parallel where dependencies allow. Plan auto-generated when omitted.",
     parameters: Type.Object({
       task: Type.String({ description: "Task to decompose and execute" }),
       plan: Type.Optional(
@@ -1241,6 +1338,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           ),
         }),
       ),
+      autoGenerate: Type.Optional(Type.Boolean({
+        description: "Auto-generate DAG when plan omitted (default: true)"
+      })),
       maxConcurrency: Type.Optional(Type.Number({ description: "Maximum parallel tasks (default: 3)" })),
       abortOnFirstError: Type.Optional(Type.Boolean({ description: "Stop on first task failure (default: false)" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Per-task timeout in ms (default: 300000)" })),
@@ -1259,7 +1359,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       let taskPlan: TaskPlan;
 
       if (params.plan) {
-        // Use provided plan
+        // Use provided plan (existing logic)
         taskPlan = {
           id: params.plan.id,
           description: params.plan.description,
@@ -1278,14 +1378,37 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             maxDepth: 0,
           },
         };
+      } else if (params.autoGenerate !== false) {
+        // AUTO-GENERATE DAG
+        try {
+          taskPlan = await generateDagFromTask(params.task, {
+            maxDepth: 4,
+            maxTasks: 10,
+          });
+
+          // Log auto-generation success
+          console.log(`[subagent_run_dag] Auto-generated plan: ${taskPlan.id} (${taskPlan.tasks.length} tasks, max depth: ${taskPlan.metadata.maxDepth})`);
+        } catch (genError) {
+          const errorMsg = genError instanceof DagGenerationError
+            ? `subagent_run_dag error: failed to auto-generate plan - ${genError.message} (code: ${genError.code})`
+            : `subagent_run_dag error: failed to auto-generate plan - ${genError}`;
+
+          return {
+            content: [{ type: "text" as const, text: errorMsg }],
+            details: {
+              error: "auto_generation_failed",
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
       } else {
-        // TODO: Use Task Planner Skill to generate DAG
-        // For now, return error asking for plan
+        // autoGenerate explicitly false, plan required
         return {
           content: [
             {
               type: "text" as const,
-              text: "subagent_run_dag error: plan parameter is required. Automatic DAG generation is not yet implemented.",
+              text: "subagent_run_dag error: plan parameter required when autoGenerate=false",
             },
           ],
           details: {

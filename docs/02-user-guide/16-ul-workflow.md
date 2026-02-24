@@ -2,8 +2,8 @@
 title: UL Mode - Claude Code Workflow
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-24
-tags: [ul-mode, workflow, claude-code]
+last_updated: 2026-02-25
+tags: [ul-mode, workflow, claude-code, dag]
 related: [docs/02-user-guide/08-subagents.md]
 ---
 
@@ -109,6 +109,85 @@ ul abort        # 中止
 - [ ] タスク1
 - [ ] タスク2
 ```
+
+---
+
+## 複雑度ベースの実行戦略
+
+タスクの複雑度に応じて、実行戦略が自動的に選択されます。
+
+### 複雑度判定
+
+| 複雑度 | 条件 | 実行戦略 |
+|--------|------|---------|
+| **低** | 単純な変更、明確なゴール | シンプル実行 |
+| **中** | 複数コンポーネント、ステップ指示あり | DAG実行推奨 |
+| **高** | アーキテクチャ変更、リファクタリング | DAG実行 |
+
+### 実行戦略の決定
+
+```typescript
+determineExecutionStrategy("ボタンを追加")
+// -> { strategy: "simple", useDag: false }
+
+determineExecutionStrategy("認証システムをリファクタリング")
+// -> { strategy: "dag", useDag: true }
+```
+
+---
+
+## ul_workflow_dag - DAGベース実行
+
+高複雑度タスク向けのDAGベース並列実行ツール。
+
+### 使用方法
+
+```typescript
+ul_workflow_dag({
+  task: "認証システムをリファクタリング",
+  maxConcurrency: 3
+})
+```
+
+### 動作
+
+1. タスク複雑度を分析
+2. DAGプランを自動生成
+3. 依存関係に基づいて並列実行
+
+### 出力例
+
+```
+DAG-based UL Workflow Execution
+
+Task: 認証システムをリファクタリング
+Strategy: dag
+Reason: High complexity task - DAG-based parallel execution for efficiency
+
+Generated DAG (4 tasks, max depth: 2):
+  - research [researcher]: 認証システムに関連するコードベースを調査...
+  - implement [implementer] (deps: research): 認証システムをリファクタリング
+  - test [tester] (deps: implement): 単体テストと統合テストを作成...
+  - review [reviewer] (deps: implement): 実装をレビューし品質確認...
+
+Execute with:
+subagent_run_dag({ task: "...", maxConcurrency: 3 })
+```
+
+---
+
+## フェーズ一覧
+
+| フェーズ | 説明 |
+|---------|------|
+| `idle` | 待機中 |
+| `research` | 調査フェーズ - コードベースの深い理解 |
+| `plan` | 計画フェーズ - 詳細な実装計画の作成 |
+| `annotate` | 注釈フェーズ - ユーザーによる計画のレビューと修正 |
+| `implement` | 実装フェーズ - 計画に基づくコード実装 |
+| `review` | レビューフェーズ - 実装の品質確認 |
+| `completed` | 完了 |
+| `aborted` | 中止 |
 
 ---
 
