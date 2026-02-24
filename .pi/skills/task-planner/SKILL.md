@@ -1,6 +1,16 @@
-# Task Planner Skill
+---
+name: task-planner
+description: タスク分解スキル。複雑なタスクを依存関係を持つサブタスクのDAG（有向非巡回グラフ）に分解し、並列実行を可能にする。LLMCompiler論文の概念に基づく。
+license: MIT
+tags: [planning, dag, parallel, decomposition, llm-compiler]
+metadata:
+  skill-version: "1.0.0"
+  created-by: pi-skill-system
+---
 
-Task decomposition specialist for DAG-based parallel execution.
+# Task Planner
+
+タスク分解スペシャリスト。DAGベースの並列実行を可能にする。
 
 ## Purpose
 
