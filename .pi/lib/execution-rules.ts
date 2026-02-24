@@ -809,17 +809,52 @@ export function getVerificationWorkflowExecutionRules(
 // パフォーマンスプロファイル対応ルールのキャッシュ
 const profileRulesCache = new Map<string, string>();
 
+// 軽量実行ルール（調査タスク用）
+const LIGHTWEIGHT_EXECUTION_RULES = [
+  "",
+  "【軽量実行ルール（INTERNAL MODE）】",
+  "",
+  "1. 出力形式:",
+  "   - [CLAIM] <1文の主張>",
+  "   - [EVIDENCE] <証拠リスト（file:line形式）>",
+  "   - [CONFIDENCE] <0.0-1.0>",
+  "   - [ACTION] <next|done>",
+  "",
+  "2. 言語: 英語のみ",
+  "3. 最大トークン: 指定値に厳密に従う",
+  "4. 禁止事項: 日本語、長い説明、思考ブロック",
+  "",
+].join("\n");
+
+/**
+ * 軽量実行ルールを取得（調査タスク・INTERNALモード用）
+ * @summary 軽量実行ルール取得
+ * @returns 軽量版実行ルール文字列
+ * @description トークン効率を重視した最小限のルールセット。
+ *              OUTPUT MODE: INTERNAL 指定時や調査タスクで自動的に使用される。
+ */
+export function getLightweightExecutionRules(): string {
+  return LIGHTWEIGHT_EXECUTION_RULES;
+}
+
 /**
  * パフォーマンスプロファイルに基づく実行ルールを取得
  * @summary プロファイル別ルール取得
  * @param profileId プロファイルID
  * @param forSubagent サブエージェント向けかどうか
+ * @param lightweight 軽量モードかどうか（調査タスク用）
  * @returns 実行ルール文字列
  */
 export function getExecutionRulesForProfile(
   profileId: string,
-  forSubagent = true
+  forSubagent = true,
+  lightweight = false
 ): string {
+  // 軽量モードの場合は最小限のルールを返す
+  if (lightweight) {
+    return getLightweightExecutionRules();
+  }
+
   const key = `${profileId}:${forSubagent}`;
   const cached = profileRulesCache.get(key);
   if (cached) return cached;

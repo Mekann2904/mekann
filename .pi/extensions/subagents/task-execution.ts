@@ -77,7 +77,7 @@ import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
 } from "../../lib/plan-mode-shared";
-import { getSubagentExecutionRules, getExecutionRulesForProfile } from "../../lib/execution-rules";
+import { getSubagentExecutionRules, getExecutionRulesForProfile, getLightweightExecutionRules } from "../../lib/execution-rules";
 import { getProfileForTask, type PerformanceProfile } from "../../lib/performance-profiles";
 import {
   isNetworkErrorRetryable,
@@ -116,6 +116,20 @@ const HIGH_RISK_PATTERNS: RegExp[] = [
 ];
 
 /**
+ * 調査タスクのパターン
+ * OUTPUT MODE: INTERNAL を自動適用するタスクのキーワード
+ */
+const RESEARCH_TASK_PATTERNS: RegExp[] = [
+  /調査/i, /investigate/i, /analyze/i, /分析/i,
+  /探/i, /find/i, /search/i, /検索/i,
+  /確認/i, /verify/i, /check/i, /確認/i,
+  /読/i, /read/i, /review/i, /レビュー/i,
+  /理解/i, /understand/i, /explain/i, /説明/i,
+  /どのファイル/i, /which file/i, /where/i,
+  /どうなって/i, /how does/i, /what is/i,
+];
+
+/**
  * 高リスクタスク判定
  * @summary リスク判定（Ralph Wiggum Loop用）
  * @param task タスク内容
@@ -123,6 +137,18 @@ const HIGH_RISK_PATTERNS: RegExp[] = [
  */
 export function isHighRiskTask(task: string): boolean {
   return HIGH_RISK_PATTERNS.some(pattern => pattern.test(task));
+}
+
+/**
+ * 調査タスク判定
+ * @summary 調査タスク自動判定
+ * @param task タスク内容
+ * @returns 調査タスクの場合はtrue
+ * @description OUTPUT MODE: INTERNAL を自動適用すべきタスクかどうかを判定。
+ *              明示的な OUTPUT MODE 指定がある場合は、この判定より優先される。
+ */
+export function isResearchTask(task: string): boolean {
+  return RESEARCH_TASK_PATTERNS.some(pattern => pattern.test(task));
 }
 
 // ============================================================================
@@ -396,6 +422,41 @@ export function resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal 
 }
 
 // ============================================================================
+// Research Task Guidelines (Phase 2: File Loading Optimization)
+// ============================================================================
+
+/**
+ * search-toolsスキル準拠の検索指示を生成
+ * @summary 調査タスク用ガイドライン構築
+ * @returns 検索タスク用ガイドライン文字列
+ * @description 調査タスクで効率的なファイル検索を行うためのベストプラクティスを提供。
+ *              search-toolsスキルの主要な推奨事項を抽出。
+ */
+export function buildResearchTaskGuidelines(): string {
+  const lines: string[] = [
+    "",
+    "【検索効率化ガイドライン】",
+    "",
+    "1. ツール選択:",
+    "   - ファイル探す: file_candidates (exclude: ['node_modules', '.git'])",
+    "   - コード検索: code_search (path絞り込み, type指定)",
+    "   - シンボル定義: sym_find (kind指定, インデックス済み前提)",
+    "",
+    "2. パフォーマンス最適化:",
+    "   - 必ず limit を設定 (推奨: 20-50)",
+    "   - exclude で node_modules, .git, dist を除外",
+    "   - 並列実行を活用 (Promise.all)",
+    "",
+    "3. 検索戦略:",
+    "   - 段階的絞り込み: 広い検索 → 狭い検索",
+    "   - 複数ツール併用: file_candidates → code_search → sym_find",
+    "   - 結果が空ならパターンを緩める",
+    "",
+  ];
+  return lines.join("\n");
+}
+
+// ============================================================================
 // Prompt Building
 // ============================================================================
 
@@ -474,15 +535,24 @@ interface SubagentDirective {
 
 /**
  * extraContextからディレクティブを解析
+ * @summary ディレクティブ解析
+ * @param extraContext 追加コンテキスト文字列
+ * @param task タスク内容（自動判定用）
+ * @returns 解析されたディレクティブ
+ * @description
+ *   - 明示的な OUTPUT MODE: INTERNAL 指定がある場合は、自動判定より優先
+ *   - 調査タスクと判定された場合は、自動的に INTERNAL モードに切り替え
  */
-function parseSubagentDirectives(extraContext?: string): SubagentDirective {
+function parseSubagentDirectives(extraContext?: string, task?: string): SubagentDirective {
   const ctx = extraContext ?? "";
-  const isInternal = ctx.includes("OUTPUT MODE: INTERNAL");
-  
-  if (isInternal) {
+  const hasExplicitInternal = ctx.includes("OUTPUT MODE: INTERNAL");
+  const hasExplicitUserFacing = ctx.includes("OUTPUT MODE: USER-FACING");
+
+  // 明示的な指定がある場合は優先
+  if (hasExplicitInternal) {
     const maxTokensMatch = ctx.match(/Max:\s*(\d+)\s*tokens/i);
     const maxTokens = maxTokensMatch ? parseInt(maxTokensMatch[1], 10) : 300;
-    
+
     return {
       outputMode: "internal",
       language: "english",
@@ -490,7 +560,27 @@ function parseSubagentDirectives(extraContext?: string): SubagentDirective {
       format: "structured",
     };
   }
-  
+
+  if (hasExplicitUserFacing) {
+    return {
+      outputMode: "user-facing",
+      language: "japanese",
+      maxTokens: 0,
+      format: "detailed",
+    };
+  }
+
+  // 自動判定: 調査タスクの場合は INTERNAL モードに切り替え
+  if (task && isResearchTask(task)) {
+    return {
+      outputMode: "internal",
+      language: "english",
+      maxTokens: 300,
+      format: "structured",
+    };
+  }
+
+  // デフォルト: USER-FACING モード
   return {
     outputMode: "user-facing",
     language: "japanese",
@@ -508,8 +598,8 @@ export function buildSubagentPrompt(input: {
   profileId?: string;
   relevantPatterns?: ExtractedPattern[];
 }): string {
-  // Parse directives from extraContext
-  const directives = parseSubagentDirectives(input.extraContext);
+  // Parse directives from extraContext and task (auto-detect research tasks)
+  const directives = parseSubagentDirectives(input.extraContext, input.task);
   const isInternal = directives.outputMode === "internal";
 
   // INTERNAL mode: Build compact English prompt
