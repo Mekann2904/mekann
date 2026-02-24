@@ -3,8 +3,8 @@
  * path: .pi/lib/dag-weight-calculator.ts
  * role: DTGG重み計算式の実装
  * why: タスク依存エッジの重みを計算し、最適な実行順序を決定するため
- * related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/lib/priority-scheduler.ts
- * public_api: calculateEdgeWeight, calculateTaskPriority, calculateComplexity, calculateDependencyImportance, WeightConfig
+ * related: .pi/lib/dag-executor.ts, .pi/lib/dag-types.ts, .pi/lib/priority-scheduler.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams/extension.ts
+ * public_api: calculateEdgeWeight, calculateTaskPriority, calculateComplexity, calculateDependencyImportance, WeightConfig, getAgentSpecializationWeight, calculateTeamWeight, TeamMemberForWeight, TeamDefinitionForWeight
  * invariants: 重みは常に非負値を返す
  * side_effects: なし（純粋関数）
  * failure_modes: 無効な入力値（負の推定時間等）
@@ -15,12 +15,15 @@
  *   - 依存関係重要度 I(v_i, v_j) を計算
  *   - エッジ重み W(v_i, v_j) = α·C(v_j) + β·I(v_i, v_j) を計算
  *   - タスク優先度 P(v_i) を計算
+ *   - エージェント専門化重み getAgentSpecializationWeight を提供
+ *   - チーム重み calculateTeamWeight を提供
  * why_it_exists:
  *   - タスクDAGの最適な実行順序を決定するため
  *   - クリティカルパスを優先し、実行効率を向上させるため
+ *   - subagent_run_parallelとagent_team_run_parallelでの優先度スケジューリングを可能にするため
  * scope:
- *   in: TaskNode型のタスク情報
- *   out: エッジ重みとタスク優先度の数値
+ *   in: TaskNode型のタスク情報、エージェントID、チーム定義
+ *   out: エッジ重み、タスク優先度、エージェント/チーム重みの数値
  */
 
 // File: .pi/lib/dag-weight-calculator.ts
@@ -66,14 +69,67 @@ const AGENT_SPECIALIZATION_FACTORS: Record<string, number> = {
 };
 
 /**
- * エージェントの専門化係数を取得
+ * エージェントの専門化係数を取得（内部用）
  * @summary エージェント専門化係数取得
  * @param agentId - エージェントID
  * @returns 専門化係数（0.5〜1.2）
+ * @internal
  */
 function getAgentSpecializationFactor(agentId: string | undefined): number {
   if (!agentId) return 1.0;
   return AGENT_SPECIALIZATION_FACTORS[agentId] ?? 1.0;
+}
+
+/**
+ * エージェントの専門化重みを取得（公開API）
+ * DynTaskMAS統合用: subagent_run_parallelとagent_team_run_parallelで使用
+ * @summary エージェント専門化重み取得
+ * @param agentId - エージェントID
+ * @returns 専門化重み（0.5〜1.2）
+ * @example
+ * const weight = getAgentSpecializationWeight('researcher'); // 0.5
+ * const weight2 = getAgentSpecializationWeight('architect'); // 1.2
+ */
+export function getAgentSpecializationWeight(agentId: string): number {
+  return getAgentSpecializationFactor(agentId);
+}
+
+/**
+ * チームメンバー定義の最小インターフェース
+ * チーム重み計算に必要なプロパティのみを定義
+ */
+export interface TeamMemberForWeight {
+  id: string;
+}
+
+/**
+ * チーム定義の最小インターフェース
+ * チーム重み計算に必要なプロパティのみを定義
+ */
+export interface TeamDefinitionForWeight {
+  id: string;
+  members: TeamMemberForWeight[];
+}
+
+/**
+ * チームの重みを計算（メンバー構成ベース）
+ * メンバーの専門性の平均から算出
+ * DynTaskMAS統合用: agent_team_run_parallelで使用
+ * @summary チーム重み計算
+ * @param team - チーム定義
+ * @returns チーム重み（0.5〜1.2の平均値）
+ * @example
+ * const weight = calculateTeamWeight({
+ *   id: 'core-team',
+ *   members: [{ id: 'researcher' }, { id: 'implementer' }]
+ * }); // (0.5 + 1.0) / 2 = 0.75
+ */
+export function calculateTeamWeight(team: TeamDefinitionForWeight): number {
+  if (!team.members || team.members.length === 0) {
+    return 1.0;
+  }
+  const memberWeights = team.members.map((m) => getAgentSpecializationWeight(m.id));
+  return memberWeights.reduce((a, b) => a + b, 0) / memberWeights.length;
 }
 
 /**

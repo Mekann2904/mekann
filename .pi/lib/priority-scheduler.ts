@@ -278,3 +278,162 @@ export class PriorityScheduler {
     };
   }
 }
+
+// ============================================================================
+// Legacy API for backward compatibility with agent-runtime.ts
+// ============================================================================
+
+/**
+ * 優先度レベル
+ * @summary 優先度レベル
+ * @deprecated Use TaskNodePriority instead
+ */
+export type TaskPriority = "critical" | "high" | "normal" | "low";
+
+/**
+ * 優先度付きキューエントリ
+ * @summary 優先度キューエントリ
+ * @deprecated Use TaskNode directly
+ */
+export interface PriorityQueueEntry {
+  /** 一意識別子 */
+  id: string;
+  /** ツール名 */
+  toolName: string;
+  /** 優先度 */
+  priority: TaskPriority;
+  /** キュー追加時刻 */
+  enqueuedAtMs: number;
+  /** ソース情報 */
+  source?: string;
+}
+
+/**
+ * 優先度を数値に変換
+ * @summary 優先度変換
+ * @param priority - 優先度
+ * @returns 数値（大きいほど優先度が高い）
+ * @deprecated Internal use only
+ */
+export function inferPriority(priority: TaskPriority | undefined): number {
+  const priorityMap: Record<TaskPriority, number> = {
+    critical: 100,
+    high: 75,
+    normal: 50,
+    low: 25,
+  };
+  return priorityMap[priority ?? "normal"];
+}
+
+/**
+ * 優先度で比較
+ * @summary 優先度比較
+ * @param a - エントリA
+ * @param b - エントリB
+ * @returns 比較結果（降順）
+ * @deprecated Internal use only
+ */
+export function comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number {
+  const priorityDiff = inferPriority(b.priority) - inferPriority(a.priority);
+  if (priorityDiff !== 0) return priorityDiff;
+  return a.enqueuedAtMs - b.enqueuedAtMs;
+}
+
+/**
+ * 優先度付きタスクキュー
+ * @summary 優先度キュークラス
+ * @deprecated Use PriorityScheduler instead
+ */
+export class PriorityTaskQueue {
+  private queue: PriorityQueueEntry[] = [];
+
+  /**
+   * エントリを追加
+   * @summary エントリ追加
+   * @param entry - キューエントリ
+   */
+  enqueue(entry: PriorityQueueEntry): void {
+    this.queue.push(entry);
+    this.queue.sort(comparePriority);
+  }
+
+  /**
+   * 先頭エントリを取り出し
+   * @summary エントリ取り出し
+   * @returns 先頭エントリまたはundefined
+   */
+  dequeue(): PriorityQueueEntry | undefined {
+    return this.queue.shift();
+  }
+
+  /**
+   * 先頭エントリを参照
+   * @summary 先頭参照
+   * @returns 先頭エントリまたはundefined
+   */
+  peek(): PriorityQueueEntry | undefined {
+    return this.queue[0];
+  }
+
+  /**
+   * キューサイズを取得
+   * @summary サイズ取得
+   * @returns エントリ数
+   */
+  size(): number {
+    return this.queue.length;
+  }
+
+  /**
+   * キューが空かどうか
+   * @summary 空判定
+   * @returns 空の場合true
+   */
+  isEmpty(): boolean {
+    return this.queue.length === 0;
+  }
+
+  /**
+   * 全エントリを取得
+   * @summary 全エントリ取得
+   * @returns エントリ配列
+   */
+  toArray(): PriorityQueueEntry[] {
+    return [...this.queue];
+  }
+
+  /**
+   * 条件に一致するエントリを削除
+   * @summary エントリ削除
+   * @param predicate - 削除条件
+   * @returns 削除されたエントリ数
+   */
+  remove(predicate: (entry: PriorityQueueEntry) => boolean): number {
+    const initialLength = this.queue.length;
+    this.queue = this.queue.filter((e) => !predicate(e));
+    return initialLength - this.queue.length;
+  }
+}
+
+/**
+ * キュー統計をフォーマット
+ * @summary 統計フォーマット
+ * @param queue - 優先度キュー
+ * @returns フォーマットされた統計文字列
+ * @deprecated Internal use only
+ */
+export function formatPriorityQueueStats(queue: PriorityTaskQueue): string {
+  const entries = queue.toArray();
+  const byPriority: Record<TaskPriority, number> = {
+    critical: 0,
+    high: 0,
+    normal: 0,
+    low: 0,
+  };
+
+  for (const entry of entries) {
+    byPriority[entry.priority]++;
+  }
+
+  return `Queue stats: total=${entries.length}, critical=${byPriority.critical}, high=${byPriority.high}, normal=${byPriority.normal}, low=${byPriority.low}`;
+}

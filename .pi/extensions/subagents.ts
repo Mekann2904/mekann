@@ -99,6 +99,7 @@ import {
   trimErrorMessage as sharedTrimErrorMessage,
   buildDiagnosticContext as sharedBuildDiagnosticContext,
 } from "../lib/agent-errors.js";
+import { getAgentSpecializationWeight } from "../lib/dag-weight-calculator.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 import { runWithConcurrencyLimit } from "../lib/concurrency";
@@ -997,6 +998,14 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         refreshRuntimeStatus(ctx);
         capacityReservation.consume();
 
+        // DynTaskMAS: エージェントの重みを計算（専門性ベース）
+        // 重みが大きい（専門性が高い）エージェントを優先的に実行
+        const agentWeights = new Map<string, number>();
+        for (const agent of activeAgents) {
+          const weight = getAgentSpecializationWeight(agent.id);
+          agentWeights.set(agent.id, weight);
+        }
+
         const results = await runWithConcurrencyLimit(
           activeAgents,
           Math.max(1, effectiveParallelism),
@@ -1035,6 +1044,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               result.runRecord.error,
             );
             return result;
+          },
+          {
+            signal: _signal,
+            usePriorityScheduling: true,
+            itemWeights: agentWeights,
+            getItemId: (agent: SubagentDefinition) => agent.id,
           },
         );
 
