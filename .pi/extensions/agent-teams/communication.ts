@@ -176,6 +176,34 @@ export const COMMUNICATION_CONTEXT_FIELD_LIMIT = 180;
 export const COMMUNICATION_CONTEXT_OTHER_LIMIT = 4;
 
 /**
+ * Base values for dynamic context limits.
+ */
+const BASE_COMMUNICATION_CONTEXT_FIELD_LIMIT = 180;
+const BASE_COMMUNICATION_CONTEXT_OTHER_LIMIT = 4;
+const MIN_CONTEXT_LIMIT = 50;
+const MAX_CONTEXT_LIMIT = 500;
+
+/**
+ * チームサイズに応じた動的コンテキスト制限を計算する
+ * @summary 動的制限計算
+ * @param teamSize チームのメンバー数
+ * @returns 動的に調整された制限値
+ */
+export function computeContextLimits(teamSize: number): { fieldLimit: number; otherLimit: number } {
+  // チームサイズに応じて制限を調整（線形スケーリング）
+  const scaleFactor = Math.max(0.5, Math.min(2, teamSize / 5));
+  const fieldLimit = Math.max(
+    MIN_CONTEXT_LIMIT,
+    Math.min(MAX_CONTEXT_LIMIT, Math.round(BASE_COMMUNICATION_CONTEXT_FIELD_LIMIT * scaleFactor))
+  );
+  const otherLimit = Math.max(
+    1,
+    Math.min(10, Math.round(BASE_COMMUNICATION_CONTEXT_OTHER_LIMIT * scaleFactor))
+  );
+  return { fieldLimit, otherLimit };
+}
+
+/**
  * Pattern to detect instruction-like text that should be sanitized.
  * Matches common instruction keywords in both English and Japanese.
  */

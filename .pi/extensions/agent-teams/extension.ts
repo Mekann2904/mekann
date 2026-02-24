@@ -1180,8 +1180,21 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           refreshRuntimeStatus(ctx);
           stopReservationHeartbeat();
           capacityReservation.release();
-          await liveMonitor?.close?.();
-          await liveMonitor?.wait();
+
+          // liveMonitorのクローズを安全に実行
+          try {
+            await liveMonitor?.close?.();
+          } catch (monitorError) {
+            const monitorErrorMsg = monitorError instanceof Error ? monitorError.message : String(monitorError);
+            console.warn(`[agent-teams] liveMonitor.close failed: ${monitorErrorMsg}`);
+          }
+
+          try {
+            await liveMonitor?.wait();
+          } catch (monitorError) {
+            const monitorErrorMsg = monitorError instanceof Error ? monitorError.message : String(monitorError);
+            console.warn(`[agent-teams] liveMonitor.wait failed: ${monitorErrorMsg}`);
+          }
         }
       refreshRuntimeStatus(ctx);
     },
@@ -1775,8 +1788,20 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           },
         };
         } finally {
-          await liveMonitor?.close?.();
-          await liveMonitor?.wait();
+          // liveMonitorのクローズを安全に実行
+          try {
+            await liveMonitor?.close?.();
+          } catch (monitorError) {
+            const monitorErrorMsg = monitorError instanceof Error ? monitorError.message : String(monitorError);
+            console.warn(`[agent-teams] liveMonitor.close failed (parallel): ${monitorErrorMsg}`);
+          }
+
+          try {
+            await liveMonitor?.wait();
+          } catch (monitorError) {
+            const monitorErrorMsg = monitorError instanceof Error ? monitorError.message : String(monitorError);
+            console.warn(`[agent-teams] liveMonitor.wait failed (parallel): ${monitorErrorMsg}`);
+          }
         }
       } finally {
         stopReservationHeartbeat();
