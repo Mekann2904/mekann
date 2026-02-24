@@ -197,14 +197,18 @@ function scheduleWritePersistedState(): void {
   writeDebounceTimer.unref();
 }
 
-// プロセス終了時に確実に書き込む
-process.on("beforeExit", () => {
-  if (writeDebounceTimer) {
-    clearTimeout(writeDebounceTimer);
-    writeDebounceTimer = null;
-    writePersistedRateLimitState(sharedRateLimitState);
-  }
-});
+// プロセス終了時に確実に書き込む（重複登録を防ぐ）
+let beforeExitHandlerRegistered = false;
+if (!beforeExitHandlerRegistered) {
+  beforeExitHandlerRegistered = true;
+  process.on("beforeExit", () => {
+    if (writeDebounceTimer) {
+      clearTimeout(writeDebounceTimer);
+      writeDebounceTimer = null;
+      writePersistedRateLimitState(sharedRateLimitState);
+    }
+  });
+}
 
 type PersistedRateLimitState = {
   version: number;
@@ -516,6 +520,17 @@ function registerRateLimitGateHit(
 ): RateLimitGateSnapshot {
   const normalizedKey = normalizeRateLimitKey(key);
   const nowMs = now();
+
+  // Bug #1 Warning: High rate limit entry count indicates potential race condition risk
+  const entries = sharedRateLimitState.entries;
+  if (entries.size > 10) {
+    console.warn(
+      "[retry-with-backoff] High rate limit entry count detected:",
+      entries.size,
+      "- Risk of Bug #1 (race condition) increased"
+    );
+  }
+
   return withSharedRateLimitState(nowMs, () => {
     const state = getSharedRateLimitState();
     const previous = state.entries.get(normalizedKey);

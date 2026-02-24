@@ -32,7 +32,6 @@ pi拡張機能コレクションのドキュメントへようこそ。
 | [question](./02-user-guide/02-question.md) | インタラクティブUIでユーザー選択 | [完了] 完了 |
 
 | [loop_run](./02-user-guide/04-loop-run.md) | 自律ループ実行 | [完了] 完了 |
-| [fzf](./02-user-guide/05-fzf.md) | Fuzzy finder統合 | [完了] 完了 |
 | [abbr](./02-user-guide/06-abbr.md) | 略語管理 | [完了] 完了 |
 | [plan_***](./02-user-guide/07-plan.md) | 計画管理とタスク追跡 | [完了] 完了 |
 | [subagents](./02-user-guide/08-subagents.md) | サブエージェント | [完了] 完了 |

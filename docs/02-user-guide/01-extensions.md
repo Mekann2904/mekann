@@ -22,7 +22,6 @@ pi拡張機能コレクションで利用可能なすべての拡張機能の概
 | **question** | インタラクティブUIでユーザー選択 | [→](./02-question.md) |
 
 | **loop_run** | 自律ループ実行 | [→](./04-loop-run.md) |
-| **fzf** | Fuzzy finder統合 | [→](./05-fzf.md) |
 | **abbr** | 略語管理 | [→](./06-abbr.md) |
 
 ### オーケストレーション
@@ -93,18 +92,6 @@ pi拡張機能コレクションで利用可能なすべての拡張機能の概
   "tool": "loop_run",
   "input": {
     "task": "繰り返すタスク"
-  }
-}
-```
-
-### fzf - ファジーファインダー
-
-```typescript
-{
-  "tool": "fzf",
-  "input": {
-    "type": "files",
-    "pattern": "*.ts"
   }
 }
 ```

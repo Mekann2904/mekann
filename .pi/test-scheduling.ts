@@ -157,14 +157,14 @@ function testWorkStealing(): void {
   section("Phase 3: Work-Stealing");
   
   test("registers/unregisters", () => {
-    registerInstance("test-001");
+    registerInstance("test-001", process.cwd());
     const ok = getCoordinatorStatus().registered;
     unregisterInstance();
     return ok;
   });
 
   test("dynamic limit works", () => {
-    registerInstance("test-002");
+    registerInstance("test-002", process.cwd());
     const limit = getDynamicParallelLimit(0);
     unregisterInstance();
     return limit >= 1;
@@ -215,7 +215,7 @@ function testUnifiedLimitResolver(): void {
   
   test("getUnifiedEnvConfig returns valid config", () => {
     const config = getUnifiedEnvConfig();
-    return config.maxTotalLlm >= 1 && config.maxTotalRequests >= 1;
+    return config.totalMaxLlm >= 1 && config.totalMaxRequests >= 1;
   });
 
   test("resolveUnifiedLimits returns valid result", () => {

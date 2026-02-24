@@ -107,17 +107,90 @@ function refreshStatus(ctx: any): void {
   ctx.ui.setStatus?.("ul-dual-mode", `UL mode | team:${team} loop:${loop}`);
 }
 
-// スロットリング用の状態
+// 適応的スロットリング用の定数と状態
+const MIN_REFRESH_STATUS_THROTTLE_MS = 100;
+const MAX_REFRESH_STATUS_THROTTLE_MS = 1000;
+const LOW_LOAD_THRESHOLD = 2;
+const HIGH_LOAD_THRESHOLD = 8;
+
 let lastRefreshStatusMs = 0;
-const REFRESH_STATUS_THROTTLE_MS = 300;  // 300ms間隔でスロットリング
+let adaptiveThrottleMs = MIN_REFRESH_STATUS_THROTTLE_MS;
+let cachedRuntimeSnapshot: { totalActiveLlm: number; limits: { maxTotalActiveLlm: number } } | null = null;
+let lastSnapshotTime = 0;
+const SNAPSHOT_CACHE_TTL_MS = 50;  // 50ms間スナップショットをキャッシュ
 
 /**
- * スロットリング付きのrefreshStatus。
- * 短時間での連続呼び出しを防ぎ、UI更新のオーバーヘッドを削減する。
+ * ランタイムスナップショットを取得（キャッシュ付き）
+ * getRuntimeSnapshot() の呼び出しコストを削減するため、短期間はキャッシュを返す
+ */
+function getCachedRuntimeSnapshot(): { totalActiveLlm: number; limits: { maxTotalActiveLlm: number } } {
+  const now = Date.now();
+  if (cachedRuntimeSnapshot && (now - lastSnapshotTime) < SNAPSHOT_CACHE_TTL_MS) {
+    return cachedRuntimeSnapshot;
+  }
+
+  // Dynamic import to avoid circular dependency
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getRuntimeSnapshot } = require("./agent-runtime") as typeof import("./agent-runtime");
+    const snapshot = getRuntimeSnapshot();
+    cachedRuntimeSnapshot = {
+      totalActiveLlm: snapshot.totalActiveLlm,
+      limits: {
+        maxTotalActiveLlm: snapshot.limits.maxTotalActiveLlm,
+      },
+    };
+    lastSnapshotTime = now;
+    return cachedRuntimeSnapshot;
+  } catch {
+    // Fallback if getRuntimeSnapshot is not available
+    return {
+      totalActiveLlm: 0,
+      limits: { maxTotalActiveLlm: 10 },
+    };
+  }
+}
+
+/**
+ * 負荷に応じた適応的スロットリング間隔を計算する
+ * 低負荷時は最小間隔、高負荷時は最大間隔、中間は線形補間
+ */
+function getAdaptiveThrottleMs(): number {
+  const snapshot = getCachedRuntimeSnapshot();
+  const activeLlm = snapshot.totalActiveLlm;
+  const maxLlm = snapshot.limits.maxTotalActiveLlm;
+
+  if (maxLlm <= 0) {
+    return MIN_REFRESH_STATUS_THROTTLE_MS;
+  }
+
+  if (activeLlm < LOW_LOAD_THRESHOLD) {
+    return MIN_REFRESH_STATUS_THROTTLE_MS;
+  }
+
+  if (activeLlm > HIGH_LOAD_THRESHOLD) {
+    return MAX_REFRESH_STATUS_THROTTLE_MS;
+  }
+
+  const load = activeLlm / maxLlm;
+  return Math.min(
+    MAX_REFRESH_STATUS_THROTTLE_MS,
+    Math.max(
+      MIN_REFRESH_STATUS_THROTTLE_MS,
+      Math.trunc(MIN_REFRESH_STATUS_THROTTLE_MS + load * (MAX_REFRESH_STATUS_THROTTLE_MS - MIN_REFRESH_STATUS_THROTTLE_MS))
+    )
+  );
+}
+
+/**
+ * 適応的スロットリング付きのrefreshStatus。
+ * 負荷に応じてスロットリング間隔を動的に調整し、UI更新のオーバーヘッドを削減する。
  */
 function refreshStatusThrottled(ctx: any): void {
   const now = Date.now();
-  if (now - lastRefreshStatusMs < REFRESH_STATUS_THROTTLE_MS) {
+  adaptiveThrottleMs = getAdaptiveThrottleMs();
+
+  if (now - lastRefreshStatusMs < adaptiveThrottleMs) {
     return;  // スロットリング
   }
   lastRefreshStatusMs = now;
@@ -272,21 +345,75 @@ function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
 const MAX_UL_POLICY_CACHE_ENTRIES = 10;
 const ulPolicyCache = new Map<string, string>();
 
-function safeCacheSet(key: string, value: string): void {
-  if (ulPolicyCache.size >= MAX_UL_POLICY_CACHE_ENTRIES) {
-    const firstKey = ulPolicyCache.keys().next().value;
-    if (firstKey !== undefined) {
-      ulPolicyCache.delete(firstKey);
+/**
+ * LRUキャッシュの実装
+ * アクセス順序を管理し、上限超過時に最も古いエントリを削除
+ */
+class LRUCache<K, V> {
+  private cache = new Map<K, { value: V; lastAccess: number }>();
+  private accessOrder: K[] = [];
+
+  constructor(private maxSize: number) {}
+
+  get(key: K): V | undefined {
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+
+    // アクセス順序を更新
+    entry.lastAccess = Date.now();
+    this.updateAccessOrder(key);
+
+    return entry.value;
+  }
+
+  set(key: K, value: V): void {
+    if (this.cache.has(key)) {
+      this.updateAccessOrder(key);
+    } else {
+      this.accessOrder.push(key);
+    }
+
+    this.cache.set(key, { value, lastAccess: Date.now() });
+
+    // 上限超過時は最も古いエントリを削除
+    while (this.cache.size > this.maxSize) {
+      const oldestKey = this.accessOrder.shift();
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
     }
   }
-  ulPolicyCache.set(key, value);
+
+  private updateAccessOrder(key: K): void {
+    const index = this.accessOrder.indexOf(key);
+    if (index !== -1) {
+      this.accessOrder.splice(index, 1);
+    }
+    this.accessOrder.push(key);
+  }
+
+  clear(): void {
+    this.cache.clear();
+    this.accessOrder = [];
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+}
+
+// ポリシーキャッシュをLRU化（従来のMapから移行）
+const ulPolicyLRUCache = new LRUCache<string, string>(MAX_UL_POLICY_CACHE_ENTRIES);
+
+function safeCacheSet(key: string, value: string): void {
+  ulPolicyLRUCache.set(key, value);
 }
 
 function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
   const key = `${sessionWide}:${goalLoopMode}`;
-  const cached = ulPolicyCache.get(key);
+  const cached = ulPolicyLRUCache.get(key);
   if (cached) return cached;
-  
+
   const policy = buildUlPolicyString(sessionWide, goalLoopMode);
   safeCacheSet(key, policy);
   return policy;
@@ -295,7 +422,7 @@ function getUlPolicy(sessionWide: boolean, goalLoopMode: boolean): string {
 function buildUlPolicyString(sessionWide: boolean, goalLoopMode: boolean): string {
   const mode = sessionWide ? "UL SESSION" : "UL";
   const scope = sessionWide ? "session is in" : "turn is in";
-  
+
   const loopSection = goalLoopMode
     ? `
 Loop rule (clear completion criteria detected):
@@ -322,6 +449,38 @@ Rules:
 - ${loopSection}
 - Direct edits allowed for trivial changes.
 ---`;
+}
+
+/**
+ * トークン効率的な内部通信フォーマット
+ * エージェント間通信では英語・構造化フォーマットを使用し、トークン消費を削減する
+ */
+export const TOKEN_EFFICIENT_FORMAT = `
+OUTPUT MODE: INTERNAL
+- Language: English for all inter-agent communication
+- Format: [CLAIM] 1-sentence | [EVIDENCE] - item (file:line) | [CONFIDENCE] 0.0-1.0 | [ACTION] next|done
+- Max: 300 tokens per response
+- Japanese only for final user-facing synthesis
+`;
+
+/**
+ * タスクにトークン効率化コンテキストを追加する
+ * @summary トークン効率化コンテキスト追加
+ * @param task - 元のタスク
+ * @param isInternal - 内部通信かどうか
+ * @returns 拡張されたタスク
+ */
+export function enhanceTaskWithTokenEfficiency(
+  task: string,
+  isInternal: boolean = true,
+): string {
+  if (!isInternal) {
+    return task;
+  }
+
+  return `${task}
+
+${TOKEN_EFFICIENT_FORMAT}`;
 }
 
 /**
@@ -367,6 +526,17 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
     },
   });
 
+  // サブコマンドパターン
+  const UL_SUBCOMMANDS = {
+    fast: /^\s*ul\s+fast\s+/i,
+    workflow: /^\s*ul\s+workflow\s+/i,
+    status: /^\s*ul\s+status\s*$/i,
+    approve: /^\s*ul\s+approve\s*$/i,
+    annotate: /^\s*ul\s+annotate\s*$/i,
+    abort: /^\s*ul\s+abort\s*$/i,
+    resume: /^\s*ul\s+resume\s+/i,
+  };
+
   // 入力先頭が "ul" のときだけ、次の1プロンプトをULモードにする。
   pi.on("input", async (event, ctx) => {
     if (event.source === "extension") {
@@ -395,31 +565,163 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       return { action: "continue" as const };
     }
 
+    // サブコマンド判定
     const transformed = extractTextWithoutUlPrefix(rawText);
     if (!transformed.trim()) {
       state.pendingUlMode = false;
       state.pendingGoalLoopMode = false;
       if (ctx?.hasUI && ctx?.ui) {
-        ctx.ui.notify("`ul` の後に実行内容を入力してください。", "warning");
+        ctx.ui.notify("`ul` の後に実行内容を入力してください。\n使い方: ul <task> | ul fast <task> | ul status | ul approve | ul annotate | ul abort", "warning");
       }
       return { action: "handled" as const };
     }
 
-    state.pendingUlMode = true;
-    state.pendingGoalLoopMode = looksLikeClearGoalTask(transformed);
-    state.currentTask = transformed;  // タスクを保存（reviewer要否判定用）
+    // ul fast <task> → 既存の委任モード
+    if (UL_SUBCOMMANDS.fast.test(rawText)) {
+      const task = rawText.replace(UL_SUBCOMMANDS.fast, "").trim();
+      state.pendingUlMode = true;
+      state.pendingGoalLoopMode = looksLikeClearGoalTask(task);
+      state.currentTask = task;
+      
+      if (ctx?.hasUI && ctx?.ui) {
+        ctx.ui.notify("UL Fast モード: 委任優先で実行します。", "info");
+      }
+      
+      return {
+        action: "transform" as const,
+        text: buildUlTransformedInput(task, state.pendingGoalLoopMode),
+      };
+    }
+
+    // ul workflow <task> または ul <task> → ワークフローモード
+    let taskText = transformed;
+    if (UL_SUBCOMMANDS.workflow.test(rawText)) {
+      taskText = rawText.replace(UL_SUBCOMMANDS.workflow, "").trim();
+    }
     
-    // 小規模タスクの場合は通知を変更
-    const reviewerHint = shouldRequireReviewer(transformed) ? "（完了前にreviewer必須）" : "（小規模タスク）";
+    // コマンド系（status, approve, annotate, abort）
+    if (UL_SUBCOMMANDS.status.test(rawText)) {
+      return {
+        action: "transform" as const,
+        text: `以下のツールを呼び出してワークフローのステータスを表示してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_status", "arguments": {} }
+\`\`\`
+
+ステータスを確認し、ユーザーに結果を報告してください。`,
+      };
+    }
+
+    if (UL_SUBCOMMANDS.approve.test(rawText)) {
+      // 現在のフェーズに応じた質問を生成
+      const questionText = `現在のフェーズを承認して次に進みますか？`;
+      
+      return {
+        action: "transform" as const,
+        text: `まず、以下の質問を使ってユーザーに確認してください:
+
+\`\`\`json
+{ "tool": "question", "arguments": { "questions": [{ "question": "${questionText}", "header": "承認確認", "options": [{ "label": "Yes", "description": "承認して次のフェーズへ" }, { "label": "No", "description": "キャンセル" }] }] } }
+\`\`\`
+
+ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_approve", "arguments": {} }
+\`\`\`
+
+承認結果をユーザーに報告してください。`,
+      };
+    }
+
+    if (UL_SUBCOMMANDS.annotate.test(rawText)) {
+      return {
+        action: "transform" as const,
+        text: `まず、以下の質問を使ってユーザーに確認してください:
+
+\`\`\`json
+{ "tool": "question", "arguments": { "questions": [{ "question": "plan.mdの注釈を適用しますか？", "header": "注釈適用", "options": [{ "label": "Yes", "description": "注釈を検出・適用" }, { "label": "No", "description": "キャンセル" }] }] } }
+\`\`\`
+
+ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_annotate", "arguments": {} }
+\`\`\`
+
+注釈の検出結果をユーザーに報告してください。`,
+      };
+    }
+
+    if (UL_SUBCOMMANDS.abort.test(rawText)) {
+      return {
+        action: "transform" as const,
+        text: `まず、以下の質問を使ってユーザーに確認してください:
+
+\`\`\`json
+{ "tool": "question", "arguments": { "questions": [{ "question": "本当にワークフローを中止しますか？\\n中止すると、現在の進捗が中断されます。", "header": "中止確認", "options": [{ "label": "Yes", "description": "中止する" }, { "label": "No", "description": "キャンセル" }] }] } }
+\`\`\`
+
+ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_abort", "arguments": {} }
+\`\`\`
+
+中止結果をユーザーに報告してください。`,
+      };
+    }
+
+    if (UL_SUBCOMMANDS.resume.test(rawText)) {
+      const taskId = rawText.replace(UL_SUBCOMMANDS.resume, "").trim();
+      return {
+        action: "transform" as const,
+        text: `以下のツールを呼び出してワークフローを再開してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_resume", "arguments": { "task_id": "${taskId}" } }
+\`\`\`
+
+再開結果をユーザーに報告してください。`,
+      };
+    }
+
+    // デフォルト: ul <task> → ワークフローモード
+    state.pendingUlMode = false;  // ワークフローモードでは委任モードを使わない
+    state.pendingGoalLoopMode = false;
+    state.currentTask = taskText;
+
     if (ctx?.hasUI && ctx?.ui) {
-      const modeHint = state.pendingGoalLoopMode ? " + loop完了条件モード" : "";
-      const notifyText = `ULモード: 委任優先で効率的に実行します${reviewerHint}${modeHint}。`;
-      ctx.ui.notify(notifyText, "info");
+      ctx.ui.notify("UL Workflow モード: Research-Plan-Annotate-Implement ワークフローを開始します。", "info");
     }
 
     return {
       action: "transform" as const,
-      text: buildUlTransformedInput(transformed, state.pendingGoalLoopMode),
+      text: `まず、以下の質問を使ってユーザーに確認してください:
+
+\`\`\`json
+{ "tool": "question", "arguments": { "questions": [{ "question": "以下のタスクでResearch-Plan-Annotate-Implementワークフローを開始しますか？\\n\\nタスク: ${taskText.replace(/"/g, '\\"')}\\n\\nワークフローのフェーズ:\\n1. RESEARCH: コードベースの調査\\n2. PLAN: 実装計画の作成\\n3. ANNOTATE: ユーザーによる計画レビュー\\n4. IMPLEMENT: コード実装", "header": "ワークフロー開始", "options": [{ "label": "Yes", "description": "ワークフローを開始" }, { "label": "No", "description": "キャンセル" }] }] } }
+\`\`\`
+
+ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
+
+\`\`\`json
+{ "tool": "ul_workflow_start", "arguments": { "task": "${taskText.replace(/"/g, '\\"')}" } }
+\`\`\`
+
+ワークフローが開始されたら、次のステップを指示通りに実行してください:
+1. ul_workflow_research で調査フェーズを実行
+2. ul_workflow_approve で調査を承認（ユーザー確認必須）
+3. ul_workflow_plan で計画フェーズを実行
+4. ul_workflow_approve で計画を承認（ユーザー確認必須）
+5. plan.mdに注釈を追加（ユーザーが行う）
+6. ul_workflow_annotate で注釈を適用（ユーザー確認必須）
+7. ul_workflow_approve で注釈フェーズを承認（ユーザー確認必須）
+8. ul_workflow_implement で実装フェーズを実行
+9. ul_workflow_approve で完了
+
+各ステップでユーザーに進捗を報告し、承認を求めてください。`,
     };
   });
 

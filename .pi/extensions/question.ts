@@ -29,7 +29,7 @@
  */
 
 import { Type } from "@mariozechner/pi-ai";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth, wrapTextWithAnsi, CURSOR_MARKER } from "@mariozechner/pi-tui";
 import { matchesKey, Key } from "@mariozechner/pi-tui";
 
@@ -57,13 +57,48 @@ type QuestionCustomController = {
 	handleInput: (data: string) => void;
 };
 
+// [Medium Fix] 型安全性向上: any型を置き換えるインターフェース定義
+interface QuestionTheme {
+	fg: (color: string, text: string) => string;
+	bg: (color: string, text: string) => string;
+	dim: (text: string) => string;
+	bold: (text: string) => string;
+	underline: (text: string) => string;
+}
+
+interface QuestionTui {
+	requestRender: () => void;
+}
+
+interface QuestionContext {
+	hasUI: boolean;
+	ui: {
+		custom: <T>(handler: (
+			tui: QuestionTui,
+			theme: QuestionTheme,
+			_kb: unknown,
+			done: (value: T) => void
+		) => QuestionCustomController) => Promise<T>;
+		notify: (message: string, type: string) => void;
+	};
+}
+
+/**
+ * ExtensionContextをQuestionContextとして型キャスト
+ * 実行時にはpi SDKのTheme型とQuestionThemeは互換性があるため安全
+ * （両者とも同じメソッドシグネチャを持つ）
+ */
+function asQuestionContext(ctx: ExtensionContext): QuestionContext {
+	return ctx as unknown as QuestionContext;
+}
+
 // ============================================
 // UIコンポーネント
 // ============================================
 
 function createRenderer<TState>(
 	initialState: TState,
-	renderFn: (state: TState, width: number, theme: any) => string[]
+	renderFn: (state: TState, width: number, theme: QuestionTheme) => string[]
 ) {
 	let state = initialState;
 	let cached: string[] | undefined;
@@ -74,7 +109,7 @@ function createRenderer<TState>(
 			state = { ...state, ...update };
 			cached = undefined;
 		},
-		render: (width: number, theme: any) => {
+		render: (width: number, theme: QuestionTheme) => {
 			if (!cached) cached = renderFn(state, width, theme);
 			return cached;
 		},
@@ -88,7 +123,7 @@ function createRenderer<TState>(
 
 async function askSingleQuestion(
 	question: QuestionInfo,
-	ctx: any
+	ctx: QuestionContext
 ): Promise<Answer | null> {
 	const options = question.options || [];
 	const allowCustom = question.custom !== false;
@@ -244,7 +279,7 @@ async function askSingleQuestion(
 		return lines;
 	});
 
-	return ctx.ui.custom((tui: any, theme: any, _kb: any, done: (value: Answer | null) => void): QuestionCustomController => {
+	return ctx.ui.custom((tui: QuestionTui, theme: QuestionTheme, _kb: unknown, done: (value: Answer | null) => void): QuestionCustomController => {
 		// ブラケットペーストモードのバッファ
 		let pasteBuffer = "";
 		let isInPaste = false;
@@ -303,6 +338,9 @@ async function askSingleQuestion(
 					}
 					// 空の場合は何もしない（確定させない）
 				} else if (matchesKey(data, Key.escape)) {
+					// [High Fix] Escキーでモード変更時にペースト状態をリセット
+					isInPaste = false;
+					pasteBuffer = "";
 					renderer.setState({ customMode: false });
 					tui.requestRender();
 				} else if (matchesKey(data, Key.backspace)) {
@@ -436,6 +474,9 @@ async function askSingleQuestion(
 					const isOtherOption = state.cursor === displayOptions.length - 1 && allowCustom;
 					
 					if (isOtherOption) {
+						// [High Fix] モード変更時にペースト状態をリセット
+						isInPaste = false;
+						pasteBuffer = "";
 						renderer.setState({ 
 							customMode: true,
 							customInput: "",
@@ -472,7 +513,7 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 async function showConfirmationScreen(
 	questions: QuestionInfo[],
 	answers: Answer[],
-	ctx: any
+	ctx: QuestionContext
 ): Promise<ConfirmAction> {
 	const renderer = createRenderer({ cursor: 0 }, (state, width, theme) => {
 		const lines: string[] = [];
@@ -511,7 +552,7 @@ async function showConfirmationScreen(
 
 	const totalOptions = 2 + Math.min(questions.length, 9);
 
-	return ctx.ui.custom((tui: any, theme: any, _kb: any, done: (value: ConfirmAction) => void): QuestionCustomController => ({
+	return ctx.ui.custom((tui: QuestionTui, theme: QuestionTheme, _kb: unknown, done: (value: ConfirmAction) => void): QuestionCustomController => ({
 		render: (w: number) => renderer.render(w, theme),
 		invalidate: () => renderer.invalidate(),
 		handleInput: (data: string) => {
@@ -529,7 +570,11 @@ async function showConfirmationScreen(
 				} else if (state.cursor === 1) {
 					done({ type: "cancel" });
 				} else {
-					done({ type: "edit", questionIndex: state.cursor - 2 });
+					// [Low Fix] 境界チェックを追加
+					const editIndex = state.cursor - 2;
+					if (editIndex >= 0 && editIndex < questions.length) {
+						done({ type: "edit", questionIndex: editIndex });
+					}
 				}
 			} else if (data === "Y" || data === "y") {
 				done({ type: "confirm" });
@@ -579,6 +624,9 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			// ExtensionContextをQuestionContextに適応（型安全性確保）
+			const qctx = asQuestionContext(ctx);
+
 			const questions: QuestionInfo[] = params.questions || [];
 			if (questions.length === 0) {
 				return {
@@ -587,13 +635,26 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			// [Critical Fix] 空配列アクセス防止: options=[] + custom=false を検証
+			for (let i = 0; i < questions.length; i++) {
+				const q = questions[i];
+				const hasOptions = q.options && q.options.length > 0;
+				const allowCustom = q.custom !== false;
+				if (!hasOptions && !allowCustom) {
+					return {
+						content: [{ type: "text" as const, text: `質問 ${i + 1} (${q.header}) に選択肢がなく、自由記述も無効です。optionsを追加するか、custom: true を設定してください。` }],
+						details: { answers: [] }
+					};
+				}
+			}
+
 			// 回答を初期化
 			const answers: (Answer | null)[] = new Array(questions.length).fill(null);
 			let currentIndex = 0;
 
 			// 全質問に回答
 			while (currentIndex < questions.length) {
-				const answer = await askSingleQuestion(questions[currentIndex], ctx);
+				const answer = await askSingleQuestion(questions[currentIndex], qctx);
 				
 				if (answer === null) {
 					// ユーザーがキャンセル
@@ -614,7 +675,7 @@ export default function (pi: ExtensionAPI) {
 
 			// 確認画面を表示
 			while (true) {
-				const action = await showConfirmationScreen(questions, answers as Answer[], ctx);
+				const action = await showConfirmationScreen(questions, answers as Answer[], qctx);
 
 				if (action.type === "confirm") {
 					// opencode形式で出力
@@ -632,7 +693,7 @@ export default function (pi: ExtensionAPI) {
 				} else if (action.type === "edit") {
 					// 特定の質問を再表示
 					currentIndex = action.questionIndex;
-					const newAnswer = await askSingleQuestion(questions[currentIndex], ctx);
+					const newAnswer = await askSingleQuestion(questions[currentIndex], qctx);
 					
 					if (newAnswer === null) {
 						return {

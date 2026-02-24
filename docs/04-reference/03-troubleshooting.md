@@ -25,16 +25,6 @@ npm config get prefix
 export PATH="$HOME/.npm-global/bin:$PATH"
 ```
 
-### fzfが見つからない
-
-```bash
-# fzfのインストールパスを確認
-which fzf
-
-# 手動でPATHに追加（必要な場合）
-export PATH="$HOME/.fzf/bin:$PATH"
-```
-
 ## 拡張機能関連
 
 ### 拡張機能が読み込まれない

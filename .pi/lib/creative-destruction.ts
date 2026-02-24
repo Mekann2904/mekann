@@ -24,6 +24,7 @@
 
 import type { Distribution } from './belief-updater.js';
 import { createPrior, normalizeDistribution } from './belief-updater.js';
+import { parsePremiseAnalysisJson, PROMPT_PREMISE_FORMAT } from './structured-analysis-output.js';
 
 // ============================================================================
 // 型定義
@@ -209,16 +210,16 @@ export interface CreativeDestructionConfig {
 /**
  * ニーチェ的転倒
  * @summary 「善悪の彼岸」による価値の転倒
+ * @description
+ * 判定基準: premise.type === 'normative'
+ * 呼び出し元はLLM構造化出力からpremise.typeを設定すること。
  */
 const NIETZSCHEAN_INVERSION: DestructionMethod = {
   name: 'nietzschean-inversion',
   description: '価値の転倒：善を悪に、悪を善に反転させる',
   philosophicalBasis: 'nietzschean',
   applicableWhen: (premise) => {
-    return premise.type === 'normative' ||
-           premise.content.includes('べき') ||
-           premise.content.includes('正') ||
-           premise.content.includes('善');
+    return premise.type === 'normative';
   },
   apply: (premise) => {
     const inverted = premise.content
@@ -261,16 +262,16 @@ const NIETZSCHEAN_INVERSION: DestructionMethod = {
 /**
  * ドゥルーズ的差異化
  * @summary 「差異と反復」による同一性の解体
+ * @description
+ * 判定基準: premise.solidity > 0.8
+ * 同一性への強い確信がある場合に適用。
  */
 const DELEUZIAN_DIFFERENTIATION: DestructionMethod = {
   name: 'deleuzian-differentiation',
   description: '差異化：同一性を差異へと分解する',
   philosophicalBasis: 'deleuzian',
   applicableWhen: (premise) => {
-    return premise.content.includes('同一') ||
-           premise.content.includes('同じ') ||
-           premise.content.includes('等しい') ||
-           premise.solidity > 0.8;
+    return premise.solidity > 0.8;
   },
   apply: (premise) => {
     return {
@@ -309,16 +310,16 @@ const DELEUZIAN_DIFFERENTIATION: DestructionMethod = {
 /**
  * デリダ的脱構築
  * @summary 二項対立の解体と拡散
+ * @description
+ * 判定基準: premise.dependencies.length > 2
+ * 多くの依存関係を持つ前提に適用。
  */
 const DERRIDEAN_DECONSTRUCTION: DestructionMethod = {
   name: 'derridean-deconstruction',
   description: '脱構築：二項対立を解体し、拡散（différance）を trace する',
   philosophicalBasis: 'derridean',
   applicableWhen: (premise) => {
-    return premise.content.includes('対') ||
-           premise.content.includes('vs') ||
-           premise.content.includes('または') ||
-           premise.dependencies.length > 2;
+    return premise.dependencies.length > 2;
   },
   apply: (premise) => {
     return {
@@ -357,16 +358,16 @@ const DERRIDEAN_DECONSTRUCTION: DestructionMethod = {
 /**
  * ハイデガー的存在論的差異
  * @summary 存在と存在者の差異への回帰
+ * @description
+ * 判定基準: premise.type === 'ontological'
+ * 呼び出し元はLLM構造化出力からpremise.typeを設定すること。
  */
 const HEIDEGGERIAN_ONTOLOGICAL_DIFFERENCE: DestructionMethod = {
   name: 'heideggerian-ontological-difference',
   description: '存在論的差異：存在と存在者の根本的差異を開示する',
   philosophicalBasis: 'heideggerian',
   applicableWhen: (premise) => {
-    return premise.type === 'ontological' ||
-           premise.content.includes('存在') ||
-           premise.content.includes('実在') ||
-           premise.content.includes('本質');
+    return premise.type === 'ontological';
   },
   apply: (premise) => {
     return {
@@ -405,16 +406,16 @@ const HEIDEGGERIAN_ONTOLOGICAL_DIFFERENCE: DestructionMethod = {
 /**
  * 仏教的空性
  * @summary 自性の否定による空性の開示
+ * @description
+ * 判定基準: premise.solidity > 0.9
+ * 絶対的確信がある場合に適用。
  */
 const BUDDHIST_EMPTINESS: DestructionMethod = {
   name: 'buddhist-emptiness',
   description: '空性：すべての現象は自性を持たない（縁起）',
   philosophicalBasis: 'buddhist',
   applicableWhen: (premise) => {
-    return premise.solidity > 0.9 ||
-           premise.content.includes('確実') ||
-           premise.content.includes('絶対') ||
-           premise.content.includes('必然');
+    return premise.solidity > 0.9;
   },
   apply: (premise) => {
     return {

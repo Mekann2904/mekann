@@ -88,6 +88,16 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
   if (items.length === 0) return [];
 
   const abortOnError = options.abortOnError !== false;
+
+  // Debug info: abortOnError=true時、エラー発生後も実行中ワーカーは完了まで続行する
+  // これはダングリングワーカー（永遠に終わらないワーカー）を防ぐための意図的な設計
+  if (abortOnError && items.length > 5 && process.env.PI_DEBUG_CONCURRENCY === "1") {
+    console.debug(
+      "[concurrency] abortOnError=true with %d items - Workers continue after first error to avoid dangling workers",
+      items.length
+    );
+  }
+
   const normalizedLimit = toPositiveLimit(limit, items.length);
   const results: WorkerResult<TResult>[] = new Array(items.length);
   let cursor = 0;

@@ -44,24 +44,54 @@ export function debugCostEstimation(
  * チーム一覧をフォーマット
  * @summary チーム一覧表示用文字列生成
  * @param storage - チームストレージ
- * @returns フォーマット済みチーム一覧文字列
+ * @returns フォーマット済みチーム一覧文字列（Markdown表形式）
  */
 export function formatTeamList(storage: TeamStorage): string {
   if (storage.teams.length === 0) {
     return "No teams found.";
   }
 
-  const lines: string[] = ["Agent teams:"];
+  const lines: string[] = ["## Agent Teams\n"];
+
+  // チーム一覧サマリー表
+  lines.push("| ID | Name | Status | Current | Members | Description |");
+  lines.push("|----|------|--------|---------|---------|-------------|");
+
   for (const team of storage.teams) {
-    const marker = team.id === storage.currentTeamId ? "*" : " ";
-    lines.push(`${marker} ${team.id} (${team.enabled}) - ${team.name}`);
-    lines.push(`  ${team.description}`);
-    for (const member of team.members) {
-      lines.push(
-        `   - ${member.id} (${member.enabled ? "enabled" : "disabled"}) ${member.role}: ${member.description}`
-      );
+    const current = team.id === storage.currentTeamId ? "*" : "";
+    const status = team.enabled === "enabled" ? "enabled" : "disabled";
+    const memberCount = team.members.length;
+    const shortDesc =
+      team.description.length > 50 ? team.description.substring(0, 47) + "..." : team.description;
+    lines.push(
+      `| ${team.id} | ${team.name} | ${status} | ${current} | ${memberCount} | ${shortDesc} |`
+    );
+  }
+
+  // 各チームの詳細
+  for (const team of storage.teams) {
+    lines.push("");
+    lines.push(`### ${team.id}`);
+    lines.push("");
+    lines.push(`**${team.name}**`);
+    lines.push("");
+    lines.push(team.description);
+    lines.push("");
+
+    if (team.members.length > 0) {
+      lines.push("#### Members");
+      lines.push("");
+      lines.push("| ID | Role | Status | Description |");
+      lines.push("|----|------|--------|-------------|");
+      for (const member of team.members) {
+        const memberStatus = member.enabled ? "enabled" : "disabled";
+        lines.push(
+          `| ${member.id} | ${member.role} | ${memberStatus} | ${member.description} |`
+        );
+      }
     }
   }
+
   return lines.join("\n");
 }
 

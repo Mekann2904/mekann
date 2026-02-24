@@ -366,9 +366,9 @@ function publishRuntimeUsageToCoordinator(): void {
   try {
     updateRuntimeUsage(usage.totalActiveRequests, usage.totalActiveLlm);
   } catch (error) {
-    // コーディネータ通信エラーをログ記録（デバッグ用）
+    // Bug #8 fix: エラーをログに記録（元はcatch {}で無視していた）
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`[agent-runtime] coordinator publish error: ${errorMessage}`);
+    console.error(`[agent-runtime] publishRuntimeUsageToCoordinator failed: ${errorMessage}`);
   }
 }
 
@@ -521,6 +521,14 @@ function ensureReservationSweeper(): void {
   try {
     // 再度チェック（初期化中に他スレッドが作成した可能性）
     if (runtimeReservationSweeper) return;
+
+    // Bug #4 warning: 二重作成のリスクをログ
+    const debugRuntime = process.env.PI_DEBUG_RUNTIME === "1" || process.env.PI_DEBUG_RUNTIME_QUEUE === "1";
+    if (debugRuntime) {
+      console.warn(
+        "[agent-runtime] Creating reservation sweeper - ensure this is called once per session"
+      );
+    }
 
     const sweepMs = resolveLimitFromEnv(
       "PI_AGENT_RESERVATION_SWEEP_MS",

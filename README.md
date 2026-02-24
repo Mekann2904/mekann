@@ -17,13 +17,6 @@ piコーディングエージェント用の拡張機能コレクション。エ
 # piのインストール
 npm install -g @mariozechner/pi-coding-agent
 
-# fzfのインストール（必要な場合）
-# macOSの場合:
-brew install fzf
-# Linuxの場合:
-sudo apt install fzf  # またはディストリビューションに合わせて
-# 詳しくは https://github.com/junegunn/fzf#installation を参照
-
 # mekannをインストール（グローバル）
 pi install https://github.com/Mekann2904/mekann
 
@@ -70,7 +63,6 @@ pi remove https://github.com/Mekann2904/mekann
 | **question** | `question.ts` | インタラクティブUIでユーザー選択 | [→](docs/02-user-guide/02-question.md) |
 
 | **loop_run** | `loop.ts` | 自律ループ実行 | [→](docs/02-user-guide/04-loop-run.md) |
-| **fzf** | `fzf.ts` | Fuzzy finder統合 | [→](docs/02-user-guide/05-fzf.md) |
 | **abbr** | `abbr.ts` | 略語管理 | [→](docs/02-user-guide/06-abbr.md) |
 
 ### オーケストレーション
@@ -81,6 +73,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **subagent_*** | `subagents.ts` | サブエージェントの作成・実行 | [→](docs/02-user-guide/08-subagents.md) |
 | **agent_team_*** | `agent-teams.ts` | エージェントチームの作成・実行 | [→](docs/02-user-guide/09-agent-teams.md) |
 | **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
+| **ul-workflow** | `ul-workflow.ts` | Research-Plan-Annotate-Implement ワークフロー（計画承認必須） | [→](docs/02-user-guide/16-ul-workflow.md) |
 | **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | 新規 |
 
 ### ユーティリティ
@@ -97,6 +90,8 @@ pi remove https://github.com/Mekann2904/mekann
 | **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | [→](docs/02-user-guide/01-extensions.md#動的ツール) |
 | **invariant-pipeline** | `invariant-pipeline.ts` | 形式仕様からインバリアント、テストコード自動生成（generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver） | [→](docs/02-user-guide/14-invariant-pipeline.md) |
 | **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | [→](docs/02-user-guide/01-extensions.md#スタートアップコンテキスト) |
+| **self-improvement-reflection** | `self-improvement-reflection.ts` | 自己改善データ基盤（データ収集、分析、哲学的考察、アクション可能な洞察） | [→](.pi/docs/self-improvement-data-platform.md) |
+| **self-improvement-dashboard** | `self-improvement-dashboard.ts` | 自己改善データのTUI可視化ダッシュボード | [→](.pi/docs/self-improvement-data-platform.md) |
 
 ### 共有ライブラリ
 
@@ -124,6 +119,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **storage-base** | `lib/storage-base.ts` | ストレージベース |
 | **tui-utils** | `lib/tui-utils.ts` | TUIユーティリティ |
 | **validation-utils** | `lib/validation-utils.ts` | バリデーションユーティリティ |
+| **self-improvement-data-platform** | `lib/self-improvement-data-platform.ts` | 自己改善データ基盤（3層アーキテクチャ：データ・分析・気づき）（新規） |
 | **comprehensive-logger** | `lib/comprehensive-logger.ts` | 包括的ログ収集（構造化ログ、ストリーミング、設定可能な出力） |
 | **verification-workflow** | `lib/verification-workflow.ts` | Inspector/Challenger検証メカニズム（LLM出力品質検証） |
 | **context-engineering** | `lib/context-engineering.ts` | コンテキストエンジニアリング（プロンプト最適化） |
@@ -174,12 +170,12 @@ mekann/
 │   ├── extensions/          # 拡張機能の実装
 │   │   ├── question.ts      # インタラクティブUI
 │   │   ├── loop.ts          # 自律ループ実行
-│   │   ├── fzf.ts           # Fuzzy finder統合
 │   │   ├── abbr.ts          # 略語管理
 │   │   ├── plan.ts          # 計画管理
 │   │   ├── subagents.ts     # サブエージェント
 │   │   ├── agent-teams.ts   # エージェントチーム
 │   │   ├── ul-dual-mode.ts  # デュアルモード
+│   │   ├── ul-workflow.ts   # Research-Plan-Annotate-Implement ワークフロー
 │   │   ├── agent-runtime.ts # ランタイム制御（カウンタ共有）
 │   │   ├── usage-tracker.ts # LLM使用状況追跡
 │   │   ├── agent-usage-tracker.ts
@@ -276,7 +272,6 @@ mekann/
 
 - **Node.js v20.18.1以上** - piと依存関係の実行要件
 - **ターミナル実行環境**
-- **fzf** - fzf拡張機能で使用
 - **kitty (オプション)** - kitty-status-integration拡張機能で使用
 
 詳しくは [インストールガイド](docs/01-getting-started/02-installation.md) を参照してください。
@@ -289,7 +284,6 @@ mekann/
 |---------|---------|------|
 | **UI** | `question` | インタラクティブな質問UI |
 | **ループ** | `loop_run` | 自律ループ実行 |
-| **検索** | `fzf` | ファジーファインダー |
 | **略語** | `abbr` | 略語の管理 |
 | **計画** | `plan_create` | プランの作成 |
 | | `plan_show` | プランの詳細表示 |
@@ -314,6 +308,15 @@ mekann/
 | | `agent_team_status` | 実行中のチーム状態 |
 | | `agent_team_runs` | 実行履歴の表示 |
 | **UL Dual-Orchestration** | `ulmode` | UL Dual-Orchestrationモードの切り替え |
+| **UL Workflow** | `ul_workflow_start` | Research-Plan-Annotate-Implement ワークフロー開始 |
+| | `ul_workflow_status` | ワークフローステータス表示 |
+| | `ul_workflow_approve` | 現在のフェーズを承認 |
+| | `ul_workflow_annotate` | plan.mdの注釈を適用 |
+| | `ul_workflow_abort` | ワークフロー中止 |
+| | `ul_workflow_resume` | 中止したワークフローを再開 |
+| **ULプレフィックス** | `ul <task>` | ワークフローモードで実行 |
+| | `ul fast <task>` | 高速委任モードで実行 |
+| | `ul status` / `approve` / `annotate` / `abort` | ワークフロー操作 |
 | **検索** | `file_candidates` | ファイル候補検索（あいまい検索） |
 | | `code_search` | コード内容の全文検索 |
 | | `sym_index` | シンボルインデックス構築 |
@@ -325,6 +328,7 @@ mekann/
 | | `tool_reflection` | 実行後の反省とツール生成判定 |
 | **クロスインスタンス** | `pi_instance_status` | 複数piインスタンスの状態確認 |
 | | `pi_model_limits` | プロバイダー/モデル別レート制限確認 |
+| **自己改善** | `self_reflect` | 自己改善データ基盤による振り返り（summary, insights, generate, perspectives, analyze） |
 | **ユーティリティ** | `agent_usage_stats` | 拡張機能使用統計 |
 | | `context-usage` | コンテキスト使用量表示 |
 | | `skill_status` | スキル割り当て状況表示 |
@@ -425,7 +429,7 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 
 ### 完全な拡張機能セット
 
-- **インタラクティブUI**: question, fzfによる対話的選択
+- **インタラクティブUI**: questionによる対話的選択
 - **自律実行**: loop_runによるタスクループ
 - **並列委任**: subagents, agent-teamsによるタスク分散
 - **可視化**: context-dashboard, agent-idle-indicatorによる状態監視

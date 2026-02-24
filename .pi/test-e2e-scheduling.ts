@@ -416,7 +416,8 @@ function testDependencyGraphE2E(): void {
     g2.import(exported);
     
     const taskB = g2.getTask("b");
-    const hasDep = taskB?.dependencies && (Array.isArray(taskB.dependencies) ? taskB.dependencies.includes("a") : taskB.dependencies.has("a"));
+    const deps = taskB?.dependencies;
+    const hasDep = deps !== undefined && (Array.isArray(deps) ? deps.includes("a") : deps.has("a"));
     
     return g2.hasTask("a") && 
            g2.hasTask("b") && 
@@ -455,7 +456,7 @@ async function testCrossInstanceE2E(): Promise<void> {
 
   // TC-CI-001: Instance Registration
   test("TC-CI-001: Instance registration", () => {
-    registerInstance("test-instance-001");
+    registerInstance("test-instance-001", process.cwd());
     const status = getCoordinatorStatus();
     unregisterInstance();
     return status.registered === true;
@@ -463,7 +464,7 @@ async function testCrossInstanceE2E(): Promise<void> {
 
   // TC-CI-002: Parallel Limit Distribution
   test("TC-CI-002: Parallel limit distribution", () => {
-    registerInstance("test-instance-002");
+    registerInstance("test-instance-002", process.cwd());
     const limit = getMyParallelLimit();
     unregisterInstance();
     return limit >= 1;
@@ -471,7 +472,7 @@ async function testCrossInstanceE2E(): Promise<void> {
 
   // TC-CI-003: Dynamic Parallel Limit
   test("TC-CI-003: Dynamic parallel limit", () => {
-    registerInstance("test-instance-003");
+    registerInstance("test-instance-003", process.cwd());
     const limit = getDynamicParallelLimit(0);
     unregisterInstance();
     return limit >= 1;
@@ -480,7 +481,7 @@ async function testCrossInstanceE2E(): Promise<void> {
   // TC-CI-004: Multiple Registration/Unregistration
   test("TC-CI-004: Multiple registration cycles", () => {
     for (let i = 0; i < 5; i++) {
-      registerInstance(`test-cycle-${i}`);
+      registerInstance(`test-cycle-${i}`, process.cwd());
       const status = getCoordinatorStatus();
       if (!status.registered) return false;
       unregisterInstance();
@@ -490,7 +491,7 @@ async function testCrossInstanceE2E(): Promise<void> {
 
   // TC-CI-005: Coordinator Status
   test("TC-CI-005: Coordinator status retrieval", () => {
-    registerInstance("test-instance-005");
+    registerInstance("test-instance-005", process.cwd());
     const status = getCoordinatorStatus();
     unregisterInstance();
     
@@ -569,8 +570,8 @@ function testUnifiedLimitsE2E(): void {
   // TC-UL-001: Environment Config
   test("TC-UL-001: Environment config", () => {
     const config = getUnifiedEnvConfig();
-    return config.maxTotalLlm >= 1 && 
-           config.maxTotalRequests >= 1 &&
+    return config.totalMaxLlm >= 1 && 
+           config.totalMaxRequests >= 1 &&
            typeof config.adaptiveEnabled === "boolean";
   });
 
@@ -737,7 +738,7 @@ function testIntegrationE2E(): void {
 
   // TC-INT-005: Cross-Instance + Unified Limits
   test("TC-INT-005: Cross-instance + unified limits", () => {
-    registerInstance("integration-test");
+    registerInstance("integration-test", process.cwd());
     
     const result = resolveUnifiedLimits({
       provider: "anthropic",

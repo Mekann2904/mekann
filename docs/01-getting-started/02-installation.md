@@ -19,7 +19,6 @@ pi拡張機能コレクションをインストールするための詳細な手
 |---------|-------------|------|------|
 | **Node.js** | v20.18.1以上 | ランタイム環境 | はい |
 | **pi** | 最新版 | メインのAIコーディングエージェント | はい |
-| **fzf** | 0.40以上 | ファジーファインダー | はい |
 | **kitty** | 0.30以上 | kittyターミナル統合（オプション） | いいえ |
 
 ### 前提条件の確認
@@ -30,10 +29,6 @@ node --version  # v20.18.1以上が必要
 
 # npmの確認
 npm --version
-
-# fzfの確認
-which fzf
-fzf --version
 ```
 
 ## Piのインストール
@@ -51,56 +46,6 @@ pi --version
 ```
 
 バージョンが表示されればインストール成功です。
-
-## fzfのインストール
-
-fzfはいくつかの方法でインストールできます。
-
-### macOS
-
-```bash
-# Homebrewを使用
-brew install fzf
-
-# インストール後にシェル拡張を有効化（オプション）
-$(brew --prefix)/opt/fzf/install
-```
-
-### Linux
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install fzf
-
-# Fedora/CentOS
-sudo dnf install fzf
-
-# Arch Linux
-sudo pacman -S fzf
-
-# または git からインストール
-git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
-~/.fzf/install
-```
-
-### Windows
-
-```powershell
-# Scoopを使用
-scoop install fzf
-
-# Chocolatey を使用
-choco install fzf
-
-# Winget を使用
-winget install junegunn.fzf
-```
-
-### fzfのインストール確認
-
-```bash
-fzf --version
-```
 
 ## 拡張機能コレクションのセットアップ
 
@@ -131,7 +76,6 @@ pi
 ```
 質問機能が読み込まれました • 使用例: "質問して選択させて"
 Loop extension loaded (/loop, loop_run)
-fzf統合拡張が読み込まれました
 Plan Extension loaded
 Subagent extension loaded
 Agent team extension loaded
@@ -182,16 +126,6 @@ npm config get prefix
 
 # PATHに追加（必要な場合）
 export PATH="$HOME/.npm-global/bin:$PATH"
-```
-
-### fzfが見つからない
-
-```bash
-# fzfのインストールパスを確認
-which fzf
-
-# 手動でPATHに追加（必要な場合）
-export PATH="$HOME/.fzf/bin:$PATH"
 ```
 
 ### 拡張機能が読み込まれない

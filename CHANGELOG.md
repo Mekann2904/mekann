@@ -158,7 +158,7 @@
 ### 初期リリース
 
 #### コア拡張機能
-- question, rsa_solve, loop_run, fzf, abbr
+- question, rsa_solve, loop_run, abbr
 
 #### オーケストレーション
 - plan_*, subagent_*, agent_team_*, ul-dual-mode
