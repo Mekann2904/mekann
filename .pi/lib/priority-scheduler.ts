@@ -4,7 +4,7 @@
  * role: APEE優先度ベーススケジューリング
  * why: タスクを優先度順に実行し、クリティカルパスを最適化するため
  * related: .pi/lib/dag-executor.ts, .pi/lib/dag-weight-calculator.ts, .pi/lib/concurrency.ts
- * public_api: PriorityScheduler, scheduleTasks, SchedulerConfig
+ * public_api: PriorityScheduler, scheduleTasks, SchedulerConfig, PriorityTaskQueue, inferPriority, estimateRounds
  * invariants: 実行順序は依存関係を尊重する
  * side_effects: なし
  * failure_modes: 循環依存検出（現在は未実装）
@@ -14,12 +14,13 @@
  *   - タスクを重みベースで優先度順にソート
  *   - スタベーション防止ロジックで低優先度タスクも定期実行
  *   - 最大並列数を制御してリソース管理
+ *   - ツール名からタスク種別・優先度・推定ラウンド数を推論
  * why_it_exists:
  *   - クリティカルパス上のタスクを優先し、全体的な実行時間を短縮するため
  *   - 低優先度タスクが永遠に実行されない問題を防ぐため
  * scope:
- *   in: 実行可能タスクリストと重みマップ
- *   out: スケジュール順のタスクリスト
+ *   in: 実行可能タスクリストと重みマップ、またはツール名
+ *   out: スケジュール順のタスクリスト、または推論された優先度・推定ラウンド数
  */
 
 // File: .pi/lib/priority-scheduler.ts
@@ -28,6 +29,370 @@
 // Related: .pi/lib/dag-executor.ts, .pi/lib/dag-weight-calculator.ts, .pi/lib/concurrency.ts
 
 import type { TaskNode } from "./dag-types.js";
+
+// ============================================================================
+// 型定義
+// ============================================================================
+
+/**
+ * 優先度レベル
+ * @summary 優先度レベル
+ */
+export type TaskPriority = "critical" | "high" | "normal" | "low" | "background";
+
+/**
+ * タスク種別
+ * @summary タスク種別
+ */
+export type TaskType =
+  | "read"
+  | "bash"
+  | "edit"
+  | "write"
+  | "subagent_single"
+  | "subagent_parallel"
+  | "agent_team"
+  | "question"
+  | "unknown";
+
+/**
+ * タスク複雑度
+ * @summary タスク複雑度
+ */
+export type TaskComplexity =
+  | "trivial"
+  | "simple"
+  | "moderate"
+  | "complex"
+  | "exploratory";
+
+/**
+ * 優先度の重み
+ * @summary 優先度重みマップ
+ */
+export const PRIORITY_WEIGHTS: Record<TaskPriority, number> = {
+  critical: 100,
+  high: 75,
+  normal: 50,
+  low: 25,
+  background: 10,
+};
+
+/**
+ * 優先度の数値
+ * @summary 優先度数値マップ
+ */
+export const PRIORITY_VALUES: Record<TaskPriority, number> = {
+  critical: 4,
+  high: 3,
+  normal: 2,
+  low: 1,
+  background: 0,
+};
+
+/**
+ * ラウンド推定コンテキスト
+ * @summary ラウンド推定入力
+ */
+export interface EstimationContext {
+  /** ツール名 */
+  toolName: string;
+  /** タスク説明 */
+  taskDescription?: string;
+  /** エージェント数 */
+  agentCount?: number;
+  /** リトライかどうか */
+  isRetry?: boolean;
+  /** 不明なフレームワークかどうか */
+  hasUnknownFramework?: boolean;
+}
+
+/**
+ * ラウンド推定結果
+ * @summary ラウンド推定出力
+ */
+export interface RoundEstimation {
+  /** タスク種別 */
+  taskType: TaskType;
+  /** 推定ラウンド数 */
+  estimatedRounds: number;
+  /** 複雑度 */
+  complexity: TaskComplexity;
+  /** 信頼度 (0-1) */
+  confidence: number;
+}
+
+/**
+ * 優先度推論オプション
+ * @summary 優先度推論オプション
+ */
+export interface InferPriorityOptions {
+  /** インタラクティブかどうか */
+  isInteractive?: boolean;
+  /** バックグラウンドタスクかどうか */
+  isBackground?: boolean;
+  /** リトライかどうか */
+  isRetry?: boolean;
+  /** エージェント数 */
+  agentCount?: number;
+}
+
+/**
+ * 優先度付きキューエントリ
+ * @summary 優先度キューエントリ
+ */
+export interface PriorityQueueEntry {
+  /** 一意識別子 */
+  id: string;
+  /** ツール名 */
+  toolName: string;
+  /** 優先度 */
+  priority: TaskPriority;
+  /** 推定実行時間（ms） */
+  estimatedDurationMs?: number;
+  /** 推定ラウンド数 */
+  estimatedRounds?: number;
+  /** デッドライン（ms） */
+  deadlineMs?: number;
+  /** キュー追加時刻 */
+  enqueuedAtMs: number;
+  /** ソース情報 */
+  source?: string;
+  /** 仮想開始時刻 */
+  virtualStartTime: number;
+  /** 仮想終了時刻 */
+  virtualFinishTime: number;
+  /** スキップ回数 */
+  skipCount: number;
+  /** 最後に検討された時刻 */
+  lastConsideredMs?: number;
+}
+
+/**
+ * 優先度タスクメタデータ
+ * @summary 優先度タスクメタデータ
+ */
+export type PriorityTaskMetadata = Omit<
+  PriorityQueueEntry,
+  "virtualStartTime" | "virtualFinishTime" | "skipCount" | "lastConsideredMs"
+>;
+
+/**
+ * キュー統計情報
+ * @summary キュー統計
+ */
+export interface QueueStats {
+  /** 総エントリ数 */
+  total: number;
+  /** 優先度別エントリ数 */
+  byPriority: Record<TaskPriority, number>;
+  /** 平均待機時間（ms） */
+  avgWaitMs: number;
+  /** 最大待機時間（ms） */
+  maxWaitMs: number;
+  /** スタベーション状態のエントリ数 */
+  starvingCount: number;
+}
+
+// ============================================================================
+// 推論関数
+// ============================================================================
+
+/**
+ * ツール名からタスク種別を推論
+ * @summary タスク種別推論
+ * @param toolName - ツール名
+ * @returns タスク種別
+ */
+export function inferTaskType(toolName: string): TaskType {
+  const normalized = toolName.toLowerCase().trim();
+
+  // 直接マッピング
+  if (normalized === "question") return "question";
+  if (normalized === "read") return "read";
+  if (normalized === "bash") return "bash";
+  if (normalized === "edit") return "edit";
+  if (normalized === "write") return "write";
+
+  // サブエージェント
+  if (normalized === "subagent_run") return "subagent_single";
+  if (normalized === "subagent_run_parallel") return "subagent_parallel";
+
+  // エージェントチーム
+  if (normalized.startsWith("agent_team")) return "agent_team";
+
+  // 不明
+  return "unknown";
+}
+
+/**
+ * タスク種別からベースラウンド数を取得
+ * @summary ベースラウンド取得
+ * @param taskType - タスク種別
+ * @returns ベースラウンド数
+ */
+function getBaseRounds(taskType: TaskType): number {
+  const baseRoundsMap: Record<TaskType, number> = {
+    read: 1,
+    bash: 1,
+    edit: 2,
+    write: 2,
+    question: 1,
+    subagent_single: 5,
+    subagent_parallel: 8,
+    agent_team: 10,
+    unknown: 3,
+  };
+  return baseRoundsMap[taskType];
+}
+
+/**
+ * 複雑度を推論
+ * @summary 複雑度推論
+ * @param taskType - タスク種別
+ * @param context - 推論コンテキスト
+ * @returns 複雑度
+ */
+function inferComplexity(
+  taskType: TaskType,
+  context: EstimationContext
+): TaskComplexity {
+  if (context.hasUnknownFramework) return "exploratory";
+
+  const complexityMap: Record<TaskType, TaskComplexity> = {
+    read: "trivial",
+    bash: "simple",
+    edit: "moderate",
+    write: "moderate",
+    question: "simple",
+    subagent_single: "complex",
+    subagent_parallel: "complex",
+    agent_team: "complex",
+    unknown: "exploratory",
+  };
+  return complexityMap[taskType];
+}
+
+/**
+ * ラウンド数を推定
+ * @summary ラウンド推定
+ * @param context - 推定コンテキスト
+ * @returns 推定結果
+ */
+export function estimateRounds(context: EstimationContext): RoundEstimation {
+  const taskType = inferTaskType(context.toolName);
+  let estimatedRounds = getBaseRounds(taskType);
+  const complexity = inferComplexity(taskType, context);
+  let confidence = 0.8;
+
+  // エージェント数による増加
+  if (context.agentCount && context.agentCount > 1) {
+    estimatedRounds += context.agentCount * 2;
+    confidence *= 0.95;
+  }
+
+  // リトライ時は+2ラウンド
+  if (context.isRetry) {
+    estimatedRounds += 2;
+    confidence *= 0.9;
+  }
+
+  // 不明なフレームワーク
+  if (context.hasUnknownFramework) {
+    estimatedRounds += 5;
+    confidence *= 0.7;
+  }
+
+  // 範囲制限
+  estimatedRounds = Math.max(1, Math.min(50, estimatedRounds));
+  confidence = Math.max(0, Math.min(1, confidence));
+
+  return {
+    taskType,
+    estimatedRounds,
+    complexity,
+    confidence,
+  };
+}
+
+/**
+ * ツール名とオプションから優先度を推論
+ * @summary 優先度推論
+ * @param toolName - ツール名
+ * @param options - 推論オプション
+ * @returns 優先度
+ */
+export function inferPriority(
+  toolName: string,
+  options?: InferPriorityOptions
+): TaskPriority {
+  // バックグラウンドタスク
+  if (options?.isBackground) return "background";
+
+  // リトライは低優先度
+  if (options?.isRetry) return "low";
+
+  // インタラクティブは高優先度
+  if (options?.isInteractive) return "high";
+
+  const normalized = toolName.toLowerCase().trim();
+
+  // questionツールはクリティカル
+  if (normalized === "question") return "critical";
+
+  // サブエージェント・エージェントチームは高優先度
+  if (
+    normalized === "subagent_run" ||
+    normalized === "subagent_run_parallel" ||
+    normalized.startsWith("agent_team")
+  ) {
+    return "high";
+  }
+
+  // 基本ツールは通常優先度
+  if (
+    normalized === "read" ||
+    normalized === "bash" ||
+    normalized === "edit" ||
+    normalized === "write"
+  ) {
+    return "normal";
+  }
+
+  // デフォルトは通常優先度
+  return "normal";
+}
+
+// ============================================================================
+// 比較関数
+// ============================================================================
+
+/**
+ * 優先度を比較
+ * @summary 優先度比較
+ * @param a - エントリA
+ * @param b - エントリB
+ * @returns 比較結果（aが優先なら負、bが優先なら正）
+ */
+export function comparePriority(
+  a: PriorityQueueEntry,
+  b: PriorityQueueEntry
+): number {
+  // スキップ回数による飢餓防止（skipCount > 3で優先）
+  if (a.skipCount > 3 && b.skipCount <= 3) return -1;
+  if (b.skipCount > 3 && a.skipCount <= 3) return 1;
+
+  // 優先度で比較
+  const priorityDiff = PRIORITY_VALUES[b.priority] - PRIORITY_VALUES[a.priority];
+  if (priorityDiff !== 0) return priorityDiff;
+
+  // 同じ優先度なら追加時刻で比較（早い方が優先）
+  return a.enqueuedAtMs - b.enqueuedAtMs;
+}
+
+// ============================================================================
+// スケジューラ設定
+// ============================================================================
 
 /**
  * スケジューラの設定
@@ -69,6 +434,10 @@ export interface ScheduledTask {
   /** 待機時間（ms） */
   waitingMs: number;
 }
+
+// ============================================================================
+// PriorityScheduler クラス（APEE用）
+// ============================================================================
 
 /**
  * 優先度ベースのタスクスケジューラ
@@ -168,11 +537,12 @@ export class PriorityScheduler {
     waitingMs: number
   ): number {
     // ベース優先度
-    const basePriorityMap = {
+    const basePriorityMap: Record<string, number> = {
       critical: 100,
       high: 75,
       normal: 50,
       low: 25,
+      background: 10,
     };
     const basePriority = basePriorityMap[task.priority ?? "normal"];
 
@@ -280,81 +650,52 @@ export class PriorityScheduler {
 }
 
 // ============================================================================
-// Legacy API for backward compatibility with agent-runtime.ts
+// PriorityTaskQueue クラス（汎用優先度キュー）
 // ============================================================================
 
-/**
- * 優先度レベル
- * @summary 優先度レベル
- * @deprecated Use TaskNodePriority instead
- */
-export type TaskPriority = "critical" | "high" | "normal" | "low";
-
-/**
- * 優先度付きキューエントリ
- * @summary 優先度キューエントリ
- * @deprecated Use TaskNode directly
- */
-export interface PriorityQueueEntry {
-  /** 一意識別子 */
-  id: string;
-  /** ツール名 */
-  toolName: string;
-  /** 優先度 */
-  priority: TaskPriority;
-  /** キュー追加時刻 */
-  enqueuedAtMs: number;
-  /** ソース情報 */
-  source?: string;
-}
-
-/**
- * 優先度を数値に変換
- * @summary 優先度変換
- * @param priority - 優先度
- * @returns 数値（大きいほど優先度が高い）
- * @deprecated Internal use only
- */
-export function inferPriority(priority: TaskPriority | undefined): number {
-  const priorityMap: Record<TaskPriority, number> = {
-    critical: 100,
-    high: 75,
-    normal: 50,
-    low: 25,
-  };
-  return priorityMap[priority ?? "normal"];
-}
-
-/**
- * 優先度で比較
- * @summary 優先度比較
- * @param a - エントリA
- * @param b - エントリB
- * @returns 比較結果（降順）
- * @deprecated Internal use only
- */
-export function comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number {
-  const priorityDiff = inferPriority(b.priority) - inferPriority(a.priority);
-  if (priorityDiff !== 0) return priorityDiff;
-  return a.enqueuedAtMs - b.enqueuedAtMs;
-}
+/** スタベーション判定の閾値（ms） */
+const STARVATION_THRESHOLD_MS = 30000;
 
 /**
  * 優先度付きタスクキュー
  * @summary 優先度キュークラス
- * @deprecated Use PriorityScheduler instead
  */
 export class PriorityTaskQueue {
   private queue: PriorityQueueEntry[] = [];
 
   /**
+   * キューの長さ
+   * @summary キュー長さ
+   */
+  get length(): number {
+    return this.queue.length;
+  }
+
+  /**
+   * キューが空かどうか
+   * @summary 空判定
+   */
+  get isEmpty(): boolean {
+    return this.queue.length === 0;
+  }
+
+  /**
    * エントリを追加
    * @summary エントリ追加
-   * @param entry - キューエントリ
+   * @param metadata - キューメタデータ
+   * @returns 追加されたエントリ
    */
-  enqueue(entry: PriorityQueueEntry): void {
+  enqueue(metadata: PriorityTaskMetadata): PriorityQueueEntry {
+    const now = Date.now();
+    const entry: PriorityQueueEntry = {
+      ...metadata,
+      virtualStartTime: metadata.enqueuedAtMs,
+      virtualFinishTime: metadata.enqueuedAtMs + (metadata.estimatedDurationMs ?? 1000),
+      skipCount: 0,
+    };
     this.queue.push(entry);
     this.queue.sort(comparePriority);
+    return entry;
   }
 
   /**
@@ -385,11 +726,11 @@ export class PriorityTaskQueue {
   }
 
   /**
-   * キューが空かどうか
-   * @summary 空判定
+   * キューが空かどうか（メソッド版）
+   * @summary 空判定メソッド
    * @returns 空の場合true
    */
-  isEmpty(): boolean {
+  isEmptyMethod(): boolean {
     return this.queue.length === 0;
   }
 
@@ -403,37 +744,159 @@ export class PriorityTaskQueue {
   }
 
   /**
+   * 全エントリを取得（エイリアス）
+   * @summary 全エントリ取得
+   * @returns エントリ配列
+   */
+  getAll(): PriorityQueueEntry[] {
+    return [...this.queue];
+  }
+
+  /**
+   * 指定IDのエントリを削除
+   * @summary ID指定削除
+   * @param id - 削除するエントリのID
+   * @returns 削除されたエントリまたはundefined
+   */
+  remove(id: string): PriorityQueueEntry | undefined {
+    const index = this.queue.findIndex((e) => e.id === id);
+    if (index === -1) {
+      return undefined;
+    }
+    const removed = this.queue.splice(index, 1)[0];
+    return removed;
+  }
+
+  /**
    * 条件に一致するエントリを削除
    * @summary エントリ削除
    * @param predicate - 削除条件
    * @returns 削除されたエントリ数
    */
-  remove(predicate: (entry: PriorityQueueEntry) => boolean): number {
+  removeByPredicate(predicate: (entry: PriorityQueueEntry) => boolean): number {
     const initialLength = this.queue.length;
     this.queue = this.queue.filter((e) => !predicate(e));
     return initialLength - this.queue.length;
   }
+
+  /**
+   * 指定優先度のエントリを取得
+   * @summary 優先度別エントリ取得
+   * @param priority - 優先度
+   * @returns 該当エントリ配列
+   */
+  getByPriority(priority: TaskPriority): PriorityQueueEntry[] {
+    return this.queue.filter((e) => e.priority === priority);
+  }
+
+  /**
+   * キュー統計を取得
+   * @summary 統計取得
+   * @returns 統計情報
+   */
+  getStats(): QueueStats {
+    const now = Date.now();
+    const byPriority: Record<TaskPriority, number> = {
+      critical: 0,
+      high: 0,
+      normal: 0,
+      low: 0,
+      background: 0,
+    };
+
+    let totalWaitMs = 0;
+    let maxWaitMs = 0;
+    let starvingCount = 0;
+
+    for (const entry of this.queue) {
+      byPriority[entry.priority]++;
+      const waitMs = now - entry.enqueuedAtMs;
+      totalWaitMs += waitMs;
+      maxWaitMs = Math.max(maxWaitMs, waitMs);
+      if (waitMs > STARVATION_THRESHOLD_MS) {
+        starvingCount++;
+      }
+    }
+
+    return {
+      total: this.queue.length,
+      byPriority,
+      avgWaitMs: this.queue.length > 0 ? totalWaitMs / this.queue.length : 0,
+      maxWaitMs,
+      starvingCount,
+    };
+  }
+
+  /**
+   * スタベーション状態のタスクを昇格
+   * @summary スタベーション防止昇格
+   * @returns 昇格されたエントリ数
+   */
+  promoteStarvingTasks(): number {
+    const now = Date.now();
+    let promoted = 0;
+
+    for (const entry of this.queue) {
+      const waitMs = now - entry.enqueuedAtMs;
+      if (waitMs > STARVATION_THRESHOLD_MS && entry.priority !== "critical") {
+        // 1段階昇格
+        const priorityOrder: TaskPriority[] = [
+          "background",
+          "low",
+          "normal",
+          "high",
+          "critical",
+        ];
+        const currentIndex = priorityOrder.indexOf(entry.priority);
+        if (currentIndex < priorityOrder.length - 1) {
+          entry.priority = priorityOrder[currentIndex + 1];
+          promoted++;
+        }
+      }
+    }
+
+    // 昇格後に再ソート
+    if (promoted > 0) {
+      this.queue.sort(comparePriority);
+    }
+
+    return promoted;
+  }
+}
+
+// ============================================================================
+// ユーティリティ関数
+// ============================================================================
+
+/**
+ * キュー統計をフォーマット（QueueStatsオブジェクト用）
+ * @summary 統計フォーマット
+ * @param stats - 統計情報オブジェクト
+ * @returns フォーマットされた統計文字列
+ */
+export function formatPriorityQueueStats(stats: QueueStats): string {
+  return `Queue stats: Total: ${stats.total}, critical: ${stats.byPriority.critical}, high: ${stats.byPriority.high}, normal: ${stats.byPriority.normal}, low: ${stats.byPriority.low}, background: ${stats.byPriority.background}, avg: ${stats.avgWaitMs}ms, starving: ${stats.starvingCount}`;
 }
 
 /**
- * キュー統計をフォーマット
+ * キュー統計をフォーマット（PriorityTaskQueue用）
  * @summary 統計フォーマット
  * @param queue - 優先度キュー
  * @returns フォーマットされた統計文字列
- * @deprecated Internal use only
  */
-export function formatPriorityQueueStats(queue: PriorityTaskQueue): string {
+export function formatQueueStats(queue: PriorityTaskQueue): string {
   const entries = queue.toArray();
   const byPriority: Record<TaskPriority, number> = {
     critical: 0,
     high: 0,
     normal: 0,
     low: 0,
+    background: 0,
   };
 
   for (const entry of entries) {
     byPriority[entry.priority]++;
   }
 
-  return `Queue stats: total=${entries.length}, critical=${byPriority.critical}, high=${byPriority.high}, normal=${byPriority.normal}, low=${byPriority.low}`;
+  return `Queue stats: total=${entries.length}, critical=${byPriority.critical}, high=${byPriority.high}, normal=${byPriority.normal}, low=${byPriority.low}, background=${byPriority.background}`;
 }
