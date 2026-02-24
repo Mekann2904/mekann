@@ -37,6 +37,8 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
+import { integrateWithTeamExecution } from "../tool-compiler.js";
+import type { ToolCall } from "../../lib/tool-compiler-types.js";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
@@ -97,6 +99,65 @@ import type { OperationType } from "../../lib/comprehensive-logger-types";
 import { getCostEstimator, type ExecutionHistoryEntry, CostEstimator } from "../../lib/cost-estimator";
 
 const logger = getLogger();
+
+/**
+ * Check if Tool Compiler is enabled via environment variable
+ * @summary Tool Compiler有効化チェック
+ * @returns Tool Compilerが有効な場合はtrue
+ */
+function isToolCompilerEnabled(): boolean {
+  return process.env.PI_TOOL_COMPILER_ENABLED === "true";
+}
+
+/**
+ * Fuse member tools if Tool Compiler is enabled
+ * @summary メンバーツール融合ヘルパー
+ * @param memberTools - メンバーIDとツール定義のマップ
+ * @returns 融合結果のマップ（有効な場合）、または空マップ
+ */
+function fuseMemberToolsIfEnabled(
+  memberTools: Map<string, Array<{ name: string; arguments: Record<string, unknown> }>>
+): Map<string, Array<{ name: string; description: string; parameters: Record<string, unknown> }>> {
+  if (!isToolCompilerEnabled()) {
+    return new Map();
+  }
+
+  try {
+    const toolCallsMap = new Map<string, ToolCall[]>();
+    for (const [memberId, tools] of memberTools.entries()) {
+      toolCallsMap.set(
+        memberId,
+        tools.map((t, idx) => ({
+          id: `tool-${memberId}-${idx}`,
+          name: t.name,
+          arguments: t.arguments,
+        }))
+      );
+    }
+
+    const compiledResults = integrateWithTeamExecution(toolCallsMap);
+    const fusedToolsMap = new Map<string, Array<{ name: string; description: string; parameters: Record<string, unknown> }>>();
+
+    for (const [memberId, compiled] of compiledResults.entries()) {
+      if (compiled.fusedOperations.length > 0) {
+        fusedToolsMap.set(
+          memberId,
+          compiled.fusedOperations.map((op) => ({
+            name: op.fusedId,
+            description: `Fused: ${op.toolCalls.map((t) => t.name).join(" + ")}`,
+            parameters: { type: "object", properties: {} },
+          }))
+        );
+      }
+    }
+
+    return fusedToolsMap;
+  } catch {
+    // Fallback on error - return empty map to use original tools
+    return new Map();
+  }
+}
+
 import {
   type TeamEnabledState,
   type TeamStrategy,

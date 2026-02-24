@@ -33,6 +33,8 @@ import { readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
+import { integrateWithSubagents } from "./tool-compiler.js";
+import type { ToolCall } from "../lib/tool-compiler-types.js";
 import { getMarkdownTheme, isToolCallEventType, type ExtensionAPI, type ToolCallEvent } from "@mariozechner/pi-coding-agent";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
@@ -143,6 +145,53 @@ import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estima
 import { detectTier, getConcurrencyLimit } from "../lib/provider-limits";
 
 const logger = getLogger();
+
+/**
+ * Check if Tool Compiler is enabled via environment variable
+ * @summary Tool Compiler有効化チェック
+ * @returns Tool Compilerが有効な場合はtrue
+ */
+function isToolCompilerEnabled(): boolean {
+  return process.env.PI_TOOL_COMPILER_ENABLED === "true";
+}
+
+/**
+ * Fuse tools if Tool Compiler is enabled and beneficial
+ * @summary ツール融合ヘルパー
+ * @param tools - ツール呼び出し配列
+ * @returns 融合されたツール定義（融合が有益な場合）、または空配列
+ */
+function fuseToolsIfEnabled(
+  tools: Array<{ name: string; arguments: Record<string, unknown> }>
+): Array<{ name: string; description: string; parameters: Record<string, unknown> }> {
+  if (!isToolCompilerEnabled() || tools.length < 2) {
+    return [];
+  }
+
+  try {
+    const toolCalls: ToolCall[] = tools.map((t, idx) => ({
+      id: `tool-${idx}`,
+      name: t.name,
+      arguments: t.arguments,
+    }));
+
+    const { compiled, shouldUseFusion } = integrateWithSubagents(toolCalls);
+
+    if (!shouldUseFusion) {
+      return [];
+    }
+
+    return compiled.fusedOperations.map((op) => ({
+      name: op.fusedId,
+      description: `Fused: ${op.toolCalls.map((t) => t.name).join(" + ")}`,
+      parameters: { type: "object", properties: {} },
+    }));
+  } catch {
+    // Fallback on error - return empty array to use original tools
+    return [];
+  }
+}
+
 import {
   type SubagentDefinition,
   type SubagentRunRecord,
