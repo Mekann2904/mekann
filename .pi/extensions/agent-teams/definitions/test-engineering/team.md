@@ -2,6 +2,9 @@
 id: test-engineering-team
 name: Test Engineering Team
 description: 包括的テスト作成チーム。テストピラミッドに基づき、単体テストからE2Eテストまで全レイヤーの設計・実装を4フェーズで支援。戦略設計、単体テスト、統合・契約テスト、E2E・受け入れテストを段階的に実行し、高速で信頼性が高いテストポートフォリオを構築する。
+skills:
+  - test-engineering      # チーム共通: 包括的テスト戦略
+  - repograph-localization # チーム共通: RepoGraphベースのコード位置特定
 members:
   - id: strategy-architect
     role: Test Strategy Architect

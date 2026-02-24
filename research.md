@@ -1,448 +1,486 @@
-# Research Report: Search Extension and Embeddings Library
+# Research Report: Parallel Execution System and LLMCompiler Integration
 
-## Executive Summary
-
-The `.pi/extensions/search/` and `.pi/lib/` directories contain a sophisticated code search and analysis system built around three core technologies: **fd/ripgrep** for fast text search, **ctags** for symbol indexing, and **OpenAI embeddings** for semantic search. The architecture follows a modular, tool-based design with fallback implementations for environments without external CLI tools.
-
----
-
-## 1. Search Tools Implementation Details
-
-### 1.1 file_candidates
-
-**Purpose**: Fast file and directory enumeration
-
-**Implementation**:
-- Primary: Wraps `fd` CLI command with argument building
-- Fallback: Native Node.js `fs.readdir` recursive scan
-- Location: `.pi/extensions/search/tools/file_candidates.ts`
-
-**Data Flow**:
-```
-Input (pattern, type, extension, exclude, maxDepth, limit)
-  → buildFdArgs() → execute("fd", args)
-  → parseFdOutput() → truncateResults()
-  → Output (FileCandidatesOutput)
-```
-
-**Key Features**:
-- Glob pattern support (`*.ts`)
-- Extension filtering (`['ts', 'tsx']`)
-- Exclusion patterns (default: `node_modules`, `dist`, `.git`, etc.)
-- Result caching (10 min TTL)
-- Search history tracking
-
-### 1.2 code_search
-
-**Purpose**: Regex-based code pattern search
-
-**Implementation**:
-- Primary: Wraps `rg` (ripgrep) with JSON output
-- Fallback: Native Node.js file scan with regex matching
-- Location: `.pi/extensions/search/tools/code_search.ts`
-
-**Data Flow**:
-```
-Input (pattern, path, type, ignoreCase, literal, context, limit)
-  → normalizeCodeSearchInput() → buildRgArgs()
-  → execute("rg", args) → parseRgOutput()
-  → summarizeResults() → Output (CodeSearchOutput)
-```
-
-**Key Features**:
-- Regex support with `--json` output
-- Context lines (up to 10)
-- Literal mode (`--fixed-strings`)
-- File type filtering
-- Per-file hit summary
-
-### 1.3 sym_index
-
-**Purpose**: Generate symbol definition index using ctags
-
-**Implementation**:
-- Uses `universal-ctags` with JSON output format
-- Location: `.pi/extensions/search/tools/sym_index.ts`
-
-**Index Structure**:
-```
-.pi/search/
-├── symbols/
-│   ├── manifest.json    # { [filePath]: { hash, mtime, shardId } }
-│   ├── shard-0.jsonl    # Sharded entries (max 10000 per shard)
-│   ├── shard-1.jsonl
-│   └── ...
-├── symbols.jsonl        # Legacy single-file index
-└── meta.json            # Index metadata
-```
-
-**Incremental Update Logic**:
-1. Compute MD5 hash of file contents
-2. Compare with manifest entries
-3. Only re-index changed files
-4. If >50% files changed, do full re-index
-
-**ctags Arguments**:
-```javascript
-[
-  "--output-format=json",
-  "--fields=+n+s+S+k",  // line, signature, scope, kind
-  "--extras=+q",         // qualified tags
-  "--sort=no",
-  "-R", targetPath
-]
-```
-
-### 1.4 sym_find
-
-**Purpose**: Search symbol definitions from ctags index
-
-**Implementation**:
-- Location: `.pi/extensions/search/tools/sym_find.ts`
-- Reads from sharded or legacy index
-
-**Filtering Features**:
-- `name`: Wildcard pattern matching (`*`, `?`)
-- `kind`: Symbol type filter (`function`, `class`, `variable`)
-- `file`: File path filter
-- `scope`: Scope filter (e.g., class name)
-
-**Detail Levels**:
-- `full`: Complete symbol info
-- `signature`: Method signatures only
-- `outline`: Structure only (name, kind, file, line)
-
-**Sorting**:
-- Exact name match priority
-- Kind ordering (function > method > class > variable)
-- File path alphabetical
+**Date**: 2026-02-24
+**Investigator**: Subagent (researcher)
 
 ---
 
-## 2. Code Analysis: Call Graph
+## 1. Current System Analysis
 
-### 2.1 Architecture Overview
+### 1.1 Architecture Overview
 
-**Location**: `.pi/extensions/search/call-graph/`
-
-**Components**:
-- `builder.ts`: Graph construction from symbol index
-- `query.ts`: Graph traversal and search
-- `types.ts`: Type definitions
-
-### 2.2 Graph Building Process
-
-**Phase 1: Regex-based Call Detection** (current implementation)
+The current parallel execution system consists of three main layers:
 
 ```
-1. Get function definitions from sym_index
-2. For each function:
-   a. Extract body (line range estimation)
-   b. Find all identifier( patterns via ripgrep
-   c. Filter against known function names
-   d. Calculate confidence score
-3. Build nodes and edges
-4. Persist to .pi/search/call-graph/index.json
+┌─────────────────────────────────────────────────────────────┐
+│                    Extension Layer                          │
+│  subagents.ts          │  agent-teams/extension.ts          │
+│  - subagent_run        │  - agent_team_run                   │
+│  - subagent_run_parallel│  - agent_team_run_parallel        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                    Orchestration Layer                      │
+│  subagents/task-execution.ts  │  agent-teams/               │
+│  - runSubagentTask            │  - team-orchestrator.ts      │
+│                                │  - member-execution.ts      │
+│                                │  - communication.ts         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                    Runtime Layer                            │
+│  lib/concurrency.ts     │  agent-runtime.ts                 │
+│  - runWithConcurrencyLimit│  - Capacity reservation         │
+│  - AbortSignal handling  │  - Adaptive penalty              │
+│                          │  - Priority scheduling           │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Confidence Scoring**:
-```javascript
-BASE_CONFIDENCE = 0.8
-SAME_FILE_BONUS = 1.0
-COMMON_NAME_PENALTY = 0.7  // for names like "get", "set", "init"
-EXTERNAL_PENALTY = 0.5     // function not in symbol index
-```
+### 1.2 Subagent Parallel Execution
 
-### 2.3 Graph Structure
-
-```typescript
-interface CallGraphIndex {
-  nodes: CallGraphNode[];    // Function definitions
-  edges: CallGraphEdge[];    // Call relationships
-  metadata: {
-    indexedAt: number;
-    parserBackend: "ripgrep";
-    fileCount: number;
-    nodeCount: number;
-    edgeCount: number;
-    version: number;
-  };
-}
-```
-
-### 2.4 Query Functions
-
-- `findNodesByName()`: Lookup by symbol name
-- `findNodeById()`: Lookup by unique ID
-- `findNodesByFile()`: All functions in a file
-- `findCallers()`: Who calls this function? (with depth traversal)
-- `findCallees()`: What does this function call? (with depth traversal)
-- `findCallPath()`: Path between two symbols
-
----
-
-## 3. Semantic Search
-
-### 3.1 Architecture
-
-**Index Generation**: `.pi/extensions/search/tools/semantic_index.ts`
-**Search Execution**: `.pi/extensions/search/tools/semantic_search.ts`
-**Embeddings Library**: `.pi/lib/embeddings/`
-
-### 3.2 Embeddings Module Structure
-
-```
-.pi/lib/embeddings/
-├── index.ts           # Public API barrel file
-├── types.ts           # Type definitions
-├── registry.ts        # Provider registry
-├── utils.ts           # Vector operations
-└── providers/
-    ├── openai.ts      # OpenAI text-embedding-3-small
-    └── local.ts       # Local fallback (placeholder)
-```
-
-### 3.3 Provider System
-
-**OpenAI Provider**:
-- Model: `text-embedding-3-small`
-- Dimensions: 1536
-- Max tokens: 8191
-- Batch support: Yes (max 2048)
-
-**API Key Resolution**:
-1. `~/.pi/agent/auth.json`: `{ "openai": { "type": "api_key", "key": "sk-..." } }`
-2. Environment variable: `OPENAI_API_KEY`
-
-**Registry Pattern**:
-```typescript
-embeddingRegistry.register(openAIEmbeddingProvider);
-embeddingRegistry.register(createLocalEmbeddingProvider());
-
-const provider = await embeddingRegistry.getDefault();
-const embedding = await provider.generateEmbedding(text);
-```
-
-### 3.4 Indexing Process
-
-```
-1. Collect files (recursive scan, extension filter)
-2. Chunk code:
-   - Default chunk size: 500 chars
-   - Overlap: 50 chars
-   - Line-based splitting
-3. Generate embeddings for each chunk
-4. Store as JSONL:
-   - id (MD5 hash)
-   - file, line, code
-   - embedding (number[])
-   - metadata (language, symbol, kind, dimensions, model)
-```
-
-### 3.5 Search Process
-
-```
-1. Generate embedding for query
-2. Load index from disk
-3. Filter by language/kind if specified
-4. Calculate cosine similarity with all entries
-5. Filter by threshold (default 0.5)
-6. Sort by similarity, return topK (default 10)
-```
-
-### 3.6 Vector Utilities
-
-Location: `.pi/lib/embeddings/utils.ts`
-
-**Functions**:
-- `cosineSimilarity(a, b)`: Dot product / (normA * normB)
-- `euclideanDistance(a, b)`: L2 distance
-- `normalizeVector(v)`: L2 normalization
-- `findNearestNeighbors()`: Top-k search
-- `findBySimilarityThreshold()`: Filter by threshold
-
----
-
-## 4. Extension Architecture
-
-### 4.1 Tool Registration Pattern
-
-```typescript
-// .pi/extensions/search/index.ts
-export default function (pi: ExtensionAPI) {
-  pi.registerTool({
-    name: "file_candidates",
-    label: "File Candidates",
-    description: "...",
-    parameters: Type.Object({...}),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const cwd = ctx?.cwd ?? process.cwd();
-      const result = await fileCandidates(params, cwd);
-      return {
-        content: [{ type: "text", text: formatResult(result) }],
-        details: result,
-      };
-    },
-  });
-}
-```
-
-### 4.2 Shared Utilities
-
-**CLI Execution** (`.pi/extensions/search/utils/cli.ts`):
-```typescript
-execute(command, args, {
-  cwd,
-  timeout: 30000,
-  signal: AbortSignal,
-  maxOutputSize: 10 * 1024 * 1024,
-  env: {}
-})
-```
-
-**Caching** (`.pi/extensions/search/utils/cache.ts`):
-- In-memory LRU cache
-- TTL-based expiration
-- Key generation from params
-
-**History** (`.pi/extensions/search/utils/history.ts`):
-- Records tool invocations
-- Query extraction
-- Result paths tracking
-
-### 4.3 Error Handling
-
-**Error Types** (`.pi/extensions/search/utils/errors.ts`):
-- `parameterError`: Invalid input
-- `dependencyError`: Missing tool (ctags, fd, rg)
-- `executionError`: Command failed
-- `indexError`: Index issues
-
-### 4.4 Adding New Tools
-
-1. Create tool file in `tools/`
-2. Implement main function with Input/Output types
-3. Add format function for output
-4. Register in `index.ts` with `pi.registerTool()`
-5. Export tool definition
-
----
-
-## 5. Parallel Search Support
-
-**Location**: `.pi/lib/parallel-search.ts`
-
-**Purpose**: Execute multiple searches concurrently and merge results
+**File**: `.pi/extensions/subagents.ts`
 
 **Key Functions**:
-- `parallelSearch(queries, searchFn, config)`: Same tool, multiple queries
-- `parallelMultiToolSearch(searchFns, config)`: Different tools in parallel
+- `subagent_run`: Single subagent execution
+- `subagent_run_parallel`: Multiple subagents in parallel
+
+**Implementation Details**:
+
+1. **Concurrency Control**:
+   ```typescript
+   // Uses runWithConcurrencyLimit from lib/concurrency.ts
+   const results = await runWithConcurrencyLimit(
+     activeAgents,
+     Math.max(1, effectiveParallelism),
+     async (agent) => { ... }
+   );
+   ```
+
+2. **Adaptive Parallelism**:
+   - Baseline parallelism calculated from config limits
+   - Penalty-based reduction: `effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism)`
+   - Penalty increases on rate_limit/capacity errors
+   - Penalty decreases on successful operations
+
+3. **Capacity Management**:
+   ```typescript
+   // Reserve capacity before execution
+   const dispatchPermit = await acquireRuntimeDispatchPermit({
+     toolName: "subagent_run_parallel",
+     candidate: { additionalRequests: 1, additionalLlm: effectiveParallelism },
+     ...
+   });
+   ```
+
+4. **Current Constraints**:
+   - All subagents receive the same task (no task decomposition)
+   - No dependency tracking between subagents
+   - Results are aggregated post-hoc, no inter-subagent communication
+   - Parallelism is static per run (no dynamic adjustment)
+
+### 1.3 Agent Team Parallel Execution
+
+**Files**: 
+- `.pi/extensions/agent-teams/extension.ts`
+- `.pi/extensions/agent-teams/team-orchestrator.ts`
+- `.pi/extensions/agent-teams/parallel-execution.ts`
+
+**Key Functions**:
+- `agent_team_run`: Single team execution (members in parallel)
+- `agent_team_run_parallel`: Multiple teams in parallel
+
+**Implementation Details**:
+
+1. **Multi-Level Parallelism**:
+   ```typescript
+   // Team parallelism (across teams)
+   const effectiveTeamParallelism = adaptivePenalty.applyLimit(baselineTeamParallelism);
+   
+   // Member parallelism (within team)
+   const effectiveMemberParallelism = adaptivePenalty.applyLimit(baselineMemberParallelism);
+   ```
+
+2. **Communication Rounds**:
+   ```typescript
+   // Phase 1: Initial execution (parallel)
+   memberResults = await runWithConcurrencyLimit(activeMembers, memberParallelLimit, ...);
+   
+   // Phase 2: Communication rounds (sequential)
+   for (let round = 1; round <= communicationRounds; round++) {
+     // Members receive context from partners
+     const communicationContext = buildCommunicationContext({...});
+     // Execute with partner context
+   }
+   ```
+
+3. **Failed Member Retry**:
+   - Separate retry mechanism for failed members
+   - Retry rounds configurable via `failedMemberRetryRounds`
+   - Retry only eligible failures (excludes rate_limit, capacity errors)
+
+4. **Final Judge**:
+   - Aggregates member results
+   - Computes uncertainty proxy (uIntra, uInter, uSys)
+   - Produces verdict (trusted/partial/uncertain)
+
+5. **Current Constraints**:
+   - Communication links are pre-defined (static topology)
+   - All members execute same task with role-specific prompts
+   - No DAG-based task decomposition
+   - No dynamic replanning based on intermediate results
+
+### 1.4 Core Concurrency Library
+
+**File**: `.pi/lib/concurrency.ts`
+
+**Key Function**: `runWithConcurrencyLimit`
+
+**Implementation**:
+```typescript
+export async function runWithConcurrencyLimit<TInput, TResult>(
+  items: TInput[],
+  limit: number,
+  worker: (item: TInput, index: number, signal?: AbortSignal) => Promise<TResult>,
+  options: ConcurrencyRunOptions = {},
+): Promise<TResult[]>
+```
 
 **Features**:
-- Timeout handling (default 30s)
-- Result deduplication by `path:line`
-- Context budget enforcement
-- Score-based sorting
-- Error tolerance (partial failures allowed)
+- Worker pool pattern with configurable parallelism
+- AbortSignal propagation via child controllers
+- Error handling: captures first error, continues workers to avoid dangling
+- No dependency management (all items are independent)
+
+### 1.5 Runtime Capacity Management
+
+**File**: `.pi/extensions/agent-runtime.ts`
+
+**Key Components**:
+
+1. **Global State Management**:
+   ```typescript
+   interface AgentRuntimeState {
+     subagents: { activeRunRequests, activeAgents, ... };
+     teams: { activeTeamRuns, activeTeammates, ... };
+     limits: AgentRuntimeLimits;
+     reservations: RuntimeCapacityReservationRecord[];
+   }
+   ```
+
+2. **Capacity Reservation**:
+   - `tryReserveRuntimeCapacity`: Immediate attempt (no wait)
+   - `reserveRuntimeCapacity`: Wait until capacity available
+   - `acquireRuntimeDispatchPermit`: Full dispatch pipeline with queue
+
+3. **Priority Scheduling**:
+   - `PriorityTaskQueue` with 5 levels (critical to background)
+   - Task metadata includes source, estimated duration, rounds
+
+4. **Feature Flags**:
+   - `PI_USE_SCHEDULER`: Enable scheduler-based capacity management
+   - Multiple execution paths based on flags
+
+### 1.6 Adaptive Penalty System
+
+**File**: `.pi/lib/adaptive-penalty.ts`
+
+**Modes**:
+- `legacy`: Linear decay (+1/-1 steps)
+- `enhanced`: Exponential decay + reason-based weights
+
+**Penalty Reasons**:
+```typescript
+type PenaltyReason = "rate_limit" | "timeout" | "capacity" | "schema_violation";
+```
+
+**Default Weights** (enhanced mode):
+- rate_limit: 2.0
+- capacity: 1.5
+- timeout: 1.0
+- schema_violation: 0.5
 
 ---
 
-## 6. Data Structures Summary
+## 2. LLMCompiler Core Concepts
 
-### 6.1 Symbol Index Entry
+### 2.1 Paper Summary: "An LLM Compiler for Parallel Function Calling"
 
-```typescript
-interface SymbolIndexEntry {
-  name: string;        // Symbol name
-  kind: string;        // function, class, variable, etc.
-  file: string;        // Relative path
-  line: number;        // 1-indexed line number
-  signature?: string;  // Function signature
-  scope?: string;      // Containing class/namespace
-  pattern?: string;    // ctags pattern
-}
-```
+**Authors**: Berkeley AI Research, LMSYS
+**Key Contribution**: System for parallel function calling with dependency-aware execution
 
-### 6.2 Code Embedding
+### 2.2 Core Components
 
-```typescript
-interface CodeEmbedding {
-  id: string;          // MD5 hash
-  file: string;        // Relative path
-  line: number;        // Start line
-  code: string;        // Code content
-  embedding: number[]; // Vector (1536 dims for OpenAI)
-  metadata: {
-    language: string;
-    symbol?: string;
-    kind?: "function" | "class" | "variable" | "chunk";
-    dimensions: number;
-    model: string;
-    tokens?: number;
-  };
-}
-```
+#### 1. Function Calling Planner
+- Generates Directed Acyclic Graph (DAG) of tasks
+- Identifies dependencies between function calls
+- Uses LLM to understand semantic dependencies
 
-### 6.3 Call Graph Node/Edge
+#### 2. Task Fetching Unit (TFU)
+- Evaluates DAG to find ready-to-execute tasks
+- Maintains frontier of executable tasks
+- Dispatches tasks as dependencies resolve
 
-```typescript
-interface CallGraphNode {
-  id: string;          // file:line:name
-  name: string;        // Function name
-  file: string;        // Source file
-  line: number;        // Definition line
-  kind: "function" | "method" | "arrow" | "const";
-  scope?: string;      // Containing class
-}
+#### 3. Executor
+- Async parallel execution of independent tasks
+- Maintains execution state and results
+- Handles failures and retries
 
-interface CallGraphEdge {
-  caller: string;      // Caller node ID
-  callee: string;      // Callee function name
-  callSite: {
-    file: string;
-    line: number;
-    column: number;
-  };
-  confidence: number;  // 0.0 - 1.0
-}
-```
+#### 4. Dynamic Replanning
+- Re-evaluates plan based on intermediate results
+- Adds new tasks or modifies dependencies
+- Handles conditional execution paths
+
+#### 5. Streamed Planner
+- Generates plan incrementally
+- Starts execution before full plan is complete
+- Overlaps planning and execution
+
+### 2.3 Key Innovations
+
+1. **Dependency-Aware Scheduling**: Only executes tasks when dependencies are met
+2. **Speculative Execution**: Starts tasks that might be needed
+3. **Graceful Degradation**: Handles partial failures without blocking entire workflow
+4. **Latency Reduction**: 3.4x speedup in benchmarks (HotpotQA, WebShop)
 
 ---
 
-## 7. File Locations Reference
+## 3. Applicability Assessment
 
-| Component | Path |
-|-----------|------|
-| Search Extension Entry | `.pi/extensions/search/index.ts` |
-| Type Definitions | `.pi/extensions/search/types.ts` |
-| Tool Implementations | `.pi/extensions/search/tools/*.ts` |
-| Call Graph Module | `.pi/extensions/search/call-graph/*.ts` |
-| Utilities | `.pi/extensions/search/utils/*.ts` |
-| Embeddings Library | `.pi/lib/embeddings/*.ts` |
-| Parallel Search | `.pi/lib/parallel-search.ts` |
-| Symbol Index Storage | `.pi/search/symbols/` |
-| Call Graph Storage | `.pi/search/call-graph/` |
-| Semantic Index Storage | `.pi/search/semantic-index.jsonl` |
+### 3.1 Similarities with Current System
+
+| LLMCompiler Component | Current System Equivalent | Match Level |
+|-----------------------|---------------------------|-------------|
+| Executor | `runWithConcurrencyLimit` | High |
+| Capacity Management | `agent-runtime.ts` reservation system | High |
+| Adaptive Control | `adaptive-penalty.ts` | Medium |
+| Task Queue | `PriorityTaskQueue` in runtime | Medium |
+| Communication | Team communication rounds | Low (different model) |
+| Planner | **Missing** | None |
+| TFU | **Missing** | None |
+| Dynamic Replanning | **Missing** | None |
+| Streamed Planner | **Missing** | None |
+
+### 3.2 Differences
+
+| Aspect | Current System | LLMCompiler |
+|--------|----------------|-------------|
+| Task Model | All agents receive same task | Tasks decomposed into DAG |
+| Dependencies | None (independent execution) | DAG-based dependencies |
+| Scheduling | Static parallelism per run | Dynamic based on DAG state |
+| Replanning | None | Continuous based on results |
+| Planning-Execution | Sequential (plan then execute) | Overlapped (streamed) |
+
+### 3.3 Applicability by Component
+
+#### Function Calling Planner: **HIGH**
+- **Why**: Current system lacks task decomposition
+- **Where**: New skill or extension: `.pi/skills/task-planner/`
+- **Use Case**: Complex multi-step tasks with dependencies
+- **Implementation**: LLM-based DAG generation from task description
+
+#### Task Fetching Unit: **HIGH**
+- **Why**: Current system has no dependency resolution
+- **Where**: Enhance `lib/concurrency.ts` or new `lib/dag-executor.ts`
+- **Use Case**: Execute tasks when dependencies are ready
+- **Implementation**: Frontier-based task dispatch
+
+#### Dynamic Replanning: **MEDIUM**
+- **Why**: Current communication rounds are static
+- **Where**: Enhance `team-orchestrator.ts`
+- **Use Case**: Adjust plan based on member results
+- **Implementation**: Post-round analysis and plan update
+
+#### Streamed Planner: **LOW**
+- **Why**: Requires significant architecture changes
+- **Where**: Would need streaming LLM integration
+- **Challenge**: Current pi architecture assumes complete tool calls
+- **Alternative**: Focus on faster planning, not streamed execution
 
 ---
 
-## 8. Key Insights
+## 4. Integration Proposals (Priority Order)
 
-### Strengths
-1. **Graceful Fallbacks**: All tools work without external CLI dependencies
-2. **Incremental Updates**: Symbol index uses content hashing for efficient re-indexing
-3. **Modular Design**: Clean separation between tools, utilities, and storage
-4. **Context Awareness**: Token estimation and budget management
-5. **Multi-layered Search**: Text → Symbol → Call Graph → Semantic
+### P0: Task Dependency Planner (New Skill)
 
-### Limitations
-1. **Call Graph Accuracy**: Regex-based detection has false positives (acknowledged as "Phase 1")
-2. **No AST Parsing**: tree-sitter integration not yet implemented
-3. **External Dependencies**: Semantic search requires OpenAI API key
-4. **Single Embedding Model**: Only text-embedding-3-small supported
+**Location**: `.pi/skills/task-planner/SKILL.md`
 
-### Recommended Improvements
-1. Integrate tree-sitter for accurate AST-based call graph
-2. Add local embedding provider (e.g., Transformers.js)
-3. Implement cross-file type inference for better call resolution
-4. Add support for more embedding models (Cohere, Voyage, etc.)
+**Purpose**: Generate DAG from task description
+
+**Interface**:
+```typescript
+interface TaskPlan {
+  tasks: TaskNode[];
+  dependencies: Map<string, string[]>;
+}
+
+interface TaskNode {
+  id: string;
+  description: string;
+  assignedAgent?: string;
+  estimatedDuration?: number;
+}
+```
+
+**Implementation**:
+1. Create skill that invokes LLM to decompose task
+2. Output structured DAG (JSON/YAML)
+3. Store in `.pi/plans/{runId}.json`
+
+**Effort**: 2-3 days
+
+### P1: DAG Executor (Library Enhancement)
+
+**Location**: `.pi/lib/dag-executor.ts`
+
+**Purpose**: Execute tasks with dependency resolution
+
+**Interface**:
+```typescript
+export async function executeDag<T>(
+  plan: TaskPlan,
+  executor: (task: TaskNode, signal?: AbortSignal) => Promise<T>,
+  options: DagExecutorOptions
+): Promise<DagResult<T>>
+```
+
+**Features**:
+- Frontier-based dispatch
+- Dependency resolution
+- Parallel execution of independent tasks
+- Failure handling (partial results)
+
+**Effort**: 3-4 days
+
+### P2: Enhanced Team Orchestrator
+
+**Location**: `.pi/extensions/agent-teams/team-orchestrator.ts`
+
+**Changes**:
+1. Accept pre-generated DAG from planner
+2. Execute members according to DAG dependencies
+3. Support member-specific subtasks (not same task for all)
+4. Dynamic replanning after each round
+
+**Effort**: 4-5 days
+
+### P3: Streaming Planner Integration
+
+**Location**: New extension `.pi/extensions/streaming-planner.ts`
+
+**Purpose**: Generate plan incrementally while starting execution
+
+**Challenge**: Requires pi core support for streaming tool calls
+
+**Alternative**: Fast planner + eager execution
+
+**Effort**: 7-10 days (requires architecture changes)
+
+---
+
+## 5. Implementation Challenges and Solutions
+
+### Challenge 1: Task Decomposition Quality
+
+**Problem**: LLM may generate poor DAGs (cycles, missing dependencies)
+
+**Solutions**:
+1. Schema validation for DAG output
+2. Cycle detection algorithm
+3. Human-in-the-loop review for complex tasks
+4. Template-based DAGs for common patterns
+
+### Challenge 2: Error Handling in DAG Execution
+
+**Problem**: Task failure may block dependent tasks
+
+**Solutions**:
+1. Partial result propagation
+2. Fallback values for failed tasks
+3. Retry at DAG level (not just task level)
+4. Alternative path selection
+
+### Challenge 3: Context Management
+
+**Problem**: Dependent tasks need results from predecessors
+
+**Solutions**:
+1. Context injection into task prompts
+2. Result summarization for large outputs
+3. Lazy context loading (only when needed)
+4. Context size limits with truncation
+
+### Challenge 4: Integration with Existing System
+
+**Problem**: Current system assumes same task for all agents
+
+**Solutions**:
+1. New tool: `agent_team_run_dag` (doesn't replace existing tools)
+2. Backward compatible: existing tools work unchanged
+3. Gradual migration: start with new skill, then integrate
+
+### Challenge 5: Dynamic Replanning Complexity
+
+**Problem**: Replanning may cause infinite loops or thrashing
+
+**Solutions**:
+1. Maximum replanning rounds limit
+2. Convergence detection (plan stability)
+3. Cost awareness (don't replan too often)
+4. User confirmation for major plan changes
+
+---
+
+## 6. Expected Benefits
+
+### Latency Reduction
+- **Current**: Sequential execution of independent tasks
+- **With DAG**: Parallel execution where possible
+- **Expected**: 2-3x speedup for tasks with independent subtasks
+
+### Cost Optimization
+- **Current**: All agents execute even if earlier results are sufficient
+- **With DAG**: Early termination when results meet criteria
+- **Expected**: 20-40% cost reduction for conditional workflows
+
+### Quality Improvement
+- **Current**: No dependency tracking, results may conflict
+- **With DAG**: Structured execution ensures proper ordering
+- **Expected**: Higher success rate for complex multi-step tasks
+
+---
+
+## 7. Recommended Implementation Path
+
+### Phase 1: Foundation (Week 1-2)
+1. Create `task-planner` skill with DAG generation
+2. Add DAG validation utilities (cycle detection, schema)
+3. Unit tests for planner
+
+### Phase 2: Core Execution (Week 3-4)
+1. Implement `dag-executor.ts` library
+2. Integrate with existing `runWithConcurrencyLimit`
+3. Add dependency resolution logic
+
+### Phase 3: Team Integration (Week 5-6)
+1. Add `agent_team_run_dag` tool
+2. Support member-specific subtasks
+3. Basic dynamic replanning (1 round)
+
+### Phase 4: Polish (Week 7-8)
+1. Enhanced error handling
+2. Context management optimization
+3. Documentation and examples
+
+---
+
+## 8. Conclusion
+
+The current parallel execution system is well-architected for **independent** task execution but lacks the **dependency-aware planning** that LLMCompiler introduces. The highest-value integration would be:
+
+1. **P0: Task Planner** - Enable DAG-based task decomposition
+2. **P1: DAG Executor** - Execute with dependency resolution
+
+These two components would provide the core LLMCompiler benefits without requiring major architectural changes to the existing system. The communication rounds in agent-teams already provide a form of iterative refinement, which could be enhanced with dynamic replanning as a follow-up improvement.
+
+**Confidence**: 0.85
+**Recommendation**: Proceed with P0/P1 implementation

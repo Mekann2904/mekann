@@ -6,6 +6,7 @@ enabled: enabled
 strategy: parallel
 skills:
   - log-analyzer          # チーム共通: ログ解析・エラー抽出
+  - repograph-localization # チーム共通: RepoGraphベースのコード位置特定
 members:
   - id: hypothesis-a
     role: Hypothesis A

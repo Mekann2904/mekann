@@ -480,3 +480,50 @@ export {
   klDivergence,
   summarizeDistribution,
 } from "./belief-updater.js";
+
+// ============================================================================
+// LLMCompiler Integration - DAG-based Parallel Task Execution
+// Enables dependency-aware parallel execution for complex task decomposition.
+// ============================================================================
+
+// DAG Types - Type definitions for task planning and execution
+export {
+  type TaskNode,
+  type TaskPlan,
+  type DagTaskResult,
+  type DagResult,
+  type TaskNodePriority,
+  type TaskResultStatus,
+  type DagResultStatus,
+  type CreateTaskPlanOptions,
+  type AgentType,
+  AGENT_TYPE_DESCRIPTIONS,
+} from "./dag-types.js";
+
+// DAG Errors - Error types for DAG execution
+export {
+  type DagErrorCode,
+  DagExecutionError,
+  TaskValidationError,
+  DagValidationError,
+  getDagErrorMessage,
+  isDagError,
+  isValidationError,
+} from "./dag-errors.js";
+
+// DAG Validator - Task plan validation utilities
+export {
+  type ValidationResult,
+  validateTaskPlan,
+  quickValidatePlan,
+} from "./dag-validator.js";
+
+// DAG Executor - DAG execution engine
+export {
+  type DagExecutorOptions,
+  type TaskExecutor,
+  type SubagentDagOptions,
+  DagExecutor,
+  executeDag,
+  buildSubagentPrompt,
+} from "./dag-executor.js";

@@ -6,6 +6,7 @@ enabled: enabled
 strategy: parallel
 skills:
   - research-critical        # チーム共通: 批判的思考・科学的評価
+  - repograph-localization   # チーム共通: RepoGraphベースのコード位置特定
 members:
   # Core 9 (Permanent)
   - id: pi-pm
