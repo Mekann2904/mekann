@@ -38,6 +38,15 @@ import type {
   FusionConfig,
   ToolExecutorFn,
 } from "../lib/tool-compiler-types.js";
+import {
+  serializeCompilation,
+  buildToolExecutorTask,
+  parseToolExecutorResult,
+  type ToolExecutorResult,
+} from "../lib/tool-executor-bridge.js";
+import { loadStorage, saveStorage } from "./subagents/storage.js";
+import { ensureToolExecutorSubagent } from "./subagents/tool-executor-subagent.js";
+import { runSubagentTask } from "./subagents/task-execution.js";
 
 // ============================================================================
 // In-Memory Compilation Cache
@@ -310,8 +319,12 @@ async function handleCompileTools(params: CompileToolsParams): Promise<string> {
 
 /**
  * execute_compiled ツールのハンドラ
+ * Uses subagent delegation for actual tool execution
  */
-async function handleExecuteCompiled(params: ExecuteCompiledParams): Promise<string> {
+async function handleExecuteCompiled(
+  params: ExecuteCompiledParams,
+  ctx: { cwd: string; model?: { provider?: string; id?: string } }
+): Promise<string> {
   const { compilationId, executorMode = "auto" } = params;
 
   try {
@@ -320,51 +333,63 @@ async function handleExecuteCompiled(params: ExecuteCompiledParams): Promise<str
     if (!compilation) {
       return JSON.stringify({
         success: false,
-        error: `コンパイル結果が見つかりません: ${compilationId}。キャッシュの有効期限が切れた可能性があります。`,
+        error: `コンパイル結果が見つかりません: ${compilationId}`,
         results: [],
       }, null, 2);
     }
 
-    // ツール実行関数（実際のツール実行はpi contextが必要）
-    // この拡張機能単体ではダミー実行を返す
-    const dummyExecutor: ToolExecutorFn = async (
-      toolName: string,
-      args: Record<string, unknown>,
-      _signal?: AbortSignal
-    ) => {
-      return {
-        toolName,
-        status: "simulated" as const,
-        message: "実際のツール実行にはpi contextが必要です",
-        args,
-      };
-    };
+    // Ensure tool-executor subagent exists
+    const storage = loadStorage(ctx.cwd);
+    ensureToolExecutorSubagent(storage);
+    saveStorage(ctx.cwd, storage);
 
-    const executorConfig: Partial<FusionConfig> = {
-      maxParallelism: executorMode === "sequential" ? 1 : compilation.fusedOperations.length,
-      debugMode: false,
-    };
-
-    const executor = new ToolExecutor(executorConfig);
-    const result = await executor.execute(compilation, dummyExecutor);
-
-    // allToolResultsを変換
-    const toolResultsRecord: Record<string, unknown> = {};
-    for (const entry of result.allToolResults.entries()) {
-      const [toolId, toolResult] = entry;
-      toolResultsRecord[toolId] = toolResult;
+    // Find tool-executor subagent
+    const toolExecutorAgent = storage.agents.find((a) => a.id === "tool-executor");
+    if (!toolExecutorAgent) {
+      return JSON.stringify({
+        success: false,
+        error: "tool-executor subagent not found",
+        results: [],
+      }, null, 2);
     }
 
+    // Serialize compilation for subagent
+    const payload = serializeCompilation(compilation);
+    const task = buildToolExecutorTask(payload);
+
+    // Execute via subagent
+    const result = await runSubagentTask({
+      agent: toolExecutorAgent,
+      task,
+      timeoutMs: 120000, // 2 minute timeout
+      cwd: ctx.cwd,
+      modelProvider: ctx.model?.provider,
+      modelId: ctx.model?.id,
+    });
+
+    // Parse subagent output
+    const executorResult = parseToolExecutorResult(result.output || "");
+
+    if (!executorResult) {
+      // Fallback: return raw output if parsing fails
+      return JSON.stringify({
+        success: result.runRecord.status === "completed",
+        compilationId,
+        rawOutput: result.output,
+        error: "Failed to parse subagent output",
+        runRecord: result.runRecord,
+      }, null, 2);
+    }
+
+    // Return structured result
     const output = {
-      success: result.success,
-      executionId: result.executionId,
-      compilationId: result.compilation.compilationId,
-      totalDurationMs: result.totalExecutionTimeMs,
-      toolResults: toolResultsRecord,
-      savedTokens: result.savedTokens,
-      savedTimeMs: result.savedTimeMs,
-      errorSummary: result.errorSummary,
-      note: "この実行はシミュレーションです。実際のツール実行にはpi contextとの統合が必要です。",
+      success: executorResult.success,
+      compilationId: executorResult.compilationId,
+      toolResults: executorResult.toolResults,
+      executionId: result.runRecord.runId,
+      totalDurationMs: result.runRecord.latencyMs,
+      savedTokens: compilation.totalTokenSavings,
+      errorSummary: executorResult.errorSummary,
     };
 
     return JSON.stringify(output, null, 2);
@@ -439,8 +464,11 @@ export default function registerToolCompilerExtension(pi: ExtensionAPI): void {
       continueOnError: Type.Optional(Type.Boolean()),
     }),
 
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const result = await handleExecuteCompiled(params as ExecuteCompiledParams);
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = await handleExecuteCompiled(
+        params as ExecuteCompiledParams,
+        ctx  // Pass ctx for subagent access
+      );
       return {
         content: [{ type: "text", text: result }],
         details: {},
