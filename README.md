@@ -137,7 +137,7 @@ pi remove https://github.com/Mekann2904/mekann
 
 このプロジェクトには、サブエージェントやチームメンバーに割り当て可能なスキル管理システムが含まれています。
 
-### 利用可能なスキル（12個）
+### 利用可能なスキル（17個）
 
 | カテゴリ | スキル | 説明 |
 |---------|--------|------|
@@ -149,9 +149,14 @@ pi remove https://github.com/Mekann2904/mekann
 | | harness-engineering | ハーネスエンジニアリング（品質向上の手法論） |
 | | dynamic-tools | タスク実行中の動的ツール生成・実行・管理 |
 | **分析** | logical-analysis | 論理的テキスト分析（学術・技術・ビジネス文書） |
+| | bug-hunting | バグ発見と根本原因特定 |
+| | reasoning-bonds | Long CoT推論の分子構造分析 |
+| | inquiry-exploration | 問い駆動型探求 |
 | **操作** | git-workflow | Git操作・ブランチ管理 |
 | **検索** | search-tools | 高速コード検索ツール（file_candidates, code_search, sym_index, sym_find） |
 | **形式手法** | invariant-generation | 形式仕様からインバリアント、テストコード自動生成（Quint、Rustマクロ、プロパティテスト、MBT） |
+| **自己改善** | self-improvement | 7つの哲学的視座に基づく自己点検プロセス |
+| | self-reflection | タスク前後での自己点検（簡易チェックリスト） |
 | **テスト** | test-engineering | 包括的テスト戦略（単体〜E2E、プロパティベース、モデルベース） |
 
 ### スキル運用方針
