@@ -1438,6 +1438,7 @@ export class ASTDivergenceDetector {
 
 	/**
 	 * 変数宣言を追跡（データフロー解析）
+	 * セキュリティパターンも同時にチェック
 	 */
 	private trackVariableDeclaration(node: ts.VariableDeclaration): void {
 		if (!node.name || !ts.isIdentifier(node.name)) return;
@@ -1449,12 +1450,17 @@ export class ASTDivergenceDetector {
 		// 文字列リテラルの場合
 		if (ts.isStringLiteral(initializer)) {
 			this.variableValues.set(varName, initializer.text);
+			// セキュリティチェック: "varName: 'value'" 形式でチェック
+			const fullExpression = `${varName}: '${initializer.text}'`;
+			this.checkStringForPatterns(fullExpression, node, node.getSourceFile(), this.createInitialContext(node.getSourceFile()));
 			return;
 		}
 
 		// テンプレートリテラルの場合
 		if (ts.isNoSubstitutionTemplateLiteral(initializer)) {
 			this.variableValues.set(varName, initializer.text);
+			const fullExpression = `${varName}: '${initializer.text}'`;
+			this.checkStringForPatterns(fullExpression, node, node.getSourceFile(), this.createInitialContext(node.getSourceFile()));
 			return;
 		}
 
@@ -1462,6 +1468,8 @@ export class ASTDivergenceDetector {
 		if (ts.isTemplateExpression(initializer)) {
 			const resolvedText = this.resolveTemplateExpression(initializer);
 			this.variableValues.set(varName, resolvedText);
+			const fullExpression = `${varName}: '${resolvedText}'`;
+			this.checkStringForPatterns(fullExpression, node, node.getSourceFile(), this.createInitialContext(node.getSourceFile()));
 			return;
 		}
 
@@ -1576,9 +1584,19 @@ export class ASTDivergenceDetector {
 		context: ASTNodeContext
 	): void {
 		const initializer = node.initializer;
+		const propName = (node.name as ts.Identifier)?.text || "";
 
-		// 文字列リテラルの場合 - すべてのプロパティをチェック
+		// 文字列リテラルの場合 - プロパティ名を含めてチェック
 		if (ts.isStringLiteral(initializer)) {
+			// "propName: value" の形式でチェック（セキュリティパターン用）
+			const fullExpression = `${propName}: '${initializer.text}'`;
+			this.checkStringForPatterns(
+				fullExpression,
+				node,
+				sourceFile,
+				context
+			);
+			// 値自体もチェック（コマンドパターン用）
 			this.checkStringForPatterns(
 				initializer.text,
 				node,
@@ -1591,12 +1609,9 @@ export class ASTDivergenceDetector {
 		// テンプレートリテラルの場合
 		if (ts.isTemplateExpression(initializer)) {
 			const resolvedText = this.resolveTemplateExpression(initializer);
-			this.checkStringForPatterns(
-				resolvedText,
-				node,
-				sourceFile,
-				context
-			);
+			const fullExpression = `${propName}: '${resolvedText}'`;
+			this.checkStringForPatterns(fullExpression, node, sourceFile, context);
+			this.checkStringForPatterns(resolvedText, node, sourceFile, context);
 			return;
 		}
 
@@ -1604,12 +1619,9 @@ export class ASTDivergenceDetector {
 		if (ts.isIdentifier(initializer)) {
 			const resolvedValue = this.resolveVariable(initializer.text);
 			if (resolvedValue) {
-				this.checkStringForPatterns(
-					resolvedValue,
-					node,
-					sourceFile,
-					context
-				);
+				const fullExpression = `${propName}: '${resolvedValue}'`;
+				this.checkStringForPatterns(fullExpression, node, sourceFile, context);
+				this.checkStringForPatterns(resolvedValue, node, sourceFile, context);
 			}
 		}
 	}

@@ -2,7 +2,7 @@
 title: perspective-scorer
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -302,4 +302,4 @@ type Perspective = | 'deconstruction'      // 脱構築
 7つの哲学的視座
 
 ---
-*自動生成: 2026-02-23T06:29:42.387Z*
+*自動生成: 2026-02-24T17:08:02.742Z*

@@ -2,7 +2,7 @@
 title: execution-rules
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -23,6 +23,7 @@ related: []
 | 関数 | `getChallengerExecutionRules` | チャレンジャールールを取得 |
 | 関数 | `getInspectorExecutionRules` | - |
 | 関数 | `getVerificationWorkflowExecutionRules` | - |
+| 関数 | `getLightweightExecutionRules` | 軽量実行ルールを取得（調査タスク・INTERNALモード用） |
 | 関数 | `getExecutionRulesForProfile` | パフォーマンスプロファイルに基づく実行ルールを取得 |
 | インターフェース | `BuildExecutionRulesOptions` | 実行ルールの構築オプション |
 
@@ -50,6 +51,7 @@ flowchart TD
   getChallengerExecutionRules["getChallengerExecutionRules()"]
   getExecutionRulesForProfile["getExecutionRulesForProfile()"]
   getInspectorExecutionRules["getInspectorExecutionRules()"]
+  getLightweightExecutionRules["getLightweightExecutionRules()"]
   getSubagentExecutionRules["getSubagentExecutionRules()"]
   getTeamMemberExecutionRules["getTeamMemberExecutionRules()"]
   getVerificationWorkflowExecutionRules["getVerificationWorkflowExecutionRules()"]
@@ -58,6 +60,7 @@ flowchart TD
   getChallengerExecutionRules --> buildExecutionRulesSection
   getChallengerExecutionRules --> safeCacheSet
   getExecutionRulesForProfile --> buildExecutionRulesSection
+  getExecutionRulesForProfile --> getLightweightExecutionRules
   getExecutionRulesForProfile --> safeCacheSet
   getInspectorExecutionRules --> buildExecutionRulesSection
   getInspectorExecutionRules --> safeCacheSet
@@ -181,10 +184,20 @@ getVerificationWorkflowExecutionRules(phase: "inspector" | "challenger" | "both"
 
 **戻り値**: `string`
 
+### getLightweightExecutionRules
+
+```typescript
+getLightweightExecutionRules(): string
+```
+
+軽量実行ルールを取得（調査タスク・INTERNALモード用）
+
+**戻り値**: `string`
+
 ### getExecutionRulesForProfile
 
 ```typescript
-getExecutionRulesForProfile(profileId: string, forSubagent: any): string
+getExecutionRulesForProfile(profileId: string, forSubagent: any, lightweight: any): string
 ```
 
 パフォーマンスプロファイルに基づく実行ルールを取得
@@ -195,6 +208,7 @@ getExecutionRulesForProfile(profileId: string, forSubagent: any): string
 |------|-----|------|
 | profileId | `string` | はい |
 | forSubagent | `any` | はい |
+| lightweight | `any` | はい |
 
 **戻り値**: `string`
 
@@ -226,4 +240,4 @@ interface BuildExecutionRulesOptions {
 実行ルールの構築オプション
 
 ---
-*自動生成: 2026-02-23T06:29:42.326Z*
+*自動生成: 2026-02-24T17:08:02.678Z*

@@ -2,7 +2,7 @@
 title: runtime-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -187,4 +187,4 @@ toConcurrencyLimit(value: unknown, fallback: number): number
 **戻り値**: `number`
 
 ---
-*自動生成: 2026-02-23T06:29:42.407Z*
+*自動生成: 2026-02-24T17:08:02.757Z*

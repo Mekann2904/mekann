@@ -2,7 +2,7 @@
 title: ul-dual-mode
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -23,9 +23,24 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `enhanceTaskWithTokenEfficiency` | タスクにトークン効率化コンテキストを追加する |
 | 関数 | `registerUlDualModeExtension` | 拡張機能を登録 |
 
 ## 図解
+
+### クラス図
+
+```mermaid
+classDiagram
+  class LRUCache {
+    -cache: any
+    -accessOrder: K
+    +get()
+    +set()
+    -updateAccessOrder()
+    +clear()
+  }
+```
 
 ### 依存関係図
 
@@ -46,7 +61,10 @@ flowchart LR
 flowchart TD
   buildUlPolicyString["buildUlPolicyString()"]
   buildUlTransformedInput["buildUlTransformedInput()"]
+  enhanceTaskWithTokenEfficiency["enhanceTaskWithTokenEfficiency()"]
   extractTextWithoutUlPrefix["extractTextWithoutUlPrefix()"]
+  getAdaptiveThrottleMs["getAdaptiveThrottleMs()"]
+  getCachedRuntimeSnapshot["getCachedRuntimeSnapshot()"]
   getMissingRequirements["getMissingRequirements()"]
   getUlPolicy["getUlPolicy()"]
   isRecommendedReviewerCall["isRecommendedReviewerCall()"]
@@ -62,12 +80,14 @@ flowchart TD
   safeCacheSet["safeCacheSet()"]
   shouldRequireReviewer["shouldRequireReviewer()"]
   toObjectLike["toObjectLike()"]
+  getAdaptiveThrottleMs --> getCachedRuntimeSnapshot
   getMissingRequirements --> shouldRequireReviewer
   getUlPolicy --> buildUlPolicyString
   getUlPolicy --> safeCacheSet
   isRecommendedReviewerCall --> normalizeId
   isRecommendedReviewerCall --> parseToolInput
   parseToolInput --> toObjectLike
+  refreshStatusThrottled --> getAdaptiveThrottleMs
   refreshStatusThrottled --> refreshStatus
   registerUlDualModeExtension --> buildUlTransformedInput
   registerUlDualModeExtension --> extractTextWithoutUlPrefix
@@ -81,6 +101,24 @@ flowchart TD
   registerUlDualModeExtension --> resetState
   registerUlDualModeExtension --> shouldRequireReviewer
   shouldRequireReviewer --> isTrivialTask
+```
+
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant ul_dual_mode as "ul-dual-mode"
+  participant mariozechner as "@mariozechner"
+
+  Caller->>ul_dual_mode: enhanceTaskWithTokenEfficiency()
+  ul_dual_mode->>mariozechner: API呼び出し
+  mariozechner-->>ul_dual_mode: レスポンス
+  ul_dual_mode-->>Caller: string
+
+  Caller->>ul_dual_mode: registerUlDualModeExtension()
+  ul_dual_mode-->>Caller: void
 ```
 
 ## 関数
@@ -121,14 +159,36 @@ refreshStatus(ctx: any): void
 
 **戻り値**: `void`
 
+### getCachedRuntimeSnapshot
+
+```typescript
+getCachedRuntimeSnapshot(): { totalActiveLlm: number; limits: { maxTotalActiveLlm: number } }
+```
+
+ランタイムスナップショットを取得（キャッシュ付き）
+getRuntimeSnapshot() の呼び出しコストを削減するため、短期間はキャッシュを返す
+
+**戻り値**: `{ totalActiveLlm: number; limits: { maxTotalActiveLlm: number } }`
+
+### getAdaptiveThrottleMs
+
+```typescript
+getAdaptiveThrottleMs(): number
+```
+
+負荷に応じた適応的スロットリング間隔を計算する
+低負荷時は最小間隔、高負荷時は最大間隔、中間は線形補間
+
+**戻り値**: `number`
+
 ### refreshStatusThrottled
 
 ```typescript
 refreshStatusThrottled(ctx: any): void
 ```
 
-スロットリング付きのrefreshStatus。
-短時間での連続呼び出しを防ぎ、UI更新のオーバーヘッドを削減する。
+適応的スロットリング付きのrefreshStatus。
+負荷に応じてスロットリング間隔を動的に調整し、UI更新のオーバーヘッドを削減する。
 
 **パラメータ**
 
@@ -312,6 +372,8 @@ isRecommendedReviewerCall(event: any): boolean
 buildUlTransformedInput(task: string, goalLoopMode: boolean): string
 ```
 
+UL委任モードの指示を生成
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -366,6 +428,23 @@ buildUlPolicyString(sessionWide: boolean, goalLoopMode: boolean): string
 
 **戻り値**: `string`
 
+### enhanceTaskWithTokenEfficiency
+
+```typescript
+enhanceTaskWithTokenEfficiency(task: string, isInternal: boolean): string
+```
+
+タスクにトークン効率化コンテキストを追加する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+| isInternal | `boolean` | はい |
+
+**戻り値**: `string`
+
 ### registerUlDualModeExtension
 
 ```typescript
@@ -382,5 +461,28 @@ registerUlDualModeExtension(pi: ExtensionAPI): void
 
 **戻り値**: `void`
 
+## クラス
+
+### LRUCache
+
+LRUキャッシュの実装
+アクセス順序を管理し、上限超過時に最も古いエントリを削除
+
+**プロパティ**
+
+| 名前 | 型 | 可視性 |
+|------|-----|--------|
+| cache | `any` | private |
+| accessOrder | `K[]` | private |
+
+**メソッド**
+
+| 名前 | シグネチャ |
+|------|------------|
+| get | `get(key): V | undefined` |
+| set | `set(key, value): void` |
+| updateAccessOrder | `updateAccessOrder(key): void` |
+| clear | `clear(): void` |
+
 ---
-*自動生成: 2026-02-23T06:29:42.233Z*
+*自動生成: 2026-02-24T17:08:02.564Z*

@@ -2,7 +2,7 @@
 title: agent-runtime
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -32,7 +32,7 @@ related: []
 | 関数 | `getRuntimeStateProvider` | プロバイダを設定 |
 | 関数 | `setRuntimeNowProvider` | 現在時刻取得関数を設定 |
 | 関数 | `notifyRuntimeCapacityChanged` | 容量変更通知 |
-| 関数 | `stopRuntimeReservationSweeper` | - |
+| 関数 | `stopRuntimeReservationSweeper` | リザベーション停止 |
 | 関数 | `getSharedRuntimeState` | 共有ランタイム状態取得 |
 | 関数 | `getRuntimeSnapshot` | ランタイムスナップショット取得 |
 | 関数 | `formatRuntimeStatusLine` | ステータス行を生成 |
@@ -443,6 +443,9 @@ ensureReservationSweeper(): void
 ```typescript
 stopRuntimeReservationSweeper(): void
 ```
+
+リザベーション停止
+リザベーションの定期実行を停止します。
 
 **戻り値**: `void`
 
@@ -1239,4 +1242,4 @@ globalThisを使用してプロセス全体で状態を共有する
 | resetState | `resetState(): void` |
 
 ---
-*自動生成: 2026-02-23T06:29:41.533Z*
+*自動生成: 2026-02-24T17:08:01.792Z*

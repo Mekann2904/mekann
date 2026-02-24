@@ -2,7 +2,7 @@
 title: self-improvement-cycle
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -352,4 +352,4 @@ type CycleStatus = | 'initialized'   // 初期化
 サイクルの状態
 
 ---
-*自動生成: 2026-02-23T06:29:42.410Z*
+*自動生成: 2026-02-24T17:08:02.760Z*

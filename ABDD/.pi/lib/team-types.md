@@ -2,7 +2,7 @@
 title: team-types
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -330,6 +330,7 @@ interface TeamFrontmatter {
   enabled: "enabled" | "disabled";
   strategy?: "parallel" | "sequential";
   skills?: string[];
+  parent?: string;
   members: TeamMemberFrontmatter[];
 }
 ```
@@ -387,4 +388,4 @@ type TeamLiveViewMode = "list" | "detail" | "discussion" | "tree" | "timeline"
 チームライブの表示モード
 
 ---
-*自動生成: 2026-02-23T06:29:42.427Z*
+*自動生成: 2026-02-24T17:08:02.786Z*

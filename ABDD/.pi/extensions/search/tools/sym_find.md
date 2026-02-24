@@ -2,7 +2,7 @@
 title: sym_find
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -17,7 +17,7 @@ related: []
 
 ```typescript
 // from '../types.js': SymFindInput, SymFindOutput, SymbolDefinition, ...
-// from '../utils/output.js': truncateResults, createErrorResponse, createSimpleHints
+// from '../utils/output.js': truncateResults, createErrorResponse, createSimpleHints, ...
 // from '../utils/errors.js': SearchToolError, isSearchToolError, getErrorMessage, ...
 // from '../utils/constants.js': DEFAULT_SYMBOL_LIMIT
 // from './sym_index.js': symIndex, readSymbolIndex
@@ -56,6 +56,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  applyDetailLevel["applyDetailLevel()"]
   escapeRegex["escapeRegex()"]
   extractResultPaths["extractResultPaths()"]
   filterSymbols["filterSymbols()"]
@@ -63,6 +64,7 @@ flowchart TD
   symFind["symFind()"]
   wildcardToRegex["wildcardToRegex()"]
   filterSymbols --> wildcardToRegex
+  symFind --> applyDetailLevel
   symFind --> extractResultPaths
   symFind --> filterSymbols
   symFind --> sortSymbols
@@ -173,6 +175,23 @@ Extract file paths from results for history recording.
 
 **戻り値**: `string[]`
 
+### applyDetailLevel
+
+```typescript
+applyDetailLevel(symbols: SymbolDefinition[], detailLevel: DetailLevel): SymbolDefinition[]
+```
+
+Apply detailLevel compression to symbol definitions.
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| symbols | `SymbolDefinition[]` | はい |
+| detailLevel | `DetailLevel` | はい |
+
+**戻り値**: `SymbolDefinition[]`
+
 ### symFind
 
 ```typescript
@@ -191,4 +210,4 @@ async symFind(input: SymFindInput, cwd: string): Promise<SymFindOutput>
 **戻り値**: `Promise<SymFindOutput>`
 
 ---
-*自動生成: 2026-02-23T06:29:42.138Z*
+*自動生成: 2026-02-24T17:08:02.429Z*

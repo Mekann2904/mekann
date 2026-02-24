@@ -2,7 +2,7 @@
 title: judge
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -39,7 +39,10 @@ related: []
 | 関数 | `runFinalJudge` | 最終審査を実行 |
 | インターフェース | `JudgeWeightConfig` | 審判の重み設定 |
 | インターフェース | `JudgeExplanation` | 判定決定要因の詳細な説明 |
+| インターフェース | `AggregationInput` | 集約関数への入力データ |
+| インターフェース | `AggregationResult` | 集約関数の出力結果 |
 | インターフェース | `TeamUncertaintyProxy` | チームの不確実性を表現 |
+| 型 | `AggregationStrategy` | 並列チーム実行時の結果集約戦略 |
 
 ## 図解
 
@@ -61,6 +64,20 @@ classDiagram
     +computation: uIntra_value_numbe
     +triggers: Array_signal_string
     +reasoningChain: string
+  }
+  class AggregationInput {
+    <<interface>>
+    +teamResults: Array_teamId_string
+    +strategy: AggregationStrategy
+    +task: string
+  }
+  class AggregationResult {
+    <<interface>>
+    +verdict: trusted_partial
+    +confidence: number
+    +selectedTeamId: string
+    +aggregatedContent: string
+    +explanation: string
   }
   class TeamUncertaintyProxy {
     <<interface>>
@@ -406,6 +423,36 @@ interface JudgeExplanation {
 
 判定決定要因の詳細な説明
 
+### AggregationInput
+
+```typescript
+interface AggregationInput {
+  teamResults: Array<{
+    teamId: string;
+    memberResults: TeamMemberResult[];
+    finalJudge: TeamFinalJudge;
+  }>;
+  strategy: AggregationStrategy;
+  task: string;
+}
+```
+
+集約関数への入力データ
+
+### AggregationResult
+
+```typescript
+interface AggregationResult {
+  verdict: 'trusted' | 'partial' | 'untrusted';
+  confidence: number;
+  selectedTeamId?: string;
+  aggregatedContent?: string;
+  explanation: string;
+}
+```
+
+集約関数の出力結果
+
 ### TeamUncertaintyProxy
 
 ```typescript
@@ -419,5 +466,18 @@ interface TeamUncertaintyProxy {
 
 チームの不確実性を表現
 
+## 型定義
+
+### AggregationStrategy
+
+```typescript
+type AggregationStrategy = | 'rule-based'      // 現在の動作（決定論的）
+  | 'majority-vote'   // 最も多い評決が採用される
+  | 'best-confidence' // 最高信頼度が採用される
+  | 'llm-aggregate'
+```
+
+並列チーム実行時の結果集約戦略
+
 ---
-*自動生成: 2026-02-23T06:29:41.838Z*
+*自動生成: 2026-02-24T17:08:02.094Z*

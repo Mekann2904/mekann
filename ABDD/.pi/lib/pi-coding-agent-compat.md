@@ -2,7 +2,7 @@
 title: pi-coding-agent-compat
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -12,6 +12,12 @@ related: []
 ## 概要
 
 `pi-coding-agent-compat` モジュールのAPIリファレンス。
+
+## インポート
+
+```typescript
+// from '@mariozechner/pi-agent-core': AgentToolResult
+```
 
 ## エクスポート一覧
 
@@ -31,6 +37,19 @@ classDiagram
     <<interface>>
     +usageTokens: number
     +trailingTokens: number
+  }
+  class RunSubagentOptions {
+    <<interface>>
+    +subagentId: string
+    +task: string
+    +extraContext: string
+    +timeoutMs: number
+  }
+  class ExecuteToolOptions {
+    <<interface>>
+    +toolName: string
+    +params: Record_string_unknow
+    +timeoutMs: number
   }
   class ExtensionAPI {
     <<interface>>
@@ -82,6 +101,19 @@ classDiagram
   }
 ```
 
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[pi-coding-agent-compat]
+    main[Main Module]
+  end
+  subgraph external[外部ライブラリ]
+    _mariozechner["@mariozechner"]
+  end
+  main --> external
+```
+
 ## インターフェース
 
 ### ExtensionUIContext
@@ -102,12 +134,39 @@ interface ContextUsage {
 }
 ```
 
+### RunSubagentOptions
+
+```typescript
+interface RunSubagentOptions {
+  subagentId: string;
+  task: string;
+  extraContext?: string;
+  timeoutMs?: number;
+}
+```
+
+サブエージェント実行オプション
+
+### ExecuteToolOptions
+
+```typescript
+interface ExecuteToolOptions {
+  toolName: string;
+  params: Record<string, unknown>;
+  timeoutMs?: number;
+}
+```
+
+ツール実行オプション
+
 ### ExtensionAPI
 
 ```typescript
 interface ExtensionAPI {
   context: import("@mariozechner/pi-coding-agent").ExtensionContext;
   on(event, handler);
+  runSubagent(options);
+  executeTool(options);
 }
 ```
 
@@ -192,4 +251,4 @@ interface CustomToolResultEvent {
 ```
 
 ---
-*自動生成: 2026-02-23T06:29:42.387Z*
+*自動生成: 2026-02-24T17:08:02.743Z*

@@ -2,7 +2,7 @@
 title: storage
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -296,6 +296,7 @@ interface TeamDefinition {
   members: TeamMember[];
   skills?: string[];
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+  parent?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -489,4 +490,4 @@ type TeamPaths = BaseStoragePaths
 チームパス定義
 
 ---
-*自動生成: 2026-02-23T06:29:41.851Z*
+*自動生成: 2026-02-24T17:08:02.110Z*

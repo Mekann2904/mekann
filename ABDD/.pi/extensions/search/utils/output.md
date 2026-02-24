@@ -2,7 +2,7 @@
 title: output
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -47,7 +47,14 @@ related: []
 | 関数 | `calculateSimpleConfidence` | シンプルなロジックで信頼度を算出 |
 | 関数 | `createSimpleHints` | シンプルなパラメータからヒントを作成 |
 | 関数 | `formatEnhancedOutput` | 拡張出力をフォーマット |
-| インターフェース | `SearchHints` | 検索結果のヒント情報 |
+| 関数 | `calculateContextBudgetWarning` | 推定トークン数から警告レベルを計算 |
+| 関数 | `estimateTokens` | テキストのトークン数を推定 |
+| 関数 | `estimateFileCandidateTokens` | FileCandidateのトークン数を推定 |
+| 関数 | `estimateCodeSearchMatchTokens` | CodeSearchMatchのトークン数を推定 |
+| 関数 | `estimateSymbolDefinitionTokens` | SymbolDefinitionのトークン数を推定 |
+| 関数 | `estimateResultsTokens` | 検索結果配列のトークン数を推定 |
+| 関数 | `estimateResponseTokens` | 検索レスポンス全体のトークン数を推定 |
+| 関数 | `createHintsWithBudget` | トークン予算に基づいてヒントを作成（拡張版） |
 | インターフェース | `SearchStats` | - |
 | インターフェース | `EnhancedOutput` | エージェントのヒントや統計情報を含む拡張出力 |
 | 型 | `SuggestedNextAction` | エージェント向けの推奨次回アクション |
@@ -58,13 +65,6 @@ related: []
 
 ```mermaid
 classDiagram
-  class SearchHints {
-    <<interface>>
-    +confidence: number
-    +suggestedNextAction: SuggestedNextAction
-    +alternativeTools: string
-    +relatedQueries: string
-  }
   class SearchStats {
     <<interface>>
     +filesSearched: number
@@ -574,20 +574,145 @@ Format suggested action for display.
 
 **戻り値**: `string`
 
-## インターフェース
-
-### SearchHints
+### calculateContextBudgetWarning
 
 ```typescript
-interface SearchHints {
-  confidence: number;
-  suggestedNextAction?: SuggestedNextAction;
-  alternativeTools?: string[];
-  relatedQueries?: string[];
-}
+calculateContextBudgetWarning(estimatedTokens: number, budget: number): "ok" | "approaching" | "exceeds_recommended"
 ```
 
-検索結果のヒント情報
+推定トークン数から警告レベルを計算
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| estimatedTokens | `number` | はい |
+| budget | `number` | はい |
+
+**戻り値**: `"ok" | "approaching" | "exceeds_recommended"`
+
+### estimateTokens
+
+```typescript
+estimateTokens(text: string): number
+```
+
+テキストのトークン数を推定
+簡易的な推定として、英語は4文字=1トークン、日本語は2文字=1トークンとして計算
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `number`
+
+### estimateFileCandidateTokens
+
+```typescript
+estimateFileCandidateTokens(candidate: FileCandidate): number
+```
+
+FileCandidateのトークン数を推定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| candidate | `FileCandidate` | はい |
+
+**戻り値**: `number`
+
+### estimateCodeSearchMatchTokens
+
+```typescript
+estimateCodeSearchMatchTokens(match: CodeSearchMatch): number
+```
+
+CodeSearchMatchのトークン数を推定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| match | `CodeSearchMatch` | はい |
+
+**戻り値**: `number`
+
+### estimateSymbolDefinitionTokens
+
+```typescript
+estimateSymbolDefinitionTokens(symbol: SymbolDefinition, detailLevel: "full" | "signature" | "outline"): number
+```
+
+SymbolDefinitionのトークン数を推定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| symbol | `SymbolDefinition` | はい |
+| detailLevel | `"full" | "signature" | "outline"` | はい |
+
+**戻り値**: `number`
+
+### estimateResultsTokens
+
+```typescript
+estimateResultsTokens(results: T[], estimator: (item: T) => number): number
+```
+
+検索結果配列のトークン数を推定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| results | `T[]` | はい |
+| estimator | `(item: T) => number` | はい |
+
+**戻り値**: `number`
+
+### estimateResponseTokens
+
+```typescript
+estimateResponseTokens(response: SearchResponse<T>, estimator: (item: T) => number): number
+```
+
+検索レスポンス全体のトークン数を推定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| response | `SearchResponse<T>` | はい |
+| estimator | `(item: T) => number` | はい |
+
+**戻り値**: `number`
+
+### createHintsWithBudget
+
+```typescript
+createHintsWithBudget(toolName: string, resultCount: number, truncated: boolean, estimatedTokens: number, contextBudget: number, queryPattern?: string): SearchHints
+```
+
+トークン予算に基づいてヒントを作成（拡張版）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| toolName | `string` | はい |
+| resultCount | `number` | はい |
+| truncated | `boolean` | はい |
+| estimatedTokens | `number` | はい |
+| contextBudget | `number` | はい |
+| queryPattern | `string` | いいえ |
+
+**戻り値**: `SearchHints`
+
+## インターフェース
 
 ### SearchStats
 
@@ -629,4 +754,4 @@ type SuggestedNextAction = | "refine_pattern"      // Pattern too broad, narrow 
 エージェント向けの推奨次回アクション
 
 ---
-*自動生成: 2026-02-23T06:29:42.147Z*
+*自動生成: 2026-02-24T17:08:02.442Z*

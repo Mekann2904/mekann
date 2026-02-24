@@ -2,7 +2,7 @@
 title: frontmatter
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -62,4 +62,4 @@ and the original content as body so callers can continue safely.
 **戻り値**: `{ frontmatter: TFrontmatter; body: string }`
 
 ---
-*自動生成: 2026-02-23T06:29:42.336Z*
+*自動生成: 2026-02-24T17:08:02.692Z*
