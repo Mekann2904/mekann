@@ -71,6 +71,11 @@ import {
 import { runMember } from "./member-execution.js";
 import { runFinalJudge, buildFallbackJudge, computeProxyUncertainty, computeProxyUncertaintyWithExplainability, formatJudgeExplanation, type TeamUncertaintyProxy, type JudgeExplanation } from "./judge.js";
 import type { TeamLivePhase } from "../../lib/team-types.js";
+import {
+  getGlobalFailureMemory,
+  hashTask,
+  type FailureRecord,
+} from "./failure-memory.js";
 
 const logger = getLogger();
 const STABLE_AGENT_TEAM_RUNTIME = STABLE_RUNTIME_PROFILE;
@@ -181,6 +186,31 @@ export function shouldRetryFailedMemberResult(
   
   // その他のエラーは再試行対象
   return true;
+}
+
+/**
+ * エラーを失敗メモリ用のエラー種別に分類する
+ * @summary エラー種別分類
+ * @param error - エラーオブジェクトまたはメッセージ
+ * @returns 失敗メモリ用エラー種別
+ */
+function classifyErrorForMemory(
+  error: unknown,
+): "timeout" | "rate-limit" | "capacity" | "validation" | "unknown" {
+  const pressureType = classifyPressureError(error);
+
+  // classifyPressureErrorの結果を失敗メモリの種別にマッピング
+  if (pressureType === "timeout") return "timeout";
+  if (pressureType === "rate_limit") return "rate-limit";
+  if (pressureType === "capacity") return "capacity";
+
+  // 追加のパターンマッチング
+  const errorMsg = error instanceof Error ? error.message : String(error).toLowerCase();
+  if (errorMsg.includes("validation") || errorMsg.includes("invalid")) {
+    return "validation";
+  }
+
+  return "unknown";
 }
 
 /**
@@ -756,14 +786,18 @@ async function executeFailedMemberRetries(
     emitResultEvent,
     recoveredMembers,
   } = params;
-  
+
+  // Initialize global failure memory integration
+  const memory = getGlobalFailureMemory();
+  const taskSignature = hashTask(input.task);
+
   let currentResults = memberResults;
   let failedMemberRetryApplied = 0;
 
   for (let retryRound = 1; retryRound <= failedMemberRetryRounds; retryRound += 1) {
     const resultByIdBeforeRetry = new Map(currentResults.map((result) => [result.memberId, result]));
     const failedMemberResults = currentResults.filter((result) => result.status === "failed");
-    
+
     if (failedMemberResults.length === 0) {
       if (retryRound === 1) {
         input.onTeamEvent?.("failed-member retry skipped: no failed members");
@@ -774,12 +808,28 @@ async function executeFailedMemberRetries(
     const retryTargetIds = failedMemberResults
       .filter((result) => shouldRetryFailedMemberResult(result, retryRound))
       .map((result) => result.memberId);
-    const retryTargetMembers = retryTargetIds
+
+    // Filter out members that should be skipped based on global failure memory
+    const retryTargetIdsAfterMemoryCheck = retryTargetIds.filter((memberId) => {
+      const failedResult = failedMemberResults.find((r) => r.memberId === memberId);
+      if (!failedResult) return true;
+
+      const errorType = classifyErrorForMemory(failedResult.error);
+      if (memory.shouldSkipRetry(taskSignature, errorType)) {
+        input.onTeamEvent?.(
+          `failed-member retry: member=${memberId} skipped_by_global_memory reason=repeat_pattern error_type=${errorType}`,
+        );
+        return false;
+      }
+      return true;
+    });
+
+    const retryTargetMembers = retryTargetIdsAfterMemoryCheck
       .map((memberId) => activeMemberById.get(memberId))
       .filter((member): member is TeamMember => Boolean(member));
     const skippedFailedMemberIds = failedMemberResults
       .map((result) => result.memberId)
-      .filter((memberId) => !retryTargetIds.includes(memberId));
+      .filter((memberId) => !retryTargetIdsAfterMemoryCheck.includes(memberId));
 
     if (retryTargetMembers.length === 0) {
       input.onTeamEvent?.(
@@ -791,13 +841,13 @@ async function executeFailedMemberRetries(
     failedMemberRetryApplied += 1;
     const retryPhaseRound = communicationRounds + retryRound;
     const previousResults = currentResults;
-    
+
     if (skippedFailedMemberIds.length > 0) {
       input.onTeamEvent?.(
         `failed-member retry round ${retryRound}: skipped_by_policy=${skippedFailedMemberIds.join(",")}`,
       );
     }
-    
+
     input.onTeamEvent?.(
       `failed-member retry round ${retryRound}/${failedMemberRetryRounds} start: targets=${retryTargetMembers.map((member) => member.id).join(",")}`,
     );
@@ -810,12 +860,22 @@ async function executeFailedMemberRetries(
       input.onTeamEvent?.(
         `failed-member retry round ${retryRound}: strategy=parallel member_parallel_limit=${memberParallelLimit}`,
       );
-      
+
       retriedResults = await runWithConcurrencyLimit(
         retryTargetMembers,
         memberParallelLimit,
-        async (member) =>
-          runRetryMember({
+        async (member) => {
+          // Record failure attempt before retry
+          const beforeResult = resultByIdBeforeRetry.get(member.id);
+          const failureRecord = memory.recordFailure(
+            input.team.id,
+            member.id,
+            beforeResult?.error ?? "unknown error",
+            taskSignature,
+            retryRound,
+          );
+
+          const result = await runRetryMember({
             input,
             member,
             retryRound,
@@ -826,13 +886,31 @@ async function executeFailedMemberRetries(
             memberById,
             communicationAudit,
             emitResultEvent,
-          }),
+          });
+
+          // Mark as recovered if retry succeeded
+          if (result.status === "completed") {
+            memory.markRecovered(failureRecord.id);
+          }
+
+          return result;
+        },
         { signal: input.signal },
       );
     } else {
       input.onTeamEvent?.(`failed-member retry round ${retryRound}: strategy=sequential`);
-      
+
       for (const member of retryTargetMembers) {
+        // Record failure attempt before retry
+        const beforeResult = resultByIdBeforeRetry.get(member.id);
+        const failureRecord = memory.recordFailure(
+          input.team.id,
+          member.id,
+          beforeResult?.error ?? "unknown error",
+          taskSignature,
+          retryRound,
+        );
+
         const result = await runRetryMember({
           input,
           member,
@@ -845,6 +923,12 @@ async function executeFailedMemberRetries(
           communicationAudit,
           emitResultEvent,
         });
+
+        // Mark as recovered if retry succeeded
+        if (result.status === "completed") {
+          memory.markRecovered(failureRecord.id);
+        }
+
         retriedResults.push(result);
       }
     }

@@ -122,6 +122,7 @@ import {
 // Import judge module (extracted for SRP compliance)
 import {
   type TeamUncertaintyProxy,
+  type JudgeExplanation,
   clampConfidence,
   parseUnitInterval,
   extractDiscussionSection,
@@ -197,6 +198,10 @@ import {
   resolveTeamMemberAggregateOutcome,
   resolveTeamParallelRunOutcome,
   buildTeamResultText,
+  aggregateTeamResults,
+  type AggregationStrategy,
+  type AggregationResult,
+  type AggregationInput,
 } from "./result-aggregation";
 
 // Import team-orchestrator module (extracted for SRP compliance)
@@ -366,6 +371,7 @@ import {
   trimErrorMessage as sharedTrimErrorMessage,
   buildDiagnosticContext as sharedBuildDiagnosticContext,
 } from "../../lib/agent-errors.js";
+import { calculateTeamWeight } from "../../lib/dag-weight-calculator.js";
 import { runWithConcurrencyLimit } from "../../lib/concurrency";
 import {
   getTeamMemberExecutionRules,
@@ -449,6 +455,32 @@ function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
     multiplier: typeof raw.multiplier === "number" ? raw.multiplier : undefined,
     jitter,
   };
+}
+
+/**
+ * 集約戦略の正規化結果
+ * @summary 集約戦略設定
+ */
+interface AggregationConfig {
+  strategy: AggregationStrategy;
+}
+
+/**
+ * aggregationStrategyパラメータを正規化する
+ * デフォルトは'rule-based'（後方互換性維持）
+ *
+ * @param param - ユーザー指定のaggregationStrategyパラメータ
+ * @returns 正規化されたAggregationConfig
+ */
+function normalizeAggregationConfig(param: unknown): AggregationConfig {
+  const validStrategies: AggregationStrategy[] = ['rule-based', 'majority-vote', 'best-confidence', 'llm-aggregate'];
+
+  if (typeof param === 'string' && validStrategies.includes(param as AggregationStrategy)) {
+    return { strategy: param as AggregationStrategy };
+  }
+
+  // デフォルトは'rule-based'（現在の動作）
+  return { strategy: 'rule-based' };
 }
 
 // Note: mergeDefaultTeam is now imported from ./agent-teams/definition-loader
@@ -1222,6 +1254,12 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       ),
       timeoutMs: Type.Optional(Type.Number({ description: "Timeout per teammate run in ms (default: 600000). Use 0 to disable timeout." })),
       retry: createRetrySchema(),
+      aggregationStrategy: Type.Optional(Type.Union([
+        Type.Literal('rule-based', { description: "Current deterministic behavior (default)" }),
+        Type.Literal('majority-vote', { description: "Most common verdict wins" }),
+        Type.Literal('best-confidence', { description: "Highest confidence result wins" }),
+        Type.Literal('llm-aggregate', { description: "LLM synthesizes final result" }),
+      ], { description: "Aggregation strategy for parallel team results" })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (String(process.env.PI_AGENT_TEAM_CHILD_RUN || "0") === "1") {
@@ -1308,6 +1346,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         STABLE_AGENT_TEAM_RUNTIME,
       );
       const timeoutMs = resolveEffectiveTimeoutMs(params.timeoutMs, ctx.model?.id, DEFAULT_AGENT_TIMEOUT_MS);
+      const aggregationConfig = normalizeAggregationConfig(params.aggregationStrategy);
       const snapshot = getRuntimeSnapshot();
       const configuredTeamParallelLimit = toConcurrencyLimit(snapshot.limits.maxParallelTeamsPerRun, 1);
       const baselineTeamParallelism = Math.max(
@@ -1480,194 +1519,215 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         try {
         // 予約は admission 制御のみ。開始後は active カウンタで実行中負荷を表現する。
         capacityReservation.consume();
-        const results = await runWithConcurrencyLimit(
-          enabledTeams,
-          appliedTeamParallelism,
-          async (team) => {
-            // Create child AbortController to prevent MaxListenersExceededWarning
-            const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(signal);
+
+        // Team execution result type for early-stop support
+        type TeamRunResult = {
+          team: TeamDefinition;
+          runRecord: TeamRunRecord;
+          memberResults: TeamMemberResult[];
+          communicationAudit: TeamCommunicationAuditEntry[];
+          uncertaintyProxy?: TeamUncertaintyProxy;
+          uncertaintyProxyExplanation?: JudgeExplanation;
+        };
+
+        // Define worker function for team execution
+        const runTeamWorker = async (team: TeamDefinition): Promise<TeamRunResult> => {
+          // Create child AbortController to prevent MaxListenersExceededWarning
+          const { controller: childController, cleanup: cleanupAbort } = createChildAbortController(signal);
+          try {
+            const enabledMemberCount = team.members.filter((member) => member.enabled).length;
+            const communicationLinks = createCommunicationLinksMap(
+              team.members.filter((member) => member.enabled),
+            );
+            const teamMemberParallelLimit =
+              strategy === "parallel"
+                ? Math.max(
+                    1,
+                    Math.min(appliedMemberParallelism, enabledMemberCount, appliedLlmBudgetPerTeam),
+                  )
+                : 1;
+
+            runtimeState.activeTeamRuns += 1;
+            notifyRuntimeCapacityChanged();
+            refreshRuntimeStatus(ctx);
+            liveMonitor?.appendBroadcastEvent(
+              `team ${team.id}: start strategy=${strategy} teammate_parallel=${teamMemberParallelLimit}`,
+            );
+
             try {
-              const enabledMemberCount = team.members.filter((member) => member.enabled).length;
-              const communicationLinks = createCommunicationLinksMap(
-                team.members.filter((member) => member.enabled),
-              );
-              const teamMemberParallelLimit =
-                strategy === "parallel"
-                  ? Math.max(
-                      1,
-                      Math.min(appliedMemberParallelism, enabledMemberCount, appliedLlmBudgetPerTeam),
-                    )
-                  : 1;
-
-              runtimeState.activeTeamRuns += 1;
-              notifyRuntimeCapacityChanged();
-              refreshRuntimeStatus(ctx);
-              liveMonitor?.appendBroadcastEvent(
-                `team ${team.id}: start strategy=${strategy} teammate_parallel=${teamMemberParallelLimit}`,
-              );
-
-              try {
-                const { runRecord, memberResults, communicationAudit, uncertaintyProxy, uncertaintyProxyExplanation } = await runTeamTask({
-                  team,
-                  task: params.task,
-                  strategy,
-                  memberParallelLimit: teamMemberParallelLimit,
-                  communicationRounds,
-                  failedMemberRetryRounds,
-                  communicationLinks,
-                  sharedContext: params.sharedContext,
-                  successCriteria: params.successCriteria,
-                  timeoutMs,
-                  cwd: ctx.cwd,
-                  retryOverrides,
-                  fallbackProvider: ctx.model?.provider,
-                  fallbackModel: ctx.model?.id,
-                  signal: childController.signal,
-                onMemberStart: (member) => {
-                  onRuntimeMemberStart();
-                  const key = toTeamLiveItemKey(team.id, member.id);
-                  liveMonitor?.markStarted(key);
-                  liveMonitor?.appendEvent(key, "member process spawned");
-                },
-                onMemberEnd: (member) => {
-                  liveMonitor?.appendEvent(toTeamLiveItemKey(team.id, member.id), "member process exited");
-                  onRuntimeMemberEnd();
-                },
-                onMemberTextDelta: (member, delta) => {
-                  liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stdout", delta);
-                },
-                onMemberStderrChunk: (member, chunk) => {
-                  liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stderr", chunk);
-                },
-                onMemberPhase: (member, phase, round) => {
-                  liveMonitor?.markPhase(toTeamLiveItemKey(team.id, member.id), phase, round);
-                },
-                onMemberEvent: (member, event) => {
-                  liveMonitor?.appendEvent(toTeamLiveItemKey(team.id, member.id), event);
-                },
-                onTeamEvent: (event) => {
-                  liveMonitor?.appendBroadcastEvent(`team ${team.id}: ${event}`);
-                },
-                onMemberResult: (member, result) => {
-                  const diagnostics = result.diagnostics
-                    ? ` confidence=${result.diagnostics.confidence.toFixed(2)} evidence=${result.diagnostics.evidenceCount}`
-                    : "";
-                  liveMonitor?.appendEvent(
-                    toTeamLiveItemKey(team.id, member.id),
-                    `result received: status=${result.status}${diagnostics}`,
-                  );
-                  // Extract and append DISCUSSION section
-                  const discussion = extractDiscussionSection(result.output);
-                  if (discussion.trim()) {
-                    liveMonitor?.appendDiscussion(
-                      toTeamLiveItemKey(team.id, member.id),
-                      discussion,
-                    );
-                  }
-                  liveMonitor?.markFinished(
-                    toTeamLiveItemKey(team.id, member.id),
-                    result.status,
-                    result.summary,
-                    result.error,
-                  );
-                },
-              });
-
-              return {
+              const { runRecord, memberResults, communicationAudit, uncertaintyProxy, uncertaintyProxyExplanation } = await runTeamTask({
                 team,
-                runRecord,
-                memberResults,
-                communicationAudit,
-                uncertaintyProxy,
-                uncertaintyProxyExplanation,
-              };
-            } catch (error) {
-              const runId = createRunId();
-              const startedAt = new Date().toISOString();
-              const outputFile = join(ensurePaths(ctx.cwd).runsDir, `${runId}.json`);
-              const message = toErrorMessage(error);
-              reportTeamExecutionFailure("agent_team_run_parallel", team.id, message, ctx);
-              liveMonitor?.appendBroadcastEvent(
-                `team ${team.id}: run failed ${normalizeForSingleLine(message, 180)}`,
-              );
-              const communicationLinksRecord = Object.fromEntries(
-                team.members
-                  .filter((entry) => entry.enabled)
-                  .map((entry) => [entry.id, communicationLinks.get(entry.id) ?? []]),
-              );
-              for (const member of team.members.filter((entry) => entry.enabled)) {
+                task: params.task,
+                strategy,
+                memberParallelLimit: teamMemberParallelLimit,
+                communicationRounds,
+                failedMemberRetryRounds,
+                communicationLinks,
+                sharedContext: params.sharedContext,
+                successCriteria: params.successCriteria,
+                timeoutMs,
+                cwd: ctx.cwd,
+                retryOverrides,
+                fallbackProvider: ctx.model?.provider,
+                fallbackModel: ctx.model?.id,
+                signal: childController.signal,
+              onMemberStart: (member) => {
+                onRuntimeMemberStart();
+                const key = toTeamLiveItemKey(team.id, member.id);
+                liveMonitor?.markStarted(key);
+                liveMonitor?.appendEvent(key, "member process spawned");
+              },
+              onMemberEnd: (member) => {
+                liveMonitor?.appendEvent(toTeamLiveItemKey(team.id, member.id), "member process exited");
+                onRuntimeMemberEnd();
+              },
+              onMemberTextDelta: (member, delta) => {
+                liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stdout", delta);
+              },
+              onMemberStderrChunk: (member, chunk) => {
+                liveMonitor?.appendChunk(toTeamLiveItemKey(team.id, member.id), "stderr", chunk);
+              },
+              onMemberPhase: (member, phase, round) => {
+                liveMonitor?.markPhase(toTeamLiveItemKey(team.id, member.id), phase, round);
+              },
+              onMemberEvent: (member, event) => {
+                liveMonitor?.appendEvent(toTeamLiveItemKey(team.id, member.id), event);
+              },
+              onTeamEvent: (event) => {
+                liveMonitor?.appendBroadcastEvent(`team ${team.id}: ${event}`);
+              },
+              onMemberResult: (member, result) => {
+                const diagnostics = result.diagnostics
+                  ? ` confidence=${result.diagnostics.confidence.toFixed(2)} evidence=${result.diagnostics.evidenceCount}`
+                  : "";
+                liveMonitor?.appendEvent(
+                  toTeamLiveItemKey(team.id, member.id),
+                  `result received: status=${result.status}${diagnostics}`,
+                );
+                // Extract and append DISCUSSION section
+                const discussion = extractDiscussionSection(result.output);
+                if (discussion.trim()) {
+                  liveMonitor?.appendDiscussion(
+                    toTeamLiveItemKey(team.id, member.id),
+                    discussion,
+                  );
+                }
                 liveMonitor?.markFinished(
                   toTeamLiveItemKey(team.id, member.id),
-                  "failed",
-                  "(failed)",
-                  message,
+                  result.status,
+                  result.summary,
+                  result.error,
                 );
-              }
-              const finalJudge = buildFallbackJudge({
-                memberResults: [],
-                error: message,
-              });
-              const runRecord: TeamRunRecord = {
-                runId,
-                teamId: team.id,
-                strategy,
-                task: params.task,
-                communicationRounds,
-                communicationLinks: communicationLinksRecord,
-                summary: `failed: ${message.slice(0, 120)}`,
-                status: "failed",
-                startedAt,
-                finishedAt: new Date().toISOString(),
-                memberCount: 0,
-                outputFile,
-                finalJudge: {
-                  verdict: finalJudge.verdict,
-                  confidence: finalJudge.confidence,
-                  reason: finalJudge.reason,
-                  nextStep: finalJudge.nextStep,
-                  uIntra: finalJudge.uIntra,
-                  uInter: finalJudge.uInter,
-                  uSys: finalJudge.uSys,
-                  collapseSignals: finalJudge.collapseSignals,
-                },
-              };
+              },
+            });
 
-              writeFileSync(
-                outputFile,
-                JSON.stringify(
-                  {
-                    run: runRecord,
-                    team,
-                    memberResults: [],
-                    communicationAudit: [],
-                    finalJudge,
-                    task: params.task,
-                    sharedContext: params.sharedContext,
-                    error: message,
-                  },
-                  null,
-                  2,
-                ),
-                "utf-8",
+            return {
+              team,
+              runRecord,
+              memberResults,
+              communicationAudit,
+              uncertaintyProxy,
+              uncertaintyProxyExplanation,
+            };
+          } catch (error) {
+            const runId = createRunId();
+            const startedAt = new Date().toISOString();
+            const outputFile = join(ensurePaths(ctx.cwd).runsDir, `${runId}.json`);
+            const message = toErrorMessage(error);
+            reportTeamExecutionFailure("agent_team_run_parallel", team.id, message, ctx);
+            liveMonitor?.appendBroadcastEvent(
+              `team ${team.id}: run failed ${normalizeForSingleLine(message, 180)}`,
+            );
+            const communicationLinksRecord = Object.fromEntries(
+              team.members
+                .filter((entry) => entry.enabled)
+                .map((entry) => [entry.id, communicationLinks.get(entry.id) ?? []]),
+            );
+            for (const member of team.members.filter((entry) => entry.enabled)) {
+              liveMonitor?.markFinished(
+                toTeamLiveItemKey(team.id, member.id),
+                "failed",
+                "(failed)",
+                message,
               );
+            }
+            const finalJudge = buildFallbackJudge({
+              memberResults: [],
+              error: message,
+            });
+            const runRecord: TeamRunRecord = {
+              runId,
+              teamId: team.id,
+              strategy,
+              task: params.task,
+              communicationRounds,
+              communicationLinks: communicationLinksRecord,
+              summary: `failed: ${message.slice(0, 120)}`,
+              status: "failed",
+              startedAt,
+              finishedAt: new Date().toISOString(),
+              memberCount: 0,
+              outputFile,
+              finalJudge: {
+                verdict: finalJudge.verdict,
+                confidence: finalJudge.confidence,
+                reason: finalJudge.reason,
+                nextStep: finalJudge.nextStep,
+                uIntra: finalJudge.uIntra,
+                uInter: finalJudge.uInter,
+                uSys: finalJudge.uSys,
+                collapseSignals: finalJudge.collapseSignals,
+              },
+            };
 
-              return {
-                team,
-                runRecord,
-                memberResults: [] as TeamMemberResult[],
-                communicationAudit: [] as TeamCommunicationAuditEntry[],
-              };
-            } finally {
-              runtimeState.activeTeamRuns = Math.max(0, runtimeState.activeTeamRuns - 1);
-              notifyRuntimeCapacityChanged();
-              refreshRuntimeStatus(ctx);
-            }
-            } finally {
-              cleanupAbort();
-            }
-          },
-          { signal },
-        );
+            writeFileSync(
+              outputFile,
+              JSON.stringify(
+                {
+                  run: runRecord,
+                  team,
+                  memberResults: [],
+                  communicationAudit: [],
+                  finalJudge,
+                  task: params.task,
+                  sharedContext: params.sharedContext,
+                  error: message,
+                },
+                null,
+                2,
+              ),
+              "utf-8",
+            );
+
+            return {
+              team,
+              runRecord,
+              memberResults: [] as TeamMemberResult[],
+              communicationAudit: [] as TeamCommunicationAuditEntry[],
+            };
+          } finally {
+            runtimeState.activeTeamRuns = Math.max(0, runtimeState.activeTeamRuns - 1);
+            notifyRuntimeCapacityChanged();
+            refreshRuntimeStatus(ctx);
+          }
+          } finally {
+            cleanupAbort();
+          }
+        };
+
+        // DynTaskMAS: チームの重みを計算（メンバー構成ベース）
+        const teamWeights = new Map<string, number>();
+        for (const team of enabledTeams) {
+          const weight = calculateTeamWeight(team);
+          teamWeights.set(team.id, weight);
+        }
+
+        const results = await runWithConcurrencyLimit(enabledTeams, appliedTeamParallelism, runTeamWorker, {
+          signal,
+          usePriorityScheduling: true,
+          itemWeights: teamWeights,
+          getItemId: (team: TeamDefinition) => team.id,
+        });
 
         for (const result of results) {
           storage.runs.push(result.runRecord);
@@ -1697,11 +1757,51 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         const parallelOutcome = resolveTeamParallelRunOutcome(results);
         const adaptivePenaltyAfter = adaptivePenalty.get();
 
+        // Aggregate results using the specified strategy
+        const aggregationInput = {
+          teamResults: results.map(r => ({
+            teamId: r.team.id,
+            memberResults: r.memberResults,
+            finalJudge: r.runRecord.finalJudge ?? {
+              verdict: 'untrusted' as const,
+              confidence: 0,
+              reason: 'No judge available',
+              nextStep: 'Re-run the team',
+              uIntra: 1,
+              uInter: 1,
+              uSys: 1,
+              collapseSignals: [],
+              rawOutput: '',
+            },
+          })),
+          strategy: aggregationConfig.strategy,
+          task: params.task,
+        };
+
+        // Type assertion to ensure finalJudge has rawOutput
+        const typedAggregationInput: AggregationInput = {
+          ...aggregationInput,
+          teamResults: aggregationInput.teamResults.map(tr => ({
+            ...tr,
+            finalJudge: tr.finalJudge && 'rawOutput' in tr.finalJudge
+              ? tr.finalJudge
+              : {
+                  ...tr.finalJudge,
+                  rawOutput: tr.finalJudge?.reason ?? '',
+                },
+          })),
+        };
+        const aggregationResult = await aggregateTeamResults(typedAggregationInput, {
+          model: ctx.model,
+          provider: ctx.model?.provider,
+        });
+
         const lines: string[] = [];
         lines.push(`Parallel agent team run completed (${results.length} teams, ${totalTeammates} teammates).`);
         lines.push(
           `Applied limits: teams=${appliedTeamParallelism} concurrent (requested=${effectiveTeamParallelism}, baseline=${baselineTeamParallelism}), teammates/team=${appliedMemberParallelism} (requested=${effectiveMemberParallelism}, baseline=${baselineMemberParallelism}), adaptive_penalty=${adaptivePenaltyBefore}->${adaptivePenaltyAfter}.`,
         );
+        lines.push(`Aggregation strategy: ${aggregationConfig.strategy}`);
         lines.push(`Failed-member retry rounds/team: ${failedMemberRetryRounds}`);
         lines.push(
           failed.length === 0
@@ -1714,6 +1814,17 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           const state = result.runRecord.status === "completed" ? "ok" : "failed";
           lines.push(`- ${result.team.id} [${state}] ${result.runRecord.summary} (${result.runRecord.outputFile})`);
         }
+
+        // Add aggregation result summary
+        lines.push("");
+        lines.push("Aggregated result:");
+        lines.push(`- Strategy: ${aggregationConfig.strategy}`);
+        lines.push(`- Verdict: ${aggregationResult.verdict}`);
+        lines.push(`- Confidence: ${(aggregationResult.confidence * 100).toFixed(1)}%`);
+        if (aggregationResult.selectedTeamId) {
+          lines.push(`- Selected team: ${aggregationResult.selectedTeamId}`);
+        }
+        lines.push(`- Explanation: ${aggregationResult.explanation}`);
 
         lines.push("");
         lines.push("Detailed outputs:");
@@ -1783,6 +1894,13 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             failedTeamIds: parallelOutcome.failedTeamIds,
             partialTeamIds: parallelOutcome.partialTeamIds,
             failedMemberIdsByTeam: parallelOutcome.failedMemberIdsByTeam,
+            aggregationStrategy: aggregationConfig.strategy,
+            aggregationResult: {
+              verdict: aggregationResult.verdict,
+              confidence: aggregationResult.confidence,
+              selectedTeamId: aggregationResult.selectedTeamId,
+              explanation: aggregationResult.explanation,
+            },
             outcomeCode: parallelOutcome.outcomeCode,
             retryRecommended: parallelOutcome.retryRecommended,
           },
