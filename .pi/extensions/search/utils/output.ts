@@ -43,6 +43,7 @@ import type {
   SymbolDefinition,
   RgMatch,
   RgOutput,
+  SearchHints,
 } from "../types";
 import type { SearchMetrics } from "./metrics.js";
 import { DEFAULT_LIMIT, DEFAULT_CODE_SEARCH_LIMIT, DEFAULT_SYMBOL_LIMIT } from "./constants.js";
@@ -504,35 +505,7 @@ export type SuggestedNextAction =
   | "increase_limit"      // Results truncated, may need more
   | "regenerate_index";   // Index may be stale
 
-/**
- * 検索結果のヒント情報
- * @summary ヒント情報を取得
- * @param confidence 結果の信頼度（0.0-1.0）
- * @param suggestedNextAction 次に推奨されるアクション
- * @param alternativeTools 代替候補のツールリスト
- */
-export interface SearchHints {
-  /**
-   * Confidence in the results (0.0-1.0).
-   * Lower values indicate uncertain or incomplete results.
-   */
-  confidence: number;
-
-  /**
-   * Suggested next action if results are unsatisfactory.
-   */
-  suggestedNextAction?: SuggestedNextAction;
-
-  /**
-   * Alternative tools that might be more effective.
-   */
-  alternativeTools?: string[];
-
-  /**
-   * Related queries that might be useful.
-   */
-  relatedQueries?: string[];
-}
+// SearchHints is now imported from types.ts
 
 /**
  * @summary 検索統計情報
@@ -902,4 +875,185 @@ function formatSuggestedAction(action: SuggestedNextAction): string {
   };
 
   return descriptions[action] ?? action;
+}
+
+// ============================================
+// Token Estimation & Context Budget
+// ============================================
+
+/** Default context budget in tokens */
+export const DEFAULT_CONTEXT_BUDGET = 15000;
+
+/** Warning threshold ratio (80% of budget) */
+const BUDGET_WARNING_THRESHOLD = 0.8;
+
+/**
+ * 推定トークン数から警告レベルを計算
+ * @summary 予算警告レベル計算
+ * @param estimatedTokens 推定トークン数
+ * @param budget コンテキスト予算
+ * @returns 警告レベル
+ */
+export function calculateContextBudgetWarning(
+  estimatedTokens: number,
+  budget: number = DEFAULT_CONTEXT_BUDGET
+): "ok" | "approaching" | "exceeds_recommended" {
+  const ratio = estimatedTokens / budget;
+  if (ratio >= 1.0) return "exceeds_recommended";
+  if (ratio >= BUDGET_WARNING_THRESHOLD) return "approaching";
+  return "ok";
+}
+
+/**
+ * テキストのトークン数を推定
+ * 簡易的な推定として、英語は4文字=1トークン、日本語は2文字=1トークンとして計算
+ * @summary トークン数推定
+ * @param text 推定対象のテキスト
+ * @returns 推定トークン数
+ */
+export function estimateTokens(text: string): number {
+  if (!text || text.length === 0) return 0;
+
+  // Detect if text contains Japanese characters
+  const hasJapanese = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(text);
+
+  if (hasJapanese) {
+    // Japanese: approximately 2 characters per token
+    return Math.ceil(text.length / 2);
+  } else {
+    // English/Code: approximately 4 characters per token
+    return Math.ceil(text.length / 4);
+  }
+}
+
+/**
+ * FileCandidateのトークン数を推定
+ * @summary ファイル候補トークン推定
+ * @param candidate ファイル候補
+ * @returns 推定トークン数
+ */
+export function estimateFileCandidateTokens(candidate: FileCandidate): number {
+  return estimateTokens(candidate.path) + 5; // +5 for metadata overhead
+}
+
+/**
+ * CodeSearchMatchのトークン数を推定
+ * @summary コード検索マッチトークン推定
+ * @param match コード検索マッチ
+ * @returns 推定トークン数
+ */
+export function estimateCodeSearchMatchTokens(match: CodeSearchMatch): number {
+  let tokens = estimateTokens(match.file) + 10; // +10 for line/column metadata
+  tokens += estimateTokens(match.text);
+  if (match.context) {
+    tokens += match.context.reduce((sum, line) => sum + estimateTokens(line), 0);
+  }
+  return tokens;
+}
+
+/**
+ * SymbolDefinitionのトークン数を推定
+ * @summary シンボル定義トークン推定
+ * @param symbol シンボル定義
+ * @param detailLevel 詳細レベル
+ * @returns 推定トークン数
+ */
+export function estimateSymbolDefinitionTokens(
+  symbol: SymbolDefinition,
+  detailLevel: "full" | "signature" | "outline" = "full"
+): number {
+  let tokens = estimateTokens(symbol.name) + estimateTokens(symbol.file) + 10;
+
+  if (detailLevel === "outline") {
+    // Outline: only structure info
+    return tokens + 5;
+  }
+
+  if (detailLevel === "signature" || detailLevel === "full") {
+    if (symbol.signature) {
+      tokens += estimateTokens(symbol.signature);
+    }
+    if (symbol.scope) {
+      tokens += estimateTokens(symbol.scope);
+    }
+  }
+
+  return tokens;
+}
+
+/**
+ * 検索結果配列のトークン数を推定
+ * @summary 結果配列トークン推定
+ * @param results 検索結果配列
+ * @param estimator 各結果のトークン推定関数
+ * @returns 推定トークン数
+ */
+export function estimateResultsTokens<T>(
+  results: T[],
+  estimator: (item: T) => number
+): number {
+  return results.reduce((sum, item) => sum + estimator(item), 0);
+}
+
+/**
+ * 検索レスポンス全体のトークン数を推定
+ * @summary レスポンストークン推定
+ * @param response 検索レスポンス
+ * @param estimator 各結果のトークン推定関数
+ * @returns 推定トークン数
+ */
+export function estimateResponseTokens<T>(
+  response: SearchResponse<T>,
+  estimator: (item: T) => number
+): number {
+  let tokens = 50; // Base overhead for response structure
+  tokens += estimateResultsTokens(response.results, estimator);
+  if (response.error) {
+    tokens += estimateTokens(response.error);
+  }
+  return tokens;
+}
+
+/**
+ * トークン予算に基づいてヒントを作成（拡張版）
+ * @summary 予算対応ヒント作成
+ * @param toolName ツール名
+ * @param resultCount 結果件数
+ * @param truncated 切り詰められたか
+ * @param estimatedTokens 推定トークン数
+ * @param contextBudget コンテキスト予算
+ * @param queryPattern クエリパターン
+ * @returns 検索ヒント
+ */
+export function createHintsWithBudget(
+  toolName: string,
+  resultCount: number,
+  truncated: boolean,
+  estimatedTokens: number,
+  contextBudget: number = DEFAULT_CONTEXT_BUDGET,
+  queryPattern?: string
+): SearchHints {
+  const confidence = calculateSimpleConfidence(resultCount, truncated);
+  const contextBudgetWarning = calculateContextBudgetWarning(estimatedTokens, contextBudget);
+
+  const hints: SearchHints = {
+    confidence,
+    estimatedTokens,
+    contextBudgetWarning,
+  };
+
+  if (resultCount === 0) {
+    hints.suggestedNextAction = "refine_pattern";
+    hints.alternativeTools = getAlternativeTools(toolName);
+  } else if (truncated) {
+    hints.suggestedNextAction = "increase_limit";
+  } else if (contextBudgetWarning === "exceeds_recommended") {
+    hints.suggestedNextAction = "refine_pattern";
+  }
+
+  if (queryPattern && resultCount === 0) {
+    hints.relatedQueries = generateRelatedQueries(queryPattern);
+  }
+
+  return hints;
 }

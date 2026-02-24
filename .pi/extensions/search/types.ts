@@ -37,14 +37,29 @@
 // ============================================
 
 /**
- * 共通で使用される型定義
- * @summary 共通型定義
+ * コンテキスト予算警告レベル
+ * @summary 予算警告レベルを取得
+ */
+export type ContextBudgetWarning = "ok" | "approaching" | "exceeds_recommended";
+
+/**
+ * 検索結果のヒント情報
+ * @summary ヒント情報を取得
+ * @param confidence 結果の信頼度（0.0-1.0）
+ * @param suggestedNextAction 次に推奨されるアクション
+ * @param alternativeTools 代替候補のツールリスト
+ * @param estimatedTokens 推定トークン数
+ * @param contextBudgetWarning コンテキスト予算警告レベル
  */
 export interface SearchHints {
   confidence: number;
   suggestedNextAction?: "refine_pattern" | "expand_scope" | "try_different_tool" | "increase_limit" | "regenerate_index";
   alternativeTools?: string[];
   relatedQueries?: string[];
+  /** Estimated token count for the results */
+  estimatedTokens?: number;
+  /** Context budget warning level */
+  contextBudgetWarning?: ContextBudgetWarning;
 }
 
 /**
@@ -275,12 +290,19 @@ export interface SymIndexOutput {
 // ============================================
 
 /**
+ * シンボル検索の詳細レベル
+ * @summary 詳細レベルを指定
+ */
+export type DetailLevel = "full" | "signature" | "outline";
+
+/**
  * シンボル検索の入力パラメータ
  * @summary 検索入力パラメータ
  * @param name シンボル名
  * @param kind 種類
  * @param file ファイルパス
  * @param limit 結果の上限数
+ * @param detailLevel 詳細レベル（full/singature/outline）
  * @param cwd 作業ディレクトリ
  */
 export interface SymFindInput {
@@ -290,8 +312,12 @@ export interface SymFindInput {
   kind?: string[];
   /** File filter */
   file?: string;
+  /** Scope filter (e.g., class name to find methods within) */
+  scope?: string;
   /** Result limit (default: 50) */
   limit?: number;
+  /** Detail level: full (default), signature (method signatures only), outline (structure only) */
+  detailLevel?: DetailLevel;
   /** Working directory */
   cwd?: string;
 }
@@ -800,4 +826,515 @@ export interface SemanticIndexMetadata {
 
   /** Version of the index format */
   version: number;
+}
+
+// ============================================
+// context_explore Types
+// ============================================
+
+/**
+ * 階層的文脈検索のステップ定義
+ * @summary 検索ステップ定義
+ */
+export interface ContextExploreStep {
+  /** Step type */
+  type: "find_class" | "find_methods" | "search_code" | "get_callers";
+  /** Search query pattern */
+  query?: string;
+  /** Reference to previous step result ($0 = first result, $1 = second, etc.) */
+  classRef?: string;
+  /** Scope filter */
+  scope?: string;
+}
+
+/**
+ * 階層的文脈検索の入力パラメータ
+ * @summary 文脈検索入力
+ */
+export interface ContextExploreInput {
+  /** Chain of search steps to execute */
+  steps: ContextExploreStep[];
+  /** Token budget for results (default: 15000) */
+  contextBudget?: number;
+  /** Compression mode: full (default), signature, summary */
+  compression?: "full" | "signature" | "summary";
+  /** Working directory */
+  cwd?: string;
+}
+
+/**
+ * 単一ステップの実行結果
+ * @summary ステップ結果
+ */
+export interface ContextExploreStepResult {
+  /** Step index */
+  stepIndex: number;
+  /** Step type */
+  type: ContextExploreStep["type"];
+  /** Result count */
+  count: number;
+  /** Estimated tokens for this step */
+  estimatedTokens: number;
+  /** Results (may be compressed) */
+  results: unknown[];
+}
+
+/**
+ * 階層的文脈検索の出力
+ * @summary 文脈検索出力
+ */
+export interface ContextExploreOutput {
+  /** Total results across all steps */
+  total: number;
+  /** Whether results were compressed */
+  compressed: boolean;
+  /** Total estimated tokens */
+  estimatedTokens: number;
+  /** Token budget used */
+  contextBudget: number;
+  /** Results per step */
+  steps: ContextExploreStepResult[];
+  /** Error message if failed */
+  error?: string;
+  /** Details with hints */
+  details?: SearchDetails;
+}
+
+// ============================================
+// search_class Types
+// ============================================
+
+/**
+ * クラス検索の入力パラメータ
+ * @summary クラス検索入力
+ */
+export interface SearchClassInput {
+  /** Class name pattern (supports wildcards: *, ?) */
+  name: string;
+  /** Include method list (default: true) */
+  includeMethods?: boolean;
+  /** Detail level: full (default), signature, outline */
+  detailLevel?: DetailLevel;
+  /** File path filter */
+  file?: string;
+  /** Maximum results (default: 20) */
+  limit?: number;
+}
+
+/**
+ * クラス内メソッド情報
+ * @summary メソッド情報
+ */
+export interface ClassMethod {
+  /** Method name */
+  name: string;
+  /** Method signature */
+  signature?: string;
+  /** Line number */
+  line: number;
+  /** Kind (method, function) */
+  kind: string;
+}
+
+/**
+ * クラス検索結果の単一エントリ
+ * @summary クラス検索エントリ
+ */
+export interface ClassSearchResult {
+  /** Class name */
+  name: string;
+  /** Class kind (class, interface, struct) */
+  kind: string;
+  /** File path */
+  file: string;
+  /** Line number */
+  line: number;
+  /** Class signature (if available) */
+  signature?: string;
+  /** Methods within the class (if includeMethods=true) */
+  methods?: ClassMethod[];
+}
+
+/**
+ * クラス検索の出力結果
+ * @summary クラス検索出力
+ */
+export interface SearchClassOutput {
+  /** Total number of matches */
+  total: number;
+  /** Whether results were truncated */
+  truncated: boolean;
+  /** Search results */
+  results: ClassSearchResult[];
+  /** Error message if search failed */
+  error?: string;
+  /** Details with hints */
+  details?: SearchDetails;
+}
+
+// ============================================
+// search_method Types
+// ============================================
+
+/**
+ * メソッド検索の入力パラメータ
+ * @summary メソッド検索入力
+ */
+export interface SearchMethodInput {
+  /** Method name pattern (supports wildcards: *, ?) */
+  method: string;
+  /** Filter by class name */
+  className?: string;
+  /** Include implementation code (default: false) */
+  includeImplementation?: boolean;
+  /** Detail level: full (default), signature, outline */
+  detailLevel?: DetailLevel;
+  /** File path filter */
+  file?: string;
+  /** Maximum results (default: 30) */
+  limit?: number;
+}
+
+/**
+ * メソッド検索結果の単一エントリ
+ * @summary メソッド検索エントリ
+ */
+export interface MethodSearchResult {
+  /** Method name */
+  name: string;
+  /** Method kind (method, function) */
+  kind: string;
+  /** File path */
+  file: string;
+  /** Line number */
+  line: number;
+  /** Method signature */
+  signature?: string;
+  /** Containing class/scope */
+  scope?: string;
+  /** Implementation code (if includeImplementation=true) */
+  implementation?: string;
+}
+
+/**
+ * メソッド検索の出力結果
+ * @summary メソッド検索出力
+ */
+export interface SearchMethodOutput {
+  /** Total number of matches */
+  total: number;
+  /** Whether results were truncated */
+  truncated: boolean;
+  /** Search results */
+  results: MethodSearchResult[];
+  /** Error message if search failed */
+  error?: string;
+  /** Details with hints */
+  details?: SearchDetails;
+}
+
+// ============================================
+// fault_localize Types
+// ============================================
+
+/**
+ * SBFLアルゴリズムの種類
+ * @summary アルゴリズム種別
+ */
+export type SBFLAlgorithm = "ochiai" | "tarantula" | "op2";
+
+/**
+ * バグ位置特定の入力パラメータ
+ * @summary バグ位置特定入力
+ */
+export interface FaultLocalizeInput {
+  /** Test execution command (e.g., "npm test", "pytest") */
+  testCommand: string;
+  /** List of failing test names (auto-detected if omitted) */
+  failingTests?: string[];
+  /** List of passing test names */
+  passingTests?: string[];
+  /** Suspiciousness threshold (default: 0.5) */
+  suspiciousnessThreshold?: number;
+  /** Path to coverage report file */
+  coverageReport?: string;
+  /** SBFL algorithm to use (default: ochiai) */
+  algorithm?: SBFLAlgorithm;
+}
+
+/**
+ * 単一の怪しいコード位置
+ * @summary 怪しい位置
+ */
+export interface SuspiciousLocation {
+  /** Method/function name */
+  method: string;
+  /** File path */
+  file: string;
+  /** Line number */
+  line: number;
+  /** Suspiciousness score (0.0-1.0) */
+  suspiciousness: number;
+  /** Times covered by failing tests */
+  coveredByFailing: number;
+  /** Times covered by passing tests */
+  coveredByPassing: number;
+}
+
+/**
+ * バグ位置特定の出力結果
+ * @summary バグ位置特定出力
+ */
+export interface FaultLocalizeResult {
+  /** Suspicious locations sorted by suspiciousness (descending) */
+  locations: SuspiciousLocation[];
+  /** Algorithm used */
+  algorithm: SBFLAlgorithm;
+  /** Total number of tests analyzed */
+  totalTests: number;
+  /** Number of failing tests */
+  failingTestCount: number;
+  /** Number of passing tests */
+  passingTestCount: number;
+  /** Whether test execution was actually performed */
+  testExecuted: boolean;
+  /** Error message if localization failed */
+  error?: string;
+  /** Details with hints */
+  details?: SearchDetails;
+}
+
+// ============================================
+// search_history Types
+// ============================================
+
+/**
+ * 検索履歴の入力パラメータ
+ * @summary 履歴入力
+ */
+export interface SearchHistoryInput {
+  /** Action to perform */
+  action: "get" | "clear" | "save_query";
+  /** Session filter */
+  session?: "current" | "previous" | "all";
+  /** Maximum entries to return (default: 50) */
+  limit?: number;
+  /** Query to save (for save_query action) */
+  query?: string;
+  /** Tool name (for save_query action) */
+  tool?: string;
+}
+
+/**
+ * 履歴クエリ情報
+ * @summary 履歴クエリ
+ */
+export interface HistoryQuery {
+  /** Query string */
+  query: string;
+  /** Tool name */
+  tool: string;
+  /** Timestamp */
+  timestamp: string;
+  /** Result count */
+  resultCount: number;
+}
+
+/**
+ * 検索履歴の出力結果
+ * @summary 履歴出力
+ */
+export interface SearchHistoryResult {
+  /** History queries */
+  queries: HistoryQuery[];
+  /** Session filter applied */
+  session: string;
+  /** Total count (before limit) */
+  total: number;
+  /** Available sessions */
+  sessions?: HistorySession[];
+  /** Error message if operation failed */
+  error?: string;
+  /** Details with hints */
+  details?: SearchDetails;
+}
+
+/**
+ * セッション情報
+ * @summary セッション情報
+ */
+export interface HistorySession {
+  /** Session ID */
+  id: string;
+  /** Session start time */
+  startTime: number;
+  /** Session end time (undefined for current session) */
+  endTime?: number;
+  /** Number of entries in this session */
+  entryCount: number;
+}
+
+// ============================================
+// ast_summary Types
+// ============================================
+
+/**
+ * ASTノードの種類
+ * @summary ASTノード種別
+ */
+export type AstNodeKind = "class" | "function" | "method" | "variable" | "interface" | "enum";
+
+/**
+ * ASTノード情報
+ * @summary ASTノード定義
+ */
+export interface AstNode {
+  /** Node name */
+  name: string;
+  /** Node kind */
+  kind: AstNodeKind;
+  /** Signature (for functions/methods) */
+  signature?: string;
+  /** Line number */
+  line?: number;
+  /** Child nodes */
+  children?: AstNode[];
+  /** Called functions/methods */
+  calls?: string[];
+}
+
+/**
+ * AST要約の入力パラメータ
+ * @summary AST要約入力
+ */
+export interface AstSummaryInput {
+  /** File path to analyze */
+  file: string;
+  /** Output format (default: tree) */
+  format?: "tree" | "flat" | "json";
+  /** Depth level for tree display (default: 2) */
+  depth?: number;
+  /** Include type information (default: true) */
+  includeTypes?: boolean;
+  /** Include call relationships (default: false) */
+  includeCalls?: boolean;
+}
+
+/**
+ * AST要約の統計情報
+ * @summary AST統計
+ */
+export interface AstSummaryStats {
+  /** Total classes */
+  totalClasses: number;
+  /** Total functions */
+  totalFunctions: number;
+  /** Total methods */
+  totalMethods: number;
+  /** Total variables */
+  totalVariables: number;
+}
+
+/**
+ * AST要約の出力結果
+ * @summary AST要約出力
+ */
+export interface AstSummaryResult {
+  /** File path */
+  file: string;
+  /** Output format */
+  format: string;
+  /** Root AST nodes */
+  root: AstNode[];
+  /** Statistics */
+  stats: AstSummaryStats;
+  /** Error message if failed */
+  error?: string;
+}
+
+// ============================================
+// merge_results Types
+// ============================================
+
+/**
+ * 検索ソースの種類
+ * @summary ソース種別
+ */
+export type SearchSourceType = "semantic" | "symbol" | "code";
+
+/**
+ * マージ対象の検索ソース
+ * @summary 検索ソース定義
+ */
+export interface MergeSource {
+  /** Source type */
+  type: SearchSourceType;
+  /** Search query */
+  query: string;
+  /** Weight for this source (default: 1.0) */
+  weight?: number;
+}
+
+/**
+ * マージ戦略
+ * @summary マージ戦略種別
+ */
+export type MergeStrategy = "weighted" | "rank_fusion" | "interleave";
+
+/**
+ * 統合検索結果の入力パラメータ
+ * @summary 統合検索入力
+ */
+export interface MergeResultsInput {
+  /** Search sources to merge */
+  sources: MergeSource[];
+  /** Deduplicate results (default: true) */
+  deduplicate?: boolean;
+  /** Maximum results (default: 20) */
+  limit?: number;
+  /** Merge strategy (default: weighted) */
+  mergeStrategy?: MergeStrategy;
+}
+
+/**
+ * 統合された検索結果
+ * @summary 統合結果エントリ
+ */
+export interface MergedResult {
+  /** File path */
+  file: string;
+  /** Line number */
+  line?: number;
+  /** Content snippet */
+  content: string;
+  /** Combined score */
+  score: number;
+  /** Source types that found this result */
+  sources: string[];
+}
+
+/**
+ * 統合検索の統計情報
+ * @summary 統合統計
+ */
+export interface MergeResultsStats {
+  /** Total sources queried */
+  totalSources: number;
+  /** Total results before deduplication */
+  totalResults: number;
+  /** Duplicates removed */
+  duplicatesRemoved: number;
+}
+
+/**
+ * 統合検索の出力結果
+ * @summary 統合検索出力
+ */
+export interface MergeResultsResult {
+  /** Merged results sorted by score */
+  merged: MergedResult[];
+  /** Statistics */
+  stats: MergeResultsStats;
+  /** Error message if failed */
+  error?: string;
 }

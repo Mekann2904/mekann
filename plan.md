@@ -1,507 +1,835 @@
-# 実装計画: AutoCodeRover論文に基づくpi拡張機能改善
+# Implementation Plan: RepoGraph Integration
 
-## 目的
-AutoCodeRover論文の手法をpiに取り入れ、コード検索と文脈取得の効率・精度を向上させる。特に「階層的文脈検索」「ASTベースの圧縮」「文脈局所化」の3点に焦点を当てる。
+## Purpose
 
-## 調査結果サマリー
+Integrate RepoGraph methodology (SWE-bench +32.8% improvement) into the search extension, replacing regex-based call graph with AST-based analysis using tree-sitter.
 
-### AutoCodeRover論文の核心概念
-1. **Stratified Context Search（階層的文脈検索）**: 反復的にAPIを呼び出し、前の結果を次の検索の引数に使う
-2. **SBFL（Spectrum-based Fault Localization）**: テスト実行情報を使ってバグ位置を特定
-3. **ASTベースのプログラム表現**: クラスシグネチャのみを返してコンテキストを圧縮
-4. **文脈局所化**: 数ファイル〜十数ファイルに抑える
-5. **検索APIの設計**: search_class, search_method_in_class, search_code_in_file
+## Overview
 
-### piの現状
-- file_candidates, code_search, sym_index, sym_find（基本検索）
-- call_graph_index, find_callers, find_callees（呼び出し関係）
-- semantic_index, semantic_search（意味検索）
-- search-tools スキル（ベストプラクティス）
-- semantic-repetition（ループ検出）
-- bug-hunting スキル（因果チェーン分析）
+| Priority | Component | Impact | Rounds |
+|----------|-----------|--------|--------|
+| P1 | tree-sitter integration | High | 8-12 |
+| P2 | RepoGraph module | High | 10-15 |
+| P3 | Egograph search tool | Medium | 5-8 |
+| P4 | Framework integration | Medium | 3-5 |
+
+**Total Estimated Rounds**: 26-40
 
 ---
 
-## 改善案一覧
+## Priority 1: tree-sitter Integration
 
-### 優先度: 高
+### Goal
 
-#### 1. context_explore - 階層的文脈検索ツール
+Replace regex-based call detection with AST-based analysis for accurate definition/reference extraction.
 
-**現状:**
-- piの検索ツール（file_candidates, code_search, sym_find等）は個別に呼び出す必要がある
-- 前の検索結果を次の検索の入力として使うには、エージェントが明示的にチェーンを構築する必要がある
-- `.pi/extensions/search/index.ts:1-500` で各ツールが独立して登録されている
+### Dependencies
 
-**AutoCodeRoverのアプローチ:**
-```
-search_class("AuthService") → クラスのシグネチャを取得
-  ↓
-search_method_in_class("login", "AuthService") → メソッドのシグネチャを取得
-  ↓
-search_code_in_file("token", "auth.ts") → コードスニペットを取得
-```
-このように、前の結果を次の検索への入力として段階的に文脈を構築する。
-
-**提案:**
-新しい `context_explore` ツールを追加。検索クエリのチェーンを一度に実行し、段階的に文脈を絞り込む。
-
-```typescript
-// 新ツール: context_explore
-context_explore({
-  steps: [
-    { type: "find_class", query: "AuthService" },
-    { type: "find_methods", classRef: "$0" },  // $0 = 前のステップの結果
-    { type: "search_code", pattern: "token", scope: "$1" }
-  ],
-  contextBudget: 15000,  // トークン予算
-  compression: "signature"  // "full" | "signature" | "summary"
-})
-```
-
-**期待効果:**
-- 検索API呼び出しの回数を削減
-- 文脈構築のワークフローが明示的になる
-- コンテキスト予算を意識した検索が可能
-
-**実装ファイル:**
-- 新規: `.pi/extensions/search/tools/context_explore.ts`
-- 修正: `.pi/extensions/search/index.ts`（ツール登録追加）
-- 新規: `.pi/skills/search-tools/SKILL.md`（ワークフロー例追加）
-
----
-
-#### 2. sym_find拡張 - シグネチャのみ返却オプション
-
-**現状:**
-- `sym_find` はシンボルの定義位置を返すが、常に完全な情報を返す
-- `.pi/extensions/search/tools/sym_find.ts:1-300` で実装
-- 大きなクラスの全メソッドを取得すると、コンテキストを大量に消費する
-
-**AutoCodeRoverのアプローチ:**
-- クラスシグネチャのみを返す（メソッド名と型のみ、実装は返さない）
-- コンテキストを圧縮し、必要な情報だけを取得
-
-**提案:**
-`sym_find` に `detailLevel` パラメータを追加。
-
-```typescript
-sym_find({
-  name: "AuthService",
-  kind: ["class"],
-  detailLevel: "signature"  // "full" | "signature" | "outline"
-})
-
-// signature モードの出力例:
-// class AuthService {
-//   + login(credentials: Credentials): Promise<Token>
-//   + logout(): void
-//   + validateToken(token: string): boolean
-//   - refreshToken(refreshToken: string): Promise<Token>
-// }
-```
-
-**期待効果:**
-- 大きなクラスでもコンテキスト消費を抑制
-- クラス概要の把握が高速化
-- AutoCodeRoverと同様のASTベース圧縮を実現
-
-**実装ファイル:**
-- 修正: `.pi/extensions/search/tools/sym_find.ts`
-- 修正: `.pi/extensions/search/types.ts`（型定義追加）
-
----
-
-#### 3. コンテキスト予算モニタリング
-
-**現状:**
-- 各検索ツールには `limit` パラメータがあるが、トークン数ベースの管理ではない
-- 検索結果がコンテキストに収まるかどうかはエージェントの判断に委ねられている
-- `.pi/skills/search-tools/SKILL.md` では「limitを常に設定する」を推奨しているが、トークン予算の概念はない
-
-**AutoCodeRoverのアプローチ:**
-- 文脈局所化: 数ファイル〜十数ファイルに抑える
-- 大きなコンテキストはLLMの理解を妨げる
-
-**提案:**
-検索結果のトークン数を推定し、コンテキスト予算を警告する機能を追加。
-
-```typescript
-// 各検索ツールの戻り値に details.estimatedTokens を追加
+```json
 {
-  results: [...],
-  truncated: false,
-  details: {
-    hints: {
-      confidence: 0.85,
-      estimatedTokens: 3500,  // 推定トークン数
-      contextBudgetWarning: "exceeds_recommended",  // "ok" | "approaching" | "exceeds_recommended"
-      suggestedAction: "reduce_limit_or_add_filters"
+  "web-tree-sitter": "^0.26.5"
+}
+```
+
+### Data Structures
+
+```typescript
+// .pi/extensions/search/repograph/types.ts
+
+/** Line-level node in RepoGraph */
+export interface RepoGraphNode {
+  id: string;              // file:line
+  file: string;
+  line: number;
+  nodeType: "def" | "ref" | "import" | "export";
+  symbolName: string;
+  symbolKind: "function" | "method" | "class" | "variable" | "import";
+  scope?: string;
+  text: string;            // Source line content
+}
+
+/** Edge types in RepoGraph */
+export type RepoGraphEdgeType = 
+  | "invoke"    // A calls B
+  | "contain"   // A contains B (file contains function)
+  | "define"    // A defines B (import defines symbol)
+  | "reference" // A references B
+  | "next";     // Sequential line relationship
+
+export interface RepoGraphEdge {
+  source: string;          // Source node ID
+  target: string;          // Target node ID
+  type: RepoGraphEdgeType;
+  confidence: number;
+}
+
+export interface RepoGraphIndex {
+  nodes: Map<string, RepoGraphNode>;
+  edges: RepoGraphEdge[];
+  metadata: {
+    indexedAt: number;
+    fileCount: number;
+    nodeCount: number;
+    edgeCount: number;
+    language: string;
+    version: number;
+  };
+}
+```
+
+### File Structure
+
+```
+.pi/extensions/search/
+├── repograph/
+│   ├── types.ts           # Type definitions
+│   ├── parser.ts          # tree-sitter AST parser
+│   ├── builder.ts         # Graph construction
+│   ├── query.ts           # Graph queries
+│   ├── egograph.ts        # k-hop subgraph extraction
+│   └── index.ts           # Public API
+├── tree-sitter/
+│   ├── loader.ts          # WASM loader for grammars
+│   ├── grammars/          # Language grammar registry
+│   │   ├── typescript.ts
+│   │   ├── javascript.ts
+│   │   └── python.ts
+│   └── index.ts
+```
+
+### Implementation Steps
+
+#### Step 1.1: tree-sitter Loader (2-3 rounds)
+
+```typescript
+// .pi/extensions/search/tree-sitter/loader.ts
+
+import Parser from "web-tree-sitter";
+
+let parserInstance: Parser | null = null;
+const loadedLanguages = new Map<string, Parser.Language>();
+
+/**
+ * Initialize tree-sitter parser with WASM
+ */
+export async function initTreeSitter(): Promise<Parser> {
+  if (parserInstance) return parserInstance;
+  
+  await Parser.init();
+  parserInstance = new Parser();
+  return parserInstance;
+}
+
+/**
+ * Load language grammar from WASM
+ */
+export async function loadLanguage(
+  lang: "typescript" | "javascript" | "python"
+): Promise<Parser.Language> {
+  if (loadedLanguages.has(lang)) {
+    return loadedLanguages.get(lang)!;
+  }
+  
+  const parser = await initTreeSitter();
+  const wasmPath = getGrammarPath(lang);
+  
+  const language = await Parser.Language.load(wasmPath);
+  parser.setLanguage(language);
+  
+  loadedLanguages.set(lang, language);
+  return language;
+}
+
+function getGrammarPath(lang: string): string {
+  // Grammars bundled with extension or downloaded on-demand
+  const grammarUrls: Record<string, string> = {
+    typescript: "https://cdn.example.com/tree-sitter-typescript.wasm",
+    javascript: "https://cdn.example.com/tree-sitter-javascript.wasm",
+    python: "https://cdn.example.com/tree-sitter-python.wasm",
+  };
+  return grammarUrls[lang];
+}
+```
+
+#### Step 1.2: AST Parser (3-4 rounds)
+
+```typescript
+// .pi/extensions/search/repograph/parser.ts
+
+import Parser from "web-tree-sitter";
+import { loadLanguage } from "../tree-sitter/loader.js";
+import type { RepoGraphNode, RepoGraphEdge } from "./types.js";
+
+interface ParseResult {
+  nodes: RepoGraphNode[];
+  edges: RepoGraphEdge[];
+}
+
+/**
+ * Parse file with tree-sitter and extract def/ref nodes
+ */
+export async function parseFile(
+  content: string,
+  filePath: string,
+  language: string
+): Promise<ParseResult> {
+  const lang = await loadLanguage(language as "typescript" | "javascript" | "python");
+  const parser = new Parser();
+  parser.setLanguage(lang);
+  
+  const tree = parser.parse(content);
+  const nodes: RepoGraphNode[] = [];
+  const edges: RepoGraphEdge[] = [];
+  
+  // Walk AST and extract definitions/references
+  walkTree(tree.rootNode, content, filePath, nodes, edges);
+  
+  return { nodes, edges };
+}
+
+/**
+ * Query types for tree-sitter queries
+ */
+const DEFINITION_QUERIES: Record<string, string> = {
+  typescript: `
+    (function_declaration name: (identifier) @name) @def
+    (method_definition name: (property_identifier) @name) @def
+    (class_declaration name: (type_identifier) @name) @def
+    (variable_declarator name: (identifier) @name value: (arrow_function)) @def
+    (import_statement (import_clause (identifier) @name)) @import
+  `,
+  python: `
+    (function_definition name: (identifier) @name) @def
+    (class_definition name: (identifier) @name) @def
+    (import_statement (dotted_name (identifier) @name)) @import
+  `,
+};
+
+const REFERENCE_QUERIES: Record<string, string> = `
+  (call_expression function: (identifier) @ref)
+  (call_expression function: (member_expression property: (property_identifier) @ref))
+`;
+
+function walkTree(
+  node: Parser.SyntaxNode,
+  content: string,
+  filePath: string,
+  nodes: RepoGraphNode[],
+  edges: RepoGraphEdge[]
+): void {
+  // Extract definitions
+  if (isDefinition(node)) {
+    const symbolName = extractSymbolName(node);
+    nodes.push({
+      id: `${filePath}:${node.startPosition.row + 1}`,
+      file: filePath,
+      line: node.startPosition.row + 1,
+      nodeType: "def",
+      symbolName,
+      symbolKind: mapNodeKind(node.type),
+      text: content.split("\n")[node.startPosition.row],
+    });
+  }
+  
+  // Extract references (calls)
+  if (isCall(node)) {
+    const calleeName = extractCalleeName(node);
+    nodes.push({
+      id: `${filePath}:${node.startPosition.row + 1}:ref:${calleeName}`,
+      file: filePath,
+      line: node.startPosition.row + 1,
+      nodeType: "ref",
+      symbolName: calleeName,
+      symbolKind: "function",
+      text: content.split("\n")[node.startPosition.row],
+    });
+  }
+  
+  // Recurse into children
+  for (const child of node.children) {
+    walkTree(child, content, filePath, nodes, edges);
+  }
+}
+```
+
+#### Step 1.3: Replace call_graph builder (2-3 rounds)
+
+```typescript
+// .pi/extensions/search/call-graph/builder.ts (modified)
+
+import { parseFile } from "../repograph/parser.js";
+
+/**
+ * Build call graph using tree-sitter (Phase 2)
+ */
+export async function buildCallGraphAST(
+  path: string,
+  cwd: string
+): Promise<CallGraphIndex> {
+  // Get all source files
+  const files = await getSourceFiles(path, cwd);
+  
+  const allNodes: CallGraphNode[] = [];
+  const allEdges: CallGraphEdge[] = [];
+  
+  for (const file of files) {
+    const content = await readFile(join(cwd, file), "utf-8");
+    const language = detectLanguage(file);
+    
+    const { nodes, edges } = await parseFile(content, file, language);
+    
+    // Convert RepoGraph nodes to CallGraphNodes
+    for (const node of nodes.filter(n => n.nodeType === "def")) {
+      allNodes.push({
+        id: node.id,
+        name: node.symbolName,
+        file: node.file,
+        line: node.line,
+        kind: mapSymbolKind(node.symbolKind),
+        scope: node.scope,
+      });
+    }
+    
+    // Convert edges
+    for (const edge of edges.filter(e => e.type === "invoke")) {
+      allEdges.push({
+        caller: edge.source,
+        callee: edge.target,
+        callSite: extractCallSite(edge),
+        confidence: 1.0, // AST-based has full confidence
+      });
+    }
+  }
+  
+  return {
+    nodes: allNodes,
+    edges: allEdges,
+    metadata: {
+      indexedAt: Date.now(),
+      parserBackend: "tree-sitter",
+      fileCount: files.length,
+      nodeCount: allNodes.length,
+      edgeCount: allEdges.length,
+      version: 2,
+    },
+  };
+}
+```
+
+### Tests
+
+```typescript
+// .pi/extensions/search/repograph/parser.test.ts
+
+describe("RepoGraph Parser", () => {
+  it("extracts function definitions", async () => {
+    const code = `
+      function foo() { return 1; }
+      const bar = () => 2;
+    `;
+    const { nodes } = await parseFile(code, "test.ts", "typescript");
+    
+    expect(nodes.filter(n => n.nodeType === "def")).toHaveLength(2);
+    expect(nodes.find(n => n.symbolName === "foo")).toBeDefined();
+    expect(nodes.find(n => n.symbolName === "bar")).toBeDefined();
+  });
+  
+  it("extracts function calls", async () => {
+    const code = `
+      function foo() { bar(); }
+      function bar() {}
+    `;
+    const { nodes, edges } = await parseFile(code, "test.ts", "typescript");
+    
+    const ref = nodes.find(n => n.symbolName === "bar" && n.nodeType === "ref");
+    expect(ref).toBeDefined();
+  });
+  
+  it("filters standard library imports", async () => {
+    const code = `
+      import { readFile } from 'fs';
+      import { parse } from './local';
+    `;
+    const { nodes } = await parseFile(code, "test.ts", "typescript");
+    
+    // fs imports should be filtered out
+    const fsImport = nodes.find(n => n.symbolName === "readFile");
+    expect(fsImport).toBeUndefined();
+    
+    // local imports should be kept
+    const localImport = nodes.find(n => n.symbolName === "parse");
+    expect(localImport).toBeDefined();
+  });
+});
+```
+
+---
+
+## Priority 2: RepoGraph Module
+
+### Goal
+
+Build line-level dependency graph with def/ref nodes and invoke/contain edges.
+
+### Implementation Steps
+
+#### Step 2.1: Graph Builder (4-5 rounds)
+
+```typescript
+// .pi/extensions/search/repograph/builder.ts
+
+import { parseFile } from "./parser.js";
+import type { RepoGraphIndex, RepoGraphNode, RepoGraphEdge } from "./types.js";
+
+const STANDARD_LIBS = new Set([
+  "fs", "path", "http", "https", "crypto", "os", "util", "stream",
+  "events", "buffer", "url", "querystring", "child_process",
+  "react", "vue", "angular", "express", "lodash", "axios",
+  // Python
+  "os", "sys", "json", "re", "datetime", "collections", "itertools",
+]);
+
+/**
+ * Build RepoGraph from project files
+ */
+export async function buildRepoGraph(
+  path: string,
+  cwd: string
+): Promise<RepoGraphIndex> {
+  const files = await getSourceFiles(path, cwd);
+  const nodes = new Map<string, RepoGraphNode>();
+  const edges: RepoGraphEdge[] = [];
+  
+  // Phase 1: Parse all files
+  for (const file of files) {
+    const content = await readFile(join(cwd, file), "utf-8");
+    const language = detectLanguage(file);
+    const lines = content.split("\n");
+    
+    const { nodes: fileNodes, edges: fileEdges } = await parseFile(content, file, language);
+    
+    // Add filtered nodes
+    for (const node of fileNodes) {
+      if (shouldIncludeNode(node)) {
+        nodes.set(node.id, node);
+      }
+    }
+    
+    edges.push(...fileEdges.filter(shouldIncludeEdge));
+    
+    // Add "contain" edges (file -> definitions)
+    for (const defNode of fileNodes.filter(n => n.nodeType === "def")) {
+      edges.push({
+        source: file,
+        target: defNode.id,
+        type: "contain",
+        confidence: 1.0,
+      });
+    }
+    
+    // Add "next" edges (sequential lines)
+    for (let i = 0; i < lines.length - 1; i++) {
+      edges.push({
+        source: `${file}:${i + 1}`,
+        target: `${file}:${i + 2}`,
+        type: "next",
+        confidence: 0.5,
+      });
+    }
+  }
+  
+  // Phase 2: Resolve references to definitions
+  resolveReferences(nodes, edges);
+  
+  return {
+    nodes,
+    edges,
+    metadata: {
+      indexedAt: Date.now(),
+      fileCount: files.length,
+      nodeCount: nodes.size,
+      edgeCount: edges.length,
+      language: "multi",
+      version: 1,
+    },
+  };
+}
+
+function shouldIncludeNode(node: RepoGraphNode): boolean {
+  // Filter out standard library references
+  if (node.nodeType === "import") {
+    const moduleName = extractModuleName(node.text);
+    if (STANDARD_LIBS.has(moduleName)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function resolveReferences(
+  nodes: Map<string, RepoGraphNode>,
+  edges: RepoGraphEdge[]
+): void {
+  // Build symbol -> definition map
+  const definitions = new Map<string, RepoGraphNode>();
+  for (const node of nodes.values()) {
+    if (node.nodeType === "def") {
+      definitions.set(node.symbolName, node);
+    }
+  }
+  
+  // Resolve refs to defs
+  for (const edge of edges) {
+    if (edge.type === "invoke") {
+      const refNode = nodes.get(edge.source);
+      if (refNode && refNode.nodeType === "ref") {
+        const defNode = definitions.get(refNode.symbolName);
+        if (defNode) {
+          edge.target = defNode.id;
+          edge.confidence = 1.0;
+        }
+      }
     }
   }
 }
 ```
 
-**期待効果:**
-- コンテキストオーバーフローを事前に検知
-- エージェントが意識的にコンテキストを管理可能
-- AutoCodeRoverの「文脈局所化」原則を実現
-
-**実装ファイル:**
-- 修正: `.pi/extensions/search/utils/output.ts`（トークン推定ロジック）
-- 修正: `.pi/extensions/search/tools/file_candidates.ts`
-- 修正: `.pi/extensions/search/tools/code_search.ts`
-- 修正: `.pi/extensions/search/tools/sym_find.ts`
-
----
-
-### 優先度: 中
-
-#### 4. search_class / search_method - 高レベル検索ヘルパー
-
-**現状:**
-- `sym_find` でクラスやメソッドを検索できるが、kindフィルタやワイルドカードを理解する必要がある
-- `.pi/skills/search-tools/SKILL.md` で使い方は説明されているが、直接使えるショートカットがない
-
-**AutoCodeRoverのアプローチ:**
-- `search_class(cls)`: クラスを検索
-- `search_method_in_class(m, cls)`: クラス内のメソッドを検索
-- `search_code_in_file(c, f)`: ファイル内のコードを検索
-
-**提案:**
-AutoCodeRoverと同様の高レベル検索ツールを追加。
+#### Step 2.2: Index Persistence (2-3 rounds)
 
 ```typescript
-// search_class
-search_class({
-  name: "AuthService",
-  includeMethods: true,  // メソッド一覧も含める
-  detailLevel: "signature"
-})
+// .pi/extensions/search/repograph/storage.ts
 
-// search_method_in_class
-search_method_in_class({
-  method: "login",
-  className: "AuthService",
-  includeImplementation: false
-})
+const REPOGRAPH_DIR = ".pi/search/repograph";
+const INDEX_FILE = "index.json";
 
-// search_code_in_file
-search_code_in_file({
-  pattern: "token",
-  file: "src/auth/service.ts",
-  context: 2
-})
+export async function saveRepoGraph(
+  graph: RepoGraphIndex,
+  cwd: string
+): Promise<string> {
+  const indexPath = join(cwd, REPOGRAPH_DIR, INDEX_FILE);
+  await mkdir(dirname(indexPath), { recursive: true });
+  
+  // Convert Map to array for JSON serialization
+  const serializable = {
+    nodes: Array.from(graph.nodes.entries()),
+    edges: graph.edges,
+    metadata: graph.metadata,
+  };
+  
+  await writeFile(indexPath, JSON.stringify(serializable), "utf-8");
+  return indexPath;
+}
+
+export async function loadRepoGraph(cwd: string): Promise<RepoGraphIndex | null> {
+  const indexPath = join(cwd, REPOGRAPH_DIR, INDEX_FILE);
+  
+  try {
+    const content = await readFile(indexPath, "utf-8");
+    const data = JSON.parse(content);
+    
+    return {
+      nodes: new Map(data.nodes),
+      edges: data.edges,
+      metadata: data.metadata,
+    };
+  } catch {
+    return null;
+  }
+}
 ```
-
-**期待効果:**
-- 検索クエリがより直感的になる
-- AutoCodeRoverからの移行が容易
-- 初心者でも使いやすい
-
-**実装ファイル:**
-- 新規: `.pi/extensions/search/tools/search_class.ts`
-- 新規: `.pi/extensions/search/tools/search_method.ts`
-- 新規: `.pi/extensions/search/tools/search_code.ts`
-- 修正: `.pi/extensions/search/index.ts`
 
 ---
 
-#### 5. fault_localize - SBFLベースのバグ位置特定
+## Priority 3: Egograph Search Tool
 
-**現状:**
-- `bug-hunting` スキルで因果チェーン分析を行う手法論はある
-- テスト実行ツール（`.pi/extensions/search/test-runner.ts`）は存在する
-- しかし、テストカバレッジと失敗テストの情報を統合したバグ位置特定はない
+### Goal
 
-**AutoCodeRoverのアプローチ:**
-- SBFL（Spectrum-based Fault Localization）
-- passing/failingテストの制御フロー差分を分析
-- メソッド単位で疑わしさスコアを計算
+Implement k-hop subgraph extraction for localization.
 
-**提案:**
-テスト実行結果とコードカバレッジを組み合わせて、バグの疑いが高い箇所を特定するツール。
+### Implementation
 
 ```typescript
-fault_localize({
-  testCommand: "npm test",
-  failingTests: ["auth.test.ts:login", "auth.test.ts:logout"],
-  passingTests: ["auth.test.ts:validate"],
-  suspiciousnessThreshold: 0.5
-})
+// .pi/extensions/search/repograph/egograph.ts
 
-// 出力例:
-// Fault Localization Results:
-// 1. AuthService.login (suspiciousness: 0.92) - covered by 2 failing tests
-// 2. TokenManager.refresh (suspiciousness: 0.78) - covered by 1 failing, 1 passing
-// 3. AuthService.validateToken (suspiciousness: 0.45) - covered by 1 passing test
+import type { RepoGraphIndex, RepoGraphNode, RepoGraphEdge } from "./types.js";
+
+export interface EgographOptions {
+  keywords: string[];
+  k: number;           // Number of hops (default: 2)
+  maxNodes: number;    // Max nodes in result (default: 100)
+  flatten: boolean;    // Return flat list vs nested graph
+  summarize: boolean;  // Include LLM-ready summary
+}
+
+export interface EgographResult {
+  nodes: RepoGraphNode[];
+  edges: RepoGraphEdge[];
+  rootNodes: string[];
+  summary?: string;
+}
+
+/**
+ * Extract k-hop egograph around keywords
+ */
+export function extractEgograph(
+  graph: RepoGraphIndex,
+  options: EgographOptions
+): EgographResult {
+  const { keywords, k, maxNodes, flatten } = options;
+  
+  // Step 1: Find seed nodes matching keywords
+  const seedNodes = findSeedNodes(graph, keywords);
+  
+  // Step 2: Expand k hops
+  const visited = new Set<string>();
+  const resultNodes: RepoGraphNode[] = [];
+  const resultEdges: RepoGraphEdge[] = [];
+  
+  const queue: Array<{ nodeId: string; depth: number }> = 
+    seedNodes.map(id => ({ nodeId: id, depth: 0 }));
+  
+  while (queue.length > 0 && resultNodes.length < maxNodes) {
+    const { nodeId, depth } = queue.shift()!;
+    
+    if (visited.has(nodeId)) continue;
+    visited.add(nodeId);
+    
+    const node = graph.nodes.get(nodeId);
+    if (node) {
+      resultNodes.push(node);
+    }
+    
+    if (depth < k) {
+      // Add neighbors
+      for (const edge of graph.edges) {
+        if (edge.source === nodeId && !visited.has(edge.target)) {
+          resultEdges.push(edge);
+          queue.push({ nodeId: edge.target, depth: depth + 1 });
+        }
+        if (edge.target === nodeId && !visited.has(edge.source)) {
+          resultEdges.push(edge);
+          queue.push({ nodeId: edge.source, depth: depth + 1 });
+        }
+      }
+    }
+  }
+  
+  return {
+    nodes: resultNodes,
+    edges: resultEdges,
+    rootNodes: seedNodes,
+    summary: options.summarize ? summarizeGraph(resultNodes, resultEdges) : undefined,
+  };
+}
+
+function findSeedNodes(graph: RepoGraphIndex, keywords: string[]): string[] {
+  const seeds: string[] = [];
+  
+  for (const [id, node] of graph.nodes) {
+    for (const keyword of keywords) {
+      if (
+        node.symbolName.toLowerCase().includes(keyword.toLowerCase()) ||
+        node.text.toLowerCase().includes(keyword.toLowerCase())
+      ) {
+        seeds.push(id);
+        break;
+      }
+    }
+  }
+  
+  return seeds;
+}
+
+function summarizeGraph(nodes: RepoGraphNode[], edges: RepoGraphEdge[]): string {
+  const defs = nodes.filter(n => n.nodeType === "def");
+  const refs = nodes.filter(n => n.nodeType === "ref");
+  
+  return `Found ${defs.length} definitions and ${refs.length} references. ` +
+    `Key symbols: ${defs.map(d => d.symbolName).slice(0, 10).join(", ")}`;
+}
 ```
 
-**期待効果:**
-- バグ修正の効率化
-- bug-huntingスキルとの統合
-- テスト駆動のデバッグワークフロー
-
-**実装ファイル:**
-- 新規: `.pi/extensions/search/tools/fault_localize.ts`
-- 新規: `.pi/lib/sbfl.ts`（SBFLアルゴリズム実装）
-- 修正: `.pi/skills/bug-hunting/SKILL.md`（統合ガイド追加）
-
----
-
-#### 6. 検索履歴とコンテキスト継承
-
-**現状:**
-- `.pi/skills/search-tools/SKILL.md` で「検索履歴記録」がv2.0.0の機能として記載されている
-- しかし、セッション間での検索履歴の継承や、関連クエリの推薦は未実装
-
-**AutoCodeRoverのアプローチ:**
-- 反復的にAPIを呼び出し、前の結果を次の検索の引数に使う
-- 文脈が十分になるまで検索を続ける
-
-**提案:**
-検索履歴を永続化し、セッション間で継承できる機能。
+### Tool Registration
 
 ```typescript
-// 検索履歴の取得
-get_search_history({
-  session: "current",  // "current" | "previous" | "all"
-  limit: 10
-})
+// In .pi/extensions/search/index.ts
 
-// コンテキスト継承
-inherit_context({
-  fromSession: "prev-session-id",
-  queries: ["AuthService", "login"]
-})
+pi.registerTool({
+  name: "search_repograph",
+  label: "Search RepoGraph",
+  description: "Extract k-hop subgraph around keywords from the RepoGraph index. Useful for code localization.",
+  parameters: Type.Object({
+    keywords: Type.Array(Type.String(), { description: "Keywords to search" }),
+    k: Type.Optional(Type.Number({ description: "Number of hops (default: 2)" })),
+    maxNodes: Type.Optional(Type.Number({ description: "Max nodes (default: 100)" })),
+    flatten: Type.Optional(Type.Boolean({ description: "Return flat list" })),
+    summarize: Type.Optional(Type.Boolean({ description: "Include summary" })),
+  }),
+  
+  async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    const cwd = ctx?.cwd ?? process.cwd();
+    const graph = await loadRepoGraph(cwd);
+    
+    if (!graph) {
+      return {
+        content: [{ type: "text", text: "Error: RepoGraph index not found. Run repograph_index first." }],
+        details: { error: "index_not_found" },
+      };
+    }
+    
+    const result = extractEgograph(graph, {
+      keywords: params.keywords,
+      k: params.k ?? 2,
+      maxNodes: params.maxNodes ?? 100,
+      flatten: params.flatten ?? false,
+      summarize: params.summarize ?? true,
+    });
+    
+    return {
+      content: [{ type: "text", text: formatEgograph(result) }],
+      details: result,
+    };
+  },
+});
 ```
-
-**期待効果:**
-- セッションをまたいだ調査の継続性
-- 関連クエリの推薦
-- 探索の効率化
-
-**実装ファイル:**
-- 新規: `.pi/extensions/search/tools/search_history.ts`
-- 新規: `.pi/extensions/search/utils/history-store.ts`
 
 ---
 
-### 優先度: 低
+## Priority 4: Framework Integration
 
-#### 7. AST要約ビューア
+### Goal
 
-**現状:**
-- `sym_index` でシンボルインデックスを生成できる
-- しかし、ファイル全体のAST要約を表示する機能はない
+Integrate RepoGraph into subagents and agent teams for improved localization.
 
-**AutoCodeRoverのアプローチ:**
-- ファイルの集合ではなくASTとして扱う
-- クラス/メソッド単位でコードを要約
-
-**提案:**
-ファイルのAST要約を表示するツール。
+### Implementation
 
 ```typescript
-ast_summary({
-  file: "src/auth/service.ts",
-  format: "tree",  // "tree" | "flat" | "json"
-  depth: 2  // クラス → メソッド → パラメータ
-})
+// .pi/extensions/repograph-localization/index.ts
 
-// 出力例:
-// AuthService
-// ├── + login(credentials: Credentials): Promise<Token>
-// ├── + logout(): void
-// └── - refreshToken(token: string): Promise<Token>
-//     └── calls: TokenManager.generate
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { loadRepoGraph, extractEgograph } from "../search/repograph/index.js";
+
+export default function (pi: ExtensionAPI) {
+  // Register as a skill that subagents can use
+  pi.registerSkill({
+    name: "repograph-localization",
+    description: "Use RepoGraph for code localization",
+    
+    async localize(task: string, cwd: string): Promise<string[]> {
+      // Extract keywords from task
+      const keywords = extractKeywords(task);
+      
+      const graph = await loadRepoGraph(cwd);
+      if (!graph) return [];
+      
+      const egograph = extractEgograph(graph, {
+        keywords,
+        k: 2,
+        maxNodes: 50,
+        flatten: true,
+        summarize: true,
+      });
+      
+      // Return relevant file:line locations
+      return egograph.nodes.map(n => `${n.file}:${n.line}`);
+    },
+  });
+  
+  // Hook into subagent context enrichment
+  pi.on("subagent:before_task", async (event, ctx) => {
+    const { task, cwd } = event;
+    const graph = await loadRepoGraph(cwd);
+    
+    if (graph) {
+      const keywords = extractKeywords(task);
+      const egograph = extractEgograph(graph, {
+        keywords,
+        k: 2,
+        maxNodes: 30,
+        flatten: true,
+        summarize: false,
+      });
+      
+      // Add to subagent context
+      event.context = event.context || {};
+      event.context.repographContext = egograph.nodes
+        .map(n => `${n.file}:${n.line} [${n.nodeType}] ${n.symbolName}`)
+        .join("\n");
+    }
+  });
+}
 ```
 
-**期待効果:**
-- ファイル構造の迅速な把握
-- 呼び出し関係の可視化
-
-**実装ファイル:**
-- 新規: `.pi/extensions/search/tools/ast_summary.ts`
-
 ---
-
-#### 8. 検索結果のランキング改善
-
-**現状:**
-- `semantic_search` はベクトル類似度でランキング
-- `code_search` は出現順で返す
-- 検索結果のランキング統合機能はない
-
-**AutoCodeRoverのアプローチ:**
-- 検索結果を統合し、ランキングする
-- 関連性の高い結果を優先
-
-**提案:**
-複数の検索結果を統合し、ランキングするヘルパー。
-
-```typescript
-merge_search_results({
-  sources: [
-    { type: "semantic", query: "authentication", weight: 0.5 },
-    { type: "symbol", query: "Auth*", weight: 0.3 },
-    { type: "code", query: "token", weight: 0.2 }
-  ],
-  deduplicate: true,
-  limit: 20
-})
-```
-
-**期待効果:**
-- 複数の検索手法の組み合わせ
-- より精度の高い結果
-
-**実装ファイル:**
-- 新規: `.pi/extensions/search/tools/merge_results.ts`
-
----
-
-## 次のステップ
-
-1. **Phase 1（高優先度）**
-   - [ ] context_explore ツールの設計詳細化
-   - [ ] sym_find の detailLevel パラメータ実装
-   - [ ] コンテキスト予算モニタリングの実装
-
-2. **Phase 2（中優先度）**
-   - [ ] search_class / search_method ツールの実装
-   - [ ] fault_localize ツールの実装（SBFLアルゴリズム）
-   - [ ] 検索履歴の永続化
-
-3. **Phase 3（低優先度）**
-   - [ ] AST要約ビューアの実装
-   - [ ] 検索結果ランキング改善
-
-## 設計上の考慮事項
-
-### 既存機能との整合性
-- 新ツールは既存の `sym_index`, `sym_find`, `code_search` を内部的に使用する
-- search-tools スキルのベストプラクティスに従う
-
-### 後方互換性
-- 既存ツールのパラメータは追加のみ（削除しない）
-- 新しいパラメータはオプションとする
-
-### パフォーマンス
-- コンテキスト予算推定は高速な近似アルゴリズムを使用
-- キャッシュを活用して重複計算を避ける
 
 ## Todo
 
-- [ ] context_explore ツールのインターフェース定義
-- [ ] sym_find の detailLevel パラメータ設計
-- [ ] トークン推定アルゴリズムの選定
-- [ ] SBFLアルゴリズム（Ochiai, Tarantula等）の調査
-- [ ] 検索履歴ストレージの設計
+### Priority 1: tree-sitter Integration
+- [x] Add web-tree-sitter dependency
+- [x] Create tree-sitter loader module
+- [x] Implement TypeScript/JavaScript grammar loading
+- [x] Implement Python grammar loading
+- [x] Create AST parser with def/ref extraction
+- [x] Add standard library filtering
+- [ ] Replace call_graph builder with AST version (optional, Phase 2)
+- [ ] Write parser tests
+
+### Priority 2: RepoGraph Module
+- [x] Define RepoGraph types
+- [x] Implement graph builder
+- [x] Add reference resolution
+- [x] Implement index persistence
+- [x] Add incremental update support
+- [ ] Write builder tests
+- [x] Register repograph_index tool
+- [x] Register repograph_query tool
+
+### Priority 3: Egograph Search
+- [x] Implement k-hop extraction
+- [x] Add keyword matching
+- [x] Implement graph summarization
+- [x] Create search_repograph tool (registered as repograph_query)
+- [ ] Write egograph tests
+
+### Priority 4: Framework Integration
+- [ ] Create repograph-localization extension
+- [ ] Implement task keyword extraction
+- [ ] Add subagent context enrichment
+- [ ] Integrate with agent teams
+- [ ] Write integration tests
 
 ---
 
-## COUNTER_EVIDENCE（自分の仮説を否定する証拠）
+## Estimation
 
-### 1. search-tools スキル v2.0.0 で既に計画されている機能
+| Phase | Description | Rounds |
+|-------|-------------|--------|
+| P1.1 | tree-sitter loader | 2-3 |
+| P1.2 | AST parser | 3-4 |
+| P1.3 | Replace call_graph | 2-3 |
+| P2.1 | Graph builder | 4-5 |
+| P2.2 | Index persistence | 2-3 |
+| P3.1 | Egograph extraction | 3-4 |
+| P3.2 | Tool registration | 2-3 |
+| P4.1 | Framework integration | 3-5 |
+| **Total** | | **21-30** |
 
-**証拠:** `.pi/skills/search-tools/SKILL.md:17-23`
+Risk buffer (+20%): 4-6 rounds
 
-```yaml
-improvements:
-  - "P1: 結果キャッシュ（TTL対応）"        # ← 既に実装済み
-  - "P1: 検索履歴記録"                    # ← 改善案6と重複
-  - "P1: Agent Hints（信頼度・次アクション提案）"  # ← 既に実装済み
-  - "P1: 検索統合ヘルパー（merge/rank/deduplicate）"  # ← 改善案8と重複
-```
-
-**影響:**
-- 改善案6「検索履歴とコンテキスト継承」の一部は既に計画されている
-- 改善案8「検索結果のランキング改善」も検索統合ヘルパーとして計画されている
-- **修正:** これらは「新規実装」ではなく「既存計画の拡張」として位置づけるべき
-
-### 2. Agent Hints で既にコンテキスト管理の萌芽がある
-
-**証拠:** `.pi/skills/search-tools/SKILL.md:56-70`
-
-```typescript
-{
-  details: {
-    hints: {
-      confidence: 0.85,
-      suggestedNextAction: "refine_pattern",  // 次アクション提案
-      alternativeTools: ["sym_find"]          // 代替ツール提案
-    }
-  }
-}
-```
-
-**影響:**
-- 改善案3「コンテキスト予算モニタリング」の `suggestedAction` は既に類似機能がある
-- **修正:** 新しい `estimatedTokens` と `contextBudgetWarning` を既存の `hints` 構造に統合する
-
-### 3. 既存のワークフロー統合パターン
-
-**証拠:** `.pi/skills/search-tools/SKILL.md` の「統合ワークフロー」セクション
-
-```
-ワークフロー1: 新機能実装箇所の特定
-  1. file_candidates で関連ファイルを特定
-  2. code_search でパターンを検索
-  3. sym_find で具体的な関数定義を特定
-```
-
-**影響:**
-- 改善案1「context_explore」は既存のワークフローをツール化するだけ
-- エージェントが既にこのパターンを実行できるなら、新しいツールの価値は限定的
-- **反論:** しかし、ツール化することで API 呼び出し回数を削減できる利点は残る
+**Final Estimate**: 25-36 tool call rounds
 
 ---
 
-## 境界条件（この結論が成立しない条件）
+## Considerations
 
-### 1. LLMのコンテキストウィンドウが大幅に拡大した場合
+1. **WASM Loading**: tree-sitter grammars are WASM files (~1-2MB each). Need download caching strategy.
 
-もし GPT-5 等で 1M+ トークンのコンテキストウィンドウが標準化された場合：
-- 「文脈局所化」の重要性は低下する
-- コンテキスト予算モニタリングの必要性は減る
-- **境界:** コンテキストウィンドウ < 100K トークンの環境で有効
+2. **Language Support**: Start with TypeScript/JavaScript, expand to Python. Other languages require additional grammars.
 
-### 2. コードベースが小規模（<100ファイル）の場合
+3. **Performance**: Large repos (>10k files) may need incremental indexing similar to sym_index.
 
-小規模プロジェクトでは：
-- 検索結果が最初から少数に絞られる
-- 階層的検索の恩恵が限定的
-- **境界:** 500+ ファイルの中規模〜大規模プロジェクトで有効
+4. **Backward Compatibility**: Keep existing call_graph tools working during transition.
 
-### 3. リアルタイム性が最優先される場合
+5. **Testing**: Need sample projects for each language to test parsing accuracy.
 
-緊急のバグ修正などでは：
-- 階層的検索よりも直接的な検索が好まれる
-- コンテキスト最適化よりも速度が優先
-- **境界:** 探索的タスク（理解・リファクタリング）で有効
-
----
-
-## 代替仮説（採用しなかったアプローチと理由）
-
-### 代替案A: 既存ツールの拡張ではなく新ツール追加
-
-**却下理由:**
-- 既存の `sym_find`, `code_search` は広く使われている
-- 新ツールは学習コストがかかる
-- 既存ツールのパラメータ追加の方が後方互換性が高い
-
-### 代替案B: スキルレベルでの対応（ツール拡張なし）
-
-**却下理由:**
-- スキルはガイドラインであり、強制力がない
-- トークン推定などはツールレベルで実装すべき
-- エージェントがスキルに従わない場合の対応がない
-
-### 代替案C: エージェント自身に判断を委ねる
-
-**却下理由:**
-- 現状のエージェントはコンテキストサイズを意識していない
-- 明示的なシグナル（estimatedTokens 等）がないと判断できない
-- AutoCodeRover論文も「ツールレベルの設計」を重視している
+6. **Memory**: RepoGraph with line-level nodes can be large. Consider node aggregation for files >1000 lines.

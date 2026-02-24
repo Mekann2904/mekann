@@ -31,7 +31,16 @@
 
 import { execute, buildFdArgs, checkToolAvailability } from "../utils/cli.js";
 import type { FileCandidatesInput, FileCandidatesOutput, FileCandidate } from "../types.js";
-import { truncateResults, parseFdOutput, createErrorResponse, relativePath, createSimpleHints } from "../utils/output.js";
+import {
+	truncateResults,
+	parseFdOutput,
+	createErrorResponse,
+	relativePath,
+	createHintsWithBudget,
+	estimateFileCandidateTokens,
+	estimateResponseTokens,
+	DEFAULT_CONTEXT_BUDGET,
+} from "../utils/output.js";
 import { SearchToolError, isSearchToolError, getErrorMessage } from "../utils/errors.js";
 import { DEFAULT_LIMIT, DEFAULT_EXCLUDES } from "../utils/constants.js";
 import { getSearchCache, getCacheKey } from "../utils/cache.js";
@@ -243,11 +252,14 @@ export async function fileCandidates(
 		}
 	}
 
-	// 4. Generate hints
-	const hints = createSimpleHints(
+	// 4. Estimate tokens and generate hints with budget
+	const estimatedTokens = estimateResponseTokens(result, estimateFileCandidateTokens);
+	const hints = createHintsWithBudget(
 		TOOL_NAME,
 		result.results.length,
 		result.truncated,
+		estimatedTokens,
+		DEFAULT_CONTEXT_BUDGET,
 		extractQuery(TOOL_NAME, params)
 	);
 
