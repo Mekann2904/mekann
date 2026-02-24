@@ -2,7 +2,7 @@
 title: mekann - pi拡張機能コレクション
 category: meta
 audience: new-user, developer
-last_updated: 2026-02-17
+last_updated: 2026-02-25
 tags: [overview, mekann]
 related: [docs/README.md, docs/01-getting-started/01-quick-start.md]
 ---
@@ -74,7 +74,7 @@ pi remove https://github.com/Mekann2904/mekann
 | **agent_team_*** | `agent-teams.ts` | エージェントチームの作成・実行 | [→](docs/02-user-guide/09-agent-teams.md) |
 | **ul-dual-mode** | `ul-dual-mode.ts` | デュアルモード強制実行 | [→](docs/02-user-guide/10-ul-dual-mode.md) |
 | **ul-workflow** | `ul-workflow.ts` | Research-Plan-Annotate-Implement ワークフロー（計画承認必須） | [→](docs/02-user-guide/16-ul-workflow.md) |
-| **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | 新規 |
+| **cross-instance-runtime** | `cross-instance-runtime.ts` | 複数piインスタンス間の並列数自動調整（プロバイダー/モデル別） | [→](docs/02-user-guide/12-cross-instance-runtime.md) |
 
 ### ユーティリティ
 
@@ -87,11 +87,12 @@ pi remove https://github.com/Mekann2904/mekann
 | **kitty-status-integration** | `kitty-status-integration.ts` | kittyターミナル連携 | [→](docs/02-user-guide/11-utilities.md) |
 | **skill-inspector** | `skill-inspector.ts` | スキル割り当て状況の表示 | [→](docs/02-user-guide/11-utilities.md) |
 | **search** | `extensions/search/` | 高速コード検索（file_candidates, code_search, sym_index, sym_find） | [→](docs/02-user-guide/15-search-tools.md) |
-| **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | [→](docs/02-user-guide/01-extensions.md#動的ツール) |
+| **dynamic-tools** | `dynamic-tools.ts` | 動的ツール生成・実行（create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection） | [→](docs/02-user-guide/13-dynamic-tools.md) |
 | **invariant-pipeline** | `invariant-pipeline.ts` | 形式仕様からインバリアント、テストコード自動生成（generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver） | [→](docs/02-user-guide/14-invariant-pipeline.md) |
 | **startup-context** | `startup-context.ts` | 初回プロンプト時のコンテキスト注入 | [→](docs/02-user-guide/01-extensions.md#スタートアップコンテキスト) |
-| **self-improvement-reflection** | `self-improvement-reflection.ts` | 自己改善データ基盤（データ収集、分析、哲学的考察、アクション可能な洞察） | [→](.pi/docs/self-improvement-data-platform.md) |
-| **self-improvement-dashboard** | `self-improvement-dashboard.ts` | 自己改善データのTUI可視化ダッシュボード | [→](.pi/docs/self-improvement-data-platform.md) |
+| **self-improvement-reflection** | `self-improvement-reflection.ts` | 自己改善データ基盤（データ収集、分析、哲学的考察、アクション可能な洞察） | [→](docs/02-user-guide/17-self-improvement.md) |
+| **self-improvement-dashboard** | `self-improvement-dashboard.ts` | 自己改善データのTUI可視化ダッシュボード | [→](docs/02-user-guide/17-self-improvement.md) |
+| **live-monitor-base** | `lib/live-monitor-base.ts` | ライブモニターベース（エージェント/チームのリアルタイム監視） | [→](docs/02-user-guide/19-live-monitoring.md) |
 
 ### 共有ライブラリ
 
@@ -104,9 +105,9 @@ pi remove https://github.com/Mekann2904/mekann
 | **storage-lock** | `lib/storage-lock.ts` | ファイルロックとアトミック書き込みヘルパー |
 | **skill-registry** | `lib/skill-registry.ts` | スキル検出・解決・フォーマット |
 | **agent-types** | `lib/agent-types.ts` | エージェント関連型定義 |
-| **cross-instance-coordinator** | `lib/cross-instance-coordinator.ts` | 複数piインスタンス間の協調制御（新規） |
-| **provider-limits** | `lib/provider-limits.ts` | プロバイダー/モデル別レート制限定義（新規） |
-| **adaptive-rate-controller** | `lib/adaptive-rate-controller.ts` | 429エラーからの適応学習（新規） |
+| **cross-instance-coordinator** | `lib/cross-instance-coordinator.ts` | 複数piインスタンス間の協調制御 |
+| **provider-limits** | `lib/provider-limits.ts` | プロバイダー/モデル別レート制限定義 |
+| **adaptive-rate-controller** | `lib/adaptive-rate-controller.ts` | 429エラーからの適応学習 |
 | **agent-utils** | `lib/agent-utils.ts` | エージェントユーティリティ |
 | **error-utils** | `lib/error-utils.ts` | エラーハンドリングユーティリティ |
 | **format-utils** | `lib/format-utils.ts` | フォーマットユーティリティ |
@@ -326,11 +327,13 @@ mekann/
 | | `code_search` | コード内容の全文検索 |
 | | `sym_index` | シンボルインデックス構築 |
 | | `sym_find` | シンボル定義・参照検索 |
+| | `repograph_search` | 依存関係グラフを使用したバグローカライゼーション（RepoGraph） |
 | **動的ツール** | `create_tool` | 動的ツール生成 |
 | | `run_dynamic_tool` | 動的ツール実行 |
 | | `list_dynamic_tools` | 動的ツール一覧表示 |
 | | `delete_dynamic_tool` | 動的ツール削除 |
-| | `tool_reflection` | 実行後の反省とツール生成判定 |
+| | `tool_reflection` | ツールの品質分析と改善提案 |
+| | `get_tool_audit_log` | ツール操作の監査ログ取得 |
 | **クロスインスタンス** | `pi_instance_status` | 複数piインスタンスの状態確認 |
 | | `pi_model_limits` | プロバイダー/モデル別レート制限確認 |
 | **自己改善** | `self_reflect` | 自己改善データ基盤による振り返り（summary, insights, generate, perspectives, analyze） |
@@ -459,6 +462,16 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照してください
 
 ## Version
+
+**v0.4.0** (2026-02-25)
+
+v0.3.1からの変更点:
+- クロスインスタンスランタイムを追加（マルチインスタンス協調とレート制限管理）
+- ダイナミックツールを追加（実行時ツール生成、セキュリティ、品質チェック）
+- 包括的な検索ツールドキュメントを追加
+- 自己改善のユーザー向けドキュメントを追加
+- ライブ監視のドキュメントを追加
+- メディエーターのドキュメントを追加
 
 **v0.3.1** (2026-02-15)
 
