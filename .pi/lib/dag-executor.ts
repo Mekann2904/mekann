@@ -1,31 +1,33 @@
 /**
  * @abdd.meta
  * path: .pi/lib/dag-executor.ts
- * role: DAG構造のタスクを実行するエンジン
- * why: 依存関係を解決しながらタスクを並列実行し、LLMCompilerの概念を実装するため
- * related: .pi/lib/dag-types.ts, .pi/lib/dag-validator.ts, .pi/lib/task-dependencies.ts, .pi/lib/concurrency.ts
+ * role: DAG構造のタスクを実行するエンジン（DynTaskMAS統合版）
+ * why: 依存関係を解決しながらタスクを並列実行し、LLMCompilerとDynTaskMASの概念を実装するため
+ * related: .pi/lib/dag-types.ts, .pi/lib/dag-validator.ts, .pi/lib/task-dependencies.ts, .pi/lib/concurrency.ts, .pi/lib/dag-weight-calculator.ts, .pi/lib/priority-scheduler.ts
  * public_api: DagExecutor, DagExecutorOptions, TaskExecutor, executeDag
  * invariants: 実行中は依存関係の順序が保証される
  * side_effects: タスク実行、コールバック呼び出し
  * failure_modes: タスク実行エラー、中止シグナル、依存関係エラー
  * @abdd.explain
- * overview: タスクプラン（DAG）を受け取り、依存関係を解決しながら並列実行する
+ * overview: タスクプラン（DAG）を受け取り、DynTaskMASの重みベーススケジューリングで最適化実行する
  * what_it_does:
  *   - 依存グラフの構築と初期化
+ *   - 重み計算による優先度スケジューリング（オプトイン）
  *   - 実行可能タスクの特定と並列実行
  *   - 依存タスクからのコンテキスト注入
+ *   - 動的重み更新（完了/失敗時）
  *   - 結果の収集と統計の生成
  * why_it_exists:
  *   - 複雑なタスクを独立したサブタスクに分解し、並列実行でレイテンシを削減する
- *   - 既存のrunWithConcurrencyLimitとTaskDependencyGraphを統合する
+ *   - DynTaskMAS論文の重みベーススケジューリングで実行効率を向上させる
  * scope:
  *   in: TaskPlan、TaskExecutor関数、オプション
  *   out: DagResult（タスク結果、統計、ステータス）
  */
 
 // File: .pi/lib/dag-executor.ts
-// Description: Executes tasks with dependency resolution (LLMCompiler integration).
-// Why: Enables dependency-aware parallel task execution for reduced latency.
+// Description: Executes tasks with dependency resolution (LLMCompiler + DynTaskMAS integration).
+// Why: Enables dependency-aware parallel task execution with weight-based scheduling optimization.
 // Related: .pi/lib/dag-types.ts, .pi/lib/dag-validator.ts, .pi/lib/task-dependencies.ts, .pi/lib/concurrency.ts
 
 import { TaskDependencyGraph, TaskDependencyNode } from "./task-dependencies.js";
@@ -33,6 +35,16 @@ import { runWithConcurrencyLimit, ConcurrencyRunOptions } from "./concurrency.js
 import { TaskPlan, TaskNode, DagTaskResult, DagResult } from "./dag-types.js";
 import { createChildAbortController } from "./abort-utils.js";
 import { DagExecutionError } from "./dag-errors.js";
+import {
+  calculateTotalTaskWeight,
+  DEFAULT_WEIGHT_CONFIG,
+  type WeightConfig,
+} from "./dag-weight-calculator.js";
+import {
+  PriorityScheduler,
+  DEFAULT_SCHEDULER_CONFIG,
+  type SchedulerConfig,
+} from "./priority-scheduler.js";
 
 /**
  * DAG実行のオプション
@@ -44,6 +56,9 @@ import { DagExecutionError } from "./dag-errors.js";
  * @param onTaskStart - タスク開始時コールバック
  * @param onTaskComplete - タスク完了時コールバック
  * @param onTaskError - タスクエラー時コールバック
+ * @param useWeightBasedScheduling - DynTaskMAS重みベーススケジューリングを使用するか
+ * @param weightConfig - 重み計算設定
+ * @param schedulerConfig - スケジューラ設定
  */
 export interface DagExecutorOptions {
   /** 中止シグナル */
@@ -60,6 +75,12 @@ export interface DagExecutorOptions {
   onTaskComplete?: (taskId: string, result: DagTaskResult) => void;
   /** タスクエラー時コールバック */
   onTaskError?: (taskId: string, error: Error) => void;
+  /** DynTaskMAS重みベーススケジューリングを使用するか（デフォルト: true） */
+  useWeightBasedScheduling?: boolean;
+  /** 重み計算設定 */
+  weightConfig?: WeightConfig;
+  /** スケジューラ設定 */
+  schedulerConfig?: SchedulerConfig;
 }
 
 /**
@@ -97,10 +118,13 @@ interface BatchResult<T> {
 }
 
 /**
- * DAG Executor - 依存関係解決付きタスク実行エンジン
+ * DAG Executor - 依存関係解決付きタスク実行エンジン（DynTaskMAS統合版）
  * @summary DAG実行エンジン
  * @example
- * const executor = new DagExecutor(plan, { maxConcurrency: 3 });
+ * const executor = new DagExecutor(plan, { 
+ *   maxConcurrency: 3,
+ *   useWeightBasedScheduling: true 
+ * });
  * const result = await executor.execute(async (task, context) => {
  *   return await runSubagent(task.assignedAgent, task.description);
  * });
@@ -111,10 +135,12 @@ export class DagExecutor<T = unknown> {
   private results: Map<string, DagTaskResult<T>>;
   private plan: TaskPlan;
   private options: Required<
-    Pick<DagExecutorOptions, "maxConcurrency" | "abortOnFirstError">
+    Pick<DagExecutorOptions, "maxConcurrency" | "abortOnFirstError" | "useWeightBasedScheduling">
   > &
     DagExecutorOptions;
   private startTime: number = 0;
+  private scheduler: PriorityScheduler | null = null;
+  private taskWeights: Map<string, number> = new Map();
 
   /**
    * DAG Executorを作成
@@ -131,8 +157,19 @@ export class DagExecutor<T = unknown> {
     this.options = {
       maxConcurrency: 4,
       abortOnFirstError: false,
+      useWeightBasedScheduling: true,
       ...options,
     };
+
+    // DynTaskMASスケジューラの初期化
+    if (this.options.useWeightBasedScheduling) {
+      const schedulerConfig: SchedulerConfig = {
+        maxConcurrency: this.options.maxConcurrency,
+        starvationPreventionInterval: 30000,
+        ...this.options.schedulerConfig,
+      };
+      this.scheduler = new PriorityScheduler(schedulerConfig);
+    }
 
     this.initializeGraph();
   }
@@ -173,6 +210,46 @@ export class DagExecutor<T = unknown> {
         );
       }
     }
+
+    // DynTaskMAS: 初期重みを計算
+    if (this.options.useWeightBasedScheduling) {
+      this.calculateAllTaskWeights();
+    }
+  }
+
+  /**
+   * 全タスクの重みを計算
+   * DynTaskMAS論文のW(v_i, v_j) = α·C(v_j) + β·I(v_i, v_j)
+   * @summary 重み計算
+   * @internal
+   */
+  private calculateAllTaskWeights(): void {
+    const weightConfig = this.options.weightConfig ?? DEFAULT_WEIGHT_CONFIG;
+
+    for (const task of this.plan.tasks) {
+      const weight = calculateTotalTaskWeight(task, this.taskNodes, weightConfig);
+      this.taskWeights.set(task.id, weight);
+    }
+  }
+
+  /**
+   * 指定タスクの重みを更新（完了/失敗時）
+   * @summary 重み更新
+   * @param taskId - タスクID
+   * @param status - 新しいステータス
+   * @internal
+   */
+  private updateTaskWeight(taskId: string, status: "completed" | "failed"): void {
+    if (!this.options.useWeightBasedScheduling) return;
+
+    if (status === "completed") {
+      // 完了タスクへの依存重みを0に
+      this.taskWeights.set(taskId, 0);
+    } else if (status === "failed") {
+      // 失敗タスクの重みを1.5倍に増加（再試行優先）
+      const currentWeight = this.taskWeights.get(taskId) ?? 0;
+      this.taskWeights.set(taskId, currentWeight * 1.5);
+    }
   }
 
   /**
@@ -210,6 +287,7 @@ export class DagExecutor<T = unknown> {
 
   /**
    * タスクのバッチを並列実行
+   * DynTaskMAS: 重みベーススケジューリングを適用
    * @summary バッチ実行
    * @param tasks - 実行対象のタスクノード
    * @param executor - タスク実行関数
@@ -220,8 +298,27 @@ export class DagExecutor<T = unknown> {
     executor: TaskExecutor<T>,
     signal?: AbortSignal,
   ): Promise<void> {
-    // バッチアイテムを準備
-    const taskItems: BatchItem[] = tasks.map((node) => {
+    // DynTaskMAS: 重みベーススケジューリングを適用
+    let orderedTasks = tasks;
+    if (this.options.useWeightBasedScheduling && this.scheduler) {
+      const taskNodes = tasks
+        .map((n) => this.taskNodes.get(n.id))
+        .filter((t): t is TaskNode => t !== undefined);
+
+      const scheduledTaskNodes = this.scheduler.scheduleTasks(taskNodes, this.taskWeights);
+      const scheduledIds = new Set(scheduledTaskNodes.map((t) => t.id));
+      
+      // スケジュール順に並べ替え
+      orderedTasks = tasks
+        .filter((n) => scheduledIds.has(n.id))
+        .sort((a, b) => {
+          const aIdx = scheduledTaskNodes.findIndex((t) => t.id === a.id);
+          const bIdx = scheduledTaskNodes.findIndex((t) => t.id === b.id);
+          return aIdx - bIdx;
+        });
+    }
+    // バッチアイテムを準備（重み順でソート済み）
+    const taskItems: BatchItem[] = orderedTasks.map((node) => {
       const taskNode = this.taskNodes.get(node.id)!;
       const context = this.buildContext(taskNode);
 
@@ -251,9 +348,15 @@ export class DagExecutor<T = unknown> {
 
       if (result.status === "completed") {
         this.graph.markCompleted(result.taskId);
+        // DynTaskMAS: 完了タスクの重みを更新
+        this.updateTaskWeight(result.taskId, "completed");
+        // スケジューラに完了を記録
+        this.scheduler?.markCompleted(result.taskId);
         this.options.onTaskComplete?.(result.taskId, this.results.get(result.taskId)!);
       } else {
         this.graph.markFailed(result.taskId, result.error);
+        // DynTaskMAS: 失敗タスクの重みを更新
+        this.updateTaskWeight(result.taskId, "failed");
         this.options.onTaskError?.(result.taskId, result.error!);
 
         if (this.options.abortOnFirstError) {
@@ -352,7 +455,7 @@ export class DagExecutor<T = unknown> {
     const skippedTaskIds: string[] = [];
 
     // 結果を分類
-    for (const [id, result] of this.results) {
+    for (const [id, result] of Array.from(this.results.entries())) {
       if (result.status === "completed") {
         completedTaskIds.push(id);
       } else if (result.status === "failed") {
