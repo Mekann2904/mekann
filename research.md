@@ -1,365 +1,314 @@
-# Research Report: M1-Parallel Paper Integration Analysis
+# Research: Paper Concepts Integration Analysis
 
 ## Executive Summary
 
-The current agent-teams system already implements several core concepts from the M1-Parallel paper, but lacks key advanced features like **early-stop**, **diverse planning**, and **LLM-based aggregation**.
+The mekann system already implements significant portions of the paper concepts. Key gaps exist in: (1) Tool Classifier for automatic grouping, (2) Optimal Model Combination patterns, and (3) Token reduction via null replacement.
 
 ---
 
-## 1. Existing Parallel Execution Functionality
+## 1. Current System Analysis
 
-### 1.1 agent_team_run_parallel Implementation
+### 1.1 Tool Compiler (`tool-compiler.ts` + `tool-fuser.ts`)
 
-**Location**: `.pi/extensions/agent-teams/extension.ts` (lines 1216-1800)
+**Current Implementation:**
+- Tool fusion via `compile_tools()` groups independent tool calls
+- Dependency graph analysis (DAG-based)
+- Topological sort for execution order
+- Token savings calculation
+- Parallel execution via `execute_compiled()`
 
-**Current Behavior**:
-- Executes multiple teams concurrently using `runWithConcurrencyLimit()`
-- Uses **adaptive parallelism** controlled by `adaptivePenalty` controller
-- Respects runtime capacity limits via `acquireRuntimeDispatchPermit()`
-- All teams run to completion - **NO early-stop mechanism**
-
-**Key Code Pattern**:
+**Key Code:**
 ```typescript
-const results = await runWithConcurrencyLimit(
-  enabledTeams,
-  appliedTeamParallelism,  // Concurrent team limit
-  async (team) => { ... }
-);
+// tool-compiler.ts:69-76
+export function integrateWithSubagents(
+  tools: ToolCall[],
+  fuserConfig?: Partial<FusionConfig>
+): { compiled: CompilationResult; shouldUseFusion: boolean }
 ```
 
-### 1.2 subagent_run_parallel Implementation
+**Gap vs Paper:**
+| Feature | Paper | mekann | Gap |
+|---------|-------|--------|-----|
+| Tool Classifier | Yes | No | HIGH |
+| Multi Calling Prompt | Yes | Partial | MEDIUM |
+| Result Integration | Yes | No | MEDIUM |
+| Dependency Analysis | Yes | Yes | NONE |
+| Parallel Execution | Yes | Yes | NONE |
 
-**Location**: `.pi/extensions/subagents.ts` (lines 824-1140)
+### 1.2 Subagent System (`subagents.ts`)
 
-**Current Behavior**:
-- Similar pattern to agent_team_run_parallel
-- Uses `runWithConcurrencyLimit()` for parallel execution
-- All subagents run to completion - **NO early-stop mechanism**
+**Current Implementation:**
+- Per-subagent model/provider override (`SubagentDefinition.model`, `.provider`)
+- Parallel execution via `subagent_run_parallel`
+- DAG execution via `subagent_run_dag` with `DagExecutor`
+- DynTaskMAS weight-based scheduling integrated
+- Runtime capacity management with adaptive penalty
 
-### 1.3 Runtime Load Guard (Parallelism Control)
-
-**Location**: `.pi/extensions/agent-runtime.ts`
-
-**Mechanism**:
-1. **Reservation-based capacity management**:
-   - `tryReserveRuntimeCapacity()` - immediate capacity check
-   - `reserveRuntimeCapacity()` - wait with backoff for capacity
-   - `acquireRuntimeDispatchPermit()` - unified admission control
-
-2. **Dynamic limits**:
-   - `maxTotalActiveLlm` - total concurrent LLM calls
-   - `maxParallelTeamsPerRun` - concurrent teams per run
-   - `maxParallelTeammatesPerTeam` - concurrent members per team
-   - Cross-instance coordination via `getMyParallelLimit()`
-
-3. **Adaptive penalty controller**:
-   - Raises penalty on rate-limit/capacity errors
-   - Lowers penalty on success
-   - Reduces effective parallelism dynamically
-
----
-
-## 2. Early-Stop Functionality
-
-### 2.1 Current State: **NOT IMPLEMENTED**
-
-**Finding**: Neither `agent_team_run_parallel` nor `subagent_run_parallel` implements early-stop.
-
-**Evidence**:
-- Both use `runWithConcurrencyLimit()` which waits for ALL tasks
-- No `Promise.race()` or abort-on-first-success pattern
-- No configurable termination conditions
-
-### 2.2 Related: Abort-on-Error in DAG Execution
-
-**Location**: `.pi/extensions/subagents.ts` - `subagent_run_dag`
-
+**Key Code:**
 ```typescript
-abortOnFirstError: Type.Optional(Type.Boolean({ 
-  description: "Stop on first task failure (default: false)" 
-})),
-```
-
-This is the **closest existing feature** but only handles failures, not early-success.
-
-### 2.3 Gap Analysis for M1-Parallel Early-Stop
-
-| Feature | Current Status | M1-Parallel Requirement |
-|---------|---------------|------------------------|
-| First-success stop | Missing | Required |
-| Success criteria check | Partial (in finalJudge) | Required at runtime |
-| Abort signal propagation | Implemented | Available |
-| Per-team completion callback | Implemented | Available |
-
----
-
-## 3. Aggregation Functionality
-
-### 3.1 runFinalJudge Implementation
-
-**Location**: `.pi/extensions/agent-teams/judge.ts`
-
-**Current Behavior**:
-- **Deterministic rule-based judge** (no LLM call for final verdict)
-- Computes uncertainty proxy: `uIntra`, `uInter`, `uSys`
-- Returns verdict: `trusted`, `partial`, or `untrusted`
-
-```typescript
-export async function runFinalJudge(input: {
-  team: TeamDefinition;
-  task: string;
-  strategy: TeamStrategy;
-  memberResults: TeamMemberResult[];
-  proxy: TeamUncertaintyProxy;
-  timeoutMs: number;
-  signal?: AbortSignal;
-}): Promise<TeamFinalJudge>
-```
-
-### 3.2 Uncertainty Computation
-
-**Mechanism**:
-- **uIntra**: Internal consistency (failed ratio, low confidence, no evidence, contradiction)
-- **uInter**: Inter-member agreement (conflict ratio, confidence spread)
-- **uSys**: System uncertainty (weighted combination)
-
-**Collapse Signals**:
-- `high_intra_uncertainty` (threshold: 0.55)
-- `high_inter_disagreement` (threshold: 0.55)
-- `high_system_uncertainty` (threshold: 0.60)
-- `teammate_failures` (threshold: 30%)
-- `insufficient_evidence` (threshold: 50%)
-
-### 3.3 Aggregation Strategies: **NOT IMPLEMENTED**
-
-| Strategy | M1-Parallel | Current System |
-|----------|-------------|----------------|
-| Majority voting | Yes | **No** |
-| LLM-based aggregation | Yes | **No** (rule-based only) |
-| Best-of-k selection | Yes | **No** |
-| Weighted confidence merge | Possible | **Partial** (via uncertainty proxy) |
-
-### 3.4 Result Aggregation (Parallel Teams)
-
-**Location**: `.pi/extensions/agent-teams/result-aggregation.ts`
-
-```typescript
-export function resolveTeamParallelRunOutcome(
-  results: Array<{
-    team: TeamDefinition;
-    runRecord: TeamRunRecord;
-    memberResults: TeamMemberResult[];
-  }>,
-): RunOutcomeSignal & {
-  failedTeamIds: string[];
-  partialTeamIds: string[];
-  failedMemberIdsByTeam: Record<string, string[]>;
+// subagents.ts:83-90
+interface SubagentDefinition {
+  provider?: string;  // Model override support
+  model?: string;     // Model override support
+  // ...
 }
 ```
 
-**Current behavior**: Collects all results, categorizes success/partial/failure - **no selection strategy**.
+**Gap vs Paper:**
+| Feature | Paper | mekann | Gap |
+|---------|-------|--------|-----|
+| Planner Model | GPT-3.5t | Not specified | LOW |
+| Solver Model | GPT-4o | Not specified | LOW |
+| Model per role | Yes | Yes | NONE |
 
----
+### 1.3 DAG Executor (`dag-executor.ts`)
 
-## 4. Failed Member Retry Functionality
+**Current Implementation:**
+- DynTaskMAS weight-based scheduling
+- Priority scheduling with starvation prevention
+- Context injection from dependencies
+- Concurrency limiting
 
-### 4.1 failedMemberRetryRounds Implementation
-
-**Location**: `.pi/extensions/agent-teams/team-orchestrator.ts`
-
-**Current Behavior**:
+**Key Code:**
 ```typescript
-const failedMemberRetryRounds = normalizeFailedMemberRetryRounds(
-  input.failedMemberRetryRounds,
-  DEFAULT_FAILED_MEMBER_RETRY_ROUNDS,  // 0 in stable profile
-  STABLE_AGENT_TEAM_RUNTIME,
-);
+// dag-executor.ts:105-114
+export interface DagExecutorOptions {
+  useWeightBasedScheduling?: boolean;  // DynTaskMAS integration
+  weightConfig?: WeightConfig;
+  schedulerConfig?: SchedulerConfig;
+}
 ```
 
-**Retry Logic** (in `executeFailedMemberRetries`):
-1. Identify failed members after initial phase
-2. Filter by `shouldRetryFailedMemberResult()`:
-   - Excludes rate-limit/capacity errors
-   - Allows timeout and transient errors
-3. Retry up to `failedMemberRetryRounds` times
-4. Track `recoveredMembers` set
+### 1.4 Cross-Instance Coordinator (`cross-instance-coordinator.ts`)
 
-### 4.2 Inter-Team Failure Sharing: **NOT IMPLEMENTED**
+**Current Implementation:**
+- File-based instance registration
+- Heartbeat-based liveness detection
+- Work stealing with distributed locks
+- Model-specific parallel limits
 
-**Finding**: No global memory for sharing failure information between teams.
+### 1.5 Provider Limits (`provider-limits.ts`)
 
-**Current State**:
-- Each team has its own `communicationAudit` log
-- No cross-team memory or shared state
-- Retry decisions are **per-team local**
-
-### 4.3 Gap Analysis for M1-Parallel Global Memory
-
-| Feature | Current Status | M1-Parallel Requirement |
-|---------|---------------|------------------------|
-| Intra-team failure sharing | Implemented via communication | Team-local |
-| Cross-team failure memory | Missing | Required |
-| Error type classification | Implemented | Available |
-| Adaptive retry policy | Partial | Enhanced |
+**Current Implementation:**
+- Per-provider/model/tier RPM/TPM limits
+- Concurrency limits
+- User-configurable overrides
 
 ---
 
-## 5. Plan Generation Functionality
+## 2. Concept-by-Concept Integration Assessment
 
-### 5.1 Current State: **SINGLE PLAN ONLY**
+### 2.1 Concurrent API Calls
 
-**Finding**: The system executes a single fixed plan per team - no diverse/repeated planning.
+**Technical Feasibility:** HIGH
 
-**Evidence**:
-- `agent_team_run_parallel` uses static team definitions
-- No plan generation or mutation
-- No temperature-based diversity
+**Current Affinity:** HIGH
+- `ToolFuser` already groups tools
+- `runWithConcurrencyLimit()` supports parallel execution
+- Integration hooks exist in `integrateWithSubagents()`
 
-### 5.2 Communication Context as "Discussion"
+**Required New Development:**
+1. **Tool Classifier** - Classify tools by purpose (search, read, write)
+2. **Multi Calling Prompt** - Prompt template for grouped tool invocation
+3. **Result Aggregator** - Merge results from parallel calls
 
-**Current Behavior**:
-- Teams communicate via `communicationRounds`
-- Each round shares partner outputs
-- Final judge evaluates consensus
+**Estimated Effort:** 2-3 days
 
-This is closer to **discussion-based refinement** than diverse planning.
-
-### 5.3 Gap Analysis for M1-Parallel Planning
-
-| Feature | Current Status | M1-Parallel Requirement |
-|---------|---------------|------------------------|
-| Diverse planning | Missing | k different plans |
-| Repeated planning | Missing | k independent runs |
-| Temperature variation | Missing | Diversity control |
-| Plan selection | N/A | Aggregation after |
-
----
-
-## 6. Integration Opportunities
-
-### 6.1 Early-Stop Integration Points
-
-**Minimal Change**:
+**Implementation Path:**
 ```typescript
-// In agent_team_run_parallel
-const results = await runWithEarlyStop({
-  teams: enabledTeams,
-  parallelism: appliedTeamParallelism,
-  stopCondition: (completed, total) => {
-    // Check if any team achieved high confidence
-    return completed.some(r => r.finalJudge?.confidence > 0.9);
-  },
-  signal,
-});
+// New: lib/tool-classifier.ts
+interface ToolClass {
+  category: "search" | "read" | "write" | "execute";
+  purpose: string;
+  canParallelize: boolean;
+}
+
+function classifyTool(tool: ToolCall): ToolClass;
+
+// Enhance: lib/tool-fuser.ts
+function groupByClassification(tools: ToolCall[]): Map<ToolClass, ToolCall[]>;
 ```
 
-**Required Changes**:
-1. Add `earlyStop` option to tool parameters
-2. Implement `runWithEarlyStop()` utility (Promise.race pattern)
-3. Add runtime success criteria checking
+### 2.2 Optimal Model Combination
 
-### 6.2 Aggregation Strategy Integration
+**Technical Feasibility:** HIGH
 
-**Minimal Change**:
+**Current Affinity:** MEDIUM
+- SubagentDefinition supports model/provider per agent
+- No explicit Planner/Solver/Worker role distinction
+
+**Required New Development:**
+1. **Role-based Model Selection** - Map roles to optimal models
+2. **Model Configuration Presets** - "planner", "solver", "worker" profiles
+3. **Cost/Performance Tracking** - Validate paper's claim
+
+**Estimated Effort:** 1-2 days
+
+**Implementation Path:**
 ```typescript
-// Add to runFinalJudge or new function
-type AggregationStrategy = 
-  | 'rule-based'  // Current behavior
-  | 'majority-vote'
-  | 'llm-aggregate'
-  | 'best-of-k';
+// New: lib/model-combination.ts
+interface ModelCombinationConfig {
+  planner: { provider: string; model: string };
+  solver: { provider: string; model: string };
+  worker: { provider: string; model: string };
+}
 
-async function aggregateTeamResults(
-  results: TeamResult[],
-  strategy: AggregationStrategy
-): Promise<AggregatedResult>
+const REWOO_PRESET: ModelCombinationConfig = {
+  planner: { provider: "openai", model: "gpt-3.5-turbo" },
+  solver: { provider: "openai", model: "gpt-4o" },
+  worker: { provider: "anthropic", model: "claude-3-5-haiku" },
+};
 ```
 
-### 6.3 Diverse Planning Integration
+### 2.3 ReWOO Workflow
 
-**Larger Change**:
-- Requires plan generation capability
-- Could integrate with Task Planner Skill
-- Temperature control for LLM diversity
+**Technical Feasibility:** MEDIUM
 
----
+**Current Affinity:** HIGH
+- `subagent_run_dag` implements DAG execution
+- Planner -> Worker -> Solver mapping exists implicitly
+- DynTaskMAS scheduling for efficiency
 
-## 7. Architecture Compatibility
+**Key Similarity with UL Workflow:**
+| ReWOO Phase | UL Workflow Phase | mekann Component |
+|-------------|-------------------|------------------|
+| Planner | Research + Plan | Main agent + DAG builder |
+| Worker | Implement | `subagent_run` / `agent_team_run` |
+| Solver | Final output | Main agent aggregation |
 
-### 7.1 Compatible Patterns
+**Key Difference:**
+- ReWOO: Planner generates complete plan upfront
+- UL Workflow: Interactive annotation cycle with user
+- mekann: Supports both via `plan` parameter in `subagent_run_dag`
 
-| M1-Parallel Concept | Compatible With | Changes Needed |
-|---------------------|-----------------|----------------|
-| Early-stop | `runWithConcurrencyLimit` | Replace with race-aware version |
-| Aggregation | `runFinalJudge` | Add strategy parameter |
-| Retry with memory | `failedMemberRetryRounds` | Add global memory store |
-| Diverse planning | Team definitions | Plan generation layer |
+**Estimated Effort:** 1 day (documentation + presets)
 
-### 7.2 Incompatible/Risky Areas
+### 2.4 Exception Handling Token Reduction
 
-1. **Stable profile constraint**: Current system prioritizes determinism over optimization
-2. **Capacity management**: Early-stop may strand reservations
-3. **Cross-team coordination**: Global memory requires careful synchronization
+**Technical Feasibility:** HIGH
 
----
+**Current Affinity:** LOW
+- No null replacement for "not find" results
+- Full tool outputs passed to context
 
-## 8. Recommendations
+**Required New Development:**
+1. **Result Normalizer** - Detect "not found" patterns
+2. **Null Replacement** - Replace with minimal placeholder
+3. **Token Counter** - Track savings
 
-### 8.1 Quick Wins (Low Risk)
+**Estimated Effort:** 1 day
 
-1. **Add early-stop option** to `agent_team_run_parallel`:
-   - Default: `false` (preserve current behavior)
-   - Optional: `stopOnFirstSuccess: true`
+**Implementation Path:**
+```typescript
+// New: lib/result-normalizer.ts
+const NOT_FOUND_PATTERNS = [
+  /not find/i,
+  /no results/i,
+  /empty/i,
+  /not found/i,
+];
 
-2. **Add aggregation strategy parameter**:
-   - Default: `rule-based` (current behavior)
-   - Optional: `majority-vote`, `best-confidence`
-
-### 8.2 Medium Investment
-
-1. **Global failure memory**:
-   - Shared `failureRegistry` in runtime state
-   - Per-error-type retry policies
-
-2. **Enhanced finalJudge**:
-   - LLM-based aggregation option
-   - Configurable aggregation strategies
-
-### 8.3 Large Investment
-
-1. **Diverse planning system**:
-   - Plan generation module
-   - Temperature-based diversity
-   - Plan evaluation and selection
-
----
-
-## 9. Conclusion
-
-**Integration Feasibility**: **HIGH**
-
-The existing architecture is well-structured for M1-Parallel integration:
-- Modular design allows incremental changes
-- Runtime capacity management supports early-stop
-- Judge system provides aggregation foundation
-
-**Priority Order**:
-1. Early-stop (highest value, lowest risk)
-2. Aggregation strategies (medium value, low risk)
-3. Global failure memory (medium value, medium risk)
-4. Diverse planning (high value, high risk)
+function normalizeResult(result: string): string | null {
+  for (const pattern of NOT_FOUND_PATTERNS) {
+    if (pattern.test(result)) return null;
+  }
+  return result;
+}
+```
 
 ---
 
-## Appendix: Key Files
+## 3. Implementation Priority
 
-| File | Purpose |
-|------|---------|
-| `.pi/extensions/agent-teams/extension.ts` | Main team orchestration |
-| `.pi/extensions/agent-teams/team-orchestrator.ts` | Task execution flow |
-| `.pi/extensions/agent-teams/judge.ts` | Final judge and uncertainty |
-| `.pi/extensions/agent-teams/result-aggregation.ts` | Result collection |
-| `.pi/extensions/agent-teams/parallel-execution.ts` | Capacity resolution |
-| `.pi/extensions/agent-runtime.ts` | Runtime capacity management |
-| `.pi/extensions/subagents.ts` | Subagent parallel execution |
-| `.pi/lib/concurrency.ts` | `runWithConcurrencyLimit` utility |
+### HIGH Priority (Immediate)
+
+| Concept | Effort | Impact | Risk |
+|---------|--------|--------|------|
+| Exception Handling Token Reduction | 1 day | 19% cost savings | LOW |
+| Optimal Model Combination | 1-2 days | Quality improvement | LOW |
+
+### MEDIUM Priority (Short-term)
+
+| Concept | Effort | Impact | Risk |
+|---------|--------|--------|------|
+| Tool Classifier | 2 days | 4.4-9.3% accuracy | MEDIUM |
+| Result Aggregator | 1 day | Consistency | LOW |
+
+### LOW Priority (Long-term)
+
+| Concept | Effort | Impact | Risk |
+|---------|--------|--------|------|
+| Multi Calling Prompt | 2-3 days | Latency reduction | MEDIUM |
+| ReWOO Presets | 1 day | Workflow standardization | LOW |
+
+---
+
+## 4. Concerns and Risks
+
+### 4.1 Tool Classifier Accuracy
+- **Risk:** Misclassification leads to incorrect parallelization
+- **Mitigation:** Start with explicit categories, add ML-based classification later
+
+### 4.2 Model Combination Validation
+- **Risk:** Paper's GPT-3.5t/GPT-4o finding may not generalize
+- **Mitigation:** A/B testing with cost tracking
+
+### 4.3 Cross-Provider Latency
+- **Risk:** Different providers have varying response times
+- **Mitigation:** Use `provider-limits.ts` concurrency controls
+
+### 4.4 Token Reduction Information Loss
+- **Risk:** "not find" may contain useful context
+- **Mitigation:** Configurable patterns, preserve original in debug mode
+
+---
+
+## 5. Architecture Integration Points
+
+```
+                    ┌─────────────────┐
+                    │  Tool Compiler  │
+                    │  (compile_tools)│
+                    └────────┬────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         │                   │                   │
+         ▼                   ▼                   ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│ Tool Classifier │ │ Result Normalizer│ │ Model Combination│
+│    (NEW)        │ │    (NEW)        │ │    (NEW)        │
+└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │ Subagent System │
+                    │ (subagent_run)  │
+                    └────────┬────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  DAG Executor   │
+                    │ (DynTaskMAS)    │
+                    └─────────────────┘
+```
+
+---
+
+## 6. Recommended Next Steps
+
+1. **Week 1:** Implement Result Normalizer + Model Combination presets
+2. **Week 2:** Add Tool Classifier with explicit categories
+3. **Week 3:** Integrate Multi Calling Prompt pattern
+4. **Week 4:** A/B testing and metrics collection
+
+---
+
+## 7. Key Code References
+
+| Component | File | Lines |
+|-----------|------|-------|
+| Tool Fusion | `.pi/lib/tool-fuser.ts` | 1-200 |
+| Subagent Model Override | `.pi/extensions/subagents.ts` | 83-90 |
+| DAG Executor | `.pi/lib/dag-executor.ts` | 1-150 |
+| Provider Limits | `.pi/lib/provider-limits.ts` | 1-100 |
+| Cross-Instance Coord | `.pi/lib/cross-instance-coordinator.ts` | 1-150 |
