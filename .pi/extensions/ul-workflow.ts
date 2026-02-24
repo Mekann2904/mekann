@@ -33,6 +33,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promises as fsPromises } from "fs";
+import { randomBytes } from "node:crypto";
 import { estimateTaskComplexity, type TaskComplexity } from "../lib/agent-utils";
 
 // ワークフローのフェーズ
@@ -140,11 +141,13 @@ export function determineWorkflowPhases(task: string): WorkflowPhase[] {
 
 /**
  * タスクIDを生成する
+ * BUG-003 FIX: ランダムサフィックス追加で衝突回避
  */
 function generateTaskId(description: string): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const hash = description.slice(0, 30).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return `${timestamp}-${hash}`;
+  const suffix = randomBytes(4).toString("hex");  // 8文字のランダムサフィックス
+  return `${timestamp}-${hash}-${suffix}`;
 }
 
 /**
@@ -267,14 +270,15 @@ function readPlanFile(taskId: string): string {
 }
 
 /**
- * フェーズを進める
+ * フェーズを進める（状態保存は呼び出し元の責任）
+ * BUG-002 FIX: saveState() 呼び出しを削除
  */
 function advancePhase(state: WorkflowState): WorkflowPhase {
   if (state.phaseIndex < state.phases.length - 1) {
     state.phaseIndex++;
     state.phase = state.phases[state.phaseIndex];
     state.updatedAt = new Date().toISOString();
-    saveState(state);
+    // saveState(state);  // 削除: 呼び出し元で制御
   }
 
   return state.phase;
@@ -331,19 +335,30 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const { task } = params;
 
+      // BEGIN FIX: BUG-001 空タスク検証
+      const trimmedTask = String(task || "").trim();
+      if (!trimmedTask) {
+        return makeResult("エラー: タスク説明を入力してください。\n\n使用例:\n  ul_workflow_start({ task: 'バグを修正する' })", { error: "empty_task" });
+      }
+
+      if (trimmedTask.length < 5) {
+        return makeResult(`エラー: タスク説明が短すぎます（現在: ${trimmedTask.length}文字）。\n\n少なくとも5文字以上の説明を入力してください。`, { error: "task_too_short", length: trimmedTask.length });
+      }
+      // END FIX
+
       if (currentWorkflow && currentWorkflow.phase !== "completed" && currentWorkflow.phase !== "aborted") {
         return makeResult(`エラー: すでにアクティブなワークフローがあります (taskId: ${currentWorkflow.taskId}, phase: ${currentWorkflow.phase})\nまず ul_workflow_status で確認するか ul_workflow_abort で中止してください。`, { error: "workflow_already_active" });
       }
 
-      const taskId = generateTaskId(task);
+      const taskId = generateTaskId(trimmedTask);
       const now = new Date().toISOString();
 
       // タスク規模に基づいてフェーズ構成を動的に決定
-      const phases = determineWorkflowPhases(task);
+      const phases = determineWorkflowPhases(trimmedTask);
 
       currentWorkflow = {
         taskId,
-        taskDescription: task,
+        taskDescription: trimmedTask,
         phase: phases[0],
         phases,
         phaseIndex: 0,
@@ -353,7 +368,7 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
         annotationCount: 0,
       };
 
-      createTaskFile(taskId, task);
+      createTaskFile(taskId, trimmedTask);
       saveState(currentWorkflow);
 
       const phaseDescriptions = phases.map((p) => p.toUpperCase()).join(" -> ");
@@ -473,14 +488,29 @@ ${phasesDisplay}
       }
       
       const previousPhase = currentWorkflow.phase;
+
+      // BEGIN FIX: BUG-002 事前状態保存
+      // approvedPhasesを変更する前に、現在の状態を保存
+      const preApprovalState = JSON.parse(JSON.stringify(currentWorkflow));
+      // END FIX
+      
       currentWorkflow.approvedPhases.push(previousPhase);
       
       // ガード: planが承認されていない場合は実装フェーズに進めない
       if (previousPhase === "annotate" && !currentWorkflow.approvedPhases.includes("plan")) {
+        // BEGIN FIX: BUG-002 ロールバック
+        currentWorkflow.approvedPhases.pop();  // 追加したフェーズを削除
+        // END FIX
         return makeResult("エラー: plan フェーズが承認されていません。先に plan.md を承認してください。", { error: "plan_not_approved" });
       }
       
+      // BEGIN FIX: BUG-002 原子的状態更新
+      // フェーズ進行前に状態を永続化
+      currentWorkflow.updatedAt = new Date().toISOString();
+      await saveStateAsync(currentWorkflow);
+
       const nextPhase = advancePhase(currentWorkflow);
+      // END FIX
       
       let text = `フェーズ ${previousPhase.toUpperCase()} を承認しました。\n\n次のフェーズ: ${nextPhase.toUpperCase()}\n`;
 
