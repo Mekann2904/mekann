@@ -2,7 +2,7 @@
 title: agent-teams - エージェントチーム
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-12
+last_updated: 2026-02-24
 tags: [agent-team, orchestration, multi-agent, judgment]
 related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./10-ul-dual-mode.md]
 ---
@@ -161,23 +161,37 @@ sequenceDiagram
 
 ### 定義ファイルの場所
 
-チーム定義は `.pi/agent-teams/definitions/` ディレクトリに保存されます。
+チーム定義は `.pi/extensions/agent-teams/definitions/` ディレクトリに保存されます。
+
+**ディレクトリ構造**（各チームはサブディレクトリに配置）：
 
 ```
-.pi/agent-teams/definitions/
-├── core-delivery-team.md
-├── bug-war-room.md
-├── security-hardening-team.md
-├── docs-enablement-team.md
-├── rapid-swarm-team.md
-├── refactor-migration-team.md
-├── code-excellence-review-team.md
-├── design-discovery-team.md
-├── file-organizer-team.md
-├── mermaid-diagram-team.md
-├── research-team.md
-└── template-team.md
+.pi/extensions/agent-teams/definitions/
+├── core-delivery/
+│   ├── team.md          # ベースチーム定義
+│   ├── p1.md            # Phase 1: 徹底調査
+│   ├── p2.md            # Phase 2: 実装設計
+│   └── p3.md            # Phase 3: 品質レビュー
+├── bug-war-room/
+│   ├── team.md
+│   ├── p1.md ... p4.md
+├── security-hardening/
+├── design-discovery/
+├── file-organizer/
+├── mermaid-diagram/
+├── research/
+├── _templates/          # テンプレートファイル
+└── ...（全20ベースチーム）
 ```
+
+### Phase分割チーム
+
+多くのチームは「ベースチーム + Phase分割チーム」で構成されます：
+
+- **ベースチーム**（例: `core-delivery-team`）: 全フェーズを統合した3メンバー構成
+- **Phase分割チーム**（例: `core-delivery-p1`, `core-delivery-p2`）: 各フェーズ専用の詳細チーム
+
+現在 **20のベースチーム** と **53のPhase分割チーム** が定義されています（合計73チーム）。
 
 ### 新規チーム追加ワークフロー
 
@@ -315,6 +329,116 @@ README、運用ランブック、例示、簡潔な変更サマリーのため�
 | `data-analyst` | Data Analyst | データ収集、前処理、統計解析、可視化を実行。research-statistics、research-visualizationスキルを活用 |
 | `literature-reviewer` | Literature Reviewer | 文献検索、関連研究の調査、引用管理を担当。research-literatureスキルを活用 |
 | `result-synthesizer` | Result Synthesizer | 分析結果を統合し、結論を導出。研究報告書の執筆を担当。research-writingスキルを活用 |
+
+### garbage-collection-team
+
+技術的負債を特定・評価・解消する専門チーム。コード複雑度、テストカバレッジ、依存関係、ドキュメント鮮度などを包括的に分析。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `tech-debt-detector` | Tech Debt Detector | 静的解析、複雑度測定、コードスメル検出、依存関係分析を実施し、負債の包括的なリストを作成 |
+| `refactor-planner` | Refactor Planner | 検出された負債を優先度付けし、段階的な解消計画を作成。リスク評価、影響範囲分析、実装ステップを詳細に計画 |
+| `quality-grader` | Quality Grader | リファクタリング前後の品質指標を測定し、改善効果を定量化。コードカバレッジ、複雑度、保守性指標を追跡 |
+
+### invariant-generation-team
+
+spec.mdから形式仕様、インバリアント、テストコードを生成する専門チーム。Quint/TLA+形式仕様、Rustインバリアントマクロ、プロパティテスト、MBTドライバーを生成。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `spec-analyst` | Spec Analyst | spec.mdを読み込み、状態、操作、インバリアントを抽出。意味論的な整合性を確認 |
+| `formal-spec-generator` | Formal Spec Generator | 解析結果を基にQuint/TLA+形式仕様を生成。構文の正確性と論理的整合性を確保 |
+| `rust-generator` | Rust Generator | インバリアントマクロとプロパティテスト、MBTドライバーを生成。Rustのベストプラクティスに従う |
+| `verifier` | Verifier | 生成されたすべての成果物の整合性を検証。クロスチェックと品質評価を実施 |
+
+### logical-analysis-team
+
+論理的テキスト分析専門チーム。学術論文、技術文書、仕様書、契約書などを構造・概念・論証の3軸で体系的に分析。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `structure-analyst` | Structure Analyst | テキストの全体構造を分析。章・節構成、階層関係、依存関係、論理の流れをマッピング |
+| `concept-analyst` | Concept Analyst | 主要概念の定義と階層構造を分析。明示的・暗黙的定義を抽出し、概念階層と概念間関係を構築 |
+| `argument-evaluator` | Argument Evaluator | 論証の妥当性を評価。前提・推論・結論を特定し、演繹・帰納・類推などの推論タイプを分析 |
+| `synthesis-coordinator` | Synthesis Coordinator | 3つの分析結果を統合。整合性を確認し、核心的主張、論理的構成、限界と課題を整理 |
+
+### skill-creation-team
+
+新しいPiスキルの設計・作成・検証を専門的に支援するチーム。skill-creatorスキルを活用し、Agent Skills標準に準拠したスキルを3フェーズで作成。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `design` | Skill Designer | 要件定義・設計を担当。スキルの目的、使用タイミング、ディレクトリ構造、機能範囲を明確化 |
+| `author` | Skill Author | SKILL.md作成を担当。frontmatter作成、ワークフロー記述、リファレンス作成を実施 |
+| `validate` | Skill Validator | 品質検証を担当。構文チェック、命名規則確認、リンク整合性検証、ベストプラクティス準拠確認を実施 |
+
+### test-engineering-team
+
+包括的テスト作成チーム。テストピラミッドに基づき、単体テストからE2Eテストまで全レイヤーの設計・実装を4フェーズで支援。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `strategy-architect` | Test Strategy Architect | テスト戦略とピラミッド設計を担当。テスト対象の分析、優先順位付け、テストポートフォリオの計画 |
+| `unit-test-engineer` | Unit Test Engineer | 単体テスト設計・実装を担当。AAA/Given-When-Then構造、モック/スタブ、プロパティベーステストを含む |
+| `integration-engineer` | Integration Test Engineer | 統合テスト・契約テストを担当。外部システム連携テスト、Consumer-Driven Contracts、テストダブルの設計 |
+| `e2e-engineer` | E2E & Acceptance Engineer | E2Eテスト・受け入れテストを担当。ユーザージャーニーのテスト、BDDスタイルのテスト、モデルベーステストを含む |
+
+### doc-gardening-team
+
+ドキュメントの鮮度維持・コード同期を専門とするチーム。ドキュメントの更新忘れ、コードとの不一致、古い情報を検出し、修正PRの作成までを一貫して支援。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `freshness-checker` | Freshness Checker | ドキュメントの鮮度をチェック。最終更新日、情報の陳腐化、更新頻度を分析し、更新が必要なドキュメントを特定 |
+| `code-sync-verifier` | Code Sync Verifier | ドキュメントとコードの同期を確認。API仕様、設定例、コマンド例などが実際のコードと一致しているかを検証 |
+| `fix-pr-creator` | Fix PR Creator | 修正PRの作成を担当。検出された不一致を修正し、レビュー可能なPRとして提出 |
+
+### self-improvement-deep-dive-team
+
+7つの哲学的視座をリゾームとして配置し、深い思考と問題解決を行うチーム。脱構築、スキゾ分析、幸福論、ユートピア/ディストピア、思考哲学、思考分類学、論理学の7視座を非線形に往還。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `context-analyst` | Context Analyst | 問題の性質（技術的/哲学的/倫理的/実践的）を分類し、7視座との関連度を評価 |
+| `deconstruction-specialist` | Deconstruction Specialist | 二項対立を検出し、暴力的階層を暴露。ディファランス、アポリア、決定不能な要素を特定 |
+| `schizo-analyst` | Schizo-Analyst | 欲望の生産性を分析し、内なるファシズムを検出。脱領土化の可能性、飛行線の方向を分析 |
+| `multi-truth-synthesizer` | Multi-Truth Synthesizer | 複数の妥当な解釈を共存させ、統合ではなく緊張関係を維持。ヘーゲル的弁証法を避け、決定不能性を保存 |
+
+### verification-phase-team
+
+他のチームやサブエージェントの出力を検証する品質保証チーム。論文「Large Language Model Reasoning Failures」のP0推奨事項に基づく。
+
+| メンバーID | 役割 | 説明 |
+|-----------|------|------|
+| `inspector` | Inspector | 出力の品質を監視し、不審なパターン、矛盾、潜在的な推論失敗を検出 |
+| `challenger` | Challenger | 他のエージェントの出力に対して積極的に異議を唱える。証拠の欠落、論理的欠陥、隠れた仮定を指摘 |
+
+## Phase分割チーム
+
+多くのベースチームには、各フェーズに特化した「Phase分割チーム」が存在します。これにより、複雑なタスクを段階的に実行できます。
+
+**例: core-delivery-team の場合**
+
+| チームID | フェーズ | 説明 |
+|----------|----------|------|
+| `core-delivery-team` | 統合 | 全フェーズを統合した3メンバー構成 |
+| `core-delivery-p1` | Phase 1 | 徹底調査フェーズ専用（3メンバー） |
+| `core-delivery-p2` | Phase 2 | 実装設計フェーズ専用（2メンバー） |
+| `core-delivery-p3` | Phase 3 | 品質レビューフェーズ専用（3メンバー） |
+
+**Phase分割を持つチーム一覧**:
+- `bug-war-room` (p1-p4)
+- `core-delivery-team` (p1-p3)
+- `design-discovery-team` (p1-p3)
+- `docs-enablement-team` (p1-p3)
+- `file-organizer-team` (p1-p3)
+- `logical-analysis-team` (p1-p4)
+- `mermaid-diagram-team` (p1-p4)
+- `rapid-swarm-team` (p1-p3)
+- `refactor-migration-team` (p1-p3)
+- `security-hardening-team` (p1-p3)
+- `skill-creation-team` (p1-p3)
+- `test-engineering-team` (p1-p4)
 
 ## パラメータ/オプション
 
@@ -589,12 +713,20 @@ Agent Team / Subagent runtime
 | セキュリティ監査 | `security-hardening-team` |
 | ドキュメント作成 | `docs-enablement-team` |
 | 独立タスクの大量処理 | `rapid-swarm-team` |
-| リファクタ | `refactor-migration-team` |
+| リファクタリング | `refactor-migration-team` |
 | 包括的なコードレビュー | `code-excellence-review-team` |
 | 設計発見と要件分析 | `design-discovery-team` |
 | ファイル・フォルダ整理 | `file-organizer-team` |
 | コード視覚化・Mermaid図作成 | `mermaid-diagram-team` |
 | データ分析・科学研究 | `research-team` |
+| 技術的負債の解消 | `garbage-collection-team` |
+| 形式仕様・インバリアント生成 | `invariant-generation-team` |
+| 論理的テキスト分析 | `logical-analysis-team` |
+| 新規スキル作成 | `skill-creation-team` |
+| 包括的テスト作成 | `test-engineering-team` |
+| ドキュメント鮮度維持 | `doc-gardening-team` |
+| 深い自己点検・哲学的思考 | `self-improvement-deep-dive-team` |
+| 出力の品質検証 | `verification-phase-team` |
 
 ### 並列 vs 逐次
 
@@ -628,16 +760,26 @@ Agent Team / Subagent runtime
 ## 保存されるファイル
 
 ```
+.pi/extensions/agent-teams/
+├── definitions/           # チーム定義ファイル（Markdown）
+│   ├── core-delivery/
+│   │   ├── team.md        # ベースチーム定義
+│   │   └── p*.md          # Phase分割チーム
+│   ├── bug-war-room/
+│   ├── security-hardening/
+│   └── ...（全20ベースチーム）
+├── extension.ts           # 拡張機能の実装
+├── definition-loader.ts   # 定義読み込み処理
+├── storage.ts             # ストレージ管理
+└── judge.ts               # Final Judge実装
+
 .pi/agent-teams/
-├── storage.json          # チーム定義と設定
-├── definitions/         # チーム定義ファイル（Markdown）
-│   ├── core-delivery-team.md
-│   ├── bug-war-room.md
-│   └── ...
-└── runs/                # 実行履歴
+└── runs/                  # 実行履歴
     ├── 2026-02-11-093045-abc123.json
     └── ...
 ```
+
+**注意**: チーム定義は `.pi/extensions/agent-teams/definitions/` から読み込まれます。`.pi/agent-teams/storage.json` は使用されません（Markdownが単一の真実の源）。
 
 ## 関連トピック
 
@@ -649,6 +791,7 @@ Agent Team / Subagent runtime
 
 | バージョン | 日付 | 変更内容 |
 |----------|------|---------|
+| v0.3.0 | 2026-02-24 | 20ベースチーム+53Phase分割チーム（合計73チーム）に拡張、storage.json削除（Markdownが単一の真実の源）、ドキュメント修正 |
 | v0.2.1 | 2026-02-14 | mermaid-diagram-team、research-teamの追加、スキル数27個に更新 |
 | v0.2.0 | 2026-02-12 | Markdown外部化によるチーム定義の導入、definitions/ディレクトリ追加 |
 | v0.1.0 | 2026-02-11 | 初期リリース |

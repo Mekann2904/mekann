@@ -270,6 +270,8 @@ export interface TeamFrontmatter {
   enabled: "enabled" | "disabled";
   strategy?: "parallel" | "sequential";
   skills?: string[];
+  /** 親チームID（Phase分割チームの場合） */
+  parent?: string;
   members: TeamMemberFrontmatter[];
 }
 
