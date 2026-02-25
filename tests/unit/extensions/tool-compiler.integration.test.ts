@@ -12,24 +12,30 @@ vi.mock("@mariozechner/pi-coding-agent", () => ({
   ExtensionAPI: vi.fn(),
 }));
 
-vi.mock("@mariozechner/pi-ai", () => ({
-  Type: {
-    String: () => ({ type: "string" }),
-    Number: () => ({ type: "number" }),
-    Boolean: () => ({ type: "boolean" }),
-    Any: () => ({}),
-    Optional: (def: any) => ({ ...def, optional: true }),
-    Object: (def: any) => ({ type: "object", properties: def }),
-    Array: (def: any, options?: any) => ({ type: "array", items: def, ...options }),
-    Record: (keyType: any, valueType: any) => ({
-      type: "record",
-      keyType,
-      valueType,
-    }),
-    Union: (defs: any[]) => ({ type: "union", oneOf: defs }),
-    Literal: (val: any) => ({ type: "literal", value: val }),
-  },
-}));
+vi.mock("@mariozechner/pi-ai", async (importOriginal) => {
+  const actual = await importOriginal() as any;
+  return {
+    ...actual,
+    Type: {
+      String: () => ({ type: "string" }),
+      Number: () => ({ type: "number" }),
+      Boolean: () => ({ type: "boolean" }),
+      Any: () => ({}),
+      Optional: (def: any) => ({ ...def, optional: true }),
+      Object: (def: any) => ({ type: "object", properties: def }),
+      Array: (def: any, options?: any) => ({ type: "array", items: def, ...options }),
+      Record: (keyType: any, valueType: any) => ({
+        type: "record",
+        keyType,
+        valueType,
+      }),
+      Union: (defs: any[]) => ({ type: "union", oneOf: defs }),
+      Literal: (val: any) => ({ type: "literal", value: val }),
+    },
+    // StringEnum is used by tool-compiler.ts, get it from actual module
+    StringEnum: actual.StringEnum,
+  };
+});
 
 // Subagent infrastructure mocks
 vi.mock("../../../.pi/extensions/subagents/storage.js", () => ({
