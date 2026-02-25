@@ -1315,24 +1315,42 @@ export function cleanupQueueStates(): void {
 // ============================================================================
 
 /**
- * Distributed lock for safe work stealing.
+ * 分散ロックの情報を表すインターフェース
+ * @summary 分散ロック定義
  */
-interface DistributedLock {
+export interface DistributedLock {
   lockId: string;
   acquiredAt: number;
   expiresAt: number;
   resource: string;
 }
 
-const LOCK_DIR = join(COORDINATOR_DIR, "locks");
+let lockDirOverride: string | null = null;
+
+/**
+ * ロックディレクトリを設定（テスト用）
+ * @summary ロックディレクトリ設定
+ * @param dir - ロックディレクトリのパス（nullでリセット）
+ * @returns {void}
+ */
+export function setLockDirForTesting(dir: string | null): void {
+  lockDirOverride = dir;
+}
+
+function getLockDir(): string {
+  return lockDirOverride ?? join(COORDINATOR_DIR, "locks");
+}
+
+const LOCK_DIR_LEGACY = join(COORDINATOR_DIR, "locks");
 const LOCK_TIMEOUT_MS = 30_000; // 30 seconds
 
 /**
  * Ensure lock directory exists.
  */
 function ensureLockDir(): void {
-  if (!existsSync(LOCK_DIR)) {
-    mkdirSync(LOCK_DIR, { recursive: true });
+  const lockDir = getLockDir();
+  if (!existsSync(lockDir)) {
+    mkdirSync(lockDir, { recursive: true });
   }
 }
 
@@ -1345,7 +1363,7 @@ function ensureLockDir(): void {
  * @param maxRetries - Maximum retry attempts on collision (default: 3)
  * @returns Lock object if acquired, null otherwise
  */
-function tryAcquireLock(
+export function tryAcquireLock(
   resource: string,
   ttlMs: number = LOCK_TIMEOUT_MS,
   maxRetries: number = 3,
@@ -1354,8 +1372,9 @@ function tryAcquireLock(
 
   ensureLockDir();
 
+  const lockDir = getLockDir();
   const lockId = `${state.myInstanceId}-${currentTimeMs().toString(36)}`;
-  const lockFile = join(LOCK_DIR, `${resource.replace(/[:/]/g, "_")}.lock`);
+  const lockFile = join(lockDir, `${resource.replace(/[:/]/g, "_")}.lock`);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const nowMs = currentTimeMs();
@@ -1460,7 +1479,7 @@ function tryCleanupExpiredLock(lockFile: string, nowMs: number): boolean {
  * @param ttlMs - Lock TTL in milliseconds
  * @returns Lock object if acquired, null otherwise
  */
-function acquireDistributedLock(
+export function acquireDistributedLock(
   resource: string,
   ttlMs: number = LOCK_TIMEOUT_MS,
 ): DistributedLock | null {
@@ -1472,8 +1491,9 @@ function acquireDistributedLock(
  *
  * @param lock - Lock to release
  */
-function releaseLock(lock: DistributedLock): void {
-  const lockFile = join(LOCK_DIR, `${lock.resource.replace(/[:/]/g, "_")}.lock`);
+export function releaseLock(lock: DistributedLock): void {
+  const lockDir = getLockDir();
+  const lockFile = join(lockDir, `${lock.resource.replace(/[:/]/g, "_")}.lock`);
 
   try {
     const content = readFileSync(lockFile, "utf-8");
@@ -1687,21 +1707,22 @@ export function resetStealingStats(): void {
 export function cleanupExpiredLocks(): void {
   ensureLockDir();
 
+  const lockDir = getLockDir();
   const nowMs = currentTimeMs();
-  const files = readdirSync(LOCK_DIR).filter((f) => f.endsWith(".lock"));
+  const files = readdirSync(lockDir).filter((f) => f.endsWith(".lock"));
 
   for (const file of files) {
     try {
-      const content = readFileSync(join(LOCK_DIR, file), "utf-8");
+      const content = readFileSync(join(lockDir, file), "utf-8");
       const lock = JSON.parse(content) as DistributedLock;
 
       if (nowMs >= lock.expiresAt) {
-        unlinkSync(join(LOCK_DIR, file));
+        unlinkSync(join(lockDir, file));
       }
     } catch {
       // Remove corrupted lock files
       try {
-        unlinkSync(join(LOCK_DIR, file));
+        unlinkSync(join(lockDir, file));
       } catch {
         // Ignore
       }

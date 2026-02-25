@@ -1,756 +1,564 @@
-# 実装計画: 潜在的バグ修正
+# 実装計画: エージェント並列管理の安全プロパティ検証
 
 ## 目的
 
-research.mdで特定された47件の問題のうち、高優先度12件を中心に現実的に修正可能な範囲で計画を策定する。主に以下に対応する：
-
-1. サイレントエラー無視（12箇所）へのログ追加
-2. シングルトン初期化競合状態の修正
-3. any型の適切なインターフェース定義
-4. 配列境界チェックの追加
-
-## 修正対象一覧
-
-| 優先度 | ファイル | 問題 | 影響 |
-|--------|---------|------|------|
-| High | `.pi/lib/cross-instance-coordinator.ts` | サイレントエラー無視 (5箇所) | デバッグ不可能 |
-| High | `.pi/lib/storage-lock.ts` | サイレントエラー無視 (4箇所) | デッドロック検知不能 |
-| High | `.pi/extensions/agent-runtime.ts` | シングルトン初期化競合 | 状態不整合 |
-| High | `.pi/lib/checkpoint-manager.ts` | シングルトン初期化競合 | メモリリーク |
-| High | `.pi/lib/checkpoint-manager.ts` | LRUキャッシュメモリリーク | メモリ枯渇 |
-| High | `.pi/extensions/cross-instance-runtime.ts` | any型使用 (4箇所) | 型安全性喪失 |
-| Medium | `.pi/lib/task-scheduler.ts` | 配列境界チェック不足 | 誤削除 |
-| Medium | `.pi/lib/adaptive-rate-controller.ts` | サイレントエラー無視 | 設定エラー隠蔽 |
-| Medium | `.pi/lib/provider-limits.ts` | サイレントエラー無視 | レート制限誤動作 |
-| Medium | `.pi/extensions/ul-dual-mode.ts` | any型使用 (3箇所) | 型安全性喪失 |
-| Medium | `.pi/lib/dynamic-tools/registry.ts` | 動的コード実行セキュリティ | 任意コード実行リスク |
-| Low | `.pi/lib/error-utils.ts` | 循環参照シリアライズ | エラー情報欠損 |
-
-## 手順
-
-### 1. サイレントエラー無視の修正（ログ追加）
-
-#### 1.1 cross-instance-coordinator.ts (5箇所)
-
-##### 1.1.1 Line 204
-- ファイル: `.pi/lib/cross-instance-coordinator.ts`
-- 行番号: 204
-- 修正前コード:
-```typescript
-} catch {
-  // ignore cleanup failures
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.debug(`[cross-instance-coordinator] Cleanup failed: ${errorMessage}`);
-}
-```
-- 説明: クリーンアップ失敗をログ出力し、デバッグ可能にする
-
-##### 1.1.2 Line 329
-- ファイル: `.pi/lib/cross-instance-coordinator.ts`
-- 行番号: 329
-- 修正前コード:
-```typescript
-} catch {
-  // ignore cleanup failures
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.debug(`[cross-instance-coordinator] Session cleanup failed: ${errorMessage}`);
-}
-```
-- 説明: セッションクリーンアップ失敗をログ出力
-
-##### 1.1.3 Line 424
-- ファイル: `.pi/lib/cross-instance-coordinator.ts`
-- 行番号: 424
-- 修正前コード:
-```typescript
-} catch {
-  // ignore cleanup failures
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.debug(`[cross-instance-coordinator] Coordinator cleanup failed: ${errorMessage}`);
-}
-```
-- 説明: コーディネータクリーンアップ失敗をログ出力
-
-##### 1.1.4 Line 463
-- ファイル: `.pi/lib/cross-instance-coordinator.ts`
-- 行番号: 463
-- 修正前コード:
-```typescript
-} catch {
-  // ignore cleanup failures
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.debug(`[cross-instance-coordinator] Lock release failed: ${errorMessage}`);
-}
-```
-- 説明: ロック解放失敗をログ出力
-
-##### 1.1.5 Line 477
-- ファイル: `.pi/lib/cross-instance-coordinator.ts`
-- 行番号: 477
-- 修正前コード:
-```typescript
-} catch {
-  // ignore cleanup failures
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.debug(`[cross-instance-coordinator] Final cleanup failed: ${errorMessage}`);
-}
-```
-- 説明: 最終クリーンアップ失敗をログ出力
-
-#### 1.2 storage-lock.ts (4箇所)
-
-##### 1.2.1 Line 168
-- ファイル: `.pi/lib/storage-lock.ts`
-- 行番号: 168
-- 修正前コード:
-```typescript
-} catch {
-  // noop
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.debug(`[storage-lock] Lock acquisition failed: ${errorMessage}`);
-}
-```
-- 説明: ロック取得失敗をログ出力（デッドロック検知に重要）
-
-##### 1.2.2 Line 198
-- ファイル: `.pi/lib/storage-lock.ts`
-- 行番号: 198
-- 修正前コード:
-```typescript
-} catch {
-  // noop
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.debug(`[storage-lock] Lock release failed: ${errorMessage}`);
-}
-```
-- 説明: ロック解放失敗をログ出力
-
-##### 1.2.3 Line 267
-- ファイル: `.pi/lib/storage-lock.ts`
-- 行番号: 267
-- 修正前コード:
-```typescript
-} catch {
-  // noop
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.debug(`[storage-lock] Stale lock cleanup failed: ${errorMessage}`);
-}
-```
-- 説明: 古いロックのクリーンアップ失敗をログ出力
-
-##### 1.2.4 Line 288
-- ファイル: `.pi/lib/storage-lock.ts`
-- 行番号: 288
-- 修正前コード:
-```typescript
-} catch {
-  // noop
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.debug(`[storage-lock] Lock validation failed: ${errorMessage}`);
-}
-```
-- 説明: ロック検証失敗をログ出力
-
-#### 1.3 その他のサイレントエラー（中優先度）
-
-##### 1.3.1 adaptive-rate-controller.ts
-- ファイル: `.pi/lib/adaptive-rate-controller.ts`
-- 行番号: 286
-- 修正前コード:
-```typescript
-} catch {
-  // ignore
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.warn(`[adaptive-rate-controller] Rate limit config error: ${errorMessage}`);
-}
-```
-- 説明: レート制限設定エラーを警告として出力
-
-##### 1.3.2 provider-limits.ts
-- ファイル: `.pi/lib/provider-limits.ts`
-- 行番号: 407
-- 修正前コード:
-```typescript
-} catch {
-  // ignore
-}
-```
-- 修正後コード:
-```typescript
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.warn(`[provider-limits] Provider limit detection failed: ${errorMessage}, using fallback`);
-}
-```
-- 説明: プロバイダ制限検出失敗を警告出力、フォールバック使用を明示
+エージェント並列管理システムが定義された安全プロパティを満たしていることを証明し、証明できない場合はバグとして報告する。
 
 ---
 
-### 2. シングルトン初期化競合状態の修正
+## 1. 証明対象の安全プロパティ定義
 
-#### 2.1 agent-runtime.ts - GlobalRuntimeStateProvider
+### 1.1 容量安全（Capacity Safety）
 
-- ファイル: `.pi/extensions/agent-runtime.ts`
-- 行番号: GlobalRuntimeStateProvider class
-- 修正前コード:
-```typescript
-class GlobalRuntimeStateProvider implements RuntimeStateProvider {
-  private initializationInProgress = false;
+| プロパティ | 形式的定義 | 検証箇所 |
+|-----------|-----------|---------|
+| **CS-1: 過剰コミット防止** | `∀t. projectedRequests(t) ≤ maxTotalActiveRequests` | `agent-runtime.ts:checkRuntimeCapacity()` |
+| **CS-2: 予約TTL** | `∀r ∈ reservations. r.expiresAtMs - now ≤ maxTTL` | `agent-runtime.ts:createReservationLease()` |
+| **CS-3: スイーパクリーンアップ** | `∀t. ∃t' > t. sweep(t') removes expired reservations` | `agent-runtime.ts:startReservationSweeper()` |
 
-  getState(): AgentRuntimeState {
-    if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      if (this.initializationInProgress) {
-        // 短いスピンウェイト（初期化完了を待機）
-        let attempts = 0;
-        while (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ && attempts < 1000) {
-          attempts += 1;
-        }
-        // 初期化が完了していない場合は新規作成
-        if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-          this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-        }
-      }
-```
-- 修正後コード:
-```typescript
-class GlobalRuntimeStateProvider implements RuntimeStateProvider {
-  private initializationPromise: Promise<void> | null = null;
-  private initializationLock = false;
+### 1.2 並列安全（Concurrency Safety）
 
-  getState(): AgentRuntimeState {
-    if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      if (this.initializationLock && this.initializationPromise) {
-        // 同期的に待機（既に初期化中の場合は完了を待つ）
-        // 注: JavaScriptは単一スレッドなので、実際の競合は発生しないが、
-        // 非同期初期化の整合性を保証
-        throw new Error("[agent-runtime] Runtime state initialization in progress. Use getStateAsync() instead.");
-      }
-      this.initializationLock = true;
-      try {
-        if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-          this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-        }
-      } finally {
-        this.initializationLock = false;
-      }
-    }
-    return this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__;
-  }
+| プロパティ | 形式的定義 | 検証箇所 |
+|-----------|-----------|---------|
+| **CC-1: 孤立ワーカーなし** | `∀w ∈ workers. error ⇒ w completes (success|failure)` | `concurrency.ts:runWithConcurrencyLimit()` |
+| **CC-2: Abort伝播** | `abort(parent) ⇒ ∀child. abort(child) ∧ cleanup(child)` | `concurrency.ts:L40-80` |
+| **CC-3: キュー上限** | `∀t. queue.size(t) ≤ maxQueueSize` | `agent-runtime.ts:enqueueRequest()` |
 
-  async getStateAsync(): Promise<AgentRuntimeState> {
-    if (this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      return this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__;
-    }
+### 1.3 分散安全（Distributed Safety）
 
-    if (this.initializationPromise) {
-      await this.initializationPromise;
-      return this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__!;
-    }
+| プロパティ | 形式的定義 | 検証箇所 |
+|-----------|-----------|---------|
+| **DS-1: 原子的ロック取得** | `acquire(lock) ⇒ atomic(openSync("wx"))` | `cross-instance-coordinator.ts:tryAcquireLock()` |
+| **DS-2: TOCTOU緩和** | `collision ⇒ backoff ∧ retry` | `cross-instance-coordinator.ts:L120-160` |
+| **DS-3: 死んだインスタンス清理** | `∀i. heartbeat(i) > 60s ⇒ remove(i)` | `cross-instance-coordinator.ts:cleanupDeadInstances()` |
 
-    this.initializationPromise = (async () => {
-      if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-        this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-      }
-    })();
+### 1.4 不変条件（Key Invariants）
 
-    await this.initializationPromise;
-    return this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__!;
-  }
-```
-- 説明: スピンウェイトを削除し、Promiseベースの初期化に変更。同期的アクセス時はロックで保護、非同期アクセス時はPromiseで待機。
-
-#### 2.2 agent-runtime.ts - Reservation Sweeper
-
-- ファイル: `.pi/extensions/agent-runtime.ts`
-- 行番号: ensureReservationSweeper
-- 修正前コード:
-```typescript
-let runtimeReservationSweeperInitializing = false;
-
-function ensureReservationSweeper(): void {
-  if (runtimeReservationSweeper || runtimeReservationSweeperInitializing) return;
-
-  runtimeReservationSweeperInitializing = true;
-  try {
-    if (runtimeReservationSweeper) return;
-    // ... create sweeper
-  } finally {
-    runtimeReservationSweeperInitializing = false;
-  }
-}
-```
-- 修正後コード:
-```typescript
-let runtimeReservationSweeperInitializing = false;
-let runtimeReservationSweeperInitAttempts = 0;
-const MAX_INIT_ATTEMPTS = 3;
-
-function ensureReservationSweeper(): void {
-  if (runtimeReservationSweeper) return;
-
-  if (runtimeReservationSweeperInitializing) {
-    runtimeReservationSweeperInitAttempts++;
-    if (runtimeReservationSweeperInitAttempts > MAX_INIT_ATTEMPTS) {
-      console.warn("[agent-runtime] Reservation sweeper initialization blocked after ${MAX_INIT_ATTEMPTS} attempts");
-      runtimeReservationSweeperInitAttempts = 0;
-    }
-    return;
-  }
-
-  runtimeReservationSweeperInitializing = true;
-  runtimeReservationSweeperInitAttempts = 0;
-  try {
-    if (runtimeReservationSweeper) return;
-    // ... create sweeper
-  } finally {
-    runtimeReservationSweeperInitializing = false;
-  }
-}
-```
-- 説明: 二重チェックパターンを維持しつつ、初期化試行回数を制限し、無限待機を防止
-
-#### 2.3 checkpoint-manager.ts
-
-- ファイル: `.pi/lib/checkpoint-manager.ts`
-- 行番号: initCheckpointManager
-- 修正前コード:
-```typescript
-let managerState: {...} | null = null;
-
-export function initCheckpointManager(configOverrides?: Partial<CheckpointManagerConfig>): void {
-  if (managerState?.initialized) {
-    return;
-  }
-  // ... initialization
-  managerState = {...};
-}
-```
-- 修正後コード:
-```typescript
-let managerState: {...} | null = null;
-let managerInitializing = false;
-
-export function initCheckpointManager(configOverrides?: Partial<CheckpointManagerConfig>): void {
-  if (managerState?.initialized) {
-    return;
-  }
-
-  if (managerInitializing) {
-    console.warn("[checkpoint-manager] Initialization already in progress");
-    return;
-  }
-
-  managerInitializing = true;
-  try {
-    if (managerState?.initialized) {
-      return;
-    }
-    // ... initialization
-    managerState = {...};
-  } finally {
-    managerInitializing = false;
-  }
-}
-```
-- 説明: 初期化フラグで二重初期化を防止
+| 不変条件 | 形式的定義 | 検証箇所 |
+|---------|-----------|---------|
+| **INV-1** | `limit ≥ 1` | `concurrency.ts:normalizeLimit()` |
+| **INV-2** | `activeAgents ≥ 0` | `agent-runtime.ts:decrementActiveAgents()` |
+| **INV-3** | `reservation.expiresAtMs > now` | `agent-runtime.ts:getActiveReservations()` |
+| **INV-4** | `single(sweeper)` | `agent-runtime.ts:startReservationSweeper()` |
+| **INV-5** | `release(lock) ⇒ owner(lock) = requester` | `cross-instance-coordinator.ts:releaseLock()` |
 
 ---
 
-### 3. any型の適切なインターフェース定義
+## 2. 証明方法
 
-#### 3.1 cross-instance-runtime.ts
+### 2.1 コード検査（Code Inspection）
 
-- ファイル: `.pi/extensions/cross-instance-runtime.ts`
-- 行番号: Multiple
-- 修正前コード:
+**適用対象**: CS-1, DS-1, INV-1, INV-4, INV-5
+
+**手順**:
+1. 対象関数のソースコードを読む
+2. 形式的定義に対応するコード箇所を特定
+3. アサーション/ガード条件が正しく実装されているか確認
+4. エッジケース（境界値）の処理を確認
+
+**CS-1 検証コードスニペット**:
 ```typescript
-const status = (result as any)?.details?.coordinator;
-const resolved = (result as any)?.details?.resolved;
-const sessionId = (event as any)?.sessionId ?? "unknown";
-const eventPayload = event as any;
-```
-- 修正後コード:
-```typescript
-// ファイル先頭にインターフェース定義を追加
-interface CoordinatorStatus {
-  activeInstances: number;
-  totalReservations: number;
-  oldestSessionAgeMs: number;
-}
-
-interface CoordinatorDetails {
-  coordinator?: CoordinatorStatus;
-  resolved?: boolean;
-}
-
-interface CrossInstanceEvent {
-  sessionId?: string;
-  instanceId?: string;
-  type: string;
-  timestamp: number;
-}
-
-// 使用箇所
-const details = result?.details as CoordinatorDetails | undefined;
-const status = details?.coordinator;
-const resolved = details?.resolved;
-
-const sessionId = (event as CrossInstanceEvent)?.sessionId ?? "unknown";
-const eventPayload = event as CrossInstanceEvent;
-```
-- 説明: 明示的なインターフェース定義により型安全性を確保
-
-#### 3.2 ul-dual-mode.ts
-
-- ファイル: `.pi/extensions/ul-dual-mode.ts`
-- 行番号: Helper functions
-- 修正前コード:
-```typescript
-function refreshStatus(ctx: any): void {
-function parseToolInput(event: any): Record<string, unknown> | undefined {
-function isRecommendedSubagentParallelCall(event: any): boolean {
-```
-- 修正後コード:
-```typescript
-// インターフェース定義
-interface ExtensionContext {
-  cwd: string;
-  piDir: string;
-  [key: string]: unknown;
-}
-
-interface ToolCallEvent {
-  toolCallId: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-
-interface SubagentCallEvent extends ToolCallEvent {
-  input: {
-    subagentId: string;
-    task: string;
-    parallel?: boolean;
-  };
-}
-
-// 使用箇所
-function refreshStatus(ctx: ExtensionContext): void {
-  // ...
-}
-
-function parseToolInput(event: unknown): Record<string, unknown> | undefined {
-  if (typeof event !== 'object' || event === null) return undefined;
-  const e = event as Record<string, unknown>;
-  return e.input as Record<string, unknown> | undefined;
-}
-
-function isRecommendedSubagentParallelCall(event: unknown): boolean {
-  if (typeof event !== 'object' || event === null) return false;
-  const e = event as SubagentCallEvent;
-  return e.name === "subagent_run" && e.input?.parallel === true;
+// agent-runtime.ts - checkRuntimeCapacity()
+function checkRuntimeCapacity(request: CapacityRequest): CapacityCheckResult {
+  const projectedRequests = 
+    state.activeRequestCount + 
+    state.reservations.size + 
+    (request.needsRequest ? 1 : 0);
+  
+  // INVARIANT CHECK: projectedRequests <= maxTotalActiveRequests
+  if (projectedRequests > state.limits.maxTotalActiveRequests) {
+    return { allowed: false, reasons: ["Capacity exceeded"] };
+  }
+  return { allowed: true, reservation: createReservation() };
 }
 ```
-- 説明: unknown型で受け取り、型ガードを通して安全にキャスト
+
+**INV-1 検証コードスニペット**:
+```typescript
+// concurrency.ts - normalizeLimit()
+function normalizeLimit(limit: number, itemCount: number): number {
+  // INVARIANT: limit >= 1
+  return Math.max(1, Math.min(limit, itemCount));
+}
+```
+
+### 2.2 ユニットテスト（Unit Testing）
+
+**適用対象**: CS-2, CS-3, INV-2, INV-3
+
+**手順**:
+1. テストケースを作成
+2. 境界値・異常系をカバー
+3. タイミング依存のテストはモックを使用
+
+**CS-2 テストコードスニペット**:
+```typescript
+// tests/capacity-safety.test.ts
+describe('Reservation TTL', () => {
+  it('should auto-expire reservation after TTL', async () => {
+    const lease = createReservationLease({ ttlMs: 100 });
+    expect(lease.expiresAtMs - Date.now()).toBeLessThanOrEqual(100);
+    
+    await sleep(150);
+    const activeReservations = getActiveReservations();
+    expect(activeReservations.has(lease.id)).toBe(false);
+  });
+  
+  it('should allow heartbeat extension', async () => {
+    const lease = createReservationLease({ ttlMs: 100 });
+    await sleep(50);
+    lease.heartbeat(100); // Extend by 100ms
+    
+    await sleep(75); // Total 125ms < 200ms extended TTL
+    expect(isReservationActive(lease.id)).toBe(true);
+  });
+});
+```
+
+**INV-2 テストコードスニペット**:
+```typescript
+// tests/invariants.test.ts
+describe('ActiveAgents non-negative', () => {
+  it('should never go below zero on decrement', () => {
+    const state = createRuntimeState();
+    state.activeAgents = 0;
+    
+    // Try to decrement below zero
+    state.activeAgents = Math.max(0, state.activeAgents - 1);
+    
+    expect(state.activeAgents).toBe(0);
+    expect(state.activeAgents).toBeGreaterThanOrEqual(0);
+  });
+});
+```
+
+### 2.3 レース条件テスト（Race Condition Testing）
+
+**適用対象**: CC-1, CC-2, DS-2
+
+**手順**:
+1. 並列実行テストを作成
+2. 高負荷状態で競合を誘発
+3. 一貫性違反を検出
+
+**CC-1 テストコードスニペット**:
+```typescript
+// tests/concurrency-safety.test.ts
+describe('No dangling workers', () => {
+  it('should complete all workers even after first error', async () => {
+    const results: string[] = [];
+    const items = [1, 2, 3, 4, 5];
+    
+    await runWithConcurrencyLimit(
+      items,
+      3,
+      async (item, index, signal) => {
+        await sleep(item * 10);
+        if (item === 2) throw new Error('Worker 2 failed');
+        results.push(`item-${item}`);
+      },
+      { abortOnFirstError: false }
+    ).catch(() => {}); // Ignore aggregate error
+    
+    // All workers should have completed
+    expect(results.length).toBe(4); // All except item 2
+    expect(results).toContain('item-1');
+    expect(results).toContain('item-3');
+    expect(results).toContain('item-4');
+    expect(results).toContain('item-5');
+  });
+});
+```
+
+**DS-2 テストコードスニペット**:
+```typescript
+// tests/distributed-safety.test.ts
+describe('TOCTOU mitigation', () => {
+  it('should retry with backoff on collision', async () => {
+    const attempts: number[] = [];
+    const mockOpenSync = jest.fn()
+      .mockImplementationOnce(() => { throw { code: 'EEXIST' }; })
+      .mockImplementationOnce(() => { throw { code: 'EEXIST' }; })
+      .mockImplementationOnce(() => 42); // Success on 3rd attempt
+    
+    const result = await tryAcquireLock('test-resource', 1000, 5);
+    
+    expect(mockOpenSync).toHaveBeenCalledTimes(3);
+    expect(attempts[1] - attempts[0]).toBeGreaterThanOrEqual(10); // Exponential backoff
+  });
+});
+```
+
+### 2.4 統合テスト（Integration Testing）
+
+**適用対象**: CS-3, DS-3, CC-3
+
+**手順**:
+1. 実際のファイルシステム/タイマーを使用
+2. 複数コンポーネント間の相互作用を検証
+3. 長時間実行テストでメモリリーク/リソースリークを検出
+
+**DS-3 テストコードスニペット**:
+```typescript
+// tests/integration/dead-instance-cleanup.test.ts
+describe('Dead instance cleanup', () => {
+  it('should remove instances with stale heartbeat', async () => {
+    // Register instance
+    const coordinator = new CrossInstanceCoordinator();
+    coordinator.registerInstance('test-session', '/test/cwd');
+    
+    // Verify registration
+    const instances = getActiveInstances();
+    expect(instances.some(i => i.sessionId === 'test-session')).toBe(true);
+    
+    // Simulate dead instance (no heartbeat for 60s)
+    await sleep(65000);
+    
+    // Trigger cleanup
+    coordinator.cleanupDeadInstances();
+    
+    // Verify removal
+    const activeInstances = getActiveInstances();
+    expect(activeInstances.some(i => i.sessionId === 'test-session')).toBe(false);
+  }, 70000);
+});
+```
+
+### 2.5 静的解析（Static Analysis）
+
+**適用対象**: 全プロパティ
+
+**手順**:
+1. TypeScript strict modeを有効化
+2. ESLintルールを適用
+3. 制御フロー解析で未処理のパスを検出
+
+**推奨ESLintルール**:
+```json
+{
+  "rules": {
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/no-misused-promises": "error",
+    "@typescript-eslint/require-await": "error",
+    "no-unsafe-finally": "error"
+  }
+}
+```
 
 ---
 
-### 4. 配列境界チェックの追加
+## 3. 検証手順
 
-#### 4.1 task-scheduler.ts
+### Phase 1: コード検査（1-2時間）
 
-- ファイル: `.pi/lib/task-scheduler.ts`
-- 行番号: Queue operations
-- 修正前コード:
-```typescript
-const queueIndex = queue.indexOf(entry);
-// ...
-queue.splice(queueIndex, 1);
-```
-- 修正後コード:
-```typescript
-const queueIndex = queue.indexOf(entry);
-if (queueIndex === -1) {
-  console.warn(`[task-scheduler] Entry not found in queue, skipping removal`);
-  return;
-}
-queue.splice(queueIndex, 1);
-```
-- 説明: indexOfが-1を返した場合、splice(-1, 1)が最後の要素を削除してしまう問題を防止
+1. **CS-1, DS-1検証**
+   - `agent-runtime.ts:checkRuntimeCapacity()` を読む
+   - `cross-instance-coordinator.ts:tryAcquireLock()` を読む
+   - アサーション/ガード条件を確認
 
-#### 4.2 agent-runtime.ts - trimPendingQueueToLimit
+2. **INV-1, INV-4, INV-5検証**
+   - `concurrency.ts:normalizeLimit()` を読む
+   - `agent-runtime.ts:startReservationSweeper()` を読む
+   - `cross-instance-coordinator.ts:releaseLock()` を読む
 
-- ファイル: `.pi/extensions/agent-runtime.ts`
-- 行番号: trimPendingQueueToLimit
-- 修正前コード:
-```typescript
-function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null {
-  // ...
-  const evicted = pending.splice(evictionIndex, 1)[0];
-  if (!evicted) return null;
-  // ...
-}
-```
-- 修正後コード:
-```typescript
-function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null {
-  // ...
-  if (evictionIndex < 0 || evictionIndex >= pending.length) {
-    console.warn(`[agent-runtime] Invalid eviction index: ${evictionIndex}, queue length: ${pending.length}`);
-    return null;
-  }
-  const evicted = pending.splice(evictionIndex, 1)[0];
-  if (!evicted) return null;
-  // ...
-}
-```
-- 説明: 境界チェックを追加し、負のインデックスや範囲外アクセスを防止
+### Phase 2: ユニットテスト作成（2-3時間）
+
+1. テストファイル作成:
+   - `tests/safety/capacity-safety.test.ts`
+   - `tests/safety/concurrency-safety.test.ts`
+   - `tests/safety/distributed-safety.test.ts`
+   - `tests/safety/invariants.test.ts`
+
+2. テスト実行:
+   ```bash
+   npm test -- tests/safety/
+   ```
+
+### Phase 3: レース条件テスト（2-3時間）
+
+1. 並列実行テスト作成
+2. 高負荷テスト実行:
+   ```bash
+   npm run test:stress -- --iterations 1000 --concurrency 100
+   ```
+
+### Phase 4: 統合テスト（1-2時間）
+
+1. 実際のファイルシステムでテスト
+2. 長時間実行テスト（メモリリーク検出）
+
+### Phase 5: 静的解析（30分）
+
+1. TypeScript strict mode確認
+2. ESLint実行:
+   ```bash
+   npm run lint
+   ```
 
 ---
 
-### 5. LRUキャッシュメモリリーク対策
+## 4. バグ報告フォーマット
 
-#### 5.1 checkpoint-manager.ts
+### バグ報告テンプレート
 
-- ファイル: `.pi/lib/checkpoint-manager.ts`
-- 行番号: Cache management
-- 修正前コード:
+```markdown
+# バグ報告: [安全プロパティ違反]
+
+## 違反したプロパティ
+- [ ] CS-1: 過剰コミット防止
+- [ ] CS-2: 予約TTL
+- [ ] CS-3: スイーパクリーンアップ
+- [ ] CC-1: 孤立ワーカーなし
+- [ ] CC-2: Abort伝播
+- [ ] CC-3: キュー上限
+- [ ] DS-1: 原子的ロック取得
+- [ ] DS-2: TOCTOU緩和
+- [ ] DS-3: 死んだインスタンス清理
+- [ ] INV-1: limit >= 1
+- [ ] INV-2: activeAgents >= 0
+- [ ] INV-3: reservation.expiresAtMs > now
+- [ ] INV-4: 単一スイーパ
+- [ ] INV-5: ロック所有権
+
+## 期待される動作
+[安全プロパティが満たされるべき動作]
+
+## 実際の動作
+[観測された違反動作]
+
+## 再現手順
+1. [手順1]
+2. [手順2]
+3. [手順3]
+
+## 再現コード
 ```typescript
-const CACHE_MAX_ENTRIES = 100;
-
-function setToCache(taskId: string, checkpoint: Checkpoint): void {
-  // ... add to cache
-
-  // 最大エントリ数を超えた場合、最も古いエントリを削除
-  while (managerState.cacheOrder.length > CACHE_MAX_ENTRIES) {
-    const oldestKey = managerState.cacheOrder.shift();
-    if (oldestKey) {
-      managerState.cacheOrder.delete(oldestKey);
-    }
-  }
-}
+// 最小再現コード
 ```
-- 修正後コード:
-```typescript
-const CACHE_MAX_ENTRIES = 100;
-const CACHE_MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-const CACHE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
-function estimateCheckpointSize(checkpoint: Checkpoint): number {
-  try {
-    return JSON.stringify(checkpoint).length;
-  } catch {
-    return 1024; // Default estimate if serialization fails
-  }
-}
+## 影響度
+- [ ] Critical: データ損失/システムクラッシュ
+- [ ] High: リソースリーク/デッドロック
+- [ ] Medium: 一時的な不整合
+- [ ] Low: パフォーマンス劣化
 
-function setToCache(taskId: string, checkpoint: Checkpoint): void {
-  if (!managerState) return;
+## 根本原因
+[コードのどの部分が原因か]
 
-  const entrySize = estimateCheckpointSize(checkpoint);
+## 提案される修正
+[修正案]
 
-  // Add to cache
-  managerState.cache.set(taskId, checkpoint);
-  managerState.cacheOrder.push(taskId);
-  managerState.cacheSizes.set(taskId, entrySize);
+## 関連ファイル
+- [ファイルパス]: [影響範囲]
+```
 
-  let totalSize = Array.from(managerState.cacheSizes.values()).reduce((a, b) => a + b, 0);
+---
 
-  // Evict by count
-  while (managerState.cacheOrder.length > CACHE_MAX_ENTRIES) {
-    const oldestKey = managerState.cacheOrder.shift();
-    if (oldestKey) {
-      const size = managerState.cacheSizes.get(oldestKey) || 0;
-      managerState.cache.delete(oldestKey);
-      managerState.cacheSizes.delete(oldestKey);
-      totalSize -= size;
-    }
-  }
+## 5. Todoリスト
 
-  // Evict by size
-  while (totalSize > CACHE_MAX_SIZE_BYTES && managerState.cacheOrder.length > 0) {
-    const oldestKey = managerState.cacheOrder.shift();
-    if (oldestKey) {
-      const size = managerState.cacheSizes.get(oldestKey) || 0;
-      managerState.cache.delete(oldestKey);
-      managerState.cacheSizes.delete(oldestKey);
-      totalSize -= size;
-    }
-  }
-}
+### Phase 1: コード検査
+- [ ] **TODO-1**: CS-1（過剰コミット防止）のコード検査
+  - 対象: `agent-runtime.ts:checkRuntimeCapacity()`
+  - 確認事項: `projectedRequests <= maxTotalActiveRequests` ガード条件
 
-// Periodic cleanup (add to initCheckpointManager)
-function startCacheCleanupTimer(): void {
-  if (managerState?.cleanupTimer) {
-    clearInterval(managerState.cleanupTimer);
-  }
+- [ ] **TODO-2**: DS-1（原子的ロック取得）のコード検査
+  - 対象: `cross-instance-coordinator.ts:tryAcquireLock()`
+  - 確認事項: `openSync(path, "wx")` の原子的実行
 
-  managerState!.cleanupTimer = setInterval(() => {
-    if (!managerState) return;
+- [ ] **TODO-3**: INV-1（limit >= 1）のコード検査
+  - 対象: `concurrency.ts:normalizeLimit()`
+  - 確認事項: `Math.max(1, limit)` の適用
 
-    const now = Date.now();
-    // Remove entries older than 30 minutes
-    const maxAge = 30 * 60 * 1000;
+- [ ] **TODO-4**: INV-4（単一スイーパ）のコード検査
+  - 対象: `agent-runtime.ts:startReservationSweeper()`
+  - 確認事項: 二重起動防止フラグ
 
-    for (const [key, checkpoint] of managerState.cache.entries()) {
-      const age = now - (checkpoint.timestamp || 0);
-      if (age > maxAge) {
-        managerState.cache.delete(key);
-        managerState.cacheOrder = managerState.cacheOrder.filter(k => k !== key);
-        managerState.cacheSizes.delete(key);
+- [ ] **TODO-5**: INV-5（ロック所有権）のコード検査
+  - 対象: `cross-instance-coordinator.ts:releaseLock()`
+  - 確認事項: `lockId` 一致確認
+
+### Phase 2: ユニットテスト作成
+- [ ] **TODO-6**: CS-2（予約TTL）のテスト作成
+  - ファイル: `tests/safety/capacity-safety.test.ts`
+  - テストケース:
+    ```typescript
+    it('should auto-expire reservation after TTL', async () => {
+      const lease = createReservationLease({ ttlMs: 100 });
+      await sleep(150);
+      expect(isReservationActive(lease.id)).toBe(false);
+    });
+    ```
+
+- [ ] **TODO-7**: INV-2（activeAgents >= 0）のテスト作成
+  - ファイル: `tests/safety/invariants.test.ts`
+  - テストケース:
+    ```typescript
+    it('should never decrement below zero', () => {
+      state.activeAgents = 0;
+      state.activeAgents = Math.max(0, state.activeAgents - 1);
+      expect(state.activeAgents).toBe(0);
+    });
+    ```
+
+- [ ] **TODO-8**: INV-3（reservation.expiresAtMs > now）のテスト作成
+  - ファイル: `tests/safety/invariants.test.ts`
+  - テストケース:
+    ```typescript
+    it('should only count non-expired reservations', () => {
+      const reservations = getActiveReservations();
+      const now = Date.now();
+      reservations.forEach(r => {
+        expect(r.expiresAtMs).toBeGreaterThan(now);
+      });
+    });
+    ```
+
+### Phase 3: レース条件テスト
+- [ ] **TODO-9**: CC-1（孤立ワーカーなし）のレース条件テスト
+  - ファイル: `tests/safety/concurrency-safety.test.ts`
+  - テストケース:
+    ```typescript
+    it('should complete all workers after first error', async () => {
+      const completed: number[] = [];
+      await runWithConcurrencyLimit(
+        [1, 2, 3, 4, 5],
+        3,
+        async (item) => {
+          await sleep(item * 10);
+          if (item === 2) throw new Error('fail');
+          completed.push(item);
+        },
+        { abortOnFirstError: false }
+      ).catch(() => {});
+      expect(completed.length).toBe(4);
+    });
+    ```
+
+- [ ] **TODO-10**: CC-2（Abort伝播）のテスト作成
+  - ファイル: `tests/safety/concurrency-safety.test.ts`
+  - テストケース:
+    ```typescript
+    it('should propagate abort to all children', async () => {
+      const aborted: boolean[] = [];
+      const controller = new AbortController();
+      
+      const promise = runWithConcurrencyLimit(
+        [1, 2, 3],
+        3,
+        async (item, _, signal) => {
+          signal.addEventListener('abort', () => aborted.push(true));
+          await sleep(1000);
+        },
+        { signal: controller.signal }
+      );
+      
+      controller.abort();
+      await promise.catch(() => {});
+      expect(aborted.length).toBe(3);
+    });
+    ```
+
+- [ ] **TODO-11**: DS-2（TOCTOU緩和）のテスト作成
+  - ファイル: `tests/safety/distributed-safety.test.ts`
+  - テストケース:
+    ```typescript
+    it('should retry with exponential backoff on collision', async () => {
+      let attempts = 0;
+      const mockOpen = jest.spyOn(fs, 'openSync')
+        .mockImplementationOnce(() => { attempts++; throw { code: 'EEXIST' }; })
+        .mockImplementationOnce(() => { attempts++; throw { code: 'EEXIST' }; })
+        .mockImplementation(() => { attempts++; return 42; });
+      
+      await tryAcquireLock('test', 1000, 5);
+      expect(attempts).toBe(3);
+    });
+    ```
+
+### Phase 4: 統合テスト
+- [ ] **TODO-12**: CS-3（スイーパクリーンアップ）の統合テスト
+  - ファイル: `tests/integration/sweeper-cleanup.test.ts`
+  - テストケース:
+    ```typescript
+    it('should periodically remove expired reservations', async () => {
+      createReservationLease({ ttlMs: 100 });
+      await sleep(5500); // Wait for sweeper cycle (5s)
+      const active = getActiveReservations();
+      expect(active.size).toBe(0);
+    }, 10000);
+    ```
+
+- [ ] **TODO-13**: DS-3（死んだインスタンス清理）の統合テスト
+  - ファイル: `tests/integration/dead-instance-cleanup.test.ts`
+  - テストケース:
+    ```typescript
+    it('should remove instances without heartbeat for 60s', async () => {
+      registerInstance('test-session', '/test');
+      await sleep(65000);
+      cleanupDeadInstances();
+      expect(getActiveInstances()).not.toContain('test-session');
+    }, 70000);
+    ```
+
+- [ ] **TODO-14**: CC-3（キュー上限）のテスト作成
+  - ファイル: `tests/safety/concurrency-safety.test.ts`
+  - テストケース:
+    ```typescript
+    it('should enforce max queue size', () => {
+      for (let i = 0; i < 1001; i++) {
+        enqueueRequest({ id: `req-${i}` });
       }
-    }
-  }, CACHE_CLEANUP_INTERVAL_MS);
-}
-```
-- 説明: エントリ数に加えてサイズベースの削除と、時間ベースの定期クリーンアップを追加
+      expect(getQueueSize()).toBeLessThanOrEqual(1000);
+    });
+    ```
+
+### Phase 5: 静的解析
+- [ ] **TODO-15**: TypeScript strict mode確認
+  - コマンド: `npx tsc --noEmit --strict`
+  - 確認事項: エラーなし
+
+- [ ] **TODO-16**: ESLint実行
+  - コマンド: `npm run lint`
+  - 確認事項: エラーなし
+
+---
+
+## 6. 成功基準
+
+以下のすべてを満たした場合、安全プロパティが証明されたとみなす:
+
+1. **コード検査**: 全12プロパティのコード検査完了
+2. **ユニットテスト**: 全テストケース合格
+3. **レース条件テスト**: 1000回反復で一貫性違反なし
+4. **統合テスト**: 長時間実行テストでリソースリークなし
+5. **静的解析**: TypeScript strict mode + ESLint エラーなし
+
+---
+
+## 7. 参照ファイル
+
+| ファイル | 役割 |
+|---------|-----|
+| `.pi/extensions/agent-runtime.ts` | 容量管理・予約システム |
+| `.pi/lib/concurrency.ts` | 並列プール・Abort伝播 |
+| `.pi/lib/cross-instance-coordinator.ts` | 分散ロック・インスタンス管理 |
+| `.pi/extensions/subagents.ts` | サブエージェント並列実行 |
+| `.pi/extensions/agent-teams/team-orchestrator.ts` | チーム並列実行 |
+| `research.md` | 調査結果レポート |
 
 ---
 
 ## 考慮事項
 
-### パフォーマンス影響
-- ログ出力の追加はconsole.debugを使用するため、本番環境では無視される可能性がある
-- キャッシュサイズ計算（JSON.stringify）はCPUコストが高い。必要に応じて簡易推定に変更
-- 初期化ロックは単一スレッド環境では実質的にオーバーヘッドなし
-
-### 後方互換性
-- getStateAsync()の追加は破壊的変更ではない
-- インターフェース定義の追加は既存コードに影響しない
-- ログ出力の追加は動作に影響しない
-
-### テスト戦略
-- 競合状態のテストは困難なため、単体テストでロック機構を検証
-- キャッシュテストはモックを使用してサイズ計算を検証
-- 境界チェックは単体テストで容易に検証可能
-
-### リスク
-- シングルトン初期化の変更は影響範囲が大きい。慎重にテストが必要
-- LRUキャッシュの変更はメモリ使用量に影響する。本番環境での監視が必要
+- **タイミング依存テスト**: モックまたはfake timersを使用して非決定性を排除
+- **ファイルシステム競合**: テスト用の一時ディレクトリを使用
+- **長時間テスト**: CIではshort mode、ローカルではfull modeで実行
+- **並列テスト**: テスト間でグローバル状態を共有しない
 
 ---
 
-## Todo
+## 次のアクション
 
-### Phase 1: サイレントエラー修正（低リスク）
-- [ ] 1.1 cross-instance-coordinator.ts (5箇所) にログ追加
-- [ ] 1.2 storage-lock.ts (4箇所) にログ追加
-- [ ] 1.3 adaptive-rate-controller.ts にログ追加
-- [ ] 1.4 provider-limits.ts にログ追加
-- [ ] 1.5 ログ出力テストを追加
-
-### Phase 2: 配列境界チェック（低リスク）
-- [ ] 2.1 task-scheduler.ts に境界チェック追加
-- [ ] 2.2 agent-runtime.ts trimPendingQueueToLimit に境界チェック追加
-- [ ] 2.3 境界チェックテストを追加
-
-### Phase 3: 型安全性改善（中リスク）
-- [ ] 3.1 cross-instance-runtime.ts にインターフェース定義追加
-- [ ] 3.2 ul-dual-mode.ts にインターフェース定義追加
-- [ ] 3.3 型定義のテストを追加
-
-### Phase 4: シングルトン初期化修正（高リスク）
-- [ ] 4.1 agent-runtime.ts GlobalRuntimeStateProvider を修正
-- [ ] 4.2 agent-runtime.ts ensureReservationSweeper を修正
-- [ ] 4.3 checkpoint-manager.ts initCheckpointManager を修正
-- [ ] 4.4 統合テストで初期化競合を検証
-
-### Phase 5: キャッシュ改善（中リスク）
-- [ ] 5.1 checkpoint-manager.ts にサイズベース削除追加
-- [ ] 5.2 定期クリーンアップタイマー追加
-- [ ] 5.3 キャッシュテストを追加
-- [ ] 5.4 メモリ使用量の監視を追加
-
----
-
-## 実行順序の依存関係
-
-```
-Phase 1 ──┐
-          ├──> Phase 4
-Phase 2 ──┤
-          │
-Phase 3 ──┴──> Phase 5
-```
-
-- Phase 1, 2, 3 は並列実行可能（独立している）
-- Phase 4 は Phase 1, 2 の完了後に実行（テスト基盤が必要）
-- Phase 5 は Phase 3 の完了後に実行（型定義が必要）
-
----
-
-## 見積もり
-
-| フェーズ | 工数（エージェントラウンド） | リスク |
-|---------|---------------------------|--------|
-| Phase 1 | 2-3 rounds | 低 |
-| Phase 2 | 1-2 rounds | 低 |
-| Phase 3 | 2-3 rounds | 中 |
-| Phase 4 | 3-4 rounds | 高 |
-| Phase 5 | 2-3 rounds | 中 |
-| **合計** | **10-15 rounds** | - |
-
----
-
-## 成功基準
-
-1. すべてのサイレントエラー箇所にログ出力が追加されている
-2. シングルトン初期化が競合状態に対して安全である
-3. すべてのany型に適切なインターフェースが定義されている
-4. 配列境界チェックが追加され、テストが通る
-5. 既存のテストがすべて通る
-6. 新規テストが追加されている
-
----
-
-**計画作成日**: 2026-02-25
-**作成者**: architect subagent
+1. Phase 1（コード検査）から開始
+2. 各プロパティの検証結果を記録
+3. バグを発見した場合はバグ報告フォーマットで記録
+4. 全プロパティの検証完了後、最終レポートを作成

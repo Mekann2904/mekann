@@ -1,1001 +1,424 @@
-# Research Report: Bug Analysis and Design Issues in .pi/extensions/ and .pi/lib/
+# Research Report: Agent Parallel Management System
 
-**Date**: 2026-02-25
-**Investigator**: researcher subagent
-**Scope**: Type safety, error handling, async processing, resource management, boundary conditions, concurrency, logic errors
+## Overview
 
----
-
-## Executive Summary
-
-Comprehensive analysis of `.pi/extensions/` and `.pi/lib/` identified **47 potential issues** across 7 categories. Critical issues include race conditions in singleton initialization, silent error swallowing, type safety violations with `any`, and potential memory leaks in cache implementations.
-
-**Priority Distribution**:
-- **High**: 12 issues (immediate attention required)
-- **Medium**: 23 issues (should be addressed in near-term)
-- **Low**: 12 issues (technical debt, lower priority)
+This document details the investigation of the parallel agent management code in this project, covering mechanisms, functionality, and all specifications with a focus on **safety properties** (what must be guaranteed).
 
 ---
 
-## 1. Type Safety Issues
+## 1. Architecture Overview
 
-### 1.1 Excessive `any` Type Usage
+The parallel management system consists of 5 core components:
 
-**File**: `.pi/extensions/cross-instance-runtime.ts`
-**Lines**: Multiple (status checks, event handlers)
-**Priority**: High
+| Component | File | Role |
+|-----------|------|------|
+| **Runtime Controller** | `.pi/extensions/agent-runtime.ts` | Central runtime state, capacity management, queue orchestration |
+| **Concurrency Pool** | `.pi/lib/concurrency.ts` | Worker pool with parallelism limits |
+| **Cross-Instance Coordinator** | `.pi/lib/cross-instance-coordinator.ts` | Multi-instance coordination via file-based locks |
+| **Subagent Execution** | `.pi/extensions/subagents.ts` | Subagent lifecycle and parallel execution |
+| **Team Orchestrator** | `.pi/extensions/agent-teams/team-orchestrator.ts` | Team-based parallel execution |
+
+---
+
+## 2. Parallelism Control Mechanisms
+
+### 2.1 Runtime Capacity Limits (`agent-runtime.ts`)
+
+The `AgentRuntimeLimits` interface defines all limits:
 
 ```typescript
-const status = (result as any)?.details?.coordinator;
-const resolved = (result as any)?.details?.resolved;
-const sessionId = (event as any)?.sessionId ?? "unknown";
-const eventPayload = event as any;
-```
-
-**Impact**: Loss of type checking at runtime, potential `undefined` access errors.
-**Fix**: Define proper interfaces for coordinator status and event payloads.
-
----
-
-**File**: `.pi/extensions/self-improvement-reflection.ts`
-**Line**: Function parameter
-**Priority**: Medium
-
-```typescript
-execute: async (_toolCallId: string, params: any, _signal: AbortSignal, _onUpdate: any, ctx: ExtensionContext) => {
-```
-
-**Impact**: Unchecked parameter access may cause runtime errors.
-**Fix**: Define proper parameter interface.
-
----
-
-**File**: `.pi/extensions/subagents/live-monitor.ts`
-**Lines**: Multiple
-**Priority**: Medium
-
-```typescript
-theme: any,
-ctx: any,
-.custom((tui: any, theme: any, _keybindings: any, done: () => void) => {
-```
-
-**Impact**: TUI component integration is not type-safe.
-**Fix**: Import proper TUI types from pi-coding-agent.
-
----
-
-**File**: `.pi/extensions/ul-dual-mode.ts`
-**Lines**: Multiple helper functions
-**Priority**: Medium
-
-```typescript
-function refreshStatus(ctx: any): void {
-function parseToolInput(event: any): Record<string, unknown> | undefined {
-function isRecommendedSubagentParallelCall(event: any): boolean {
-```
-
-**Impact**: Event handling is not type-safe.
-**Fix**: Define event interfaces.
-
----
-
-**File**: `.pi/extensions/invariant-pipeline.ts`
-**Lines**: Multiple
-**Priority**: Medium
-
-```typescript
-return { name, type: type || "any" };
-return arbitraryMap[tsType] ?? "fc.anything()";
-} as any); // Multiple occurrences
-```
-
-**Impact**: Type mapping loses fidelity; `as any` bypasses safety.
-**Fix**: Define proper type mapping interfaces.
-
----
-
-**File**: `.pi/extensions/skill-inspector.ts`
-**Lines**: Type assertions
-**Priority**: Low
-
-```typescript
-} as any);
-```
-
-**Impact**: Minor - only affects display logic.
-**Fix**: Define proper return type.
-
----
-
-### 1.2 Unsafe Type Assertions
-
-**File**: `.pi/lib/error-utils.ts`
-**Lines**: JSON.stringify fallback
-**Priority**: Low
-
-```typescript
-if (typeof error === "object" && error !== null) {
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return "[object Object]";
-  }
+interface AgentRuntimeLimits {
+  maxTotalActiveLlm: number;           // Global LLM worker limit
+  maxTotalActiveRequests: number;      // Global request limit
+  maxParallelSubagentsPerRun: number;  // Per-run subagent parallelism
+  maxParallelTeamsPerRun: number;      // Per-run team parallelism
+  maxParallelTeammatesPerTeam: number; // Per-team member parallelism
+  maxConcurrentOrchestrations: number; // Global orchestration limit
+  capacityWaitMs: number;              // Max wait for capacity
+  capacityPollMs: number;              // Polling interval
 }
 ```
 
-**Impact**: Circular references in error objects may cause serialization failure.
-**Mitigation**: Already handled with try-catch, but return value could be more descriptive.
+**Priority Sources:**
+1. Environment variables (highest)
+2. Cross-instance coordinator (dynamic)
+3. Runtime config defaults (lowest)
 
----
-
-## 2. Error Handling Deficiencies
-
-### 2.1 Silent Error Swallowing (Critical)
-
-**File**: `.pi/lib/cross-instance-coordinator.ts`
-**Lines**: 204, 329, 424, 463, 477
-**Priority**: High
+### 2.2 Concurrency Pool (`concurrency.ts`)
 
 ```typescript
-} catch {
-  // ignore cleanup failures
+runWithConcurrencyLimit<TInput, TResult>(
+  items: TInput[],
+  limit: number,
+  worker: (item, index, signal) => Promise<TResult>,
+  options: ConcurrencyRunOptions
+): Promise<TResult[]>
+```
+
+**Key Features:**
+- **Normalized limit**: Always `1 <= limit <= itemCount`
+- **AbortSignal propagation**: Child controllers with proper cleanup
+- **Priority scheduling**: DynTaskMAS integration via `itemWeights`
+- **Error isolation**: First error captured, workers continue to avoid dangling
+
+### 2.3 Cross-Instance Coordination (`cross-instance-coordinator.ts`)
+
+**Directory Structure:**
+```
+~/.pi/runtime/
+├── instances/
+│   ├── {sessionId}-{pid}.lock    # Per-instance lock files
+│   └── ...
+├── queue-states/
+│   └── {instanceId}.json         # Queue state broadcasts
+├── locks/
+│   └── {resource}.lock           # Distributed locks
+└── coordinator.json              # Global config
+```
+
+**Parallel Limit Distribution:**
+```typescript
+getMyParallelLimit(): number {
+  const contendingCount = getContendingInstanceCount();
+  return Math.max(1, Math.floor(totalMaxLlm / contendingCount));
 }
 ```
 
-**Impact**: Filesystem errors are silently ignored, making debugging impossible. Disk full, permission errors, or corruption will go undetected.
-**Fix**: Log errors with `console.debug` or proper logger before ignoring.
-
 ---
 
-**File**: `.pi/lib/storage-lock.ts`
-**Lines**: 168, 198, 267, 288
-**Priority**: High
+## 3. Lock and Synchronization Mechanisms
 
+### 3.1 Global Runtime State (`agent-runtime.ts`)
+
+**State Location:** `globalThis.__PI_SHARED_AGENT_RUNTIME_STATE__`
+
+**Initialization Pattern:**
 ```typescript
-} catch {
-  // noop
-}
-```
-
-**Impact**: Lock acquisition/release failures are silently ignored. Could lead to deadlock detection failure.
-**Fix**: At minimum, log the error condition.
-
----
-
-**File**: `.pi/lib/adaptive-rate-controller.ts`
-**Line**: 286
-**Priority**: Medium
-
-```typescript
-} catch {
-  // ignore
-}
-```
-
-**Impact**: Rate limit configuration errors are hidden.
-**Fix**: Log warning with configuration details.
-
----
-
-**File**: `.pi/lib/provider-limits.ts`
-**Line**: 407
-**Priority**: Medium
-
-```typescript
-} catch {
-  // ignore
-}
-```
-
-**Impact**: Provider limit detection failures may cause incorrect rate limiting.
-**Fix**: Log warning and use fallback values explicitly.
-
----
-
-**File**: `.pi/extensions/shared/pi-print-executor.ts`
-**Lines**: 513, 771
-**Priority**: Medium
-
-```typescript
-} catch {
-  // noop
-}
-```
-
-**Impact**: Print executor cleanup failures are hidden.
-**Fix**: Log cleanup errors for debugging.
-
----
-
-**File**: `.pi/extensions/pi-ai-abort-fix.ts`
-**Lines**: 180, 190
-**Priority**: Medium
-
-```typescript
-} catch {
-  // ignore
-}
-```
-
-**Impact**: Abort handling failures may leave resources in inconsistent state.
-**Fix**: Log abort errors with context.
-
----
-
-**File**: `.pi/extensions/agent-usage-tracker.ts`
-**Lines**: 230, 314
-**Priority**: Low
-
-```typescript
-} catch {
-  // noop
-}
-```
-
-**Impact**: Usage tracking failures affect metrics but not functionality.
-**Fix**: Consider logging for operational visibility.
-
----
-
-**File**: `.pi/extensions/self-improvement-loop.ts`
-**Line**: 747
-**Priority**: Low
-
-```typescript
-} catch {
-  // ignore
-}
-```
-
-**Impact**: Minor - affects only self-improvement feedback loop.
-**Fix**: Log for debugging purposes.
-
----
-
-**File**: `.pi/extensions/loop/verification.ts`
-**Line**: 280
-**Priority**: Low
-
-```typescript
-} catch {
-  // noop
-}
-```
-
-**Impact**: Verification step failure is hidden.
-**Fix**: Log verification errors.
-
----
-
-**File**: `.pi/lib/storage-base.ts`
-**Line**: 180
-**Priority**: Low
-
-```typescript
-} catch {
-  // noop
-}
-```
-
-**Impact**: Storage cleanup failure is hidden.
-**Fix**: Log for operational monitoring.
-
----
-
-### 2.2 Already Fixed Error Handling (Good Pattern)
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Line**: 369
-**Priority**: N/A (Already Fixed)
-
-```typescript
-// Bug #8 fix: エラーをログに記録（元はcatch {}で無視していた）
-const errorMessage = error instanceof Error ? error.message : String(error);
-console.error(`[agent-runtime] publishRuntimeUsageToCoordinator failed: ${errorMessage}`);
-```
-
-**Note**: This is an example of a previously fixed silent error handling issue.
-
----
-
-### 2.3 Missing Try-Catch Blocks
-
-**File**: `.pi/extensions/subagents/task-execution.ts`
-**Lines**: Pattern loading
-**Priority**: Medium
-
-```typescript
-let relevantPatterns: ExtractedPattern[] = [];
-try {
-  relevantPatterns = findRelevantPatterns(input.cwd, input.task, 5);
-} catch {
-  // Pattern loading failure should not block execution
-}
-```
-
-**Impact**: Pattern loading failure is handled correctly but silently.
-**Fix**: Log warning when pattern loading fails.
-
----
-
-## 3. Asynchronous Processing Issues
-
-### 3.1 Potential Race Condition in Singleton Initialization
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Lines**: GlobalRuntimeStateProvider class
-**Priority**: High
-
-```typescript
-class GlobalRuntimeStateProvider implements RuntimeStateProvider {
-  private initializationInProgress = false;
+class GlobalRuntimeStateProvider {
+  private initializationLock = false;
+  private initializationPromise: Promise<void> | null = null;
 
   getState(): AgentRuntimeState {
     if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      if (this.initializationInProgress) {
-        // 短いスピンウェイト（初期化完了を待機）
-        let attempts = 0;
-        while (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ && attempts < 1000) {
-          attempts += 1;
-        }
-        // 初期化が完了していない場合は新規作成
-        if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-          this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-        }
+      if (this.initializationLock && this.initializationPromise) {
+        throw new Error("Use getStateAsync() instead.");
       }
-```
-
-**Issues**:
-1. **Spin wait without yield**: `attempts < 1000` loop blocks the event loop
-2. **Race condition**: Multiple threads could still race between checking `initializationInProgress` and setting it
-3. **No memory barrier**: JavaScript doesn't guarantee visibility across async boundaries
-
-**Impact**: Under high concurrency, multiple runtime states could be created, leading to inconsistent state.
-**Fix**: Use proper async mutex or Promise-based initialization.
-
----
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Lines**: Reservation sweeper initialization
-**Priority**: High
-
-```typescript
-let runtimeReservationSweeperInitializing = false;
-
-function ensureReservationSweeper(): void {
-  if (runtimeReservationSweeper || runtimeReservationSweeperInitializing) return;
-
-  runtimeReservationSweeperInitializing = true;
-  try {
-    if (runtimeReservationSweeper) return;
-    // ... create sweeper
-  } finally {
-    runtimeReservationSweeperInitializing = false;
+      this.initializationLock = true;
+      // ... create state ...
+    }
   }
 }
 ```
 
-**Issues**:
-1. Flag check and set is not atomic
-2. Multiple sweepers could be created in concurrent initialization
+**Safety Property:** Spin-wait removed, Promise-based initialization prevents race conditions.
 
-**Fix**: Use atomic flag or proper locking mechanism.
+### 3.2 Distributed Lock (`cross-instance-coordinator.ts`)
 
----
-
-**File**: `.pi/lib/checkpoint-manager.ts`
-**Lines**: Manager initialization
-**Priority**: High
-
+**Atomic Acquisition with O_EXCL:**
 ```typescript
-let managerState: {...} | null = null;
-
-export function initCheckpointManager(configOverrides?: Partial<CheckpointManagerConfig>): void {
-  if (managerState?.initialized) {
-    return;
-  }
-  // ... initialization
-  managerState = {...};
-}
-```
-
-**Issues**:
-1. Check-then-act pattern without atomicity
-2. Race condition between checking `initialized` and setting `managerState`
-
-**Impact**: Multiple manager states could be created, timers could leak.
-**Fix**: Use proper initialization guard pattern.
-
----
-
-### 3.2 Unhandled Promise Rejections Risk
-
-**File**: `.pi/lib/dynamic-tools/registry.ts`
-**Line**: Audit log call
-**Priority**: Medium
-
-```typescript
-logAudit({...}, this.paths).catch((e) => {
-  console.debug("[dynamic-tools] Failed to log tool registration:", e);
-});
-```
-
-**Impact**: Audit log failure is caught but only logged to debug.
-**Fix**: Consider alerting mechanism for critical audit failures.
-
----
-
-## 4. Resource Management Issues
-
-### 4.1 Memory Leak Potential in LRU Cache
-
-**File**: `.pi/lib/checkpoint-manager.ts`
-**Lines**: Cache management
-**Priority**: High
-
-```typescript
-const CACHE_MAX_ENTRIES = 100;
-
-function setToCache(taskId: string, checkpoint: Checkpoint): void {
-  // ... add to cache
+function tryAcquireLock(resource: string, ttlMs: number, maxRetries: number) {
+  // Atomic file creation with wx flag (O_EXCL)
+  fd = openSync(lockFile, "wx");  // Atomic!
   
-  // 最大エントリ数を超えた場合、最も古いエントリを削除
-  while (managerState.cacheOrder.length > CACHE_MAX_ENTRIES) {
-    const oldestKey = managerState.cacheOrder.shift();
-    if (oldestKey) {
-      managerState.cache.delete(oldestKey);
-    }
+  // TOCTOU mitigation: exponential backoff on collision
+  if (attempt < maxRetries) {
+    const delayMs = Math.min(10 * Math.pow(2, attempt), 100);
+    Atomics.wait(..., delayMs);  // Spin-wait mitigation
   }
 }
 ```
 
-**Issues**:
-1. Cache entries are never proactively invalidated
-2. Large checkpoint objects in cache could consume significant memory
-3. No size-based eviction, only count-based
+**Lock Lifecycle:**
+1. Try atomic create with `wx` flag
+2. On `EEXIST`, check expiration
+3. Clean expired locks atomically via `renameSync`
+4. Retry with backoff
 
-**Impact**: Under heavy load with large checkpoints, memory could grow unbounded.
-**Fix**: Add size-based eviction or periodic cleanup.
+### 3.3 Reservation Lease Pattern
+
+```typescript
+interface RuntimeCapacityReservationLease {
+  id: string;
+  expiresAtMs: number;
+  consume: () => void;      // Mark as consumed
+  heartbeat: (ttlMs?) => void;  // Extend TTL
+  release: () => void;      // Free capacity
+}
+```
+
+**Safety Property:** Reservations auto-expire via periodic sweeper (default 5s).
 
 ---
 
-### 4.2 File Handle Leak Potential
+## 4. Resource Management
 
-**File**: `.pi/lib/storage-lock.ts`
-**Line**: tryAcquireLock
-**Priority**: Medium
+### 4.1 Capacity Check Flow
+
+```
+┌──────────────────────┐
+│ checkRuntimeCapacity │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────────┐
+│ projectedRequests =      │
+│   active + reserved + new│
+└──────────┬───────────────┘
+           │
+           ▼
+┌──────────────────────────┐     No    ┌─────────────┐
+│ projectedRequests <= max?├──────────►│ BLOCKED     │
+└──────────┬───────────────┘           │ + reasons[] │
+           │ Yes                       └─────────────┘
+           ▼
+┌─────────────────────┐
+│ ALLOWED             │
+│ + reservation lease │
+└─────────────────────┘
+```
+
+### 4.2 Priority Queue Management
+
+**Entry Structure:**
+```typescript
+interface RuntimeQueueEntry extends PriorityTaskMetadata {
+  queueClass: "interactive" | "standard" | "batch";
+  priority: "critical" | "high" | "normal" | "low" | "background";
+  tenantKey: string;
+  skipCount: number;  // For starvation detection
+}
+```
+
+**Eviction Policy (when queue exceeds limit):**
+1. Lower queue class first (batch < standard < interactive)
+2. Lower priority first (background < ... < critical)
+3. Older entries first (LRU-like)
+
+**Starvation Prevention:**
+- After 20s wait: promote queue class
+- After 60s wait: promote priority level
+
+### 4.3 Adaptive Penalty Controller
 
 ```typescript
-function tryAcquireLock(lockFile: string): boolean {
-  let fd: number | undefined;
+const adaptivePenalty = createAdaptivePenaltyController({
+  isStable: STABLE_RUNTIME_PROFILE,
+  maxPenalty: ADAPTIVE_PARALLEL_MAX_PENALTY,
+  decayMs: ADAPTIVE_PARALLEL_DECAY_MS,
+});
+
+// On rate limit: raise penalty
+adaptivePenalty.raise("rate_limit");
+
+// On success: lower penalty
+adaptivePenalty.lower();
+
+// Apply to parallelism
+const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
+```
+
+---
+
+## 5. Error Handling
+
+### 5.1 Error Classification
+
+```typescript
+function classifyPressureError(error: string): 
+  "rate_limit" | "capacity" | "timeout" | "other"
+```
+
+**Retry Policy by Error Type:**
+| Error Type | Retry | Backoff |
+|------------|-------|---------|
+| rate_limit | Yes | Exponential + jitter |
+| capacity | Yes | Poll with backoff |
+| timeout | Yes | Limited retries |
+| other | No | - |
+
+### 5.2 Capacity Wait with Backoff
+
+```typescript
+function computeBackoffDelay(pollIntervalMs, attempts, remainingMs): number {
+  const exponent = Math.min(6, attempts - 1);
+  const rawDelay = pollIntervalMs * Math.pow(2, exponent);
+  const jitter = random(-jitterRange, +jitterRange);
+  return Math.max(1, Math.min(rawDelay + jitter, remainingMs));
+}
+```
+
+**Max backoff factor:** 8x base interval
+**Jitter ratio:** 20%
+
+### 5.3 Failure Memory (Team Orchestrator)
+
+```typescript
+// Record failure for pattern detection
+const failureRecord = memory.recordFailure(
+  teamId, memberId, error, taskSignature, retryRound
+);
+
+// Skip retry if pattern detected
+if (memory.shouldSkipRetry(taskSignature, errorType)) {
+  // Don't retry - pattern indicates persistent failure
+}
+```
+
+---
+
+## 6. Cross-Instance Coordination
+
+### 6.1 Instance Registration
+
+```typescript
+registerInstance(sessionId: string, cwd: string, configOverrides?): void
+```
+
+**Heartbeat Flow:**
+```
+┌─────────────────────┐
+│ registerInstance()  │
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────────────┐
+│ Write ~/.pi/runtime/        │
+│   instances/{id}.lock       │
+└─────────┬───────────────────┘
+          │
+          ▼
+┌─────────────────────────────┐
+│ setInterval(heartbeat, 15s) │
+│   - updateHeartbeat()       │
+│   - cleanupDeadInstances()  │
+└─────────────────────────────┘
+```
+
+### 6.2 Work Stealing Protocol
+
+```typescript
+async function safeStealWork(): Promise<StealableQueueEntry | null> {
+  // 1. Check if stealing enabled
+  if (process.env.PI_ENABLE_WORK_STEALING === "false") return null;
+  
+  // 2. Only steal if idle
+  if (!isIdle()) return null;
+  
+  // 3. Find candidate with excess work
+  const candidate = findStealCandidate();
+  if (!candidate) return null;
+  
+  // 4. Acquire distributed lock
+  const lock = tryAcquireLock(`steal:${candidate.instanceId}`);
+  if (!lock) return null;  // Another instance stealing
+  
   try {
-    fd = openSync(lockFile, "wx", 0o600);
-    writeFileSync(fd, `${process.pid}:${Date.now()}\n`, "utf-8");
-    return true;
-  } catch (error) {
-    if (isNodeErrno(error, "EEXIST")) {
-      return false;
-    }
-    throw error;
+    // 5. Steal highest priority task
+    return stealWork();
   } finally {
-    if (typeof fd === "number") {
-      try {
-        closeSync(fd);
-      } catch {
-        // noop
-      }
-    }
+    releaseLock(lock);
   }
 }
 ```
 
-**Issues**:
-1. `writeFileSync` failure after `openSync` could leak fd before finally block
-2. Error in finally's closeSync is silently ignored
-
-**Impact**: Under error conditions, file descriptors could leak.
-**Fix**: Use try-with-resources pattern or explicit cleanup order.
-
----
-
-### 4.3 Timer Leak Potential
-
-**File**: `.pi/lib/task-scheduler.ts`
-**Lines**: Event-driven wait
-**Priority**: Medium
+### 6.3 Cluster-Wide Usage Aggregation
 
 ```typescript
-private waitForEvent(timeoutMs: number, signal?: AbortSignal): Promise<"event" | "timeout" | "aborted"> {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve("timeout");
-    }, timeoutMs);
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      this.eventTarget.removeEventListener("task-completed", onEvent);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    // ...
-  });
+function getClusterRuntimeUsage(): {
+  totalActiveRequests: number;
+  totalActiveLlm: number;
+  instanceCount: number;
+} {
+  const instances = getActiveInstances();
+  // Sum across all active instances
+  return instances.reduce((acc, inst) => ({
+    totalActiveRequests: acc.totalActiveRequests + inst.activeRequestCount,
+    totalActiveLlm: acc.totalActiveLlm + inst.activeLlmCount,
+  }), { totalActiveRequests: 0, totalActiveLlm: 0, instanceCount: instances.length });
 }
 ```
 
-**Issues**:
-1. If cleanup is never called (theoretical edge case), timer persists
-2. Event listener cleanup depends on proper execution flow
+---
 
-**Impact**: Minor - Promise resolution ensures cleanup in most cases.
-**Fix**: Add defensive cleanup in finally block.
+## 7. Safety Properties (Critical Guarantees)
+
+### 7.1 Capacity Safety
+
+| Property | Mechanism |
+|----------|-----------|
+| **No over-commit** | `projectedRequests <= maxTotalActiveRequests` check before dispatch |
+| **Reservation TTL** | Auto-expire after 45-60s (configurable) |
+| **Sweeper cleanup** | Periodic removal of expired reservations (5s interval) |
+
+### 7.2 Concurrency Safety
+
+| Property | Mechanism |
+|----------|-----------|
+| **No dangling workers** | `runWithConcurrencyLimit` continues all workers after first error |
+| **Abort propagation** | Child `AbortController` with proper cleanup in `finally` |
+| **Queue bounded** | Max pending entries (default 1000), eviction on overflow |
+
+### 7.3 Distributed Safety
+
+| Property | Mechanism |
+|----------|-----------|
+| **Atomic lock acquisition** | `openSync(path, "wx")` with O_EXCL flag |
+| **TOCTOU mitigation** | Exponential backoff + retry on collision |
+| **Dead instance cleanup** | Heartbeat timeout (default 60s) + process liveness check |
+
+### 7.4 Priority Queue Safety
+
+| Property | Mechanism |
+|----------|-----------|
+| **Starvation prevention** | Auto-promote after 20s (class) / 60s (priority) |
+| **Tenant fairness** | Max 2 consecutive dispatches per tenant |
+| **Interactive priority** | `question` tool always gets highest class |
 
 ---
 
-## 5. Boundary Condition Issues
+## 8. Key Invariants
 
-### 5.1 Array Bounds and Index Validation
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Line**: trimPendingQueueToLimit
-**Priority**: Medium
-
-```typescript
-function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null {
-  // ...
-  const evicted = pending.splice(evictionIndex, 1)[0];
-  if (!evicted) return null;
-  // ...
-}
-```
-
-**Issues**:
-1. `splice` returns empty array if index invalid, `[0]` returns undefined
-2. Undefined check after splice is correct, but evictionIndex could be -1
-
-**Impact**: Edge case where evictionIndex remains -1 would cause undefined return.
-**Fix**: Add explicit check `if (evictionIndex < 0) return null;` before splice.
+1. **`limit >= 1`**: Concurrency limit always normalized to at least 1
+2. **`activeAgents >= 0`**: Counter never goes negative (guarded with `Math.max(0, ...)`)
+3. **`reservation.expiresAtMs > now`**: Only non-expired reservations counted
+4. **Single sweeper**: Only one reservation sweeper timer per process
+5. **Lock ownership**: Only lock owner can release (`lockId` match required)
+6. **Limits consistency**: `limitsVersion` hash ensures env/config drift detected
 
 ---
 
-**File**: `.pi/lib/task-scheduler.ts`
-**Lines**: Queue operations
-**Priority**: Medium
+## 9. Configuration Environment Variables
 
-```typescript
-const queueIndex = queue.indexOf(entry);
-// ...
-queue.splice(queueIndex, 1);
-```
-
-**Issues**:
-1. If `indexOf` returns -1, `splice(-1, 1)` removes last element instead of no-op
-
-**Impact**: Wrong entry could be removed from queue.
-**Fix**: Check `queueIndex >= 0` before splice.
-
----
-
-### 5.2 Numeric Overflow/Underflow
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Lines**: Sequence counters
-**Priority**: Low
-
-```typescript
-let runtimeQueueSequence = 0;
-let runtimeReservationSequence = 0;
-
-function createRuntimeQueueEntryId(): string {
-  runtimeQueueSequence += 1;
-  return `queue-${process.pid}-${getRuntimeInstanceToken()}-${runtimeNow()}-${runtimeQueueSequence}`;
-}
-```
-
-**Issues**:
-1. Sequence counters can overflow JavaScript's safe integer limit (2^53)
-2. At 1000 operations/second, overflow occurs in ~285,616 years (acceptable)
-
-**Impact**: Theoretical - extremely unlikely in practice.
-**Fix**: Add modulo wrap or use BigInt if concerned.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PI_AGENT_MAX_TOTAL_LLM` | 12 | Global LLM worker limit |
+| `PI_AGENT_MAX_TOTAL_REQUESTS` | 24 | Global request limit |
+| `PI_AGENT_MAX_PARALLEL_SUBAGENTS` | 4 | Subagent parallelism |
+| `PI_AGENT_MAX_PARALLEL_TEAMS` | 2 | Team parallelism |
+| `PI_AGENT_MAX_PARALLEL_TEAMMATES` | 4 | Team member parallelism |
+| `PI_AGENT_MAX_CONCURRENT_ORCHESTRATIONS` | 4 | Global orchestration limit |
+| `PI_AGENT_CAPACITY_WAIT_MS` | 60000 | Max wait for capacity |
+| `PI_AGENT_CAPACITY_POLL_MS` | 1000 | Polling interval |
+| `PI_RUNTIME_DIR` | `~/.pi/runtime` | Coordinator directory |
+| `PI_ENABLE_WORK_STEALING` | true | Enable work stealing |
+| `PI_USE_SCHEDULER` | false | Use scheduler-based capacity |
+| `PI_DEBUG_COORDINATOR` | - | Debug logging |
 
 ---
 
-**File**: `.pi/lib/task-scheduler.ts`
-**Line**: Task ID sequence
-**Priority**: Low
+## 10. Summary
 
-```typescript
-let taskIdSequence = 0;
-taskIdSequence = (taskIdSequence + 1) % 36 ** 4;
-```
+The parallel management system provides:
 
-**Issues**:
-1. Modulo prevents overflow but could theoretically duplicate IDs
-2. Timestamp + random + sequence combination makes collision extremely unlikely
+1. **Multi-level parallelism control**: Global → Instance → Run → Agent/Team → Member
+2. **Robust synchronization**: File-based distributed locks with atomic acquisition
+3. **Fair scheduling**: Priority queue with starvation prevention and tenant fairness
+4. **Graceful degradation**: Adaptive penalty on rate limits, capacity-aware parallelism reduction
+5. **Cross-instance coordination**: Heartbeat-based liveness, work stealing, cluster-wide usage tracking
 
-**Impact**: Negligible in practice.
-**Fix**: None required for current use case.
+**Key Safety Guarantee**: The system ensures that at any moment:
+- `totalActiveLlm <= maxTotalActiveLlm`
+- `totalActiveRequests <= maxTotalActiveRequests`
+- `activeOrchestrations <= maxConcurrentOrchestrations`
 
----
-
-### 5.3 Null/Undefined Edge Cases
-
-**File**: `.pi/extensions/subagents/storage.ts`
-**Lines**: Storage loading
-**Priority**: Medium
-
-```typescript
-const storage: SubagentStorage = {
-  agents: Array.isArray(parsed.agents) ? parsed.agents : [],
-  runs: Array.isArray(parsed.runs) ? parsed.runs : [],
-  currentAgentId: typeof parsed.currentAgentId === "string" ? parsed.currentAgentId : undefined,
-  defaultsVersion:
-    typeof parsed.defaultsVersion === "number" && Number.isFinite(parsed.defaultsVersion)
-      ? Math.trunc(parsed.defaultsVersion)
-      : 0,
-};
-```
-
-**Issues**:
-1. `parsed.agents` items are not validated for correct schema
-2. `parsed.runs` items are not validated for correct schema
-
-**Impact**: Malformed storage file could inject invalid data.
-**Fix**: Add schema validation for each agent and run entry.
-
----
-
-**File**: `.pi/lib/checkpoint-manager.ts`
-**Line**: parseCheckpointFile
-**Priority**: Medium
-
-```typescript
-function parseCheckpointFile(filePath: string): Checkpoint | null {
-  try {
-    const content = readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(content) as Checkpoint;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-```
-
-**Issues**:
-1. No validation of parsed object structure
-2. `as Checkpoint` assertion doesn't verify fields
-
-**Impact**: Corrupted checkpoint file could cause undefined access later.
-**Fix**: Add runtime validation of checkpoint fields.
-
----
-
-## 6. Concurrency Issues
-
-### 6.1 Race Condition in Global State
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Lines**: Global runtime state access
-**Priority**: High
-
-```typescript
-export function getSharedRuntimeState(): AgentRuntimeState {
-  return runtimeStateProvider.getState();
-}
-```
-
-Multiple concurrent calls to `getSharedRuntimeState()` could read/write state simultaneously since JavaScript objects are not thread-safe for compound operations.
-
-**Impact**: Under high concurrency, state corruption is possible.
-**Fix**: Use proper synchronization or immutable state patterns.
-
----
-
-### 6.2 Reservation Expiration Race
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Lines**: cleanupExpiredReservations
-**Priority**: Medium
-
-```typescript
-function cleanupExpiredReservations(runtime: AgentRuntimeState, nowMs = runtimeNow()): number {
-  const before = runtime.reservations.active.length;
-  runtime.reservations.active = runtime.reservations.active.filter(
-    (reservation) => reservation.expiresAtMs > nowMs,
-  );
-  // ...
-}
-```
-
-**Issues**:
-1. Filter operation creates new array while other code may reference old array
-2. No synchronization between cleanup and active usage
-
-**Impact**: Reservation could be used after it's marked for cleanup.
-**Fix**: Use atomic operations or proper locking.
-
----
-
-### 6.3 Queue Consistency Under Concurrent Modification
-
-**File**: `.pi/lib/task-scheduler.ts`
-**Lines**: Queue operations
-**Priority**: Medium
-
-```typescript
-class TaskSchedulerImpl {
-  private readonly queues: Map<string, TaskQueueEntry[]> = new Map();
-  // ...
-
-  async submit<TResult>(task: ScheduledTask<TResult>): Promise<TaskResult<TResult>> {
-    // ...
-    queue.push(entry);
-    this.sortQueue(queue);
-    // ...
-  }
-}
-```
-
-**Issues**:
-1. `push` and `sort` are not atomic
-2. Concurrent submissions could interleave operations
-
-**Impact**: Queue order could be inconsistent under concurrent load.
-**Fix**: Use proper queue synchronization.
-
----
-
-## 7. Logic Errors
-
-### 7.1 Incorrect Comparison Logic
-
-**File**: `.pi/lib/task-scheduler.ts`
-**Lines**: compareTaskEntries
-**Priority**: Low
-
-```typescript
-function compareTaskEntries(a: TaskQueueEntry, b: TaskQueueEntry): number {
-  // 1. Priority comparison (higher first)
-  const priorityDiff = priorityToValue(b.task.priority) - priorityToValue(a.task.priority);
-  if (priorityDiff !== 0) {
-    return priorityDiff;
-  }
-
-  // 2. Starvation prevention
-  const skipDiff = a.skipCount - b.skipCount;
-  if (skipDiff > 3) return -1;
-  if (skipDiff < -3) return 1;
-  // ...
-}
-```
-
-**Issues**:
-1. Starvation prevention check uses magic number 3 without explanation
-2. Asymmetric threshold could cause inconsistent ordering
-
-**Impact**: Minor - starvation prevention may not work as intended.
-**Fix**: Define constant with documentation, consider symmetric threshold.
-
----
-
-### 7.2 Potential Infinite Loop
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Lines**: waitForRuntimeCapacity
-**Priority**: Low
-
-```typescript
-while (true) {
-  attempts += 1;
-  // ...
-  const attempted = tryReserveRuntimeCapacity(input);
-  if (attempted.allowed && attempted.reservation) {
-    return {...};
-  }
-  // ...
-}
-```
-
-**Issues**:
-1. While true without guaranteed exit condition
-2. Timeout check exists but could theoretically be bypassed if timing is wrong
-
-**Impact**: Theoretical - timeout check should prevent infinite loop.
-**Fix**: Add maximum attempts as additional safeguard.
-
----
-
-### 7.3 Off-by-One in Eviction Logic
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Lines**: trimPendingQueueToLimit
-**Priority**: Low
-
-```typescript
-function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null {
-  const maxPendingEntries = getMaxPendingQueueEntries();
-  const pending = runtime.queue.pending;
-  if (pending.length < maxPendingEntries) {
-    return null;
-  }
-  // ... eviction logic
-}
-```
-
-**Issues**:
-1. Eviction only triggers when `pending.length >= maxPendingEntries`
-2. After eviction, length is `maxPendingEntries - 1`, allowing immediate re-fill
-
-**Impact**: Queue hovers at limit-1, causing frequent evictions under load.
-**Fix**: Consider evicting when approaching limit (e.g., 90%).
-
----
-
-## 8. Design Issues
-
-### 8.1 God Object Pattern
-
-**File**: `.pi/extensions/agent-runtime.ts`
-**Lines**: Entire file (2400+ lines)
-**Priority**: Medium
-
-**Issues**:
-1. Single file manages runtime state, reservations, capacity, dispatch, and orchestration
-2. Tight coupling between concerns
-3. Difficult to test individual components
-
-**Impact**: Maintenance burden, testing difficulty.
-**Fix**: Split into focused modules (state management, reservations, dispatch).
-
----
-
-### 8.2 Feature Flag Proliferation
-
-**Files**: Multiple
-**Priority**: Low
-
-```typescript
-const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
-const DEBUG_RUNTIME_QUEUE = process.env.PI_DEBUG_RUNTIME_QUEUE === "1";
-// Many more...
-```
-
-**Issues**:
-1. Many feature flags without central registry
-2. Inconsistent flag naming (PI_ prefix vs no prefix)
-3. No documentation of available flags
-
-**Impact**: Difficult to understand available configuration options.
-**Fix**: Create central feature flag registry with documentation.
-
----
-
-### 8.3 Circular Dependency Risk
-
-**Files**: `.pi/extensions/agent-runtime.ts`, `.pi/lib/task-scheduler.ts`, `.pi/lib/checkpoint-manager.ts`
-**Priority**: Medium
-
-```
-agent-runtime.ts -> task-scheduler.ts -> checkpoint-manager.ts
-                                             ↑
-agent-runtime.ts ----------------------------|
-```
-
-**Issues**:
-1. Circular import chain between modules
-2. Could cause initialization order issues
-
-**Impact**: Potential runtime errors during module loading.
-**Fix**: Refactor to break circular dependency.
-
----
-
-## 9. Security Considerations
-
-### 9.1 File Permission Issues
-
-**File**: `.pi/lib/storage-lock.ts`
-**Line**: Lock file creation
-**Priority**: Medium
-
-```typescript
-fd = openSync(lockFile, "wx", 0o600);
-```
-
-**Issues**:
-1. Lock files created with 0600 permissions (good)
-2. But content includes PID which could be read by same-user processes
-
-**Impact**: Low - PID exposure is minor concern.
-**Fix**: None required, but document for security review.
-
----
-
-### 9.2 Dynamic Code Execution
-
-**File**: `.pi/lib/dynamic-tools/registry.ts`
-**Lines**: Tool execution
-**Priority**: High
-
-```typescript
-// Tool code is stored and potentially executed
-const tool: DynamicToolDefinition = {
-  // ...
-  code: request.code,
-  // ...
-};
-```
-
-**Issues**:
-1. Dynamic tool code is stored and could be executed
-2. Safety analysis exists but could have gaps
-
-**Impact**: Potential arbitrary code execution if safety checks are bypassed.
-**Fix**: Ensure safety analysis covers all edge cases, add sandboxing.
-
----
-
-## 10. Recommendations Summary
-
-### Immediate Actions (High Priority)
-
-1. **Fix singleton initialization race conditions** in agent-runtime.ts and checkpoint-manager.ts
-2. **Add error logging** to all silent catch blocks
-3. **Add schema validation** for loaded JSON files (storage, checkpoints)
-4. **Review dynamic tool execution** security model
-5. **Fix potential fd leaks** in storage-lock.ts
-
-### Near-Term Actions (Medium Priority)
-
-1. **Replace `any` types** with proper interfaces
-2. **Add synchronization** for concurrent state access
-3. **Break circular dependencies** between core modules
-4. **Add array bounds checking** before splice operations
-5. **Improve LRU cache** with size-based eviction
-
-### Long-Term Actions (Low Priority)
-
-1. **Refactor agent-runtime.ts** into focused modules
-2. **Create feature flag registry**
-3. **Add comprehensive logging** framework
-4. **Document all environment variables**
-5. **Add integration tests** for concurrent scenarios
-
----
-
-## Appendix: Files Analyzed
-
-### Extensions (`.pi/extensions/`)
-- `agent-runtime.ts` (2405 lines) - Core runtime management
-- `cross-instance-runtime.ts` - Cross-instance coordination
-- `self-improvement-reflection.ts` - Self-improvement loop
-- `kitty-status-integration.ts` - Status display
-- `subagents/live-monitor.ts` - Live monitoring UI
-- `subagents/task-execution.ts` - Task execution logic
-- `subagents/parallel-execution.ts` - Parallel execution
-- `subagents/storage.ts` - Subagent storage
-- `ul-dual-mode.ts` - UL mode handling
-- `skill-inspector.ts` - Skill inspection
-- `invariant-pipeline.ts` - Invariant checking
-- `shared/pi-print-executor.ts` - Print execution
-- `pi-ai-abort-fix.ts` - Abort handling
-- `agent-usage-tracker.ts` - Usage tracking
-- `self-improvement-loop.ts` - Improvement loop
-- `loop/verification.ts` - Verification logic
-
-### Library (`.pi/lib/`)
-- `task-scheduler.ts` - Task scheduling
-- `checkpoint-manager.ts` - Checkpoint management
-- `cross-instance-coordinator.ts` - Instance coordination
-- `storage-lock.ts` - File locking
-- `error-utils.ts` - Error handling utilities
-- `output-validation.ts` - Output validation
-- `dynamic-tools/registry.ts` - Dynamic tool registry
-- `adaptive-rate-controller.ts` - Rate limiting
-- `provider-limits.ts` - Provider limits
-- `storage-base.ts` - Storage utilities
-
----
-
-**End of Report**
+All capacity checks are atomic (reservation-based), and all distributed operations use proper locking to prevent race conditions.
