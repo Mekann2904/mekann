@@ -58,6 +58,7 @@ coverage/
 # UL Workflow runtime data (task files generated during workflow execution)
 .pi/ul-workflow/tasks/*
 !.pi/ul-workflow/tasks/.gitkeep
+.pi/ul-workflow/active.json
 
 # Self-improvement loop runtime data
 .pi/self-improvement-loop/
@@ -111,6 +112,9 @@ coverage/
 *.tmp-*
 *.lock
 *.bak
+
+# Test directories (temporary test artifacts)
+.pi/test-*/
 
 # ============================================================================
 # Auth & Credentials (NEVER commit these)
