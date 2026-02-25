@@ -106,7 +106,7 @@ export async function callGraphIndex(
 			edgeCount: index.metadata.edgeCount,
 			outputPath,
 		};
-	} catch (error) {
+	} catch (error: unknown) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
 			nodeCount: 0,
@@ -179,7 +179,7 @@ export async function findCallersTool(
 			truncated: results.length >= limit,
 			results,
 		};
-	} catch (error) {
+	} catch (error: unknown) {
 		const message = error instanceof Error ? error.message : String(error);
 		return {
 			symbolName: input.symbolName,

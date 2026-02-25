@@ -95,8 +95,36 @@ export interface TeamNormalizedOutput {
   reason?: string;
 }
 
-const IDLE_TIMEOUT_RETRY_LIMIT = 1;
-const IDLE_TIMEOUT_RETRY_DELAY_MS = 1500;
+// 環境変数で設定可能な再試行パラメータ
+const IDLE_TIMEOUT_RETRY_LIMIT = (() => {
+  const envVal = process.env.PI_IDLE_TIMEOUT_RETRY_LIMIT;
+  if (envVal !== undefined) {
+    const parsed = Number(envVal);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      console.warn(
+        `[member-execution] Invalid PI_IDLE_TIMEOUT_RETRY_LIMIT="${envVal}", using default 1`
+      );
+      return 1;
+    }
+    return Math.max(0, Math.min(5, parsed)); // 0-5回に制限
+  }
+  return 1;
+})();
+
+const IDLE_TIMEOUT_RETRY_DELAY_MS = (() => {
+  const envVal = process.env.PI_IDLE_TIMEOUT_RETRY_DELAY_MS;
+  if (envVal !== undefined) {
+    const parsed = Number(envVal);
+    if (!Number.isFinite(parsed) || parsed < 100) {
+      console.warn(
+        `[member-execution] Invalid PI_IDLE_TIMEOUT_RETRY_DELAY_MS="${envVal}", using default 1500`
+      );
+      return 1500;
+    }
+    return Math.max(100, Math.min(10000, parsed)); // 100ms-10sに制限
+  }
+  return 1500;
+})();
 
 // ============================================================================
 // Output Normalization
@@ -310,13 +338,15 @@ export function loadSkillContent(skillName: string): string | null {
         const frontmatterMatch = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
         return frontmatterMatch ? frontmatterMatch[1].trim() : content.trim();
       } catch (error) {
-        // エラーをログ記録して次のパスを試行
+        // Bug #8 fix: エラーをログ記録して次のパスを試行
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[member-execution] スキル読み込みエラー: ${skillPath} - ${errorMessage}`);
         continue;
       }
     }
   }
+  // Bug #15 fix: スキルが見つからなかった場合にログを記録
+  console.debug(`[member-execution] スキルが見つかりません: ${skillName} (searched paths: ${skillPaths.length})`);
   return null;
 }
 
@@ -814,10 +844,26 @@ export async function runMember(input: {
       );
       const normalized = normalizeTeamMemberOutput(result.output);
       if (!normalized.ok) {
-        throw new SchemaValidationError(`agent team member low-substance output: ${normalized.reason}`, {
-          violations: [normalized.reason ?? "unknown"],
-          field: "output",
-        });
+        // ログに記録し、failedステータスで返す（例外をスローしない）
+        input.onEvent?.(
+          input.member,
+          `output normalization failed: ${normalized.reason || "unknown"}`
+        );
+        return {
+          memberId: input.member.id,
+          role: input.member.role,
+          summary: "(normalization failed)",
+          output: result.output.slice(0, 500), // 生の出力を一部保持
+          status: "failed",
+          latencyMs: result.latencyMs,
+          error: `Output normalization failed: ${normalized.reason}`,
+          diagnostics: {
+            confidence: 0,
+            evidenceCount: 0,
+            contradictionSignals: 0,
+            conflictSignals: 0,
+          },
+        };
       }
       if (normalized.degraded) {
         input.onEvent?.(
@@ -845,7 +891,7 @@ export async function runMember(input: {
       };
     } catch (error) {
       const errorMessage = toErrorMessage(error);
-      const gateSnapshot = getRateLimitGateSnapshot(rateLimitKey);
+      const gateSnapshot = await getRateLimitGateSnapshot(rateLimitKey);
       const diagnostic = [
         `provider=${resolvedProvider}`,
         `model=${resolvedModel}`,

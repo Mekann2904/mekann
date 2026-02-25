@@ -2,7 +2,7 @@
 title: agent-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -25,8 +25,25 @@ related: []
 |------|------|------|
 | 関数 | `createRunId` | 一意な実行IDを生成します。 |
 | 関数 | `computeLiveWindow` | - |
+| 関数 | `estimateTaskComplexity` | タスク複雑度を推定する |
+| 関数 | `estimateTaskTimeout` | タスク複雑度に基づいてタイムアウトを計算する |
+| 関数 | `estimateTaskTimeoutConstrained` | 最小・最大タイムアウト制約付きでタイムアウトを計算する |
+| 型 | `TaskComplexity` | タスク複雑度の分類 |
 
 ## 図解
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  computeLiveWindow["computeLiveWindow()"]
+  createRunId["createRunId()"]
+  estimateTaskComplexity["estimateTaskComplexity()"]
+  estimateTaskTimeout["estimateTaskTimeout()"]
+  estimateTaskTimeoutConstrained["estimateTaskTimeoutConstrained()"]
+  estimateTaskTimeout --> estimateTaskComplexity
+  estimateTaskTimeoutConstrained --> estimateTaskTimeout
+```
 
 ### シーケンス図
 
@@ -71,5 +88,72 @@ computeLiveWindow(cursor: number, total: number, maxRows: number): { start: numb
 
 **戻り値**: `{ start: number; end: number }`
 
+### estimateTaskComplexity
+
+```typescript
+estimateTaskComplexity(task: string): TaskComplexity
+```
+
+タスク複雑度を推定する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+
+**戻り値**: `TaskComplexity`
+
+### estimateTaskTimeout
+
+```typescript
+estimateTaskTimeout(task: string, baseTimeoutMs: number): number
+```
+
+タスク複雑度に基づいてタイムアウトを計算する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+| baseTimeoutMs | `number` | はい |
+
+**戻り値**: `number`
+
+### estimateTaskTimeoutConstrained
+
+```typescript
+estimateTaskTimeoutConstrained(task: string, options: {
+    baseTimeoutMs?: number;
+    minTimeoutMs?: number;
+    maxTimeoutMs?: number;
+  }): number
+```
+
+最小・最大タイムアウト制約付きでタイムアウトを計算する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+| options | `object` | はい |
+| &nbsp;&nbsp;↳ baseTimeoutMs | `number` | いいえ |
+| &nbsp;&nbsp;↳ minTimeoutMs | `number` | いいえ |
+| &nbsp;&nbsp;↳ maxTimeoutMs | `number` | いいえ |
+
+**戻り値**: `number`
+
+## 型定義
+
+### TaskComplexity
+
+```typescript
+type TaskComplexity = "low" | "medium" | "high"
+```
+
+タスク複雑度の分類
+
 ---
-*自動生成: 2026-02-23T06:29:42.257Z*
+*自動生成: 2026-02-24T17:08:02.599Z*

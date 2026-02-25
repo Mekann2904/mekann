@@ -2,7 +2,7 @@
 title: task-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from '../../lib/runtime-utils.js': trimForError, buildRateLimitKey
 // from '../../lib/error-utils.js': toErrorMessage, extractStatusCodeFromMessage, classifyPressureError, ...
 // from '../../lib/agent-utils.js': createRunId
-// ... and 15 more imports
+// ... and 16 more imports
 ```
 
 ## エクスポート一覧
@@ -29,6 +29,7 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `isHighRiskTask` | 高リスクタスク判定 |
+| 関数 | `isResearchTask` | 調査タスク判定 |
 | 関数 | `normalizeSubagentOutput` | 出力を正規化する |
 | 関数 | `processOutputWithThreeLayerPipeline` | 出力をThree-Layer Hybrid Strategyで処理する |
 | 関数 | `ensureOutputStructure` | 出力が最小構造を満たしているかを確認し、必要に応じてLayer 3を適用する |
@@ -36,10 +37,11 @@ related: []
 | 関数 | `isEmptyOutputFailureMessage` | 空出力エラーか判定する |
 | 関数 | `buildFailureSummary` | エラー概要を作成する |
 | 関数 | `resolveSubagentFailureOutcome` | エラー種別を判定する |
+| 関数 | `buildResearchTaskGuidelines` | search-toolsスキル準拠の検索指示を生成 |
 | 関数 | `mergeSkillArrays` | - |
 | 関数 | `resolveEffectiveSkills` | サブエージェントの実効スキルを解決する |
 | 関数 | `formatSkillsSection` | スキル一覧を整形 |
-| 関数 | `buildSubagentPrompt` | サブエージェント用のプロンプトを構築する |
+| 関数 | `buildSubagentPrompt` | - |
 | 関数 | `runSubagentTask` | サブエージェントタスク実行 |
 | 関数 | `extractSummary` | 要約を抽出 |
 | インターフェース | `SubagentExecutionResult` | サブエージェントの実行結果 |
@@ -66,6 +68,13 @@ classDiagram
     +appliedLayer: number
     +violations: SchemaViolation
   }
+  class SubagentDirective {
+    <<interface>>
+    +outputMode: internal_user_fac
+    +language: english_japanese
+    +maxTokens: number
+    +format: structured_detail
+  }
 ```
 
 ### 依存関係図
@@ -80,7 +89,7 @@ flowchart LR
     error_utils["error-utils"]
     agent_utils["agent-utils"]
     agent_types["agent-types"]
-    output_validation["output-validation"]
+    agent_errors["agent-errors"]
   end
   main --> local
 ```
@@ -91,6 +100,7 @@ flowchart LR
 flowchart TD
   applyLayerThreeTemplate["applyLayerThreeTemplate()"]
   buildFailureSummary["buildFailureSummary()"]
+  buildResearchTaskGuidelines["buildResearchTaskGuidelines()"]
   buildSubagentPrompt["buildSubagentPrompt()"]
   emitStderrChunk["emitStderrChunk()"]
   ensureOutputStructure["ensureOutputStructure()"]
@@ -98,9 +108,11 @@ flowchart TD
   formatSkillsSection["formatSkillsSection()"]
   isEmptyOutputFailureMessage["isEmptyOutputFailureMessage()"]
   isHighRiskTask["isHighRiskTask()"]
+  isResearchTask["isResearchTask()"]
   isRetryableSubagentError["isRetryableSubagentError()"]
   mergeSkillArrays["mergeSkillArrays()"]
   normalizeSubagentOutput["normalizeSubagentOutput()"]
+  parseSubagentDirectives["parseSubagentDirectives()"]
   pickSubagentSummaryCandidate["pickSubagentSummaryCandidate()"]
   processOutputWithThreeLayerPipeline["processOutputWithThreeLayerPipeline()"]
   resolveEffectiveSkills["resolveEffectiveSkills()"]
@@ -109,9 +121,11 @@ flowchart TD
   runSubagentTask["runSubagentTask()"]
   buildSubagentPrompt --> formatSkillsSection
   buildSubagentPrompt --> isHighRiskTask
+  buildSubagentPrompt --> parseSubagentDirectives
   buildSubagentPrompt --> resolveEffectiveSkills
   ensureOutputStructure --> processOutputWithThreeLayerPipeline
   normalizeSubagentOutput --> pickSubagentSummaryCandidate
+  parseSubagentDirectives --> isResearchTask
   processOutputWithThreeLayerPipeline --> applyLayerThreeTemplate
   resolveEffectiveSkills --> mergeSkillArrays
   resolveSubagentFailureOutcome --> isRetryableSubagentError
@@ -142,8 +156,8 @@ sequenceDiagram
   runtime_utils-->>task_execution: 結果
   task_execution-->>Caller: boolean
 
-  Caller->>task_execution: normalizeSubagentOutput()
-  task_execution-->>Caller: SubagentExecutionRes
+  Caller->>task_execution: isResearchTask()
+  task_execution-->>Caller: boolean
 ```
 
 ## 関数
@@ -155,6 +169,22 @@ isHighRiskTask(task: string): boolean
 ```
 
 高リスクタスク判定
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+
+**戻り値**: `boolean`
+
+### isResearchTask
+
+```typescript
+isResearchTask(task: string): boolean
+```
+
+調査タスク判定
 
 **パラメータ**
 
@@ -311,6 +341,16 @@ resolveSubagentFailureOutcome(error: unknown): RunOutcomeSignal
 
 **戻り値**: `RunOutcomeSignal`
 
+### buildResearchTaskGuidelines
+
+```typescript
+buildResearchTaskGuidelines(): string
+```
+
+search-toolsスキル準拠の検索指示を生成
+
+**戻り値**: `string`
+
 ### mergeSkillArrays
 
 ```typescript
@@ -359,6 +399,23 @@ formatSkillsSection(skills: string[] | undefined): string | null
 
 **戻り値**: `string | null`
 
+### parseSubagentDirectives
+
+```typescript
+parseSubagentDirectives(extraContext?: string, task?: string): SubagentDirective
+```
+
+extraContextからディレクティブを解析
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| extraContext | `string` | いいえ |
+| task | `string` | いいえ |
+
+**戻り値**: `SubagentDirective`
+
 ### buildSubagentPrompt
 
 ```typescript
@@ -372,8 +429,6 @@ buildSubagentPrompt(input: {
   relevantPatterns?: ExtractedPattern[];
 }): string
 ```
-
-サブエージェント用のプロンプトを構築する
 
 **パラメータ**
 
@@ -520,5 +575,18 @@ interface ThreeLayerPipelineResult {
 
 Three-Layer Pipeline の処理結果
 
+### SubagentDirective
+
+```typescript
+interface SubagentDirective {
+  outputMode: "internal" | "user-facing";
+  language: "english" | "japanese";
+  maxTokens: number;
+  format: "structured" | "detailed";
+}
+```
+
+サブエージェント用ディレクティブ
+
 ---
-*自動生成: 2026-02-23T06:29:42.202Z*
+*自動生成: 2026-02-24T17:08:02.498Z*

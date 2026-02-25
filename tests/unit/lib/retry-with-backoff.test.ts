@@ -672,12 +672,12 @@ describe("computeBackoffDelayMs", () => {
 
 describe("getRateLimitGateSnapshot", () => {
   describe("正常系", () => {
-    it("should_return_snapshot_with_valid_key", () => {
+    it("should_return_snapshot_with_valid_key", async () => {
       // Arrange
       const key = "test-key";
 
       // Act
-      const snapshot = getRateLimitGateSnapshot(key);
+      const snapshot = await getRateLimitGateSnapshot(key);
 
       // Assert
       expect(snapshot).toHaveProperty("key");
@@ -686,33 +686,33 @@ describe("getRateLimitGateSnapshot", () => {
       expect(snapshot).toHaveProperty("untilMs");
     });
 
-    it("should_return_zero_wait_for_new_key", () => {
+    it("should_return_zero_wait_for_new_key", async () => {
       // Arrange
       const key = `new-key-${Date.now()}`;
 
       // Act
-      const snapshot = getRateLimitGateSnapshot(key);
+      const snapshot = await getRateLimitGateSnapshot(key);
 
       // Assert
       expect(snapshot.waitMs).toBe(0);
     });
 
-    it("should_normalize_key_to_lowercase", () => {
+    it("should_normalize_key_to_lowercase", async () => {
       // Arrange
       const key = "TEST-KEY";
 
       // Act
-      const snapshot = getRateLimitGateSnapshot(key);
+      const snapshot = await getRateLimitGateSnapshot(key);
 
       // Assert
       expect(snapshot.key).toBe("test-key");
     });
 
-    it("should_use_injected_now_for_untilMs", () => {
+    it("should_use_injected_now_for_untilMs", async () => {
       const key = "clock-test-key";
       const fixedNow = 1_700_000_000_000;
 
-      const snapshot = getRateLimitGateSnapshot(key, { now: () => fixedNow });
+      const snapshot = await getRateLimitGateSnapshot(key, { now: () => fixedNow });
 
       expect(snapshot.untilMs).toBe(fixedNow);
       expect(snapshot.waitMs).toBe(0);
@@ -720,34 +720,34 @@ describe("getRateLimitGateSnapshot", () => {
   });
 
   describe("境界値", () => {
-    it("should_handle_undefined_key", () => {
+    it("should_handle_undefined_key", async () => {
       // Arrange
       const key = undefined;
 
       // Act
-      const snapshot = getRateLimitGateSnapshot(key);
+      const snapshot = await getRateLimitGateSnapshot(key);
 
       // Assert
       expect(snapshot.key).toBe("global");
     });
 
-    it("should_handle_empty_string_key", () => {
+    it("should_handle_empty_string_key", async () => {
       // Arrange
       const key = "";
 
       // Act
-      const snapshot = getRateLimitGateSnapshot(key);
+      const snapshot = await getRateLimitGateSnapshot(key);
 
       // Assert
       expect(snapshot.key).toBe("global");
     });
 
-    it("should_handle_whitespace_only_key", () => {
+    it("should_handle_whitespace_only_key", async () => {
       // Arrange
       const key = "   ";
 
       // Act
-      const snapshot = getRateLimitGateSnapshot(key);
+      const snapshot = await getRateLimitGateSnapshot(key);
 
       // Assert
       expect(snapshot.key).toBe("global");
@@ -927,12 +927,12 @@ describe("レート制限状態管理", () => {
   });
 
   describe("getRateLimitGateSnapshotの不変条件", () => {
-    it("getRateLimitGateSnapshot_常に有効なスナップショットを返す", () => {
-      fc.assert(
-        fc.property(
+    it("getRateLimitGateSnapshot_常に有効なスナップショットを返す", async () => {
+      await fc.assert(
+        fc.asyncProperty(
           fc.option(fc.string({ minLength: 1, maxLength: 100 })),
-          (key) => {
-            const snapshot = getRateLimitGateSnapshot(key);
+          async (key) => {
+            const snapshot = await getRateLimitGateSnapshot(key);
 
             // 不変条件: すべてのフィールドが定義されている
             return (
@@ -949,14 +949,14 @@ describe("レート制限状態管理", () => {
       );
     });
 
-    it("getRateLimitGateSnapshot_キーの正規化不変条件", () => {
-      fc.assert(
-        fc.property(
+    it("getRateLimitGateSnapshot_キーの正規化不変条件", async () => {
+      await fc.assert(
+        fc.asyncProperty(
           fc.string({ minLength: 0, maxLength: 50 }).filter(s =>
             !s.includes("\x00") && !s.includes("\n")
           ),
-          (key) => {
-            const snapshot = getRateLimitGateSnapshot(key);
+          async (key) => {
+            const snapshot = await getRateLimitGateSnapshot(key);
 
             // 不変条件: キーは小文字の英数字とハイフンのみ
             const normalizedKey = key.trim().toLowerCase();
@@ -968,13 +968,13 @@ describe("レート制限状態管理", () => {
       );
     });
 
-    it("getRateLimitGateSnapshot_waitMsとuntilMsの整合性", () => {
-      fc.assert(
-        fc.property(
+    it("getRateLimitGateSnapshot_waitMsとuntilMsの整合性", async () => {
+      await fc.assert(
+        fc.asyncProperty(
           fc.option(fc.string({ minLength: 1, maxLength: 50 })),
           fc.integer({ min: 0, max: 1000000000000 }),
-          (key, fixedNow) => {
-            const snapshot = getRateLimitGateSnapshot(key, {
+          async (key, fixedNow) => {
+            const snapshot = await getRateLimitGateSnapshot(key, {
               now: () => fixedNow,
             });
 
@@ -1059,19 +1059,19 @@ describe("レート制限状態管理", () => {
   });
 
   describe("複数キーのレート制限管理", () => {
-    it("getRateLimitGateSnapshot_複数キーのスナップショットが独立", () => {
-      fc.assert(
-        fc.property(
+    it("getRateLimitGateSnapshot_複数キーのスナップショットが独立", async () => {
+      await fc.assert(
+        fc.asyncProperty(
           fc.array(
             fc.string({ minLength: 1, maxLength: 20 }).filter(s => /^[a-z0-9]+$/.test(s)),
             { minLength: 1, maxLength: 5 }
           ),
-          (keys) => {
-            const snapshots = new Map<string, ReturnType<typeof getRateLimitGateSnapshot>>();
+          async (keys) => {
+            const snapshots = new Map<string, Awaited<ReturnType<typeof getRateLimitGateSnapshot>>>();
 
             // Act - 各キーのスナップショットを取得
             for (const key of keys) {
-              const snapshot = getRateLimitGateSnapshot(key);
+              const snapshot = await getRateLimitGateSnapshot(key);
               snapshots.set(key, snapshot);
             }
 

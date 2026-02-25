@@ -28,6 +28,8 @@ import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import { toError } from "../lib/error-utils.js";
 import { Type, type Static } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 
@@ -103,10 +105,11 @@ export default function (pi: ExtensionAPI) {
                     content: [{ type: "text", text: output.trim() || "No output." }],
                     details: {},
                 };
-            } catch (error: any) {
+            } catch (error: unknown) {
                 // execFile throws if exit code is non-zero
+                const err = toError(error);
                 return {
-                    content: [{ type: "text", text: `Error executing gh_agent: ${error.message}\nStderr: ${error.stderr || ""}` }],
+                    content: [{ type: "text", text: `Error executing gh_agent: ${err.message}\nStderr: ${(err as Error & { stderr?: string }).stderr || ""}` }],
                     details: {},
                 };
             }

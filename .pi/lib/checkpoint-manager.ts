@@ -175,16 +175,46 @@ const CHECKPOINT_FILE_EXTENSION = ".checkpoint.json";
 /** インメモリLRUキャッシュの最大エントリ数 */
 const CACHE_MAX_ENTRIES = 100;
 
+/** Phase 5: キャッシュの最大サイズ（バイト） */
+const CACHE_MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+/** Phase 5: 定期クリーンアップ間隔（ミリ秒） */
+const CACHE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Phase 5: エントリの最大年齢（ミリ秒） */
+const CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+
 let managerState: {
   config: CheckpointManagerConfig;
   checkpointDir: string;
   cleanupTimer?: ReturnType<typeof setInterval>;
+  /** Phase 5: キャッシュクリーンアップタイマー */
+  cacheCleanupTimer?: ReturnType<typeof setInterval>;
   initialized: boolean;
   /** インメモリキャッシュ: taskId -> Checkpoint */
   cache: Map<string, Checkpoint>;
   /** キャッシュのLRU順序管理用キー配列 */
   cacheOrder: string[];
+  /** Phase 5: エントリごとのサイズ（バイト） */
+  cacheSizes: Map<string, number>;
 } | null = null;
+
+/** Phase 4.3: 初期化中フラグ */
+let managerInitializing = false;
+
+/**
+ * Phase 5: チェックポイントのサイズを推定
+ * @summary サイズ推定
+ * @param checkpoint チェックポイント
+ * @returns 推定サイズ（バイト）
+ */
+function estimateCheckpointSize(checkpoint: Checkpoint): number {
+  try {
+    return JSON.stringify(checkpoint).length;
+  } catch {
+    return 1024; // シリアライズ失敗時のデフォルト推定値
+  }
+}
 
 /**
  * キャッシュからチェックポイントを取得
@@ -218,7 +248,10 @@ function deleteFromCache(taskId: string): void {
 }
 
 /**
- * キャッシュにチェックポイントを保存
+ * Phase 5: キャッシュにチェックポイントを保存（サイズベース削除対応）
+ * @summary キャッシュに保存
+ * @param taskId タスクID
+ * @param checkpoint チェックポイント
  */
 function setToCache(taskId: string, checkpoint: Checkpoint): void {
   if (!managerState) return;
@@ -229,26 +262,54 @@ function setToCache(taskId: string, checkpoint: Checkpoint): void {
     if (idx >= 0) {
       managerState.cacheOrder.splice(idx, 1);
     }
+    managerState.cacheSizes.delete(taskId);
   }
+  
+  // エントリサイズを計算
+  const entrySize = estimateCheckpointSize(checkpoint);
   
   managerState.cache.set(taskId, checkpoint);
   managerState.cacheOrder.push(taskId);
+  managerState.cacheSizes.set(taskId, entrySize);
   
-  // 最大エントリ数を超えた場合、最も古いエントリを削除
+  // 現在の合計サイズを計算
+  let totalSize = 0;
+  for (const size of managerState.cacheSizes.values()) {
+    totalSize += size;
+  }
+  
+  // エントリ数ベースの削除
   while (managerState.cacheOrder.length > CACHE_MAX_ENTRIES) {
     const oldestKey = managerState.cacheOrder.shift();
     if (oldestKey) {
+      const size = managerState.cacheSizes.get(oldestKey) || 0;
       managerState.cache.delete(oldestKey);
+      managerState.cacheSizes.delete(oldestKey);
+      totalSize -= size;
+    }
+  }
+  
+  // Phase 5: サイズベースの削除
+  while (totalSize > CACHE_MAX_SIZE_BYTES && managerState.cacheOrder.length > 0) {
+    const oldestKey = managerState.cacheOrder.shift();
+    if (oldestKey) {
+      const size = managerState.cacheSizes.get(oldestKey) || 0;
+      managerState.cache.delete(oldestKey);
+      managerState.cacheSizes.delete(oldestKey);
+      totalSize -= size;
     }
   }
 }
 
 /**
- * キャッシュからチェックポイントを削除
+ * Phase 5: キャッシュからチェックポイントを削除（サイズ情報も削除）
+ * @summary キャッシュから削除
+ * @param taskId タスクID
  */
 function removeFromCache(taskId: string): void {
   if (!managerState) return;
   managerState.cache.delete(taskId);
+  managerState.cacheSizes.delete(taskId);
   const idx = managerState.cacheOrder.indexOf(taskId);
   if (idx >= 0) {
     managerState.cacheOrder.splice(idx, 1);
@@ -373,31 +434,67 @@ function getFileSizeBytes(filePath: string): number {
 export function initCheckpointManager(
   configOverrides?: Partial<CheckpointManagerConfig>
 ): void {
+  // 既に初期化済みの場合は何もしない
   if (managerState?.initialized) {
     return;
   }
 
-  const config = { ...DEFAULT_CONFIG, ...configOverrides };
-  const checkpointDir = resolveCheckpointDir(config.checkpointDir);
+  // Phase 4.3: 初期化中フラグで二重初期化を防止
+  if (managerInitializing) {
+    console.warn("[checkpoint-manager] Initialization already in progress");
+    return;
+  }
 
-  ensureCheckpointDir(checkpointDir);
+  managerInitializing = true;
+  try {
+    // 再度チェック（初期化中に他が完了した可能性）
+    if (managerState?.initialized) {
+      return;
+    }
 
-  // Start cleanup timer
-  const cleanupTimer = setInterval(() => {
-    cleanupExpiredCheckpoints().catch(() => {
-      // Ignore cleanup errors
-    });
-  }, config.cleanupIntervalMs);
-  cleanupTimer.unref();
+    const config = { ...DEFAULT_CONFIG, ...configOverrides };
+    const checkpointDir = resolveCheckpointDir(config.checkpointDir);
 
-  managerState = {
-    config,
-    checkpointDir,
-    cleanupTimer,
-    initialized: true,
-    cache: new Map(),
-    cacheOrder: [],
-  };
+    ensureCheckpointDir(checkpointDir);
+
+    // Start cleanup timer for expired checkpoints
+    const cleanupTimer = setInterval(() => {
+      cleanupExpiredCheckpoints().catch(() => {
+        // Ignore cleanup errors
+      });
+    }, config.cleanupIntervalMs);
+    cleanupTimer.unref();
+
+    // Phase 5: 定期キャッシュクリーンアップタイマー
+    const cacheCleanupTimer = setInterval(() => {
+      if (!managerState) return;
+
+      const now = Date.now();
+      // 古いエントリを削除
+      for (const [key, checkpoint] of managerState.cache.entries()) {
+        const age = now - (checkpoint.createdAt || 0);
+        if (age > CACHE_MAX_AGE_MS) {
+          managerState.cache.delete(key);
+          managerState.cacheSizes.delete(key);
+          managerState.cacheOrder = managerState.cacheOrder.filter(k => k !== key);
+        }
+      }
+    }, CACHE_CLEANUP_INTERVAL_MS);
+    cacheCleanupTimer.unref();
+
+    managerState = {
+      config,
+      checkpointDir,
+      cleanupTimer,
+      cacheCleanupTimer,
+      initialized: true,
+      cache: new Map(),
+      cacheOrder: [],
+      cacheSizes: new Map(),
+    };
+  } finally {
+    managerInitializing = false;
+  }
 }
 
 /**
@@ -788,7 +885,11 @@ export function resetCheckpointManager(): void {
   if (managerState?.cleanupTimer) {
     clearInterval(managerState.cleanupTimer);
   }
+  if (managerState?.cacheCleanupTimer) {
+    clearInterval(managerState.cacheCleanupTimer);
+  }
   managerState = null;
+  managerInitializing = false;
 }
 
 /**

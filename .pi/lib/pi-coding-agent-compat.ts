@@ -15,9 +15,11 @@
  *   - ContextUsageにusageTokensとtrailingTokensを追加する
  *   - ExtensionAPIのcontextプロパティの型参照を明示的にする
  *   - SessionStartEventおよび各種ToolResultEvent（Bash, Read, Edit, Write, Grep, Find, Ls, Custom）の型定義を追加または再定義する
+ *   - ExtensionAPIにrunSubagentメソッドを追加（サブエージェント直接実行用）
  * why_it_exists:
  *   - APIアップデートによる型シグネチャの変更に既存コードを追随させる
  *   - 型参照の解決を行い、型チェックを正常に通過させる
+ *   - 拡張機能からサブエージェントを直接呼び出せるようにする
  * scope:
  *   in: なし（純粋な型定義ファイル）
  *   out: "@mariozechner/pi-coding-agent" モジュールのグローバル型定義空間への変更
@@ -27,6 +29,8 @@
 // what: pi-coding-agent / pi-agent-core の型差分を吸収する互換レイヤーを提供する。
 // why: 既存拡張コードを最小変更で TypeScript 0.53 系APIへ適合させるため。
 // related: tsconfig-check.json, .pi/extensions, node_modules/@mariozechner/pi-coding-agent
+
+import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 
 declare module "@mariozechner/pi-coding-agent" {
   interface ExtensionUIContext {
@@ -39,6 +43,32 @@ declare module "@mariozechner/pi-coding-agent" {
     trailingTokens?: number;
   }
 
+  /**
+   * サブエージェント実行オプション
+   */
+  interface RunSubagentOptions {
+    /** サブエージェントID */
+    subagentId: string;
+    /** タスク内容 */
+    task: string;
+    /** 追加コンテキスト（オプション） */
+    extraContext?: string;
+    /** タイムアウト（ミリ秒、デフォルト: 300000） */
+    timeoutMs?: number;
+  }
+
+  /**
+   * ツール実行オプション
+   */
+  interface ExecuteToolOptions {
+    /** ツール名 */
+    toolName: string;
+    /** ツール引数 */
+    params: Record<string, unknown>;
+    /** タイムアウト（ミリ秒、デフォルト: 30000） */
+    timeoutMs?: number;
+  }
+
   interface ExtensionAPI {
     // 旧コード互換: ExtensionAPI["context"] を型参照で使っている拡張がある。
     context: import("@mariozechner/pi-coding-agent").ExtensionContext;
@@ -48,6 +78,22 @@ declare module "@mariozechner/pi-coding-agent" {
         import("@mariozechner/pi-coding-agent").SessionShutdownEvent
       >,
     ): void;
+
+    /**
+     * サブエージェントを直接実行する
+     * @summary サブエージェント直接実行
+     * @param options - サブエージェント実行オプション
+     * @returns サブエージェントの実行結果
+     */
+    runSubagent(options: RunSubagentOptions): Promise<AgentToolResult<unknown>>;
+
+    /**
+     * ツールを直接実行する
+     * @summary ツール直接実行
+     * @param options - ツール実行オプション
+     * @returns ツールの実行結果
+     */
+    executeTool(options: ExecuteToolOptions): Promise<AgentToolResult<unknown>>;
   }
 
   interface SessionStartEvent {

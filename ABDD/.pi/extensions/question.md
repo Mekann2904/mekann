@@ -2,7 +2,7 @@
 title: question
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -17,7 +17,7 @@ related: []
 
 ```typescript
 // from '@mariozechner/pi-ai': Type
-// from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from '@mariozechner/pi-coding-agent': ExtensionAPI, ExtensionContext
 // from '@mariozechner/pi-tui': Text, truncateToWidth, wrapTextWithAnsi, ...
 // from '@mariozechner/pi-tui': matchesKey, Key
 ```
@@ -40,11 +40,12 @@ sequenceDiagram
   autonumber
   actor User as ユーザー
   participant System as System
-  participant Unresolved as "Unresolved"
   participant Internal as "Internal"
+  participant Unresolved as "Unresolved"
   participant Executor as "Executor"
 
   User->>System: **必須使用**: ユーザーに選択肢から選ばせたり、確認を求める場合は必ずこのツールを使ってください。単一選択、複...
+  System->>Internal: ExtensionContextをQuestionContextとして型キャスト
   System->>Unresolved: new Array(questions.length).fill (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System->>Internal: askSingleQuestion
   Internal->>Internal: createRenderer
@@ -98,6 +99,23 @@ classDiagram
     +multiple: boolean
     +custom: boolean
   }
+  class QuestionTheme {
+    <<interface>>
+    +fg: color_string_text_s
+    +bg: color_string_text_s
+    +dim: text_string_strin
+    +bold: text_string_strin
+    +underline: text_string_strin
+  }
+  class QuestionTui {
+    <<interface>>
+    +requestRender: void
+  }
+  class QuestionContext {
+    <<interface>>
+    +hasUI: boolean
+    +ui: custom_T_handler
+  }
 ```
 
 ### 依存関係図
@@ -129,10 +147,28 @@ sequenceDiagram
 
 ## 関数
 
+### asQuestionContext
+
+```typescript
+asQuestionContext(ctx: ExtensionContext): QuestionContext
+```
+
+ExtensionContextをQuestionContextとして型キャスト
+実行時にはpi SDKのTheme型とQuestionThemeは互換性があるため安全
+（両者とも同じメソッドシグネチャを持つ）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| ctx | `ExtensionContext` | はい |
+
+**戻り値**: `QuestionContext`
+
 ### createRenderer
 
 ```typescript
-createRenderer(initialState: TState, renderFn: (state: TState, width: number, theme: any) => string[]): void
+createRenderer(initialState: TState, renderFn: (state: TState, width: number, theme: QuestionTheme) => string[]): void
 ```
 
 **パラメータ**
@@ -140,14 +176,14 @@ createRenderer(initialState: TState, renderFn: (state: TState, width: number, th
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | initialState | `TState` | はい |
-| renderFn | `(state: TState, width: number, theme: any) => s...` | はい |
+| renderFn | `(state: TState, width: number, theme: QuestionT...` | はい |
 
 **戻り値**: `void`
 
 ### askSingleQuestion
 
 ```typescript
-async askSingleQuestion(question: QuestionInfo, ctx: any): Promise<Answer | null>
+async askSingleQuestion(question: QuestionInfo, ctx: QuestionContext): Promise<Answer | null>
 ```
 
 **パラメータ**
@@ -155,7 +191,7 @@ async askSingleQuestion(question: QuestionInfo, ctx: any): Promise<Answer | null
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | question | `QuestionInfo` | はい |
-| ctx | `any` | はい |
+| ctx | `QuestionContext` | はい |
 
 **戻り値**: `Promise<Answer | null>`
 
@@ -190,7 +226,7 @@ addCursorLine(s: string): void
 ### showConfirmationScreen
 
 ```typescript
-async showConfirmationScreen(questions: QuestionInfo[], answers: Answer[], ctx: any): Promise<ConfirmAction>
+async showConfirmationScreen(questions: QuestionInfo[], answers: Answer[], ctx: QuestionContext): Promise<ConfirmAction>
 ```
 
 **パラメータ**
@@ -199,7 +235,7 @@ async showConfirmationScreen(questions: QuestionInfo[], answers: Answer[], ctx: 
 |------|-----|------|
 | questions | `QuestionInfo[]` | はい |
 | answers | `Answer[]` | はい |
-| ctx | `any` | はい |
+| ctx | `QuestionContext` | はい |
 
 **戻り値**: `Promise<ConfirmAction>`
 
@@ -240,6 +276,43 @@ interface QuestionInfo {
 }
 ```
 
+### QuestionTheme
+
+```typescript
+interface QuestionTheme {
+  fg: (color: string, text: string) => string;
+  bg: (color: string, text: string) => string;
+  dim: (text: string) => string;
+  bold: (text: string) => string;
+  underline: (text: string) => string;
+}
+```
+
+### QuestionTui
+
+```typescript
+interface QuestionTui {
+  requestRender: () => void;
+}
+```
+
+### QuestionContext
+
+```typescript
+interface QuestionContext {
+  hasUI: boolean;
+  ui: {
+		custom: <T>(handler: (
+			tui: QuestionTui,
+			theme: QuestionTheme,
+			_kb: unknown,
+			done: (value: T) => void
+		) => QuestionCustomController) => Promise<T>;
+		notify: (message: string, type: string) => void;
+	};
+}
+```
+
 ## 型定義
 
 ### Answer
@@ -265,4 +338,4 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 ```
 
 ---
-*自動生成: 2026-02-23T06:29:42.084Z*
+*自動生成: 2026-02-24T17:08:02.326Z*

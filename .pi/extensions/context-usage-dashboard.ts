@@ -41,7 +41,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth } from "@mariozechner/pi-tui";
 
-
+import type { Theme } from "../lib/tui/types.js";
 import { toFiniteNumberWithDefault } from "../lib/validation-utils.js";
 
 const SESSIONS_ROOT = join(homedir(), ".pi/agent/sessions");
@@ -506,7 +506,7 @@ function crop(value: string, width: number): string {
   return `${value.slice(0, width - 1)}…`;
 }
 
-function renderDashboard(theme: any, snapshot: DashboardSnapshot, width: number): string[] {
+function renderDashboard(theme: Theme, snapshot: DashboardSnapshot, width: number): string[] {
   const lines: string[] = [];
   const safeWidth = Math.max(1, width);
   const add = (line = "") => lines.push(truncateToWidth(line, safeWidth));
@@ -639,7 +639,7 @@ export default function (pi: ExtensionAPI) {
       let snapshot = collectDashboardSnapshot(ctx);
 
       await ctx.ui.custom<void>((tui, theme, _keybindings, done) => ({
-        render: (w) => renderDashboard(theme, snapshot, w),
+        render: (w) => renderDashboard(theme as Theme, snapshot, w),
         invalidate: () => {},
         handleInput: (input) => {
           if (input === "q" || input === "escape") {

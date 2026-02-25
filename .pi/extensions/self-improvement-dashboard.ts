@@ -33,6 +33,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth } from "@mariozechner/pi-tui";
 
+import type { Theme } from "../lib/tui/types.js";
 import {
   buildIntegratedDataView,
   generateInsightReport,
@@ -77,7 +78,7 @@ interface DashboardState {
 function renderDashboard(
   state: DashboardState,
   w: number,
-  theme: any
+  theme: Theme
 ): string[] {
   const lines: string[] = [];
   const safeWidth = Math.max(1, Number.isFinite(w) ? Math.trunc(w) : 80);
@@ -115,7 +116,7 @@ function renderDashboard(
 function renderOverview(
   state: DashboardState,
   add: (s: string) => void,
-  theme: any
+  theme: Theme
 ): void {
   const dv = state.dataView;
   if (!dv) {
@@ -184,7 +185,7 @@ function renderOverview(
 function renderAnalyses(
   state: DashboardState,
   add: (s: string) => void,
-  theme: any,
+  theme: Theme,
   width: number
 ): void {
   if (!state.report || state.report.analyses.length === 0) {
@@ -220,7 +221,7 @@ function renderAnalyses(
 function renderReflections(
   state: DashboardState,
   add: (s: string) => void,
-  theme: any,
+  theme: Theme,
   width: number
 ): void {
   if (!state.report || state.report.philosophicalReflections.length === 0) {
@@ -252,7 +253,7 @@ function renderReflections(
 function renderPatterns(
   state: DashboardState,
   add: (s: string) => void,
-  theme: any
+  theme: Theme
 ): void {
   const dv = state.dataView;
   if (!dv || !dv.patterns || dv.patterns.patterns.length === 0) {
@@ -286,7 +287,7 @@ function renderPatterns(
 function renderUsage(
   state: DashboardState,
   add: (s: string) => void,
-  theme: any,
+  theme: Theme,
   width: number
 ): void {
   const dv = state.dataView;
@@ -329,7 +330,7 @@ function renderUsage(
 function renderPerspectives(
   state: DashboardState,
   add: (s: string) => void,
-  theme: any,
+  theme: Theme,
   width: number
 ): void {
   add(theme.bold("7 Philosophical Perspectives"));
@@ -368,8 +369,10 @@ export default function registerSelfImprovementDashboard(pi: ExtensionAPI) {
           selectedIndex: 0,
         };
 
-        await ctx.ui.custom<void>((tui, theme, _kb, done) => ({
-          render: (w) => renderDashboard(state, w, theme),
+        await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+          const t = theme as Theme;
+          return {
+          render: (w) => renderDashboard(state, w, t),
 
           invalidate: () => {},
 
@@ -457,8 +460,9 @@ export default function registerSelfImprovementDashboard(pi: ExtensionAPI) {
               return;
             }
           },
-        }));
-      } catch (error) {
+        };
+      });
+      } catch (error: unknown) {
         logger.endOperation({
           status: "failure",
           tokensUsed: 0,

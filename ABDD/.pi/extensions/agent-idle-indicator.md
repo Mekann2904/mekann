@@ -2,7 +2,7 @@
 title: agent-idle-indicator
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -84,4 +84,4 @@ restoreOriginal(ctx: ExtensionAPI["context"]): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-23T06:29:41.507Z*
+*自動生成: 2026-02-24T17:08:01.772Z*

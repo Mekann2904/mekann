@@ -39,9 +39,9 @@ import {
 	dotProduct,
 } from '@lib/embeddings/utils';
 
-// 有効なベクトルのArbitrary（NaNを含まない、空でない）
+// 有効なベクトルのArbitrary（NaN/Infinityを含まない、空でない）
 const validVector = fc.array(
-	fc.float({ min: -1000, max: 1000, noNaN: true }),
+	fc.float({ min: -1000, max: 1000, noNaN: true, noDefaultInfinity: true }),
 	{ minLength: 1, maxLength: 100 }
 );
 

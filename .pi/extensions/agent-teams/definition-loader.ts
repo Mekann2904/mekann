@@ -375,6 +375,7 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
         description: frontmatter.description,
         enabled: frontmatter.enabled,
         skills: frontmatter.skills,
+        parent: frontmatter.parent,
         members,
         createdAt: nowIso,
         updatedAt: nowIso,
@@ -402,8 +403,11 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
 
       // team.mdを読み込み
       const parsed = parseTeamMarkdownFile(teamMdPath);
+      // 親チームIDを保存（p*.mdのparentフィールド用）
+      let parentTeamId: string | undefined;
       if (parsed) {
         const { frontmatter } = parsed;
+        parentTeamId = frontmatter.id;
         const members: TeamMember[] = frontmatter.members.map((m) => ({
           id: m.id,
           role: m.role,
@@ -420,6 +424,7 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
           description: frontmatter.description,
           enabled: frontmatter.enabled,
           skills: frontmatter.skills,
+          parent: frontmatter.parent,
           members,
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -456,6 +461,8 @@ export function loadTeamDefinitionsFromDir(definitionsDir: string, nowIso: strin
           description: frontmatter.description,
           enabled: frontmatter.enabled,
           skills: frontmatter.skills,
+          // p*.mdは子Phase: parentが明示されていない場合はteam.mdのIDを使用
+          parent: frontmatter.parent || parentTeamId,
           members,
           createdAt: nowIso,
           updatedAt: nowIso,

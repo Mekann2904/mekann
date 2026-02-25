@@ -47,7 +47,7 @@
  * or callback patterns instead of direct imports.
  */
 
-import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { ensureDir } from "./fs-utils.js";
@@ -145,15 +145,21 @@ export function createEnsurePaths<TPaths extends BaseStoragePaths>(
 // ============================================================================
 
 /**
- * 実行アーティファクトを削除
+ * 実行アーティファクトを削除（グレース期間付き）
  * @summary アーティファクト削除
  * @param paths ストレージパス
  * @param runs 対象のRun配列
+ * @param gracePeriodMs 削除猶予期間（ミリ秒、デフォルト60秒）
  * @returns なし
+ *
+ * ENOENT Race Condition対策:
+ * 同時実行中のrunがファイルを書き込んでいる可能性があるため、
+ * 最近作成されたファイル（gracePeriodMs以内）は削除しない。
  */
 export function pruneRunArtifacts<TRun extends BaseRunRecord>(
   paths: BaseStoragePaths,
   runs: TRun[],
+  gracePeriodMs: number = 60000,
 ): void {
   let files: string[] = [];
   try {
@@ -167,15 +173,34 @@ export function pruneRunArtifacts<TRun extends BaseRunRecord>(
       .map((run) => basename(run.outputFile || ""))
       .filter((name) => name.endsWith(".json")),
   );
-  if (runs.length > 0 && keep.size === 0) {
+  // runsが空の場合、またはkeepが空の場合は何も削除しない
+  // (並列実行中に他のサブエージェントがファイルを作成している可能性があるため)
+  if (runs.length === 0 || keep.size === 0) {
     return;
   }
+
+  const now = Date.now();
 
   for (const file of files) {
     if (!file.endsWith(".json")) continue;
     if (keep.has(file)) continue;
+
+    const filepath = join(paths.runsDir, file);
+
+    // Grace period check: don't delete recently created files
     try {
-      unlinkSync(join(paths.runsDir, file));
+      const stat = statSync(filepath);
+      const fileAge = now - stat.mtimeMs;
+      if (fileAge < gracePeriodMs) {
+        continue; // Skip deletion for files created within grace period
+      }
+    } catch {
+      // If we can't stat the file, skip it
+      continue;
+    }
+
+    try {
+      unlinkSync(filepath);
     } catch {
       // noop
     }

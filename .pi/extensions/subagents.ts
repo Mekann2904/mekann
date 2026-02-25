@@ -33,6 +33,8 @@ import { readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
+import { integrateWithSubagents } from "./tool-compiler.js";
+import type { ToolCall } from "../lib/tool-compiler-types.js";
 import { getMarkdownTheme, isToolCallEventType, type ExtensionAPI, type ToolCallEvent } from "@mariozechner/pi-coding-agent";
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
@@ -99,6 +101,7 @@ import {
   trimErrorMessage as sharedTrimErrorMessage,
   buildDiagnosticContext as sharedBuildDiagnosticContext,
 } from "../lib/agent-errors.js";
+import { getAgentSpecializationWeight } from "../lib/dag-weight-calculator.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 import { runWithConcurrencyLimit } from "../lib/concurrency";
@@ -142,6 +145,53 @@ import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estima
 import { detectTier, getConcurrencyLimit } from "../lib/provider-limits";
 
 const logger = getLogger();
+
+/**
+ * Check if Tool Compiler is enabled via environment variable
+ * @summary Tool Compiler有効化チェック
+ * @returns Tool Compilerが有効な場合はtrue
+ */
+function isToolCompilerEnabled(): boolean {
+  return process.env.PI_TOOL_COMPILER_ENABLED === "true";
+}
+
+/**
+ * Fuse tools if Tool Compiler is enabled and beneficial
+ * @summary ツール融合ヘルパー
+ * @param tools - ツール呼び出し配列
+ * @returns 融合されたツール定義（融合が有益な場合）、または空配列
+ */
+function fuseToolsIfEnabled(
+  tools: Array<{ name: string; arguments: Record<string, unknown> }>
+): Array<{ name: string; description: string; parameters: Record<string, unknown> }> {
+  if (!isToolCompilerEnabled() || tools.length < 2) {
+    return [];
+  }
+
+  try {
+    const toolCalls: ToolCall[] = tools.map((t, idx) => ({
+      id: `tool-${idx}`,
+      name: t.name,
+      arguments: t.arguments,
+    }));
+
+    const { compiled, shouldUseFusion } = integrateWithSubagents(toolCalls);
+
+    if (!shouldUseFusion) {
+      return [];
+    }
+
+    return compiled.fusedOperations.map((op) => ({
+      name: op.fusedId,
+      description: `Fused: ${op.toolCalls.map((t) => t.name).join(" + ")}`,
+      parameters: { type: "object", properties: {} },
+    }));
+  } catch {
+    // Fallback on error - return empty array to use original tools
+    return [];
+  }
+}
+
 import {
   type SubagentDefinition,
   type SubagentRunRecord,
@@ -174,7 +224,7 @@ import {
 import {
   type SubagentExecutionResult,
   normalizeSubagentOutput,
-  buildSubagentPrompt,
+  buildSubagentPrompt as buildSubagentTaskPrompt,
   runSubagentTask,
   isRetryableSubagentError,
   buildFailureSummary,
@@ -184,6 +234,21 @@ import {
   formatSkillsSection,
   extractSummary,
 } from "./subagents/task-execution";
+
+// Import DAG execution types and utilities
+import {
+  type TaskPlan,
+  type TaskNode,
+  type DagResult,
+  type DagTaskResult,
+} from "../lib/dag-types.js";
+import { validateTaskPlan } from "../lib/dag-validator.js";
+import {
+  DagExecutor,
+  executeDag,
+  buildSubagentPrompt,
+} from "../lib/dag-executor.js";
+import { generateDagFromTask, DagGenerationError } from "../lib/dag-generator.js";
 
 // Import types from lib/subagent-types.ts
 import {
@@ -242,6 +307,69 @@ export {
 // renderSubagentLiveView, createSubagentLiveMonitor -> ./subagents/live-monitor.ts
 // resolveSubagentParallelCapacity -> ./subagents/parallel-execution.ts
 // normalizeSubagentOutput, buildSubagentPrompt, runSubagentTask -> ./subagents/task-execution.ts
+
+/**
+ * Infer dependencies between subagents for DAG-based execution
+ * @summary サブエージェント依存関係推論
+ * @param agents - 選択されたエージェント
+ * @param task - タスク記述
+ * @returns 推論された依存関係
+ */
+function inferSubagentDependencies(
+  agents: SubagentDefinition[],
+  task: string,
+): { hasDependencies: boolean; dependencies: Map<string, string[]>; description: string } {
+  const deps = new Map<string, string[]>();
+  const agentIds = new Set(agents.map((a) => a.id));
+  const descriptions: string[] = [];
+
+  // Rule 1: Research → Implementation dependency
+  const hasResearcher = agentIds.has("researcher");
+  const hasImplementer = agentIds.has("implementer") || Array.from(agentIds).some((id) => id.startsWith("implement"));
+
+  if (hasResearcher && hasImplementer) {
+    const implAgents = Array.from(agentIds).filter((id) => id === "implementer" || id.startsWith("implement"));
+    implAgents.forEach((id) => {
+      deps.set(id, ["researcher"]);
+    });
+    descriptions.push("researcher -> implementer (research informs implementation)");
+  }
+
+  // Rule 2: Implementation → Review dependency
+  const hasReviewer = agentIds.has("reviewer") || agentIds.has("code-reviewer");
+  if (hasImplementer && hasReviewer) {
+    const implAgents = Array.from(agentIds).filter((id) => id === "implementer" || id.startsWith("implement"));
+    const reviewAgent = agentIds.has("reviewer") ? "reviewer" : "code-reviewer";
+    deps.set(reviewAgent, implAgents);
+    descriptions.push("implementer -> reviewer (review requires implementation)");
+  }
+
+  // Rule 3: Implementation → Test dependency
+  const hasTester = agentIds.has("tester");
+  if (hasImplementer && hasTester) {
+    const implAgents = Array.from(agentIds).filter((id) => id === "implementer" || id.startsWith("implement"));
+    deps.set("tester", implAgents);
+    descriptions.push("implementer -> tester (tests require implementation)");
+  }
+
+  // Rule 4: Architect → Implementation dependency
+  const hasArchitect = agentIds.has("architect");
+  if (hasArchitect && hasImplementer) {
+    const implAgents = Array.from(agentIds).filter((id) => id === "implementer" || id.startsWith("implement"));
+    implAgents.forEach((id) => {
+      const existing = deps.get(id) || [];
+      deps.set(id, [...existing, "architect"]);
+    });
+    descriptions.push("architect -> implementer (design guides implementation)");
+  }
+
+  const hasDependencies = deps.size > 0;
+  const description = hasDependencies
+    ? descriptions.map((d, i) => `  ${i + 1}. ${d}`).join("\n")
+    : "No dependencies detected";
+
+  return { hasDependencies, dependencies: deps, description };
+}
 
 /**
  * Refresh runtime status display in the UI with subagent-specific parameters.
@@ -723,7 +851,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
         if (result.runRecord.status === "failed") {
           const pressureError = classifyPressureError(result.runRecord.error || "");
-          if (pressureError !== "other") {
+          if (pressureError !== "other" && pressureError !== "cancelled") {
             adaptivePenalty.raise(pressureError);
           }
           const errorMessage = result.runRecord.error || "subagent run failed";
@@ -978,10 +1106,142 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
         });
 
+        // Dependency inference for parallel execution - AUTO DAG FALLBACK
+        const inferredDeps = inferSubagentDependencies(activeAgents, params.task);
+        if (inferredDeps.hasDependencies) {
+          // Auto-switch to DAG execution instead of returning recommendation
+          console.log("[subagent_run_parallel] Auto-switching to DAG execution due to detected dependencies");
+          console.log(`[subagent_run_parallel] Detected: ${inferredDeps.description}`);
+
+          try {
+            // Generate DAG plan from task
+            const dagPlan = await generateDagFromTask(params.task, {
+              maxDepth: 4,
+              maxTasks: activeAgents.length + 2,
+            });
+
+            console.log(`[subagent_run_parallel] Generated DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
+
+            // Create live monitor items from DAG tasks
+            const monitorItems = dagPlan.tasks.map((t) => ({
+              id: t.id,
+              name: t.description.slice(0, 50),
+            }));
+
+            liveMonitor = createSubagentLiveMonitor(ctx, {
+              title: `Subagent Run Parallel (DAG): ${dagPlan.id}`,
+              items: monitorItems,
+            });
+
+            // Execute DAG
+            const dagResult = await executeDag<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
+              dagPlan,
+              async (task, _context) => {
+                const agentId = task.assignedAgent ?? storage.currentAgentId;
+                const agent = agentId
+                  ? storage.agents.find((a) => a.id === agentId)
+                  : pickAgent(storage);
+
+                if (!agent) {
+                  throw new Error(`No subagent found for task ${task.id}`);
+                }
+
+                liveMonitor?.markStarted(task.id);
+
+                const result = await runSubagentTask({
+                  agent,
+                  task: buildSubagentPrompt(task, _context),
+                  extraContext: params.extraContext,
+                  timeoutMs,
+                  cwd: ctx.cwd,
+                  modelProvider: ctx.model?.provider,
+                  modelId: ctx.model?.id,
+                  onTextDelta: (delta) => {
+                    liveMonitor?.appendChunk(task.id, "stdout", delta);
+                  },
+                });
+
+                liveMonitor?.markFinished(
+                  task.id,
+                  result.runRecord.status,
+                  result.runRecord.summary,
+                  result.runRecord.error,
+                );
+
+                return result;
+              },
+              {
+                maxConcurrency: Math.max(1, effectiveParallelism),
+                abortOnFirstError: false,
+              },
+            );
+
+            // Collect results from taskResults map
+            const allResults = Array.from(dagResult.taskResults.values());
+            for (const taskResult of allResults) {
+              if (taskResult.output && typeof taskResult.output === "object" && "runRecord" in taskResult.output) {
+                const output = taskResult.output as { runRecord: SubagentRunRecord };
+                storage.runs.push(output.runRecord);
+                pi.appendEntry("subagent-run", output.runRecord);
+              }
+            }
+            await saveStorageWithPatterns(ctx.cwd, storage);
+
+            const failedTasks = allResults.filter((r) => r.status === "failed");
+            const dagSummary = `[DAG Auto-Execution] ${dagPlan.tasks.length} tasks, ${allResults.length - failedTasks.length} succeeded, ${failedTasks.length} failed`;
+
+            logger.endOperation({
+              status: failedTasks.length > 0 ? "partial" : "success",
+              tokensUsed: 0,
+              outputLength: dagSummary.length,
+              childOperations: allResults.length,
+              toolCalls: 0,
+            });
+
+            return {
+              content: [{
+                type: "text" as const,
+                text: `${dagSummary}
+
+Auto-switched to DAG execution due to detected dependencies:
+${inferredDeps.description}
+
+${allResults.map((r) => {
+  const status = r.status === "completed" ? "DONE" : "FAIL";
+  const output = r.output as { runRecord?: SubagentRunRecord } | undefined;
+  return `[${status}] ${r.taskId}: ${output?.runRecord?.summary?.slice(0, 100) || r.error || "completed"}`;
+}).join("\n")}
+`,
+              }],
+              details: {
+                dagPlanId: dagPlan.id,
+                taskCount: dagPlan.tasks.length,
+                succeededCount: allResults.length - failedTasks.length,
+                failedCount: failedTasks.length,
+                inferredDependencies: inferredDeps.dependencies,
+                autoSwitched: true,
+                outcomeCode: failedTasks.length > 0 ? "PARTIAL_SUCCESS" as RunOutcomeCode : "SUCCESS" as RunOutcomeCode,
+              },
+            };
+          } catch (dagError) {
+            // DAG generation/execution failed - fallback to parallel execution
+            console.log(`[subagent_run_parallel] DAG execution failed, falling back to parallel: ${dagError}`);
+            // Continue to normal parallel execution below
+          }
+        }
+
         runtimeState.activeRunRequests += 1;
         notifyRuntimeCapacityChanged();
         refreshRuntimeStatus(ctx);
         capacityReservation.consume();
+
+        // DynTaskMAS: エージェントの重みを計算（専門性ベース）
+        // 重みが大きい（専門性が高い）エージェントを優先的に実行
+        const agentWeights = new Map<string, number>();
+        for (const agent of activeAgents) {
+          const weight = getAgentSpecializationWeight(agent.id);
+          agentWeights.set(agent.id, weight);
+        }
 
         const results = await runWithConcurrencyLimit(
           activeAgents,
@@ -1021,6 +1281,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               result.runRecord.error,
             );
             return result;
+          },
+          {
+            signal: _signal,
+            usePriorityScheduling: true,
+            itemWeights: agentWeights,
+            getItemId: (agent: SubagentDefinition) => agent.id,
           },
         );
 
@@ -1117,6 +1383,347 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             message: errorMessage,
             stack: "",
           },
+        });
+        return {
+          content: [{ type: "text" as const, text: errorMessage }],
+          details: {
+            error: "execution_error",
+            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      } finally {
+        runtimeState.activeRunRequests = Math.max(0, runtimeState.activeRunRequests - 1);
+        notifyRuntimeCapacityChanged();
+        refreshRuntimeStatus(ctx);
+        liveMonitor?.close();
+        await liveMonitor?.wait();
+        stopReservationHeartbeat?.();
+        capacityReservation?.release();
+        refreshRuntimeStatus(ctx);
+      }
+    },
+  });
+
+  // DAG-based subagent execution
+  pi.registerTool({
+    name: "subagent_run_dag",
+    label: "Subagent Run DAG",
+    description:
+      "Run tasks with dependency-aware parallel execution. Decomposes a task into a DAG of subtasks and executes them in parallel where dependencies allow. Plan auto-generated when omitted.",
+    parameters: Type.Object({
+      task: Type.String({ description: "Task to decompose and execute" }),
+      plan: Type.Optional(
+        Type.Object({
+          id: Type.String(),
+          description: Type.String(),
+          tasks: Type.Array(
+            Type.Object({
+              id: Type.String(),
+              description: Type.String(),
+              assignedAgent: Type.Optional(Type.String()),
+              dependencies: Type.Array(Type.String()),
+              priority: Type.Optional(Type.String()),
+              inputContext: Type.Optional(Type.Array(Type.String())),
+            }),
+          ),
+        }),
+      ),
+      autoGenerate: Type.Optional(Type.Boolean({
+        description: "Auto-generate DAG when plan omitted (default: true)"
+      })),
+      maxConcurrency: Type.Optional(Type.Number({ description: "Maximum parallel tasks (default: 3)" })),
+      abortOnFirstError: Type.Optional(Type.Boolean({ description: "Stop on first task failure (default: false)" })),
+      timeoutMs: Type.Optional(Type.Number({ description: "Per-task timeout in ms (default: 300000)" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const storage = loadStorage(ctx.cwd);
+      const maxConcurrency = params.maxConcurrency ?? 3;
+      const abortOnFirstError = params.abortOnFirstError ?? false;
+      const timeoutMs = resolveEffectiveTimeoutMs(
+        params.timeoutMs,
+        ctx.model?.id,
+        DEFAULT_AGENT_TIMEOUT_MS,
+      );
+
+      // Build or use provided plan
+      let taskPlan: TaskPlan;
+
+      if (params.plan) {
+        // Use provided plan (existing logic)
+        taskPlan = {
+          id: params.plan.id,
+          description: params.plan.description,
+          tasks: params.plan.tasks.map((t) => ({
+            id: t.id,
+            description: t.description,
+            assignedAgent: t.assignedAgent,
+            dependencies: t.dependencies,
+            priority: t.priority as "critical" | "high" | "normal" | "low" | undefined,
+            inputContext: t.inputContext,
+          })),
+          metadata: {
+            createdAt: Date.now(),
+            model: ctx.model?.id ?? "unknown",
+            totalEstimatedMs: 0,
+            maxDepth: 0,
+          },
+        };
+      } else if (params.autoGenerate !== false) {
+        // AUTO-GENERATE DAG
+        try {
+          taskPlan = await generateDagFromTask(params.task, {
+            maxDepth: 4,
+            maxTasks: 10,
+          });
+
+          // Log auto-generation success
+          console.log(`[subagent_run_dag] Auto-generated plan: ${taskPlan.id} (${taskPlan.tasks.length} tasks, max depth: ${taskPlan.metadata.maxDepth})`);
+        } catch (genError) {
+          const errorMsg = genError instanceof DagGenerationError
+            ? `subagent_run_dag error: failed to auto-generate plan - ${genError.message} (code: ${genError.code})`
+            : `subagent_run_dag error: failed to auto-generate plan - ${genError}`;
+
+          return {
+            content: [{ type: "text" as const, text: errorMsg }],
+            details: {
+              error: "auto_generation_failed",
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+      } else {
+        // autoGenerate explicitly false, plan required
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "subagent_run_dag error: plan parameter required when autoGenerate=false",
+            },
+          ],
+          details: {
+            error: "plan_required",
+            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
+      // Validate plan
+      const validation = validateTaskPlan(taskPlan);
+      if (!validation.valid) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `subagent_run_dag error: invalid plan - ${validation.errors.join("; ")}`,
+            },
+          ],
+          details: {
+            error: "invalid_plan",
+            validationErrors: validation.errors,
+            validationWarnings: validation.warnings,
+            outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+            retryRecommended: false,
+          },
+        };
+      }
+
+      logger.startOperation("subagent_run_dag" as OperationType, taskPlan.id, {
+        task: params.task,
+        params: { taskCount: taskPlan.tasks.length, maxConcurrency },
+      });
+
+      let liveMonitor: SubagentLiveMonitorController | undefined;
+      let capacityReservation: RuntimeCapacityReservationLease | undefined;
+      let stopReservationHeartbeat: (() => void) | undefined;
+
+      try {
+        const snapshot = getRuntimeSnapshot();
+        const dispatchPermit = await acquireRuntimeDispatchPermit({
+          toolName: "subagent_run_dag",
+          candidate: {
+            additionalRequests: 1,
+            additionalLlm: Math.min(maxConcurrency, taskPlan.tasks.length),
+          },
+          tenantKey: taskPlan.id,
+          source: "scheduled",
+          estimatedDurationMs: 60_000 * taskPlan.tasks.length,
+          estimatedRounds: taskPlan.tasks.length,
+          maxWaitMs: snapshot.limits.capacityWaitMs,
+          pollIntervalMs: snapshot.limits.capacityPollMs,
+          signal: _signal,
+        });
+
+        if (!dispatchPermit.allowed || !dispatchPermit.lease) {
+          const errorText = buildRuntimeLimitError("subagent_run_dag", dispatchPermit.reasons, {
+            waitedMs: dispatchPermit.waitedMs,
+            timedOut: dispatchPermit.timedOut,
+          });
+          logger.endOperation({
+            status: "failure",
+            tokensUsed: 0,
+            outputLength: 0,
+            childOperations: 0,
+            toolCalls: 0,
+            error: { type: "capacity_error", message: errorText, stack: "" },
+          });
+          const capacityOutcome: RunOutcomeSignal = dispatchPermit.aborted
+            ? { outcomeCode: "CANCELLED", retryRecommended: false }
+            : dispatchPermit.timedOut
+              ? { outcomeCode: "TIMEOUT", retryRecommended: true }
+              : { outcomeCode: "RETRYABLE_FAILURE", retryRecommended: true };
+          return {
+            content: [{ type: "text" as const, text: errorText }],
+            details: {
+              error: dispatchPermit.aborted ? "runtime_dispatch_aborted" : "runtime_dispatch_blocked",
+              reasons: dispatchPermit.reasons,
+              outcomeCode: capacityOutcome.outcomeCode,
+              retryRecommended: capacityOutcome.retryRecommended,
+            },
+          };
+        }
+
+        capacityReservation = dispatchPermit.lease;
+        stopReservationHeartbeat = startReservationHeartbeat(capacityReservation);
+
+        // Create live monitor items from task plan
+        const monitorItems = taskPlan.tasks.map((t) => ({
+          id: t.id,
+          name: t.description.slice(0, 50),
+        }));
+
+        liveMonitor = createSubagentLiveMonitor(ctx, {
+          title: `Subagent Run DAG: ${taskPlan.id}`,
+          items: monitorItems,
+        });
+
+        runtimeState.activeRunRequests += 1;
+        notifyRuntimeCapacityChanged();
+        refreshRuntimeStatus(ctx);
+        capacityReservation.consume();
+
+        // Execute DAG using DagExecutor
+        const dagResult = await executeDag<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
+          taskPlan,
+          async (task, context) => {
+            // Determine agent to use
+            const agentId = task.assignedAgent ?? storage.currentAgentId;
+            const agent = agentId
+              ? storage.agents.find((a) => a.id === agentId)
+              : pickAgent(storage);
+
+            if (!agent) {
+              throw new Error(`No subagent found for task ${task.id}`);
+            }
+
+            // Build prompt with context from dependencies
+            const promptWithContext = buildSubagentPrompt(task, context);
+
+            liveMonitor?.markStarted(task.id);
+            runtimeState.activeAgents += 1;
+            notifyRuntimeCapacityChanged();
+            refreshRuntimeStatus(ctx);
+
+            try {
+              const result = await runSubagentTask({
+                agent,
+                task: promptWithContext,
+                extraContext: context,
+                timeoutMs,
+                cwd: ctx.cwd,
+                modelProvider: ctx.model?.provider,
+                modelId: ctx.model?.id,
+                onTextDelta: (delta) => {
+                  liveMonitor?.appendChunk(task.id, "stdout", delta);
+                },
+                onStderrChunk: (chunk) => {
+                  liveMonitor?.appendChunk(task.id, "stderr", chunk);
+                },
+              });
+
+              liveMonitor?.markFinished(
+                task.id,
+                result.runRecord.status,
+                result.runRecord.summary,
+                result.runRecord.error,
+              );
+
+              storage.runs.push(result.runRecord);
+              pi.appendEntry("subagent-run", result.runRecord);
+
+              return result;
+            } finally {
+              runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
+              notifyRuntimeCapacityChanged();
+              refreshRuntimeStatus(ctx);
+            }
+          },
+          {
+            maxConcurrency,
+            abortOnFirstError,
+            signal: _signal,
+            onTaskError: (taskId, error) => {
+              liveMonitor?.markFinished(taskId, "failed", error.message, error.message);
+            },
+          },
+        );
+
+        await saveStorageWithPatterns(ctx.cwd, storage);
+
+        // Build result
+        const completedCount = dagResult.completedTaskIds.length;
+        const failedCount = dagResult.failedTaskIds.length;
+
+        const aggregatedOutput = Array.from(dagResult.taskResults.entries())
+          .map(([taskId, result]) => {
+            const status = result.status.toUpperCase();
+            const output =
+              result.status === "completed"
+                ? (result.output as { runRecord: SubagentRunRecord; output: string; prompt: string })?.output ?? ""
+                : result.error?.message ?? "";
+            return `## ${taskId}\nStatus: ${status}\n${output}`;
+          })
+          .join("\n\n");
+
+        logger.endOperation({
+          status: dagResult.overallStatus === "completed" ? "success" : dagResult.overallStatus === "partial" ? "partial" : "failure",
+          tokensUsed: 0,
+          outputLength: aggregatedOutput.length,
+          childOperations: taskPlan.tasks.length,
+          toolCalls: 0,
+        });
+
+        return {
+          content: [{ type: "text" as const, text: aggregatedOutput }],
+          details: {
+            planId: taskPlan.id,
+            overallStatus: dagResult.overallStatus,
+            totalDurationMs: dagResult.totalDurationMs,
+            completedTaskIds: dagResult.completedTaskIds,
+            failedTaskIds: dagResult.failedTaskIds,
+            skippedTaskIds: dagResult.skippedTaskIds,
+            successCount: completedCount,
+            failureCount: failedCount,
+            outcomeCode:
+              dagResult.overallStatus === "completed"
+                ? ("SUCCESS" as RunOutcomeCode)
+                : dagResult.overallStatus === "partial"
+                  ? ("PARTIAL_SUCCESS" as RunOutcomeCode)
+                  : ("NONRETRYABLE_FAILURE" as RunOutcomeCode),
+            retryRecommended: failedCount > 0,
+          },
+        };
+      } catch (error) {
+        const errorMessage = toErrorMessage(error);
+        logger.endOperation({
+          status: "failure",
+          tokensUsed: 0,
+          outputLength: 0,
+          childOperations: 0,
+          toolCalls: 0,
+          error: { type: "dag_execution_error", message: errorMessage, stack: "" },
         });
         return {
           content: [{ type: "text" as const, text: errorMessage }],

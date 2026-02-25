@@ -164,8 +164,9 @@ function tryAcquireLock(lockFile: string): boolean {
     if (typeof fd === "number") {
       try {
         closeSync(fd);
-      } catch {
-        // noop
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.debug(`[storage-lock] Failed to close file descriptor: ${errorMessage}`);
       }
     }
   }
@@ -184,7 +185,11 @@ function clearStaleLock(lockFile: string, staleMs: number): void {
       } catch (error) {
         return isNodeErrno(error, "ESRCH");
       }
-    } catch {
+    } catch (error) {
+      // ENOENT (file not found) is normal - lock was already released
+      if (isNodeErrno(error, "ENOENT")) return false;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.debug(`[storage-lock] Failed to check lock owner status: ${errorMessage}`);
       return false;
     }
   };
@@ -194,8 +199,11 @@ function clearStaleLock(lockFile: string, staleMs: number): void {
     if (ageMs > staleMs || isLockOwnerDead()) {
       unlinkSync(lockFile);
     }
-  } catch {
-    // noop
+  } catch (error) {
+    // ENOENT (file not found) is normal - lock was already released
+    if (isNodeErrno(error, "ENOENT")) return;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[storage-lock] Failed to clear stale lock ${lockFile}: ${errorMessage}`);
   }
 }
 
@@ -263,8 +271,9 @@ export function withFileLock<T>(
   } finally {
     try {
       unlinkSync(lockFile);
-    } catch {
-      // noop
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.debug(`[storage-lock] Failed to release lock ${lockFile}: ${errorMessage}`);
     }
   }
 }
@@ -284,8 +293,9 @@ export function atomicWriteTextFile(filePath: string, content: string): void {
   } catch (error) {
     try {
       unlinkSync(tmpFile);
-    } catch {
-      // noop
+    } catch (cleanupError) {
+      const errorMessage = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+      console.debug(`[storage-lock] Failed to cleanup temp file ${tmpFile}: ${errorMessage}`);
     }
     throw error;
   }

@@ -41,7 +41,10 @@ import {
 	parseRgOutput,
 	summarizeResults,
 	createCodeSearchError,
-	createSimpleHints,
+	createHintsWithBudget,
+	estimateCodeSearchMatchTokens,
+	estimateResponseTokens,
+	DEFAULT_CONTEXT_BUDGET,
 } from "../utils/output.js";
 import { SearchToolError, isSearchToolError, getErrorMessage, parameterError } from "../utils/errors.js";
 import {
@@ -317,7 +320,7 @@ export async function codeSearch(
 		} else {
 			result = await nativeCodeSearch(safeInput, cwd);
 		}
-	} catch (error) {
+	} catch (error: unknown) {
 		// Wrap error in SearchToolError if not already
 		const toolError = isSearchToolError(error)
 			? error
@@ -335,11 +338,14 @@ export async function codeSearch(
 		}
 	}
 
-	// 4. Generate hints
-	const hints = createSimpleHints(
+	// 4. Estimate tokens and generate hints with budget
+	const estimatedTokens = estimateResponseTokens(result, estimateCodeSearchMatchTokens);
+	const hints = createHintsWithBudget(
 		TOOL_NAME,
 		result.results.length,
 		result.truncated,
+		estimatedTokens,
+		DEFAULT_CONTEXT_BUDGET,
 		extractQuery(TOOL_NAME, params)
 	);
 

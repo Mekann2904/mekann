@@ -6,11 +6,14 @@ enabled: enabled
 strategy: parallel
 skills:
   - code-search           # チーム共通: 高速コード検索
+  - repograph-localization # チーム共通: RepoGraphベースのローカライゼーション
 members:
   - id: research
     role: Researcher
     description: Phase 1の徹底調査を担当。関連ファイルを網羅的に特定し、制約条件や技術的な事実を収集。既存コードの構造、依存関係、影響範囲を徹底的に調査し、実装のための前提条件を明確化する。
     enabled: true
+    skills:
+      - repograph-localization  # RepoGraphベースのコード位置特定
   - id: build
     role: Implementer
     description: Phase 2の実装設計を担当。最小限の実装手順を提案し、エッジケースや境界条件を考慮したチェックを行う。既存コードとの整合性を保ちながら、エレガントで安全かつ保守性の高い実装を設計する。

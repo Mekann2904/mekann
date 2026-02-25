@@ -2,7 +2,7 @@
 title: creative-destruction
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -18,6 +18,7 @@ related: []
 ```typescript
 // from './belief-updater.js': Distribution
 // from './belief-updater.js': createPrior, normalizeDistribution
+// from './structured-analysis-output.js': parsePremiseAnalysisJson, PROMPT_PREMISE_FORMAT
 ```
 
 ## エクスポート一覧
@@ -123,6 +124,7 @@ flowchart LR
   subgraph local[ローカルモジュール]
     belief_updater["belief-updater"]
     belief_updater["belief-updater"]
+    structured_analysis_output["structured-analysis-output"]
   end
   main --> local
 ```
@@ -520,4 +522,4 @@ type PremiseType = | 'epistemic'      // 認識論的前提（「我思う、ゆ
 前提タイプ
 
 ---
-*自動生成: 2026-02-23T06:29:42.289Z*
+*自動生成: 2026-02-24T17:08:02.636Z*

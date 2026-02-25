@@ -2,7 +2,7 @@
 title: index
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from '@mariozechner/pi-ai': StringEnum
 // from './tools/file_candidates.js': fileCandidates
 // from './tools/code_search.js': codeSearch
-// ... and 8 more imports
+// ... and 16 more imports
 ```
 
 ## エクスポート一覧
@@ -76,8 +76,12 @@ sequenceDiagram
   Storage->>Internal: エラーメッセージ取得
   Storage->>Internal: エラーレスポンス作成
   Storage->>Unresolved: toolError.format (.pi/extensions/search/utils/errors.ts)
-  Storage->>Internal: シンプルヒント作成
+  Storage->>Internal: レスポンストークン推定
+  Internal->>Internal: estimateResultsTokens
+  Internal->>Internal: estimateTokens
+  Storage->>Internal: 予算対応ヒント作成
   Internal->>Internal: calculateSimpleConfidence
+  Internal->>Internal: calculateContextBudgetWarning
   Internal->>Internal: getAlternativeTools
   Internal->>Internal: generateRelatedQueries
   Storage->>Unresolved: extractResultPaths(result.results).slice (node_modules/typescript/lib/lib.es5.d.ts)
@@ -131,8 +135,12 @@ sequenceDiagram
   Internal->>Internal: エラーメッセージ取得
   Internal->>Internal: エラー作成
   Internal->>Unresolved: toolError.format (.pi/extensions/search/utils/errors.ts)
-  Internal->>Internal: シンプルヒント作成
+  Internal->>Internal: レスポンストークン推定
+  Internal->>Internal: estimateResultsTokens
+  Internal->>Internal: estimateTokens
+  Internal->>Internal: 予算対応ヒント作成
   Internal->>Internal: calculateSimpleConfidence
+  Internal->>Internal: calculateContextBudgetWarning
   Internal->>Internal: getAlternativeTools
   Internal->>Internal: generateRelatedQueries
   Internal->>Unresolved: extractResultPaths(result.results).slice (node_modules/typescript/lib/lib.es5.d.ts)
@@ -188,7 +196,7 @@ sequenceDiagram
 
 ### sym_find
 
-Search for symbol definitions (functions, classes, variables) from the ctags index. Supports pattern matching on name and filtering by kind.
+Search for symbol definitions (functions, classes, variables) from the ctags index. Supports pattern matching on name and filtering by kind. Use detailLevel to control output verbosity.
 
 ```mermaid
 sequenceDiagram
@@ -255,8 +263,14 @@ sequenceDiagram
   Internal->>Internal: sortSymbols
   Internal->>Executor: 結果を切り詰める
   Executor->>Unresolved: results.slice (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Internal: シンプルヒント作成
+  Internal->>Internal: applyDetailLevel
+  Internal->>Internal: レスポンストークン推定
+  Internal->>Internal: estimateResultsTokens
+  Internal->>Internal: estimateTokens
+  Internal->>Internal: シンボル定義トークン推定
+  Internal->>Internal: 予算対応ヒント作成
   Internal->>Internal: calculateSimpleConfidence
+  Internal->>Internal: calculateContextBudgetWarning
   Internal->>Internal: getAlternativeTools
   Internal->>Internal: generateRelatedQueries
   Internal->>Unresolved: cache.setCache (.pi/extensions/search/utils/cache.ts)
@@ -514,6 +528,504 @@ sequenceDiagram
 
 ```
 
+### context_explore
+
+Execute a chain of search queries in sequence. Supports find_class, find_methods, search_code, and get_callers steps. Results from previous steps can be referenced using $0, $1, etc. Automatically compresses results based on token budget.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+
+  User->>System: Execute a chain of search queries in sequence. Supports f...
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Internal: 文脈検索実行
+  Internal->>Internal: executeStep
+  Internal->>Unresolved: stepResults.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: stepResults.reduce (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: compressSymbols
+  Internal->>Internal: estimateStepTokens
+  Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: 結果フォーマット
+  Internal->>Unresolved: lines.join (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: match.text.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### search_class
+
+Search for class definitions with optional method listing. Supports wildcards in class name. Use includeMethods to get class structure overview.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+  participant Judge as "Judge"
+  participant Executor as "Executor"
+
+  User->>System: Search for class definitions with optional method listing...
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Internal: クラス検索実行
+  Internal->>Internal: シンボル検索実行
+  Internal->>Internal: グローバルキャッシュインスタンスを取得する。
+  Internal->>Internal: 検索履歴取得
+  Internal->>Internal: キャッシュキーを生成する
+  Internal->>Unresolved: Object.keys(params).sort (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Object.keys (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: keyParts.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: value.sort().join (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: sortObjectKeys
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: cache.getCached (.pi/extensions/search/utils/cache.ts)
+  Internal->>Unresolved: history.addHistoryEntry (.pi/extensions/search/utils/history.ts)
+  Internal->>Internal: ツールのパラメータからクエリ文字列を抽出する
+  Internal->>Internal: extractResultPaths
+  Internal->>Storage: インデックス読込
+  Storage->>Internal: getShardDir
+  Storage->>Internal: fileExists
+  Storage->>Internal: readAllShards
+  Storage->>Internal: getLegacyIndexPath
+  Storage->>Internal: readLegacyIndex
+  Internal->>Internal: インデックスを作成
+  Internal->>Judge: ツール利用可否を確認
+  Internal->>Internal: 依存関係エラー生成
+  Internal->>Internal: getLegacyMetaPath
+  Internal->>Internal: isIndexStale
+  Internal->>Internal: incrementalUpdate
+  Internal->>Internal: writeLegacyIndex
+  Internal->>Internal: writeLegacyMeta
+  Internal->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: writeShardedIndex
+  Internal->>Internal: updateManifest
+  Internal->>Internal: writeMeta
+  Internal->>Internal: getMetaPath
+  Internal->>Internal: getSourceFiles
+  Internal->>Internal: useCtagsCommand
+  Internal->>Internal: 実行エラー生成
+  Internal->>Internal: FSエラーを生成
+  Internal->>Internal: エラーカテゴリを判定
+  Internal->>Internal: エラーメッセージ取得
+  Internal->>Internal: エラーレスポンス作成
+  Internal->>Unresolved: toolError.format (.pi/extensions/search/utils/errors.ts)
+  Internal->>Internal: filterSymbols
+  Internal->>Internal: sortSymbols
+  Internal->>Executor: 結果を切り詰める
+  Executor->>Unresolved: results.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: applyDetailLevel
+  Internal->>Internal: レスポンストークン推定
+  Internal->>Internal: estimateResultsTokens
+  Internal->>Internal: estimateTokens
+  Internal->>Internal: シンボル定義トークン推定
+  Internal->>Internal: 予算対応ヒント作成
+  Internal->>Internal: calculateSimpleConfidence
+  Internal->>Internal: calculateContextBudgetWarning
+  Internal->>Internal: getAlternativeTools
+  Internal->>Internal: generateRelatedQueries
+  Internal->>Unresolved: cache.setCache (.pi/extensions/search/utils/cache.ts)
+  Internal->>Unresolved: methodsResult.results.map (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: 結果フォーマット
+  System-->>User: 結果
+
+```
+
+### search_method
+
+Search for method definitions with optional implementation code. Supports wildcards in method name. Use className to filter by containing class.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+  participant Judge as "Judge"
+  participant Executor as "Executor"
+
+  User->>System: Search for method definitions with optional implementatio...
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Internal: メソッド検索実行
+  Internal->>Internal: シンボル検索実行
+  Internal->>Internal: グローバルキャッシュインスタンスを取得する。
+  Internal->>Internal: 検索履歴取得
+  Internal->>Internal: キャッシュキーを生成する
+  Internal->>Unresolved: Object.keys(params).sort (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Object.keys (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: keyParts.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: value.sort().join (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: sortObjectKeys
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: cache.getCached (.pi/extensions/search/utils/cache.ts)
+  Internal->>Unresolved: history.addHistoryEntry (.pi/extensions/search/utils/history.ts)
+  Internal->>Internal: ツールのパラメータからクエリ文字列を抽出する
+  Internal->>Internal: extractResultPaths
+  Internal->>Storage: インデックス読込
+  Storage->>Internal: getShardDir
+  Storage->>Internal: fileExists
+  Storage->>Internal: readAllShards
+  Storage->>Internal: getLegacyIndexPath
+  Storage->>Internal: readLegacyIndex
+  Internal->>Internal: インデックスを作成
+  Internal->>Judge: ツール利用可否を確認
+  Internal->>Internal: 依存関係エラー生成
+  Internal->>Internal: getLegacyMetaPath
+  Internal->>Internal: isIndexStale
+  Internal->>Internal: incrementalUpdate
+  Internal->>Internal: writeLegacyIndex
+  Internal->>Internal: writeLegacyMeta
+  Internal->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: writeShardedIndex
+  Internal->>Internal: updateManifest
+  Internal->>Internal: writeMeta
+  Internal->>Internal: getMetaPath
+  Internal->>Internal: getSourceFiles
+  Internal->>Internal: useCtagsCommand
+  Internal->>Internal: 実行エラー生成
+  Internal->>Internal: FSエラーを生成
+  Internal->>Internal: エラーカテゴリを判定
+  Internal->>Internal: エラーメッセージ取得
+  Internal->>Internal: エラーレスポンス作成
+  Internal->>Unresolved: toolError.format (.pi/extensions/search/utils/errors.ts)
+  Internal->>Internal: filterSymbols
+  Internal->>Internal: sortSymbols
+  Internal->>Executor: 結果を切り詰める
+  Executor->>Unresolved: results.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: applyDetailLevel
+  Internal->>Internal: レスポンストークン推定
+  Internal->>Internal: estimateResultsTokens
+  Internal->>Internal: estimateTokens
+  Internal->>Internal: シンボル定義トークン推定
+  Internal->>Internal: 予算対応ヒント作成
+  Internal->>Internal: calculateSimpleConfidence
+  Internal->>Internal: calculateContextBudgetWarning
+  Internal->>Internal: getAlternativeTools
+  Internal->>Internal: generateRelatedQueries
+  Internal->>Unresolved: cache.setCache (.pi/extensions/search/utils/cache.ts)
+  Internal->>Internal: getMethodImplementation
+  System->>Internal: 結果フォーマット
+  Internal->>Unresolved: method.implementation.split (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### fault_localize
+
+Identify potential bug locations using Spectrum-Based Fault Localization (SBFL). Analyzes test coverage data to find code that is frequently covered by failing tests. Supports Ochiai, Tarantula, and OP2 algorithms.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant LLM as "LLM"
+
+  User->>System: Identify potential bug locations using Spectrum-Based Fau...
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Internal: バグ位置特定実行
+  Internal->>Internal: executeTests
+  Internal->>Internal: collectCoverage
+  Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: coverageMap.entries (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
+  Internal->>Unresolved: locations.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>LLM: 一括怪しさ計算
+  LLM->>Unresolved: locations.map (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Internal: calculateSuspiciousness
+  LLM->>Unresolved: results.filter (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: filtered.sort (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: 結果フォーマット
+  Internal->>Unresolved: lines.join (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: output.locations.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: (loc.suspiciousness * 100).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### search_history
+
+Manage search history across sessions. Use 'get' to retrieve history, 'clear' to delete history, 'save_query' to manually save a query. Supports filtering by session (current/previous/all).
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+
+  User->>System: Manage search history across sessions. Use 'get' to retri...
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Internal: 履歴管理実行
+  Internal->>Internal: グローバルストア取得
+  Internal->>Unresolved: store.getHistory (.pi/extensions/search/utils/history-store.ts)
+  Internal->>Unresolved: store.getSessions (.pi/extensions/search/utils/history-store.ts)
+  Internal->>Unresolved: entries.map (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: sessions.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: store.clear (.pi/extensions/search/utils/history-store.ts)
+  Internal->>Unresolved: store.saveQuery (.pi/extensions/search/utils/history-store.ts)
+  Internal->>Internal: formatEntry
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: 結果フォーマット
+  Internal->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: lines.join (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: new Date(query.timestamp).toLocaleString (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### ast_summary
+
+Display AST structure of a file in tree, flat, or JSON format. Supports depth control and type information. Useful for understanding file structure quickly.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+  participant Judge as "Judge"
+  participant Executor as "Executor"
+
+  User->>System: Display AST structure of a file in tree, flat, or JSON fo...
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Internal: AST要約実行
+  Internal->>Internal: シンボル検索実行
+  Internal->>Internal: グローバルキャッシュインスタンスを取得する。
+  Internal->>Internal: 検索履歴取得
+  Internal->>Internal: キャッシュキーを生成する
+  Internal->>Unresolved: Object.keys(params).sort (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Object.keys (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: keyParts.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: value.sort().join (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: sortObjectKeys
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: cache.getCached (.pi/extensions/search/utils/cache.ts)
+  Internal->>Unresolved: history.addHistoryEntry (.pi/extensions/search/utils/history.ts)
+  Internal->>Internal: ツールのパラメータからクエリ文字列を抽出する
+  Internal->>Internal: extractResultPaths
+  Internal->>Storage: インデックス読込
+  Storage->>Internal: getShardDir
+  Storage->>Internal: fileExists
+  Storage->>Internal: readAllShards
+  Storage->>Internal: getLegacyIndexPath
+  Storage->>Internal: readLegacyIndex
+  Internal->>Internal: インデックスを作成
+  Internal->>Judge: ツール利用可否を確認
+  Internal->>Internal: 依存関係エラー生成
+  Internal->>Internal: getLegacyMetaPath
+  Internal->>Internal: isIndexStale
+  Internal->>Internal: incrementalUpdate
+  Internal->>Internal: writeLegacyIndex
+  Internal->>Internal: writeLegacyMeta
+  Internal->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: writeShardedIndex
+  Internal->>Internal: updateManifest
+  Internal->>Internal: writeMeta
+  Internal->>Internal: getMetaPath
+  Internal->>Internal: getSourceFiles
+  Internal->>Internal: useCtagsCommand
+  Internal->>Internal: 実行エラー生成
+  Internal->>Internal: FSエラーを生成
+  Internal->>Internal: エラーカテゴリを判定
+  Internal->>Internal: エラーメッセージ取得
+  Internal->>Internal: エラーレスポンス作成
+  Internal->>Unresolved: toolError.format (.pi/extensions/search/utils/errors.ts)
+  Internal->>Internal: filterSymbols
+  Internal->>Internal: sortSymbols
+  Internal->>Executor: 結果を切り詰める
+  Executor->>Unresolved: results.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: applyDetailLevel
+  Internal->>Internal: レスポンストークン推定
+  Internal->>Internal: estimateResultsTokens
+  Internal->>Internal: estimateTokens
+  Internal->>Internal: シンボル定義トークン推定
+  Internal->>Internal: 予算対応ヒント作成
+  Internal->>Internal: calculateSimpleConfidence
+  Internal->>Internal: calculateContextBudgetWarning
+  Internal->>Internal: getAlternativeTools
+  Internal->>Internal: generateRelatedQueries
+  Internal->>Unresolved: cache.setCache (.pi/extensions/search/utils/cache.ts)
+  Internal->>Internal: extractCalls
+  Internal->>Internal: buildAstTree
+  Internal->>Internal: limitDepth
+  Internal->>Internal: attachCallsToNodes
+  Internal->>Internal: removeSignatures
+  Internal->>Internal: calculateStats
+  System->>Internal: 結果フォーマット
+  Internal->>Internal: formatAsJson
+  Internal->>Internal: formatAsFlat
+  Internal->>Internal: formatAsTree
+  System-->>User: 結果
+
+```
+
+### merge_results
+
+Merge results from multiple search methods (semantic, symbol, code) with ranking improvements. Supports weighted, rank_fusion, and interleave strategies.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+
+  User->>System: Merge results from multiple search methods (semantic, sym...
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Internal: 統合検索実行
+  Internal->>Unresolved: sourceWeights.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: sourceWeights.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: input.sources.map (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: executeSource
+  Internal->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
+  Internal->>Unresolved: allResults.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: deduplicateResults
+  Internal->>Internal: getResultKey
+  Internal->>Unresolved: grouped.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Internal: mergeRankFusion
+  Internal->>Internal: mergeInterleave
+  Internal->>Internal: mergeWeighted
+  Internal->>Unresolved: merged.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: 結果フォーマット
+  Internal->>Unresolved: item.sources.join (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: item.score.toFixed (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### repograph_index
+
+Build a RepoGraph index showing line-level code dependencies. Uses tree-sitter for AST-based analysis. More accurate than regex-based call graph for definition/reference extraction.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+
+  User->>System: Build a RepoGraph index showing line-level code dependenc...
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Internal: RepoGraphインデックスを構築・更新
+  Internal->>Internal: Get index file path
+  Internal->>Internal: join
+  Internal->>Storage: Load graph from disk
+  Storage->>Storage: readFile
+  Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: Check index staleness
+  Internal->>Internal: stat
+  Internal->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Storage: Collect source files recursively
+  Storage->>Storage: readdir
+  Storage->>Unresolved: entry.isDirectory (node_modules/@types/node/fs.d.ts)
+  Storage->>Unresolved: EXCLUDE_DIRS.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Storage->>Internal: walk
+  Storage->>Unresolved: entry.isFile (node_modules/@types/node/fs.d.ts)
+  Storage->>Internal: extname
+  Storage->>Unresolved: files.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: fullPath.replace (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: Build complete RepoGraph
+  Internal->>Internal: Detect language from file path
+  Internal->>Unresolved: filePath.split('.').pop()?.toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: filePath.split('.').pop (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: filePath.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Storage: Parse source file with tree-sitter
+  Storage->>Storage: Load language grammar
+  Storage->>Unresolved: parser.setLanguage (node_modules/web-tree-sitter/web-tree-sitter.d.ts)
+  Storage->>Internal: walkTree
+  Internal->>Internal: shouldIncludeNode
+  Internal->>Unresolved: nodes.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Internal: shouldIncludeEdge
+  Internal->>Unresolved: fileNodes.filter (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: resolveReferences
+  Internal->>Storage: Persist graph to disk
+  Storage->>Internal: mkdir
+  Storage->>Internal: dirname
+  Storage->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Storage->>Unresolved: graph.nodes.entries (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
+  Storage->>Storage: writeFile
+  Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: インデックス結果をフォーマット
+  System-->>User: 結果
+
+```
+
+### repograph_query
+
+Query the RepoGraph index for symbols, definitions, references, and related nodes. Supports k-hop traversal for context extraction. Requires repograph_index to be built first.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+
+  User->>System: Query the RepoGraph index for symbols, definitions, refer...
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Internal: RepoGraphインデックスをクエリ
+  Internal->>Storage: Load graph from disk
+  Storage->>Internal: join
+  Storage->>Storage: readFile
+  Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: Search nodes by symbol name
+  Internal->>Unresolved: symbolName.toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: graph.nodes.values (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
+  Internal->>Unresolved: node.symbolName.toLowerCase().includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: results.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Storage: Search nodes by file path
+  Storage->>Unresolved: results.sort (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: a.file.localeCompare (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Array.from(graph.nodes.values()).filter (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Internal: Find symbol definitions
+  Internal->>Internal: Find symbol references
+  Internal->>Internal: Traverse k-hop neighborhood
+  Internal->>Unresolved: outgoing.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: outgoing.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: outgoing.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: queue.shift (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: visited.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: Calculate graph statistics
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: nodes.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: クエリ結果をフォーマット
+  Internal->>Unresolved: Object.entries(stats.edgeTypeCounts || {}) 				.map (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Object.entries (node_modules/typescript/lib/lib.es2017.object.d.ts)
+  System-->>User: 結果
+
+```
+
 ## 図解
 
 ### 依存関係図
@@ -540,4 +1052,4 @@ flowchart LR
 ```
 
 ---
-*自動生成: 2026-02-23T06:29:42.127Z*
+*自動生成: 2026-02-24T17:08:02.406Z*

@@ -2,7 +2,7 @@
 title: tool-error-utils
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -455,4 +455,4 @@ type ToolResultStatus = "ok" | "warning" | "error"
 ツール実行結果の状態
 
 ---
-*自動生成: 2026-02-23T06:29:42.435Z*
+*自動生成: 2026-02-24T17:08:02.794Z*

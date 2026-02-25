@@ -477,8 +477,8 @@ describe("retry-with-backoff - 内部関数のカバレッジ向上", () => {
     it("normalizeRateLimitKey_special_characters", async () => {
       // Arrange & Act
       const { getRateLimitGateSnapshot } = await import("../../../.pi/lib/retry-with-backoff.js");
-      const snapshot1 = getRateLimitGateSnapshot("Test-Key_123");
-      const snapshot2 = getRateLimitGateSnapshot("  spaces  ");
+      const snapshot1 = await getRateLimitGateSnapshot("Test-Key_123");
+      const snapshot2 = await getRateLimitGateSnapshot("  spaces  ");
 
       // Assert
       expect(snapshot1.key).toBe("test-key_123"); // 小文字に変換
@@ -488,7 +488,7 @@ describe("retry-with-backoff - 内部関数のカバレッジ向上", () => {
     it("normalizeRateLimitKey_unicode", async () => {
       // Arrange & Act
       const { getRateLimitGateSnapshot } = await import("../../../.pi/lib/retry-with-backoff.js");
-      const snapshot = getRateLimitGateSnapshot("test-key-日本語");
+      const snapshot = await getRateLimitGateSnapshot("test-key-日本語");
 
       // Assert
       expect(snapshot.key).toBe("test-key-日本語");
@@ -497,7 +497,7 @@ describe("retry-with-backoff - 内部関数のカバレッジ向上", () => {
     it("normalizeRateLimitKey_numbers_only", async () => {
       // Arrange & Act
       const { getRateLimitGateSnapshot } = await import("../../../.pi/lib/retry-with-backoff.js");
-      const snapshot = getRateLimitGateSnapshot("12345");
+      const snapshot = await getRateLimitGateSnapshot("12345");
 
       // Assert
       expect(snapshot.key).toBe("12345");
@@ -506,7 +506,7 @@ describe("retry-with-backoff - 内部関数のカバレッジ向上", () => {
     it("normalizeRateLimitKey_emoji", async () => {
       // Arrange & Act
       const { getRateLimitGateSnapshot } = await import("../../../.pi/lib/retry-with-backoff.js");
-      const snapshot = getRateLimitGateSnapshot("test🔑key");
+      const snapshot = await getRateLimitGateSnapshot("test🔑key");
 
       // Assert
       expect(snapshot.key).toBe("test🔑key");

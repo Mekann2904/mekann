@@ -32,6 +32,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { Mutex } from "async-mutex";
 import { recordTotalLimitObservation } from "./adaptive-total-limit.js";
 import { withFileLock } from "./storage-lock.js";
 
@@ -161,8 +162,8 @@ const sharedRateLimitState: SharedRateLimitState = {
   entries: new Map<string, SharedRateLimitStateEntry>(),
 };
 
-// 操作中フラグ: 同一プロセス内での並列アクセスを防止
-let inMemoryRateLimitOperationInProgress = false;
+// Bug #1修正: async-mutexを使用してsharedRateLimitStateへのアクセスを保護
+const stateMutex = new Mutex();
 
 /**
  * 状態をクリアする
@@ -286,7 +287,11 @@ function readConfigOverrides(cwd: string | undefined): RetryWithBackoffOverrides
       return {};
     }
     return sanitizeOverrides(retryNode as RetryWithBackoffOverrides);
-  } catch {
+  } catch (error) {
+    // Bug #8 fix: 設定ファイル読み込みエラーをログに記録
+    // 非クリティカルなエラーのためdebugレベル
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[retry-with-backoff] Config file read failed (non-critical): ${configFile} - ${errorMessage}`);
     return {};
   }
 }
@@ -364,7 +369,11 @@ function readPersistedRateLimitState(nowMs: number): Map<string, SharedRateLimit
     const persistedState: SharedRateLimitState = { entries };
     pruneRateLimitState(nowMs, persistedState);
     return persistedState.entries;
-  } catch {
+  } catch (error) {
+    // Bug #8 fix: 永続化状態読み込みエラーをログに記録
+    // ファイルが存在しない、または破損している場合は空のMapを返す
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[retry-with-backoff] Rate limit state read failed (will reinitialize): ${errorMessage}`);
     return new Map();
   }
 }
@@ -378,8 +387,11 @@ function writePersistedRateLimitState(state: SharedRateLimitState): void {
       entries: Object.fromEntries(state.entries.entries()),
     };
     writeFileSync(RATE_LIMIT_STATE_FILE, JSON.stringify(payload, null, 2), "utf-8");
-  } catch {
-    // Best effort only.
+  } catch (error) {
+    // Bug #8 fix: 永続化書き込みエラーをログに記録
+    // Best effort only - 書き込み失敗してもメモリ状態は保持される
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn(`[retry-with-backoff] Rate limit state write failed (non-critical): ${errorMessage}`);
   }
 }
 
@@ -401,23 +413,15 @@ function mergeEntriesInPlace(
   }
 }
 
-function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
-  // 同一プロセス内での並列アクセスを防止するフォールバック
-  const fallback = () => {
-    const localState = getSharedRateLimitState();
-    pruneRateLimitState(nowMs, localState);
-    const result = mutator();
-    // 最適化: debounce書き込み
-    scheduleWritePersistedState();
-    return result;
-  };
-
-  // 既に操作中の場合は、フォールバックを実行して競合を回避
-  if (inMemoryRateLimitOperationInProgress) {
-    return fallback();
-  }
-
-  inMemoryRateLimitOperationInProgress = true;
+/**
+ * Bug #1修正: Mutexを使用してsharedRateLimitStateへのアクセスを保護
+ * @summary 状態操作を実行（排他制御付き）
+ * @param nowMs - 現在時刻（ミリ秒）
+ * @param mutator - 状態を操作する関数
+ * @returns mutatorの戻り値
+ */
+async function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): Promise<T> {
+  const release = await stateMutex.acquire();
   try {
     ensureRuntimeDir();
     
@@ -437,10 +441,13 @@ function withSharedRateLimitState<T>(nowMs: number, mutator: () => T): T {
     // 最適化: debounce書き込み
     scheduleWritePersistedState();
     return result;
-  } catch {
-    return fallback();
+  } catch (error) {
+    // エラー時は状態を再初期化
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn(`[retry-with-backoff] State operation failed: ${errorMessage}`);
+    throw error;
   } finally {
-    inMemoryRateLimitOperationInProgress = false;
+    release();
   }
 }
 
@@ -485,16 +492,16 @@ function enforceRateLimitEntryCap(state: SharedRateLimitState): void {
 /**
  * @summary スナップショット取得
  * @param key 対象のキー
- * @returns 現在のレートリミット状態
+ * @returns 現在のレートリミット状態のPromise
  */
-export function getRateLimitGateSnapshot(
+export async function getRateLimitGateSnapshot(
   key: string | undefined,
   timeOptions: RetryTimeOptions = {},
-): RateLimitGateSnapshot {
+): Promise<RateLimitGateSnapshot> {
   const normalizedKey = normalizeRateLimitKey(key);
   const now = timeOptions.now ?? Date.now;
   const nowMs = now();
-  return withSharedRateLimitState(nowMs, () => {
+  return await withSharedRateLimitState(nowMs, () => {
     const entry = getSharedRateLimitState().entries.get(normalizedKey);
     if (!entry) {
       return {
@@ -513,25 +520,15 @@ export function getRateLimitGateSnapshot(
   });
 }
 
-function registerRateLimitGateHit(
+async function registerRateLimitGateHit(
   key: string | undefined,
   retryDelayMs: number,
   now: () => number,
-): RateLimitGateSnapshot {
+): Promise<RateLimitGateSnapshot> {
   const normalizedKey = normalizeRateLimitKey(key);
   const nowMs = now();
 
-  // Bug #1 Warning: High rate limit entry count indicates potential race condition risk
-  const entries = sharedRateLimitState.entries;
-  if (entries.size > 10) {
-    console.warn(
-      "[retry-with-backoff] High rate limit entry count detected:",
-      entries.size,
-      "- Risk of Bug #1 (race condition) increased"
-    );
-  }
-
-  return withSharedRateLimitState(nowMs, () => {
+  return await withSharedRateLimitState(nowMs, () => {
     const state = getSharedRateLimitState();
     const previous = state.entries.get(normalizedKey);
     const nextHits = Math.min(8, (previous?.hits ?? 0) + 1);
@@ -561,10 +558,10 @@ function registerRateLimitGateHit(
   });
 }
 
-function registerRateLimitGateSuccess(key: string | undefined, now: () => number): void {
+async function registerRateLimitGateSuccess(key: string | undefined, now: () => number): Promise<void> {
   const normalizedKey = normalizeRateLimitKey(key);
   const nowMs = now();
-  withSharedRateLimitState(nowMs, () => {
+  await withSharedRateLimitState(nowMs, () => {
     const state = getSharedRateLimitState();
     const current = state.entries.get(normalizedKey);
     if (!current) return;
@@ -826,10 +823,10 @@ export async function retryWithBackoff<T>(
 
     if (rateLimitKeys.length > 0) {
       const nowMs = now();
-      const gate = selectLongestRateLimitGate(
-        rateLimitKeys.map((scopeKey) => getRateLimitGateSnapshot(scopeKey, { now })),
-        nowMs,
+      const gateSnapshots = await Promise.all(
+        rateLimitKeys.map((scopeKey) => getRateLimitGateSnapshot(scopeKey, { now }))
       );
+      const gate = selectLongestRateLimitGate(gateSnapshots, nowMs);
       if (gate.waitMs > 0) {
         recordTotalLimitObservation({
           kind: "rate_limit",
@@ -860,7 +857,7 @@ export async function retryWithBackoff<T>(
       });
       if (rateLimitKeys.length > 0) {
         for (const scopeKey of rateLimitKeys) {
-          registerRateLimitGateSuccess(scopeKey, now);
+          await registerRateLimitGateSuccess(scopeKey, now);
         }
       }
       return result;
@@ -894,10 +891,10 @@ export async function retryWithBackoff<T>(
       let delayMs = computeBackoffDelayMs(attempt, config);
       if (statusCode === 429 && rateLimitKeys.length > 0) {
         const nowMs = now();
-        const sharedGate = selectLongestRateLimitGate(
-          rateLimitKeys.map((scopeKey) => registerRateLimitGateHit(scopeKey, delayMs, now)),
-          nowMs,
+        const gateHits = await Promise.all(
+          rateLimitKeys.map((scopeKey) => registerRateLimitGateHit(scopeKey, delayMs, now))
         );
+        const sharedGate = selectLongestRateLimitGate(gateHits, nowMs);
         delayMs = Math.max(delayMs, sharedGate.waitMs);
         if (maxRateLimitWaitMs !== undefined && delayMs > maxRateLimitWaitMs) {
           throw createRateLimitFastFailError(

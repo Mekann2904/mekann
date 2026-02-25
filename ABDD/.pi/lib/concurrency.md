@@ -2,7 +2,7 @@
 title: concurrency
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -36,6 +36,9 @@ classDiagram
     <<interface>>
     +signal: AbortSignal
     +abortOnError: boolean
+    +usePriorityScheduling: boolean
+    +itemWeights: Map_string_number
+    +getItemId: T_item_T_string
   }
   class WorkerResult {
     <<interface>>
@@ -146,6 +149,9 @@ async runWithConcurrencyLimit(items: TInput[], limit: number, worker: (item: TIn
 
 指定した並行数制限で非同期タスクを実行する
 
+DynTaskMAS統合: usePriorityScheduling=true時、itemWeightsに基づいて
+高優先度アイテム（重みが大きいアイテム）を先に実行する。
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -173,6 +179,9 @@ async runWorker(): Promise<void>
 interface ConcurrencyRunOptions {
   signal?: AbortSignal;
   abortOnError?: boolean;
+  usePriorityScheduling?: boolean;
+  itemWeights?: Map<string, number>;
+  getItemId?: <T>(item: T) => string;
 }
 ```
 
@@ -192,4 +201,4 @@ Result wrapper for tracking success/failure of individual workers.
 Used internally to ensure all workers complete before throwing errors.
 
 ---
-*自動生成: 2026-02-23T06:29:42.275Z*
+*自動生成: 2026-02-24T17:08:02.620Z*

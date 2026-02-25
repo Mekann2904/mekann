@@ -404,7 +404,8 @@ function loadUserLimits(): ProviderLimitsConfig | null {
       }
     }
   } catch (error) {
-    // ignore
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[provider-limits] Failed to load user limits from ${USER_LIMITS_FILE}: ${errorMessage}`);
   }
   return null;
 }

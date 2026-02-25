@@ -135,7 +135,7 @@ export function startReservationHeartbeat(
     try {
       reservation.heartbeat();
       consecutiveErrors = 0; // Reset on success
-    } catch (error) {
+    } catch (error: unknown) {
       consecutiveErrors++;
       const errorMsg = error instanceof Error ? error.message : String(error);
 

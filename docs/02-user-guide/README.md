@@ -57,6 +57,12 @@ pi拡張機能コレクションのユーザーガイドです。
 | **invariant-pipeline** | インバリアント生成パイプライン | [→](./14-invariant-pipeline.md) |
 | **search-tools** | 高速検索ツール群 | [→](./15-search-tools.md) |
 
+## リファレンス
+
+| ガイド | 説明 | ドキュメント |
+|--------|------|------|
+| **pi-mono参照ガイド** | pi-monoベストプラクティス参照方法 | [→](./24-pi-mono-reference.md) |
+
 ## クイックスタート
 
 まだpi拡張機能コレクションをインストールしていない場合は、[Getting Started](../01-getting-started/)を参照してください。

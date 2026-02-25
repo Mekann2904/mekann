@@ -2,7 +2,7 @@
 title: pattern-extraction
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -495,4 +495,4 @@ interface RunData {
 パターン抽出用の実行データ
 
 ---
-*自動生成: 2026-02-23T06:29:42.382Z*
+*自動生成: 2026-02-24T17:08:02.738Z*

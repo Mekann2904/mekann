@@ -92,6 +92,7 @@ export interface TeamMember {
  * @param members - チームメンバーのリスト
  * @param skills - チームが持つスキルのリスト（任意）
  * @param thinkingLevel - チーム全体のデフォルト思考レベル（任意）
+ * @param parent - 親チームID（Phase分割チームの場合、リストでは非表示）
  * @param createdAt - 作成日時（ISO 8601形式）
  * @param updatedAt - 更新日時（ISO 8601形式）
  */
@@ -104,6 +105,8 @@ export interface TeamDefinition {
   skills?: string[];
   /** チーム全体のデフォルト思考レベル（推論深度） */
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+  /** 親チームID（Phase分割チームの場合、リストでは非表示） */
+  parent?: string;
   createdAt: string;
   updatedAt: string;
 }

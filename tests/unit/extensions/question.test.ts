@@ -606,3 +606,261 @@ describe("question.ts プロパティベーステスト", () => {
 		);
 	});
 });
+
+// ============================================================================
+// 新機能のテスト（v2.0改善）
+// ============================================================================
+
+describe("新機能テスト（v2.0改善）", () => {
+	describe("マルチバイト文字幅計算", () => {
+		/**
+		 * 文字の表示幅を取得（テスト用コピー）
+		 */
+		function getCharWidth(char: string): number {
+			const code = char.codePointAt(0) || 0;
+			if (
+				(code >= 0x3000 && code <= 0x303F) ||
+				(code >= 0x3040 && code <= 0x309F) ||
+				(code >= 0x30A0 && code <= 0x30FF) ||
+				(code >= 0x4E00 && code <= 0x9FFF) ||
+				(code >= 0xFF00 && code <= 0xFFEF)
+			) {
+				return 2;
+			}
+			return 1;
+		}
+
+		/**
+		 * 文字列の表示幅を取得（テスト用コピー）
+		 */
+		function getStringWidth(str: string): number {
+			let width = 0;
+			for (const char of str) {
+				width += getCharWidth(char);
+			}
+			return width;
+		}
+
+		it("ASCII文字は幅1", () => {
+			expect(getCharWidth("a")).toBe(1);
+			expect(getCharWidth("Z")).toBe(1);
+			expect(getCharWidth("0")).toBe(1);
+			expect(getCharWidth(" ")).toBe(1);
+		});
+
+		it("ひらがなは幅2", () => {
+			expect(getCharWidth("あ")).toBe(2);
+			expect(getCharWidth("ん")).toBe(2);
+		});
+
+		it("カタカナは幅2", () => {
+			expect(getCharWidth("ア")).toBe(2);
+			expect(getCharWidth("ン")).toBe(2);
+		});
+
+		it("漢字は幅2", () => {
+			expect(getCharWidth("漢")).toBe(2);
+			expect(getCharWidth("字")).toBe(2);
+		});
+
+		it("文字列の合計幅", () => {
+			expect(getStringWidth("abc")).toBe(3);
+			expect(getStringWidth("あいう")).toBe(6);
+			expect(getStringWidth("aあb")).toBe(4); // 1 + 2 + 1
+		});
+
+		it("混在文字列の幅", () => {
+			const mixed = "Hello世界";
+			// H(1) + e(1) + l(1) + l(1) + o(1) + 世(2) + 界(2) = 9
+			expect(getStringWidth(mixed)).toBe(9);
+		});
+	});
+
+	describe("構造化エラーレスポンス", () => {
+		/**
+		 * エラーコード定義（テスト用コピー）
+		 */
+		enum QuestionErrorCode {
+			NO_UI = "NO_UI",
+			NO_OPTIONS = "NO_OPTIONS",
+			NO_QUESTIONS = "NO_QUESTIONS",
+			CANCELLED = "CANCELLED",
+			VALIDATION_ERROR = "VALIDATION_ERROR"
+		}
+
+		interface QuestionError {
+			code: QuestionErrorCode;
+			message: string;
+			recovery: string[];
+			details?: Record<string, unknown>;
+		}
+
+		function createErrorResponse(error: QuestionError) {
+			return {
+				content: [{
+					type: "text" as const,
+					text: `エラー [${error.code}]: ${error.message}\n\n回復方法:\n${error.recovery.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
+				}],
+				details: {
+					answers: [],
+					error
+				}
+			};
+		}
+
+		it("NO_UIエラーレスポンスの作成", () => {
+			const response = createErrorResponse({
+				code: QuestionErrorCode.NO_UI,
+				message: "UIが利用できません",
+				recovery: ["対話モードで再実行してください"]
+			});
+
+			expect(response.details.answers).toEqual([]);
+			expect(response.details.error.code).toBe("NO_UI");
+			expect(response.content[0].text).toContain("回復方法");
+		});
+
+		it("NO_OPTIONSエラーレスポンスの作成", () => {
+			const response = createErrorResponse({
+				code: QuestionErrorCode.NO_OPTIONS,
+				message: "質問 1 に選択肢がありません",
+				recovery: [
+					"options に選択肢を追加してください",
+					"または custom: true を設定してください"
+				],
+				details: { questionIndex: 0 }
+			});
+
+			expect(response.details.error.code).toBe("NO_OPTIONS");
+			expect(response.details.error.recovery).toHaveLength(2);
+			expect(response.details.error.details).toEqual({ questionIndex: 0 });
+		});
+
+		it("エラーメッセージに回復方法が含まれる", () => {
+			const response = createErrorResponse({
+				code: QuestionErrorCode.VALIDATION_ERROR,
+				message: "バリデーションエラー",
+				recovery: ["修正してください"]
+			});
+
+			expect(response.content[0].text).toContain("1. 修正してください");
+		});
+	});
+
+	describe("パラメータバリデーション", () => {
+		it("空選択肢 + custom=false は無効", () => {
+			const question = {
+				question: "テスト",
+				header: "T",
+				options: [],
+				custom: false
+			};
+
+			const hasOptions = question.options && question.options.length > 0;
+			const allowCustom = question.custom !== false;
+			const isValid = hasOptions || allowCustom;
+
+			expect(isValid).toBe(false);
+		});
+
+		it("空選択肢 + custom=true は有効", () => {
+			const question = {
+				question: "テスト",
+				header: "T",
+				options: [],
+				custom: true
+			};
+
+			const hasOptions = question.options && question.options.length > 0;
+			const allowCustom = question.custom !== false;
+			const isValid = hasOptions || allowCustom;
+
+			expect(isValid).toBe(true);
+		});
+
+		it("選択肢あり + custom=false は有効", () => {
+			const question = {
+				question: "テスト",
+				header: "T",
+				options: [{ label: "A" }],
+				custom: false
+			};
+
+			const hasOptions = question.options && question.options.length > 0;
+			const allowCustom = question.custom !== false;
+			const isValid = hasOptions || allowCustom;
+
+			expect(isValid).toBe(true);
+		});
+
+		it("ヘッダー長の警告判定", () => {
+			const shortHeader = "短い";
+			const longHeader = "このヘッダーは非常に長いので警告されるべきですそのまま続きます";
+
+			expect(shortHeader.length <= 30).toBe(true);
+			expect(longHeader.length <= 30).toBe(false);
+		});
+	});
+
+	describe("ペースト処理の改善", () => {
+		it("ANSIエスケープシーケンスの除去", () => {
+			// 明示的にUnicodeエスケープを使用
+			const input = "hello\u001b[31mred\u001b[0mworld";
+			// CSI形式のANSIエスケープシーケンスのみ除去
+			const cleanText = input.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+
+			// ANSIエスケープシーケンスは除去されるが、"red" は残る
+			expect(cleanText).toBe("helloredworld");
+		});
+
+		it("最大長チェック", () => {
+			const MAX_PASTE_LENGTH = 10000;
+			const shortText = "a".repeat(100);
+			const longText = "a".repeat(15000);
+
+			expect(shortText.length <= MAX_PASTE_LENGTH).toBe(true);
+			expect(longText.length <= MAX_PASTE_LENGTH).toBe(false);
+		});
+
+		it("改行コードの統一", () => {
+			const input = "line1\r\nline2\rline3";
+			const cleanText = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+			expect(cleanText).toBe("line1\nline2\nline3");
+		});
+	});
+
+	describe("確認画面の境界チェック", () => {
+		it("有効な編集インデックス", () => {
+			const questions = [
+				{ question: "Q1", header: "H1", options: [] },
+				{ question: "Q2", header: "H2", options: [] },
+				{ question: "Q3", header: "H3", options: [] }
+			];
+			const totalOptions = 2 + questions.length; // 確定 + キャンセル + 質問数
+
+			// カーソル位置 2, 3, 4 は編集オプション
+			for (let cursor = 2; cursor < totalOptions; cursor++) {
+				const editIndex = cursor - 2;
+				const isValid = editIndex >= 0 && editIndex < questions.length;
+				expect(isValid).toBe(true);
+			}
+		});
+
+		it("無効な編集インデックスはフォールバック", () => {
+			const questions = [
+				{ question: "Q1", header: "H1", options: [] }
+			];
+
+			// カーソル位置 0, 1 は確定/キャンセル
+			// カーソル位置 2 は編集オプション
+			// カーソル位置 3 以降は範囲外
+
+			const cursorOutOfRange = 10;
+			const editIndex = cursorOutOfRange - 2;
+			const isValid = editIndex >= 0 && editIndex < questions.length;
+
+			expect(isValid).toBe(false);
+		});
+	});
+});

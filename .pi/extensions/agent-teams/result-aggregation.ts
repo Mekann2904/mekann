@@ -41,9 +41,240 @@ import {
 import { isRetryableTeamMemberError as isRetryableTeamMemberErrorLib } from "../../lib/agent-errors.js";
 
 import type { TeamMemberResult, TeamRunRecord, TeamDefinition, TeamCommunicationAuditEntry } from "./storage";
+import type { AggregationStrategy, AggregationInput, AggregationResult, TeamFinalJudge } from "./judge";
 
 // Re-export outcome types for convenience
 export type { RunOutcomeCode, RunOutcomeSignal };
+
+// Re-export aggregation types for convenience
+export type { AggregationStrategy, AggregationInput, AggregationResult };
+
+// ============================================================================
+// Aggregation Functions (Phase 2: M1-Parallel Integration)
+// ============================================================================
+
+/**
+ * チーム結果を指定された戦略で集約する
+ * @summary チーム結果集約
+ * @param input 集約入力データ（チーム結果、戦略、タスク）
+ * @param ctx オプションのコンテキスト（モデル情報等）
+ * @returns 集約結果
+ */
+export async function aggregateTeamResults(
+  input: AggregationInput,
+  _ctx?: { model?: { id: string }; provider?: string }
+): Promise<AggregationResult> {
+  const { teamResults, strategy, task } = input;
+
+  // 結果がない場合の早期リターン
+  if (teamResults.length === 0) {
+    return {
+      verdict: 'untrusted',
+      confidence: 0,
+      explanation: 'No team results to aggregate',
+    };
+  }
+
+  switch (strategy) {
+    case 'rule-based':
+      return aggregateRuleBased(teamResults);
+
+    case 'majority-vote':
+      return aggregateMajorityVote(teamResults);
+
+    case 'best-confidence':
+      return aggregateBestConfidence(teamResults);
+
+    case 'llm-aggregate':
+      return aggregateWithLLM(teamResults, task, _ctx);
+
+    default:
+      return aggregateRuleBased(teamResults);
+  }
+}
+
+/**
+ * ルールベースの集約（現在の動作）
+ * 最初のtrusted、次に最初のpartial、最後にuntrustedを返す
+ * @summary ルールベース集約
+ * @param results チーム結果リスト
+ * @returns 集約結果
+ */
+function aggregateRuleBased(
+  results: AggregationInput['teamResults']
+): AggregationResult {
+  // 最初のtrustedを探す
+  const trusted = results.find(r => r.finalJudge?.verdict === 'trusted');
+  if (trusted) {
+    return {
+      verdict: 'trusted',
+      confidence: trusted.finalJudge.confidence,
+      selectedTeamId: trusted.teamId,
+      explanation: 'First trusted result selected (rule-based)',
+    };
+  }
+
+  // 最初のpartialを探す
+  const partial = results.find(r => r.finalJudge?.verdict === 'partial');
+  if (partial) {
+    return {
+      verdict: 'partial',
+      confidence: partial.finalJudge.confidence,
+      selectedTeamId: partial.teamId,
+      explanation: 'First partial result selected (rule-based)',
+    };
+  }
+
+  // 最初の結果を返す
+  const untrusted = results[0];
+  return {
+    verdict: 'untrusted',
+    confidence: untrusted?.finalJudge?.confidence ?? 0,
+    selectedTeamId: untrusted?.teamId,
+    explanation: 'No trusted/partial results, returning first (rule-based)',
+  };
+}
+
+/**
+ * 多数決による集約
+ * 最も多い評決を採用し、同数の場合は信頼度で決定
+ * @summary 多数決集約
+ * @param results チーム結果リスト
+ * @returns 集約結果
+ */
+function aggregateMajorityVote(
+  results: AggregationInput['teamResults']
+): AggregationResult {
+  const verdictCounts = { trusted: 0, partial: 0, untrusted: 0 };
+  let totalConfidence = 0;
+
+  for (const r of results) {
+    const verdict = r.finalJudge?.verdict ?? 'untrusted';
+    verdictCounts[verdict]++;
+    totalConfidence += r.finalJudge?.confidence ?? 0;
+  }
+
+  // 多数の評決を見つける
+  let majorityVerdict: 'trusted' | 'partial' | 'untrusted' = 'untrusted';
+  let maxCount = verdictCounts.untrusted;
+
+  if (verdictCounts.trusted > maxCount) {
+    majorityVerdict = 'trusted';
+    maxCount = verdictCounts.trusted;
+  }
+  if (verdictCounts.partial > maxCount) {
+    majorityVerdict = 'partial';
+    maxCount = verdictCounts.partial;
+  }
+
+  // 多数評決の中で最高信頼度のチームを選択
+  const majorityTeams = results.filter(r => (r.finalJudge?.verdict ?? 'untrusted') === majorityVerdict);
+  const selected = majorityTeams.reduce(
+    (best, curr) =>
+      (curr.finalJudge?.confidence ?? 0) > (best?.finalJudge?.confidence ?? 0) ? curr : best,
+    majorityTeams[0]
+  );
+
+  return {
+    verdict: majorityVerdict,
+    confidence: totalConfidence / results.length,
+    selectedTeamId: selected?.teamId,
+    explanation: `Majority vote: ${verdictCounts.trusted} trusted, ${verdictCounts.partial} partial, ${verdictCounts.untrusted} untrusted`,
+  };
+}
+
+/**
+ * 最高信頼度による集約
+ * 最も信頼度の高い結果を採用
+ * @summary 最高信頼度集約
+ * @param results チーム結果リスト
+ * @returns 集約結果
+ */
+function aggregateBestConfidence(
+  results: AggregationInput['teamResults']
+): AggregationResult {
+  const best = results.reduce(
+    (best, curr) =>
+      (curr.finalJudge?.confidence ?? 0) > (best.finalJudge?.confidence ?? 0) ? curr : best,
+    results[0]
+  );
+
+  const confidence = best?.finalJudge?.confidence ?? 0;
+  return {
+    verdict: best?.finalJudge?.verdict ?? 'untrusted',
+    confidence,
+    selectedTeamId: best?.teamId,
+    explanation: `Selected highest confidence (${confidence.toFixed(2)})`,
+  };
+}
+
+/**
+ * LLMによる集約
+ * 複数のチーム結果をLLMが統合して最終結果を生成
+ * 現在はフォールバックとして多数決を使用
+ * @summary LLM集約
+ * @param results チーム結果リスト
+ * @param task 元のタスク内容
+ * @param _ctx コンテキスト（モデル情報）
+ * @returns 集約結果
+ */
+async function aggregateWithLLM(
+  results: AggregationInput['teamResults'],
+  task: string,
+  _ctx?: { model?: { id: string }; provider?: string }
+): Promise<AggregationResult> {
+  // 各チームの結果を要約
+  const summaries = results.map(r => ({
+    teamId: r.teamId,
+    verdict: r.finalJudge?.verdict ?? 'untrusted',
+    confidence: r.finalJudge?.confidence ?? 0,
+    keyPoints: extractKeyPoints(r.memberResults),
+  }));
+
+  // LLM集約用のプロンプトを構築（将来のSDK統合用）
+  // 現在は使用しないが、将来の実装のために保持
+  const _prompt = `Given the following team results for task: "${task}"
+
+${summaries.map((s, i) => `
+Team ${i + 1} (${s.teamId}):
+- Verdict: ${s.verdict}
+- Confidence: ${s.confidence}
+- Key Points: ${s.keyPoints.join(', ')}
+`).join('\n')}
+
+Synthesize a final aggregated result. Respond with:
+VERDICT: [trusted|partial|untrusted]
+CONFIDENCE: [0.0-1.0]
+EXPLANATION: [brief explanation]`;
+
+  // 現在は多数決にフォールバック
+  // TODO: pi SDK統合時に実際のLLM呼び出しを実装
+  const fallbackResult = aggregateMajorityVote(results);
+  return {
+    ...fallbackResult,
+    explanation: `LLM aggregation not yet implemented, using majority vote fallback. ${fallbackResult.explanation}`,
+  };
+}
+
+/**
+ * メンバー結果からキーポイントを抽出
+ * @summary キーポイント抽出
+ * @param memberResults メンバー結果リスト
+ * @returns キーポイントの配列
+ */
+function extractKeyPoints(memberResults: TeamMemberResult[]): string[] {
+  const points: string[] = [];
+  for (const r of memberResults) {
+    if (r.status === 'completed' && r.output) {
+      // 各成功結果の最初の100文字を抽出
+      const content = typeof r.output === 'string'
+        ? r.output
+        : JSON.stringify(r.output);
+      points.push(content.slice(0, 100));
+    }
+  }
+  return points;
+}
 
 // ============================================================================
 // Failure Resolution

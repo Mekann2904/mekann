@@ -193,7 +193,7 @@ export async function semanticSearch(
 			truncated: nearest.length === topK && filteredIndex.length > topK,
 			results,
 		};
-	} catch (error) {
+	} catch (error: unknown) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error(`[semantic-search] Error:`, errorMessage);
 		return {

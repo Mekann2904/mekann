@@ -2,7 +2,7 @@
 title: abdd
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -21,13 +21,14 @@ related: []
 // from 'node:child_process': spawn
 // from '@sinclair/typebox': Type, Static
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
-// ... and 1 more imports
+// ... and 2 more imports
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| クラス | `ASTDivergenceDetector` | ASTベースの乖離検出器 |
 
 ## ユーザーフロー
 
@@ -139,6 +140,7 @@ sequenceDiagram
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
   participant LLM as "LLM"
+  participant Executor as "Executor"
 
   User->>System: abdd_analyze
   System->>Internal: join
@@ -163,6 +165,12 @@ sequenceDiagram
   Internal->>Unresolved: /\/\*\*[\s\S]*?\*\//.test (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: divergences.filter (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: self.findIndex (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  System->>Executor: AST検出を実行して乖離リストを返す
+  Executor->>Storage: TypeScriptファイルを再帰的に収集
+  Executor->>Unresolved: console.log (node_modules/typescript/lib/lib.dom.d.ts)
+  Executor->>Unresolved: results.map (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: divergences.some (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: d.severity.toUpperCase (node_modules/typescript/lib/lib.es5.d.ts)
   System-->>User: 結果
 
@@ -208,6 +216,15 @@ sequenceDiagram
 
 ```mermaid
 classDiagram
+  class ASTDivergenceDetector {
+    -divergences: ASTDetectionResult
+    -variableValues: Map_string_string
+    +analyzeFile()
+    +analyzeFiles()
+    -createInitialContext()
+    -visitNode()
+    -updateContext()
+  }
   class Divergence {
     <<interface>>
     +type: DivergenceType
@@ -223,6 +240,28 @@ classDiagram
     +stderr: string
     +timedOut: boolean
     +exitCode: number
+  }
+  class ASTDetectionPattern {
+    <<interface>>
+    +type: DivergenceType
+    +severity: Severity
+    +pattern: RegExp
+    +description: string
+    +philosophyRef: string
+  }
+  class ASTNodeContext {
+    <<interface>>
+    +isInTest: boolean
+    +isInMock: boolean
+    +isInTypeDefinition: boolean
+    +parentFunctionName: string_null
+    +parentClassName: string_null
+  }
+  class ASTDetectionResult {
+    <<interface>>
+    +divergence: Divergence
+    +location: file_string_line_nu
+    +context: ASTNodeContext
   }
 ```
 
@@ -240,6 +279,7 @@ flowchart LR
   subgraph external[外部ライブラリ]
     _sinclair["@sinclair"]
     _mariozechner["@mariozechner"]
+    typescript["typescript"]
   end
   main --> external
 ```
@@ -384,6 +424,81 @@ Markdownからコードブロックを抽出
 
 **戻り値**: `{ language: string | null; code: string }[]`
 
+### collectTypeScriptFiles
+
+```typescript
+collectTypeScriptFiles(dir: string): string[]
+```
+
+TypeScriptファイルを再帰的に収集
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| dir | `string` | はい |
+
+**戻り値**: `string[]`
+
+### runASTDetection
+
+```typescript
+runASTDetection(verbose: boolean): Divergence[]
+```
+
+AST検出を実行して乖離リストを返す
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| verbose | `boolean` | はい |
+
+**戻り値**: `Divergence[]`
+
+## クラス
+
+### ASTDivergenceDetector
+
+ASTベースの乖離検出器
+ソースコードを直接AST解析し、価値観・不変条件の違反を高精度で検出する
+
+データフロー解析により、変数経由の実行も検出可能:
+- const cmd = "git add ."; execSync(cmd); → 検出可能
+- const flag = "."; execSync(`git add ${flag}`); → 部分検出
+
+**プロパティ**
+
+| 名前 | 型 | 可視性 |
+|------|-----|--------|
+| divergences | `ASTDetectionResult[]` | private |
+| variableValues | `Map<string, string>` | private |
+
+**メソッド**
+
+| 名前 | シグネチャ |
+|------|------------|
+| analyzeFile | `analyzeFile(filePath): ASTDetectionResult[]` |
+| analyzeFiles | `analyzeFiles(filePaths): ASTDetectionResult[]` |
+| createInitialContext | `createInitialContext(sourceFile): ASTNodeContext` |
+| visitNode | `visitNode(node, sourceFile, context): void` |
+| updateContext | `updateContext(node, context): ASTNodeContext` |
+| isTestFunction | `isTestFunction(name): boolean` |
+| isMockContext | `isMockContext(node): boolean` |
+| checkCallExpression | `checkCallExpression(node, sourceFile, context): void` |
+| getFunctionName | `getFunctionName(expr): string | null` |
+| checkCommandArgument | `checkCommandArgument(arg, sourceFile, context): void` |
+| trackVariableDeclaration | `trackVariableDeclaration(node): void` |
+| resolveVariable | `resolveVariable(varName): string | undefined` |
+| resolveTemplateExpression | `resolveTemplateExpression(node): string` |
+| resolvePropertyAccess | `resolvePropertyAccess(node): string | undefined` |
+| checkStringLiteral | `checkStringLiteral(node, sourceFile, context): void` |
+| checkTemplateLiteral | `checkTemplateLiteral(node, sourceFile, context): void` |
+| checkPropertyAssignment | `checkPropertyAssignment(node, sourceFile, context): void` |
+| checkStringForPatterns | `checkStringForPatterns(text, node, sourceFile, context): void` |
+| shouldExclude | `shouldExclude(text, context): boolean` |
+| getNodeLocation | `getNodeLocation(node, sourceFile): { file: string; line: number; column: number }` |
+
 ## インターフェース
 
 ### Divergence
@@ -413,6 +528,51 @@ interface SpawnResult {
 ```
 
 spawn実行結果
+
+### ASTDetectionPattern
+
+```typescript
+interface ASTDetectionPattern {
+  type: DivergenceType;
+  severity: Severity;
+  pattern: RegExp;
+  description: string;
+  philosophyRef: string;
+}
+```
+
+AST検出用パターン定義
+
+### ASTNodeContext
+
+```typescript
+interface ASTNodeContext {
+  isInTest: boolean;
+  isInMock: boolean;
+  isInTypeDefinition: boolean;
+  parentFunctionName: string | null;
+  parentClassName: string | null;
+  sourceFile: ts.SourceFile;
+}
+```
+
+AST検出用コンテキスト
+
+### ASTDetectionResult
+
+```typescript
+interface ASTDetectionResult {
+  divergence: Divergence;
+  location: {
+		file: string;
+		line: number;
+		column: number;
+	};
+  context: ASTNodeContext;
+}
+```
+
+AST検出結果
 
 ## 型定義
 
@@ -463,4 +623,4 @@ type Severity = "low" | "medium" | "high"
 乖離重要度
 
 ---
-*自動生成: 2026-02-23T06:29:41.505Z*
+*自動生成: 2026-02-24T17:08:01.770Z*

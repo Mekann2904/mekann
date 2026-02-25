@@ -176,10 +176,18 @@ export type {
  * GlobalRuntimeStateProvider - デフォルト実装
  *
  * globalThisを使用してプロセス全体で状態を共有する
+ * Bug #2修正: Symbol.forとObject.definePropertyでatomicな初期化を実現
  */
 class GlobalRuntimeStateProvider implements RuntimeStateProvider {
   private readonly globalScope: GlobalScopeWithRuntime;
-  private initializationInProgress = false;
+  private initializationPromise: Promise<void> | null = null;
+
+  /**
+   * Symbol.forを使用して一意の初期化済みフラグキーを作成
+   * プロセス全体で一意であることを保証
+   */
+  private static readonly INIT_KEY = Symbol.for('__PI_SHARED_AGENT_RUNTIME_STATE__');
+  private static readonly INIT_FLAG_KEY = Symbol.for('__PI_SHARED_AGENT_RUNTIME_STATE_INITIALIZED__');
 
   constructor() {
     this.globalScope = globalThis as GlobalScopeWithRuntime;
@@ -189,35 +197,49 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * ランタイム状態を取得
    * @summary 状態を取得
    * @returns エージェントのランタイム状態
+   * @throws 初期化中に同期的にアクセスした場合エラー
    */
   getState(): AgentRuntimeState {
-    // 二重初期化防止: 初期化中は待機してから既存の状態を返す
-    if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      // 初期化ロック: 競合状態を防ぐ
-      if (this.initializationInProgress) {
-        // 短いスピンウェイト（初期化完了を待機）
-        let attempts = 0;
-        while (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ && attempts < 1000) {
-          attempts += 1;
-        }
-        // 初期化が完了していない場合は新規作成
-        if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-          this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-        }
-      } else {
-        this.initializationInProgress = true;
-        try {
-          // 再度チェック（ロック取得中に他が初期化した可能性）
-          if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-            this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-          }
-        } finally {
-          this.initializationInProgress = false;
-        }
-      }
+    const global = this.globalScope as GlobalScopeWithRuntime;
+
+    // Bug #2修正: atomic初期化パターン
+    // Object.definePropertyは既存のプロパティに対しては何もしないため、
+    // 競合状態でも安全に初期化できる
+    if (!global[GlobalRuntimeStateProvider.INIT_KEY]) {
+      Object.defineProperty(global, GlobalRuntimeStateProvider.INIT_KEY, {
+        value: createInitialRuntimeState(),
+        writable: false,
+        configurable: false,
+        enumerable: false,
+      });
     }
+
     ensureReservationSweeper();
-    const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
+    const runtime = ensureRuntimeStateShape(global[GlobalRuntimeStateProvider.INIT_KEY]);
+    enforceRuntimeLimitConsistency(runtime);
+    return runtime;
+  }
+
+  /**
+   * ランタイム状態を非同期で取得
+   * @summary 状態を非同期取得
+   * @returns エージェントのランタイム状態のPromise
+   */
+  async getStateAsync(): Promise<AgentRuntimeState> {
+    const global = this.globalScope as GlobalScopeWithRuntime;
+
+    // Bug #2修正: getStateと同じatomic初期化パターンを使用
+    if (!global[GlobalRuntimeStateProvider.INIT_KEY]) {
+      Object.defineProperty(global, GlobalRuntimeStateProvider.INIT_KEY, {
+        value: createInitialRuntimeState(),
+        writable: false,
+        configurable: false,
+        enumerable: false,
+      });
+    }
+
+    ensureReservationSweeper();
+    const runtime = ensureRuntimeStateShape(global[GlobalRuntimeStateProvider.INIT_KEY]);
     enforceRuntimeLimitConsistency(runtime);
     return runtime;
   }
@@ -228,7 +250,15 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * @returns 戻り値なし
    */
   resetState(): void {
-    this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = undefined;
+    const global = this.globalScope as GlobalScopeWithRuntime;
+    // Bug #2修正: configurable: trueで定義し直すことでリセットを可能にする
+    Object.defineProperty(global, GlobalRuntimeStateProvider.INIT_KEY, {
+      value: undefined,
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
+    this.initializationPromise = null;
   }
 }
 
@@ -323,7 +353,10 @@ function normalizePositiveInt(value: unknown, fallback: number, max = 64): numbe
   let parsed: number;
   try {
     parsed = Number(value);
-  } catch {
+  } catch (error) {
+    // Bug #8 fix: 数値変換エラーをログに記録（通常は発生しない）
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[agent-runtime] Number() conversion failed (using fallback=${fallback}): ${errorMessage}`);
     return fallback;
   }
   if (!Number.isFinite(parsed)) return fallback;
@@ -388,7 +421,11 @@ function getClusterUsageSafe(localUsage: { totalActiveRequests: number; totalAct
       totalActiveRequests: localUsage.totalActiveRequests + remoteRequests,
       totalActiveLlm: localUsage.totalActiveLlm + remoteLlm,
     };
-  } catch {
+  } catch (error) {
+    // Bug #8 fix: クラスター使用量取得エラーをログに記録
+    // ローカル使用量をフォールバックとして返す
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[agent-runtime] getClusterRuntimeUsage failed (using local): ${errorMessage}`);
     return localUsage;
   }
 }
@@ -512,14 +549,30 @@ function serializeRuntimeLimits(limits: AgentRuntimeLimits): string {
 }
 
 let runtimeReservationSweeperInitializing = false;
+let runtimeReservationSweeperInitAttempts = 0;
+const MAX_SWEEPER_INIT_ATTEMPTS = 3;
 
+/**
+ * Phase 4修正: 初期化試行回数を制限し、無限待機を防止
+ */
 function ensureReservationSweeper(): void {
-  // 二重作成防止: 既に初期化済みまたは初期化中の場合は即座にreturn
-  if (runtimeReservationSweeper || runtimeReservationSweeperInitializing) return;
+  // 既に初期化済みの場合は即座にreturn
+  if (runtimeReservationSweeper) return;
+
+  // 初期化中の場合は試行回数をカウント
+  if (runtimeReservationSweeperInitializing) {
+    runtimeReservationSweeperInitAttempts++;
+    if (runtimeReservationSweeperInitAttempts > MAX_SWEEPER_INIT_ATTEMPTS) {
+      console.warn(`[agent-runtime] Reservation sweeper initialization blocked after ${MAX_SWEEPER_INIT_ATTEMPTS} attempts`);
+      runtimeReservationSweeperInitAttempts = 0;
+    }
+    return;
+  }
 
   runtimeReservationSweeperInitializing = true;
+  runtimeReservationSweeperInitAttempts = 0;
   try {
-    // 再度チェック（初期化中に他スレッドが作成した可能性）
+    // 再度チェック（初期化中に他が作成した可能性）
     if (runtimeReservationSweeper) return;
 
     // Bug #4 warning: 二重作成のリスクをログ

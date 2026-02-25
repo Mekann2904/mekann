@@ -2,7 +2,7 @@
 title: priority-scheduler
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -13,23 +13,35 @@ related: []
 
 `priority-scheduler` モジュールのAPIリファレンス。
 
+## インポート
+
+```typescript
+// from './dag-types.js': TaskNode
+```
+
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `inferTaskType` | タスクタイプを推論 |
-| 関数 | `estimateRounds` | 実行ラウンド数を見積もる |
-| 関数 | `inferPriority` | タスク優先度を推論 |
-| 関数 | `comparePriority` | 優先度を比較する |
-| 関数 | `formatPriorityQueueStats` | 優先キューの統計情報をフォーマットする |
+| 関数 | `inferTaskType` | ツール名からタスク種別を推論 |
+| 関数 | `estimateRounds` | ラウンド数を推定 |
+| 関数 | `inferPriority` | ツール名とオプションから優先度を推論 |
+| 関数 | `comparePriority` | 優先度を比較 |
+| 関数 | `formatPriorityQueueStats` | キュー統計をフォーマット（QueueStatsオブジェクト用） |
+| 関数 | `formatQueueStats` | キュー統計をフォーマット（PriorityTaskQueue用） |
+| クラス | `PriorityScheduler` | 優先度ベースのタスクスケジューラ |
 | クラス | `PriorityTaskQueue` | 優先度付きタスクキュー |
-| インターフェース | `PriorityTaskMetadata` | タスクのメタデータを表すインターフェース |
-| インターフェース | `PriorityQueueEntry` | 優先度付きキューエントリのインターフェース |
-| インターフェース | `EstimationContext` | 推定コンテキストを表すインターフェース |
-| インターフェース | `RoundEstimation` | ラウンド推定結果を表すインターフェース |
-| 型 | `TaskPriority` | タスクの優先度を表す型 |
-| 型 | `TaskType` | タスクの種類を表す型 |
-| 型 | `TaskComplexity` | タスクの複雑さを表す型 |
+| インターフェース | `EstimationContext` | ラウンド推定コンテキスト |
+| インターフェース | `RoundEstimation` | ラウンド推定結果 |
+| インターフェース | `InferPriorityOptions` | 優先度推論オプション |
+| インターフェース | `PriorityQueueEntry` | 優先度付きキューエントリ |
+| インターフェース | `QueueStats` | キュー統計情報 |
+| インターフェース | `SchedulerConfig` | スケジューラの設定 |
+| インターフェース | `ScheduledTask` | スケジュールされたタスクの情報 |
+| 型 | `TaskPriority` | 優先度レベル |
+| 型 | `TaskType` | タスク種別 |
+| 型 | `TaskComplexity` | タスク複雑度 |
+| 型 | `PriorityTaskMetadata` | 優先度タスクメタデータ |
 
 ## 図解
 
@@ -37,31 +49,24 @@ related: []
 
 ```mermaid
 classDiagram
+  class PriorityScheduler {
+    -config: SchedulerConfig
+    -taskQueues: Map_string_TaskNode
+    -lastScheduled: Map_string_number
+    -waitingSince: Map_string_number
+    +scheduleTasks()
+    +markCompleted()
+    -calculatePriorityScore()
+    -separateStarvedTasks()
+    +getQueueSize()
+  }
   class PriorityTaskQueue {
-    -entries: PriorityQueueEntry
-    -virtualTime: number
-    -maxSkipCount: number
-    -starvationThresholdMs: number
+    -queue: PriorityQueueEntry
     +enqueue()
     +dequeue()
     +peek()
-    +remove()
-    +getAll()
-  }
-  class PriorityTaskMetadata {
-    <<interface>>
-    +id: string
-    +toolName: string
-    +priority: TaskPriority
-    +estimatedDurationMs: number
-    +estimatedRounds: number
-  }
-  class PriorityQueueEntry {
-    <<interface>>
-    +virtualStartTime: number
-    +virtualFinishTime: number
-    +skipCount: number
-    +lastConsideredMs: number
+    +size()
+    +isEmptyMethod()
   }
   class EstimationContext {
     <<interface>>
@@ -73,11 +78,59 @@ classDiagram
   }
   class RoundEstimation {
     <<interface>>
-    +estimatedRounds: number
     +taskType: TaskType
+    +estimatedRounds: number
     +complexity: TaskComplexity
     +confidence: number
   }
+  class InferPriorityOptions {
+    <<interface>>
+    +isInteractive: boolean
+    +isBackground: boolean
+    +isRetry: boolean
+    +agentCount: number
+  }
+  class PriorityQueueEntry {
+    <<interface>>
+    +id: string
+    +toolName: string
+    +priority: TaskPriority
+    +estimatedDurationMs: number
+    +estimatedRounds: number
+  }
+  class QueueStats {
+    <<interface>>
+    +total: number
+    +byPriority: Record_TaskPriority
+    +avgWaitMs: number
+    +maxWaitMs: number
+    +starvingCount: number
+  }
+  class SchedulerConfig {
+    <<interface>>
+    +maxConcurrency: number
+    +starvationPreventionInterval: number
+  }
+  class ScheduledTask {
+    <<interface>>
+    +task: TaskNode
+    +weight: number
+    +priority: number
+    +waitingMs: number
+  }
+```
+
+### 依存関係図
+
+```mermaid
+flowchart LR
+  subgraph this[priority-scheduler]
+    main[Main Module]
+  end
+  subgraph local[ローカルモジュール]
+    dag_types["dag-types"]
+  end
+  main --> local
 ```
 
 ### 関数フロー
@@ -87,9 +140,32 @@ flowchart TD
   comparePriority["comparePriority()"]
   estimateRounds["estimateRounds()"]
   formatPriorityQueueStats["formatPriorityQueueStats()"]
+  formatQueueStats["formatQueueStats()"]
+  getBaseRounds["getBaseRounds()"]
+  inferComplexity["inferComplexity()"]
   inferPriority["inferPriority()"]
   inferTaskType["inferTaskType()"]
+  estimateRounds --> getBaseRounds
+  estimateRounds --> inferComplexity
   estimateRounds --> inferTaskType
+```
+
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant priority_scheduler as "priority-scheduler"
+  participant dag_types as "dag-types"
+
+  Caller->>priority_scheduler: inferTaskType()
+  priority_scheduler->>dag_types: 内部関数呼び出し
+  dag_types-->>priority_scheduler: 結果
+  priority_scheduler-->>Caller: TaskType
+
+  Caller->>priority_scheduler: estimateRounds()
+  priority_scheduler-->>Caller: RoundEstimation
 ```
 
 ## 関数
@@ -100,7 +176,7 @@ flowchart TD
 inferTaskType(toolName: string): TaskType
 ```
 
-タスクタイプを推論
+ツール名からタスク種別を推論
 
 **パラメータ**
 
@@ -110,13 +186,46 @@ inferTaskType(toolName: string): TaskType
 
 **戻り値**: `TaskType`
 
+### getBaseRounds
+
+```typescript
+getBaseRounds(taskType: TaskType): number
+```
+
+タスク種別からベースラウンド数を取得
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| taskType | `TaskType` | はい |
+
+**戻り値**: `number`
+
+### inferComplexity
+
+```typescript
+inferComplexity(taskType: TaskType, context: EstimationContext): TaskComplexity
+```
+
+複雑度を推論
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| taskType | `TaskType` | はい |
+| context | `EstimationContext` | はい |
+
+**戻り値**: `TaskComplexity`
+
 ### estimateRounds
 
 ```typescript
 estimateRounds(context: EstimationContext): RoundEstimation
 ```
 
-実行ラウンド数を見積もる
+ラウンド数を推定
 
 **パラメータ**
 
@@ -129,26 +238,17 @@ estimateRounds(context: EstimationContext): RoundEstimation
 ### inferPriority
 
 ```typescript
-inferPriority(toolName: string, context?: {
-    isInteractive?: boolean;
-    isRetry?: boolean;
-    isBackground?: boolean;
-    agentCount?: number;
-  }): TaskPriority
+inferPriority(toolName: string, options?: InferPriorityOptions): TaskPriority
 ```
 
-タスク優先度を推論
+ツール名とオプションから優先度を推論
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | toolName | `string` | はい |
-| context | `object` | いいえ |
-| &nbsp;&nbsp;↳ isInteractive | `boolean` | いいえ |
-| &nbsp;&nbsp;↳ isRetry | `boolean` | いいえ |
-| &nbsp;&nbsp;↳ isBackground | `boolean` | いいえ |
-| &nbsp;&nbsp;↳ agentCount | `number` | いいえ |
+| options | `InferPriorityOptions` | いいえ |
 
 **戻り値**: `TaskPriority`
 
@@ -158,7 +258,7 @@ inferPriority(toolName: string, context?: {
 comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number
 ```
 
-優先度を比較する
+優先度を比較
 
 **パラメータ**
 
@@ -172,20 +272,67 @@ comparePriority(a: PriorityQueueEntry, b: PriorityQueueEntry): number
 ### formatPriorityQueueStats
 
 ```typescript
-formatPriorityQueueStats(stats: ReturnType<PriorityTaskQueue["getStats"]>): string
+formatPriorityQueueStats(stats: QueueStats): string
 ```
 
-優先キューの統計情報をフォーマットする
+キュー統計をフォーマット（QueueStatsオブジェクト用）
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| stats | `ReturnType<PriorityTaskQueue["getStats"]>` | はい |
+| stats | `QueueStats` | はい |
+
+**戻り値**: `string`
+
+### formatQueueStats
+
+```typescript
+formatQueueStats(queue: PriorityTaskQueue): string
+```
+
+キュー統計をフォーマット（PriorityTaskQueue用）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| queue | `PriorityTaskQueue` | はい |
 
 **戻り値**: `string`
 
 ## クラス
+
+### PriorityScheduler
+
+優先度ベースのタスクスケジューラ
+DynTaskMAS論文のAPEEコンポーネントを実装
+
+**プロパティ**
+
+| 名前 | 型 | 可視性 |
+|------|-----|--------|
+| config | `SchedulerConfig` | private |
+| taskQueues | `Map<string, TaskNode[]>` | private |
+| lastScheduled | `Map<string, number>` | private |
+| waitingSince | `Map<string, number>` | private |
+
+**メソッド**
+
+| 名前 | シグネチャ |
+|------|------------|
+| scheduleTasks | `scheduleTasks(readyTasks, weights): TaskNode[]` |
+| markCompleted | `markCompleted(taskId): void` |
+| calculatePriorityScore | `calculatePriorityScore(task, weight, waitingMs): number` |
+| separateStarvedTasks | `separateStarvedTasks(tasks): [ScheduledTask[], ScheduledTask[]]` |
+| getQueueSize | `getQueueSize(agentId): number` |
+| enqueue | `enqueue(agentId, task): void` |
+| updateConfig | `updateConfig(config): void` |
+| getStats | `getStats(): {
+    totalQueued: number;
+    agentQueueSizes: Record<string, number>;
+    avgWaitingMs: number;
+  }` |
 
 ### PriorityTaskQueue
 
@@ -195,10 +342,7 @@ formatPriorityQueueStats(stats: ReturnType<PriorityTaskQueue["getStats"]>): stri
 
 | 名前 | 型 | 可視性 |
 |------|-----|--------|
-| entries | `PriorityQueueEntry[]` | private |
-| virtualTime | `number` | private |
-| maxSkipCount | `number` | private |
-| starvationThresholdMs | `number` | private |
+| queue | `PriorityQueueEntry[]` | private |
 
 **メソッド**
 
@@ -207,51 +351,17 @@ formatPriorityQueueStats(stats: ReturnType<PriorityTaskQueue["getStats"]>): stri
 | enqueue | `enqueue(metadata): PriorityQueueEntry` |
 | dequeue | `dequeue(): PriorityQueueEntry | undefined` |
 | peek | `peek(): PriorityQueueEntry | undefined` |
-| remove | `remove(id): PriorityQueueEntry | undefined` |
+| size | `size(): number` |
+| isEmptyMethod | `isEmptyMethod(): boolean` |
+| toArray | `toArray(): PriorityQueueEntry[]` |
 | getAll | `getAll(): PriorityQueueEntry[]` |
+| remove | `remove(id): PriorityQueueEntry | undefined` |
+| removeByPredicate | `removeByPredicate(predicate): number` |
 | getByPriority | `getByPriority(priority): PriorityQueueEntry[]` |
-| getStats | `getStats(): {
-    total: number;
-    byPriority: Record<TaskPriority, number>;
-    avgWaitMs: number;
-    maxWaitMs: number;
-    starvingCount: number;
-  }` |
+| getStats | `getStats(): QueueStats` |
 | promoteStarvingTasks | `promoteStarvingTasks(): number` |
-| sort | `sort(): void` |
-| getQueueVirtualTime | `getQueueVirtualTime(): number` |
 
 ## インターフェース
-
-### PriorityTaskMetadata
-
-```typescript
-interface PriorityTaskMetadata {
-  id: string;
-  toolName: string;
-  priority: TaskPriority;
-  estimatedDurationMs?: number;
-  estimatedRounds?: number;
-  deadlineMs?: number;
-  enqueuedAtMs: number;
-  source?: "user-interactive" | "background" | "scheduled" | "retry";
-}
-```
-
-タスクのメタデータを表すインターフェース
-
-### PriorityQueueEntry
-
-```typescript
-interface PriorityQueueEntry {
-  virtualStartTime: number;
-  virtualFinishTime: number;
-  skipCount: number;
-  lastConsideredMs?: number;
-}
-```
-
-優先度付きキューエントリのインターフェース
 
 ### EstimationContext
 
@@ -265,20 +375,92 @@ interface EstimationContext {
 }
 ```
 
-推定コンテキストを表すインターフェース
+ラウンド推定コンテキスト
 
 ### RoundEstimation
 
 ```typescript
 interface RoundEstimation {
-  estimatedRounds: number;
   taskType: TaskType;
+  estimatedRounds: number;
   complexity: TaskComplexity;
   confidence: number;
 }
 ```
 
-ラウンド推定結果を表すインターフェース
+ラウンド推定結果
+
+### InferPriorityOptions
+
+```typescript
+interface InferPriorityOptions {
+  isInteractive?: boolean;
+  isBackground?: boolean;
+  isRetry?: boolean;
+  agentCount?: number;
+}
+```
+
+優先度推論オプション
+
+### PriorityQueueEntry
+
+```typescript
+interface PriorityQueueEntry {
+  id: string;
+  toolName: string;
+  priority: TaskPriority;
+  estimatedDurationMs?: number;
+  estimatedRounds?: number;
+  deadlineMs?: number;
+  enqueuedAtMs: number;
+  source?: string;
+  virtualStartTime: number;
+  virtualFinishTime: number;
+  skipCount: number;
+  lastConsideredMs?: number;
+}
+```
+
+優先度付きキューエントリ
+
+### QueueStats
+
+```typescript
+interface QueueStats {
+  total: number;
+  byPriority: Record<TaskPriority, number>;
+  avgWaitMs: number;
+  maxWaitMs: number;
+  starvingCount: number;
+}
+```
+
+キュー統計情報
+
+### SchedulerConfig
+
+```typescript
+interface SchedulerConfig {
+  maxConcurrency: number;
+  starvationPreventionInterval: number;
+}
+```
+
+スケジューラの設定
+
+### ScheduledTask
+
+```typescript
+interface ScheduledTask {
+  task: TaskNode;
+  weight: number;
+  priority: number;
+  waitingMs: number;
+}
+```
+
+スケジュールされたタスクの情報
 
 ## 型定義
 
@@ -288,31 +470,46 @@ interface RoundEstimation {
 type TaskPriority = "critical" | "high" | "normal" | "low" | "background"
 ```
 
-タスクの優先度を表す型
+優先度レベル
 
 ### TaskType
 
 ```typescript
-type TaskType = | "read"      // Information retrieval
-  | "bash"      // Command execution
-  | "edit"      // Single file modification
-  | "write"     // File creation
-  | "subagent_single"   // Single agent delegation
-  | "subagent_parallel" // Parallel agent delegation
-  | "agent_team"        // Team execution
-  | "question"  // User interaction
+type TaskType = | "read"
+  | "bash"
+  | "edit"
+  | "write"
+  | "subagent_single"
+  | "subagent_parallel"
+  | "agent_team"
+  | "question"
   | "unknown"
 ```
 
-タスクの種類を表す型
+タスク種別
 
 ### TaskComplexity
 
 ```typescript
-type TaskComplexity = "trivial" | "simple" | "moderate" | "complex" | "exploratory"
+type TaskComplexity = | "trivial"
+  | "simple"
+  | "moderate"
+  | "complex"
+  | "exploratory"
 ```
 
-タスクの複雑さを表す型
+タスク複雑度
+
+### PriorityTaskMetadata
+
+```typescript
+type PriorityTaskMetadata = Omit<
+  PriorityQueueEntry,
+  "virtualStartTime" | "virtualFinishTime" | "skipCount" | "lastConsideredMs"
+>
+```
+
+優先度タスクメタデータ
 
 ---
-*自動生成: 2026-02-23T06:29:42.389Z*
+*自動生成: 2026-02-24T17:08:02.744Z*

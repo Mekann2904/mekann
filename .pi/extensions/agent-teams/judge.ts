@@ -248,6 +248,54 @@ export interface JudgeExplanation {
 }
 
 // ============================================================================
+// Aggregation Strategy Types (Phase 2: M1-Parallel Integration)
+// ============================================================================
+
+/**
+ * 並列チーム実行時の結果集約戦略
+ * @summary 結果集約戦略
+ */
+export type AggregationStrategy =
+  | 'rule-based'      // 現在の動作（決定論的）
+  | 'majority-vote'   // 最も多い評決が採用される
+  | 'best-confidence' // 最高信頼度が採用される
+  | 'llm-aggregate';  // LLMが最終結果を統合
+
+/**
+ * 集約関数への入力データ
+ * @summary 集約入力データ
+ */
+export interface AggregationInput {
+  /** チームごとの実行結果 */
+  teamResults: Array<{
+    teamId: string;
+    memberResults: TeamMemberResult[];
+    finalJudge: TeamFinalJudge;
+  }>;
+  /** 使用する集約戦略 */
+  strategy: AggregationStrategy;
+  /** 元のタスク内容 */
+  task: string;
+}
+
+/**
+ * 集約関数の出力結果
+ * @summary 集約結果
+ */
+export interface AggregationResult {
+  /** 最終評決 */
+  verdict: 'trusted' | 'partial' | 'untrusted';
+  /** 信頼度（0-1） */
+  confidence: number;
+  /** 選択されたチームID（該当する場合） */
+  selectedTeamId?: string;
+  /** 統合されたコンテンツ（LLM集約時） */
+  aggregatedContent?: string;
+  /** 結果の説明 */
+  explanation: string;
+}
+
+// ============================================================================
 // Core Types
 // ============================================================================
 

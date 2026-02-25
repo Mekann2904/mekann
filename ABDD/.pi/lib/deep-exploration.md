@@ -2,7 +2,7 @@
 title: deep-exploration
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -17,6 +17,7 @@ related: []
 
 ```typescript
 // from './aporia-handler.js': AporiaDetection, AporiaResolution
+// from './structured-analysis-output.js': parseAnalysisJson, DEFAULT_ANALYSIS, excellencePursuitToLabel, ...
 ```
 
 ## エクスポート一覧
@@ -168,6 +169,7 @@ flowchart LR
   end
   subgraph local[ローカルモジュール]
     aporia_handler["aporia-handler"]
+    structured_analysis_output["structured-analysis-output"]
   end
   main --> local
 ```
@@ -176,24 +178,24 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  analyzePowerDynamics["analyzePowerDynamics()"]
-  analyzeWorldBeingCreated["analyzeWorldBeingCreated()"]
+  analyzePowerDynamicsLegacy["analyzePowerDynamicsLegacy()"]
+  analyzeWorldBeingCreatedLegacy["analyzeWorldBeingCreatedLegacy()"]
   areContradictory["areContradictory()"]
   destroyPremise["destroyPremise()"]
-  detectAutopilotSigns["detectAutopilotSigns()"]
-  detectBinaryOppositions["detectBinaryOppositions()"]
-  detectDesireProductions["detectDesireProductions()"]
-  detectExclusions["detectExclusions()"]
-  detectInnerFascismSigns["detectInnerFascismSigns()"]
-  detectPleasureTrap["detectPleasureTrap()"]
-  detectTotalitarianRisks["detectTotalitarianRisks()"]
+  detectAutopilotSignsLegacy["detectAutopilotSignsLegacy()"]
+  detectBinaryOppositionsLegacy["detectBinaryOppositionsLegacy()"]
+  detectDesireProductionsLegacy["detectDesireProductionsLegacy()"]
+  detectExclusionsLegacy["detectExclusionsLegacy()"]
+  detectInnerFascismSignsLegacy["detectInnerFascismSignsLegacy()"]
+  detectPleasureTrapLegacy["detectPleasureTrapLegacy()"]
+  detectTotalitarianRisksLegacy["detectTotalitarianRisksLegacy()"]
   evaluateChineseRoomRisk["evaluateChineseRoomRisk()"]
-  evaluateExcellencePursuit["evaluateExcellencePursuit()"]
-  evaluateIsThinking["evaluateIsThinking()"]
-  evaluateLastManTendency["evaluateLastManTendency()"]
-  evaluateMeaningfulGrowth["evaluateMeaningfulGrowth()"]
-  evaluateMetacognitionLevel["evaluateMetacognitionLevel()"]
-  evaluateStoicAutonomy["evaluateStoicAutonomy()"]
+  evaluateExcellencePursuitLegacy["evaluateExcellencePursuitLegacy()"]
+  evaluateIsThinkingLegacy["evaluateIsThinkingLegacy()"]
+  evaluateLastManTendencyLegacy["evaluateLastManTendencyLegacy()"]
+  evaluateMeaningfulGrowthLegacy["evaluateMeaningfulGrowthLegacy()"]
+  evaluateMetacognitionLevelLegacy["evaluateMetacognitionLevelLegacy()"]
+  evaluateStoicAutonomyLegacy["evaluateStoicAutonomyLegacy()"]
   performMetaMetacognition["performMetaMetacognition()"]
   performNonLinearThinking["performNonLinearThinking()"]
   performParaconsistentReasoning["performParaconsistentReasoning()"]
@@ -204,22 +206,22 @@ flowchart TD
   performSelfDestruction --> destroyPremise
   performSelfDestruction --> performSelfDestruction
   performSelfDestruction --> selectDestructionMethod
-  performSevenPerspectivesAnalysis --> analyzePowerDynamics
-  performSevenPerspectivesAnalysis --> analyzeWorldBeingCreated
-  performSevenPerspectivesAnalysis --> detectAutopilotSigns
-  performSevenPerspectivesAnalysis --> detectBinaryOppositions
-  performSevenPerspectivesAnalysis --> detectDesireProductions
-  performSevenPerspectivesAnalysis --> detectExclusions
-  performSevenPerspectivesAnalysis --> detectInnerFascismSigns
-  performSevenPerspectivesAnalysis --> detectPleasureTrap
-  performSevenPerspectivesAnalysis --> detectTotalitarianRisks
+  performSevenPerspectivesAnalysis --> analyzePowerDynamicsLegacy
+  performSevenPerspectivesAnalysis --> analyzeWorldBeingCreatedLegacy
+  performSevenPerspectivesAnalysis --> detectAutopilotSignsLegacy
+  performSevenPerspectivesAnalysis --> detectBinaryOppositionsLegacy
+  performSevenPerspectivesAnalysis --> detectDesireProductionsLegacy
+  performSevenPerspectivesAnalysis --> detectExclusionsLegacy
+  performSevenPerspectivesAnalysis --> detectInnerFascismSignsLegacy
+  performSevenPerspectivesAnalysis --> detectPleasureTrapLegacy
+  performSevenPerspectivesAnalysis --> detectTotalitarianRisksLegacy
   performSevenPerspectivesAnalysis --> evaluateChineseRoomRisk
-  performSevenPerspectivesAnalysis --> evaluateExcellencePursuit
-  performSevenPerspectivesAnalysis --> evaluateIsThinking
-  performSevenPerspectivesAnalysis --> evaluateLastManTendency
-  performSevenPerspectivesAnalysis --> evaluateMeaningfulGrowth
-  performSevenPerspectivesAnalysis --> evaluateMetacognitionLevel
-  performSevenPerspectivesAnalysis --> evaluateStoicAutonomy
+  performSevenPerspectivesAnalysis --> evaluateExcellencePursuitLegacy
+  performSevenPerspectivesAnalysis --> evaluateIsThinkingLegacy
+  performSevenPerspectivesAnalysis --> evaluateLastManTendencyLegacy
+  performSevenPerspectivesAnalysis --> evaluateMeaningfulGrowthLegacy
+  performSevenPerspectivesAnalysis --> evaluateMetacognitionLevelLegacy
+  performSevenPerspectivesAnalysis --> evaluateStoicAutonomyLegacy
 ```
 
 ### シーケンス図
@@ -230,6 +232,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant deep_exploration as "deep-exploration"
   participant aporia_handler as "aporia-handler"
+  participant structured_analysis_output as "structured-analysis-output"
 
   Caller->>deep_exploration: performMetaMetacognition()
   deep_exploration->>aporia_handler: 内部関数呼び出し
@@ -392,10 +395,10 @@ performSevenPerspectivesAnalysis(content: string, context: string): SevenPerspec
 
 **戻り値**: `SevenPerspectivesAnalysis`
 
-### detectBinaryOppositions
+### detectBinaryOppositionsLegacy
 
 ```typescript
-detectBinaryOppositions(content: string): string[]
+detectBinaryOppositionsLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -406,10 +409,10 @@ detectBinaryOppositions(content: string): string[]
 
 **戻り値**: `string[]`
 
-### detectExclusions
+### detectExclusionsLegacy
 
 ```typescript
-detectExclusions(content: string): string[]
+detectExclusionsLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -420,10 +423,10 @@ detectExclusions(content: string): string[]
 
 **戻り値**: `string[]`
 
-### detectDesireProductions
+### detectDesireProductionsLegacy
 
 ```typescript
-detectDesireProductions(content: string): string[]
+detectDesireProductionsLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -434,10 +437,10 @@ detectDesireProductions(content: string): string[]
 
 **戻り値**: `string[]`
 
-### detectInnerFascismSigns
+### detectInnerFascismSignsLegacy
 
 ```typescript
-detectInnerFascismSigns(content: string): string[]
+detectInnerFascismSignsLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -448,10 +451,10 @@ detectInnerFascismSigns(content: string): string[]
 
 **戻り値**: `string[]`
 
-### evaluateExcellencePursuit
+### evaluateExcellencePursuitLegacy
 
 ```typescript
-evaluateExcellencePursuit(content: string): string
+evaluateExcellencePursuitLegacy(content: string): string
 ```
 
 **パラメータ**
@@ -462,10 +465,10 @@ evaluateExcellencePursuit(content: string): string
 
 **戻り値**: `string`
 
-### detectPleasureTrap
+### detectPleasureTrapLegacy
 
 ```typescript
-detectPleasureTrap(content: string): boolean
+detectPleasureTrapLegacy(content: string): boolean
 ```
 
 **パラメータ**
@@ -476,10 +479,10 @@ detectPleasureTrap(content: string): boolean
 
 **戻り値**: `boolean`
 
-### evaluateMeaningfulGrowth
+### evaluateMeaningfulGrowthLegacy
 
 ```typescript
-evaluateMeaningfulGrowth(content: string): string
+evaluateMeaningfulGrowthLegacy(content: string): string
 ```
 
 **パラメータ**
@@ -490,10 +493,10 @@ evaluateMeaningfulGrowth(content: string): string
 
 **戻り値**: `string`
 
-### evaluateStoicAutonomy
+### evaluateStoicAutonomyLegacy
 
 ```typescript
-evaluateStoicAutonomy(content: string): number
+evaluateStoicAutonomyLegacy(content: string): number
 ```
 
 **パラメータ**
@@ -504,10 +507,10 @@ evaluateStoicAutonomy(content: string): number
 
 **戻り値**: `number`
 
-### analyzeWorldBeingCreated
+### analyzeWorldBeingCreatedLegacy
 
 ```typescript
-analyzeWorldBeingCreated(content: string): string
+analyzeWorldBeingCreatedLegacy(content: string): string
 ```
 
 **パラメータ**
@@ -518,10 +521,10 @@ analyzeWorldBeingCreated(content: string): string
 
 **戻り値**: `string`
 
-### detectTotalitarianRisks
+### detectTotalitarianRisksLegacy
 
 ```typescript
-detectTotalitarianRisks(content: string): string[]
+detectTotalitarianRisksLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -532,10 +535,10 @@ detectTotalitarianRisks(content: string): string[]
 
 **戻り値**: `string[]`
 
-### analyzePowerDynamics
+### analyzePowerDynamicsLegacy
 
 ```typescript
-analyzePowerDynamics(content: string): string[]
+analyzePowerDynamicsLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -546,10 +549,10 @@ analyzePowerDynamics(content: string): string[]
 
 **戻り値**: `string[]`
 
-### evaluateLastManTendency
+### evaluateLastManTendencyLegacy
 
 ```typescript
-evaluateLastManTendency(content: string): number
+evaluateLastManTendencyLegacy(content: string): number
 ```
 
 **パラメータ**
@@ -560,10 +563,10 @@ evaluateLastManTendency(content: string): number
 
 **戻り値**: `number`
 
-### evaluateIsThinking
+### evaluateIsThinkingLegacy
 
 ```typescript
-evaluateIsThinking(content: string): boolean
+evaluateIsThinkingLegacy(content: string): boolean
 ```
 
 **パラメータ**
@@ -574,10 +577,10 @@ evaluateIsThinking(content: string): boolean
 
 **戻り値**: `boolean`
 
-### evaluateMetacognitionLevel
+### evaluateMetacognitionLevelLegacy
 
 ```typescript
-evaluateMetacognitionLevel(content: string): number
+evaluateMetacognitionLevelLegacy(content: string): number
 ```
 
 **パラメータ**
@@ -588,10 +591,10 @@ evaluateMetacognitionLevel(content: string): number
 
 **戻り値**: `number`
 
-### detectAutopilotSigns
+### detectAutopilotSignsLegacy
 
 ```typescript
-detectAutopilotSigns(content: string): string[]
+detectAutopilotSignsLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -616,10 +619,10 @@ evaluateChineseRoomRisk(content: string): number
 
 **戻り値**: `number`
 
-### detectCurrentThinkingMode
+### detectCurrentThinkingModeLegacy
 
 ```typescript
-detectCurrentThinkingMode(content: string): string
+detectCurrentThinkingModeLegacy(content: string): string
 ```
 
 **パラメータ**
@@ -630,10 +633,10 @@ detectCurrentThinkingMode(content: string): string
 
 **戻り値**: `string`
 
-### recommendThinkingMode
+### recommendThinkingModeLegacy
 
 ```typescript
-recommendThinkingMode(context: string): string
+recommendThinkingModeLegacy(context: string): string
 ```
 
 **パラメータ**
@@ -644,10 +647,10 @@ recommendThinkingMode(context: string): string
 
 **戻り値**: `string`
 
-### detectMissingThinkingModes
+### detectMissingThinkingModesLegacy
 
 ```typescript
-detectMissingThinkingModes(content: string): string[]
+detectMissingThinkingModesLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -658,10 +661,10 @@ detectMissingThinkingModes(content: string): string[]
 
 **戻り値**: `string[]`
 
-### detectFallacies
+### detectFallaciesLegacy
 
 ```typescript
-detectFallacies(content: string): Array<{ type: string; location: string; description: string; correction: string }>
+detectFallaciesLegacy(content: string): Array<{ type: string; location: string; description: string; correction: string }>
 ```
 
 **パラメータ**
@@ -672,10 +675,10 @@ detectFallacies(content: string): Array<{ type: string; location: string; descri
 
 **戻り値**: `Array<{ type: string; location: string; description: string; correction: string }>`
 
-### detectValidInferences
+### detectValidInferencesLegacy
 
 ```typescript
-detectValidInferences(content: string): string[]
+detectValidInferencesLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -686,10 +689,10 @@ detectValidInferences(content: string): string[]
 
 **戻り値**: `string[]`
 
-### detectInvalidInferences
+### detectInvalidInferencesLegacy
 
 ```typescript
-detectInvalidInferences(content: string): string[]
+detectInvalidInferencesLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -700,10 +703,10 @@ detectInvalidInferences(content: string): string[]
 
 **戻り値**: `string[]`
 
-### detectClassicalLogicLimitations
+### detectClassicalLogicLimitationsLegacy
 
 ```typescript
-detectClassicalLogicLimitations(content: string): string[]
+detectClassicalLogicLimitationsLegacy(content: string): string[]
 ```
 
 **パラメータ**
@@ -1021,4 +1024,4 @@ interface DeepExplorationSession {
 深層探求セッション
 
 ---
-*自動生成: 2026-02-23T06:29:42.302Z*
+*自動生成: 2026-02-24T17:08:02.654Z*

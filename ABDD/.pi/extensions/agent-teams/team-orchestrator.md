@@ -2,7 +2,7 @@
 title: team-orchestrator
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
 // from '../../lib/agent-utils.js': createRunId
 // from '../../lib/abort-utils.js': createChildAbortController
-// ... and 15 more imports
+// ... and 16 more imports
 ```
 
 ## エクスポート一覧
@@ -123,6 +123,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  classifyErrorForMemory["classifyErrorForMemory()"]
   createChildAbort["createChildAbort()"]
   createFailedMemberResult["createFailedMemberResult()"]
   emitResultEvent["emitResultEvent()"]
@@ -137,6 +138,7 @@ flowchart TD
   executeCommunicationRound --> createChildAbort
   executeCommunicationRound --> mergeRoundResults
   executeCommunicationRound --> runCommunicationMember
+  executeFailedMemberRetries --> classifyErrorForMemory
   executeFailedMemberRetries --> createFailedMemberResult
   executeFailedMemberRetries --> runRetryMember
   executeFailedMemberRetries --> shouldRetryFailedMemberResult
@@ -191,6 +193,22 @@ shouldRetryFailedMemberResult(result: TeamMemberResult, retryRound: number): boo
 | retryRound | `number` | はい |
 
 **戻り値**: `boolean`
+
+### classifyErrorForMemory
+
+```typescript
+classifyErrorForMemory(error: unknown): "timeout" | "rate-limit" | "capacity" | "validation" | "unknown"
+```
+
+エラーを失敗メモリ用のエラー種別に分類する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| error | `unknown` | はい |
+
+**戻り値**: `"timeout" | "rate-limit" | "capacity" | "validation" | "unknown"`
 
 ### createChildAbort
 
@@ -490,4 +508,4 @@ interface FinalJudgeParams {
 ```
 
 ---
-*自動生成: 2026-02-23T06:29:41.855Z*
+*自動生成: 2026-02-24T17:08:02.117Z*

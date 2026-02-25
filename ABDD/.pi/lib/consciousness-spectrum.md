@@ -2,7 +2,7 @@
 title: consciousness-spectrum
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -314,4 +314,4 @@ type ConsciousnessStage = | 'reactive'      // 0.0-0.25: 反応的 - 刺激へ�
 Edelmanの一次意識/高次意識と発達心理学的視点を統合
 
 ---
-*自動生成: 2026-02-23T06:29:42.277Z*
+*自動生成: 2026-02-24T17:08:02.622Z*

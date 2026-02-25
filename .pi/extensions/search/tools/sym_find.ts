@@ -29,8 +29,16 @@
  * Search symbol definitions from the ctags-generated index
  */
 
-import type { SymFindInput, SymFindOutput, SymbolDefinition, SymbolIndexEntry } from "../types.js";
-import { truncateResults, createErrorResponse, createSimpleHints } from "../utils/output.js";
+import type { SymFindInput, SymFindOutput, SymbolDefinition, SymbolIndexEntry, DetailLevel } from "../types.js";
+import {
+	truncateResults,
+	createErrorResponse,
+	createSimpleHints,
+	createHintsWithBudget,
+	estimateSymbolDefinitionTokens,
+	estimateResponseTokens,
+	DEFAULT_CONTEXT_BUDGET,
+} from "../utils/output.js";
 import { SearchToolError, isSearchToolError, getErrorMessage, indexError } from "../utils/errors.js";
 import { DEFAULT_SYMBOL_LIMIT } from "../utils/constants.js";
 import { symIndex, readSymbolIndex } from "./sym_index.js";
@@ -90,6 +98,12 @@ export function filterSymbols(
 	// Normalize kinds for comparison
 	const kinds = input.kind?.map((k) => k.toLowerCase());
 
+	// Build scope pattern regex
+	let scopeRegex: RegExp | null = null;
+	if (input.scope && input.scope.length > 0) {
+		scopeRegex = wildcardToRegex(input.scope);
+	}
+
 	const results: SymbolDefinition[] = [];
 
 	for (const entry of entries) {
@@ -109,6 +123,13 @@ export function filterSymbols(
 		// File filter
 		if (input.file && input.file.length > 0) {
 			if (!entry.file.includes(input.file)) {
+				continue;
+			}
+		}
+
+		// Scope filter
+		if (scopeRegex) {
+			if (!entry.scope || !scopeRegex.test(entry.scope)) {
 				continue;
 			}
 		}
@@ -169,6 +190,48 @@ export function sortSymbols(symbols: SymbolDefinition[], input: SymFindInput): v
  */
 function extractResultPaths(results: SymbolDefinition[]): string[] {
 	return results.map((r) => r.file).filter(Boolean);
+}
+
+/**
+ * Apply detailLevel compression to symbol definitions.
+ * @summary 詳細レベル適用
+ * @param symbols シンボル定義配列
+ * @param detailLevel 詳細レベル
+ * @returns 圧縮されたシンボル定義配列
+ */
+function applyDetailLevel(
+	symbols: SymbolDefinition[],
+	detailLevel: DetailLevel
+): SymbolDefinition[] {
+	if (detailLevel === "full") {
+		return symbols;
+	}
+
+	return symbols.map((sym) => {
+		if (detailLevel === "outline") {
+			// Outline: only name, kind, file, line
+			return {
+				name: sym.name,
+				kind: sym.kind,
+				file: sym.file,
+				line: sym.line,
+			} as SymbolDefinition;
+		}
+
+		if (detailLevel === "signature") {
+			// Signature: include signature but not full implementation
+			return {
+				name: sym.name,
+				kind: sym.kind,
+				file: sym.file,
+				line: sym.line,
+				signature: sym.signature,
+				scope: sym.scope,
+			} as SymbolDefinition;
+		}
+
+		return sym;
+	});
 }
 
 // ============================================
@@ -248,11 +311,23 @@ export async function symFind(
 	// Truncate to limit
 	const result = truncateResults(filtered, limit);
 
-	// 4. Generate hints
-	const hints = createSimpleHints(
+	// Apply detailLevel compression
+	const detailLevel = input.detailLevel ?? "full";
+	const compressedResults = applyDetailLevel(result.results, detailLevel);
+
+	// Estimate tokens
+	const estimatedTokens = estimateResponseTokens(
+		{ ...result, results: compressedResults },
+		(sym) => estimateSymbolDefinitionTokens(sym, detailLevel)
+	);
+
+	// 4. Generate hints with budget
+	const hints = createHintsWithBudget(
 		TOOL_NAME,
 		result.results.length,
 		result.truncated,
+		estimatedTokens,
+		DEFAULT_CONTEXT_BUDGET,
 		extractQuery(TOOL_NAME, params)
 	);
 
@@ -265,11 +340,12 @@ export async function symFind(
 	});
 
 	// 6. Save to cache
-	cache.setCache(cacheKey, { ...result, hints } as SymFindOutput, CACHE_TTL);
+	cache.setCache(cacheKey, { ...result, results: compressedResults, hints } as SymFindOutput, CACHE_TTL);
 
 	// 7. Return with hints in details
 	return {
 		...result,
+		results: compressedResults,
 		details: {
 			hints,
 		},

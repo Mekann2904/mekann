@@ -51,25 +51,44 @@ export function formatTeamList(storage: TeamStorage): string {
     return "No teams found.";
   }
 
+  // Phase分割チーム（parent持ち）は非表示
+  const visibleTeams = storage.teams.filter((team) => !team.parent);
+
+  if (visibleTeams.length === 0) {
+    return "No teams found.";
+  }
+
+  // 親チームID -> 子Phaseチームのマッピングを作成
+  const parentToPhases = new Map<string, string[]>();
+  for (const team of storage.teams) {
+    if (team.parent) {
+      const phases = parentToPhases.get(team.parent) || [];
+      phases.push(team.id);
+      parentToPhases.set(team.parent, phases);
+    }
+  }
+
   const lines: string[] = ["## Agent Teams\n"];
 
   // チーム一覧サマリー表
-  lines.push("| ID | Name | Status | Current | Members | Description |");
-  lines.push("|----|------|--------|---------|---------|-------------|");
+  lines.push("| ID | Name | Status | Current | Members | Phases | Description |");
+  lines.push("|----|------|--------|---------|---------|--------|-------------|");
 
-  for (const team of storage.teams) {
+  for (const team of visibleTeams) {
     const current = team.id === storage.currentTeamId ? "*" : "";
     const status = team.enabled === "enabled" ? "enabled" : "disabled";
     const memberCount = team.members.length;
+    const phases = parentToPhases.get(team.id) || [];
+    const phasesStr = phases.length > 0 ? phases.map(p => p.replace(/^.*-p(\d+)$/, 'p$1')).join(", ") : "-";
     const shortDesc =
-      team.description.length > 50 ? team.description.substring(0, 47) + "..." : team.description;
+      team.description.length > 40 ? team.description.substring(0, 37) + "..." : team.description;
     lines.push(
-      `| ${team.id} | ${team.name} | ${status} | ${current} | ${memberCount} | ${shortDesc} |`
+      `| ${team.id} | ${team.name} | ${status} | ${current} | ${memberCount} | ${phasesStr} | ${shortDesc} |`
     );
   }
 
   // 各チームの詳細
-  for (const team of storage.teams) {
+  for (const team of visibleTeams) {
     lines.push("");
     lines.push(`### ${team.id}`);
     lines.push("");
@@ -77,6 +96,28 @@ export function formatTeamList(storage: TeamStorage): string {
     lines.push("");
     lines.push(team.description);
     lines.push("");
+
+    // Phase分割チームの情報を表示
+    const phases = parentToPhases.get(team.id) || [];
+    if (phases.length > 0) {
+      lines.push("#### Phase Split Teams");
+      lines.push("");
+      lines.push("このチームには詳細なPhase分割版があります:");
+      lines.push("");
+      lines.push("| Phase | Team ID | Members | Description |");
+      lines.push("|-------|---------|---------|-------------|");
+      for (const phaseId of phases.sort()) {
+        const phaseTeam = storage.teams.find(t => t.id === phaseId);
+        if (phaseTeam) {
+          const phaseNum = phaseId.replace(/^.*-p(\d+)$/, 'p$1');
+          const shortPhaseDesc = phaseTeam.description.length > 50 
+            ? phaseTeam.description.substring(0, 47) + "..." 
+            : phaseTeam.description;
+          lines.push(`| ${phaseNum} | ${phaseId} | ${phaseTeam.members.length} | ${shortPhaseDesc} |`);
+        }
+      }
+      lines.push("");
+    }
 
     if (team.members.length > 0) {
       lines.push("#### Members");

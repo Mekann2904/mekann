@@ -571,7 +571,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
             referenceWarnings: loadedReferences.warnings,
           },
         };
-      } catch (error) {
+      } catch (error: unknown) {
         const message = toErrorMessage(error);
         logger.endOperation({
           status: "failure",
@@ -601,7 +601,13 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
     },
 
     renderResult(result, _options, theme) {
-      const summary = (result as any)?.details?.summary as LoopRunSummary | undefined;
+      interface LoopResultWithSummary {
+        details?: { summary?: LoopRunSummary };
+      }
+      function hasLoopDetails(value: unknown): value is LoopResultWithSummary {
+        return typeof value === "object" && value !== null && "details" in value;
+      }
+      const summary = hasLoopDetails(result) ? result.details?.summary : undefined;
       if (!summary) {
         return new Text(theme.fg("warning", "loop result unavailable"), 0, 0);
       }
@@ -722,7 +728,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
           },
         });
         ctx.ui.notify("Loop run completed", "info");
-      } catch (error) {
+      } catch (error: unknown) {
         const message = toErrorMessage(error);
         pi.sendMessage({
           customType: "loop-error",
@@ -831,7 +837,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
           mediatorResult,
         });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       // Mediator failure should not block the loop
       const message = toErrorMessage(error);
       appendJsonl(logFile, {
@@ -882,7 +888,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
         patternTypes: relevantPatterns.map(p => p.patternType),
       });
     }
-  } catch (error) {
+  } catch (error: unknown) {
     // Pattern loading failure should not block the loop
     const message = toErrorMessage(error);
     appendJsonl(logFile, {
@@ -994,7 +1000,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
 
       validationErrors = normalizeValidationFeedback(validationErrors);
       consecutiveFailures = 0;
-    } catch (error) {
+    } catch (error: unknown) {
       latencyMs = Date.now() - started;
       callFailed = true;
       consecutiveFailures += 1;

@@ -333,12 +333,17 @@ function isRecommendedReviewerCall(event: any): boolean {
   return subagentId === RECOMMENDED_REVIEWER_ID;
 }
 
+/**
+ * UL委任モードの指示を生成
+ */
 function buildUlTransformedInput(task: string, goalLoopMode: boolean): string {
-  // 簡素化: 詳細なポリシーはgetUlPolicy()で一元管理
   const goalHint = goalLoopMode
-    ? "\n[GOAL_LOOP] 明確な達成条件を検知。loop_runを優先。"
+    ? "\n\n[GOAL_LOOP] 明確な達成条件あり。実装後に検証コマンドを実行。"
     : "";
-  return `[UL_MODE] 委任優先で実行。${goalHint}\n\nタスク:\n${task}`;
+  return `[UL_MODE] Research → Plan → [ユーザーレビュー] → Implement のフローで進めよ。詳細は UL Mode Guideline を参照。${goalHint}
+
+タスク:
+${task}`;
 }
 
 // ポリシーキャッシュ（4通りの組み合わせのみ、防御的に上限設定）
@@ -687,41 +692,17 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
       };
     }
 
-    // デフォルト: ul <task> → ワークフローモード
-    state.pendingUlMode = false;  // ワークフローモードでは委任モードを使わない
-    state.pendingGoalLoopMode = false;
+    // デフォルト: ul <task> → 委任モード（エージェントが自律的に選択）
+    state.pendingUlMode = true;
+    state.pendingGoalLoopMode = looksLikeClearGoalTask(taskText);
     state.currentTask = taskText;
 
     if (ctx?.hasUI && ctx?.ui) {
-      ctx.ui.notify("UL Workflow モード: Research-Plan-Annotate-Implement ワークフローを開始します。", "info");
+      ctx.ui.notify("UL Mode: エージェントが最適な進め方を選択", "info");
     }
-
     return {
       action: "transform" as const,
-      text: `まず、以下の質問を使ってユーザーに確認してください:
-
-\`\`\`json
-{ "tool": "question", "arguments": { "questions": [{ "question": "以下のタスクでResearch-Plan-Annotate-Implementワークフローを開始しますか？\\n\\nタスク: ${taskText.replace(/"/g, '\\"')}\\n\\nワークフローのフェーズ:\\n1. RESEARCH: コードベースの調査\\n2. PLAN: 実装計画の作成\\n3. ANNOTATE: ユーザーによる計画レビュー\\n4. IMPLEMENT: コード実装", "header": "ワークフロー開始", "options": [{ "label": "Yes", "description": "ワークフローを開始" }, { "label": "No", "description": "キャンセル" }] }] } }
-\`\`\`
-
-ユーザーが「Yes」を選択した場合のみ、以下のツールを呼び出してください:
-
-\`\`\`json
-{ "tool": "ul_workflow_start", "arguments": { "task": "${taskText.replace(/"/g, '\\"')}" } }
-\`\`\`
-
-ワークフローが開始されたら、次のステップを指示通りに実行してください:
-1. ul_workflow_research で調査フェーズを実行
-2. ul_workflow_approve で調査を承認（ユーザー確認必須）
-3. ul_workflow_plan で計画フェーズを実行
-4. ul_workflow_approve で計画を承認（ユーザー確認必須）
-5. plan.mdに注釈を追加（ユーザーが行う）
-6. ul_workflow_annotate で注釈を適用（ユーザー確認必須）
-7. ul_workflow_approve で注釈フェーズを承認（ユーザー確認必須）
-8. ul_workflow_implement で実装フェーズを実行
-9. ul_workflow_approve で完了
-
-各ステップでユーザーに進捗を報告し、承認を求めてください。`,
+      text: buildUlTransformedInput(taskText, state.pendingGoalLoopMode),
     };
   });
 

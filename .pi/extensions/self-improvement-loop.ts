@@ -396,7 +396,7 @@ function loadGitWorkflowSkill(): string {
     cachedGitWorkflowSkill = readFileSync(skillPath, "utf-8");
     console.log(`[self-improvement-loop] Loaded git-workflow skill (${cachedGitWorkflowSkill.length} bytes)`);
     return cachedGitWorkflowSkill;
-  } catch (error) {
+  } catch (error: unknown) {
     console.warn(`[self-improvement-loop] Failed to load git-workflow skill: ${toErrorMessage(error)}`);
     return "";
   }
@@ -421,7 +421,7 @@ function loadSelfImprovementSkill(): string {
     cachedSelfImprovementSkill = readFileSync(skillPath, "utf-8");
     console.log(`[self-improvement-loop] Loaded self-improvement skill (${cachedSelfImprovementSkill.length} bytes)`);
     return cachedSelfImprovementSkill;
-  } catch (error) {
+  } catch (error: unknown) {
     console.warn(`[self-improvement-loop] Failed to load self-improvement skill: ${toErrorMessage(error)}`);
     return "";
   }
@@ -668,7 +668,7 @@ ${perspectiveResults.map(r => {
     }
     
     return cleanedMessage;
-  } catch (error) {
+  } catch (error: unknown) {
     console.warn(`[self-improvement-loop] Failed to generate commit message: ${toErrorMessage(error)}`);
     
     // フォールバック: 日本語のシンプルなメッセージ
@@ -1244,7 +1244,7 @@ async function addToGitignore(patterns: Set<string>, cwd: string): Promise<boole
   if (existsSync(gitignorePath)) {
     try {
       existingContent = readFileSync(gitignorePath, "utf-8");
-    } catch (error) {
+    } catch (error: unknown) {
       console.warn(`[self-improvement-loop] Failed to read .gitignore: ${toErrorMessage(error)}`);
       return false;
     }
@@ -1273,7 +1273,7 @@ async function addToGitignore(patterns: Set<string>, cwd: string): Promise<boole
     writeFileSync(gitignorePath, newContent, "utf-8");
     console.log(`[self-improvement-loop] Added ${newPatterns.length} patterns to .gitignore: ${newPatterns.slice(0, 3).join(", ")}${newPatterns.length > 3 ? "..." : ""}`);
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(`[self-improvement-loop] Failed to update .gitignore: ${toErrorMessage(error)}`);
     return false;
   }
@@ -1340,7 +1340,7 @@ async function createGitCommit(message: string, cwd: string): Promise<string | n
 
     console.warn(`[self-improvement-loop] Git commit warning: ${result.stderr}`);
     return null;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(`[self-improvement-loop] Git operation failed: ${toErrorMessage(error)}`);
     return null;
   }
@@ -1452,7 +1452,7 @@ async function createGitCommitWithLLM(
 
     console.warn(`[self-improvement-loop] Git commit warning: ${result.stderr}`);
     return { hash: null, message: commitMessage, excludedFiles };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(`[self-improvement-loop] Git operation failed: ${toErrorMessage(error)}`);
     return { hash: null, message: "", excludedFiles };
   }
@@ -1759,7 +1759,7 @@ function computeAdaptiveCycleDelay(model: SelfImprovementModel): number {
     }
     
     return Math.min(delayMs, MAX_CYCLE_INTERVAL_MS);
-  } catch (error) {
+  } catch (error: unknown) {
     // エラー時はデフォルト値を返す
     console.warn(`[self-improvement-loop] Failed to compute adaptive delay: ${toErrorMessage(error)}`);
     return MIN_CYCLE_INTERVAL_MS;
@@ -1864,7 +1864,7 @@ async function callModel(
     
     console.log(`[self-improvement-loop] Model call succeeded, output length: ${result.length}`);
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
     const errorMessage = toErrorMessage(error);
     const statusCode = extractRetryStatusCode(error);
     
@@ -1926,7 +1926,7 @@ async function runSelfImprovementLoop(
         const currentChangedFiles = await getChangedFiles(process.cwd());
         state.filesChangedBeforeCycle = new Set(currentChangedFiles);
         console.log(`[self-improvement-loop] Cycle ${state.currentCycle} starting with ${currentChangedFiles.length} pre-existing changes`);
-      } catch (error) {
+      } catch (error: unknown) {
         console.warn(`[self-improvement-loop] Failed to get pre-cycle changes: ${toErrorMessage(error)}`);
         state.filesChangedBeforeCycle = new Set();
       }
@@ -2029,7 +2029,7 @@ runId: ${state.runId}`],
         }
       }
     }
-  } catch (error) {
+  } catch (error: unknown) {
     if (isCancelledErrorMessage(error) || toErrorMessage(error).includes("Aborted")) {
       state.stopRequested = true;
       state.stopReason = "user_request";
@@ -2109,7 +2109,7 @@ ${prompt}`;
         const perspectiveDelayMs = RATE_LIMIT_CONFIG.perspectiveDelayMs; // 環境変数で設定可能
         await sleepWithAbort(perspectiveDelayMs, signal);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       // 429エラーかどうかをチェック
       const statusCode = extractRetryStatusCode(error);
       const is429 = statusCode === 429 || isAdaptiveRateLimitError(error) || 
@@ -2459,7 +2459,7 @@ export default (api: ExtensionAPI) => {
       const currentChangedFiles = await getChangedFiles(process.cwd());
       run.filesChangedBeforeCycle = new Set(currentChangedFiles);
       console.log(`[self-improvement-loop] Cycle ${nextCycle} starting with ${currentChangedFiles.length} pre-existing changes`);
-    } catch (error) {
+    } catch (error: unknown) {
       console.warn(`[self-improvement-loop] Failed to get pre-cycle changes: ${toErrorMessage(error)}`);
       run.filesChangedBeforeCycle = new Set();
     }
@@ -2740,7 +2740,7 @@ export default (api: ExtensionAPI) => {
           if (highConfidenceCandidates.length > 0) {
             appendAutonomousLoopLog(run.logPath, `  high_confidence_detections: ${highConfidenceCandidates.length}件`);
           }
-        } catch (error) {
+        } catch (error: unknown) {
           console.warn(`[self-improvement-loop] Metacognitive check failed: ${toErrorMessage(error)}`);
         }
       }
@@ -2764,7 +2764,7 @@ export default (api: ExtensionAPI) => {
           if (issues.length > 0) {
             appendAutonomousLoopLog(run.logPath, `    thinking_issues: ${issues.length}件`);
           }
-        } catch (error) {
+        } catch (error: unknown) {
           console.warn(`[self-improvement-loop] Thinking mode analysis failed: ${toErrorMessage(error)}`);
         }
       }
@@ -2884,7 +2884,7 @@ runId: ${run.runId}`],
         console.error(`[self-improvement-loop] Failed to dispatch next cycle: ${toErrorMessage(error)}`);
         finishRun("error", toErrorMessage(error));
       });
-    } catch (error) {
+    } catch (error: unknown) {
       finishRun("error", toErrorMessage(error));
     }
   });
@@ -2907,7 +2907,8 @@ runId: ${run.runId}`],
         description: "各サイクル完了時に自動的にGitコミットを作成するか（デフォルト: true）",
       })),
     }),
-    execute: async (_toolCallId: string, params: SelfImprovementLoopParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: any) => {
+    execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+      const ctxTyped = ctx as { model?: unknown; isIdle?: () => boolean; cwd?: string };
       if (signal?.aborted) {
         return {
           content: [{ type: "text" as const, text: "開始前に中断されました。" }],
@@ -2915,20 +2916,20 @@ runId: ${run.runId}`],
         };
       }
 
-      if (!ctx?.model) {
+      if (!ctxTyped?.model) {
         return {
           content: [{ type: "text" as const, text: "self_improvement_loop error: no active model." }],
           details: { error: "missing_model" },
         };
       }
 
-      const model = resolveActiveModel(ctx);
+      const model = resolveActiveModel(ctxTyped);
       const started = startAutonomousLoop({
         task: params.task,
         maxCycles: params.max_cycles ?? 1_000_000,
         autoCommit: params.auto_commit ?? DEFAULT_CONFIG.autoCommit,
         model,
-        deliverAs: ctx?.isIdle?.() ? undefined : "followUp",
+        deliverAs: ctxTyped?.isIdle?.() ? undefined : "followUp",
       });
 
       if (started.ok) {
@@ -2946,6 +2947,7 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
             startedAt: started.run.startedAt,
             maxCycles: started.run.maxCycles,
             logFile: started.run.logPath,
+            error: undefined,
           },
         };
       }
@@ -2955,10 +2957,10 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
       const errorMsg = failedStart.error;
       return {
         content: [{ type: "text" as const, text: `開始失敗: ${errorMsg}` }],
-        details: { error: errorMsg },
+        details: { error: errorMsg, runId: undefined, startedAt: undefined, maxCycles: undefined, logFile: undefined },
       };
     },
-  } as any);
+  });
 
   // self_improvement_stop ツールを登録
   api.registerTool({
@@ -2966,22 +2968,22 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
     label: "self_improvement_stop",
     description: "実行中の自己改善ループを停止する。現在のサイクルを完了してから安全に停止する。",
     parameters: Type.Object({}),
-    execute: async () => {
+    execute: async (_toolCallId, _params, _signal?, _onUpdate?, _ctx?) => {
       try {
         const stopPath = requestStop();
 
         return {
           content: [{ type: "text" as const, text: "停止信号を送信しました。現在のサイクルを完了してから安全に停止します。" }],
-          details: { stopSignalPath: stopPath },
+          details: { stopSignalPath: stopPath, error: undefined },
         };
-      } catch (error) {
+      } catch (error: unknown) {
         return {
           content: [{ type: "text" as const, text: `エラー: ${toErrorMessage(error)}` }],
-          details: { error: toErrorMessage(error) },
+          details: { error: toErrorMessage(error), stopSignalPath: undefined },
         };
       }
     },
-  } as any);
+  });
 
   // self_improvement_status ツールを登録
   api.registerTool({
@@ -2989,7 +2991,7 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
     label: "self_improvement_status",
     description: "自己改善ループの状態を確認する。",
     parameters: Type.Object({}),
-    execute: async () => {
+    execute: async (_toolCallId: string, _params: Record<string, never>, _signal?: AbortSignal, _onUpdate?: unknown, _ctx?: unknown) => {
       const config = DEFAULT_CONFIG;
       const stopPath = resolve(process.cwd(), config.stopSignalPath);
       const isStopRequested = checkStopSignal(config);
@@ -3083,7 +3085,7 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
         details,
       };
     },
-  } as any);
+  });
 
   // ============================================================================
   // スラッシュコマンド
@@ -3152,7 +3154,7 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
         requestStop();
 
         ctx.ui.notify("停止信号を送信しました。現在のサイクルを完了してから安全に停止します。", "info");
-      } catch (error) {
+      } catch (error: unknown) {
         ctx.ui.notify(`停止信号の送信に失敗しました: ${toErrorMessage(error)}`, "error");
       }
     },

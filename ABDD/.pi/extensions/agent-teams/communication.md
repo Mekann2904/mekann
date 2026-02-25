@@ -2,7 +2,7 @@
 title: communication
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -29,6 +29,7 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `buildPrecomputedContextMap` | コンテキストマップを生成 |
+| 関数 | `computeContextLimits` | チームサイズに応じた動的コンテキスト制限を計算する |
 | 関数 | `normalizeCommunicationRounds` | 通信ラウンド数を正規化 |
 | 関数 | `normalizeFailedMemberRetryRounds` | - |
 | 関数 | `shouldRetryFailedMemberResult` | 失敗したメンバー結果を再試行すべきか判定する |
@@ -122,6 +123,7 @@ flowchart TD
   buildPrecomputedContextMap["buildPrecomputedContextMap()"]
   checkTermination["checkTermination()"]
   clearBeliefStateCache["clearBeliefStateCache()"]
+  computeContextLimits["computeContextLimits()"]
   createCommunicationLinksMap["createCommunicationLinksMap()"]
   detectPartnerReferences["detectPartnerReferences()"]
   detectPartnerReferencesV2["detectPartnerReferencesV2()"]
@@ -158,8 +160,8 @@ sequenceDiagram
   format_utils-->>communication: 結果
   communication-->>Caller: Map_string_Precomput
 
-  Caller->>communication: normalizeCommunicationRounds()
-  communication-->>Caller: number
+  Caller->>communication: computeContextLimits()
+  communication-->>Caller: fieldLimit_number_o
 ```
 
 ## 関数
@@ -181,6 +183,22 @@ buildPrecomputedContextMap(results: TeamMemberResult[]): Map<string, Precomputed
 | results | `TeamMemberResult[]` | はい |
 
 **戻り値**: `Map<string, PrecomputedMemberContext>`
+
+### computeContextLimits
+
+```typescript
+computeContextLimits(teamSize: number): { fieldLimit: number; otherLimit: number }
+```
+
+チームサイズに応じた動的コンテキスト制限を計算する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| teamSize | `number` | はい |
+
+**戻り値**: `{ fieldLimit: number; otherLimit: number }`
 
 ### normalizeCommunicationRounds
 
@@ -541,4 +559,4 @@ interface BeliefContradiction {
 信念の矛盾を定義するインターフェース
 
 ---
-*自動生成: 2026-02-23T06:29:41.581Z*
+*自動生成: 2026-02-24T17:08:01.829Z*

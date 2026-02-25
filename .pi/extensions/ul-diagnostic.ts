@@ -141,14 +141,17 @@ function checkRateLimitState(): DiagnosticResult {
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    // BEGIN FIX: BUG-005 エラー詳細を含める
     return {
       category: "Race Condition",
       severity: "critical",
       issue: "Bug #1: Rate Limit State Parallel Access",
       description: `Rate limit state check failed: ${errorMessage}`,
-      recommendation: "retry-with-backoff module may not be loaded",
-      detected: false,
+      recommendation: "retry-with-backoff module may not be loaded. Check module installation.",
+      detected: true,  // エラーを検出済みとしてマーク
+      details: `Module load error: ${errorMessage}`,
     };
+    // END FIX
   }
 }
 
@@ -197,15 +200,19 @@ function checkResourceLeaks(): DiagnosticResult {
       detected: potentialLeak,
       details: `Pending: ${pendingCount}, Active LLM: ${activeLlm}`,
     };
-  } catch {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    // BEGIN FIX: BUG-005 エラー詳細を含める
     return {
       category: "Resource",
       severity: "high",
       issue: "BUG-001/004: Resource Leak Detection",
-      description: "Resource check unavailable",
-      recommendation: "Unable to check resource state",
-      detected: false,
+      description: `Resource check failed: ${errorMessage}`,
+      recommendation: "Unable to check resource state. Check agent-runtime module.",
+      detected: true,  // エラーを検出済みとしてマーク
+      details: `Error: ${errorMessage}`,
     };
+    // END FIX
   }
 }
 
@@ -227,15 +234,19 @@ function checkParallelExecutionRisk(): DiagnosticResult {
       detected: highRisk,
       details: `Active LLM: ${activeLlm}/${maxLlm} (${Math.round((activeLlm / maxLlm) * 100)}% capacity)`,
     };
-  } catch {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    // BEGIN FIX: BUG-005 エラー詳細を含める
     return {
       category: "Concurrency",
       severity: "medium",
       issue: "Bug #6: Parallel Execution Risk",
-      description: "Parallel execution check unavailable",
-      recommendation: "Unable to check parallel execution state",
-      detected: false,
+      description: `Parallel execution check failed: ${errorMessage}`,
+      recommendation: "Unable to check parallel execution state. Check agent-runtime module.",
+      detected: true,  // エラーを検出済みとしてマーク
+      details: `Error: ${errorMessage}`,
     };
+    // END FIX
   }
 }
 

@@ -41,6 +41,13 @@
  * - find_callees: Find functions called by a symbol
  * - semantic_index: Generate vector embeddings for code files
  * - semantic_search: Semantic code search with natural language queries
+ * - context_explore: Chain multiple search queries with context budget
+ * - search_class: Search class definitions with optional method listing
+ * - search_method: Search method definitions with optional implementation
+ * - fault_localize: SBFL-based bug location identification
+ * - search_history: Manage search history across sessions
+ * - ast_summary: Display AST structure in tree/flat/JSON format
+ * - merge_results: Merge results from multiple search methods with ranking
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -60,6 +67,19 @@ import {
 } from "./tools/call_graph.js";
 import { semanticIndex } from "./tools/semantic_index.js";
 import { semanticSearch, formatSemanticSearch } from "./tools/semantic_search.js";
+import { contextExplore, formatContextExplore } from "./tools/context_explore.js";
+import { searchClass, formatSearchClass } from "./tools/search_class.js";
+import { searchMethod, formatSearchMethod } from "./tools/search_method.js";
+import { faultLocalize, formatFaultLocalize } from "./tools/fault_localize.js";
+import { searchHistory, formatSearchHistory } from "./tools/search_history.js";
+import { astSummary, formatAstSummary } from "./tools/ast_summary.js";
+import { mergeResults, formatMergeResults } from "./tools/merge_results.js";
+import {
+	repographIndex,
+	repographQuery,
+	formatRepoGraphIndex,
+	formatRepoGraphQuery,
+} from "./tools/repograph_index.js";
 import { checkToolAvailability } from "./utils/cli.js";
 import {
 	formatFileCandidates,
@@ -292,7 +312,7 @@ export default function (pi: ExtensionAPI) {
 			name: "sym_find",
 			label: "Symbol Find",
 			description:
-				"Search for symbol definitions (functions, classes, variables) from the ctags index. Supports pattern matching on name and filtering by kind.",
+				"Search for symbol definitions (functions, classes, variables) from the ctags index. Supports pattern matching on name and filtering by kind. Use detailLevel to control output verbosity.",
 			parameters: Type.Object({
 				name: Type.Optional(
 					Type.String({ description: "Symbol name pattern (supports wildcards)" })
@@ -305,8 +325,21 @@ export default function (pi: ExtensionAPI) {
 				file: Type.Optional(
 					Type.String({ description: "File path filter" })
 				),
+				scope: Type.Optional(
+					Type.String({ description: "Scope filter (e.g., class name to find methods within)" })
+				),
 				limit: Type.Optional(
 					Type.Number({ description: "Maximum results (default: 50)" })
+				),
+				detailLevel: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal("full"),
+							Type.Literal("signature"),
+							Type.Literal("outline"),
+						],
+						{ description: "Detail level: full (default), signature (method signatures only), outline (structure only)" }
+					)
 				),
 			}),
 
@@ -319,7 +352,9 @@ export default function (pi: ExtensionAPI) {
 							name: params.name,
 							kind: params.kind,
 							file: params.file,
+							scope: params.scope,
 							limit: params.limit,
+							detailLevel: params.detailLevel as "full" | "signature" | "outline" | undefined,
 							cwd,
 						},
 						cwd
@@ -639,6 +674,694 @@ export default function (pi: ExtensionAPI) {
 					return {
 						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
 						details: { error: errorMessage, total: 0, truncated: false, results: [] },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: context_explore
+		// ============================================
+		pi.registerTool({
+			name: "context_explore",
+			label: "Context Explore",
+			description:
+				"Execute a chain of search queries in sequence. Supports find_class, find_methods, search_code, and get_callers steps. Results from previous steps can be referenced using $0, $1, etc. Automatically compresses results based on token budget.",
+			parameters: Type.Object({
+				steps: Type.Array(
+					Type.Object({
+						type: Type.Union(
+							[
+								Type.Literal("find_class"),
+								Type.Literal("find_methods"),
+								Type.Literal("search_code"),
+								Type.Literal("get_callers"),
+							],
+							{ description: "Step type" }
+						),
+						query: Type.Optional(
+							Type.String({ description: "Search query pattern" })
+						),
+						classRef: Type.Optional(
+							Type.String({ description: "Reference to previous step result ($0, $1, etc.)" })
+						),
+						scope: Type.Optional(
+							Type.String({ description: "Scope filter" })
+						),
+					}),
+					{ description: "Chain of search steps to execute" }
+				),
+				contextBudget: Type.Optional(
+					Type.Number({ description: "Token budget for results (default: 15000)" })
+				),
+				compression: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal("full"),
+							Type.Literal("signature"),
+							Type.Literal("summary"),
+						],
+						{ description: "Compression mode (default: full)" }
+					)
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				if (!params.steps || params.steps.length === 0) {
+					return {
+						content: [{ type: "text" as const, text: "Error: steps array is required" }],
+						details: { error: "steps array is required", total: 0, compressed: false, estimatedTokens: 0, contextBudget: 15000, steps: [] },
+					};
+				}
+
+				try {
+					const result = await contextExplore(
+						{
+							steps: params.steps as Array<{
+								type: "find_class" | "find_methods" | "search_code" | "get_callers";
+								query?: string;
+								classRef?: string;
+								scope?: string;
+							}>,
+							contextBudget: params.contextBudget,
+							compression: params.compression as "full" | "signature" | "summary" | undefined,
+							cwd,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatContextExplore(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, total: 0, compressed: false, estimatedTokens: 0, contextBudget: 15000, steps: [] },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: search_class
+		// ============================================
+		pi.registerTool({
+			name: "search_class",
+			label: "Search Class",
+			description:
+				"Search for class definitions with optional method listing. Supports wildcards in class name. Use includeMethods to get class structure overview.",
+			parameters: Type.Object({
+				name: Type.String({ description: "Class name pattern (supports wildcards: *, ?)" }),
+				includeMethods: Type.Optional(
+					Type.Boolean({ description: "Include method list (default: true)" })
+				),
+				detailLevel: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal("full"),
+							Type.Literal("signature"),
+							Type.Literal("outline"),
+						],
+						{ description: "Detail level (default: full)" }
+					)
+				),
+				file: Type.Optional(
+					Type.String({ description: "File path filter" })
+				),
+				limit: Type.Optional(
+					Type.Number({ description: "Maximum results (default: 20)" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				if (!params.name || params.name.length === 0) {
+					return {
+						content: [{ type: "text" as const, text: "Error: name is required" }],
+						details: { error: "name is required", total: 0, truncated: false, results: [] },
+					};
+				}
+
+				try {
+					const result = await searchClass(
+						{
+							name: params.name,
+							includeMethods: params.includeMethods,
+							detailLevel: params.detailLevel as "full" | "signature" | "outline" | undefined,
+							file: params.file,
+							limit: params.limit,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatSearchClass(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, total: 0, truncated: false, results: [] },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: search_method
+		// ============================================
+		pi.registerTool({
+			name: "search_method",
+			label: "Search Method",
+			description:
+				"Search for method definitions with optional implementation code. Supports wildcards in method name. Use className to filter by containing class.",
+			parameters: Type.Object({
+				method: Type.String({ description: "Method name pattern (supports wildcards: *, ?)" }),
+				className: Type.Optional(
+					Type.String({ description: "Filter by class name" })
+				),
+				includeImplementation: Type.Optional(
+					Type.Boolean({ description: "Include implementation code (default: false)" })
+				),
+				detailLevel: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal("full"),
+							Type.Literal("signature"),
+							Type.Literal("outline"),
+						],
+						{ description: "Detail level (default: full)" }
+					)
+				),
+				file: Type.Optional(
+					Type.String({ description: "File path filter" })
+				),
+				limit: Type.Optional(
+					Type.Number({ description: "Maximum results (default: 30)" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				if (!params.method || params.method.length === 0) {
+					return {
+						content: [{ type: "text" as const, text: "Error: method is required" }],
+						details: { error: "method is required", total: 0, truncated: false, results: [] },
+					};
+				}
+
+				try {
+					const result = await searchMethod(
+						{
+							method: params.method,
+							className: params.className,
+							includeImplementation: params.includeImplementation,
+							detailLevel: params.detailLevel as "full" | "signature" | "outline" | undefined,
+							file: params.file,
+							limit: params.limit,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatSearchMethod(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, total: 0, truncated: false, results: [] },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: fault_localize
+		// ============================================
+		pi.registerTool({
+			name: "fault_localize",
+			label: "Fault Localize",
+			description:
+				"Identify potential bug locations using Spectrum-Based Fault Localization (SBFL). Analyzes test coverage data to find code that is frequently covered by failing tests. Supports Ochiai, Tarantula, and OP2 algorithms.",
+			parameters: Type.Object({
+				testCommand: Type.String({ description: "Test execution command (e.g., 'npm test', 'pytest')" }),
+				failingTests: Type.Optional(
+					Type.Array(Type.String(), { description: "List of failing test names" })
+				),
+				passingTests: Type.Optional(
+					Type.Array(Type.String(), { description: "List of passing test names" })
+				),
+				suspiciousnessThreshold: Type.Optional(
+					Type.Number({ description: "Suspiciousness threshold (default: 0.5)" })
+				),
+				coverageReport: Type.Optional(
+					Type.String({ description: "Path to coverage report file" })
+				),
+				algorithm: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal("ochiai"),
+							Type.Literal("tarantula"),
+							Type.Literal("op2"),
+						],
+						{ description: "SBFL algorithm (default: ochiai)" }
+					)
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				if (!params.testCommand || params.testCommand.length === 0) {
+					return {
+						content: [{ type: "text" as const, text: "Error: testCommand is required" }],
+						details: { error: "testCommand is required", locations: [], algorithm: "ochiai", totalTests: 0, failingTestCount: 0, passingTestCount: 0, testExecuted: false },
+					};
+				}
+
+				try {
+					const result = await faultLocalize(
+						{
+							testCommand: params.testCommand,
+							failingTests: params.failingTests,
+							passingTests: params.passingTests,
+							suspiciousnessThreshold: params.suspiciousnessThreshold,
+							coverageReport: params.coverageReport,
+							algorithm: params.algorithm as "ochiai" | "tarantula" | "op2" | undefined,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatFaultLocalize(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, locations: [], algorithm: "ochiai", totalTests: 0, failingTestCount: 0, passingTestCount: 0, testExecuted: false },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: search_history
+		// ============================================
+		pi.registerTool({
+			name: "search_history",
+			label: "Search History",
+			description:
+				"Manage search history across sessions. Use 'get' to retrieve history, 'clear' to delete history, 'save_query' to manually save a query. Supports filtering by session (current/previous/all).",
+			parameters: Type.Object({
+				action: Type.Union(
+					[
+						Type.Literal("get"),
+						Type.Literal("clear"),
+						Type.Literal("save_query"),
+					],
+					{ description: "Action to perform (default: get)" }
+				),
+				session: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal("current"),
+							Type.Literal("previous"),
+							Type.Literal("all"),
+						],
+						{ description: "Session filter (default: all)" }
+					)
+				),
+				limit: Type.Optional(
+					Type.Number({ description: "Maximum entries to return (default: 50)" })
+				),
+				query: Type.Optional(
+					Type.String({ description: "Query to save (for save_query action)" })
+				),
+				tool: Type.Optional(
+					Type.String({ description: "Tool name (for save_query action)" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				try {
+					const result = await searchHistory(
+						{
+							action: params.action ?? "get",
+							session: params.session as "current" | "previous" | "all" | undefined,
+							limit: params.limit,
+							query: params.query,
+							tool: params.tool,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatSearchHistory(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, queries: [], session: "all", total: 0 },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: ast_summary
+		// ============================================
+		pi.registerTool({
+			name: "ast_summary",
+			label: "AST Summary",
+			description:
+				"Display AST structure of a file in tree, flat, or JSON format. Supports depth control and type information. Useful for understanding file structure quickly.",
+			parameters: Type.Object({
+				file: Type.String({ description: "File path to analyze" }),
+				format: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal("tree"),
+							Type.Literal("flat"),
+							Type.Literal("json"),
+						],
+						{ description: "Output format (default: tree)" }
+					)
+				),
+				depth: Type.Optional(
+					Type.Number({ description: "Depth level for tree display (default: 2)" })
+				),
+				includeTypes: Type.Optional(
+					Type.Boolean({ description: "Include type information (default: true)" })
+				),
+				includeCalls: Type.Optional(
+					Type.Boolean({ description: "Include call relationships (default: false)" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				if (!params.file || params.file.length === 0) {
+					return {
+						content: [{ type: "text" as const, text: "Error: file is required" }],
+						details: {
+							file: "",
+							format: "tree",
+							root: [],
+							stats: { totalClasses: 0, totalFunctions: 0, totalMethods: 0, totalVariables: 0 },
+							error: "file is required",
+						},
+					};
+				}
+
+				try {
+					const result = await astSummary(
+						{
+							file: params.file,
+							format: params.format as "tree" | "flat" | "json" | undefined,
+							depth: params.depth,
+							includeTypes: params.includeTypes,
+							includeCalls: params.includeCalls,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatAstSummary(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: {
+							file: params.file,
+							format: "tree",
+							root: [],
+							stats: { totalClasses: 0, totalFunctions: 0, totalMethods: 0, totalVariables: 0 },
+							error: errorMessage,
+						},
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: merge_results
+		// ============================================
+		pi.registerTool({
+			name: "merge_results",
+			label: "Merge Results",
+			description:
+				"Merge results from multiple search methods (semantic, symbol, code) with ranking improvements. Supports weighted, rank_fusion, and interleave strategies.",
+			parameters: Type.Object({
+				sources: Type.Array(
+					Type.Object({
+						type: Type.Union(
+							[
+								Type.Literal("semantic"),
+								Type.Literal("symbol"),
+								Type.Literal("code"),
+							],
+							{ description: "Source type" }
+						),
+						query: Type.String({ description: "Search query" }),
+						weight: Type.Optional(
+							Type.Number({ description: "Weight for this source (default: 1.0)" })
+						),
+					}),
+					{ description: "Search sources to merge" }
+				),
+				deduplicate: Type.Optional(
+					Type.Boolean({ description: "Deduplicate results (default: true)" })
+				),
+				limit: Type.Optional(
+					Type.Number({ description: "Maximum results (default: 20)" })
+				),
+				mergeStrategy: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal("weighted"),
+							Type.Literal("rank_fusion"),
+							Type.Literal("interleave"),
+						],
+						{ description: "Merge strategy (default: weighted)" }
+					)
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				if (!params.sources || params.sources.length === 0) {
+					return {
+						content: [{ type: "text" as const, text: "Error: sources array is required" }],
+						details: {
+							merged: [],
+							stats: { totalSources: 0, totalResults: 0, duplicatesRemoved: 0 },
+							error: "sources array is required",
+						},
+					};
+				}
+
+				try {
+					const result = await mergeResults(
+						{
+							sources: params.sources as Array<{
+								type: "semantic" | "symbol" | "code";
+								query: string;
+								weight?: number;
+							}>,
+							deduplicate: params.deduplicate,
+							limit: params.limit,
+							mergeStrategy: params.mergeStrategy as "weighted" | "rank_fusion" | "interleave" | undefined,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatMergeResults(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: {
+							merged: [],
+							stats: { totalSources: 0, totalResults: 0, duplicatesRemoved: 0 },
+							error: errorMessage,
+						},
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: repograph_index
+		// ============================================
+		pi.registerTool({
+			name: "repograph_index",
+			label: "RepoGraph Index",
+			description:
+				"Build a RepoGraph index showing line-level code dependencies. Uses tree-sitter for AST-based analysis. More accurate than regex-based call graph for definition/reference extraction.",
+			parameters: Type.Object({
+				path: Type.Optional(
+					Type.String({ description: "Target path to index (default: project root)" })
+				),
+				force: Type.Optional(
+					Type.Boolean({ description: "Force rebuild even if index exists" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				try {
+					const result = await repographIndex(
+						{
+							path: params.path,
+							force: params.force,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatRepoGraphIndex(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, fileCount: 0, nodeCount: 0, edgeCount: 0, outputPath: "" },
+					};
+				}
+			},
+		});
+
+		// ============================================
+		// Tool: repograph_query
+		// ============================================
+		pi.registerTool({
+			name: "repograph_query",
+			label: "RepoGraph Query",
+			description:
+				"Query the RepoGraph index for symbols, definitions, references, and related nodes. Supports k-hop traversal for context extraction. Requires repograph_index to be built first.",
+			parameters: Type.Object({
+				type: Type.Union(
+					[
+						Type.Literal("symbol"),
+						Type.Literal("file"),
+						Type.Literal("definitions"),
+						Type.Literal("references"),
+						Type.Literal("related"),
+						Type.Literal("stats"),
+					],
+					{ description: "Query type" }
+				),
+				symbol: Type.Optional(
+					Type.String({ description: "Symbol name (for symbol, definitions, references queries)" })
+				),
+				file: Type.Optional(
+					Type.String({ description: "File path filter (for file queries)" })
+				),
+				nodeId: Type.Optional(
+					Type.String({ description: "Node ID for related queries (format: file:line)" })
+				),
+				depth: Type.Optional(
+					Type.Number({ description: "Traversal depth for related queries (default: 2)" })
+				),
+				limit: Type.Optional(
+					Type.Number({ description: "Maximum results (default: 100)" })
+				),
+			}),
+
+			async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+				const cwd = ctx?.cwd ?? process.cwd();
+
+				try {
+					const result = await repographQuery(
+						{
+							type: params.type as "symbol" | "file" | "definitions" | "references" | "related" | "stats",
+							symbol: params.symbol,
+							file: params.file,
+							nodeId: params.nodeId,
+							depth: params.depth,
+							limit: params.limit,
+						},
+						cwd
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: formatRepoGraphQuery(result),
+							},
+						],
+						details: result,
+					};
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					return {
+						content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+						details: { error: errorMessage, type: params.type, total: 0, truncated: false, nodes: [] },
 					};
 				}
 			},

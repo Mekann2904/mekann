@@ -2,7 +2,7 @@
 title: 拡張機能一覧
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-16
+last_updated: 2026-02-25
 tags: [extensions, overview]
 related: [./02-question.md, ./08-subagents.md, ./09-agent-teams.md]
 ---
@@ -32,6 +32,9 @@ pi拡張機能コレクションで利用可能なすべての拡張機能の概
 | **subagent_*** | サブエージェント | [→](./08-subagents.md) |
 | **agent_team_*** | エージェントチーム | [→](./09-agent-teams.md) |
 | **ul-dual-mode** | デュアルモード強制実行 | [→](./10-ul-dual-mode.md) |
+| **ul-workflow** | ULモードでタスク分解・実行 | [→](./16-ul-workflow.md) |
+| **cross-instance-runtime** | クロスインスタンス協調実行 | [→](./12-cross-instance-runtime.md) |
+| **dag-execution** | DAGベースの並列タスク実行 | [→](./18-dag-execution.md) |
 
 ### 検索
 
@@ -41,16 +44,56 @@ pi拡張機能コレクションで利用可能なすべての拡張機能の概
 | **code_search** | コードパターン検索（ripgrep対応） | 下記参照 |
 | **sym_index** | シンボルインデックス生成（ctags） | 下記参照 |
 | **sym_find** | シンボル定義検索 | 下記参照 |
+| **search-tools** | RepoGraphベースのコードローカライゼーション | [→](./15-search-tools.md) |
 
 ### 動的ツール
 
 | 拡張機能 | 説明 | 詳細 |
 |---------|------|------|
-| **create_tool** | 動的ツールの生成 | 下記参照 |
-| **run_dynamic_tool** | 動的ツールの実行 | 下記参照 |
-| **list_dynamic_tools** | ツール一覧表示 | 下記参照 |
-| **delete_dynamic_tool** | ツール削除 | 下記参照 |
-| **tool_reflection** | 実行後の反省とツール生成判定 | 下記参照 |
+| **create_tool** | 動的ツールの生成 | [→](./13-dynamic-tools.md) |
+| **run_dynamic_tool** | 動的ツールの実行 | [→](./13-dynamic-tools.md) |
+| **list_dynamic_tools** | ツール一覧表示 | [→](./13-dynamic-tools.md) |
+| **delete_dynamic_tool** | ツール削除 | [→](./13-dynamic-tools.md) |
+| **tool_reflection** | 実行後の反省とツール生成判定 | [→](./13-dynamic-tools.md) |
+
+### DAG実行
+
+| 拡張機能 | 説明 | 詳細 |
+|---------|------|------|
+| **subagent_run_dag** | DAGによる並列タスク実行 | [→](./18-dag-execution.md) |
+| **agent_team_run_dag** | チームによるDAG実行 | [→](./18-dag-execution.md) |
+
+### ランタイム・調整
+
+| 拡張機能 | 説明 | 詳細 |
+|---------|------|------|
+| **cross-instance-runtime** | マルチインスタンス間のレート制限調整 | [→](./12-cross-instance-runtime.md) |
+| **mediator** | インテントに基づくリソース調整 | [→](./20-mediator.md) |
+
+### 学習・改善
+
+| 拡張機能 | 説明 | 詳細 |
+|---------|------|------|
+| **self-improvement** | 自己改善システムとダッシュボード | [→](./17-self-improvement.md) |
+
+### モニタリング
+
+| 拡張機能 | 説明 | 詳細 |
+|---------|------|------|
+| **live-monitoring** | リアルタイムTUIモニタリング | [→](./19-live-monitoring.md) |
+
+### Git・統合
+
+| 拡張機能 | 説明 | 詳細 |
+|---------|------|------|
+| **gh_agent** | GitHubリポジトリの探索・操作 | [→](./21-github-agent.md) |
+| **enhanced_read** | 構文ハイライト付きファイル読み込み | [→](./22-enhanced-read.md) |
+
+### ドキュメント
+
+| 拡張機能 | 説明 | 詳細 |
+|---------|------|------|
+| **abdd** | 実態駆動開発（ABDD）ドキュメント生成 | [→](./23-abdd-extension.md) |
 
 ### ユーティリティ
 
@@ -587,6 +630,15 @@ run_dynamic_tool
 - [question](./02-question.md) - インタラクティブUIの詳細
 - [subagents](./08-subagents.md) - サブエージェントの詳細
 - [agent-teams](./09-agent-teams.md) - エージェントチームの詳細
+- [cross-instance-runtime](./12-cross-instance-runtime.md) - クロスインスタンス調整
+- [dynamic-tools](./13-dynamic-tools.md) - 動的ツールの詳細
+- [self-improvement](./17-self-improvement.md) - 自己改善システム
+- [dag-execution](./18-dag-execution.md) - DAG実行の詳細
+- [live-monitoring](./19-live-monitoring.md) - リアルタイムモニタリング
+- [mediator](./20-mediator.md) - リソース調整
+- [github-agent](./21-github-agent.md) - GitHubエージェント
+- [enhanced-read](./22-enhanced-read.md) - 拡張リード機能
+- [abdd-extension](./23-abdd-extension.md) - ABDD拡張機能
 
 ---
 
@@ -594,6 +646,7 @@ run_dynamic_tool
 
 - [Getting Started](../01-getting-started/) - インストールと初回使用
 - [Developer Guide](../03-development/) - 拡張機能の開発
+- [検索ツール](./15-search-tools.md) - コードベースの検索
 
 ## 次のトピック
 

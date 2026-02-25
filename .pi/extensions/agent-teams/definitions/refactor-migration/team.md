@@ -6,6 +6,7 @@ enabled: enabled
 strategy: parallel
 skills:
   - diff-analyzer         # チーム共通: 差分分析
+  - repograph-localization # チーム共通: RepoGraphベースのコード位置特定
 members:
   - id: impact-analyst
     role: Impact Analyst

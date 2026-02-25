@@ -175,7 +175,13 @@ export default function registerMediatorExtension(pi: ExtensionAPI) {
     },
 
     renderResult(result, _options, theme) {
-      const details = (result as any)?.details;
+      interface MediatorResult {
+        details?: { status?: string; confidence?: number };
+      }
+      function hasMediatorDetails(value: unknown): value is MediatorResult {
+        return typeof value === "object" && value !== null && "details" in value;
+      }
+      const details = hasMediatorDetails(result) ? result.details : undefined;
       if (!details) {
         return new Text(theme.fg("warning", "mediator result unavailable"), 0, 0);
       }

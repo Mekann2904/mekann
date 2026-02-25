@@ -2,7 +2,7 @@
 title: learnable-mode-selector
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -500,4 +500,4 @@ interface LearnableSelectorOptions {
 選択器作成オプション
 
 ---
-*自動生成: 2026-02-23T06:29:42.353Z*
+*自動生成: 2026-02-24T17:08:02.706Z*

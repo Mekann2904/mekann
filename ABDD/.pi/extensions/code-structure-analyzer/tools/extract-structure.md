@@ -2,7 +2,7 @@
 title: extract-structure
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -769,4 +769,4 @@ interface VisitorCallbacks {
 ```
 
 ---
-*自動生成: 2026-02-23T06:29:41.890Z*
+*自動生成: 2026-02-24T17:08:02.158Z*

@@ -40,6 +40,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { highlightCode, getLanguageFromPath } from "@mariozechner/pi-coding-agent";
 import { Container, Text, matchesKey } from "@mariozechner/pi-tui";
 
+import type { Theme } from "../lib/tui/types.js";
+
 /**
  * @summary 行番号付きでコードをフォーマット
  * @param lines - コード行の配列
@@ -50,7 +52,7 @@ import { Container, Text, matchesKey } from "@mariozechner/pi-tui";
 function formatLinesWithNumbers(
 	lines: string[],
 	startLine: number,
-	theme: { fg: (color: any, text: string) => string }
+	theme: Theme
 ): string[] {
 	const maxLineNum = startLine + lines.length - 1;
 	const width = maxLineNum.toString().length;
@@ -74,7 +76,7 @@ function createCodePanel(
 	code: string,
 	language: string | undefined,
 	filePath: string | undefined,
-	theme: { fg: (color: any, text: string) => string; bold: (text: string) => string }
+	theme: Theme
 ): Container {
 	const container = new Container();
 
@@ -187,7 +189,7 @@ export default function (pi: ExtensionAPI): void {
 				// オーバーレイパネルを表示
 				const result = await ctx.ui.custom<string | null>(
 					(tui, theme, _keybindings, done) => {
-						const panel = createCodePanel(code, language, filePath, theme);
+						const panel = createCodePanel(code, language, filePath, theme as Theme);
 
 						return {
 							render: (width: number) => panel.render(width),

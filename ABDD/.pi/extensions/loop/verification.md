@@ -2,7 +2,7 @@
 title: verification
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -415,4 +415,4 @@ type VerificationPolicyMode = "always" | "done_only" | "every_n"
 検証ポリシーのモード
 
 ---
-*自動生成: 2026-02-23T06:29:42.027Z*
+*自動生成: 2026-02-24T17:08:02.268Z*

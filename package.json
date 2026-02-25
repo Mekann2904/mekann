@@ -6,7 +6,9 @@
     "node": ">=20.18.1"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.34.48"
+    "@sinclair/typebox": "^0.34.48",
+    "async-mutex": "^0.5.0",
+    "web-tree-sitter": "^0.26.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",
@@ -53,23 +55,33 @@
       "./.pi/extensions/agent-teams/extension.ts",
       "./.pi/extensions/agent-usage-tracker.ts",
       "./.pi/extensions/append-system-loader.ts",
+      "./.pi/extensions/code-panel.ts",
       "./.pi/extensions/code-structure-analyzer/extension.ts",
+      "./.pi/extensions/code-viewer.ts",
       "./.pi/extensions/context-usage-dashboard.ts",
       "./.pi/extensions/cross-instance-runtime.ts",
       "./.pi/extensions/dynamic-tools.ts",
+      "./.pi/extensions/enhanced-read.ts",
       "./.pi/extensions/github-agent.ts",
       "./.pi/extensions/invariant-pipeline.ts",
       "./.pi/extensions/kitty-status-integration.ts",
       "./.pi/extensions/loop.ts",
+      "./.pi/extensions/mediator.ts",
       "./.pi/extensions/self-improvement-loop.ts",
+      "./.pi/extensions/self-improvement-dashboard.ts",
+      "./.pi/extensions/self-improvement-reflection.ts",
       "./.pi/extensions/plan.ts",
       "./.pi/extensions/question.ts",
+      "./.pi/extensions/repograph-localization/index.ts",
       "./.pi/extensions/search/index.ts",
       "./.pi/extensions/skill-inspector.ts",
       "./.pi/extensions/startup-context.ts",
       "./.pi/extensions/subagents.ts",
       "./.pi/extensions/rpm-throttle.ts",
+      "./.pi/extensions/tool-compiler.ts",
+      "./.pi/extensions/ul-diagnostic.ts",
       "./.pi/extensions/ul-dual-mode.ts",
+      "./.pi/extensions/ul-workflow.ts",
       "./.pi/extensions/usage-tracker.ts"
     ],
     "skills": [

@@ -2,7 +2,7 @@
 title: extension
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from 'node:os': homedir
 // from 'node:path': basename, join
 // from '@mariozechner/pi-ai': Type
-// ... and 41 more imports
+// ... and 44 more imports
 ```
 
 ## エクスポート一覧
@@ -74,7 +74,12 @@ sequenceDiagram
   Internal->>Unresolved: defaultIds.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Internal->>Unresolved: storage.teams.some (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Team: チーム一覧表示用文字列生成
-  Team->>Unresolved: lines.join (node_modules/typescript/lib/lib.es5.d.ts)
+  Team->>Unresolved: storage.teams.filter (node_modules/typescript/lib/lib.es5.d.ts)
+  Team->>Unresolved: parentToPhases.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Team->>Unresolved: phases.map(p => p.replace(/^.*-p(\d+)$/, 'p$1')).join (node_modules/typescript/lib/lib.es5.d.ts)
+  Team->>Unresolved: team.description.substring (node_modules/typescript/lib/lib.es5.d.ts)
+  Team->>Unresolved: phases.sort (node_modules/typescript/lib/lib.es5.d.ts)
+  Team->>Unresolved: storage.teams.find (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System-->>User: 結果
 
 ```
@@ -232,9 +237,9 @@ sequenceDiagram
   Runtime->>Internal: clampPlannedCount
   Runtime->>Internal: createRuntimeQueueEntryId
   Runtime->>Internal: runtimeNow
-  Runtime->>Internal: 優先度を推論
-  Internal->>Unresolved: lowerToolName.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  Internal->>Unresolved: lowerToolName.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Runtime->>Internal: 優先度推論
+  Internal->>Unresolved: toolName.toLowerCase().trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: normalized.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Runtime->>Internal: toQueueClass
   Runtime->>Internal: trimPendingQueueToLimit
   Runtime->>Internal: sortQueueByPriority
@@ -297,7 +302,6 @@ sequenceDiagram
   Internal->>Unresolved: date.getMinutes (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: date.getSeconds (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Internal: 文字列正規化
-  Internal->>Unresolved: input.replace(/\s+/g, ' ').trim (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: normalizeCache.keys().next (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Internal->>Unresolved: normalizeCache.keys (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   Internal->>Unresolved: normalizeCache.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
@@ -325,7 +329,9 @@ sequenceDiagram
   Team->>Unresolved: ensurePaths (.pi/extensions/agent-teams/storage.ts)
   Team->>Unresolved: result.diagnostics.confidence.toFixed (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Runtime: 指定した並行数制限で非同期タスクを実行する
+  Runtime->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Runtime->>Internal: toPositiveLimit
+  Runtime->>Unresolved: items       .map((item, index) => ({         index,         weight: itemWeights.get(getItemId(item)) ?? 1.0,       }))       .sort (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Internal: 親に連動する中止制御
   Internal->>Unresolved: controller.abort (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Internal: addEventListener
@@ -341,7 +347,6 @@ sequenceDiagram
   Internal->>Internal: loadPatternStorage
   Internal->>Internal: キーワード抽出
   Internal->>Internal: タスク分類
-  Internal->>Unresolved: scored     .filter((s) => s.score > 0)     .sort (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Internal: buildTeamMemberPrompt
   Team->>Runtime: レート制限キー生成
   Team->>Internal: バックオフ再試行実行
@@ -387,6 +392,7 @@ sequenceDiagram
   System->>Storage: パターン付き保存
   System->>Unresolved: pi.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
   System->>Internal: エラーを圧力関連のカテゴリに分類する
+  Internal->>Unresolved: message.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Internal: extractStatusCodeFromMessage
   System->>Internal: lower
   Internal->>Internal: decay
@@ -464,6 +470,8 @@ sequenceDiagram
   Internal->>Unresolved: Object.prototype.hasOwnProperty.call (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
   Judge->>Internal: タイムアウトを正規化
+  System->>Internal: aggregationStrategyパラメータを正規化する
+  Internal->>Unresolved: validStrategies.includes (node_modules/typescript/lib/lib.es2016.array.include.d.ts)
   System->>Runtime: スナップショットを取得
   Runtime->>Internal: getSharedRuntimeState
   Runtime->>Internal: cleanupExpiredReservations
@@ -479,9 +487,8 @@ sequenceDiagram
   Runtime->>Internal: clampPlannedCount
   Runtime->>Internal: createRuntimeQueueEntryId
   Runtime->>Internal: runtimeNow
-  Runtime->>Internal: 優先度を推論
-  Internal->>Unresolved: lowerToolName.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  Internal->>Unresolved: lowerToolName.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Runtime->>Internal: 優先度推論
+  Internal->>Unresolved: normalized.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Runtime->>Internal: toQueueClass
   Runtime->>Internal: trimPendingQueueToLimit
   Runtime->>Unresolved: runtime.queue.pending.push (node_modules/typescript/lib/lib.es5.d.ts)
@@ -555,16 +562,10 @@ sequenceDiagram
   System->>Internal: コスト推定インスタンス取得
   System->>Internal: コスト推定デバッグログ出力
   Internal->>Unresolved: Object.entries (node_modules/typescript/lib/lib.es2017.object.d.ts)
-  System->>Runtime: 指定した並行数制限で非同期タスクを実行する
-  Runtime->>Internal: toPositiveLimit
-  Runtime->>Internal: 親に連動する中止制御
+  System->>Internal: 親に連動する中止制御
   Internal->>Unresolved: controller.abort (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Internal: addEventListener
   Internal->>Internal: removeEventListener
-  Runtime->>Internal: ensureNotAborted
-  Runtime->>Internal: isPoolAbortError
-  Runtime->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
-  Runtime->>Internal: runWorker
   System->>Team: チームタスク実行
   Team->>Internal: キャッシュクリア
   Internal->>Unresolved: beliefStateCacheByTeam.clear (node_modules/typescript/lib/lib.es2015.collection.d.ts)
@@ -576,6 +577,13 @@ sequenceDiagram
   Executor->>Internal: randomBytes
   Team->>Unresolved: ensurePaths (.pi/extensions/agent-teams/storage.ts)
   Team->>Unresolved: result.diagnostics.confidence.toFixed (node_modules/typescript/lib/lib.es5.d.ts)
+  Team->>Runtime: 指定した並行数制限で非同期タスクを実行する
+  Runtime->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
+  Runtime->>Internal: toPositiveLimit
+  Runtime->>Internal: ensureNotAborted
+  Runtime->>Internal: isPoolAbortError
+  Runtime->>Unresolved: Promise.all (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
+  Runtime->>Internal: runWorker
   Team->>Internal: createChildAbort
   Team->>Team: タスクを実行
   Team->>Internal: 関連パターンを検索
@@ -636,6 +644,8 @@ sequenceDiagram
   Judge->>Internal: computeProxyUncertainty
   Judge->>Internal: 値を制限
   System->>Storage: writeFileSync
+  System->>Team: チーム重み計算
+  Team->>Internal: getAgentSpecializationWeight
   System->>Unresolved: pi.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
   System->>Internal: エラーを圧力関連のカテゴリに分類する
   Internal->>Internal: extractStatusCodeFromMessage
@@ -643,6 +653,11 @@ sequenceDiagram
   System->>Runtime: 並列実行判定
   Runtime->>Internal: resolveTeamMemberAggregateOutcome
   Runtime->>Internal: resolveTeamFailureOutcome
+  System->>Team: チーム結果集約
+  Team->>Internal: aggregateRuleBased
+  Team->>Internal: aggregateMajorityVote
+  Team->>Internal: aggregateBestConfidence
+  Team->>Internal: aggregateWithLLM
   System->>Team: チーム結果構築
   Team->>Unresolved: left.memberId.localeCompare (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
@@ -743,6 +758,16 @@ sequenceDiagram
 
 ## 図解
 
+### クラス図
+
+```mermaid
+classDiagram
+  class AggregationConfig {
+    <<interface>>
+    +strategy: AggregationStrategy
+  }
+```
+
 ### 依存関係図
 
 ```mermaid
@@ -751,11 +776,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
+    tool_compiler["tool-compiler"]
+    tool_compiler_types["tool-compiler-types"]
     fs_utils["fs-utils"]
     format_utils["format-utils"]
     live_view_utils["live-view-utils"]
-    tui_utils["tui-utils"]
-    error_utils["error-utils"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -770,6 +795,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
+  normalizeAggregationConfig["normalizeAggregationConfig()"]
   onRuntimeMemberEnd["onRuntimeMemberEnd()"]
   onRuntimeMemberStart["onRuntimeMemberStart()"]
   refreshRuntimeStatus["refreshRuntimeStatus()"]
@@ -779,6 +805,7 @@ flowchart TD
   onRuntimeMemberEnd --> refreshRuntimeStatus
   onRuntimeMemberStart --> refreshRuntimeStatus
   refreshRuntimeStatus --> refreshRuntimeStatus
+  registerAgentTeamsExtension --> normalizeAggregationConfig
   registerAgentTeamsExtension --> onRuntimeMemberEnd
   registerAgentTeamsExtension --> onRuntimeMemberStart
   registerAgentTeamsExtension --> refreshRuntimeStatus
@@ -794,18 +821,44 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant extension as "extension"
   participant mariozechner as "@mariozechner"
-  participant fs_utils as "fs-utils"
-  participant format_utils as "format-utils"
+  participant tool_compiler as "tool-compiler"
+  participant tool_compiler_types as "tool-compiler-types"
 
   Caller->>extension: registerAgentTeamsExtension()
   extension->>mariozechner: API呼び出し
   mariozechner-->>extension: レスポンス
-  extension->>fs_utils: 内部関数呼び出し
-  fs_utils-->>extension: 結果
+  extension->>tool_compiler: 内部関数呼び出し
+  tool_compiler-->>extension: 結果
   extension-->>Caller: void
 ```
 
 ## 関数
+
+### isToolCompilerEnabled
+
+```typescript
+isToolCompilerEnabled(): boolean
+```
+
+Check if Tool Compiler is enabled via environment variable
+
+**戻り値**: `boolean`
+
+### fuseMemberToolsIfEnabled
+
+```typescript
+fuseMemberToolsIfEnabled(memberTools: Map<string, Array<{ name: string; arguments: Record<string, unknown> }>>): Map<string, Array<{ name: string; description: string; parameters: Record<string, unknown> }>>
+```
+
+Fuse member tools if Tool Compiler is enabled
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| memberTools | `Map<string, Array<{ name: string; arguments: Re...` | はい |
+
+**戻り値**: `Map<string, Array<{ name: string; description: string; parameters: Record<string, unknown> }>>`
 
 ### toRetryOverrides
 
@@ -820,6 +873,23 @@ toRetryOverrides(value: unknown): RetryWithBackoffOverrides | undefined
 | value | `unknown` | はい |
 
 **戻り値**: `RetryWithBackoffOverrides | undefined`
+
+### normalizeAggregationConfig
+
+```typescript
+normalizeAggregationConfig(param: unknown): AggregationConfig
+```
+
+aggregationStrategyパラメータを正規化する
+デフォルトは'rule-based'（後方互換性維持）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| param | `unknown` | はい |
+
+**戻り値**: `AggregationConfig`
 
 ### refreshRuntimeStatus
 
@@ -944,6 +1014,32 @@ onRuntimeMemberEnd(): void
 
 **戻り値**: `void`
 
+### runTeamWorker
+
+```typescript
+async runTeamWorker(team: TeamDefinition): Promise<TeamRunResult>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| team | `TeamDefinition` | はい |
+
+**戻り値**: `Promise<TeamRunResult>`
+
+## インターフェース
+
+### AggregationConfig
+
+```typescript
+interface AggregationConfig {
+  strategy: AggregationStrategy;
+}
+```
+
+集約戦略の正規化結果
+
 ## 型定義
 
 ### LiveViewMode
@@ -952,5 +1048,18 @@ onRuntimeMemberEnd(): void
 type LiveViewMode = TeamLiveViewMode
 ```
 
+### TeamRunResult
+
+```typescript
+type TeamRunResult = {
+          team: TeamDefinition;
+          runRecord: TeamRunRecord;
+          memberResults: TeamMemberResult[];
+          communicationAudit: TeamCommunicationAuditEntry[];
+          uncertaintyProxy?: TeamUncertaintyProxy;
+          uncertaintyProxyExplanation?: JudgeExplanation;
+        }
+```
+
 ---
-*自動生成: 2026-02-23T06:29:41.836Z*
+*自動生成: 2026-02-24T17:08:02.089Z*

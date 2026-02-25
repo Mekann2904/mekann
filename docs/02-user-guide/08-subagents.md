@@ -2,8 +2,8 @@
 title: subagents - サブエージェント
 category: user-guide
 audience: daily-user
-last_updated: 2026-02-11
-tags: [subagent, orchestration, delegation]
+last_updated: 2026-02-25
+tags: [subagent, orchestration, delegation, dag]
 related: [../README.md, ./01-extensions.md, ./09-agent-teams.md]
 ---
 
@@ -671,6 +671,134 @@ subagent_run({
     jitter: "partial"           // 部分的ジッター
   }
 })
+```
+
+---
+
+## subagent_run_dag - DAGベース実行
+
+依存関係を持つタスクをDAG（有向非巡回グラフ）として分解し、依存関係に基づいて並列実行します。
+
+### 基本的な使い方
+
+```typescript
+// plan省略時は自動DAG生成
+subagent_run_dag({
+  task: "認証システムを実装してテストを追加"
+})
+```
+
+### 自動DAG生成
+
+`plan`パラメータを省略すると、タスクから自動的にDAGを生成します：
+
+```typescript
+// 入力タスク
+"認証システムを実装してテストを追加"
+
+// 自動生成されるDAG
+{
+  tasks: [
+    { id: "research", description: "調査...", dependencies: [], assignedAgent: "researcher" },
+    { id: "implement", description: "実装...", dependencies: ["research"], assignedAgent: "implementer" },
+    { id: "test", description: "テスト作成...", dependencies: ["implement"], assignedAgent: "tester" }
+  ]
+}
+```
+
+### 明示的なプラン指定
+
+```typescript
+subagent_run_dag({
+  task: "APIリファクタリング",
+  plan: {
+    id: "api-refactor",
+    description: "APIリファクタリング",
+    tasks: [
+      {
+        id: "research",
+        description: "現在のAPI構造を調査",
+        assignedAgent: "researcher",
+        dependencies: []
+      },
+      {
+        id: "impl-auth",
+        description: "認証APIを実装",
+        assignedAgent: "implementer",
+        dependencies: ["research"]
+      },
+      {
+        id: "impl-users",
+        description: "ユーザーAPIを実装",
+        assignedAgent: "implementer",
+        dependencies: ["research"]
+      },
+      {
+        id: "review",
+        description: "コードレビュー",
+        assignedAgent: "reviewer",
+        dependencies: ["impl-auth", "impl-users"]
+      }
+    ]
+  },
+  maxConcurrency: 3
+})
+```
+
+### パラメータ
+
+| パラメータ | 型 | 必須 | 説明 |
+|-----------|---|----|------|
+| `task` | string | Yes | 実行するタスク |
+| `plan` | TaskPlan | No | 明示的なDAGプラン（省略時は自動生成） |
+| `autoGenerate` | boolean | No | plan省略時に自動生成するか（デフォルト: true） |
+| `maxConcurrency` | number | No | 最大並列数（デフォルト: 3） |
+| `abortOnFirstError` | boolean | No | 最初のエラーで中止するか（デフォルト: false） |
+| `timeoutMs` | number | No | タスクあたりのタイムアウト（デフォルト: 300000） |
+
+### 実行パターン
+
+#### Fan-out パターン
+```
+       ┌── impl-auth
+research ├── impl-users
+       └── impl-products
+```
+
+#### Fan-in パターン
+```
+impl-auth ─┐
+impl-users ─┼── review
+impl-prods ─┘
+```
+
+#### Diamond パターン
+```
+       ┌── impl-auth ──┐
+research │              ├── review
+       └── impl-users ─┘
+```
+
+### 自動生成の依存ルール
+
+| エージェント | 依存先 |
+|-------------|--------|
+| `researcher` | なし |
+| `implementer` | `researcher`（存在する場合） |
+| `tester` | すべての`implementer` |
+| `reviewer` | すべての`implementer` |
+
+### 実行例
+
+```
+[subagent_run_dag] Auto-generated plan: auto-1708800000-abc123 (3 tasks, max depth: 2)
+
+Tasks:
+  - research [researcher]: 認証システムに関連するコードベースを調査...
+  - implement [implementer] (deps: research): 認証システムを実装してテストを追加
+  - test [tester] (deps: implement): 単体テストと統合テストを作成...
+
+Executing with maxConcurrency=3...
 ```
 
 ---

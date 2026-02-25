@@ -47,6 +47,8 @@ import { Type } from "@sinclair/typebox";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+import { toErrorMessage } from "../lib/error-utils.js";
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -1301,8 +1303,8 @@ export default (api: ExtensionAPI) => {
           errors: result.errors,
           duration_ms: durationMs,
         };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+      } catch (error: unknown) {
+        const errorMessage = toErrorMessage(error);
         console.error(`[invariant-pipeline] Generation failed: ${errorMessage}`);
         return {
           success: false,
@@ -1373,8 +1375,8 @@ export default (api: ExtensionAPI) => {
           has_invariants: hasInvariants,
           liveness_checked: params.check_liveness ?? false,
         };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+      } catch (error: unknown) {
+        const errorMessage = toErrorMessage(error);
         return {
           success: false,
           error: errorMessage,
@@ -1417,8 +1419,8 @@ export default (api: ExtensionAPI) => {
           warnings: output.warnings,
           errors: output.errors,
         };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+      } catch (error: unknown) {
+        const errorMessage = toErrorMessage(error);
         return {
           success: false,
           error: errorMessage,
@@ -1463,8 +1465,8 @@ export default (api: ExtensionAPI) => {
           warnings: output.warnings,
           errors: output.errors,
         };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+      } catch (error: unknown) {
+        const errorMessage = toErrorMessage(error);
         return {
           success: false,
           error: errorMessage,
@@ -1509,8 +1511,8 @@ export default (api: ExtensionAPI) => {
           warnings: output.warnings,
           errors: output.errors,
         };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+      } catch (error: unknown) {
+        const errorMessage = toErrorMessage(error);
         return {
           success: false,
           error: errorMessage,

@@ -35,6 +35,7 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 import { Type, Static } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import * as ts from "typescript";
 import {
 	AbddError,
 	AbddErrorCodes,
@@ -110,6 +111,7 @@ const AbddAnalyzeParams = Type.Object({
 	checkInvariants: Type.Optional(Type.Boolean({ description: "不変条件チェックを実行（デフォルト: true）" })),
 	checkValues: Type.Optional(Type.Boolean({ description: "価値観チェックを実行（デフォルト: true）" })),
 	checkJSDoc: Type.Optional(Type.Boolean({ description: "JSDoc欠落チェックを実行（デフォルト: true）" })),
+	useAST: Type.Optional(Type.Boolean({ description: "ASTベースの検出を使用（デフォルト: true）" })),
 });
 type AbddAnalyzeParamsType = Static<typeof AbddAnalyzeParams>;
 
@@ -467,12 +469,19 @@ CI用途: check: true でJSDocがない要素数を確認
 	pi.registerTool({
 		name: "abdd_analyze",
 		label: "ABDD Analyze",
-		description: `ABDD乖離分析ツール。意図記述（philosophy.md、spec.md）と実態記述（ABDD/.pi/**/*.md）を比較し、乖離候補を抽出。
+		description: `ABDD乖離分析ツール。意図記述（philosophy.md、spec.md）と実態記述（ABDD/.pi/**/*.md）およびソースコードを比較し、乖離候補を抽出。
 
 検出パターン:
 1. 不変条件違反: spec.mdの未チェック項目と実装の不一致
 2. 価値観ミスマッチ: philosophy.mdの禁則パターンの検出
+   - テキストベース: ドキュメント内のコードブロックを検査
+   - ASTベース: ソースコードを直接AST解析（高精度）
 3. 契約違反: インターフェースの約束と実装の不一致
+
+AST検出の特徴:
+- exec/spawn系の呼び出しを構文的に検出
+- テストコード・モックを自動除外
+- 偽陽性を大幅に削減
 
 出力形式:
 \`\`\`typescript
@@ -482,7 +491,7 @@ CI用途: check: true でJSDocがない要素数を確認
 }
 \`\`\`
 
-注意: 機械的検出のため偽陽性を含みます。人間による最終判断が必要。`,
+注意: テキストベース検出は偽陽性を含む可能性があります。AST検出（useAST: true）を推奨。`,
 		parameters: AbddAnalyzeParams,
 		async execute(_toolCallId, params: AbddAnalyzeParamsType, _signal, _onUpdate, _ctx) {
 			const verbose = params.verbose === true;
@@ -545,7 +554,7 @@ CI用途: check: true でJSDocがない要素数を確認
 				divergences.push(...invariantDivergences);
 			}
 
-			// 2. 価値観ミスマッチの検出
+			// 2. 価値観ミスマッチの検出（テキストベース）
 			if (checkValues && philosophyContent) {
 				const valueDivergences = detectValueMismatches(philosophyContent, realityFiles);
 				divergences.push(...valueDivergences);
@@ -555,6 +564,27 @@ CI用途: check: true でJSDocがない要素数を確認
 			if (checkJSDoc && realityFiles.length > 0) {
 				const jsdocDivergences = detectJSDocMissing(realityFiles);
 				divergences.push(...jsdocDivergences);
+			}
+
+			// 4. ASTベースの価値観ミスマッチ検出（高精度）
+			if (params.useAST !== false && checkValues) {
+				try {
+					const astDivergences = runASTDetection(verbose);
+					// テキストベースと重複する可能性があるため、フィルタリング
+					for (const astDiv of astDivergences) {
+						const isDuplicate = divergences.some(
+							(existing) =>
+								existing.type === astDiv.type &&
+								existing.reality.text === astDiv.reality.text
+						);
+						if (!isDuplicate) {
+							divergences.push(astDiv);
+						}
+					}
+				} catch (error) {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					warnings.push(`AST検出でエラーが発生しました: ${errorMsg}`);
+				}
 			}
 
 			// サマリーの作成
@@ -1021,3 +1051,721 @@ export const ABDD_ANALYZE_TEST_PATTERNS = {
 		description: "コメントコンテキストを含む場合は偽陽性として除外",
 	},
 };
+
+// ============================================================================
+// AST-Based Divergence Detection
+// ============================================================================
+
+/** AST検出用パターン定義 */
+interface ASTDetectionPattern {
+	type: DivergenceType;
+	severity: Severity;
+	pattern: RegExp;
+	description: string;
+	philosophyRef: string;
+}
+
+/** AST検出用コンテキスト */
+interface ASTNodeContext {
+	isInTest: boolean;
+	isInMock: boolean;
+	isInTypeDefinition: boolean;
+	parentFunctionName: string | null;
+	parentClassName: string | null;
+	sourceFile: ts.SourceFile;
+}
+
+/** AST検出結果 */
+interface ASTDetectionResult {
+	divergence: Divergence;
+	location: {
+		file: string;
+		line: number;
+		column: number;
+	};
+	context: ASTNodeContext;
+}
+
+/** 禁止パターン定義（AST検出用） */
+const AST_PROHIBITION_PATTERNS: ASTDetectionPattern[] = [
+	// Git関連
+	{
+		type: "value_mismatch",
+		severity: "high",
+		pattern: /\bgit\s+add\s+\./,
+		description: "git add . の使用",
+		philosophyRef: "git add .の安易な使用は禁止",
+	},
+	{
+		type: "value_mismatch",
+		severity: "high",
+		pattern: /\bgit\s+add\s+-A\b/,
+		description: "git add -A の使用",
+		philosophyRef: "git add -Aの安易な使用は禁止",
+	},
+	{
+		type: "value_mismatch",
+		severity: "high",
+		pattern: /\bgit\s+add\s+--all\b/,
+		description: "git add --all の使用",
+		philosophyRef: "git add --allの安易な使用は禁止",
+	},
+	// セキュリティ関連
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\bpassword\s*[:=]\s*["'][^"']+["']/i,
+		description: "パスワードのハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\bapi[_-]?key\s*[:=]\s*["'][^"']+["']/i,
+		description: "APIキーのハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\bsecret[_-]?key\s*[:=]\s*["'][^"']+["']/i,
+		description: "シークレットキーのハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\bprivate[_-]?key\s*[:=]\s*["']-----BEGIN/i,
+		description: "秘密鍵のハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	{
+		type: "invariant_violation",
+		severity: "high",
+		pattern: /\btoken\s*[:=]\s*["'][a-zA-Z0-9_-]{20,}["']/i,
+		description: "トークンのハードコード",
+		philosophyRef: "機密情報は環境変数で管理",
+	},
+	// 危険な関数
+	{
+		type: "value_mismatch",
+		severity: "medium",
+		pattern: /\beval\s*\(/,
+		description: "eval()の使用",
+		philosophyRef: "evalの使用はセキュリティリスクがあるため避ける",
+	},
+	{
+		type: "value_mismatch",
+		severity: "medium",
+		pattern: /\bFunction\s*\(/,
+		description: "Function()コンストラクタの使用",
+		philosophyRef: "動的コード生成はセキュリティリスクがあるため避ける",
+	},
+];
+
+/** コマンド実行関数のリスト */
+const COMMAND_EXEC_FUNCTIONS = [
+	"exec",
+	"execSync",
+	"spawn",
+	"spawnSync",
+	"execFile",
+	"execFileSync",
+	"execa",
+	"execaSync",
+	"$",
+	"run",
+];
+
+/** テスト関数パターン */
+const TEST_FUNCTION_PATTERNS = [
+	"describe",
+	"it",
+	"test",
+	"beforeEach",
+	"afterEach",
+	"beforeAll",
+	"afterAll",
+	"expect",
+];
+
+/**
+ * ASTベースの乖離検出器
+ * ソースコードを直接AST解析し、価値観・不変条件の違反を高精度で検出する
+ * 
+ * データフロー解析により、変数経由の実行も検出可能:
+ * - const cmd = "git add ."; execSync(cmd); → 検出可能
+ * - const flag = "."; execSync(`git add ${flag}`); → 部分検出
+ */
+export class ASTDivergenceDetector {
+	private divergences: ASTDetectionResult[] = [];
+	
+	/** 変数の値を追跡するマップ（スコープ単位） */
+	private variableValues: Map<string, string> = new Map();
+
+	/**
+	 * ファイルを解析して乖離を検出
+	 */
+	analyzeFile(filePath: string): ASTDetectionResult[] {
+		if (!fs.existsSync(filePath)) {
+			return [];
+		}
+
+		const sourceCode = fs.readFileSync(filePath, "utf-8");
+		const sourceFile = ts.createSourceFile(
+			filePath,
+			sourceCode,
+			ts.ScriptTarget.Latest,
+			true,
+			ts.ScriptKind.TSX
+		);
+
+		this.divergences = [];
+		this.variableValues = new Map(); // ファイルごとにリセット
+		this.visitNode(sourceFile, sourceFile, this.createInitialContext(sourceFile));
+		return this.divergences;
+	}
+
+	/**
+	 * 複数ファイルを一括解析
+	 */
+	analyzeFiles(filePaths: string[]): ASTDetectionResult[] {
+		const allResults: ASTDetectionResult[] = [];
+		for (const filePath of filePaths) {
+			try {
+				const results = this.analyzeFile(filePath);
+				allResults.push(...results);
+			} catch (error) {
+				// エラーが発生したファイルはスキップ
+				console.warn(`[AST] 解析エラー: ${filePath}`, error);
+			}
+		}
+		return allResults;
+	}
+
+	/**
+	 * 初期コンテキスト作成
+	 */
+	private createInitialContext(sourceFile: ts.SourceFile): ASTNodeContext {
+		return {
+			isInTest: false,
+			isInMock: false,
+			isInTypeDefinition: false,
+			parentFunctionName: null,
+			parentClassName: null,
+			sourceFile,
+		};
+	}
+
+	/**
+	 * ASTノードを再帰的に訪問
+	 */
+	private visitNode(
+		node: ts.Node,
+		sourceFile: ts.SourceFile,
+		context: ASTNodeContext
+	): void {
+		// コンテキストを更新
+		const updatedContext = this.updateContext(node, context);
+
+		// ノードタイプ別の処理
+		if (ts.isCallExpression(node)) {
+			this.checkCallExpression(node, sourceFile, updatedContext);
+		} else if (ts.isPropertyAssignment(node)) {
+			this.checkPropertyAssignment(node, sourceFile, updatedContext);
+		} else if (ts.isVariableDeclaration(node)) {
+			// 変数宣言を追跡（データフロー解析）
+			this.trackVariableDeclaration(node);
+		}
+
+		// 子ノードを再帰的に訪問
+		ts.forEachChild(node, (child) => {
+			this.visitNode(child, sourceFile, updatedContext);
+		});
+	}
+
+	/**
+	 * コンテキストを更新
+	 */
+	private updateContext(node: ts.Node, context: ASTNodeContext): ASTNodeContext {
+		const newContext = { ...context };
+
+		// 関数内かどうか
+		if (ts.isFunctionDeclaration(node) && node.name) {
+			newContext.parentFunctionName = node.name.text;
+			newContext.isInTest = this.isTestFunction(node.name.text);
+		}
+
+		// メソッド内かどうか
+		if (ts.isMethodDeclaration(node)) {
+			const methodName = (node.name as ts.Identifier).text;
+			newContext.parentFunctionName = methodName;
+			newContext.isInTest = this.isTestFunction(methodName);
+		}
+
+		// アロー関数の変数宣言
+		if (ts.isVariableDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+			newContext.parentFunctionName = node.name.text;
+			newContext.isInTest = this.isTestFunction(node.name.text);
+		}
+
+		// クラス内かどうか
+		if (ts.isClassDeclaration(node) && node.name) {
+			newContext.parentClassName = node.name.text;
+		}
+
+		// 型定義内かどうか
+		if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) {
+			newContext.isInTypeDefinition = true;
+		}
+
+		// モック内かどうか
+		if (ts.isCallExpression(node) && this.isMockContext(node)) {
+			newContext.isInMock = true;
+		}
+
+		return newContext;
+	}
+
+	/**
+	 * テスト関数かどうか判定
+	 */
+	private isTestFunction(name: string): boolean {
+		return TEST_FUNCTION_PATTERNS.some(
+			(pattern) =>
+				name === pattern ||
+				name.startsWith(pattern) ||
+				name.endsWith(pattern)
+		);
+	}
+
+	/**
+	 * モックコンテキストかどうか判定
+	 */
+	private isMockContext(node: ts.CallExpression): boolean {
+		const callee = node.expression;
+		if (ts.isIdentifier(callee)) {
+			const name = callee.text;
+			return (
+				name.includes("mock") ||
+				name.includes("stub") ||
+				name.includes("fake") ||
+				name === "jest.fn" ||
+				name === "vi.fn" ||
+				name === "sinon"
+			);
+		}
+		if (ts.isPropertyAccessExpression(callee)) {
+			const fullText = callee.getText();
+			return (
+				fullText.includes("mock") ||
+				fullText.includes("stub") ||
+				fullText.includes("fn")
+			);
+		}
+		return false;
+	}
+
+	/**
+	 * CallExpression をチェック
+	 */
+	private checkCallExpression(
+		node: ts.CallExpression,
+		sourceFile: ts.SourceFile,
+		context: ASTNodeContext
+	): void {
+		// テスト・モック内はスキップ
+		if (context.isInTest || context.isInMock) return;
+
+		const callee = node.expression;
+		const functionName = this.getFunctionName(callee);
+
+		// コマンド実行関数かチェック
+		if (functionName && COMMAND_EXEC_FUNCTIONS.includes(functionName)) {
+			const args = node.arguments;
+			if (args.length > 0) {
+				const firstArg = args[0];
+				this.checkCommandArgument(firstArg, sourceFile, context);
+			}
+		}
+	}
+
+	/**
+	 * 関数名を取得
+	 */
+	private getFunctionName(expr: ts.Expression): string | null {
+		if (ts.isIdentifier(expr)) {
+			return expr.text;
+		}
+		if (ts.isPropertyAccessExpression(expr)) {
+			return expr.name.text;
+		}
+		return null;
+	}
+
+	/**
+	 * コマンド引数をチェック
+	 */
+	private checkCommandArgument(
+		arg: ts.Expression,
+		sourceFile: ts.SourceFile,
+		context: ASTNodeContext
+	): void {
+		if (ts.isStringLiteral(arg)) {
+			// 直接文字列リテラル
+			this.checkStringForPatterns(arg.text, arg, sourceFile, context);
+		} else if (ts.isNoSubstitutionTemplateLiteral(arg)) {
+			// テンプレートリテラル（変数なし）
+			this.checkStringForPatterns(arg.text, arg, sourceFile, context);
+		} else if (ts.isTemplateExpression(arg)) {
+			// テンプレート式（変数展開あり）
+			const resolvedText = this.resolveTemplateExpression(arg);
+			this.checkStringForPatterns(resolvedText, arg, sourceFile, context);
+		} else if (ts.isIdentifier(arg)) {
+			// 変数参照 → データフロー解析で解決
+			const resolvedValue = this.resolveVariable(arg.text);
+			if (resolvedValue) {
+				this.checkStringForPatterns(resolvedValue, arg, sourceFile, context);
+			}
+		} else if (ts.isPropertyAccessExpression(arg)) {
+			// オブジェクトプロパティアクセス (例: commands.stage)
+			const resolvedValue = this.resolvePropertyAccess(arg);
+			if (resolvedValue) {
+				this.checkStringForPatterns(resolvedValue, arg, sourceFile, context);
+			}
+		}
+	}
+
+	/**
+	 * 変数宣言を追跡（データフロー解析）
+	 * セキュリティパターンも同時にチェック
+	 */
+	private trackVariableDeclaration(node: ts.VariableDeclaration): void {
+		if (!node.name || !ts.isIdentifier(node.name)) return;
+
+		const varName = node.name.text;
+		const initializer = node.initializer;
+		if (!initializer) return;
+
+		// 文字列リテラルの場合
+		if (ts.isStringLiteral(initializer)) {
+			this.variableValues.set(varName, initializer.text);
+			// セキュリティチェック: "varName: 'value'" 形式でチェック
+			const fullExpression = `${varName}: '${initializer.text}'`;
+			this.checkStringForPatterns(fullExpression, node, node.getSourceFile(), this.createInitialContext(node.getSourceFile()));
+			return;
+		}
+
+		// テンプレートリテラルの場合
+		if (ts.isNoSubstitutionTemplateLiteral(initializer)) {
+			this.variableValues.set(varName, initializer.text);
+			const fullExpression = `${varName}: '${initializer.text}'`;
+			this.checkStringForPatterns(fullExpression, node, node.getSourceFile(), this.createInitialContext(node.getSourceFile()));
+			return;
+		}
+
+		// テンプレート式の場合（部分的に追跡）
+		if (ts.isTemplateExpression(initializer)) {
+			const resolvedText = this.resolveTemplateExpression(initializer);
+			this.variableValues.set(varName, resolvedText);
+			const fullExpression = `${varName}: '${resolvedText}'`;
+			this.checkStringForPatterns(fullExpression, node, node.getSourceFile(), this.createInitialContext(node.getSourceFile()));
+			return;
+		}
+
+		// 他の変数への参照の場合
+		if (ts.isIdentifier(initializer)) {
+			const resolvedValue = this.variableValues.get(initializer.text);
+			if (resolvedValue) {
+				this.variableValues.set(varName, resolvedValue);
+			}
+		}
+	}
+
+	/**
+	 * 変数の値を解決
+	 */
+	private resolveVariable(varName: string): string | undefined {
+		return this.variableValues.get(varName);
+	}
+
+	/**
+	 * テンプレート式を解決（変数展開を試みる）
+	 */
+	private resolveTemplateExpression(node: ts.TemplateExpression): string {
+		let result = node.head.text;
+
+		for (const span of node.templateSpans) {
+			const expr = span.expression;
+			let resolvedValue = "";
+
+			if (ts.isIdentifier(expr)) {
+				resolvedValue = this.variableValues.get(expr.text) || `\${${expr.text}}`;
+			} else if (ts.isStringLiteral(expr)) {
+				resolvedValue = expr.text;
+			} else if (ts.isPropertyAccessExpression(expr)) {
+				resolvedValue = this.resolvePropertyAccess(expr) || `\${${expr.getText()}}`;
+			} else {
+				resolvedValue = `\${${expr.getText()}}`;
+			}
+
+			result += resolvedValue + span.literal.text;
+		}
+
+		return result;
+	}
+
+	/**
+	 * プロパティアクセスを解決 (例: obj.prop)
+	 */
+	private resolvePropertyAccess(node: ts.PropertyAccessExpression): string | undefined {
+		// obj.prop の形式のみサポート
+		if (!ts.isIdentifier(node.expression)) return undefined;
+
+		const objName = node.expression.text;
+		const propName = node.name.text;
+
+		// オブジェクト変数の値を取得（例: "stage:git add ."のような形式で保存されている場合）
+		const objValue = this.variableValues.get(objName);
+		if (!objValue) return undefined;
+
+		// 簡易的な解析: "propName:value" の形式を探す
+		const propPattern = new RegExp(`${propName}\\s*:\\s*["']?([^,"'}]+)["']?`);
+		const match = objValue.match(propPattern);
+		if (match) {
+			return match[1].trim();
+		}
+
+		return undefined;
+	}
+
+	/**
+	 * StringLiteral をチェック（CallExpressionの引数の場合のみ）
+	 */
+	private checkStringLiteral(
+		node: ts.StringLiteral,
+		sourceFile: ts.SourceFile,
+		context: ASTNodeContext
+	): void {
+		// 親がCallExpressionで、それがコマンド実行関数の場合のみチェック
+		const parent = node.parent;
+		if (parent && ts.isCallExpression(parent)) {
+			const functionName = this.getFunctionName(parent.expression);
+			if (functionName && COMMAND_EXEC_FUNCTIONS.includes(functionName)) {
+				this.checkStringForPatterns(node.text, node, sourceFile, context);
+			}
+		}
+	}
+
+	/**
+	 * TemplateLiteral をチェック
+	 */
+	private checkTemplateLiteral(
+		node: ts.NoSubstitutionTemplateLiteral,
+		sourceFile: ts.SourceFile,
+		context: ASTNodeContext
+	): void {
+		// 親がCallExpressionで、それがコマンド実行関数の場合のみチェック
+		const parent = node.parent;
+		if (parent && ts.isCallExpression(parent)) {
+			const functionName = this.getFunctionName(parent.expression);
+			if (functionName && COMMAND_EXEC_FUNCTIONS.includes(functionName)) {
+				this.checkStringForPatterns(node.text, node, sourceFile, context);
+			}
+		}
+	}
+
+	/**
+	 * PropertyAssignment をチェック
+	 */
+	private checkPropertyAssignment(
+		node: ts.PropertyAssignment,
+		sourceFile: ts.SourceFile,
+		context: ASTNodeContext
+	): void {
+		const initializer = node.initializer;
+		const propName = (node.name as ts.Identifier)?.text || "";
+
+		// 文字列リテラルの場合 - プロパティ名を含めてチェック
+		if (ts.isStringLiteral(initializer)) {
+			// "propName: value" の形式でチェック（セキュリティパターン用）
+			const fullExpression = `${propName}: '${initializer.text}'`;
+			this.checkStringForPatterns(
+				fullExpression,
+				node,
+				sourceFile,
+				context
+			);
+			// 値自体もチェック（コマンドパターン用）
+			this.checkStringForPatterns(
+				initializer.text,
+				node,
+				sourceFile,
+				context
+			);
+			return;
+		}
+
+		// テンプレートリテラルの場合
+		if (ts.isTemplateExpression(initializer)) {
+			const resolvedText = this.resolveTemplateExpression(initializer);
+			const fullExpression = `${propName}: '${resolvedText}'`;
+			this.checkStringForPatterns(fullExpression, node, sourceFile, context);
+			this.checkStringForPatterns(resolvedText, node, sourceFile, context);
+			return;
+		}
+
+		// 他の変数への参照の場合
+		if (ts.isIdentifier(initializer)) {
+			const resolvedValue = this.resolveVariable(initializer.text);
+			if (resolvedValue) {
+				const fullExpression = `${propName}: '${resolvedValue}'`;
+				this.checkStringForPatterns(fullExpression, node, sourceFile, context);
+				this.checkStringForPatterns(resolvedValue, node, sourceFile, context);
+			}
+		}
+	}
+
+	/**
+	 * 文字列をパターンと照合
+	 */
+	private checkStringForPatterns(
+		text: string,
+		node: ts.Node,
+		sourceFile: ts.SourceFile,
+		context: ASTNodeContext
+	): void {
+		for (const pattern of AST_PROHIBITION_PATTERNS) {
+			pattern.pattern.lastIndex = 0; // リセット
+			if (pattern.pattern.test(text)) {
+				// 除外条件をチェック
+				if (this.shouldExclude(text, context)) continue;
+
+				const location = this.getNodeLocation(node, sourceFile);
+
+				this.divergences.push({
+					divergence: {
+						type: pattern.type,
+						severity: pattern.severity,
+						intention: {
+							source: "philosophy.md",
+							text: pattern.philosophyRef,
+						},
+						reality: {
+							file: sourceFile.fileName,
+							text: text,
+						},
+						reason: `禁止パターン「${pattern.description}」が検出されました`,
+					},
+					location,
+					context,
+				});
+			}
+		}
+	}
+
+	/**
+	 * 除外すべきか判定
+	 */
+	private shouldExclude(text: string, context: ASTNodeContext): boolean {
+		// テスト内は除外
+		if (context.isInTest) return true;
+
+		// モック内は除外
+		if (context.isInMock) return true;
+
+		// 型定義内は除外
+		if (context.isInTypeDefinition) return true;
+
+		// コメント的な文字列（例示を示す）は除外
+		const commentaryIndicators = [
+			"例:",
+			"例示",
+			"NG:",
+			"禁止",
+			"使用しない",
+			"avoid",
+			"do not",
+			"don't",
+		];
+		if (commentaryIndicators.some((ind) => text.toLowerCase().includes(ind.toLowerCase()))) {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * ノードの位置情報を取得
+	 */
+	private getNodeLocation(
+		node: ts.Node,
+		sourceFile: ts.SourceFile
+	): { file: string; line: number; column: number } {
+		const { line, character } = sourceFile.getLineAndCharacterOfPosition(
+			node.getStart()
+		);
+		return {
+			file: path.relative(ROOT_DIR, sourceFile.fileName),
+			line: line + 1,
+			column: character + 1,
+		};
+	}
+}
+
+/**
+ * TypeScriptファイルを再帰的に収集
+ */
+function collectTypeScriptFiles(dir: string): string[] {
+	const files: string[] = [];
+
+	if (!fs.existsSync(dir)) return files;
+
+	const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+	for (const entry of entries) {
+		const fullPath = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			files.push(...collectTypeScriptFiles(fullPath));
+		} else if (
+			entry.isFile() &&
+			(entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
+			!entry.name.endsWith(".d.ts")
+		) {
+			files.push(fullPath);
+		}
+	}
+
+	return files;
+}
+
+/**
+ * AST検出を実行して乖離リストを返す
+ */
+function runASTDetection(verbose: boolean): Divergence[] {
+	const detector = new ASTDivergenceDetector();
+
+	// 解析対象ファイルを収集
+	const files = [
+		...collectTypeScriptFiles(EXTENSIONS_DIR),
+		...collectTypeScriptFiles(path.join(ROOT_DIR, ".pi", "lib")),
+	];
+
+	if (verbose) {
+		console.log(`[AST] 解析対象: ${files.length} ファイル`);
+	}
+
+	// 解析実行
+	const results = detector.analyzeFiles(files);
+
+	if (verbose && results.length > 0) {
+		console.log(`[AST] 検出結果: ${results.length} 件`);
+		for (const result of results) {
+			console.log(
+				`  - ${result.location.file}:${result.location.line} - ${result.divergence.reason}`
+			);
+		}
+	}
+
+	return results.map((r) => r.divergence);
+}

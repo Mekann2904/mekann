@@ -35,16 +35,24 @@ mekann/
 │   ├── lib/                  <-- Shared libraries (55 files)
 │   │   ├── embeddings/       <-- Embedding modules (5 files)
 │   │   └── *.ts              <-- Core libraries
-│   ├── skills/               <-- Skill definitions (9 skills)
+│   ├── skills/               <-- Skill definitions (17 skills)
+│   │   ├── abdd/             <-- As-Built Driven Development
 │   │   ├── agent-estimation/ <-- Agent work estimation
 │   │   ├── alma-memory/      <-- ALMA memory design
-│   │   ├── abdd/             <-- As-Built Driven Development (NEW)
-│   │   ├── harness-engineering/
-│   │   ├── dynamic-tools/    <-- Runtime tool generation
-│   │   ├── git-workflow/
+│   │   ├── bug-hunting/      <-- Bug investigation and root cause
 │   │   ├── clean-architecture/
 │   │   ├── code-review/
-│   │   └── logical-analysis/
+│   │   ├── dynamic-tools/    <-- Runtime tool generation
+│   │   ├── git-workflow/
+│   │   ├── harness-engineering/
+│   │   ├── inquiry-exploration/ <-- Question-driven exploration
+│   │   ├── invariant-generation/ <-- Formal spec → tests
+│   │   ├── logical-analysis/
+│   │   ├── reasoning-bonds/  <-- CoT molecular analysis
+│   │   ├── search-tools/     <-- Code search tools usage
+│   │   ├── self-improvement/ <-- 7 philosophical perspectives
+│   │   ├── self-reflection/  <-- Pre/post task self-check
+│   │   └── test-engineering/ <-- Comprehensive test strategy
 │   ├── agent-teams/          <-- Team definitions and runs
 │   ├── subagents/            <-- Subagent definitions and runs
 │   ├── memory/               <-- Semantic memory storage
@@ -96,15 +104,23 @@ mekann/
 
 | Skill | Location | When to Use |
 |-------|----------|-------------|
-| git-workflow | `skills/git-workflow/` | Any git operation |
-| clean-architecture | `skills/clean-architecture/` | Architecture design/review |
-| code-review | `skills/code-review/` | Code quality review |
-| logical-analysis | `skills/logical-analysis/` | Text/document analysis |
-| dynamic-tools | `skills/dynamic-tools/` | Runtime tool generation |
+| abdd | `skills/abdd/` | Documentation review, gap analysis |
 | agent-estimation | `skills/agent-estimation/` | AI agent workload estimation |
 | alma-memory | `skills/alma-memory/` | ALMA-based memory design |
+| bug-hunting | `skills/bug-hunting/` | Bug investigation and root cause |
+| clean-architecture | `skills/clean-architecture/` | Architecture design/review |
+| code-review | `skills/code-review/` | Code quality review |
+| dynamic-tools | `skills/dynamic-tools/` | Runtime tool generation |
+| git-workflow | `skills/git-workflow/` | Any git operation |
 | harness-engineering | `skills/harness-engineering/` | Quality assurance patterns |
-| abdd | `skills/abdd/` | Documentation review, gap analysis (NEW) |
+| inquiry-exploration | `skills/inquiry-exploration/` | Question-driven exploration |
+| invariant-generation | `skills/invariant-generation/` | Formal spec → tests |
+| logical-analysis | `skills/logical-analysis/` | Text/document analysis |
+| reasoning-bonds | `skills/reasoning-bonds/` | CoT molecular analysis |
+| search-tools | `skills/search-tools/` | Code search tools usage |
+| self-improvement | `skills/self-improvement/` | 7 philosophical perspectives |
+| self-reflection | `skills/self-reflection/` | Pre/post task self-check |
+| test-engineering | `skills/test-engineering/` | Comprehensive test strategy |
 
 ## Library Index
 

@@ -2,7 +2,7 @@
 title: bond-integration
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -205,4 +205,4 @@ interface BondDiagnostics {
 ボンド分析の結果を含む拡張診断情報
 
 ---
-*自動生成: 2026-02-23T06:29:41.536Z*
+*自動生成: 2026-02-24T17:08:01.795Z*

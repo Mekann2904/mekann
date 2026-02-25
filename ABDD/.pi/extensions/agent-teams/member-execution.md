@@ -2,7 +2,7 @@
 title: member-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-23
+last_updated: 2026-02-24
 tags: [auto-generated]
 related: []
 ---
@@ -34,7 +34,7 @@ related: []
 | 関数 | `formatTeamMemberSkillsSection` | スキルリストをプロンプト用に整形 |
 | 関数 | `loadSkillContent` | スキル名からファイル内容を読込 |
 | 関数 | `buildSkillsSectionWithContent` | スキル定義からコンテンツを生成 |
-| 関数 | `buildTeamMemberPrompt` | チームメンバー用プロンプトを構築 |
+| 関数 | `buildTeamMemberPrompt` | - |
 | 関数 | `runMember` | メンバータスクを実行し結果を返却 |
 | インターフェース | `TeamNormalizedOutput` | チーム実行結果の正規化出力 |
 
@@ -50,6 +50,13 @@ classDiagram
     +output: string
     +degraded: boolean
     +reason: string
+  }
+  class PromptDirective {
+    <<interface>>
+    +outputMode: internal_user_fac
+    +language: english_japanese
+    +maxTokens: number
+    +format: structured_detail
   }
 ```
 
@@ -85,12 +92,14 @@ flowchart TD
   loadSkillContent["loadSkillContent()"]
   mergeSkillArrays["mergeSkillArrays()"]
   normalizeTeamMemberOutput["normalizeTeamMemberOutput()"]
+  parseDirectives["parseDirectives()"]
   pickTeamFieldCandidate["pickTeamFieldCandidate()"]
   resolveEffectiveTeamMemberSkills["resolveEffectiveTeamMemberSkills()"]
   runMember["runMember()"]
   runPiPrintMode["runPiPrintMode()"]
   buildSkillsSectionWithContent --> loadSkillContent
   buildTeamMemberPrompt --> buildSkillsSectionWithContent
+  buildTeamMemberPrompt --> parseDirectives
   buildTeamMemberPrompt --> resolveEffectiveTeamMemberSkills
   getSkillSearchPaths --> getGlobalAgentDir
   loadSkillContent --> getSkillSearchPaths
@@ -289,6 +298,22 @@ buildSkillsSectionWithContent(skills: string[] | undefined): string | null
 
 **戻り値**: `string | null`
 
+### parseDirectives
+
+```typescript
+parseDirectives(sharedContext?: string): PromptDirective
+```
+
+sharedContextからディレクティブを解析
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| sharedContext | `string` | いいえ |
+
+**戻り値**: `PromptDirective`
+
 ### buildTeamMemberPrompt
 
 ```typescript
@@ -302,8 +327,6 @@ buildTeamMemberPrompt(input: {
   relevantPatterns?: ExtractedPattern[];
 }): string
 ```
-
-チームメンバー用プロンプトを構築
 
 **パラメータ**
 
@@ -438,5 +461,18 @@ interface TeamNormalizedOutput {
 
 チーム実行結果の正規化出力
 
+### PromptDirective
+
+```typescript
+interface PromptDirective {
+  outputMode: "internal" | "user-facing";
+  language: "english" | "japanese";
+  maxTokens: number;
+  format: "structured" | "detailed";
+}
+```
+
+プロンプトディレクティブ
+
 ---
-*自動生成: 2026-02-23T06:29:41.848Z*
+*自動生成: 2026-02-24T17:08:02.106Z*
