@@ -14,6 +14,7 @@
 | **Parallel execution** | Use `subagent_run_dag` (see DAG Execution Guide) |
 | **Code review** | Load `skills/code-review/SKILL.md` |
 | **Architecture** | Load `skills/clean-architecture/SKILL.md` |
+| **Ownership system** | `docs/04-reference/ownership.md` - UL workflow ownership |
 
 **Core Rules**: No emoji | Use question tool for user choices | Delegate non-trivial tasks
 
