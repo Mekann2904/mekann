@@ -69,7 +69,7 @@ const TEMPLATES_DIR = path.join(WORKFLOW_DIR, "templates");
 const ACTIVE_FILE = path.join(WORKFLOW_DIR, "active.json");
 
 // Generate unique instance ID matching cross-instance coordinator format
-function getInstanceId(): string {
+export function getInstanceId(): string {
   return `${process.env.PI_SESSION_ID || "default"}-${process.pid}`;
 }
 
@@ -110,7 +110,7 @@ function setCurrentWorkflow(state: WorkflowState | null): void {
  * @param pid - プロセスID
  * @returns プロセスが生存している場合true
  */
-function isProcessAlive(pid: number): boolean {
+export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -125,7 +125,7 @@ function isProcessAlive(pid: number): boolean {
  * @param instanceId - インスタンスID（例: "default-34147"）
  * @returns プロセスID（抽出できない場合はnull）
  */
-function extractPidFromInstanceId(instanceId: string): number | null {
+export function extractPidFromInstanceId(instanceId: string): number | null {
   const match = instanceId.match(/-(\d+)$/);
   if (!match) return null;
   const pid = Number(match[1]);
@@ -430,7 +430,7 @@ async function saveStateAsync(state: WorkflowState): Promise<void> {
 /**
  * 状態を読み込む
  */
-function loadState(taskId: string): WorkflowState | null {
+export function loadState(taskId: string): WorkflowState | null {
   const statusPath = path.join(getTaskDir(taskId), "status.json");
   try {
     const content = fs.readFileSync(statusPath, "utf-8");
@@ -1692,7 +1692,22 @@ Task ID: ${taskId}
         return makeResult(`エラー: タスク ${task_id} が見つかりません。`, { error: "task_not_found" });
       }
 
-      // Update ownership to current instance
+      // 所有権チェック: 所有者が生存中の場合は再開を拒否
+      const ownership = checkOwnership(state, { autoClaim: true });
+      if (!ownership.owned) {
+        const ownerPid = extractPidFromInstanceId(state.ownerInstanceId);
+        if (ownerPid && isProcessAlive(ownerPid)) {
+          return makeResult(
+            `エラー: ワークフローは別のインスタンス (${state.ownerInstanceId}) が所有しています。所有者が終了した場合は ul_workflow_force_claim を使用してください。`,
+            { error: "workflow_owned_by_other", ownerInstanceId: state.ownerInstanceId, ownerPid }
+          );
+        }
+      }
+      
+      // 所有権を現在のインスタンスに更新
+      if (ownership.autoClaim) {
+        // 死んだプロセスから自動取得
+      }
       state.ownerInstanceId = instanceId;
       state.updatedAt = new Date().toISOString();
       saveState(state);
@@ -1725,6 +1740,21 @@ Task ID: ${state.taskId}
       if (!taskId) {
         return makeResult("エラー: task_id が指定されていません。", { error: "no_task_id" });
       }
+
+      // 所有権チェック
+      const state = loadState(taskId);
+      if (state) {
+        const ownership = checkOwnership(state, { autoClaim: false });
+        if (!ownership.owned) {
+          const ownerPid = extractPidFromInstanceId(state.ownerInstanceId);
+          if (ownerPid && isProcessAlive(ownerPid)) {
+            return makeResult(
+              `エラー: ワークフローは別のインスタンス (${state.ownerInstanceId}) が所有しています。`,
+              { error: "workflow_owned_by_other", ownerInstanceId: state.ownerInstanceId, ownerPid }
+            );
+          }
+        }
+      }
       
       return makeResult(`研究フェーズの実行指示
 
@@ -1750,7 +1780,8 @@ subagent_run(
 - 表面的な読み取りでは不十分です
 - 関数のシグネチャレベルではなく、実際の動作を理解してください
 ",
-  extraContext: "research.md は永続的な成果物です。単なる要約ではなく、後で参照できる詳細なドキュメントを作成してください。"
+  extraContext: "research.md は永続的な成果物です。単なる要約ではなく、後で参照できる詳細なドキュメントを作成してください。",
+  ulTaskId: "${taskId}"
 )
 \`\`\`
 
@@ -1821,7 +1852,8 @@ subagent_run(
 - 既存のコードパターンを尊重してください
 - コードスニペットは実際の変更を反映してください
 """,
-  extraContext: "plan.md はユーザーのレビュー対象です。後で注釈が追加されることを想定して構造化してください。"
+  extraContext: "plan.md はユーザーのレビュー対象です。後で注釈が追加されることを想定して構造化してください。",
+  ulTaskId: "${taskId}"
 )
 \`\`\`
 
@@ -1888,7 +1920,8 @@ subagent_run(
 - 未知の型を使用しない
 - 常に型チェックを実行する
 ",
-  extraContext: "実装は機械的な作業です。創造的な判断は計画段階で完了しています。"
+  extraContext: "実装は機械的な作業です。創造的な判断は計画段階で完了しています。",
+  ulTaskId: "${taskId}"
 )
 \`\`\`
 
@@ -1910,6 +1943,10 @@ subagent_run(
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { generateDagFromTask } = await import("../lib/dag-generator.js");
       const { determineExecutionStrategy } = await import("./ul-workflow.js");
+
+      // 現在のワークフローからtaskIdを取得
+      const currentWorkflow = getCurrentWorkflow();
+      const ulTaskId = currentWorkflow?.taskId;
 
       // Determine execution strategy
       const strategy = determineExecutionStrategy(params.task);
@@ -1972,7 +2009,7 @@ Execute with:
 \`\`\`
 subagent_run_dag({
   task: "${params.task.replace(/"/g, '\\"')}",
-  maxConcurrency: ${params.maxConcurrency ?? 3}
+  maxConcurrency: ${params.maxConcurrency ?? 3}${ulTaskId ? `,\n  ulTaskId: "${ulTaskId}"` : ""}
 })
 \`\`\`
 
@@ -1981,7 +2018,7 @@ Or call directly:
 ctx.callTool("subagent_run_dag", {
   task: "${params.task.replace(/"/g, '\\"')}",
   plan: ${JSON.stringify(plan)},
-  maxConcurrency: ${params.maxConcurrency ?? 3}
+  maxConcurrency: ${params.maxConcurrency ?? 3}${ulTaskId ? `,\n  ulTaskId: "${ulTaskId}"` : ""}
 })
 \`\`\`
 `,

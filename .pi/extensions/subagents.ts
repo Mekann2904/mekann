@@ -109,6 +109,12 @@ import {
   getSubagentExecutionRules,
 } from "../lib/execution-rules";
 import {
+  getInstanceId,
+  loadState,
+  isProcessAlive,
+  extractPidFromInstanceId,
+} from "./ul-workflow.js";
+import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
@@ -368,6 +374,54 @@ export function validateSingleResponsibility(
   }
   
   return violations;
+}
+
+// ============================================================================
+// UL Workflow Ownership Check (Ownership System Fix)
+// ============================================================================
+
+/**
+ * ULワークフローの所有権チェック結果
+ * @summary UL所有権チェック結果
+ */
+export interface UlWorkflowOwnershipResult {
+  owned: boolean;
+  ownerInstanceId?: string;
+  ownerPid?: number;
+}
+
+/**
+ * ULワークフローの所有権を確認する
+ * 委任ツールがULワークフローの所有権を尊重するために使用
+ * @summary UL所有権確認
+ * @param taskId - ULワークフローのタスクID
+ * @returns 所有権チェック結果
+ */
+export function checkUlWorkflowOwnership(taskId: string): UlWorkflowOwnershipResult {
+  const state = loadState(taskId);
+  
+  if (!state) {
+    // 状態が存在しない = 所有権競合なし
+    return { owned: true };
+  }
+  
+  const instanceId = getInstanceId();
+  const ownerPid = extractPidFromInstanceId(state.ownerInstanceId);
+  
+  if (state.ownerInstanceId === instanceId) {
+    return { owned: true, ownerInstanceId: state.ownerInstanceId };
+  }
+  
+  if (ownerPid && isProcessAlive(ownerPid)) {
+    return {
+      owned: false,
+      ownerInstanceId: state.ownerInstanceId,
+      ownerPid
+    };
+  }
+  
+  // 所有者が死んでいる = 取得可能
+  return { owned: true, ownerInstanceId: state.ownerInstanceId };
 }
 
 /**
@@ -747,8 +801,27 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       extraContext: Type.Optional(Type.String({ description: "Optional supplemental context" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
+      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      // ULワークフロー所有権チェック
+      if (params.ulTaskId) {
+        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
+        if (!ownership.owned) {
+          return {
+            content: [{ type: "text" as const, text: `subagent_run error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
+            details: {
+              error: "ul_workflow_not_owned",
+              ulTaskId: params.ulTaskId,
+              ownerInstanceId: ownership.ownerInstanceId,
+              ownerPid: ownership.ownerPid,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+      }
+      
       const storage = loadStorage(ctx.cwd);
       const agent = pickAgent(storage, params.subagentId);
       const retryOverrides = toRetryOverrides(params.retry);
@@ -1008,8 +1081,27 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       extraContext: Type.Optional(Type.String({ description: "Optional shared context" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
+      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      // ULワークフロー所有権チェック
+      if (params.ulTaskId) {
+        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
+        if (!ownership.owned) {
+          return {
+            content: [{ type: "text" as const, text: `subagent_run_parallel error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
+            details: {
+              error: "ul_workflow_not_owned",
+              ulTaskId: params.ulTaskId,
+              ownerInstanceId: ownership.ownerInstanceId,
+              ownerPid: ownership.ownerPid,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+      }
+      
       const storage = loadStorage(ctx.cwd);
       const retryOverrides = toRetryOverrides(params.retry);
       const requestedIds = Array.isArray(params.subagentIds)
@@ -1528,8 +1620,27 @@ ${allResults.map((r) => {
       maxConcurrency: Type.Optional(Type.Number({ description: "Maximum parallel tasks (default: 3)" })),
       abortOnFirstError: Type.Optional(Type.Boolean({ description: "Stop on first task failure (default: false)" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Per-task timeout in ms (default: 300000)" })),
+      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      // ULワークフロー所有権チェック
+      if (params.ulTaskId) {
+        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
+        if (!ownership.owned) {
+          return {
+            content: [{ type: "text" as const, text: `subagent_run_dag error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
+            details: {
+              error: "ul_workflow_not_owned",
+              ulTaskId: params.ulTaskId,
+              ownerInstanceId: ownership.ownerInstanceId,
+              ownerPid: ownership.ownerPid,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+      }
+      
       const storage = loadStorage(ctx.cwd);
       const maxConcurrency = params.maxConcurrency ?? 3;
       const abortOnFirstError = params.abortOnFirstError ?? false;
