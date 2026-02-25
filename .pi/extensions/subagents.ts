@@ -517,7 +517,8 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
   const enabledAgents = storage.agents.filter((agent) => agent.enabled === "enabled");
   if (enabledAgents.length === 0) return [];
 
-  const mode = String(process.env.PI_SUBAGENT_PARALLEL_DEFAULT || "current")
+  // Default changed from "current" to "all" to promote parallel execution
+  const mode = String(process.env.PI_SUBAGENT_PARALLEL_DEFAULT || "all")
     .trim()
     .toLowerCase();
   if (mode === "all") {

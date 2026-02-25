@@ -27,10 +27,29 @@
 
 > **エージェントにコードを書かせる前に、必ず文章化された計画をレビュー・承認する**
 
+## 推奨: DAGベース並列実行
+
+ULモードの各フェーズはDAG実行で並列化できる:
+
+```typescript
+// 推奨: DAG統合ULモード
+ul_workflow_dag({
+  task: "<タスク>",
+  maxConcurrency: 3
+})
+```
+
+### DAG統合の利点
+
+- Research並列実行で調査時間短縮
+- 実装タスクの自動並列化
+- 依存関係の自動推論
+- レート制限への適応的対応
+
 ## フロー
 
 ```
-Research → Plan → [ユーザーレビュー] → Implement
+Research → Plan → [ユーザーレビュー] → Implement (DAG)
 ```
 
 ---
@@ -150,7 +169,24 @@ plan.mdの場所: `.pi/ul-workflow/tasks/{taskId}/plan.md`
 
 計画に従って機械的に実装する。
 
-### アクション（単一エージェント）
+### アクション（DAG並列実装 - 推奨）
+
+```typescript
+subagent_run_dag({
+  task: "plan.mdの内容を実装",
+  plan: {
+    id: "implementation-phase",
+    tasks: [
+      { id: "impl-core", description: "コア実装", assignedAgent: "implementer", dependencies: [] },
+      { id: "impl-tests", description: "テスト実装", assignedAgent: "tester", dependencies: ["impl-core"] },
+      { id: "review", description: "コードレビュー", assignedAgent: "reviewer", dependencies: ["impl-core"] }
+    ]
+  },
+  maxConcurrency: 3
+})
+```
+
+### アクション（単一エージェント - 単純な場合のみ）
 
 ```
 subagent_run({
@@ -176,8 +212,8 @@ agent_team_run({
 | 場面 | 推奨 |
 |------|------|
 | 単一ファイルの変更 | `subagent_run({ subagentId: "implementer" })` |
-| 複数の独立したファイル変更 | `agent_team_run_parallel` |
-| 実装 + レビューを同時 | `subagent_run_parallel(["implementer", "code-reviewer"])` |
+| 複数の独立したファイル変更 | `agent_team_run_parallel` または `subagent_run_dag` |
+| 実装 + レビューを同時 | `subagent_run_dag` で依存関係を指定 |
 
 ### 実装の原則
 
