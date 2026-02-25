@@ -176,10 +176,12 @@ export type {
  * GlobalRuntimeStateProvider - デフォルト実装
  *
  * globalThisを使用してプロセス全体で状態を共有する
+ * Phase 4修正: スピンウェイトを削除し、Promiseベースの初期化に変更
  */
 class GlobalRuntimeStateProvider implements RuntimeStateProvider {
   private readonly globalScope: GlobalScopeWithRuntime;
-  private initializationInProgress = false;
+  private initializationPromise: Promise<void> | null = null;
+  private initializationLock = false;
 
   constructor() {
     this.globalScope = globalThis as GlobalScopeWithRuntime;
@@ -189,32 +191,69 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * ランタイム状態を取得
    * @summary 状態を取得
    * @returns エージェントのランタイム状態
+   * @throws 初期化中に同期的にアクセスした場合エラー
    */
   getState(): AgentRuntimeState {
-    // 二重初期化防止: 初期化中は待機してから既存の状態を返す
     if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      // 初期化ロック: 競合状態を防ぐ
-      if (this.initializationInProgress) {
-        // 短いスピンウェイト（初期化完了を待機）
-        let attempts = 0;
-        while (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ && attempts < 1000) {
-          attempts += 1;
-        }
-        // 初期化が完了していない場合は新規作成
+      // 初期化ロック中の場合はエラー（同期待機は危険）
+      if (this.initializationLock && this.initializationPromise) {
+        throw new Error("[agent-runtime] Runtime state initialization in progress. Use getStateAsync() instead.");
+      }
+      this.initializationLock = true;
+      try {
+        // 再度チェック（ロック取得中に他が初期化した可能性）
         if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
           this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
         }
-      } else {
-        this.initializationInProgress = true;
-        try {
-          // 再度チェック（ロック取得中に他が初期化した可能性）
-          if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-            this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-          }
-        } finally {
-          this.initializationInProgress = false;
-        }
+      } finally {
+        this.initializationLock = false;
       }
+    }
+    ensureReservationSweeper();
+    const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
+    enforceRuntimeLimitConsistency(runtime);
+    return runtime;
+  }
+
+  /**
+   * ランタイム状態を非同期で取得
+   * @summary 状態を非同期取得
+   * @returns エージェントのランタイム状態のPromise
+   */
+  async getStateAsync(): Promise<AgentRuntimeState> {
+    if (this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+      ensureReservationSweeper();
+      const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
+      enforceRuntimeLimitConsistency(runtime);
+      return runtime;
+    }
+
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+      if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+        throw new Error("[agent-runtime] Runtime state initialization failed");
+      }
+      ensureReservationSweeper();
+      const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
+      enforceRuntimeLimitConsistency(runtime);
+      return runtime;
+    }
+
+    this.initializationLock = true;
+    this.initializationPromise = (async () => {
+      if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+        this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
+      }
+    })();
+
+    try {
+      await this.initializationPromise;
+    } finally {
+      this.initializationLock = false;
+    }
+
+    if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+      throw new Error("[agent-runtime] Runtime state initialization failed");
     }
     ensureReservationSweeper();
     const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
@@ -229,6 +268,8 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    */
   resetState(): void {
     this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = undefined;
+    this.initializationPromise = null;
+    this.initializationLock = false;
   }
 }
 
@@ -512,14 +553,30 @@ function serializeRuntimeLimits(limits: AgentRuntimeLimits): string {
 }
 
 let runtimeReservationSweeperInitializing = false;
+let runtimeReservationSweeperInitAttempts = 0;
+const MAX_SWEEPER_INIT_ATTEMPTS = 3;
 
+/**
+ * Phase 4修正: 初期化試行回数を制限し、無限待機を防止
+ */
 function ensureReservationSweeper(): void {
-  // 二重作成防止: 既に初期化済みまたは初期化中の場合は即座にreturn
-  if (runtimeReservationSweeper || runtimeReservationSweeperInitializing) return;
+  // 既に初期化済みの場合は即座にreturn
+  if (runtimeReservationSweeper) return;
+
+  // 初期化中の場合は試行回数をカウント
+  if (runtimeReservationSweeperInitializing) {
+    runtimeReservationSweeperInitAttempts++;
+    if (runtimeReservationSweeperInitAttempts > MAX_SWEEPER_INIT_ATTEMPTS) {
+      console.warn(`[agent-runtime] Reservation sweeper initialization blocked after ${MAX_SWEEPER_INIT_ATTEMPTS} attempts`);
+      runtimeReservationSweeperInitAttempts = 0;
+    }
+    return;
+  }
 
   runtimeReservationSweeperInitializing = true;
+  runtimeReservationSweeperInitAttempts = 0;
   try {
-    // 再度チェック（初期化中に他スレッドが作成した可能性）
+    // 再度チェック（初期化中に他が作成した可能性）
     if (runtimeReservationSweeper) return;
 
     // Bug #4 warning: 二重作成のリスクをログ

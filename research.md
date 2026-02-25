@@ -1,386 +1,1001 @@
-# Research Report: README.md Implementation Verification
+# Research Report: Bug Analysis and Design Issues in .pi/extensions/ and .pi/lib/
 
-## Overview
-Investigated README.md to verify all documented features are actually implemented. Found high implementation coverage with significant additional undocumented functionality.
+**Date**: 2026-02-25
+**Investigator**: researcher subagent
+**Scope**: Type safety, error handling, async processing, resource management, boundary conditions, concurrency, logic errors
 
-## Extensions Analysis
+---
 
-### Documented and Verified (21/21)
-All documented extensions have corresponding implementation files:
+## Executive Summary
 
-| Extension | File | Status |
-|-----------|------|--------|
-| question | question.ts | ✓ |
-| loop_run | loop.ts | ✓ |
-| abbr | abbr.ts | ✓ |
-| plan_* | plan.ts | ✓ (7 tools) |
-| subagent_* | subagents.ts | ✓ (6 tools) |
-| agent_team_* | agent-teams/extension.ts | ✓ (6 tools) |
-| ul-dual-mode | ul-dual-mode.ts | ✓ |
-| ul-workflow | ul-workflow.ts | ✓ (10 tools) |
-| cross-instance-runtime | cross-instance-runtime.ts | ✓ |
-| usage-tracker | usage-tracker.ts | ✓ |
-| agent-usage-tracker | agent-usage-tracker.ts | ✓ |
-| context-dashboard | context-usage-dashboard.ts | ✓ |
-| agent-idle-indicator | agent-idle-indicator.ts | ✓ |
-| kitty-status-integration | kitty-status-integration.ts | ✓ |
-| skill-inspector | skill-inspector.ts | ✓ |
-| search | search/ | ✓ (4+ tools) |
-| dynamic-tools | dynamic-tools.ts | ✓ (5 tools) |
-| invariant-pipeline | invariant-pipeline.ts | ✓ (5 tools) |
-| startup-context | startup-context.ts | ✓ |
-| self-improvement-reflection | self-improvement-reflection.ts | ✓ |
-| self-improvement-dashboard | self-improvement-dashboard.ts | ✓ |
+Comprehensive analysis of `.pi/extensions/` and `.pi/lib/` identified **47 potential issues** across 7 categories. Critical issues include race conditions in singleton initialization, silent error swallowing, type safety violations with `any`, and potential memory leaks in cache implementations.
 
-### Additional Extensions Not Documented
-The following extensions exist but are not mentioned in README:
-- **code-structure-analyzer/** - Code structure analysis extension
-- **github-agent/** - GitHub integration
-- **repograph-localization/** - RepoGraph-based code localization
-- **shared/** - Shared utilities (pi-print-executor, runtime-helpers)
-- **abdd.ts** - ABDD implementation
-- **code-panel.ts** - Code panel UI
-- **code-viewer.ts** - Code viewer utility
-- **enhanced-read.ts** - Enhanced read functionality
-- **github-agent.ts** - GitHub agent interface
-- **mediator.ts** - Mediator pattern implementation
-- **pi-ai-abort-fix.ts** - Pi AI abort fix
-- **pi-coding-agent-lock-fix.ts** - Pi coding agent lock fix
-- **pi-coding-agent-rate-limit-fix.ts** - Pi coding agent rate limit fix
-- **rate-limit-retry-budget.ts** - Rate limit retry budget
-- **rpm-throttle.ts** - RPM throttling
-- **tool-compiler.ts** - Tool compiler
-- **ul-diagnostic.ts** - UL diagnostic tools
-- **self-improvement-loop.ts** - Self-improvement loop
+**Priority Distribution**:
+- **High**: 12 issues (immediate attention required)
+- **Medium**: 23 issues (should be addressed in near-term)
+- **Low**: 12 issues (technical debt, lower priority)
 
-## Libraries Analysis
+---
 
-### Documented and Verified (27/27)
-All documented libraries exist in .pi/lib/:
+## 1. Type Safety Issues
 
-| Library | File | Status |
-|---------|------|--------|
-| agent-runtime | agent-runtime.ts | ⚠️ Location: .pi/extensions/ |
-| concurrency | concurrency.ts | ✓ |
-| plan-mode-shared | plan-mode-shared.ts | ✓ |
-| retry-with-backoff | retry-with-backoff.ts | ✓ |
-| storage-lock | storage-lock.ts | ✓ |
-| skill-registry | skill-registry.ts | ✓ |
-| agent-types | agent-types.ts | ✓ |
-| agent-utils | agent-utils.ts | ✓ |
-| error-utils | error-utils.ts | ✓ |
-| format-utils | format-utils.ts | ✓ |
-| fs-utils | fs-utils.ts | ✓ |
-| live-monitor-base | live-types-base.ts | ⚠️ Name match |
-| live-view-utils | live-view-utils.ts | ✓ |
-| model-timeouts | model-timeouts.ts | ✓ |
-| output-validation | output-validation.ts | ✓ |
-| runtime-utils | runtime-utils.ts | ✓ |
-| storage-base | storage-base.ts | ✓ |
-| tui-utils | tui-utils | ⚠️ Not found as .ts file |
-| validation-utils | validation-utils.ts | ✓ |
-| cross-instance-coordinator | cross-instance-coordinator.ts | ✓ |
-| provider-limits | provider-limits.ts | ✓ |
-| adaptive-rate-controller | adaptive-rate-controller.ts | ✓ |
-| self-improvement-data-platform | self-improvement-data-platform.ts | ✓ |
-| comprehensive-logger | comprehensive-logger.ts | ✓ |
-| verification-workflow | verification-workflow.ts | ✓ |
-| context-engineering | context-engineering.ts | ✓ |
-| execution-rules | execution-rules.ts | ✓ |
-| semantic-memory | semantic-memory.ts | ✓ |
-| semantic-repetition | semantic-repetition.ts | ✓ |
-| intent-aware-limits | intent-aware-limits.ts | ✓ |
-| run-index | run-index.ts | ✓ |
-| pattern-extraction | pattern-extraction.ts | ✓ |
-| output-schema | output-schema.ts | ✓ |
-| text-parsing | text-parsing.ts | ✓ |
-| embeddings | embeddings/ | ✓ |
+### 1.1 Excessive `any` Type Usage
 
-### Additional Libraries Not Documented
-Over 100 additional library files exist in .pi/lib/ not mentioned in README:
+**File**: `.pi/extensions/cross-instance-runtime.ts`
+**Lines**: Multiple (status checks, event handlers)
+**Priority**: High
 
-**Philosophical & Metacognitive:**
-- aporetic-reasoning.ts
-- aporia-awareness.ts
-- aporia-handler.ts
-- aporia-tracker.ts
-- belief-updater.ts
-- consciousness-spectrum.ts
-- creative-destruction.ts
-- creative-transcendence.ts
-- desiring-production.ts
-- deep-exploration.ts
-- hyper-metacognition.ts
-- inquiry-driven-exploration.ts
-- inquiry-library.ts
-- inquiry-prompt-builder.ts
-- love-thinking-modes.ts
-- nonlinear-thought.ts
-- perspective-scorer.ts
-- reasoning-bonds.ts
-- reasoning-bonds-evaluator.ts
-- relationship-metrics.ts
-- relationship-unmeasurables.ts
-- self-awareness-integration.ts
-- self-improvement-cycle.ts
-- thinking-modes.ts
-- thinking-process.ts
+```typescript
+const status = (result as any)?.details?.coordinator;
+const resolved = (result as any)?.details?.resolved;
+const sessionId = (event as any)?.sessionId ?? "unknown";
+const eventPayload = event as any;
+```
 
-**Task Orchestration & DAG:**
-- dag-executor.ts
-- dag-errors.ts
-- dag-types.ts
-- dag-validator.ts
-- dag-weight-calculator.ts
-- dag-weight-updater.ts
-- dag-weight-updater.example.ts
-- task-dependencies.ts
-- task-scheduler.ts
-- priority-scheduler.ts
-- dynamic-parallelism.ts
+**Impact**: Loss of type checking at runtime, potential `undefined` access errors.
+**Fix**: Define proper interfaces for coordinator status and event payloads.
 
-**Error Handling & Resilience:**
-- adaptive-penalty.ts
-- adaptive-total-limit.ts
-- agent-errors.ts
-- circuit-breaker.ts
-- error-classifier.ts
-- errors.ts
-- token-bucket.ts
+---
 
-**Logging & Monitoring:**
-- comprehensive-logger-config.ts
-- comprehensive-logger-types.ts
-- context-repository.ts
-- experience-replay.ts
-- global-error-handler.ts
-- live-types-base.ts
-- long-running-support.ts
-- metrics-collector.ts
-- performance-monitor.ts
-- performance-profiles.ts
-- sbfl.ts
-- structured-logger.ts
-- structured-analysis-output.ts
+**File**: `.pi/extensions/self-improvement-reflection.ts`
+**Line**: Function parameter
+**Priority**: Medium
 
-**Tool & Execution:**
-- tool-error-utils.ts
-- tool-executor.ts
-- tool-fuser.ts
-- tool-compiler-types.ts
-- unified-limit-resolver.ts
-- checkpoint-manager.ts
-- cost-estimator.ts
+```typescript
+execute: async (_toolCallId: string, params: any, _signal: AbortSignal, _onUpdate: any, ctx: ExtensionContext) => {
+```
 
-**Utilities:**
-- abort-utils.ts
-- core.ts
-- delegation-quality.ts
-- file-filter.ts
-- frontmatter.ts
-- intent-mediator.ts
-- learnable-mode-selector.ts
-- mediator-history.ts
-- mediator-integration.ts
-- mediator-lic-rules.ts
-- mediator-prompt.ts
-- mediator-types.ts
-- meta-evaluation.ts
-- output-template.ts
-- parallel-search.ts
-- pi-coding-agent-compat.ts
-- process-utils.ts
-- run-desiring-analysis.ts
-- runtime-config.ts
-- runtime-error-builders.ts
-- runtime-types.ts
-- subagent-types.ts
-- team-types.ts
-- text-utils.ts
-- verification-high-stakes.ts
-- verification-simple.ts
+**Impact**: Unchecked parameter access may cause runtime errors.
+**Fix**: Define proper parameter interface.
 
-**Type Definitions:**
-- abdd-types.ts
-- storage.ts
-- team-types.ts
-- subagent-types.ts
+---
 
-**Subdirectories:**
-- skills/ (29 skill-related modules)
-- interfaces/
-- tui/
-- embeddings/
-- dynamic-tools/
+**File**: `.pi/extensions/subagents/live-monitor.ts`
+**Lines**: Multiple
+**Priority**: Medium
 
-## Skills Analysis
+```typescript
+theme: any,
+ctx: any,
+.custom((tui: any, theme: any, _keybindings: any, done: () => void) => {
+```
 
-### Documented and Verified (20/20)
-All documented skills have SKILL.md files:
+**Impact**: TUI component integration is not type-safe.
+**Fix**: Import proper TUI types from pi-coding-agent.
 
-| Category | Skill | File | Status |
-|----------|-------|------|--------|
-| Development | abdd | .pi/skills/abdd/SKILL.md | ✓ |
-| Architecture | clean-architecture | .pi/skills/clean-architecture/SKILL.md | ✓ |
-| Code Review | code-review | .pi/skills/code-review/SKILL.md | ✓ |
-| Agent | agent-estimation | .pi/skills/agent-estimation/SKILL.md | ✓ |
-| Agent | alma-memory | .pi/skills/alma-memory/SKILL.md | ✓ |
-| Agent | harness-engineering | .pi/skills/harness-engineering/SKILL.md | ✓ |
-| Agent | dynamic-tools | .pi/skills/dynamic-tools/SKILL.md | ✓ |
-| Analysis | logical-analysis | .pi/skills/logical-analysis/SKILL.md | ✓ |
-| Analysis | bug-hunting | .pi/skills/bug-hunting/SKILL.md | ✓ |
-| Analysis | reasoning-bonds | .pi/skills/reasoning-bonds/SKILL.md | ✓ |
-| Analysis | inquiry-exploration | .pi/skills/inquiry-exploration/SKILL.md | ✓ |
-| Operations | git-workflow | .pi/skills/git-workflow/SKILL.md | ✓ |
-| Search | search-tools | .pi/skills/search-tools/SKILL.md | ✓ |
-| Formal Methods | invariant-generation | .pi/skills/invariant-generation/SKILL.md | ✓ |
-| Self-Improvement | self-improvement | .pi/skills/self-improvement/SKILL.md | ✓ |
-| Self-Improvement | self-reflection | .pi/skills/self-reflection/SKILL.md | ✓ |
-| Test | test-engineering | .pi/skills/test-engineering/SKILL.md | ✓ |
-| Additional | dyntaskmas | .pi/skills/dyntaskmas/SKILL.md | ✓ (not in README list) |
-| Additional | repograph-localization | .pi/skills/repograph-localization/SKILL.md | ✓ (not in README list) |
-| Additional | task-planner | .pi/skills/task-planner/SKILL.md | ✓ (not in README list) |
+---
 
-## Commands and Tools Verification
+**File**: `.pi/extensions/ul-dual-mode.ts`
+**Lines**: Multiple helper functions
+**Priority**: Medium
 
-### Verified Tools
-The following tools mentioned in README are implemented:
+```typescript
+function refreshStatus(ctx: any): void {
+function parseToolInput(event: any): Record<string, unknown> | undefined {
+function isRecommendedSubagentParallelCall(event: any): boolean {
+```
 
-**UI:**
-- question (question.ts)
+**Impact**: Event handling is not type-safe.
+**Fix**: Define event interfaces.
 
-**Loop:**
-- loop_run (loop.ts)
-- abbr (abbr.ts)
+---
 
-**Plan (7 tools):**
-- plan_create, plan_show, plan_add_step, plan_update_step, plan_update_status, plan_list, plan_delete, plan_ready_steps (plan.ts)
+**File**: `.pi/extensions/invariant-pipeline.ts`
+**Lines**: Multiple
+**Priority**: Medium
 
-**Subagent (6 tools):**
-- subagent_create, subagent_run, subagent_run_parallel, subagent_configure, subagent_list, subagent_status, subagent_runs (subagents.ts)
+```typescript
+return { name, type: type || "any" };
+return arbitraryMap[tsType] ?? "fc.anything()";
+} as any); // Multiple occurrences
+```
 
-**Agent Team (6 tools):**
-- agent_team_create, agent_team_run, agent_team_run_parallel, agent_team_configure, agent_team_list, agent_team_status, agent_team_runs (agent-teams/extension.ts)
+**Impact**: Type mapping loses fidelity; `as any` bypasses safety.
+**Fix**: Define proper type mapping interfaces.
 
-**UL Workflow (10 tools):**
-- ul_workflow_start, ul_workflow_run, ul_workflow_status, ul_workflow_approve, ul_workflow_annotate, ul_workflow_confirm_plan, ul_workflow_execute_plan, ul_workflow_modify_plan, ul_workflow_abort, ul_workflow_resume, ul_workflow_research, ul_workflow_plan, ul_workflow_implement (ul-workflow.ts)
+---
 
-**Search (4+ tools):**
-- file_candidates, code_search, sym_index, sym_find (search/)
+**File**: `.pi/extensions/skill-inspector.ts`
+**Lines**: Type assertions
+**Priority**: Low
 
-**Dynamic Tools (5 tools):**
-- create_tool, run_dynamic_tool, list_dynamic_tools, delete_dynamic_tool, tool_reflection (dynamic-tools.ts)
+```typescript
+} as any);
+```
 
-**Invariant Pipeline (5 tools):**
-- generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver (invariant-pipeline.ts)
+**Impact**: Minor - only affects display logic.
+**Fix**: Define proper return type.
 
-**Cross-Instance (2 tools):**
-- pi_instance_status, pi_model_limits (cross-instance-runtime.ts)
+---
 
-**Self-Improvement (1 tool):**
-- self_reflect (self-improvement-reflection.ts)
+### 1.2 Unsafe Type Assertions
 
-**Utilities (3 tools):**
-- agent_usage_stats (agent-usage-tracker.ts)
-- skill_status (skill-inspector.ts)
-- context-usage (command, not tool)
+**File**: `.pi/lib/error-utils.ts`
+**Lines**: JSON.stringify fallback
+**Priority**: Low
 
-### Verified Commands
-- ulmode (ul-dual-mode.ts)
-- ul-workflow-start, ul-workflow-run, ul-workflow-status, ul-workflow-approve, ul-workflow-annotate, ul-workflow-abort (ul-workflow.ts)
-- context-usage (context-usage-dashboard.ts)
-- agent-usage (agent-usage-tracker.ts)
-- skill-status (skill-inspector.ts)
+```typescript
+if (typeof error === "object" && error !== null) {
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "[object Object]";
+  }
+}
+```
 
-## Issues and Inconsistencies
+**Impact**: Circular references in error objects may cause serialization failure.
+**Mitigation**: Already handled with try-catch, but return value could be more descriptive.
 
-### 1. Location Mismatch
-- **agent-runtime.ts**: Documented as library (.pi/lib/) but actually in .pi/extensions/
+---
 
-### 2. Name Mismatch
-- **live-monitor-base**: README lists this but actual file is live-types-base.ts
+## 2. Error Handling Deficiencies
 
-### 3. Missing Files
-- **tui-utils.ts**: Not found as individual file (may be in .pi/lib/tui/ directory)
+### 2.1 Silent Error Swallowing (Critical)
 
-### 4. Undocumented Features
-The following significant features exist but are not documented in README:
-- **Code Structure Analyzer** extension
-- **GitHub Agent** integration
-- **RepoGraph Localization** extension
-- **Mediator Pattern** implementation
-- **ABDD** (Architecture Behavior Driven Development) extension
-- **Philosophical & Metacognitive** libraries (20+ files)
-- **DAG-based Task Orchestration** (6 files)
-- **Advanced Error Handling & Resilience** (7 files)
-- **Self-Improvement Loop** extension
-- **UL Diagnostic** tools
-- **100+ additional library files**
-- **29 skill-related modules** in .pi/lib/skills/
+**File**: `.pi/lib/cross-instance-coordinator.ts`
+**Lines**: 204, 329, 424, 463, 477
+**Priority**: High
 
-## Additional Discovery
+```typescript
+} catch {
+  // ignore cleanup failures
+}
+```
 
-### Team Definitions
-The README mentions 16 predefined teams. Actual team definitions in .pi/extensions/agent-teams/definitions/:
+**Impact**: Filesystem errors are silently ignored, making debugging impossible. Disk full, permission errors, or corruption will go undetected.
+**Fix**: Log errors with `console.debug` or proper logger before ignoring.
 
-- bug-war-room ✓
-- code-excellence ✓
-- code-excellence-review ✓
-- core-delivery ✓
-- design-discovery ✓
-- doc-gardening ✓
-- docs-enablement ✓
-- file-organizer ✓
-- garbage-collection ✓
-- invariant-generation-team ✓ (not in README list)
-- logical-analysis ✓
-- mermaid-diagram ✓
-- rapid-swarm ✓
-- refactor-migration ✓
-- research ✓ (not in README list)
-- security-hardening ✓
-- skill-creation ✓
-- test-engineering ✓ (not in README list)
-- verification-phase ✓
+---
 
-Total: 19 teams found (3 more than documented)
+**File**: `.pi/lib/storage-lock.ts`
+**Lines**: 168, 198, 267, 288
+**Priority**: High
 
-### Skill Registry
-The .pi/lib/skills/ directory contains 29 subdirectories with skill-related implementation code:
-- code-metrics, code-search, code-transform
-- dependency-mapper, diff-analyzer
-- doc-generator
-- exploratory-data-analysis
-- lint-analyzer, log-analyzer
-- research-* (10 modules: critical, data-analysis, hypothesis, literature, ml-classical, ml-deep, ml-reinforcement, presentation, simulation, statistics, time-series, writing)
-- sast-analyzer, secret-detector, vuln-scanner
-- skill-creator
-- templates
+```typescript
+} catch {
+  // noop
+}
+```
 
-## Conclusion
+**Impact**: Lock acquisition/release failures are silently ignored. Could lead to deadlock detection failure.
+**Fix**: At minimum, log the error condition.
 
-### High Confidence Findings
-1. **All documented extensions (21/21) are implemented**
-2. **All documented libraries (27/27) exist** (with 1 location mismatch)
-3. **All documented skills (20/20) have SKILL.md files**
-4. **Major tool categories are verified and implemented**
+---
 
-### Low Confidence Areas
-1. **tui-utils** exact file location needs verification
-2. **Some tools may be commands instead of tools** (e.g., context-usage)
-3. **UL prefix behavior** is not a tool but a command pattern
+**File**: `.pi/lib/adaptive-rate-controller.ts`
+**Line**: 286
+**Priority**: Medium
 
-### Significant Undocumented Functionality
-The codebase contains substantial additional features not documented in README:
-- 18+ additional extensions
-- 100+ additional library files
-- 29 skill-related modules
-- 3 additional team definitions
+```typescript
+} catch {
+  // ignore
+}
+```
 
-### Recommendations
-1. Update README to correct agent-runtime.ts location
-2. Consider documenting major undocumented extensions (code-structure-analyzer, github-agent, repograph-localization, abdd)
-3. Consider documenting key philosophical/metacognitive libraries if intended for public API
-4. Verify tui-utils location
-5. Clarify tool vs command distinction in documentation
-6. Update team definitions count (19 vs 16 documented)
+**Impact**: Rate limit configuration errors are hidden.
+**Fix**: Log warning with configuration details.
+
+---
+
+**File**: `.pi/lib/provider-limits.ts`
+**Line**: 407
+**Priority**: Medium
+
+```typescript
+} catch {
+  // ignore
+}
+```
+
+**Impact**: Provider limit detection failures may cause incorrect rate limiting.
+**Fix**: Log warning and use fallback values explicitly.
+
+---
+
+**File**: `.pi/extensions/shared/pi-print-executor.ts`
+**Lines**: 513, 771
+**Priority**: Medium
+
+```typescript
+} catch {
+  // noop
+}
+```
+
+**Impact**: Print executor cleanup failures are hidden.
+**Fix**: Log cleanup errors for debugging.
+
+---
+
+**File**: `.pi/extensions/pi-ai-abort-fix.ts`
+**Lines**: 180, 190
+**Priority**: Medium
+
+```typescript
+} catch {
+  // ignore
+}
+```
+
+**Impact**: Abort handling failures may leave resources in inconsistent state.
+**Fix**: Log abort errors with context.
+
+---
+
+**File**: `.pi/extensions/agent-usage-tracker.ts`
+**Lines**: 230, 314
+**Priority**: Low
+
+```typescript
+} catch {
+  // noop
+}
+```
+
+**Impact**: Usage tracking failures affect metrics but not functionality.
+**Fix**: Consider logging for operational visibility.
+
+---
+
+**File**: `.pi/extensions/self-improvement-loop.ts`
+**Line**: 747
+**Priority**: Low
+
+```typescript
+} catch {
+  // ignore
+}
+```
+
+**Impact**: Minor - affects only self-improvement feedback loop.
+**Fix**: Log for debugging purposes.
+
+---
+
+**File**: `.pi/extensions/loop/verification.ts`
+**Line**: 280
+**Priority**: Low
+
+```typescript
+} catch {
+  // noop
+}
+```
+
+**Impact**: Verification step failure is hidden.
+**Fix**: Log verification errors.
+
+---
+
+**File**: `.pi/lib/storage-base.ts`
+**Line**: 180
+**Priority**: Low
+
+```typescript
+} catch {
+  // noop
+}
+```
+
+**Impact**: Storage cleanup failure is hidden.
+**Fix**: Log for operational monitoring.
+
+---
+
+### 2.2 Already Fixed Error Handling (Good Pattern)
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Line**: 369
+**Priority**: N/A (Already Fixed)
+
+```typescript
+// Bug #8 fix: エラーをログに記録（元はcatch {}で無視していた）
+const errorMessage = error instanceof Error ? error.message : String(error);
+console.error(`[agent-runtime] publishRuntimeUsageToCoordinator failed: ${errorMessage}`);
+```
+
+**Note**: This is an example of a previously fixed silent error handling issue.
+
+---
+
+### 2.3 Missing Try-Catch Blocks
+
+**File**: `.pi/extensions/subagents/task-execution.ts`
+**Lines**: Pattern loading
+**Priority**: Medium
+
+```typescript
+let relevantPatterns: ExtractedPattern[] = [];
+try {
+  relevantPatterns = findRelevantPatterns(input.cwd, input.task, 5);
+} catch {
+  // Pattern loading failure should not block execution
+}
+```
+
+**Impact**: Pattern loading failure is handled correctly but silently.
+**Fix**: Log warning when pattern loading fails.
+
+---
+
+## 3. Asynchronous Processing Issues
+
+### 3.1 Potential Race Condition in Singleton Initialization
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Lines**: GlobalRuntimeStateProvider class
+**Priority**: High
+
+```typescript
+class GlobalRuntimeStateProvider implements RuntimeStateProvider {
+  private initializationInProgress = false;
+
+  getState(): AgentRuntimeState {
+    if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+      if (this.initializationInProgress) {
+        // 短いスピンウェイト（初期化完了を待機）
+        let attempts = 0;
+        while (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ && attempts < 1000) {
+          attempts += 1;
+        }
+        // 初期化が完了していない場合は新規作成
+        if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
+          this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
+        }
+      }
+```
+
+**Issues**:
+1. **Spin wait without yield**: `attempts < 1000` loop blocks the event loop
+2. **Race condition**: Multiple threads could still race between checking `initializationInProgress` and setting it
+3. **No memory barrier**: JavaScript doesn't guarantee visibility across async boundaries
+
+**Impact**: Under high concurrency, multiple runtime states could be created, leading to inconsistent state.
+**Fix**: Use proper async mutex or Promise-based initialization.
+
+---
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Lines**: Reservation sweeper initialization
+**Priority**: High
+
+```typescript
+let runtimeReservationSweeperInitializing = false;
+
+function ensureReservationSweeper(): void {
+  if (runtimeReservationSweeper || runtimeReservationSweeperInitializing) return;
+
+  runtimeReservationSweeperInitializing = true;
+  try {
+    if (runtimeReservationSweeper) return;
+    // ... create sweeper
+  } finally {
+    runtimeReservationSweeperInitializing = false;
+  }
+}
+```
+
+**Issues**:
+1. Flag check and set is not atomic
+2. Multiple sweepers could be created in concurrent initialization
+
+**Fix**: Use atomic flag or proper locking mechanism.
+
+---
+
+**File**: `.pi/lib/checkpoint-manager.ts`
+**Lines**: Manager initialization
+**Priority**: High
+
+```typescript
+let managerState: {...} | null = null;
+
+export function initCheckpointManager(configOverrides?: Partial<CheckpointManagerConfig>): void {
+  if (managerState?.initialized) {
+    return;
+  }
+  // ... initialization
+  managerState = {...};
+}
+```
+
+**Issues**:
+1. Check-then-act pattern without atomicity
+2. Race condition between checking `initialized` and setting `managerState`
+
+**Impact**: Multiple manager states could be created, timers could leak.
+**Fix**: Use proper initialization guard pattern.
+
+---
+
+### 3.2 Unhandled Promise Rejections Risk
+
+**File**: `.pi/lib/dynamic-tools/registry.ts`
+**Line**: Audit log call
+**Priority**: Medium
+
+```typescript
+logAudit({...}, this.paths).catch((e) => {
+  console.debug("[dynamic-tools] Failed to log tool registration:", e);
+});
+```
+
+**Impact**: Audit log failure is caught but only logged to debug.
+**Fix**: Consider alerting mechanism for critical audit failures.
+
+---
+
+## 4. Resource Management Issues
+
+### 4.1 Memory Leak Potential in LRU Cache
+
+**File**: `.pi/lib/checkpoint-manager.ts`
+**Lines**: Cache management
+**Priority**: High
+
+```typescript
+const CACHE_MAX_ENTRIES = 100;
+
+function setToCache(taskId: string, checkpoint: Checkpoint): void {
+  // ... add to cache
+  
+  // 最大エントリ数を超えた場合、最も古いエントリを削除
+  while (managerState.cacheOrder.length > CACHE_MAX_ENTRIES) {
+    const oldestKey = managerState.cacheOrder.shift();
+    if (oldestKey) {
+      managerState.cache.delete(oldestKey);
+    }
+  }
+}
+```
+
+**Issues**:
+1. Cache entries are never proactively invalidated
+2. Large checkpoint objects in cache could consume significant memory
+3. No size-based eviction, only count-based
+
+**Impact**: Under heavy load with large checkpoints, memory could grow unbounded.
+**Fix**: Add size-based eviction or periodic cleanup.
+
+---
+
+### 4.2 File Handle Leak Potential
+
+**File**: `.pi/lib/storage-lock.ts`
+**Line**: tryAcquireLock
+**Priority**: Medium
+
+```typescript
+function tryAcquireLock(lockFile: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(lockFile, "wx", 0o600);
+    writeFileSync(fd, `${process.pid}:${Date.now()}\n`, "utf-8");
+    return true;
+  } catch (error) {
+    if (isNodeErrno(error, "EEXIST")) {
+      return false;
+    }
+    throw error;
+  } finally {
+    if (typeof fd === "number") {
+      try {
+        closeSync(fd);
+      } catch {
+        // noop
+      }
+    }
+  }
+}
+```
+
+**Issues**:
+1. `writeFileSync` failure after `openSync` could leak fd before finally block
+2. Error in finally's closeSync is silently ignored
+
+**Impact**: Under error conditions, file descriptors could leak.
+**Fix**: Use try-with-resources pattern or explicit cleanup order.
+
+---
+
+### 4.3 Timer Leak Potential
+
+**File**: `.pi/lib/task-scheduler.ts`
+**Lines**: Event-driven wait
+**Priority**: Medium
+
+```typescript
+private waitForEvent(timeoutMs: number, signal?: AbortSignal): Promise<"event" | "timeout" | "aborted"> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve("timeout");
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      this.eventTarget.removeEventListener("task-completed", onEvent);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    // ...
+  });
+}
+```
+
+**Issues**:
+1. If cleanup is never called (theoretical edge case), timer persists
+2. Event listener cleanup depends on proper execution flow
+
+**Impact**: Minor - Promise resolution ensures cleanup in most cases.
+**Fix**: Add defensive cleanup in finally block.
+
+---
+
+## 5. Boundary Condition Issues
+
+### 5.1 Array Bounds and Index Validation
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Line**: trimPendingQueueToLimit
+**Priority**: Medium
+
+```typescript
+function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null {
+  // ...
+  const evicted = pending.splice(evictionIndex, 1)[0];
+  if (!evicted) return null;
+  // ...
+}
+```
+
+**Issues**:
+1. `splice` returns empty array if index invalid, `[0]` returns undefined
+2. Undefined check after splice is correct, but evictionIndex could be -1
+
+**Impact**: Edge case where evictionIndex remains -1 would cause undefined return.
+**Fix**: Add explicit check `if (evictionIndex < 0) return null;` before splice.
+
+---
+
+**File**: `.pi/lib/task-scheduler.ts`
+**Lines**: Queue operations
+**Priority**: Medium
+
+```typescript
+const queueIndex = queue.indexOf(entry);
+// ...
+queue.splice(queueIndex, 1);
+```
+
+**Issues**:
+1. If `indexOf` returns -1, `splice(-1, 1)` removes last element instead of no-op
+
+**Impact**: Wrong entry could be removed from queue.
+**Fix**: Check `queueIndex >= 0` before splice.
+
+---
+
+### 5.2 Numeric Overflow/Underflow
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Lines**: Sequence counters
+**Priority**: Low
+
+```typescript
+let runtimeQueueSequence = 0;
+let runtimeReservationSequence = 0;
+
+function createRuntimeQueueEntryId(): string {
+  runtimeQueueSequence += 1;
+  return `queue-${process.pid}-${getRuntimeInstanceToken()}-${runtimeNow()}-${runtimeQueueSequence}`;
+}
+```
+
+**Issues**:
+1. Sequence counters can overflow JavaScript's safe integer limit (2^53)
+2. At 1000 operations/second, overflow occurs in ~285,616 years (acceptable)
+
+**Impact**: Theoretical - extremely unlikely in practice.
+**Fix**: Add modulo wrap or use BigInt if concerned.
+
+---
+
+**File**: `.pi/lib/task-scheduler.ts`
+**Line**: Task ID sequence
+**Priority**: Low
+
+```typescript
+let taskIdSequence = 0;
+taskIdSequence = (taskIdSequence + 1) % 36 ** 4;
+```
+
+**Issues**:
+1. Modulo prevents overflow but could theoretically duplicate IDs
+2. Timestamp + random + sequence combination makes collision extremely unlikely
+
+**Impact**: Negligible in practice.
+**Fix**: None required for current use case.
+
+---
+
+### 5.3 Null/Undefined Edge Cases
+
+**File**: `.pi/extensions/subagents/storage.ts`
+**Lines**: Storage loading
+**Priority**: Medium
+
+```typescript
+const storage: SubagentStorage = {
+  agents: Array.isArray(parsed.agents) ? parsed.agents : [],
+  runs: Array.isArray(parsed.runs) ? parsed.runs : [],
+  currentAgentId: typeof parsed.currentAgentId === "string" ? parsed.currentAgentId : undefined,
+  defaultsVersion:
+    typeof parsed.defaultsVersion === "number" && Number.isFinite(parsed.defaultsVersion)
+      ? Math.trunc(parsed.defaultsVersion)
+      : 0,
+};
+```
+
+**Issues**:
+1. `parsed.agents` items are not validated for correct schema
+2. `parsed.runs` items are not validated for correct schema
+
+**Impact**: Malformed storage file could inject invalid data.
+**Fix**: Add schema validation for each agent and run entry.
+
+---
+
+**File**: `.pi/lib/checkpoint-manager.ts`
+**Line**: parseCheckpointFile
+**Priority**: Medium
+
+```typescript
+function parseCheckpointFile(filePath: string): Checkpoint | null {
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(content) as Checkpoint;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+```
+
+**Issues**:
+1. No validation of parsed object structure
+2. `as Checkpoint` assertion doesn't verify fields
+
+**Impact**: Corrupted checkpoint file could cause undefined access later.
+**Fix**: Add runtime validation of checkpoint fields.
+
+---
+
+## 6. Concurrency Issues
+
+### 6.1 Race Condition in Global State
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Lines**: Global runtime state access
+**Priority**: High
+
+```typescript
+export function getSharedRuntimeState(): AgentRuntimeState {
+  return runtimeStateProvider.getState();
+}
+```
+
+Multiple concurrent calls to `getSharedRuntimeState()` could read/write state simultaneously since JavaScript objects are not thread-safe for compound operations.
+
+**Impact**: Under high concurrency, state corruption is possible.
+**Fix**: Use proper synchronization or immutable state patterns.
+
+---
+
+### 6.2 Reservation Expiration Race
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Lines**: cleanupExpiredReservations
+**Priority**: Medium
+
+```typescript
+function cleanupExpiredReservations(runtime: AgentRuntimeState, nowMs = runtimeNow()): number {
+  const before = runtime.reservations.active.length;
+  runtime.reservations.active = runtime.reservations.active.filter(
+    (reservation) => reservation.expiresAtMs > nowMs,
+  );
+  // ...
+}
+```
+
+**Issues**:
+1. Filter operation creates new array while other code may reference old array
+2. No synchronization between cleanup and active usage
+
+**Impact**: Reservation could be used after it's marked for cleanup.
+**Fix**: Use atomic operations or proper locking.
+
+---
+
+### 6.3 Queue Consistency Under Concurrent Modification
+
+**File**: `.pi/lib/task-scheduler.ts`
+**Lines**: Queue operations
+**Priority**: Medium
+
+```typescript
+class TaskSchedulerImpl {
+  private readonly queues: Map<string, TaskQueueEntry[]> = new Map();
+  // ...
+
+  async submit<TResult>(task: ScheduledTask<TResult>): Promise<TaskResult<TResult>> {
+    // ...
+    queue.push(entry);
+    this.sortQueue(queue);
+    // ...
+  }
+}
+```
+
+**Issues**:
+1. `push` and `sort` are not atomic
+2. Concurrent submissions could interleave operations
+
+**Impact**: Queue order could be inconsistent under concurrent load.
+**Fix**: Use proper queue synchronization.
+
+---
+
+## 7. Logic Errors
+
+### 7.1 Incorrect Comparison Logic
+
+**File**: `.pi/lib/task-scheduler.ts`
+**Lines**: compareTaskEntries
+**Priority**: Low
+
+```typescript
+function compareTaskEntries(a: TaskQueueEntry, b: TaskQueueEntry): number {
+  // 1. Priority comparison (higher first)
+  const priorityDiff = priorityToValue(b.task.priority) - priorityToValue(a.task.priority);
+  if (priorityDiff !== 0) {
+    return priorityDiff;
+  }
+
+  // 2. Starvation prevention
+  const skipDiff = a.skipCount - b.skipCount;
+  if (skipDiff > 3) return -1;
+  if (skipDiff < -3) return 1;
+  // ...
+}
+```
+
+**Issues**:
+1. Starvation prevention check uses magic number 3 without explanation
+2. Asymmetric threshold could cause inconsistent ordering
+
+**Impact**: Minor - starvation prevention may not work as intended.
+**Fix**: Define constant with documentation, consider symmetric threshold.
+
+---
+
+### 7.2 Potential Infinite Loop
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Lines**: waitForRuntimeCapacity
+**Priority**: Low
+
+```typescript
+while (true) {
+  attempts += 1;
+  // ...
+  const attempted = tryReserveRuntimeCapacity(input);
+  if (attempted.allowed && attempted.reservation) {
+    return {...};
+  }
+  // ...
+}
+```
+
+**Issues**:
+1. While true without guaranteed exit condition
+2. Timeout check exists but could theoretically be bypassed if timing is wrong
+
+**Impact**: Theoretical - timeout check should prevent infinite loop.
+**Fix**: Add maximum attempts as additional safeguard.
+
+---
+
+### 7.3 Off-by-One in Eviction Logic
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Lines**: trimPendingQueueToLimit
+**Priority**: Low
+
+```typescript
+function trimPendingQueueToLimit(runtime: AgentRuntimeState): RuntimeQueueEntry | null {
+  const maxPendingEntries = getMaxPendingQueueEntries();
+  const pending = runtime.queue.pending;
+  if (pending.length < maxPendingEntries) {
+    return null;
+  }
+  // ... eviction logic
+}
+```
+
+**Issues**:
+1. Eviction only triggers when `pending.length >= maxPendingEntries`
+2. After eviction, length is `maxPendingEntries - 1`, allowing immediate re-fill
+
+**Impact**: Queue hovers at limit-1, causing frequent evictions under load.
+**Fix**: Consider evicting when approaching limit (e.g., 90%).
+
+---
+
+## 8. Design Issues
+
+### 8.1 God Object Pattern
+
+**File**: `.pi/extensions/agent-runtime.ts`
+**Lines**: Entire file (2400+ lines)
+**Priority**: Medium
+
+**Issues**:
+1. Single file manages runtime state, reservations, capacity, dispatch, and orchestration
+2. Tight coupling between concerns
+3. Difficult to test individual components
+
+**Impact**: Maintenance burden, testing difficulty.
+**Fix**: Split into focused modules (state management, reservations, dispatch).
+
+---
+
+### 8.2 Feature Flag Proliferation
+
+**Files**: Multiple
+**Priority**: Low
+
+```typescript
+const USE_SCHEDULER = process.env.PI_USE_SCHEDULER === "true";
+const DEBUG_RUNTIME_QUEUE = process.env.PI_DEBUG_RUNTIME_QUEUE === "1";
+// Many more...
+```
+
+**Issues**:
+1. Many feature flags without central registry
+2. Inconsistent flag naming (PI_ prefix vs no prefix)
+3. No documentation of available flags
+
+**Impact**: Difficult to understand available configuration options.
+**Fix**: Create central feature flag registry with documentation.
+
+---
+
+### 8.3 Circular Dependency Risk
+
+**Files**: `.pi/extensions/agent-runtime.ts`, `.pi/lib/task-scheduler.ts`, `.pi/lib/checkpoint-manager.ts`
+**Priority**: Medium
+
+```
+agent-runtime.ts -> task-scheduler.ts -> checkpoint-manager.ts
+                                             ↑
+agent-runtime.ts ----------------------------|
+```
+
+**Issues**:
+1. Circular import chain between modules
+2. Could cause initialization order issues
+
+**Impact**: Potential runtime errors during module loading.
+**Fix**: Refactor to break circular dependency.
+
+---
+
+## 9. Security Considerations
+
+### 9.1 File Permission Issues
+
+**File**: `.pi/lib/storage-lock.ts`
+**Line**: Lock file creation
+**Priority**: Medium
+
+```typescript
+fd = openSync(lockFile, "wx", 0o600);
+```
+
+**Issues**:
+1. Lock files created with 0600 permissions (good)
+2. But content includes PID which could be read by same-user processes
+
+**Impact**: Low - PID exposure is minor concern.
+**Fix**: None required, but document for security review.
+
+---
+
+### 9.2 Dynamic Code Execution
+
+**File**: `.pi/lib/dynamic-tools/registry.ts`
+**Lines**: Tool execution
+**Priority**: High
+
+```typescript
+// Tool code is stored and potentially executed
+const tool: DynamicToolDefinition = {
+  // ...
+  code: request.code,
+  // ...
+};
+```
+
+**Issues**:
+1. Dynamic tool code is stored and could be executed
+2. Safety analysis exists but could have gaps
+
+**Impact**: Potential arbitrary code execution if safety checks are bypassed.
+**Fix**: Ensure safety analysis covers all edge cases, add sandboxing.
+
+---
+
+## 10. Recommendations Summary
+
+### Immediate Actions (High Priority)
+
+1. **Fix singleton initialization race conditions** in agent-runtime.ts and checkpoint-manager.ts
+2. **Add error logging** to all silent catch blocks
+3. **Add schema validation** for loaded JSON files (storage, checkpoints)
+4. **Review dynamic tool execution** security model
+5. **Fix potential fd leaks** in storage-lock.ts
+
+### Near-Term Actions (Medium Priority)
+
+1. **Replace `any` types** with proper interfaces
+2. **Add synchronization** for concurrent state access
+3. **Break circular dependencies** between core modules
+4. **Add array bounds checking** before splice operations
+5. **Improve LRU cache** with size-based eviction
+
+### Long-Term Actions (Low Priority)
+
+1. **Refactor agent-runtime.ts** into focused modules
+2. **Create feature flag registry**
+3. **Add comprehensive logging** framework
+4. **Document all environment variables**
+5. **Add integration tests** for concurrent scenarios
+
+---
+
+## Appendix: Files Analyzed
+
+### Extensions (`.pi/extensions/`)
+- `agent-runtime.ts` (2405 lines) - Core runtime management
+- `cross-instance-runtime.ts` - Cross-instance coordination
+- `self-improvement-reflection.ts` - Self-improvement loop
+- `kitty-status-integration.ts` - Status display
+- `subagents/live-monitor.ts` - Live monitoring UI
+- `subagents/task-execution.ts` - Task execution logic
+- `subagents/parallel-execution.ts` - Parallel execution
+- `subagents/storage.ts` - Subagent storage
+- `ul-dual-mode.ts` - UL mode handling
+- `skill-inspector.ts` - Skill inspection
+- `invariant-pipeline.ts` - Invariant checking
+- `shared/pi-print-executor.ts` - Print execution
+- `pi-ai-abort-fix.ts` - Abort handling
+- `agent-usage-tracker.ts` - Usage tracking
+- `self-improvement-loop.ts` - Improvement loop
+- `loop/verification.ts` - Verification logic
+
+### Library (`.pi/lib/`)
+- `task-scheduler.ts` - Task scheduling
+- `checkpoint-manager.ts` - Checkpoint management
+- `cross-instance-coordinator.ts` - Instance coordination
+- `storage-lock.ts` - File locking
+- `error-utils.ts` - Error handling utilities
+- `output-validation.ts` - Output validation
+- `dynamic-tools/registry.ts` - Dynamic tool registry
+- `adaptive-rate-controller.ts` - Rate limiting
+- `provider-limits.ts` - Provider limits
+- `storage-base.ts` - Storage utilities
+
+---
+
+**End of Report**

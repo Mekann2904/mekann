@@ -283,7 +283,8 @@ function loadState(): AdaptiveControllerState {
       }
     }
   } catch (error) {
-    // ignore
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[adaptive-rate-controller] Failed to load state, using defaults: ${errorMessage}`);
   }
   return { ...defaults };
 }

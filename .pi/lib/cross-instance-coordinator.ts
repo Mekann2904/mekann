@@ -200,8 +200,9 @@ function writeTextFileAtomic(filePath: string, content: string): void {
   } catch (error) {
     try {
       unlinkSync(tmpPath);
-    } catch {
-      // ignore cleanup failures
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.debug(`[cross-instance-coordinator] Failed to cleanup temp file ${tmpPath}: ${errorMessage}`);
     }
     throw error;
   }
@@ -248,8 +249,9 @@ function patchMyInstanceInfo(mutator: (info: InstanceInfo) => void): void {
       const parsed = JSON.parse(content) as InstanceInfo;
       info = { ...fallback, ...parsed };
       info.activeModels = Array.isArray(parsed.activeModels) ? parsed.activeModels : [];
-    } catch {
-      // keep fallback state
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.debug(`[cross-instance-coordinator] Failed to parse lock file ${lockFile}: ${errorMessage}`);
     }
   }
 
@@ -264,8 +266,9 @@ function patchMyInstanceInfo(mutator: (info: InstanceInfo) => void): void {
       info.activeModels = [];
     }
     writeJsonFileAtomic(lockFile, info);
-  } catch {
-    logCoordinatorDebug("patchMyInstanceInfo write failed");
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logCoordinatorDebug(`patchMyInstanceInfo write failed: ${errorMessage}`);
   }
 }
 
@@ -280,7 +283,9 @@ function parseLockFile(filename: string): InstanceInfo | null {
     const content = readFileSync(join(INSTANCES_DIR, filename), "utf-8");
     const parsed = JSON.parse(content) as InstanceInfo;
     return parsed;
-  } catch {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[cross-instance-coordinator] Failed to parse lock file ${filename}: ${errorMessage}`);
     return null;
   }
 }
@@ -324,9 +329,9 @@ function loadConfig(): CoordinatorConfig {
         heartbeatTimeoutMs: parsed.heartbeatTimeoutMs ?? defaults.heartbeatTimeoutMs,
       };
     }
-  } catch {
-    logCoordinatorDebug("loadConfig failed, using defaults");
-    // ignore
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logCoordinatorDebug(`loadConfig failed, using defaults: ${errorMessage}`);
   }
   return defaults;
 }
@@ -420,8 +425,9 @@ export function unregisterInstance(): void {
     if (existsSync(lockFile)) {
       unlinkSync(lockFile);
     }
-  } catch {
-    // ignore
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[cross-instance-coordinator] Failed to remove lock file during unregister: ${errorMessage}`);
   }
 
   state = null;
@@ -458,9 +464,9 @@ export function cleanupDeadInstances(): void {
       // Corrupted lock file, remove it
       try {
         unlinkSync(join(INSTANCES_DIR, file));
-      } catch {
-        logCoordinatorDebug(`cleanupDeadInstances failed to remove corrupted lock file ${file}`);
-        // ignore
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logCoordinatorDebug(`cleanupDeadInstances failed to remove corrupted lock file ${file}: ${errorMessage}`);
       }
       continue;
     }
@@ -472,9 +478,9 @@ export function cleanupDeadInstances(): void {
     if (!isInstanceAlive(info, nowMs, state.config.heartbeatTimeoutMs)) {
       try {
         unlinkSync(join(INSTANCES_DIR, file));
-      } catch {
-        logCoordinatorDebug(`cleanupDeadInstances failed to remove stale lock file ${file}`);
-        // ignore
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logCoordinatorDebug(`cleanupDeadInstances failed to remove stale lock file ${file}: ${errorMessage}`);
       }
     }
   }
