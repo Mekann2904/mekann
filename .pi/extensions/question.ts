@@ -3,22 +3,25 @@
  * path: .pi/extensions/question.ts
  * role: ユーザーへの質問UIおよび入力制御ロジックの提供
  * why: PIエージェントが対話的にユーザーから情報を収集するための共通インターフェースを確立するため
- * related: @mariozechner/pi-tui, @mariozechner/pi-coding-agent
- * public_api: askSingleQuestion, createRenderer, types (QuestionInfo, Answer, QuestionCustomController)
- * invariants: 選択中のオプション数、カスタム入力の文字列、カーソル位置
+ * related: @mariozechner/pi-tui, @mariozechner/pi-coding-agent, docs/02-user-guide/02-question.md
+ * public_api: askSingleQuestion, createRenderer, types (QuestionInfo, Answer, QuestionCustomController), QuestionErrorCode, createErrorResponse
+ * invariants: 選択中のオプション数、カスタム入力の文字列、カーソル位置、ペーストバッファ状態
  * side_effects: なし (純粋なUI描画とイベントハンドリング)
- * failure_modes: 入力値の未解決、キャンセル操作、想定外のキー入力
+ * failure_modes: 入力値の未解決、キャンセル操作、想定外のキー入力、パラメータ検証エラー
  * @abdd.explain
  * overview: opencode互換のUIライブラリを使用した、対話的質問フォームの実装
  * what_it_does:
  *   - 質問と選択肢を描画し、キーボード操作で選択を受け付ける
  *   - 複数選択およびカスタムテキスト入力モードをサポートする
  *   - テキストの折り返しやカーソル位置計算を含むレンダリングを行う
+ *   - マルチバイト文字（日本語など）の表示幅計算に対応
+ *   - 構造化エラーレスポンスでLLMがエラーから回復しやすくする
  * why_it_exists:
  *   - エージェントの実行フロー内で、柔軟なユーザー入力を必要とするケースに対応するため
+ *   - LLMにとって使いやすいパラメータ設計とエラーハンドリングを提供するため
  * scope:
  *   in: 質問定義 (QuestionInfo), ユーザー入力 (キーイベント)
- *   out: ユーザーの回答 (Answer) または null (キャンセル時)
+ *   out: ユーザーの回答 (Answer) または null (キャンセル時) または構造化エラー
  */
 
 /**
@@ -37,16 +40,70 @@ import { matchesKey, Key } from "@mariozechner/pi-tui";
 // 型定義 (opencode互換)
 // ============================================
 
+/**
+ * デフォルト値の定数
+ * LLM向けの明示的なデフォルト値定義
+ */
+const QUESTION_DEFAULTS = {
+	multiple: false,
+	custom: true
+} as const;
+
+/**
+ * エラーコード定義
+ * 構造化エラーレスポンス用
+ */
+enum QuestionErrorCode {
+	NO_UI = "NO_UI",
+	NO_OPTIONS = "NO_OPTIONS",
+	NO_QUESTIONS = "NO_QUESTIONS",
+	CANCELLED = "CANCELLED",
+	VALIDATION_ERROR = "VALIDATION_ERROR"
+}
+
+/**
+ * 構造化エラー情報
+ */
+interface QuestionError {
+	code: QuestionErrorCode;
+	message: string;
+	recovery: string[];
+	details?: Record<string, unknown>;
+}
+
+/**
+ * 構造化エラーレスポンスを作成
+ * @param error - エラー情報
+ * @returns ツール実行結果
+ */
+function createErrorResponse(error: QuestionError): { content: { type: "text"; text: string }[]; details: { answers: never[]; error: QuestionError } } {
+	return {
+		content: [{
+			type: "text",
+			text: `エラー [${error.code}]: ${error.message}\n\n回復方法:\n${error.recovery.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
+		}],
+		details: {
+			answers: [],
+			error
+		}
+	};
+}
+
 interface QuestionOption {
 	label: string;
 	description?: string;
 }
 
 interface QuestionInfo {
+	/** 質問テキスト（完全な文章） */
 	question: string;
+	/** 短いラベル（推奨: 最大30文字） */
 	header: string;
+	/** 選択肢一覧 */
 	options: QuestionOption[];
+	/** 複数選択を許可（デフォルト: false） */
 	multiple?: boolean;
+	/** 自由記述を許可（デフォルト: true） */
 	custom?: boolean;
 }
 
@@ -90,6 +147,64 @@ interface QuestionContext {
  */
 function asQuestionContext(ctx: ExtensionContext): QuestionContext {
 	return ctx as unknown as QuestionContext;
+}
+
+// ============================================
+// 文字幅計算ヘルパー（マルチバイト対応）
+// ============================================
+
+/**
+ * 文字の表示幅を取得
+ * CJK文字は幅2、それ以外は幅1
+ * @param char - 対象文字
+ * @returns 表示幅
+ */
+function getCharWidth(char: string): number {
+	const code = char.codePointAt(0) || 0;
+	// CJK統合漢字、ひらがな、カタカナ等の幅2文字字
+	if (
+		(code >= 0x3000 && code <= 0x303F) ||  // CJK記号・句読点
+		(code >= 0x3040 && code <= 0x309F) ||  // ひらがな
+		(code >= 0x30A0 && code <= 0x30FF) ||  // カタカナ
+		(code >= 0x4E00 && code <= 0x9FFF) ||  // CJK統合漢字
+		(code >= 0xFF00 && code <= 0xFFEF)     // 半角・全角形
+	) {
+		return 2;
+	}
+	return 1;
+}
+
+/**
+ * 文字列の表示幅を取得
+ * @param str - 対象文字列
+ * @returns 表示幅
+ */
+function getStringWidth(str: string): number {
+	let width = 0;
+	for (const char of str) {
+		width += getCharWidth(char);
+	}
+	return width;
+}
+
+/**
+ * 表示幅から文字列を切り詰め
+ * @param str - 対象文字列
+ * @param maxWidth - 最大表示幅
+ * @returns 切り詰められた文字列
+ */
+function truncateByWidth(str: string, maxWidth: number): string {
+	let width = 0;
+	let result = "";
+	for (const char of str) {
+		const charWidth = getCharWidth(char);
+		if (width + charWidth > maxWidth) {
+			break;
+		}
+		result += char;
+		width += charWidth;
+	}
+	return result;
 }
 
 // ============================================
@@ -302,15 +417,28 @@ async function askSingleQuestion(
 				if (endIndex !== -1) {
 					const pasteContent = pasteBuffer.substring(0, endIndex);
 					if (pasteContent.length > 0 && state.customMode) {
-						// ペースト内容を挿入
-						const cleanText = pasteContent.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-						const before = state.customInput.slice(0, state.customCursor);
-						const after = state.customInput.slice(state.customCursor);
-						renderer.setState({ 
-							customInput: before + cleanText + after,
-							customCursor: state.customCursor + cleanText.length
-						});
-						tui.requestRender();
+						// [H-1 Fix] ペースト内容のサニタイゼーション
+						const cleanText = pasteContent
+							.replace(/\r\n/g, "\n")
+							.replace(/\r/g, "\n")
+							.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ""); // ANSIエスケープシーケンス除去
+
+						// [H-1 Fix] 最大長チェック（DoS防止）
+						const MAX_PASTE_LENGTH = 10000;
+						if (cleanText.length > MAX_PASTE_LENGTH) {
+							ctx.ui.notify(
+								`ペースト内容が長すぎます（${cleanText.length}文字）。最大${MAX_PASTE_LENGTH}文字までです。`,
+								"warning"
+							);
+						} else {
+							const before = state.customInput.slice(0, state.customCursor);
+							const after = state.customInput.slice(state.customCursor);
+							renderer.setState({
+								customInput: before + cleanText + after,
+								customCursor: state.customCursor + cleanText.length
+							});
+							tui.requestRender();
+						}
 					}
 					isInPaste = false;
 					pasteBuffer = "";
@@ -570,10 +698,14 @@ async function showConfirmationScreen(
 				} else if (state.cursor === 1) {
 					done({ type: "cancel" });
 				} else {
-					// [Low Fix] 境界チェックを追加
+					// [C-2 Fix] 境界チェックを強化
 					const editIndex = state.cursor - 2;
 					if (editIndex >= 0 && editIndex < questions.length) {
 						done({ type: "edit", questionIndex: editIndex });
+					} else {
+						// 範囲外の場合はフォールバック
+						// キャンセルとして処理（安全なデフォルト）
+						done({ type: "cancel" });
 					}
 				}
 			} else if (data === "Y" || data === "y") {
@@ -617,35 +749,83 @@ export default function (pi: ExtensionAPI) {
 		}),
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			// [L-3] UI不在時の構造化エラーレスポンス
 			if (!ctx.hasUI) {
-				return {
-					content: [{ type: "text" as const, text: "UIが利用できません（非対話モードで実行中）" }],
-					details: { answers: [] }
-				};
+				return createErrorResponse({
+					code: QuestionErrorCode.NO_UI,
+					message: "UIが利用できません（非対話モードで実行中）",
+					recovery: [
+						"対話モードで再実行してください",
+						"または、デフォルト値を使用するようにコードを修正してください"
+					]
+				});
 			}
 
 			// ExtensionContextをQuestionContextに適応（型安全性確保）
 			const qctx = asQuestionContext(ctx);
 
 			const questions: QuestionInfo[] = params.questions || [];
+
+			// [L-3] 質問なしの構造化エラーレスポンス
 			if (questions.length === 0) {
-				return {
-					content: [{ type: "text" as const, text: "質問が提供されていません" }],
-					details: { answers: [] }
-				};
+				return createErrorResponse({
+					code: QuestionErrorCode.NO_QUESTIONS,
+					message: "質問が提供されていません",
+					recovery: [
+						"questions配列に少なくとも1つの質問を追加してください",
+						"例: { questions: [{ question: \"...\", header: \"...\", options: [{ label: \"はい\" }] }] }"
+					]
+				});
 			}
 
-			// [Critical Fix] 空配列アクセス防止: options=[] + custom=false を検証
+			// [L-1] パラメータバリデーション強化
+			const validationErrors: string[] = [];
+
 			for (let i = 0; i < questions.length; i++) {
 				const q = questions[i];
 				const hasOptions = q.options && q.options.length > 0;
 				const allowCustom = q.custom !== false;
+
+				// [C-1] 空選択肢 + custom=false の検証
 				if (!hasOptions && !allowCustom) {
-					return {
-						content: [{ type: "text" as const, text: `質問 ${i + 1} (${q.header}) に選択肢がなく、自由記述も無効です。optionsを追加するか、custom: true を設定してください。` }],
-						details: { answers: [] }
-					};
+					return createErrorResponse({
+						code: QuestionErrorCode.NO_OPTIONS,
+						message: `質問 ${i + 1} (${q.header}) に選択肢がなく、自由記述も無効です`,
+						recovery: [
+							`options に少なくとも1つの選択肢を追加してください: options: [{ label: "はい" }]`,
+							`または custom: true を設定して自由記述を許可してください`,
+							`例: { question: "${q.question}", header: "${q.header}", options: [], custom: true }`
+						],
+						details: { questionIndex: i, header: q.header }
+					});
 				}
+
+				// [L-1] ヘッダー長の警告
+				if (q.header && q.header.length > 30) {
+					validationErrors.push(
+						`質問 ${i + 1}: header は30文字以下を推奨します（現在: ${q.header.length}文字）`
+					);
+				}
+
+				// [L-1] ラベル長の警告
+				if (q.options) {
+					for (let j = 0; j < q.options.length; j++) {
+						const opt = q.options[j];
+						if (opt.label.length > 10) {
+							validationErrors.push(
+								`質問 ${i + 1} 選択肢 ${j + 1}: label は1-10文字を推奨します（"${opt.label}": ${opt.label.length}文字）`
+							);
+						}
+					}
+				}
+			}
+
+			// [L-1] バリデーション警告がある場合は通知（処理は継続）
+			if (validationErrors.length > 0) {
+				qctx.ui.notify(
+					`パラメータ警告: ${validationErrors.length}件の推奨事項があります`,
+					"warning"
+				);
 			}
 
 			// 回答を初期化
