@@ -40,6 +40,7 @@ import { createChildAbortController } from "./abort-utils";
  * @param usePriorityScheduling - 優先度ベーススケジューリングを有効にするか
  * @param itemWeights - アイテムIDごとの重みマップ
  * @param getItemId - アイテムからIDを取得する関数
+ * @param settleMode - 'throw'で最初のエラーで例外、'allSettled'で全結果を返す
  */
 export interface ConcurrencyRunOptions<T = unknown> {
   signal?: AbortSignal;
@@ -50,6 +51,8 @@ export interface ConcurrencyRunOptions<T = unknown> {
   itemWeights?: Map<string, number>;
   /** DynTaskMAS: アイテムからIDを取得する関数 */
   getItemId?: (item: T) => string;
+  /** Promise.allSettledパターンで部分失敗を許容するか (default: 'throw') */
+  settleMode?: 'throw' | 'allSettled';
 }
 
 /**
@@ -61,6 +64,14 @@ interface WorkerResult<TResult> {
   result?: TResult;
   error?: unknown;
 }
+
+/**
+ * Settled result for allSettled mode
+ * @summary 個別結果の成功/失敗ラッパー
+ */
+export type SettledResult<TResult> =
+  | { status: 'fulfilled'; value: TResult; index: number }
+  | { status: 'rejected'; reason: unknown; index: number };
 
 function toPositiveLimit(limit: number, itemCount: number): number {
   const safeLimit = Number.isFinite(limit) ? Math.trunc(limit) : 1;
@@ -87,7 +98,7 @@ function isPoolAbortError(error: unknown): boolean {
  * @param limit - 同時実行数の上限
  * @param worker - 各アイテムを処理する非同期関数
  * @param options - 実行オプション（AbortSignal、優先度スケジューリングなど）
- * @returns 各アイテムの処理結果の配列
+ * @returns settleMode='throw'時は各アイテムの処理結果配列、'allSettled'時はSettledResult配列
  * @example
  * // Basic usage
  * const results = await runWithConcurrencyLimit(
@@ -96,6 +107,16 @@ function isPoolAbortError(error: unknown): boolean {
  *   async (item) => item * 2,
  *   { signal: abortController.signal }
  * );
+ *
+ * // With allSettled mode (partial failure handling)
+ * const results = await runWithConcurrencyLimit(
+ *   ['a', 'b', 'c'],
+ *   2,
+ *   async (item) => process(item),
+ *   { settleMode: 'allSettled' }
+ * );
+ * const succeeded = results.filter(r => r.status === 'fulfilled');
+ * const failed = results.filter(r => r.status === 'rejected');
  *
  * // With priority scheduling
  * const weights = new Map([['a', 1.2], ['b', 0.5], ['c', 1.0]]);
@@ -119,6 +140,7 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
   if (items.length === 0) return [];
 
   const abortOnError = options.abortOnError !== false;
+  const settleMode = options.settleMode ?? 'throw';
   const { usePriorityScheduling, itemWeights, getItemId } = options;
 
   // Debug info: abortOnError=true時、エラー発生後も実行中ワーカーは完了まで続行する
@@ -211,12 +233,25 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
     cleanup();
   }
 
-  // If any worker failed, throw the first error encountered
+  ensureNotAborted(effectiveSignal);
+
+  // allSettled mode: return SettledResult array for partial failure handling
+  if (settleMode === 'allSettled') {
+    return results.map((item, index) => {
+      if (!item) {
+        return { status: 'rejected' as const, reason: new Error(`concurrency pool internal error: missing result at index ${index}`), index };
+      }
+      if (item.error) {
+        return { status: 'rejected' as const, reason: item.error, index };
+      }
+      return { status: 'fulfilled' as const, value: item.result as TResult, index };
+    }) as TResult[];
+  }
+
+  // throw mode: If any worker failed, throw the first error encountered
   if (firstError !== undefined) {
     throw firstError;
   }
-
-  ensureNotAborted(effectiveSignal);
 
   // Unwrap results with explicit guards for unexpected holes.
   // Track which indices had errors for more precise error messages.

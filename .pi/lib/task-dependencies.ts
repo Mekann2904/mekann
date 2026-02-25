@@ -390,6 +390,108 @@ export class TaskDependencyGraph {
   }
 
   /**
+   * 依存関係を動的に追加する
+   * @summary 依存関係を追加
+   * @param taskId - 対象タスクID
+   * @param dependencyId - 追加する依存先タスクID
+   * @throws タスクが存在しない場合
+   * @throws 依存先タスクが存在しない場合
+   * @throws 既に依存関係が存在する場合
+   * @throws サイクルが発生する場合
+   * @example
+   * graph.addTask('A');
+   * graph.addTask('B');
+   * graph.addDependency('B', 'A'); // B depends on A
+   */
+  addDependency(taskId: string, dependencyId: string): void {
+    const node = this.nodes.get(taskId);
+    if (!node) {
+      throw new Error(`Task "${taskId}" does not exist`);
+    }
+
+    const depNode = this.nodes.get(dependencyId);
+    if (!depNode) {
+      throw new Error(`Dependency task "${dependencyId}" does not exist`);
+    }
+
+    if (node.dependencies.has(dependencyId)) {
+      throw new Error(`Task "${taskId}" already depends on "${dependencyId}"`);
+    }
+
+    // Self-dependency check
+    if (taskId === dependencyId) {
+      throw new Error(`Task cannot depend on itself: "${taskId}"`);
+    }
+
+    // Temporarily add dependency to check for cycles
+    node.dependencies.add(dependencyId);
+    depNode.dependents.add(taskId);
+
+    // Check for cycles
+    const cycleResult = this.detectCycle();
+    if (cycleResult.hasCycle) {
+      // Rollback the change
+      node.dependencies.delete(dependencyId);
+      depNode.dependents.delete(taskId);
+      throw new Error(
+        `Adding dependency "${taskId}" -> "${dependencyId}" would create a cycle: ${cycleResult.cyclePath?.join(" -> ")}`
+      );
+    }
+
+    // Update task status if needed
+    if (node.status === "ready") {
+      // Check if task is still ready after adding dependency
+      if (!this.isTaskReady(taskId)) {
+        node.status = "pending";
+        const index = this.readyQueue.indexOf(taskId);
+        if (index >= 0) {
+          this.readyQueue.splice(index, 1);
+        }
+      }
+    }
+  }
+
+  /**
+   * 依存関係を動的に削除する
+   * @summary 依存関係を削除
+   * @param taskId - 対象タスクID
+   * @param dependencyId - 削除する依存先タスクID
+   * @returns 削除に成功した場合はtrue、依存関係が存在しない場合はfalse
+   * @throws タスクが存在しない場合
+   * @example
+   * graph.removeDependency('B', 'A'); // Remove B's dependency on A
+   */
+  removeDependency(taskId: string, dependencyId: string): boolean {
+    const node = this.nodes.get(taskId);
+    if (!node) {
+      throw new Error(`Task "${taskId}" does not exist`);
+    }
+
+    const depNode = this.nodes.get(dependencyId);
+    if (!depNode) {
+      throw new Error(`Dependency task "${dependencyId}" does not exist`);
+    }
+
+    if (!node.dependencies.has(dependencyId)) {
+      return false;
+    }
+
+    // Remove dependency
+    node.dependencies.delete(dependencyId);
+    depNode.dependents.delete(taskId);
+
+    // Update task status if needed
+    if (node.status === "pending" && this.isTaskReady(taskId)) {
+      node.status = "ready";
+      if (!this.readyQueue.includes(taskId)) {
+        this.readyQueue.push(taskId);
+      }
+    }
+
+    return true;
+  }
+
+  /**
    * グラフ内のサイクルを検出する
    * @summary サイクルを検出
    * @returns サイクル検出の結果

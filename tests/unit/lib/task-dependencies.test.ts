@@ -753,3 +753,263 @@ describe("TaskDependencyGraph - 境界条件", () => {
 		expect(graph.hasTask(unicodeId)).toBe(true);
 	});
 });
+
+// ============================================================================
+// Additional Tests: addDependency / removeDependency
+// ============================================================================
+
+describe("TaskDependencyGraph - 動的依存関係追加・削除", () => {
+	let graph: TaskDependencyGraph;
+
+	beforeEach(() => {
+		graph = new TaskDependencyGraph();
+	});
+
+	// ========================================
+	// addDependency
+	// ========================================
+	describe("addDependency", () => {
+		it("should_add_dependency_successfully", () => {
+			graph.addTask("A");
+			graph.addTask("B");
+
+			graph.addDependency("B", "A");
+
+			expect(graph.getTask("B")?.dependencies.has("A")).toBe(true);
+			expect(graph.getTask("A")?.dependents.has("B")).toBe(true);
+		});
+
+		it("should_throw_for_nonexistent_task", () => {
+			graph.addTask("A");
+
+			expect(() => graph.addDependency("nonexistent", "A")).toThrow(
+				'Task "nonexistent" does not exist'
+			);
+		});
+
+		it("should_throw_for_nonexistent_dependency", () => {
+			graph.addTask("A");
+
+			expect(() => graph.addDependency("A", "nonexistent")).toThrow(
+				'Dependency task "nonexistent" does not exist'
+			);
+		});
+
+		it("should_throw_for_existing_dependency", () => {
+			graph.addTask("A");
+			graph.addTask("B", { dependencies: ["A"] });
+
+			expect(() => graph.addDependency("B", "A")).toThrow(
+				'Task "B" already depends on "A"'
+			);
+		});
+
+		it("should_throw_for_self_dependency", () => {
+			graph.addTask("A");
+
+			expect(() => graph.addDependency("A", "A")).toThrow(
+				'Task cannot depend on itself: "A"'
+			);
+		});
+
+		it("should_throw_for_cycle_creation", () => {
+			// A -> B
+			graph.addTask("A");
+			graph.addTask("B", { dependencies: ["A"] });
+
+			// B -> A would create cycle
+			expect(() => graph.addDependency("A", "B")).toThrow(/would create a cycle/);
+		});
+
+		it("should_throw_for_longer_cycle_creation", () => {
+			// A -> B -> C
+			graph.addTask("A");
+			graph.addTask("B", { dependencies: ["A"] });
+			graph.addTask("C", { dependencies: ["B"] });
+
+			// C -> A would create cycle
+			expect(() => graph.addDependency("A", "C")).toThrow(/would create a cycle/);
+		});
+
+		it("should_not_modify_graph_on_cycle_detection", () => {
+			graph.addTask("A");
+			graph.addTask("B", { dependencies: ["A"] });
+
+			// Attempt to create cycle
+			try {
+				graph.addDependency("A", "B");
+			} catch {
+				// Expected
+			}
+
+			// Original dependencies should remain unchanged
+			expect(graph.getTask("A")?.dependencies.has("B")).toBe(false);
+			expect(graph.getTask("B")?.dependencies.has("A")).toBe(true);
+		});
+
+		it("should_update_status_from_ready_to_pending", () => {
+			graph.addTask("A");
+			graph.addTask("B"); // B is ready
+
+			expect(graph.getTask("B")?.status).toBe("ready");
+
+			graph.addDependency("B", "A");
+
+			expect(graph.getTask("B")?.status).toBe("pending");
+			expect(graph.getReadyTaskIds()).not.toContain("B");
+		});
+
+		it("should_keep_pending_status_if_dependency_completed", () => {
+			graph.addTask("A");
+			graph.addTask("B");
+
+			graph.markRunning("A");
+			graph.markCompleted("A");
+
+			graph.addDependency("B", "A");
+
+			// B should become ready because A is completed
+			expect(graph.getTask("B")?.status).toBe("ready");
+			expect(graph.getReadyTaskIds()).toContain("B");
+		});
+
+		it("should_allow_multiple_dependencies_to_be_added", () => {
+			graph.addTask("A");
+			graph.addTask("B");
+			graph.addTask("C");
+
+			graph.addDependency("C", "A");
+			graph.addDependency("C", "B");
+
+			expect(graph.getTask("C")?.dependencies.has("A")).toBe(true);
+			expect(graph.getTask("C")?.dependencies.has("B")).toBe(true);
+		});
+	});
+
+	// ========================================
+	// removeDependency
+	// ========================================
+	describe("removeDependency", () => {
+		it("should_remove_dependency_successfully", () => {
+			graph.addTask("A");
+			graph.addTask("B", { dependencies: ["A"] });
+
+			const result = graph.removeDependency("B", "A");
+
+			expect(result).toBe(true);
+			expect(graph.getTask("B")?.dependencies.has("A")).toBe(false);
+			expect(graph.getTask("A")?.dependents.has("B")).toBe(false);
+		});
+
+		it("should_return_false_for_nonexistent_task", () => {
+			graph.addTask("A");
+
+			expect(() => graph.removeDependency("nonexistent", "A")).toThrow(
+				'Task "nonexistent" does not exist'
+			);
+		});
+
+		it("should_throw_for_nonexistent_dependency", () => {
+			graph.addTask("A");
+			graph.addTask("B");
+
+			expect(() => graph.removeDependency("B", "nonexistent")).toThrow(
+				'Dependency task "nonexistent" does not exist'
+			);
+		});
+
+		it("should_return_false_for_nonexistent_dependency_relation", () => {
+			graph.addTask("A");
+			graph.addTask("B");
+
+			const result = graph.removeDependency("B", "A");
+
+			expect(result).toBe(false);
+		});
+
+		it("should_update_status_from_pending_to_ready", () => {
+			graph.addTask("A");
+			graph.addTask("B", { dependencies: ["A"] });
+
+			expect(graph.getTask("B")?.status).toBe("pending");
+
+			graph.removeDependency("B", "A");
+
+			expect(graph.getTask("B")?.status).toBe("ready");
+			expect(graph.getReadyTaskIds()).toContain("B");
+		});
+
+		it("should_not_change_status_if_other_dependencies_remain", () => {
+			graph.addTask("A");
+			graph.addTask("B");
+			graph.addTask("C", { dependencies: ["A", "B"] });
+
+			graph.markRunning("A");
+			graph.markCompleted("A");
+
+			expect(graph.getTask("C")?.status).toBe("pending");
+
+			graph.removeDependency("C", "A");
+
+			// Still pending because B is not completed
+			expect(graph.getTask("C")?.status).toBe("pending");
+		});
+
+		it("should_handle_multiple_dependencies_removal", () => {
+			graph.addTask("A");
+			graph.addTask("B");
+			graph.addTask("C", { dependencies: ["A", "B"] });
+
+			graph.removeDependency("C", "A");
+			expect(graph.getTask("C")?.dependencies.size).toBe(1);
+
+			graph.removeDependency("C", "B");
+			expect(graph.getTask("C")?.dependencies.size).toBe(0);
+		});
+	});
+
+	// ========================================
+	// Combined addDependency / removeDependency
+	// ========================================
+	describe("addDependency と removeDependency の組み合わせ", () => {
+		it("should_allow_add_after_remove", () => {
+			graph.addTask("A");
+			graph.addTask("B", { dependencies: ["A"] });
+
+			graph.removeDependency("B", "A");
+			graph.addDependency("B", "A");
+
+			expect(graph.getTask("B")?.dependencies.has("A")).toBe(true);
+		});
+
+		it("should_allow_restructuring_graph_without_cycle", () => {
+			// A -> B -> C
+			graph.addTask("A");
+			graph.addTask("B", { dependencies: ["A"] });
+			graph.addTask("C", { dependencies: ["B"] });
+
+			// Restructure to: A -> C, B -> C
+			graph.removeDependency("C", "B");
+			graph.addDependency("C", "A");
+
+			expect(graph.getTask("C")?.dependencies.has("A")).toBe(true);
+			expect(graph.getTask("C")?.dependencies.has("B")).toBe(false);
+		});
+
+		it("should_maintain_graph_consistency_after_multiple_operations", () => {
+			graph.addTask("A");
+			graph.addTask("B");
+			graph.addTask("C");
+
+			graph.addDependency("B", "A");
+			graph.addDependency("C", "B");
+			graph.removeDependency("B", "A");
+			graph.addDependency("C", "A");
+
+			// Final state: C depends on A and B, B has no dependencies
+			expect(graph.getTask("B")?.dependencies.size).toBe(0);
+			expect(graph.getTask("C")?.dependencies.has("A")).toBe(true);
+			expect(graph.getTask("C")?.dependencies.has("B")).toBe(true);
+		});
+	});
+});

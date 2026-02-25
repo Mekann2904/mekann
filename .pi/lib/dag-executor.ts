@@ -4,7 +4,7 @@
  * role: DAG構造のタスクを実行するエンジン（DynTaskMAS統合版）
  * why: 依存関係を解決しながらタスクを並列実行し、LLMCompilerとDynTaskMASの概念を実装するため
  * related: .pi/lib/dag-types.ts, .pi/lib/dag-validator.ts, .pi/lib/task-dependencies.ts, .pi/lib/concurrency.ts, .pi/lib/dag-weight-calculator.ts, .pi/lib/priority-scheduler.ts
- * public_api: DagExecutor, DagExecutorOptions, TaskExecutor, executeDag
+ * public_api: DagExecutor, DagExecutorOptions, TaskExecutor, executeDag, addDependency, removeDependency, detectCycle
  * invariants: 実行中は依存関係の順序が保証される
  * side_effects: タスク実行、コールバック呼び出し
  * failure_modes: タスク実行エラー、中止シグナル、依存関係エラー
@@ -513,6 +513,114 @@ export class DagExecutor<T = unknown> {
       pending: graphStats.byStatus.pending,
       running: graphStats.byStatus.running,
     };
+  }
+
+  // ========================================
+  // 動的依存関係更新API
+  // ========================================
+
+  /**
+   * 依存関係を動的に追加する
+   * 実行中に新しい依存関係を追加できる。サイクルが発生する場合はエラーを投げる。
+   * @summary 依存関係を追加
+   * @param taskId - 対象タスクID
+   * @param dependencyId - 追加する依存先タスクID
+   * @throws タスクが存在しない場合
+   * @throws 依存先タスクが存在しない場合
+   * @throws 既に依存関係が存在する場合
+   * @throws サイクルが発生する場合
+   * @example
+   * executor.addDependency('task-b', 'task-a'); // task-b depends on task-a
+   */
+  addDependency(taskId: string, dependencyId: string): void {
+    this.graph.addDependency(taskId, dependencyId);
+
+    // TaskNodeの依存関係も更新
+    const taskNode = this.taskNodes.get(taskId);
+    if (taskNode && !taskNode.dependencies.includes(dependencyId)) {
+      taskNode.dependencies.push(dependencyId);
+    }
+
+    // DynTaskMAS: 重みを再計算
+    if (this.options.useWeightBasedScheduling) {
+      this.recalculateTaskWeight(taskId);
+    }
+  }
+
+  /**
+   * 依存関係を動的に削除する
+   * @summary 依存関係を削除
+   * @param taskId - 対象タスクID
+   * @param dependencyId - 削除する依存先タスクID
+   * @returns 削除に成功した場合はtrue、依存関係が存在しない場合はfalse
+   * @throws タスクが存在しない場合
+   * @example
+   * executor.removeDependency('task-b', 'task-a'); // Remove task-b's dependency on task-a
+   */
+  removeDependency(taskId: string, dependencyId: string): boolean {
+    const result = this.graph.removeDependency(taskId, dependencyId);
+
+    if (result) {
+      // TaskNodeの依存関係も更新
+      const taskNode = this.taskNodes.get(taskId);
+      if (taskNode) {
+        const index = taskNode.dependencies.indexOf(dependencyId);
+        if (index >= 0) {
+          taskNode.dependencies.splice(index, 1);
+        }
+      }
+
+      // DynTaskMAS: 重みを再計算
+      if (this.options.useWeightBasedScheduling) {
+        this.recalculateTaskWeight(taskId);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * グラフ内のサイクルを検出する
+   * @summary サイクルを検出
+   * @returns サイクル検出の結果（hasCycle: サイクルがあるか, cyclePath: サイクルパス）
+   */
+  detectCycle(): { hasCycle: boolean; cyclePath: string[] | null } {
+    return this.graph.detectCycle();
+  }
+
+  /**
+   * タスクの存在確認
+   * @summary タスク確認
+   * @param taskId - タスクID
+   * @returns 存在する場合はtrue
+   */
+  hasTask(taskId: string): boolean {
+    return this.graph.hasTask(taskId);
+  }
+
+  /**
+   * タスクノードを取得する
+   * @summary タスク取得
+   * @param taskId - タスクID
+   * @returns タスクノード。存在しない場合はundefined。
+   */
+  getTask(taskId: string): TaskNode | undefined {
+    return this.taskNodes.get(taskId);
+  }
+
+  /**
+   * 指定タスクの重みを再計算
+   * @summary 重み再計算
+   * @param taskId - タスクID
+   * @internal
+   */
+  private recalculateTaskWeight(taskId: string): void {
+    const taskNode = this.taskNodes.get(taskId);
+    if (taskNode) {
+      const weightConfig = this.options.weightConfig ?? DEFAULT_WEIGHT_CONFIG;
+      const weight = calculateTotalTaskWeight(taskNode, this.taskNodes, weightConfig);
+      this.taskWeights.set(taskId, weight);
+    }
   }
 }
 

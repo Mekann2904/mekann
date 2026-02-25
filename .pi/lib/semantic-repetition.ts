@@ -227,15 +227,18 @@ export async function detectSemanticRepetition(
   if (!previousEmb) embeddingsToGenerate.push({ key: normalizedPrevious, index: 1 });
   
   if (embeddingsToGenerate.length > 0) {
-    const newEmbeddings = await Promise.all(
+    // Promise.allSettledで並列生成（一部失敗しても成功したものを利用）
+    const settledResults = await Promise.allSettled(
       embeddingsToGenerate.map(async ({ key }) => ({
         key,
         embedding: await generateEmbedding(key),
       }))
     );
     
-    for (const { key, embedding } of newEmbeddings) {
-      if (embedding) {
+    // 成功した結果のみ処理
+    for (const result of settledResults) {
+      if (result.status === "fulfilled" && result.value.embedding) {
+        const { key, embedding } = result.value;
         setCachedEmbedding(key, embedding);
         if (key === normalizedCurrent) currentEmb = embedding;
         if (key === normalizedPrevious) previousEmb = embedding;
