@@ -4,7 +4,7 @@
  * role: 複数のpiインスタンス間でLLM並列数制限を調整するコーディネータ
  * why: プロセス間でリソース競合を防ぎ、全体の並列数を適切に管理するため
  * related: .pi/lib/runtime-config.ts, .pi/lib/adaptive-total-limit.ts
- * public_api: ActiveModelInfo, InstanceInfo, CoordinatorConfig, CoordinatorInternalState
+ * public_api: ActiveModelInfo, InstanceInfo, CoordinatorConfig, CoordinatorInternalState, resetHeartbeatDebounce
  * invariants: totalMaxLlmはgetRuntimeConfigおよびadaptiveTotal-limitの計算結果に依存する
  * side_effects: ~/.pi/runtime/ディレクトリへのファイル作成、更新、削除を行う
  * failure_modes: ディレクトリ権限がない場合、またはファイルロック取得に失敗した場合に動作しない
@@ -151,6 +151,18 @@ const CONFIG_FILE = join(COORDINATOR_DIR, "coordinator.json");
 
 let state: CoordinatorInternalState | null = null;
 let coordinatorNowProvider: () => number = () => Date.now();
+
+// Heartbeat debounce
+let lastHeartbeatWrite = 0;
+let memoryHeartbeat = Date.now();
+
+/**
+ * @summary ハートビートdebounce状態をリセット（テスト用）
+ */
+export function resetHeartbeatDebounce(): void {
+  lastHeartbeatWrite = 0;
+  memoryHeartbeat = Date.now();
+}
 
 function currentTimeMs(): number {
   return coordinatorNowProvider();
@@ -441,9 +453,24 @@ export function unregisterInstance(): void {
 export function updateHeartbeat(): void {
   if (!state) return;
 
+  // Debounce: 前回の書き込みからHEARTBEAT_DEBOUNCE_MS経過していない場合は
+  // メモリ上の状態のみ更新
+  const now = Date.now();
+  const HEARTBEAT_DEBOUNCE_MS = 5000; // 5秒
+
+  // メモリ上のハートビート時刻を更新
+  memoryHeartbeat = now;
+
+  // 初回（lastHeartbeatWrite === 0）またはdebounce期間経過後の場合は書き込み
+  if (lastHeartbeatWrite > 0 && now - lastHeartbeatWrite < HEARTBEAT_DEBOUNCE_MS) {
+    return;
+  }
+
+  // ファイルに書き込み
   patchMyInstanceInfo((info) => {
     info.lastHeartbeat = new Date().toISOString();
   });
+  lastHeartbeatWrite = now;
 }
 
 /**

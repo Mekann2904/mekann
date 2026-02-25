@@ -873,3 +873,232 @@ const metricsEnvConfig = getMetricsConfigFromEnv();
 if (Object.keys(metricsEnvConfig).length > 0) {
   initMetricsCollector(metricsEnvConfig);
 }
+
+// ============================================================================
+// Parallel Execution Metrics (Enhanced)
+// ============================================================================
+
+/**
+ * 並列実行メトリクス
+ * @summary 並列実行の効率性を追跡
+ */
+export interface ParallelMetrics {
+	/** 現在のアクティブ並列数 */
+	activeConcurrent: number;
+	/** 許可された並列数 */
+	allowedConcurrent: number;
+	/** ピーク並列数 */
+	peakConcurrent: number;
+	/** 平均待機時間（ミリ秒） */
+	avgWaitTimeMs: number;
+	/** 最大待機時間（ミリ秒） */
+	maxWaitTimeMs: number;
+	/** P95待機時間（ミリ秒） */
+	p95WaitTimeMs: number;
+	/** レートリミットヒット数 */
+	rateLimitHits: number;
+	/** レートリミット待機時間（ミリ秒） */
+	rateLimitWaitsMs: number;
+	/** 利用率（active / allowed） */
+	utilizationRatio: number;
+}
+
+/**
+ * 並列実行パターン別統計
+ * @summary 並列実行パターンごとの統計情報
+ */
+export interface ParallelPatternStats {
+	/** パターン名（subagent_run_parallel, agent_team_run_parallel, subagent_run_dag等） */
+	pattern: string;
+	/** 実行回数 */
+	executionCount: number;
+	/** 成功回数 */
+	successCount: number;
+	/** 失敗回数 */
+	failureCount: number;
+	/** 平均並列数 */
+	avgParallelism: number;
+	/** 要求並列数の合計 */
+	totalRequestedParallelism: number;
+	/** 実際の並列数の合計 */
+	totalActualParallelism: number;
+	/** 平均実行時間（ミリ秒） */
+	avgExecutionTimeMs: number;
+	/** 並列効率スコア（0.0-1.0） */
+	efficiencyScore: number;
+}
+
+/**
+ * 並列実行イベント
+ * @summary 並列実行の開始/終了を記録
+ */
+export interface ParallelExecutionEvent {
+	/** イベントID */
+	eventId: string;
+	/** パターン名 */
+	pattern: string;
+	/** イベントタイプ（start/end） */
+	type: 'start' | 'end';
+	/** タイムスタンプ */
+	timestamp: number;
+	/** 要求された並列数 */
+	requestedParallelism: number;
+	/** 実際の並列数（end時のみ） */
+	actualParallelism?: number;
+	/** 成功フラグ（end時のみ） */
+	success?: boolean;
+	/** 実行時間（ミリ秒、end時のみ） */
+	executionTimeMs?: number;
+}
+
+// 並列実行メトリクスの内部状態
+interface ParallelMetricsState {
+	waitTimes: number[];
+	rateLimitEvents: number;
+	activeCount: number;
+	peakCount: number;
+	patternStats: Map<string, ParallelPatternStats>;
+	activeExecutions: Map<string, { pattern: string; requestedParallelism: number; startTime: number }>;
+}
+
+const parallelState: ParallelMetricsState = {
+	waitTimes: [],
+	rateLimitEvents: 0,
+	activeCount: 0,
+	peakCount: 0,
+	patternStats: new Map(),
+	activeExecutions: new Map(),
+};
+
+const PARALLEL_METRICS_RING_BUFFER_SIZE = 1000;
+
+/**
+ * @summary 並列実行の開始を記録
+ */
+export function recordParallelExecutionStart(
+	eventId: string,
+	pattern: string,
+	requestedParallelism: number
+): void {
+	parallelState.activeExecutions.set(eventId, {
+		pattern,
+		requestedParallelism,
+		startTime: Date.now(),
+	});
+
+	// パターン統計を初期化（存在しない場合）
+	if (!parallelState.patternStats.has(pattern)) {
+		parallelState.patternStats.set(pattern, {
+			pattern,
+			executionCount: 0,
+			successCount: 0,
+			failureCount: 0,
+			avgParallelism: 0,
+			totalRequestedParallelism: 0,
+			totalActualParallelism: 0,
+			avgExecutionTimeMs: 0,
+			efficiencyScore: 0,
+		});
+	}
+
+	parallelState.activeCount++;
+	parallelState.peakCount = Math.max(parallelState.peakCount, parallelState.activeCount);
+}
+
+/**
+ * @summary 並列実行の終了を記録
+ */
+export function recordParallelExecutionEnd(
+	eventId: string,
+	actualParallelism: number,
+	success: boolean
+): void {
+	const execution = parallelState.activeExecutions.get(eventId);
+	if (!execution) return;
+
+	const executionTimeMs = Date.now() - execution.startTime;
+	parallelState.activeExecutions.delete(eventId);
+	parallelState.activeCount = Math.max(0, parallelState.activeCount - 1);
+
+	// パターン統計を更新
+	const stats = parallelState.patternStats.get(execution.pattern);
+	if (stats) {
+		stats.executionCount++;
+		if (success) {
+			stats.successCount++;
+		} else {
+			stats.failureCount++;
+		}
+		stats.totalRequestedParallelism += execution.requestedParallelism;
+		stats.totalActualParallelism += actualParallelism;
+		stats.avgParallelism = stats.totalActualParallelism / stats.executionCount;
+		stats.avgExecutionTimeMs =
+			(stats.avgExecutionTimeMs * (stats.executionCount - 1) + executionTimeMs) / stats.executionCount;
+		stats.efficiencyScore = stats.totalActualParallelism / stats.totalRequestedParallelism;
+	}
+}
+
+/**
+ * @summary 待機時間を記録
+ */
+export function recordParallelWaitTime(ms: number): void {
+	parallelState.waitTimes.push(ms);
+	// リングバッファ: 最新1000件を保持
+	if (parallelState.waitTimes.length > PARALLEL_METRICS_RING_BUFFER_SIZE) {
+		parallelState.waitTimes.shift();
+	}
+}
+
+/**
+ * @summary レートリミットイベントを記録
+ */
+export function recordParallelRateLimit(): void {
+	parallelState.rateLimitEvents++;
+}
+
+/**
+ * @summary 並列実行メトリクスのスナップショットを取得
+ */
+export function getParallelMetricsSnapshot(allowedConcurrent: number): ParallelMetrics {
+	const sorted = [...parallelState.waitTimes].sort((a, b) => a - b);
+	const p95Index = Math.floor(sorted.length * 0.95);
+
+	return {
+		activeConcurrent: parallelState.activeCount,
+		allowedConcurrent,
+		peakConcurrent: parallelState.peakCount,
+		avgWaitTimeMs: average(parallelState.waitTimes),
+		maxWaitTimeMs: sorted[sorted.length - 1] ?? 0,
+		p95WaitTimeMs: sorted[p95Index] ?? 0,
+		rateLimitHits: parallelState.rateLimitEvents,
+		rateLimitWaitsMs: parallelState.waitTimes.reduce((a, b) => a + b, 0),
+		utilizationRatio: allowedConcurrent > 0 ? parallelState.activeCount / allowedConcurrent : 0,
+	};
+}
+
+/**
+ * @summary パターン別統計を取得
+ */
+export function getParallelPatternStats(): ParallelPatternStats[] {
+	return Array.from(parallelState.patternStats.values());
+}
+
+/**
+ * @summary 並列メトリクスをリセット
+ */
+export function resetParallelMetrics(): void {
+	parallelState.waitTimes = [];
+	parallelState.rateLimitEvents = 0;
+	parallelState.activeCount = 0;
+	parallelState.peakCount = 0;
+	parallelState.patternStats.clear();
+	parallelState.activeExecutions.clear();
+}
+
+/**
+ * 配列の平均値を計算
+ */
+function average(arr: number[]): number {
+	if (arr.length === 0) return 0;
+	return arr.reduce((a, b) => a + b, 0) / arr.length;
+}

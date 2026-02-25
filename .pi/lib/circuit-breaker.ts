@@ -1,224 +1,279 @@
 /**
  * @abdd.meta
- * path: .pi/lib/circuit-breaker.ts
- * role: 連続エラー時の早期検出メカニズムを提供するサーキットブレーカーパターン実装
- * why: 連続するAPIエラーからシステムを保護し、迅速な回復を可能にするため
- * related: .pi/lib/retry-with-backoff.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
- * public_api: CircuitState, CircuitBreakerConfig, checkCircuitBreaker, recordCircuitBreakerSuccess, recordCircuitBreakerFailure, getCircuitBreakerState, resetAllCircuitBreakers, resetCircuitBreaker
- * invariants: failureCountは連続失敗時のみ増加、successThreshold達成時のみCLOSEDに遷移
- * side_effects: グローバルなcircuitBreakers Mapを更新する
- * failure_modes: 不適切な設定値による誤検知、メモリリーク（大量のキー生成時）
+ * path: lib/circuit-breaker.ts
+ * role: サーキットブレーカーパターンによる障害許容性実装
+ * why: 連続失敗時のカスケード障害を防ぎ、システムの回復力を向上させる
+ * related: retry-with-backoff.ts, agent-runtime.ts, cross-instance-coordinator.ts
+ * public_api: checkCircuitBreaker, recordCircuitBreakerSuccess, recordCircuitBreakerFailure, getCircuitBreakerState, resetAllCircuitBreakers, resetCircuitBreaker, getCircuitBreakerStats
+ * invariants:
+ *   - failureCount >= 0
+ *   - successCount >= 0
+ *   - state in ['closed', 'open', 'half-open']
+ * side_effects: なし（ステートレス操作）
+ * failure_modes:
+ *   - 状態不整合: リセットでclosedに復帰
+ *   - メモリリーク: レジストリの定期クリーンアップで対応
  * @abdd.explain
- * overview: 連続エラー検出によるOPEN状態への遷移と、クールダウン後のHALF-OPEN状態を経て復旧するサーキットブレーカー
- * what_it_does:
- *   - 連続失敗回数がしきい値を超えるとOPEN状態に遷移し、リクエストをブロックする
- *   - クールダウン期間経過後にHALF-OPEN状態に遷移し、制限付きでリクエストを許可する
- *   - HALF-OPEN状態で連続成功がしきい値に達するとCLOSED状態に復旧する
- *   - HALF-OPEN状態で失敗すると即座にOPEN状態に戻る
- * why_it_exists:
- *   - 連続するAPIエラーからシステムを保護し、無駄なリトライを防ぐため
- *   - 適切なクールダウン期間を設けることで、プロバイダーの復旧を待つため
+ * overview: LLM呼び出しの障害保護のためのサーキットブレーカーパターン実装
+ * what_it_does: 失敗を追跡し、閾値で回路を開き、回復を許可する
+ * why_it_exists: 障害エンドポイントへのリソース浪費を防止
  * scope:
- *   in: サーキットブレーカーキー（プロバイダー/モデル識別）、成功/失敗イベント
- *   out: 許可/拒否判定、待機時間、現在の状態
+ *   in: 失敗追跡、状態遷移、回復タイムアウト
+ *   out: リトライロジック（retry-with-backoff.tsで処理）
  */
 
 /**
  * サーキットブレーカーの状態
  */
-export type CircuitState = "closed" | "open" | "half-open";
+export type CircuitState = 'closed' | 'open' | 'half-open';
+
+/**
+ * サーキットブレーカー設定
+ */
+export interface CircuitBreakerConfig {
+	/** 回路を開く前の失敗回数閾値 */
+	failureThreshold?: number;
+	/** half-openへの回復タイムアウト（ミリ秒） */
+	cooldownMs?: number;
+	/** half-openからclosedに戻るための成功回数閾値 */
+	successThreshold?: number;
+}
 
 /**
  * サーキットブレーカーの内部状態
  */
 interface CircuitBreakerInternalState {
-  status: CircuitState;
-  failureCount: number;
-  lastFailureTime: number;
-  successCount: number;
-  lastStateChangeTime: number;
+	state: CircuitState;
+	failureCount: number;
+	successCount: number;
+	lastFailureTime: number;
+	lastStateChange: number;
+	config: Required<CircuitBreakerConfig>;
 }
 
 /**
- * サーキットブレーカーの設定
+ * checkCircuitBreakerの戻り値
  */
-export interface CircuitBreakerConfig {
-  /** 連続失敗しきい値（この値を超えるとOPEN状態へ） */
-  failureThreshold: number;
-  /** 連続成功しきい値（HALF-OPEN状態でこの値を超えるとCLOSED状態へ） */
-  successThreshold: number;
-  /** OPEN状態のクールダウン時間（ミリ秒） */
-  cooldownMs: number;
-  /** HALF-OPEN状態で許可するリクエスト数 */
-  halfOpenMaxRequests: number;
+export interface CircuitBreakerCheckResult {
+	/** リクエストが許可されるか */
+	allowed: boolean;
+	/** 現在の状態 */
+	state: CircuitState;
+	/** 許可されない場合の再試行までの待機時間（ミリ秒） */
+	retryAfterMs: number;
 }
 
-const DEFAULT_CONFIG: CircuitBreakerConfig = {
-  failureThreshold: 5,
-  successThreshold: 3,
-  cooldownMs: 30000,  // 30秒
-  halfOpenMaxRequests: 1,
+/**
+ * 統計情報
+ */
+export interface CircuitBreakerStats {
+	/** キーごとの状態 */
+	states: Record<string, {
+		state: CircuitState;
+		failureCount: number;
+		successCount: number;
+		lastFailureTime: number;
+	}>;
+	/** 合計サーキットブレーカー数 */
+	totalCount: number;
+	/** open状態の数 */
+	openCount: number;
+}
+
+/**
+ * デフォルト設定
+ */
+const DEFAULT_CONFIG: Required<CircuitBreakerConfig> = {
+	failureThreshold: 5,
+	cooldownMs: 30_000,
+	successThreshold: 2,
 };
 
-// グローバル状態ストア
-const circuitBreakers = new Map<string, CircuitBreakerInternalState>();
+// グローバルレジストリ
+const breakers = new Map<string, CircuitBreakerInternalState>();
 
 /**
- * サーキットブレーカーをチェックする
- * @summary サーキットブレーカーチェック
- * @param key - サーキットブレーカーのキー（例: "provider:model"）
- * @param config - 設定（省略時はデフォルト値）
- * @returns 許可されるかどうかと、待機時間、現在の状態
+ * 設定を正規化
+ */
+function normalizeConfig(config?: CircuitBreakerConfig): Required<CircuitBreakerConfig> {
+	return {
+		failureThreshold: config?.failureThreshold ?? DEFAULT_CONFIG.failureThreshold,
+		cooldownMs: config?.cooldownMs ?? DEFAULT_CONFIG.cooldownMs,
+		successThreshold: config?.successThreshold ?? DEFAULT_CONFIG.successThreshold,
+	};
+}
+
+/**
+ * @summary サーキットブレーカーをチェック
+ * @param key プロバイダー/モデル等の識別キー
+ * @param config オプション設定（初回作成時のみ使用）
+ * @returns チェック結果
  */
 export function checkCircuitBreaker(
-  key: string,
-  config: Partial<CircuitBreakerConfig> = {},
-): { allowed: boolean; retryAfterMs?: number; state: CircuitState } {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
-  const now = Date.now();
+	key: string,
+	config?: CircuitBreakerConfig
+): CircuitBreakerCheckResult {
+	const normalizedConfig = normalizeConfig(config);
+	let breaker = breakers.get(key);
 
-  let state = circuitBreakers.get(key);
+	if (!breaker) {
+		breaker = {
+			state: 'closed',
+			failureCount: 0,
+			successCount: 0,
+			lastFailureTime: 0,
+			lastStateChange: Date.now(),
+			config: normalizedConfig,
+		};
+		breakers.set(key, breaker);
+		return { allowed: true, state: 'closed', retryAfterMs: 0 };
+	}
 
-  // 初回アクセス時はCLOSED状態で初期化
-  if (!state) {
-    state = {
-      status: "closed",
-      failureCount: 0,
-      lastFailureTime: 0,
-      successCount: 0,
-      lastStateChangeTime: now,
-    };
-    circuitBreakers.set(key, state);
-    return { allowed: true, state: "closed" };
-  }
+	const now = Date.now();
 
-  switch (state.status) {
-    case "closed":
-      return { allowed: true, state: "closed" };
+	if (breaker.state === 'closed') {
+		return { allowed: true, state: 'closed', retryAfterMs: 0 };
+	}
 
-    case "open": {
-      const elapsedMs = now - state.lastFailureTime;
-      if (elapsedMs < cfg.cooldownMs) {
-        return {
-          allowed: false,
-          retryAfterMs: cfg.cooldownMs - elapsedMs,
-          state: "open",
-        };
-      }
-      // クールダウン終了、HALF-OPENに移行
-      state.status = "half-open";
-      state.successCount = 0;
-      state.lastStateChangeTime = now;
-      circuitBreakers.set(key, state);
-      return { allowed: true, state: "half-open" };
-    }
+	if (breaker.state === 'open') {
+		const elapsed = now - breaker.lastFailureTime;
+		if (elapsed >= breaker.config.cooldownMs) {
+			transitionTo(breaker, 'half-open');
+			return { allowed: true, state: 'half-open', retryAfterMs: 0 };
+		}
+		const retryAfterMs = breaker.config.cooldownMs - elapsed;
+		return { allowed: false, state: 'open', retryAfterMs };
+	}
 
-    case "half-open":
-      // HALF-OPEN状態では制限付きで許可
-      return { allowed: true, state: "half-open" };
-  }
+	// half-open: プローブリクエストを許可
+	return { allowed: true, state: 'half-open', retryAfterMs: 0 };
 }
 
 /**
- * サーキットブレーカーに成功を記録する
- * @summary 成功記録
- * @param key - サーキットブレーカーのキー
- * @param config - 設定
+ * @summary 成功を記録
+ * @param key プロバイダー/モデル等の識別キー
+ * @param _config オプション設定（互換性のため受け取るが使用しない）
  */
 export function recordCircuitBreakerSuccess(
-  key: string,
-  config: Partial<CircuitBreakerConfig> = {},
+	key: string,
+	_config?: CircuitBreakerConfig
 ): void {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
-  const state = circuitBreakers.get(key);
+	const breaker = breakers.get(key);
+	if (!breaker) return;
 
-  if (!state) return;
-
-  state.failureCount = 0;
-  state.successCount++;
-
-  if (state.status === "half-open" && state.successCount >= cfg.successThreshold) {
-    // HALF-OPEN -> CLOSED
-    state.status = "closed";
-    state.successCount = 0;
-    state.lastStateChangeTime = Date.now();
-  }
-
-  circuitBreakers.set(key, state);
+	if (breaker.state === 'half-open') {
+		breaker.successCount++;
+		if (breaker.successCount >= breaker.config.successThreshold) {
+			transitionTo(breaker, 'closed');
+		}
+	} else if (breaker.state === 'closed') {
+		breaker.failureCount = 0;
+	}
 }
 
 /**
- * サーキットブレーカーに失敗を記録する
- * @summary 失敗記録
- * @param key - サーキットブレーカーのキー
- * @param config - 設定
+ * @summary 失敗を記録
  */
 export function recordCircuitBreakerFailure(
-  key: string,
-  config: Partial<CircuitBreakerConfig> = {},
+	key: string,
+	config?: CircuitBreakerConfig
 ): void {
-  const cfg = { ...DEFAULT_CONFIG, ...config };
-  const state = circuitBreakers.get(key);
+	const normalizedConfig = normalizeConfig(config);
+	let breaker = breakers.get(key);
 
-  if (!state) return;
+	if (!breaker) {
+		breaker = {
+			state: 'closed',
+			failureCount: 0,
+			successCount: 0,
+			lastFailureTime: 0,
+			lastStateChange: Date.now(),
+			config: normalizedConfig,
+		};
+		breakers.set(key, breaker);
+	}
 
-  state.failureCount++;
-  state.successCount = 0;
-  state.lastFailureTime = Date.now();
+	breaker.failureCount++;
+	breaker.lastFailureTime = Date.now();
+	breaker.successCount = 0;
 
-  if (state.status === "half-open") {
-    // HALF-OPEN -> OPEN（即座に戻す）
-    state.status = "open";
-    state.lastStateChangeTime = Date.now();
-  } else if (state.failureCount >= cfg.failureThreshold) {
-    // CLOSED -> OPEN
-    state.status = "open";
-    state.lastStateChangeTime = Date.now();
-  }
-
-  circuitBreakers.set(key, state);
+	if (breaker.state === 'half-open') {
+		transitionTo(breaker, 'open');
+	} else if (breaker.failureCount >= breaker.config.failureThreshold) {
+		transitionTo(breaker, 'open');
+	}
 }
 
 /**
- * サーキットブレーカーの状態を取得する
- * @summary 状態取得
- * @param key - サーキットブレーカーのキー
- * @returns 現在の状態（存在しない場合はundefined）
+ * @summary 指定キーの状態を取得
  */
 export function getCircuitBreakerState(key: string): CircuitState | undefined {
-  return circuitBreakers.get(key)?.status;
+	const breaker = breakers.get(key);
+	return breaker?.state;
 }
 
 /**
- * すべてのサーキットブレーカーをリセットする
- * @summary 全リセット
+ * @summary 指定キーのサーキットブレーカーをリセット（削除）
+ */
+export function resetCircuitBreaker(key: string): boolean {
+	return breakers.delete(key);
+}
+
+/**
+ * @summary すべてのサーキットブレーカーをリセット（削除）
  */
 export function resetAllCircuitBreakers(): void {
-  circuitBreakers.clear();
+	breakers.clear();
 }
 
 /**
- * 特定のサーキットブレーカーをリセットする
- * @summary 個別リセット
- * @param key - サーキットブレーカーのキー
+ * @summary 統計情報を取得
  */
-export function resetCircuitBreaker(key: string): void {
-  circuitBreakers.delete(key);
+export function getCircuitBreakerStats(): Record<string, {
+	state: CircuitState;
+	failureCount: number;
+	successCount: number;
+	lastFailureTime: number;
+}> {
+	const stats: Record<string, {
+		state: CircuitState;
+		failureCount: number;
+		successCount: number;
+		lastFailureTime: number;
+	}> = {};
+
+	for (const [key, breaker] of breakers) {
+		stats[key] = {
+			state: breaker.state,
+			failureCount: breaker.failureCount,
+			successCount: breaker.successCount,
+			lastFailureTime: breaker.lastFailureTime,
+		};
+	}
+
+	return stats;
 }
 
 /**
- * サーキットブレーカーの統計情報を取得する（デバッグ用）
- * @summary 統計情報取得
- * @returns 全サーキットブレーカーの状態一覧
+ * 状態遷移ヘルパー
  */
-export function getCircuitBreakerStats(): Record<string, { state: CircuitState; failureCount: number; successCount: number }> {
-  const result: Record<string, { state: CircuitState; failureCount: number; successCount: number }> = {};
-  for (const [key, state] of circuitBreakers.entries()) {
-    result[key] = {
-      state: state.status,
-      failureCount: state.failureCount,
-      successCount: state.successCount,
-    };
-  }
-  return result;
+function transitionTo(breaker: CircuitBreakerInternalState, newState: CircuitState): void {
+	const previousState = breaker.state;
+	breaker.state = newState;
+	breaker.lastStateChange = Date.now();
+
+	if (newState === 'closed') {
+		breaker.failureCount = 0;
+		breaker.successCount = 0;
+	} else if (newState === 'half-open') {
+		breaker.successCount = 0;
+	}
+
+	// デバッグログ（PI_DEBUG_CIRCUIT_BREAKER環境変数で有効化）
+	if (process.env.PI_DEBUG_CIRCUIT_BREAKER) {
+		console.error(`[CircuitBreaker] ${previousState} -> ${newState}`);
+	}
 }
+
+// レガシーAPI（エクスポート）
+export { breakers as _internalBreakers };

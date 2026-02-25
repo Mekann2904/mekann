@@ -1244,10 +1244,14 @@ ${allResults.map((r) => {
           agentWeights.set(agent.id, weight);
         }
 
-        const results = await runWithConcurrencyLimit(
+        // Promise.allSettledパターンで部分失敗を許容
+        type SubagentTaskResult = { runRecord: SubagentRunRecord; output: string; prompt: string };
+        type SettledTaskResult = { status: 'fulfilled' | 'rejected'; value?: SubagentTaskResult; reason?: unknown; index: number };
+
+        const settledResults = await runWithConcurrencyLimit(
           activeAgents,
           Math.max(1, effectiveParallelism),
-          async (agent) => {
+          async (agent): Promise<SubagentTaskResult> => {
             const result = await runSubagentTask({
               agent,
               task: params.task,
@@ -1288,8 +1292,29 @@ ${allResults.map((r) => {
             usePriorityScheduling: true,
             itemWeights: agentWeights,
             getItemId: (agent: SubagentDefinition) => agent.id,
+            settleMode: 'allSettled',
+            abortOnError: false,
           },
-        );
+        ) as unknown as SettledTaskResult[];
+
+        // allSettled結果を分類
+        const succeededResults = settledResults
+          .filter((r) => r.status === 'fulfilled' && r.value)
+          .map((r) => r.value as SubagentTaskResult);
+
+        const rejectedResults = settledResults.filter((r) => r.status === 'rejected');
+
+        // 結果を統合（成功したもののみ）
+        const results = succeededResults;
+
+        // 拒否されたタスクをエージェントIDと共に記録
+        const rejectedDetails = rejectedResults.map((r) => {
+          const agent = activeAgents[r.index];
+          return {
+            agentId: agent?.id ?? `unknown-${r.index}`,
+            error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          };
+        });
 
         for (const result of results) {
           storage.runs.push(result.runRecord);
@@ -1297,8 +1322,11 @@ ${allResults.map((r) => {
         }
         await saveStorageWithPatterns(ctx.cwd, storage);
 
+        // Include rejected results in failure count
         const failed = results.filter((result) => result.runRecord.status === "failed");
-        if (failed.length > 0) {
+        const totalFailed = failed.length + rejectedResults.length;
+        
+        if (totalFailed > 0) {
           const pressureSignals = failed
             .map((result) => classifyPressureError(result.runRecord.error || ""))
             .filter((signal): signal is "rate_limit" | "capacity" => signal !== "other");
@@ -1306,9 +1334,10 @@ ${allResults.map((r) => {
             const hasRateLimit = pressureSignals.includes("rate_limit");
             adaptivePenalty.raise(hasRateLimit ? "rate_limit" : "capacity");
           }
-          const errorMessage = failed
-            .map((result) => `${result.runRecord.agentId}:${result.runRecord.error}`)
-            .join(" | ");
+          const errorMessage = [
+            ...failed.map((result) => `${result.runRecord.agentId}:${result.runRecord.error}`),
+            ...rejectedDetails.map((r) => `${r.agentId}:${r.error}`),
+          ].join(" | ");
           logger.endOperation({
             status: "partial",
             tokensUsed: 0,
@@ -1323,7 +1352,7 @@ ${allResults.map((r) => {
               return `## ${result.runRecord.agentId}\nStatus: ${status}\n${result.output || result.runRecord.summary || ""}`;
             })
             .join("\n\n");
-          const failedMemberIds = failed.map((result) => result.runRecord.agentId);
+          const failedMemberIds = [...failed.map((result) => result.runRecord.agentId), ...rejectedDetails.map(r => r.agentId)];
           return {
             content: [{ type: "text" as const, text: aggregatedOutput }],
             details: {
@@ -1333,11 +1362,12 @@ ${allResults.map((r) => {
                 summary: result.runRecord.summary,
                 error: result.runRecord.error,
               })),
+              rejectedResults: rejectedDetails,
               failedMemberIds,
               successCount: results.length - failed.length,
-              totalCount: results.length,
-              outcomeCode: failed.length === results.length ? "NONRETRYABLE_FAILURE" as RunOutcomeCode : "PARTIAL_SUCCESS" as RunOutcomeCode,
-              retryRecommended: failed.length > 0,
+              totalCount: activeAgents.length,
+              outcomeCode: totalFailed === activeAgents.length ? "NONRETRYABLE_FAILURE" as RunOutcomeCode : "PARTIAL_SUCCESS" as RunOutcomeCode,
+              retryRecommended: totalFailed > 0,
             },
           };
         } else {

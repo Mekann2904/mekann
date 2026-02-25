@@ -66,6 +66,7 @@ import {
   getStealingStats,
   resetStealingStats,
   updateRuntimeUsage,
+  resetHeartbeatDebounce,
 } from "../../../.pi/lib/cross-instance-coordinator.js";
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
@@ -183,6 +184,7 @@ describe("cross-instance-coordinator", () => {
       }));
       registerInstance("test-session", "/test/cwd");
       vi.clearAllMocks();
+      resetHeartbeatDebounce();
 
       // Act
       updateHeartbeat();
