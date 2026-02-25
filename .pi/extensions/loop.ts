@@ -48,7 +48,7 @@ import {
   normalizeOptionalText,
   throwIfAborted,
 } from "../lib/text-utils.js";
-import { ThinkingLevel } from "../lib/agent-types.js";
+import { ThinkingLevel, RunOutcomeCode } from "../lib/agent-types.js";
 import { createRunId } from "../lib/agent-utils.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
 import { getLogger } from "../lib/comprehensive-logger";
@@ -74,6 +74,7 @@ import {
 } from "../lib/pattern-extraction";
 
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
+import { checkUlWorkflowOwnership } from "./subagents.js";
 
 // Import extracted modules for SSRF protection, reference loading, verification, and iteration building
 import {
@@ -461,9 +462,28 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
           maximum: 1.0,
         }),
       ),
+      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      // ULワークフロー所有権チェック
+      if (params.ulTaskId) {
+        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
+        if (!ownership.owned) {
+          return {
+            content: [{ type: "text" as const, text: `loop_run error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
+            details: {
+              error: "ul_workflow_not_owned",
+              ulTaskId: params.ulTaskId,
+              ownerInstanceId: ownership.ownerInstanceId,
+              ownerPid: ownership.ownerPid,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+      }
+
       const task = String(params.task ?? "").trim();
       if (!task) {
         return {

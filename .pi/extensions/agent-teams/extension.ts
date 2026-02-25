@@ -456,6 +456,7 @@ import {
   notifyRuntimeCapacityChanged,
   resetRuntimeTransientState,
 } from "../agent-runtime";
+import { checkUlWorkflowOwnership } from "../subagents.js";
 import {
   runPiPrintMode as sharedRunPiPrintMode,
   type PrintExecutorOptions,
@@ -798,6 +799,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       ),
       timeoutMs: Type.Optional(Type.Number({ description: "Timeout per teammate run in ms (default: 600000). Use 0 to disable timeout." })),
       retry: createRetrySchema(),
+      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (String(process.env.PI_AGENT_TEAM_CHILD_RUN || "0") === "1") {
@@ -814,6 +816,24 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             retryRecommended: false,
           },
         };
+      }
+
+      // ULワークフロー所有権チェック
+      if (params.ulTaskId) {
+        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
+        if (!ownership.owned) {
+          return {
+            content: [{ type: "text" as const, text: `agent_team_run error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
+            details: {
+              error: "ul_workflow_not_owned",
+              ulTaskId: params.ulTaskId,
+              ownerInstanceId: ownership.ownerInstanceId,
+              ownerPid: ownership.ownerPid,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
       }
 
       const storage = loadStorage(ctx.cwd);
@@ -1321,6 +1341,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         Type.Literal('best-confidence', { description: "Highest confidence result wins" }),
         Type.Literal('llm-aggregate', { description: "LLM synthesizes final result" }),
       ], { description: "Aggregation strategy for parallel team results" })),
+      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (String(process.env.PI_AGENT_TEAM_CHILD_RUN || "0") === "1") {
@@ -1337,6 +1358,24 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
             retryRecommended: false,
           },
         };
+      }
+
+      // ULワークフロー所有権チェック
+      if (params.ulTaskId) {
+        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
+        if (!ownership.owned) {
+          return {
+            content: [{ type: "text" as const, text: `agent_team_run_parallel error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
+            details: {
+              error: "ul_workflow_not_owned",
+              ulTaskId: params.ulTaskId,
+              ownerInstanceId: ownership.ownerInstanceId,
+              ownerPid: ownership.ownerPid,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
       }
 
       const storage = loadStorage(ctx.cwd);
