@@ -1,564 +1,1101 @@
-# 実装計画: エージェント並列管理の安全プロパティ検証
+# テストコード品質改善実装計画
+
+**作成日:** 2026-02-25
+**作成者:** architect subagent
+**対象:** mekannプロジェクト テストコード品質改善
+
+---
 
 ## 目的
 
-エージェント並列管理システムが定義された安全プロパティを満たしていることを証明し、証明できない場合はバグとして報告する。
+research.mdの調査結果に基づき、テストコード品質を改善する。
+主な目標:
+
+1. ステートメントカバレッジ: 2.89% → 60%（フェーズ1）
+2. スナップショットテストの導入
+3. パラメータ化テストの導入
+4. テストコードの重複排除
 
 ---
 
-## 1. 証明対象の安全プロパティ定義
+## 変更内容
 
-### 1.1 容量安全（Capacity Safety）
+### 1. カバレッジ向上戦略
 
-| プロパティ | 形式的定義 | 検証箇所 |
-|-----------|-----------|---------|
-| **CS-1: 過剰コミット防止** | `∀t. projectedRequests(t) ≤ maxTotalActiveRequests` | `agent-runtime.ts:checkRuntimeCapacity()` |
-| **CS-2: 予約TTL** | `∀r ∈ reservations. r.expiresAtMs - now ≤ maxTTL` | `agent-runtime.ts:createReservationLease()` |
-| **CS-3: スイーパクリーンアップ** | `∀t. ∃t' > t. sweep(t') removes expired reservations` | `agent-runtime.ts:startReservationSweeper()` |
+#### 1.1 優先モジュール選定
 
-### 1.2 並列安全（Concurrency Safety）
+| 優先度 | モジュール | 行数 | 理由 |
+|--------|-----------|------|------|
+| P0 | `dynamic-tools/registry.ts` | 1,189 | 最重要・未テスト |
+| P0 | `embeddings/registry.ts` | 344 | 検索機能の中核 |
+| P1 | `search/utils/cache.ts` | 491 | キャッシュ戦略 |
+| P1 | `search/types.ts` | 802 | 型ガード・バリデーション |
+| P2 | `search/utils/metrics.ts` | 388 | メトリクス計算 |
 
-| プロパティ | 形式的定義 | 検証箇所 |
-|-----------|-----------|---------|
-| **CC-1: 孤立ワーカーなし** | `∀w ∈ workers. error ⇒ w completes (success|failure)` | `concurrency.ts:runWithConcurrencyLimit()` |
-| **CC-2: Abort伝播** | `abort(parent) ⇒ ∀child. abort(child) ∧ cleanup(child)` | `concurrency.ts:L40-80` |
-| **CC-3: キュー上限** | `∀t. queue.size(t) ≤ maxQueueSize` | `agent-runtime.ts:enqueueRequest()` |
+#### 1.2 テストファイル作成
 
-### 1.3 分散安全（Distributed Safety）
+```
+tests/unit/lib/dynamic-tools/
+├── registry.test.ts              # 新規作成
+└── registry.property.test.ts     # プロパティテスト
 
-| プロパティ | 形式的定義 | 検証箇所 |
-|-----------|-----------|---------|
-| **DS-1: 原子的ロック取得** | `acquire(lock) ⇒ atomic(openSync("wx"))` | `cross-instance-coordinator.ts:tryAcquireLock()` |
-| **DS-2: TOCTOU緩和** | `collision ⇒ backoff ∧ retry` | `cross-instance-coordinator.ts:L120-160` |
-| **DS-3: 死んだインスタンス清理** | `∀i. heartbeat(i) > 60s ⇒ remove(i)` | `cross-instance-coordinator.ts:cleanupDeadInstances()` |
+tests/unit/lib/embeddings/
+├── registry.test.ts              # 新規作成
+└── registry.property.test.ts     # プロパティテスト
 
-### 1.4 不変条件（Key Invariants）
-
-| 不変条件 | 形式的定義 | 検証箇所 |
-|---------|-----------|---------|
-| **INV-1** | `limit ≥ 1` | `concurrency.ts:normalizeLimit()` |
-| **INV-2** | `activeAgents ≥ 0` | `agent-runtime.ts:decrementActiveAgents()` |
-| **INV-3** | `reservation.expiresAtMs > now` | `agent-runtime.ts:getActiveReservations()` |
-| **INV-4** | `single(sweeper)` | `agent-runtime.ts:startReservationSweeper()` |
-| **INV-5** | `release(lock) ⇒ owner(lock) = requester` | `cross-instance-coordinator.ts:releaseLock()` |
-
----
-
-## 2. 証明方法
-
-### 2.1 コード検査（Code Inspection）
-
-**適用対象**: CS-1, DS-1, INV-1, INV-4, INV-5
-
-**手順**:
-1. 対象関数のソースコードを読む
-2. 形式的定義に対応するコード箇所を特定
-3. アサーション/ガード条件が正しく実装されているか確認
-4. エッジケース（境界値）の処理を確認
-
-**CS-1 検証コードスニペット**:
-```typescript
-// agent-runtime.ts - checkRuntimeCapacity()
-function checkRuntimeCapacity(request: CapacityRequest): CapacityCheckResult {
-  const projectedRequests = 
-    state.activeRequestCount + 
-    state.reservations.size + 
-    (request.needsRequest ? 1 : 0);
-  
-  // INVARIANT CHECK: projectedRequests <= maxTotalActiveRequests
-  if (projectedRequests > state.limits.maxTotalActiveRequests) {
-    return { allowed: false, reasons: ["Capacity exceeded"] };
-  }
-  return { allowed: true, reservation: createReservation() };
-}
+tests/unit/extensions/search/
+├── cache.test.ts                 # 新規作成
+├── types.test.ts                 # 新規作成
+└── metrics.test.ts               # 新規作成
 ```
 
-**INV-1 検証コードスニペット**:
+#### 1.3 コード例: dynamic-tools/registry.test.ts
+
 ```typescript
-// concurrency.ts - normalizeLimit()
-function normalizeLimit(limit: number, itemCount: number): number {
-  // INVARIANT: limit >= 1
-  return Math.max(1, Math.min(limit, itemCount));
-}
-```
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as fc from "fast-check";
+import { DynamicToolRegistry } from "@pi/lib/dynamic-tools/registry";
 
-### 2.2 ユニットテスト（Unit Testing）
+describe("DynamicToolRegistry", () => {
+  let registry: DynamicToolRegistry;
 
-**適用対象**: CS-2, CS-3, INV-2, INV-3
-
-**手順**:
-1. テストケースを作成
-2. 境界値・異常系をカバー
-3. タイミング依存のテストはモックを使用
-
-**CS-2 テストコードスニペット**:
-```typescript
-// tests/capacity-safety.test.ts
-describe('Reservation TTL', () => {
-  it('should auto-expire reservation after TTL', async () => {
-    const lease = createReservationLease({ ttlMs: 100 });
-    expect(lease.expiresAtMs - Date.now()).toBeLessThanOrEqual(100);
-    
-    await sleep(150);
-    const activeReservations = getActiveReservations();
-    expect(activeReservations.has(lease.id)).toBe(false);
+  beforeEach(() => {
+    registry = new DynamicToolRegistry();
   });
-  
-  it('should allow heartbeat extension', async () => {
-    const lease = createReservationLease({ ttlMs: 100 });
-    await sleep(50);
-    lease.heartbeat(100); // Extend by 100ms
-    
-    await sleep(75); // Total 125ms < 200ms extended TTL
-    expect(isReservationActive(lease.id)).toBe(true);
+
+  afterEach(() => {
+    registry.clear();
   });
-});
-```
 
-**INV-2 テストコードスニペット**:
-```typescript
-// tests/invariants.test.ts
-describe('ActiveAgents non-negative', () => {
-  it('should never go below zero on decrement', () => {
-    const state = createRuntimeState();
-    state.activeAgents = 0;
-    
-    // Try to decrement below zero
-    state.activeAgents = Math.max(0, state.activeAgents - 1);
-    
-    expect(state.activeAgents).toBe(0);
-    expect(state.activeAgents).toBeGreaterThanOrEqual(0);
-  });
-});
-```
+  describe("register", () => {
+    it("should register a valid tool", () => {
+      const tool = {
+        name: "test-tool",
+        description: "Test tool",
+        execute: vi.fn(),
+        parameters: {},
+      };
 
-### 2.3 レース条件テスト（Race Condition Testing）
+      const result = registry.register(tool);
 
-**適用対象**: CC-1, CC-2, DS-2
-
-**手順**:
-1. 並列実行テストを作成
-2. 高負荷状態で競合を誘発
-3. 一貫性違反を検出
-
-**CC-1 テストコードスニペット**:
-```typescript
-// tests/concurrency-safety.test.ts
-describe('No dangling workers', () => {
-  it('should complete all workers even after first error', async () => {
-    const results: string[] = [];
-    const items = [1, 2, 3, 4, 5];
-    
-    await runWithConcurrencyLimit(
-      items,
-      3,
-      async (item, index, signal) => {
-        await sleep(item * 10);
-        if (item === 2) throw new Error('Worker 2 failed');
-        results.push(`item-${item}`);
-      },
-      { abortOnFirstError: false }
-    ).catch(() => {}); // Ignore aggregate error
-    
-    // All workers should have completed
-    expect(results.length).toBe(4); // All except item 2
-    expect(results).toContain('item-1');
-    expect(results).toContain('item-3');
-    expect(results).toContain('item-4');
-    expect(results).toContain('item-5');
-  });
-});
-```
-
-**DS-2 テストコードスニペット**:
-```typescript
-// tests/distributed-safety.test.ts
-describe('TOCTOU mitigation', () => {
-  it('should retry with backoff on collision', async () => {
-    const attempts: number[] = [];
-    const mockOpenSync = jest.fn()
-      .mockImplementationOnce(() => { throw { code: 'EEXIST' }; })
-      .mockImplementationOnce(() => { throw { code: 'EEXIST' }; })
-      .mockImplementationOnce(() => 42); // Success on 3rd attempt
-    
-    const result = await tryAcquireLock('test-resource', 1000, 5);
-    
-    expect(mockOpenSync).toHaveBeenCalledTimes(3);
-    expect(attempts[1] - attempts[0]).toBeGreaterThanOrEqual(10); // Exponential backoff
-  });
-});
-```
-
-### 2.4 統合テスト（Integration Testing）
-
-**適用対象**: CS-3, DS-3, CC-3
-
-**手順**:
-1. 実際のファイルシステム/タイマーを使用
-2. 複数コンポーネント間の相互作用を検証
-3. 長時間実行テストでメモリリーク/リソースリークを検出
-
-**DS-3 テストコードスニペット**:
-```typescript
-// tests/integration/dead-instance-cleanup.test.ts
-describe('Dead instance cleanup', () => {
-  it('should remove instances with stale heartbeat', async () => {
-    // Register instance
-    const coordinator = new CrossInstanceCoordinator();
-    coordinator.registerInstance('test-session', '/test/cwd');
-    
-    // Verify registration
-    const instances = getActiveInstances();
-    expect(instances.some(i => i.sessionId === 'test-session')).toBe(true);
-    
-    // Simulate dead instance (no heartbeat for 60s)
-    await sleep(65000);
-    
-    // Trigger cleanup
-    coordinator.cleanupDeadInstances();
-    
-    // Verify removal
-    const activeInstances = getActiveInstances();
-    expect(activeInstances.some(i => i.sessionId === 'test-session')).toBe(false);
-  }, 70000);
-});
-```
-
-### 2.5 静的解析（Static Analysis）
-
-**適用対象**: 全プロパティ
-
-**手順**:
-1. TypeScript strict modeを有効化
-2. ESLintルールを適用
-3. 制御フロー解析で未処理のパスを検出
-
-**推奨ESLintルール**:
-```json
-{
-  "rules": {
-    "@typescript-eslint/no-floating-promises": "error",
-    "@typescript-eslint/no-misused-promises": "error",
-    "@typescript-eslint/require-await": "error",
-    "no-unsafe-finally": "error"
-  }
-}
-```
-
----
-
-## 3. 検証手順
-
-### Phase 1: コード検査（1-2時間）
-
-1. **CS-1, DS-1検証**
-   - `agent-runtime.ts:checkRuntimeCapacity()` を読む
-   - `cross-instance-coordinator.ts:tryAcquireLock()` を読む
-   - アサーション/ガード条件を確認
-
-2. **INV-1, INV-4, INV-5検証**
-   - `concurrency.ts:normalizeLimit()` を読む
-   - `agent-runtime.ts:startReservationSweeper()` を読む
-   - `cross-instance-coordinator.ts:releaseLock()` を読む
-
-### Phase 2: ユニットテスト作成（2-3時間）
-
-1. テストファイル作成:
-   - `tests/safety/capacity-safety.test.ts`
-   - `tests/safety/concurrency-safety.test.ts`
-   - `tests/safety/distributed-safety.test.ts`
-   - `tests/safety/invariants.test.ts`
-
-2. テスト実行:
-   ```bash
-   npm test -- tests/safety/
-   ```
-
-### Phase 3: レース条件テスト（2-3時間）
-
-1. 並列実行テスト作成
-2. 高負荷テスト実行:
-   ```bash
-   npm run test:stress -- --iterations 1000 --concurrency 100
-   ```
-
-### Phase 4: 統合テスト（1-2時間）
-
-1. 実際のファイルシステムでテスト
-2. 長時間実行テスト（メモリリーク検出）
-
-### Phase 5: 静的解析（30分）
-
-1. TypeScript strict mode確認
-2. ESLint実行:
-   ```bash
-   npm run lint
-   ```
-
----
-
-## 4. バグ報告フォーマット
-
-### バグ報告テンプレート
-
-```markdown
-# バグ報告: [安全プロパティ違反]
-
-## 違反したプロパティ
-- [ ] CS-1: 過剰コミット防止
-- [ ] CS-2: 予約TTL
-- [ ] CS-3: スイーパクリーンアップ
-- [ ] CC-1: 孤立ワーカーなし
-- [ ] CC-2: Abort伝播
-- [ ] CC-3: キュー上限
-- [ ] DS-1: 原子的ロック取得
-- [ ] DS-2: TOCTOU緩和
-- [ ] DS-3: 死んだインスタンス清理
-- [ ] INV-1: limit >= 1
-- [ ] INV-2: activeAgents >= 0
-- [ ] INV-3: reservation.expiresAtMs > now
-- [ ] INV-4: 単一スイーパ
-- [ ] INV-5: ロック所有権
-
-## 期待される動作
-[安全プロパティが満たされるべき動作]
-
-## 実際の動作
-[観測された違反動作]
-
-## 再現手順
-1. [手順1]
-2. [手順2]
-3. [手順3]
-
-## 再現コード
-```typescript
-// 最小再現コード
-```
-
-## 影響度
-- [ ] Critical: データ損失/システムクラッシュ
-- [ ] High: リソースリーク/デッドロック
-- [ ] Medium: 一時的な不整合
-- [ ] Low: パフォーマンス劣化
-
-## 根本原因
-[コードのどの部分が原因か]
-
-## 提案される修正
-[修正案]
-
-## 関連ファイル
-- [ファイルパス]: [影響範囲]
-```
-
----
-
-## 5. Todoリスト
-
-### Phase 1: コード検査
-- [ ] **TODO-1**: CS-1（過剰コミット防止）のコード検査
-  - 対象: `agent-runtime.ts:checkRuntimeCapacity()`
-  - 確認事項: `projectedRequests <= maxTotalActiveRequests` ガード条件
-
-- [ ] **TODO-2**: DS-1（原子的ロック取得）のコード検査
-  - 対象: `cross-instance-coordinator.ts:tryAcquireLock()`
-  - 確認事項: `openSync(path, "wx")` の原子的実行
-
-- [ ] **TODO-3**: INV-1（limit >= 1）のコード検査
-  - 対象: `concurrency.ts:normalizeLimit()`
-  - 確認事項: `Math.max(1, limit)` の適用
-
-- [ ] **TODO-4**: INV-4（単一スイーパ）のコード検査
-  - 対象: `agent-runtime.ts:startReservationSweeper()`
-  - 確認事項: 二重起動防止フラグ
-
-- [ ] **TODO-5**: INV-5（ロック所有権）のコード検査
-  - 対象: `cross-instance-coordinator.ts:releaseLock()`
-  - 確認事項: `lockId` 一致確認
-
-### Phase 2: ユニットテスト作成
-- [ ] **TODO-6**: CS-2（予約TTL）のテスト作成
-  - ファイル: `tests/safety/capacity-safety.test.ts`
-  - テストケース:
-    ```typescript
-    it('should auto-expire reservation after TTL', async () => {
-      const lease = createReservationLease({ ttlMs: 100 });
-      await sleep(150);
-      expect(isReservationActive(lease.id)).toBe(false);
+      expect(result.success).toBe(true);
+      expect(registry.has("test-tool")).toBe(true);
     });
-    ```
 
-- [ ] **TODO-7**: INV-2（activeAgents >= 0）のテスト作成
-  - ファイル: `tests/safety/invariants.test.ts`
-  - テストケース:
-    ```typescript
-    it('should never decrement below zero', () => {
-      state.activeAgents = 0;
-      state.activeAgents = Math.max(0, state.activeAgents - 1);
-      expect(state.activeAgents).toBe(0);
+    it("should reject duplicate tool names", () => {
+      const tool = {
+        name: "duplicate",
+        description: "First",
+        execute: vi.fn(),
+        parameters: {},
+      };
+
+      registry.register(tool);
+      const result = registry.register({ ...tool, description: "Second" });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("already exists");
     });
-    ```
 
-- [ ] **TODO-8**: INV-3（reservation.expiresAtMs > now）のテスト作成
-  - ファイル: `tests/safety/invariants.test.ts`
-  - テストケース:
-    ```typescript
-    it('should only count non-expired reservations', () => {
-      const reservations = getActiveReservations();
-      const now = Date.now();
-      reservations.forEach(r => {
-        expect(r.expiresAtMs).toBeGreaterThan(now);
+    // パラメータ化テスト
+    it.each([
+      ["empty name", { name: "", description: "test", execute: vi.fn() }],
+      ["null name", { name: null, description: "test", execute: vi.fn() }],
+      ["missing execute", { name: "test", description: "test" }],
+    ])("should reject invalid tool: %s", (_desc, invalidTool) => {
+      const result = registry.register(invalidTool as any);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("execute", () => {
+    it("should execute tool with valid parameters", async () => {
+      const executeMock = vi.fn().mockResolvedValue({ result: "ok" });
+      registry.register({
+        name: "echo",
+        description: "Echo tool",
+        execute: executeMock,
+        parameters: {},
       });
-    });
-    ```
 
-### Phase 3: レース条件テスト
-- [ ] **TODO-9**: CC-1（孤立ワーカーなし）のレース条件テスト
-  - ファイル: `tests/safety/concurrency-safety.test.ts`
-  - テストケース:
-    ```typescript
-    it('should complete all workers after first error', async () => {
-      const completed: number[] = [];
-      await runWithConcurrencyLimit(
-        [1, 2, 3, 4, 5],
-        3,
-        async (item) => {
-          await sleep(item * 10);
-          if (item === 2) throw new Error('fail');
-          completed.push(item);
-        },
-        { abortOnFirstError: false }
-      ).catch(() => {});
-      expect(completed.length).toBe(4);
-    });
-    ```
+      const result = await registry.execute("echo", { input: "hello" });
 
-- [ ] **TODO-10**: CC-2（Abort伝播）のテスト作成
-  - ファイル: `tests/safety/concurrency-safety.test.ts`
-  - テストケース:
-    ```typescript
-    it('should propagate abort to all children', async () => {
-      const aborted: boolean[] = [];
-      const controller = new AbortController();
-      
-      const promise = runWithConcurrencyLimit(
-        [1, 2, 3],
-        3,
-        async (item, _, signal) => {
-          signal.addEventListener('abort', () => aborted.push(true));
-          await sleep(1000);
-        },
-        { signal: controller.signal }
+      expect(executeMock).toHaveBeenCalledWith({ input: "hello" });
+      expect(result).toEqual({ result: "ok" });
+    });
+
+    it("should throw for non-existent tool", async () => {
+      await expect(registry.execute("missing", {})).rejects.toThrow(
+        "Tool not found"
       );
-      
-      controller.abort();
-      await promise.catch(() => {});
-      expect(aborted.length).toBe(3);
     });
-    ```
+  });
 
-- [ ] **TODO-11**: DS-2（TOCTOU緩和）のテスト作成
-  - ファイル: `tests/safety/distributed-safety.test.ts`
-  - テストケース:
-    ```typescript
-    it('should retry with exponential backoff on collision', async () => {
-      let attempts = 0;
-      const mockOpen = jest.spyOn(fs, 'openSync')
-        .mockImplementationOnce(() => { attempts++; throw { code: 'EEXIST' }; })
-        .mockImplementationOnce(() => { attempts++; throw { code: 'EEXIST' }; })
-        .mockImplementation(() => { attempts++; return 42; });
-      
-      await tryAcquireLock('test', 1000, 5);
-      expect(attempts).toBe(3);
+  // プロパティベーステスト
+  describe("property tests", () => {
+    it("should maintain consistency: register + has + get", () => {
+      fc.assert(
+        fc.property(
+          fc.record({
+            name: fc.string({ minLength: 1, maxLength: 50 }),
+            description: fc.string({ maxLength: 200 }),
+          }),
+          (toolDef) => {
+            const tool = {
+              ...toolDef,
+              execute: vi.fn(),
+              parameters: {},
+            };
+
+            registry.register(tool);
+
+            // インバリアント: 登録後は has が true を返す
+            fc.pre(registry.has(toolDef.name));
+
+            // インバリアント: get は登録したツールを返す
+            const retrieved = registry.get(toolDef.name);
+            expect(retrieved?.name).toBe(toolDef.name);
+            expect(retrieved?.description).toBe(toolDef.description);
+          }
+        )
+      );
     });
-    ```
+  });
+});
+```
 
-### Phase 4: 統合テスト
-- [ ] **TODO-12**: CS-3（スイーパクリーンアップ）の統合テスト
-  - ファイル: `tests/integration/sweeper-cleanup.test.ts`
-  - テストケース:
-    ```typescript
-    it('should periodically remove expired reservations', async () => {
-      createReservationLease({ ttlMs: 100 });
-      await sleep(5500); // Wait for sweeper cycle (5s)
-      const active = getActiveReservations();
-      expect(active.size).toBe(0);
-    }, 10000);
-    ```
+---
 
-- [ ] **TODO-13**: DS-3（死んだインスタンス清理）の統合テスト
-  - ファイル: `tests/integration/dead-instance-cleanup.test.ts`
-  - テストケース:
-    ```typescript
-    it('should remove instances without heartbeat for 60s', async () => {
-      registerInstance('test-session', '/test');
-      await sleep(65000);
-      cleanupDeadInstances();
-      expect(getActiveInstances()).not.toContain('test-session');
-    }, 70000);
-    ```
+### 2. スナップショットテストの導入
 
-- [ ] **TODO-14**: CC-3（キュー上限）のテスト作成
-  - ファイル: `tests/safety/concurrency-safety.test.ts`
-  - テストケース:
-    ```typescript
-    it('should enforce max queue size', () => {
-      for (let i = 0; i < 1001; i++) {
-        enqueueRequest({ id: `req-${i}` });
+#### 2.1 導入方針
+
+| 対象 | 理由 | ファイル |
+|------|------|---------|
+| TUIコンポーネント出力 | 複雑な構造 | `tests/snapshots/tui/` |
+| エラーメッセージ | 一貫性維持 | `tests/snapshots/errors/` |
+| 設定ファイル生成 | 構造検証 | `tests/snapshots/config/` |
+| ログフォーマット | フォーマット検証 | `tests/snapshots/logs/` |
+
+#### 2.2 ディレクトリ構造
+
+```
+tests/snapshots/
+├── tui/
+│   ├── question-dialog.test.ts
+│   └── plan-renderer.test.ts
+├── errors/
+│   └── error-messages.test.ts
+├── config/
+│   └── generated-configs.test.ts
+└── __snapshots__/
+    ├── question-dialog.test.ts.snap
+    ├── plan-renderer.test.ts.snap
+    └── ...
+```
+
+#### 2.3 コード例: TUIスナップショットテスト
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { renderQuestionDialog } from "@pi/extensions/question/ui";
+
+describe("QuestionDialog snapshots", () => {
+  it("should render single-choice question", () => {
+    const output = renderQuestionDialog({
+      type: "single-choice",
+      question: "Which option?",
+      options: ["Option A", "Option B", "Option C"],
+      defaultOption: 0,
+    });
+
+    expect(output).toMatchSnapshot();
+  });
+
+  it("should render multi-select question", () => {
+    const output = renderQuestionDialog({
+      type: "multi-select",
+      question: "Select all that apply:",
+      options: ["Feature 1", "Feature 2", "Feature 3"],
+      defaultOptions: [0, 2],
+    });
+
+    expect(output).toMatchSnapshot();
+  });
+
+  it("should render confirmation dialog", () => {
+    const output = renderQuestionDialog({
+      type: "confirm",
+      question: "Are you sure?",
+      defaultAnswer: false,
+    });
+
+    expect(output).toMatchSnapshot();
+  });
+
+  // インラインスナップショット（小さな出力用）
+  it("should render empty state", () => {
+    const output = renderQuestionDialog({
+      type: "single-choice",
+      question: "No options",
+      options: [],
+    });
+
+    expect(output).toMatchInlineSnapshot(`
+      "┌─────────────────────────────┐
+       │ No options                  │
+       │                             │
+       │ (No options available)      │
+       └─────────────────────────────┘"
+    `);
+  });
+});
+```
+
+#### 2.4 コード例: エラーメッセージスナップショット
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { formatError } from "@pi/lib/errors/formatter";
+
+describe("Error message snapshots", () => {
+  it("should format validation error", () => {
+    const error = new Error("Invalid input");
+    error.name = "ValidationError";
+
+    const formatted = formatError(error, { context: "user-input" });
+
+    expect(formatted).toMatchSnapshot();
+  });
+
+  it("should format timeout error with stack trace", () => {
+    const error = new Error("Operation timed out after 5000ms");
+    error.name = "TimeoutError";
+    error.stack = "TimeoutError: Operation timed out\n  at async execute";
+
+    const formatted = formatError(error, {
+      context: "api-call",
+      includeStack: true,
+    });
+
+    expect(formatted).toMatchSnapshot();
+  });
+
+  // パラメータ化 + スナップショット
+  it.each([
+    ["network", "ECONNREFUSED"],
+    ["permission", "EPERM"],
+    ["not-found", "ENOENT"],
+    ["memory", "ENOMEM"],
+  ])("should format %s error (%s)", (type, code) => {
+    const error = new Error(`${type} error occurred`);
+    error.name = `${type}Error`;
+    (error as any).code = code;
+
+    const formatted = formatError(error);
+
+    expect(formatted).toMatchSnapshot(`error-${type}`);
+  });
+});
+```
+
+---
+
+### 3. パラメータ化テストの導入
+
+#### 3.1 導入方針
+
+| パターン | 使用場面 | 例 |
+|----------|---------|-----|
+| `it.each` | 固定データセット | エッジケース検証 |
+| `describe.each` | 複数設定での同一テスト | 環境差異テスト |
+| `fc.property` | プロパティベース | インバリアント検証 |
+
+#### 3.2 コード例: バリデーションパラメータ化テスト
+
+```typescript
+import { describe, it, expect } from "vitest";
+import * as fc from "fast-check";
+import { validateConfig } from "@pi/lib/config/validator";
+
+describe("Config validation", () => {
+  // 固定データセットでのパラメータ化
+  describe.each([
+    [
+      "minimal",
+      { name: "test", version: "1.0.0" },
+      { valid: true, errors: [] },
+    ],
+    [
+      "with description",
+      { name: "test", version: "1.0.0", description: "Test config" },
+      { valid: true, errors: [] },
+    ],
+    [
+      "missing name",
+      { version: "1.0.0" },
+      { valid: false, errors: ["name is required"] },
+    ],
+    [
+      "invalid version",
+      { name: "test", version: "not-semver" },
+      { valid: false, errors: ["version must be semver"] },
+    ],
+    [
+      "empty name",
+      { name: "", version: "1.0.0" },
+      { valid: false, errors: ["name cannot be empty"] },
+    ],
+  ])("validateConfig: %s", (_name, config, expected) => {
+    it(`should return ${expected.valid ? "valid" : "invalid"}`, () => {
+      const result = validateConfig(config as any);
+
+      expect(result.valid).toBe(expected.valid);
+      if (!expected.valid) {
+        expect(result.errors).toEqual(
+          expect.arrayContaining(expected.errors)
+        );
       }
-      expect(getQueueSize()).toBeLessThanOrEqual(1000);
     });
-    ```
+  });
 
-### Phase 5: 静的解析
-- [ ] **TODO-15**: TypeScript strict mode確認
-  - コマンド: `npx tsc --noEmit --strict`
-  - 確認事項: エラーなし
+  // 数値範囲のパラメータ化
+  it.each([
+    [0, false, "zero is invalid"],
+    [1, true, "minimum valid"],
+    [100, true, "normal value"],
+    [1000, true, "large value"],
+    [1001, false, "exceeds maximum"],
+    [-1, false, "negative is invalid"],
+  ])(
+    "should validate timeout %i: %s",
+    (timeout, expectedValid, _description) => {
+      const result = validateConfig({
+        name: "test",
+        version: "1.0.0",
+        timeout,
+      } as any);
 
-- [ ] **TODO-16**: ESLint実行
-  - コマンド: `npm run lint`
-  - 確認事項: エラーなし
+      expect(result.valid).toBe(expectedValid);
+    }
+  );
+
+  // 文字列パターンのパラメータ化
+  it.each([
+    ["valid-name", true],
+    ["valid_name", true],
+    ["validName", true],
+    ["invalid name", false],
+    ["invalid.name", false],
+    ["123invalid", false],
+    ["", false],
+    ["a".repeat(256), false], // too long
+  ])("should validate name '%s': %s", (name, expectedValid) => {
+    const result = validateConfig({
+      name,
+      version: "1.0.0",
+    } as any);
+
+    expect(result.valid).toBe(expectedValid);
+  });
+});
+```
+
+#### 3.3 コード例: 非同期パラメータ化テスト
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { retryWithBackoff } from "@pi/lib/retry/retry-with-backoff";
+
+describe("retryWithBackoff parameterized", () => {
+  const scenarios = [
+    {
+      name: "succeeds on first try",
+      attempts: [true],
+      expectedAttempts: 1,
+      expectedDelay: 0,
+    },
+    {
+      name: "succeeds on second try",
+      attempts: [false, true],
+      expectedAttempts: 2,
+      expectedDelay: 100, // base delay
+    },
+    {
+      name: "succeeds on third try",
+      attempts: [false, false, true],
+      expectedAttempts: 3,
+      expectedDelay: 300, // 100 + 200
+    },
+    {
+      name: "fails after max retries",
+      attempts: [false, false, false, false],
+      expectedAttempts: 4,
+      expectedDelay: 700, // 100 + 200 + 400
+      shouldThrow: true,
+    },
+  ];
+
+  it.each(scenarios)(
+    "$name",
+    async ({ attempts, expectedAttempts, shouldThrow }) => {
+      let callCount = 0;
+      const operation = vi.fn(() => {
+        const success = attempts[callCount++];
+        if (success) return Promise.resolve("success");
+        return Promise.reject(new Error("failed"));
+      });
+
+      if (shouldThrow) {
+        await expect(
+          retryWithBackoff(operation, { maxRetries: 3, baseDelay: 100 })
+        ).rejects.toThrow("failed");
+      } else {
+        const result = await retryWithBackoff(operation, {
+          maxRetries: 3,
+          baseDelay: 100,
+        });
+        expect(result).toBe("success");
+      }
+
+      expect(operation).toHaveBeenCalledTimes(expectedAttempts);
+    }
+  );
+});
+```
 
 ---
 
-## 6. 成功基準
+### 4. テストリファクタリング（重複排除）
 
-以下のすべてを満たした場合、安全プロパティが証明されたとみなす:
+#### 4.1 重複パターンの特定
 
-1. **コード検査**: 全12プロパティのコード検査完了
-2. **ユニットテスト**: 全テストケース合格
-3. **レース条件テスト**: 1000回反復で一貫性違反なし
-4. **統合テスト**: 長時間実行テストでリソースリークなし
-5. **静的解析**: TypeScript strict mode + ESLint エラーなし
+| 重複パターン | 出現箇所 | 対策 |
+|-------------|---------|------|
+| モック作成 | 50+ ファイル | 共有ヘルパー作成 |
+| セットアップ処理 | 30+ ファイル | カスタムフィクスチャ |
+| アサーションパターン | 40+ ファイル | カスタムマッチャー |
+| テストデータ生成 | 60+ ファイル | ファクトリー関数 |
+
+#### 4.2 共有モックヘルパー
+
+**新規ファイル:** `tests/helpers/shared-mocks.ts`
+
+```typescript
+import { vi } from "vitest";
+
+/**
+ * 共有モックファクトリー
+ * テスト間で再利用可能なモックインスタンスを生成
+ */
+
+// ファイルシステムモック
+export function createFsMock(overrides: Partial<typeof import("node:fs")> = {}) {
+  return {
+    existsSync: vi.fn(() => false),
+    mkdirSync: vi.fn(),
+    readFileSync: vi.fn(() => "{}"),
+    writeFileSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    readdirSync: vi.fn(() => []),
+    statSync: vi.fn(() => ({ isFile: () => true, size: 0 })),
+    ...overrides,
+  };
+}
+
+// ExtensionAPIモック
+export function createMockPi(overrides: Record<string, any> = {}) {
+  return {
+    // Core API
+    log: vi.fn(),
+    logError: vi.fn(),
+    logWarning: vi.fn(),
+
+    // State
+    getState: vi.fn(() => ({})),
+    setState: vi.fn(),
+    clearState: vi.fn(),
+
+    // UI
+    question: vi.fn().mockResolvedValue({ answer: "default" }),
+    display: vi.fn(),
+    clearDisplay: vi.fn(),
+
+    // File operations
+    readFile: vi.fn().mockResolvedValue(""),
+    writeFile: vi.fn().mockResolvedValue(undefined),
+    fileExists: vi.fn().mockResolvedValue(false),
+
+    // Hooks
+    onMessage: vi.fn(),
+    onCommand: vi.fn(),
+    onFileChange: vi.fn(),
+
+    // Overrides
+    ...overrides,
+  };
+}
+
+// Agent Runtimeモック
+export function createMockRuntime(overrides: Record<string, any> = {}) {
+  return {
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn().mockResolvedValue(undefined),
+    isRunning: vi.fn(() => false),
+    execute: vi.fn().mockResolvedValue({ success: true }),
+    getStatus: vi.fn(() => "idle"),
+    ...overrides,
+  };
+}
+
+// Typeバリデーションモック
+export function createMockTypeValidator() {
+  return {
+    validate: vi.fn(() => ({ valid: true, errors: [] })),
+    coerce: vi.fn((v) => v),
+    ...overrides,
+  };
+}
+
+// HTTPクライアントモック
+export function createMockHttpClient(responses: Record<string, any> = {}) {
+  const mock = vi.fn(async (url: string) => {
+    if (responses[url]) {
+      return { ok: true, json: () => Promise.resolve(responses[url]) };
+    }
+    return { ok: false, status: 404 };
+  });
+
+  mock.mockResponse = (url: string, response: any) => {
+    responses[url] = response;
+  };
+
+  return mock;
+}
+```
+
+#### 4.3 カスタムフィクスチャ
+
+**新規ファイル:** `tests/helpers/fixtures.ts`
+
+```typescript
+import { test as base, vi } from "vitest";
+import { createMockPi, createMockRuntime, createFsMock } from "./shared-mocks";
+
+// カスタムフィクスチャ型定義
+type TestFixtures = {
+  mockPi: ReturnType<typeof createMockPi>;
+  mockRuntime: ReturnType<typeof createMockRuntime>;
+  mockFs: ReturnType<typeof createFsMock>;
+  tempDir: string;
+  cleanState: void;
+};
+
+// フィクスチャ定義
+export const test = base.extend<TestFixtures>({
+  // 各テストで自動的にクリーンなPIモックを提供
+  mockPi: async ({}, use) => {
+    const mockPi = createMockPi();
+    await use(mockPi);
+    // クリーンアップ: 自動的にガベージコレクト
+  },
+
+  // ランタイムモック
+  mockRuntime: async ({}, use) => {
+    const runtime = createMockRuntime();
+    await use(runtime);
+    // 停止確認
+    expect(runtime.stop).not.toHaveBeenCalled();
+  },
+
+  // ファイルシステムモック
+  mockFs: async ({}, use) => {
+    vi.mock("node:fs", () => createFsMock());
+    await use(createFsMock());
+    vi.unmock("node:fs");
+  },
+
+  // 一時ディレクトリ
+  tempDir: async ({}, use) => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const tempDir = path.join(os.tmpdir(), `test-${Date.now()}`);
+
+    await use(tempDir);
+
+    // クリーンアップ: 一時ディレクトリ削除
+    const fs = await import("node:fs/promises");
+    await fs.rm(tempDir, { recursive: true, force: true });
+  },
+
+  // 状態クリーンアップ
+  cleanState: async ({}, use) => {
+    // テスト前: グローバル状態リセット
+    vi.clearAllMocks();
+
+    await use();
+
+    // テスト後: 確実なクリーンアップ
+    vi.restoreAllMocks();
+    vi.resetModules();
+  },
+});
+
+export { expect, describe, it } from "vitest";
+```
+
+#### 4.4 カスタムマッチャー
+
+**新規ファイル:** `tests/helpers/custom-matchers.ts`
+
+```typescript
+import { expect } from "vitest";
+
+// カスタムマッチャー定義
+expect.extend({
+  /**
+   * オブジェクトが必要なプロパティを持つことを検証
+   */
+  toHaveRequiredProperties(received: any, required: string[]) {
+    const missing = required.filter((prop) => !(prop in received));
+
+    return {
+      pass: missing.length === 0,
+      message: () =>
+        missing.length === 0
+          ? `expected object not to have properties: ${required.join(", ")}`
+          : `expected object to have properties: ${missing.join(", ")}`,
+    };
+  },
+
+  /**
+   * 非同期関数が指定した時間内に完了することを検証
+   */
+  async toCompleteWithin(received: () => Promise<any>, ms: number) {
+    const start = Date.now();
+    try {
+      await received();
+      const duration = Date.now() - start;
+      return {
+        pass: duration <= ms,
+        message: () =>
+          `expected function to complete within ${ms}ms, but took ${duration}ms`,
+      };
+    } catch (error) {
+      return {
+        pass: false,
+        message: () =>
+          `expected function to complete within ${ms}ms, but threw: ${error}`,
+      };
+    }
+  },
+
+  /**
+   * 値が有効なUUID形式であることを検証
+   */
+  toBeValidUuid(received: string) {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return {
+      pass: uuidRegex.test(received),
+      message: () =>
+        `expected ${received} to be a valid UUID`,
+    };
+  },
+
+  /**
+   * 配列がソートされていることを検証
+   */
+  toBeSorted(received: any[], options: { descending?: boolean } = {}) {
+    const { descending = false } = options;
+    let isSorted = true;
+
+    for (let i = 1; i < received.length; i++) {
+      if (descending) {
+        if (received[i] > received[i - 1]) {
+          isSorted = false;
+          break;
+        }
+      } else {
+        if (received[i] < received[i - 1]) {
+          isSorted = false;
+          break;
+        }
+      }
+    }
+
+    return {
+      pass: isSorted,
+      message: () =>
+        `expected array to be sorted ${descending ? "descending" : "ascending"}`,
+    };
+  },
+});
+
+// TypeScript型定義
+declare module "vitest" {
+  interface Assertion<T = any> {
+    toHaveRequiredProperties(required: string[]): void;
+    toCompleteWithin(ms: number): Promise<void>;
+    toBeValidUuid(): void;
+    toBeSorted(options?: { descending?: boolean }): void;
+  }
+}
+```
+
+#### 4.5 ファクトリー関数
+
+**新規ファイル:** `tests/helpers/factories.ts`
+
+```typescript
+import { v4 as uuidv4 } from "uuid";
+
+/**
+ * テストデータファクトリー
+ * 一貫したテストデータを生成
+ */
+
+// Planファクトリー
+export function createPlan(overrides: Partial<Plan> = {}): Plan {
+  return {
+    id: uuidv4(),
+    title: "Test Plan",
+    description: "A test plan",
+    status: "draft",
+    steps: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+// Stepファクトリー
+export function createStep(overrides: Partial<Step> = {}): Step {
+  return {
+    id: uuidv4(),
+    title: "Test Step",
+    description: "A test step",
+    status: "pending",
+    order: 0,
+    ...overrides,
+  };
+}
+
+// Subagentファクトリー
+export function createSubagent(overrides: Partial<Subagent> = {}): Subagent {
+  return {
+    id: uuidv4(),
+    name: "test-subagent",
+    role: "Test role",
+    status: "idle",
+    createdAt: new Date(),
+    ...overrides,
+  };
+}
+
+// Messageファクトリー
+export function createMessage(overrides: Partial<Message> = {}): Message {
+  return {
+    id: uuidv4(),
+    role: "user",
+    content: "Test message",
+    timestamp: new Date(),
+    ...overrides,
+  };
+}
+
+// バッチ生成ヘルパー
+export function createPlans(count: number, overrides: Partial<Plan> = {}): Plan[] {
+  return Array.from({ length: count }, (_, i) =>
+    createPlan({ ...overrides, title: `Plan ${i + 1}` })
+  );
+}
+
+export function createSteps(count: number, overrides: Partial<Step> = {}): Step[] {
+  return Array.from({ length: count }, (_, i) =>
+    createStep({ ...overrides, title: `Step ${i + 1}`, order: i })
+  );
+}
+
+// シーケンス生成（プロパティテスト用）
+export function* planSequence(): Generator<Plan> {
+  let id = 1;
+  while (true) {
+    yield createPlan({
+      id: `plan-${id}`,
+      title: `Generated Plan ${id}`,
+    });
+    id++;
+  }
+}
+```
 
 ---
 
-## 7. 参照ファイル
+### 5. 具体的な実装手順
 
-| ファイル | 役割 |
-|---------|-----|
-| `.pi/extensions/agent-runtime.ts` | 容量管理・予約システム |
-| `.pi/lib/concurrency.ts` | 並列プール・Abort伝播 |
-| `.pi/lib/cross-instance-coordinator.ts` | 分散ロック・インスタンス管理 |
-| `.pi/extensions/subagents.ts` | サブエージェント並列実行 |
-| `.pi/extensions/agent-teams/team-orchestrator.ts` | チーム並列実行 |
-| `research.md` | 調査結果レポート |
+#### フェーズ1: 基盤整備（Week 1）
+
+```
+Day 1-2: ヘルパー作成
+├── tests/helpers/shared-mocks.ts
+├── tests/helpers/fixtures.ts
+├── tests/helpers/custom-matchers.ts
+└── tests/helpers/factories.ts
+
+Day 3: スナップショットテスト基盤
+├── tests/snapshots/__snapshots__/
+└── vitest.config.ts 更新
+
+Day 4-5: P0モジュールテスト作成
+├── tests/unit/lib/dynamic-tools/registry.test.ts
+├── tests/unit/lib/dynamic-tools/registry.property.test.ts
+├── tests/unit/lib/embeddings/registry.test.ts
+└── tests/unit/lib/embeddings/registry.property.test.ts
+```
+
+#### フェーズ2: 拡充（Week 2）
+
+```
+Day 1-2: P1モジュールテスト
+├── tests/unit/extensions/search/cache.test.ts
+├── tests/unit/extensions/search/types.test.ts
+└── tests/unit/extensions/search/metrics.test.ts
+
+Day 3: スナップショットテスト
+├── tests/snapshots/tui/question-dialog.test.ts
+├── tests/snapshots/tui/plan-renderer.test.ts
+└── tests/snapshots/errors/error-messages.test.ts
+
+Day 4-5: リファクタリング
+├── 重複テストの統合
+└── モック使用箇所のヘルパー化
+```
+
+#### フェーズ3: 最適化（Week 3）
+
+```
+Day 1-2: カバレッジ分析と追加
+├── カバレッジレポート確認
+└── 低カバレッジ箇所の追加テスト
+
+Day 3-4: パラメータ化テスト導入
+├── 類似テストの統合
+└── エッジケースのパラメータ化
+
+Day 5: 最終検証
+├── 全テスト実行
+├── カバレッジ確認
+└── ドキュメント更新
+```
 
 ---
 
 ## 考慮事項
 
-- **タイミング依存テスト**: モックまたはfake timersを使用して非決定性を排除
-- **ファイルシステム競合**: テスト用の一時ディレクトリを使用
-- **長時間テスト**: CIではshort mode、ローカルではfull modeで実行
-- **並列テスト**: テスト間でグローバル状態を共有しない
+### 技術的制約
+
+- **メモリ制約:** シングルスレッド実行設定を維持
+- **テスト分離:** グローバル状態の適切なクリーンアップ
+- **CI/CD:** 既存のCIパイプラインとの互換性
+
+### 品質基準
+
+- **カバレッジ目標:** フェーズ1で60%、最終で85%
+- **テスト実行時間:** 5分以内を維持
+- **スナップショット:** 差分レビューを必須化
+
+### 保守性
+
+- **ヘルパー:** 単一責任原則に従う
+- **ファクトリー:** 拡張可能な設計
+- **ドキュメント:** JSDoc/ABDDヘッダーを必須
 
 ---
 
-## 次のアクション
+## Todo
 
-1. Phase 1（コード検査）から開始
-2. 各プロパティの検証結果を記録
-3. バグを発見した場合はバグ報告フォーマットで記録
-4. 全プロパティの検証完了後、最終レポートを作成
+### フェーズ1: 基盤整備
+
+- [x] `tests/helpers/shared-mocks.ts` 作成
+  - [x] createFsMock 実装
+  - [x] createMockPi 実装
+  - [x] createMockRuntime 実装
+  - [x] createMockTypeValidator 実装
+  - [x] createMockHttpClient 実装
+  - [x] JSDoc追加
+
+- [x] `tests/helpers/fixtures.ts` 作成
+  - [x] TestFixtures型定義
+  - [x] mockPiフィクスチャ
+  - [x] mockRuntimeフィクスチャ
+  - [x] mockFsフィクスチャ
+  - [x] tempDirフィクスチャ
+  - [x] cleanStateフィクスチャ
+  - [x] JSDoc追加
+
+- [x] `tests/helpers/custom-matchers.ts` 作成
+  - [x] toHaveRequiredProperties実装
+  - [x] toCompleteWithin実装
+  - [x] toBeValidUuid実装
+  - [x] toBeSorted実装
+  - [x] TypeScript型定義
+  - [x] JSDoc追加
+
+- [x] `tests/helpers/factories.ts` 作成
+  - [x] createPlan実装
+  - [x] createStep実装
+  - [x] createSubagent実装
+  - [x] createMessage実装
+  - [x] バッチ生成ヘルパー
+  - [x] JSDoc追加
+
+- [ ] `vitest.config.ts` 更新
+  - [ ] スナップショット設定追加
+
+### フェーズ1: P0モジュールテスト
+
+- [x] `tests/unit/lib/dynamic-tools/registry.test.ts` 作成
+  - [x] register基本テスト
+  - [x] register重複テスト
+  - [x] registerバリデーションテスト（パラメータ化）
+  - [x] execute基本テスト
+  - [x] executeエラーテスト
+  - [x] クリーンアップテスト
+  - [x] JSDoc/ABDDヘッダー追加
+
+- [x] `tests/unit/lib/dynamic-tools/registry.property.test.ts` 作成
+  - [x] インバリアント: register + has + get 一貫性
+  - [x] インバリアント: clear後は空
+  - [x] インバリアント: 名前一意性
+  - [x] JSDoc/ABDDヘッダー追加
+
+- [x] `tests/unit/lib/embeddings/registry.test.ts` 作成
+  - [x] register基本テスト
+  - [x] getEmbeddingテスト
+  - [x] listProvidersテスト
+  - [x] パラメータ化テスト
+  - [x] JSDoc/ABDDヘッダー追加
+
+- [x] `tests/unit/lib/embeddings/registry.property.test.ts` 作成
+  - [x] インバリアント: 登録後は取得可能
+  - [x] インバリアント: プロバイダー名の一意性
+  - [x] JSDoc/ABDDヘッダー追加
+
+### フェーズ2: P1モジュールテスト
+
+- [ ] `tests/unit/extensions/search/cache.test.ts` 作成
+  - [ ] get/set基本テスト
+  - [ ] TTLテスト
+  - [ ] 無効化テスト
+  - [ ] パラメータ化テスト
+  - [ ] JSDoc/ABDDヘッダー追加
+
+- [ ] `tests/unit/extensions/search/types.test.ts` 作成
+  - [ ] 型ガードテスト
+  - [ ] バリデーションテスト
+  - [ ] パラメータ化テスト
+  - [ ] JSDoc/ABDDヘッダー追加
+
+- [ ] `tests/unit/extensions/search/metrics.test.ts` 作成
+  - [ ] 計算ロジックテスト
+  - [ ] 境界値テスト
+  - [ ] パラメータ化テスト
+  - [ ] JSDoc/ABDDヘッダー追加
+
+### フェーズ2: スナップショットテスト
+
+- [ ] `tests/snapshots/tui/question-dialog.test.ts` 作成
+  - [ ] single-choiceスナップショット
+  - [ ] multi-selectスナップショット
+  - [ ] confirmスナップショット
+  - [ ] インラインスナップショット例
+  - [ ] JSDoc/ABDDヘッダー追加
+
+- [ ] `tests/snapshots/tui/plan-renderer.test.ts` 作成
+  - [ ] draft状態スナップショット
+  - [ ] active状態スナップショット
+  - [ ] completed状態スナップショット
+  - [ ] JSDoc/ABDDヘッダー追加
+
+- [ ] `tests/snapshots/errors/error-messages.test.ts` 作成
+  - [ ] ValidationErrorスナップショット
+  - [ ] TimeoutErrorスナップショット
+  - [ ] パラメータ化 + スナップショット
+  - [ ] JSDoc/ABDDヘッダー追加
+
+### フェーズ2: リファクタリング
+
+- [ ] 重複モックの置き換え（20ファイル）
+  - [ ] shared-mocksへの移行
+  - [ ] 動作確認
+
+- [ ] 重複セットアップの置き換え（15ファイル）
+  - [ ] fixturesへの移行
+  - [ ] 動作確認
+
+- [ ] 重複アサーションの置き換え（10ファイル）
+  - [ ] custom-matchersへの移行
+  - [ ] 動作確認
+
+### フェーズ3: 最適化
+
+- [ ] カバレッジレポート分析
+  - [ ] 低カバレッジ箇所の特定
+  - [ ] 優先順位付け
+
+- [ ] 追加テスト作成
+  - [ ] 低カバレッジ箇所のテスト
+  - [ ] エッジケース追加
+
+- [ ] パラメータ化テスト拡大
+  - [ ] 類似テストの統合（10件）
+  - [ ] エッジケースのパラメータ化
+
+- [ ] 最終検証
+  - [ ] 全テスト実行
+  - [ ] カバレッジ確認（目標60%達成）
+  - [ ] ドキュメント更新
+  - [ ] README.md更新
+
+---
+
+## ファイルパス一覧
+
+### 新規作成ファイル
+
+```
+tests/helpers/shared-mocks.ts
+tests/helpers/fixtures.ts
+tests/helpers/custom-matchers.ts
+tests/helpers/factories.ts
+
+tests/unit/lib/dynamic-tools/registry.test.ts
+tests/unit/lib/dynamic-tools/registry.property.test.ts
+tests/unit/lib/embeddings/registry.test.ts
+tests/unit/lib/embeddings/registry.property.test.ts
+
+tests/unit/extensions/search/cache.test.ts
+tests/unit/extensions/search/types.test.ts
+tests/unit/extensions/search/metrics.test.ts
+
+tests/snapshots/tui/question-dialog.test.ts
+tests/snapshots/tui/plan-renderer.test.ts
+tests/snapshots/errors/error-messages.test.ts
+tests/snapshots/__snapshots__/*.snap
+```
+
+### 更新ファイル
+
+```
+vitest.config.ts
+tests/setup-vitest.ts (custom-matchers読み込み)
+README.md (テストセクション更新)
+```
+
+---
+
+**計画作成完了**
+
+この計画に従って実装を進めることで、テストコードの品質と保守性が向上し、
+カバレッジ目標の達成が可能になる。

@@ -1,424 +1,393 @@
-# Research Report: Agent Parallel Management System
+# Code Quality Investigation Report
 
 ## Overview
 
-This document details the investigation of the parallel agent management code in this project, covering mechanisms, functionality, and all specifications with a focus on **safety properties** (what must be guaranteed).
+This report provides a comprehensive analysis of the pi-mekann-extensions project code quality across 8 key dimensions.
+
+**Project Statistics:**
+- Total TypeScript lines in extensions: ~66,015
+- Test files: 263 passed (7,639 tests)
+- Dependencies: 0 known vulnerabilities
+- Node.js requirement: >=20.18.1
 
 ---
 
-## 1. Architecture Overview
+## 1. TypeScript Configuration and Type Safety
 
-The parallel management system consists of 5 core components:
+### Configuration Analysis
 
-| Component | File | Role |
-|-----------|------|------|
-| **Runtime Controller** | `.pi/extensions/agent-runtime.ts` | Central runtime state, capacity management, queue orchestration |
-| **Concurrency Pool** | `.pi/lib/concurrency.ts` | Worker pool with parallelism limits |
-| **Cross-Instance Coordinator** | `.pi/lib/cross-instance-coordinator.ts` | Multi-instance coordination via file-based locks |
-| **Subagent Execution** | `.pi/extensions/subagents.ts` | Subagent lifecycle and parallel execution |
-| **Team Orchestrator** | `.pi/extensions/agent-teams/team-orchestrator.ts` | Team-based parallel execution |
-
----
-
-## 2. Parallelism Control Mechanisms
-
-### 2.1 Runtime Capacity Limits (`agent-runtime.ts`)
-
-The `AgentRuntimeLimits` interface defines all limits:
-
-```typescript
-interface AgentRuntimeLimits {
-  maxTotalActiveLlm: number;           // Global LLM worker limit
-  maxTotalActiveRequests: number;      // Global request limit
-  maxParallelSubagentsPerRun: number;  // Per-run subagent parallelism
-  maxParallelTeamsPerRun: number;      // Per-run team parallelism
-  maxParallelTeammatesPerTeam: number; // Per-team member parallelism
-  maxConcurrentOrchestrations: number; // Global orchestration limit
-  capacityWaitMs: number;              // Max wait for capacity
-  capacityPollMs: number;              // Polling interval
-}
-```
-
-**Priority Sources:**
-1. Environment variables (highest)
-2. Cross-instance coordinator (dynamic)
-3. Runtime config defaults (lowest)
-
-### 2.2 Concurrency Pool (`concurrency.ts`)
-
-```typescript
-runWithConcurrencyLimit<TInput, TResult>(
-  items: TInput[],
-  limit: number,
-  worker: (item, index, signal) => Promise<TResult>,
-  options: ConcurrencyRunOptions
-): Promise<TResult[]>
-```
-
-**Key Features:**
-- **Normalized limit**: Always `1 <= limit <= itemCount`
-- **AbortSignal propagation**: Child controllers with proper cleanup
-- **Priority scheduling**: DynTaskMAS integration via `itemWeights`
-- **Error isolation**: First error captured, workers continue to avoid dangling
-
-### 2.3 Cross-Instance Coordination (`cross-instance-coordinator.ts`)
-
-**Directory Structure:**
-```
-~/.pi/runtime/
-├── instances/
-│   ├── {sessionId}-{pid}.lock    # Per-instance lock files
-│   └── ...
-├── queue-states/
-│   └── {instanceId}.json         # Queue state broadcasts
-├── locks/
-│   └── {resource}.lock           # Distributed locks
-└── coordinator.json              # Global config
-```
-
-**Parallel Limit Distribution:**
-```typescript
-getMyParallelLimit(): number {
-  const contendingCount = getContendingInstanceCount();
-  return Math.max(1, Math.floor(totalMaxLlm / contendingCount));
-}
-```
-
----
-
-## 3. Lock and Synchronization Mechanisms
-
-### 3.1 Global Runtime State (`agent-runtime.ts`)
-
-**State Location:** `globalThis.__PI_SHARED_AGENT_RUNTIME_STATE__`
-
-**Initialization Pattern:**
-```typescript
-class GlobalRuntimeStateProvider {
-  private initializationLock = false;
-  private initializationPromise: Promise<void> | null = null;
-
-  getState(): AgentRuntimeState {
-    if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      if (this.initializationLock && this.initializationPromise) {
-        throw new Error("Use getStateAsync() instead.");
-      }
-      this.initializationLock = true;
-      // ... create state ...
-    }
+**tsconfig.json:**
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
   }
 }
 ```
 
-**Safety Property:** Spin-wait removed, Promise-based initialization prevents race conditions.
+### Findings
 
-### 3.2 Distributed Lock (`cross-instance-coordinator.ts`)
+| Aspect | Status | Details |
+|--------|--------|---------|
+| Strict Mode | ✅ Enabled | `strict: true` |
+| Target | ✅ Modern | ES2022 |
+| Module Resolution | ✅ Bundler | ESM compatible |
 
-**Atomic Acquisition with O_EXCL:**
-```typescript
-function tryAcquireLock(resource: string, ttlMs: number, maxRetries: number) {
-  // Atomic file creation with wx flag (O_EXCL)
-  fd = openSync(lockFile, "wx");  // Atomic!
-  
-  // TOCTOU mitigation: exponential backoff on collision
-  if (attempt < maxRetries) {
-    const delayMs = Math.min(10 * Math.pow(2, attempt), 100);
-    Atomics.wait(..., delayMs);  // Spin-wait mitigation
-  }
-}
-```
+### Issues Identified
 
-**Lock Lifecycle:**
-1. Try atomic create with `wx` flag
-2. On `EEXIST`, check expiration
-3. Clean expired locks atomically via `renameSync`
-4. Retry with backoff
+**Type Errors (32 total):**
+- `subagents.ts`: 23 type errors (lines 1289-1364)
+  - Generic type mismatch: `Type '(agent: SubagentDefinition) => string' is not assignable to type '<T>(item: T) => string'`
+  - Unknown type handling: `'result' is of type 'unknown'` (15 occurrences)
+- `ul-workflow.ts`: 8 errors - `runSubagent` not on `ExtensionContext`
+- `agent-teams/extension.ts`: 1 error - similar generic type mismatch
 
-### 3.3 Reservation Lease Pattern
+**Any Type Usage:**
+- 65 occurrences of `any` type in extensions
+- Notable files with `any`:
+  - `loop.ts`: 2 occurrences
+  - `self-improvement-loop.ts`: 1 occurrence
+  - `question.ts`: 1 (with TODO comment for improvement)
+  - `context-usage-dashboard.ts`: 2 occurrences
+  - `mediator.ts`: 1 occurrence
 
-```typescript
-interface RuntimeCapacityReservationLease {
-  id: string;
-  expiresAtMs: number;
-  consume: () => void;      // Mark as consumed
-  heartbeat: (ttlMs?) => void;  // Extend TTL
-  release: () => void;      // Free capacity
-}
-```
-
-**Safety Property:** Reservations auto-expire via periodic sweeper (default 5s).
+**Recommendation:** Add explicit type guards for `unknown` results and create proper interfaces for callback parameters.
 
 ---
 
-## 4. Resource Management
+## 2. Linting and Formatting Configuration
 
-### 4.1 Capacity Check Flow
+### ESLint Configuration (v9 Flat Config)
 
+**eslint.config.mjs:**
+- Base: `@eslint/js` recommended + `typescript-eslint` recommended
+- Target: ES2022, ESNext modules
+- Globals: Node.js + ES2021
+
+### Custom Rules
+
+| Rule | Setting | Notes |
+|------|---------|-------|
+| `@typescript-eslint/no-unused-vars` | warn | Ignores `_` prefixed args |
+| `@typescript-eslint/no-explicit-any` | warn | Should be error |
+| `@typescript-eslint/no-non-null-assertion` | warn | Acceptable |
+| `no-console` | off | Intentional for CLI |
+| `prefer-const` | warn | Good practice |
+| `no-var` | error | Correct |
+
+### Critical Issue
+
+**ESLint is broken:**
 ```
-┌──────────────────────┐
-│ checkRuntimeCapacity │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────────┐
-│ projectedRequests =      │
-│   active + reserved + new│
-└──────────┬───────────────┘
-           │
-           ▼
-┌──────────────────────────┐     No    ┌─────────────┐
-│ projectedRequests <= max?├──────────►│ BLOCKED     │
-└──────────┬───────────────┘           │ + reasons[] │
-           │ Yes                       └─────────────┘
-           ▼
-┌─────────────────────┐
-│ ALLOWED             │
-│ + reservation lease │
-└─────────────────────┘
-```
-
-### 4.2 Priority Queue Management
-
-**Entry Structure:**
-```typescript
-interface RuntimeQueueEntry extends PriorityTaskMetadata {
-  queueClass: "interactive" | "standard" | "batch";
-  priority: "critical" | "high" | "normal" | "low" | "background";
-  tenantKey: string;
-  skipCount: number;  // For starvation detection
-}
+TypeError: Cannot set properties of undefined (setting 'defaultMeta')
+    at ajvOrig (node_modules/@eslint/eslintrc/dist/eslintrc-universal.cjs:385:27)
 ```
 
-**Eviction Policy (when queue exceeds limit):**
-1. Lower queue class first (batch < standard < interactive)
-2. Lower priority first (background < ... < critical)
-3. Older entries first (LRU-like)
+**Root Cause:** Compatibility issue between ESLint 9.39.3 and `@eslint/eslintrc` internal AJV usage.
 
-**Starvation Prevention:**
-- After 20s wait: promote queue class
-- After 60s wait: promote priority level
+**Impact:** `npm run lint` cannot complete. CI pipeline may fail on lint checks.
 
-### 4.3 Adaptive Penalty Controller
-
-```typescript
-const adaptivePenalty = createAdaptivePenaltyController({
-  isStable: STABLE_RUNTIME_PROFILE,
-  maxPenalty: ADAPTIVE_PARALLEL_MAX_PENALTY,
-  decayMs: ADAPTIVE_PARALLEL_DECAY_MS,
-});
-
-// On rate limit: raise penalty
-adaptivePenalty.raise("rate_limit");
-
-// On success: lower penalty
-adaptivePenalty.lower();
-
-// Apply to parallelism
-const effectiveParallelism = adaptivePenalty.applyLimit(baselineParallelism);
-```
+**Recommendation:** 
+1. Update `@eslint/js` and `typescript-eslint` to latest versions
+2. Or downgrade ESLint to 9.22.x series
+3. Consider using `eslint.config.ts` instead of `.mjs`
 
 ---
 
-## 5. Error Handling
+## 3. Test Coverage and Quality
 
-### 5.1 Error Classification
+### Test Statistics
 
-```typescript
-function classifyPressureError(error: string): 
-  "rate_limit" | "capacity" | "timeout" | "other"
+| Metric | Value |
+|--------|-------|
+| Test Files | 263 |
+| Tests Passed | 7,639 |
+| Tests Skipped | 1 |
+| Duration | 76.5s |
+
+### Test Organization
+
+```
+tests/
+├── unit/
+│   ├── extensions/     # Extension unit tests
+│   ├── lib/            # Library unit tests
+│   └── static/         # Static analysis tests
+├── e2e/                # End-to-end tests
+├── integration/        # Integration tests
+├── mbt/                # Model-based tests
+└── helpers/            # Test utilities
 ```
 
-**Retry Policy by Error Type:**
-| Error Type | Retry | Backoff |
-|------------|-------|---------|
-| rate_limit | Yes | Exponential + jitter |
-| capacity | Yes | Poll with backoff |
-| timeout | Yes | Limited retries |
-| other | No | - |
+### Coverage Analysis (from vitest output)
 
-### 5.2 Capacity Wait with Backoff
+**High Coverage (>90%):**
+- `sleep-utils.ts`: 100%
+- `text-utils.ts`: 100%
+- `process-utils.ts`: 100%
+- `sbfl.ts`: 95.12%
+- `token-bucket.ts`: 95.21%
+- `storage-lock.ts`: 93.95%
 
-```typescript
-function computeBackoffDelay(pollIntervalMs, attempts, remainingMs): number {
-  const exponent = Math.min(6, attempts - 1);
-  const rawDelay = pollIntervalMs * Math.pow(2, exponent);
-  const jitter = random(-jitterRange, +jitterRange);
-  return Math.max(1, Math.min(rawDelay + jitter, remainingMs));
-}
-```
+**Low Coverage (<50%):**
+- `run-index.ts`: 51.02%
+- `dag-scheduler.ts`: 47.69%
+- `parallel-search.ts`: 54.47%
+- `tool-executor.ts`: 67.2%
 
-**Max backoff factor:** 8x base interval
-**Jitter ratio:** 20%
+**Zero Coverage (0%):**
+- `runtime-types.ts`
+- `agent-types.ts`
+- `team-types.ts`
+- `embeddings/types.ts`
+- `verification-simple.ts`
+- `self-improvement-data-platform.ts` (large file: 46,872 lines)
 
-### 5.3 Failure Memory (Team Orchestrator)
+### Test Quality Issues
 
-```typescript
-// Record failure for pattern detection
-const failureRecord = memory.recordFailure(
-  teamId, memberId, error, taskSignature, retryRound
-);
+- Large test files (e.g., `verification-workflow.ts` at 229,343 lines) suggest test complexity
+- Single-threaded execution required (`singleThread: true`) indicates memory constraints
 
-// Skip retry if pattern detected
-if (memory.shouldSkipRetry(taskSignature, errorType)) {
-  // Don't retry - pattern indicates persistent failure
-}
-```
+**Recommendation:** Increase coverage for `verification-workflow.ts`, `self-improvement-data-platform.ts`, and type definition files.
 
 ---
 
-## 6. Cross-Instance Coordination
+## 4. Code Structure and Architecture
 
-### 6.1 Instance Registration
+### Module Organization
 
+```
+.pi/
+├── extensions/         # 44 TypeScript files
+│   ├── agent-teams/    # Team orchestration
+│   ├── search/         # Search tools
+│   ├── shared/         # Shared utilities
+│   └── *.ts            # Individual extensions
+└── lib/                # 130+ TypeScript files
+    ├── dynamic-tools/  # Tool registry
+    ├── embeddings/     # Embedding providers
+    ├── skills/         # Skill definitions
+    └── tui/            # TUI components
+```
+
+### Large Files (Risk Areas)
+
+| File | Lines | Concern |
+|------|-------|---------|
+| `verification-workflow.ts` | 6,555+ | Very large, untested |
+| `self-improvement-loop.ts` | 3,195 | Complex logic |
+| `agent-runtime.ts` | 2,461 | Core runtime |
+| `agent-teams/extension.ts` | 2,178 | Team orchestration |
+| `subagents.ts` | 1,947 | Subagent management |
+
+### Cohesion and Coupling Analysis
+
+**Positive Patterns:**
+- Clear separation between extensions and lib
+- Path aliases configured (`@ext/*`, `@lib/*`)
+- Modular extension architecture
+
+**Potential Issues:**
+- Large files indicate possible god objects
+- Cross-imports between `agent-teams/` and `subagents.ts`
+- `verification-workflow.ts` may have excessive responsibilities
+
+### Dependency Analysis
+
+**Import Patterns:**
+- ESM with `.js` extensions for local imports (correct for ESM)
+- Type imports properly separated (`import type`)
+- External dependencies minimal and focused
+
+**Recommendation:** 
+1. Split `verification-workflow.ts` into smaller modules
+2. Consider extracting common patterns from large extension files
+3. Add dependency graph visualization to CI
+
+---
+
+## 5. Documentation Quality
+
+### JSDoc Coverage
+
+| Metric | Count |
+|--------|-------|
+| `@summary` tags | 81 |
+| `@abdd.meta` headers | 37 |
+| `@param`/`@returns` | Extensive |
+
+### Documentation Structure
+
+**ABDD Headers Present In:**
+- `eslint.config.mjs`
+- `subagents.ts`
+- Core extension files
+
+**Quality Assessment:**
+- Headers include: path, role, why, related, public_api, invariants, side_effects, failure_modes
+- Japanese documentation for domain concepts
+- English for code-level documentation
+
+### README Quality
+
+`README.md` (30,545 bytes) covers:
+- Installation
+- Extension list
+- Configuration
+- Usage examples
+
+### Issues
+
+- Not all files have ABDD headers (37 of 44 extensions)
+- Some `any` types lack JSDoc explaining the relaxation
+- TODO comments present in `invariant-pipeline.ts`
+
+**Recommendation:** Add ABDD headers to remaining 7 extension files.
+
+---
+
+## 6. Error Handling
+
+### Error Handling Statistics
+
+| Pattern | Count |
+|---------|-------|
+| `try {` blocks | 145 |
+| `catch` blocks | 145 |
+| `console.*` calls | 137 |
+
+### Error Handling Patterns
+
+**Positive:**
+- Dedicated error utilities: `error-utils.ts`, `agent-errors.ts`, `dag-errors.ts`
+- Error classification: `error-classifier.ts`
+- Global error handler: `global-error-handler.ts`
+- Structured logging: `structured-logger.ts`, `comprehensive-logger.ts`
+
+**Global Error Handler Features:**
+- Uncaught exception handling
+- Unhandled rejection handling
+- Cancellation-aware (ignores abort signals)
+
+### Issues
+
+- Some `catch (error: any)` patterns bypass type safety
+- Console logging mixed with structured logging
+- Error recovery patterns inconsistent across extensions
+
+**Recommendation:**
+1. Standardize on structured logging
+2. Replace `catch (error: any)` with typed error handling
+3. Add error boundary patterns to extensions
+
+---
+
+## 7. Security Analysis
+
+### Dependency Security
+
+```
+npm audit: 0 vulnerabilities
+```
+
+### Security Patterns
+
+**Positive:**
+- No hardcoded secrets in codebase
+- Input validation utilities: `validation-utils.ts`
+- Abort signal handling throughout
+- Rate limiting: `adaptive-rate-controller.ts`, `rpm-throttle.ts`
+
+### Potential Concerns
+
+| Area | Risk | Notes |
+|------|------|-------|
+| File operations | Medium | Uses `node:fs` directly |
+| Dynamic imports | Low | Tool compiler has validation |
+| External API calls | Low | Rate-limited, retry-enabled |
+| User input | Medium | Validation present but scattered |
+
+### Recommendations
+
+1. Add input sanitization layer for file paths
+2. Audit `dynamic-tools.ts` for code injection risks
+3. Consider adding CSP headers for any web-facing components
+
+---
+
+## 8. Performance Considerations
+
+### Async Patterns
+
+**Positive:**
+- Concurrency control: `concurrency.ts`, `token-bucket.ts`
+- Circuit breaker: `circuit-breaker.ts`
+- Retry with backoff: `retry-with-backoff.ts`
+- Task scheduling: `task-scheduler.ts`, `priority-scheduler.ts`
+
+### Memory Management
+
+**Test Configuration Indicates Constraints:**
 ```typescript
-registerInstance(sessionId: string, cwd: string, configOverrides?): void
+fileParallelism: false,
+pool: 'threads',
+poolOptions: {
+  threads: { singleThread: true }
+},
+maxConcurrency: 1
 ```
 
-**Heartbeat Flow:**
-```
-┌─────────────────────┐
-│ registerInstance()  │
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────────────┐
-│ Write ~/.pi/runtime/        │
-│   instances/{id}.lock       │
-└─────────┬───────────────────┘
-          │
-          ▼
-┌─────────────────────────────┐
-│ setInterval(heartbeat, 15s) │
-│   - updateHeartbeat()       │
-│   - cleanupDeadInstances()  │
-└─────────────────────────────┘
-```
+### Potential Memory Issues
 
-### 6.2 Work Stealing Protocol
+| File | Risk | Reason |
+|------|------|--------|
+| `verification-workflow.ts` | High | 6,555+ lines, 0% coverage |
+| `self-improvement-data-platform.ts` | High | 46,872 lines, complex state |
+| `cross-instance-coordinator.ts` | Medium | 50,825 lines, coordination state |
 
-```typescript
-async function safeStealWork(): Promise<StealableQueueEntry | null> {
-  // 1. Check if stealing enabled
-  if (process.env.PI_ENABLE_WORK_STEALING === "false") return null;
-  
-  // 2. Only steal if idle
-  if (!isIdle()) return null;
-  
-  // 3. Find candidate with excess work
-  const candidate = findStealCandidate();
-  if (!candidate) return null;
-  
-  // 4. Acquire distributed lock
-  const lock = tryAcquireLock(`steal:${candidate.instanceId}`);
-  if (!lock) return null;  // Another instance stealing
-  
-  try {
-    // 5. Steal highest priority task
-    return stealWork();
-  } finally {
-    releaseLock(lock);
-  }
-}
-```
+### Performance Utilities
 
-### 6.3 Cluster-Wide Usage Aggregation
+- Performance monitoring: `performance-monitor.ts`, `performance-profiles.ts`
+- Adaptive limits: `adaptive-total-limit.ts`, `provider-limits.ts`
+- Checkpoint management: `checkpoint-manager.ts`
 
-```typescript
-function getClusterRuntimeUsage(): {
-  totalActiveRequests: number;
-  totalActiveLlm: number;
-  instanceCount: number;
-} {
-  const instances = getActiveInstances();
-  // Sum across all active instances
-  return instances.reduce((acc, inst) => ({
-    totalActiveRequests: acc.totalActiveRequests + inst.activeRequestCount,
-    totalActiveLlm: acc.totalActiveLlm + inst.activeLlmCount,
-  }), { totalActiveRequests: 0, totalActiveLlm: 0, instanceCount: instances.length });
-}
-```
+**Recommendation:**
+1. Add memory profiling to CI
+2. Consider streaming for large data operations
+3. Implement lazy loading for large modules
 
 ---
 
-## 7. Safety Properties (Critical Guarantees)
+## Summary
 
-### 7.1 Capacity Safety
+### Critical Issues (Must Fix)
 
-| Property | Mechanism |
-|----------|-----------|
-| **No over-commit** | `projectedRequests <= maxTotalActiveRequests` check before dispatch |
-| **Reservation TTL** | Auto-expire after 45-60s (configurable) |
-| **Sweeper cleanup** | Periodic removal of expired reservations (5s interval) |
+1. **ESLint broken** - TypeError prevents lint execution
+2. **Type errors** - 32 TypeScript errors block strict compilation
+3. **Zero coverage files** - Large critical files untested
 
-### 7.2 Concurrency Safety
+### High Priority (Should Fix)
 
-| Property | Mechanism |
-|----------|-----------|
-| **No dangling workers** | `runWithConcurrencyLimit` continues all workers after first error |
-| **Abort propagation** | Child `AbortController` with proper cleanup in `finally` |
-| **Queue bounded** | Max pending entries (default 1000), eviction on overflow |
+1. **Any type usage** - 65 instances need typed replacements
+2. **Large files** - Files over 2,000 lines should be refactored
+3. **Missing ABDD headers** - 7 extension files undocumented
 
-### 7.3 Distributed Safety
+### Medium Priority (Nice to Have)
 
-| Property | Mechanism |
-|----------|-----------|
-| **Atomic lock acquisition** | `openSync(path, "wx")` with O_EXCL flag |
-| **TOCTOU mitigation** | Exponential backoff + retry on collision |
-| **Dead instance cleanup** | Heartbeat timeout (default 60s) + process liveness check |
+1. **Consistent error handling** - Standardize catch patterns
+2. **Memory optimization** - Enable parallel testing if possible
+3. **Security hardening** - Add input sanitization layer
 
-### 7.4 Priority Queue Safety
+### Strengths
 
-| Property | Mechanism |
-|----------|-----------|
-| **Starvation prevention** | Auto-promote after 20s (class) / 60s (priority) |
-| **Tenant fairness** | Max 2 consecutive dispatches per tenant |
-| **Interactive priority** | `question` tool always gets highest class |
-
----
-
-## 8. Key Invariants
-
-1. **`limit >= 1`**: Concurrency limit always normalized to at least 1
-2. **`activeAgents >= 0`**: Counter never goes negative (guarded with `Math.max(0, ...)`)
-3. **`reservation.expiresAtMs > now`**: Only non-expired reservations counted
-4. **Single sweeper**: Only one reservation sweeper timer per process
-5. **Lock ownership**: Only lock owner can release (`lockId` match required)
-6. **Limits consistency**: `limitsVersion` hash ensures env/config drift detected
-
----
-
-## 9. Configuration Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PI_AGENT_MAX_TOTAL_LLM` | 12 | Global LLM worker limit |
-| `PI_AGENT_MAX_TOTAL_REQUESTS` | 24 | Global request limit |
-| `PI_AGENT_MAX_PARALLEL_SUBAGENTS` | 4 | Subagent parallelism |
-| `PI_AGENT_MAX_PARALLEL_TEAMS` | 2 | Team parallelism |
-| `PI_AGENT_MAX_PARALLEL_TEAMMATES` | 4 | Team member parallelism |
-| `PI_AGENT_MAX_CONCURRENT_ORCHESTRATIONS` | 4 | Global orchestration limit |
-| `PI_AGENT_CAPACITY_WAIT_MS` | 60000 | Max wait for capacity |
-| `PI_AGENT_CAPACITY_POLL_MS` | 1000 | Polling interval |
-| `PI_RUNTIME_DIR` | `~/.pi/runtime` | Coordinator directory |
-| `PI_ENABLE_WORK_STEALING` | true | Enable work stealing |
-| `PI_USE_SCHEDULER` | false | Use scheduler-based capacity |
-| `PI_DEBUG_COORDINATOR` | - | Debug logging |
-
----
-
-## 10. Summary
-
-The parallel management system provides:
-
-1. **Multi-level parallelism control**: Global → Instance → Run → Agent/Team → Member
-2. **Robust synchronization**: File-based distributed locks with atomic acquisition
-3. **Fair scheduling**: Priority queue with starvation prevention and tenant fairness
-4. **Graceful degradation**: Adaptive penalty on rate limits, capacity-aware parallelism reduction
-5. **Cross-instance coordination**: Heartbeat-based liveness, work stealing, cluster-wide usage tracking
-
-**Key Safety Guarantee**: The system ensures that at any moment:
-- `totalActiveLlm <= maxTotalActiveLlm`
-- `totalActiveRequests <= maxTotalActiveRequests`
-- `activeOrchestrations <= maxConcurrentOrchestrations`
-
-All capacity checks are atomic (reservation-based), and all distributed operations use proper locking to prevent race conditions.
+- Strong test coverage overall (7,639 tests)
+- Zero dependency vulnerabilities
+- Well-structured modular architecture
+- Comprehensive error handling infrastructure
+- Good documentation practices (ABDD headers)
+- Modern TypeScript configuration (strict mode)
