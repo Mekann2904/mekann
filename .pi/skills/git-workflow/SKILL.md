@@ -62,6 +62,17 @@ Git操作とブランチ管理を支援するスキル。日常的なコミッ�
 **違反時の対応**: もし確認なしにgit操作を実行してしまった場合、即座に停止し、
 ユーザーに謝罪してから確認をやり直すこと。
 
+### 統合確認の推奨
+
+**add + commit を実行する場合、統合確認の使用を推奨する。**
+
+統合確認のテンプレートは「Question テンプレート」セクションを参照。
+
+統合確認を使用することで:
+- 認証回数を2回から1回に削減
+- ファイル一覧とコミットメッセージを一覧表示
+- ユーザー体験がスムーズになる
+
 ### 確認が必要な操作（省略厳禁）
 
 以下の操作を実行する前に**必ず**確認:
@@ -221,8 +232,187 @@ git add -i
 
 **特に以下の場合に推奨:**
 - Conventional Commitsに準拠したコミット作成
-- インタラクティブリベースでの履歴整理
+- インタラクティブリベースでの履史整理
 - 複数ブランチ間のマージ作業
+
+## Question テンプレート
+
+このスキルで使用する `question` ツールのテンプレート集。コピペして使用すること。
+
+### 統合コミット（add + commit）【推奨】
+
+add と commit を1回の認証で実行するテンプレート。
+
+```typescript
+question({
+  questions: [{
+    question: "以下の内容でコミットしますか？\n\n" +
+              "【コミットメッセージ】\n" +
+              "feat: ユーザー認証を追加する\n\n" +
+              "【ステージングファイル】\n" +
+              "- src/auth.ts\n" +
+              "- tests/auth.test.ts\n\n" +
+              "【変更概要】\n" +
+              "- JWT認証を実装\n" +
+              "- テストを追加",
+    header: "Git Commit",
+    options: [
+      { label: "Commit", description: "ステージング + コミットを実行" },
+      { label: "Edit", description: "メッセージを編集" },
+      { label: "Cancel", description: "キャンセル" }
+    ],
+    custom: true  // 自由記述でメッセージ編集を許可
+  }]
+})
+```
+
+### 個別ステージング（git add）
+
+```typescript
+question({
+  questions: [{
+    question: "以下のファイルをステージングしますか？\n\n" +
+              "- src/auth.ts\n" +
+              "- tests/auth.test.ts",
+    header: "Git Add",
+    options: [
+      { label: "Add", description: "ステージングを実行" },
+      { label: "Cancel", description: "キャンセル" }
+    ]
+  }]
+})
+```
+
+### プッシュ（git push）
+
+```typescript
+question({
+  questions: [{
+    question: "リモートにプッシュしますか？\n\n" +
+              "【ブランチ】origin/feature/auth\n" +
+              "【コミット数】2件\n" +
+              "【最新コミット】abc1234 feat: ユーザー認証を追加する",
+    header: "Git Push",
+    options: [
+      { label: "Push", description: "プッシュを実行" },
+      { label: "Force", description: "強制プッシュ（--force-with-lease）" },
+      { label: "Cancel", description: "キャンセル" }
+    ]
+  }]
+})
+```
+
+### リベース（git rebase）
+
+```typescript
+question({
+  questions: [{
+    question: "インタラクティブリベースを実行しますか？\n\n" +
+              "【対象】直近3コミット\n" +
+              "【ブランチ】feature/auth",
+    header: "Git Rebase",
+    options: [
+      { label: "Rebase", description: "リベースを開始" },
+      { label: "Cancel", description: "キャンセル" }
+    ]
+  }]
+})
+```
+
+### マージ（git merge）
+
+```typescript
+question({
+  questions: [{
+    question: "ブランチをマージしますか？\n\n" +
+              "【マージ元】feature/auth\n" +
+              "【マージ先】main",
+    header: "Git Merge",
+    options: [
+      { label: "Merge", description: "マージを実行" },
+      { label: "Cancel", description: "キャンセル" }
+    ]
+  }]
+})
+```
+
+### ブランチ削除（git branch -d）
+
+```typescript
+question({
+  questions: [{
+    question: "ブランチを削除しますか？\n\n" +
+              "【ブランチ名】feature/old-feature\n" +
+              "【状態】マージ済み",
+    header: "Git Branch",
+    options: [
+      { label: "Delete", description: "削除を実行" },
+      { label: "Force", description: "強制削除（-D）" },
+      { label: "Cancel", description: "キャンセル" }
+    ]
+  }]
+})
+```
+
+### リセット（git reset）
+
+```typescript
+question({
+  questions: [{
+    question: "コミットをリセットしますか？\n\n" +
+              "【対象】直近1コミット\n" +
+              "【モード】--soft（変更を保持）",
+    header: "Git Reset",
+    options: [
+      { label: "Soft", description: "変更を保持してリセット" },
+      { label: "Hard", description: "変更を破棄してリセット（危険）" },
+      { label: "Cancel", description: "キャンセル" }
+    ]
+  }]
+})
+```
+
+## 統合コミットワークフロー（推奨）
+
+add と commit を1回の `question` 呼び出しで実行するワークフロー。ユーザー体験を向上させるため、この方法を推奨する。
+
+### 手順
+
+1. **変更内容を確認**
+   ```bash
+   git status
+   git diff
+   ```
+
+2. **コミットメッセージを作成**
+   - Conventional Commits に準拠
+   - 日本語で詳細に記述
+
+3. **統合確認を実行**
+   - `question` ツールで add + commit をまとめて確認
+   - ファイル一覧とメッセージを同時に表示
+
+4. **ユーザー承認後に実行**
+   ```bash
+   git add <files>
+   git commit -m "<message>"
+   ```
+
+### メリット
+
+| 項目 | 個別確認 | 統合確認 |
+|------|---------|---------|
+| 認証回数 | 2回 | 1回 |
+| UX | 中断あり | スムーズ |
+| 情報の一覧性 | 分散 | 集約 |
+| 推奨度 | - | **推奨** |
+
+### いつ個別確認を使うか
+
+以下の場合のみ個別確認を使用:
+- ステージングのみ行いたい（コミットしない）
+- ファイルごとに異なるブランチにコミットする
+- ユーザーが個別確認を明示的に希望した場合
 
 ## ワークフロー
 
@@ -290,7 +480,7 @@ git push --force-with-lease origin feature/new-feature
 
 ## 使用例
 
-### 例1: 機能ブランチでの作業
+### 例1: 機能ブランチでの作業（統合コミットワークフロー）
 
 ```bash
 # 新規ブランチ作成
@@ -298,22 +488,35 @@ git checkout -b feature/new-feature
 
 # 変更を確認
 git status
+git diff
 
-# 自分が編集したファイルのみステージング（git add .は使用禁止）
-git add src/feature/new-feature.ts
-git add tests/feature/new-feature.test.ts
-
-# ステージング内容を確認
-git diff --staged
-
-# コミット
+# 統合確認を実行（questionツールで add + commit をまとめて確認）
+# → ユーザーが承認したら以下を実行
+git add src/feature/new-feature.ts tests/feature/new-feature.test.ts
 git commit -m "feat: 新機能を追加する"
 
 # リモートにプッシュ
 git push -u origin feature/new-feature
 ```
 
-### 例2: インタラクティブリベース
+**ポイント**: add と commit を1回の question 呼び出しで確認するため、認証が1回で済む。
+
+### 例2: 個別ステージングが必要な場合
+
+```bash
+# 特定のファイルのみステージングしたい場合
+git status
+
+# 個別にステージング確認（questionツール）
+# → ユーザーが承認したら実行
+git add src/feature/new-feature.ts
+
+# 後でコミット
+# → 別途 question ツールで確認
+git commit -m "feat: 新機能の一部を追加する"
+```
+
+### 例3: インタラクティブリベース
 
 ```bash
 # 直近3コミットを整理
@@ -326,7 +529,7 @@ git rebase --continue
 git push --force-with-lease origin feature/new-feature
 ```
 
-### 例3: コンフリクト解決
+### 例4: コンフリクト解決
 
 ```bash
 # コンフリクト箇所を確認
