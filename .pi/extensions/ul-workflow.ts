@@ -104,13 +104,71 @@ function setCurrentWorkflow(state: WorkflowState | null): void {
   atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(registry, null, 2));
 }
 
-// Ownership check helper
-function checkOwnership(state: WorkflowState | null): { owned: boolean; error?: string } {
+/**
+ * プロセスが生存しているかどうかを確認する
+ * @summary プロセス生存確認
+ * @param pid - プロセスID
+ * @returns プロセスが生存している場合true
+ */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * インスタンスIDからPIDを抽出する
+ * @summary PID抽出
+ * @param instanceId - インスタンスID（例: "default-34147"）
+ * @returns プロセスID（抽出できない場合はnull）
+ */
+function extractPidFromInstanceId(instanceId: string): number | null {
+  const match = instanceId.match(/-(\d+)$/);
+  if (!match) return null;
+  const pid = Number(match[1]);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/**
+ * 以前の所有者のプロセスが終了しているかどうかを確認する
+ * @summary 古い所有者の終了確認
+ * @param ownerInstanceId - 所有者のインスタンスID
+ * @returns プロセスが終了している場合true
+ */
+function isOwnerProcessDead(ownerInstanceId: string): boolean {
+  const pid = extractPidFromInstanceId(ownerInstanceId);
+  if (!pid) return false;
+  return !isProcessAlive(pid);
+}
+
+/**
+ * 所有権チェック結果
+ */
+interface OwnershipResult {
+  owned: boolean;
+  error?: string;
+  autoClaim?: boolean;
+  previousOwner?: string;
+}
+
+// Ownership check helper with process liveness check
+function checkOwnership(state: WorkflowState | null, options?: { autoClaim?: boolean }): OwnershipResult {
   const instanceId = getInstanceId();
   if (!state) {
     return { owned: false, error: "no_active_workflow" };
   }
   if (state.ownerInstanceId !== instanceId) {
+    // Check if the owner process is dead
+    if (options?.autoClaim && isOwnerProcessDead(state.ownerInstanceId)) {
+      return {
+        owned: true,
+        autoClaim: true,
+        previousOwner: state.ownerInstanceId,
+      };
+    }
     return {
       owned: false,
       error: `workflow_owned_by_other: ${state.ownerInstanceId} (current: ${instanceId})`
@@ -534,13 +592,41 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
       // Check for existing active workflow using file-based access
       const existingWorkflow = getCurrentWorkflow();
       if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
-        const ownership = checkOwnership(existingWorkflow);
+        const ownership = checkOwnership(existingWorkflow, { autoClaim: true });
+
         if (!ownership.owned) {
+          if (ownership.autoClaim) {
+            // Auto-claim ownership from dead process
+            const now = new Date().toISOString();
+            existingWorkflow.ownerInstanceId = instanceId;
+            existingWorkflow.updatedAt = now;
+
+            saveState(existingWorkflow);
+            setCurrentWorkflow(existingWorkflow);
+
+            // Continue with the existing workflow
+            return makeResult(
+              `以前の所有者のプロセスが終了しているため、所有権を自動的に取得しました。\n\n` +
+              `以前の所有者: ${ownership.previousOwner}\n` +
+              `新しい所有者: ${instanceId}\n\n` +
+              `既存のワークフローを続行します。\n` +
+              `Task ID: ${existingWorkflow.taskId}\n` +
+              `現在のフェーズ: ${existingWorkflow.phase.toUpperCase()}\n\n` +
+              `次のステップ:\n` +
+              `  ul_workflow_approve で次のフェーズに進む\n` +
+              `  または\n` +
+              `  ul_workflow_status で詳細を確認`,
+              { taskId: existingWorkflow.taskId, phase: existingWorkflow.phase, autoClaimed: true, previousOwner: ownership.previousOwner }
+            );
+          }
+
           return makeResult(
             `エラー: 他のpiインスタンスがワークフローを実行中です。\n` +
             `所有者: ${existingWorkflow.ownerInstanceId}\n` +
             `Task ID: ${existingWorkflow.taskId}\n` +
-            `現在のインスタンス: ${instanceId}`,
+            `現在のインスタンス: ${instanceId}\n\n` +
+            `所有者のプロセスが終了している場合は、以下のコマンドで所有権を強制的に取得できます:\n` +
+            `  ul_workflow_force_claim()`,
             { error: ownership.error }
           );
         }
@@ -614,10 +700,38 @@ Task ID: ${taskId}
       // Check for existing active workflow using file-based access
       const existingWorkflow = getCurrentWorkflow();
       if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
-        const ownership = checkOwnership(existingWorkflow);
+        const ownership = checkOwnership(existingWorkflow, { autoClaim: true });
+
         if (!ownership.owned) {
+          if (ownership.autoClaim) {
+            // Auto-claim ownership from dead process and continue with existing workflow
+            const now = new Date().toISOString();
+            existingWorkflow.ownerInstanceId = instanceId;
+            existingWorkflow.updatedAt = now;
+
+            saveState(existingWorkflow);
+            setCurrentWorkflow(existingWorkflow);
+
+            // Continue with the existing workflow
+            return makeResult(
+              `以前の所有者のプロセスが終了しているため、所有権を自動的に取得しました。\n\n` +
+              `以前の所有者: ${ownership.previousOwner}\n` +
+              `新しい所有者: ${instanceId}\n\n` +
+              `既存のワークフローを続行します。\n` +
+              `Task ID: ${existingWorkflow.taskId}\n` +
+              `現在のフェーズ: ${existingWorkflow.phase.toUpperCase()}\n\n` +
+              `次のステップ:\n` +
+              `  ul_workflow_approve で次のフェーズに進む\n` +
+              `  または\n` +
+              `  ul_workflow_status で詳細を確認`,
+              { taskId: existingWorkflow.taskId, phase: existingWorkflow.phase, autoClaimed: true, previousOwner: ownership.previousOwner }
+            );
+          }
+
           return makeResult(
-            `エラー: 他のpiインスタンスがワークフローを実行中です。\n所有者: ${existingWorkflow.ownerInstanceId}`,
+            `エラー: 他のpiインスタンスがワークフローを実行中です。\n所有者: ${existingWorkflow.ownerInstanceId}\n\n` +
+            `所有者のプロセスが終了している場合は、以下のコマンドで所有権を強制的に取得できます:\n` +
+            `  ul_workflow_force_claim()`,
             { error: ownership.error }
           );
         }
@@ -1043,8 +1157,75 @@ ${phasesDisplay}
       // Sync to file
       saveState(currentWorkflow);
       setCurrentWorkflow(currentWorkflow);
-      
+
       return makeResult(text, { taskId: currentWorkflow.taskId, previousPhase, nextPhase });
+    },
+  });
+
+  // 所有権強制取得ツール
+  pi.registerTool({
+    name: "ul_workflow_force_claim",
+    label: "Force Claim Workflow",
+    description: "終了した所有者のワークフローの所有権を強制的に現在のインスタンスに移す",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      const currentWorkflow = getCurrentWorkflow();
+      if (!currentWorkflow) {
+        return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const instanceId = getInstanceId();
+
+      // Check if already owned
+      if (currentWorkflow.ownerInstanceId === instanceId) {
+        return makeResult(`ワークフローは既に現在のインスタンスが所有しています。\n所有者: ${instanceId}`, { alreadyOwned: true });
+      }
+
+      const previousOwner = currentWorkflow.ownerInstanceId;
+      const ownerPid = extractPidFromInstanceId(previousOwner);
+
+      // Verify owner process is dead
+      if (ownerPid && isProcessAlive(ownerPid)) {
+        return makeResult(
+          `エラー: 所有者のプロセスがまだ実行中です。\n` +
+          `所有者: ${previousOwner}\n` +
+          `所有者のPID: ${ownerPid}\n` +
+          `現在のインスタンス: ${instanceId}\n\n` +
+          `所有者が実行中の場合は、所有権を強制的に変更することはできません。`,
+          { error: "owner_still_alive", ownerPid, previousOwner }
+        );
+      }
+
+      // Force claim ownership
+      const now = new Date().toISOString();
+      currentWorkflow.ownerInstanceId = instanceId;
+      currentWorkflow.updatedAt = now;
+
+      saveState(currentWorkflow);
+      setCurrentWorkflow(currentWorkflow);
+
+      let statusText = `所有権を強制的に変更しました。\n\n` +
+        `以前の所有者: ${previousOwner}${ownerPid ? ` (PID: ${ownerPid})` : ""}\n` +
+        `新しい所有者: ${instanceId}\n`;
+
+      if (ownerPid && !isProcessAlive(ownerPid)) {
+        statusText += `\n所有者のプロセス (PID: ${ownerPid}) は終了しています。\n`;
+      }
+
+      statusText += `\nTask ID: ${currentWorkflow.taskId}\n` +
+        `現在のフェーズ: ${currentWorkflow.phase.toUpperCase()}\n\n` +
+        `次のステップ:\n` +
+        `  ul_workflow_approve で次のフェーズに進む\n` +
+        `  または\n` +
+        `  ul_workflow_status で詳細を確認`;
+
+      return makeResult(statusText, {
+        taskId: currentWorkflow.taskId,
+        previousOwner,
+        newOwner: instanceId,
+        phase: currentWorkflow.phase,
+        forceClaimed: true
+      });
     },
   });
 
