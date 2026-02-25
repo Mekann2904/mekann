@@ -37,14 +37,20 @@ Research → Plan → [ユーザーレビュー] → Implement
 
 ## 第1段階：Research（調査）
 
-コードベースの該当部分を**徹底的に**理解する。調査結果は必ず `research.md` に記述する。
+コードベースの該当部分を**徹底的に**理解する。調査結果は必ず `.pi/ul-workflow/tasks/{taskId}/research.md` に記述する。
 
-### アクション
+### アクション（推奨：専用ツールを使用）
+
+```
+ul_workflow_research({ task: "<タスク>", task_id: "<taskId>" })
+```
+
+### アクション（直接委任の場合）
 
 ```
 subagent_run({
   subagentId: "researcher",
-  task: "このフォルダの内容を徹底的に調査し、その仕組み、機能、およびすべての仕様を深く理解してください。調査が完了したら、得られた知見と学習内容を詳細にまとめたレポートを「research.md」ファイルに作成してください。"
+  task: "このフォルダの内容を徹底的に調査し、その仕組み、機能、およびすべての仕様を深く理解してください。調査が完了したら、得られた知見と学習内容を詳細にまとめたレポートを「.pi/ul-workflow/tasks/<taskId>/research.md」ファイルに作成してください。"
 })
 ```
 
@@ -62,23 +68,32 @@ subagent_run({
 - ユーザーのレビュー用資料
 - エージェントがシステムを正しく理解しているか確認
 - 誤解があれば計画段階前に修正
+- 保存場所: `.pi/ul-workflow/tasks/{taskId}/research.md`
 
 ---
 
 ## 第2段階：Plan（計画策定）
 
-詳細な実装計画を `plan.md` に作成する。
+詳細な実装計画を `.pi/ul-workflow/tasks/{taskId}/plan.md` に作成する。
 
-### アクション
+### アクション（推奨：専用ツールを使用）
+
+```
+ul_workflow_plan({ task: "<タスク>", task_id: "<taskId>" })
+```
+
+### アクション（直接委任の場合）
 
 ```
 subagent_run({
   subagentId: "architect",
-  task: "以下のタスクの詳細な実装計画をplan.mdに作成してください。コードスニペットも必ず含めてください。\n\nタスク: <task>"
+  task: "以下のタスクの詳細な実装計画をplan.mdに作成してください。コードスニペットも必ず含めてください。\n\nタスク: <task>\n\n保存先: .pi/ul-workflow/tasks/<taskId>/plan.md"
 })
 ```
 
 ### plan.mdの構造
+
+保存場所: `.pi/ul-workflow/tasks/{taskId}/plan.md`
 
 ```markdown
 # 実装計画: <タスク名>
@@ -106,6 +121,8 @@ subagent_run({
 **ここはユーザーが主導する。エージェントは待機。**
 
 ユーザーがplan.mdをエディタで開き、インライン注釈（`<!-- NOTE: ... -->`）を追加する。
+
+plan.mdの場所: `.pi/ul-workflow/tasks/{taskId}/plan.md`
 
 ### ユーザーが満足するまで繰り返し
 
@@ -138,7 +155,8 @@ subagent_run({
 ```
 subagent_run({
   subagentId: "implementer",
-  task: "plan.mdのすべてを実装してください..."
+  task: "plan.mdのすべてを実装してください...",
+  extraContext: "plan.mdの場所: .pi/ul-workflow/tasks/<taskId>/plan.md"
 })
 ```
 
@@ -148,6 +166,7 @@ subagent_run({
 agent_team_run({
   teamId: "core-delivery-team",
   task: "plan.mdの以下のタスクを並列で実装してください: <タスク>",
+  sharedContext: "plan.mdの場所: .pi/ul-workflow/tasks/<taskId>/plan.md",
   strategy: "parallel"
 })
 ```
