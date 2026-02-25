@@ -233,6 +233,13 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
     cleanup();
   }
 
+  // throw mode: If any worker failed, throw the first error encountered
+  // Note: Check firstError BEFORE ensureNotAborted to preserve the original error message
+  if (firstError !== undefined) {
+    throw firstError;
+  }
+
+  // Only check abort status if no worker error occurred
   ensureNotAborted(effectiveSignal);
 
   // allSettled mode: return SettledResult array for partial failure handling
@@ -246,11 +253,6 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
       }
       return { status: 'fulfilled' as const, value: item.result as TResult, index };
     }) as TResult[];
-  }
-
-  // throw mode: If any worker failed, throw the first error encountered
-  if (firstError !== undefined) {
-    throw firstError;
   }
 
   // Unwrap results with explicit guards for unexpected holes.
