@@ -1683,6 +1683,271 @@ metadata:
 
 ---
 
+## Part VIII: ソフトウェア開発者向け実践ガイド
+
+哲学的視座をソフトウェア開発現場で直接適用可能な概念に翻訳し、開発パイプライン（Pre-commit/Post-commit/Review）と統合する。
+
+### 開発者向け視座翻訳
+
+| 哲学的視座 | 開発者向け名称 | コード分析での活用 |
+|-----------|--------------|------------------|
+| 脱構築 | コード批判的分析 | 前提の暴露、依存関係の可視化 |
+| スキゾ分析 | 欲望-機能分析 | 副作用検出、ステークホルダー影響 |
+| 幸福論 | 開発者体験 (DX) | 保守性、認知負荷、技術的負債 |
+| ユートピア/ディストピア | アーキテクチャ未来予測 | 長期リスク、スケーラビリティ |
+| 思考哲学 | メタプログラミング認識 | 自己参照、コード生成品質 |
+| 思考分類学 | 思考モード選択 | デバッグ/設計モード切り替え |
+| 論理学 | ロジック検証 | エッジケース、不変条件 |
+
+### 開発パイプライン統合
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    開発ワークフロー                           │
+│                                                             │
+│  git add → pre-commit分析 → コミット → post-commit分析       │
+│      ↓           ↓                      ↓                   │
+│   高リスク検出  警告表示              品質レポート生成         │
+│                                                             │
+│  PR作成 → レビュー分析 → マージ                               │
+│              ↓                                              │
+│         自動レビューコメント                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Pre-commitフックでの活用
+
+```bash
+# .pi/hooks/pre-commit が自動的に高リスクパターンを検出
+# 結果は .pi/analyses/ に保存
+
+# 検出されるパターン例:
+# - delete文（破壊的操作）
+# - DROP TABLE（データベース破壊）
+# - password/secret/token（機密データ）
+# - any as（型安全性）
+# - TODO/FIXME/HACK（技術的負債）
+```
+
+### サイクル出力の実践的形式
+
+各サイクル終了時に以下を生成:
+
+#### 1. リファクタリング提案
+
+```markdown
+## Refactoring Suggestions
+
+### [Critical] example.ts:42
+**Current:**
+\`\`\`typescript
+const result = any as unknown as TargetType;
+\`\`\`
+
+**Suggested:**
+\`\`\`typescript
+const result = validateAndCast<TargetType>(input);
+\`\`\`
+
+**Reason:** Type safety concern (logic perspective)
+```
+
+#### 2. テストケース追加推奨
+
+```markdown
+## Recommended Test Cases
+
+### Edge Case Test (logic)
+\`\`\`typescript
+it('should handle empty input', () => {
+  expect(processCode('')).toEqual(defaultValue);
+});
+\`\`\`
+
+### Side Effect Test (schizoanalysis)
+\`\`\`typescript
+it('should not have unintended side effects', () => {
+  const stateBefore = getState();
+  executeFunction();
+  expect(getState()).toMatchExpectedChanges();
+});
+\`\`\`
+```
+
+#### 3. ドキュメント更新ポイント
+
+```markdown
+## Documentation Updates
+
+### README.md - Assumptions
+- Add: "Requires Node.js 18+ for native fetch"
+- Reason: Hidden assumption detected by deconstruction analysis
+
+### CONTRIBUTING.md - Developer Experience
+- Add: "This module has high cognitive complexity (42)"
+- Reason: DX concern identified by eudaimonia analysis
+```
+
+#### 4. 次回開発時の注意事項
+
+```markdown
+## Notes for Next Development
+
+- ⚠️ `example.ts` has high cognitive complexity (42)
+- ℹ️ Consider extracting analysis logic to separate module
+- 📝 TODO: Add property-based tests for perspective translation
+```
+
+### 視座別コード分析プロンプト
+
+#### コード批判的分析（脱構築）
+
+```markdown
+## 分析プロンプト
+1. このコードは何を前提としているか？
+2. どの依存関係が隠れているか？
+3. 「当然」と思っている設計判断は何か？
+4. このパターンは何を排除しているか？
+
+## 出力形式
+- 前提の暴露
+- 隠れた依存関係
+- 設計判断の再評価
+- リファクタリング提案
+```
+
+#### 機能-副作用分析（スキゾ分析）
+
+```markdown
+## 分析プロンプト
+1. この機能は誰の「欲望」を満たしているか？
+2. この機能は何を「生産」しているか（意図せぬ結果）？
+3. どのステークホルダーが排除されているか？
+4. 隠れた副作用は何か？
+
+## 出力形式
+- ステークホルダー分析
+- 生産される効果（意図/非意図）
+- 排除された声
+- テストケース推奨
+```
+
+#### 開発者体験評価（幸福論）
+
+```markdown
+## 分析プロンプト
+1. このコードは理解しやすいか？
+2. 将来の開発者はこのコードで「苦しむ」か？
+3. どのような「技術的負債」が蓄積しているか？
+4. このコードは開発者の「成長」を妨げていないか？
+
+## 出力形式
+- 認知負荷評価
+- 保守性チェック
+- 技術的負債
+- DX改善提案
+```
+
+#### アーキテクチャ未来予測（ユートピア/ディストピア）
+
+```markdown
+## 分析プロンプト
+1. このコードは1年後どうなっているか？
+2. スケールした時にどこが壊れるか？
+3. どのような「ディストピア」を生み出す可能性があるか？
+4. 将来の変更に対してどれだけ脆弱か？
+
+## 出力形式
+- 未来シナリオ分析（楽観/悲観）
+- スケーラビリティリスク
+- 技術的負債の将来コスト
+- 予防的リファクタリング
+```
+
+#### ロジック検証（論理学）
+
+```markdown
+## 分析プロンプト
+1. このロジックは常に正しいか？
+2. どのような入力で壊れるか？
+3. 不変条件は守られているか？
+4. 論理的誤謬（off-by-one、境界条件）はないか？
+
+## 出力形式
+- 不変条件検証
+- エッジケース
+- 論理的欠陥
+- テストケース追加
+```
+
+### 実装詳細
+
+#### 新規作成ファイル
+
+1. **`.pi/extensions/self-improvement-dev-analyzer.ts`**
+   - `DEV_PERSPECTIVE_TRANSLATIONS` 定数
+   - `analyzeCodeFromPerspective` 関数
+
+2. **`.pi/extensions/self-improvement-pipeline.ts`**
+   - `runPreCommitAnalysis` 関数
+   - `runPostCommitAnalysis` 関数
+   - `generateReviewAnalysis` 関数
+
+3. **`.pi/extensions/self-improvement-output.ts`**
+   - `generateRefactoringSuggestions` 関数
+   - `generateTestCases` 関数
+   - `generateDocUpdates` 関数
+
+### 使用例
+
+```typescript
+import { runPreCommitAnalysis } from './self-improvement-pipeline.js';
+import { generatePracticalOutput } from './self-improvement-output.js';
+
+// Pre-commit分析
+const result = await runPreCommitAnalysis();
+if (result.perspectives.length > 0) {
+  console.log('Warnings:', result.perspectives);
+}
+
+// 実践的出力の生成
+const analyses = [
+  { perspective: 'logic', findings: ['off-by-one error'], score: 30 },
+  { perspective: 'eudaimonia', findings: ['high complexity'], score: 45 }
+];
+const output = generatePracticalOutput(analyses);
+console.log('Refactoring suggestions:', output.refactoringSuggestions);
+```
+
+### トレードオフと考慮事項
+
+| 選択肢 | 利点 | 欠点 |
+|-------|-----|-----|
+| 哲学的用語の維持 | 理論的厳密性 | 開発現場での適用困難 |
+| 完全な翻訳 | 実用性向上 | 哲学的深さの喪失リスク |
+| 双方向アプローチ | 両方の利点 | 複雑性の増加 |
+
+**推奨**: 双方向アプローチ（翻訳レイヤーを挟みつつ、元の哲学的用語にもアクセス可能にする）
+
+### リスクと緩和策
+
+1. **過度な自動化の罠**: 分析が「監視」になり、開発者の自律性を損なう
+   - 緩和策: すべてadvisory（提案のみ）、ブロックしない
+
+2. **出力の形式的化**: 機械的な出力が創造的思考を阻害
+   - 緩和策: 出力テンプレートは開かれた形式、具体性は文脈依存
+
+3. **メトリクスへの過度な依存**: 数値化できるものだけを重視
+   - 緩和策: メトリクスは参考値、判断は人間（開発者）が行う
+
+### 後方互換性
+
+- 既存の `self-improvement-loop.ts` は変更なし
+- 新規ファイルは独立して追加
+- SKILL.mdは追加のみ（既存セクションは維持）
+
+---
+
 ## 参考文献
 
 ### 脱構築（一次文献）
