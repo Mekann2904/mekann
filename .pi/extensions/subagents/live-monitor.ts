@@ -59,6 +59,10 @@ import {
   finalizeLiveLines,
   type LiveStatus,
 } from "../../lib/live-view-utils.js";
+import {
+  renderGanttView,
+  type GanttItem,
+} from "../../lib/tui/gantt-utils.js";
 
 // Import types from lib/subagent-types.ts
 import {
@@ -314,7 +318,7 @@ export function renderSubagentLiveView(input: {
 
   if (input.mode === "list") {
     // ツリービューのキーボードヒント
-    add(theme.fg("dim", "[j/k] nav  [ret] detail  [t] time  [q] quit"));
+    add(theme.fg("dim", "[j/k] nav  [ret] detail  [v] gantt  [t] time  [q] quit"));
     add("");
 
     // ツリー形式でメンバーを描画
@@ -373,11 +377,43 @@ export function renderSubagentLiveView(input: {
 
   // Timeline mode
   if (input.mode === "timeline") {
-    add(theme.fg("dim", "[b] back  [q] quit"));
+    add(theme.fg("dim", "[v] gantt  [b] back  [q] quit"));
     add("");
 
     const timelineLines = renderSubagentTimelineView(items, input.width, theme);
     for (const line of timelineLines) {
+      add(line);
+    }
+
+    return finalizeLiveLines(lines, input.height);
+  }
+
+  // Gantt mode
+  if (input.mode === "gantt") {
+    add(theme.fg("dim", "[t] time  [b] back  [q] quit"));
+    add("");
+
+    // Convert SubagentLiveItem to GanttItem
+    const ganttItems: GanttItem[] = items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      status: item.status,
+      startedAtMs: item.startedAtMs,
+      finishedAtMs: item.finishedAtMs,
+      lastChunkAtMs: item.lastChunkAtMs,
+      stdoutTail: item.stdoutTail,
+      stderrTail: item.stderrTail,
+      stdoutBytes: item.stdoutBytes,
+      stderrBytes: item.stderrBytes,
+      stdoutNewlineCount: item.stdoutNewlineCount,
+      stderrNewlineCount: item.stderrNewlineCount,
+      stdoutEndsWithNewline: item.stdoutEndsWithNewline,
+      stderrEndsWithNewline: item.stderrEndsWithNewline,
+      stateTimeline: item.stateTimeline,
+    }));
+
+    const ganttLines = renderGanttView(ganttItems, input.width, input.height ?? 0, theme);
+    for (const line of ganttLines) {
       add(line);
     }
 
@@ -626,6 +662,12 @@ export function createSubagentLiveMonitor(
             return;
           }
 
+          if ((mode === "list" || mode === "detail" || mode === "timeline") && (rawInput === "v" || rawInput === "V")) {
+            mode = "gantt";
+            queueRender();
+            return;
+          }
+
           if (mode === "timeline" && (rawInput === "b" || rawInput === "B")) {
             mode = "list";
             queueRender();
@@ -639,6 +681,24 @@ export function createSubagentLiveMonitor(
           }
 
           if (mode === "timeline" && matchesKey(rawInput, Key.escape)) {
+            mode = "list";
+            queueRender();
+            return;
+          }
+
+          if (mode === "gantt" && (rawInput === "b" || rawInput === "B")) {
+            mode = "list";
+            queueRender();
+            return;
+          }
+
+          if (mode === "gantt" && (rawInput === "t" || rawInput === "T")) {
+            mode = "timeline";
+            queueRender();
+            return;
+          }
+
+          if (mode === "gantt" && matchesKey(rawInput, Key.escape)) {
             mode = "list";
             queueRender();
             return;

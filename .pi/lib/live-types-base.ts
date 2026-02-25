@@ -36,6 +36,23 @@ import type { LiveStatus } from "./live-view-utils.js";
 export type { LiveStatus } from "./live-view-utils.js";
 
 // ============================================================================
+// State Transition Types (for Gantt Chart)
+// ============================================================================
+
+/**
+ * State transition entry for Gantt display
+ * @summary 状態遷移エントリ
+ */
+export interface StateTransition {
+  /** Timestamp when state started */
+  startedAtMs: number;
+  /** Timestamp when state ended (undefined if current) */
+  finishedAtMs?: number;
+  /** State type: RUN (executing) or WAIT (blocked/idle) */
+  state: "RUN" | "WAIT";
+}
+
+// ============================================================================
 // Base Live Snapshot Interface
 // ============================================================================
 
@@ -68,4 +85,6 @@ export interface BaseLiveSnapshot {
   stdoutEndsWithNewline: boolean;
   /** Whether stderr ends with newline */
   stderrEndsWithNewline: boolean;
+  /** State transition history for Gantt rendering */
+  stateTimeline?: StateTransition[];
 }

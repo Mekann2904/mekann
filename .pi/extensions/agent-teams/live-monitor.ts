@@ -58,6 +58,10 @@ import {
 import {
   computeLiveWindow,
 } from "../../lib/agent-utils.js";
+import {
+  renderGanttView,
+  type GanttItem,
+} from "../../lib/tui/gantt-utils.js";
 
 // Import team types from lib
 import {
@@ -726,7 +730,7 @@ export function renderAgentTeamLiveView(input: {
 
   if (input.mode === "list") {
     // ツリービューのキーボードヒント
-    add(theme.fg("dim", "[j/k] nav  [ret] detail  [d] disc  [t] time  [q] quit"));
+    add(theme.fg("dim", "[j/k] nav  [ret] detail  [v] gantt  [d] disc  [t] time  [q] quit"));
     add("");
 
     // ツリー形式でメンバーを描画
@@ -813,11 +817,43 @@ export function renderAgentTeamLiveView(input: {
 
   // Timeline mode
   if (input.mode === "timeline") {
-    add(theme.fg("dim", "[d] disc  [b] back  [q] quit"));
+    add(theme.fg("dim", "[d] disc  [v] gantt  [b] back  [q] quit"));
     add("");
 
     const timelineLines = renderTimelineView(items, input.globalEvents, input.width, theme);
     for (const line of timelineLines) {
+      add(line);
+    }
+
+    return finalizeLiveLines(lines, input.height);
+  }
+
+  // Gantt mode
+  if (input.mode === "gantt") {
+    add(theme.fg("dim", "[t] time  [b] back  [q] quit"));
+    add("");
+
+    // Convert TeamLiveItem to GanttItem
+    const ganttItems: GanttItem[] = items.map((item) => ({
+      id: item.key,
+      name: item.label,
+      status: item.status,
+      startedAtMs: item.startedAtMs,
+      finishedAtMs: item.finishedAtMs,
+      lastChunkAtMs: item.lastChunkAtMs,
+      stdoutTail: item.stdoutTail,
+      stderrTail: item.stderrTail,
+      stdoutBytes: item.stdoutBytes,
+      stderrBytes: item.stderrBytes,
+      stdoutNewlineCount: item.stdoutNewlineCount,
+      stderrNewlineCount: item.stderrNewlineCount,
+      stdoutEndsWithNewline: item.stdoutEndsWithNewline,
+      stderrEndsWithNewline: item.stderrEndsWithNewline,
+      stateTimeline: item.stateTimeline,
+    }));
+
+    const ganttLines = renderGanttView(ganttItems, input.width, input.height ?? 0, theme);
+    for (const line of ganttLines) {
       add(line);
     }
 
@@ -1122,6 +1158,12 @@ export function createAgentTeamLiveMonitor(
             return;
           }
 
+          if ((mode === "list" || mode === "detail" || mode === "discussion" || mode === "timeline") && (rawInput === "v" || rawInput === "V")) {
+            mode = "gantt";
+            queueRender();
+            return;
+          }
+
           if (mode === "timeline" && (rawInput === "b" || rawInput === "B")) {
             mode = "list";
             queueRender();
@@ -1135,6 +1177,24 @@ export function createAgentTeamLiveMonitor(
           }
 
           if (mode === "timeline" && matchesKey(rawInput, Key.escape)) {
+            mode = "list";
+            queueRender();
+            return;
+          }
+
+          if (mode === "gantt" && (rawInput === "b" || rawInput === "B")) {
+            mode = "list";
+            queueRender();
+            return;
+          }
+
+          if (mode === "gantt" && (rawInput === "t" || rawInput === "T")) {
+            mode = "timeline";
+            queueRender();
+            return;
+          }
+
+          if (mode === "gantt" && matchesKey(rawInput, Key.escape)) {
             mode = "list";
             queueRender();
             return;

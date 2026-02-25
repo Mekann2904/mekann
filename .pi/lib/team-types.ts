@@ -59,9 +59,9 @@ export type TeamLivePhase =
 /**
  * チームライブの表示モード
  * @summary 表示モード定義
- * @typedef {"list" | "detail" | "discussion" | "tree" | "timeline"} TeamLiveViewMode
+ * @typedef {"list" | "detail" | "discussion" | "tree" | "timeline" | "gantt"} TeamLiveViewMode
  */
-export type TeamLiveViewMode = "list" | "detail" | "discussion" | "tree" | "timeline";
+export type TeamLiveViewMode = "list" | "detail" | "discussion" | "tree" | "timeline" | "gantt";
 
 /**
  * 待機状態情報
