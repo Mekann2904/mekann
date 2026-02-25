@@ -320,7 +320,7 @@ export async function codeSearch(
 		} else {
 			result = await nativeCodeSearch(safeInput, cwd);
 		}
-	} catch (error) {
+	} catch (error: unknown) {
 		// Wrap error in SearchToolError if not already
 		const toolError = isSearchToolError(error)
 			? error

@@ -257,7 +257,7 @@ export default function (pi: ExtensionAPI): void {
 						displayedLines,
 					} as EnhancedReadDetails,
 				};
-			} catch (error) {
+			} catch (error: unknown) {
 				const errorMessage = error instanceof Error ? error.message : String(error);
 				return {
 					content: [

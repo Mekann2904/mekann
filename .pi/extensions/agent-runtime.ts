@@ -200,7 +200,7 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * @throws 初期化中に同期的にアクセスした場合エラー
    */
   getState(): AgentRuntimeState {
-    const global = this.globalScope as any;
+    const global = this.globalScope as GlobalScopeWithRuntime;
 
     // Bug #2修正: atomic初期化パターン
     // Object.definePropertyは既存のプロパティに対しては何もしないため、
@@ -226,7 +226,7 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * @returns エージェントのランタイム状態のPromise
    */
   async getStateAsync(): Promise<AgentRuntimeState> {
-    const global = this.globalScope as any;
+    const global = this.globalScope as GlobalScopeWithRuntime;
 
     // Bug #2修正: getStateと同じatomic初期化パターンを使用
     if (!global[GlobalRuntimeStateProvider.INIT_KEY]) {
@@ -250,7 +250,7 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * @returns 戻り値なし
    */
   resetState(): void {
-    const global = this.globalScope as any;
+    const global = this.globalScope as GlobalScopeWithRuntime;
     // Bug #2修正: configurable: trueで定義し直すことでリセットを可能にする
     Object.defineProperty(global, GlobalRuntimeStateProvider.INIT_KEY, {
       value: undefined,

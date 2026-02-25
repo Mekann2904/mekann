@@ -1007,7 +1007,7 @@ export async function runSubagentTask(input: {
         output: commandResult.output,
         prompt,
       };
-    } catch (error) {
+    } catch (error: unknown) {
       let message = toErrorMessage(error);
 
       // エラー再評価: ツール呼び出しの部分的失敗を適切に処理
@@ -1025,7 +1025,7 @@ export async function runSubagentTask(input: {
         effectiveSummary = `Completed with ${failed} non-critical tool failure(s) (ignored)`;
       }
 
-      const gateSnapshot = getRateLimitGateSnapshot(rateLimitKey);
+      const gateSnapshot = await getRateLimitGateSnapshot(rateLimitKey);
       const diagnostic = [
         `provider=${resolvedProvider}`,
         `model=${resolvedModel}`,

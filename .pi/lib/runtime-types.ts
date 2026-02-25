@@ -137,6 +137,8 @@ export interface AgentRuntimeState {
  */
 export type GlobalScopeWithRuntime = typeof globalThis & {
   __PI_SHARED_AGENT_RUNTIME_STATE__?: AgentRuntimeState;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: symbol]: any;
 };
 
 /**

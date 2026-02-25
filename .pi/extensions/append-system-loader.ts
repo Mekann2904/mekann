@@ -72,8 +72,8 @@ const loadAppendSystemContent = (): string | null => {
     cachedContent = content.trim();
     console.log("[append-system-loader] Loaded APPEND_SYSTEM.md from package:", APPEND_SYSTEM_PATH);
     return cachedContent;
-  } catch (error) {
-    console.warn("[append-system-loader] Failed to read APPEND_SYSTEM.md:", error);
+  } catch (error: unknown) {
+    console.warn("[append-system-loader] Failed to read APPEND_SYSTEM.md:", error instanceof Error ? error.message : String(error));
     return null;
   }
 };

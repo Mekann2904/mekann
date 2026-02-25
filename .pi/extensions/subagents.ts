@@ -851,7 +851,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
 
         if (result.runRecord.status === "failed") {
           const pressureError = classifyPressureError(result.runRecord.error || "");
-          if (pressureError !== "other") {
+          if (pressureError !== "other" && pressureError !== "cancelled") {
             adaptivePenalty.raise(pressureError);
           }
           const errorMessage = result.runRecord.error || "subagent run failed";

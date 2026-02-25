@@ -69,6 +69,46 @@ import {
 import { getRuntimeSnapshot, notifyRuntimeCapacityChanged } from "./agent-runtime";
 import { getAdaptiveTotalLimitSnapshot, resetAdaptiveTotalLimitState } from "../lib/adaptive-total-limit";
 
+// ============================================================================
+// Type Guards for Tool Results
+// ============================================================================
+
+interface CoordinatorDetails {
+  registered: boolean;
+  activeInstanceCount: number;
+  myParallelLimit: number;
+}
+
+interface ResolvedDetails {
+  provider: string;
+  model: string;
+  concurrency: number;
+}
+
+interface ToolResultWithDetails {
+  status: string;
+  message?: string;
+  details?: {
+    coordinator?: CoordinatorDetails;
+    resolved?: ResolvedDetails;
+    content?: Array<{ type: string; text: string }>;
+    [key: string]: unknown;
+  };
+}
+
+function hasDetails(result: unknown): result is ToolResultWithDetails {
+  return typeof result === "object" && result !== null && "details" in result;
+}
+
+interface EventWithSessionId {
+  sessionId?: string;
+  [key: string]: unknown;
+}
+
+function hasSessionId(event: unknown): event is EventWithSessionId {
+  return typeof event === "object" && event !== null;
+}
+
 /**
  * クロスインスタンスランタイム拡張を登録
  * @summary ランタイム拡張登録
@@ -302,7 +342,7 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
       return new Text(theme.bold("pi_instance_status"), 0, 0);
     },
     renderResult(result, _options, theme) {
-      const status = (result as any)?.details?.coordinator;
+      const status = hasDetails(result) ? result.details?.coordinator : undefined;
       if (!status) {
         return new Text(theme.fg("warning", "coordinator status unavailable"), 0, 0);
       }
@@ -391,7 +431,7 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
       return new Text(theme.bold("pi_model_limits ") + theme.fg("muted", preview), 0, 0);
     },
     renderResult(result, _options, theme) {
-      const resolved = (result as any)?.details?.resolved;
+      const resolved = hasDetails(result) ? result.details?.resolved : undefined;
       if (!resolved) {
         return new Text(theme.fg("warning", "model limits unavailable"), 0, 0);
       }
@@ -409,7 +449,7 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
     // Lazy initialize adaptive controller on first session (not at extension load time)
     ensureAdaptiveControllerInitialized();
 
-    const sessionId = (event as any)?.sessionId ?? "unknown";
+    const sessionId = hasSessionId(event) ? (event.sessionId ?? "unknown") : "unknown";
     const envOverrides = getEnvOverrides();
 
     registerInstance(sessionId, ctx.cwd, envOverrides);
@@ -453,11 +493,11 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
   pi.on("tool_result", async (event, ctx) => {
     if (!ctx.model) return;
 
-    const eventPayload = event as any;
+    const eventPayload = hasSessionId(event) ? event : {};
     const error =
-      eventPayload?.error ||
-      eventPayload?.result?.error ||
-      (eventPayload?.isError ? eventPayload?.output ?? eventPayload?.message ?? "tool error" : undefined);
+      (eventPayload as Record<string, unknown>)?.error ||
+      ((eventPayload as Record<string, unknown>)?.result as Record<string, unknown>)?.error ||
+      ((eventPayload as Record<string, unknown>)?.isError ? ((eventPayload as Record<string, unknown>)?.output ?? (eventPayload as Record<string, unknown>)?.message ?? "tool error") : undefined);
     if (error && isRateLimitError(error)) {
       record429(ctx.model.provider, ctx.model.id, String(error));
       ctx.ui.notify(

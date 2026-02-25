@@ -31,6 +31,7 @@
 
 import { matchesKey, Key, truncateToWidth } from "@mariozechner/pi-tui";
 
+import type { Theme } from "./types.js";
 import { formatDurationMs, formatBytes, formatClockTime } from "../format-utils.js";
 import { computeLiveWindow } from "../agent-utils.js";
 import { getLiveStatusGlyph, getLiveStatusColor, getActivityIndicator, isEnterInput, finalizeLiveLines } from "../live-view-utils.js";
@@ -252,7 +253,7 @@ export interface LiveViewHeaderData {
 export function renderLiveViewHeader(
   data: LiveViewHeaderData,
   width: number,
-  theme: any,
+  theme: Theme,
 ): string[] {
   const lines: string[] = [];
   const add = (line = "") => lines.push(truncateToWidth(line, width));
@@ -276,7 +277,7 @@ export function renderLiveViewHeader(
  * @param theme テーマ設定
  * @returns 描画行の配列
  */
-export function renderListKeyboardHints(width: number, theme: any): string[] {
+export function renderListKeyboardHints(width: number, theme: Theme): string[] {
   const lines: string[] = [];
   const add = (line = "") => lines.push(truncateToWidth(line, width));
 
@@ -294,7 +295,7 @@ export function renderListKeyboardHints(width: number, theme: any): string[] {
  */
 export function renderDetailKeyboardHints(
   width: number,
-  theme: any,
+  theme: Theme,
   extraKeys?: string,
 ): string[] {
   const lines: string[] = [];
@@ -328,7 +329,7 @@ export function renderListWindow<T>(
   windowSize: number,
   renderItem: (item: T, index: number, isSelected: boolean) => string,
   width: number,
-  theme: any,
+  theme: Theme,
 ): string[] {
   const lines: string[] = [];
   const add = (line = "") => lines.push(truncateToWidth(line, width));
@@ -367,7 +368,7 @@ export function renderBaseListItemLine(
   index: number,
   isSelected: boolean,
   width: number,
-  theme: any,
+  theme: Theme,
   extraMeta?: string,
 ): string {
   const prefix = isSelected ? ">" : " ";
@@ -422,7 +423,7 @@ export function renderSelectedItemSummary<T>(
   getItemStatus: (item: T) => LiveItemStatus,
   getItemElapsed: (item: T) => string,
   width: number,
-  theme: any,
+  theme: Theme,
   extraInfo?: (item: T) => string | undefined,
 ): string[] {
   const lines: string[] = [];
@@ -464,7 +465,7 @@ export function renderDetailHeader<T>(
   getItemId: (item: T) => string,
   getItemName: (item: T) => string | undefined,
   width: number,
-  theme: any,
+  theme: Theme,
 ): string[] {
   const lines: string[] = [];
   const add = (line = "") => lines.push(truncateToWidth(line, width));
@@ -495,7 +496,7 @@ export function renderStreamOutput(
   width: number,
   height: number,
   currentLines: number,
-  theme: any,
+  theme: Theme,
   itemId: string,
 ): string[] {
   const lines: string[] = [];

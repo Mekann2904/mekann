@@ -41,7 +41,7 @@ import { createChildAbortController } from "./abort-utils";
  * @param itemWeights - アイテムIDごとの重みマップ
  * @param getItemId - アイテムからIDを取得する関数
  */
-export interface ConcurrencyRunOptions {
+export interface ConcurrencyRunOptions<T = unknown> {
   signal?: AbortSignal;
   abortOnError?: boolean;
   /** DynTaskMAS: 優先度ベーススケジューリングを有効にする */
@@ -49,7 +49,7 @@ export interface ConcurrencyRunOptions {
   /** DynTaskMAS: アイテムIDごとの重みマップ */
   itemWeights?: Map<string, number>;
   /** DynTaskMAS: アイテムからIDを取得する関数 */
-  getItemId?: <T>(item: T) => string;
+  getItemId?: (item: T) => string;
 }
 
 /**
@@ -114,7 +114,7 @@ export async function runWithConcurrencyLimit<TInput, TResult>(
   items: TInput[],
   limit: number,
   worker: (item: TInput, index: number, signal?: AbortSignal) => Promise<TResult>,
-  options: ConcurrencyRunOptions = {},
+  options: ConcurrencyRunOptions<TInput> = {},
 ): Promise<TResult[]> {
   if (items.length === 0) return [];
 

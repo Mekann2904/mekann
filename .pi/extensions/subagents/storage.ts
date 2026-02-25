@@ -387,7 +387,7 @@ export function loadStorage(cwd: string): SubagentStorage {
           : 0,
     };
     return ensureDefaults(storage, nowIso);
-  } catch (error) {
+  } catch (error: unknown) {
     // Create backup of corrupted file before overwriting
     createCorruptedBackup(paths.storageFile, "subagents");
 
@@ -475,9 +475,9 @@ export async function saveStorageWithPatterns(
         const indexedRun = indexSubagentRun(run);
         await addRunToSemanticMemory(cwd, indexedRun);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       // Don't fail the save if pattern extraction fails
-      console.error("Error extracting patterns from run:", error);
+      console.error("Error extracting patterns from run:", error instanceof Error ? error.message : String(error));
     }
   }
 }

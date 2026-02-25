@@ -91,9 +91,9 @@ function notifyMacOS(text: string, title = "pi"): void {
       detached: true
     });
     child.unref();
-  } catch (error) {
+  } catch (error: unknown) {
     // 通知送信エラーは無視
-    console.error("Notification error:", error);
+    console.error("Notification error:", error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -105,8 +105,8 @@ function playSound(soundPath: string): void {
       detached: true,
       stdio: "ignore"
     }).unref();
-  } catch (error) {
-    console.error("Sound playback error:", error);
+  } catch (error: unknown) {
+    console.error("Sound playback error:", error instanceof Error ? error.message : String(error));
   }
 }
 

@@ -372,7 +372,7 @@ Requires repograph_index to be built first.`,
 					],
 					details: result,
 				};
-			} catch (error) {
+			} catch (error: unknown) {
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
 				return {

@@ -41,7 +41,7 @@ import { join, dirname } from "node:path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth } from "@mariozechner/pi-tui";
-
+import type { Theme } from "../lib/tui/types";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 
@@ -67,7 +67,7 @@ function ensureCacheDir() {
 		if (!existsSync(dir)) {
 			mkdirSync(dir, { recursive: true });
 		}
-	} catch (error) {
+	} catch (error: unknown) {
 		console.debug("[usage-tracker] ensureCacheDir failed:", error instanceof Error ? error.message : String(error));
 	}
 }
@@ -77,7 +77,7 @@ function loadCache(): CacheData | null {
 		if (existsSync(CACHE_FILE)) {
 			return JSON.parse(readFileSync(CACHE_FILE, "utf-8"));
 		}
-	} catch (error) {
+	} catch (error: unknown) {
 		console.debug("[usage-tracker] loadCache failed:", error instanceof Error ? error.message : String(error));
 	}
 	return null;
@@ -87,7 +87,7 @@ function saveCache(data: CacheData) {
 	try {
 		ensureCacheDir();
 		writeFileSync(CACHE_FILE, JSON.stringify(data));
-	} catch (error) {
+	} catch (error: unknown) {
 		console.debug("[usage-tracker] saveCache failed:", error instanceof Error ? error.message : String(error));
 	}
 }
@@ -336,7 +336,7 @@ export default function (pi: ExtensionAPI) {
 				let usage = collectData();
 				let heatmapWeeks = 12;
 
-				await ctx.ui.custom<void>((tui, theme, _kb, done) => ({
+				await ctx.ui.custom<void>((tui, theme: Theme, _kb, done) => ({
 						render: (w) => {
 					const lines: string[] = [];
 					const safeWidth = Math.max(1, Number.isFinite(w) ? Math.trunc(w) : 1);
@@ -408,7 +408,7 @@ export default function (pi: ExtensionAPI) {
 					}
 				},
 			}));
-			} catch (error) {
+			} catch (error: unknown) {
 				logger.endOperation({
 					status: "failure",
 					tokensUsed: 0,

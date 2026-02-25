@@ -204,7 +204,7 @@ export async function repographIndex(
 			edgeCount: graph.metadata.edgeCount,
 			outputPath: indexPath,
 		};
-	} catch (error) {
+	} catch (error: unknown) {
 		return {
 			success: false,
 			fileCount: 0,
@@ -374,7 +374,7 @@ export async function repographQuery(
 			truncated,
 			nodes: limitedNodes,
 		};
-	} catch (error) {
+	} catch (error: unknown) {
 		return {
 			type: params.type,
 			total: 0,

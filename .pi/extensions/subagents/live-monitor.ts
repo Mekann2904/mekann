@@ -30,6 +30,7 @@
 
 import { Key, matchesKey } from "@mariozechner/pi-tui";
 
+import type { Theme, ThemeColor } from "../../lib/tui/types.js";
 import {
   formatDurationMs,
   formatBytes,
@@ -95,7 +96,7 @@ function renderSubagentTreeView(
   items: SubagentLiveItem[],
   cursor: number,
   width: number,
-  theme: any,
+  theme: Theme,
 ): string[] {
   const lines: string[] = [];
   const add = (line = "") => pushWrappedLine(lines, line, width);
@@ -158,7 +159,7 @@ function renderSubagentTreeView(
 function renderSubagentTimelineView(
   items: SubagentLiveItem[],
   width: number,
-  theme: any,
+  theme: Theme,
 ): string[] {
   const lines: string[] = [];
   const add = (line = "") => pushWrappedLine(lines, line, width);
@@ -210,10 +211,10 @@ function renderSubagentTimelineView(
 
   for (const ev of displayEvents) {
     const agentColor = agentColorMap.get(ev.agent) || "dim";
-    const agentText = theme.fg(agentColor, ev.agent.padEnd(14));
+    const agentText = theme.fg(agentColor as ThemeColor, ev.agent.padEnd(14));
 
     let icon: string;
-    let contentColor = "dim";
+    let contentColor: ThemeColor = "dim";
 
     switch (ev.type) {
       case "start":
@@ -274,7 +275,7 @@ export function renderSubagentLiveView(input: {
   stream: LiveStreamView;
   width: number;
   height?: number;
-  theme: any;
+  theme: Theme;
 }): string[] {
   const lines: string[] = [];
   const add = (line = "") => pushWrappedLine(lines, line, input.width);
@@ -542,7 +543,7 @@ export function createSubagentLiveMonitor(
   };
 
   const uiPromise = ctx.ui
-    .custom((tui: any, theme: any, _keybindings: any, done: () => void) => {
+    .custom((tui: any, theme: Theme, _keybindings: any, done: () => void) => {
       doneUi = done;
       requestRender = () => {
         if (!closed) {

@@ -1192,7 +1192,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
           const errorMessage = toErrorMessage(error);
           reportTeamExecutionFailure("agent_team_run", team.id, errorMessage, ctx);
           const pressure = classifyPressureError(errorMessage);
-          if (pressure !== "other") {
+          if (pressure !== "other" && pressure !== "cancelled") {
             adaptivePenalty.raise(pressure);
           }
           const adaptivePenaltyAfter = adaptivePenalty.get();

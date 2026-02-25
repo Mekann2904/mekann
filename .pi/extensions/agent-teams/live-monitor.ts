@@ -31,6 +31,7 @@
 
 import { Key, matchesKey } from "@mariozechner/pi-tui";
 
+import type { Theme } from "../../lib/tui/types.js";
 import {
   formatDurationMs,
   formatBytes,
@@ -256,7 +257,7 @@ function renderTreeView(
   items: TeamLiveItem[],
   cursor: number,
   width: number,
-  theme: any,
+  theme: Theme,
 ): string[] {
   const lines: string[] = [];
   const add = (line = "") => pushWrappedLine(lines, line, width);
@@ -352,7 +353,7 @@ function renderCommunicationEvents(
   items: TeamLiveItem[],
   limit: number,
   width: number,
-  theme: any,
+  theme: Theme,
 ): string[] {
   const lines: string[] = [];
   const add = (line = "") => pushWrappedLine(lines, line, width);
@@ -438,7 +439,7 @@ function renderTimelineView(
   items: TeamLiveItem[],
   globalEvents: string[],
   width: number,
-  theme: any,
+  theme: Theme,
 ): string[] {
   const lines: string[] = [];
   const add = (line = "") => pushWrappedLine(lines, line, width);
@@ -523,8 +524,8 @@ function renderTimelineView(
   });
 
   // エージェントごとの色
-  const agentColors = ["accent", "success", "warning", "info"];
-  const agentColorMap = new Map<string, string>();
+  const agentColors: import("@mariozechner/pi-coding-agent").ThemeColor[] = ["accent", "success", "warning", "accent"];
+  const agentColorMap = new Map<string, import("@mariozechner/pi-coding-agent").ThemeColor>();
   items.forEach((item, i) => {
     agentColorMap.set(item.label, agentColors[i % agentColors.length]);
   });
@@ -542,7 +543,7 @@ function renderTimelineView(
     // イベントタイプに応じたアイコンと形式
     let icon: string;
     let content: string;
-    let contentColor = "dim";
+    let contentColor: import("@mariozechner/pi-coding-agent").ThemeColor = "dim";
 
     switch (ev.type) {
       case "start":
@@ -650,7 +651,7 @@ export function renderAgentTeamLiveView(input: {
   stream: LiveStreamView;
   width: number;
   height?: number;
-  theme: any;
+  theme: Theme;
   /** 待機状態情報（オプション） */
   queueStatus?: {
     isWaiting: boolean;
@@ -1024,7 +1025,7 @@ export function createAgentTeamLiveMonitor(
   };
 
   const uiPromise = ctx.ui
-    .custom((tui: any, theme: any, _keybindings: any, done: () => void) => {
+    .custom((tui: any, theme: Theme, _keybindings: any, done: () => void) => {
       doneUi = done;
       requestRender = () => {
         if (!closed) {

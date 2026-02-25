@@ -98,7 +98,7 @@ export async function loadLanguage(lang: SupportedLanguage): Promise<Language> {
     const language = await Language.load(wasmUrl);
     loadedLanguages.set(lang, language);
     return language;
-  } catch (error) {
+  } catch (error: unknown) {
     throw new Error(
       `Failed to load ${lang} grammar from ${wasmUrl}: ${error instanceof Error ? error.message : String(error)}`
     );

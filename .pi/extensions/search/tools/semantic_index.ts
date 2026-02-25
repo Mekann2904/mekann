@@ -428,7 +428,7 @@ export async function semanticIndex(
 			files: files.length,
 			outputPath,
 		};
-	} catch (error) {
+	} catch (error: unknown) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		console.error(`[semantic-index] Error:`, errorMessage);
 		return {

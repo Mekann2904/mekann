@@ -133,7 +133,7 @@ async function generateNewInsights(ctx: ExtensionContext): Promise<void> {
 
     const text = formatInsightReportAsText(report);
     ctx.ui.notify(`${text}\n\nSaved to: ${filepath}`, "info");
-  } catch (error) {
+  } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     ctx.ui.notify(`Failed to generate insight report: ${errorMessage}`, "error");
   }
@@ -355,7 +355,7 @@ async function executeSelfReflectTool(
       content: [{ type: "text", text: result }],
       details,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.endOperation({
       status: "failure",

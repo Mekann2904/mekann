@@ -571,7 +571,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
             referenceWarnings: loadedReferences.warnings,
           },
         };
-      } catch (error) {
+      } catch (error: unknown) {
         const message = toErrorMessage(error);
         logger.endOperation({
           status: "failure",
@@ -722,7 +722,7 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
           },
         });
         ctx.ui.notify("Loop run completed", "info");
-      } catch (error) {
+      } catch (error: unknown) {
         const message = toErrorMessage(error);
         pi.sendMessage({
           customType: "loop-error",
@@ -831,7 +831,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
           mediatorResult,
         });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       // Mediator failure should not block the loop
       const message = toErrorMessage(error);
       appendJsonl(logFile, {
@@ -882,7 +882,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
         patternTypes: relevantPatterns.map(p => p.patternType),
       });
     }
-  } catch (error) {
+  } catch (error: unknown) {
     // Pattern loading failure should not block the loop
     const message = toErrorMessage(error);
     appendJsonl(logFile, {
@@ -994,7 +994,7 @@ async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {
 
       validationErrors = normalizeValidationFeedback(validationErrors);
       consecutiveFailures = 0;
-    } catch (error) {
+    } catch (error: unknown) {
       latencyMs = Date.now() - started;
       callFailed = true;
       consecutiveFailures += 1;

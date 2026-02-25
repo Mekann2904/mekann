@@ -306,7 +306,7 @@ async function handleCompileTools(params: CompileToolsParams): Promise<string> {
     };
 
     return JSON.stringify(output, null, 2);
-  } catch (error) {
+  } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return JSON.stringify({
       success: false,
@@ -393,7 +393,7 @@ async function handleExecuteCompiled(
     };
 
     return JSON.stringify(output, null, 2);
-  } catch (error) {
+  } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return JSON.stringify({
       success: false,
