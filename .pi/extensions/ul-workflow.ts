@@ -625,13 +625,16 @@ Task ID: ${taskId}
       const taskId = generateTaskId(trimmedTask);
       const now = new Date().toISOString();
 
-      // 固定フェーズ: research → plan → implement
-      const phases: WorkflowPhase[] = ["research", "plan", "implement", "completed"];
+      // Determine execution strategy - DEFAULT TO DAG FOR HIGH COMPLEXITY
+      const strategy = determineExecutionStrategy(trimmedTask);
+      console.log(`[ul_workflow_run] Strategy: ${strategy.strategy}, useDag: ${strategy.useDag}, reason: ${strategy.reason}`);
+
+      const phases: WorkflowPhase[] = strategy.phases as WorkflowPhase[];
 
       currentWorkflow = {
         taskId,
         taskDescription: trimmedTask,
-        phase: "research",
+        phase: phases[0],
         phases,
         phaseIndex: 0,
         createdAt: now,
@@ -648,6 +651,108 @@ Task ID: ${taskId}
       const researchPath = path.join(getTaskDir(taskId), "research.md");
       const planPath = path.join(getTaskDir(taskId), "plan.md");
 
+      // DAG-BASED EXECUTION FOR HIGH COMPLEXITY
+      if (strategy.useDag && ctx.runSubagent) {
+        console.log(`[ul_workflow_run] Using DAG execution for task: ${trimmedTask.slice(0, 50)}...`);
+
+        try {
+          // Dynamically import DAG utilities
+          const { generateDagFromTask } = await import("../lib/dag-generator.js");
+          const { executeDag } = await import("../lib/dag-executor.js");
+
+          // Generate DAG plan
+          const dagPlan = await generateDagFromTask(trimmedTask, {
+            maxDepth: 4,
+            maxTasks: 8,
+          });
+
+          console.log(`[ul_workflow_run] Generated DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
+
+          // Execute DAG with UL-specific task executor
+          const dagResult = await executeDag<{ output: string; phase: string }>(
+            dagPlan,
+            async (task, _context) => {
+              // Map task to appropriate subagent
+              let subagentId = "implementer";
+              const taskLower = task.description.toLowerCase();
+
+              if (taskLower.includes("research") || taskLower.includes("調査") || taskLower.includes("investigate")) {
+                subagentId = "researcher";
+              } else if (taskLower.includes("plan") || taskLower.includes("計画") || taskLower.includes("design") || taskLower.includes("architect")) {
+                subagentId = "architect";
+              } else if (taskLower.includes("test") || taskLower.includes("テスト")) {
+                subagentId = "tester";
+              } else if (taskLower.includes("review") || taskLower.includes("レビュー")) {
+                subagentId = "reviewer";
+              }
+
+              console.log(`[ul_workflow_run] DAG task ${task.id} -> ${subagentId}`);
+
+              const result = await ctx.runSubagent!({
+                subagentId,
+                task: task.description,
+                extraContext: `Part of workflow: ${trimmedTask}`,
+              });
+
+              return {
+                output: result?.content?.[0]?.text || "completed",
+                phase: subagentId,
+              };
+            },
+            {
+              maxConcurrency: 2,
+              abortOnFirstError: false,
+            },
+          );
+
+          // Collect results from taskResults map
+          const allResults = Array.from(dagResult.taskResults.values());
+          const failedTasks = allResults.filter((r) => r.status === "failed");
+
+          currentWorkflow.phase = "completed";
+          currentWorkflow.phaseIndex = phases.length - 1;
+          currentWorkflow.approvedPhases = phases.slice(0, -1);
+          currentWorkflow.updatedAt = new Date().toISOString();
+          saveState(currentWorkflow);
+
+          const summary = `## UL Workflow Completed (DAG Mode)
+
+Task: ${trimmedTask}
+Strategy: ${strategy.strategy}
+Reason: ${strategy.reason}
+
+DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks, max depth: ${dagPlan.metadata.maxDepth})
+
+### Results
+${allResults.map((r) => {
+  const status = r.status === "completed" ? "DONE" : "FAIL";
+  const output = r.output as { phase?: string } | undefined;
+  return `- [${status}] ${r.taskId}: ${output?.phase || "unknown"}`;
+}).join("\n")}
+
+${failedTasks.length > 0 ? `\n### Failed Tasks\n${failedTasks.map((f) => `- ${f.taskId}: ${f.error}`).join("\n")}` : ""}
+`;
+
+          return {
+            content: [{ type: "text", text: summary }],
+            details: {
+              taskId,
+              phase: "completed",
+              strategy: strategy.strategy,
+              dagPlanId: dagPlan.id,
+              taskCount: dagPlan.tasks.length,
+              succeededCount: allResults.length - failedTasks.length,
+              failedCount: failedTasks.length,
+              outcomeCode: failedTasks.length > 0 ? "PARTIAL_SUCCESS" : "SUCCESS",
+            },
+          };
+        } catch (dagError) {
+          console.log(`[ul_workflow_run] DAG execution failed, falling back to sequential: ${dagError}`);
+          // Fall through to sequential execution below
+        }
+      }
+
+      // SEQUENTIAL EXECUTION (low complexity or DAG failure fallback)
       // runSubagent APIが利用可能な場合は自動実行
       if (ctx.runSubagent) {
         try {
@@ -678,6 +783,7 @@ Task ID: ${taskId}
             content: [{ type: "text", text: `## Plan作成完了
 
 Task: ${trimmedTask}
+Strategy: ${strategy.strategy} (${strategy.reason})
 
 \`\`\`markdown
 ${planContent}
@@ -686,6 +792,7 @@ ${planContent}
             details: {
               taskId,
               phase: "plan",
+              strategy: strategy.strategy,
               autoExecute: true,
               askUser: true,
               question: {

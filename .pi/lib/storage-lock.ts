@@ -186,6 +186,8 @@ function clearStaleLock(lockFile: string, staleMs: number): void {
         return isNodeErrno(error, "ESRCH");
       }
     } catch (error) {
+      // ENOENT (file not found) is normal - lock was already released
+      if (isNodeErrno(error, "ENOENT")) return false;
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.debug(`[storage-lock] Failed to check lock owner status: ${errorMessage}`);
       return false;
@@ -198,6 +200,8 @@ function clearStaleLock(lockFile: string, staleMs: number): void {
       unlinkSync(lockFile);
     }
   } catch (error) {
+    // ENOENT (file not found) is normal - lock was already released
+    if (isNodeErrno(error, "ENOENT")) return;
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.debug(`[storage-lock] Failed to clear stale lock ${lockFile}: ${errorMessage}`);
   }

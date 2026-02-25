@@ -1106,37 +1106,128 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           items: activeAgents.map((agent) => ({ id: agent.id, name: agent.name })),
         });
 
-        // Dependency inference for parallel execution
+        // Dependency inference for parallel execution - AUTO DAG FALLBACK
         const inferredDeps = inferSubagentDependencies(activeAgents, params.task);
         if (inferredDeps.hasDependencies) {
-          // Has dependencies - recommend DAG execution instead
-          return {
-            content: [{
-              type: "text" as const,
-              text: `subagent_run_parallel: Detected dependencies between subagents.
+          // Auto-switch to DAG execution instead of returning recommendation
+          console.log("[subagent_run_parallel] Auto-switching to DAG execution due to detected dependencies");
+          console.log(`[subagent_run_parallel] Detected: ${inferredDeps.description}`);
 
-Detected dependencies:
+          try {
+            // Generate DAG plan from task
+            const dagPlan = await generateDagFromTask(params.task, {
+              maxDepth: 4,
+              maxTasks: activeAgents.length + 2,
+            });
+
+            console.log(`[subagent_run_parallel] Generated DAG: ${dagPlan.id} (${dagPlan.tasks.length} tasks)`);
+
+            // Create live monitor items from DAG tasks
+            const monitorItems = dagPlan.tasks.map((t) => ({
+              id: t.id,
+              name: t.description.slice(0, 50),
+            }));
+
+            liveMonitor = createSubagentLiveMonitor(ctx, {
+              title: `Subagent Run Parallel (DAG): ${dagPlan.id}`,
+              items: monitorItems,
+            });
+
+            // Execute DAG
+            const dagResult = await executeDag<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
+              dagPlan,
+              async (task, _context) => {
+                const agentId = task.assignedAgent ?? storage.currentAgentId;
+                const agent = agentId
+                  ? storage.agents.find((a) => a.id === agentId)
+                  : pickAgent(storage);
+
+                if (!agent) {
+                  throw new Error(`No subagent found for task ${task.id}`);
+                }
+
+                liveMonitor?.markStarted(task.id);
+
+                const result = await runSubagentTask({
+                  agent,
+                  task: buildSubagentPrompt(task, _context),
+                  extraContext: params.extraContext,
+                  timeoutMs,
+                  cwd: ctx.cwd,
+                  modelProvider: ctx.model?.provider,
+                  modelId: ctx.model?.id,
+                  onTextDelta: (delta) => {
+                    liveMonitor?.appendChunk(task.id, "stdout", delta);
+                  },
+                });
+
+                liveMonitor?.markFinished(
+                  task.id,
+                  result.runRecord.status,
+                  result.runRecord.summary,
+                  result.runRecord.error,
+                );
+
+                return result;
+              },
+              {
+                maxConcurrency: Math.max(1, effectiveParallelism),
+                abortOnFirstError: false,
+              },
+            );
+
+            // Collect results from taskResults map
+            const allResults = Array.from(dagResult.taskResults.values());
+            for (const taskResult of allResults) {
+              if (taskResult.output && typeof taskResult.output === "object" && "runRecord" in taskResult.output) {
+                const output = taskResult.output as { runRecord: SubagentRunRecord };
+                storage.runs.push(output.runRecord);
+                pi.appendEntry("subagent-run", output.runRecord);
+              }
+            }
+            await saveStorageWithPatterns(ctx.cwd, storage);
+
+            const failedTasks = allResults.filter((r) => r.status === "failed");
+            const dagSummary = `[DAG Auto-Execution] ${dagPlan.tasks.length} tasks, ${allResults.length - failedTasks.length} succeeded, ${failedTasks.length} failed`;
+
+            logger.endOperation({
+              status: failedTasks.length > 0 ? "partial" : "success",
+              tokensUsed: 0,
+              outputLength: dagSummary.length,
+              childOperations: allResults.length,
+              toolCalls: 0,
+            });
+
+            return {
+              content: [{
+                type: "text" as const,
+                text: `${dagSummary}
+
+Auto-switched to DAG execution due to detected dependencies:
 ${inferredDeps.description}
 
-Recommendation: Use subagent_run_dag for dependency-aware execution:
-
-\`\`\`
-subagent_run_dag({
-  task: "${params.task.replace(/"/g, '\\"')}",
-  maxConcurrency: ${Math.max(1, effectiveParallelism)}
-})
-\`\`\`
-
-This will automatically generate a DAG and execute with proper dependency ordering.
-Alternatively, provide an explicit plan parameter to subagent_run_dag.
+${allResults.map((r) => {
+  const status = r.status === "completed" ? "DONE" : "FAIL";
+  const output = r.output as { runRecord?: SubagentRunRecord } | undefined;
+  return `[${status}] ${r.taskId}: ${output?.runRecord?.summary?.slice(0, 100) || r.error || "completed"}`;
+}).join("\n")}
 `,
-            }],
-            details: {
-              inferredDependencies: inferredDeps.dependencies,
-              recommendation: "use_subagent_run_dag",
-              outcomeCode: "SUCCESS" as RunOutcomeCode,
-            },
-          };
+              }],
+              details: {
+                dagPlanId: dagPlan.id,
+                taskCount: dagPlan.tasks.length,
+                succeededCount: allResults.length - failedTasks.length,
+                failedCount: failedTasks.length,
+                inferredDependencies: inferredDeps.dependencies,
+                autoSwitched: true,
+                outcomeCode: failedTasks.length > 0 ? "PARTIAL_SUCCESS" as RunOutcomeCode : "SUCCESS" as RunOutcomeCode,
+              },
+            };
+          } catch (dagError) {
+            // DAG generation/execution failed - fallback to parallel execution
+            console.log(`[subagent_run_parallel] DAG execution failed, falling back to parallel: ${dagError}`);
+            // Continue to normal parallel execution below
+          }
         }
 
         runtimeState.activeRunRequests += 1;
