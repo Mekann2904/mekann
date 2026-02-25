@@ -226,14 +226,121 @@ agent_team_run({
 
 ---
 
+## 第6段階：Commit（コミット）【推奨】
+
+実装完了後、**積極的にコミットを作成する**。
+
+### 基本原則
+
+> **実装完了後は必ずコミットを提案する**
+
+### コミットのタイミング
+
+| タイミング | アクション |
+|-----------|-----------|
+| 実装フェーズ完了後 | 必ずコミットを提案 |
+| 中規模以上の変更 | フェーズごとにコミットを検討 |
+| ユーザーが明示的に拒否した場合のみ | コミットをスキップ |
+
+### コミットワークフロー
+
+**git-workflowスキルをロードしてから実行する。**
+
+```
+read tool: .pi/skills/git-workflow/SKILL.md
+```
+
+#### 統合コミット（推奨）
+
+add + commit を1回のquestion呼び出しで実行:
+
+```typescript
+// 1. 変更内容を確認
+git status
+git diff
+
+// 2. コミットメッセージを作成（日本語・Body必須）
+// Conventional Commits準拠
+
+// 3. questionツールで統合確認
+question({
+  questions: [{
+    question: "以下の内容でコミットしますか？\n\n" +
+              "【コミットメッセージ】\n" +
+              "feat: ユーザー認証を追加する\n\n" +
+              "【ステージングファイル】\n" +
+              "- src/auth.ts\n" +
+              "- tests/auth.test.ts\n\n" +
+              "【変更概要】\n" +
+              "- JWT認証を実装\n" +
+              "- テストを追加",
+    header: "Git Commit",
+    options: [
+      { label: "Commit", description: "ステージング + コミットを実行" },
+      { label: "Edit", description: "メッセージを編集" },
+      { label: "Skip", description: "コミットせずに完了" }
+    ],
+    custom: true
+  }]
+})
+```
+
+### コミットメッセージ規約
+
+**git-workflowスキルの規約に従う:**
+
+- **絵文字は使用しない**
+- **日本語で詳細に書く（絶対必須）**
+- **Body（本文）を必ず書く**
+- **英語でのコミットメッセージは禁止**
+
+```
+<Type>[(scope)]: #<Issue Number> <Title>
+
+## 背景
+<なぜこの変更が必要か>
+
+## 変更内容
+<具体的な変更点>
+
+## テスト方法
+<どうテストしたか>
+
+## 影響範囲
+<他に影響する部分>
+```
+
+### 選択的ステージング（CRITICAL）
+
+**`git add .`や`git add -A`は安易に使用しない。**
+
+```bash
+# 推奨: 特定ファイルを明示的に指定
+git add path/to/file.ts
+
+# 禁止: 全ファイルをステージング
+# git add .
+# git add -A
+```
+
+### ULモードでのコミットフロー
+
+1. **実装完了**: implementerサブエージェントが実装を完了
+2. **変更確認**: `git status`と`git diff`で変更内容を確認
+3. **コミット提案**: questionツールでユーザーに確認
+4. **コミット実行**: ユーザー承認後に`git add`と`git commit`を実行
+5. **完了報告**: ワークフロー完了を通知
+
+---
+
 ## 判断の指針
 
 | 状況 | フロー |
 |------|--------|
-| 重要な実装 | Research → Plan → Annotation Cycle → Todo → Implement |
-| 中程度の実装 | Research → Plan → [確認] → Implement |
-| 軽微な修正 | 直接編集（plan省略可） |
-| 調査のみ | Research → 報告 |
+| 重要な実装 | Research → Plan → Annotation Cycle → Todo → Implement → **Commit** |
+| 中程度の実装 | Research → Plan → [確認] → Implement → **Commit** |
+| 軽微な修正 | 直接編集（plan省略可）→ **Commit** |
+| 調査のみ | Research → 報告（コミット不要） |
 
 ---
 

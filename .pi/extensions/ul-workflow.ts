@@ -846,6 +846,27 @@ ${allResults.map((r) => {
 }).join("\n")}
 
 ${failedTasks.length > 0 ? `\n### Failed Tasks\n${failedTasks.map((f) => `- ${f.taskId}: ${f.error}`).join("\n")}` : ""}
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
 `;
 
           return {
@@ -859,6 +880,7 @@ ${failedTasks.length > 0 ? `\n### Failed Tasks\n${failedTasks.map((f) => `- ${f.
               succeededCount: allResults.length - failedTasks.length,
               failedCount: failedTasks.length,
               outcomeCode: failedTasks.length > 0 ? "PARTIAL_SUCCESS" : "SUCCESS",
+              suggestCommit: true,
             },
           };
         } catch (dagError) {
@@ -935,7 +957,33 @@ ${failedTasks.length > 0 ? `\n### Failed Tasks\n${failedTasks.map((f) => `- ${f.
                 saveState(currentWorkflow);
                 setCurrentWorkflow(null);
 
-                return makeResult(`## 実装完了\n\nTask ID: ${taskId}\n\nワークフローが完了しました。`, { taskId, phase: "completed" });
+                return makeResult(`## 実装完了
+
+Task ID: ${taskId}
+
+ワークフローが完了しました。
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
+`, { taskId, phase: "completed", suggestCommit: true });
               } catch (implError) {
                 return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
               }
@@ -1151,7 +1199,22 @@ ${phasesDisplay}
       } else if (nextPhase === "implement") {
         text += `\n実装を開始するには:\n  ul_workflow_implement({ task_id: "${currentWorkflow.taskId}" })\n`;
       } else if (nextPhase === "completed") {
-        text += `\nワークフローが完了しました。\n`;
+        text += `\nワークフローが完了しました。\n\n`;
+        text += `### 次のステップ: コミット\n\n`;
+        text += `実装完了後、コミットを作成することを強く推奨します:\n\n`;
+        text += `\`\`\`\n`;
+        text += `ul_workflow_commit()\n`;
+        text += `\`\`\`\n\n`;
+        text += `または、git-workflowスキルに従って手動でコミット:\n\n`;
+        text += `\`\`\`bash\n`;
+        text += `# 1. 変更内容を確認\n`;
+        text += `git status\n`;
+        text += `git diff\n\n`;
+        text += `# 2. ステージング（選択的 - git add . は禁止）\n`;
+        text += `git add <変更したファイル>\n\n`;
+        text += `# 3. コミット（日本語・Body必須）\n`;
+        text += `git commit -m "feat: ${currentWorkflow.taskDescription.slice(0, 40)}..."\n`;
+        text += `\`\`\`\n`;
       }
 
       // Sync to file
@@ -1364,7 +1427,33 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
               saveState(currentWorkflow);
               setCurrentWorkflow(null);
 
-              return makeResult(`## 実装完了\n\nTask ID: ${taskId}\n\nワークフローが完了しました。`, { taskId, phase: "completed" });
+              return makeResult(`## 実装完了
+
+Task ID: ${taskId}
+
+ワークフローが完了しました。
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
+`, { taskId, phase: "completed", suggestCommit: true });
             } catch (implError) {
               return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
             }
@@ -1461,7 +1550,29 @@ ${planContent}
 
 Task ID: ${taskId}
 
-ワークフローが完了しました。`, { taskId, phase: "completed" });
+ワークフローが完了しました。
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
+`, { taskId, phase: "completed", suggestCommit: true });
         } catch (error) {
           return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error) });
         }
@@ -1478,7 +1589,7 @@ subagent_run({
 })
 \`\`\`
 
-完了後: ワークフロー完了
+完了後: ul_workflow_commit() でコミット
 `, { taskId, phase: "implement" });
     },
   });
@@ -1572,7 +1683,33 @@ subagent_run({
                 saveState(currentWorkflow);
                 setCurrentWorkflow(null);
 
-                return makeResult(`## 実装完了\n\nTask ID: ${taskId}\n\nワークフローが完了しました。`, { taskId, phase: "completed" });
+                return makeResult(`## 実装完了
+
+Task ID: ${taskId}
+
+ワークフローが完了しました。
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
+`, { taskId, phase: "completed", suggestCommit: true });
               } catch (implError) {
                 return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
               }
@@ -2031,6 +2168,114 @@ ctx.callTool("subagent_run_dag", {
           useDag: true,
         },
       };
+    },
+  });
+
+  // コミット提案ツール（実装完了後のコミット支援）
+  pi.registerTool({
+    name: "ul_workflow_commit",
+    label: "Commit UL Workflow Changes",
+    description: "実装完了後のコミットを提案・実行する。git-workflowスキルの統合コミットパターンを使用。",
+    parameters: Type.Object({
+      commit_message: Type.Optional(Type.String({ description: "コミットメッセージ（省略時は自動生成）" })),
+      files: Type.Optional(Type.Array(Type.String(), { description: "ステージングするファイル（省略時は変更済みファイルを自動検出）" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const workflow = getCurrentWorkflow();
+      if (!workflow) {
+        return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const ownership = checkOwnership(workflow);
+      if (!ownership.owned) {
+        return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
+      }
+
+      // git-workflowスキルの読み込みを促す
+      const skillPath = ".pi/skills/git-workflow/SKILL.md";
+
+      // 変更内容を確認するための指示を生成
+      const taskId = workflow.taskId;
+      const planPath = path.join(getTaskDir(taskId), "plan.md");
+      const taskDesc = workflow.taskDescription;
+
+      // コミットメッセージの自動生成（簡易版）
+      let suggestedMessage = params.commit_message;
+      if (!suggestedMessage) {
+        // タスク説明からコミットメッセージを推測
+        const lowerTask = taskDesc.toLowerCase();
+        let type = "feat";
+        if (lowerTask.includes("fix") || lowerTask.includes("修正") || lowerTask.includes("バグ")) {
+          type = "fix";
+        } else if (lowerTask.includes("refactor") || lowerTask.includes("リファクタ")) {
+          type = "refactor";
+        } else if (lowerTask.includes("test") || lowerTask.includes("テスト")) {
+          type = "test";
+        } else if (lowerTask.includes("doc") || lowerTask.includes("ドキュメント")) {
+          type = "docs";
+        }
+        suggestedMessage = `${type}: ${taskDesc.slice(0, 50)}${taskDesc.length > 50 ? "..." : ""}`;
+      }
+
+      // question UIでユーザーに確認
+      if (ctx.hasUI) {
+        const qctx = asQuestionContext(ctx);
+        const answer = await askSingleQuestion({
+          question: `以下の内容でコミットしますか？\n\n【コミットメッセージ】\n${suggestedMessage}\n\n【変更内容】\n${taskDesc}\n\n【plan.md】\n${planPath}`,
+          header: "Git Commit",
+          options: [
+            { label: "Commit", description: "ステージング + コミットを実行" },
+            { label: "Edit", description: "メッセージを編集" },
+            { label: "Skip", description: "コミットせずに完了" }
+          ],
+          multiple: false,
+          custom: true
+        }, qctx);
+
+        if (answer === null || answer[0] === "Skip") {
+          return makeResult("コミットをスキップしました。", { taskId, phase: workflow.phase, committed: false });
+        }
+
+        if (answer[0] === "Edit" || !["Commit", "Edit", "Skip"].includes(answer[0])) {
+          // カスタムメッセージ
+          const customMessage = answer[0] === "Edit" ? answer[0] : answer[0];
+          return {
+            content: [{ type: "text", text: `## カスタムコミットメッセージ\n\n以下を実行してください:\n\n\`\`\`bash\n# 変更内容を確認\ngit status\ngit diff\n\n# ステージング（選択的）\ngit add <変更したファイル>\n\n# コミット\ngit commit -m "${customMessage.replace(/"/g, '\\"')}"\n\`\`\`\n\n**注意**: \`git add .\`は使用しないでください。自分が編集したファイルのみをステージングしてください。` }],
+            details: { taskId, phase: workflow.phase, committed: false, customMessage }
+          };
+        }
+
+        // Commit選択時の指示を生成
+        return {
+          content: [{ type: "text", text: `## コミット実行\n\n以下を実行してください:\n\n\`\`\`bash\n# 1. 変更内容を確認\ngit status\ngit diff\n\n# 2. ステージング（選択的 - 自分が編集したファイルのみ）\ngit add <変更したファイル>\n\n# 3. コミット（日本語・Body必須）\ngit commit -m "${suggestedMessage.replace(/"/g, '\\"')}" -m "\n## 背景\n${taskDesc}\n\n## 変更内容\nplan.mdに基づく実装\n\n## テスト方法\n動作確認済み\n"\n\`\`\`\n\n**重要**:\n- \`git add .\`や\`git add -A\`は使用しないでください\n- コミットメッセージは日本語で書いてください\n- Body（本文）を含めてください\n\n詳細はgit-workflowスキルを参照: ${skillPath}` }],
+          details: { taskId, phase: workflow.phase, committed: true, message: suggestedMessage }
+        };
+      }
+
+      // UIがない場合のテキストベースの指示
+      return makeResult(`## コミット提案
+
+Task: ${taskDesc}
+Suggested Message: ${suggestedMessage}
+
+### 実行手順
+
+\`\`\`bash
+# 1. 変更内容を確認
+git status
+git diff
+
+# 2. ステージング（選択的）
+git add <変更したファイル>
+
+# 3. コミット
+git commit -m "${suggestedMessage.replace(/"/g, '\\"')}" -m "Body: ${taskDesc.replace(/"/g, '\\"')}"
+\`\`\`
+
+**注意**: \`git add .\`は使用しないでください。
+
+詳細: ${skillPath}
+`, { taskId, phase: workflow.phase, suggestedMessage });
     },
   });
 
