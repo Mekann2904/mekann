@@ -36,6 +36,7 @@ import { promises as fsPromises } from "fs";
 import { randomBytes } from "node:crypto";
 import { estimateTaskComplexity, type TaskComplexity } from "../lib/agent-utils";
 import { withFileLock, atomicWriteTextFile } from "../lib/storage-lock";
+import { askSingleQuestion, asQuestionContext, type QuestionInfo } from "./question";
 
 // ワークフローのフェーズ
 type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "review" | "completed" | "aborted";
@@ -779,6 +780,62 @@ ${failedTasks.length > 0 ? `\n### Failed Tasks\n${failedTasks.map((f) => `- ${f.
 
           const planContent = readPlanFile(taskId);
 
+          // 直接question UIを表示してユーザーに確認
+          if (ctx.hasUI) {
+            const qctx = asQuestionContext(ctx);
+            const answer = await askSingleQuestion({
+              question: "この計画で実行しますか？",
+              header: "Plan確認",
+              options: [
+                { label: "実行", description: "このまま実装を開始" },
+                { label: "修正", description: "修正内容を記述" }
+              ],
+              multiple: false,
+              custom: true
+            }, qctx);
+
+            if (answer === null) {
+              // ユーザーがキャンセル
+              return makeResult("Plan確認がキャンセルされました。", { taskId, phase: "plan", cancelled: true });
+            }
+
+            if (answer[0] === "実行") {
+              // 実装フェーズへ進む
+              currentWorkflow.approvedPhases.push("plan");
+              currentWorkflow.phase = "implement";
+              currentWorkflow.phaseIndex = 2;
+              currentWorkflow.updatedAt = new Date().toISOString();
+              saveState(currentWorkflow);
+
+              try {
+                const implementResult = await ctx.runSubagent({
+                  subagentId: "implementer",
+                  task: `plan.mdを実装: ${planPath}`,
+                  extraContext: "機械的に実装してください。"
+                });
+
+                currentWorkflow.approvedPhases.push("implement");
+                currentWorkflow.phase = "completed";
+                currentWorkflow.phaseIndex = 3;
+                currentWorkflow.updatedAt = new Date().toISOString();
+                saveState(currentWorkflow);
+                setCurrentWorkflow(null);
+
+                return makeResult(`## 実装完了\n\nTask ID: ${taskId}\n\nワークフローが完了しました。`, { taskId, phase: "completed" });
+              } catch (implError) {
+                return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
+              }
+            } else if (answer[0] === "修正") {
+              // 修正モード - カスタム入力から修正内容を取得
+              return makeResult(`## Plan修正\n\nplan.mdを修正するには:\n  ul_workflow_modify_plan({ modifications: "修正内容" })\n\nファイル: ${planPath}`, { taskId, phase: "plan", needsModification: true });
+            } else {
+              // カスタム入力（修正内容）
+              const modifications = answer[0];
+              return makeResult(`## Plan修正\n\n修正内容: ${modifications}\n\n以下を実行してください:\n  ul_workflow_modify_plan({ modifications: "${modifications.replace(/"/g, '\\"')}" })`, { taskId, phase: "plan", needsModification: true, modifications });
+            }
+          }
+
+          // UIがない場合は従来通りテキストベースの確認
           return {
             content: [{ type: "text", text: `## Plan作成完了
 
@@ -1059,7 +1116,7 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
     label: "Confirm Plan",
     description: "plan.mdを表示して実行の確認を求める",
     parameters: Type.Object({}),
-    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
       const currentWorkflow = getCurrentWorkflow();
       if (!currentWorkflow) {
         return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
@@ -1084,6 +1141,64 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
 
       const taskId = currentWorkflow.taskId;
 
+      // 直接question UIを表示してユーザーに確認
+      if (ctx.hasUI) {
+        const qctx = asQuestionContext(ctx);
+        const answer = await askSingleQuestion({
+          question: "この計画で実行しますか？",
+          header: "Plan確認",
+          options: [
+            { label: "実行", description: "このまま実装を開始" },
+            { label: "修正", description: "修正内容を記述" }
+          ],
+          multiple: false,
+          custom: true
+        }, qctx);
+
+        if (answer === null) {
+          return makeResult("Plan確認がキャンセルされました。", { taskId, phase: "plan", cancelled: true });
+        }
+
+        if (answer[0] === "実行") {
+          // 実装フェーズへ進む
+          currentWorkflow.approvedPhases.push("plan");
+          currentWorkflow.phase = "implement";
+          currentWorkflow.phaseIndex = 2;
+          currentWorkflow.updatedAt = new Date().toISOString();
+          saveState(currentWorkflow);
+
+          // runSubagent APIが利用可能な場合は自動実行
+          if (ctx.runSubagent) {
+            try {
+              await ctx.runSubagent({
+                subagentId: "implementer",
+                task: `plan.mdを実装: ${planPath}`,
+                extraContext: "機械的に実装してください。"
+              });
+
+              currentWorkflow.approvedPhases.push("implement");
+              currentWorkflow.phase = "completed";
+              currentWorkflow.phaseIndex = 3;
+              currentWorkflow.updatedAt = new Date().toISOString();
+              saveState(currentWorkflow);
+              setCurrentWorkflow(null);
+
+              return makeResult(`## 実装完了\n\nTask ID: ${taskId}\n\nワークフローが完了しました。`, { taskId, phase: "completed" });
+            } catch (implError) {
+              return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
+            }
+          }
+
+          return makeResult(`## 実装フェーズ開始\n\n\`\`\`\nsubagent_run({ subagentId: "implementer", task: "plan.mdを実装: ${planPath}" })\n\`\`\``, { taskId, phase: "implement" });
+        } else if (answer[0] === "修正") {
+          return makeResult(`## Plan修正\n\nplan.mdを修正するには:\n  ul_workflow_modify_plan({ modifications: "修正内容" })`, { taskId, phase: "plan", needsModification: true });
+        } else {
+          // カスタム入力
+          return makeResult(`## Plan修正\n\n修正内容: ${answer[0]}\n\nul_workflow_modify_plan({ modifications: "${answer[0].replace(/"/g, '\\"')}" })`, { taskId, phase: "plan", needsModification: true, modifications: answer[0] });
+        }
+      }
+
+      // UIがない場合は従来通りテキストベースの確認
       return {
         content: [{ type: "text", text: `## Plan確認
 
@@ -1236,6 +1351,59 @@ subagent_run({
 
           const planContent = readPlanFile(taskId);
 
+          // 直接question UIを表示してユーザーに確認
+          if (ctx.hasUI) {
+            const qctx = asQuestionContext(ctx);
+            const answer = await askSingleQuestion({
+              question: "この計画で実行しますか？",
+              header: "Plan確認",
+              options: [
+                { label: "実行", description: "このまま実装を開始" },
+                { label: "修正", description: "追加の修正内容を記述" }
+              ],
+              multiple: false,
+              custom: true
+            }, qctx);
+
+            if (answer === null) {
+              return makeResult("Plan確認がキャンセルされました。", { taskId, phase: "plan", cancelled: true });
+            }
+
+            if (answer[0] === "実行") {
+              // 実装フェーズへ進む
+              currentWorkflow.approvedPhases.push("plan");
+              currentWorkflow.phase = "implement";
+              currentWorkflow.phaseIndex = 2;
+              currentWorkflow.updatedAt = new Date().toISOString();
+              saveState(currentWorkflow);
+
+              try {
+                await ctx.runSubagent({
+                  subagentId: "implementer",
+                  task: `plan.mdを実装: ${planPath}`,
+                  extraContext: "機械的に実装してください。"
+                });
+
+                currentWorkflow.approvedPhases.push("implement");
+                currentWorkflow.phase = "completed";
+                currentWorkflow.phaseIndex = 3;
+                currentWorkflow.updatedAt = new Date().toISOString();
+                saveState(currentWorkflow);
+                setCurrentWorkflow(null);
+
+                return makeResult(`## 実装完了\n\nTask ID: ${taskId}\n\nワークフローが完了しました。`, { taskId, phase: "completed" });
+              } catch (implError) {
+                return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
+              }
+            } else if (answer[0] === "修正") {
+              return makeResult(`## Plan修正\n\n追加の修正内容を入力してください:\n  ul_workflow_modify_plan({ modifications: "修正内容" })`, { taskId, phase: "plan", needsModification: true });
+            } else {
+              // カスタム入力
+              return makeResult(`## Plan修正\n\n修正内容: ${answer[0]}\n\nul_workflow_modify_plan({ modifications: "${answer[0].replace(/"/g, '\\"')}" })`, { taskId, phase: "plan", needsModification: true, modifications: answer[0] });
+            }
+          }
+
+          // UIがない場合は従来通りテキストベースの確認
           return {
             content: [{ type: "text", text: `## Plan修正完了
 

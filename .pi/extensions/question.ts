@@ -162,12 +162,6 @@ export function asQuestionContext(ctx: ExtensionContext): QuestionContext {
 	return ctx as unknown as QuestionContext;
 }
 
-/**
- * 質問用コンテキスト型
- * ExtensionContextから必要な機能を抽出
- */
-export type { QuestionContext };
-
 // ============================================
 // 文字幅計算ヘルパー（マルチバイト対応）
 // ============================================
