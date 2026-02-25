@@ -29,6 +29,7 @@
 
 import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
+import { Type } from "@sinclair/typebox";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { parseFrontmatter } from "../lib/frontmatter.js";
@@ -761,33 +762,25 @@ export default function (pi: ExtensionAPI) {
   // Register skill_status tool
   pi.registerTool({
     name: "skill_status",
+    label: "skill_status",
     description: "Show skill assignment status. Use to see which skills are available, which teams use which skills, and which members have skill assignments.",
-    parameters: {
-      type: "object",
-      properties: {
-        view: {
-          type: "string",
-          enum: ["overview", "teams", "team", "skill"],
-          description: "View type: overview (all skills), teams (all teams), team (single team), skill (single skill detail)"
-        },
-        teamId: {
-          type: "string",
-          description: "Team ID for team view"
-        },
-        skillName: {
-          type: "string",
-          description: "Skill name for skill view"
-        }
-      },
-      required: ["view"]
-    },
-    execute: async (_toolCallId: string, params: { view: string; teamId?: string; skillName?: string }, _signal: unknown, _onUpdate: unknown, ctx: { ui?: { notify: (msg: string, type: string) => void } }) => {
+    parameters: Type.Object({
+      view: Type.Union([
+        Type.Literal("overview"),
+        Type.Literal("teams"),
+        Type.Literal("team"),
+        Type.Literal("skill"),
+      ], { description: "View type: overview (all skills), teams (all teams), team (single team), skill (single skill detail)" }),
+      teamId: Type.Optional(Type.String({ description: "Team ID for team view" })),
+      skillName: Type.Optional(Type.String({ description: "Skill name for skill view" })),
+    }),
+    execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
       const skills = loadAvailableSkills();
       const teams = loadTeamDefinitions();
       const usage = calculateSkillUsage(skills, teams);
-      
+
       let output: string;
-      
+
       switch (params.view) {
         case "overview":
           output = formatSkillsOverview(skills, usage);
@@ -819,9 +812,10 @@ export default function (pi: ExtensionAPI) {
       
       return {
         content: [{ type: "text" as const, text: output }],
+        details: {},
       };
     }
-  } as any);
+  });
 
   // Register /skill-status command
   pi.registerCommand("skill-status", {

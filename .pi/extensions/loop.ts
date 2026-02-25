@@ -601,7 +601,13 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
     },
 
     renderResult(result, _options, theme) {
-      const summary = (result as any)?.details?.summary as LoopRunSummary | undefined;
+      interface LoopResultWithSummary {
+        details?: { summary?: LoopRunSummary };
+      }
+      function hasLoopDetails(value: unknown): value is LoopResultWithSummary {
+        return typeof value === "object" && value !== null && "details" in value;
+      }
+      const summary = hasLoopDetails(result) ? result.details?.summary : undefined;
       if (!summary) {
         return new Text(theme.fg("warning", "loop result unavailable"), 0, 0);
       }

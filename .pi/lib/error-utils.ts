@@ -33,7 +33,25 @@ export function toErrorMessage(error: unknown): string {
   if (typeof error === "string") {
     return error;
   }
-  return String(error);
+  // オブジェクトや配列の場合はJSON.stringifyを試みる
+  if (typeof error === "object" && error !== null) {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      // 循環参照などJSON化できない場合はString()にフォールバック
+      try {
+        return String(error);
+      } catch {
+        return "[object Object]";
+      }
+    }
+  }
+  // null, undefined, number, boolean など
+  try {
+    return String(error);
+  } catch {
+    return String(typeof error);
+  }
 }
 
 /**
@@ -60,14 +78,15 @@ export function isStringError(error: unknown): error is string {
 /**
  * @summary メッセージからHTTPステータスコードを抽出
  * @param error - 検索対象のエラーまたはメッセージ
- * @returns ステータスコード、見つからない場合はundefined
+ * @returns ステータスコード（429または5xxのみ）、見つからない場合はundefined
  */
 export function extractStatusCodeFromMessage(error: unknown): number | undefined {
   const message = toErrorMessage(error);
   const match = message.match(/\b(\d{3})\b/);
   if (match) {
     const code = parseInt(match[1], 10);
-    if (code >= 100 && code <= 599) {
+    // 429（rate limit）または5xx（server error）のみを対象とする
+    if (code === 429 || (code >= 500 && code <= 599)) {
       return code;
     }
   }
@@ -90,7 +109,12 @@ export function classifyPressureError(error: unknown): PressureErrorType {
   if (lowerMessage.includes("rate limit") || lowerMessage.includes("429") || lowerMessage.includes("too many requests")) {
     return "rate_limit";
   }
-  if (lowerMessage.includes("capacity") || lowerMessage.includes("overload")) {
+  if (
+    lowerMessage.includes("capacity") ||
+    lowerMessage.includes("overload") ||
+    lowerMessage.includes("runtime limit") ||
+    lowerMessage.includes("limit reached")
+  ) {
     return "capacity";
   }
   if (lowerMessage.includes("timeout") || lowerMessage.includes("timed out")) {
@@ -110,7 +134,12 @@ export function classifyPressureError(error: unknown): PressureErrorType {
 export function isCancelledErrorMessage(error: unknown): boolean {
   const message = typeof error === "string" ? error : toErrorMessage(error);
   const lowerMessage = message.toLowerCase();
-  return lowerMessage.includes("cancel") || lowerMessage.includes("abort");
+  return (
+    lowerMessage.includes("cancel") ||
+    lowerMessage.includes("abort") ||
+    message.includes("中断") ||
+    message.includes("キャンセル")
+  );
 }
 
 /**
@@ -121,5 +150,11 @@ export function isCancelledErrorMessage(error: unknown): boolean {
 export function isTimeoutErrorMessage(error: unknown): boolean {
   const message = typeof error === "string" ? error : toErrorMessage(error);
   const lowerMessage = message.toLowerCase();
-  return lowerMessage.includes("timeout") || lowerMessage.includes("timed out");
+  return (
+    lowerMessage.includes("timeout") ||
+    lowerMessage.includes("timed out") ||
+    lowerMessage.includes("time out") ||
+    message.includes("時間切れ") ||
+    message.includes("タイムアウト")
+  );
 }

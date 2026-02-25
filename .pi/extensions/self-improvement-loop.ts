@@ -2907,7 +2907,8 @@ runId: ${run.runId}`],
         description: "各サイクル完了時に自動的にGitコミットを作成するか（デフォルト: true）",
       })),
     }),
-    execute: async (_toolCallId: string, params: SelfImprovementLoopParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: any) => {
+    execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+      const ctxTyped = ctx as { model?: unknown; isIdle?: () => boolean; cwd?: string };
       if (signal?.aborted) {
         return {
           content: [{ type: "text" as const, text: "開始前に中断されました。" }],
@@ -2915,20 +2916,20 @@ runId: ${run.runId}`],
         };
       }
 
-      if (!ctx?.model) {
+      if (!ctxTyped?.model) {
         return {
           content: [{ type: "text" as const, text: "self_improvement_loop error: no active model." }],
           details: { error: "missing_model" },
         };
       }
 
-      const model = resolveActiveModel(ctx);
+      const model = resolveActiveModel(ctxTyped);
       const started = startAutonomousLoop({
         task: params.task,
         maxCycles: params.max_cycles ?? 1_000_000,
         autoCommit: params.auto_commit ?? DEFAULT_CONFIG.autoCommit,
         model,
-        deliverAs: ctx?.isIdle?.() ? undefined : "followUp",
+        deliverAs: ctxTyped?.isIdle?.() ? undefined : "followUp",
       });
 
       if (started.ok) {
@@ -2946,6 +2947,7 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
             startedAt: started.run.startedAt,
             maxCycles: started.run.maxCycles,
             logFile: started.run.logPath,
+            error: undefined,
           },
         };
       }
@@ -2955,10 +2957,10 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
       const errorMsg = failedStart.error;
       return {
         content: [{ type: "text" as const, text: `開始失敗: ${errorMsg}` }],
-        details: { error: errorMsg },
+        details: { error: errorMsg, runId: undefined, startedAt: undefined, maxCycles: undefined, logFile: undefined },
       };
     },
-  } as any);
+  });
 
   // self_improvement_stop ツールを登録
   api.registerTool({
@@ -2966,22 +2968,22 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
     label: "self_improvement_stop",
     description: "実行中の自己改善ループを停止する。現在のサイクルを完了してから安全に停止する。",
     parameters: Type.Object({}),
-    execute: async () => {
+    execute: async (_toolCallId, _params, _signal?, _onUpdate?, _ctx?) => {
       try {
         const stopPath = requestStop();
 
         return {
           content: [{ type: "text" as const, text: "停止信号を送信しました。現在のサイクルを完了してから安全に停止します。" }],
-          details: { stopSignalPath: stopPath },
+          details: { stopSignalPath: stopPath, error: undefined },
         };
       } catch (error: unknown) {
         return {
           content: [{ type: "text" as const, text: `エラー: ${toErrorMessage(error)}` }],
-          details: { error: toErrorMessage(error) },
+          details: { error: toErrorMessage(error), stopSignalPath: undefined },
         };
       }
     },
-  } as any);
+  });
 
   // self_improvement_status ツールを登録
   api.registerTool({
@@ -2989,7 +2991,7 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
     label: "self_improvement_status",
     description: "自己改善ループの状態を確認する。",
     parameters: Type.Object({}),
-    execute: async () => {
+    execute: async (_toolCallId: string, _params: Record<string, never>, _signal?: AbortSignal, _onUpdate?: unknown, _ctx?: unknown) => {
       const config = DEFAULT_CONFIG;
       const stopPath = resolve(process.cwd(), config.stopSignalPath);
       const isStopRequested = checkStopSignal(config);
@@ -3083,7 +3085,7 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
         details,
       };
     },
-  } as any);
+  });
 
   // ============================================================================
   // スラッシュコマンド

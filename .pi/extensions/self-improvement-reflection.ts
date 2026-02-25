@@ -301,7 +301,7 @@ async function executeSelfReflectTool(
             (a) =>
               a.title.toLowerCase().includes(focusArea) ||
               a.description.toLowerCase().includes(focusArea) ||
-              a.category.includes(focusArea as any)
+              a.category.toLowerCase().includes(focusArea)
           );
 
           const lines: string[] = [

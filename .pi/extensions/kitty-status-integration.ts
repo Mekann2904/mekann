@@ -228,7 +228,11 @@ export default function (pi: ExtensionAPI) {
     if (!isKitty()) return;
 
     // メッセージ数から実行されたツール数を推定
-    const stats = getToolResultStats((event as any).messages ?? []);
+    interface EventWithMessages { messages?: unknown[] }
+    function hasMessages(value: unknown): value is EventWithMessages {
+      return typeof value === "object" && value !== null && "messages" in value;
+    }
+    const stats = getToolResultStats(hasMessages(event) ? event.messages : []);
     const toolCount = stats.toolCount;
     const toolErrorCount = stats.errorCount;
 

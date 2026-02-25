@@ -925,7 +925,13 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderResult(result, _options, theme) {
-			const details = (result as any).details as { answers?: string[][] } | undefined;
+			interface QuestionResult {
+				details?: { answers?: string[][] };
+			}
+			function hasQuestionDetails(value: unknown): value is QuestionResult {
+				return typeof value === "object" && value !== null && "details" in value;
+			}
+			const details = hasQuestionDetails(result) ? result.details : undefined;
 			if (!details?.answers || details.answers.length === 0) {
 				return new Text(theme.fg("warning", "キャンセル"), 0, 0);
 			}
