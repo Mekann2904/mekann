@@ -89,12 +89,18 @@ function createErrorResponse(error: QuestionError): { content: { type: "text"; t
 	};
 }
 
-interface QuestionOption {
+/**
+ * 質問の選択肢
+ */
+export interface QuestionOption {
 	label: string;
 	description?: string;
 }
 
-interface QuestionInfo {
+/**
+ * 質問情報
+ */
+export interface QuestionInfo {
 	/** 質問テキスト（完全な文章） */
 	question: string;
 	/** 短いラベル（推奨: 最大30文字） */
@@ -107,7 +113,10 @@ interface QuestionInfo {
 	custom?: boolean;
 }
 
-type Answer = string[];
+/**
+ * 回答（選択されたラベルの配列）
+ */
+export type Answer = string[];
 type QuestionCustomController = {
 	render: (w: number) => string[];
 	invalidate: () => void;
@@ -127,7 +136,11 @@ interface QuestionTui {
 	requestRender: () => void;
 }
 
-interface QuestionContext {
+/**
+ * 質問用コンテキスト
+ * ExtensionContextから必要なUI機能を抽出
+ */
+export interface QuestionContext {
 	hasUI: boolean;
 	ui: {
 		custom: <T>(handler: (
@@ -145,9 +158,15 @@ interface QuestionContext {
  * 実行時にはpi SDKのTheme型とQuestionThemeは互換性があるため安全
  * （両者とも同じメソッドシグネチャを持つ）
  */
-function asQuestionContext(ctx: ExtensionContext): QuestionContext {
+export function asQuestionContext(ctx: ExtensionContext): QuestionContext {
 	return ctx as unknown as QuestionContext;
 }
+
+/**
+ * 質問用コンテキスト型
+ * ExtensionContextから必要な機能を抽出
+ */
+export type { QuestionContext };
 
 // ============================================
 // 文字幅計算ヘルパー（マルチバイト対応）
@@ -236,7 +255,14 @@ function createRenderer<TState>(
 // 単一質問UI
 // ============================================
 
-async function askSingleQuestion(
+/**
+ * 単一の質問をユーザーに表示して回答を取得する
+ * @summary 単一質問UI表示
+ * @param question - 質問情報
+ * @param ctx - 拡張機能コンテキスト
+ * @returns ユーザーの回答（キャンセル時はnull）
+ */
+export async function askSingleQuestion(
 	question: QuestionInfo,
 	ctx: QuestionContext
 ): Promise<Answer | null> {
