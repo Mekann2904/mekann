@@ -308,6 +308,68 @@ export {
 // resolveSubagentParallelCapacity -> ./subagents/parallel-execution.ts
 // normalizeSubagentOutput, buildSubagentPrompt, runSubagentTask -> ./subagents/task-execution.ts
 
+// ============================================================================
+// Phase 1.1: Single Responsibility Verification (BUG-001)
+// ============================================================================
+
+/**
+ * 責任重複チェック結果
+ * @summary 責任重複チェック結果
+ */
+export interface ResponsibilityCheck {
+  subagentId: string;
+  skills: string[];
+  overlaps: string[];
+}
+
+/**
+ * サブエージェント間でスキル（責任）の重複を検出する
+ * @summary 責任重複検出
+ * @param subagents - サブエージェント定義の配列
+ * @returns 重複しているスキルと関連エージェントのリスト
+ */
+export function validateSingleResponsibility(
+  subagents: SubagentDefinition[]
+): ResponsibilityCheck[] {
+  const skillMap = new Map<string, string[]>();
+  
+  // 各スキルを持つエージェントをマッピング
+  for (const subagent of subagents) {
+    for (const skill of subagent.skills || []) {
+      const existing = skillMap.get(skill) || [];
+      existing.push(subagent.id);
+      skillMap.set(skill, existing);
+    }
+  }
+  
+  const violations: ResponsibilityCheck[] = [];
+  const processedAgents = new Set<string>();
+  
+  // 重複しているスキルを検出
+  for (const [skill, owners] of skillMap) {
+    if (owners.length > 1) {
+      // 最初のエージェントを代表として、他を重複先として記録
+      const primaryAgent = owners[0];
+      if (!processedAgents.has(primaryAgent)) {
+        violations.push({
+          subagentId: primaryAgent,
+          skills: [skill],
+          overlaps: owners.slice(1)
+        });
+        processedAgents.add(primaryAgent);
+      } else {
+        // 既存の違反に追加
+        const existing = violations.find(v => v.subagentId === primaryAgent);
+        if (existing) {
+          existing.skills.push(skill);
+        }
+      }
+    }
+  }
+  
+  return violations;
+}
+
 /**
  * Infer dependencies between subagents for DAG-based execution
  * @summary サブエージェント依存関係推論
