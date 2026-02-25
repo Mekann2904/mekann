@@ -29,7 +29,7 @@
 // Related: .pi/lib/tool-fuser.ts, .pi/lib/tool-executor.ts, .pi/lib/tool-compiler-types.ts
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@mariozechner/pi-ai";
+import { Type, StringEnum } from "@mariozechner/pi-ai";
 import { ToolFuser } from "../lib/tool-fuser.js";
 import { ToolExecutor } from "../lib/tool-executor.js";
 import type {
@@ -458,7 +458,7 @@ export default function registerToolCompilerExtension(pi: ExtensionAPI): void {
     parameters: Type.Object({
       compilationId: Type.String(),
       executorMode: Type.Optional(
-        Type.Union([Type.Literal("parallel"), Type.Literal("sequential"), Type.Literal("auto")])
+        StringEnum(["parallel", "sequential", "auto"] as const)
       ),
       timeoutMs: Type.Optional(Type.Number()),
       continueOnError: Type.Optional(Type.Boolean()),
