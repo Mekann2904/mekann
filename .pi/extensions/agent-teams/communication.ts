@@ -27,6 +27,7 @@
 // Why: Extracted from agent-teams.ts to improve maintainability and SRP compliance.
 // Related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts
 
+import { Mutex } from "async-mutex";
 import { normalizeForSingleLine } from "../../lib/format-utils.js";
 import { analyzeDiscussionStance } from "../../lib/text-parsing";
 import {
@@ -727,6 +728,7 @@ export interface BeliefContradiction {
 
 // Belief state cache for tracking across rounds (team-scoped to avoid race conditions)
 const beliefStateCacheByTeam = new Map<string, Map<string, AgentBelief[]>>();
+const beliefCacheMutex = new Mutex();
 
 /**
  * チームIDに対応する信念状態キャッシュを取得する
@@ -734,13 +736,15 @@ const beliefStateCacheByTeam = new Map<string, Map<string, AgentBelief[]>>();
  * @param teamId チームID
  * @returns チーム固有のキャッシュマップ
  */
-function getTeamBeliefCache(teamId: string): Map<string, AgentBelief[]> {
-  let teamCache = beliefStateCacheByTeam.get(teamId);
-  if (!teamCache) {
-    teamCache = new Map<string, AgentBelief[]>();
-    beliefStateCacheByTeam.set(teamId, teamCache);
-  }
-  return teamCache;
+async function getTeamBeliefCache(teamId: string): Promise<Map<string, AgentBelief[]>> {
+  return await beliefCacheMutex.runExclusive(() => {
+    let teamCache = beliefStateCacheByTeam.get(teamId);
+    if (!teamCache) {
+      teamCache = new Map<string, AgentBelief[]>();
+      beliefStateCacheByTeam.set(teamId, teamCache);
+    }
+    return teamCache;
+  });
 }
 
 /**
@@ -752,32 +756,34 @@ function getTeamBeliefCache(teamId: string): Map<string, AgentBelief[]> {
  * @param round 現在のラウンド数
  * @returns 更新された信念状態の配列
  */
-export function updateBeliefState(
+export async function updateBeliefState(
   teamId: string,
   memberId: string,
   output: string,
   round: number,
-): AgentBelief[] {
-  const teamCache = getTeamBeliefCache(teamId);
-  const claim = extractField(output, "CLAIM") || "";
-  const evidence = extractField(output, "EVIDENCE") || "";
-  const confidenceStr = extractField(output, "CONFIDENCE") || "0.5";
-  const confidence = parseFloat(confidenceStr) || 0.5;
+): Promise<AgentBelief[]> {
+  const teamCache = await getTeamBeliefCache(teamId);
+  return await beliefCacheMutex.runExclusive(() => {
+    const claim = extractField(output, "CLAIM") || "";
+    const evidence = extractField(output, "EVIDENCE") || "";
+    const confidenceStr = extractField(output, "CONFIDENCE") || "0.5";
+    const confidence = parseFloat(confidenceStr) || 0.5;
 
-  const state: AgentBelief = {
-    memberId,
-    claimId: `${memberId}:${round}:${Date.now()}`,
-    claimText: claim,
-    confidence,
-    evidenceRefs: evidence.split(/[;,]/).map((s) => s.trim()).filter(Boolean),
-    round,
-    timestamp: new Date().toISOString(),
-  };
+    const state: AgentBelief = {
+      memberId,
+      claimId: `${memberId}:${round}:${Date.now()}`,
+      claimText: claim,
+      confidence,
+      evidenceRefs: evidence.split(/[;,]/).map((s) => s.trim()).filter(Boolean),
+      round,
+      timestamp: new Date().toISOString(),
+    };
 
-  const existing = teamCache.get(memberId) || [];
-  teamCache.set(memberId, [...existing, state]);
+    const existing = teamCache.get(memberId) || [];
+    teamCache.set(memberId, [...existing, state]);
 
-  return teamCache.get(memberId) || [];
+    return teamCache.get(memberId) || [];
+  });
 }
 
 /**
@@ -787,8 +793,8 @@ export function updateBeliefState(
  * @param memberIds メンバーID配列
  * @returns サマリー文字列
  */
-export function getBeliefSummary(teamId: string, memberIds: string[]): string {
-  const teamCache = getTeamBeliefCache(teamId);
+export async function getBeliefSummary(teamId: string, memberIds: string[]): Promise<string> {
+  const teamCache = await getTeamBeliefCache(teamId);
   const lines: string[] = ["【信念追跡 - 他エージェントの立場】"];
 
   for (const id of memberIds) {
@@ -810,10 +816,12 @@ export function getBeliefSummary(teamId: string, memberIds: string[]): string {
  * @param teamId 省略時は全チームのキャッシュをクリア
  * @returns void
  */
-export function clearBeliefStateCache(teamId?: string): void {
-  if (teamId) {
-    beliefStateCacheByTeam.delete(teamId);
-  } else {
-    beliefStateCacheByTeam.clear();
-  }
+export async function clearBeliefStateCache(teamId?: string): Promise<void> {
+  await beliefCacheMutex.runExclusive(() => {
+    if (teamId) {
+      beliefStateCacheByTeam.delete(teamId);
+    } else {
+      beliefStateCacheByTeam.clear();
+    }
+  });
 }

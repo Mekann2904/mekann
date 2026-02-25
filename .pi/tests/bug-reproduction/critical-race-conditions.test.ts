@@ -54,7 +54,7 @@ describe("Bug #1: retry-with-backoff.ts - sharedRateLimitState.entries Race Cond
     await Promise.all(promises);
 
     // レート制限状態を確認
-    const snapshot = getRateLimitGateSnapshot(key);
+    const snapshot = await getRateLimitGateSnapshot(key);
 
     // バグがある場合: 状態が一貫していない可能性
     // 修正後: hitsが一貫して設定される
@@ -73,7 +73,7 @@ describe("Bug #1: retry-with-backoff.ts - sharedRateLimitState.entries Race Cond
     // 読み取りを並列実行
     const snapshots = await Promise.all(
       Array.from({ length: 50 }, () =>
-        Promise.resolve(getRateLimitGateSnapshot(key))
+        getRateLimitGateSnapshot(key)
       )
     );
 
@@ -182,7 +182,7 @@ describe("Bug #3: communication.ts - beliefStateCache Race Condition", () => {
     const { clearBeliefStateCache } = await import(
       "../../extensions/agent-teams/communication.js"
     );
-    clearBeliefStateCache();
+    await clearBeliefStateCache();
   });
 
   it("should handle belief state updates for multiple teams", async () => {
@@ -192,7 +192,7 @@ describe("Bug #3: communication.ts - beliefStateCache Race Condition", () => {
       clearBeliefStateCache,
     } = await import("../../extensions/agent-teams/communication.js");
 
-    clearBeliefStateCache();
+    await clearBeliefStateCache();
 
     // 複数のチームのメンバーを定義
     const teamMembers = [
@@ -213,11 +213,11 @@ describe("Bug #3: communication.ts - beliefStateCache Race Condition", () => {
     );
 
     // 並列実行
-    await Promise.all(updates.map((p) => Promise.resolve(p)));
+    await Promise.all(updates);
 
     // 各チームのサマリーを確認
-    const teamASummary = getBeliefSummary("team-a", ["member-1", "member-2"]);
-    const teamBSummary = getBeliefSummary("team-b", ["member-1", "member-2"]);
+    const teamASummary = await getBeliefSummary("team-a", ["member-1", "member-2"]);
+    const teamBSummary = await getBeliefSummary("team-b", ["member-1", "member-2"]);
 
     // サマリーが生成されることを確認
     expect(typeof teamASummary).toBe("string");
@@ -231,32 +231,30 @@ describe("Bug #3: communication.ts - beliefStateCache Race Condition", () => {
       getBeliefSummary,
     } = await import("../../extensions/agent-teams/communication.js");
 
-    clearBeliefStateCache();
+    await clearBeliefStateCache();
 
     // 更新中にキャッシュをクリアする競合シナリオ
-    const updatePromises: Promise<void>[] = [];
+    const updatePromises: Promise<unknown>[] = [];
 
     for (let i = 0; i < 10; i++) {
       updatePromises.push(
-        Promise.resolve(
-          updateBeliefState(
-            "test-team",
-            `member-${i}`,
-            `SUMMARY: Update ${i}\nCLAIM: Claim ${i}\nCONFIDENCE: 0.5`,
-            1
-          )
+        updateBeliefState(
+          "test-team",
+          `member-${i}`,
+          `SUMMARY: Update ${i}\nCLAIM: Claim ${i}\nCONFIDENCE: 0.5`,
+          1
         )
       );
     }
 
     // 更新の途中でクリアを実行
-    setTimeout(() => clearBeliefStateCache(), 0);
+    setTimeout(async () => await clearBeliefStateCache(), 0);
 
     // クラッシュしないことを確認
     await Promise.all(updatePromises);
 
     // 最終状態が一貫していることを確認
-    const summary = getBeliefSummary("test-team", ["member-0"]);
+    const summary = await getBeliefSummary("test-team", ["member-0"]);
     expect(typeof summary).toBe("string");
   });
 
@@ -267,10 +265,10 @@ describe("Bug #3: communication.ts - beliefStateCache Race Condition", () => {
       clearBeliefStateCache,
     } = await import("../../extensions/agent-teams/communication.js");
 
-    clearBeliefStateCache();
+    await clearBeliefStateCache();
 
     // チームAの更新
-    updateBeliefState(
+    await updateBeliefState(
       "team-a",
       "member-1",
       "SUMMARY: Team A\nCLAIM: Claim A\nCONFIDENCE: 0.9",
@@ -278,7 +276,7 @@ describe("Bug #3: communication.ts - beliefStateCache Race Condition", () => {
     );
 
     // チームBの更新
-    updateBeliefState(
+    await updateBeliefState(
       "team-b",
       "member-1",
       "SUMMARY: Team B\nCLAIM: Claim B\nCONFIDENCE: 0.7",
@@ -286,8 +284,8 @@ describe("Bug #3: communication.ts - beliefStateCache Race Condition", () => {
     );
 
     // 各チームのサマリーを取得
-    const teamASummary = getBeliefSummary("team-a", ["member-1"]);
-    const teamBSummary = getBeliefSummary("team-b", ["member-1"]);
+    const teamASummary = await getBeliefSummary("team-a", ["member-1"]);
+    const teamBSummary = await getBeliefSummary("team-b", ["member-1"]);
 
     // 両方のサマリーが存在することを確認（メンバーIDが含まれる）
     expect(teamASummary).toContain("member-1");

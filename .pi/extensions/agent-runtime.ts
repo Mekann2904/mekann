@@ -176,12 +176,18 @@ export type {
  * GlobalRuntimeStateProvider - デフォルト実装
  *
  * globalThisを使用してプロセス全体で状態を共有する
- * Phase 4修正: スピンウェイトを削除し、Promiseベースの初期化に変更
+ * Bug #2修正: Symbol.forとObject.definePropertyでatomicな初期化を実現
  */
 class GlobalRuntimeStateProvider implements RuntimeStateProvider {
   private readonly globalScope: GlobalScopeWithRuntime;
   private initializationPromise: Promise<void> | null = null;
-  private initializationLock = false;
+
+  /**
+   * Symbol.forを使用して一意の初期化済みフラグキーを作成
+   * プロセス全体で一意であることを保証
+   */
+  private static readonly INIT_KEY = Symbol.for('__PI_SHARED_AGENT_RUNTIME_STATE__');
+  private static readonly INIT_FLAG_KEY = Symbol.for('__PI_SHARED_AGENT_RUNTIME_STATE_INITIALIZED__');
 
   constructor() {
     this.globalScope = globalThis as GlobalScopeWithRuntime;
@@ -194,23 +200,22 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * @throws 初期化中に同期的にアクセスした場合エラー
    */
   getState(): AgentRuntimeState {
-    if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      // 初期化ロック中の場合はエラー（同期待機は危険）
-      if (this.initializationLock && this.initializationPromise) {
-        throw new Error("[agent-runtime] Runtime state initialization in progress. Use getStateAsync() instead.");
-      }
-      this.initializationLock = true;
-      try {
-        // 再度チェック（ロック取得中に他が初期化した可能性）
-        if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-          this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-        }
-      } finally {
-        this.initializationLock = false;
-      }
+    const global = this.globalScope as any;
+
+    // Bug #2修正: atomic初期化パターン
+    // Object.definePropertyは既存のプロパティに対しては何もしないため、
+    // 競合状態でも安全に初期化できる
+    if (!global[GlobalRuntimeStateProvider.INIT_KEY]) {
+      Object.defineProperty(global, GlobalRuntimeStateProvider.INIT_KEY, {
+        value: createInitialRuntimeState(),
+        writable: false,
+        configurable: false,
+        enumerable: false,
+      });
     }
+
     ensureReservationSweeper();
-    const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
+    const runtime = ensureRuntimeStateShape(global[GlobalRuntimeStateProvider.INIT_KEY]);
     enforceRuntimeLimitConsistency(runtime);
     return runtime;
   }
@@ -221,42 +226,20 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * @returns エージェントのランタイム状態のPromise
    */
   async getStateAsync(): Promise<AgentRuntimeState> {
-    if (this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      ensureReservationSweeper();
-      const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
-      enforceRuntimeLimitConsistency(runtime);
-      return runtime;
+    const global = this.globalScope as any;
+
+    // Bug #2修正: getStateと同じatomic初期化パターンを使用
+    if (!global[GlobalRuntimeStateProvider.INIT_KEY]) {
+      Object.defineProperty(global, GlobalRuntimeStateProvider.INIT_KEY, {
+        value: createInitialRuntimeState(),
+        writable: false,
+        configurable: false,
+        enumerable: false,
+      });
     }
 
-    if (this.initializationPromise) {
-      await this.initializationPromise;
-      if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-        throw new Error("[agent-runtime] Runtime state initialization failed");
-      }
-      ensureReservationSweeper();
-      const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
-      enforceRuntimeLimitConsistency(runtime);
-      return runtime;
-    }
-
-    this.initializationLock = true;
-    this.initializationPromise = (async () => {
-      if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-        this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = createInitialRuntimeState();
-      }
-    })();
-
-    try {
-      await this.initializationPromise;
-    } finally {
-      this.initializationLock = false;
-    }
-
-    if (!this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__) {
-      throw new Error("[agent-runtime] Runtime state initialization failed");
-    }
     ensureReservationSweeper();
-    const runtime = ensureRuntimeStateShape(this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__);
+    const runtime = ensureRuntimeStateShape(global[GlobalRuntimeStateProvider.INIT_KEY]);
     enforceRuntimeLimitConsistency(runtime);
     return runtime;
   }
@@ -267,9 +250,15 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
    * @returns 戻り値なし
    */
   resetState(): void {
-    this.globalScope.__PI_SHARED_AGENT_RUNTIME_STATE__ = undefined;
+    const global = this.globalScope as any;
+    // Bug #2修正: configurable: trueで定義し直すことでリセットを可能にする
+    Object.defineProperty(global, GlobalRuntimeStateProvider.INIT_KEY, {
+      value: undefined,
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
     this.initializationPromise = null;
-    this.initializationLock = false;
   }
 }
 

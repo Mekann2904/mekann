@@ -891,7 +891,7 @@ export async function runMember(input: {
       };
     } catch (error) {
       const errorMessage = toErrorMessage(error);
-      const gateSnapshot = getRateLimitGateSnapshot(rateLimitKey);
+      const gateSnapshot = await getRateLimitGateSnapshot(rateLimitKey);
       const diagnostic = [
         `provider=${resolvedProvider}`,
         `model=${resolvedModel}`,

@@ -239,7 +239,7 @@ export function createChildAbort(signal?: AbortSignal): {
  */
 export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult> {
   // Clear belief state cache at the start of each team execution to prevent state pollution
-  clearBeliefStateCache();
+  await clearBeliefStateCache();
 
   const enabledMembers = input.team.members.filter((member) => member.enabled);
   if (enabledMembers.length === 0) {

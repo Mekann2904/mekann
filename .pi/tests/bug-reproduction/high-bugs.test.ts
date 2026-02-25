@@ -250,7 +250,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
     ]) as string[];
 
     // 最終状態を確認
-    const snapshot = getRateLimitGateSnapshot(key);
+    const snapshot = await getRateLimitGateSnapshot(key);
 
     // バグがある場合: メモリ状態とファイル状態が一致しない可能性
     expect(typeof snapshot.hits).toBe("number");
@@ -292,7 +292,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
 
     // 各キーの状態を確認
     for (const key of keys) {
-      const snapshot = getRateLimitGateSnapshot(key);
+      const snapshot = await getRateLimitGateSnapshot(key);
       expect(snapshot.key).toBe(key);
       expect(typeof snapshot.hits).toBe("number");
       expect(snapshot.hits).toBeLessThanOrEqual(8);
@@ -316,7 +316,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
       new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
     ]);
 
-    const afterSuccess1 = getRateLimitGateSnapshot(key);
+    const afterSuccess1 = await getRateLimitGateSnapshot(key);
 
     // 成功を再度実行（タイムアウト対策）
     await Promise.race([
@@ -324,7 +324,7 @@ describe("Bug #7: retry-with-backoff.ts - withSharedRateLimitState Memory Consis
       new Promise((_, reject) => setTimeout(() => reject(new Error("Test timeout")), 30000))
     ]);
 
-    const afterSuccess2 = getRateLimitGateSnapshot(key);
+    const afterSuccess2 = await getRateLimitGateSnapshot(key);
 
     // バグがある場合: 状態が一貫していない可能性
     // 修正後: 状態が一貫していることを確認
