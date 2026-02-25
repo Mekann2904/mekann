@@ -364,7 +364,10 @@ function normalizePositiveInt(value: unknown, fallback: number, max = 64): numbe
   let parsed: number;
   try {
     parsed = Number(value);
-  } catch {
+  } catch (error) {
+    // Bug #8 fix: 数値変換エラーをログに記録（通常は発生しない）
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[agent-runtime] Number() conversion failed (using fallback=${fallback}): ${errorMessage}`);
     return fallback;
   }
   if (!Number.isFinite(parsed)) return fallback;
@@ -429,7 +432,11 @@ function getClusterUsageSafe(localUsage: { totalActiveRequests: number; totalAct
       totalActiveRequests: localUsage.totalActiveRequests + remoteRequests,
       totalActiveLlm: localUsage.totalActiveLlm + remoteLlm,
     };
-  } catch {
+  } catch (error) {
+    // Bug #8 fix: クラスター使用量取得エラーをログに記録
+    // ローカル使用量をフォールバックとして返す
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[agent-runtime] getClusterRuntimeUsage failed (using local): ${errorMessage}`);
     return localUsage;
   }
 }

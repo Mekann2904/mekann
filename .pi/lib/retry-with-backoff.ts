@@ -286,7 +286,11 @@ function readConfigOverrides(cwd: string | undefined): RetryWithBackoffOverrides
       return {};
     }
     return sanitizeOverrides(retryNode as RetryWithBackoffOverrides);
-  } catch {
+  } catch (error) {
+    // Bug #8 fix: 設定ファイル読み込みエラーをログに記録
+    // 非クリティカルなエラーのためdebugレベル
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[retry-with-backoff] Config file read failed (non-critical): ${configFile} - ${errorMessage}`);
     return {};
   }
 }
@@ -364,7 +368,11 @@ function readPersistedRateLimitState(nowMs: number): Map<string, SharedRateLimit
     const persistedState: SharedRateLimitState = { entries };
     pruneRateLimitState(nowMs, persistedState);
     return persistedState.entries;
-  } catch {
+  } catch (error) {
+    // Bug #8 fix: 永続化状態読み込みエラーをログに記録
+    // ファイルが存在しない、または破損している場合は空のMapを返す
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.debug(`[retry-with-backoff] Rate limit state read failed (will reinitialize): ${errorMessage}`);
     return new Map();
   }
 }
@@ -378,8 +386,11 @@ function writePersistedRateLimitState(state: SharedRateLimitState): void {
       entries: Object.fromEntries(state.entries.entries()),
     };
     writeFileSync(RATE_LIMIT_STATE_FILE, JSON.stringify(payload, null, 2), "utf-8");
-  } catch {
-    // Best effort only.
+  } catch (error) {
+    // Bug #8 fix: 永続化書き込みエラーをログに記録
+    // Best effort only - 書き込み失敗してもメモリ状態は保持される
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn(`[retry-with-backoff] Rate limit state write failed (non-critical): ${errorMessage}`);
   }
 }
 

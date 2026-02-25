@@ -338,13 +338,15 @@ export function loadSkillContent(skillName: string): string | null {
         const frontmatterMatch = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
         return frontmatterMatch ? frontmatterMatch[1].trim() : content.trim();
       } catch (error) {
-        // エラーをログ記録して次のパスを試行
+        // Bug #8 fix: エラーをログ記録して次のパスを試行
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error(`[member-execution] スキル読み込みエラー: ${skillPath} - ${errorMessage}`);
         continue;
       }
     }
   }
+  // Bug #15 fix: スキルが見つからなかった場合にログを記録
+  console.debug(`[member-execution] スキルが見つかりません: ${skillName} (searched paths: ${skillPaths.length})`);
   return null;
 }
 
