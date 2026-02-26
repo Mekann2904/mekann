@@ -5,6 +5,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 // pi SDKのモック
 vi.mock("@mariozechner/pi-coding-agent", () => ({
@@ -370,5 +373,149 @@ describe("agent_end 通知レベル", () => {
 			"Completed turn 1 (2 tools)",
 			"success",
 		);
+	});
+});
+
+// ============================================================================
+// kitty-image コマンドのテスト
+// ============================================================================
+
+describe("kitty-image command", () => {
+	const originalKittyWindowId = process.env.KITTY_WINDOW_ID;
+	const originalStdoutWrite = process.stdout.write;
+
+	beforeEach(() => {
+		process.env.KITTY_WINDOW_ID = "test-window";
+		vi.restoreAllMocks();
+	});
+
+	afterEach(() => {
+		if (originalKittyWindowId === undefined) {
+			delete process.env.KITTY_WINDOW_ID;
+		} else {
+			process.env.KITTY_WINDOW_ID = originalKittyWindowId;
+		}
+		process.stdout.write = originalStdoutWrite;
+	});
+
+	it("画像パスでkitty graphics protocolを出力する", async () => {
+		const tempRoot = mkdtempSync(join(tmpdir(), "kitty-image-test-"));
+		const imagePath = join(tempRoot, "sample.png");
+		writeFileSync(imagePath, "fake");
+
+		const output: string[] = [];
+		process.stdout.write = ((chunk: string | Uint8Array) => {
+			output.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+			return true;
+		}) as typeof process.stdout.write;
+
+		const commands: Record<string, { handler: (args: string | undefined, ctx: any) => Promise<void> | void }> = {};
+		const piMock = {
+			on: vi.fn(),
+			registerCommand: vi.fn((name: string, command: { handler: (args: string | undefined, ctx: any) => Promise<void> | void }) => {
+				commands[name] = command;
+			}),
+		};
+
+		kittyStatusIntegration(piMock as any);
+
+		const ctx = {
+			cwd: tempRoot,
+			ui: { notify: vi.fn() },
+		};
+
+		await commands["kitty-image"].handler("sample.png 40 20", ctx);
+
+		const sequence = output.join("");
+		expect(sequence).toContain("\x1b_Ga=T,t=f,q=2,c=40,r=20;");
+		expect(sequence).toContain("\x1b\\");
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("Displayed image:"),
+			"success",
+		);
+
+		rmSync(tempRoot, { recursive: true, force: true });
+	});
+
+	it("未対応フォーマットはwarningを返す", async () => {
+		const tempRoot = mkdtempSync(join(tmpdir(), "kitty-image-test-"));
+		const imagePath = join(tempRoot, "sample.txt");
+		writeFileSync(imagePath, "fake");
+
+		const commands: Record<string, { handler: (args: string | undefined, ctx: any) => Promise<void> | void }> = {};
+		const piMock = {
+			on: vi.fn(),
+			registerCommand: vi.fn((name: string, command: { handler: (args: string | undefined, ctx: any) => Promise<void> | void }) => {
+				commands[name] = command;
+			}),
+		};
+
+		kittyStatusIntegration(piMock as any);
+
+		const ctx = {
+			cwd: tempRoot,
+			ui: { notify: vi.fn() },
+		};
+
+		await commands["kitty-image"].handler("sample.txt", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("Unsupported format"),
+			"warning",
+		);
+
+		rmSync(tempRoot, { recursive: true, force: true });
+	});
+
+	it("引数なしはusageを返す", async () => {
+		const commands: Record<string, { handler: (args: string | undefined, ctx: any) => Promise<void> | void }> = {};
+		const piMock = {
+			on: vi.fn(),
+			registerCommand: vi.fn((name: string, command: { handler: (args: string | undefined, ctx: any) => Promise<void> | void }) => {
+				commands[name] = command;
+			}),
+		};
+
+		kittyStatusIntegration(piMock as any);
+
+		const ctx = {
+			cwd: "/tmp",
+			ui: { notify: vi.fn() },
+		};
+
+		await commands["kitty-image"].handler(undefined, ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Usage: /kitty-image <image-path> [cols] [rows]",
+			"warning",
+		);
+	});
+
+	it("kitty-image-clear が削除シーケンスを出力する", async () => {
+		const output: string[] = [];
+		process.stdout.write = ((chunk: string | Uint8Array) => {
+			output.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8"));
+			return true;
+		}) as typeof process.stdout.write;
+
+		const commands: Record<string, { handler: (args: string | undefined, ctx: any) => Promise<void> | void }> = {};
+		const piMock = {
+			on: vi.fn(),
+			registerCommand: vi.fn((name: string, command: { handler: (args: string | undefined, ctx: any) => Promise<void> | void }) => {
+				commands[name] = command;
+			}),
+		};
+
+		kittyStatusIntegration(piMock as any);
+
+		const ctx = {
+			cwd: "/tmp",
+			ui: { notify: vi.fn() },
+		};
+
+		await commands["kitty-image-clear"].handler(undefined, ctx);
+
+		expect(output.join("")).toContain("\x1b_Ga=d,d=A;");
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Cleared kitty images", "info");
 	});
 });

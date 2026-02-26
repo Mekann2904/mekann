@@ -34,12 +34,26 @@
  */
 
 import { spawn } from "child_process";
+import { homedir } from "os";
+import { existsSync } from "fs";
+import { extname, isAbsolute, resolve } from "path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // kitty用のエスケープシーケンス
 const OSC = "\x1b]";
 const ST = "\x07";
+const KITTY_GRAPHICS_BEGIN = "\x1b_G";
+const KITTY_GRAPHICS_END = "\x1b\\";
+
+const SUPPORTED_IMAGE_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".bmp",
+]);
 
 // プラットフォーム検出
 const isMacOS = process.platform === "darwin";
@@ -135,6 +149,70 @@ function notify(text: string, duration = 0, title = "pi", isError = false): void
     const soundPath = isError ? notifyOptions.errorSound : notifyOptions.successSound;
     playSound(soundPath);
   }
+}
+
+function emitKittyGraphics(control: string, payload = ""): void {
+  process.stdout.write(`${KITTY_GRAPHICS_BEGIN}${control};${payload}${KITTY_GRAPHICS_END}`);
+}
+
+function showKittyImage(absPath: string, cols?: number, rows?: number): void {
+  const controls = ["a=T", "t=f", "q=2"];
+  if (typeof cols === "number") {
+    controls.push(`c=${cols}`);
+  }
+  if (typeof rows === "number") {
+    controls.push(`r=${rows}`);
+  }
+  const payload = Buffer.from(absPath, "utf-8").toString("base64");
+  emitKittyGraphics(controls.join(","), payload);
+}
+
+function clearKittyImages(): void {
+  // d=A はこの端末内の表示中画像をすべて削除する
+  emitKittyGraphics("a=d,d=A");
+}
+
+interface KittyImageCommandInput {
+  path: string;
+  cols?: number;
+  rows?: number;
+}
+
+function parsePositiveInt(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  return value;
+}
+
+function parseKittyImageArgs(args: string | undefined): KittyImageCommandInput | null {
+  const source = args?.trim();
+  if (!source) return null;
+
+  // パスはクォートあり/なしの両方を許容
+  const match = source.match(/^("(?:[^"\\]|\\.)+"|'(?:[^'\\]|\\.)+'|\S+)(?:\s+(\d+))?(?:\s+(\d+))?$/);
+  if (!match) return null;
+
+  const rawPath = match[1];
+  const unquotedPath =
+    rawPath.startsWith('"') || rawPath.startsWith("'")
+      ? rawPath.slice(1, -1)
+      : rawPath;
+
+  return {
+    path: unquotedPath,
+    cols: parsePositiveInt(match[2]),
+    rows: parsePositiveInt(match[3]),
+  };
+}
+
+function resolveImagePath(imagePath: string, cwd: string): string {
+  if (imagePath === "~") return homedir();
+  if (imagePath.startsWith("~/")) {
+    return resolve(homedir(), imagePath.slice(2));
+  }
+  if (isAbsolute(imagePath)) return imagePath;
+  return resolve(cwd, imagePath);
 }
 
 // 元のタイトルを保存
@@ -381,6 +459,60 @@ export default function (pi: ExtensionAPI) {
       ].join("\n");
 
       ctx.ui.notify(status, "info");
+    },
+  });
+
+  // カスタムコマンド: /kitty-image
+  pi.registerCommand("kitty-image", {
+    description: "Display an image via kitty graphics protocol (/kitty-image <path> [cols] [rows])",
+    handler: async (args, ctx) => {
+      if (!isKitty()) {
+        ctx.ui.notify("Not running in kitty terminal", "error");
+        return;
+      }
+
+      const parsed = parseKittyImageArgs(args);
+      if (!parsed) {
+        ctx.ui.notify("Usage: /kitty-image <image-path> [cols] [rows]", "warning");
+        return;
+      }
+
+      const absPath = resolveImagePath(parsed.path, ctx.cwd);
+      if (!existsSync(absPath)) {
+        ctx.ui.notify(`Image file not found: ${absPath}`, "error");
+        return;
+      }
+
+      const ext = extname(absPath).toLowerCase();
+      if (!SUPPORTED_IMAGE_EXTENSIONS.has(ext)) {
+        ctx.ui.notify(
+          `Unsupported format: ${ext || "(none)"} (png/jpg/jpeg/gif/webp/bmp only)`,
+          "warning"
+        );
+        return;
+      }
+
+      showKittyImage(absPath, parsed.cols, parsed.rows);
+
+      const sizeHint =
+        parsed.cols || parsed.rows
+          ? ` (cols=${parsed.cols ?? "auto"}, rows=${parsed.rows ?? "auto"})`
+          : "";
+      ctx.ui.notify(`Displayed image: ${absPath}${sizeHint}`, "success");
+    },
+  });
+
+  // カスタムコマンド: /kitty-image-clear
+  pi.registerCommand("kitty-image-clear", {
+    description: "Clear displayed kitty images",
+    handler: async (_args, ctx) => {
+      if (!isKitty()) {
+        ctx.ui.notify("Not running in kitty terminal", "error");
+        return;
+      }
+
+      clearKittyImages();
+      ctx.ui.notify("Cleared kitty images", "info");
     },
   });
 
