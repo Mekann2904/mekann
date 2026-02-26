@@ -10,6 +10,7 @@
 | **Navigation** | `.pi/INDEX.md` - Repository structure map |
 | **Task-to-Source** | `.pi/NAVIGATION.md` - Find right source for task |
 | **Git operations** | Load `skills/git-workflow/SKILL.md` FIRST |
+| **Browser/Site access** | Use `playwright_cli` tool (see Browser Automation Rule) |
 | **Delegate task** | Use `subagent_run` or `agent_team_run` |
 | **Parallel execution** | Use `subagent_run_dag` (see DAG Execution Guide) |
 | **Code review** | Load `skills/code-review/SKILL.md` |
@@ -20,459 +21,19 @@
 
 ---
 
-# UL Mode Guideline (RECOMMENDED)
+# UL Mode Guideline
 
-`ul <task>` で呼び出される委任モード。調査・計画・実装を自律的に行う。
+詳細は `.pi/docs/ul-mode-guide.md` を参照。
 
-## 基本原則
-
-> **エージェントにコードを書かせる前に、必ず文章化された計画をレビュー・承認する**
-
-## 推奨: DAGベース並列実行
-
-ULモードの各フェーズはDAG実行で並列化できる:
-
-```typescript
-// 推奨: DAG統合ULモード
-ul_workflow_dag({
-  task: "<タスク>",
-  maxConcurrency: 3
-})
-```
-
-### DAG統合の利点
-
-- Research並列実行で調査時間短縮
-- 実装タスクの自動並列化
-- 依存関係の自動推論
-- レート制限への適応的対応
-
-## フロー
-
-```
-Research → Plan → [ユーザーレビュー] → Implement (DAG)
-```
+基本フロー: Research → Plan → [ユーザーレビュー] → Implement → Commit
 
 ---
 
-## 第1段階：Research（調査）
+# DAG Execution Guide
 
-コードベースの該当部分を**徹底的に**理解する。調査結果は必ず `.pi/ul-workflow/tasks/{taskId}/research.md` に記述する。
+詳細は `.pi/docs/dag-execution-guide.md` を参照。
 
-### アクション（推奨：専用ツールを使用）
-
-```
-ul_workflow_research({ task: "<タスク>", task_id: "<taskId>" })
-```
-
-### アクション（直接委任の場合）
-
-```
-subagent_run({
-  subagentId: "researcher",
-  task: "このフォルダの内容を徹底的に調査し、その仕組み、機能、およびすべての仕様を深く理解してください。調査が完了したら、得られた知見と学習内容を詳細にまとめたレポートを「.pi/ul-workflow/tasks/<taskId>/research.md」ファイルに作成してください。"
-})
-```
-
-### 重要な表現
-
-- **「深く」**
-- **「詳細にわたって」**
-- **「複雑な部分まで」**
-- **「すべてを徹底的に」**
-
-これらの言葉がないと、表面的な読み取りしか行わない。
-
-### research.mdの目的
-
-- ユーザーのレビュー用資料
-- エージェントがシステムを正しく理解しているか確認
-- 誤解があれば計画段階前に修正
-- 保存場所: `.pi/ul-workflow/tasks/{taskId}/research.md`
-
----
-
-## 第2段階：Plan（計画策定）
-
-詳細な実装計画を `.pi/ul-workflow/tasks/{taskId}/plan.md` に作成する。
-
-### アクション（推奨：専用ツールを使用）
-
-```
-ul_workflow_plan({ task: "<タスク>", task_id: "<taskId>" })
-```
-
-### アクション（直接委任の場合）
-
-```
-subagent_run({
-  subagentId: "architect",
-  task: "以下のタスクの詳細な実装計画をplan.mdに作成してください。コードスニペットも必ず含めてください。\n\nタスク: <task>\n\n保存先: .pi/ul-workflow/tasks/<taskId>/plan.md"
-})
-```
-
-### plan.mdの構造
-
-保存場所: `.pi/ul-workflow/tasks/{taskId}/plan.md`
-
-```markdown
-# 実装計画: <タスク名>
-
-## 目的
-<何を実現するか>
-
-## 変更内容
-1. <ファイルA>: <変更内容>
-
-## 手順
-1. <手順1>
-
-## 考慮事項
-- <考慮事項1>
-
-## Todo
-- [ ] <タスク1>
-```
-
----
-
-## 第3段階：Annotation Cycle（ユーザーレビュー）
-
-**ここはユーザーが主導する。エージェントは待機。**
-
-ユーザーがplan.mdをエディタで開き、インライン注釈（`<!-- NOTE: ... -->`）を追加する。
-
-plan.mdの場所: `.pi/ul-workflow/tasks/{taskId}/plan.md`
-
-### ユーザーが満足するまで繰り返し
-
-1. ユーザーが注釈を追加
-2. エージェントがplan.mdを更新
-3. ユーザーが再レビュー
-4. 満足したら実装へ
-
-**「don't implement yet」ガードが必須**
-
----
-
-## 第4段階：Todo List（タスクリスト）
-
-実装前に詳細なタスクリストをplan.mdに追加する。
-
-### Todo Listの目的
-
-- 実装中の進捗トラッカー
-- 完了したタスクをマークしていく
-
----
-
-## 第5段階：Implement（実装）
-
-計画に従って機械的に実装する。
-
-### アクション（DAG並列実装 - 推奨）
-
-```typescript
-subagent_run_dag({
-  task: "plan.mdの内容を実装",
-  plan: {
-    id: "implementation-phase",
-    tasks: [
-      { id: "impl-core", description: "コア実装", assignedAgent: "implementer", dependencies: [] },
-      { id: "impl-tests", description: "テスト実装", assignedAgent: "tester", dependencies: ["impl-core"] },
-      { id: "review", description: "コードレビュー", assignedAgent: "reviewer", dependencies: ["impl-core"] }
-    ]
-  },
-  maxConcurrency: 3
-})
-```
-
-### アクション（単一エージェント - 単純な場合のみ）
-
-```
-subagent_run({
-  subagentId: "implementer",
-  task: "plan.mdのすべてを実装してください...",
-  extraContext: "plan.mdの場所: .pi/ul-workflow/tasks/<taskId>/plan.md"
-})
-```
-
-### アクション（エージェントチーム - 並列実行）
-
-```
-agent_team_run({
-  teamId: "core-delivery-team",
-  task: "plan.mdの以下のタスクを並列で実装してください: <タスク>",
-  sharedContext: "plan.mdの場所: .pi/ul-workflow/tasks/<taskId>/plan.md",
-  strategy: "parallel"
-})
-```
-
-### エージェントチームを使用する場面
-
-| 場面 | 推奨 |
-|------|------|
-| 単一ファイルの変更 | `subagent_run({ subagentId: "implementer" })` |
-| 複数の独立したファイル変更 | `agent_team_run_parallel` または `subagent_run_dag` |
-| 実装 + レビューを同時 | `subagent_run_dag` で依存関係を指定 |
-
-### 実装の原則
-
-- **implement it all**: planのすべてを実行、チェリーピックしない
-- **mark it as completed**: planが進捗の信頼できる情報源
-- **do not stop until completed**: 確認のために途中で停止しない
-
-**実装は機械的であるべき。創造的な作業は計画段階で完了している。**
-
----
-
-## 第6段階：Commit（コミット）【推奨】
-
-実装完了後、**積極的にコミットを作成する**。
-
-### 基本原則
-
-> **実装完了後は必ずコミットを提案する**
-
-### コミットのタイミング
-
-| タイミング | アクション |
-|-----------|-----------|
-| 実装フェーズ完了後 | 必ずコミットを提案 |
-| 中規模以上の変更 | フェーズごとにコミットを検討 |
-| ユーザーが明示的に拒否した場合のみ | コミットをスキップ |
-
-### コミットワークフロー
-
-**git-workflowスキルをロードしてから実行する。**
-
-```
-read tool: .pi/skills/git-workflow/SKILL.md
-```
-
-#### 統合コミット（推奨）
-
-add + commit を1回のquestion呼び出しで実行:
-
-```typescript
-// 1. 変更内容を確認
-git status
-git diff
-
-// 2. コミットメッセージを作成（日本語・Body必須）
-// Conventional Commits準拠
-
-// 3. questionツールで統合確認
-question({
-  questions: [{
-    question: "以下の内容でコミットしますか？\n\n" +
-              "【コミットメッセージ】\n" +
-              "feat: ユーザー認証を追加する\n\n" +
-              "【ステージングファイル】\n" +
-              "- src/auth.ts\n" +
-              "- tests/auth.test.ts\n\n" +
-              "【変更概要】\n" +
-              "- JWT認証を実装\n" +
-              "- テストを追加",
-    header: "Git Commit",
-    options: [
-      { label: "Commit", description: "ステージング + コミットを実行" },
-      { label: "Edit", description: "メッセージを編集" },
-      { label: "Skip", description: "コミットせずに完了" }
-    ],
-    custom: true
-  }]
-})
-```
-
-### コミットメッセージ規約
-
-**git-workflowスキルの規約に従う:**
-
-- **絵文字は使用しない**
-- **日本語で詳細に書く（絶対必須）**
-- **Body（本文）を必ず書く**
-- **英語でのコミットメッセージは禁止**
-
-```
-<Type>[(scope)]: #<Issue Number> <Title>
-
-## 背景
-<なぜこの変更が必要か>
-
-## 変更内容
-<具体的な変更点>
-
-## テスト方法
-<どうテストしたか>
-
-## 影響範囲
-<他に影響する部分>
-```
-
-### 選択的ステージング（CRITICAL）
-
-**`git add .`や`git add -A`は安易に使用しない。**
-
-```bash
-# 推奨: 特定ファイルを明示的に指定
-git add path/to/file.ts
-
-# 禁止: 全ファイルをステージング
-# git add .
-# git add -A
-```
-
-### ULモードでのコミットフロー
-
-1. **実装完了**: implementerサブエージェントが実装を完了
-2. **変更確認**: `git status`と`git diff`で変更内容を確認
-3. **コミット提案**: questionツールでユーザーに確認
-4. **コミット実行**: ユーザー承認後に`git add`と`git commit`を実行
-5. **完了報告**: ワークフロー完了を通知
-
----
-
-## 判断の指針
-
-| 状況 | フロー |
-|------|--------|
-| 重要な実装 | Research → Plan → Annotation Cycle → Todo → Implement → **Commit** |
-| 中程度の実装 | Research → Plan → [確認] → Implement → **Commit** |
-| 軽微な修正 | 直接編集（plan省略可）→ **Commit** |
-| 調査のみ | Research → 報告（コミット不要） |
-
----
-
-# DAG Execution Guide (RECOMMENDED)
-
-依存関係を持つタスクをDAG（有向非巡回グラフ）として分解し、依存関係に基づいて並列実行する。
-
-## 基本原則
-
-> **複雑なタスクはDAGで並列化し、レイテンシを削減する**
-
-## 使用方法
-
-### 自動DAG生成（推奨）
-
-```typescript
-subagent_run_dag({
-  task: "認証システムを実装してテストを追加"
-})
-// plan省略時は自動的にDAGを生成
-```
-
-### 明示的プラン指定
-
-```typescript
-subagent_run_dag({
-  task: "APIリファクタリング",
-  plan: {
-    id: "api-refactor",
-    description: "APIリファクタリング",
-    tasks: [
-      { id: "research", description: "調査", assignedAgent: "researcher", dependencies: [] },
-      { id: "impl-auth", description: "認証実装", assignedAgent: "implementer", dependencies: ["research"] },
-      { id: "impl-users", description: "ユーザー実装", assignedAgent: "implementer", dependencies: ["research"] },
-      { id: "review", description: "レビュー", assignedAgent: "reviewer", dependencies: ["impl-auth", "impl-users"] }
-    ]
-  },
-  maxConcurrency: 3
-})
-```
-
-## 実行パターン
-
-### Fan-out（並列実行）
-
-```
-       ┌── impl-auth
-research ├── impl-users
-       └── impl-products
-```
-
-1つのタスクが複数の独立したタスクに分岐。**並列実行で高速化**。
-
-### Fan-in（統合）
-
-```
-impl-auth ─┐
-impl-users ─┼── review
-impl-prods ─┘
-```
-
-複数のタスクが1つのタスクに収束。**全完了待ち**。
-
-### Diamond（並列→統合）
-
-```
-       ┌── impl-auth ──┐
-research │              ├── review
-       └── impl-users ─┘
-```
-
-Fan-out + Fan-inの組み合わせ。**最も一般的なパターン**。
-
-## 自動依存推論ルール
-
-| エージェント | 自動依存先 |
-|-------------|-----------|
-| `researcher` | なし |
-| `implementer` | `researcher`（存在する場合） |
-| `tester` | すべての`implementer` |
-| `reviewer` | すべての`implementer` |
-| `architect` | `researcher`（存在する場合） |
-
-## いつDAGを使うか
-
-| 状況 | 推奨ツール |
-|------|-----------|
-| 単純な単一タスク | `subagent_run` |
-| 複数エージェント並列（依存なし） | `subagent_run_parallel` |
-| 複雑なタスク（依存あり） | `subagent_run_dag` |
-| 高複雑度タスク（ULモード） | `ul_workflow_dag` |
-
-### 複雑度判定
-
-| 複雑度 | 条件 | 実行戦略 |
-|--------|------|---------|
-| 低 | 単純な変更、明確なゴール | `subagent_run` |
-| 中 | 複数コンポーネント、ステップ指示あり | `subagent_run_dag` |
-| 高 | アーキテクチャ変更、リファクタリング | `ul_workflow_dag` |
-
-## パラメータ
-
-| パラメータ | 型 | 必須 | 説明 |
-|-----------|---|----|------|
-| `task` | string | Yes | 実行するタスク |
-| `plan` | TaskPlan | No | 明示的なDAGプラン（省略時は自動生成） |
-| `autoGenerate` | boolean | No | plan省略時に自動生成するか（デフォルト: true） |
-| `maxConcurrency` | number | No | 最大並列数（デフォルト: 3） |
-| `abortOnFirstError` | boolean | No | 最初のエラーで中止するか（デフォルト: false） |
-
-## 実行例
-
-```
-[subagent_run_dag] Auto-generated plan: auto-xxx (4 tasks, max depth: 2)
-
-Tasks:
-  - research [researcher]: 調査...
-  - implement [implementer] (deps: research): 実装...
-  - test [tester] (deps: implement): テスト...
-  - review [reviewer] (deps: implement): レビュー...
-
-Execution:
-  [1/4] research started...
-  [1/4] research completed (120s)
-  [2/4] implement started...
-  [3/4] test waiting for: implement
-  [4/4] review waiting for: implement
-  [2/4] implement completed (180s)
-  [3/4] test started...
-  [4/4] review started...
-  ...
-```
+基本原則: 複雑なタスクはDAGで並列化し、レイテンシを削減する
 
 ---
 
@@ -615,148 +176,39 @@ If you attempt any git command without first loading the git-workflow skill, STO
 
 ## Quality Guidelines (RECOMMENDED)
 
-### Output Format
-
-- **No emoji**: テキストのみの環境での可読性確保
-- **Text-only format**: Markdownパーサーでの一貫した表示
-
-### User Interaction
-
-- **Question tool**: 選択肢からの選択、アクション前の確認に使用
-- **Autonomous execution**: 安全な仮定が可能な場合は自律実行
-
-### Prompt Quality
-
-- **No shortcuts**: 省略は情報の欠落を招く
-- **Complete responses**: 不完全な回答は追加のやり取りを必要とする
-- **Concrete artifacts**: 抽象的な記述は実行可能性を下げる
-
-> これらは「推奨」であり、理由を明確にすれば例外を認める。
+- No emoji | Use question tool for user choices | Complete responses only
 
 ---
 
-## Confirm-Before-Edit Practice (RECOMMENDED)
+## Confirm-Before-Edit (RECOMMENDED)
 
-### Why This Matters
-
-Data shows edit failure rate of 4.3%, primarily from "exact text not found" errors.
-
-### The Practice
-
-```
-BEFORE: edit(path, oldText, newText)
-AFTER:  read(path) → verify exact text → edit(path, exactOldText, newText)
-```
-
-This is NOT a mandatory rule. It is a **mindfulness practice** to recognize craving patterns.
+`edit()` 前に `read()` で正確なテキストを確認（edit失敗率4.3%削減）
 
 ---
 
-## Delegation Quality Checklist (RECOMMENDED)
-
-### Before Delegating (Quick Check)
-
-1. **Context sufficient?** Does the delegate have enough context to complete the task?
-2. **Task clear?** Is the expected output unambiguous?
-3. **Preconditions met?** Are necessary files/states available?
-
-### Red Flags (Craving Symptoms)
-
-- "Just delegate it quickly" without context
-- Vague task descriptions ("review the code")
-- No success criteria defined
-
----
-
-# Delegation-First Policy (RECOMMENDED)
+## Delegation Policy (RECOMMENDED)
 
 委任を推奨するが、強制はしない。委任は「品質保証の手法」であり、「従順さの儀式」ではない。
 
-## 重要: 委任するかどうかはエージェントの判断に委ねる
-
-委任には明確な価値があるが、「委任せよ」と強制すれば、委任は従順さの儀式となり、本来の目的（品質向上）を損なう。
-
-### 委任しない自由
-
-以下の場合、委任せずに直接実装することを許可する：
-
-- タスクが明確に単純である（1-2ステップで完了）
-- コンテキストが委任先に適切に伝達できない
-- 緊急時（速度が品質より優先される）
-- 既に十分な分析を行い、実装フェーズにある
-
-### 委任を推奨する理由
-
-1. **Planning Fallacy**: エージェントはタスクの複雑さを過小評価する
-2. **Cognitive Load Saturation**: 単一エージェントは詳細を見落とす
-3. **Single-Perspective Blindness**: 1つの視点では見えないものがある
-4. **No Self-Correction Without Feedback**: フィードバックなしではエラーに気づけない
-5. **Sequential Bottleneck**: 並列委任の方が高速
-
-### When Direct Editing IS Appropriate
-
-- Trivial typo fixes (1-2 character changes)
-- Documentation-only updates
-- Emergency hotfixes where speed is critical
-- You have ALREADY delegated analysis and now implement the agreed solution
-
-### When Direct Editing IS NOT Appropriate
-
-- Any task involving architectural decisions
-- Code that will affect multiple files or modules
-- Security-sensitive changes
-- Database schema changes
-- API contract modifications
-
-### RECOMMENDED behavior
-
-| 場面 | 推奨ツール |
-|------|-----------|
-| 単一ファイル変更 | `subagent_run({ subagentId: "implementer" })` |
-| 複数独立ファイル | `agent_team_run_parallel` |
-| 実装+レビュー同時 | `subagent_run_parallel(["implementer", "reviewer"])` |
-
-### Parallel speed policy (RECOMMENDED)
-
-- タスクが独立している場合、委任エージェント数を意図的に制限しない
-- 研究、仮説検証、レビュー重視のタスクでは並列ファンアウトを使用
+**直接実行可能**: 単純タスク（1-2ステップ）、ドキュメントのみ更新、緊急時、既に十分な分析済み
+**委任推奨**: アーキテクチャ決定、複数ファイル変更、セキュリティ関連、DBスキーマ変更、API契約修正
 
 ---
 
-# Discussion-First Policy (RECOMMENDED)
+## Delegation Checklist (RECOMMENDED)
 
-多エージェントシナリオでの議論を推奨するが、強制はしない。
-
-## 議論しない自由
-
-以下の場合、詳細な議論を省略することを許可する：
-
-- タスクが単純で、複数視点の統合が必要ない
-- 他のエージェントの出力が利用可能でない
-- 緊急時（速度が優先される）
-- 既に十分な合意形成が行われている
-
-## RECOMMENDED behavior
-
-1. 2以上のエージェントに委任した場合:
-   - 他のエージェントの出力を参照することを推奨
-   - 合意点または反論点を少なくとも1つ特定することを推奨
-   - 「DISCUSSION」セクションを含めることを推奨
-
-2. 出力フォーマット:
-   ```
-   SUMMARY: <要約>
-   CLAIM: <1文の主張>
-   EVIDENCE: <証拠リスト>
-   CONFIDENCE: <0.00-1.00>
-   DISCUSSION: <他エージェント出力への参照>
-   RESULT: <主な回答>
-   NEXT_STEP: <次のアクション>
-   ```
+委任前確認: Context十分? Task明確? 前提条件OK?
+危険信号: 「とにかく委任」、曖昧なタスク、成功基準なし
 
 ---
 
-# Token Efficiency Template (RECOMMENDED)
+## Discussion Policy (RECOMMENDED)
+
+複数エージェント委任時は、他エージェントの出力を参照し、合意点または反論点を少なくとも1つ特定することを推奨。
+
+---
+
+## Token Efficiency (RECOMMENDED)
 
 エージェント間通信では英語・簡潔・構造化フォーマットを使用：
 
@@ -768,3 +220,52 @@ This is NOT a mandatory rule. It is a **mindfulness practice** to recognize crav
 ```
 
 ユーザーへの最終出力のみ日本語・詳細で記述。
+
+---
+
+## Browser Automation Rule (MANDATORY)
+
+ブラウザやウェブサイトを開く・操作するタスクでは、**積極的に`playwright_cli`ツールを使用すること**。
+
+### REQUIRED behavior
+
+1. ブラウザでURLを開く必要がある場合、`playwright_cli`ツールを使用する
+2. デフォルトでヘッドモード（`--headed`）を使用し、ブラウザを表示する
+3. 詳細なコマンドは `skills/playwright-cli/SKILL.md` を参照
+
+### 検出パターン（MANDATORY load trigger）
+
+- キーワード: "open browser", "visit site", "navigate to", "go to URL", "web page"
+- 日本語: "ブラウザで開く", "サイトを開く", "ページを見る", "ウェブサイト", "URLにアクセス"
+- アクション: ウェブサイトの閲覧、フォーム入力、スクリーンショット取得、ページ操作
+
+### 使用例
+
+```typescript
+// URLを開く（ヘッドモード）
+playwright_cli({
+  command: "open",
+  args: ["--headed", "https://example.com"]
+})
+
+// フォームに入力
+playwright_cli({
+  command: "fill",
+  args: ["#email", "user@example.com"]
+})
+
+// スクリーンショット
+playwright_cli({
+  command: "screenshot"
+})
+```
+
+### 理由
+
+- **トークン効率**: ページデータをLLMに強制的に読み込まない
+- **コーディングエージェント最適化**: 簡潔な目的別コマンドによる操作
+- **セッション管理**: 複数のブラウザセッションを管理可能
+
+### 違反時の対応
+
+ブラウザを開くために他の方法を使用しようとした場合、STOPし、`playwright_cli`ツールを使用すること。

@@ -2,7 +2,7 @@
  * @abdd.meta
  * path: .pi/extensions/kitty-status-integration.ts
  * role: kittyターミナル連携拡張
- * why: piの作業進捗をkittyのウィンドウタイトルや通知システムへ即時反映するため
+ * why: piの作業進捗をkittyのウィンドウタイトルや通知システムへ即時反映し、画像を表示するため
  * related: @mariozechner/pi-coding-agent, child_process
  * public_api: notify, setWindow, export default function(api)
  * invariants: process.env.KITTY_WINDOW_IDが存在する場合のみkittyコマンドを出力する
@@ -14,10 +14,11 @@
  *   - kittyのOSCコマンドを使用してウィンドウタイトルおよびタブ名を変更する
  *   - macOSではosascript経由で通知センターへ通知を送信する
  *   - macOSではafplayコマンドでシステムサウンドを再生する
- *   - Linuxではkittyのネイティブ通知機能を使用する
+ *   - readツールで画像を読み込んだ際にオーバーレイで表示する
  * why_it_exists:
  *   - ターミナル離れていてもエージェントの完了やエラーを認知可能にする
  *   - 現在のタスク状態をウィンドウタイトルで常時表示する
+ *   - エージェントが画像を確認できるようにする
  * scope:
  *   in: ExtensionAPI(pi-coreからのイベント), プラットフォーム情報, 環境変数
  *   out: 標準出力へのエスケープシーケンス, 外部プロセス(osascript/afplay)の実行
@@ -34,12 +35,67 @@
  */
 
 import { spawn } from "child_process";
+import { homedir } from "os";
+import { closeSync, existsSync, openSync, writeSync } from "fs";
+import { extname, isAbsolute, resolve } from "path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // kitty用のエスケープシーケンス
 const OSC = "\x1b]";
 const ST = "\x07";
+const KITTY_GRAPHICS_BEGIN = "\x1b_G";
+const KITTY_GRAPHICS_END = "\x1b\\";
+
+const SUPPORTED_IMAGE_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".bmp",
+]);
+
+let terminalFd: number | undefined;
+
+function wrapForTmuxPassthrough(data: string): string {
+  // tmux passthrough: ESC は二重化して DCS で包む
+  // 形式: ESC P tmux; <ESCを二重化したペイロード> ESC \
+  const escaped = data.replace(/\x1b/g, "\x1b\x1b");
+  return `\x1bPtmux;${escaped}\x1b\\`;
+}
+
+function writeToTerminal(data: string): void {
+  // テスト時は stdout 強制にしてアサート可能にする
+  if (process.env.PI_KITTY_FORCE_STDOUT === "1") {
+    process.stdout.write(data);
+    return;
+  }
+
+  // TUIがstdoutを捕捉する場合に備えて /dev/tty へ直接出力
+  try {
+    const outbound = process.env.TMUX ? wrapForTmuxPassthrough(data) : data;
+    if (terminalFd === undefined) {
+      terminalFd = openSync("/dev/tty", "w");
+    }
+    writeSync(terminalFd, outbound);
+    return;
+  } catch {
+    // /dev/tty が使えない環境では従来どおり stdout へフォールバック
+    process.stdout.write(process.env.TMUX ? wrapForTmuxPassthrough(data) : data);
+  }
+}
+
+function closeTerminalIfNeeded(): void {
+  if (terminalFd === undefined) return;
+  try {
+    closeSync(terminalFd);
+  } catch {
+    // no-op
+  } finally {
+    terminalFd = undefined;
+  }
+}
 
 // プラットフォーム検出
 const isMacOS = process.platform === "darwin";
@@ -70,7 +126,7 @@ function isKitty(): boolean {
 // ウィンドウタイトル/タブ名を設定
 function setTitle(title: string): void {
   if (isKitty()) {
-    process.stdout.write(`${OSC}2;${title}${ST}`);
+    writeToTerminal(`${OSC}2;${title}${ST}`);
   }
 }
 
@@ -113,7 +169,7 @@ function playSound(soundPath: string): void {
 // kittyのネイティブ通知（Linuxなど）
 function notifyKitty(text: string, duration = 0): void {
   // i=1: 通知ID, d=duration: 表示時間（ミリ秒）
-  process.stdout.write(`${OSC}99;i=1:d=${duration}:${text}${ST}`);
+  writeToTerminal(`${OSC}99;i=1:d=${duration}:${text}${ST}`);
 }
 
 // 通知を表示（プラットフォーム別、設定対応版）
@@ -135,6 +191,15 @@ function notify(text: string, duration = 0, title = "pi", isError = false): void
     const soundPath = isError ? notifyOptions.errorSound : notifyOptions.successSound;
     playSound(soundPath);
   }
+}
+
+function emitKittyGraphics(control: string, payload = ""): void {
+  writeToTerminal(`${KITTY_GRAPHICS_BEGIN}${control};${payload}${KITTY_GRAPHICS_END}`);
+}
+
+function clearKittyImages(): void {
+  // d=A はこの端末内の表示中画像をすべて削除する
+  emitKittyGraphics("a=d,d=A");
 }
 
 // 元のタイトルを保存
@@ -303,6 +368,7 @@ export default function (pi: ExtensionAPI) {
     if (!isKitty()) return;
 
     restoreTitle();
+    closeTerminalIfNeeded();
   });
 
   // セッション切り替え前

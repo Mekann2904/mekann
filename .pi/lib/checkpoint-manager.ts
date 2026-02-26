@@ -32,6 +32,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { Mutex } from "async-mutex";
 
 // ============================================================================
 // Types
@@ -168,6 +169,25 @@ const DEFAULT_CONFIG: CheckpointManagerConfig = {
 
 const CHECKPOINT_FILE_EXTENSION = ".checkpoint.json";
 
+// BUG-SEC-002: Maximum checkpoint size limit (10MB)
+const MAX_CHECKPOINT_SIZE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Validate checkpoint size does not exceed maximum
+ * @summary Validate checkpoint size
+ * @param checkpoint - Checkpoint to validate
+ * @throws Error if checkpoint exceeds maximum size
+ */
+function validateCheckpointSize(checkpoint: Checkpoint): void {
+  const serialized = JSON.stringify(checkpoint);
+  const sizeBytes = Buffer.byteLength(serialized, "utf-8");
+  if (sizeBytes > MAX_CHECKPOINT_SIZE_BYTES) {
+    throw new Error(
+      `Checkpoint exceeds maximum size: ${sizeBytes} > ${MAX_CHECKPOINT_SIZE_BYTES}`
+    );
+  }
+}
+
 // ============================================================================
 // State
 // ============================================================================
@@ -183,6 +203,9 @@ const CACHE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 /** Phase 5: エントリの最大年齢（ミリ秒） */
 const CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+
+/** BUG-RC-003修正: キャッシュ操作の競合状態を防ぐためのMutex */
+const cacheMutex = new Mutex();
 
 let managerState: {
   config: CheckpointManagerConfig;
@@ -249,55 +272,61 @@ function deleteFromCache(taskId: string): void {
 
 /**
  * Phase 5: キャッシュにチェックポイントを保存（サイズベース削除対応）
+ * BUG-RC-003修正: Mutexで保護された非同期版
  * @summary キャッシュに保存
  * @param taskId タスクID
  * @param checkpoint チェックポイント
  */
-function setToCache(taskId: string, checkpoint: Checkpoint): void {
+async function setToCache(taskId: string, checkpoint: Checkpoint): Promise<void> {
   if (!managerState) return;
   
-  // 既存の場合は削除してから追加（LRU更新）
-  if (managerState.cache.has(taskId)) {
-    const idx = managerState.cacheOrder.indexOf(taskId);
-    if (idx >= 0) {
-      managerState.cacheOrder.splice(idx, 1);
+  const release = await cacheMutex.acquire();
+  try {
+    // 既存の場合は削除してから追加（LRU更新）
+    if (managerState.cache.has(taskId)) {
+      const idx = managerState.cacheOrder.indexOf(taskId);
+      if (idx >= 0) {
+        managerState.cacheOrder.splice(idx, 1);
+      }
+      managerState.cacheSizes.delete(taskId);
     }
-    managerState.cacheSizes.delete(taskId);
-  }
-  
-  // エントリサイズを計算
-  const entrySize = estimateCheckpointSize(checkpoint);
-  
-  managerState.cache.set(taskId, checkpoint);
-  managerState.cacheOrder.push(taskId);
-  managerState.cacheSizes.set(taskId, entrySize);
-  
-  // 現在の合計サイズを計算
-  let totalSize = 0;
-  for (const size of managerState.cacheSizes.values()) {
-    totalSize += size;
-  }
-  
-  // エントリ数ベースの削除
-  while (managerState.cacheOrder.length > CACHE_MAX_ENTRIES) {
-    const oldestKey = managerState.cacheOrder.shift();
-    if (oldestKey) {
-      const size = managerState.cacheSizes.get(oldestKey) || 0;
-      managerState.cache.delete(oldestKey);
-      managerState.cacheSizes.delete(oldestKey);
-      totalSize -= size;
+    
+    // エントリサイズを計算
+    const entrySize = estimateCheckpointSize(checkpoint);
+    
+    managerState.cache.set(taskId, checkpoint);
+    managerState.cacheOrder.push(taskId);
+    managerState.cacheSizes.set(taskId, entrySize);
+    
+    // 現在の合計サイズを計算
+    let totalSize = 0;
+    for (const size of managerState.cacheSizes.values()) {
+      totalSize += size;
     }
-  }
-  
-  // Phase 5: サイズベースの削除
-  while (totalSize > CACHE_MAX_SIZE_BYTES && managerState.cacheOrder.length > 0) {
-    const oldestKey = managerState.cacheOrder.shift();
-    if (oldestKey) {
-      const size = managerState.cacheSizes.get(oldestKey) || 0;
-      managerState.cache.delete(oldestKey);
-      managerState.cacheSizes.delete(oldestKey);
-      totalSize -= size;
+    
+    // エントリ数ベースの削除
+    while (managerState.cacheOrder.length > CACHE_MAX_ENTRIES) {
+      const oldestKey = managerState.cacheOrder.shift();
+      if (oldestKey) {
+        const size = managerState.cacheSizes.get(oldestKey) || 0;
+        managerState.cache.delete(oldestKey);
+        managerState.cacheSizes.delete(oldestKey);
+        totalSize -= size;
+      }
     }
+    
+    // Phase 5: サイズベースの削除
+    while (totalSize > CACHE_MAX_SIZE_BYTES && managerState.cacheOrder.length > 0) {
+      const oldestKey = managerState.cacheOrder.shift();
+      if (oldestKey) {
+        const size = managerState.cacheSizes.get(oldestKey) || 0;
+        managerState.cache.delete(oldestKey);
+        managerState.cacheSizes.delete(oldestKey);
+        totalSize -= size;
+      }
+    }
+  } finally {
+    release();
   }
 }
 
@@ -563,6 +592,10 @@ async function saveCheckpoint(
   const filePath = getCheckpointPath(dir, fullCheckpoint.id);
 
   try {
+    // BUG-SEC-002: Validate checkpoint size before writing
+    // Also catches circular reference errors in JSON.stringify
+    validateCheckpointSize(fullCheckpoint);
+
     // Ensure directory exists before write
     ensureCheckpointDir(dir);
 
@@ -570,7 +603,7 @@ async function saveCheckpoint(
     writeFileSync(filePath, JSON.stringify(fullCheckpoint, null, 2), "utf-8");
 
     // キャッシュを更新
-    setToCache(fullCheckpoint.taskId, fullCheckpoint);
+    await setToCache(fullCheckpoint.taskId, fullCheckpoint);
 
     // Enforce max checkpoints limit
     await enforceMaxCheckpoints();
@@ -629,7 +662,7 @@ async function loadCheckpoint(taskId: string): Promise<Checkpoint | null> {
   // Return the most recent checkpoint and cache it
   candidates.sort((a, b) => b.createdAt - a.createdAt);
   const result = candidates[0];
-  setToCache(taskId, result);
+  await setToCache(taskId, result);
   return result;
 }
 

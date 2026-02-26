@@ -2,7 +2,7 @@
 title: mekann - pi拡張機能コレクション
 category: meta
 audience: new-user, developer
-last_updated: 2026-02-25
+last_updated: 2026-02-26
 tags: [overview, mekann]
 related: [docs/README.md, docs/01-getting-started/01-quick-start.md]
 ---
@@ -61,7 +61,6 @@ pi remove https://github.com/Mekann2904/mekann
 | 拡張機能 | ファイル | 説明 | ドキュメント |
 |---------|---------|------|------------|
 | **question** | `question.ts` | インタラクティブUIでユーザー選択 | [→](docs/02-user-guide/02-question.md) |
-
 | **loop_run** | `loop.ts` | 自律ループ実行 | [→](docs/02-user-guide/04-loop-run.md) |
 | **abbr** | `abbr.ts` | 略語管理 | [→](docs/02-user-guide/06-abbr.md) |
 
@@ -138,7 +137,7 @@ pi remove https://github.com/Mekann2904/mekann
 
 このプロジェクトには、サブエージェントやチームメンバーに割り当て可能なスキル管理システムが含まれています。
 
-### 利用可能なスキル（17個）
+### 利用可能なスキル（20個）
 
 | カテゴリ | スキル | 説明 |
 |---------|--------|------|
@@ -149,12 +148,15 @@ pi remove https://github.com/Mekann2904/mekann
 | | alma-memory | ALMAベースのメモリ設計（セマンティック検索、継続的学習） |
 | | harness-engineering | ハーネスエンジニアリング（品質向上の手法論） |
 | | dynamic-tools | タスク実行中の動的ツール生成・実行・管理 |
+| | dyntaskmas | DynTaskMAS論文に基づく動的タスク割り当て・並列実行スキル |
 | **分析** | logical-analysis | 論理的テキスト分析（学術・技術・ビジネス文書） |
 | | bug-hunting | バグ発見と根本原因特定 |
 | | reasoning-bonds | Long CoT推論の分子構造分析 |
 | | inquiry-exploration | 問い駆動型探求 |
 | **操作** | git-workflow | Git操作・ブランチ管理 |
 | **検索** | search-tools | 高速コード検索ツール（file_candidates, code_search, sym_index, sym_find） |
+| | repograph-localization | RepoGraph手法に基づくコードローカライゼーション（SWE-benchで+32.8%改善） |
+| **計画** | task-planner | タスク分解とDAG依存関係管理（LLMCompiler論文ベース） |
 | **形式手法** | invariant-generation | 形式仕様からインバリアント、テストコード自動生成（Quint、Rustマクロ、プロパティテスト、MBT） |
 | **自己改善** | self-improvement | 7つの哲学的視座に基づく自己点検プロセス |
 | | self-reflection | タスク前後での自己点検（簡易チェックリスト） |
@@ -302,6 +304,7 @@ mekann/
 | **サブエージェント** | `subagent_create` | サブエージェントの定義作成 |
 | | `subagent_run` | サブエージェントの実行 |
 | | `subagent_run_parallel` | サブエージェントの並列実行 |
+| | `subagent_run_dag` | DAGベースの依存関係並列実行 |
 | | `subagent_configure` | サブエージェント設定更新 |
 | | `subagent_list` | 定義済みエージェント一覧 |
 | | `subagent_status` | 実行中のエージェント状態 |
@@ -340,6 +343,7 @@ mekann/
 | **ユーティリティ** | `agent_usage_stats` | 拡張機能使用統計 |
 | | `context-usage` | コンテキスト使用量表示 |
 | | `skill_status` | スキル割り当て状況表示 |
+| **GitHub** | `gh_agent` | GitHub CLI連携エージェント（gh コマンドラッパー） |
 
 ## Runtime Load Guard
 
@@ -430,8 +434,11 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 | **garbage-collection-team** | 技術的負債解消チーム。未使用コード、古い依存関係、廃止予定機能の特定と削除を実施 |
 | **skill-creation-team** | スキル作成支援チーム。新規スキルの設計、実装、テスト、ドキュメント作成を一貫してサポート |
 | **verification-phase-team** | 検証フェーズ専門チーム。Inspector/Challengerパターンによる出力品質検証と信頼性評価を実施 |
+| **invariant-generation-team** | 形式仕様からインバリアント、テストコード自動生成専門チーム（Quint、Rustマクロ、プロパティテスト、MBT） |
+| **test-engineering-team** | 包括的テスト戦略専門チーム。単体〜E2E、プロパティベース、モデルベーステストの設計・実装 |
+| **self-improvement-deep-dive-team** | 7つの哲学的視座による深い自己改善ループ。脱構築、スキゾ分析、幸福論等をリゾーム的に展開 |
 
-> **現在、16の定義済みチームが提供されています。**
+> **現在、19の定義済みチームが提供されています。**
 
 ## プロジェクトの特徴
 
@@ -462,16 +469,6 @@ Plan Mode（計画モード）は現在、制限なしで使用可能です。�
 MIT License - 詳細は [LICENSE](LICENSE) ファイルを参照してください
 
 ## Version
-
-**v0.4.0** (2026-02-25)
-
-v0.3.1からの変更点:
-- クロスインスタンスランタイムを追加（マルチインスタンス協調とレート制限管理）
-- ダイナミックツールを追加（実行時ツール生成、セキュリティ、品質チェック）
-- 包括的な検索ツールドキュメントを追加
-- 自己改善のユーザー向けドキュメントを追加
-- ライブ監視のドキュメントを追加
-- メディエーターのドキュメントを追加
 
 **v0.3.1** (2026-02-15)
 

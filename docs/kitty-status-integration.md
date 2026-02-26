@@ -71,6 +71,26 @@ Kitty Status Integration: Active
   Status: Running: read
 ```
 
+### /kitty-image `<path>` `[cols]` `[rows]`
+
+kitty graphics protocol で画像を表示します。
+
+```bash
+/kitty-image ./assets/logo.png
+/kitty-image "./screenshots/ui shot.png" 40 20
+```
+
+- `cols`: 画像の表示幅（セル数、任意）
+- `rows`: 画像の表示高（セル数、任意）
+
+### /kitty-image-clear
+
+表示中のkitty画像をクリアします。
+
+```bash
+/kitty-image-clear
+```
+
 ## インストール
 
 拡張機能は `.pi/extensions/kitty-status-integration.ts` に配置済みです。
@@ -115,6 +135,8 @@ allow_remote_control yes
 
 - **ウィンドウタイトル**: `OSC 2 ; title ST`
 - **通知**: `OSC 99 ; i=ID:d=duration:text ST`
+- **画像表示**: `APC G a=T,t=f,... ; base64(path) APC ST`
+- **画像クリア**: `APC G a=d,d=A ; APC ST`
 
 ### イベント
 

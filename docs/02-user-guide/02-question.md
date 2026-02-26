@@ -28,6 +28,7 @@ related: [./01-extensions.md, ./06-abbr.md]
   questions: Array<{
     question: string;       // 質問テキスト（完全な文章）
     header: string;         // 短いラベル（推奨: 最大30文字）
+    asciiArt?: string;      // 質問と一緒に表示するASCIIアート（改行可）
     options: Array<{
       label: string;        // 表示テキスト（推奨: 1-10文字、簡潔に）
       description?: string; // オプションの説明
@@ -57,6 +58,7 @@ related: [./01-extensions.md, ./06-abbr.md]
       {
         "question": "どのファイルを編集しますか？",
         "header": "ファイル選択",
+        "asciiArt": "[main.ts] -> [utils.ts] -> [config.ts]",
         "options": [
           { "label": "main.ts", "description": "エントリーポイント" },
           { "label": "utils.ts", "description": "ユーティリティ関数" },

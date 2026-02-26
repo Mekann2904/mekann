@@ -32,6 +32,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { randomBytes } from "node:crypto";
+import { Mutex } from "async-mutex";
 
 import {
   getEffectiveLimit,
@@ -181,6 +182,8 @@ export type {
 class GlobalRuntimeStateProvider implements RuntimeStateProvider {
   private readonly globalScope: GlobalScopeWithRuntime;
   private initializationPromise: Promise<void> | null = null;
+  /** BUG-RC-001修正: 初期化の競合状態を防ぐためのMutex */
+  private readonly initMutex = new Mutex();
 
   /**
    * Symbol.forを使用して一意の初期化済みフラグキーを作成
@@ -214,7 +217,8 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
       });
     }
 
-    ensureReservationSweeper();
+    // BUG-RC-002修正: 同期版を使用（後方互換性）
+    ensureReservationSweeperSync();
     const runtime = ensureRuntimeStateShape(global[GlobalRuntimeStateProvider.INIT_KEY]);
     enforceRuntimeLimitConsistency(runtime);
     return runtime;
@@ -238,7 +242,8 @@ class GlobalRuntimeStateProvider implements RuntimeStateProvider {
       });
     }
 
-    ensureReservationSweeper();
+    // BUG-RC-002修正: 非同期版を使用してMutexで保護された初期化
+    await ensureReservationSweeper();
     const runtime = ensureRuntimeStateShape(global[GlobalRuntimeStateProvider.INIT_KEY]);
     enforceRuntimeLimitConsistency(runtime);
     return runtime;
@@ -309,6 +314,24 @@ const STRICT_LIMITS_ENV = "PI_AGENT_RUNTIME_STRICT_LIMITS";
 const DEBUG_RUNTIME_QUEUE =
   process.env.PI_DEBUG_RUNTIME_QUEUE === "1" ||
   process.env.PI_DEBUG_RUNTIME === "1";
+
+// BUG-SEC-001: Tool name validation pattern
+const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+
+/**
+ * Validate tool name against security pattern
+ * @summary Validate tool name
+ * @param name - Tool name to validate
+ * @returns Validated tool name
+ * @throws Error if tool name is invalid
+ */
+function validateToolName(name: unknown): string {
+  const str = String(name || "unknown");
+  if (!TOOL_NAME_PATTERN.test(str)) {
+    throw new Error(`Invalid tool name: ${str}`);
+  }
+  return str;
+}
 let runtimeNowProvider: () => number = () => Date.now();
 let runtimeQueueSequence = 0;
 let runtimeReservationSequence = 0;
@@ -349,16 +372,18 @@ function getDefaultReservationTtlMs(): number {
   return isStableProfile() ? 45_000 : 60_000;
 }
 
+/**
+ * BUG-TS-005修正: Number()は例外をスローしないためtry-catchを削除
+ * NaNチェックは Number.isFinite() で行う
+ * @summary 正の整数に正規化
+ * @param value - 変換する値
+ * @param fallback - 変換失敗時のフォールバック値
+ * @param max - 最大値（デフォルト64）
+ * @returns 正規化された正の整数
+ */
 function normalizePositiveInt(value: unknown, fallback: number, max = 64): number {
-  let parsed: number;
-  try {
-    parsed = Number(value);
-  } catch (error) {
-    // Bug #8 fix: 数値変換エラーをログに記録（通常は発生しない）
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.debug(`[agent-runtime] Number() conversion failed (using fallback=${fallback}): ${errorMessage}`);
-    return fallback;
-  }
+  const parsed = Number(value);
+  // BUG-TS-005修正: Number()は例外をスローしないため、NaNチェックのみ
   if (!Number.isFinite(parsed)) return fallback;
   if (parsed <= 0) return fallback;
   return Math.max(1, Math.min(max, Math.trunc(parsed)));
@@ -392,7 +417,13 @@ function getLocalRuntimeUsage(runtime: AgentRuntimeState): {
 }
 
 function publishRuntimeUsageToCoordinator(): void {
-  const updateRuntimeUsage = (crossInstanceCoordinator as { updateRuntimeUsage?: (activeRequests: number, activeLlm: number) => void }).updateRuntimeUsage;
+  let updateRuntimeUsage: ((activeRequests: number, activeLlm: number) => void) | undefined;
+  try {
+    updateRuntimeUsage = (crossInstanceCoordinator as { updateRuntimeUsage?: (activeRequests: number, activeLlm: number) => void }).updateRuntimeUsage;
+  } catch {
+    // モック環境やモジュール読み込みエラーでは静かに失敗
+    return;
+  }
   if (typeof updateRuntimeUsage !== "function") return;
   const runtime = getSharedRuntimeState();
   const usage = getLocalRuntimeUsage(runtime);
@@ -409,7 +440,13 @@ function getClusterUsageSafe(localUsage: { totalActiveRequests: number; totalAct
   totalActiveRequests: number;
   totalActiveLlm: number;
 } {
-  const getClusterRuntimeUsage = (crossInstanceCoordinator as { getClusterRuntimeUsage?: () => { totalActiveRequests: number; totalActiveLlm: number } }).getClusterRuntimeUsage;
+  let getClusterRuntimeUsage: (() => { totalActiveRequests: number; totalActiveLlm: number }) | undefined;
+  try {
+    getClusterRuntimeUsage = (crossInstanceCoordinator as { getClusterRuntimeUsage?: () => { totalActiveRequests: number; totalActiveLlm: number } }).getClusterRuntimeUsage;
+  } catch {
+    // モック環境やモジュール読み込みエラーではローカル使用量を返す
+    return localUsage;
+  }
   if (typeof getClusterRuntimeUsage !== "function") {
     return localUsage;
   }
@@ -551,28 +588,21 @@ function serializeRuntimeLimits(limits: AgentRuntimeLimits): string {
 let runtimeReservationSweeperInitializing = false;
 let runtimeReservationSweeperInitAttempts = 0;
 const MAX_SWEEPER_INIT_ATTEMPTS = 3;
+/** BUG-RC-002修正: タイマー作成の競合状態を防ぐためのMutex */
+const sweeperMutex = new Mutex();
 
 /**
  * Phase 4修正: 初期化試行回数を制限し、無限待機を防止
+ * BUG-RC-002修正: Mutexを使用してアトミックな初期化を実現
  */
-function ensureReservationSweeper(): void {
+async function ensureReservationSweeper(): Promise<void> {
   // 既に初期化済みの場合は即座にreturn
   if (runtimeReservationSweeper) return;
 
-  // 初期化中の場合は試行回数をカウント
-  if (runtimeReservationSweeperInitializing) {
-    runtimeReservationSweeperInitAttempts++;
-    if (runtimeReservationSweeperInitAttempts > MAX_SWEEPER_INIT_ATTEMPTS) {
-      console.warn(`[agent-runtime] Reservation sweeper initialization blocked after ${MAX_SWEEPER_INIT_ATTEMPTS} attempts`);
-      runtimeReservationSweeperInitAttempts = 0;
-    }
-    return;
-  }
-
-  runtimeReservationSweeperInitializing = true;
-  runtimeReservationSweeperInitAttempts = 0;
+  // BUG-RC-002修正: Mutexで保護された初期化
+  const release = await sweeperMutex.acquire();
   try {
-    // 再度チェック（初期化中に他が作成した可能性）
+    // 再度チェック（Mutex待機中に他が作成した可能性）
     if (runtimeReservationSweeper) return;
 
     // Bug #4 warning: 二重作成のリスクをログ
@@ -594,8 +624,23 @@ function ensureReservationSweeper(): void {
     }, sweepMs);
     runtimeReservationSweeper.unref?.();
   } finally {
-    runtimeReservationSweeperInitializing = false;
+    release();
   }
+}
+
+/**
+ * 同期版ensureReservationSweeper（後方互換性のため）
+ * 非同期版を呼び出すが、結果を待機しない
+ * @deprecated ensureReservationSweeperAsync()の使用を推奨
+ */
+function ensureReservationSweeperSync(): void {
+  // 既に初期化済みの場合は即座にreturn
+  if (runtimeReservationSweeper) return;
+  
+  // 非同期版を起動（待機なし）
+  ensureReservationSweeper().catch((err) => {
+    console.warn("[agent-runtime] Reservation sweeper initialization failed:", err);
+  });
 }
 
 /**
@@ -1194,27 +1239,33 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal.aborted) {
     return Promise.reject(new Error("capacity wait aborted"));
   }
-/**
- * /**
- * * ランタイムの容量を非同期で予約する
- * *
- * * 指定された入力パラメータに基づいてランタイム容量を予約します。
- * * 容量が利用可能になるまで最大待機時間までポーリングで待機します。
- * *
- * * @param
- */
 
+  // BUG-RL-001修正: finallyブロックで確実にタイマーをクリーンアップ
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = () => {
+      if (timeout !== null) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
       signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
+    };
 
     const onAbort = () => {
-      clearTimeout(timeout);
-      signal.removeEventListener("abort", onAbort);
+      if (settled) return;
+      settled = true;
+      cleanup();
       reject(new Error("capacity wait aborted"));
     };
+
+    timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    }, ms);
 
     signal.addEventListener("abort", onAbort, { once: true });
   });
@@ -1287,7 +1338,7 @@ export function tryReserveRuntimeCapacity(
   const nowMs = runtimeNow();
   const reservation: RuntimeCapacityReservationRecord = {
     id: createRuntimeReservationId(),
-    toolName: String(input.toolName || "unknown"),
+    toolName: validateToolName(input.toolName),
     additionalRequests: sanitizePlannedCount(input.additionalRequests),
     additionalLlm: sanitizePlannedCount(input.additionalLlm),
     createdAtMs: nowMs,
@@ -1604,7 +1655,7 @@ export async function waitForRuntimeOrchestrationTurn(
   // Create queue entry with priority metadata
   const entry: RuntimeQueueEntry = {
     id: entryId,
-    toolName: String(input.toolName || "unknown"),
+    toolName: validateToolName(input.toolName),
     priority,
     enqueuedAtMs,
     estimatedDurationMs: input.estimatedDurationMs,
@@ -1838,7 +1889,7 @@ export async function acquireRuntimeDispatchPermit(
   });
   const entry: RuntimeQueueEntry = {
     id: entryId,
-    toolName: String(input.toolName || "unknown"),
+    toolName: validateToolName(input.toolName),
     priority,
     enqueuedAtMs,
     estimatedDurationMs: input.estimatedDurationMs,
@@ -1890,7 +1941,7 @@ export async function acquireRuntimeDispatchPermit(
 
     if (canStart) {
       const reservationAttempt = tryReserveRuntimeCapacity({
-        toolName: input.toolName,
+        toolName: validateToolName(input.toolName),
         additionalRequests,
         additionalLlm,
         reservationTtlMs: input.reservationTtlMs,
@@ -1911,7 +1962,7 @@ export async function acquireRuntimeDispatchPermit(
         let consumed = false;
         const lease: RuntimeDispatchPermitLease = {
           id: entryId,
-          toolName: input.toolName,
+          toolName: validateToolName(input.toolName),
           additionalRequests,
           additionalLlm,
           get expiresAtMs() {
@@ -2170,7 +2221,7 @@ export function broadcastCurrentQueueState(): void {
     activeOrchestrations: snapshot.activeOrchestrations,
     stealableEntries: snapshot.queuedTools.slice(0, 10).map((tool) => ({
       id: `entry-${runtimeNow()}-${Math.random().toString(36).slice(2, 8)}`,
-      toolName: tool.split(":")[0],
+      toolName: validateToolName(tool.split(":")[0]),
       priority: tool.split(":")[1] ?? "normal",
       instanceId: "self",
       enqueuedAt: new Date().toISOString(),

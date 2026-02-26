@@ -45,6 +45,35 @@ import {
   DEFAULT_SCHEDULER_CONFIG,
   type SchedulerConfig,
 } from "./priority-scheduler.js";
+import { SelfRevisionModule, type RevisionExecutor } from "./self-revision.js";
+
+/**
+ * 実行トレースエントリ
+ * TDP: Node-scoped context用の実行履歴
+ * @summary トレースエントリ型
+ */
+export interface ExecutionTraceEntry {
+  /** タイムスタンプ */
+  timestamp: number;
+  /** エントリタイプ */
+  type: "action" | "observation";
+  /** 内容 */
+  content: string;
+}
+
+/**
+ * Node-scoped Context
+ * TDP: 各ノードがアクセス可能なコンテキスト
+ * @summary ノードコンテキスト型
+ */
+export interface NodeExecutionContext {
+  /** 前提ノードの結果 */
+  prerequisiteResults: Map<string, DagTaskResult>;
+  /** 現在ノードの実行履歴 */
+  localTrace: ExecutionTraceEntry[];
+  /** ノード仕様 */
+  nodeSpec: TaskNode;
+}
 
 /**
  * DAG実行のオプション
@@ -59,6 +88,10 @@ import {
  * @param useWeightBasedScheduling - DynTaskMAS重みベーススケジューリングを使用するか
  * @param weightConfig - 重み計算設定
  * @param schedulerConfig - スケジューラ設定
+ * @param enableSelfRevision - Self-Revisionを有効にするか
+ * @param enableLocalReplanning - Local Replanningを有効にするか
+ * @param maxRetriesPerNode - ノードあたりの最大再試行回数
+ * @param isRecoverableError - リカバリー可能エラー判定関数
  */
 export interface DagExecutorOptions {
   /** 中止シグナル */
@@ -81,6 +114,14 @@ export interface DagExecutorOptions {
   weightConfig?: WeightConfig;
   /** スケジューラ設定 */
   schedulerConfig?: SchedulerConfig;
+  /** Self-Revisionを有効にするか（デフォルト: true） */
+  enableSelfRevision?: boolean;
+  /** Local Replanningを有効にするか（デフォルト: true） */
+  enableLocalReplanning?: boolean;
+  /** ノードあたりの最大再試行回数（デフォルト: 2） */
+  maxRetriesPerNode?: number;
+  /** リカバリー可能エラー判定関数 */
+  isRecoverableError?: (error: Error) => boolean;
 }
 
 /**
@@ -129,18 +170,24 @@ interface BatchResult<T> {
  *   return await runSubagent(task.assignedAgent, task.description);
  * });
  */
-export class DagExecutor<T = unknown> {
+export class DagExecutor<T = unknown> implements RevisionExecutor {
   private graph: TaskDependencyGraph;
   private taskNodes: Map<string, TaskNode>;
   private results: Map<string, DagTaskResult<T>>;
   private plan: TaskPlan;
   private options: Required<
-    Pick<DagExecutorOptions, "maxConcurrency" | "abortOnFirstError" | "useWeightBasedScheduling">
+    Pick<DagExecutorOptions, "maxConcurrency" | "abortOnFirstError" | "useWeightBasedScheduling" | "enableSelfRevision" | "enableLocalReplanning" | "maxRetriesPerNode">
   > &
     DagExecutorOptions;
   private startTime: number = 0;
   private scheduler: PriorityScheduler | null = null;
   private taskWeights: Map<string, number> = new Map();
+  /** TDP: ノード実行履歴 */
+  private nodeExecutionTraces: Map<string, ExecutionTraceEntry[]> = new Map();
+  /** TDP: ノード再試行カウント */
+  private nodeRetryCount: Map<string, number> = new Map();
+  /** TDP: Self-Revisionモジュール */
+  private revisionModule: SelfRevisionModule | null = null;
 
   /**
    * DAG Executorを作成
@@ -158,6 +205,9 @@ export class DagExecutor<T = unknown> {
       maxConcurrency: 4,
       abortOnFirstError: false,
       useWeightBasedScheduling: true,
+      enableSelfRevision: true,
+      enableLocalReplanning: true,
+      maxRetriesPerNode: 2,
       ...options,
     };
 
@@ -169,6 +219,11 @@ export class DagExecutor<T = unknown> {
         ...this.options.schedulerConfig,
       };
       this.scheduler = new PriorityScheduler(schedulerConfig);
+    }
+
+    // TDP: Self-Revisionの初期化
+    if (this.options.enableSelfRevision) {
+      this.revisionModule = new SelfRevisionModule(this);
     }
 
     this.initializeGraph();
@@ -288,6 +343,7 @@ export class DagExecutor<T = unknown> {
   /**
    * タスクのバッチを並列実行
    * DynTaskMAS: 重みベーススケジューリングを適用
+   * TDP: Self-Revisionを統合
    * @summary バッチ実行
    * @param tasks - 実行対象のタスクノード
    * @param executor - タスク実行関数
@@ -305,9 +361,12 @@ export class DagExecutor<T = unknown> {
         .map((n) => this.taskNodes.get(n.id))
         .filter((t): t is TaskNode => t !== undefined);
 
-      const scheduledTaskNodes = this.scheduler.scheduleTasks(taskNodes, this.taskWeights);
+      const scheduledTaskNodes = this.scheduler.scheduleTasks(
+        taskNodes,
+        this.taskWeights,
+      );
       const scheduledIds = new Set(scheduledTaskNodes.map((t) => t.id));
-      
+
       // スケジュール順に並べ替え
       orderedTasks = tasks
         .filter((n) => scheduledIds.has(n.id))
@@ -337,6 +396,9 @@ export class DagExecutor<T = unknown> {
     );
 
     // 結果を処理
+    const completedIds: string[] = [];
+    const failedIds: string[] = [];
+
     for (const result of batchResults) {
       this.results.set(result.taskId, {
         taskId: result.taskId,
@@ -352,22 +414,49 @@ export class DagExecutor<T = unknown> {
         this.updateTaskWeight(result.taskId, "completed");
         // スケジューラに完了を記録
         this.scheduler?.markCompleted(result.taskId);
-        this.options.onTaskComplete?.(result.taskId, this.results.get(result.taskId)!);
+        this.options.onTaskComplete?.(
+          result.taskId,
+          this.results.get(result.taskId)!,
+        );
+        completedIds.push(result.taskId);
       } else {
         this.graph.markFailed(result.taskId, result.error);
         // DynTaskMAS: 失敗タスクの重みを更新
         this.updateTaskWeight(result.taskId, "failed");
         this.options.onTaskError?.(result.taskId, result.error!);
+        failedIds.push(result.taskId);
 
         if (this.options.abortOnFirstError) {
           throw result.error;
         }
       }
     }
+
+    // TDP: Self-Revisionを実行
+    if (this.revisionModule && (completedIds.length > 0 || failedIds.length > 0)) {
+      const revisionResult = await this.revisionModule.revise(
+        completedIds,
+        failedIds,
+        this.results as Map<string, DagTaskResult>,
+      );
+
+      if (!revisionResult.feasible) {
+        console.warn(
+          "[Self-Revision] DAG became infeasible after revision",
+        );
+      }
+
+      if (revisionResult.actions.length > 0) {
+        console.log(
+          `[Self-Revision] Applied ${revisionResult.actions.length} revision(s): ${revisionResult.reason}`,
+        );
+      }
+    }
   }
 
   /**
    * 並列数制限付きでタスクを実行
+   * TDP: Local Replanningを統合
    * @summary 並列実行
    * @param items - バッチアイテム
    * @param executor - タスク実行関数
@@ -390,9 +479,27 @@ export class DagExecutor<T = unknown> {
       async (item, _index, workerSignal) => {
         const startMs = Date.now();
 
+        // アクション開始をトレースに記録
+        this.appendToTrace(item.node.id, {
+          timestamp: startMs,
+          type: "action",
+          content: `Starting task: ${item.taskNode.description.substring(0, 100)}`,
+        });
+
         try {
-          const output = await executor(item.taskNode, item.context, workerSignal);
+          const output = await executor(
+            item.taskNode,
+            item.context,
+            workerSignal,
+          );
           const durationMs = Date.now() - startMs;
+
+          // 成功をトレースに記録
+          this.appendToTrace(item.node.id, {
+            timestamp: Date.now(),
+            type: "observation",
+            content: `Task completed successfully in ${durationMs}ms`,
+          });
 
           return {
             taskId: item.node.id,
@@ -402,10 +509,39 @@ export class DagExecutor<T = unknown> {
           };
         } catch (error) {
           const durationMs = Date.now() - startMs;
+          const execError =
+            error instanceof Error ? error : new Error(String(error));
+
+          // TDP: Local Replanningを試行
+          if (
+            this.options.enableLocalReplanning &&
+            this.isRecoverable(execError)
+          ) {
+            const retryResult = await this.localReplan(
+              item.taskNode,
+              execError,
+              executor,
+              workerSignal,
+            );
+
+            if (retryResult.status === "completed") {
+              return retryResult;
+            }
+
+            return {
+              taskId: item.node.id,
+              status: "failed" as const,
+              error:
+                retryResult.error ||
+                new Error("Local replanning failed"),
+              durationMs: durationMs + retryResult.durationMs,
+            };
+          }
+
           return {
             taskId: item.node.id,
             status: "failed" as const,
-            error: error instanceof Error ? error : new Error(String(error)),
+            error: execError,
             durationMs,
           };
         }
@@ -416,6 +552,7 @@ export class DagExecutor<T = unknown> {
 
   /**
    * 依存タスクの結果からコンテキストを構築
+   * TDP: Node-scoped contextを使用
    * @summary コンテキスト構築
    * @param task - タスクノード
    * @returns コンテキスト文字列
@@ -426,13 +563,13 @@ export class DagExecutor<T = unknown> {
       return this.options.contextInjector(task, this.results);
     }
 
-    // デフォルトのコンテキスト構築
+    // TDP: Node-scoped contextを構築
+    const scopedContext = this.buildNodeScopedContext(task);
     const contexts: string[] = [];
-    const inputContextIds = task.inputContext ?? task.dependencies;
 
-    for (const depId of inputContextIds) {
-      const result = this.results.get(depId);
-      if (result?.status === "completed" && result.output !== undefined) {
+    // 1. 前提ノードの結果
+    for (const [depId, result] of scopedContext.prerequisiteResults) {
+      if (result.status === "completed" && result.output !== undefined) {
         const outputStr =
           typeof result.output === "string"
             ? result.output
@@ -441,7 +578,170 @@ export class DagExecutor<T = unknown> {
       }
     }
 
+    // 2. 現在ノードの実行履歴（TDP追加）
+    if (scopedContext.localTrace.length > 0) {
+      contexts.push("## Current Node Execution Trace");
+      for (const entry of scopedContext.localTrace) {
+        const prefix = entry.type === "action" ? "[ACTION]" : "[OBSERVATION]";
+        contexts.push(`${prefix} ${entry.content}`);
+      }
+    }
+
     return contexts.join("\n\n");
+  }
+
+  /**
+   * Node-scoped contextを構築
+   * TDP: 各ノードがアクセス可能なコンテキストを生成
+   * @summary ノードスコープドコンテキスト構築
+   * @param task - タスクノード
+   * @returns ノードスコープドコンテキスト
+   * @internal
+   */
+  private buildNodeScopedContext(task: TaskNode): NodeExecutionContext {
+    const prerequisiteResults = new Map<string, DagTaskResult>();
+    const inputContextIds = task.inputContext ?? task.dependencies;
+
+    // 前提ノードの結果のみを収集
+    for (const depId of inputContextIds) {
+      const result = this.results.get(depId);
+      if (result) {
+        prerequisiteResults.set(depId, result);
+      }
+    }
+
+    // 現在ノードの実行履歴
+    const localTrace = this.nodeExecutionTraces.get(task.id) || [];
+
+    return {
+      prerequisiteResults,
+      localTrace,
+      nodeSpec: task,
+    };
+  }
+
+  /**
+   * ノード実行履歴を追加
+   * TDP: 実行トレースの記録
+   * @summary トレース追加
+   * @param taskId - タスクID
+   * @param entry - トレースエントリ
+   * @internal
+   */
+  private appendToTrace(taskId: string, entry: ExecutionTraceEntry): void {
+    const trace = this.nodeExecutionTraces.get(taskId) || [];
+    trace.push(entry);
+    this.nodeExecutionTraces.set(taskId, trace);
+  }
+
+  /**
+   * エラーからリカバリー可能か判定
+   * TDP: Local Replanning用のエラー分類
+   * @summary リカバリー可能性判定
+   * @param error - エラー
+   * @returns リカバリー可能な場合はtrue
+   * @internal
+   */
+  private isRecoverable(error: Error): boolean {
+    if (this.options.isRecoverableError) {
+      return this.options.isRecoverableError(error);
+    }
+
+    // デフォルトのリカバリー判定
+    const recoverablePatterns = [
+      /timeout/i,
+      /rate limit/i,
+      /temporarily unavailable/i,
+      /network/i,
+      /ECONNRESET/i,
+      /ETIMEDOUT/i,
+    ];
+
+    const message = error.message.toLowerCase();
+    return recoverablePatterns.some((p) => p.test(message));
+  }
+
+  /**
+   * ノードをローカルで再計画
+   * TDP: Local Replanning
+   * @summary ローカルリプランニング
+   * @param task - タスクノード
+   * @param error - 発生したエラー
+   * @param executor - タスク実行関数
+   * @param signal - 中止シグナル
+   * @returns 再試行結果
+   * @internal
+   */
+  private async localReplan(
+    task: TaskNode,
+    error: Error,
+    executor: TaskExecutor<T>,
+    signal?: AbortSignal,
+  ): Promise<BatchResult<T>> {
+    const taskId = task.id;
+    const retryCount = this.nodeRetryCount.get(taskId) || 0;
+    const maxRetries = this.options.maxRetriesPerNode;
+
+    if (retryCount >= maxRetries) {
+      return {
+        taskId,
+        status: "failed",
+        error: new Error(
+          `Max retries (${maxRetries}) exceeded for task ${taskId}`,
+        ),
+        durationMs: 0,
+      };
+    }
+
+    // 再試行カウントを増加
+    this.nodeRetryCount.set(taskId, retryCount + 1);
+
+    // 実行履歴にエラーを追加
+    this.appendToTrace(taskId, {
+      timestamp: Date.now(),
+      type: "observation",
+      content: `ERROR: ${error.message}`,
+    });
+
+    // 再実行
+    console.log(
+      `[Local Replan] Retrying task ${taskId} (attempt ${retryCount + 1}/${maxRetries})`,
+    );
+
+    const startMs = Date.now();
+    try {
+      const context = this.buildContext(task);
+      const output = await executor(task, context, signal);
+      const durationMs = Date.now() - startMs;
+
+      // 成功時は再試行カウントをリセット
+      this.nodeRetryCount.delete(taskId);
+
+      // 成功をトレースに記録
+      this.appendToTrace(taskId, {
+        timestamp: Date.now(),
+        type: "observation",
+        content: `RETRY_SUCCESS: Completed after ${retryCount + 1} attempt(s)`,
+      });
+
+      return {
+        taskId,
+        status: "completed",
+        output,
+        durationMs,
+      };
+    } catch (retryError) {
+      const durationMs = Date.now() - startMs;
+      return {
+        taskId,
+        status: "failed",
+        error:
+          retryError instanceof Error
+            ? retryError
+            : new Error(String(retryError)),
+        durationMs,
+      };
+    }
   }
 
   /**

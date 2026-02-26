@@ -54,6 +54,15 @@ const RECOMMENDED_REVIEWER_ID = "reviewer";
 const CLEAR_GOAL_SIGNAL =
   /(達成条件|完了条件|成功条件|受け入れ条件|until|done when|all tests pass|tests pass|lint pass|build succeeds?|exit code 0|エラー0|テスト.*通る|lint.*通る|build.*成功)/i;
 
+/**
+ * BUG-TS-004修正: ツール呼び出しイベントの型定義
+ * any型を排除し、コンパイル時の型チェックを有効化
+ */
+interface ToolCallEventLike {
+  toolName?: unknown;
+  input?: unknown;
+}
+
 const SUBAGENT_EXECUTION_TOOLS = new Set([
   "subagent_run",
   "subagent_run_parallel",
@@ -151,7 +160,13 @@ async function resetStateAsync(): Promise<void> {
   });
 }
 
-function refreshStatus(ctx: any): void {
+/**
+ * BUG-TS-004修正: 型安全なコンテキストパラメータ
+ * @summary ステータスを更新
+ * @param ctx - 拡張機能APIコンテキスト
+ * @returns なし
+ */
+function refreshStatus(ctx: ExtensionAPI["context"]): void {
   if (!ctx?.hasUI || !ctx?.ui) return;
 
   if (!state.activeUlMode) {
@@ -242,8 +257,12 @@ function getAdaptiveThrottleMs(): number {
 /**
  * 適応的スロットリング付きのrefreshStatus。
  * 負荷に応じてスロットリング間隔を動的に調整し、UI更新のオーバーヘッドを削減する。
+ * BUG-TS-004修正: 型安全なコンテキストパラメータ
+ * @summary スロットリング付きステータス更新
+ * @param ctx - 拡張機能APIコンテキスト
+ * @returns なし
  */
-function refreshStatusThrottled(ctx: any): void {
+function refreshStatusThrottled(ctx: ExtensionAPI["context"]): void {
   const now = Date.now();
   adaptiveThrottleMs = getAdaptiveThrottleMs();
 
@@ -322,7 +341,13 @@ function normalizeId(value: unknown): string {
   return String(value || "").trim().toLowerCase();
 }
 
-function parseToolInput(event: any): Record<string, unknown> | undefined {
+/**
+ * BUG-TS-004修正: 型安全なイベントパラメータ
+ * @summary ツール入力を解析
+ * @param event - ツール呼び出しイベント
+ * @returns 解析された入力オブジェクトまたはundefined
+ */
+function parseToolInput(event: ToolCallEventLike): Record<string, unknown> | undefined {
   const direct = toObjectLike(event?.input);
   if (direct) return direct;
 
@@ -345,7 +370,13 @@ function extractIdList(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function isRecommendedSubagentParallelCall(event: any): boolean {
+/**
+ * BUG-TS-004修正: 型安全なイベントパラメータ
+ * @summary 推奨サブエージェント並列呼び出しかどうかを判定
+ * @param event - ツール呼び出しイベント
+ * @returns 推奨サブエージェント並列呼び出しの場合true
+ */
+function isRecommendedSubagentParallelCall(event: ToolCallEventLike): boolean {
   const toolName = normalizeId(event?.toolName);
   if (toolName !== "subagent_run_parallel") {
     return false;
@@ -360,7 +391,13 @@ function isRecommendedSubagentParallelCall(event: any): boolean {
   return RECOMMENDED_SUBAGENT_IDS.every((id) => idSet.has(id));
 }
 
-function isRecommendedCoreTeamCall(event: any): boolean {
+/**
+ * BUG-TS-004修正: 型安全なイベントパラメータ
+ * @summary 推奨コアチーム呼び出しかどうかを判定
+ * @param event - ツール呼び出しイベント
+ * @returns 推奨コアチーム呼び出しの場合true
+ */
+function isRecommendedCoreTeamCall(event: ToolCallEventLike): boolean {
   const toolName = normalizeId(event?.toolName);
   const input = parseToolInput(event);
 
@@ -379,7 +416,13 @@ function isRecommendedCoreTeamCall(event: any): boolean {
   return false;
 }
 
-function isRecommendedReviewerCall(event: any): boolean {
+/**
+ * BUG-TS-004修正: 型安全なイベントパラメータ
+ * @summary 推奨レビュアー呼び出しかどうかを判定
+ * @param event - ツール呼び出しイベント
+ * @returns 推奨レビュアー呼び出しの場合true
+ */
+function isRecommendedReviewerCall(event: ToolCallEventLike): boolean {
   const toolName = normalizeId(event?.toolName);
   if (toolName !== "subagent_run") {
     return false;

@@ -79,6 +79,36 @@ export interface BaseRunRecord {
 }
 
 /**
+ * BUG-SEC-004修正: IDのバリデーションパターン
+ * パストラバーサル攻撃を防ぐため、安全な文字のみを許可
+ */
+const SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+
+/**
+ * BUG-SEC-004修正: IDをバリデーションしてパストラバーサルを防止
+ * @summary IDをバリデーション
+ * @param id - 検証するID
+ * @returns バリデーション結果（true: 安全, false: 危険）
+ */
+export function isSafeId(id: unknown): id is string {
+  if (typeof id !== "string") return false;
+  const trimmed = id.trim();
+  if (trimmed.length === 0 || trimmed.length > 64) return false;
+  return SAFE_ID_PATTERN.test(trimmed);
+}
+
+/**
+ * BUG-SEC-004修正: IDをサニタイズ（安全な形式に変換）
+ * @summary IDをサニタイズ
+ * @param id - サニタイズするID
+ * @returns サニタイズされたID（安全でない場合は空文字）
+ */
+export function sanitizeId(id: unknown): string {
+  if (!isSafeId(id)) return "";
+  return (id as string).trim();
+}
+
+/**
  * ストレージパスのインターフェース
  * @summary ストレージパス定義
  */
@@ -213,6 +243,7 @@ export function pruneRunArtifacts<TRun extends BaseRunRecord>(
 
 /**
  * IDでエンティティをマージ
+ * BUG-SEC-004修正: IDのサニタイズを適用
  * @summary エンティティマージ
  * @param disk ディスク上のエンティティ配列
  * @param next 次のエンティティ配列
@@ -227,17 +258,19 @@ export function mergeEntitiesById<TEntity extends HasId>(
   for (const entity of disk) {
     if (!entity || typeof entity !== "object") continue;
     if (typeof (entity as { id?: unknown }).id !== "string") continue;
-    const id = (entity as { id: string }).id.trim();
+    // BUG-SEC-004修正: IDをサニタイズ
+    const id = sanitizeId((entity as { id: string }).id);
     if (!id) continue;
-    byId.set(entity.id, entity);
+    byId.set(id, entity);
   }
 
   for (const entity of next) {
     if (!entity || typeof entity !== "object") continue;
     if (typeof (entity as { id?: unknown }).id !== "string") continue;
-    const id = (entity as { id: string }).id.trim();
+    // BUG-SEC-004修正: IDをサニタイズ
+    const id = sanitizeId((entity as { id: string }).id);
     if (!id) continue;
-    byId.set(entity.id, entity);
+    byId.set(id, entity);
   }
 
   return Array.from(byId.values());

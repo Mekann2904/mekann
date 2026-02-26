@@ -43,6 +43,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFile
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pid } from "node:process";
+import { randomBytes } from "node:crypto";
 import {
   getRuntimeConfig,
   type RuntimeConfig,
@@ -286,7 +287,7 @@ function patchMyInstanceInfo(mutator: (info: InstanceInfo) => void): void {
 
 function generateInstanceId(sessionId: string): string {
   const timestamp = currentTimeMs().toString(36);
-  const randomSuffix = Math.random().toString(36).slice(2, 6);
+  const randomSuffix = randomBytes(4).toString("hex");
   return `sess-${sessionId.slice(0, 8)}-pid${pid}-${timestamp}-${randomSuffix}`;
 }
 
@@ -398,24 +399,36 @@ export function registerInstance(
 
   // Write initial lock file
   const lockFile = join(INSTANCES_DIR, `${instanceId}.lock`);
-  writeJsonFileAtomic(lockFile, info);
 
-  // Start heartbeat
-  const heartbeatTimer = setInterval(() => {
-    updateHeartbeat();
-    cleanupDeadInstances();
-  }, config.heartbeatIntervalMs);
+  // Track timer for cleanup on error (BUG-018)
+  let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
-  // Don't prevent process exit
-  heartbeatTimer.unref();
+  try {
+    writeJsonFileAtomic(lockFile, info);
 
-  state = {
-    myInstanceId: instanceId,
-    mySessionId: sessionId,
-    myStartedAt: now,
-    config,
-    heartbeatTimer,
-  };
+    // Start heartbeat
+    heartbeatTimer = setInterval(() => {
+      updateHeartbeat();
+      cleanupDeadInstances();
+    }, config.heartbeatIntervalMs);
+
+    // Don't prevent process exit
+    heartbeatTimer.unref();
+
+    state = {
+      myInstanceId: instanceId,
+      mySessionId: sessionId,
+      myStartedAt: now,
+      config,
+      heartbeatTimer,
+    };
+  } catch (error) {
+    // Clean up timer on error to prevent leak (BUG-018)
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+    }
+    throw error;
+  }
 }
 
 /**

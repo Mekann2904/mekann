@@ -30,6 +30,7 @@
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -88,9 +89,18 @@ const PATCH_TARGET: PatchTarget = {
 async function patchFile(requireFn: NodeRequire, target: PatchTarget): Promise<"patched" | "already" | "skip"> {
   let resolvedPath: string;
   try {
-    resolvedPath = requireFn.resolve(target.modulePath);
+    // Newer pi-coding-agent versions restrict subpath resolution via package exports.
+    // Resolve the public entrypoint, then derive dist/core/agent-session.js.
+    const packageEntrypoint = requireFn.resolve("@mariozechner/pi-coding-agent");
+    const distDir = dirname(packageEntrypoint);
+    resolvedPath = join(distDir, "core", "agent-session.js");
   } catch {
-    return "skip";
+    try {
+      // Backward-compatible fallback for environments where subpath resolve still works.
+      resolvedPath = requireFn.resolve(target.modulePath);
+    } catch {
+      return "skip";
+    }
   }
 
   const source = await readFile(resolvedPath, "utf-8");

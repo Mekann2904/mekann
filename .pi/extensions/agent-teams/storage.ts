@@ -56,9 +56,9 @@ export type TeamEnabledState = "enabled" | "disabled";
 /**
  * チームの実行戦略を表す型
  * @summary 実行戦略
- * @type {"parallel" | "sequential"}
+ * @type {"parallel" | "sequential" | "repoaudit"}
  */
-export type TeamStrategy = "parallel" | "sequential";
+export type TeamStrategy = "parallel" | "sequential" | "repoaudit";
 /**
  * チーム審査の判定結果
  * @summary 判定結果

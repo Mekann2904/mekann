@@ -888,8 +888,13 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         },
       });
 
+      // repoaudit戦略を含む3-way分岐
       const strategy: TeamStrategy =
-        String(params.strategy || "parallel").toLowerCase() === "sequential" ? "sequential" : "parallel";
+        String(params.strategy || "parallel").toLowerCase() === "sequential"
+          ? "sequential"
+          : String(params.strategy || "parallel").toLowerCase() === "repoaudit"
+            ? "repoaudit"
+            : "parallel";
       const communicationRounds = normalizeCommunicationRounds(
         params.communicationRounds,
         DEFAULT_COMMUNICATION_ROUNDS,
@@ -1433,8 +1438,13 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         },
       });
 
+      // repoaudit戦略を含む3-way分岐
       const strategy: TeamStrategy =
-        String(params.strategy || "parallel").toLowerCase() === "sequential" ? "sequential" : "parallel";
+        String(params.strategy || "parallel").toLowerCase() === "sequential"
+          ? "sequential"
+          : String(params.strategy || "parallel").toLowerCase() === "repoaudit"
+            ? "repoaudit"
+            : "parallel";
       const communicationRounds = normalizeCommunicationRounds(
         params.communicationRounds,
         DEFAULT_COMMUNICATION_ROUNDS,

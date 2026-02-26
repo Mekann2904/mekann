@@ -14,6 +14,7 @@ vi.mock("@mariozechner/pi-coding-agent", () => ({
 vi.mock("node:child_process", () => ({
 	spawn: vi.fn(() => ({
 		unref: vi.fn(),
+		on: vi.fn(),
 	})),
 }));
 

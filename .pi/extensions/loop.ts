@@ -1643,7 +1643,14 @@ async function callModelViaPi(
   });
 }
 
-function startLoopActivityIndicator(ctx: any, maxIterations: number): LoopActivityIndicator {
+/**
+ * BUG-TS-003修正: any型を適切な型定義に置き換え
+ * @summary ループアクティビティインジケーターを開始
+ * @param ctx - 拡張機能APIコンテキスト
+ * @param maxIterations - 最大反復回数
+ * @returns ループアクティビティインジケーター
+ */
+function startLoopActivityIndicator(ctx: ExtensionAPI["context"], maxIterations: number): LoopActivityIndicator {
   if (!ctx?.hasUI || !ctx?.ui) {
     return {
       updateFromProgress: () => {},
@@ -1651,7 +1658,8 @@ function startLoopActivityIndicator(ctx: any, maxIterations: number): LoopActivi
     };
   }
 
-  const ui: any = ctx.ui;
+  // BUG-TS-003修正: uiの型を明示的に定義
+  const ui = ctx.ui;
   const statusKey = "loop-status";
   let label = `Loop running (max=${maxIterations})`;
   let frame = 0;

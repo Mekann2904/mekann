@@ -315,6 +315,8 @@ interface ActiveAutonomousRun {
   currentPhase: ULPhase;
   /** ULフェーズ間のコンテキスト受け渡し */
   phaseContext: ULPhaseContext;
+  /** 現在のフェーズの再試行回数（NEW-001: 無限再試行防止） */
+  phaseRetryCount: number;
 }
 
 /** 成功パターンの記録 */
@@ -2386,7 +2388,12 @@ ${prompt}`;
       // 429エラー時は少し長く待機してから次へ
       if (is429) {
         console.warn(`[self-improvement-loop] Rate limit detected, waiting 3 seconds before continuing...`);
-        await sleepWithAbort(3000, signal).catch(() => {});
+        // BUG-EX-001修正: AbortErrorのみ無視、他のエラーはログに記録
+        await sleepWithAbort(3000, signal).catch((e) => {
+          if (e?.name !== 'AbortError') {
+            console.warn(`[self-improvement-loop] Sleep interrupted: ${e}`);
+          }
+        });
       }
       
       // エラー時はデフォルトスコアで続行
@@ -2718,6 +2725,9 @@ export default (api: ExtensionAPI) => {
   async function dispatchNextCycle(run: ActiveAutonomousRun, deliverAs?: "followUp"): Promise<void> {
     const nextCycle = run.cycle + 1;
     run.cycle = nextCycle;
+    
+    // inFlightCycleを事前に設定（api.on("input")でイベントがスキップされた場合のフォールバック）
+    run.inFlightCycle = nextCycle;
 
     // サイクル開始時の変更ファイル一覧を記録
     // （このサイクルで新たに変更されたファイルのみをコミットするため）
@@ -2738,6 +2748,7 @@ export default (api: ExtensionAPI) => {
     }
 
     appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} dispatched cycle=${nextCycle}`);
+    console.log(`[self-improvement-loop] Dispatched cycle ${nextCycle}, inFlightCycle=${run.inFlightCycle}`);
   }
 
   /**
@@ -2880,7 +2891,10 @@ export default (api: ExtensionAPI) => {
         run.cycleSummaries.push(`Cycle ${run.cycle}: 完了 (ULモード)`);
         
         // 軌跡トラッカーに記録
-        run.trajectoryTracker.recordStep(`Cycle ${run.cycle} completed`).catch(() => {});
+        // BUG-EX-002修正: エラーをログに記録（元はcatch {}で無視していた）
+        run.trajectoryTracker.recordStep(`Cycle ${run.cycle} completed`).catch((e) => {
+          console.warn(`[self-improvement-loop] Failed to record trajectory step: ${e}`);
+        });
         
         // 停止条件をチェック
         if (shouldStopLoop(run)) {
@@ -3041,6 +3055,7 @@ export default (api: ExtensionAPI) => {
       autoApprove,
       currentPhase: 'research',
       phaseContext: {},
+      phaseRetryCount: 0, // NEW-001: 再試行回数初期化
     };
 
     initializeAutonomousLoopLog(logPath, run);
@@ -3065,12 +3080,16 @@ export default (api: ExtensionAPI) => {
 
   api.on("input", async (event, _ctx) => {
     const run = activeRun;
-    if (!run || event.source !== "extension") return;
-    const marker = parseLoopCycleMarker(extractInputText(event));
+    if (!run) return;
+    // 注意: sourceチェックを削除
+    // api.sendUserMessage()で送信されたメッセージも処理する必要がある
+    const inputText = extractInputText(event);
+    const marker = parseLoopCycleMarker(inputText);
     if (!marker) return;
     if (marker.runId !== run.runId) return;
     if (marker.cycle > run.cycle) return;
     run.inFlightCycle = marker.cycle;
+    console.log(`[self-improvement-loop] input event: cycle=${marker.cycle}, source=${event.source}`);
   });
 
   api.on("agent_end", async (event, ctx) => {
@@ -3098,6 +3117,8 @@ export default (api: ExtensionAPI) => {
     if (run.ulMode) {
       const ulPhaseMarker = parseULPhaseMarker(outputText);
       if (ulPhaseMarker && ulPhaseMarker.runId === run.runId) {
+        // マーカーが検出されたので再試行カウントをリセット
+        run.phaseRetryCount = 0;
         appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} completed UL phase=${ulPhaseMarker.phase} cycle=${ulPhaseMarker.cycle}`);
         
         const ctxTyped = ctx as { isIdle?: () => boolean };
@@ -3106,10 +3127,82 @@ export default (api: ExtensionAPI) => {
         });
         return;
       }
+      
+      // ULモードでマーカーが検出されない場合、現在のフェーズを継続
+      // これはエージェントが途中で停止した場合などの回復処理
+      console.log(`[self-improvement-loop] UL phase marker not found in output, current phase=${run.currentPhase}`);
+      appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} UL phase marker not found, phase=${run.currentPhase}, retryCount=${run.phaseRetryCount}`);
+      
+      // NEW-001: 再試行制限チェック（環境変数で設定可能、デフォルト3回）
+      const maxPhaseRetries = parseInt(process.env.PI_UL_MAX_PHASE_RETRIES ?? "3", 10);
+      if (run.phaseRetryCount >= maxPhaseRetries) {
+        console.error(`[self-improvement-loop] Max phase retries (${maxPhaseRetries}) exceeded for phase=${run.currentPhase}`);
+        appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} ERROR: max retries exceeded (${maxPhaseRetries})`);
+        finishRun("error", `Max phase retries exceeded for phase: ${run.currentPhase}`);
+        return;
+      }
+      
+      // 現在のフェーズを再ディスパッチ
+      const ctxTyped = ctx as { isIdle?: () => boolean };
+      const deliverAs = ctxTyped?.isIdle?.() ? undefined : "followUp" as const;
+      
+      // フェーズコンテキストに応じて次のフェーズを決定
+      // 出力がある程度の長さがあれば、フェーズ完了とみなして次へ進む
+      // NEW-001: 閾値は環境変数で設定可能（デフォルト200文字）
+      const phaseCompleteThreshold = parseInt(process.env.PI_UL_PHASE_THRESHOLD ?? "200", 10);
+      if (outputText.length > phaseCompleteThreshold) {
+        // 出力がある程度あるので、フェーズ完了とみなす
+        run.phaseRetryCount = 0; // 成功時はリセット
+        switch (run.currentPhase) {
+          case 'research':
+            run.phaseContext.researchOutput = outputText;
+            await dispatchULPhase(run, 'plan', deliverAs);
+            return;
+          case 'plan':
+            run.phaseContext.planOutput = outputText;
+            await dispatchULPhase(run, 'implement', deliverAs);
+            return;
+          case 'implement':
+            // implementフェーズ完了時は次サイクルへ
+            run.phaseContext = {};
+            await dispatchULPhase(run, 'research', deliverAs);
+            return;
+        }
+      } else {
+        // 出力が短い場合は同じフェーズを再試行
+        run.phaseRetryCount++;
+        console.log(`[self-improvement-loop] Retrying current phase: ${run.currentPhase}, retryCount=${run.phaseRetryCount}/${maxPhaseRetries}`);
+        appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} retrying phase=${run.currentPhase}, retryCount=${run.phaseRetryCount}/${maxPhaseRetries}`);
+        await dispatchULPhase(run, run.currentPhase as 'research' | 'plan' | 'implement', deliverAs);
+        return;
+      }
     }
 
     // 非ULモード: 従来のサイクル処理
-    if (run.inFlightCycle === null) return;
+    // inFlightCycleがnullでも、出力にマーカーがあれば処理を継続
+    if (run.inFlightCycle === null) {
+      // 出力からマーカーを直接検出して処理
+      const outputMarker = parseLoopCycleMarker(outputText);
+      if (outputMarker && outputMarker.runId === run.runId) {
+        console.log(`[self-improvement-loop] Found marker in output directly: cycle=${outputMarker.cycle}`);
+        run.inFlightCycle = outputMarker.cycle;
+      } else {
+        // マーカーも検出されない場合、現在のサイクルを再ディスパッチ
+        console.log(`[self-improvement-loop] No inFlightCycle and no marker found, redispatching cycle ${run.cycle + 1}`);
+        appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} no marker found, redispatching`);
+        
+        const ctxTyped = ctx as { isIdle?: () => boolean };
+        const deliverAs = ctxTyped?.isIdle?.() ? undefined : "followUp" as const;
+        
+        // 少し待機してから再ディスパッチ（レート制限対策）
+        await sleepWithAbort(1000, undefined);
+        dispatchNextCycle(run, deliverAs).catch(error => {
+          console.error(`[self-improvement-loop] Failed to redispatch cycle: ${toErrorMessage(error)}`);
+          finishRun("error", toErrorMessage(error));
+        });
+        return;
+      }
+    }
 
     const completedCycle = run.inFlightCycle;
     run.inFlightCycle = null;
@@ -3232,8 +3325,9 @@ export default (api: ExtensionAPI) => {
     run.cycleSummaries.push(`Cycle ${completedCycle}: 完了`);
 
     // 軌跡トラッカーに記録
-    run.trajectoryTracker.recordStep(`Cycle ${completedCycle} completed`).catch(() => {
-      // 埋め込み生成エラーは無視
+    // BUG-EX-002修正: エラーをログに記録（元はcatch {}で無視していた）
+    run.trajectoryTracker.recordStep(`Cycle ${completedCycle} completed`).catch((e) => {
+      console.warn(`[self-improvement-loop] Trajectory tracking failed: ${e}`);
     });
 
     if (run.autoCommit) {
