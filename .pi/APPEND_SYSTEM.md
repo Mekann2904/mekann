@@ -10,6 +10,7 @@
 | **Navigation** | `.pi/INDEX.md` - Repository structure map |
 | **Task-to-Source** | `.pi/NAVIGATION.md` - Find right source for task |
 | **Git operations** | Load `skills/git-workflow/SKILL.md` FIRST |
+| **Browser/Site access** | Use `playwright_cli` tool (see Browser Automation Rule) |
 | **Delegate task** | Use `subagent_run` or `agent_team_run` |
 | **Parallel execution** | Use `subagent_run_dag` (see DAG Execution Guide) |
 | **Code review** | Load `skills/code-review/SKILL.md` |
@@ -219,3 +220,52 @@ If you attempt any git command without first loading the git-workflow skill, STO
 ```
 
 ユーザーへの最終出力のみ日本語・詳細で記述。
+
+---
+
+## Browser Automation Rule (MANDATORY)
+
+ブラウザやウェブサイトを開く・操作するタスクでは、**積極的に`playwright_cli`ツールを使用すること**。
+
+### REQUIRED behavior
+
+1. ブラウザでURLを開く必要がある場合、`playwright_cli`ツールを使用する
+2. デフォルトでヘッドモード（`--headed`）を使用し、ブラウザを表示する
+3. 詳細なコマンドは `skills/playwright-cli/SKILL.md` を参照
+
+### 検出パターン（MANDATORY load trigger）
+
+- キーワード: "open browser", "visit site", "navigate to", "go to URL", "web page"
+- 日本語: "ブラウザで開く", "サイトを開く", "ページを見る", "ウェブサイト", "URLにアクセス"
+- アクション: ウェブサイトの閲覧、フォーム入力、スクリーンショット取得、ページ操作
+
+### 使用例
+
+```typescript
+// URLを開く（ヘッドモード）
+playwright_cli({
+  command: "open",
+  args: ["--headed", "https://example.com"]
+})
+
+// フォームに入力
+playwright_cli({
+  command: "fill",
+  args: ["#email", "user@example.com"]
+})
+
+// スクリーンショット
+playwright_cli({
+  command: "screenshot"
+})
+```
+
+### 理由
+
+- **トークン効率**: ページデータをLLMに強制的に読み込まない
+- **コーディングエージェント最適化**: 簡潔な目的別コマンドによる操作
+- **セッション管理**: 複数のブラウザセッションを管理可能
+
+### 違反時の対応
+
+ブラウザを開くために他の方法を使用しようとした場合、STOPし、`playwright_cli`ツールを使用すること。
