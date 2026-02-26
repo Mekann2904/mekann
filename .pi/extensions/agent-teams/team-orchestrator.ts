@@ -1255,8 +1255,20 @@ async function executeFinalJudge(
   }
 
   // 思考領域改善: チーム実行後の簡易検証（同期）
+  // RepoAudit戦略の場合は強化された検証を使用
   let verificationResult: { triggered: boolean; result?: { issues: Array<{ type: string; severity: string; description: string }>; verdict: string }; error?: string } | null = null;
   try {
+    // RepoAudit戦略の場合は特別な設定を使用
+    if (input.strategy === "repoaudit") {
+      const { resolveVerificationConfigV2 } = await import("../../lib/verification-workflow.js");
+      const repoAuditConfig = resolveVerificationConfigV2("repoaudit");
+      
+      // RepoAudit設定が有効な場合は詳細な検証を実行
+      if (repoAuditConfig.enabled) {
+        input.onTeamEvent?.("verification: RepoAudit mode enabled");
+      }
+    }
+    
     const { simpleVerificationHook } = await import("../../lib/verification-simple.js");
     const aggregatedOutput = JSON.stringify({
       summary,
@@ -1270,7 +1282,7 @@ async function executeFinalJudge(
       finalJudge.confidence,
       {
         task: input.task,
-        triggerMode: "post-team",
+        triggerMode: input.strategy === "repoaudit" ? "post-team" : "post-team",
         teamId: input.team.id,
       }
     );
