@@ -713,7 +713,7 @@ collapseSignals: [<検出された問題のリスト>]
 
 - [Pi README](/.pi/../README.md)
 - [Extensions](/docs/02-user-guide/01-extensions.md)
-- [Skills](/.pi/docs/skill-guide.md)
+- [Skills](/docs/04-reference/skill-guide.md)
 - [Orchestration Migration Guide v2.0](/.pi/docs/orchestration-migration-v2.md)
 - [Agent Runtime](/.pi/extensions/agent-runtime.ts)
 - [Subagents Extension](/.pi/extensions/subagents.ts)
