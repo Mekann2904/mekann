@@ -242,8 +242,7 @@ export function renderTimeAxis(
   const tickCount = Math.min(5, Math.floor(axisWidth / 12));
   const tickInterval = totalSeconds / tickCount;
 
-  // Axis line with ticks
-  let axisLine = "Time ";
+  // Axis line with ticks (no "Time " prefix - will be aligned by caller)
   const tickPositions: number[] = [];
 
   for (let i = 0; i <= tickCount; i++) {
@@ -262,11 +261,10 @@ export function renderTimeAxis(
     }
   }
 
-  axisLine += axisChars.join("");
-  lines.push(theme.fg("dim", axisLine));
+  lines.push(theme.fg("dim", axisChars.join("")));
 
   // Tick labels
-  let labelLine = "     "; // Align with "Time "
+  let labelLine = "";
 
   for (let i = 0; i <= tickCount; i++) {
     const pos = tickPositions[i];
@@ -275,7 +273,7 @@ export function renderTimeAxis(
 
     // Pad to position (based on actual labelLine length)
     const currentLength = labelLine.length;
-    const padding = pos - currentLength + 5; // +5 for "Time " prefix
+    const padding = pos - currentLength;
     if (padding > 0) {
       labelLine += " ".repeat(padding);
     }
@@ -334,10 +332,12 @@ export function renderGanttView(
   add(theme.bold(theme.fg("accent", "Gantt Chart View")));
   add("");
 
-  // Time axis
+  // Time axis - align with bar start position
+  const axisPrefix = " ".repeat(labelWidth + 2); // +2 for status char and space
   const axisLines = renderTimeAxis(config, theme);
   for (const line of axisLines) {
-    add(line);
+    // Add prefix to align time axis with bar positions
+    add(axisPrefix + line);
   }
   add("");
 
