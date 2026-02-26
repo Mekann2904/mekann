@@ -13,13 +13,13 @@ related: [../README.md, ./01-extensions.md, ./08-subagents.md, ./09-agent-teams.
 
 ## 概要
 
-`ul-dual-mode` 拡張機能は、サブエージェントとエージェントチームを使った**委任優先・効率的な実行**を提供します。LLMの裁量でフェーズ数を決定し、完了前に必ず `reviewer` による品質チェックを行います。
+`ul-dual-mode` 拡張機能は、サブエージェントとエージェントチームを使った**委任優先・効率的な実行**を提供します。LLMの裁量でフェーズ数を決定し、reviewerによる品質チェックが可能です。
 
 ### 主な特徴
 
 - **適応型実行**: フェーズ数はLLMの裁量（最小1、上限なし）
 - **委任優先**: subagent_run_parallel / agent_team_run 等を積極的に活用
-- **品質保証**: 完了前に必ず reviewer サブエージェントによる品質レビュー
+- **品質保証オプション**: reviewerサブエージェントによる品質レビューが利用可能（デフォルトでは有効になっていません）
 - **柔軟なパターン**: タスク規模に応じて最適な実行パターンを選択
 
 ## 使用方法
@@ -56,7 +56,23 @@ ULモードが有効な場合、以下のポリシーで実行されます：
 
 1. **委任優先**: subagent_run_parallel / agent_team_run 等を必要に応じて使用
 2. **フェーズ数はLLM裁量**: 最小1フェーズ、上限なし（タスク規模に合わせて最適化）
-3. **品質保証**: 完了前に必ず `subagent_run(subagentId: reviewer)` を実行
+3. **品質保証（オプション）**: reviewerサブエージェントによる品質レビューが可能（デフォルトでは無効）
+
+### Reviewerガードレールの設定
+
+Reviewerガードレールはデフォルトで無効になっています。品質レビューを必須にする場合は、以下の環境変数を設定します：
+
+```bash
+export UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL=true
+```
+
+または、`.pi/extensions/ul-dual-mode.ts` の設定を直接変更します：
+
+```typescript
+const UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL = true;
+```
+
+**注意**: 有効にすると、完了前に必ずreviewerが実行されます。これにより実行時間が長くなる可能性があります。
 
 ### 推奨パターン
 
@@ -68,8 +84,16 @@ ULモードが有効な場合、以下のポリシーで実行されます：
 
 ### 実行ルール
 
-- 完了と判断する前に必ず reviewer を実行
+- Reviewerガードレールが有効な場合、完了と判断する前に必ず reviewer を実行
 - 完了条件が明確な場合は `loop_run` を使用
+- 明示的にreviewerを実行することも可能：
+
+```typescript
+await subagent_run({
+  subagentId: "reviewer",
+  task: "実装の品質と正確性をレビューしてください"
+})
+```
 
 ### 入力変換
 
@@ -205,17 +229,19 @@ ULモードが有効な場合、以下がシステムプロンプトに追加さ
 Execution policy (delegation-first, efficient, high quality):
 - Use subagent_run_parallel, agent_team_run, etc. as needed.
 - Phase count is at LLM's discretion (minimum 1, no maximum).
-- YOU MUST call `subagent_run(subagentId: "reviewer")` before marking the task complete.
+- Quality check with reviewer is available when UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL is true.
 
 Recommended patterns:
 1. Simple tasks: single `subagent_run` or direct execution
 2. Multi-perspective tasks: `subagent_run_parallel(subagentIds: researcher, architect, implementer)`
 3. Complex implementation: `agent_team_run(teamId: core-delivery-team, strategy: parallel)`
 
-Quality gate (REQUIRED):
-- Before finishing, always run: `subagent_run(subagentId: "reviewer")`
+Optional quality check:
+- Run `subagent_run(subagentId: "reviewer")` before finishing to ensure quality
 ---
 ```
+
+**注意**: `UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL` 環境変数が `true` に設定されている場合のみ、reviewerの実行が必須になります。デフォルトでは `false` です。
 
 ## CLEAR_GOAL_SIGNAL
 
@@ -260,7 +286,7 @@ ul buildが成功するように設定を修正してください
 ### いつULモードを使うべきか
 
 - **効率的な実行が必要な場合**: タスク規模に応じて最適なツールを選択
-- **品質保証が必要な場合**: 完了前のreviewerチェックで品質を担保
+- **品質保証が必要な場合**: 完了前のreviewerチェックで品質を担保（環境変数設定で有効化）
 - **複雑なタスク**: 複数の視点や多角的な実装が必要な場合
 
 ### 推奨パターンの選び方
@@ -313,8 +339,15 @@ ULモードは2つのオーケストレーションを並列で実行するた�
 ## 制限事項
 
 - **ブロッキング無効**: 現在の実装では、要件が満たされなくてもブロックしません（警告のみ表示）
-- **reviewer必須警告**: reviewerが実行されなかった場合、警告が表示されます
+- **reviewerガードレール**: デフォルトでは無効（`UL_REQUIRE_FINAL_REVIEWER_GUARDRAIL=false`）
 - **エラー時の継続**: 一部のツールが失敗しても、他のツールは実行を継続します
+
+### Reviewerガードレールの動作
+
+| 設定 | 動作 |
+|------|------|
+| `false` (デフォルト) | reviewerの実行は任意。明示的に呼び出した場合のみ実行 |
+| `true` | 完了前に必ずreviewerが実行されます。実行されない場合は警告が表示されます |
 
 ## 関連トピック
 

@@ -43,8 +43,7 @@ RepoGraphは、コードローカライゼーション手法として行レベ�
 | ツール名 | 説明 |
 |---------|------|
 | `repograph_index` | RepoGraphインデックスの構築 |
-| `repograph_query` | インデックスをクエリ |
-| `repograph_localize` | タスクからコード位置を特定 |
+| `repograph_query` | インデックスをクエリ（シンボル・定義・参照・関連ノードを検索） |
 
 ### repograph_index
 
@@ -71,16 +70,17 @@ repograph_index({
 }
 ```
 
-### repograph_search
+### repograph_query
 
-依存グラフを使用してコードの位置を特定します。特にバグの原因特定や影響範囲の調査に有効です。SWE-benchで+32.8%の改善を達成した手法です。
+RepoGraphインデックスをクエリして、シンボル、定義、参照、関連ノードを検索します。依存関係グラフから関連するコード位置を特定します。
 
 ```typescript
-await repograph_search({
-  query: "authentication token validation",  // 検索クエリ
-  topK: 5,                                   // 上位K件
-  includeDependencies: true,                 // 依存関係を含める
-  basePath: "./src"                         // 検索対象パス
+await repograph_query({
+  type: "symbol",              // クエリタイプ: symbol | file | definitions | references | related | stats
+  symbol: "AuthService",        // シンボル名（type=symbolの場合）
+  file: "src/auth/token.ts",   // ファイルパス（type=fileの場合）
+  depth: 2,                    // トラバーサル深度（type=relatedの場合）
+  limit: 50                    // 最大結果数
 })
 ```
 
@@ -88,41 +88,35 @@ await repograph_search({
 
 ```json
 {
-  "query": "authentication token validation",
-  "results": [
+  "type": "symbol",
+  "symbol": "AuthService",
+  "total": 5,
+  "nodes": [
     {
-      "path": "src/auth/token-validator.ts",
+      "file": "src/auth/token-validator.ts",
       "line": 15,
-      "score": 0.92,
-      "confidence": "high",
-      "dependencies": [
-        "src/auth/jwt.ts",
-        "src/auth/config.ts"
-      ],
-      "dependents": [
-        "src/api/middleware/auth.ts",
-        "src/controllers/user.ts"
-      ],
-      "snippet": "export function validateToken(token: string): ValidationResult {"
+      "type": "definition",
+      "kind": "class",
+      "name": "AuthService"
     },
     {
-      "path": "src/auth/jwt.ts",
+      "file": "src/auth/token-validator.ts",
       "line": 42,
-      "score": 0.87,
-      "confidence": "high",
-      "dependencies": [
-        "src/auth/config.ts"
-      ],
-      "dependents": [
-        "src/auth/token-validator.ts"
-      ],
-      "snippet": "export function decodeJWT(token: string): JWTPayload | null {"
+      "type": "implementation",
+      "kind": "method",
+      "name": "validate"
     }
-  ],
-  "totalResults": 5,
-  "searchTimeMs": 23
+  ]
 }
 ```
+
+**クエリタイプ:**
+- `symbol`: シンボル名で検索
+- `file`: ファイル内の全シンボルを表示
+- `definitions`: シンボルの定義を検索
+- `references`: シンボルの参照を検索
+- `related`: 関連ノードをk-hopでトラバース
+- `stats`: インデックスの統計情報を表示
 
 ## RepoGraphの活用
 
@@ -351,9 +345,8 @@ sym_find({
 
 ```typescript
 await repograph_index({
-  basePath: "./src",              // 対象ディレクトリ
-  exclude: ["node_modules", "dist", "build"],  // 除外ディレクトリ
-  includeTests: true              // テストファイルを含めるか
+  path: "./src",              // 対象パス
+  force: false                // 強制再構築フラグ
 })
 ```
 
@@ -361,69 +354,13 @@ await repograph_index({
 
 ```json
 {
-  "status": "success",
+  "action": "index",
+  "path": "./src",
   "filesIndexed": 156,
-  "dependencies": 1234,
+  "nodes": 1234,
+  "edges": 2876,
   "timeMs": 450,
-  "graphStats": {
-    "nodes": 156,
-    "edges": 1234,
-    "avgDegree": 7.9,
-    "maxDepth": 12
-  }
-}
-```
-
-### repograph_search
-
-依存グラフを使用してコードの位置を特定します。特にバグの原因特定や影響範囲の調査に有効です。
-
-```typescript
-await repograph_search({
-  query: "authentication token validation",  // 検索クエリ
-  topK: 5,                                   // 上位K件
-  includeDependencies: true,                 // 依存関係を含める
-  basePath: "./src"                         // 検索対象パス
-})
-```
-
-**戻り値の例:**
-
-```json
-{
-  "query": "authentication token validation",
-  "results": [
-    {
-      "path": "src/auth/token-validator.ts",
-      "line": 15,
-      "score": 0.92,
-      "confidence": "high",
-      "dependencies": [
-        "src/auth/jwt.ts",
-        "src/auth/config.ts"
-      ],
-      "dependents": [
-        "src/api/middleware/auth.ts",
-        "src/controllers/user.ts"
-      ],
-      "snippet": "export function validateToken(token: string): ValidationResult {"
-    },
-    {
-      "path": "src/auth/jwt.ts",
-      "line": 42,
-      "score": 0.87,
-      "confidence": "high",
-      "dependencies": [
-        "src/auth/config.ts"
-      ],
-      "dependents": [
-        "src/auth/token-validator.ts"
-      ],
-      "snippet": "export function decodeJWT(token: string): JWTPayload | null {"
-    }
-  ],
-  "totalResults": 5,
-  "searchTimeMs": 23
+  "indexPath": ".pi/search/repograph/index.json"
 }
 ```
 
@@ -436,9 +373,9 @@ await repograph_search({
 | 特定の機能のファイルを見つける | `file_candidates` | ファイル名パス検索が高速 |
 | コードの意味で検索 | `code_search` | セマンティック検索 |
 | 関数・クラスの定義・参照を特定 | `sym_find` | シンボルレベルの正確な検索 |
-| バグの原因を特定する | `repograph_search` | 依存関係から影響範囲を調査 |
-| コールグラフを探索 | `sym_find` + `repograph_search` | 呼び出し階層を可視化 |
-| リファクタリングの影響範囲調査 | `repograph_search` | 依存先・依存元を一覧 |
+| バグの原因を特定する | `repograph_query` | 依存関係から影響範囲を調査 |
+| コールグラフを探索 | `sym_find` + `repograph_query` | 呼び出し階層を可視化 |
+| リファクタリングの影響範囲調査 | `repograph_query` | 依存先・依存元を一覧 |
 
 ## RepoGraphの活用
 
@@ -446,42 +383,56 @@ await repograph_search({
 
 ```typescript
 // 1. 依存グラフを構築
-await repograph_index({ basePath: "./src" });
+await repograph_index({ path: "./src" });
 
-// 2. バグに関するクエリで検索
-const bugLocation = await repograph_search({
-  query: "authentication fails after token refresh",
-  topK: 3
+// 2. シンボルの定義を検索
+const definitions = await repograph_query({
+  type: "symbol",
+  symbol: "AuthService"
 });
 
-// 3. 依存関係を確認
-console.log("依存先:", bugLocation.results[0].dependencies);
-console.log("依存元:", bugLocation.results[0].dependents);
+// 3. 関連ノードを取得（2-hop）
+const related = await repograph_query({
+  type: "related",
+  nodeId: `${definitions.nodes[0].file}:${definitions.nodes[0].line}`,
+  depth: 2
+});
 
-// 4. 影響範囲を調査
-const impactedFiles = await repograph_search({
-  query: "token refresh",
-  includeDependencies: true
+// 4. インデックス統計を確認
+const stats = await repograph_query({
+  type: "stats"
 });
 ```
 
 ### リファクタリングの事前調査
 
 ```typescript
-// 変更対象のファイルとその影響範囲を確認
-const impactAnalysis = await repograph_search({
-  query: "deprecated authentication module",
-  includeDependents: true
+// 1. 変更対象のシンボル定義を検索
+const symbolDef = await repograph_query({
+  type: "symbol",
+  symbol: "AuthService"
 });
 
-// 影響を受けるファイルの一覧を取得
+// 2. 参照箇所を特定
+const references = await repograph_query({
+  type: "references",
+  symbol: "AuthService"
+});
+
+// 3. 影響を受けるファイルの一覧を取得
 const affectedFiles = new Set();
-impactAnalysis.results.forEach(result => {
-  result.dependents.forEach(dep => affectedFiles.add(dep));
-  result.dependencies.forEach(dep => affectedFiles.add(dep));
+references.nodes.forEach(node => {
+  affectedFiles.add(node.file);
 });
 
 console.log("影響を受けるファイル:", Array.from(affectedFiles));
+
+// 4. 関連ノードを調査
+const related = await repograph_query({
+  type: "related",
+  nodeId: `${symbolDef.nodes[0].file}:${symbolDef.nodes[0].line}`,
+  depth: 1
+});
 ```
 
 ## シーケンス図
@@ -576,7 +527,7 @@ flowchart TD
 ```typescript
 // 1. インデックス構築
 await sym_index({ action: "build" });
-await repograph_index({ basePath: "./src" });
+await repograph_index({ path: "./src" });
 
 // 2. 定義検索
 await sym_find({ symbol: "Agent", type: "definition" });
@@ -588,7 +539,10 @@ await file_candidates({ query: "agent types" });
 await code_search({ pattern: "interface Agent" });
 
 // 5. 依存関係調査
-await repograph_search({ query: "Agent initialization", includeDependencies: true });
+await repograph_query({
+  type: "symbol",
+  symbol: "Agent"
+});
 ```
 
 ### 特定機能の影響範囲調査
@@ -607,10 +561,9 @@ await code_search({
 await file_candidates({ query: "subagent test" });
 
 // 4. 依存関係から影響範囲を確認
-await repograph_search({
-  query: "subagent execution",
-  includeDependencies: true,
-  includeDependents: true
+await repograph_query({
+  type: "references",
+  symbol: "runSubagent"
 });
 ```
 
@@ -670,18 +623,24 @@ await sym_index({
 }
 
 // RepoGraphインデックス状態
-const repoStatus = await get_repograph_status({
-  basePath: "./src"
+const repoStatus = await repograph_query({
+  type: "stats"
 })
 
 // 戻り値:
 {
-  "indexed": true,
-  "lastUpdated": "2026-02-25T14:00:00Z",
-  "fileCount": 156,
-  "dependencyCount": 1234,
-  "graphNodes": 156,
-  "graphEdges": 1234
+  "type": "stats",
+  "total": 1,
+  "nodes": [
+    {
+      "file": ".pi/search/repograph/index.json",
+      "indexed": true,
+      "lastUpdated": "2026-02-25T14:00:00Z",
+      "fileCount": 156,
+      "nodes": 156,
+      "edges": 2876
+    }
+  ]
 }
 ```
 

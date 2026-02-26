@@ -35,38 +35,45 @@ Dynamic Toolsは、piセッション内でランタイムにツールを作成�
 
 ```mermaid
 graph TD
-    A[Input] -->|1. Validation| B[Type Checking]
-    B -->|2. Analysis| C[AST Parsing]
-    C -->|3. Detection| D[Vulnerability Scan]
-    D -->|4. Execution| E[Sandbox Runtime]
-    E -->|5. Sanitization| F[Output]
-    F -->|6. Audit| G[Audit Trail]
-    G --> H[Return Result]
+    A[Input] -->|1. Pattern Check| B[Quick Safety Check]
+    B -->|2. Code Analysis| C[Code Safety Analysis]
+    C -->|3. Execution| D[VM Sandbox Runtime]
+    D -->|4. Timeout| E[Abort on Timeout]
+    E -->|5. Output| F[Return Result]
 ```
 
 ### 安全機能
 
-- **ファイルシステムアクセス禁止**: ツールは直接ファイルにアクセス不可
-- **ネットワークアクセス禁止**: ツールはネットワーク呼び出し不可
-- **型安全性**: 全ての入出力がバリデーションされる
-- **実行タイムアウト**: 制限時間での実行
-- **メモリ制限**: メモリ制約されたランタイム
+現在実装されている安全性チェック:
 
-### 安全レベル
+1. **Quick Pattern Check**: 禁止パターンを検出
+   - 危険なNode.jsモジュール (`fs.unlinkSync`, `process.exit` など)
+   - システムコール呼び出し
+   - ネットワーク操作
 
-```typescript
-enum SafetyLevel {
-  STRICT = 0,    // 全バリデーション、例外なし
-  MODERATE = 1,  // 標準バリデーション
-  PERMISSIVE = 2 // 最小限のバリデーション（開発のみ）
-}
-```
+2. **Code Analysis**: コード構造を解析
+   - ASTを使用した基本的な構文解析
+   - 外部依存関係の検出
 
-| レベル | 説明 | 使用場面 |
-|--------|------|---------|
-| STRICT | 最も厳密、全バリデーション | 本番環境 |
-| MODERATE | 標準的なバリデーション | 開発・本番 |
-| PERMISSIVE | 最小限のバリデーション | プロトタイピングのみ |
+3. **Execution Sandbox**: vmモジュールを使用した分離実行
+   - タイムアウト制限（デフォルト30秒）
+   - メモリ制限
+   - 危険なグローバルオブジェクトの削除（require, process等）
+
+### 安全な実行環境
+
+利用可能なグローバルオブジェクト:
+- console, Buffer
+- 標準オブジェクト: Promise, JSON, Object, Array, String, Number, Boolean, Date, Math
+- エラークラス: Error, TypeError, RangeError, SyntaxError
+- URL関連: URL, URLSearchParams
+
+利用不可（セキュリティ制約）:
+- require: 外部モジュールアクセス禁止
+- process: 環境変数・プロセス情報アクセス禁止
+- global, globalThis: グローバルスコープ汚染禁止
+- __dirname, __filename: ファイルシステムパス漏洩禁止
+- setTimeout, setInterval, clearTimeout, clearInterval: サンドボックスエスケープ防止
 
 ## ツールライフサイクル
 
@@ -77,28 +84,38 @@ enum SafetyLevel {
 const result = await create_tool({
   name: "summarize_text",
   description: "テキストをキーポイントに要約",
-  parameters: {
-    type: "object",
-    properties: {
-      text: { type: "string", description: "要約するテキスト" },
-      maxLength: { type: "number", default: 3 }
-    }
-  },
-  implementation: `/**
+  code: `/**
    * テキストをキーポイントに要約
    * @param {string} text - 要約するテキスト
    * @param {number} maxLength - 最大キーポイント数
    * @returns {Array<string>} キーポイント
    */
-  function summarize_text(text, maxLength = 3) {
+  function execute(params) {
+    const { text, maxLength = 3 } = params;
     const sentences = text.split('. ');
     const keyPoints = sentences
       .slice(0, maxLength * 2)
       .filter(s => s.length > 10)
       .slice(0, maxLength);
     return keyPoints;
-  }`,
-  safetyLevel: SafetyLevel.MODERATE
+  }
+
+  return execute(input);`,
+  parameters: {
+    text: {
+      type: "string",
+      description: "要約するテキスト",
+      required: true
+    },
+    maxLength: {
+      type: "number",
+      description: "最大キーポイント数",
+      default: 3,
+      minimum: 1,
+      maximum: 10
+    }
+  },
+  tags: ["text-processing", "summary"]
 });
 ```
 
@@ -107,7 +124,7 @@ const result = await create_tool({
 ```typescript
 // 作成したツールを使用
 const summary = await run_dynamic_tool({
-  toolName: "summarize_text",
+  tool_name: "summarize_text",
   parameters: {
     text: "素早い茶色の狐が怠惰な犬を飛び越えます。犬は気にしていないようです。これは英語の古典的な文です。",
     maxLength: 2
@@ -155,10 +172,18 @@ await delete_dynamic_tool({
 interface CreateToolParams {
   name: string;                    // ツール名（一意）
   description: string;             // ツールの説明
-  parameters: JSONSchema;          // パラメータスキーマ
-  implementation: string;         // JavaScript実装
-  safetyLevel?: SafetyLevel;       // 安全レベル（デフォルト: MODERATE）
-  tags?: string[];                 // ツールタグ
+  code: string;                   // TypeScript/JavaScript実装
+  parameters?: Record<string, {    // パラメータ定義
+    type: "string" | "number" | "boolean" | "object" | "array";
+    description: string;
+    default?: unknown;
+    enum?: string[];
+    minimum?: number;
+    maximum?: number;
+    required?: boolean;
+  }>;
+  tags?: string[];                // ツールタグ（カテゴリ分類用）
+  generated_from?: string;        // ツールの生成元（タスク説明など）
 }
 ```
 
@@ -167,15 +192,7 @@ interface CreateToolParams {
 await create_tool({
   name: "calculate_similarity",
   description: "コサイン類似度を使用してテキストの類似度を計算",
-  parameters: {
-    type: "object",
-    properties: {
-      text1: { type: "string" },
-      text2: { type: "string" }
-    },
-    required: ["text1", "text2"]
-  },
-  implementation: `
+  code: `
     function calculate_similarity(text1, text2) {
       const tokens1 = text1.toLowerCase().split(/\\s+/);
       const tokens2 = text2.toLowerCase().split(/\\s+/);
@@ -190,8 +207,21 @@ await create_tool({
 
       return dotProduct / (mag1 * mag2);
     }
+
+    return calculate_similarity(input.text1, input.text2);
   `,
-  safetyLevel: SafetyLevel.MODERATE,
+  parameters: {
+    text1: {
+      type: "string",
+      description: "1つ目のテキスト",
+      required: true
+    },
+    text2: {
+      type: "string",
+      description: "2つ目のテキスト",
+      required: true
+    }
+  },
   tags: ["similarity", "text-analysis"]
 });
 ```
@@ -203,21 +233,22 @@ await create_tool({
 **パラメータ**:
 ```typescript
 interface RunDynamicToolParams {
-  toolName: string;       // 実行するツール名
-  parameters: object;     // 入力パラメータ
-  timeout?: number;      // 実行タイムアウト（ms、デフォルト: 5000）
+  tool_name: string;       // 実行するツール名
+  tool_id?: string;        // ツールID（tool_nameの代わりに使用可能）
+  parameters: object;      // 入力パラメータ
+  timeout_ms?: number;     // 実行タイムアウト（ms、デフォルト: 30000）
 }
 ```
 
 **使用例**:
 ```typescript
 const result = await run_dynamic_tool({
-  toolName: "calculate_similarity",
+  tool_name: "calculate_similarity",
   parameters: {
     text1: "猫がマットに座った",
     text2: "犬がマットに座った"
   },
-  timeout: 10000
+  timeout_ms: 10000
 });
 // 戻り値: 0.816 (高い類似度)
 ```
@@ -229,11 +260,12 @@ const result = await run_dynamic_tool({
 **戻り値**:
 ```typescript
 interface DynamicToolInfo {
+  tool_id: string;
   name: string;
   description: string;
-  createdAt: string;
-  usageCount: number;
-  safetyLevel: SafetyLevel;
+  created_at: string;
+  usage_count: number;
+  safety_score: number;      // 安全性スコア（0.0-1.0）
   tags: string[];
 }
 ```
@@ -243,8 +275,8 @@ interface DynamicToolInfo {
 const tools = await list_dynamic_tools();
 tools.forEach(tool => {
   console.log(`- ${tool.name}: ${tool.description}`);
-  console.log(`  使用回数: ${tool.usageCount}`);
-  console.log(`  安全レベル: ${tool.safetyLevel}`);
+  console.log(`  使用回数: ${tool.usage_count}`);
+  console.log(`  安全性スコア: ${tool.safety_score}`);
 });
 ```
 
