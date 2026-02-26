@@ -4,11 +4,8 @@ category: reference
 audience: developer
 last_updated: 2026-02-17
 tags: [recommendations, improvement, technical-debt]
-related:
-  - ./README.md
-  - ./01-summary.md
+related: []
 ---
-
 # 改善推奨事項
 
 > パンくず: [Home](../README.md) > [Code Review Report](./README.md) > 改善推奨事項

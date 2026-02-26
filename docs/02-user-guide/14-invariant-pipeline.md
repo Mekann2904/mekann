@@ -288,8 +288,8 @@ impl CounterModel {
 
 ## 関連リソース
 
-- [invariant-generationスキル](../.pi/skills/invariant-generation/SKILL.md)
-- [invariant-generation-team](../.pi/agent-teams/definitions/invariant-generation-team/team.md)
+- [invariant-generationスキル](../../.pi/skills/invariant-generation/SKILL.md)
+- [invariant-generation-team](../../.pi/extensions/agent-teams/definitions/invariant-generation-team/team.md)
 - [Quint Documentation](https://informalsystems.github.io/quint/)
 - [proptest Book](https://altsysrq.github.io/proptest-book/)
 

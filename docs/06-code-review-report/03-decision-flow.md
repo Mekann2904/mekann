@@ -4,11 +4,8 @@ category: reference
 audience: developer
 last_updated: 2026-02-19
 tags: [decision-flow, delegation, best-practices]
-related:
-  - ./README.md
-  - ../../.pi/APPEND_SYSTEM.md
+related: []
 ---
-
 # 判断基準と意思決定フロー
 
 > パンくず: [Home](../README.md) > [Code Review Report](./README.md) > 判断基準と意思決定フロー

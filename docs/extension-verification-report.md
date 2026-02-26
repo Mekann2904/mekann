@@ -1,3 +1,11 @@
+---
+title: pi-coding-agent拡張機能検証報告書
+category: meta
+audience: developer
+last_updated: 2026-02-26
+tags: []
+related: []
+---
 # pi-coding-agent拡張機能検証報告書
 
 **検証日時**: 2025年2月21日
