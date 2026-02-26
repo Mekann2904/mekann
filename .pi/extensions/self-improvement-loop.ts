@@ -315,6 +315,8 @@ interface ActiveAutonomousRun {
   currentPhase: ULPhase;
   /** ULフェーズ間のコンテキスト受け渡し */
   phaseContext: ULPhaseContext;
+  /** 現在のフェーズの再試行回数（NEW-001: 無限再試行防止） */
+  phaseRetryCount: number;
 }
 
 /** 成功パターンの記録 */
@@ -3045,6 +3047,7 @@ export default (api: ExtensionAPI) => {
       autoApprove,
       currentPhase: 'research',
       phaseContext: {},
+      phaseRetryCount: 0, // NEW-001: 再試行回数初期化
     };
 
     initializeAutonomousLoopLog(logPath, run);
@@ -3106,6 +3109,8 @@ export default (api: ExtensionAPI) => {
     if (run.ulMode) {
       const ulPhaseMarker = parseULPhaseMarker(outputText);
       if (ulPhaseMarker && ulPhaseMarker.runId === run.runId) {
+        // マーカーが検出されたので再試行カウントをリセット
+        run.phaseRetryCount = 0;
         appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} completed UL phase=${ulPhaseMarker.phase} cycle=${ulPhaseMarker.cycle}`);
         
         const ctxTyped = ctx as { isIdle?: () => boolean };
@@ -3118,7 +3123,16 @@ export default (api: ExtensionAPI) => {
       // ULモードでマーカーが検出されない場合、現在のフェーズを継続
       // これはエージェントが途中で停止した場合などの回復処理
       console.log(`[self-improvement-loop] UL phase marker not found in output, current phase=${run.currentPhase}`);
-      appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} UL phase marker not found, phase=${run.currentPhase}`);
+      appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} UL phase marker not found, phase=${run.currentPhase}, retryCount=${run.phaseRetryCount}`);
+      
+      // NEW-001: 再試行制限チェック（環境変数で設定可能、デフォルト3回）
+      const maxPhaseRetries = parseInt(process.env.PI_UL_MAX_PHASE_RETRIES ?? "3", 10);
+      if (run.phaseRetryCount >= maxPhaseRetries) {
+        console.error(`[self-improvement-loop] Max phase retries (${maxPhaseRetries}) exceeded for phase=${run.currentPhase}`);
+        appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} ERROR: max retries exceeded (${maxPhaseRetries})`);
+        finishRun("error", `Max phase retries exceeded for phase: ${run.currentPhase}`);
+        return;
+      }
       
       // 現在のフェーズを再ディスパッチ
       const ctxTyped = ctx as { isIdle?: () => boolean };
@@ -3126,8 +3140,11 @@ export default (api: ExtensionAPI) => {
       
       // フェーズコンテキストに応じて次のフェーズを決定
       // 出力がある程度の長さがあれば、フェーズ完了とみなして次へ進む
-      if (outputText.length > 200) {
+      // NEW-001: 閾値は環境変数で設定可能（デフォルト200文字）
+      const phaseCompleteThreshold = parseInt(process.env.PI_UL_PHASE_THRESHOLD ?? "200", 10);
+      if (outputText.length > phaseCompleteThreshold) {
         // 出力がある程度あるので、フェーズ完了とみなす
+        run.phaseRetryCount = 0; // 成功時はリセット
         switch (run.currentPhase) {
           case 'research':
             run.phaseContext.researchOutput = outputText;
@@ -3145,7 +3162,9 @@ export default (api: ExtensionAPI) => {
         }
       } else {
         // 出力が短い場合は同じフェーズを再試行
-        console.log(`[self-improvement-loop] Retrying current phase: ${run.currentPhase}`);
+        run.phaseRetryCount++;
+        console.log(`[self-improvement-loop] Retrying current phase: ${run.currentPhase}, retryCount=${run.phaseRetryCount}/${maxPhaseRetries}`);
+        appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} retrying phase=${run.currentPhase}, retryCount=${run.phaseRetryCount}/${maxPhaseRetries}`);
         await dispatchULPhase(run, run.currentPhase as 'research' | 'plan' | 'implement', deliverAs);
         return;
       }

@@ -378,6 +378,12 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
     input.onTeamEvent?.("initial phase start: strategy=sequential");
     
     for (const member of activeMembers) {
+      // BUG-033: AbortSignalチェックを追加
+      if (input.signal?.aborted) {
+        input.onTeamEvent?.("initial phase aborted");
+        break;
+      }
+      
       input.onMemberPhase?.(member, "initial");
       input.onMemberEvent?.(member, "initial phase: dispatching run");
       
@@ -401,6 +407,11 @@ export async function runTeamTask(input: TeamTaskInput): Promise<TeamTaskResult>
       });
       
       memberResults.push(result);
+      // BUG-031: 配列サイズ制限を追加
+      const MAX_MEMBER_RESULTS = 100;
+      if (memberResults.length > MAX_MEMBER_RESULTS) {
+        memberResults = memberResults.slice(-MAX_MEMBER_RESULTS);
+      }
       emitResultEvent(member, "initial", result);
       input.onMemberResult?.(member, result);
     }
@@ -724,6 +735,11 @@ async function runCommunicationMember(
         ? communicationReference.claimReferences
         : undefined,
   });
+  // BUG-032: 配列サイズ制限を追加
+  const MAX_AUDIT_ENTRIES = 1000;
+  if (communicationAudit.length > MAX_AUDIT_ENTRIES) {
+    communicationAudit.splice(0, communicationAudit.length - MAX_AUDIT_ENTRIES);
+  }
   
   input.onMemberEvent?.(
     member,
@@ -1064,6 +1080,11 @@ async function runRetryMember(params: RunRetryMemberParams): Promise<TeamMemberR
           ? communicationReference.claimReferences
           : undefined,
     });
+    // BUG-032: 配列サイズ制限を追加
+    const MAX_AUDIT_ENTRIES = 1000;
+    if (communicationAudit.length > MAX_AUDIT_ENTRIES) {
+      communicationAudit.splice(0, communicationAudit.length - MAX_AUDIT_ENTRIES);
+    }
     
     input.onMemberEvent?.(
       member,

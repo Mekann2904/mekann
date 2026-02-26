@@ -88,6 +88,22 @@ export async function resolveSubagentParallelCapacity(input: {
   const requestedParallelism = Math.max(1, Math.trunc(input.requestedParallelism));
   let immediateAttempts = 0;
   for (let candidate = requestedParallelism; candidate >= 1; candidate -= 1) {
+    // BUG-012: AbortSignalチェックを追加
+    if (input.signal?.aborted) {
+      return {
+        allowed: false,
+        requestedParallelism,
+        appliedParallelism: 0,
+        reduced: false,
+        reasons: ["Aborted"],
+        waitedMs: 0,
+        timedOut: false,
+        aborted: true,
+        attempts: immediateAttempts,
+        projectedRequests: 0,
+        projectedLlm: 0,
+      };
+    }
     immediateAttempts += 1;
     const attempt = tryReserveRuntimeCapacity({
       toolName: "subagent_run_parallel",
