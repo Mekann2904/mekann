@@ -350,6 +350,12 @@ function renderPerspectives(
 // Extension Registration
 // ============================================================================
 
+/**
+ * ダッシュボード登録
+ * @summary 登録処理実行
+ * @param pi 拡張機能APIオブジェクト
+ * @returns なし
+ */
 export default function registerSelfImprovementDashboard(pi: ExtensionAPI) {
   pi.registerCommand(COMMAND_NAME, {
     description: "Visualize self-improvement data in a TUI dashboard",

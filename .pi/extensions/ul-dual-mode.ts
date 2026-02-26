@@ -360,6 +360,12 @@ class LRUCache<K, V> {
 
   constructor(private maxSize: number) {}
 
+  /**
+   * キャッシュ値を取得
+   * @summary キャッシュ値取得
+   * @param key キー
+   * @returns 値、存在しない場合はundefined
+   */
   get(key: K): V | undefined {
     const entry = this.cache.get(key);
     if (!entry) return undefined;
@@ -371,6 +377,13 @@ class LRUCache<K, V> {
     return entry.value;
   }
 
+  /**
+   * LRUキャッシュに値を設定
+   * @summary キャッシュ設定
+   * @param key キー
+   * @param value 値
+   * @returns void
+   */
   set(key: K, value: V): void {
     if (this.cache.has(key)) {
       this.updateAccessOrder(key);
@@ -397,6 +410,11 @@ class LRUCache<K, V> {
     this.accessOrder.push(key);
   }
 
+  /**
+   * LRUキャッシュをクリア
+   * @summary キャッシュクリア
+   * @returns void
+   */
   clear(): void {
     this.cache.clear();
     this.accessOrder = [];

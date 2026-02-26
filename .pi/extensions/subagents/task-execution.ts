@@ -589,6 +589,19 @@ function parseSubagentDirectives(extraContext?: string, task?: string): Subagent
   };
 }
 
+/**
+ * サブエージェント用プロンプトを構築
+ * @summary プロンプト構築
+ * @param input エージェント定義やタスクを含む入力オブジェクト
+ * @param input.agent サブエージェントの定義
+ * @param input.task 実行するタスク内容
+ * @param input.extraContext 追加のコンテキスト情報
+ * @param input.enforcePlanMode 計画モードを強制するか
+ * @param input.parentSkills 親スキルのリスト
+ * @param input.profileId プロファイルID
+ * @param input.relevantPatterns 関連するパターン情報
+ * @returns 構築されたプロンプト文字列
+ */
 export function buildSubagentPrompt(input: {
   agent: SubagentDefinition;
   task: string;

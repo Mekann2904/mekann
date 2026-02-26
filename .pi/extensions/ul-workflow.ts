@@ -69,6 +69,11 @@ const TEMPLATES_DIR = path.join(WORKFLOW_DIR, "templates");
 const ACTIVE_FILE = path.join(WORKFLOW_DIR, "active.json");
 
 // Generate unique instance ID matching cross-instance coordinator format
+/**
+ * インスタンスIDを取得
+ * @summary ID取得
+ * @returns インスタンスID文字列
+ */
 export function getInstanceId(): string {
   return `${process.env.PI_SESSION_ID || "default"}-${process.pid}`;
 }

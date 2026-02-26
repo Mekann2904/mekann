@@ -26,6 +26,13 @@ declare module "@mariozechner/pi-coding-agent" {
 }
 
 export type { ExtensionContext };
+/**
+ * 実行パラメータ
+ * @summary 実行パラメータ定義
+ * @param subagentId サブエージェントID
+ * @param task タスク内容
+ * @param extraContext 追加コンテキスト
+ */
 export interface ExecuteParams {
   [key: string]: unknown;
 }

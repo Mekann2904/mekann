@@ -381,6 +381,12 @@ async function executeSelfReflectTool(
 // Extension Registration
 // ============================================================================
 
+/**
+ * 自己改善の監視を登録
+ * @summary 自己改善監視登録
+ * @param pi 拡張API
+ * @returns void
+ */
 export default function registerSelfImprovementReflection(pi: ExtensionAPI) {
   // セッション開始時にデータ基盤を初期化
   pi.on("session_start", async (_event, ctx) => {

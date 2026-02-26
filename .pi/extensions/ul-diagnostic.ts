@@ -356,6 +356,12 @@ function formatReport(report: DiagnosticReport): string {
   return lines.join("\n");
 }
 
+/**
+ * UI診断機能の拡張を登録
+ * @summary UI診断登録
+ * @param pi 拡張API
+ * @returns void
+ */
 export default function registerUlDiagnosticExtension(pi: ExtensionAPI): void {
   pi.registerCommand("ul-diagnostic", {
     description: "Run UL mode diagnostics and check for known issues",
