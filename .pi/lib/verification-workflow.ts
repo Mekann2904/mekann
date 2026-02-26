@@ -2202,6 +2202,162 @@ export function resolveVerificationConfig(): VerificationWorkflowConfig {
   return config;
 }
 
+// =============================================================================
+// RepoAudit統合用V2設定（Phase 1実装）
+// =============================================================================
+
+/**
+ * 検証モード（オプトイン戦略）
+ * RepoAudit論文の3層アーキテクチャ統合をサポート
+ * @summary 検証モード選択
+ */
+export type VerificationMode =
+  | "disabled"           // デフォルト: 生成時品質保証アプローチ
+  | "repoaudit"          // RepoAuditスタイル: Initiator/Explorer/Validator
+  | "high-stakes-only"   // 高リスク操作のみトリガー
+  | "explicit-only";     // 明示的リクエストのみトリガー
+
+/**
+ * 統合ポイント設定
+ * @summary サブエージェント/チームとの統合設定
+ */
+export interface VerificationIntegrationPoints {
+  /** サブエージェント実行後に検証 */
+  postSubagent?: boolean;
+  /** チーム実行後に検証 */
+  postTeam?: boolean;
+  /** 低信頼度閾値（この値以下でトリガー） */
+  lowConfidenceThreshold?: number;
+}
+
+/**
+ * 拡張検証ワークフロー設定（V2）
+ * RepoAudit統合用のモードベース設定
+ * @summary V2検証設定
+ */
+export interface VerificationWorkflowConfigV2 extends VerificationWorkflowConfig {
+  /** 検証モード */
+  mode: VerificationMode;
+  /** 自動有効化パターン（正規表現） */
+  autoEnableOnPatterns?: RegExp[];
+  /** 統合ポイント設定 */
+  integrationPoints?: VerificationIntegrationPoints;
+}
+
+/**
+ * RepoAudit最適化設定プリセット
+ * RepoAudit論文のValidatorレイヤーに相当する検証設定
+ * @summary RepoAudit用設定
+ */
+export const REPOAUDIT_VERIFICATION_CONFIG: VerificationWorkflowConfigV2 = {
+  mode: "repoaudit",
+  enabled: true,
+  triggerModes: ["post-subagent", "low-confidence", "high-stakes"],
+  challengerConfig: {
+    minConfidenceToChallenge: 0.85,
+    requiredFlaws: 1,
+    enabledCategories: [
+      "evidence-gap",
+      "logical-flaw",
+      "assumption",
+      "alternative",
+      "boundary",
+      "causal-reversal"
+    ],
+  },
+  inspectorConfig: {
+    suspicionThreshold: "medium",
+    requiredPatterns: [
+      "claim-result-mismatch",
+      "evidence-confidence-gap",
+      "first-reason-stopping",
+      "proximity-bias",
+      "concreteness-bias",
+      "palliative-fix"
+    ],
+    autoTriggerOnCollapseSignals: true,
+  },
+  fallbackBehavior: "warn",
+  maxVerificationDepth: 2,
+  minConfidenceToSkipVerification: 0.9,
+  integrationPoints: {
+    postSubagent: true,
+    postTeam: true,
+    lowConfidenceThreshold: 0.7,
+  },
+};
+
+/**
+ * 高リスク専用設定プリセット
+ * 破壊的/本番操作のみを対象とした最小限の検証
+ * @summary 高リスク専用設定
+ */
+export const HIGH_STAKES_ONLY_VERIFICATION_CONFIG: VerificationWorkflowConfigV2 = {
+  ...DEFAULT_VERIFICATION_CONFIG,
+  mode: "high-stakes-only",
+  enabled: true,
+  triggerModes: ["high-stakes"],
+};
+
+/**
+ * 明示的専用設定プリセット
+ * ユーザーが明示的に検証を要求した場合のみトリガー
+ * @summary 明示的専用設定
+ */
+export const EXPLICIT_ONLY_VERIFICATION_CONFIG: VerificationWorkflowConfigV2 = {
+  ...DEFAULT_VERIFICATION_CONFIG,
+  mode: "explicit-only",
+  enabled: true,
+  triggerModes: ["explicit"],
+};
+
+/**
+ * モードベースで検証設定を解決（V2）
+ * RepoAudit統合用のエントリーポイント
+ * @summary V2設定解決
+ * @param mode 検証モード
+ * @returns モードに対応する検証設定
+ */
+export function resolveVerificationConfigV2(
+  mode: VerificationMode = "disabled"
+): VerificationWorkflowConfigV2 {
+  switch (mode) {
+    case "repoaudit":
+      return { ...REPOAUDIT_VERIFICATION_CONFIG };
+    case "high-stakes-only":
+      return { ...HIGH_STAKES_ONLY_VERIFICATION_CONFIG };
+    case "explicit-only":
+      return { ...EXPLICIT_ONLY_VERIFICATION_CONFIG };
+    case "disabled":
+    default:
+      return {
+        ...DEFAULT_VERIFICATION_CONFIG,
+        mode: "disabled",
+      };
+  }
+}
+
+/**
+ * 環境変数からV2モードを取得
+ * @summary 環境変数モード取得
+ * @returns 検証モード
+ */
+export function getVerificationModeFromEnv(): VerificationMode {
+  const envMode = process.env.PI_VERIFICATION_MODE;
+  
+  if (envMode === "repoaudit") return "repoaudit";
+  if (envMode === "high-stakes-only") return "high-stakes-only";
+  if (envMode === "explicit-only") return "explicit-only";
+  if (envMode === "disabled" || envMode === "0") return "disabled";
+  
+  // 従来の環境変数もサポート
+  const legacyMode = process.env.PI_VERIFICATION_WORKFLOW_MODE;
+  if (legacyMode === "strict") return "repoaudit";
+  if (legacyMode === "minimal") return "high-stakes-only";
+  
+  return "disabled";
+}
+
 /**
  * 検査用プロンプトを構築
  * @summary プロンプト構築
