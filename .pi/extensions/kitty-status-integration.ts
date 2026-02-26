@@ -2,7 +2,7 @@
  * @abdd.meta
  * path: .pi/extensions/kitty-status-integration.ts
  * role: kittyターミナル連携拡張
- * why: piの作業進捗をkittyのウィンドウタイトルや通知システムへ即時反映するため
+ * why: piの作業進捗をkittyのウィンドウタイトルや通知システムへ即時反映し、画像を表示するため
  * related: @mariozechner/pi-coding-agent, child_process
  * public_api: notify, setWindow, export default function(api)
  * invariants: process.env.KITTY_WINDOW_IDが存在する場合のみkittyコマンドを出力する
@@ -14,10 +14,11 @@
  *   - kittyのOSCコマンドを使用してウィンドウタイトルおよびタブ名を変更する
  *   - macOSではosascript経由で通知センターへ通知を送信する
  *   - macOSではafplayコマンドでシステムサウンドを再生する
- *   - Linuxではkittyのネイティブ通知機能を使用する
+ *   - readツールで画像を読み込んだ際にオーバーレイで表示する
  * why_it_exists:
  *   - ターミナル離れていてもエージェントの完了やエラーを認知可能にする
  *   - 現在のタスク状態をウィンドウタイトルで常時表示する
+ *   - エージェントが画像を確認できるようにする
  * scope:
  *   in: ExtensionAPI(pi-coreからのイベント), プラットフォーム情報, 環境変数
  *   out: 標準出力へのエスケープシーケンス, 外部プロセス(osascript/afplay)の実行
@@ -35,7 +36,7 @@
 
 import { spawn } from "child_process";
 import { homedir } from "os";
-import { existsSync } from "fs";
+import { closeSync, existsSync, openSync, writeSync } from "fs";
 import { extname, isAbsolute, resolve } from "path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -54,6 +55,47 @@ const SUPPORTED_IMAGE_EXTENSIONS = new Set([
   ".webp",
   ".bmp",
 ]);
+
+let terminalFd: number | undefined;
+
+function wrapForTmuxPassthrough(data: string): string {
+  // tmux passthrough: ESC は二重化して DCS で包む
+  // 形式: ESC P tmux; <ESCを二重化したペイロード> ESC \
+  const escaped = data.replace(/\x1b/g, "\x1b\x1b");
+  return `\x1bPtmux;${escaped}\x1b\\`;
+}
+
+function writeToTerminal(data: string): void {
+  // テスト時は stdout 強制にしてアサート可能にする
+  if (process.env.PI_KITTY_FORCE_STDOUT === "1") {
+    process.stdout.write(data);
+    return;
+  }
+
+  // TUIがstdoutを捕捉する場合に備えて /dev/tty へ直接出力
+  try {
+    const outbound = process.env.TMUX ? wrapForTmuxPassthrough(data) : data;
+    if (terminalFd === undefined) {
+      terminalFd = openSync("/dev/tty", "w");
+    }
+    writeSync(terminalFd, outbound);
+    return;
+  } catch {
+    // /dev/tty が使えない環境では従来どおり stdout へフォールバック
+    process.stdout.write(process.env.TMUX ? wrapForTmuxPassthrough(data) : data);
+  }
+}
+
+function closeTerminalIfNeeded(): void {
+  if (terminalFd === undefined) return;
+  try {
+    closeSync(terminalFd);
+  } catch {
+    // no-op
+  } finally {
+    terminalFd = undefined;
+  }
+}
 
 // プラットフォーム検出
 const isMacOS = process.platform === "darwin";
@@ -84,7 +126,7 @@ function isKitty(): boolean {
 // ウィンドウタイトル/タブ名を設定
 function setTitle(title: string): void {
   if (isKitty()) {
-    process.stdout.write(`${OSC}2;${title}${ST}`);
+    writeToTerminal(`${OSC}2;${title}${ST}`);
   }
 }
 
@@ -127,7 +169,7 @@ function playSound(soundPath: string): void {
 // kittyのネイティブ通知（Linuxなど）
 function notifyKitty(text: string, duration = 0): void {
   // i=1: 通知ID, d=duration: 表示時間（ミリ秒）
-  process.stdout.write(`${OSC}99;i=1:d=${duration}:${text}${ST}`);
+  writeToTerminal(`${OSC}99;i=1:d=${duration}:${text}${ST}`);
 }
 
 // 通知を表示（プラットフォーム別、設定対応版）
@@ -152,67 +194,12 @@ function notify(text: string, duration = 0, title = "pi", isError = false): void
 }
 
 function emitKittyGraphics(control: string, payload = ""): void {
-  process.stdout.write(`${KITTY_GRAPHICS_BEGIN}${control};${payload}${KITTY_GRAPHICS_END}`);
-}
-
-function showKittyImage(absPath: string, cols?: number, rows?: number): void {
-  const controls = ["a=T", "t=f", "q=2"];
-  if (typeof cols === "number") {
-    controls.push(`c=${cols}`);
-  }
-  if (typeof rows === "number") {
-    controls.push(`r=${rows}`);
-  }
-  const payload = Buffer.from(absPath, "utf-8").toString("base64");
-  emitKittyGraphics(controls.join(","), payload);
+  writeToTerminal(`${KITTY_GRAPHICS_BEGIN}${control};${payload}${KITTY_GRAPHICS_END}`);
 }
 
 function clearKittyImages(): void {
   // d=A はこの端末内の表示中画像をすべて削除する
   emitKittyGraphics("a=d,d=A");
-}
-
-interface KittyImageCommandInput {
-  path: string;
-  cols?: number;
-  rows?: number;
-}
-
-function parsePositiveInt(raw: string | undefined): number | undefined {
-  if (!raw) return undefined;
-  const value = Number.parseInt(raw, 10);
-  if (!Number.isFinite(value) || value <= 0) return undefined;
-  return value;
-}
-
-function parseKittyImageArgs(args: string | undefined): KittyImageCommandInput | null {
-  const source = args?.trim();
-  if (!source) return null;
-
-  // パスはクォートあり/なしの両方を許容
-  const match = source.match(/^("(?:[^"\\]|\\.)+"|'(?:[^'\\]|\\.)+'|\S+)(?:\s+(\d+))?(?:\s+(\d+))?$/);
-  if (!match) return null;
-
-  const rawPath = match[1];
-  const unquotedPath =
-    rawPath.startsWith('"') || rawPath.startsWith("'")
-      ? rawPath.slice(1, -1)
-      : rawPath;
-
-  return {
-    path: unquotedPath,
-    cols: parsePositiveInt(match[2]),
-    rows: parsePositiveInt(match[3]),
-  };
-}
-
-function resolveImagePath(imagePath: string, cwd: string): string {
-  if (imagePath === "~") return homedir();
-  if (imagePath.startsWith("~/")) {
-    return resolve(homedir(), imagePath.slice(2));
-  }
-  if (isAbsolute(imagePath)) return imagePath;
-  return resolve(cwd, imagePath);
 }
 
 // 元のタイトルを保存
@@ -381,6 +368,7 @@ export default function (pi: ExtensionAPI) {
     if (!isKitty()) return;
 
     restoreTitle();
+    closeTerminalIfNeeded();
   });
 
   // セッション切り替え前
@@ -459,60 +447,6 @@ export default function (pi: ExtensionAPI) {
       ].join("\n");
 
       ctx.ui.notify(status, "info");
-    },
-  });
-
-  // カスタムコマンド: /kitty-image
-  pi.registerCommand("kitty-image", {
-    description: "Display an image via kitty graphics protocol (/kitty-image <path> [cols] [rows])",
-    handler: async (args, ctx) => {
-      if (!isKitty()) {
-        ctx.ui.notify("Not running in kitty terminal", "error");
-        return;
-      }
-
-      const parsed = parseKittyImageArgs(args);
-      if (!parsed) {
-        ctx.ui.notify("Usage: /kitty-image <image-path> [cols] [rows]", "warning");
-        return;
-      }
-
-      const absPath = resolveImagePath(parsed.path, ctx.cwd);
-      if (!existsSync(absPath)) {
-        ctx.ui.notify(`Image file not found: ${absPath}`, "error");
-        return;
-      }
-
-      const ext = extname(absPath).toLowerCase();
-      if (!SUPPORTED_IMAGE_EXTENSIONS.has(ext)) {
-        ctx.ui.notify(
-          `Unsupported format: ${ext || "(none)"} (png/jpg/jpeg/gif/webp/bmp only)`,
-          "warning"
-        );
-        return;
-      }
-
-      showKittyImage(absPath, parsed.cols, parsed.rows);
-
-      const sizeHint =
-        parsed.cols || parsed.rows
-          ? ` (cols=${parsed.cols ?? "auto"}, rows=${parsed.rows ?? "auto"})`
-          : "";
-      ctx.ui.notify(`Displayed image: ${absPath}${sizeHint}`, "success");
-    },
-  });
-
-  // カスタムコマンド: /kitty-image-clear
-  pi.registerCommand("kitty-image-clear", {
-    description: "Clear displayed kitty images",
-    handler: async (_args, ctx) => {
-      if (!isKitty()) {
-        ctx.ui.notify("Not running in kitty terminal", "error");
-        return;
-      }
-
-      clearKittyImages();
-      ctx.ui.notify("Cleared kitty images", "info");
     },
   });
 
