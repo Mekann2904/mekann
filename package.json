@@ -50,6 +50,7 @@
       "./.pi/extensions/abbr.ts",
       "./.pi/extensions/abdd.ts",
       "./.pi/extensions/pi-ai-abort-fix.ts",
+      "./.pi/extensions/pi-coding-agent-rate-limit-fix.ts",
       "./.pi/extensions/agent-idle-indicator.ts",
       "./.pi/extensions/agent-runtime.ts",
       "./.pi/extensions/agent-teams/extension.ts",
