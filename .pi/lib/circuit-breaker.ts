@@ -90,6 +90,10 @@ const DEFAULT_CONFIG: Required<CircuitBreakerConfig> = {
 };
 
 // グローバルレジストリ
+// 注: このMapはプロセス固有のメモリ内状態であり、複数プロセス間で共有されない。
+// Node.jsのシングルスレッドイベントループ内では競合状態は発生しないため、
+// 同期機構は不要。もし将来的にWorker Threadsで共有する必要が生じた場合は
+// async-mutexの導入を検討すること。
 const breakers = new Map<string, CircuitBreakerInternalState>();
 
 /**
