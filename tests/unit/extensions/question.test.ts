@@ -94,6 +94,16 @@ describe("question.ts 型定義", () => {
 			expect(question.multiple).toBe(true);
 		});
 
+		it("asciiArtを持つ（オプション）", () => {
+			const question = {
+				question: "質問文",
+				header: "ヘッダー",
+				asciiArt: "[C] -> [G]",
+				options: [{ label: "A" }],
+			};
+			expect(question.asciiArt).toBe("[C] -> [G]");
+		});
+
 		it("customフラグを持つ（オプション）", () => {
 			const question = {
 				question: "質問文",

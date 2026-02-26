@@ -105,6 +105,8 @@ export interface QuestionInfo {
 	question: string;
 	/** 短いラベル（推奨: 最大30文字） */
 	header: string;
+	/** 質問と一緒に表示するASCIIアート（任意） */
+	asciiArt?: string;
 	/** 選択肢一覧 */
 	options: QuestionOption[];
 	/** 複数選択を許可（デフォルト: false） */
@@ -286,6 +288,16 @@ export async function askSingleQuestion(
 		add(theme.fg("text", ` ${question.question}`));
 		if (question.header !== question.question) {
 			add(theme.fg("dim", ` ${question.header}`));
+		}
+		if (question.asciiArt && question.asciiArt.trim().length > 0) {
+			lines.push("");
+			const artWidth = Math.max(1, width - 1);
+			for (const rawLine of question.asciiArt.split("\n")) {
+				const line = getStringWidth(rawLine) > artWidth
+					? truncateByWidth(rawLine, artWidth)
+					: rawLine;
+				add(theme.fg("dim", ` ${line}`));
+			}
 		}
 		lines.push("");
 
@@ -755,6 +767,7 @@ export default function (pi: ExtensionAPI) {
 	const QuestionType = Type.Object({
 		question: Type.String({ description: "質問文（完全な文章）" }),
 		header: Type.String({ description: "短いラベル（最大30文字）" }),
+		asciiArt: Type.Optional(Type.String({ description: "質問と一緒に表示するASCIIアート（改行可）" })),
 		options: Type.Array(OptionType, { description: "選択肢一覧" }),
 		multiple: Type.Optional(Type.Boolean({ description: "複数選択を許可" })),
 		custom: Type.Optional(Type.Boolean({ description: "自由記述を許可（デフォルト: true）" }))
