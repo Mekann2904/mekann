@@ -589,12 +589,13 @@ async function saveCheckpoint(
     metadata: checkpoint.metadata,
   };
 
-  // BUG-SEC-002: Validate checkpoint size before writing
-  validateCheckpointSize(fullCheckpoint);
-
   const filePath = getCheckpointPath(dir, fullCheckpoint.id);
 
   try {
+    // BUG-SEC-002: Validate checkpoint size before writing
+    // Also catches circular reference errors in JSON.stringify
+    validateCheckpointSize(fullCheckpoint);
+
     // Ensure directory exists before write
     ensureCheckpointDir(dir);
 

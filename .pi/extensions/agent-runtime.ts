@@ -417,7 +417,13 @@ function getLocalRuntimeUsage(runtime: AgentRuntimeState): {
 }
 
 function publishRuntimeUsageToCoordinator(): void {
-  const updateRuntimeUsage = (crossInstanceCoordinator as { updateRuntimeUsage?: (activeRequests: number, activeLlm: number) => void }).updateRuntimeUsage;
+  let updateRuntimeUsage: ((activeRequests: number, activeLlm: number) => void) | undefined;
+  try {
+    updateRuntimeUsage = (crossInstanceCoordinator as { updateRuntimeUsage?: (activeRequests: number, activeLlm: number) => void }).updateRuntimeUsage;
+  } catch {
+    // モック環境やモジュール読み込みエラーでは静かに失敗
+    return;
+  }
   if (typeof updateRuntimeUsage !== "function") return;
   const runtime = getSharedRuntimeState();
   const usage = getLocalRuntimeUsage(runtime);
@@ -434,7 +440,13 @@ function getClusterUsageSafe(localUsage: { totalActiveRequests: number; totalAct
   totalActiveRequests: number;
   totalActiveLlm: number;
 } {
-  const getClusterRuntimeUsage = (crossInstanceCoordinator as { getClusterRuntimeUsage?: () => { totalActiveRequests: number; totalActiveLlm: number } }).getClusterRuntimeUsage;
+  let getClusterRuntimeUsage: (() => { totalActiveRequests: number; totalActiveLlm: number }) | undefined;
+  try {
+    getClusterRuntimeUsage = (crossInstanceCoordinator as { getClusterRuntimeUsage?: () => { totalActiveRequests: number; totalActiveLlm: number } }).getClusterRuntimeUsage;
+  } catch {
+    // モック環境やモジュール読み込みエラーではローカル使用量を返す
+    return localUsage;
+  }
   if (typeof getClusterRuntimeUsage !== "function") {
     return localUsage;
   }
