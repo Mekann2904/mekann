@@ -20,6 +20,8 @@
  *   out: DevPerspectiveTranslation, analysis results with refactoring suggestions
  */
 
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 /**
  * 哲学的視座の名称（self-improvement-loop.tsと同期）
  * @summary Philosophical perspective name type
@@ -477,3 +479,10 @@ function generateNextSteps(
 
   return steps;
 }
+
+// Extension factory function
+export default (_api: ExtensionAPI) => {
+  // This extension exports utility functions for other extensions
+  // No tools or commands to register
+  console.log("[self-improvement-dev-analyzer] Extension loaded successfully");
+};

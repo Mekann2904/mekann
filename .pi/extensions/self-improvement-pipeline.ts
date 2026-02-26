@@ -23,6 +23,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   DEV_PERSPECTIVE_TRANSLATIONS,
   analyzeCodeFromPerspective,
@@ -435,3 +436,9 @@ ${perspectiveSections.join("\n---\n\n")}
 export function getHighRiskPatterns(): Array<{ risk: string; perspective: string }> {
   return HIGH_RISK_PATTERNS.map(({ risk, perspective }) => ({ risk, perspective }));
 }
+
+export default (_api: ExtensionAPI) => {
+  // This extension exports utility functions for other extensions
+  // No tools or commands to register
+  console.log("[self-improvement-pipeline] Extension loaded successfully");
+};

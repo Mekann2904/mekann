@@ -21,6 +21,7 @@
  */
 
 import type { PerspectiveName } from "./self-improvement-dev-analyzer.js";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 /**
  * 分析入力の型定義
@@ -479,3 +480,9 @@ function sortSuggestionsByPriority(
     (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]
   );
 }
+
+export default (_api: ExtensionAPI) => {
+  // This extension exports utility functions for other extensions
+  // No tools or commands to register
+  console.log("[self-improvement-output] Extension loaded successfully");
+};
