@@ -50,6 +50,8 @@ export interface StateTransition {
   finishedAtMs?: number;
   /** State type: RUN (executing) or WAIT (blocked/idle) */
   state: "RUN" | "WAIT";
+  /** Detailed activity kind while RUN */
+  activity?: "LLM" | "EDIT" | "COMMAND" | "READ" | "THINK" | "OTHER";
 }
 
 // ============================================================================

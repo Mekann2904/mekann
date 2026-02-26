@@ -72,6 +72,7 @@ import {
   type LiveStreamView,
   type TeamQueueStatus,
 } from "../../lib/team-types.js";
+import type { StateTransition } from "../../lib/live-types-base.js";
 
 // Re-export types for convenience
 export type { TeamLivePhase, TeamLiveItem, TeamLiveViewMode, AgentTeamLiveMonitorController, LiveStreamView, TeamQueueStatus };
@@ -117,6 +118,62 @@ const LIVE_POLL_INTERVAL_MS = (() => {
 
 // アクティビティアニメーション用のスピナー文字
 const SPINNER_FRAMES = ["|", "/", "-", "\\"];
+
+function classifyActivityFromChunk(chunk: string): NonNullable<StateTransition["activity"]> {
+  const text = chunk.toLowerCase();
+  if (
+    /apply_patch|\*\*\* begin patch|update file:|add file:|delete file:|move to:|diff --git|@@/.test(text)
+  ) {
+    return "EDIT";
+  }
+  if (
+    /\b(rg|grep|cat|sed|ls|find|open|read|search|inspect|analyze|wc -l)\b/.test(text)
+  ) {
+    return "READ";
+  }
+  if (
+    /\b(npm|pnpm|yarn|bun|node|python|pytest|vitest|cargo|go test|git|bash|zsh|shell|command|exec)\b/.test(text)
+  ) {
+    return "COMMAND";
+  }
+  if (/\[thinking\]|thinking|reasoning|analysis|claim:|evidence:|result:/.test(text)) {
+    return "LLM";
+  }
+  return "OTHER";
+}
+
+function pushStateTransition(
+  item: TeamLiveItem,
+  state: StateTransition["state"],
+  activity?: StateTransition["activity"],
+): void {
+  const now = Date.now();
+  const timeline = (item.stateTimeline ??= []);
+  const last = timeline[timeline.length - 1];
+  const normalizedActivity = activity ?? "OTHER";
+
+  const sameAsLast = Boolean(
+    last
+      && last.state === state
+      && (last.activity ?? "OTHER") === normalizedActivity
+      && !last.finishedAtMs,
+  );
+  if (sameAsLast) return;
+
+  if (last && !last.finishedAtMs) {
+    last.finishedAtMs = now;
+  }
+
+  timeline.push({
+    startedAtMs: now,
+    state,
+    activity: normalizedActivity,
+  });
+
+  if (timeline.length > 256) {
+    timeline.splice(0, timeline.length - 256);
+  }
+}
 
 // ============================================================================
 // Tree View Utilities
@@ -983,7 +1040,7 @@ export function createAgentTeamLiveMonitor(
   const byKey = new Map(items.map((item) => [item.key, item]));
   const globalEvents: string[] = [];
   let cursor = 0;
-  let mode: TeamLiveViewMode = "list";
+  let mode: TeamLiveViewMode = "gantt";
   let stream: LiveStreamView = "stdout";
   let requestRender: (() => void) | undefined;
   let doneUi: (() => void) | undefined;
@@ -1245,6 +1302,7 @@ export function createAgentTeamLiveMonitor(
         item.phase = "initial";
       }
       item.startedAtMs = Date.now();
+      pushStateTransition(item, "RUN", "OTHER");
       pushLiveEvent(item, "member process started");
       // 実行中アイテムが増えたのでポーリング開始
       startPolling();
@@ -1262,6 +1320,13 @@ export function createAgentTeamLiveMonitor(
         item.finishedAtMs = undefined;
         item.summary = undefined;
         item.error = undefined;
+        pushStateTransition(item, "WAIT", "OTHER");
+      } else if (phase === "communication") {
+        pushStateTransition(item, "RUN", "LLM");
+      } else if (phase === "judge") {
+        pushStateTransition(item, "RUN", "THINK");
+      } else if (phase === "initial") {
+        pushStateTransition(item, "RUN", "OTHER");
       }
       pushLiveEvent(item, `phase=${formatLivePhase(phase, round)}`);
       queueRender();
@@ -1299,6 +1364,7 @@ export function createAgentTeamLiveMonitor(
         item.stderrEndsWithNewline = chunk.endsWith("\n");
       }
       item.lastChunkAtMs = Date.now();
+      pushStateTransition(item, "RUN", classifyActivityFromChunk(chunk));
       queueRender();
     },
     markFinished: (itemKey: string, status: "completed" | "failed", summary: string, error?: string) => {
@@ -1309,6 +1375,12 @@ export function createAgentTeamLiveMonitor(
       item.summary = summary;
       item.error = error;
       item.finishedAtMs = Date.now();
+      if (item.stateTimeline && item.stateTimeline.length > 0) {
+        const last = item.stateTimeline[item.stateTimeline.length - 1];
+        if (!last.finishedAtMs) {
+          last.finishedAtMs = item.finishedAtMs;
+        }
+      }
       pushLiveEvent(item, `member ${status}: ${summary}${error ? ` | error=${normalizeForSingleLine(error, 120)}` : ""}`);
       queueRender();
     },

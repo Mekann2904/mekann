@@ -31,24 +31,11 @@ import type { Theme } from "./types.js";
 import { truncateToWidth } from "@mariozechner/pi-tui";
 import { formatClockTime } from "../format-utils.js";
 import { pushWrappedLine } from "./tui-utils.js";
-import type { BaseLiveSnapshot } from "../live-types-base.js";
+import type { BaseLiveSnapshot, StateTransition } from "../live-types-base.js";
 
 // ============================================================================
 // Types
 // ============================================================================
-
-/**
- * State transition entry for Gantt display
- * @summary 状態遷移エントリ
- */
-export interface StateTransition {
-  /** Timestamp when state started */
-  startedAtMs: number;
-  /** Timestamp when state ended (undefined if current) */
-  finishedAtMs?: number;
-  /** State type: RUN (executing) or WAIT (blocked/idle) */
-  state: "RUN" | "WAIT";
-}
 
 /**
  * Gantt chart configuration
@@ -107,6 +94,18 @@ export const GANTT_CHARS = {
   CORNER_BR: "\u2518",
 } as const;
 
+function getActivityStyle(activity: StateTransition["activity"]): { color: string; glyph: string } {
+  const kind = activity ?? "OTHER";
+  // Dense block fill looks noisy in long-running rows.
+  // Keep bars lightweight with thin glyphs and color cues.
+  if (kind === "LLM") return { color: "accent", glyph: "·" };
+  if (kind === "EDIT") return { color: "success", glyph: "=" };
+  if (kind === "COMMAND") return { color: "warning", glyph: "~" };
+  if (kind === "READ") return { color: "dim", glyph: ":" };
+  if (kind === "THINK") return { color: "dim", glyph: "." };
+  return { color: "dim", glyph: "·" };
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -118,7 +117,10 @@ export const GANTT_CHARS = {
  * @returns フォーマットされた文字列
  */
 function formatSeconds(seconds: number): string {
-  if (seconds < 60) return `${Math.floor(seconds)}s`;
+  if (seconds < 60) {
+    const rounded = Math.round(seconds * 10) / 10;
+    return Number.isInteger(rounded) ? `${rounded}s` : `${rounded.toFixed(1)}s`;
+  }
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}m${secs}s`;
@@ -134,11 +136,11 @@ function formatSeconds(seconds: number): string {
 function getStateAtTime(
   timeline: StateTransition[],
   timeMs: number,
-): "RUN" | "WAIT" | null {
+): StateTransition | null {
   for (const transition of timeline) {
     const end = transition.finishedAtMs ?? Date.now();
     if (timeMs >= transition.startedAtMs && timeMs < end) {
-      return transition.state;
+      return transition;
     }
   }
   return null;
@@ -172,14 +174,21 @@ export function calculateAdaptiveScale(
     ...runningItems.map((i) => i.finishedAtMs ?? Date.now()),
   );
 
-  // Simple: fit all data within available width
-  // Add 10% padding on both sides for readability
+  // Fit all data exactly.
+  // Keep left edge pinned to first start and right edge pinned to latest end
+  // so bar start/end and axis range stay visually consistent.
   const duration = latestEnd - earliestStart;
-  const padding = duration * 0.1;
+  if (duration <= 0) {
+    const minDurationMs = Math.max(10_000, minBarWidth * 1_000);
+    return {
+      timeStart: earliestStart,
+      timeEnd: earliestStart + minDurationMs,
+    };
+  }
 
   return {
-    timeStart: earliestStart - padding,
-    timeEnd: latestEnd + padding || earliestStart + 10000, // Minimum 10s if no duration
+    timeStart: earliestStart,
+    timeEnd: latestEnd,
   };
 }
 
@@ -193,6 +202,7 @@ export function calculateAdaptiveScale(
 export function renderGanttBar(
   item: GanttItem,
   config: GanttConfig,
+  theme: Theme,
 ): string {
   const { timeStart, timeEnd, axisWidth } = config;
   const totalDuration = timeEnd - timeStart;
@@ -207,17 +217,19 @@ export function renderGanttBar(
     : [{ startedAtMs: item.startedAtMs, state: "RUN" as const }];
 
   let bar = "";
+  const denom = Math.max(1, axisWidth - 1);
 
   for (let i = 0; i < axisWidth; i++) {
-    const charTime = timeStart + (i / axisWidth) * totalDuration;
-    const state = getStateAtTime(timeline, charTime);
+    const charTime = timeStart + (i / denom) * totalDuration;
+    const transition = getStateAtTime(timeline, charTime);
 
-    if (!state) {
+    if (!transition) {
       bar += GANTT_CHARS.EMPTY;
-    } else if (state === "RUN") {
-      bar += GANTT_CHARS.RUN;
+    } else if (transition.state === "RUN") {
+      const style = getActivityStyle(transition.activity);
+      bar += theme.fg(style.color, style.glyph);
     } else {
-      bar += GANTT_CHARS.WAIT;
+      bar += theme.fg("dim", GANTT_CHARS.WAIT);
     }
   }
 
@@ -239,22 +251,22 @@ export function renderTimeAxis(
   const { timeStart, timeEnd, axisWidth } = config;
 
   const totalSeconds = (timeEnd - timeStart) / 1000;
-  const tickCount = Math.min(5, Math.floor(axisWidth / 12));
+  const tickCount = Math.max(1, Math.min(5, Math.floor(axisWidth / 12)));
   const tickInterval = totalSeconds / tickCount;
 
   // Axis line with ticks (no "Time " prefix - will be aligned by caller)
   const tickPositions: number[] = [];
 
   for (let i = 0; i <= tickCount; i++) {
-    // Ensure last tick is within bounds (axisWidth - 1)
-    const pos = i === tickCount ? axisWidth - 1 : Math.floor((i / tickCount) * axisWidth);
+    const pos = Math.round((i / tickCount) * (axisWidth - 1));
     tickPositions.push(Math.min(pos, axisWidth - 1));
   }
 
   // Build axis line character by character
   const axisChars: string[] = [];
+  const tickSet = new Set(tickPositions);
   for (let i = 0; i < axisWidth; i++) {
-    if (tickPositions.includes(i)) {
+    if (tickSet.has(i)) {
       axisChars.push(GANTT_CHARS.AXIS_TICK);
     } else {
       axisChars.push(GANTT_CHARS.AXIS_HORIZ);
@@ -264,22 +276,25 @@ export function renderTimeAxis(
   lines.push(theme.fg("dim", axisChars.join("")));
 
   // Tick labels
-  let labelLine = "";
+  const labelChars: string[] = Array(axisWidth).fill(" ");
 
   for (let i = 0; i <= tickCount; i++) {
     const pos = tickPositions[i];
-    const seconds = (i / tickCount) * totalSeconds;
+    const seconds = i * tickInterval;
     const label = formatSeconds(seconds);
 
-    // Pad to position (based on actual labelLine length)
-    const currentLength = labelLine.length;
-    const padding = pos - currentLength;
-    if (padding > 0) {
-      labelLine += " ".repeat(padding);
+    // Keep labels centered on tick and clamped to axis bounds.
+    const idealStart = pos - Math.floor(label.length / 2);
+    const start = Math.max(0, Math.min(axisWidth - label.length, idealStart));
+    for (let j = 0; j < label.length; j++) {
+      const idx = start + j;
+      if (idx >= 0 && idx < axisWidth) {
+        labelChars[idx] = label[j];
+      }
     }
-    labelLine += label;
   }
 
+  const labelLine = labelChars.join("").trimEnd();
   lines.push(theme.fg("dim", labelLine));
 
   // Scale indicator
@@ -328,7 +343,7 @@ export function renderGanttView(
     showSystemRows,
   };
 
-  // Header
+  // Minimal header
   add(theme.bold(theme.fg("accent", "Gantt Chart View")));
   add("");
 
@@ -339,19 +354,28 @@ export function renderGanttView(
     // Add prefix to align time axis with bar positions
     add(axisPrefix + line);
   }
-  add("");
-
   // Task rows
   for (const item of items) {
     const label = truncateToWidth(item.name ?? item.id, labelWidth - 1);
     const paddedLabel = label.padEnd(labelWidth);
-    const bar = renderGanttBar(item, config);
+    const bar = renderGanttBar(item, config, theme);
     const isRunning = item.status === "running";
     const status = isRunning ? theme.fg("accent", "*") : " ";
 
     const line = `${status}${paddedLabel} ${bar}`;
     add(line);
   }
+
+  add("");
+  add(
+    theme.fg("dim", "Legend:")
+      + ` ${theme.fg("accent", "·")}LLM`
+      + ` ${theme.fg("success", "=")}EDIT`
+      + ` ${theme.fg("warning", "~")}CMD`
+      + ` ${theme.fg("dim", ":")}READ`
+      + ` ${theme.fg("dim", ".")}THINK`
+      + ` ${theme.fg("dim", " ")}WAIT`,
+  );
 
   // System rows (optional)
   if (showSystemRows) {

@@ -71,6 +71,7 @@ import {
   type LiveStreamView,
   type LiveViewMode,
 } from "../../lib/subagent-types.js";
+import type { StateTransition } from "../../lib/live-types-base.js";
 
 // Re-export types for convenience
 export type { SubagentLiveItem, SubagentLiveMonitorController, LiveStreamView, LiveViewMode };
@@ -87,6 +88,63 @@ const LIVE_POLL_INTERVAL_MS = 500;
 
 // アクティビティアニメーション用のスピナー文字
 const SPINNER_FRAMES = ["|", "/", "-", "\\"];
+
+// Chunkの内容から実行アクティビティ種別を推定する。
+function classifyActivityFromChunk(chunk: string): NonNullable<StateTransition["activity"]> {
+  const text = chunk.toLowerCase();
+  if (
+    /apply_patch|\*\*\* begin patch|update file:|add file:|delete file:|move to:|diff --git|@@/.test(text)
+  ) {
+    return "EDIT";
+  }
+  if (
+    /\b(rg|grep|cat|sed|ls|find|open|read|search|inspect|analyze|wc -l)\b/.test(text)
+  ) {
+    return "READ";
+  }
+  if (
+    /\b(npm|pnpm|yarn|bun|node|python|pytest|vitest|cargo|go test|git|bash|zsh|shell|command|exec)\b/.test(text)
+  ) {
+    return "COMMAND";
+  }
+  if (/\[thinking\]|thinking|reasoning|analysis|claim:|evidence:|result:/.test(text)) {
+    return "LLM";
+  }
+  return "OTHER";
+}
+
+function pushStateTransition(
+  item: SubagentLiveItem,
+  state: StateTransition["state"],
+  activity?: StateTransition["activity"],
+): void {
+  const now = Date.now();
+  const timeline = (item.stateTimeline ??= []);
+  const last = timeline[timeline.length - 1];
+
+  const normalizedActivity = activity ?? "OTHER";
+  const sameAsLast = Boolean(
+    last
+      && last.state === state
+      && (last.activity ?? "OTHER") === normalizedActivity
+      && !last.finishedAtMs,
+  );
+  if (sameAsLast) return;
+
+  if (last && !last.finishedAtMs) {
+    last.finishedAtMs = now;
+  }
+
+  timeline.push({
+    startedAtMs: now,
+    state,
+    activity: normalizedActivity,
+  });
+
+  if (timeline.length > 256) {
+    timeline.splice(0, timeline.length - 256);
+  }
+}
 
 // ============================================================================
 // Tree View Utilities
@@ -510,7 +568,7 @@ export function createSubagentLiveMonitor(
   }));
   const byId = new Map(items.map((item) => [item.id, item]));
   let cursor = 0;
-  let mode: LiveViewMode = "list";
+  let mode: LiveViewMode = "gantt";
   let stream: LiveStreamView = "stdout";
   let requestRender: (() => void) | undefined;
   let doneUi: (() => void) | undefined;
@@ -734,6 +792,7 @@ export function createSubagentLiveMonitor(
       if (!item || closed) return;
       item.status = "running";
       item.startedAtMs = Date.now();
+      pushStateTransition(item, "RUN", "OTHER");
       queueRender();
     },
     appendChunk: (agentId: string, targetStream: LiveStreamView, chunk: string) => {
@@ -751,6 +810,7 @@ export function createSubagentLiveMonitor(
         item.stderrEndsWithNewline = chunk.endsWith("\n");
       }
       item.lastChunkAtMs = Date.now();
+      pushStateTransition(item, "RUN", classifyActivityFromChunk(chunk));
       queueRender();
     },
     markFinished: (agentId: string, status: "completed" | "failed", summary: string, error?: string) => {
@@ -760,6 +820,12 @@ export function createSubagentLiveMonitor(
       item.summary = summary;
       item.error = error;
       item.finishedAtMs = Date.now();
+      if (item.stateTimeline && item.stateTimeline.length > 0) {
+        const last = item.stateTimeline[item.stateTimeline.length - 1];
+        if (!last.finishedAtMs) {
+          last.finishedAtMs = item.finishedAtMs;
+        }
+      }
       queueRender();
     },
     close,

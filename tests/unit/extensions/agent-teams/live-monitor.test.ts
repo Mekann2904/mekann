@@ -1007,6 +1007,8 @@ describe("createAgentTeamLiveMonitor", () => {
       controller?.markStarted("team-1/member-1");
       vi.advanceTimersByTime(2000);
 
+      // defaultモードがganttのため、listに戻してから確認
+      uiHandle?.handleInput("b");
       const lines = uiHandle?.render(120) ?? [];
       expect(lines.some((line) => line.includes("00:00:02"))).toBe(true);
       expect(lines.some((line) => line.includes("running"))).toBe(true);
@@ -1033,6 +1035,7 @@ describe("createAgentTeamLiveMonitor", () => {
       controller?.markPhase("team-1/member-1", "queued");
 
       // detail表示に切り替えて、error表示が残っていないことを確認
+      uiHandle?.handleInput("b");
       uiHandle?.handleInput("\n");
       const lines = uiHandle?.render(120) ?? [];
       expect(lines.some((line) => line.includes("pending"))).toBe(true);
