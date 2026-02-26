@@ -23,17 +23,20 @@
 
 # UL Mode Guideline
 
-詳細は `.pi/docs/ul-mode-guide.md` を参照。
-
 基本フロー: Research → Plan → [ユーザーレビュー] → Implement → Commit
+
+> 拡張機能`inject-system-prompt`により、詳細なガイドラインが自動的にシステムプロンプトに注入されます。
 
 ---
 
 # DAG Execution Guide
 
-詳細は `.pi/docs/dag-execution-guide.md` を参照。
-
 基本原則: 複雑なタスクはDAGで並列化し、レイテンシを削減する
+
+- `subagent_run_dag` - タスクをDAGに分解して並列実行
+- `agent_team_run_parallel` - 複数チームを並列実行
+
+> 拡張機能`inject-system-prompt`により、詳細なガイドラインが自動的にシステムプロンプトに注入されます。
 
 ---
 

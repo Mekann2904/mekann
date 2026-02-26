@@ -1,0 +1,48 @@
+{
+  "name": "@mekann/pi-config",
+  "version": "0.1.0",
+  "description": "Custom pi configuration with UL Mode, DAG Execution, subagents, agent-teams, and more",
+  "keywords": ["pi-package"],
+  "type": "module",
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"],
+    "themes": ["./themes"]
+  },
+  "files": [
+    "extensions",
+    "skills",
+    "themes",
+    "docs",
+    "lib",
+    "agent-teams",
+    "subagents",
+    "adapters",
+    "agent-loop",
+    "application",
+    "config",
+    "core",
+    "infrastructure",
+    "references",
+    "scripts",
+    "search",
+    "tests",
+    "APPEND_SYSTEM.md",
+    "INDEX.md",
+    "NAVIGATION.md",
+    "settings.json",
+    "BUG_REPORT.md"
+  ],
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mekann/pi-plugin.git",
+    "directory": ".pi"
+  },
+  "license": "MIT"
+}
