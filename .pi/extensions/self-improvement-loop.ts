@@ -1051,72 +1051,107 @@ function buildULPhaseMarker(runId: string, phase: ULPhase, cycle: number): strin
 }
 
 /**
- * Research フェーズ用のプロンプトを生成する
- * 7つの哲学的視座を適用した現状分析を促す
+ * タスクに基づいて研究の焦点を選択する
+ * 論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述すべき
  * 
- * @summary Researchフェーズプロンプトを生成
+ * @summary タスクに適した研究焦点を選択
+ * @param task タスク記述
+ * @returns 焦点（視座名と問い）
+ */
+function selectResearchFocus(task: string): { perspective: string; question: string } {
+  const taskLower = task.toLowerCase();
+  
+  // タスクタイプに基づいて焦点を選択
+  if (taskLower.includes('バグ') || taskLower.includes('bug') || taskLower.includes('fix') || taskLower.includes('修正')) {
+    return {
+      perspective: '論理検証',
+      question: 'どこで論理が壊れているか？'
+    };
+  }
+  
+  if (taskLower.includes('リファクタ') || taskLower.includes('refactor') || taskLower.includes('整理')) {
+    return {
+      perspective: 'コード批判的分析',
+      question: '何を前提としているか？'
+    };
+  }
+  
+  if (taskLower.includes('機能') || taskLower.includes('feature') || taskLower.includes('追加') || taskLower.includes('add')) {
+    return {
+      perspective: '機能分析',
+      question: 'この機能は何を生産し、何を排除するか？'
+    };
+  }
+  
+  if (taskLower.includes('パフォーマンス') || taskLower.includes('performance') || taskLower.includes('高速') || taskLower.includes('最適化')) {
+    return {
+      perspective: '評価基準',
+      question: '「良い状態」とは何か？'
+    };
+  }
+  
+  if (taskLower.includes('アーキテクチャ') || taskLower.includes('architecture') || taskLower.includes('設計') || taskLower.includes('構造')) {
+    return {
+      perspective: '将来予測',
+      question: 'この変更は将来どう影響するか？'
+    };
+  }
+  
+  if (taskLower.includes('テスト') || taskLower.includes('test') || taskLower.includes('検証')) {
+    return {
+      perspective: 'ロジック検証',
+      question: 'どのような入力で壊れるか？'
+    };
+  }
+  
+  // デフォルト: 汎用的な問い
+  return {
+    perspective: '現状認識',
+    question: '何が問題で、何を変えるべきか？'
+  };
+}
+
+/**
+ * Research フェーズ用のプロンプトを生成する
+ * 論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述
+ * 
+ * @summary Researchフェーズプロンプトを生成（最小化版）
  * @param run 現在のラン状態
  * @returns Researchフェーズ用プロンプト
  */
 function buildResearchPrompt(run: ActiveAutonomousRun): string {
   const marker = buildULPhaseMarker(run.runId, 'research', run.cycle);
   
+  // タスクに基づいて焦点を選択
+  const focus = selectResearchFocus(run.task);
+  
+  const previousContext = run.cycleSummaries.length > 0 
+    ? `\n### 前回の進捗\n${run.cycleSummaries.slice(-1).join('\n')}\n` 
+    : '';
+
   return `${marker}
 
-## UL Phase: Research (現状分析)
-
-あなたは自己改善エージェントです。以下のタスクの現状を深く調査してください。
+## Research
 
 ### タスク
-${run.task}
+${run.task}${previousContext}
 
-### 前回までの進捗
-${run.cycleSummaries.length > 0 ? run.cycleSummaries.slice(-3).join('\n') : '（初回サイクル）'}
+### 焦点
+**${focus.perspective}**: ${focus.question}
 
-### 7つの哲学的視座を適用した調査ポイント
-
-1. **脱構築**: 現状の「当然」を問い直せ。どのような二項対立が前提されているか？
-2. **スキゾ分析**: 欲望-生産の流れを分析せよ。何が生産され、何が抑圧されているか？
-3. **幸福論**: 「善い状態」とは何か。現在の評価基準を批判的に検討せよ
-4. **ユートピア/ディストピア**: 現在の方向性がもたらす未来を予測せよ
-5. **思考哲学**: 自身の思考プロセスをメタ認知的に観察せよ
-6. **思考分類学**: 現在使用している思考モードを特定せよ
-7. **論理学**: 現状認識の論理的妥当性を検証せよ
-
-### 出力フォーマット
-
-\`\`\`
-## 現状認識
-[タスクの現状を客観的に記述]
-
-## 検出された問題
-- [問題1]: [詳細]
-- [問題2]: [詳細]
-...
-
-## 問い
-- [探求すべき問い1]
-- [探求すべき問い2]
-...
-
-## 次フェーズへの引き継ぎ
-[Plan フェーズで検討すべき事項]
+### 出力
+現状: [タスクに関連する現状を1-2段落で記述]
+次アクション: [Plan フェーズで何をすべきか]
 
 RESEARCH_COMPLETE: true
-\`\`\`
-
-### 実行ルール
-- ツールを自由に使用してコードベースを調査せよ
-- 表面的な観察ではなく、深い理解を追求せよ
-- 自分の仮説を否定する証拠を積極的に探せ
 `;
 }
 
 /**
  * Plan フェーズ用のプロンプトを生成する
- * Research フェーズの成果に基づき、具体的な改善計画を策定する
+ * 論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述
  * 
- * @summary Planフェーズプロンプトを生成
+ * @summary Planフェーズプロンプトを生成（最小化版）
  * @param run 現在のラン状態
  * @returns Planフェーズ用プロンプト
  */
@@ -1124,70 +1159,30 @@ function buildPlanPrompt(run: ActiveAutonomousRun): string {
   const marker = buildULPhaseMarker(run.runId, 'plan', run.cycle);
   
   const researchContext = run.phaseContext.researchOutput 
-    ? `\n### Research フェーズの成果\n${run.phaseContext.researchOutput}\n`
-    : '';
-    
-  const previousActions = run.lastImprovementActions && run.lastImprovementActions.length > 0
-    ? `\n### 前回の改善アクション（参考）\n${run.lastImprovementActions.slice(0, 3).map(a => 
-        `- [${a.relatedPerspective}] ${a.action}`
-      ).join('\n')}\n`
+    ? `\n### Researchの成果\n${run.phaseContext.researchOutput}\n`
     : '';
 
   return `${marker}
 
-## UL Phase: Plan (改善計画)
-
-あなたは自己改善エージェントです。Research フェーズの成果に基づき、具体的な改善計画を策定してください。
+## Plan
 
 ### タスク
-${run.task}${researchContext}${previousActions}
+${run.task}${researchContext}
 
-### 7つの哲学的視座に基づく計画立案
-
-1. **脱構築**: 「解決」を急がず、問題の構造を深く理解せよ
-2. **スキゾ分析**: 改善が「生産」するものと「抑圧」するものを分析せよ
-3. **幸福論**: 改善後の「善い状態」を明確に定義せよ
-4. **ユートピア/ディストピア**: 改善がもたらす可能性（肯定的・否定的）を予測せよ
-5. **思考哲学**: 計画の前提をメタ認知的に検証せよ
-6. **思考分類学**: 適切な思考モード（分析的/創造的/批判的）を選択せよ
-7. **論理学**: 計画の論理的整合性を検証せよ
-
-### 出力フォーマット
-
-\`\`\`
-## 改善目標
-[このサイクルで達成すべき具体的な目標]
-
-## 変更計画
-1. **[ファイル/モジュール名]**
-   - 変更内容: [具体的な変更]
-   - 理由: [なぜこの変更が必要か]
-   - リスク: [想定されるリスクと対策]
-
-## 実行順序
-1. [ステップ1]
-2. [ステップ2]
-...
-
-## 成功基準
-- [基準1]: [測定方法]
-- [基準2]: [測定方法]
+### 出力
+目標: [このサイクルで達成すべきこと]
+手順: [実行するステップ（番号付きリスト）]
+成功基準: [どうやって成功を判定するか]
 
 PLAN_COMPLETE: true
-\`\`\`
-
-### 重要
-- 曖昧な表現を避け、具体的かつ実行可能な計画を立てよ
-- 高リスク変更には警告を含めよ
-- 自動承認モードのため、計画は自己完結していなければならない
 `;
 }
 
 /**
  * Implement フェーズ用のプロンプトを生成する
- * Plan フェーズで策定した計画に従って、具体的な改善を実装する
+ * 論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述
  * 
- * @summary Implementフェーズプロンプトを生成
+ * @summary Implementフェーズプロンプトを生成（最小化版）
  * @param run 現在のラン状態
  * @returns Implementフェーズ用プロンプト
  */
@@ -1195,57 +1190,26 @@ function buildImplementPrompt(run: ActiveAutonomousRun): string {
   const marker = buildULPhaseMarker(run.runId, 'implement', run.cycle);
   
   const planContext = run.phaseContext.planOutput
-    ? `\n### Plan フェーズの成果\n${run.phaseContext.planOutput}\n`
+    ? `\n### Planの内容\n${run.phaseContext.planOutput}\n`
     : '';
 
   return `${marker}
 
-## UL Phase: Implement (改善実装)
-
-あなたは自己改善エージェントです。Plan フェーズで策定した計画に従って、具体的な改善を実装してください。
+## Implement
 
 ### タスク
 ${run.task}${planContext}
 
-### 実行ルール
-
-1. **計画に忠実たれ**: Plan フェーズの計画を機械的に実行せよ
-2. **ツールを活用せよ**: ファイル編集、テスト実行、コミット作成を自由に行え
-3. **品質を確保せよ**: 実装後はテストを実行し、動作を確認せよ
-4. **ドキュメントを更新せよ**: JSDoc、ABDDヘッダーを更新せよ
-
-### 出力フォーマット
-
-\`\`\`
-## 実行した変更
-1. [変更1の概要]
-2. [変更2の概要]
-...
-
-## テスト結果
-[テスト実行結果または検証内容]
-
-## 振り返り
-[何を学んだか、何を見落としていたか]
+### 出力
+実行内容: [何を変更したか]
+テスト結果: [テスト実行結果]
+振り返り: [何を学んだか]
 
 CYCLE: ${run.cycle}
 LOOP_STATUS: continue
-NEXT_FOCUS: [次サイクルで最優先に進める内容]
 
 PERSPECTIVE_SCORES:
-  脱構築: [0-100]
-  スキゾ分析: [0-100]
-  幸福論: [0-100]
-  ユートピア/ディストピア: [0-100]
-  思考哲学: [0-100]
-  思考分類学: [0-100]
-  論理学: [0-100]
-\`\`\`
-
-### 重要
-- 実装中に新たな問題を発見した場合は、それを記録せよ（次サイクルで対応）
-- 完璧を求めすぎず、動作する改善を優先せよ
-- コミットメッセージは git-workflow スキルに準拠せよ
+  総合: [0-100]
 `;
 }
 
