@@ -247,7 +247,9 @@ export function renderTimeAxis(
   const tickPositions: number[] = [];
 
   for (let i = 0; i <= tickCount; i++) {
-    tickPositions.push(Math.floor((i / tickCount) * axisWidth));
+    // Ensure last tick is within bounds (axisWidth - 1)
+    const pos = i === tickCount ? axisWidth - 1 : Math.floor((i / tickCount) * axisWidth);
+    tickPositions.push(Math.min(pos, axisWidth - 1));
   }
 
   // Build axis line character by character
@@ -265,18 +267,19 @@ export function renderTimeAxis(
 
   // Tick labels
   let labelLine = "     "; // Align with "Time "
-  let lastLabelEnd = 0;
 
   for (let i = 0; i <= tickCount; i++) {
     const pos = tickPositions[i];
     const seconds = (i / tickCount) * totalSeconds;
     const label = formatSeconds(seconds);
 
-    // Pad to position
-    const padding = pos - lastLabelEnd;
-    labelLine += " ".repeat(Math.max(0, padding));
+    // Pad to position (based on actual labelLine length)
+    const currentLength = labelLine.length;
+    const padding = pos - currentLength + 5; // +5 for "Time " prefix
+    if (padding > 0) {
+      labelLine += " ".repeat(padding);
+    }
     labelLine += label;
-    lastLabelEnd = pos + label.length;
   }
 
   lines.push(theme.fg("dim", labelLine));
