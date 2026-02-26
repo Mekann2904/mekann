@@ -57,7 +57,7 @@ export type LiveStreamView = "stdout" | "stderr";
  * ライブ表示モード種別
  * @summary モードを取得
  */
-export type LiveViewMode = "list" | "detail" | "tree" | "timeline";
+export type LiveViewMode = "list" | "detail" | "tree" | "timeline" | "gantt";
 
 /**
  * ライブアイテムの基底データ定義
@@ -550,7 +550,7 @@ export function renderStreamOutput(
  */
 export interface HandleInputResult {
   handled: boolean;
-  action?: "close" | "mode-list" | "mode-detail" | "stream-toggle";
+  action?: "close" | "mode-list" | "mode-detail" | "mode-gantt" | "stream-toggle";
   cursorDelta?: number;
   cursorAbsolute?: number;
 }
@@ -584,6 +584,10 @@ export function handleListModeInput(rawInput: string): HandleInputResult {
 
   if (isEnterInput(rawInput)) {
     return { handled: true, action: "mode-detail" };
+  }
+
+  if (rawInput === "v" || rawInput === "V") {
+    return { handled: true, action: "mode-gantt" };
   }
 
   if (rawInput === "\t" || rawInput === "tab") {
@@ -672,6 +676,11 @@ export function applyInputResult(
 
   if (result.action === "mode-detail") {
     mode = "detail";
+    shouldRender = true;
+  }
+
+  if (result.action === "mode-gantt") {
+    mode = "gantt";
     shouldRender = true;
   }
 

@@ -1,28 +1,31 @@
 /**
  * @abdd.meta
  * path: .pi/extensions/self-improvement-loop.ts
- * role: 自己改善ループ処理の制御と実行
- * why: 7つの哲学的視点に基づき、LLMの出力を分析・検証・改善することで、継続的な品質向上と思考の解体を行うため
- * related: .pi/lib/verification-workflow.ts, .pi/lib/semantic-repetition.ts, .pi/extensions/shared/pi-print-executor.ts, .pi/lib/adaptive-rate-controller.ts
+ * role: 自己改善ループ処理の制御と実行（ULモード対応）
+ * why: 7つの哲学的視点に基づき、LLMの出力を分析・検証・改善することで、継続的な品質向上と思考の解体を行うため。ULモードではResearch→Plan→Implementの構造化されたサイクルを実行し、自動承認による効率的な自己改善を実現する。
+ * related: .pi/lib/verification-workflow.ts, .pi/lib/semantic-repetition.ts, .pi/extensions/shared/pi-print-executor.ts, .pi/lib/adaptive-rate-controller.ts, .pi/skills/self-improvement/SKILL.md
  * public_api: selfImprovementLoop (ExtensionAPI経由で公開される想定)
- * invariants: 1サイクルごとに必ずメタ認知チェックまたは統合検証が実行される, リトライは最大再試行回数以内に収まる
- * side_effects: ファイルシステムへのログ出力, 外部LLM APIの呼び出し, プロセスの生成と実行
- * failure_modes: LM APIのレート制限(429エラー), タイムアウト, セマンティックな再帰の検出失敗, メタ認知的アポリアの解決不能
+ * invariants: 1サイクルごとに必ずメタ認知チェックまたは統合検証が実行される（高スコア時を除く）, リトライは最大再試行回数以内に収まる, ULモード時はResearch→Plan→Implementの順序でフェーズが進行する
+ * side_effects: ファイルシステムへのログ出力, 外部LLM APIの呼び出し, プロセスの生成と実行, Gitコミットの作成
+ * failure_modes: LM APIのレート制限(429エラー), タイムアウト, セマンティックな再帰の検出失敗, メタ認知的アポリアの解決不能, ULフェーズ間のコンテキスト喪失
  * @abdd.explain
- * overview: 7つの視点（6つの帽子含む）を用いた思考ループを実行し、LLMのプロセスを動的に修正・改善する拡張機能
+ * overview: 7つの視点（6つの帽子含む）を用いた思考ループを実行し、LLMのプロセスを動的に修正・改善する拡張機能。ULモードでは構造化されたResearch→Plan→Implementサイクルを実行。
  * what_it_does:
  *   - 7つの哲学的視点による思考プロセスの分割と適用
  *   - メタ認知チェック、誤謬検出、セマンティックな反復の検出
  *   - 検出された問題に基づく改善アクションの生成と適用
  *   - レート制限とエラー発生時の指数バックオフによるリトライ制御
  *   - 思考モードの分類と統合的分析の実行
+ *   - ULモード: Research（現状分析）→Plan（改善計画）→Implement（実装）の構造化サイクル
+ *   - 自動承認による人間の承認ボトルネックの解消
  * why_it_exists:
  *   - 単一の視点に依存せず、多角的な批判的思考を通じてAIの出力精度を高める
  *   - 反復的なループや論理的誤謬を自律的に検出・修正し、自己修正能力を向上させる
  *   - 外部APIの不安定性に対して堅牢な処理を実現する
+ *   - ULモードにより、人間の介入を最小限にしながら効率的な自己改善を実現する
  * scope:
- *   in: ExtensionAPI (context, model, prompt), RateLimitConfig, 検証ワークフロー設定
- *   out: 改善されたLLMレスポンス, 検証ログ, 分析結果
+ *   in: ExtensionAPI (context, model, prompt), RateLimitConfig, 検証ワークフロー設定, ULモードパラメータ
+ *   out: 改善されたLLMレスポンス, 検証ログ, 分析結果, Gitコミット
  */
 
 // File: .pi/extensions/self-improvement-loop.ts
@@ -248,12 +251,26 @@ interface SelfImprovementLoopParams {
   task: string;
   max_cycles?: number;
   auto_commit?: boolean;
+  /** ULモードを有効にする（Research→Plan→Implement フロー）。デフォルト: true */
+  ul_mode?: boolean;
+  /** Plan フェーズでの人間の承認をスキップする。デフォルト: true */
+  auto_approve?: boolean;
 }
 
 interface SelfImprovementModel {
   provider: string;
   id: string;
   thinkingLevel: ThinkingLevel;
+}
+
+/** ULフェーズ種別 */
+type ULPhase = 'research' | 'plan' | 'implement' | 'completed';
+
+/** ULフェーズコンテキスト */
+interface ULPhaseContext {
+  researchOutput?: string;
+  planOutput?: string;
+  improvementActions?: ImprovementAction[];
 }
 
 /** 自律ループ実行中のランタイム状態 */
@@ -290,6 +307,14 @@ interface ActiveAutonomousRun {
   filesChangedBeforeCycle: Set<string>;
   /** 自動追加すべき.gitignoreパターン（検出された除外対象） */
   gitignorePatternsToAdd: Set<string>;
+  /** ULモード有効フラグ */
+  ulMode: boolean;
+  /** 自動承認フラグ（Plan フェーズで人間の承認をスキップ） */
+  autoApprove: boolean;
+  /** 現在のULフェーズ（ulMode時のみ使用） */
+  currentPhase: ULPhase;
+  /** ULフェーズ間のコンテキスト受け渡し */
+  phaseContext: ULPhaseContext;
 }
 
 /** 成功パターンの記録 */
@@ -372,6 +397,9 @@ let cachedGitWorkflowSkill: string | null = null;
 let cachedSelfImprovementSkill: string | null = null;
 
 const LOOP_MARKER_PREFIX = "[[SELF_IMPROVEMENT_LOOP";
+
+/** ULフェーズマーカープレフィックス */
+const UL_PHASE_MARKER_PREFIX = "[[UL_PHASE";
 
 // ============================================================================
 // ユーティリティ関数
@@ -1005,6 +1033,242 @@ PERSPECTIVE_SCORES:
 `;
 }
 
+// ============================================================================
+// UL Mode Phase Prompt Builders
+// ============================================================================
+
+/**
+ * ULフェーズ用のマーカーを生成する
+ * 
+ * @summary ULフェーズマーカーを生成
+ * @param runId 実行ID
+ * @param phase フェーズ名
+ * @param cycle サイクル番号
+ * @returns ULフェーズマーカー文字列
+ */
+function buildULPhaseMarker(runId: string, phase: ULPhase, cycle: number): string {
+  return `${UL_PHASE_MARKER_PREFIX}:${runId}:${phase}:CYCLE:${cycle}]]`;
+}
+
+/**
+ * タスクに基づいて研究の焦点を選択する
+ * 論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述すべき
+ * 
+ * @summary タスクに適した研究焦点を選択
+ * @param task タスク記述
+ * @returns 焦点（視座名と問い）
+ */
+function selectResearchFocus(task: string): { perspective: string; question: string } {
+  const taskLower = task.toLowerCase();
+  
+  // タスクタイプに基づいて焦点を選択
+  if (taskLower.includes('バグ') || taskLower.includes('bug') || taskLower.includes('fix') || taskLower.includes('修正')) {
+    return {
+      perspective: '論理検証',
+      question: 'どこで論理が壊れているか？'
+    };
+  }
+  
+  if (taskLower.includes('リファクタ') || taskLower.includes('refactor') || taskLower.includes('整理')) {
+    return {
+      perspective: 'コード批判的分析',
+      question: '何を前提としているか？'
+    };
+  }
+  
+  if (taskLower.includes('機能') || taskLower.includes('feature') || taskLower.includes('追加') || taskLower.includes('add')) {
+    return {
+      perspective: '機能分析',
+      question: 'この機能は何を生産し、何を排除するか？'
+    };
+  }
+  
+  if (taskLower.includes('パフォーマンス') || taskLower.includes('performance') || taskLower.includes('高速') || taskLower.includes('最適化')) {
+    return {
+      perspective: '評価基準',
+      question: '「良い状態」とは何か？'
+    };
+  }
+  
+  if (taskLower.includes('アーキテクチャ') || taskLower.includes('architecture') || taskLower.includes('設計') || taskLower.includes('構造')) {
+    return {
+      perspective: '将来予測',
+      question: 'この変更は将来どう影響するか？'
+    };
+  }
+  
+  if (taskLower.includes('テスト') || taskLower.includes('test') || taskLower.includes('検証')) {
+    return {
+      perspective: 'ロジック検証',
+      question: 'どのような入力で壊れるか？'
+    };
+  }
+  
+  // デフォルト: 汎用的な問い
+  return {
+    perspective: '現状認識',
+    question: '何が問題で、何を変えるべきか？'
+  };
+}
+
+/**
+ * Research フェーズ用のプロンプトを生成する
+ * 論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述
+ * 
+ * @summary Researchフェーズプロンプトを生成（最小化版）
+ * @param run 現在のラン状態
+ * @returns Researchフェーズ用プロンプト
+ */
+function buildResearchPrompt(run: ActiveAutonomousRun): string {
+  const marker = buildULPhaseMarker(run.runId, 'research', run.cycle);
+  
+  // タスクに基づいて焦点を選択
+  const focus = selectResearchFocus(run.task);
+  
+  const previousContext = run.cycleSummaries.length > 0 
+    ? `\n### 前回の進捗\n${run.cycleSummaries.slice(-1).join('\n')}\n` 
+    : '';
+
+  return `${marker}
+
+## Research
+
+### タスク
+${run.task}${previousContext}
+
+### 焦点
+**${focus.perspective}**: ${focus.question}
+
+### 出力
+現状: [タスクに関連する現状を1-2段落で記述]
+次アクション: [Plan フェーズで何をすべきか]
+
+RESEARCH_COMPLETE: true
+`;
+}
+
+/**
+ * Plan フェーズ用のプロンプトを生成する
+ * 論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述
+ * 
+ * @summary Planフェーズプロンプトを生成（最小化版）
+ * @param run 現在のラン状態
+ * @returns Planフェーズ用プロンプト
+ */
+function buildPlanPrompt(run: ActiveAutonomousRun): string {
+  const marker = buildULPhaseMarker(run.runId, 'plan', run.cycle);
+  
+  const researchContext = run.phaseContext.researchOutput 
+    ? `\n### Researchの成果\n${run.phaseContext.researchOutput}\n`
+    : '';
+
+  return `${marker}
+
+## Plan
+
+### タスク
+${run.task}${researchContext}
+
+### 出力
+目標: [このサイクルで達成すべきこと]
+手順: [実行するステップ（番号付きリスト）]
+成功基準: [どうやって成功を判定するか]
+
+PLAN_COMPLETE: true
+`;
+}
+
+/**
+ * Implement フェーズ用のプロンプトを生成する
+ * 論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述
+ * 
+ * @summary Implementフェーズプロンプトを生成（最小化版）
+ * @param run 現在のラン状態
+ * @returns Implementフェーズ用プロンプト
+ */
+function buildImplementPrompt(run: ActiveAutonomousRun): string {
+  const marker = buildULPhaseMarker(run.runId, 'implement', run.cycle);
+  
+  const planContext = run.phaseContext.planOutput
+    ? `\n### Planの内容\n${run.phaseContext.planOutput}\n`
+    : '';
+
+  return `${marker}
+
+## Implement
+
+### タスク
+${run.task}${planContext}
+
+### 出力
+実行内容: [何を変更したか]
+テスト結果: [テスト実行結果]
+振り返り: [何を学んだか]
+
+CYCLE: ${run.cycle}
+LOOP_STATUS: continue
+
+PERSPECTIVE_SCORES:
+  総合: [0-100]
+`;
+}
+
+/**
+ * ULフェーズマーカーをパースする
+ * 
+ * @summary ULフェーズマーカーをパース
+ * @param text テキスト
+ * @returns パース結果またはnull
+ */
+function parseULPhaseMarker(text: string): { runId: string; phase: string; cycle: number } | null {
+  const match = text.match(/\[\[UL_PHASE:([a-zA-Z0-9_-]+):([a-z_]+):CYCLE:(\d+)\]\]/);
+  if (!match) return null;
+  const cycle = Number.parseInt(match[3], 10);
+  if (!Number.isFinite(cycle) || cycle < 1) return null;
+  return {
+    runId: match[1],
+    phase: match[2],
+    cycle,
+  };
+}
+
+/**
+ * ループの停止条件を評価する
+ * 
+ * @summary 停止条件を評価
+ * @param run 現在のラン状態
+ * @returns 停止すべき場合はtrue
+ */
+function shouldStopLoop(run: ActiveAutonomousRun): boolean {
+  // 1. ユーザー要求
+  if (checkStopSignal(DEFAULT_CONFIG) || run.stopRequested) {
+    run.stopReason = "user_request";
+    return true;
+  }
+  
+  // 2. 最大サイクル到達
+  if (run.cycle >= run.maxCycles) {
+    run.stopReason = "completed";
+    return true;
+  }
+  
+  // 3. 停滞検出
+  const trajectorySummary = run.trajectoryTracker.getSummary();
+  if (trajectorySummary.isStuck) {
+    run.stopReason = "stagnation";
+    return true;
+  }
+  
+  // 4. 高スコア完了（95%以上）
+  const latestScores = run.perspectiveScoreHistory[run.perspectiveScoreHistory.length - 1];
+  if (latestScores && latestScores.average >= 95) {
+    run.stopReason = "completed";
+    return true;
+  }
+  
+  return false;
+}
+
 /** 視座スコアのパース結果 */
 interface ParsedPerspectiveScores {
   deconstruction: number;
@@ -1101,6 +1365,8 @@ function initializeAutonomousLoopLog(path: string, run: ActiveAutonomousRun): vo
 - Task: ${run.task}
 - Max Cycles: ${run.maxCycles === Infinity ? "Infinity" : run.maxCycles}
 - Auto Commit: ${run.autoCommit ? "true" : "false"}
+- UL Mode: ${run.ulMode ? "true" : "false"}
+- Auto Approve: ${run.autoApprove ? "true" : "false"}
 - Model: ${run.model.provider}/${run.model.id}
 
 ## Timeline
@@ -2474,6 +2740,161 @@ export default (api: ExtensionAPI) => {
     appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} dispatched cycle=${nextCycle}`);
   }
 
+  /**
+   * ULモードのフェーズをディスパッチする
+   * Research → Plan → Implement のフェーズを実行
+   * 
+   * @summary ULフェーズをディスパッチ
+   * @param run 現在のラン状態
+   * @param phase フェーズ種別
+   * @param deliverAs 配信モード
+   */
+  async function dispatchULPhase(
+    run: ActiveAutonomousRun,
+    phase: 'research' | 'plan' | 'implement',
+    deliverAs?: "followUp"
+  ): Promise<void> {
+    run.currentPhase = phase;
+    
+    // Research フェーズ開始時にサイクルをインクリメント
+    if (phase === 'research') {
+      const nextCycle = run.cycle + 1;
+      run.cycle = nextCycle;
+      
+      // サイクル開始時の変更ファイル一覧を記録
+      try {
+        const currentChangedFiles = await getChangedFiles(process.cwd());
+        run.filesChangedBeforeCycle = new Set(currentChangedFiles);
+        console.log(`[self-improvement-loop] UL Cycle ${nextCycle} starting with ${currentChangedFiles.length} pre-existing changes`);
+      } catch (error: unknown) {
+        console.warn(`[self-improvement-loop] Failed to get pre-cycle changes: ${toErrorMessage(error)}`);
+        run.filesChangedBeforeCycle = new Set();
+      }
+    }
+    
+    const phasePrompts: Record<string, () => string> = {
+      research: () => buildResearchPrompt(run),
+      plan: () => buildPlanPrompt(run),
+      implement: () => buildImplementPrompt(run),
+    };
+    
+    const prompt = phasePrompts[phase]();
+    
+    if (deliverAs) {
+      api.sendUserMessage(prompt, { deliverAs });
+    } else {
+      api.sendUserMessage(prompt);
+    }
+    
+    appendAutonomousLoopLog(
+      run.logPath, 
+      `- ${new Date().toISOString()} dispatched UL phase=${phase} cycle=${run.cycle}`
+    );
+  }
+
+  /**
+   * ULフェーズ完了時の処理
+   * フェーズ遷移とサイクル管理を行う
+   * 
+   * @summary ULフェーズ完了を処理
+   * @param run 現在のラン状態
+   * @param outputText 出力テキスト
+   * @param marker パースされたフェーズマーカー
+   * @param ctx コンテキスト
+   */
+  async function handleULPhaseCompletion(
+    run: ActiveAutonomousRun,
+    outputText: string,
+    marker: { runId: string; phase: string; cycle: number },
+    ctx: { isIdle: () => boolean }
+  ): Promise<void> {
+    const deliverAs = ctx.isIdle() ? undefined : "followUp" as const;
+    
+    switch (marker.phase) {
+      case 'research':
+        run.phaseContext.researchOutput = outputText;
+        appendAutonomousLoopLog(run.logPath, `  research phase completed`);
+        
+        // Plan フェーズへ自動遷移
+        await dispatchULPhase(run, 'plan', deliverAs);
+        break;
+        
+      case 'plan':
+        run.phaseContext.planOutput = outputText;
+        appendAutonomousLoopLog(run.logPath, `  plan phase completed`);
+        
+        // Implement フェーズへ自動遷移
+        await dispatchULPhase(run, 'implement', deliverAs);
+        break;
+        
+      case 'implement':
+        // 視座スコアをパースして記録
+        const scores = parsePerspectiveScores(outputText);
+        if (scores) {
+          run.perspectiveScoreHistory.push(scores);
+          appendAutonomousLoopLog(run.logPath, `  perspective_scores: avg=${scores.average}`);
+        }
+        
+        // メタ認知チェックを実行
+        const metacognitiveCheck = runMetacognitiveCheck(outputText, {
+          task: run.task,
+          currentMode: "self-improvement"
+        });
+        run.lastMetacognitiveCheck = metacognitiveCheck;
+        
+        // Git コミット（有効な場合）
+        if (run.autoCommit) {
+          const latestScores = run.perspectiveScoreHistory[run.perspectiveScoreHistory.length - 1];
+          const perspectiveResults = latestScores
+            ? [
+                { perspective: "deconstruction", score: latestScores.deconstruction / 100, improvements: [] },
+                { perspective: "schizoanalysis", score: latestScores.schizoanalysis / 100, improvements: [] },
+                { perspective: "eudaimonia", score: latestScores.eudaimonia / 100, improvements: [] },
+                { perspective: "utopia_dystopia", score: latestScores.utopia_dystopia / 100, improvements: [] },
+                { perspective: "thinking_philosophy", score: latestScores.thinking_philosophy / 100, improvements: [] },
+                { perspective: "thinking_taxonomy", score: latestScores.thinking_taxonomy / 100, improvements: [] },
+                { perspective: "logic", score: latestScores.logic / 100, improvements: [] },
+              ]
+            : [];
+
+          const { hash } = await createGitCommitWithLLM(
+            process.cwd(),
+            {
+              cycleNumber: run.cycle,
+              runId: run.runId,
+              taskSummary: run.task,
+              perspectiveResults,
+              filesChangedBeforeCycle: run.filesChangedBeforeCycle,
+              gitignorePatternsToAdd: run.gitignorePatternsToAdd,
+            },
+            run.model
+          );
+          
+          if (hash) {
+            run.lastCommitHash = hash;
+            appendAutonomousLoopLog(run.logPath, `  commit: ${hash}`);
+          }
+        }
+        
+        // サイクルサマリーを記録
+        run.cycleSummaries.push(`Cycle ${run.cycle}: 完了 (ULモード)`);
+        
+        // 軌跡トラッカーに記録
+        run.trajectoryTracker.recordStep(`Cycle ${run.cycle} completed`).catch(() => {});
+        
+        // 停止条件をチェック
+        if (shouldStopLoop(run)) {
+          finishRun(run.stopReason ?? "completed");
+          return;
+        }
+        
+        // 次サイクル開始（フェーズコンテキストをリセット）
+        run.phaseContext = {};
+        await dispatchULPhase(run, 'research', deliverAs);
+        break;
+    }
+  }
+
   function finishRun(reason: SelfImprovementLoopState["stopReason"], note?: string): void {
     const run = activeRun;
     if (!run) return;
@@ -2575,6 +2996,10 @@ export default (api: ExtensionAPI) => {
     autoCommit: boolean;
     model: SelfImprovementModel;
     deliverAs?: "followUp";
+    /** ULモード有効フラグ */
+    ulMode?: boolean;
+    /** 自動承認フラグ */
+    autoApprove?: boolean;
   }): { ok: true; run: ActiveAutonomousRun } | { ok: false; error: string } {
     if (activeRun) {
       return { ok: false, error: `既に実行中です（runId=${activeRun.runId}）` };
@@ -2589,6 +3014,9 @@ export default (api: ExtensionAPI) => {
 
     const runId = createRunId();
     const logPath = createLogFilePath(DEFAULT_CONFIG, runId);
+    const ulMode = input.ulMode ?? true; // デフォルトでULモード有効
+    const autoApprove = input.autoApprove ?? true; // デフォルトで自動承認
+    
     const run: ActiveAutonomousRun = {
       runId,
       task,
@@ -2608,16 +3036,30 @@ export default (api: ExtensionAPI) => {
       successfulPatterns: [],
       filesChangedBeforeCycle: new Set<string>(), // 初期化時は空
       gitignorePatternsToAdd: new Set<string>(),
+      // ULモード用フィールド
+      ulMode,
+      autoApprove,
+      currentPhase: 'research',
+      phaseContext: {},
     };
 
     initializeAutonomousLoopLog(logPath, run);
-    appendAutonomousLoopLog(logPath, `- ${new Date().toISOString()} started`);
+    appendAutonomousLoopLog(logPath, `- ${new Date().toISOString()} started (ulMode=${ulMode}, autoApprove=${autoApprove})`);
 
     activeRun = run;
-    // 非同期でサイクルを開始（変更ファイル一覧の取得を待つ必要がある）
-    dispatchNextCycle(run, input.deliverAs).catch(error => {
-      console.error(`[self-improvement-loop] Failed to dispatch first cycle: ${toErrorMessage(error)}`);
-    });
+    
+    // ULモードと非ULモードで開始方法を分岐
+    if (ulMode) {
+      // ULモード: Research フェーズから開始
+      dispatchULPhase(run, 'research', input.deliverAs).catch(error => {
+        console.error(`[self-improvement-loop] Failed to dispatch UL research phase: ${toErrorMessage(error)}`);
+      });
+    } else {
+      // 非ULモード: 従来のサイクルを開始
+      dispatchNextCycle(run, input.deliverAs).catch(error => {
+        console.error(`[self-improvement-loop] Failed to dispatch first cycle: ${toErrorMessage(error)}`);
+      });
+    }
     return { ok: true, run };
   }
 
@@ -2634,13 +3076,8 @@ export default (api: ExtensionAPI) => {
   api.on("agent_end", async (event, ctx) => {
     const run = activeRun;
     if (!run) return;
-    if (run.inFlightCycle === null) return;
 
-    const completedCycle = run.inFlightCycle;
-    run.inFlightCycle = null;
-    appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} completed cycle=${completedCycle}`);
-
-    // イベントから出力を取得して視座スコアをパース
+    // イベントから出力を取得
     const agentEndEvent = event as { messages?: Array<{ content?: string | Array<{ type?: string; text?: string }> }> };
     const messages = agentEndEvent.messages ?? [];
     const lastMessage = messages[messages.length - 1];
@@ -2656,6 +3093,27 @@ export default (api: ExtensionAPI) => {
           .join("\n");
       }
     }
+
+    // ULモード: フェーズマーカーを検出して処理
+    if (run.ulMode) {
+      const ulPhaseMarker = parseULPhaseMarker(outputText);
+      if (ulPhaseMarker && ulPhaseMarker.runId === run.runId) {
+        appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} completed UL phase=${ulPhaseMarker.phase} cycle=${ulPhaseMarker.cycle}`);
+        
+        const ctxTyped = ctx as { isIdle?: () => boolean };
+        await handleULPhaseCompletion(run, outputText, ulPhaseMarker, {
+          isIdle: ctxTyped?.isIdle ?? (() => true)
+        });
+        return;
+      }
+    }
+
+    // 非ULモード: 従来のサイクル処理
+    if (run.inFlightCycle === null) return;
+
+    const completedCycle = run.inFlightCycle;
+    run.inFlightCycle = null;
+    appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} completed cycle=${completedCycle}`);
 
     // 視座スコアをパースして記録
     if (outputText) {
@@ -2893,7 +3351,7 @@ runId: ${run.runId}`],
   api.registerTool({
     name: "self_improvement_loop",
     label: "self_improvement_loop",
-    description: "通常エージェントをサイクル実行し続ける自己改善ループを開始する。停止信号まで継続する。",
+    description: "自己改善ループを開始する。ULモードでResearch→Plan→Implementの構造化されたサイクルを実行。",
     parameters: Type.Object({
       task: Type.String({
         description: "自己改善の対象となるタスクまたは目標",
@@ -2905,6 +3363,12 @@ runId: ${run.runId}`],
       })),
       auto_commit: Type.Optional(Type.Boolean({
         description: "各サイクル完了時に自動的にGitコミットを作成するか（デフォルト: true）",
+      })),
+      ul_mode: Type.Optional(Type.Boolean({
+        description: "ULモードを有効にする（Research→Plan→Implement フロー）。デフォルト: true",
+      })),
+      auto_approve: Type.Optional(Type.Boolean({
+        description: "Plan フェーズでの人間の承認をスキップする。デフォルト: true",
       })),
     }),
     execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
@@ -2924,10 +3388,15 @@ runId: ${run.runId}`],
       }
 
       const model = resolveActiveModel(ctxTyped);
+      const ulMode = params.ul_mode ?? true;
+      const autoApprove = params.auto_approve ?? true;
+      
       const started = startAutonomousLoop({
         task: params.task,
         maxCycles: params.max_cycles ?? 1_000_000,
         autoCommit: params.auto_commit ?? DEFAULT_CONFIG.autoCommit,
+        ulMode,
+        autoApprove,
         model,
         deliverAs: ctxTyped?.isIdle?.() ? undefined : "followUp",
       });
@@ -2939,6 +3408,8 @@ runId: ${run.runId}`],
             text: `自己改善ループを開始しました。
 runId: ${started.run.runId}
 maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCycles}
+ulMode: ${started.run.ulMode}
+autoApprove: ${started.run.autoApprove}
 モデル: ${started.run.model.provider}/${started.run.model.id}
 ログ: ${started.run.logPath}`,
           }],
@@ -2946,6 +3417,8 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
             runId: started.run.runId,
             startedAt: started.run.startedAt,
             maxCycles: started.run.maxCycles,
+            ulMode: started.run.ulMode,
+            autoApprove: started.run.autoApprove,
             logFile: started.run.logPath,
             error: undefined,
           },
@@ -3093,11 +3566,13 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
 
   // /self-improvement-loop コマンド
   api.registerCommand("self-improvement-loop", {
-    description: "7つの哲学的視座に基づく自己改善ループを開始",
+    description: "7つの哲学的視座に基づく自己改善ループを開始（ULモード対応）",
     handler: async (args: string, ctx) => {
       const parts = args.trim().split(/\s+/);
       let task = "";
       let maxCycles: number | undefined;
+      let ulMode = true;        // デフォルトでULモード有効
+      let autoApprove = true;   // デフォルトで自動承認
 
       for (const part of parts) {
         if (part.startsWith("--max-cycles=")) {
@@ -3105,13 +3580,17 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
           if (!isNaN(val) && val >= 1 && val <= 1000000) {
             maxCycles = val;
           }
+        } else if (part === "--no-ul-mode") {
+          ulMode = false;
+        } else if (part === "--require-approval") {
+          autoApprove = false;
         } else if (part !== "") {
           task += (task ? " " : "") + part;
         }
       }
 
       if (!task) {
-        ctx.ui.notify("使用法: /self-improvement-loop <タスク> [--max-cycles=N]", "warning");
+        ctx.ui.notify("使用法: /self-improvement-loop <タスク> [--max-cycles=N] [--no-ul-mode] [--require-approval]", "warning");
         return;
       }
 
@@ -3125,13 +3604,16 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
         return;
       }
 
-      ctx.ui.notify(`自己改善ループを開始します: "${task.slice(0, 50)}${task.length > 50 ? "..." : ""}"`, "info");
+      const modeDesc = ulMode ? `ULモード (${autoApprove ? '自動承認' : '承認要求'})` : '従来モード';
+      ctx.ui.notify(`自己改善ループを開始します (${modeDesc}): "${task.slice(0, 50)}${task.length > 50 ? "..." : ""}"`, "info");
       const model = resolveActiveModel(ctx);
 
       const started = startAutonomousLoop({
         task,
         maxCycles: maxCycles ?? 1_000_000,
         autoCommit: DEFAULT_CONFIG.autoCommit,
+        ulMode,
+        autoApprove,
         model,
         deliverAs: ctx.isIdle() ? undefined : "followUp",
       });
@@ -3142,7 +3624,7 @@ maxCycles: ${started.run.maxCycles === Infinity ? "Infinity" : started.run.maxCy
         return;
       }
 
-      ctx.ui.notify(`自己改善ループ開始: runId=${started.run.runId}`, "info");
+      ctx.ui.notify(`自己改善ループ開始: runId=${started.run.runId}, ulMode=${ulMode}`, "info");
     },
   });
 

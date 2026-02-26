@@ -109,6 +109,12 @@ import {
   getSubagentExecutionRules,
 } from "../lib/execution-rules";
 import {
+  getInstanceId,
+  loadState,
+  isProcessAlive,
+  extractPidFromInstanceId,
+} from "./ul-workflow.js";
+import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
 } from "../lib/plan-mode-shared";
@@ -307,6 +313,116 @@ export {
 // renderSubagentLiveView, createSubagentLiveMonitor -> ./subagents/live-monitor.ts
 // resolveSubagentParallelCapacity -> ./subagents/parallel-execution.ts
 // normalizeSubagentOutput, buildSubagentPrompt, runSubagentTask -> ./subagents/task-execution.ts
+
+// ============================================================================
+// Phase 1.1: Single Responsibility Verification (BUG-001)
+// ============================================================================
+
+/**
+ * 責任重複チェック結果
+ * @summary 責任重複チェック結果
+ */
+export interface ResponsibilityCheck {
+  subagentId: string;
+  skills: string[];
+  overlaps: string[];
+}
+
+/**
+ * サブエージェント間でスキル（責任）の重複を検出する
+ * @summary 責任重複検出
+ * @param subagents - サブエージェント定義の配列
+ * @returns 重複しているスキルと関連エージェントのリスト
+ */
+export function validateSingleResponsibility(
+  subagents: SubagentDefinition[]
+): ResponsibilityCheck[] {
+  const skillMap = new Map<string, string[]>();
+  
+  // 各スキルを持つエージェントをマッピング
+  for (const subagent of subagents) {
+    for (const skill of subagent.skills || []) {
+      const existing = skillMap.get(skill) || [];
+      existing.push(subagent.id);
+      skillMap.set(skill, existing);
+    }
+  }
+  
+  const violations: ResponsibilityCheck[] = [];
+  const processedAgents = new Set<string>();
+  
+  // 重複しているスキルを検出
+  for (const [skill, owners] of skillMap) {
+    if (owners.length > 1) {
+      // 最初のエージェントを代表として、他を重複先として記録
+      const primaryAgent = owners[0];
+      if (!processedAgents.has(primaryAgent)) {
+        violations.push({
+          subagentId: primaryAgent,
+          skills: [skill],
+          overlaps: owners.slice(1)
+        });
+        processedAgents.add(primaryAgent);
+      } else {
+        // 既存の違反に追加
+        const existing = violations.find(v => v.subagentId === primaryAgent);
+        if (existing) {
+          existing.skills.push(skill);
+        }
+      }
+    }
+  }
+  
+  return violations;
+}
+
+// ============================================================================
+// UL Workflow Ownership Check (Ownership System Fix)
+// ============================================================================
+
+/**
+ * ULワークフローの所有権チェック結果
+ * @summary UL所有権チェック結果
+ */
+export interface UlWorkflowOwnershipResult {
+  owned: boolean;
+  ownerInstanceId?: string;
+  ownerPid?: number;
+}
+
+/**
+ * ULワークフローの所有権を確認する
+ * 委任ツールがULワークフローの所有権を尊重するために使用
+ * @summary UL所有権確認
+ * @param taskId - ULワークフローのタスクID
+ * @returns 所有権チェック結果
+ */
+export function checkUlWorkflowOwnership(taskId: string): UlWorkflowOwnershipResult {
+  const state = loadState(taskId);
+  
+  if (!state) {
+    // 状態が存在しない = 所有権競合なし
+    return { owned: true };
+  }
+  
+  const instanceId = getInstanceId();
+  const ownerPid = extractPidFromInstanceId(state.ownerInstanceId);
+  
+  if (state.ownerInstanceId === instanceId) {
+    return { owned: true, ownerInstanceId: state.ownerInstanceId };
+  }
+  
+  if (ownerPid && isProcessAlive(ownerPid)) {
+    return {
+      owned: false,
+      ownerInstanceId: state.ownerInstanceId,
+      ownerPid
+    };
+  }
+  
+  // 所有者が死んでいる = 取得可能
+  return { owned: true, ownerInstanceId: state.ownerInstanceId };
+}
 
 /**
  * Infer dependencies between subagents for DAG-based execution
@@ -517,7 +633,8 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
   const enabledAgents = storage.agents.filter((agent) => agent.enabled === "enabled");
   if (enabledAgents.length === 0) return [];
 
-  const mode = String(process.env.PI_SUBAGENT_PARALLEL_DEFAULT || "current")
+  // Default changed from "current" to "all" to promote parallel execution
+  const mode = String(process.env.PI_SUBAGENT_PARALLEL_DEFAULT || "all")
     .trim()
     .toLowerCase();
   if (mode === "all") {
@@ -684,8 +801,27 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       extraContext: Type.Optional(Type.String({ description: "Optional supplemental context" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
+      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      // ULワークフロー所有権チェック
+      if (params.ulTaskId) {
+        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
+        if (!ownership.owned) {
+          return {
+            content: [{ type: "text" as const, text: `subagent_run error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
+            details: {
+              error: "ul_workflow_not_owned",
+              ulTaskId: params.ulTaskId,
+              ownerInstanceId: ownership.ownerInstanceId,
+              ownerPid: ownership.ownerPid,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+      }
+      
       const storage = loadStorage(ctx.cwd);
       const agent = pickAgent(storage, params.subagentId);
       const retryOverrides = toRetryOverrides(params.retry);
@@ -945,8 +1081,27 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       extraContext: Type.Optional(Type.String({ description: "Optional shared context" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Idle timeout in ms - resets on each LLM output (default: 300000). Use 0 to disable." })),
       retry: createRetrySchema(),
+      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      // ULワークフロー所有権チェック
+      if (params.ulTaskId) {
+        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
+        if (!ownership.owned) {
+          return {
+            content: [{ type: "text" as const, text: `subagent_run_parallel error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
+            details: {
+              error: "ul_workflow_not_owned",
+              ulTaskId: params.ulTaskId,
+              ownerInstanceId: ownership.ownerInstanceId,
+              ownerPid: ownership.ownerPid,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+      }
+      
       const storage = loadStorage(ctx.cwd);
       const retryOverrides = toRetryOverrides(params.retry);
       const requestedIds = Array.isArray(params.subagentIds)
@@ -1243,10 +1398,14 @@ ${allResults.map((r) => {
           agentWeights.set(agent.id, weight);
         }
 
-        const results = await runWithConcurrencyLimit(
+        // Promise.allSettledパターンで部分失敗を許容
+        type SubagentTaskResult = { runRecord: SubagentRunRecord; output: string; prompt: string };
+        type SettledTaskResult = { status: 'fulfilled' | 'rejected'; value?: SubagentTaskResult; reason?: unknown; index: number };
+
+        const settledResults = await runWithConcurrencyLimit(
           activeAgents,
           Math.max(1, effectiveParallelism),
-          async (agent) => {
+          async (agent): Promise<SubagentTaskResult> => {
             const result = await runSubagentTask({
               agent,
               task: params.task,
@@ -1287,8 +1446,29 @@ ${allResults.map((r) => {
             usePriorityScheduling: true,
             itemWeights: agentWeights,
             getItemId: (agent: SubagentDefinition) => agent.id,
+            settleMode: 'allSettled',
+            abortOnError: false,
           },
-        );
+        ) as unknown as SettledTaskResult[];
+
+        // allSettled結果を分類
+        const succeededResults = settledResults
+          .filter((r) => r.status === 'fulfilled' && r.value)
+          .map((r) => r.value as SubagentTaskResult);
+
+        const rejectedResults = settledResults.filter((r) => r.status === 'rejected');
+
+        // 結果を統合（成功したもののみ）
+        const results = succeededResults;
+
+        // 拒否されたタスクをエージェントIDと共に記録
+        const rejectedDetails = rejectedResults.map((r) => {
+          const agent = activeAgents[r.index];
+          return {
+            agentId: agent?.id ?? `unknown-${r.index}`,
+            error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          };
+        });
 
         for (const result of results) {
           storage.runs.push(result.runRecord);
@@ -1296,8 +1476,11 @@ ${allResults.map((r) => {
         }
         await saveStorageWithPatterns(ctx.cwd, storage);
 
+        // Include rejected results in failure count
         const failed = results.filter((result) => result.runRecord.status === "failed");
-        if (failed.length > 0) {
+        const totalFailed = failed.length + rejectedResults.length;
+        
+        if (totalFailed > 0) {
           const pressureSignals = failed
             .map((result) => classifyPressureError(result.runRecord.error || ""))
             .filter((signal): signal is "rate_limit" | "capacity" => signal !== "other");
@@ -1305,9 +1488,10 @@ ${allResults.map((r) => {
             const hasRateLimit = pressureSignals.includes("rate_limit");
             adaptivePenalty.raise(hasRateLimit ? "rate_limit" : "capacity");
           }
-          const errorMessage = failed
-            .map((result) => `${result.runRecord.agentId}:${result.runRecord.error}`)
-            .join(" | ");
+          const errorMessage = [
+            ...failed.map((result) => `${result.runRecord.agentId}:${result.runRecord.error}`),
+            ...rejectedDetails.map((r) => `${r.agentId}:${r.error}`),
+          ].join(" | ");
           logger.endOperation({
             status: "partial",
             tokensUsed: 0,
@@ -1322,7 +1506,7 @@ ${allResults.map((r) => {
               return `## ${result.runRecord.agentId}\nStatus: ${status}\n${result.output || result.runRecord.summary || ""}`;
             })
             .join("\n\n");
-          const failedMemberIds = failed.map((result) => result.runRecord.agentId);
+          const failedMemberIds = [...failed.map((result) => result.runRecord.agentId), ...rejectedDetails.map(r => r.agentId)];
           return {
             content: [{ type: "text" as const, text: aggregatedOutput }],
             details: {
@@ -1332,11 +1516,12 @@ ${allResults.map((r) => {
                 summary: result.runRecord.summary,
                 error: result.runRecord.error,
               })),
+              rejectedResults: rejectedDetails,
               failedMemberIds,
               successCount: results.length - failed.length,
-              totalCount: results.length,
-              outcomeCode: failed.length === results.length ? "NONRETRYABLE_FAILURE" as RunOutcomeCode : "PARTIAL_SUCCESS" as RunOutcomeCode,
-              retryRecommended: failed.length > 0,
+              totalCount: activeAgents.length,
+              outcomeCode: totalFailed === activeAgents.length ? "NONRETRYABLE_FAILURE" as RunOutcomeCode : "PARTIAL_SUCCESS" as RunOutcomeCode,
+              retryRecommended: totalFailed > 0,
             },
           };
         } else {
@@ -1435,8 +1620,27 @@ ${allResults.map((r) => {
       maxConcurrency: Type.Optional(Type.Number({ description: "Maximum parallel tasks (default: 3)" })),
       abortOnFirstError: Type.Optional(Type.Boolean({ description: "Stop on first task failure (default: false)" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Per-task timeout in ms (default: 300000)" })),
+      ulTaskId: Type.Optional(Type.String({ description: "UL workflow task ID. If provided, checks ownership before execution." })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      // ULワークフロー所有権チェック
+      if (params.ulTaskId) {
+        const ownership = checkUlWorkflowOwnership(params.ulTaskId);
+        if (!ownership.owned) {
+          return {
+            content: [{ type: "text" as const, text: `subagent_run_dag error: UL workflow ${params.ulTaskId} is owned by another instance (${ownership.ownerInstanceId}).` }],
+            details: {
+              error: "ul_workflow_not_owned",
+              ulTaskId: params.ulTaskId,
+              ownerInstanceId: ownership.ownerInstanceId,
+              ownerPid: ownership.ownerPid,
+              outcomeCode: "NONRETRYABLE_FAILURE" as RunOutcomeCode,
+              retryRecommended: false,
+            },
+          };
+        }
+      }
+      
       const storage = loadStorage(ctx.cwd);
       const maxConcurrency = params.maxConcurrency ?? 3;
       const abortOnFirstError = params.abortOnFirstError ?? false;

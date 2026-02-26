@@ -436,6 +436,12 @@ function parseDirectives(sharedContext?: string): PromptDirective {
   };
 }
 
+/**
+ * プロンプト構築
+ * @summary プロンプト作成
+ * @param input チーム定義、メンバー、タスク、コンテキストなどを含む入力オブジェクト
+ * @returns 構築されたプロンプト文字列
+ */
 export function buildTeamMemberPrompt(input: {
   team: TeamDefinition;
   member: TeamMember;

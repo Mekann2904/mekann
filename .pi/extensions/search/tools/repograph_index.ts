@@ -70,6 +70,12 @@ export const RepographIndexInput = Type.Object({
 	),
 });
 
+/**
+ * インデックス入力定義
+ * @summary インデックス入力
+ * @param force インデックスが最新でも再構築するかどうか
+ * @returns 検証済みの静的入力型
+ */
 export type RepographIndexInput = Static<typeof RepographIndexInput>;
 
 /**
@@ -125,6 +131,13 @@ export const RepographQueryInput = Type.Object({
 	),
 });
 
+/**
+ * クエリ入力定義
+ * @summary クエリ入力
+ * @param depth 関連クエリのトラバーサル深さ (デフォルト: 2)
+ * @param maxResults 最大結果数 (デフォルト: 100)
+ * @returns 検証済みの静的入力型
+ */
 export type RepographQueryInput = Static<typeof RepographQueryInput>;
 
 /**

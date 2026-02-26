@@ -871,3 +871,170 @@ export function isRetryableErrorCode(code: PiErrorCode): boolean {
   ];
   return retryableCodes.includes(code);
 }
+
+// ============================================================================
+// Phase 4.1: Error Message Quality (BUG-004)
+// ============================================================================
+
+/**
+ * 品質基準を満たすエラー情報
+ * @summary 品質エラー定義
+ */
+export interface QualityError {
+  /** 機械可読なエラーコード (例: 'SUBAGENT_TIMEOUT') */
+  code: string;
+  /** 人間可読なエラーメッセージ */
+  message: string;
+  /** 機械可読なコンテキスト情報 */
+  context: Record<string, unknown>;
+  /** 修正方法の提案 */
+  remediation: string;
+  /** エラー発生時刻 */
+  timestamp: number;
+  /** 追加のヘルプURL（省略可能） */
+  helpUrl?: string;
+}
+
+/**
+ * エラーコードカテゴリ
+ * @summary エラーカテゴリ
+ */
+export type ErrorCategory = 
+  | "configuration"
+  | "runtime"
+  | "validation"
+  | "network"
+  | "timeout"
+  | "capacity"
+  | "internal";
+
+/**
+ * 品質エラービルダーオプション
+ * @summary 品質エラービルダーオプション
+ */
+export interface QualityErrorOptions {
+  code: string;
+  message: string;
+  context?: Record<string, unknown>;
+  remediation?: string;
+  helpUrl?: string;
+  category?: ErrorCategory;
+}
+
+/**
+ * デフォルトの修復提案を取得
+ * @summary デフォルト修復提案
+ * @param code - エラーコード
+ * @returns 修復提案文字列
+ */
+function getDefaultRemediation(code: string): string {
+  const remediations: Record<string, string> = {
+    SUBAGENT_TIMEOUT: "Increase timeoutMs parameter or optimize the subagent task.",
+    SUBAGENT_DISABLED: "Enable the subagent using subagent_configure tool.",
+    SUBAGENT_NOT_FOUND: "Check the subagent ID using subagent_list tool.",
+    RUNTIME_CAPACITY_EXCEEDED: "Wait for current operations to complete or increase capacity limits.",
+    RATE_LIMIT_EXCEEDED: "Wait before retrying or reduce request frequency.",
+    VALIDATION_FAILED: "Check input parameters against the tool schema.",
+    TEAM_MEMBER_FAILED: "Review the member's error details and retry with adjusted parameters.",
+    CIRCUIT_BREAKER_OPEN: "Wait for the circuit breaker to reset before retrying.",
+  };
+
+  return remediations[code] || "Check the error details and adjust your request accordingly.";
+}
+
+/**
+ * 品質基準を満たすエラーを作成
+ * @summary 品質エラー作成
+ * @param code - エラーコード（例: 'SUBAGENT_TIMEOUT'）
+ * @param message - 人間可読なメッセージ
+ * @param context - 機械可読なコンテキスト
+ * @param remediation - 修正方法の提案（省略時は自動生成）
+ * @returns 品質エラーオブジェクト
+ */
+export function createQualityError(
+  code: string,
+  message: string,
+  context: Record<string, unknown> = {},
+  remediation?: string
+): QualityError {
+  return {
+    code,
+    message,
+    context,
+    remediation: remediation || getDefaultRemediation(code),
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * オプションから品質エラーを作成
+ * @summary 品質エラー作成（オプション版）
+ * @param options - エラーオプション
+ * @returns 品質エラーオブジェクト
+ */
+export function createQualityErrorFromOptions(options: QualityErrorOptions): QualityError {
+  return {
+    code: options.code,
+    message: options.message,
+    context: options.context || {},
+    remediation: options.remediation || getDefaultRemediation(options.code),
+    timestamp: Date.now(),
+    helpUrl: options.helpUrl,
+  };
+}
+
+/**
+ * PiErrorから品質エラーに変換
+ * @summary PiError変換
+ * @param error - PiErrorインスタンス
+ * @param context - 追加のコンテキスト
+ * @returns 品質エラーオブジェクト
+ */
+export function toQualityError(error: PiError, context: Record<string, unknown> = {}): QualityError {
+  return createQualityError(
+    error.code,
+    error.message,
+    { ...context, retryable: error.retryable },
+    undefined
+  );
+}
+
+/**
+ * 品質エラーをJSON形式でフォーマット
+ * @summary 品質エラーフォーマット
+ * @param error - 品質エラー
+ * @returns フォーマットされたJSON文字列
+ */
+export function formatQualityError(error: QualityError): string {
+  const lines = [
+    `[${error.code}] ${error.message}`,
+    `Context: ${JSON.stringify(error.context, null, 2)}`,
+    `Remediation: ${error.remediation}`,
+  ];
+
+  if (error.helpUrl) {
+    lines.push(`Help: ${error.helpUrl}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * 品質エラーかどうかを判定
+ * @summary 品質エラー型ガード
+ * @param value - 判定対象
+ * @returns 品質エラーの場合true
+ */
+export function isQualityError(value: unknown): value is QualityError {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.code === 'string' &&
+    typeof obj.message === 'string' &&
+    typeof obj.context === 'object' &&
+    typeof obj.remediation === 'string' &&
+    typeof obj.timestamp === 'number'
+  );
+}

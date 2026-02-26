@@ -4,11 +4,8 @@ category: reference
 audience: developer
 last_updated: 2026-02-17
 tags: [code-review, summary, quality-score]
-related:
-  - ./README.md
-  - ./04-recommendations.md
+related: []
 ---
-
 # レビュー結果サマリー
 
 > パンくず: [Home](../README.md) > [Code Review Report](./README.md) > レビュー結果サマリー

@@ -73,6 +73,13 @@ export const SearchRepographInput = Type.Object({
 	})),
 });
 
+/**
+ * 検索入力定義
+ * @summary 検索入力
+ * @param summarize LLM用サマリーを含めるかどうか (デフォルト: true)
+ * @param followEdgeTypes たどるエッジタイプ
+ * @returns 検証済みの静的入力型
+ */
 export type SearchRepographInput = Static<typeof SearchRepographInput>;
 
 /**

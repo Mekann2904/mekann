@@ -135,7 +135,7 @@ function deduplicateResults(results: SearchResult[]): SearchResult[] {
     }
   }
 
-  return [...seen.values()];
+  return Array.from(seen.values());
 }
 
 // ============================================================================
@@ -150,7 +150,8 @@ function deduplicateResults(results: SearchResult[]): SearchResult[] {
  * @param config 設定
  * @returns 統合された検索結果
  * @description
- *   - Promise.allで並列実行
+ *   - Promise.allSettledで並列実行（エラー耐性あり）
+ *   - AbortControllerでタイムアウト時に処理をキャンセル
  *   - 個別エラーは無視して成功結果のみ統合
  *   - コンテキスト予算内に収まるよう調整
  */
@@ -166,33 +167,46 @@ export async function parallelSearch(
     timeoutMs = 30000,
   } = config;
 
-  // タイムアウト付きの検索実行
+  // タイムアウト付きの検索実行（AbortControllerでキャンセル対応）
   const searchWithTimeout = async (query: string): Promise<SearchResult[]> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
+      // AbortSignal対応の検索関数があれば使用、なければフォールバック
+      const searchFnWithSignal = searchFn as (query: string, signal?: AbortSignal) => Promise<SearchResult[]>;
+      
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Search timeout")), timeoutMs);
+        controller.signal.addEventListener('abort', () => {
+          reject(new Error(`Search timed out after ${timeoutMs}ms`));
+        });
       });
 
       const results = await Promise.race([
-        searchFn(query),
+        searchFnWithSignal(query, controller.signal),
         timeoutPromise,
       ]);
 
       return results.map(r => ({ ...r, query }));
-    } catch {
-      return [];
+    } finally {
+      clearTimeout(timeoutId);
     }
   };
 
-  // 並列実行
-  const allResults = await Promise.all(queries.map(searchWithTimeout));
+  // Promise.allSettledで並列実行（エラーがあっても全ての完了を待つ）
+  const settledResults = await Promise.allSettled(queries.map(searchWithTimeout));
+
+  // 成功した結果のみ抽出
+  const allResults = settledResults
+    .filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === "fulfilled")
+    .map(r => r.value);
 
   // 統合
   let mergedResults = allResults.flat();
 
-  // 成功・失敗カウント
-  const successCount = allResults.filter(r => r.length > 0).length;
-  const failureCount = queries.length - successCount;
+  // 成功・失敗カウント（settled結果から正確に計算）
+  const successCount = settledResults.filter(r => r.status === "fulfilled").length;
+  const failureCount = settledResults.filter(r => r.status === "rejected").length;
 
   // 重複除去
   if (deduplicate) {
@@ -237,7 +251,7 @@ export async function parallelSearch(
  * @param searchFns 検索関数とクエリのペア配列
  * @param config 設定
  * @returns 統合された検索結果
- * @description 異なる検索ツール（file_candidates, code_search等）を並列実行
+ * @description 異なる検索ツール（file_candidates, code_search等）を並列実行（Promise.allSettled使用）
  */
 export async function parallelMultiToolSearch(
   searchFns: Array<{ fn: SearchFunction; query: string }>,
@@ -250,7 +264,7 @@ export async function parallelMultiToolSearch(
     timeoutMs = 30000,
   } = config;
 
-  // 各検索関数をタイムアウト付きで実行
+  // 各検索関数をタイムアウト付きで実行（AbortControllerでキャンセル対応）
   const searchWithTimeout = async ({
     fn,
     query,
@@ -258,28 +272,44 @@ export async function parallelMultiToolSearch(
     fn: SearchFunction;
     query: string;
   }): Promise<SearchResult[]> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
+      // AbortSignal対応の検索関数があれば使用
+      const fnWithSignal = fn as (query: string, signal?: AbortSignal) => Promise<SearchResult[]>;
+
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Search timeout")), timeoutMs);
+        controller.signal.addEventListener('abort', () => {
+          reject(new Error(`Search timed out after ${timeoutMs}ms`));
+        });
       });
 
-      const results = await Promise.race([fn(query), timeoutPromise]);
+      const results = await Promise.race([
+        fnWithSignal(query, controller.signal),
+        timeoutPromise,
+      ]);
 
       return results.map(r => ({ ...r, query }));
-    } catch {
-      return [];
+    } finally {
+      clearTimeout(timeoutId);
     }
   };
 
-  // 並列実行
-  const allResults = await Promise.all(searchFns.map(searchWithTimeout));
+  // Promise.allSettledで並列実行（エラーがあっても全ての完了を待つ）
+  const settledResults = await Promise.allSettled(searchFns.map(searchWithTimeout));
+
+  // 成功した結果のみ抽出
+  const allResults = settledResults
+    .filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === "fulfilled")
+    .map(r => r.value);
 
   // 統合
   let mergedResults = allResults.flat();
 
-  // 成功・失敗カウント
-  const successCount = allResults.filter(r => r.length > 0).length;
-  const failureCount = searchFns.length - successCount;
+  // 成功・失敗カウント（settled結果から正確に計算）
+  const successCount = settledResults.filter(r => r.status === "fulfilled").length;
+  const failureCount = settledResults.filter(r => r.status === "rejected").length;
 
   // 重複除去
   if (deduplicate) {

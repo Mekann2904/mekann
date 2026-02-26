@@ -69,7 +69,12 @@ const TEMPLATES_DIR = path.join(WORKFLOW_DIR, "templates");
 const ACTIVE_FILE = path.join(WORKFLOW_DIR, "active.json");
 
 // Generate unique instance ID matching cross-instance coordinator format
-function getInstanceId(): string {
+/**
+ * インスタンスIDを取得
+ * @summary ID取得
+ * @returns インスタンスID文字列
+ */
+export function getInstanceId(): string {
   return `${process.env.PI_SESSION_ID || "default"}-${process.pid}`;
 }
 
@@ -104,13 +109,71 @@ function setCurrentWorkflow(state: WorkflowState | null): void {
   atomicWriteTextFile(ACTIVE_FILE, JSON.stringify(registry, null, 2));
 }
 
-// Ownership check helper
-function checkOwnership(state: WorkflowState | null): { owned: boolean; error?: string } {
+/**
+ * プロセスが生存しているかどうかを確認する
+ * @summary プロセス生存確認
+ * @param pid - プロセスID
+ * @returns プロセスが生存している場合true
+ */
+export function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * インスタンスIDからPIDを抽出する
+ * @summary PID抽出
+ * @param instanceId - インスタンスID（例: "default-34147"）
+ * @returns プロセスID（抽出できない場合はnull）
+ */
+export function extractPidFromInstanceId(instanceId: string): number | null {
+  const match = instanceId.match(/-(\d+)$/);
+  if (!match) return null;
+  const pid = Number(match[1]);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/**
+ * 以前の所有者のプロセスが終了しているかどうかを確認する
+ * @summary 古い所有者の終了確認
+ * @param ownerInstanceId - 所有者のインスタンスID
+ * @returns プロセスが終了している場合true
+ */
+function isOwnerProcessDead(ownerInstanceId: string): boolean {
+  const pid = extractPidFromInstanceId(ownerInstanceId);
+  if (!pid) return false;
+  return !isProcessAlive(pid);
+}
+
+/**
+ * 所有権チェック結果
+ */
+interface OwnershipResult {
+  owned: boolean;
+  error?: string;
+  autoClaim?: boolean;
+  previousOwner?: string;
+}
+
+// Ownership check helper with process liveness check
+function checkOwnership(state: WorkflowState | null, options?: { autoClaim?: boolean }): OwnershipResult {
   const instanceId = getInstanceId();
   if (!state) {
     return { owned: false, error: "no_active_workflow" };
   }
   if (state.ownerInstanceId !== instanceId) {
+    // Check if the owner process is dead
+    if (options?.autoClaim && isOwnerProcessDead(state.ownerInstanceId)) {
+      return {
+        owned: true,
+        autoClaim: true,
+        previousOwner: state.ownerInstanceId,
+      };
+    }
     return {
       owned: false,
       error: `workflow_owned_by_other: ${state.ownerInstanceId} (current: ${instanceId})`
@@ -372,7 +435,7 @@ async function saveStateAsync(state: WorkflowState): Promise<void> {
 /**
  * 状態を読み込む
  */
-function loadState(taskId: string): WorkflowState | null {
+export function loadState(taskId: string): WorkflowState | null {
   const statusPath = path.join(getTaskDir(taskId), "status.json");
   try {
     const content = fs.readFileSync(statusPath, "utf-8");
@@ -534,13 +597,41 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
       // Check for existing active workflow using file-based access
       const existingWorkflow = getCurrentWorkflow();
       if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
-        const ownership = checkOwnership(existingWorkflow);
+        const ownership = checkOwnership(existingWorkflow, { autoClaim: true });
+
         if (!ownership.owned) {
+          if (ownership.autoClaim) {
+            // Auto-claim ownership from dead process
+            const now = new Date().toISOString();
+            existingWorkflow.ownerInstanceId = instanceId;
+            existingWorkflow.updatedAt = now;
+
+            saveState(existingWorkflow);
+            setCurrentWorkflow(existingWorkflow);
+
+            // Continue with the existing workflow
+            return makeResult(
+              `以前の所有者のプロセスが終了しているため、所有権を自動的に取得しました。\n\n` +
+              `以前の所有者: ${ownership.previousOwner}\n` +
+              `新しい所有者: ${instanceId}\n\n` +
+              `既存のワークフローを続行します。\n` +
+              `Task ID: ${existingWorkflow.taskId}\n` +
+              `現在のフェーズ: ${existingWorkflow.phase.toUpperCase()}\n\n` +
+              `次のステップ:\n` +
+              `  ul_workflow_approve で次のフェーズに進む\n` +
+              `  または\n` +
+              `  ul_workflow_status で詳細を確認`,
+              { taskId: existingWorkflow.taskId, phase: existingWorkflow.phase, autoClaimed: true, previousOwner: ownership.previousOwner }
+            );
+          }
+
           return makeResult(
             `エラー: 他のpiインスタンスがワークフローを実行中です。\n` +
             `所有者: ${existingWorkflow.ownerInstanceId}\n` +
             `Task ID: ${existingWorkflow.taskId}\n` +
-            `現在のインスタンス: ${instanceId}`,
+            `現在のインスタンス: ${instanceId}\n\n` +
+            `所有者のプロセスが終了している場合は、以下のコマンドで所有権を強制的に取得できます:\n` +
+            `  ul_workflow_force_claim()`,
             { error: ownership.error }
           );
         }
@@ -614,10 +705,38 @@ Task ID: ${taskId}
       // Check for existing active workflow using file-based access
       const existingWorkflow = getCurrentWorkflow();
       if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
-        const ownership = checkOwnership(existingWorkflow);
+        const ownership = checkOwnership(existingWorkflow, { autoClaim: true });
+
         if (!ownership.owned) {
+          if (ownership.autoClaim) {
+            // Auto-claim ownership from dead process and continue with existing workflow
+            const now = new Date().toISOString();
+            existingWorkflow.ownerInstanceId = instanceId;
+            existingWorkflow.updatedAt = now;
+
+            saveState(existingWorkflow);
+            setCurrentWorkflow(existingWorkflow);
+
+            // Continue with the existing workflow
+            return makeResult(
+              `以前の所有者のプロセスが終了しているため、所有権を自動的に取得しました。\n\n` +
+              `以前の所有者: ${ownership.previousOwner}\n` +
+              `新しい所有者: ${instanceId}\n\n` +
+              `既存のワークフローを続行します。\n` +
+              `Task ID: ${existingWorkflow.taskId}\n` +
+              `現在のフェーズ: ${existingWorkflow.phase.toUpperCase()}\n\n` +
+              `次のステップ:\n` +
+              `  ul_workflow_approve で次のフェーズに進む\n` +
+              `  または\n` +
+              `  ul_workflow_status で詳細を確認`,
+              { taskId: existingWorkflow.taskId, phase: existingWorkflow.phase, autoClaimed: true, previousOwner: ownership.previousOwner }
+            );
+          }
+
           return makeResult(
-            `エラー: 他のpiインスタンスがワークフローを実行中です。\n所有者: ${existingWorkflow.ownerInstanceId}`,
+            `エラー: 他のpiインスタンスがワークフローを実行中です。\n所有者: ${existingWorkflow.ownerInstanceId}\n\n` +
+            `所有者のプロセスが終了している場合は、以下のコマンドで所有権を強制的に取得できます:\n` +
+            `  ul_workflow_force_claim()`,
             { error: ownership.error }
           );
         }
@@ -732,6 +851,27 @@ ${allResults.map((r) => {
 }).join("\n")}
 
 ${failedTasks.length > 0 ? `\n### Failed Tasks\n${failedTasks.map((f) => `- ${f.taskId}: ${f.error}`).join("\n")}` : ""}
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
 `;
 
           return {
@@ -745,6 +885,7 @@ ${failedTasks.length > 0 ? `\n### Failed Tasks\n${failedTasks.map((f) => `- ${f.
               succeededCount: allResults.length - failedTasks.length,
               failedCount: failedTasks.length,
               outcomeCode: failedTasks.length > 0 ? "PARTIAL_SUCCESS" : "SUCCESS",
+              suggestCommit: true,
             },
           };
         } catch (dagError) {
@@ -821,7 +962,33 @@ ${failedTasks.length > 0 ? `\n### Failed Tasks\n${failedTasks.map((f) => `- ${f.
                 saveState(currentWorkflow);
                 setCurrentWorkflow(null);
 
-                return makeResult(`## 実装完了\n\nTask ID: ${taskId}\n\nワークフローが完了しました。`, { taskId, phase: "completed" });
+                return makeResult(`## 実装完了
+
+Task ID: ${taskId}
+
+ワークフローが完了しました。
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
+`, { taskId, phase: "completed", suggestCommit: true });
               } catch (implError) {
                 return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
               }
@@ -1037,14 +1204,96 @@ ${phasesDisplay}
       } else if (nextPhase === "implement") {
         text += `\n実装を開始するには:\n  ul_workflow_implement({ task_id: "${currentWorkflow.taskId}" })\n`;
       } else if (nextPhase === "completed") {
-        text += `\nワークフローが完了しました。\n`;
+        text += `\nワークフローが完了しました。\n\n`;
+        text += `### 次のステップ: コミット\n\n`;
+        text += `実装完了後、コミットを作成することを強く推奨します:\n\n`;
+        text += `\`\`\`\n`;
+        text += `ul_workflow_commit()\n`;
+        text += `\`\`\`\n\n`;
+        text += `または、git-workflowスキルに従って手動でコミット:\n\n`;
+        text += `\`\`\`bash\n`;
+        text += `# 1. 変更内容を確認\n`;
+        text += `git status\n`;
+        text += `git diff\n\n`;
+        text += `# 2. ステージング（選択的 - git add . は禁止）\n`;
+        text += `git add <変更したファイル>\n\n`;
+        text += `# 3. コミット（日本語・Body必須）\n`;
+        text += `git commit -m "feat: ${currentWorkflow.taskDescription.slice(0, 40)}..."\n`;
+        text += `\`\`\`\n`;
       }
 
       // Sync to file
       saveState(currentWorkflow);
       setCurrentWorkflow(currentWorkflow);
-      
+
       return makeResult(text, { taskId: currentWorkflow.taskId, previousPhase, nextPhase });
+    },
+  });
+
+  // 所有権強制取得ツール
+  pi.registerTool({
+    name: "ul_workflow_force_claim",
+    label: "Force Claim Workflow",
+    description: "終了した所有者のワークフローの所有権を強制的に現在のインスタンスに移す",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      const currentWorkflow = getCurrentWorkflow();
+      if (!currentWorkflow) {
+        return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const instanceId = getInstanceId();
+
+      // Check if already owned
+      if (currentWorkflow.ownerInstanceId === instanceId) {
+        return makeResult(`ワークフローは既に現在のインスタンスが所有しています。\n所有者: ${instanceId}`, { alreadyOwned: true });
+      }
+
+      const previousOwner = currentWorkflow.ownerInstanceId;
+      const ownerPid = extractPidFromInstanceId(previousOwner);
+
+      // Verify owner process is dead
+      if (ownerPid && isProcessAlive(ownerPid)) {
+        return makeResult(
+          `エラー: 所有者のプロセスがまだ実行中です。\n` +
+          `所有者: ${previousOwner}\n` +
+          `所有者のPID: ${ownerPid}\n` +
+          `現在のインスタンス: ${instanceId}\n\n` +
+          `所有者が実行中の場合は、所有権を強制的に変更することはできません。`,
+          { error: "owner_still_alive", ownerPid, previousOwner }
+        );
+      }
+
+      // Force claim ownership
+      const now = new Date().toISOString();
+      currentWorkflow.ownerInstanceId = instanceId;
+      currentWorkflow.updatedAt = now;
+
+      saveState(currentWorkflow);
+      setCurrentWorkflow(currentWorkflow);
+
+      let statusText = `所有権を強制的に変更しました。\n\n` +
+        `以前の所有者: ${previousOwner}${ownerPid ? ` (PID: ${ownerPid})` : ""}\n` +
+        `新しい所有者: ${instanceId}\n`;
+
+      if (ownerPid && !isProcessAlive(ownerPid)) {
+        statusText += `\n所有者のプロセス (PID: ${ownerPid}) は終了しています。\n`;
+      }
+
+      statusText += `\nTask ID: ${currentWorkflow.taskId}\n` +
+        `現在のフェーズ: ${currentWorkflow.phase.toUpperCase()}\n\n` +
+        `次のステップ:\n` +
+        `  ul_workflow_approve で次のフェーズに進む\n` +
+        `  または\n` +
+        `  ul_workflow_status で詳細を確認`;
+
+      return makeResult(statusText, {
+        taskId: currentWorkflow.taskId,
+        previousOwner,
+        newOwner: instanceId,
+        phase: currentWorkflow.phase,
+        forceClaimed: true
+      });
     },
   });
 
@@ -1183,7 +1432,33 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
               saveState(currentWorkflow);
               setCurrentWorkflow(null);
 
-              return makeResult(`## 実装完了\n\nTask ID: ${taskId}\n\nワークフローが完了しました。`, { taskId, phase: "completed" });
+              return makeResult(`## 実装完了
+
+Task ID: ${taskId}
+
+ワークフローが完了しました。
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
+`, { taskId, phase: "completed", suggestCommit: true });
             } catch (implError) {
               return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
             }
@@ -1280,7 +1555,29 @@ ${planContent}
 
 Task ID: ${taskId}
 
-ワークフローが完了しました。`, { taskId, phase: "completed" });
+ワークフローが完了しました。
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
+`, { taskId, phase: "completed", suggestCommit: true });
         } catch (error) {
           return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${error}`, { error: "implement_error", details: String(error) });
         }
@@ -1297,7 +1594,7 @@ subagent_run({
 })
 \`\`\`
 
-完了後: ワークフロー完了
+完了後: ul_workflow_commit() でコミット
 `, { taskId, phase: "implement" });
     },
   });
@@ -1391,7 +1688,33 @@ subagent_run({
                 saveState(currentWorkflow);
                 setCurrentWorkflow(null);
 
-                return makeResult(`## 実装完了\n\nTask ID: ${taskId}\n\nワークフローが完了しました。`, { taskId, phase: "completed" });
+                return makeResult(`## 実装完了
+
+Task ID: ${taskId}
+
+ワークフローが完了しました。
+
+### 次のステップ: コミット
+
+以下を実行してコミットを作成してください:
+
+\`\`\`
+ul_workflow_commit()
+\`\`\`
+
+または手動でコミット:
+
+\`\`\`bash
+# 変更確認
+git status && git diff
+
+# ステージング（選択的）
+git add <変更したファイル>
+
+# コミット
+git commit -m "feat: ..."
+\`\`\`
+`, { taskId, phase: "completed", suggestCommit: true });
               } catch (implError) {
                 return makeResult(`エラー: 実装フェーズ中にエラーが発生しました。\n\n${implError}`, { error: "implement_error", details: String(implError) });
               }
@@ -1511,7 +1834,22 @@ Task ID: ${taskId}
         return makeResult(`エラー: タスク ${task_id} が見つかりません。`, { error: "task_not_found" });
       }
 
-      // Update ownership to current instance
+      // 所有権チェック: 所有者が生存中の場合は再開を拒否
+      const ownership = checkOwnership(state, { autoClaim: true });
+      if (!ownership.owned) {
+        const ownerPid = extractPidFromInstanceId(state.ownerInstanceId);
+        if (ownerPid && isProcessAlive(ownerPid)) {
+          return makeResult(
+            `エラー: ワークフローは別のインスタンス (${state.ownerInstanceId}) が所有しています。所有者が終了した場合は ul_workflow_force_claim を使用してください。`,
+            { error: "workflow_owned_by_other", ownerInstanceId: state.ownerInstanceId, ownerPid }
+          );
+        }
+      }
+      
+      // 所有権を現在のインスタンスに更新
+      if (ownership.autoClaim) {
+        // 死んだプロセスから自動取得
+      }
       state.ownerInstanceId = instanceId;
       state.updatedAt = new Date().toISOString();
       saveState(state);
@@ -1544,6 +1882,21 @@ Task ID: ${state.taskId}
       if (!taskId) {
         return makeResult("エラー: task_id が指定されていません。", { error: "no_task_id" });
       }
+
+      // 所有権チェック
+      const state = loadState(taskId);
+      if (state) {
+        const ownership = checkOwnership(state, { autoClaim: false });
+        if (!ownership.owned) {
+          const ownerPid = extractPidFromInstanceId(state.ownerInstanceId);
+          if (ownerPid && isProcessAlive(ownerPid)) {
+            return makeResult(
+              `エラー: ワークフローは別のインスタンス (${state.ownerInstanceId}) が所有しています。`,
+              { error: "workflow_owned_by_other", ownerInstanceId: state.ownerInstanceId, ownerPid }
+            );
+          }
+        }
+      }
       
       return makeResult(`研究フェーズの実行指示
 
@@ -1569,7 +1922,8 @@ subagent_run(
 - 表面的な読み取りでは不十分です
 - 関数のシグネチャレベルではなく、実際の動作を理解してください
 ",
-  extraContext: "research.md は永続的な成果物です。単なる要約ではなく、後で参照できる詳細なドキュメントを作成してください。"
+  extraContext: "research.md は永続的な成果物です。単なる要約ではなく、後で参照できる詳細なドキュメントを作成してください。",
+  ulTaskId: "${taskId}"
 )
 \`\`\`
 
@@ -1640,7 +1994,8 @@ subagent_run(
 - 既存のコードパターンを尊重してください
 - コードスニペットは実際の変更を反映してください
 """,
-  extraContext: "plan.md はユーザーのレビュー対象です。後で注釈が追加されることを想定して構造化してください。"
+  extraContext: "plan.md はユーザーのレビュー対象です。後で注釈が追加されることを想定して構造化してください。",
+  ulTaskId: "${taskId}"
 )
 \`\`\`
 
@@ -1707,7 +2062,8 @@ subagent_run(
 - 未知の型を使用しない
 - 常に型チェックを実行する
 ",
-  extraContext: "実装は機械的な作業です。創造的な判断は計画段階で完了しています。"
+  extraContext: "実装は機械的な作業です。創造的な判断は計画段階で完了しています。",
+  ulTaskId: "${taskId}"
 )
 \`\`\`
 
@@ -1729,6 +2085,10 @@ subagent_run(
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { generateDagFromTask } = await import("../lib/dag-generator.js");
       const { determineExecutionStrategy } = await import("./ul-workflow.js");
+
+      // 現在のワークフローからtaskIdを取得
+      const currentWorkflow = getCurrentWorkflow();
+      const ulTaskId = currentWorkflow?.taskId;
 
       // Determine execution strategy
       const strategy = determineExecutionStrategy(params.task);
@@ -1791,7 +2151,7 @@ Execute with:
 \`\`\`
 subagent_run_dag({
   task: "${params.task.replace(/"/g, '\\"')}",
-  maxConcurrency: ${params.maxConcurrency ?? 3}
+  maxConcurrency: ${params.maxConcurrency ?? 3}${ulTaskId ? `,\n  ulTaskId: "${ulTaskId}"` : ""}
 })
 \`\`\`
 
@@ -1800,7 +2160,7 @@ Or call directly:
 ctx.callTool("subagent_run_dag", {
   task: "${params.task.replace(/"/g, '\\"')}",
   plan: ${JSON.stringify(plan)},
-  maxConcurrency: ${params.maxConcurrency ?? 3}
+  maxConcurrency: ${params.maxConcurrency ?? 3}${ulTaskId ? `,\n  ulTaskId: "${ulTaskId}"` : ""}
 })
 \`\`\`
 `,
@@ -1813,6 +2173,114 @@ ctx.callTool("subagent_run_dag", {
           useDag: true,
         },
       };
+    },
+  });
+
+  // コミット提案ツール（実装完了後のコミット支援）
+  pi.registerTool({
+    name: "ul_workflow_commit",
+    label: "Commit UL Workflow Changes",
+    description: "実装完了後のコミットを提案・実行する。git-workflowスキルの統合コミットパターンを使用。",
+    parameters: Type.Object({
+      commit_message: Type.Optional(Type.String({ description: "コミットメッセージ（省略時は自動生成）" })),
+      files: Type.Optional(Type.Array(Type.String(), { description: "ステージングするファイル（省略時は変更済みファイルを自動検出）" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const workflow = getCurrentWorkflow();
+      if (!workflow) {
+        return makeResult("エラー: アクティブなワークフローがありません。", { error: "no_active_workflow" });
+      }
+
+      const ownership = checkOwnership(workflow);
+      if (!ownership.owned) {
+        return makeResult(`エラー: このワークフローは他のインスタンスが所有しています。`, { error: ownership.error });
+      }
+
+      // git-workflowスキルの読み込みを促す
+      const skillPath = ".pi/skills/git-workflow/SKILL.md";
+
+      // 変更内容を確認するための指示を生成
+      const taskId = workflow.taskId;
+      const planPath = path.join(getTaskDir(taskId), "plan.md");
+      const taskDesc = workflow.taskDescription;
+
+      // コミットメッセージの自動生成（簡易版）
+      let suggestedMessage = params.commit_message;
+      if (!suggestedMessage) {
+        // タスク説明からコミットメッセージを推測
+        const lowerTask = taskDesc.toLowerCase();
+        let type = "feat";
+        if (lowerTask.includes("fix") || lowerTask.includes("修正") || lowerTask.includes("バグ")) {
+          type = "fix";
+        } else if (lowerTask.includes("refactor") || lowerTask.includes("リファクタ")) {
+          type = "refactor";
+        } else if (lowerTask.includes("test") || lowerTask.includes("テスト")) {
+          type = "test";
+        } else if (lowerTask.includes("doc") || lowerTask.includes("ドキュメント")) {
+          type = "docs";
+        }
+        suggestedMessage = `${type}: ${taskDesc.slice(0, 50)}${taskDesc.length > 50 ? "..." : ""}`;
+      }
+
+      // question UIでユーザーに確認
+      if (ctx.hasUI) {
+        const qctx = asQuestionContext(ctx);
+        const answer = await askSingleQuestion({
+          question: `以下の内容でコミットしますか？\n\n【コミットメッセージ】\n${suggestedMessage}\n\n【変更内容】\n${taskDesc}\n\n【plan.md】\n${planPath}`,
+          header: "Git Commit",
+          options: [
+            { label: "Commit", description: "ステージング + コミットを実行" },
+            { label: "Edit", description: "メッセージを編集" },
+            { label: "Skip", description: "コミットせずに完了" }
+          ],
+          multiple: false,
+          custom: true
+        }, qctx);
+
+        if (answer === null || answer[0] === "Skip") {
+          return makeResult("コミットをスキップしました。", { taskId, phase: workflow.phase, committed: false });
+        }
+
+        if (answer[0] === "Edit" || !["Commit", "Edit", "Skip"].includes(answer[0])) {
+          // カスタムメッセージ
+          const customMessage = answer[0] === "Edit" ? answer[0] : answer[0];
+          return {
+            content: [{ type: "text", text: `## カスタムコミットメッセージ\n\n以下を実行してください:\n\n\`\`\`bash\n# 変更内容を確認\ngit status\ngit diff\n\n# ステージング（選択的）\ngit add <変更したファイル>\n\n# コミット\ngit commit -m "${customMessage.replace(/"/g, '\\"')}"\n\`\`\`\n\n**注意**: \`git add .\`は使用しないでください。自分が編集したファイルのみをステージングしてください。` }],
+            details: { taskId, phase: workflow.phase, committed: false, customMessage }
+          };
+        }
+
+        // Commit選択時の指示を生成
+        return {
+          content: [{ type: "text", text: `## コミット実行\n\n以下を実行してください:\n\n\`\`\`bash\n# 1. 変更内容を確認\ngit status\ngit diff\n\n# 2. ステージング（選択的 - 自分が編集したファイルのみ）\ngit add <変更したファイル>\n\n# 3. コミット（日本語・Body必須）\ngit commit -m "${suggestedMessage.replace(/"/g, '\\"')}" -m "\n## 背景\n${taskDesc}\n\n## 変更内容\nplan.mdに基づく実装\n\n## テスト方法\n動作確認済み\n"\n\`\`\`\n\n**重要**:\n- \`git add .\`や\`git add -A\`は使用しないでください\n- コミットメッセージは日本語で書いてください\n- Body（本文）を含めてください\n\n詳細はgit-workflowスキルを参照: ${skillPath}` }],
+          details: { taskId, phase: workflow.phase, committed: true, message: suggestedMessage }
+        };
+      }
+
+      // UIがない場合のテキストベースの指示
+      return makeResult(`## コミット提案
+
+Task: ${taskDesc}
+Suggested Message: ${suggestedMessage}
+
+### 実行手順
+
+\`\`\`bash
+# 1. 変更内容を確認
+git status
+git diff
+
+# 2. ステージング（選択的）
+git add <変更したファイル>
+
+# 3. コミット
+git commit -m "${suggestedMessage.replace(/"/g, '\\"')}" -m "Body: ${taskDesc.replace(/"/g, '\\"')}"
+\`\`\`
+
+**注意**: \`git add .\`は使用しないでください。
+
+詳細: ${skillPath}
+`, { taskId, phase: workflow.phase, suggestedMessage });
     },
   });
 

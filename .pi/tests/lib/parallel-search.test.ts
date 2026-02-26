@@ -312,8 +312,10 @@ describe("parallelSearch: 境界値テスト", () => {
 
     const result = await parallelSearch(queries, searchFn);
 
-    // 全てのクエリが処理される（結果は空だが）
-    expect(result.failureCount).toBe(100);
+    // 全てのクエリが正常に処理される（結果は空だがエラーなく完了）
+    // Promise.allSettled: fulfilled = successCount, rejected = failureCount
+    expect(result.successCount).toBe(100);
+    expect(result.failureCount).toBe(0);
   });
 
   it("空の結果を返す検索", async () => {
@@ -322,9 +324,10 @@ describe("parallelSearch: 境界値テスト", () => {
     const result = await parallelSearch(["no-match"], searchFn);
 
     expect(result.results).toHaveLength(0);
-    // 空の結果を返したクエリは successCount にカウントされない
-    expect(result.successCount).toBe(0);
-    expect(result.failureCount).toBe(1);
+    // 空の結果を返したクエリは fulfilled なので successCount にカウントされる
+    // Promise.allSettled: fulfilled = successCount（エラーなく完了）
+    expect(result.successCount).toBe(1);
+    expect(result.failureCount).toBe(0);
   });
 
   it("コンテキストが非常に長い結果", async () => {

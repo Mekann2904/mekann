@@ -14,6 +14,7 @@
 | **Parallel execution** | Use `subagent_run_dag` (see DAG Execution Guide) |
 | **Code review** | Load `skills/code-review/SKILL.md` |
 | **Architecture** | Load `skills/clean-architecture/SKILL.md` |
+| **Ownership system** | `docs/04-reference/ownership.md` - UL workflow ownership |
 
 **Core Rules**: No emoji | Use question tool for user choices | Delegate non-trivial tasks
 
@@ -27,10 +28,29 @@
 
 > **エージェントにコードを書かせる前に、必ず文章化された計画をレビュー・承認する**
 
+## 推奨: DAGベース並列実行
+
+ULモードの各フェーズはDAG実行で並列化できる:
+
+```typescript
+// 推奨: DAG統合ULモード
+ul_workflow_dag({
+  task: "<タスク>",
+  maxConcurrency: 3
+})
+```
+
+### DAG統合の利点
+
+- Research並列実行で調査時間短縮
+- 実装タスクの自動並列化
+- 依存関係の自動推論
+- レート制限への適応的対応
+
 ## フロー
 
 ```
-Research → Plan → [ユーザーレビュー] → Implement
+Research → Plan → [ユーザーレビュー] → Implement (DAG)
 ```
 
 ---
@@ -150,7 +170,24 @@ plan.mdの場所: `.pi/ul-workflow/tasks/{taskId}/plan.md`
 
 計画に従って機械的に実装する。
 
-### アクション（単一エージェント）
+### アクション（DAG並列実装 - 推奨）
+
+```typescript
+subagent_run_dag({
+  task: "plan.mdの内容を実装",
+  plan: {
+    id: "implementation-phase",
+    tasks: [
+      { id: "impl-core", description: "コア実装", assignedAgent: "implementer", dependencies: [] },
+      { id: "impl-tests", description: "テスト実装", assignedAgent: "tester", dependencies: ["impl-core"] },
+      { id: "review", description: "コードレビュー", assignedAgent: "reviewer", dependencies: ["impl-core"] }
+    ]
+  },
+  maxConcurrency: 3
+})
+```
+
+### アクション（単一エージェント - 単純な場合のみ）
 
 ```
 subagent_run({
@@ -176,8 +213,8 @@ agent_team_run({
 | 場面 | 推奨 |
 |------|------|
 | 単一ファイルの変更 | `subagent_run({ subagentId: "implementer" })` |
-| 複数の独立したファイル変更 | `agent_team_run_parallel` |
-| 実装 + レビューを同時 | `subagent_run_parallel(["implementer", "code-reviewer"])` |
+| 複数の独立したファイル変更 | `agent_team_run_parallel` または `subagent_run_dag` |
+| 実装 + レビューを同時 | `subagent_run_dag` で依存関係を指定 |
 
 ### 実装の原則
 
@@ -189,14 +226,121 @@ agent_team_run({
 
 ---
 
+## 第6段階：Commit（コミット）【推奨】
+
+実装完了後、**積極的にコミットを作成する**。
+
+### 基本原則
+
+> **実装完了後は必ずコミットを提案する**
+
+### コミットのタイミング
+
+| タイミング | アクション |
+|-----------|-----------|
+| 実装フェーズ完了後 | 必ずコミットを提案 |
+| 中規模以上の変更 | フェーズごとにコミットを検討 |
+| ユーザーが明示的に拒否した場合のみ | コミットをスキップ |
+
+### コミットワークフロー
+
+**git-workflowスキルをロードしてから実行する。**
+
+```
+read tool: .pi/skills/git-workflow/SKILL.md
+```
+
+#### 統合コミット（推奨）
+
+add + commit を1回のquestion呼び出しで実行:
+
+```typescript
+// 1. 変更内容を確認
+git status
+git diff
+
+// 2. コミットメッセージを作成（日本語・Body必須）
+// Conventional Commits準拠
+
+// 3. questionツールで統合確認
+question({
+  questions: [{
+    question: "以下の内容でコミットしますか？\n\n" +
+              "【コミットメッセージ】\n" +
+              "feat: ユーザー認証を追加する\n\n" +
+              "【ステージングファイル】\n" +
+              "- src/auth.ts\n" +
+              "- tests/auth.test.ts\n\n" +
+              "【変更概要】\n" +
+              "- JWT認証を実装\n" +
+              "- テストを追加",
+    header: "Git Commit",
+    options: [
+      { label: "Commit", description: "ステージング + コミットを実行" },
+      { label: "Edit", description: "メッセージを編集" },
+      { label: "Skip", description: "コミットせずに完了" }
+    ],
+    custom: true
+  }]
+})
+```
+
+### コミットメッセージ規約
+
+**git-workflowスキルの規約に従う:**
+
+- **絵文字は使用しない**
+- **日本語で詳細に書く（絶対必須）**
+- **Body（本文）を必ず書く**
+- **英語でのコミットメッセージは禁止**
+
+```
+<Type>[(scope)]: #<Issue Number> <Title>
+
+## 背景
+<なぜこの変更が必要か>
+
+## 変更内容
+<具体的な変更点>
+
+## テスト方法
+<どうテストしたか>
+
+## 影響範囲
+<他に影響する部分>
+```
+
+### 選択的ステージング（CRITICAL）
+
+**`git add .`や`git add -A`は安易に使用しない。**
+
+```bash
+# 推奨: 特定ファイルを明示的に指定
+git add path/to/file.ts
+
+# 禁止: 全ファイルをステージング
+# git add .
+# git add -A
+```
+
+### ULモードでのコミットフロー
+
+1. **実装完了**: implementerサブエージェントが実装を完了
+2. **変更確認**: `git status`と`git diff`で変更内容を確認
+3. **コミット提案**: questionツールでユーザーに確認
+4. **コミット実行**: ユーザー承認後に`git add`と`git commit`を実行
+5. **完了報告**: ワークフロー完了を通知
+
+---
+
 ## 判断の指針
 
 | 状況 | フロー |
 |------|--------|
-| 重要な実装 | Research → Plan → Annotation Cycle → Todo → Implement |
-| 中程度の実装 | Research → Plan → [確認] → Implement |
-| 軽微な修正 | 直接編集（plan省略可） |
-| 調査のみ | Research → 報告 |
+| 重要な実装 | Research → Plan → Annotation Cycle → Todo → Implement → **Commit** |
+| 中程度の実装 | Research → Plan → [確認] → Implement → **Commit** |
+| 軽微な修正 | 直接編集（plan省略可）→ **Commit** |
+| 調査のみ | Research → 報告（コミット不要） |
 
 ---
 

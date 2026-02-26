@@ -1,27 +1,30 @@
 /**
  * @abdd.meta
  * path: .pi/lib/retry-with-backoff.ts
- * role: 一時的なLLMエラーに対処するための、指数バックオフとジッターを含むリトライロジックの共通実装
- * why: 429/5xxエラーからの回復ポリシーを単一の場所に集約し、サブエージェントとエージェントチームで再利用するため
- * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json
- * public_api: RetryJitterMode, RetryWithBackoffConfig, RetryWithBackoffOverrides, RetryAttemptContext, RateLimitGateSnapshot, RateLimitWaitContext
- * invariants: リトライ遅延はinitialDelayMs以上maxDelayMs以下である。待機時間の計算にはnow()関数の結果を使用する。
- * side_effects: ファイルシステム（readFileSync, writeFileSync, mkdirSync）へのアクセスとファイルロックを行う。レートリimit状態を永続化する。
- * failure_modes: 設定値が不正な場合の挙動未定義、ファイルシステムへのアクセス権限がない場合のエラー、AbortSignalによる操作の中断。
+ * role: 一時的なLLMエラーに対処するための、指数バックオフとジッターを含むリトライロジックの共通実装。サーキットブレーカーパターンと統合され、連続エラー時の早期検出と保護を提供。
+ * why: 429/5xxエラーからの回復ポリシーを単一の場所に集約し、サブエージェントとエージェントチームで再利用するため。サーキットブレーカーにより、連続するAPIエラーからシステムを保護する。
+ * related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, .pi/config.json, .pi/lib/circuit-breaker.ts
+ * public_api: RetryJitterMode, RetryWithBackoffConfig, RetryWithBackoffOverrides, RetryAttemptContext, RateLimitGateSnapshot, RateLimitWaitContext, retryWithBackoff
+ * invariants: リトライ遅延はinitialDelayMs以上maxDelayMs以下である。待機時間の計算にはnow()関数の結果を使用する。サーキットブレーカーがOPEN状態の場合はエラーをスローする。
+ * side_effects: ファイルシステム（readFileSync, writeFileSync, mkdirSync）へのアクセスとファイルロックを行う。レートリミット状態を永続化する。サーキットブレーカー状態を更新する。
+ * failure_modes: 設定値が不正な場合の挙動未定義、ファイルシステムへのアクセス権限がない場合のエラー、AbortSignalによる操作の中断、サーキットブレーカーOPEN時の即時エラー。
  * @abdd.explain
- * overview: LLM API等における一時的な障害やレート制限（429/5xx）に対し、指数バックオフおよびジッター機能を提供し、安定的な通信を実現するモジュール。リトライ設定のオーバーライドや、共有状態に基づくレートリimit制御も行う。
+ * overview: LLM API等における一時的な障害やレート制限（429/5xx）に対し、指数バックオフおよびジッター機能を提供し、安定的な通信を実現するモジュール。サーキットブレーカーパターンと統合され、連続エラー時の早期検出と保護を提供。
  * what_it_does:
  *   - 指数バックオフアルゴリズムによる待機時間の計算とジッター（full/partial/none）の適用
- *   - ファイルロックを用いたレートリimit状態の永続化と共有
+ *   - ファイルロックを用いたレートリミット状態の永続化と共有
  *   - AbortSignalによるリトライ処理のキャンセル対応
  *   - リトライ判定ロジック（shouldRetry）とコールバック（onRetry, onRateLimitWait）の実行
+ *   - サーキットブレーカーによる連続エラー検出と保護（OPEN状態でエラースロー）
+ *   - 成功/失敗時のサーキットブレーカー状態更新
  * why_it_exists:
  *   - 外部API呼び出しにおいて、ネットワークの一時的な障害や制限を透過的にハンドリングするため
  *   - サブエージェントやエージェントチーム間でリトライ戦略の一貫性を保つため
- *   - 分散環境でのレートリimit回避のためにプロセス間で状態を共有するため
+ *   - 分散環境でのレートリミット回避のためにプロセス間で状態を共有するため
+ *   - 連続するAPIエラーからシステムを保護し、無駄なリトライを防ぐため
  * scope:
- *   in: RetryWithBackoffOptions, RetryWithBackoffConfig, レートリimit状態ファイル, AbortSignal
- *   out: リトライ回数, 待機時間, エラー内容, 更新されたレートリimit状態
+ *   in: RetryWithBackoffOptions, RetryWithBackoffConfig, レートリミット状態ファイル, AbortSignal, CircuitBreakerConfig
+ *   out: リトライ回数, 待機時間, エラー内容, 更新されたレートリミット状態, サーキットブレーカー状態
  */
 
 // File: .pi/lib/retry-with-backoff.ts
@@ -35,6 +38,12 @@ import { join } from "node:path";
 import { Mutex } from "async-mutex";
 import { recordTotalLimitObservation } from "./adaptive-total-limit.js";
 import { withFileLock } from "./storage-lock.js";
+import {
+  checkCircuitBreaker,
+  recordCircuitBreakerSuccess,
+  recordCircuitBreakerFailure,
+  type CircuitBreakerConfig,
+} from "./circuit-breaker.js";
 
 /**
  * リトライ時のジッターモード
@@ -93,6 +102,14 @@ interface RetryWithBackoffOptions {
   onRateLimitWait?: (context: RateLimitWaitContext) => void;
   onRetry?: (context: RetryAttemptContext) => void;
   shouldRetry?: (error: unknown, statusCode?: number) => boolean;
+  /** サーキットブレーカーを有効にするか（デフォルト: true） */
+  enableCircuitBreaker?: boolean;
+  /** サーキットブレーカーのキー（省略時はrateLimitKeyまたは"global"） */
+  circuitBreakerKey?: string;
+  /** サーキットブレーカー設定のオーバーライド */
+  circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
+  /** サーキットブレーカーがOPEN状態の時に呼ばれるコールバック */
+  onCircuitBreakerOpen?: (context: { key: string; retryAfterMs: number }) => void;
 }
 
 interface SharedRateLimitStateEntry {
@@ -816,9 +833,30 @@ export async function retryWithBackoff<T>(
       : undefined;
   const rateLimitKeys = createRateLimitKeyScope(rateLimitKey);
 
+  // サーキットブレーカー設定
+  const enableCircuitBreaker = options.enableCircuitBreaker !== false;
+  const circuitBreakerKey = options.circuitBreakerKey ?? rateLimitKey ?? "global";
+
   while (true) {
     if (options.signal?.aborted) {
       throw createAbortError();
+    }
+
+    // サーキットブレーカーチェック
+    if (enableCircuitBreaker) {
+      const circuitCheck = checkCircuitBreaker(circuitBreakerKey, options.circuitBreakerConfig);
+      if (!circuitCheck.allowed) {
+        recordTotalLimitObservation({ kind: "rate_limit", waitMs: circuitCheck.retryAfterMs ?? 0 });
+        options.onCircuitBreakerOpen?.({
+          key: circuitBreakerKey,
+          retryAfterMs: circuitCheck.retryAfterMs ?? 0,
+        });
+        // サーキットブレーカーがOPEN状態の場合はエラーをスロー
+        throw new Error(
+          `Circuit breaker is open for key "${circuitBreakerKey}". ` +
+          `Retry after ${circuitCheck.retryAfterMs ?? 0}ms.`
+        );
+      }
     }
 
     if (rateLimitKeys.length > 0) {
@@ -860,6 +898,10 @@ export async function retryWithBackoff<T>(
           await registerRateLimitGateSuccess(scopeKey, now);
         }
       }
+      // サーキットブレーカーに成功を記録
+      if (enableCircuitBreaker) {
+        recordCircuitBreakerSuccess(circuitBreakerKey, options.circuitBreakerConfig);
+      }
       return result;
     } catch (error) {
       const statusCode = extractRetryStatusCode(error);
@@ -875,6 +917,10 @@ export async function retryWithBackoff<T>(
         : isNetworkErrorRetryable(error, statusCode);
 
       if (!retryable || attempt >= config.maxRetries) {
+        // サーキットブレーカーに失敗を記録（リトライ不可または最大試行回数超過）
+        if (enableCircuitBreaker) {
+          recordCircuitBreakerFailure(circuitBreakerKey, options.circuitBreakerConfig);
+        }
         throw error;
       }
 

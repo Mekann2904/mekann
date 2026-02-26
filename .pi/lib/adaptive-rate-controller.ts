@@ -50,6 +50,7 @@ import {
   type RuntimeConfig,
 } from "./runtime-config.js";
 import { withFileLock } from "./storage-lock.js";
+import { Mutex } from "async-mutex";
 
 // ============================================================================
 // Types
@@ -223,9 +224,27 @@ const STATE_LOCK_OPTIONS = {
 // State
 // ============================================================================
 
+// BUG-003修正: async-mutexで状態アクセスを保護
+const stateMutex = new Mutex();
+
 let state: AdaptiveControllerState | null = null;
 let recoveryTimer: ReturnType<typeof setInterval> | null = null;
 let persistenceFailed = false;
+
+/**
+ * 状態をミューテックスで保護しながらアクセスする
+ * @summary 状態アクセス保護
+ * @param fn - 状態を使用する関数
+ * @returns 関数の戻り値
+ */
+async function withStateMutex<T>(fn: () => Promise<T>): Promise<T> {
+  const release = await stateMutex.acquire();
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
 
 // ============================================================================
 // Utilities

@@ -12,7 +12,7 @@
 | Create new extension | `docs/03-development/01-getting-started.md` | `.pi/extensions/*.ts` |
 | Modify existing extension | Extension file directly | `.pi/extensions/<name>.ts` |
 | Use shared library | `.pi/lib/*.ts` | `concurrency.ts`, `storage-lock.ts` |
-| Add new skill | `.pi/docs/skill-guide.md` | `.pi/skills/*/SKILL.md` |
+| Add new skill | `docs/04-reference/skill-guide.md` | `.pi/skills/*/SKILL.md` |
 | Debug extension | `docs/04-reference/03-troubleshooting.md` | Extension source |
 
 ### Orchestration Tasks

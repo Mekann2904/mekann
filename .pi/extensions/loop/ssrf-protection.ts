@@ -169,9 +169,10 @@ export async function validateUrlForSsrf(urlString: string): Promise<void> {
   }
 
   // Resolve DNS and check IP
+  let resolvedIP: string;
   try {
     const dnsResult = await dnsLookup(hostname);
-    const resolvedIP = dnsResult.address;
+    resolvedIP = dnsResult.address;
 
     if (isPrivateOrReservedIP(resolvedIP)) {
       throw new Error(
@@ -185,5 +186,28 @@ export async function validateUrlForSsrf(urlString: string): Promise<void> {
     }
     // DNS resolution failed - this could be a security issue or just a bad domain
     // We'll let it through and let the fetch fail naturally
+    return;
+  }
+
+  // BUG-037修正: DNSリバインディング検出
+  // リクエスト送信前に再度DNSルックアップしてIPが変わっていないか確認
+  try {
+    const dnsResult2 = await dnsLookup(hostname);
+    const resolvedIP2 = dnsResult2.address;
+
+    if (resolvedIP !== resolvedIP2) {
+      throw new Error(
+        `DNS rebinding detected (SSRF protection): ${hostname} resolved to ${resolvedIP} then ${resolvedIP2}`
+      );
+    }
+  } catch (error) {
+    // If it's our SSRF error, re-throw it
+    if (error instanceof Error && error.message.includes("SSRF protection")) {
+      throw error;
+    }
+    // DNS resolution failed on second lookup - could indicate an attack
+    throw new Error(
+      `DNS resolution inconsistency detected (SSRF protection): ${hostname}`
+    );
   }
 }

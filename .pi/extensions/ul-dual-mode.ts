@@ -30,6 +30,7 @@
 // Related: .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts, docs/extensions.md
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Mutex } from "async-mutex";
 
 const UL_PREFIX = /^\s*ul(?:\s+|$)/i;
 const STABLE_UL_PROFILE = true;
@@ -63,6 +64,9 @@ const AGENT_TEAM_EXECUTION_TOOLS = new Set([
   "agent_team_run_parallel",
 ]);
 
+// BUG-002修正: async-mutexで状態変更を保護
+const stateMutex = new Mutex();
+
 const state = {
   persistentUlMode: false,  // Session-wide persistent UL mode
   pendingUlMode: false,
@@ -77,11 +81,45 @@ const state = {
   currentTask: "",  // 現在のタスク（reviewer要否判定用）
 };
 
+/**
+ * 状態を安全に更新する（ミューテックスで保護）
+ * @summary 状態更新
+ * @param updates - 更新するプロパティ
+ */
+async function updateState(updates: Partial<typeof state>): Promise<void> {
+  const release = await stateMutex.acquire();
+  try {
+    Object.assign(state, updates);
+  } finally {
+    release();
+  }
+}
+
+/**
+ * 状態を安全に読み取って更新する（ミューテックスで保護）
+ * @summary 状態読み取り・更新
+ * @param mutator - 状態を変更する関数
+ */
+async function withStateLock<T>(mutator: (s: typeof state) => T | Promise<T>): Promise<T> {
+  const release = await stateMutex.acquire();
+  try {
+    return await mutator(state);
+  } finally {
+    release();
+  }
+}
+
 function persistState(pi: ExtensionAPI): void {
   pi.appendEntry("ul-mode-state", { enabled: state.persistentUlMode });
 }
 
+/**
+ * 状態をリセットする（同期的 - イベントループ内で安全）
+ * @summary 状態リセット
+ */
 function resetState(): void {
+  // BUG-002修正: 同期的なリセットだが、単一イベントループ内で実行されるため安全
+  // 非同期コンテキストでは resetStateAsync を使用すること
   state.pendingUlMode = false;
   state.activeUlMode = false;
   state.pendingGoalLoopMode = false;
@@ -92,6 +130,25 @@ function resetState(): void {
   state.completedRecommendedTeamPhase = false;
   state.completedRecommendedReviewerPhase = false;
   state.currentTask = "";
+}
+
+/**
+ * 状態を非同期にリセットする（ミューテックスで保護）
+ * @summary 非同期状態リセット
+ */
+async function resetStateAsync(): Promise<void> {
+  await updateState({
+    pendingUlMode: false,
+    activeUlMode: false,
+    pendingGoalLoopMode: false,
+    activeGoalLoopMode: false,
+    usedSubagentRun: false,
+    usedAgentTeamRun: false,
+    completedRecommendedSubagentPhase: false,
+    completedRecommendedTeamPhase: false,
+    completedRecommendedReviewerPhase: false,
+    currentTask: "",
+  });
 }
 
 function refreshStatus(ctx: any): void {
@@ -360,6 +417,12 @@ class LRUCache<K, V> {
 
   constructor(private maxSize: number) {}
 
+  /**
+   * キャッシュ値を取得
+   * @summary キャッシュ値取得
+   * @param key キー
+   * @returns 値、存在しない場合はundefined
+   */
   get(key: K): V | undefined {
     const entry = this.cache.get(key);
     if (!entry) return undefined;
@@ -371,6 +434,13 @@ class LRUCache<K, V> {
     return entry.value;
   }
 
+  /**
+   * LRUキャッシュに値を設定
+   * @summary キャッシュ設定
+   * @param key キー
+   * @param value 値
+   * @returns void
+   */
   set(key: K, value: V): void {
     if (this.cache.has(key)) {
       this.updateAccessOrder(key);
@@ -397,6 +467,11 @@ class LRUCache<K, V> {
     this.accessOrder.push(key);
   }
 
+  /**
+   * LRUキャッシュをクリア
+   * @summary キャッシュクリア
+   * @returns void
+   */
   clear(): void {
     this.cache.clear();
     this.accessOrder = [];
