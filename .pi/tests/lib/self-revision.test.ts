@@ -21,8 +21,8 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { SelfRevisionModule, type RevisionExecutor } from "./self-revision.js";
-import type { TaskNode, DagTaskResult } from "./dag-types.js";
+import { SelfRevisionModule, type RevisionExecutor } from "../../lib/self-revision.js";
+import type { TaskNode, DagTaskResult } from "../../lib/dag-types.js";
 
 describe("SelfRevisionModule", () => {
   let mockExecutor: RevisionExecutor;

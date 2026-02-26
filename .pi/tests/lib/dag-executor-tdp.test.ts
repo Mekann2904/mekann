@@ -20,8 +20,8 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { DagExecutor, type TaskExecutor, type NodeExecutionContext, type ExecutionTraceEntry } from "./dag-executor.js";
-import type { TaskPlan, TaskNode } from "./dag-types.js";
+import { DagExecutor, type TaskExecutor, type NodeExecutionContext, type ExecutionTraceEntry } from "../../lib/dag-executor.js";
+import type { TaskPlan, TaskNode } from "../../lib/dag-types.js";
 
 describe("DagExecutor - TDP Integration", () => {
   let simplePlan: TaskPlan;

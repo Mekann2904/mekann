@@ -8,7 +8,8 @@
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
     "async-mutex": "^0.5.0",
-    "web-tree-sitter": "^0.26.5"
+    "web-tree-sitter": "^0.26.5",
+    "yaml": "^2.6.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",
@@ -51,9 +52,11 @@
       "./.pi/extensions/abdd.ts",
       "./.pi/extensions/pi-ai-abort-fix.ts",
       "./.pi/extensions/pi-coding-agent-rate-limit-fix.ts",
+      "./.pi/extensions/pi-coding-agent-lock-fix.ts",
       "./.pi/extensions/agent-idle-indicator.ts",
       "./.pi/extensions/agent-runtime.ts",
       "./.pi/extensions/agent-teams/extension.ts",
+      "./.pi/extensions/agent-team-dag-wrapper.ts",
       "./.pi/extensions/agent-usage-tracker.ts",
       "./.pi/extensions/append-system-loader.ts",
       "./.pi/extensions/code-panel.ts",
@@ -72,8 +75,13 @@
       "./.pi/extensions/self-improvement-loop.ts",
       "./.pi/extensions/self-improvement-dashboard.ts",
       "./.pi/extensions/self-improvement-reflection.ts",
+      "./.pi/extensions/self-improvement-dev-analyzer.ts",
+      "./.pi/extensions/self-improvement-output.ts",
+      "./.pi/extensions/self-improvement-pipeline.ts",
       "./.pi/extensions/plan.ts",
       "./.pi/extensions/question.ts",
+      "./.pi/extensions/rate-limit-retry-budget.ts",
+      "./.pi/extensions/repo-audit-orchestrator.ts",
       "./.pi/extensions/repograph-localization/index.ts",
       "./.pi/extensions/search/index.ts",
       "./.pi/extensions/skill-inspector.ts",
