@@ -51,6 +51,29 @@ const logger = getLogger();
 type FeatureType = "tool" | "agent_run";
 type EventStatus = "ok" | "error";
 
+/**
+ * BUG-TS-001修正: ツール呼び出しイベントの型定義
+ * any型を排除し、コンパイル時の型チェックを有効化
+ */
+interface ToolCallEvent {
+  toolCallId?: string;
+  toolName?: string;
+  input?: Record<string, unknown>;
+}
+
+/**
+ * BUG-TS-001修正: ツール結果イベントの型定義
+ * any型を排除し、コンパイル時の型チェックを有効化
+ * detailsプロパティは様々なツールの詳細型に対応するためunknownを許可
+ */
+interface ToolResultEvent {
+  toolCallId?: string;
+  toolName?: string;
+  isError?: boolean;
+  details?: { error?: string | unknown } | unknown;
+  content?: Array<{ text?: string | unknown } | unknown>;
+}
+
 interface ContextSnapshot {
   tokens?: number;
   contextWindow?: number;
@@ -574,16 +597,32 @@ function previewInput(input: unknown): string | undefined {
   }
 }
 
-function extractToolErrorMessage(event: any): string | undefined {
-  const detailsError = event?.details?.error;
-  if (typeof detailsError === "string" && detailsError.trim()) {
-    return compactSingleLine(detailsError.trim(), 200);
+/**
+ * BUG-TS-001修正: 型安全なイベントパラメータ
+ * @summary エラーメッセージを抽出
+ * @param event - ツール結果イベント
+ * @returns エラーメッセージ文字列またはundefined
+ */
+function extractToolErrorMessage(event: ToolResultEvent): string | undefined {
+  // details.error チェック
+  const details = event?.details;
+  if (details && typeof details === 'object') {
+    const errorValue = (details as Record<string, unknown>).error;
+    if (typeof errorValue === "string" && errorValue.trim()) {
+      return compactSingleLine(errorValue.trim(), 200);
+    }
   }
 
-  const firstContent = Array.isArray(event?.content) ? event.content[0] : undefined;
-  const text = firstContent?.text;
-  if (typeof text === "string" && text.trim()) {
-    return compactSingleLine(text.trim(), 200);
+  // content[0].text チェック
+  const content = event?.content;
+  if (Array.isArray(content) && content.length > 0) {
+    const firstContent = content[0];
+    if (firstContent && typeof firstContent === 'object') {
+      const textValue = (firstContent as Record<string, unknown>).text;
+      if (typeof textValue === "string" && textValue.trim()) {
+        return compactSingleLine(textValue.trim(), 200);
+      }
+    }
   }
 
   return undefined;
@@ -806,7 +845,14 @@ function handleAgentUsageCommand(
   ctx.ui.notify(report, "info");
 }
 
-function recordToolCall(event: any, ctx: ExtensionAPI["context"]): void {
+/**
+ * BUG-TS-001修正: 型安全なイベントパラメータ
+ * @summary ツール呼び出しを記録
+ * @param event - ツール呼び出しイベント
+ * @param ctx - 拡張機能APIコンテキスト
+ * @returns なし
+ */
+function recordToolCall(event: ToolCallEvent, ctx: ExtensionAPI["context"]): void {
   const currentRuntime = ensureRuntime(ctx);
   prunePendingTools(currentRuntime);
   const toolName = String(event?.toolName || "unknown_tool");
@@ -852,7 +898,14 @@ function recordToolCall(event: any, ctx: ExtensionAPI["context"]): void {
   }
 }
 
-function recordToolResult(event: any, ctx: ExtensionAPI["context"]): void {
+/**
+ * BUG-TS-001修正: 型安全なイベントパラメータ
+ * @summary ツール結果を記録
+ * @param event - ツール結果イベント
+ * @param ctx - 拡張機能APIコンテキスト
+ * @returns なし
+ */
+function recordToolResult(event: ToolResultEvent, ctx: ExtensionAPI["context"]): void {
   const currentRuntime = ensureRuntime(ctx);
   prunePendingTools(currentRuntime);
   const toolCallId = String(event?.toolCallId || "").trim();
