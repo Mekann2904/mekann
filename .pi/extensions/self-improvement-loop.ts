@@ -2388,7 +2388,12 @@ ${prompt}`;
       // 429エラー時は少し長く待機してから次へ
       if (is429) {
         console.warn(`[self-improvement-loop] Rate limit detected, waiting 3 seconds before continuing...`);
-        await sleepWithAbort(3000, signal).catch(() => {});
+        // BUG-EX-001修正: AbortErrorのみ無視、他のエラーはログに記録
+        await sleepWithAbort(3000, signal).catch((e) => {
+          if (e?.name !== 'AbortError') {
+            console.warn(`[self-improvement-loop] Sleep interrupted: ${e}`);
+          }
+        });
       }
       
       // エラー時はデフォルトスコアで続行
@@ -2886,7 +2891,10 @@ export default (api: ExtensionAPI) => {
         run.cycleSummaries.push(`Cycle ${run.cycle}: 完了 (ULモード)`);
         
         // 軌跡トラッカーに記録
-        run.trajectoryTracker.recordStep(`Cycle ${run.cycle} completed`).catch(() => {});
+        // BUG-EX-002修正: エラーをログに記録（元はcatch {}で無視していた）
+        run.trajectoryTracker.recordStep(`Cycle ${run.cycle} completed`).catch((e) => {
+          console.warn(`[self-improvement-loop] Failed to record trajectory step: ${e}`);
+        });
         
         // 停止条件をチェック
         if (shouldStopLoop(run)) {
@@ -3317,8 +3325,9 @@ export default (api: ExtensionAPI) => {
     run.cycleSummaries.push(`Cycle ${completedCycle}: 完了`);
 
     // 軌跡トラッカーに記録
-    run.trajectoryTracker.recordStep(`Cycle ${completedCycle} completed`).catch(() => {
-      // 埋め込み生成エラーは無視
+    // BUG-EX-002修正: エラーをログに記録（元はcatch {}で無視していた）
+    run.trajectoryTracker.recordStep(`Cycle ${completedCycle} completed`).catch((e) => {
+      console.warn(`[self-improvement-loop] Trajectory tracking failed: ${e}`);
     });
 
     if (run.autoCommit) {
