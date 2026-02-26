@@ -129,3 +129,13 @@ coverage/
 !**/public-key.pem
 philosophy.md
 .pi/.agent-teams-storage/
+
+# ============================================================================
+# Playwright CLI (browser automation runtime files)
+# ============================================================================
+
+# Screenshots, snapshots, console logs
+.playwright-cli/
+
+# Config and user data
+.playwright/
