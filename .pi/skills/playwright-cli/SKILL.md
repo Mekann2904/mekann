@@ -14,16 +14,23 @@ metadata:
 
 ## 必須ルール
 
+### 実行ルール
+
 `playwright_cli`ツールを通じてコマンドを実行すること。
 
 ```typescript
 {
   command: "open",           // サブコマンド名
-  args: ["https://example.com"],  // 引数
+  args: ["--headed", "https://example.com"],  // 引数（デフォルトでヘッドモード）
   session: "my-session",     // セッション名（任意）
   timeout_ms: 60000          // タイムアウト（任意）
 }
 ```
+
+### デフォルト設定
+
+- **ヘッドモード**: `open`コマンド実行時、`args`に`--headed`を含めること（ブラウザを表示するため）
+- **help確認**: 不明なコマンドを使用する前は、`playwright-cli --help`または`playwright-cli <command> --help`でオプションを確認すること
 
 ## コマンド一覧
 
@@ -84,8 +91,8 @@ metadata:
 ## 使用例
 
 ```bash
-# 基本的なフォーム操作
-playwright-cli open https://example.com/login
+# 基本的なフォーム操作（ヘッドモードで実行）
+playwright-cli open --headed https://example.com/login
 playwright-cli fill "#email" "user@example.com"
 playwright-cli fill "#password" "secret"
 playwright-cli click "button[type='submit']"
@@ -100,6 +107,19 @@ playwright-cli close
 --device="iPhone 13" # デバイスエミュレート
 --headed             # ブラウザを表示
 --proxy=<url>        # プロキシ設定
+```
+
+## ヘルプ確認
+
+コマンドやオプションが不明な場合は、必ずヘルプを確認してください：
+
+```bash
+# 全体ヘルプ
+playwright-cli --help
+
+# 特定コマンドのヘルプ
+playwright-cli open --help
+playwright-cli click --help
 ```
 
 ## リファレンス
