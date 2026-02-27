@@ -43,6 +43,73 @@ async function getMcpManager() {
   return mcpManager;
 }
 
+/**
+ * @summary MCP server configuration from mcp-servers.json
+ */
+interface McpServerConfig {
+  id: string;
+  url: string;
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  transportType?: 'auto' | 'streamable-http' | 'sse' | 'stdio' | 'websocket';
+  auth?: {
+    type: 'bearer' | 'basic' | 'api-key';
+    token?: string;
+    username?: string;
+    password?: string;
+    apiKey?: string;
+    headerName?: string;
+  };
+  headers?: Record<string, string>;
+}
+
+/**
+ * @summary Load MCP server configuration and auto-connect enabled servers
+ */
+async function loadAndConnectMcpServers(): Promise<void> {
+  const fs = await import('fs');
+  const configPath = path.join(process.cwd(), '.pi', 'mcp-servers.json');
+
+  try {
+    if (!fs.existsSync(configPath)) {
+      return;
+    }
+
+    const content = fs.readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(content) as { servers: McpServerConfig[] };
+
+    if (!config.servers || !Array.isArray(config.servers)) {
+      return;
+    }
+
+    const mcpManager = await getMcpManager();
+
+    for (const server of config.servers) {
+      if (server.enabled === false) {
+        continue;
+      }
+
+      try {
+        await mcpManager.connect({
+          id: server.id,
+          url: server.url,
+          transportType: server.transportType ?? 'auto',
+          auth: server.auth,
+          headers: server.headers,
+        });
+        console.log(`[web-ui] Auto-connected MCP server: ${server.id}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`[web-ui] Failed to connect MCP server ${server.id}: ${errorMessage}`);
+      }
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn(`[web-ui] Failed to load MCP config: ${errorMessage}`);
+  }
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
@@ -505,6 +572,9 @@ export function startServer(
     contextCleanupInterval = setInterval(() => {
       ContextHistoryStorage.cleanup();
     }, 5 * 60 * 1000);
+
+    // MCPサーバー設定ファイルから自動接続
+    loadAndConnectMcpServers();
 
     // Server start notification is handled by ctx.ui.notify in index.ts
     // to avoid TUI input field overlap

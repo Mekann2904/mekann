@@ -10,10 +10,10 @@
  * @failure_modes Port conflict, build missing, permission denied
  *
  * @abdd.explain
- * @overview Registers /web-ui command and auto-starts server on session start
- * @what_it_does Starts Express server automatically, registers instance, manages lifecycle, broadcasts SSE events
- * @why_it_exists Allows users to monitor all pi instances via browser with real-time updates
- * @scope(in) ExtensionAPI, ExtensionContext, pi events
+ * @overview Registers /web-ui command and auto-starts server on session start (configurable via PI_WEB_UI_AUTO_START)
+ * @what_it_does Starts Express server automatically on session start, registers instance, manages lifecycle, broadcasts SSE events
+ * @why_it_exists Allows users to monitor all pi instances via browser with real-time updates without manual startup
+ * @scope(in) ExtensionAPI, ExtensionContext, pi events, PI_WEB_UI_AUTO_START env var
  * @scope(out) HTTP server, shared storage files, SSE broadcasts
  */
 
@@ -252,5 +252,37 @@ export default function (pi: ExtensionAPI) {
         details: { url },
       };
     },
+  });
+
+  // Auto-start server on session start (can be disabled via PI_WEB_UI_AUTO_START=false)
+  pi.on("session_start", async (_event, ctx) => {
+    const autoStart = process.env.PI_WEB_UI_AUTO_START !== "false";
+
+    if (!autoStart) {
+      return;
+    }
+
+    // Check if already running (another instance may have started it)
+    if (isServerRunning()) {
+      ensureRegistered(ctx.model?.id);
+      return;
+    }
+
+    const existingServer = ServerRegistry.isRunning();
+    if (existingServer) {
+      ensureRegistered(ctx.model?.id);
+      return;
+    }
+
+    // Start the server
+    const portNum = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
+    try {
+      ensureRegistered(ctx.model?.id);
+      startServer(portNum, pi, ctx);
+      ctx.ui.notify(`Web UI auto-started: http://localhost:${portNum}`, "info");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      ctx.ui.notify(`Web UI auto-start failed: ${message}`, "warning");
+    }
   });
 }
