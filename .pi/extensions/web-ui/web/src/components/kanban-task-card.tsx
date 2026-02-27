@@ -1,7 +1,7 @@
 /**
  * @abdd.meta
  * @path .pi/extensions/web-ui/web/src/components/kanban-task-card.tsx
- * @role Draggable task card for GitHub-style Kanban board
+ * @role Draggable task card for GitHub-style Kanban board with subtask progress
  * @why Render compact GitHub-style task card with drag support
  * @related tasks-page.tsx, task-detail-panel.tsx
  * @public_api KanbanTaskCard, Task, TaskStatus, TaskPriority
@@ -10,15 +10,15 @@
  * @failure_modes None (display only)
  *
  * @abdd.explain
- * @overview GitHub Projects style compact card
- * @what_it_does Shows task ID, title, description preview, priority, tags, assignee
- * @why_it_exists Familiar GitHub UX
- * @scope(in) Task data, callbacks, drag state
- * @scope(out) Rendered card with drag support
+ * @overview GitHub Projects style compact card with subtask progress
+ * @what_it_does Shows task title, description preview, priority label, tags, assignee, subtask progress
+ * @why_it_exists Familiar GitHub UX with hierarchical task support
+ * @scope(in) Task data, subtask progress, callbacks, drag state
+ * @scope(out) Rendered card with drag support and progress bar
  */
 
 import { h } from "preact";
-import { GripVertical, Calendar, Trash2 } from "lucide-preact";
+import { GripVertical, Calendar, Trash2, CheckCircle2, Circle } from "lucide-preact";
 import { cn } from "@/lib/utils";
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
@@ -41,6 +41,7 @@ export interface Task {
 
 interface KanbanTaskCardProps {
   task: Task;
+  subtaskProgress?: { completed: number; total: number } | null;
   onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
   onDragEnd?: (e: DragEvent) => void;
@@ -123,6 +124,7 @@ function getAvatarColor(name: string): string {
 
 export function KanbanTaskCard({
   task,
+  subtaskProgress,
   onClick,
   onDragStart,
   onDragEnd,
@@ -189,6 +191,29 @@ export function KanbanTaskCard({
         >
           {task.title}
         </p>
+
+        {/* Subtask progress - GitHub style */}
+        {subtaskProgress && subtaskProgress.total > 0 && (
+          <div class="flex items-center gap-1.5 mb-2">
+            <div class="flex items-center gap-1">
+              {subtaskProgress.completed === subtaskProgress.total ? (
+                <CheckCircle2 class="h-3 w-3 text-green-500" />
+              ) : (
+                <Circle class="h-3 w-3 text-muted-foreground" />
+              )}
+              <span class="text-[10px] text-muted-foreground">
+                {subtaskProgress.completed}/{subtaskProgress.total} subtasks
+              </span>
+            </div>
+            {/* Progress bar */}
+            <div class="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+              <div
+                class="h-full bg-green-500 transition-all"
+                style={{ width: `${(subtaskProgress.completed / subtaskProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Description preview (optional, 1-2 lines) */}
         {descriptionPreview && (

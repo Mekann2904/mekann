@@ -1,25 +1,25 @@
 /**
  * @abdd.meta
  * @path .pi/extensions/web-ui/web/src/components/task-detail-panel.tsx
- * @role Side panel for task details (GitHub style)
+ * @role Side panel for task details with subtask support (GitHub style)
  * @why Provide detailed view and editing without modal
  * @related tasks-page.tsx, kanban-task-card.tsx
  * @public_api TaskDetailPanel
  * @invariants Task data is controlled by parent
- * @side_effects Calls onUpdate, onDelete, onStatusChange callbacks
+ * @side_effects Calls onUpdate, onDelete, onStatusChange, onCreateSubtask callbacks
  * @failure_modes None (display only)
  *
  * @abdd.explain
- * @overview GitHub Projects style side panel
- * @what_it_does Shows task details, allows inline editing
- * @why_it_exists Non-modal editing experience
- * @scope(in) Task data, callbacks
- * @scope(out) Rendered panel with edit forms
+ * @overview GitHub Projects style side panel with subtask support
+ * @what_it_does Shows task details, allows inline editing, subtask management
+ * @why_it_exists Non-modal editing experience, hierarchical task structure
+ * @scope(in) Task data, all tasks for subtask lookup, callbacks
+ * @scope(out) Rendered panel with edit forms and subtask list
  */
 
 import { h } from "preact";
 import { useState, useEffect, useRef } from "preact/hooks";
-import { X, Calendar, User, Tag, Trash2, CheckCircle2, Circle, Clock, AlertTriangle } from "lucide-preact";
+import { X, Calendar, User, Tag, Trash2, CheckCircle2, Circle, Clock, AlertTriangle, Plus, ListChecks } from "lucide-preact";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { cn } from "@/lib/utils";
@@ -27,10 +27,14 @@ import type { Task, TaskStatus, TaskPriority } from "./kanban-task-card";
 
 interface TaskDetailPanelProps {
   task: Task;
+  allTasks: Task[];  // For finding subtasks
   onClose: () => void;
   onUpdate: (task: Task) => void;
   onDelete: () => void;
   onStatusChange: (status: TaskStatus) => void;
+  onCreateSubtask: (parentId: string, title: string) => void;
+  onUpdateSubtask: (subtask: Task) => void;
+  onDeleteSubtask: (subtaskId: string) => void;
 }
 
 // Status options
@@ -52,17 +56,29 @@ const PRIORITY_OPTIONS: { value: TaskPriority; label: string; color: string }[] 
 
 export function TaskDetailPanel({
   task,
+  allTasks,
   onClose,
   onUpdate,
   onDelete,
   onStatusChange,
+  onCreateSubtask,
+  onUpdateSubtask,
+  onDeleteSubtask,
 }: TaskDetailPanelProps) {
   const [editedTask, setEditedTask] = useState(task);
   const [newTag, setNewTag] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [isAddingSubtask, setIsAddingSubtask] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const subtaskInputRef = useRef<HTMLInputElement>(null);
+
+  // Get subtasks
+  const subtasks = allTasks.filter((t) => t.parentTaskId === task.id);
+  const completedSubtasks = subtasks.filter((t) => t.status === "completed");
+  const subtaskProgress = subtasks.length > 0 ? `${completedSubtasks.length}/${subtasks.length}` : null;
 
   // Sync with prop changes
   useEffect(() => {
@@ -345,6 +361,127 @@ export function TaskDetailPanel({
             >
               {editedTask.description || "Add a description..."}
             </div>
+          )}
+        </div>
+
+        {/* Subtasks - GitHub style */}
+        <div>
+          <label class="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+            <ListChecks class="h-3 w-3" />
+            Subtasks
+            {subtaskProgress && (
+              <span class="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                {subtaskProgress} done
+              </span>
+            )}
+          </label>
+
+          {/* Subtask list */}
+          <div class="space-y-1 mb-2">
+            {subtasks.map((subtask) => (
+              <div
+                key={subtask.id}
+                class={cn(
+                  "flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 group",
+                  subtask.status === "completed" && "opacity-60"
+                )}
+              >
+                <button
+                  onClick={() => {
+                    const newStatus = subtask.status === "completed" ? "todo" : "completed";
+                    onUpdateSubtask({ ...subtask, status: newStatus });
+                  }}
+                  class="shrink-0"
+                >
+                  {subtask.status === "completed" ? (
+                    <CheckCircle2 class="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Circle class="h-4 w-4 text-muted-foreground hover:text-primary" />
+                  )}
+                </button>
+                <span
+                  class={cn(
+                    "flex-1 text-sm truncate",
+                    subtask.status === "completed" && "line-through text-muted-foreground"
+                  )}
+                >
+                  {subtask.title}
+                </span>
+                <button
+                  onClick={() => {
+                    if (confirm("Delete this subtask?")) {
+                      onDeleteSubtask(subtask.id);
+                    }
+                  }}
+                  class="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
+                >
+                  <Trash2 class="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Add subtask */}
+          {isAddingSubtask ? (
+            <div class="flex gap-2">
+              <Input
+                ref={subtaskInputRef}
+                type="text"
+                value={newSubtaskTitle}
+                onInput={(e) => setNewSubtaskTitle((e.target as HTMLInputElement).value)}
+                placeholder="Subtask title..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (newSubtaskTitle.trim()) {
+                      onCreateSubtask(task.id, newSubtaskTitle.trim());
+                      setNewSubtaskTitle("");
+                      setIsAddingSubtask(false);
+                    }
+                  } else if (e.key === "Escape") {
+                    setNewSubtaskTitle("");
+                    setIsAddingSubtask(false);
+                  }
+                }}
+                class="h-8 text-xs flex-1"
+              />
+              <Button
+                size="sm"
+                class="h-8"
+                onClick={() => {
+                  if (newSubtaskTitle.trim()) {
+                    onCreateSubtask(task.id, newSubtaskTitle.trim());
+                    setNewSubtaskTitle("");
+                    setIsAddingSubtask(false);
+                  }
+                }}
+                disabled={!newSubtaskTitle.trim()}
+              >
+                Add
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                class="h-8"
+                onClick={() => {
+                  setNewSubtaskTitle("");
+                  setIsAddingSubtask(false);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                setIsAddingSubtask(true);
+                setTimeout(() => subtaskInputRef.current?.focus(), 0);
+              }}
+              class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Plus class="h-3.5 w-3.5" />
+              Add subtask
+            </button>
           )}
         </div>
       </div>

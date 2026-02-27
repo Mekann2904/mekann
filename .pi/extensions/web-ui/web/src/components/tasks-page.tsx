@@ -234,6 +234,72 @@ export function TasksPage() {
     }
   };
 
+  // Create subtask
+  const handleCreateSubtask = async (parentId: string, title: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          parentTaskId: parentId,
+          status: "todo",
+          priority: "medium",
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to create subtask");
+      }
+
+      await fetchTasks();
+      await fetchStats();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create subtask");
+    }
+  };
+
+  // Update subtask
+  const handleUpdateSubtask = async (subtask: Task) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/tasks/${subtask.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: subtask.title,
+          status: subtask.status,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to update subtask");
+      }
+
+      await fetchTasks();
+      await fetchStats();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update subtask");
+    }
+  };
+
+  // Delete subtask
+  const handleDeleteSubtask = async (subtaskId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/tasks/${subtaskId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to delete subtask");
+      }
+
+      await fetchTasks();
+      await fetchStats();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete subtask");
+    }
+  };
+
   // Update task
   const handleUpdateTask = async (updatedTask: Task) => {
     try {
@@ -358,18 +424,28 @@ export function TasksPage() {
 
         {/* Task cards */}
         <div class="flex-1 overflow-y-auto p-2 space-y-2">
-          {columnTasks.map((task) => (
-            <KanbanTaskCard
-              key={task.id}
-              task={task}
-              onClick={() => setSelectedTask(task)}
-              onDragStart={(e) => handleDragStart(e, task)}
-              onDragEnd={handleDragEnd}
-              onDelete={() => handleDelete(task.id)}
-              isDragging={draggedTask?.id === task.id}
-              isSelected={selectedTask?.id === task.id}
-            />
-          ))}
+          {columnTasks.map((task) => {
+            // Calculate subtask progress
+            const taskSubtasks = tasks.filter((t) => t.parentTaskId === task.id);
+            const subtaskProgress = taskSubtasks.length > 0 ? {
+              completed: taskSubtasks.filter((t) => t.status === "completed").length,
+              total: taskSubtasks.length,
+            } : null;
+
+            return (
+              <KanbanTaskCard
+                key={task.id}
+                task={task}
+                subtaskProgress={subtaskProgress}
+                onClick={() => setSelectedTask(task)}
+                onDragStart={(e) => handleDragStart(e, task)}
+                onDragEnd={handleDragEnd}
+                onDelete={() => handleDelete(task.id)}
+                isDragging={draggedTask?.id === task.id}
+                isSelected={selectedTask?.id === task.id}
+              />
+            );
+          })}
         </div>
 
         {/* Add task form at bottom - GitHub style */}
@@ -507,6 +583,7 @@ export function TasksPage() {
       {selectedTask && (
         <TaskDetailPanel
           task={selectedTask}
+          allTasks={tasks}
           onClose={() => setSelectedTask(null)}
           onUpdate={(updated) => {
             handleUpdateTask(updated);
@@ -517,6 +594,15 @@ export function TasksPage() {
             handleStatusChange(selectedTask.id, status);
             setSelectedTask({ ...selectedTask, status });
           }}
+          onCreateSubtask={handleCreateSubtask}
+          onUpdateSubtask={(subtask) => {
+            handleUpdateSubtask(subtask);
+            // Refresh selected task if it's the parent
+            if (subtask.parentTaskId === selectedTask.id) {
+              // Keep current selection
+            }
+          }}
+          onDeleteSubtask={handleDeleteSubtask}
         />
       )}
     </div>
