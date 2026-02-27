@@ -1408,7 +1408,7 @@ export function ThemePage() {
           </div>
 
           {/* Theme List - Scrollable */}
-          <div class="max-h-[calc(100vh-280px)] space-y-2 overflow-y-auto pr-2">
+          <div class="scrollbar-hide max-h-[calc(100vh-280px)] space-y-2 overflow-y-auto pr-2">
             {filteredThemes.map(([id, theme]) => {
               const colors = theme[mode] || theme.dark || theme.light;
               if (!colors) return null;
