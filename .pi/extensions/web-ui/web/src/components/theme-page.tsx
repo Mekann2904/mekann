@@ -1362,63 +1362,53 @@ export function ThemePage() {
   };
 
   return (
-    <div class="container mx-auto max-w-7xl p-6">
-      {/* Header */}
-      <header class="mb-6">
-        <h1 class="text-2xl font-bold tracking-tight">Theme Store</h1>
-        <p class="text-muted-foreground">
-          {Object.keys(THEMES).length} themes available • Customize your workspace
-        </p>
-      </header>
+    <div class="flex h-full gap-6 p-4">
+      {/* Left Panel: Filters + Theme List */}
+      <div class="w-80 shrink-0 space-y-4">
+        {/* Search */}
+        <input
+          type="text"
+          placeholder="Search themes..."
+          value={filters.search}
+          onInput={(e) =>
+            setFilters({ ...filters, search: e.currentTarget.value })
+          }
+          class="w-full rounded-lg border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
 
-      {/* Two-column layout */}
-      <div class="flex gap-6">
-        {/* Left Panel: Filters + Theme List */}
-        <div class="w-80 shrink-0 space-y-4">
-          {/* Search */}
-          <input
-            type="text"
-            placeholder="Search themes..."
-            value={filters.search}
-            onInput={(e) =>
-              setFilters({ ...filters, search: e.currentTarget.value })
+        {/* Category & Sort Filters */}
+        <div class="flex gap-2">
+          <select
+            value={filters.category}
+            onChange={(e) =>
+              setFilters({
+                ...filters,
+                category: e.currentTarget.value as "all" | "dark" | "light",
+              })
             }
-            class="w-full rounded-lg border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+            class="flex-1 rounded-lg border bg-background px-3 py-2 text-sm"
+          >
+            <option value="all">All</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+          <select
+            value={filters.sortBy}
+            onChange={(e) =>
+              setFilters({
+                ...filters,
+                sortBy: e.currentTarget.value as "name" | "popularity",
+              })
+            }
+            class="flex-1 rounded-lg border bg-background px-3 py-2 text-sm"
+          >
+            <option value="popularity">Popular</option>
+            <option value="name">Name</option>
+          </select>
+        </div>
 
-          {/* Category & Sort Filters */}
-          <div class="flex gap-2">
-            <select
-              value={filters.category}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  category: e.currentTarget.value as "all" | "dark" | "light",
-                })
-              }
-              class="flex-1 rounded-lg border bg-background px-3 py-2 text-sm"
-            >
-              <option value="all">All</option>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-            <select
-              value={filters.sortBy}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  sortBy: e.currentTarget.value as "name" | "popularity",
-                })
-              }
-              class="flex-1 rounded-lg border bg-background px-3 py-2 text-sm"
-            >
-              <option value="popularity">Popular</option>
-              <option value="name">Name</option>
-            </select>
-          </div>
-
-          {/* Theme List - Scrollable */}
-          <div class="scrollbar-hide max-h-[calc(100vh-280px)] space-y-2 overflow-y-auto pr-2">
+        {/* Theme List - Scrollable */}
+        <div class="scrollbar-hide max-h-[calc(100vh-140px)] space-y-2 overflow-y-auto pr-2">
             {filteredThemes.map(([id, theme]) => {
               const colors = theme[mode] || theme.dark || theme.light;
               if (!colors) return null;
@@ -1456,7 +1446,7 @@ export function ThemePage() {
         </div>
 
         {/* Right Panel: Preview */}
-        <div class="sticky top-6 flex-1 space-y-6">
+        <div class="sticky top-4 flex-1 space-y-4 overflow-y-auto">
           {/* Selected Theme Info */}
           {selectedTheme && (
             <Card>
@@ -1504,7 +1494,7 @@ export function ThemePage() {
           )}
 
           {/* Preview Cards */}
-          <div class="grid gap-4 md:grid-cols-2">
+          <div class="grid gap-3 md:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Card Title</CardTitle>
@@ -1592,7 +1582,6 @@ export function ThemePage() {
             </CardContent>
           </Card>
         </div>
-      </div>
     </div>
   );
 }
