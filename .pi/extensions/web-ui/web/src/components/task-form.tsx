@@ -24,7 +24,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { cn } from "@/lib/utils";
-import type { Task, TaskStatus, TaskPriority } from "./task-card";
+import type { Task, TaskStatus, TaskPriority } from "./kanban-task-card";
 
 interface TaskFormData {
   title: string;
@@ -44,7 +44,7 @@ interface TaskFormProps {
   isOpen: boolean;
 }
 
-const STATUS_OPTIONS: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled"];
+const STATUS_OPTIONS: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled", "failed"];
 const PRIORITY_OPTIONS: TaskPriority[] = ["low", "medium", "high", "urgent"];
 
 const EMPTY_FORM: TaskFormData = {
