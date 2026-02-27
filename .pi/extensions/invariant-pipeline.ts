@@ -1207,7 +1207,7 @@ function getTypeScriptDefaultLiteral(type: string): string {
 // ============================================================================
 
 export default (api: ExtensionAPI) => {
-  console.log("[invariant-pipeline] Extension loading...");
+  console.error("[invariant-pipeline] Extension loading...");
 
   // generate_from_spec tool
   api.registerTool({
@@ -1290,7 +1290,7 @@ export default (api: ExtensionAPI) => {
         result.errors.push(...mbtOutput.errors);
 
         const durationMs = Date.now() - startTime;
-        console.log(`[invariant-pipeline] Generation complete in ${durationMs}ms, outputs: ${Object.keys(result.outputs).join(", ")}, warnings: ${result.warnings.length}`);
+        console.error(`[invariant-pipeline] Generation complete in ${durationMs}ms, outputs: ${Object.keys(result.outputs).join(", ")}, warnings: ${result.warnings.length}`);
 
         return {
           success: true,
@@ -1521,7 +1521,7 @@ export default (api: ExtensionAPI) => {
     },
   } as any);
 
-  console.log("[invariant-pipeline] Extension loaded", {
+  console.error("[invariant-pipeline] Extension loaded", {
     tools: ["generate_from_spec", "verify_quint_spec", "generate_invariant_macros", "generate_property_tests", "generate_mbt_driver"],
   });
 };

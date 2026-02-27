@@ -498,7 +498,12 @@ function inferSubagentDependencies(
  * Refresh runtime status display in the UI with subagent-specific parameters.
  * @see ./shared/runtime-helpers.ts:refreshRuntimeStatus for the underlying implementation.
  */
-function refreshRuntimeStatus(ctx: any): void {
+interface RuntimeStatusContext {
+	ui: {
+		setStatus: (key: string, value: string) => void;
+	};
+}
+function refreshRuntimeStatus(ctx: RuntimeStatusContext): void {
   const snapshot = getRuntimeSnapshot();
   sharedRefreshRuntimeStatus(
     ctx,

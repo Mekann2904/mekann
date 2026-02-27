@@ -485,11 +485,11 @@ Use this tool regularly to maintain awareness of your own behavior and improve c
       ),
     }),
     // @ts-expect-error - Type inference issue with execute signature
-    execute: async (_toolCallId: string, params: any, _signal: AbortSignal, _onUpdate: any, ctx: ExtensionContext) => {
+    execute: async (_toolCallId: string, params: SelfReflectParams, _signal: AbortSignal, _onUpdate: (partialResult: { content: Array<{ type: "text"; text: string }> }) => void, ctx: ExtensionContext) => {
       return executeSelfReflectTool(_toolCallId, params, _signal, _onUpdate, ctx);
     },
   });
 
   // ログ
-  console.log("[self-improvement-reflection] Extension registered");
+  console.error("[self-improvement-reflection] Extension registered");
 }

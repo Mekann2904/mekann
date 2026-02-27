@@ -319,6 +319,7 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Context type is complex and varies by call site
 	function togglePlanMode(ctx: any) {
 		planModeEnabled = !planModeEnabled;
 		savePlanModeState(planModeEnabled);

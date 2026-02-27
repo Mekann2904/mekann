@@ -770,7 +770,7 @@ strict（厳格）: add-abdd-header --regenerate → add-jsdoc --regenerate → 
 		},
 	});
 
-	console.log("ABDD extension loaded: abdd_generate, abdd_jsdoc, abdd_review, abdd_analyze, abdd_workflow");
+	console.error("ABDD extension loaded: abdd_generate, abdd_jsdoc, abdd_review, abdd_analyze, abdd_workflow");
 }
 
 // ============================================================================
@@ -1752,16 +1752,16 @@ function runASTDetection(verbose: boolean): Divergence[] {
 	];
 
 	if (verbose) {
-		console.log(`[AST] 解析対象: ${files.length} ファイル`);
+		console.error(`[AST] 解析対象: ${files.length} ファイル`);
 	}
 
 	// 解析実行
 	const results = detector.analyzeFiles(files);
 
 	if (verbose && results.length > 0) {
-		console.log(`[AST] 検出結果: ${results.length} 件`);
+		console.error(`[AST] 検出結果: ${results.length} 件`);
 		for (const result of results) {
-			console.log(
+			console.error(
 				`  - ${result.location.file}:${result.location.line} - ${result.divergence.reason}`
 			);
 		}

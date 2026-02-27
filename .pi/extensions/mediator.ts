@@ -414,7 +414,10 @@ function formatMediatorOutput(output: MediatorOutput, originalInput: string): st
   return lines.join("\n");
 }
 
-function createLlmCallFromContext(ctx: any): LlmCallFunction {
+interface MediatorContext {
+  model?: unknown;
+}
+function createLlmCallFromContext(ctx: MediatorContext): LlmCallFunction {
   return async (
     systemPrompt: string,
     userPrompt: string,
