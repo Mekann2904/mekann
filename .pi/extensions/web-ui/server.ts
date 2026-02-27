@@ -79,8 +79,14 @@ export function startServer(
   const distPath = path.join(__dirname, "dist");
   app.use(express.static(distPath));
 
-  // SPA fallback
-  app.get("*", (_req: Request, res: Response) => {
+  // SPA fallback - all non-API routes serve index.html
+  app.get("*", (req: Request, res: Response) => {
+    // Skip API routes
+    if (req.path.startsWith("/api/")) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     res.sendFile(path.join(distPath, "index.html"), (err) => {
       if (err) {
         res.status(404).send(`
