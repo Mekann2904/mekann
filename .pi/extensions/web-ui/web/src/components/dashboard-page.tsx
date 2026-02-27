@@ -186,7 +186,6 @@ export function DashboardPage({ data }: DashboardPageProps) {
 
       {/* Content */}
       <div class="flex-1 overflow-y-auto">
-        {activeTab === "metrics" && <MetricsSection data={data} />}
         {activeTab === "config" && <ConfigSection data={data} />}
       </div>
     </div>
@@ -427,45 +426,6 @@ function ContextUsageSection({
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function MetricsSection({ data }: { data: DashboardData }) {
-  const errorRate =
-    data.metrics.toolCalls > 0
-      ? ((data.metrics.errors / data.metrics.toolCalls) * 100).toFixed(1)
-      : "0";
-
-  return (
-    <div class="grid gap-3 md:grid-cols-3">
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm">Tool Calls</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p class="text-2xl font-bold">{data.metrics.toolCalls}</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm">Errors</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p class="text-2xl font-bold text-destructive">{data.metrics.errors}</p>
-          <p class="text-xs text-muted-foreground">{errorRate}% error rate</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm">Avg Response Time</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p class="text-2xl font-bold">{data.metrics.avgResponseTime}ms</p>
-        </CardContent>
-      </Card>
-    </div>
   );
 }
 

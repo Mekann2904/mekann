@@ -98,7 +98,7 @@ async function loadAndConnectMcpServers(): Promise<void> {
           auth: server.auth,
           headers: server.headers,
         });
-        console.log(`[web-ui] Auto-connected MCP server: ${server.id}`);
+
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.warn(`[web-ui] Failed to connect MCP server ${server.id}: ${errorMessage}`);
