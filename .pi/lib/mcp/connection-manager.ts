@@ -31,7 +31,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider } from "./types.js";
+import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider, McpResourceTemplateInfo, McpConnectOptions, McpActiveTransportType } from "./types.js";
 import { authProviderToRequestInit, mergeHeaders } from "./auth-provider.js";
 
 /**
@@ -76,6 +76,26 @@ function parseStdioCommand(command: string): { command: string; args: string[] }
 		command: parts[0],
 		args: parts.slice(1)
 	};
+}
+
+/**
+ * URLに適合するトランスポート種別かチェック
+ * @param url - 接続URL
+ * @param transportType - トランスポート種別
+ * @returns 適合する場合true
+ */
+function isValidTransportForUrl(url: string, transportType: 'streamable-http' | 'sse' | 'stdio'): boolean {
+	if (transportType === 'stdio') {
+		return !url.startsWith('http://') && !url.startsWith('https://') &&
+		       !url.startsWith('sse://') && !url.startsWith('http+sse://');
+	}
+	if (transportType === 'sse') {
+		return url.startsWith('sse://') || url.startsWith('http+sse://') || url.startsWith('https+sse://');
+	}
+	if (transportType === 'streamable-http') {
+		return url.startsWith('http://') || url.startsWith('https://');
+	}
+	return false;
 }
 
 /**
@@ -147,8 +167,19 @@ export class McpConnectionManager {
 	 * @returns 接続情報
 	 * @throws ネットワークエラー、無効なURL、タイムアウト等
 	 */
-	async connect(params: { id: string; url: string; timeout?: number; type?: McpConnectionType; auth?: McpAuthProvider; headers?: Record<string, string> }): Promise<McpConnection> {
-		const { id, url, timeout = DEFAULT_TIMEOUT, type, auth, headers } = params;
+	async connect(params: {
+		id: string;
+		url: string;
+		timeout?: number;
+		type?: McpConnectionType;
+		auth?: McpAuthProvider;
+		headers?: Record<string, string>;
+		/** 明示的なトランスポート種別（auto時は自動検出） */
+		transportType?: 'auto' | 'streamable-http' | 'sse' | 'stdio';
+		/** フォールバックの無効化 */
+		disableFallback?: boolean;
+	}): Promise<McpConnection> {
+		const { id, url, timeout = DEFAULT_TIMEOUT, type, auth, headers, transportType = 'auto', disableFallback = false } = params;
 
 		// 既存接続のチェック
 		if (this.state.connections.has(id)) {
@@ -160,8 +191,13 @@ export class McpConnectionManager {
 			throw new Error(`Maximum connections (${MAX_CONNECTIONS}) reached. Disconnect a server first.`);
 		}
 
-		// 接続タイプの判定
-		const connectionType = type ?? detectConnectionType(url);
+		// 接続タイプの判定（明示指定または自動検出）
+		const connectionType = type ?? (transportType === 'auto' ? detectConnectionType(url) : transportType);
+
+		// 明示指定されたトランスポートとURLの整合性チェック
+		if (transportType !== 'auto' && !isValidTransportForUrl(url, transportType)) {
+			throw new Error(`Transport type '${transportType}' is not compatible with URL '${url}'`);
+		}
 
 		// 接続情報の初期化（先に作成してステータス追跡）
 		const connection: McpConnection = {
@@ -191,6 +227,7 @@ export class McpConnectionManager {
 
 			let client: Client;
 			let transport: Transport;
+			let activeTransportType: McpActiveTransportType;
 
 			switch (connectionType) {
 				case 'stdio': {
@@ -205,6 +242,8 @@ export class McpConnectionManager {
 						{ capabilities: this.getCapabilities() }
 					);
 					await connectWithTimeout(client, transport);
+					activeTransportType = 'stdio';
+					console.log(`[MCP] Connected to ${id} using stdio transport`);
 					break;
 				}
 				case 'sse': {
@@ -219,6 +258,8 @@ export class McpConnectionManager {
 						{ capabilities: this.getCapabilities() }
 					);
 					await connectWithTimeout(client, transport);
+					activeTransportType = 'sse';
+					console.log(`[MCP] Connected to ${id} using SSE transport`);
 					break;
 				}
 				case 'http':
@@ -241,9 +282,11 @@ export class McpConnectionManager {
 					// Add custom headers (merge with auth headers)
 					if (headers) {
 						const existingHeaders = (transportOptions.requestInit?.headers as Record<string, string>) ?? {};
+						const mergedInit = mergeHeaders(existingHeaders, headers);
+						// Type assertion needed because RequestInit.headers is HeadersInit
 						transportOptions.requestInit = {
 							...transportOptions.requestInit,
-							headers: mergeHeaders(existingHeaders, headers)
+							headers: mergedInit.headers as HeadersInit
 						};
 					}
 
@@ -255,18 +298,25 @@ export class McpConnectionManager {
 							{ capabilities: this.getCapabilities() }
 						);
 						await connectWithTimeout(client, transport);
+						activeTransportType = 'streamable-http';
+						console.log(`[MCP] Connected to ${id} using StreamableHTTP transport`);
 					} catch (error) {
-						// SSEフォールバック（レガシーサーバー対応）
-						if (this.isHttpError(error, 4)) {
-							transport = new SSEClientTransport(parsedUrl, transportOptions);
-							client = new Client(
-								{ name: "pi-mcp-client", version: "1.0.0" },
-								{ capabilities: this.getCapabilities() }
-							);
-							await connectWithTimeout(client, transport);
-						} else {
+						// フォールバックが無効な場合はエラーを再スロー
+						if (disableFallback || !this.isHttpError(error, 4)) {
 							throw error;
 						}
+
+						// SSEフォールバック（レガシーサーバー対応）
+						console.warn(`[MCP] StreamableHTTP connection failed for ${id}, falling back to SSE transport`);
+						// SSEClientTransportはSSEClientTransportOptionsを受け取る
+						transport = new SSEClientTransport(parsedUrl, transportOptions);
+						client = new Client(
+							{ name: "pi-mcp-client", version: "1.0.0" },
+							{ capabilities: this.getCapabilities() }
+						);
+						await connectWithTimeout(client, transport);
+						activeTransportType = 'sse';
+						console.log(`[MCP] Connected to ${id} using SSE transport (fallback)`);
 					}
 					break;
 				}
@@ -275,6 +325,7 @@ export class McpConnectionManager {
 			// 接続情報を更新
 			connection.client = client;
 			connection.transport = transport;
+			connection.transportType = activeTransportType;
 			connection.status = 'connected';
 
 			// Rootsハンドラーの設定
@@ -380,8 +431,8 @@ export class McpConnectionManager {
 
 		// フォールバックハンドラーですべての通知をキャッチ
 		client.fallbackNotificationHandler = async (notification: { method: string; params?: unknown }) => {
-			// 通知タイプをマッピング
-			let notificationType: McpNotificationType;
+			// 通知タイプをマッピング（SDK準拠）
+			let notificationType: McpNotificationType | null = null;
 			switch (notification.method) {
 				case 'notifications/tools/list_changed':
 					notificationType = 'tools/list_changed';
@@ -405,8 +456,9 @@ export class McpConnectionManager {
 					notificationType = 'cancelled';
 					break;
 				default:
-					// 不明な通知タイプはloggingとして扱う
-					notificationType = 'logging/setLevel';
+					// 不明な通知タイプはログ出力してスキップ
+					console.warn(`[MCP] Unknown notification type: ${notification.method} (connection: ${connectionId})`);
+					return;
 			}
 
 			this.dispatchNotification({
@@ -599,8 +651,15 @@ export class McpConnectionManager {
 			throw new Error(`Server does not support resource subscriptions`);
 		}
 
-		await connection.client.subscribeResource({ uri });
-		connection.subscriptions.add(uri);
+		try {
+			await connection.client.subscribeResource({ uri });
+			connection.subscriptions.add(uri);
+			console.log(`[MCP] Subscribed to resource: ${uri} (${connectionId})`);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			console.error(`[MCP] Failed to subscribe to resource ${uri} (${connectionId}): ${errorMessage}`);
+			throw new Error(`Failed to subscribe to resource: ${errorMessage}`, { cause: error });
+		}
 	}
 
 	/**
@@ -612,8 +671,15 @@ export class McpConnectionManager {
 	async unsubscribeResource(connectionId: string, uri: string): Promise<void> {
 		const connection = this.getConnectionOrFail(connectionId);
 
-		await connection.client.unsubscribeResource({ uri });
-		connection.subscriptions.delete(uri);
+		try {
+			await connection.client.unsubscribeResource({ uri });
+			connection.subscriptions.delete(uri);
+			console.log(`[MCP] Unsubscribed from resource: ${uri} (${connectionId})`);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			console.error(`[MCP] Failed to unsubscribe from resource ${uri} (${connectionId}): ${errorMessage}`);
+			throw new Error(`Failed to unsubscribe from resource: ${errorMessage}`, { cause: error });
+		}
 	}
 
 	/**
@@ -831,6 +897,92 @@ export class McpConnectionManager {
 	 */
 	listConnections(): McpConnection[] {
 		return Array.from(this.state.connections.values());
+	}
+
+	// ========================================
+	// Server Instructions (SDK Compliance)
+	// ========================================
+
+	/**
+	 * サーバーの指示（instructions）を取得する
+	 * @summary サーバー指示を取得
+	 * @param connectionId - 接続ID
+	 * @returns サーバーの指示テキスト（存在しない場合はundefined）
+	 */
+	async getInstructions(connectionId: string): Promise<string | undefined> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		try {
+			const instructions = await connection.client.getInstructions();
+			return instructions;
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			console.warn(`[MCP] Failed to get instructions from ${connectionId}: ${errorMessage}`);
+			throw error;
+		}
+	}
+
+	// ========================================
+	// Resource Templates (SDK Compliance)
+	// ========================================
+
+	/**
+	 * リソーステンプレート一覧を取得する
+	 * @summary リソーステンプレート一覧取得
+	 * @param connectionId - 接続ID
+	 * @returns リソーステンプレート情報の配列
+	 */
+	async listResourceTemplates(connectionId: string): Promise<McpResourceTemplateInfo[]> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		// Check server capability
+		const capabilities = connection.client.getServerCapabilities();
+		if (!capabilities?.resources) {
+			throw new Error(`Server does not support resources`);
+		}
+
+		try {
+			const result = await connection.client.listResourceTemplates();
+			return result.resourceTemplates.map(rt => ({
+				uriTemplate: rt.uriTemplate,
+				name: rt.name,
+				description: rt.description,
+				mimeType: rt.mimeType
+			}));
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			console.warn(`[MCP] Failed to list resource templates from ${connectionId}: ${errorMessage}`);
+			throw error;
+		}
+	}
+
+	/**
+	 * リソーステンプレート一覧を取得する（ページネーション対応）
+	 * @summary リソーステンプレート一覧取得（ページネーション）
+	 * @param connectionId - 接続ID
+	 * @param options - ページネーションオプション
+	 */
+	async listResourceTemplatesPaginated(
+		connectionId: string,
+		options?: { cursor?: string }
+	): Promise<{ resourceTemplates: McpResourceTemplateInfo[]; nextCursor?: string }> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		const result = await connection.client.listResourceTemplates({
+			cursor: options?.cursor
+		});
+
+		const resourceTemplates: McpResourceTemplateInfo[] = result.resourceTemplates.map(rt => ({
+			uriTemplate: rt.uriTemplate,
+			name: rt.name,
+			description: rt.description,
+			mimeType: rt.mimeType
+		}));
+
+		return {
+			resourceTemplates,
+			nextCursor: result.nextCursor
+		};
 	}
 
 	/**

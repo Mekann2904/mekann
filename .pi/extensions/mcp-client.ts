@@ -184,6 +184,17 @@ export default function (pi: ExtensionAPI) {
       ], {
         description: "Transport type. Auto-detected from URL if omitted."
       })),
+      transportType: Type.Optional(Type.Union([
+        Type.Literal("auto", { description: "Auto-detect transport type (default)" }),
+        Type.Literal("streamable-http", { description: "Use StreamableHTTP transport" }),
+        Type.Literal("sse", { description: "Use SSE transport" }),
+        Type.Literal("stdio", { description: "Use stdio transport" })
+      ], {
+        description: "Explicit transport type selection. Overrides auto-detection."
+      })),
+      disableFallback: Type.Optional(Type.Boolean({
+        description: "Disable automatic SSE fallback for legacy servers (default: false)"
+      })),
       timeout: Type.Optional(Type.Number({
         description: "Connection timeout in milliseconds (default: 30000)"
       })),
@@ -244,7 +255,9 @@ export default function (pi: ExtensionAPI) {
           timeout: params.timeout,
           type: params.type,
           auth,
-          headers: params.headers
+          headers: params.headers,
+          transportType: params.transportType,
+          disableFallback: params.disableFallback
         });
 
         ctx.ui.notify(`Connected to MCP server: ${params.id}`, "info");
@@ -254,17 +267,19 @@ export default function (pi: ExtensionAPI) {
           ? ` (${connection.serverInfo.name}/${connection.serverInfo.version})`
           : '';
         const authInfo = auth ? ` with ${sanitizeAuthForLogging(auth).type} auth` : '';
+        const transportInfo = connection.transportType ?? 'unknown';
 
         return makeSuccessResult(
           `Successfully connected to ${params.url}${serverInfo}${authInfo}\n` +
           `Connection ID: ${params.id}\n` +
-          `Transport: ${connection.url.startsWith('http') ? 'HTTP' : 'stdio'}\n` +
+          `Transport: ${transportInfo}\n` +
           `Available tools (${toolNames.length}): ${toolNames.length > 0 ? toolNames.join(', ') : 'none'}\n` +
           `Available resources: ${connection.resources.length}`,
           {
             id: connection.id,
             url: connection.url,
             status: connection.status,
+            transportType: connection.transportType,
             serverInfo: connection.serverInfo,
             toolCount: connection.tools.length,
             resourceCount: connection.resources.length,
@@ -1089,6 +1104,112 @@ export default function (pi: ExtensionAPI) {
             argumentName: params.argument_name,
             error: message
           }
+        );
+      }
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_get_instructions
+  // ========================================
+  pi.registerTool({
+    name: "mcp_get_instructions",
+    label: "MCP Get Instructions",
+    description: "Get server instructions from a connected MCP server. Instructions provide guidance on how to use the server's tools and resources.",
+    parameters: Type.Object({
+      connection_id: Type.String({
+        description: "Connection ID"
+      })
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const instructions = await mcpManager.getInstructions(params.connection_id);
+
+        if (!instructions) {
+          return makeSuccessResult(
+            `No instructions provided by server '${params.connection_id}'.`,
+            { connectionId: params.connection_id, instructions: null }
+          );
+        }
+
+        ctx.ui.notify(`Retrieved instructions from '${params.connection_id}'`, "info");
+        return makeSuccessResult(
+          `Server Instructions from '${params.connection_id}':\n\n${instructions}`,
+          { connectionId: params.connection_id, instructions }
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Failed to get instructions: ${message}`, "error");
+        return makeErrorResult(
+          `Failed to get instructions: ${message}`,
+          { connectionId: params.connection_id, error: message }
+        );
+      }
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_list_resource_templates
+  // ========================================
+  pi.registerTool({
+    name: "mcp_list_resource_templates",
+    label: "MCP List Resource Templates",
+    description: "List resource templates from a connected MCP server. Resource templates are URI patterns that can be used to construct resource URIs.",
+    parameters: Type.Object({
+      connection_id: Type.String({
+        description: "Connection ID"
+      }),
+      cursor: Type.Optional(Type.String({
+        description: "Pagination cursor for fetching next page"
+      }))
+    }),
+    async execute(_toolCallId, params) {
+      try {
+        // Use pagination if cursor provided
+        if (params.cursor) {
+          const result = await mcpManager.listResourceTemplatesPaginated(params.connection_id, { cursor: params.cursor });
+
+          if (result.resourceTemplates.length === 0) {
+            return makeSuccessResult(
+              `No more resource templates from '${params.connection_id}'.`,
+              { connectionId: params.connection_id, resourceTemplates: [], nextCursor: result.nextCursor }
+            );
+          }
+
+          const templateList = result.resourceTemplates.map(t =>
+            `  - ${t.name}: ${t.uriTemplate}${t.mimeType ? ` (${t.mimeType})` : ''}${t.description ? ` - ${t.description}` : ''}`
+          ).join('\n');
+          const moreInfo = result.nextCursor ? `\n\nMore results available. Use cursor: ${result.nextCursor}` : '';
+
+          return makeSuccessResult(
+            `Resource Templates from '${params.connection_id}' (${result.resourceTemplates.length}):\n${templateList}${moreInfo}`,
+            { connectionId: params.connection_id, resourceTemplates: result.resourceTemplates, nextCursor: result.nextCursor }
+          );
+        }
+
+        // Fetch all templates (auto-pagination)
+        const templates = await mcpManager.listResourceTemplates(params.connection_id);
+
+        if (templates.length === 0) {
+          return makeSuccessResult(
+            `No resource templates available from '${params.connection_id}'. The server may not provide templates.`,
+            { connectionId: params.connection_id, resourceTemplates: [] }
+          );
+        }
+
+        const templateList = templates.map(t =>
+          `  - ${t.name}: ${t.uriTemplate}${t.mimeType ? ` (${t.mimeType})` : ''}${t.description ? ` - ${t.description}` : ''}`
+        ).join('\n');
+
+        return makeSuccessResult(
+          `Resource Templates from '${params.connection_id}' (${templates.length}):\n${templateList}`,
+          { connectionId: params.connection_id, resourceTemplates: templates, total: templates.length }
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return makeErrorResult(
+          `Failed to list resource templates: ${message}`,
+          { connectionId: params.connection_id, error: message }
         );
       }
     }

@@ -75,6 +75,8 @@ export interface McpConnection {
 	client: Client;
 	/** トランスポートインスタンス */
 	transport: Transport;
+	/** 使用中のトランスポート種別（接続後に設定） */
+	transportType?: import('./types.js').McpActiveTransportType;
 	/** 接続ステータス */
 	status: McpConnectionStatus;
 	/** 利用可能なツール一覧 */
@@ -305,7 +307,8 @@ export type McpAuthProvider =
 // ========================================
 
 /**
- * MCP通知の種別
+ * MCP通知の種別（SDK準拠）
+ * @summary サーバーからの通知タイプ
  */
 export type McpNotificationType =
 	| 'tools/list_changed'
@@ -314,9 +317,7 @@ export type McpNotificationType =
 	| 'prompts/list_changed'
 	| 'logging/setLevel'
 	| 'progress'
-	| 'cancelled'
-	| 'sampling/request'
-	| 'elicitation/request';
+	| 'cancelled';
 
 /**
  * MCP通知データ
@@ -422,3 +423,49 @@ export interface McpPromptResult {
 		};
 	}>;
 }
+
+// ========================================
+// Resource Templates Types (SDK Compliance)
+// ========================================
+
+/**
+ * リソーステンプレート情報（SDK準拠）
+ * @summary MCPサーバーが提供するリソーステンプレート
+ */
+export interface McpResourceTemplateInfo {
+	/** URIテンプレート（RFC 6570形式） */
+	uriTemplate: string;
+	/** テンプレート名 */
+	name: string;
+	/** 説明 */
+	description?: string;
+	/** MIMEタイプ */
+	mimeType?: string;
+}
+
+// ========================================
+// Connection Options (SDK Compliance)
+// ========================================
+
+/**
+ * MCP接続オプション
+ * @summary 接続時の詳細設定
+ */
+export interface McpConnectOptions {
+	/** トランスポート種別（明示指定） */
+	transportType?: 'auto' | 'streamable-http' | 'sse' | 'stdio';
+	/** フォールバックの無効化 */
+	disableFallback?: boolean;
+	/** 接続タイムアウト（ミリ秒） */
+	timeout?: number;
+	/** リトライ回数 */
+	retryCount?: number;
+	/** リトライ間隔（ミリ秒） */
+	retryDelay?: number;
+}
+
+/**
+ * 使用中のトランスポート種別
+ * @summary 実際に使用された接続方式
+ */
+export type McpActiveTransportType = 'streamable-http' | 'sse' | 'stdio';
