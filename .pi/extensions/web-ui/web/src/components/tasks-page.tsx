@@ -140,25 +140,45 @@ export function TasksPage() {
       failed: [],
     };
 
+    // Separate parent tasks and subtasks
+    const parentTasks = filteredTasks.filter((t) => !t.parentTaskId);
+    const subtasksByParentId = new Map<string, Task[]>();
     filteredTasks.forEach((task) => {
-      grouped[task.status].push(task);
+      if (task.parentTaskId) {
+        const existing = subtasksByParentId.get(task.parentTaskId) || [];
+        existing.push(task);
+        subtasksByParentId.set(task.parentTaskId, existing);
+      }
     });
 
-    // Sort each column by priority, then by creation date
-    Object.keys(grouped).forEach((status) => {
-      grouped[status as TaskStatus].sort((a, b) => {
-        // Overdue tasks first
-        const aOverdue = a.dueDate && a.status !== "completed" && a.status !== "cancelled" && new Date(a.dueDate) < new Date();
-        const bOverdue = b.dueDate && b.status !== "completed" && b.status !== "cancelled" && new Date(b.dueDate) < new Date();
-        if (aOverdue && !bOverdue) return -1;
-        if (!aOverdue && bOverdue) return 1;
+    // Sort parent tasks
+    parentTasks.sort((a, b) => {
+      // Overdue tasks first
+      const aOverdue = a.dueDate && a.status !== "completed" && a.status !== "cancelled" && new Date(a.dueDate) < new Date();
+      const bOverdue = b.dueDate && b.status !== "completed" && b.status !== "cancelled" && new Date(b.dueDate) < new Date();
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
 
-        // Then by priority
-        const priorityDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
-        if (priorityDiff !== 0) return priorityDiff;
+      // Then by priority
+      const priorityDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+      if (priorityDiff !== 0) return priorityDiff;
 
-        // Then by creation date (newest first)
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      // Then by creation date (newest first)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    // Sort subtasks by creation date
+    subtasksByParentId.forEach((subtasks) => {
+      subtasks.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    });
+
+    // Build columns: parent task followed by its subtasks (regardless of subtask status)
+    parentTasks.forEach((parent) => {
+      grouped[parent.status].push(parent);
+      // Add subtasks right after parent (in parent's column, not subtask's own status)
+      const subtasks = subtasksByParentId.get(parent.id) || [];
+      subtasks.forEach((subtask) => {
+        grouped[parent.status].push(subtask);
       });
     });
 
@@ -452,8 +472,10 @@ export function TasksPage() {
         {/* Task cards */}
         <div class="flex-1 overflow-y-auto p-2 space-y-2">
           {columnTasks.map((task) => {
-            // Calculate subtask progress
-            const taskSubtasks = tasks.filter((t) => t.parentTaskId === task.id);
+            // Check if this is a subtask
+            const isSubtask = !!task.parentTaskId;
+            // Calculate subtask progress (only for parent tasks)
+            const taskSubtasks = isSubtask ? [] : tasks.filter((t) => t.parentTaskId === task.id);
             const subtaskProgress = taskSubtasks.length > 0 ? {
               completed: taskSubtasks.filter((t) => t.status === "completed").length,
               total: taskSubtasks.length,
@@ -464,6 +486,7 @@ export function TasksPage() {
                 key={task.id}
                 task={task}
                 subtaskProgress={subtaskProgress}
+                isSubtask={isSubtask}
                 onClick={() => setSelectedTask(task)}
                 onDragStart={(e) => handleDragStart(e, task)}
                 onDragEnd={handleDragEnd}

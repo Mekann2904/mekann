@@ -42,6 +42,7 @@ export interface Task {
 interface KanbanTaskCardProps {
   task: Task;
   subtaskProgress?: { completed: number; total: number } | null;
+  isSubtask?: boolean;
   onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
   onDragEnd?: (e: DragEvent) => void;
@@ -125,6 +126,7 @@ function getAvatarColor(name: string): string {
 export function KanbanTaskCard({
   task,
   subtaskProgress,
+  isSubtask,
   onClick,
   onDragStart,
   onDragEnd,
@@ -158,7 +160,8 @@ export function KanbanTaskCard({
         "hover:border-primary/30 hover:shadow-sm",
         isDragging && "opacity-50 scale-[0.98]",
         isSelected && "ring-2 ring-primary border-primary/50",
-        task.status === "completed" && "opacity-60"
+        task.status === "completed" && "opacity-60",
+        isSubtask && "ml-4 border-l-2 border-l-primary/30 bg-muted/30"
       )}
     >
       {/* Drag handle */}
@@ -181,19 +184,20 @@ export function KanbanTaskCard({
       )}
 
       {/* Content */}
-      <div class="p-2.5 pl-6">
+      <div class={cn("p-2.5 pl-6", isSubtask && "p-2 pl-5")}>
         {/* Title */}
         <p
           class={cn(
-            "text-[15px] font-medium leading-snug mb-1.5",
+            "font-medium leading-snug mb-1.5",
+            isSubtask ? "text-[13px]" : "text-[15px]",
             task.status === "completed" && "line-through text-muted-foreground"
           )}
         >
           {task.title}
         </p>
 
-        {/* Subtask progress - GitHub style */}
-        {subtaskProgress && subtaskProgress.total > 0 && (
+        {/* Subtask progress - GitHub style (only for parent tasks) */}
+        {!isSubtask && subtaskProgress && subtaskProgress.total > 0 && (
           <div class="flex items-center gap-1.5 mb-2">
             <div class="flex items-center gap-1">
               {subtaskProgress.completed === subtaskProgress.total ? (
@@ -215,8 +219,8 @@ export function KanbanTaskCard({
           </div>
         )}
 
-        {/* Description preview (optional, 1-2 lines) */}
-        {descriptionPreview && (
+        {/* Description preview (only for parent tasks) */}
+        {!isSubtask && descriptionPreview && (
           <p class="text-[12px] text-muted-foreground/80 leading-relaxed line-clamp-2 mb-2">
             {descriptionPreview}
           </p>
