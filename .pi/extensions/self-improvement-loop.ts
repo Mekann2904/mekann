@@ -3134,7 +3134,7 @@ export default (api: ExtensionAPI) => {
       appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} UL phase marker not found, phase=${run.currentPhase}, retryCount=${run.phaseRetryCount}`);
       
       // NEW-001: 再試行制限チェック（環境変数で設定可能、デフォルト3回）
-      const maxPhaseRetries = parseInt(process.env.PI_UL_MAX_PHASE_RETRIES ?? "3", 10);
+      const maxPhaseRetries = parseInt(process.env.PI_UL_MAX_PHASE_RETRIES ?? "3", 10) || 3;
       if (run.phaseRetryCount >= maxPhaseRetries) {
         console.error(`[self-improvement-loop] Max phase retries (${maxPhaseRetries}) exceeded for phase=${run.currentPhase}`);
         appendAutonomousLoopLog(run.logPath, `- ${new Date().toISOString()} ERROR: max retries exceeded (${maxPhaseRetries})`);
@@ -3149,7 +3149,7 @@ export default (api: ExtensionAPI) => {
       // フェーズコンテキストに応じて次のフェーズを決定
       // 出力がある程度の長さがあれば、フェーズ完了とみなして次へ進む
       // NEW-001: 閾値は環境変数で設定可能（デフォルト200文字）
-      const phaseCompleteThreshold = parseInt(process.env.PI_UL_PHASE_THRESHOLD ?? "200", 10);
+      const phaseCompleteThreshold = parseInt(process.env.PI_UL_PHASE_THRESHOLD ?? "200", 10) || 200;
       if (outputText.length > phaseCompleteThreshold) {
         // 出力がある程度あるので、フェーズ完了とみなす
         run.phaseRetryCount = 0; // 成功時はリセット

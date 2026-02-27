@@ -432,14 +432,26 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 		// POST /api/tasks - Create task
 		if (method === "POST" && path === "/api/tasks") {
-			const body = JSON.parse(await readBody(req));
+			let body;
+			try {
+				body = JSON.parse(await readBody(req));
+			} catch {
+				sendJson(res, 400, { success: false, error: "Invalid JSON" });
+				return;
+			}
 			sendJson(res, 201, handleCreateTask(body));
 			return;
 		}
 
 		// PUT /api/tasks/:id - Update task
 		if (method === "PUT" && getMatch) {
-			const body = JSON.parse(await readBody(req));
+			let body;
+			try {
+				body = JSON.parse(await readBody(req));
+			} catch {
+				sendJson(res, 400, { success: false, error: "Invalid JSON" });
+				return;
+			}
 			sendJson(res, 200, handleUpdateTask(getMatch[1], body));
 			return;
 		}
