@@ -11,7 +11,7 @@
  *
  * @abdd.explain
  * @overview GitHub Projects style compact card
- * @what_it_does Shows task title, labels (priority, tags), assignee avatar
+ * @what_it_does Shows task ID, title, description preview, priority, tags, assignee
  * @why_it_exists Familiar GitHub UX
  * @scope(in) Task data, callbacks, drag state
  * @scope(out) Rendered card with drag support
@@ -57,13 +57,12 @@ const PRIORITY_COLORS: Record<TaskPriority, { bg: string; text: string }> = {
   low: { bg: "#cfd3d7", text: "#000000" },
 };
 
-// Status colors for subtle indicators
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  todo: "bg-slate-400",
-  in_progress: "bg-blue-500",
-  completed: "bg-green-500",
-  cancelled: "bg-slate-500",
-  failed: "bg-red-500",
+// Priority labels
+const PRIORITY_LABELS: Record<TaskPriority, string> = {
+  urgent: "Urgent",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
 };
 
 // Tag color palette (GitHub style)
@@ -72,14 +71,28 @@ const TAG_COLORS = [
   "#fbca04", "#bfd4f2", "#bfdadc", "#c5def5",
 ];
 
+// Format description preview (strip markdown, truncate)
+function formatDescriptionPreview(description: string | undefined, maxLength: number = 80): string | null {
+  if (!description) return null;
+  
+  const stripped = description
+    .replace(/```[\s\S]*?```/g, "[code]")
+    .replace(/`[^`]+`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[#*_~>`-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  
+  if (stripped.length === 0) return null;
+  return stripped.length > maxLength ? stripped.slice(0, maxLength) + "..." : stripped;
+}
+
 function getTagColor(tag: string): { bg: string; text: string } {
-  // Generate consistent color based on tag name
   let hash = 0;
   for (let i = 0; i < tag.length; i++) {
     hash = tag.charCodeAt(i) + ((hash << 5) - hash);
   }
   const color = TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
-  // Determine text color based on background brightness
   const r = parseInt(color.slice(1, 3), 16);
   const g = parseInt(color.slice(3, 5), 16);
   const b = parseInt(color.slice(5, 7), 16);
@@ -118,6 +131,8 @@ export function KanbanTaskCard({
   isSelected,
 }: KanbanTaskCardProps) {
   const priorityColor = PRIORITY_COLORS[task.priority];
+  const priorityLabel = PRIORITY_LABELS[task.priority];
+  const descriptionPreview = formatDescriptionPreview(task.description);
   const isOverdue =
     task.dueDate &&
     task.status !== "completed" &&
@@ -168,67 +183,70 @@ export function KanbanTaskCard({
         {/* Title */}
         <p
           class={cn(
-            "text-[15px] font-medium leading-snug mb-2",
+            "text-[15px] font-medium leading-snug mb-1.5",
             task.status === "completed" && "line-through text-muted-foreground"
           )}
         >
           {task.title}
         </p>
 
-        {/* Labels row */}
-        <div class="flex flex-wrap gap-1 mb-2">
-          {/* Priority label - subtle */}
-          <span
-            class="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium border"
-            style={{ 
-              borderColor: priorityColor.bg,
-              color: priorityColor.bg === "#ffffff" ? priorityColor.text : priorityColor.bg,
-            }}
-          >
-            {task.priority}
-          </span>
+        {/* Description preview (optional, 1-2 lines) */}
+        {descriptionPreview && (
+          <p class="text-[12px] text-muted-foreground/80 leading-relaxed line-clamp-2 mb-2">
+            {descriptionPreview}
+          </p>
+        )}
 
-          {/* Tags */}
-          {task.tags.slice(0, 3).map((tag) => {
-            const tagColor = getTagColor(tag);
-            return (
-              <span
-                key={tag}
-                class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium truncate max-w-[100px]"
-                style={{ backgroundColor: tagColor.bg, color: tagColor.text }}
-                title={tag}
-              >
-                {tag}
-              </span>
-            );
-          })}
-          {task.tags.length > 3 && (
-            <span class="text-[10px] text-muted-foreground">+{task.tags.length - 3}</span>
-          )}
-        </div>
-
-        {/* Footer: due date + assignee */}
-        <div class="flex items-center justify-between">
-          {/* Due date */}
-          {task.dueDate && (
+        {/* Meta info (priority label, tags, due date, assignee) */}
+        <div class="flex items-center justify-between gap-1">
+          <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+            {/* Priority label */}
             <span
-              class={cn(
-                "flex items-center gap-1 text-[11px] text-muted-foreground",
-                isOverdue && "text-red-500"
-              )}
+              class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+              style={{ backgroundColor: priorityColor.bg, color: priorityColor.text }}
             >
-              <Calendar class="h-3 w-3" />
-              {new Date(task.dueDate).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })}
+              {priorityLabel}
             </span>
-          )}
+
+            {/* Tags */}
+            {task.tags.slice(0, 2).map((tag) => {
+              const tagColor = getTagColor(tag);
+              return (
+                <span
+                  key={tag}
+                  class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium truncate max-w-[80px]"
+                  style={{ backgroundColor: tagColor.bg, color: tagColor.text }}
+                  title={tag}
+                >
+                  {tag}
+                </span>
+              );
+            })}
+            {task.tags.length > 2 && (
+              <span class="text-[10px] text-muted-foreground">+{task.tags.length - 2}</span>
+            )}
+
+            {/* Due date */}
+            {task.dueDate && (
+              <span
+                class={cn(
+                  "flex items-center gap-0.5 text-[10px] text-muted-foreground",
+                  isOverdue && "text-red-500"
+                )}
+              >
+                <Calendar class="h-3 w-3" />
+                {new Date(task.dueDate).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+            )}
+          </div>
 
           {/* Assignee avatar */}
           {task.assignee && (
             <div
-              class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium text-white ml-auto"
+              class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium text-white shrink-0"
               style={{ backgroundColor: getAvatarColor(task.assignee) }}
               title={task.assignee}
             >
