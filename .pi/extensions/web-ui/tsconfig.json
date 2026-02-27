@@ -8,8 +8,12 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["web/src/*"]
+    }
   },
-  "include": ["web/src/**/*.tsx", "web/src/**/*.ts", "*.ts"],
+  "include": ["web/src/**/*.tsx", "web/src/**/*.ts", "*.ts", "lib/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

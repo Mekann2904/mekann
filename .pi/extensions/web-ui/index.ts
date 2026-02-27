@@ -2,19 +2,19 @@
  * @abdd.meta
  * @path .pi/extensions/web-ui/index.ts
  * @role Extension entry point for Web UI dashboard
- * @why Provide browser-based monitoring and configuration interface
- * @related server.ts, web/src/app.tsx
+ * @why Provide browser-based monitoring and configuration interface for all pi instances
+ * @related server.ts, lib/instance-registry.ts, web/src/app.tsx
  * @public_api default (extension function)
- * @invariants Server lifecycle must be managed properly
- * @side_effects Starts HTTP server, registers commands and flags
- * @failure_modes Port conflict, build missing
+ * @invariants Server lifecycle must be managed properly, instances must be registered
+ * @side_effects Starts HTTP server, registers commands and flags, accesses shared storage
+ * @failure_modes Port conflict, build missing, permission denied
  *
  * @abdd.explain
- * @overview Registers /web-ui command and --web-ui flag for dashboard access
- * @what_it_does Starts Express server on demand or automatically with flag
- * @why_it_exists Allows users to monitor pi state via browser
+ * @overview Registers /web-ui command and auto-starts server on session start
+ * @what_it_does Starts Express server automatically, registers instance, manages lifecycle
+ * @why_it_exists Allows users to monitor all pi instances via browser
  * @scope(in) ExtensionAPI, ExtensionContext
- * @scope(out) HTTP server, browser notifications
+ * @scope(out) HTTP server, shared storage files
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -23,66 +23,148 @@ import {
   stopServer,
   isServerRunning,
   getServerPort,
+  getContext,
 } from "./server.js";
+import {
+  InstanceRegistry,
+  ServerRegistry,
+  ThemeStorage,
+} from "./lib/instance-registry.js";
+
+const DEFAULT_PORT = 3000;
 
 export default function (pi: ExtensionAPI) {
-  // Register CLI flag for auto-start
-  pi.registerFlag("--web-ui", {
-    description: "Auto-start Web UI dashboard on session start",
-    type: "boolean",
-    default: false,
-  });
+  const registry = new InstanceRegistry(process.cwd());
 
-  // Register command for manual start/stop
+  // Note: Port is configured via environment variable PI_WEB_UI_PORT or uses default 3000
+
+  // Register command for manual control
   pi.registerCommand("web-ui", {
-    description: "Start/stop Web UI dashboard (usage: /web-ui [port])",
+    description: "Start/stop Web UI dashboard (usage: /web-ui [start|stop|status])",
 
     getArgumentCompletions: (prefix: string) => {
-      const ports = ["3000", "3001", "8080"];
-      const items = ports.map((p) => ({ value: p, label: p }));
+      const commands = ["start", "stop", "status", "open"];
+      const items = commands.map((c) => ({ value: c, label: c }));
       const filtered = items.filter((i) => i.value.startsWith(prefix));
       return filtered.length > 0 ? filtered : null;
     },
 
     handler: async (args: string, ctx) => {
-      if (isServerRunning()) {
-        stopServer();
-        ctx.ui.notify(`Web UI stopped`, "info");
-        return;
-      }
+      const subcommand = args.trim().toLowerCase();
 
-      const port = parseInt(args) || 3000;
+      switch (subcommand) {
+        case "stop":
+          if (isServerRunning()) {
+            stopServer();
+            ctx.ui.notify("Web UI stopped", "info");
+          } else {
+            ctx.ui.notify("Web UI is not running", "warning");
+          }
+          break;
 
-      try {
-        startServer(port, pi, ctx);
-        ctx.ui.notify(
-          `Web UI started: http://localhost:${port}`,
-          "success"
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Failed to start Web UI: ${message}`, "error");
+        case "status":
+          const running = isServerRunning();
+          const port = getServerPort();
+          const instances = InstanceRegistry.getAll();
+          ctx.ui.notify(
+            running
+              ? `Web UI running on port ${port} (${instances.length} instance(s))`
+              : "Web UI is not running",
+            "info"
+          );
+          break;
+
+        case "open":
+          if (!isServerRunning()) {
+            ctx.ui.notify("Web UI is not running. Use /web-ui start first.", "warning");
+            return;
+          }
+          const url = `http://localhost:${getServerPort()}`;
+          ctx.ui.notify(`Web UI available at ${url}`, "info");
+          break;
+
+        case "start":
+        default:
+          if (isServerRunning()) {
+            ctx.ui.notify(`Web UI already running on port ${getServerPort()}`, "info");
+            return;
+          }
+
+          const portNum = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
+          try {
+            startServer(portNum, pi, ctx);
+            ctx.ui.notify(`Web UI started: http://localhost:${portNum}`, "info");
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            ctx.ui.notify(`Failed to start Web UI: ${message}`, "error");
+          }
+          break;
       }
     },
   });
 
-  // Auto-start if flag is set
+  // Auto-start server on session start
   pi.on("session_start", async (_event, ctx) => {
-    if (pi.getFlag("--web-ui")) {
-      const port = 3000;
-      try {
-        startServer(port, pi, ctx);
-        ctx.ui.notify(`Web UI auto-started: http://localhost:${port}`, "info");
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Web UI auto-start failed: ${message}`, "warning");
-      }
+    // Register this instance
+    if (ctx.model?.id) {
+      registry.setModel(ctx.model.id);
+    }
+    registry.register();
+
+    // Check if server is already running
+    const existingServer = ServerRegistry.isRunning();
+
+    if (existingServer) {
+      ctx.ui.notify(
+        `Web UI already running on port ${existingServer.port} (pid: ${existingServer.pid})`,
+        "info"
+      );
+      console.log(`[web-ui] Using existing server on port ${existingServer.port}`);
+      return;
+    }
+
+    // Start new server
+    const port = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
+
+    try {
+      startServer(port, pi, ctx);
+      ctx.ui.notify(`Web UI started: http://localhost:${port}`, "info");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      ctx.ui.notify(`Web UI auto-start failed: ${message}`, "warning");
+      console.error("[web-ui] Auto-start failed:", error);
     }
   });
 
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
-    stopServer();
+    // Unregister this instance
+    registry.unregister();
+
+    // Only stop server if this is the last instance
+    setTimeout(() => {
+      const remainingInstances = InstanceRegistry.getCount();
+
+      if (remainingInstances === 0) {
+        console.log("[web-ui] Last instance, stopping server");
+        stopServer();
+      } else {
+        console.log(`[web-ui] ${remainingInstances} instance(s) remaining, keeping server`);
+      }
+    }, 500);
+  });
+
+  // Handle process exit for cleanup
+  process.on("exit", () => {
+    registry.unregister();
+  });
+
+  process.on("SIGINT", () => {
+    registry.unregister();
+  });
+
+  process.on("SIGTERM", () => {
+    registry.unregister();
   });
 
   // Register tool for LLM to open browser
@@ -96,7 +178,11 @@ export default function (pi: ExtensionAPI) {
       properties: {},
     },
     async execute() {
-      if (!isServerRunning()) {
+      // Check if server is running (either local or remote)
+      const localRunning = isServerRunning();
+      const existingServer = ServerRegistry.isRunning();
+
+      if (!localRunning && !existingServer) {
         return {
           content: [
             {
@@ -104,15 +190,18 @@ export default function (pi: ExtensionAPI) {
               text: "Web UI is not running. Start it with /web-ui command first.",
             },
           ],
+          details: {},
         };
       }
 
-      const url = `http://localhost:${getServerPort()}`;
+      const port = localRunning ? getServerPort() : existingServer!.port;
+      const url = `http://localhost:${port}`;
+
       return {
         content: [
           {
             type: "text",
-            text: `Web UI is available at ${url}`,
+            text: `Web UI is available at ${url}\n\nFeatures:\n- Dashboard: ${url}/\n- Instances: ${url}/instances\n- Theme: ${url}/theme`,
           },
         ],
         details: { url },
