@@ -387,7 +387,8 @@ export function TaskDetailPanel({
                 )}
               >
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     const newStatus = subtask.status === "completed" ? "todo" : "completed";
                     onUpdateSubtask({ ...subtask, status: newStatus });
                   }}
@@ -408,7 +409,8 @@ export function TaskDetailPanel({
                   {subtask.title}
                 </span>
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (confirm("Delete this subtask?")) {
                       onDeleteSubtask(subtask.id);
                     }

@@ -254,6 +254,15 @@ export function TasksPage() {
 
       await fetchTasks();
       await fetchStats();
+
+      // Refresh selectedTask to update subtask list
+      if (selectedTask) {
+        const refreshedRes = await fetch(`${API_BASE}/api/tasks/${selectedTask.id}`);
+        if (refreshedRes.ok) {
+          const data = await refreshedRes.json();
+          setSelectedTask(data.data);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create subtask");
     }
@@ -277,6 +286,15 @@ export function TasksPage() {
 
       await fetchTasks();
       await fetchStats();
+
+      // Refresh selectedTask to update subtask progress
+      if (selectedTask) {
+        const refreshedRes = await fetch(`${API_BASE}/api/tasks/${selectedTask.id}`);
+        if (refreshedRes.ok) {
+          const data = await refreshedRes.json();
+          setSelectedTask(data.data);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update subtask");
     }
@@ -295,6 +313,15 @@ export function TasksPage() {
 
       await fetchTasks();
       await fetchStats();
+
+      // Refresh selectedTask to update subtask list
+      if (selectedTask) {
+        const refreshedRes = await fetch(`${API_BASE}/api/tasks/${selectedTask.id}`);
+        if (refreshedRes.ok) {
+          const data = await refreshedRes.json();
+          setSelectedTask(data.data);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete subtask");
     }
