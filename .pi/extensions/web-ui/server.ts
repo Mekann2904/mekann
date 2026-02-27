@@ -241,6 +241,11 @@ export function startServer(
       res.json({ tools: tools ?? [], count: tools?.length ?? 0 });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      // -32601: Method not found - server doesn't support tools, return empty list
+      if (errorMessage.includes("-32601") || errorMessage.includes("Method not found")) {
+        res.json({ tools: [], count: 0 });
+        return;
+      }
       console.error("[web-ui] Failed to list MCP tools:", errorMessage);
       res.status(500).json({ error: "Failed to list tools", details: errorMessage });
     }
@@ -261,6 +266,11 @@ export function startServer(
       res.json({ resources: result?.resources ?? [], nextCursor: result?.nextCursor });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      // -32601: Method not found - server doesn't support resources, return empty list
+      if (errorMessage.includes("-32601") || errorMessage.includes("Method not found")) {
+        res.json({ resources: [], nextCursor: undefined });
+        return;
+      }
       console.error("[web-ui] Failed to list MCP resources:", errorMessage);
       res.status(500).json({ error: "Failed to list resources", details: errorMessage });
     }
