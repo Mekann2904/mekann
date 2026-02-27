@@ -47,6 +47,118 @@ import {
   recordSchemaViolation,
 } from "./output-schema.js";
 
+// ============================================================================
+// INTERNAL Mode Validation (Token Efficiency Format)
+// ============================================================================
+
+/**
+ * INTERNAL モードの必須ラベル
+ * @summary INTERNAL モード必須ラベル
+ */
+const INTERNAL_MODE_LABELS = ["[CLAIM]", "[EVIDENCE]", "[CONFIDENCE]", "[ACTION]"];
+
+/**
+ * INTERNAL モードの最小文字数
+ * @summary INTERNAL モード最小文字数
+ */
+const INTERNAL_MODE_MIN_CHARS = 30;
+
+/**
+ * 出力が INTERNAL モード形式かどうかを判定する
+ * @summary INTERNAL モード形式判定
+ * @param output 検証対象の文字列
+ * @returns INTERNAL モード形式の場合はtrue
+ */
+export function hasInternalModeStructure(output: string): boolean {
+  const trimmed = output.trim();
+  // [CLAIM] が存在する場合は INTERNAL モードと判定
+  return /^\s*\[CLAIM\]/im.test(trimmed);
+}
+
+/**
+ * EVIDENCE セクションが空でないか判定（INTERNAL モード用）
+ * @summary EVIDENCE セクション判定
+ * @param output 検証対象の文字列
+ * @returns 空でない場合はtrue
+ */
+export function hasNonEmptyEvidenceSection(output: string): boolean {
+  const lines = output.split(/\r?\n/);
+  const evidenceIndex = lines.findIndex((line) => /^\s*\[EVIDENCE\]/i.test(line));
+  if (evidenceIndex < 0) return false;
+
+  // [EVIDENCE] と同じ行に内容がある場合
+  const sameLineContent = lines[evidenceIndex].replace(/^\s*\[EVIDENCE\]\s*/i, "").trim();
+  if (sameLineContent.length > 0) return true;
+
+  // 次の行以降に内容があるか確認（[CONFIDENCE] まで）
+  for (let index = evidenceIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^\s*\[CONFIDENCE\]/i.test(line)) break;
+    if (/^\s*\[ACTION\]/i.test(line)) break;
+    // リストアイテム（- または *）またはテキスト
+    if (line.trim().length > 0) return true;
+  }
+
+  return false;
+}
+
+/**
+ * INTERNAL モード出力を検証する
+ * @summary INTERNAL モード検証
+ * @param output 検証対象の文字列
+ * @returns 検証結果と理由を含むオブジェクト
+ */
+export function validateInternalModeOutput(
+  output: string,
+): { ok: boolean; reason?: string } {
+  const trimmed = output.trim();
+
+  if (!trimmed) {
+    return { ok: false, reason: "empty output" };
+  }
+
+  if (trimmed.length < INTERNAL_MODE_MIN_CHARS) {
+    return { ok: false, reason: `too short (${trimmed.length} chars)` };
+  }
+
+  // 必須ラベルの存在確認
+  const missingLabels = INTERNAL_MODE_LABELS.filter(
+    (label) => !new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "im").test(trimmed),
+  );
+  if (missingLabels.length > 0) {
+    return { ok: false, reason: `missing labels: ${missingLabels.join(", ")}` };
+  }
+
+  // EVIDENCE セクションが空でないか確認
+  if (!hasNonEmptyEvidenceSection(trimmed)) {
+    return { ok: false, reason: "empty EVIDENCE section" };
+  }
+
+  // CONFIDENCE が有効な数値か確認
+  const confidenceMatch = trimmed.match(/\[CONFIDENCE\]\s*(\d*\.?\d+)/im);
+  if (confidenceMatch) {
+    const confidence = parseFloat(confidenceMatch[1]);
+    if (isNaN(confidence) || confidence < 0 || confidence > 1) {
+      return { ok: false, reason: "invalid CONFIDENCE value (must be 0.0-1.0)" };
+    }
+  }
+
+  // ACTION が有効な値か確認
+  const actionMatch = trimmed.match(/\[ACTION\]\s*(\w+)/im);
+  if (actionMatch) {
+    const action = actionMatch[1].toLowerCase();
+    if (action !== "next" && action !== "done") {
+      return { ok: false, reason: `invalid ACTION value: ${action} (must be next or done)` };
+    }
+  }
+
+  return { ok: true };
+}
+
+// ============================================================================
+// USER-FACING Mode Validation (Standard Format)
+// ============================================================================
+
 /**
  * 結果セクションが空でないか判定
  * @summary 結果セクションを判定
@@ -103,6 +215,12 @@ export function validateSubagentOutput(
     return { ok: false, reason: "empty output" };
   }
 
+  // INTERNAL モード形式の場合は専用のバリデーションを使用
+  if (hasInternalModeStructure(trimmed)) {
+    return validateInternalModeOutput(trimmed);
+  }
+
+  // USER-FACING モード（従来のバリデーション）
   if (trimmed.length < opts.minChars) {
     return { ok: false, reason: `too short (${trimmed.length} chars)` };
   }
