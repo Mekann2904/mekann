@@ -2,19 +2,19 @@
  * @abdd.meta
  * @path .pi/extensions/web-ui/server.ts
  * @role HTTP server for Web UI extension
- * @why Serve Preact dashboard to browser
- * @related index.ts, web/src/app.tsx
- * @public_api startServer, stopServer
+ * @why Serve Preact dashboard to browser with multi-instance support
+ * @related index.ts, lib/instance-registry.ts
+ * @public_api startServer, stopServer, isServerRunning, getServerPort
  * @invariants Server must clean up on shutdown
- * @side_effects Opens TCP port, serves HTTP requests
+ * @side_effects Opens TCP port, serves HTTP requests, accesses shared storage
  * @failure_modes Port in use, file not found
  *
  * @abdd.explain
  * @overview Express server that serves static files and API endpoints
- * @what_it_does Hosts built Preact app and provides REST API for pi state
+ * @what_it_does Hosts built Preact app and provides REST API for pi state and instances
  * @why_it_exists Allows browser access to pi monitoring/configuration
  * @scope(in) ExtensionAPI, ExtensionContext
- * @scope(out) HTTP responses
+ * @scope(out) HTTP responses, shared storage files
  */
 
 import express, { type Express, type Request, type Response } from "express";
@@ -22,17 +22,29 @@ import { createServer, type Server as HttpServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import {
+  InstanceRegistry,
+  ServerRegistry,
+  ThemeStorage,
+  type InstanceInfo,
+  type ThemeSettings,
+} from "./lib/instance-registry.js";
+import { mcpManager } from "../../lib/mcp/connection-manager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface ServerState {
   server: HttpServer | null;
   port: number;
+  pi: ExtensionAPI | null;
+  ctx: ExtensionContext | null;
 }
 
 const state: ServerState = {
   server: null,
   port: 3000,
+  pi: null,
+  ctx: null,
 };
 
 /**
@@ -50,14 +62,24 @@ export function startServer(
   const app: Express = express();
   app.use(express.json());
 
-  // API endpoints
+  state.pi = pi;
+  state.ctx = ctx;
+
+  // Register this server
+  ServerRegistry.register(process.pid, port);
+
+  // ============= API Endpoints =============
+
+  /**
+   * GET /api/status - Current instance status
+   */
   app.get("/api/status", (_req: Request, res: Response) => {
     const contextUsage = ctx.getContextUsage();
     res.json({
       status: {
         model: ctx.model?.id ?? "unknown",
         cwd: ctx.cwd,
-        contextUsage: contextUsage?.ratio ?? 0,
+        contextUsage: contextUsage?.percent ?? 0,
         totalTokens: contextUsage?.tokens ?? 0,
         cost: 0, // TODO: integrate with usage tracking
       },
@@ -70,16 +92,165 @@ export function startServer(
     });
   });
 
+  /**
+   * GET /api/instances - All running instances
+   */
+  app.get("/api/instances", (_req: Request, res: Response) => {
+    try {
+      const instances = InstanceRegistry.getAll();
+      res.json({
+        instances,
+        count: instances.length,
+        serverPid: process.pid,
+        serverPort: state.port,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get instances" });
+    }
+  });
+
+  /**
+   * GET /api/theme - Get global theme settings
+   */
+  app.get("/api/theme", (_req: Request, res: Response) => {
+    try {
+      const theme = ThemeStorage.get();
+      res.json(theme);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get theme" });
+    }
+  });
+
+  /**
+   * POST /api/theme - Update global theme settings
+   */
+  app.post("/api/theme", (req: Request, res: Response) => {
+    try {
+      const { themeId, mode } = req.body as Partial<ThemeSettings>;
+
+      if (!themeId || !mode) {
+        res.status(400).json({ error: "Missing themeId or mode" });
+        return;
+      }
+
+      if (mode !== "light" && mode !== "dark") {
+        res.status(400).json({ error: "Invalid mode" });
+        return;
+      }
+
+      ThemeStorage.set({ themeId, mode });
+      res.json({ success: true, themeId, mode });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save theme" });
+    }
+  });
+
+  /**
+   * POST /api/config - Update configuration
+   */
   app.post("/api/config", (req: Request, res: Response) => {
     // TODO: implement config persistence
     res.json({ success: true, config: req.body });
   });
 
-  // Static files - serve from dist directory
+  // ============= MCP API Endpoints =============
+
+  /**
+   * GET /api/mcp/connections - List all MCP connections
+   */
+  app.get("/api/mcp/connections", (_req: Request, res: Response) => {
+    try {
+      const connections = mcpManager.listConnections();
+      // Sanitize: remove client/transport objects for JSON serialization
+      const sanitized = connections.map(conn => ({
+        id: conn.id,
+        name: conn.name,
+        url: conn.url,
+        status: conn.status,
+        transportType: conn.transportType,
+        toolsCount: conn.tools.length,
+        resourcesCount: conn.resources.length,
+        error: conn.error,
+        connectedAt: conn.connectedAt?.toISOString(),
+        serverInfo: conn.serverInfo,
+      }));
+      res.json({ connections: sanitized, count: sanitized.length });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to list connections" });
+    }
+  });
+
+  /**
+   * GET /api/mcp/connection/:id - Get single connection details
+   */
+  app.get("/api/mcp/connection/:id", (req: Request, res: Response) => {
+    try {
+      const conn = mcpManager.getConnection(req.params.id);
+      if (!conn) {
+        res.status(404).json({ error: "Connection not found" });
+        return;
+      }
+      res.json({
+        id: conn.id,
+        name: conn.name,
+        url: conn.url,
+        status: conn.status,
+        transportType: conn.transportType,
+        tools: conn.tools,
+        resources: conn.resources,
+        error: conn.error,
+        connectedAt: conn.connectedAt?.toISOString(),
+        serverInfo: conn.serverInfo,
+        subscriptions: Array.from(conn.subscriptions),
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get connection" });
+    }
+  });
+
+  /**
+   * GET /api/mcp/tools/:id - List tools for connection
+   */
+  app.get("/api/mcp/tools/:id", async (req: Request, res: Response) => {
+    try {
+      const tools = await mcpManager.listAllTools(req.params.id);
+      res.json({ tools, count: tools.length });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to list tools" });
+    }
+  });
+
+  /**
+   * GET /api/mcp/resources/:id - List resources for connection
+   */
+  app.get("/api/mcp/resources/:id", async (req: Request, res: Response) => {
+    try {
+      const result = await mcpManager.listResourcesPaginated(req.params.id);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to list resources" });
+    }
+  });
+
+  /**
+   * POST /api/mcp/ping/:id - Health check connection
+   */
+  app.post("/api/mcp/ping/:id", async (req: Request, res: Response) => {
+    try {
+      const result = await mcpManager.ping(req.params.id);
+      res.json({ success: result });
+    } catch (error) {
+      res.status(500).json({ error: "Ping failed" });
+    }
+  });
+
+  // ============= Static Files =============
+
   const distPath = path.join(__dirname, "dist");
   app.use(express.static(distPath));
 
-  // SPA fallback - all non-API routes serve index.html
+  // ============= SPA Fallback =============
+
   app.get("*", (req: Request, res: Response) => {
     // Skip API routes
     if (req.path.startsWith("/api/")) {
@@ -118,6 +289,7 @@ export function stopServer(): void {
   if (state.server) {
     state.server.close();
     state.server = null;
+    ServerRegistry.unregister();
     console.log("[web-ui] Server stopped");
   }
 }
@@ -134,4 +306,18 @@ export function isServerRunning(): boolean {
  */
 export function getServerPort(): number {
   return state.port;
+}
+
+/**
+ * @summary Get extension context
+ */
+export function getContext(): ExtensionContext | null {
+  return state.ctx;
+}
+
+/**
+ * @summary Get extension API
+ */
+export function getPi(): ExtensionAPI | null {
+  return state.pi;
 }

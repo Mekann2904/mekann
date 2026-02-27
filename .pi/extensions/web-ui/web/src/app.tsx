@@ -1,13 +1,15 @@
 import { useState, useEffect, useLayoutEffect } from "preact/hooks";
 import { Router, route } from "preact-router";
-import { ThemePage, STORAGE_KEYS, applyThemeToDOM, THEMES, type Mode } from "./components/theme-page";
+import { ThemePage, applyThemeToDOM, type Mode } from "./components/theme-page";
 import { DashboardPage } from "./components/dashboard-page";
+import { InstancesPage } from "./components/instances-page";
+import { McpPage } from "./components/mcp-page";
 import {
   Activity,
-  BarChart3,
-  Settings,
+  Monitor,
   Palette,
   Loader2,
+  Server,
 } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import "./styles/globals.css";
@@ -28,29 +30,76 @@ interface DashboardData {
   config: Record<string, unknown>;
 }
 
-// Initialize theme immediately on load
-function initializeTheme() {
+interface ThemeSettings {
+  themeId: string;
+  mode: Mode;
+}
+
+// Global theme state (fetched from server)
+let globalTheme: ThemeSettings | null = null;
+
+// Get global theme from server
+async function fetchGlobalTheme(): Promise<ThemeSettings | null> {
   try {
-    const themeId = localStorage.getItem(STORAGE_KEYS.THEME_ID) || "blue";
-    const mode = (localStorage.getItem(STORAGE_KEYS.MODE) as Mode) || "dark";
-    applyThemeToDOM(themeId, mode);
+    const res = await fetch("/api/theme");
+    if (res.ok) {
+      return await res.json();
+    }
   } catch (e) {
-    console.warn("Failed to initialize theme:", e);
+    console.warn("Failed to fetch global theme:", e);
+  }
+  return null;
+}
+
+// Save global theme to server
+async function saveGlobalTheme(themeId: string, mode: Mode): Promise<boolean> {
+  try {
+    const res = await fetch("/api/theme", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ themeId, mode }),
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn("Failed to save global theme:", e);
+    return false;
   }
 }
 
-// Run theme initialization before first paint
-if (typeof window !== "undefined") {
-  initializeTheme();
+// Initialize theme from global settings
+async function initializeTheme(): Promise<ThemeSettings> {
+  // Try to get global theme first
+  const theme = await fetchGlobalTheme();
+  if (theme) {
+    globalTheme = theme;
+    applyThemeToDOM(theme.themeId, theme.mode);
+    return theme;
+  }
+
+  // Fallback to localStorage
+  const themeId = localStorage.getItem("pi-theme-id") || "blue";
+  const mode = (localStorage.getItem("pi-theme-mode") as Mode) || "dark";
+  applyThemeToDOM(themeId, mode);
+  return { themeId, mode };
+}
+
+// Apply theme to DOM (exported for theme-page)
+export function applyTheme(themeId: string, mode: Mode): void {
+  applyThemeToDOM(themeId, mode);
+  saveGlobalTheme(themeId, mode);
+  globalTheme = { themeId, mode };
 }
 
 export function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [themeLoaded, setThemeLoaded] = useState(false);
 
-  // Re-apply theme on mount to ensure consistency
+  // Initialize theme on mount
   useLayoutEffect(() => {
-    initializeTheme();
+    initializeTheme().then(() => {
+      setThemeLoaded(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -71,7 +120,7 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
-  if (loading) {
+  if (!themeLoaded || loading) {
     return (
       <div class="flex h-screen items-center justify-center">
         <div class="flex flex-col items-center gap-2">
@@ -88,7 +137,9 @@ export function App() {
       <main class="flex-1 overflow-hidden">
         <Router>
           <DashboardPage path="/" data={data} />
-          <ThemePage path="/theme" />
+          <InstancesPage path="/instances" />
+          <McpPage path="/mcp" />
+          <ThemePage path="/theme" onThemeChange={applyTheme} />
         </Router>
       </main>
     </div>
@@ -115,6 +166,8 @@ function Sidebar() {
 
   const navItems = [
     { path: "/", icon: Activity, label: "Dashboard" },
+    { path: "/instances", icon: Monitor, label: "Instances" },
+    { path: "/mcp", icon: Server, label: "MCP" },
     { path: "/theme", icon: Palette, label: "Theme" },
   ];
 
