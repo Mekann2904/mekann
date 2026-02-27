@@ -108,25 +108,19 @@ class FileLock {
   }
 
   withLock<T>(fn: () => T): T {
-    // Try to acquire lock with timeout
-    const maxAttempts = 50;
-    const delayMs = 20;
-
-    for (let i = 0; i < maxAttempts; i++) {
-      if (this.acquire()) {
-        try {
-          return fn();
-        } finally {
-          this.release();
-        }
-      }
-      // Wait and retry
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+    // NOTE:
+    // 以前は Atomics.wait を使った同期リトライでロック取得を待っていたが、
+    // event loop を最大約1秒ブロックし、TUI入力遅延の原因になる。
+    // 入力体験を優先し、ロックが取れない場合は即座に best-effort で継続する。
+    if (!this.acquire()) {
+      console.warn("[instance-registry] Could not acquire lock, proceeding without lock");
+      return fn();
     }
-
-    // If lock acquisition fails, proceed anyway (best effort)
-    console.warn("[instance-registry] Could not acquire lock, proceeding without lock");
-    return fn();
+    try {
+      return fn();
+    } finally {
+      this.release();
+    }
   }
 }
 
@@ -194,6 +188,12 @@ export class InstanceRegistry {
    * Register this instance
    */
   register(): void {
+    // 念のため既存タイマーを止めてから再登録（reload時の重複防止）
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+
     lock.withLock(() => {
       const instances = readJsonFile<Record<number, InstanceInfo>>(INSTANCES_FILE, {});
 

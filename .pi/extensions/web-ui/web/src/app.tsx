@@ -1,4 +1,11 @@
-import { useState, useEffect, useLayoutEffect } from "preact/hooks";
+/**
+ * @path .pi/extensions/web-ui/web/src/app.tsx
+ * @role Web UI全体のレイアウト、ルーティング、SSE同期を管理する。
+ * @why ダッシュボード表示とリアルタイム更新を1箇所で安全に制御するため。
+ * @related ./components/dashboard-page.tsx, ./components/theme-page.tsx, ./main.tsx
+ */
+
+import { useState, useEffect, useLayoutEffect, useCallback } from "preact/hooks";
 import { Router, route } from "preact-router";
 import { ThemePage, applyThemeToDOM, type Mode } from "./components/theme-page";
 import { DashboardPage } from "./components/dashboard-page";
@@ -107,7 +114,10 @@ export function applyTheme(themeId: string, mode: Mode): void {
 /**
  * @summary Custom hook for SSE connection with auto-reconnect
  */
-function useSSE(onEvent: (event: SSEEvent) => void) {
+function useSSE(
+  onEvent: (event: SSEEvent) => void,
+  onConnectionChange?: (connected: boolean) => void
+) {
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -121,9 +131,11 @@ function useSSE(onEvent: (event: SSEEvent) => void) {
 
         eventSource.onopen = () => {
           reconnectAttempts = 0;
+          onConnectionChange?.(true);
         };
 
         eventSource.onerror = () => {
+          onConnectionChange?.(false);
           eventSource?.close();
           eventSource = null;
 
@@ -151,6 +163,7 @@ function useSSE(onEvent: (event: SSEEvent) => void) {
         });
       } catch {
         // SSE not supported or connection failed
+        onConnectionChange?.(false);
       }
     };
 
@@ -161,8 +174,9 @@ function useSSE(onEvent: (event: SSEEvent) => void) {
         clearTimeout(reconnectTimeout);
       }
       eventSource?.close();
+      onConnectionChange?.(false);
     };
-  }, [onEvent]);
+  }, [onEvent, onConnectionChange]);
 }
 
 export function App() {
@@ -179,9 +193,8 @@ export function App() {
   }, []);
 
   // SSE event handler
-  const handleSSEEvent = (event: SSEEvent) => {
+  const handleSSEEvent = useCallback((event: SSEEvent) => {
     if (event.type === "connected") {
-      setSseConnected(true);
       return;
     }
 
@@ -215,10 +228,10 @@ export function App() {
         config: prevData?.config ?? {},
       }));
     }
-  };
+  }, []);
 
   // Connect to SSE
-  useSSE(handleSSEEvent);
+  useSSE(handleSSEEvent, setSseConnected);
 
   useEffect(() => {
     const fetchData = async () => {

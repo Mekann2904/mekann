@@ -39,6 +39,24 @@ const DEFAULT_PORT = 3000;
 
 export default function (pi: ExtensionAPI) {
   const registry = new InstanceRegistry(process.cwd());
+  let registered = false;
+
+  const ensureRegistered = (modelId?: string) => {
+    if (modelId) {
+      registry.setModel(modelId);
+    }
+    if (!registered) {
+      registry.register();
+      registered = true;
+    }
+  };
+
+  const ensureUnregistered = () => {
+    if (registered) {
+      registry.unregister();
+      registered = false;
+    }
+  };
 
   // Note: Port is configured via environment variable PI_WEB_UI_PORT or uses default 3000
 
@@ -60,8 +78,10 @@ export default function (pi: ExtensionAPI) {
         case "stop":
           if (isServerRunning()) {
             stopServer();
+            ensureUnregistered();
             ctx.ui.notify("Web UI stopped", "info");
           } else {
+            ensureUnregistered();
             ctx.ui.notify("Web UI is not running", "warning");
           }
           break;
@@ -89,8 +109,19 @@ export default function (pi: ExtensionAPI) {
 
         case "start":
         default:
+          ensureRegistered(ctx.model?.id);
+
           if (isServerRunning()) {
             ctx.ui.notify(`Web UI already running on port ${getServerPort()}`, "info");
+            return;
+          }
+
+          const existingServer = ServerRegistry.isRunning();
+          if (existingServer) {
+            ctx.ui.notify(
+              `Web UI already running on port ${existingServer.port} (pid: ${existingServer.pid})`,
+              "info"
+            );
             return;
           }
 
@@ -105,37 +136,6 @@ export default function (pi: ExtensionAPI) {
           break;
       }
     },
-  });
-
-  // Auto-start server on session start
-  pi.on("session_start", async (_event, ctx) => {
-    // Register this instance
-    if (ctx.model?.id) {
-      registry.setModel(ctx.model.id);
-    }
-    registry.register();
-
-    // Check if server is already running
-    const existingServer = ServerRegistry.isRunning();
-
-    if (existingServer) {
-      ctx.ui.notify(
-        `Web UI already running on port ${existingServer.port} (pid: ${existingServer.pid})`,
-        "info"
-      );
-      return;
-    }
-
-    // Start new server
-    const port = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
-
-    try {
-      startServer(port, pi, ctx);
-      ctx.ui.notify(`Web UI started: http://localhost:${port}`, "info");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`Web UI auto-start failed: ${message}`, "warning");
-    }
   });
 
   // Broadcast tool calls via SSE
@@ -203,8 +203,7 @@ export default function (pi: ExtensionAPI) {
 
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
-    // Unregister this instance
-    registry.unregister();
+    ensureUnregistered();
 
     // Only stop server if this is the last instance
     setTimeout(() => {
@@ -214,19 +213,6 @@ export default function (pi: ExtensionAPI) {
         stopServer();
       }
     }, 500);
-  });
-
-  // Handle process exit for cleanup
-  process.on("exit", () => {
-    registry.unregister();
-  });
-
-  process.on("SIGINT", () => {
-    registry.unregister();
-  });
-
-  process.on("SIGTERM", () => {
-    registry.unregister();
   });
 
   // Register tool for LLM to open browser

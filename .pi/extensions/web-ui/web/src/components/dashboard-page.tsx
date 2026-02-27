@@ -38,7 +38,6 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card";
-import { Progress } from "./ui/progress";
 import { cn } from "@/lib/utils";
 
 /**
@@ -107,13 +106,14 @@ function getInstanceColor(pid: number, index: number): string {
 }
 
 export function DashboardPage({ data }: DashboardPageProps) {
-  const [activeTab, setActiveTab] = useState<"status" | "metrics" | "config">(
-    "status"
+  const [activeTab, setActiveTab] = useState<"metrics" | "config">(
+    "metrics"
   );
   const [contextHistory, setContextHistory] = useState<ContextHistoryResponse | null>(null);
   const [contextLoading, setContextLoading] = useState(true);
   const [displayMode, setDisplayMode] = useState<"input" | "output" | "both">("both");
   const sseRef = useRef<EventSource | null>(null);
+  const contextRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // コンテキスト履歴を取得
   const fetchContextHistory = async () => {
@@ -128,6 +128,17 @@ export function DashboardPage({ data }: DashboardPageProps) {
     } finally {
       setContextLoading(false);
     }
+  };
+
+  // SSE連打時に再取得を間引いて、表示を安定化させる
+  const scheduleContextRefresh = () => {
+    if (contextRefreshTimerRef.current) {
+      return;
+    }
+    contextRefreshTimerRef.current = setTimeout(() => {
+      contextRefreshTimerRef.current = null;
+      fetchContextHistory();
+    }, 300);
   };
 
   // 初回データ取得
@@ -164,8 +175,7 @@ export function DashboardPage({ data }: DashboardPageProps) {
         };
 
         sseRef.current.addEventListener("context-update", () => {
-          // コンテキスト更新時にデータを再取得
-          fetchContextHistory();
+          scheduleContextRefresh();
         });
       } catch {
         // SSE not supported
@@ -177,6 +187,10 @@ export function DashboardPage({ data }: DashboardPageProps) {
     return () => {
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
+      }
+      if (contextRefreshTimerRef.current) {
+        clearTimeout(contextRefreshTimerRef.current);
+        contextRefreshTimerRef.current = null;
       }
       sseRef.current?.close();
     };
@@ -194,14 +208,6 @@ export function DashboardPage({ data }: DashboardPageProps) {
     <div class="flex h-full flex-col gap-4 p-4 overflow-auto">
       {/* Tabs */}
       <div class="flex gap-2 shrink-0">
-        <Button
-          variant={activeTab === "status" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("status")}
-        >
-          <Activity class="mr-2 h-4 w-4" />
-          Status
-        </Button>
         <Button
           variant={activeTab === "metrics" ? "default" : "outline"}
           size="sm"
@@ -236,7 +242,6 @@ export function DashboardPage({ data }: DashboardPageProps) {
 
       {/* Content */}
       <div class="flex-1 overflow-y-auto">
-        {activeTab === "status" && <StatusSection data={data} />}
         {activeTab === "metrics" && <MetricsSection data={data} />}
         {activeTab === "config" && <ConfigSection data={data} />}
       </div>
@@ -276,29 +281,45 @@ function ContextUsageSection({
   const instances = data ? Object.values(data.instances) : [];
   const instanceCount = instances.length;
 
-  // 全インスタンスの履歴を時系列でマージ
-  const allEntries: (ContextHistoryEntry & { instanceIndex: number })[] = [];
-  instances.forEach((instance, idx) => {
-    instance.history.forEach((entry) => {
-      allEntries.push({ ...entry, instanceIndex: idx });
-    });
-  });
+  // kilo系の見え方に合わせて、時系列を固定スロットで集約する
+  const bucketMs = 10_000;
+  const perBucketTotals = new Map<number, { input: number; output: number }>();
 
-  // 時刻でソートして最新50件を表示
-  const sortedEntries = allEntries
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-    .slice(-50);
+  for (const instance of instances) {
+    const latestByBucket = new Map<number, ContextHistoryEntry>();
+    const sorted = [...instance.history].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
 
-  // チャートデータを作成
-  const chartData = sortedEntries.map((entry) => ({
-    time: new Date(entry.timestamp).toLocaleTimeString("ja-JP", {
+    for (const entry of sorted) {
+      const t = new Date(entry.timestamp).getTime();
+      if (Number.isNaN(t)) {
+        continue;
+      }
+      const bucket = Math.floor(t / bucketMs) * bucketMs;
+      latestByBucket.set(bucket, entry);
+    }
+
+    for (const [bucket, entry] of latestByBucket) {
+      const current = perBucketTotals.get(bucket) ?? { input: 0, output: 0 };
+      perBucketTotals.set(bucket, {
+        input: current.input + entry.input,
+        output: current.output + entry.output,
+      });
+    }
+  }
+
+  const sortedBuckets = Array.from(perBucketTotals.entries())
+    .sort((a, b) => a[0] - b[0])
+    .slice(-10);
+
+  const chartData = sortedBuckets.map(([bucket, totals]) => ({
+    time: new Date(bucket).toLocaleTimeString("ja-JP", {
       hour: "2-digit",
       minute: "2-digit",
     }),
-    pid: entry.pid,
-    input: entry.input,
-    output: entry.output,
-    instanceIndex: entry.instanceIndex,
+    input: totals.input,
+    output: totals.output,
   }));
 
   // 統計計算
@@ -390,6 +411,7 @@ function ContextUsageSection({
                   tick={{ fontSize: 10 }}
                   class="text-muted-foreground"
                   tickFormatter={(value: number) => value.toLocaleString()}
+                  allowDecimals={false}
                   width={60}
                 />
                 <Tooltip
@@ -414,7 +436,9 @@ function ContextUsageSection({
                     name="Input"
                     fill="hsl(var(--chart-1))"
                     radius={[2, 2, 0, 0]}
-                    maxBarSize={30}
+                    maxBarSize={16}
+                    isAnimationActive
+                    animationDuration={250}
                   />
                 )}
                 {(displayMode === "output" || displayMode === "both") && (
@@ -423,7 +447,9 @@ function ContextUsageSection({
                     name="Output"
                     fill="hsl(var(--chart-2))"
                     radius={[2, 2, 0, 0]}
-                    maxBarSize={30}
+                    maxBarSize={16}
+                    isAnimationActive
+                    animationDuration={250}
                   />
                 )}
               </BarChart>
@@ -457,62 +483,6 @@ function ContextUsageSection({
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function StatusSection({ data }: { data: DashboardData }) {
-  const contextPercent = Math.round(data.status.contextUsage * 100);
-
-  return (
-    <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm">Model</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p class="font-semibold">{data.status.model}</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm">Working Directory</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p class="truncate font-mono text-sm">{data.status.cwd}</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm">Context Usage</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-1">
-          <Progress value={contextPercent} />
-          <p class="text-xs text-muted-foreground">{contextPercent}% used</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm">Total Tokens</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p class="text-xl font-bold">
-            {data.status.totalTokens.toLocaleString()}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader class="pb-2">
-          <CardTitle class="text-sm">Cost</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p class="text-xl font-bold">${data.status.cost.toFixed(4)}</p>
-        </CardContent>
-      </Card>
-    </div>
   );
 }
 

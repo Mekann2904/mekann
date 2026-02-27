@@ -1247,16 +1247,22 @@ declare global {
   var __mcpManager: McpConnectionManager | undefined;
 }
 
-// リロード時のクリーンアップ: 既存のインスタンスがあれば切断を試みる
-if (globalThis.__mcpManager) {
-  const oldManager = globalThis.__mcpManager;
-  // 非同期で切断を実行（エラーは無視）
-  oldManager.disconnectAll().catch((err) => {
-    console.warn('[MCP] Failed to disconnect on reload:', err);
-  });
-  // 古いインスタンスをクリア
-  globalThis.__mcpManager = undefined;
+// シングルトンインスタンスの取得または作成
+// 異なるインポートパスからでも同じインスタンスを共有するため、globalThisを優先
+// リロード時は古いインスタンスをクリーンアップしてから新規作成
+const existingManager = globalThis.__mcpManager;
+
+if (existingManager) {
+  // 既存インスタンスがある場合、プロトタイプが一致すれば再利用、そうでなければクリーンアップ
+  const isNewModule = !(existingManager instanceof McpConnectionManager);
+  if (isNewModule) {
+    // リロード検出: クリーンアップしてから新規作成
+    existingManager.disconnectAll().catch(() => {});
+    globalThis.__mcpManager = undefined;
+  }
+  // プロトタイプが一致する場合はそのまま再利用
 }
 
-export const mcpManager: McpConnectionManager = new McpConnectionManager();
+// 既存のインスタンスがあれば再利用、なければ新規作成
+export const mcpManager: McpConnectionManager = globalThis.__mcpManager ?? new McpConnectionManager();
 globalThis.__mcpManager = mcpManager;
