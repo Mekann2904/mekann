@@ -213,7 +213,6 @@ export class InstanceRegistry {
       this.updateHeartbeat();
     }, 5000);
   }
-  }
 
   /**
    * Update heartbeat
@@ -244,7 +243,6 @@ export class InstanceRegistry {
       delete instances[this.pid];
       writeJsonFile(INSTANCES_FILE, instances);
     });
-  }
   }
 
   /**
