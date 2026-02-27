@@ -127,6 +127,9 @@ coverage/
 **/*-key.pem
 **/*.pem
 !**/public-key.pem
+
+# MCP server config (may contain API keys)
+.pi/mcp-servers.json
 philosophy.md
 .pi/.agent-teams-storage/
 
