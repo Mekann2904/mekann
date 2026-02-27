@@ -131,6 +131,7 @@ export function KanbanTaskCard({
   task,
   subtaskProgress,
   isSubtask,
+  session,
   onClick,
   onDragStart,
   onDragEnd,
