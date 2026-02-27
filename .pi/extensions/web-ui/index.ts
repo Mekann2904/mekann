@@ -19,6 +19,8 @@
 
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { exec } from "child_process";
+import { promisify } from "util";
 import {
   startServer,
   stopServer,
@@ -38,6 +40,36 @@ import {
   startServer as startApiServer,
   isApiServerRunning,
 } from "../server.js";
+
+const execAsync = promisify(exec);
+
+/**
+ * 規定のブラウザでURLを開く
+ */
+const openBrowser = async (url: string): Promise<boolean> => {
+  const platform = process.platform;
+  let command: string;
+
+  switch (platform) {
+    case "darwin":
+      command = `open "${url}"`;
+      break;
+    case "win32":
+      command = `start "" "${url}"`;
+      break;
+    default:
+      // Linux and others
+      command = `xdg-open "${url}"`;
+  }
+
+  try {
+    await execAsync(command);
+    return true;
+  } catch (error) {
+    console.error(`[web-ui] Failed to open browser: ${error}`);
+    return false;
+  }
+};
 
 const DEFAULT_PORT = 3000;
 
@@ -102,12 +134,17 @@ export default function (pi: ExtensionAPI) {
           break;
 
         case "open":
-          if (!isServerRunning()) {
+          if (!isServerRunning() && !ServerRegistry.isRunning()) {
             ctx.ui.notify("Web UI is not running. Use /web-ui start first.", "warning");
             return;
           }
-          const url = `http://localhost:${getServerPort()}`;
-          ctx.ui.notify(`Web UI available at ${url}`, "info");
+          const openUrl = `http://localhost:${isServerRunning() ? getServerPort() : ServerRegistry.isRunning()!.port}`;
+          const opened = await openBrowser(openUrl);
+          if (opened) {
+            ctx.ui.notify(`Opening Web UI: ${openUrl}`, "info");
+          } else {
+            ctx.ui.notify(`Web UI available at ${openUrl} (could not open browser automatically)`, "warning");
+          }
           break;
 
         case "start":
@@ -115,7 +152,10 @@ export default function (pi: ExtensionAPI) {
           ensureRegistered(ctx.model?.id);
 
           if (isServerRunning()) {
-            ctx.ui.notify(`Web UI already running on port ${getServerPort()}`, "info");
+            const runningPort = getServerPort();
+            ctx.ui.notify(`Web UI already running on port ${runningPort}`, "info");
+            // 既に起動している場合もブラウザを開く
+            await openBrowser(`http://localhost:${runningPort}`);
             return;
           }
 
@@ -125,6 +165,8 @@ export default function (pi: ExtensionAPI) {
               `Web UI already running on port ${existingServer.port} (pid: ${existingServer.pid})`,
               "info"
             );
+            // 既に起動している場合もブラウザを開く
+            await openBrowser(`http://localhost:${existingServer.port}`);
             return;
           }
 
@@ -132,6 +174,8 @@ export default function (pi: ExtensionAPI) {
           try {
             startServer(portNum, pi, ctx);
             ctx.ui.notify(`Web UI started: http://localhost:${portNum}`, "info");
+            // サーバー起動後にブラウザを開く
+            await openBrowser(`http://localhost:${portNum}`);
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             ctx.ui.notify(`Failed to start Web UI: ${message}`, "error");
@@ -264,14 +308,19 @@ export default function (pi: ExtensionAPI) {
       const port = localRunning ? getServerPort() : existingServer!.port;
       const url = `http://localhost:${port}`;
 
+      // ブラウザを開く
+      const opened = await openBrowser(url);
+
       return {
         content: [
           {
             type: "text",
-            text: `Web UI is available at ${url}\n\nFeatures:\n- Dashboard: ${url}/\n- Instances: ${url}/instances\n- Theme: ${url}/theme`,
+            text: opened
+              ? `Opening Web UI in browser: ${url}\n\nFeatures:\n- Dashboard: ${url}/\n- Instances: ${url}/instances\n- Theme: ${url}/theme`
+              : `Web UI is available at ${url}\n\nFeatures:\n- Dashboard: ${url}/\n- Instances: ${url}/instances\n- Theme: ${url}/theme\n\n(Could not open browser automatically)`,
           },
         ],
-        details: { url },
+        details: { url, browserOpened: opened },
       };
     },
   });
