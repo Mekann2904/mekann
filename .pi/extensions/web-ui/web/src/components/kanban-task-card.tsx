@@ -20,6 +20,8 @@
 import { h } from "preact";
 import { GripVertical, Calendar, Trash2, CheckCircle2, Circle } from "lucide-preact";
 import { cn } from "@/lib/utils";
+import type { RuntimeSession } from "../hooks/useRuntimeStatus";
+import { ExecutionStatusIndicator } from "./execution-status-indicator";
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 export type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled" | "failed";
@@ -43,6 +45,8 @@ interface KanbanTaskCardProps {
   task: Task;
   subtaskProgress?: { completed: number; total: number } | null;
   isSubtask?: boolean;
+  /** Active runtime session for this task (optional) */
+  session?: RuntimeSession;
   onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
   onDragEnd?: (e: DragEvent) => void;
@@ -281,6 +285,13 @@ export function KanbanTaskCard({
             </div>
           )}
         </div>
+
+        {/* Execution status indicator (if session provided) */}
+        {session && (session.status === "running" || session.status === "starting") && (
+          <div class="mt-2 border-t border-border/50 pt-2">
+            <ExecutionStatusIndicator session={session} compact />
+          </div>
+        )}
       </div>
     </div>
   );

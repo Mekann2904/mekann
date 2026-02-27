@@ -33,6 +33,14 @@ import {
   type ContextHistoryEntry,
   type InstanceContextHistory,
 } from "./lib/instance-registry.js";
+import {
+  addSSEClient,
+  removeSSEClient,
+  getActiveSessions,
+  getSessionStats,
+  getSessionByTaskId,
+  type RuntimeSession,
+} from "./lib/runtime-sessions.js";
 // Note: mcpManager is imported dynamically in each request to ensure
 // we always get the latest instance from globalThis (handles reload scenarios)
 
@@ -939,6 +947,142 @@ export function startServer(
       const errorMessage = error instanceof Error ? error.message : String(error);
       res.status(500).json({ success: false, error: "Failed to delete task", details: errorMessage });
     }
+  });
+
+  // ============= Runtime Status API =============
+
+  /**
+   * GET /api/runtime/status - Get current runtime status
+   */
+  app.get("/api/runtime/status", async (_req: Request, res: Response) => {
+    try {
+      // Import agent-runtime dynamically
+      const { getRuntimeSnapshot } = await import("../../agent-runtime.js");
+      const snapshot = getRuntimeSnapshot();
+      const sessionStats = getSessionStats();
+
+      res.json({
+        success: true,
+        data: {
+          // Runtime snapshot from agent-runtime.ts
+          activeLlm: snapshot.totalActiveLlm,
+          activeRequests: snapshot.totalActiveRequests,
+          limits: snapshot.limits,
+          queuedOrchestrations: snapshot.queuedOrchestrations,
+          priorityStats: snapshot.priorityStats,
+          // Session stats from runtime-sessions.ts
+          sessions: sessionStats,
+        },
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Fallback to session-only stats if agent-runtime fails
+      const sessionStats = getSessionStats();
+      res.json({
+        success: true,
+        data: {
+          activeLlm: sessionStats.running,
+          activeRequests: sessionStats.total,
+          limits: null,
+          queuedOrchestrations: 0,
+          priorityStats: null,
+          sessions: sessionStats,
+          warning: `agent-runtime unavailable: ${errorMessage}`,
+        },
+      });
+    }
+  });
+
+  /**
+   * GET /api/runtime/sessions - Get active sessions
+   */
+  app.get("/api/runtime/sessions", (_req: Request, res: Response) => {
+    try {
+      const sessions = getActiveSessions();
+      const stats = getSessionStats();
+
+      res.json({
+        success: true,
+        data: {
+          sessions,
+          stats,
+        },
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to get sessions",
+        details: errorMessage,
+      });
+    }
+  });
+
+  /**
+   * GET /api/runtime/sessions/task/:taskId - Get session by task ID
+   */
+  app.get("/api/runtime/sessions/task/:taskId", (req: Request, res: Response) => {
+    try {
+      const session = getSessionByTaskId(req.params.taskId);
+
+      if (!session) {
+        res.status(404).json({
+          success: false,
+          error: "No active session for this task",
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: session,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to get session",
+        details: errorMessage,
+      });
+    }
+  });
+
+  /**
+   * GET /api/runtime/stream - SSE endpoint for real-time runtime updates
+   */
+  app.get("/api/runtime/stream", (req: Request, res: Response) => {
+    // Set SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+
+    // Generate client ID
+    const clientId = `runtime-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Register client
+    addSSEClient(clientId, res);
+
+    // Handle client disconnect
+    req.on("close", () => {
+      removeSSEClient(clientId);
+    });
+
+    // Keep connection alive with periodic comments
+    const keepAlive = setInterval(() => {
+      try {
+        res.write(": keepalive\n\n");
+      } catch {
+        clearInterval(keepAlive);
+        removeSSEClient(clientId);
+      }
+    }, 15000);
+
+    // Clean up on close
+    res.on("close", () => {
+      clearInterval(keepAlive);
+      removeSSEClient(clientId);
+    });
   });
 
   // ============= Static Files =============
