@@ -98,8 +98,10 @@ class SSEEventBus {
     for (const [id, client] of this.clients) {
       try {
         client.res.write(eventStr);
-      } catch {
+      } catch (error) {
         // Client disconnected, remove it
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`[web-ui] SSE client ${id} disconnected during broadcast: ${errorMessage}`);
         this.clients.delete(id);
       }
     }
@@ -119,13 +121,15 @@ class SSEEventBus {
   }
 
   /**
-   * @summary Stop heartbeat interval
+   * @summary Stop heartbeat interval and clear all clients
    */
   stopHeartbeat(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
     }
+    // Clear all clients on server shutdown
+    this.clients.clear();
   }
 
   /**
@@ -523,9 +527,10 @@ export function stopServer(): void {
     state.server = null;
     ServerRegistry.unregister();
 
-    // バッファをフラッシュ
+    // バッファをフラッシュしてイベントリスナーを削除
     if (contextHistoryStorage) {
-      contextHistoryStorage.flush();
+      contextHistoryStorage.dispose();
+      contextHistoryStorage = null;
     }
   }
 }

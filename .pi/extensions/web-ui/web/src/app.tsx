@@ -5,7 +5,7 @@
  * @related ./components/dashboard-page.tsx, ./components/theme-page.tsx, ./main.tsx
  */
 
-import { useState, useEffect, useLayoutEffect, useCallback } from "preact/hooks";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "preact/hooks";
 import { Router, route } from "preact-router";
 import { ThemePage, applyThemeToDOM, type Mode } from "./components/theme-page";
 import { DashboardPage } from "./components/dashboard-page";
@@ -17,6 +17,7 @@ import {
   Palette,
   Loader2,
   Server,
+  AlertCircle,
 } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import "./styles/globals.css";
@@ -113,11 +114,15 @@ export function applyTheme(themeId: string, mode: Mode): void {
 
 /**
  * @summary Custom hook for SSE connection with auto-reconnect
+ * @returns Object with connection state, reconnect function, and exhausted flag
  */
 function useSSE(
-  onEvent: (event: SSEEvent) => void,
-  onConnectionChange?: (connected: boolean) => void
-) {
+  onEvent: (event: SSEEvent) => void
+): { connected: boolean; reconnect: () => void; exhausted: boolean } {
+  const [connected, setConnected] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
+  const reconnectRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -131,11 +136,12 @@ function useSSE(
 
         eventSource.onopen = () => {
           reconnectAttempts = 0;
-          onConnectionChange?.(true);
+          setExhausted(false);
+          setConnected(true);
         };
 
         eventSource.onerror = () => {
-          onConnectionChange?.(false);
+          setConnected(false);
           eventSource?.close();
           eventSource = null;
 
@@ -146,6 +152,9 @@ function useSSE(
               reconnectAttempts++;
               connect();
             }, delay);
+          } else {
+            // Max attempts reached, mark as exhausted
+            setExhausted(true);
           }
         };
 
@@ -163,8 +172,19 @@ function useSSE(
         });
       } catch {
         // SSE not supported or connection failed
-        onConnectionChange?.(false);
+        setConnected(false);
+        setExhausted(true);
       }
+    };
+
+    // Store reconnect function for external access
+    reconnectRef.current = () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      reconnectAttempts = 0;
+      setExhausted(false);
+      connect();
     };
 
     connect();
@@ -174,16 +194,21 @@ function useSSE(
         clearTimeout(reconnectTimeout);
       }
       eventSource?.close();
-      onConnectionChange?.(false);
+      setConnected(false);
     };
-  }, [onEvent, onConnectionChange]);
+  }, [onEvent]);
+
+  const reconnect = useCallback(() => {
+    reconnectRef.current?.();
+  }, []);
+
+  return { connected, reconnect, exhausted };
 }
 
 export function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [themeLoaded, setThemeLoaded] = useState(false);
-  const [sseConnected, setSseConnected] = useState(false);
 
   // Initialize theme on mount
   useLayoutEffect(() => {
@@ -231,7 +256,7 @@ export function App() {
   }, []);
 
   // Connect to SSE
-  useSSE(handleSSEEvent, setSseConnected);
+  const { connected: sseConnected, reconnect: sseReconnect, exhausted: sseExhausted } = useSSE(handleSSEEvent);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -271,7 +296,7 @@ export function App() {
 
   return (
     <div class="flex h-screen bg-background">
-      <Sidebar />
+      <Sidebar sseConnected={sseConnected} sseExhausted={sseExhausted} onSseReconnect={sseReconnect} />
       <main class="flex-1 overflow-hidden">
         <Router>
           <DashboardPage path="/" data={data} />
@@ -284,7 +309,13 @@ export function App() {
   );
 }
 
-function Sidebar() {
+interface SidebarProps {
+  sseConnected: boolean;
+  sseExhausted: boolean;
+  onSseReconnect: () => void;
+}
+
+function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
   const [currentPath, setCurrentPath] = useState(
     typeof window !== "undefined" ? window.location.pathname : "/"
   );
@@ -327,6 +358,30 @@ function Sidebar() {
             <item.icon class="h-4 w-4" />
           </button>
         ))}
+      </div>
+      {/* Connection status indicator */}
+      <div class="flex flex-col items-center gap-1 pb-3">
+        {sseExhausted ? (
+          <button
+            onClick={onSseReconnect}
+            class="flex h-8 w-8 items-center justify-center rounded-lg bg-destructive/20 text-destructive hover:bg-destructive/30 transition-colors"
+            title="SSE disconnected - Click to reconnect"
+          >
+            <AlertCircle class="h-4 w-4" />
+          </button>
+        ) : !sseConnected ? (
+          <div
+            class="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/20 text-yellow-500"
+            title="SSE connecting..."
+          >
+            <Loader2 class="h-4 w-4 animate-spin" />
+          </div>
+        ) : (
+          <div
+            class="h-2 w-2 rounded-full bg-green-500 animate-pulse"
+            title="SSE connected"
+          />
+        )}
       </div>
     </nav>
   );

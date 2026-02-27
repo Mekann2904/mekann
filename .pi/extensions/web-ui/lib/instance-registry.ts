@@ -401,10 +401,17 @@ export class ContextHistoryStorage {
   private pid: number;
   private maxBufferSize = 5;
   private historyFile: string;
+  private flushHandler: () => void;
 
   constructor(pid: number = process.pid) {
     this.pid = pid;
     this.historyFile = join(CONTEXT_HISTORY_DIR, `context-history-${pid}.json`);
+
+    // プロセス終了時にバッファをフラッシュ
+    this.flushHandler = () => this.flush();
+    process.on("beforeExit", this.flushHandler);
+    process.on("SIGINT", this.flushHandler);
+    process.on("SIGTERM", this.flushHandler);
   }
 
   /**
@@ -443,6 +450,16 @@ export class ContextHistoryStorage {
 
     writeJsonFile(this.historyFile, trimmed);
     this.buffer = [];
+  }
+
+  /**
+   * @summary クリーンアップ（イベントリスナー削除）
+   */
+  dispose(): void {
+    this.flush();
+    process.off("beforeExit", this.flushHandler);
+    process.off("SIGINT", this.flushHandler);
+    process.off("SIGTERM", this.flushHandler);
   }
 
   /**

@@ -18,7 +18,7 @@
  */
 
 import { h, FunctionalComponent } from "preact";
-import { useState, useEffect, useRef } from "preact/hooks";
+import { useState, useEffect } from "preact/hooks";
 import {
   BarChart,
   Bar,
@@ -112,8 +112,6 @@ export function DashboardPage({ data }: DashboardPageProps) {
   const [contextHistory, setContextHistory] = useState<ContextHistoryResponse | null>(null);
   const [contextLoading, setContextLoading] = useState(true);
   const [displayMode, setDisplayMode] = useState<"input" | "output" | "both">("both");
-  const sseRef = useRef<EventSource | null>(null);
-  const contextRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // コンテキスト履歴を取得
   const fetchContextHistory = async () => {
@@ -130,70 +128,16 @@ export function DashboardPage({ data }: DashboardPageProps) {
     }
   };
 
-  // SSE連打時に再取得を間引いて、表示を安定化させる
-  const scheduleContextRefresh = () => {
-    if (contextRefreshTimerRef.current) {
-      return;
-    }
-    contextRefreshTimerRef.current = setTimeout(() => {
-      contextRefreshTimerRef.current = null;
-      fetchContextHistory();
-    }, 300);
-  };
-
-  // 初回データ取得
+  // 初回データ取得 + ポーリング
+  // NOTE: SSEはapp.tsxで管理（二重接続を避けるため、ここではポーリングのみ）
   useEffect(() => {
     fetchContextHistory();
-  }, []);
 
-  // SSE接続でリアルタイム更新
-  useEffect(() => {
-    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 5;
-    const reconnectDelay = 3000;
+    const interval = setInterval(() => {
+      fetchContextHistory();
+    }, 5000);
 
-    const connectSSE = () => {
-      try {
-        sseRef.current = new EventSource("/api/events");
-
-        sseRef.current.onopen = () => {
-          reconnectAttempts = 0;
-        };
-
-        sseRef.current.onerror = () => {
-          sseRef.current?.close();
-          sseRef.current = null;
-
-          if (reconnectAttempts < maxReconnectAttempts) {
-            const delay = reconnectDelay * Math.pow(2, reconnectAttempts);
-            reconnectTimeout = setTimeout(() => {
-              reconnectAttempts++;
-              connectSSE();
-            }, delay);
-          }
-        };
-
-        sseRef.current.addEventListener("context-update", () => {
-          scheduleContextRefresh();
-        });
-      } catch {
-        // SSE not supported
-      }
-    };
-
-    connectSSE();
-
-    return () => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-      if (contextRefreshTimerRef.current) {
-        clearTimeout(contextRefreshTimerRef.current);
-        contextRefreshTimerRef.current = null;
-      }
-      sseRef.current?.close();
-    };
+    return () => clearInterval(interval);
   }, []);
 
   if (!data) {
