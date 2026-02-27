@@ -27,7 +27,7 @@
  * Visualizes task execution timeline with RUN/WAIT states.
  */
 
-import type { Theme } from "./types.js";
+import type { Theme, ThemeColor } from "./types.js";
 import { truncateToWidth } from "@mariozechner/pi-tui";
 import { formatClockTime } from "../format-utils.js";
 import { pushWrappedLine } from "./tui-utils.js";
@@ -94,7 +94,7 @@ export const GANTT_CHARS = {
   CORNER_BR: "\u2518",
 } as const;
 
-function getActivityStyle(activity: StateTransition["activity"]): { color: string; glyph: string } {
+function getActivityStyle(activity: StateTransition["activity"]): { color: ThemeColor; glyph: string } {
   const kind = activity ?? "OTHER";
   // Dense block fill looks noisy in long-running rows.
   // Keep bars lightweight with thin glyphs and color cues.

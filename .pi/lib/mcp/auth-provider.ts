@@ -105,6 +105,8 @@ export function sanitizeAuthForLogging(auth: McpAuthProvider | undefined): Recor
 			return { type: 'bearer', token: '***REDACTED***' };
 		case 'basic':
 			return { type: 'basic', username: auth.username, password: '***REDACTED***' };
+		case 'oauth2':
+			return { type: 'oauth2', accessToken: '***REDACTED***', refreshToken: auth.refreshToken ? '***REDACTED***' : undefined };
 		case 'api-key':
 			return { type: 'api-key', headerName: auth.headerName ?? 'X-API-Key', apiKey: '***REDACTED***' };
 		case 'custom':
