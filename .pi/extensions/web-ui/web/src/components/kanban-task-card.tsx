@@ -168,7 +168,7 @@ export function KanbanTaskCard({
         {/* Title */}
         <p
           class={cn(
-            "text-sm leading-snug mb-2",
+            "text-[15px] font-medium leading-snug mb-2",
             task.status === "completed" && "line-through text-muted-foreground"
           )}
         >
