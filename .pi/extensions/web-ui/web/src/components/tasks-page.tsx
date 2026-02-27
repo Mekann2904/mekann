@@ -365,6 +365,7 @@ export function TasksPage() {
               onClick={() => setSelectedTask(task)}
               onDragStart={(e) => handleDragStart(e, task)}
               onDragEnd={handleDragEnd}
+              onDelete={() => handleDelete(task.id)}
               isDragging={draggedTask?.id === task.id}
               isSelected={selectedTask?.id === task.id}
             />

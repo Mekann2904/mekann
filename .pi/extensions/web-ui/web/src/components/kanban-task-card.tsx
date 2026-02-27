@@ -18,7 +18,7 @@
  */
 
 import { h } from "preact";
-import { GripVertical, Calendar } from "lucide-preact";
+import { GripVertical, Calendar, Trash2 } from "lucide-preact";
 import { cn } from "@/lib/utils";
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
@@ -44,6 +44,7 @@ interface KanbanTaskCardProps {
   onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
   onDragEnd?: (e: DragEvent) => void;
+  onDelete?: () => void;
   isDragging?: boolean;
   isSelected?: boolean;
 }
@@ -112,6 +113,7 @@ export function KanbanTaskCard({
   onClick,
   onDragStart,
   onDragEnd,
+  onDelete,
   isDragging,
   isSelected,
 }: KanbanTaskCardProps) {
@@ -147,6 +149,20 @@ export function KanbanTaskCard({
         <GripVertical class="h-3.5 w-3.5 text-muted-foreground/50" />
       </div>
 
+      {/* Delete button - hover only */}
+      {onDelete && (
+        <button
+          class="absolute right-1 top-1 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 text-muted-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          title="Delete task"
+        >
+          <Trash2 class="h-3.5 w-3.5" />
+        </button>
+      )}
+
       {/* Content */}
       <div class="p-2.5 pl-6">
         {/* Title */}
@@ -161,6 +177,17 @@ export function KanbanTaskCard({
 
         {/* Labels row */}
         <div class="flex flex-wrap gap-1 mb-2">
+          {/* Priority label - subtle */}
+          <span
+            class="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium border"
+            style={{ 
+              borderColor: priorityColor.bg,
+              color: priorityColor.bg === "#ffffff" ? priorityColor.text : priorityColor.bg,
+            }}
+          >
+            {task.priority}
+          </span>
+
           {/* Tags */}
           {task.tags.slice(0, 3).map((tag) => {
             const tagColor = getTagColor(tag);
