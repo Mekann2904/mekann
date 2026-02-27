@@ -273,7 +273,7 @@ export class McpConnectionManager {
 					);
 					await connectWithTimeout(client, transport);
 					activeTransportType = 'stdio';
-					console.log(`[MCP] Connected to ${id} using stdio transport`);
+					// Log removed to prevent TUI input field corruption
 					break;
 				}
 				case 'sse': {
@@ -289,7 +289,7 @@ export class McpConnectionManager {
 					);
 					await connectWithTimeout(client, transport);
 					activeTransportType = 'sse';
-					console.log(`[MCP] Connected to ${id} using SSE transport`);
+					// Log removed to prevent TUI input field corruption
 					break;
 				}
 				case 'websocket': {
@@ -305,7 +305,7 @@ export class McpConnectionManager {
 					);
 					await connectWithTimeout(client, transport);
 					activeTransportType = 'websocket';
-					console.log(`[MCP] Connected to ${id} using WebSocket transport`);
+					// Log removed to prevent TUI input field corruption
 					break;
 				}
 				case 'http':
@@ -345,7 +345,7 @@ export class McpConnectionManager {
 						);
 						await connectWithTimeout(client, transport);
 						activeTransportType = 'streamable-http';
-						console.log(`[MCP] Connected to ${id} using StreamableHTTP transport`);
+						// Log removed to prevent TUI input field corruption
 					} catch (error) {
 						// フォールバックが無効な場合はエラーを再スロー
 						if (disableFallback || !this.isHttpError(error, 4)) {
@@ -362,7 +362,7 @@ export class McpConnectionManager {
 						);
 						await connectWithTimeout(client, transport);
 						activeTransportType = 'sse';
-						console.log(`[MCP] Connected to ${id} using SSE transport (fallback)`);
+						// Log removed to prevent TUI input field corruption (fallback)
 					}
 					break;
 				}
@@ -472,7 +472,7 @@ export class McpConnectionManager {
 	async disconnectAll(): Promise<void> {
 		// 再入防止: 既に切断処理中の場合はスキップ
 		if (this.isDisconnecting) {
-			console.log("[MCP] disconnectAll already in progress, skipping duplicate call");
+			// Log removed to prevent TUI input field corruption
 			return;
 		}
 
@@ -718,7 +718,7 @@ export class McpConnectionManager {
 		try {
 			await connection.client.subscribeResource({ uri });
 			connection.subscriptions.add(uri);
-			console.log(`[MCP] Subscribed to resource: ${uri} (${connectionId})`);
+			// Log removed to prevent TUI input field corruption
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			console.error(`[MCP] Failed to subscribe to resource ${uri} (${connectionId}): ${errorMessage}`);
@@ -738,7 +738,7 @@ export class McpConnectionManager {
 		try {
 			await connection.client.unsubscribeResource({ uri });
 			connection.subscriptions.delete(uri);
-			console.log(`[MCP] Unsubscribed from resource: ${uri} (${connectionId})`);
+			// Log removed to prevent TUI input field corruption
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			console.error(`[MCP] Failed to unsubscribe from resource ${uri} (${connectionId}): ${errorMessage}`);
@@ -1094,7 +1094,7 @@ export class McpConnectionManager {
 
 		try {
 			await connection.client.setLoggingLevel(level);
-			console.log(`[MCP] Set logging level to '${level}' for ${connectionId}`);
+			// Log removed to prevent TUI input field corruption
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			console.warn(`[MCP] Failed to set logging level for ${connectionId}: ${errorMessage}`);
@@ -1130,7 +1130,7 @@ export class McpConnectionManager {
 		if (!this.samplingHandler) return;
 
 		client.setRequestHandler(CreateMessageRequestSchema, async (request) => {
-			console.log(`[MCP] Sampling request received from ${connectionId}`);
+			// Log removed to prevent TUI input field corruption
 
 			try {
 				const response = await this.samplingHandler!(
@@ -1203,7 +1203,7 @@ export class McpConnectionManager {
 		if (!this.elicitationHandler) return;
 
 		client.setRequestHandler(ElicitRequestSchema, async (request) => {
-			console.log(`[MCP] Elicitation request received from ${connectionId}`);
+			// Log removed to prevent TUI input field corruption
 
 			try {
 				const params = request.params as Record<string, unknown>;
