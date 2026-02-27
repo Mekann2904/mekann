@@ -9,6 +9,7 @@
 |-----------|---------------|------------------|
 | Extension development | `.pi/lib/` + `docs/03-development/` | `README.md` |
 | Agent orchestration | `.pi/extensions/subagents.ts` | `docs/02-user-guide/08-subagents.md` |
+| Task management | `.pi/extensions/task-flow.ts` | `.pi/extensions/task.ts` |
 | Intent clarification | `.pi/lib/intent-mediator.ts` | `.pi/extensions/mediator.ts` |
 | Skill usage | `.pi/skills/*/SKILL.md` | `docs/02-user-guide/11-utilities.md` |
 | Code search | `.pi/extensions/search/` | `docs/02-user-guide/01-extensions.md` |
@@ -92,6 +93,10 @@ mekann/
 | subagent_* | `extensions/subagents.ts` | Sub-agent creation/execution |
 | agent_team_* | `extensions/agent-teams.ts` | Team orchestration |
 | plan_* | `extensions/plan.ts` | Plan management |
+| task_* | `extensions/task.ts` | Task management (create, list, complete) |
+| task_delegate | `extensions/task-flow.ts` | Delegate task to subagent with auto-complete |
+| task_from_plan | `extensions/task-flow.ts` | Create tasks from plan steps |
+| task_context_set | `extensions/task-flow.ts` | Set current task context |
 | file_candidates | `extensions/search/` | Fast file enumeration (fd) |
 | code_search | `extensions/search/` | Code pattern search (rg) |
 | sym_index | `extensions/search/` | Symbol index generation (ctags) |
