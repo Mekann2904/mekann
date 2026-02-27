@@ -1342,8 +1342,18 @@ export function ThemePage() {
   };
 
   const handleThemeChange = (id: string) => {
+    const theme = THEMES[id];
+    if (!theme) return;
+
+    // 現在のモードがテーマに対応していない場合、対応しているモードに切り替え
+    let targetMode = mode;
+    if (!theme[mode]) {
+      targetMode = theme.dark ? "dark" : "light";
+      setMode(targetMode);
+    }
+
     setSelectedId(id);
-    applyTheme(id, mode);
+    applyTheme(id, targetMode);
   };
 
   const handleModeChange = (newMode: Mode) => {
@@ -1456,23 +1466,29 @@ export function ThemePage() {
                     <CardTitle>{selectedTheme.meta.name}</CardTitle>
                     <CardDescription>by {selectedTheme.meta.author}</CardDescription>
                   </div>
-                  {/* Mode Toggle */}
-                  <div class="flex gap-2">
-                    <Button
-                      variant={mode === "light" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleModeChange("light")}
-                    >
-                      Light
-                    </Button>
-                    <Button
-                      variant={mode === "dark" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleModeChange("dark")}
-                    >
-                      Dark
-                    </Button>
-                  </div>
+                  {/* Mode Toggle - テーマが対応しているモードのみ表示 */}
+                  {(selectedTheme.light || selectedTheme.dark) && (
+                    <div class="flex gap-2">
+                      {selectedTheme.light && (
+                        <Button
+                          variant={mode === "light" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleModeChange("light")}
+                        >
+                          Light
+                        </Button>
+                      )}
+                      {selectedTheme.dark && (
+                        <Button
+                          variant={mode === "dark" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleModeChange("dark")}
+                        >
+                          Dark
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
