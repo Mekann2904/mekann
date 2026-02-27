@@ -108,19 +108,25 @@ class FileLock {
   }
 
   withLock<T>(fn: () => T): T {
-    // NOTE:
-    // 以前は Atomics.wait を使った同期リトライでロック取得を待っていたが、
-    // event loop を最大約1秒ブロックし、TUI入力遅延の原因になる。
-    // 入力体験を優先し、ロックが取れない場合は即座に best-effort で継続する。
-    if (!this.acquire()) {
-      console.warn("[instance-registry] Could not acquire lock, proceeding without lock");
-      return fn();
+    // Try to acquire lock with brief retry
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (this.acquire()) {
+        try {
+          return fn();
+        } finally {
+          this.release();
+        }
+      }
+      // Brief spin-wait (not ideal but keeps sync API)
+      if (attempt < 2) {
+        const start = Date.now();
+        while (Date.now() - start < 10) {
+          // 10ms spin
+        }
+      }
     }
-    try {
-      return fn();
-    } finally {
-      this.release();
-    }
+    console.warn("[instance-registry] Could not acquire lock after 3 attempts, proceeding without lock");
+    return fn();
   }
 }
 
@@ -185,10 +191,11 @@ export class InstanceRegistry {
   }
 
   /**
-   * Register this instance
+   * @summary Register or re-register this instance
+   * @description Idempotent - safe to call multiple times. Clears existing heartbeat before re-registering.
    */
   register(): void {
-    // 念のため既存タイマーを止めてから再登録（reload時の重複防止）
+    // Clear existing heartbeat interval (handles hot reload scenario)
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
@@ -253,9 +260,11 @@ export class InstanceRegistry {
       const instances = readJsonFile<Record<number, InstanceInfo>>(INSTANCES_FILE, {});
       const now = Date.now();
 
-      // Filter out stale instances (no heartbeat for 30 seconds)
+      const STALE_THRESHOLD_MS = 60000; // 60 seconds (12 missed heartbeats at 5s interval)
+
+      // Filter out stale instances
       const activeInstances = Object.values(instances).filter(
-        (info) => now - info.lastHeartbeat < 30000
+        (info) => now - info.lastHeartbeat < STALE_THRESHOLD_MS
       );
 
       // Clean up stale entries

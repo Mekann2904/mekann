@@ -106,8 +106,10 @@ function useSSE(
   const [connected, setConnected] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const reconnectRef = useRef<(() => void) | null>(null);
+  const connectionIdRef = useRef(0); // Track connection instances
 
   useEffect(() => {
+    const currentConnectionId = ++connectionIdRef.current;
     let eventSource: EventSource | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
     let reconnectAttempts = 0;
@@ -115,16 +117,28 @@ function useSSE(
     const reconnectDelay = 3000;
 
     const connect = () => {
+      // Check if this connection is still current
+      if (currentConnectionId !== connectionIdRef.current) {
+        return;
+      }
+
       try {
         eventSource = new EventSource("/api/events");
 
         eventSource.onopen = () => {
+          if (currentConnectionId !== connectionIdRef.current) {
+            eventSource?.close();
+            return;
+          }
           reconnectAttempts = 0;
           setExhausted(false);
           setConnected(true);
         };
 
         eventSource.onerror = () => {
+          if (currentConnectionId !== connectionIdRef.current) {
+            return;
+          }
           setConnected(false);
           eventSource?.close();
           eventSource = null;
@@ -133,8 +147,10 @@ function useSSE(
           if (reconnectAttempts < maxReconnectAttempts) {
             const delay = reconnectDelay * Math.pow(2, reconnectAttempts);
             reconnectTimeout = setTimeout(() => {
-              reconnectAttempts++;
-              connect();
+              if (currentConnectionId === connectionIdRef.current) {
+                reconnectAttempts++;
+                connect();
+              }
             }, delay);
           } else {
             // Max attempts reached, mark as exhausted
@@ -156,13 +172,18 @@ function useSSE(
         });
       } catch {
         // SSE not supported or connection failed
-        setConnected(false);
-        setExhausted(true);
+        if (currentConnectionId === connectionIdRef.current) {
+          setConnected(false);
+          setExhausted(true);
+        }
       }
     };
 
     // Store reconnect function for external access
     reconnectRef.current = () => {
+      if (currentConnectionId !== connectionIdRef.current) {
+        return;
+      }
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
       }
@@ -201,7 +222,9 @@ export function App() {
 
   // SSE event handler (for connection status only)
   const handleSSEEvent = useCallback((_event: SSEEvent) => {
-    // Events are handled by individual pages (dashboard-page fetches its own data)
+    // SSE is used for connection status indicator only.
+    // Individual pages poll /api endpoints for data (simpler, more reliable).
+    // Future: Could add SSE-driven updates for real-time data if needed.
   }, []);
 
   // Connect to SSE

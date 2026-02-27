@@ -45,17 +45,16 @@ export default function (pi: ExtensionAPI) {
     if (modelId) {
       registry.setModel(modelId);
     }
-    if (!registered) {
-      registry.register();
-      registered = true;
-    }
+    // Always call register() - it handles re-registration safely
+    // (clears existing heartbeat interval before re-registering)
+    registry.register();
+    registered = true;
   };
 
   const ensureUnregistered = () => {
-    if (registered) {
-      registry.unregister();
-      registered = false;
-    }
+    // Always call unregister() - it's idempotent
+    registry.unregister();
+    registered = false;
   };
 
   // Note: Port is configured via environment variable PI_WEB_UI_PORT or uses default 3000
@@ -172,12 +171,20 @@ export default function (pi: ExtensionAPI) {
     };
     broadcastSSEEvent(sseEvent);
 
-    // コンテキスト履歴を記録（概算: input 70%, output 30%）
+    // コンテキスト履歴を記録
     if (contextUsage?.tokens) {
+      // Use actual input/output counts if available, otherwise approximate
+      const input = ('inputTokens' in contextUsage && typeof contextUsage.inputTokens === 'number')
+        ? contextUsage.inputTokens
+        : Math.round(contextUsage.tokens * 0.7);
+      const output = ('outputTokens' in contextUsage && typeof contextUsage.outputTokens === 'number')
+        ? contextUsage.outputTokens
+        : Math.round(contextUsage.tokens * 0.3);
+
       addContextHistory({
         timestamp: new Date().toISOString(),
-        input: Math.round(contextUsage.tokens * 0.7),
-        output: Math.round(contextUsage.tokens * 0.3),
+        input,
+        output,
       });
     }
   });

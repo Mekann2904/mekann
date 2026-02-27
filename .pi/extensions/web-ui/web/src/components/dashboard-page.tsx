@@ -28,7 +28,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { Activity, Loader2, RefreshCw, Cpu, Folder } from "lucide-preact";
+import { Activity, Loader2, RefreshCw, Cpu, Folder, AlertCircle } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -100,17 +100,23 @@ function truncatePath(path: string, maxLength: number = 40): string {
 export function DashboardPage() {
   const [contextHistory, setContextHistory] = useState<ContextHistoryResponse | null>(null);
   const [contextLoading, setContextLoading] = useState(true);
+  const [contextError, setContextError] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<"input" | "output" | "both">("both");
 
   // コンテキスト履歴を取得
   const fetchContextHistory = async () => {
+    setContextError(null);
     try {
       const res = await fetch("/api/context-history");
       if (res.ok) {
         const json: ContextHistoryResponse = await res.json();
         setContextHistory(json);
+      } else {
+        setContextError(`Server error: ${res.status} ${res.statusText}`);
       }
     } catch (e) {
+      const message = e instanceof Error ? e.message : "Network error";
+      setContextError(message);
       console.error("Failed to fetch context history:", e);
     } finally {
       setContextLoading(false);
@@ -201,6 +207,19 @@ export function DashboardPage() {
           Both
         </Button>
       </div>
+
+      {/* Error display */}
+      {contextError && (
+        <Card class="border-destructive shrink-0">
+          <CardContent class="py-3 flex items-center gap-2 text-destructive">
+            <AlertCircle class="h-4 w-4" />
+            <span class="text-sm">Failed to load data: {contextError}</span>
+            <Button variant="outline" size="sm" onClick={fetchContextHistory} class="ml-auto">
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* インスタンスごとのチャート */}
       {contextLoading && !contextHistory ? (

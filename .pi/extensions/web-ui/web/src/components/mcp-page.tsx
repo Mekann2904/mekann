@@ -1,4 +1,4 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useMemo } from "preact/hooks";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -299,6 +299,10 @@ function ToolsView({ servers }: { servers: McpServerInfo[] }) {
   const [loading, setLoading] = useState(true);
 
   const connectedServers = servers.filter(s => s.status === "connected");
+  const connectedServerIds = useMemo(
+    () => connectedServers.map(s => s.id),
+    [connectedServers]
+  );
 
   useEffect(() => {
     const fetchAllTools = async () => {
@@ -324,7 +328,7 @@ function ToolsView({ servers }: { servers: McpServerInfo[] }) {
     };
 
     fetchAllTools();
-  }, [connectedServers.map(s => s.id).join(",")]);
+  }, [connectedServerIds]);
 
   if (connectedServers.length === 0) {
     return (
@@ -382,6 +386,10 @@ function ResourcesView({ servers }: { servers: McpServerInfo[] }) {
   const [loading, setLoading] = useState(true);
 
   const connectedServers = servers.filter(s => s.status === "connected");
+  const connectedServerIds = useMemo(
+    () => connectedServers.map(s => s.id),
+    [connectedServers]
+  );
 
   useEffect(() => {
     const fetchAllResources = async () => {
@@ -407,7 +415,7 @@ function ResourcesView({ servers }: { servers: McpServerInfo[] }) {
     };
 
     fetchAllResources();
-  }, [connectedServers.map(s => s.id).join(",")]);
+  }, [connectedServerIds]);
 
   if (connectedServers.length === 0) {
     return (
