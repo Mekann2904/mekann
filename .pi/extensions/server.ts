@@ -45,7 +45,7 @@ const logger = getLogger();
 // ============================================
 
 type TaskPriority = "low" | "medium" | "high" | "urgent";
-type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled";
+type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled" | "failed";
 
 interface Task {
 	id: string;
@@ -127,7 +127,12 @@ function generateId(): string {
 }
 
 function sendJson(res: ServerResponse, status: number, data: ApiResponse): void {
-	res.writeHead(status, { "Content-Type": "application/json" });
+	res.writeHead(status, {
+		"Content-Type": "application/json",
+		"Access-Control-Allow-Origin": "*",
+		"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+		"Access-Control-Allow-Headers": "Content-Type",
+	});
 	res.end(JSON.stringify(data));
 }
 
@@ -251,7 +256,7 @@ function handleGetTask(id: string): ApiResponse {
 
 function handleCreateTask(body: Record<string, unknown>): ApiResponse {
 	const validPriorities: TaskPriority[] = ["low", "medium", "high", "urgent"];
-	const validStatuses: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled"];
+	const validStatuses: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled", "failed"];
 
 	const title = body.title as string;
 	if (!title || typeof title !== "string") {
@@ -299,7 +304,7 @@ function handleCreateTask(body: Record<string, unknown>): ApiResponse {
 
 function handleUpdateTask(id: string, body: Record<string, unknown>): ApiResponse {
 	const validPriorities: TaskPriority[] = ["low", "medium", "high", "urgent"];
-	const validStatuses: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled"];
+	const validStatuses: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled", "failed"];
 
 	const storage = loadStorage();
 	const taskIndex = storage.tasks.findIndex((t) => t.id === id);
