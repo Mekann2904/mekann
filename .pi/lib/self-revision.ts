@@ -140,7 +140,7 @@ export class SelfRevisionModule {
    */
   private analyzeFailure(failedId: string, result: DagTaskResult): RevisionAction[] {
     const actions: RevisionAction[] = [];
-    const errorMsg = result.error?.message || "";
+    const errorMsg = (result.error?.message || "").toLowerCase();
 
     // エラーパターンに基づく分類
     if (errorMsg.includes("not found") || errorMsg.includes("does not exist")) {
