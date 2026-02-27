@@ -160,6 +160,13 @@ export function startServer(
    */
   app.get("/api/mcp/connections", (_req: Request, res: Response) => {
     try {
+      // mcpManagerが初期化されているか確認
+      if (!mcpManager) {
+        console.error("[web-ui] mcpManager is not initialized");
+        res.status(500).json({ error: "MCP manager not initialized" });
+        return;
+      }
+
       const connections = mcpManager.listConnections();
       // Sanitize: remove client/transport objects for JSON serialization
       const sanitized = connections.map(conn => ({
@@ -168,16 +175,18 @@ export function startServer(
         url: conn.url,
         status: conn.status,
         transportType: conn.transportType,
-        toolsCount: conn.tools.length,
-        resourcesCount: conn.resources.length,
+        toolsCount: conn.tools?.length ?? 0,
+        resourcesCount: conn.resources?.length ?? 0,
         error: conn.error,
-        connectedAt: conn.connectedAt?.toISOString(),
+        connectedAt: conn.connectedAt?.toISOString?.() ?? null,
         serverInfo: conn.serverInfo,
       }));
       res.json({ connections: sanitized, count: sanitized.length });
     } catch (error) {
-      console.error("[web-ui] Failed to list MCP connections:", error);
-      res.status(500).json({ error: "Failed to list connections" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error("[web-ui] Failed to list MCP connections:", errorMessage, errorStack);
+      res.status(500).json({ error: "Failed to list connections", details: errorMessage });
     }
   });
 
@@ -186,6 +195,12 @@ export function startServer(
    */
   app.get("/api/mcp/connection/:id", (req: Request, res: Response) => {
     try {
+      if (!mcpManager) {
+        console.error("[web-ui] mcpManager is not initialized");
+        res.status(500).json({ error: "MCP manager not initialized" });
+        return;
+      }
+
       const conn = mcpManager.getConnection(req.params.id);
       if (!conn) {
         res.status(404).json({ error: "Connection not found" });
@@ -197,16 +212,17 @@ export function startServer(
         url: conn.url,
         status: conn.status,
         transportType: conn.transportType,
-        tools: conn.tools,
-        resources: conn.resources,
+        tools: conn.tools ?? [],
+        resources: conn.resources ?? [],
         error: conn.error,
-        connectedAt: conn.connectedAt?.toISOString(),
+        connectedAt: conn.connectedAt?.toISOString?.() ?? null,
         serverInfo: conn.serverInfo,
-        subscriptions: Array.from(conn.subscriptions),
+        subscriptions: Array.from(conn.subscriptions ?? []),
       });
     } catch (error) {
-      console.error("[web-ui] Failed to get MCP connection:", error);
-      res.status(500).json({ error: "Failed to get connection" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[web-ui] Failed to get MCP connection:", errorMessage);
+      res.status(500).json({ error: "Failed to get connection", details: errorMessage });
     }
   });
 
@@ -215,11 +231,18 @@ export function startServer(
    */
   app.get("/api/mcp/tools/:id", async (req: Request, res: Response) => {
     try {
+      if (!mcpManager) {
+        console.error("[web-ui] mcpManager is not initialized");
+        res.status(500).json({ error: "MCP manager not initialized" });
+        return;
+      }
+
       const tools = await mcpManager.listAllTools(req.params.id);
-      res.json({ tools, count: tools.length });
+      res.json({ tools: tools ?? [], count: tools?.length ?? 0 });
     } catch (error) {
-      console.error("[web-ui] Failed to list MCP tools:", error);
-      res.status(500).json({ error: "Failed to list tools" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[web-ui] Failed to list MCP tools:", errorMessage);
+      res.status(500).json({ error: "Failed to list tools", details: errorMessage });
     }
   });
 
@@ -228,11 +251,18 @@ export function startServer(
    */
   app.get("/api/mcp/resources/:id", async (req: Request, res: Response) => {
     try {
+      if (!mcpManager) {
+        console.error("[web-ui] mcpManager is not initialized");
+        res.status(500).json({ error: "MCP manager not initialized" });
+        return;
+      }
+
       const result = await mcpManager.listResourcesPaginated(req.params.id);
-      res.json(result);
+      res.json({ resources: result?.resources ?? [], nextCursor: result?.nextCursor });
     } catch (error) {
-      console.error("[web-ui] Failed to list MCP resources:", error);
-      res.status(500).json({ error: "Failed to list resources" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[web-ui] Failed to list MCP resources:", errorMessage);
+      res.status(500).json({ error: "Failed to list resources", details: errorMessage });
     }
   });
 
@@ -241,11 +271,18 @@ export function startServer(
    */
   app.post("/api/mcp/ping/:id", async (req: Request, res: Response) => {
     try {
+      if (!mcpManager) {
+        console.error("[web-ui] mcpManager is not initialized");
+        res.status(500).json({ error: "MCP manager not initialized" });
+        return;
+      }
+
       const result = await mcpManager.ping(req.params.id);
       res.json({ success: result });
     } catch (error) {
-      console.error("[web-ui] MCP ping failed:", error);
-      res.status(500).json({ error: "Ping failed" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[web-ui] MCP ping failed:", errorMessage);
+      res.status(500).json({ error: "Ping failed", details: errorMessage });
     }
   });
 
