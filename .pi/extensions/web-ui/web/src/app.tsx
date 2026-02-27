@@ -1,6 +1,6 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useLayoutEffect } from "preact/hooks";
 import { Router, route } from "preact-router";
-import { ThemePage } from "./components/theme-page";
+import { ThemePage, STORAGE_KEYS, applyThemeToDOM, THEMES, type Mode } from "./components/theme-page";
 import { DashboardPage } from "./components/dashboard-page";
 import {
   Activity,
@@ -28,9 +28,30 @@ interface DashboardData {
   config: Record<string, unknown>;
 }
 
+// Initialize theme immediately on load
+function initializeTheme() {
+  try {
+    const themeId = localStorage.getItem(STORAGE_KEYS.THEME_ID) || "blue";
+    const mode = (localStorage.getItem(STORAGE_KEYS.MODE) as Mode) || "dark";
+    applyThemeToDOM(themeId, mode);
+  } catch (e) {
+    console.warn("Failed to initialize theme:", e);
+  }
+}
+
+// Run theme initialization before first paint
+if (typeof window !== "undefined") {
+  initializeTheme();
+}
+
 export function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Re-apply theme on mount to ensure consistency
+  useLayoutEffect(() => {
+    initializeTheme();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {

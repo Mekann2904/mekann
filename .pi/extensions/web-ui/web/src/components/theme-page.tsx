@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 // ============= TYPE DEFINITIONS =============
 
-type Mode = "light" | "dark";
+export type Mode = "light" | "dark";
 
 interface ThemeMeta {
   id: string;
@@ -58,7 +58,7 @@ interface FilterState {
 
 // ============= STORAGE KEYS =============
 
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
   THEME_ID: "pi-theme-id",
   MODE: "pi-theme-mode",
 } as const;
@@ -84,10 +84,26 @@ function persistTheme(themeId: string, mode: Mode): void {
   }
 }
 
+// Apply theme to DOM
+export function applyThemeToDOM(id: string, currentMode: Mode): void {
+  const theme = THEMES[id];
+  if (!theme) return;
+
+  const colors = theme[currentMode];
+  if (!colors) return;
+
+  const root = document.documentElement;
+  Object.entries(colors).forEach(([key, value]) => {
+    root.style.setProperty(key, value);
+  });
+
+  root.classList.toggle("dark", currentMode === "dark");
+}
+
 // ============= THEME DATA =============
 
 // Color themes from shadcn/ui (converted to new format)
-const THEMES: Record<string, Theme> = {
+export const THEMES: Record<string, Theme> = {
   zinc: {
     meta: {
       id: "zinc",
@@ -1263,8 +1279,23 @@ const THEMES: Record<string, Theme> = {
 // ============= MAIN COMPONENT =============
 
 export function ThemePage() {
-  const [selectedId, setSelectedId] = useState<string>("blue");
-  const [mode, setMode] = useState<Mode>("dark");
+  // Initialize state from localStorage
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.THEME_ID) || "blue";
+    } catch {
+      return "blue";
+    }
+  });
+  
+  const [mode, setMode] = useState<Mode>(() => {
+    try {
+      return (localStorage.getItem(STORAGE_KEYS.MODE) as Mode) || "dark";
+    } catch {
+      return "dark";
+    }
+  });
+  
   const [filters, setFilters] = useState<FilterState>({
     search: "",
     category: "all",
@@ -1274,15 +1305,12 @@ export function ThemePage() {
   // Selected theme helper
   const selectedTheme = useMemo(() => THEMES[selectedId], [selectedId]);
 
-  // Load persisted state on mount
+  // Apply theme on mount
   useEffect(() => {
-    const { themeId, mode: savedMode } = loadPersistedTheme();
-    setSelectedId(themeId);
-    setMode(savedMode);
-    applyTheme(themeId, savedMode);
+    applyThemeToDOM(selectedId, mode);
   }, []);
 
-  // Persist on change
+  // Persist on change (skip initial render)
   useEffect(() => {
     persistTheme(selectedId, mode);
   }, [selectedId, mode]);
@@ -1325,22 +1353,6 @@ export function ThemePage() {
       });
   }, [filters]);
 
-  // Apply theme to DOM
-  const applyTheme = (id: string, currentMode: Mode) => {
-    const theme = THEMES[id];
-    if (!theme) return;
-
-    const colors = theme[currentMode];
-    if (!colors) return;
-
-    const root = document.documentElement;
-    Object.entries(colors).forEach(([key, value]) => {
-      root.style.setProperty(key, value);
-    });
-
-    root.classList.toggle("dark", currentMode === "dark");
-  };
-
   const handleThemeChange = (id: string) => {
     const theme = THEMES[id];
     if (!theme) return;
@@ -1353,12 +1365,12 @@ export function ThemePage() {
     }
 
     setSelectedId(id);
-    applyTheme(id, targetMode);
+    applyThemeToDOM(id, targetMode);
   };
 
   const handleModeChange = (newMode: Mode) => {
     setMode(newMode);
-    applyTheme(selectedId, newMode);
+    applyThemeToDOM(selectedId, newMode);
   };
 
   return (
