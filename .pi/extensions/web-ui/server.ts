@@ -281,7 +281,8 @@ export function startServer(
   state.port = port;
 
   state.server.listen(port, () => {
-    console.log(`[web-ui] Server running at http://localhost:${port}`);
+    // Server start notification is handled by ctx.ui.notify in index.ts
+    // to avoid TUI input field overlap
   });
 
   return state.server;
@@ -295,7 +296,6 @@ export function stopServer(): void {
     state.server.close();
     state.server = null;
     ServerRegistry.unregister();
-    console.log("[web-ui] Server stopped");
   }
 }
 

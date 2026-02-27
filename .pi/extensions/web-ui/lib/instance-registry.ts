@@ -212,8 +212,7 @@ export class InstanceRegistry {
     this.heartbeatInterval = setInterval(() => {
       this.updateHeartbeat();
     }, 5000);
-
-    console.log(`[instance-registry] Registered instance: ${this.pid}`);
+  }
   }
 
   /**
@@ -245,8 +244,7 @@ export class InstanceRegistry {
       delete instances[this.pid];
       writeJsonFile(INSTANCES_FILE, instances);
     });
-
-    console.log(`[instance-registry] Unregistered instance: ${this.pid}`);
+  }
   }
 
   /**
@@ -329,7 +327,6 @@ export class ServerRegistry {
       startedAt: Date.now(),
     };
     writeJsonFile(SERVER_FILE, serverInfo);
-    console.log(`[server-registry] Registered server: pid=${pid}, port=${port}`);
   }
 
   /**
@@ -338,7 +335,6 @@ export class ServerRegistry {
   static unregister(): void {
     try {
       unlinkSync(SERVER_FILE);
-      console.log("[server-registry] Unregistered server");
     } catch {
       // Ignore
     }
@@ -364,6 +360,5 @@ export class ThemeStorage {
    */
   static set(settings: ThemeSettings): void {
     writeJsonFile(THEME_FILE, settings);
-    console.log(`[theme-storage] Saved theme: ${settings.themeId} (${settings.mode})`);
   }
 }

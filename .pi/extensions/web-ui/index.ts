@@ -119,7 +119,6 @@ export default function (pi: ExtensionAPI) {
         `Web UI already running on port ${existingServer.port} (pid: ${existingServer.pid})`,
         "info"
       );
-      console.log(`[web-ui] Using existing server on port ${existingServer.port}`);
       return;
     }
 
@@ -132,7 +131,6 @@ export default function (pi: ExtensionAPI) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.ui.notify(`Web UI auto-start failed: ${message}`, "warning");
-      console.error("[web-ui] Auto-start failed:", error);
     }
   });
 
@@ -146,10 +144,7 @@ export default function (pi: ExtensionAPI) {
       const remainingInstances = InstanceRegistry.getCount();
 
       if (remainingInstances === 0) {
-        console.log("[web-ui] Last instance, stopping server");
         stopServer();
-      } else {
-        console.log(`[web-ui] ${remainingInstances} instance(s) remaining, keeping server`);
       }
     }, 500);
   });
