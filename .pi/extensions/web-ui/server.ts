@@ -521,6 +521,130 @@ export function startServer(
     }
   });
 
+  /**
+   * GET /api/mcp/servers - List all MCP servers from config (including disconnected)
+   */
+  app.get("/api/mcp/servers", async (_req: Request, res: Response) => {
+    try {
+      const fs = await import('fs');
+      const configPath = path.join(process.cwd(), '.pi', 'mcp-servers.json');
+
+      // Load config file
+      let configServers: McpServerConfig[] = [];
+      if (fs.existsSync(configPath)) {
+        const content = fs.readFileSync(configPath, 'utf-8');
+        const config = JSON.parse(content) as { servers: McpServerConfig[] };
+        configServers = config.servers ?? [];
+      }
+
+      // Get active connections
+      const mcpManager = await getMcpManager();
+      const connections = mcpManager.listConnections();
+      const connectionMap = new Map(connections.map(c => [c.id, c]));
+
+      // Merge config with connection status
+      const servers = configServers.map(server => {
+        const conn = connectionMap.get(server.id);
+        return {
+          id: server.id,
+          name: server.name ?? server.id,
+          url: server.url,
+          description: server.description,
+          enabled: server.enabled ?? true,
+          transportType: server.transportType ?? 'auto',
+          // Connection status (if connected)
+          status: conn?.status ?? 'disconnected',
+          toolsCount: conn?.tools?.length ?? 0,
+          resourcesCount: conn?.resources?.length ?? 0,
+          error: conn?.error,
+          connectedAt: conn?.connectedAt?.toISOString?.() ?? null,
+          serverInfo: conn?.serverInfo,
+        };
+      });
+
+      res.json({ servers, count: servers.length });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[web-ui] Failed to list MCP servers:", errorMessage);
+      res.status(500).json({ error: "Failed to list servers", details: errorMessage });
+    }
+  });
+
+  /**
+   * POST /api/mcp/connect/:id - Connect to MCP server
+   */
+  app.post("/api/mcp/connect/:id", async (req: Request, res: Response) => {
+    try {
+      const fs = await import('fs');
+      const configPath = path.join(process.cwd(), '.pi', 'mcp-servers.json');
+      const serverId = req.params.id;
+
+      // Load server config
+      if (!fs.existsSync(configPath)) {
+        res.status(404).json({ error: "MCP config file not found" });
+        return;
+      }
+
+      const content = fs.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(content) as { servers: McpServerConfig[] };
+      const server = config.servers?.find(s => s.id === serverId);
+
+      if (!server) {
+        res.status(404).json({ error: `Server '${serverId}' not found in config` });
+        return;
+      }
+
+      const mcpManager = await getMcpManager();
+
+      // Check if already connected
+      const existing = mcpManager.getConnection(serverId);
+      if (existing && existing.status === 'connected') {
+        res.json({ success: true, message: "Already connected", serverId });
+        return;
+      }
+
+      // Connect
+      await mcpManager.connect({
+        id: server.id,
+        url: server.url,
+        transportType: server.transportType ?? 'auto',
+        auth: server.auth,
+        headers: server.headers,
+      });
+
+      res.json({ success: true, message: "Connected", serverId });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[web-ui] MCP connect failed:", errorMessage);
+      res.status(500).json({ error: "Connect failed", details: errorMessage });
+    }
+  });
+
+  /**
+   * POST /api/mcp/disconnect/:id - Disconnect from MCP server
+   */
+  app.post("/api/mcp/disconnect/:id", async (req: Request, res: Response) => {
+    try {
+      const serverId = req.params.id;
+      const mcpManager = await getMcpManager();
+
+      // Check if connected
+      const existing = mcpManager.getConnection(serverId);
+      if (!existing) {
+        res.json({ success: true, message: "Already disconnected", serverId });
+        return;
+      }
+
+      // Disconnect
+      await mcpManager.disconnect(serverId);
+      res.json({ success: true, message: "Disconnected", serverId });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[web-ui] MCP disconnect failed:", errorMessage);
+      res.status(500).json({ error: "Disconnect failed", details: errorMessage });
+    }
+  });
+
   // ============= Static Files =============
 
   const distPath = path.join(__dirname, "dist");
