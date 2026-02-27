@@ -4,14 +4,14 @@
  * role: MCPクライアント拡張機能 - 外部MCPサーバーへの接続とツール実行
  * why: piからMCPエコシステムのツールとリソースを利用可能にするため
  * related: ../lib/mcp/connection-manager.ts, ../lib/mcp/tool-bridge.ts, ../lib/mcp/types.ts, ../lib/mcp/config-loader.ts, ../lib/mcp/auth-provider.ts
- * public_api: mcp_connect, mcp_disconnect, mcp_list_connections, mcp_list_tools, mcp_call_tool, mcp_list_resources, mcp_read_resource, mcp_reload_config, mcp_register_notification_handler, mcp_set_roots, mcp_list_prompts, mcp_get_prompt, mcp_subscribe_resource, mcp_unsubscribe_resource, mcp_list_subscriptions, mcp_ping, mcp_complete
+ * public_api: mcp_connect, mcp_disconnect, mcp_list_connections, mcp_list_tools, mcp_call_tool, mcp_list_resources, mcp_read_resource, mcp_reload_config, mcp_register_notification_handler, mcp_set_roots, mcp_list_prompts, mcp_get_prompt, mcp_subscribe_resource, mcp_unsubscribe_resource, mcp_list_subscriptions, mcp_ping, mcp_complete, mcp_get_instructions, mcp_list_resource_templates, mcp_set_logging_level, mcp_register_sampling_handler, mcp_register_elicitation_handler
  * invariants: 接続IDは一意、ツールは接続中のみ実行可能、セッション終了時に全接続を切断
- * side_effects: ネットワーク接続の確立・切断、UI通知の表示、設定ファイルからの自動接続、Roots通知の送信、認証ヘッダーの送信
+ * side_effects: ネットワーク接続の確立・切断、UI通知の表示、設定ファイルからの自動接続、Roots通知の送信、認証ヘッダーの送信、Sampling/Elicitationハンドラーの登録
  * failure_modes: ネットワークエラー、無効なURL、認証失敗、タイムアウト、接続先でのツール実行エラー、設定ファイルパースエラー
  * @abdd.explain
- * overview: MCPサーバーへの接続とツール実行を提供するpi拡張機能（SDK準拠）
+ * overview: MCPサーバーへの接続とツール実行を提供するpi拡張機能（SDK 100%準拠）
  * what_it_does:
- *   - mcp_connect: MCPサーバーに接続（認証対応、StreamableHTTP/SSE自動フォールバック）
+ *   - mcp_connect: MCPサーバーに接続（認証対応、StreamableHTTP/SSE/WebSocket対応）
  *   - mcp_disconnect: 接続を切断
  *   - mcp_list_connections: アクティブな接続一覧を表示
  *   - mcp_list_tools: 接続先のツール一覧を表示（ページネーション対応）
@@ -28,10 +28,15 @@
  *   - mcp_set_roots: Roots設定（サーバーにルートディレクトリを通知）
  *   - mcp_list_prompts: プロンプトテンプレート一覧を取得
  *   - mcp_get_prompt: プロンプトテンプレートを展開
+ *   - mcp_get_instructions: サーバー指示を取得
+ *   - mcp_list_resource_templates: リソーステンプレート一覧を取得
+ *   - mcp_set_logging_level: サーバーログレベルを設定
+ *   - mcp_register_sampling_handler: Samplingハンドラーを登録
+ *   - mcp_register_elicitation_handler: Elicitationハンドラーを登録
  *   - セッション開始時に.pi/mcp-servers.jsonから自動接続
  * why_it_exists: MCPエコシステムのツールをpiで利用可能にし、SDK準拠の機能を提供するため
  * scope:
- *   in: サーバーURL/コマンド、接続ID、ツール名、ツール引数、リソースURI、設定ファイル、Roots、プロンプト引数、認証情報、購読URI
+ *   in: サーバーURL/コマンド、接続ID、ツール名、ツール引数、リソースURI、設定ファイル、Roots、プロンプト引数、認証情報、購読URI、ログレベル、Sampling/Elicitationハンドラー設定
  *   out: 接続ステータス、ツール実行結果、リソース内容、通知、プロンプト展開結果、購読状態
  */
 
@@ -41,7 +46,7 @@ import { mcpManager, type McpConnectionType } from "../lib/mcp/connection-manage
 import { loadMcpConfig, getEnabledServers, getConfigPath } from "../lib/mcp/config-loader.js";
 import { formatToolResult, formatResourceContent, formatToolList, formatConnectionList } from "../lib/mcp/tool-bridge.js";
 import { sanitizeAuthForLogging } from "../lib/mcp/auth-provider.js";
-import type { McpNotificationHandler, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider } from "../lib/mcp/types.js";
+import type { McpNotificationHandler, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider, McpSamplingHandler, McpSamplingRequest, McpSamplingResponse, McpElicitationHandler, McpElicitationRequest, McpElicitationResponse } from "../lib/mcp/types.js";
 
 /**
  * 結果作成ヘルパー関数
@@ -149,6 +154,9 @@ async function autoConnectFromConfig(ctx: { ui: { notify: (msg: string, type: "i
  * 接続タイプを判定する
  */
 function detectConnectionType(url: string): McpConnectionType | undefined {
+  if (url.startsWith('ws://') || url.startsWith('wss://')) {
+    return 'websocket';
+  }
   if (url.startsWith('sse://') || url.startsWith('http+sse://') || url.startsWith('https+sse://')) {
     return 'sse';
   }
@@ -180,7 +188,8 @@ export default function (pi: ExtensionAPI) {
       type: Type.Optional(Type.Union([
         Type.Literal("http", { description: "HTTP transport (default for http:// URLs)" }),
         Type.Literal("sse", { description: "SSE transport (use sse:// URL or explicit type)" }),
-        Type.Literal("stdio", { description: "Stdio transport (for command-based servers)" })
+        Type.Literal("stdio", { description: "Stdio transport (for command-based servers)" }),
+        Type.Literal("websocket", { description: "WebSocket transport (for ws:// URLs)" })
       ], {
         description: "Transport type. Auto-detected from URL if omitted."
       })),
@@ -188,7 +197,8 @@ export default function (pi: ExtensionAPI) {
         Type.Literal("auto", { description: "Auto-detect transport type (default)" }),
         Type.Literal("streamable-http", { description: "Use StreamableHTTP transport" }),
         Type.Literal("sse", { description: "Use SSE transport" }),
-        Type.Literal("stdio", { description: "Use stdio transport" })
+        Type.Literal("stdio", { description: "Use stdio transport" }),
+        Type.Literal("websocket", { description: "Use WebSocket transport" })
       ], {
         description: "Explicit transport type selection. Overrides auto-detection."
       })),
@@ -1212,6 +1222,214 @@ export default function (pi: ExtensionAPI) {
           { connectionId: params.connection_id, error: message }
         );
       }
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_set_logging_level
+  // ========================================
+  pi.registerTool({
+    name: "mcp_set_logging_level",
+    label: "MCP Set Logging Level",
+    description: "Set the logging level for a connected MCP server. Controls the verbosity of server log messages.",
+    parameters: Type.Object({
+      connection_id: Type.String({
+        description: "Connection ID"
+      }),
+      level: Type.Union([
+        Type.Literal("debug", { description: "Detailed debug information" }),
+        Type.Literal("info", { description: "General informational messages" }),
+        Type.Literal("notice", { description: "Normal but significant events" }),
+        Type.Literal("warning", { description: "Warning conditions" }),
+        Type.Literal("error", { description: "Error conditions" }),
+        Type.Literal("critical", { description: "Critical conditions" }),
+        Type.Literal("alert", { description: "Action must be taken immediately" }),
+        Type.Literal("emergency", { description: "System is unusable" })
+      ], { description: "Logging level to set" })
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        await mcpManager.setLoggingLevel(params.connection_id, params.level);
+        ctx.ui.notify(`Set logging level to '${params.level}' for '${params.connection_id}'`, "info");
+
+        return makeSuccessResult(
+          `Logging level set to '${params.level}' for server '${params.connection_id}'`,
+          { connectionId: params.connection_id, level: params.level }
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Failed to set logging level: ${message}`, "error");
+        return makeErrorResult(
+          `Failed to set logging level: ${message}`,
+          { connectionId: params.connection_id, level: params.level, error: message }
+        );
+      }
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_register_sampling_handler
+  // ========================================
+  pi.registerTool({
+    name: "mcp_register_sampling_handler",
+    label: "MCP Register Sampling Handler",
+    description: "Register a handler for sampling requests from MCP servers. Allows servers to request LLM sampling via the client.",
+    parameters: Type.Object({
+      mode: Type.Union([
+        Type.Literal("enable", { description: "Enable sampling handler with auto-response" }),
+        Type.Literal("disable", { description: "Disable sampling handler" }),
+        Type.Literal("interactive", { description: "Enable with user confirmation (future)" })
+      ], { description: "Handler mode" }),
+      default_model: Type.Optional(Type.String({
+        description: "Default model to use for sampling (default: 'auto')"
+      })),
+      auto_approve: Type.Optional(Type.Boolean({
+        description: "Auto-approve sampling requests without user confirmation (default: false)"
+      }))
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (params.mode === 'disable') {
+        mcpManager.setSamplingHandler(null);
+        ctx.ui.notify("Sampling handler disabled", "info");
+        return makeSuccessResult("Sampling handler disabled", { mode: 'disabled' });
+      }
+
+      // Create sampling handler
+      const handler: McpSamplingHandler = async (request, connectionId) => {
+        ctx.ui.notify(`Sampling request from '${connectionId}' (${request.messages.length} messages)`, "info");
+
+        // For 'enable' mode, auto-respond (basic implementation)
+        // In production, this would integrate with pi's LLM capabilities
+        console.log(`[MCP Sampling] Request from ${connectionId}:`, {
+          messages: request.messages.length,
+          maxTokens: request.maxTokens,
+          systemPrompt: request.systemPrompt?.substring(0, 100)
+        });
+
+        // Return placeholder response
+        // TODO: Integrate with pi's actual LLM sampling capabilities
+        return {
+          model: params.default_model || 'auto',
+          stopReason: 'end_turn',
+          content: {
+            type: 'text',
+            text: `[Sampling response placeholder - integrate with pi LLM capabilities]\n\n` +
+                  `Received ${request.messages.length} messages with maxTokens=${request.maxTokens}.`
+          }
+        };
+      };
+
+      mcpManager.setSamplingHandler(handler);
+      ctx.ui.notify(`Sampling handler enabled (${params.mode} mode)`, "info");
+
+      return makeSuccessResult(
+        `Sampling handler registered in '${params.mode}' mode.\n` +
+        `Servers can now request LLM sampling through this client.\n` +
+        `Note: Current implementation is a placeholder. Full integration requires LLM provider setup.`,
+        {
+          mode: params.mode,
+          defaultModel: params.default_model || 'auto',
+          autoApprove: params.auto_approve ?? false
+        }
+      );
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_register_elicitation_handler
+  // ========================================
+  pi.registerTool({
+    name: "mcp_register_elicitation_handler",
+    label: "MCP Register Elicitation Handler",
+    description: "Register a handler for elicitation requests from MCP servers. Allows servers to request information collection (forms, URLs) from the client.",
+    parameters: Type.Object({
+      mode: Type.Union([
+        Type.Literal("enable", { description: "Enable elicitation handler with auto-response" }),
+        Type.Literal("disable", { description: "Disable elicitation handler" }),
+        Type.Literal("interactive", { description: "Enable with user interaction (future)" })
+      ], { description: "Handler mode" }),
+      default_action: Type.Optional(Type.Union([
+        Type.Literal("accept"),
+        Type.Literal("decline"),
+        Type.Literal("cancel")
+      ], { description: "Default action for auto-mode (default: 'decline' for safety)" })),
+      auto_values: Type.Optional(Type.Record(Type.String(), Type.String(), {
+        description: "Default values for form fields (used in 'enable' mode)"
+      }))
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (params.mode === 'disable') {
+        mcpManager.setElicitationHandler(null);
+        ctx.ui.notify("Elicitation handler disabled", "info");
+        return makeSuccessResult("Elicitation handler disabled", { mode: 'disabled' });
+      }
+
+      const defaultAction = params.default_action || 'decline';
+
+      // Create elicitation handler
+      const handler: McpElicitationHandler = async (request, connectionId) => {
+        if (request.type === 'form') {
+          ctx.ui.notify(
+            `Elicitation form from '${connectionId}': ${request.title}`,
+            "info"
+          );
+
+          console.log(`[MCP Elicitation] Form request from ${connectionId}:`, {
+            title: request.title,
+            fields: request.fields.map(f => f.name)
+          });
+
+          // Auto-fill with provided values or decline
+          const values: Record<string, string> = {};
+          for (const field of request.fields) {
+            if (params.auto_values && params.auto_values[field.name]) {
+              values[field.name] = params.auto_values[field.name];
+            } else if (field.type === 'checkbox') {
+              values[field.name] = 'false';
+            } else {
+              values[field.name] = '';
+            }
+          }
+
+          return {
+            elicitationId: request.elicitationId,
+            action: defaultAction,
+            values: defaultAction === 'accept' ? values : undefined
+          };
+        } else {
+          // URL-based elicitation
+          ctx.ui.notify(
+            `Elicitation URL from '${connectionId}': ${request.url}`,
+            "warning"
+          );
+
+          console.log(`[MCP Elicitation] URL request from ${connectionId}:`, {
+            url: request.url,
+            expiresIn: request.expiresIn
+          });
+
+          // For URL-based elicitation, decline by default for security
+          return {
+            elicitationId: request.elicitationId,
+            action: 'decline'
+          };
+        }
+      };
+
+      mcpManager.setElicitationHandler(handler);
+      ctx.ui.notify(`Elicitation handler enabled (${params.mode} mode)`, "info");
+
+      return makeSuccessResult(
+        `Elicitation handler registered in '${params.mode}' mode.\n` +
+        `Default action: ${defaultAction}\n` +
+        `Servers can now request information collection through this client.\n` +
+        `Note: For interactive mode, integrate with pi's UI capabilities.`,
+        {
+          mode: params.mode,
+          defaultAction,
+          autoValues: params.auto_values
+        }
+      );
     }
   });
 

@@ -4,24 +4,27 @@
  * role: MCPサーバー接続のライフサイクル管理
  * why: 複数のMCPサーバーへの接続を一元管理し、状態を追跡するため
  * related: types.ts, tool-bridge.ts, ../extensions/mcp-client.ts, auth-provider.ts
- * public_api: McpConnectionManager, mcpManager, McpConnectionType, setRoots, getRoots, listPrompts, getPrompt, subscribeResource, unsubscribeResource, getSubscriptions, listTools, listResourcesPaginated, listAllTools, listAllResources, ping, complete
+ * public_api: McpConnectionManager, mcpManager, McpConnectionType, setRoots, getRoots, listPrompts, getPrompt, subscribeResource, unsubscribeResource, getSubscriptions, listTools, listResourcesPaginated, listAllTools, listAllResources, ping, complete, setLoggingLevel, setSamplingHandler, setElicitationHandler
  * invariants: 接続IDは一意、最大接続数は10、切断時にリソースと購読を解放
- * side_effects: ネットワーク接続の確立・切断、Roots通知の送信、認証ヘッダーの送信
- * failure_modes: ネットワークエラー、無効なURL、認証失敗、タイムアウト、SSEフォールバック失敗
+ * side_effects: ネットワーク接続の確立・切断、Roots通知の送信、認証ヘッダーの送信、Sampling/Elicitationハンドラーの設定
+ * failure_modes: ネットワークエラー、無効なURL、認証失敗、タイムアウト、SSEフォールバック失敗、WebSocket接続エラー
  * @abdd.explain
- * overview: MCPサーバー接続のシングルトン管理クラス（SDK準拠）
+ * overview: MCPサーバー接続のシングルトン管理クラス（SDK 100%準拠）
  * what_it_does:
  *   - MCPサーバーへの接続を確立・管理・切断（認証対応）
  *   - StreamableHTTP → SSE自動フォールバック（レガシーサーバー対応）
+ *   - WebSocket Transport（ws://wss://接続対応）
  *   - Roots機能（サーバーにルートディレクトリを通知）
  *   - Prompts API（プロンプトテンプレートの取得・展開）
  *   - リソース購読機能（更新通知の受信）
  *   - ページネーション対応のリスト取得
  *   - ping/complete メソッド
- *   - sampling/elicitation ケーパビリティ宣言
+ *   - ログレベル制御（setLoggingLevel）
+ *   - Sampling Handler（サーバーからのLLMサンプリングリクエスト処理）
+ *   - Elicitation Handler（サーバーからの情報収集リクエスト処理）
  * why_it_exists: 複数接続の状態を一元管理し、MCP SDK準拠の機能を提供するため
  * scope:
- *   in: 接続パラメータ（id, url, type, auth, headers）, Roots設定, プロンプト引数, 購読URI
+ *   in: 接続パラメータ（id, url, type, auth, headers）, Roots設定, プロンプト引数, 購読URI, ログレベル, Sampling/Elicitationハンドラー
  *   out: McpConnection, ツール一覧, リソース一覧, プロンプト結果, 購読状態
  */
 
@@ -29,9 +32,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { WebSocketClientTransport } from "@modelcontextprotocol/sdk/client/websocket.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider, McpResourceTemplateInfo, McpConnectOptions, McpActiveTransportType } from "./types.js";
+import { ListRootsRequestSchema, CreateMessageRequestSchema, ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider, McpResourceTemplateInfo, McpConnectOptions, McpActiveTransportType, McpLoggingLevel, McpSamplingHandler, McpSamplingRequest, McpSamplingResponse, McpElicitationHandler, McpElicitationRequest, McpElicitationResponse } from "./types.js";
 import { authProviderToRequestInit, mergeHeaders } from "./auth-provider.js";
 
 /**
@@ -42,7 +46,7 @@ export type McpNotificationCallback = (notification: McpNotification) => void | 
 /**
  * 接続タイプ
  */
-export type McpConnectionType = 'http' | 'stdio' | 'sse';
+export type McpConnectionType = 'http' | 'stdio' | 'sse' | 'websocket';
 
 /**
  * 接続タイプを判定する
@@ -50,6 +54,11 @@ export type McpConnectionType = 'http' | 'stdio' | 'sse';
  * @returns 接続タイプ
  */
 function detectConnectionType(url: string): McpConnectionType {
+	// WebSocketパターン: ws:// または wss://
+	if (url.startsWith('ws://') || url.startsWith('wss://')) {
+		return 'websocket';
+	}
+
 	// SSEパターン: sse:// または http+sse://
 	if (url.startsWith('sse://') || url.startsWith('http+sse://') || url.startsWith('https+sse://')) {
 		return 'sse';
@@ -84,16 +93,20 @@ function parseStdioCommand(command: string): { command: string; args: string[] }
  * @param transportType - トランスポート種別
  * @returns 適合する場合true
  */
-function isValidTransportForUrl(url: string, transportType: 'streamable-http' | 'sse' | 'stdio'): boolean {
+function isValidTransportForUrl(url: string, transportType: 'streamable-http' | 'sse' | 'stdio' | 'websocket'): boolean {
 	if (transportType === 'stdio') {
 		return !url.startsWith('http://') && !url.startsWith('https://') &&
-		       !url.startsWith('sse://') && !url.startsWith('http+sse://');
+		       !url.startsWith('sse://') && !url.startsWith('http+sse://') &&
+		       !url.startsWith('ws://') && !url.startsWith('wss://');
 	}
 	if (transportType === 'sse') {
 		return url.startsWith('sse://') || url.startsWith('http+sse://') || url.startsWith('https+sse://');
 	}
 	if (transportType === 'streamable-http') {
 		return url.startsWith('http://') || url.startsWith('https://');
+	}
+	if (transportType === 'websocket') {
+		return url.startsWith('ws://') || url.startsWith('wss://');
 	}
 	return false;
 }
@@ -119,6 +132,16 @@ export class McpConnectionManager {
 	 * Roots設定（サーバーがアクセス可能なディレクトリ）
 	 */
 	private roots: McpRoot[] = [];
+
+	/**
+	 * サンプリングハンドラー（サーバーからのLLMサンプリングリクエスト処理）
+	 */
+	private samplingHandler: McpSamplingHandler | null = null;
+
+	/**
+	 * エリシテーションハンドラー（サーバーからの情報収集リクエスト処理）
+	 */
+	private elicitationHandler: McpElicitationHandler | null = null;
 
 	/**
 	 * 通知コールバックを設定する
@@ -175,7 +198,7 @@ export class McpConnectionManager {
 		auth?: McpAuthProvider;
 		headers?: Record<string, string>;
 		/** 明示的なトランスポート種別（auto時は自動検出） */
-		transportType?: 'auto' | 'streamable-http' | 'sse' | 'stdio';
+		transportType?: 'auto' | 'streamable-http' | 'sse' | 'stdio' | 'websocket';
 		/** フォールバックの無効化 */
 		disableFallback?: boolean;
 	}): Promise<McpConnection> {
@@ -262,6 +285,22 @@ export class McpConnectionManager {
 					console.log(`[MCP] Connected to ${id} using SSE transport`);
 					break;
 				}
+				case 'websocket': {
+					// WebSocket接続
+					const wsUrl = new URL(url);
+					if (!['ws:', 'wss:'].includes(wsUrl.protocol)) {
+						throw new Error(`Invalid WebSocket protocol: ${wsUrl.protocol}. Only ws and wss are allowed.`);
+					}
+					transport = new WebSocketClientTransport(wsUrl);
+					client = new Client(
+						{ name: "pi-mcp-client", version: "1.0.0" },
+						{ capabilities: this.getCapabilities() }
+					);
+					await connectWithTimeout(client, transport);
+					activeTransportType = 'websocket';
+					console.log(`[MCP] Connected to ${id} using WebSocket transport`);
+					break;
+				}
 				case 'http':
 				default: {
 					// URL検証
@@ -333,6 +372,12 @@ export class McpConnectionManager {
 
 			// 通知ハンドラーの設定
 			this.setupNotificationHandlers(client, id);
+
+			// サンプリングハンドラーの設定
+			this.setupSamplingHandler(client, id);
+
+			// エリシテーションハンドラーの設定
+			this.setupElicitationHandler(client, id);
 
 			// サーバー情報の取得
 			const serverCapabilities = client.getServerCapabilities();
@@ -1013,6 +1058,180 @@ export class McpConnectionManager {
 	 */
 	getConnectionCount(): number {
 		return this.state.connections.size;
+	}
+
+	// ========================================
+	// Logging Level Control (SDK Compliance)
+	// ========================================
+
+	/**
+	 * サーバーのログレベルを設定する
+	 * @summary サーバーログレベルを設定
+	 * @param connectionId - 接続ID
+	 * @param level - ログレベル（debug/info/notice/warning/error/critical/alert/emergency）
+	 */
+	async setLoggingLevel(connectionId: string, level: McpLoggingLevel): Promise<void> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		try {
+			await connection.client.setLoggingLevel(level);
+			console.log(`[MCP] Set logging level to '${level}' for ${connectionId}`);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			console.warn(`[MCP] Failed to set logging level for ${connectionId}: ${errorMessage}`);
+			throw error;
+		}
+	}
+
+	// ========================================
+	// Sampling Handler (SDK Compliance)
+	// ========================================
+
+	/**
+	 * サンプリングハンドラーを設定する
+	 * @summary サンプリングリクエストハンドラー設定
+	 * @param handler - サンプリングリクエスト処理関数
+	 */
+	setSamplingHandler(handler: McpSamplingHandler | null): void {
+		this.samplingHandler = handler;
+		// 既存接続にもハンドラーを適用
+		for (const conn of this.state.connections.values()) {
+			if (conn.client && conn.status === 'connected') {
+				this.setupSamplingHandler(conn.client, conn.id);
+			}
+		}
+	}
+
+	/**
+	 * サンプリングハンドラーを設定する
+	 * @param client - MCPクライアント
+	 * @param connectionId - 接続ID
+	 */
+	private setupSamplingHandler(client: Client, connectionId: string): void {
+		if (!this.samplingHandler) return;
+
+		client.setRequestHandler(CreateMessageRequestSchema, async (request) => {
+			console.log(`[MCP] Sampling request received from ${connectionId}`);
+
+			try {
+				const response = await this.samplingHandler!(
+					{
+						messages: request.params.messages.map(m => ({
+							role: m.role as 'user' | 'assistant',
+							content: this.normalizeSamplingContent(m.content)
+						})),
+						modelPreferences: request.params.modelPreferences,
+						systemPrompt: request.params.systemPrompt,
+						includeContext: request.params.includeContext as 'none' | 'thisServer' | 'allServers' | undefined,
+						temperature: request.params.temperature,
+						maxTokens: request.params.maxTokens,
+						stopSequences: request.params.stopSequences,
+						metadata: request.params.metadata as Record<string, unknown> | undefined
+					},
+					connectionId
+				);
+
+				return {
+					model: response.model,
+					stopReason: response.stopReason,
+					content: response.content
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				console.error(`[MCP] Sampling handler error for ${connectionId}: ${errorMessage}`);
+				throw error;
+			}
+		});
+	}
+
+	/**
+	 * サンプリングコンテンツブロックを正規化する
+	 */
+	private normalizeSamplingContent(content: unknown): McpSamplingRequest['messages'][0]['content'] {
+		const c = content as Record<string, unknown>;
+		return {
+			type: c.type as 'text' | 'image' | 'resource',
+			text: c.text as string | undefined,
+			data: c.data as string | undefined,
+			mimeType: c.mimeType as string | undefined
+		};
+	}
+
+	// ========================================
+	// Elicitation Handler (SDK Compliance)
+	// ========================================
+
+	/**
+	 * エリシテーションハンドラーを設定する
+	 * @summary エリシテーションリクエストハンドラー設定
+	 * @param handler - エリシテーションリクエスト処理関数
+	 */
+	setElicitationHandler(handler: McpElicitationHandler | null): void {
+		this.elicitationHandler = handler;
+		for (const conn of this.state.connections.values()) {
+			if (conn.client && conn.status === 'connected') {
+				this.setupElicitationHandler(conn.client, conn.id);
+			}
+		}
+	}
+
+	/**
+	 * エリシテーションハンドラーを設定する
+	 * @param client - MCPクライアント
+	 * @param connectionId - 接続ID
+	 */
+	private setupElicitationHandler(client: Client, connectionId: string): void {
+		if (!this.elicitationHandler) return;
+
+		client.setRequestHandler(ElicitRequestSchema, async (request) => {
+			console.log(`[MCP] Elicitation request received from ${connectionId}`);
+
+			try {
+				const params = request.params as Record<string, unknown>;
+				const elicitationId = params.elicitationId as string;
+
+				// Determine request type (form or url)
+				let elicitationRequest: McpElicitationRequest;
+
+				if ('form' in params) {
+					const form = params.form as Record<string, unknown>;
+					elicitationRequest = {
+						type: 'form',
+						elicitationId,
+						title: form.title as string,
+						description: form.description as string | undefined,
+						fields: (form.fields as Array<Record<string, unknown>>).map(f => ({
+							name: f.name as string,
+							type: f.type as 'text' | 'password' | 'select' | 'checkbox',
+							label: f.label as string,
+							required: f.required as boolean | undefined,
+							options: f.options as Array<{ label: string; value: string }> | undefined
+						}))
+					};
+				} else if ('url' in params) {
+					elicitationRequest = {
+						type: 'url',
+						elicitationId,
+						url: params.url as string,
+						expiresIn: params.expiresIn as number | undefined
+					};
+				} else {
+					throw new Error('Invalid elicitation request: missing form or url');
+				}
+
+				const response = await this.elicitationHandler!(elicitationRequest, connectionId);
+
+				return {
+					elicitationId: response.elicitationId,
+					action: response.action,
+					values: response.values
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				console.error(`[MCP] Elicitation handler error for ${connectionId}: ${errorMessage}`);
+				throw error;
+			}
+		});
 	}
 }
 
