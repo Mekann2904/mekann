@@ -15,6 +15,16 @@
 | Add new skill | `docs/04-reference/skill-guide.md` | `.pi/skills/*/SKILL.md` |
 | Debug extension | `docs/04-reference/03-troubleshooting.md` | Extension source |
 
+### Task Management
+
+| Task | Primary Source | Key Tools |
+|------|---------------|-----------|
+| Create/track tasks | `task_create`, `task_list`, `task_complete` | `.pi/extensions/task.ts` |
+| Delegate task to subagent | `task_delegate` | `.pi/extensions/task-flow.ts` |
+| Create tasks from plan | `task_from_plan` | `.pi/extensions/task-flow.ts` |
+| Set task context | `task_context_set` | `.pi/extensions/task-flow.ts` |
+| Auto-execute tasks | `task_run_next`, `task_queue_show` | `.pi/extensions/task-auto-executor.ts` |
+
 ### Orchestration Tasks
 
 | Task | Primary Source | Key Tools |

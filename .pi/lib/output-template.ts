@@ -38,6 +38,7 @@ import {
   type SchemaViolation,
   parseStructuredOutput,
 } from "./output-schema.js";
+import { hasInternalModeStructure } from "./output-validation.js";
 
 // ============================================================================
 // Types
@@ -150,6 +151,23 @@ export function applyOutputTemplate(
   rawOutput: string,
   violations: SchemaViolation[],
 ): TemplateApplicationResult {
+  const trimmed = rawOutput.trim();
+
+  // INTERNAL モード形式の場合は、そのまま返す（テンプレート適用しない）
+  if (hasInternalModeStructure(trimmed)) {
+    return {
+      normalized: {
+        SUMMARY: "[INTERNAL MODE]",
+        RESULT: trimmed,
+        NEXT_STEP: "none",
+        CONFIDENCE: 0.5,
+      },
+      filledFields: [],
+      preservedFields: ["INTERNAL_MODE_OUTPUT"],
+      formatted: trimmed,
+    };
+  }
+
   const parsed = parseStructuredOutput(rawOutput);
   const missingFields = extractMissingFields(violations);
   const filledFields: string[] = [];

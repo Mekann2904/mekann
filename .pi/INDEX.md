@@ -9,6 +9,7 @@
 |-----------|---------------|------------------|
 | Extension development | `.pi/lib/` + `docs/03-development/` | `README.md` |
 | Agent orchestration | `.pi/extensions/subagents.ts` | `docs/02-user-guide/08-subagents.md` |
+| Task management | `.pi/extensions/task-flow.ts` | `.pi/extensions/task.ts` |
 | Intent clarification | `.pi/lib/intent-mediator.ts` | `.pi/extensions/mediator.ts` |
 | Skill usage | `.pi/skills/*/SKILL.md` | `docs/02-user-guide/11-utilities.md` |
 | Code search | `.pi/extensions/search/` | `docs/02-user-guide/01-extensions.md` |
@@ -92,12 +93,23 @@ mekann/
 | subagent_* | `extensions/subagents.ts` | Sub-agent creation/execution |
 | agent_team_* | `extensions/agent-teams.ts` | Team orchestration |
 | plan_* | `extensions/plan.ts` | Plan management |
+| task_* | `extensions/task.ts` | Task management (create, list, complete) |
+| task_delegate | `extensions/task-flow.ts` | Delegate task to subagent with auto-complete |
+| task_from_plan | `extensions/task-flow.ts` | Create tasks from plan steps |
+| task_context_set | `extensions/task-flow.ts` | Set current task context |
 | file_candidates | `extensions/search/` | Fast file enumeration (fd) |
 | code_search | `extensions/search/` | Code pattern search (rg) |
 | sym_index | `extensions/search/` | Symbol index generation (ctags) |
 | sym_find | `extensions/search/` | Symbol definition search |
 | create_tool | `extensions/dynamic-tools.ts` | Dynamic tool generation |
 | run_dynamic_tool | `extensions/dynamic-tools.ts` | Dynamic tool execution |
+| mcp_connect | `extensions/mcp-client.ts` | Connect to MCP server |
+| mcp_disconnect | `extensions/mcp-client.ts` | Disconnect from MCP server |
+| mcp_list_connections | `extensions/mcp-client.ts` | List MCP connections |
+| mcp_list_tools | `extensions/mcp-client.ts` | List MCP tools |
+| mcp_call_tool | `extensions/mcp-client.ts` | Execute MCP tool |
+| mcp_list_resources | `extensions/mcp-client.ts` | List MCP resources |
+| mcp_read_resource | `extensions/mcp-client.ts` | Read MCP resource |
 | startup-context | `extensions/startup-context.ts` | Initial context injection |
 
 ## Skills Index

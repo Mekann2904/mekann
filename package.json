@@ -6,6 +6,7 @@
     "node": ">=20.18.1"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@sinclair/typebox": "^0.34.48",
     "async-mutex": "^0.5.0",
     "web-tree-sitter": "^0.26.5",
@@ -71,6 +72,7 @@
       "./.pi/extensions/invariant-pipeline.ts",
       "./.pi/extensions/kitty-status-integration.ts",
       "./.pi/extensions/loop.ts",
+      "./.pi/extensions/mcp-client.ts",
       "./.pi/extensions/mediator.ts",
       "./.pi/extensions/self-improvement-loop.ts",
       "./.pi/extensions/self-improvement-dashboard.ts",

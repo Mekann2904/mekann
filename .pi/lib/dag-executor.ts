@@ -679,69 +679,71 @@ export class DagExecutor<T = unknown> implements RevisionExecutor {
     signal?: AbortSignal,
   ): Promise<BatchResult<T>> {
     const taskId = task.id;
-    const retryCount = this.nodeRetryCount.get(taskId) || 0;
     const maxRetries = this.options.maxRetriesPerNode;
+    let retryCount = this.nodeRetryCount.get(taskId) || 0;
+    let lastError: Error = error;
+    let totalDurationMs = 0;
 
-    if (retryCount >= maxRetries) {
-      return {
-        taskId,
-        status: "failed",
-        error: new Error(
-          `Max retries (${maxRetries}) exceeded for task ${taskId}`,
-        ),
-        durationMs: 0,
-      };
-    }
-
-    // 再試行カウントを増加
-    this.nodeRetryCount.set(taskId, retryCount + 1);
-
-    // 実行履歴にエラーを追加
+    // 初回失敗を履歴に記録
     this.appendToTrace(taskId, {
       timestamp: Date.now(),
       type: "observation",
       content: `ERROR: ${error.message}`,
     });
 
-    // 再実行
-    console.log(
-      `[Local Replan] Retrying task ${taskId} (attempt ${retryCount + 1}/${maxRetries})`,
-    );
+    while (retryCount < maxRetries) {
+      const attempt = retryCount + 1;
+      this.nodeRetryCount.set(taskId, attempt);
+      console.log(
+        `[Local Replan] Retrying task ${taskId} (attempt ${attempt}/${maxRetries})`,
+      );
 
-    const startMs = Date.now();
-    try {
-      const context = this.buildContext(task);
-      const output = await executor(task, context, signal);
-      const durationMs = Date.now() - startMs;
+      const startMs = Date.now();
+      try {
+        const context = this.buildContext(task);
+        const output = await executor(task, context, signal);
+        const durationMs = Date.now() - startMs;
+        totalDurationMs += durationMs;
 
-      // 成功時は再試行カウントをリセット
-      this.nodeRetryCount.delete(taskId);
+        // 成功時は再試行カウントをリセット
+        this.nodeRetryCount.delete(taskId);
+        this.appendToTrace(taskId, {
+          timestamp: Date.now(),
+          type: "observation",
+          content: `RETRY_SUCCESS: Completed after ${attempt} attempt(s)`,
+        });
 
-      // 成功をトレースに記録
-      this.appendToTrace(taskId, {
-        timestamp: Date.now(),
-        type: "observation",
-        content: `RETRY_SUCCESS: Completed after ${retryCount + 1} attempt(s)`,
-      });
-
-      return {
-        taskId,
-        status: "completed",
-        output,
-        durationMs,
-      };
-    } catch (retryError) {
-      const durationMs = Date.now() - startMs;
-      return {
-        taskId,
-        status: "failed",
-        error:
+        return {
+          taskId,
+          status: "completed",
+          output,
+          durationMs: totalDurationMs,
+        };
+      } catch (retryError) {
+        const durationMs = Date.now() - startMs;
+        totalDurationMs += durationMs;
+        lastError =
           retryError instanceof Error
             ? retryError
-            : new Error(String(retryError)),
-        durationMs,
-      };
+            : new Error(String(retryError));
+        this.appendToTrace(taskId, {
+          timestamp: Date.now(),
+          type: "observation",
+          content: `RETRY_ERROR: ${lastError.message}`,
+        });
+      }
+
+      retryCount++;
     }
+
+    return {
+      taskId,
+      status: "failed",
+      error: new Error(
+        `Max retries (${maxRetries}) exceeded for task ${taskId}: ${lastError.message}`,
+      ),
+      durationMs: totalDurationMs,
+    };
   }
 
   /**

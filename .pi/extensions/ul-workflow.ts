@@ -594,48 +594,10 @@ export default function registerUlWorkflowExtension(pi: ExtensionAPI) {
       }
       // END FIX
 
-      // Check for existing active workflow using file-based access
-      const existingWorkflow = getCurrentWorkflow();
-      if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
-        const ownership = checkOwnership(existingWorkflow, { autoClaim: true });
-
-        if (!ownership.owned) {
-          if (ownership.autoClaim) {
-            // Auto-claim ownership from dead process
-            const now = new Date().toISOString();
-            existingWorkflow.ownerInstanceId = instanceId;
-            existingWorkflow.updatedAt = now;
-
-            saveState(existingWorkflow);
-            setCurrentWorkflow(existingWorkflow);
-
-            // Continue with the existing workflow
-            return makeResult(
-              `以前の所有者のプロセスが終了しているため、所有権を自動的に取得しました。\n\n` +
-              `以前の所有者: ${ownership.previousOwner}\n` +
-              `新しい所有者: ${instanceId}\n\n` +
-              `既存のワークフローを続行します。\n` +
-              `Task ID: ${existingWorkflow.taskId}\n` +
-              `現在のフェーズ: ${existingWorkflow.phase.toUpperCase()}\n\n` +
-              `次のステップ:\n` +
-              `  ul_workflow_approve で次のフェーズに進む\n` +
-              `  または\n` +
-              `  ul_workflow_status で詳細を確認`,
-              { taskId: existingWorkflow.taskId, phase: existingWorkflow.phase, autoClaimed: true, previousOwner: ownership.previousOwner }
-            );
-          }
-
-          return makeResult(
-            `エラー: 他のpiインスタンスがワークフローを実行中です。\n` +
-            `所有者: ${existingWorkflow.ownerInstanceId}\n` +
-            `Task ID: ${existingWorkflow.taskId}\n` +
-            `現在のインスタンス: ${instanceId}\n\n` +
-            `所有者のプロセスが終了している場合は、以下のコマンドで所有権を強制的に取得できます:\n` +
-            `  ul_workflow_force_claim()`,
-            { error: ownership.error }
-          );
-        }
-      }
+      // REMOVED: Global single-active-workflow check
+      // Each instance can now start independent workflows.
+      // Ownership is tracked per-task in state.json and enforced by checkUlWorkflowOwnership()
+      // when delegation tools receive ulTaskId parameter.
 
       const taskId = generateTaskId(trimmedTask);
       const now = new Date().toISOString();
@@ -702,45 +664,10 @@ Task ID: ${taskId}
         return makeResult(`エラー: タスク説明が短すぎます（現在: ${trimmedTask.length}文字）。`, { error: "task_too_short", length: trimmedTask.length });
       }
 
-      // Check for existing active workflow using file-based access
-      const existingWorkflow = getCurrentWorkflow();
-      if (existingWorkflow && existingWorkflow.phase !== "completed" && existingWorkflow.phase !== "aborted") {
-        const ownership = checkOwnership(existingWorkflow, { autoClaim: true });
-
-        if (!ownership.owned) {
-          if (ownership.autoClaim) {
-            // Auto-claim ownership from dead process and continue with existing workflow
-            const now = new Date().toISOString();
-            existingWorkflow.ownerInstanceId = instanceId;
-            existingWorkflow.updatedAt = now;
-
-            saveState(existingWorkflow);
-            setCurrentWorkflow(existingWorkflow);
-
-            // Continue with the existing workflow
-            return makeResult(
-              `以前の所有者のプロセスが終了しているため、所有権を自動的に取得しました。\n\n` +
-              `以前の所有者: ${ownership.previousOwner}\n` +
-              `新しい所有者: ${instanceId}\n\n` +
-              `既存のワークフローを続行します。\n` +
-              `Task ID: ${existingWorkflow.taskId}\n` +
-              `現在のフェーズ: ${existingWorkflow.phase.toUpperCase()}\n\n` +
-              `次のステップ:\n` +
-              `  ul_workflow_approve で次のフェーズに進む\n` +
-              `  または\n` +
-              `  ul_workflow_status で詳細を確認`,
-              { taskId: existingWorkflow.taskId, phase: existingWorkflow.phase, autoClaimed: true, previousOwner: ownership.previousOwner }
-            );
-          }
-
-          return makeResult(
-            `エラー: 他のpiインスタンスがワークフローを実行中です。\n所有者: ${existingWorkflow.ownerInstanceId}\n\n` +
-            `所有者のプロセスが終了している場合は、以下のコマンドで所有権を強制的に取得できます:\n` +
-            `  ul_workflow_force_claim()`,
-            { error: ownership.error }
-          );
-        }
-      }
+      // REMOVED: Global single-active-workflow check
+      // Each instance can now start independent workflows.
+      // Ownership is tracked per-task in state.json and enforced by checkUlWorkflowOwnership()
+      // when delegation tools receive ulTaskId parameter.
 
       const taskId = generateTaskId(trimmedTask);
       const now = new Date().toISOString();
