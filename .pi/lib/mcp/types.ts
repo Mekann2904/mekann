@@ -90,6 +90,8 @@ export interface McpConnection {
 		name: string;
 		version: string;
 	};
+	/** アクティブなリソース購読URI一覧 */
+	subscriptions: Set<string>;
 }
 
 /**
@@ -110,6 +112,10 @@ export interface McpConnectParams {
 	url: string;
 	/** 接続タイムアウト（ミリ秒、デフォルト: 30000） */
 	timeout?: number;
+	/** 認証プロバイダー */
+	auth?: McpAuthProvider;
+	/** カスタムHTTPヘッダー */
+	headers?: Record<string, string>;
 }
 
 /**
@@ -304,10 +310,13 @@ export type McpAuthProvider =
 export type McpNotificationType =
 	| 'tools/list_changed'
 	| 'resources/list_changed'
+	| 'resources/updated'
 	| 'prompts/list_changed'
 	| 'logging/setLevel'
 	| 'progress'
-	| 'cancelled';
+	| 'cancelled'
+	| 'sampling/request'
+	| 'elicitation/request';
 
 /**
  * MCP通知データ

@@ -3,24 +3,26 @@
  * path: .pi/lib/mcp/connection-manager.ts
  * role: MCPサーバー接続のライフサイクル管理
  * why: 複数のMCPサーバーへの接続を一元管理し、状態を追跡するため
- * related: types.ts, tool-bridge.ts, ../extensions/mcp-client.ts
- * public_api: McpConnectionManager, mcpManager, McpConnectionType, setRoots, getRoots, listPrompts, getPrompt
- * invariants: 接続IDは一意、最大接続数は10、切断時にリソースを解放
- * side_effects: ネットワーク接続の確立・切断、Roots通知の送信
+ * related: types.ts, tool-bridge.ts, ../extensions/mcp-client.ts, auth-provider.ts
+ * public_api: McpConnectionManager, mcpManager, McpConnectionType, setRoots, getRoots, listPrompts, getPrompt, subscribeResource, unsubscribeResource, getSubscriptions, listTools, listResourcesPaginated, listAllTools, listAllResources, ping, complete
+ * invariants: 接続IDは一意、最大接続数は10、切断時にリソースと購読を解放
+ * side_effects: ネットワーク接続の確立・切断、Roots通知の送信、認証ヘッダーの送信
  * failure_modes: ネットワークエラー、無効なURL、認証失敗、タイムアウト、SSEフォールバック失敗
  * @abdd.explain
  * overview: MCPサーバー接続のシングルトン管理クラス（SDK準拠）
  * what_it_does:
- *   - MCPサーバーへの接続を確立・管理・切断
+ *   - MCPサーバーへの接続を確立・管理・切断（認証対応）
  *   - StreamableHTTP → SSE自動フォールバック（レガシーサーバー対応）
  *   - Roots機能（サーバーにルートディレクトリを通知）
  *   - Prompts API（プロンプトテンプレートの取得・展開）
- *   - 接続ごとのツール・リソース一覧をキャッシュ
- *   - エラーハンドリングとステータス追跡
+ *   - リソース購読機能（更新通知の受信）
+ *   - ページネーション対応のリスト取得
+ *   - ping/complete メソッド
+ *   - sampling/elicitation ケーパビリティ宣言
  * why_it_exists: 複数接続の状態を一元管理し、MCP SDK準拠の機能を提供するため
  * scope:
- *   in: 接続パラメータ（id, url, type）, Roots設定, プロンプト引数
- *   out: McpConnection, ツール一覧, リソース一覧, プロンプト結果
+ *   in: 接続パラメータ（id, url, type, auth, headers）, Roots設定, プロンプト引数, 購読URI
+ *   out: McpConnection, ツール一覧, リソース一覧, プロンプト結果, 購読状態
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -29,7 +31,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult } from "./types.js";
+import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider } from "./types.js";
+import { authProviderToRequestInit, mergeHeaders } from "./auth-provider.js";
 
 /**
  * 通知コールバック型
@@ -132,7 +135,9 @@ export class McpConnectionManager {
 	 */
 	private getCapabilities() {
 		return {
-			roots: { listChanged: true }
+			roots: { listChanged: true },
+			sampling: {},
+			elicitation: {}
 		};
 	}
 
@@ -142,8 +147,8 @@ export class McpConnectionManager {
 	 * @returns 接続情報
 	 * @throws ネットワークエラー、無効なURL、タイムアウト等
 	 */
-	async connect(params: { id: string; url: string; timeout?: number; type?: McpConnectionType }): Promise<McpConnection> {
-		const { id, url, timeout = DEFAULT_TIMEOUT, type } = params;
+	async connect(params: { id: string; url: string; timeout?: number; type?: McpConnectionType; auth?: McpAuthProvider; headers?: Record<string, string> }): Promise<McpConnection> {
+		const { id, url, timeout = DEFAULT_TIMEOUT, type, auth, headers } = params;
 
 		// 既存接続のチェック
 		if (this.state.connections.has(id)) {
@@ -168,6 +173,7 @@ export class McpConnectionManager {
 			status: 'connecting',
 			tools: [],
 			resources: [],
+			subscriptions: new Set(),
 			connectedAt: new Date()
 		};
 
@@ -223,9 +229,27 @@ export class McpConnectionManager {
 						throw new Error(`Invalid protocol: ${parsedUrl.protocol}. Only http and https are allowed.`);
 					}
 
+					// Build transport options with auth and headers
+					const transportOptions: ConstructorParameters<typeof StreamableHTTPClientTransport>[1] = {};
+
+					// Add auth headers
+					if (auth) {
+						const authInit = authProviderToRequestInit(auth);
+						transportOptions.requestInit = authInit;
+					}
+
+					// Add custom headers (merge with auth headers)
+					if (headers) {
+						const existingHeaders = (transportOptions.requestInit?.headers as Record<string, string>) ?? {};
+						transportOptions.requestInit = {
+							...transportOptions.requestInit,
+							headers: mergeHeaders(existingHeaders, headers)
+						};
+					}
+
 					// StreamableHTTPを試行、4xxエラー時にSSEへフォールバック
 					try {
-						transport = new StreamableHTTPClientTransport(parsedUrl);
+						transport = new StreamableHTTPClientTransport(parsedUrl, transportOptions);
 						client = new Client(
 							{ name: "pi-mcp-client", version: "1.0.0" },
 							{ capabilities: this.getCapabilities() }
@@ -234,7 +258,7 @@ export class McpConnectionManager {
 					} catch (error) {
 						// SSEフォールバック（レガシーサーバー対応）
 						if (this.isHttpError(error, 4)) {
-							transport = new SSEClientTransport(parsedUrl);
+							transport = new SSEClientTransport(parsedUrl, transportOptions);
 							client = new Client(
 								{ name: "pi-mcp-client", version: "1.0.0" },
 								{ capabilities: this.getCapabilities() }
@@ -326,6 +350,9 @@ export class McpConnectionManager {
 			return;
 		}
 
+		// Clear subscriptions
+		connection.subscriptions.clear();
+
 		try {
 			await connection.client.close();
 		} catch (error) {
@@ -361,6 +388,9 @@ export class McpConnectionManager {
 					break;
 				case 'notifications/resources/list_changed':
 					notificationType = 'resources/list_changed';
+					break;
+				case 'notifications/resources/updated':
+					notificationType = 'resources/updated';
 					break;
 				case 'notifications/prompts/list_changed':
 					notificationType = 'prompts/list_changed';
@@ -547,6 +577,252 @@ export class McpConnectionManager {
 					mimeType: 'mimeType' in m.content ? m.content.mimeType : undefined
 				}
 			}))
+		};
+	}
+
+	// ========================================
+	// Resource Subscriptions (SDK Compliance)
+	// ========================================
+
+	/**
+	 * Subscribe to resource updates
+	 * @summary リソース更新通知を購読
+	 * @param connectionId - Connection ID
+	 * @param uri - Resource URI to subscribe to
+	 */
+	async subscribeResource(connectionId: string, uri: string): Promise<void> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		// Check server capability
+		const capabilities = connection.client.getServerCapabilities();
+		if (!capabilities?.resources?.subscribe) {
+			throw new Error(`Server does not support resource subscriptions`);
+		}
+
+		await connection.client.subscribeResource({ uri });
+		connection.subscriptions.add(uri);
+	}
+
+	/**
+	 * Unsubscribe from resource updates
+	 * @summary リソース購読を解除
+	 * @param connectionId - Connection ID
+	 * @param uri - Resource URI to unsubscribe from
+	 */
+	async unsubscribeResource(connectionId: string, uri: string): Promise<void> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		await connection.client.unsubscribeResource({ uri });
+		connection.subscriptions.delete(uri);
+	}
+
+	/**
+	 * Get active subscriptions for a connection
+	 * @summary アクティブな購読一覧を取得
+	 * @param connectionId - Connection ID
+	 * @returns Array of subscribed URIs
+	 */
+	getSubscriptions(connectionId: string): string[] {
+		const connection = this.getConnection(connectionId);
+		return connection ? Array.from(connection.subscriptions) : [];
+	}
+
+	// ========================================
+	// Pagination Support (SDK Compliance)
+	// ========================================
+
+	/**
+	 * List tools with optional pagination
+	 * @summary ツール一覧を取得（ページネーション対応）
+	 * @param connectionId - Connection ID
+	 * @param options - Pagination options
+	 */
+	async listTools(
+		connectionId: string,
+		options?: { cursor?: string }
+	): Promise<{ tools: McpToolInfo[]; nextCursor?: string }> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		const result = await connection.client.listTools({
+			cursor: options?.cursor
+		});
+
+		const tools: McpToolInfo[] = result.tools.map(tool => ({
+			name: tool.name,
+			description: tool.description,
+			inputSchema: tool.inputSchema as Record<string, unknown>,
+			outputSchema: tool.outputSchema as Record<string, unknown> | undefined
+		}));
+
+		return {
+			tools,
+			nextCursor: result.nextCursor
+		};
+	}
+
+	/**
+	 * List resources with optional pagination
+	 * @summary リソース一覧を取得（ページネーション対応）
+	 * @param connectionId - Connection ID
+	 * @param options - Pagination options
+	 */
+	async listResourcesPaginated(
+		connectionId: string,
+		options?: { cursor?: string }
+	): Promise<{ resources: McpResourceInfo[]; nextCursor?: string }> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		const result = await connection.client.listResources({
+			cursor: options?.cursor
+		});
+
+		const resources: McpResourceInfo[] = result.resources.map(res => ({
+			uri: res.uri,
+			name: res.name,
+			mimeType: res.mimeType,
+			description: res.description
+		}));
+
+		return {
+			resources,
+			nextCursor: result.nextCursor
+		};
+	}
+
+	/**
+	 * List prompts with optional pagination
+	 * @summary プロンプト一覧を取得（ページネーション対応）
+	 * @param connectionId - Connection ID
+	 * @param options - Pagination options
+	 */
+	async listPromptsPaginated(
+		connectionId: string,
+		options?: { cursor?: string }
+	): Promise<{ prompts: McpPromptInfo[]; nextCursor?: string }> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		const result = await connection.client.listPrompts({
+			cursor: options?.cursor
+		});
+
+		const prompts: McpPromptInfo[] = result.prompts.map(p => ({
+			name: p.name,
+			description: p.description,
+			arguments: p.arguments?.map(a => ({
+				name: a.name,
+				description: a.description,
+				required: a.required
+			}))
+		}));
+
+		return {
+			prompts,
+			nextCursor: result.nextCursor
+		};
+	}
+
+	/**
+	 * Auto-pagination helper - fetch all tools
+	 * @summary 全ツールを自動ページネーションで取得
+	 * @param connectionId - Connection ID
+	 */
+	async listAllTools(connectionId: string): Promise<McpToolInfo[]> {
+		const allTools: McpToolInfo[] = [];
+		let cursor: string | undefined;
+
+		do {
+			const result = await this.listTools(connectionId, { cursor });
+			allTools.push(...result.tools);
+			cursor = result.nextCursor;
+		} while (cursor);
+
+		return allTools;
+	}
+
+	/**
+	 * Auto-pagination helper - fetch all resources
+	 * @summary 全リソースを自動ページネーションで取得
+	 * @param connectionId - Connection ID
+	 */
+	async listAllResources(connectionId: string): Promise<McpResourceInfo[]> {
+		const allResources: McpResourceInfo[] = [];
+		let cursor: string | undefined;
+
+		do {
+			const result = await this.listResourcesPaginated(connectionId, { cursor });
+			allResources.push(...result.resources);
+			cursor = result.nextCursor;
+		} while (cursor);
+
+		return allResources;
+	}
+
+	/**
+	 * Auto-pagination helper - fetch all prompts
+	 * @summary 全プロンプトを自動ページネーションで取得
+	 * @param connectionId - Connection ID
+	 */
+	async listAllPrompts(connectionId: string): Promise<McpPromptInfo[]> {
+		const allPrompts: McpPromptInfo[] = [];
+		let cursor: string | undefined;
+
+		do {
+			const result = await this.listPromptsPaginated(connectionId, { cursor });
+			allPrompts.push(...result.prompts);
+			cursor = result.nextCursor;
+		} while (cursor);
+
+		return allPrompts;
+	}
+
+	// ========================================
+	// Additional Methods (SDK Compliance)
+	// ========================================
+
+	/**
+	 * Ping server to check connection health
+	 * @summary サーバー接続状態を確認
+	 * @param connectionId - Connection ID
+	 * @returns true if server is responsive
+	 */
+	async ping(connectionId: string): Promise<boolean> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		try {
+			await connection.client.ping();
+			return true;
+		} catch {
+			connection.status = 'error';
+			return false;
+		}
+	}
+
+	/**
+	 * Get argument completions for a prompt or resource
+	 * @summary プロンプト/リソース引数の補完を取得
+	 * @param connectionId - Connection ID
+	 * @param params - Completion parameters
+	 */
+	async complete(
+		connectionId: string,
+		params: {
+			ref: { type: 'ref/prompt'; name: string } | { type: 'ref/resource'; uri: string };
+			argument: { name: string; value: string };
+		}
+	): Promise<{ values: string[]; total?: number; hasMore?: boolean }> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		// Check server capability
+		const capabilities = connection.client.getServerCapabilities();
+		if (!capabilities?.completions) {
+			throw new Error(`Server does not support completions`);
+		}
+
+		const result = await connection.client.complete(params);
+		return {
+			values: result.values as string[],
+			total: result.total as number | undefined,
+			hasMore: result.hasMore as boolean | undefined
 		};
 	}
 

@@ -1,30 +1,63 @@
 {
-  "$schema": "./mcp-servers.schema.json",
+  "$schema": "https://example.com/mcp-servers-schema.json",
   "version": "1.0",
   "servers": [
     {
-      "id": "example-http",
-      "name": "Example HTTP Server",
-      "url": "http://localhost:3000/mcp",
-      "description": "Example MCP server via HTTP transport",
-      "enabled": false,
-      "timeout": 30000
+      "id": "github-mcp",
+      "url": "https://api.github.com/mcp",
+      "name": "GitHub MCP Server",
+      "description": "GitHub integration via MCP",
+      "enabled": true,
+      "timeout": 30000,
+      "auth": {
+        "type": "bearer",
+        "token": "${GITHUB_TOKEN}"
+      }
     },
     {
-      "id": "example-sse",
-      "name": "Example SSE Server",
-      "url": "sse://localhost:3001/sse",
-      "description": "Example MCP server via SSE transport",
+      "id": "internal-api",
+      "url": "https://internal.example.com/mcp",
+      "name": "Internal API",
       "enabled": false,
-      "timeout": 30000
+      "auth": {
+        "type": "api-key",
+        "apiKey": "${API_KEY}",
+        "headerName": "X-API-Key"
+      },
+      "headers": {
+        "X-Organization": "my-org"
+      }
     },
     {
-      "id": "example-stdio",
-      "name": "Example Stdio Server",
+      "id": "local-stdio",
       "url": "npx -y @anthropic/mcp-server",
-      "description": "Example MCP server via stdio transport",
+      "name": "Local Stdio Server",
       "enabled": false,
-      "timeout": 30000
+      "description": "Local MCP server via stdio"
+    },
+    {
+      "id": "legacy-sse",
+      "url": "sse://legacy.example.com/events",
+      "name": "Legacy SSE Server",
+      "enabled": false,
+      "auth": {
+        "type": "basic",
+        "username": "user",
+        "password": "${BASIC_PASSWORD}"
+      }
+    },
+    {
+      "id": "custom-auth",
+      "url": "https://custom.example.com/mcp",
+      "name": "Custom Auth Server",
+      "enabled": false,
+      "auth": {
+        "type": "custom",
+        "headers": {
+          "X-Custom-Auth": "${CUSTOM_TOKEN}",
+          "X-Request-ID": "mcp-client"
+        }
+      }
     }
   ]
 }

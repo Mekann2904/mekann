@@ -2,22 +2,23 @@
  * @abdd.meta
  * path: .pi/lib/mcp/config-loader.ts
  * role: MCPサーバー設定の読み込み・バリデーション
- * why: 外部設定ファイルからMCPサーバー接続情報を管理するため
- * related: types.ts, connection-manager.ts, ../extensions/mcp-client.ts
- * public_api: McpServerConfig, McpConfigSchema, loadMcpConfig, validateMcpConfig
- * invariants: 設定ファイルはJSON形式、各サーバーIDは一意
+ * why: 外部設定ファイルからMCPサーバー接続情報と認証を管理するため
+ * related: types.ts, connection-manager.ts, ../extensions/mcp-client.ts, auth-provider.ts
+ * public_api: McpServerConfig, McpConfigSchema, McpAuthSchema, loadMcpConfig, validateMcpConfig, applyDefaults, getEnabledServers
+ * invariants: 設定ファイルはJSON形式、各サーバーIDは一意、認証タイプは4種類のみ
  * side_effects: ファイルシステムからの設定読み込み
- * failure_modes: ファイル不在、JSONパースエラー、バリデーションエラー
+ * failure_modes: ファイル不在、JSONパースエラー、バリデーションエラー、不正な認証タイプ
  * @abdd.explain
- * overview: .pi/mcp-servers.jsonの読み込みとバリデーションを行うモジュール
+ * overview: .pi/mcp-servers.jsonの読み込みとバリデーションを行うモジュール（認証対応）
  * what_it_does:
- *   - MCPサーバー設定のスキーマ定義
+ *   - MCPサーバー設定のスキーマ定義（認証・ヘッダー含む）
+ *   - Bearer/Basic/API-Key/Custom認証のバリデーション
  *   - 設定ファイルの読み込みとパース
  *   - 設定値のバリデーション
  *   - デフォルト設定のマージ
- * why_it_exists: MCPサーバー接続をコードから分離し、設定可能にするため
+ * why_it_exists: MCPサーバー接続と認証をコードから分離し、設定可能にするため
  * scope:
- *   in: .pi/mcp-servers.json
+ *   in: .pi/mcp-servers.json（auth, headers含む）
  *   out: McpServerConfig[], バリデーション結果
  */
 
@@ -26,6 +27,50 @@ import type { Static } from "@sinclair/typebox";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
+
+/**
+ * Bearer認証設定スキーマ
+ */
+export const McpBearerAuthSchema = Type.Object({
+	type: Type.Literal('bearer'),
+	token: Type.String({ description: "Bearer token" })
+});
+
+/**
+ * Basic認証設定スキーマ
+ */
+export const McpBasicAuthSchema = Type.Object({
+	type: Type.Literal('basic'),
+	username: Type.String({ description: "Username" }),
+	password: Type.String({ description: "Password" })
+});
+
+/**
+ * API Key認証設定スキーマ
+ */
+export const McpApiKeyAuthSchema = Type.Object({
+	type: Type.Literal('api-key'),
+	apiKey: Type.String({ description: "API key value" }),
+	headerName: Type.Optional(Type.String({ description: "Header name (default: X-API-Key)" }))
+});
+
+/**
+ * カスタム認証設定スキーマ
+ */
+export const McpCustomAuthSchema = Type.Object({
+	type: Type.Literal('custom'),
+	headers: Type.Record(Type.String(), Type.String(), { description: "Custom headers" })
+});
+
+/**
+ * 認証設定のユニオン型スキーマ
+ */
+export const McpAuthSchema = Type.Union([
+	McpBearerAuthSchema,
+	McpBasicAuthSchema,
+	McpApiKeyAuthSchema,
+	McpCustomAuthSchema
+]);
 
 /**
  * MCPサーバー設定のスキーマ
@@ -50,6 +95,10 @@ export const McpServerConfigSchema = Type.Object({
 	})),
 	description: Type.Optional(Type.String({
 		description: "Human-readable description of the server"
+	})),
+	auth: Type.Optional(McpAuthSchema),
+	headers: Type.Optional(Type.Record(Type.String(), Type.String(), {
+		description: "Additional HTTP headers"
 	}))
 });
 
@@ -92,11 +141,68 @@ export function getConfigPath(projectRoot: string = process.cwd()): string {
 }
 
 /**
+ * 認証設定をバリデーションする
+ * @param auth - 認証設定
+ * @returns エラーリスト（空の場合は成功）
+ */
+function validateAuthConfig(auth: unknown): string[] {
+	const errors: string[] = [];
+
+	if (typeof auth !== "object" || auth === null) {
+		return ["must be an object with type field"];
+	}
+
+	const a = auth as Record<string, unknown>;
+
+	if (a.type !== "bearer" && a.type !== "basic" && a.type !== "api-key" && a.type !== "custom") {
+		return ["type must be 'bearer', 'basic', 'api-key', or 'custom'"];
+	}
+
+	switch (a.type) {
+		case "bearer":
+			if (typeof a.token !== "string" || a.token.trim() === "") {
+				errors.push("token is required for bearer auth");
+			}
+			break;
+		case "basic":
+			if (typeof a.username !== "string" || a.username.trim() === "") {
+				errors.push("username is required for basic auth");
+			}
+			if (typeof a.password !== "string") {
+				errors.push("password is required for basic auth");
+			}
+			break;
+		case "api-key":
+			if (typeof a.apiKey !== "string" || a.apiKey.trim() === "") {
+				errors.push("apiKey is required for api-key auth");
+			}
+			if (a.headerName !== undefined && typeof a.headerName !== "string") {
+				errors.push("headerName must be a string");
+			}
+			break;
+		case "custom":
+			if (typeof a.headers !== "object" || a.headers === null) {
+				errors.push("headers object is required for custom auth");
+			} else {
+				const headers = a.headers as Record<string, unknown>;
+				for (const [key, value] of Object.entries(headers)) {
+					if (typeof value !== "string") {
+						errors.push(`headers.${key} must be a string`);
+					}
+				}
+			}
+			break;
+	}
+
+	return errors;
+}
+
+/**
  * 設定値にデフォルトを適用する
  * @param config - 生の設定値
  * @returns デフォルト適用後の設定
  */
-export function applyDefaults(config: McpServerConfig): Required<Omit<McpServerConfig, 'name' | 'description'>> & Pick<McpServerConfig, 'name' | 'description'> {
+export function applyDefaults(config: McpServerConfig): Required<Omit<McpServerConfig, 'name' | 'description' | 'auth' | 'headers'>> & Pick<McpServerConfig, 'name' | 'description' | 'auth' | 'headers'> {
 	return {
 		...config,
 		timeout: config.timeout ?? DEFAULT_TIMEOUT,
@@ -160,6 +266,26 @@ export function validateServerConfig(config: unknown): { success: true; data: Mc
 
 	if (c.description !== undefined && typeof c.description !== "string") {
 		errors.push("description: must be a string");
+	}
+
+	// Auth validation
+	if (c.auth !== undefined) {
+		const authErrors = validateAuthConfig(c.auth);
+		errors.push(...authErrors.map(e => `auth: ${e}`));
+	}
+
+	// Headers validation
+	if (c.headers !== undefined) {
+		if (typeof c.headers !== "object" || c.headers === null) {
+			errors.push("headers: must be an object");
+		} else {
+			const headers = c.headers as Record<string, unknown>;
+			for (const [key, value] of Object.entries(headers)) {
+				if (typeof value !== "string") {
+					errors.push(`headers.${key}: must be a string`);
+				}
+			}
+		}
 	}
 
 	if (errors.length > 0) {

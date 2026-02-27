@@ -3,21 +3,26 @@
  * path: .pi/extensions/mcp-client.ts
  * role: MCPクライアント拡張機能 - 外部MCPサーバーへの接続とツール実行
  * why: piからMCPエコシステムのツールとリソースを利用可能にするため
- * related: ../lib/mcp/connection-manager.ts, ../lib/mcp/tool-bridge.ts, ../lib/mcp/types.ts, ../lib/mcp/config-loader.ts
- * public_api: mcp_connect, mcp_disconnect, mcp_list_connections, mcp_list_tools, mcp_call_tool, mcp_list_resources, mcp_read_resource, mcp_reload_config, mcp_register_notification_handler, mcp_set_roots, mcp_list_prompts, mcp_get_prompt
+ * related: ../lib/mcp/connection-manager.ts, ../lib/mcp/tool-bridge.ts, ../lib/mcp/types.ts, ../lib/mcp/config-loader.ts, ../lib/mcp/auth-provider.ts
+ * public_api: mcp_connect, mcp_disconnect, mcp_list_connections, mcp_list_tools, mcp_call_tool, mcp_list_resources, mcp_read_resource, mcp_reload_config, mcp_register_notification_handler, mcp_set_roots, mcp_list_prompts, mcp_get_prompt, mcp_subscribe_resource, mcp_unsubscribe_resource, mcp_list_subscriptions, mcp_ping, mcp_complete
  * invariants: 接続IDは一意、ツールは接続中のみ実行可能、セッション終了時に全接続を切断
- * side_effects: ネットワーク接続の確立・切断、UI通知の表示、設定ファイルからの自動接続、Roots通知の送信
+ * side_effects: ネットワーク接続の確立・切断、UI通知の表示、設定ファイルからの自動接続、Roots通知の送信、認証ヘッダーの送信
  * failure_modes: ネットワークエラー、無効なURL、認証失敗、タイムアウト、接続先でのツール実行エラー、設定ファイルパースエラー
  * @abdd.explain
  * overview: MCPサーバーへの接続とツール実行を提供するpi拡張機能（SDK準拠）
  * what_it_does:
- *   - mcp_connect: MCPサーバーに接続（StreamableHTTP/SSE自動フォールバック対応）
+ *   - mcp_connect: MCPサーバーに接続（認証対応、StreamableHTTP/SSE自動フォールバック）
  *   - mcp_disconnect: 接続を切断
  *   - mcp_list_connections: アクティブな接続一覧を表示
- *   - mcp_list_tools: 接続先のツール一覧を表示
+ *   - mcp_list_tools: 接続先のツール一覧を表示（ページネーション対応）
  *   - mcp_call_tool: 接続先でツールを実行
  *   - mcp_list_resources: 接続先のリソース一覧を表示
  *   - mcp_read_resource: 接続先からリソースを読み取り
+ *   - mcp_subscribe_resource: リソース更新を購読
+ *   - mcp_unsubscribe_resource: リソース購読を解除
+ *   - mcp_list_subscriptions: アクティブな購読一覧
+ *   - mcp_ping: 接続ヘルスチェック
+ *   - mcp_complete: 引数補完
  *   - mcp_reload_config: 設定ファイルを再読み込みして自動接続
  *   - mcp_register_notification_handler: 通知ハンドラーを登録
  *   - mcp_set_roots: Roots設定（サーバーにルートディレクトリを通知）
@@ -26,8 +31,8 @@
  *   - セッション開始時に.pi/mcp-servers.jsonから自動接続
  * why_it_exists: MCPエコシステムのツールをpiで利用可能にし、SDK準拠の機能を提供するため
  * scope:
- *   in: サーバーURL/コマンド、接続ID、ツール名、ツール引数、リソースURI、設定ファイル、Roots、プロンプト引数
- *   out: 接続ステータス、ツール実行結果、リソース内容、通知、プロンプト展開結果
+ *   in: サーバーURL/コマンド、接続ID、ツール名、ツール引数、リソースURI、設定ファイル、Roots、プロンプト引数、認証情報、購読URI
+ *   out: 接続ステータス、ツール実行結果、リソース内容、通知、プロンプト展開結果、購読状態
  */
 
 import { Type } from "@mariozechner/pi-ai";
@@ -35,7 +40,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { mcpManager, type McpConnectionType } from "../lib/mcp/connection-manager.js";
 import { loadMcpConfig, getEnabledServers, getConfigPath } from "../lib/mcp/config-loader.js";
 import { formatToolResult, formatResourceContent, formatToolList, formatConnectionList } from "../lib/mcp/tool-bridge.js";
-import type { McpNotificationHandler, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult } from "../lib/mcp/types.js";
+import { sanitizeAuthForLogging } from "../lib/mcp/auth-provider.js";
+import type { McpNotificationHandler, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult, McpAuthProvider } from "../lib/mcp/types.js";
 
 /**
  * 結果作成ヘルパー関数
@@ -113,11 +119,15 @@ async function autoConnectFromConfig(ctx: { ui: { notify: (msg: string, type: "i
 
     for (const server of enabledServers) {
       try {
+        // Cast auth from config to McpAuthProvider (validated by config-loader)
+        const auth = server.auth as McpAuthProvider | undefined;
         await mcpManager.connect({
           id: server.id,
           url: server.url,
           timeout: server.timeout,
-          type: detectConnectionType(server.url)
+          type: detectConnectionType(server.url),
+          auth,
+          headers: server.headers
         });
         result.succeeded.push(server.id);
         ctx.ui.notify(`Connected to MCP server: ${server.id}`, "info");
@@ -159,7 +169,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "mcp_connect",
     label: "MCP Connect",
-    description: "Connect to an MCP (Model Context Protocol) server. Supports HTTP, SSE, and stdio transports.",
+    description: "Connect to an MCP (Model Context Protocol) server. Supports HTTP, SSE, and stdio transports with optional authentication.",
     parameters: Type.Object({
       id: Type.String({
         description: "Unique connection identifier (alphanumeric, underscores, hyphens). Used to reference this connection in other commands."
@@ -176,15 +186,65 @@ export default function (pi: ExtensionAPI) {
       })),
       timeout: Type.Optional(Type.Number({
         description: "Connection timeout in milliseconds (default: 30000)"
+      })),
+      auth: Type.Optional(Type.Object({
+        type: Type.Union([
+          Type.Literal("bearer"),
+          Type.Literal("basic"),
+          Type.Literal("api-key"),
+          Type.Literal("custom")
+        ], { description: "Authentication type" }),
+        token: Type.Optional(Type.String({ description: "Bearer token (for type='bearer')" })),
+        username: Type.Optional(Type.String({ description: "Username (for type='basic')" })),
+        password: Type.Optional(Type.String({ description: "Password (for type='basic')" })),
+        apiKey: Type.Optional(Type.String({ description: "API key (for type='api-key')" })),
+        headerName: Type.Optional(Type.String({ description: "Header name for API key (default: 'X-API-Key')" })),
+        headers: Type.Optional(Type.Record(Type.String(), Type.String(), { description: "Custom headers (for type='custom')" }))
+      }, { description: "Authentication configuration" })),
+      headers: Type.Optional(Type.Record(Type.String(), Type.String(), {
+        description: "Additional HTTP headers to send with requests"
       }))
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      // Build auth object from params
+      let auth: McpAuthProvider | undefined;
+      if (params.auth) {
+        switch (params.auth.type) {
+          case 'bearer':
+            if (!params.auth.token) {
+              return makeErrorResult("Bearer auth requires 'token' parameter", { authType: 'bearer' });
+            }
+            auth = { type: 'bearer', token: params.auth.token };
+            break;
+          case 'basic':
+            if (!params.auth.username || !params.auth.password) {
+              return makeErrorResult("Basic auth requires 'username' and 'password' parameters", { authType: 'basic' });
+            }
+            auth = { type: 'basic', username: params.auth.username, password: params.auth.password };
+            break;
+          case 'api-key':
+            if (!params.auth.apiKey) {
+              return makeErrorResult("API key auth requires 'apiKey' parameter", { authType: 'api-key' });
+            }
+            auth = { type: 'api-key', apiKey: params.auth.apiKey, headerName: params.auth.headerName };
+            break;
+          case 'custom':
+            if (!params.auth.headers) {
+              return makeErrorResult("Custom auth requires 'headers' parameter", { authType: 'custom' });
+            }
+            auth = { type: 'custom', headers: params.auth.headers };
+            break;
+        }
+      }
+
       try {
         const connection = await mcpManager.connect({
           id: params.id,
           url: params.url,
           timeout: params.timeout,
-          type: params.type
+          type: params.type,
+          auth,
+          headers: params.headers
         });
 
         ctx.ui.notify(`Connected to MCP server: ${params.id}`, "info");
@@ -193,9 +253,10 @@ export default function (pi: ExtensionAPI) {
         const serverInfo = connection.serverInfo
           ? ` (${connection.serverInfo.name}/${connection.serverInfo.version})`
           : '';
+        const authInfo = auth ? ` with ${sanitizeAuthForLogging(auth).type} auth` : '';
 
         return makeSuccessResult(
-          `Successfully connected to ${params.url}${serverInfo}\n` +
+          `Successfully connected to ${params.url}${serverInfo}${authInfo}\n` +
           `Connection ID: ${params.id}\n` +
           `Transport: ${connection.url.startsWith('http') ? 'HTTP' : 'stdio'}\n` +
           `Available tools (${toolNames.length}): ${toolNames.length > 0 ? toolNames.join(', ') : 'none'}\n` +
@@ -207,7 +268,8 @@ export default function (pi: ExtensionAPI) {
             serverInfo: connection.serverInfo,
             toolCount: connection.tools.length,
             resourceCount: connection.resources.length,
-            tools: connection.tools.map(t => ({ name: t.name, description: t.description }))
+            tools: connection.tools.map(t => ({ name: t.name, description: t.description })),
+            auth: sanitizeAuthForLogging(auth)
           }
         );
       } catch (error) {
@@ -279,10 +341,16 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "mcp_list_tools",
     label: "MCP List Tools",
-    description: "List available tools from a connected MCP server.",
+    description: "List available tools from a connected MCP server. Supports pagination for large datasets.",
     parameters: Type.Object({
       id: Type.Optional(Type.String({
         description: "Connection ID. If omitted, lists tools from all connections."
+      })),
+      cursor: Type.Optional(Type.String({
+        description: "Pagination cursor for fetching next page"
+      })),
+      fetchAll: Type.Optional(Type.Boolean({
+        description: "Auto-fetch all pages (default: true when no cursor)"
       }))
     }),
     async execute(_toolCallId, params) {
@@ -292,13 +360,42 @@ export default function (pi: ExtensionAPI) {
           return makeErrorResult(`Connection '${params.id}' not found.`, { id: params.id });
         }
 
-        return makeSuccessResult(
-          formatToolList(connection.tools, params.id),
-          {
-            connectionId: params.id,
-            tools: connection.tools
+        // Use pagination if cursor provided or fetchAll is false
+        if (params.cursor || params.fetchAll === false) {
+          try {
+            const result = await mcpManager.listTools(params.id, { cursor: params.cursor });
+            const moreInfo = result.nextCursor
+              ? `\n\nMore results available. Use cursor: ${result.nextCursor}`
+              : '';
+            return makeSuccessResult(
+              formatToolList(result.tools, params.id) + moreInfo,
+              {
+                connectionId: params.id,
+                tools: result.tools,
+                nextCursor: result.nextCursor
+              }
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return makeErrorResult(`Failed to list tools: ${message}`, { connectionId: params.id, error: message });
           }
-        );
+        }
+
+        // Auto-pagination (default)
+        try {
+          const tools = await mcpManager.listAllTools(params.id);
+          return makeSuccessResult(
+            formatToolList(tools, params.id),
+            {
+              connectionId: params.id,
+              tools,
+              total: tools.length
+            }
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return makeErrorResult(`Failed to list tools: ${message}`, { connectionId: params.id, error: message });
+        }
       }
 
       // List all tools from all connections
@@ -553,7 +650,9 @@ export default function (pi: ExtensionAPI) {
             id: server.id,
             url: server.url,
             timeout: server.timeout,
-            type: detectConnectionType(server.url)
+            type: detectConnectionType(server.url),
+            auth: server.auth as McpAuthProvider | undefined,
+            headers: server.headers
           });
           results.succeeded.push(server.id);
           ctx.ui.notify(`Connected to ${server.id}`, "info");
@@ -753,6 +852,244 @@ export default function (pi: ExtensionAPI) {
           name: params.name,
           error: message
         });
+      }
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_subscribe_resource
+  // ========================================
+  pi.registerTool({
+    name: "mcp_subscribe_resource",
+    label: "MCP Subscribe Resource",
+    description: "Subscribe to resource update notifications from a connected MCP server.",
+    parameters: Type.Object({
+      connection_id: Type.String({
+        description: "Connection ID"
+      }),
+      uri: Type.String({
+        description: "Resource URI to subscribe to"
+      })
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        await mcpManager.subscribeResource(params.connection_id, params.uri);
+        ctx.ui.notify(`Subscribed to resource: ${params.uri}`, "info");
+
+        return makeSuccessResult(
+          `Subscribed to resource: ${params.uri}\nYou will receive notifications when this resource is updated.`,
+          { connectionId: params.connection_id, uri: params.uri }
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Failed to subscribe: ${message}`, "error");
+        return makeErrorResult(
+          `Failed to subscribe: ${message}`,
+          { connectionId: params.connection_id, uri: params.uri, error: message }
+        );
+      }
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_unsubscribe_resource
+  // ========================================
+  pi.registerTool({
+    name: "mcp_unsubscribe_resource",
+    label: "MCP Unsubscribe Resource",
+    description: "Unsubscribe from resource update notifications.",
+    parameters: Type.Object({
+      connection_id: Type.String({
+        description: "Connection ID"
+      }),
+      uri: Type.String({
+        description: "Resource URI to unsubscribe from"
+      })
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        await mcpManager.unsubscribeResource(params.connection_id, params.uri);
+        ctx.ui.notify(`Unsubscribed from resource: ${params.uri}`, "info");
+
+        return makeSuccessResult(
+          `Unsubscribed from resource: ${params.uri}`,
+          { connectionId: params.connection_id, uri: params.uri }
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Failed to unsubscribe: ${message}`, "error");
+        return makeErrorResult(
+          `Failed to unsubscribe: ${message}`,
+          { connectionId: params.connection_id, uri: params.uri, error: message }
+        );
+      }
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_list_subscriptions
+  // ========================================
+  pi.registerTool({
+    name: "mcp_list_subscriptions",
+    label: "MCP List Subscriptions",
+    description: "List active resource subscriptions for a connection.",
+    parameters: Type.Object({
+      connection_id: Type.String({
+        description: "Connection ID"
+      })
+    }),
+    async execute(_toolCallId, params) {
+      const subscriptions = mcpManager.getSubscriptions(params.connection_id);
+
+      if (subscriptions.length === 0) {
+        return makeSuccessResult(
+          `No active subscriptions for '${params.connection_id}'.`,
+          { connectionId: params.connection_id, subscriptions: [] }
+        );
+      }
+
+      const subList = subscriptions.map(uri => `  - ${uri}`).join('\n');
+      return makeSuccessResult(
+        `Active subscriptions for '${params.connection_id}' (${subscriptions.length}):\n${subList}`,
+        { connectionId: params.connection_id, subscriptions }
+      );
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_ping
+  // ========================================
+  pi.registerTool({
+    name: "mcp_ping",
+    label: "MCP Ping",
+    description: "Check connection health by pinging the MCP server.",
+    parameters: Type.Object({
+      connection_id: Type.String({
+        description: "Connection ID"
+      })
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      try {
+        const ok = await mcpManager.ping(params.connection_id);
+
+        if (ok) {
+          ctx.ui.notify(`Server '${params.connection_id}' is responsive`, "info");
+          return makeSuccessResult(
+            `Server '${params.connection_id}' is responsive`,
+            { connectionId: params.connection_id, healthy: true }
+          );
+        } else {
+          ctx.ui.notify(`Server '${params.connection_id}' not responding`, "warning");
+          return makeSuccessResult(
+            `Server '${params.connection_id}' not responding`,
+            { connectionId: params.connection_id, healthy: false }
+          );
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Ping failed: ${message}`, "error");
+        return makeErrorResult(
+          `Ping failed: ${message}`,
+          { connectionId: params.connection_id, error: message }
+        );
+      }
+    }
+  });
+
+  // ========================================
+  // Tool: mcp_complete
+  // ========================================
+  pi.registerTool({
+    name: "mcp_complete",
+    label: "MCP Complete",
+    description: "Get argument completions for a prompt or resource reference.",
+    parameters: Type.Object({
+      connection_id: Type.String({
+        description: "Connection ID"
+      }),
+      ref_type: Type.Union([
+        Type.Literal("ref/prompt", { description: "Complete prompt argument" }),
+        Type.Literal("ref/resource", { description: "Complete resource URI" })
+      ], { description: "Reference type" }),
+      ref_name: Type.Optional(Type.String({
+        description: "Prompt name (required for ref/prompt)"
+      })),
+      ref_uri: Type.Optional(Type.String({
+        description: "Resource URI (required for ref/resource)"
+      })),
+      argument_name: Type.String({
+        description: "Argument name to complete"
+      }),
+      argument_value: Type.String({
+        description: "Current argument value (prefix to complete)"
+      })
+    }),
+    async execute(_toolCallId, params) {
+      try {
+        // Build ref based on type
+        const ref = params.ref_type === 'ref/prompt'
+          ? { type: 'ref/prompt' as const, name: params.ref_name! }
+          : { type: 'ref/resource' as const, uri: params.ref_uri! };
+
+        // Validate required fields
+        if (params.ref_type === 'ref/prompt' && !params.ref_name) {
+          return makeErrorResult("ref_name is required for ref/prompt", {
+            connectionId: params.connection_id,
+            refType: params.ref_type
+          });
+        }
+        if (params.ref_type === 'ref/resource' && !params.ref_uri) {
+          return makeErrorResult("ref_uri is required for ref/resource", {
+            connectionId: params.connection_id,
+            refType: params.ref_type
+          });
+        }
+
+        const result = await mcpManager.complete(params.connection_id, {
+          ref,
+          argument: {
+            name: params.argument_name,
+            value: params.argument_value
+          }
+        });
+
+        if (result.values.length === 0) {
+          return makeSuccessResult(
+            `No completions available for '${params.argument_name}'`,
+            {
+              connectionId: params.connection_id,
+              refType: params.ref_type,
+              argumentName: params.argument_name,
+              completions: []
+            }
+          );
+        }
+
+        const completionList = result.values.map(v => `  - ${v}`).join('\n');
+        const moreInfo = result.hasMore ? ` (${result.total ?? result.values.length}+ available)` : '';
+
+        return makeSuccessResult(
+          `Completions for '${params.argument_name}':${moreInfo}\n${completionList}`,
+          {
+            connectionId: params.connection_id,
+            refType: params.ref_type,
+            argumentName: params.argument_name,
+            completions: result.values,
+            total: result.total,
+            hasMore: result.hasMore
+          }
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return makeErrorResult(
+          `Completion failed: ${message}`,
+          {
+            connectionId: params.connection_id,
+            refType: params.ref_type,
+            argumentName: params.argument_name,
+            error: message
+          }
+        );
       }
     }
   });
