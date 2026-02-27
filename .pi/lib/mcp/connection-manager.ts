@@ -1238,11 +1238,25 @@ export class McpConnectionManager {
 /**
  * シングルトンインスタンス
  * globalに保存して、異なるモジュールパスからのインポートでも同じインスタンスを共有する
+ *
+ * リロード対応: 既存のインスタンスがある場合は切断を試みてから新しいインスタンスを作成する。
+ * これにより、古いモジュールのクラス定義との不整合によるクラッシュを防ぐ。
  */
 declare global {
   // eslint-disable-next-line no-var
   var __mcpManager: McpConnectionManager | undefined;
 }
 
-export const mcpManager: McpConnectionManager = globalThis.__mcpManager ?? new McpConnectionManager();
+// リロード時のクリーンアップ: 既存のインスタンスがあれば切断を試みる
+if (globalThis.__mcpManager) {
+  const oldManager = globalThis.__mcpManager;
+  // 非同期で切断を実行（エラーは無視）
+  oldManager.disconnectAll().catch((err) => {
+    console.warn('[MCP] Failed to disconnect on reload:', err);
+  });
+  // 古いインスタンスをクリア
+  globalThis.__mcpManager = undefined;
+}
+
+export const mcpManager: McpConnectionManager = new McpConnectionManager();
 globalThis.__mcpManager = mcpManager;
