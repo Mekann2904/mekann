@@ -176,6 +176,7 @@ export function startServer(
       }));
       res.json({ connections: sanitized, count: sanitized.length });
     } catch (error) {
+      console.error("[web-ui] Failed to list MCP connections:", error);
       res.status(500).json({ error: "Failed to list connections" });
     }
   });
@@ -204,6 +205,7 @@ export function startServer(
         subscriptions: Array.from(conn.subscriptions),
       });
     } catch (error) {
+      console.error("[web-ui] Failed to get MCP connection:", error);
       res.status(500).json({ error: "Failed to get connection" });
     }
   });
@@ -216,6 +218,7 @@ export function startServer(
       const tools = await mcpManager.listAllTools(req.params.id);
       res.json({ tools, count: tools.length });
     } catch (error) {
+      console.error("[web-ui] Failed to list MCP tools:", error);
       res.status(500).json({ error: "Failed to list tools" });
     }
   });
@@ -228,6 +231,7 @@ export function startServer(
       const result = await mcpManager.listResourcesPaginated(req.params.id);
       res.json(result);
     } catch (error) {
+      console.error("[web-ui] Failed to list MCP resources:", error);
       res.status(500).json({ error: "Failed to list resources" });
     }
   });
@@ -240,6 +244,7 @@ export function startServer(
       const result = await mcpManager.ping(req.params.id);
       res.json({ success: result });
     } catch (error) {
+      console.error("[web-ui] MCP ping failed:", error);
       res.status(500).json({ error: "Ping failed" });
     }
   });

@@ -1237,5 +1237,12 @@ export class McpConnectionManager {
 
 /**
  * シングルトンインスタンス
+ * globalに保存して、異なるモジュールパスからのインポートでも同じインスタンスを共有する
  */
-export const mcpManager = new McpConnectionManager();
+declare global {
+  // eslint-disable-next-line no-var
+  var __mcpManager: McpConnectionManager | undefined;
+}
+
+export const mcpManager: McpConnectionManager = globalThis.__mcpManager ?? new McpConnectionManager();
+globalThis.__mcpManager = mcpManager;
