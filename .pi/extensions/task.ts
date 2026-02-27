@@ -57,7 +57,7 @@ type TaskPriority = "low" | "medium" | "high" | "urgent";
 /**
  * タスクのステータス
  */
-type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled";
+type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled" | "failed";
 
 /**
  * タスクのデータモデル
@@ -507,7 +507,7 @@ export default function (pi: ExtensionAPI) {
 			let tasks = storage.tasks;
 
 			if (params.status) {
-				const validStatuses: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled"];
+				const validStatuses: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled", "failed"];
 				if (!validStatuses.includes(params.status as TaskStatus)) {
 					return {
 						content: [{ type: "text", text: `Invalid status. Must be one of: ${validStatuses.join(", ")}` }],
@@ -614,7 +614,7 @@ export default function (pi: ExtensionAPI) {
 			if (params.title !== undefined) updates.title = params.title;
 			if (params.description !== undefined) updates.description = params.description;
 			if (params.status !== undefined) {
-				const validStatuses: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled"];
+				const validStatuses: TaskStatus[] = ["todo", "in_progress", "completed", "cancelled", "failed"];
 				if (!validStatuses.includes(params.status as TaskStatus)) {
 					return {
 						content: [{ type: "text", text: `Invalid status. Must be one of: ${validStatuses.join(", ")}` }],
