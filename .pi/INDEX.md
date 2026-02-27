@@ -98,6 +98,13 @@ mekann/
 | sym_find | `extensions/search/` | Symbol definition search |
 | create_tool | `extensions/dynamic-tools.ts` | Dynamic tool generation |
 | run_dynamic_tool | `extensions/dynamic-tools.ts` | Dynamic tool execution |
+| mcp_connect | `extensions/mcp-client.ts` | Connect to MCP server |
+| mcp_disconnect | `extensions/mcp-client.ts` | Disconnect from MCP server |
+| mcp_list_connections | `extensions/mcp-client.ts` | List MCP connections |
+| mcp_list_tools | `extensions/mcp-client.ts` | List MCP tools |
+| mcp_call_tool | `extensions/mcp-client.ts` | Execute MCP tool |
+| mcp_list_resources | `extensions/mcp-client.ts` | List MCP resources |
+| mcp_read_resource | `extensions/mcp-client.ts` | Read MCP resource |
 | startup-context | `extensions/startup-context.ts` | Initial context injection |
 
 ## Skills Index
