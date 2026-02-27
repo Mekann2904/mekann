@@ -481,7 +481,7 @@ export function TasksPage() {
               total: taskSubtasks.length,
             } : null;
 
-            return (
+            const card = (
               <KanbanTaskCard
                 key={task.id}
                 task={task}
@@ -495,6 +495,12 @@ export function TasksPage() {
                 isSelected={selectedTask?.id === task.id}
               />
             );
+
+            // Indent subtasks slightly
+            if (isSubtask) {
+              return <div key={task.id} class="ml-3">{card}</div>;
+            }
+            return card;
           })}
         </div>
 
