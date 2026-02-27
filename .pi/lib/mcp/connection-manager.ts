@@ -5,9 +5,9 @@
  * why: 複数のMCPサーバーへの接続を一元管理し、状態を追跡するため
  * related: types.ts, tool-bridge.ts, ../extensions/mcp-client.ts, auth-provider.ts
  * public_api: McpConnectionManager, mcpManager, McpConnectionType, setRoots, getRoots, listPrompts, getPrompt, subscribeResource, unsubscribeResource, getSubscriptions, listTools, listResourcesPaginated, listAllTools, listAllResources, ping, complete, setLoggingLevel, setSamplingHandler, setElicitationHandler
- * invariants: 接続IDは一意、最大接続数は10、切断時にリソースと購読を解放
- * side_effects: ネットワーク接続の確立・切断、Roots通知の送信、認証ヘッダーの送信、Sampling/Elicitationハンドラーの設定
- * failure_modes: ネットワークエラー、無効なURL、認証失敗、タイムアウト、SSEフォールバック失敗、WebSocket接続エラー
+ * invariants: 接続IDは一意、最大接続数は10、切断時にリソースと購読を解放、切断処理は再入不可能
+ * side_effects: ネットワーク接続の確立・切断、Roots通知の送信、認証ヘッダーの送信、Sampling/Elicitationハンドラーの設定、モジュールリロード時の非同期クリーンアップ（setImmediate）
+ * failure_modes: ネットワークエラー、無効なURL、認証失敗、タイムアウト、SSEフォールバック失敗、WebSocket接続エラー、モジュールリロード時の二重切断呼び出し（再入防止ガードで対応）
  * @abdd.explain
  * overview: MCPサーバー接続のシングルトン管理クラス（SDK 100%準拠）
  * what_it_does:
@@ -22,6 +22,7 @@
  *   - ログレベル制御（setLoggingLevel）
  *   - Sampling Handler（サーバーからのLLMサンプリングリクエスト処理）
  *   - Elicitation Handler（サーバーからの情報収集リクエスト処理）
+ *   - モジュールリロード時の安全なクリーンアップ（setImmediate遅延実行）
  * why_it_exists: 複数接続の状態を一元管理し、MCP SDK準拠の機能を提供するため
  * scope:
  *   in: 接続パラメータ（id, url, type, auth, headers）, Roots設定, プロンプト引数, 購読URI, ログレベル, Sampling/Elicitationハンドラー
@@ -142,6 +143,12 @@ export class McpConnectionManager {
 	 * エリシテーションハンドラー（サーバーからの情報収集リクエスト処理）
 	 */
 	private elicitationHandler: McpElicitationHandler | null = null;
+
+	/**
+	 * 切断処理の再入防止フラグ
+	 * モジュールリロード時の二重呼び出しを防ぐ
+	 */
+	private isDisconnecting = false;
 
 	/**
 	 * 通知コールバックを設定する
@@ -460,10 +467,22 @@ export class McpConnectionManager {
 
 	/**
 	 * すべての接続を切断する
+	 * 再入防止: 既に切断処理中の場合はスキップする
 	 */
 	async disconnectAll(): Promise<void> {
-		const disconnectPromises = Array.from(this.state.connections.keys()).map(id => this.disconnect(id));
-		await Promise.allSettled(disconnectPromises);
+		// 再入防止: 既に切断処理中の場合はスキップ
+		if (this.isDisconnecting) {
+			console.log("[MCP] disconnectAll already in progress, skipping duplicate call");
+			return;
+		}
+
+		this.isDisconnecting = true;
+		try {
+			const disconnectPromises = Array.from(this.state.connections.keys()).map(id => this.disconnect(id));
+			await Promise.allSettled(disconnectPromises);
+		} finally {
+			this.isDisconnecting = false;
+		}
 	}
 
 	/**
@@ -1256,9 +1275,17 @@ if (existingManager) {
   // 既存インスタンスがある場合、プロトタイプが一致すれば再利用、そうでなければクリーンアップ
   const isNewModule = !(existingManager instanceof McpConnectionManager);
   if (isNewModule) {
-    // リロード検出: クリーンアップしてから新規作成
-    existingManager.disconnectAll().catch(() => {});
+    // リロード検出: 同期的に参照をクリア
+    // 他のコードが古いインスタンスを使わないようにする
     globalThis.__mcpManager = undefined;
+
+    // 非同期クリーンアップを次のイベントループに延期
+    // これにより stdin 処理が優先され、Kitty プロトコルの不整合を防ぐ
+    setImmediate(() => {
+      (existingManager as McpConnectionManager).disconnectAll().catch((err) => {
+        console.warn("[MCP] Cleanup error during reload:", err);
+      });
+    });
   }
   // プロトタイプが一致する場合はそのまま再利用
 }
