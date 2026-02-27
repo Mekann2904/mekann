@@ -23,6 +23,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Exception: web-ui dist is distributed pre-built
+!.pi/extensions/web-ui/dist/
+
 # Testing
 coverage/
 .nyc_output/
