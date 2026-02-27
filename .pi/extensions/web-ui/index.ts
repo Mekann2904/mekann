@@ -34,6 +34,10 @@ import {
   ServerRegistry,
   ThemeStorage,
 } from "./lib/instance-registry.js";
+import {
+  startServer as startApiServer,
+  isApiServerRunning,
+} from "../server.js";
 
 const DEFAULT_PORT = 3000;
 
@@ -230,6 +234,17 @@ export default function (pi: ExtensionAPI) {
       "Open the Web UI dashboard in a browser. Returns the URL if server is running.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+      // Auto-start Task API server if not running
+      if (!isApiServerRunning()) {
+        try {
+          const apiPort = parseInt(process.env.PI_API_PORT || "") || 3456;
+          await startApiServer(apiPort);
+        } catch (error) {
+          // Log but don't fail - Web UI can still work without task API
+          console.error("[Web UI] Failed to auto-start Task API:", error);
+        }
+      }
+
       // Check if server is running (either local or remote)
       const localRunning = isServerRunning();
       const existingServer = ServerRegistry.isRunning();

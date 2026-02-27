@@ -531,6 +531,34 @@ function stopServer(): Promise<void> {
 // ============================================
 
 export default function (pi: ExtensionAPI) {
+	// Auto-start server on session start (can be disabled via PI_API_AUTO_START=false)
+	pi.on("session_start", async (_event, ctx) => {
+		const autoStart = process.env.PI_API_AUTO_START !== "false";
+
+		if (!autoStart) {
+			return;
+		}
+
+		// Check if already running
+		if (server) {
+			return;
+		}
+
+		const port = parseInt(process.env.PI_API_PORT || "") || DEFAULT_PORT;
+		try {
+			await startServer(port);
+			ctx.ui.notify(`Task API auto-started on port ${port}`, "info");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			ctx.ui.notify(`Task API auto-start failed: ${message}`, "warning");
+		}
+	});
+
+	// Cleanup on shutdown
+	pi.on("session_shutdown", async () => {
+		await stopServer();
+	});
+
 	// Tool: Start API server
 	pi.registerTool({
 		name: "api_start",
@@ -621,3 +649,20 @@ export default function (pi: ExtensionAPI) {
 }
 
 export { startServer, stopServer, DEFAULT_PORT };
+
+// Check if API server is running
+function isApiServerRunning(): boolean {
+	return server !== null;
+}
+
+// Get API server port (returns null if not running)
+function getApiServerPort(): number | null {
+	if (!server) return null;
+	const address = server.address();
+	if (typeof address === "object" && address !== null) {
+		return address.port;
+	}
+	return null;
+}
+
+export { isApiServerRunning, getApiServerPort };

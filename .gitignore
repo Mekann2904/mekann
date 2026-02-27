@@ -75,6 +75,9 @@ coverage/
 # Dynamic tools temporary definitions
 .pi/extensions/github-agent/dt_*.json
 
+# Task API storage (runtime data)
+.pi/tasks/
+
 # ============================================================================
 # Memory & Embeddings (may contain sensitive task data)
 # ============================================================================
