@@ -381,6 +381,11 @@ ${taskDescription}
 			return;
 		}
 
+		// Guard: ctx or ctx.ui may be undefined in some contexts
+		if (!ctx?.ui) {
+			return;
+		}
+
 		const storage = loadStorage();
 		const nextTask = getNextPendingTask(storage);
 
@@ -410,6 +415,10 @@ ${taskDescription}
 
 	// Event: Agent starts - clear idle indicator
 	pi.on("agent_start", async (_event, ctx) => {
+		// guard: ctx or ctx.ui may be undefined in some contexts
+		if (!ctx?.ui) {
+			return;
+		}
 		ctx.ui.setStatus("auto-executor", undefined);
 		lastNotifiedTaskId = null; // Reset notification tracking
 	});
@@ -417,6 +426,11 @@ ${taskDescription}
 	// Event: Session start
 	pi.on("session_start", async (_event, ctx) => {
 		loadConfig();
+
+		// guard: ctx or ctx.ui may be undefined in some contexts
+		if (!ctx?.ui) {
+			return;
+		}
 
 		const storage = loadStorage();
 		const pendingCount = storage.tasks.filter(t => t.status === "todo").length;
