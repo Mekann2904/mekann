@@ -4,25 +4,76 @@
  * role: MCPサーバー接続のライフサイクル管理
  * why: 複数のMCPサーバーへの接続を一元管理し、状態を追跡するため
  * related: types.ts, tool-bridge.ts, ../extensions/mcp-client.ts
- * public_api: McpConnectionManager, mcpManager
+ * public_api: McpConnectionManager, mcpManager, McpConnectionType, setRoots, getRoots, listPrompts, getPrompt
  * invariants: 接続IDは一意、最大接続数は10、切断時にリソースを解放
- * side_effects: ネットワーク接続の確立・切断
- * failure_modes: ネットワークエラー、無効なURL、認証失敗、タイムアウト
+ * side_effects: ネットワーク接続の確立・切断、Roots通知の送信
+ * failure_modes: ネットワークエラー、無効なURL、認証失敗、タイムアウト、SSEフォールバック失敗
  * @abdd.explain
- * overview: MCPサーバー接続のシングルトン管理クラス
+ * overview: MCPサーバー接続のシングルトン管理クラス（SDK準拠）
  * what_it_does:
  *   - MCPサーバーへの接続を確立・管理・切断
+ *   - StreamableHTTP → SSE自動フォールバック（レガシーサーバー対応）
+ *   - Roots機能（サーバーにルートディレクトリを通知）
+ *   - Prompts API（プロンプトテンプレートの取得・展開）
  *   - 接続ごとのツール・リソース一覧をキャッシュ
  *   - エラーハンドリングとステータス追跡
- * why_it_exists: 複数接続の状態を一元管理し、拡張機能から簡単にアクセス可能にするため
+ * why_it_exists: 複数接続の状態を一元管理し、MCP SDK準拠の機能を提供するため
  * scope:
- *   in: 接続パラメータ（id, url）
- *   out: McpConnection, ツール一覧, リソース一覧
+ *   in: 接続パラメータ（id, url, type）, Roots設定, プロンプト引数
+ *   out: McpConnection, ツール一覧, リソース一覧, プロンプト結果
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo } from "./types.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { ListRootsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import type { McpConnection, McpConnectionState, McpToolInfo, McpResourceInfo, McpNotificationType, McpNotification, McpRoot, McpPromptInfo, McpPromptResult } from "./types.js";
+
+/**
+ * 通知コールバック型
+ */
+export type McpNotificationCallback = (notification: McpNotification) => void | Promise<void>;
+
+/**
+ * 接続タイプ
+ */
+export type McpConnectionType = 'http' | 'stdio' | 'sse';
+
+/**
+ * 接続タイプを判定する
+ * @param url - 接続URL または コマンド
+ * @returns 接続タイプ
+ */
+function detectConnectionType(url: string): McpConnectionType {
+	// SSEパターン: sse:// または http+sse://
+	if (url.startsWith('sse://') || url.startsWith('http+sse://') || url.startsWith('https+sse://')) {
+		return 'sse';
+	}
+
+	// HTTPパターン: http:// または https://
+	if (url.startsWith('http://') || url.startsWith('https://')) {
+		return 'http';
+	}
+
+	// stdioパターン: コマンド形式 (例: "node server.js", "npx -y @anthropic/mcp-server")
+	// URL形式でない場合はstdioとみなす
+	return 'stdio';
+}
+
+/**
+ * stdioコマンドをパースする
+ * @param command - コマンド文字列
+ * @returns コマンドと引数
+ */
+function parseStdioCommand(command: string): { command: string; args: string[] } {
+	const parts = command.trim().split(/\s+/);
+	return {
+		command: parts[0],
+		args: parts.slice(1)
+	};
+}
 
 /**
  * デフォルト設定
@@ -39,14 +90,60 @@ export class McpConnectionManager {
 		connections: new Map()
 	};
 
+	private notificationCallback: McpNotificationCallback | null = null;
+
+	/**
+	 * Roots設定（サーバーがアクセス可能なディレクトリ）
+	 */
+	private roots: McpRoot[] = [];
+
+	/**
+	 * 通知コールバックを設定する
+	 * @param callback - 通知を受け取るコールバック関数
+	 */
+	setNotificationCallback(callback: McpNotificationCallback | null): void {
+		this.notificationCallback = callback;
+	}
+
+	/**
+	 * HTTPエラーかどうかを判定する
+	 * @param error - エラーオブジェクト
+	 * @param statusCodePrefix - ステータスコードのプレフィックス（4 = 4xx）
+	 * @returns HTTPエラーの場合true
+	 */
+	private isHttpError(error: unknown, statusCodePrefix: number): boolean {
+		if (!(error instanceof Error)) return false;
+		const message = error.message.toLowerCase();
+		// Check for status code patterns: "4xx", "400", "404", etc.
+		if (message.includes(`${statusCodePrefix}`) && /\b4\d{2}\b/.test(message)) return true;
+		// Check for common error messages
+		if (statusCodePrefix === 4 && (
+			message.includes('bad request') ||
+			message.includes('not found') ||
+			message.includes('method not allowed') ||
+			message.includes('unsupported media type')
+		)) return true;
+		return false;
+	}
+
+	/**
+	 * クライアントケーパビリティを取得する
+	 * @returns MCPクライアントケーパビリティ
+	 */
+	private getCapabilities() {
+		return {
+			roots: { listChanged: true }
+		};
+	}
+
 	/**
 	 * MCPサーバーに接続する
 	 * @param params - 接続パラメータ
 	 * @returns 接続情報
 	 * @throws ネットワークエラー、無効なURL、タイムアウト等
 	 */
-	async connect(params: { id: string; url: string; timeout?: number }): Promise<McpConnection> {
-		const { id, url, timeout = DEFAULT_TIMEOUT } = params;
+	async connect(params: { id: string; url: string; timeout?: number; type?: McpConnectionType }): Promise<McpConnection> {
+		const { id, url, timeout = DEFAULT_TIMEOUT, type } = params;
 
 		// 既存接続のチェック
 		if (this.state.connections.has(id)) {
@@ -58,31 +155,16 @@ export class McpConnectionManager {
 			throw new Error(`Maximum connections (${MAX_CONNECTIONS}) reached. Disconnect a server first.`);
 		}
 
-		// URL検証
-		try {
-			const parsedUrl = new URL(url);
-			if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-				throw new Error(`Invalid protocol: ${parsedUrl.protocol}. Only http and https are allowed.`);
-			}
-		} catch (error) {
-			throw new Error(`Invalid URL: ${error instanceof Error ? error.message : String(error)}`);
-		}
+		// 接続タイプの判定
+		const connectionType = type ?? detectConnectionType(url);
 
-		// クライアントとトランスポートの作成
-		const client = new Client(
-			{ name: "pi-mcp-client", version: "1.0.0" },
-			{ capabilities: {} }
-		);
-
-		const transport = new StreamableHTTPClientTransport(new URL(url));
-
-		// 接続情報の初期化
+		// 接続情報の初期化（先に作成してステータス追跡）
 		const connection: McpConnection = {
 			id,
 			name: id,
 			url,
-			client,
-			transport,
+			client: null as unknown as Client,
+			transport: null as unknown as Transport,
 			status: 'connecting',
 			tools: [],
 			resources: [],
@@ -93,14 +175,89 @@ export class McpConnectionManager {
 
 		try {
 			// タイムアウト付きで接続
-			const connectPromise = client.connect(transport);
-			const timeoutPromise = new Promise<never>((_, reject) => {
-				setTimeout(() => reject(new Error(`Connection timeout after ${timeout}ms`)), timeout);
-			});
+			const connectWithTimeout = async (client: Client, transport: Transport) => {
+				const connectPromise = client.connect(transport);
+				const timeoutPromise = new Promise<never>((_, reject) => {
+					setTimeout(() => reject(new Error(`Connection timeout after ${timeout}ms`)), timeout);
+				});
+				return Promise.race([connectPromise, timeoutPromise]);
+			};
 
-			await Promise.race([connectPromise, timeoutPromise]);
+			let client: Client;
+			let transport: Transport;
 
+			switch (connectionType) {
+				case 'stdio': {
+					const { command, args } = parseStdioCommand(url);
+					transport = new StdioClientTransport({
+						command,
+						args,
+						env: process.env as Record<string, string>
+					});
+					client = new Client(
+						{ name: "pi-mcp-client", version: "1.0.0" },
+						{ capabilities: this.getCapabilities() }
+					);
+					await connectWithTimeout(client, transport);
+					break;
+				}
+				case 'sse': {
+					// SSE URLを通常のHTTP URLに変換
+					const sseUrl = url
+						.replace(/^sse:\/\//, 'http://')
+						.replace(/^http\+sse:\/\//, 'http://')
+						.replace(/^https\+sse:\/\//, 'https://');
+					transport = new SSEClientTransport(new URL(sseUrl));
+					client = new Client(
+						{ name: "pi-mcp-client", version: "1.0.0" },
+						{ capabilities: this.getCapabilities() }
+					);
+					await connectWithTimeout(client, transport);
+					break;
+				}
+				case 'http':
+				default: {
+					// URL検証
+					const parsedUrl = new URL(url);
+					if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+						throw new Error(`Invalid protocol: ${parsedUrl.protocol}. Only http and https are allowed.`);
+					}
+
+					// StreamableHTTPを試行、4xxエラー時にSSEへフォールバック
+					try {
+						transport = new StreamableHTTPClientTransport(parsedUrl);
+						client = new Client(
+							{ name: "pi-mcp-client", version: "1.0.0" },
+							{ capabilities: this.getCapabilities() }
+						);
+						await connectWithTimeout(client, transport);
+					} catch (error) {
+						// SSEフォールバック（レガシーサーバー対応）
+						if (this.isHttpError(error, 4)) {
+							transport = new SSEClientTransport(parsedUrl);
+							client = new Client(
+								{ name: "pi-mcp-client", version: "1.0.0" },
+								{ capabilities: this.getCapabilities() }
+							);
+							await connectWithTimeout(client, transport);
+						} else {
+							throw error;
+						}
+					}
+					break;
+				}
+			}
+
+			// 接続情報を更新
+			connection.client = client;
+			connection.transport = transport;
 			connection.status = 'connected';
+
+			// Rootsハンドラーの設定
+			this.setupRootsHandler(client);
+
+			// 通知ハンドラーの設定
+			this.setupNotificationHandlers(client, id);
 
 			// サーバー情報の取得
 			const serverCapabilities = client.getServerCapabilities();
@@ -150,7 +307,7 @@ export class McpConnectionManager {
 
 			// トランスポートのクリーンアップ
 			try {
-				await transport.close();
+				await connection.transport?.close();
 			} catch {
 				// クリーンアップエラーは無視
 			}
@@ -184,6 +341,101 @@ export class McpConnectionManager {
 	async disconnectAll(): Promise<void> {
 		const disconnectPromises = Array.from(this.state.connections.keys()).map(id => this.disconnect(id));
 		await Promise.allSettled(disconnectPromises);
+	}
+
+	/**
+	 * MCPクライアントに通知ハンドラーを設定する
+	 * @param client - MCPクライアント
+	 * @param connectionId - 接続ID
+	 */
+	private setupNotificationHandlers(client: Client, connectionId: string): void {
+		if (!this.notificationCallback) return;
+
+		// フォールバックハンドラーですべての通知をキャッチ
+		client.fallbackNotificationHandler = async (notification: { method: string; params?: unknown }) => {
+			// 通知タイプをマッピング
+			let notificationType: McpNotificationType;
+			switch (notification.method) {
+				case 'notifications/tools/list_changed':
+					notificationType = 'tools/list_changed';
+					break;
+				case 'notifications/resources/list_changed':
+					notificationType = 'resources/list_changed';
+					break;
+				case 'notifications/prompts/list_changed':
+					notificationType = 'prompts/list_changed';
+					break;
+				case 'notifications/message':
+					notificationType = 'logging/setLevel';
+					break;
+				case 'notifications/progress':
+					notificationType = 'progress';
+					break;
+				case 'notifications/cancelled':
+					notificationType = 'cancelled';
+					break;
+				default:
+					// 不明な通知タイプはloggingとして扱う
+					notificationType = 'logging/setLevel';
+			}
+
+			this.dispatchNotification({
+				type: notificationType,
+				data: (notification.params as Record<string, unknown>) ?? {},
+				connectionId,
+				timestamp: new Date()
+			});
+		};
+	}
+
+	/**
+	 * Rootsハンドラーを設定する
+	 * @param client - MCPクライアント
+	 */
+	private setupRootsHandler(client: Client): void {
+		client.setRequestHandler(ListRootsRequestSchema, async () => {
+			return { roots: this.roots };
+		});
+	}
+
+	/**
+	 * Roots設定を設定する
+	 * @param roots - ルートディレクトリ一覧
+	 */
+	setRoots(roots: McpRoot[]): void {
+		this.roots = roots;
+		// 全接続に通知
+		for (const conn of this.state.connections.values()) {
+			if (conn.client && conn.status === 'connected') {
+				conn.client.sendRootsListChanged().catch(() => {
+					// 通知エラーは無視（サーバーが対応していない可能性）
+				});
+			}
+		}
+	}
+
+	/**
+	 * 現在のRoots設定を取得する
+	 */
+	getRoots(): McpRoot[] {
+		return [...this.roots];
+	}
+
+	/**
+	 * 通知をディスパッチする
+	 * @param notification - 通知データ
+	 */
+	private dispatchNotification(notification: McpNotification): void {
+		if (this.notificationCallback) {
+			try {
+				const result = this.notificationCallback(notification);
+				if (result instanceof Promise) {
+					result.catch(err => console.error('Notification callback error:', err));
+				}
+			} catch (err) {
+				console.error('Notification callback error:', err);
+			}
+		}
 	}
 
 	/**
@@ -251,6 +503,51 @@ export class McpConnectionManager {
 		}));
 
 		return connection.tools;
+	}
+
+	/**
+	 * MCPプロンプト一覧を取得する
+	 * @param connectionId - 接続ID
+	 * @returns プロンプト情報一覧
+	 */
+	async listPrompts(connectionId: string): Promise<McpPromptInfo[]> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		const result = await connection.client.listPrompts();
+		return result.prompts.map(p => ({
+			name: p.name,
+			description: p.description,
+			arguments: p.arguments?.map(a => ({
+				name: a.name,
+				description: a.description,
+				required: a.required
+			}))
+		}));
+	}
+
+	/**
+	 * MCPプロンプトを取得する
+	 * @param connectionId - 接続ID
+	 * @param name - プロンプト名
+	 * @param args - プロンプト引数
+	 * @returns プロンプト展開結果
+	 */
+	async getPrompt(connectionId: string, name: string, args?: Record<string, string>): Promise<McpPromptResult> {
+		const connection = this.getConnectionOrFail(connectionId);
+
+		const result = await connection.client.getPrompt({ name, arguments: args });
+		return {
+			description: result.description,
+			messages: result.messages.map(m => ({
+				role: m.role as 'user' | 'assistant',
+				content: {
+					type: m.content.type as 'text' | 'image' | 'resource',
+					text: 'text' in m.content ? m.content.text : undefined,
+					data: 'data' in m.content ? m.content.data : undefined,
+					mimeType: 'mimeType' in m.content ? m.content.mimeType : undefined
+				}
+			}))
+		};
 	}
 
 	/**

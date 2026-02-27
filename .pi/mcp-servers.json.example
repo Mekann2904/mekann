@@ -1,0 +1,30 @@
+{
+  "$schema": "./mcp-servers.schema.json",
+  "version": "1.0",
+  "servers": [
+    {
+      "id": "example-http",
+      "name": "Example HTTP Server",
+      "url": "http://localhost:3000/mcp",
+      "description": "Example MCP server via HTTP transport",
+      "enabled": false,
+      "timeout": 30000
+    },
+    {
+      "id": "example-sse",
+      "name": "Example SSE Server",
+      "url": "sse://localhost:3001/sse",
+      "description": "Example MCP server via SSE transport",
+      "enabled": false,
+      "timeout": 30000
+    },
+    {
+      "id": "example-stdio",
+      "name": "Example Stdio Server",
+      "url": "npx -y @anthropic/mcp-server",
+      "description": "Example MCP server via stdio transport",
+      "enabled": false,
+      "timeout": 30000
+    }
+  ]
+}
