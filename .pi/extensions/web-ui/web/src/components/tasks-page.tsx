@@ -1,9 +1,9 @@
 /**
  * @abdd.meta
  * @path .pi/extensions/web-ui/web/src/components/tasks-page.tsx
- * @role Main tasks page with GitHub-style Kanban board
- * @why Provide intuitive task management with drag-and-drop
- * @related app.tsx, task-card.tsx, task-form.tsx
+ * @role Main tasks page with GitHub Projects style Kanban board
+ * @why Provide intuitive task management matching GitHub UX
+ * @related app.tsx, kanban-task-card.tsx, task-form.tsx
  * @public_api TasksPage
  * @invariants Data is fetched from API and cached locally
  * @side_effects Fetches from /api/tasks, creates/updates/deletes tasks via API
@@ -11,20 +11,19 @@
  *
  * @abdd.explain
  * @overview GitHub Projects style Kanban board
- * @what_it_does Displays tasks in columns by status, supports drag-and-drop
- * @why_it_exists Visual task management with intuitive workflow
+ * @what_it_does Displays tasks in columns by status, supports drag-and-drop, inline add
+ * @why_it_exists Familiar UX for GitHub users
  * @scope(in) User interactions, drag-and-drop events
  * @scope(out) API calls, rendered Kanban board
  */
 
 import { h } from "preact";
 import { useState, useEffect, useCallback, useMemo, useRef } from "preact/hooks";
-import { Plus, Loader2, AlertCircle, ListTodo, RefreshCw, X, Settings } from "lucide-preact";
+import { Plus, Loader2, AlertCircle, ListTodo, RefreshCw, X, ChevronDown, Search } from "lucide-preact";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { KanbanTaskCard, type Task, type TaskStatus, type TaskPriority } from "./kanban-task-card";
-import { TaskForm, type TaskFormData } from "./task-form";
+import { TaskDetailPanel } from "./task-detail-panel";
 import { cn } from "@/lib/utils";
 
 interface TaskStats {
@@ -39,21 +38,28 @@ interface TaskStats {
 
 const API_BASE = "http://localhost:3456";
 
-// Column configuration
+// Column configuration - GitHub Projects style
 interface ColumnConfig {
   id: TaskStatus;
   label: string;
-  color: string;
-  bgColor: string;
+  icon: string;
 }
 
 const COLUMNS: ColumnConfig[] = [
-  { id: "todo", label: "Todo", color: "text-slate-400", bgColor: "bg-slate-500/10" },
-  { id: "in_progress", label: "In Progress", color: "text-blue-400", bgColor: "bg-blue-500/10" },
-  { id: "completed", label: "Done", color: "text-green-400", bgColor: "bg-green-500/10" },
-  { id: "cancelled", label: "Cancelled", color: "text-slate-500", bgColor: "bg-slate-500/5" },
-  { id: "failed", label: "Failed", color: "text-red-400", bgColor: "bg-red-500/10" },
+  { id: "todo", label: "Todo", icon: "○" },
+  { id: "in_progress", label: "In progress", icon: "◐" },
+  { id: "completed", label: "Done", icon: "●" },
+  { id: "cancelled", label: "Cancelled", icon: "⊘" },
+  { id: "failed", label: "Failed", icon: "✕" },
 ];
+
+// Priority labels - GitHub style
+const PRIORITY_LABELS: Record<TaskPriority, { name: string; color: string }> = {
+  urgent: { name: "urgent", color: "#b60205" },
+  high: { name: "high priority", color: "#d93f0b" },
+  medium: { name: "medium priority", color: "#fbca04" },
+  low: { name: "low priority", color: "#cfd3d7" },
+};
 
 // Priority order for sorting
 const PRIORITY_ORDER: Record<TaskPriority, number> = {
@@ -68,32 +74,15 @@ export function TasksPage() {
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [quickAddColumn, setQuickAddColumn] = useState<TaskStatus | null>(null);
-  const [quickAddTitle, setQuickAddTitle] = useState("");
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [hiddenColumns, setHiddenColumns] = useState<TaskStatus[]>([]);
-  const quickAddInputRef = useRef<HTMLInputElement>(null);
-
-  // Load hidden columns from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem("pi-kanban-hidden-columns");
-    if (saved) {
-      try {
-        setHiddenColumns(JSON.parse(saved));
-      } catch {
-        // ignore
-      }
-    }
-  }, []);
-
-  // Save hidden columns to localStorage
-  useEffect(() => {
-    localStorage.setItem("pi-kanban-hidden-columns", JSON.stringify(hiddenColumns));
-  }, [hiddenColumns]);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Inline add state per column
+  const [addingToColumn, setAddingToColumn] = useState<TaskStatus | null>(null);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const addInputRefs = useRef<Record<TaskStatus, HTMLInputElement | null>>({} as Record<TaskStatus, HTMLInputElement | null>);
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
@@ -137,6 +126,18 @@ export function TasksPage() {
     return () => clearInterval(interval);
   }, [fetchTasks, fetchStats]);
 
+  // Filter tasks by search
+  const filteredTasks = useMemo(() => {
+    if (!searchQuery.trim()) return tasks;
+    const query = searchQuery.toLowerCase();
+    return tasks.filter(
+      (t) =>
+        t.title.toLowerCase().includes(query) ||
+        (t.description?.toLowerCase().includes(query)) ||
+        t.tags.some((tag) => tag.toLowerCase().includes(query))
+    );
+  }, [tasks, searchQuery]);
+
   // Group tasks by status
   const tasksByColumn = useMemo(() => {
     const grouped: Record<TaskStatus, Task[]> = {
@@ -147,11 +148,11 @@ export function TasksPage() {
       failed: [],
     };
 
-    tasks.forEach((task) => {
+    filteredTasks.forEach((task) => {
       grouped[task.status].push(task);
     });
 
-    // Sort each column by priority
+    // Sort each column by priority, then by creation date
     Object.keys(grouped).forEach((status) => {
       grouped[status as TaskStatus].sort((a, b) => {
         // Overdue tasks first
@@ -161,48 +162,27 @@ export function TasksPage() {
         if (!aOverdue && bOverdue) return 1;
 
         // Then by priority
-        return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+        const priorityDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+        if (priorityDiff !== 0) return priorityDiff;
+
+        // Then by creation date (newest first)
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       });
     });
 
     return grouped;
-  }, [tasks]);
+  }, [filteredTasks]);
 
-  // Visible columns
-  const visibleColumns = COLUMNS.filter((col) => !hiddenColumns.includes(col.id));
-
-  // Create task
-  const handleCreate = async (data: TaskFormData) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Failed to create task");
-      }
-
-      setIsFormOpen(false);
-      await fetchTasks();
-      await fetchStats();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create task");
-    }
-  };
-
-  // Quick add task
-  const handleQuickAdd = async (status: TaskStatus) => {
-    if (!quickAddTitle.trim()) return;
+  // Create task inline
+  const handleInlineAdd = async (status: TaskStatus) => {
+    if (!newTaskTitle.trim()) return;
 
     try {
       const res = await fetch(`${API_BASE}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: quickAddTitle.trim(),
+          title: newTaskTitle.trim(),
           status,
           priority: "medium",
         }),
@@ -212,37 +192,19 @@ export function TasksPage() {
         throw new Error("Failed to create task");
       }
 
-      setQuickAddTitle("");
-      setQuickAddColumn(null);
+      const data = await res.json();
+      setNewTaskTitle("");
+      setAddingToColumn(null);
       await fetchTasks();
       await fetchStats();
+      
+      // Select the newly created task
+      if (data.data?.id) {
+        const newTask = (await fetch(`${API_BASE}/api/tasks/${data.data.id}`).then(r => r.json()))?.data;
+        if (newTask) setSelectedTask(newTask);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create task");
-    }
-  };
-
-  // Update task
-  const handleUpdate = async (data: TaskFormData) => {
-    if (!editingTask) return;
-
-    try {
-      const res = await fetch(`${API_BASE}/api/tasks/${editingTask.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Failed to update task");
-      }
-
-      setIsFormOpen(false);
-      setEditingTask(null);
-      await fetchTasks();
-      await fetchStats();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update task");
     }
   };
 
@@ -266,15 +228,8 @@ export function TasksPage() {
     }
   };
 
-  // Complete task
-  const handleComplete = async (id: string) => {
-    await handleStatusChange(id, "completed");
-  };
-
   // Delete task
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this task?")) return;
-
     try {
       const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
         method: "DELETE",
@@ -284,6 +239,9 @@ export function TasksPage() {
         throw new Error("Failed to delete task");
       }
 
+      if (selectedTask?.id === id) {
+        setSelectedTask(null);
+      }
       await fetchTasks();
       await fetchStats();
     } catch (e) {
@@ -291,16 +249,32 @@ export function TasksPage() {
     }
   };
 
-  // Open edit form
-  const handleEdit = (task: Task) => {
-    setEditingTask(task);
-    setIsFormOpen(true);
-  };
+  // Update task
+  const handleUpdateTask = async (updatedTask: Task) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/tasks/${updatedTask.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: updatedTask.title,
+          description: updatedTask.description,
+          status: updatedTask.status,
+          priority: updatedTask.priority,
+          tags: updatedTask.tags,
+          dueDate: updatedTask.dueDate,
+          assignee: updatedTask.assignee,
+        }),
+      });
 
-  // Close form
-  const handleFormClose = () => {
-    setIsFormOpen(false);
-    setEditingTask(null);
+      if (!res.ok) {
+        throw new Error("Failed to update task");
+      }
+
+      await fetchTasks();
+      await fetchStats();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update task");
+    }
   };
 
   // Drag handlers
@@ -336,223 +310,238 @@ export function TasksPage() {
     setDragOverColumn(null);
   };
 
-  // Toggle column visibility
-  const toggleColumn = (columnId: TaskStatus) => {
-    setHiddenColumns((prev) =>
-      prev.includes(columnId)
-        ? prev.filter((id) => id !== columnId)
-        : [...prev, columnId]
-    );
-  };
-
-  // Focus quick add input when opened
+  // Focus input when adding to column
   useEffect(() => {
-    if (quickAddColumn && quickAddInputRef.current) {
-      quickAddInputRef.current.focus();
+    if (addingToColumn && addInputRefs.current[addingToColumn]) {
+      addInputRefs.current[addingToColumn]?.focus();
     }
-  }, [quickAddColumn]);
+  }, [addingToColumn]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape to close panel
+      if (e.key === "Escape") {
+        if (addingToColumn) {
+          setAddingToColumn(null);
+          setNewTaskTitle("");
+        } else if (selectedTask) {
+          setSelectedTask(null);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [addingToColumn, selectedTask]);
 
   return (
-    <div class="flex h-full flex-col overflow-hidden">
-      {/* Header */}
-      <div class="flex gap-2 shrink-0 items-center justify-between p-4 border-b border-border">
-        <div>
-          <h1 class="text-xl font-bold flex items-center gap-2">
-            <ListTodo class="h-5 w-5" />
-            Tasks
-          </h1>
-          <p class="text-sm text-muted-foreground">
-            {stats ? `${stats.total} tasks` : "Loading..."}
-            {stats?.overdue ? (
-              <span class="text-red-500 ml-2">({stats.overdue} overdue)</span>
-            ) : null}
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => { fetchTasks(); fetchStats(); }}
-            disabled={loading}
-            title="Refresh"
-          >
-            <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowSettings(!showSettings)}
-            title="Column settings"
-          >
-            <Settings class={cn("h-4 w-4", showSettings && "text-primary")} />
-          </Button>
-          <Button size="sm" onClick={() => setIsFormOpen(true)}>
-            <Plus class="h-4 w-4 mr-1" />
-            New Task
-          </Button>
-        </div>
-      </div>
-
-      {/* Column settings dropdown */}
-      {showSettings && (
-        <div class="shrink-0 p-2 border-b border-border bg-muted/30">
-          <div class="flex items-center gap-4 text-sm">
-            <span class="text-muted-foreground">Columns:</span>
-            {COLUMNS.map((col) => (
-              <label key={col.id} class="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!hiddenColumns.includes(col.id)}
-                  onChange={() => toggleColumn(col.id)}
-                  class="rounded"
-                />
-                <span class={col.color}>{col.label}</span>
-              </label>
-            ))}
+    <div class="flex h-full overflow-hidden">
+      {/* Main board area */}
+      <div class="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <div class="shrink-0 flex items-center justify-between p-4 border-b border-border bg-background">
+          <div class="flex items-center gap-4">
+            <h1 class="text-lg font-semibold">Tasks</h1>
+            {stats && (
+              <span class="text-sm text-muted-foreground">
+                {stats.total} tasks
+                {stats.overdue > 0 && (
+                  <span class="text-red-500 ml-1">({stats.overdue} overdue)</span>
+                )}
+              </span>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* Error banner */}
-      {error && (
-        <Card class="border-destructive shrink-0 mx-4 mt-4">
-          <CardContent class="py-3 flex items-center gap-2 text-destructive">
-            <AlertCircle class="h-4 w-4" />
-            <span class="text-sm">{error}</span>
-            <Button variant="outline" size="sm" onClick={() => setError(null)} class="ml-auto">
-              Dismiss
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Kanban board */}
-      {loading ? (
-        <div class="flex-1 flex items-center justify-center">
-          <div class="flex flex-col items-center gap-2">
-            <Loader2 class="h-6 w-6 animate-spin text-primary" />
-            <p class="text-sm text-muted-foreground">Loading tasks...</p>
-          </div>
-        </div>
-      ) : tasks.length === 0 ? (
-        <div class="flex-1 flex items-center justify-center">
-          <div class="text-center">
-            <ListTodo class="h-12 w-12 mx-auto text-muted-foreground/50 mb-2" />
-            <p class="text-sm text-muted-foreground">No tasks yet</p>
+          <div class="flex items-center gap-2">
+            {/* Search */}
+            <div class="relative">
+              <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                type="text"
+                value={searchQuery}
+                onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+                placeholder="Search tasks..."
+                class="h-8 w-48 pl-8 text-sm"
+              />
+            </div>
             <Button
               variant="outline"
               size="sm"
-              class="mt-3"
-              onClick={() => setIsFormOpen(true)}
+              onClick={() => { fetchTasks(); fetchStats(); }}
+              disabled={loading}
+              title="Refresh"
             >
-              <Plus class="h-4 w-4 mr-1" />
-              Create first task
+              <RefreshCw class={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             </Button>
           </div>
         </div>
-      ) : (
-        <div class="flex-1 overflow-x-auto p-4">
-          <div class="flex gap-4 h-full min-w-max">
-            {visibleColumns.map((column) => {
-              const columnTasks = tasksByColumn[column.id];
-              const isDropTarget = dragOverColumn === column.id;
 
-              return (
-                <div
-                  key={column.id}
-                  class={cn(
-                    "flex flex-col w-72 shrink-0 rounded-lg bg-muted/30",
-                    isDropTarget && "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                  )}
-                  onDragOver={(e) => handleDragOver(e, column.id)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, column.id)}
-                >
-                  {/* Column header */}
-                  <div class={cn("flex items-center justify-between p-3 border-b border-border", column.bgColor)}>
-                    <div class="flex items-center gap-2">
-                      <h3 class={cn("font-medium text-sm", column.color)}>{column.label}</h3>
-                      <span class="text-xs text-muted-foreground bg-background/50 px-1.5 py-0.5 rounded">
-                        {columnTasks.length}
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="h-6 w-6 opacity-0 group-hover:opacity-100 hover:opacity-100"
-                      onClick={() => setQuickAddColumn(column.id)}
-                      title="Add task"
-                    >
-                      <Plus class="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-
-                  {/* Quick add form */}
-                  {quickAddColumn === column.id && (
-                    <div class="p-2 border-b border-border">
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          handleQuickAdd(column.id);
-                        }}
-                        class="flex gap-2"
-                      >
-                        <Input
-                          ref={quickAddInputRef}
-                          type="text"
-                          value={quickAddTitle}
-                          onInput={(e) => setQuickAddTitle((e.target as HTMLInputElement).value)}
-                          placeholder="Task title..."
-                          class="h-8 text-sm"
-                        />
-                        <Button type="submit" size="sm" class="h-8">
-                          Add
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          class="h-8 w-8 p-0"
-                          onClick={() => {
-                            setQuickAddColumn(null);
-                            setQuickAddTitle("");
-                          }}
-                        >
-                          <X class="h-3.5 w-3.5" />
-                        </Button>
-                      </form>
-                    </div>
-                  )}
-
-                  {/* Task cards */}
-                  <div class="flex-1 overflow-y-auto p-2 space-y-2">
-                    {columnTasks.map((task) => (
-                      <KanbanTaskCard
-                        key={task.id}
-                        task={task}
-                        onComplete={handleComplete}
-                        onDelete={handleDelete}
-                        onEdit={handleEdit}
-                        onDragStart={(e) => handleDragStart(e, task)}
-                        onDragEnd={handleDragEnd}
-                        isDragging={draggedTask?.id === task.id}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+        {/* Error banner */}
+        {error && (
+          <div class="shrink-0 mx-4 mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md flex items-center gap-2 text-red-500">
+            <AlertCircle class="h-4 w-4 shrink-0" />
+            <span class="text-sm flex-1">{error}</span>
+            <Button variant="ghost" size="sm" onClick={() => setError(null)}>
+              <X class="h-3.5 w-3.5" />
+            </Button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Form modal */}
-      <TaskForm
-        isOpen={isFormOpen}
-        initialData={editingTask}
-        onSubmit={editingTask ? handleUpdate : handleCreate}
-        onCancel={handleFormClose}
-      />
+        {/* Kanban board */}
+        {loading ? (
+          <div class="flex-1 flex items-center justify-center">
+            <div class="flex flex-col items-center gap-2">
+              <Loader2 class="h-6 w-6 animate-spin text-primary" />
+              <p class="text-sm text-muted-foreground">Loading...</p>
+            </div>
+          </div>
+        ) : tasks.length === 0 ? (
+          <div class="flex-1 flex items-center justify-center">
+            <div class="text-center">
+              <ListTodo class="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+              <p class="text-sm text-muted-foreground mb-3">No tasks yet</p>
+              <Button size="sm" onClick={() => setAddingToColumn("todo")}>
+                <Plus class="h-4 w-4 mr-1" />
+                Add a task
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div class="flex-1 overflow-x-auto p-4">
+            <div class="flex gap-4 h-full min-w-max">
+              {COLUMNS.map((column) => {
+                const columnTasks = tasksByColumn[column.id];
+                const isDropTarget = dragOverColumn === column.id;
+                const isAdding = addingToColumn === column.id;
+
+                return (
+                  <div
+                    key={column.id}
+                    class={cn(
+                      "flex flex-col w-[280px] shrink-0 bg-muted/30 rounded-md",
+                      isDropTarget && "ring-2 ring-primary/50 bg-primary/5"
+                    )}
+                    onDragOver={(e) => handleDragOver(e, column.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, column.id)}
+                  >
+                    {/* Column header */}
+                    <div class="flex items-center justify-between px-3 py-2 border-b border-border/50">
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm text-muted-foreground">{column.icon}</span>
+                        <span class="text-sm font-medium">{column.label}</span>
+                        <span class="text-xs text-muted-foreground bg-muted px-1.5 rounded">
+                          {columnTasks.length}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="h-6 w-6 opacity-0 hover:opacity-100 data-[show]:opacity-100"
+                        data-show={isAdding ? "" : undefined}
+                        onClick={() => setAddingToColumn(column.id)}
+                        title="Add task"
+                      >
+                        <Plus class="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+
+                    {/* Task cards */}
+                    <div class="flex-1 overflow-y-auto p-2 space-y-2">
+                      {columnTasks.map((task) => (
+                        <KanbanTaskCard
+                          key={task.id}
+                          task={task}
+                          onClick={() => setSelectedTask(task)}
+                          onDragStart={(e) => handleDragStart(e, task)}
+                          onDragEnd={handleDragEnd}
+                          isDragging={draggedTask?.id === task.id}
+                          isSelected={selectedTask?.id === task.id}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Add task form at bottom - GitHub style */}
+                    {isAdding ? (
+                      <div class="p-2 border-t border-border/50">
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            handleInlineAdd(column.id);
+                          }}
+                          class="space-y-2"
+                        >
+                          <textarea
+                            ref={(el) => {
+                              if (el) addInputRefs.current[column.id] = el as unknown as HTMLInputElement;
+                            }}
+                            value={newTaskTitle}
+                            onInput={(e) => setNewTaskTitle((e.target as HTMLTextAreaElement).value)}
+                            placeholder="Add a task..."
+                            rows={2}
+                            class={cn(
+                              "w-full px-2.5 py-1.5 text-sm rounded-md border border-input bg-background",
+                              "placeholder:text-muted-foreground/50",
+                              "focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+                            )}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleInlineAdd(column.id);
+                              }
+                            }}
+                          />
+                          <div class="flex items-center gap-2">
+                            <Button type="submit" size="sm" class="h-7 text-xs" disabled={!newTaskTitle.trim()}>
+                              Add
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              class="h-7 text-xs"
+                              onClick={() => {
+                                setAddingToColumn(null);
+                                setNewTaskTitle("");
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </form>
+                      </div>
+                    ) : (
+                      <button
+                        class="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors rounded-b-md"
+                        onClick={() => setAddingToColumn(column.id)}
+                      >
+                        <Plus class="h-3.5 w-3.5" />
+                        <span>Add item</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Detail panel - GitHub style side panel */}
+      {selectedTask && (
+        <TaskDetailPanel
+          task={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onUpdate={(updated) => {
+            handleUpdateTask(updated);
+            setSelectedTask(updated);
+          }}
+          onDelete={() => handleDelete(selectedTask.id)}
+          onStatusChange={(status) => {
+            handleStatusChange(selectedTask.id, status);
+            setSelectedTask({ ...selectedTask, status });
+          }}
+        />
+      )}
     </div>
   );
 }

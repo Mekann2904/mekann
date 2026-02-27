@@ -1,25 +1,24 @@
 /**
  * @abdd.meta
  * @path .pi/extensions/web-ui/web/src/components/kanban-task-card.tsx
- * @role Draggable task card for Kanban board
- * @why Render compact task card with drag support
- * @related tasks-page.tsx, task-form.tsx
+ * @role Draggable task card for GitHub-style Kanban board
+ * @why Render compact GitHub-style task card with drag support
+ * @related tasks-page.tsx, task-detail-panel.tsx
  * @public_api KanbanTaskCard, Task, TaskStatus, TaskPriority
  * @invariants Task data is immutable during render
- * @side_effects Calls onComplete, onDelete, onEdit, drag callbacks
+ * @side_effects Calls onClick, drag callbacks
  * @failure_modes None (display only)
  *
  * @abdd.explain
- * @overview Compact draggable card for Kanban columns
- * @what_it_does Shows task title, priority, tags with drag handle
- * @why_it_exists Optimized for vertical Kanban layout
+ * @overview GitHub Projects style compact card
+ * @what_it_does Shows task title, labels (priority, tags), assignee avatar
+ * @why_it_exists Familiar GitHub UX
  * @scope(in) Task data, callbacks, drag state
  * @scope(out) Rendered card with drag support
  */
 
 import { h } from "preact";
-import { CheckCircle2, Circle, Clock, AlertTriangle, GripVertical, Calendar, Edit, Trash2 } from "lucide-preact";
-import { Button } from "./ui/button";
+import { GripVertical, Calendar } from "lucide-preact";
 import { cn } from "@/lib/utils";
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
@@ -42,48 +41,81 @@ export interface Task {
 
 interface KanbanTaskCardProps {
   task: Task;
-  onComplete?: (id: string) => void;
-  onDelete?: (id: string) => void;
-  onEdit?: (task: Task) => void;
+  onClick?: () => void;
   onDragStart?: (e: DragEvent) => void;
   onDragEnd?: (e: DragEvent) => void;
   isDragging?: boolean;
+  isSelected?: boolean;
 }
 
-const PRIORITY_CONFIG: Record<TaskPriority, { color: string; bgColor: string; label: string }> = {
-  low: { color: "bg-slate-400", bgColor: "bg-slate-400/10", label: "L" },
-  medium: { color: "bg-yellow-400", bgColor: "bg-yellow-400/10", label: "M" },
-  high: { color: "bg-orange-400", bgColor: "bg-orange-400/10", label: "H" },
-  urgent: { color: "bg-red-400", bgColor: "bg-red-400/10", label: "!" },
+// GitHub label colors
+const PRIORITY_COLORS: Record<TaskPriority, { bg: string; text: string }> = {
+  urgent: { bg: "#b60205", text: "#ffffff" },
+  high: { bg: "#d93f0b", text: "#ffffff" },
+  medium: { bg: "#fbca04", text: "#000000" },
+  low: { bg: "#cfd3d7", text: "#000000" },
 };
 
-const STATUS_ICONS: Record<TaskStatus, typeof Circle> = {
-  todo: Circle,
-  in_progress: Clock,
-  completed: CheckCircle2,
-  cancelled: AlertTriangle,
-  failed: AlertTriangle,
-};
-
+// Status colors for subtle indicators
 const STATUS_COLORS: Record<TaskStatus, string> = {
-  todo: "text-slate-400",
-  in_progress: "text-blue-400",
-  completed: "text-green-400",
-  cancelled: "text-slate-500",
-  failed: "text-red-400",
+  todo: "bg-slate-400",
+  in_progress: "bg-blue-500",
+  completed: "bg-green-500",
+  cancelled: "bg-slate-500",
+  failed: "bg-red-500",
 };
+
+// Tag color palette (GitHub style)
+const TAG_COLORS = [
+  "#1d76db", "#0e8a16", "#d93f0b", "#5319e7", 
+  "#fbca04", "#bfd4f2", "#bfdadc", "#c5def5",
+];
+
+function getTagColor(tag: string): { bg: string; text: string } {
+  // Generate consistent color based on tag name
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const color = TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
+  // Determine text color based on background brightness
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return { bg: color, text: brightness > 128 ? "#000000" : "#ffffff" };
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(/[\s_-]+/)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function getAvatarColor(name: string): string {
+  const colors = [
+    "#1d76db", "#0e8a16", "#d93f0b", "#5319e7",
+    "#e99695", "#f9d0c4", "#fef2c0", "#c2e0c6",
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
 
 export function KanbanTaskCard({
   task,
-  onComplete,
-  onDelete,
-  onEdit,
+  onClick,
   onDragStart,
   onDragEnd,
   isDragging,
+  isSelected,
 }: KanbanTaskCardProps) {
-  const priorityConfig = PRIORITY_CONFIG[task.priority];
-  const StatusIcon = STATUS_ICONS[task.status];
+  const priorityColor = PRIORITY_COLORS[task.priority];
   const isOverdue =
     task.dueDate &&
     task.status !== "completed" &&
@@ -91,6 +123,7 @@ export function KanbanTaskCard({
     new Date(task.dueDate) < new Date();
 
   const handleDragStart = (e: DragEvent) => {
+    e.stopPropagation();
     onDragStart?.(e);
   };
 
@@ -99,133 +132,100 @@ export function KanbanTaskCard({
       draggable
       onDragStart={handleDragStart}
       onDragEnd={onDragEnd}
+      onClick={onClick}
       class={cn(
-        "group relative bg-card rounded-lg border border-border p-3 cursor-grab active:cursor-grabbing",
-        "transition-all hover:shadow-md hover:border-primary/30",
-        isDragging && "opacity-50 rotate-2 scale-105 shadow-lg",
-        task.status === "completed" && "opacity-60",
-        isOverdue && "border-red-500/30 hover:border-red-500/50"
+        "group relative bg-card rounded-md border border-border cursor-pointer",
+        "transition-all duration-150",
+        "hover:border-primary/30 hover:shadow-sm",
+        isDragging && "opacity-50 scale-[0.98]",
+        isSelected && "ring-2 ring-primary border-primary/50",
+        task.status === "completed" && "opacity-60"
       )}
     >
-      {/* Drag handle + Priority */}
-      <div class="flex items-center justify-between mb-2">
-        <div class="flex items-center gap-1.5">
-          {/* Drag handle */}
-          <GripVertical class="h-4 w-4 text-muted-foreground/30 group-hover:text-muted-foreground/60" />
-          
-          {/* Priority badge */}
-          <span
-            class={cn(
-              "inline-flex items-center justify-center w-5 h-5 rounded text-xs font-bold text-white",
-              priorityConfig.color
-            )}
-            title={`${task.priority} priority`}
-          >
-            {priorityConfig.label}
-          </span>
-        </div>
-
-        {/* Actions (visible on hover) */}
-        <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {task.status !== "completed" && (
-            <Button
-              variant="ghost"
-              size="icon"
-              class="h-6 w-6 hover:text-green-500"
-              onClick={() => onComplete?.(task.id)}
-              title="Mark complete"
-            >
-              <CheckCircle2 class="h-3.5 w-3.5" />
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            class="h-6 w-6"
-            onClick={() => onEdit?.(task)}
-            title="Edit"
-          >
-            <Edit class="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            class="h-6 w-6 hover:text-destructive"
-            onClick={() => onDelete?.(task.id)}
-            title="Delete"
-          >
-            <Trash2 class="h-3.5 w-3.5" />
-          </Button>
-        </div>
+      {/* Drag handle */}
+      <div class="absolute left-0 top-0 bottom-0 w-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+        <GripVertical class="h-3.5 w-3.5 text-muted-foreground/50" />
       </div>
 
-      {/* Title */}
-      <h4
-        class={cn(
-          "text-sm font-medium leading-snug mb-2",
-          task.status === "completed" && "line-through text-muted-foreground"
-        )}
-      >
-        {task.title}
-      </h4>
-
-      {/* Description preview */}
-      {task.description && (
-        <p class="text-xs text-muted-foreground line-clamp-2 mb-2">
-          {task.description}
+      {/* Content */}
+      <div class="p-2.5 pl-6">
+        {/* Title */}
+        <p
+          class={cn(
+            "text-sm leading-snug mb-2",
+            task.status === "completed" && "line-through text-muted-foreground"
+          )}
+        >
+          {task.title}
         </p>
-      )}
 
-      {/* Meta info */}
-      <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        {/* Due date */}
-        {task.dueDate && (
+        {/* Labels row */}
+        <div class="flex flex-wrap gap-1 mb-2">
+          {/* Priority label */}
           <span
-            class={cn(
-              "flex items-center gap-1",
-              isOverdue && "text-red-400"
-            )}
+            class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+            style={{ backgroundColor: priorityColor.bg, color: priorityColor.text }}
           >
-            <Calendar class="h-3 w-3" />
-            {new Date(task.dueDate).toLocaleDateString("ja-JP", {
-              month: "short",
-              day: "numeric",
-            })}
+            {task.priority}
           </span>
-        )}
 
-        {/* Assignee */}
-        {task.assignee && (
-          <span class="flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded">
-            {task.assignee.slice(0, 2)}
-          </span>
-        )}
-      </div>
-
-      {/* Tags */}
-      {task.tags.length > 0 && (
-        <div class="flex flex-wrap gap-1 mt-2">
-          {task.tags.slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              class="inline-block px-1.5 py-0.5 text-xs bg-primary/10 text-primary rounded truncate max-w-[80px]"
-              title={tag}
-            >
-              {tag}
-            </span>
-          ))}
+          {/* Tags */}
+          {task.tags.slice(0, 3).map((tag) => {
+            const tagColor = getTagColor(tag);
+            return (
+              <span
+                key={tag}
+                class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium truncate max-w-[100px]"
+                style={{ backgroundColor: tagColor.bg, color: tagColor.text }}
+                title={tag}
+              >
+                {tag}
+              </span>
+            );
+          })}
           {task.tags.length > 3 && (
-            <span class="text-xs text-muted-foreground">+{task.tags.length - 3}</span>
+            <span class="text-[10px] text-muted-foreground">+{task.tags.length - 3}</span>
           )}
         </div>
-      )}
 
-      {/* Subtask indicator */}
-      {task.parentTaskId && (
-        <div class="absolute top-2 right-2">
-          <span class="text-xs text-muted-foreground/50">sub</span>
+        {/* Footer: due date + assignee */}
+        <div class="flex items-center justify-between">
+          {/* Due date */}
+          {task.dueDate && (
+            <span
+              class={cn(
+                "flex items-center gap-1 text-[11px] text-muted-foreground",
+                isOverdue && "text-red-500"
+              )}
+            >
+              <Calendar class="h-3 w-3" />
+              {new Date(task.dueDate).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })}
+            </span>
+          )}
+
+          {/* Assignee avatar */}
+          {task.assignee && (
+            <div
+              class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium text-white ml-auto"
+              style={{ backgroundColor: getAvatarColor(task.assignee) }}
+              title={task.assignee}
+            >
+              {getInitials(task.assignee)}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Status indicator bar */}
+        <div
+          class={cn(
+            "absolute bottom-0 left-0 right-0 h-0.5 rounded-b-md opacity-60",
+            STATUS_COLORS[task.status]
+          )}
+        />
+      </div>
     </div>
   );
 }
