@@ -288,12 +288,6 @@ export function startServer(
         totalTokens: contextUsage?.tokens ?? 0,
         cost: 0, // TODO: integrate with usage tracking
       },
-      metrics: {
-        toolCalls: 0,
-        errors: 0,
-        avgResponseTime: 0,
-      },
-      config: {},
     });
   });
 

@@ -22,22 +22,6 @@ import {
 import { cn } from "@/lib/utils";
 import "./styles/globals.css";
 
-interface DashboardData {
-  status: {
-    model: string;
-    cwd: string;
-    contextUsage: number;
-    totalTokens: number;
-    cost: number;
-  };
-  metrics: {
-    toolCalls: number;
-    errors: number;
-    avgResponseTime: number;
-  };
-  config: Record<string, unknown>;
-}
-
 interface ThemeSettings {
   themeId: string;
   mode: Mode;
@@ -206,8 +190,6 @@ function useSSE(
 }
 
 export function App() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [themeLoaded, setThemeLoaded] = useState(false);
 
   // Initialize theme on mount
@@ -217,73 +199,15 @@ export function App() {
     });
   }, []);
 
-  // SSE event handler
-  const handleSSEEvent = useCallback((event: SSEEvent) => {
-    if (event.type === "connected") {
-      return;
-    }
-
-    if (event.type === "heartbeat") {
-      return; // Ignore heartbeat events
-    }
-
-    // Update dashboard data from SSE events
-    if (event.type === "status" || event.type === "response") {
-      setData((prevData) => ({
-        status: {
-          model: (event.data.model as string) ?? prevData?.status.model ?? "unknown",
-          cwd: (event.data.cwd as string) ?? prevData?.status.cwd ?? "",
-          contextUsage: (event.data.contextUsage as number) ?? prevData?.status.contextUsage ?? 0,
-          totalTokens: (event.data.totalTokens as number) ?? prevData?.status.totalTokens ?? 0,
-          cost: prevData?.status.cost ?? 0,
-        },
-        metrics: prevData?.metrics ?? { toolCalls: 0, errors: 0, avgResponseTime: 0 },
-        config: prevData?.config ?? {},
-      }));
-    }
-
-    if (event.type === "tool-call") {
-      setData((prevData) => ({
-        status: prevData?.status ?? { model: "unknown", cwd: "", contextUsage: 0, totalTokens: 0, cost: 0 },
-        metrics: {
-          toolCalls: (prevData?.metrics.toolCalls ?? 0) + 1,
-          errors: prevData?.metrics.errors ?? 0,
-          avgResponseTime: prevData?.metrics.avgResponseTime ?? 0,
-        },
-        config: prevData?.config ?? {},
-      }));
-    }
+  // SSE event handler (for connection status only)
+  const handleSSEEvent = useCallback((_event: SSEEvent) => {
+    // Events are handled by individual pages (dashboard-page fetches its own data)
   }, []);
 
   // Connect to SSE
   const { connected: sseConnected, reconnect: sseReconnect, exhausted: sseExhausted } = useSSE(handleSSEEvent);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch("/api/status");
-        const json = await res.json();
-        setData(json);
-      } catch (e) {
-        console.error("Failed to fetch data:", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-
-    // Polling as fallback (only if SSE not connected)
-    const interval = setInterval(() => {
-      if (!sseConnected) {
-        fetchData();
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [sseConnected]);
-
-  if (!themeLoaded || loading) {
+  if (!themeLoaded) {
     return (
       <div class="flex h-screen items-center justify-center">
         <div class="flex flex-col items-center gap-2">
@@ -299,7 +223,7 @@ export function App() {
       <Sidebar sseConnected={sseConnected} sseExhausted={sseExhausted} onSseReconnect={sseReconnect} />
       <main class="flex-1 overflow-hidden">
         <Router>
-          <DashboardPage path="/" data={data} />
+          <DashboardPage path="/" />
           <InstancesPage path="/instances" />
           <McpPage path="/mcp" />
           <ThemePage path="/theme" onThemeChange={applyTheme} />

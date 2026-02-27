@@ -10,7 +10,7 @@
  * @failure_modes API unavailable, network error
  *
  * @abdd.explain
- * @overview Dashboard showing status, metrics, and multi-instance context usage chart
+ * @overview Dashboard showing multi-instance context usage chart
  * @what_it_does Fetches context history from API, displays real-time graph with SSE updates
  * @why_it_exists Allows users to monitor all pi instances' token usage in one view
  * @scope(in) API data, SSE events, user interactions
@@ -29,7 +29,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import { Activity, BarChart3, Settings, Loader2, RefreshCw } from "lucide-preact";
+import { Activity, Loader2, RefreshCw } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -67,26 +67,6 @@ interface ContextHistoryResponse {
   instances: Record<number, InstanceContextHistory>;
 }
 
-interface DashboardData {
-  status: {
-    model: string;
-    cwd: string;
-    contextUsage: number;
-    totalTokens: number;
-    cost: number;
-  };
-  metrics: {
-    toolCalls: number;
-    errors: number;
-    avgResponseTime: number;
-  };
-  config: Record<string, unknown>;
-}
-
-interface DashboardPageProps {
-  data: DashboardData | null;
-}
-
 /**
  * @summary インスタンス識別用の色
  */
@@ -105,10 +85,7 @@ function getInstanceColor(pid: number, index: number): string {
   return INSTANCE_COLORS[index % INSTANCE_COLORS.length];
 }
 
-export function DashboardPage({ data }: DashboardPageProps) {
-  const [activeTab, setActiveTab] = useState<"metrics" | "config">(
-    "metrics"
-  );
+export function DashboardPage() {
   const [contextHistory, setContextHistory] = useState<ContextHistoryResponse | null>(null);
   const [contextLoading, setContextLoading] = useState(true);
   const [displayMode, setDisplayMode] = useState<"input" | "output" | "both">("both");
@@ -140,34 +117,10 @@ export function DashboardPage({ data }: DashboardPageProps) {
     return () => clearInterval(interval);
   }, []);
 
-  if (!data) {
-    return (
-      <div class="flex h-full items-center justify-center p-4">
-        <p class="text-muted-foreground">No data available</p>
-      </div>
-    );
-  }
-
   return (
     <div class="flex h-full flex-col gap-4 p-4 overflow-auto">
-      {/* Tabs */}
-      <div class="flex gap-2 shrink-0">
-        <Button
-          variant={activeTab === "metrics" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("metrics")}
-        >
-          <BarChart3 class="mr-2 h-4 w-4" />
-          Metrics
-        </Button>
-        <Button
-          variant={activeTab === "config" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTab("config")}
-        >
-          <Settings class="mr-2 h-4 w-4" />
-          Config
-        </Button>
+      {/* Header */}
+      <div class="flex gap-2 shrink-0 items-center">
         <div class="flex-1" />
         <div class="flex items-center gap-2 text-sm text-muted-foreground">
           <Activity class="h-4 w-4" />
@@ -175,7 +128,7 @@ export function DashboardPage({ data }: DashboardPageProps) {
         </div>
       </div>
 
-      {/* Context Usage Chart - Always visible */}
+      {/* Context Usage Chart */}
       <ContextUsageSection
         data={contextHistory}
         loading={contextLoading}
@@ -183,11 +136,6 @@ export function DashboardPage({ data }: DashboardPageProps) {
         setDisplayMode={setDisplayMode}
         onRefresh={fetchContextHistory}
       />
-
-      {/* Content */}
-      <div class="flex-1 overflow-y-auto">
-        {activeTab === "config" && <ConfigSection data={data} />}
-      </div>
     </div>
   );
 }
@@ -424,43 +372,6 @@ function ContextUsageSection({
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ConfigSection({ data }: { data: DashboardData }) {
-  const entries = Object.entries(data.config);
-
-  if (entries.length === 0) {
-    return (
-      <Card>
-        <CardContent class="py-8 text-center text-muted-foreground">
-          No configuration available
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader class="pb-2">
-        <CardTitle class="text-sm">Configuration</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div class="space-y-2">
-          {entries.map(([key, value]) => (
-            <div
-              key={key}
-              class="flex items-center justify-between rounded-lg border p-2"
-            >
-              <span class="text-sm font-medium">{key}</span>
-              <span class="font-mono text-xs text-muted-foreground">
-                {String(value)}
-              </span>
-            </div>
-          ))}
-        </div>
       </CardContent>
     </Card>
   );
