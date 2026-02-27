@@ -2,19 +2,19 @@
  * @abdd.meta
  * @path .pi/extensions/web-ui/server.ts
  * @role HTTP server for Web UI extension
- * @why Serve Preact dashboard to browser with multi-instance support
+ * @why Serve Preact dashboard to browser with multi-instance support and real-time updates
  * @related index.ts, lib/instance-registry.ts
- * @public_api startServer, stopServer, isServerRunning, getServerPort
- * @invariants Server must clean up on shutdown
- * @side_effects Opens TCP port, serves HTTP requests, accesses shared storage
- * @failure_modes Port in use, file not found
+ * @public_api startServer, stopServer, isServerRunning, getServerPort, broadcastSSEEvent, getSSEClientCount
+ * @invariants Server must clean up on shutdown, SSE clients must be cleaned up on disconnect
+ * @side_effects Opens TCP port, serves HTTP requests, accesses shared storage, maintains SSE connections
+ * @failure_modes Port in use, file not found, SSE connection failures
  *
  * @abdd.explain
- * @overview Express server that serves static files and API endpoints
- * @what_it_does Hosts built Preact app and provides REST API for pi state and instances
- * @why_it_exists Allows browser access to pi monitoring/configuration
- * @scope(in) ExtensionAPI, ExtensionContext
- * @scope(out) HTTP responses, shared storage files
+ * @overview Express server that serves static files, API endpoints, and SSE for real-time updates
+ * @what_it_does Hosts built Preact app, provides REST API for pi state and instances, broadcasts SSE events
+ * @why_it_exists Allows browser access to pi monitoring/configuration with real-time push notifications
+ * @scope(in) ExtensionAPI, ExtensionContext, SSE events
+ * @scope(out) HTTP responses, shared storage files, SSE broadcasts
  */
 
 import express, { type Express, type Request, type Response } from "express";
@@ -32,6 +32,132 @@ import {
 import { mcpManager } from "../../lib/mcp/connection-manager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * @summary コンテキスト使用量履歴エントリ
+ */
+export interface ContextHistoryEntry {
+  timestamp: string;
+  input: number;
+  output: number;
+}
+
+/**
+ * @summary コンテキスト使用量履歴キャッシュ（最新100件）
+ */
+const contextHistoryCache: ContextHistoryEntry[] = [];
+const MAX_CONTEXT_HISTORY = 100;
+
+/**
+ * @summary コンテキスト履歴にエントリを追加
+ */
+export function addContextHistory(entry: ContextHistoryEntry): void {
+  contextHistoryCache.push(entry);
+  // 最新100件のみ保持
+  if (contextHistoryCache.length > MAX_CONTEXT_HISTORY) {
+    contextHistoryCache.shift();
+  }
+}
+
+/**
+ * @summary コンテキスト履歴を取得
+ */
+export function getContextHistory(): ContextHistoryEntry[] {
+  return [...contextHistoryCache];
+}
+
+/**
+ * @summary SSE event types for real-time updates
+ */
+export type SSEEventType = "status" | "tool-call" | "response" | "heartbeat";
+
+/**
+ * @summary SSE event payload structure
+ */
+export interface SSEEvent {
+  type: SSEEventType;
+  data: Record<string, unknown>;
+  timestamp: number;
+}
+
+/**
+ * @summary SSE client connection
+ */
+interface SSEClient {
+  id: string;
+  res: Response;
+  lastHeartbeat: number;
+}
+
+/**
+ * @summary Event bus for SSE broadcasting
+ */
+class SSEEventBus {
+  private clients: Map<string, SSEClient> = new Map();
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * @summary Add SSE client connection
+   */
+  addClient(id: string, res: Response): void {
+    this.clients.set(id, { id, res, lastHeartbeat: Date.now() });
+  }
+
+  /**
+   * @summary Remove SSE client connection
+   */
+  removeClient(id: string): void {
+    this.clients.delete(id);
+  }
+
+  /**
+   * @summary Broadcast event to all connected clients
+   */
+  broadcast(event: SSEEvent): void {
+    const eventStr = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\nid: ${event.timestamp}\n\n`;
+
+    for (const [id, client] of this.clients) {
+      try {
+        client.res.write(eventStr);
+      } catch {
+        // Client disconnected, remove it
+        this.clients.delete(id);
+      }
+    }
+  }
+
+  /**
+   * @summary Start heartbeat interval (30 seconds)
+   */
+  startHeartbeat(): void {
+    this.heartbeatInterval = setInterval(() => {
+      this.broadcast({
+        type: "heartbeat",
+        data: { timestamp: Date.now() },
+        timestamp: Date.now(),
+      });
+    }, 30000);
+  }
+
+  /**
+   * @summary Stop heartbeat interval
+   */
+  stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  /**
+   * @summary Get connected client count
+   */
+  getClientCount(): number {
+    return this.clients.size;
+  }
+}
+
+const sseEventBus = new SSEEventBus();
 
 interface ServerState {
   server: HttpServer | null;
@@ -151,6 +277,45 @@ export function startServer(
   app.post("/api/config", (req: Request, res: Response) => {
     // TODO: implement config persistence
     res.json({ success: true, config: req.body });
+  });
+
+  /**
+   * GET /api/context-history - コンテキスト使用量履歴を取得
+   */
+  app.get("/api/context-history", (_req: Request, res: Response) => {
+    try {
+      res.json({ history: getContextHistory() });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get context history" });
+    }
+  });
+
+  /**
+   * GET /api/events - Server-Sent Events endpoint for real-time updates
+   */
+  app.get("/api/events", (req: Request, res: Response) => {
+    // Set SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+
+    // Generate unique client ID
+    const clientId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    // Register client
+    sseEventBus.addClient(clientId, res);
+
+    // Send initial connection event
+    res.write(`event: connected\ndata: ${JSON.stringify({ clientId, timestamp: Date.now() })}\n\n`);
+
+    // Handle client disconnect
+    req.on("close", () => {
+      sseEventBus.removeClient(clientId);
+    });
+
+    // Keep connection alive
+    req.socket.setKeepAlive(true);
   });
 
   // ============= MCP API Endpoints =============
@@ -328,6 +493,8 @@ export function startServer(
   state.port = port;
 
   state.server.listen(port, () => {
+    // Start SSE heartbeat
+    sseEventBus.startHeartbeat();
     // Server start notification is handled by ctx.ui.notify in index.ts
     // to avoid TUI input field overlap
   });
@@ -340,6 +507,7 @@ export function startServer(
  */
 export function stopServer(): void {
   if (state.server) {
+    sseEventBus.stopHeartbeat();
     state.server.close();
     state.server = null;
     ServerRegistry.unregister();
@@ -372,4 +540,18 @@ export function getContext(): ExtensionContext | null {
  */
 export function getPi(): ExtensionAPI | null {
   return state.pi;
+}
+
+/**
+ * @summary Broadcast SSE event to all connected clients
+ */
+export function broadcastSSEEvent(event: SSEEvent): void {
+  sseEventBus.broadcast(event);
+}
+
+/**
+ * @summary Get connected SSE client count
+ */
+export function getSSEClientCount(): number {
+  return sseEventBus.getClientCount();
 }

@@ -6,17 +6,18 @@
  * @related server.ts, lib/instance-registry.ts, web/src/app.tsx
  * @public_api default (extension function)
  * @invariants Server lifecycle must be managed properly, instances must be registered
- * @side_effects Starts HTTP server, registers commands and flags, accesses shared storage
+ * @side_effects Starts HTTP server, registers commands and flags, accesses shared storage, subscribes to pi events
  * @failure_modes Port conflict, build missing, permission denied
  *
  * @abdd.explain
  * @overview Registers /web-ui command and auto-starts server on session start
- * @what_it_does Starts Express server automatically, registers instance, manages lifecycle
- * @why_it_exists Allows users to monitor all pi instances via browser
- * @scope(in) ExtensionAPI, ExtensionContext
- * @scope(out) HTTP server, shared storage files
+ * @what_it_does Starts Express server automatically, registers instance, manages lifecycle, broadcasts SSE events
+ * @why_it_exists Allows users to monitor all pi instances via browser with real-time updates
+ * @scope(in) ExtensionAPI, ExtensionContext, pi events
+ * @scope(out) HTTP server, shared storage files, SSE broadcasts
  */
 
+import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   startServer,
@@ -24,6 +25,8 @@ import {
   isServerRunning,
   getServerPort,
   getContext,
+  broadcastSSEEvent,
+  type SSEEvent,
 } from "./server.js";
 import {
   InstanceRegistry,
@@ -134,6 +137,60 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  // Broadcast tool calls via SSE
+  pi.on("tool_call", async (event, _ctx) => {
+    if (!isServerRunning()) return;
+
+    const toolEvent = event as { toolName: string; toolCallId: string };
+    const sseEvent: SSEEvent = {
+      type: "tool-call",
+      data: {
+        toolName: toolEvent.toolName,
+        toolCallId: toolEvent.toolCallId,
+        timestamp: Date.now(),
+      },
+      timestamp: Date.now(),
+    };
+    broadcastSSEEvent(sseEvent);
+  });
+
+  // Broadcast turn end (LLM response) via SSE
+  pi.on("turn_end", async (_event, ctx) => {
+    if (!isServerRunning()) return;
+
+    const contextUsage = ctx.getContextUsage();
+    const sseEvent: SSEEvent = {
+      type: "response",
+      data: {
+        contextUsage: contextUsage?.percent ?? 0,
+        totalTokens: contextUsage?.tokens ?? 0,
+        model: ctx.model?.id ?? "unknown",
+        timestamp: Date.now(),
+      },
+      timestamp: Date.now(),
+    };
+    broadcastSSEEvent(sseEvent);
+  });
+
+  // Broadcast context updates via SSE (on message_end)
+  pi.on("message_end", async (_event, ctx) => {
+    if (!isServerRunning()) return;
+
+    const contextUsage = ctx.getContextUsage();
+    const sseEvent: SSEEvent = {
+      type: "status",
+      data: {
+        contextUsage: contextUsage?.percent ?? 0,
+        totalTokens: contextUsage?.tokens ?? 0,
+        model: ctx.model?.id ?? "unknown",
+        cwd: ctx.cwd,
+        timestamp: Date.now(),
+      },
+      timestamp: Date.now(),
+    };
+    broadcastSSEEvent(sseEvent);
+  });
+
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
     // Unregister this instance
@@ -168,11 +225,8 @@ export default function (pi: ExtensionAPI) {
     label: "Open Web UI",
     description:
       "Open the Web UI dashboard in a browser. Returns the URL if server is running.",
-    parameters: {
-      type: "object",
-      properties: {},
-    },
-    async execute() {
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
       // Check if server is running (either local or remote)
       const localRunning = isServerRunning();
       const existingServer = ServerRegistry.isRunning();
