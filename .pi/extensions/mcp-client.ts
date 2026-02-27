@@ -1441,27 +1441,17 @@ export default function (pi: ExtensionAPI) {
   mcpManager.setNotificationCallback(dispatchNotification);
 
   // Auto-connect from config on session start
+  // DISABLED: Spawning child processes (StdioClientTransport) interferes with
+  // Kitty protocol detection on /reload. Use /mcp-reload to manually connect.
   pi.on("session_start", async (_event, ctx) => {
-    ctx.ui.notify("MCP Client extension loaded • Checking for auto-connect servers...", "info");
-
-    const result = await autoConnectFromConfig(ctx);
-
-    if (result.succeeded.length > 0 || result.failed.length > 0) {
-      const msg = result.succeeded.length > 0
-        ? `Auto-connected: ${result.succeeded.join(', ')}`
-        : '';
-      const failedMsg = result.failed.length > 0
-        ? ` Failed: ${result.failed.map(f => f.id).join(', ')}`
-        : '';
-      ctx.ui.notify(`MCP: ${msg}${failedMsg}`, result.failed.length > 0 ? "warning" : "info");
-    }
+    ctx.ui.notify("MCP Client loaded • Use /mcp-reload to connect", "info");
   });
 
   // Cleanup on session shutdown
   pi.on("session_shutdown", async () => {
     const connectionCount = mcpManager.getConnectionCount();
     if (connectionCount > 0) {
-      console.log(`Cleaning up ${connectionCount} MCP connection(s)...`);
+      // console.log removed to avoid stdout interference with Kitty protocol
       await mcpManager.disconnectAll();
     }
     // Clear notification handlers
