@@ -426,7 +426,7 @@ export function TaskDetailPanel({
           {/* Add subtask */}
           {isAddingSubtask ? (
             <div class="flex gap-2">
-              <Input
+              <input
                 ref={subtaskInputRef}
                 type="text"
                 value={newSubtaskTitle}
@@ -445,7 +445,10 @@ export function TaskDetailPanel({
                     setIsAddingSubtask(false);
                   }
                 }}
-                class="h-8 text-xs flex-1"
+                class={cn(
+                  "flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs",
+                  "placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 flex-1"
+                )}
               />
               <Button
                 size="sm"
