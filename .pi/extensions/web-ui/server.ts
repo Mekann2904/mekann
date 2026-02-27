@@ -573,8 +573,10 @@ export function startServer(
       ContextHistoryStorage.cleanup();
     }, 5 * 60 * 1000);
 
-    // MCPサーバー設定ファイルから自動接続
-    loadAndConnectMcpServers();
+    // MCPサーバー設定ファイルからの自動接続は無効化
+    // 理由: MCPサーバーの起動メッセージがTUI入力欄に混入する問題を回避
+    // 必要な場合は手動で接続してください
+    // loadAndConnectMcpServers();
 
     // Server start notification is handled by ctx.ui.notify in index.ts
     // to avoid TUI input field overlap
