@@ -161,14 +161,6 @@ export function KanbanTaskCard({
 
         {/* Labels row */}
         <div class="flex flex-wrap gap-1 mb-2">
-          {/* Priority label */}
-          <span
-            class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"
-            style={{ backgroundColor: priorityColor.bg, color: priorityColor.text }}
-          >
-            {task.priority}
-          </span>
-
           {/* Tags */}
           {task.tags.slice(0, 3).map((tag) => {
             const tagColor = getTagColor(tag);
@@ -217,14 +209,6 @@ export function KanbanTaskCard({
             </div>
           )}
         </div>
-
-        {/* Status indicator bar */}
-        <div
-          class={cn(
-            "absolute bottom-0 left-0 right-0 h-0.5 rounded-b-md opacity-60",
-            STATUS_COLORS[task.status]
-          )}
-        />
       </div>
     </div>
   );
