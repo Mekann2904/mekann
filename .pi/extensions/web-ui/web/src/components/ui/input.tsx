@@ -1,9 +1,11 @@
 import { cn } from "@/lib/utils";
+import type { JSX } from "preact";
 
 interface InputProps {
   type?: string;
   value?: string;
   onInput?: (e: JSX.TargetedEvent<HTMLInputElement>) => void;
+  onKeyDown?: (e: JSX.TargetedKeyboardEvent<HTMLInputElement>) => void;
   class?: string;
   placeholder?: string;
 }

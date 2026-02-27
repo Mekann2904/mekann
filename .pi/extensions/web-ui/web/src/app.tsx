@@ -11,6 +11,7 @@ import { ThemePage, applyThemeToDOM, type Mode } from "./components/theme-page";
 import { DashboardPage } from "./components/dashboard-page";
 import { InstancesPage } from "./components/instances-page";
 import { McpPage } from "./components/mcp-page";
+import { TasksPage } from "./components/tasks-page";
 import {
   Activity,
   Monitor,
@@ -18,6 +19,7 @@ import {
   Loader2,
   Server,
   AlertCircle,
+  ListTodo,
 } from "lucide-preact";
 import { cn } from "@/lib/utils";
 import "./styles/globals.css";
@@ -249,6 +251,7 @@ export function App() {
           <DashboardPage path="/" />
           <InstancesPage path="/instances" />
           <McpPage path="/mcp" />
+          <TasksPage path="/tasks" />
           <ThemePage path="/theme" onThemeChange={applyTheme} />
         </Router>
       </main>
@@ -282,6 +285,7 @@ function Sidebar({ sseConnected, sseExhausted, onSseReconnect }: SidebarProps) {
 
   const navItems = [
     { path: "/", icon: Activity, label: "Dashboard" },
+    { path: "/tasks", icon: ListTodo, label: "Tasks" },
     { path: "/instances", icon: Monitor, label: "Instances" },
     { path: "/mcp", icon: Server, label: "MCP" },
     { path: "/theme", icon: Palette, label: "Theme" },
