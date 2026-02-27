@@ -34,13 +34,13 @@ import {
   type InstanceContextHistory,
 } from "./lib/instance-registry.js";
 import {
-  addSSEClient,
-  removeSSEClient,
   getActiveSessions,
   getSessionStats,
   getSessionByTaskId,
+  onSessionEvent,
   type RuntimeSession,
-} from "./lib/runtime-sessions.js";
+  type SessionEvent,
+} from "../../lib/runtime-sessions.js";
 // Note: mcpManager is imported dynamically in each request to ensure
 // we always get the latest instance from globalThis (handles reload scenarios)
 
@@ -957,7 +957,7 @@ export function startServer(
   app.get("/api/runtime/status", async (_req: Request, res: Response) => {
     try {
       // Import agent-runtime dynamically
-      const { getRuntimeSnapshot } = await import("../../agent-runtime.js");
+      const { getRuntimeSnapshot } = await import("../agent-runtime.js");
       const snapshot = getRuntimeSnapshot();
       const sessionStats = getSessionStats();
 
@@ -1047,6 +1047,21 @@ export function startServer(
     }
   });
 
+  // Runtime SSE clients for session updates
+  const runtimeSSEClients = new Map<string, Response>();
+
+  // Subscribe to session events and broadcast to SSE clients
+  const unsubscribeSessionEvents = onSessionEvent((event: SessionEvent) => {
+    const eventStr = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\nid: ${event.timestamp}\n\n`;
+    for (const [id, clientRes] of runtimeSSEClients) {
+      try {
+        clientRes.write(eventStr);
+      } catch {
+        runtimeSSEClients.delete(id);
+      }
+    }
+  });
+
   /**
    * GET /api/runtime/stream - SSE endpoint for real-time runtime updates
    */
@@ -1061,12 +1076,11 @@ export function startServer(
     const clientId = `runtime-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Register client
-    addSSEClient(clientId, res);
+    runtimeSSEClients.set(clientId, res);
 
-    // Handle client disconnect
-    req.on("close", () => {
-      removeSSEClient(clientId);
-    });
+    // Send initial snapshot
+    const sessions = getActiveSessions();
+    res.write(`event: status_snapshot\ndata: ${JSON.stringify(sessions)}\nid: ${Date.now()}\n\n`);
 
     // Keep connection alive with periodic comments
     const keepAlive = setInterval(() => {
@@ -1074,15 +1088,18 @@ export function startServer(
         res.write(": keepalive\n\n");
       } catch {
         clearInterval(keepAlive);
-        removeSSEClient(clientId);
+        runtimeSSEClients.delete(clientId);
       }
     }, 15000);
 
     // Clean up on close
-    res.on("close", () => {
+    const cleanup = () => {
       clearInterval(keepAlive);
-      removeSSEClient(clientId);
-    });
+      runtimeSSEClients.delete(clientId);
+    };
+
+    req.on("close", cleanup);
+    res.on("close", cleanup);
   });
 
   // ============= Static Files =============

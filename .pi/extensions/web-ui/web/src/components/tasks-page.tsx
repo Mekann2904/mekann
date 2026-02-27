@@ -24,6 +24,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { KanbanTaskCard, type Task, type TaskStatus, type TaskPriority } from "./kanban-task-card";
 import { TaskDetailPanel } from "./task-detail-panel";
+import { useRuntimeStatus } from "../hooks/useRuntimeStatus";
 import { cn } from "@/lib/utils";
 
 interface TaskStats {
@@ -70,6 +71,9 @@ export function TasksPage() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Runtime status for execution indicators
+  const { sessions: runtimeSessions } = useRuntimeStatus();
   
   // Inline add state per column
   const [addingToColumn, setAddingToColumn] = useState<TaskStatus | null>(null);
@@ -512,6 +516,8 @@ export function TasksPage() {
               completed: taskSubtasks.filter((t) => t.status === "completed").length,
               total: taskSubtasks.length,
             } : null;
+            // Find runtime session for this task
+            const taskSession = runtimeSessions.find((s) => s.taskId === task.id);
 
             const card = (
               <KanbanTaskCard
@@ -519,6 +525,7 @@ export function TasksPage() {
                 task={task}
                 subtaskProgress={subtaskProgress}
                 isSubtask={isSubtask}
+                session={taskSession}
                 onClick={() => setSelectedTask(task)}
                 onDragStart={(e) => handleDragStart(e, task)}
                 onDragEnd={handleDragEnd}

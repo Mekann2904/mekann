@@ -147,6 +147,13 @@ import {
 } from "./shared/runtime-helpers";
 
 import { SchemaValidationError } from "../lib/errors.js";
+import {
+  generateSessionId,
+  addSession,
+  updateSession,
+  removeSession,
+  type RuntimeSession,
+} from "../lib/runtime-sessions.js";
 import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estimator";
 import { detectTier, getConcurrencyLimit } from "../lib/provider-limits";
 
@@ -862,6 +869,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
       let capacityReservation: RuntimeCapacityReservationLease | undefined;
       let stopReservationHeartbeat: (() => void) | undefined;
       let liveMonitor: SubagentLiveMonitorController | undefined;
+      // Create session ID before try for catch access
+      let sessionId = generateSessionId();
       try {
         const queueSnapshot = getRuntimeSnapshot();
         const dispatchPermit = await acquireRuntimeDispatchPermit({
@@ -941,6 +950,17 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           items: [{ id: agent.id, name: agent.name }],
         });
 
+        // Create runtime session for tracking
+        const runtimeSession: RuntimeSession = {
+          id: sessionId,
+          type: "subagent",
+          agentId: agent.id,
+          taskTitle: params.task.slice(0, 100),
+          status: "starting",
+          startedAt: Date.now(),
+        };
+        addSession(runtimeSession);
+
         runtimeState.activeRunRequests += 1;
         notifyRuntimeCapacityChanged();
         refreshRuntimeStatus(ctx);
@@ -960,6 +980,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             runtimeState.activeAgents += 1;
             notifyRuntimeCapacityChanged();
             refreshRuntimeStatus(ctx);
+            // Update session status to running
+            updateSession(sessionId, { status: "running" });
           },
           onEnd: () => {
             runtimeState.activeAgents = Math.max(0, runtimeState.activeAgents - 1);
@@ -972,6 +994,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           onStderrChunk: (chunk) => {
             liveMonitor?.appendChunk(agent.id, "stderr", chunk);
           },
+        });
+
+        // Update session with final status
+        updateSession(sessionId, {
+          status: result.runRecord.status === "failed" ? "failed" : "completed",
+          completedAt: Date.now(),
+          message: result.runRecord.summary || result.runRecord.error,
         });
 
         liveMonitor?.markFinished(
@@ -1035,6 +1064,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
         }
       } catch (error) {
         const errorMessage = toErrorMessage(error);
+        // Update session to failed status
+        updateSession(sessionId, {
+          status: "failed",
+          completedAt: Date.now(),
+          message: errorMessage,
+        });
         logger.endOperation({
           status: "failure",
           tokensUsed: 0,
