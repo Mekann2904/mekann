@@ -32,7 +32,16 @@ import {
   type ContextHistoryEntry,
   type InstanceContextHistory,
 } from "./lib/instance-registry.js";
-import { mcpManager } from "../../lib/mcp/connection-manager.js";
+// Note: mcpManager is imported dynamically in each request to ensure
+// we always get the latest instance from globalThis (handles reload scenarios)
+
+/**
+ * @summary Get mcpManager dynamically to handle reload scenarios
+ */
+async function getMcpManager() {
+  const { mcpManager } = await import("../../lib/mcp/connection-manager.js");
+  return mcpManager;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -128,6 +137,7 @@ class SSEEventBus {
 }
 
 const sseEventBus = new SSEEventBus();
+let contextCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * @summary 現在のインスタンス用コンテキスト履歴ストレージ
@@ -329,14 +339,9 @@ export function startServer(
   /**
    * GET /api/mcp/connections - List all MCP connections
    */
-  app.get("/api/mcp/connections", (_req: Request, res: Response) => {
+  app.get("/api/mcp/connections", async (_req: Request, res: Response) => {
     try {
-      // mcpManagerが初期化されているか確認
-      if (!mcpManager) {
-        console.error("[web-ui] mcpManager is not initialized");
-        res.status(500).json({ error: "MCP manager not initialized" });
-        return;
-      }
+      const mcpManager = await getMcpManager();
 
       const connections = mcpManager.listConnections();
       // Sanitize: remove client/transport objects for JSON serialization
@@ -364,13 +369,9 @@ export function startServer(
   /**
    * GET /api/mcp/connection/:id - Get single connection details
    */
-  app.get("/api/mcp/connection/:id", (req: Request, res: Response) => {
+  app.get("/api/mcp/connection/:id", async (req: Request, res: Response) => {
     try {
-      if (!mcpManager) {
-        console.error("[web-ui] mcpManager is not initialized");
-        res.status(500).json({ error: "MCP manager not initialized" });
-        return;
-      }
+      const mcpManager = await getMcpManager();
 
       const conn = mcpManager.getConnection(req.params.id);
       if (!conn) {
@@ -402,11 +403,7 @@ export function startServer(
    */
   app.get("/api/mcp/tools/:id", async (req: Request, res: Response) => {
     try {
-      if (!mcpManager) {
-        console.error("[web-ui] mcpManager is not initialized");
-        res.status(500).json({ error: "MCP manager not initialized" });
-        return;
-      }
+      const mcpManager = await getMcpManager();
 
       const tools = await mcpManager.listAllTools(req.params.id);
       res.json({ tools: tools ?? [], count: tools?.length ?? 0 });
@@ -427,11 +424,7 @@ export function startServer(
    */
   app.get("/api/mcp/resources/:id", async (req: Request, res: Response) => {
     try {
-      if (!mcpManager) {
-        console.error("[web-ui] mcpManager is not initialized");
-        res.status(500).json({ error: "MCP manager not initialized" });
-        return;
-      }
+      const mcpManager = await getMcpManager();
 
       const result = await mcpManager.listResourcesPaginated(req.params.id);
       res.json({ resources: result?.resources ?? [], nextCursor: result?.nextCursor });
@@ -452,11 +445,7 @@ export function startServer(
    */
   app.post("/api/mcp/ping/:id", async (req: Request, res: Response) => {
     try {
-      if (!mcpManager) {
-        console.error("[web-ui] mcpManager is not initialized");
-        res.status(500).json({ error: "MCP manager not initialized" });
-        return;
-      }
+      const mcpManager = await getMcpManager();
 
       const result = await mcpManager.ping(req.params.id);
       res.json({ success: result });
@@ -506,7 +495,10 @@ export function startServer(
     sseEventBus.startHeartbeat();
 
     // 定期的に古い履歴ファイルをクリーンアップ（5分ごと）
-    setInterval(() => {
+    if (contextCleanupInterval) {
+      clearInterval(contextCleanupInterval);
+    }
+    contextCleanupInterval = setInterval(() => {
       ContextHistoryStorage.cleanup();
     }, 5 * 60 * 1000);
 
@@ -523,6 +515,10 @@ export function startServer(
 export function stopServer(): void {
   if (state.server) {
     sseEventBus.stopHeartbeat();
+    if (contextCleanupInterval) {
+      clearInterval(contextCleanupInterval);
+      contextCleanupInterval = null;
+    }
     state.server.close();
     state.server = null;
     ServerRegistry.unregister();
