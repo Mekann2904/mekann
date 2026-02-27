@@ -26,6 +26,7 @@ import {
   getServerPort,
   getContext,
   broadcastSSEEvent,
+  addContextHistory,
   type SSEEvent,
 } from "./server.js";
 import {
@@ -170,6 +171,15 @@ export default function (pi: ExtensionAPI) {
       timestamp: Date.now(),
     };
     broadcastSSEEvent(sseEvent);
+
+    // コンテキスト履歴を記録（概算: input 70%, output 30%）
+    if (contextUsage?.tokens) {
+      addContextHistory({
+        timestamp: new Date().toISOString(),
+        input: Math.round(contextUsage.tokens * 0.7),
+        output: Math.round(contextUsage.tokens * 0.3),
+      });
+    }
   });
 
   // Broadcast context updates via SSE (on message_end)

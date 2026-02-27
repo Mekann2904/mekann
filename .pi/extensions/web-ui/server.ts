@@ -26,50 +26,20 @@ import {
   InstanceRegistry,
   ServerRegistry,
   ThemeStorage,
+  ContextHistoryStorage,
   type InstanceInfo,
   type ThemeSettings,
+  type ContextHistoryEntry,
+  type InstanceContextHistory,
 } from "./lib/instance-registry.js";
 import { mcpManager } from "../../lib/mcp/connection-manager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * @summary コンテキスト使用量履歴エントリ
- */
-export interface ContextHistoryEntry {
-  timestamp: string;
-  input: number;
-  output: number;
-}
-
-/**
- * @summary コンテキスト使用量履歴キャッシュ（最新100件）
- */
-const contextHistoryCache: ContextHistoryEntry[] = [];
-const MAX_CONTEXT_HISTORY = 100;
-
-/**
- * @summary コンテキスト履歴にエントリを追加
- */
-export function addContextHistory(entry: ContextHistoryEntry): void {
-  contextHistoryCache.push(entry);
-  // 最新100件のみ保持
-  if (contextHistoryCache.length > MAX_CONTEXT_HISTORY) {
-    contextHistoryCache.shift();
-  }
-}
-
-/**
- * @summary コンテキスト履歴を取得
- */
-export function getContextHistory(): ContextHistoryEntry[] {
-  return [...contextHistoryCache];
-}
-
-/**
  * @summary SSE event types for real-time updates
  */
-export type SSEEventType = "status" | "tool-call" | "response" | "heartbeat";
+export type SSEEventType = "status" | "tool-call" | "response" | "heartbeat" | "context-update";
 
 /**
  * @summary SSE event payload structure
@@ -158,6 +128,34 @@ class SSEEventBus {
 }
 
 const sseEventBus = new SSEEventBus();
+
+/**
+ * @summary 現在のインスタンス用コンテキスト履歴ストレージ
+ */
+let contextHistoryStorage: ContextHistoryStorage | null = null;
+
+/**
+ * @summary コンテキスト履歴を追加してSSEで通知
+ */
+export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid">): void {
+  if (!contextHistoryStorage) {
+    contextHistoryStorage = new ContextHistoryStorage(process.pid);
+  }
+
+  contextHistoryStorage.add(entry);
+
+  // SSEでコンテキスト更新を通知
+  sseEventBus.broadcast({
+    type: "context-update",
+    data: {
+      pid: process.pid,
+      timestamp: entry.timestamp,
+      input: entry.input,
+      output: entry.output,
+    },
+    timestamp: Date.now(),
+  });
+}
 
 interface ServerState {
   server: HttpServer | null;
@@ -280,11 +278,19 @@ export function startServer(
   });
 
   /**
-   * GET /api/context-history - コンテキスト使用量履歴を取得
+   * GET /api/context-history - 全インスタンスのコンテキスト使用量履歴を取得
    */
   app.get("/api/context-history", (_req: Request, res: Response) => {
     try {
-      res.json({ history: getContextHistory() });
+      const instancesHistory = ContextHistoryStorage.getActiveInstancesHistory();
+
+      // レスポンス形式をマップに変換
+      const instances: Record<number, InstanceContextHistory> = {};
+      for (const instance of instancesHistory) {
+        instances[instance.pid] = instance;
+      }
+
+      res.json({ instances });
     } catch (error) {
       res.status(500).json({ error: "Failed to get context history" });
     }
@@ -493,8 +499,17 @@ export function startServer(
   state.port = port;
 
   state.server.listen(port, () => {
-    // Start SSE heartbeat
+    // コンテキスト履歴ストレージを初期化
+    contextHistoryStorage = new ContextHistoryStorage(process.pid);
+
+    // SSEハートビートを開始
     sseEventBus.startHeartbeat();
+
+    // 定期的に古い履歴ファイルをクリーンアップ（5分ごと）
+    setInterval(() => {
+      ContextHistoryStorage.cleanup();
+    }, 5 * 60 * 1000);
+
     // Server start notification is handled by ctx.ui.notify in index.ts
     // to avoid TUI input field overlap
   });
@@ -511,6 +526,11 @@ export function stopServer(): void {
     state.server.close();
     state.server = null;
     ServerRegistry.unregister();
+
+    // バッファをフラッシュ
+    if (contextHistoryStorage) {
+      contextHistoryStorage.flush();
+    }
   }
 }
 

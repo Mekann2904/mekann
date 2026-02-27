@@ -360,3 +360,170 @@ export class ThemeStorage {
     writeJsonFile(THEME_FILE, settings);
   }
 }
+
+/**
+ * @summary コンテキスト使用量履歴エントリ
+ */
+export interface ContextHistoryEntry {
+  /** タイムスタンプ */
+  timestamp: string;
+  /** 入力トークン数 */
+  input: number;
+  /** 出力トークン数 */
+  output: number;
+  /** インスタンスのプロセスID */
+  pid: number;
+}
+
+/**
+ * @summary インスタンスごとのコンテキスト履歴情報
+ */
+export interface InstanceContextHistory {
+  /** プロセスID */
+  pid: number;
+  /** 作業ディレクトリ */
+  cwd: string;
+  /** モデル名 */
+  model: string;
+  /** 履歴エントリ */
+  history: ContextHistoryEntry[];
+}
+
+const CONTEXT_HISTORY_DIR = SHARED_DIR;
+const MAX_CONTEXT_HISTORY = 100;
+
+/**
+ * @summary コンテキスト履歴ストレージ - 各インスタンスの履歴を共有ディレクトリに保存
+ * @description バッファリング（5件単位）でパフォーマンス最適化
+ */
+export class ContextHistoryStorage {
+  private buffer: ContextHistoryEntry[] = [];
+  private pid: number;
+  private maxBufferSize = 5;
+  private historyFile: string;
+
+  constructor(pid: number = process.pid) {
+    this.pid = pid;
+    this.historyFile = join(CONTEXT_HISTORY_DIR, `context-history-${pid}.json`);
+  }
+
+  /**
+   * @summary 履歴エントリを追加（バッファリングあり）
+   */
+  add(entry: Omit<ContextHistoryEntry, "pid">): void {
+    const fullEntry: ContextHistoryEntry = {
+      ...entry,
+      pid: this.pid,
+    };
+
+    this.buffer.push(fullEntry);
+
+    // バッファサイズに達したら書き込み
+    if (this.buffer.length >= this.maxBufferSize) {
+      this.flush();
+    }
+  }
+
+  /**
+   * @summary バッファを強制的に書き込み
+   */
+  flush(): void {
+    if (this.buffer.length === 0) return;
+
+    ensureSharedDir();
+
+    // 既存の履歴を読み込み
+    const existing = readJsonFile<ContextHistoryEntry[]>(this.historyFile, []);
+
+    // 新しいエントリを追加
+    const updated = [...existing, ...this.buffer];
+
+    // 最大件数に制限
+    const trimmed = updated.slice(-MAX_CONTEXT_HISTORY);
+
+    writeJsonFile(this.historyFile, trimmed);
+    this.buffer = [];
+  }
+
+  /**
+   * @summary 全インスタンスの履歴を取得
+   */
+  static getAllInstances(): Map<number, ContextHistoryEntry[]> {
+    const result = new Map<number, ContextHistoryEntry[]>();
+
+    ensureSharedDir();
+
+    // ディレクトリ内の context-history-*.json ファイルを検索
+    const fs = require("fs");
+    const files = fs.readdirSync(CONTEXT_HISTORY_DIR);
+    const historyFiles = files.filter((f: string) =>
+      f.startsWith("context-history-") && f.endsWith(".json")
+    );
+
+    for (const file of historyFiles) {
+      const match = file.match(/context-history-(\d+)\.json/);
+      if (match) {
+        const pid = parseInt(match[1], 10);
+        const filePath = join(CONTEXT_HISTORY_DIR, file);
+        const history = readJsonFile<ContextHistoryEntry[]>(filePath, []);
+        if (history.length > 0) {
+          result.set(pid, history);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * @summary アクティブなインスタンスのコンテキスト履歴を取得
+   */
+  static getActiveInstancesHistory(): InstanceContextHistory[] {
+    const instances = InstanceRegistry.getAll();
+    const allHistory = ContextHistoryStorage.getAllInstances();
+    const result: InstanceContextHistory[] = [];
+
+    for (const instance of instances) {
+      const history = allHistory.get(instance.pid) ?? [];
+      result.push({
+        pid: instance.pid,
+        cwd: instance.cwd,
+        model: instance.model,
+        history,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * @summary 古い履歴ファイルをクリーンアップ
+   */
+  static cleanup(): void {
+    const instances = InstanceRegistry.getAll();
+    const activePids = new Set(instances.map((i) => i.pid));
+
+    ensureSharedDir();
+
+    const fs = require("fs");
+    const files = fs.readdirSync(CONTEXT_HISTORY_DIR);
+    const historyFiles = files.filter((f: string) =>
+      f.startsWith("context-history-") && f.endsWith(".json")
+    );
+
+    for (const file of historyFiles) {
+      const match = file.match(/context-history-(\d+)\.json/);
+      if (match) {
+        const pid = parseInt(match[1], 10);
+        if (!activePids.has(pid)) {
+          // アクティブでないインスタンスの履歴を削除
+          try {
+            unlinkSync(join(CONTEXT_HISTORY_DIR, file));
+          } catch {
+            // Ignore errors
+          }
+        }
+      }
+    }
+  }
+}

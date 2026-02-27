@@ -1,5 +1,35 @@
-import { useState } from "preact/hooks";
-import { Activity, BarChart3, Settings, RefreshCw } from "lucide-preact";
+/**
+ * @abdd.meta
+ * @path .pi/extensions/web-ui/web/src/components/dashboard-page.tsx
+ * @role Dashboard page with multi-instance context usage graph
+ * @why Visualize real-time context usage for all running pi instances
+ * @related app.tsx, ui/chart.tsx
+ * @public_api DashboardPage
+ * @invariants Data is fetched from API on mount and updated via SSE
+ * @side_effects Fetches data from /api/context-history, subscribes to SSE events
+ * @failure_modes API unavailable, network error
+ *
+ * @abdd.explain
+ * @overview Dashboard showing status, metrics, and multi-instance context usage chart
+ * @what_it_does Fetches context history from API, displays real-time graph with SSE updates
+ * @why_it_exists Allows users to monitor all pi instances' token usage in one view
+ * @scope(in) API data, SSE events, user interactions
+ * @scope(out) Rendered dashboard, charts
+ */
+
+import { h, FunctionalComponent } from "preact";
+import { useState, useEffect, useRef } from "preact/hooks";
+import {
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  ResponsiveContainer,
+  Tooltip,
+  Legend,
+} from "recharts";
+import { Activity, BarChart3, Settings, Loader2, RefreshCw } from "lucide-preact";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -9,6 +39,34 @@ import {
   CardTitle,
 } from "./ui/card";
 import { Progress } from "./ui/progress";
+import { cn } from "@/lib/utils";
+
+/**
+ * @summary コンテキスト履歴エントリ
+ */
+interface ContextHistoryEntry {
+  timestamp: string;
+  input: number;
+  output: number;
+  pid: number;
+}
+
+/**
+ * @summary インスタンスごとのコンテキスト履歴
+ */
+interface InstanceContextHistory {
+  pid: number;
+  cwd: string;
+  model: string;
+  history: ContextHistoryEntry[];
+}
+
+/**
+ * @summary APIレスポンス形式
+ */
+interface ContextHistoryResponse {
+  instances: Record<number, InstanceContextHistory>;
+}
 
 interface DashboardData {
   status: {
@@ -30,10 +88,99 @@ interface DashboardPageProps {
   data: DashboardData | null;
 }
 
+/**
+ * @summary インスタンス識別用の色
+ */
+const INSTANCE_COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+];
+
+/**
+ * @summary インスタンスの色を取得
+ */
+function getInstanceColor(pid: number, index: number): string {
+  return INSTANCE_COLORS[index % INSTANCE_COLORS.length];
+}
+
 export function DashboardPage({ data }: DashboardPageProps) {
   const [activeTab, setActiveTab] = useState<"status" | "metrics" | "config">(
     "status"
   );
+  const [contextHistory, setContextHistory] = useState<ContextHistoryResponse | null>(null);
+  const [contextLoading, setContextLoading] = useState(true);
+  const [displayMode, setDisplayMode] = useState<"input" | "output" | "both">("both");
+  const sseRef = useRef<EventSource | null>(null);
+
+  // コンテキスト履歴を取得
+  const fetchContextHistory = async () => {
+    try {
+      const res = await fetch("/api/context-history");
+      if (res.ok) {
+        const json: ContextHistoryResponse = await res.json();
+        setContextHistory(json);
+      }
+    } catch (e) {
+      console.error("Failed to fetch context history:", e);
+    } finally {
+      setContextLoading(false);
+    }
+  };
+
+  // 初回データ取得
+  useEffect(() => {
+    fetchContextHistory();
+  }, []);
+
+  // SSE接続でリアルタイム更新
+  useEffect(() => {
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    const reconnectDelay = 3000;
+
+    const connectSSE = () => {
+      try {
+        sseRef.current = new EventSource("/api/events");
+
+        sseRef.current.onopen = () => {
+          reconnectAttempts = 0;
+        };
+
+        sseRef.current.onerror = () => {
+          sseRef.current?.close();
+          sseRef.current = null;
+
+          if (reconnectAttempts < maxReconnectAttempts) {
+            const delay = reconnectDelay * Math.pow(2, reconnectAttempts);
+            reconnectTimeout = setTimeout(() => {
+              reconnectAttempts++;
+              connectSSE();
+            }, delay);
+          }
+        };
+
+        sseRef.current.addEventListener("context-update", () => {
+          // コンテキスト更新時にデータを再取得
+          fetchContextHistory();
+        });
+      } catch {
+        // SSE not supported
+      }
+    };
+
+    connectSSE();
+
+    return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      sseRef.current?.close();
+    };
+  }, []);
 
   if (!data) {
     return (
@@ -44,9 +191,9 @@ export function DashboardPage({ data }: DashboardPageProps) {
   }
 
   return (
-    <div class="flex h-full flex-col gap-4 p-4">
+    <div class="flex h-full flex-col gap-4 p-4 overflow-auto">
       {/* Tabs */}
-      <div class="flex gap-2">
+      <div class="flex gap-2 shrink-0">
         <Button
           variant={activeTab === "status" ? "default" : "outline"}
           size="sm"
@@ -78,6 +225,15 @@ export function DashboardPage({ data }: DashboardPageProps) {
         </div>
       </div>
 
+      {/* Context Usage Chart - Always visible */}
+      <ContextUsageSection
+        data={contextHistory}
+        loading={contextLoading}
+        displayMode={displayMode}
+        setDisplayMode={setDisplayMode}
+        onRefresh={fetchContextHistory}
+      />
+
       {/* Content */}
       <div class="flex-1 overflow-y-auto">
         {activeTab === "status" && <StatusSection data={data} />}
@@ -85,6 +241,222 @@ export function DashboardPage({ data }: DashboardPageProps) {
         {activeTab === "config" && <ConfigSection data={data} />}
       </div>
     </div>
+  );
+}
+
+/**
+ * @summary 複数インスタンスのコンテキスト使用量グラフ
+ */
+function ContextUsageSection({
+  data,
+  loading,
+  displayMode,
+  setDisplayMode,
+  onRefresh,
+}: {
+  data: ContextHistoryResponse | null;
+  loading: boolean;
+  displayMode: "input" | "output" | "both";
+  setDisplayMode: (mode: "input" | "output" | "both") => void;
+  onRefresh: () => void;
+}) {
+  if (loading && !data) {
+    return (
+      <Card>
+        <CardContent class="py-8 flex items-center justify-center">
+          <div class="flex flex-col items-center gap-2">
+            <Loader2 class="h-6 w-6 animate-spin text-primary" />
+            <p class="text-sm text-muted-foreground">Loading context history...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const instances = data ? Object.values(data.instances) : [];
+  const instanceCount = instances.length;
+
+  // 全インスタンスの履歴を時系列でマージ
+  const allEntries: (ContextHistoryEntry & { instanceIndex: number })[] = [];
+  instances.forEach((instance, idx) => {
+    instance.history.forEach((entry) => {
+      allEntries.push({ ...entry, instanceIndex: idx });
+    });
+  });
+
+  // 時刻でソートして最新50件を表示
+  const sortedEntries = allEntries
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    .slice(-50);
+
+  // チャートデータを作成
+  const chartData = sortedEntries.map((entry) => ({
+    time: new Date(entry.timestamp).toLocaleTimeString("ja-JP", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    pid: entry.pid,
+    input: entry.input,
+    output: entry.output,
+    instanceIndex: entry.instanceIndex,
+  }));
+
+  // 統計計算
+  const stats = {
+    totalInput: instances.reduce((sum, i) => sum + i.history.reduce((s, e) => s + e.input, 0), 0),
+    totalOutput: instances.reduce((sum, i) => sum + i.history.reduce((s, e) => s + e.output, 0), 0),
+    instanceCount,
+  };
+
+  return (
+    <Card>
+      <CardHeader class="pb-2">
+        <div class="flex items-center justify-between">
+          <div>
+            <CardTitle class="text-sm">Multi-Instance Context Usage</CardTitle>
+            <CardDescription>
+              {instanceCount} instance{instanceCount !== 1 ? "s" : ""} active
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRefresh}
+            disabled={loading}
+          >
+            <RefreshCw class={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent class="space-y-3">
+        {/* 統計 */}
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-lg border p-2">
+            <div class="text-lg font-bold">{stats.instanceCount}</div>
+            <div class="text-xs text-muted-foreground">Instances</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-lg font-bold">{stats.totalInput.toLocaleString()}</div>
+            <div class="text-xs text-muted-foreground">Total Input</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-lg font-bold">{stats.totalOutput.toLocaleString()}</div>
+            <div class="text-xs text-muted-foreground">Total Output</div>
+          </div>
+        </div>
+
+        {/* 表示モード切り替え */}
+        <div class="flex gap-2">
+          <Button
+            variant={displayMode === "input" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setDisplayMode("input")}
+          >
+            Input
+          </Button>
+          <Button
+            variant={displayMode === "output" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setDisplayMode("output")}
+          >
+            Output
+          </Button>
+          <Button
+            variant={displayMode === "both" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setDisplayMode("both")}
+          >
+            Both
+          </Button>
+        </div>
+
+        {/* チャート */}
+        {chartData.length === 0 ? (
+          <div class="flex h-[200px] items-center justify-center text-muted-foreground text-sm">
+            No context history data available
+          </div>
+        ) : (
+          <div class="h-[250px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" class="stroke-border" />
+                <XAxis
+                  dataKey="time"
+                  tick={{ fontSize: 10 }}
+                  class="text-muted-foreground"
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  class="text-muted-foreground"
+                  tickFormatter={(value: number) => value.toLocaleString()}
+                  width={60}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                  }}
+                  labelStyle={{ color: "hsl(var(--foreground))" }}
+                  formatter={(value: number | undefined, name: string) => [
+                    value?.toLocaleString() ?? "0",
+                    name,
+                  ]}
+                />
+                <Legend
+                  wrapperStyle={{ fontSize: "10px" }}
+                />
+                {(displayMode === "input" || displayMode === "both") && (
+                  <Bar
+                    dataKey="input"
+                    name="Input"
+                    fill="hsl(var(--chart-1))"
+                    radius={[2, 2, 0, 0]}
+                    maxBarSize={30}
+                  />
+                )}
+                {(displayMode === "output" || displayMode === "both") && (
+                  <Bar
+                    dataKey="output"
+                    name="Output"
+                    fill="hsl(var(--chart-2))"
+                    radius={[2, 2, 0, 0]}
+                    maxBarSize={30}
+                  />
+                )}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* インスタンス一覧 */}
+        {instances.length > 0 && (
+          <div class="space-y-1">
+            <div class="text-xs font-medium text-muted-foreground">Active Instances</div>
+            <div class="flex flex-wrap gap-1">
+              {instances.map((instance, idx) => (
+                <div
+                  key={instance.pid}
+                  class="flex items-center gap-1 rounded border px-2 py-1 text-xs"
+                  style={{ borderColor: getInstanceColor(instance.pid, idx) }}
+                >
+                  <div
+                    class="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: getInstanceColor(instance.pid, idx) }}
+                  />
+                  <span class="font-mono">PID:{instance.pid}</span>
+                  <span class="text-muted-foreground truncate max-w-[100px]">
+                    {instance.model}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
