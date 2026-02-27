@@ -172,13 +172,29 @@ export function TasksPage() {
       subtasks.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     });
 
-    // Build columns: parent task followed by its subtasks (regardless of subtask status)
+    // Build columns:
+    // - Parent task in its own status column
+    // - Subtasks appear under parent ONLY if they share the same status
+    // - Subtasks with different status appear independently in their own column
     parentTasks.forEach((parent) => {
       grouped[parent.status].push(parent);
-      // Add subtasks right after parent (in parent's column, not subtask's own status)
+      // Add subtasks that have the same status as parent, right after parent
       const subtasks = subtasksByParentId.get(parent.id) || [];
       subtasks.forEach((subtask) => {
-        grouped[parent.status].push(subtask);
+        if (subtask.status === parent.status) {
+          grouped[parent.status].push(subtask);
+        }
+      });
+    });
+
+    // Add orphan subtasks (subtasks whose parent is in a different column)
+    subtasksByParentId.forEach((subtasks, parentId) => {
+      const parent = parentTasks.find((p) => p.id === parentId);
+      subtasks.forEach((subtask) => {
+        // If parent doesn't exist or has different status, add independently
+        if (!parent || subtask.status !== parent.status) {
+          grouped[subtask.status].push(subtask);
+        }
       });
     });
 
@@ -214,7 +230,21 @@ export function TasksPage() {
   };
 
   // Update task status (drag and drop)
-  const handleStatusChange = async (taskId: string, newStatus: TaskStatus) => {
+  const handleStatusChange = async (taskId: string, newStatus: TaskStatus): Promise<boolean> => {
+    // Check if moving parent task to "completed" - all subtasks must be completed first
+    if (newStatus === "completed") {
+      const task = tasks.find((t) => t.id === taskId);
+      const subtasks = tasks.filter((t) => t.parentTaskId === taskId);
+      const incompleteSubtasks = subtasks.filter((t) => t.status !== "completed");
+
+      if (incompleteSubtasks.length > 0) {
+        setError(
+          `Cannot complete this task: ${incompleteSubtasks.length} subtask(s) are not done yet.`
+        );
+        return false;
+      }
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
         method: "PUT",
@@ -228,8 +258,10 @@ export function TasksPage() {
 
       await fetchTasks();
       await fetchStats();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update task");
+      return false;
     }
   };
 
@@ -646,9 +678,11 @@ export function TasksPage() {
             setSelectedTask(updated);
           }}
           onDelete={() => handleDelete(selectedTask.id)}
-          onStatusChange={(status) => {
-            handleStatusChange(selectedTask.id, status);
-            setSelectedTask({ ...selectedTask, status });
+          onStatusChange={async (status) => {
+            const success = await handleStatusChange(selectedTask.id, status);
+            if (success) {
+              setSelectedTask({ ...selectedTask, status });
+            }
           }}
           onCreateSubtask={handleCreateSubtask}
           onUpdateSubtask={(subtask) => {
