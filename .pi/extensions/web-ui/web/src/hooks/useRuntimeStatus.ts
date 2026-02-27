@@ -136,7 +136,7 @@ interface SSEEvent {
   timestamp: number;
 }
 
-const API_BASE = "http://localhost:3456";
+const API_BASE = typeof window !== "undefined" ? `${window.location.protocol}//${window.location.host}` : "http://localhost:3000";
 
 /**
  * Hook for runtime status with SSE real-time updates
