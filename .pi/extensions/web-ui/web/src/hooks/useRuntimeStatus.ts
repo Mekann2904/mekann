@@ -41,8 +41,10 @@ export interface RuntimeSession {
   agentId: string;
   /** Associated task ID (optional, for Kanban integration) */
   taskId?: string;
-  /** Task title preview (optional, for display) */
+  /** Task title preview (optional, for display, max 50 chars) */
   taskTitle?: string;
+  /** Full task description (optional, for details view) */
+  taskDescription?: string;
   /** Current execution status */
   status: RuntimeSessionStatus;
   /** Unix timestamp when session started */

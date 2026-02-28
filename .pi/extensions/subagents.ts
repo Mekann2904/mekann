@@ -961,7 +961,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           type: "subagent",
           agentId: agent.id,
           taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
-          taskTitle: params.task.slice(0, 100),
+          taskTitle: params.task.slice(0, 50),
+          taskDescription: params.task,
           status: "starting",
           startedAt: Date.now(),
         };
@@ -1336,7 +1337,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               type: "subagent",
               agentId: "dag-auto-executor",
               taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
-              taskTitle: params.task.slice(0, 100),
+              taskTitle: params.task.slice(0, 50),
+              taskDescription: params.task,
               status: "starting",
               startedAt: Date.now(),
               teammateCount: dagPlan.tasks.length,
@@ -1469,7 +1471,8 @@ ${allResults.map((r) => {
           type: "subagent",
           agentId: activeAgents.map((a) => a.id).join(","),  // Multiple agent IDs
           taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
-          taskTitle: params.task.slice(0, 100),
+          taskTitle: params.task.slice(0, 50),
+          taskDescription: params.task,
           status: "starting",
           startedAt: Date.now(),
           teammateCount: activeAgents.length,
@@ -1895,7 +1898,8 @@ ${allResults.map((r) => {
           type: "subagent",
           agentId: "dag-executor",
           taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
-          taskTitle: params.task.slice(0, 100),
+          taskTitle: params.task.slice(0, 50),
+          taskDescription: params.task,
           status: "starting",
           startedAt: Date.now(),
           teammateCount: taskPlan.tasks.length,
