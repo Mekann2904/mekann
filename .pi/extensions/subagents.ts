@@ -1316,7 +1316,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           toolName: "subagent_run_parallel",
           candidate: {
             additionalRequests: 1,
-            additionalLlm: Math.max(1, effectiveParallelism),
+            additionalLlm: Math.min(effectiveParallelism, snapshot.limits.maxParallelSubagentsPerRun),
           },
           tenantKey: activeAgents.map((entry) => entry.id).join(","),
           source: "scheduled",
@@ -1931,7 +1931,7 @@ ${allResults.map((r) => {
           toolName: "subagent_run_dag",
           candidate: {
             additionalRequests: 1,
-            additionalLlm: Math.min(maxConcurrency, taskPlan.tasks.length),
+            additionalLlm: Math.min(maxConcurrency, taskPlan.tasks.length, snapshot.limits.maxParallelSubagentsPerRun),
           },
           tenantKey: taskPlan.id,
           source: "scheduled",
