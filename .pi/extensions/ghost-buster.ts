@@ -170,17 +170,18 @@ export default function (pi: ExtensionAPI) {
 		// TODO: settings.json から設定を読み込む
 	};
 
-	// 起動時にクリーンアップ実行
-	if (config.cleanupOnStart) {
-		const removed = cleanupGhostLocks(config, pi);
+	// 起動時にクリーンアップ実行（session_startイベントで）
+	pi.on("session_start", async (_event, ctx) => {
+		if (!config.cleanupOnStart) return;
+
+		const removed = cleanupGhostLocks(config, ctx);
 		if (removed.length > 0) {
-			pi.ui.notify(`Ghost Buster: Removed ${removed.length} stale lock(s)`, "info");
+			ctx.ui.notify(`Ghost Buster: Removed ${removed.length} stale lock(s)`, "info");
 		}
-	}
+	});
 
 	// 手動クリーンアップコマンドを登録
-	pi.addCommand({
-		name: "ghost-buster",
+	pi.registerCommand("ghost-buster", {
 		description: "Remove stale pi instance locks",
 		handler: (args, ctx) => {
 			const removed = cleanupGhostLocks(config, ctx);
