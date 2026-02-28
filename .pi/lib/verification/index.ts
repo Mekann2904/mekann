@@ -133,3 +133,103 @@ export {
   detectInnerFascismPatterns,
   performSchizoAnalysis,
 } from "./patterns/index.js";
+
+// ============================================================================
+// Analysis (Phase 3)
+// ============================================================================
+
+export {
+  // Metacognitive Check
+  runMetacognitiveCheck,
+  detectInnerFascism,
+  detectBinaryOppositions,
+  detectFallacies,
+  generateMetacognitiveSummary,
+  type AporiaDetection,
+  type AporiaType,
+  type FallacyDetection,
+
+  // Inference Chain
+  parseInferenceChain,
+  detectAporiaAvoidanceTemptation,
+  connectInferenceSteps,
+  calculateChainQualityScore,
+
+  // Thinking Mode
+  analyzeThinkingMode,
+  runIntegratedThinkingAnalysis,
+
+  // Dystopian Risk
+  assessDystopianRisk,
+  generateDystopianRiskSummary,
+  type DystopianRiskAssessment,
+  type DystopianPattern,
+  type LiberatingPossibility,
+  type RiskCategoryResult,
+} from "./analysis/index.js";
+
+// ============================================================================
+// Generation (Phase 4)
+// ============================================================================
+
+export {
+  // Prompts
+  buildInspectorPrompt,
+  buildChallengerPrompt,
+  generateLLMVerificationPrompt,
+  parseLLMVerificationResponse,
+  mapTypeToVerificationType,
+
+  // Improvement Actions
+  generateImprovementActions,
+  formatActionsAsPromptInstructions,
+  runIntegratedMetacognitiveAnalysis,
+  generateActionsFromDetection,
+} from "./generation/index.js";
+
+// ============================================================================
+// Extraction (Phase 4)
+// ============================================================================
+
+export {
+  // Candidates
+  extractCandidates,
+  applyContextFilter,
+  generateFilterStats,
+  FALLACY_PATTERNS,
+  BINARY_OPPOSITION_PATTERNS,
+  FASCISM_PATTERNS,
+  CRAVING_PATTERNS,
+  ALL_PATTERNS,
+  type CandidateDetection,
+
+  // Integrated Detection
+  runIntegratedDetection,
+  runLLMEnhancedDetection,
+  generateDetectionSummary,
+  type LLMVerificationRequest,
+  type LLMVerificationResult,
+  type IntegratedVerificationResult,
+} from "./extraction/index.js";
+
+// ============================================================================
+// Assessment (Phase 5)
+// ============================================================================
+
+export {
+  assessDetectionUncertainty,
+  generateUncertaintySummary,
+  type DetectionUncertaintyAssessment,
+  type MissedIssueCandidate,
+} from "./assessment/index.js";
+
+// ============================================================================
+// Core Workflow (Phase 5)
+// ============================================================================
+
+export {
+  shouldTriggerVerification,
+  synthesizeVerificationResult,
+  runVerificationWorkflow,
+  getVerificationWorkflowRules,
+} from "./core.js";

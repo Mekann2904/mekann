@@ -239,6 +239,8 @@ export interface VerificationContext {
   agentId?: string;
   teamId?: string;
   previousVerifications?: number;
+  confidence?: number;
+  explicitRequest?: boolean;
 }
 
 // ============================================================================

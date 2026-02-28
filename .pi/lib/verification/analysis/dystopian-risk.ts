@@ -705,7 +705,7 @@ function generateDystopianRiskRecommendations(
     recommendations.push('現在のリスクレベルは低い。継続的な監視と改善を維持する。');
   }
 
-  return [...new Set(recommendations)].slice(0, 5);
+  return Array.from(new Set(recommendations)).slice(0, 5);
 }
 
 /**
