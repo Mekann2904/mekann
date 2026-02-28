@@ -412,6 +412,10 @@ export function registerInstance(
       cleanupDeadInstances();
     }, config.heartbeatIntervalMs);
 
+    // 初回は書き込み時にdebounceをバイパ防止
+    // 初回は書き込み
+    lastHeartbeatWrite = now;
+
     // Don't prevent process exit
     heartbeatTimer.unref();
 
