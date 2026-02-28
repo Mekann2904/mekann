@@ -286,6 +286,7 @@ function getStatusIcon(status: TaskStatus): string {
 		case "in_progress": return "→";
 		case "completed": return "✓";
 		case "cancelled": return "⊗";
+		case "failed": return "✗";
 	}
 }
 
@@ -357,6 +358,7 @@ function formatTaskList(tasks: Task[], title: string = "Tasks"): string {
 			todo: 1,
 			completed: 2,
 			cancelled: 3,
+			failed: 4,
 		};
 		if (statusOrder[a.status] !== statusOrder[b.status]) {
 			return statusOrder[a.status] - statusOrder[b.status];

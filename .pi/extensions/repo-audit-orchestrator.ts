@@ -20,6 +20,7 @@
  *   out: AuditResult（仮説、発見事項、判定）
  */
 
+import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   resolveVerificationConfigV2,
@@ -755,45 +756,25 @@ function runChallengerPatterns(
  * @summary 拡張機能のエントリーポイント
  */
 export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
-  const tool: Tool = {
+  pi.registerTool({
     name: "repo_audit",
     description:
       "RepoAuditスタイルのコード監査（3層アーキテクチャ: Initiator/Explorer/Validator）",
-    parameters: {
-      type: "object",
-      properties: {
-        target: {
-          type: "string",
-          description: "ターゲット（ファイル、ディレクトリ、パターン）",
-        },
-        scope: {
-          type: "string",
-          enum: ["file", "module", "repository"],
-          default: "module",
-          description: "監査スコープ",
-        },
-        focus: {
-          type: "array",
-          items: {
-            type: "string",
-            enum: ["security", "performance", "correctness", "maintainability"],
-          },
-          description: "フォーカス領域",
-        },
-        verificationMode: {
-          type: "string",
-          enum: ["disabled", "repoaudit", "high-stakes-only", "explicit-only"],
-          default: "repoaudit",
-          description: "検証モード",
-        },
-        maxExplorationDepth: {
-          type: "number",
-          default: 5,
-          description: "最大探索深度",
-        },
-      },
-      required: ["target"],
-    },
+    parameters: Type.Object({
+      target: Type.String({ description: "ターゲット（ファイル、ディレクトリ、パターン）" }),
+      scope: Type.Optional(Type.String({
+        description: "監査スコープ",
+        enum: ["file", "module", "repository"],
+      })),
+      focus: Type.Optional(Type.Array(Type.String({
+        enum: ["security", "performance", "correctness", "maintainability"],
+      }), { description: "フォーカス領域" })),
+      verificationMode: Type.Optional(Type.String({
+        description: "検証モード",
+        enum: ["disabled", "repoaudit", "high-stakes-only", "explicit-only"],
+      })),
+      maxExplorationDepth: Type.Optional(Type.Number({ description: "最大探索深度" })),
+    }),
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const config: RepoAuditConfig = {
         ...DEFAULT_CONFIG,
@@ -884,7 +865,5 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
         };
       }
     },
-  };
-
-  pi.registerTool(tool);
+  });
 }
