@@ -329,15 +329,6 @@ export {
   runMember,
 } from "./member-execution";
 
-// Re-export parallel-execution functions for external use (backward compatibility)
-export {
-  type TeamParallelCapacityCandidate,
-  type TeamParallelCapacityResolution,
-  buildMemberParallelCandidates,
-  buildTeamAndMemberParallelCandidates,
-  resolveTeamParallelCapacity,
-} from "./parallel-execution";
-
 // Re-export result-aggregation functions for external use (backward compatibility)
 export {
   isRetryableTeamMemberError,

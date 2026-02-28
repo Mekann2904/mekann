@@ -306,12 +306,6 @@ import {
   createSubagentLiveMonitor,
 } from "./subagents/live-monitor";
 
-// Import parallel-execution module (extracted for SRP compliance)
-import {
-  type SubagentParallelCapacityResolution,
-  resolveSubagentParallelCapacity,
-} from "./subagents/parallel-execution";
-
 // Import task-execution module (extracted for SRP compliance)
 import {
   type SubagentExecutionResult,
@@ -378,11 +372,6 @@ export {
 } from "./subagents/live-monitor";
 
 export {
-  type SubagentParallelCapacityResolution,
-  resolveSubagentParallelCapacity,
-} from "./subagents/parallel-execution";
-
-export {
   type SubagentExecutionResult,
   normalizeSubagentOutput,
   buildSubagentPrompt,
@@ -397,7 +386,6 @@ export {
 
 // The following local functions are now imported from modules:
 // renderSubagentLiveView, createSubagentLiveMonitor -> ./subagents/live-monitor.ts
-// resolveSubagentParallelCapacity -> ./subagents/parallel-execution.ts
 // normalizeSubagentOutput, buildSubagentPrompt, runSubagentTask -> ./subagents/task-execution.ts
 
 // ============================================================================
@@ -753,6 +741,14 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
 
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
 let isInitialized = false;
+
+/**
+ * テスト用のリセット関数
+ * @summary isInitializedフラグをリセット
+ */
+export function resetForTesting(): void {
+  isInitialized = false;
+}
 
 export default function registerSubagentExtension(pi: ExtensionAPI) {
   if (isInitialized) return;
