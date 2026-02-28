@@ -55,7 +55,7 @@ import {
   getActivityIndicator,
   isEnterInput,
   finalizeLiveLines,
-} from "../../lib/live-view-utils.js";
+} from "../../lib/agent/live-view-utils.js";
 import {
   computeLiveWindow,
 } from "../../lib/agent/agent-utils.js";

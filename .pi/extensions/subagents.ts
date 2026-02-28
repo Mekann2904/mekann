@@ -50,7 +50,7 @@ import {
   isEnterInput,
   finalizeLiveLines,
   type LiveStatus,
-} from "../lib/live-view-utils.js";
+} from "../lib/agent/live-view-utils.js";
 import {
   toTailLines,
   looksLikeMarkdown,

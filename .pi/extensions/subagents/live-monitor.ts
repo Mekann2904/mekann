@@ -48,7 +48,7 @@ import {
 import {
   toTailLines,
   looksLikeMarkdown,
-} from "../../lib/live-view-utils.js";
+} from "../../lib/agent/live-view-utils.js";
 import {
   computeLiveWindow,
 } from "../../lib/agent/agent-utils.js";
@@ -59,7 +59,7 @@ import {
   isEnterInput,
   finalizeLiveLines,
   type LiveStatus,
-} from "../../lib/live-view-utils.js";
+} from "../../lib/agent/live-view-utils.js";
 import {
   renderGanttView,
   type GanttItem,
