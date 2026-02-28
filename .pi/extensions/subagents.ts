@@ -1824,7 +1824,12 @@ ${allResults.map((r) => {
       }
 
       const storage = loadStorage(ctx.cwd);
-      const maxConcurrency = params.maxConcurrency ?? 3;
+      const snapshot = getRuntimeSnapshot();
+      // maxConcurrencyをruntime-configの制限内に収める
+      const maxConcurrency = Math.min(
+        params.maxConcurrency ?? 3,
+        snapshot.limits.maxParallelSubagentsPerRun,
+      );
       const abortOnFirstError = params.abortOnFirstError ?? false;
       const timeoutMs = resolveEffectiveTimeoutMs(
         params.timeoutMs,
