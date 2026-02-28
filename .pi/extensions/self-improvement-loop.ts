@@ -43,7 +43,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { formatDurationMs, formatClockTime } from "../lib/core/format-utils.js";
 import { toErrorMessage, isCancelledErrorMessage } from "../lib/core/error-utils.js";
 import { ThinkingLevel } from "../lib/agent/agent-types.js";
-import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
+import { computeModelTimeoutMs } from "../lib/agent/model-timeouts.js";
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor.js";
 import {
   detectSemanticRepetition,

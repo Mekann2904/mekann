@@ -43,7 +43,7 @@ import { getCostEstimator, type ExecutionHistoryEntry } from "../../lib/cost-est
 import { formatDurationMs, normalizeForSingleLine } from "../../lib/core/format-utils.js";
 import { runWithConcurrencyLimit } from "../../lib/concurrency.js";
 import type { RetryWithBackoffOverrides } from "../../lib/retry-with-backoff.js";
-import { toConcurrencyLimit } from "../../lib/runtime-utils.js";
+import { toConcurrencyLimit } from "../../lib/agent/runtime-utils.js";
 import { ValidationError } from "../../lib/core/errors.js";
 
 import {

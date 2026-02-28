@@ -33,7 +33,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ensureDir } from "../core/fs-utils.js";
+import { ensureDir } from "./core/fs-utils.js";
 import { getOrBuildRunIndex, type RunIndex, type IndexedRun, type TaskType } from "./storage/run-index.js";
 import {
   loadPatternStorage,

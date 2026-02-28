@@ -43,7 +43,7 @@ import {
 import {
   trimForError,
   buildRateLimitKey,
-} from "../../lib/runtime-utils.js";
+} from "../../lib/agent/runtime-utils.js";
 import {
   type ThinkingLevel,
 } from "../../lib/agent/agent-types.js";

@@ -34,7 +34,7 @@ import { join } from "node:path";
 import {
   trimForError,
   buildRateLimitKey,
-} from "../../lib/runtime-utils.js";
+} from "../../lib/agent/runtime-utils.js";
 import {
   toErrorMessage,
   extractStatusCodeFromMessage,

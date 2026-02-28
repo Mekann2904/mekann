@@ -325,7 +325,7 @@ export async function semanticIndex(
 		const {
 			generateEmbedding,
 			embeddingRegistry,
-		} = await import("../../../lib/embeddings/index.js");
+		} = await import("../../../lib/storage/embeddings/index.js");
 
 		// Check provider availability
 		const available = await embeddingRegistry.getAvailable();

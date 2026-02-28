@@ -50,7 +50,7 @@
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
 
-import { ensureDir } from "../core/fs-utils.js";
+import { ensureDir } from "./core/fs-utils.js";
 import { atomicWriteTextFile, withFileLock } from "./storage-lock.js";
 
 // ============================================================================
