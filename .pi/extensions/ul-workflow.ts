@@ -138,6 +138,27 @@ export function extractPidFromInstanceId(instanceId: string): number | null {
 }
 
 /**
+ * コンテキストからrunSubagentを安全に取得する
+ * @summary runSubagent取得
+ * @param ctx - 拡張コンテキスト
+ * @returns runSubagent関数、または undefined
+ */
+function getRunSubagent(ctx: unknown): ((options: {
+  subagentId: string;
+  task: string;
+  extraContext?: string;
+}) => Promise<AgentToolResult<unknown>>) | undefined {
+  const anyCtx = ctx as {
+    runSubagent?: (options: {
+      subagentId: string;
+      task: string;
+      extraContext?: string;
+    }) => Promise<AgentToolResult<unknown>>;
+  };
+  return anyCtx.runSubagent;
+}
+
+/**
  * 以前の所有者のプロセスが終了しているかどうかを確認する
  * @summary 古い所有者の終了確認
  * @param ownerInstanceId - 所有者のインスタンスID
@@ -699,7 +720,7 @@ Task ID: ${taskId}
       const planPath = path.join(getTaskDir(taskId), "plan.md");
 
       // DAG-BASED EXECUTION FOR HIGH COMPLEXITY
-      if (strategy.useDag && ctx.runSubagent) {
+      if (strategy.useDag && (ctx as any).runSubagent) {
         console.log(`[ul_workflow_run] Using DAG execution for task: ${trimmedTask.slice(0, 50)}...`);
 
         try {
@@ -735,7 +756,7 @@ Task ID: ${taskId}
 
               console.log(`[ul_workflow_run] DAG task ${task.id} -> ${subagentId}`);
 
-              const result = await ctx.runSubagent!({
+              const result = await (ctx as any).runSubagent!({
                 subagentId,
                 task: task.description,
                 extraContext: `Part of workflow: ${trimmedTask}`,
@@ -823,17 +844,17 @@ git commit -m "feat: ..."
 
       // SEQUENTIAL EXECUTION (low complexity or DAG failure fallback)
       // runSubagent APIが利用可能な場合は自動実行
-      if (ctx.runSubagent) {
+      if ((ctx as any).runSubagent) {
         try {
           // Researchフェーズ実行
-          await ctx.runSubagent({
+          await (ctx as any).runSubagent({
             subagentId: "researcher",
             task: `調査タスク: ${trimmedTask}\n\n保存先: ${researchPath}`,
             extraContext: "詳細に調査し、research.mdを作成してください。"
           });
 
           // Planフェーズ実行
-          await ctx.runSubagent({
+          await (ctx as any).runSubagent({
             subagentId: "architect",
             task: `計画作成: ${trimmedTask}\n\n事前調査: ${researchPath}\n保存先: ${planPath}`,
             extraContext: "plan.mdを作成してください。"
@@ -876,7 +897,7 @@ git commit -m "feat: ..."
               saveState(currentWorkflow);
 
               try {
-                const implementResult = await ctx.runSubagent({
+                const implementResult = await (ctx as any).runSubagent({
                   subagentId: "implementer",
                   task: `plan.mdを実装: ${planPath}`,
                   extraContext: "機械的に実装してください。"
@@ -1344,9 +1365,9 @@ ${annotations.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}
           saveState(currentWorkflow);
 
           // runSubagent APIが利用可能な場合は自動実行
-          if (ctx.runSubagent) {
+          if ((ctx as any).runSubagent) {
             try {
-              await ctx.runSubagent({
+              await (ctx as any).runSubagent({
                 subagentId: "implementer",
                 task: `plan.mdを実装: ${planPath}`,
                 extraContext: "機械的に実装してください。"
@@ -1462,9 +1483,9 @@ ${planContent}
       setCurrentWorkflow(currentWorkflow);
 
       // runSubagent APIが利用可能な場合は自動実行
-      if (ctx.runSubagent) {
+      if ((ctx as any).runSubagent) {
         try {
-          const implementResult = await ctx.runSubagent({
+          const implementResult = await (ctx as any).runSubagent({
             subagentId: "implementer",
             task: `plan.mdを実装: ${planPath}`,
             extraContext: "機械的に実装してください。"
@@ -1565,9 +1586,9 @@ subagent_run({
       setCurrentWorkflow(currentWorkflow);
 
       // runSubagent APIが利用可能な場合は自動実行
-      if (ctx.runSubagent) {
+      if ((ctx as any).runSubagent) {
         try {
-          await ctx.runSubagent({
+          await (ctx as any).runSubagent({
             subagentId: "architect",
             task: `plan.md修正: ${trimmedModifications}\n\nファイル: ${planPath}`,
             extraContext: "既存の内容を尊重しつつ修正してください。"
@@ -1602,7 +1623,7 @@ subagent_run({
               saveState(currentWorkflow);
 
               try {
-                await ctx.runSubagent({
+                await (ctx as any).runSubagent({
                   subagentId: "implementer",
                   task: `plan.mdを実装: ${planPath}`,
                   extraContext: "機械的に実装してください。"
