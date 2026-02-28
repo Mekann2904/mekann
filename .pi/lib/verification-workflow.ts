@@ -42,6 +42,7 @@ export {
   HIGH_STAKES_PATTERNS,
 } from "./verification-workflow-types.js";
 
+/**
  * 出力パターンをチェック
  */
 function checkOutputPatterns(
