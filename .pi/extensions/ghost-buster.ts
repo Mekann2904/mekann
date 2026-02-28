@@ -164,7 +164,17 @@ function cleanupGhostLocks(config: GhostBusterConfig, ctx?: ExtensionAPI): strin
  * @summary pi起動時にゴースプロックを削除
  * @param pi ExtensionAPI
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	// 既に初期化済みの場合はスキップ（reload時の重複登録防止）
+	if (isInitialized) {
+		return;
+	}
+	isInitialized = true;
+
 	const config: GhostBusterConfig = {
 		...DEFAULT_CONFIG,
 		// TODO: settings.json から設定を読み込む
