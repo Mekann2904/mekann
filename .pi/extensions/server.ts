@@ -85,7 +85,7 @@ interface ApiResponse {
 // ============================================
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, isAbsolute } from "node:path";
 
 const TASK_DIR = ".pi/tasks";
 const STORAGE_FILE = join(TASK_DIR, "storage.json");
@@ -193,7 +193,8 @@ async function serveStatic(
 	let filePath = urlPath === "/" ? "/index.html" : urlPath;
 	
 	// Security: prevent directory traversal
-	if (filePath.includes("..")) {
+	// Check for path traversal attempts: "..", null bytes, and absolute paths
+	if (filePath.includes("..") || filePath.includes("\0") || isAbsolute(filePath)) {
 		return false;
 	}
 	
@@ -526,7 +527,7 @@ function handleGetUlWorkflowTasks(): ApiResponse {
 		const tasks = getAllUlWorkflowTasks();
 		return { success: true, data: tasks, total: tasks.length };
 	} catch (error) {
-		return { success: false, error: `Failed to load UL workflow tasks: ${error}` };
+		return { success: false, error: "Failed to load UL workflow tasks" };
 	}
 }
 
@@ -539,7 +540,7 @@ function handleGetUlWorkflowTask(id: string): ApiResponse {
 		}
 		return { success: true, data: task };
 	} catch (error) {
-		return { success: false, error: `Failed to load task: ${error}` };
+		return { success: false, error: "Failed to load task" };
 	}
 }
 
@@ -666,8 +667,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 		// 404 for unknown routes
 		sendJson(res, 404, { success: false, error: "Not found" });
 	} catch (error) {
-		console.error(`[API] Error: ${error}`);
-		sendJson(res, 500, { success: false, error: String(error) });
+		console.error(`[API] Error:`, error);
+		sendJson(res, 500, { success: false, error: "Internal server error" });
 	}
 }
 
@@ -773,7 +774,7 @@ export default function (pi: ExtensionAPI) {
 				};
 			} catch (error) {
 				return {
-					content: [{ type: "text", text: `Failed to start server: ${error}` }],
+					content: [{ type: "text", text: "Failed to start API server" }],
 					details: {}
 				};
 			}
