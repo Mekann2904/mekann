@@ -31,8 +31,8 @@ import {
   getAllThinkingModes,
   getAllThinkingPhases
 } from './thinking-process';
-import { AporiaDetection, AporiaResolution } from './aporia-handler';
-import { Distribution, createPrior, calculateEntropy, getMaxEntropy } from './belief-updater';
+import { AporiaDetection, AporiaResolution } from './philosophy/aporia-handler';
+import { Distribution, createPrior, calculateEntropy, getMaxEntropy } from './philosophy/belief-updater';
 import { ModeSelectionResult } from './learnable-mode-selector';
 
 /**

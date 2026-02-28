@@ -25,8 +25,8 @@
  *   out: ThoughtSeed, Association, AssociationChain, ConvergencePointインターフェースと関連する型
  */
 
-import type { Distribution } from './belief-updater.js';
-import { createPrior, normalizeDistribution } from './belief-updater.js';
+import type { Distribution } from './philosophy/belief-updater.js';
+import { createPrior, normalizeDistribution } from './philosophy/belief-updater.js';
 
 // ============================================================================
 // 型定義

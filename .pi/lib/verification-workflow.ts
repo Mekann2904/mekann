@@ -22,7 +22,7 @@
  */
 
 // 型定義と定数をインポート
-export {
+import {
   type VerificationWorkflowConfig,
   type VerificationTriggerMode,
   type FallbackBehavior,
@@ -41,6 +41,27 @@ export {
   DEFAULT_VERIFICATION_CONFIG,
   HIGH_STAKES_PATTERNS,
 } from "./verification-workflow-types.js";
+
+// 再エクスポート
+export {
+  type VerificationWorkflowConfig,
+  type VerificationTriggerMode,
+  type FallbackBehavior,
+  type ChallengerConfig,
+  type ChallengeCategory,
+  type InspectorConfig,
+  type SuspicionThreshold,
+  type InspectionPattern,
+  type VerificationResult,
+  type VerificationVerdict,
+  type InspectorOutput,
+  type DetectedPattern,
+  type ChallengerOutput,
+  type ChallengedClaim,
+  type VerificationContext,
+  DEFAULT_VERIFICATION_CONFIG,
+  HIGH_STAKES_PATTERNS,
+};
 
 /**
  * 出力パターンをチェック
@@ -118,6 +139,61 @@ function checkOutputPatterns(
   }
 
   return { trigger: false, reason: "" };
+}
+
+/**
+ * 検証が必要か判断
+ * @summary 検証要否判定
+ * @param output 出力内容
+ * @param confidence 信頼度
+ * @param context 検証コンテキスト
+ * @returns トリガー判定と理由
+ */
+export function shouldTriggerVerification(
+  output: string,
+  confidence: number,
+  context: VerificationContext
+): { trigger: boolean; reason: string } {
+  const config = resolveVerificationConfig();
+
+  if (!config.enabled) {
+    return { trigger: false, reason: "Verification workflow disabled" };
+  }
+
+  // 高信頼度の場合はスキップ
+  if (confidence >= config.minConfidenceToSkipVerification) {
+    // ただし高リスクタスクは除外
+    if (!isHighStakesTask(context.task)) {
+      return { trigger: false, reason: `Confidence ${confidence} exceeds threshold ${config.minConfidenceToSkipVerification}` };
+    }
+  }
+
+  // 低信頼度トリガー
+  if (config.triggerModes.includes("low-confidence") && confidence < 0.7) {
+    return { trigger: true, reason: `Low confidence: ${confidence}` };
+  }
+
+  // 高リスクタスクトリガー
+  if (config.triggerModes.includes("high-stakes") && isHighStakesTask(context.task)) {
+    return { trigger: true, reason: "High-stakes task detected" };
+  }
+
+  // 出力パターンチェック
+  const patternResult = checkOutputPatterns(output, config);
+  if (patternResult.trigger) {
+    return patternResult;
+  }
+
+  // サブエージェント/チーム後トリガー
+  if (config.triggerModes.includes("post-subagent") && context.triggerMode === "post-subagent") {
+    return { trigger: true, reason: "Post-subagent verification triggered" };
+  }
+
+  if (config.triggerModes.includes("post-team") && context.triggerMode === "post-team") {
+    return { trigger: true, reason: "Post-team verification triggered" };
+  }
+
+  return { trigger: false, reason: "No trigger conditions met" };
 }
 
 /**

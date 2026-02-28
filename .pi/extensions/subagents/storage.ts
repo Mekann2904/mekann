@@ -449,7 +449,7 @@ export async function saveStorageWithPatterns(
   // Extract patterns from new runs (async, non-blocking)
   const { addRunToPatterns } = await import("../../lib/storage/pattern-extraction.js");
   const { addRunToSemanticMemory, isSemanticMemoryAvailable } = await import(
-    "../../lib/semantic-memory.js"
+    "../../lib/storage/semantic-memory.js"
   );
   const { indexSubagentRun } = await import("../../lib/storage/run-index.js");
 

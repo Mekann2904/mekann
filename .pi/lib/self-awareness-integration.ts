@@ -26,7 +26,7 @@
 
 import { ConsciousnessState, getConsciousnessReport } from './consciousness-spectrum.js';
 import { PerspectiveScores, scoreAllPerspectives } from './perspective-scorer.js';
-import { AporiaState, getAporiaReport, createInitialAporiaState } from './aporia-awareness.js';
+import { AporiaState, getAporiaReport, createInitialAporiaState } from './philosophy/aporia-awareness.js';
 import { 
   TranscendenceState, 
   getTranscendenceReport, 

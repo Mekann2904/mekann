@@ -41,7 +41,7 @@ import {
   getMaxEntropy,
   createEvidence,
   Evidence
-} from './belief-updater';
+} from './philosophy/belief-updater';
 
 /**
  * 選択結果

@@ -30,10 +30,10 @@
  * reducing duplication between SubagentLiveItem and TeamLiveItem.
  */
 
-import type { LiveStatus } from "./live-view-utils.js";
+import type { LiveStatus } from "./agent/live-view-utils.js";
 
 // Re-export LiveStatus for convenience
-export type { LiveStatus } from "./live-view-utils.js";
+export type { LiveStatus } from "./agent/live-view-utils.js";
 
 // ============================================================================
 // State Transition Types (for Gantt Chart)

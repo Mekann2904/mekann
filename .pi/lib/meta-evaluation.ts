@@ -27,7 +27,7 @@ import {
   detectAporia,
   createInitialAporiaState,
   AporiaState
-} from './aporia-awareness.js';
+} from './philosophy/aporia-awareness.js';
 
 /**
  * 評価システムのバイアス種類

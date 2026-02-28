@@ -143,7 +143,7 @@ describe("BUG-001: cross-instance-coordinator.ts - File Descriptor Leak", () => 
      * 注: tryAcquireLockは内部関数のため、公開APIを通じて間接的にテスト
      */
 
-    const coordinator = await import("../../lib/cross-instance-coordinator.js");
+    const coordinator = await import("../../lib/coordination/cross-instance-coordinator.js");
 
     // インスタンスを登録
     coordinator.registerInstance("test-session-bug001", tempDir);
@@ -347,7 +347,7 @@ describe("BUG-003: cross-instance-coordinator.ts - TOCTOU Race Condition", () =>
      * 修正後は再試行時に遅延が追加される
      */
 
-    const coordinator = await import("../../lib/cross-instance-coordinator.js");
+    const coordinator = await import("../../lib/coordination/cross-instance-coordinator.js");
 
     coordinator.registerInstance("test-session-bug003", tmpdir());
 
@@ -542,7 +542,7 @@ describe("Integration: Combined Bug Scenarios", () => {
      * 並列ロック取得中にfdリークが発生しないことを確認
      */
 
-    const coordinator = await import("../../lib/cross-instance-coordinator.js");
+    const coordinator = await import("../../lib/coordination/cross-instance-coordinator.js");
 
     coordinator.registerInstance("test-session-combined", tmpdir());
 

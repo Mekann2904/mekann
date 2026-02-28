@@ -1,6 +1,6 @@
 // File: .pi/test-e2e-scheduling.ts
 // Description: E2E tests for task scheduling system
-// Related: .pi/lib/priority-scheduler.ts, .pi/lib/task-dependencies.ts, .pi/lib/cross-instance-coordinator.ts
+// Related: .pi/lib/coordination/priority-scheduler.ts, .pi/lib/task-dependencies.ts, .pi/lib/coordination/cross-instance-coordinator.ts
 
 import {
   inferPriority,
@@ -10,7 +10,7 @@ import {
   inferTaskType,
   estimateRounds,
   type TaskPriority,
-} from "./lib/priority-scheduler.js";
+} from "./lib/coordination/priority-scheduler.js";
 
 import {
   TaskDependencyGraph,
@@ -22,7 +22,7 @@ import {
   unregisterInstance,
   getCoordinatorStatus,
   getMyParallelLimit,
-} from "./lib/cross-instance-coordinator.js";
+} from "./lib/coordination/cross-instance-coordinator.js";
 
 import {
   getPredictiveAnalysis,
@@ -40,7 +40,7 @@ import {
   getUnifiedEnvConfig,
   formatUnifiedLimitsResult,
   getAllLimitsSummary,
-} from "./lib/unified-limit-resolver.js";
+} from "./lib/coordination/unified-limit-resolver.js";
 
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

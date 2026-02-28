@@ -32,7 +32,7 @@
  *   out: 正規化された確率分布を持つDistributionオブジェクト、更新されたBayesianBeliefオブジェクト
  */
 
-import { ThinkingMode, ThinkingPhase } from './thinking-process';
+import { ThinkingMode, ThinkingPhase } from '../thinking-process';
 
 /**
  * 確率分布

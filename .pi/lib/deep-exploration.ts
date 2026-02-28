@@ -29,7 +29,7 @@
  *   out: 上記状態を操作するロジック（このファイルには含まず、利用側で実装）
  */
 
-import type { AporiaDetection, AporiaResolution } from './aporia-handler.js';
+import type { AporiaDetection, AporiaResolution } from './philosophy/aporia-handler.js';
 import {
 	parseAnalysisJson,
 	DEFAULT_ANALYSIS,

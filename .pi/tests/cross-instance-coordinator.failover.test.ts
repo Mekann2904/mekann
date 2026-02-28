@@ -40,7 +40,7 @@ import {
   setLockDirForTesting,
   isCoordinatorInitialized,
   type DistributedLock,
-} from "../lib/cross-instance-coordinator.js";
+} from "../lib/coordination/cross-instance-coordinator.js";
 
 // ============================================================================
 // Test Helpers
