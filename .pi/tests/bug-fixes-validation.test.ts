@@ -145,12 +145,12 @@ describe("P2 Medium Priority Bug Fixes", () => {
     it("should use single Map lookup pattern", async () => {
       const abbrPath = join(process.cwd(), ".pi/extensions/abbr.ts");
       const source = readFileSync(abbrPath, "utf-8");
-      
+
       // Should use abbr ? ... : ... pattern, not exists ? abbr! : ...
-      // Find the relevant section around line 426-428
+      // Find the query case section around line 463-466
       const lines = source.split("\n");
-      const relevantSection = lines.slice(420, 435).join("\n");
-      
+      const relevantSection = lines.slice(460, 470).join("\n");
+
       // Should have pattern: abbr ? `Yes: ${abbr.expansion}` : "No"
       expect(relevantSection).toMatch(/abbr\s*\?\s*['"`]Yes:/);
     });
