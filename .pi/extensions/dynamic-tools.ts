@@ -1079,4 +1079,9 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
     ctx.ui.notify("[Dynamic Tools] 動的ツール生成システムが有効になりました", "info");
   });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }

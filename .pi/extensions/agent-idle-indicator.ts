@@ -65,6 +65,7 @@ export default function (pi: ExtensionAPI) {
   // Restore original when session ends
   pi.on("session_shutdown", async (_event, ctx) => {
     restoreOriginal(ctx);
+    isInitialized = false;
   });
 }
 

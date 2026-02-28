@@ -127,4 +127,9 @@ export default function (pi: ExtensionAPI) {
       systemPrompt: `${event.systemPrompt}\n\n${injectedContext}`,
     };
   });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }

@@ -870,4 +870,9 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     ctx.ui.notify("Skill Inspector loaded. Use /skill-status or skill_status tool.", "info");
   });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }

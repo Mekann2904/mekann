@@ -2361,4 +2361,9 @@ Only skip when the task is truly trivial (single obvious step, no architectural 
       systemPrompt: `${event.systemPrompt}${proactivePrompt}`,
     };
   });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }

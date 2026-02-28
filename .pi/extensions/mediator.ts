@@ -328,6 +328,11 @@ export default function registerMediatorExtension(pi: ExtensionAPI) {
       ctx.ui.notify(`Mediator loaded ${stats.totalFacts} confirmed facts`, "info");
     }
   });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }
 
 // ============================================================================

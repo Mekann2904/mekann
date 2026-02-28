@@ -851,4 +851,9 @@ export default function (pi: ExtensionAPI) {
 		}
 		ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
 	});
+
+	// セッション終了時にリスナー重複登録防止フラグをリセット
+	pi.on("session_shutdown", async () => {
+		isInitialized = false;
+	});
 }

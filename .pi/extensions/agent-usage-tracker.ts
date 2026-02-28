@@ -1053,6 +1053,7 @@ export default function registerAgentUsageTracker(pi: ExtensionAPI) {
     const currentRuntime = ensureRuntime(ctx);
     prunePendingTools(currentRuntime);
     saveState(currentRuntime);
+    isInitialized = false;
   });
 
   pi.registerCommand("agent-usage", {

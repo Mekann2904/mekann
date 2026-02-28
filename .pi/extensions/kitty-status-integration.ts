@@ -405,6 +405,7 @@ export default function (pi: ExtensionAPI) {
 
     restoreTitle();
     closeTerminalIfNeeded();
+    isInitialized = false;
   });
 
   // セッション切り替え前

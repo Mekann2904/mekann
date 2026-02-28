@@ -964,4 +964,9 @@ export default function registerUlDualModeExtension(pi: ExtensionAPI) {
 
     refreshStatus(ctx);
   });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }

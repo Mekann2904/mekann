@@ -499,4 +499,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		ctx.ui.notify("Task Flow Extension loaded", "info");
 	});
+
+	// セッション終了時にリスナー重複登録防止フラグをリセット
+	pi.on("session_shutdown", async () => {
+		isInitialized = false;
+	});
 }

@@ -786,6 +786,11 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
     }
     ctx.ui.notify("Loop extension loaded (/loop, loop_run)", "info");
   });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }
 
 async function runLoop(input: LoopRunInput): Promise<LoopRunOutput> {

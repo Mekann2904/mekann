@@ -756,6 +756,7 @@ export default function (pi: ExtensionAPI) {
 	// Cleanup on shutdown
 	pi.on("session_shutdown", async () => {
 		await stopServer();
+		isInitialized = false;
 	});
 
 	// Tool: Start API server

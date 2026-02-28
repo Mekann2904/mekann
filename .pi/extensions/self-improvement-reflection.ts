@@ -499,4 +499,9 @@ Use this tool regularly to maintain awareness of your own behavior and improve c
 
   // ログ
   console.error("[self-improvement-reflection] Extension registered");
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }

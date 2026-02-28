@@ -1033,4 +1033,9 @@ The \`question\` tool is available - USE IT for ALL user selections.
 			systemPrompt: systemPrompt + questionPrompt
 		};
 	});
+
+	// セッション終了時にリスナー重複登録防止フラグをリセット
+	pi.on("session_shutdown", async () => {
+		isInitialized = false;
+	});
 }

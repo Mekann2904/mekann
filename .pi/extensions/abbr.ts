@@ -840,4 +840,9 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(`Loaded ${abbreviations.size} abbreviations from config. Use /abbr list to see them.`, "info");
 		}
 	});
+
+	// セッション終了時にリスナー重複登録防止フラグをリセット
+	pi.on("session_shutdown", async () => {
+		isInitialized = false;
+	});
 }
