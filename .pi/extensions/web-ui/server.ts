@@ -45,6 +45,7 @@ import {
   getAllUlWorkflowTasks,
   getUlWorkflowTask,
   getActiveUlWorkflowTask,
+  invalidateCache,
 } from "./lib/ul-workflow-reader.js";
 // Note: mcpManager is imported dynamically in each request to ensure
 // we always get the latest instance from globalThis (handles reload scenarios)
@@ -55,6 +56,92 @@ import {
 async function getMcpManager() {
   const { mcpManager } = await import("../../lib/mcp/connection-manager.js");
   return mcpManager;
+}
+
+/**
+ * @summary ownerInstanceIdからPIDを抽出
+ * @param ownerInstanceId - "{sessionId}-{pid}"形式のインスタンスID
+ * @returns PID（抽出失敗時はnull）
+ */
+function extractPidFromOwnerInstanceId(ownerInstanceId: string | undefined): number | null {
+  if (!ownerInstanceId) return null;
+  const match = ownerInstanceId.match(/-(\d+)$/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * @summary 非アクティブなインスタンスが所有するULタスクを削除
+ * @description InstanceRegistryのハートビート情報と照合し、60秒以上応答のない
+ *              インスタンスが所有するタスクを削除する
+ * @returns 削除されたタスク数
+ */
+function cleanupDeadOwnerUlWorkflowTasks(): number {
+  const activeInstances = InstanceRegistry.getAll();
+  const activePids = new Set(activeInstances.map((i) => i.pid));
+
+  const ulTasksDir = path.join(process.cwd(), ".pi", "ul-workflow", "tasks");
+
+  if (!fs.existsSync(ulTasksDir)) {
+    return 0;
+  }
+
+  // 完了状態のフェーズ
+  const terminalPhases = new Set(["completed", "aborted"]);
+
+  let deletedCount = 0;
+
+  try {
+    const taskDirs = fs.readdirSync(ulTasksDir)
+      .filter((name) => fs.statSync(path.join(ulTasksDir, name)).isDirectory());
+
+    for (const taskId of taskDirs) {
+      const statusPath = path.join(ulTasksDir, taskId, "status.json");
+
+      if (!fs.existsSync(statusPath)) {
+        continue;
+      }
+
+      try {
+        const statusRaw = fs.readFileSync(statusPath, "utf-8");
+        const status = JSON.parse(statusRaw);
+        const ownerPid = extractPidFromOwnerInstanceId(status.ownerInstanceId);
+        const phase = status.phase || "unknown";
+
+        // 削除条件1: 完了済み + ownerInstanceIdがnull（古いタスク）
+        if (!ownerPid) {
+          if (terminalPhases.has(phase)) {
+            const taskDir = path.join(ulTasksDir, taskId);
+            fs.rmSync(taskDir, { recursive: true, force: true });
+            deletedCount++;
+            console.log(`[web-ui] Cleaned up UL task ${taskId} (completed with no owner)`);
+          }
+          continue;
+        }
+
+        // 削除条件2: アクティブでないインスタンスが所有している
+        if (activePids.has(ownerPid)) {
+          continue;
+        }
+
+        const taskDir = path.join(ulTasksDir, taskId);
+        fs.rmSync(taskDir, { recursive: true, force: true });
+        deletedCount++;
+        console.log(`[web-ui] Cleaned up UL task ${taskId} (owner PID ${ownerPid} is inactive)`);
+      } catch {
+        // 個別のタスク削除エラーは無視
+      }
+    }
+
+    if (deletedCount > 0) {
+      // キャッシュを無効化
+      invalidateCache();
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[web-ui] Failed to cleanup UL tasks: ${errorMessage}`);
+  }
+
+  return deletedCount;
 }
 
 /**
@@ -246,6 +333,7 @@ class SSEEventBus {
 
 const sseEventBus = new SSEEventBus();
 let contextCleanupInterval: ReturnType<typeof setInterval> | null = null;
+let ulTaskCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * @summary 現在のインスタンス用コンテキスト履歴ストレージ
@@ -309,6 +397,12 @@ export function startServer(
 
   // Register this server
   ServerRegistry.register(process.pid, port);
+
+  // Cleanup UL tasks owned by inactive instances
+  const cleanedCount = cleanupDeadOwnerUlWorkflowTasks();
+  if (cleanedCount > 0) {
+    console.log(`[web-ui] Cleaned up ${cleanedCount} UL task(s) from inactive instances`);
+  }
 
   // ============= API Endpoints =============
 
@@ -1227,6 +1321,17 @@ export function startServer(
       ContextHistoryStorage.cleanup();
     }, 5 * 60 * 1000);
 
+    // 定期的に非アクティブなインスタンスが所有するULタスクをクリーンアップ（5分ごと）
+    if (ulTaskCleanupInterval) {
+      clearInterval(ulTaskCleanupInterval);
+    }
+    ulTaskCleanupInterval = setInterval(() => {
+      const cleanedCount = cleanupDeadOwnerUlWorkflowTasks();
+      if (cleanedCount > 0) {
+        console.log(`[web-ui] Periodic cleanup: removed ${cleanedCount} UL task(s) from inactive instances`);
+      }
+    }, 5 * 60 * 1000);
+
     // MCPサーバー設定ファイルからの自動接続は無効化
     // 理由: MCPサーバーの起動メッセージがTUI入力欄に混入する問題を回避
     // 必要な場合は手動で接続してください
@@ -1248,6 +1353,10 @@ export function stopServer(): void {
     if (contextCleanupInterval) {
       clearInterval(contextCleanupInterval);
       contextCleanupInterval = null;
+    }
+    if (ulTaskCleanupInterval) {
+      clearInterval(ulTaskCleanupInterval);
+      ulTaskCleanupInterval = null;
     }
     state.server.close();
     state.server = null;
