@@ -48,8 +48,8 @@ import {
   normalizeOptionalText,
   throwIfAborted,
 } from "../lib/text-utils.js";
-import { ThinkingLevel, RunOutcomeCode } from "../lib/agent-types.js";
-import { createRunId } from "../lib/agent-utils.js";
+import { ThinkingLevel, RunOutcomeCode } from "../lib/agent/agent-types.js";
+import { createRunId } from "../lib/agent/agent-utils.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";

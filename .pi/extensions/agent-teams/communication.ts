@@ -34,7 +34,7 @@ import {
   classifyFailureType,
   shouldRetryByClassification,
   type FailureClassification,
-} from "../../lib/agent-errors";
+} from "../../lib/agent/agent-errors.js";
 import {
   getCommunicationIdMode,
   getStanceClassificationMode,

@@ -34,7 +34,7 @@ import {
   type EntityConfig,
   type NormalizedEntityOutput,
   type PickFieldCandidateOptions,
-} from "../../../.pi/lib/agent-common.js";
+} from "../../../.pi/lib/agent/agent-common.js";
 
 // ============================================================================
 // 定数テスト

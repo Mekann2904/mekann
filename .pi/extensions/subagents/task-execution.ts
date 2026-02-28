@@ -44,15 +44,15 @@ import {
 } from "../../lib/core/error-utils.js";
 import {
   createRunId,
-} from "../../lib/agent-utils.js";
+} from "../../lib/agent/agent-utils.js";
 import {
   type ThinkingLevel,
   type RunOutcomeCode,
   type RunOutcomeSignal,
-} from "../../lib/agent-types.js";
+} from "../../lib/agent/agent-types.js";
 import {
   reevaluateAgentRunFailure,
-} from "../../lib/agent-errors.js";
+} from "../../lib/agent/agent-errors.js";
 import {
   validateSubagentOutput,
 } from "../../lib/output-validation.js";
@@ -91,7 +91,7 @@ import {
   STABLE_MAX_DELAY_MS,
   STABLE_MAX_RATE_LIMIT_RETRIES,
   STABLE_MAX_RATE_LIMIT_WAIT_MS,
-} from "../../lib/agent-common.js";
+} from "../../lib/agent/agent-common.js";
 import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from "../shared/pi-print-executor";
 
 import type { SubagentDefinition, SubagentRunRecord, SubagentPaths } from "./storage";

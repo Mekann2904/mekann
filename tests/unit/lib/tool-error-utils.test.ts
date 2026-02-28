@@ -21,7 +21,7 @@ import {
   parseToolFailureCount,
   reevaluateAgentRunFailure,
   evaluateAgentRunOutcome,
-} from "../../../.pi/lib/agent-errors.js";
+} from "../../../.pi/lib/agent/agent-errors.js";
 import { writeFileSync, mkdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";

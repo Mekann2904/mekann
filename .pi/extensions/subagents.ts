@@ -69,13 +69,13 @@ import {
   toErrorMessage,
 } from "../lib/core/error-utils.js";
 import { setupGlobalErrorHandlers } from "../lib/global-error-handler.js";
-import { createRunId, computeLiveWindow } from "../lib/agent-utils.js";
+import { createRunId, computeLiveWindow } from "../lib/agent/agent-utils.js";
 import {
   ThinkingLevel,
   RunOutcomeCode,
   RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
-} from "../lib/agent-types.js";
+} from "../lib/agent/agent-types.js";
 import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
 import { hasNonEmptyResultSection, validateSubagentOutput } from "../lib/output-validation.js";
 import { trimForError, buildRateLimitKey, createRetrySchema, toConcurrencyLimit } from "../lib/runtime-utils.js";
@@ -94,13 +94,13 @@ import {
   STABLE_MAX_RATE_LIMIT_WAIT_MS,
   SUBAGENT_CONFIG,
   buildFailureSummary as sharedBuildFailureSummary,
-} from "../lib/agent-common.js";
+} from "../lib/agent/agent-common.js";
 import {
   isRetryableSubagentError as sharedIsRetryableSubagentError,
   resolveSubagentFailureOutcome as sharedResolveSubagentFailureOutcome,
   trimErrorMessage as sharedTrimErrorMessage,
   buildDiagnosticContext as sharedBuildDiagnosticContext,
-} from "../lib/agent-errors.js";
+} from "../lib/agent/agent-errors.js";
 import { getAgentSpecializationWeight } from "../lib/dag-weight-calculator.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
@@ -346,7 +346,7 @@ import {
   type PrintCommandResult,
   type LiveStreamView,
   type LiveViewMode,
-} from "../lib/subagent-types.js";
+} from "../lib/agent/subagent-types.js";
 
 const LIVE_PREVIEW_LINE_LIMIT = 36;
 const LIVE_LIST_WINDOW_SIZE = 20;

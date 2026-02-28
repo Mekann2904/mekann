@@ -35,8 +35,8 @@ import {
   shouldRetryByClassification,
   RETRY_POLICY,
   type EntityResultItem,
-} from "../../../.pi/lib/agent-errors.js";
-import { SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "../../../.pi/lib/agent-common.js";
+} from "../../../.pi/lib/agent/agent-errors.js";
+import { SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "../../../.pi/lib/agent/agent-common.js";
 
 // ============================================================================
 // classifySemanticError テスト

@@ -74,13 +74,13 @@ import {
   isTimeoutErrorMessage,
   toErrorMessage,
 } from "../../lib/core/error-utils.js";
-import { createRunId, computeLiveWindow } from "../../lib/agent-utils.js";
+import { createRunId, computeLiveWindow } from "../../lib/agent/agent-utils.js";
 import {
   ThinkingLevel,
   RunOutcomeCode,
   RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
-} from "../../lib/agent-types.js";
+} from "../../lib/agent/agent-types.js";
 import { computeModelTimeoutMs } from "../../lib/model-timeouts.js";
 import { validateTeamMemberOutput } from "../../lib/output-validation.js";
 import { trimForError, buildRateLimitKey, buildTraceTaskId, createRetrySchema, toConcurrencyLimit } from "../../lib/runtime-utils.js";
@@ -298,7 +298,7 @@ import {
 type LiveViewMode = TeamLiveViewMode;
 
 // Import PrintCommandResult from subagent-types (shared type)
-import { type PrintCommandResult } from "../../lib/subagent-types.js";
+import { type PrintCommandResult } from "../../lib/agent/subagent-types.js";
 
 // Re-export judge types for external use
 export type { TeamUncertaintyProxy } from "./judge";
@@ -415,14 +415,14 @@ import {
   STABLE_MAX_RATE_LIMIT_WAIT_MS,
   TEAM_MEMBER_CONFIG,
   buildFailureSummary as sharedBuildFailureSummary,
-} from "../../lib/agent-common.js";
+} from "../../lib/agent/agent-common.js";
 import {
   isRetryableTeamMemberError as sharedIsRetryableTeamMemberError,
   resolveTeamFailureOutcome as sharedResolveTeamFailureOutcome,
   resolveTeamMemberAggregateOutcome as sharedResolveTeamMemberAggregateOutcome,
   trimErrorMessage as sharedTrimErrorMessage,
   buildDiagnosticContext as sharedBuildDiagnosticContext,
-} from "../../lib/agent-errors.js";
+} from "../../lib/agent/agent-errors.js";
 import { calculateTeamWeight } from "../../lib/dag-weight-calculator.js";
 import { runWithConcurrencyLimit } from "../../lib/concurrency";
 import {

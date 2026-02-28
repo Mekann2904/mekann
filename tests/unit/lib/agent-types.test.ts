@@ -11,7 +11,7 @@ import {
 	type RunOutcomeCode,
 	type RunOutcomeSignal,
 	DEFAULT_AGENT_TIMEOUT_MS,
-} from "@lib/agent-types";
+} from "../../../.pi/lib/agent/agent-types.js";
 
 // ============================================================================
 // ThinkingLevel

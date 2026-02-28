@@ -30,12 +30,12 @@ import { join } from "node:path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { createRunId } from "../../lib/agent-utils.js";
+import { createRunId } from "../../lib/agent/agent-utils.js";
 import { createChildAbortController } from "../../lib/abort-utils.js";
 import {
   STABLE_RUNTIME_PROFILE,
   TEAM_MEMBER_CONFIG,
-} from "../../lib/agent-common.js";
+} from "../../lib/agent/agent-common.js";
 import { classifyPressureError } from "../../lib/core/error-utils.js";
 import { getLogger } from "../../lib/comprehensive-logger.js";
 import type { OperationType } from "../../lib/comprehensive-logger-types.js";

@@ -10,7 +10,7 @@ import {
   vi,
 } from "vitest";
 import * as fc from "fast-check";
-import { createRunId, computeLiveWindow } from "../../../.pi/lib/agent-utils.js";
+import { createRunId, computeLiveWindow } from "../../../.pi/lib/agent/agent-utils.js";
 
 // ============================================================================
 // createRunId テスト

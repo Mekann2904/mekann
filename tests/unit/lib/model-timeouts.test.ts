@@ -16,7 +16,7 @@ import {
   getModelBaseTimeoutMs,
   computeModelTimeoutMs,
   computeProgressiveTimeoutMs,
-} from "../../../.pi/lib/model-timeouts.js";
+} from "../../../.pi/lib/agent/model-timeouts.js";
 
 // ============================================================================
 // MODEL_TIMEOUT_BASE_MS 定数テスト

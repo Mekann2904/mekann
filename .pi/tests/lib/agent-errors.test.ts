@@ -45,8 +45,8 @@ import {
   RETRY_POLICY,
   type EntityResultItem,
   type FailureClassification,
-} from "../../lib/agent-errors.js";
-import { SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "../../lib/agent-common.js";
+} from "../../lib/agent/agent-errors.js";
+import { SUBAGENT_CONFIG, TEAM_MEMBER_CONFIG } from "../../lib/agent/agent-common.js";
 
 describe("agent-errors", () => {
   describe("classifySemanticError", () => {

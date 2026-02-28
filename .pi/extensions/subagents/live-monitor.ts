@@ -51,7 +51,7 @@ import {
 } from "../../lib/live-view-utils.js";
 import {
   computeLiveWindow,
-} from "../../lib/agent-utils.js";
+} from "../../lib/agent/agent-utils.js";
 import {
   getLiveStatusGlyph,
   getLiveStatusColor,
@@ -71,7 +71,7 @@ import {
   type SubagentLiveMonitorController,
   type LiveStreamView,
   type LiveViewMode,
-} from "../../lib/subagent-types.js";
+} from "../../lib/agent/subagent-types.js";
 import type { StateTransition } from "../../lib/live-types-base.js";
 
 // Re-export types for convenience

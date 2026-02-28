@@ -46,7 +46,7 @@ import {
 } from "../../lib/runtime-utils.js";
 import {
   type ThinkingLevel,
-} from "../../lib/agent-types.js";
+} from "../../lib/agent/agent-types.js";
 import {
   validateTeamMemberOutput,
 } from "../../lib/output-validation.js";
@@ -74,7 +74,7 @@ import {
   STABLE_MAX_DELAY_MS,
   STABLE_MAX_RATE_LIMIT_RETRIES,
   STABLE_MAX_RATE_LIMIT_WAIT_MS,
-} from "../../lib/agent-common.js";
+} from "../../lib/agent/agent-common.js";
 
 // ============================================================================
 // Types

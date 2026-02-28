@@ -58,7 +58,7 @@ import {
 } from "../../lib/live-view-utils.js";
 import {
   computeLiveWindow,
-} from "../../lib/agent-utils.js";
+} from "../../lib/agent/agent-utils.js";
 import {
   renderGanttView,
   type GanttItem,
