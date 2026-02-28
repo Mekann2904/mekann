@@ -452,6 +452,13 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
     const sessionId = hasSessionId(event) ? (event.sessionId ?? "unknown") : "unknown";
     const envOverrides = getEnvOverrides();
 
+    // Set PI_PARENT_PID for child process context tracking
+    // If not already set (i.e., we are the root pi instance), set to our PID
+    // Child processes will inherit this and use it to report context to our history file
+    if (!process.env.PI_PARENT_PID) {
+      process.env.PI_PARENT_PID = String(process.pid);
+    }
+
     registerInstance(sessionId, ctx.cwd, envOverrides);
 
     const status = getCoordinatorStatus();

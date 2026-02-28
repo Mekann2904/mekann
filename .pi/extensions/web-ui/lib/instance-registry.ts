@@ -19,7 +19,7 @@
 
 import { homedir } from "os";
 import { join } from "path";
-import { mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync } from "fs";
+import { mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, renameSync } from "fs";
 import { spawn } from "child_process";
 
 /**
@@ -156,8 +156,7 @@ function writeJsonFile<T>(path: string, data: T): void {
   writeFileSync(tempPath, JSON.stringify(data, null, 2));
   // Atomic rename
   try {
-    const fs = require("fs");
-    fs.renameSync(tempPath, path);
+    renameSync(tempPath, path);
   } catch {
     // Fallback for cross-device links
     writeFileSync(path, JSON.stringify(data, null, 2));
@@ -402,18 +401,42 @@ const CONTEXT_HISTORY_DIR = SHARED_DIR;
 const MAX_CONTEXT_HISTORY = 100;
 
 /**
+ * @summary コンテキスト履歴ストレージの設定オプション
+ */
+export interface ContextHistoryStorageOptions {
+  /** バッファサイズ（デフォルト: 5）。子プロセス向けには1-2を推奨 */
+  maxBufferSize?: number;
+  /** タイムアウトベースの自動フラッシュ間隔（ms）。0で無効 */
+  flushIntervalMs?: number;
+  /** 子プロセスモード（短命プロセス向けの最適化を有効化） */
+  isChildProcess?: boolean;
+}
+
+/**
  * @summary コンテキスト履歴ストレージ - 各インスタンスの履歴を共有ディレクトリに保存
- * @description バッファリング（5件単位）でパフォーマンス最適化
+ * @description バッファリングとタイムアウトベースのフラッシュでパフォーマンス最適化
  */
 export class ContextHistoryStorage {
   private buffer: ContextHistoryEntry[] = [];
   private pid: number;
-  private maxBufferSize = 5;
+  private maxBufferSize: number;
+  private flushIntervalMs: number;
+  private isChildProcess: boolean;
   private historyFile: string;
   private flushHandler: () => void;
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
+  private isDisposed = false;
 
-  constructor(pid: number = process.pid) {
+  constructor(pid: number = process.pid, options: ContextHistoryStorageOptions = {}) {
     this.pid = pid;
+    this.isChildProcess = options.isChildProcess ?? false;
+
+    // 子プロセス向けの最適化: バッファサイズを小さく
+    this.maxBufferSize = options.maxBufferSize ?? (this.isChildProcess ? 2 : 5);
+
+    // タイムアウトベースのフラッシュ（子プロセス向けには短めに）
+    this.flushIntervalMs = options.flushIntervalMs ?? (this.isChildProcess ? 1000 : 5000);
+
     this.historyFile = join(CONTEXT_HISTORY_DIR, `context-history-${pid}.json`);
 
     // プロセス終了時にバッファをフラッシュ
@@ -421,6 +444,32 @@ export class ContextHistoryStorage {
     process.on("beforeExit", this.flushHandler);
     process.on("SIGINT", this.flushHandler);
     process.on("SIGTERM", this.flushHandler);
+    // 子プロセス向けの追加ハンドラ
+    process.on("exit", this.flushHandler);
+
+    // タイムアウトベースの自動フラッシュを開始
+    if (this.flushIntervalMs > 0) {
+      this.startFlushTimer();
+    }
+  }
+
+  /**
+   * @summary タイムアウトベースのフラッシュタイマーを開始
+   */
+  private startFlushTimer(): void {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+    }
+    this.flushTimer = setInterval(() => {
+      if (this.buffer.length > 0) {
+        this.flush();
+      }
+    }, this.flushIntervalMs);
+
+    // プログラム終了をブロックしないようにrefを外す
+    if (this.flushTimer.unref) {
+      this.flushTimer.unref();
+    }
   }
 
   /**
@@ -451,6 +500,37 @@ export class ContextHistoryStorage {
    * @summary バッファを強制的に書き込み
    */
   flush(): void {
+    if (this.isDisposed) return;
+    this.flushInternal();
+  }
+
+  /**
+   * @summary クリーンアップ（イベントリスナー削除、タイマー停止）
+   */
+  dispose(): void {
+    if (this.isDisposed) return;
+
+    // 先にフラッシュしてからisDisposedを設定
+    this.flushInternal();
+    this.isDisposed = true;
+
+    // タイマーを停止
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
+
+    // イベントリスナーを削除
+    process.off("beforeExit", this.flushHandler);
+    process.off("SIGINT", this.flushHandler);
+    process.off("SIGTERM", this.flushHandler);
+    process.off("exit", this.flushHandler);
+  }
+
+  /**
+   * @summary バッファを強制的に書き込み（内部用、isDisposedチェックなし）
+   */
+  private flushInternal(): void {
     if (this.buffer.length === 0) return;
 
     ensureSharedDir();
@@ -469,13 +549,17 @@ export class ContextHistoryStorage {
   }
 
   /**
-   * @summary クリーンアップ（イベントリスナー削除）
+   * @summary 現在のバッファサイズを取得（テスト用）
    */
-  dispose(): void {
-    this.flush();
-    process.off("beforeExit", this.flushHandler);
-    process.off("SIGINT", this.flushHandler);
-    process.off("SIGTERM", this.flushHandler);
+  getBufferSize(): number {
+    return this.buffer.length;
+  }
+
+  /**
+   * @summary 子プロセスモードかどうかを取得（テスト用）
+   */
+  getChildProcessMode(): boolean {
+    return this.isChildProcess;
   }
 
   /**
@@ -487,8 +571,7 @@ export class ContextHistoryStorage {
     ensureSharedDir();
 
     // ディレクトリ内の context-history-*.json ファイルを検索
-    const fs = require("fs");
-    const files = fs.readdirSync(CONTEXT_HISTORY_DIR);
+    const files = readdirSync(CONTEXT_HISTORY_DIR);
     const historyFiles = files.filter((f: string) =>
       f.startsWith("context-history-") && f.endsWith(".json")
     );
@@ -538,8 +621,7 @@ export class ContextHistoryStorage {
 
     ensureSharedDir();
 
-    const fs = require("fs");
-    const files = fs.readdirSync(CONTEXT_HISTORY_DIR);
+    const files = readdirSync(CONTEXT_HISTORY_DIR);
     const historyFiles = files.filter((f: string) =>
       f.startsWith("context-history-") && f.endsWith(".json")
     );
@@ -560,3 +642,30 @@ export class ContextHistoryStorage {
     }
   }
 }
+
+// ============================================================================
+// Factory Functions
+// ============================================================================
+
+/**
+ * @summary 子プロセス向けに最適化されたストレージを作成
+ * @description 短命な子プロセス向けに小さなバッファと短いフラッシュ間隔を設定
+ * @param parentPid - 親プロセスのPID（履歴を書き込む対象）
+ * @param options - 追加オプション
+ */
+export function createChildProcessStorage(
+  parentPid: number,
+  options: Omit<ContextHistoryStorageOptions, "isChildProcess"> = {}
+): ContextHistoryStorage {
+  return new ContextHistoryStorage(parentPid, {
+    ...options,
+    isChildProcess: true,
+    maxBufferSize: options.maxBufferSize ?? 2,
+    flushIntervalMs: options.flushIntervalMs ?? 1000,
+  });
+}
+
+/**
+ * @summary context-reporter.tsとの互換性のための型エイリアス
+ */
+export type ContextEntry = ContextHistoryEntry;
