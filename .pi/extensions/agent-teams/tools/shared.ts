@@ -27,7 +27,7 @@ import {
   getRuntimeSnapshot,
 } from "../../agent-runtime";
 import {
-  sharedRefreshRuntimeStatus,
+  refreshRuntimeStatus as sharedRefreshRuntimeStatus,
 } from "../../shared/runtime-helpers";
 import {
   type RetryWithBackoffOverrides,

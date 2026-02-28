@@ -51,9 +51,9 @@ export function registerResourceTools(pi: ExtensionAPI): void {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       try {
-        const resources = await mcpManager.listResources(params.id);
+        const resources = await mcpManager.listAllResources(params.id);
         const text = resources.length > 0
-          ? `Resources from ${params.id}:\n${resources.map(r => `- ${r.uri}: ${r.name}`).join('\n')}`
+          ? `Resources from ${params.id}:\n${resources.map((r: { uri: string; name: string }) => `- ${r.uri}: ${r.name}`).join('\n')}`
           : `No resources available from ${params.id}`;
         return makeSuccessResult(text, { resources });
       } catch (err) {
@@ -163,11 +163,12 @@ export function registerResourceTools(pi: ExtensionAPI): void {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       try {
-        const subscriptions = await mcpManager.listSubscriptions(params.connection_id);
-        const text = subscriptions.length > 0
-          ? `Active subscriptions:\n${subscriptions.map(s => `- ${s}`).join('\n')}`
+        const subscriptions = await mcpManager.getSubscriptions(params.connection_id);
+        const subArray = Array.from(subscriptions);
+        const text = subArray.length > 0
+          ? `Active subscriptions:\n${subArray.map((s: string) => `- ${s}`).join('\n')}`
           : 'No active subscriptions';
-        return makeSuccessResult(text, { subscriptions });
+        return makeSuccessResult(text, { subscriptions: subArray });
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         return makeErrorResult(`Failed to list subscriptions: ${errorMsg}`, {
@@ -191,10 +192,10 @@ export function registerResourceTools(pi: ExtensionAPI): void {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       try {
-        const result = await mcpManager.listResourceTemplates(params.connection_id, params.cursor);
+        const result = await mcpManager.listResourceTemplatesPaginated(params.connection_id, { cursor: params.cursor });
         const templates = result.resourceTemplates || [];
         const text = templates.length > 0
-          ? `Resource templates:\n${templates.map(t => `- ${t.uriTemplate}: ${t.name}`).join('\n')}`
+          ? `Resource templates:\n${templates.map((t: { uriTemplate: string; name: string }) => `- ${t.uriTemplate}: ${t.name}`).join('\n')}`
           : 'No resource templates available';
         return makeSuccessResult(text, {
           templates,

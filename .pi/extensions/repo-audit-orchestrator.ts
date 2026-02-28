@@ -209,7 +209,7 @@ export interface PhaseUpdate {
 // =============================================================================
 
 const DEFAULT_CONFIG: RepoAuditConfig = {
-  verificationMode: "repoaudit",
+  verificationMode: "repo-audit",
   maxExplorationDepth: 5,
   explorationTimeout: 60000,
   validatorTimeout: 30000,
@@ -437,7 +437,7 @@ async function runValidatorPhase(
 ): Promise<Verdict> {
   onUpdate?.({ phase: "validator", status: "running", message: "検証を実行中..." });
 
-  const verificationConfig = resolveVerificationConfigV2(config.verificationMode);
+  const verificationConfig = resolveVerificationConfigV2({ mode: config.verificationMode });
 
   // 検証コンテキストを構築
   const context: VerificationContext = {
@@ -450,18 +450,18 @@ async function runValidatorPhase(
   const confidence = calculateOverallConfidence(hypothesis, findings);
 
   // 検証が必要かチェック
-  const triggerCheck = shouldTriggerVerification(output, confidence, context);
+  const shouldTrigger = shouldTriggerVerification(context, verificationConfig);
 
   let verificationDetails: Verdict["verificationDetails"] = {
-    triggered: triggerCheck.trigger,
-    triggerReason: triggerCheck.reason,
+    triggered: shouldTrigger,
+    triggerReason: shouldTrigger ? "Verification triggered based on config" : "Verification not needed",
   };
 
   let warnings: string[] = [];
   let recommendations: string[] = [];
 
   // 検証がトリガーされた場合
-  if (triggerCheck.trigger && verificationConfig.enabled) {
+  if (shouldTrigger && verificationConfig.enabled) {
     // Inspector/Challengerパターンを適用（簡易実装）
     const inspectorResults = runInspectorPatterns(output, findings);
     const challengerResults = runChallengerPatterns(hypothesis, findings);
@@ -771,7 +771,7 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
       }), { description: "フォーカス領域" })),
       verificationMode: Type.Optional(Type.String({
         description: "検証モード",
-        enum: ["disabled", "repoaudit", "high-stakes-only", "explicit-only"],
+        enum: ["disabled", "repo-audit", "high-stakes-only", "explicit-only"],
       })),
       maxExplorationDepth: Type.Optional(Type.Number({ description: "最大探索深度" })),
     }),

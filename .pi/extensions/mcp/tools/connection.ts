@@ -37,6 +37,47 @@ import {
 } from "./shared.js";
 
 /**
+ * ツールパラメータの認証設定をMcpAuthProviderに変換する
+ * @summary 認証パラメータを変換
+ * @param auth - ツールパラメータの認証設定
+ * @returns McpAuthProvider、または検証失敗時はundefined
+ */
+function toMcpAuthProvider(auth: {
+  type?: "bearer" | "basic" | "api-key" | "custom";
+  token?: string;
+  username?: string;
+  password?: string;
+  apiKey?: string;
+  headerName?: string;
+  headers?: Record<string, string>;
+} | undefined): McpAuthProvider | undefined {
+  if (!auth || !auth.type) return undefined;
+
+  switch (auth.type) {
+    case "bearer":
+      if (auth.token) return { type: "bearer", token: auth.token };
+      return undefined;
+    case "basic":
+      if (auth.username && auth.password) {
+        return { type: "basic", username: auth.username, password: auth.password };
+      }
+      return undefined;
+    case "api-key":
+      if (auth.apiKey) {
+        return { type: "api-key", apiKey: auth.apiKey, headerName: auth.headerName };
+      }
+      return undefined;
+    case "custom":
+      if (auth.headers) {
+        return { type: "custom", headers: auth.headers };
+      }
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+/**
  * 接続管理ツールを登録する
  * @summary 接続ツールを登録
  * @param pi 拡張API
@@ -97,12 +138,12 @@ export function registerConnectionTools(pi: ExtensionAPI): void {
           url: params.url,
           type: connectionType,
           timeout: params.timeout,
-          auth: params.auth as McpAuthProvider | undefined,
+          auth: toMcpAuthProvider(params.auth),
           headers: params.headers,
           disableFallback: params.disableFallback
         });
 
-        const logAuth = params.auth ? sanitizeAuthForLogging(params.auth) : undefined;
+        const logAuth = params.auth ? sanitizeAuthForLogging(toMcpAuthProvider(params.auth)!) : undefined;
         ctx.ui.notify(`Connected to MCP server: ${params.id}`, "info");
 
         return makeSuccessResult(

@@ -94,7 +94,7 @@ function parseLockFile(filePath: string): { instanceId: string; pid: number } | 
 /**
  * ゴーストロックファイルを検出・削除
  */
-function cleanupGhostLocks(config: GhostBusterConfig, ctx?: ExtensionAPI): string[] {
+function cleanupGhostLocks(config: GhostBusterConfig, ctx?: { ui?: { notify: (msg: string, type: string) => void } }): string[] {
 	if (!config.enabled) return [];
 
 	const instancesDir = path.join(
@@ -193,7 +193,7 @@ export default function (pi: ExtensionAPI) {
 	// 手動クリーンアップコマンドを登録
 	pi.registerCommand("ghost-buster", {
 		description: "Remove stale pi instance locks",
-		handler: (args, ctx) => {
+		handler: async (args, ctx) => {
 			const removed = cleanupGhostLocks(config, ctx);
 			if (removed.length === 0) {
 				ctx.ui.notify("Ghost Buster: No stale locks found", "info");
