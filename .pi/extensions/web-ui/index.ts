@@ -251,6 +251,7 @@ export default function (pi: ExtensionAPI) {
         timestamp: new Date().toISOString(),
         input,
         output,
+        pid: process.pid,
       });
     }
   });

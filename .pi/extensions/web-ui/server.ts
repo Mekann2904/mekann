@@ -342,10 +342,13 @@ let contextHistoryStorage: ContextHistoryStorage | null = null;
 
 /**
  * @summary コンテキスト履歴を追加してSSEで通知
+ * @param entry - コンテキスト履歴エントリ（pidは省略可能、省略時はprocess.pid）
  */
-export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid">): void {
-  if (!contextHistoryStorage) {
-    contextHistoryStorage = new ContextHistoryStorage(process.pid);
+export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid"> & { pid?: number }): void {
+  const pid = entry.pid ?? process.pid;
+
+  if (!contextHistoryStorage || contextHistoryStorage.getPid() !== pid) {
+    contextHistoryStorage = new ContextHistoryStorage(pid);
   }
 
   contextHistoryStorage.add(entry);
@@ -354,7 +357,7 @@ export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid">): void
   sseEventBus.broadcast({
     type: "context-update",
     data: {
-      pid: process.pid,
+      pid,
       timestamp: entry.timestamp,
       input: entry.input,
       output: entry.output,

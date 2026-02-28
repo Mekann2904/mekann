@@ -441,6 +441,13 @@ export class ContextHistoryStorage {
   }
 
   /**
+   * @summary このストレージのPIDを取得
+   */
+  getPid(): number {
+    return this.pid;
+  }
+
+  /**
    * @summary バッファを強制的に書き込み
    */
   flush(): void {

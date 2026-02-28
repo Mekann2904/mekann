@@ -181,6 +181,19 @@ export function DashboardPage() {
                 pid: update.pid,
               }].slice(-100), // Keep last 100 entries
             };
+          } else {
+            // Create new instance entry (will be populated by instances-update)
+            newInstanceHistory[update.pid] = {
+              pid: update.pid,
+              cwd: "unknown",
+              model: "unknown",
+              history: [{
+                timestamp: update.timestamp,
+                input: update.input,
+                output: update.output,
+                pid: update.pid,
+              }],
+            };
           }
 
           return { instances: newInstanceHistory };
