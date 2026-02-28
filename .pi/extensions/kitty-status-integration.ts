@@ -154,7 +154,7 @@ function notifyMacOS(text: string, title = "pi"): void {
 }
 
 // サウンドを再生（macOSのみ）
-function playSound(soundPath: string): void {
+export function playSound(soundPath: string): void {
   if (!isMacOS) return;
   try {
     spawn("afplay", [soundPath], {

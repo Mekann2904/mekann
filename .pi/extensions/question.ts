@@ -35,6 +35,7 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth, wrapTextWithAnsi, CURSOR_MARKER } from "@mariozechner/pi-tui";
 import { matchesKey, Key } from "@mariozechner/pi-tui";
+import { playSound } from "./kitty-status-integration.js";
 
 // ============================================
 // 型定義 (opencode互換)
@@ -265,6 +266,9 @@ export async function askSingleQuestion(
 	const options = question.options || [];
 	const allowCustom = question.custom !== false;
 	const allowMultiple = question.multiple === true;
+
+	// 質問が表示されたときに音を鳴らす
+	playSound("/System/Library/Sounds/Glass.aiff");
 
 	// カスタム回答が許可されている場合は「その他」オプションを追加
 	const displayOptions = allowCustom
