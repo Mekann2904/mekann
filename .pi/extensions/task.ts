@@ -75,6 +75,8 @@ interface Task {
 	updatedAt: string;
 	completedAt?: string;
 	parentTaskId?: string; // For subtasks
+	ownerInstanceId?: string; // 所有するpiインスタンスID
+	claimedAt?: string;       // 所有取得時刻
 }
 
 /**

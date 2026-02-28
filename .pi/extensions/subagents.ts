@@ -173,6 +173,8 @@ interface Task {
 	title: string;
 	status: TaskStatus;
 	updatedAt: string;
+	ownerInstanceId?: string;
+	claimedAt?: string;
 }
 
 interface TaskStorage {
@@ -225,6 +227,8 @@ function setTaskInProgress(taskId: string): boolean {
 		return false;
 	}
 	task.status = "in_progress";
+	task.ownerInstanceId = getInstanceId();
+	task.claimedAt = new Date().toISOString();
 	task.updatedAt = new Date().toISOString();
 	saveTaskStorage(storage);
 	return true;
