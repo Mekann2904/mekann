@@ -126,10 +126,15 @@ export function TasksPage() {
     }
   }, []);
 
-  // Initial load + polling
+  // Initial load + polling (silently refresh on poll to avoid flicker)
   useEffect(() => {
+    let isInitialLoad = true;
+
     const fetchAllTasks = async () => {
-      setLoading(true);
+      // Only show loading spinner on initial load, not on polls
+      if (isInitialLoad) {
+        setLoading(true);
+      }
       setError(null);
       try {
         const [regularRes, ulRes] = await Promise.all([
@@ -150,7 +155,10 @@ export function TasksPage() {
         setError(message);
         console.error("Failed to fetch tasks:", e);
       } finally {
-        setLoading(false);
+        if (isInitialLoad) {
+          setLoading(false);
+          isInitialLoad = false;
+        }
       }
     };
 
@@ -609,7 +617,7 @@ export function TasksPage() {
                 }}
                 value={newTaskTitle}
                 onInput={(e) => setNewTaskTitle((e.target as HTMLTextAreaElement).value)}
-                placeholder="Add a task..."
+                placeholder="Add a task... (⌘+Enter to add)"
                 rows={2}
                 class={cn(
                   "w-full px-2.5 py-1.5 text-sm rounded-md border border-input bg-background",
@@ -617,7 +625,8 @@ export function TasksPage() {
                   "focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
                 )}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  // Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux) to submit
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
                     handleInlineAdd(column.id);
                   }
