@@ -20,9 +20,19 @@
  *   out: ユーティリティ関数
  */
 
-import type { TaskQueueEntry, SchedulerConfig } from './types.js';
-import { PRIORITY_VALUES, PRIORITY_ORDER, type TaskPriority } from '../priority-scheduler.js';
+import type { TaskQueueEntry, SchedulerConfig, TaskPriority } from './types.js';
+import { PRIORITY_VALUES } from '../priority-scheduler.js';
 import { getRuntimeConfig } from '../../runtime-config.js';
+
+// ============================================================================
+// 優先度順序
+// ============================================================================
+
+/**
+ * 優先度の順序（低い順）
+ * スターベーション防止の昇格に使用
+ */
+export const PRIORITY_ORDER: TaskPriority[] = ["background", "low", "normal", "high", "critical"];
 
 // ============================================================================
 // タスクID生成
@@ -138,12 +148,3 @@ export function compareTaskEntries(
   // 6. 最終タイブレーカー
   return a.task.id.localeCompare(b.task.id);
 }
-
-// ============================================================================
-// 再エクスポート
-// ============================================================================
-
-/**
- * PRIORITY_ORDERを再エクスポート
- */
-export { PRIORITY_ORDER };
