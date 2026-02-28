@@ -79,7 +79,7 @@ import {
 import { computeModelTimeoutMs } from "../lib/agent/model-timeouts.js";
 import { hasNonEmptyResultSection, validateSubagentOutput } from "../lib/agent/output-validation.js";
 import { trimForError, buildRateLimitKey, createRetrySchema, toConcurrencyLimit } from "../lib/agent/runtime-utils.js";
-import { resolveEffectiveTimeoutMs } from "../lib/runtime-error-builders.js";
+import { resolveEffectiveTimeoutMs } from "../lib/agent/runtime-error-builders.js";
 import {
   createAdaptivePenaltyController,
 } from "../lib/adaptive-penalty.js";

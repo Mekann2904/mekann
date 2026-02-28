@@ -84,7 +84,7 @@ import {
 import { computeModelTimeoutMs } from "../../lib/agent/model-timeouts.js";
 import { validateTeamMemberOutput } from "../../lib/agent/output-validation.js";
 import { trimForError, buildRateLimitKey, buildTraceTaskId, createRetrySchema, toConcurrencyLimit } from "../../lib/agent/runtime-utils.js";
-import { resolveEffectiveTimeoutMs } from "../../lib/runtime-error-builders.js";
+import { resolveEffectiveTimeoutMs } from "../../lib/agent/runtime-error-builders.js";
 import { createChildAbortController } from "../../lib/abort-utils";
 import {
   createAdaptivePenaltyController,
