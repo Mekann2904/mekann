@@ -21,7 +21,7 @@
  */
 
 import type { IRuntimeCoordinator, RuntimePermit } from "../application/interfaces.js";
-import { getSharedRuntimeState, notifyRuntimeCapacityChanged } from "../../extensions/agent-runtime.js";
+import { getSharedRuntimeState, notifyRuntimeCapacityChanged } from "../../../extensions/agent-runtime.js";
 
 /**
  * ランタイムコーディネーター実装

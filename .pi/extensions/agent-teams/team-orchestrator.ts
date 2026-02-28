@@ -1261,7 +1261,7 @@ async function executeFinalJudge(
     // RepoAudit戦略の場合は特別な設定を使用
     if (input.strategy === "repoaudit") {
       const { resolveVerificationConfigV2 } = await import("../../lib/verification-workflow.js");
-      const repoAuditConfig = resolveVerificationConfigV2("repoaudit");
+      const repoAuditConfig = resolveVerificationConfigV2({ mode: "repo-audit" });
       
       // RepoAudit設定が有効な場合は詳細な検証を実行
       if (repoAuditConfig.enabled) {

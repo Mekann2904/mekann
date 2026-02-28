@@ -94,7 +94,10 @@ function parseLockFile(filePath: string): { instanceId: string; pid: number } | 
 /**
  * ゴーストロックファイルを検出・削除
  */
-function cleanupGhostLocks(config: GhostBusterConfig, ctx?: { ui?: { notify: (msg: string, type: string) => void } }): string[] {
+function cleanupGhostLocks(
+	config: GhostBusterConfig,
+	ctx?: { ui?: { notify: (msg: string, type?: "success" | "error" | "info" | "warning") => void } },
+): string[] {
 	if (!config.enabled) return [];
 
 	const instancesDir = path.join(
@@ -119,7 +122,7 @@ function cleanupGhostLocks(config: GhostBusterConfig, ctx?: { ui?: { notify: (ms
 		if (!info) {
 			// 解析不能なロックファイルは削除
 			if (config.verbose && ctx) {
-				ctx.ui.notify(`Removing invalid lock file: ${lockFile}`, "info");
+				ctx.ui?.notify(`Removing invalid lock file: ${lockFile}`, "info");
 			}
 			fs.unlinkSync(lockPath);
 			removed.push(lockFile);
@@ -136,7 +139,7 @@ function cleanupGhostLocks(config: GhostBusterConfig, ctx?: { ui?: { notify: (ms
 			// 実行中だがpiプロセスでない場合はゴースト可能性あり
 			if (!isPiProcess(info.pid)) {
 				if (config.verbose && ctx) {
-					ctx.ui.notify(
+					ctx.ui?.notify(
 						`Removing stale lock (PID ${info.pid} is not pi): ${lockFile}`,
 						"info"
 					);
@@ -149,7 +152,7 @@ function cleanupGhostLocks(config: GhostBusterConfig, ctx?: { ui?: { notify: (ms
 
 		// プロセスが存在しない = ゴースト
 		if (config.verbose && ctx) {
-			ctx.ui.notify(`Removing ghost lock (PID ${info.pid} dead): ${lockFile}`, "info");
+			ctx.ui?.notify(`Removing ghost lock (PID ${info.pid} dead): ${lockFile}`, "info");
 		}
 		fs.unlinkSync(lockPath);
 		removed.push(lockFile);
@@ -186,7 +189,7 @@ export default function (pi: ExtensionAPI) {
 
 		const removed = cleanupGhostLocks(config, ctx);
 		if (removed.length > 0) {
-			ctx.ui.notify(`Ghost Buster: Removed ${removed.length} stale lock(s)`, "info");
+			ctx.ui?.notify(`Ghost Buster: Removed ${removed.length} stale lock(s)`, "info");
 		}
 	});
 
@@ -196,9 +199,9 @@ export default function (pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const removed = cleanupGhostLocks(config, ctx);
 			if (removed.length === 0) {
-				ctx.ui.notify("Ghost Buster: No stale locks found", "info");
+				ctx.ui?.notify("Ghost Buster: No stale locks found", "info");
 			} else {
-				ctx.ui.notify(`Ghost Buster: Removed ${removed.length} stale lock(s):\n${removed.join("\n")}`, "info");
+				ctx.ui?.notify(`Ghost Buster: Removed ${removed.length} stale lock(s):\n${removed.join("\n")}`, "info");
 			}
 		},
 	});

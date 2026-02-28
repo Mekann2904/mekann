@@ -23,6 +23,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { McpAuthProvider } from "../../lib/mcp/types.js";
 import {
   InstanceRegistry,
   ServerRegistry,
@@ -165,6 +166,20 @@ interface McpServerConfig {
   headers?: Record<string, string>;
 }
 
+function normalizeMcpAuth(auth?: McpServerConfig["auth"]): McpAuthProvider | undefined {
+  if (!auth) return undefined;
+  if (auth.type === "bearer" && auth.token) {
+    return { type: "bearer", token: auth.token };
+  }
+  if (auth.type === "basic" && auth.username && auth.password) {
+    return { type: "basic", username: auth.username, password: auth.password };
+  }
+  if (auth.type === "api-key" && auth.apiKey) {
+    return { type: "api-key", apiKey: auth.apiKey, headerName: auth.headerName };
+  }
+  return undefined;
+}
+
 /**
  * @summary Load MCP server configuration and auto-connect enabled servers
  */
@@ -196,7 +211,7 @@ async function loadAndConnectMcpServers(): Promise<void> {
           id: server.id,
           url: server.url,
           transportType: server.transportType ?? 'auto',
-          auth: server.auth,
+          auth: normalizeMcpAuth(server.auth),
           headers: server.headers,
         });
 
@@ -216,7 +231,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /**
  * @summary SSE event types for real-time updates
  */
-export type SSEEventType = "status" | "tool-call" | "response" | "heartbeat" | "context-update";
+export type SSEEventType = "status" | "tool-call" | "response" | "heartbeat" | "context-update" | "instances-update";
 
 /**
  * @summary SSE event payload structure
@@ -742,7 +757,7 @@ export function startServer(
         id: server.id,
         url: server.url,
         transportType: server.transportType ?? 'auto',
-        auth: server.auth,
+        auth: normalizeMcpAuth(server.auth),
         headers: server.headers,
       });
 

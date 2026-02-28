@@ -20,8 +20,7 @@
  *   out: adapters層の実装
  */
 
-import type { SubagentDefinition, SubagentStorage } from "../domain/subagent-definition.js";
-import type { SubagentRunRecord } from "../../extensions/subagents.js";
+import type { SubagentDefinition, SubagentStorage, SubagentRunRecord } from "../domain/subagent-definition.js";
 
 /**
  * サブエージェントリポジトリインターフェース

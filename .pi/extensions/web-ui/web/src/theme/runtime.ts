@@ -16,8 +16,8 @@
  * scope(in/out): in=themeId, mode, out=DOMスタイル更新
  */
 
-import { getThemeOrDefault } from "@/theme/registry";
-import type { Mode } from "@/theme/types";
+import { getThemeOrDefault } from "./registry";
+import type { Mode } from "./types";
 
 /**
  * @summary DOMへテーマ反映
@@ -38,7 +38,7 @@ export function applyThemeToDOM(id: string, currentMode: Mode): void {
   }
 
   const root = document.documentElement;
-  Object.entries(colors).forEach(([key, value]) => {
+  Object.entries(colors as unknown as Record<string, string>).forEach(([key, value]) => {
     root.style.setProperty(key, value);
   });
 

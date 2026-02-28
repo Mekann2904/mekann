@@ -20,6 +20,7 @@
  *   out: piフレームワーク
  */
 
+import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { SubagentService } from "../application/subagent-service.js";
 import { FileSubagentRepository } from "../adapters/file-subagent-repo.js";
@@ -80,7 +81,7 @@ export function createSubagentTools(
     name: "subagent_list",
     label: "Subagent List",
     description: "List all subagent definitions and the current default subagent.",
-    parameters: {},
+    parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
       const subagents = await service.listAll();
       const storage = await (service as unknown as { repository: { load: () => Promise<{ defaultSubagentId?: string }> } }).repository.load();
@@ -104,7 +105,7 @@ export function createSubagentTools(
     name: "subagent_status",
     label: "Subagent Status",
     description: "Show active subagent request count and active subagent agent count.",
-    parameters: {},
+    parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
       const activeCount = factory.getService() ? 0 : 0; // TODO: 実装
       const maxConcurrency = parseInt(process.env.PI_AGENT_MAX_TOTAL_LLM ?? "4", 10);

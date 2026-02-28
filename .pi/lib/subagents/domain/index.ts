@@ -21,11 +21,9 @@
 export {
   type SubagentDefinition,
   type SubagentStorage,
+  type SubagentRunRecord,
   DEFAULT_SUBAGENTS,
 } from "./subagent-definition.js";
-
-// Re-export SubagentRunRecord from original location for compatibility
-export { type SubagentRunRecord } from "../../extensions/subagents.js";
 
 // Responsibility
 export {

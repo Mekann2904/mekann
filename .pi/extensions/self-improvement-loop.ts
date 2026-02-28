@@ -53,10 +53,8 @@ import {
 } from "../lib/storage/semantic-repetition.js";
 import {
   runMetacognitiveCheck,
-  type MetacognitiveCheck,
   type AporiaDetection,
   type FallacyDetection,
-  type ImprovementAction,
   generateImprovementActions,
   formatActionsAsPromptInstructions,
   runIntegratedMetacognitiveAnalysis,
@@ -75,6 +73,8 @@ import {
   runIntegratedThinkingAnalysis,
   type ThinkingModeAnalysis,
 } from "../lib/verification-workflow.js";
+import type { MetacognitiveCheck } from "../lib/verification/analysis/metacognitive-check.js";
+import type { ImprovementAction } from "../lib/verification/generation/improvement-actions.js";
 import {
   retryWithBackoff,
   extractRetryStatusCode,

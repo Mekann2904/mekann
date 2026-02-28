@@ -23,8 +23,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { ISubagentRepository } from "../application/interfaces.js";
-import type { SubagentStorage } from "../domain/subagent-definition.js";
-import type { SubagentRunRecord } from "../../extensions/subagents.js";
+import type { SubagentStorage, SubagentRunRecord } from "../domain/subagent-definition.js";
 
 /**
  * ファイルベースのサブエージェントリポジトリ
@@ -33,6 +32,7 @@ import type { SubagentRunRecord } from "../../extensions/subagents.js";
 export class FileSubagentRepository implements ISubagentRepository {
   private readonly storagePath: string;
   private cache: SubagentStorage | null = null;
+  private runRecords: SubagentRunRecord[] = [];
 
   /**
    * コンストラクタ
@@ -90,9 +90,7 @@ export class FileSubagentRepository implements ISubagentRepository {
    * @param record - 実行履歴レコード
    */
   async addRunRecord(record: SubagentRunRecord): Promise<void> {
-    const storage = await this.load();
-    storage.runs.push(record);
-    await this.save(storage);
+    this.runRecords.push(record);
   }
 
   /**
@@ -102,9 +100,7 @@ export class FileSubagentRepository implements ISubagentRepository {
    * @returns 実行履歴配列
    */
   async getRunRecords(limit?: number): Promise<SubagentRunRecord[]> {
-    const storage = await this.load();
-    const runs = storage.runs;
-    return limit ? runs.slice(-limit) : runs;
+    return limit ? this.runRecords.slice(-limit) : this.runRecords;
   }
 
   /**
@@ -114,7 +110,6 @@ export class FileSubagentRepository implements ISubagentRepository {
    */
   private createDefaultStorage(): SubagentStorage {
     return {
-      version: 1,
       subagents: [
         {
           id: "researcher",
@@ -123,8 +118,6 @@ export class FileSubagentRepository implements ISubagentRepository {
           systemPrompt:
             "You are a research specialist. Investigate the codebase deeply and provide detailed findings.",
           enabled: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         },
         {
           id: "implementer",
@@ -133,8 +126,6 @@ export class FileSubagentRepository implements ISubagentRepository {
           systemPrompt:
             "You are an implementation specialist. Write clean, tested code following best practices.",
           enabled: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         },
         {
           id: "reviewer",
@@ -143,11 +134,9 @@ export class FileSubagentRepository implements ISubagentRepository {
           systemPrompt:
             "You are a code review specialist. Analyze code for bugs, security issues, and improvements.",
           enabled: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
         },
       ],
-      runs: [],
+      defaultSubagentId: null,
     };
   }
 
@@ -159,10 +148,8 @@ export class FileSubagentRepository implements ISubagentRepository {
    */
   private migrateStorage(storage: Partial<SubagentStorage>): SubagentStorage {
     return {
-      version: storage.version ?? 1,
       subagents: storage.subagents ?? [],
-      defaultSubagentId: storage.defaultSubagentId,
-      runs: storage.runs ?? [],
+      defaultSubagentId: storage.defaultSubagentId ?? null,
     };
   }
 

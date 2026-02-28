@@ -758,6 +758,7 @@ function runChallengerPatterns(
 export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "repo_audit",
+    label: "Repo Audit", 
     description:
       "RepoAuditスタイルのコード監査（3層アーキテクチャ: Initiator/Explorer/Validator）",
     parameters: Type.Object({
@@ -795,7 +796,10 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
         // Phase 1: Initiator
         const initiatorStart = Date.now();
         const hypothesis = await runInitiatorPhase(task, ctx, (update) => {
-          onUpdate?.({ type: "phase-update", ...update });
+          onUpdate?.({
+            content: [{ type: "text", text: `[repo_audit] ${update.phase}: ${update.message}` }],
+            details: update,
+          });
         });
         phaseTimes.initiator = Date.now() - initiatorStart;
 
@@ -812,7 +816,10 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
           config,
           ctx,
           (update) => {
-            onUpdate?.({ type: "phase-update", ...update });
+            onUpdate?.({
+              content: [{ type: "text", text: `[repo_audit] ${update.phase}: ${update.message}` }],
+              details: update,
+            });
           }
         );
         phaseTimes.explorer = Date.now() - explorerStart;
@@ -830,7 +837,10 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
           config,
           ctx,
           (update) => {
-            onUpdate?.({ type: "phase-update", ...update });
+            onUpdate?.({
+              content: [{ type: "text", text: `[repo_audit] ${update.phase}: ${update.message}` }],
+              details: update,
+            });
           }
         );
         phaseTimes.validator = Date.now() - validatorStart;
@@ -850,15 +860,15 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
         };
 
         return {
-          success: true,
-          result,
+          content: [{ type: "text", text: "RepoAudit completed" }],
+          details: result,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         return {
-          success: false,
-          error: errorMessage,
-          metadata: {
+          content: [{ type: "text", text: `RepoAudit failed: ${errorMessage}` }],
+          details: {
+            error: errorMessage,
             duration: Date.now() - startTime,
             phases: phaseTimes,
           },

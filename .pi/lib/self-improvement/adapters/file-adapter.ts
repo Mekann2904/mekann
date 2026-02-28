@@ -246,8 +246,8 @@ export function generateFooterLog(state: {
   perspectiveStates: Array<{
     displayName: string;
     score: number;
-    findings: length;
-    improvements: length;
+    findings: number;
+    improvements: number;
   }>;
 }): string {
   return `
@@ -270,7 +270,7 @@ ${state.summary}
 
 | Perspective | Score | Findings | Improvements |
 |-------------|-------|----------|--------------|
-${state.perspectiveStates.map((ps) => `| ${ps.displayName} | ${(ps.score * 100).toFixed(0)}% | ${ps.findings.length} | ${ps.improvements.length} |`).join("\n")}
+${state.perspectiveStates.map((ps) => `| ${ps.displayName} | ${(ps.score * 100).toFixed(0)}% | ${ps.findings} | ${ps.improvements} |`).join("\n")}
 
 ---
 

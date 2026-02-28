@@ -385,14 +385,15 @@ export function registerInstance(
   const config = { ...defaults, ...fileConfig, ...configOverrides };
 
   const instanceId = generateInstanceId(sessionId);
-  const now = new Date().toISOString();
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
 
   const info: InstanceInfo = {
     instanceId,
     pid,
     sessionId,
-    startedAt: now,
-    lastHeartbeat: now,
+    startedAt: nowIso,
+    lastHeartbeat: nowIso,
     cwd,
     activeModels: [],
   };
@@ -414,7 +415,7 @@ export function registerInstance(
 
     // 初回は書き込み時にdebounceをバイパ防止
     // 初回（初回)は書き込み
-    lastHeartbeatWrite = now;
+    lastHeartbeatWrite = nowMs;
 
     // Don't prevent process exit
     heartbeatTimer.unref();
@@ -427,7 +428,7 @@ export function registerInstance(
     state = {
       myInstanceId: instanceId,
       mySessionId: sessionId,
-      myStartedAt: now,
+      myStartedAt: nowIso,
       config,
       heartbeatTimer,
     };

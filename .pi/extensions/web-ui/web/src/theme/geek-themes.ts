@@ -16,7 +16,7 @@
  * scope(in/out): in=追加テーマ定義, out=テーマ選択UI
  */
 
-import type { ThemeCatalog } from "@/theme/types";
+import type { ThemeCatalog } from "./types";
 
 /** @summary ギーク系テーマ一覧 */
 export const GEEK_THEMES: ThemeCatalog = {

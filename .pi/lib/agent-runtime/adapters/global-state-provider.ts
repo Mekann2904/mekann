@@ -65,7 +65,7 @@ export class GlobalRuntimeStateProvider implements IRuntimeStateProvider {
       });
     }
 
-    const runtime = global.__PI_SHARED_AGENT_RUNTIME_STATE__;
+    const runtime = global.__PI_SHARED_AGENT_RUNTIME_STATE__ as AgentRuntimeState;
     this.ensureRuntimeStateShape(runtime);
     this.enforceLimitConsistency(runtime);
     return runtime;
@@ -88,7 +88,7 @@ export class GlobalRuntimeStateProvider implements IRuntimeStateProvider {
       });
     }
 
-    const runtime = global.__PI_SHARED_AGENT_RUNTIME_STATE__;
+    const runtime = global.__PI_SHARED_AGENT_RUNTIME_STATE__ as AgentRuntimeState;
     this.ensureRuntimeStateShape(runtime);
     this.enforceLimitConsistency(runtime);
     return runtime;

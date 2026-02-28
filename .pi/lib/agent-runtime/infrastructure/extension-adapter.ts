@@ -20,6 +20,7 @@
  *   out: piフレームワーク
  */
 
+import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { RuntimeService } from "../application/runtime-service.js";
 import { GlobalRuntimeStateProvider } from "../adapters/global-state-provider.js";
@@ -257,7 +258,7 @@ export function createRuntimeTools(pi: ExtensionAPI): RuntimeService {
     name: "runtime_status",
     label: "Runtime Status",
     description: "Show current runtime capacity and active agents.",
-    parameters: {},
+    parameters: Type.Object({}),
     async execute() {
       const snapshot = service.getSnapshot();
       const lines = [
