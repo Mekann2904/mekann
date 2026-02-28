@@ -38,7 +38,7 @@ import {
   type SchemaViolation,
   parseStructuredOutput,
 } from "./output-schema.js";
-import { hasInternalModeStructure } from "./output-validation.js";
+import { hasInternalModeStructure } from "./agent/output-validation.js";
 
 // ============================================================================
 // Types

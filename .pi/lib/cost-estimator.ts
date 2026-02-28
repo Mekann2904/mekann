@@ -28,7 +28,7 @@
 // Why: Enables accurate scheduling decisions based on estimated duration and token consumption.
 // Related: .pi/lib/task-scheduler.ts, .pi/extensions/subagents.ts, .pi/extensions/agent-teams.ts
 
-import type { TaskSource } from "./task-scheduler";
+import type { TaskSource } from "./coordination/task-scheduler.js";
 
 // ============================================================================
 // Types

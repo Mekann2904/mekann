@@ -29,7 +29,7 @@
 // Why: Centralize type definitions extracted from agent-runtime.ts for reusability.
 // Related: .pi/extensions/agent-runtime.ts, .pi/lib/priority-scheduler.ts
 
-import type { TaskPriority, PriorityTaskMetadata } from "./priority-scheduler.js";
+import type { TaskPriority, PriorityTaskMetadata } from "./coordination/priority-scheduler.js";
 
 // ============================================================================
 // Re-exports from priority-scheduler
