@@ -723,7 +723,13 @@ function stopServer(): Promise<void> {
 // Extension Registration
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	// Auto-start server on session start (can be disabled via PI_API_AUTO_START=false)
 	pi.on("session_start", async (_event, ctx) => {
 		const autoStart = process.env.PI_API_AUTO_START !== "false";

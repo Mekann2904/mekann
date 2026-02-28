@@ -750,7 +750,14 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
  * @param pi - 拡張機能API
  * @returns {void}
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerSubagentExtension(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // グローバルエラーハンドラを設定（一度だけ）
   setupGlobalErrorHandlers();
 

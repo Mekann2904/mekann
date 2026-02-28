@@ -132,7 +132,14 @@ function ensureAdaptiveControllerInitialized(): void {
  * @summary 機能登録
  * @param pi 拡張APIインスタンス
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // NOTE: Adaptive controller initialization is deferred to session_start event
   // to improve startup performance. Previously this was called synchronously
   // at extension load time, causing blocking file I/O.

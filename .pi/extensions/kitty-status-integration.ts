@@ -289,7 +289,13 @@ function getToolResultStats(messages: unknown[]): { toolCount: number; errorCoun
   return { toolCount, errorCount };
 }
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // セッション開始時
   pi.on("session_start", async (_event, ctx) => {
     if (!isKitty()) return;

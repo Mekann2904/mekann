@@ -85,7 +85,14 @@ const MEDIATOR_HELP = [
  * @summary Mediator拡張を登録
  * @param pi 拡張API
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerMediatorExtension(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // mediator_interpretツール
   pi.registerTool({
     name: "mediator_interpret",

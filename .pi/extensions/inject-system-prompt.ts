@@ -44,7 +44,13 @@ function readGuideFile(filename: string): string {
   }
 }
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   pi.on("before_agent_start", async (event, ctx) => {
     let additionalPrompt = "";
 

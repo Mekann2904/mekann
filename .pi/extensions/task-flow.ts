@@ -244,7 +244,13 @@ const STATUS_MAP: Record<PlanStep["status"], TaskStatus> = {
 // Extension Registration
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	// ============================================
 	// Tool: task_delegate
 	// ============================================

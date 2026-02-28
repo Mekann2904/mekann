@@ -331,7 +331,13 @@ class AbbrListComponent {
 	}
 }
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	// Store pi instance for persistState
 	piInstance = pi;
 

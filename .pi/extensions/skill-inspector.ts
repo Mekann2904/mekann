@@ -756,7 +756,13 @@ function formatSkillDetail(
 // Tool Registration
 // ============================================================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // Register skill_status tool
   pi.registerTool({
     name: "skill_status",

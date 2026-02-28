@@ -382,7 +382,14 @@ let lastRunSummary: LoopRunSummary | null = null;
  * @param pi - 拡張API
  * @returns void
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerLoopExtension(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   pi.registerTool({
     name: "loop_run",
     label: "Loop Run",

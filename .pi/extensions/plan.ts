@@ -300,7 +300,13 @@ function formatPlanList(plans: Plan[]): string {
 // Extension Registration
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	// ============================================
 	// Plan Mode (Read-only mode)
 	// ============================================

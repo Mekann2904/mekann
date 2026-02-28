@@ -766,7 +766,13 @@ async function showConfirmationScreen(
 // メイン拡張機能
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	const OptionType = Type.Object({
 		label: Type.String({ description: "表示テキスト（1-5文字、簡潔に）" }),
 		description: Type.Optional(Type.String({ description: "選択肢の説明" }))

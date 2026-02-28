@@ -427,7 +427,13 @@ function formatTaskStats(storage: TaskStorage): string {
 // Extension Registration
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	// Tool: Create a new task
 	pi.registerTool({
 		name: "task_create",

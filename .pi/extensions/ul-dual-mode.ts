@@ -612,7 +612,14 @@ ${TOKEN_EFFICIENT_FORMAT}`;
  * @param pi - 拡張機能APIインターフェース
  * @returns なし
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerUlDualModeExtension(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // CLIフラグ: セッション全体でULモードを有効化
   pi.registerFlag("ul", {
     description: "Enable UL Dual-Orchestration Mode for entire session",

@@ -209,7 +209,13 @@ export function toggleAutoExecutor(enabled?: boolean): void {
 // Extension Registration
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerTaskAutoExecutor(pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	loadConfig();
 
 	// Tool: Run next pending task

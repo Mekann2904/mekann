@@ -387,7 +387,14 @@ async function executeSelfReflectTool(
  * @param pi 拡張API
  * @returns void
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerSelfImprovementReflection(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // セッション開始時にデータ基盤を初期化
   pi.on("session_start", async (_event, ctx) => {
     const dataView = buildIntegratedDataView(ctx.cwd);
