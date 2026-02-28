@@ -849,8 +849,17 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
   let reservedRequests = 0;
   let reservedLlm = 0;
   let activeReservations = 0;
+  let consumedReservations = 0;
+  let consumedRequests = 0;
+  let consumedLlm = 0;
   for (const reservation of reservations) {
-    if (reservation.consumedAtMs) continue;
+    if (reservation.consumedAtMs) {
+      // 消費済み予約をカウント
+      consumedReservations += 1;
+      consumedRequests += Math.max(0, reservation.additionalRequests);
+      consumedLlm += Math.max(0, reservation.additionalLlm);
+      continue;
+    }
     activeReservations += 1;
     reservedRequests += Math.max(0, reservation.additionalRequests);
     reservedLlm += Math.max(0, reservation.additionalLlm);
@@ -870,6 +879,11 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
     priorityStats[entry.priority ?? "normal"]++;
   }
 
+  // 消費済み予約をtotalActiveLlm/totalActiveRequestsに含める
+  // これにより、予約消費後もリソース使用量が正確に追跡される
+  const adjustedTotalActiveRequests = clusterUsage.totalActiveRequests + consumedRequests;
+  const adjustedTotalActiveLlm = clusterUsage.totalActiveLlm + consumedLlm;
+
   return {
     subagentActiveRequests,
     subagentActiveAgents,
@@ -878,12 +892,15 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
     reservedRequests,
     reservedLlm,
     activeReservations,
+    consumedReservations,
+    consumedRequests,
+    consumedLlm,
     activeOrchestrations,
     queuedOrchestrations,
     queuedTools,
     queueEvictions: Math.max(0, Math.trunc(runtime.queue.evictedEntries || 0)),
-    totalActiveRequests: clusterUsage.totalActiveRequests,
-    totalActiveLlm: clusterUsage.totalActiveLlm,
+    totalActiveRequests: adjustedTotalActiveRequests,
+    totalActiveLlm: adjustedTotalActiveLlm,
     limitsVersion: runtime.limitsVersion,
     priorityStats,
     limits: {
@@ -912,12 +929,23 @@ export function formatRuntimeStatusLine(options: RuntimeStatusLineOptions = {}):
   lines.push(`- 実行中LLM合計: ${snapshot.totalActiveLlm}`);
   lines.push(`  - Subagents: ${snapshot.subagentActiveAgents}`);
   lines.push(`  - Agent team members: ${snapshot.teamActiveAgents}`);
+  if (snapshot.consumedLlm > 0) {
+    lines.push(`  - 消費済み予約: ${snapshot.consumedLlm}`);
+  }
   lines.push(`- 実行中request合計: ${snapshot.totalActiveRequests}`);
   lines.push(`  - Subagent requests: ${snapshot.subagentActiveRequests}`);
   lines.push(`  - Agent team runs: ${snapshot.teamActiveRuns}`);
+  if (snapshot.consumedRequests > 0) {
+    lines.push(`  - 消費済み予約: ${snapshot.consumedRequests}`);
+  }
   lines.push(
     `- 予約中キャパシティ: requests=${snapshot.reservedRequests}, llm=${snapshot.reservedLlm}, reservations=${snapshot.activeReservations}`,
   );
+  if (snapshot.consumedReservations > 0) {
+    lines.push(
+      `- 消費済み予約: reservations=${snapshot.consumedReservations}, requests=${snapshot.consumedRequests}, llm=${snapshot.consumedLlm}`,
+    );
+  }
   lines.push(
     `- 実行上限: requests=${snapshot.limits.maxTotalActiveRequests}, llm=${snapshot.limits.maxTotalActiveLlm}, subagent_parallel=${snapshot.limits.maxParallelSubagentsPerRun}, team_parallel=${snapshot.limits.maxParallelTeamsPerRun}, teammates_parallel=${snapshot.limits.maxParallelTeammatesPerTeam}, orchestration_parallel=${snapshot.limits.maxConcurrentOrchestrations}`,
   );
