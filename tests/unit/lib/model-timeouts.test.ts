@@ -307,13 +307,16 @@ describe("プロパティベーステスト", () => {
   });
 
   it("computeModelTimeoutMs_任意のモデルとオプション_正の整数返却", () => {
+    const thinkingLevels = fc.constantFrom<undefined | "off" | "minimal" | "low" | "medium" | "high" | "xhigh">(
+      undefined, "off", "minimal", "low", "medium", "high", "xhigh"
+    );
     fc.assert(
       fc.property(
         fc.string({ maxLength: 50 }),
         fc.option(
           fc.record({
             userTimeoutMs: fc.option(fc.integer({ min: 1, max: 1000000 })),
-            thinkingLevel: fc.option(fc.string({ maxLength: 20 })),
+            thinkingLevel: thinkingLevels,
           }),
           { nil: undefined }
         ),
