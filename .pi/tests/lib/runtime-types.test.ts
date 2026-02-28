@@ -78,13 +78,15 @@ describe("runtime-types", () => {
       // Act & Assert
       for (const cls of classes) {
         const entry: RuntimeQueueEntry = {
+          id: "test-id",
+          toolName: "test-tool",
           queueClass: cls,
           tenantKey: "test",
           additionalRequests: 1,
           additionalLlm: 1,
           skipCount: 0,
           priority: "normal",
-          createdAt: Date.now(),
+          enqueuedAtMs: Date.now(),
           source: "test",
         };
         expect(entry.queueClass).toBe(cls);
@@ -96,6 +98,8 @@ describe("runtime-types", () => {
     it("PriorityTaskMetadataを継承している", () => {
       // Arrange & Act
       const entry: RuntimeQueueEntry = {
+        id: "test-id-2",
+        toolName: "subagent_run",
         queueClass: "standard",
         tenantKey: "tenant-1",
         additionalRequests: 2,
@@ -103,7 +107,7 @@ describe("runtime-types", () => {
         skipCount: 0,
         // PriorityTaskMetadataフィールド
         priority: "high",
-        createdAt: Date.now(),
+        enqueuedAtMs: Date.now(),
         source: "subagent_run",
         estimatedRounds: 10,
         estimatedDurationMs: 30000,
@@ -182,6 +186,7 @@ describe("runtime-types", () => {
         queue: {
           activeOrchestrations: 4,
           pending: [],
+          consecutiveDispatchesByTenant: 0,
           evictedEntries: 0,
         },
         reservations: {
@@ -344,8 +349,10 @@ describe("runtime-types", () => {
       // Act & Assert
       for (const priority of priorities) {
         const metadata: PriorityTaskMetadata = {
+          id: `test-id-${priority}`,
+          toolName: "test-tool",
           priority,
-          createdAt: Date.now(),
+          enqueuedAtMs: Date.now(),
           source: "test",
         };
         expect(metadata.priority).toBe(priority);

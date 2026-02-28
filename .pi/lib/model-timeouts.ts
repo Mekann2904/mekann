@@ -27,6 +27,8 @@
  * Different models have different response characteristics.
  */
 
+import type { ThinkingLevel } from "./agent-types.js";
+
 /**
  * Timeout values for different models (in milliseconds).
  * Slower models need longer timeouts to avoid premature termination.
@@ -56,7 +58,7 @@ export const MODEL_TIMEOUT_BASE_MS: Record<string, number> = {
  * Thinking level multipliers.
  * Higher thinking levels require more processing time.
  */
-export const THINKING_LEVEL_MULTIPLIERS: Record<string, number> = {
+export const THINKING_LEVEL_MULTIPLIERS: Record<ThinkingLevel, number> = {
   off: 1.0,
   minimal: 1.1,
   low: 1.2,
@@ -70,13 +72,13 @@ export const THINKING_LEVEL_MULTIPLIERS: Record<string, number> = {
  * @summary 計算オプション
  * @type {object}
  * @property {number} [userTimeoutMs] - ユーザー指定タイムアウト
- * @property {string} [thinkingLevel] - 思考レベル
+ * @property {ThinkingLevel} [thinkingLevel] - 思考レベル
  */
 export interface ComputeModelTimeoutOptions {
   /** User-specified timeout (takes precedence if > 0) */
   userTimeoutMs?: number;
   /** Thinking level for the model */
-  thinkingLevel?: string;
+  thinkingLevel?: ThinkingLevel;
 }
 
 /**
@@ -132,14 +134,9 @@ export function computeModelTimeoutMs(
   const baseTimeout = getModelBaseTimeoutMs(modelId);
 
   // Apply thinking level multiplier
-  const thinkingLevel = options?.thinkingLevel?.toLowerCase() ?? "medium";
-  const hasKnownThinkingLevel = Object.prototype.hasOwnProperty.call(
-    THINKING_LEVEL_MULTIPLIERS,
-    thinkingLevel,
-  );
-  const multiplier = hasKnownThinkingLevel
-    ? THINKING_LEVEL_MULTIPLIERS[thinkingLevel]
-    : 1.4;
+  // Default to "medium" if not specified
+  const thinkingLevel = options?.thinkingLevel ?? "medium";
+  const multiplier = THINKING_LEVEL_MULTIPLIERS[thinkingLevel] ?? 1.4;
 
   return Math.floor(baseTimeout * multiplier);
 }

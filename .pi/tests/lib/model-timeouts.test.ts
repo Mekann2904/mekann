@@ -16,6 +16,7 @@ import {
 	computeProgressiveTimeoutMs,
 	type ComputeModelTimeoutOptions,
 } from "../../lib/model-timeouts.js";
+import type { ThinkingLevel } from "../../lib/agent-types.js";
 
 // ============================================================================
 // MODEL_TIMEOUT_BASE_MS
@@ -50,7 +51,7 @@ describe("MODEL_TIMEOUT_BASE_MS", () => {
 
 describe("THINKING_LEVEL_MULTIPLIERS", () => {
 	it("should_have_multiplier_for_all_levels", () => {
-		const expectedLevels = ["off", "minimal", "low", "medium", "high", "xhigh"];
+		const expectedLevels: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
 		for (const level of expectedLevels) {
 			expect(THINKING_LEVEL_MULTIPLIERS[level]).toBeDefined();
 		}
@@ -214,16 +215,8 @@ describe("computeModelTimeoutMs", () => {
 			expect(result).toBe(expected);
 		});
 
-		it("should_be_case_insensitive_for_thinking_level", () => {
-			const result1 = computeModelTimeoutMs("gpt-4", { thinkingLevel: "HIGH" });
-			const result2 = computeModelTimeoutMs("gpt-4", { thinkingLevel: "high" });
-			expect(result1).toBe(result2);
-		});
-
-		it("should_use_medium_for_unknown_thinking_level", () => {
-			const result = computeModelTimeoutMs("gpt-4", {
-				thinkingLevel: "unknown",
-			});
+		it("should_use_medium_for_default_thinking_level", () => {
+			const result = computeModelTimeoutMs("gpt-4");
 			const expected = Math.floor(
 				MODEL_TIMEOUT_BASE_MS["gpt-4"] * THINKING_LEVEL_MULTIPLIERS.medium,
 			);
@@ -257,17 +250,10 @@ describe("computeModelTimeoutMs", () => {
 					fc.string({ maxLength: 50 }),
 					fc.option(
 						fc.record({
-							userTimeoutMs: fc.option(fc.integer({ min: 0, max: 1000000 })),
+							userTimeoutMs: fc.option(fc.integer({ min: 0, max: 1000000 }), { nil: undefined }),
 							thinkingLevel: fc.option(
-								fc.oneof(
-									fc.constant("off"),
-									fc.constant("minimal"),
-									fc.constant("low"),
-									fc.constant("medium"),
-									fc.constant("high"),
-									fc.constant("xhigh"),
-									fc.string({ minLength: 1, maxLength: 20 }),
-								),
+								fc.constantFrom<ThinkingLevel>("off", "minimal", "low", "medium", "high", "xhigh"),
+								{ nil: undefined },
 							),
 						}),
 						{ nil: undefined },
