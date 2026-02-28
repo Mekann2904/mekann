@@ -338,7 +338,8 @@ export async function semanticIndex(
 			};
 		}
 
-		console.log(`[semantic-index] Using provider: ${available[0].id}`);
+		const selectedProvider = available[0];
+		console.log(`[semantic-index] Using provider: ${selectedProvider.id}`);
 
 		// Collect files
 		const files = collectFiles(targetPath, extensions, [...DEFAULT_EXCLUDES]);
@@ -353,56 +354,82 @@ export async function semanticIndex(
 			};
 		}
 
-		// Process files
+		// Track expected dimensions from the selected provider
+		const expectedDimensions = selectedProvider.capabilities.dimensions;
+
+		// Process files with batch size limit for memory efficiency
+		const BATCH_SIZE = 100; // Process files in batches to limit memory usage
 		const embeddings: CodeEmbedding[] = [];
 		let processedChunks = 0;
+		let skippedChunks = 0;
 
-		for (let i = 0; i < files.length; i++) {
-			const file = files[i];
-			const relativePath = relative(cwd, file);
+		for (let batchStart = 0; batchStart < files.length; batchStart += BATCH_SIZE) {
+			const batchEnd = Math.min(batchStart + BATCH_SIZE, files.length);
+			const batchFiles = files.slice(batchStart, batchEnd);
 
-			// Read file content
-			let content: string;
-			try {
-				content = readFileSync(file, "utf-8");
-			} catch {
-				console.warn(`[semantic-index] Skipping unreadable file: ${relativePath}`);
-				continue;
-			}
+			for (let i = batchStart; i < batchEnd; i++) {
+				const file = batchFiles[i - batchStart];
+				const relativePath = relative(cwd, file);
 
-			// Chunk the code
-			const chunks = chunkCode(relativePath, content, chunkSize, chunkOverlap);
-
-			// Generate embeddings for each chunk
-			for (const chunk of chunks) {
-				const text = buildChunkText(chunk);
-				const embedding = await generateEmbedding(text);
-
-				if (embedding) {
-					const provider = await embeddingRegistry.getDefault();
-					embeddings.push({
-						id: chunk.id,
-						file: chunk.file,
-						line: chunk.line,
-						code: chunk.code,
-						embedding,
-						metadata: {
-							language: chunk.language,
-							symbol: chunk.symbol,
-							kind: chunk.kind,
-							dimensions: embedding.length,
-							model: provider?.model || "unknown",
-						},
-					});
+				// Read file content
+				let content: string;
+				try {
+					content = readFileSync(file, "utf-8");
+				} catch {
+					console.warn(`[semantic-index] Skipping unreadable file: ${relativePath}`);
+					continue;
 				}
 
-				processedChunks++;
+				// Chunk the code
+				const chunks = chunkCode(relativePath, content, chunkSize, chunkOverlap);
 
-				// Progress logging every 50 chunks
-				if (processedChunks % 50 === 0) {
-					console.log(`[semantic-index] Processed ${processedChunks} chunks...`);
+				// Generate embeddings for each chunk
+				for (const chunk of chunks) {
+					const text = buildChunkText(chunk);
+					const embedding = await generateEmbedding(text);
+
+					if (embedding) {
+						// Validate embedding dimensions to prevent mismatch
+						if (embedding.length !== expectedDimensions) {
+							console.warn(
+								`[semantic-index] Skipping chunk with mismatched dimensions: ` +
+								`expected ${expectedDimensions}, got ${embedding.length}`
+							);
+							skippedChunks++;
+							continue;
+						}
+
+						embeddings.push({
+							id: chunk.id,
+							file: chunk.file,
+							line: chunk.line,
+							code: chunk.code,
+							embedding,
+							metadata: {
+								language: chunk.language,
+								symbol: chunk.symbol,
+								kind: chunk.kind,
+								dimensions: embedding.length,
+								model: selectedProvider.model,
+							},
+						});
+					}
+
+					processedChunks++;
+
+					// Progress logging every 50 chunks
+					if (processedChunks % 50 === 0) {
+						console.log(`[semantic-index] Processed ${processedChunks} chunks...`);
+					}
 				}
 			}
+
+			// Log batch completion
+			console.log(`[semantic-index] Batch ${Math.floor(batchEnd / BATCH_SIZE)}/${Math.ceil(files.length / BATCH_SIZE)} complete`);
+		}
+
+		if (skippedChunks > 0) {
+			console.warn(`[semantic-index] Skipped ${skippedChunks} chunks due to dimension mismatch`);
 		}
 
 		// Save index and metadata

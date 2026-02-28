@@ -61,8 +61,9 @@ function getIndexPath(cwd: string): string {
 
 /**
  * Load the semantic index from disk.
+ * Validates embedding dimensions to prevent mismatched vectors.
  */
-function loadIndex(cwd: string): CodeEmbedding[] {
+function loadIndex(cwd: string, expectedDimensions?: number): CodeEmbedding[] {
 	const indexPath = getIndexPath(cwd);
 
 	if (!existsSync(indexPath)) {
@@ -72,9 +73,37 @@ function loadIndex(cwd: string): CodeEmbedding[] {
 	const content = readFileSync(indexPath, "utf-8");
 	const lines = content.trim().split("\n");
 
-	return lines
-		.filter((line) => line.trim())
-		.map((line) => JSON.parse(line) as CodeEmbedding);
+	const embeddings: CodeEmbedding[] = [];
+	let skippedCount = 0;
+
+	for (const line of lines) {
+		if (!line.trim()) continue;
+
+		try {
+			const embedding = JSON.parse(line) as CodeEmbedding;
+
+			// Validate dimensions if expected dimensions are provided
+			if (expectedDimensions !== undefined && embedding.embedding.length !== expectedDimensions) {
+				console.warn(
+					`[semantic-search] Skipping embedding with mismatched dimensions: ` +
+					`expected ${expectedDimensions}, got ${embedding.embedding.length} in ${embedding.file}`
+				);
+				skippedCount++;
+				continue;
+			}
+
+			embeddings.push(embedding);
+		} catch {
+			// Skip malformed lines
+			console.warn(`[semantic-search] Skipping malformed index entry`);
+		}
+	}
+
+	if (skippedCount > 0) {
+		console.warn(`[semantic-search] Skipped ${skippedCount} embeddings with dimension mismatch`);
+	}
+
+	return embeddings;
 }
 
 // ============================================================================
