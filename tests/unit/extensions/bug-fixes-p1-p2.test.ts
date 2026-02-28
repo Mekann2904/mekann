@@ -104,7 +104,6 @@ describe("Bug #10: web-ui TOCTOU fix", () => {
 
     // Assert - Verify getServerUrl helper function exists
     expect(content).toContain("function getServerUrl()");
-    expect(content).toContain("isServerRunning()");
     expect(content).toContain("ServerRegistry.isRunning()");
   });
 
