@@ -2,7 +2,7 @@
 title: invariant-pipeline
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -18,14 +18,17 @@ related: []
 ```typescript
 // from 'node:fs': readFileSync, writeFileSync, existsSync, ...
 // from 'node:path': join, dirname
+// from 'node:os': tmpdir
 // from '@sinclair/typebox': Type
-// from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from '@mariozechner/pi-coding-agent': ExtensionAPI, PiToolDefinition
+// ... and 1 more imports
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 型 | `ToolDefinition` | - |
 
 ## 図解
 
@@ -110,6 +113,10 @@ flowchart LR
   subgraph this[invariant-pipeline]
     main[Main Module]
   end
+  subgraph local[ローカルモジュール]
+    error_utils["error-utils"]
+  end
+  main --> local
   subgraph external[外部ライブラリ]
     _sinclair["@sinclair"]
     _mariozechner["@mariozechner"]
@@ -474,7 +481,7 @@ interface ParsedSpec {
   states: SpecState[];
   operations: SpecOperation[];
   invariants: SpecInvariant[];
-  constants?: { name: string; type: string; value?: unknown }[];
+  constants: { name: string; type: string; value?: unknown }[];
 }
 ```
 
@@ -546,5 +553,13 @@ interface GenerateMBTInput {
 }
 ```
 
+## 型定義
+
+### ToolDefinition
+
+```typescript
+type ToolDefinition = PiToolDefinition
+```
+
 ---
-*自動生成: 2026-02-24T17:08:02.246Z*
+*自動生成: 2026-02-28T13:55:18.998Z*

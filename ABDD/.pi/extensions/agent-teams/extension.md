@@ -2,7 +2,7 @@
 title: extension
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from 'node:os': homedir
 // from 'node:path': basename, join
 // from '@mariozechner/pi-ai': Type
-// ... and 44 more imports
+// ... and 45 more imports
 ```
 
 ## エクスポート一覧
@@ -61,6 +61,7 @@ sequenceDiagram
   Storage->>Internal: 破損バックアップ作成
   Internal->>Unresolved: require (node_modules/@types/node/module.d.ts)
   Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: statSync
   Internal->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
@@ -111,6 +112,7 @@ sequenceDiagram
   Internal->>Unresolved: require (node_modules/@types/node/module.d.ts)
   Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: statSync
   Internal->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
@@ -154,6 +156,7 @@ sequenceDiagram
   Internal->>Unresolved: require (node_modules/@types/node/module.d.ts)
   Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: statSync
   Internal->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
@@ -173,21 +176,32 @@ sequenceDiagram
   actor User as ユーザー
   participant System as System
   participant Unresolved as "Unresolved"
+  participant Judge as "Judge"
   participant Storage as "Storage"
   participant Internal as "Internal"
   participant LLM as "LLM"
-  participant Team as "Team"
-  participant Judge as "Judge"
-  participant Runtime as "Runtime"
   participant Executor as "Executor"
+  participant Team as "Team"
+  participant Runtime as "Runtime"
 
   User->>System: 複数のメンバーエージェントでタスクを実行する。複数チームを並列実行できる場合はagent_team_run_par...
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Judge: UL所有権確認
+  Judge->>Storage: 状態を読み込む
+  Storage->>Internal: join
+  Storage->>Internal: getTaskDir
+  Storage->>Storage: readFileSync
+  Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
+  Judge->>Internal: ID取得
+  Judge->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Judge->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Storage: ストレージ読込
   Storage->>Internal: existsSync
   Storage->>Internal: saveStorage
-  Storage->>Storage: readFileSync
-  Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
@@ -195,6 +209,7 @@ sequenceDiagram
   Internal->>Unresolved: require (node_modules/@types/node/module.d.ts)
   Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: statSync
   Internal->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   System->>LLM: チーム選択
@@ -204,7 +219,6 @@ sequenceDiagram
   System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
   System->>Unresolved: String(params.strategy || 'parallel').toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: 通信ラウンド数を正規化
-  Internal->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Team: 再試行回数正規化
@@ -230,6 +244,7 @@ sequenceDiagram
   Runtime->>Internal: getClusterUsageSafe
   Runtime->>Unresolved: runtime.queue.pending.slice (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Runtime: 並行数リミットを取得
+  Runtime->>Internal: toFiniteNumber
   System->>Runtime: applyLimit
   Runtime->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Runtime: acquireRuntimeDispatchPermit
@@ -240,6 +255,7 @@ sequenceDiagram
   Runtime->>Internal: 優先度推論
   Internal->>Unresolved: toolName.toLowerCase().trim (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: normalized.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Runtime->>Internal: validateToolName
   Runtime->>Internal: toQueueClass
   Runtime->>Internal: trimPendingQueueToLimit
   Runtime->>Internal: sortQueueByPriority
@@ -261,7 +277,6 @@ sequenceDiagram
   System->>Internal: raise
   Internal->>Internal: raiseWithReason
   System->>Runtime: 実行制限エラー生成
-  Runtime->>Unresolved: [     `${toolName} blocked: runtime limit reached.`,     ...reasons.map((reason) => `- ${reason}`),     `現在: requests=${snapshot.totalActiveRequests}, llm=${snapshot.totalActiveLlm}`,     `上限: requests=${snapshot.limits.maxTotalActiveRequests}, llm=${snapshot.limits.maxTotalActiveLlm}`,     waitLine,     'ヒント: 対象数を減らすか、実行中ジョブの完了を待って再実行してください。',   ]     .filter((line): line is string => Boolean(line))     .join (node_modules/typescript/lib/lib.es5.d.ts)
   Runtime->>Unresolved: Boolean (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Executor: ハートビート開始
   Executor->>Internal: setInterval
@@ -274,7 +289,6 @@ sequenceDiagram
   System->>Judge: タイムアウト時間を解決
   Judge->>Internal: モデル別タイムアウト
   Internal->>Internal: getModelBaseTimeoutMs
-  Internal->>Unresolved: Object.prototype.hasOwnProperty.call (node_modules/typescript/lib/lib.es5.d.ts)
   Judge->>Internal: タイムアウトを正規化
   System->>Unresolved: getCostEstimator().estimate (.pi/lib/cost-estimator.ts)
   System->>Internal: コスト推定インスタンス取得
@@ -289,11 +303,16 @@ sequenceDiagram
   Team->>Internal: queueRender
   Team->>Internal: setTimeout
   Team->>Internal: clearRenderTimer
+  Team->>Unresolved: ctx.ui     .custom((tui: TuiInstance, theme: Theme, _keybindings: KeybindingMap, done: () => void) => {       doneUi = done;       requestRender = () => {         if (!closed) {           tui.requestRender();         }       };        // 初期レンダリングとポーリング開始を即座に行う       // UIセットアップ完了後、メンバー実行開始を待たずにポーリングを開始       // これにより経過時間の秒数更新や状態表示が遅延なく行われる       setTimeout(() => {         if (!closed) {           queueRender();           startPolling();         }       }, 0);        return {         render: (width: number) =>           renderAgentTeamLiveView({             title: input.title,             items,             globalEvents,             cursor,             mode,             stream,             width,             height: tui.terminal.rows,             theme,             queueStatus,           }),         invalidate: () => {},         handleInput: (rawInput: string) => {           if (matchesKey(rawInput, 'q')) {             close();             return;           }            if (matchesKey(rawInput, Key.escape)) {             if (mode === 'detail' || mode === 'discussion' || mode === 'timeline') {               mode = 'list';               queueRender();               return;             }             close();             return;           }            if (rawInput === 'j' || matchesKey(rawInput, Key.down)) {             cursor = Math.min(items.length - 1, cursor + 1);             queueRender();             return;           }            if (rawInput === 'k' || matchesKey(rawInput, Key.up)) {             cursor = Math.max(0, cursor - 1);             queueRender();             return;           }            if (rawInput === 'g') {             cursor = 0;             queueRender();             return;           }            if (rawInput === 'G') {             cursor = Math.max(0, items.length - 1);             queueRender();             return;           }            if (mode === 'list' && isEnterInput(rawInput)) {             mode = 'detail';             queueRender();             return;           }            if ((mode === 'detail' || mode === 'discussion') && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail') && (rawInput === 'd' || rawInput === 'D')) {             mode = 'discussion';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail' || mode === 'discussion') && (rawInput === 't' || rawInput === 'T')) {             mode = 'timeline';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail' || mode === 'discussion' || mode === 'timeline') && (rawInput === 'v' || rawInput === 'V')) {             mode = 'gantt';             queueRender();             return;           }            if (mode === 'timeline' && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if (mode === 'timeline' && (rawInput === 'd' || rawInput === 'D')) {             mode = 'discussion';             queueRender();             return;           }            if (mode === 'timeline' && matchesKey(rawInput, Key.escape)) {             mode = 'list';             queueRender();             return;           }            if (mode === 'gantt' && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if (mode === 'gantt' && (rawInput === 't' || rawInput === 'T')) {             mode = 'timeline';             queueRender();             return;           }            if (mode === 'gantt' && matchesKey(rawInput, Key.escape)) {             mode = 'list';             queueRender();             return;           }            if (rawInput === '\t' || rawInput === 'tab') {             stream = stream === 'stdout' ? 'stderr' : 'stdout';             queueRender();             return;           }         },       };     }, {       overlay: true,       overlayOptions: () => ({         width: '100%',         maxHeight: '100%',         row: 0,         col: 0,         margin: 0,       }),     })     .catch(() => undefined)     .finally (node_modules/typescript/lib/lib.es2018.promise.d.ts)
+  Team->>Unresolved: ctx.ui     .custom((tui: TuiInstance, theme: Theme, _keybindings: KeybindingMap, done: () => void) => {       doneUi = done;       requestRender = () => {         if (!closed) {           tui.requestRender();         }       };        // 初期レンダリングとポーリング開始を即座に行う       // UIセットアップ完了後、メンバー実行開始を待たずにポーリングを開始       // これにより経過時間の秒数更新や状態表示が遅延なく行われる       setTimeout(() => {         if (!closed) {           queueRender();           startPolling();         }       }, 0);        return {         render: (width: number) =>           renderAgentTeamLiveView({             title: input.title,             items,             globalEvents,             cursor,             mode,             stream,             width,             height: tui.terminal.rows,             theme,             queueStatus,           }),         invalidate: () => {},         handleInput: (rawInput: string) => {           if (matchesKey(rawInput, 'q')) {             close();             return;           }            if (matchesKey(rawInput, Key.escape)) {             if (mode === 'detail' || mode === 'discussion' || mode === 'timeline') {               mode = 'list';               queueRender();               return;             }             close();             return;           }            if (rawInput === 'j' || matchesKey(rawInput, Key.down)) {             cursor = Math.min(items.length - 1, cursor + 1);             queueRender();             return;           }            if (rawInput === 'k' || matchesKey(rawInput, Key.up)) {             cursor = Math.max(0, cursor - 1);             queueRender();             return;           }            if (rawInput === 'g') {             cursor = 0;             queueRender();             return;           }            if (rawInput === 'G') {             cursor = Math.max(0, items.length - 1);             queueRender();             return;           }            if (mode === 'list' && isEnterInput(rawInput)) {             mode = 'detail';             queueRender();             return;           }            if ((mode === 'detail' || mode === 'discussion') && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail') && (rawInput === 'd' || rawInput === 'D')) {             mode = 'discussion';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail' || mode === 'discussion') && (rawInput === 't' || rawInput === 'T')) {             mode = 'timeline';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail' || mode === 'discussion' || mode === 'timeline') && (rawInput === 'v' || rawInput === 'V')) {             mode = 'gantt';             queueRender();             return;           }            if (mode === 'timeline' && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if (mode === 'timeline' && (rawInput === 'd' || rawInput === 'D')) {             mode = 'discussion';             queueRender();             return;           }            if (mode === 'timeline' && matchesKey(rawInput, Key.escape)) {             mode = 'list';             queueRender();             return;           }            if (mode === 'gantt' && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if (mode === 'gantt' && (rawInput === 't' || rawInput === 'T')) {             mode = 'timeline';             queueRender();             return;           }            if (mode === 'gantt' && matchesKey(rawInput, Key.escape)) {             mode = 'list';             queueRender();             return;           }            if (rawInput === '\t' || rawInput === 'tab') {             stream = stream === 'stdout' ? 'stderr' : 'stdout';             queueRender();             return;           }         },       };     }, {       overlay: true,       overlayOptions: () => ({         width: '100%',         maxHeight: '100%',         row: 0,         col: 0,         margin: 0,       }),     })     .catch (node_modules/typescript/lib/lib.es5.d.ts)
+  Team->>Unresolved: ctx.ui     .custom (.pi/lib/tui-types.ts)
+  Team->>Unresolved: tui.requestRender (.pi/lib/tui-types.ts)
   Team->>Internal: startPolling
   Team->>Internal: renderAgentTeamLiveView
   Team->>Internal: matchesKey
   Team->>Internal: close
   Team->>Internal: Enterキー判定
+  Team->>Internal: pushStateTransition
   Team->>Internal: pushLiveEvent
   Team->>Internal: formatLivePhase
   Team->>Internal: 時刻フォーマット
@@ -311,6 +330,7 @@ sequenceDiagram
   Team->>Internal: 出現回数を数える
   Internal->>Unresolved: input.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: chunk.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Team->>Internal: classifyActivityFromChunk
   System->>Team: キーを生成
   System->>Unresolved: liveMonitor?.appendBroadcastEvent (.pi/lib/team-types.ts)
   System->>Unresolved: liveMonitor?.updateQueueStatus (.pi/lib/team-types.ts)
@@ -319,6 +339,7 @@ sequenceDiagram
   System->>Unresolved: liveMonitor?.appendEvent (.pi/lib/team-types.ts)
   System->>Team: チームタスク実行
   Team->>Internal: キャッシュクリア
+  Internal->>Unresolved: beliefCacheMutex.runExclusive (node_modules/async-mutex/lib/Mutex.d.ts)
   Internal->>Unresolved: beliefStateCacheByTeam.clear (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Team->>Executor: 一意な実行IDを生成します。
   Executor->>Unresolved: now.getFullYear (node_modules/typescript/lib/lib.es5.d.ts)
@@ -356,18 +377,21 @@ sequenceDiagram
   Internal->>Internal: normalizeRateLimitKey
   Internal->>Internal: createRateLimitKeyScope
   Internal->>Internal: createAbortError
-  Internal->>Internal: selectLongestRateLimitGate
-  Internal->>Internal: getRateLimitGateSnapshot
+  Internal->>Judge: サーキットブレーカーをチェック
   Internal->>Runtime: 観測データを記録
+  Internal->>Internal: getRateLimitGateSnapshot
+  Internal->>Internal: selectLongestRateLimitGate
   Internal->>Internal: createRateLimitFastFailError
   Internal->>Internal: sleepWithAbort
   Internal->>Internal: registerRateLimitGateSuccess
+  Internal->>Internal: 成功を記録
   Internal->>Internal: extractRetryStatusCode
   Internal->>Internal: isNetworkErrorRetryable
+  Internal->>Internal: 失敗を記録
   Internal->>Internal: computeBackoffDelayMs
   Internal->>Internal: registerRateLimitGateHit
   Team->>LLM: runPiPrintMode
-  Team->>Internal: メッセージを文字列化
+  Team->>Internal: エラーメッセージを抽出
   Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Internal: isIdleTimeoutErrorMessage
   Team->>Internal: 非同期待機
@@ -391,9 +415,9 @@ sequenceDiagram
   System->>Unresolved: liveMonitor?.markFinished (.pi/lib/team-types.ts)
   System->>Storage: パターン付き保存
   System->>Unresolved: pi.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
-  System->>Internal: エラーを圧力関連のカテゴリに分類する
-  Internal->>Unresolved: message.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  System->>Internal: メッセージから圧力エラーの種別を分類
   Internal->>Internal: extractStatusCodeFromMessage
+  Internal->>Unresolved: lowerMessage.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System->>Internal: lower
   Internal->>Internal: decay
   System->>Team: メンバー統合判定
@@ -422,21 +446,32 @@ sequenceDiagram
   actor User as ユーザー
   participant System as System
   participant Unresolved as "Unresolved"
+  participant Judge as "Judge"
   participant Storage as "Storage"
   participant Internal as "Internal"
   participant LLM as "LLM"
-  participant Team as "Team"
-  participant Judge as "Judge"
-  participant Runtime as "Runtime"
   participant Executor as "Executor"
+  participant Team as "Team"
+  participant Runtime as "Runtime"
 
   User->>System: 選択したチームを並列実行する。teamIdsを省略した場合、現在の有効なチームのみを実行（保守的デフォルト）。
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Judge: UL所有権確認
+  Judge->>Storage: 状態を読み込む
+  Storage->>Internal: join
+  Storage->>Internal: getTaskDir
+  Storage->>Storage: readFileSync
+  Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
+  Judge->>Internal: ID取得
+  Judge->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Judge->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Storage: ストレージ読込
   Storage->>Internal: existsSync
   Storage->>Internal: saveStorage
-  Storage->>Storage: readFileSync
-  Storage->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: Array.isArray (node_modules/typescript/lib/lib.es5.d.ts)
   Storage->>Unresolved: Number.isFinite (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
@@ -444,6 +479,7 @@ sequenceDiagram
   Internal->>Unresolved: require (node_modules/@types/node/module.d.ts)
   Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: statSync
   Internal->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   System->>Internal: toRetryOverrides
@@ -457,19 +493,17 @@ sequenceDiagram
   LLM->>Unresolved: String(process.env.PI_AGENT_TEAM_PARALLEL_DEFAULT || 'current')     .trim()     .toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
   LLM->>Unresolved: enabledTeams.slice (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: storage.teams.some (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Unresolved: missingIds.join (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: logger.startOperation (.pi/lib/comprehensive-logger.ts)
   System->>Internal: 通信ラウンド数を正規化
-  Internal->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Team: 再試行回数正規化
   System->>Judge: タイムアウト時間を解決
   Judge->>Internal: モデル別タイムアウト
   Internal->>Internal: getModelBaseTimeoutMs
-  Internal->>Unresolved: Object.prototype.hasOwnProperty.call (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
   Judge->>Internal: タイムアウトを正規化
+  Internal->>Internal: toFiniteNumber
   System->>Internal: aggregationStrategyパラメータを正規化する
   Internal->>Unresolved: validStrategies.includes (node_modules/typescript/lib/lib.es2016.array.include.d.ts)
   System->>Runtime: スナップショットを取得
@@ -489,6 +523,7 @@ sequenceDiagram
   Runtime->>Internal: runtimeNow
   Runtime->>Internal: 優先度推論
   Internal->>Unresolved: normalized.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Runtime->>Internal: validateToolName
   Runtime->>Internal: toQueueClass
   Runtime->>Internal: trimPendingQueueToLimit
   Runtime->>Unresolved: runtime.queue.pending.push (node_modules/typescript/lib/lib.es5.d.ts)
@@ -528,11 +563,16 @@ sequenceDiagram
   Team->>Internal: queueRender
   Team->>Internal: setTimeout
   Team->>Internal: clearRenderTimer
+  Team->>Unresolved: ctx.ui     .custom((tui: TuiInstance, theme: Theme, _keybindings: KeybindingMap, done: () => void) => {       doneUi = done;       requestRender = () => {         if (!closed) {           tui.requestRender();         }       };        // 初期レンダリングとポーリング開始を即座に行う       // UIセットアップ完了後、メンバー実行開始を待たずにポーリングを開始       // これにより経過時間の秒数更新や状態表示が遅延なく行われる       setTimeout(() => {         if (!closed) {           queueRender();           startPolling();         }       }, 0);        return {         render: (width: number) =>           renderAgentTeamLiveView({             title: input.title,             items,             globalEvents,             cursor,             mode,             stream,             width,             height: tui.terminal.rows,             theme,             queueStatus,           }),         invalidate: () => {},         handleInput: (rawInput: string) => {           if (matchesKey(rawInput, 'q')) {             close();             return;           }            if (matchesKey(rawInput, Key.escape)) {             if (mode === 'detail' || mode === 'discussion' || mode === 'timeline') {               mode = 'list';               queueRender();               return;             }             close();             return;           }            if (rawInput === 'j' || matchesKey(rawInput, Key.down)) {             cursor = Math.min(items.length - 1, cursor + 1);             queueRender();             return;           }            if (rawInput === 'k' || matchesKey(rawInput, Key.up)) {             cursor = Math.max(0, cursor - 1);             queueRender();             return;           }            if (rawInput === 'g') {             cursor = 0;             queueRender();             return;           }            if (rawInput === 'G') {             cursor = Math.max(0, items.length - 1);             queueRender();             return;           }            if (mode === 'list' && isEnterInput(rawInput)) {             mode = 'detail';             queueRender();             return;           }            if ((mode === 'detail' || mode === 'discussion') && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail') && (rawInput === 'd' || rawInput === 'D')) {             mode = 'discussion';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail' || mode === 'discussion') && (rawInput === 't' || rawInput === 'T')) {             mode = 'timeline';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail' || mode === 'discussion' || mode === 'timeline') && (rawInput === 'v' || rawInput === 'V')) {             mode = 'gantt';             queueRender();             return;           }            if (mode === 'timeline' && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if (mode === 'timeline' && (rawInput === 'd' || rawInput === 'D')) {             mode = 'discussion';             queueRender();             return;           }            if (mode === 'timeline' && matchesKey(rawInput, Key.escape)) {             mode = 'list';             queueRender();             return;           }            if (mode === 'gantt' && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if (mode === 'gantt' && (rawInput === 't' || rawInput === 'T')) {             mode = 'timeline';             queueRender();             return;           }            if (mode === 'gantt' && matchesKey(rawInput, Key.escape)) {             mode = 'list';             queueRender();             return;           }            if (rawInput === '\t' || rawInput === 'tab') {             stream = stream === 'stdout' ? 'stderr' : 'stdout';             queueRender();             return;           }         },       };     }, {       overlay: true,       overlayOptions: () => ({         width: '100%',         maxHeight: '100%',         row: 0,         col: 0,         margin: 0,       }),     })     .catch(() => undefined)     .finally (node_modules/typescript/lib/lib.es2018.promise.d.ts)
+  Team->>Unresolved: ctx.ui     .custom((tui: TuiInstance, theme: Theme, _keybindings: KeybindingMap, done: () => void) => {       doneUi = done;       requestRender = () => {         if (!closed) {           tui.requestRender();         }       };        // 初期レンダリングとポーリング開始を即座に行う       // UIセットアップ完了後、メンバー実行開始を待たずにポーリングを開始       // これにより経過時間の秒数更新や状態表示が遅延なく行われる       setTimeout(() => {         if (!closed) {           queueRender();           startPolling();         }       }, 0);        return {         render: (width: number) =>           renderAgentTeamLiveView({             title: input.title,             items,             globalEvents,             cursor,             mode,             stream,             width,             height: tui.terminal.rows,             theme,             queueStatus,           }),         invalidate: () => {},         handleInput: (rawInput: string) => {           if (matchesKey(rawInput, 'q')) {             close();             return;           }            if (matchesKey(rawInput, Key.escape)) {             if (mode === 'detail' || mode === 'discussion' || mode === 'timeline') {               mode = 'list';               queueRender();               return;             }             close();             return;           }            if (rawInput === 'j' || matchesKey(rawInput, Key.down)) {             cursor = Math.min(items.length - 1, cursor + 1);             queueRender();             return;           }            if (rawInput === 'k' || matchesKey(rawInput, Key.up)) {             cursor = Math.max(0, cursor - 1);             queueRender();             return;           }            if (rawInput === 'g') {             cursor = 0;             queueRender();             return;           }            if (rawInput === 'G') {             cursor = Math.max(0, items.length - 1);             queueRender();             return;           }            if (mode === 'list' && isEnterInput(rawInput)) {             mode = 'detail';             queueRender();             return;           }            if ((mode === 'detail' || mode === 'discussion') && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail') && (rawInput === 'd' || rawInput === 'D')) {             mode = 'discussion';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail' || mode === 'discussion') && (rawInput === 't' || rawInput === 'T')) {             mode = 'timeline';             queueRender();             return;           }            if ((mode === 'list' || mode === 'detail' || mode === 'discussion' || mode === 'timeline') && (rawInput === 'v' || rawInput === 'V')) {             mode = 'gantt';             queueRender();             return;           }            if (mode === 'timeline' && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if (mode === 'timeline' && (rawInput === 'd' || rawInput === 'D')) {             mode = 'discussion';             queueRender();             return;           }            if (mode === 'timeline' && matchesKey(rawInput, Key.escape)) {             mode = 'list';             queueRender();             return;           }            if (mode === 'gantt' && (rawInput === 'b' || rawInput === 'B')) {             mode = 'list';             queueRender();             return;           }            if (mode === 'gantt' && (rawInput === 't' || rawInput === 'T')) {             mode = 'timeline';             queueRender();             return;           }            if (mode === 'gantt' && matchesKey(rawInput, Key.escape)) {             mode = 'list';             queueRender();             return;           }            if (rawInput === '\t' || rawInput === 'tab') {             stream = stream === 'stdout' ? 'stderr' : 'stdout';             queueRender();             return;           }         },       };     }, {       overlay: true,       overlayOptions: () => ({         width: '100%',         maxHeight: '100%',         row: 0,         col: 0,         margin: 0,       }),     })     .catch (node_modules/typescript/lib/lib.es5.d.ts)
+  Team->>Unresolved: ctx.ui     .custom (.pi/lib/tui-types.ts)
+  Team->>Unresolved: tui.requestRender (.pi/lib/tui-types.ts)
   Team->>Internal: startPolling
   Team->>Internal: renderAgentTeamLiveView
   Team->>Internal: matchesKey
   Team->>Internal: close
   Team->>Internal: Enterキー判定
+  Team->>Internal: pushStateTransition
   Team->>Internal: pushLiveEvent
   Team->>Internal: formatLivePhase
   Team->>Internal: 時刻フォーマット
@@ -551,6 +591,7 @@ sequenceDiagram
   Team->>Internal: 出現回数を数える
   Internal->>Unresolved: input.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Unresolved: chunk.endsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Team->>Internal: classifyActivityFromChunk
   System->>Unresolved: enabledTeams.flatMap (node_modules/typescript/lib/lib.es2019.array.d.ts)
   System->>Internal: マップを作成
   Internal->>Unresolved: links.get(fromId)?.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
@@ -568,6 +609,7 @@ sequenceDiagram
   Internal->>Internal: removeEventListener
   System->>Team: チームタスク実行
   Team->>Internal: キャッシュクリア
+  Internal->>Unresolved: beliefCacheMutex.runExclusive (node_modules/async-mutex/lib/Mutex.d.ts)
   Internal->>Unresolved: beliefStateCacheByTeam.clear (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   Team->>Executor: 一意な実行IDを生成します。
   Executor->>Unresolved: now.getFullYear (node_modules/typescript/lib/lib.es5.d.ts)
@@ -600,18 +642,21 @@ sequenceDiagram
   Internal->>Internal: normalizeRateLimitKey
   Internal->>Internal: createRateLimitKeyScope
   Internal->>Internal: createAbortError
-  Internal->>Internal: selectLongestRateLimitGate
-  Internal->>Internal: getRateLimitGateSnapshot
+  Internal->>Judge: サーキットブレーカーをチェック
   Internal->>Runtime: 観測データを記録
+  Internal->>Internal: getRateLimitGateSnapshot
+  Internal->>Internal: selectLongestRateLimitGate
   Internal->>Internal: createRateLimitFastFailError
   Internal->>Internal: sleepWithAbort
   Internal->>Internal: registerRateLimitGateSuccess
+  Internal->>Internal: 成功を記録
   Internal->>Internal: extractRetryStatusCode
   Internal->>Internal: isNetworkErrorRetryable
+  Internal->>Internal: 失敗を記録
   Internal->>Internal: computeBackoffDelayMs
   Internal->>Internal: registerRateLimitGateHit
   Team->>LLM: runPiPrintMode
-  Team->>Internal: メッセージを文字列化
+  Team->>Internal: エラーメッセージを抽出
   Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   Team->>Internal: isIdleTimeoutErrorMessage
   Team->>Internal: 非同期待機
@@ -647,7 +692,7 @@ sequenceDiagram
   System->>Team: チーム重み計算
   Team->>Internal: getAgentSpecializationWeight
   System->>Unresolved: pi.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
-  System->>Internal: エラーを圧力関連のカテゴリに分類する
+  System->>Internal: メッセージから圧力エラーの種別を分類
   Internal->>Internal: extractStatusCodeFromMessage
   System->>Internal: lower
   System->>Runtime: 並列実行判定
@@ -693,6 +738,7 @@ sequenceDiagram
   Internal->>Unresolved: require (node_modules/@types/node/module.d.ts)
   Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: statSync
   Internal->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
@@ -740,6 +786,7 @@ sequenceDiagram
   Internal->>Unresolved: require (node_modules/@types/node/module.d.ts)
   Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: statSync
   Internal->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
@@ -1062,4 +1109,4 @@ type TeamRunResult = {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.089Z*
+*自動生成: 2026-02-28T13:55:18.737Z*

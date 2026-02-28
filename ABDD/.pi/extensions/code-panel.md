@@ -2,7 +2,7 @@
 title: code-panel
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -20,6 +20,7 @@ related: []
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
 // from '@mariozechner/pi-coding-agent': highlightCode, getLanguageFromPath
 // from '@mariozechner/pi-tui': Container, Text, matchesKey
+// from '../lib/tui/types.js': Theme
 ```
 
 ## エクスポート一覧
@@ -36,6 +37,10 @@ flowchart LR
   subgraph this[code-panel]
     main[Main Module]
   end
+  subgraph local[ローカルモジュール]
+    types["types"]
+  end
+  main --> local
   subgraph external[外部ライブラリ]
     _mariozechner["@mariozechner"]
     _mariozechner["@mariozechner"]
@@ -49,7 +54,7 @@ flowchart LR
 ### formatLinesWithNumbers
 
 ```typescript
-formatLinesWithNumbers(lines: string[], startLine: number, theme: { fg: (color: any, text: string) => string }): string[]
+formatLinesWithNumbers(lines: string[], startLine: number, theme: Theme): string[]
 ```
 
 **パラメータ**
@@ -58,15 +63,14 @@ formatLinesWithNumbers(lines: string[], startLine: number, theme: { fg: (color: 
 |------|-----|------|
 | lines | `string[]` | はい |
 | startLine | `number` | はい |
-| theme | `object` | はい |
-| &nbsp;&nbsp;↳ fg | `(color: any, text: string) => string` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `string[]`
 
 ### createCodePanel
 
 ```typescript
-createCodePanel(code: string, language: string | undefined, filePath: string | undefined, theme: { fg: (color: any, text: string) => string; bold: (text: string) => string }): Container
+createCodePanel(code: string, language: string | undefined, filePath: string | undefined, theme: Theme): Container
 ```
 
 **パラメータ**
@@ -76,8 +80,7 @@ createCodePanel(code: string, language: string | undefined, filePath: string | u
 | code | `string` | はい |
 | language | `string | undefined` | はい |
 | filePath | `string | undefined` | はい |
-| theme | `object` | はい |
-| &nbsp;&nbsp;↳ fg | `(color: any, text: string) => string; bold: (text: string) => string` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `Container`
 
@@ -104,4 +107,4 @@ parseArgs(args: string): {
 }`
 
 ---
-*自動生成: 2026-02-24T17:08:02.131Z*
+*自動生成: 2026-02-28T13:55:18.795Z*

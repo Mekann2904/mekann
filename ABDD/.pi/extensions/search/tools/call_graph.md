@@ -2,7 +2,7 @@
 title: call_graph
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -187,4 +187,4 @@ formatCallees(result: FindCalleesOutput): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-24T17:08:02.418Z*
+*自動生成: 2026-02-28T13:55:20.076Z*

@@ -13,7 +13,7 @@ import {
   buildPatternsPromptSectionJa,
   buildPatternsPromptSectionEn,
 } from "../../lib/pattern-prompt-builder.js";
-import { type ExtractedPattern } from "../../lib/pattern-extraction.js";
+import { type ExtractedPattern } from "../../lib/storage/pattern-extraction.js";
 
 describe("pattern-prompt-builder", () => {
   describe("formatPatternForPrompt", () => {

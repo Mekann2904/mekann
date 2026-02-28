@@ -2,7 +2,7 @@
 title: context_explore
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -193,4 +193,4 @@ context_exploreの結果をフォーマット
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-24T17:08:02.420Z*
+*自動生成: 2026-02-28T13:55:20.079Z*

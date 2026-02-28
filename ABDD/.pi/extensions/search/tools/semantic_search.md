@@ -2,7 +2,7 @@
 title: semantic_search
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -102,16 +102,18 @@ getIndexPath(cwd: string): string
 ### loadIndex
 
 ```typescript
-loadIndex(cwd: string): CodeEmbedding[]
+loadIndex(cwd: string, expectedDimensions?: number): CodeEmbedding[]
 ```
 
 Load the semantic index from disk.
+Validates embedding dimensions to prevent mismatched vectors.
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | cwd | `string` | はい |
+| expectedDimensions | `number` | いいえ |
 
 **戻り値**: `CodeEmbedding[]`
 
@@ -168,4 +170,4 @@ formatSemanticSearch(result: SemanticSearchOutput): string
 **戻り値**: `string`
 
 ---
-*自動生成: 2026-02-24T17:08:02.428Z*
+*自動生成: 2026-02-28T13:55:20.092Z*

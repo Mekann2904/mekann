@@ -2,7 +2,7 @@
 title: kitty-status-integration
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -17,6 +17,9 @@ related: []
 
 ```typescript
 // from 'child_process': spawn
+// from 'os': homedir
+// from 'fs': closeSync, existsSync, openSync, ...
+// from 'path': extname, isAbsolute, resolve
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
 ```
 
@@ -24,6 +27,8 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `playSound` | - |
+| 関数 | `resetForTesting` | テスト用のリセット関数 |
 
 ## 図解
 
@@ -39,6 +44,10 @@ classDiagram
     +successSound: string
     +errorSound: string
   }
+  class EventWithMessages {
+    <<interface>>
+    +messages: unknown
+  }
 ```
 
 ### 依存関係図
@@ -50,12 +59,71 @@ flowchart LR
   end
   subgraph external[外部ライブラリ]
     child_process["child_process"]
+    os["os"]
+    fs["fs"]
+    path["path"]
     _mariozechner["@mariozechner"]
   end
   main --> external
 ```
 
+### シーケンス図
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as 呼び出し元
+  participant kitty_status_integration as "kitty-status-integration"
+  participant child_process as "child_process"
+  participant os as "os"
+  participant fs as "fs"
+
+  Caller->>kitty_status_integration: playSound()
+  kitty_status_integration->>child_process: API呼び出し
+  child_process-->>kitty_status_integration: レスポンス
+  kitty_status_integration-->>Caller: void
+
+  Caller->>kitty_status_integration: resetForTesting()
+  kitty_status_integration-->>Caller: void
+```
+
 ## 関数
+
+### wrapForTmuxPassthrough
+
+```typescript
+wrapForTmuxPassthrough(data: string): string
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| data | `string` | はい |
+
+**戻り値**: `string`
+
+### writeToTerminal
+
+```typescript
+writeToTerminal(data: string): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| data | `string` | はい |
+
+**戻り値**: `void`
+
+### closeTerminalIfNeeded
+
+```typescript
+closeTerminalIfNeeded(): void
+```
+
+**戻り値**: `void`
 
 ### isKitty
 
@@ -140,6 +208,29 @@ notify(text: string, duration: any, title: any, isError: any): void
 
 **戻り値**: `void`
 
+### emitKittyGraphics
+
+```typescript
+emitKittyGraphics(control: string, payload: any): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| control | `string` | はい |
+| payload | `any` | はい |
+
+**戻り値**: `void`
+
+### clearKittyImages
+
+```typescript
+clearKittyImages(): void
+```
+
+**戻り値**: `void`
+
 ### setWindow
 
 ```typescript
@@ -190,6 +281,30 @@ getToolResultStats(messages: unknown[]): { toolCount: number; errorCount: number
 
 **戻り値**: `{ toolCount: number; errorCount: number }`
 
+### resetForTesting
+
+```typescript
+resetForTesting(): void
+```
+
+テスト用のリセット関数
+
+**戻り値**: `void`
+
+### hasMessages
+
+```typescript
+hasMessages(value: unknown): value is EventWithMessages
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+
+**戻り値**: `value is EventWithMessages`
+
 ## インターフェース
 
 ### NotificationOptions
@@ -204,5 +319,13 @@ interface NotificationOptions {
 }
 ```
 
+### EventWithMessages
+
+```typescript
+interface EventWithMessages {
+  messages?: unknown[];
+}
+```
+
 ---
-*自動生成: 2026-02-24T17:08:02.249Z*
+*自動生成: 2026-02-28T13:55:19.004Z*

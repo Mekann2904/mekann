@@ -2,7 +2,7 @@
 title: github-agent
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from 'node:child_process': execFile
 // from 'node:util': promisify
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
-// ... and 2 more imports
+// ... and 3 more imports
 ```
 
 ## エクスポート一覧
@@ -55,6 +55,7 @@ sequenceDiagram
   System->>Unresolved: cmdArgs.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: output.trim (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: unknownをErrorに安全に変換
   System-->>User: 結果
 
 ```
@@ -68,6 +69,10 @@ flowchart LR
   subgraph this[github-agent]
     main[Main Module]
   end
+  subgraph local[ローカルモジュール]
+    error_utils["error-utils"]
+  end
+  main --> local
   subgraph external[外部ライブラリ]
     _mariozechner["@mariozechner"]
     _sinclair["@sinclair"]
@@ -95,4 +100,4 @@ type GhAgentArgs = Static<typeof GhAgentParams>
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.228Z*
+*自動生成: 2026-02-28T13:55:18.969Z*

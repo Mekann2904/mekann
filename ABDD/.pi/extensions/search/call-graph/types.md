@@ -2,7 +2,7 @@
 title: types
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -340,4 +340,4 @@ type CallGraphNodeKind = "function" | "method" | "arrow" | "const"
 呼び出し可能なシンボルの種類
 
 ---
-*自動生成: 2026-02-24T17:08:02.347Z*
+*自動生成: 2026-02-28T13:55:19.648Z*

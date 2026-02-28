@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import * as storage from "../../lib/storage.js";
+import * as storage from "../../lib/storage/index.js";
 
 describe("storage.ts exports", () => {
 	describe("正常系", () => {

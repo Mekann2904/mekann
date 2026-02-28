@@ -2,7 +2,7 @@
 title: self-improvement-loop
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -28,6 +28,143 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+
+## ユーザーフロー
+
+このモジュールが提供するツールと、その実行フローを示します。
+
+### self_improvement_loop
+
+自己改善ループを開始する。ULモードでResearch→Plan→Implementの構造化されたサイクルを実行。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Judge as "Judge"
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Executor as "Executor"
+  participant Storage as "Storage"
+
+  User->>System: 自己改善ループを開始する。ULモードでResearch→Plan→Implementの構造化されたサイクルを実行。
+  System->>Judge: resolveActiveModel
+  Judge->>Unresolved: maybeCtx?.model?.provider?.trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Judge->>Internal: parseModelFromEnv
+  Internal->>Unresolved: raw.split (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Executor: startAutonomousLoop
+  Executor->>Internal: clearStopSignal
+  Internal->>Judge: resolve
+  Internal->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  Internal->>Internal: existsSync
+  Internal->>Storage: writeFileSync
+  Executor->>Executor: createRunId
+  Executor->>Unresolved: new Date().toISOString().replace(/[-:T]/g, '').slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: Math.random().toString (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Unresolved: Math.random (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Storage: createLogFilePath
+  Storage->>Internal: ensureLogDir
+  Internal->>Internal: mkdirSync
+  Storage->>Internal: join
+  Executor->>Internal: initializeAutonomousLoopLog
+  Executor->>Internal: appendAutonomousLoopLog
+  Internal->>Storage: appendFileSync
+  Executor->>Unresolved: dispatchULPhase(run, 'research', input.deliverAs).catch (node_modules/typescript/lib/lib.es5.d.ts)
+  Executor->>Internal: ULフェーズをディスパッチ
+  Internal->>Storage: 変更されたファイル一覧を取得する
+  Storage->>Executor: runGitCommand
+  Storage->>Unresolved: trimmed.match (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: filePath.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Storage->>Unresolved: files.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: console.log (node_modules/typescript/lib/lib.dom.d.ts)
+  Internal->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
+  Internal->>Internal: エラーメッセージを抽出
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: Researchフェーズプロンプトを生成（最小化版）
+  Internal->>Internal: ULフェーズマーカーを生成
+  Internal->>Internal: タスクに適した研究焦点を選択
+  Internal->>Internal: Planフェーズプロンプトを生成（最小化版）
+  Internal->>Internal: Implementフェーズプロンプトを生成（最小化版）
+  Internal->>Unresolved: api.sendUserMessage (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
+  Executor->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
+  Executor->>Internal: dispatchNextCycle
+  Internal->>Internal: buildAutonomousCyclePrompt
+  Internal->>Internal: buildLoopMarker
+  Internal->>Unresolved: run.trajectoryTracker.getSummary (.pi/lib/semantic-repetition.ts)
+  Internal->>Internal: 推奨アクション決定
+  Internal->>Internal: 視座スコア履歴と推奨アクションに基づいて戦略ヒントを生成
+  Internal->>Unresolved: (mc.philosophyOfThought.metacognitionLevel * 100).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: qualityTargets.map (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: 成功パターンセクションを生成
+  System-->>User: 結果
+
+```
+
+### self_improvement_stop
+
+実行中の自己改善ループを停止する。現在のサイクルを完了してから安全に停止する。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Internal as "Internal"
+  participant Judge as "Judge"
+  participant Unresolved as "Unresolved"
+  participant Storage as "Storage"
+
+  User->>System: 実行中の自己改善ループを停止する。現在のサイクルを完了してから安全に停止する。
+  System->>Internal: requestStop
+  Internal->>Judge: resolveStopPath
+  Judge->>Judge: resolve
+  Judge->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  Internal->>Internal: mkdirSync
+  Internal->>Storage: writeFileSync
+  System->>Internal: エラーメッセージを抽出
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### self_improvement_status
+
+自己改善ループの状態を確認する。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Judge as "Judge"
+  participant Unresolved as "Unresolved"
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+
+  User->>System: 自己改善ループの状態を確認する。
+  System->>Judge: resolve
+  System->>Unresolved: process.cwd (node_modules/@types/node/process.d.ts)
+  System->>Judge: checkStopSignal
+  Judge->>Internal: existsSync
+  Judge->>Unresolved: readFileSync(stopPath, 'utf-8').trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Judge->>Storage: readFileSync
+  System->>Internal: 統合制限サマリ取得
+  Internal->>Internal: getLearnedLimit
+  Internal->>Internal: getPredictiveAnalysis
+  System->>Unresolved: (rateSummary.predicted429Probability * 100).toFixed (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: エラーメッセージを抽出
+  Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: Boolean (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: activeRun.trajectoryTracker.getSummary (.pi/lib/semantic-repetition.ts)
+  System-->>User: 結果
+
+```
 
 ## 図解
 
@@ -88,12 +225,20 @@ classDiagram
     +task: string
     +max_cycles: number
     +auto_commit: boolean
+    +ul_mode: boolean
+    +auto_approve: boolean
   }
   class SelfImprovementModel {
     <<interface>>
     +provider: string
     +id: string
     +thinkingLevel: ThinkingLevel
+  }
+  class ULPhaseContext {
+    <<interface>>
+    +researchOutput: string
+    +planOutput: string
+    +improvementActions: ImprovementAction
   }
   class ActiveAutonomousRun {
     <<interface>>
@@ -476,6 +621,124 @@ buildAutonomousCyclePrompt(run: ActiveAutonomousRun, cycle: number): string
 | cycle | `number` | はい |
 
 **戻り値**: `string`
+
+### buildULPhaseMarker
+
+```typescript
+buildULPhaseMarker(runId: string, phase: ULPhase, cycle: number): string
+```
+
+ULフェーズ用のマーカーを生成する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| runId | `string` | はい |
+| phase | `ULPhase` | はい |
+| cycle | `number` | はい |
+
+**戻り値**: `string`
+
+### selectResearchFocus
+
+```typescript
+selectResearchFocus(task: string): { perspective: string; question: string }
+```
+
+タスクに基づいて研究の焦点を選択する
+論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述すべき
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+
+**戻り値**: `{ perspective: string; question: string }`
+
+### buildResearchPrompt
+
+```typescript
+buildResearchPrompt(run: ActiveAutonomousRun): string
+```
+
+Research フェーズ用のプロンプトを生成する
+論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| run | `ActiveAutonomousRun` | はい |
+
+**戻り値**: `string`
+
+### buildPlanPrompt
+
+```typescript
+buildPlanPrompt(run: ActiveAutonomousRun): string
+```
+
+Plan フェーズ用のプロンプトを生成する
+論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| run | `ActiveAutonomousRun` | はい |
+
+**戻り値**: `string`
+
+### buildImplementPrompt
+
+```typescript
+buildImplementPrompt(run: ActiveAutonomousRun): string
+```
+
+Implement フェーズ用のプロンプトを生成する
+論文「Evaluating AGENTS.md」の知見に基づき、最小限の要件のみ記述
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| run | `ActiveAutonomousRun` | はい |
+
+**戻り値**: `string`
+
+### parseULPhaseMarker
+
+```typescript
+parseULPhaseMarker(text: string): { runId: string; phase: string; cycle: number } | null
+```
+
+ULフェーズマーカーをパースする
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| text | `string` | はい |
+
+**戻り値**: `{ runId: string; phase: string; cycle: number } | null`
+
+### shouldStopLoop
+
+```typescript
+shouldStopLoop(run: ActiveAutonomousRun): boolean
+```
+
+ループの停止条件を評価する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| run | `ActiveAutonomousRun` | はい |
+
+**戻り値**: `boolean`
 
 ### parsePerspectiveScores
 
@@ -966,6 +1229,49 @@ async dispatchNextCycle(run: ActiveAutonomousRun, deliverAs?: "followUp"): Promi
 
 **戻り値**: `Promise<void>`
 
+### dispatchULPhase
+
+```typescript
+async dispatchULPhase(run: ActiveAutonomousRun, phase: 'research' | 'plan' | 'implement', deliverAs?: "followUp"): Promise<void>
+```
+
+ULモードのフェーズをディスパッチする
+Research → Plan → Implement のフェーズを実行
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| run | `ActiveAutonomousRun` | はい |
+| phase | `'research' | 'plan' | 'implement'` | はい |
+| deliverAs | `"followUp"` | いいえ |
+
+**戻り値**: `Promise<void>`
+
+### handleULPhaseCompletion
+
+```typescript
+async handleULPhaseCompletion(run: ActiveAutonomousRun, outputText: string, marker: { runId: string; phase: string; cycle: number }, ctx: { isIdle: () => boolean }): Promise<void>
+```
+
+ULフェーズ完了時の処理
+フェーズ遷移とサイクル管理を行う
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| run | `ActiveAutonomousRun` | はい |
+| outputText | `string` | はい |
+| marker | `object` | はい |
+| &nbsp;&nbsp;↳ runId | `string` | はい |
+| &nbsp;&nbsp;↳ phase | `string` | はい |
+| &nbsp;&nbsp;↳ cycle | `number` | はい |
+| ctx | `object` | はい |
+| &nbsp;&nbsp;↳ isIdle | `() => boolean` | はい |
+
+**戻り値**: `Promise<void>`
+
 ### finishRun
 
 ```typescript
@@ -990,6 +1296,10 @@ startAutonomousLoop(input: {
     autoCommit: boolean;
     model: SelfImprovementModel;
     deliverAs?: "followUp";
+    /** ULモード有効フラグ */
+    ulMode?: boolean;
+    /** 自動承認フラグ */
+    autoApprove?: boolean;
   }): { ok: true; run: ActiveAutonomousRun } | { ok: false; error: string }
 ```
 
@@ -1003,6 +1313,8 @@ startAutonomousLoop(input: {
 | &nbsp;&nbsp;↳ autoCommit | `boolean` | はい |
 | &nbsp;&nbsp;↳ model | `SelfImprovementModel` | はい |
 | &nbsp;&nbsp;↳ deliverAs | `"followUp"` | いいえ |
+| &nbsp;&nbsp;↳ ulMode | `boolean` | いいえ |
+| &nbsp;&nbsp;↳ autoApprove | `boolean` | いいえ |
 
 **戻り値**: `{ ok: true; run: ActiveAutonomousRun } | { ok: false; error: string }`
 
@@ -1125,6 +1437,8 @@ interface SelfImprovementLoopParams {
   task: string;
   max_cycles?: number;
   auto_commit?: boolean;
+  ul_mode?: boolean;
+  auto_approve?: boolean;
 }
 ```
 
@@ -1139,6 +1453,18 @@ interface SelfImprovementModel {
   thinkingLevel: ThinkingLevel;
 }
 ```
+
+### ULPhaseContext
+
+```typescript
+interface ULPhaseContext {
+  researchOutput?: string;
+  planOutput?: string;
+  improvementActions?: ImprovementAction[];
+}
+```
+
+ULフェーズコンテキスト
 
 ### ActiveAutonomousRun
 
@@ -1166,6 +1492,11 @@ interface ActiveAutonomousRun {
   successfulPatterns: SuccessfulPattern[];
   filesChangedBeforeCycle: Set<string>;
   gitignorePatternsToAdd: Set<string>;
+  ulMode: boolean;
+  autoApprove: boolean;
+  currentPhase: ULPhase;
+  phaseContext: ULPhaseContext;
+  phaseRetryCount: number;
 }
 ```
 
@@ -1233,5 +1564,13 @@ type PerspectiveName = | "deconstruction"       // 脱構築
 
 7つの哲学的視座
 
+### ULPhase
+
+```typescript
+type ULPhase = 'research' | 'plan' | 'implement' | 'completed'
+```
+
+ULフェーズ種別
+
 ---
-*自動生成: 2026-02-24T17:08:02.467Z*
+*自動生成: 2026-02-28T13:55:20.162Z*

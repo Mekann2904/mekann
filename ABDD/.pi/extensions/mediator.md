@@ -2,7 +2,7 @@
 title: mediator
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerMediatorExtension` | Mediator拡張を登録 |
+| 関数 | `registerMediatorExtension` | - |
 
 ## ユーザーフロー
 
@@ -82,7 +82,7 @@ sequenceDiagram
   Internal->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: output.gaps.forEach (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: StructuredIntentを文字列化
-  System->>Internal: メッセージを文字列化
+  System->>Internal: エラーメッセージを抽出
   Internal->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   System-->>User: 結果
 
@@ -94,11 +94,19 @@ sequenceDiagram
 
 ```mermaid
 classDiagram
+  class MediatorResult {
+    <<interface>>
+    +details: status_string_conf
+  }
   class ParsedMediatorCommand {
     <<interface>>
     +mode: help_interpret
     +task: string
     +error: string
+  }
+  class MediatorContext {
+    <<interface>>
+    +model: unknown
   }
 ```
 
@@ -131,10 +139,12 @@ flowchart LR
 flowchart TD
   createLlmCallFromContext["createLlmCallFromContext()"]
   formatMediatorOutput["formatMediatorOutput()"]
+  hasMediatorDetails["hasMediatorDetails()"]
   parseMediatorCommand["parseMediatorCommand()"]
   registerMediatorExtension["registerMediatorExtension()"]
   registerMediatorExtension --> createLlmCallFromContext
   registerMediatorExtension --> formatMediatorOutput
+  registerMediatorExtension --> hasMediatorDetails
   registerMediatorExtension --> parseMediatorCommand
 ```
 
@@ -146,8 +156,6 @@ flowchart TD
 registerMediatorExtension(pi: ExtensionAPI): void
 ```
 
-Mediator拡張を登録
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -155,6 +163,20 @@ Mediator拡張を登録
 | pi | `ExtensionAPI` | はい |
 
 **戻り値**: `void`
+
+### hasMediatorDetails
+
+```typescript
+hasMediatorDetails(value: unknown): value is MediatorResult
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+
+**戻り値**: `value is MediatorResult`
 
 ### parseMediatorCommand
 
@@ -188,18 +210,26 @@ formatMediatorOutput(output: MediatorOutput, originalInput: string): string
 ### createLlmCallFromContext
 
 ```typescript
-createLlmCallFromContext(ctx: any): LlmCallFunction
+createLlmCallFromContext(ctx: MediatorContext): LlmCallFunction
 ```
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| ctx | `any` | はい |
+| ctx | `MediatorContext` | はい |
 
 **戻り値**: `LlmCallFunction`
 
 ## インターフェース
+
+### MediatorResult
+
+```typescript
+interface MediatorResult {
+  details?: { status?: string; confidence?: number };
+}
+```
 
 ### ParsedMediatorCommand
 
@@ -211,5 +241,13 @@ interface ParsedMediatorCommand {
 }
 ```
 
+### MediatorContext
+
+```typescript
+interface MediatorContext {
+  model?: unknown;
+}
+```
+
 ---
-*自動生成: 2026-02-24T17:08:02.312Z*
+*自動生成: 2026-02-28T13:55:19.214Z*

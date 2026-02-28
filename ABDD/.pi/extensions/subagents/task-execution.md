@@ -2,7 +2,7 @@
 title: task-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -41,7 +41,7 @@ related: []
 | 関数 | `mergeSkillArrays` | - |
 | 関数 | `resolveEffectiveSkills` | サブエージェントの実効スキルを解決する |
 | 関数 | `formatSkillsSection` | スキル一覧を整形 |
-| 関数 | `buildSubagentPrompt` | - |
+| 関数 | `buildSubagentPrompt` | サブエージェント用プロンプトを構築 |
 | 関数 | `runSubagentTask` | サブエージェントタスク実行 |
 | 関数 | `extractSummary` | 要約を抽出 |
 | インターフェース | `SubagentExecutionResult` | サブエージェントの実行結果 |
@@ -430,6 +430,8 @@ buildSubagentPrompt(input: {
 }): string
 ```
 
+サブエージェント用プロンプトを構築
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -589,4 +591,4 @@ interface SubagentDirective {
 サブエージェント用ディレクティブ
 
 ---
-*自動生成: 2026-02-24T17:08:02.498Z*
+*自動生成: 2026-02-28T13:55:22.867Z*

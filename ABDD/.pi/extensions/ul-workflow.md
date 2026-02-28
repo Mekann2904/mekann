@@ -2,7 +2,7 @@
 title: ul-workflow
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -21,15 +21,22 @@ related: []
 // from '@mariozechner/pi-agent-core': AgentToolResult
 // from 'fs': fs
 // from 'path': path
-// ... and 5 more imports
+// ... and 6 more imports
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `getInstanceId` | インスタンスIDを取得 |
+| 関数 | `isProcessAlive` | プロセスが生存しているかどうかを確認する |
+| 関数 | `extractPidFromInstanceId` | インスタンスIDからPIDを抽出する |
 | 関数 | `determineWorkflowPhases` | タスク規模に基づいてフェーズ構成を決定する |
+| 関数 | `determineExecutionStrategy` | タスクの複雑度に基づいて実行戦略を決定する |
+| 関数 | `loadState` | 状態を読み込む |
 | 関数 | `registerUlWorkflowExtension` | 拡張機能を登録 |
+| インターフェース | `ExecutionStrategyResult` | 実行戦略決定結果 |
+| 型 | `ExecutionStrategy` | 実行戦略の種類 |
 
 ## ユーザーフロー
 
@@ -47,21 +54,12 @@ sequenceDiagram
   participant Internal as "Internal"
   participant Unresolved as "Unresolved"
   participant Storage as "Storage"
-  participant Judge as "Judge"
 
   User->>System: UL Workflow Modeを開始（Research-Plan-Annotate-Implement）
-  System->>Internal: getInstanceId
+  System->>Internal: ID取得
   System->>Unresolved: String(task || '').trim (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: 結果を作成するヘルパー関数
-  System->>Internal: getCurrentWorkflow
-  Internal->>Internal: existsSync
-  Internal->>Storage: readFileSync
-  Internal->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Storage: 状態を読み込む
-  Storage->>Internal: join
-  Storage->>Internal: ワークフローディレクトリのパスを取得
-  System->>Judge: checkOwnership
   System->>Internal: タスクIDを生成する
   Internal->>Unresolved: new Date().toISOString().replace(/[:.]/g, '-').slice (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
@@ -77,6 +75,9 @@ sequenceDiagram
   Internal->>Unresolved: normalized.toLowerCase().includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Internal: 明確なゴール判定
   System->>Storage: タスクファイルを作成
+  Storage->>Internal: ワークフローディレクトリのパスを取得
+  Internal->>Internal: join
+  Storage->>Internal: existsSync
   Storage->>Internal: mkdirSync
   Storage->>Storage: writeFileSync
   System->>Storage: 状態を保存
@@ -91,6 +92,7 @@ sequenceDiagram
   Storage->>Internal: sleepSync
   Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Storage: テキスト書込
   Storage->>Internal: renameSync
   Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
@@ -113,21 +115,13 @@ sequenceDiagram
   participant Internal as "Internal"
   participant Unresolved as "Unresolved"
   participant Storage as "Storage"
-  participant Judge as "Judge"
+  participant Executor as "Executor"
 
   User->>System: Research-Plan-Implementを自動実行。plan確認のみインタラクティブ
-  System->>Internal: getInstanceId
+  System->>Internal: ID取得
   System->>Unresolved: String(task || '').trim (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: 結果を作成するヘルパー関数
-  System->>Internal: getCurrentWorkflow
-  Internal->>Internal: existsSync
-  Internal->>Storage: readFileSync
-  Internal->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Storage: 状態を読み込む
-  Storage->>Internal: join
-  Storage->>Internal: ワークフローディレクトリのパスを取得
-  System->>Judge: checkOwnership
   System->>Internal: タスクIDを生成する
   Internal->>Unresolved: new Date().toISOString().replace(/[:.]/g, '-').slice (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: new Date().toISOString().replace (node_modules/typescript/lib/lib.es5.d.ts)
@@ -135,7 +129,18 @@ sequenceDiagram
   Internal->>Unresolved: description.slice(0, 30).toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: randomBytes(4).toString (node_modules/@types/node/buffer.d.ts)
   Internal->>Internal: randomBytes
+  System->>Internal: 実行戦略決定
+  Internal->>Internal: タスク複雑度推定
+  Internal->>Unresolved: normalized.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: /files?[:\[]|[①②③④⑤]/.test (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: highComplexityKeywords.some (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: normalized.toLowerCase().includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Internal: DAG信号分析
+  System->>Unresolved: console.log (node_modules/typescript/lib/lib.dom.d.ts)
   System->>Storage: タスクファイルを作成
+  Storage->>Internal: ワークフローディレクトリのパスを取得
+  Internal->>Internal: join
+  Storage->>Internal: existsSync
   Storage->>Internal: mkdirSync
   Storage->>Storage: writeFileSync
   System->>Storage: 状態を保存
@@ -150,12 +155,42 @@ sequenceDiagram
   Storage->>Internal: sleepSync
   Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Storage: テキスト書込
   Storage->>Internal: renameSync
   Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: setCurrentWorkflow
+  System->>Unresolved: Array.from (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  System->>Unresolved: dagResult.taskResults.values (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
+  System->>Unresolved: allResults.filter (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: allResults.map (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: currentWorkflow.approvedPhases.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Storage: plan.mdを読み込む
+  Storage->>Storage: readFileSync
+  System->>Internal: ExtensionContextをQuestionContextとして型キャスト
+  System->>Internal: 単一質問UI表示
+  Internal->>Internal: playSound
+  Internal->>Unresolved: defaultSounds.find (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: spawn('afplay', [existingSound], {           detached: true,           stdio: 'ignore'         }).unref (node_modules/@types/node/child_process.d.ts)
+  Internal->>Internal: spawn
+  Internal->>Unresolved: process.stdout.write (node_modules/@types/node/net.d.ts)
+  Internal->>Internal: createRenderer
+  Internal->>Executor: truncateToWidth
+  Internal->>Internal: add
+  Internal->>Unresolved: '─'.repeat (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Internal: getStringWidth
+  Internal->>Internal: truncateByWidth
+  Internal->>Internal: wrapTextWithAnsi
+  Internal->>Internal: addCursorLine
+  Internal->>Unresolved: state.selected.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: pasteBuffer.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: pasteBuffer.substring (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: matchesKey
+  Internal->>Unresolved: Key.shift (node_modules/@mariozechner/pi-tui/dist/keys.d.ts)
+  Internal->>Unresolved: data.charCodeAt (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: data.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: newSelected.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: state.selected.forEach (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   System-->>User: 結果
 
 ```
@@ -207,6 +242,8 @@ sequenceDiagram
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
   participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: 現在のフェーズを承認して次へ進む
   System->>Internal: getCurrentWorkflow
@@ -218,7 +255,14 @@ sequenceDiagram
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
   System->>Judge: checkOwnership
-  Judge->>Internal: getInstanceId
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: currentWorkflow.approvedPhases.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: currentWorkflow.approvedPhases.includes (node_modules/typescript/lib/lib.es2016.array.include.d.ts)
@@ -229,6 +273,7 @@ sequenceDiagram
   Storage->>Storage: writeFile
   System->>Internal: フェーズを進める（状態保存は呼び出し元の責任）
   System->>Unresolved: previousPhase.toUpperCase (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: currentWorkflow.taskDescription.slice (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Storage: 状態を保存
   Storage->>Storage: ロック取得実行
   Storage->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
@@ -241,6 +286,8 @@ sequenceDiagram
   Storage->>Internal: sleepSync
   Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
+  Storage->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Internal: mkdirSync
   Storage->>Storage: テキスト書込
   Storage->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
@@ -248,6 +295,65 @@ sequenceDiagram
   Storage->>Storage: writeFileSync
   Storage->>Internal: renameSync
   System->>Internal: setCurrentWorkflow
+  System-->>User: 結果
+
+```
+
+### ul_workflow_force_claim
+
+終了した所有者のワークフローの所有権を強制的に現在のインスタンスに移す
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+  participant Unresolved as "Unresolved"
+  participant LLM as "LLM"
+  participant Executor as "Executor"
+
+  User->>System: 終了した所有者のワークフローの所有権を強制的に現在のインスタンスに移す
+  System->>Internal: getCurrentWorkflow
+  Internal->>Internal: existsSync
+  Internal->>Storage: readFileSync
+  Internal->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Storage: 状態を読み込む
+  Storage->>Internal: join
+  Storage->>Internal: ワークフローディレクトリのパスを取得
+  System->>Internal: 結果を作成するヘルパー関数
+  System->>Internal: ID取得
+  System->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  System->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
+  System->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Storage: 状態を保存
+  Storage->>Storage: ロック取得実行
+  Storage->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Storage->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: Math.ceil (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Internal: hasEfficientSyncSleep
+  Storage->>Internal: tryAcquireLock
+  Storage->>Internal: clearStaleLock
+  Storage->>Internal: sleepSync
+  Storage->>Internal: getSyncSleepDiagnostics
+  Storage->>Internal: unlinkSync
+  Storage->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
+  Storage->>Internal: mkdirSync
+  Storage->>Storage: テキスト書込
+  Storage->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
+  Storage->>Internal: randomBytes
+  Storage->>Storage: writeFileSync
+  Storage->>Internal: renameSync
+  Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: setCurrentWorkflow
+  System->>Unresolved: currentWorkflow.phase.toUpperCase (node_modules/typescript/lib/lib.es5.d.ts)
   System-->>User: 結果
 
 ```
@@ -265,6 +371,8 @@ sequenceDiagram
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
   participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: plan.mdの注釈を検出・適用
   System->>Internal: getCurrentWorkflow
@@ -276,7 +384,14 @@ sequenceDiagram
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
   System->>Judge: checkOwnership
-  Judge->>Internal: getInstanceId
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Storage: plan.mdを読み込む
   System->>Internal: 注釈を抽出
   Internal->>Unresolved: notePattern.exec (node_modules/typescript/lib/lib.es5.d.ts)
@@ -295,6 +410,8 @@ sequenceDiagram
   Storage->>Internal: sleepSync
   Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
+  Storage->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Internal: mkdirSync
   Storage->>Storage: テキスト書込
   Storage->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
@@ -321,6 +438,8 @@ sequenceDiagram
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
   participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: plan.mdを表示して実行の確認を求める
   System->>Internal: getCurrentWorkflow
@@ -332,7 +451,67 @@ sequenceDiagram
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
   System->>Judge: checkOwnership
-  Judge->>Internal: getInstanceId
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
+  System->>Internal: ExtensionContextをQuestionContextとして型キャスト
+  System->>Internal: 単一質問UI表示
+  Internal->>Internal: playSound
+  Internal->>Unresolved: defaultSounds.find (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: spawn('afplay', [existingSound], {           detached: true,           stdio: 'ignore'         }).unref (node_modules/@types/node/child_process.d.ts)
+  Internal->>Internal: spawn
+  Internal->>Unresolved: process.stdout.write (node_modules/@types/node/net.d.ts)
+  Internal->>Internal: createRenderer
+  Internal->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Executor: truncateToWidth
+  Internal->>Internal: add
+  Internal->>Unresolved: '─'.repeat (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: question.asciiArt.trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: question.asciiArt.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: getStringWidth
+  Internal->>Internal: truncateByWidth
+  Internal->>Internal: wrapTextWithAnsi
+  Internal->>Unresolved: wl.text.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: addCursorLine
+  Internal->>Unresolved: state.selected.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: data.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: data.replace (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: pasteBuffer.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: pasteBuffer.substring (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: matchesKey
+  Internal->>Unresolved: Key.shift (node_modules/@mariozechner/pi-tui/dist/keys.d.ts)
+  Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: data.charCodeAt (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: data.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: newSelected.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: state.selected.forEach (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  System->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Storage: 状態を保存
+  Storage->>Storage: ロック取得実行
+  Storage->>Unresolved: Math.trunc (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Storage->>Unresolved: Math.ceil (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Internal: hasEfficientSyncSleep
+  Storage->>Internal: tryAcquireLock
+  Storage->>Internal: clearStaleLock
+  Storage->>Internal: sleepSync
+  Storage->>Internal: getSyncSleepDiagnostics
+  Storage->>Internal: unlinkSync
+  Storage->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
+  Storage->>Internal: mkdirSync
+  Storage->>Storage: テキスト書込
+  Storage->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
+  Storage->>Internal: randomBytes
+  Storage->>Storage: writeFileSync
+  Storage->>Internal: renameSync
+  Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: setCurrentWorkflow
   System-->>User: 結果
 
 ```
@@ -350,6 +529,8 @@ sequenceDiagram
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
   participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: plan.mdに基づいて実装フェーズを実行
   System->>Internal: getCurrentWorkflow
@@ -361,7 +542,14 @@ sequenceDiagram
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
   System->>Judge: checkOwnership
-  Judge->>Internal: getInstanceId
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Unresolved: currentWorkflow.approvedPhases.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Storage: 状態を保存
@@ -376,6 +564,8 @@ sequenceDiagram
   Storage->>Internal: sleepSync
   Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
+  Storage->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Internal: mkdirSync
   Storage->>Storage: テキスト書込
   Storage->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
@@ -384,7 +574,6 @@ sequenceDiagram
   Storage->>Internal: renameSync
   Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: setCurrentWorkflow
-  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   System-->>User: 結果
 
 ```
@@ -402,6 +591,8 @@ sequenceDiagram
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
   participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: plan.mdを修正する
   System->>Internal: getCurrentWorkflow
@@ -413,7 +604,14 @@ sequenceDiagram
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
   System->>Judge: checkOwnership
-  Judge->>Internal: getInstanceId
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Unresolved: String(modifications || '').trim (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
@@ -429,6 +627,7 @@ sequenceDiagram
   Storage->>Internal: sleepSync
   Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Internal: mkdirSync
   Storage->>Storage: テキスト書込
   Storage->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
@@ -438,7 +637,35 @@ sequenceDiagram
   Storage->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: setCurrentWorkflow
   System->>Storage: plan.mdを読み込む
-  System->>Unresolved: trimmedModifications.replace (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: ExtensionContextをQuestionContextとして型キャスト
+  System->>Internal: 単一質問UI表示
+  Internal->>Internal: playSound
+  Internal->>Unresolved: defaultSounds.find (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: spawn('afplay', [existingSound], {           detached: true,           stdio: 'ignore'         }).unref (node_modules/@types/node/child_process.d.ts)
+  Internal->>Internal: spawn
+  Internal->>Unresolved: process.stdout.write (node_modules/@types/node/net.d.ts)
+  Internal->>Internal: createRenderer
+  Internal->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Executor: truncateToWidth
+  Internal->>Internal: add
+  Internal->>Unresolved: '─'.repeat (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: question.asciiArt.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: getStringWidth
+  Internal->>Internal: truncateByWidth
+  Internal->>Internal: wrapTextWithAnsi
+  Internal->>Unresolved: wl.text.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: addCursorLine
+  Internal->>Unresolved: state.selected.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: data.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: data.replace (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: pasteBuffer.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: pasteBuffer.substring (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: matchesKey
+  Internal->>Unresolved: Key.shift (node_modules/@mariozechner/pi-tui/dist/keys.d.ts)
+  Internal->>Unresolved: data.charCodeAt (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: data.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: newSelected.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: state.selected.forEach (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   System-->>User: 結果
 
 ```
@@ -456,6 +683,8 @@ sequenceDiagram
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
   participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: ワークフローを中止
   System->>Internal: getCurrentWorkflow
@@ -467,7 +696,14 @@ sequenceDiagram
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
   System->>Judge: checkOwnership
-  Judge->>Internal: getInstanceId
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Storage: 状態を保存
   Storage->>Storage: ロック取得実行
@@ -481,6 +717,8 @@ sequenceDiagram
   Storage->>Internal: sleepSync
   Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
+  Storage->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Internal: mkdirSync
   Storage->>Storage: テキスト書込
   Storage->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
@@ -505,9 +743,12 @@ sequenceDiagram
   participant Internal as "Internal"
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
+  participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: 中止したワークフローを再開
-  System->>Internal: getInstanceId
+  System->>Internal: ID取得
   System->>Internal: getCurrentWorkflow
   Internal->>Internal: existsSync
   Internal->>Storage: readFileSync
@@ -516,6 +757,14 @@ sequenceDiagram
   Storage->>Internal: join
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
+  System->>Judge: checkOwnership
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Storage: 状態を保存
   Storage->>Storage: ロック取得実行
@@ -529,6 +778,8 @@ sequenceDiagram
   Storage->>Internal: sleepSync
   Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
+  Storage->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Internal: mkdirSync
   Storage->>Storage: テキスト書込
   Storage->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
@@ -554,6 +805,9 @@ sequenceDiagram
   participant Internal as "Internal"
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
+  participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: 研究フェーズを実行（researcherへの委任指示を生成）
   System->>Internal: getCurrentWorkflow
@@ -564,6 +818,15 @@ sequenceDiagram
   Storage->>Internal: join
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
+  System->>Judge: checkOwnership
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System-->>User: 結果
 
 ```
@@ -581,6 +844,8 @@ sequenceDiagram
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
   participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: 計画フェーズを実行（architectへの委任指示を生成）
   System->>Internal: getCurrentWorkflow
@@ -592,7 +857,14 @@ sequenceDiagram
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
   System->>Judge: checkOwnership
-  Judge->>Internal: getInstanceId
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Unresolved: workflow.approvedPhases.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Storage: 状態を保存
@@ -607,6 +879,8 @@ sequenceDiagram
   Storage->>Internal: sleepSync
   Storage->>Internal: getSyncSleepDiagnostics
   Storage->>Internal: unlinkSync
+  Storage->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Storage->>Unresolved: console.debug (node_modules/typescript/lib/lib.dom.d.ts)
   Storage->>Internal: mkdirSync
   Storage->>Storage: テキスト書込
   Storage->>Unresolved: randomBytes(3).toString (node_modules/@types/node/buffer.d.ts)
@@ -632,6 +906,8 @@ sequenceDiagram
   participant Storage as "Storage"
   participant Unresolved as "Unresolved"
   participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
 
   User->>System: 実装フェーズを実行（implementerへの委任指示を生成）
   System->>Internal: getCurrentWorkflow
@@ -643,8 +919,125 @@ sequenceDiagram
   Storage->>Internal: ワークフローディレクトリのパスを取得
   System->>Internal: 結果を作成するヘルパー関数
   System->>Judge: checkOwnership
-  Judge->>Internal: getInstanceId
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
   System->>Unresolved: workflow?.approvedPhases.includes (node_modules/typescript/lib/lib.es2016.array.include.d.ts)
+  System-->>User: 結果
+
+```
+
+### ul_workflow_dag
+
+Execute high-complexity task using DAG-based parallel execution. Automatically generates DAG and executes with dependency-aware parallelism.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+  participant Unresolved as "Unresolved"
+
+  User->>System: Execute high-complexity task using DAG-based parallel exe...
+  System->>Internal: getCurrentWorkflow
+  Internal->>Internal: existsSync
+  Internal->>Storage: readFileSync
+  Internal->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Storage: 状態を読み込む
+  Storage->>Internal: join
+  Storage->>Internal: ワークフローディレクトリのパスを取得
+  System->>Internal: 実行戦略決定
+  Internal->>Internal: タスク複雑度推定
+  Internal->>Unresolved: String(task || '').trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: normalized.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: /files?[:\[]|[①②③④⑤]/.test (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: highComplexityKeywords.some (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: normalized.toLowerCase().includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: normalized.toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: DAG信号分析
+  System->>Unresolved: plan.tasks.map (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: t.description.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: params.task.replace (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: JSON.stringify (node_modules/typescript/lib/lib.es5.d.ts)
+  System-->>User: 結果
+
+```
+
+### ul_workflow_commit
+
+実装完了後のコミットを提案・実行する。git-workflowスキルの統合コミットパターンを使用。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as ユーザー
+  participant System as System
+  participant Internal as "Internal"
+  participant Storage as "Storage"
+  participant Unresolved as "Unresolved"
+  participant Judge as "Judge"
+  participant Executor as "Executor"
+  participant LLM as "LLM"
+
+  User->>System: 実装完了後のコミットを提案・実行する。git-workflowスキルの統合コミットパターンを使用。
+  System->>Internal: getCurrentWorkflow
+  Internal->>Internal: existsSync
+  Internal->>Storage: readFileSync
+  Internal->>Unresolved: JSON.parse (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Storage: 状態を読み込む
+  Storage->>Internal: join
+  Storage->>Internal: ワークフローディレクトリのパスを取得
+  System->>Internal: 結果を作成するヘルパー関数
+  System->>Judge: checkOwnership
+  Judge->>Internal: ID取得
+  Judge->>Executor: 古い所有者の終了確認
+  Executor->>LLM: PID抽出
+  LLM->>Unresolved: instanceId.match (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number (node_modules/typescript/lib/lib.es5.d.ts)
+  LLM->>Unresolved: Number.isInteger (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Executor->>Executor: プロセス生存確認
+  Executor->>Unresolved: process.kill (node_modules/@types/node/process.d.ts)
+  System->>Unresolved: taskDesc.toLowerCase (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: lowerTask.includes (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  System->>Unresolved: taskDesc.slice (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: ExtensionContextをQuestionContextとして型キャスト
+  System->>Internal: 単一質問UI表示
+  Internal->>Internal: playSound
+  Internal->>Unresolved: defaultSounds.find (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: spawn('afplay', [existingSound], {           detached: true,           stdio: 'ignore'         }).unref (node_modules/@types/node/child_process.d.ts)
+  Internal->>Internal: spawn
+  Internal->>Unresolved: process.stdout.write (node_modules/@types/node/net.d.ts)
+  Internal->>Internal: createRenderer
+  Internal->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Executor: truncateToWidth
+  Internal->>Internal: add
+  Internal->>Unresolved: '─'.repeat (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: question.asciiArt.trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: question.asciiArt.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: getStringWidth
+  Internal->>Internal: truncateByWidth
+  Internal->>Internal: wrapTextWithAnsi
+  Internal->>Internal: addCursorLine
+  Internal->>Unresolved: state.selected.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: data.replace (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: pasteBuffer.indexOf (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: pasteBuffer.substring (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: matchesKey
+  Internal->>Unresolved: Key.shift (node_modules/@mariozechner/pi-tui/dist/keys.d.ts)
+  Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: data.charCodeAt (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: data.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Unresolved: newSelected.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: state.selected.forEach (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   System-->>User: 結果
 
 ```
@@ -669,6 +1062,20 @@ classDiagram
     +ownerInstanceId: string_null
     +updatedAt: string
   }
+  class OwnershipResult {
+    <<interface>>
+    +owned: boolean
+    +error: string
+    +autoClaim: boolean
+    +previousOwner: string
+  }
+  class ExecutionStrategyResult {
+    <<interface>>
+    +strategy: ExecutionStrategy
+    +phases: WorkflowPhase
+    +useDag: boolean
+    +reason: string
+  }
   class WorkflowRunResult {
     <<interface>>
     +taskId: string
@@ -689,6 +1096,7 @@ flowchart LR
   subgraph local[ローカルモジュール]
     agent_utils["agent-utils"]
     storage_lock["storage-lock"]
+    question["question"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -706,14 +1114,19 @@ flowchart LR
 ```mermaid
 flowchart TD
   advancePhase["advancePhase()"]
+  analyzeDagSignals["analyzeDagSignals()"]
   checkOwnership["checkOwnership()"]
   createTaskFile["createTaskFile()"]
+  determineExecutionStrategy["determineExecutionStrategy()"]
   determineWorkflowPhases["determineWorkflowPhases()"]
   extractAnnotations["extractAnnotations()"]
+  extractPidFromInstanceId["extractPidFromInstanceId()"]
   generateTaskId["generateTaskId()"]
   getCurrentWorkflow["getCurrentWorkflow()"]
   getInstanceId["getInstanceId()"]
   getTaskDir["getTaskDir()"]
+  isOwnerProcessDead["isOwnerProcessDead()"]
+  isProcessAlive["isProcessAlive()"]
   loadState["loadState()"]
   looksLikeClearGoalTask["looksLikeClearGoalTask()"]
   makeResult["makeResult()"]
@@ -723,20 +1136,27 @@ flowchart TD
   saveStateAsync["saveStateAsync()"]
   setCurrentWorkflow["setCurrentWorkflow()"]
   checkOwnership --> getInstanceId
+  checkOwnership --> isOwnerProcessDead
   createTaskFile --> getTaskDir
+  determineExecutionStrategy --> analyzeDagSignals
   determineWorkflowPhases --> looksLikeClearGoalTask
   getCurrentWorkflow --> loadState
+  isOwnerProcessDead --> extractPidFromInstanceId
+  isOwnerProcessDead --> isProcessAlive
   loadState --> getTaskDir
   readPlanFile --> getTaskDir
   registerUlWorkflowExtension --> advancePhase
   registerUlWorkflowExtension --> checkOwnership
   registerUlWorkflowExtension --> createTaskFile
+  registerUlWorkflowExtension --> determineExecutionStrategy
   registerUlWorkflowExtension --> determineWorkflowPhases
   registerUlWorkflowExtension --> extractAnnotations
+  registerUlWorkflowExtension --> extractPidFromInstanceId
   registerUlWorkflowExtension --> generateTaskId
   registerUlWorkflowExtension --> getCurrentWorkflow
   registerUlWorkflowExtension --> getInstanceId
   registerUlWorkflowExtension --> getTaskDir
+  registerUlWorkflowExtension --> isProcessAlive
   registerUlWorkflowExtension --> loadState
   registerUlWorkflowExtension --> makeResult
   registerUlWorkflowExtension --> readPlanFile
@@ -760,15 +1180,15 @@ sequenceDiagram
   participant agent_utils as "agent-utils"
   participant storage_lock as "storage-lock"
 
-  Caller->>ul_workflow: determineWorkflowPhases()
+  Caller->>ul_workflow: getInstanceId()
   ul_workflow->>mariozechner: API呼び出し
   mariozechner-->>ul_workflow: レスポンス
   ul_workflow->>agent_utils: 内部関数呼び出し
   agent_utils-->>ul_workflow: 結果
-  ul_workflow-->>Caller: WorkflowPhase
+  ul_workflow-->>Caller: string
 
-  Caller->>ul_workflow: registerUlWorkflowExtension()
-  ul_workflow-->>Caller: void
+  Caller->>ul_workflow: isProcessAlive()
+  ul_workflow-->>Caller: boolean
 ```
 
 ## 関数
@@ -778,6 +1198,8 @@ sequenceDiagram
 ```typescript
 getInstanceId(): string
 ```
+
+インスタンスIDを取得
 
 **戻り値**: `string`
 
@@ -803,10 +1225,82 @@ setCurrentWorkflow(state: WorkflowState | null): void
 
 **戻り値**: `void`
 
+### isProcessAlive
+
+```typescript
+isProcessAlive(pid: number): boolean
+```
+
+プロセスが生存しているかどうかを確認する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| pid | `number` | はい |
+
+**戻り値**: `boolean`
+
+### extractPidFromInstanceId
+
+```typescript
+extractPidFromInstanceId(instanceId: string): number | null
+```
+
+インスタンスIDからPIDを抽出する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| instanceId | `string` | はい |
+
+**戻り値**: `number | null`
+
+### getRunSubagent
+
+```typescript
+getRunSubagent(ctx: unknown): ((options: {
+  subagentId: string;
+  task: string;
+  extraContext?: string;
+}) => Promise<AgentToolResult<unknown>>) | undefined
+```
+
+コンテキストからrunSubagentを安全に取得する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| ctx | `unknown` | はい |
+
+**戻り値**: `((options: {
+  subagentId: string;
+  task: string;
+  extraContext?: string;
+}) => Promise<AgentToolResult<unknown>>) | undefined`
+
+### isOwnerProcessDead
+
+```typescript
+isOwnerProcessDead(ownerInstanceId: string): boolean
+```
+
+以前の所有者のプロセスが終了しているかどうかを確認する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| ownerInstanceId | `string` | はい |
+
+**戻り値**: `boolean`
+
 ### checkOwnership
 
 ```typescript
-checkOwnership(state: WorkflowState | null): { owned: boolean; error?: string }
+checkOwnership(state: WorkflowState | null, options?: { autoClaim?: boolean }): OwnershipResult
 ```
 
 **パラメータ**
@@ -814,8 +1308,10 @@ checkOwnership(state: WorkflowState | null): { owned: boolean; error?: string }
 | 名前 | 型 | 必須 |
 |------|-----|------|
 | state | `WorkflowState | null` | はい |
+| options | `object` | いいえ |
+| &nbsp;&nbsp;↳ autoClaim | `boolean` | いいえ |
 
-**戻り値**: `{ owned: boolean; error?: string }`
+**戻り値**: `OwnershipResult`
 
 ### looksLikeClearGoalTask
 
@@ -850,6 +1346,47 @@ determineWorkflowPhases(task: string): WorkflowPhase[]
 | task | `string` | はい |
 
 **戻り値**: `WorkflowPhase[]`
+
+### determineExecutionStrategy
+
+```typescript
+determineExecutionStrategy(task: string): ExecutionStrategyResult
+```
+
+タスクの複雑度に基づいて実行戦略を決定する
+高複雑度タスクではDAG実行を推奨
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+
+**戻り値**: `ExecutionStrategyResult`
+
+### analyzeDagSignals
+
+```typescript
+analyzeDagSignals(task: string): {
+  hasExplicitSteps: boolean;
+  hasMultipleFiles: boolean;
+  needsResearch: boolean;
+}
+```
+
+DAG生成用のタスク信号分析（簡易版）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| task | `string` | はい |
+
+**戻り値**: `{
+  hasExplicitSteps: boolean;
+  hasMultipleFiles: boolean;
+  needsResearch: boolean;
+}`
 
 ### generateSubagentInstructionSimple
 
@@ -1120,6 +1657,32 @@ interface ActiveWorkflowRegistry {
 }
 ```
 
+### OwnershipResult
+
+```typescript
+interface OwnershipResult {
+  owned: boolean;
+  error?: string;
+  autoClaim?: boolean;
+  previousOwner?: string;
+}
+```
+
+所有権チェック結果
+
+### ExecutionStrategyResult
+
+```typescript
+interface ExecutionStrategyResult {
+  strategy: ExecutionStrategy;
+  phases: WorkflowPhase[];
+  useDag: boolean;
+  reason: string;
+}
+```
+
+実行戦略決定結果
+
 ### WorkflowRunResult
 
 ```typescript
@@ -1142,8 +1705,16 @@ WorkflowRunResult - ul_workflow_runの実行結果
 ### WorkflowPhase
 
 ```typescript
-type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "completed" | "aborted"
+type WorkflowPhase = "idle" | "research" | "plan" | "annotate" | "implement" | "review" | "completed" | "aborted"
 ```
 
+### ExecutionStrategy
+
+```typescript
+type ExecutionStrategy = "simple" | "dag" | "full-workflow"
+```
+
+実行戦略の種類
+
 ---
-*自動生成: 2026-02-24T17:08:02.580Z*
+*自動生成: 2026-02-28T13:55:23.017Z*

@@ -2,7 +2,7 @@
 title: sym_find
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -210,4 +210,4 @@ async symFind(input: SymFindInput, cwd: string): Promise<SymFindOutput>
 **戻り値**: `Promise<SymFindOutput>`
 
 ---
-*自動生成: 2026-02-24T17:08:02.429Z*
+*自動生成: 2026-02-28T13:55:20.093Z*

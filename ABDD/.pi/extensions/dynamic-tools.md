@@ -2,7 +2,7 @@
 title: dynamic-tools
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerDynamicToolsExtension` | 動的ツール拡張を登録 |
+| 関数 | `registerDynamicToolsExtension` | - |
 
 ## ユーザーフロー
 
@@ -535,8 +535,6 @@ tool_reflection: 実行後の反省とツール生成判定
 registerDynamicToolsExtension(pi: ExtensionAPI): void
 ```
 
-動的ツール拡張を登録
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -611,4 +609,4 @@ interface ToolReflectionInput {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.219Z*
+*自動生成: 2026-02-28T13:55:18.941Z*

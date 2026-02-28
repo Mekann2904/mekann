@@ -2,7 +2,7 @@
 title: plan
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -28,6 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `resetForTesting` | テスト用のリセット関数 |
 
 ## ユーザーフロー
 
@@ -165,8 +166,14 @@ sequenceDiagram
   System->>Internal: addStepToPlan
   Internal->>Internal: generateId
   Internal->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Unresolved: plan.steps.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: ステップ依存関係の循環を検出する
+  Internal->>Unresolved: dependencies.includes (node_modules/typescript/lib/lib.es2016.array.include.d.ts)
+  Internal->>Unresolved: stack.pop (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: visited.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: visited.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: stack.push (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: new Date().toISOString (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Storage: saveStorage
   System->>Unresolved: logger.endOperation (.pi/lib/comprehensive-logger.ts)
   System-->>User: 結果
@@ -461,6 +468,25 @@ findStepById(plan: Plan, stepId: string): PlanStep | undefined
 
 **戻り値**: `PlanStep | undefined`
 
+### hasCircularDependency
+
+```typescript
+hasCircularDependency(plan: Plan, newStepId: string, dependencies?: string[]): boolean
+```
+
+ステップ依存関係の循環を検出する
+深さ優先探索でサイクルを検出
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| plan | `Plan` | はい |
+| newStepId | `string` | はい |
+| dependencies | `string[]` | いいえ |
+
+**戻り値**: `boolean`
+
 ### addStepToPlan
 
 ```typescript
@@ -535,6 +561,16 @@ formatPlanList(plans: Plan[]): string
 | plans | `Plan[]` | はい |
 
 **戻り値**: `string`
+
+### resetForTesting
+
+```typescript
+resetForTesting(): void
+```
+
+テスト用のリセット関数
+
+**戻り値**: `void`
 
 ### syncPlanModeEnv
 
@@ -625,4 +661,4 @@ interface PlanStorage {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.321Z*
+*自動生成: 2026-02-28T13:55:19.226Z*

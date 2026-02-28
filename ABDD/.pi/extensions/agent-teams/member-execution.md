@@ -2,7 +2,7 @@
 title: member-execution
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -34,7 +34,7 @@ related: []
 | 関数 | `formatTeamMemberSkillsSection` | スキルリストをプロンプト用に整形 |
 | 関数 | `loadSkillContent` | スキル名からファイル内容を読込 |
 | 関数 | `buildSkillsSectionWithContent` | スキル定義からコンテンツを生成 |
-| 関数 | `buildTeamMemberPrompt` | - |
+| 関数 | `buildTeamMemberPrompt` | プロンプト構築 |
 | 関数 | `runMember` | メンバータスクを実行し結果を返却 |
 | インターフェース | `TeamNormalizedOutput` | チーム実行結果の正規化出力 |
 
@@ -328,6 +328,8 @@ buildTeamMemberPrompt(input: {
 }): string
 ```
 
+プロンプト構築
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -475,4 +477,4 @@ interface PromptDirective {
 プロンプトディレクティブ
 
 ---
-*自動生成: 2026-02-24T17:08:02.106Z*
+*自動生成: 2026-02-28T13:55:18.762Z*

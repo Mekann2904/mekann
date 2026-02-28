@@ -2,7 +2,7 @@
 title: startup-context
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -42,4 +42,4 @@ flowchart LR
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.486Z*
+*自動生成: 2026-02-28T13:55:22.836Z*

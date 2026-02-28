@@ -2,7 +2,7 @@
 title: abbr
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -52,6 +52,12 @@ sequenceDiagram
   System->>Unresolved: abbreviations.values (node_modules/typescript/lib/lib.es2015.iterable.d.ts)
   System->>Unresolved: abbrs.map((a) => `${a.name} → ${a.expansion}`).join (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: abbrs.map (node_modules/typescript/lib/lib.es5.d.ts)
+  System->>Internal: 略語の展開における循環参照を検出する
+  Internal->>Unresolved: visited.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: visited.add (node_modules/typescript/lib/lib.es2015.collection.d.ts)
+  Internal->>Unresolved: expansion.trim().split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: expansion.trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: abbreviations.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   System->>Unresolved: abbreviations.set (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   System->>Internal: persistState
   Internal->>Storage: saveToFile
@@ -60,8 +66,6 @@ sequenceDiagram
   Storage->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Unresolved: piInstance.appendEntry (node_modules/@mariozechner/pi-coding-agent/dist/core/extensions/types.d.ts)
   System->>Unresolved: abbreviations.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
-  System->>Unresolved: abbreviations.get (node_modules/typescript/lib/lib.es2015.collection.d.ts)
-  System->>Unresolved: abbreviations.has (node_modules/typescript/lib/lib.es2015.collection.d.ts)
   System-->>User: 結果
 
 ```
@@ -143,6 +147,24 @@ persistState(): void
 ```
 
 **戻り値**: `void`
+
+### hasCircularReference
+
+```typescript
+hasCircularReference(name: string, expansion: string, visited: Set<string>): boolean
+```
+
+略語の展開における循環参照を検出する
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| name | `string` | はい |
+| expansion | `string` | はい |
+| visited | `Set<string>` | はい |
+
+**戻り値**: `boolean`
 
 ### findExpansion
 
@@ -260,4 +282,4 @@ interface AbbrDetails {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:01.736Z*
+*自動生成: 2026-02-28T13:55:17.620Z*

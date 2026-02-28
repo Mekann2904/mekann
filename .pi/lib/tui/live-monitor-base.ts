@@ -33,7 +33,7 @@ import { matchesKey, Key, truncateToWidth } from "@mariozechner/pi-tui";
 
 import type { Theme } from "./types.js";
 import { formatDurationMs, formatBytes, formatClockTime } from "../format-utils.js";
-import { computeLiveWindow } from "../agent-utils.js";
+import { computeLiveWindow } from "../agent/agent-utils.js";
 import { getLiveStatusGlyph, getLiveStatusColor, getActivityIndicator, isEnterInput, finalizeLiveLines } from "../live-view-utils.js";
 import { appendTail, countOccurrences, estimateLineCount, renderPreviewWithMarkdown } from "./tui-utils.js";
 

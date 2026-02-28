@@ -2,7 +2,7 @@
 title: ul-dual-mode
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -17,6 +17,7 @@ related: []
 
 ```typescript
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
+// from 'async-mutex': Mutex
 ```
 
 ## エクスポート一覧
@@ -24,7 +25,7 @@ related: []
 | 種別 | 名前 | 説明 |
 |------|------|------|
 | 関数 | `enhanceTaskWithTokenEfficiency` | タスクにトークン効率化コンテキストを追加する |
-| 関数 | `registerUlDualModeExtension` | 拡張機能を登録 |
+| 関数 | `registerUlDualModeExtension` | - |
 
 ## 図解
 
@@ -40,6 +41,11 @@ classDiagram
     -updateAccessOrder()
     +clear()
   }
+  class ToolCallEventLike {
+    <<interface>>
+    +toolName: unknown
+    +input: unknown
+  }
 ```
 
 ### 依存関係図
@@ -51,6 +57,7 @@ flowchart LR
   end
   subgraph external[外部ライブラリ]
     _mariozechner["@mariozechner"]
+    async_mutex["async-mutex"]
   end
   main --> external
 ```
@@ -111,6 +118,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant ul_dual_mode as "ul-dual-mode"
   participant mariozechner as "@mariozechner"
+  participant async_mutex as "async-mutex"
 
   Caller->>ul_dual_mode: enhanceTaskWithTokenEfficiency()
   ul_dual_mode->>mariozechner: API呼び出し
@@ -122,6 +130,38 @@ sequenceDiagram
 ```
 
 ## 関数
+
+### updateState
+
+```typescript
+async updateState(updates: Partial<typeof state>): Promise<void>
+```
+
+状態を安全に更新する（ミューテックスで保護）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| updates | `Partial<typeof state>` | はい |
+
+**戻り値**: `Promise<void>`
+
+### withStateLock
+
+```typescript
+async withStateLock(mutator: (s: typeof state) => T | Promise<T>): Promise<T>
+```
+
+状態を安全に読み取って更新する（ミューテックスで保護）
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| mutator | `(s: typeof state) => T | Promise<T>` | はい |
+
+**戻り値**: `Promise<T>`
 
 ### persistState
 
@@ -143,19 +183,33 @@ persistState(pi: ExtensionAPI): void
 resetState(): void
 ```
 
+状態をリセットする（同期的 - イベントループ内で安全）
+
 **戻り値**: `void`
+
+### resetStateAsync
+
+```typescript
+async resetStateAsync(): Promise<void>
+```
+
+状態を非同期にリセットする（ミューテックスで保護）
+
+**戻り値**: `Promise<void>`
 
 ### refreshStatus
 
 ```typescript
-refreshStatus(ctx: any): void
+refreshStatus(ctx: ExtensionAPI["context"]): void
 ```
+
+BUG-TS-004修正: 型安全なコンテキストパラメータ
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| ctx | `any` | はい |
+| ctx | `ExtensionAPI["context"]` | はい |
 
 **戻り値**: `void`
 
@@ -184,17 +238,18 @@ getAdaptiveThrottleMs(): number
 ### refreshStatusThrottled
 
 ```typescript
-refreshStatusThrottled(ctx: any): void
+refreshStatusThrottled(ctx: ExtensionAPI["context"]): void
 ```
 
 適応的スロットリング付きのrefreshStatus。
 負荷に応じてスロットリング間隔を動的に調整し、UI更新のオーバーヘッドを削減する。
+BUG-TS-004修正: 型安全なコンテキストパラメータ
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| ctx | `any` | はい |
+| ctx | `ExtensionAPI["context"]` | はい |
 
 **戻り値**: `void`
 
@@ -299,14 +354,16 @@ normalizeId(value: unknown): string
 ### parseToolInput
 
 ```typescript
-parseToolInput(event: any): Record<string, unknown> | undefined
+parseToolInput(event: ToolCallEventLike): Record<string, unknown> | undefined
 ```
+
+BUG-TS-004修正: 型安全なイベントパラメータ
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| event | `any` | はい |
+| event | `ToolCallEventLike` | はい |
 
 **戻り値**: `Record<string, unknown> | undefined`
 
@@ -327,42 +384,48 @@ extractIdList(value: unknown): string[]
 ### isRecommendedSubagentParallelCall
 
 ```typescript
-isRecommendedSubagentParallelCall(event: any): boolean
+isRecommendedSubagentParallelCall(event: ToolCallEventLike): boolean
 ```
+
+BUG-TS-004修正: 型安全なイベントパラメータ
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| event | `any` | はい |
+| event | `ToolCallEventLike` | はい |
 
 **戻り値**: `boolean`
 
 ### isRecommendedCoreTeamCall
 
 ```typescript
-isRecommendedCoreTeamCall(event: any): boolean
+isRecommendedCoreTeamCall(event: ToolCallEventLike): boolean
 ```
+
+BUG-TS-004修正: 型安全なイベントパラメータ
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| event | `any` | はい |
+| event | `ToolCallEventLike` | はい |
 
 **戻り値**: `boolean`
 
 ### isRecommendedReviewerCall
 
 ```typescript
-isRecommendedReviewerCall(event: any): boolean
+isRecommendedReviewerCall(event: ToolCallEventLike): boolean
 ```
+
+BUG-TS-004修正: 型安全なイベントパラメータ
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| event | `any` | はい |
+| event | `ToolCallEventLike` | はい |
 
 **戻り値**: `boolean`
 
@@ -451,8 +514,6 @@ enhanceTaskWithTokenEfficiency(task: string, isInternal: boolean): string
 registerUlDualModeExtension(pi: ExtensionAPI): void
 ```
 
-拡張機能を登録
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -484,5 +545,19 @@ LRUキャッシュの実装
 | updateAccessOrder | `updateAccessOrder(key): void` |
 | clear | `clear(): void` |
 
+## インターフェース
+
+### ToolCallEventLike
+
+```typescript
+interface ToolCallEventLike {
+  toolName?: unknown;
+  input?: unknown;
+}
+```
+
+BUG-TS-004修正: ツール呼び出しイベントの型定義
+any型を排除し、コンパイル時の型チェックを有効化
+
 ---
-*自動生成: 2026-02-24T17:08:02.564Z*
+*自動生成: 2026-02-28T13:55:22.990Z*

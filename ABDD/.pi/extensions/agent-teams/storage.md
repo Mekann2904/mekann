@@ -2,7 +2,7 @@
 title: storage
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -468,7 +468,7 @@ type TeamEnabledState = "enabled" | "disabled"
 ### TeamStrategy
 
 ```typescript
-type TeamStrategy = "parallel" | "sequential"
+type TeamStrategy = "parallel" | "sequential" | "repoaudit"
 ```
 
 チームの実行戦略を表す型
@@ -490,4 +490,4 @@ type TeamPaths = BaseStoragePaths
 チームパス定義
 
 ---
-*自動生成: 2026-02-24T17:08:02.110Z*
+*自動生成: 2026-02-28T13:55:18.766Z*

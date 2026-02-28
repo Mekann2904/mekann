@@ -2,7 +2,7 @@
 title: search_repograph
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -30,7 +30,7 @@ related: []
 | 関数 | `searchRepograph` | Search RepoGraph with k-hop egograph extraction |
 | 関数 | `formatSearchResult` | Format search result for display |
 | インターフェース | `SearchRepographOutput` | Output schema for search_repograph tool |
-| 型 | `SearchRepographInput` | - |
+| 型 | `SearchRepographInput` | 検索入力定義 |
 
 ## 図解
 
@@ -150,5 +150,7 @@ Output schema for search_repograph tool
 type SearchRepographInput = Static<typeof SearchRepographInput>
 ```
 
+検索入力定義
+
 ---
-*自動生成: 2026-02-24T17:08:02.426Z*
+*自動生成: 2026-02-28T13:55:20.089Z*

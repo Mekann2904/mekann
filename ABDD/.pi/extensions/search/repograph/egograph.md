@@ -2,7 +2,7 @@
 title: egograph
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -241,4 +241,4 @@ interface EgographResult {
 Result of egograph extraction
 
 ---
-*自動生成: 2026-02-24T17:08:02.408Z*
+*自動生成: 2026-02-28T13:55:19.990Z*

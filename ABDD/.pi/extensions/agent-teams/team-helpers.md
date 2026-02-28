@@ -2,7 +2,7 @@
 title: team-helpers
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -95,4 +95,4 @@ pickDefaultParallelTeams(storage: TeamStorage): TeamDefinition[]
 **戻り値**: `TeamDefinition[]`
 
 ---
-*自動生成: 2026-02-24T17:08:02.112Z*
+*自動生成: 2026-02-28T13:55:18.768Z*

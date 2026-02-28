@@ -2,7 +2,7 @@
 title: self-improvement-reflection
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -237,4 +237,4 @@ type ReflectionAction = "summary" | "insights" | "generate" | "perspectives" | "
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.471Z*
+*自動生成: 2026-02-28T13:55:22.686Z*

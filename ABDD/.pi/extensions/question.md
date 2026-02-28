@@ -2,7 +2,7 @@
 title: question
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -20,12 +20,19 @@ related: []
 // from '@mariozechner/pi-coding-agent': ExtensionAPI, ExtensionContext
 // from '@mariozechner/pi-tui': Text, truncateToWidth, wrapTextWithAnsi, ...
 // from '@mariozechner/pi-tui': matchesKey, Key
+// from './kitty-status-integration.js': playSound
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
+| 関数 | `asQuestionContext` | ExtensionContextをQuestionContextとして型キャスト |
+| 関数 | `askSingleQuestion` | 単一の質問をユーザーに表示して回答を取得する |
+| インターフェース | `QuestionOption` | 質問の選択肢 |
+| インターフェース | `QuestionInfo` | 質問情報 |
+| インターフェース | `QuestionContext` | 質問用コンテキスト |
+| 型 | `Answer` | 回答（選択されたラベルの配列） |
 
 ## ユーザーフロー
 
@@ -45,15 +52,30 @@ sequenceDiagram
   participant Executor as "Executor"
 
   User->>System: **必須使用**: ユーザーに選択肢から選ばせたり、確認を求める場合は必ずこのツールを使ってください。単一選択、複...
+  System->>Internal: 構造化エラーレスポンスを作成
+  Internal->>Unresolved: error.recovery.map((r, i) => `${i + 1}. ${r}`).join (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: error.recovery.map (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Internal: ExtensionContextをQuestionContextとして型キャスト
+  System->>Unresolved: validationErrors.push (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: new Array(questions.length).fill (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  System->>Internal: askSingleQuestion
+  System->>Internal: 単一質問UI表示
+  Internal->>Internal: playSound
+  Internal->>Unresolved: defaultSounds.find (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Internal: existsSync
+  Internal->>Unresolved: spawn('afplay', [existingSound], {           detached: true,           stdio: 'ignore'         }).unref (node_modules/@types/node/child_process.d.ts)
+  Internal->>Internal: spawn
+  Internal->>Unresolved: process.stdout.write (node_modules/@types/node/net.d.ts)
   Internal->>Internal: createRenderer
-  Internal->>Unresolved: lines.push (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Executor: truncateToWidth
   Internal->>Internal: add
   Internal->>Unresolved: '─'.repeat (node_modules/typescript/lib/lib.es2015.core.d.ts)
-  Internal->>Unresolved: state.customInput.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: question.asciiArt.trim (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: question.asciiArt.split (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Internal: 文字列の表示幅を取得
+  Internal->>Internal: 文字の表示幅を取得
+  Internal->>Unresolved: char.codePointAt (node_modules/typescript/lib/lib.es2015.core.d.ts)
+  Internal->>Executor: 表示幅から文字列を切り詰め
   Internal->>Internal: wrapTextWithAnsi
   Internal->>Unresolved: wl.text.slice (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: addCursorLine
@@ -64,9 +86,7 @@ sequenceDiagram
   Internal->>Unresolved: pasteBuffer.substring (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: matchesKey
   Internal->>Unresolved: Key.shift (node_modules/@mariozechner/pi-tui/dist/keys.d.ts)
-  Internal->>Unresolved: state.customInput.trim (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
-  Internal->>Unresolved: Math.max (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: data.charCodeAt (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Unresolved: data.startsWith (node_modules/typescript/lib/lib.es2015.core.d.ts)
   Internal->>Unresolved: newSelected.delete (node_modules/typescript/lib/lib.es2015.collection.d.ts)
@@ -74,8 +94,6 @@ sequenceDiagram
   System->>Internal: showConfirmationScreen
   Internal->>Unresolved: /^[1-9]$/.test (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: parseInt
-  System->>Unresolved: questions.map((q, i) => `'${q.question}'='${answers[i]!.join(', ')}'`).join (node_modules/typescript/lib/lib.es5.d.ts)
-  System->>Unresolved: questions.map (node_modules/typescript/lib/lib.es5.d.ts)
   System-->>User: 結果
 
 ```
@@ -86,6 +104,13 @@ sequenceDiagram
 
 ```mermaid
 classDiagram
+  class QuestionError {
+    <<interface>>
+    +code: QuestionErrorCode
+    +message: string
+    +recovery: string
+    +details: Record_string_unknow
+  }
   class QuestionOption {
     <<interface>>
     +label: string
@@ -95,9 +120,9 @@ classDiagram
     <<interface>>
     +question: string
     +header: string
+    +asciiArt: string
     +options: QuestionOption
     +multiple: boolean
-    +custom: boolean
   }
   class QuestionTheme {
     <<interface>>
@@ -116,6 +141,10 @@ classDiagram
     +hasUI: boolean
     +ui: custom_T_handler
   }
+  class QuestionResult {
+    <<interface>>
+    +details: answers_string
+  }
 ```
 
 ### 依存関係図
@@ -125,6 +154,10 @@ flowchart LR
   subgraph this[question]
     main[Main Module]
   end
+  subgraph local[ローカルモジュール]
+    kitty_status_integration["kitty-status-integration"]
+  end
+  main --> local
   subgraph external[外部ライブラリ]
     _mariozechner["@mariozechner"]
     _mariozechner["@mariozechner"]
@@ -132,6 +165,27 @@ flowchart LR
     _mariozechner["@mariozechner"]
   end
   main --> external
+```
+
+### 関数フロー
+
+```mermaid
+flowchart TD
+  add["add()"]
+  addCursorLine["addCursorLine()"]
+  asQuestionContext["asQuestionContext()"]
+  askSingleQuestion["askSingleQuestion()"]
+  createRenderer["createRenderer()"]
+  getCharWidth["getCharWidth()"]
+  getStringWidth["getStringWidth()"]
+  truncateByWidth["truncateByWidth()"]
+  askSingleQuestion --> add
+  askSingleQuestion --> addCursorLine
+  askSingleQuestion --> createRenderer
+  askSingleQuestion --> getStringWidth
+  askSingleQuestion --> truncateByWidth
+  getStringWidth --> getCharWidth
+  truncateByWidth --> getCharWidth
 ```
 
 ### シーケンス図
@@ -142,10 +196,38 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant question as "question"
   participant mariozechner as "@mariozechner"
+  participant kitty_status_integration as "kitty-status-integration"
 
+  Caller->>question: asQuestionContext()
+  question->>mariozechner: API呼び出し
+  mariozechner-->>question: レスポンス
+  question->>kitty_status_integration: 内部関数呼び出し
+  kitty_status_integration-->>question: 結果
+  question-->>Caller: QuestionContext
+
+  Caller->>question: askSingleQuestion()
+  activate question
+  question-->>Caller: Promise_Answer_null
+  deactivate question
 ```
 
 ## 関数
+
+### createErrorResponse
+
+```typescript
+createErrorResponse(error: QuestionError): { content: { type: "text"; text: string }[]; details: { answers: never[]; error: QuestionError } }
+```
+
+構造化エラーレスポンスを作成
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| error | `QuestionError` | はい |
+
+**戻り値**: `{ content: { type: "text"; text: string }[]; details: { answers: never[]; error: QuestionError } }`
 
 ### asQuestionContext
 
@@ -164,6 +246,56 @@ ExtensionContextをQuestionContextとして型キャスト
 | ctx | `ExtensionContext` | はい |
 
 **戻り値**: `QuestionContext`
+
+### getCharWidth
+
+```typescript
+getCharWidth(char: string): number
+```
+
+文字の表示幅を取得
+CJK文字は幅2、それ以外は幅1
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| char | `string` | はい |
+
+**戻り値**: `number`
+
+### getStringWidth
+
+```typescript
+getStringWidth(str: string): number
+```
+
+文字列の表示幅を取得
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| str | `string` | はい |
+
+**戻り値**: `number`
+
+### truncateByWidth
+
+```typescript
+truncateByWidth(str: string, maxWidth: number): string
+```
+
+表示幅から文字列を切り詰め
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| str | `string` | はい |
+| maxWidth | `number` | はい |
+
+**戻り値**: `string`
 
 ### createRenderer
 
@@ -185,6 +317,8 @@ createRenderer(initialState: TState, renderFn: (state: TState, width: number, th
 ```typescript
 async askSingleQuestion(question: QuestionInfo, ctx: QuestionContext): Promise<Answer | null>
 ```
+
+単一の質問をユーザーに表示して回答を取得する
 
 **パラメータ**
 
@@ -253,7 +387,34 @@ add(s: string): void
 
 **戻り値**: `void`
 
+### hasQuestionDetails
+
+```typescript
+hasQuestionDetails(value: unknown): value is QuestionResult
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `unknown` | はい |
+
+**戻り値**: `value is QuestionResult`
+
 ## インターフェース
+
+### QuestionError
+
+```typescript
+interface QuestionError {
+  code: QuestionErrorCode;
+  message: string;
+  recovery: string[];
+  details?: Record<string, unknown>;
+}
+```
+
+構造化エラー情報
 
 ### QuestionOption
 
@@ -264,17 +425,22 @@ interface QuestionOption {
 }
 ```
 
+質問の選択肢
+
 ### QuestionInfo
 
 ```typescript
 interface QuestionInfo {
   question: string;
   header: string;
+  asciiArt?: string;
   options: QuestionOption[];
   multiple?: boolean;
   custom?: boolean;
 }
 ```
+
+質問情報
 
 ### QuestionTheme
 
@@ -313,6 +479,17 @@ interface QuestionContext {
 }
 ```
 
+質問用コンテキスト
+ExtensionContextから必要なUI機能を抽出
+
+### QuestionResult
+
+```typescript
+interface QuestionResult {
+  details?: { answers?: string[][] };
+}
+```
+
 ## 型定義
 
 ### Answer
@@ -320,6 +497,8 @@ interface QuestionContext {
 ```typescript
 type Answer = string[]
 ```
+
+回答（選択されたラベルの配列）
 
 ### QuestionCustomController
 
@@ -338,4 +517,4 @@ type ConfirmAction = { type: "confirm" } | { type: "edit"; questionIndex: number
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.326Z*
+*自動生成: 2026-02-28T13:55:19.262Z*
