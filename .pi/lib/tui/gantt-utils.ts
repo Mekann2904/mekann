@@ -29,7 +29,7 @@
 
 import type { Theme, ThemeColor } from "./types.js";
 import { truncateToWidth } from "@mariozechner/pi-tui";
-import { formatClockTime } from "../format-utils.js";
+import { formatClockTime } from "../core/format-utils.js";
 import { pushWrappedLine } from "./tui-utils.js";
 import type { BaseLiveSnapshot, StateTransition } from "../live-types-base.js";
 
