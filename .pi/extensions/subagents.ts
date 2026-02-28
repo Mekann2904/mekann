@@ -960,6 +960,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           id: sessionId,
           type: "subagent",
           agentId: agent.id,
+          taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
           taskTitle: params.task.slice(0, 100),
           status: "starting",
           startedAt: Date.now(),
@@ -1328,6 +1329,20 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               items: monitorItems,
             });
 
+            // Create runtime session for DAG auto-execution tracking
+            const autoDagSessionId = generateSessionId();
+            const autoDagSession: RuntimeSession = {
+              id: autoDagSessionId,
+              type: "subagent",
+              agentId: "dag-auto-executor",
+              taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
+              taskTitle: params.task.slice(0, 100),
+              status: "starting",
+              startedAt: Date.now(),
+              teammateCount: dagPlan.tasks.length,
+            };
+            addSession(autoDagSession);
+
             // Execute DAG
             const dagResult = await executeDag<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
               dagPlan,
@@ -1383,6 +1398,15 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             await saveStorageWithPatterns(ctx.cwd, storage);
 
             const failedTasks = allResults.filter((r) => r.status === "failed");
+
+            // Update session with final status
+            updateSession(autoDagSessionId, {
+              status: failedTasks.length === 0 ? "completed" : "failed",
+              completedAt: Date.now(),
+              progress: 100,
+              message: `${allResults.length - failedTasks.length}/${dagPlan.tasks.length} tasks completed`,
+            });
+
             const dagSummary = `[DAG Auto-Execution] ${dagPlan.tasks.length} tasks, ${allResults.length - failedTasks.length} succeeded, ${failedTasks.length} failed`;
 
             logger.endOperation({
@@ -1437,6 +1461,20 @@ ${allResults.map((r) => {
           const weight = getAgentSpecializationWeight(agent.id);
           agentWeights.set(agent.id, weight);
         }
+
+        // Create runtime session for parallel execution tracking
+        const parallelSessionId = generateSessionId();
+        const parallelSession: RuntimeSession = {
+          id: parallelSessionId,
+          type: "subagent",
+          agentId: activeAgents.map((a) => a.id).join(","),  // Multiple agent IDs
+          taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
+          taskTitle: params.task.slice(0, 100),
+          status: "starting",
+          startedAt: Date.now(),
+          teammateCount: activeAgents.length,
+        };
+        addSession(parallelSession);
 
         // Promise.allSettledパターンで部分失敗を許容
         type SubagentTaskResult = { runRecord: SubagentRunRecord; output: string; prompt: string };
@@ -1519,7 +1557,14 @@ ${allResults.map((r) => {
         // Include rejected results in failure count
         const failed = results.filter((result) => result.runRecord.status === "failed");
         const totalFailed = failed.length + rejectedResults.length;
-        
+
+        // Update session with final status
+        updateSession(parallelSessionId, {
+          status: totalFailed === 0 ? "completed" : (totalFailed < activeAgents.length ? "completed" : "failed"),
+          completedAt: Date.now(),
+          message: `${results.length - failed.length}/${activeAgents.length} agents completed`,
+        });
+
         if (totalFailed > 0) {
           const pressureSignals = failed
             .map((result) => classifyPressureError(result.runRecord.error || ""))
@@ -1843,6 +1888,20 @@ ${allResults.map((r) => {
           items: monitorItems,
         });
 
+        // Create runtime session for DAG execution tracking
+        const dagSessionId = generateSessionId();
+        const dagSession: RuntimeSession = {
+          id: dagSessionId,
+          type: "subagent",
+          agentId: "dag-executor",
+          taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
+          taskTitle: params.task.slice(0, 100),
+          status: "starting",
+          startedAt: Date.now(),
+          teammateCount: taskPlan.tasks.length,
+        };
+        addSession(dagSession);
+
         runtimeState.activeRunRequests += 1;
         notifyRuntimeCapacityChanged();
         refreshRuntimeStatus(ctx);
@@ -1919,6 +1978,14 @@ ${allResults.map((r) => {
         // Build result
         const completedCount = dagResult.completedTaskIds.length;
         const failedCount = dagResult.failedTaskIds.length;
+
+        // Update session with final status
+        updateSession(dagSessionId, {
+          status: dagResult.overallStatus === "completed" ? "completed" : "failed",
+          completedAt: Date.now(),
+          progress: 100,
+          message: `${completedCount}/${taskPlan.tasks.length} tasks completed`,
+        });
 
         const aggregatedOutput = Array.from(dagResult.taskResults.entries())
           .map(([taskId, result]) => {
