@@ -58,7 +58,7 @@ function restoreGlobalPrototypeSafety(): void {
 
 async function cleanupVitestRuntime(): Promise<void> {
   const [coordinator, runtime, adaptive] = await Promise.all([
-    import("../.pi/lib/cross-instance-coordinator"),
+    import("../.pi/lib/coordination/cross-instance-coordinator.js"),
     import("../.pi/extensions/agent-runtime"),
     import("../.pi/lib/adaptive-rate-controller"),
   ]);

@@ -65,13 +65,13 @@ import {
   detectSemanticRepetition,
   type SemanticRepetitionResult,
 } from "../lib/semantic-repetition";
-import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
+import { atomicWriteTextFile, withFileLock } from "../lib/storage/storage-lock.js";
 import {
   findRelevantPatterns,
   getTopSuccessPatterns,
   getFailurePatternsToAvoid,
   type ExtractedPattern,
-} from "../lib/pattern-extraction";
+} from "../lib/storage/pattern-extraction.js";
 
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 import { checkUlWorkflowOwnership } from "./subagents.js";

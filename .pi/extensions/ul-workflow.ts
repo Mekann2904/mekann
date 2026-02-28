@@ -35,7 +35,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { promises as fsPromises } from "fs";
 import { randomBytes } from "node:crypto";
 import { estimateTaskComplexity, type TaskComplexity } from "../lib/agent/agent-utils.js";
-import { withFileLock, atomicWriteTextFile } from "../lib/storage-lock";
+import { withFileLock, atomicWriteTextFile } from "../lib/storage/storage-lock.js";
 import { askSingleQuestion, asQuestionContext, type QuestionInfo } from "./question";
 
 // ワークフローのフェーズ
