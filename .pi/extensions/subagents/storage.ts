@@ -40,8 +40,8 @@ import {
   mergeSubagentStorageWithDisk as mergeStorageWithDiskCommon,
   createCorruptedBackup,
   type BaseStoragePaths,
-} from "../../lib/storage-base.js";
-import { atomicWriteTextFile, withFileLock } from "../../lib/storage-lock.js";
+} from "../../lib/storage/storage-base.js";
+import { atomicWriteTextFile, withFileLock } from "../../lib/storage/storage-lock.js";
 import { getLogger } from "../../lib/comprehensive-logger.js";
 
 const logger = getLogger();
@@ -447,11 +447,11 @@ export async function saveStorageWithPatterns(
   saveStorage(cwd, storage);
 
   // Extract patterns from new runs (async, non-blocking)
-  const { addRunToPatterns } = await import("../../lib/pattern-extraction.js");
+  const { addRunToPatterns } = await import("../../lib/storage/pattern-extraction.js");
   const { addRunToSemanticMemory, isSemanticMemoryAvailable } = await import(
     "../../lib/semantic-memory.js"
   );
-  const { indexSubagentRun } = await import("../../lib/run-index.js");
+  const { indexSubagentRun } = await import("../../lib/storage/run-index.js");
 
   // Get the most recent run(s) that haven't been indexed yet
   const recentRuns = storage.runs.slice(-5);

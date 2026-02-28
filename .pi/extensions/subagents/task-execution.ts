@@ -59,7 +59,7 @@ import {
 import {
   findRelevantPatterns,
   type ExtractedPattern,
-} from "../../lib/pattern-extraction.js";
+} from "../../lib/storage/pattern-extraction.js";
 import {
   type SchemaViolation,
   type RegenerationConfig,

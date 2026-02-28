@@ -13,7 +13,7 @@ import {
 	createPathsFactory,
 	createEnsurePaths,
 	mergeEntitiesById,
-} from "@lib/storage-base";
+} from "@lib/storage/storage-base";
 
 // ============================================================================
 // createPathsFactory

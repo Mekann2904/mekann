@@ -54,7 +54,7 @@ import { SchemaValidationError, ExecutionError } from "../../lib/core/errors.js"
 import {
   findRelevantPatterns,
   type ExtractedPattern,
-} from "../../lib/pattern-extraction.js";
+} from "../../lib/storage/pattern-extraction.js";
 import {
   isPlanModeActive,
   PLAN_MODE_WARNING,

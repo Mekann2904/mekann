@@ -26,7 +26,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getRuntimeConfig } from "./runtime-config.js";
-import { withFileLock } from "./storage-lock.js";
+import { withFileLock } from "./storage/storage-lock.js";
 
 type ObservationKind = "success" | "rate_limit" | "timeout" | "error";
 

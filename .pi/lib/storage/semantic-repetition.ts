@@ -1,0 +1,473 @@
+/**
+ * @abdd.meta
+ * path: .pi/lib/semantic-repetition.ts
+ * role: 意味的重複検出モジュール
+ * why: エージェントの出力が停止しループ状態に陥ったかを検出し、無駄な計算資源の消費を防ぐため
+ * related: .pi/lib/embeddings/index.ts
+ * public_api: SemanticRepetitionResult, SemanticRepetitionOptions, TrajectorySummary, DEFAULT_REPETITION_THRESHOLD, DEFAULT_MAX_TEXT_LENGTH
+ * invariants: similarityスコアは0.0から1.0の範囲である、埋め込みキャッシュは最大100件までである
+ * side_effects: なし（キャッシュはモジュール内のMapに閉じている）
+ * failure_modes: OpenAI APIキー未設定時は埋め込み検出が使用できない、テキスト長が制限を超えると切り詰めが発生する
+ * @abdd.explain
+ * overview: "Agentic Search in the Wild" に基づき、連続する出力の意味的類似性を計測して探索の停滞を検出するモジュール。
+ * what_it_does:
+ *   - 連続するテキスト間のコサイン類似度を計算する
+ *   - 設定された閾値を超える場合、重複とみなす
+ *   - 埋め込み計算結果をLRUキャッシュで保持しAPIコストを削減する
+ * why_it_exists:
+ *   - 32.15%の軌跡で重複パターンが見られるという研究知見に基づき、早期停止の判断材料を提供する
+ *   - 探索のループ状態を自動的に特定するため
+ * scope:
+ *   in: 比較対象のテキスト文字列、検出オプション（閾値、API使用有無）
+ *   out: 重複の有無、類似度スコア、検出手法
+ */
+
+/**
+ * Semantic Repetition Detection Module.
+ * Detects semantic similarity between consecutive outputs to identify stagnation.
+ * Based on findings from "Agentic Search in the Wild" paper (arXiv:2601.17617v2):
+ * - 32.15% of trajectories show repetition pattern
+ * - Repetition indicates stagnation and signals early stopping opportunity
+ */
+
+import {
+  generateEmbedding,
+  cosineSimilarity,
+  getEmbeddingProvider,
+} from "./embeddings/index.js";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/**
+ * 意味的重複検出の結果
+ * @summary 結果を返却
+ * @returns {boolean} isRepeated 意味的重複が検出されたか
+ * @returns {number} similarity 類似度スコア (0.0-1.0)
+ * @returns {string} method 使用された検出手法
+ */
+export interface SemanticRepetitionResult {
+  /** Whether semantic repetition was detected */
+  isRepeated: boolean;
+  /** Similarity score (0.0-1.0) */
+  similarity: number;
+  /** Method used for detection */
+  method: "embedding" | "exact" | "unavailable";
+}
+
+/**
+ * 意味的重複検出のオプション設定
+ * @summary オプションを定義
+ * @returns {number} threshold 重複とみなす類似度の閾値（デフォルト: 0.85）
+ * @returns {boolean} useEmbedding 埋め込みベースの検出を使用するか（OPENAI_API_KEYが必要）
+ * @returns {number} maxTextLength 比較する最大テキスト長（デフォルト: 2000）
+ */
+export interface SemanticRepetitionOptions {
+  /** Similarity threshold for considering outputs as repeated (default: 0.85) */
+  threshold?: number;
+  /** Whether to use embedding-based detection (requires OPENAI_API_KEY) */
+  useEmbedding?: boolean;
+  /** Maximum text length to compare (default: 2000) */
+  maxTextLength?: number;
+}
+
+/**
+ * 軌跡の要約情報を表すインターフェース
+ * @summary 軌跡を要約
+ * @returns {number} totalSteps 総ステップ数
+ * @returns {number} repetitionCount 重複検出回数
+ * @returns {number} averageSimilarity 平均類似度
+ * @returns {number[]} similarityTrend 類似度のトレンド配列
+ * @returns {boolean} isStuck ループに陥っているかどうか
+ */
+export interface TrajectorySummary {
+  /** Total steps analyzed */
+  totalSteps: number;
+  /** Number of repetition detections */
+  repetitionCount: number;
+  /** Average similarity across steps */
+  averageSimilarity: number;
+  /** Trend direction of similarity */
+  similarityTrend: "increasing" | "decreasing" | "stable";
+  /** Whether session appears stuck */
+  isStuck: boolean;
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * Default threshold for semantic repetition detection.
+ * Based on paper findings: repetition indicates stagnation at high similarity.
+ */
+export const DEFAULT_REPETITION_THRESHOLD = 0.85;
+
+/**
+ * Maximum text length for embedding comparison.
+ * OpenAI embedding API has a token limit; this keeps requests manageable.
+ */
+export const DEFAULT_MAX_TEXT_LENGTH = 2000;
+
+// ============================================================================
+// Embedding Cache (最適化: 埋め込み結果をキャッシュしてAPI呼び出しを削減)
+// ============================================================================
+
+const EMBEDDING_CACHE_MAX_SIZE = 100;
+const embeddingCache = new Map<string, number[]>();
+const embeddingCacheOrder: string[] = [];
+
+function getCachedEmbedding(text: string): number[] | null {
+  const cached = embeddingCache.get(text);
+  if (cached) {
+    // LRU: アクセスされたエントリを末尾に移動
+    const idx = embeddingCacheOrder.indexOf(text);
+    if (idx >= 0) {
+      embeddingCacheOrder.splice(idx, 1);
+      embeddingCacheOrder.push(text);
+    }
+  }
+  return cached ?? null;
+}
+
+function setCachedEmbedding(text: string, embedding: number[]): void {
+  // 既存の場合は削除してから追加（LRU更新）
+  if (embeddingCache.has(text)) {
+    const idx = embeddingCacheOrder.indexOf(text);
+    if (idx >= 0) {
+      embeddingCacheOrder.splice(idx, 1);
+    }
+  }
+  
+  embeddingCache.set(text, embedding);
+  embeddingCacheOrder.push(text);
+  
+  // 最大エントリ数を超えた場合、最も古いエントリを削除
+  while (embeddingCacheOrder.length > EMBEDDING_CACHE_MAX_SIZE) {
+    const oldestKey = embeddingCacheOrder.shift();
+    if (oldestKey) {
+      embeddingCache.delete(oldestKey);
+    }
+  }
+}
+
+// ============================================================================
+// Core Functions
+// ============================================================================
+
+/**
+ * 出力の意味的な重複を検出する
+ * @summary 重複を検出
+ * @param current 現在のテキスト
+ * @param previous 直前のテキスト
+ * @param options 検出オプション（閾値、埋め込み利用など）
+ * @returns 重複判定結果を含むPromise
+ */
+export async function detectSemanticRepetition(
+  current: string,
+  previous: string,
+  options: SemanticRepetitionOptions = {}
+): Promise<SemanticRepetitionResult> {
+  const {
+    threshold = DEFAULT_REPETITION_THRESHOLD,
+    useEmbedding = true,
+    maxTextLength = DEFAULT_MAX_TEXT_LENGTH,
+  } = options;
+
+  // Normalize inputs
+  const normalizedCurrent = normalizeText(current, maxTextLength);
+  const normalizedPrevious = normalizeText(previous, maxTextLength);
+
+  // Empty check
+  if (!normalizedCurrent || !normalizedPrevious) {
+    return {
+      isRepeated: false,
+      similarity: 0,
+      method: "exact",
+    };
+  }
+
+  // Exact match check first (fast path)
+  if (normalizedCurrent === normalizedPrevious) {
+    return {
+      isRepeated: true,
+      similarity: 1.0,
+      method: "exact",
+    };
+  }
+
+  // If exact match not detected and embedding disabled, return not repeated
+  if (!useEmbedding) {
+    return {
+      isRepeated: false,
+      similarity: 0,
+      method: "exact",
+    };
+  }
+
+  // Embedding-based check
+  const provider = await getEmbeddingProvider();
+  if (!provider) {
+    // プロバイダーがない場合は処理をスキップ
+    return {
+      isRepeated: false,
+      similarity: 0,
+      method: "unavailable",
+    };
+  }
+
+  // 最適化: キャッシュを確認してAPI呼び出しを削減
+  let currentEmb = getCachedEmbedding(normalizedCurrent);
+  let previousEmb = getCachedEmbedding(normalizedPrevious);
+  
+  // キャッシュにない埋め込みのみ生成
+  const embeddingsToGenerate: { key: string; index: number }[] = [];
+  if (!currentEmb) embeddingsToGenerate.push({ key: normalizedCurrent, index: 0 });
+  if (!previousEmb) embeddingsToGenerate.push({ key: normalizedPrevious, index: 1 });
+  
+  if (embeddingsToGenerate.length > 0) {
+    // Promise.allSettledで並列生成（一部失敗しても成功したものを利用）
+    const settledResults = await Promise.allSettled(
+      embeddingsToGenerate.map(async ({ key }) => ({
+        key,
+        embedding: await generateEmbedding(key),
+      }))
+    );
+    
+    // 成功した結果のみ処理
+    for (const result of settledResults) {
+      if (result.status === "fulfilled" && result.value.embedding) {
+        const { key, embedding } = result.value;
+        setCachedEmbedding(key, embedding);
+        if (key === normalizedCurrent) currentEmb = embedding;
+        if (key === normalizedPrevious) previousEmb = embedding;
+      }
+    }
+  }
+
+  if (!currentEmb || !previousEmb) {
+    // エンベディング生成に失敗した場合は処理をスキップ
+    return {
+      isRepeated: false,
+      similarity: 0,
+      method: "unavailable",
+    };
+  }
+
+  const similarity = cosineSimilarity(currentEmb, previousEmb);
+  return {
+    isRepeated: similarity >= threshold,
+    similarity,
+    method: "embedding",
+  };
+}
+
+/**
+ * 事前計算埋め込みを用いて検出
+ * @summary 重複を検出
+ * @param currentEmbedding 現在の埋め込みベクトル
+ * @param previousEmbedding 直前の埋め込みベクトル
+ * @param threshold 重複とみなす閾値
+ * @returns 重複判定結果を含むオブジェクト
+ */
+export function detectSemanticRepetitionFromEmbeddings(
+  currentEmbedding: number[],
+  previousEmbedding: number[],
+  threshold: number = DEFAULT_REPETITION_THRESHOLD
+): SemanticRepetitionResult {
+  const similarity = cosineSimilarity(currentEmbedding, previousEmbedding);
+  return {
+    isRepeated: similarity >= threshold,
+    similarity,
+    method: "embedding",
+  };
+}
+
+// ============================================================================
+// Trajectory Tracking
+// ============================================================================
+
+/**
+ * Default maximum steps to keep in trajectory tracker.
+ * Prevents unbounded memory accumulation.
+ */
+export const DEFAULT_MAX_TRAJECTORY_STEPS = 100;
+
+/**
+ * トラjectory追跡クラス
+ * @summary インスタンス生成
+ * @param maxSteps 最大ステップ数
+ */
+export class TrajectoryTracker {
+  private steps: Array<{
+    output: string;
+    similarity?: number;
+    isRepeated: boolean;
+  }> = [];
+  private maxSteps: number;
+
+  constructor(maxSteps: number = DEFAULT_MAX_TRAJECTORY_STEPS) {
+    this.maxSteps = Math.max(1, maxSteps);
+  }
+
+  /**
+   * ステップ記録
+   * @summary ステップを記録
+   * @param output 出力内容
+   * @param options オプション設定
+   * @returns 結果情報
+   */
+  async recordStep(
+    output: string,
+    options?: SemanticRepetitionOptions
+  ): Promise<SemanticRepetitionResult> {
+    const previousStep = this.steps[this.steps.length - 1];
+    let result: SemanticRepetitionResult;
+
+    if (previousStep) {
+      result = await detectSemanticRepetition(output, previousStep.output, options);
+    } else {
+      result = {
+        isRepeated: false,
+        similarity: 0,
+        method: "exact",
+      };
+    }
+
+    this.steps.push({
+      output: normalizeText(output, DEFAULT_MAX_TEXT_LENGTH),
+      similarity: result.similarity,
+      isRepeated: result.isRepeated,
+    });
+
+    // Enforce memory bounds - remove oldest steps when limit exceeded
+    while (this.steps.length > this.maxSteps) {
+      this.steps.shift();
+    }
+
+    return result;
+  }
+
+  /**
+   * トラjectory要約取得
+   * @summary 要約を取得
+   * @returns トラjectory要約
+   */
+  getSummary(): TrajectorySummary {
+    if (this.steps.length === 0) {
+      return {
+        totalSteps: 0,
+        repetitionCount: 0,
+        averageSimilarity: 0,
+        similarityTrend: "stable",
+        isStuck: false,
+      };
+    }
+
+    const repetitionCount = this.steps.filter((s) => s.isRepeated).length;
+    const similarities = this.steps
+      .filter((s) => s.similarity !== undefined)
+      .map((s) => s.similarity!);
+
+    const averageSimilarity =
+      similarities.length > 0
+        ? similarities.reduce((a, b) => a + b, 0) / similarities.length
+        : 0;
+
+    // Calculate trend
+    let similarityTrend: "increasing" | "decreasing" | "stable" = "stable";
+    if (similarities.length >= 3) {
+      const recent = similarities.slice(-3);
+      const earlier = similarities.slice(0, -3);
+      if (earlier.length > 0) {
+        const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
+        const earlierAvg = earlier.reduce((a, b) => a + b, 0) / earlier.length;
+        if (recentAvg > earlierAvg + 0.1) {
+          similarityTrend = "increasing";
+        } else if (recentAvg < earlierAvg - 0.1) {
+          similarityTrend = "decreasing";
+        }
+      }
+    }
+
+    // Detect if stuck (consecutive repetitions in recent steps)
+    const recentSteps = this.steps.slice(-5);
+    const consecutiveRepeats = recentSteps.filter((s) => s.isRepeated).length;
+    const isStuck = consecutiveRepeats >= 3;
+
+    return {
+      totalSteps: this.steps.length,
+      repetitionCount,
+      averageSimilarity,
+      similarityTrend,
+      isStuck,
+    };
+  }
+
+  /**
+   * Get step count.
+   */
+  get stepCount(): number {
+    return this.steps.length;
+  }
+
+  /**
+   * リセット状態
+   * @summary 状態をリセット
+   */
+  reset(): void {
+    this.steps = [];
+  }
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Normalize text for comparison.
+ */
+function normalizeText(text: string, maxLength: number): string {
+  return text
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, maxLength);
+}
+
+/**
+ * 機能利用可否判定
+ * @summary 機能利用可否を確認
+ * @returns 利用可能でtrue
+ */
+export async function isSemanticRepetitionAvailable(): Promise<boolean> {
+  const provider = await getEmbeddingProvider();
+  return provider !== null;
+}
+
+/**
+ * 繰り返し状況に基づき推奨アクションを決定
+ * @summary 推奨アクション決定
+ * @param repetitionCount 現在の繰り返し回数
+ * @param totalSteps 総ステップ数
+ * @param isStuck 停滞状態かどうか
+ * @returns "continue" | "pivot" | "early_stop"
+ */
+export function getRecommendedAction(
+  repetitionCount: number,
+  totalSteps: number,
+  isStuck: boolean
+): "continue" | "pivot" | "early_stop" {
+  // If stuck pattern detected, recommend early stop
+  if (isStuck) {
+    return "early_stop";
+  }
+
+  // If repetition rate is high (>40%), recommend pivot
+  const repetitionRate = totalSteps > 0 ? repetitionCount / totalSteps : 0;
+  if (repetitionRate > 0.4) {
+    return "pivot";
+  }
+
+  return "continue";
+}

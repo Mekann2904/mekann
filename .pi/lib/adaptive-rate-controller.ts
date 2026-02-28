@@ -49,7 +49,7 @@ import {
   getRuntimeConfig,
   type RuntimeConfig,
 } from "./runtime-config.js";
-import { withFileLock } from "./storage-lock.js";
+import { withFileLock } from "./storage/storage-lock.js";
 import { Mutex } from "async-mutex";
 
 // ============================================================================
