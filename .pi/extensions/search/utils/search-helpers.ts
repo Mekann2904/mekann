@@ -496,7 +496,9 @@ export function filterByFilePattern(
 	results: UnifiedSearchResult[],
 	pattern: string
 ): UnifiedSearchResult[] {
-	const regex = new RegExp(pattern.replace(/\*/g, ".*"));
+	// Escape regex special characters except * (which we convert to .*)
+	const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+	const regex = new RegExp(escaped.replace(/\*/g, ".*"));
 	return results.filter((r) => regex.test(r.file));
 }
 

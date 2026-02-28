@@ -408,9 +408,9 @@ function collectWeeklySnapshot(scopeDir: string | undefined): WeeklySnapshot {
     for (const line of lines) {
       if (!line.trim()) continue;
 
-      let entry: any;
+      let entry: SessionEntry;
       try {
-        entry = JSON.parse(line);
+        entry = JSON.parse(line) as SessionEntry;
       } catch {
         continue;
       }

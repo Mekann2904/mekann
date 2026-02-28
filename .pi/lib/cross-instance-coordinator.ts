@@ -412,8 +412,17 @@ export function registerInstance(
       cleanupDeadInstances();
     }, config.heartbeatIntervalMs);
 
+    // 初回は書き込み時にdebounceをバイパ防止
+    // 初回（初回)は書き込み
+    lastHeartbeatWrite = now;
+
     // Don't prevent process exit
     heartbeatTimer.unref();
+
+    // 即座にハートビートを送信して他インスタンスに認識させる
+    // これにより、複数インスタンスがほぼ同時に起動した場合でも
+    // すぐに互いを認識できるようになる
+    updateHeartbeat();
 
     state = {
       myInstanceId: instanceId,

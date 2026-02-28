@@ -138,6 +138,31 @@ function persistState() {
 	}
 }
 
+/**
+ * 略語の展開における循環参照を検出する
+ * @param name - 追加する略語名
+ * @param expansion - 展開後のテキスト
+ * @param visited - 訪問済み略語名のセット（再帰用）
+ * @returns 循環がある場合はtrue
+ */
+function hasCircularReference(name: string, expansion: string, visited: Set<string> = new Set()): boolean {
+	if (visited.has(name)) return true;
+	visited.add(name);
+
+	// 展開後のテキストの最初の単ードをチェック
+	const firstWord = expansion.trim().split(/\s/)[0];
+	const nestedAbbr = abbreviations.get(firstWord);
+
+	if (nestedAbbr) {
+		// ネストされた略語がある場合、再帰的にチェック
+		if (hasCircularReference(firstWord, nestedAbbr.expansion, visited)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 // Find abbreviation matching input at start
 function findExpansion(input: string): { expanded: string; original: string } | null {
 	const trimmed = input.trim();
@@ -306,7 +331,13 @@ class AbbrListComponent {
 	}
 }
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	// Store pi instance for persistState
 	piInstance = pi;
 
@@ -344,6 +375,17 @@ export default function (pi: ExtensionAPI) {
 								action: "add",
 								abbreviations: [],
 								error: "name and expansion required",
+							} as AbbrDetails,
+						};
+					}
+					// 循環参照の検出
+					if (hasCircularReference(params.name, params.expansion)) {
+						return {
+							content: [{ type: "text", text: `Error: circular reference detected - "${params.name}" would create an infinite expansion loop` }],
+							details: {
+								action: "add",
+								abbreviations: Array.from(abbreviations.values()),
+								error: "circular reference detected",
 							} as AbbrDetails,
 						};
 					}
@@ -422,10 +464,9 @@ export default function (pi: ExtensionAPI) {
 							details: { action: "query", abbreviations: [], error: "name required" } as AbbrDetails,
 						};
 					}
-					const exists = abbreviations.has(params.name);
 					const abbr = abbreviations.get(params.name);
 					return {
-						content: [{ type: "text", text: exists ? `Yes: ${abbr!.expansion}` : "No" }],
+						content: [{ type: "text", text: abbr ? `Yes: ${abbr.expansion}` : "No" }],
 						details: { action: "query", abbreviations: Array.from(abbreviations.values()) } as AbbrDetails,
 					};
 				}
@@ -499,6 +540,11 @@ export default function (pi: ExtensionAPI) {
 					let expansion = parts.slice(2).join(" ");
 					// Strip surrounding quotes if present
 					expansion = stripQuotes(expansion);
+					// 循環参照の検出
+					if (hasCircularReference(name, expansion)) {
+						ctx.ui.notify(`Error: circular reference detected - "${name}" would create an infinite expansion loop`, "error");
+						return;
+					}
 					abbreviations.set(name, { name, expansion });
 					persistState();
 					ctx.ui.notify(`Added: ${name} → ${expansion}`, "success");
@@ -793,5 +839,10 @@ export default function (pi: ExtensionAPI) {
 		} else {
 			ctx.ui.notify(`Loaded ${abbreviations.size} abbreviations from config. Use /abbr list to see them.`, "info");
 		}
+	});
+
+	// セッション終了時にリスナー重複登録防止フラグをリセット
+	pi.on("session_shutdown", async () => {
+		isInitialized = false;
 	});
 }

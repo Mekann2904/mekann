@@ -132,7 +132,14 @@ function ensureAdaptiveControllerInitialized(): void {
  * @summary 機能登録
  * @param pi 拡張APIインスタンス
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // NOTE: Adaptive controller initialization is deferred to session_start event
   // to improve startup performance. Previously this was called synchronously
   // at extension load time, causing blocking file I/O.
@@ -452,6 +459,13 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
     const sessionId = hasSessionId(event) ? (event.sessionId ?? "unknown") : "unknown";
     const envOverrides = getEnvOverrides();
 
+    // Set PI_PARENT_PID for child process context tracking
+    // If not already set (i.e., we are the root pi instance), set to our PID
+    // Child processes will inherit this and use it to report context to our history file
+    if (!process.env.PI_PARENT_PID) {
+      process.env.PI_PARENT_PID = String(process.pid);
+    }
+
     registerInstance(sessionId, ctx.cwd, envOverrides);
 
     const status = getCoordinatorStatus();
@@ -516,4 +530,9 @@ export default function registerCrossInstanceRuntimeExtension(pi: ExtensionAPI) 
   console.error("[cross-instance-runtime] Extension loaded.");
   console.error("[cross-instance-runtime] Commands: /pi-instances, /pi-limits, /pi-limits-reset");
   console.error("[cross-instance-runtime] Tools: pi_instance_status, pi_model_limits");
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }

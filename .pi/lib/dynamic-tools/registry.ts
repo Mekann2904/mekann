@@ -599,21 +599,24 @@ export function listDynamicTools(
   let tools = loadAllToolDefinitions(toolPaths);
 
   // フィルタリング
-  if (options?.tags && options.tags.length > 0) {
+  const filterTags = options?.tags;
+  if (filterTags && filterTags.length > 0) {
     tools = tools.filter(t =>
-      options.tags!.some(tag => t.tags.includes(tag))
+      filterTags.some(tag => t.tags.includes(tag))
     );
   }
 
-  if (options?.verificationStatus && options.verificationStatus.length > 0) {
+  const filterVerificationStatus = options?.verificationStatus;
+  if (filterVerificationStatus && filterVerificationStatus.length > 0) {
     tools = tools.filter(t =>
-      options.verificationStatus!.includes(t.verificationStatus)
+      filterVerificationStatus.includes(t.verificationStatus)
     );
   }
 
-  if (options?.mode && options.mode.length > 0) {
+  const filterMode = options?.mode;
+  if (filterMode && filterMode.length > 0) {
     tools = tools.filter(t =>
-      options.mode!.includes(t.mode)
+      filterMode.includes(t.mode)
     );
   }
 
@@ -991,16 +994,18 @@ export class DynamicToolRegistry {
     }
 
     // タグでフィルタ
-    if (options.tags && options.tags.length > 0) {
+    const filterTags = options.tags;
+    if (filterTags && filterTags.length > 0) {
       results = results.filter(t =>
-        options.tags!.some(tag => t.tags.includes(tag))
+        filterTags.some(tag => t.tags.includes(tag))
       );
     }
 
     // 安全性スコアでフィルタ
-    if (options.minSafetyScore !== undefined) {
+    const minScore = options.minSafetyScore;
+    if (minScore !== undefined) {
       results = results.filter(t =>
-        t.confidenceScore >= options.minSafetyScore!
+        t.confidenceScore >= minScore
       );
     }
 

@@ -247,6 +247,7 @@ function formatCost(n: number): string {
 function drawHeatmap(
 	byDate: Map<string, number>,
 	weeksCount: number,
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Theme interface is complex and internal
 	theme: any,
 ): { lines: string[]; rangeLine: string; legendLine: string } {
 	const lines: string[] = [];

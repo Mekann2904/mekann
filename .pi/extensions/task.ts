@@ -75,6 +75,8 @@ interface Task {
 	updatedAt: string;
 	completedAt?: string;
 	parentTaskId?: string; // For subtasks
+	ownerInstanceId?: string; // 所有するpiインスタンスID
+	claimedAt?: string;       // 所有取得時刻
 }
 
 /**
@@ -286,6 +288,7 @@ function getStatusIcon(status: TaskStatus): string {
 		case "in_progress": return "→";
 		case "completed": return "✓";
 		case "cancelled": return "⊗";
+		case "failed": return "✗";
 	}
 }
 
@@ -357,6 +360,7 @@ function formatTaskList(tasks: Task[], title: string = "Tasks"): string {
 			todo: 1,
 			completed: 2,
 			cancelled: 3,
+			failed: 4,
 		};
 		if (statusOrder[a.status] !== statusOrder[b.status]) {
 			return statusOrder[a.status] - statusOrder[b.status];
@@ -423,7 +427,13 @@ function formatTaskStats(storage: TaskStorage): string {
 // Extension Registration
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	// Tool: Create a new task
 	pi.registerTool({
 		name: "task_create",
@@ -809,5 +819,10 @@ export default function (pi: ExtensionAPI) {
 	// Extension loaded notification
 	pi.on("session_start", async (_event, ctx) => {
 		ctx.ui.notify("Task Extension loaded", "info");
+	});
+
+	// セッション終了時にリスナー重複登録防止フラグをリセット
+	pi.on("session_shutdown", async () => {
+		isInitialized = false;
 	});
 }

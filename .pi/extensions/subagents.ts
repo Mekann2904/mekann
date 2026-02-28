@@ -29,7 +29,7 @@
 // Why: Enables proactive task delegation to focused helper agents as a default workflow.
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/question.ts, README.md
 
-import { readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { readdirSync, unlinkSync, writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
@@ -159,6 +159,85 @@ import { detectTier, getConcurrencyLimit } from "../lib/provider-limits";
 
 const logger = getLogger();
 
+// ============================================================================
+// Task Storage Helpers (for auto in_progress status)
+// ============================================================================
+
+const TASK_DIR = ".pi/tasks";
+const TASK_STORAGE_FILE = join(process.cwd(), TASK_DIR, "storage.json");
+
+type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled" | "failed";
+
+interface Task {
+	id: string;
+	title: string;
+	status: TaskStatus;
+	updatedAt: string;
+	ownerInstanceId?: string;
+	claimedAt?: string;
+}
+
+interface TaskStorage {
+	tasks: Task[];
+}
+
+/**
+ * タスクストレージを読み込む
+ * @summary タスクストレージ読込
+ */
+function loadTaskStorage(): TaskStorage {
+	if (!existsSync(TASK_STORAGE_FILE)) {
+		return { tasks: [] };
+	}
+	try {
+		const content = readFileSync(TASK_STORAGE_FILE, "utf-8");
+		return JSON.parse(content);
+	} catch {
+		return { tasks: [] };
+	}
+}
+
+/**
+ * タスクストレージを保存
+ * @summary タスクストレージ保存
+ */
+function saveTaskStorage(storage: TaskStorage): void {
+	try {
+		// Ensure directory exists
+		const dir = join(process.cwd(), TASK_DIR);
+		if (!existsSync(dir)) {
+			mkdirSync(dir, { recursive: true });
+		}
+		writeFileSync(TASK_STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+	} catch (error) {
+		console.error(`[subagents] Failed to save task storage:`, error);
+	}
+}
+
+/**
+ * タスクを in_progress に設定
+ * @summary タスク進行中設定
+ * @param taskId - タスクID
+ * @returns 設定に成功した場合はtrue
+ */
+function setTaskInProgress(taskId: string): boolean {
+	const storage = loadTaskStorage();
+	const task = storage.tasks.find(t => t.id === taskId);
+	if (!task || task.status !== "todo") {
+		return false;
+	}
+	task.status = "in_progress";
+	task.ownerInstanceId = getInstanceId();
+	task.claimedAt = new Date().toISOString();
+	task.updatedAt = new Date().toISOString();
+	saveTaskStorage(storage);
+	return true;
+}
+
+// ============================================================================
+// Tool Compiler Helpers
+// ============================================================================
+
 /**
  * Check if Tool Compiler is enabled via environment variable
  * @summary Tool Compiler有効化チェック
@@ -227,12 +306,6 @@ import {
   createSubagentLiveMonitor,
 } from "./subagents/live-monitor";
 
-// Import parallel-execution module (extracted for SRP compliance)
-import {
-  type SubagentParallelCapacityResolution,
-  resolveSubagentParallelCapacity,
-} from "./subagents/parallel-execution";
-
 // Import task-execution module (extracted for SRP compliance)
 import {
   type SubagentExecutionResult,
@@ -299,11 +372,6 @@ export {
 } from "./subagents/live-monitor";
 
 export {
-  type SubagentParallelCapacityResolution,
-  resolveSubagentParallelCapacity,
-} from "./subagents/parallel-execution";
-
-export {
   type SubagentExecutionResult,
   normalizeSubagentOutput,
   buildSubagentPrompt,
@@ -318,7 +386,6 @@ export {
 
 // The following local functions are now imported from modules:
 // renderSubagentLiveView, createSubagentLiveMonitor -> ./subagents/live-monitor.ts
-// resolveSubagentParallelCapacity -> ./subagents/parallel-execution.ts
 // normalizeSubagentOutput, buildSubagentPrompt, runSubagentTask -> ./subagents/task-execution.ts
 
 // ============================================================================
@@ -498,7 +565,12 @@ function inferSubagentDependencies(
  * Refresh runtime status display in the UI with subagent-specific parameters.
  * @see ./shared/runtime-helpers.ts:refreshRuntimeStatus for the underlying implementation.
  */
-function refreshRuntimeStatus(ctx: any): void {
+interface RuntimeStatusContext {
+	ui: {
+		setStatus: (key: string, value: string) => void;
+	};
+}
+function refreshRuntimeStatus(ctx: RuntimeStatusContext): void {
   const snapshot = getRuntimeSnapshot();
   sharedRefreshRuntimeStatus(
     ctx,
@@ -666,7 +738,22 @@ function pickDefaultParallelAgents(storage: SubagentStorage): SubagentDefinition
  * @param pi - 拡張機能API
  * @returns {void}
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
+/**
+ * テスト用のリセット関数
+ * @summary isInitializedフラグをリセット
+ */
+export function resetForTesting(): void {
+  isInitialized = false;
+}
+
 export default function registerSubagentExtension(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // グローバルエラーハンドラを設定（一度だけ）
   setupGlobalErrorHandlers();
 
@@ -828,7 +915,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           };
         }
       }
-      
+
+      // タスクを in_progress に設定
+      if (params.ulTaskId) {
+        setTaskInProgress(params.ulTaskId);
+      }
+
       const storage = loadStorage(ctx.cwd);
       const agent = pickAgent(storage, params.subagentId);
       const retryOverrides = toRetryOverrides(params.retry);
@@ -955,7 +1047,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           id: sessionId,
           type: "subagent",
           agentId: agent.id,
-          taskTitle: params.task.slice(0, 100),
+          taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
+          taskTitle: params.task.slice(0, 50),
+          taskDescription: params.task,
           status: "starting",
           startedAt: Date.now(),
         };
@@ -1136,7 +1230,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           };
         }
       }
-      
+
+      // タスクを in_progress に設定
+      if (params.ulTaskId) {
+        setTaskInProgress(params.ulTaskId);
+      }
+
       const storage = loadStorage(ctx.cwd);
       const retryOverrides = toRetryOverrides(params.retry);
       const requestedIds = Array.isArray(params.subagentIds)
@@ -1220,7 +1319,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           toolName: "subagent_run_parallel",
           candidate: {
             additionalRequests: 1,
-            additionalLlm: Math.max(1, effectiveParallelism),
+            additionalLlm: Math.min(effectiveParallelism, snapshot.limits.maxParallelSubagentsPerRun),
           },
           tenantKey: activeAgents.map((entry) => entry.id).join(","),
           source: "scheduled",
@@ -1323,6 +1422,21 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
               items: monitorItems,
             });
 
+            // Create runtime session for DAG auto-execution tracking
+            const autoDagSessionId = generateSessionId();
+            const autoDagSession: RuntimeSession = {
+              id: autoDagSessionId,
+              type: "subagent",
+              agentId: "dag-auto-executor",
+              taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
+              taskTitle: params.task.slice(0, 50),
+              taskDescription: params.task,
+              status: "starting",
+              startedAt: Date.now(),
+              teammateCount: dagPlan.tasks.length,
+            };
+            addSession(autoDagSession);
+
             // Execute DAG
             const dagResult = await executeDag<{ runRecord: SubagentRunRecord; output: string; prompt: string }>(
               dagPlan,
@@ -1378,6 +1492,15 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
             await saveStorageWithPatterns(ctx.cwd, storage);
 
             const failedTasks = allResults.filter((r) => r.status === "failed");
+
+            // Update session with final status
+            updateSession(autoDagSessionId, {
+              status: failedTasks.length === 0 ? "completed" : "failed",
+              completedAt: Date.now(),
+              progress: 100,
+              message: `${allResults.length - failedTasks.length}/${dagPlan.tasks.length} tasks completed`,
+            });
+
             const dagSummary = `[DAG Auto-Execution] ${dagPlan.tasks.length} tasks, ${allResults.length - failedTasks.length} succeeded, ${failedTasks.length} failed`;
 
             logger.endOperation({
@@ -1432,6 +1555,21 @@ ${allResults.map((r) => {
           const weight = getAgentSpecializationWeight(agent.id);
           agentWeights.set(agent.id, weight);
         }
+
+        // Create runtime session for parallel execution tracking
+        const parallelSessionId = generateSessionId();
+        const parallelSession: RuntimeSession = {
+          id: parallelSessionId,
+          type: "subagent",
+          agentId: activeAgents.map((a) => a.id).join(","),  // Multiple agent IDs
+          taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
+          taskTitle: params.task.slice(0, 50),
+          taskDescription: params.task,
+          status: "starting",
+          startedAt: Date.now(),
+          teammateCount: activeAgents.length,
+        };
+        addSession(parallelSession);
 
         // Promise.allSettledパターンで部分失敗を許容
         type SubagentTaskResult = { runRecord: SubagentRunRecord; output: string; prompt: string };
@@ -1514,7 +1652,14 @@ ${allResults.map((r) => {
         // Include rejected results in failure count
         const failed = results.filter((result) => result.runRecord.status === "failed");
         const totalFailed = failed.length + rejectedResults.length;
-        
+
+        // Update session with final status
+        updateSession(parallelSessionId, {
+          status: totalFailed === 0 ? "completed" : (totalFailed < activeAgents.length ? "completed" : "failed"),
+          completedAt: Date.now(),
+          message: `${results.length - failed.length}/${activeAgents.length} agents completed`,
+        });
+
         if (totalFailed > 0) {
           const pressureSignals = failed
             .map((result) => classifyPressureError(result.runRecord.error || ""))
@@ -1675,9 +1820,19 @@ ${allResults.map((r) => {
           };
         }
       }
-      
+
+      // タスクを in_progress に設定
+      if (params.ulTaskId) {
+        setTaskInProgress(params.ulTaskId);
+      }
+
       const storage = loadStorage(ctx.cwd);
-      const maxConcurrency = params.maxConcurrency ?? 3;
+      const snapshot = getRuntimeSnapshot();
+      // maxConcurrencyをruntime-configの制限内に収める
+      const maxConcurrency = Math.min(
+        params.maxConcurrency ?? 3,
+        snapshot.limits.maxParallelSubagentsPerRun,
+      );
       const abortOnFirstError = params.abortOnFirstError ?? false;
       const timeoutMs = resolveEffectiveTimeoutMs(
         params.timeoutMs,
@@ -1784,7 +1939,7 @@ ${allResults.map((r) => {
           toolName: "subagent_run_dag",
           candidate: {
             additionalRequests: 1,
-            additionalLlm: Math.min(maxConcurrency, taskPlan.tasks.length),
+            additionalLlm: Math.min(maxConcurrency, taskPlan.tasks.length, snapshot.limits.maxParallelSubagentsPerRun),
           },
           tenantKey: taskPlan.id,
           source: "scheduled",
@@ -1837,6 +1992,21 @@ ${allResults.map((r) => {
           title: `Subagent Run DAG: ${taskPlan.id}`,
           items: monitorItems,
         });
+
+        // Create runtime session for DAG execution tracking
+        const dagSessionId = generateSessionId();
+        const dagSession: RuntimeSession = {
+          id: dagSessionId,
+          type: "subagent",
+          agentId: "dag-executor",
+          taskId: params.ulTaskId,  // UL workflow task ID for Web UI tracking
+          taskTitle: params.task.slice(0, 50),
+          taskDescription: params.task,
+          status: "starting",
+          startedAt: Date.now(),
+          teammateCount: taskPlan.tasks.length,
+        };
+        addSession(dagSession);
 
         runtimeState.activeRunRequests += 1;
         notifyRuntimeCapacityChanged();
@@ -1914,6 +2084,14 @@ ${allResults.map((r) => {
         // Build result
         const completedCount = dagResult.completedTaskIds.length;
         const failedCount = dagResult.failedTaskIds.length;
+
+        // Update session with final status
+        updateSession(dagSessionId, {
+          status: dagResult.overallStatus === "completed" ? "completed" : "failed",
+          completedAt: Date.now(),
+          progress: 100,
+          message: `${completedCount}/${taskPlan.tasks.length} tasks completed`,
+        });
 
         const aggregatedOutput = Array.from(dagResult.taskResults.entries())
           .map(([taskId, result]) => {
@@ -2182,5 +2360,10 @@ Only skip when the task is truly trivial (single obvious step, no architectural 
     return {
       systemPrompt: `${event.systemPrompt}${proactivePrompt}`,
     };
+  });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
   });
 }

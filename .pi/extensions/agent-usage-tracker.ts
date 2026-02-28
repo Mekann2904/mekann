@@ -1013,7 +1013,14 @@ function recordAgentEnd(ctx: ExtensionAPI["context"]): void {
  * @param {ExtensionAPI} pi - 拡張API
  * @returns {void}
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerAgentUsageTracker(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // 起動時に初期化と通知を行う。
   pi.on("session_start", async (_event, ctx) => {
     const currentRuntime = ensureRuntime(ctx);
@@ -1046,6 +1053,7 @@ export default function registerAgentUsageTracker(pi: ExtensionAPI) {
     const currentRuntime = ensureRuntime(ctx);
     prunePendingTools(currentRuntime);
     saveState(currentRuntime);
+    isInitialized = false;
   });
 
   pi.registerCommand("agent-usage", {

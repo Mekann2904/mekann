@@ -153,16 +153,38 @@ function notifyMacOS(text: string, title = "pi"): void {
   }
 }
 
-// サウンドを再生（macOSのみ）
-function playSound(soundPath: string): void {
-  if (!isMacOS) return;
-  try {
-    spawn("afplay", [soundPath], {
-      detached: true,
-      stdio: "ignore"
-    }).unref();
-  } catch (error: unknown) {
-    console.error("Sound playback error:", error instanceof Error ? error.message : String(error));
+// サウンドを再生（macOSのみ、フォールバック付き）
+export function playSound(soundPath: string): void {
+  // macOSの場合: afplayを使用
+  if (isMacOS) {
+    // デフォルトサウンドファイルのリスト
+    const defaultSounds = [
+      soundPath,
+      "/System/Library/Sounds/Glass.aiff",
+      "/System/Library/Sounds/Ping.aiff",
+      "/System/Library/Sounds/Tink.aiff",
+    ];
+    
+    // 存在するサウンドファイルを探す
+    const existingSound = defaultSounds.find(s => existsSync(s));
+    
+    if (existingSound) {
+      try {
+        spawn("afplay", [existingSound], {
+          detached: true,
+          stdio: "ignore"
+        }).unref();
+      } catch (error: unknown) {
+        // サウンド再生失敗時はターミナルベルをフォールバック
+        process.stdout.write('\u0007');
+      }
+    } else {
+      // サウンドファイルが見つからない場合はターミナルベル
+      process.stdout.write('\u0007');
+    }
+  } else {
+    // 非macOSの場合: ターミナルベルを使用
+    process.stdout.write('\u0007');
   }
 }
 
@@ -267,7 +289,21 @@ function getToolResultStats(messages: unknown[]): { toolCount: number; errorCoun
   return { toolCount, errorCount };
 }
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
+/**
+ * テスト用のリセット関数
+ * @summary isInitializedフラグをリセット
+ */
+export function resetForTesting(): void {
+  isInitialized = false;
+}
+
 export default function (pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // セッション開始時
   pi.on("session_start", async (_event, ctx) => {
     if (!isKitty()) return;
@@ -369,6 +405,7 @@ export default function (pi: ExtensionAPI) {
 
     restoreTitle();
     closeTerminalIfNeeded();
+    isInitialized = false;
   });
 
   // セッション切り替え前

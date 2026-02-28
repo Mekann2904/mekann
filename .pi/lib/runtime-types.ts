@@ -162,6 +162,12 @@ export interface AgentRuntimeSnapshot {
   reservedRequests: number;
   reservedLlm: number;
   activeReservations: number;
+  /** 消費済み予約数 */
+  consumedReservations: number;
+  /** 消費済み予約のリクエスト数 */
+  consumedRequests: number;
+  /** 消費済み予約のLLM数 */
+  consumedLlm: number;
   activeOrchestrations: number;
   queuedOrchestrations: number;
   queuedTools: string[];

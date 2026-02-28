@@ -35,6 +35,7 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text, truncateToWidth, wrapTextWithAnsi, CURSOR_MARKER } from "@mariozechner/pi-tui";
 import { matchesKey, Key } from "@mariozechner/pi-tui";
+import { playSound } from "./kitty-status-integration.js";
 
 // ============================================
 // 型定義 (opencode互換)
@@ -265,6 +266,13 @@ export async function askSingleQuestion(
 	const options = question.options || [];
 	const allowCustom = question.custom !== false;
 	const allowMultiple = question.multiple === true;
+
+	// 質問が表示されたときに音を鳴らす（エラーは無視）
+	try {
+		playSound("/System/Library/Sounds/Glass.aiff");
+	} catch {
+		// 音声再生の失敗は致命的ではないため無視
+	}
 
 	// カスタム回答が許可されている場合は「その他」オプションを追加
 	const displayOptions = allowCustom
@@ -758,7 +766,13 @@ async function showConfirmationScreen(
 // メイン拡張機能
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	const OptionType = Type.Object({
 		label: Type.String({ description: "表示テキスト（1-5文字、簡潔に）" }),
 		description: Type.Optional(Type.String({ description: "選択肢の説明" }))
@@ -1018,5 +1032,10 @@ The \`question\` tool is available - USE IT for ALL user selections.
 		return {
 			systemPrompt: systemPrompt + questionPrompt
 		};
+	});
+
+	// セッション終了時にリスナー重複登録防止フラグをリセット
+	pi.on("session_shutdown", async () => {
+		isInitialized = false;
 	});
 }

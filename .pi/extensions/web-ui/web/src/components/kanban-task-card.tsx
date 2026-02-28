@@ -39,6 +39,10 @@ export interface Task {
   updatedAt: string;
   completedAt?: string;
   parentTaskId?: string;
+  // UL workflow extensions
+  isUlWorkflow?: boolean;
+  phase?: string;
+  ownerInstanceId?: string;
 }
 
 interface KanbanTaskCardProps {
@@ -148,14 +152,36 @@ export function KanbanTaskCard({
     task.status !== "cancelled" &&
     new Date(task.dueDate) < new Date();
 
+  // UL workflow visual elements
+  const ulWorkflowBadge = task.isUlWorkflow && (
+    <span
+      class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+      style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
+      title="UL Workflow Task"
+    >
+      UL
+    </span>
+  );
+
+  const phaseBadge = task.phase && task.isUlWorkflow && (
+    <span class="text-[10px] text-muted-foreground uppercase">
+      {task.phase}
+    </span>
+  );
+
   const handleDragStart = (e: DragEvent) => {
+    // UL workflow tasks cannot be dragged
+    if (task.isUlWorkflow) {
+      e.preventDefault();
+      return;
+    }
     e.stopPropagation();
     onDragStart?.(e);
   };
 
   return (
     <div
-      draggable
+      draggable={!task.isUlWorkflow}
       onDragStart={handleDragStart}
       onDragEnd={onDragEnd}
       onClick={onClick}
@@ -165,16 +191,19 @@ export function KanbanTaskCard({
         "hover:border-primary/30 hover:shadow-sm",
         isDragging && "opacity-50 scale-[0.98]",
         isSelected && "ring-2 ring-primary border-primary/50",
-        task.status === "completed" && "opacity-60"
+        task.status === "completed" && "opacity-60",
+        task.isUlWorkflow && "border-purple-500/30 bg-purple-500/5"
       )}
     >
-      {/* Drag handle */}
-      <div class="absolute left-0 top-0 bottom-0 w-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
-        <GripVertical class="h-3.5 w-3.5 text-muted-foreground/50" />
-      </div>
+      {/* Drag handle - hide for UL workflow tasks */}
+      {!task.isUlWorkflow && (
+        <div class="absolute left-0 top-0 bottom-0 w-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+          <GripVertical class="h-3.5 w-3.5 text-muted-foreground/50" />
+        </div>
+      )}
 
-      {/* Delete button - hover only */}
-      {onDelete && (
+      {/* Delete button - hover only, hide for UL workflow */}
+      {onDelete && !task.isUlWorkflow && (
         <button
           class="absolute right-1 top-1 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/10 hover:text-red-500 text-muted-foreground"
           onClick={(e) => {
@@ -188,7 +217,7 @@ export function KanbanTaskCard({
       )}
 
       {/* Content */}
-      <div class="p-2.5 pl-6">
+      <div class={cn("p-2.5", !task.isUlWorkflow && "pl-6")}>
         {/* Title */}
         <p
           class={cn(
@@ -229,9 +258,13 @@ export function KanbanTaskCard({
           </p>
         )}
 
-        {/* Meta info (priority label, tags, due date, assignee) */}
+        {/* Meta info (UL badge, priority label, tags, due date, assignee) */}
         <div class="flex items-center justify-between gap-1">
           <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+            {/* UL workflow badge */}
+            {ulWorkflowBadge}
+            {phaseBadge}
+
             {/* Priority label */}
             <span
               class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"

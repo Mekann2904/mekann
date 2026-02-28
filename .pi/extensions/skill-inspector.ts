@@ -492,10 +492,9 @@ function formatSkillsOverview(
       lines.push(`  Member Assignments (${skillUsage.usedByMembers.length} members):`);
       const membersByTeam = new Map<string, string[]>();
       for (const m of skillUsage.usedByMembers) {
-        if (!membersByTeam.has(m.teamId)) {
-          membersByTeam.set(m.teamId, []);
-        }
-        membersByTeam.get(m.teamId)!.push(m.memberId);
+        const members = membersByTeam.get(m.teamId) ?? [];
+        members.push(m.memberId);
+        membersByTeam.set(m.teamId, members);
       }
       for (const [teamId, members] of membersByTeam) {
         lines.push(`    - ${teamId}: ${members.join(", ")}`);
@@ -721,15 +720,14 @@ function formatSkillDetail(
   if (usage.usedByMembers.length > 0) {
     lines.push(`  Assigned to Members (${usage.usedByMembers.length} members):`);
     lines.push("");
-    
+
     const membersByTeam = new Map<string, string[]>();
     for (const m of usage.usedByMembers) {
-      if (!membersByTeam.has(m.teamId)) {
-        membersByTeam.set(m.teamId, []);
-      }
-      membersByTeam.get(m.teamId)!.push(m.memberId);
+      const members = membersByTeam.get(m.teamId) ?? [];
+      members.push(m.memberId);
+      membersByTeam.set(m.teamId, members);
     }
-    
+
     for (const [teamId, members] of membersByTeam) {
       lines.push(`    ${teamId}:`);
       for (const member of members.sort()) {
@@ -758,7 +756,13 @@ function formatSkillDetail(
 // Tool Registration
 // ============================================================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // Register skill_status tool
   pi.registerTool({
     name: "skill_status",
@@ -865,5 +869,10 @@ export default function (pi: ExtensionAPI) {
   // Notify on session start
   pi.on("session_start", async (_event, ctx) => {
     ctx.ui.notify("Skill Inspector loaded. Use /skill-status or skill_status tool.", "info");
+  });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
   });
 }

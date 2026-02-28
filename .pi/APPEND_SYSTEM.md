@@ -177,6 +177,54 @@ If you attempt any git command without first loading the git-workflow skill, STO
 
 ---
 
+## Incremental Commit Strategy (RECOMMENDED)
+
+複数ファイルの変更を伴うタスクでは、**小粒度のコミット**を心がける。
+
+### 基本原則
+
+> **1〜2ファイルの変更ごとにコミットする**
+
+### 推奨パターン
+
+| 変更規模 | コミット粒度 | 例 |
+|---------|-------------|-----|
+| テスト追加 | 1テストファイル = 1コミット | `test(lib): add unit tests for errors.ts` |
+| 関連ファイル | 2ファイルまで = 1コミット | `test(lib): add unit tests for errors.ts and execution-rules.ts` |
+| 大規模変更 | Sprint/フェーズ単位で分割 | Sprint 1 → コミット, Sprint 2 → コミット |
+
+### コミットメッセージ形式
+
+```
+<Type>[(scope)]: <日本語で簡潔に>
+
+- 変更点1
+- 変更点2
+```
+
+### メリット
+
+- **レビュー容易**: 各コミットが小さく、意図が明確
+- **ロールバック安全**: 問題発生時に影響範囲を最小化
+- **進捗可視化**: コミット履歴で作業進捗が追える
+- **コンフリクト削減**: 小さい変更はマージ競合が起きにくい
+
+### 違反例（避けるべき）
+
+```
+# 悪い例: 10ファイルを1コミット
+git add .
+git commit -m "テストを追加"
+
+# 良い例: 1-2ファイルずつ分割
+git add .pi/tests/lib/errors.test.ts
+git commit -m "test(lib): add unit tests for errors.ts"
+git add .pi/tests/lib/execution-rules.test.ts
+git commit -m "test(lib): add unit tests for execution-rules.ts"
+```
+
+---
+
 ## Quality Guidelines (RECOMMENDED)
 
 - No emoji | Use question tool for user choices | Complete responses only

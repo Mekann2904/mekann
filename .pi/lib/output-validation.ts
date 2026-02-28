@@ -4,24 +4,25 @@
  * role: サブエージェントおよびチームメンバーの出力文字列に対する構造バリデーションを行うユーティリティ
  * why: 出力形式の一貫性を担保し、後続処理でのエラーを防止するため
  * related: .pi/lib/output-schema.ts
- * public_api: hasNonEmptyResultSection, validateSubagentOutput, validateTeamMemberOutput, SubagentValidationOptions, TeamMemberValidationOptions
- * invariants: 必須ラベルがすべて存在する場合にのみtrueを返す、RESULTセクションの内容が空の場合はfalseを返す
- * side_effects: なし（純粋な関数）
- * failure_modes: 必須ラベルの欠如、文字数不足、RESULTセクションの欠損または空欄
+ * public_api: hasNonEmptyResultSection, validateSubagentOutput, validateTeamMemberOutput, validateSubagentOutputEnhanced, validateTeamMemberOutputEnhanced, SubagentValidationOptions, TeamMemberValidationOptions
+ * invariants: 必須ラベルがすべて存在する場合にのみtrueを返す、RESULTセクションの内容が空の場合はfalseを返す、strictモードでスキーマ検証失敗時はlegacy結果にフォールバック
+ * side_effects: スキーマ違反の記録（recordSchemaViolation呼び出し）、console.warnによる差分ログ出力
+ * failure_modes: 必須ラベルの欠如、文字数不足、RESULTセクションの欠損または空欄、スキーマ検証の利用不可（フォールバック付き）
  * @abdd.explain
- * overview: 構造化された出力フォーマットへの準拠を確認する正規表現ベースのバリデータ
+ * overview: 構造化された出力フォーマットへの準拠を確認する正規表現ベースのバリデータ。スキーマ検証モード（legacy/dual/strict）をサポート
  * what_it_does:
  *   - RESULTセクションに空でない内容が含まれるか判定する
  *   - 文字数が最小要件を満たすか判定する
  *   - 事前に定義された必須ラベル（SUMMARY, RESULT等）の存在を正規表現で検証する
  *   - サブエージェントとチームメンバーで異なるバリデーションルールを適用する
+ *   - strictモードでスキーマ検証が失敗した場合、legacy結果にフォールバックする
  * why_it_exists:
  *   - エージェントの出力品質を保証する
  *   - 不正な形式によるパースエラーを回避する
  *   - PI_OUTPUT_SCHEMA_MODE機能フラグによる移行期間の運用をサポートする
  * scope:
- *   in: 検証対象の文字列、オプション設定（最小文字数、必須ラベルリスト）
- *   out: バリデーション結果（真偽値）と失敗理由の文字列
+ *   in: 検証対象の文字列、オプション設定（最小文字数、必須ラベルリスト）、スキーマ検証モード
+ *   out: バリデーション結果（真偽値）、失敗理由、フォールバック使用フラグ
  */
 
 /**
@@ -347,15 +348,26 @@ export function validateSubagentOutputEnhanced(
   }
 
   if (mode === "strict") {
+    // Null guard: fallback to legacy if schema validation failed
+    if (!schemaResult) {
+      return {
+        ok: legacyResult.ok,
+        reason: `Schema validation unavailable: ${legacyResult.reason}`,
+        mode,
+        legacyOk: legacyResult.ok,
+        legacyReason: legacyResult.reason,
+        fallbackUsed: true,
+      };
+    }
     return {
-      ok: schemaResult!.ok,
-      reason: schemaResult!.reason,
+      ok: schemaResult.ok,
+      reason: schemaResult.reason,
       mode,
       legacyOk: legacyResult.ok,
       legacyReason: legacyResult.reason,
-      schemaOk: schemaResult!.ok,
-      schemaReason: schemaResult!.reason,
-      schemaViolations: schemaResult!.violations,
+      schemaOk: schemaResult.ok,
+      schemaReason: schemaResult.reason,
+      schemaViolations: schemaResult.violations,
       fallbackUsed: false,
     };
   }

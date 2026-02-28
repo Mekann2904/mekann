@@ -37,6 +37,12 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
+import {
+  getAllUlWorkflowTasks,
+  getUlWorkflowTask,
+  getActiveUlWorkflowTask,
+  invalidateCache,
+} from "./web-ui/lib/ul-workflow-reader.js";
 
 const logger = getLogger();
 
@@ -70,6 +76,7 @@ interface TaskStorage {
 interface ApiResponse {
 	success: boolean;
 	data?: unknown;
+	total?: number;
 	error?: string;
 }
 
@@ -77,11 +84,14 @@ interface ApiResponse {
 // Storage Functions (imported from task.ts pattern)
 // ============================================
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync } from "node:fs";
+import { join, isAbsolute } from "node:path";
 
 const TASK_DIR = ".pi/tasks";
 const STORAGE_FILE = join(TASK_DIR, "storage.json");
+const UL_WORKFLOW_DIR = ".pi/ul-workflow";
+const UL_TASKS_DIR = join(UL_WORKFLOW_DIR, "tasks");
+const UL_ACTIVE_FILE = join(UL_WORKFLOW_DIR, "active.json");
 
 function ensureTaskDir(): void {
 	if (!existsSync(TASK_DIR)) {
@@ -183,7 +193,8 @@ async function serveStatic(
 	let filePath = urlPath === "/" ? "/index.html" : urlPath;
 	
 	// Security: prevent directory traversal
-	if (filePath.includes("..")) {
+	// Check for path traversal attempts: "..", null bytes, and absolute paths
+	if (filePath.includes("..") || filePath.includes("\0") || isAbsolute(filePath)) {
 		return false;
 	}
 	
@@ -391,6 +402,157 @@ function handleGetStats(): ApiResponse {
 	return { success: true, data: stats };
 }
 
+interface UlWorkflowStatusRecord {
+	taskId?: string;
+	phase?: string;
+	ownerInstanceId?: string | null;
+	updatedAt?: string;
+	createdAt?: string;
+}
+
+interface UlActiveRegistryRecord {
+	activeTaskId?: string | null;
+}
+
+/**
+ * ownerInstanceId から PID を抽出する
+ */
+function extractPidFromOwnerInstanceId(ownerInstanceId: string | null | undefined): number | null {
+	if (!ownerInstanceId) return null;
+	const match = ownerInstanceId.match(/-(\d+)$/);
+	if (!match) return null;
+	const pid = Number(match[1]);
+	return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/**
+ * プロセスが生存しているか確認する
+ */
+function isProcessAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * ULタスクの孤立データを掃除する
+ * - owner が死んでいる
+ * - owner が null で長時間放置されている
+ */
+function cleanupDeadOwnerUlWorkflowTasks(): number {
+	if (!existsSync(UL_TASKS_DIR)) {
+		return 0;
+	}
+
+	const terminalPhases = new Set(["completed", "aborted"]);
+	const staleUnownedMs = 30 * 60 * 1000; // 30分
+	const now = Date.now();
+	let activeTaskId: string | null = null;
+
+	if (existsSync(UL_ACTIVE_FILE)) {
+		try {
+			const activeRaw = readFileSync(UL_ACTIVE_FILE, "utf-8");
+			const registry = JSON.parse(activeRaw) as UlActiveRegistryRecord;
+			activeTaskId = registry.activeTaskId ?? null;
+		} catch {
+			activeTaskId = null;
+		}
+	}
+
+	let deletedCount = 0;
+
+	try {
+		const taskDirs = readdirSync(UL_TASKS_DIR)
+			.filter((name) => statSync(join(UL_TASKS_DIR, name)).isDirectory());
+
+		for (const taskDirName of taskDirs) {
+			const statusPath = join(UL_TASKS_DIR, taskDirName, "status.json");
+			if (!existsSync(statusPath)) {
+				continue;
+			}
+
+			try {
+				const statusRaw = readFileSync(statusPath, "utf-8");
+				const status = JSON.parse(statusRaw) as UlWorkflowStatusRecord;
+				const taskId = status.taskId || taskDirName;
+				const phase = status.phase || "unknown";
+				const ownerPid = extractPidFromOwnerInstanceId(status.ownerInstanceId);
+				const isActiveTask = activeTaskId === taskId;
+				const updatedAtMs = status.updatedAt ? Date.parse(status.updatedAt) : NaN;
+				const createdAtMs = status.createdAt ? Date.parse(status.createdAt) : NaN;
+				const baseTimeMs = Number.isFinite(updatedAtMs)
+					? updatedAtMs
+					: (Number.isFinite(createdAtMs) ? createdAtMs : 0);
+				const isStaleUnowned = baseTimeMs > 0 && now - baseTimeMs > staleUnownedMs;
+
+				// owner が死んでいれば削除
+				if (ownerPid && !isProcessAlive(ownerPid)) {
+					rmSync(join(UL_TASKS_DIR, taskDirName), { recursive: true, force: true });
+					deletedCount++;
+					continue;
+				}
+
+				// owner がないタスクは終端か stale なら削除
+				if (!ownerPid) {
+					if (terminalPhases.has(phase) || (!isActiveTask && isStaleUnowned)) {
+						rmSync(join(UL_TASKS_DIR, taskDirName), { recursive: true, force: true });
+						deletedCount++;
+					}
+				}
+			} catch {
+				// 個別タスク破損時はスキップ
+			}
+		}
+	} catch {
+		// クリーンアップ失敗時でも API 応答を優先
+	}
+
+	if (deletedCount > 0) {
+		invalidateCache();
+	}
+
+	return deletedCount;
+}
+
+// ============================================
+// UL Workflow Task Handlers (Read-only)
+// ============================================
+
+function handleGetUlWorkflowTasks(): ApiResponse {
+	try {
+		cleanupDeadOwnerUlWorkflowTasks();
+		const tasks = getAllUlWorkflowTasks();
+		return { success: true, data: tasks, total: tasks.length };
+	} catch (error) {
+		return { success: false, error: "Failed to load UL workflow tasks" };
+	}
+}
+
+function handleGetUlWorkflowTask(id: string): ApiResponse {
+	try {
+		const taskId = id.startsWith("ul-") ? id.slice(3) : id;
+		const task = getUlWorkflowTask(taskId);
+		if (!task) {
+			return { success: false, error: `Task not found: ${id}` };
+		}
+		return { success: true, data: task };
+	} catch (error) {
+		return { success: false, error: "Failed to load task" };
+	}
+}
+
+function handleGetActiveUlWorkflowTask(): ApiResponse {
+	try {
+		const task = getActiveUlWorkflowTask();
+		return { success: true, data: task };
+	} catch (error) {
+		return { success: false, error: `Failed to load active UL workflow task: ${error}` };
+	}
+}
+
 // ============================================
 // Request Router
 // ============================================
@@ -432,14 +594,26 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 		// POST /api/tasks - Create task
 		if (method === "POST" && path === "/api/tasks") {
-			const body = JSON.parse(await readBody(req));
+			let body;
+			try {
+				body = JSON.parse(await readBody(req));
+			} catch {
+				sendJson(res, 400, { success: false, error: "Invalid JSON" });
+				return;
+			}
 			sendJson(res, 201, handleCreateTask(body));
 			return;
 		}
 
 		// PUT /api/tasks/:id - Update task
 		if (method === "PUT" && getMatch) {
-			const body = JSON.parse(await readBody(req));
+			let body;
+			try {
+				body = JSON.parse(await readBody(req));
+			} catch {
+				sendJson(res, 400, { success: false, error: "Invalid JSON" });
+				return;
+			}
 			sendJson(res, 200, handleUpdateTask(getMatch[1], body));
 			return;
 		}
@@ -455,6 +629,25 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 		const deleteMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
 		if (method === "DELETE" && deleteMatch) {
 			sendJson(res, 200, handleDeleteTask(deleteMatch[1]));
+			return;
+		}
+
+		// GET /api/ul-workflow/tasks/active - Get active UL workflow task
+		if (method === "GET" && path === "/api/ul-workflow/tasks/active") {
+			sendJson(res, 200, handleGetActiveUlWorkflowTask());
+			return;
+		}
+
+		// GET /api/ul-workflow/tasks/:id - Get single UL workflow task
+		const ulTaskMatch = path.match(/^\/api\/ul-workflow\/tasks\/([^/]+)$/);
+		if (method === "GET" && ulTaskMatch) {
+			sendJson(res, 200, handleGetUlWorkflowTask(ulTaskMatch[1]));
+			return;
+		}
+
+		// GET /api/ul-workflow/tasks - Get all UL workflow tasks
+		if (method === "GET" && path === "/api/ul-workflow/tasks") {
+			sendJson(res, 200, handleGetUlWorkflowTasks());
 			return;
 		}
 
@@ -474,8 +667,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 		// 404 for unknown routes
 		sendJson(res, 404, { success: false, error: "Not found" });
 	} catch (error) {
-		console.error(`[API] Error: ${error}`);
-		sendJson(res, 500, { success: false, error: String(error) });
+		console.error(`[API] Error:`, error);
+		sendJson(res, 500, { success: false, error: "Internal server error" });
 	}
 }
 
@@ -530,7 +723,13 @@ function stopServer(): Promise<void> {
 // Extension Registration
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	// Auto-start server on session start (can be disabled via PI_API_AUTO_START=false)
 	pi.on("session_start", async (_event, ctx) => {
 		const autoStart = process.env.PI_API_AUTO_START !== "false";
@@ -557,6 +756,7 @@ export default function (pi: ExtensionAPI) {
 	// Cleanup on shutdown
 	pi.on("session_shutdown", async () => {
 		await stopServer();
+		isInitialized = false;
 	});
 
 	// Tool: Start API server
@@ -581,7 +781,7 @@ export default function (pi: ExtensionAPI) {
 				};
 			} catch (error) {
 				return {
-					content: [{ type: "text", text: `Failed to start server: ${error}` }],
+					content: [{ type: "text", text: "Failed to start API server" }],
 					details: {}
 				};
 			}

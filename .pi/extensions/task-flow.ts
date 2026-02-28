@@ -5,22 +5,24 @@
  * why: タスク管理とサブエージェント実行の統合により、効率的なワークフロー自動化を実現するため
  * related: .pi/extensions/task.ts, .pi/extensions/plan.ts, .pi/extensions/subagents/task-execution.ts
  * public_api: task_delegate, task_from_plan, task_context_set
- * invariants: タスクとプランのストレージは既存フォーマットと互換性を維持、ステータス遷移は一方向のみ
- * side_effects: .pi/tasks/storage.json、.pi/plans/storage.jsonへの読み書き、サブエージェントプロセス起動
- * failure_modes: サブエージェントタイムアウト、ストレージ破損、無効なタスク/プランID
+ * invariants: タスクとプランのストレージは既存フォーマットと互換性を維持、ステータス遷移は一方向のみ、ストレージ保存失敗時はバックアップを作成
+ * side_effects: .pi/tasks/storage.json、.pi/plans/storage.jsonへの読み書き、バックアップファイル作成、サブエージェントプロセス起動、console.errorによるエラーログ出力
+ * failure_modes: サブエージェントタイムアウト、ストレージ破損、無効なタスク/プランID、ストレージ書き込み失敗（バックアップ試行付き）
  * @abdd.explain
- * overview: タスク管理機能とサブエージェント実行を統合し、プランからのタスク作成やタスクの自動委任を可能にする
+ * overview: タスク管理機能とサブエージェント実行を統合し、プランからのタスク作成やタスクの自動委任を可能にする。ストレージ保存時のエラーハンドリングを備える
  * what_it_does:
  *   - task_delegate: タスクをサブエージェントに委任し、成功時に自動完了
  *   - task_from_plan: プランのステップからタスクを一括作成
  *   - task_context_set: 現在のタスクコンテキストを設定/クリア
+ *   - saveTaskStorage: ストレージ保存失敗時にバックアップファイルを作成し、データ損失を防ぐ
  * why_it_exists:
  *   - プランからタスクへの変換を自動化するため
  *   - タスク委任のワークフローを簡素化するため
  *   - セッション間でタスクコンテキストを維持するため
+ *   - ストレージ障害時のデータ保護を提供するため
  * scope:
  *   in: タスクID、プランID、サブエージェントID、各種オプションパラメータ
- *   out: ストレージ更新、サブエージェント実行結果、コンテキスト設定確認
+ *   out: ストレージ更新、バックアップファイル（エラー時）、サブエージェント実行結果、コンテキスト設定確認
  */
 
 // File: .pi/extensions/task-flow.ts
@@ -37,6 +39,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { runSubagentTask } from "./subagents/task-execution";
 import { loadStorage as loadSubagentStorage } from "./subagents/storage";
 import type { SubagentDefinition } from "./subagents/storage";
+import { getInstanceId } from "./ul-workflow.js";
 
 // ============================================
 // Type Definitions (local copies for type safety)
@@ -69,6 +72,8 @@ interface Task {
 	updatedAt: string;
 	completedAt?: string;
 	parentTaskId?: string;
+	ownerInstanceId?: string; // 所有するpiインスタンスID
+	claimedAt?: string;       // 所有取得時刻
 }
 
 /**
@@ -171,10 +176,24 @@ function loadTaskStorage(): TaskStorage {
  * タスクストレージを保存
  * @summary タスクストレージ保存
  * @param storage 保存するタスクストレージ
+ * @throws バックアップ保存も失敗した場合はエラーログのみ出力
  */
 function saveTaskStorage(storage: TaskStorage): void {
 	ensureTaskDir();
-	writeFileSync(TASK_STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+	try {
+		writeFileSync(TASK_STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+	} catch (error) {
+		console.error(`[task-flow] Failed to save task storage:`, error);
+		// Attempt backup save
+		const backupFile = `${TASK_STORAGE_FILE}.backup-${Date.now()}`;
+		try {
+			writeFileSync(backupFile, JSON.stringify(storage, null, 2), "utf-8");
+			console.error(`[task-flow] Backup saved to: ${backupFile}`);
+		} catch {
+			// Final fallback - data loss is possible
+			console.error(`[task-flow] CRITICAL: Could not save backup either`);
+		}
+	}
 }
 
 /**
@@ -225,7 +244,13 @@ const STATUS_MAP: Record<PlanStep["status"], TaskStatus> = {
 // Extension Registration
 // ============================================
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+	if (isInitialized) return;
+	isInitialized = true;
+
 	// ============================================
 	// Tool: task_delegate
 	// ============================================
@@ -258,8 +283,10 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			// Update to in_progress
+			// Update to in_progress and record owner
 			task.status = "in_progress";
+			task.ownerInstanceId = getInstanceId();
+			task.claimedAt = new Date().toISOString();
 			task.updatedAt = new Date().toISOString();
 			saveTaskStorage(storage);
 
@@ -471,5 +498,10 @@ export default function (pi: ExtensionAPI) {
 	// Extension loaded notification
 	pi.on("session_start", async (_event, ctx) => {
 		ctx.ui.notify("Task Flow Extension loaded", "info");
+	});
+
+	// セッション終了時にリスナー重複登録防止フラグをリセット
+	pi.on("session_shutdown", async () => {
+		isInitialized = false;
 	});
 }

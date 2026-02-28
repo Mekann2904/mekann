@@ -382,7 +382,22 @@ let lastRunSummary: LoopRunSummary | null = null;
  * @param pi - 拡張API
  * @returns void
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
+/**
+ * テスト用のリセット関数
+ * @summary isInitializedフラグをリセット
+ */
+export function resetForTesting(): void {
+  isInitialized = false;
+}
+
 export default function registerLoopExtension(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   pi.registerTool({
     name: "loop_run",
     label: "Loop Run",
@@ -770,6 +785,11 @@ export default function registerLoopExtension(pi: ExtensionAPI) {
       }
     }
     ctx.ui.notify("Loop extension loaded (/loop, loop_run)", "info");
+  });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
   });
 }
 

@@ -57,13 +57,24 @@ export const DEFAULT_BOND_CONFIG: BondAnalysisConfig = {
 
 /**
  * 環境変数から設定を読み込み
+ * BUG-014: parseFloatのエラーハンドリングを追加（NaN対策）
  */
 export function getBondConfig(): BondAnalysisConfig {
+  const parseThreshold = (value: string | undefined, defaultValue: number): number => {
+    if (!value) return defaultValue;
+    const parsed = parseFloat(value);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > 1) {
+      console.warn(`[bond-integration] Invalid threshold value "${value}", using default ${defaultValue}`);
+      return defaultValue;
+    }
+    return parsed;
+  };
+
   return {
     enabled: process.env.PI_BOND_ANALYSIS_ENABLED !== "false",
     verbose: process.env.PI_BOND_ANALYSIS_VERBOSE === "true",
-    chaosWarningThreshold: parseFloat(process.env.PI_BOND_CHAOS_THRESHOLD || "0.3"),
-    lowStabilityThreshold: parseFloat(process.env.PI_BOND_STABILITY_THRESHOLD || "0.5"),
+    chaosWarningThreshold: parseThreshold(process.env.PI_BOND_CHAOS_THRESHOLD, 0.3),
+    lowStabilityThreshold: parseThreshold(process.env.PI_BOND_STABILITY_THRESHOLD, 0.5),
   };
 }
 

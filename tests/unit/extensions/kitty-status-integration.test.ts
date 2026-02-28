@@ -19,7 +19,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 // モック後にインポート
-import kittyStatusIntegration from "../../../.pi/extensions/kitty-status-integration.js";
+import kittyStatusIntegration, { resetForTesting } from "../../../.pi/extensions/kitty-status-integration.js";
 
 // ============================================================================
 // エクスポート確認テスト
@@ -292,6 +292,7 @@ describe("agent_end 通知レベル", () => {
 	const originalKittyWindowId = process.env.KITTY_WINDOW_ID;
 
 	beforeEach(() => {
+		resetForTesting();
 		process.env.KITTY_WINDOW_ID = "test-window";
 	});
 

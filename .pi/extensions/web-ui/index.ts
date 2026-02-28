@@ -3,47 +3,135 @@
  * @path .pi/extensions/web-ui/index.ts
  * @role Extension entry point for Web UI dashboard
  * @why Provide browser-based monitoring and configuration interface for all pi instances
- * @related server.ts, lib/instance-registry.ts, web/src/app.tsx
- * @public_api default (extension function)
+ * @related standalone-server.ts, lib/instance-registry.ts, web/src/app.tsx
+ * @public_api default (extension function), getServerUrl
  * @invariants Server lifecycle must be managed properly, instances must be registered
- * @side_effects Starts HTTP server, registers commands and flags, accesses shared storage, subscribes to pi events
+ * @side_effects Starts detached child process server, registers commands and flags, accesses shared storage, subscribes to pi events
  * @failure_modes Port conflict, build missing, permission denied
  *
  * @abdd.explain
- * @overview Registers /web-ui command and auto-starts server on session start (configurable via PI_WEB_UI_AUTO_START)
- * @what_it_does Starts Express server automatically on session start, registers instance, manages lifecycle, broadcasts SSE events
- * @why_it_exists Allows users to monitor all pi instances via browser with real-time updates without manual startup
+ * @overview Registers /web-ui command and auto-starts detached server process on session start
+ * @what_it_does Starts standalone server as detached child process, registers instance, manages lifecycle
+ * @why_it_exists Allows web UI to persist across pi instance restarts - server survives parent termination
  * @scope(in) ExtensionAPI, ExtensionContext, pi events, PI_WEB_UI_AUTO_START env var
- * @scope(out) HTTP server, shared storage files, SSE broadcasts
+ * @scope(out) Child process server, shared storage files
  */
 
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import {
-  startServer,
-  stopServer,
-  isServerRunning,
-  getServerPort,
-  getContext,
-  broadcastSSEEvent,
-  addContextHistory,
-  type SSEEvent,
-} from "./server.js";
+import { exec, spawn, type ChildProcess } from "child_process";
+import { promisify } from "util";
+import { join } from "path";
 import {
   InstanceRegistry,
   ServerRegistry,
-  ThemeStorage,
+  ContextHistoryStorage,
 } from "./lib/instance-registry.js";
 import {
   startServer as startApiServer,
   isApiServerRunning,
 } from "../server.js";
 
+const execAsync = promisify(exec);
+
 const DEFAULT_PORT = 3000;
+
+/**
+ * コンテキスト履歴ストレージのインスタンス
+ */
+let contextHistoryStorage: ContextHistoryStorage | null = null;
+
+/**
+ * スタンドアロンサーバーをdetached子プロセスとして起動
+ * @param port - ポート番号
+ * @returns 子プロセス
+ */
+function startStandaloneServerProcess(port: number): ChildProcess | null {
+  // サーバースクリプトのパスを取得
+  const serverScript = join(import.meta.dirname, "standalone-server.ts");
+
+  // tsxを使用してTypeScriptを直接実行
+  const child = spawn("npx", ["tsx", serverScript], {
+    detached: true, // 親プロセスが終了しても生き残る
+    stdio: "ignore", // 親プロセスと標準入出力を共有しない
+    env: {
+      ...process.env,
+      PI_WEB_UI_PORT: String(port),
+    },
+  });
+
+  // 親プロセスの参照を解除（親が待機しないように）
+  child.unref();
+
+  child.on("error", (error) => {
+    console.error(`[web-ui] Failed to start standalone server: ${error}`);
+  });
+
+  return child;
+}
+
+/**
+ * スタンドアロンサーバーを停止（SIGTERMを送信）
+ */
+function stopStandaloneServerProcess(): void {
+  const serverInfo = ServerRegistry.isRunning();
+  if (serverInfo) {
+    try {
+      process.kill(serverInfo.pid, "SIGTERM");
+      console.log(`[web-ui] Sent SIGTERM to standalone server (PID: ${serverInfo.pid})`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[web-ui] Failed to stop standalone server: ${message}`);
+    }
+  }
+}
+
+/**
+ * 規定のブラウザでURLを開く
+ */
+const openBrowser = async (url: string): Promise<boolean> => {
+  const platform = process.platform;
+  let command: string;
+
+  switch (platform) {
+    case "darwin":
+      command = `open "${url}"`;
+      break;
+    case "win32":
+      command = `start "" "${url}"`;
+      break;
+    default:
+      // Linux and others
+      command = `xdg-open "${url}"`;
+  }
+
+  try {
+    await execAsync(command);
+    return true;
+  } catch (error) {
+    console.error(`[web-ui] Failed to open browser: ${error}`);
+    return false;
+  }
+};
+
+/**
+ * サーバーのURLを取得する
+ * @summary サーバーURL取得
+ * @description レジストリからサーバー情報を取得し、URLを返す
+ * サーバーが実行中でない場合はデフォルトポートのURLを返す（TOCTOU問題を回避）
+ * @returns サーバーのURL（常に有効なURLを返す）
+ */
+function getServerUrl(): string {
+  const registryServer = ServerRegistry.isRunning();
+  if (registryServer) {
+    return `http://localhost:${registryServer.port}`;
+  }
+  // Fallback to default port - avoids TOCTOU issues by always returning a valid URL
+  return `http://localhost:${DEFAULT_PORT}`;
+}
 
 export default function (pi: ExtensionAPI) {
   const registry = new InstanceRegistry(process.cwd());
-  let registered = false;
 
   const ensureRegistered = (modelId?: string) => {
     if (modelId) {
@@ -52,16 +140,17 @@ export default function (pi: ExtensionAPI) {
     // Always call register() - it handles re-registration safely
     // (clears existing heartbeat interval before re-registering)
     registry.register();
-    registered = true;
   };
 
   const ensureUnregistered = () => {
     // Always call unregister() - it's idempotent
     registry.unregister();
-    registered = false;
   };
 
-  // Note: Port is configured via environment variable PI_WEB_UI_PORT or uses default 3000
+  // コンテキスト履歴ストレージを初期化
+  if (!contextHistoryStorage) {
+    contextHistoryStorage = new ContextHistoryStorage(process.pid);
+  }
 
   // Register command for manual control
   pi.registerCommand("web-ui", {
@@ -79,59 +168,56 @@ export default function (pi: ExtensionAPI) {
 
       switch (subcommand) {
         case "stop":
-          if (isServerRunning()) {
-            stopServer();
-            ensureUnregistered();
-            ctx.ui.notify("Web UI stopped", "info");
-          } else {
-            ensureUnregistered();
-            ctx.ui.notify("Web UI is not running", "warning");
-          }
+          // 強制停止（スタンドアロンサーバーを停止）
+          stopStandaloneServerProcess();
+          ensureUnregistered();
+          ctx.ui.notify("Web UI stopped", "info");
           break;
 
         case "status":
-          const running = isServerRunning();
-          const port = getServerPort();
+          const existingServer = ServerRegistry.isRunning();
           const instances = InstanceRegistry.getAll();
           ctx.ui.notify(
-            running
-              ? `Web UI running on port ${port} (${instances.length} instance(s))`
+            existingServer
+              ? `Web UI running on port ${existingServer.port} (${instances.length} instance(s), PID: ${existingServer.pid})`
               : "Web UI is not running",
             "info"
           );
           break;
 
         case "open":
-          if (!isServerRunning()) {
-            ctx.ui.notify("Web UI is not running. Use /web-ui start first.", "warning");
-            return;
+          const serverUrl = getServerUrl();
+          const opened = await openBrowser(serverUrl);
+          if (opened) {
+            ctx.ui.notify(`Opening Web UI: ${serverUrl}`, "info");
+          } else {
+            ctx.ui.notify(`Web UI available at ${serverUrl} (could not open browser automatically)`, "warning");
           }
-          const url = `http://localhost:${getServerPort()}`;
-          ctx.ui.notify(`Web UI available at ${url}`, "info");
           break;
 
         case "start":
         default:
           ensureRegistered(ctx.model?.id);
 
-          if (isServerRunning()) {
-            ctx.ui.notify(`Web UI already running on port ${getServerPort()}`, "info");
-            return;
-          }
-
-          const existingServer = ServerRegistry.isRunning();
-          if (existingServer) {
+          const existingServerForStart = ServerRegistry.isRunning();
+          if (existingServerForStart) {
             ctx.ui.notify(
-              `Web UI already running on port ${existingServer.port} (pid: ${existingServer.pid})`,
+              `Web UI already running on port ${existingServerForStart.port} (PID: ${existingServerForStart.pid})`,
               "info"
             );
+            // 既に起動している場合もブラウザを開く
+            await openBrowser(`http://localhost:${existingServerForStart.port}`);
             return;
           }
 
           const portNum = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
           try {
-            startServer(portNum, pi, ctx);
+            startStandaloneServerProcess(portNum);
             ctx.ui.notify(`Web UI started: http://localhost:${portNum}`, "info");
+            // サーバー起動後にブラウザを開く（少し待機してサーバーの準備を待つ）
+            setTimeout(async () => {
+              await openBrowser(`http://localhost:${portNum}`);
+            }, 1000);
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             ctx.ui.notify(`Failed to start Web UI: ${message}`, "error");
@@ -141,42 +227,11 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Broadcast tool calls via SSE
-  pi.on("tool_call", async (event, _ctx) => {
-    if (!isServerRunning()) return;
-
-    const toolEvent = event as { toolName: string; toolCallId: string };
-    const sseEvent: SSEEvent = {
-      type: "tool-call",
-      data: {
-        toolName: toolEvent.toolName,
-        toolCallId: toolEvent.toolCallId,
-        timestamp: Date.now(),
-      },
-      timestamp: Date.now(),
-    };
-    broadcastSSEEvent(sseEvent);
-  });
-
-  // Broadcast turn end (LLM response) via SSE
+  // コンテキスト履歴を記録（turn_endイベント）
   pi.on("turn_end", async (_event, ctx) => {
-    if (!isServerRunning()) return;
-
     const contextUsage = ctx.getContextUsage();
-    const sseEvent: SSEEvent = {
-      type: "response",
-      data: {
-        contextUsage: contextUsage?.percent ?? 0,
-        totalTokens: contextUsage?.tokens ?? 0,
-        model: ctx.model?.id ?? "unknown",
-        timestamp: Date.now(),
-      },
-      timestamp: Date.now(),
-    };
-    broadcastSSEEvent(sseEvent);
 
-    // コンテキスト履歴を記録
-    if (contextUsage?.tokens) {
+    if (contextUsage?.tokens && contextHistoryStorage) {
       // Use actual input/output counts if available, otherwise approximate
       const input = ('inputTokens' in contextUsage && typeof contextUsage.inputTokens === 'number')
         ? contextUsage.inputTokens
@@ -185,7 +240,7 @@ export default function (pi: ExtensionAPI) {
         ? contextUsage.outputTokens
         : Math.round(contextUsage.tokens * 0.3);
 
-      addContextHistory({
+      contextHistoryStorage.add({
         timestamp: new Date().toISOString(),
         input,
         output,
@@ -193,37 +248,22 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // Broadcast context updates via SSE (on message_end)
-  pi.on("message_end", async (_event, ctx) => {
-    if (!isServerRunning()) return;
-
-    const contextUsage = ctx.getContextUsage();
-    const sseEvent: SSEEvent = {
-      type: "status",
-      data: {
-        contextUsage: contextUsage?.percent ?? 0,
-        totalTokens: contextUsage?.tokens ?? 0,
-        model: ctx.model?.id ?? "unknown",
-        cwd: ctx.cwd,
-        timestamp: Date.now(),
-      },
-      timestamp: Date.now(),
-    };
-    broadcastSSEEvent(sseEvent);
-  });
-
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
     ensureUnregistered();
 
     // Only stop server if this is the last instance
+    // Wait a bit for other instances to register their heartbeat
     setTimeout(() => {
       const remainingInstances = InstanceRegistry.getCount();
 
       if (remainingInstances === 0) {
-        stopServer();
+        console.log("[web-ui] No remaining instances, stopping standalone server...");
+        stopStandaloneServerProcess();
+      } else {
+        console.log(`[web-ui] ${remainingInstances} instance(s) still running, keeping server alive`);
       }
-    }, 500);
+    }, 1000); // 1秒待機（他のインスタンスのハートビートを待つ）
   });
 
   // Register tool for LLM to open browser
@@ -245,11 +285,10 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      // Check if server is running (either local or remote)
-      const localRunning = isServerRunning();
+      // Check if server is running
       const existingServer = ServerRegistry.isRunning();
 
-      if (!localRunning && !existingServer) {
+      if (!existingServer) {
         return {
           content: [
             {
@@ -261,17 +300,22 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      const port = localRunning ? getServerPort() : existingServer!.port;
+      const port = existingServer.port;
       const url = `http://localhost:${port}`;
+
+      // ブラウザを開く
+      const opened = await openBrowser(url);
 
       return {
         content: [
           {
             type: "text",
-            text: `Web UI is available at ${url}\n\nFeatures:\n- Dashboard: ${url}/\n- Instances: ${url}/instances\n- Theme: ${url}/theme`,
+            text: opened
+              ? `Opening Web UI in browser: ${url}\n\nFeatures:\n- Dashboard: ${url}/\n- Instances: ${url}/instances\n- Theme: ${url}/theme`
+              : `Web UI is available at ${url}\n\nFeatures:\n- Dashboard: ${url}/\n- Instances: ${url}/instances\n- Theme: ${url}/theme\n\n(Could not open browser automatically)`,
           },
         ],
-        details: { url },
+        details: { url, browserOpened: opened },
       };
     },
   });
@@ -284,23 +328,20 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    // Check if already running (another instance may have started it)
-    if (isServerRunning()) {
-      ensureRegistered(ctx.model?.id);
-      return;
-    }
+    // Register this instance first
+    ensureRegistered(ctx.model?.id);
 
+    // Check if already running (another instance may have started it)
     const existingServer = ServerRegistry.isRunning();
     if (existingServer) {
-      ensureRegistered(ctx.model?.id);
+      console.log(`[web-ui] Server already running on port ${existingServer.port} (PID: ${existingServer.pid})`);
       return;
     }
 
-    // Start the server
+    // Start the standalone server as a detached child process
     const portNum = parseInt(process.env.PI_WEB_UI_PORT || "") || DEFAULT_PORT;
     try {
-      ensureRegistered(ctx.model?.id);
-      startServer(portNum, pi, ctx);
+      startStandaloneServerProcess(portNum);
       ctx.ui.notify(`Web UI auto-started: http://localhost:${portNum}`, "info");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

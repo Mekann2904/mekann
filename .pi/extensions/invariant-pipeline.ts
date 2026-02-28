@@ -6,7 +6,7 @@
  * related: @mariozechner/pi-coding-agent, spec.md, quint, fast-check
  * public_api: parseSpecMarkdown, generate_from_spec, verify_quint_spec, generate_invariant_macros, generate_property_tests, generate_mbt_driver
  * invariants: 入力spec.mdは定義されたMarkdownセクション構造に従う, 出力ファイルパスは有効なファイルシステムパスである
- * side_effects: ファイルシステムへの読み書き(writeFileSync, readFileSync), ディレクトリの作成(mkdirSync)
+ * side_effects: ファイルシステムへの読み書き(writeFileSync, readFileSync), ディレクトリの作成(mkdirSync), 原子書き込み(mkdtempSync, renameSync, rmSync)
  * failure_modes: spec.mdの形式が不正な場合はパースエラー, Quintインストール未時は検証失敗, ファイル書き込み権限がない場合は出力失敗
  * @abdd.explain
  * overview: 自然言語仕様(spec.md)を解析し、形式仕様(Quint)、型検証マクロ、プロパティベーステスト、モデルベーステストドライバーを生成するツールチェーン
@@ -41,13 +41,17 @@
  * - invariant-generation-team: マルチエージェント生成
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync, mkdtempSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { Type } from "@sinclair/typebox";
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition as PiToolDefinition } from "@mariozechner/pi-coding-agent";
 
 import { toErrorMessage } from "../lib/error-utils.js";
+
+// Re-export ToolDefinition from pi-coding-agent for backward compatibility
+export type ToolDefinition = PiToolDefinition;
 
 // ============================================================================
 // Types
@@ -80,7 +84,7 @@ interface ParsedSpec {
   states: SpecState[];
   operations: SpecOperation[];
   invariants: SpecInvariant[];
-  constants?: { name: string; type: string; value?: unknown }[];
+  constants: { name: string; type: string; value?: unknown }[];
 }
 
 interface GenerationOutput {
@@ -160,7 +164,7 @@ function parseSpecMarkdown(content: string): ParsedSpec {
     if (trimmed.startsWith("## ")) {
       // Save pending items before changing section
       if (currentConstant) {
-        spec.constants!.push(currentConstant);
+        spec.constants.push(currentConstant);
         currentConstant = null;
       }
       if (currentState) {
@@ -182,7 +186,7 @@ function parseSpecMarkdown(content: string): ParsedSpec {
       if (headerMatch) {
         // Save previous constant if exists
         if (currentConstant) {
-          spec.constants!.push(currentConstant);
+          spec.constants.push(currentConstant);
         }
         currentConstant = { name: headerMatch[1], type: headerMatch[2].trim() };
         continue;
@@ -342,7 +346,7 @@ function parseSpecMarkdown(content: string): ParsedSpec {
 
   // Don't forget to save the last items
   if (currentConstant) {
-    spec.constants!.push(currentConstant);
+    spec.constants.push(currentConstant);
   }
   if (currentState) {
     spec.states.push(currentState);
@@ -1207,7 +1211,7 @@ function getTypeScriptDefaultLiteral(type: string): string {
 // ============================================================================
 
 export default (api: ExtensionAPI) => {
-  console.log("[invariant-pipeline] Extension loading...");
+  console.error("[invariant-pipeline] Extension loading...");
 
   // generate_from_spec tool
   api.registerTool({
@@ -1257,40 +1261,54 @@ export default (api: ExtensionAPI) => {
           warnings: [],
         };
 
-        // Generate Quint spec
+        // Generate all outputs first (before writing to disk)
         const quintOutput = generateQuintSpec(spec, params.module_name);
-        const quintPath = join(outputDir, `${spec.title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()}.qnt`);
-        writeFileSync(quintPath, quintOutput.content);
-        result.outputs.quint = { path: quintPath, content: quintOutput.content };
-        result.warnings.push(...quintOutput.warnings);
-        result.errors.push(...quintOutput.errors);
-
-        // Generate TypeScript validators
         const validatorsOutput = generateTsValidators(spec, params.struct_name);
-        const validatorsPath = join(outputDir, "validators.ts");
-        writeFileSync(validatorsPath, validatorsOutput.content);
-        result.outputs.macros = { path: validatorsPath, content: validatorsOutput.content };
-        result.warnings.push(...validatorsOutput.warnings);
-        result.errors.push(...validatorsOutput.errors);
-
-        // Generate property tests
         const testsOutput = generatePropertyTests(spec, params.struct_name, params.test_count);
-        const testsPath = join(outputDir, "property_tests.ts");
-        writeFileSync(testsPath, testsOutput.content);
-        result.outputs.tests = { path: testsPath, content: testsOutput.content };
-        result.warnings.push(...testsOutput.warnings);
-        result.errors.push(...testsOutput.errors);
-
-        // Generate MBT driver
         const mbtOutput = generateMBTDriver(spec, params.struct_name, params.max_steps);
-        const mbtPath = join(outputDir, "mbt_driver.ts");
-        writeFileSync(mbtPath, mbtOutput.content);
-        result.outputs.mbt = { path: mbtPath, content: mbtOutput.content };
-        result.warnings.push(...mbtOutput.warnings);
-        result.errors.push(...mbtOutput.errors);
+
+        // Collect warnings and errors
+        result.warnings.push(...quintOutput.warnings, ...validatorsOutput.warnings, ...testsOutput.warnings, ...mbtOutput.warnings);
+        result.errors.push(...quintOutput.errors, ...validatorsOutput.errors, ...testsOutput.errors, ...mbtOutput.errors);
+
+        // Atomic write: write to temp directory first, then move to target
+        const tempDir = mkdtempSync(join(tmpdir(), "invariant-"));
+        const quintFileName = `${spec.title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()}.qnt`;
+
+        try {
+          // Write all files to temp directory
+          writeFileSync(join(tempDir, quintFileName), quintOutput.content);
+          writeFileSync(join(tempDir, "validators.ts"), validatorsOutput.content);
+          writeFileSync(join(tempDir, "property_tests.ts"), testsOutput.content);
+          writeFileSync(join(tempDir, "mbt_driver.ts"), mbtOutput.content);
+
+          // Atomic move - all files appear at once
+          const quintPath = join(outputDir, quintFileName);
+          const validatorsPath = join(outputDir, "validators.ts");
+          const testsPath = join(outputDir, "property_tests.ts");
+          const mbtPath = join(outputDir, "mbt_driver.ts");
+
+          renameSync(join(tempDir, quintFileName), quintPath);
+          renameSync(join(tempDir, "validators.ts"), validatorsPath);
+          renameSync(join(tempDir, "property_tests.ts"), testsPath);
+          renameSync(join(tempDir, "mbt_driver.ts"), mbtPath);
+
+          // Record outputs
+          result.outputs.quint = { path: quintPath, content: quintOutput.content };
+          result.outputs.macros = { path: validatorsPath, content: validatorsOutput.content };
+          result.outputs.tests = { path: testsPath, content: testsOutput.content };
+          result.outputs.mbt = { path: mbtPath, content: mbtOutput.content };
+        } finally {
+          // Cleanup temp dir (ignore errors)
+          try {
+            rmSync(tempDir, { recursive: true, force: true });
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
 
         const durationMs = Date.now() - startTime;
-        console.log(`[invariant-pipeline] Generation complete in ${durationMs}ms, outputs: ${Object.keys(result.outputs).join(", ")}, warnings: ${result.warnings.length}`);
+        console.error(`[invariant-pipeline] Generation complete in ${durationMs}ms, outputs: ${Object.keys(result.outputs).join(", ")}, warnings: ${result.warnings.length}`);
 
         return {
           success: true,
@@ -1312,7 +1330,7 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  } as any);
+  } as unknown as ToolDefinition);
 
   // verify_quint_spec tool
   api.registerTool({
@@ -1383,7 +1401,7 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  } as any);
+  } as unknown as ToolDefinition);
 
   // generate_invariant_macros tool
   api.registerTool({
@@ -1427,7 +1445,7 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  } as any);
+  } as unknown as ToolDefinition);
 
   // generate_property_tests tool
   api.registerTool({
@@ -1473,7 +1491,7 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  } as any);
+  } as unknown as ToolDefinition);
 
   // generate_mbt_driver tool
   api.registerTool({
@@ -1519,9 +1537,9 @@ export default (api: ExtensionAPI) => {
         };
       }
     },
-  } as any);
+  } as unknown as ToolDefinition);
 
-  console.log("[invariant-pipeline] Extension loaded", {
+  console.error("[invariant-pipeline] Extension loaded", {
     tools: ["generate_from_spec", "verify_quint_spec", "generate_invariant_macros", "generate_property_tests", "generate_mbt_driver"],
   });
 };

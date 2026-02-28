@@ -43,7 +43,13 @@ import { existsSync, readFileSync } from "node:fs";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   let isFirstPrompt = true;
 
   pi.on("session_start", async (_event, _ctx) => {
@@ -120,5 +126,10 @@ export default function (pi: ExtensionAPI) {
     return {
       systemPrompt: `${event.systemPrompt}\n\n${injectedContext}`,
     };
+  });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
   });
 }

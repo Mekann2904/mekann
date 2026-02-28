@@ -41,6 +41,12 @@ import {
   type RuntimeSession,
   type SessionEvent,
 } from "../../lib/runtime-sessions.js";
+import {
+  getAllUlWorkflowTasks,
+  getUlWorkflowTask,
+  getActiveUlWorkflowTask,
+  invalidateCache,
+} from "./lib/ul-workflow-reader.js";
 // Note: mcpManager is imported dynamically in each request to ensure
 // we always get the latest instance from globalThis (handles reload scenarios)
 
@@ -50,6 +56,92 @@ import {
 async function getMcpManager() {
   const { mcpManager } = await import("../../lib/mcp/connection-manager.js");
   return mcpManager;
+}
+
+/**
+ * @summary ownerInstanceIdからPIDを抽出
+ * @param ownerInstanceId - "{sessionId}-{pid}"形式のインスタンスID
+ * @returns PID（抽出失敗時はnull）
+ */
+function extractPidFromOwnerInstanceId(ownerInstanceId: string | undefined): number | null {
+  if (!ownerInstanceId) return null;
+  const match = ownerInstanceId.match(/-(\d+)$/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * @summary 非アクティブなインスタンスが所有するULタスクを削除
+ * @description InstanceRegistryのハートビート情報と照合し、60秒以上応答のない
+ *              インスタンスが所有するタスクを削除する
+ * @returns 削除されたタスク数
+ */
+function cleanupDeadOwnerUlWorkflowTasks(): number {
+  const activeInstances = InstanceRegistry.getAll();
+  const activePids = new Set(activeInstances.map((i) => i.pid));
+
+  const ulTasksDir = path.join(process.cwd(), ".pi", "ul-workflow", "tasks");
+
+  if (!fs.existsSync(ulTasksDir)) {
+    return 0;
+  }
+
+  // 完了状態のフェーズ
+  const terminalPhases = new Set(["completed", "aborted"]);
+
+  let deletedCount = 0;
+
+  try {
+    const taskDirs = fs.readdirSync(ulTasksDir)
+      .filter((name) => fs.statSync(path.join(ulTasksDir, name)).isDirectory());
+
+    for (const taskId of taskDirs) {
+      const statusPath = path.join(ulTasksDir, taskId, "status.json");
+
+      if (!fs.existsSync(statusPath)) {
+        continue;
+      }
+
+      try {
+        const statusRaw = fs.readFileSync(statusPath, "utf-8");
+        const status = JSON.parse(statusRaw);
+        const ownerPid = extractPidFromOwnerInstanceId(status.ownerInstanceId);
+        const phase = status.phase || "unknown";
+
+        // 削除条件1: 完了済み + ownerInstanceIdがnull（古いタスク）
+        if (!ownerPid) {
+          if (terminalPhases.has(phase)) {
+            const taskDir = path.join(ulTasksDir, taskId);
+            fs.rmSync(taskDir, { recursive: true, force: true });
+            deletedCount++;
+            console.log(`[web-ui] Cleaned up UL task ${taskId} (completed with no owner)`);
+          }
+          continue;
+        }
+
+        // 削除条件2: アクティブでないインスタンスが所有している
+        if (activePids.has(ownerPid)) {
+          continue;
+        }
+
+        const taskDir = path.join(ulTasksDir, taskId);
+        fs.rmSync(taskDir, { recursive: true, force: true });
+        deletedCount++;
+        console.log(`[web-ui] Cleaned up UL task ${taskId} (owner PID ${ownerPid} is inactive)`);
+      } catch {
+        // 個別のタスク削除エラーは無視
+      }
+    }
+
+    if (deletedCount > 0) {
+      // キャッシュを無効化
+      invalidateCache();
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[web-ui] Failed to cleanup UL tasks: ${errorMessage}`);
+  }
+
+  return deletedCount;
 }
 
 /**
@@ -150,6 +242,7 @@ interface SSEClient {
 class SSEEventBus {
   private clients: Map<string, SSEClient> = new Map();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private instancesBroadcastInterval: ReturnType<typeof setInterval> | null = null;
 
   /**
    * @summary Add SSE client connection
@@ -197,12 +290,34 @@ class SSEEventBus {
   }
 
   /**
+   * @summary Start instances broadcast interval (3 seconds)
+   */
+  startInstancesBroadcast(): void {
+    this.instancesBroadcastInterval = setInterval(() => {
+      const instances = InstanceRegistry.getAll();
+      this.broadcast({
+        type: "instances-update",
+        data: {
+          instances,
+          count: instances.length,
+          timestamp: Date.now(),
+        },
+        timestamp: Date.now(),
+      });
+    }, 3000);
+  }
+
+  /**
    * @summary Stop heartbeat interval and clear all clients
    */
   stopHeartbeat(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+    }
+    if (this.instancesBroadcastInterval) {
+      clearInterval(this.instancesBroadcastInterval);
+      this.instancesBroadcastInterval = null;
     }
     // Clear all clients on server shutdown
     this.clients.clear();
@@ -218,6 +333,7 @@ class SSEEventBus {
 
 const sseEventBus = new SSEEventBus();
 let contextCleanupInterval: ReturnType<typeof setInterval> | null = null;
+let ulTaskCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * @summary 現在のインスタンス用コンテキスト履歴ストレージ
@@ -226,10 +342,13 @@ let contextHistoryStorage: ContextHistoryStorage | null = null;
 
 /**
  * @summary コンテキスト履歴を追加してSSEで通知
+ * @param entry - コンテキスト履歴エントリ（pidは省略可能、省略時はprocess.pid）
  */
-export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid">): void {
-  if (!contextHistoryStorage) {
-    contextHistoryStorage = new ContextHistoryStorage(process.pid);
+export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid"> & { pid?: number }): void {
+  const pid = entry.pid ?? process.pid;
+
+  if (!contextHistoryStorage || contextHistoryStorage.getPid() !== pid) {
+    contextHistoryStorage = new ContextHistoryStorage(pid);
   }
 
   contextHistoryStorage.add(entry);
@@ -238,7 +357,7 @@ export function addContextHistory(entry: Omit<ContextHistoryEntry, "pid">): void
   sseEventBus.broadcast({
     type: "context-update",
     data: {
-      pid: process.pid,
+      pid,
       timestamp: entry.timestamp,
       input: entry.input,
       output: entry.output,
@@ -281,6 +400,12 @@ export function startServer(
 
   // Register this server
   ServerRegistry.register(process.pid, port);
+
+  // Cleanup UL tasks owned by inactive instances
+  const cleanedCount = cleanupDeadOwnerUlWorkflowTasks();
+  if (cleanedCount > 0) {
+    console.log(`[web-ui] Cleaned up ${cleanedCount} UL task(s) from inactive instances`);
+  }
 
   // ============= API Endpoints =============
 
@@ -949,6 +1074,54 @@ export function startServer(
     }
   });
 
+  // ============= UL Workflow Task API (Read-only) =============
+
+  /**
+   * GET /api/ul-workflow/tasks - Get all UL workflow tasks
+   */
+  app.get("/api/ul-workflow/tasks", (_req: Request, res: Response) => {
+    try {
+      const tasks = getAllUlWorkflowTasks();
+      res.json({ success: true, data: tasks, total: tasks.length });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ success: false, error: "Failed to load UL workflow tasks", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/ul-workflow/tasks/active - Get active UL workflow task
+   */
+  app.get("/api/ul-workflow/tasks/active", (_req: Request, res: Response) => {
+    try {
+      const task = getActiveUlWorkflowTask();
+      res.json({ success: true, data: task });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ success: false, error: "Failed to load active UL workflow task", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/ul-workflow/tasks/:id - Get single UL workflow task
+   */
+  app.get("/api/ul-workflow/tasks/:id", (req: Request, res: Response) => {
+    try {
+      const taskId = req.params.id.startsWith("ul-")
+        ? req.params.id.slice(3)
+        : req.params.id;
+      const task = getUlWorkflowTask(taskId);
+      if (!task) {
+        res.status(404).json({ success: false, error: "Task not found" });
+        return;
+      }
+      res.json({ success: true, data: task });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ success: false, error: "Failed to load task", details: errorMessage });
+    }
+  });
+
   // ============= Runtime Status API =============
 
   /**
@@ -1140,12 +1313,26 @@ export function startServer(
     // SSEハートビートを開始
     sseEventBus.startHeartbeat();
 
+    // インスタンス情報の定期ブロードキャストを開始
+    sseEventBus.startInstancesBroadcast();
+
     // 定期的に古い履歴ファイルをクリーンアップ（5分ごと）
     if (contextCleanupInterval) {
       clearInterval(contextCleanupInterval);
     }
     contextCleanupInterval = setInterval(() => {
       ContextHistoryStorage.cleanup();
+    }, 5 * 60 * 1000);
+
+    // 定期的に非アクティブなインスタンスが所有するULタスクをクリーンアップ（5分ごと）
+    if (ulTaskCleanupInterval) {
+      clearInterval(ulTaskCleanupInterval);
+    }
+    ulTaskCleanupInterval = setInterval(() => {
+      const cleanedCount = cleanupDeadOwnerUlWorkflowTasks();
+      if (cleanedCount > 0) {
+        console.log(`[web-ui] Periodic cleanup: removed ${cleanedCount} UL task(s) from inactive instances`);
+      }
     }, 5 * 60 * 1000);
 
     // MCPサーバー設定ファイルからの自動接続は無効化
@@ -1169,6 +1356,10 @@ export function stopServer(): void {
     if (contextCleanupInterval) {
       clearInterval(contextCleanupInterval);
       contextCleanupInterval = null;
+    }
+    if (ulTaskCleanupInterval) {
+      clearInterval(ulTaskCleanupInterval);
+      ulTaskCleanupInterval = null;
     }
     state.server.close();
     state.server = null;

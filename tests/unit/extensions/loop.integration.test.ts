@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import registerLoopExtension from "../../../.pi/extensions/loop.js";
+import registerLoopExtension, { resetForTesting } from "../../../.pi/extensions/loop.js";
 
 type RegisteredTool = {
 	name: string;
@@ -58,6 +58,7 @@ describe("loop extension integration tests", () => {
 	let tmpDir: string;
 
 	beforeEach(() => {
+		resetForTesting();
 		tmpDir = mkdtempSync(join(tmpdir(), "pi-loop-test-"));
 		fakePi = createFakePi();
 

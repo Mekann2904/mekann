@@ -909,7 +909,14 @@ async function handleToolReflection(
  * @summary ツール拡張登録
  * @param pi 拡張APIインスタンス
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // create_tool: 動的ツール生成
   pi.registerTool({
     name: "create_tool",
@@ -1071,5 +1078,10 @@ export default function registerDynamicToolsExtension(pi: ExtensionAPI): void {
   // セッション開始時に初期化メッセージを表示
   pi.on("session_start", async (_event, ctx) => {
     ctx.ui.notify("[Dynamic Tools] 動的ツール生成システムが有効になりました", "info");
+  });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
   });
 }

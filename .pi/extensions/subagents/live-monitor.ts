@@ -31,6 +31,7 @@
 import { Key, matchesKey } from "@mariozechner/pi-tui";
 
 import type { Theme, ThemeColor } from "../../lib/tui/types.js";
+import type { TuiInstance, KeybindingMap, LiveMonitorContext } from "../../lib/tui-types.js";
 import {
   formatDurationMs,
   formatBytes,
@@ -543,7 +544,7 @@ export function renderSubagentLiveView(input: {
  * @returns {SubagentLiveMonitorController | undefined} ライブ監視コントローラ
  */
 export function createSubagentLiveMonitor(
-  ctx: any,
+  ctx: LiveMonitorContext,
   input: {
     title: string;
     items: Array<{ id: string; name: string }>;
@@ -637,7 +638,7 @@ export function createSubagentLiveMonitor(
   };
 
   const uiPromise = ctx.ui
-    .custom((tui: any, theme: Theme, _keybindings: any, done: () => void) => {
+    .custom((tui: TuiInstance, theme: Theme, _keybindings: KeybindingMap, done: () => void) => {
       doneUi = done;
       requestRender = () => {
         if (!closed) {

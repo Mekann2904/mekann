@@ -329,15 +329,6 @@ export {
   runMember,
 } from "./member-execution";
 
-// Re-export parallel-execution functions for external use (backward compatibility)
-export {
-  type TeamParallelCapacityCandidate,
-  type TeamParallelCapacityResolution,
-  buildMemberParallelCandidates,
-  buildTeamAndMemberParallelCandidates,
-  resolveTeamParallelCapacity,
-} from "./parallel-execution";
-
 // Re-export result-aggregation functions for external use (backward compatibility)
 export {
   isRetryableTeamMemberError,
@@ -947,7 +938,7 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
         toolName: "agent_team_run",
         candidate: {
           additionalRequests: 1,
-          additionalLlm: Math.max(1, effectiveMemberParallelism),
+          additionalLlm: Math.min(effectiveMemberParallelism, snapshot.limits.maxParallelTeammatesPerTeam),
         },
         tenantKey: team.id,
         source: "scheduled",
@@ -1499,8 +1490,11 @@ export default function registerAgentTeamsExtension(pi: ExtensionAPI) {
       const dispatchPermit = await acquireRuntimeDispatchPermit({
         toolName: "agent_team_run_parallel",
         candidate: {
-          additionalRequests: Math.max(1, effectiveTeamParallelism),
-          additionalLlm: Math.max(1, effectiveTeamParallelism * effectiveMemberParallelism),
+          additionalRequests: Math.min(effectiveTeamParallelism, snapshot.limits.maxParallelTeamsPerRun),
+          additionalLlm: Math.min(
+            effectiveTeamParallelism * effectiveMemberParallelism,
+            snapshot.limits.maxParallelTeamsPerRun * snapshot.limits.maxParallelTeammatesPerTeam,
+          ),
         },
         tenantKey: enabledTeams.map((team) => team.id).sort().join("+"),
         source: "scheduled",

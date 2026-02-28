@@ -85,7 +85,14 @@ const MEDIATOR_HELP = [
  * @summary Mediator拡張を登録
  * @param pi 拡張API
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function registerMediatorExtension(pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // mediator_interpretツール
   pi.registerTool({
     name: "mediator_interpret",
@@ -321,6 +328,11 @@ export default function registerMediatorExtension(pi: ExtensionAPI) {
       ctx.ui.notify(`Mediator loaded ${stats.totalFacts} confirmed facts`, "info");
     }
   });
+
+  // セッション終了時にリスナー重複登録防止フラグをリセット
+  pi.on("session_shutdown", async () => {
+    isInitialized = false;
+  });
 }
 
 // ============================================================================
@@ -414,7 +426,10 @@ function formatMediatorOutput(output: MediatorOutput, originalInput: string): st
   return lines.join("\n");
 }
 
-function createLlmCallFromContext(ctx: any): LlmCallFunction {
+interface MediatorContext {
+  model?: unknown;
+}
+function createLlmCallFromContext(ctx: MediatorContext): LlmCallFunction {
   return async (
     systemPrompt: string,
     userPrompt: string,

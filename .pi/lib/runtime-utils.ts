@@ -91,14 +91,27 @@ export function buildTraceTaskId(
  * @returns 正規化されたタイムアウト時間
  */
 export function normalizeTimeoutMs(value: unknown, fallback: number): number {
+  const resolved = toFiniteNumber(value, fallback);
+  if (resolved === null) return fallback;
+  if (resolved <= 0) return 0; // Allow disabling timeout
+  return Math.max(1, Math.trunc(resolved));
+}
+
+/**
+ * 未知の値を有限数値に変換する共通関数
+ * @summary 数値変換
+ * @param value 入力値
+ * @param fallback デフォルト値
+ * @returns 変換された数値またはnull（変換失敗時）
+ */
+function toFiniteNumber(value: unknown, fallback: number): number | null {
   // オブジェクトガード: {toString: ...}のようなオブジェクトはNumber()変換でエラーになる
-  if (typeof value === "object" && value !== null) return fallback;
-  if (Array.isArray(value)) return fallback;
+  if (typeof value === "object" && value !== null) return null;
+  if (Array.isArray(value)) return null;
 
   const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return 0;
-  return Math.max(1, Math.trunc(resolved));
+  if (!Number.isFinite(resolved)) return null;
+  return resolved;
 }
 
 /**
@@ -158,12 +171,8 @@ export function toRetryOverrides(value: unknown): RetryWithBackoffOverrides | un
  * @returns 並行数
  */
 export function toConcurrencyLimit(value: unknown, fallback: number): number {
-  // オブジェクトガード: {toString: ...}のようなオブジェクトはNumber()変換でエラーになる
-  if (typeof value === "object" && value !== null) return fallback;
-  if (Array.isArray(value)) return fallback;
-
-  const resolved = value === undefined ? fallback : Number(value);
-  if (!Number.isFinite(resolved)) return fallback;
-  if (resolved <= 0) return fallback;
+  const resolved = toFiniteNumber(value, fallback);
+  if (resolved === null) return fallback;
+  if (resolved <= 0) return fallback; // Concurrency 0 is invalid, use fallback
   return Math.max(1, Math.trunc(resolved));
 }

@@ -35,7 +35,14 @@ let savedTitle = "";
  * - Terminal title: [🔴] for idle, [🟢] for running
  * - Footer: "停止中" in red text when idle
  */
+
+// モジュールレベルのフラグ（reload時のリスナー重複登録防止）
+let isInitialized = false;
+
 export default function (pi: ExtensionAPI) {
+  if (isInitialized) return;
+  isInitialized = true;
+
   // Clear red indicator when agent starts
   pi.on("agent_start", async (_event, ctx) => {
     isAgentRunning = true;
@@ -58,6 +65,7 @@ export default function (pi: ExtensionAPI) {
   // Restore original when session ends
   pi.on("session_shutdown", async (_event, ctx) => {
     restoreOriginal(ctx);
+    isInitialized = false;
   });
 }
 

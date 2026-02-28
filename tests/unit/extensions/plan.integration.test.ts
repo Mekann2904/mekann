@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import registerPlanExtension from "../../../.pi/extensions/plan.js";
+import registerPlanExtension, { resetForTesting } from "../../../.pi/extensions/plan.js";
 
 type RegisteredTool = {
 	name: string;
@@ -58,6 +58,7 @@ describe("plan extension integration tests", () => {
 	let tmpDir: string;
 
 	beforeEach(() => {
+		resetForTesting();
 		tmpDir = mkdtempSync(join(tmpdir(), "pi-plan-test-"));
 		fakePi = createFakePi();
 

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import registerSubagentExtension from "../../../.pi/extensions/subagents.js";
+import registerSubagentExtension, { resetForTesting } from "../../../.pi/extensions/subagents.js";
 
 type RegisteredTool = {
   name: string;
@@ -56,6 +56,7 @@ describe("subagents extension integration", () => {
   let pi: ReturnType<typeof createFakePi>;
 
   beforeEach(() => {
+    resetForTesting();
     testCwd = mkdtempSync(join(tmpdir(), "subagents-ext-it-"));
     pi = createFakePi();
     registerSubagentExtension(pi as any);
