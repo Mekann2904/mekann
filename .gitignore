@@ -78,6 +78,15 @@ coverage/
 # Task API storage (runtime data)
 .pi/tasks/
 
+# Agent-generated reports
+.pi/reports/
+
+# Agent-generated research
+.pi/research/
+
+# Checkpoints (runtime data)
+.pi/checkpoints/
+
 # ============================================================================
 # Memory & Embeddings (may contain sensitive task data)
 # ============================================================================
