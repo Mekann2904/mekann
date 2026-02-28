@@ -48,7 +48,7 @@ import { Type } from "@sinclair/typebox";
 
 import type { ExtensionAPI, ToolDefinition as PiToolDefinition } from "@mariozechner/pi-coding-agent";
 
-import { toErrorMessage } from "../lib/error-utils.js";
+import { toErrorMessage } from "../lib/core/error-utils.js";
 
 // Re-export ToolDefinition from pi-coding-agent for backward compatibility
 export type ToolDefinition = PiToolDefinition;

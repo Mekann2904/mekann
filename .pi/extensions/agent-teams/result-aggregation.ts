@@ -33,7 +33,7 @@ import {
   classifyPressureError,
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
-} from "../../lib/error-utils.js";
+} from "../../lib/core/error-utils.js";
 import {
   type RunOutcomeCode,
   type RunOutcomeSignal,

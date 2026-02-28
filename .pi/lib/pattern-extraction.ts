@@ -31,7 +31,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ensureDir } from "./fs-utils.js";
+import { ensureDir } from "./core/fs-utils.js";
 import {
   extractKeywords,
   classifyTaskType,

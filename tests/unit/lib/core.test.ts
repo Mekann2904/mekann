@@ -6,8 +6,8 @@
 
 import { describe, it, expect } from "vitest";
 
-// core.ts はバレルファイルなので、エクスポートされていることを確認する
-import * as core from "../../../.pi/lib/core.js";
+// core.ts は core/index.ts に移動したので、エクスポートされていることを確認する
+import * as core from "../../../.pi/lib/core/index.js";
 
 // ============================================================================
 // 再エクスポート確認テスト

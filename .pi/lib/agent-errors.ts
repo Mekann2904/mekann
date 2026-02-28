@@ -43,7 +43,7 @@ import {
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
   toErrorMessage,
-} from "./error-utils.js";
+} from "./core/error-utils.js";
 
 // ============================================================================
 // Extended Error Classification (P1-5)

@@ -31,8 +31,8 @@
 
 import { spawn } from "node:child_process";
 
-import { formatDuration } from "../../lib/format-utils.js";
-import { toErrorMessage } from "../../lib/error-utils.js";
+import { formatDuration } from "../../lib/core/format-utils.js";
+import { toErrorMessage } from "../../lib/core/error-utils.js";
 import {
   truncateTextWithMarker as truncateText,
   toPreview,

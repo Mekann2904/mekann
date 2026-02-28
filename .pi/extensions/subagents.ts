@@ -39,12 +39,12 @@ import { getMarkdownTheme, isToolCallEventType, type ExtensionAPI, type ToolCall
 import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 
-import { ensureDir } from "../lib/fs-utils.js";
+import { ensureDir } from "../lib/core/fs-utils.js";
 import {
   formatDurationMs,
   formatBytes,
   formatClockTime,
-} from "../lib/format-utils.js";
+} from "../lib/core/format-utils.js";
 import {
   getLiveStatusGlyph,
   isEnterInput,
@@ -67,7 +67,7 @@ import {
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
   toErrorMessage,
-} from "../lib/error-utils.js";
+} from "../lib/core/error-utils.js";
 import { setupGlobalErrorHandlers } from "../lib/global-error-handler.js";
 import { createRunId, computeLiveWindow } from "../lib/agent-utils.js";
 import {
@@ -134,7 +134,7 @@ import {
   isNetworkErrorRetryable,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
-} from "../lib/retry-with-backoff";
+} from "../lib/retry-with-backoff.js";
 
 import {
   runPiPrintMode as sharedRunPiPrintMode,
@@ -146,7 +146,7 @@ import {
   refreshRuntimeStatus as sharedRefreshRuntimeStatus,
 } from "./shared/runtime-helpers";
 
-import { SchemaValidationError } from "../lib/errors.js";
+import { SchemaValidationError } from "../lib/core/errors.js";
 import {
   generateSessionId,
   addSession,

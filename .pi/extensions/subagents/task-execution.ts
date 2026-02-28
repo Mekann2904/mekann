@@ -41,7 +41,7 @@ import {
   classifyPressureError,
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
-} from "../../lib/error-utils.js";
+} from "../../lib/core/error-utils.js";
 import {
   createRunId,
 } from "../../lib/agent-utils.js";
@@ -72,7 +72,7 @@ import {
   applyOutputTemplate,
   hasMinimumStructure,
 } from "../../lib/output-template.js";
-import { SchemaValidationError } from "../../lib/errors.js";
+import { SchemaValidationError } from "../../lib/core/errors.js";
 import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
@@ -83,8 +83,8 @@ import {
   isNetworkErrorRetryable,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
-} from "../../lib/retry-with-backoff";
-import { getRateLimitGateSnapshot } from "../../lib/retry-with-backoff";
+} from "../../lib/retry-with-backoff.js";
+import { getRateLimitGateSnapshot } from "../../lib/retry-with-backoff.js";
 import {
   STABLE_MAX_RETRIES,
   STABLE_INITIAL_DELAY_MS,

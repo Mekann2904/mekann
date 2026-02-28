@@ -41,7 +41,7 @@ import {
   getEmbeddingProvider,
   type EmbeddingProvider,
 } from "./embeddings/index.js";
-import { ensureDir } from "./fs-utils.js";
+import { ensureDir } from "./core/fs-utils.js";
 import { type IndexedRun, type RunIndex, getOrBuildRunIndex } from "./run-index.js";
 import { atomicWriteTextFile } from "./storage-lock.js";
 

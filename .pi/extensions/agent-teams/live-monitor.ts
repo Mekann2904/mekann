@@ -39,7 +39,7 @@ import {
   formatClockTime,
   formatElapsedClock,
   normalizeForSingleLine,
-} from "../../lib/format-utils.js";
+} from "../../lib/core/format-utils.js";
 import {
   appendTail,
   countOccurrences,

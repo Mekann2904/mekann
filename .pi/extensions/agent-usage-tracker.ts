@@ -41,8 +41,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { ensureDir } from "../lib/fs-utils.js";
-import { toFiniteNumber } from "../lib/validation-utils.js";
+import { ensureDir } from "../lib/core/fs-utils.js";
+import { toFiniteNumber } from "../lib/core/validation-utils.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 

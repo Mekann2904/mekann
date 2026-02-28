@@ -31,7 +31,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 
-import { toErrorMessage } from "../../lib/error-utils.js";
+import { toErrorMessage } from "../../lib/core/error-utils.js";
 import {
   truncateTextWithMarker as truncateText,
   toPreview,

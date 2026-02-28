@@ -37,7 +37,7 @@ import {
   formatBytes,
   formatClockTime,
   formatElapsedClock,
-} from "../../lib/format-utils.js";
+} from "../../lib/core/format-utils.js";
 import {
   appendTail,
   countOccurrences,

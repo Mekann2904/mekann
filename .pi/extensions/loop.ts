@@ -39,9 +39,9 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
-import { formatDuration } from "../lib/format-utils.js";
-import { toErrorMessage } from "../lib/error-utils.js";
-import { toBoundedInteger, toBoundedFloat } from "../lib/validation-utils.js";
+import { formatDuration } from "../lib/core/format-utils.js";
+import { toErrorMessage } from "../lib/core/error-utils.js";
+import { toBoundedInteger, toBoundedFloat } from "../lib/core/validation-utils.js";
 import {
   truncateTextWithMarker,
   toPreview,

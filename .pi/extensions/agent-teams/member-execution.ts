@@ -36,10 +36,10 @@ import type { TeamDefinition, TeamMember, TeamMemberResult } from "./storage";
 
 import {
   normalizeForSingleLine,
-} from "../../lib/format-utils.js";
+} from "../../lib/core/format-utils.js";
 import {
   toErrorMessage,
-} from "../../lib/error-utils.js";
+} from "../../lib/core/error-utils.js";
 import {
   trimForError,
   buildRateLimitKey,
@@ -50,7 +50,7 @@ import {
 import {
   validateTeamMemberOutput,
 } from "../../lib/output-validation.js";
-import { SchemaValidationError, ExecutionError } from "../../lib/errors.js";
+import { SchemaValidationError, ExecutionError } from "../../lib/core/errors.js";
 import {
   findRelevantPatterns,
   type ExtractedPattern,

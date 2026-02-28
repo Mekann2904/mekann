@@ -36,15 +36,15 @@ import {
   STABLE_RUNTIME_PROFILE,
   TEAM_MEMBER_CONFIG,
 } from "../../lib/agent-common.js";
-import { classifyPressureError } from "../../lib/error-utils.js";
+import { classifyPressureError } from "../../lib/core/error-utils.js";
 import { getLogger } from "../../lib/comprehensive-logger.js";
 import type { OperationType } from "../../lib/comprehensive-logger-types.js";
 import { getCostEstimator, type ExecutionHistoryEntry } from "../../lib/cost-estimator.js";
-import { formatDurationMs, normalizeForSingleLine } from "../../lib/format-utils.js";
+import { formatDurationMs, normalizeForSingleLine } from "../../lib/core/format-utils.js";
 import { runWithConcurrencyLimit } from "../../lib/concurrency.js";
 import type { RetryWithBackoffOverrides } from "../../lib/retry-with-backoff.js";
 import { toConcurrencyLimit } from "../../lib/runtime-utils.js";
-import { ValidationError } from "../../lib/errors.js";
+import { ValidationError } from "../../lib/core/errors.js";
 
 import {
   type TeamMember,

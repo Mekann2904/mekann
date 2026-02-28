@@ -44,13 +44,13 @@ import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui
 
 
 // Import shared plan mode utilities
-import { ensureDir } from "../../lib/fs-utils.js";
+import { ensureDir } from "../../lib/core/fs-utils.js";
 import {
   formatDurationMs,
   formatBytes,
   formatClockTime,
   normalizeForSingleLine,
-} from "../../lib/format-utils.js";
+} from "../../lib/core/format-utils.js";
 import {
   getLiveStatusGlyph,
   isEnterInput,
@@ -73,7 +73,7 @@ import {
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
   toErrorMessage,
-} from "../../lib/error-utils.js";
+} from "../../lib/core/error-utils.js";
 import { createRunId, computeLiveWindow } from "../../lib/agent-utils.js";
 import {
   ThinkingLevel,
@@ -93,7 +93,7 @@ import {
   SchemaValidationError,
   ValidationError,
   TeamDefinitionError,
-} from "../../lib/errors.js";
+} from "../../lib/core/errors.js";
 import { getLogger } from "../../lib/comprehensive-logger";
 import type { OperationType } from "../../lib/comprehensive-logger-types";
 import { getCostEstimator, type ExecutionHistoryEntry, CostEstimator } from "../../lib/cost-estimator";
@@ -437,7 +437,7 @@ import {
   isNetworkErrorRetryable,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
-} from "../../lib/retry-with-backoff";
+} from "../../lib/retry-with-backoff.js";
 
 import {
   acquireRuntimeDispatchPermit,

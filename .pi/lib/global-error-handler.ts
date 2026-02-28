@@ -25,7 +25,7 @@
  *   out: 標準エラー出力またはカスタムロガー、プロセス終了シグナル
  */
 
-import { isCancelledErrorMessage, toErrorMessage } from "./error-utils.js";
+import { isCancelledErrorMessage, toErrorMessage } from "./core/error-utils.js";
 
 /** グローバルエラーハンドラが設定されているかどうか */
 let isSetup = false;

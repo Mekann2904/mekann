@@ -31,7 +31,7 @@
  * Layer: 1 (depends on Layer 0: error-utils, validation-utils, format-utils)
  */
 
-import { toFiniteNumberWithDefault } from "./validation-utils.js";
+import { toFiniteNumberWithDefault } from "./core/validation-utils.js";
 
 // ============================================================================
 // Stable Runtime Profile Constants

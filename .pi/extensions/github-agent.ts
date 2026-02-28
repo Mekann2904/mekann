@@ -29,7 +29,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { toError } from "../lib/error-utils.js";
+import { toError } from "../lib/core/error-utils.js";
 import { Type, type Static } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 

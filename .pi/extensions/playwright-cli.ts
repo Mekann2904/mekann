@@ -10,7 +10,7 @@ import { promisify } from "node:util";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { toError } from "../lib/error-utils.js";
+import { toError } from "../lib/core/error-utils.js";
 
 const execFileAsync = promisify(execFile);
 
