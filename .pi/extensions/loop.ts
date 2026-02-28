@@ -386,6 +386,14 @@ let lastRunSummary: LoopRunSummary | null = null;
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
 let isInitialized = false;
 
+/**
+ * テスト用のリセット関数
+ * @summary isInitializedフラグをリセット
+ */
+export function resetForTesting(): void {
+  isInitialized = false;
+}
+
 export default function registerLoopExtension(pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;

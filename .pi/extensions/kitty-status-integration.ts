@@ -292,6 +292,14 @@ function getToolResultStats(messages: unknown[]): { toolCount: number; errorCoun
 // モジュールレベルのフラグ（reload時のリスナー重複登録防止）
 let isInitialized = false;
 
+/**
+ * テスト用のリセット関数
+ * @summary isInitializedフラグをリセット
+ */
+export function resetForTesting(): void {
+  isInitialized = false;
+}
+
 export default function (pi: ExtensionAPI) {
   if (isInitialized) return;
   isInitialized = true;
