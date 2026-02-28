@@ -29,7 +29,7 @@
 // Why: Enables proactive task delegation to focused helper agents as a default workflow.
 // Related: .pi/extensions/agent-teams.ts, .pi/extensions/question.ts, README.md
 
-import { readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { readdirSync, unlinkSync, writeFileSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { Type } from "@mariozechner/pi-ai";
@@ -158,6 +158,81 @@ import { getCostEstimator, type ExecutionHistoryEntry } from "../lib/cost-estima
 import { detectTier, getConcurrencyLimit } from "../lib/provider-limits";
 
 const logger = getLogger();
+
+// ============================================================================
+// Task Storage Helpers (for auto in_progress status)
+// ============================================================================
+
+const TASK_DIR = ".pi/tasks";
+const TASK_STORAGE_FILE = join(process.cwd(), TASK_DIR, "storage.json");
+
+type TaskStatus = "todo" | "in_progress" | "completed" | "cancelled" | "failed";
+
+interface Task {
+	id: string;
+	title: string;
+	status: TaskStatus;
+	updatedAt: string;
+}
+
+interface TaskStorage {
+	tasks: Task[];
+}
+
+/**
+ * タスクストレージを読み込む
+ * @summary タスクストレージ読込
+ */
+function loadTaskStorage(): TaskStorage {
+	if (!existsSync(TASK_STORAGE_FILE)) {
+		return { tasks: [] };
+	}
+	try {
+		const content = readFileSync(TASK_STORAGE_FILE, "utf-8");
+		return JSON.parse(content);
+	} catch {
+		return { tasks: [] };
+	}
+}
+
+/**
+ * タスクストレージを保存
+ * @summary タスクストレージ保存
+ */
+function saveTaskStorage(storage: TaskStorage): void {
+	try {
+		// Ensure directory exists
+		const dir = join(process.cwd(), TASK_DIR);
+		if (!existsSync(dir)) {
+			mkdirSync(dir, { recursive: true });
+		}
+		writeFileSync(TASK_STORAGE_FILE, JSON.stringify(storage, null, 2), "utf-8");
+	} catch (error) {
+		console.error(`[subagents] Failed to save task storage:`, error);
+	}
+}
+
+/**
+ * タスクを in_progress に設定
+ * @summary タスク進行中設定
+ * @param taskId - タスクID
+ * @returns 設定に成功した場合はtrue
+ */
+function setTaskInProgress(taskId: string): boolean {
+	const storage = loadTaskStorage();
+	const task = storage.tasks.find(t => t.id === taskId);
+	if (!task || task.status !== "todo") {
+		return false;
+	}
+	task.status = "in_progress";
+	task.updatedAt = new Date().toISOString();
+	saveTaskStorage(storage);
+	return true;
+}
+
+// ============================================================================
+// Tool Compiler Helpers
+// ============================================================================
 
 /**
  * Check if Tool Compiler is enabled via environment variable
@@ -833,7 +908,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           };
         }
       }
-      
+
+      // タスクを in_progress に設定
+      if (params.ulTaskId) {
+        setTaskInProgress(params.ulTaskId);
+      }
+
       const storage = loadStorage(ctx.cwd);
       const agent = pickAgent(storage, params.subagentId);
       const retryOverrides = toRetryOverrides(params.retry);
@@ -1143,7 +1223,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI) {
           };
         }
       }
-      
+
+      // タスクを in_progress に設定
+      if (params.ulTaskId) {
+        setTaskInProgress(params.ulTaskId);
+      }
+
       const storage = loadStorage(ctx.cwd);
       const retryOverrides = toRetryOverrides(params.retry);
       const requestedIds = Array.isArray(params.subagentIds)
@@ -1728,7 +1813,12 @@ ${allResults.map((r) => {
           };
         }
       }
-      
+
+      // タスクを in_progress に設定
+      if (params.ulTaskId) {
+        setTaskInProgress(params.ulTaskId);
+      }
+
       const storage = loadStorage(ctx.cwd);
       const maxConcurrency = params.maxConcurrency ?? 3;
       const abortOnFirstError = params.abortOnFirstError ?? false;
