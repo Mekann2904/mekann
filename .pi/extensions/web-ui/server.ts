@@ -41,6 +41,11 @@ import {
   type RuntimeSession,
   type SessionEvent,
 } from "../../lib/runtime-sessions.js";
+import {
+  getAllUlWorkflowTasks,
+  getUlWorkflowTask,
+  getActiveUlWorkflowTask,
+} from "./lib/ul-workflow-reader.js";
 // Note: mcpManager is imported dynamically in each request to ensure
 // we always get the latest instance from globalThis (handles reload scenarios)
 
@@ -969,6 +974,54 @@ export function startServer(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       res.status(500).json({ success: false, error: "Failed to delete task", details: errorMessage });
+    }
+  });
+
+  // ============= UL Workflow Task API (Read-only) =============
+
+  /**
+   * GET /api/ul-workflow/tasks - Get all UL workflow tasks
+   */
+  app.get("/api/ul-workflow/tasks", (_req: Request, res: Response) => {
+    try {
+      const tasks = getAllUlWorkflowTasks();
+      res.json({ success: true, data: tasks, total: tasks.length });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ success: false, error: "Failed to load UL workflow tasks", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/ul-workflow/tasks/active - Get active UL workflow task
+   */
+  app.get("/api/ul-workflow/tasks/active", (_req: Request, res: Response) => {
+    try {
+      const task = getActiveUlWorkflowTask();
+      res.json({ success: true, data: task });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ success: false, error: "Failed to load active UL workflow task", details: errorMessage });
+    }
+  });
+
+  /**
+   * GET /api/ul-workflow/tasks/:id - Get single UL workflow task
+   */
+  app.get("/api/ul-workflow/tasks/:id", (req: Request, res: Response) => {
+    try {
+      const taskId = req.params.id.startsWith("ul-")
+        ? req.params.id.slice(3)
+        : req.params.id;
+      const task = getUlWorkflowTask(taskId);
+      if (!task) {
+        res.status(404).json({ success: false, error: "Task not found" });
+        return;
+      }
+      res.json({ success: true, data: task });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ success: false, error: "Failed to load task", details: errorMessage });
     }
   });
 

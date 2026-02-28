@@ -75,6 +75,9 @@ export function TaskDetailPanel({
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const subtaskInputRef = useRef<HTMLInputElement>(null);
 
+  // UL workflow tasks are read-only
+  const isReadOnly = task.isUlWorkflow === true;
+
   // Get subtasks
   const subtasks = allTasks.filter((t) => t.parentTaskId === task.id);
   const completedSubtasks = subtasks.filter((t) => t.status === "completed");
@@ -147,30 +150,47 @@ export function TaskDetailPanel({
       <div class="flex items-center justify-between px-4 py-3 border-b border-border">
         <span class="text-xs text-muted-foreground font-mono">#{task.id.slice(0, 7)}</span>
         <div class="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            class="h-7 w-7 text-destructive hover:text-destructive"
-            onClick={() => {
-              if (confirm("Delete this task?")) {
-                onDelete();
-              }
-            }}
-            title="Delete task"
-          >
-            <Trash2 class="h-3.5 w-3.5" />
-          </Button>
+          {!isReadOnly && (
+            <Button
+              variant="ghost"
+              size="icon"
+              class="h-7 w-7 text-destructive hover:text-destructive"
+              onClick={() => {
+                if (confirm("Delete this task?")) {
+                  onDelete();
+                }
+              }}
+              title="Delete task"
+            >
+              <Trash2 class="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon" class="h-7 w-7" onClick={onClose}>
             <X class="h-4 w-4" />
           </Button>
         </div>
       </div>
 
+      {/* Read-only notice for UL workflow tasks */}
+      {isReadOnly && (
+        <div class="mx-4 mt-4 bg-purple-500/10 border border-purple-500/20 rounded-md p-3">
+          <p class="text-sm text-purple-400 font-medium">UL Workflow Task</p>
+          <p class="text-xs text-muted-foreground mt-1">
+            This task is managed by UL Workflow. View only - modifications must be made through the workflow system.
+          </p>
+          {task.phase && (
+            <p class="text-xs text-muted-foreground mt-1">
+              Current phase: <span class="uppercase font-medium">{task.phase}</span>
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Content */}
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Title */}
         <div>
-          {isEditingTitle ? (
+          {isEditingTitle && !isReadOnly ? (
             <input
               ref={titleInputRef}
               type="text"
@@ -190,10 +210,11 @@ export function TaskDetailPanel({
           ) : (
             <h2
               class={cn(
-                "text-lg font-semibold cursor-text hover:bg-muted/30 rounded px-1 -mx-1",
+                "text-lg font-semibold",
+                !isReadOnly && "cursor-text hover:bg-muted/30 rounded px-1 -mx-1",
                 task.status === "completed" && "line-through text-muted-foreground"
               )}
-              onClick={() => setIsEditingTitle(true)}
+              onClick={() => !isReadOnly && setIsEditingTitle(true)}
             >
               {editedTask.title}
             </h2>
@@ -210,15 +231,19 @@ export function TaskDetailPanel({
               return (
                 <button
                   key={option.value}
+                  disabled={isReadOnly}
                   onClick={() => {
-                    updateField("status", option.value);
-                    onStatusChange(option.value);
+                    if (!isReadOnly) {
+                      updateField("status", option.value);
+                      onStatusChange(option.value);
+                    }
                   }}
                   class={cn(
                     "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
                     isActive
                       ? "bg-primary text-primary-foreground"
-                      : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted",
+                    isReadOnly && "cursor-not-allowed opacity-70"
                   )}
                 >
                   <Icon class="h-3 w-3" />
@@ -238,10 +263,12 @@ export function TaskDetailPanel({
               return (
                 <button
                   key={option.value}
-                  onClick={() => updateField("priority", option.value)}
+                  disabled={isReadOnly}
+                  onClick={() => !isReadOnly && updateField("priority", option.value)}
                   class={cn(
                     "inline-flex items-center px-2.5 py-1.5 rounded-full text-xs font-medium transition-all",
-                    isActive ? "ring-2 ring-offset-1 ring-offset-background" : "opacity-70 hover:opacity-100"
+                    isActive ? "ring-2 ring-offset-1 ring-offset-background" : "opacity-70 hover:opacity-100",
+                    isReadOnly && "cursor-not-allowed"
                   )}
                   style={{
                     backgroundColor: option.color,
@@ -267,6 +294,7 @@ export function TaskDetailPanel({
             value={editedTask.dueDate || ""}
             onInput={(e) => updateField("dueDate", (e.target as HTMLInputElement).value || undefined)}
             class={cn(isOverdue && "border-red-500/50")}
+            disabled={isReadOnly}
           />
           {isOverdue && (
             <p class="text-xs text-red-500 mt-1">This task is overdue</p>
@@ -284,6 +312,7 @@ export function TaskDetailPanel({
             value={editedTask.assignee || ""}
             onInput={(e) => updateField("assignee", (e.target as HTMLInputElement).value || undefined)}
             placeholder="Add assignee..."
+            disabled={isReadOnly}
           />
         </div>
 
@@ -300,39 +329,43 @@ export function TaskDetailPanel({
                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary"
               >
                 {tag}
-                <button
-                  onClick={() => removeTag(tag)}
-                  class="hover:text-destructive transition-colors"
-                >
-                  <X class="h-3 w-3" />
-                </button>
+                {!isReadOnly && (
+                  <button
+                    onClick={() => removeTag(tag)}
+                    class="hover:text-destructive transition-colors"
+                  >
+                    <X class="h-3 w-3" />
+                  </button>
+                )}
               </span>
             ))}
           </div>
-          <div class="flex gap-2">
-            <Input
-              type="text"
-              value={newTag}
-              onInput={(e) => setNewTag((e.target as HTMLInputElement).value)}
-              placeholder="Add label..."
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addTag();
-                }
-              }}
-              class="h-8 text-xs"
-            />
-            <Button size="sm" class="h-8" onClick={addTag} disabled={!newTag.trim()}>
-              Add
-            </Button>
-          </div>
+          {!isReadOnly && (
+            <div class="flex gap-2">
+              <Input
+                type="text"
+                value={newTag}
+                onInput={(e) => setNewTag((e.target as HTMLInputElement).value)}
+                placeholder="Add label..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addTag();
+                  }
+                }}
+                class="h-8 text-xs"
+              />
+              <Button size="sm" class="h-8" onClick={addTag} disabled={!newTag.trim()}>
+                Add
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Description */}
         <div>
           <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Description</label>
-          {isEditingDescription ? (
+          {isEditingDescription && !isReadOnly ? (
             <textarea
               ref={descriptionRef}
               value={editedTask.description || ""}
@@ -354,141 +387,144 @@ export function TaskDetailPanel({
           ) : (
             <div
               class={cn(
-                "min-h-[80px] rounded-md border border-transparent hover:border-border px-3 py-2 text-sm cursor-text",
+                "min-h-[80px] rounded-md border border-transparent hover:border-border px-3 py-2 text-sm",
+                !isReadOnly && "cursor-text",
                 !editedTask.description && "text-muted-foreground/50 italic"
               )}
-              onClick={() => setIsEditingDescription(true)}
+              onClick={() => !isReadOnly && setIsEditingDescription(true)}
             >
               {editedTask.description || "Add a description..."}
             </div>
           )}
         </div>
 
-        {/* Subtasks - GitHub style */}
-        <div>
-          <label class="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
-            <ListChecks class="h-3 w-3" />
-            Subtasks
-            {subtaskProgress && (
-              <span class="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded">
-                {subtaskProgress} done
-              </span>
-            )}
-          </label>
-
-          {/* Subtask list */}
-          <div class="space-y-1 mb-2">
-            {subtasks.map((subtask) => (
-              <div
-                key={subtask.id}
-                class={cn(
-                  "flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 group",
-                  subtask.status === "completed" && "opacity-60"
-                )}
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const newStatus = subtask.status === "completed" ? "todo" : "completed";
-                    onUpdateSubtask({ ...subtask, status: newStatus });
-                  }}
-                  class="shrink-0"
-                >
-                  {subtask.status === "completed" ? (
-                    <CheckCircle2 class="h-4 w-4 text-green-500" />
-                  ) : (
-                    <Circle class="h-4 w-4 text-muted-foreground hover:text-primary" />
-                  )}
-                </button>
-                <span
-                  class={cn(
-                    "flex-1 text-sm truncate",
-                    subtask.status === "completed" && "line-through text-muted-foreground"
-                  )}
-                >
-                  {subtask.title}
+        {/* Subtasks - GitHub style (hide for UL workflow tasks) */}
+        {!isReadOnly && (
+          <div>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+              <ListChecks class="h-3 w-3" />
+              Subtasks
+              {subtaskProgress && (
+                <span class="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                  {subtaskProgress} done
                 </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm("Delete this subtask?")) {
-                      onDeleteSubtask(subtask.id);
+              )}
+            </label>
+
+            {/* Subtask list */}
+            <div class="space-y-1 mb-2">
+              {subtasks.map((subtask) => (
+                <div
+                  key={subtask.id}
+                  class={cn(
+                    "flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 group",
+                    subtask.status === "completed" && "opacity-60"
+                  )}
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const newStatus = subtask.status === "completed" ? "todo" : "completed";
+                      onUpdateSubtask({ ...subtask, status: newStatus });
+                    }}
+                    class="shrink-0"
+                  >
+                    {subtask.status === "completed" ? (
+                      <CheckCircle2 class="h-4 w-4 text-green-500" />
+                    ) : (
+                      <Circle class="h-4 w-4 text-muted-foreground hover:text-primary" />
+                    )}
+                  </button>
+                  <span
+                    class={cn(
+                      "flex-1 text-sm truncate",
+                      subtask.status === "completed" && "line-through text-muted-foreground"
+                    )}
+                  >
+                    {subtask.title}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm("Delete this subtask?")) {
+                        onDeleteSubtask(subtask.id);
+                      }
+                    }}
+                    class="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
+                  >
+                    <Trash2 class="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Add subtask */}
+            {isAddingSubtask ? (
+              <div class="flex gap-2">
+                <input
+                  ref={subtaskInputRef}
+                  type="text"
+                  value={newSubtaskTitle}
+                  onInput={(e) => setNewSubtaskTitle((e.target as HTMLInputElement).value)}
+                  placeholder="Subtask title..."
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (newSubtaskTitle.trim()) {
+                        onCreateSubtask(task.id, newSubtaskTitle.trim());
+                        setNewSubtaskTitle("");
+                        setIsAddingSubtask(false);
+                      }
+                    } else if (e.key === "Escape") {
+                      setNewSubtaskTitle("");
+                      setIsAddingSubtask(false);
                     }
                   }}
-                  class="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity"
-                >
-                  <Trash2 class="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* Add subtask */}
-          {isAddingSubtask ? (
-            <div class="flex gap-2">
-              <input
-                ref={subtaskInputRef}
-                type="text"
-                value={newSubtaskTitle}
-                onInput={(e) => setNewSubtaskTitle((e.target as HTMLInputElement).value)}
-                placeholder="Subtask title..."
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
+                  class={cn(
+                    "flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs",
+                    "placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 flex-1"
+                  )}
+                />
+                <Button
+                  size="sm"
+                  class="h-8"
+                  onClick={() => {
                     if (newSubtaskTitle.trim()) {
                       onCreateSubtask(task.id, newSubtaskTitle.trim());
                       setNewSubtaskTitle("");
                       setIsAddingSubtask(false);
                     }
-                  } else if (e.key === "Escape") {
+                  }}
+                  disabled={!newSubtaskTitle.trim()}
+                >
+                  Add
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  class="h-8"
+                  onClick={() => {
                     setNewSubtaskTitle("");
                     setIsAddingSubtask(false);
-                  }
-                }}
-                class={cn(
-                  "flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs",
-                  "placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 flex-1"
-                )}
-              />
-              <Button
-                size="sm"
-                class="h-8"
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <button
                 onClick={() => {
-                  if (newSubtaskTitle.trim()) {
-                    onCreateSubtask(task.id, newSubtaskTitle.trim());
-                    setNewSubtaskTitle("");
-                    setIsAddingSubtask(false);
-                  }
+                  setIsAddingSubtask(true);
+                  setTimeout(() => subtaskInputRef.current?.focus(), 0);
                 }}
-                disabled={!newSubtaskTitle.trim()}
+                class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                Add
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                class="h-8"
-                onClick={() => {
-                  setNewSubtaskTitle("");
-                  setIsAddingSubtask(false);
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : (
-            <button
-              onClick={() => {
-                setIsAddingSubtask(true);
-                setTimeout(() => subtaskInputRef.current?.focus(), 0);
-              }}
-              class="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Plus class="h-3.5 w-3.5" />
-              Add subtask
-            </button>
-          )}
-        </div>
+                <Plus class="h-3.5 w-3.5" />
+                Add subtask
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Footer */}

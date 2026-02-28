@@ -39,6 +39,13 @@ interface TaskStats {
 
 const API_BASE = "http://localhost:3456";
 
+// UL Workflow Task interface (extends Task)
+interface UlWorkflowTask extends Task {
+  isUlWorkflow: true;
+  phase: string;
+  ownerInstanceId?: string;
+}
+
 // Column configuration - GitHub Projects style
 interface ColumnConfig {
   id: TaskStatus;
@@ -84,14 +91,19 @@ export function TasksPage() {
   const fetchTasks = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/tasks`);
+      const [regularRes, ulRes] = await Promise.all([
+        fetch(`${API_BASE}/api/tasks`),
+        fetch(`${API_BASE}/api/ul-workflow/tasks`),
+      ]);
       
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`);
-      }
+      const regularData = regularRes.ok ? await regularRes.json() : { data: [] };
+      const ulData = ulRes.ok ? await ulRes.json() : { data: [] };
       
-      const data = await res.json();
-      setTasks(data.data || []);
+      const mergedTasks: Task[] = [
+        ...(regularData.data || []),
+        ...(ulData.data || []),
+      ];
+      setTasks(mergedTasks);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to fetch tasks";
       setError(message);
@@ -116,11 +128,37 @@ export function TasksPage() {
 
   // Initial load + polling
   useEffect(() => {
-    fetchTasks();
+    const fetchAllTasks = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [regularRes, ulRes] = await Promise.all([
+          fetch(`${API_BASE}/api/tasks`),
+          fetch(`${API_BASE}/api/ul-workflow/tasks`),
+        ]);
+
+        const regularData = regularRes.ok ? await regularRes.json() : { data: [] };
+        const ulData = ulRes.ok ? await ulRes.json() : { data: [] };
+
+        const mergedTasks: Task[] = [
+          ...(regularData.data || []),
+          ...(ulData.data || []),
+        ];
+        setTasks(mergedTasks);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Failed to fetch tasks";
+        setError(message);
+        console.error("Failed to fetch tasks:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAllTasks();
     fetchStats();
-    const interval = setInterval(fetchTasks, 10000);
+    const interval = setInterval(fetchAllTasks, 10000);
     return () => clearInterval(interval);
-  }, [fetchTasks, fetchStats]);
+  }, [fetchStats]);
 
   // Filter tasks by search
   const filteredTasks = useMemo(() => {
@@ -235,6 +273,12 @@ export function TasksPage() {
 
   // Update task status (drag and drop)
   const handleStatusChange = async (taskId: string, newStatus: TaskStatus): Promise<boolean> => {
+    // UL workflow tasks are read-only
+    if (taskId.startsWith("ul-")) {
+      setError("UL Workflow tasks are read-only and cannot be modified");
+      return false;
+    }
+
     // Check if moving parent task to "completed" - all subtasks must be completed first
     if (newStatus === "completed") {
       const task = tasks.find((t) => t.id === taskId);
@@ -271,6 +315,12 @@ export function TasksPage() {
 
   // Delete task
   const handleDelete = async (id: string) => {
+    // UL workflow tasks cannot be deleted
+    if (id.startsWith("ul-")) {
+      setError("UL Workflow tasks cannot be deleted from this view");
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
         method: "DELETE",
