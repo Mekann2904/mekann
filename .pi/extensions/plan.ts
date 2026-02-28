@@ -158,9 +158,57 @@ function findStepById(plan: Plan, stepId: string): PlanStep | undefined {
 	return plan.steps.find(s => s.id === stepId);
 }
 
+/**
+ * ステップ依存関係の循環を検出する
+ * 深さ優先探索でサイクルを検出
+ * @param plan - 対象プラン
+ * @param newStepId - 新しいステップのID
+ * @param dependencies - 新しいステップの依存関係
+ * @returns 循環がある場合はtrue
+ */
+function hasCircularDependency(plan: Plan, newStepId: string, dependencies?: string[]): boolean {
+	if (!dependencies || dependencies.length === 0) return false;
+
+	// 依存関係に自分自身が含まれていないか確認
+	if (dependencies.includes(newStepId)) return true;
+
+	// 存在しないステップへの依存は循環として扱わない（別途バリデーションで処理）
+	const visited = new Set<string>();
+	const stack = [...dependencies];
+
+	while (stack.length > 0) {
+		const currentId = stack.pop()!;
+		if (visited.has(currentId)) continue;
+		visited.add(currentId);
+
+		// 自分自身に到達したら循環
+		if (currentId === newStepId) return true;
+
+		// 現在のステップの依存関係を取得
+		const currentStep = plan.steps.find(s => s.id === currentId);
+		if (currentStep?.dependencies) {
+			for (const depId of currentStep.dependencies) {
+				if (depId === newStepId) return true;
+				if (!visited.has(depId)) {
+					stack.push(depId);
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
 function addStepToPlan(plan: Plan, title: string, description?: string, dependencies?: string[]): PlanStep {
+	const stepId = generateId();
+
+	// 循環依存の検出
+	if (hasCircularDependency(plan, stepId, dependencies)) {
+		throw new Error(`Circular dependency detected: adding step "${title}" would create a cycle`);
+	}
+
 	const step: PlanStep = {
-		id: generateId(),
+		id: stepId,
 		title,
 		description,
 		status: "pending",
@@ -506,7 +554,16 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const step = addStepToPlan(plan, params.title, params.description, params.dependencies);
+			let step: PlanStep;
+			try {
+				step = addStepToPlan(plan, params.title, params.description, params.dependencies);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					content: [{ type: "text", text: `Error: ${message}` }],
+					details: { error: "circular_dependency" }
+				};
+			}
 			saveStorage(storage);
 
 			logger.endOperation({

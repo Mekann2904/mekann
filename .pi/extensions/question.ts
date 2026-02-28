@@ -267,8 +267,12 @@ export async function askSingleQuestion(
 	const allowCustom = question.custom !== false;
 	const allowMultiple = question.multiple === true;
 
-	// 質問が表示されたときに音を鳴らす
-	playSound("/System/Library/Sounds/Glass.aiff");
+	// 質問が表示されたときに音を鳴らす（エラーは無視）
+	try {
+		playSound("/System/Library/Sounds/Glass.aiff");
+	} catch {
+		// 音声再生の失敗は致命的ではないため無視
+	}
 
 	// カスタム回答が許可されている場合は「その他」オプションを追加
 	const displayOptions = allowCustom
