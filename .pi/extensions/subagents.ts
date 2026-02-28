@@ -82,7 +82,7 @@ import { trimForError, buildRateLimitKey, createRetrySchema, toConcurrencyLimit 
 import { resolveEffectiveTimeoutMs } from "../lib/agent/runtime-error-builders.js";
 import {
   createAdaptivePenaltyController,
-} from "../lib/adaptive-penalty.js";
+} from "../lib/agent/adaptive-penalty.js";
 import {
   STABLE_RUNTIME_PROFILE,
   ADAPTIVE_PARALLEL_MAX_PENALTY as SHARED_ADAPTIVE_PARALLEL_MAX_PENALTY,

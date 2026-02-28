@@ -88,7 +88,7 @@ import { resolveEffectiveTimeoutMs } from "../../lib/agent/runtime-error-builder
 import { createChildAbortController } from "../../lib/abort-utils";
 import {
   createAdaptivePenaltyController,
-} from "../../lib/adaptive-penalty.js";
+} from "../../lib/agent/adaptive-penalty.js";
 import {
   SchemaValidationError,
   ValidationError,
