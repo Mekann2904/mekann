@@ -72,7 +72,7 @@ import {
   type AgentTeamLiveMonitorController,
   type LiveStreamView,
   type TeamQueueStatus,
-} from "../../lib/team-types.js";
+} from "../../lib/agent/team-types.js";
 import type { StateTransition } from "../../lib/live-types-base.js";
 
 // Re-export types for convenience

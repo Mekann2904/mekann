@@ -292,7 +292,7 @@ import {
   type TeamMemberFrontmatter,
   type ParsedTeamMarkdown,
   type LiveStreamView,
-} from "../../lib/team-types.js";
+} from "../../lib/agent/team-types.js";
 
 // Local alias for backward compatibility (TeamLiveViewMode = LiveViewMode with "discussion")
 type LiveViewMode = TeamLiveViewMode;

@@ -40,7 +40,7 @@ import type { TeamDefinition, TeamMember, TeamStorage } from "./storage";
 import { toId, TEAM_DEFAULTS_VERSION } from "./storage";
 
 // Import team types from lib
-import type { TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown } from "../../lib/team-types.js";
+import type { TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown } from "../../lib/agent/team-types.js";
 
 // Re-export for convenience
 export type { TeamFrontmatter, TeamMemberFrontmatter, ParsedTeamMarkdown };

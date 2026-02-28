@@ -70,7 +70,7 @@ import {
 } from "./communication.js";
 import { runMember } from "./member-execution.js";
 import { runFinalJudge, buildFallbackJudge, computeProxyUncertainty, computeProxyUncertaintyWithExplainability, formatJudgeExplanation, type TeamUncertaintyProxy, type JudgeExplanation } from "./judge.js";
-import type { TeamLivePhase } from "../../lib/team-types.js";
+import type { TeamLivePhase } from "../../lib/agent/team-types.js";
 import {
   getGlobalFailureMemory,
   hashTask,
