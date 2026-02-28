@@ -879,10 +879,11 @@ export function getRuntimeSnapshot(): AgentRuntimeSnapshot {
     priorityStats[entry.priority ?? "normal"]++;
   }
 
-  // 消費済み予約をtotalActiveLlm/totalActiveRequestsに含める
-  // これにより、予約消費後もリソース使用量が正確に追跡される
-  const adjustedTotalActiveRequests = clusterUsage.totalActiveRequests + consumedRequests;
-  const adjustedTotalActiveLlm = clusterUsage.totalActiveLlm + consumedLlm;
+  // 消費済み予約を追跡（可視化用）
+  // 注意: totalActiveLlmには加算しない（activeAgentsと二重カウントになるため）
+  // 容量チェックでは reservedLlm + consumedLlm を使用して正確な投影を行う
+  const adjustedTotalActiveRequests = clusterUsage.totalActiveRequests;
+  const adjustedTotalActiveLlm = clusterUsage.totalActiveLlm;
 
   return {
     subagentActiveRequests,
