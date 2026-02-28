@@ -2,7 +2,7 @@
 title: context-usage-dashboard
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from 'node:path': dirname, join
 // from '@mariozechner/pi-coding-agent': BranchSummaryEntry, CompactionEntry, ContextUsage, ...
 // from '@mariozechner/pi-tui': truncateToWidth
-// ... and 1 more imports
+// ... and 2 more imports
 ```
 
 ## エクスポート一覧
@@ -103,6 +103,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
+    types["types"]
     validation_utils["validation-utils"]
   end
   main --> local
@@ -388,14 +389,14 @@ crop(value: string, width: number): string
 ### renderDashboard
 
 ```typescript
-renderDashboard(theme: any, snapshot: DashboardSnapshot, width: number): string[]
+renderDashboard(theme: Theme, snapshot: DashboardSnapshot, width: number): string[]
 ```
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 | snapshot | `DashboardSnapshot` | はい |
 | width | `number` | はい |
 
@@ -528,4 +529,4 @@ interface DashboardSnapshot {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.171Z*
+*自動生成: 2026-02-28T13:55:18.850Z*

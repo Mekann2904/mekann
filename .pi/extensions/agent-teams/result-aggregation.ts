@@ -33,12 +33,12 @@ import {
   classifyPressureError,
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
-} from "../../lib/error-utils.js";
+} from "../../lib/core/error-utils.js";
 import {
   type RunOutcomeCode,
   type RunOutcomeSignal,
-} from "../../lib/agent-types.js";
-import { isRetryableTeamMemberError as isRetryableTeamMemberErrorLib } from "../../lib/agent-errors.js";
+} from "../../lib/agent/agent-types.js";
+import { isRetryableTeamMemberError as isRetryableTeamMemberErrorLib } from "../../lib/agent/agent-errors.js";
 
 import type { TeamMemberResult, TeamRunRecord, TeamDefinition, TeamCommunicationAuditEntry } from "./storage";
 import type { AggregationStrategy, AggregationInput, AggregationResult, TeamFinalJudge } from "./judge";

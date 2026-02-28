@@ -15,8 +15,8 @@ import {
 	computeModelTimeoutMs,
 	computeProgressiveTimeoutMs,
 	type ComputeModelTimeoutOptions,
-} from "../../lib/model-timeouts.js";
-import type { ThinkingLevel } from "../../lib/agent-types.js";
+} from "../../lib/agent/model-timeouts.js";
+import type { ThinkingLevel } from "../../lib/agent/agent-types.js";
 
 // ============================================================================
 // MODEL_TIMEOUT_BASE_MS

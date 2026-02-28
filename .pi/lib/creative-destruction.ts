@@ -22,8 +22,8 @@
  *   out: 前提破壊および再構築に関するすべての型定義
  */
 
-import type { Distribution } from './belief-updater.js';
-import { createPrior, normalizeDistribution } from './belief-updater.js';
+import type { Distribution } from './philosophy/belief-updater.js';
+import { createPrior, normalizeDistribution } from './philosophy/belief-updater.js';
 import { parsePremiseAnalysisJson, PROMPT_PREMISE_FORMAT } from './structured-analysis-output.js';
 
 // ============================================================================

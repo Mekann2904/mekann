@@ -39,18 +39,18 @@ import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
-import { formatDuration } from "../lib/format-utils.js";
-import { toErrorMessage } from "../lib/error-utils.js";
-import { toBoundedInteger, toBoundedFloat } from "../lib/validation-utils.js";
+import { formatDuration } from "../lib/core/format-utils.js";
+import { toErrorMessage } from "../lib/core/error-utils.js";
+import { toBoundedInteger, toBoundedFloat } from "../lib/core/validation-utils.js";
 import {
   truncateTextWithMarker,
   toPreview,
   normalizeOptionalText,
   throwIfAborted,
 } from "../lib/text-utils.js";
-import { ThinkingLevel, RunOutcomeCode } from "../lib/agent-types.js";
-import { createRunId } from "../lib/agent-utils.js";
-import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
+import { ThinkingLevel, RunOutcomeCode } from "../lib/agent/agent-types.js";
+import { createRunId } from "../lib/agent/agent-utils.js";
+import { computeModelTimeoutMs } from "../lib/agent/model-timeouts.js";
 import { getLogger } from "../lib/comprehensive-logger";
 import type { OperationType } from "../lib/comprehensive-logger-types";
 
@@ -64,14 +64,14 @@ import {
 import {
   detectSemanticRepetition,
   type SemanticRepetitionResult,
-} from "../lib/semantic-repetition";
-import { atomicWriteTextFile, withFileLock } from "../lib/storage-lock";
+} from "../lib/storage/semantic-repetition.js";
+import { atomicWriteTextFile, withFileLock } from "../lib/storage/storage-lock.js";
 import {
   findRelevantPatterns,
   getTopSuccessPatterns,
   getFailurePatternsToAvoid,
   type ExtractedPattern,
-} from "../lib/pattern-extraction";
+} from "../lib/storage/pattern-extraction.js";
 
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor";
 import { checkUlWorkflowOwnership } from "./subagents.js";

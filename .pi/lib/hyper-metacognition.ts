@@ -24,8 +24,8 @@
  *   out: メタ認知状態、認知パターン、改善推奨、メタ信念
  */
 
-import type { Distribution, Evidence } from './belief-updater.js';
-import { createPrior, calculateEntropy } from './belief-updater.js';
+import type { Distribution, Evidence } from './philosophy/belief-updater.js';
+import { createPrior, calculateEntropy } from './philosophy/belief-updater.js';
 import type { Premise } from './creative-destruction.js';
 
 // ============================================================================

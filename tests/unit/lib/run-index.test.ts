@@ -20,7 +20,7 @@ import {
   type IndexedRun,
   type TaskType,
   type RunIndex,
-} from "../../../.pi/lib/run-index.js";
+} from "../../../.pi/lib/storage/run-index.js";
 
 // ============================================================================
 // extractKeywords テスト

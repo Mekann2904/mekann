@@ -2,7 +2,7 @@
 title: cross-instance-runtime
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerCrossInstanceRuntimeExtension` | 拡張機能を登録 |
+| 関数 | `registerCrossInstanceRuntimeExtension` | - |
 
 ## ユーザーフロー
 
@@ -152,6 +152,34 @@ sequenceDiagram
 
 ## 図解
 
+### クラス図
+
+```mermaid
+classDiagram
+  class CoordinatorDetails {
+    <<interface>>
+    +registered: boolean
+    +activeInstanceCount: number
+    +myParallelLimit: number
+  }
+  class ResolvedDetails {
+    <<interface>>
+    +provider: string
+    +model: string
+    +concurrency: number
+  }
+  class ToolResultWithDetails {
+    <<interface>>
+    +status: string
+    +message: string
+    +details: coordinator_Coordi
+  }
+  class EventWithSessionId {
+    <<interface>>
+    +sessionId: string
+  }
+```
+
 ### 依存関係図
 
 ```mermaid
@@ -180,11 +208,43 @@ flowchart LR
 ```mermaid
 flowchart TD
   ensureAdaptiveControllerInitialized["ensureAdaptiveControllerInitialized()"]
+  hasDetails["hasDetails()"]
+  hasSessionId["hasSessionId()"]
   registerCrossInstanceRuntimeExtension["registerCrossInstanceRuntimeExtension()"]
   registerCrossInstanceRuntimeExtension --> ensureAdaptiveControllerInitialized
+  registerCrossInstanceRuntimeExtension --> hasDetails
+  registerCrossInstanceRuntimeExtension --> hasSessionId
 ```
 
 ## 関数
+
+### hasDetails
+
+```typescript
+hasDetails(result: unknown): result is ToolResultWithDetails
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| result | `unknown` | はい |
+
+**戻り値**: `result is ToolResultWithDetails`
+
+### hasSessionId
+
+```typescript
+hasSessionId(event: unknown): event is EventWithSessionId
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| event | `unknown` | はい |
+
+**戻り値**: `event is EventWithSessionId`
 
 ### ensureAdaptiveControllerInitialized
 
@@ -203,8 +263,6 @@ This defers file I/O from extension load time to first actual use.
 registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 ```
 
-拡張機能を登録
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -213,5 +271,50 @@ registerCrossInstanceRuntimeExtension(pi: ExtensionAPI): void
 
 **戻り値**: `void`
 
+## インターフェース
+
+### CoordinatorDetails
+
+```typescript
+interface CoordinatorDetails {
+  registered: boolean;
+  activeInstanceCount: number;
+  myParallelLimit: number;
+}
+```
+
+### ResolvedDetails
+
+```typescript
+interface ResolvedDetails {
+  provider: string;
+  model: string;
+  concurrency: number;
+}
+```
+
+### ToolResultWithDetails
+
+```typescript
+interface ToolResultWithDetails {
+  status: string;
+  message?: string;
+  details?: {
+    coordinator?: CoordinatorDetails;
+    resolved?: ResolvedDetails;
+    content?: Array<{ type: string; text: string }>;
+    [key: string]: unknown;
+  };
+}
+```
+
+### EventWithSessionId
+
+```typescript
+interface EventWithSessionId {
+  sessionId?: string;
+}
+```
+
 ---
-*自動生成: 2026-02-24T17:08:02.196Z*
+*自動生成: 2026-02-28T13:55:18.889Z*

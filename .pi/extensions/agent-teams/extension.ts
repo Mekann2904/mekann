@@ -44,19 +44,19 @@ import { Key, Markdown, matchesKey, truncateToWidth } from "@mariozechner/pi-tui
 
 
 // Import shared plan mode utilities
-import { ensureDir } from "../../lib/fs-utils.js";
+import { ensureDir } from "../../lib/core/fs-utils.js";
 import {
   formatDurationMs,
   formatBytes,
   formatClockTime,
   normalizeForSingleLine,
-} from "../../lib/format-utils.js";
+} from "../../lib/core/format-utils.js";
 import {
   getLiveStatusGlyph,
   isEnterInput,
   finalizeLiveLines,
   type LiveStatus,
-} from "../../lib/live-view-utils.js";
+} from "../../lib/agent/live-view-utils.js";
 import {
   toTailLines,
   looksLikeMarkdown,
@@ -73,27 +73,27 @@ import {
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
   toErrorMessage,
-} from "../../lib/error-utils.js";
-import { createRunId, computeLiveWindow } from "../../lib/agent-utils.js";
+} from "../../lib/core/error-utils.js";
+import { createRunId, computeLiveWindow } from "../../lib/agent/agent-utils.js";
 import {
   ThinkingLevel,
   RunOutcomeCode,
   RunOutcomeSignal,
   DEFAULT_AGENT_TIMEOUT_MS,
-} from "../../lib/agent-types.js";
-import { computeModelTimeoutMs } from "../../lib/model-timeouts.js";
-import { validateTeamMemberOutput } from "../../lib/output-validation.js";
-import { trimForError, buildRateLimitKey, buildTraceTaskId, createRetrySchema, toConcurrencyLimit } from "../../lib/runtime-utils.js";
-import { resolveEffectiveTimeoutMs } from "../../lib/runtime-error-builders.js";
+} from "../../lib/agent/agent-types.js";
+import { computeModelTimeoutMs } from "../../lib/agent/model-timeouts.js";
+import { validateTeamMemberOutput } from "../../lib/agent/output-validation.js";
+import { trimForError, buildRateLimitKey, buildTraceTaskId, createRetrySchema, toConcurrencyLimit } from "../../lib/agent/runtime-utils.js";
+import { resolveEffectiveTimeoutMs } from "../../lib/agent/runtime-error-builders.js";
 import { createChildAbortController } from "../../lib/abort-utils";
 import {
   createAdaptivePenaltyController,
-} from "../../lib/adaptive-penalty.js";
+} from "../../lib/agent/adaptive-penalty.js";
 import {
   SchemaValidationError,
   ValidationError,
   TeamDefinitionError,
-} from "../../lib/errors.js";
+} from "../../lib/core/errors.js";
 import { getLogger } from "../../lib/comprehensive-logger";
 import type { OperationType } from "../../lib/comprehensive-logger-types";
 import { getCostEstimator, type ExecutionHistoryEntry, CostEstimator } from "../../lib/cost-estimator";
@@ -292,13 +292,13 @@ import {
   type TeamMemberFrontmatter,
   type ParsedTeamMarkdown,
   type LiveStreamView,
-} from "../../lib/team-types.js";
+} from "../../lib/agent/team-types.js";
 
 // Local alias for backward compatibility (TeamLiveViewMode = LiveViewMode with "discussion")
 type LiveViewMode = TeamLiveViewMode;
 
 // Import PrintCommandResult from subagent-types (shared type)
-import { type PrintCommandResult } from "../../lib/subagent-types.js";
+import { type PrintCommandResult } from "../../lib/agent/subagent-types.js";
 
 // Re-export judge types for external use
 export type { TeamUncertaintyProxy } from "./judge";
@@ -415,14 +415,14 @@ import {
   STABLE_MAX_RATE_LIMIT_WAIT_MS,
   TEAM_MEMBER_CONFIG,
   buildFailureSummary as sharedBuildFailureSummary,
-} from "../../lib/agent-common.js";
+} from "../../lib/agent/agent-common.js";
 import {
   isRetryableTeamMemberError as sharedIsRetryableTeamMemberError,
   resolveTeamFailureOutcome as sharedResolveTeamFailureOutcome,
   resolveTeamMemberAggregateOutcome as sharedResolveTeamMemberAggregateOutcome,
   trimErrorMessage as sharedTrimErrorMessage,
   buildDiagnosticContext as sharedBuildDiagnosticContext,
-} from "../../lib/agent-errors.js";
+} from "../../lib/agent/agent-errors.js";
 import { calculateTeamWeight } from "../../lib/dag-weight-calculator.js";
 import { runWithConcurrencyLimit } from "../../lib/concurrency";
 import {
@@ -437,7 +437,7 @@ import {
   isNetworkErrorRetryable,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
-} from "../../lib/retry-with-backoff";
+} from "../../lib/retry-with-backoff.js";
 
 import {
   acquireRuntimeDispatchPermit,

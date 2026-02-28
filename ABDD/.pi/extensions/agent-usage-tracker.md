@@ -2,7 +2,7 @@
 title: agent-usage-tracker
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -28,7 +28,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerAgentUsageTracker` | エージェント使用状況トラッカーを登録する |
+| 関数 | `registerAgentUsageTracker` | - |
 
 ## ユーザーフロー
 
@@ -121,6 +121,20 @@ sequenceDiagram
 
 ```mermaid
 classDiagram
+  class ToolCallEvent {
+    <<interface>>
+    +toolCallId: string
+    +toolName: string
+    +input: Record_string_unknow
+  }
+  class ToolResultEvent {
+    <<interface>>
+    +toolCallId: string
+    +toolName: string
+    +isError: boolean
+    +details: error_string_unkno
+    +content: Array_text_string
+  }
   class ContextSnapshot {
     <<interface>>
     +tokens: number
@@ -628,14 +642,16 @@ previewInput(input: unknown): string | undefined
 ### extractToolErrorMessage
 
 ```typescript
-extractToolErrorMessage(event: any): string | undefined
+extractToolErrorMessage(event: ToolResultEvent): string | undefined
 ```
+
+BUG-TS-001修正: 型安全なイベントパラメータ
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| event | `any` | はい |
+| event | `ToolResultEvent` | はい |
 
 **戻り値**: `string | undefined`
 
@@ -746,14 +762,16 @@ handleAgentUsageCommand(args: string, ctx: ExtensionAPI["context"]): void
 ### recordToolCall
 
 ```typescript
-recordToolCall(event: any, ctx: ExtensionAPI["context"]): void
+recordToolCall(event: ToolCallEvent, ctx: ExtensionAPI["context"]): void
 ```
+
+BUG-TS-001修正: 型安全なイベントパラメータ
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| event | `any` | はい |
+| event | `ToolCallEvent` | はい |
 | ctx | `ExtensionAPI["context"]` | はい |
 
 **戻り値**: `void`
@@ -761,14 +779,16 @@ recordToolCall(event: any, ctx: ExtensionAPI["context"]): void
 ### recordToolResult
 
 ```typescript
-recordToolResult(event: any, ctx: ExtensionAPI["context"]): void
+recordToolResult(event: ToolResultEvent, ctx: ExtensionAPI["context"]): void
 ```
+
+BUG-TS-001修正: 型安全なイベントパラメータ
 
 **パラメータ**
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| event | `any` | はい |
+| event | `ToolResultEvent` | はい |
 | ctx | `ExtensionAPI["context"]` | はい |
 
 **戻り値**: `void`
@@ -807,8 +827,6 @@ recordAgentEnd(ctx: ExtensionAPI["context"]): void
 registerAgentUsageTracker(pi: ExtensionAPI): void
 ```
 
-エージェント使用状況トラッカーを登録する
-
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -818,6 +836,35 @@ registerAgentUsageTracker(pi: ExtensionAPI): void
 **戻り値**: `void`
 
 ## インターフェース
+
+### ToolCallEvent
+
+```typescript
+interface ToolCallEvent {
+  toolCallId?: string;
+  toolName?: string;
+  input?: Record<string, unknown>;
+}
+```
+
+BUG-TS-001修正: ツール呼び出しイベントの型定義
+any型を排除し、コンパイル時の型チェックを有効化
+
+### ToolResultEvent
+
+```typescript
+interface ToolResultEvent {
+  toolCallId?: string;
+  toolName?: string;
+  isError?: boolean;
+  details?: { error?: string | unknown } | unknown;
+  content?: Array<{ text?: string | unknown } | unknown>;
+}
+```
+
+BUG-TS-001修正: ツール結果イベントの型定義
+any型を排除し、コンパイル時の型チェックを有効化
+detailsプロパティは様々なツールの詳細型に対応するためunknownを許可
 
 ### ContextSnapshot
 
@@ -953,4 +1000,4 @@ type EventStatus = "ok" | "error"
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.129Z*
+*自動生成: 2026-02-28T13:55:18.790Z*

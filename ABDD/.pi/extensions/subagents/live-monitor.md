@@ -2,7 +2,7 @@
 title: live-monitor
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -17,11 +17,11 @@ related: []
 
 ```typescript
 // from '@mariozechner/pi-tui': Key, matchesKey
+// from '../../lib/tui/types.js': Theme, ThemeColor
+// from '../../lib/tui-types.js': TuiInstance, KeybindingMap, LiveMonitorContext
 // from '../../lib/format-utils.js': formatDurationMs, formatBytes, formatClockTime, ...
 // from '../../lib/tui/tui-utils.js': appendTail, countOccurrences, estimateLineCount, ...
-// from '../../lib/live-view-utils.js': toTailLines, looksLikeMarkdown
-// from '../../lib/agent-utils.js': computeLiveWindow
-// ... and 2 more imports
+// ... and 6 more imports
 ```
 
 ## エクスポート一覧
@@ -54,10 +54,10 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
+    types["types"]
+    tui_types["tui-types"]
     format_utils["format-utils"]
     tui_utils["tui-utils"]
-    live_view_utils["live-view-utils"]
-    agent_utils["agent-utils"]
     live_view_utils["live-view-utils"]
   end
   main --> local
@@ -72,11 +72,13 @@ flowchart LR
 ```mermaid
 flowchart TD
   add["add()"]
+  classifyActivityFromChunk["classifyActivityFromChunk()"]
   clearPollTimer["clearPollTimer()"]
   clearRenderTimer["clearRenderTimer()"]
   close["close()"]
   createSubagentLiveMonitor["createSubagentLiveMonitor()"]
   hasRunningItems["hasRunningItems()"]
+  pushStateTransition["pushStateTransition()"]
   queueRender["queueRender()"]
   renderSubagentLiveView["renderSubagentLiveView()"]
   renderSubagentTimelineView["renderSubagentTimelineView()"]
@@ -84,10 +86,12 @@ flowchart TD
   startPolling["startPolling()"]
   close --> clearPollTimer
   close --> clearRenderTimer
+  createSubagentLiveMonitor --> classifyActivityFromChunk
   createSubagentLiveMonitor --> clearPollTimer
   createSubagentLiveMonitor --> clearRenderTimer
   createSubagentLiveMonitor --> close
   createSubagentLiveMonitor --> hasRunningItems
+  createSubagentLiveMonitor --> pushStateTransition
   createSubagentLiveMonitor --> queueRender
   createSubagentLiveMonitor --> renderSubagentLiveView
   createSubagentLiveMonitor --> startPolling
@@ -109,14 +113,14 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant live_monitor as "live-monitor"
   participant mariozechner as "@mariozechner"
-  participant format_utils as "format-utils"
-  participant tui_utils as "tui-utils"
+  participant types as "types"
+  participant tui_types as "tui-types"
 
   Caller->>live_monitor: renderSubagentLiveView()
   live_monitor->>mariozechner: API呼び出し
   mariozechner-->>live_monitor: レスポンス
-  live_monitor->>format_utils: 内部関数呼び出し
-  format_utils-->>live_monitor: 結果
+  live_monitor->>types: 内部関数呼び出し
+  types-->>live_monitor: 結果
   live_monitor-->>Caller: string
 
   Caller->>live_monitor: createSubagentLiveMonitor()
@@ -125,10 +129,40 @@ sequenceDiagram
 
 ## 関数
 
+### classifyActivityFromChunk
+
+```typescript
+classifyActivityFromChunk(chunk: string): NonNullable<StateTransition["activity"]>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| chunk | `string` | はい |
+
+**戻り値**: `NonNullable<StateTransition["activity"]>`
+
+### pushStateTransition
+
+```typescript
+pushStateTransition(item: SubagentLiveItem, state: StateTransition["state"], activity?: StateTransition["activity"]): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| item | `SubagentLiveItem` | はい |
+| state | `StateTransition["state"]` | はい |
+| activity | `StateTransition["activity"]` | いいえ |
+
+**戻り値**: `void`
+
 ### renderSubagentTreeView
 
 ```typescript
-renderSubagentTreeView(items: SubagentLiveItem[], cursor: number, width: number, theme: any): string[]
+renderSubagentTreeView(items: SubagentLiveItem[], cursor: number, width: number, theme: Theme): string[]
 ```
 
 サブエージェントのツリービューを描画
@@ -140,7 +174,7 @@ renderSubagentTreeView(items: SubagentLiveItem[], cursor: number, width: number,
 | items | `SubagentLiveItem[]` | はい |
 | cursor | `number` | はい |
 | width | `number` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `string[]`
 
@@ -161,7 +195,7 @@ add(line: any): void
 ### renderSubagentTimelineView
 
 ```typescript
-renderSubagentTimelineView(items: SubagentLiveItem[], width: number, theme: any): string[]
+renderSubagentTimelineView(items: SubagentLiveItem[], width: number, theme: Theme): string[]
 ```
 
 サブエージェントのタイムラインビューを描画
@@ -172,7 +206,7 @@ renderSubagentTimelineView(items: SubagentLiveItem[], width: number, theme: any)
 |------|-----|------|
 | items | `SubagentLiveItem[]` | はい |
 | width | `number` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `string[]`
 
@@ -201,7 +235,7 @@ renderSubagentLiveView(input: {
   stream: LiveStreamView;
   width: number;
   height?: number;
-  theme: any;
+  theme: Theme;
 }): string[]
 ```
 
@@ -219,7 +253,7 @@ renderSubagentLiveView(input: {
 | &nbsp;&nbsp;↳ stream | `LiveStreamView` | はい |
 | &nbsp;&nbsp;↳ width | `number` | はい |
 | &nbsp;&nbsp;↳ height | `number` | いいえ |
-| &nbsp;&nbsp;↳ theme | `any` | はい |
+| &nbsp;&nbsp;↳ theme | `Theme` | はい |
 
 **戻り値**: `string[]`
 
@@ -240,7 +274,7 @@ add(line: any): void
 ### createSubagentLiveMonitor
 
 ```typescript
-createSubagentLiveMonitor(ctx: any, input: {
+createSubagentLiveMonitor(ctx: LiveMonitorContext, input: {
     title: string;
     items: Array<{ id: string; name: string }>;
   }): SubagentLiveMonitorController | undefined
@@ -252,7 +286,7 @@ createSubagentLiveMonitor(ctx: any, input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| ctx | `any` | はい |
+| ctx | `LiveMonitorContext` | はい |
 | input | `object` | はい |
 | &nbsp;&nbsp;↳ title | `string` | はい |
 | &nbsp;&nbsp;↳ items | `Array<{ id: string; name: string }>` | はい |
@@ -325,4 +359,4 @@ interface TimelineEvent {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.490Z*
+*自動生成: 2026-02-28T13:55:22.850Z*

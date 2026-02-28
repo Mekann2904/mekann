@@ -40,7 +40,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { detectTier, getRpmLimit } from "../../lib/provider-limits.js";
 import { sleep } from "../../lib/sleep-utils.js";
-import { withFileLock } from "../../lib/storage-lock.js";
+import { withFileLock } from "../../lib/storage/storage-lock.js";
 
 const GRACEFUL_SHUTDOWN_DELAY_MS = 2000;
 const MAX_CAPTURED_STDERR_CHARS = 128_000;

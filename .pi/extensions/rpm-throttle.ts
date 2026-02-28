@@ -36,7 +36,7 @@ import { join } from "node:path";
 
 import { detectTier, getRpmLimit } from "../lib/provider-limits.js";
 import { sleep } from "../lib/sleep-utils.js";
-import { withFileLock } from "../lib/storage-lock.js";
+import { withFileLock } from "../lib/storage/storage-lock.js";
 
 type BucketState = {
   requestStartsMs: number[];

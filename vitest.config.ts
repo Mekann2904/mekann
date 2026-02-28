@@ -4,9 +4,12 @@
 // Related: package.json, tests/unit, .pi/tests
 
 import { defineConfig } from 'vitest/config';
+import { configDefaults } from 'vitest/config';
+import tsconfigPaths from 'vite-tsconfig-paths';
 import path from 'node:path';
 
 export default defineConfig({
+  plugins: [tsconfigPaths()],
   resolve: {
     alias: {
       '.pi': path.resolve(__dirname, '.pi'),

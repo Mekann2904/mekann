@@ -2,7 +2,7 @@
 title: abdd
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -167,7 +167,7 @@ sequenceDiagram
   Internal->>Unresolved: self.findIndex (node_modules/typescript/lib/lib.es2015.core.d.ts)
   System->>Executor: AST検出を実行して乖離リストを返す
   Executor->>Storage: TypeScriptファイルを再帰的に収集
-  Executor->>Unresolved: console.log (node_modules/typescript/lib/lib.dom.d.ts)
+  Executor->>Unresolved: console.error (node_modules/typescript/lib/lib.dom.d.ts)
   Executor->>Unresolved: results.map (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: divergences.some (node_modules/typescript/lib/lib.es5.d.ts)
   System->>Unresolved: String (node_modules/typescript/lib/lib.es5.d.ts)
@@ -623,4 +623,4 @@ type Severity = "low" | "medium" | "high"
 乖離重要度
 
 ---
-*自動生成: 2026-02-24T17:08:01.770Z*
+*自動生成: 2026-02-28T13:55:17.654Z*

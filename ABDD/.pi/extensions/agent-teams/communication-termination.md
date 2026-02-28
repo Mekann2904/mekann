@@ -2,7 +2,7 @@
 title: communication-termination
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -174,4 +174,4 @@ interface TeamMemberResultLike {
 チームメンバー結果（簡易版）
 
 ---
-*自動生成: 2026-02-24T17:08:01.817Z*
+*自動生成: 2026-02-28T13:55:17.733Z*

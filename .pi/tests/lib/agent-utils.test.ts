@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fc from "fast-check";
 
 // モジュールをインポート
-import { createRunId, computeLiveWindow } from "../../lib/agent-utils.js";
+import { createRunId, computeLiveWindow } from "../../lib/agent/agent-utils.js";
 
 // ============================================================================
 // createRunId

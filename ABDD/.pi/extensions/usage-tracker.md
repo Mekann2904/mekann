@@ -2,7 +2,7 @@
 title: usage-tracker
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -21,7 +21,7 @@ related: []
 // from 'node:path': join, dirname
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
 // from '@mariozechner/pi-tui': truncateToWidth
-// ... and 2 more imports
+// ... and 3 more imports
 ```
 
 ## エクスポート一覧
@@ -56,6 +56,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
+    types["types"]
     comprehensive_logger["comprehensive-logger"]
     comprehensive_logger_types["comprehensive-logger-types"]
   end
@@ -249,4 +250,4 @@ interface CacheData {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.584Z*
+*自動生成: 2026-02-28T13:55:23.032Z*

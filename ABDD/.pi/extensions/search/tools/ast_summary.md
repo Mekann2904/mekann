@@ -2,7 +2,7 @@
 title: ast_summary
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -409,4 +409,4 @@ formatNode(node: AstNode, prefix: any, isLast: any): void
 **戻り値**: `void`
 
 ---
-*自動生成: 2026-02-24T17:08:02.417Z*
+*自動生成: 2026-02-28T13:55:20.075Z*

@@ -2,7 +2,7 @@
 title: live-monitor
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -17,11 +17,11 @@ related: []
 
 ```typescript
 // from '@mariozechner/pi-tui': Key, matchesKey
+// from '../../lib/tui/types.js': Theme
+// from '../../lib/tui-types.js': TuiInstance, KeybindingMap, LiveMonitorContext
 // from '../../lib/format-utils.js': formatDurationMs, formatBytes, formatClockTime, ...
 // from '../../lib/tui/tui-utils.js': appendTail, countOccurrences, estimateLineCount, ...
-// from '../../lib/live-view-utils.js': toTailLines, looksLikeMarkdown, getLiveStatusGlyph, ...
-// from '../../lib/agent-utils.js': computeLiveWindow
-// ... and 1 more imports
+// ... and 5 more imports
 ```
 
 ## エクスポート一覧
@@ -62,11 +62,11 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
+    types["types"]
+    tui_types["tui-types"]
     format_utils["format-utils"]
     tui_utils["tui-utils"]
     live_view_utils["live-view-utils"]
-    agent_utils["agent-utils"]
-    team_types["team-types"]
   end
   main --> local
   subgraph external[外部ライブラリ]
@@ -80,6 +80,7 @@ flowchart LR
 ```mermaid
 flowchart TD
   add["add()"]
+  classifyActivityFromChunk["classifyActivityFromChunk()"]
   clearPollTimer["clearPollTimer()"]
   clearRenderTimer["clearRenderTimer()"]
   close["close()"]
@@ -93,6 +94,7 @@ flowchart TD
   hasRunningItems["hasRunningItems()"]
   parseEventTimeLine["parseEventTimeLine()"]
   pushLiveEvent["pushLiveEvent()"]
+  pushStateTransition["pushStateTransition()"]
   queueRender["queueRender()"]
   renderAgentTeamLiveView["renderAgentTeamLiveView()"]
   renderCommunicationEvents["renderCommunicationEvents()"]
@@ -105,6 +107,7 @@ flowchart TD
   close --> clearRenderTimer
   computeTreeLevels --> add
   computeTreeLevels --> getLevel
+  createAgentTeamLiveMonitor --> classifyActivityFromChunk
   createAgentTeamLiveMonitor --> clearPollTimer
   createAgentTeamLiveMonitor --> clearRenderTimer
   createAgentTeamLiveMonitor --> close
@@ -112,11 +115,10 @@ flowchart TD
   createAgentTeamLiveMonitor --> hasDynamicState
   createAgentTeamLiveMonitor --> hasRunningItems
   createAgentTeamLiveMonitor --> pushLiveEvent
+  createAgentTeamLiveMonitor --> pushStateTransition
   createAgentTeamLiveMonitor --> queueRender
   createAgentTeamLiveMonitor --> renderAgentTeamLiveView
   createAgentTeamLiveMonitor --> startPolling
-  getLevel --> add
-  getLevel --> getLevel
   hasDynamicState --> hasRunningItems
   renderAgentTeamLiveView --> add
   renderAgentTeamLiveView --> formatLivePhase
@@ -145,14 +147,14 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant live_monitor as "live-monitor"
   participant mariozechner as "@mariozechner"
-  participant format_utils as "format-utils"
-  participant tui_utils as "tui-utils"
+  participant types as "types"
+  participant tui_types as "tui-types"
 
   Caller->>live_monitor: toTeamLiveItemKey()
   live_monitor->>mariozechner: API呼び出し
   mariozechner-->>live_monitor: レスポンス
-  live_monitor->>format_utils: 内部関数呼び出し
-  format_utils-->>live_monitor: 結果
+  live_monitor->>types: 内部関数呼び出し
+  types-->>live_monitor: 結果
   live_monitor-->>Caller: string
 
   Caller->>live_monitor: renderAgentTeamLiveView()
@@ -160,6 +162,36 @@ sequenceDiagram
 ```
 
 ## 関数
+
+### classifyActivityFromChunk
+
+```typescript
+classifyActivityFromChunk(chunk: string): NonNullable<StateTransition["activity"]>
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| chunk | `string` | はい |
+
+**戻り値**: `NonNullable<StateTransition["activity"]>`
+
+### pushStateTransition
+
+```typescript
+pushStateTransition(item: TeamLiveItem, state: StateTransition["state"], activity?: StateTransition["activity"]): void
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| item | `TeamLiveItem` | はい |
+| state | `StateTransition["state"]` | はい |
+| activity | `StateTransition["activity"]` | いいえ |
+
+**戻り値**: `void`
 
 ### parseEventTimeLine
 
@@ -245,7 +277,7 @@ getActivitySpinner(isRunning: boolean): string
 ### renderTreeView
 
 ```typescript
-renderTreeView(items: TeamLiveItem[], cursor: number, width: number, theme: any): string[]
+renderTreeView(items: TeamLiveItem[], cursor: number, width: number, theme: Theme): string[]
 ```
 
 ツリービューを描画
@@ -257,7 +289,7 @@ renderTreeView(items: TeamLiveItem[], cursor: number, width: number, theme: any)
 | items | `TeamLiveItem[]` | はい |
 | cursor | `number` | はい |
 | width | `number` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `string[]`
 
@@ -278,7 +310,7 @@ add(line: any): void
 ### renderCommunicationEvents
 
 ```typescript
-renderCommunicationEvents(items: TeamLiveItem[], limit: number, width: number, theme: any): string[]
+renderCommunicationEvents(items: TeamLiveItem[], limit: number, width: number, theme: Theme): string[]
 ```
 
 通信イベントを描画（連携可視化を含む）
@@ -290,7 +322,7 @@ renderCommunicationEvents(items: TeamLiveItem[], limit: number, width: number, t
 | items | `TeamLiveItem[]` | はい |
 | limit | `number` | はい |
 | width | `number` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `string[]`
 
@@ -311,7 +343,7 @@ add(line: any): void
 ### renderTimelineView
 
 ```typescript
-renderTimelineView(items: TeamLiveItem[], globalEvents: string[], width: number, theme: any): string[]
+renderTimelineView(items: TeamLiveItem[], globalEvents: string[], width: number, theme: Theme): string[]
 ```
 
 タイムラインビューを描画
@@ -323,7 +355,7 @@ renderTimelineView(items: TeamLiveItem[], globalEvents: string[], width: number,
 | items | `TeamLiveItem[]` | はい |
 | globalEvents | `string[]` | はい |
 | width | `number` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `string[]`
 
@@ -415,7 +447,7 @@ renderAgentTeamLiveView(input: {
   stream: LiveStreamView;
   width: number;
   height?: number;
-  theme: any;
+  theme: Theme;
   /** 待機状態情報（オプション） */
   queueStatus?: {
     isWaiting: boolean;
@@ -442,7 +474,7 @@ renderAgentTeamLiveView(input: {
 | &nbsp;&nbsp;↳ stream | `LiveStreamView` | はい |
 | &nbsp;&nbsp;↳ width | `number` | はい |
 | &nbsp;&nbsp;↳ height | `number` | いいえ |
-| &nbsp;&nbsp;↳ theme | `any` | はい |
+| &nbsp;&nbsp;↳ theme | `Theme` | はい |
 | &nbsp;&nbsp;↳ queueStatus | `{    isWaiting: boolean;    waitedMs?: number;    queuePosition?: number;    queuedAhead?: number;    estimatedWaitMs?: number;  }` | いいえ |
 
 **戻り値**: `string[]`
@@ -464,7 +496,7 @@ add(line: any): void
 ### createAgentTeamLiveMonitor
 
 ```typescript
-createAgentTeamLiveMonitor(ctx: any, input: {
+createAgentTeamLiveMonitor(ctx: LiveMonitorContext, input: {
     title: string;
     items: Array<{ key: string; label: string; partners?: string[] }>;
   }): AgentTeamLiveMonitorController | undefined
@@ -476,7 +508,7 @@ createAgentTeamLiveMonitor(ctx: any, input: {
 
 | 名前 | 型 | 必須 |
 |------|-----|------|
-| ctx | `any` | はい |
+| ctx | `LiveMonitorContext` | はい |
 | input | `object` | はい |
 | &nbsp;&nbsp;↳ title | `string` | はい |
 | &nbsp;&nbsp;↳ items | `Array<{ key: string; label: string; partners?: string[] }>` | はい |
@@ -573,4 +605,4 @@ interface TimelineEvent {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.102Z*
+*自動生成: 2026-02-28T13:55:18.757Z*

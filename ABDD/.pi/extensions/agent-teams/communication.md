@@ -2,7 +2,7 @@
 title: communication
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -16,12 +16,12 @@ related: []
 ## インポート
 
 ```typescript
+// from 'async-mutex': Mutex
 // from '../../lib/format-utils.js': normalizeForSingleLine
 // from '../../lib/text-parsing': analyzeDiscussionStance
 // from '../../lib/agent-errors': classifyFailureType, shouldRetryByClassification, FailureClassification
 // from '../../lib/output-schema': getCommunicationIdMode, getStanceClassificationMode, CommunicationIdMode
-// from './storage': TeamMember, TeamMemberResult, TeamDefinition, ...
-// ... and 1 more imports
+// ... and 2 more imports
 ```
 
 ## エクスポート一覧
@@ -112,6 +112,10 @@ flowchart LR
     storage["storage"]
   end
   main --> local
+  subgraph external[外部ライブラリ]
+    async_mutex["async-mutex"]
+  end
+  main --> external
 ```
 
 ### 関数フロー
@@ -152,10 +156,13 @@ sequenceDiagram
   autonumber
   participant Caller as 呼び出し元
   participant communication as "communication"
+  participant async_mutex as "async-mutex"
   participant format_utils as "format-utils"
   participant text_parsing as "text-parsing"
 
   Caller->>communication: buildPrecomputedContextMap()
+  communication->>async_mutex: API呼び出し
+  async_mutex-->>communication: レスポンス
   communication->>format_utils: 内部関数呼び出し
   format_utils-->>communication: 結果
   communication-->>Caller: Map_string_Precomput
@@ -420,7 +427,7 @@ checkTermination(task: string, results: TeamMemberResult[], minCompletionScore: 
 ### getTeamBeliefCache
 
 ```typescript
-getTeamBeliefCache(teamId: string): Map<string, AgentBelief[]>
+async getTeamBeliefCache(teamId: string): Promise<Map<string, AgentBelief[]>>
 ```
 
 チームIDに対応する信念状態キャッシュを取得する
@@ -431,12 +438,12 @@ getTeamBeliefCache(teamId: string): Map<string, AgentBelief[]>
 |------|-----|------|
 | teamId | `string` | はい |
 
-**戻り値**: `Map<string, AgentBelief[]>`
+**戻り値**: `Promise<Map<string, AgentBelief[]>>`
 
 ### updateBeliefState
 
 ```typescript
-updateBeliefState(teamId: string, memberId: string, output: string, round: number): AgentBelief[]
+async updateBeliefState(teamId: string, memberId: string, output: string, round: number): Promise<AgentBelief[]>
 ```
 
 信念状態を更新する
@@ -450,12 +457,12 @@ updateBeliefState(teamId: string, memberId: string, output: string, round: numbe
 | output | `string` | はい |
 | round | `number` | はい |
 
-**戻り値**: `AgentBelief[]`
+**戻り値**: `Promise<AgentBelief[]>`
 
 ### getBeliefSummary
 
 ```typescript
-getBeliefSummary(teamId: string, memberIds: string[]): string
+async getBeliefSummary(teamId: string, memberIds: string[]): Promise<string>
 ```
 
 信念サマリーを取得
@@ -467,12 +474,12 @@ getBeliefSummary(teamId: string, memberIds: string[]): string
 | teamId | `string` | はい |
 | memberIds | `string[]` | はい |
 
-**戻り値**: `string`
+**戻り値**: `Promise<string>`
 
 ### clearBeliefStateCache
 
 ```typescript
-clearBeliefStateCache(teamId?: string): void
+async clearBeliefStateCache(teamId?: string): Promise<void>
 ```
 
 信念状態キャッシュをクリア（チームID指定、または全クリア）
@@ -483,7 +490,7 @@ clearBeliefStateCache(teamId?: string): void
 |------|-----|------|
 | teamId | `string` | いいえ |
 
-**戻り値**: `void`
+**戻り値**: `Promise<void>`
 
 ## インターフェース
 
@@ -559,4 +566,4 @@ interface BeliefContradiction {
 信念の矛盾を定義するインターフェース
 
 ---
-*自動生成: 2026-02-24T17:08:01.829Z*
+*自動生成: 2026-02-28T13:55:17.745Z*

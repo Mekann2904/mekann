@@ -2,7 +2,7 @@
 title: agent-runtime
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -18,10 +18,10 @@ related: []
 ```typescript
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
 // from 'node:crypto': randomBytes
+// from 'async-mutex': Mutex
 // from '../lib/adaptive-rate-controller': getEffectiveLimit, getSchedulerAwareLimit
 // from '../lib/cross-instance-coordinator': getMyParallelLimit, isCoordinatorInitialized, getModelParallelLimit, ...
-// from '../lib/cross-instance-coordinator': crossInstanceCoordinator
-// ... and 11 more imports
+// ... and 12 more imports
 ```
 
 ## エクスポート一覧
@@ -67,8 +67,12 @@ related: []
 classDiagram
   class GlobalRuntimeStateProvider {
     -globalScope: GlobalScopeWithRunti
-    -initializationInProgress: any
+    -initializationPromise: Promise_void_null
+    -initMutex: any
+    -INIT_KEY: any
+    -INIT_FLAG_KEY: any
     +getState()
+    +getStateAsync()
     +resetState()
   }
 ```
@@ -90,6 +94,7 @@ flowchart LR
   main --> local
   subgraph external[外部ライブラリ]
     _mariozechner["@mariozechner"]
+    async_mutex["async-mutex"]
   end
   main --> external
 ```
@@ -121,7 +126,7 @@ flowchart TD
   setRuntimeStateProvider["setRuntimeStateProvider()"]
   stopRuntimeReservationSweeper["stopRuntimeReservationSweeper()"]
   tryReserveRuntimeCapacity["tryReserveRuntimeCapacity()"]
-  waitForRuntimeCapacityEvent["waitForRuntimeCapacityEvent()"]
+  validateToolName["validateToolName()"]
   checkRuntimeCapacity --> createCapacityCheck
   checkRuntimeCapacity --> getRuntimeSnapshot
   formatRuntimeStatusLine --> getRuntimeSnapshot
@@ -136,7 +141,6 @@ flowchart TD
   reserveRuntimeCapacity --> normalizePositiveInt
   reserveRuntimeCapacity --> runtimeNow
   reserveRuntimeCapacity --> tryReserveRuntimeCapacity
-  reserveRuntimeCapacity --> waitForRuntimeCapacityEvent
   tryReserveRuntimeCapacity --> cleanupExpiredReservations
   tryReserveRuntimeCapacity --> createCapacityCheck
   tryReserveRuntimeCapacity --> createReservationLease
@@ -147,6 +151,7 @@ flowchart TD
   tryReserveRuntimeCapacity --> notifyRuntimeCapacityChanged
   tryReserveRuntimeCapacity --> runtimeNow
   tryReserveRuntimeCapacity --> sanitizePlannedCount
+  tryReserveRuntimeCapacity --> validateToolName
 ```
 
 ### シーケンス図
@@ -157,6 +162,7 @@ sequenceDiagram
   participant Caller as 呼び出し元
   participant agent_runtime as "agent-runtime"
   participant mariozechner as "@mariozechner"
+  participant async_mutex as "async-mutex"
   participant adaptive_rate_controller as "adaptive-rate-controller"
   participant cross_instance_coordinator as "cross-instance-coordinator"
 
@@ -198,6 +204,22 @@ getRuntimeStateProvider(): RuntimeStateProvider
 プロバイダを設定
 
 **戻り値**: `RuntimeStateProvider`
+
+### validateToolName
+
+```typescript
+validateToolName(name: unknown): string
+```
+
+Validate tool name against security pattern
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| name | `unknown` | はい |
+
+**戻り値**: `string`
 
 ### runtimeNowProvider
 
@@ -268,6 +290,9 @@ Get default reservation TTL from runtime config.
 ```typescript
 normalizePositiveInt(value: unknown, fallback: number, max: any): number
 ```
+
+BUG-TS-005修正: Number()は例外をスローしないためtry-catchを削除
+NaNチェックは Number.isFinite() で行う
 
 **パラメータ**
 
@@ -433,8 +458,22 @@ serializeRuntimeLimits(limits: AgentRuntimeLimits): string
 ### ensureReservationSweeper
 
 ```typescript
-ensureReservationSweeper(): void
+async ensureReservationSweeper(): Promise<void>
 ```
+
+Phase 4修正: 初期化試行回数を制限し、無限待機を防止
+BUG-RC-002修正: Mutexを使用してアトミックな初期化を実現
+
+**戻り値**: `Promise<void>`
+
+### ensureReservationSweeperSync
+
+```typescript
+ensureReservationSweeperSync(): void
+```
+
+同期版ensureReservationSweeper（後方互換性のため）
+非同期版を呼び出すが、結果を待機しない
 
 **戻り値**: `void`
 
@@ -844,6 +883,14 @@ wait(ms: number, signal?: AbortSignal): Promise<void>
 
 **戻り値**: `Promise<void>`
 
+### cleanup
+
+```typescript
+cleanup(): void
+```
+
+**戻り値**: `void`
+
 ### onAbort
 
 ```typescript
@@ -1226,20 +1273,25 @@ registerAgentRuntimeExtension(_pi: ExtensionAPI): void
 GlobalRuntimeStateProvider - デフォルト実装
 
 globalThisを使用してプロセス全体で状態を共有する
+Bug #2修正: Symbol.forとObject.definePropertyでatomicな初期化を実現
 
 **プロパティ**
 
 | 名前 | 型 | 可視性 |
 |------|-----|--------|
 | globalScope | `GlobalScopeWithRuntime` | private |
-| initializationInProgress | `any` | private |
+| initializationPromise | `Promise<void> | null` | private |
+| initMutex | `any` | private |
+| INIT_KEY | `any` | private |
+| INIT_FLAG_KEY | `any` | private |
 
 **メソッド**
 
 | 名前 | シグネチャ |
 |------|------------|
 | getState | `getState(): AgentRuntimeState` |
+| getStateAsync | `getStateAsync(): Promise<AgentRuntimeState>` |
 | resetState | `resetState(): void` |
 
 ---
-*自動生成: 2026-02-24T17:08:01.792Z*
+*自動生成: 2026-02-28T13:55:17.685Z*

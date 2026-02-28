@@ -44,7 +44,7 @@ import {
   PriorityScheduler,
   DEFAULT_SCHEDULER_CONFIG,
   type SchedulerConfig,
-} from "./priority-scheduler.js";
+} from "./coordination/priority-scheduler.js";
 import { SelfRevisionModule, type RevisionExecutor } from "./self-revision.js";
 
 /**

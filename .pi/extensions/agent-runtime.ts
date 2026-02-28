@@ -48,23 +48,23 @@ import {
   findStealCandidate,
   safeStealWork,
   enhancedHeartbeat,
-} from "../lib/cross-instance-coordinator";
-import * as crossInstanceCoordinator from "../lib/cross-instance-coordinator";
+} from "../lib/coordination/cross-instance-coordinator.js";
+import * as crossInstanceCoordinator from "../lib/coordination/cross-instance-coordinator.js";
 import {
   broadcastQueueState,
   getWorkStealingSummary,
-} from "../lib/cross-instance-coordinator";
+} from "../lib/coordination/cross-instance-coordinator.js";
 import {
   getParallelismAdjuster,
   getParallelism as getDynamicParallelism,
-} from "../lib/dynamic-parallelism";
+} from "../lib/coordination/dynamic-parallelism.js";
 import {
   PriorityTaskQueue,
   inferPriority,
   comparePriority,
   formatPriorityQueueStats,
   type PriorityQueueEntry,
-} from "../lib/priority-scheduler";
+} from "../lib/coordination/priority-scheduler.js";
 import type {
   TaskPriority,
   PriorityTaskMetadata,
@@ -103,10 +103,10 @@ import {
   type ScheduledTask,
   type TaskResult,
   type TaskSource,
-} from "../lib/task-scheduler";
+} from "../lib/coordination/task-scheduler.js";
 import {
   setRuntimeSnapshotProvider,
-} from "../lib/unified-limit-resolver";
+} from "../lib/coordination/unified-limit-resolver.js";
 import {
   getRuntimeConfig,
   isStableProfile,
@@ -2404,7 +2404,7 @@ export function getCheckpointStats(): CheckpointStats | null {
  * @summary ワークスチーリング試行
  * @returns 盗まれたキューのエントリ、またはnull
  */
-export async function attemptWorkStealing(): Promise<import("../lib/cross-instance-coordinator").StealableQueueEntry | null> {
+export async function attemptWorkStealing(): Promise<import("../lib/coordination/cross-instance-coordinator.js").StealableQueueEntry | null> {
   if (!ENABLE_WORK_STEALING) return null;
 
   // Only steal if we're idle
@@ -2428,7 +2428,7 @@ export function getComprehensiveRuntimeStatus(): {
   runtime: AgentRuntimeSnapshot;
   metrics: SchedulerMetrics | null;
   checkpoints: CheckpointStats | null;
-  stealing: import("../lib/cross-instance-coordinator").StealingStats | null;
+  stealing: import("../lib/coordination/cross-instance-coordinator.js").StealingStats | null;
   features: {
     preemption: boolean;
     workStealing: boolean;

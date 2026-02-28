@@ -29,7 +29,7 @@
 // Why: Handles building iteration prompts and parsing the machine-readable contract.
 // Related: .pi/extensions/loop.ts
 
-import { ThinkingLevel } from "../../lib/agent-types.js";
+import { ThinkingLevel } from "../../lib/agent/agent-types.js";
 import {
   truncateTextWithMarker as truncateText,
   toPreview,

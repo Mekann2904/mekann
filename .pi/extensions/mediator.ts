@@ -55,7 +55,7 @@ import {
   getHistoryStats,
 } from "../lib/mediator-history.js";
 import { formatMediatorResult, isMediatorEnabled } from "../lib/mediator-integration.js";
-import { toErrorMessage } from "../lib/error-utils.js";
+import { toErrorMessage } from "../lib/core/error-utils.js";
 import { toPreview } from "../lib/text-utils.js";
 
 // ============================================================================

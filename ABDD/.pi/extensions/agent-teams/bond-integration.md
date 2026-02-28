@@ -2,7 +2,7 @@
 title: bond-integration
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -78,6 +78,8 @@ flowchart TD
   formatBondAnalysisForJudgeExplanation["formatBondAnalysisForJudgeExplanation()"]
   getBondConfig["getBondConfig()"]
   isBondAnalysisEnabled["isBondAnalysisEnabled()"]
+  parseThreshold["parseThreshold()"]
+  getBondConfig --> parseThreshold
   isBondAnalysisEnabled --> getBondConfig
 ```
 
@@ -109,8 +111,24 @@ getBondConfig(): BondAnalysisConfig
 ```
 
 環境変数から設定を読み込み
+BUG-014: parseFloatのエラーハンドリングを追加（NaN対策）
 
 **戻り値**: `BondAnalysisConfig`
+
+### parseThreshold
+
+```typescript
+parseThreshold(value: string | undefined, defaultValue: number): number
+```
+
+**パラメータ**
+
+| 名前 | 型 | 必須 |
+|------|-----|------|
+| value | `string | undefined` | はい |
+| defaultValue | `number` | はい |
+
+**戻り値**: `number`
 
 ### augmentDiagnosticsWithBondAnalysis
 
@@ -205,4 +223,4 @@ interface BondDiagnostics {
 ボンド分析の結果を含む拡張診断情報
 
 ---
-*自動生成: 2026-02-24T17:08:01.795Z*
+*自動生成: 2026-02-28T13:55:17.712Z*

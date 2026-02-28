@@ -34,32 +34,32 @@ import { join } from "node:path";
 import {
   trimForError,
   buildRateLimitKey,
-} from "../../lib/runtime-utils.js";
+} from "../../lib/agent/runtime-utils.js";
 import {
   toErrorMessage,
   extractStatusCodeFromMessage,
   classifyPressureError,
   isCancelledErrorMessage,
   isTimeoutErrorMessage,
-} from "../../lib/error-utils.js";
+} from "../../lib/core/error-utils.js";
 import {
   createRunId,
-} from "../../lib/agent-utils.js";
+} from "../../lib/agent/agent-utils.js";
 import {
   type ThinkingLevel,
   type RunOutcomeCode,
   type RunOutcomeSignal,
-} from "../../lib/agent-types.js";
+} from "../../lib/agent/agent-types.js";
 import {
   reevaluateAgentRunFailure,
-} from "../../lib/agent-errors.js";
+} from "../../lib/agent/agent-errors.js";
 import {
   validateSubagentOutput,
-} from "../../lib/output-validation.js";
+} from "../../lib/agent/output-validation.js";
 import {
   findRelevantPatterns,
   type ExtractedPattern,
-} from "../../lib/pattern-extraction.js";
+} from "../../lib/storage/pattern-extraction.js";
 import {
   type SchemaViolation,
   type RegenerationConfig,
@@ -72,7 +72,7 @@ import {
   applyOutputTemplate,
   hasMinimumStructure,
 } from "../../lib/output-template.js";
-import { SchemaValidationError } from "../../lib/errors.js";
+import { SchemaValidationError } from "../../lib/core/errors.js";
 import {
 	isPlanModeActive,
 	PLAN_MODE_WARNING,
@@ -83,15 +83,15 @@ import {
   isNetworkErrorRetryable,
   retryWithBackoff,
   type RetryWithBackoffOverrides,
-} from "../../lib/retry-with-backoff";
-import { getRateLimitGateSnapshot } from "../../lib/retry-with-backoff";
+} from "../../lib/retry-with-backoff.js";
+import { getRateLimitGateSnapshot } from "../../lib/retry-with-backoff.js";
 import {
   STABLE_MAX_RETRIES,
   STABLE_INITIAL_DELAY_MS,
   STABLE_MAX_DELAY_MS,
   STABLE_MAX_RATE_LIMIT_RETRIES,
   STABLE_MAX_RATE_LIMIT_WAIT_MS,
-} from "../../lib/agent-common.js";
+} from "../../lib/agent/agent-common.js";
 import { runPiPrintMode as sharedRunPiPrintMode, type PrintCommandResult } from "../shared/pi-print-executor";
 
 import type { SubagentDefinition, SubagentRunRecord, SubagentPaths } from "./storage";

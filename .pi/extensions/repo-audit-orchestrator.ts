@@ -209,7 +209,7 @@ export interface PhaseUpdate {
 // =============================================================================
 
 const DEFAULT_CONFIG: RepoAuditConfig = {
-  verificationMode: "repoaudit",
+  verificationMode: "repo-audit",
   maxExplorationDepth: 5,
   explorationTimeout: 60000,
   validatorTimeout: 30000,
@@ -437,7 +437,7 @@ async function runValidatorPhase(
 ): Promise<Verdict> {
   onUpdate?.({ phase: "validator", status: "running", message: "検証を実行中..." });
 
-  const verificationConfig = resolveVerificationConfigV2(config.verificationMode);
+  const verificationConfig = resolveVerificationConfigV2({ mode: config.verificationMode });
 
   // 検証コンテキストを構築
   const context: VerificationContext = {
@@ -450,18 +450,18 @@ async function runValidatorPhase(
   const confidence = calculateOverallConfidence(hypothesis, findings);
 
   // 検証が必要かチェック
-  const triggerCheck = shouldTriggerVerification(output, confidence, context);
+  const shouldTrigger = shouldTriggerVerification(context, verificationConfig);
 
   let verificationDetails: Verdict["verificationDetails"] = {
-    triggered: triggerCheck.trigger,
-    triggerReason: triggerCheck.reason,
+    triggered: shouldTrigger,
+    triggerReason: shouldTrigger ? "Verification triggered based on config" : "Verification not needed",
   };
 
   let warnings: string[] = [];
   let recommendations: string[] = [];
 
   // 検証がトリガーされた場合
-  if (triggerCheck.trigger && verificationConfig.enabled) {
+  if (shouldTrigger && verificationConfig.enabled) {
     // Inspector/Challengerパターンを適用（簡易実装）
     const inspectorResults = runInspectorPatterns(output, findings);
     const challengerResults = runChallengerPatterns(hypothesis, findings);
@@ -758,6 +758,7 @@ function runChallengerPatterns(
 export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "repo_audit",
+    label: "Repo Audit", 
     description:
       "RepoAuditスタイルのコード監査（3層アーキテクチャ: Initiator/Explorer/Validator）",
     parameters: Type.Object({
@@ -771,7 +772,7 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
       }), { description: "フォーカス領域" })),
       verificationMode: Type.Optional(Type.String({
         description: "検証モード",
-        enum: ["disabled", "repoaudit", "high-stakes-only", "explicit-only"],
+        enum: ["disabled", "repo-audit", "high-stakes-only", "explicit-only"],
       })),
       maxExplorationDepth: Type.Optional(Type.Number({ description: "最大探索深度" })),
     }),
@@ -795,7 +796,10 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
         // Phase 1: Initiator
         const initiatorStart = Date.now();
         const hypothesis = await runInitiatorPhase(task, ctx, (update) => {
-          onUpdate?.({ type: "phase-update", ...update });
+          onUpdate?.({
+            content: [{ type: "text", text: `[repo_audit] ${update.phase}: ${update.message}` }],
+            details: update,
+          });
         });
         phaseTimes.initiator = Date.now() - initiatorStart;
 
@@ -812,7 +816,10 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
           config,
           ctx,
           (update) => {
-            onUpdate?.({ type: "phase-update", ...update });
+            onUpdate?.({
+              content: [{ type: "text", text: `[repo_audit] ${update.phase}: ${update.message}` }],
+              details: update,
+            });
           }
         );
         phaseTimes.explorer = Date.now() - explorerStart;
@@ -830,7 +837,10 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
           config,
           ctx,
           (update) => {
-            onUpdate?.({ type: "phase-update", ...update });
+            onUpdate?.({
+              content: [{ type: "text", text: `[repo_audit] ${update.phase}: ${update.message}` }],
+              details: update,
+            });
           }
         );
         phaseTimes.validator = Date.now() - validatorStart;
@@ -850,15 +860,15 @@ export default function registerRepoAuditOrchestrator(pi: ExtensionAPI): void {
         };
 
         return {
-          success: true,
-          result,
+          content: [{ type: "text", text: "RepoAudit completed" }],
+          details: result,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         return {
-          success: false,
-          error: errorMessage,
-          metadata: {
+          content: [{ type: "text", text: `RepoAudit failed: ${errorMessage}` }],
+          details: {
+            error: errorMessage,
             duration: Date.now() - startTime,
             phases: phaseTimes,
           },

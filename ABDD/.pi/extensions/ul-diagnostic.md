@@ -2,7 +2,7 @@
 title: ul-diagnostic
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -26,7 +26,7 @@ related: []
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerUlDiagnosticExtension` | - |
+| 関数 | `registerUlDiagnosticExtension` | UI診断機能の拡張を登録 |
 
 ## ユーザーフロー
 
@@ -252,6 +252,8 @@ formatReport(report: DiagnosticReport): string
 registerUlDiagnosticExtension(pi: ExtensionAPI): void
 ```
 
+UI診断機能の拡張を登録
+
 **パラメータ**
 
 | 名前 | 型 | 必須 |
@@ -313,4 +315,4 @@ interface RuntimeState {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.556Z*
+*自動生成: 2026-02-28T13:55:22.983Z*

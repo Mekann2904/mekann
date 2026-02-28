@@ -37,7 +37,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Mutex } from "async-mutex";
 import { recordTotalLimitObservation } from "./adaptive-total-limit.js";
-import { withFileLock } from "./storage-lock.js";
+import { withFileLock } from "./storage/storage-lock.js";
 import {
   checkCircuitBreaker,
   recordCircuitBreakerSuccess,

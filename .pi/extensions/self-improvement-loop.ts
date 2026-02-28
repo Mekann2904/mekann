@@ -40,23 +40,21 @@ import { spawn } from "node:child_process";
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { formatDurationMs, formatClockTime } from "../lib/format-utils.js";
-import { toErrorMessage, isCancelledErrorMessage } from "../lib/error-utils.js";
-import { ThinkingLevel } from "../lib/agent-types.js";
-import { computeModelTimeoutMs } from "../lib/model-timeouts.js";
+import { formatDurationMs, formatClockTime } from "../lib/core/format-utils.js";
+import { toErrorMessage, isCancelledErrorMessage } from "../lib/core/error-utils.js";
+import { ThinkingLevel } from "../lib/agent/agent-types.js";
+import { computeModelTimeoutMs } from "../lib/agent/model-timeouts.js";
 import { callModelViaPi as sharedCallModelViaPi } from "./shared/pi-print-executor.js";
 import {
   detectSemanticRepetition,
   TrajectoryTracker,
   getRecommendedAction,
   type SemanticRepetitionResult,
-} from "../lib/semantic-repetition.js";
+} from "../lib/storage/semantic-repetition.js";
 import {
   runMetacognitiveCheck,
-  type MetacognitiveCheck,
   type AporiaDetection,
   type FallacyDetection,
-  type ImprovementAction,
   generateImprovementActions,
   formatActionsAsPromptInstructions,
   runIntegratedMetacognitiveAnalysis,
@@ -75,6 +73,8 @@ import {
   runIntegratedThinkingAnalysis,
   type ThinkingModeAnalysis,
 } from "../lib/verification-workflow.js";
+import type { MetacognitiveCheck } from "../lib/verification/analysis/metacognitive-check.js";
+import type { ImprovementAction } from "../lib/verification/generation/improvement-actions.js";
 import {
   retryWithBackoff,
   extractRetryStatusCode,

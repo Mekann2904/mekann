@@ -28,13 +28,13 @@
 // Related: .pi/extensions/agent-teams/agent-teams.ts, .pi/extensions/agent-teams/storage.ts
 
 import { Mutex } from "async-mutex";
-import { normalizeForSingleLine } from "../../lib/format-utils.js";
+import { normalizeForSingleLine } from "../../lib/core/format-utils.js";
 import { analyzeDiscussionStance } from "../../lib/text-parsing";
 import {
   classifyFailureType,
   shouldRetryByClassification,
   type FailureClassification,
-} from "../../lib/agent-errors";
+} from "../../lib/agent/agent-errors.js";
 import {
   getCommunicationIdMode,
   getStanceClassificationMode,

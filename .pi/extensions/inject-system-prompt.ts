@@ -71,6 +71,7 @@ export default function (pi: ExtensionAPI) {
         systemPrompt: event.systemPrompt + additionalPrompt,
       };
     }
+    return undefined;
   });
 
   // セッション終了時にリスナー重複登録防止フラグをリセット

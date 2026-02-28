@@ -16,7 +16,7 @@ import type {
   SubagentParallelCapacityResolution,
   DelegationState,
   PrintCommandResult,
-} from "../../../.pi/lib/subagent-types.js";
+} from "../../../.pi/lib/agent/subagent-types.js";
 
 // ============================================================================
 // Type Export Tests

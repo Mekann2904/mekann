@@ -39,7 +39,7 @@ import {
   formatClockTime,
   formatElapsedClock,
   normalizeForSingleLine,
-} from "../../lib/format-utils.js";
+} from "../../lib/core/format-utils.js";
 import {
   appendTail,
   countOccurrences,
@@ -55,10 +55,10 @@ import {
   getActivityIndicator,
   isEnterInput,
   finalizeLiveLines,
-} from "../../lib/live-view-utils.js";
+} from "../../lib/agent/live-view-utils.js";
 import {
   computeLiveWindow,
-} from "../../lib/agent-utils.js";
+} from "../../lib/agent/agent-utils.js";
 import {
   renderGanttView,
   type GanttItem,
@@ -72,7 +72,7 @@ import {
   type AgentTeamLiveMonitorController,
   type LiveStreamView,
   type TeamQueueStatus,
-} from "../../lib/team-types.js";
+} from "../../lib/agent/team-types.js";
 import type { StateTransition } from "../../lib/live-types-base.js";
 
 // Re-export types for convenience

@@ -57,7 +57,7 @@ import {
   clearActiveModel,
   getModelParallelLimit,
   getModelUsageSummary,
-} from "../lib/cross-instance-coordinator";
+} from "../lib/coordination/cross-instance-coordinator.js";
 import {
   resolveLimits,
   getConcurrencyLimit,

@@ -2,7 +2,7 @@
 title: history
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -197,4 +197,4 @@ interface QuerySuggestion {
 クエリ候補インターフェース
 
 ---
-*自動生成: 2026-02-24T17:08:02.439Z*
+*自動生成: 2026-02-28T13:55:20.108Z*

@@ -36,25 +36,25 @@ import type { TeamDefinition, TeamMember, TeamMemberResult } from "./storage";
 
 import {
   normalizeForSingleLine,
-} from "../../lib/format-utils.js";
+} from "../../lib/core/format-utils.js";
 import {
   toErrorMessage,
-} from "../../lib/error-utils.js";
+} from "../../lib/core/error-utils.js";
 import {
   trimForError,
   buildRateLimitKey,
-} from "../../lib/runtime-utils.js";
+} from "../../lib/agent/runtime-utils.js";
 import {
   type ThinkingLevel,
-} from "../../lib/agent-types.js";
+} from "../../lib/agent/agent-types.js";
 import {
   validateTeamMemberOutput,
-} from "../../lib/output-validation.js";
-import { SchemaValidationError, ExecutionError } from "../../lib/errors.js";
+} from "../../lib/agent/output-validation.js";
+import { SchemaValidationError, ExecutionError } from "../../lib/core/errors.js";
 import {
   findRelevantPatterns,
   type ExtractedPattern,
-} from "../../lib/pattern-extraction.js";
+} from "../../lib/storage/pattern-extraction.js";
 import {
   isPlanModeActive,
   PLAN_MODE_WARNING,
@@ -74,7 +74,7 @@ import {
   STABLE_MAX_DELAY_MS,
   STABLE_MAX_RATE_LIMIT_RETRIES,
   STABLE_MAX_RATE_LIMIT_WAIT_MS,
-} from "../../lib/agent-common.js";
+} from "../../lib/agent/agent-common.js";
 
 // ============================================================================
 // Types

@@ -2,7 +2,7 @@
 title: self-improvement-dashboard
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -18,16 +18,17 @@ related: []
 ```typescript
 // from '@mariozechner/pi-coding-agent': ExtensionAPI
 // from '@mariozechner/pi-tui': truncateToWidth
+// from '../lib/tui/types.js': Theme
 // from '../lib/self-improvement-data-platform.js': buildIntegratedDataView, generateInsightReport, loadLatestInsightReport, ...
 // from '../lib/comprehensive-logger': getLogger
-// from '../lib/comprehensive-logger-types': OperationType
+// ... and 1 more imports
 ```
 
 ## エクスポート一覧
 
 | 種別 | 名前 | 説明 |
 |------|------|------|
-| 関数 | `registerSelfImprovementDashboard` | - |
+| 関数 | `registerSelfImprovementDashboard` | ダッシュボード登録 |
 
 ## 図解
 
@@ -52,6 +53,7 @@ flowchart LR
     main[Main Module]
   end
   subgraph local[ローカルモジュール]
+    types["types"]
     self_improvement_data_platform["self-improvement-data-platform"]
     comprehensive_logger["comprehensive-logger"]
     comprehensive_logger_types["comprehensive-logger-types"]
@@ -100,7 +102,7 @@ flowchart TD
 ### renderDashboard
 
 ```typescript
-renderDashboard(state: DashboardState, w: number, theme: any): string[]
+renderDashboard(state: DashboardState, w: number, theme: Theme): string[]
 ```
 
 **パラメータ**
@@ -109,7 +111,7 @@ renderDashboard(state: DashboardState, w: number, theme: any): string[]
 |------|-----|------|
 | state | `DashboardState` | はい |
 | w | `number` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `string[]`
 
@@ -130,7 +132,7 @@ add(s: string): void
 ### renderOverview
 
 ```typescript
-renderOverview(state: DashboardState, add: (s: string) => void, theme: any): void
+renderOverview(state: DashboardState, add: (s: string) => void, theme: Theme): void
 ```
 
 **パラメータ**
@@ -139,14 +141,14 @@ renderOverview(state: DashboardState, add: (s: string) => void, theme: any): voi
 |------|-----|------|
 | state | `DashboardState` | はい |
 | add | `(s: string) => void` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `void`
 
 ### renderAnalyses
 
 ```typescript
-renderAnalyses(state: DashboardState, add: (s: string) => void, theme: any, width: number): void
+renderAnalyses(state: DashboardState, add: (s: string) => void, theme: Theme, width: number): void
 ```
 
 **パラメータ**
@@ -155,7 +157,7 @@ renderAnalyses(state: DashboardState, add: (s: string) => void, theme: any, widt
 |------|-----|------|
 | state | `DashboardState` | はい |
 | add | `(s: string) => void` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 | width | `number` | はい |
 
 **戻り値**: `void`
@@ -163,7 +165,7 @@ renderAnalyses(state: DashboardState, add: (s: string) => void, theme: any, widt
 ### renderReflections
 
 ```typescript
-renderReflections(state: DashboardState, add: (s: string) => void, theme: any, width: number): void
+renderReflections(state: DashboardState, add: (s: string) => void, theme: Theme, width: number): void
 ```
 
 **パラメータ**
@@ -172,7 +174,7 @@ renderReflections(state: DashboardState, add: (s: string) => void, theme: any, w
 |------|-----|------|
 | state | `DashboardState` | はい |
 | add | `(s: string) => void` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 | width | `number` | はい |
 
 **戻り値**: `void`
@@ -180,7 +182,7 @@ renderReflections(state: DashboardState, add: (s: string) => void, theme: any, w
 ### renderPatterns
 
 ```typescript
-renderPatterns(state: DashboardState, add: (s: string) => void, theme: any): void
+renderPatterns(state: DashboardState, add: (s: string) => void, theme: Theme): void
 ```
 
 **パラメータ**
@@ -189,14 +191,14 @@ renderPatterns(state: DashboardState, add: (s: string) => void, theme: any): voi
 |------|-----|------|
 | state | `DashboardState` | はい |
 | add | `(s: string) => void` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 
 **戻り値**: `void`
 
 ### renderUsage
 
 ```typescript
-renderUsage(state: DashboardState, add: (s: string) => void, theme: any, width: number): void
+renderUsage(state: DashboardState, add: (s: string) => void, theme: Theme, width: number): void
 ```
 
 **パラメータ**
@@ -205,7 +207,7 @@ renderUsage(state: DashboardState, add: (s: string) => void, theme: any, width: 
 |------|-----|------|
 | state | `DashboardState` | はい |
 | add | `(s: string) => void` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 | width | `number` | はい |
 
 **戻り値**: `void`
@@ -213,7 +215,7 @@ renderUsage(state: DashboardState, add: (s: string) => void, theme: any, width: 
 ### renderPerspectives
 
 ```typescript
-renderPerspectives(state: DashboardState, add: (s: string) => void, theme: any, width: number): void
+renderPerspectives(state: DashboardState, add: (s: string) => void, theme: Theme, width: number): void
 ```
 
 **パラメータ**
@@ -222,7 +224,7 @@ renderPerspectives(state: DashboardState, add: (s: string) => void, theme: any, 
 |------|-----|------|
 | state | `DashboardState` | はい |
 | add | `(s: string) => void` | はい |
-| theme | `any` | はい |
+| theme | `Theme` | はい |
 | width | `number` | はい |
 
 **戻り値**: `void`
@@ -232,6 +234,8 @@ renderPerspectives(state: DashboardState, add: (s: string) => void, theme: any, 
 ```typescript
 registerSelfImprovementDashboard(pi: ExtensionAPI): void
 ```
+
+ダッシュボード登録
 
 **パラメータ**
 
@@ -282,4 +286,4 @@ type DashboardView = | "overview"
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.449Z*
+*自動生成: 2026-02-28T13:55:20.128Z*

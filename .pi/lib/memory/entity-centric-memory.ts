@@ -33,12 +33,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ensureDir } from "../fs-utils.js";
-import { atomicWriteTextFile } from "../storage-lock.js";
+import { ensureDir } from "../core/fs-utils.js";
+import { atomicWriteTextFile } from "../storage/storage-lock.js";
 import {
   generateEmbedding,
   cosineSimilarity,
-} from "../embeddings/index.js";
+} from "../storage/embeddings/index.js";
 
 // ============================================================================
 // Types

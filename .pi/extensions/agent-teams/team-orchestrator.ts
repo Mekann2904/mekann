@@ -30,21 +30,21 @@ import { join } from "node:path";
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { createRunId } from "../../lib/agent-utils.js";
+import { createRunId } from "../../lib/agent/agent-utils.js";
 import { createChildAbortController } from "../../lib/abort-utils.js";
 import {
   STABLE_RUNTIME_PROFILE,
   TEAM_MEMBER_CONFIG,
-} from "../../lib/agent-common.js";
-import { classifyPressureError } from "../../lib/error-utils.js";
+} from "../../lib/agent/agent-common.js";
+import { classifyPressureError } from "../../lib/core/error-utils.js";
 import { getLogger } from "../../lib/comprehensive-logger.js";
 import type { OperationType } from "../../lib/comprehensive-logger-types.js";
 import { getCostEstimator, type ExecutionHistoryEntry } from "../../lib/cost-estimator.js";
-import { formatDurationMs, normalizeForSingleLine } from "../../lib/format-utils.js";
+import { formatDurationMs, normalizeForSingleLine } from "../../lib/core/format-utils.js";
 import { runWithConcurrencyLimit } from "../../lib/concurrency.js";
 import type { RetryWithBackoffOverrides } from "../../lib/retry-with-backoff.js";
-import { toConcurrencyLimit } from "../../lib/runtime-utils.js";
-import { ValidationError } from "../../lib/errors.js";
+import { toConcurrencyLimit } from "../../lib/agent/runtime-utils.js";
+import { ValidationError } from "../../lib/core/errors.js";
 
 import {
   type TeamMember,
@@ -70,7 +70,7 @@ import {
 } from "./communication.js";
 import { runMember } from "./member-execution.js";
 import { runFinalJudge, buildFallbackJudge, computeProxyUncertainty, computeProxyUncertaintyWithExplainability, formatJudgeExplanation, type TeamUncertaintyProxy, type JudgeExplanation } from "./judge.js";
-import type { TeamLivePhase } from "../../lib/team-types.js";
+import type { TeamLivePhase } from "../../lib/agent/team-types.js";
 import {
   getGlobalFailureMemory,
   hashTask,
@@ -1261,7 +1261,7 @@ async function executeFinalJudge(
     // RepoAudit戦略の場合は特別な設定を使用
     if (input.strategy === "repoaudit") {
       const { resolveVerificationConfigV2 } = await import("../../lib/verification-workflow.js");
-      const repoAuditConfig = resolveVerificationConfigV2("repoaudit");
+      const repoAuditConfig = resolveVerificationConfigV2({ mode: "repo-audit" });
       
       // RepoAudit設定が有効な場合は詳細な検証を実行
       if (repoAuditConfig.enabled) {

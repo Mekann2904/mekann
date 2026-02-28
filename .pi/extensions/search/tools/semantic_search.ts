@@ -41,7 +41,7 @@ import type {
 	CodeEmbedding,
 } from "../types.js";
 import { INDEX_DIR_NAME } from "../utils/constants.js";
-import { cosineSimilarity } from "../../../lib/embeddings/utils.js";
+import { cosineSimilarity } from "../../../lib/storage/embeddings/utils.js";
 
 // ============================================================================
 // Constants
@@ -178,7 +178,7 @@ export async function semanticSearch(
 		}
 
 		// Import embeddings module
-		const { generateEmbedding } = await import("../../../lib/embeddings/index.js");
+		const { generateEmbedding } = await import("../../../lib/storage/embeddings/index.js");
 
 		// Generate query embedding
 		const queryEmbedding = await generateEmbedding(query);

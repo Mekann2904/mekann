@@ -33,7 +33,7 @@ import {
   getCurrentTimestamp,
   generateSessionId,
 } from "./mediator-types.js";
-import { withFileLock, atomicWriteTextFile } from "./storage-lock.js";
+import { withFileLock, atomicWriteTextFile } from "./storage/storage-lock.js";
 
 // ============================================================================
 // 定数

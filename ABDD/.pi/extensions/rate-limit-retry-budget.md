@@ -2,7 +2,7 @@
 title: rate-limit-retry-budget
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -111,4 +111,4 @@ type Replacement = {
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.327Z*
+*自動生成: 2026-02-28T13:55:19.263Z*

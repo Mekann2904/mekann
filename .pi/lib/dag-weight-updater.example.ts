@@ -7,7 +7,7 @@
  */
 
 import { TaskGraphUpdater, createDelta } from "./dag-weight-updater.js";
-import { PriorityScheduler } from "./priority-scheduler.js";
+import { PriorityScheduler } from "./coordination/priority-scheduler.js";
 import type { TaskNode } from "./dag-types.js";
 
 // サンプルタスク定義

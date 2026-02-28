@@ -2,7 +2,7 @@
 title: repograph_index
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -34,8 +34,8 @@ related: []
 | 関数 | `formatRepoGraphQuery` | Format query result for display |
 | インターフェース | `RepographIndexOutput` | Output schema for repograph_index tool |
 | インターフェース | `RepographQueryOutput` | Output schema for repograph_query tool |
-| 型 | `RepographIndexInput` | - |
-| 型 | `RepographQueryInput` | - |
+| 型 | `RepographIndexInput` | インデックス入力定義 |
+| 型 | `RepographQueryInput` | クエリ入力定義 |
 
 ## 図解
 
@@ -214,11 +214,15 @@ Output schema for repograph_query tool
 type RepographIndexInput = Static<typeof RepographIndexInput>
 ```
 
+インデックス入力定義
+
 ### RepographQueryInput
 
 ```typescript
 type RepographQueryInput = Static<typeof RepographQueryInput>
 ```
 
+クエリ入力定義
+
 ---
-*自動生成: 2026-02-24T17:08:02.424Z*
+*自動生成: 2026-02-28T13:55:20.085Z*

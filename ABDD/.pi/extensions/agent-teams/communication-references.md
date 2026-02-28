@@ -2,7 +2,7 @@
 title: communication-references
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -263,4 +263,4 @@ interface PartnerReferenceResultV3 {
 パートナー参照結果（V3）
 
 ---
-*自動生成: 2026-02-24T17:08:01.814Z*
+*自動生成: 2026-02-28T13:55:17.730Z*

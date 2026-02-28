@@ -16,9 +16,9 @@
  * scope(in/out): in=テーマ定義群, out=DOM適用やUI表示
  */
 
-import { BASE_THEMES } from "@/theme/base-themes";
-import { GEEK_THEMES } from "@/theme/geek-themes";
-import type { Theme, ThemeCatalog } from "@/theme/types";
+import { BASE_THEMES } from "./base-themes";
+import { GEEK_THEMES } from "./geek-themes";
+import type { Theme, ThemeCatalog } from "./types";
 
 /** @summary 既定テーマID */
 export const DEFAULT_THEME_ID = "blue";

@@ -2,7 +2,7 @@
 title: generate-diagrams
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -263,4 +263,4 @@ interface MermaidDiagrams {
 Mermaid図の出力結果
 
 ---
-*自動生成: 2026-02-24T17:08:02.159Z*
+*自動生成: 2026-02-28T13:55:18.839Z*

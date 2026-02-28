@@ -2,7 +2,7 @@
 title: index
 category: api-reference
 audience: developer
-last_updated: 2026-02-24
+last_updated: 2026-02-28
 tags: [auto-generated]
 related: []
 ---
@@ -479,12 +479,15 @@ sequenceDiagram
   Internal->>Unresolved: embeddingRegistry.getAvailable (.pi/lib/embeddings/registry.ts)
   Internal->>Unresolved: console.log (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Internal: collectFiles
+  Internal->>Unresolved: Math.min (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: files.slice (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: relative
   Internal->>Unresolved: console.warn (node_modules/typescript/lib/lib.dom.d.ts)
   Internal->>Internal: chunkCode
   Internal->>Internal: buildChunkText
-  Internal->>Unresolved: embeddingRegistry.getDefault (.pi/lib/embeddings/registry.ts)
   Internal->>Unresolved: embeddings.push (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.floor (node_modules/typescript/lib/lib.es5.d.ts)
+  Internal->>Unresolved: Math.ceil (node_modules/typescript/lib/lib.es5.d.ts)
   Internal->>Internal: saveIndex
   Internal->>Internal: saveMetadata
   Internal->>Unresolved: Date.now (node_modules/typescript/lib/lib.es5.d.ts)
@@ -1052,4 +1055,4 @@ flowchart LR
 ```
 
 ---
-*自動生成: 2026-02-24T17:08:02.406Z*
+*自動生成: 2026-02-28T13:55:19.983Z*

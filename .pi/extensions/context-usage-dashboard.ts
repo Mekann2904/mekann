@@ -42,7 +42,7 @@ import type {
 import { truncateToWidth } from "@mariozechner/pi-tui";
 
 import type { Theme } from "../lib/tui/types.js";
-import { toFiniteNumberWithDefault } from "../lib/validation-utils.js";
+import { toFiniteNumberWithDefault } from "../lib/core/validation-utils.js";
 
 const SESSIONS_ROOT = join(homedir(), ".pi/agent/sessions");
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;

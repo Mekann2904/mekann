@@ -33,18 +33,18 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ensureDir } from "./fs-utils.js";
-import { getOrBuildRunIndex, type RunIndex, type IndexedRun, type TaskType } from "./run-index.js";
+import { ensureDir } from "./core/fs-utils.js";
+import { getOrBuildRunIndex, type RunIndex, type IndexedRun, type TaskType } from "./storage/run-index.js";
 import {
   loadPatternStorage,
   type PatternStorage,
   type ExtractedPattern,
-} from "./pattern-extraction.js";
+} from "./storage/pattern-extraction.js";
 import {
   loadSemanticMemory,
   getSemanticMemoryStats,
   type SemanticMemoryStorage,
-} from "./semantic-memory.js";
+} from "./storage/semantic-memory.js";
 
 // ============================================================================
 // Types

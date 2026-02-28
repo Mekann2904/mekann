@@ -6,7 +6,7 @@ import {
   type PriorityQueueEntry,
   inferTaskType,
   estimateRounds,
-} from "./lib/priority-scheduler.js";
+} from "./lib/coordination/priority-scheduler.js";
 
 import {
   TaskDependencyGraph,
@@ -17,7 +17,7 @@ import {
   registerInstance,
   unregisterInstance,
   getCoordinatorStatus,
-} from "./lib/cross-instance-coordinator.js";
+} from "./lib/coordination/cross-instance-coordinator.js";
 
 import {
   getPredictiveAnalysis,
@@ -34,7 +34,7 @@ import {
   getUnifiedEnvConfig,
   formatUnifiedLimitsResult,
   getAllLimitsSummary,
-} from "./lib/unified-limit-resolver.js";
+} from "./lib/coordination/unified-limit-resolver.js";
 
 let testsPassed = 0;
 let testsFailed = 0;

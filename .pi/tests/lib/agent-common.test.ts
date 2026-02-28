@@ -23,7 +23,7 @@ import {
 	isEmptyOutputFailureMessage,
 	buildFailureSummary,
 	resolveTimeoutWithEnv,
-} from "../../lib/agent-common.js";
+} from "../../lib/agent/agent-common.js";
 
 describe("Runtime Profile Constants", () => {
 	describe("正常系", () => {

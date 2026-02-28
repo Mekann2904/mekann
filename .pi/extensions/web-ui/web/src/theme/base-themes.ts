@@ -16,7 +16,7 @@
  * scope(in/out): in=テーマ定義, out=テーマ適用ロジック
  */
 
-import type { ThemeCatalog } from "@/theme/types";
+import type { ThemeCatalog } from "./types";
 
 export const BASE_THEMES: ThemeCatalog = {
   zinc: {
