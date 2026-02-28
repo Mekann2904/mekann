@@ -41,6 +41,7 @@ import {
   getAllUlWorkflowTasks,
   getUlWorkflowTask,
   getActiveUlWorkflowTask,
+  invalidateCache,
 } from "./web-ui/lib/ul-workflow-reader.js";
 
 const logger = getLogger();
@@ -75,6 +76,7 @@ interface TaskStorage {
 interface ApiResponse {
 	success: boolean;
 	data?: unknown;
+	total?: number;
 	error?: string;
 }
 
@@ -82,11 +84,14 @@ interface ApiResponse {
 // Storage Functions (imported from task.ts pattern)
 // ============================================
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const TASK_DIR = ".pi/tasks";
 const STORAGE_FILE = join(TASK_DIR, "storage.json");
+const UL_WORKFLOW_DIR = ".pi/ul-workflow";
+const UL_TASKS_DIR = join(UL_WORKFLOW_DIR, "tasks");
+const UL_ACTIVE_FILE = join(UL_WORKFLOW_DIR, "active.json");
 
 function ensureTaskDir(): void {
 	if (!existsSync(TASK_DIR)) {
@@ -396,12 +401,128 @@ function handleGetStats(): ApiResponse {
 	return { success: true, data: stats };
 }
 
+interface UlWorkflowStatusRecord {
+	taskId?: string;
+	phase?: string;
+	ownerInstanceId?: string | null;
+	updatedAt?: string;
+	createdAt?: string;
+}
+
+interface UlActiveRegistryRecord {
+	activeTaskId?: string | null;
+}
+
+/**
+ * ownerInstanceId から PID を抽出する
+ */
+function extractPidFromOwnerInstanceId(ownerInstanceId: string | null | undefined): number | null {
+	if (!ownerInstanceId) return null;
+	const match = ownerInstanceId.match(/-(\d+)$/);
+	if (!match) return null;
+	const pid = Number(match[1]);
+	return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/**
+ * プロセスが生存しているか確認する
+ */
+function isProcessAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * ULタスクの孤立データを掃除する
+ * - owner が死んでいる
+ * - owner が null で長時間放置されている
+ */
+function cleanupDeadOwnerUlWorkflowTasks(): number {
+	if (!existsSync(UL_TASKS_DIR)) {
+		return 0;
+	}
+
+	const terminalPhases = new Set(["completed", "aborted"]);
+	const staleUnownedMs = 30 * 60 * 1000; // 30分
+	const now = Date.now();
+	let activeTaskId: string | null = null;
+
+	if (existsSync(UL_ACTIVE_FILE)) {
+		try {
+			const activeRaw = readFileSync(UL_ACTIVE_FILE, "utf-8");
+			const registry = JSON.parse(activeRaw) as UlActiveRegistryRecord;
+			activeTaskId = registry.activeTaskId ?? null;
+		} catch {
+			activeTaskId = null;
+		}
+	}
+
+	let deletedCount = 0;
+
+	try {
+		const taskDirs = readdirSync(UL_TASKS_DIR)
+			.filter((name) => statSync(join(UL_TASKS_DIR, name)).isDirectory());
+
+		for (const taskDirName of taskDirs) {
+			const statusPath = join(UL_TASKS_DIR, taskDirName, "status.json");
+			if (!existsSync(statusPath)) {
+				continue;
+			}
+
+			try {
+				const statusRaw = readFileSync(statusPath, "utf-8");
+				const status = JSON.parse(statusRaw) as UlWorkflowStatusRecord;
+				const taskId = status.taskId || taskDirName;
+				const phase = status.phase || "unknown";
+				const ownerPid = extractPidFromOwnerInstanceId(status.ownerInstanceId);
+				const isActiveTask = activeTaskId === taskId;
+				const updatedAtMs = status.updatedAt ? Date.parse(status.updatedAt) : NaN;
+				const createdAtMs = status.createdAt ? Date.parse(status.createdAt) : NaN;
+				const baseTimeMs = Number.isFinite(updatedAtMs)
+					? updatedAtMs
+					: (Number.isFinite(createdAtMs) ? createdAtMs : 0);
+				const isStaleUnowned = baseTimeMs > 0 && now - baseTimeMs > staleUnownedMs;
+
+				// owner が死んでいれば削除
+				if (ownerPid && !isProcessAlive(ownerPid)) {
+					rmSync(join(UL_TASKS_DIR, taskDirName), { recursive: true, force: true });
+					deletedCount++;
+					continue;
+				}
+
+				// owner がないタスクは終端か stale なら削除
+				if (!ownerPid) {
+					if (terminalPhases.has(phase) || (!isActiveTask && isStaleUnowned)) {
+						rmSync(join(UL_TASKS_DIR, taskDirName), { recursive: true, force: true });
+						deletedCount++;
+					}
+				}
+			} catch {
+				// 個別タスク破損時はスキップ
+			}
+		}
+	} catch {
+		// クリーンアップ失敗時でも API 応答を優先
+	}
+
+	if (deletedCount > 0) {
+		invalidateCache();
+	}
+
+	return deletedCount;
+}
+
 // ============================================
 // UL Workflow Task Handlers (Read-only)
 // ============================================
 
 function handleGetUlWorkflowTasks(): ApiResponse {
 	try {
+		cleanupDeadOwnerUlWorkflowTasks();
 		const tasks = getAllUlWorkflowTasks();
 		return { success: true, data: tasks, total: tasks.length };
 	} catch (error) {
