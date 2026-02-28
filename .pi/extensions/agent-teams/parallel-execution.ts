@@ -177,6 +177,24 @@ export async function resolveTeamParallelCapacity(input: {
 
   let immediateAttempts = 0;
   for (const candidate of normalizedCandidates) {
+    // BUG-013: AbortSignalチェックを追加（サブエージェント側と同様の修正）
+    if (input.signal?.aborted) {
+      return {
+        allowed: false,
+        requestedTeamParallelism,
+        requestedMemberParallelism,
+        appliedTeamParallelism: 0,
+        appliedMemberParallelism: 0,
+        reduced: false,
+        reasons: ["Aborted"],
+        waitedMs: 0,
+        timedOut: false,
+        aborted: true,
+        attempts: immediateAttempts,
+        projectedRequests: 0,
+        projectedLlm: 0,
+      };
+    }
     immediateAttempts += 1;
     const attempt = tryReserveRuntimeCapacity({
       toolName: reservationToolName,
