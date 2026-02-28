@@ -1189,9 +1189,12 @@ function promoteStarvingEntries(runtime: AgentRuntimeState, nowMs: number): void
 function createCapacityCheck(snapshot: AgentRuntimeSnapshot, input: RuntimeCapacityCheckInput): RuntimeCapacityCheck {
   const requestedAdditionalRequests = sanitizePlannedCount(input.additionalRequests);
   const requestedAdditionalLlm = sanitizePlannedCount(input.additionalLlm);
+  // 消費済み予約も容量チェックに含める
+  // consumedLlmは予約が消費されたが、まだactiveAgentsがインクリメントされていない期間のリソース
   const projectedRequests =
-    snapshot.totalActiveRequests + snapshot.reservedRequests + requestedAdditionalRequests;
-  const projectedLlm = snapshot.totalActiveLlm + snapshot.reservedLlm + requestedAdditionalLlm;
+    snapshot.totalActiveRequests + snapshot.reservedRequests + snapshot.consumedRequests + requestedAdditionalRequests;
+  const projectedLlm =
+    snapshot.totalActiveLlm + snapshot.reservedLlm + snapshot.consumedLlm + requestedAdditionalLlm;
   const reasons: string[] = [];
 
   if (projectedRequests > snapshot.limits.maxTotalActiveRequests) {
